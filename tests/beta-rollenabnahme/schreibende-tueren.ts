@@ -1078,6 +1078,27 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
       };
     },
   },
+  // Aufnahme entwurf-in-gemeinsamen-pool-geben (R-2099): der Autor gibt seinen eigenen Entwurf in
+  // den gemeinsamen Pool. Dasselbe Muster wie `PUT /api/drafts/:id` darüber — der Schreiber legt
+  // den Entwurf selbst an; dass ein ANDERER Schreibberechtigter hier 403 bekommt, misst
+  // `tests/entwurf-pool/pool-rechte.test.ts`.
+  {
+    gruppe: "captureRoutes",
+    methode: "PUT",
+    route: "/api/drafts/:id/pool",
+    belegstelle: "services/app/src/routes/capture-routes.ts (PUT /api/drafts/:id/pool)",
+    erfolg: [200],
+    tor: "ko.create, dann Autorenrecht am Entwurf (canManageDraft)",
+    erwartet: AB_EXPERTE,
+    ruesten: async (buehne, akteur) => {
+      const schreiber = schreiberFuer(akteur);
+      const entwurf = await legeEntwurfAn(buehne, schreiber);
+      return {
+        pfad: `/api/drafts/${entwurf.id}/pool`,
+        payload: { imPool: true },
+      };
+    },
+  },
 
   // --- Prüfen, Freigeben, Wissenslücken ---------------------------------------------------------
   {

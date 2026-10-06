@@ -24,5 +24,9 @@ export function notificationTarget(n: Pick<Notification, "kind" | "koId">): stri
   if (n.kind === "assignment") {
     return validationMineHref();
   }
+  // Kenntnisnahme: der Eintrag selbst — dort steht die Anforderung samt Bestätigen-Knopf.
+  if (n.kind === "kenntnisnahme") {
+    return n.koId ? `/wissen/${n.koId}` : null;
+  }
   return null;
 }

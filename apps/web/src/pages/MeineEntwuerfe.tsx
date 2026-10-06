@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { endpoints } from "../api/endpoints";
 import { useDirectory, useDrafts } from "../api/hooks";
+import { useSession } from "../app/AuthContext";
 import { GuardedLink, useGuardedNavigate } from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
 import { CaptureDraftList } from "../components/CaptureDraftList";
@@ -59,6 +60,7 @@ export function MeineEntwuerfe(): JSX.Element {
   const navigate = useGuardedNavigate();
   const drafts = useDrafts();
   const directory = useDirectory();
+  const { user } = useSession();
   const [confirmDiscardId, setConfirmDiscardId] = useState<string | null>(null);
 
   // AUFNAHME gesamt-entwurf-einreichen · Entscheidung Pedi `debbb8e8`: Entwürfe sind PRIVAT. Der
@@ -91,6 +93,27 @@ export function MeineEntwuerfe(): JSX.Element {
       setConfirmDiscardId(null);
       push("error", e instanceof Error ? e.message : t("state.error"));
     },
+  });
+
+  // ================================================================================================
+  // AUFNAHME entwurf-in-gemeinsamen-pool-geben (R-2099, FR-CAP-06) — DIE BEWUSSTE HANDLUNG.
+  // ================================================================================================
+  // „In den Pool geben" / „Aus dem Pool nehmen" an der eigenen Zeile: `PUT /api/drafts/<id>/pool`,
+  // danach denselben Bestand `["drafts"]` für ungültig erklären — kein zweiter Speicher, keine
+  // zweite Liste. Fremde Pool-Entwürfe tragen den Knopf nicht (nur der Autor darf das, und der
+  // Server weist jeden anderen ab). Bei einem Fehler bleibt der Stand stehen, den der Server zuletzt
+  // bestätigt hat.
+  const poolUmschalten = useMutation({
+    mutationFn: ({ id, imPool }: { id: string; imPool: boolean }) =>
+      endpoints.drafts.pool(id, imPool),
+    onSuccess: (_entwurf, { imPool }) => {
+      void qc.invalidateQueries({ queryKey: ["drafts"] });
+      push(
+        "success",
+        t(imPool ? "entwurfspool.quittung.gegeben" : "entwurfspool.quittung.genommen"),
+      );
+    },
+    onError: (e: unknown) => push("error", e instanceof Error ? e.message : t("state.error")),
   });
 
   // Der Weg in den Editor ist der VORHANDENE eine Weg: die Kennung steht in der Adresse, und
@@ -192,7 +215,12 @@ export function MeineEntwuerfe(): JSX.Element {
           `HelpTip` rendert NICHTS im Sichtfeld (`components/HelpTip.tsx:11`) — er meldet Titel und
           Text bei der Seitenhilfe an. Die Fläche von JOB 3503/3668 bleibt Zeile für Zeile, wie sie
           war. */}
-      <HelpTip title={t("seitenhilfe.entwuerfe.title")} body={t("seitenhilfe.entwuerfe.body")} />
+      {/* Aufnahme entwurf-in-gemeinsamen-pool-geben: die Seitenhilfe nennt den gemeinsamen Pool und
+          steht deshalb unter neuem Stamm (`texte/entwurfspool.ts`). */}
+      <HelpTip
+        title={t("entwurfspool.seitenhilfe.title")}
+        body={t("entwurfspool.seitenhilfe.body")}
+      />
 
       {/* Der wahre Suchraum, bevor gesucht wird — dieselben zwei Sätze wie im Arbeitsraum
           (AUFTRAG-BASIC-u2). Seit `debbb8e8` sieht jede Rolle nur ihre eigenen Entwürfe, der Satz
@@ -268,6 +296,11 @@ export function MeineEntwuerfe(): JSX.Element {
         discardPending={entwurfLoeschen.isPending}
         onDiscard={(id) => entwurfLoeschen.mutate(id)}
         onResume={(d) => entwurfOeffnen(d.id)}
+        // Pool-Auftrag: wer angemeldet ist, entscheidet, welche Zeilen „eigene" sind — nur sie
+        // tragen Löschen und den Pool-Knopf (297afc57).
+        nutzerKennung={user?.id}
+        onPoolUmschalten={(id, imPool) => poolUmschalten.mutate({ id, imPool })}
+        poolPending={poolUmschalten.isPending}
       />
 
       {/* Der Weg zurück. Er steht UNTER der Liste und nicht neben ihr: der Papierkorb ist die

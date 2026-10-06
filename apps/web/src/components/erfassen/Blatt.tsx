@@ -341,6 +341,24 @@ export function Blatt({
 
   // ---- Entwurf ---------------------------------------------------------------------------------
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+  // Aufnahme entwurf-in-gemeinsamen-pool-geben (Pedi, entscheidung:297afc57): ist der geladene
+  // Entwurf ein FREMDER Pool-Entwurf? Dann darf dieses Blatt ihn fortsetzen und sichern, aber nicht
+  // einreichen — der Knopf steht nicht da (der Server weist den Aufruf ohnehin ab). Kennung und
+  // Befund reisen zusammen: nach einem Wechsel sagt ein veralteter Eintrag nichts mehr, weil
+  // `activeDraftId` passen muss. Nur ein Pool-Entwurf kann fremd sein — einen fremden privaten
+  // Entwurf gibt der Server gar nicht heraus.
+  const [geladenVon, setGeladenVon] = useState<{
+    id: string;
+    autor: string;
+    imPool: boolean;
+  } | null>(null);
+  const fremderPoolEntwurf =
+    activeDraftId !== null &&
+    geladenVon?.id === activeDraftId &&
+    geladenVon.imPool &&
+    geladenVon.autor !== "" &&
+    // Fail-closed: solange die Sitzung nicht feststeht, gilt ein Pool-Entwurf als fremd.
+    geladenVon.autor !== user?.id;
   // ==============================================================================================
   // JOB 3556 R3 — WIE OFT DER GESPEICHERTE STAND DIESES BLATTES NEU GESETZT WURDE.
   // ==============================================================================================
@@ -981,6 +999,7 @@ export function Blatt({
           : undefined;
         const loadedConfidentiality = confidentialityOf(declared);
         setActiveDraftId(draft.id);
+        setGeladenVon({ id: draft.id, autor: draft.originalAuthor, imPool: draft.imPool === true });
         setTitle(loadedTitle);
         setBodyHtml(loadedBody);
         setKategorie(draft.payload.category ?? "");
@@ -2689,6 +2708,8 @@ export function Blatt({
                     discardPending={entwurfLoeschen.isPending}
                     onDiscard={(id) => entwurfLoeschen.mutate(id)}
                     onResume={(d) => entwurfOeffnen(d.id)}
+                    // Pool-Auftrag (297afc57): fremde Pool-Entwürfe tragen keinen Löschknopf.
+                    nutzerKennung={user?.id}
                   />
                 </MenueFlaeche>
               ) : null}
@@ -3322,17 +3343,20 @@ export function Blatt({
             >
               {t("erfassen.entwurfSichern")}
             </button>
-            <button
-              type="button"
-              data-testid="blatt-einreichen"
-              disabled={busy}
-              onClick={requestSubmit}
-              aria-describedby="blatt-folge-einreichen"
-              title={t("einstieg.knopf.einreichen")}
-              className="rounded-[10px] bg-[#C2500A] px-5 py-2.5 text-[14px] font-semibold text-white disabled:opacity-50"
-            >
-              {t("erfassen.einreichen")}
-            </button>
+            {/* Pool-Auftrag (297afc57): einen fremden Pool-Entwurf reicht nur sein Autor ein. */}
+            {fremderPoolEntwurf ? null : (
+              <button
+                type="button"
+                data-testid="blatt-einreichen"
+                disabled={busy}
+                onClick={requestSubmit}
+                aria-describedby="blatt-folge-einreichen"
+                title={t("einstieg.knopf.einreichen")}
+                className="rounded-[10px] bg-[#C2500A] px-5 py-2.5 text-[14px] font-semibold text-white disabled:opacity-50"
+              >
+                {t("erfassen.einreichen")}
+              </button>
+            )}
           </div>
           {/* ========================================================================================
               JOB 3106 (UX-01) — DIE BESTÄTIGUNG NENNT DIE WEGE, STATT ZU VERWEHEN.

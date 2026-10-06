@@ -187,10 +187,11 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `DELETE` | `/api/drafts/trash/:id` | `ko.create` | — | 204 | 404 `NOT_FOUND` |
 | `GET` | `/api/drafts/:id` | `ko.create` | — | 200 Entwurf | 404 `NOT_FOUND`; 403 `FORBIDDEN` (nicht sichtbar) |
 | `PUT` | `/api/drafts/:id` | `ko.create` | Rumpf `DraftPayload`, `expectedUpdatedAt?` | 200 Entwurf | 400 `BAD_REQUEST`; 404; 403; 409 `DRAFT_STALE` |
-| `DELETE` | `/api/drafts/:id` | `ko.create` | — | 204 (in den Papierkorb) | 404; 403 |
+| `DELETE` | `/api/drafts/:id` | `ko.create` | — | 204 (in den Papierkorb) | 404; 403 (nicht sichtbar oder nicht Autor, auch bei Pool-Entwurf) |
+| `PUT` | `/api/drafts/:id/pool` | `ko.create`, nur Autor | Rumpf `{ imPool: boolean }` | 200 Entwurf (`imPool: true` im gemeinsamen Pool, ohne Feld privat) | 400 `BAD_REQUEST`; 404; 403 `FORBIDDEN` (nicht sichtbar oder nicht Autor) |
 | `GET` | `/api/drafts/:id/naechster-schritt` | `ko.create` | — | 200 `{ naechsterSchritt }` oder `{}` | 404; 403 |
 | `POST` | `/api/drafts/:id/restore` | `ko.create` | — | 200 wiederhergestellter Entwurf | 404 |
-| `POST` | `/api/drafts/:id/promote` | `ko.create` | Rumpf `{ reviewerIds?, operationId?, draftPayload?, expectedUpdatedAt? }` | 201 Wissensobjekt; 200 bei Wiederholung | 400 `BAD_REQUEST`; 409 `DRAFT_STALE`; 403 `EXTERNAL_ATTACH_BLOCKED`; Idempotenzfehler aus Abschnitt 2 |
+| `POST` | `/api/drafts/:id/promote` | `ko.create` | Rumpf `{ reviewerIds?, operationId?, draftPayload?, expectedUpdatedAt? }` | 201 Wissensobjekt; 200 bei Wiederholung | 400 `BAD_REQUEST`; 409 `DRAFT_STALE`; 403 `FORBIDDEN` (nicht sichtbar oder nicht Autor, auch bei Pool-Entwurf); 403 `EXTERNAL_ATTACH_BLOCKED`; Idempotenzfehler aus Abschnitt 2 |
 | `GET` | `/api/capture/slides/availability` | `ko.create` | — | 200 `{ available }` | — |
 | `POST` | `/api/capture/slides` | `ko.create` (vor dem Einlesen) | Rumpf `{ data }` (Base64 PPTX) | 200 Folienbilder | 400 `BAD_REQUEST`; 413 `PAYLOAD_TOO_LARGE`; 415 `SLIDES_INVALID`; 422 `SLIDES_TIMEOUT`; 429 `RATE_LIMITED`, `CONVERSION_BUSY`; 408 `CLIENT_ABORTED`; 503 `SLIDES_UNAVAILABLE`; 500 `SLIDES_FAILED` |
 | `POST` | `/api/objects` | `ko.create` (vor dem Einlesen) | Rumpf `{ name, mime, data, kind?, confidentiality?, purpose?, draftId? }` | 201 Objektbeschreibung | Dienstfehler |

@@ -45,9 +45,21 @@ export interface CaptureHelpTopic {
   bodyKey: string;
 }
 
+// Aufnahme entwurf-in-gemeinsamen-pool-geben (R-2099): die Erklärung zu „Entwurf speichern" sagt
+// jetzt, dass ein Entwurf standardmäßig privat ist UND bewusst geteilt werden kann. Sie steht unter
+// einem NEUEN Schlüssel, weil `chelp.saveDraftHelp.body` im eingefrorenen Textschnappschuss liegt
+// (Begründung in `texte/entwurfspool.ts`). Der Titel bleibt beim Schema.
+const BODY_KEY_ABWEICHEND: Partial<Record<CaptureHelpId, string>> = {
+  saveDraftHelp: "entwurfspool.saveDraftHelp.body",
+};
+
 // Schlüssel-Schema wie im Prüfbereich, eigener Namensraum: chelp.<id>.title / chelp.<id>.body.
 export function captureHelp(id: CaptureHelpId): CaptureHelpTopic {
-  return { id, titleKey: `chelp.${id}.title`, bodyKey: `chelp.${id}.body` };
+  return {
+    id,
+    titleKey: `chelp.${id}.title`,
+    bodyKey: BODY_KEY_ABWEICHEND[id] ?? `chelp.${id}.body`,
+  };
 }
 
 export const CAPTURE_HELP_TOPICS: readonly CaptureHelpTopic[] = CAPTURE_HELP_IDS.map(captureHelp);

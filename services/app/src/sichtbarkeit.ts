@@ -756,6 +756,11 @@ export interface AnhangEntwurf {
   bodyHtml?: string | null | undefined;
   /** Belegstellen-Originale und Ankerdokumente (`pendingSources`, `anchorDocuments`). */
   objectIds?: readonly (string | null | undefined)[] | undefined;
+  /**
+   * Pool-Auftrag (R-2099): der Autor hat den Entwurf bewusst in den gemeinsamen Pool gegeben.
+   * Nur `true` zählt; fehlend, `false` oder jeder andere Wert ist der private Standardfall.
+   */
+  imPool?: boolean | undefined;
 }
 
 /**
@@ -989,7 +994,30 @@ function entwurfNenntObjekt(entwurf: AnhangEntwurf, objectId: string): boolean {
 // den Anhang-Leseweg noch den vollständigen privaten Inhalt bekam, während die Entwurfsroute ihm
 // 403 gab. Einzige Ausnahme: herrenloser Altbestand ohne `originalAuthor` gehört niemandem; ihn
 // erreicht nur die Verwaltung (sonst käme an ihn niemand mehr heran).
+//
+// AUFNAHME entwurf-in-gemeinsamen-pool-geben (R-2099, FR-CAP-06, Pedi `debbb8e8` „Beides"): DIESELBE
+// Regel bekommt genau EINE zweite, ausdrückliche Bedingung — der Autor hat diesen Entwurf bewusst in
+// den gemeinsamen Pool gegeben (`imPool === true`). Dann sieht ihn jeder Schreibberechtigte
+// (`ko.create`, dieselbe Berechtigung, die jede Entwurfsroute verlangt). Keine Rollenausnahme: ohne
+// die Handlung des Autors öffnet weder `admin` noch `lastEditor` einen Entwurf. Weil die Anhänge
+// dieselbe Funktion fragen, öffnet der Pool sie im selben Zug — und ein privater Entwurf bleibt auf
+// beiden Wegen zu.
 export function entwurfSichtbarFuer(
+  user: Pick<SessionUser, "id" | "role">,
+  entwurf: Pick<AnhangEntwurf, "originalAuthor" | "imPool">,
+): boolean {
+  if (autorenrechtAmEntwurf(user, entwurf)) {
+    return true;
+  }
+  return entwurf.imPool === true && can(user.role, "ko.create");
+}
+
+// Pool-Auftrag (Pedi, entscheidung:297afc57): Sehen und Fortsetzen ist nicht dasselbe wie Verfügen.
+// EINREICHEN, LÖSCHEN (samt Papierkorb) und das TEILEN selbst bleiben beim Autor — für einen Pool-
+// Entwurf genauso wie für einen privaten. Das ist der bisherige Kern von `entwurfSichtbarFuer`, jetzt
+// unter eigenem Namen, damit die Routen „darf sehen" und „darf verfügen" auseinanderhalten können.
+// Keine zweite Sichtbarkeitsregel: `entwurfSichtbarFuer` ruft genau diese Funktion.
+export function autorenrechtAmEntwurf(
   user: Pick<SessionUser, "id" | "role">,
   entwurf: Pick<AnhangEntwurf, "originalAuthor">,
 ): boolean {

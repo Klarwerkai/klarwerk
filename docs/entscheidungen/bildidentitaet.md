@@ -372,7 +372,7 @@ Live-Stände wurden nicht neu gemessen.
 | R-0089 eindeutige Kennung je Bild | erfüllt (Bestand + Runden 1 und 2) | `tests/bildkennung-eindeutig/doppelte-kennung.test.ts`. Server: Eine kopierte Einheit wird getrennt, ihre Fußnote geht mit (W6). Editor: Die eigene Beschreibung folgt auch hinter einer fremden Fußnote (B3). Die Verdachtsspur „Commit 365e580“ ist nicht verfolgt; kein Befund dazu. |
 | R-0090 doppelte/ungültige Kennung nur melden | erfüllt mit benannter Grenze (Runde 2) | Siehe unten. Runde 1 hatte das als offene Wahl geführt; Ben hat die Wahl als Nichterfüllung gewertet (B4). |
 | R-0096 vier Grenzen nach Ship 12 (I50) | erfüllt | Siehe unten. Die in Lauf 3 offene Wahl zum Leseversprechen ist durch entscheidung:dac9bd84-078a-4f9d-b574-2351e0ffb3b7 entschieden (verengte Zusage bleibt). |
-| R-0098 Server vergibt Kennung aus dem Bildinhalt | **ausgelagert** → `aufnahme:20260922:gesamt-bildidentitaet:inhaltskennung-zweitbegriff` | Quellenwiderspruch siehe unten (bleibt als Befund für den Folgeauftrag stehen). Nicht gebaut. *Historisch (Lauf 3): Wahl (a)/(b).* |
+| R-0098 Server vergibt Kennung aus dem Bildinhalt | **ausgelagert** → `aufnahme:20260922:gesamt-bildidentitaet:inhaltskennung-zweitbegriff` | Quellenwiderspruch siehe unten. *Historisch (Lauf 3): Wahl (a)/(b), nicht gebaut.* Seit entscheidung:1019d7a6 gilt (a); im Folgeauftrag gebaut, siehe Abschnitt R-0098 unten. |
 | R-0107 Anker beim Zusammenführen | zurückgezogen | Laut Quelle Dublette; lebt in R-0089 weiter. |
 | R-0359 Word-Import: je Bild ein Anker, nicht raten | erfüllt (Bestand) | `docx.ts` (`captionsAmbiguous`); `tests/m5-docx-bildunterschriften/**`, `tests/m5c-ui-bildunterschriften/**`. |
 | R-0361 Knopf, Ziehen, Zwischenablage | erfüllt (Bestand), Browserbeleg ausgelagert | Bildknopf mit Dateiwahl, `onDrop`, `onPaste` (`RichTextEditor.tsx`, `partitionDropMedia` → `insertImageFile`). Gemountet: `tests/capture/mega88-bildweg-anker-mounted.test.tsx`. Browser: `tests-smoke/mega88-bildanker-browser.spec.ts` (Drop, Speichern, Wiederöffnen), in diesem Lauf nicht wiederholt. **Fehlender Beleg:** Einfügen einer Bild*datei* aus der Zwischenablage im echten Browser → **ausgelagert** an `aufnahme:20260922:gesamt-bildidentitaet:belege-browser-word-screenreader`. |
@@ -450,6 +450,29 @@ Punkt mehr.
 
 Heute vergibt weiter der Browser (`newImageRunToken`) bzw. der Server (`kw-fig-N`) einen
 Vorkommensanker.
+
+**Entschieden und gebaut (Folgeauftrag `…:inhaltskennung-zweitbegriff`):** entscheidung:1019d7a6
+wählt (a). Die Inhaltskennung ist ein zweiter Begriff neben dem Vorkommensanker:
+
+- `services/structure/src/bildinhalt.ts` leitet je Bild `sha256:<hex>` aus den Bildbytes ab
+  (eingebettete data-URL oder die Bytes des Objekt-Store-Objekts, injiziert als
+  `bildObjektDaten` in `KoService`). Byte-Gleichheit, keine Ähnlichkeit.
+- Gespeichert wird sie im abgeleiteten KO-Feld `bildInhalte` (`{ imageId, inhaltskennung }` je
+  Bild), gesetzt beim Anlegen, Überarbeiten und bei der Dokumentübernahme. Der Rumpf bleibt
+  unverändert; `data-image-id` ist weiter der einzige Anker am Bild.
+- Lesbar für eine Dublettenerkennung über `GET /api/kos/:id`. Fußnoten-Zuordnung, Klick, Galerie
+  und Bildsuche lesen sie nicht. Ihre Form enthält `:` und ist damit kein gültiges Anker-Token;
+  als `data-image-id` verwirft der Sanitizer sie mit der Spur „ungueltig“.
+- Altbestand (Nacharbeit 1, Bens Befund 2): Objekte ohne das Feld stehen in der Arbeitsliste des
+  Wartungslaufs (`missingBildInhalte` neben `missingImageNames`); `reconcileSearchProjections`
+  zieht es nur-wenn-fehlt nach (`setBildInhalte`), ohne Rumpf, Anker oder Fassung zu ändern.
+  Zusätzlich ergänzt jede neue Fassung das fehlende Feld, auch eine reine Titelrevision.
+  *Bis Nacharbeit 1 stand hier: „kein Nachzug im Wartungslauf“ — das ist überholt.*
+- Groß-/Kleinschreibung (Nacharbeit 1, Bens Befund 1): `DATA:…;BASE64,` wird wie im Sanitizer
+  erkannt und ergibt dieselbe Kennung wie die kleingeschriebene URL.
+- Grenzen: Entwürfe tragen das Feld nicht; ein Entwurf bekommt es, wenn er als Wissensobjekt
+  gespeichert wird. Eine Dublettenerkennung, die das Feld auswertet, gibt es noch nicht.
+- Beleg: `tests/inhaltskennung/inhaltskennung-zweitbegriff.test.ts`.
 
 ## Sammler- und Leseversprechen (I50 zweitens, Kriterium 5)
 

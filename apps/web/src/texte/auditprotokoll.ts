@@ -34,6 +34,7 @@ export default {
     "audit.action.overlap_participant_removed",
     "audit.action.overlap_withdrawn_own",
     "audit.action.ko_change_rolled_back",
+    "audit.action.user_created",
     "adm.sich.export.button",
     "adm.sich.export.done",
     "adm.sich.qualityNote",
@@ -63,6 +64,8 @@ export default {
     "audit.action.overlap_participant_removed": "Beteiligtes Objekt der Überschneidung entfernt",
     "audit.action.overlap_withdrawn_own": "Überschneidung durch Rücknahme geschlossen",
     "audit.action.ko_change_rolled_back": "Änderung zurückgenommen",
+    // Aktionsabdeckung (Nacharbeit 2): die Kontoanlage hat einen eigenen Beleg.
+    "audit.action.user_created": "Konto angelegt",
     "adm.sich.export.button": "Kette exportieren",
     "adm.sich.export.done":
       "Export mit {{count}} Einträgen gespeichert. Kopf der Kette: Nr. {{seq}} · {{hash}}. Wer diesen Kopf außerhalb der Anlage ablegt, erkennt dort später, ob die Kette bis zu diesem Punkt neu gebildet wurde.",
@@ -91,6 +94,7 @@ export default {
     "audit.action.overlap_participant_removed": "Object involved in overlap removed",
     "audit.action.overlap_withdrawn_own": "Overlap closed by withdrawal",
     "audit.action.ko_change_rolled_back": "Change rolled back",
+    "audit.action.user_created": "Account created",
     "adm.sich.export.button": "Export chain",
     "adm.sich.export.done":
       "Export with {{count}} entries saved. Head of the chain: no. {{seq}} · {{hash}}. Whoever stores this head outside the installation can later tell there whether the chain up to this point was rebuilt.",
@@ -119,6 +123,7 @@ export default {
     "audit.action.overlap_participant_removed": "Bij overlap betrokken object verwijderd",
     "audit.action.overlap_withdrawn_own": "Overlap gesloten door intrekking",
     "audit.action.ko_change_rolled_back": "Wijziging teruggedraaid",
+    "audit.action.user_created": "Account aangemaakt",
     "adm.sich.export.button": "Keten exporteren",
     "adm.sich.export.done":
       "Export met {{count}} items opgeslagen. Kop van de keten: nr. {{seq}} · {{hash}}. Wie deze kop buiten de installatie bewaart, kan daar later zien of de keten tot dit punt opnieuw is opgebouwd.",

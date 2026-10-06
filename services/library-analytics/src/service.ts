@@ -1443,11 +1443,14 @@ export class LibraryService {
         }
       }
     }
+    // Aufnahme gesamt-auditprotokoll:aktionsabdeckung (Bens Befund, Nacharbeit 2): der Eintrag nennt
+    // die tatsächlich gespeicherten Kandidaten — sonst wäre aus dem Importbeleg nicht bestimmbar,
+    // welche Objekte er betrifft. Nur Kennungen, kein Inhalt.
     await this.audit?.record({
       actor,
       action: "import.candidates-created",
       target: "library",
-      payload: { count: persisted.length },
+      payload: { count: persisted.length, candidateIds: persisted.map((c) => c.id) },
     });
     return persisted;
   }
@@ -3400,6 +3403,15 @@ export class LibraryService {
     effectiveVersion: number,
     sourceRecordId?: string,
   ): KoSource {
+    // aufnahme:20260922:confluence-import-hierarchie (R-0153): die Elternkette endete bisher am
+    // Kandidaten — das angenommene Wissensobjekt kam flach an. Sie reist jetzt mit dem Anker, denn
+    // nur dort ist sie eindeutig einer Quelle zugeordnet (dasselbe KO kann mehrere Anker tragen).
+    // Gleiche Zurückhaltung wie toPreviewEntry: leere Segmente fallen weg, bleibt nichts, fehlt das
+    // Feld. Beim Re-Sync baut derselbe Aufruf den Anker neu — eine verschobene Seite trägt danach
+    // ihre neue Kette.
+    const sourcePath = (item.sourcePath ?? [])
+      .map((segment) => segment.trim())
+      .filter((segment) => segment.length > 0);
     return {
       ...(sourceRecordId ? { sourceRecordId } : {}),
       id: this.genId(),
@@ -3415,6 +3427,7 @@ export class LibraryService {
       // (KO-seitig weiterhin so genanntes) spaceKey-Container-Label — der Match läuft NUR über externalId.
       ...(item.externalId ? { externalId: item.externalId } : {}),
       ...(item.sourceScope ? { spaceKey: item.sourceScope } : {}),
+      ...(sourcePath.length > 0 ? { sourcePath } : {}),
       sourceVersion: effectiveVersion,
       // package:confluence (K6): die Lese-Einschränkung der Quelle zu DIESER Fassung — als Kopie,
       // damit keine spätere Änderung am Kandidaten den gespeicherten Anker mitverändert. Erst-

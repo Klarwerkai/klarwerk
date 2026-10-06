@@ -7,6 +7,7 @@
 // kein unbounded Warten. Nicht zu verwechseln mit dem Slice-1-Rate-Limit (Request-Rate, addon-only).
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { zustimmungenTragen } from "./anbieterbindung";
 import type { ModelClient } from "./provider-model";
 
 // Backpressure-Signal: KEIN Provider-Fehler (nicht auf den nächsten Provider ausweichen / nicht still
@@ -343,6 +344,22 @@ function vermerkeModellAufruf(): void {
   }
 }
 
+// Lauf 2 · Bens B7: die Klara-Zustimmungsbindung am Chokepoint. Nur für Clients, die das Haus
+// verlassen können (`rejectsConfidential` — Cloud und nicht bestätigt lokale Endpunkte); ein
+// bestätigt lokaler Endpunkt überträgt nichts nach aussen. Ohne gebundene Zustimmung ein No-op.
+class ZustimmungBeendetFehler extends Error {
+  constructor() {
+    super("Die Zustimmung für dieses Dokument trägt keine externe Übertragung mehr.");
+    this.name = "ZustimmungBeendetFehler";
+  }
+}
+
+function pruefeZustimmungVorUebertragung(extern: boolean): void {
+  if (extern && !zustimmungenTragen()) {
+    throw new ZustimmungBeendetFehler();
+  }
+}
+
 // Umschließt einen ModelClient, sodass JEDER complete()-Aufruf durch den globalen Semaphore geht.
 // Der einzige Ort, an dem der Cap greift — kein Bypass, weil alle Provider-Methoden hierüber laufen.
 // SCRUM-502 Schicht 2/R8: `rejectsConfidential` ist PFLICHT (kein Default) — der Aufrufer MUSS die
@@ -372,6 +389,9 @@ export function cappedModelClient(
       }
       return withModelSlot(() => {
         // JOB 3036 R2: HIER geschieht der Aufruf wirklich — Wächter passiert, Slot erteilt.
+        // Lauf 2 · Bens B7: nach dem Warten auf den Slot, vor der Übertragung — ein inzwischen
+        // abgeschlossener Widerruf oder Sitzungsablauf lässt nichts mehr hinaus, auf jedem Weg.
+        pruefeZustimmungVorUebertragung(opts.rejectsConfidential);
         vermerkeModellAufruf();
         return inner.complete(system, user, confidential, maxTokens);
       });
@@ -392,6 +412,7 @@ export function cappedModelClient(
             }
             return withModelSlot(() => {
               // JOB 3036 R2: der Bildweg zählt genauso als Modellaufruf wie der Textweg.
+              pruefeZustimmungVorUebertragung(opts.rejectsConfidential);
               vermerkeModellAufruf();
               return innerVision(system, imageDataUrl, user, confidential, maxTokens);
             });

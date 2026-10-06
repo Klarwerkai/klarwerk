@@ -171,6 +171,7 @@ import {
   // Reasoner-Persistenz (Cross-Modul-Import nur über die öffentliche index.ts).
   InMemoryKlaraSessionRepo,
   InMemoryReasonerPolicyRepo,
+  KlaraAusweichwegGesperrtFehler,
   type KlaraSessionRepo,
   ModelCapacityError,
   ModelProvider,
@@ -179,6 +180,7 @@ import {
   PgReasonerPolicyRepo,
   Reasoner,
   type ReasonerPolicyRepo,
+  anbieterZugelassen,
   createCappedCloudClientFromEnv,
   createCappedLocalClientFromEnv,
 } from "../../reasoner";
@@ -207,6 +209,7 @@ import {
   AddonAuthAttemptThrottle,
   addonAuthThrottleConfigFromEnv,
   isAddonEndpointPath,
+  isHopCountTrustProxy,
   resolveTrustProxy,
 } from "./addon-auth-throttle";
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
@@ -244,6 +247,13 @@ import {
   tokenFromRequest,
 } from "./http";
 import { impactReport } from "./impact";
+// Kenntnisnahme einer gültigen Fassung — haltbar im Postgres-Betrieb, im Speicher ohne Datenbank.
+import {
+  InMemoryKenntnisnahmeRepo,
+  KenntnisnahmeDienst,
+  type KenntnisnahmeRepo,
+  PgKenntnisnahmeRepo,
+} from "./kenntnisnahme";
 // WP-D11: PPTX-Folien → PNG (Route + injizierbarer Konverter).
 import {
   InMemoryLesevariantenRepo,
@@ -261,7 +271,7 @@ import { askRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
 import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
 import { brandingRoutes } from "./routes/branding-routes";
-import { canSeeDraft, captureRoutes } from "./routes/capture-routes";
+import { canManageDraft, captureRoutes } from "./routes/capture-routes";
 import { categoryRoutes } from "./routes/category-routes";
 import { checkTextRoutes } from "./routes/check-text-routes";
 import { conflictRoutes } from "./routes/conflicts-routes";
@@ -277,6 +287,7 @@ import { impactRoutes } from "./routes/impact-routes";
 import { importAccessRoutes } from "./routes/import-access-routes";
 import { importRunRoutes } from "./routes/import-run-routes";
 import { kantenRoutes } from "./routes/kanten-routes";
+import { kenntnisnahmeRoutes } from "./routes/kenntnisnahme-routes";
 import { klaraAiRoutes } from "./routes/klara-ai-routes";
 // W3-C (JOB 541 D3): die kanonische Antwort-Erklaerroute und ihr Lesedienst.
 import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-routes";
@@ -425,6 +436,15 @@ export interface AppServices {
    * denselben Hinweis an derselben Datenbankuhr sehen.
    */
   bearbeitungen: BearbeitungsRepo;
+  /**
+   * Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen. Aus demselben Grund wie
+   * `bearbeitungen` NICHT in `AppRepos`. Im Postgres-Betrieb `PgKenntnisnahmeRepo`; ohne Datenbank
+   * die Speicherfassung, die im Desktop-Journal-Betrieb Schreibvorgänge ablehnt, statt sie beim
+   * Neustart zu verlieren.
+   */
+  kenntnisnahmen: KenntnisnahmeRepo;
+  /** Die Uhr des Kenntnisnahmedienstes (Millisekunden) — in Tests stellbar für Frist und Erinnerung. */
+  kenntnisnahmeUhr: () => number;
   /**
    * JOB 3363: die Ablage der Import-Kandidaten — DIESELBE Instanz, die `LibraryService` bekommt.
    * Sie steht hier, weil die Lesevarianten-Routen einen einzelnen Kandidaten nachschlagen müssen
@@ -884,6 +904,10 @@ export function assembleServices(
     // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
     // die Speicherfassung — dieselbe Regel, die Uhr des Prozesses statt der Datenbank.
     bearbeitungen?: BearbeitungsRepo;
+    // Kenntnisnahme: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
+    kenntnisnahmen?: KenntnisnahmeRepo;
+    // Kenntnisnahme: die Uhr für Frist, Überfälligkeit und Erinnerung — ohne Injektion `Date.now`.
+    kenntnisnahmeUhr?: () => number;
     // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
     // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
     // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
@@ -914,6 +938,8 @@ export function assembleServices(
     ...(opts.withTx ? { withTx: opts.withTx } : {}),
     ...(speicher ? { ruecknahmeKlammer: speicher.klammer } : {}),
     ...(opts.searchProjections ? { searchProjections: opts.searchProjections } : {}),
+    // R-0098: die Bytes eines Objekt-Store-Bildes für seine Inhaltskennung (`bildInhalte`).
+    bildObjektDaten: async (objectId) => (await repos.objects.findById(objectId))?.data,
   });
   // FR-RSN-02/06 + SCRUM-502 R8: echtes Cloud-Modell, wenn der Cloud-Key per Env/Keychain verfügbar ist
   // — GECAPPT aus der Factory (Egress-Wächter rejectsConfidential=true + globaler In-Flight-Cap sind
@@ -989,6 +1015,18 @@ export function assembleServices(
                 ),
               );
             }
+            // Bens B3 (Runde 2): dieser Weg baut keine Reasoner-Kette — er prüft die Klara-
+            // Anbieterbindung deshalb selbst. Wurde nach dem Tor auf einen anderen Anbieter
+            // umgestellt, geht nichts hinaus.
+            if (!anbieterZugelassen(anbieter)) {
+              return Promise.reject(
+                new Error(
+                  `Die Zustimmung für dieses Dokument gilt einem anderen Anbieter als ${anbieter} — der Zuruf wird nicht formuliert.`,
+                ),
+              );
+            }
+            // Lauf 2 · Bens B7: ein Widerruf oder Sitzungsablauf WÄHREND des Wartens auf einen
+            // Modellplatz fängt der gecappte Client selbst ab (`cappedModelClient`, Chokepoint).
             return client.complete(system, user, confidential, maxTokens);
           },
         }
@@ -1179,6 +1217,13 @@ export function assembleServices(
     // WIKI-BEARBEITUNGSRESERVIERUNG: die Bearbeitungshinweise — Postgres, wenn injiziert, sonst im
     // Speicher.
     bearbeitungen: opts.bearbeitungen ?? new InMemoryBearbeitungsRepo(),
+    // Kenntnisnahme: Postgres, wenn injiziert, sonst im Speicher. Sagt der Betrieb Haltbarkeit zu
+    // (Desktop-Journal), lehnt die Speicherfassung Schreibvorgänge ab — eine angenommene und beim
+    // Neustart verlorene Bestätigung wäre schlimmer als eine abgelehnte.
+    kenntnisnahmen:
+      opts.kenntnisnahmen ??
+      new InMemoryKenntnisnahmeRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
+    kenntnisnahmeUhr: opts.kenntnisnahmeUhr ?? Date.now,
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
     // der Fabrik. JOB 3134: hinter der Hülle (oben), die je Aufruf den GEWÄHLTEN Anbieter nimmt.
     zurufModell,
@@ -1578,6 +1623,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // so sehen mehrere App-Prozesse derselben Instanz denselben Hinweis — und die Uhr, die über
       // Ablauf und Erneuerung entscheidet, ist die der Datenbank, nicht die eines Prozesses.
       bearbeitungen: new PgBearbeitungsRepo(pool),
+      // Kenntnisnahme: Anforderungen und Bestätigungen überleben Neuladen, Neuanmeldung und Neustart.
+      kenntnisnahmen: new PgKenntnisnahmeRepo(pool),
     },
   );
 }
@@ -1628,6 +1675,18 @@ export function modelBusyErrorHandler(
     reply.code(503).header("Retry-After", "1").send({
       error: "MODEL_BUSY",
       message: "KI-Modell derzeit ausgelastet. Bitte in Kürze erneut versuchen.",
+    });
+    return;
+  }
+  // R-0590 · Ben nacharbeit-1: eine Klara-Antwort unter Zustimmung, deren zugestimmter Anbieter nicht
+  // geantwortet hat, wird nicht ersatzweise anders beantwortet — und die Fläche erfährt den Grund.
+  // 409 wie die übrigen Sperren des Zustimmungswegs; `error` trägt die Kennung (das Feld, das der
+  // Client auf `ApiError.code` abbildet), `reason` den benannten Grund. Kein Nutzertext.
+  if (error instanceof KlaraAusweichwegGesperrtFehler) {
+    reply.code(409).send({
+      error: "KLARA_AUSWEICHWEG_GESPERRT",
+      reason: error.grund,
+      message: error.message,
     });
     return;
   }
@@ -2300,7 +2359,15 @@ export function buildApp(
   //
   // JOB 2661: `log` ist der Prüfeinstieg für die Logsenke — ohne ihn ist der Logger derselbe,
   // er schreibt nur auf die Standardausgabe statt in einen lesbaren Puffer.
-  opts: { factoryReset?: FactoryReset; log?: { senke?: LogSenke; stufe?: string } } = {},
+  //
+  // R-0609 · Bens B13: `klaraAufraeumen` bekommt den Aufräumlauf DER Klara-Dienstinstanz dieser App
+  // (Nachtrag fehlender Prüfprotokoll-Enden, dann Löschen abgelaufener Sitzungen). `server.ts`
+  // startet ihn (`klara-aufraeumen.ts`); ohne Option läuft nichts (Tests).
+  opts: {
+    factoryReset?: FactoryReset;
+    log?: { senke?: LogSenke; stufe?: string };
+    klaraAufraeumen?: (lauf: () => Promise<number>) => void;
+  } = {},
 ): FastifyInstance {
   // SCRUM-490 R3 (B2, Fix 4): trustProxy gezielt aus env (KLARWERK_TRUST_PROXY) — request.ip = echte
   // Client-IP hinter dem bekannten Proxy-Hop; Default (unset) = false = Socket-Peer (heutiges Verhalten).
@@ -2321,6 +2388,13 @@ export function buildApp(
     trustProxy: resolveTrustProxy(),
     logger: baueLoggerOptionen(opts.log),
   });
+  // GHSA-3m5p-2c4r-xxw2: eine Hop-Anzahl wird verworfen (resolveTrustProxy). Ohne diese Zeile sähe ein
+  // Betreiber nur, dass alle Drosseln plötzlich gegen die Proxy-IP zählen.
+  if (isHopCountTrustProxy()) {
+    app.log.warn(
+      "KLARWERK_TRUST_PROXY ist eine Hop-Anzahl und wird nicht mehr beachtet (GHSA-3m5p-2c4r-xxw2) — die IP-Adresse(n) des Proxys eintragen.",
+    );
+  }
   // SCRUM-498 B2: einheitliche Backpressure-Antwort. Ein Modell-Cap-Überlauf (ModelCapacityError) wird
   // von der Reasoner-Kette bis hierher durchgereicht → 503 + Retry-After (kein 500/Crash). Jeder andere
   // Fehler wird formtreu an Fastifys Standard-Fehlerbehandlung weitergereicht (Validierungs-400 etc.
@@ -2602,6 +2676,9 @@ export function buildApp(
   // vorhandene gehoben und weitergereicht, nicht kopiert. Keine neue Ablage, keine neue Route.
   const klaraSessions = new KlaraSessionService({
     repo: services.klaraSessions,
+    // R-0609: jede Erteilung und jedes Ende einer Zustimmung geht in die Hash-Kette des
+    // Prüfprotokolls — der Nachweis überdauert das Fortschreiben und Aufräumen der Zustimmungszeile.
+    ...(services.audit ? { protokoll: services.audit } : {}),
     policy: () => {
       const config = services.reasoner.configStatus();
       const antwortWahl = config.taskConfig.perTask.answer ?? config.taskConfig.global;
@@ -2665,9 +2742,19 @@ export function buildApp(
         providerLabel: antwortCloud?.name ?? config.provider,
         modelLabel: antwortCloud ? antwortCloud.name : config.model,
         localProviderLabel: config.localProvider,
+        // Bens B3: der wirksame Anbieter JE AUFGABE, dazu `global` für die Urteile. Ohne diese
+        // Karte öffnete eine an `answer` gebildete Zustimmung jede andere Aufgabe — auch eine, die
+        // der Reasoner an einen anderen Anbieter schickt. Sie geht in die Konfigurationsversion ein
+        // (Wechsel entwertet) und entscheidet im Tor, welche Aufgabe die Zustimmung tragen darf.
+        aufgabenAnbieter: {
+          ...config.effectiveAnbieter,
+          global: config.effectiveAnbieterGlobal ?? "unbekannt",
+        },
       };
     },
   });
+  // R-0609 · Bens B13: der Aufräumlauf GENAU DIESER Instanz geht an den Auslöser in `server.ts`.
+  opts.klaraAufraeumen?.(() => klaraSessions.raeumeAbgelaufeneAuf());
   app.register(klaraAiRoutes({ sessions: klaraSessions }, guards));
   // JOB 3326: die Lesevarianten — Übersicht, Einzelabruf und die Admin-Ladeaktion. Sie bekommen
   // DIESELBE Ablage-Instanz, die auch `koRoutes` oben durchgereicht wird; eine zweite wäre ein
@@ -2898,7 +2985,11 @@ export function buildApp(
             if (!draft) {
               return { ok: false, reason: "not-found" as const };
             }
-            if (!canSeeDraft({ id: user.id, role: user.role as SessionUser["role"] }, draft)) {
+            // Pool-Auftrag (Pedi, entscheidung:297afc57): die Dokumentübernahme REICHT EIN — und
+            // Einreichen bleibt beim Autor, auch für einen Entwurf im gemeinsamen Pool. Deshalb hier
+            // `canManageDraft` (dieselbe Funktion wie `POST /api/drafts/:id/promote`), nicht nur
+            // die Sichtbarkeit.
+            if (!canManageDraft({ id: user.id, role: user.role as SessionUser["role"] }, draft)) {
               return { ok: false, reason: "forbidden" as const };
             }
             const input = await services.capture.toKoInput(draftId);
@@ -2931,7 +3022,8 @@ export function buildApp(
             if (!draft) {
               return { ok: false, reason: "not-found" as const };
             }
-            if (!canSeeDraft({ id: user.id, role: user.role as SessionUser["role"] }, draft)) {
+            // Pool-Auftrag (297afc57): derselbe Einreichweg wie `load` — nur der Autor.
+            if (!canManageDraft({ id: user.id, role: user.role as SessionUser["role"] }, draft)) {
               return { ok: false, reason: "forbidden" as const };
             }
             // JOB 2684 D4 (R2-17, BEN: „der Fall ohne Stand bleibt absichtlich gruen"): DER WEG
@@ -3085,6 +3177,18 @@ export function buildApp(
       guards,
     ),
   );
+  // Kenntnisnahme einer gültigen Fassung. Der Dienst liest Einträge über `services.ko` und Konten
+  // über die vorhandene Kontenliste (Rolle, Freigabe, Befristung); dieselbe Instanz speist die
+  // Glocke (`notificationsRoutes` unten), damit Anforderung und Erinnerung den vorhandenen
+  // Benachrichtigungsweg nehmen.
+  const kenntnisnahmeDienst = new KenntnisnahmeDienst({
+    repo: services.kenntnisnahmen,
+    ko: services.ko,
+    konten: () => services.auth.listUsers(),
+    jetzt: services.kenntnisnahmeUhr,
+    kennung: () => randomUUID(),
+  });
+  app.register(kenntnisnahmeRoutes({ dienst: kenntnisnahmeDienst, kos: services.ko }, guards));
   // ==============================================================================================
   // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS) — HIER BEKOMMT DIE GESAMTANWEISUNG IHRE TÜR.
   // ==============================================================================================
@@ -3240,6 +3344,8 @@ export function buildApp(
         seen: services.notificationSeen,
         // AUFTRAG-mega74 BLOCK D (G5): dieselbe Quelle wie Konflikte und Überschneidungen.
         kos: koSichtbarkeit,
+        // Kenntnisnahme: offene Anforderungen und Erinnerungen des Betrachters.
+        kenntnisnahmen: kenntnisnahmeDienst,
       },
       guards,
     ),
@@ -3304,6 +3410,11 @@ export function buildApp(
       (await services.capture.listDrafts()).map((draft) => ({
         originalAuthor: draft.originalAuthor,
         lastEditor: draft.lastEditor,
+        // Pool-Auftrag (R-2099): ein bewusst geteilter Entwurf öffnet seine Anhänge für die
+        // Schreibberechtigten — über dieselbe Regel wie die Entwurfsrouten (`entwurfSichtbarFuer`).
+        // Ein Entwurf im Papierkorb ist für den Pool nicht vorhanden (die Entwurfsrouten zeigen
+        // ihn dort auch nicht); er bleibt dann nur für seinen Autor sichtbar.
+        imPool: draft.imPool === true && !("deletedAt" in draft),
         bodyHtml: draft.payload.bodyHtml,
         objectIds: [
           ...(draft.payload.pendingSources ?? []).map((src) => src.objectId),
