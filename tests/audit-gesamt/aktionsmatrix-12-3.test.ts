@@ -190,18 +190,36 @@ describe("§12.3 · jede genannte Aktion erzeugt einen Eintrag mit wer, was, wan
       expect(Array.isArray(exp?.payload.koIds)).toBe(true);
       expect(exp?.payload.count).toBe((exp?.payload.koIds as unknown[]).length);
     }
-    await fahre(app, kopf(b, "experte"), "POST", "/api/library/import", {
-      items: [
-        {
-          title: "Spaltmass Anlage 17",
-          statement: "Spaltmass vor der Freigabe messen.",
-          type: "best_practice",
-          category: "Instandhaltung",
-          confidentiality: "intern",
-        },
-      ],
+    // Import — seit R-0143 legt `POST /api/library/import` kein Objekt mehr direkt an
+    // (`library.import` entsteht dort nicht mehr), sondern reiht Kandidaten ein; das Objekt
+    // entsteht erst durch die berechtigte Annahme. Beide Schritte werden belegt.
+    const eingereiht = (
+      await fahre(app, kopf(b, "experte"), "POST", "/api/library/import", {
+        items: [
+          {
+            title: "Spaltmass Anlage 17",
+            statement: "Spaltmass vor der Freigabe messen.",
+            type: "best_practice",
+            category: "Instandhaltung",
+            confidentiality: "intern",
+          },
+        ],
+      })
+    ).json() as { kandidaten: { id: string }[] };
+    expect((await beleg(b, "import.candidates-created", konto.experte.id)).payload.count).toBe(1);
+    const kandidat = eingereiht.kandidaten[0]?.id;
+    expect(typeof kandidat, "POST /api/library/import reihte keinen Kandidaten ein").toBe("string");
+    await fahre(app, kopf(b, "controller"), "PUT", `/api/library/import/candidates/${kandidat}`, {
+      action: "accept",
     });
-    await beleg(b, "library.import", konto.experte.id);
+    const angenommen = await beleg(
+      b,
+      "import.candidate-accept",
+      konto.controller.id,
+      kandidat as string,
+    );
+    expect(typeof angenommen.payload.koId).toBe("string");
+    expect(angenommen.payload.duplicate).toBe(false);
 
     // Autor-Übergabe
     await fahre(app, kopf(b, "admin"), "PUT", `/api/kos/${ko}`, {

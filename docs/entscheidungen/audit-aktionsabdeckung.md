@@ -52,7 +52,8 @@ Am Basisstand `3264ad7d` gemessen (Quelleninspektion):
 | Neu-Validierung | `ko.revalidated` (`version`) | `aktionsmatrix-12-3.test.ts` |
 | „Hat geholfen" | `answer.helpful` | `aktionsmatrix-12-3.test.ts` |
 | Export | `library.export` (`format`, `koIds`, `count`) | `aktionsmatrix-12-3.test.ts` |
-| Import | `library.import` | `aktionsmatrix-12-3.test.ts` |
+| Import (Einreihen über `POST /api/library/import`) | `import.candidates-created` (`count`) | `aktionsmatrix-12-3.test.ts` |
+| Import (Annahme des Kandidaten) | `import.candidate-accept` (`koId`, `duplicate`) | `aktionsmatrix-12-3.test.ts` |
 | Anmeldung / Abmeldung | `auth.login` / `auth.logout` | `aktionsmatrix-12-3.test.ts` |
 | Nutzerverwaltung (Rolle) | `user.role-change` (`previousRole`, `role`) | `aktionsmatrix-12-3.test.ts` |
 | Nutzerverwaltung (Freigabe, Passwort, Löschen) | `user.approve`, `user.password-reset`, `user.delete` | `aktionsabdeckung-entscheidungen.test.ts` |
@@ -69,8 +70,10 @@ belegt im Kernauftrag (`tests/audit-gesamt/append-only-http.test.ts`,
   `user.role-change`, `user.access-expiry-set`) mit dem Admin als Handelndem; eine Selbstregistrierung
   erst mit ihrer Freigabe. Ein eigenes `user.created` hätte die Zählungen vieler bestehender
   Kontotests verschoben und ist hier nicht eingeführt.
-- **Weitere Importwege** (Confluence-/SharePoint-Kandidaten: `import.candidates-created`,
-  `import.candidate-accept`) schreiben eigene Einträge, sind aber nicht Teil dieser Matrix.
+- **Import seit R-0143:** `POST /api/library/import` reiht nur noch Kandidaten ein; `library.import`
+  schreibt nur der Dienstweg `importJson`, den keine Route mehr ruft. Die Matrix belegt deshalb
+  Einreihen und Annahme (Nacharbeit 1: die Kernmatrix erwartete noch `library.import` und war rot).
+  Ablehnen/Rückfrage eines Kandidaten (`import.candidate-reject`/`-info`) sind nicht eigens gefahren.
 - **Server-Protokoll (R-0733, Lesart des Kerns):** die Protokollierung von Fehler- und
   Abweisungsentscheidungen des Servers ist im Kern belegt (`tests/security/log-keine-inhalte.test.ts`);
   diese Lieferung ergänzt die fachlichen Entscheidungen im Auditprotokoll.
