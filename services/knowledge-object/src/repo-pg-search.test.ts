@@ -109,4 +109,57 @@ describe("WP-BILD-1g: PgKoRepo-Suchpfad (Query-Shape, Fake-Pool)", () => {
     expect(await repo.missingImageNames(0)).toEqual([]);
     expect(calls).toHaveLength(1);
   });
+
+  // R-0098 (inhaltskennung-zweitbegriff, Nacharbeit 2 — Bens Befund): der Nachzug von
+  // `bildInhalte` auf dem produktiven Speicherweg. Derselbe Vertrag wie bei den Benennungen:
+  // parametrisierter Feld-Patch nur bei fehlendem Feld, ehrliche Rückgabe, schmale Arbeitsliste.
+  const BILD_INHALTE = [
+    { imageId: "a", inhaltskennung: `sha256:${"0".repeat(64)}` },
+    { imageId: null, inhaltskennung: null },
+  ];
+
+  it("setBildInhalte ist ein ATOMAR BEDINGTER, parametrisierter jsonb_set-Write — NUR wenn das Feld fehlt", async () => {
+    const { pool, calls } = fakePool([]); // rowCount 0: Feld war schon da → nicht geschrieben
+    const repo = new PgKoRepo(pool);
+    expect(await repo.setBildInhalte("k1", BILD_INHALTE)).toBe(false);
+    expect(calls).toHaveLength(1);
+    const { sql, params } = calls[0] as { sql: string; params: unknown[] };
+    expect(sql).toContain("UPDATE kos SET data = jsonb_set(data, '{bildInhalte}', $2::jsonb)");
+    expect(sql).toContain("WHERE id=$1 AND NOT (data ? 'bildInhalte')");
+    // Reiner Feld-Patch: kein CAS auf rowVersion, kein Rumpf, keine Werte im SQL-Text.
+    expect(sql).not.toContain("rowVersion");
+    expect(sql).not.toContain("bodyHtml");
+    expect(sql).not.toContain("sha256:");
+    expect(params).toEqual(["k1", JSON.stringify(BILD_INHALTE)]);
+  });
+
+  it("setBildInhalte meldet true, wenn das bedingte UPDATE wirklich geschrieben hat", async () => {
+    const { pool } = fakePool([{ data: ko("k1") }]); // rowCount 1 → der Write hat gegriffen
+    const repo = new PgKoRepo(pool);
+    expect(await repo.setBildInhalte("k1", BILD_INHALTE)).toBe(true);
+  });
+
+  it("missingBildInhalte ist eine schmale Kennungsliste mit Fehlfeld- und Papierkorbfilter und Deckel", async () => {
+    const { pool, calls } = fakePool([]);
+    const repo = new PgKoRepo(pool);
+    expect(await repo.missingBildInhalte(25)).toEqual([]);
+    const { sql, params } = calls[0] as { sql: string; params: unknown[] };
+    expect(sql).toContain("SELECT id FROM kos");
+    expect(sql).toContain("NOT (data ? 'bildInhalte')");
+    expect(sql).toContain("NOT (data ? 'deletedAt')");
+    expect(sql).toContain("LIMIT $1");
+    expect(sql).not.toContain("data AS");
+    expect(params).toEqual([25]);
+  });
+
+  it("missingBildInhalte gibt die Kennungen der Zeilen zurück; Deckel 0 fragt gar nicht erst", async () => {
+    const treffer = [{ id: "k7" }, { id: "k8" }] as unknown as { data: KnowledgeObject }[];
+    const { pool, calls } = fakePool(treffer);
+    const repo = new PgKoRepo(pool);
+    expect(await repo.missingBildInhalte(5)).toEqual(["k7", "k8"]);
+    expect((calls[0] as { params: unknown[] }).params).toEqual([5]);
+    expect(await repo.missingBildInhalte(0)).toEqual([]);
+    expect(await repo.missingBildInhalte(-3)).toEqual([]);
+    expect(calls).toHaveLength(1);
+  });
 });
