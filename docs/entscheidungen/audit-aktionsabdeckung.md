@@ -52,9 +52,10 @@ Am Basisstand `3264ad7d` gemessen (Quelleninspektion):
 | Neu-Validierung | `ko.revalidated` (`version`) | `aktionsmatrix-12-3.test.ts` |
 | „Hat geholfen" | `answer.helpful` | `aktionsmatrix-12-3.test.ts` |
 | Export | `library.export` (`format`, `koIds`, `count`) | `aktionsmatrix-12-3.test.ts` |
-| Import (Einreihen über `POST /api/library/import`) | `import.candidates-created` (`count`) | `aktionsmatrix-12-3.test.ts` |
+| Import (Einreihen über `POST /api/library/import`) | `import.candidates-created` (`count`, `candidateIds`) | `aktionsmatrix-12-3.test.ts` |
 | Import (Annahme des Kandidaten) | `import.candidate-accept` (`koId`, `duplicate`) | `aktionsmatrix-12-3.test.ts` |
 | Anmeldung / Abmeldung | `auth.login` / `auth.logout` | `aktionsmatrix-12-3.test.ts` |
+| Nutzerverwaltung (Kontoanlage: Ersteinrichtung, Selbstregistrierung, Anlage durch Admin) | `user.created` (`via`, `role`, `approved`; Ziel = neues Konto) | `aktionsmatrix-12-3.test.ts` |
 | Nutzerverwaltung (Rolle) | `user.role-change` (`previousRole`, `role`) | `aktionsmatrix-12-3.test.ts` |
 | Nutzerverwaltung (Freigabe, Passwort, Löschen) | `user.approve`, `user.password-reset`, `user.delete` | `aktionsabdeckung-entscheidungen.test.ts` |
 | Autorenübergabe | `ko.author-transferred` | `aktionsmatrix-12-3.test.ts` |
@@ -65,11 +66,13 @@ belegt im Kernauftrag (`tests/audit-gesamt/append-only-http.test.ts`,
 
 ## Grenzen
 
-- **Konto anlegen** (Selbstregistrierung, `POST /api/users`) schreibt weiterhin keinen eigenen
-  Eintrag. Ein vom Admin angelegtes Konto erscheint im Protokoll über `user.approve` (und ggf.
-  `user.role-change`, `user.access-expiry-set`) mit dem Admin als Handelndem; eine Selbstregistrierung
-  erst mit ihrer Freigabe. Ein eigenes `user.created` hätte die Zählungen vieler bestehender
-  Kontotests verschoben und ist hier nicht eingeführt.
+- **Konto anlegen (Nacharbeit 2, Bens Befund):** `AuthService.register` schreibt jetzt
+  `user.created`; Handelnder ist der anlegende Admin (`POST /api/users`) oder das Konto selbst
+  (Selbstregistrierung, Ersteinrichtung). `users.insert` kennt keine Transaktion: scheitert der
+  Eintrag, wird das Konto wieder entfernt (Kompensation, keine Transaktion). OIDC-Anlagen haben
+  weiterhin ihr eigenes `user.oidc-provisioned`.
+- **Importbeleg (Nacharbeit 2, Bens Befund):** `import.candidates-created` nennt die Kennungen der
+  gespeicherten Kandidaten (`candidateIds`), nicht deren Inhalt.
 - **Import seit R-0143:** `POST /api/library/import` reiht nur noch Kandidaten ein; `library.import`
   schreibt nur der Dienstweg `importJson`, den keine Route mehr ruft. Die Matrix belegt deshalb
   Einreihen und Annahme (Nacharbeit 1: die Kernmatrix erwartete noch `library.import` und war rot).
@@ -77,9 +80,10 @@ belegt im Kernauftrag (`tests/audit-gesamt/append-only-http.test.ts`,
 - **Server-Protokoll (R-0733, Lesart des Kerns):** die Protokollierung von Fehler- und
   Abweisungsentscheidungen des Servers ist im Kern belegt (`tests/security/log-keine-inhalte.test.ts`);
   diese Lieferung ergänzt die fachlichen Entscheidungen im Auditprotokoll.
-- **PostgreSQL:** die Änderung betrifft nur die Nutzlast bestehender Einträge, nicht ihre
-  Schreibreihenfolge oder Transaktion; der Nachweis läuft im Speicherweg. Der PostgreSQL-Weg des
-  Integritätskerns bleibt dort offen (Entscheidung `f43fa030`).
+- **PostgreSQL:** die Änderungen betreffen Nutzlasten und einen zusätzlichen Eintrag ohne eigene
+  Transaktionsklammer; der Nachweis läuft im Speicherweg. Der Abschluss des Integritätskerns
+  einschließlich bewertbarer PostgreSQL-Selbstprobe ist in diesen Belegen nicht nachgewiesen und
+  bleibt im Kernauftrag zu klären (Entscheidung `f43fa030`).
 - **Kein Leistungsprotokoll (R-0669):** es entsteht keine Auswertung je Person.
 
 ## Quellenwiderspruch

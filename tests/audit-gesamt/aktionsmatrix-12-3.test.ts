@@ -86,6 +86,40 @@ describe("§12.3 · jede genannte Aktion erzeugt einen Eintrag mit wer, was, wan
       await beleg(b, "auth.login", konto[rolle].id);
     }
 
+    // Nutzerverwaltung · Kontoanlage (Bens Befund, Nacharbeit 2). Die Ersteinrichtung der Bühne
+    // legte den Admin an — eigener Eintrag mit dem Konto als Handelndem und Ziel.
+    expect((await beleg(b, "user.created", konto.admin.id, konto.admin.id)).payload).toEqual({
+      via: "bootstrap",
+      role: "admin",
+      approved: true,
+    });
+    // Selbstregistrierung über HTTP: der Eintrag steht VOR jeder Freigabe da.
+    const selbst = (
+      await fahre(app, {}, "POST", "/api/auth/register", {
+        name: "Matrix Selbst",
+        email: "selbst@abnahme.de",
+        password: "Matrix-Selbst-2026!",
+      })
+    ).json() as { id: string };
+    expect((await beleg(b, "user.created", selbst.id, selbst.id)).payload).toEqual({
+      via: "self",
+      role: "experte",
+      approved: false,
+    });
+    expect(await b.services.audit.list({ action: "user.approve", target: selbst.id })).toEqual([]);
+    // Anlage durch den Admin über HTTP: der Admin ist der Handelnde, das neue Konto das Ziel.
+    const angelegt = (
+      await fahre(app, kopf(b, "admin"), "POST", "/api/users", {
+        name: "Matrix Angelegt",
+        email: "angelegt@abnahme.de",
+        password: "Matrix-Angelegt-2026!",
+      })
+    ).json() as { id: string };
+    const anlage = await beleg(b, "user.created", konto.admin.id, angelegt.id);
+    expect(anlage.payload).toEqual({ via: "admin", role: "experte", approved: false });
+    const freigabe = await beleg(b, "user.approve", konto.admin.id, angelegt.id);
+    expect(anlage.seq).toBeLessThan(freigabe.seq);
+
     // Erfassen
     const ko = (await fahre(app, kopf(b, "experte"), "POST", "/api/kos", { ...KO_INHALT })).json()
       .id as string;
@@ -206,9 +240,13 @@ describe("§12.3 · jede genannte Aktion erzeugt einen Eintrag mit wer, was, wan
         ],
       })
     ).json() as { kandidaten: { id: string }[] };
-    expect((await beleg(b, "import.candidates-created", konto.experte.id)).payload.count).toBe(1);
     const kandidat = eingereiht.kandidaten[0]?.id;
     expect(typeof kandidat, "POST /api/library/import reihte keinen Kandidaten ein").toBe("string");
+    // Der Einreihbeleg nennt genau die zurückgegebenen Kandidaten.
+    expect((await beleg(b, "import.candidates-created", konto.experte.id)).payload).toEqual({
+      count: 1,
+      candidateIds: eingereiht.kandidaten.map((k) => k.id),
+    });
     await fahre(app, kopf(b, "controller"), "PUT", `/api/library/import/candidates/${kandidat}`, {
       action: "accept",
     });
