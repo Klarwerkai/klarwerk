@@ -1861,7 +1861,11 @@ describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () =>
 
       const status = ka6El("ask-status");
       expect(status.className).toContain("warn");
-      expect(status.textContent).toBe(ka6Wortlaut(schluessel));
+      // Beide Schlüssel stehen je Sprache in EINER Zeile (Zeilenschranke B3, schnittflaechen.test.ts)
+      // — gelesen wird deshalb ohne Zeilenanker; der erste Treffer ist der deutsche Block.
+      const treffer = new RegExp(`\\b${schluessel}: "([^"]+)"`).exec(read(TASKPANE));
+      expect(treffer, `${schluessel} fehlt im Woerterbuch`).not.toBeNull();
+      expect(status.textContent).toBe(treffer?.[1]);
       expect(status.textContent ?? "", "nur der nackte Statuscode").not.toContain("HTTP 409");
       expect(ka6El("ask-answer-edit").value, "trotz Sperre steht eine Antwort im Feld").toBe("");
       expect(ka6Schreibaufrufe(), "trotz Sperre wurde geschrieben").toBe(0);

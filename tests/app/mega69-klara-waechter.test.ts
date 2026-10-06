@@ -2718,6 +2718,16 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // weil `taskpane.js` danach erneut geändert werden musste: die AUSGELIEFERTE Datei zählte 12500
     // Zeilen (schnittflaechen B3, Schranke < 12500); zwei eigene Kommentarzeilen sind verdichtet,
     // Verhalten unverändert. Root hat den Pin direkt aus diesen vier Quelldateien berechnet; kein Messlauf nötig.
+    // AUFTRAG gesamt-ki-einwilligung:bindung (R-0590, Ben nacharbeit-3/-4): `taskpane.js` wertet in
+    // `performAsk` die 409 `KLARA_AUSWEICHWEG_GESPERRT` aus und nennt in `#ask-status` den Grund
+    // (zwei neue Wörterbuchschlüssel je Sprache, `askFallbackBlocked`/`askFallbackConsentEnded`);
+    // ein fremder Kommentar ist umformuliert (er enthielt die Zeichenfolge „import " und machte den
+    // Buildlos-Pin in word-addin-ask rot). Netto null Zeilen (B3: 12497). Auslieferungsfolgen: kein
+    // neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder Manifeständerung, kein Sideload. Gemessen
+    // zu Kandidat f0687be0 war `9fdf44f2…` — NICHT übernommen, weil `taskpane.js` danach erneut
+    // geändert wurde (B3, „import "). DER PIN MUSS WANDERN; ohne zugelassenes Hash-Werkzeug ist er
+    // hier nicht berechenbar — der Prüflauf meldet den Ist-Wert als „Received", er wird danach
+    // gemessen übernommen.
     const PIN = "f1d0e89f870beac807ea86be34ffa2ef5df1f53c8534fa084b9b6bb217e21f4a";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(

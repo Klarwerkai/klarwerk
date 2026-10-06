@@ -233,7 +233,11 @@ describe("Bens B5 · Widerruf zwischen Kettenbau und Übertragung: der Chokepoin
       z.beenden();
       k.freigeben();
       await k.belegt;
-      await expect(lauf).rejects.toThrow("keine Antwort");
+      // R-0590 · Ben nacharbeit-3: der Lauf weicht nach dem gesperrten Versuch nicht mehr auf den
+      // deterministischen Ersatz aus (der hier „keine Antwort" meldete), sondern endet mit dem
+      // benannten Grund — die Zustimmung, auf die er sich stützte, ist beendet.
+      await expect(lauf).rejects.toBeInstanceOf(KlaraAusweichwegGesperrtFehler);
+      await expect(lauf).rejects.toMatchObject({ grund: "consent_ended", anbieter: "anthropic" });
       expect(k.transport).not.toHaveBeenCalled();
     } finally {
       aufraeumen();
