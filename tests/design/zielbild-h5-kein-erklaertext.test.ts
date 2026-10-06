@@ -41,7 +41,13 @@ const DIST = resolve(WURZEL, "apps/web/dist");
 const ORIGIN = "http://klarwerk.test";
 /** §8 des Auftrags: der Rest darf 40 Zeichen nicht überschreiten. */
 const GRENZE = 40;
-const FRAGE = "Welche Profile sind in Spritzzonen erlaubt?";
+// WARUM NICHT MEHR „… erlaubt?“ — dieselbe Umstellung wie `h5-funktionsinventar.test.ts` (Hauptstand
+// 2b57cad5): seit R-0473 (`services/ask/src/service.ts`, `decktAlleFragebegriffe`) müssen ALLE
+// gebundenen Fragebegriffe in der Quelle vorkommen. „erlaubt“ steht im angelegten Eintrag nirgends;
+// die Frage wurde vertragsgemäß eine Wissenslücke, es entstand keine Antwortkarte, und T3–T5 liefen in
+// ihre Zeitgrenze (Kandidat 3d4d49f7, Nacharbeit 1). Die Frage benutzt jetzt nur Begriffe, die der
+// Eintrag wirklich trägt; Grenze (40 Zeichen), Abzüge und Kalibrierungen sind unverändert.
+const FRAGE = "Welche Profile sind in Spritzzonen zu bevorzugen?";
 
 type BrowserFn = (arg: unknown) => unknown;
 const fn = (quelle: string): BrowserFn =>

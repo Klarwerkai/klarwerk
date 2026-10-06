@@ -43,7 +43,13 @@ const TITEL = "Profile in Spritzzonen";
 // modellfreien Einzeltest (`tests/app/job3064-fussnote-markiert.test.tsx`).
 const AUSSAGE =
   "Offene, ablaufende Profile sind zu bevorzugen; vollverschweisste Hohlprofile sind in Spritzzonen zu vermeiden [1].";
-const FRAGE = "Welche Profile sind in Spritzzonen erlaubt?";
+// WARUM NICHT MEHR „… erlaubt?“ — dieselbe Umstellung wie `h5-funktionsinventar.test.ts` (Hauptstand
+// 2b57cad5): seit R-0473 (`services/ask/src/service.ts`, `decktAlleFragebegriffe`) müssen ALLE
+// gebundenen Fragebegriffe in der Quelle vorkommen. „erlaubt“ steht in AUSSAGE nirgends; die Frage
+// wurde vertragsgemäß eine Wissenslücke, es entstand keine Antwortkarte, und der Aufbau lief in seine
+// Zeitgrenze (Kandidat 3d4d49f7, Nacharbeit 1). Die Frage benutzt jetzt nur Begriffe, die der Eintrag
+// wirklich trägt; alle Messungen und Sollwerte darunter sind unverändert.
+const FRAGE = "Welche Profile sind in Spritzzonen zu bevorzugen?";
 
 // ---- Das Zielbild lesen ---------------------------------------------------------------------------
 function zielStil(ziel: string, ...anker: string[]): string | null {
