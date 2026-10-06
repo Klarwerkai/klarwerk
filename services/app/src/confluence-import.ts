@@ -1,8 +1,19 @@
 // JOB 1042 D3: der Befundtyp wird NICHT neu aus dem Paket-Index geholt (index.ts liegt ausserhalb
 // der Lease) und auch nicht hier nachgebaut — er wird aus dem bereits oeffentlichen `CollectResult`
 // abgeleitet. Eine Wahrheit, kein zweiter Typ, keine Scopeerweiterung.
-import type { CollectResult, ConfluenceSourceAdapter } from "../../confluence";
-import type { KnowledgeObject, KoService, KoSource } from "../../knowledge-object";
+import type {
+  CollectResult,
+  ConfluenceImportItem,
+  ConfluenceSourceAdapter,
+} from "../../confluence";
+import {
+  type KnowledgeObject,
+  type KoService,
+  type KoSource,
+  confidentialityRank,
+  normalizeConfidentiality,
+  safeSourceUrl,
+} from "../../knowledge-object";
 import {
   type ImportCandidate,
   type ImportItem,
@@ -81,6 +92,8 @@ export interface ImportRunSummary {
   // gelesen werden konnte (Gruppenabruf abgebrochen oder über der technischen Grenze). Ihre Leser
   // sind eine Untermenge der in der Quelle Berechtigten. Fehlt das Feld, gab es keine solche Seite.
   leserUnvollstaendig?: number;
+  // R-0162: der Löschabgleich dieses Laufs (s. `quellAbgleich`). Additiv.
+  sourceSync?: SourceSyncSummary;
 }
 
 /** Nacharbeit 6 (Befund F3): trägt der Eintrag den Vermerk „Leserkreis unvollständig gelesen"? */
@@ -93,12 +106,401 @@ function traegtUnvollstaendigeLeser(item: ImportItem): boolean {
   );
 }
 
+// ================================================================================================
+// R-0162 — ÄNDERUNGEN UND LÖSCHUNGEN NACHZIEHEN.
+// ================================================================================================
+//
+// ÄNDERUNGEN liefen schon: eine höhere Quellversion wird erneut als Kandidat eingereiht, und das
+// Annehmen revidiert das bestehende Objekt über den Anker (SCRUM-510 R4, acceptToKo).
+//
+// LÖSCHUNGEN blieben unbemerkt: eine aus der Quelle verschwundene Seite tauchte im Lauf einfach
+// nicht mehr auf. Ab hier gilt diese Regel — vorläufig, bis eine fachliche Entscheidung eine
+// andere Reaktion festlegt (s. docs/bestandsaufnahme-confluence-import.md, R-0162):
+//
+//   1. Geprüft wird NUR nach einem VOLLSTÄNDIGEN Lesen des Bereichs (nicht abgeschnitten, keine
+//      gescheiterte Seite). Ein unvollständiger Lauf kann nicht wissen, was fehlt.
+//   2. Kandidaten sind Anker DIESES Bereichs (Provider Confluence, gleicher Space), deren Seite im
+//      Lauf nicht vorkam. Jede wird EINZELN bei der Quelle nachgefragt: nur eine 404 gilt als
+//      gelöscht. Existiert die Seite noch (verschoben, anderer Bereich), wird sie als „außerhalb
+//      des Bereichs" gemeldet und nicht vermerkt. Scheitert die Nachfrage: „nicht prüfbar".
+//   3. Die Reaktion ist ein VERMERK am Herkunftsanker (`sourceRemovedAt`), protokolliert im
+//      Audit. Das Wissensobjekt wird weder gelöscht noch revidiert noch herabgestuft — Wissen
+//      verschwindet in Klara nie still, auch nicht, weil es in der Quelle verschwand.
+//      ZUSAMMENFÜHRUNG (Nacharbeit 4): die maßgebliche Reaktion auf eine bestätigte Löschung ist
+//      seither die des Abgleich-Auftrags (`reconcileRemovals`, Papierkorb, solange das Objekt keine
+//      weitere Quelle trägt). Er läuft VOR diesem Abgleich; der Vermerk hier trifft deshalb nur
+//      Objekte, die stehen geblieben sind.
+//   4. Im Probelauf (dryRun) wird gemeldet, was vermerkt WÜRDE, und nichts geschrieben.
+//   5. (Runde 3) „Gelöscht" heisst NUR: die Einzelnachfrage antwortete 404 (oder, seit der
+//      Zusammenführung, ein ausdrücklicher Lösch-/Archivstatus — `adapter.isGoneAtSource`). Eine
+//      Erfolgsantwort ohne brauchbare Seite wirft im Client (`getPageStateById`) und landet hier
+//      als „nicht prüfbar" — ein unbekannter Zustand erzeugt nie einen Vermerk.
+//   6. (Runde 3) Taucht eine vermerkte Seite wieder in der Bereichsliste auf, wird der Vermerk
+//      aufgehoben — unabhängig von ihrer Version und auch nach einem unvollständigen Lesen (was
+//      gelesen wurde, ist da). Der Rücklink wird damit wieder angeboten.
+
+/** Höchstzahl der Einzelnachfragen je Lauf — ein Sicherheitsnetz gegen einen Abruf-Sturm. */
+const MAX_LOESCHPRUEFUNGEN = 200;
+
+export interface SourceSyncSummary {
+  /** Wurde der Löschabgleich durchgeführt? */
+  checked: boolean;
+  /**
+   * Warum nicht, falls nicht: die Quelle wurde nicht vollständig gelesen (`incomplete-read`), oder
+   * der Adapter kann keine Löschungen nachfragen (`not-supported`, nur mit gescheitertem Nachzug).
+   */
+  reason?: "incomplete-read" | "not-supported";
+  /** In der Quelle gelöscht (404 bestätigt): Quell-Id und die Wissensobjekte mit diesem Anker. */
+  removed: { externalId: string; koIds: string[]; marked: boolean }[];
+  /**
+   * Runde 3: früher als gelöscht vermerkt, jetzt wieder in der Bereichsliste — der Vermerk wird
+   * aufgehoben (`cleared`), auch ohne höhere Quellversion. Im Probelauf nur gemeldet.
+   */
+  restored: { externalId: string; koIds: string[]; cleared: boolean }[];
+  /** Nicht mehr im Bereich, aber in der Quelle vorhanden — nicht vermerkt. */
+  outsideScope: string[];
+  /** Nachfrage gescheitert oder über der Höchstzahl — nicht vermerkt. */
+  unchecked: string[];
+  /**
+   * R-0163 (Lauf 2): Seiten mit unveränderter Fassung, deren Anhänge sich geändert haben — die
+   * Anhangsquellen am Objekt wurden angeglichen (`synced`; im Probelauf nur gemeldet).
+   */
+  attachmentsUpdated: {
+    externalId: string;
+    koId: string;
+    added: string[];
+    removed: string[];
+    synced: boolean;
+  }[];
+  /**
+   * R-0162/R-0549 (Lauf 3 R2): Seiten mit unveränderter Fassung, deren Leserestriktion in der
+   * Quelle geändert wurde — Anker nachgezogen, Vertraulichkeit ggf. heraufgesetzt (`raisedTo`).
+   */
+  restrictionsUpdated: {
+    externalId: string;
+    koId: string;
+    restrictionChanged: boolean;
+    raisedTo: string | null;
+    synced: boolean;
+  }[];
+  /**
+   * Lauf 3 R2 (Bens B8): Seiten, deren Nachzug (Anhänge oder Restriktion) beim Schreiben scheiterte.
+   * Nicht still: ein nicht leerer Wert macht den Lauf `PARTIAL` (`SOURCE_SYNC_INCOMPLETE`).
+   */
+  syncFailed: string[];
+  /**
+   * Lauf 3 R3 (Bens B9): gelesene Seiten, deren Anhangsliste NICHT vollständig übernommen werden
+   * konnte (unbrauchbare Antwort, verworfene Einträge, Grenze der nachgeblätterten Seiten). Dort
+   * entfernt die Annahme nichts — es können aber Anhänge fehlen. Eine Auskunft, kein Fehler des Laufs.
+   */
+  attachmentsIncomplete: string[];
+}
+
+/** Was der Nachzug unveränderter Seiten ergibt — ein Teil von `SourceSyncSummary`. */
+type Nachzug = Pick<
+  SourceSyncSummary,
+  "attachmentsUpdated" | "restrictionsUpdated" | "syncFailed" | "attachmentsIncomplete"
+>;
+
+function istConfluenceAnbieter(provider: string | null | undefined): boolean {
+  // Anker ohne Provider (Altbestand) zählen wie überall als Confluence (importSourceKey).
+  const p = (provider ?? "").trim().toLowerCase();
+  return p === "" || p === "confluence";
+}
+
+/** Runde 3: Anker mit Löschvermerk, deren Seite in diesem Lauf wieder gelesen wurde. */
+async function wiederDa(
+  deps: ConfluenceImportDeps,
+  gesehen: ReadonlySet<string>,
+): Promise<SourceSyncSummary["restored"]> {
+  const treffer = new Map<string, { provider: string | null; koIds: string[] }>();
+  for (const ko of await deps.koService.list()) {
+    for (const s of ko.sources ?? []) {
+      if (
+        !s.externalId ||
+        !s.sourceRemovedAt ||
+        !istConfluenceAnbieter(s.provider) ||
+        !gesehen.has(s.externalId)
+      ) {
+        continue;
+      }
+      const eintrag = treffer.get(s.externalId) ?? { provider: s.provider ?? null, koIds: [] };
+      if (!eintrag.koIds.includes(ko.id)) {
+        eintrag.koIds.push(ko.id);
+      }
+      treffer.set(s.externalId, eintrag);
+    }
+  }
+  const out: SourceSyncSummary["restored"] = [];
+  for (const [externalId, { provider, koIds }] of treffer) {
+    let cleared = false;
+    if (!deps.dryRun) {
+      for (const koId of koIds) {
+        const neu = await deps.koService.clearSourceRemoved(
+          koId,
+          { provider, externalId },
+          deps.actor,
+        );
+        cleared = cleared || neu;
+      }
+    }
+    out.push({ externalId, koIds, cleared });
+  }
+  return out;
+}
+
+/**
+ * R-0163 (Lauf 2) und R-0162/R-0549 (Lauf 3 R2): unveränderte Seiten nachziehen — ihre Anhänge und
+ * ihre Leserestriktion. Braucht kein vollständiges Lesen des Bereichs — jede gelesene Seite spricht
+ * für sich; ob ihre Anhangsliste vollständig ist, trägt das Item selbst
+ * (`sourceAttachmentsIncomplete`). Scheitert der Nachzug einer Seite, bricht der Lauf nicht ab, aber
+ * die Seite steht in `syncFailed` (Bens B8) — nicht still.
+ */
+async function nachzug(
+  deps: ConfluenceImportDeps,
+  unveraendert: readonly ConfluenceImportItem[],
+): Promise<Nachzug> {
+  const out: Nachzug = {
+    attachmentsUpdated: [],
+    restrictionsUpdated: [],
+    syncFailed: [],
+    attachmentsIncomplete: [],
+  };
+  if (unveraendert.length === 0) {
+    return out;
+  }
+  // Vorfilter aus EINEM Bestandslesen: nur Seiten, deren gelieferte Anhänge oder Restriktion vom
+  // Stand am Objekt abweichen, gehen in die (je Seite teurere) Angleichung.
+  const anhaenge = new Map<string, Set<string>>();
+  const anker = new Map<string, { restriktion: string | null; stufe: string }>();
+  for (const ko of await deps.koService.list()) {
+    for (const s of ko.sources ?? []) {
+      if (s.attachmentOf && s.attachment) {
+        const key = importSourceKey(s.provider, s.attachmentOf);
+        const set = anhaenge.get(key) ?? new Set<string>();
+        set.add(
+          anhangsSignatur(
+            s.attachment.externalId,
+            s.label,
+            s.attachment.mime,
+            s.attachment.size,
+            s.url ?? null,
+          ),
+        );
+        anhaenge.set(key, set);
+      } else if (s.externalId) {
+        anker.set(importSourceKey(s.provider, s.externalId), {
+          restriktion: restriktionsForm(s.readRestriction),
+          stufe: normalizeConfidentiality(ko.confidentiality),
+        });
+      }
+    }
+  }
+  for (const item of unveraendert) {
+    if (!item.externalId) {
+      continue;
+    }
+    const key = importSourceKey(item.provider, item.externalId);
+    const alt = anhaenge.get(key) ?? new Set<string>();
+    const neu = new Set(
+      (item.sourceAttachments ?? []).map((a) =>
+        // Lauf 3 R2 (Bens B4): die Abrufadresse gehört zur Signatur — in derselben Form, in der sie
+        // am Objekt steht (`safeSourceUrl`), sonst erreicht eine geänderte Adresse den Abgleich nie.
+        anhangsSignatur(a.externalId, a.name, a.mime, a.size, safeSourceUrl(a.url)),
+      ),
+    );
+    const anhangAbweichend =
+      [...neu].some((sig) => !alt.has(sig)) ||
+      (item.sourceAttachmentsIncomplete !== true && [...alt].some((sig) => !neu.has(sig)));
+    const stand = anker.get(key);
+    const restriktionAbweichend =
+      stand !== undefined &&
+      (stand.restriktion !== restriktionsForm(item.sourceReadRestriction) ||
+        (item.confidentiality !== undefined &&
+          confidentialityRank(item.confidentiality) >
+            confidentialityRank(normalizeConfidentiality(stand.stufe))));
+    if (anhangAbweichend) {
+      try {
+        const r = await deps.library.syncImportAttachments(item, deps.actor, {
+          dryRun: deps.dryRun,
+        });
+        if (r) {
+          out.attachmentsUpdated.push({ externalId: item.externalId, ...r, synced: !deps.dryRun });
+        }
+      } catch {
+        out.syncFailed.push(item.externalId);
+      }
+    }
+    if (restriktionAbweichend) {
+      try {
+        const r = await deps.library.syncImportRestriction(item, deps.actor, {
+          dryRun: deps.dryRun,
+        });
+        if (r) {
+          out.restrictionsUpdated.push({
+            externalId: item.externalId,
+            ...r,
+            synced: !deps.dryRun,
+          });
+        }
+      } catch {
+        if (!out.syncFailed.includes(item.externalId)) {
+          out.syncFailed.push(item.externalId);
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function restriktionsForm(r: { groups: string[]; users: string[] } | undefined): string | null {
+  return r && (r.groups.length > 0 || r.users.length > 0)
+    ? JSON.stringify([[...new Set(r.groups)].sort(), [...new Set(r.users)].sort()])
+    : null;
+}
+
+function anhangsSignatur(
+  externalId: string,
+  name: string,
+  mime: string | undefined,
+  size: number | undefined,
+  url: string | null,
+): string {
+  return JSON.stringify([externalId.trim(), name.trim(), mime ?? null, size ?? null, url]);
+}
+
+/**
+ * Nacharbeit 6: die Antwort der Quelle auf die Einzelnachfrage zu EINER Seite in diesem Lauf —
+ * `geloescht`/`vorhanden` aus `isGoneAtSource`, `unklar`, wenn die Nachfrage warf. Je Quell-Id.
+ */
+type QuellAntwort = "geloescht" | "vorhanden" | "unklar";
+type QuellAuskunft = Map<string, QuellAntwort>;
+
+async function quellAbgleich(
+  deps: ConfluenceImportDeps,
+  gesehen: ReadonlySet<string>,
+  vollstaendig: boolean,
+  nachgezogen: Nachzug,
+  // Nacharbeit 6: die Antworten, die der R-0162-Abgleich in DIESEM Lauf schon erfragt hat.
+  schonErfragt: ReadonlyMap<string, QuellAntwort> = new Map(),
+): Promise<SourceSyncSummary | undefined> {
+  // Runde 3: ein Adapter ohne Einzelnachfrage oder ohne Bereich (Attrappen, künftige Quellen)
+  // kann GAR NICHT abgleichen — dieser Weg trägt dann keinen Abgleich, statt einen
+  // „unvollständigen" zu behaupten. Der echte Confluence-Adapter kann beides.
+  const adapter = deps.adapter as Partial<ConfluenceSourceAdapter>;
+  const scope = adapter.sourceScope;
+  // Zusammenführung mit R-0162 (main, `confluence-import-abgleich`): die Einzelnachfrage ist die
+  // strenge Gegenprobe `isGoneAtSource` — NUR 404 oder ein ausdrücklicher Lösch-/Archivstatus heißt
+  // „gelöscht"; eine unbrauchbare 2xx-Antwort WIRFT (→ `unchecked`). `fetchItem`/`getPageById`
+  // werten eine solche Antwort seit main als „nicht vorhanden" und taugen dafür nicht mehr.
+  if (typeof adapter.isGoneAtSource !== "function" || !scope) {
+    // Lauf 3 R2 (Bens B8): ein gescheiterter Nachzug wird auch hier nicht verschluckt — dann trägt
+    // der Lauf einen Abgleich, der ausdrücklich keiner über Löschungen ist.
+    return nachgezogen.syncFailed.length > 0
+      ? {
+          checked: false,
+          reason: "not-supported",
+          removed: [],
+          outsideScope: [],
+          unchecked: [],
+          restored: [],
+          ...nachgezogen,
+        }
+      : undefined;
+  }
+  // Runde 3: wieder aufgetauchte Seiten zuerst — das braucht weder ein vollständiges Lesen noch
+  // eine Einzelnachfrage, nur die Bereichsliste dieses Laufs.
+  const restored = await wiederDa(deps, gesehen);
+  const leer = { removed: [], outsideScope: [], unchecked: [], restored, ...nachgezogen };
+  if (!vollstaendig) {
+    return { checked: false, reason: "incomplete-read", ...leer };
+  }
+  // Anker dieses Bereichs, deren Seite im Lauf fehlte (bereits vermerkte zählen nicht erneut).
+  const fehlend = new Map<string, { provider: string | null; koIds: string[] }>();
+  for (const ko of await deps.koService.list()) {
+    for (const s of ko.sources ?? []) {
+      if (
+        !s.externalId ||
+        s.sourceRemovedAt ||
+        s.spaceKey !== scope ||
+        !istConfluenceAnbieter(s.provider) ||
+        gesehen.has(s.externalId)
+      ) {
+        continue;
+      }
+      const eintrag = fehlend.get(s.externalId) ?? { provider: s.provider ?? null, koIds: [] };
+      if (!eintrag.koIds.includes(ko.id)) {
+        eintrag.koIds.push(ko.id);
+      }
+      fehlend.set(s.externalId, eintrag);
+    }
+  }
+  const summary: SourceSyncSummary = {
+    checked: true,
+    removed: [],
+    outsideScope: [],
+    unchecked: [],
+    restored,
+    ...nachgezogen,
+  };
+  const at = new Date().toISOString();
+  let nachfragen = 0;
+  for (const [externalId, { provider, koIds }] of fehlend) {
+    // Nacharbeit 6: hat der R-0162-Abgleich dieselbe Seite in diesem Lauf schon erfragt, gilt
+    // seine Antwort — eine zweite Einzelnachfrage hätte nur dieselbe Antwort mit doppelter Last.
+    const schon = schonErfragt.get(externalId);
+    let nochDa: boolean;
+    if (schon !== undefined) {
+      if (schon === "unklar") {
+        summary.unchecked.push(externalId);
+        continue;
+      }
+      nochDa = schon === "vorhanden";
+    } else {
+      if (nachfragen >= MAX_LOESCHPRUEFUNGEN) {
+        summary.unchecked.push(externalId);
+        continue;
+      }
+      nachfragen += 1;
+      try {
+        nochDa = !(await adapter.isGoneAtSource(externalId));
+      } catch {
+        summary.unchecked.push(externalId);
+        continue;
+      }
+    }
+    if (nochDa) {
+      summary.outsideScope.push(externalId);
+      continue;
+    }
+    let marked = false;
+    if (!deps.dryRun) {
+      for (const koId of koIds) {
+        const neu = await deps.koService.markSourceRemoved(
+          koId,
+          { provider, externalId },
+          at,
+          deps.actor,
+        );
+        marked = marked || neu;
+      }
+    }
+    summary.removed.push({ externalId, koIds, marked });
+  }
+  return summary;
+}
+
 export interface ConfluenceImportDeps {
   adapter: ConfluenceSourceAdapter;
   library: LibraryService;
   koService: KoService;
   dryRun: boolean;
   actor: string;
+  /**
+   * R-0142 (Lauf 5): der Lauf, in dessen Namen eingereiht wird. Gesetzt bindet jeder Kandidat an
+   * ihn (Quellrevision + Ordnung); die spätere Entscheidung schreibt die Elementreferenz.
+   */
+  importId?: string;
 }
 
 // Höchste bereits importierte sourceVersion je provider+externalId (aus den KO-Herkunftsankern).
@@ -265,6 +667,9 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
   // Parallel zu toQueue: der perPage-Index jedes eingereihten Items — für die ehrliche Nachkorrektur,
   // falls createImportCandidates (Parallelkonflikt / ON CONFLICT) weniger persistiert als eingereiht.
   const toQueuePerPageIdx: number[] = [];
+  // R-0163 (Lauf 2): bereits importierte Seiten in GENAU der Ankerfassung — ihre Anhänge werden
+  // nach dem Einreihen angeglichen (`anhangsAbgleich`).
+  const unveraendert: ConfluenceImportItem[] = [];
   // SCRUM-510 (WP3): IN-RUN-Dedup. Dieselbe (externalId@version) darf innerhalb EINES Laufs nicht zweimal
   // eingereiht werden (die Quelle kann dieselbe Seite doppelt liefern; seen/pending kennen die gerade erst
   // in diesem Lauf eingereihten Items noch nicht). Der DB-UNIQUE-Index ist der atomare Backstop dahinter.
@@ -306,6 +711,9 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
       }
       rechteAbzugleichen.push({ item, perPageIdx: perPage.length });
       perPage.push({ ref, status: "skipped", note: "unverändert (idempotent)" });
+      if (already === version) {
+        unveraendert.push(item);
+      }
       continue;
     }
     if (runKey) {
@@ -337,7 +745,13 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
         }
       }
     }
-    const persisted = await deps.library.createImportCandidates(toQueue, deps.actor);
+    // R-0142 (Lauf 5): die Kandidaten tragen die Kennung dieses Laufs (`laufbindung.ts`).
+    const persisted = await deps.library.createImportCandidates(
+      toQueue,
+      deps.actor,
+      undefined,
+      deps.importId ? { lauf: { importId: deps.importId } } : {},
+    );
     imported = persisted.length;
     // perPage ehrlich nachziehen: eingereihte, aber nicht persistierte Seiten → skipped (Parallelkonflikt).
     const persistedKeys = new Set(persisted.map((c) => candidateKey(c.item)));
@@ -466,6 +880,9 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
   // R-0162: Änderungen laufen oben über die höhere sourceVersion (neuer Kandidat → Re-Sync beim
   // Annehmen). Löschungen zieht der folgende Abgleich nach — nur bei VOLLSTÄNDIG gelesenem Space
   // und nur mit bekanntem Space: ohne ihn wäre jeder fremde oder scopelose Anker ein „Fehlender".
+  // Nacharbeit 6: was dieser Abgleich je Seite bei der Quelle erfragt hat, merkt sich
+  // `quellAuskunft` — der Quellabgleich danach fragt dieselbe Seite nicht ein zweites Mal.
+  const quellAuskunft: QuellAuskunft = new Map();
   const removal =
     truncated || !deps.adapter.sourceScope
       ? {
@@ -475,7 +892,29 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
           removalOpen: 0,
           removalChecked: false,
         }
-      : await reconcileRemovals(deps, items, collectFailed, perPage);
+      : await reconcileRemovals(deps, items, collectFailed, perPage, quellAuskunft);
+
+  // ZUSAMMENFÜHRUNG (Nacharbeit 4): die maßgebliche Reaktion auf eine bestätigte Löschung ist die
+  // des Abgleich-Auftrags oben (Papierkorb, solange das Objekt keine weitere Quelle trägt). DANACH
+  // läuft der Quellabgleich dieser Lieferung: er liest nur noch AKTIVE Objekte, vermerkt also nur
+  // dort `sourceRemovedAt`, wo das Objekt stehen geblieben ist — damit sein Rücklink nichts mehr
+  // verspricht (R-0131) —, hebt Vermerke wieder auf (Wiederauftauchen) und zieht Anhänge und
+  // Leserestriktion unveränderter Seiten nach (s. `quellAbgleich`, `nachzug`).
+  const sourceSync = await quellAbgleich(
+    deps,
+    new Set(items.map((i) => i.externalId).filter((id): id is string => !!id)),
+    !truncated && collectFailed.length === 0,
+    {
+      ...(await nachzug(deps, unveraendert)),
+      // Lauf 5 (Bens B9-Rest): der übernommene Zustand zählt, nicht das rohe Adapter-Item — auch
+      // eine erst an der Eingangsgrenze entstandene Marke steht im Lauf.
+      attachmentsIncomplete: items
+        .filter((i) => deps.library.importAttachmentsIncomplete(i))
+        .map((i) => i.externalId)
+        .filter((id): id is string => !!id),
+    },
+    quellAuskunft,
+  );
 
   return {
     dryRun: deps.dryRun,
@@ -497,6 +936,7 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     ...(abbruch ? { abbruch } : {}),
     ...removal,
     perPage,
+    ...(sourceSync ? { sourceSync } : {}),
   };
 }
 
@@ -543,6 +983,8 @@ async function reconcileRemovals(
   items: readonly ImportItem[],
   collectFailed: CollectResult["failed"],
   perPage: ImportRunSummary["perPage"],
+  // Nacharbeit 6: nimmt je erfragter Seite die Antwort auf (s. `QuellAuskunft`).
+  quellAuskunft?: QuellAuskunft,
 ): Promise<{
   removed: number;
   removalKept: number;
@@ -621,7 +1063,9 @@ async function reconcileRemovals(
     let gone: boolean;
     try {
       gone = await deps.adapter.isGoneAtSource(entry.externalId);
+      quellAuskunft?.set(entry.externalId, gone ? "geloescht" : "vorhanden");
     } catch (err) {
+      quellAuskunft?.set(entry.externalId, "unklar");
       removalOpen += 1;
       perPage.push({
         ref: entry.externalId,

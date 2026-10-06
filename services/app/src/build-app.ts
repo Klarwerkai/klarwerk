@@ -264,6 +264,11 @@ import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
 import type { ObjectReferenceSources } from "./object-references";
+import {
+  InMemoryQuellabgleichRepo,
+  PgQuellabgleichRepo,
+  type QuellabgleichRepo,
+} from "./quellabgleich-ablage";
 import { addinStaticRoutes } from "./routes/addin-static-routes";
 import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
@@ -503,6 +508,9 @@ export interface AppServices {
   // Route fernhalten. `ImportAccessService` bekommt diese Ablage; die Route bekommt nur ihn.
   importRuns: ImportRunRepo;
   externalSources: ExternalSourceRepo;
+  // R-0162 (Runde 3): das dauerhafte Quellabgleichsergebnis je Lauf (`quellabgleich-ablage.ts`).
+  // Eine eigene Ablage neben der eingefrorenen Laufablage (FREEZE-144).
+  quellabgleich: QuellabgleichRepo;
   // R-0169 (Nacharbeit 5): die interne Dokumentakte — Word-Weg und JSON ohne externalId.
   dokumente: DokumentaktenService;
   mailer: Mailer;
@@ -561,6 +569,7 @@ export interface AppRepos {
   // Lauf angelegt werden — die Tabelle wurde migriert und blieb leer.
   importRuns: ImportRunRepo;
   externalSources: ExternalSourceRepo;
+  quellabgleich: QuellabgleichRepo;
   // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (eigene Tabelle).
   dokumente: DokumentaktenRepo;
   modelRuns: ModelRunRepo;
@@ -1148,6 +1157,10 @@ export function assembleServices(
       }
       return ids;
     },
+    // R-0142 (Lauf 5): eine Entscheidung über einen laufgebundenen Kandidaten schreibt ihre
+    // Elementreferenz in DIESELBE Laufdomäne, die `importRunRoutes` liest. Die Quellrevisionen
+    // (`externalSources`) reichen R-0169 und R-0142 gemeinsam — EIN Eintrag oben.
+    importRuns: repos.importRuns,
     // R-0163: Anhänge und Bilder einer angenommenen Confluence-Seite — nur hinter demselben
     // Schalter wie der Import selbst; der Adapter entsteht je Annahme aus derselben Factory wie in
     // den Importrouten (Token bleibt in der Client-Closure).
@@ -1229,6 +1242,7 @@ export function assembleServices(
     zurufModell,
     importRuns: repos.importRuns,
     externalSources: repos.externalSources,
+    quellabgleich: repos.quellabgleich,
     // R-0169 (Nacharbeit 5): DIESELBE Instanz, die oben in den `LibraryService` gereicht wurde.
     dokumente,
     ko,
@@ -1482,6 +1496,7 @@ export function inMemoryRepos(): AppRepos {
     candidates: new InMemoryCandidateRepo(),
     importRuns: new InMemoryImportRunRepo(),
     externalSources: new InMemoryExternalSourceRepo(),
+    quellabgleich: new InMemoryQuellabgleichRepo(),
     dokumente: new InMemoryDokumentaktenRepo(),
     modelRuns: new InMemoryModelRunRepo(),
     notificationSeen: new InMemoryNotificationSeenRepo(),
@@ -1561,6 +1576,7 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // „haengend in QUEUED" nach jedem Neustart ununterscheidbar von „nie gestartet".
       importRuns: new PgImportRunRepo(pool),
       externalSources: new PgExternalSourceRepo(pool),
+      quellabgleich: new PgQuellabgleichRepo(pool),
       // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (DOKUMENTAKTE_SCHEMA).
       dokumente: new PgDokumentaktenRepo(pool),
       // SCRUM-164: ModelRun-Protokoll persistent (KI-Aufrufe nachvollziehbar).
@@ -1878,6 +1894,10 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   // Entscheidung: sein Name sagt nur „Confluence antwortete mit einem Fehlerstatus" — keine
   // Kennung, kein Host; die Meldung enthält allein die Statuszahl.
   "ConfluenceStatusError",
+  // R-0162 (Confluence-Gesamtimport, Runde 3): 2xx-Antwort ohne brauchbare Seiten-Id — Zustand
+  // unbekannt. Fester Satz ohne Host und ohne Quellinhalt. Seit der Zusammenführung wirft ihn die
+  // strenge Anhangsliste dieser Lieferung (`listAttachmentsStreng`).
+  "ConfluenceUnusableResponseError",
   "DevPersistJournalReplayError",
   // R-0163 / K3 (Ben, Nacharbeit 15): der Fachfehler der Dokumentakte
   // (`services/knowledge-object/src/dokumentakte.ts`, R-0169). ENTSCHEIDUNG: der Name darf ins
@@ -1976,6 +1996,8 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   // rest-client.ts:87–88), die der Waechter unten nicht erhebt (ternaer zugewiesen) — gemeldet in
   // der Rueckgabe 2702, nicht eingetragen: Entscheidung beim Eigentuemer von 2661.
   "CONFLUENCE_TIMEOUT",
+  // R-0162 (Runde 3): der Code von ConfluenceUnusableResponseError (rest-client.ts).
+  "CONFLUENCE_UNUSABLE_RESPONSE",
   "CONSENT_MISSING",
   "CREATE_ANCHOR_TAKEN",
   "CREATE_REPAIR_REQUIRED",
@@ -2078,6 +2100,10 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   // trägt keine Nutzerdaten — er sagt, welcher Zweig lief, und genau dafür ist die Liste da.
   "REASONER_POLICY_ENV_LOCKED",
   "SEARCH_PROJECTION_NOT_READY",
+  // R-0162 (Confluence-Gesamtimport, Runde 3): der Code eines Importlaufs, der nur deshalb
+  // `PARTIAL` ist, weil sein Löschabgleich unvollständig blieb (confluence-import-routes.ts,
+  // `abgleichGrund`). ENTSCHEIDUNG: darf ins Protokoll — fester Name ohne Kennung und ohne
+  // Quellinhalt; er sagt, welcher Zweig lief.
   // R-0163 (Bens Befund 3, beleg:2def0ac2): der Laufcode eines unvollständigen Anhangsabgleichs
   // (`routes/confluence-import-routes.ts`, `SOURCE_SYNC_INCOMPLETE`) — am gespeicherten Lauf als
   // `failureCode` und in der Warnzeile des Laufs. ENTSCHEIDUNG: darf ins Protokoll. Er trägt keine
@@ -3469,6 +3495,8 @@ export function buildApp(
         reasoner: services.reasoner,
         // W2-A/148: der echte Lauf bekommt seine Identität VOR dem ersten Effekt.
         importRuns: services.importRuns,
+        // R-0162: dieselbe Ablage, aus der der Leseweg unten den Abgleich liest.
+        quellabgleich: services.quellabgleich,
         // R-0134 / R-1005: der Betreiberschalter, je Anfrage durchgesetzt.
         betreiberSchalter: services.confluenceImportSchalter,
       }),
@@ -3484,6 +3512,11 @@ export function buildApp(
       importRunRoutes({
         importRuns: services.importRuns,
         externalSources: services.externalSources,
+        quellabgleich: services.quellabgleich,
+        // R-0142 (Lauf 5): das Importergebnis je Wissensobjekt.
+        koService: services.ko,
+        // R-0142 (Lauf 5 R3, Bens B7): die offenen Lücken je Objekt.
+        luecken: services.ask,
         guards,
       }),
     );

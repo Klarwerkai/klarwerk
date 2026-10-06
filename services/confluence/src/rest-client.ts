@@ -101,6 +101,46 @@ export class ConfluenceRequestError extends Error {
   }
 }
 
+/**
+ * R-0162 (Runde 3): Confluence hat mit Erfolg geantwortet, aber ohne brauchbare Seite. Das ist ein
+ * unbekannter Zustand — weder „vorhanden" noch „gelöscht".
+ */
+export class ConfluenceUnusableResponseError extends Error {
+  readonly code = "CONFLUENCE_UNUSABLE_RESPONSE";
+
+  constructor(was: "Seite" | "Anhangsliste" = "Seite") {
+    super(
+      was === "Seite"
+        ? "Confluence-Antwort ohne Seiten-Id — Zustand der Seite unbekannt."
+        : "Confluence-Antwort ist keine Anhangsliste — Anhänge der Seite unbekannt.",
+    );
+    this.name = "ConfluenceUnusableResponseError";
+  }
+}
+
+/**
+ * R-0163 (Lauf 2): ist `data` eine brauchbare Anhangsliste? `results` muss eine Liste sein und jeder
+ * Eintrag eine nicht leere Kennung tragen — sonst lässt sich nicht sagen, welche Anhänge es gibt.
+ */
+export function istAnhangsliste(
+  data: unknown,
+): data is { results: ConfluenceAttachment[]; _links?: { next?: unknown } } {
+  if (typeof data !== "object" || data === null) {
+    return false;
+  }
+  const results = (data as { results?: unknown }).results;
+  return (
+    Array.isArray(results) &&
+    results.every(
+      (a) =>
+        typeof a === "object" &&
+        a !== null &&
+        typeof (a as { id?: unknown }).id === "string" &&
+        (a as { id: string }).id.trim() !== "",
+    )
+  );
+}
+
 /** Warum ein Space-Lauf vor dem letzten Cursor endete — reist mit `truncated: true`. */
 export interface ConfluenceAbbruch {
   readonly grund: ConfluenceAbbruchGrund;
@@ -183,10 +223,19 @@ export interface ConfluencePage {
   restrictions?: {
     read?: {
       restrictions?: {
-        user?: { results?: unknown[] };
-        group?: { results?: unknown[] };
+        // R-0549: Cloud liefert je Benutzer `accountId`, Server/Data Center `username`/`userKey`;
+        // je Gruppe `name`. Weitere Felder werden nicht gelesen.
+        user?: {
+          results?: { accountId?: string; username?: string; userKey?: string }[] | unknown[];
+        };
+        group?: { results?: { name?: string }[] | unknown[] };
       };
     };
+  };
+  // R-0163: die Anhänge der Seite (Expand `children.attachment`). `_links.next` heisst: es gibt
+  // mehr, als diese Antwort trägt.
+  children?: {
+    attachment?: { results?: ConfluenceAttachment[]; _links?: { next?: string } };
   };
 }
 
@@ -218,8 +267,20 @@ function arrayOder(wert: unknown): unknown[] {
 // die einzige Quelle einer echten Ordnerstruktur; sie verließ Confluence bisher nie, deshalb konnte
 // die Auswahl nur abgeleitete Merkmale (Sprache/Thema) bündeln. Paginierung und der Abbruch mit
 // `truncated` (listAllPages) bleiben davon unberührt — der Expand ändert nur den Inhalt je Seite.
+// R-0163: `children.attachment` liefert die Anhangsliste der Seite ohne zusätzlichen Aufruf je Seite
+// (nur Metadaten: Name, Typ, Größe, Abrufpfad — keine Dateiinhalte).
 const EXPAND =
-  "body.storage,version,metadata.labels,ancestors,restrictions.read.restrictions.user,restrictions.read.restrictions.group";
+  "body.storage,version,metadata.labels,ancestors,restrictions.read.restrictions.user,restrictions.read.restrictions.group,children.attachment";
+
+/**
+ * R-0163: Obergrenze der nachgeblätterten Anhangsseiten je Quellseite (Sicherheitsnetz gegen eine
+ * endlose `next`-Kette). Lauf 3 R3 (Bens B9): 200 Seiten zu je 50 = bis zu 10.000 Anhänge je
+ * Quellseite — abgestimmt auf den Deckel der Eingangssäuberung
+ * (`MAX_QUELL_ANHAENGE`, `services/library-analytics/src/quellangaben.ts`), damit kein lokaler Deckel
+ * UNTER dem liegt, was dieser Adapter liefert. Wird die Grenze erreicht, gilt die Liste als
+ * unvollständig (`complete: false`) und der Lauf weist die Seite aus.
+ */
+const MAX_ATTACHMENT_HOPS = 200;
 
 // R-0162: das 404 des Einzelabrufs als eigener Wert — `undefined`/`null` kann auch aus einem
 // (fehlerhaften) 2xx-Body stammen und darf mit „nicht gefunden" nie verwechselt werden.
@@ -436,6 +497,9 @@ export class ConfluenceRestClient {
    * wenn die Seite inzwischen nicht mehr existiert (404).
    */
   async getPageById(pageId: string): Promise<ConfluencePage | undefined> {
+    // ZUSAMMENFÜHRUNG (Nacharbeit 4): mains Fassung. Die Unterscheidung „404 = gelöscht" gegen
+    // „unbrauchbare 2xx-Antwort" trägt seither `getPageStateById` (unten); der Löschabgleich beider
+    // Aufträge fragt darüber (`adapter.isGoneAtSource`), nicht über diese Methode.
     const data = await this.getJson(this.pageUrl(pageId), this.allowedOrigin(), {
       nichtGefundenIstLeer: true,
     });
@@ -467,6 +531,41 @@ export class ConfluenceRestClient {
 
   private pageUrl(pageId: string): string {
     return `${this.baseUrl}/rest/api/content/${encodeURIComponent(pageId)}?expand=${encodeURIComponent(EXPAND)}`;
+  }
+
+  /**
+   * R-0163 (Herkunftsangaben, diese Lieferung): ALLE Anhänge einer Seite, über `_links.next`
+   * nachgeblättert — derselbe Netzweg wie jeder andere Abruf (Origin-Pin, Frist, Größengrenze,
+   * Redaction). `complete: false`, wenn die Obergrenze griff.
+   *
+   * Lauf 2 (Befund Ben, Runde 3 von Lauf 1): eine Antwort zählt nur, wenn sie wirklich eine
+   * Anhangsliste ist — ein Objekt mit `results` als Liste, jeder Eintrag mit Kennung. Alles andere
+   * (auch eine Erfolgsantwort `{}` oder eine 404 für eine Seite, die gerade noch gelesen wurde) ist
+   * ein UNBEKANNTER Zustand und wirft `ConfluenceUnusableResponseError`; der Adapter behält dann die
+   * Teilliste mit Unvollständig-Marke, und die Annahme entfernt keine bestehende Anhangsquelle.
+   *
+   * ZUSAMMENFÜHRUNG (Nacharbeit 5): main bringt mit R-0163 (`confluence-import-anhaenge`) ein
+   * eigenes `listAttachments` (unten, Rückgabe `truncated`) für die Dateiinhalte. Beide Wege
+   * bestehen nebeneinander; dieser trägt deshalb einen eigenen Namen.
+   */
+  async listAttachmentsStreng(
+    pageId: string,
+  ): Promise<{ attachments: ConfluenceAttachment[]; complete: boolean }> {
+    const allowedOrigin = this.allowedOrigin();
+    const out: ConfluenceAttachment[] = [];
+    let url: string | null =
+      `${this.baseUrl}/rest/api/content/${encodeURIComponent(pageId)}/child/attachment?limit=50`;
+    let hops = 0;
+    for (; url && hops < MAX_ATTACHMENT_HOPS; hops++) {
+      const data = await this.getJson(url, allowedOrigin);
+      if (!istAnhangsliste(data)) {
+        throw new ConfluenceUnusableResponseError("Anhangsliste");
+      }
+      out.push(...data.results);
+      const next = data._links?.next;
+      url = typeof next === "string" && next !== "" ? this.nextUrl(next, allowedOrigin) : null;
+    }
+    return { attachments: out, complete: url === null };
   }
 
   /**

@@ -209,6 +209,56 @@ export function quellennachweis(
   };
 }
 
+// ================================================================================================
+// R-0162 / R-0163 / R-0549 — WAS DIE QUELLE ÜBER SICH SELBST SAGT, ANZEIGEFERTIG.
+// ================================================================================================
+//
+// Drei Angaben, die der Import an die Quelle schreibt. Bewusst NEBEN `quellennachweis` und nicht
+// in ihm: dessen Form ist an zwei Flächen vermessen, und diese Angaben gibt es nur an importierten
+// Quellen. Dieselbe Hausregel: FEHLEN HEISST FEHLEN — ohne Angabe steht nichts.
+//
+// `geloeschtAm`: der Abgleich hat die Quellseite als gelöscht festgestellt. Dann VERSPRICHT DER
+// LINK NICHTS MEHR (R-0131): die Fläche zeigt die Adresse nur noch als Text, nicht als Link.
+export interface QuellHinweise {
+  geloeschtAm: string | null;
+  /** Diese Quelle ist ein Anhang der Quellseite — mit Typ und Größe, soweit bekannt. */
+  anhang: { typ: string | null; groesse: string | null } | null;
+  /** Die Leserestriktion der Quelle: Gruppennamen und die ANZAHL einzeln benannter Personen. */
+  leserecht: { gruppen: string[]; personen: number } | null;
+}
+
+function groesseText(bytes: number | undefined, sprache: string): string | null {
+  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0) {
+    return null;
+  }
+  const fmt = new Intl.NumberFormat(sprache, { maximumFractionDigits: 1 });
+  if (bytes < 1024) {
+    return `${fmt.format(bytes)} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${fmt.format(bytes / 1024)} KB`;
+  }
+  return `${fmt.format(bytes / (1024 * 1024))} MB`;
+}
+
+export function quellHinweise(
+  source: Pick<KoSource, "sourceRemovedAt" | "attachmentOf" | "attachment" | "readRestriction">,
+  sprache: string,
+): QuellHinweise {
+  const gruppen = (source.readRestriction?.groups ?? []).filter((g) => g.trim().length > 0);
+  const personen = (source.readRestriction?.users ?? []).filter((u) => u.trim().length > 0).length;
+  return {
+    geloeschtAm: source.sourceRemovedAt ? formatKoTimestamp(source.sourceRemovedAt, sprache) : null,
+    anhang: source.attachmentOf
+      ? {
+          typ: source.attachment?.mime?.trim() || null,
+          groesse: groesseText(source.attachment?.size, sprache),
+        }
+      : null,
+    leserecht: gruppen.length > 0 || personen > 0 ? { gruppen, personen } : null,
+  };
+}
+
 // AUFTRAG-mega15 Block B (bens SB-4): DER Vertrag der add-source-Aktion, wie ihn
 // `apps/web/src/api/endpoints.ts` (KoAction) deklariert und der Server erwartet — Label, Adresse,
 // Auszug. KEIN Herkunftsfeld: die Herkunft leitet der Server aus der Adresse ab

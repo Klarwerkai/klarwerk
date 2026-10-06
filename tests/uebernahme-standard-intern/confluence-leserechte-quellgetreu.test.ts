@@ -15,6 +15,7 @@
 //          aufgehobene Beschränkung macht es wieder intern, eine menschliche Einstufung bleibt.
 //   Q4–Q6  Nacharbeit 3: menschliche Einstufung als Vermerk (F5); veraltete Kandidaten setzen
 //          neuere Rechte nicht zurück — über die Version und bei reiner Rechteänderung (F4).
+//   Q7     Nacharbeit 14: die Anhebung durch mains Restriktionsnachzug ist kein menschlicher Vermerk.
 //   G1     die Gruppierung: ein offener Bestand sperrt sie nicht, ein vererbt beschränkter schon.
 //   L1–L4  der reguläre Leseweg mit angemeldeten Konten (Nacharbeit 2, Bens Befunde F1/F2).
 //   L5–L8  Nacharbeit 3: Space, Gruppen, Konten ohne Mailadresse, unbekannte Space-Rechte (F1),
@@ -427,6 +428,38 @@ describe("R-0182/R-0649 · geänderte Quellversion", () => {
     const objekt = await koService.get(rSpaet.koId!);
     expect(objekt?.confidentiality).toBe("vertraulich");
     expect(objekt?.quellrechte?.leser).toEqual(["konto:lea@example.com"]);
+  });
+
+  // Nacharbeit 14 (Zusammenführung mit mains Restriktionsnachzug R-0162/R-0549 Lauf 3): hebt der
+  // Nachzug einer unveränderten Fassung die Stufe an, ist das eine QUELLentscheidung. Sie darf nicht
+  // als menschliche Einstufung gelten — sonst folgte das Objekt einer wieder geöffneten Seite nie.
+  it("Q7 · Anhebung durch den Restriktionsnachzug ist kein menschlicher Vermerk; wieder offen → intern", async () => {
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    const library = new LibraryService({ koService, externalUpsert: true });
+    const v1 = await fixture([seite("13", [], undefined, 1)]).adapter.collectAll();
+    const [c1] = await library.createImportCandidates(v1.items, "importeur");
+    const r1 = await library.reviewImportCandidate(c1!.id, "accept", "reviewerin");
+    expect((await koService.get(r1.koId!))?.confidentiality).toBe("intern");
+
+    // Dieselbe Fassung 1, jetzt an der Quelle auf eine Gruppe beschränkt — der Nachzug aus main.
+    const zu = await fixture([
+      seite("13", [], { group: [{ name: "qs" }] }, 1),
+    ]).adapter.collectAll();
+    const nachzug = await library.syncImportRestriction(zu.items[0]!, "lauf");
+    expect(nachzug).toMatchObject({ koId: r1.koId, raisedTo: "vertraulich" });
+    const angehoben = await koService.get(r1.koId!);
+    expect(angehoben?.confidentiality).toBe("vertraulich");
+    expect(angehoben?.einstufungMenschlich).toBeUndefined();
+
+    // Gegenprobe: die Quelle öffnet die Seite in Fassung 2 wieder — das Objekt folgt (wie Q2).
+    const offen: ConfluencePage = {
+      ...seite("13", [], { user: [], group: [] }, 2),
+      body: { storage: { value: "<p>Inhalt 13, Stand 2.</p>" } },
+    };
+    const v2 = await fixture([offen]).adapter.collectAll();
+    const [c2] = await library.createImportCandidates(v2.items, "importeur");
+    await library.reviewImportCandidate(c2!.id, "accept", "reviewerin");
+    expect((await koService.get(r1.koId!))?.confidentiality).toBe("intern");
   });
 });
 
