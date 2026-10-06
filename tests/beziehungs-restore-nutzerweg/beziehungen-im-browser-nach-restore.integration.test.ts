@@ -209,6 +209,22 @@ const SICHTBARKEIT = `
     return { da: !!e, text: e ? sauber(e.textContent) : "", sichtbar: sichtbar(e) };
   };`;
 
+/**
+ * DIE URHEBERZEILE, GEZIELT — nicht mehr als „Nachbar des Herkunftsetiketts".
+ *
+ * Sie traegt kein eigenes Testkennzeichen. Bis JOB 4356 („Wissensbeziehungen zeigen ihren Status")
+ * war sie das span direkt nach `wb-herkunft`; seitdem steht dort `wb-status`
+ * (`WissensbeziehungenBereich.tsx`, Fusszeile: Herkunft · Status · Urheber · Zeitpunkt · Link), und
+ * der alte Waehler `[data-testid="wb-herkunft"] + span` las „Status: gilt" als Urheber.
+ *
+ * Dieser Waehler trifft das ERSTE span OHNE eigenes Testkennzeichen hinter dem Herkunftsetikett:
+ * gekennzeichnete Etiketten (Herkunft, Status) fallen heraus, die Zeitzeile auch, weil vor ihr
+ * schon ein solches span steht. Genau EIN Treffer je Kachel — fuer das Lesen UND fuer die
+ * Kalibrierung D3, die mit `querySelectorAll` ausblendet und sonst die Zeitzeile mitnaehme.
+ */
+const URHEBER_WAEHLER =
+  '[data-testid="wb-herkunft"] ~ span:not([data-testid]):not(span:not([data-testid]) ~ span)';
+
 const BEZIEHUNGSBEREICH = `() => {
 ${SICHTBARKEIT}
   const bereich = document.querySelector('[data-testid="wissensbeziehungen"]');
@@ -234,11 +250,9 @@ ${SICHTBARKEIT}
       satz: feld(li, "p:first-of-type"),
       herkunft: feld(li, '[data-testid="wb-herkunft"]'),
       fassung: feld(li, '[data-testid="wb-fassung"]'),
-      // Die Urheberzeile traegt kein eigenes Testkennzeichen. Seit JOB 4356 steht zwischen
-      // Herkunftsetikett und Urheberzeile das Statusetikett wb-status („Status: gilt"); die
-      // Urheberzeile ist das span direkt NACH dem Statusetikett (WissensbeziehungenBereich.tsx,
-      // Fusszeile der Kachel). Vorher las dieser Waehler das Statusetikett als Urheber.
-      urheber: feld(li, '[data-testid="wb-status"] + span'),
+      // Die Urheberzeile traegt kein eigenes Testkennzeichen — gezielt ueber URHEBER_WAEHLER
+      // (Begruendung dort; seit JOB 4356 steht wb-status zwischen Herkunft und Urheber).
+      urheber: feld(li, '${URHEBER_WAEHLER}'),
       // GERENDERT, nicht im Baum: ein ausgeblendetes Feld kommt in innerText nicht vor.
       text: sauber(li.innerText),
       sichtbar: sichtbar(li),
@@ -1123,12 +1137,7 @@ describe("JOB 4305 · Wissensbeziehungen nach dem Produkt-Restore im echten Brow
           "visibility",
           "das Herkunftsetikett der Kachel",
         ],
-        [
-          "die Urheberzeile",
-          '[data-testid="wb-status"] + span',
-          "visibility",
-          "die Urheberzeile der Kachel",
-        ],
+        ["die Urheberzeile", URHEBER_WAEHLER, "visibility", "die Urheberzeile der Kachel"],
         [
           "der Fassungsvermerk",
           '[data-testid="wb-fassung"]',

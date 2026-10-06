@@ -62,7 +62,13 @@ Verworfene Einträge gelangen nie in die Direktive; gültige Einträge daneben w
   gegengeprüft — `*.sharepoint.com` würde jeder Seite jedes Mandanten das Einbetten erlauben.
 - **Nur der Taskpane-Pfad ändert sich.** Die Dialogseite `/word-addin/anmeldung.html` behält ihre
   Ersatz-CSP ohne Mandanten; alle anderen Antworten behalten die globale CSP mit
-  `frame-ancestors 'none'` und `X-Frame-Options: SAMEORIGIN`. COOP/CORP bleiben unverändert.
+  `frame-ancestors 'none'` und `X-Frame-Options: SAMEORIGIN`. CORP bleibt überall unverändert;
+  COOP bleibt überall `same-origin` — mit genau einer Ausnahme: die Dialogseite
+  `/word-addin/anmeldung.html` trägt `Cross-Origin-Opener-Policy: unsafe-none`. Word im Web öffnet
+  sie als eigenes Fenster aus einem fremden Office-Rahmen; `same-origin` trennte diese
+  Opener-Beziehung, office.js fand keine Gegenstelle (`conversationId` null) und die Anmeldung kam
+  im Seitenfenster nie an (Realhostbeleg 05.10.2026). Gegenprobe am Draht:
+  `tests/office-web-anmeldung/dialog-opener-kopf.test.ts`.
 - **Kein Mandant im Code.** Welcher Mandant einbetten darf, entscheidet allein die Installation.
 - Anmeldung, Dialog, Sitzung und Cookies (SameSite=Lax) sind nicht berührt; Word für Mac und das
   Manifest ebenfalls nicht.
@@ -119,7 +125,7 @@ dazwischen; sonst von vorn):
 |---|---|
 | `/health.version` und `/health.commit` | wie oben, samt Vergleich mit dem Liefercommit |
 | Taskpane-Header | `curl -sI https://app.klarwerk.ai/word-addin/taskpane.html` — `content-security-policy` enthält `https://klarwerktest4711.sharepoint.com https://klarwerktest4711-my.sharepoint.com`, kein `x-frame-options` |
-| Dialog-Header | `curl -sI https://app.klarwerk.ai/word-addin/anmeldung.html` — Ausnahme-CSP **ohne** SharePoint-Herkunft, `frame-ancestors 'self' https://*.office.com https://*.officeapps.live.com` |
+| Dialog-Header | `curl -sI https://app.klarwerk.ai/word-addin/anmeldung.html` — Ausnahme-CSP **ohne** SharePoint-Herkunft, `frame-ancestors 'self' https://*.office.com https://*.officeapps.live.com`; `cross-origin-opener-policy: unsafe-none` (steht dort `same-origin`, läuft eine Fassung ohne die Dialogkorrektur und die Übergabe kann nicht gelingen) |
 | Gegenprobe | eine andere Antwort (z. B. `/`) trägt `frame-ancestors 'none'` und `X-Frame-Options: SAMEORIGIN` |
 | Testzeit | Datum und Uhrzeit (mit Zeitzone) des Tests in Word Web |
 | URL | die Adresse des geöffneten Dokuments (`https://klarwerktest4711-my.sharepoint.com/…`) |

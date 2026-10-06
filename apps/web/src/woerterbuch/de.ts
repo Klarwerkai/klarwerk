@@ -38,7 +38,7 @@ const de = {
   "gliederung.verwaltung": "Verwaltung",
   "gliederung.persoenlich": "Persönlich und Hilfe",
   "nav.start": "Start",
-  "nav.tasks": "Meine Aufgaben",
+  "nav.tasks": "Offene Aufgaben",
   "nav.capture": "Wissen erfassen",
   "nav.ask": "Fragen",
   "nav.library": "Bibliothek",
@@ -309,9 +309,9 @@ const de = {
   "seitenhilfe.bibliothek.title": "Bibliothek: der ganze Bestand",
   "seitenhilfe.bibliothek.body":
     "Das ist der gesamte Wissensbestand. Auf einem breiten Bildschirm steht links die Liste und rechts der Eintrag, den du gerade liest; auf einem schmalen Gerät trägt immer nur eines von beiden die Fläche — ohne Wahl die Liste, mit Wahl der Eintrag, und oben bringt dich der Knopf „Zurück zu Bibliothek“ wieder in die Liste (auf dem Tablet legt „Trefferliste einblenden“ sie als Schublade ÜBER den Eintrag, „Trefferliste ausblenden“ nimmt sie wieder weg). Gesucht wird über das Suchfeld oben im Kopfband; Filter, Sortierung, gespeicherte Sichten und Export liegen im Menü „…“ über der Liste. Nächster Schritt: Klick einen Eintrag an und lies ihn — ist die Liste leer, führt der Knopf „Erfassen“ dorthin, wo neues Wissen entsteht, sofern deine Rolle das Erfassen erlaubt; sonst steht dort „Kein Zugriff“.",
-  "seitenhilfe.aufgaben.title": "Meine Aufgaben: was von dir erledigt werden will",
+  "seitenhilfe.aufgaben.title": "Offene Aufgaben: was hier zu erledigen ist",
   "seitenhilfe.aufgaben.body":
-    "Hier steht deine Arbeit an einer Stelle: Prüfungen, Konflikte, fällige Revalidierungen, offene Wissenslücken und Objekte, die zur Nacharbeit an dich zurückgingen. Der farbige Punkt zeigt die Dringlichkeit (rot „Kritisch“, gelb „Heute“, grün „Später“), die Knopfreihe oben filtert nach Art und nennt die Anzahl, und das „i“ an einer Zeile sagt dir, was dort zu tun ist. Nächster Schritt: Klick die oberste Zeile an — sie führt an die Stelle, an der die Aufgabe erledigt wird, sofern diese Fläche für deine Rolle freigegeben ist; sonst bleibt der Weg zu (Konflikte, Risiko und Lebenszyklus sind nicht für jede Rolle offen). Steht „Nichts offen.“, zeigt „Wie geht es weiter?“ die möglichen nächsten Wege.",
+    "Hier steht die offene Arbeit an einer Stelle: Prüfungen, Konflikte, fällige Revalidierungen, offene Wissenslücken und Objekte, die zur Nacharbeit an dich zurückgingen. Der farbige Punkt zeigt die Dringlichkeit (rot „Kritisch“, gelb „Heute“, grün „Später“), die Knopfreihe oben filtert nach Art und nennt die Anzahl, und das „i“ an einer Zeile sagt dir, was dort zu tun ist. Nächster Schritt: Klick die oberste Zeile an — sie führt an die Stelle, an der die Aufgabe erledigt wird, sofern diese Fläche für deine Rolle freigegeben ist; sonst bleibt der Weg zu (Konflikte, Risiko und Lebenszyklus sind nicht für jede Rolle offen). Steht „Nichts offen.“, zeigt „Wie geht es weiter?“ die möglichen nächsten Wege.",
   "seitenhilfe.wissen.title": "Wissensobjekt: eine Aussage und ihre Belege",
   "seitenhilfe.wissen.body":
     "Du liest ein einzelnes Wissensobjekt — dieselbe Fläche wie in der Bibliothek, nur mit diesem Eintrag vorgewählt: auf einem breiten Bildschirm steht die Liste links und seine Aussage mit Status und Quelle rechts, auf einem schmalen Gerät trägt der Eintrag die Fläche allein und der Knopf „Zurück zu Bibliothek“ oben führt in die Liste. Alles Weitere — Quellen und Anhänge, Versionen, Historie, Kommentare, Konflikte — liegt hinter der Zeile „Mehr“; steht deine Oberfläche auf einer anderen Sprache und gibt es eine Leseübersetzung, steht sie oben, ausdrücklich als Übersetzung benannt. Nächster Schritt: Lies die Aussage, sieh auf Status und Quelle, und öffne „Mehr“, wenn du wissen willst, worauf sie sich stützt.",
@@ -319,10 +319,10 @@ const de = {
   // JOB 3669 bei JOB 3668 (Entwurfs-Papierkorb) lag; der Grund ist mit dessen Auslieferung entfallen.
   //
   // JEDER SATZ IST AN DER FLÄCHE GEMESSEN (`pages/MeineEntwuerfe.tsx`, `components/CaptureDraftList.tsx`):
-  //   · Der Ersteller-Filter ist eine ADMIN-Auskunft (`CaptureDraftList.tsx:245` — `isAdmin`); wer
-  //     die Rolle nicht hat, findet ihn nicht. Deshalb steht der Vorbehalt im Satz und nicht daneben
-  //     (Korrekturpflicht 1 aus JOB 3669 R1: keine Bedienung versprechen, die es für den Betrachter
-  //     nicht gibt).
+  //   · Entwürfe sind PRIVAT (Entscheidung Pedi `debbb8e8`): jede Rolle, auch der Administrator,
+  //     sieht hier nur die eigenen (`canSeeDraft`). Der frühere Satz über „Entwürfe aller Ersteller"
+  //     und die Auswahl „Alle Ersteller" ist deshalb fort — die Seite zeigt diese Auswahl nicht mehr
+  //     (`MeineEntwuerfe.tsx`, `isAdmin={false}`).
   //   · „Wiederherstellen"/„Endgültig löschen" sind die Wörter, die der Papierkorb wirklich trägt
   //     (`adm.trash.restore`/`adm.trash.purge`) — kein zweites Wort für dieselbe Handlung.
   //   · KEINE Aufbewahrungsfrist: es gibt keine (JOB 3668, Rückgabe R1). „Von selbst leert er sich
@@ -331,7 +331,7 @@ const de = {
   //     da sind — nur, was mit ihnen geschieht und wo man nachsieht.
   "seitenhilfe.entwuerfe.title": "Meine Entwürfe: begonnene Erfassungen fortsetzen",
   "seitenhilfe.entwuerfe.body":
-    "Hier stehen die Erfassungen, die als Entwurf gespeichert und noch nicht zu einem Wissensobjekt geworden sind — dieselben Entwürfe, die auch der Editor und der Arbeitsraum zeigen, nur an einem eigenen Ort; einen zweiten Entwurfsspeicher gibt es nicht. Als Administrator siehst du hier die Entwürfe aller Ersteller, und die Auswahl „Alle Ersteller“ über der Liste grenzt sie auf eine Person ein; ohne diese Rolle stehen hier nur deine eigenen, und diese Auswahl gibt es dann nicht. Das Suchfeld über der Liste durchsucht ausschließlich diese Entwürfe und kein Wissen aus der Bibliothek, „Sortieren“ ordnet sie nach Stand oder Titel. Gelöschte Entwürfe gehen in den „Papierkorb“ unter der Liste: „Wiederherstellen“ holt einen zurück, „Endgültig löschen“ entfernt ihn wirklich, und von selbst leert sich der Papierkorb nicht. Nächster Schritt: Klick „Fortsetzen“ an einer Zeile — der Entwurf öffnet sich im Editor, und noch nicht gespeicherte Eingaben werden vorher abgefragt; steht die Liste leer da, führt „Erfassen“ dorthin, wo ein neuer Entwurf entsteht.",
+    "Hier stehen die Erfassungen, die als Entwurf gespeichert und noch nicht zu einem Wissensobjekt geworden sind — dieselben Entwürfe, die auch der Editor und der Arbeitsraum zeigen, nur an einem eigenen Ort; einen zweiten Entwurfsspeicher gibt es nicht. Hier stehen nur deine eigenen Entwürfe: Sie sind privat, niemand sonst sieht sie, auch kein Administrator. Das Suchfeld über der Liste durchsucht ausschließlich diese Entwürfe und kein Wissen aus der Bibliothek, „Sortieren“ ordnet sie nach Stand oder Titel. Gelöschte Entwürfe gehen in den „Papierkorb“ unter der Liste: „Wiederherstellen“ holt einen zurück, „Endgültig löschen“ entfernt ihn wirklich, und von selbst leert sich der Papierkorb nicht. Nächster Schritt: Klick „Fortsetzen“ an einer Zeile — der Entwurf öffnet sich im Editor, und noch nicht gespeicherte Eingaben werden vorher abgefragt; steht die Liste leer da, führt „Erfassen“ dorthin, wo ein neuer Entwurf entsteht.",
   // JOB 3337: der Zugang heißt jetzt, was er ist. „Weitere Bereiche" war eine Restekiste,
   // „Schnellnavigation" ein Fachwort — Pedi: „Die Direktfunktion ist … schwer zu erkennen."
   // Die SCHLÜSSEL bleiben, damit kein Aufrufer und kein Pin ins Leere greift.
@@ -3808,6 +3808,9 @@ const de = {
   // Meinung: `tests/pruefen-volltext/pruefen-brett-gemountet.test.tsx` (C4) misst zuerst, ob der
   // Filter den Inhalt findet, und leitet daraus ab, was hier stehen MUSS. Wird der Inhalt eines
   // Tages durchsucht, wird dieser Fall rot und verlangt die Rückkehr zu „Volltext filtern …".
+  // NACHTRAG Aufnahme 20260922 · Prüfboard-Bedienung (N-0072): der Inhalt WIRD jetzt durchsucht.
+  // Das Feld trägt seitdem `pruefboard.volltextFiltern` (apps/web/src/texte/pruefboard.ts). Dieser
+  // Wert bleibt unverändert stehen, weil der Umzugsnachweis (tests/i18n-textmodule) ihn festhält.
   "val.filter": "Filtern (ohne ausführlichen Inhalt) …",
   "val.filterAllTypes": "Alle Wissensarten",
   "val.filterAllCategories": "Alle Kategorien",
@@ -5545,7 +5548,7 @@ const de = {
   "klara.page.start":
     "Dein Überblick: was frisch gesichert wurde, was heute geholfen hat und was auf dich wartet. Von hier springst du direkt in jeden Bereich.",
   "klara.page.tasks":
-    "Deine offenen Aufgaben: zugewiesene Prüfungen, Lücken und Fälligkeiten — mit direktem Absprung zur jeweiligen Arbeit.",
+    "Offene Aufgaben: fällige Prüfungen, Lücken und Fälligkeiten — mit direktem Absprung zur jeweiligen Arbeit.",
   "klara.page.capture":
     "Hier sicherst du Erfahrungswissen: erzählen, diktieren, im Interview oder aus einer Datei. Die KI strukturiert nur — du prüfst und reichst ein.",
   "klara.page.ask":
@@ -5849,9 +5852,9 @@ const de = {
   "help.library.title": "Bibliothek & Wissensobjekt",
   "help.library.body":
     "Die Bibliothek ist der gesamte Wissensbestand an einem Ort. Über das Suchfeld oben findest du einen Eintrag; Filter, Sortierung, gespeicherte Sichten und Export liegen im Menü „…“ über der Liste. Ein Klick öffnet das Wissensobjekt: seine Aussage, sein Stand und seine Quelle stehen sofort da; Quellen und Anhänge, Versionen, Historie, Kommentare und gemeldete Widersprüche liegen hinter „Mehr“. Auf einem schmalen Gerät trägt immer nur eines von beiden die Fläche — entweder die Liste oder der Eintrag. Nächster Schritt: einen Eintrag anklicken, die Aussage lesen und „Mehr“ öffnen.",
-  "help.tasks.title": "Meine Aufgaben",
+  "help.tasks.title": "Offene Aufgaben",
   "help.tasks.body":
-    "Hier steht deine eigene Arbeit an einer Stelle: Objekte, die auf deine Prüfung in der Validierung warten, Rückfragen an dich, gemeldete Widersprüche, offene Wissenslücken und Objekte, die nach einer Anlagenänderung noch einmal bestätigt werden sollen. Ein farbiger Punkt zeigt die Dringlichkeit, die Knopfreihe darüber grenzt die Liste auf eine Art ein, und das „i“ an einer Zeile sagt, was dort zu tun ist. Jede Zeile führt genau dorthin, wo die Sache erledigt wird — sofern deine Rolle diesen Bereich sehen darf. Nächster Schritt: die oberste Zeile anklicken und sie abarbeiten.",
+    "Hier steht die offene Arbeit an einer Stelle: Objekte, die auf deine Prüfung in der Validierung warten, Rückfragen an dich, gemeldete Widersprüche, offene Wissenslücken und Objekte, die nach einer Anlagenänderung noch einmal bestätigt werden sollen. Ein farbiger Punkt zeigt die Dringlichkeit, die Knopfreihe darüber grenzt die Liste auf eine Art ein, und das „i“ an einer Zeile sagt, was dort zu tun ist. Jede Zeile führt genau dorthin, wo die Sache erledigt wird — sofern deine Rolle diesen Bereich sehen darf. Nächster Schritt: die oberste Zeile anklicken und sie abarbeiten.",
   "help.risk.title": "Risiko & Lücken",
   "help.risk.body":
     "Diese Seite zeigt, wo Wissen fehlt und wo es an einem einzigen Menschen hängt. Zu jeder offenen Wissenslücke steht der nächste Schritt dabei: die Dringlichkeit einschätzen, sie einer Fachperson zuweisen oder sie mit „Wissen erfassen“ schließen. Daneben sind die Fachgebiete danach eingefärbt, von wie vielen Personen das dort festgehaltene Wissen stammt — rot heißt: alles kam von einer einzigen Person, niemand sonst hat bisher dazu beigetragen. Was dagegen hilft, steht an der roten Zeile selbst. Nächster Schritt: eine rote Zeile ansehen, ihre Objekte öffnen und die dringendste Lücke jemandem zuweisen.",
@@ -6508,8 +6511,14 @@ const de = {
   "chelp.captureTitle.body":
     "Der Titel ist das Erste, was Kollegen in Bibliothek und Antworten sehen — er entscheidet, ob dein Wissen gefunden wird. Gut: konkret und handlungsnah („Schweißnaht bei Aluminium unter 5 mm prüfen“). Du kannst ihn jederzeit ändern, auch der KI-Vorschlag ist nur ein Startpunkt.",
   "chelp.saveDraftHelp.title": "Entwurf speichern",
+  // AUFNAHME gesamt-entwurf-einreichen · Entscheidung Pedi `debbb8e8` („Beides“): Standardfall ist
+  // der PRIVATE Entwurf am Server, NUR für die Autorin sichtbar (auch kein Administrator,
+  // `canSeeDraft`), auf allen eigenen Geräten fortsetzbar — deshalb „Nur du siehst ihn“ statt
+  // „Niemand sieht ihn“ (`tests/entwurf-einreichen/hilfetext-entwurf-am-server.test.ts`). Der Weg
+  // „Mehr“ → Entwürfe stammt aus `gesamt-erfassung-einstieg` (R-1000: jedes Zitat ist eine
+  // Beschriftung des Blattes); der Menüpunkt `mob.drafts` steht ohne Anführungszeichen daneben.
   "chelp.saveDraftHelp.body":
-    "Sichert deinen Zwischenstand auf dem Server unter deinem Konto — du kannst jederzeit weitermachen, auch auf einem anderen Gerät. Ein Entwurf ist NICHT eingereicht: Niemand sieht ihn, er taucht in keiner Prüfung und keiner Antwort auf. Gespeicherte Entwürfe findest du unter „Mehr“ → Entwürfe.",
+    "Sichert deinen Zwischenstand privat auf dem Server — du kannst jederzeit weitermachen, auf jedem deiner Geräte und auch nach einem Neustart. Ein Entwurf ist NICHT eingereicht: Nur du siehst ihn, er taucht in keiner Prüfung und keiner Antwort auf. Deine gespeicherten Entwürfe findest du zum Fortsetzen unter „Mehr“ → Entwürfe und im Menü unter Meine Entwürfe.",
   "chelp.discardHelp.title": "Verwerfen",
   "chelp.discardHelp.body":
     "Verwirft die aktuelle Eingabe — Text, Struktur und Anhänge dieser Erfassung. Es betrifft NUR diese Eingabe: Bereits eingereichte Wissensobjekte und gesicherte Entwürfe bleiben unberührt. Vorher fragt die App bewusst nach.",

@@ -54,6 +54,21 @@
 - Offen: Export an einen Trace-/Metrik-Sammler, Verknüpfung erzeugter Gegenstände mit späteren
   Entwürfen/KOs, Anzeige des Fehlergrunds. Nicht geprüft: echte Modell-API, PostgreSQL, Browser.
 
+## 03.10.2026 — Erstnutzerführung: ausgelagerte Zielzustände (Folgeauftrag `…-quellen`)
+
+- R-1012 (OFFEN.md U4, SCRUM-474): Das Blatt „Über KLARWERK“ (Start → „…“) trägt die
+  Fähigkeitsübersicht „Was KLARWERK kann“: erfassen → prüfen → finden, acht Bereiche mit je einem
+  Satz und einem Weg. Namen und Ziele kommen aus `app/navigation.ts` (`lib/faehigkeiten.ts`), die
+  Texte DE/EN/NL aus `texte/erstnutzer.ts`. Das Sichtfeld von `/start` ist unverändert.
+  Test: `tests/erstnutzerfuehrung/faehigkeitsuebersicht.test.tsx`. Der Startziel-Sammler (mega51)
+  ist nachgeführt.
+- Zugeordnet mit Belegen: R-0455 (Artefakte nicht auffindbar, Kriterium abgeleitet), R-0928
+  (eigene Einstiegsseiten offen), R-1675 (Kacheln geliefert und abgelöst), R-0939 (Erhebung mit
+  Abbruchstellen geliefert; höchste: keine Meldung an die Autorin bei Freigabe). Drei Fragen an Pedi:
+  `tests/erstnutzerfuehrung/README.md`.
+- Nicht geprüft: Nachtest mit Menschen, Browser-Lauf des H5-Funktionsinventars mit der erweiterten
+  Übersicht.
+
 ## 01.10.2026 — Erstnutzer-Hürden U2/U3 im Browser (Revision 9)
 
 - Neue Playwright-Sonde `tests-smoke/erstnutzer-u2-u3-browser.spec.ts`: U2 (Suchraum der Bibliothek
@@ -159,6 +174,16 @@ R-0020 gilt unverändert für **Speichern UND Einreichen**, auch bei verlorener 
   Nutzlastwechsel ohne Benutzerhandlung nicht bekannt, aber nicht ausgeschlossen. Eine sichtbare
   Erklärung „war bereits gespeichert" (R-0156) gibt es nicht — die Wiederholung meldet den
   normalen Speichererfolg.
+
+## 29.09.2026 — Auditprotokoll: Änderung und Beleg gemeinsam oder gar nicht (Lauf 3)
+
+- Audit-Kette: Vorgänger lesen und anhängen als ein Schritt (`AuditRepo.appendNext`; PostgreSQL unter
+  `pg_advisory_xact_lock`, auch zwischen Instanzen). Erfassen, Ändern und Validieren eines
+  Wissensobjekts schreiben Objekt und Auditeintrag mit `withTx` in einer Transaktion; ohne sie mit
+  Rücknahme und `ko.change-rolled-back`. Löst WP-SHIP8-CLOSE-5 ab.
+- Export der Kette (`GET /api/audit/export`), `library.export`, `ko.revalidated`, Objektkette.
+- Details, Belege, Grenzen: `docs/entscheidungen/gesamt-auditprotokoll.md`. PostgreSQL-Integration
+  (`tests/audit-gesamt/*.integration.test.ts`) auf dem Prüfserver noch zu fahren.
 
 ## 29.09.2026 — Bildidentität: die Kennung kommt vom Bild (Aufnahme gesamt-bildidentitaet, Lauf 3)
 

@@ -198,6 +198,76 @@ export interface FakeDokumentEinstellungen {
   speichernScheitert?: boolean;
   /** Vom Test übergebenes Ziel: hier landet, was `saveAsync` dauerhaft gemacht hat. */
   gespeichert?: Record<string, unknown>;
+  /**
+   * Word-Host-Gesamtweg (Realhostbeleg 06.10.2026): echtes Word antwortet auf `saveAsync` SPÄTER
+   * als der Sendeweg endet. Gesetzt, ruft die Attrappe den Rückruf NICHT sofort, sondern legt ihn
+   * in `ausstehend` ab; der Test löst ihn selbst aus. Ob Erfolg oder Fehler, entscheidet
+   * `speichernScheitert` zum Zeitpunkt des Auslösens.
+   */
+  verzoegert?: boolean;
+  /** Bei `verzoegert`: die noch nicht beantworteten `saveAsync`-Aufrufe, in Aufrufreihenfolge. */
+  ausstehend?: Array<() => void>;
+}
+
+/**
+ * Word-Host-Gesamtweg (Realhostbeleg 06.10.2026): `Word.run` → `getSelection().text`.
+ *
+ * NUR WENN DIESE OPTION GESETZT IST, gibt es `Word` — ohne sie bleibt es wie bisher ungesetzt.
+ *   "sofort"     — die Auswahl antwortet mit `text`.
+ *   "nie"        — `context.sync` antwortet nie (der Rückruf bleibt aus).
+ *   "verzoegert" — die Antwort liegt in `ausstehend`; der Test löst sie selbst aus.
+ *   "wirft"      — `Word.run` wirft synchron.
+ * `laeufe` zählt die `Word.run`-Aufrufe (auch die des Panels beim Laden).
+ */
+export interface FakeWordAuswahl {
+  lage: "sofort" | "nie" | "verzoegert" | "wirft";
+  text: string;
+  ausstehend?: Array<() => void>;
+  laeufe?: number;
+}
+
+function buildFakeWord(wa: FakeWordAuswahl): Record<string, unknown> {
+  return {
+    run: (fn: (kontext: unknown) => unknown): Promise<unknown> => {
+      wa.laeufe = (wa.laeufe ?? 0) + 1;
+      if (wa.lage === "wirft") {
+        throw new Error("Word.run nicht verfügbar");
+      }
+      const auswahl: { text?: string; load: (felder: string) => void } = {
+        load: () => undefined,
+      };
+      // Nur ein Lauf, der die AUSWAHL liest, folgt der Lage; andere Lesungen antworten sofort.
+      let auswahlGelesen = false;
+      const sync = (): Promise<void> => {
+        if (!auswahlGelesen) {
+          return Promise.resolve();
+        }
+        if (wa.lage === "nie") {
+          return new Promise<void>(() => undefined);
+        }
+        if (wa.lage === "verzoegert") {
+          return new Promise<void>((fertig) => {
+            wa.ausstehend ??= [];
+            wa.ausstehend.push(() => {
+              auswahl.text = wa.text;
+              fertig();
+            });
+          });
+        }
+        auswahl.text = wa.text;
+        return Promise.resolve();
+      };
+      // Ein leerer, lesbarer Dokumentkörper: das Panel liest ihn beim Laden (Begriffsbild) — wie
+      // in den vorhandenen Word-Attrappen, ohne Schreibweg.
+      const body = { text: "", load: () => undefined, getHtml: () => ({ value: "" }) };
+      const getSelection = (): typeof auswahl => {
+        auswahlGelesen = true;
+        return auswahl;
+      };
+      const kontext = { document: { getSelection, body }, sync };
+      return Promise.resolve().then(() => fn(kontext));
+    },
+  };
 }
 
 function buildFakeOffice(
@@ -205,6 +275,7 @@ function buildFakeOffice(
   selectionText: string,
   docx: FakeDocxDatei | undefined,
   einstellungen?: FakeDokumentEinstellungen,
+  auswahlHaengt?: boolean,
 ): Record<string, unknown> {
   const coercion = { Html: "html", Text: "text" };
   const asyncStatus = { Succeeded: "succeeded", Failed: "failed" };
@@ -217,6 +288,10 @@ function buildFakeOffice(
       // JOB 3057 K2: der TEXT-Zugriff speist die Markierungskarte (und die Frage-Herkunft).
       // Grundwert bleibt leer — bestehende Faelle stellen keine Textmarkierung und sollen
       // durch die Karte nicht ploetzlich eine bekommen.
+      // Word-Host-Gesamtweg: `auswahlHaengt` bildet Word im Web nach — der Rückruf bleibt AUS.
+      if (auswahlHaengt) {
+        return;
+      }
       callback({ status: asyncStatus.Succeeded, value: selectionText });
     },
   };
@@ -238,14 +313,25 @@ function buildFakeOffice(
         arbeitskopie[name] = wert;
       },
       saveAsync: (callback: (r: { status: string; error?: { message: string } }) => void): void => {
-        if (einstellungen.speichernScheitert) {
-          callback({ status: asyncStatus.Failed, error: { message: "Speichern fehlgeschlagen" } });
+        const antworten = (): void => {
+          if (einstellungen.speichernScheitert) {
+            callback({
+              status: asyncStatus.Failed,
+              error: { message: "Speichern fehlgeschlagen" },
+            });
+            return;
+          }
+          if (einstellungen.gespeichert) {
+            Object.assign(einstellungen.gespeichert, arbeitskopie);
+          }
+          callback({ status: asyncStatus.Succeeded });
+        };
+        if (einstellungen.verzoegert) {
+          einstellungen.ausstehend ??= [];
+          einstellungen.ausstehend.push(antworten);
           return;
         }
-        if (einstellungen.gespeichert) {
-          Object.assign(einstellungen.gespeichert, arbeitskopie);
-        }
-        callback({ status: asyncStatus.Succeeded });
+        antworten();
       },
     };
   }
@@ -306,6 +392,10 @@ export interface KlaraPanelOptions {
   docxDatei?: FakeDocxDatei;
   /** R-0169 (Nacharbeit 8): schaltet `Office.context.document.settings` frei (Vorgabe: aus). */
   dokumentEinstellungen?: FakeDokumentEinstellungen;
+  /** Word-Host-Gesamtweg: `getSelectedDataAsync(Text)` antwortet nie (Vorgabe: aus). */
+  auswahlHaengt?: boolean;
+  /** Word-Host-Gesamtweg: setzt ein `Word` mit steuerbarer Auswahl (Vorgabe: kein `Word`). */
+  wordAuswahl?: FakeWordAuswahl;
 }
 
 export interface KlaraPanel {
@@ -460,13 +550,21 @@ export function createKlaraPanel(options: KlaraPanelOptions = {}): KlaraPanel {
       options.selectionText ?? "",
       options.docxDatei,
       options.dokumentEinstellungen,
+      options.auswahlHaengt,
     );
     globals.Office = office;
     globals.window.Office = office;
   }
   // `Word` bleibt bewusst ungesetzt: der Auswahl-Weg braucht es nicht, und ein halb gefaelschtes
-  // Word.run wuerde einen Pfad vortaeuschen, den dieser Test nicht deckt.
-  entfernen("Word");
+  // Word.run wuerde einen Pfad vortaeuschen, den dieser Test nicht deckt. Ausnahme: `wordAuswahl`
+  // setzt ausdrücklich den Lesezugriff `getSelection().text` — und nichts sonst.
+  if (options.wordAuswahl !== undefined) {
+    const word = buildFakeWord(options.wordAuswahl);
+    globals.Word = word;
+    globals.window.Word = word;
+  } else {
+    entfernen("Word");
+  }
 
   // --- 5. DOM aufbauen und das AUSGELIEFERTE Skript ausfuehren -----------------------------------
   globals.document.body.innerHTML = markup;

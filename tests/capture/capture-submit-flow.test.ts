@@ -100,7 +100,9 @@ describe("KW-PROD-29: Frontdoor Save/Submit State", () => {
     const i18nSource = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
 
     expect(source).toContain("draftScopeLabel");
-    expect(source).toContain("Admin-Ansicht: alle Entwürfe");
+    // Entscheidung Pedi `debbb8e8`: Entwürfe sind privat — auch die Admin-Ansicht sieht nur die
+    // eigenen. Die Plakette „Admin-Ansicht: alle Entwürfe" wäre eine falsche Reichweitenangabe.
+    expect(source).not.toContain("Admin-Ansicht: alle Entwürfe");
     expect(source).toContain("Meine Entwürfe");
     expect(listSource).toContain("formatDraftTimestamp");
     expect(listSource).toContain("draftAuthorName");

@@ -170,6 +170,17 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/app/k1-word-addin-origin-panel.test.ts": "zusammengesetzt,panelquelle",
   "tests/app/ka2-vertrag-bestandsblick.test.ts": "pfad,panelquelle",
   "tests/app/ka3-fokusverhalten.test.tsx": "pfad,rueckweg,marken,panelquelle",
+  // AUFNAHME 20260922 · GESAMT-BESTANDSBLICK: der Wirkungsnachweis, dass der Bestandsblick mit dem
+  // aktuellen Dokument fragt. Er laedt das GANZE Fenster (rueckweg.js und das ueber `panelQuelleAus`
+  // zusammengefuegte Dokument) und nennt Taskpane und Rueckweg ueber ihr Pfadliteral — Griffe
+  // `pfad`, `rueckweg` und `panelquelle`, keine Marken, keine Fixture. A2b haelt den Eintrag fest.
+  "tests/app/ka3-bestandsblick-aktueller-stand.test.tsx": "pfad,rueckweg,panelquelle",
+  // Integration mit `main` (Nacharbeit 13): zwei Dateien aus `main` (Verwaltungsbereiche 8d9ff6b2 /
+  // Suchraum 22d6b201), die das Pfadliteral von `taskpane.html` tragen. `aufrufer-waechter` nennt
+  // es in einer Begründung, `bedarfsabgleich` liest die Datei. GEMESSEN, NICHT GESETZT: A2 meldete
+  // genau diese zwei Pfade als `neu im Baum, aber nicht gepinnt`; Griff `pfad`, kein anderes Muster.
+  "tests/capture/aufrufer-waechter.test.ts": "pfad",
+  "tests/k3-bedarfsabgleich/bedarfsabgleich.test.ts": "pfad",
   "tests/app/klara-ai-header.test.ts": "pfad,marken,panelquelle",
   "tests/app/klara-ai-session-consent.test.ts": "pfad,marken,panelquelle",
   // Der wichtigste Mitfahrer überhaupt: die Fixture selbst schneidet Rumpf und Skript aus der
@@ -212,6 +223,11 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/app/w1-klara-vertrauenskopf.test.ts": "pfad,marken,panelquelle",
   "tests/app/w6-dublettenweg-checktext.test.ts": "pfad,marken,panelquelle",
   "tests/app/word-addin-ask.test.ts": "pfad,rueckweg,marken,panelquelle",
+  // Word-Host-Gesamtweg (Nacharbeit 6/7, Realhostbeleg 06.10.2026): die Gegenproben zum
+  // Auswahlzugriff (W1–W9) fahren das ganze Fenster über `createKlaraPanel`. In Nacharbeit 6 standen
+  // sie in `word-addin-ask.test.ts` (dort GEMESSEN grün, Kandidat 26e86268); umgezogen, weil jene
+  // Datei einen fremden, unveränderten Quelltext-Pin rot trägt. Griff abgelesen, nicht gemessen.
+  "tests/app/word-addin-auswahlzugriff.test.ts": "fixture",
   "tests/app/word-addin-csp.test.ts": "pfad,panelquelle",
   "tests/app/word-addin-taskpane-cache.test.ts": "pfad",
   "tests/app/word-addin-taskpane-version-contract.test.ts": "zusammengesetzt,marken,panelquelle",
@@ -404,6 +420,12 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // Panel-Fixture importiert sie nicht. A2 hat sie gemeldet, das Verzeichnis nimmt sie nicht
   // still auf.
   "tests/ki-fragment-sichtbar/flaeche-klara-panel.test.ts": "pfad,rueckweg,panelquelle",
+  // AUFNAHME 20260922 · GESAMT-VERTRAULICHKEIT-ERFASSUNG (R-0632/N11): die Stufenwahl im Panel bis
+  // zum gespeicherten Entwurf. Sie baut das GANZE Fenster in jsdom (Pfadliteral `taskpane.html`,
+  // gelesen über `panelQuelleAus`), lädt `rueckweg.js` davor und führt das Skript unverändert aus —
+  // ein echter Mitfahrer mit drei Griffen. A2 hat sie nach der Integration mit main 38508a1e
+  // gemeldet (Prüflauf zu 83c9a4b8).
+  "tests/vertraulichkeit-pflicht/word-panel-stufenwahl.test.tsx": "pfad,rueckweg,panelquelle",
   // JOB 3512 DEMO-FIRMEN-CI VERBRAUCHER (10.09.2026): die Firmen-CI in Klara/Word. Zwei echte
   // Mitfahrer, mit zwei verschiedenen Griffen — und beide GEMESSEN, nicht gesetzt:
   //   · `marke-quelle.test.ts` nennt `apps/web/public/word-addin/taskpane.html` als Literal
@@ -476,6 +498,10 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/office-web-anmeldung/uebergabe-keine-auskunft.test.ts": "pfad",
   "tests/office-web-anmeldung/uebergabe-ohne-cookie.test.ts": "pfad",
   "tests/office-web-anmeldung/uebergabe-vertrag.test.ts": "pfad",
+  // Aufnahme m365-anmeldung Runde 2 (25.09.2026, R-0355-Restfall SSO): liest die ausgelieferte
+  // Dialogseite (`word-addin/anmeldung.html`) und prüft ihren SSO-Start — Griff `pfad`. A2 hat sie
+  // gemeldet („neu im Baum, aber nicht gepinnt"), erst danach wurde diese Zeile angefasst.
+  "tests/office-web-anmeldung/sso-rueckweg-zur-dialogseite.test.ts": "pfad",
   // JOB 3667 WORD-RÜCKWEG (14.09.2026): der Rückweg aus Word auf DASSELBE Wissensobjekt wohnt im
   // Inline-Skript von `taskpane.html` (Block KW-RUECKWEG). Drei seiner Prüfstände greifen die Datei
   // an, mit drei verschiedenen Griffen — GEMESSEN an denselben Mustern, die dieser Fall benutzt,
@@ -562,6 +588,10 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // nicht gepinnt` mit genau diesem Pfad. Sie las `taskpane.html` direkt und liest seither über
   // `panelQuelleAus` — daher der Griff `panelquelle` (abgelesen, nicht gemessen).
   "tests/r1864-w9-zuordnung/w9-quelle-und-zuordnung.test.ts": "pfad,marken,panelquelle",
+  // Word-Host-Gesamtweg (Nacharbeit 3): die Gegenprobe am Draht zum COOP-Kopf der Dialogseite nennt
+  // das Taskpane-Pfadliteral als Gegenpfad — Griff `pfad`. GEMESSEN, NICHT GESETZT: der Prüflauf
+  // am Kandidaten 26e86268 meldete A2 `neu im Baum, aber nicht gepinnt` mit genau diesem Pfad.
+  "tests/office-web-anmeldung/dialog-opener-kopf.test.ts": "pfad",
 };
 
 // ------------------------------------------------------------------------------------------------
@@ -637,6 +667,21 @@ describe("JOB 3014 · A — die Mitfahrer der Zerlegung, abgeleitet statt behaup
     expect(neu, "neu im Baum, aber nicht gepinnt — Verzeichnis nachfuehren").toEqual([]);
     expect(weg, "gepinnt, aber im Baum nicht mehr gefunden").toEqual([]);
     expect(anders, "der Griff hat sich geaendert — Verzeichnis nachfuehren").toEqual([]);
+  });
+
+  // AUFNAHME 20260922 · ZERLEGUNG-AUFRAEUMEN (Bens Befund K1, Nacharbeit 2): A2 allein bestaetigt
+  // nur den Bestand, den es vorfindet — fehlt der Bestandsblick-Mitfahrer im Baum UND im
+  // Verzeichnis, ist A2 trotzdem gruen. A2b verlangt ihn deshalb ausdruecklich: Datei im Baum,
+  // vom Sammler gefunden, gepinnt, und der gepinnte Griff ist der abgeleitete.
+  it("A2b · der Bestandsblick-Mitfahrer ist im Baum, gefunden und mit seinem Griff gepinnt", () => {
+    const datei = join("tests", "app", "ka3-bestandsblick-aktueller-stand.test.tsx");
+    const kurz = datei.split(sep).join("/");
+    expect(existsSync(join(REPO_WURZEL, datei)), `${kurz} fehlt im Baum`).toBe(true);
+    expect(ALLE, `${kurz} vom Sammler nicht erfasst`).toContain(datei);
+    const abgeleitet = GEFUNDEN.get(datei);
+    expect(abgeleitet, `${kurz} greift das Fenster nicht an`).toBeDefined();
+    expect(MITFAHRER[kurz], `${kurz} fehlt im gepinnten Verzeichnis`).toBeDefined();
+    expect(MITFAHRER[kurz]).toBe((abgeleitet ?? []).join(","));
   });
 
   it("A3 · jeder Griff ist kalibriert: Positivdatei greift, Gegenprobe greift NICHT", () => {

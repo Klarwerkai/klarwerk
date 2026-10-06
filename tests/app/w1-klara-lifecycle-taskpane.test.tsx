@@ -1435,10 +1435,32 @@ describe("JOB 1151 KA3: die Karte kommt auf Anlass — und nimmt nie den Cursor"
     doc.setSelectedDataAsync = () => {
       schreibversuche.push("setSelectedDataAsync");
     };
+    // Aufnahme 20260922 (gesamt-bestandsblick, Runde 2): KA3 liest vor dem Bestandsblick nach der
+    // Schreibruhe das Dokument NEU (KA1-Begriffsbild zum aktuellen Stand, Bens Befund 1). Ein
+    // `Word.run` ist deshalb kein Schreibversuch mehr an sich. Die Attrappe fuehrt den Rueckruf
+    // aus und trennt: die drei Lesezugriffe von `readWholeDocument` (`body.load`, `body.getHtml`,
+    // `context.sync`) sind erlaubt, JEDER andere Zugriff auf Dokument oder Koerper wird als
+    // Schreibversuch gezaehlt. Die Zusicherung „KA3 fasst keinen Schreibweg an" bleibt so scharf.
+    const lesend = new Set(["body", "text", "load", "getHtml", "then"]);
+    const schreibend = (wo: string, ziel: Record<string, unknown>) =>
+      new Proxy(ziel, {
+        get(t, name) {
+          if (typeof name === "string" && !lesend.has(name)) {
+            schreibversuche.push(`${wo}.${name}`);
+          }
+          return Reflect.get(t, name);
+        },
+      });
     (window as unknown as { Word?: unknown }).Word = {
-      run: () => {
-        schreibversuche.push("Word.run");
-        return Promise.resolve();
+      run: (rueckruf: (kontext: unknown) => unknown) => {
+        const body = schreibend("body", {
+          text: "Homeoffice Anweisung Reisekosten Dienstreise Genehmigung Fahrtkosten",
+          load: () => undefined,
+          getHtml: () => ({ value: "<p>Homeoffice Anweisung Reisekosten</p>" }),
+        });
+        const dokument = schreibend("document", { body });
+        const kontext = { document: dokument, sync: () => Promise.resolve() };
+        return Promise.resolve().then(() => rueckruf(kontext));
       },
       InsertLocation: { replace: "replace" },
     };

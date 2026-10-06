@@ -341,11 +341,12 @@ describe("G27 Welle 1 · Korrektur · der Metadatenfehler nimmt die eigene Inhal
     ]);
   });
 
-  it("Benannte Grenze: die einfache Erstanlage hat keine Rücknahmeklammer — der Nachzug heilt sie", async () => {
-    // KEINE stille Ausweitung: `finishCreated` (Version 1 über `create`) bleibt ausdrücklich
-    // untransaktional (WP-SHIP8-CLOSE-5). Das Wissensobjekt BLEIBT nach dem Fehler im Bestand —
-    // eine Inhaltszeile dazu ist deshalb keine Karteileiche, sondern die Zeile eines existierenden
-    // Objekts. Zuständig ist hier der idempotente Nachzug, nicht die Kompensation.
+  it("Erstanlage mit Rücknahmeklammer: der Metadatenfehler nimmt Objekt und eigene Inhaltszeile mit", async () => {
+    // AUFNAHME 20260922 · gesamt-auditprotokoll (Lauf 3) — hier stand bis dahin die
+    // benannte Grenze „die einfache Erstanlage hat keine Rücknahmeklammer" (WP-SHIP8-CLOSE-5): das
+    // Objekt BLIEB nach dem Fehler im Bestand, ohne `ko.created`, und nur ein späterer Nachzug hätte
+    // es geheilt. Das ist die Lücke im Protokoll, die Ben gemessen hat. `finishCreated` nimmt die
+    // Anlage jetzt so zurück wie die Erstanlage aus Dokumenten: kein Objekt, keine Inhaltszeile.
     const { repo, projections, ko } = await stack();
     brichNächstenMetadatenWrite(projections);
 
@@ -353,14 +354,17 @@ describe("G27 Welle 1 · Korrektur · der Metadatenfehler nimmt die eigene Inhal
       /Metadatenspeicher/,
     );
 
-    const angelegt = (await repo.list({}))[0];
-    expect(angelegt).toBeDefined();
-    // Der Nachzug stellt BEIDE Hälften her — es bleibt kein halbes Suchdokument.
-    const nachgezogen = await ko.ensureSearchProjection(angelegt?.id ?? "");
-    expect(nachgezogen?.koVersion).toBe(1);
+    expect(await repo.list({})).toEqual([]);
+    expect(await projections.count()).toBe(0);
+    expect(await projections.metadata.count()).toBe(0);
+    expect(await ko.findSearchHits({ terms: ["nachzugswort"] })).toEqual([]);
+
+    // Die Wiederholung legt das Objekt vollständig an — beide Hälften des Suchdokuments.
+    const angelegt = await ko.create({ ...EINGABE, bodyHtml: "<p>NACHZUGSWORT</p>" });
+    expect(await projections.count()).toBe(1);
     expect(await projections.metadata.count()).toBe(1);
     expect((await ko.findSearchHits({ terms: ["nachzugswort"] })).map((h) => h.koId)).toEqual([
-      angelegt?.id,
+      angelegt.id,
     ]);
   });
 });

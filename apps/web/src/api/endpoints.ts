@@ -16,6 +16,7 @@ import type {
   AssignmentSummary,
   AssistPreset,
   AssistResult,
+  AuditChainExport,
   AuditEntry,
   AuditVerifyReport,
   BearbeitungsLage,
@@ -215,7 +216,16 @@ export type KoAction =
   // R-0247: `duplicateAcknowledged` ist die ausdrückliche Bestätigung „offene Dublette gesehen".
   // Sie wird NUR mitgeschickt, wenn sie gegeben wurde; ohne offene Dublette bleibt die Nutzlast
   // unverändert.
-  | { action: "rate"; verdict: Verdict; duplicateAcknowledged?: true }
+  // R-0238: `widerspruch` NUR an der Ablehnung — das Objekt, dem widersprochen wird, und die Art.
+  // Der Server legt dann im selben Aufruf einen Konfliktvorschlag an (`ko-routes.ts`, `rate`).
+  | {
+      action: "rate";
+      verdict: Verdict;
+      duplicateAcknowledged?: true;
+      widerspruch?: { koB: string; type: ConflictType; description: string };
+      // R-0238 · Nacharbeit 8: nur die fehlenden Konfliktschritte, ohne neue Bewertung.
+      fortsetzungFuerFassung?: number;
+    }
   // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die Validierung komplett ab.
   | { action: "admin-validate"; duplicateAcknowledged?: true }
   | { action: "assign"; userIds: string[] }
@@ -956,6 +966,12 @@ export const endpoints = {
     // SCRUM-439: aktive Integritätsprüfung der Audit-Kette (Admin-Knopf „Integrität geprüft").
     // AUFTRAG-mega14 Block A: der Bericht nennt jetzt auch die URSACHE einer Abweichung.
     verify: () => api.get<AuditVerifyReport>("/audit/verify"),
+    // R-0613: die ganze Kette samt Kopf als Datei; der Abruf wird selbst protokolliert.
+    exportChain: () => api.get<AuditChainExport>("/audit/export"),
+    // R-0766 (Lauf 2): Kennungen aller Konflikte und Überschneidungen eines Objekts, auch
+    // abgeschlossener — damit die Kette am Objekt Altbelege ohne Objektbezug zuordnen kann.
+    koFindings: (koId: string) =>
+      api.get<{ ids: string[] }>(`/audit/ko/${encodeURIComponent(koId)}/findings`),
   },
   // SCRUM-121: Objekt-/Attachment-Speicher — Original via Referenz statt Inline im KO.
   objects: {

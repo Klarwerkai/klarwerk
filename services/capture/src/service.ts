@@ -4,6 +4,7 @@ import {
   type DokumentHerkunft,
   type KoSource,
   createOperationFingerprint,
+  isConfidentialityDowngrade,
   isValidConfidentiality,
 } from "../../knowledge-object";
 import { sanitizeHtml } from "../../structure";
@@ -496,6 +497,63 @@ function mergeDraftPayload(base: DraftPayload, changes: DraftPayload): DraftPayl
   return merged as DraftPayload;
 }
 
+// ================================================================================================
+// R-0632 · EINE GESPEICHERTE STUFE EINES WORD-ENTWURFS WIRD NUR ANGEHOBEN, NIE GESENKT.
+// ================================================================================================
+//
+// Der Originalpunkt (R-0632) spricht vom „aus Word eingereichten Entwurf": im Panel wählt der
+// Mensch die Stufe mit einem Klick, und eine einmal gespeicherte Stufe kann später nur angehoben
+// werden. Geprüft wird deshalb genau dort, wo ein gespeicherter Entwurf fortgeschrieben wird —
+// `continueDraft`, über den auch der Promote seinen mitgeschickten Rumpf schreibt.
+//
+// ABGEGRENZT, ausdrücklich: (1) NUR Entwürfe mit `origin: "word_addin"` — für Entwürfe des Blatts
+// nennt keine Quelle diese Regel, und dort korrigiert der Mensch seine Wahl vor dem Einreichen.
+// (2) NUR eine GÜLTIGE gespeicherte Stufe zählt; ein Entwurf ohne Stufe hat nichts zu senken.
+// (3) Am WISSENSOBJEKT gilt weiterhin SCRUM-509 (Senken mit Prüfer-/Admin-Rolle). Dass R-0632
+// dort „nie gesenkt" verlangt und Q3d/Validierungsbestand berechtigte Herabstufungen kennen, ist
+// ein offener Quellenwiderspruch — er wird hier nicht durch eine stille Rollenänderung entschieden.
+/**
+ * R-0632 (BEN-Befund, Nacharbeit 5): unterliegt dieser Entwurf der Word-Herabstufungssperre?
+ *
+ * DER BEFUND: bis hierher fragte die Sperre nach der Herkunft IN DER NUTZLAST. Die ist änderbar —
+ * ein erstes `PUT {origin: "frontdoor"}` ließ die Stufe stehen und bestand die Prüfung, das zweite
+ * `PUT {confidentiality: "intern"}` traf dann einen Entwurf, der nicht mehr als Word-Entwurf galt.
+ *
+ * DIE REGEL: maßgeblich ist die Marke `stufeNurAnheben` am DRAFT (nicht im Payload). Sie entsteht
+ * beim Anlegen eines Word-Entwurfs und bei jedem Schreiben eines Altbestands, der noch
+ * `origin: "word_addin"` trägt; kein Rumpf kann sie setzen oder entfernen, weil `continueDraft`
+ * ausschließlich die Nutzlast mischt. Die Herkunft selbst bleibt änderbar wie bisher (gepinnt in
+ * `service.test.ts`, „leer"/„unbekannt" verwerfen eine gültige Herkunft) — sie entscheidet nur
+ * nicht mehr über die Sperre.
+ */
+function unterliegtWordSperre(draft: Draft): boolean {
+  return draft.stufeNurAnheben === true || draft.payload.origin === "word_addin";
+}
+
+function pruefeKeineHerabstufung(
+  bisher: DraftPayload,
+  neu: DraftPayload,
+  stufeNurAnheben: boolean,
+): void {
+  if (!stufeNurAnheben || !isValidConfidentiality(bisher.confidentiality)) {
+    return;
+  }
+  if (!isValidConfidentiality(neu.confidentiality)) {
+    // Die Route weist einen ungültigen Wert schon vorher ab; ein Löschen der Stufe ist hier
+    // ebenfalls ein Senken („nie eingestuft" liegt unter jeder gespeicherten Stufe).
+    throw new CaptureError(
+      "CONFIDENTIALITY_DOWNGRADE",
+      "Die gespeicherte Vertraulichkeitsstufe dieses Word-Entwurfs kann nur angehoben werden.",
+    );
+  }
+  if (isConfidentialityDowngrade(bisher.confidentiality, neu.confidentiality)) {
+    throw new CaptureError(
+      "CONFIDENTIALITY_DOWNGRADE",
+      "Die gespeicherte Vertraulichkeitsstufe dieses Word-Entwurfs kann nur angehoben werden.",
+    );
+  }
+}
+
 function validateMetadata(payload: DraftPayload): void {
   // FR-CAP-08: nötige Validierungen 1–5 (Standard 3 wird erst beim KO gesetzt).
   if (payload.neededValidations !== undefined) {
@@ -627,6 +685,9 @@ export class CaptureService {
       lastEditor: author,
       createdAt: at,
       updatedAt: at,
+      // R-0632 (BEN, Nacharbeit 5): ein Word-Entwurf trägt ab der Anlage die unveränderliche
+      // Marke der Herabstufungssperre — unabhängig davon, was später in `origin` steht.
+      ...(payload.origin === "word_addin" ? { stufeNurAnheben: true as const } : {}),
     };
     // ============================================================================================
     // JOB 2697 — HIER ENTSCHEIDET SICH: NEUER ENTWURF ODER DERSELBE VORGANG NOCH EINMAL.
@@ -901,6 +962,13 @@ export class CaptureService {
         // AUFTRAG-mega6 Block B: Merge mit eindeutiger Löschsemantik (s. mergeDraftPayload).
         const merged: DraftPayload = mergeDraftPayload(draft.payload, changes);
         validateMetadata(merged);
+        // R-0632: eine gespeicherte Stufe eines Word-Entwurfs wird nie gesenkt (s. Funktion).
+        // BEN, Nacharbeit 5: die Sperre hängt an der UNVERÄNDERLICHEN Marke am Entwurf, nicht an
+        // der änderbaren Herkunft in der Nutzlast — ein vorgeschaltetes `origin: "frontdoor"`
+        // hebelte sie sonst im nächsten Aufruf aus. Altbestand ohne Marke wird über seine noch
+        // gespeicherte Herkunft erkannt und bekommt die Marke mit diesem Schreibvorgang.
+        const stufeNurAnheben = unterliegtWordSperre(draft);
+        pruefeKeineHerabstufung(draft.payload, merged, stufeNurAnheben);
         // SCRUM-524 P.1 (WP5) + mega5 Block B: auch beim Fortsetzen an der Persistenz-Grenze säubern
         // und normalisieren — der Merge über den Bestand streift dabei auch Alt-Felder ab.
         const bisher = Date.parse(draft.updatedAt);
@@ -909,6 +977,8 @@ export class CaptureService {
           ...draft,
           payload: normalizeDraftPayload(sanitizeDraftPayload(merged)),
           lastEditor: editor,
+          // R-0632: die Marke reist weiter (über `...draft`) und wird für Altbestand hier gesetzt.
+          ...(stufeNurAnheben ? { stufeNurAnheben: true as const } : {}),
           // JOB 2684 D1: streng steigend (s. Kopf) — nie derselbe Wert wie der Vorgänger.
           updatedAt: new Date(
             Number.isFinite(bisher) ? Math.max(jetzt, bisher + 1) : jetzt,
@@ -1221,6 +1291,10 @@ export class CaptureService {
       // (nicht im Payload) und ist serverseitig gesetzt — hier wird nichts gelesen, was ein Client
       // geschrieben haben könnte.
       ...(draft.dokumentHerkunft ? { dokumentHerkunft: draft.dokumentHerkunft } : {}),
+      // R-0632 (BEN, Nacharbeit 10): die Herabstufungssperre endet NICHT am Entwurf. Sie reist —
+      // wie der Fassungsbezug darüber, vom Server gesetzt — ins Wissensobjekt; dort sperrt
+      // `setConfidentiality` jedes Senken, auch mit Prüfer-/Administratorrecht.
+      ...(unterliegtWordSperre(draft) ? { stufeNurAnheben: true as const } : {}),
       // ==========================================================================================
       // JOB 3934 — DIE BELEGSTELLEN REISEN MIT. Genau hier ging die Herkunft bis heute verloren.
       // ==========================================================================================

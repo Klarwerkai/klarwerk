@@ -13,6 +13,9 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 //         : drafts.filter((draft) => draft.originalAuthor === user.id);
 //     }
 //
+// (Stand JOB 2531. Seit Entscheidung `debbb8e8` gilt die Eigentümerregel für JEDE Rolle — siehe
+// `canSeeDraft` und den letzten Fall unten.)
+//
 // SIE IST HEUTE RICHTIG. Dieser Fall entsteht nicht, weil das Produkt einen Defekt hat, sondern
 // weil die Regel BISHER VON KEINEM TEST GEDECKT WAR. Gemessen in JOB 2531 mit einer gesetzten
 // Mutation (`return drafts;` — der Filter faellt ganz weg), gefahren gegen tests/capture/,
@@ -130,15 +133,20 @@ describe("JOB 2531 · GET /api/drafts — ein fremder Entwurf erreicht die eigen
     expect(liste.map((d) => d.id)).not.toContain(boris.id);
   });
 
-  it("die Verwaltung sieht beide — die Regel nimmt niemandem etwas, das ihm zusteht", async () => {
+  // AUFNAHME gesamt-entwurf-einreichen · Entscheidung Pedi `debbb8e8`: Entwürfe sind PRIVAT, nur
+  // für ihre Autorin sichtbar. Bis Lauf :3 stand hier „die Verwaltung sieht beide" — genau das hat
+  // Ben (B1) als Mangel reproduziert. Der Fall prüft jetzt die neue Seite derselben Regel; die
+  // Gegenseite („die eigene Arbeit ist da") steht oben und in entwurf-ist-privat.test.ts.
+  it("auch die Verwaltung sieht fremde Entwürfe nicht — sie sind privat (debbb8e8)", async () => {
     const { app, adminHeaders, annas, boris } = await aufbau();
 
     const liste = await listeVon(app, adminHeaders);
 
     expect(
-      liste.map((d) => d.id).sort(),
-      "Die Verwaltung sieht nicht mehr den ganzen Bestand. `visibleDraftsFor` gibt Admins " +
-        "ausdruecklich alle Entwuerfe; faellt das weg, verliert die Verwaltung ihren Ueberblick.",
-    ).toEqual([annas.id, boris.id].sort());
+      liste.map((d) => d.id),
+      "Die Verwaltung sieht fremde private Entwürfe. `canSeeDraft` darf keine Rollenausnahme " +
+        "für fremde Entwürfe kennen (Entscheidung debbb8e8).",
+    ).not.toContain(annas.id);
+    expect(liste.map((d) => d.id)).not.toContain(boris.id);
   });
 });

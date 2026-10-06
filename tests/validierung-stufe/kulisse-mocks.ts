@@ -39,6 +39,9 @@ export function endpunktMock(): { endpoints: Record<string, unknown> } {
       // Der gemeinsame Reiterkopf zählt die drei anderen Reiter aus echten Abrufen; `duplicates`
       // ist zusätzlich die Quelle des Doppel-Hinweises dieser Lieferung.
       conflicts: { list: vi.fn(async () => []) },
+      // R-0238: die Gegenüber-Suche der widersprechenden Ablehnung. Sie läuft erst, wenn jemand
+      // im Ablehnungsfeld sucht — ohne Eingabe wird sie nie gerufen.
+      library: { search: vi.fn(async () => []) },
       duplicates: { list: vi.fn(async () => []) },
       lifecycle: { pending: vi.fn(async () => []) },
     },

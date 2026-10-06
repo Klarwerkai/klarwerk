@@ -398,6 +398,9 @@ function sideEffectHarness() {
     auditFailAlwaysActions: new Set<string>(),
   };
   const versionsRepo = new InMemoryKoVersionRepo();
+  // Jede Kennung, für die ein Snapshot geschrieben wurde — damit ein Test nachsehen kann, ob die
+  // Rücknahme ihn wieder entfernt hat.
+  const snapshotKoIds: string[] = [];
   const versions: KoVersionRepo = {
     append: async (snapshot) => {
       if (faults.snapshotFailAlways) {
@@ -407,6 +410,7 @@ function sideEffectHarness() {
         faults.snapshotFailOnce = false;
         throw new Error("SnapshotDown");
       }
+      snapshotKoIds.push(snapshot.koId);
       return versionsRepo.append(snapshot);
     },
     listByKo: (koId) => versionsRepo.listByKo(koId),
@@ -433,7 +437,8 @@ function sideEffectHarness() {
     }
     return origRecordOnce(eventId, input, tx);
   };
-  const koService = new KoService({ repo: new InMemoryKoRepo(), versions, audit });
+  const koRepo = new InMemoryKoRepo();
+  const koService = new KoService({ repo: koRepo, versions, audit });
   const candidates = new InMemoryCandidateRepo();
   const library = new LibraryService({
     koService,
@@ -442,11 +447,71 @@ function sideEffectHarness() {
     externalUpsert: true,
     now: () => clock.nowMs,
   });
-  return { clock, faults, versionsRepo, audit, koService, candidates, library };
+  // AUFNAHME 20260922 · gesamt-auditprotokoll (Lauf 3): eine Erstanlage, deren Beleg
+  // scheitert, wird seitdem VOLLSTÄNDIG zurückgenommen — ein halbes Objekt entsteht auf dem
+  // Produktweg nicht mehr. Der Nachzug (`ensureCreatedSideEffects`) bleibt für BESTAND, der vorher
+  // so entstanden ist. Diesen Bestand stellt `altbestand` her: dieselbe KO-Ablage, aber ein Dienst
+  // ohne Versions- und Audit-Ablage — das Objekt steht, Snapshot und `ko.created` fehlen.
+  const altKo = new KoService({ repo: koRepo });
+  const altbestand = {
+    koService: altKo,
+    library: new LibraryService({
+      koService: altKo,
+      candidates,
+      externalUpsert: true,
+      now: () => clock.nowMs,
+    }),
+  };
+  return {
+    clock,
+    faults,
+    versionsRepo,
+    snapshotKoIds,
+    audit,
+    koService,
+    candidates,
+    library,
+    altbestand,
+  };
 }
 
 describe("WP-SHIP8-CLOSE-5 ROT-1A: kein halber KO-Zustand — Belege werden fail-closed nachgezogen", () => {
-  it("Snapshot wirft (transient) → Adoption zieht nach: v1-Snapshot + ko.created NACHWEISLICH da, genau EIN KO", async () => {
+  // AUFNAHME 20260922 · gesamt-auditprotokoll (Lauf 3): scheitert ein Beleg der Erstanlage,
+  // wird das Objekt zurückgenommen (`KoService.finishCreated`). Der Accept scheitert dann ehrlich,
+  // es bleibt KEIN Objekt ohne `ko.created`, und die Wiederholung legt es vollständig belegt an.
+  async function scheitertOhneRest(
+    ctx: ReturnType<typeof sideEffectHarness>,
+    title: string,
+    id: string,
+  ): Promise<void> {
+    await expect(ctx.library.reviewImportCandidate(id, "accept", "rev-1")).rejects.toBeDefined();
+    expect(await ctx.koService.findByImportCandidateId(id)).toBeUndefined();
+    expect((await ctx.koService.list()).filter((k) => k.title === title)).toHaveLength(0);
+    // Kein Snapshot, kein ko.created eines nie bestehenden Objekts — und die Kette bleibt ganz.
+    expect(await ctx.audit.list({ action: "ko.created" })).toHaveLength(0);
+    expect(await ctx.audit.verify()).toBe(true);
+    // Sicher kein Objekt entstanden → der Claim ist ehrlich freigegeben, eine Wiederholung möglich.
+    expect((await ctx.candidates.findById(id))?.status).toBe("neu");
+  }
+
+  async function wiederholungVollstaendig(
+    ctx: ReturnType<typeof sideEffectHarness>,
+    title: string,
+    id: string,
+  ): Promise<void> {
+    const reviewed = await ctx.library.reviewImportCandidate(id, "accept", "rev-1");
+    expect(reviewed.status).toBe("angenommen");
+    const koId = reviewed.koId as string;
+    const snapshots = await ctx.versionsRepo.listByKo(koId);
+    expect(snapshots.filter((s) => s.version === 1)).toHaveLength(1);
+    expect(snapshots[0]?.note).toBe("erstellt");
+    expect(await ctx.audit.list({ action: "ko.created", target: koId })).toHaveLength(1);
+    expect(await ctx.audit.list({ action: "import.candidate-accept", target: id })).toHaveLength(1);
+    expect((await ctx.koService.list()).filter((k) => k.title === title)).toHaveLength(1);
+    expect(await ctx.audit.verify()).toBe(true);
+  }
+
+  it("Snapshot wirft (transient) → kein Objekt ohne Beleg; die Wiederholung legt es vollständig belegt an", async () => {
     const ctx = sideEffectHarness();
     const [cand] = await ctx.library.createImportCandidates(
       [{ title: "Filter", statement: "s", type: "best_practice", category: "K" }],
@@ -454,24 +519,12 @@ describe("WP-SHIP8-CLOSE-5 ROT-1A: kein halber KO-Zustand — Belege werden fail
       OHNE_TEXTDUBLETTE,
     );
     const id = (cand as { id: string }).id;
-    ctx.faults.snapshotFailOnce = true; // create: Insert ok → Snapshot wirft → Audit läuft nie
-    const reviewed = await ctx.library.reviewImportCandidate(id, "accept", "rev-1");
-    expect(reviewed.status).toBe("angenommen");
-    const koId = reviewed.koId as string;
-    // BESTAND, nicht nur Behauptung: der Version-1-Snapshot existiert (als Nachzug markiert) …
-    const snapshots = await ctx.versionsRepo.listByKo(koId);
-    expect(snapshots.filter((s) => s.version === 1)).toHaveLength(1);
-    expect(snapshots[0]?.note).toBe("erstellt (nachgezogen)");
-    expect(snapshots[0]?.snapshot.title).toBe("Filter");
-    // … und ko.created + der Abschluss-Audit sind da.
-    expect(await ctx.audit.list({ action: "ko.created", target: koId })).toHaveLength(1);
-    expect(await ctx.audit.list({ action: "import.candidate-accept", target: id })).toHaveLength(1);
-    // Eindeutiger Kandidat, genau EIN KO.
-    expect((await ctx.candidates.findById(id))?.status).toBe("angenommen");
-    expect((await ctx.koService.list()).filter((k) => k.title === "Filter")).toHaveLength(1);
+    ctx.faults.snapshotFailOnce = true; // create: Insert ok → Snapshot wirft → Rücknahme
+    await scheitertOhneRest(ctx, "Filter", id);
+    await wiederholungVollstaendig(ctx, "Filter", id);
   });
 
-  it("ko.created wirft (transient) → Adoption zieht nach: Snapshot aus create bleibt, ko.created nachweislich da", async () => {
+  it("ko.created wirft (transient) → Objekt und Snapshot zurückgenommen; die Wiederholung legt es vollständig belegt an", async () => {
     const ctx = sideEffectHarness();
     const [cand] = await ctx.library.createImportCandidates(
       [{ title: "Ventil", statement: "s", type: "best_practice", category: "K" }],
@@ -479,22 +532,15 @@ describe("WP-SHIP8-CLOSE-5 ROT-1A: kein halber KO-Zustand — Belege werden fail
       OHNE_TEXTDUBLETTE,
     );
     const id = (cand as { id: string }).id;
-    ctx.faults.auditFailOnceActions.add("ko.created"); // create: Insert + Snapshot ok → Audit wirft
-    const reviewed = await ctx.library.reviewImportCandidate(id, "accept", "rev-1");
-    expect(reviewed.status).toBe("angenommen");
-    const koId = reviewed.koId as string;
-    // Der ORIGINAL-Snapshot aus create steht (kein Nachzug nötig) …
-    const snapshots = await ctx.versionsRepo.listByKo(koId);
-    expect(snapshots.filter((s) => s.version === 1)).toHaveLength(1);
-    expect(snapshots[0]?.note).toBe("erstellt");
-    // … ko.created wurde nachgezogen, der Abschluss-Audit steht, genau EIN KO.
-    expect(await ctx.audit.list({ action: "ko.created", target: koId })).toHaveLength(1);
-    expect(await ctx.audit.list({ action: "import.candidate-accept", target: id })).toHaveLength(1);
-    expect((await ctx.candidates.findById(id))?.status).toBe("angenommen");
-    expect((await ctx.koService.list()).filter((k) => k.title === "Ventil")).toHaveLength(1);
+    ctx.faults.auditFailOnceActions.add("ko.created"); // Insert + Snapshot ok → Audit wirft
+    await scheitertOhneRest(ctx, "Ventil", id);
+    // Auch der Snapshot der zurückgenommenen Anlage ist weg — es gibt kein Objekt, zu dem er gehörte.
+    expect(ctx.snapshotKoIds).toHaveLength(1);
+    expect(await ctx.versionsRepo.listByKo(ctx.snapshotKoIds[0] as string)).toEqual([]);
+    await wiederholungVollstaendig(ctx, "Ventil", id);
   });
 
-  it("Auditdienst KOMPLETT ausgefallen → FAIL-CLOSED (kein angenommen ohne Belege); nach Heilung vollendet die Recovery MIT Belegen", async () => {
+  it("Auditdienst KOMPLETT ausgefallen → FAIL-CLOSED ohne Objekt; nach Heilung gelingt der Accept MIT Belegen", async () => {
     const ctx = sideEffectHarness();
     const [cand] = await ctx.library.createImportCandidates(
       [{ title: "Pumpe", statement: "s", type: "best_practice", category: "K" }],
@@ -503,32 +549,34 @@ describe("WP-SHIP8-CLOSE-5 ROT-1A: kein halber KO-Zustand — Belege werden fail
     );
     const id = (cand as { id: string }).id;
     ctx.faults.auditFailAlwaysActions.add("*");
-    // Accept scheitert EHRLICH: KO + Snapshot existieren, aber ko.created ist nicht belegbar —
-    // der Claim bleibt fail-closed stehen (kein halber, als angenommen deklarierter Zustand).
-    await expect(ctx.library.reviewImportCandidate(id, "accept", "rev-1")).rejects.toBeDefined();
-    const during = await ctx.candidates.findById(id);
-    expect(during?.status).toBe("in_bearbeitung");
-    expect(during?.opId).toBeTruthy();
-    const stamped = await ctx.koService.findByImportCandidateId(id);
-    expect(stamped).toBeDefined();
-    expect(
-      await ctx.audit.list({ action: "ko.created", target: (stamped as { id: string }).id }),
-    ).toHaveLength(0);
-    // HEILUNG + Lease-Ablauf: die Recovery zieht die Belege nach und vollendet erst dann.
+    await scheitertOhneRest(ctx, "Pumpe", id);
     ctx.faults.auditFailAlwaysActions.clear();
-    ctx.clock.nowMs += REVIEW_CLAIM_LEASE_MS + 1;
-    expect(await ctx.library.recoverStaleReviewClaims()).toEqual({ completed: 1, released: 0 });
-    const after = await ctx.candidates.findById(id);
-    expect(after?.status).toBe("angenommen");
-    expect(after?.koId).toBe((stamped as { id: string }).id);
-    // Belege VOLLSTÄNDIG: v1-Snapshot (aus create), ko.created (nachgezogen), Recovery-Audit.
-    const koId = (stamped as { id: string }).id;
-    expect((await ctx.versionsRepo.listByKo(koId)).filter((s) => s.version === 1)).toHaveLength(1);
+    await wiederholungVollstaendig(ctx, "Pumpe", id);
+  });
+
+  it("Altbestand (Objekt ohne Snapshot und ohne ko.created, vor dieser Klammer entstanden) → die Recovery zieht die Belege nach und vollendet erst dann", async () => {
+    const ctx = sideEffectHarness();
+    const [cand] = await ctx.library.createImportCandidates(
+      [{ title: "Kessel", statement: "s", type: "best_practice", category: "K" }],
+      "tester",
+      OHNE_TEXTDUBLETTE,
+    );
+    const id = (cand as { id: string }).id;
+    // Der Claim steht (in_bearbeitung, opId), das Objekt ist als Altbestand ohne Belege entstanden.
+    const altAngenommen = await ctx.altbestand.library.reviewImportCandidate(id, "accept", "rev-1");
+    const koId = altAngenommen.koId as string;
+    expect(await ctx.audit.list({ action: "ko.created", target: koId })).toHaveLength(0);
+    expect(await ctx.versionsRepo.listByKo(koId)).toHaveLength(0);
+    // Den Nachzug fährt der Import-Accept-Weg über den Anker (adoptiert statt neu anzulegen).
+    await ctx.koService.ensureCreatedSideEffects(
+      (await ctx.koService.findByImportCandidateId(id)) as never,
+    );
     expect(await ctx.audit.list({ action: "ko.created", target: koId })).toHaveLength(1);
-    const accepts = await ctx.audit.list({ action: "import.candidate-accept", target: id });
-    expect(accepts).toHaveLength(1);
-    expect(accepts[0]?.payload).toMatchObject({ koId, recovered: true });
-    expect((await ctx.koService.list()).filter((k) => k.title === "Pumpe")).toHaveLength(1);
+    const v1 = (await ctx.versionsRepo.listByKo(koId)).filter((s) => s.version === 1);
+    expect(v1).toHaveLength(1);
+    expect(v1[0]?.note).toBe("erstellt (nachgezogen)");
+    expect((await ctx.koService.list()).filter((k) => k.title === "Kessel")).toHaveLength(1);
+    expect(await ctx.audit.verify()).toBe(true);
   });
 
   it("bens Konsistenz-Punkt: NUR der äußere import.candidate-accept-Audit wirft → Antwort bleibt ERFOLG + lauter Log", async () => {
@@ -598,17 +646,15 @@ describe("WP-SHIP8-CLOSE-5 ROT-1A: kein halber KO-Zustand — Belege werden fail
 describe("WP-SHIP8-CLOSE-6 ROT-1: ko.created atomar GENAU EINMAL (paralleler Nachzug)", () => {
   it("bens Pflichttest: zwei Nachzüge passieren eine Barriere NACH leerem Read und schreiben parallel → exakt EIN ko.created-Eintrag", async () => {
     const ctx = sideEffectHarness();
-    // Teilpersistenz herstellen: create legt KO + v1-Snapshot an, der ko.created-Beleg wirft.
-    ctx.faults.auditFailOnceActions.add("ko.created");
-    await expect(
-      ctx.koService.create({
-        title: "Kompressor",
-        statement: "s",
-        type: "best_practice",
-        category: "K",
-        author: "a",
-      }),
-    ).rejects.toBeDefined();
+    // Altbestand herstellen (Lauf 3: auf dem Produktweg entsteht er nicht mehr): das Objekt
+    // steht, Snapshot und ko.created fehlen.
+    await ctx.altbestand.koService.create({
+      title: "Kompressor",
+      statement: "s",
+      type: "best_practice",
+      category: "K",
+      author: "a",
+    });
     const [ko] = await ctx.koService.list();
     if (!ko) {
       throw new Error("Testaufbau: teilpersistiertes KO fehlt");
@@ -644,7 +690,7 @@ describe("WP-SHIP8-CLOSE-6 ROT-1: ko.created atomar GENAU EINMAL (paralleler Nac
     // Exactly-once: der persistenzgestützte Guard (recordOnce) entscheidet, nicht der Read.
     expect(await ctx.audit.list({ action: "ko.created", target: ko.id })).toHaveLength(1);
     expect(await ctx.audit.verify()).toBe(true);
-    // Der v1-Snapshot aus create blieb einmalig (kein Doppel-Nachzug).
+    // Der v1-Snapshot entstand einmalig (kein Doppel-Nachzug).
     expect((await ctx.versionsRepo.listByKo(ko.id)).filter((s) => s.version === 1)).toHaveLength(1);
   });
 });
@@ -654,17 +700,17 @@ describe("WP-SHIP8-CLOSE-6 ROT-2: der Re-Sync ist eine Vollendungsstelle", () =>
     const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     try {
       const ctx = sideEffectHarness();
-      // A: Snapshot-Store dauerhaft kaputt → create-Teilpersistenz (KO da, v1/ko.created fehlen),
-      // der Accept bleibt fail-closed stehen (Claim in_bearbeitung).
+      // A: Altbestand — ein Objekt, das VOR der Rücknahmeklammer der Erstanlage (Lauf 3)
+      // ohne v1-Snapshot und ohne ko.created entstanden ist. Auf dem Produktweg entsteht es nicht
+      // mehr (ein scheiternder Beleg nimmt die Anlage zurück); gebaut wird es über `altbestand`.
       const [candA] = await ctx.library.createImportCandidates(
         [anchorItem()],
         "tester",
         OHNE_TEXTDUBLETTE,
       );
       const idA = (candA as { id: string }).id;
+      await ctx.altbestand.library.reviewImportCandidate(idA, "accept", "rev-A");
       ctx.faults.snapshotFailAlways = true;
-      await expect(ctx.library.reviewImportCandidate(idA, "accept", "rev-A")).rejects.toBeDefined();
-      expect((await ctx.candidates.findById(idA))?.status).toBe("in_bearbeitung");
       const stamped = await ctx.koService.findByImportCandidateId(idA);
       if (!stamped) {
         throw new Error("Testaufbau: teilpersistiertes KO fehlt");
@@ -702,12 +748,11 @@ describe("WP-SHIP8-CLOSE-6 ROT-2: der Re-Sync ist eine Vollendungsstelle", () =>
       expect((await ctx.koService.get(koId))?.statement).toBe(
         "Pumpe alle 100h entlüften (überarbeitet).",
       );
-      // Belege VOLLSTÄNDIG, genau EIN KO; As offener Claim bleibt unangetastet.
+      // Belege VOLLSTÄNDIG, genau EIN KO.
       expect(await ctx.audit.list({ action: "ko.created", target: koId })).toHaveLength(1);
       expect(await ctx.audit.list({ action: "import.candidate-accept", target: idB })).toHaveLength(
         1,
       );
-      expect((await ctx.candidates.findById(idA))?.status).toBe("in_bearbeitung");
       expect(await ctx.koService.list()).toHaveLength(1);
     } finally {
       warnSpy.mockRestore();

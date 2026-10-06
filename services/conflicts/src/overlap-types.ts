@@ -3,6 +3,7 @@
 // Bewusst schlanker Lebenszyklus als Konflikte: kein Eskalieren/Zweitmeinung — es geht um Redaktion,
 // nicht um Wahrheit. Additiv/JSON-persistiert (Muster ConflictDetector).
 import type { OverlapAspect, OverlapRecommendation, OverlapRelation } from "./duplicate-detect";
+import type { CandidateSource } from "./similarity-checksum";
 
 export type OverlapStatus = "offen" | "in_bearbeitung" | "geschlossen";
 export type OverlapOrigin = "auto" | "manual";
@@ -34,6 +35,11 @@ export interface OverlapDetector {
   // ein deterministischer Treffer wird dadurch nie verworfen, die Einordnung bleibt sichtbar).
   confidence?: number;
   rationale?: string;
+  // R-0194: aus welcher Quelle der Kandidat stammt (Prüfansicht). „text" = Trigramm-Rang unter dem
+  // Deckel, „pruefsumme" = Ähnlichkeitsprüfsumme. Beides zugleich, wenn beide ihn vorschlagen.
+  // Altbestand ohne Feld stammt aus dem Trigramm-Rang (der einzige Weg vor R-0194).
+  candidateSources?: CandidateSource[];
+  checksumSimilarity?: number; // 0..1 geschätzte Wortmengen-Ähnlichkeit, nur wenn ≥ Schwelle
 }
 
 export interface OverlapResolution {

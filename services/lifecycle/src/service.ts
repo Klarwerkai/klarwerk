@@ -100,10 +100,44 @@ export class LifecycleService implements RevalidierungMerkerLeser {
   }
 
   // FR-LIF-01: Bestätigung erzeugt eine neue Version.
+  //
+  // §12.3 „Re-Validierung": `revise` hinterlässt `ko.revised` — dasselbe wie eine inhaltliche
+  // Überarbeitung. Die Bestätigung „stimmt noch" bekommt deshalb ihren eigenen Eintrag
+  // `ko.revalidated`, IM SELBEN Audit-Schritt der Revision (`zusatzBeleg`): scheitert er, rollt
+  // `KoService` die neue Fassung zurück.
+  //
+  // Aufnahme gesamt-auditprotokoll, Lauf 2 (Bens letzter Befund aus Lauf 1): der Merker wurde VOR der
+  // Revision und außerhalb ihrer Transaktion gelöscht — ging danach etwas schief (etwa eine verlorene
+  // Antwort nach ausgeführtem DELETE), war der Merker weg, ohne Fassung und ohne Beleg. Jetzt löscht
+  // `zusatzBeleg.vorher` ihn IM Audit-Schritt der Revision:
+  //  - mit `withTx` (Betrieb, PostgreSQL) auf demselben Transaktionsclient — Merker, Fassung,
+  //    `ko.revised` und `ko.revalidated` committen gemeinsam oder gar nicht;
+  //  - ohne `withTx` (Speicherbetrieb) rollt `KoService` die Fassung zurück, und hier wird der Merker
+  //    wieder gesetzt, sobald das Löschen auch nur versucht wurde.
+  // `pendingCleared` ist die Antwort des Löschens selbst, nicht eine Lesung davor.
   async confirmStillValid(koId: string, author: string): Promise<KnowledgeObject> {
-    const ko = await this.koService.revise(koId, {}, author);
-    await this.repo.clearPending(koId);
-    return ko;
+    // Nur ohne Transaktion gebraucht: stand vor dem Löschversuch ein Merker, der wieder zu setzen ist?
+    let ohneTxWarGesetzt = false;
+    try {
+      return await this.koService.revise(koId, {}, author, {
+        zusatzBeleg: {
+          action: "ko.revalidated",
+          vorher: async (tx) => {
+            if (tx === undefined) {
+              ohneTxWarGesetzt = (await this.repo.pendingFor([koId])).includes(koId);
+            }
+            return { pendingCleared: await this.repo.clearPending(koId, tx) };
+          },
+        },
+      });
+    } catch (err) {
+      // Der ursprüngliche Fehler bleibt der gemeldete; ein Ausfall beim Wiedersetzen darf ihn nicht
+      // verdecken. Mit Transaktion ist nichts zu tun — der Rollback hat den Merker behalten.
+      if (ohneTxWarGesetzt) {
+        await this.repo.markPending(koId).catch(() => undefined);
+      }
+      throw err;
+    }
   }
 
   // FR-LIF-02: Admin-Autor-Übergabe; Originalautor bleibt sichtbar.

@@ -10,7 +10,7 @@ import type {
   AssistResult,
   Confidentiality,
   DraftPayload,
-  KnowledgeObject,
+  SchutzdatenArt,
   StructureResult,
 } from "../../api/types";
 import { useSession } from "../../app/AuthContext";
@@ -48,6 +48,7 @@ import {
   newCreateOperationId,
 } from "../../lib/createOperation";
 import { isDemoContext } from "../../lib/demoPilotPath";
+import { deriveStatus } from "../../lib/displayStatus";
 import { CLEARED_DRAFT_BODY_HTML } from "../../lib/draftBody";
 import { erfassenFehlersatz } from "../../lib/erfassenFehlersatz";
 import { dominantCategory, pickExampleKo } from "../../lib/intakeExample";
@@ -75,6 +76,8 @@ import { HelpTip } from "../HelpTip";
 import { RichTextEditor } from "../RichTextEditor";
 import { RoleLink } from "../RoleLink";
 import { LiveReactionZone } from "../capture/intake/LiveReactionZone";
+import { StatusPill } from "../trust/StatusPill";
+import type { DisplayStatus } from "../trust/types";
 import { Menue, MenueEintrag, MenueFlaeche, MenueTrenner } from "./Menue";
 import {
   SymbolBild,
@@ -237,6 +240,12 @@ function diktatAnhaengen(bodyHtml: string, text: string): string {
  * Menüknopfs. Zwei getippte Zeichenketten wären die Bauform, in der ein Verweis ins Leere zeigt.
  */
 const BLATT_VERTRAULICHKEIT_HINWEIS_ID = "blatt-vertraulichkeit-hinweis";
+
+/**
+ * R-0658 (BEN, Nacharbeit 5): die `id` der Schutzdatenwarnung — aus demselben Grund eine Konstante
+ * wie oben: Warnung und `aria-describedby` der Erfolgszeile müssen dieselbe Kennung tragen.
+ */
+const BLATT_SCHUTZDATEN_WARNUNG_ID = "blatt-schutzdaten-warnung";
 
 /**
  * JOB 3141 (CAP-P1): Die `id` des Satzes, der sagt, warum das Blatt gerade nichts annimmt. Aus
@@ -475,9 +484,7 @@ export function Blatt({
   const [assistAccepted, setAssistAccepted] = useState(false);
 
   // ---- Vorgang ---------------------------------------------------------------------------------
-  const [submittedKo, setSubmittedKo] = useState<Pick<KnowledgeObject, "id" | "title"> | null>(
-    null,
-  );
+  const [submittedKo, setSubmittedKo] = useState<Eingereicht | null>(null);
   // Aufnahme `gesamt-erfassung-einstieg` (R-0084): Nach dem Einreichen springt der Blick auf die
   // Erfolgszeile, statt auf dem gerade leer geräumten Blatt stehen zu bleiben. Fokus statt nur
   // Bildlauf: Tastatur und Screenreader landen damit auf „Eingereicht: …" und ihren drei Wegen.
@@ -1318,7 +1325,15 @@ export function Blatt({
       submitOperationRef.current = null;
       submitDraftRef.current = null;
       setRestartOffer(null);
-      setSubmittedKo({ id: ko.id, title: ko.title });
+      // R-0658 (BEN, Nacharbeit 5): die Quarantäne-Auskunft des Servers wird NICHT verworfen —
+      // sie ist die Warnung, die der Mensch an genau dieser Stelle lesen muss (`BlattLage`).
+      const schutzdatenArten = ko.schutzdatenQuarantaene?.arten ?? [];
+      setSubmittedKo({
+        id: ko.id,
+        title: ko.title,
+        zustand: deriveStatus(ko),
+        ...(schutzdatenArten.length > 0 ? { schutzdatenArten } : {}),
+      });
       setTitle("");
       setBodyHtml("");
       setActiveDraftId(null);
@@ -3425,6 +3440,22 @@ function AnhangListe({ bodyHtml }: { bodyHtml: string }): JSX.Element {
   return <p className="text-[12.5px] text-text">{t("erfassen.anhaenge.anzahl", { n: anzahl })}</p>;
 }
 
+/**
+ * AUFNAHME gesamt-entwurf-einreichen (R-0102, R-0111, R-1014): was nach dem Einreichen gilt. Neben
+ * Titel und Kennung reist der ZUSTAND des neuen Objekts mit — aus der Serverantwort abgeleitet
+ * (`deriveStatus`, dieselbe Ableitung wie Bibliothek und Antwortquellen), nicht angenommen.
+ */
+interface Eingereicht {
+  readonly id: string;
+  readonly title: string;
+  readonly zustand: DisplayStatus;
+  /**
+   * R-0658 (Nacharbeit 5): die Quarantäne-Auskunft des Servers (`schutzdatenQuarantaene.arten`) —
+   * nur die ARTEN, nie Werte. Sie trägt die Warnung in `BlattLage`.
+   */
+  readonly schutzdatenArten?: SchutzdatenArt[];
+}
+
 // ------------------------------------------------------------------------------------------------
 // Die Lage des Blattes — EIN Satz, nie eine Karte (Zustandsmodell §9). Fehler bekommt seinen Weg
 // zurück, Erfolg eine Zeile mit Link. „Gespeichert"/„eingereicht" steht nur nach Serverbestätigung.
@@ -3444,7 +3475,7 @@ function BlattLage({
   erfolgRef,
 }: {
   fehler: string | null;
-  erfolg: Pick<KnowledgeObject, "id" | "title"> | null;
+  erfolg: Eingereicht | null;
   kostet: boolean;
   uebernommen: boolean;
   /**
@@ -3479,17 +3510,35 @@ function BlattLage({
     // Verschachtelung, und React meldete das in jedem Testlauf. Der Browser bricht ein solches `<p>`
     // an der Stelle auf; die „eine Zeile" wäre dann genau bei der Rolle, die den Weg NICHT gehen
     // darf, zwei Zeilen gewesen. `inline-flex` an beiden Fassungen hält sie in der Zeile.
+    // R-0658 (BEN, Nacharbeit 5): hat der Server Schutzdaten erkannt, steht die Warnung als
+    // eigene Zeile UNTER der Erfolgszeile — `role="alert"`, damit sie angesagt wird, und über
+    // `aria-describedby` der Zeile zugeordnet, die nach dem Einreichen den Fokus bekommt.
+    const arten = erfolg.schutzdatenArten ?? [];
+    const warnung =
+      arten.length > 0
+        ? t("schutzdaten.warnung", {
+            arten: arten.map((art) => t(`schutzdaten.art.${art}`)).join(t("schutzdaten.und")),
+          })
+        : null;
     return (
       <div
         ref={erfolgRef}
         data-testid="blatt-lage"
         tabIndex={-1}
+        aria-describedby={warnung ? BLATT_SCHUTZDATEN_WARNUNG_ID : undefined}
         className="pointer-events-auto text-[13px] text-trust-pos-text"
       >
         {t("erfassen.eingereicht")}{" "}
         <Link className="font-semibold underline" to={`/wissen/${erfolg.id}`}>
           {erfolg.title}
-        </Link>
+        </Link>{" "}
+        {/* AUFNAHME gesamt-entwurf-einreichen (R-0102/R-0111): der Zustand steht AN der Zeile —
+            „Offen" bzw. „In Prüfung" statt raten. Die vorhandene `StatusPill`, kein neuer Satz und
+            kein neuer Schlüssel; die Zeile bleibt EINE Zeile (§9). Die KI-Prüfung läuft danach im
+            Hintergrund weiter (WP-SUBMIT-ASYNC); ihr Ergebnis steht am Objekt, nicht hier. */}
+        <span data-testid="blatt-lage-zustand" data-zustand={erfolg.zustand}>
+          <StatusPill status={erfolg.zustand} />
+        </span>
         <RoleLink
           className="ml-2 inline-flex items-center gap-1 font-semibold underline"
           hoverClassName="hover:opacity-80"
@@ -3501,6 +3550,17 @@ function BlattLage({
           <button type="button" onClick={aufNeuerEintrag} className="ml-2 font-semibold underline">
             {t("fd.newEntry")}
           </button>
+        ) : null}
+        {warnung ? (
+          <span
+            id={BLATT_SCHUTZDATEN_WARNUNG_ID}
+            role="alert"
+            data-testid="blatt-schutzdaten-warnung"
+            data-arten={arten.join(" ")}
+            className="mt-1 block text-trust-crit-text"
+          >
+            {warnung}
+          </span>
         ) : null}
       </div>
     );

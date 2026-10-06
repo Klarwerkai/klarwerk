@@ -241,8 +241,9 @@
     // undefiniert, `JSON.stringify` laesst das Feld weg — der Rumpf ist dann BYTEGLEICH der von
     // vorher (nicht `""`, nicht `null`), und der Bibliotheksspiegel `wordAddin.ts#draftPostPayload`
     // (drei Parameter, nicht Zielpfad dieses Jobs) bleibt der gemessene Zwilling.
-    function draftPostPayload(title, statement, bodyHtml, category) {
-      return JSON.stringify({ title: title, statement: statement, bodyHtml: bodyHtml, category: category, origin: "word_addin" });
+    // R-0632: `confidentiality` ebenso OPTIONAL — nur eine echte Panelwahl reist mit.
+    function draftPostPayload(title, statement, bodyHtml, category, confidentiality) {
+      return JSON.stringify({ title: title, statement: statement, confidentiality: confidentiality, bodyHtml: bodyHtml, category: category, origin: "word_addin" });
     }
 
     // R-0169 (Nacharbeit 5) — Spiegel von wordAddin.ts (WORD_ADDIN_DOKUMENT_SETTING,
@@ -260,6 +261,12 @@
     // Wiederoeffnen ohne gespeicherte Kennung ist sie weg; genau deshalb wird der Fehlschlag gemeldet.
     var dokumentkennungUngesichert = null;
 
+    // WORD-HOST-GESAMTWEG (Realhostbeleg 06.10.2026): `saveAsync` antwortet spaeter als der Sendeweg.
+    // Ausstehend: keine Warnung. Erfolg: nur die noch sichtbare Warnung DIESER Kennung faellt, neuere
+    // Meldungen bleiben. Fehlschlag: Warnung, auch ueber einer neueren Meldung.
+    var dokumentkennungAusstehend = null;  // Kennung, deren `saveAsync` noch nicht geantwortet hat
+    var kennungWarnungFuer = null;         // Kennung, deren Warnung GERADE im Sendesatz steht
+
     function gespeicherteDokumentkennung() {
       try {
         var einstellungen = Office.context.document.settings;
@@ -274,7 +281,10 @@
     }
 
     function meldeUngesicherteDokumentkennung() {
-      if (dokumentkennungUngesichert) { showSendStatus("warn", t("sendDocIdUnsaved")); }
+      if (!dokumentkennungUngesichert) { return; }
+      if (dokumentkennungAusstehend === dokumentkennungUngesichert) { return; }
+      showSendStatus("warn", t("sendDocIdUnsaved"));
+      kennungWarnungFuer = dokumentkennungUngesichert;
     }
 
     function mitDokumentkennung(payload, dokumentId) {
@@ -314,16 +324,22 @@
         }
         einstellungen.set(WORD_ADDIN_DOKUMENT_SETTING, kennung);
         var erfolg = Office.AsyncResultStatus ? Office.AsyncResultStatus.Succeeded : "succeeded";
+        dokumentkennungAusstehend = kennung;
         einstellungen.saveAsync(function (ergebnis) {
+          if (dokumentkennungAusstehend === kennung) { dokumentkennungAusstehend = null; }
           if (ergebnis && ergebnis.status === erfolg) {
             if (dokumentkennungUngesichert === kennung) { dokumentkennungUngesichert = null; }
+            // NUR die eigene, noch sichtbare Warnung zuruecknehmen — nichts anderes anfassen.
+            if (kennungWarnungFuer === kennung) { hideSendStatus(); }
             return;
           }
           dokumentkennungUngesichert = kennung;
           meldeUngesicherteDokumentkennung();
         });
       } catch (err) {
-        // Die Kennung bleibt ungesichert stehen und wird am Ende des Sendewegs gemeldet.
+        // Die Kennung bleibt ungesichert stehen und wird am Ende des Sendewegs gemeldet — ein
+        // synchroner Fehler ist kein Ausstehen.
+        if (dokumentkennungAusstehend === kennung) { dokumentkennungAusstehend = null; }
       }
     }
 
@@ -351,13 +367,14 @@
       return { html: aktuell, dropped: dropped, passt: false };
     }
 
-    function prepareWordDraftRequest(html, text, titleOverride, categoryWahl) {
+    function prepareWordDraftRequest(html, text, titleOverride, categoryWahl, stufeWahl) {
       // JOB 3057 K2: ein von Hand gesetzter Titel (Zeile „Titel") geht vor der Ableitung.
       var eigen = (titleOverride || "").slice(0, WORD_ADDIN_TITLE_MAX).trim();
       var title = eigen.length > 0 ? eigen : deriveDraftTitleFromSelection(text);
       // JOB 3555 K2b: der gewaehlte Bereich (Zeile „Bereich"). NUR eine echte Wahl reist mit —
       // ohne sie bleibt `category` undefiniert und der Payload unveraendert wie bisher.
       var category = typeof categoryWahl === "string" && categoryWahl.length > 0 ? categoryWahl : undefined;
+      var stufe = stufeWahl === "intern" || stufeWahl === "vertraulich" || stufeWahl === "streng_vertraulich" ? stufeWahl : undefined;
       // JOB 2703 D3: KEINE Kuerzung mehr im Client. Bis D2 stand hier `slice(0, 500)` — was der
       // Client abschnitt, sah der Server nie, und keine kanonische Regel konnte es zurueckholen.
       // Der Server kuerzt die Aussage an EINEM Ort (kernaussageAusKlartext, capture-routes.ts).
@@ -369,19 +386,19 @@
       // "alles gut", obwohl Formatierung und Bilder verschwanden — die stille Null. Keine
       // geratene Bildzahl: wo kein HTML ankam, ist jede Zahl erfunden.
       if (inner.length === 0) {
-        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text), category), title: title, usedHtml: false, overBudget: false, undeliveredImages: 0, plainTextFallback: true, droppedImages: 0 };
+        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text), category, stufe), title: title, usedHtml: false, overBudget: false, undeliveredImages: 0, plainTextFallback: true, droppedImages: 0 };
       }
       var passt = function (kandidat) {
-        return wordHtmlUtf8Bytes(draftPostPayload(title, statement, kandidat, category)) <= WORD_ADDIN_BODY_BUDGET_BYTES;
+        return wordHtmlUtf8Bytes(draftPostPayload(title, statement, kandidat, category, stufe)) <= WORD_ADDIN_BODY_BUDGET_BYTES;
       };
-      var htmlPayload = draftPostPayload(title, statement, inner, category);
+      var htmlPayload = draftPostPayload(title, statement, inner, category, stufe);
       if (wordHtmlUtf8Bytes(htmlPayload) > WORD_ADDIN_BODY_BUDGET_BYTES) {
         // JOB 2613 D1: erst Bilder weglassen, dann erst den ganzen Rumpf aufgeben.
         var getrimmt = trimWordImagesToBudget(inner, passt);
         if (getrimmt.passt && getrimmt.dropped > 0) {
-          return { payload: draftPostPayload(title, statement, getrimmt.html, category), title: title, usedHtml: true, overBudget: false, undeliveredImages: countUndeliveredWordImages(getrimmt.html), plainTextFallback: false, droppedImages: getrimmt.dropped };
+          return { payload: draftPostPayload(title, statement, getrimmt.html, category, stufe), title: title, usedHtml: true, overBudget: false, undeliveredImages: countUndeliveredWordImages(getrimmt.html), plainTextFallback: false, droppedImages: getrimmt.dropped };
         }
-        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text), category), title: title, usedHtml: false, overBudget: true, undeliveredImages: undeliveredImages, plainTextFallback: false, droppedImages: 0 };
+        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text), category, stufe), title: title, usedHtml: false, overBudget: true, undeliveredImages: undeliveredImages, plainTextFallback: false, droppedImages: 0 };
       }
       return { payload: htmlPayload, title: title, usedHtml: true, overBudget: false, undeliveredImages: undeliveredImages, plainTextFallback: false, droppedImages: 0 };
     }
@@ -1531,6 +1548,7 @@
         loginHandoverBlocked: "Die Anmeldung erreicht dieses Fenster nicht: Word zeigt Klara hier in einem Rahmen einer anderen Herkunft. Bitte das Anmelde-Fenster erneut öffnen oder dieses Seitenfenster neu laden.",
         loginHandoverRejected: "Die Übergabe der Anmeldung wurde abgelehnt — der Übergabecode gilt nicht mehr. Ob die Anmeldung selbst geklappt hat, ist damit nicht gesagt. Bitte erneut anmelden.",
         loginPopupBlocked: "Das Anmelde-Fenster wurde blockiert (Popup-Blocker). Bitte Popups für diese Seite erlauben und erneut versuchen.",
+        loginDialogDeclined: "Das Anmelde-Fenster ließ sich nicht öffnen: Word hat es nicht zugelassen oder der Browser hat es verhindert. Bitte erneut auf „Anmelden“ drücken und die Rückfrage von Word, ob ein neues Fenster angezeigt werden darf, zulassen.",
         loginOtherContext: "Hinweis: Das Anmelde-Fenster kann in einem anderen Browser-Kontext laufen. Wird die Anmeldung hier nicht erkannt, bitte erneut versuchen.",
         sendTitle: "An KLARWERK senden",
         // JOB 2620 D5: der Bilder-Halbsatz ist in den gemessenen Kasten (sendImagesNote) umgezogen —
@@ -1551,6 +1569,7 @@
         // Bestand (die Route sieht nur die Sicht des Fragenden, category-routes.ts:9-11), „Fehler"
         // sagt Fehler statt Leere. Die Zeile bleibt in jeder Lage sichtbar, Senden bleibt moeglich.
         captureBereichLabel: "Bereich",
+        captureStufeLabel: "Vertraulichkeit", captureStufeIntern: "Öffentlich-intern", captureStufeVertraulich: "Vertraulich", captureStufeStreng: "Streng vertraulich",
         captureBereichWahl: "Bereich wählen",
         captureBereichLaedt: "Wird geladen …",
         captureBereichLeer: "Noch kein Bereich in deinem Bestand",
@@ -1994,6 +2013,7 @@
         loginHandoverBlocked: "The sign-in does not reach this pane: Word shows Klara here inside a frame of a different origin. Please open the sign-in window again, or reload this task pane.",
         loginHandoverRejected: "The handover of the sign-in was declined — the handover code is no longer valid. That does not say whether the sign-in itself worked. Please sign in again.",
         loginPopupBlocked: "The sign-in window was blocked (popup blocker). Please allow popups for this page and try again.",
+        loginDialogDeclined: "The sign-in window could not be opened: Word did not allow it or the browser prevented it. Please press “Sign in” again and allow Word’s prompt asking whether a new window may be shown.",
         loginOtherContext: "Note: the sign-in window may run in a different browser context. If the sign-in is not detected here, please try again.",
         sendTitle: "Send to KLARWERK",
         // JOB 2620 D5: the image clause moved into the measured note box (sendImagesNote) — one statement, not two.
@@ -2008,6 +2028,7 @@
         // JOB 3555 K2b: „Area" ist der Begriff, den dieses Panel fuer `category` schon fuehrt
         // (bestandBereich: „Area: {bereich}") — kein zweites Wort fuer dieselbe Sache.
         captureBereichLabel: "Area",
+        captureStufeLabel: "Confidentiality", captureStufeIntern: "Internal", captureStufeVertraulich: "Confidential", captureStufeStreng: "Strictly confidential",
         captureBereichWahl: "Choose area",
         captureBereichLaedt: "Loading …",
         captureBereichLeer: "No area in your knowledge yet",
@@ -2329,6 +2350,7 @@
         loginHandoverBlocked: "De aanmelding bereikt dit venster niet: Word toont Klara hier in een kader van een andere herkomst. Open het aanmeldvenster opnieuw of laad dit taakvenster opnieuw.",
         loginHandoverRejected: "De overdracht van de aanmelding is afgewezen — de overdrachtscode geldt niet meer. Daarmee is niet gezegd of de aanmelding zelf is gelukt. Meld je opnieuw aan.",
         loginPopupBlocked: "Het aanmeldvenster is geblokkeerd (pop-upblokkering). Sta pop-ups voor deze pagina toe en probeer het opnieuw.",
+        loginDialogDeclined: "Het aanmeldvenster kon niet worden geopend: Word heeft het niet toegestaan of de browser heeft het verhinderd. Druk opnieuw op „Aanmelden” en sta de vraag van Word toe of er een nieuw venster mag worden getoond.",
         loginOtherContext: "Let op: het aanmeldvenster kan in een andere browsercontext draaien. Wordt de aanmelding hier niet herkend, probeer het dan opnieuw.",
         sendTitle: "Naar KLARWERK sturen",
         // JOB 2620 D5: de afbeeldingenclausule is verhuisd naar het gemeten kader (sendImagesNote) — één uitspraak, niet twee.
@@ -2342,6 +2364,7 @@
         captureTitleLabel: "Titel",
         // JOB 3555 K2b: „Gebied" wie in bestandBereich („Gebied: {bereich}").
         captureBereichLabel: "Gebied",
+        captureStufeLabel: "Vertrouwelijkheid", captureStufeIntern: "Intern", captureStufeVertraulich: "Vertrouwelijk", captureStufeStreng: "Strikt vertrouwelijk",
         captureBereichWahl: "Gebied kiezen",
         captureBereichLaedt: "Wordt geladen …",
         captureBereichLeer: "Nog geen gebied in jouw bestand",
@@ -2756,6 +2779,21 @@
     var captureBereiche = [];
     var captureBereichWahl = "";
     var captureBereichLauf = 0;
+    // R-0632: DIE STUFE MIT EINEM KLICK (#capture-stufe in taskpane.html). Drei Knoepfe, keiner
+    // vorgewaehlt — „nicht gewaehlt" wird nicht als Wahl ausgegeben, und ohne Wahl reist kein Feld
+    // mit (der Server setzt dann den Uebernahme-Standard, N11). Bewusst KEIN `label.capture-zeile` in
+    // #capture-felder: dort stehen genau zwei Zeilen (Zielbild K2, gepinnt). Das Markup steht in der
+    // Zeile von #capture-aktion, weil die Markup-Datei unter 500 Zeilen bleiben muss (R-1611,
+    // probeschnitt A2 / schnitt-echt E5). Die Wahl reist an BEIDEN Einreichwegen mit (sendeEntwurf).
+    // Die im Panel per Klick gewaehlte Stufe ("" = nicht gewaehlt; nur die drei Werte gehen hinaus).
+    var CAPTURE_STUFEN = ["intern", "vertraulich", "streng_vertraulich"], captureStufeWahl = "";
+    function captureStufeGewaehlt() { return CAPTURE_STUFEN.indexOf(captureStufeWahl) >= 0 ? captureStufeWahl : ""; }
+    function renderCaptureStufe() { // `aria-pressed` ist die Auskunft, nicht die Farbe
+      CAPTURE_STUFEN.forEach(function (s) {
+        var k = document.getElementById("capture-stufe-" + s), an = captureStufeGewaehlt() === s;
+        if (k) { k.setAttribute("aria-pressed", an ? "true" : "false"); k.className = an ? "primary" : "ghost"; }
+      });
+    }
 
     function updateSendState() {
       var sendBtn = document.getElementById("send-btn");
@@ -3899,6 +3937,9 @@
       updateSendState();
     }
     function showSendStatus(kind, text, aktion, url) {
+      // Jede Meldung ersetzt eine stehende Kennungswarnung; `meldeUngesicherteDokumentkennung`
+      // setzt die Marke danach fuer ihre eigene wieder.
+      kennungWarnungFuer = null;
       var el = document.getElementById("send-status");
       var knopf = document.getElementById("send-status-btn");
       el.className = kind === "ok" ? "status ok" : kind === "busy" ? "status" : "status warn";
@@ -3918,6 +3959,7 @@
       if (kind !== "busy") { sendeSperreLoesen(); }
     }
     function hideSendStatus() {
+      kennungWarnungFuer = null;
       var el = document.getElementById("send-status");
       el.className = "status hidden";
       el.textContent = "";
@@ -4597,17 +4639,10 @@
       return t("sendError", { detail: "HTTP " + (res ? res.status : "?") });
     }
 
-    // WP-KLARA-1c (Pedis Live-Befund): Anmelde-RUECKWEG ohne Navigation — das Panel bleibt auf
-    // taskpane.html, die Anmeldung oeffnet in einem EIGENEN Fenster, das Panel pollt /api/auth/me.
-    // WP-IC-PAKET-1c (bens ROT-1, Poll-Lifecycle):
-    //  (a) GENAU EIN Poll gleichzeitig — der naechste Versuch wird per setTimeout erst NACH Abschluss
-    //      des vorigen geplant (kein setInterval, keine ueberlappenden Fetches).
-    //  (b) jeder Fetch mit eigenem AbortController + eigener Frist (WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS).
-    //  (c) UNABHAENGIGE harte 5-Minuten-Frist: eigener Deadline-Timer ab Start (greift auch bei
-    //      haengendem Fetch); zusaetzlich prueft loginPollStep die verstrichene Zeit je Abschluss.
-    //  (d) Generation-ID je Lauf: Abbrechen/Neustart erhoeht die Generation und neutralisiert damit
-    //      Timer, laufenden Fetch (abort) UND spaete Dialog-Callbacks (altes Handle wird geschlossen).
-    //  (e) Login-Knopf ist waehrend eines Laufs deaktiviert (kein Mehrfachstart).
+    // WP-KLARA-1c/WP-IC-PAKET-1c: Anmeldung ohne Navigation im eigenen Fenster, Panel pollt /api/auth/me.
+    // (a) GENAU EIN Poll, der naechste erst nach Abschluss (setTimeout); (b) je Fetch AbortController
+    // + Frist; (c) UNABHAENGIGE harte 5-Minuten-Frist (Deadline-Timer); (d) Generation je Lauf
+    // neutralisiert Timer, Fetch UND spaete Dialog-Callbacks; (e) Login-Knopf im Lauf gesperrt.
     var loginPollGeneration = 0;
     var loginPollTimer = null;
     var loginDeadlineTimer = null;
@@ -4754,11 +4789,15 @@
       return generation;
     }
 
-    // (f) Fallback-Fenster (Browser-Vorschau ODER Office-Dialog nicht verfuegbar): window.open MIT
-    // Rueckgabewert-Pruefung — null heisst Popup-Blocker → ehrliche Meldung statt endlosem Warten.
-    // (g) Ehrlicher Hinweis: das Fallback-Fenster kann in einem ANDEREN Browser-Kontext landen.
+    // (f) Fallback-Fenster (Office-Dialog abgelehnt/nicht verfuegbar): window.open MIT Pruefung —
+    // null heisst Popup-Blocker. Im FREMDEN Rahmen (Word im Web) bringt es die Anmeldung nie her
+    // (kein messageParent, kein Lax-Cookie): dort sofort der Grund statt fuenf Minuten Warten.
     function openLoginFallbackWindow(generation, url) {
       if (generation !== loginPollGeneration) { return; }
+      if (loginImFremdenRahmen()) {
+        stopLoginPolling();
+        return setSessionWarn(t("loginDialogDeclined"));
+      }
       var win = window.open(url, "_blank");
       if (win === null) {
         stopLoginPolling();
@@ -4882,7 +4921,8 @@
         // Parameter, der in beiden Faellen mitginge, haette den Pin gebrochen und dabei nichts
         // gewonnen: `undefined` und „kein Argument" bauen denselben Payload.
         var bereichWahl = captureBereichGewaehlt();
-        var prepared = bereichWahl
+        var stufeWahl = captureStufeGewaehlt(); // R-0632: an derselben Entscheidungsstelle, Budget misst mit
+        var prepared = stufeWahl ? prepareWordDraftRequest(html, text, titelWunsch, bereichWahl || undefined, stufeWahl) : bereichWahl
           ? prepareWordDraftRequest(html, text, titelWunsch, bereichWahl)
           : prepareWordDraftRequest(html, text, titelWunsch);
         // JOB 3594 K2b RUNDE 2: hier stand `showSendStatus("busy", t("sendBusy"))`. Der Satz steht
@@ -5085,6 +5125,7 @@
       // capture-routes.ts); ohne ihn nimmt die Route wie bisher den Dateinamen.
       var titel = (titelWunsch || "").slice(0, WORD_ADDIN_TITLE_MAX).trim();
       if (titel.length > 0) { koerper.title = titel; }
+      if (captureStufeGewaehlt()) { koerper.confidentiality = captureStufeGewaehlt(); } // R-0632: nur echte Wahl
       // R-0169 (Nacharbeit 5): dieselbe Dokumentkennung wie im Auswahl-Weg.
       var gespeicherteKennung = gespeicherteDokumentkennung();
       if (gespeicherteKennung) { koerper.dokumentId = gespeicherteKennung; }
@@ -5167,8 +5208,12 @@
 
     // Umfang "Ganzes Dokument": Word.run — body.text + body.getHtml() in EINEM context.sync-Batch,
     // also bereits EIN konsistenter Snapshot (WP-SHIP8-FINAL Bedingung 4: hier kein Umbau noetig).
-    function readWholeDocument(done) {
+    // Aufnahme 20260922 (gesamt-bestandsblick): `fehlschlag` ist optional. Wer ihn reicht, meldet
+    // einen Lesefehler selbst — ein Hintergrundvorgang (KA1-Begriffsbild) schreibt dann keine
+    // Sendemeldung in die Erfassen-Flaeche und erfaehrt trotzdem, dass nichts kam.
+    function readWholeDocument(done, fehlschlag) {
       if (!window.Word || typeof Word.run !== "function") {
+        if (typeof fehlschlag === "function") { fehlschlag(); return; }
         showSendStatus("warn", t("sendError", { detail: "Word-API" }), "retry");
         return;
       }
@@ -5180,6 +5225,7 @@
           done(String(body.text || ""), String(htmlResult.value || ""), "sendEmptyDoc");
         });
       }).catch(function () {
+        if (typeof fehlschlag === "function") { fehlschlag(); return; }
         showSendStatus("warn", t("sendError", { detail: "Word-API" }), "retry");
       });
     }
@@ -6224,11 +6270,37 @@
     // bisher (prepareAskQuestion: Markierung vor Eingabe). Gilt nur fuer diese Panelinstanz.
     var askMitlesen = true;
 
-    function readAskSelection(done) {
+    // WORD-HOST-GESAMTWEG (Realhost 06.10.2026: `getSelectedDataAsync` schwieg in Word im Web). Der
+    // Absendeweg liest zuerst `Word.run` → `getSelection().text` mit Frist, sonst den alten Weg; `done` hoechstens einmal.
+    var WORD_ADDIN_AUSWAHL_FRIST_MS = 4000;
+
+    function readAskSelection(done, wordZuerst, fehler) {
       if (!askMitlesen || !officeUsable()) { done(""); return; }
-      Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (result) {
-        done(result.status === Office.AsyncResultStatus.Succeeded ? String(result.value || "") : "");
-      });
+      var ueberOffice = function () {
+        Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (result) {
+          done(result.status === Office.AsyncResultStatus.Succeeded ? String(result.value || "") : "");
+        });
+      };
+      if (wordZuerst !== true || !window.Word || typeof Word.run !== "function") { ueberOffice(); return; }
+      var erledigt = false;
+      var einmal = function (text) {
+        if (erledigt) { return; }
+        erledigt = true; clearTimeout(uhr);
+        if (typeof text === "string") { done(text.replace(/\r\n?/g, "\n")); return; }
+        try { ueberOffice(); } catch (err) { if (fehler) { fehler(err); } }
+      };
+      var uhr = setTimeout(function () { einmal(null); }, WORD_ADDIN_AUSWAHL_FRIST_MS);
+      try {
+        var lauf = Word.run(function (context) {
+          var auswahl = context.document.getSelection();
+          auswahl.load("text");
+          return context.sync().then(function () { return auswahl.text; });
+        });
+        if (!lauf || typeof lauf.then !== "function") { einmal(null); return; }
+        lauf.then(function (text) { einmal(typeof text === "string" ? text : null); }, function () { einmal(null); });
+      } catch (err) {
+        einmal(null);
+      }
     }
 
     // JOB 3056 K1 (Rebase auf KA5): die Wahrheitstabelle der zwei Deckel (`askSelectionTruncated`,
@@ -6374,7 +6446,7 @@
       try {
         readAskSelection(function (selectionText) {
           try { absenden(selectionText); } catch (err) { fehlerVorDemFetch(err); }
-        });
+        }, true, fehlerVorDemFetch);
       } catch (err) {
         fehlerVorDemFetch(err);
       }
@@ -6876,6 +6948,11 @@
     document.getElementById("capture-bereich").addEventListener("change", function () {
       captureBereichWahl = this.value;
     });
+    // R-0632: ein Klick waehlt die Stufe; sie wird gewechselt, nie still zurueckgenommen.
+    CAPTURE_STUFEN.forEach(function (s) {
+      document.getElementById("capture-stufe-" + s).addEventListener("click", function () { captureStufeWahl = s; renderCaptureStufe(); });
+    });
+    renderCaptureStufe();
     // JOB 3506 K2b: das „?"-Menue der Erfassen-Flaeche ist entfallen — es gibt nichts mehr auf-
     // und zuzuklappen. Die vier Saetze stehen offen hinter dem Zahnrad (#einst-erfassen).
 
@@ -7348,18 +7425,52 @@
      * Sendefehler in die ERFASSEN-Flaeche schreiben — eine Meldung am falschen Ort fuer einen
      * Vorgang, den niemand ausgeloest hat.
      */
+    //
+    // Aufnahme 20260922 (gesamt-bestandsblick, Bens Befunde 1+2): der Lesevorgang liefert ein
+    // VERSPRECHEN, das erst aufloest, wenn das Begriffsbild zum gelesenen Stand gehoert — und NIE
+    // haengt (ein Lesefehler loest mit leerem Bild auf: kein Bestand aus altem Text). `ka1Stand`
+    // haelt den juengsten Lesevorgang, damit der Oeffnungsanlass von KA3 auf die Startlesung
+    // wartet statt ihr zuvorzukommen. Die Generation verwirft eine ueberholte, spaet eintreffende
+    // Lesung: es gilt immer die zuletzt begonnene.
+    var ka1Generation = 0;
+    var ka1Stand = Promise.resolve();
+
     function ka1Aktualisieren() {
+      ka1Generation += 1;
+      var generation = ka1Generation;
       if (!window.Word || typeof Word.run !== "function" ||
           typeof readWholeDocument !== "function") {
         ka1Terms = [];
         ka1Verfuegbar = false;
         ka1Neuzeichnen();
-        return;
+        ka1Stand = Promise.resolve();
+        return ka1Stand;
       }
-      readWholeDocument(function (text) {
-        ka1Terms = ka1TermsFromText(String(text || ""));
-        ka1Verfuegbar = true;
-        ka1Neuzeichnen();
+      ka1Stand = new Promise(function (fertig) {
+        readWholeDocument(function (text) {
+          if (generation === ka1Generation) {
+            ka1Terms = ka1TermsFromText(String(text || ""));
+            ka1Verfuegbar = true;
+            ka1Neuzeichnen();
+          }
+          fertig();
+        }, function () {
+          if (generation === ka1Generation) {
+            ka1Terms = [];
+            ka1Verfuegbar = false;
+            ka1Neuzeichnen();
+          }
+          fertig();
+        });
+      });
+      return ka1Stand;
+    }
+
+    /** Wartet, bis die JUENGSTE Lesung fertig ist — auch eine, die waehrend des Wartens begann. */
+    function ka1Aktuell() {
+      var stand = ka1Stand;
+      return stand.then(function () {
+        return stand === ka1Stand ? undefined : ka1Aktuell();
       });
     }
 
@@ -7995,8 +8106,21 @@
       if (!vertrag) { return; }
       ka3Laeuft = true;
       var generation = ka3Generation;
+      // Aufnahme 20260922 (Bens Befunde 1+2): der Bestandsblick fragt mit dem Begriffsbild des
+      // AKTUELLEN Dokuments. Beim Oeffnen wird auf die laufende Startlesung gewartet (sonst fragt
+      // KA2 mit leeren Begriffen und schweigt); nach der Schreibruhe liest KA1 das Dokument neu,
+      // bevor gefragt wird (sonst fragt KA2 mit den Begriffen von gestern). KA3 sucht und zerlegt
+      // weiterhin nichts selbst — es bittet KA1 um den Stand und KA2 um den Bestand.
       Promise.resolve()
-        .then(function () { return vertrag(grund); })
+        .then(function () {
+          if (typeof ka1Aktualisieren !== "function") { return undefined; }
+          if (grund !== "oeffnen") { ka1Aktualisieren(); }
+          return ka1Aktuell();
+        })
+        .then(function () {
+          if (ka3Beendet) { return { treffer: [] }; }
+          return vertrag(grund);
+        })
         .then(function (ergebnis) {
           if (ka3Beendet || generation !== ka3Generation) { return; }
           ka3Treffer = ka3Normalisieren(ergebnis);
@@ -12370,226 +12494,3 @@
       }
     }
     // KW-WORDVERGLEICH-END
-
-    // ============================================================================================
-    // KW-MARKE-START — DIE FIRMEN-CI DER VORFUEHRUNG (JOB 3512).
-    // ============================================================================================
-    //
-    // WOZU: Schaltet der Administrator in KLARWERK das Demo-Erscheinungsbild ein, traegt Klara im
-    // Word dasselbe Logo und dieselben Hausfarben — ohne zweiten Schalter, ohne Neustart des
-    // Add-ins. Pedis Vorgabe fuer Freitag (gespraech/ci-advisor/AUFTRAGSGRUNDLAGE.md): Logo und
-    // Markenfarben, KEIN Layout- oder Funktionsumbau, Produktidentitaet erkennbar halten.
-    //
-    // DIE EINE QUELLE IST DER SERVER. `GET /api/branding` (JOB 3510) beantwortet genau eine Frage:
-    // „In welchem Erscheinungsbild laeuft diese Instanz?" Der Weg ist bewusst ohne Anmeldung
-    // erreichbar — dieses Fenster faerbt sich, bevor irgendjemand angemeldet ist. Es gibt hier
-    // KEINE gespeicherte Wahl, KEINEN eigenen Schalter und KEINEN zweiten Farbsatz: die beiden
-    // Werte kommen im Vertrag (`marke.farben`), alles Weitere ist daraus GERECHNET.
-    //
-    // WARUM DIE WURZELVARIABLEN UND NICHT NEUE REGELN: Der Stilblock oben ist die Kopie der
-    // Werkbank-Palette; jede Regel darunter greift ueber `var(--…)`, und mega43 haelt genau das
-    // fest. Wird eine Variable an der Wurzel ueberschrieben, wirkt die Marke ueberall dort, wo
-    // heute der Funke wirkt — und wird sie WEGGENOMMEN, steht wieder exakt der Wert aus `:root`.
-    // Das ist der ganze Beweis fuer „Ausschalten stellt den vorherigen Look wieder her": es bleibt
-    // keine Markenregel stehen, die noch matchen koennte. Ein zweiter Farbsatz im Stilblock waere
-    // dagegen genau die zweite Wahrheit, gegen die mega43 steht.
-    //
-    // DIE ABLEITUNG IST DIE DES WEBS, ZIFFER FUER ZIFFER (apps/web/src/styles/marke.css):
-    //   · `--brand`      = die belegte Markenfarbe selbst (#0578b7).
-    //   · `--brand-text` und `--brand-deep` = 0,8 × jeder Kanal (#046092). Der Markenwert selbst
-    //     traegt als TEXT auf Papier nur 4,36:1 und fiele unter AA — dieselbe Falle wie mega62 D.
-    //   · `--ink`        = die zweite belegte Farbe, der dunkle Schriftzug (#161417). Sie traegt
-    //     die Ueberschriften; auf Papier misst sie 17,3:1, auf Karte 18,3:1.
-    //   · `--shadow-primary` = derselbe Knopfschein wie bisher, nur in der Markenfarbe.
-    // WAS AUSDRUECKLICH NICHT ANGEFASST WIRD: `--pos-*`, `--warn-*` und jede andere Signalfarbe.
-    // Eine Warnung bleibt gelb, ein Fehler rot — Bedeutung ist keine Marke.
-    //
-    // DER ABRUF: einmal beim Laden, danach beim Sichtbarwerden, beim Fokus und in einer stets neu
-    // gestellten Frist — alle drei durch DIESELBE Drosselung von einem Abruf je Minute. Die Frist
-    // ist die wichtigste der drei: ein Aufgabenfenster, das waehrend der Vorfuehrung offen daneben
-    // steht, erzeugt gar kein Ereignis (BENs Befund an JOB 3511, dort im Kopf von `brandTheme.ts`).
-    //
-    // UND SIE IST AUSDRUECKLICH KEIN `setInterval`. Dieses Fenster haelt FRISTEN, keinen Takt —
-    // eine Hauszusage, die an zwei Stellen gemessen wird: der Quelltext darf das Wort nicht
-    // enthalten (word-addin.test.ts, „Poll-Lifecycle: sequenziell (kein Interval)"), und ka3
-    // misst zur Laufzeit, dass es nie gerufen wird. Der Grund ist derselbe wie beim Anmeldepoll:
-    // ein Intervall feuert weiter, waehrend ein Abruf noch laeuft, und legt Aufrufe uebereinander.
-    // Die naechste Frist wird deshalb erst NACH dem jeweiligen Blick gestellt; es gibt immer genau
-    // eine offene, nie zwei.
-    // Faellt ein Abruf aus, passiert NICHTS: der zuletzt bekannte Stand bleibt sichtbar, es gibt
-    // keine Meldung, und das Fenster bleibt voll bedienbar (LEHREN §7).
-    var KW_MARKE_PFAD = "/api/branding";
-    var KW_MARKE_ABSTAND_MS = 60000;
-    /** Der Abtoenungsfaktor der texttragenden Markentoene — 0.8, wie in `styles/marke.css`. */
-    var KW_MARKE_ABTOENUNG = 0.8;
-    /** Die Deckung des Knopfscheins. Sie ist der Bestandswert, nur die Farbe wandert mit. */
-    var KW_MARKE_SCHEIN = 0.45;
-    /**
-     * Der Alternativtext JE PROFIL. Er steht hier und NICHT im Woerterbuch: „Advisor ICT solutions
-     * logo" ist der Alternativtext der Originaldatei (Auftragsgrundlage), also eine Eigenschaft des
-     * Bildes und keine Uebersetzung — und als Zuordnung, damit ein zweites Profil ihn nicht erbt.
-     */
-    var KW_MARKE_ALT = { advisor: "Advisor ICT solutions logo" };
-    /** Genau die Stellen, die die Marke belegt. Ausschalten heisst: diese fuenf wieder freigeben. */
-    var KW_MARKE_TOKEN = ["--brand", "--brand-deep", "--brand-text", "--ink", "--shadow-primary"];
-    /** Das zuletzt AUFGETRAGENE Aussehen (Kennung, s. u.); `null` = es wurde noch nichts gesetzt. */
-    var kwMarkeAussehen = null;
-    var kwMarkeLetzterAbruf = Number.NEGATIVE_INFINITY;
-    var kwMarkeLaeuft = false;
-
-    /** Die drei Kanaele eines 6-stelligen Hexwerts — oder `null`, wenn es keiner ist. */
-    function kwMarkeKanaele(hex) {
-      var treffer = /^#([0-9a-fA-F]{6})$/.exec(String(hex === undefined || hex === null ? "" : hex).trim());
-      if (!treffer) { return null; }
-      return [
-        parseInt(treffer[1].slice(0, 2), 16),
-        parseInt(treffer[1].slice(2, 4), 16),
-        parseInt(treffer[1].slice(4, 6), 16)
-      ];
-    }
-
-    /** Kanaele mit einem Faktor multipliziert, wieder als Hexwert (Faktor 1 = nur normalisiert). */
-    function kwMarkeAbgetoent(kanaele, faktor) {
-      var teile = [];
-      for (var i = 0; i < 3; i += 1) {
-        var wert = Math.round(kanaele[i] * faktor);
-        wert = wert < 0 ? 0 : (wert > 255 ? 255 : wert);
-        teile.push((wert < 16 ? "0" : "") + wert.toString(16));
-      }
-      return "#" + teile.join("");
-    }
-
-    /**
-     * Traegt dieser Stand wirklich eine anzeigbare Marke?
-     *
-     * Der Server loest das schon auf (`brandingAntwort`: die Marke haengt an Profil UND Schalter) —
-     * diese Flaeche verlaesst sich aber nicht darauf. Fehlt eine der Voraussetzungen oder ist ein
-     * Farbwert unlesbar, gilt „keine Firmen-CI" und nicht „Firmen-CI mit halben Werten".
-     */
-    function kwMarkeGueltig(stand) {
-      if (!stand || typeof stand !== "object" || stand.aktiv !== true) { return false; }
-      if (typeof stand.profil !== "string" || !stand.profil) { return false; }
-      var marke = stand.marke;
-      if (!marke || typeof marke !== "object" || !marke.farben) { return false; }
-      if (typeof marke.logo !== "string" || !marke.logo) { return false; }
-      return !!(kwMarkeKanaele(marke.farben.primaer) && kwMarkeKanaele(marke.farben.schrift));
-    }
-
-    /** Den Stand auf die Flaeche schreiben — oder sie vollstaendig zurueckgeben. */
-    function kwMarkeAnwenden(stand) {
-      var wurzel = document.documentElement.style;
-      var bild = document.getElementById("kw-marke-logo");
-      if (!kwMarkeGueltig(stand)) {
-        for (var i = 0; i < KW_MARKE_TOKEN.length; i += 1) {
-          wurzel.removeProperty(KW_MARKE_TOKEN[i]);
-        }
-        if (bild) {
-          bild.className = "hidden";
-          // Kein `src = ""`: das waere ein Abruf auf die eigene Adresse, kein leeres Bild.
-          bild.removeAttribute("src");
-          bild.setAttribute("alt", "");
-        }
-        return;
-      }
-      var primaer = kwMarkeKanaele(stand.marke.farben.primaer);
-      var schrift = kwMarkeKanaele(stand.marke.farben.schrift);
-      var tief = kwMarkeAbgetoent(primaer, KW_MARKE_ABTOENUNG);
-      wurzel.setProperty("--brand", kwMarkeAbgetoent(primaer, 1));
-      wurzel.setProperty("--brand-deep", tief);
-      wurzel.setProperty("--brand-text", tief);
-      wurzel.setProperty("--ink", kwMarkeAbgetoent(schrift, 1));
-      wurzel.setProperty(
-        "--shadow-primary",
-        "0 2px 10px -2px rgba(" + primaer[0] + ", " + primaer[1] + ", " + primaer[2] + ", " + KW_MARKE_SCHEIN + ")"
-      );
-      if (bild) {
-        bild.setAttribute("src", stand.marke.logo);
-        bild.setAttribute("alt", KW_MARKE_ALT[stand.profil] || stand.marke.name || "");
-        bild.className = "";
-      }
-    }
-
-    /**
-     * Was dieser Stand SICHTBAR traegt — die Kennung des Aussehens, nicht die des Zaehlers.
-     *
-     * Verglichen wird genau das, was `kwMarkeAnwenden` schreibt: Profil, die beiden Markenfarben
-     * und die Logoadresse. Zwei Staende mit derselben Kennung sehen zeichengleich aus; ein zweiter
-     * Auftrag waere dann Arbeit ohne Wirkung.
-     */
-    function kwMarkeKennung(stand) {
-      if (!kwMarkeGueltig(stand)) { return "aus"; }
-      return [
-        stand.profil,
-        stand.marke.farben.primaer,
-        stand.marke.farben.schrift,
-        stand.marke.logo
-      ].join("|");
-    }
-
-    /**
-     * Einen eingetroffenen Stand pruefen und uebernehmen — AM AUSSEHEN, NICHT AM ZAEHLER.
-     *
-     * FRUEHER STAND HIER „nur vorwaerts": `version <= meine` wurde verworfen. Das war falsch, und
-     * zwar an der Stelle, an der es weh tut. `version` gilt laut Vertrag (JOB 3510, Rueckgabe
-     * Runde 3) NUR INNERHALB EINES PROZESSLAUFS: die Wahl liegt im Speicher, nach einem
-     * Serverneustart beginnt der Zaehler wieder bei 0. Ein offenes Aufgabenfenster, das vorher
-     * `version 9` gesehen hat, haette danach JEDE weitere Schaltung verworfen — es waere blau
-     * geblieben, waehrend der Server laengst „aus" sagt. Der Vertrag schreibt darum ausdruecklich
-     * „auf Version UNGLEICH meiner pruefen, nicht auf groesser als meine".
-     *
-     * Hier wird noch eine Stufe strenger verglichen, naemlich am AUSSEHEN: auch „ungleich" traegt
-     * nach einem Neustart nicht sicher, weil derselbe Zaehlerstand dann einen ANDEREN Stand
-     * bezeichnen kann (v2 vor dem Neustart „an", v2 danach „aus"). Die Kennung kann das nicht
-     * verwechseln — sie ist aus den angezeigten Werten selbst gebildet.
-     *
-     * Und das Ueberholen, gegen das der Zaehler einmal antreten sollte? Dagegen steht `kwMarkeLaeuft`:
-     * es ist baulich immer nur EIN Abruf offen (gemessen in W8), also kann keine aeltere Antwort
-     * eine neuere ueberholen. Der Zaehler hat diesen Schutz nie geleistet, er hat nur den
-     * Neustartfall zerstoert.
-     *
-     * `version` bleibt trotzdem gelesen — aber als VERTRAGSMERKMAL: eine 200er-Antwort ohne
-     * numerische `version` ist keine Auskunft ueber die Marke, sondern Unsinn auf der Leitung. Sie
-     * wird verworfen, und der zuletzt bekannte Look bleibt stehen (LEHREN §7).
-     */
-    function kwMarkeUebernehmen(stand) {
-      if (!stand || typeof stand !== "object" || typeof stand.version !== "number") { return; }
-      var kennung = kwMarkeKennung(stand);
-      if (kennung === kwMarkeAussehen) { return; }
-      kwMarkeAussehen = kennung;
-      kwMarkeAnwenden(stand);
-    }
-
-    /** Einmal nachsehen. Gedrosselt ueber ALLE Anlaesse zusammen, nie zwei Abrufe gleichzeitig. */
-    function kwMarkeHolen(erzwingen) {
-      if (kwMarkeLaeuft || typeof fetch !== "function") { return; }
-      var jetzt = Date.now();
-      if (!erzwingen && jetzt - kwMarkeLetzterAbruf < KW_MARKE_ABSTAND_MS) { return; }
-      kwMarkeLaeuft = true;
-      kwMarkeLetzterAbruf = jetzt;
-      var fertig = function () { kwMarkeLaeuft = false; };
-      fetch(KW_MARKE_PFAD, { credentials: "include" })
-        .then(function (antwort) { return antwort && antwort.ok ? antwort.json() : null; })
-        .then(function (stand) { kwMarkeUebernehmen(stand); fertig(); }, fertig);
-    }
-
-    /** Die naechste Frist stellen — immer genau eine offene, gestellt NACH dem letzten Blick. */
-    function kwMarkeFristStellen() {
-      setTimeout(function () {
-        kwMarkeHolen(false);
-        kwMarkeFristStellen();
-      }, KW_MARKE_ABSTAND_MS);
-    }
-
-    // Anschluss. Drei Anlaesse, eine Drosselung — und der erste Abruf blockiert nichts.
-    if (typeof document !== "undefined" && document.getElementById("kw-marke-logo")) {
-      document.addEventListener("visibilitychange", function () {
-        // Nur das SICHTBARWERDEN zaehlt; beim Wegschalten hat ein Abruf keinen Adressaten.
-        if (!document.hidden) { kwMarkeHolen(false); }
-      });
-      if (typeof window !== "undefined" && window.addEventListener) {
-        window.addEventListener("focus", function () { kwMarkeHolen(false); });
-      }
-      if (typeof setTimeout === "function") { kwMarkeFristStellen(); }
-      kwMarkeHolen(true);
-    }
-    // KW-MARKE-END

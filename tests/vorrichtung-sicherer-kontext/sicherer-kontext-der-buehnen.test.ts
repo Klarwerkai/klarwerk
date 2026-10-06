@@ -159,7 +159,7 @@ interface Zeile {
 }
 
 // ==================================================================================================
-// DIE DREI BÜHNEN, DIE IN EINEM SICHEREN KONTEXT MESSEN — je eine Aussage, namentlich.
+// DIE VIER BÜHNEN, DIE IN EINEM SICHEREN KONTEXT MESSEN — je eine Aussage, namentlich.
 // ==================================================================================================
 const SICHER: ReadonlyMap<string, Zeile> = new Map<string, Zeile>([
   [
@@ -193,13 +193,25 @@ const SICHER: ReadonlyMap<string, Zeile> = new Map<string, Zeile>([
         "“ (`:29-38`).",
     },
   ],
+  [
+    "tests/design/h5-funktionsinventar.test.ts",
+    {
+      ursprung: "https://klarwerk.test",
+      grund:
+        "Folgeauftrag gesamt-erstnutzerfuehrung-quellen, Nacharbeit 4: die Bühne misst seit I12 " +
+        "einen Schreibweg (Erfassen → Prüfen → Wiederfinden). Unter `http://klarwerk.test` warf das " +
+        "Einreichen `crypto.randomUUID is not a function` (gemessen am Kandidaten 039d5468); bis " +
+        "dahin stand sie hier im ALTBESTAND.",
+    },
+  ],
 ]);
 
 // ==================================================================================================
 // DER ALTBESTAND — GEZÄHLT UND BENANNT, AUFTRAGSGEMÄSS NICHT UMGEBAUT (JOB 3818 §10).
 // ==================================================================================================
 //
-// Zwölf Bühnen stehen heute noch auf einem unsicheren Ursprung. Sie sind NICHT kaputt: was sie
+// Elf Bühnen stehen heute noch auf einem unsicheren Ursprung (bis Nacharbeit 4 des Folgeauftrags
+// gesamt-erstnutzerfuehrung-quellen zwölf; h5 ist nach SICHER umgezogen). Sie sind NICHT kaputt: was sie
 // messen (Abstände, Farben, Beschriftungen, Sichtbarkeit gegen ein Zielbild), kommt ohne
 // `crypto.randomUUID` aus. Ihre GRENZE ist immer dieselbe und hier festgehalten: eine Produktmeldung
 // oder ein Schreibweg ist auf ihnen nicht messbar. Wer auf einer dieser Bühnen eine Meldung messen
@@ -226,15 +238,6 @@ const ALTBESTAND: ReadonlyMap<string, Zeile> = new Map<string, Zeile>([
       grund:
         "JOB 3061 H2 (`:2`): eigene Bühne IM Test, die jede Zeile des Inventars in der gebauten " +
         "Validierungsfläche anklickt. Geklickt wird auf Sichtbarkeit, nicht auf Wirkung.",
-    },
-  ],
-  [
-    "tests/design/h5-funktionsinventar.test.ts",
-    {
-      ursprung: "http://klarwerk.test",
-      grund:
-        "JOB 3064 H5 (`:2`): eigene Bühne im Test für Start, Aufgaben und Fragen — dieselbe Bauart " +
-        "und dieselbe Grenze wie H2.",
     },
   ],
   [
@@ -373,13 +376,15 @@ describe("JOB 3818 · Sicherer Kontext der Chromium-Bühnen unter tests/design/"
         `${pfad}: ein Eintrag ohne Grund ist ein Freibrief`,
       ).toBeGreaterThan(40);
     }
+    // 12 -> 11: `h5-funktionsinventar.test.ts` misst seit Nacharbeit 4 (gesamt-erstnutzerfuehrung-
+    // quellen) unter `https://klarwerk.test` und steht unter SICHER.
     expect(
       ALTBESTAND.size,
       "die Zahl der Schuldner hat sich geändert, ohne dass jemand sie nennt",
-    ).toBe(12);
+    ).toBe(11);
   });
 
-  it("V4 · die drei sicheren Bühnen sind namentlich da und WIRKLICH sicher", () => {
+  it("V4 · die vier sicheren Bühnen sind namentlich da und WIRKLICH sicher", () => {
     const { gefunden } = buehnen();
     const nachPfad = new Map(gefunden.map((b) => [b.pfad, b.ursprung]));
 
@@ -400,7 +405,8 @@ describe("JOB 3818 · Sicherer Kontext der Chromium-Bühnen unter tests/design/"
         `${pfad} steht unter SICHER, misst aber in ${zeile.ursprung} — das ist kein sicherer Kontext`,
       ).toBe(true);
     }
-    expect(SICHER.size).toBe(3);
+    // 3 -> 4: h5-funktionsinventar (Nacharbeit 4, gesamt-erstnutzerfuehrung-quellen).
+    expect(SICHER.size).toBe(4);
   });
 
   it("V5 · h4-harness misst in einem sicheren Kontext — der Anlass dieses Falls, namentlich", () => {
