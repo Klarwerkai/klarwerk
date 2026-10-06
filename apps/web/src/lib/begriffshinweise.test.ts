@@ -3,10 +3,16 @@
 // FIRMENWÖRTERBUCH IM EDITOR · K4 — übernommen wird GENAU die gewählte Stelle.
 // ================================================================================================
 //
-// Der Editor speichert HTML. Geprüft wird je Textknoten; übernommen wird, indem genau dieser
-// Knoten an genau dieser Stelle seinen Text ändert. Diese Fälle messen am echten DOM-Parser
-// (jsdom), dass Auszeichnung, Links, Listen, Bilder und alle anderen Textteile Zeichen für Zeichen
-// bleiben — und dass ein inzwischen geänderter Text NICHT auf Verdacht ersetzt wird.
+// Der Editor speichert HTML. Geprüft wird je zusammenhängendem Textlauf (Block, über
+// Inline-Formatierungen hinweg); übernommen wird, indem genau die Textknoten der Fundstelle an
+// genau dieser Stelle ihren Text ändern. Diese Fälle messen am echten DOM-Parser (jsdom), dass
+// Auszeichnung, Links, Listen, Bilder und alle anderen Textteile Zeichen für Zeichen bleiben —
+// und dass ein inzwischen geänderter Text NICHT auf Verdacht ersetzt wird.
+//
+// Nacharbeit 3 (Bens Befund zu K2/K3): bis hierher war JEDER Textknoten ein Segment, und der
+// erste Fall unten schrieb genau das fest. „Konto <b>Plus</b>" wurde so als unerwünschtes „Konto"
+// beanstandet und „Kunden<b>account</b>" nie gefunden. Die Erwartung ist auf Textläufe
+// umgestellt; die Gegenproben dazu stehen unter „Formatierungsgrenzen".
 import { describe, expect, it } from "vitest";
 import {
   fundumgebung,
@@ -26,22 +32,63 @@ function hinweisAn(segmente: string[], segment: number, gefunden: string, vorzug
   return { segment, start, ende: start + gefunden.length, gefunden, vorzug };
 }
 
-describe("K4 · Segmente sind die Textknoten des Editor-HTML", () => {
-  it("jede Formatierung trennt Segmente; Reihenfolge ist die des Dokuments", () => {
+describe("K4 · Segmente sind die zusammenhängenden Textläufe des Editor-HTML", () => {
+  it("Blöcke trennen, Inline-Formatierung nicht; Reihenfolge ist die des Dokuments", () => {
     expect(segmenteAusHtml(HTML)).toEqual([
       "Kundenaccount anlegen",
-      "Im ",
-      "Kundenaccount",
-      " steht das ",
-      "Kundenaccount",
-      "-Kürzel.",
+      "Im Kundenaccount steht das Kundenaccount-Kürzel.",
       "Kundenaccount prüfen",
       "Kundenaccount im Bild",
-      "Link",
-      " danach Kundenaccount.",
+      "Link danach Kundenaccount.",
     ]);
     expect(hatPruefbarenText(segmenteAusHtml("<p> </p><p></p>"))).toBe(false);
     expect(hatPruefbarenText(segmenteAusHtml(HTML))).toBe(true);
+  });
+
+  it("Zeilenumbruch, Bild und innere Blöcke beenden einen Lauf", () => {
+    expect(segmenteAusHtml("<p>Konto<br>Plus</p>")).toEqual(["Konto", "Plus"]);
+    expect(segmenteAusHtml('<p>Konto<img src="/x.png" alt="">Plus</p>')).toEqual(["Konto", "Plus"]);
+    expect(segmenteAusHtml("<div>a<p>b</p>c</div>")).toEqual(["a", "b", "c"]);
+    expect(segmenteAusHtml("<ul><li>Konto</li><li>Plus</li></ul>")).toEqual(["Konto", "Plus"]);
+  });
+});
+
+describe("K2/K3/K4 · Formatierungsgrenzen", () => {
+  it("„Konto <b>Plus</b>“ ist EIN Lauf — das zugelassene Synonym bleibt zusammen", () => {
+    expect(segmenteAusHtml("<p>Das Konto <b>Plus</b> ist gebucht.</p>")).toEqual([
+      "Das Konto Plus ist gebucht.",
+    ]);
+  });
+
+  it("„Kunden<b>account</b>“ ist EIN Wort — und wird über die Grenze hinweg übernommen", () => {
+    const html = "<p>Das Kunden<b>account</b> ist <i>neu</i>.</p>";
+    const segmente = segmenteAusHtml(html);
+    expect(segmente).toEqual(["Das Kundenaccount ist neu."]);
+    const ergebnis = hinweisUebernehmen(
+      html,
+      hinweisAn(segmente, 0, "Kundenaccount", "Kundenkonto"),
+      segmente,
+    );
+    // Die Vorzugsbezeichnung steht im Knoten, in dem der Fund beginnt; das leer gewordene <b>
+    // fällt weg; das kursive „neu" und jeder andere Textteil bleiben.
+    expect(ergebnis).toEqual({
+      lage: "uebernommen",
+      html: "<p>Das Kundenkonto ist <i>neu</i>.</p>",
+    });
+  });
+
+  it("beginnt der Fund in einer Formatierung, bleibt sie an der Vorzugsbezeichnung", () => {
+    const html = "<p>Das <b>Kunden</b>account ist <i>neu</i>.</p>";
+    const segmente = segmenteAusHtml(html);
+    const ergebnis = hinweisUebernehmen(
+      html,
+      hinweisAn(segmente, 0, "Kundenaccount", "Kundenkonto"),
+      segmente,
+    );
+    expect(ergebnis).toEqual({
+      lage: "uebernommen",
+      html: "<p>Das <b>Kundenkonto</b> ist <i>neu</i>.</p>",
+    });
   });
 });
 
@@ -50,7 +97,7 @@ describe("K4 · Übernehmen ändert genau eine Stelle", () => {
     const segmente = segmenteAusHtml(HTML);
     const ergebnis = hinweisUebernehmen(
       HTML,
-      hinweisAn(segmente, 2, "Kundenaccount", "Kundenkonto"),
+      hinweisAn(segmente, 1, "Kundenaccount", "Kundenkonto"),
       segmente,
     );
     expect(ergebnis.lage).toBe("uebernommen");
@@ -66,7 +113,7 @@ describe("K4 · Übernehmen ändert genau eine Stelle", () => {
     const segmente = segmenteAusHtml(HTML);
     const ergebnis = hinweisUebernehmen(
       HTML,
-      hinweisAn(segmente, 9, "Kundenaccount", "Kundenkonto"),
+      hinweisAn(segmente, 4, "Kundenaccount", "Kundenkonto"),
       segmente,
     );
     expect(ergebnis).toEqual({
@@ -79,7 +126,7 @@ describe("K4 · Übernehmen ändert genau eine Stelle", () => {
     const segmente = segmenteAusHtml(HTML);
     const ergebnis = hinweisUebernehmen(
       HTML,
-      hinweisAn(segmente, 7, "Kundenaccount", "Kundenkonto"),
+      hinweisAn(segmente, 3, "Kundenaccount", "Kundenkonto"),
       segmente,
     );
     const neu = ergebnis.lage === "uebernommen" ? ergebnis.html : "";
@@ -95,7 +142,7 @@ describe("K4 · Übernehmen ändert genau eine Stelle", () => {
     // der Ausgangstext wird von keiner Funktion dieses Moduls angefasst.
     const segmente = segmenteAusHtml(HTML);
     expect(segmenteAusHtml(HTML)).toEqual(segmente);
-    expect(fundumgebung(segmente[6] ?? "", 0, 13)).toEqual({
+    expect(fundumgebung(segmente[2] ?? "", 0, 13)).toEqual({
       vor: "",
       fund: "Kundenaccount",
       nach: " prüfen",
@@ -136,21 +183,21 @@ describe("K4 · Verwerfen trifft genau eine Fundstelle — auch bei gleichlauten
 describe("K4 · nie auf Verdacht", () => {
   it("wurde der Knoten inzwischen geändert, wird NICHTS ersetzt", () => {
     const segmente = segmenteAusHtml(HTML);
-    const hinweis = hinweisAn(segmente, 2, "Kundenaccount", "Kundenkonto");
+    const hinweis = hinweisAn(segmente, 1, "Kundenaccount", "Kundenkonto");
     const geaendert = HTML.replace("<strong>Kundenaccount</strong>", "<strong>Konto</strong>");
     expect(hinweisUebernehmen(geaendert, hinweis, segmente)).toEqual({ lage: "veraltet" });
   });
 
   it("verschiebt eine Einfügung die Knotenfolge, wird NICHTS ersetzt", () => {
     const segmente = segmenteAusHtml(HTML);
-    const hinweis = hinweisAn(segmente, 2, "Kundenaccount", "Kundenkonto");
+    const hinweis = hinweisAn(segmente, 1, "Kundenaccount", "Kundenkonto");
     const verschoben = `<p>Neuer erster Absatz.</p>${HTML}`;
     expect(hinweisUebernehmen(verschoben, hinweis, segmente)).toEqual({ lage: "veraltet" });
   });
 
   it("passt der Text an der Stelle nicht mehr, wird NICHTS ersetzt", () => {
     const segmente = segmenteAusHtml(HTML);
-    const falsch = { segment: 9, start: 0, ende: 5, gefunden: "Kunde", vorzug: "Kundin" };
+    const falsch = { segment: 4, start: 0, ende: 5, gefunden: "Kunde", vorzug: "Kundin" };
     expect(hinweisUebernehmen(HTML, falsch, segmente)).toEqual({ lage: "veraltet" });
   });
 });

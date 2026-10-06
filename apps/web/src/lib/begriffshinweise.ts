@@ -1,12 +1,18 @@
 // Firmenwörterbuch im Editor — wie ein Text geprüft und ein Hinweis GENAU an seiner Stelle
 // übernommen wird.
 //
-// SEGMENTE SIND TEXTKNOTEN. Geprüft wird nicht der flache Text, sondern jeder Textknoten des
-// Editor-HTML für sich. Ein Fund liegt damit immer in genau einem Knoten, und übernommen wird,
-// indem GENAU DIESER Knoten an GENAU DIESER Stelle seinen Text ändert. Elemente, Attribute,
-// Formatierung (fett, kursiv, Links, Listen, Bilder) und alle anderen Knoten bleiben, wie sie sind.
-// Die Kehrseite ist benannt: eine Benennung, die mitten in einer Formatierung geteilt ist
-// („Kunden<b>konto</b>"), wird nicht gefunden.
+// SEGMENTE SIND ZUSAMMENHÄNGENDE TEXTLÄUFE. Ein Segment ist der Text, den ein Mensch als EINEN
+// Lauf liest: alle Textknoten eines Blocks (Absatz, Überschrift, Listenpunkt, Bildunterschrift …)
+// über Inline-Formatierungen hinweg (fett, kursiv, Links). Getrennt wird an Blockgrenzen, an
+// Zeilenumbrüchen (`<br>`) und an Bildern. So bleibt „Konto <b>Plus</b>" das zugelassene Synonym
+// „Konto Plus", und „Kunden<b>account</b>" wird als „Kundenaccount" erkannt.
+//
+// JEDES SEGMENT KENNT SEINE TEXTKNOTEN. Eine Fundstelle wird auf die ursprünglichen Knoten
+// abgebildet; übernommen wird, indem nur diese Knoten an genau diesen Stellen ihren Text ändern.
+// Liegt der Fund in EINEM Knoten, bleibt dessen Formatierung vollständig. Läuft er über eine
+// Formatierungsgrenze, steht die Vorzugsbezeichnung im Knoten, in dem der Fund beginnt; aus den
+// übrigen Knoten wird nur der Rest der Fundstelle entfernt, und ein dadurch leeres Inline-Element
+// fällt weg. Elemente, Attribute, Bilder und alle anderen Textteile bleiben, wie sie sind.
 //
 // NIE AUF VERDACHT: Passt der Knoten nicht mehr zu dem Stand, gegen den geprüft wurde (der Text
 // wurde inzwischen geändert), wird NICHTS ersetzt — der Aufrufer bekommt `veraltet` und prüft neu.
@@ -27,20 +33,119 @@ function koerper(html: string): HTMLElement {
   return doc.body;
 }
 
-function textknoten(wurzel: HTMLElement): Text[] {
-  const raus: Text[] = [];
-  const gang = wurzel.ownerDocument.createTreeWalker(wurzel, NodeFilter.SHOW_TEXT);
+/** Elemente, die einen eigenen Textlauf beginnen bzw. beenden. Alles andere gilt als Inline. */
+const BLOCK = new Set([
+  "ADDRESS",
+  "ARTICLE",
+  "ASIDE",
+  "BLOCKQUOTE",
+  "BODY",
+  "CAPTION",
+  "DD",
+  "DIV",
+  "DL",
+  "DT",
+  "FIGCAPTION",
+  "FIGURE",
+  "FOOTER",
+  "H1",
+  "H2",
+  "H3",
+  "H4",
+  "H5",
+  "H6",
+  "HEADER",
+  "LI",
+  "OL",
+  "P",
+  "PRE",
+  "SECTION",
+  "TABLE",
+  "TBODY",
+  "TD",
+  "TFOOT",
+  "TH",
+  "THEAD",
+  "TR",
+  "UL",
+]);
+/** Leere Elemente, die einen Lauf trennen: an ihnen liest niemand ein Wort weiter. */
+const TRENNER = new Set(["BR", "HR", "IMG", "VIDEO", "AUDIO", "IFRAME", "INPUT", "SVG"]);
+
+interface Teil {
+  knoten: Text;
+  /** Position des Knotenanfangs im Segmenttext. */
+  von: number;
+}
+
+interface Segment {
+  text: string;
+  teile: Teil[];
+}
+
+function blockVon(knoten: Node): Element | null {
+  let e = knoten.parentElement;
+  while (e && !BLOCK.has(e.tagName.toUpperCase())) {
+    e = e.parentElement;
+  }
+  return e;
+}
+
+function segmentiere(wurzel: HTMLElement): Segment[] {
+  const raus: Segment[] = [];
+  let aktuell: Segment | null = null;
+  let aktuellerBlock: Element | null = null;
+  const gang = wurzel.ownerDocument.createTreeWalker(
+    wurzel,
+    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+  );
   let knoten = gang.nextNode();
   while (knoten) {
-    raus.push(knoten as Text);
+    if (knoten.nodeType === Node.TEXT_NODE) {
+      const text = knoten as Text;
+      const block = blockVon(text);
+      if (!aktuell || block !== aktuellerBlock) {
+        aktuell = { text: "", teile: [] };
+        aktuellerBlock = block;
+        raus.push(aktuell);
+      }
+      aktuell.teile.push({ knoten: text, von: aktuell.text.length });
+      aktuell.text += text.data;
+    } else {
+      const name = (knoten as Element).tagName.toUpperCase();
+      if (BLOCK.has(name) || TRENNER.has(name)) {
+        // Ein neuer Block oder ein Trenner beendet den laufenden Text — auch innerhalb desselben
+        // äusseren Blocks („a<br>b", „<div>a<p>b</p>c</div>").
+        aktuell = null;
+      }
+    }
     knoten = gang.nextNode();
   }
+  // Ein Block-Ende ohne nachfolgendes Element (Text nach einem inneren Block) trennt ebenfalls:
+  // das deckt `blockVon` ab, denn der Text danach gehört wieder zum äusseren Block.
   return raus;
 }
 
-/** Die Texte aller Textknoten in Dokumentreihenfolge — das, was an den Server geht. */
+/** Die zusammenhängenden Textläufe in Dokumentreihenfolge — das, was an den Server geht. */
 export function segmenteAusHtml(html: string): string[] {
-  return textknoten(koerper(html)).map((t) => t.data);
+  return segmentiere(koerper(html)).map((s) => s.text);
+}
+
+/** Entfernt ein leer gewordenes Inline-Element samt leerer Inline-Eltern — nie einen Block. */
+function leereInlineEntfernen(knoten: Text): void {
+  let rest: Node | null = knoten;
+  while (rest?.parentNode) {
+    const eltern: Node = rest.parentNode;
+    eltern.removeChild(rest);
+    if (
+      eltern.nodeType !== Node.ELEMENT_NODE ||
+      BLOCK.has((eltern as Element).tagName.toUpperCase()) ||
+      eltern.childNodes.length > 0
+    ) {
+      return;
+    }
+    rest = eltern;
+  }
 }
 
 /** Hat der Text überhaupt etwas, das sich zu prüfen lohnt? */
@@ -58,17 +163,31 @@ export function hinweisUebernehmen(
   geprueft: readonly string[],
 ): Uebernahme {
   const body = koerper(html);
-  const knoten = textknoten(body);
-  const ziel = knoten[hinweis.segment];
+  const segmente = segmentiere(body);
+  const ziel = segmente[hinweis.segment];
   if (
-    knoten.length !== geprueft.length ||
+    segmente.length !== geprueft.length ||
     !ziel ||
-    ziel.data !== geprueft[hinweis.segment] ||
-    ziel.data.slice(hinweis.start, hinweis.ende) !== hinweis.gefunden
+    ziel.text !== geprueft[hinweis.segment] ||
+    hinweis.start >= hinweis.ende ||
+    ziel.text.slice(hinweis.start, hinweis.ende) !== hinweis.gefunden
   ) {
     return { lage: "veraltet" };
   }
-  ziel.data = ziel.data.slice(0, hinweis.start) + hinweis.vorzug + ziel.data.slice(hinweis.ende);
+  // Die Fundstelle auf die ursprünglichen Knoten abbilden. Die Längen werden VOR jeder Änderung
+  // festgehalten — die Positionen beziehen sich auf den geprüften Text.
+  const betroffen = ziel.teile
+    .map((t) => ({ ...t, bis: t.von + t.knoten.data.length }))
+    .filter((t) => t.von < hinweis.ende && hinweis.start < t.bis);
+  betroffen.forEach((t, i) => {
+    const anfang = Math.max(hinweis.start, t.von) - t.von;
+    const schluss = Math.min(hinweis.ende, t.bis) - t.von;
+    const einsatz = i === 0 ? hinweis.vorzug : "";
+    t.knoten.data = t.knoten.data.slice(0, anfang) + einsatz + t.knoten.data.slice(schluss);
+    if (t.knoten.data === "") {
+      leereInlineEntfernen(t.knoten);
+    }
+  });
   return { lage: "uebernommen", html: body.innerHTML };
 }
 
