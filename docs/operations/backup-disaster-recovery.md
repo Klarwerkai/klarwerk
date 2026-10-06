@@ -1,9 +1,9 @@
 # Klarwerk — Backups & Disaster Recovery (Betreiber-Runbook)
 
 > Ops-Runbook zur Absicherung von Daten/Konfiguration gegen Verlust.
-> **Ehrlichkeitsregel:** Dieses Dokument behauptet **nicht**, dass ein produktiver Restore-Drill
-> durchgeführt wurde. Sandbox-verifiziert ist nur ein **logischer Export** (siehe §11); der
-> **produktive `pg_dump`/Restore-Drill bleibt offene Betreiber-/Ops-Aufgabe**.
+> Die historischen Sandbox-Aussagen in §11 beschreiben ihren damaligen Stand. Die erhaltenen
+> Compose-Backup-/Restore-/Update-/Rückfallbelege vom 05.10.2026 gehören zum Kunden-Prüfplatz
+> (§13). Der aktuelle native Live-Datenbankbetrieb wird gesondert in §14 dokumentiert.
 > Verwandte Doku: `docs/operations/deploy-hetzner.md`, `maintenance-update-process.md`,
 > `secrets-management.md`, `docs/compliance/gdpr-compliance-runbook.md`.
 
@@ -29,7 +29,9 @@
 
 ## 2. Backup-Zeitplan (Vorschlag — Betreiber bestätigt/terminiert)
 
-- **Täglich:** automatischer `pg_dump` (Coolify-Scheduled-Task), verschlüsselt ablegen.
+- **Aktueller Live-Betrieb:** nativer PostgreSQL auf `klarwerk-db`, täglicher Weg über
+  `/etc/cron.daily/klarwerk-pgdump`; Einrichtung und Nachweise siehe §14.
+- **Coolify-Beispiel:** automatischer `pg_dump` als Coolify-Scheduled-Task, verschlüsselt ablegen.
 
 > **Unbestätigt (U4) · Das tägliche Backup der Datenbank läuft als Coolify-Scheduled-Task (`pg_dump`).**
 > **Vorbehalt:** durch Ops/Pedi zu bestätigen — beschrieben ist das Verfahren, nicht seine Einrichtung.
@@ -345,4 +347,71 @@ Die Zuordnung aller Anforderungen dieses Auftrags steht in
 
 ---
 
-*Ops-Runbook. §1–§12 unverändert Coolify-Betrieb; §13 beschreibt den Compose-Weg und seine Werkzeuge. Keine produktiven Backups erzeugt; keine Infrastruktur angefasst.*
+## 14. Nativer Live-Datenbankbetrieb (Bestandsabgleich 06.10.2026)
+
+Die Live-Anwendung läuft auf `klarwerk-prod` (116.203.127.201), ihre tatsächliche
+`DATABASE_URL` zeigt auf `klarwerk-db` (46.225.24.151 / 10.10.0.3), Datenbank `klarwerk`.
+Dort läuft PostgreSQL 18.6 nativ. Die beiden PostgreSQL-16-Container auf `klarwerk-prod`
+sind nicht die Datenbank der heutigen Live-Anwendung. Vor Änderungen immer die tatsächliche
+Laufzeitkonfiguration prüfen; eine zweite Ablage auf `klarwerk-db` wäre für diese Datenbank
+keine unabhängige Sicherung.
+
+Der bestehende tägliche Einstieg ist `/etc/cron.daily/klarwerk-pgdump`, vom vorhandenen
+System-Cron um 06:25 UTC ausgeführt. Seine bisherigen Dumps liegen unter
+`/var/backups/klarwerk` und bleiben bei der Erweiterung erhalten. Der neue Betreiberweg ist:
+
+```bash
+runuser -u postgres -- bash /opt/klarwerk-sicherung/scripts/backup/betrieb-sicherung.sh \
+  /etc/klarwerk/backup.env
+```
+
+`backup.env` wird vom Betreiber außerhalb des Repositorys verwaltet. Benötigt werden
+`PGHOST`, `PGUSER`, `PGDATABASE`, `DATABASE_URL` (lokaler Socket, kein Kennwort),
+`ARBEIT`, `VERSCHLUESSELT`, `PROJEKT`, `AUSLAGERUNG_SCHLUESSEL`, `HEALTH_URL`,
+`SSH_KONFIG`, `ZWEITHOST` und `ZWEITPFAD`. Die PostgreSQL-Variablen sind zu exportieren.
+`ZWEITPFAD` wird vom eingerichteten SSH-/Rsync-Zugang auf den freigegebenen Zielordner
+abgebildet; auch dessen Wurzel `/` wird unterstützt.
+
+- `datenstand.py` hält einen exportierten PostgreSQL-Snapshot offen. Das unveränderte
+  `backup.sh` erhält ihn über den Adapter `native/pg_dump`. Dump und Messung sämtlicher
+  öffentlicher Tabellen verwenden genau denselben Snapshot. Der Herkunftsnachweis nennt
+  seinen Zeitpunkt, die Clusterkennung, Dump-SHA-256, Zeilenzahlen und SHA-256 über
+  kanonische Zeilen sowie den unveränderten gesunden Anwendungsstand vor/nach dem Export.
+- Die bestehende Funktion `compose-drill.sh auslagern` verpackt Dump, Sidecar und Herkunft
+  mit AES-256-CBC/PBKDF2 (200.000 Iterationen). Dieser reine Dateischritt braucht auch im
+  nativen Betrieb weder Docker noch eine Compose-`.env`. Alle übrigen Compose-Schritte
+  behalten ihre bisherigen Voraussetzungen.
+- `VERSCHLUESSELT` ist eine lokale Arbeitsablage. Erst die Übertragung auf den tatsächlich
+  anderen Host **und die Rücklesung von dort** sind der Zweitortnachweis. Der zurückgelesene
+  verschlüsselte Hash, entschlüsselte Dump und Herkunftsnachweis müssen bytegleich sein.
+- Standardaufbewahrung: 14 vollständige lokale Dump-Paare; verschlüsselt 14 Tagesstände,
+  die erste Sicherung aus jeweils 8 Wochen und 12 Monaten. Rsync gleicht die gestaffelte
+  Ablage mit dem gewählten Zielordner ab. Es werden keine fremden Sicherungsordner verwendet.
+- Ein paralleler täglicher Lauf wird durch `flock` abgewiesen. Ein Übertragungsfehler
+  meldet keinen Erfolg. Jeder gestartete Lauf hinterlegt seinen tatsächlichen Exit in
+  `<ARBEIT>/letzter-lauf.json` und einen eigenen Beleg unter `<ARBEIT>/belege`.
+- Der Schlüssel liegt getrennt von der Zweitkopie unter `/etc/klarwerk/backup.key` auf
+  dem Datenbankhost und im macOS-Schlüsselbund (`de.klarwerk.backup`, Konto
+  `klarwerk-live-postgresql`). Schlüssel und Datenbankkennwörter gehören nicht in Git,
+  Auftragsbelege oder Chat-Ausgaben.
+
+Die erhaltenen Prüfplatzbelege vom 05.10.2026 erfüllen den Compose-Restore-, Update- und
+Rückfallumfang: 16 Integrationsfälle und 273 Vertragsfälle ohne Skip, zehn erfolgreiche
+Ablaufschritte und bytegleiche Anhänge. Die damals verwendete Zweitablage war nur ein Pfad
+auf derselben temporären VM. Sie belegt keinen unabhängigen Sicherungsort.
+
+Aktuelle Betriebsbelege werden im bestehenden Auftrag unter `BETRIEB-20261006` gesammelt.
+Ein nativer Dump und die kalibrierte Verschlüsselungs-/Übertragungsstrecke sind ausgeführt.
+Die korrigierte Auswahl des unabhängigen Zweithosts, die Aktivierung im täglichen Einstieg
+und der Restore aus der tatsächlichen Zweitkopie stehen zu diesem Dokumentstand noch aus.
+Ein lokaler Verschlüsselungsnachweis zählt nicht als deren Abschluss.
+
+Verbindliche RPO-/RTO-Ziele je Kundenklasse fehlen weiterhin (R-0863, R-2070,
+SOLL:NFR-OPS-02). Kundenklassen, maximal zulässiger Datenverlust und Ausfallzeit sowie
+Geltungsumfang und Messbeginn/-ende müssen fachlich festgelegt werden. Die alten
+Vorschläge von 24 Stunden / 4 Stunden sind keine Zusagen. Übungsdauer und Snapshotalter
+sind Messwerte; ohne Ziele wird keine Einhaltung zugesagt. Der Datenbankdump enthält
+keine Coolify-Konfiguration oder außerhalb der Datenbank verwahrten Anwendungsgeheimnisse.
+
+*§13 beschreibt den Compose-Prüfplatz, §14 den tatsächlich vorgefundenen nativen Betrieb.
+Ein technischer Teilfortschritt ist kein Gesamtabschluss des Auftrags.*
