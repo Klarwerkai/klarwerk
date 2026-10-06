@@ -1,0 +1,29 @@
+{
+  "format": "klarwerk-ablauf/1",
+  "titel": "Angebot in der Testanwendung anlegen, prüfen und speichern",
+  "werkzeug": "Beispiel-Aufzeichnung (Platzhalterbilder)",
+  "aufgezeichnetAm": "2026-10-05T09:12:00Z",
+  "anwendung": "Testanwendung Angebote",
+  "schritte": [
+    {
+      "text": "Im Menü „Angebote“ auf „Neues Angebot“ klicken.",
+      "bild": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    },
+    {
+      "text": "Kunde „Musterfirma Beispiel GmbH“ auswählen.",
+      "bild": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    },
+    {
+      "text": "Position „Beratung, 4 Stunden“ mit Einzelpreis 120,00 € eintragen.",
+      "bild": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    },
+    {
+      "text": "Summe und Zahlungsziel in der Vorschau prüfen.",
+      "bild": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    },
+    {
+      "text": "Auf „Speichern“ klicken und die Angebotsnummer notieren.",
+      "bild": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    }
+  ]
+}
