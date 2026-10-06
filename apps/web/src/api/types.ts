@@ -2583,6 +2583,8 @@ export interface InterviewResult {
   done: boolean;
   draft: StructureResult;
   demo: boolean;
+  // KI-WAHL-BETRIEBSABNAHME · N-0087: nur bei `demo: true` — warum feste Ersatzfragen kamen.
+  fallbackReason?: "no-model" | "model-timeout" | "model-error" | "confidential";
 }
 
 // SCRUM-181: Rückgabe des admin-getriebenen Demo-Seeds (ehrlich: seeded vs. skipped).

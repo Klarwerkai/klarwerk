@@ -235,7 +235,9 @@ import {
 } from "../lib/files";
 import {
   CLEARED_DRAFT_INTERVIEW,
+  INTERVIEW_ERSATZ_WEITER_KEY,
   appendAnswer,
+  interviewErsatzGrundKey,
   interviewForDraft,
   interviewFromDraft,
   interviewSourceKey,
@@ -5879,6 +5881,18 @@ export function CaptureArbeitsraum({
                         </span>
                       ) : null}
                     </div>
+                    {/* KI-WAHL-BETRIEBSABNAHME · N-0087: bei festen Ersatzfragen steht unter der
+                      Beschriftung, WARUM (soweit der Server es gemessen hat) und was jetzt sicher
+                      geht. Ohne Ersatz (`demo: false`) liefert der Schlüssel `null` — nichts steht da. */}
+                    {ivResult && !interview.isPending && interviewErsatzGrundKey(ivResult) ? (
+                      <p
+                        data-testid="iv-ersatz-erklaerung"
+                        className="rounded-btn bg-trust-warn-bg px-2.5 py-1.5 text-[12px] leading-relaxed text-trust-warn-text"
+                      >
+                        {t(interviewErsatzGrundKey(ivResult) ?? "")}{" "}
+                        {t(INTERVIEW_ERSATZ_WEITER_KEY)}
+                      </p>
+                    ) : null}
                     {/* SCRUM-403 (Pedi 03.07.): Frage vorlesen + Antwort diktieren — Sprache in
                       beide Richtungen; Knöpfe nur, wenn der Browser es ehrlich kann. */}
                     {/* AUFTRAG-mega5 Block A: liegt (nach Fortsetzen eines Entwurfs ohne gesicherte

@@ -2712,6 +2712,18 @@ const de = {
   // genaue Grund (Statuscode, finish_reason, leere Antwort) steht serverseitig im Laufprotokoll,
   // die Antwort des Servers trägt ihn nicht mit.
   "capture.ivFallback": "Feste Ersatzfragen, ohne Antwort der KI",
+  // KI-WAHL-BETRIEBSABNAHME · N-0087: der Grund (soweit der Server ihn kennt) und der sichere nächste
+  // Schritt — unter der Beschriftung, in Alltagssprache, ohne Fachwort.
+  "capture.ivErsatzGrundKeinModell":
+    "Die KI ist für diese Aufgabe gerade nicht eingerichtet, abgeschaltet oder nicht freigegeben.",
+  "capture.ivErsatzGrundZeit": "Die KI hat nicht rechtzeitig geantwortet.",
+  "capture.ivErsatzGrundFehler": "Die KI hat einen Fehler gemeldet oder war nicht erreichbar.",
+  "capture.ivErsatzGrundVertraulich":
+    "Der Text ist als vertraulich eingestuft — die Cloud-KI ist dafür ausgeschlossen, und kein internes Modell steht bereit.",
+  "capture.ivErsatzGrundUnbekannt":
+    "Warum die KI diesmal nicht geantwortet hat, ist hier nicht bekannt.",
+  "capture.ivErsatzWeiter":
+    "Du kannst trotzdem weiter antworten — daraus entsteht dein Entwurf. Mit jeder Antwort wird die KI erneut gefragt. Den KI-Zugang prüft die Administration unter KI-Verwaltung („Key testen“).",
   "capture.ivQ.title": "Worum geht es? Formuliere eine kurze Kernaussage.",
   "capture.ivQ.statement": "Beschreibe die Erfahrung/Aussage genauer.",
   "capture.ivQ.conditions": "Unter welchen Bedingungen gilt das? Eine pro Zeile.",
@@ -6742,6 +6754,8 @@ const de = {
   "erfassen.weg.interview": "Interview führen",
   "erfassen.weg.formular": "Formular (Experten)",
   "erfassen.ki.struktur": "Struktur vorschlagen",
+  // KI-WAHL-BETRIEBSABNAHME · N-0070: wer die Aufgabe ausführt — vor dem Klick, in der Palette.
+  "erfassen.ki.ausfuehrer": "Führt aus: {{wer}}",
   "erfassen.ki.pille": "KI",
   "erfassen.mehr.entwuerfe": "Entwürfe",
   "erfassen.mehr.anhaenge": "Anhänge",

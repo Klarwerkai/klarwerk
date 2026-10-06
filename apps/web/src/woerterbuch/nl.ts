@@ -2112,6 +2112,15 @@ const nl: typeof de = {
   "capture.ivModel": "AI-model",
   // JOB 3276: s. die deutsche Fassung — Alltagssprache statt „Deterministische fallback".
   "capture.ivFallback": "Vaste reservevragen, geen antwoord van de AI",
+  "capture.ivErsatzGrundKeinModell":
+    "De AI is voor deze taak nu niet ingericht, uitgeschakeld of niet vrijgegeven.",
+  "capture.ivErsatzGrundZeit": "De AI heeft niet op tijd geantwoord.",
+  "capture.ivErsatzGrundFehler": "De AI meldde een fout of was niet bereikbaar.",
+  "capture.ivErsatzGrundVertraulich":
+    "De tekst is als vertrouwelijk aangemerkt — de cloud-AI is daarvoor uitgesloten en er staat geen intern model klaar.",
+  "capture.ivErsatzGrundUnbekannt": "Waarom de AI deze keer niet antwoordde, is hier niet bekend.",
+  "capture.ivErsatzWeiter":
+    "Je kunt gewoon verder antwoorden — daaruit ontstaat je concept. Bij elk antwoord wordt de AI opnieuw gevraagd. Beheerders controleren de AI-toegang onder AI-beheer (‘Sleutel testen’).",
   "capture.ivQ.title": "Waar gaat het over? Formuleer een korte kernuitspraak.",
   "capture.ivQ.statement": "Beschrijf de ervaring/uitspraak nauwkeuriger.",
   "capture.ivQ.conditions": "Onder welke voorwaarden geldt dit? Eén per regel.",
@@ -5300,6 +5309,7 @@ const nl: typeof de = {
   "erfassen.weg.interview": "Interview voeren",
   "erfassen.weg.formular": "Formulier (experts)",
   "erfassen.ki.struktur": "Structuur voorstellen",
+  "erfassen.ki.ausfuehrer": "Uitgevoerd door: {{wer}}",
   "erfassen.ki.pille": "AI",
   "erfassen.mehr.entwuerfe": "Concepten",
   "erfassen.mehr.anhaenge": "Bijlagen",

@@ -65,6 +65,7 @@ import type { TitelMitQuelle } from "../../lib/titelRangfolge";
 import { useAiBillable } from "../../lib/useAiBillable";
 import { umfangKurz } from "../../lib/vorschauUmfang";
 import { AiAssistInstructions } from "../AiAssistBox";
+import { AiAusfuehrerZeile } from "../AiAusfuehrerZeile";
 import { AiCostHint } from "../AiCostHint";
 import { AiGeneratedNotice } from "../AiGeneratedNotice";
 // JOB 3426: die EINE Entwurfsliste des Produkts (Suche, Sortierung, Löschen) — bis hierher nur im
@@ -192,6 +193,10 @@ type LetzteAktion =
 // NUR DIESE EINE KENNUNG. Jeder andere Fehler — Zeitlimit, Modellstörung, Netz — behält seinen
 // bisherigen Satz; die Fläche deutet nichts um, was der Server nicht ausdrücklich benannt hat.
 const CLOUD_GESPERRT_CODE = "CONFIDENTIAL_CLOUD_BLOCKED";
+
+// KI-WAHL-BETRIEBSABNAHME · N-0070: die Aufgaben, die die KI-Palette des Blattes auslöst —
+// Strukturieren und alle Umformulier-Wege (Werksaktionen, freie Anweisung, Vorlagen).
+const KI_PALETTE_AUFGABEN = ["structure", "assist"] as const;
 
 function kiFehlerMeldung(err: unknown, rueckfall: string): string {
   return err instanceof ApiError && err.code === CLOUD_GESPERRT_CODE ? err.message : rueckfall;
@@ -2376,6 +2381,12 @@ export function Blatt({
         symbol={<SymbolKi />}
         gesperrt={structure.isPending || assist.isPending}
       >
+        {/* KI-WAHL-BETRIEBSABNAHME · N-0070: wer das ausführt, steht VOR jedem Eintrag dieser
+            Palette — Strukturieren (`structure`) und alle Umformulier-Wege samt freier Anweisung
+            und Vorlagen (`assist`). Eine Zeile; Begründung in `AiAusfuehrerZeile.tsx`. */}
+        <MenueFlaeche>
+          <AiAusfuehrerZeile tasks={KI_PALETTE_AUFGABEN} />
+        </MenueFlaeche>
         <MenueEintrag
           gesperrt={!canStructure}
           onClick={() => {

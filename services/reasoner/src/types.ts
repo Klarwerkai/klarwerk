@@ -207,6 +207,9 @@ export interface InterviewResult {
   done: boolean; // Abschluss erreicht
   draft: StructureResult; // nachvollziehbar aus den Antworten verdichtet
   demo: boolean; // deterministischer Fallback klar markiert
+  // KI-WAHL-BETRIEBSABNAHME · N-0087: NUR bei `demo: true` — warum feste Ersatzfragen kamen
+  // (dieselben Ursachen wie `StructureResult.fallbackReason`). PII-frei.
+  fallbackReason?: "no-model" | "model-timeout" | "model-error" | "confidential";
   // AUFTRAG-mega61 Block F: die maschinenlesbare Kennzeichnung nach Artikel 50 Absatz 2 der
   // KI-Verordnung. Sie wird ZENTRAL an der Dienstgrenze gesetzt (ReasonerService), damit sie
   // nicht an jedem Provider einzeln vergessen werden kann; die Provider bauen ihr Ergebnis

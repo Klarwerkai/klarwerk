@@ -2119,6 +2119,15 @@ const en: typeof de = {
   "capture.ivModel": "AI model",
   // JOB 3276: s. die deutsche Fassung — Alltagssprache statt „Deterministic fallback".
   "capture.ivFallback": "Fixed backup questions, no AI answer",
+  "capture.ivErsatzGrundKeinModell":
+    "AI is currently not set up, switched off or not cleared for this task.",
+  "capture.ivErsatzGrundZeit": "The AI did not answer in time.",
+  "capture.ivErsatzGrundFehler": "The AI reported an error or could not be reached.",
+  "capture.ivErsatzGrundVertraulich":
+    "The text is classified as confidential — the cloud AI is excluded for it, and no internal model is available.",
+  "capture.ivErsatzGrundUnbekannt": "Why the AI did not answer this time is not known here.",
+  "capture.ivErsatzWeiter":
+    "You can keep answering — your answers become your draft. Each answer asks the AI again. Administrators can check AI access under AI management (“Test key”).",
   "capture.ivQ.title": "What is it about? Write a short core statement.",
   "capture.ivQ.statement": "Describe the experience/statement in more detail.",
   "capture.ivQ.conditions": "Under which conditions does it apply? One per line.",
@@ -5307,6 +5316,7 @@ const en: typeof de = {
   "erfassen.weg.interview": "Run interview",
   "erfassen.weg.formular": "Form (experts)",
   "erfassen.ki.struktur": "Suggest structure",
+  "erfassen.ki.ausfuehrer": "Runs on: {{wer}}",
   "erfassen.ki.pille": "AI",
   "erfassen.mehr.entwuerfe": "Drafts",
   "erfassen.mehr.anhaenge": "Attachments",

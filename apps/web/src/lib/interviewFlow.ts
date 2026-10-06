@@ -18,6 +18,37 @@ export function interviewSourceKey(result: Pick<InterviewResult, "demo">): strin
   return result.demo ? "capture.ivFallback" : "capture.ivModel";
 }
 
+// KI-WAHL-BETRIEBSABNAHME · N-0087: WARUM feste Ersatzfragen kamen — der Satz zum Grund, den der
+// Server gemessen hat (`fallbackReason`), oder `null`, wenn die KI geantwortet hat. Kennt die Fläche
+// keinen Grund (z. B. ein aus einem Entwurf wiederhergestellter Stand, der nur `demo` trägt), sagt
+// der Satz genau das — er rät keinen.
+export function interviewErsatzGrundKey(
+  result: Pick<InterviewResult, "demo" | "fallbackReason">,
+): string | null {
+  if (!result.demo) {
+    return null;
+  }
+  switch (result.fallbackReason) {
+    case "no-model":
+      return "capture.ivErsatzGrundKeinModell";
+    case "model-timeout":
+      return "capture.ivErsatzGrundZeit";
+    case "model-error":
+      return "capture.ivErsatzGrundFehler";
+    case "confidential":
+      return "capture.ivErsatzGrundVertraulich";
+    default:
+      return "capture.ivErsatzGrundUnbekannt";
+  }
+}
+
+// Der sichere nächste Schritt bei festen Ersatzfragen — derselbe für jeden Grund: weiter antworten
+// geht immer (die Antworten werden zum Entwurf, `Capture.tsx` „Entwurf erstellen"), und jede
+// gesendete Antwort fragt über denselben Interview-Endpunkt erneut — steht die KI dann wieder
+// bereit, kommt die nächste Frage von ihr. Den KI-Zugang prüft die Administration unter
+// Einstellungen → KI („Key testen"). Kein Schritt schickt Text an einen nicht gewählten Anbieter.
+export const INTERVIEW_ERSATZ_WEITER_KEY = "capture.ivErsatzWeiter";
+
 // Anzahl bisher beantworteter Turns (für Fortschrittsanzeige).
 export function answeredTurns(answers: readonly string[]): number {
   return answers.length;

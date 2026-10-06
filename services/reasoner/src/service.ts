@@ -2346,14 +2346,46 @@ export class Reasoner {
     // SCRUM-502 Schicht 2: vertraulicher Draft → Cloud aus der Kette.
     confidential = false,
   ): Promise<InterviewResult> {
+    // KI-WAHL-BETRIEBSABNAHME · N-0087: „In Alltagssprache erklären, dass gerade feste Ersatzfragen
+    // genutzt werden; Anbieter-/Fehlergrund soweit bekannt und sicheren nächsten Schritt anzeigen."
+    // Bis hierher trug das Interview nur `demo: true` — die Fläche konnte „feste Ersatzfragen" sagen
+    // (JOB 3276), aber nicht WARUM. Jetzt dieselbe Ursachen-Unterscheidung wie `structure` (WP-D8/
+    // WP-D10/WP-SHIP9-S2, darüber): VOR dem Lauf festhalten, ob ein Modell in der Kette steht, und
+    // den letzten Modellfehler mitschreiben. PII-frei: nur die Klasse, nie Antwort- oder Modelltext.
+    const hadModelInChain = this.providerChain("interview", confidential).some(
+      (p) => p !== this.fallback,
+    );
+    const failureBox: { current: unknown } = { current: null };
     const result = await this.runTask(
       "interview",
       locale,
-      (p) => p.interview(answers, locale, confidential),
+      async (p) => {
+        if (p === this.fallback) {
+          return p.interview(answers, locale, confidential);
+        }
+        try {
+          return await p.interview(answers, locale, confidential);
+        } catch (err) {
+          failureBox.current = err;
+          throw err;
+        }
+      },
       confidential,
     );
     // mega61 Block F: Interviewfragen sind erzeugter Text — gekennzeichnet.
-    return { ...result, aiGenerated: aiGeneratedMark("interview", result.demo) };
+    const gekennzeichnet = { ...result, aiGenerated: aiGeneratedMark("interview", result.demo) };
+    if (!result.demo) {
+      return gekennzeichnet;
+    }
+    const fallbackReason = !hadModelInChain
+      ? this.cloudExcludedByConfidentiality("interview", confidential)
+        ? ("confidential" as const)
+        : ("no-model" as const)
+      : failureBox.current !== null &&
+          classifyModelFailure(failureBox.current).failureClass === "timeout"
+        ? ("model-timeout" as const)
+        : ("model-error" as const);
+    return { ...gekennzeichnet, fallbackReason };
   }
 
   // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag).
