@@ -251,6 +251,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // nachgezählt: zwei `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein
   // Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "MANAGEMENT_PROFILE_SCHEMA", risiko: "ADDITIV" },
+  // Kenntnisnahme einer gültigen Fassung. ADDITIV, nachgezählt: zwei `CREATE TABLE IF NOT EXISTS`
+  // und zwei `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, keine Extension; der
+  // einzige Fremdschlüssel zeigt auf den eigenen Kopf. Ein zweiter Lauf ist folgenlos.
+  { stufe: "KENNTNISNAHME_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

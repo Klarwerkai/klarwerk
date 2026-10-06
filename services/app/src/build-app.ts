@@ -247,6 +247,13 @@ import {
   tokenFromRequest,
 } from "./http";
 import { impactReport } from "./impact";
+// Kenntnisnahme einer gültigen Fassung — haltbar im Postgres-Betrieb, im Speicher ohne Datenbank.
+import {
+  InMemoryKenntnisnahmeRepo,
+  KenntnisnahmeDienst,
+  type KenntnisnahmeRepo,
+  PgKenntnisnahmeRepo,
+} from "./kenntnisnahme";
 // WP-D11: PPTX-Folien → PNG (Route + injizierbarer Konverter).
 import {
   InMemoryLesevariantenRepo,
@@ -280,6 +287,7 @@ import { impactRoutes } from "./routes/impact-routes";
 import { importAccessRoutes } from "./routes/import-access-routes";
 import { importRunRoutes } from "./routes/import-run-routes";
 import { kantenRoutes } from "./routes/kanten-routes";
+import { kenntnisnahmeRoutes } from "./routes/kenntnisnahme-routes";
 import { klaraAiRoutes } from "./routes/klara-ai-routes";
 // W3-C (JOB 541 D3): die kanonische Antwort-Erklaerroute und ihr Lesedienst.
 import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-routes";
@@ -428,6 +436,15 @@ export interface AppServices {
    * denselben Hinweis an derselben Datenbankuhr sehen.
    */
   bearbeitungen: BearbeitungsRepo;
+  /**
+   * Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen. Aus demselben Grund wie
+   * `bearbeitungen` NICHT in `AppRepos`. Im Postgres-Betrieb `PgKenntnisnahmeRepo`; ohne Datenbank
+   * die Speicherfassung, die im Desktop-Journal-Betrieb Schreibvorgänge ablehnt, statt sie beim
+   * Neustart zu verlieren.
+   */
+  kenntnisnahmen: KenntnisnahmeRepo;
+  /** Die Uhr des Kenntnisnahmedienstes (Millisekunden) — in Tests stellbar für Frist und Erinnerung. */
+  kenntnisnahmeUhr: () => number;
   /**
    * JOB 3363: die Ablage der Import-Kandidaten — DIESELBE Instanz, die `LibraryService` bekommt.
    * Sie steht hier, weil die Lesevarianten-Routen einen einzelnen Kandidaten nachschlagen müssen
@@ -887,6 +904,10 @@ export function assembleServices(
     // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
     // die Speicherfassung — dieselbe Regel, die Uhr des Prozesses statt der Datenbank.
     bearbeitungen?: BearbeitungsRepo;
+    // Kenntnisnahme: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
+    kenntnisnahmen?: KenntnisnahmeRepo;
+    // Kenntnisnahme: die Uhr für Frist, Überfälligkeit und Erinnerung — ohne Injektion `Date.now`.
+    kenntnisnahmeUhr?: () => number;
     // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
     // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
     // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
@@ -1184,6 +1205,13 @@ export function assembleServices(
     // WIKI-BEARBEITUNGSRESERVIERUNG: die Bearbeitungshinweise — Postgres, wenn injiziert, sonst im
     // Speicher.
     bearbeitungen: opts.bearbeitungen ?? new InMemoryBearbeitungsRepo(),
+    // Kenntnisnahme: Postgres, wenn injiziert, sonst im Speicher. Sagt der Betrieb Haltbarkeit zu
+    // (Desktop-Journal), lehnt die Speicherfassung Schreibvorgänge ab — eine angenommene und beim
+    // Neustart verlorene Bestätigung wäre schlimmer als eine abgelehnte.
+    kenntnisnahmen:
+      opts.kenntnisnahmen ??
+      new InMemoryKenntnisnahmeRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
+    kenntnisnahmeUhr: opts.kenntnisnahmeUhr ?? Date.now,
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
     // der Fabrik. JOB 3134: hinter der Hülle (oben), die je Aufruf den GEWÄHLTEN Anbieter nimmt.
     zurufModell,
@@ -1583,6 +1611,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // so sehen mehrere App-Prozesse derselben Instanz denselben Hinweis — und die Uhr, die über
       // Ablauf und Erneuerung entscheidet, ist die der Datenbank, nicht die eines Prozesses.
       bearbeitungen: new PgBearbeitungsRepo(pool),
+      // Kenntnisnahme: Anforderungen und Bestätigungen überleben Neuladen, Neuanmeldung und Neustart.
+      kenntnisnahmen: new PgKenntnisnahmeRepo(pool),
     },
   );
 }
@@ -3133,6 +3163,18 @@ export function buildApp(
       guards,
     ),
   );
+  // Kenntnisnahme einer gültigen Fassung. Der Dienst liest Einträge über `services.ko` und Konten
+  // über die vorhandene Kontenliste (Rolle, Freigabe, Befristung); dieselbe Instanz speist die
+  // Glocke (`notificationsRoutes` unten), damit Anforderung und Erinnerung den vorhandenen
+  // Benachrichtigungsweg nehmen.
+  const kenntnisnahmeDienst = new KenntnisnahmeDienst({
+    repo: services.kenntnisnahmen,
+    ko: services.ko,
+    konten: () => services.auth.listUsers(),
+    jetzt: services.kenntnisnahmeUhr,
+    kennung: () => randomUUID(),
+  });
+  app.register(kenntnisnahmeRoutes({ dienst: kenntnisnahmeDienst, kos: services.ko }, guards));
   // ==============================================================================================
   // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS) — HIER BEKOMMT DIE GESAMTANWEISUNG IHRE TÜR.
   // ==============================================================================================
@@ -3288,6 +3330,8 @@ export function buildApp(
         seen: services.notificationSeen,
         // AUFTRAG-mega74 BLOCK D (G5): dieselbe Quelle wie Konflikte und Überschneidungen.
         kos: koSichtbarkeit,
+        // Kenntnisnahme: offene Anforderungen und Erinnerungen des Betrachters.
+        kenntnisnahmen: kenntnisnahmeDienst,
       },
       guards,
     ),
