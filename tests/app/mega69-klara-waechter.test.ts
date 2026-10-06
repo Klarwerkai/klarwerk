@@ -2714,6 +2714,10 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // `/api/check-text`, bei einer Titeländerung ein Ruf mehr), keine Nutzlast-, CSP-, Rechte- oder
     // Manifeständerung, kein Sideload. DER PIN MUSS WANDERN; der Prüflauf meldet den Ist-Wert als
     // „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 11: gemessen im Prüflauf zu Kandidat 10b99093 war `a6acd179…` — NICHT übernommen,
+    // weil `taskpane.js` danach erneut geändert werden musste: die AUSGELIEFERTE Datei zählte 12500
+    // Zeilen (schnittflaechen B3, Schranke < 12500); zwei eigene Kommentarzeilen sind verdichtet,
+    // Verhalten unverändert. Der Pin wandert deshalb noch einmal; „Received" im nächsten Lauf.
     const PIN = "5f2efde93a6a41dac7448116aaebcee945c34e2de6d01b38958cfdb4c923a2f2";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
@@ -2873,7 +2877,10 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Sideload; die Nutzlast trägt jetzt die Bilder, die Word herausgibt (Budget unverändert).
     // DER PIN MUSS WANDERN; der Prüflauf meldet den Ist-Wert als „Received", er wird danach
     // gemessen übernommen.
-    const PIN = "4932af255de7670adce6527dfbf7b5f8c1b374e235547eccc5f624a21b5aee7e";
+    // NACHARBEIT 11: PIN BEWUSST AKTUALISIERT (4932af25… -> 46c81c53…). Im Prüflauf zu Kandidat
+    // 10b99093 GEMESSEN („Received", HISTORIE/nacharbeit-11/PRUEFUNG/panel-auslieferung-pins-
+    // inventare.log) und unverändert übernommen; `rueckweg.js` ist seit dieser Messung unberührt.
+    const PIN = "46c81c53b09dc68b0d4df1cb5ff8aafc804b7bfa9ed8fb62bc7784df4d65fe18";
     const ist = createHash("sha256").update(readFileSync(RUECKWEG)).digest("hex");
     expect(
       ist,

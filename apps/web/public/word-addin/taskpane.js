@@ -4215,7 +4215,7 @@
     // (updateSendState). Ein Treffer ist eine Auskunft, keine Sperre — der Mensch entscheidet.
     // GENAU EIN LAUF JE TEXT UND TITEL: dieselbe Kombination wird nicht erneut geprueft; eine neue macht
     // den alten Lauf unbeachtlich (Laufnummer, Titelvergleich) — ein verspaeteter Rueckfall kann keine
-    // fremde Markierung und keinen alten Titel beschriften.
+    // fremde Markierung und keinen alten Titel beschriften (WORD-WEB-TITLE-CACHE, Realhost 06.10.2026).
     var captureDubletten = null;
     var captureDublettenText = "";
     var captureDublettenLauf = 0;
@@ -4270,7 +4270,6 @@
         titelFeld ? titelFeld.value : ""
       ).then(function (ergebnis) {
         if (lauf !== captureDublettenLauf) { return; }
-        // WORD-WEB-TITLE-CACHE (Realhost 06.10.2026): Antwort zu einem alten Titel verwerfen, neu fragen.
         if ((titelFeld ? titelFeld.value : "") !== schluessel.slice(text.length + 1)) { captureDublettenText = ""; return; }
         captureDubletten = {
           lage: ergebnis.lage,
@@ -6939,8 +6938,7 @@
     document.getElementById("office-hint-btn").addEventListener("click", function () {
       window.location.reload();
     });
-    // Die Zeile „Titel": ab dem ersten eigenen Zeichen gehoert sie dem Menschen; geleert nimmt die Vorbelegung
-    // wieder ueber. WORD-WEB-TITLE-CACHE: nach einer Tipp-Pause neu suchen (gleiche Kombination: kein Lauf).
+    // Zeile „Titel": eigene Zeichen gehoeren dem Menschen (leer: Vorbelegung); nach Tipp-Pause neu suchen.
     document.getElementById("capture-titel").addEventListener("input", function () {
       captureTitelVonHand = this.value.replace(/^\s+|\s+$/g, "").length > 0;
       clearTimeout(captureTitelUhr);

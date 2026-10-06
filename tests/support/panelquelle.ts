@@ -121,6 +121,9 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 9: `taskpane.js` ändert sich an der Bestandssuche (Schlüssel Text + Titel) und um zwei
  * Wörterbuchschlüssel des Rückwegs. Der Bezugspunkt MUSS wandern; E2 meldet ihn im Prüflauf als
  * „Received", er wird danach gemessen übernommen.
+ * NACHARBEIT 11: gemessen zu Kandidat 10b99093 war `99c60bac…` — NICHT übernommen, weil
+ * `taskpane.js` wegen der Zeilenschranke B3 (ausgeliefert 12500) danach um zwei Kommentarzeilen
+ * kürzer wurde. Der Bezugspunkt wandert noch einmal; E2 meldet ihn im nächsten Lauf.
  */
 export const PANEL_VOR_SCHNITT_BLOB = "87cb70fe49e2fc85891a0f1683e2659698a566ed";
 
