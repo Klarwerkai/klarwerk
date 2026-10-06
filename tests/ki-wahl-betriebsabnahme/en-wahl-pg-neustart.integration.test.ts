@@ -14,6 +14,9 @@
 // Die EN-Bedienung, die PostgreSQL-Zeile `reasoner_policy` und der Neustart standen nie in EINER
 // Kette. Diese Datei fährt sie zusammen:
 //
+//   W0 · Ohne Grundfreigabe geht die Aufgabe an niemanden hinaus (Sperre).
+//   W2a · Der Administrator setzt die Grundfreigabe in der EN-Fläche per Tastatur (Nacharbeit 2:
+//        vorher setzte der Aufbau sie von Hand im Rumpf — das verbietet der Freigabe-Wächter F2).
 //   W1 · Ausgangslage: Wahl „auto", beide Anbieter eingerichtet → der Empfänger ist ChatGPT
 //        (OpenAI). Das ist die GEGENPROBE: ohne sie bewiese der spätere Anthropic-Empfänger nicht,
 //        dass die Wahl etwas bewegt hat.
@@ -65,6 +68,7 @@ import {
   fn,
   profil,
   starteChromium,
+  tabBisZu,
   tastaturAusloesen,
   warte,
 } from "../gast-nutzerweg/browserweg";
@@ -76,6 +80,8 @@ const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const ADMIN = "en-wahl@ki-wahl-pg.test";
 const WAHLFELD = '[data-testid="ki-wahl-global"]';
+/** Das Kästchen der Grundfreigabe für öffentliche KI (`AdminKiDetails.tsx`, JOB 3783). */
+const FREIGABE_KASTEN = '[data-testid="ki-freigabe-oeffentlich"]';
 const KARTE = "/admin?bereich=ki&detail=ki";
 
 /** Die EN-Sollwerte kommen aus demselben Katalog, aus dem die Fläche zeichnet. */
@@ -216,6 +222,9 @@ const OPTIONSTEXT = `([sel, wert]) => {
   const o = e ? [...e.options].find((x) => x.value === wert) : undefined;
   return o ? { text: (o.textContent || "").trim(), aus: o.disabled } : null;
 }`;
+/** Ist das Kästchen angehakt und nicht gesperrt? (`arg` = Selektor) */
+const KASTEN_AN =
+  "(sel) => { const e = document.querySelector(sel); return !!e && e.checked === true && !e.disabled; }";
 /** Steht dieser Text irgendwo sichtbar auf der Seite? (`arg` = der Sollsatz aus dem Katalog) */
 const SEITE_ENTHAELT = "(t) => document.body.innerText.includes(t)";
 const STATUSZEILE = `() => { const e = document.querySelector('[data-testid="ki-status"]'); return e ? (e.textContent || "").replace(/\\s+/g, " ").trim() : ""; }`;
@@ -276,7 +285,10 @@ describe("KI-WAHL K1 · EN-Wahl in Chromium steuert den Empfänger — und über
       "default",
     );
 
-    // ── Aufbau: Ersteinrichtung, Grundfreigabe, Regler für Weltwissen. ───────────────────────────
+    // ── Aufbau: Ersteinrichtung und Regler für Weltwissen. Die Grundfreigabe für öffentliche KI
+    // setzt NICHT der Aufbau, sondern der Administrator in der EN-Fläche (W2a) — sie ist eine
+    // namentliche Ausnahme (Freigabe-Wächter F2 in `routing-zwei-attrappen.test.ts`) und hier
+    // Gegenstand, kein Aufbaudetail. ──────────────────────────────────────────────────────────
     const setup = new Sitzung(eins.basis, "admin-setup", "en");
     const angelegt = await setup.sende("POST", "/api/auth/setup", {
       name: "Admin",
@@ -285,12 +297,6 @@ describe("KI-WAHL K1 · EN-Wahl in Chromium steuert den Empfänger — und über
       password: PASSWORT,
     });
     expect(angelegt.status, angelegt.text).toBe(201);
-    const freigabe = await setup.sende("PUT", "/api/reasoner/config", {
-      global: "auto",
-      perTask: {},
-      kiFreigabe: { oeffentlicheKi: true },
-    });
-    expect(freigabe.status, freigabe.text).toBe(200);
     await eins.services.externalKnowledge.setStage("open");
     const konfig = (await setup.sende("GET", "/api/reasoner/config")).json as {
       cloudProviders: Record<string, { configured: boolean; name?: string }>;
@@ -300,13 +306,15 @@ describe("KI-WAHL K1 · EN-Wahl in Chromium steuert den Empfänger — und über
     anthropicName = konfig.cloudProviders.anthropic?.name ?? "";
     expect(anthropicName).toMatch(/^anthropic:/);
 
-    // ── W1 · GEGENPROBE: unter „auto" geht die Aufgabe an OpenAI. ───────────────────────────────
+    // ── W0 · SPERRE vor der Freigabe: dieselbe Aufgabe geht an NIEMANDEN hinaus. ─────────────────
     let marke = rufe.length;
-    expect((await anreichern(setup)).text).toBe("VON-OPENAI");
+    /** Der Freigabewert, wie ihn die Fläche in W2a gespeichert hat — Sollwert für W3. */
+    let freigabeInDerZeile: unknown;
+    await anreichern(setup);
     expect(
       aufgabenRufe(marke),
-      "unter auto ging die Aufgabe nicht an den Vorgabe-Anbieter",
-    ).toEqual([OPENAI_URL]);
+      "ohne Grundfreigabe ging die Aufgabe trotzdem an einen öffentlichen Anbieter",
+    ).toEqual([]);
 
     // ── W2 · Chromium, ENGLISCH, nur Tastatur. ────────────────────────────────────────────────
     const tastatur: Record<string, number> = {};
@@ -314,6 +322,44 @@ describe("KI-WAHL K1 · EN-Wahl in Chromium steuert den Empfänger — und über
     try {
       await anmelden(p1.seite, eins.basis, ADMIN, "en_vorher", tastatur);
       await oeffneKarte(p1.seite, eins.basis);
+
+      // ── W2a · die Grundfreigabe, gesetzt wie ein Administrator: Tab zum Kästchen, Leertaste. ──
+      // Nur die Grundfreigabe; das Kästchen für vertrauliche Inhalte bleibt unberührt.
+      expect(
+        await p1.seite.evaluate<boolean>(fn(KASTEN_AN), FREIGABE_KASTEN),
+        "Vorbedingung verletzt: die Grundfreigabe steht schon vor der Bedienung an",
+      ).toBe(false);
+      tastatur.freigabe = await tabBisZu(p1.seite, FREIGABE_KASTEN, 320, true);
+      await p1.seite.keyboard.press(" ");
+      // Das Kästchen zeichnet den VOM SERVER BESTÄTIGTEN Stand (`basis.freigabe`) und ist während
+      // des Schreibens gesperrt — angehakt UND wieder bedienbar heisst: die Antwort ist da.
+      // (Die Sätze der Freigabe registriert erst `AdminKiDetails.tsx` beim Laden; in diesem
+      // Node-Lauf sind sie nicht auflösbar — deshalb der Zustand statt des Wortlauts.)
+      await warte(
+        p1.seite,
+        KASTEN_AN,
+        "die Grundfreigabe ist vom Server bestätigt und das Kästchen wieder bedienbar",
+        FREIGABE_KASTEN,
+      );
+      const nachFreigabe = await eins.pool.query<{ data: { kiFreigabe?: unknown } }>(
+        "SELECT data FROM reasoner_policy WHERE id = 1",
+      );
+      // Der gespeicherte Freigabewert wird hier nur FESTGEHALTEN (nicht ausgeschrieben) — W3
+      // vergleicht ihn nach dem Speichern der Wahl mit dem, was dann in der Zeile steht.
+      freigabeInDerZeile = nachFreigabe.rows[0]?.data.kiFreigabe;
+      expect(
+        freigabeInDerZeile,
+        "die Freigabe aus der Fläche steht nicht in PostgreSQL",
+      ).toBeDefined();
+
+      // ── W1 · GEGENPROBE: mit Freigabe und „auto" geht die Aufgabe an OpenAI. ─────────────────
+      marke = rufe.length;
+      expect((await anreichern(setup)).text).toBe("VON-OPENAI");
+      expect(
+        aufgabenRufe(marke),
+        "unter auto ging die Aufgabe nicht an den Vorgabe-Anbieter",
+      ).toEqual([OPENAI_URL]);
+
       const seitentext = await p1.seite.evaluate<string>(fn(LIES_TEXT));
       expect(seitentext, "die Karte steht nicht auf Englisch").toContain(EN("adm.ai.global"));
       expect(seitentext).toContain(EN("adm.ai.save"));
@@ -354,8 +400,8 @@ describe("KI-WAHL K1 · EN-Wahl in Chromium steuert den Empfänger — und über
       );
       expect(
         zeile.rows[0]?.data.kiFreigabe,
-        "das Speichern der Wahl hat die erteilte Freigabe verloren",
-      ).toEqual({ oeffentlicheKi: true });
+        "das Speichern der Wahl hat die in der Fläche erteilte Freigabe verändert",
+      ).toEqual(freigabeInDerZeile);
 
       // ── W4 · Empfänger: die Probe aus der EN-Fläche und eine echte Aufgabe. ────────────────
       marke = rufe.length;
@@ -415,6 +461,12 @@ describe("KI-WAHL K1 · EN-Wahl in Chromium steuert den Empfänger — und über
         await p2.seite.evaluate<string>(fn(LIES_TEXT)),
         "nach dem Neustart steht ein nicht übernommener Entwurf da",
       ).not.toContain(EN("adm.ai.dirtyHint"));
+      // Und die in W2a erteilte Freigabe gilt nach dem Neustart weiter — das Kästchen zeichnet den
+      // geladenen, bestätigten Stand der neuen Instanz.
+      expect(
+        await p2.seite.evaluate<boolean>(fn(KASTEN_AN), FREIGABE_KASTEN),
+        "nach dem Neustart steht die Grundfreigabe nicht mehr an",
+      ).toBe(true);
       marke = rufe.length;
       tastatur.probeNachher = await tastaturAusloesen(p2.seite, EN("adm.ai.test"));
       await warte(

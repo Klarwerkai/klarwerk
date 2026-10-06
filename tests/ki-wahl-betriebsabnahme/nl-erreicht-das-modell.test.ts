@@ -14,23 +14,35 @@
 // DREI GETRENNTE STATIONEN, damit kein Glied angenommen wird:
 //   N1 · die Abbildung der Oberflächensprache (`toReasonerLocale("nl-NL")`) — der Client.
 //   N2 · das ARGUMENT, mit dem der echte Reasoner hinter der echten Route gerufen wird.
-//   N3 · der PROMPT AUF DEM DRAHT: der Rumpf, den der gecappte OpenAI-Client wirklich an
+//   N3 · der PROMPT AUF DEM DRAHT: der Rumpf, den der OpenAI-kompatible Client wirklich an
 //        `/chat/completions` schickt, trägt die niederländische Ausgaberegel und NICHT die deutsche.
+//
+// WARUM DER LOKALE MODELLWEG (Nacharbeit 2): Die Sprachregel entsteht im Reasoner
+// (`enrichPublicSystem` → `outputLanguageRule`), VOR jeder Anbieterwahl; der Rumpf an
+// `/chat/completions` ist für den lokalen Server und für ChatGPT derselbe Client
+// (`openAiCompatibleClient`). Gemessen wird deshalb am eigenen, lokalen Server (Loopback, also
+// bestätigt on-prem): er braucht keine Freigabe für öffentliche KI. Die erste Fassung dieser Datei
+// setzte diese Freigabe von Hand im Adminrumpf — das verbietet der Freigabe-Wächter
+// (`tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts`, F2) zu Recht: die Freigabe ist eine
+// namentliche Ausnahme, kein Aufbaudetail. Der Empfänger je Cloud-Anbieter ist Gegenstand von
+// `en-wahl-pg-neustart.integration.test.ts`, nicht dieser Datei.
 //
 // WAS HIER AUSDRÜCKLICH NICHT BEHAUPTET WIRD (die zweite Hälfte des Kriteriums): dass das Modell
 // die Antwort tatsächlich niederländisch FORMULIERT. Das ist Modellverhalten und braucht einen
-// echten, freigegebenen Anbieter — hier antwortet ein gestellter Transport. N4 hält deshalb nur
-// fest, dass die Antwort, die der Transport liefert, unverändert durchgereicht wird; die
-// Antwortsprache eines echten Modells bleibt eine offene Betriebsprobe.
+// echten Anbieter — hier antwortet ein gestellter Transport. N4 hält deshalb nur fest, dass die
+// Antwort, die der Transport liefert, unverändert durchgereicht wird; die Antwortsprache eines
+// echten Modells bleibt eine offene Betriebsprobe.
 //
 // KEIN NETZ, KEIN SCHLÜSSEL: `fetch` ist vor dem Aufbau ersetzt (die Clients binden ihn beim Bau),
-// der Schlüssel ist ein Testwert, der Schlüsselbund ist aus.
+// kein Cloud-Schlüssel ist gesetzt, der Schlüsselbund ist aus.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toReasonerLocale } from "../../apps/web/src/lib/reasonerLocale";
 import { type AppServices, buildApp, buildServices } from "../../services/app/src/build-app";
 import { outputLanguageRule } from "../../services/reasoner/src/provider-model";
 
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+/** Der eigene Modellserver — Loopback, damit er als bestätigt lokal gilt (`isConfirmedLocalOrigin`). */
+const LOKAL_BASIS = "http://127.0.0.1:9/v1";
+const LOKAL_URL = `${LOKAL_BASIS}/chat/completions`;
 /** Die Antwort des gestellten Transports — NIEDERLÄNDISCH, damit N4 die Durchreichung sieht. */
 const TRANSPORT_ANTWORT = "Smeervet vermindert wrijving tussen bewegende delen.";
 
@@ -44,7 +56,7 @@ function stelleTransport(): Mitschnitt[] {
   vi.stubGlobal("fetch", (async (url: unknown, init?: { body?: unknown }) => {
     const pfad = String(url);
     mitschnitt.push({ url: pfad, rumpf: typeof init?.body === "string" ? init.body : "" });
-    if (pfad !== OPENAI_URL) {
+    if (pfad !== LOKAL_URL) {
       // Laut statt still: jeder andere Ruf nach draussen ist in diesem Aufbau ein Befund.
       throw new Error(`unerwarteter Ruf nach draussen: ${pfad}`);
     }
@@ -83,11 +95,14 @@ const argumente: unknown[] = [];
 
 beforeEach(async () => {
   vi.stubEnv("KLARWERK_SKIP_KEYCHAIN", "1");
-  vi.stubEnv("OPENAI_API_KEY", "sk-test-nur-in-dieser-datei");
-  vi.stubEnv("OPENAI_MODEL", "gpt-4o-mini");
-  vi.stubEnv("OPENAI_BASE_URL", "");
+  // Kein Cloud-Anbieter: die Kette hat nur den eigenen Server und den Ersatzmodus.
+  vi.stubEnv("OPENAI_API_KEY", "");
   vi.stubEnv("ANTHROPIC_API_KEY", "");
-  vi.stubEnv("KLARWERK_LOCAL_LLM_URL", "");
+  vi.stubEnv("KLARWERK_LOCAL_LLM_URL", LOKAL_BASIS);
+  vi.stubEnv("KLARWERK_LOCAL_LLM_MODEL", "kw-nl-kette-lokal");
+  vi.stubEnv("KLARWERK_LOCAL_LLM_KEY", "");
+  vi.stubEnv("KLARWERK_LOCAL_LLM_MAX_TOKENS", "");
+  vi.stubEnv("KLARWERK_LOCAL_LLM_ALLOWED_ORIGINS", "");
   vi.stubEnv("KLARWERK_REASONER_POLICY", "");
   mitschnitt = stelleTransport();
   argumente.length = 0;
@@ -102,13 +117,13 @@ beforeEach(async () => {
   };
   app = buildApp(services);
   headers = await alsAdmin(app, "nl-kette@ki-wahl.test");
-  // Wahl UND Grundfreigabe über den echten Adminweg — ohne Freigabe ginge nichts hinaus, und N3
-  // mässe die Sperre statt der Sprache.
+  // Die Wahl „lokal" über den echten Adminweg. Der eigene Server erzeugt keinen Egress und braucht
+  // deshalb keine Freigabe für öffentliche KI — es wird auch keine gesetzt.
   const wahl = await app.inject({
     method: "PUT",
     url: "/api/reasoner/config",
     headers,
-    payload: { global: "openai", perTask: {}, kiFreigabe: { oeffentlicheKi: true } },
+    payload: { global: "local", perTask: {} },
   });
   expect(wahl.statusCode, wahl.body).toBe(200);
   // Die Anreicherung ist Weltwissen und hinter dem Regler „externe Wissensabfrage" — er steht für
@@ -139,8 +154,8 @@ describe("KI-WAHL K3 · nl-NL erreicht das Modell — Argument und Draht getrenn
     // N2 — das Argument hinter der Route.
     expect(argumente, "die Route hat den Reasoner nicht mit nl gerufen").toEqual(["nl"]);
 
-    // N3 — der Rumpf auf dem Draht, an den tatsächlich gewählten Anbieter.
-    expect(mitschnitt.map((m) => m.url)).toEqual([OPENAI_URL]);
+    // N3 — der Rumpf auf dem Draht, an den tatsächlich gewählten (lokalen) Server.
+    expect(mitschnitt.map((m) => m.url)).toEqual([LOKAL_URL]);
     const rumpf = mitschnitt[0]?.rumpf ?? "";
     expect(rumpf, "die niederländische Ausgaberegel fehlt im gesendeten Prompt").toContain(
       outputLanguageRule("nl"),
@@ -148,7 +163,6 @@ describe("KI-WAHL K3 · nl-NL erreicht das Modell — Argument und Draht getrenn
     expect(rumpf, "der gesendete Prompt trägt die deutsche Ausgaberegel").not.toContain(
       outputLanguageRule("de"),
     );
-    expect(rumpf, "der Schlüssel steht im Rumpf").not.toContain("sk-test-nur-in-dieser-datei");
 
     // N4 — nur die Durchreichung: was der Transport sagt, kommt an. Ob ein ECHTES Modell
     // niederländisch antwortet, ist damit NICHT belegt (Kopf dieser Datei).
