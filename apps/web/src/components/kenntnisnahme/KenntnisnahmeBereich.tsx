@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Card, SectionLabel } from "../ui";
 import {
@@ -79,10 +79,31 @@ function EigeneAnforderung({ eintrag }: { eintrag: EigeneKenntnisnahme }): JSX.E
   const { t } = useTranslation();
   const datum = useDatum();
   const queryClient = useQueryClient();
+  // Die Sperre gegen den Doppelklick greift SOFORT beim ersten Klick. `isPending` der Mutation
+  // kommt erst im nächsten Takt an (Benachrichtigungsplaner von TanStack Query); ein zweiter Klick
+  // davor schickte sonst einen zweiten Request. Der Ref schützt synchron, der Zustand sperrt den
+  // Knopf schon im selben Rendern.
+  const laeuft = useRef(false);
+  const [gesendet, setGesendet] = useState(false);
   const bestaetigen = useMutation({
     mutationFn: () => kenntnisnahmeApi.bestaetigen(eintrag.anforderungId, eintrag.fassung),
+    // Nach Erfolg bleibt der Knopf gesperrt, bis der neu gelesene Stand ihn ersetzt. Nur ein
+    // Fehler gibt ihn für einen erneuten Versuch frei.
+    onError: () => {
+      laeuft.current = false;
+      setGesendet(false);
+    },
     onSettled: () => queryClient.invalidateQueries({ queryKey: MEINE }),
   });
+  const absenden = (): void => {
+    if (laeuft.current) {
+      return;
+    }
+    laeuft.current = true;
+    setGesendet(true);
+    bestaetigen.mutate();
+  };
+  const sperrt = gesendet || bestaetigen.isPending;
   const offen = eintrag.status === "ausstehend" || eintrag.status === "ueberfaellig";
   return (
     <div data-testid="kenntnisnahme-eigen" className="space-y-1.5 text-[13px]">
@@ -123,10 +144,10 @@ function EigeneAnforderung({ eintrag }: { eintrag: EigeneKenntnisnahme }): JSX.E
           <Button
             variant="primary"
             data-testid="kenntnisnahme-bestaetigen"
-            disabled={bestaetigen.isPending}
-            onClick={() => bestaetigen.mutate()}
+            disabled={sperrt}
+            onClick={absenden}
           >
-            {bestaetigen.isPending
+            {sperrt
               ? t("kenntnisnahme.eigen.laeuft")
               : t("kenntnisnahme.eigen.bestaetigen", { fassung: eintrag.fassung })}
           </Button>

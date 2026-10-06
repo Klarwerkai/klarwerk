@@ -214,12 +214,14 @@ describe("F1/F2 · anzeigen bestätigt nichts; der Klick bestätigt genau einmal
     });
     expect(JSON.stringify(vorher.json())).toContain('"status":"ausstehend"');
 
-    // Doppelklick: der zweite Klick trifft einen gesperrten Knopf.
+    // Doppelklick: zwei Klicks im selben Takt (ohne Neurendern dazwischen) schicken EINEN
+    // Request; danach ist der Knopf gesperrt, und ein weiterer Klick trifft ins Leere.
     let freigeben: () => void = () => {};
     bestaetigenSperre = new Promise<void>((r) => {
       freigeben = r;
     });
     await act(async () => {
+      bestaetigen?.click();
       bestaetigen?.click();
     });
     expect(knopf(flaeche, "kenntnisnahme-bestaetigen")?.disabled).toBe(true);
