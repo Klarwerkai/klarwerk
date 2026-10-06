@@ -2886,7 +2886,8 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // `fillWordImages` nicht mehr. Auslieferungsfolgen: kein Abrufziel, CSP/Recht/Manifest
     // unverändert, kein Sideload; die Nutzlast trägt Bilder, die vorher verloren gingen. DER PIN
     // MUSS WANDERN; der Prüflauf meldet den Ist-Wert als „Received", er wird danach übernommen.
-    const PIN = "46c81c53b09dc68b0d4df1cb5ff8aafc804b7bfa9ed8fb62bc7784df4d65fe18";
+    // Root 06.10.2026: SHA-256 direkt aus der geprüften Bild-Mischfallkorrektur berechnet.
+    const PIN = "f3ab60bcf6822fd11588483bd4165b5fcbf6dcb729ffebb93ed22a26c970b1ac";
     const ist = createHash("sha256").update(readFileSync(RUECKWEG)).digest("hex");
     expect(
       ist,
