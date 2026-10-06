@@ -1311,6 +1311,26 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // produkt:wettbewerb:20261003:lernplattform — die leere Nutzlast endet für jede Rolle in der
+  // Rumpfprüfung (400 BAD_REQUEST), also HINTER dem Rechtetor; anonym bleibt 401.
+  {
+    gruppe: "lmsExportRoutes",
+    methode: "POST",
+    pfad: "/api/output/scorm/pruefen",
+    belegstelle: "services/app/src/routes/lms-export-routes.ts:25",
+    tor: "ko.read",
+    payload: {},
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "lmsExportRoutes",
+    methode: "POST",
+    pfad: "/api/output/scorm/paket",
+    belegstelle: "services/app/src/routes/lms-export-routes.ts:37",
+    tor: "ko.read",
+    payload: {},
+    erwartet: NUR_LESEN,
+  },
   {
     gruppe: "overlapRoutes",
     methode: "GET",

@@ -904,6 +904,15 @@ const GRUNDWERTE: readonly Startwert[] = [
     wofuer: "Adressen, die trotz externer Herkunft als INTERN gelten.",
     ohneIhn: "Keine Adresse gilt als intern.",
   },
+  {
+    name: "KLARWERK_LMS_EMPFAENGER",
+    bereich: "Externe Quellen",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Zugelassene Lernplattformen für den SCORM-Export, als kennung=Bezeichnung durch Semikolon getrennt.",
+    ohneIhn: "Kein Empfänger ist zugelassen; der SCORM-Export wird mit Befund abgelehnt.",
+  },
   // ------------------------------------------------------------------------------------ Add-in API
   {
     name: "KLARWERK_ADDON_API",

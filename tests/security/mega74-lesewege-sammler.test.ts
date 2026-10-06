@@ -302,6 +302,14 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "DIENST_FILTERT",
     grund: "output/src/service.ts:62 — wirft bei vertraulichem KO.",
   },
+  "POST /api/output/scorm/pruefen": {
+    urteil: "DIENST_FILTERT",
+    grund: "output/src/scorm.ts LmsExportService.lade — vertrauliches KO wird Befund CONFIDENTIAL.",
+  },
+  "POST /api/output/scorm/paket": {
+    urteil: "DIENST_FILTERT",
+    grund: "output/src/scorm.ts LmsExportService.lade — vertrauliches KO blockiert, kein Paket.",
+  },
   "POST /api/ask": {
     urteil: "DIENST_FILTERT",
     grund: "ask/src/service.ts:145 — dropConfidential vor der Auswahl, auf ALLEN Zweigen.",

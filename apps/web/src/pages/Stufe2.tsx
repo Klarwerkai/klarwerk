@@ -67,6 +67,7 @@ import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 // JOB 3288: derselbe Allowlist-Renderweg wie die Bibliothek — kein zweiter HTML-Sink.
 import { SanitizedHtml } from "../components/SanitizedHtml";
+import { ScormUebergabe } from "../components/ScormUebergabe";
 import { WissensPriorisierung } from "../components/WissensPriorisierung";
 // JOB 4153: Art und Richtung in Klartext kommen von DER Stelle, an der die Textdarstellung sie
 // auch nimmt — Bild und Liste dürfen dieselbe Kante nicht verschieden benennen.
@@ -375,6 +376,12 @@ export function Output(): JSX.Element {
             </Button>
           </div>
         </Card>
+      ) : null}
+
+      {/* produkt:wettbewerb:20261003:lernplattform: Übergabe als SCORM-Paket — nur für den Typ
+          „Schulung", in GENAU der Reihenfolge oben. */}
+      {kind === "training" && preview.items.length > 0 ? (
+        <ScormUebergabe koIds={orderedIds} />
       ) : null}
 
       {doc ? (
