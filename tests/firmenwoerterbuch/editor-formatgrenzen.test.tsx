@@ -51,7 +51,8 @@ describe("K2/K4 · die unerwünschte Variante über eine Formatierungsgrenze wir
     const ergebnis = hinweisUebernehmen(html, hinweise[0] as (typeof hinweise)[number], segmente);
     expect(ergebnis).toEqual({
       lage: "uebernommen",
-      html: "<p>Im Kundenkonto steht <i>alles</i>.</p><p>Kundenaccount bleibt.</p>",
+      // Nacharbeit 4: nur der abweichende Teil wird ersetzt, dort, wo er stand — das <b> bleibt.
+      html: "<p>Im Kunden<b>konto</b> steht <i>alles</i>.</p><p>Kundenaccount bleibt.</p>",
     });
   });
 });

@@ -69,15 +69,15 @@ describe("K2/K3/K4 · Formatierungsgrenzen", () => {
       hinweisAn(segmente, 0, "Kundenaccount", "Kundenkonto"),
       segmente,
     );
-    // Die Vorzugsbezeichnung steht im Knoten, in dem der Fund beginnt; das leer gewordene <b>
-    // fällt weg; das kursive „neu" und jeder andere Textteil bleiben.
+    // Nacharbeit 4 (Bens Befund K4): ersetzt wird nur „account" → „konto", und zwar dort, wo es
+    // stand — das <b> bleibt fett, „Kunden" bleibt ungefettet, das kursive „neu" bleibt.
     expect(ergebnis).toEqual({
       lage: "uebernommen",
-      html: "<p>Das Kundenkonto ist <i>neu</i>.</p>",
+      html: "<p>Das Kunden<b>konto</b> ist <i>neu</i>.</p>",
     });
   });
 
-  it("beginnt der Fund in einer Formatierung, bleibt sie an der Vorzugsbezeichnung", () => {
+  it("beginnt der Fund in einer Formatierung, wird sie NICHT auf den Rest ausgeweitet", () => {
     const html = "<p>Das <b>Kunden</b>account ist <i>neu</i>.</p>";
     const segmente = segmenteAusHtml(html);
     const ergebnis = hinweisUebernehmen(
@@ -87,7 +87,34 @@ describe("K2/K3/K4 · Formatierungsgrenzen", () => {
     );
     expect(ergebnis).toEqual({
       lage: "uebernommen",
-      html: "<p>Das <b>Kundenkonto</b> ist <i>neu</i>.</p>",
+      html: "<p>Das <b>Kunden</b>konto ist <i>neu</i>.</p>",
+    });
+  });
+
+  it("Links an der Fundstelle bleiben mit Ziel und Inhalt erhalten", () => {
+    // Der gemeinsame Anfang steht im Link und bleibt dort; nur der fette Teil ändert sich.
+    const geteilt = '<p>Siehe <a href="https://example.invalid/k">Kunden</a><b>account</b>.</p>';
+    const s1 = segmenteAusHtml(geteilt);
+    const e1 = hinweisUebernehmen(geteilt, hinweisAn(s1, 0, "Kundenaccount", "Kundenkonto"), s1);
+    expect(e1).toEqual({
+      lage: "uebernommen",
+      html: '<p>Siehe <a href="https://example.invalid/k">Kunden</a><b>konto</b>.</p>',
+    });
+    // Beginnt der geänderte Teil im Link, steht der neue Teil im Link; der Link bleibt bestehen.
+    const imLink = '<p><a href="https://example.invalid/k">Kundenac</a>count bleibt.</p>';
+    const s2 = segmenteAusHtml(imLink);
+    const e2 = hinweisUebernehmen(imLink, hinweisAn(s2, 0, "Kundenaccount", "Kundenkonto"), s2);
+    expect(e2).toEqual({
+      lage: "uebernommen",
+      html: '<p><a href="https://example.invalid/k">Kundenkonto</a> bleibt.</p>',
+    });
+    // Gleiches Ende bleibt ebenso stehen: nur der abweichende Anfang wird ersetzt.
+    const ende = "<p>Das <i>Alt</i><b>konto</b> ist offen.</p>";
+    const s3 = segmenteAusHtml(ende);
+    const e3 = hinweisUebernehmen(ende, hinweisAn(s3, 0, "Altkonto", "Kundenkonto"), s3);
+    expect(e3).toEqual({
+      lage: "uebernommen",
+      html: "<p>Das <i>Kunden</i><b>konto</b> ist offen.</p>",
     });
   });
 });

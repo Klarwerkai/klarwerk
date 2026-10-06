@@ -9,10 +9,11 @@
 //
 // JEDES SEGMENT KENNT SEINE TEXTKNOTEN. Eine Fundstelle wird auf die ursprünglichen Knoten
 // abgebildet; übernommen wird, indem nur diese Knoten an genau diesen Stellen ihren Text ändern.
-// Liegt der Fund in EINEM Knoten, bleibt dessen Formatierung vollständig. Läuft er über eine
-// Formatierungsgrenze, steht die Vorzugsbezeichnung im Knoten, in dem der Fund beginnt; aus den
-// übrigen Knoten wird nur der Rest der Fundstelle entfernt, und ein dadurch leeres Inline-Element
-// fällt weg. Elemente, Attribute, Bilder und alle anderen Textteile bleiben, wie sie sind.
+// Ersetzt wird nur der Teil, in dem sich Fund und Vorzugsbezeichnung unterscheiden; gleicher
+// Anfang und gleiches Ende bleiben in ihren Knoten und damit in ihrer Formatierung
+// („Kunden<b>account</b>" → „Kunden<b>konto</b>"). Der neue Mittelteil steht in dem Knoten, in dem
+// der alte begann; aus weiteren Knoten fällt nur ihr Anteil daran weg, und ein dadurch leeres
+// Inline-Element fällt weg. Elemente, Attribute, Links, Bilder und alle anderen Textteile bleiben.
 //
 // NIE AUF VERDACHT: Passt der Knoten nicht mehr zu dem Stand, gegen den geprüft wurde (der Text
 // wurde inzwischen geändert), wird NICHTS ersetzt — der Aufrufer bekommt `veraltet` und prüft neu.
@@ -154,6 +155,29 @@ export function hatPruefbarenText(segmente: readonly string[]): boolean {
 }
 
 /**
+ * Der Bereich der Fundstelle, der sich wirklich ändert, und sein neuer Text: gemeinsamer Anfang
+ * und gemeinsames Ende (gleiche Schreibweise) von Fund und Vorzugsbezeichnung fallen heraus.
+ */
+function geaenderterBereich(h: SegmentHinweis): { start: number; ende: number; neu: string } {
+  const alt = h.gefunden;
+  const neu = h.vorzug;
+  const max = Math.min(alt.length, neu.length);
+  let vorn = 0;
+  while (vorn < max && alt[vorn] === neu[vorn]) {
+    vorn += 1;
+  }
+  let hinten = 0;
+  while (hinten < max - vorn && alt[alt.length - 1 - hinten] === neu[neu.length - 1 - hinten]) {
+    hinten += 1;
+  }
+  return {
+    start: h.start + vorn,
+    ende: h.ende - hinten,
+    neu: neu.slice(vorn, neu.length - hinten),
+  };
+}
+
+/**
  * Ersetzt die Fundstelle eines Hinweises durch die Vorzugsbezeichnung — nur, wenn der Knoten
  * noch genau der geprüfte ist. `geprueft` sind die Segmente, gegen die der Hinweis entstand.
  */
@@ -174,15 +198,34 @@ export function hinweisUebernehmen(
   ) {
     return { lage: "veraltet" };
   }
-  // Die Fundstelle auf die ursprünglichen Knoten abbilden. Die Längen werden VOR jeder Änderung
-  // festgehalten — die Positionen beziehen sich auf den geprüften Text.
-  const betroffen = ziel.teile
-    .map((t) => ({ ...t, bis: t.von + t.knoten.data.length }))
-    .filter((t) => t.von < hinweis.ende && hinweis.start < t.bis);
+  // NUR DER UNTERSCHIED WIRD ERSETZT. Gemeinsamer Anfang und gemeinsames Ende von Fund und
+  // Vorzugsbezeichnung bleiben als Zeichen in ihren Knoten stehen — und damit in ihrer
+  // Formatierung. Aus „Kunden<b>account</b>" wird „Kunden<b>konto</b>", aus „<b>Kunden</b>account"
+  // wird „<b>Kunden</b>konto": keine Auszeichnung geht verloren, keine wird ausgeweitet.
+  const { start: aStart, ende: aEnde, neu } = geaenderterBereich(hinweis);
+  // Die Positionen beziehen sich auf den geprüften Text; die Knotenlängen werden VOR jeder
+  // Änderung festgehalten.
+  const teile = ziel.teile.map((t) => ({ ...t, bis: t.von + t.knoten.data.length }));
+  if (aStart === aEnde) {
+    // Reines Einfügen: an das Ende des Knotens mit dem letzten gleichen Zeichen davor — fehlt ein
+    // gemeinsamer Anfang, an den Anfang des Knotens, in dem der Fund beginnt.
+    const ort =
+      aStart > hinweis.start
+        ? teile.find((t) => t.von < aStart && aStart <= t.bis)
+        : teile.find((t) => t.von <= aStart && aStart < t.bis);
+    if (ort && neu) {
+      const i = aStart - ort.von;
+      ort.knoten.data = ort.knoten.data.slice(0, i) + neu + ort.knoten.data.slice(i);
+    }
+    return { lage: "uebernommen", html: body.innerHTML };
+  }
+  // Ersetzen: der neue Mittelteil steht dort, wo der alte begann; aus den übrigen betroffenen
+  // Knoten fällt nur ihr Anteil am alten Mittelteil weg.
+  const betroffen = teile.filter((t) => t.von < aEnde && aStart < t.bis);
   betroffen.forEach((t, i) => {
-    const anfang = Math.max(hinweis.start, t.von) - t.von;
-    const schluss = Math.min(hinweis.ende, t.bis) - t.von;
-    const einsatz = i === 0 ? hinweis.vorzug : "";
+    const anfang = Math.max(aStart, t.von) - t.von;
+    const schluss = Math.min(aEnde, t.bis) - t.von;
+    const einsatz = i === 0 ? neu : "";
     t.knoten.data = t.knoten.data.slice(0, anfang) + einsatz + t.knoten.data.slice(schluss);
     if (t.knoten.data === "") {
       leereInlineEntfernen(t.knoten);
