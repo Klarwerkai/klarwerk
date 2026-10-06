@@ -354,11 +354,18 @@ describe("JOB 3064 · H5 · der Textmesser — kein Erklärtext im Sichtfeld von
   // D-047). Sie zu entfernen, um diese Messung grün zu bekommen, hiesse eine Rechtspflicht gegen
   // eine Gestaltungsregel zu tauschen. Sie wird deshalb ABGEZOGEN UND HIER GENANNT — nicht still
   // mitsubtrahiert, indem man die ganze Karte wegnimmt. Der Unterschied ist der ganze Punkt.
+  //
+  // EINE ZWEITE BENANNTE AUSNAHME (R-0287, Ben Nacharbeit 2): der Warnblock `ask-warnungen` —
+  // Review-Hinweis, Konflikt-Hinweis, unbekannter Konfliktstand, Prüfvorbehalt. Der Originalauftrag
+  // verlangt: „Die eigentliche Warnung bleibt vollständig und unübersehbar." Er ist damit kein
+  // Erklärtext, sondern Pflichtinhalt an DIESER Antwort und steht nur, wenn eine Warnung zutrifft.
+  // Abgezogen wird GENAU dieser Block; ein anderer Satz in der Karte bleibt rot (T3b unverändert).
   const ZUSATZ_FRAGEN = [
     '[data-testid="ask-fragezeile"]',
     ".ask-answer-body",
     '[data-testid="ask-quellen-chip"]',
     '[data-testid="ai-generated-notice"]',
+    '[data-testid="ask-warnungen"]',
   ];
 
   it("T3 · /fragen nach einer Antwort: der Rest neben Frage, Antwort, Chips und Knöpfen ist ≤ 40 Zeichen", async () => {

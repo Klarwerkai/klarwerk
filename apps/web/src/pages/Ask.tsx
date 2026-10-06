@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRight, Copy, ThumbsUp, Volume2 } from "lucide-react";
+import { ArrowRight, Copy, ThumbsUp, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
@@ -610,10 +610,6 @@ export function Ask(): JSX.Element {
   // trifft als Wissenslücke ein). Deshalb hält beide Menüorte derselbe Ref, und das Blatt liest ihn
   // erst beim Schliessen — nicht beim Öffnen.
   const menuGriffRef = useRef<HTMLButtonElement | null>(null);
-  // R-0287: der zweite Weg ins Blatt — der sichtbare Vorbehaltsgriff unter der Antwort. Wer das
-  // Blatt über ihn geöffnet hat, bekommt den Fokus beim Schliessen auch an ihn zurück.
-  const vorbehaltGriffRef = useRef<HTMLButtonElement | null>(null);
-  const mehrUeberVorbehaltRef = useRef(false);
   const [beispiele, setBeispiele] = useState(false);
   const [result, setResult] = useState<AnswerResult | null>(anfang?.antwort?.result ?? null);
   // Eine neue (oder keine) Antwort: was gerade vorgelesen wird, gilt nicht mehr.
@@ -735,8 +731,8 @@ export function Ask(): JSX.Element {
   const reviewGuard = effective
     ? answerReviewGuard(effective.grade, effective.carryingSources)
     : null;
-  // R-0287: wie viele Vorbehalte das Blatt „Mehr" zu dieser Antwort trägt — genau die vier Kästen,
-  // die dort stehen. Steht einer da, zeigt die Karte den sichtbaren Griff dazu (`ask-vorbehalt`).
+  // R-0287: wie viele Warnkästen zu dieser Antwort gelten. Steht einer da, trägt die Antwortkarte
+  // den Warnblock `ask-warnungen` direkt hinter der Antwort.
   const vorbehalte = [
     reviewGuard !== null,
     effective?.sourcesConflicted === true,
@@ -1350,7 +1346,9 @@ export function Ask(): JSX.Element {
     // Modus-Chip mit zweitem Hilfe-Knopf, Beispiel-Etikett, Sofort-Hinweis, Kostenhinweis und acht
     // Beispiel-Chips — und NACH der Antwort Vertragskasten, Zählzeile, Wissensklassen, drei
     // Vorbehalte, zwei Quellenlisten und drei Werkzeugknöpfe. Das Zielbild lässt vier Dinge übrig:
-    // die Frage als gedämpfte Zeile, EINE Antwortkarte, zwei Knöpfe, das Feld unten.
+    // die Frage als gedämpfte Zeile, EINE Antwortkarte, zwei Knöpfe, das Feld unten. Die Lage des
+    // Feldes folgt seit Nacharbeit 2 NICHT mehr dem Zielbild, sondern R-0286: Feld, darunter die
+    // Antwort (Begründung bei `FrageFeld` unten).
     //
     // NICHTS DAVON IST GESTRICHEN. Alles Übrige liegt hinter „…" → „Mehr" im Info-Blatt weiter
     // unten (`ask-mehr`) — mit denselben Wortlauten, denselben Testankern und derselben
@@ -1373,10 +1371,7 @@ export function Ask(): JSX.Element {
             testId="ask-menu"
             griffRef={menuGriffRef}
             punkte={[{ id: "mehr", label: t("ask.menu.mehr") }]}
-            onWahl={() => {
-              mehrUeberVorbehaltRef.current = false;
-              setMehr(true);
-            }}
+            onWahl={() => setMehr(true)}
           />
         )}
       </div>
@@ -1390,7 +1385,8 @@ export function Ask(): JSX.Element {
         >
           <p className="min-w-0 flex-1">
             {wiederaufnahme.entwurf && wiederaufnahme.antwortAm
-              ? t("ask.wiederaufnahme.beides", {
+              ? // R-0286: die Antwort steht jetzt UNTER dem Feld — der alte Satz sagte „darüber".
+                t("fragenseite.wiederaufnahmeBeides", {
                   zeit: formatKoTimestamp(wiederaufnahme.antwortAm, i18n.language),
                 })
               : wiederaufnahme.entwurf
@@ -1432,54 +1428,58 @@ export function Ask(): JSX.Element {
       ) : null}
 
       {/* ============================================================================================
-          DIE REIHENFOLGE: IM QUELLTEXT FRAGE → FELD → ERGEBNIS, AUF DEM BILDSCHIRM FRAGE →
-          ERGEBNIS → FELD.
+          DIE REIHENFOLGE: FRAGE → FELD → ERGEBNIS, IM QUELLTEXT UND AUF DEM BILDSCHIRM.
           ============================================================================================
-          Das Zielbild setzt das Feld ans untere Ende (`Fragen.dc.html` Z.45, `margin-top: auto`).
-          Die QUELLTEXT-Reihenfolge bleibt trotzdem, wie D-034 (JOB 1106) sie erkämpft hat: erst
-          fragen, dann erklären — und die Tastatur erreicht das Fragefeld vor der Antwort, was auf
-          einer Fragenfläche die richtige Folge ist. Beides gleichzeitig geht über `order` im
-          Flex-Container; die SICHTBARE Lage ist Geometrie und wird als solche gemessen
-          (`tests/design/zielbild-h5-fragen.test.ts`: das Feld liegt unter der Antwortkarte). */}
-      {/* FE-003: das Formular ist der gemeinsame Baustein `FrageFeld` — dasselbe Bauteil führt das
+          R-0286 (Originalauftrag, Ben Nacharbeit 2): „Nach dem Absenden einer Frage ist die Antwort
+          das erste, was der Nutzer liest — direkt unter dem Eingabefeld." Bis hierher setzte das
+          Zielbild H5 (`Fragen.dc.html` Z.45, `margin-top: auto`) das Feld per `order` sichtbar UNTER
+          die Antwortkarte. Das Feld steht jetzt an seiner Quelltextstelle; D-034 („erst fragen,
+          dann erklären") und die Tastaturfolge Feld → Antwort bleiben, und die sichtbare Lage
+          stimmt mit ihr überein. Gemessen als Geometrie in `tests/design/zielbild-h5-fragen.test.ts`
+          (V16: das Feld liegt ÜBER der Antwortkarte, die Antwort folgt direkt darunter).
+          Feld und seine Hinweise stehen in EINEM Block: leere Hinweise kosten so keinen eigenen
+          Flex-Abstand zwischen Feld und Antwort. */}
+      <div>
+        {/* FE-003: das Formular ist der gemeinsame Baustein `FrageFeld` — dasselbe Bauteil führt das
           Tutorial „Fragen“ vor. Hier bleibt, was nur DIESE Seite entscheidet: was ein Absenden
           auslöst, wann ein leerer Versuch vermerkt wird und ob ein Modell nutzbar ist.
           Zielbild Z.48 (runder Sendeknopf, Spinner als Wartezustand), JOB 3038 (Mikrofon im Feld)
           und §5 (Beispiele im leeren Feld) stehen am Baustein. */}
-      <FrageFeld
-        wert={q}
-        onWert={setQ}
-        onAbsenden={() => {
-          // PAKET 3.1 (D-AISTATE, bens V4): Enter/Formular läuft über DENSELBEN zentralen Submit wie
-          // Chips und Auto-Ask — die harte KI-Sperre (Availability + Pending) sitzt in submitAsk;
-          // kein Weg umgeht die ausgegraute Schaltfläche (bens Bypass-Befund 6.2).
-          // AUFTRAG-mega38 BLOCK J2: der Fehlversuch wird HIER vermerkt — der Knopf ist bei leerer
-          // Frage gesperrt, per Eingabetaste kommt man aber sehr wohl bis hierher.
-          setEmptyAttempted(q.trim().length === 0);
-          submitAsk(q);
-        }}
-        // E2E-018 / AUFTRAG-mega39 BLOCK G: „ungültig" erst NACH dem Fehlversuch — im Takt mit der
-        // sichtbaren Meldung (mega38 J2), nicht ab dem ersten Bildaufbau.
-        ungueltig={emptyAttempted && q.trim().length === 0}
-        beschreibungId="ask-empty-hint"
-        beispieleOffen={beispiele}
-        onBeispiele={() => setBeispiele((v) => !v)}
-        diktat={speechSupported ? diktat : null}
-        wartet={ask.isPending}
-        gesperrt={!answerAi.available}
-        sperrHinweis={!answerAi.available ? t(aiHintKey) : undefined}
-      />
-      {/* E2E-018: zugängliche Inline-Meldung — nur wenn ein Modell da ist (sonst greift der
+        <FrageFeld
+          wert={q}
+          onWert={setQ}
+          onAbsenden={() => {
+            // PAKET 3.1 (D-AISTATE, bens V4): Enter/Formular läuft über DENSELBEN zentralen Submit wie
+            // Chips und Auto-Ask — die harte KI-Sperre (Availability + Pending) sitzt in submitAsk;
+            // kein Weg umgeht die ausgegraute Schaltfläche (bens Bypass-Befund 6.2).
+            // AUFTRAG-mega38 BLOCK J2: der Fehlversuch wird HIER vermerkt — der Knopf ist bei leerer
+            // Frage gesperrt, per Eingabetaste kommt man aber sehr wohl bis hierher.
+            setEmptyAttempted(q.trim().length === 0);
+            submitAsk(q);
+          }}
+          // E2E-018 / AUFTRAG-mega39 BLOCK G: „ungültig" erst NACH dem Fehlversuch — im Takt mit der
+          // sichtbaren Meldung (mega38 J2), nicht ab dem ersten Bildaufbau.
+          ungueltig={emptyAttempted && q.trim().length === 0}
+          beschreibungId="ask-empty-hint"
+          beispieleOffen={beispiele}
+          onBeispiele={() => setBeispiele((v) => !v)}
+          diktat={speechSupported ? diktat : null}
+          wartet={ask.isPending}
+          gesperrt={!answerAi.available}
+          sperrHinweis={!answerAi.available ? t(aiHintKey) : undefined}
+          lage="oben"
+        />
+        {/* E2E-018: zugängliche Inline-Meldung — nur wenn ein Modell da ist (sonst greift der
           Unavailable-Hinweis), damit klar ist, warum der Knopf gesperrt ist. */}
-      <output
-        id="ask-empty-hint"
-        aria-live="polite"
-        className="order-3 -mt-2 block text-[12px] text-muted"
-      >
-        {answerAi.available && emptyAttempted && q.trim().length === 0 ? t("ask.emptyHint") : ""}
-      </output>
-      <span className="order-3 -mt-2 block">
-        {/* ====================================================================================
+        <output
+          id="ask-empty-hint"
+          aria-live="polite"
+          className="mt-3 block text-[12px] text-muted"
+        >
+          {answerAi.available && emptyAttempted && q.trim().length === 0 ? t("ask.emptyHint") : ""}
+        </output>
+        <span className="mt-3 block">
+          {/* ====================================================================================
             JOB 4224 · D5, LIEFERUNG 5 — DIE LAGE ZU NENNEN IST NICHT DASSELBE WIE EINEN WEG ZU
             ZEIGEN.
             ====================================================================================
@@ -1496,39 +1496,39 @@ export function Ask(): JSX.Element {
             ÜBER `RoleLink`, nicht über `Link`: /erfassen verlangt „experte". Ein Ziel, das die
             Rolle nicht erreicht, wird als Lage gezeigt, nicht als Weg — dasselbe EINE Tor wie
             überall auf dieser Fläche (AUFTRAG-mega71 Block E). */}
-        {/* FE-003: Satz und Alternativen sind der gemeinsame Baustein `KiNichtVerfuegbar` — das
+          {/* FE-003: Satz und Alternativen sind der gemeinsame Baustein `KiNichtVerfuegbar` — das
             Tutorial „Fragen“ erklärt genau diesen Zustand (Schritt 6) mit demselben Bauteil.
             D5: hat der Administrator die KI abgeschaltet, nennt der Satz DIESE Lage
             (`d5kiaus.hinweis`) statt „nicht verfügbar"; die Alternativen bleiben dieselben. */}
-        {!answerAi.available ? (
-          kiAbgeschaltet ? (
-            <KiNichtVerfuegbar
-              hinweisKey="d5kiaus.hinweis"
-              hinweisTestId="ask-ki-abgeschaltet-hinweis"
-            />
-          ) : (
-            <KiNichtVerfuegbar hinweisKey={aiHintKey} />
-          )
-        ) : null}
-      </span>
+          {!answerAi.available ? (
+            kiAbgeschaltet ? (
+              <KiNichtVerfuegbar
+                hinweisKey="d5kiaus.hinweis"
+                hinweisTestId="ask-ki-abgeschaltet-hinweis"
+              />
+            ) : (
+              <KiNichtVerfuegbar hinweisKey={aiHintKey} />
+            )
+          ) : null}
+        </span>
 
-      {/* WP-UX-WOW-1 U2/U3 (statt SCRUM-265-Statik): ehrliche Beispiel-Chips. Antwort-Beispiele
+        {/* WP-UX-WOW-1 U2/U3 (statt SCRUM-265-Statik): ehrliche Beispiel-Chips. Antwort-Beispiele
           kommen aus dem ECHTEN validierten Bestand (Badge damit ehrlich korrekt), dazu EINE bewusste
           Lücken-Frage; ohne validierten Bestand neutrale statische Beispiele ohne Behauptung.
           Klick sendet DIREKT — kein zweiter Klick nötig.
           JOB 3064 §5: sie stehen nicht mehr dauerhaft unter dem Feld, sondern hinter dem Knopf
           „Beispiele" IM leeren Feld. Sie bleiben im DOM und an ihrer Stelle gebunden; `hidden` nimmt
           sie aus Fluss, `innerText` und Zugänglichkeitsbaum. */}
-      {/* `hidden` UND die Anzeigeklasse: das HTML-Attribut allein reicht nicht, sobald am selben
+        {/* `hidden` UND die Anzeigeklasse: das HTML-Attribut allein reicht nicht, sobald am selben
           Element eine Tailwind-Display-Klasse steht — `.flex { display: flex }` gewinnt gegen die
           `[hidden]`-Regel des Browsers, und der Block bliebe sichtbar. Gemessen: der Textmesser hat
           genau das gefunden („Ein Klick fragt sofort …" stand im Sichtfeld von /fragen). */}
-      <div
-        data-testid="ask-beispiele"
-        hidden={!beispiele}
-        className={`order-3 -mt-2 flex-wrap items-center gap-1.5 ${beispiele ? "flex" : "hidden"}`}
-      >
-        {/* AUFTRAG-mega51 BLOCK H: ein Klick auf ein Beispiel löst SOFORT eine Modellanfrage aus
+        <div
+          data-testid="ask-beispiele"
+          hidden={!beispiele}
+          className={`mt-3 flex-wrap items-center gap-1.5 ${beispiele ? "flex" : "hidden"}`}
+        >
+          {/* AUFTRAG-mega51 BLOCK H: ein Klick auf ein Beispiel löst SOFORT eine Modellanfrage aus
             (`askExample` → `submitAsk`). Das soll so sein — ein Beispiel, das nur das Feld füllt,
             wäre kein Beispiel. Aber es muss VORHER erkennbar sein. Kein Bestätigungsdialog: ein
             Halbsatz an der Beschriftung und derselbe Hinweis als `title` an jedem Chip.
@@ -1536,45 +1536,46 @@ export function Ask(): JSX.Element {
             SOFORT-Zusage; die KOSTEN-Hälfte steht daneben als zentraler, BEDINGTER AiCostHint —
             derselbe Schlüssel, dieselbe Ableitung (billable je Aufgabe) wie überall sonst. Läuft
             „answer" lokal/deterministisch oder fehlt die Auskunft noch, schweigt der Kostensatz. */}
-        <span className="text-[10.5px] text-muted-2">{t("ask.examplesSendHint")}</span>
-        <AiCostHint billable={answerBillable} className="text-[10.5px]" />
-        {exampleChips.map((chip) => {
-          const question =
-            chip.kind === "ko" ? t("ask.koQuestion", { title: chip.title }) : t(chip.questionKey);
-          const expect =
-            chip.kind === "ko"
-              ? askExpectation("answerable")
-              : chip.expectation === "gap"
-                ? askExpectation("gap")
-                : null;
-          return (
-            <button
-              key={question}
-              type="button"
-              disabled={ask.isPending || !answerAi.available}
-              onClick={() => askExample(question)}
-              title={t("ask.examplesSendHint")}
-              className="inline-flex min-w-0 items-center gap-1.5 rounded-pill border border-hairline px-2.5 py-1 text-[12px] text-muted hover:border-ink/30 hover:text-text disabled:opacity-50"
-            >
-              {/* Das Zeichen sagt vor dem Klick: hier geht etwas raus. */}
-              <span aria-hidden="true" className="shrink-0 text-muted-2">
-                ↵
-              </span>
-              <span className="min-w-0 max-w-[16rem] truncate">{question}</span>
-              {expect ? (
-                <span
-                  className={`shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${EXPECT_TONE[expect.tone]}`}
-                >
-                  {t(expect.labelKey)}
+          <span className="text-[10.5px] text-muted-2">{t("ask.examplesSendHint")}</span>
+          <AiCostHint billable={answerBillable} className="text-[10.5px]" />
+          {exampleChips.map((chip) => {
+            const question =
+              chip.kind === "ko" ? t("ask.koQuestion", { title: chip.title }) : t(chip.questionKey);
+            const expect =
+              chip.kind === "ko"
+                ? askExpectation("answerable")
+                : chip.expectation === "gap"
+                  ? askExpectation("gap")
+                  : null;
+            return (
+              <button
+                key={question}
+                type="button"
+                disabled={ask.isPending || !answerAi.available}
+                onClick={() => askExample(question)}
+                title={t("ask.examplesSendHint")}
+                className="inline-flex min-w-0 items-center gap-1.5 rounded-pill border border-hairline px-2.5 py-1 text-[12px] text-muted hover:border-ink/30 hover:text-text disabled:opacity-50"
+              >
+                {/* Das Zeichen sagt vor dem Klick: hier geht etwas raus. */}
+                <span aria-hidden="true" className="shrink-0 text-muted-2">
+                  ↵
                 </span>
-              ) : (
-                <span className="shrink-0 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted-2">
-                  {t("ask.expect.neutral")}
-                </span>
-              )}
-            </button>
-          );
-        })}
+                <span className="min-w-0 max-w-[16rem] truncate">{question}</span>
+                {expect ? (
+                  <span
+                    className={`shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${EXPECT_TONE[expect.tone]}`}
+                  >
+                    {t(expect.labelKey)}
+                  </span>
+                ) : (
+                  <span className="shrink-0 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted-2">
+                    {t("ask.expect.neutral")}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* AUFTRAG-mega38 BLOCK A: DIE Ergebnisfläche. Sie ist immer im DOM (s. revealResult) und
@@ -1584,7 +1585,7 @@ export function Ask(): JSX.Element {
         ref={resultRef}
         tabIndex={-1}
         data-testid="ask-result-anchor"
-        className="order-2 scroll-mt-6 outline-none"
+        className="scroll-mt-6 outline-none"
       >
         {/* A1 (mega38) · JOB 3064 §9: der Wartezustand ist KEINE Karte mehr — der Spinner sitzt im
             Sendeknopf, und hier stehen nur die ruhigen Platzhalterzeilen, die die FORM der
@@ -1764,26 +1765,100 @@ export function Ask(): JSX.Element {
                   <p className="m-0">
                     <AiGeneratedNotice />
                   </p>
-                  {/* R-0287 / R-0286: „Die eigentliche Warnung bleibt vollständig und unübersehbar."
-                    Seit H5 stehen die Vorbehaltskästen nur im Blatt „Mehr" — ohne Griff sah sie
-                    niemand. Dieser Knopf steht deshalb DIREKT unter der Antwort, in Warnfarbe, und
-                    öffnet genau dieses Blatt. Er wiederholt keinen Vorbehalt (jeder steht weiter
-                    genau einmal, vollständig, im Blatt); er sagt nur, dass es einen gibt. Ein Knopf
-                    und kein Satz: H5 (`zielbild-h5-kein-erklaertext`) lässt Beschriftungen zu. */}
+                  {/* ==========================================================================
+                    R-0287 / R-0286 — DIE WARNUNG STEHT VOLLSTÄNDIG DIREKT HINTER DER ANTWORT.
+                    ==========================================================================
+                    „Die eigentliche Warnung bleibt vollständig und unübersehbar." Seit H5 standen
+                    Review-Hinweis, Konflikt-Hinweis, unbekannter Konfliktstand und Prüfvorbehalt
+                    nur im Blatt „Mehr" — ohne Griff sah sie niemand (Ben, Nacharbeit 2). Sie stehen
+                    jetzt hier, jeder zutreffende genau einmal, mit Wortlaut, Ableitung und Ankern
+                    wie bisher; im Blatt steht keiner mehr ein zweites Mal. Reihenfolge nach R-0286:
+                    Antwort → KI-Kennzeichnung → Warnkästen → Quellen → Werkzeuge. */}
                   {vorbehalte > 0 ? (
-                    <button
-                      ref={vorbehaltGriffRef}
-                      type="button"
-                      data-testid="ask-vorbehalt"
-                      onClick={() => {
-                        mehrUeberVorbehaltRef.current = true;
-                        setMehr(true);
-                      }}
-                      className="print-hide inline-flex items-center gap-1.5 self-start rounded-btn border border-trust-warn-fill bg-trust-warn-bg px-3 py-1.5 text-left text-[12.5px] font-semibold text-trust-warn-text hover:opacity-90"
-                    >
-                      <AlertTriangle size={14} aria-hidden="true" className="shrink-0" />
-                      {t("antwortvorbehalt.hinweis", { count: vorbehalte })}
-                    </button>
+                    <div data-testid="ask-warnungen" className="flex flex-col gap-2">
+                      {reviewGuard ? (
+                        <div
+                          data-testid="ask-review-guard"
+                          className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text"
+                        >
+                          <div className="font-semibold">{t(reviewGuard.labelKey)}</div>
+                          <p className="mt-0.5">{t(reviewGuard.hintKey)}</p>
+                          {/* AUFTRAG-mega71 BLOCK E (Stelle 2): der Prüfvorbehalt-CTA zeigt auf
+                            /validierung (controller). Der Hinweis „gehört in Review" bleibt für alle
+                            wahr — nur der WEG dorthin gehört den Rollen, die ihn gehen dürfen; der
+                            Pfeil (das Versprechen „hier geht es weiter") fehlt an der Lage. */}
+                          <RoleLink
+                            to={demoHref(reviewGuard.ctaTo, params)}
+                            className="mt-2 inline-flex items-center gap-1 rounded-btn bg-surface px-2.5 py-1 text-[12px] font-semibold text-text"
+                            hoverClassName="hover:opacity-90"
+                          >
+                            {(erreichbar) => (
+                              <>
+                                {t(reviewGuard.ctaKey)}
+                                {erreichbar ? <ArrowRight size={13} /> : null}
+                              </>
+                            )}
+                          </RoleLink>
+                        </div>
+                      ) : null}
+                      {/* SCRUM-357 / AG-14 / VC-P1-1: mind. eine Antwortquelle hat einen offenen
+                        Konflikt → ehrlicher Hinweis, dass die Antwort trotz Status nicht
+                        uneingeschränkt gesichert ist. */}
+                      {effective?.sourcesConflicted ? (
+                        <div className="rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2">
+                          <p className="text-[12.5px] font-semibold text-trust-warn-text">
+                            {t("conflict.impact.title")}
+                          </p>
+                          <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
+                            {t("conflict.impact.hint")}
+                          </p>
+                          {/* AUFTRAG-mega71 BLOCK E (Stelle 3): /konflikte verlangt controller.
+                            Der Unterstrich (Link-Versprechen) gehört nur zur begehbaren Fassung. */}
+                          <RoleLink
+                            to="/konflikte"
+                            className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-trust-warn-text"
+                            hoverClassName="underline"
+                          >
+                            {() => <>{t("conflict.impact.cta")}</>}
+                          </RoleLink>
+                        </div>
+                      ) : null}
+                      {/* AUFTRAG-mega34 BLOCK A2 — der unbekannte Konfliktstand: die Konfliktliste
+                        lädt noch oder ihr Abruf ist abgerissen. Ohne ihn läse sich ein Netzfehler
+                        als „keine Konflikte" und damit als Sicherheit. */}
+                      {conflictCaveat ? (
+                        <div
+                          data-testid="ask-conflict-caveat"
+                          className="rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2"
+                        >
+                          <p className="text-[12.5px] font-semibold text-trust-warn-text">
+                            {t("ask.conflictCaveat.title")}
+                          </p>
+                          <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
+                            {t(`ask.conflictCaveat.${conflictCaveat.reason}`)}
+                          </p>
+                        </div>
+                      ) : null}
+                      {/* AUFTRAG-mega32 BLOCK E (Pedi 27.07.) — der Prüfvorbehalt: er benennt, wie
+                        viele der herangezogenen Quellen betroffen sind, von wie vielen, und mit
+                        welcher Ursache. */}
+                      {checkCaveat ? (
+                        <div
+                          data-testid="ask-check-caveat"
+                          className="rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2"
+                        >
+                          <p className="text-[12.5px] font-semibold text-trust-warn-text">
+                            {t("ask.checkCaveat.title")}
+                          </p>
+                          <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
+                            {t(`ask.checkCaveat.${checkCaveat.reason}`, {
+                              unproven: checkCaveat.unproven,
+                              total: checkCaveat.total,
+                            })}
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
                   ) : null}
                   {/* ==========================================================================
                     DIE QUELLEN-CHIPS (Zielbild Z.42) — „n · Titel", getrennt durch eine Linie.
@@ -1855,7 +1930,6 @@ export function Ask(): JSX.Element {
                           downloadAnswer();
                           return;
                         }
-                        mehrUeberVorbehaltRef.current = false;
                         setMehr(true);
                       }}
                     />
@@ -1876,10 +1950,7 @@ export function Ask(): JSX.Element {
                       titel={t("ask.menu.label")}
                       testId="ask-mehr"
                       onSchliessen={() => setMehr(false)}
-                      ausloeser={() =>
-                        (mehrUeberVorbehaltRef.current ? vorbehaltGriffRef.current : null) ??
-                        menuGriffRef.current
-                      }
+                      ausloeser={() => menuGriffRef.current}
                     >
                       <MehrFlaechenInfo
                         badge={badge}
@@ -2041,29 +2112,11 @@ export function Ask(): JSX.Element {
                         {/* SCRUM-430 (VIP): Antwort inkl. Quellen exportieren/teilen. JOB 3064 §5: der
                     Knopf „Kopieren" steht als einer von ZWEI Knöpfen unter der Karte (Zielbild
                     Z.44); „Als Markdown" und „Drucken" sind Punkte des „…"-Menüs oben rechts.
-                    Alle drei rufen unverändert `copyAnswer` / `downloadAnswer` / `printAnswer`. */}
-                        {reviewGuard ? (
-                          <div className="mt-3 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
-                            <div className="font-semibold">{t(reviewGuard.labelKey)}</div>
-                            <p className="mt-0.5">{t(reviewGuard.hintKey)}</p>
-                            {/* AUFTRAG-mega71 BLOCK E (Stelle 2): der Prüfvorbehalt-CTA zeigt auf
-                        /validierung (controller). Der Hinweis „gehört in Review" bleibt für alle
-                        wahr — nur der WEG dorthin gehört den Rollen, die ihn gehen dürfen; der
-                        Pfeil (das Versprechen „hier geht es weiter") fehlt an der Lage. */}
-                            <RoleLink
-                              to={demoHref(reviewGuard.ctaTo, params)}
-                              className="mt-2 inline-flex items-center gap-1 rounded-btn bg-surface px-2.5 py-1 text-[12px] font-semibold text-text"
-                              hoverClassName="hover:opacity-90"
-                            >
-                              {(erreichbar) => (
-                                <>
-                                  {t(reviewGuard.ctaKey)}
-                                  {erreichbar ? <ArrowRight size={13} /> : null}
-                                </>
-                              )}
-                            </RoleLink>
-                          </div>
-                        ) : null}
+                    Alle drei rufen unverändert `copyAnswer` / `downloadAnswer` / `printAnswer`.
+                    R-0287 (Nacharbeit 2): Review-Hinweis, Konflikt-Hinweis, unbekannter
+                    Konfliktstand und Prüfvorbehalt standen hier im Blatt. Sie stehen jetzt
+                    vollständig und genau einmal in der Antwortkarte direkt hinter der Antwort
+                    (`ask-warnungen`) — hier steht keiner mehr ein zweites Mal. */}
                         {/* AUFTRAG-mega39 BLOCK D2: die Liste erschien bis mega38 IMMER — und wiederholte
                   dabei Eintrag für Eintrag die Quellenliste darunter, unter einem Namen
                   („Argumentationsschritte"), den es nicht gibt: es existiert keine protokollierte
@@ -2099,71 +2152,6 @@ export function Ask(): JSX.Element {
                                 </li>
                               ))}
                             </ul>
-                          </div>
-                        ) : null}
-                        {/* SCRUM-357 / AG-14 / VC-P1-1: mind. eine Antwortquelle hat einen offenen Konflikt →
-                ehrlicher Hinweis, dass die Antwort trotz Status nicht uneingeschränkt gesichert ist. */}
-                        {effective?.sourcesConflicted ? (
-                          <div className="mt-3 rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2">
-                            <p className="text-[12.5px] font-semibold text-trust-warn-text">
-                              {t("conflict.impact.title")}
-                            </p>
-                            <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
-                              {t("conflict.impact.hint")}
-                            </p>
-                            {/* AUFTRAG-mega71 BLOCK E (Stelle 3): /konflikte verlangt controller. Der
-                        Unterstrich (Link-Versprechen) gehört nur zur begehbaren Fassung. */}
-                            <RoleLink
-                              to="/konflikte"
-                              className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-trust-warn-text"
-                              hoverClassName="underline"
-                            >
-                              {() => <>{t("conflict.impact.cta")}</>}
-                            </RoleLink>
-                          </div>
-                        ) : null}
-                        {/* ==========================================================================
-                  AUFTRAG-mega32 BLOCK E (Pedi 27.07.) — DER PRÜFVORBEHALT.
-                  ==========================================================================
-                  Der Hinweis oben spricht über GEFUNDENE Konflikte. Dieser hier spricht über
-                  das, was gar nicht erst vollständig gesucht wurde — und er benennt, worauf er
-                  sich bezieht: wie viele der herangezogenen Quellen betroffen sind, von wie
-                  vielen, und mit welcher Ursache. Ohne ihn läse sich eine Antwort als gesichert,
-                  obwohl unbekannte Konflikte nicht ausgeschlossen sind. */}
-                        {/* ==========================================================================
-                  AUFTRAG-mega34 BLOCK A2 — DER HINWEIS AUF DEN UNBEKANNTEN KONFLIKTSTAND.
-                  ==========================================================================
-                  Der Vorbehalt darunter spricht über Prüf-Läufe, die es nicht vollständig gab.
-                  Dieser hier spricht über die Konfliktliste, die diese Seite gerade GAR NICHT
-                  kennt — weil sie noch lädt oder weil ihr Abruf abgerissen ist. Ohne ihn läse
-                  sich ein Netzfehler als „keine Konflikte" und damit als Sicherheit. */}
-                        {conflictCaveat ? (
-                          <div
-                            data-testid="ask-conflict-caveat"
-                            className="mt-3 rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2"
-                          >
-                            <p className="text-[12.5px] font-semibold text-trust-warn-text">
-                              {t("ask.conflictCaveat.title")}
-                            </p>
-                            <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
-                              {t(`ask.conflictCaveat.${conflictCaveat.reason}`)}
-                            </p>
-                          </div>
-                        ) : null}
-                        {checkCaveat ? (
-                          <div
-                            data-testid="ask-check-caveat"
-                            className="mt-3 rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2"
-                          >
-                            <p className="text-[12.5px] font-semibold text-trust-warn-text">
-                              {t("ask.checkCaveat.title")}
-                            </p>
-                            <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
-                              {t(`ask.checkCaveat.${checkCaveat.reason}`, {
-                                unproven: checkCaveat.unproven,
-                                total: checkCaveat.total,
-                              })}
-                            </p>
                           </div>
                         ) : null}
                         {/* FE-003 (Runde 2): die Quellenliste ist der gemeinsame Baustein
