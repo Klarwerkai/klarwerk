@@ -380,6 +380,46 @@ export function BibliothekListe({
         </div>
       ) : null}
 
+      {/* ==========================================================================================
+          JOB 3531 · Q6d — OFFLINE SAGT DIE LISTE, WAS MIT IHR IST. NICHTS ÜBER DEN BESTAND.
+          ==========================================================================================
+          HIER STAND BIS JOB 3531 NICHTS. Der Zweig `pausiert` war seit JOB 3099 aus dem
+          Leerzustand ausgenommen (zu Recht — s. den Leerzweig in der Spur), und an seine Stelle trat
+          Schweigen: eine leere Fläche, aus der niemand ablesen kann, ob gesucht wurde, ob es nichts
+          gibt oder ob die Verbindung fehlt.
+
+          WAS DER SATZ SAGEN DARF UND WAS NICHT: Er ist eine Aussage über die MASCHINE („ohne
+          Verbindung kann gerade nicht gesucht werden"), nie eine über den Bestand. Offline geht
+          gar kein Ruf hinaus — über Treffer weiss diese Fläche nichts, und genau das steht da.
+          Dazu die Zusage, dass es von selbst weitergeht (N-0036): der Abruf ist ANGEHALTEN, nicht
+          gescheitert. Deshalb entsteht hier auch KEIN Knopf — ein „Erneut versuchen" wäre eine
+          Handlung ohne Wirkung; der Wiederholungsknopf bleibt, wo er hingehört, im Zweig `fehler`.
+          Der Suchtext bleibt unangetastet im Feld (`q` oben), denn die Suche läuft mit dem Netz von
+          selbst weiter.
+
+          AUFTRAG gesamt-suchfehler (N-0036 „für assistive Technik ankündigen"): bis hierher stand der
+          Block als stummes `<div>` IN der Spur; die Gegenprüfung vom 06.09. fand „keine
+          Status-/Alert-/Live-Region". Die Bauform ist die des Hauses (`AuffrischungHinweis.tsx`,
+          `MehrAbschnitte.tsx`): ein `<output aria-live="polite">`. Anders als dort steht die Region
+          hier IMMER, nur ihr Inhalt hängt an `pausiert` — ein Vorleseprogramm meldet zuverlässig nur
+          Änderungen in einer Region, die schon vor der Änderung im Baum stand; eine mit dem Satz
+          zusammen eingefügte Region bleibt je nach Programm stumm. Sie steht ÜBER der Spur und nicht
+          darin, weil die Spur in der Kartenansicht ein Raster ist und eine leere Region dort eine
+          leere Zelle samt Abstand belegen würde. `polite` und nicht `assertive`: der Satz unterbricht
+          niemanden beim Tippen, er folgt danach. */}
+      <output aria-live="polite" data-testid="bib-offline-ansage" className="block shrink-0">
+        {!laedt && !fehler && pausiert ? (
+          <span data-testid="bib-offline" className="block px-4 py-3">
+            <span className="block text-[12.5px] leading-relaxed text-muted">
+              {t("lib.liste.offline")}
+            </span>
+            <span className="mt-1 block text-[12.5px] leading-relaxed text-muted">
+              {t("lib.liste.offlineWeiter")}
+            </span>
+          </span>
+        ) : null}
+      </output>
+
       {/* JOB 3335: die Marke trägt die Rollspur nach aussen — die Fläche merkt sich beim Einklappen
           der Liste (Tablet) deren Rollstand und stellt ihn beim Ausklappen wieder her; dafür muss
           sie das rollende Element finden, ohne seine Klassen zu kennen. */}
@@ -409,33 +449,8 @@ export function BibliothekListe({
             </button>
           </div>
         ) : null}
-        {/* ==========================================================================================
-            JOB 3531 · Q6d — OFFLINE SAGT DIE LISTE, WAS MIT IHR IST. NICHTS ÜBER DEN BESTAND.
-            ==========================================================================================
-            HIER STAND BIS JOB 3531 NICHTS. Der Zweig `pausiert` war seit JOB 3099 aus dem
-            Leerzustand ausgenommen (zu Recht — s. unten), und an seine Stelle trat Schweigen: eine
-            leere Fläche, aus der niemand ablesen kann, ob gesucht wurde, ob es nichts gibt oder ob
-            die Verbindung fehlt. Der Kommentar an dieser Stelle nannte den fehlenden Satz als
-            RESTSCHULD und begründete sie mit einer Sperre auf `apps/web/src/i18n.ts` (belegt von
-            JOB 3079/3095). Diese Sperre ist weg, die Restschuld ist damit eingelöst und ihre
-            Begründung nicht mehr wahr; sie steht deshalb nicht daneben, sondern ist ersetzt.
-
-            WAS DER SATZ SAGEN DARF UND WAS NICHT: Er ist eine Aussage über die MASCHINE („ohne
-            Verbindung kann gerade nicht gesucht werden"), nie eine über den Bestand. Offline geht
-            gar kein Ruf hinaus — über Treffer weiss diese Fläche nichts, und genau das steht da.
-            Dazu die Zusage, dass es von selbst weitergeht (N-0036): der Abruf ist ANGEHALTEN, nicht
-            gescheitert. Deshalb entsteht hier auch KEIN Knopf — ein „Erneut versuchen" wäre eine
-            Handlung ohne Wirkung; der Wiederholungsknopf bleibt, wo er hingehört, im Zweig `fehler`
-            darüber. Der Suchtext bleibt unangetastet im Feld (`q` oben), denn die Suche läuft mit
-            dem Netz von selbst weiter. */}
-        {!laedt && !fehler && pausiert ? (
-          <div data-testid="bib-offline" className="px-4 py-3">
-            <p className="text-[12.5px] leading-relaxed text-muted">{t("lib.liste.offline")}</p>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
-              {t("lib.liste.offlineWeiter")}
-            </p>
-          </div>
-        ) : null}
+        {/* Der Offline-Satz (Lage `pausiert`) steht seit Auftrag gesamt-suchfehler nicht mehr hier,
+            sondern in der Live-Region `bib-offline-ansage` über der Spur — s. die Begründung dort. */}
         {/* ==========================================================================================
             JOB 3099 · Q6c — DER LEERZUSTAND VERLANGT EINEN ERFOLGREICHEN ABRUF.
             ==========================================================================================
@@ -443,8 +458,8 @@ export function BibliothekListe({
             samt Angebot, den Eintrag neu zu erfassen. Er darf deshalb nur nach einem erfolgreichen
             Abruf entstehen. Die dritte Lage `pausiert` (offline angehalten) war bis JOB 3099 keiner
             der beiden alten Zweige — und fiel damit in den Leerzweig. Sie hat seit JOB 3531 ihren
-            eigenen Zweig direkt darüber; `!pausiert` hält die beiden auseinander, damit nie beide
-            Aussagen zugleich dastehen.
+            eigenen Zweig (heute die Live-Region `bib-offline-ansage` über der Spur); `!pausiert`
+            hält die beiden auseinander, damit nie beide Aussagen zugleich dastehen.
 
             ==========================================================================================
             JOB 3788 — WELCHER DER ZWEI SÄTZE GILT, ENTSCHEIDET DIE FLÄCHE. NICHT MEHR DAS SUCHFELD.
