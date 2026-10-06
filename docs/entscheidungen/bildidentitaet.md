@@ -463,10 +463,15 @@ wählt (a). Die Inhaltskennung ist ein zweiter Begriff neben dem Vorkommensanker
 - Lesbar für eine Dublettenerkennung über `GET /api/kos/:id`. Fußnoten-Zuordnung, Klick, Galerie
   und Bildsuche lesen sie nicht. Ihre Form enthält `:` und ist damit kein gültiges Anker-Token;
   als `data-image-id` verwirft der Sanitizer sie mit der Spur „ungueltig“.
-- Grenzen: Altbestand trägt das Feld erst nach der nächsten Fassung mit geändertem Rumpf (kein
-  Nachzug im Wartungslauf). Entwürfe tragen es nicht; ein Entwurf bekommt es, wenn er als
-  Wissensobjekt gespeichert wird. Eine Dublettenerkennung, die das Feld auswertet, gibt es noch
-  nicht.
+- Altbestand (Nacharbeit 1, Bens Befund 2): Objekte ohne das Feld stehen in der Arbeitsliste des
+  Wartungslaufs (`missingBildInhalte` neben `missingImageNames`); `reconcileSearchProjections`
+  zieht es nur-wenn-fehlt nach (`setBildInhalte`), ohne Rumpf, Anker oder Fassung zu ändern.
+  Zusätzlich ergänzt jede neue Fassung das fehlende Feld, auch eine reine Titelrevision.
+  *Bis Nacharbeit 1 stand hier: „kein Nachzug im Wartungslauf“ — das ist überholt.*
+- Groß-/Kleinschreibung (Nacharbeit 1, Bens Befund 1): `DATA:…;BASE64,` wird wie im Sanitizer
+  erkannt und ergibt dieselbe Kennung wie die kleingeschriebene URL.
+- Grenzen: Entwürfe tragen das Feld nicht; ein Entwurf bekommt es, wenn er als Wissensobjekt
+  gespeichert wird. Eine Dublettenerkennung, die das Feld auswertet, gibt es noch nicht.
 - Beleg: `tests/inhaltskennung/inhaltskennung-zweitbegriff.test.ts`.
 
 ## Sammler- und Leseversprechen (I50 zweitens, Kriterium 5)

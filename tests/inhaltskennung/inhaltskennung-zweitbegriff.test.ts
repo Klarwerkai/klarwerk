@@ -17,7 +17,13 @@ import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { buildApp, buildServices } from "../../services/app/src/build-app";
+import {
+  assembleServices,
+  buildApp,
+  buildServices,
+  inMemoryRepos,
+} from "../../services/app/src/build-app";
+import type { InMemoryKoRepo, KnowledgeObject } from "../../services/knowledge-object";
 import { bildInhalteAusRumpf, sanitizeHtml } from "../../services/structure";
 import { isImageAnchorId } from "../../services/structure/src/sanitize";
 
@@ -72,6 +78,34 @@ async function setup() {
     payload: { name: "Admin", email: "admin@inhalt.test", password: "geheim12345" },
   });
   return { services, app, admin: await login(app, "admin@inhalt.test", "geheim12345") };
+}
+
+// Nacharbeit 1 (Bens Befund 2): derselbe App-Aufbau, aber mit Zugriff auf das KO-Repo, damit ein
+// über den echten Schreibweg angelegtes Objekt in den Altbestand ohne `bildInhalte` versetzt
+// werden kann (Muster aus `tests/bild-benennung/nur-benennung-findet-bild.test.ts`, F6).
+async function setupMitRepo() {
+  const repos = inMemoryRepos();
+  const inner = repos.koRepo as InMemoryKoRepo;
+  const services = assembleServices(repos);
+  const app = buildApp(services);
+  offeneApps.push(app);
+  await app.inject({
+    method: "POST",
+    url: "/api/auth/register",
+    payload: { name: "Admin", email: "admin@altbestand.test", password: "geheim12345" },
+  });
+  return { services, inner, app, admin: await login(app, "admin@altbestand.test", "geheim12345") };
+}
+
+/** Versetzt ein Objekt in den Altbestand: NUR `bildInhalte` fällt weg, alles andere bleibt. */
+async function alsAltbestand(inner: InMemoryKoRepo, id: string): Promise<KnowledgeObject> {
+  const ko = (await inner.findById(id)) as KnowledgeObject;
+  const { bildInhalte: _weg, ...ohne } = ko;
+  await inner.update(ohne as KnowledgeObject);
+  const legacy = (await inner.findById(id)) as KnowledgeObject;
+  expect(legacy.bildInhalte).toBeUndefined();
+  expect(legacy.bodyHtml).toBe(ko.bodyHtml);
+  return legacy;
 }
 
 async function anlegen(app: App, headers: Auth, bodyHtml: string): Promise<string> {
@@ -171,6 +205,53 @@ describe("K1 · der Server leitet je Bild eine Inhaltskennung ab und speichert s
     await services.ko.revise(id, { title: "Nur der Titel" }, author);
     expect((await lesen(app, admin, id)).bildInhalte).toEqual(ersetzt.bildInhalte);
   });
+
+  // Nacharbeit 1, Bens Befund 2: bestehende Objekte ohne das Feld blieben ohne Kennung, solange ihr
+  // Rumpf unverändert blieb. Am Stand 9411b6e9 ist dieser Fall rot (Feld bleibt undefined).
+  it("Altbestand ohne `bildInhalte`: der Wartungslauf zieht das Feld persistent nach, Anker bleiben", async () => {
+    const { services, inner, app, admin } = await setupMitRepo();
+    const objekt = await hochladen(app, admin, BYTES_B, "ventil.png");
+    const id = await anlegen(
+      app,
+      admin,
+      figur("alt-a", SRC_A, "Pumpenkopf") + figur("alt-o", `/api/objects/${objekt}/raw`, "Ventil"),
+    );
+    const legacy = await alsAltbestand(inner, id);
+
+    // Der Wartungseinstieg des Produkts (derselbe wie für `imageNames`) sieht die Arbeit und erledigt sie.
+    const bilanz = await services.ko.reconcileSearchProjections();
+    expect(bilanz.offenVorher).toBeGreaterThanOrEqual(1);
+    expect(bilanz.differenz).toBe(0);
+
+    const nachgezogen = await inner.findById(id);
+    expect(nachgezogen?.bildInhalte).toEqual([
+      { imageId: "alt-a", inhaltskennung: erwarteteKennung(BYTES_A) },
+      { imageId: "alt-o", inhaltskennung: erwarteteKennung(BYTES_B) },
+    ]);
+    // Ohne Änderung der Vorkommensanker: der Rumpf ist zeichengleich, Fassung unverändert.
+    expect(nachgezogen?.bodyHtml).toBe(legacy.bodyHtml);
+    expect(nachgezogen?.version).toBe(legacy.version);
+    expect((await lesen(app, admin, id)).bildInhalte).toEqual(nachgezogen?.bildInhalte);
+
+    // Ein zweiter Lauf hat nichts mehr zu tun.
+    expect((await services.ko.reconcileSearchProjections()).offenVorher).toBe(0);
+  });
+
+  it("Altbestand ohne `bildInhalte`: auch eine reine Titelrevision ergänzt das Feld", async () => {
+    const { services, inner, app, admin } = await setupMitRepo();
+    const id = await anlegen(app, admin, figur("t1", SRC_A, "eins") + figur("t2", SRC_A, "zwei"));
+    const legacy = await alsAltbestand(inner, id);
+
+    const revidiert = await services.ko.revise(id, { title: "Nur der Titel" }, legacy.author);
+    const erwartet = [
+      { imageId: "t1", inhaltskennung: erwarteteKennung(BYTES_A) },
+      { imageId: "t2", inhaltskennung: erwarteteKennung(BYTES_A) },
+    ];
+    expect(revidiert.bildInhalte).toEqual(erwartet);
+    const gespeichert = await inner.findById(id);
+    expect(gespeichert?.bildInhalte).toEqual(erwartet);
+    expect(gespeichert?.bodyHtml).toBe(legacy.bodyHtml);
+  });
 });
 
 describe("K2 · zwei Vorkommen desselben Inhalts: eine Inhaltskennung, zwei Vorkommensanker", () => {
@@ -231,6 +312,22 @@ describe("K2 · zwei Vorkommen desselben Inhalts: eine Inhaltskennung, zwei Vork
     expect(e1?.inhaltskennung).toBe(erwarteteKennung(BYTES_A));
     expect(e2?.inhaltskennung).toBe(e1?.inhaltskennung);
     expect(e1?.imageId).not.toBe(e2?.imageId);
+  });
+
+  // Nacharbeit 1, Bens Befund 1: der Sanitizer lässt `DATA:…;BASE64,` zu (Groß-/Kleinschreibung
+  // egal), die Ableitung lieferte dafür bisher `null`. Am Stand 9411b6e9 ist dieser Fall rot.
+  it("dasselbe Bild in Groß- und Kleinschreibung der data-URL: eine Inhaltskennung, zwei Anker", async () => {
+    const { app, admin } = await setup();
+    const gross = `DATA:image/png;BASE64,${BYTES_A.toString("base64")}`;
+    const eingang = figur("klein", SRC_A, "klein") + figur("gross", gross, "gross");
+    const id = await anlegen(app, admin, eingang);
+    const ko = await lesen(app, admin, id);
+    // Vorbedingung: der Sanitizer hat beide Bilder zugelassen und die Schreibweise nicht verändert.
+    expect(ko.bodyHtml).toContain(`src="${gross}"`);
+    expect(ko.bildInhalte).toEqual([
+      { imageId: "klein", inhaltskennung: erwarteteKennung(BYTES_A) },
+      { imageId: "gross", inhaltskennung: erwarteteKennung(BYTES_A) },
+    ]);
   });
 
   it("dieselben Bytes in anderer base64-Umbrechung sind derselbe Inhalt", async () => {

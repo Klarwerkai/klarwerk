@@ -44,7 +44,10 @@ export interface BildInhalt {
 /** Löst ein Objekt-Store-Bild (`/api/objects/<id>/raw`) in seine gespeicherte data-URL auf. */
 export type BildObjektDaten = (objectId: string) => Promise<string | undefined>;
 
-const DATA_URL_RE = /^data:[^;,]+;base64,([\s\S]*)$/;
+// Schema und base64-Marker ohne Beachtung der Groß-/Kleinschreibung — dieselbe Regel wie
+// `isSafeImgSrc` im Sanitizer (`/…;base64,/i`). Sonst bekäme ein zugelassenes `DATA:image/png;BASE64,…`
+// `null` statt der Kennung desselben Bildes in Kleinschreibung. Die Bilddaten bleiben unverändert.
+const DATA_URL_RE = /^data:[^;,]+;base64,([\s\S]*)$/i;
 const OBJEKT_QUELLE_RE = /^\/api\/objects\/([\w-]+)\/raw$/;
 
 export function inhaltskennungAusBytes(bytes: Uint8Array): string {

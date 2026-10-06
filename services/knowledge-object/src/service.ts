@@ -973,7 +973,11 @@ export class KoService {
       // Ein geänderter Rumpf heißt immer ein frisch gebautes Objekt (`naechsteFassung`); es wird
       // an Ort und Stelle ergänzt, damit auch `value` (das oft genau dieses Objekt ist oder
       // enthält) die neue Ableitung trägt. Unveränderter Rumpf: das Feld reist unverändert mit.
-      if (updated !== before && updated.bodyHtml !== before.bodyHtml) {
+      // Fehlt es (Altbestand), ergänzt jede neu gebaute Fassung es — auch eine reine Titelrevision.
+      if (
+        updated !== before &&
+        (updated.bodyHtml !== before.bodyHtml || updated.bildInhalte === undefined)
+      ) {
         updated.bildInhalte = await this.bildInhalteVon(updated.bodyHtml);
       }
       if (this.withTx) {
@@ -1263,7 +1267,13 @@ export class KoService {
       return offen;
     }
     const bekannt = new Set(offen);
-    for (const id of await this.repo.missingImageNames(cap)) {
+    // R-0098: (c) die Inhaltskennungen der Bilder (`bildInhalte`) — noch jünger als die
+    // Benennungen, aus demselben Grund eine eigene Liste.
+    const weitere = [
+      ...(await this.repo.missingImageNames(cap)),
+      ...((await this.repo.missingBildInhalte?.(cap)) ?? []),
+    ];
+    for (const id of weitere) {
       if (bekannt.has(id)) {
         continue;
       }
@@ -4141,6 +4151,12 @@ export class KoService {
       if (imageNames === undefined) {
         imageNames = searchImageNames(ko.bodyHtml);
         nachladen = !(await this.repo.setImageNames(id, imageNames)) || nachladen;
+      }
+      // R-0098: Altbestand ohne `bildInhalte` bekommt das Feld aus demselben geladenen Rumpf —
+      // nur-wenn-fehlt, der Rumpf und seine Vorkommensanker bleiben unverändert. Ein nebenläufiger
+      // Voll-Write hat das Feld dann schon frischer gesetzt und gewinnt.
+      if (ko.bildInhalte === undefined && this.repo.setBildInhalte) {
+        await this.repo.setBildInhalte(id, await this.bildInhalteVon(ko.bodyHtml));
       }
       if (nachladen) {
         const fresh = await this.repo.findById(id);
