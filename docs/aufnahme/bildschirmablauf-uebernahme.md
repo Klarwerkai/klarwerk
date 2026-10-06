@@ -72,7 +72,10 @@ JSON-Export aus Chrome/Edge (DevTools → Recorder → „Export“ → JSON). E
 Übernommen werden `navigate`, `click`, `doubleClick`, `change`, `keyDown`; übergangen werden die
 technischen Typen `setViewport`, `keyUp`, `waitForElement`, `waitForExpression`, `scroll`, `hover`,
 `close`. Ein **anderer** Typ bricht den Import mit einer Meldung ab – es entsteht keine lückenhafte
-Anleitung. Die Handlungstexte werden in der Oberflächensprache formuliert („Klicke auf …“), das Ziel
+Anleitung. Ebenso bricht ein bekannter Schritt ohne seine Pflichtangabe ab (`navigate` ohne `url`,
+`click`/`doubleClick`/`change` ohne Ziel in `selectors`, `change` ohne `value`, `keyDown` ohne `key`);
+die Meldung nennt die Schrittnummer in der Datei. Ein Handlungstext über 2000 Zeichen wird
+abgewiesen, nicht gekürzt. Die Handlungstexte werden in der Oberflächensprache formuliert („Klicke auf …“), das Ziel
 aus dem Zugänglichkeitsnamen (`aria/…`) bzw. Text des Selektors. Der Export enthält keine Bilder.
 
 ## Datenflüsse
@@ -104,7 +107,11 @@ aus dem Zugänglichkeitsnamen (`aria/…`) bzw. Text des Selektors. Der Export e
 Im Bild werden die **Pixel** des gewählten Bereichs schwarz überschrieben und das Bild als neues PNG
 kodiert (`apps/web/src/lib/ablaufSchwaerzen.ts`). Das alte Bild wird ersetzt; es bleibt weder im
 Entwurf noch im Rumpf eine Kopie, auch keine eingebetteten Metadaten oder Vorschaubilder des
-Originals. In Texten wird jede Fundstelle durch `█████` ersetzt (feste Länge).
+Originals. In Texten wird jede Fundstelle durch `█████` ersetzt (feste Länge) – in allen
+Handlungstexten, in Titel, Kernaussage und Kategorie **und in den übernommenen Herkunftsangaben**
+(Werkzeug, Dateiname, Aufzeichnungszeit, Anwendung), denn diese fließen über den Herkunftssatz in das
+Wissensobjekt. Die Kennzeichnung „außerhalb Klarwerks aufgezeichnet“ und das Format bleiben stehen
+(etwa „aufgezeichnet mit █████“).
 
 ## Wiederholung und neue Fassung
 
@@ -123,7 +130,7 @@ Originals. In Texten wird jede Fundstelle durch `█████` ersetzt (feste
 
 | Fall | Verhalten |
 | --- | --- |
-| Kein JSON, unbekanntes Format, fehlendes Werkzeug, Schritt ohne Text, ungültiges/zu großes Bild, zu viele Schritte, unbekannter Recorder-Schritt | Verständliche Meldung mit Schrittnummer; **nichts** wird angelegt; ein bereits geöffneter Ablauf bleibt unverändert. |
+| Kein JSON, unbekanntes Format, fehlendes Werkzeug, Schritt ohne Text, zu langer Text, ungültiges/zu großes Bild, zu viele Schritte, unbekannter oder unvollständiger Recorder-Schritt | Verständliche Meldung mit Schrittnummer; **nichts** wird angelegt; ein bereits geöffneter Ablauf bleibt unverändert. |
 | Speichern scheitert (Netz, veralteter Stand 409) | Meldung mit Grund; die Bearbeitung bleibt auf der Seite stehen. |
 | Seitenwechsel/Neuladen mit ungespeicherten Änderungen | Vorhandene Rückfrage (Bleiben · Verwerfen · Speichern) bzw. Browserwarnung. |
 | Einreichen ohne Pflichtfelder | Meldung, welche Felder fehlen; nichts wird eingereicht. |

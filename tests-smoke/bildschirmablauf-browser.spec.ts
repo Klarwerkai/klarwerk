@@ -63,6 +63,9 @@ function datei(name: string, inhalt: string) {
 
 const schritte = (page: Page) => page.getByTestId("ablauf-schritt");
 
+/** Neutraler Beispielname mit derselben „sensiblen" Angabe wie ein Schritttext. */
+const DATEINAME = "Musterfirma-angebot.json";
+
 /** Die WERTE der Handlungstexte (Textfelder — ihr Textinhalt folgt einer Eingabe nicht). */
 function texte(page: Page): Promise<string[]> {
   return page
@@ -107,14 +110,16 @@ test.describe("Bildschirmablauf übernehmen · Browser", () => {
         { text: "Falsch vorgeführter Zwischenschritt", bild: b3 },
       ],
     });
-    await page.getByTestId("ablauf-datei").setInputFiles(datei("angebot.json", inhalt));
+    // Nacharbeit 4 (Ben, K4): derselbe sensible Begriff steht im Schritttext UND im Dateinamen der
+    // Herkunft — nach dem Schwärzen darf er auch dort nicht mehr stehen.
+    await page.getByTestId("ablauf-datei").setInputFiles(datei(DATEINAME, inhalt));
     await expect(schritte(page)).toHaveCount(3, { timeout: 10_000 });
     await expect(page.getByTestId("ablauf-fehler")).toHaveCount(0);
     await expect(page).toHaveURL(/\/erfassen\/ablauf\?entwurf=/);
     await expect(page.getByTestId("ablauf-herkunft")).toContainText(
       "Außerhalb Klarwerks aufgezeichnet mit Smoke-Testrekorder",
     );
-    await expect(page.getByTestId("ablauf-herkunft")).toContainText("angebot.json");
+    await expect(page.getByTestId("ablauf-herkunft")).toContainText(DATEINAME);
     await expect
       .poll(() => texte(page))
       .toEqual([
@@ -143,6 +148,11 @@ test.describe("Bildschirmablauf übernehmen · Browser", () => {
       "Kunde █████ auswählen",
     );
     expect((await texte(page)).join(" ")).not.toContain("Musterfirma");
+    await expect(page.getByTestId("ablauf-herkunft")).toContainText("█████-angebot.json");
+    await expect(page.getByTestId("ablauf-herkunft")).not.toContainText("Musterfirma");
+    await expect(page.getByTestId("ablauf-herkunft")).toContainText(
+      "Außerhalb Klarwerks aufgezeichnet mit Smoke-Testrekorder",
+    );
 
     // ---- K4: Bild schwärzen — Rahmen mit der Maus über das rote Datenfeld ziehen ----------------
     // Nacharbeit 3 (Trace des Prüflaufs): Der Datenschutzhinweis des Produkts lag über dem Bild,
@@ -226,7 +236,7 @@ test.describe("Bildschirmablauf übernehmen · Browser", () => {
     await expect(eingereicht.getByRole("link")).toHaveAttribute("href", /^\/wissen\/[\w-]+$/);
 
     // ---- K6: dieselbe Aufzeichnung noch einmal → kein zweites Wissensobjekt ---------------------
-    await page.getByTestId("ablauf-datei").setInputFiles(datei("angebot.json", inhalt));
+    await page.getByTestId("ablauf-datei").setInputFiles(datei(DATEINAME, inhalt));
     await expect(schritte(page)).toHaveCount(3, { timeout: 10_000 });
     await page.getByTestId("ablauf-meta-aussage").fill("Zweiter Versuch derselben Aufzeichnung.");
     await page.getByTestId("ablauf-meta-art").selectOption("best_practice");

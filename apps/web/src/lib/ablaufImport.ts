@@ -50,6 +50,7 @@ export type AblaufFehlerCode =
   | "zu_viele_schritte"
   | "schritt_ohne_text"
   | "schritt_zu_lang"
+  | "schritt_unvollstaendig"
   | "bild_ungueltig"
   | "bild_zu_gross"
   | "bilder_zu_gross"
@@ -224,7 +225,7 @@ function zielname(selectors: unknown): string {
   if (textSel) {
     return textSel.slice(5).trim();
   }
-  return (flach[0] ?? "").slice(0, ABLAUF_GRENZEN.kurztext);
+  return (flach[0] ?? "").trim();
 }
 
 function ausChromeRecorder(
@@ -242,15 +243,42 @@ function ausChromeRecorder(
     if (RECORDER_TECHNISCH.has(typ)) {
       continue;
     }
+    // Nacharbeit 4 (Ben, K5): die typabhängigen Pflichtangaben werden VOR der Formulierung geprüft.
+    // Sonst ergäbe ein `navigate` ohne Adresse den scheinbar gültigen Text „Öffne " — eine
+    // vollständig aussehende Anleitung mit einem leeren Schritt.
+    const unvollstaendig = (feld: string): AblaufImportErgebnis => ({
+      ok: false,
+      fehler: { code: "schritt_unvollstaendig", schritt: i + 1, detail: feld },
+    });
     let handlung: string;
     if (typ === "navigate") {
-      handlung = formulierung.oeffnen(text(step.url));
+      const url = text(step.url);
+      if (!url) {
+        return unvollstaendig("url");
+      }
+      handlung = formulierung.oeffnen(url);
     } else if (typ === "click" || typ === "doubleClick") {
-      handlung = formulierung.klicken(zielname(step.selectors));
+      const ziel = zielname(step.selectors);
+      if (!ziel) {
+        return unvollstaendig("selectors");
+      }
+      handlung = formulierung.klicken(ziel);
     } else if (typ === "change") {
-      handlung = formulierung.eingeben(text(step.value), zielname(step.selectors));
+      const ziel = zielname(step.selectors);
+      if (!ziel) {
+        return unvollstaendig("selectors");
+      }
+      // Ein leerer Wert ist eine echte Handlung (Feld leeren); ein FEHLENDER Wert ist es nicht.
+      if (typeof step.value !== "string") {
+        return unvollstaendig("value");
+      }
+      handlung = formulierung.eingeben(step.value.trim(), ziel);
     } else if (typ === "keyDown") {
-      handlung = formulierung.taste(text(step.key));
+      const taste = text(step.key);
+      if (!taste) {
+        return unvollstaendig("key");
+      }
+      handlung = formulierung.taste(taste);
     } else {
       // Ein Schritt, den diese Übernahme nicht versteht, wird NICHT übergangen: die Anleitung
       // wäre sonst scheinbar vollständig und in Wahrheit lückenhaft.
@@ -259,10 +287,11 @@ function ausChromeRecorder(
         fehler: { code: "schritttyp_unbekannt", schritt: i + 1, detail: typ.slice(0, 60) },
       };
     }
-    schritte.push({
-      id: schrittId(schritte.length),
-      text: handlung.slice(0, ABLAUF_GRENZEN.text),
-    });
+    // Zu lang wird abgewiesen, nicht still gekürzt — gezählt wird die Position in der Datei.
+    if (handlung.length > ABLAUF_GRENZEN.text) {
+      return { ok: false, fehler: { code: "schritt_zu_lang", schritt: i + 1 } };
+    }
+    schritte.push({ id: schrittId(schritte.length), text: handlung });
   }
   const fehler = pruefeSchritte(schritte);
   if (fehler) {
@@ -381,7 +410,23 @@ export function schwaerzeText(textWert: string, begriff: string): string {
   return b ? textWert.replace(regexAus(b), SCHWAERZUNG) : textWert;
 }
 
-/** Schwärzt einen Begriff in ALLEN Handlungstexten und zählt die Treffer. */
+/**
+ * Die übernommenen Herkunftstexte, die eine sensible Angabe tragen können (Werkzeugname,
+ * Dateiname, Zeitangabe, Anwendung). NICHT geschwärzt werden `art` und `format` — sie sind feste
+ * Kennzeichen dieser Übernahme und tragen die Aussage „außerhalb Klarwerks aufgezeichnet" —, und
+ * der technische `schluessel`.
+ */
+const HERKUNFTSTEXTE = ["werkzeug", "datei", "aufgezeichnetAm", "anwendung"] as const;
+
+/**
+ * Schwärzt einen Begriff in ALLEN Handlungstexten UND in den übernommenen Herkunftstexten und
+ * zählt die Treffer.
+ *
+ * Nacharbeit 4 (Ben, K4): bis hierher blieb die Herkunft unberührt — „Musterfirma" aus dem
+ * Dateinamen „Musterfirma-Angebot.json" stand nach dem Schwärzen weiter im Entwurf und über den
+ * Herkunftssatz im Rumpf des Wissensobjekts. Die Kennzeichnung der externen Herkunft bleibt
+ * erhalten: ein geschwärzter Werkzeugname liest sich „aufgezeichnet mit █████".
+ */
 export function schwaerzeInSchritten(
   ablauf: Ablauf,
   begriff: string,
@@ -391,12 +436,25 @@ export function schwaerzeInSchritten(
     return { ablauf, treffer: 0 };
   }
   let treffer = 0;
+  const zaehle = (wert: string): number => wert.match(regexAus(b))?.length ?? 0;
   const schritte = ablauf.schritte.map((s) => {
-    const n = s.text.match(regexAus(b))?.length ?? 0;
+    const n = zaehle(s.text);
     treffer += n;
     return n > 0 ? { ...s, text: schwaerzeText(s.text, b) } : s;
   });
-  return { ablauf: mitSchritten(ablauf, schritte), treffer };
+  const quelle = { ...ablauf.quelle };
+  for (const feld of HERKUNFTSTEXTE) {
+    const wert = quelle[feld];
+    if (wert === undefined) {
+      continue;
+    }
+    const n = zaehle(wert);
+    if (n > 0) {
+      treffer += n;
+      quelle[feld] = schwaerzeText(wert, b);
+    }
+  }
+  return { ablauf: { ...mitSchritten(ablauf, schritte), quelle }, treffer };
 }
 
 // ------------------------------------------------------------------------------------------------

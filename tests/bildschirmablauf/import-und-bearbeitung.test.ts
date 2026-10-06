@@ -151,6 +151,38 @@ describe("K4 · Schwärzen in Texten hinterlässt keine Kopie", () => {
     expect(JSON.stringify(neu)).not.toMatch(/Musterfirma/i);
     expect(html).not.toMatch(/Musterfirma/i);
   });
+
+  it("Nacharbeit 4: derselbe Begriff in Schritt UND Herkunft wird überall geschwärzt; die externe Kennzeichnung bleibt", () => {
+    const roh = JSON.parse(BEISPIEL) as Record<string, unknown>;
+    const datei = JSON.stringify({
+      ...roh,
+      werkzeug: "Musterfirma Rekorder",
+      anwendung: "Musterfirma Angebotsportal",
+    });
+    const { ablauf } = ok(datei, "Musterfirma-Angebot.json");
+    expect(JSON.stringify(ablauf.quelle)).toMatch(/Musterfirma/);
+
+    const { ablauf: neu, treffer } = schwaerzeInSchritten(ablauf, "Musterfirma");
+    // 1× Schritt 2, 1× Werkzeug, 1× Datei, 1× Anwendung.
+    expect(treffer).toBe(4);
+    expect(neu.quelle).toEqual({
+      art: "import",
+      format: FORMAT_KLARWERK,
+      werkzeug: `${SCHWAERZUNG} Rekorder`,
+      datei: `${SCHWAERZUNG}-Angebot.json`,
+      aufgezeichnetAm: "2026-10-05T09:12:00Z",
+      anwendung: `${SCHWAERZUNG} Angebotsportal`,
+    });
+    // Der Rumpf wird wie auf der Seite aus der (geschwärzten) Herkunft gebildet.
+    const html = ablaufZuRumpf(neu, {
+      schritt: (n) => `S${n}`,
+      herkunft: `Außerhalb Klarwerks aufgezeichnet mit ${neu.quelle.werkzeug}, Datei: ${neu.quelle.datei}, Anwendung: ${neu.quelle.anwendung}`,
+      hinweis: "x",
+    });
+    expect(JSON.stringify(neu)).not.toMatch(/Musterfirma/i);
+    expect(html).not.toMatch(/Musterfirma/i);
+    expect(html).toContain("Außerhalb Klarwerks aufgezeichnet mit");
+  });
 });
 
 describe("K5 · unvollständiger oder nicht unterstützter Import → benannter Fehler, keine Anleitung", () => {
@@ -159,6 +191,8 @@ describe("K5 · unvollständiger oder nicht unterstützter Import → benannter 
   };
   const mit = (aenderung: (b: typeof basis) => unknown) =>
     lies(JSON.stringify(aenderung(JSON.parse(JSON.stringify(basis)) as typeof basis)));
+  const recorder = (steps: Record<string, unknown>[]) =>
+    lies(JSON.stringify({ title: "Test", steps }));
 
   it.each([
     ["kein JSON", () => lies("{ kaputt"), { code: "kein_json" }],
@@ -214,6 +248,57 @@ describe("K5 · unvollständiger oder nicht unterstützter Import → benannter 
           }),
         ),
       { code: "schritttyp_unbekannt", schritt: 2, detail: "customStep" },
+    ],
+    // Nacharbeit 4 (Ben, K5): bekannte Recorder-Typen ohne ihre Pflichtangabe. Vorher entstand aus
+    // `{"type":"navigate"}` der gültig aussehende Schritt „Öffne ".
+    [
+      "Recorder: navigate ohne Adresse",
+      () => recorder([{ type: "navigate" }]),
+      { code: "schritt_unvollstaendig", schritt: 1, detail: "url" },
+    ],
+    [
+      "Recorder: navigate mit leerer Adresse",
+      () => recorder([{ type: "navigate", url: "  " }]),
+      { code: "schritt_unvollstaendig", schritt: 1, detail: "url" },
+    ],
+    [
+      "Recorder: click ohne Ziel (Position zählt technische Schritte mit)",
+      () => recorder([{ type: "setViewport" }, { type: "click" }]),
+      { code: "schritt_unvollstaendig", schritt: 2, detail: "selectors" },
+    ],
+    [
+      "Recorder: doubleClick mit leeren Selektoren",
+      () => recorder([{ type: "doubleClick", selectors: [[]] }]),
+      { code: "schritt_unvollstaendig", schritt: 1, detail: "selectors" },
+    ],
+    [
+      "Recorder: change ohne Ziel",
+      () => recorder([{ type: "change", value: "Beratung" }]),
+      { code: "schritt_unvollstaendig", schritt: 1, detail: "selectors" },
+    ],
+    [
+      "Recorder: change ohne Wert",
+      () => recorder([{ type: "change", selectors: [["aria/Position"]] }]),
+      { code: "schritt_unvollstaendig", schritt: 1, detail: "value" },
+    ],
+    [
+      "Recorder: keyDown ohne Taste",
+      () => recorder([{ type: "navigate", url: "https://a" }, { type: "keyDown" }]),
+      { code: "schritt_unvollstaendig", schritt: 2, detail: "key" },
+    ],
+    [
+      "Recorder: zu langer Handlungstext wird abgewiesen, nicht gekürzt",
+      () => recorder([{ type: "navigate", url: `https://a.example/${"x".repeat(2100)}` }]),
+      { code: "schritt_zu_lang", schritt: 1 },
+    ],
+    [
+      "klarwerk-ablauf/1: zu langer Handlungstext",
+      () =>
+        mit((b) => {
+          (b.schritte[3] as Record<string, unknown>).text = "y".repeat(ABLAUF_GRENZEN.text + 1);
+          return b;
+        }),
+      { code: "schritt_zu_lang", schritt: 4 },
     ],
   ])("%s", (_name, aufruf, fehler) => {
     const e = aufruf();

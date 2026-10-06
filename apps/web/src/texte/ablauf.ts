@@ -33,6 +33,8 @@ export default {
     "ablauf.fehler.zu_viele_schritte": "Die Datei enthält mehr als {{detail}} Schritte.",
     "ablauf.fehler.schritt_ohne_text": "Schritt {{schritt}} hat keinen Handlungstext.",
     "ablauf.fehler.schritt_zu_lang": "Der Handlungstext von Schritt {{schritt}} ist zu lang.",
+    "ablauf.fehler.schritt_unvollstaendig":
+      "Schritt {{schritt}} ist unvollständig: Die Angabe{{detail}} fehlt. Es wird keine lückenhafte Anleitung angelegt.",
     "ablauf.fehler.bild_ungueltig":
       "Das Bild von Schritt {{schritt}} ist kein unterstütztes Rasterbild (PNG, JPEG, WebP als data-URL).",
     "ablauf.fehler.bild_zu_gross": "Das Bild von Schritt {{schritt}} ist zu groß.",
@@ -65,7 +67,7 @@ export default {
     "ablauf.bild.geschwaerzt":
       "Bereich geschwärzt. Das Bild wurde neu erstellt; das Original ist darin nicht mehr enthalten.",
     "ablauf.bild.fehler": "Das Bild konnte nicht bearbeitet werden und bleibt unverändert.",
-    "ablauf.schwaerzen.titel": "Angabe in allen Texten schwärzen",
+    "ablauf.schwaerzen.titel": "Angabe in allen Texten und Herkunftsangaben schwärzen",
     "ablauf.schwaerzen.feld": "Zu schwärzende Angabe",
     "ablauf.schwaerzen.knopf": "In Texten schwärzen",
     "ablauf.schwaerzen.ergebnis": "{{anzahl}} Stelle(n) geschwärzt.",
@@ -123,6 +125,8 @@ export default {
     "ablauf.fehler.zu_viele_schritte": "The file contains more than {{detail}} steps.",
     "ablauf.fehler.schritt_ohne_text": "Step {{schritt}} has no action text.",
     "ablauf.fehler.schritt_zu_lang": "The action text of step {{schritt}} is too long.",
+    "ablauf.fehler.schritt_unvollstaendig":
+      "Step {{schritt}} is incomplete: the detail{{detail}} is missing. No incomplete guide is created.",
     "ablauf.fehler.bild_ungueltig":
       "The image of step {{schritt}} is not a supported raster image (PNG, JPEG, WebP as data URL).",
     "ablauf.fehler.bild_zu_gross": "The image of step {{schritt}} is too large.",
@@ -155,7 +159,7 @@ export default {
     "ablauf.bild.geschwaerzt":
       "Area redacted. The image was re-created; the original is no longer contained in it.",
     "ablauf.bild.fehler": "The image could not be edited and stays unchanged.",
-    "ablauf.schwaerzen.titel": "Redact a detail in all texts",
+    "ablauf.schwaerzen.titel": "Redact a detail in all texts and origin details",
     "ablauf.schwaerzen.feld": "Detail to redact",
     "ablauf.schwaerzen.knopf": "Redact in texts",
     "ablauf.schwaerzen.ergebnis": "{{anzahl}} occurrence(s) redacted.",
@@ -212,6 +216,8 @@ export default {
     "ablauf.fehler.zu_viele_schritte": "Het bestand bevat meer dan {{detail}} stappen.",
     "ablauf.fehler.schritt_ohne_text": "Stap {{schritt}} heeft geen handelingstekst.",
     "ablauf.fehler.schritt_zu_lang": "De handelingstekst van stap {{schritt}} is te lang.",
+    "ablauf.fehler.schritt_unvollstaendig":
+      "Stap {{schritt}} is onvolledig: het gegeven{{detail}} ontbreekt. Er wordt geen onvolledige handleiding aangemaakt.",
     "ablauf.fehler.bild_ungueltig":
       "De afbeelding van stap {{schritt}} is geen ondersteunde rasterafbeelding (PNG, JPEG, WebP als data-URL).",
     "ablauf.fehler.bild_zu_gross": "De afbeelding van stap {{schritt}} is te groot.",
@@ -244,7 +250,7 @@ export default {
     "ablauf.bild.geschwaerzt":
       "Gebied zwart gemaakt. De afbeelding is opnieuw aangemaakt; het origineel zit er niet meer in.",
     "ablauf.bild.fehler": "De afbeelding kon niet worden bewerkt en blijft ongewijzigd.",
-    "ablauf.schwaerzen.titel": "Gegeven in alle teksten zwart maken",
+    "ablauf.schwaerzen.titel": "Gegeven in alle teksten en herkomstgegevens zwart maken",
     "ablauf.schwaerzen.feld": "Zwart te maken gegeven",
     "ablauf.schwaerzen.knopf": "In teksten zwart maken",
     "ablauf.schwaerzen.ergebnis": "{{anzahl}} plaats(en) zwart gemaakt.",

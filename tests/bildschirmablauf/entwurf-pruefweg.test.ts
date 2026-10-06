@@ -52,7 +52,9 @@ const DATEI = JSON.stringify({
   titel: TITEL,
   werkzeug: "Testrekorder",
   aufgezeichnetAm: "2026-10-05T09:12:00Z",
-  anwendung: "Testanwendung Angebote",
+  // Nacharbeit 4 (Ben, K4): dieselbe sensible Angabe steht in einem Schritt UND in der Herkunft
+  // (hier die Anwendung, unten zusätzlich im Dateinamen).
+  anwendung: "Musterfirma Beispiel GmbH – Angebotsportal",
   schritte: [
     { text: "Neues Angebot öffnen", bild: BILD_SENSIBEL },
     { text: "Kunde Musterfirma Beispiel GmbH wählen", bild: BILD(2) },
@@ -62,11 +64,20 @@ const DATEI = JSON.stringify({
   ],
 });
 
-const RUMPF = {
-  schritt: (n: number) => `Schritt ${n}`,
-  herkunft: "Herkunft: außerhalb Klarwerks aufgezeichnet mit Testrekorder (klarwerk-ablauf/1)",
-  hinweis: "Beobachteter Ablauf: Die fachliche Richtigkeit bestätigt die Prüfung.",
-};
+/** Derselbe Aufbau wie `rumpf()` in `pages/AblaufUebernahme.tsx`: der Herkunftssatz aus der Quelle. */
+function rumpf(a: Ablauf): string {
+  const q = a.quelle;
+  const zusatz = [
+    q.datei ? `, Datei: ${q.datei}` : "",
+    q.aufgezeichnetAm ? `, Aufgezeichnet: ${q.aufgezeichnetAm}` : "",
+    q.anwendung ? `, Anwendung: ${q.anwendung}` : "",
+  ].join("");
+  return ablaufZuRumpf(a, {
+    schritt: (n: number) => `Schritt ${n}`,
+    herkunft: `Herkunft: außerhalb Klarwerks aufgezeichnet mit ${q.werkzeug} (${q.format})${zusatz}`,
+    hinweis: "Beobachteter Ablauf: Die fachliche Richtigkeit bestätigt die Prüfung.",
+  });
+}
 
 async function anmelden(app: App, email: string, password: string) {
   const res = await app.inject({
@@ -152,7 +163,7 @@ describe("Bildschirmablauf: Übernahme → Bearbeitung → Prüfweg → Wiederho
       format: "klarwerk-ablauf/1",
       werkzeug: "Testrekorder",
       aufgezeichnetAm: "2026-10-05T09:12:00Z",
-      anwendung: "Testanwendung Angebote",
+      anwendung: "Musterfirma Beispiel GmbH – Angebotsportal",
       schluessel,
     });
     expect(p1.ablauf.schritte.map((s) => s.text)).toEqual([
@@ -192,7 +203,7 @@ describe("Bildschirmablauf: Übernahme → Bearbeitung → Prüfweg → Wiederho
     // ---- K2 + K4: ändern, verschieben, löschen, schwärzen — speichern — neu laden ---------------
     let bearbeitet: Ablauf = {
       ...p1.ablauf,
-      quelle: { ...p1.ablauf.quelle, datei: "angebot.json" },
+      quelle: { ...p1.ablauf.quelle, datei: "Musterfirma Beispiel GmbH Angebot.json" },
     };
     bearbeitet = schrittTextAendern(bearbeitet, "s3", "Position „Beratung, 4 Stunden“ eintragen");
     bearbeitet = schrittVerschieben(bearbeitet, "s4", -1); // Vorschau vor Position
@@ -213,7 +224,7 @@ describe("Bildschirmablauf: Übernahme → Bearbeitung → Prüfweg → Wiederho
         category: "Vertrieb",
         confidentiality: "intern",
         ablauf: bearbeitet,
-        bodyHtml: ablaufZuRumpf(bearbeitet, RUMPF),
+        bodyHtml: rumpf(bearbeitet),
         expectedUpdatedAt: stand1,
       },
     });
@@ -229,6 +240,19 @@ describe("Bildschirmablauf: Übernahme → Bearbeitung → Prüfweg → Wiederho
       "Position „Beratung, 4 Stunden“ eintragen",
     ]);
     expect(p2.ablauf).toEqual(bearbeitet);
+    // Nacharbeit 4: auch die übernommene Herkunft ist geschwärzt — die externe Kennzeichnung
+    // (art, format, Werkzeug) bleibt stehen.
+    expect(p2.ablauf.quelle).toEqual({
+      art: "import",
+      format: "klarwerk-ablauf/1",
+      werkzeug: "Testrekorder",
+      datei: "█████ Angebot.json",
+      aufgezeichnetAm: "2026-10-05T09:12:00Z",
+      anwendung: "█████ – Angebotsportal",
+      schluessel,
+    });
+    expect(p2.bodyHtml).toContain("außerhalb Klarwerks aufgezeichnet mit Testrekorder");
+    expect(p2.bodyHtml).toContain("Angebotsportal");
     // Der Rumpf folgt derselben Reihenfolge.
     const pos = ["Neues Angebot öffnen", "Vorschau prüfen", "Beratung, 4 Stunden"].map((t) =>
       p2.bodyHtml.indexOf(t),
@@ -363,7 +387,7 @@ describe("Bildschirmablauf: Übernahme → Bearbeitung → Prüfweg → Wiederho
       headers: anna.headers,
       payload: {
         action: "revise",
-        changes: { bodyHtml: ablaufZuRumpf(neueFassung, RUMPF) },
+        changes: { bodyHtml: rumpf(neueFassung) },
         expectedVersion: 1,
       },
     });
@@ -375,6 +399,7 @@ describe("Bildschirmablauf: Übernahme → Bearbeitung → Prüfweg → Wiederho
     expect(nachRevision.version).toBe(2);
     expect(nachRevision.status).toBe("offen");
     expect(nachRevision.bodyHtml).toContain("Summe und Zahlungsziel");
+    expect(nachRevision.bodyHtml).not.toContain("Musterfirma");
     expect(await kosMitTitel(app, anna.headers)).toHaveLength(1);
 
     // ---- K8: der ganze Weg samt nachgelagerter Bestandsprüfung erreicht kein fremdes System -----

@@ -297,20 +297,23 @@ export function AblaufUebernahme(): JSX.Element {
     if (!ablauf || !begriff.trim()) {
       return;
     }
+    // Schritte UND übernommene Herkunftsangaben (Werkzeug, Datei, Zeit, Anwendung) — die Herkunft
+    // fliesst über `rumpf()` sonst ungeschwärzt in das Wissensobjekt (Nacharbeit 4, K4).
     const { ablauf: neu, treffer } = schwaerzeInSchritten(ablauf, begriff);
-    const imTitel = meta.title.toLowerCase().includes(begriff.trim().toLowerCase());
-    const inAussage = meta.statement.toLowerCase().includes(begriff.trim().toLowerCase());
+    const gesucht = begriff.trim().toLowerCase();
+    const inAngaben = [meta.title, meta.statement, meta.category].filter((w) =>
+      w.toLowerCase().includes(gesucht),
+    ).length;
     aendern(neu);
     setMeta((m) => ({
       ...m,
       title: schwaerzeText(m.title, begriff),
       statement: schwaerzeText(m.statement, begriff),
+      category: schwaerzeText(m.category, begriff),
     }));
     setMeldung({
       art: "ok",
-      text: t("ablauf.schwaerzen.ergebnis", {
-        anzahl: treffer + (imTitel ? 1 : 0) + (inAussage ? 1 : 0),
-      }),
+      text: t("ablauf.schwaerzen.ergebnis", { anzahl: treffer + inAngaben }),
     });
     setBegriff("");
   };
