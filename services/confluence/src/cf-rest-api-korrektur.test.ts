@@ -203,3 +203,118 @@ describe("CF-REST-02 · tatsächlich gelieferte Kontomail ohne Ersatzidentität"
     expect(calls).toHaveLength(1);
   });
 });
+
+// Nacharbeit 16 (Ben, K1): die tatsächliche Quelle (SPACE-RECHTE-V2.json) gibt das Space-Leserecht
+// über die Zugangsklassen ALL_LICENSED_USERS und ALL_PRODUCT_ADMINS. V1 liefert diese Lese-Einträge
+// ohne `subjects`; V2 nennt den Principal. Antwortformen wie dort.
+describe("CF-REST-03 · Space-Leserecht über Zugangsklassen und Leseprüfung je Konto", () => {
+  const v1 = {
+    id: 655363,
+    key: "K",
+    permissions: [
+      {
+        operation: { operation: "read", targetType: "space" },
+        anonymousAccess: false,
+        subjects: { user: { results: [{ accountId: "acc:peter", email: "peter@acme.example" }] } },
+      },
+      { operation: { operation: "read", targetType: "space" }, anonymousAccess: false },
+    ],
+  };
+  const v2Seite = (klasse: string, next?: string) => ({
+    results: [
+      {
+        id: "1",
+        principal: { type: "access-class", id: klasse },
+        operation: { key: "read", targetType: "space" },
+      },
+      {
+        id: "2",
+        principal: { type: "access-class", id: "ALL_LICENSED_USERS" },
+        operation: { key: "create", targetType: "comment" },
+      },
+    ],
+    _links: next ? { next } : {},
+  });
+
+  it("der Lese-Eintrag ohne Subjekt bleibt erhalten: V2 nennt die Zugangsklassen, über zwei Seiten", async () => {
+    const weiter = "/wiki/api/v2/spaces/655363/permissions?limit=100&cursor=c2";
+    const { client, calls } = fixture((u) => {
+      if (u.pathname === "/wiki/rest/api/space/K") return response(200, v1);
+      if (u.pathname === "/wiki/api/v2/spaces/655363/permissions") {
+        return u.searchParams.get("cursor")
+          ? response(200, v2Seite("ALL_PRODUCT_ADMINS"))
+          : response(200, v2Seite("ALL_LICENSED_USERS", weiter));
+      }
+      return response(404);
+    });
+    const rechte = await client.getSpaceLeserechte();
+    expect(rechte).toMatchObject({
+      anonym: false,
+      users: [{ accountId: "acc:peter" }],
+      groups: [],
+      principalsUnbekannt: false,
+    });
+    // Nur Lese-Einträge auf den Space zählen — `create comment` ist kein Leserecht.
+    expect([...(rechte?.zugangsklassen ?? [])].sort()).toEqual([
+      "ALL_LICENSED_USERS",
+      "ALL_PRODUCT_ADMINS",
+    ]);
+    expect(calls).toHaveLength(3);
+    expect(calls.every(({ url }) => new URL(url).origin === "https://acme.atlassian.net")).toBe(
+      true,
+    );
+  });
+
+  it("V2 nicht lesbar: der Principal bleibt unbekannt, nichts wird angenommen", async () => {
+    const { client } = fixture((u) =>
+      u.pathname === "/wiki/rest/api/space/K" ? response(200, v1) : response(403),
+    );
+    expect(await client.getSpaceLeserechte()).toMatchObject({
+      zugangsklassen: [],
+      principalsUnbekannt: true,
+    });
+  });
+
+  it("Space nur mit genannten Subjekten: kein V2-Abruf, keine Zugangsklasse", async () => {
+    const { client, calls } = fixture(() =>
+      response(200, { ...v1, permissions: [v1.permissions[0]] }),
+    );
+    expect(await client.getSpaceLeserechte()).toMatchObject({
+      zugangsklassen: [],
+      principalsUnbekannt: false,
+    });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("Leseprüfung je Konto: zugangsklassenberechtigte Lea ja, ausgeschlossener Otto nein", async () => {
+    const { client, calls } = fixture((u) => {
+      expect(u.pathname).toBe("/wiki/rest/api/content/P-1/permission/check");
+      // Die Quelle entscheidet je Konto: nur Lea ist (über die Zugangsklasse) berechtigt.
+      const body = String(calls[calls.length - 1]?.init?.body ?? "");
+      return response(200, { hasPermission: body.includes('"acc:lea"') });
+    });
+    expect(await client.pruefeLeserecht("P-1", "acc:lea")).toBe(true);
+    expect(await client.pruefeLeserecht("P-1", "acc:otto")).toBe(false);
+    expect(calls).toHaveLength(2);
+    for (const { url, init } of calls) {
+      expect(new URL(url).origin).toBe("https://acme.atlassian.net");
+      expect(init?.method).toBe("POST");
+      expect(init?.redirect).toBe("error");
+      expect(url).not.toContain("fixture-token");
+    }
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      subject: { type: "user", identifier: "acc:lea" },
+      operation: "read",
+    });
+  });
+
+  it("Leseprüfung nicht feststellbar (403, unlesbar, PAT): kein Leserecht", async () => {
+    const verweigert = fixture(() => response(403));
+    expect(await verweigert.client.pruefeLeserecht("P-1", "acc:lea")).toBeUndefined();
+    const unlesbar = fixture(() => response(200, {}));
+    expect(await unlesbar.client.pruefeLeserecht("P-1", "acc:lea")).toBeUndefined();
+    const pat = fixture(() => response(200, { hasPermission: true }), "pat");
+    expect(await pat.client.pruefeLeserecht("P-1", "acc:lea")).toBeUndefined();
+    expect(pat.calls).toHaveLength(0);
+  });
+});

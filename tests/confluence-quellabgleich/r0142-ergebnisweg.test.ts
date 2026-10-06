@@ -53,6 +53,21 @@ function seite(id: string, version: number, titel = "Wartung"): Seite {
   };
 }
 
+// confluence-import-rechte (Nacharbeit 16, Ben K1): die Quelle trägt die Rechte, die Confluence
+// tatsächlich liefert — der Space ist für das Quellkonto des Admins lesbar (mit seiner
+// Klara-Adresse), und der referenzierte Vorfahr „Betrieb" ist eine offene Seite desselben Bereichs.
+// Ohne beides ist ein Objekt nach R-0549 für niemanden lesbar. Der Vorfahr steht am ENDE der
+// Bereichsliste; er wird nie entschieden und ist keine der Seiten, die die Fälle prüfen.
+const ADMIN_EMAIL = "a@r0142.test";
+const ELTERN: Seite = {
+  id: "parent",
+  title: "Betrieb",
+  version: { number: 1 },
+  body: { storage: { value: "<p>Betrieb.</p>" } },
+  _links: { webui: "/spaces/K/pages/parent" },
+  ancestors: [],
+};
+
 async function aufbau() {
   const bereich = new Map<string, Seite>();
   const antwort = (status: number, body: unknown) =>
@@ -62,13 +77,30 @@ async function aufbau() {
     if (/\/child\/attachment$/.test(url.pathname)) {
       return antwort(200, { results: [] });
     }
+    if (url.pathname.endsWith("/rest/api/space/K")) {
+      return antwort(200, {
+        id: 655363,
+        key: "K",
+        permissions: [
+          {
+            operation: { operation: "read", targetType: "space" },
+            anonymousAccess: false,
+            subjects: {
+              user: { results: [{ accountId: "acc-admin", email: ADMIN_EMAIL }] },
+              group: { results: [] },
+            },
+          },
+        ],
+      });
+    }
     // Einzelabruf einer Seite (Selektivimport lädt je Id frisch, Löschabgleich fragt nach).
     const id = /\/rest\/api\/content\/([^/?]+)$/.exec(url.pathname)?.[1];
     if (id) {
-      const s = bereich.get(decodeURIComponent(id));
+      const gesucht = decodeURIComponent(id);
+      const s = gesucht === ELTERN.id ? ELTERN : bereich.get(gesucht);
       return s ? antwort(200, s) : antwort(404, {});
     }
-    return antwort(200, { results: [...bereich.values()] });
+    return antwort(200, { results: [...bereich.values(), ELTERN] });
   }) as unknown as typeof fetch;
   const adapter = adapterFromConfig({
     baseUrl: "https://fixture.example/wiki",
@@ -101,20 +133,38 @@ async function aufbau() {
       koService: services.ko,
       // R-0142 (Lauf 5 R3): genau die Verdrahtung der Kompositionswurzel (build-app.ts).
       luecken: services.ask,
+      kandidaten: services.candidates,
+      kandidatenRechte: services.library,
       guards,
     }),
   );
   await app.inject({
     method: "POST",
     url: "/api/auth/register",
-    payload: { name: "Admin", email: "a@r0142.test", password: "secret123" },
+    payload: { name: "Admin", email: ADMIN_EMAIL, password: "secret123" },
   });
   const login = await app.inject({
     method: "POST",
     url: "/api/auth/login",
-    payload: { email: "a@r0142.test", password: "secret123" },
+    payload: { email: ADMIN_EMAIL, password: "secret123" },
   });
   const headers = { authorization: `Bearer ${login.json().token}` };
+  // Nacharbeit 16 (Ben K1): eine zweite Administratorin mit denselben Routenrechten
+  // (`users.manage`), die in der Quelle NICHT lesen darf.
+  const fremdeMail = "fremd@r0142.test";
+  const angelegt = await app.inject({
+    method: "POST",
+    url: "/api/users",
+    headers,
+    payload: { name: "Fremd", email: fremdeMail, password: "geheim12345", role: "admin" },
+  });
+  expect(angelegt.statusCode, angelegt.body).toBe(201);
+  const fremdLogin = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: { email: fremdeMail, password: "geheim12345" },
+  });
+  const fremdHeaders = { authorization: `Bearer ${fremdLogin.json().token}` };
 
   const lauf = async (): Promise<string> => {
     const start = await app.inject({
@@ -147,9 +197,12 @@ async function aufbau() {
       }[];
     };
   };
+  // Der Vorfahr der Fixture wird nie entschieden — die Fälle sehen nur ihre eigenen Seiten.
   const offene = async () =>
-    (await services.library.listImportCandidates()).filter((k) => k.status === "neu");
-  return { app, services, headers, bereich, lauf, ergebnis, offene };
+    (await services.library.listImportCandidates()).filter(
+      (k) => k.status === "neu" && k.item.externalId !== ELTERN.id,
+    );
+  return { app, services, headers, fremdHeaders, bereich, lauf, ergebnis, offene };
 }
 
 describe("R-0142 · der Ergebnisweg des Confluence-Imports", () => {
@@ -589,6 +642,62 @@ describe("R-0142 · der Ergebnisweg des Confluence-Imports", () => {
           },
         ],
         knowledgeGapUnavailableReason: "KI_ABGESCHALTET",
+      });
+    } finally {
+      await t.app.close();
+    }
+  });
+
+  // confluence-import-rechte (Nacharbeit 16, Ben K1): dieselben Wege für eine Administratorin mit
+  // denselben Routenrechten, die in der QUELLE nicht lesen darf. Die Quellberechtigte (E1/E5) liest
+  // weiter alles; die andere bekommt weder Objekt- noch Herkunftsinhalt.
+  it("E13 · nicht quellberechtigt trotz Routenrecht: Objekt-Ergebnis 404, keine Herkunftsinhalte", async () => {
+    const t = await aufbau();
+    try {
+      t.bereich.set("P-1", seite("P-1", 1));
+      const importId = await t.lauf();
+      const [kandidat] = await t.offene();
+      const a = await t.services.library.reviewImportCandidate(
+        kandidat?.id ?? "",
+        "accept",
+        "admin",
+      );
+      const koId = a.koId ?? "";
+      const sourceRecordId = (await t.ergebnis(importId)).items[0]?.sourceRecordId ?? "";
+      expect(sourceRecordId).not.toBe("");
+
+      // Gegenprobe: die Quellberechtigte liest Objekt-Ergebnis und Herkunft.
+      const eigenObjekt = await t.app.inject({
+        method: "GET",
+        url: `/api/admin/import/knowledge/${koId}`,
+        headers: t.headers,
+      });
+      expect(eigenObjekt.statusCode, eigenObjekt.body).toBe(200);
+      const eigenQuelle = await t.app.inject({
+        method: "GET",
+        url: `/api/admin/import/source-records/${sourceRecordId}`,
+        headers: t.headers,
+      });
+      expect(eigenQuelle.statusCode, eigenQuelle.body).toBe(200);
+      expect(eigenQuelle.json()).toMatchObject({ title: "Wartung" });
+
+      const fremd = (url: string) => t.app.inject({ method: "GET", url, headers: t.fremdHeaders });
+      const objekt = await fremd(`/api/admin/import/knowledge/${koId}`);
+      expect(objekt.statusCode).toBe(404);
+      expect(objekt.json()).toEqual({ error: "NOT_FOUND", message: "Nicht gefunden." });
+      const quelle = await fremd(`/api/admin/import/source-records/${sourceRecordId}`);
+      expect(quelle.statusCode).toBe(404);
+      expect(quelle.body).not.toContain("Wartung");
+      expect(quelle.body).not.toContain("/spaces/K/pages/P-1");
+      expect((await fremd(`/api/kos/${koId}`)).statusCode).toBe(404);
+      // Der Lauf selbst bleibt für das Routenrecht lesbar — ohne Titel, Adresse oder Lückenbezug.
+      const ergebnis = await fremd(`/api/admin/import/runs/${importId}/result`);
+      expect(ergebnis.statusCode, ergebnis.body).toBe(200);
+      expect(ergebnis.body).not.toContain("Wartung");
+      expect(ergebnis.body).not.toContain("/spaces/K/pages/P-1");
+      expect(ergebnis.json().items[0]).toMatchObject({
+        knowledgeGapRelationState: "RELATION_NOT_AVAILABLE",
+        knowledgeGapIds: null,
       });
     } finally {
       await t.app.close();

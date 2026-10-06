@@ -3550,6 +3550,10 @@ export function buildApp(
         koService: services.ko,
         // R-0142 (Lauf 5 R3, Bens B7): die offenen Lücken je Objekt.
         luecken: services.ask,
+        // confluence-import-rechte (Nacharbeit 16): Quellrevisionen nur für Quellberechtigte —
+        // dieselbe Grenze wie die Warteschlange.
+        kandidaten: services.candidates,
+        kandidatenRechte: services.library,
         guards,
       }),
     );

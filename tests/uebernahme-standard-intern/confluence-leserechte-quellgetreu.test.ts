@@ -83,6 +83,12 @@ interface FixtureRechte {
    */
   gruppenSeiten?: Record<string, { seiten: unknown[][]; fehlerAb?: number }>;
   kontoEmails?: Record<string, string>;
+  /**
+   * Nacharbeit 16 (Ben, K1): das Space-Leserecht (auch) über eine Zugangsklasse — V1 trägt dazu
+   * einen Lese-Eintrag OHNE Subjekt, V2 nennt die Klasse (Form wie SPACE-RECHTE-V2.json).
+   * `berechtigt`: die Konten, denen die Quelle bei der Leseprüfung je Konto das Leserecht bestätigt.
+   */
+  zugangsklasse?: { klasse: string; berechtigt: string[] };
 }
 
 /** Space-Listing liefert `liste`; `/content/<id>` liefert die Seite aus `einzeln` oder 404. */
@@ -92,8 +98,32 @@ function fixture(
   rechte: FixtureRechte = {},
 ) {
   const abgerufen: string[] = [];
-  const fetchFn = (async (url: string | URL | Request) => {
+  const fetchFn = (async (url: string | URL | Request, init?: RequestInit) => {
     const u = new URL(String(url));
+    // Nacharbeit 16: die Leseprüfung je Konto (`POST …/permission/check`) und die V2-Principals.
+    if (/\/rest\/api\/content\/[^/]+\/permission\/check$/.test(u.pathname)) {
+      const anfrage = JSON.parse(String(init?.body ?? "{}")) as {
+        subject?: { identifier?: string };
+      };
+      const konto = anfrage.subject?.identifier ?? "";
+      return antwort(200, {
+        hasPermission: rechte.zugangsklasse?.berechtigt.includes(konto) ?? false,
+      });
+    }
+    if (u.pathname.endsWith("/api/v2/spaces/655363/permissions")) {
+      return antwort(200, {
+        results: rechte.zugangsklasse
+          ? [
+              {
+                id: "1",
+                principal: { type: "access-class", id: rechte.zugangsklasse.klasse },
+                operation: { key: "read", targetType: "space" },
+              },
+            ]
+          : [],
+        _links: {},
+      });
+    }
     const treffer = /\/rest\/api\/content\/([^/]+)$/.exec(u.pathname);
     if (treffer) {
       const id = decodeURIComponent(treffer[1] ?? "");
@@ -106,16 +136,20 @@ function fixture(
         return antwort(404, {});
       }
       return antwort(200, {
+        id: 655363,
         key: "K",
         permissions: [
           {
             operation: { operation: "read", targetType: "space" },
-            anonymousAccess: rechte.space === undefined,
+            anonymousAccess: rechte.space === undefined && !rechte.zugangsklasse,
             subjects: {
               user: { results: rechte.space?.users ?? [] },
               group: { results: rechte.space?.groups ?? [] },
             },
           },
+          ...(rechte.zugangsklasse
+            ? [{ operation: { operation: "read", targetType: "space" }, anonymousAccess: false }]
+            : []),
         ],
       });
     }
@@ -1074,5 +1108,70 @@ describe("R-0549 · mehrseitige Gruppen und der Abbruchfall", () => {
     const rechte = (items[0] as MitQuellrechten).quellrechte;
     expect(rechte?.leserUnvollstaendig).toBe(true);
     expect(rechte?.emails).toHaveLength(50);
+  });
+});
+
+// ==================================================================================================
+// Nacharbeit 16 (Ben, K1) — SPACE-LESERECHT ÜBER ZUGANGSKLASSEN (ALL_LICENSED_USERS).
+// ==================================================================================================
+//
+// Die tatsächliche Quelle gibt das Space-Leserecht über Zugangsklassen; V1 liefert diese Einträge
+// ohne Subjekt. Bis hierher fiel der Eintrag weg, und eine auf Lea und Otto beschränkte Seite
+// bekam KEINEN Leser (Schnittmenge mit einem leeren Space). Jetzt: Lea ist nur über die
+// Zugangsklasse berechtigt, die Quelle bestätigt es bei der Leseprüfung je Konto; Otto ist an der
+// Seite genannt, die Quelle verneint sein Leserecht. Zugangsklassen werden nicht pauschal auf alle
+// Klara-Nutzer abgebildet, und der Leserkreis steht als unvollständig bis zum Laufergebnis.
+describe("R-0549 · Space-Leserecht über eine Zugangsklasse", () => {
+  const ZUGANG: FixtureRechte = {
+    space: { users: [], groups: [] },
+    zugangsklasse: { klasse: "ALL_LICENSED_USERS", berechtigt: ["acc-lea"] },
+  };
+  const zuLeaUndOtto = () =>
+    seite("995", [], {
+      user: [
+        { accountId: "acc-lea", email: "lea@example.com" },
+        { accountId: "acc-otto", email: "otto@example.com" },
+      ],
+    });
+
+  it("Z1 · nur über die Zugangsklasse berechtigte Lea liest, der ausgeschlossene Otto nicht — unvollständig bis zum Lauf", async () => {
+    const k = await appMitKonten();
+    const lauf = await bereichsabgleich(k, [zuLeaUndOtto()], ZUGANG);
+    expect(lauf.leserUnvollstaendig).toBe(1);
+    const kandidat = await kandidatFuer(k, "995");
+    const amItem = (kandidat.item as MitQuellrechten).quellrechte;
+    expect(amItem?.emails).toEqual(["lea@example.com"]);
+    expect(amItem?.leserUnvollstaendig).toBe(true);
+
+    const r = await k.services.library.reviewImportCandidate(kandidat.id, "accept", k.adminId);
+    const objekt = await k.services.ko.get(r.koId!);
+    expect(objekt?.confidentiality).toBe("vertraulich");
+    expect(objekt?.quellrechte).toMatchObject({ leser: [k.lea.id], leserUnvollstaendig: true });
+    const lea = await liest(k.app, k.lea.headers, r.koId!);
+    expect(lea.einzeln.statusCode).toBe(200);
+    expect(lea.inListe).toBe(true);
+    // Ausgeschlossen: Otto (Quelle verneint), und niemand sonst wird über die Klasse Leser.
+    for (const wer of [k.otto, k.carl, k.eva, k.admin]) {
+      const ergebnis = await liest(k.app, wer.headers, r.koId!);
+      expect(ergebnis.einzeln.statusCode).toBe(404);
+      expect(ergebnis.inListe).toBe(false);
+    }
+  });
+
+  it("Z2 · Gegenprobe: ohne Zugangsklasse liefert derselbe Space keinen Leser (die Messung ist nicht leer)", async () => {
+    const { items } = await fixture([zuLeaUndOtto()], undefined, {
+      space: { users: [], groups: [] },
+    }).adapter.collectAll();
+    const rechte = (items[0] as MitQuellrechten).quellrechte;
+    expect(rechte?.emails).toEqual([]);
+    expect(rechte?.leserUnvollstaendig).toBeUndefined();
+  });
+
+  it("Z3 · derselbe Schutz beim Nachladen je ID (fetchItem)", async () => {
+    const seite995 = zuLeaUndOtto();
+    const item = await fixture([], [seite995], ZUGANG).adapter.fetchItem("995");
+    const rechte = (item as MitQuellrechten | undefined)?.quellrechte;
+    expect(rechte?.emails).toEqual(["lea@example.com"]);
+    expect(rechte?.leserUnvollstaendig).toBe(true);
   });
 });

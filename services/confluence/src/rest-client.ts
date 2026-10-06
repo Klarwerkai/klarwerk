@@ -202,6 +202,8 @@ type ErsterHop = { inhalt: ConfluenceAnhangInhalt } | { weiter: string };
 
 export interface ConfluenceUser {
   displayName?: string;
+  /** Nacharbeit 16: die Kennung des Autors — ein Kandidat für die Leseprüfung je Konto. */
+  accountId?: string;
 }
 export interface ConfluencePage {
   id: string;
@@ -248,6 +250,18 @@ export interface ConfluenceSpaceLeserechte {
   anonym: boolean;
   users: unknown[];
   groups: unknown[];
+  /**
+   * Nacharbeit 16 (Ben, K1): Zugangsklassen mit Leserecht (V2-Principal `access-class`, etwa
+   * `ALL_LICENSED_USERS`). V1 liefert diese Einträge OHNE `subjects` — bis hierher fielen sie weg.
+   */
+  zugangsklassen: string[];
+  /** Ein Lese-Eintrag, dessen Principal sich nicht bestimmen ließ (V2 nicht lesbar, PAT). */
+  principalsUnbekannt: boolean;
+}
+
+interface SpacePermissionV2Roh {
+  principal?: { type?: unknown; id?: unknown };
+  operation?: { key?: unknown; targetType?: unknown };
 }
 
 interface SpacePermissionRoh {
@@ -683,6 +697,7 @@ export class ConfluenceRestClient {
     }
     let lesend = false;
     let anonym = false;
+    let ohneSubjekt = false;
     const users: unknown[] = [];
     const groups: unknown[] = [];
     for (const eintrag of permissions as SpacePermissionRoh[]) {
@@ -694,10 +709,120 @@ export class ConfluenceRestClient {
       if (eintrag.anonymousAccess === true) {
         anonym = true;
       }
+      // Nacharbeit 16: so liefert V1 einen Lese-Eintrag einer Zugangsklasse — ganz ohne `subjects`
+      // (SPACE-RECHTE-V2.json, Einträge 655385/655438). Der Principal steht nur in V2.
+      if (eintrag.subjects === undefined && eintrag.anonymousAccess !== true) {
+        ohneSubjekt = true;
+      }
       users.push(...arrayOder(eintrag.subjects?.user?.results));
       groups.push(...arrayOder(eintrag.subjects?.group?.results));
     }
-    return lesend ? { anonym, users, groups } : undefined;
+    if (!lesend) {
+      return undefined;
+    }
+    // Nacharbeit 16 (Ben, K1): einen Lese-Eintrag ohne Subjekt nicht verwerfen — V2 nennt seinen
+    // Principal. Nur im Cloud-Weg; selbst betriebenes Confluence hat diese API nicht.
+    let zugangsklassen: string[] = [];
+    let principalsUnbekannt = false;
+    if (ohneSubjekt && !anonym) {
+      const spaceId = (data as { id?: unknown }).id;
+      const mitId = typeof spaceId === "number" || typeof spaceId === "string";
+      const gelesen =
+        this.config.authMode !== "pat" && mitId
+          ? await this.spaceZugangsklassen(String(spaceId))
+          : undefined;
+      zugangsklassen = gelesen?.klassen ?? [];
+      principalsUnbekannt = !gelesen?.vollstaendig || zugangsklassen.length === 0;
+    }
+    return { anonym, users, groups, zugangsklassen, principalsUnbekannt };
+  }
+
+  /**
+   * Nacharbeit 16: die Zugangsklassen mit Leserecht am Space aus `/api/v2/spaces/{id}/permissions`
+   * (Cursor-Pagination über `_links.next`). Derselbe Netzweg, dieselbe Seitenobergrenze wie die
+   * Gruppen; ein Fehler oder die Grenze ergeben `vollstaendig: false`.
+   */
+  private async spaceZugangsklassen(
+    spaceId: string,
+  ): Promise<{ klassen: string[]; vollstaendig: boolean }> {
+    const allowedOrigin = this.allowedOrigin();
+    const klassen = new Set<string>();
+    let url = `${this.baseUrl}/api/v2/spaces/${encodeURIComponent(spaceId)}/permissions?limit=100`;
+    for (let seite = 0; seite < CONFLUENCE_MAX_GRUPPENSEITEN; seite += 1) {
+      let data: unknown;
+      try {
+        data = await this.getJson(url, allowedOrigin);
+      } catch {
+        return { klassen: [...klassen], vollstaendig: false };
+      }
+      const antwort = data as { results?: unknown; _links?: { next?: unknown } } | undefined;
+      if (!Array.isArray(antwort?.results)) {
+        return { klassen: [...klassen], vollstaendig: false };
+      }
+      for (const eintrag of antwort.results as SpacePermissionV2Roh[]) {
+        if (
+          eintrag?.operation?.key === "read" &&
+          eintrag.operation.targetType === "space" &&
+          eintrag.principal?.type === "access-class" &&
+          typeof eintrag.principal.id === "string" &&
+          eintrag.principal.id.trim()
+        ) {
+          klassen.add(eintrag.principal.id.trim());
+        }
+      }
+      const next = antwort._links?.next;
+      if (typeof next !== "string" || !next) {
+        return { klassen: [...klassen], vollstaendig: true };
+      }
+      url = this.nextUrl(next, allowedOrigin);
+    }
+    return { klassen: [...klassen], vollstaendig: false };
+  }
+
+  /**
+   * Nacharbeit 16 (Ben, K1): darf dieses Konto diese Seite in der QUELLE lesen? Die tatsächliche
+   * Quellberechtigung (Space, Zugangsklassen, Gruppen, Restriktionen) über
+   * `POST /rest/api/content/{id}/permission/check` — eine reine Abfrage, die nichts verändert; die
+   * einzige Nicht-GET-Anfrage dieses Clients. Origin-Pin, Frist, Größengrenze, `redirect:error` wie
+   * überall. `undefined` = nicht feststellbar (Fehler, unlesbare Antwort, PAT): kein Leserecht.
+   */
+  async pruefeLeserecht(contentId: string, accountId: string): Promise<boolean | undefined> {
+    if (this.config.authMode === "pat" || !contentId.trim() || !accountId.trim()) {
+      return undefined;
+    }
+    const url = `${this.baseUrl}/rest/api/content/${encodeURIComponent(contentId)}/permission/check`;
+    const allowedOrigin = this.allowedOrigin();
+    let data: unknown;
+    try {
+      assertAllowedConfluenceUrl(url, allowedOrigin);
+      const maxBytes = this.config.maxResponseBytes ?? CONFLUENCE_MAX_RESPONSE_BYTES;
+      data = await this.mitFrist(
+        url,
+        {
+          method: "POST",
+          headers: {
+            authorization: this.authHeader(),
+            accept: "application/json",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            subject: { type: "user", identifier: accountId },
+            operation: "read",
+          }),
+          redirect: "error",
+        },
+        async (res) => {
+          if (!res.ok) {
+            throw new ConfluenceStatusError(res.status);
+          }
+          return leseBegrenzt(res, maxBytes);
+        },
+      );
+    } catch {
+      return undefined;
+    }
+    const erlaubt = (data as { hasPermission?: unknown } | undefined)?.hasPermission;
+    return typeof erlaubt === "boolean" ? erlaubt : undefined;
   }
 
   // CF-REST-01 (Quellbefund 2026-10-06): in Confluence Cloud antwortet der Namensweg
