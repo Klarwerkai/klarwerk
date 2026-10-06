@@ -112,7 +112,11 @@ if [ -z "$PROJEKT" ]; then
   echo "[b3] ABBRUCH: PROJEKT ist nicht gesetzt (Compose-Projektname der Instanz)." >&2
   exit 1
 fi
-for werkzeug in docker date od; do
+WERKZEUGE="docker date od"
+# Auslagern verarbeitet ausschließlich ein vorhandenes Dump-Paar mit Herkunft.
+# Auch der native PostgreSQL-Betrieb verwendet diesen bestehenden Baustein.
+if [ "$SCHRITT" = auslagern ]; then WERKZEUGE="date od"; fi
+for werkzeug in $WERKZEUGE; do
   if ! command -v "$werkzeug" >/dev/null 2>&1; then
     echo "[b3] ABBRUCH: $werkzeug nicht gefunden." >&2
     exit 1
@@ -126,7 +130,7 @@ else
   echo "[b3] ABBRUCH: weder sha256sum noch shasum gefunden." >&2
   exit 1
 fi
-if [ ! -f "$STACK/.env" ]; then
+if [ "$SCHRITT" != auslagern ] && [ ! -f "$STACK/.env" ]; then
   echo "[b3] ABBRUCH: $STACK/.env fehlt — die Instanz ist nicht eingerichtet." >&2
   exit 1
 fi

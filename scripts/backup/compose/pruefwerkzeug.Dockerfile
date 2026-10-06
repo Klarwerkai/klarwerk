@@ -18,6 +18,7 @@
 ARG APP_IMAGE
 FROM ${APP_IMAGE}
 USER root
+ARG PG_MAJOR=16
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates curl gnupg procps && \
     install -d /usr/share/postgresql-common/pgdg && \
@@ -26,7 +27,7 @@ RUN apt-get update && \
     echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
       > /etc/apt/sources.list.d/pgdg.list && \
     apt-get update && \
-    apt-get install -y --no-install-recommends postgresql-client-16 && \
+    apt-get install -y --no-install-recommends postgresql-client-${PG_MAJOR} && \
     rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 # Kein Browser-Download: der Drill und W1–W4 brauchen keinen Chromium.

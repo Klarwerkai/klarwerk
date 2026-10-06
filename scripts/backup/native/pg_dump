@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# backup.sh bleibt unverändert; Export und Inhaltsmessung verwenden denselben Snapshot.
+set -euo pipefail
+[[ "${PGDUMP_SNAPSHOT:-}" =~ ^[0-9A-Fa-f]+-[0-9A-Fa-f]+-[0-9]+$ ]] || exit 64
+exec /usr/bin/pg_dump --snapshot="$PGDUMP_SNAPSHOT" "$@"
