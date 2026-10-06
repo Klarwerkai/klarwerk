@@ -334,6 +334,7 @@ PFLICHTTABELLEN=(
   gesamtanweisung_bausteine
   gesamtanweisung_staende
   ko_bearbeitungen
+  import_run_source_sync
   dokument_fassungen
   confluence_import_schalter
   begriffe_fassungen
