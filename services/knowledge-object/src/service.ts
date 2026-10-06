@@ -6487,6 +6487,203 @@ export class KoService {
     return this.searchProjections.find(ko.id, ko.version);
   }
 
+  /**
+   * R-0162: ein Abgleich hat festgestellt, dass die Quellseite hinter dem Anker `externalId`
+   * (Provider `provider`) gelöscht ist. Vermerkt wird das AM ANKER (`sourceRemovedAt`) — der
+   * Inhalt, die Stufe und die Fassung des Wissensobjekts bleiben unberührt, es wird nichts
+   * gelöscht und nichts revidiert. Idempotent: ein bereits vermerkter Anker bleibt, wie er ist.
+   * Gibt `false` zurück, wenn es nichts zu vermerken gab.
+   */
+  async markSourceRemoved(
+    id: string,
+    anchor: { provider: string | null; externalId: string },
+    at: string,
+    actor: string,
+  ): Promise<boolean> {
+    const ko = await this.require(id);
+    const trifft = (s: KoSource) =>
+      s.externalId === anchor.externalId &&
+      (s.provider ?? "").trim().toLowerCase() === (anchor.provider ?? "").trim().toLowerCase();
+    if (!(ko.sources ?? []).some((s) => trifft(s) && !s.sourceRemovedAt)) {
+      return false;
+    }
+    const updated: KnowledgeObject = {
+      ...ko,
+      sources: (ko.sources ?? []).map((s) =>
+        trifft(s) && !s.sourceRemovedAt ? { ...s, sourceRemovedAt: at } : s,
+      ),
+    };
+    await this.repo.update(updated);
+    await this.audit?.record({
+      actor,
+      action: "ko.source-removed-in-origin",
+      target: id,
+      payload: { provider: anchor.provider, externalId: anchor.externalId, at },
+    });
+    return true;
+  }
+
+  /**
+   * R-0162 (Runde 3): die Gegenrichtung. Ein Abgleich hat die Quellseite WIEDER vorgefunden (sie
+   * stand in der Bereichsliste) — der frühere Löschvermerk ist damit veraltet und wird aufgehoben,
+   * auch wenn die Seite keine höhere Version trägt. Protokolliert im Audit, wann der Vermerk
+   * gesetzt war. `false`, wenn kein Vermerk da war.
+   */
+  async clearSourceRemoved(
+    id: string,
+    anchor: { provider: string | null; externalId: string },
+    actor: string,
+  ): Promise<boolean> {
+    const ko = await this.require(id);
+    const trifft = (s: KoSource) =>
+      s.externalId === anchor.externalId &&
+      (s.provider ?? "").trim().toLowerCase() === (anchor.provider ?? "").trim().toLowerCase();
+    const vermerkt = (ko.sources ?? []).filter((s) => trifft(s) && s.sourceRemovedAt);
+    if (vermerkt.length === 0) {
+      return false;
+    }
+    const updated: KnowledgeObject = {
+      ...ko,
+      sources: (ko.sources ?? []).map((s) => {
+        if (!trifft(s) || !s.sourceRemovedAt) {
+          return s;
+        }
+        const { sourceRemovedAt: _aufgehoben, ...rest } = s;
+        return rest;
+      }),
+    };
+    await this.repo.update(updated);
+    await this.audit?.record({
+      actor,
+      action: "ko.source-restored-in-origin",
+      target: id,
+      payload: {
+        provider: anchor.provider,
+        externalId: anchor.externalId,
+        removedAt: vermerkt[0]?.sourceRemovedAt ?? null,
+      },
+    });
+    return true;
+  }
+
+  /**
+   * R-0163 (Lauf 2): die Anhangsquellen eines Ankers an die Quelle angleichen, wenn sich NUR die
+   * Anhänge geändert haben (gleiche Seitenfassung). `attachments` ist die vollständige neue Liste
+   * der Anhangsquellen dieses Ankers; sie ersetzt alle bisherigen (`attachmentOf` = Anker-Id,
+   * gleicher Provider). Wie der Löschvermerk ist das eine HERKUNFTSANGABE: Inhalt, Stufe und
+   * Fassung des Wissensobjekts bleiben unberührt; protokolliert im Audit mit den hinzugekommenen
+   * und entfernten Anhangs-Kennungen. `undefined`, wenn sich nichts ändert. `dryRun`: nur melden,
+   * was sich ändern würde.
+   */
+  async replaceSourceAttachments(
+    id: string,
+    anchor: { provider: string | null; externalId: string },
+    attachments: KoSource[],
+    actor: string,
+    opts: { dryRun?: boolean } = {},
+  ): Promise<{ added: string[]; removed: string[] } | undefined> {
+    const ko = await this.require(id);
+    const provider = (anchor.provider ?? "").trim().toLowerCase();
+    const gehoert = (s: KoSource) =>
+      s.attachmentOf === anchor.externalId && (s.provider ?? "").trim().toLowerCase() === provider;
+    const bisher = (ko.sources ?? []).filter(gehoert);
+    const gleich = (a: KoSource, b: KoSource) =>
+      a.label === b.label &&
+      (a.url ?? null) === (b.url ?? null) &&
+      a.attachment?.externalId === b.attachment?.externalId &&
+      a.attachment?.mime === b.attachment?.mime &&
+      a.attachment?.size === b.attachment?.size;
+    if (
+      bisher.length === attachments.length &&
+      attachments.every((neu) => bisher.some((alt) => gleich(alt, neu)))
+    ) {
+      return undefined;
+    }
+    const kennungen = (liste: KoSource[]) =>
+      new Set(liste.map((s) => s.attachment?.externalId).filter((k): k is string => !!k));
+    const alt = kennungen(bisher);
+    const neu = kennungen(attachments);
+    const added = [...neu].filter((k) => !alt.has(k));
+    const removed = [...alt].filter((k) => !neu.has(k));
+    if (opts.dryRun) {
+      return { added, removed };
+    }
+    const updated: KnowledgeObject = {
+      ...ko,
+      sources: [...(ko.sources ?? []).filter((s) => !gehoert(s)), ...attachments],
+    };
+    await this.repo.update(updated);
+    await this.audit?.record({
+      actor,
+      action: "ko.source-attachments-synced",
+      target: id,
+      payload: { provider: anchor.provider, externalId: anchor.externalId, added, removed },
+    });
+    return { added, removed };
+  }
+
+  /**
+   * R-0162 / R-0549 (Lauf 3 R2, Bens B5): die Leserestriktion am Herkunftsanker an die Quelle
+   * angleichen, wenn sich bei GLEICHER Seitenfassung nur die Restriktion geändert hat.
+   * `restriction` = `undefined` heisst: die Quelle ist jetzt offen, die Angabe entfällt. Wie der
+   * Löschvermerk eine HERKUNFTSANGABE — Inhalt, Stufe und Fassung bleiben unberührt; die
+   * Vertraulichkeit setzt der Aufrufer getrennt über `setConfidentiality`. `false`, wenn der Anker
+   * bereits so dasteht.
+   */
+  async replaceSourceReadRestriction(
+    id: string,
+    anchor: { provider: string | null; externalId: string },
+    restriction: { groups: string[]; users: string[] } | undefined,
+    actor: string,
+  ): Promise<boolean> {
+    const ko = await this.require(id);
+    const trifft = (s: KoSource) =>
+      s.externalId === anchor.externalId &&
+      (s.provider ?? "").trim().toLowerCase() === (anchor.provider ?? "").trim().toLowerCase();
+    const form = (r: { groups: string[]; users: string[] } | undefined) =>
+      r && (r.groups.length > 0 || r.users.length > 0)
+        ? JSON.stringify([[...new Set(r.groups)].sort(), [...new Set(r.users)].sort()])
+        : null;
+    const ziel = form(restriction);
+    const betroffen = (ko.sources ?? []).filter(
+      (s) => trifft(s) && form(s.readRestriction) !== ziel,
+    );
+    if (betroffen.length === 0) {
+      return false;
+    }
+    const updated: KnowledgeObject = {
+      ...ko,
+      sources: (ko.sources ?? []).map((s) => {
+        if (!trifft(s)) {
+          return s;
+        }
+        const { readRestriction: _alt, ...rest } = s;
+        return ziel === null
+          ? rest
+          : {
+              ...rest,
+              readRestriction: {
+                groups: [...(restriction?.groups ?? [])],
+                users: [...(restriction?.users ?? [])],
+              },
+            };
+      }),
+    };
+    await this.repo.update(updated);
+    await this.audit?.record({
+      actor,
+      action: "ko.source-restriction-synced",
+      target: id,
+      payload: {
+        provider: anchor.provider,
+        externalId: anchor.externalId,
+        groups: restriction?.groups.length ?? 0,
+        users: restriction?.users.length ?? 0,
+      },
+    });
+    return true;
+  }
+
   private async require(id: string): Promise<KnowledgeObject> {
     const ko = await this.repo.findById(id);
     // SCRUM-422: getrashte KOs sind für alle normalen Pfade nicht vorhanden.

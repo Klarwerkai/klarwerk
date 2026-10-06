@@ -8,6 +8,7 @@
 
 import type { ImportItem, SourceAdapter } from "../../library-analytics";
 import {
+  type ConfluenceImportItem,
   type ConfluenceMapOptions,
   confluenceAhnenBefund,
   confluenceAncestorIds,
@@ -19,13 +20,14 @@ import {
   ConfluenceRestClient,
   type ConfluenceRestConfig,
   confluenceClientFromEnv,
+  istAnhangsliste,
 } from "./rest-client";
 
 // SCRUM-510 WP2: Ergebnis eines vollständigen (paginierten) Space-Einlesens — normalisierte Items PLUS
 // pro-Seite-Fehler (eine fehlerhafte Seite bricht den Lauf NICHT ab). `ref` ist die Herkunft (pageId
 // oder Titel) zur ehrlichen Fehlerzuordnung, ohne Interna zu lecken.
 export interface CollectResult {
-  items: ImportItem[];
+  items: ConfluenceImportItem[];
   // WP-SAMMEL20-FIX (bens Fix 6a): errorClass = PII-freie Fehlerklasse (Error.name) je nicht
   // lesbarer Seite — der Erkundungs-Wire trägt NUR sie, nie die rohe Fehlermeldung. Additiv.
   failed: { ref: string; error: string; errorClass?: string }[];
@@ -145,7 +147,7 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
     private readonly mapOpts: ConfluenceMapOptions,
   ) {}
 
-  async collect(): Promise<ImportItem[]> {
+  async collect(): Promise<ConfluenceImportItem[]> {
     const pages = await this.client.listPages();
     return pages.map((page) => mapConfluencePageToImportItem(page, this.mapOpts));
   }
@@ -155,11 +157,14 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
   async collectAll(): Promise<CollectResult> {
     // JOB 2683 D2: der Abbruchgrund reist mit — bis hierher blieb er im Client hängen.
     const { pages, truncated, abbruch } = await this.client.listAllPages();
-    const items: ImportItem[] = [];
+    const items: ConfluenceImportItem[] = [];
     const failed: CollectResult["failed"] = [];
     for (const page of pages) {
       try {
-        items.push(mapConfluencePageToImportItem(page, this.mapOpts));
+        // R-0163 (Runde 3): auch der Bereichsimport vervollständigt Anhangslisten, die der Expand
+        // nicht ganz trug. Scheitert das Nachblättern, bleibt die Teilliste MIT Unvollständig-
+        // Marke — die Annahme entfernt dann keine bestehende Anhangsquelle (library-analytics).
+        items.push(mapConfluencePageToImportItem(await this.mitAllenAnhaengen(page), this.mapOpts));
       } catch (err) {
         failed.push({
           ref: page.id || page.title || "(unbekannt)",
@@ -191,7 +196,11 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
   // wären es bis zu 25.000 zusätzliche Requests für einen Überblick). Scheitert das Lesen der
   // Anhangsliste, wird die Seite trotzdem geliefert, aber mit `attachmentsIncomplete` — der Text
   // geht nicht verloren, und niemand liest „keine Anhänge", wo nur nicht gelesen wurde.
-  async fetchItem(externalId: string): Promise<ImportItem | undefined> {
+  //
+  // ZUSAMMENFÜHRUNG (Nacharbeit 5): das Item trägt BEIDE Anhangsangaben — die Herkunftsangaben
+  // dieser Lieferung (`sourceAttachments`, über `mitAllenAnhaengen`) und die Dateiinhalts-Liste aus
+  // mains R-0163 (`attachments`, über `listAttachments`). Ihre Felder sind getrennt.
+  async fetchItem(externalId: string): Promise<ConfluenceImportItem | undefined> {
     const page = await this.client.getPageById(externalId);
     if (!page) {
       return undefined;
@@ -203,7 +212,40 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
     } catch {
       anhaenge = { attachments: [], unvollstaendig: true };
     }
-    return mapConfluencePageToImportItem(page, this.mapOpts, anhaenge);
+    return mapConfluencePageToImportItem(
+      await this.mitAllenAnhaengen(page),
+      this.mapOpts,
+      anhaenge,
+    );
+  }
+
+  /**
+   * R-0163: trug der Expand nicht alle Anhänge (`_links.next`), wird die Liste dieser einen Seite
+   * über `/child/attachment` vollständig nachgeblättert. Gelingt das nicht (Fehler oder
+   * Höchstzahl), bleibt die Seite mit ihrer Teilliste UND der Unvollständig-Marke stehen — nie wird
+   * eine Teilliste als vollständig ausgegeben.
+   */
+  private async mitAllenAnhaengen(page: ConfluencePage): Promise<ConfluencePage> {
+    // Lauf 2: auch eine mitgelieferte, aber unbrauchbare Liste wird einzeln nachgefragt. Fehlt die
+    // Liste ganz, fragt der Adapter nicht nach — der Mapper meldet die Lage dann als unvollständig.
+    const liste = page.children?.attachment;
+    if (!page.id || liste === undefined || (istAnhangsliste(liste) && !liste._links?.next)) {
+      return page;
+    }
+    try {
+      const { attachments, complete } = await this.client.listAttachmentsStreng(page.id);
+      return {
+        ...page,
+        children: {
+          attachment: {
+            results: attachments,
+            ...(complete ? {} : { _links: { next: "unvollständig" } }),
+          },
+        },
+      };
+    } catch {
+      return page;
+    }
   }
 
   /**
