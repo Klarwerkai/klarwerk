@@ -1,4 +1,5 @@
 import type { Confidentiality, DokumentHerkunft, KnowledgeType } from "../../knowledge-object";
+import type { DraftAblauf } from "./ablauf";
 
 // Roh-Inhalt eines Entwurfs (wird später zu einem KO strukturiert/eingereicht).
 export interface DraftPayload {
@@ -89,6 +90,11 @@ export interface DraftPayload {
     done?: boolean;
     demo?: boolean;
   };
+  /**
+   * BILDSCHIRMABLÄUFE — die übernommenen Schritte samt Herkunft (Begründung: `./ablauf.ts`).
+   * `null` leert ausdrücklich (Merge-Vertrag); ins Wissensobjekt reist nur der daraus erzeugte Rumpf.
+   */
+  ablauf?: DraftAblauf | null;
 }
 
 /**
