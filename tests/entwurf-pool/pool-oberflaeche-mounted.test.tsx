@@ -14,7 +14,8 @@
 // Tabulatorlauf des ganzen Dokuments liegen (`tabBis`), ausgelöst wird mit `keydown Enter` und dem
 // einen `click`, den der Browser daraus macht — ohne Zeigerereignisse. GRENZE (dieselbe wie dort):
 // jsdom kennt keine echte Tabulatornavigation; geprüft ist, dass das Ziel im Lauf LIEGT und Enter es
-// auslöst, nicht die echte Fokusführung im Browser.
+// auslöst, nicht die echte Fokusführung im Browser. Die K2-Folge mit echten Tab-/Enter-Tasten im
+// Chromium steht in `tests/entwurf-pool/pool-tastatur-chromium.test.ts` (Ben, Nacharbeit 2).
 //
 // UNABHÄNGIGE BEDEUTUNGSMERKMALE (Lehre JOB 3007): die Beschriftung steht hier wörtlich und wird
 // nicht nur gegen denselben i18n-Wert verglichen, den die Fläche liest.
