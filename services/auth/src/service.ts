@@ -1079,6 +1079,11 @@ export class AuthService {
   // ist geschützt (kein Selbst-Aussperren des Systems).
   async deleteUser(userId: string, actorId: string): Promise<void> {
     const user = await this.requireUser(userId);
+    // Verwalteransicht (N-0027): „gelöschte Konten weiterhin benennen". Nach dem Löschen gibt es
+    // das Konto im Verzeichnis nicht mehr — der Name von DAMALS steht deshalb im Vermerk selbst,
+    // wie beim Rollenwechsel. Der Handelnde wird VOR dem Löschen gelesen (auch wenn er sich selbst
+    // löscht); ist er kein Konto, bleibt sein Name einfach weg.
+    const actor = await this.users.findById(actorId);
     // JOB 3784: Prüfung UND Schreiben in EINEM Rahmen — s. UserRepo.withAdminGuard.
     await this.users.withAdminGuard(async (tx) => {
       if (user.role === "admin" && user.approved && (await this.isLastApprovedAdmin(userId, tx))) {
@@ -1087,7 +1092,10 @@ export class AuthService {
       await this.users.delete(userId, tx);
     });
     await this.sessions.deleteByUser(userId);
-    await this.record(actorId, "user.delete", userId);
+    await this.record(actorId, "user.delete", userId, {
+      targetName: user.name,
+      ...(actor ? { actorName: actor.name } : {}),
+    });
   }
 
   // SCRUM-443: Ist dieser Nutzer der letzte freigegebene Admin? (Grundlage des Last-Admin-Schutzes.)
