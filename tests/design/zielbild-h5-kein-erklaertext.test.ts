@@ -41,7 +41,13 @@ const DIST = resolve(WURZEL, "apps/web/dist");
 const ORIGIN = "http://klarwerk.test";
 /** §8 des Auftrags: der Rest darf 40 Zeichen nicht überschreiten. */
 const GRENZE = 40;
-const FRAGE = "Welche Profile sind in Spritzzonen erlaubt?";
+// WARUM NICHT MEHR „… erlaubt?“ — dieselbe Umstellung wie `h5-funktionsinventar.test.ts` (Hauptstand
+// 2b57cad5): seit R-0473 (`services/ask/src/service.ts`, `decktAlleFragebegriffe`) müssen ALLE
+// gebundenen Fragebegriffe in der Quelle vorkommen. „erlaubt“ steht im angelegten Eintrag nirgends;
+// die Frage wurde vertragsgemäß eine Wissenslücke, es entstand keine Antwortkarte, und T3–T5 liefen in
+// ihre Zeitgrenze (Kandidat 3d4d49f7, Nacharbeit 1). Die Frage benutzt jetzt nur Begriffe, die der
+// Eintrag wirklich trägt; Grenze (40 Zeichen), Abzüge und Kalibrierungen sind unverändert.
+const FRAGE = "Welche Profile sind in Spritzzonen zu bevorzugen?";
 
 type BrowserFn = (arg: unknown) => unknown;
 const fn = (quelle: string): BrowserFn =>
@@ -348,11 +354,18 @@ describe("JOB 3064 · H5 · der Textmesser — kein Erklärtext im Sichtfeld von
   // D-047). Sie zu entfernen, um diese Messung grün zu bekommen, hiesse eine Rechtspflicht gegen
   // eine Gestaltungsregel zu tauschen. Sie wird deshalb ABGEZOGEN UND HIER GENANNT — nicht still
   // mitsubtrahiert, indem man die ganze Karte wegnimmt. Der Unterschied ist der ganze Punkt.
+  //
+  // EINE ZWEITE BENANNTE AUSNAHME (R-0287, Ben Nacharbeit 2): der Warnblock `ask-warnungen` —
+  // Review-Hinweis, Konflikt-Hinweis, unbekannter Konfliktstand, Prüfvorbehalt. Der Originalauftrag
+  // verlangt: „Die eigentliche Warnung bleibt vollständig und unübersehbar." Er ist damit kein
+  // Erklärtext, sondern Pflichtinhalt an DIESER Antwort und steht nur, wenn eine Warnung zutrifft.
+  // Abgezogen wird GENAU dieser Block; ein anderer Satz in der Karte bleibt rot (T3b unverändert).
   const ZUSATZ_FRAGEN = [
     '[data-testid="ask-fragezeile"]',
     ".ask-answer-body",
     '[data-testid="ask-quellen-chip"]',
     '[data-testid="ai-generated-notice"]',
+    '[data-testid="ask-warnungen"]',
   ];
 
   it("T3 · /fragen nach einer Antwort: der Rest neben Frage, Antwort, Chips und Knöpfen ist ≤ 40 Zeichen", async () => {
