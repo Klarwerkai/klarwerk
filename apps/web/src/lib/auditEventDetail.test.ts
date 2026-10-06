@@ -299,6 +299,7 @@ describe("auditEventDetail", () => {
       "auth.logout",
       "notice.acknowledged",
       "user.approve",
+      "user.created",
       "user.delete",
       "user.oidc-linked",
       "user.oidc-linked-unverified",

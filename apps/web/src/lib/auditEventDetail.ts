@@ -121,6 +121,7 @@ const KONTO_ZIEL_AKTIONEN: ReadonlySet<string> = new Set([
   "auth.logout",
   "notice.acknowledged",
   "user.approve",
+  "user.created",
   "user.delete",
   "user.oidc-linked",
   "user.oidc-linked-unverified",
