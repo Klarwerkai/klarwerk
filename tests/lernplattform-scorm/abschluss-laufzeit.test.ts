@@ -162,6 +162,51 @@ describe("K3 · Abschluss im Referenzablauf (SCORM 1.2 RTE)", () => {
     expect(api.gespeichert["cmi.core.exit"]).toBe("suspend");
   });
 
+  it("Netzunterbrechung: LMSSetValue gelingt, LMSCommit scheitert → KEIN gemeldeter Abschluss, erneuter Versuch möglich", async () => {
+    const api = new Scorm12Attrappe();
+    const w = await starte(api);
+    klick(w, "kw-weiter");
+    klick(w, "kw-weiter");
+
+    api.netzGetrennt = true;
+    klick(w, "kw-abschliessen");
+    // Der Wert ging an die Laufzeit, das Speichern scheiterte — und der Fehlercode sagt "0".
+    expect(api.aufrufe).toContain("LMSSetValue(cmi.core.lesson_status,completed)");
+    expect(api.LMSGetLastError()).toBe("0");
+    expect(api.gespeichert["cmi.core.lesson_status"]).toBe("incomplete");
+    expect(w.document.getElementById("kw-meldung")?.textContent).toBe(
+      SCORM_BESCHRIFTUNG.de.abschlussFehler,
+    );
+    expect(w.document.body.getAttribute("data-kw-abgeschlossen")).toBeNull();
+    expect(w.document.getElementById("kw-abschliessen")?.hidden).toBe(false);
+
+    // Netz wieder da: derselbe Knopf versucht es erneut, jetzt gespeichert und bestätigt.
+    api.netzGetrennt = false;
+    klick(w, "kw-abschliessen");
+    expect(api.gespeichert["cmi.core.lesson_status"]).toBe("completed");
+    expect(w.document.getElementById("kw-meldung")?.textContent).toBe(
+      SCORM_BESCHRIFTUNG.de.abgeschlossen,
+    );
+    expect(w.document.body.getAttribute("data-kw-abgeschlossen")).toBe("ja");
+    verlassen(w);
+    expect(api.gespeichert["cmi.core.exit"]).toBe("");
+  });
+
+  it("Netzunterbrechung bis zum Verlassen: kein bestätigter Abschluss, Austritt bleibt suspend", async () => {
+    const api = new Scorm12Attrappe();
+    const w = await starte(api);
+    klick(w, "kw-weiter");
+    klick(w, "kw-weiter");
+    api.netzGetrennt = true;
+    klick(w, "kw-abschliessen");
+    expect(w.document.body.getAttribute("data-kw-abgeschlossen")).toBeNull();
+    // Beim Verlassen ist das Netz zurück: das Paket meldet ehrlich „nicht abgeschlossen bestätigt"
+    // (exit suspend) und behauptet nachträglich nichts.
+    api.netzGetrennt = false;
+    verlassen(w);
+    expect(api.gespeichert["cmi.core.exit"]).toBe("suspend");
+  });
+
   it("ohne Lernplattform: Inhalt sichtbar, ausdrücklich nichts gemeldet (auch auf Englisch)", async () => {
     const w = await starte(null, "en");
     expect(w.document.body.getAttribute("data-kw-lms")).toBe("keins");

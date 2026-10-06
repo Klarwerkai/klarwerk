@@ -97,6 +97,13 @@ export class Scorm12Attrappe {
   finishZahl = 0;
   /** Elemente, deren Schreiben die Plattform ablehnt (simulierter Plattformfehler). */
   readonly abgelehnt = new Set<string>();
+  /**
+   * Netzunterbrechung (Moodle-Befund, nacharbeit-3): `LMSSetValue` gelingt im Browser, aber das
+   * Speichern beim Server scheitert — `LMSCommit` liefert "false", nichts wird gespeichert. Der
+   * Fehlercode bleibt dabei bewusst "0": genau so hat das Paket im Moodle-Referenzlauf trotzdem
+   * „gemeldet" angezeigt. Nur die Rückgabe von `LMSCommit` verrät den Ausfall.
+   */
+  netzGetrennt = false;
 
   constructor(vorher: Record<string, string> = {}) {
     this.gespeichert = {
@@ -171,6 +178,10 @@ export class Scorm12Attrappe {
     this.aufrufe.push(`LMSCommit(${arg})`);
     if (this.zustand !== "laeuft") {
       this.fehler = "301";
+      return "false";
+    }
+    if (this.netzGetrennt) {
+      this.fehler = "0";
       return "false";
     }
     this.gespeichert = { ...this.arbeit };

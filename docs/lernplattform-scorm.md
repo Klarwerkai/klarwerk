@@ -69,6 +69,9 @@ Den Lernabschluss meldet das **Paket** an die Lernplattform (SCORM 1.2 `cmi.core
 * ein bereits gemeldetes `completed` wird nie zurückgestuft;
 * lehnt die Plattform den Abschluss ab, zeigt das Paket das ausdrücklich an und behauptet keinen
   Abschluss.
+* bestätigt ist der Abschluss erst, wenn die Plattform ihn auch gespeichert hat (`LMSCommit`
+  erfolgreich); scheitert das Speichern, etwa bei einer Netzunterbrechung, meldet das Paket
+  „nicht angenommen“, und „Abschließen“ kann erneut gewählt werden.
 
 Es gibt keine Punktzahl und keine Verständnisprüfung (die Verständnisprüfung aus Auftrag 02 ist
 nicht Teil dieser Lieferung). Ohne Lernplattform (Datei direkt geöffnet) wird der Inhalt gezeigt

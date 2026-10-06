@@ -138,7 +138,8 @@ export const SCO_JS = `(function () {
   }
 
   function sichere() {
-    if (verbunden) { api.LMSCommit(""); }
+    if (!verbunden) { return false; }
+    return String(api.LMSCommit("")) === "true";
   }
 
   function meldung(t) {
@@ -186,10 +187,13 @@ export const SCO_JS = `(function () {
     if (!alleBesucht()) { meldung(text("abschluss-offen")); return; }
     if (!verbunden) { meldung(text("abschluss-ohne-lms")); return; }
     if (abgeschlossen) { meldung(text("abgeschlossen")); return; }
-    var ok = setze("cmi.core.lesson_status", "completed");
-    sichere();
+    // Bestätigt ist der Abschluss erst, wenn die Plattform den Wert angenommen UND gespeichert hat:
+    // scheitert LMSCommit (etwa bei Netzunterbrechung), gilt er NICHT als gemeldet, und ein erneuter
+    // Klick auf „Abschließen" versucht es wieder.
+    var gesetzt = setze("cmi.core.lesson_status", "completed");
+    var gespeichert = gesetzt && sichere();
     var fehler = String(api.LMSGetLastError());
-    if (ok && fehler === "0") {
+    if (gesetzt && gespeichert && fehler === "0") {
       abgeschlossen = true;
       body.setAttribute("data-kw-abgeschlossen", "ja");
       meldung(text("abgeschlossen"));
