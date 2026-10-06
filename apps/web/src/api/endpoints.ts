@@ -103,6 +103,8 @@ import type {
   ReviewAction,
   RiskHorizonView,
   Role,
+  ScormExportBody,
+  ScormPruefung,
   SicherungenAuskunft,
   Sichtmetrik,
   SlideConvertResponse,
@@ -1056,6 +1058,9 @@ export const endpoints = {
     sources: () => api.get<OutputSource[]>("/output/sources"),
     generate: (body: { kind: OutputKind; koIds: string[]; audienceRole?: string | null }) =>
       api.post<OutputDocument>("/output/generate", body),
+    // produkt:wettbewerb:20261003:lernplattform: Prüfung vor dem Export und das SCORM-1.2-Paket.
+    scormPruefen: (body: ScormExportBody) => api.post<ScormPruefung>("/output/scorm/pruefen", body),
+    scormPaket: (body: ScormExportBody) => api.postDatei("/output/scorm/paket", body),
   },
   // SCRUM-120 / FE-MGMT: Management-/Wissenskapital-Snapshot (read-only).
   management: {

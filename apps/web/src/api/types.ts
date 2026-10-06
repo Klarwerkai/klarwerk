@@ -1864,6 +1864,48 @@ export interface OutputDocument {
   provenance: OutputProvenance[];
 }
 
+// produkt:wettbewerb:20261003:lernplattform — Spiegel von services/output/src/scorm.ts.
+export type ScormSprache = "de" | "en";
+
+export interface ScormExportBody {
+  koIds: string[];
+  sprache: ScormSprache;
+  empfaenger: string;
+  titel?: string;
+}
+
+export interface ScormBefund {
+  code: string;
+  schwere: "blockiert" | "hinweis";
+  bereich: "inhalt" | "medien" | "quellen" | "empfaenger";
+  koId?: string;
+  detail: string;
+}
+
+export interface ScormFassung {
+  kennung: string;
+  manifestId: string;
+  titel: string;
+  sprache: ScormSprache;
+  objekte: { koId: string; titel: string; version: number; stand: string }[];
+  dateiname: string;
+}
+
+export interface ScormPruefung {
+  exportierbar: boolean;
+  format: {
+    standard: string;
+    schemaversion: string;
+    paketart: string;
+    referenzLms: string;
+    netz: string;
+    rueckkanal: string;
+  };
+  empfaenger: { id: string; label: string }[];
+  befunde: ScormBefund[];
+  fassung: ScormFassung | null;
+}
+
 // SCRUM-120 / FE-MGMT: Management-/Wissenskapital-Snapshot (Spiegel des Backend-Modells).
 export type MgmtBand = "gut" | "mittel" | "kritisch";
 
