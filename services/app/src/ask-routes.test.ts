@@ -11,7 +11,8 @@ import { askRoutes } from "./routes/ask-routes";
 // helpful (Trust +2, gedeckelt). Bewusst OHNE Demo-Seed, damit das Matching kontrollierbar ist.
 describe("SCRUM-242: Ask-Workflow (HTTP end-to-end)", () => {
   async function adminApp() {
-    const app = buildApp(buildServices());
+    const services = buildServices();
+    const app = buildApp(services);
     await app.inject({
       method: "POST",
       url: "/api/auth/register",
@@ -22,7 +23,7 @@ describe("SCRUM-242: Ask-Workflow (HTTP end-to-end)", () => {
       url: "/api/auth/login",
       payload: { email: "a@x.de", password: "secret123" },
     });
-    return { app, headers: { authorization: `Bearer ${login.json().token}` } };
+    return { app, services, headers: { authorization: `Bearer ${login.json().token}` } };
   }
 
   async function createKo(
@@ -98,8 +99,18 @@ describe("SCRUM-242: Ask-Workflow (HTTP end-to-end)", () => {
   });
 
   it("Helpful erhöht Trust nachvollziehbar (+2); unbelegte KO-ID wird abgewiesen", async () => {
-    const { app, headers } = await adminApp();
-    const koId = await createKo(app, headers); // unbewertet → Trust 0
+    const { app, services, headers } = await adminApp();
+    const koId = await createKo(app, headers); // needed=1
+    // R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der Frageweg antwortet nur noch aus
+    // geprüftem Wissen — ein unbewertetes KO liefert keine Antwort und damit keinen Receipt. Bis
+    // hierher stand das KO auf Trust 0; ein voll validiertes stünde auf dem Deckel 99, an dem +2
+    // unsichtbar wäre. „Validiert mit Vorbehalt" (⚠️ + ✅ bei needed=1, trust.ts) ergibt Trust 50 —
+    // so bleibt der Schritt von genau +2 messbar.
+    await services.validation.rate(koId, "pruefer-vorbehalt", "warn");
+    await services.validation.rate(koId, "pruefer-gruen", "up");
+    const vorher = await app.inject({ method: "GET", url: `/api/kos/${koId}`, headers });
+    expect(vorher.json().status).toBe("validiert");
+    expect(vorher.json().trust).toBe(50);
 
     // FUNKE-FIX P0 (bens ROT-1): das „Danke" verlangt den Answer-Receipt aus einem echten
     // Antwortvorgang. Wir fragen passend zum KO, damit die Antwort GENAU dieses KO ausliefert.
@@ -116,7 +127,7 @@ describe("SCRUM-242: Ask-Workflow (HTTP end-to-end)", () => {
     expect(helpful.statusCode).toBe(204);
 
     const ko = await app.inject({ method: "GET", url: `/api/kos/${koId}`, headers });
-    expect(ko.json().trust).toBe(2); // FR-ASK-04: +2
+    expect(ko.json().trust).toBe(52); // FR-ASK-04: +2
 
     // Unbelegte/fremd gewählte KO-ID (gültiger Receipt, aber anderes KO) → 403 (nicht wirksam).
     const unbelegt = await app.inject({
@@ -159,7 +170,7 @@ describe("SCRUM-242: Ask-Workflow (HTTP end-to-end)", () => {
 
 // FUNKE-FIX2 P0 (bens Blocker Gap-Freitext): der Wissenslücken-FREITEXT wird end-to-end
 // adressatengerecht behandelt — /api/gaps/summary liefert NUR Zahlen; /api/gaps redigiert den
-// Fragetext für Unberechtigte und zeigt ihn Ersteller/Assignee/Detail-Rolle.
+// Fragetext für Unberechtigte und zeigt ihn Ersteller/Assignee (R-0585: kein Rollenrecht mehr).
 describe("FUNKE-FIX2 P0: Wissenslücken-Freitext adressatengerecht (HTTP)", () => {
   async function loginToken(
     app: ReturnType<typeof buildApp>,
@@ -238,11 +249,41 @@ describe("FUNKE-FIX2 P0: Wissenslücken-Freitext adressatengerecht (HTTP)", () =
     expect(gaps[0].redacted).toBeUndefined();
   });
 
-  it("/api/gaps: Detail-Rolle (Admin, ko.validate) → Volltext", async () => {
-    const { app, admin, question } = await setup();
-    const res = await app.inject({ method: "GET", url: "/api/gaps", headers: admin.headers });
-    const gaps = res.json();
-    expect(gaps[0].question).toBe(question);
+  // R-0585 (Auftrag gesamt-datenschutz-voreinstellung): „sieht nur er selbst und der Zuständige".
+  // Bis hierher stand hier „Detail-Rolle (Admin, ko.validate) → Volltext". Das Rollenrecht ist
+  // entfernt: der Admin ist weder Fragender noch Zuständiger und bekommt die redigierte Sicht —
+  // bis er sich die Lücke zuweist (der Weg, auf dem man zuständig wird).
+  it("/api/gaps: Admin mit ko.validate, aber unzuständig → redigiert; nach Zuweisung → Volltext", async () => {
+    const { app, admin, question, gapId } = await setup();
+    const vorher = await app.inject({ method: "GET", url: "/api/gaps", headers: admin.headers });
+    expect(vorher.json()[0].question).toBe("");
+    expect(vorher.json()[0].redacted).toBe(true);
+    expect(vorher.payload).not.toContain(question);
+
+    const zuweisen = await app.inject({
+      method: "PUT",
+      url: `/api/gaps/${gapId}`,
+      headers: admin.headers,
+      payload: { expertId: admin.id },
+    });
+    expect(zuweisen.statusCode).toBe(200);
+    const nachher = await app.inject({ method: "GET", url: "/api/gaps", headers: admin.headers });
+    expect(nachher.json()[0].question).toBe(question);
+    expect(nachher.json()[0].redacted).toBeUndefined();
+  });
+
+  it("/api/gaps: Assignee (anderer Experte) → Volltext, Ersteller weiterhin auch", async () => {
+    const { app, admin, ex1, ex2, question, gapId } = await setup();
+    await app.inject({
+      method: "PUT",
+      url: `/api/gaps/${gapId}`,
+      headers: admin.headers,
+      payload: { expertId: ex2.id },
+    });
+    const zustaendig = await app.inject({ method: "GET", url: "/api/gaps", headers: ex2.headers });
+    expect(zustaendig.json()[0].question).toBe(question);
+    const fragender = await app.inject({ method: "GET", url: "/api/gaps", headers: ex1.headers });
+    expect(fragender.json()[0].question).toBe(question);
   });
 });
 
@@ -254,7 +295,8 @@ describe("FUNKE-FIX2 P0: Wissenslücken-Freitext adressatengerecht (HTTP)", () =
 // (401/403 im onRequest-Hook).
 describe("SCRUM-498 B1: /api/ask Eingabe-Härtung (gültige Hülle)", () => {
   async function adminApp() {
-    const app = buildApp(buildServices());
+    const services = buildServices();
+    const app = buildApp(services);
     await app.inject({
       method: "POST",
       url: "/api/auth/register",
@@ -265,7 +307,7 @@ describe("SCRUM-498 B1: /api/ask Eingabe-Härtung (gültige Hülle)", () => {
       url: "/api/auth/login",
       payload: { email: "a@x.de", password: "secret123" },
     });
-    return { app, headers: { authorization: `Bearer ${login.json().token}` } };
+    return { app, services, headers: { authorization: `Bearer ${login.json().token}` } };
   }
 
   it("Parent-Verhalten: {} → 200 und {question:''} → 200 (leere/fehlende Frage bleibt zulässig)", async () => {
