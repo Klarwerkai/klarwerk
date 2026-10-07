@@ -233,7 +233,9 @@ function suche(testId: string): HTMLElement | null {
 const text = (e: Element | null): string => (e?.textContent ?? "").replace(/\s+/g, " ").trim();
 const seitentext = (): string => text(document.body);
 const satz = (schluessel: string, werte?: Record<string, unknown>): string =>
-  String(i18n.t(schluessel, werte)).replace(/\s+/g, " ").trim();
+  String(i18n.t(schluessel, werte ?? {}))
+    .replace(/\s+/g, " ")
+    .trim();
 
 async function klick(ziel: HTMLElement): Promise<void> {
   await act(async () => {

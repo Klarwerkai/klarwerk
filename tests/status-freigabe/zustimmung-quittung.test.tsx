@@ -111,17 +111,20 @@ function ko(overrides: Partial<KnowledgeObject> = {}): KnowledgeObject {
   } as unknown as KnowledgeObject;
 }
 
-let container: HTMLDivElement;
-let root: ReturnType<typeof createRoot>;
+// Die reinen Fälle (Teil A) montieren nichts — dann gibt es auch nichts abzubauen.
+let container: HTMLDivElement | null = null;
+let root: ReturnType<typeof createRoot> | null = null;
 
 function mount(): void {
   lage.kos = [ko()];
-  container = document.createElement("div");
-  document.body.appendChild(container);
-  root = createRoot(container);
+  const c = document.createElement("div");
+  document.body.appendChild(c);
+  const r = createRoot(c);
+  container = c;
+  root = r;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   act(() => {
-    root.render(
+    r.render(
       createElement(
         QueryClientProvider,
         { client: qc },
@@ -136,7 +139,7 @@ function mount(): void {
 }
 
 function freigebenKnopf(): HTMLButtonElement {
-  const treffer = [...container.querySelectorAll("button")].find((b) =>
+  const treffer = [...(container?.querySelectorAll("button") ?? [])].find((b) =>
     (b.textContent ?? "").includes(de("val.actionApprove")),
   );
   if (!treffer) {
@@ -153,7 +156,9 @@ async function klick(el: HTMLElement): Promise<void> {
 }
 
 function quittung(): HTMLElement | null {
-  return container.querySelector<HTMLElement>('[data-testid="pruefen-quittung"]');
+  return (container ?? document.body).querySelector<HTMLElement>(
+    '[data-testid="pruefen-quittung"]',
+  );
 }
 
 const inhalt = (e: Element | null) => (e?.textContent ?? "").replace(/\s+/g, " ").trim();
@@ -165,10 +170,15 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  act(() => {
-    root.unmount();
-  });
-  container.remove();
+  const r = root;
+  if (r) {
+    act(() => {
+      r.unmount();
+    });
+  }
+  container?.remove();
+  root = null;
+  container = null;
   lage.kos = [];
 });
 

@@ -44,6 +44,31 @@ const EINTRAEGE = [
   eintrag({ id: "ko-a", title: "Druck einstellen", version: 1 }, [{ version: 1 }]),
 ];
 
+/**
+ * Das geteilte Double kennt `liste` nicht — der Dienst meldet dann ehrlich „nicht aufzählbar"
+ * statt eines leeren Bestands (`auflisten`). Für die Listenaussage dieses Prüfstands wird die
+ * Aufzählung hier ergänzt: sie gibt nur zurück, was `get` liefert — keine eigene Regel.
+ */
+class AufzaehlbareAblage extends InMemoryAnweisungRepo {
+  private readonly ids = new Set<string>();
+
+  override async anlegen(...args: Parameters<InMemoryAnweisungRepo["anlegen"]>): Promise<void> {
+    await super.anlegen(...args);
+    this.ids.add(args[0].id);
+  }
+
+  async liste(): Promise<readonly Anweisung[]> {
+    const alle: Anweisung[] = [];
+    for (const id of this.ids) {
+      const a = await this.get(id);
+      if (a) {
+        alle.push(a);
+      }
+    }
+    return alle;
+  }
+}
+
 function dienstUeber(repo: InMemoryAnweisungRepo): GesamtanweisungDienst {
   return new GesamtanweisungDienst({
     repo,
@@ -67,7 +92,7 @@ async function vorgelegt(dienst: GesamtanweisungDienst): Promise<Anweisung> {
 
 describe("K3 · eine neue Freigabe hält Person, Zeitpunkt und Fassung fest", () => {
   it("Annahme: Person, Zeitpunkt und freigegebene Fassung — im Lesestand UND in der Liste", async () => {
-    const repo = new InMemoryAnweisungRepo();
+    const repo = new AufzaehlbareAblage();
     const dienst = dienstUeber(repo);
     const a = await vorgelegt(dienst);
 
@@ -89,7 +114,7 @@ describe("K3 · eine neue Freigabe hält Person, Zeitpunkt und Fassung fest", ()
   });
 
   it("nach „Reload“ (neuer Dienst, derselbe Bestand) stehen dieselben Angaben da", async () => {
-    const repo = new InMemoryAnweisungRepo();
+    const repo = new AufzaehlbareAblage();
     const a = await vorgelegt(dienstUeber(repo));
     const entschieden = await dienstUeber(repo).entscheiden(
       a.id,
@@ -111,7 +136,7 @@ describe("K3 · eine neue Freigabe hält Person, Zeitpunkt und Fassung fest", ()
   });
 
   it("Ablehnung wird ebenso festgehalten; eine spätere Annahme ersetzt sie vollständig", async () => {
-    const repo = new InMemoryAnweisungRepo();
+    const repo = new AufzaehlbareAblage();
     const dienst = dienstUeber(repo);
     const a = await vorgelegt(dienst);
     const abgelehnt = await dienst.entscheiden(a.id, a.version, "abgelehnt", CARLA, "carla");
@@ -130,7 +155,7 @@ describe("K3 · eine neue Freigabe hält Person, Zeitpunkt und Fassung fest", ()
 
 describe("K4 · eine unbekannte Freigabeperson wird nicht erfunden", () => {
   it("ohne angemeldete Person entsteht keine Angabe — weder Urheber noch Platzhalter", async () => {
-    const repo = new InMemoryAnweisungRepo();
+    const repo = new AufzaehlbareAblage();
     const dienst = dienstUeber(repo);
     const a = await vorgelegt(dienst);
     const entschieden = await dienst.entscheiden(a.id, a.version, "angenommen", CARLA);
@@ -169,7 +194,7 @@ describe("K4 · eine unbekannte Freigabeperson wird nicht erfunden", () => {
   });
 
   it("Altbestand (entschieden, ohne Angabe) wird ohne Angabe ausgeliefert", async () => {
-    const repo = new InMemoryAnweisungRepo();
+    const repo = new AufzaehlbareAblage();
     const dienst = dienstUeber(repo);
     const a = await vorgelegt(dienst);
     // Der Zustand VOR diesem Auftrag: entschieden, aber niemand festgehalten.
@@ -217,7 +242,7 @@ describe("K3 · am Draht: die Person kommt aus der Anmeldung, nie aus dem Körpe
   let anweisung: Anweisung;
 
   beforeEach(async () => {
-    repo = new InMemoryAnweisungRepo();
+    repo = new AufzaehlbareAblage();
     anweisung = await vorgelegt(dienstUeber(repo));
     nutzer = { id: "carla", role: "controller" };
     app = Fastify();
