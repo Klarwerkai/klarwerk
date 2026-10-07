@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>KLARWERK · Vorführweg</title>
+  <!-- Aufnahme 20260922 · gesamt-demo-erklaermodus (R-1063, R-1660, package:storyboard).
+       Der geführte Vorführweg: Stationen in fester Reihenfolge, je Station Ziel, Handlung und
+       erwartetes Ergebnis, dazu ein Link an genau die Stelle der Anwendung. Gebaut wie
+       `importwege.html` (JOB 3138/3194): native Auswahlfelder, kein Skript, kein Netzaufruf, mit
+       der produktiven CSP nutzbar; ohne `:has()` stehen beide Sprachen untereinander.
+       ZWEITER BILDSCHIRM: jeder Stationslink zielt auf das benannte Fenster
+       `klarwerk-vorfuehrung`. Der erste Klick öffnet es, jeder weitere lädt in DASSELBE Fenster —
+       diese Seite bleibt stehen. Gemessen in tests/vorfuehrweg/ und
+       tests-smoke/vorfuehrweg-browser.spec.ts. -->
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #173133; background: #fafbf8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 1100px; min-height: 100vh; min-height: 100svh; margin: auto; padding: 28px 40px; }
+    h1 { font-size: clamp(26px, 3vw, 36px); line-height: 1.15; margin: 22px 0 12px; }
+    h2 { font-size: 24px; line-height: 1.25; margin: 0 0 14px; }
+    p { margin: 0 0 14px; line-height: 1.55; }
+    a { color: #15634f; text-underline-offset: 4px; }
+    a:focus-visible, .choice:focus-visible + label { outline: 3px solid #174caf; outline-offset: 4px; }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+    fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+    .language { display: flex; gap: 8px; }
+    .language legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .choice { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    label { display: block; padding: 10px 14px; border: 1px solid #a8bcb2; border-radius: 12px; cursor: pointer; font-size: 16px; line-height: 1.4; background: white; }
+    .choice:checked + label { border-color: #15634f; background: #e6eee8; box-shadow: inset 0 0 0 1px #15634f; }
+    .kennung { color: #35634c; font-weight: 650; margin: 0; }
+    .intro { color: #435d56; }
+    .zweiter-bildschirm { background: white; border: 1px solid #a8bcb2; border-left: 5px solid #15634f; border-radius: 12px; padding: 14px 18px; }
+    .zweiter-bildschirm > :last-child { margin-bottom: 0; }
+    .uebersicht ol { margin: 0; padding-left: 22px; line-height: 1.7; }
+    .station { margin-top: 22px; padding: 24px; background: white; border: 1px solid #cbd5cd; border-radius: 18px; scroll-margin-top: 16px; }
+    .kicker { color: #35634c; font-weight: 650; margin-bottom: 6px; }
+    dl { margin: 0 0 16px; }
+    dl > div + div { margin-top: 12px; }
+    dt { font-weight: 650; font-size: 16px; }
+    dd { margin: 3px 0 0; font-size: 16px; line-height: 1.5; overflow-wrap: anywhere; }
+    .oeffnen { display: inline-block; padding: 10px 16px; border: 1px solid #15634f; border-radius: 12px; background: #e6eee8; font-weight: 650; text-decoration: none; }
+    .blaettern { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 16px; font-size: 16px; }
+    footer { margin-top: 24px; font-size: 16px; color: #435d56; }
+    .en { display: none; }
+    body:has(#language-en:checked) .de { display: none; }
+    body:has(#language-en:checked) .en { display: inline; }
+    body:has(#language-en:checked) a.oeffnen.en { display: inline-block; }
+
+    /* RÜCKFALL FÜR BROWSER OHNE :has() — dieselbe Regel wie `importwege.html` (JOB 3194): mehr
+       statt nichts. Kennt ein Browser `:has()` nicht, sind die drei Regeln darüber für ihn
+       ungültig und Englisch bliebe unsichtbar. Dann stehen beide Sprachen untereinander, und der
+       Hinweis sagt warum. */
+    .fallback-notice { display: none; }
+    @supports not selector(:has(*)) {
+      .de, .en { display: block; }
+      a.oeffnen.de, a.oeffnen.en { display: inline-block; margin: 0 8px 8px 0; }
+      .fallback-notice { display: block; }
+    }
+
+    @media (max-width: 700px) {
+      main { padding: 20px; }
+      .station { padding: 18px; }
+      h2 { font-size: 22px; }
+    }
+  </style>
+</head>
+<body>
+<main>
+<div class="toolbar">
+<p class="kennung" data-kennung>
+<span class="de" lang="de">Vorführweg · Fertigung und Instandhaltung</span>
+<span class="en" lang="en">Presentation route · Manufacturing and maintenance</span>
+</p>
+<fieldset class="language">
+<legend>
+<span class="de" lang="de">Sprache</span>
+<span class="en" lang="en">Language</span>
+</legend>
+<input class="choice" type="radio" id="language-de" name="language" checked>
+<label for="language-de">
+<span lang="de">DE</span>
+</label>
+<input class="choice" type="radio" id="language-en" name="language">
+<label for="language-en">
+<span lang="en">EN</span>
+</label>
+</fieldset>
+</div>
+<h1>
+<span class="de" lang="de">KLARWERK in fünf Minuten vorführen</span>
+<span class="en" lang="en">Present KLARWERK in five minutes</span>
+</h1>
+<p class="intro">
+<span class="de" lang="de">Sieben Stationen in fester Reihenfolge. Jede Station sagt, was sie zeigen soll, was zu tun ist und was danach zu sehen ist. Die Beispiele stammen aus den Demodaten von KLARWERK und sind erfunden.</span>
+<span class="en" lang="en">Seven stations in a fixed order. Each station states what it should show, what you do and what you should see afterwards. The examples come from the KLARWERK demo data and are fictional.</span>
+</p>
+<p class="fallback-notice" data-fallback-notice>
+<span class="de" lang="de">Dieser Browser kann die Sprache nicht umschalten. Deshalb stehen Deutsch und Englisch untereinander.</span>
+<span class="en" lang="en">This browser cannot switch the language. German and English are therefore shown one after another.</span>
+</p>
+<section class="zweiter-bildschirm" data-zweiter-bildschirm aria-labelledby="zweiter-bildschirm-titel">
+<h2 id="zweiter-bildschirm-titel">
+<span class="de" lang="de">Auf dem zweiten Bildschirm</span>
+<span class="en" lang="en">On the second screen</span>
+</h2>
+<p>
+<span class="de" lang="de">Diese Seite gehört auf den zweiten Bildschirm. „Station öffnen“ öffnet KLARWERK im Vorführfenster: beim ersten Mal als neues Fenster, das einmal auf den Hauptbildschirm gezogen wird; danach lädt jede Station in dasselbe Fenster, und diese Seite bleibt stehen.</span>
+<span class="en" lang="en">This page belongs on the second screen. “Open station” opens KLARWERK in the presentation window: the first time as a new window, dragged once to the main screen; after that every station loads into the same window, and this page stays where it is.</span>
+</p>
+<p>
+<span class="de" lang="de">Ist das Vorführfenster noch nicht angemeldet, zeigt es zuerst die Anmeldung. Die Beispiele erscheinen in der Sprache, in der die Demodaten geladen wurden.</span>
+<span class="en" lang="en">If the presentation window is not signed in yet, it shows the sign-in first. The examples appear in the language in which the demo data was loaded.</span>
+</p>
+</section>
+<nav class="uebersicht" aria-labelledby="uebersicht-titel">
+<h2 id="uebersicht-titel">
+<span class="de" lang="de">Stationen</span>
+<span class="en" lang="en">Stations</span>
+</h2>
+<ol>
+<li><a href="#station-0"><span class="de" lang="de">Vorbereitung: Demodaten laden</span><span class="en" lang="en">Preparation: load demo data</span></a></li>
+<li><a href="#station-1"><span class="de" lang="de">Start · 20 Sekunden</span><span class="en" lang="en">Home · 20 seconds</span></a></li>
+<li><a href="#station-2"><span class="de" lang="de">Bibliothek · 50 Sekunden</span><span class="en" lang="en">Library · 50 seconds</span></a></li>
+<li><a href="#station-3"><span class="de" lang="de">Fragen · 60 Sekunden</span><span class="en" lang="en">Ask · 60 seconds</span></a></li>
+<li><a href="#station-4"><span class="de" lang="de">Wissen erfassen · 50 Sekunden</span><span class="en" lang="en">Capture knowledge · 50 seconds</span></a></li>
+<li><a href="#station-5"><span class="de" lang="de">Validierung · 40 Sekunden</span><span class="en" lang="en">Validation · 40 seconds</span></a></li>
+<li><a href="#station-6"><span class="de" lang="de">Konflikte · 40 Sekunden</span><span class="en" lang="en">Conflicts · 40 seconds</span></a></li>
+<li><a href="#station-7"><span class="de" lang="de">Jira und Confluence · 40 Sekunden</span><span class="en" lang="en">Jira and Confluence · 40 seconds</span></a></li>
+</ol>
+</nav>
+
+<section class="station" id="station-0" data-station="demodaten" aria-labelledby="station-titel-0">
+<p class="kicker">
+<span class="de" lang="de">Vorbereitung · vor der Vorführung · Rolle: Administrator</span>
+<span class="en" lang="en">Preparation · before the presentation · Role: Administrator</span>
+</p>
+<h2 id="station-titel-0">
+<span class="de" lang="de">Demodaten laden</span>
+<span class="en" lang="en">Load demo data</span>
+</h2>
+<dl>
+<div>
+<dt data-feld="ziel"><span class="de" lang="de">Ziel</span><span class="en" lang="en">Goal</span></dt>
+<dd>
+<span class="de" lang="de">Ein Beispielbestand aus Fertigung und Instandhaltung liegt bereit, damit jede folgende Station echte Einträge zeigt.</span>
+<span class="en" lang="en">A sample set from manufacturing and maintenance is ready, so every following station shows real entries.</span>
+</dd>
+</div>
+<div>
+<dt data-feld="handlung"><span class="de" lang="de">Handlung</span><span class="en" lang="en">Action</span></dt>
+<dd>
+<span class="de" lang="de">Station öffnen. In der Karte „Demodaten“ den Knopf „Demodaten laden“ wählen und bestätigen.</span>
+<span class="en" lang="en">Open the station. In the “Demo data” card choose “Load demo data” and confirm.</span>
+</dd>
+</div>
+<div>
+<dt data-feld="ergebnis"><span class="de" lang="de">Erwartetes Ergebnis (Sollansicht)</span><span class="en" lang="en">Expected result (target view)</span></dt>
+<dd>
+<span class="de" lang="de">Die Bestandszeile nennt die geladenen Demodaten. Fehlt der Knopf und steht dort „Laden ist in diesem Betrieb ausgeschaltet.“, dann ist das Laden hier abgeschaltet: die Vorführung zeigt dann nur den vorhandenen Bestand.</span>
+<span class="en" lang="en">The stock line names the loaded demo data. If the button is missing and the card says “Loading is switched off in this installation.”, loading is disabled here: the presentation then shows only the existing data.</span>
+</dd>
+</div>
+</dl>
+<a class="oeffnen de" lang="de" data-ziel="demodaten" href="/admin?bereich=vorfuehrdaten&amp;detail=demo" target="klarwerk-vorfuehrung">Station öffnen →</a>
+<a class="oeffnen en" lang="en" data-ziel="demodaten" href="/admin?bereich=vorfuehrdaten&amp;detail=demo" target="klarwerk-vorfuehrung">Open station →</a>
+<div class="blaettern">
+<a href="#uebersicht-titel"><span class="de" lang="de">↑ Stationen</span><span class="en" lang="en">↑ Stations</span></a>
+<a href="#station-1"><span class="de" lang="de">Station 1 →</span><span class="en" lang="en">Station 1 →</span></a>
+</div>
+</section>
+
+<section class="station" id="station-1" data-station="start" aria-labelledby="station-titel-1">
+<p class="kicker">
+<span class="de" lang="de">Station 1 von 7 · 20 Sekunden · Rolle: alle</span>
+<span class="en" lang="en">Station 1 of 7 · 20 seconds · Role: everyone</span>
+</p>
+<h2 id="station-titel-1">
+<span class="de" lang="de">Start</span>
+<span class="en" lang="en">Home</span>
+</h2>
+<dl>
+<div>
+<dt data-feld="ziel"><span class="de" lang="de">Ziel</span><span class="en" lang="en">Goal</span></dt>
+<dd>
+<span class="de" lang="de">Zeigen, wo Mitarbeitende jeden Tag einsteigen: ein Ort für Wissen, das sonst nur in Köpfen steckt.</span>
+<span class="en" lang="en">Show where staff start every day: one place for knowledge that otherwise lives only in people’s heads.</span>
+</dd>
+</div>
+<div>
+<dt data-feld="handlung"><span class="de" lang="de">Handlung</span><span class="en" lang="en">Action</span></dt>
+<dd>
+<span class="de" lang="de">Station öffnen und die Startseite kurz durchgehen.</span>
+<span class="en" lang="en">Open the station and briefly walk through the home page.</span>
+</dd>
+</div>
+<div>
+<dt data-feld="ergebnis"><span class="de" lang="de">Erwartetes Ergebnis (Sollansicht)</span><span class="en" lang="en">Expected result (target view)</span></dt>
+<dd>
+<span class="de" lang="de">Die Startseite von KLARWERK mit den Wegen zu Fragen, Bibliothek und Erfassen.</span>
+<span class="en" lang="en">The KLARWERK home page with the ways into Ask, Library and Capture.</span>
+</dd>
+</div>
+</dl>
+<a class="oeffnen de" lang="de" data-ziel="start" href="/start" target="klarwerk-vorfuehrung">Station öffnen →</a>
+<a class="oeffnen en" lang="en" data-ziel="start" href="/start" target="klarwerk-vorfuehrung">Open station →</a>
+<div class="blaettern">
+<a href="#station-0"><span class="de" lang="de">← Vorbereitung</span><span class="en" lang="en">← Preparation</span></a>
+<a href="#station-2"><span class="de" lang="de">Station 2 →</span><span class="en" lang="en">Station 2 →</span></a>
+</div>
+</section>
+
+<section class="station" id="station-2" data-station="bibliothek" aria-labelledby="station-titel-2">
+<p class="kicker">
+<span class="de" lang="de">Station 2 von 7 · 50 Sekunden · Rolle: alle</span>
+<span class="en" lang="en">Station 2 of 7 · 50 seconds · Role: everyone</span>
+</p>
+<h2 id="station-titel-2">
+<span class="de" lang="de">Bibliothek: Wissen finden</span>
+<span class="en" lang="en">Library: find knowledge</span>
+</h2>
+<dl>
+<div>
+<dt data-feld="ziel"><span class="de" lang="de">Ziel</span><span class="en" lang="en">Goal</span></dt>
+<dd>
+<span class="de" lang="de">Wissen ist auffindbar — und man sieht sofort, ob es geprüft und wie vertraulich es ist.</span>
+<span class="en" lang="en">Knowledge can be found — and you immediately see whether it has been checked and how confidential it is.</span>
+</dd>
+</div>
+<div>
+<dt data-feld="handlung"><span class="de" lang="de">Handlung</span><span class="en" lang="en">Action</span></dt>
+<dd>
+<span class="de" lang="de">Station öffnen: die Bibliothek sucht schon nach „Lieferanten“. Beide Treffer nacheinander öffnen.</span>
+<span class="en" lang="en">Open the station: the library is already searching for “Suppliers”. Open both hits one after the other.</span>
+</dd>
+</div>
+<div>
+<dt data-feld="ergebnis"><span class="de" lang="de">Erwartetes Ergebnis (Sollansicht)</span><span class="en" lang="en">Expected result (target view)</span></dt>
+<dd>
+<span class="de" lang="de">Zwei Einträge: „Lieferanten für Hydraulikteile: immer eine Zweitquelle führen“ ist validiert; „Lieferanten des Presswerks: Konditionen und Preisstaffel“ ist noch offen und vertraulich.</span>
+<span class="en" lang="en">Two entries: “Suppliers for hydraulic parts: always keep a second source” is validated; “Suppliers of the press shop: terms and price scale” is still open and confidential.</span>
+</dd>
+</div>
+</dl>
+<a class="oeffnen de" lang="de" data-ziel="bibliothek" href="/bibliothek?q=Lieferanten" target="klarwerk-vorfuehrung">Station öffnen →</a>
+<a class="oeffnen en" lang="en" data-ziel="bibliothek" href="/bibliothek?q=Suppliers" target="klarwerk-vorfuehrung">Open station →</a>
+<div class="blaettern">
+<a href="#station-1"><span class="de" lang="de">← Station 1</span><span class="en" lang="en">← Station 1</span></a>
+<a href="#station-3"><span class="de" lang="de">Station 3 →</span><span class="en" lang="en">Station 3 →</span></a>
+</div>
+</section>
+
+<section class="station" id="station-3" data-station="fragen" aria-labelledby="station-titel-3">
+<p class="kicker">
+<span class="de" lang="de">Station 3 von 7 · 60 Sekunden · Rolle: alle</span>
+<span class="en" lang="en">Station 3 of 7 · 60 seconds · Role: everyone</span>
+</p>
+<h2 id="station-titel-3">
+<span class="de" lang="de">Fragen: Antwort mit Quelle</span>
+<span class="en" lang="en">Ask: an answer with its source</span>
+</h2>
+<dl>
+<div>
+<dt data-feld="ziel"><span class="de" lang="de">Ziel</span><span class="en" lang="en">Goal</span></dt>
+<dd>
+<span class="de" lang="de">Eine Frage in eigenen Worten bekommt eine Antwort, die ihre Quelle nennt — oder ein ehrliches „das wissen wir noch nicht“.</span>
+<span class="en" lang="en">A question in your own words gets an answer that names its source — or an honest “we do not know that yet”.</span>
+</dd>
+</div>
+<div>
+<dt data-feld="handlung"><span class="de" lang="de">Handlung</span><span class="en" lang="en">Action</span></dt>
+<dd>
+<span class="de" lang="de">Station öffnen: die Frage „Wie oft muss Filter F3 geprüft werden?“ steht schon im Feld. Abschicken und die Quelle zeigen.</span>
+<span class="en" lang="en">Open the station: the question “How often does filter F3 have to be checked?” is already in the field. Send it and show the source.</span>
+</dd>
+</div>
+<div>
+<dt data-feld="ergebnis"><span class="de" lang="de">Erwartetes Ergebnis (Sollansicht)</span><span class="en" lang="en">Expected result (target view)</span></dt>
+<dd>
+<span class="de" lang="de">Die Antwort stützt sich auf „Filter F3 monatlich auf Verschmutzung prüfen.“ und nennt diesen Eintrag als Quelle. Ist keine KI freigeschaltet, sagt die Seite das und sperrt den Weg; dann zeigt der Knopf „Tutorial“ die Seite Schritt für Schritt ohne KI.</span>
+<span class="en" lang="en">The answer is based on “Check filter F3 for fouling every month.” and names this entry as its source. If no AI is enabled, the page says so and blocks the way; the “Tutorial” button then explains the page step by step without AI.</span>
+</dd>
+</div>
+</dl>
+<a class="oeffnen de" lang="de" data-ziel="fragen" href="/fragen?q=Wie%20oft%20muss%20Filter%20F3%20gepr%C3%BCft%20werden%3F" target="klarwerk-vorfuehrung">Station öffnen →</a>
+<a class="oeffnen en" lang="en" data-ziel="fragen" href="/fragen?q=How%20often%20does%20filter%20F3%20have%20to%20be%20checked%3F" target="klarwerk-vorfuehrung">Open station →</a>
+<div class="blaettern">
+<a href="#station-2"><span class="de" lang="de">← Station 2</span><span class="en" lang="en">← Station 2</span></a>
+<a href="#station-4"><span class="de" lang="de">Station 4 →</span><span class="en" lang="en">Station 4 →</span></a>
+</div>
+</section>
+
+<section class="station" id="station-4" data-station="erfassen" aria-labelledby="station-titel-4">
+<p class="kicker">
+<span class="de" lang="de">Station 4 von 7 · 50 Sekunden · Rolle: Experte</span>
+<span class="en" lang="en">Station 4 of 7 · 50 seconds · Role: Expert</span>
+</p>
+<h2 id="station-titel-4">
+<span class="de" lang="de">Wissen erfassen</span>
+<span class="en" lang="en">Capture knowledge</span>
+</h2>
+<dl>
+<div>
+<dt data-feld="ziel"><span class="de" lang="de">Ziel</span><span class="en" lang="en">Goal</span></dt>
+<dd>
+<span class="de" lang="de">Erfahrung aus der Werkhalle wird festgehalten, bevor sie mit einer Person verloren geht.</span>
+<span class="en" lang="en">Experience from the shop floor is recorded before it is lost with a person.</span>
+</dd>
+</div>
+<div>
+<dt data-feld="handlung"><span class="de" lang="de">Handlung</span><span class="en" lang="en">Action</span></dt>
+<dd>
+<span class="de" lang="de">Station öffnen und eine Erfahrung eintippen, zum Beispiel: „Seit wir die Werkstücke vor dem Schweißen auf 80 °C vorwärmen, sinkt die Nacharbeit an Baugruppe 7.“ Dann „Entwurf sichern“.</span>
+<span class="en" lang="en">Open the station and type an experience, for example: “Since we preheat the workpieces to 80 °C before welding, rework on assembly 7 has dropped.” Then “Save draft”.</span>
+</dd>
+</div>
+<div>
+<dt data-feld="ergebnis"><span class="de" lang="de">Erwartetes Ergebnis (Sollansicht)</span><span class="en" lang="en">Expected result (target view)</span></dt>
+<dd>
+<span class="de" lang="de">Das Blatt behält den Text, der Entwurf liegt beiseite. Nichts ist veröffentlicht, solange niemand einreicht und prüft.</span>
+<span class="en" lang="en">The sheet keeps the text and the draft is set aside. Nothing is published as long as nobody submits and checks it.</span>
+</dd>
+</div>
+</dl>
+<a class="oeffnen de" lang="de" data-ziel="erfassen" href="/erfassen" target="klarwerk-vorfuehrung">Station öffnen →</a>
+<a class="oeffnen en" lang="en" data-ziel="erfassen" href="/erfassen" target="klarwerk-vorfuehrung">Open station →</a>
+<div class="blaettern">
+<a href="#station-3"><span class="de" lang="de">← Station 3</span><span class="en" lang="en">← Station 3</span></a>
+<a href="#station-5"><span class="de" lang="de">Station 5 →</span><span class="en" lang="en">Station 5 →</span></a>
+</div>
+</section>
+
+<section class="station" id="station-5" data-station="validierung" aria-labelledby="station-titel-5">
+<p class="kicker">
+<span class="de" lang="de">Station 5 von 7 · 40 Sekunden · Rolle: Controller</span>
+<span class="en" lang="en">Station 5 of 7 · 40 seconds · Role: Controller</span>
+</p>
+<h2 id="station-titel-5">
+<span class="de" lang="de">Validierung: erst geprüft, dann verlässlich</span>
+<span class="en" lang="en">Validation: checked first, then reliable</span>
+</h2>
+<dl>
+<div>
+<dt data-feld="ziel"><span class="de" lang="de">Ziel</span><span class="en" lang="en">Goal</span></dt>
+<dd>
+<span class="de" lang="de">Zeigen, dass neues Wissen fachlich geprüft wird, bevor es als verlässlich gilt.</span>
+<span class="en" lang="en">Show that new knowledge is checked by subject experts before it counts as reliable.</span>
+</dd>
+</div>
+<div>
+<dt data-feld="handlung"><span class="de" lang="de">Handlung</span><span class="en" lang="en">Action</span></dt>
+<dd>
+<span class="de" lang="de">Station öffnen und den offenen Eintrag „Pumpe P2 alle 200 Betriebsstunden schmieren.“ zeigen.</span>
+<span class="en" lang="en">Open the station and show the open entry “Lubricate pump P2 every 200 operating hours.”</span>
+</dd>
+</div>
+<div>
+<dt data-feld="ergebnis"><span class="de" lang="de">Erwartetes Ergebnis (Sollansicht)</span><span class="en" lang="en">Expected result (target view)</span></dt>
+<dd>
+<span class="de" lang="de">Die Liste der offenen Einträge; „Pumpe P2 …“ steht darin und wartet auf seine Prüfung.</span>
+<span class="en" lang="en">The list of open entries; “Lubricate pump P2 …” is in it and waits for its check.</span>
+</dd>
+</div>
+</dl>
+<a class="oeffnen de" lang="de" data-ziel="validierung" href="/validierung" target="klarwerk-vorfuehrung">Station öffnen →</a>
+<a class="oeffnen en" lang="en" data-ziel="validierung" href="/validierung" target="klarwerk-vorfuehrung">Open station →</a>
+<div class="blaettern">
+<a href="#station-4"><span class="de" lang="de">← Station 4</span><span class="en" lang="en">← Station 4</span></a>
+<a href="#station-6"><span class="de" lang="de">Station 6 →</span><span class="en" lang="en">Station 6 →</span></a>
+</div>
+</section>
+
+<section class="station" id="station-6" data-station="konflikte" aria-labelledby="station-titel-6">
+<p class="kicker">
+<span class="de" lang="de">Station 6 von 7 · 40 Sekunden · Rolle: Controller</span>
+<span class="en" lang="en">Station 6 of 7 · 40 seconds · Role: Controller</span>
+</p>
+<h2 id="station-titel-6">
+<span class="de" lang="de">Konflikte: Widersprüche werden sichtbar</span>
+<span class="en" lang="en">Conflicts: contradictions become visible</span>
+</h2>
+<dl>
+<div>
+<dt data-feld="ziel"><span class="de" lang="de">Ziel</span><span class="en" lang="en">Goal</span></dt>
+<dd>
+<span class="de" lang="de">Zwei Aussagen, die sich widersprechen, werden nebeneinandergestellt — KLARWERK wählt nicht still eine aus.</span>
+<span class="en" lang="en">Two contradicting statements are placed side by side — KLARWERK does not silently pick one.</span>
+</dd>
+</div>
+<div>
+<dt data-feld="handlung"><span class="de" lang="de">Handlung</span><span class="en" lang="en">Action</span></dt>
+<dd>
+<span class="de" lang="de">Station öffnen und den Konflikt „Vorwärmung bei Kaltstart“ öffnen.</span>
+<span class="en" lang="en">Open the station and open the conflict “Preheating on a cold start”.</span>
+</dd>
+</div>
+<div>
+<dt data-feld="ergebnis"><span class="de" lang="de">Erwartetes Ergebnis (Sollansicht)</span><span class="en" lang="en">Expected result (target view)</span></dt>
+<dd>
+<span class="de" lang="de">„Vor dem Kaltstart die Vorwärmung 10 min laufen lassen.“ steht neben „Kaltstart ohne Vorwärmung ist möglich und spart Zeit.“ Ein Mensch entscheidet, welche Aussage gilt.</span>
+<span class="en" lang="en">“Let the preheating run for 10 min before a cold start.” stands next to “A cold start without preheating is possible and saves time.” A person decides which statement applies.</span>
+</dd>
+</div>
+</dl>
+<a class="oeffnen de" lang="de" data-ziel="konflikte" href="/konflikte" target="klarwerk-vorfuehrung">Station öffnen →</a>
+<a class="oeffnen en" lang="en" data-ziel="konflikte" href="/konflikte" target="klarwerk-vorfuehrung">Open station →</a>
+<div class="blaettern">
+<a href="#station-5"><span class="de" lang="de">← Station 5</span><span class="en" lang="en">← Station 5</span></a>
+<a href="#station-7"><span class="de" lang="de">Station 7 →</span><span class="en" lang="en">Station 7 →</span></a>
+</div>
+</section>
+
+<section class="station" id="station-7" data-station="importwege" aria-labelledby="station-titel-7">
+<p class="kicker">
+<span class="de" lang="de">Station 7 von 7 · 40 Sekunden · Rolle: alle</span>
+<span class="en" lang="en">Station 7 of 7 · 40 seconds · Role: everyone</span>
+</p>
+<h2 id="station-titel-7">
+<span class="de" lang="de">Jira und Confluence: der Weg ins Wissen</span>
+<span class="en" lang="en">Jira and Confluence: the way into knowledge</span>
+</h2>
+<dl>
+<div>
+<dt data-feld="ziel"><span class="de" lang="de">Ziel</span><span class="en" lang="en">Goal</span></dt>
+<dd>
+<span class="de" lang="de">Erklären, wie vorhandene Inhalte aus Jira und Confluence zu geprüftem Wissen werden — ohne einen echten Import zu starten.</span>
+<span class="en" lang="en">Explain how existing content from Jira and Confluence becomes checked knowledge — without starting a real import.</span>
+</dd>
+</div>
+<div>
+<dt data-feld="handlung"><span class="de" lang="de">Handlung</span><span class="en" lang="en">Action</span></dt>
+<dd>
+<span class="de" lang="de">Station öffnen und die sechs Schritte von „Auswählen“ bis „Mit Klara nutzen“ durchklicken.</span>
+<span class="en" lang="en">Open the station and click through the six steps from “Select” to “Use with Klara”.</span>
+</dd>
+</div>
+<div>
+<dt data-feld="ergebnis"><span class="de" lang="de">Erwartetes Ergebnis (Sollansicht)</span><span class="en" lang="en">Expected result (target view)</span></dt>
+<dd>
+<span class="de" lang="de">Die Erklärseite „Aus Jira und Confluence wird nutzbares Wissen“, gekennzeichnet als Ablaufbeispiel ohne Live-Import. Es wird nichts importiert oder gespeichert.</span>
+<span class="en" lang="en">The explanation page “Turn Jira and Confluence content into usable knowledge”, marked as a process example without a live import. Nothing is imported or saved.</span>
+</dd>
+</div>
+</dl>
+<a class="oeffnen de" lang="de" data-ziel="importwege" href="/demonstration/importwege.html" target="klarwerk-vorfuehrung">Station öffnen →</a>
+<a class="oeffnen en" lang="en" data-ziel="importwege" href="/demonstration/importwege.html" target="klarwerk-vorfuehrung">Open station →</a>
+<div class="blaettern">
+<a href="#station-6"><span class="de" lang="de">← Station 6</span><span class="en" lang="en">← Station 6</span></a>
+<a href="#uebersicht-titel"><span class="de" lang="de">↑ Stationen</span><span class="en" lang="en">↑ Stations</span></a>
+</div>
+</section>
+
+<footer>
+<p>
+<span class="de" lang="de">Diese Seite enthält bewusst keine Bildschirmfotos: ein festes Bild veraltet mit der nächsten Fassung. Die Sollansichten sind beschrieben; die Prüfung dieser Seite legt bei jedem Lauf Bilder der tatsächlich gebauten Fassung ab.</span>
+<span class="en" lang="en">This page deliberately contains no screenshots: a fixed image goes out of date with the next version. The target views are described; every test run of this page stores images of the version that was actually built.</span>
+</p>
+<p>
+<span class="de" lang="de">KLARWERK · Vorführung. Diese Seite lädt, speichert und sendet nichts; sie öffnet nur Stellen der Anwendung.</span>
+<span class="en" lang="en">KLARWERK · Presentation. This page loads, saves and sends nothing; it only opens places in the application.</span>
+</p>
+</footer>
+</main>
+</body>
+</html>

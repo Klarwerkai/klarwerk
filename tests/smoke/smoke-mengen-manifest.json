@@ -1,10 +1,10 @@
 {
-  "version": 11,
-  "erhoben_am": "2026-10-01",
-  "nachgefuehrt_von": "gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3): drei Faelle mehr je Projekt chromium, firefox und webkit, alle in erstnutzer-u2-u3-browser.spec.ts — Erstnutzer-Huerden U2 (Bibliothek, Meine Entwuerfe) und U3 (Meine Aufgaben, Seitenhilfe) am gebauten Bildschirm. Sonst nichts geaendert.",
+  "version": 12,
+  "erhoben_am": "2026-10-07",
+  "nachgefuehrt_von": "gesamt-demo-erklaermodus (aufnahme:20260922:gesamt-demo-erklaermodus): zwei Faelle mehr je Projekt chromium, firefox und webkit, beide in vorfuehrweg-browser.spec.ts — der gefuehrte Vorfuehrweg (Stationen im einen Vorfuehrfenster, Einstieg aus der Hilfe, Englisch, 390 px). Sonst nichts geaendert. Die Titelliste ist von Hand nach der Sortierung von --list nachgezogen, nicht neu erhoben.",
   "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
   "zweck": "Sollmanifest der Smoke-Mengen je Projekt. Drift (Hinzufuegen, Entfernen, Umbenennen) macht die Mengenpruefung rot.",
-  "gesamt_fallinstanzen": 201,
+  "gesamt_fallinstanzen": 207,
   "projekte": {
     "setup-zustand": {
       "soll": 1,
@@ -19,7 +19,7 @@
       ]
     },
     "chromium": {
-      "soll": 61,
+      "soll": 63,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -74,6 +74,8 @@
         "ui-smoke.spec.ts › mega47: Filterblatt auf schmalem Gerät ist wirklich bedienbar",
         "ui-smoke.spec.ts › mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar",
         "ui-smoke.spec.ts › mega49: die Datenlage dieses Laufs ist die zugesagte",
+        "vorfuehrweg-browser.spec.ts › Vorführweg · Einstieg aus der Hilfe, Englisch und 390 px",
+        "vorfuehrweg-browser.spec.ts › Vorführweg · jede Station öffnet ihre Stelle",
         "wg-luecken-beziehungen-browser.spec.ts › G1: zwei Einträge verknüpfen — Art, Richtung und Herkunft stehen da, und die Bestätigung überlebt das Neuladen",
         "wg-luecken-beziehungen-browser.spec.ts › G7: dieselbe Beziehung von beiden Seiten — und der Schlagwortgraph bleibt, was er war",
         "wissensraum381-ortszeile-browser.spec.ts › R-17: /bibliothek rendert mit Routenanker UND sichtbarer Ortszeile",
@@ -85,7 +87,7 @@
       ]
     },
     "firefox": {
-      "soll": 61,
+      "soll": 63,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -140,6 +142,8 @@
         "ui-smoke.spec.ts › mega47: Filterblatt auf schmalem Gerät ist wirklich bedienbar",
         "ui-smoke.spec.ts › mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar",
         "ui-smoke.spec.ts › mega49: die Datenlage dieses Laufs ist die zugesagte",
+        "vorfuehrweg-browser.spec.ts › Vorführweg · Einstieg aus der Hilfe, Englisch und 390 px",
+        "vorfuehrweg-browser.spec.ts › Vorführweg · jede Station öffnet ihre Stelle",
         "wg-luecken-beziehungen-browser.spec.ts › G1: zwei Einträge verknüpfen — Art, Richtung und Herkunft stehen da, und die Bestätigung überlebt das Neuladen",
         "wg-luecken-beziehungen-browser.spec.ts › G7: dieselbe Beziehung von beiden Seiten — und der Schlagwortgraph bleibt, was er war",
         "wissensraum381-ortszeile-browser.spec.ts › R-17: /bibliothek rendert mit Routenanker UND sichtbarer Ortszeile",
@@ -151,7 +155,7 @@
       ]
     },
     "webkit": {
-      "soll": 61,
+      "soll": 63,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -206,6 +210,8 @@
         "ui-smoke.spec.ts › mega47: Filterblatt auf schmalem Gerät ist wirklich bedienbar",
         "ui-smoke.spec.ts › mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar",
         "ui-smoke.spec.ts › mega49: die Datenlage dieses Laufs ist die zugesagte",
+        "vorfuehrweg-browser.spec.ts › Vorführweg · Einstieg aus der Hilfe, Englisch und 390 px",
+        "vorfuehrweg-browser.spec.ts › Vorführweg · jede Station öffnet ihre Stelle",
         "wg-luecken-beziehungen-browser.spec.ts › G1: zwei Einträge verknüpfen — Art, Richtung und Herkunft stehen da, und die Bestätigung überlebt das Neuladen",
         "wg-luecken-beziehungen-browser.spec.ts › G7: dieselbe Beziehung von beiden Seiten — und der Schlagwortgraph bleibt, was er war",
         "wissensraum381-ortszeile-browser.spec.ts › R-17: /bibliothek rendert mit Routenanker UND sichtbarer Ortszeile",
