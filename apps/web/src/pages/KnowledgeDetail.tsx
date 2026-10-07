@@ -7,6 +7,8 @@ import { SanitizedHtml } from "../components/SanitizedHtml";
 import { BibliothekFlaeche } from "../components/bibliothek/BibliothekFlaeche";
 import { Card, SectionLabel } from "../components/ui";
 import { sprachcode, useFrischeLesevariante } from "../lib/lesevariante";
+import { FASSUNG_PARAM, fassungsLage, leseFassung } from "../lib/objektbezug";
+import { useGelesenerStand } from "../lib/useGelesenerStand";
 
 // ==================================================================================================
 // JOB 3063 · H4 — DAS WISSENSOBJEKT-DETAIL IST DIE LESEFLÄCHE DER BIBLIOTHEK GEWORDEN.
@@ -53,6 +55,8 @@ export function KnowledgeDetail(): JSX.Element {
   const naechsteSuche = (() => {
     const p = new URLSearchParams(params);
     p.delete("edit");
+    // Dasselbe gilt für die Fassung des Rückwegs: sie gehört zu GENAU diesem Beitrag.
+    p.delete(FASSUNG_PARAM);
     return p.toString();
   })();
 
@@ -78,6 +82,11 @@ export function KnowledgeDetail(): JSX.Element {
   const lage = useFrischeLesevariante(id, sprache);
   const variante = lage.zustand === "da" ? lage.variante : undefined;
   const [zeigtOriginal, setZeigtOriginal] = useState(false);
+  // Arbeitswege am selben Artikel: genannte Fassung (Adresse) gegen die, die die Lesefläche
+  // gerade zeigt (`meldeGelesenenStand` — kein eigener Abruf). Ein anderer Artikel zählt nicht.
+  const genannteFassung = leseFassung(params);
+  const gelesen = useGelesenerStand();
+  const aktuelleFassung = gelesen?.koId === id ? gelesen.fassung : null;
   // Sprachwechsel UND Eintragswechsel setzen die Wahl „Original anzeigen" zurück: sie gehörte zur
   // vorherigen Anzeige. Beim Eintragswechsel bleibt die Fläche darunter montiert — ohne diesen
   // Rückfall trüge der nächste Eintrag die Entscheidung des vorherigen.
@@ -128,6 +137,22 @@ export function KnowledgeDetail(): JSX.Element {
       {lage.zustand === "fehlt" ? (
         <p data-testid="lesevariante-fehler" className="mb-3 text-[12.5px] text-trust-warn-text">
           {t("lesevariante.abrufFehler")}
+        </p>
+      ) : null}
+      {/* Arbeitswege am selben Artikel: der Rückweg (aus Fragen oder Klara) nennt die Fassung, aus
+          der er kam. Hat sich der Beitrag seitdem geändert, steht das hier — ausserhalb der Fläche,
+          die keinen Erklärtext trägt, und nur dann; bei gleicher Fassung bleibt die Seite still. */}
+      {fassungsLage(genannteFassung, aktuelleFassung) === "abweichend" ? (
+        <p
+          data-testid="objektbezug-fassung-abweichend"
+          data-fassung={genannteFassung ?? undefined}
+          data-aktuell={aktuelleFassung ?? undefined}
+          className="mb-3 text-[12.5px] text-trust-warn-text"
+        >
+          {t("arbeitsweg.lesen.fassungAbweichend", {
+            genannt: genannteFassung,
+            aktuell: aktuelleFassung,
+          })}
         </p>
       ) : null}
       <BibliothekFlaeche vorgewaehlt={id} beiWahl={beiWahl} beiLoeschung={beiLoeschung} />

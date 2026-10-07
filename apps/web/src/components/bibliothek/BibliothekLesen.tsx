@@ -44,6 +44,7 @@ import { type KoRevisionItemId, koRevisionSummary } from "../../lib/koRevisionSu
 import { sprachcode, useFrischeLesevariante } from "../../lib/lesevariante";
 import type { MatchField } from "../../lib/librarySearch";
 import { useNetzOnline } from "../../lib/netzzustand";
+import { fragenMitBezug, meldeGelesenenStand } from "../../lib/objektbezug";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { draftProvenance } from "../../lib/reasonerProvenance";
 import { canRevalidate } from "../../lib/revalidation";
@@ -2082,6 +2083,16 @@ export function BibliothekLesen({
     }
   }, [query.data, params, canEdit]);
 
+  // Arbeitswege am selben Artikel: welche Fassung hier gelesen wird — Klara und die Rückweg-Zeile
+  // lesen sie aus `lib/objektbezug.ts`. Gemeldet wird, was ohnehin gezeichnet wird; kein Abruf.
+  const gelesenId = query.data?.id ?? null;
+  const gelesenFassung = typeof query.data?.version === "number" ? query.data.version : null;
+  useEffect(() => {
+    if (gelesenId !== null && gelesenFassung !== null) {
+      meldeGelesenenStand({ koId: gelesenId, fassung: gelesenFassung });
+    }
+  }, [gelesenId, gelesenFassung]);
+
   // JOB 3034 R2 · KONFLIKTRUNDE 2 (nachgezogen): scheitert die Auffrischung eines schon geholten
   // Eintrags, bleiben Eintrag und Stufenkennzeichen stehen — der Fehler wird als Hinweis über der
   // Fläche gesagt, nicht als Verlust des Bestands (`lib/abfrageBestand.ts`, `abfrageMitBestand`).
@@ -2193,7 +2204,12 @@ export function BibliothekLesen({
   // vorbelegt mit dem aktuellen Suchtext. Der frühere
   // Weg über `libraryUseCta` verzweigte über die Reife und schickte offene Einträge nach
   // `/validierung`; das war die zweite Wahrheit, die dieser Umbau abschafft (Codex an Runde 4).
-  const fragen = fragenHref(ko.id, suchtext.trim() || ko.title, ko.confidentiality);
+  // Arbeitswege am selben Artikel: zur Kennung reist die gelesene FASSUNG mit (`fassung=<n>`) —
+  // Fragen, Klara und der Rückweg nennen damit denselben Stand (`lib/objektbezug.ts`).
+  const fragen = fragenMitBezug(
+    fragenHref(ko.id, suchtext.trim() || ko.title, ko.confidentiality),
+    { koId: ko.id, fassung: typeof ko.version === "number" ? ko.version : null },
+  );
   // JOB 3108 · UX-03 — EINE Zählung, zwei Ansichten, und keine zweite Wahrheit: beide Zahlen
   // kommen aus DEMSELBEN `ko.attachments`, in benachbarten Zeilen.
   //   · Chip: Bilder im Text · Sprung: Anhänge insgesamt.

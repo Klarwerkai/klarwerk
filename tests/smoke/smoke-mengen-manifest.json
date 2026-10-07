@@ -1,10 +1,10 @@
 {
-  "version": 11,
+  "version": 12,
   "erhoben_am": "2026-10-01",
-  "nachgefuehrt_von": "gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3): drei Faelle mehr je Projekt chromium, firefox und webkit, alle in erstnutzer-u2-u3-browser.spec.ts — Erstnutzer-Huerden U2 (Bibliothek, Meine Entwuerfe) und U3 (Meine Aufgaben, Seitenhilfe) am gebauten Bildschirm. Sonst nichts geaendert.",
+  "nachgefuehrt_von": "produkt:20261007:arbeitswege-objekt (2026-10-07, von Hand aus der Spec-Datei nachgezogen, kein --list-Lauf): vier Faelle mehr im Projekt chromium-zustand, alle in arbeitswege-objekt-browser.spec.ts — die Datei legt Bestand an und steht deshalb in ZUSTAND_SPEC (playwright.smoke.config.ts), also nicht in chromium, firefox und webkit. Sonst nichts geaendert. Vorher: gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3): drei Faelle mehr je Projekt chromium, firefox und webkit, alle in erstnutzer-u2-u3-browser.spec.ts.",
   "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
   "zweck": "Sollmanifest der Smoke-Mengen je Projekt. Drift (Hinzufuegen, Entfernen, Umbenennen) macht die Mengenpruefung rot.",
-  "gesamt_fallinstanzen": 201,
+  "gesamt_fallinstanzen": 205,
   "projekte": {
     "setup-zustand": {
       "soll": 1,
@@ -217,8 +217,12 @@
       ]
     },
     "chromium-zustand": {
-      "soll": 16,
+      "soll": 20,
       "titel": [
+        "arbeitswege-objekt-browser.spec.ts › K1 · Einreichen öffnet die Prüfung genau dieses Beitrags — auch nach Neuladen",
+        "arbeitswege-objekt-browser.spec.ts › K2 · nach der Rückfrage: eigener Beitrag mit Serverstand erreichbar, Wechsel benannt",
+        "arbeitswege-objekt-browser.spec.ts › K3/K5 · Frage aus dem Artikel, Klara, Neuladen und Rückweg behalten Kennung und Fassung",
+        "arbeitswege-objekt-browser.spec.ts › K4 · Kopfband-Suche zeigt die geltende Bibliothekssuche, Seitensuche bleibt getrennt",
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Einreichen ohne Inhalt führt an die Pflichtangabe und legt nichts an",
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Einreichen zeigt Status und alle nächsten Schritte",
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Entwurf sichern legt beiseite und hält Blatt und Inhalt",

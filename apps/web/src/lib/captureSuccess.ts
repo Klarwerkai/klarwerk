@@ -11,6 +11,7 @@
 
 import { type Role, routePathAllows } from "../app/navigation";
 import { libraryOriginHref, validationOriginHref } from "./demoKnowledge";
+import { pruefHref } from "./objektbezug";
 
 export interface CaptureNextStep {
   labelKey: string;
@@ -26,7 +27,9 @@ export interface CaptureNextStep {
 // Validierungs-Schritt BLEIBT in der Liste (Block B rendert ihn über RoleLink als sichtbare,
 // nicht begehbare Lage), damit der Prozess verständlich bleibt.
 export function captureNextSteps(koId: string, role: Role): CaptureNextStep[] {
-  const validateTo = validationOriginHref("non-demo");
+  // Arbeitswege am selben Artikel: die Prüfung öffnet GENAU diesen Beitrag (`ko=<id>`), nicht den
+  // ersten der Liste. Der Herkunftsfilter bleibt als Ansicht davor stehen.
+  const validateTo = pruefHref(koId, null, validationOriginHref("non-demo"));
   const darfValidieren = routePathAllows(validateTo, role);
   return [
     { labelKey: "capture.savedViewKo", to: `/wissen/${koId}`, primary: !darfValidieren },

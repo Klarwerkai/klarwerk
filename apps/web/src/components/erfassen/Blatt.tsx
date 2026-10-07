@@ -54,6 +54,7 @@ import { erfassenFehlersatz } from "../../lib/erfassenFehlersatz";
 import { dominantCategory, pickExampleKo } from "../../lib/intakeExample";
 import { INTAKE_STARTERS, type IntakeStarter } from "../../lib/intakeStarters";
 import { deriveIntakeSuggestion } from "../../lib/intakeSuggestion";
+import { pruefHref } from "../../lib/objektbezug";
 // JOB 3266 (D1): dasselbe Datumsformat wie überall sonst in der Oberfläche — und dieselbe
 // Ehrlichkeit: ein fehlender oder unlesbarer Zeitwert wird `null`, nicht ein erfundenes Datum.
 import { toReasonerLocale } from "../../lib/reasonerLocale";
@@ -3576,10 +3577,12 @@ function BlattLage({
         <span data-testid="blatt-lage-zustand" data-zustand={erfolg.zustand}>
           <StatusPill status={erfolg.zustand} />
         </span>
+        {/* Arbeitswege am selben Artikel: die Prüfung DIESES Beitrags (`ko=<id>`), nicht der
+            erste Eintrag einer anders sortierten Liste. */}
         <RoleLink
           className="ml-2 inline-flex items-center gap-1 font-semibold underline"
           hoverClassName="hover:opacity-80"
-          to="/validierung"
+          to={pruefHref(erfolg.id)}
         >
           {() => t("fd.openValidation")}
         </RoleLink>
