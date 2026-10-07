@@ -14,8 +14,17 @@
 // `DELETE /api/kos/:id`, und ob ein Objekt weg ist, sagt der Server. Die vier Einträge sind
 // Wegwerfdaten dieser einen Instanz; ein echter Bestand wird nicht berührt.
 //
-// WAS DIESE DATEI NICHT BELEGT: eine Bedienung durch einen Menschen und den Abgleich des Symbols
-// mit dem Entwurf `Bibliothek.dc.html` (der liegt ausserhalb dieses Arbeitsbaums).
+// ENTWURFSBEZUG (Nacharbeit 2): Der einschlägige Entwurf für den ABLAUF ist der Handoff
+// `UI:UX/design_handoff_klarwerk_frontend` — `BRIEF.md` („destruktive Aktionen → app-eigene
+// Inline-Bestätigung (kein nativer Dialog)") und `Frontend-Anforderungsbeschreibung.md` P-4. Z1 misst
+// genau das: Rückfrage als Zeile im Block des Treffers, keine Dialogfläche, Warnfarbe nur am
+// bestätigenden Knopf. Ein LÖSCHSYMBOL zeigt kein zugänglicher Entwurf: weder `Bibliothek.dc.html`
+// (laut BEN-Lesung kein Lösch- und kein Bestätigungszustand) noch die Handoff-Screens 07/08. Das ist
+// eine Quellengrenze — Z1 belegt deshalb nur, DASS ein benanntes Symbol dasteht, keine
+// Übereinstimmung mit einem Entwurf.
+//
+// WAS DIESE DATEI NICHT BELEGT: eine Bedienung durch einen Menschen und eine Entwurfsübereinstimmung
+// des Symbols (s. o.).
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import i18n from "../../apps/web/src/i18n";

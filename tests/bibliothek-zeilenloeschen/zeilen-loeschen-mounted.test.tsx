@@ -334,6 +334,8 @@ afterEach(async () => {
 describe("R-0959 · Löschen direkt aus der Trefferliste, vorher eine ruhige Zeile", () => {
   it("L1 · Papierkorb am Treffer öffnet eine ruhige Zeile UNTER genau diesem Treffer — kein Dialog, noch nichts gelöscht", async () => {
     await aufbauen(ZWEI, { id: "u1", role: "admin" });
+    // Entwurf (Handoff `BRIEF.md`, P-4): app-eigene Inline-Bestätigung, KEIN nativer Dialog.
+    const nativ = vi.spyOn(window, "confirm").mockReturnValue(false);
     expect(zeilenIds()).toEqual(["ko-1", "ko-2"]);
     const korb = papierkorb("ko-2");
     expect(korb, "kein Papierkorb am Treffer").not.toBeNull();
@@ -349,6 +351,8 @@ describe("R-0959 · Löschen direkt aus der Trefferliste, vorher eine ruhige Zei
     // Ruhig heisst: im Block des Treffers, nicht als Overlay. Die Dialogfläche der Lesefläche
     // (`data-bib-loeschen`) bleibt zu, und am anderen Treffer steht keine Rückfrage.
     expect(document.body.querySelector("[data-bib-loeschen]")).toBeNull();
+    expect(nativ).not.toHaveBeenCalled();
+    nativ.mockRestore();
     expect(rueckfrage("ko-1")).toBeNull();
     expect(papierkorb("ko-2")?.getAttribute("aria-expanded")).toBe("true");
     // Fokus auf dem BEWAHRENDEN Knopf: ein versehentliches Enter löscht nichts.
