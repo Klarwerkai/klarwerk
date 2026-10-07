@@ -590,7 +590,7 @@ describe("JOB 2666 D2 · A — der Backstop lässt sich nicht durch Weglassen um
 
 // ================================================================================================
 describe("JOB 2666 D2 · E — task:‹ask› in der Enge von /api/ask, mit ECHTER Bindung", () => {
-  it("E1 · Klara-gebunden ohne Einwilligung → ask läuft mit validatedOnly + retrievalOnly; ohne Bindung ohne Enge", async () => {
+  it("E1 · Klara-gebunden ohne Einwilligung → ask läuft mit validatedOnly + retrievalOnly; ohne Bindung nur validatedOnly", async () => {
     const { s, app } = appBauen();
     const auth = await anmelden(app);
     const gebunden = await klaraBindung(app, auth);
@@ -610,7 +610,8 @@ describe("JOB 2666 D2 · E — task:‹ask› in der Enge von /api/ask, mit ECHT
       headers: auth,
       payload: { task: "ask", text: "Was tun bei Überdruck?" },
     });
-    expect(bit(s.ask, 3)).toBeUndefined();
+    // R-0278 (Nacharbeit 3): ohne Bindung keine Modellsperre, aber derselbe Prüfstand.
+    expect(bit(s.ask, 3)).toEqual({ validatedOnly: true });
     await app.close();
   });
 });

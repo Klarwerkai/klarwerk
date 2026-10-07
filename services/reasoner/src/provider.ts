@@ -1523,9 +1523,81 @@ function fragegeruest(): ReadonlySet<string> {
   return fragegeruestCache;
 }
 
+// ------------------------------------------------------------------------------------------------
+// R-0278-Nacharbeit 3 (ben, P-ASK-C02): DIE SACHFRAGE, NICHT DIE ANWEISUNG.
+// ------------------------------------------------------------------------------------------------
+//
+// Pedis Freitagsfrage, wörtlich: „In the fictional Advisor ICT demo data, what is the standard
+// invoice payment period? Answer in English and cite the stored source. If the sources disagree,
+// say so rather than choosing silently." Gebunden wurde bis hierher JEDES Inhaltstoken — auch
+// „english", „cite", „disagree" aus den beiden Anweisungssätzen und „fictional", „advisor", „demo"
+// aus dem Fundortrahmen. Keine Quelle führt diese Wörter; die vorhandenen Fristen fielen heraus,
+// und mit ihnen die Konfliktdarstellung (ASK-C02-KONFLIKT).
+//
+// ZWEI ENGE REGELN, beide an der Satzform erkennbar, keine an einer Wortliste der Sache:
+//   1. Enthält die Eingabe mindestens einen FRAGESATZ (endet auf „?"), sind NUR die Fragesätze die
+//      Sachfrage. Sätze ohne „?" daneben sind Anweisungen an die Antwort („Answer in English …",
+//      „If the sources disagree, say so …") und binden nichts. Ohne Fragesatz bleibt die ganze
+//      Eingabe gebunden — „Ventil F3 Temperatur" (R-0473) ist unverändert.
+//   2. Beginnt ein Fragesatz mit einem FUNDORTRAHMEN — Präposition des Orts/der Grundlage, dann
+//      Komma, dann das Fragewort („In the … data, what …", „Im Handbuch, wo …") —, sagt der Rahmen,
+//      WO gesucht wird, nicht WONACH. Er bindet nicht. Ein Rahmen mit anderer Präposition („Bei
+//      Ventil F3, welche …") bleibt gebunden: dort steht die Sache selbst.
+// Was übrig bleibt, ist gebunden wie bisher — jedes Inhaltstoken, gleich wie geschrieben.
+const FRAGESATZ_ENDE = /\?\s*$/;
+const RAHMEN_PRAEPOSITIONEN = [
+  "in",
+  "im",
+  "innerhalb",
+  "laut",
+  "gemäß",
+  "gemaess",
+  "within",
+  "according to",
+  "inside",
+  "volgens",
+  "binnen",
+];
+const FRAGEWOERTER = [
+  "what",
+  "which",
+  "how",
+  "when",
+  "where",
+  "who",
+  "why",
+  "was",
+  "welche[nmrs]?",
+  "wie",
+  "wann",
+  "wo",
+  "wer",
+  "warum",
+  "wozu",
+  "wat",
+  "welke?",
+  "hoe",
+  "wanneer",
+  "waar",
+  "waarom",
+];
+const FUNDORTRAHMEN = new RegExp(
+  `^\\s*(?:${RAHMEN_PRAEPOSITIONEN.join("|")})(?=\\s)[^,?]*,\\s*(?=(?:${FRAGEWOERTER.join("|")})\\b)`,
+  "i",
+);
+
+function sachfrage(question: string): string {
+  const saetze = question.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0);
+  const fragesaetze = saetze.filter((s) => FRAGESATZ_ENDE.test(s));
+  if (fragesaetze.length === 0) {
+    return question;
+  }
+  return fragesaetze.map((s) => s.replace(FUNDORTRAHMEN, "")).join(" ");
+}
+
 export function undVerknuepfteFragebegriffe(question: string): string[] {
   const nominal = new Set<string>();
-  const gebunden = tokenize(question, nominal).filter(
+  const gebunden = tokenize(sachfrage(question), nominal).filter(
     (token) => !fragegeruest().has(token) && (istSubstanztragend(token) || nominal.has(token)),
   );
   return [...new Set(gebunden)];

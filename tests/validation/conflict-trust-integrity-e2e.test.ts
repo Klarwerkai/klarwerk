@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AnswerResult, Conflict, KnowledgeObject } from "../../apps/web/src/api/types";
-import { answerGrade } from "../../apps/web/src/lib/answerGrade";
-import { answerStatus, conflictAwareSourceRefs } from "../../apps/web/src/lib/askView";
+import { conflictAwareSourceRefs } from "../../apps/web/src/lib/askView";
 import {
   conflictImpact,
   conflictLimitedUsability,
@@ -136,42 +135,32 @@ describe("SCRUM-357: Conflict → Trust/Usability/Review-Integrität (HTTP + FE-
     expect(notice?.titleKey).toBe("conflict.impact.truthTitle");
     expect(notice?.to).toBe("/konflikte");
 
-    // 5) Ask: Antwort bleibt serverseitig quellengebunden; die KONFLIKTBEWUSSTE Quellensicht zeigt das
-    //    Quell-KO NICHT als uneingeschränkt nutzbar (kein „ready"), klar als konfliktbegrenzt markiert.
+    // 5) Ask: R-0278 (Nacharbeit 3) — beide KOs sind nach dem Konflikt wieder „offen" (Schritt 3) und
+    //    tragen deshalb KEINE Antwort mehr; Klara legt die Lücke an und meldet die fehlende Freigabe.
     const askRes = await app.inject({
       method: "POST",
       url: "/api/ask",
       headers: admin,
       payload: { question: "Wie wird der Hydraulikzylinder HZ7 entlüftet?" },
     });
-    const result = askRes.json().result as AnswerResult;
-    expect(result.answered).toBe(true);
-    expect(result.sources.length).toBeGreaterThan(0);
-    // Beide KOs (A und B) stehen im selben Truth-Konflikt → jede gebundene, bekannte Quelle ist
-    // konfliktbegrenzt und erscheint NICHT als „ready" (unabhängig davon, welches KO gebunden wurde).
+    const askBody = askRes.json();
+    const result = askBody.result as AnswerResult;
+    expect(result.answered).toBe(false);
+    expect(result.sources).not.toContain(koA.id);
+    expect(result.sources).not.toContain(koB.id);
+    expect(askBody.gap).not.toBeNull();
+    const torlage = (askBody.verschlossen ?? []) as Array<{ id: string; freigabeFehlt: boolean }>;
+    expect(torlage.find((h) => h.id === koA.id)?.freigabeFehlt).toBe(true);
+    // Die KONFLIKTBEWUSSTE Quellensicht bleibt dieselbe: beide KOs stehen im selben Truth-Konflikt
+    // und erscheinen NICHT als „ready".
     const kos = [reviewedA, await getKo(app, admin, koB.id)];
-    const knownRefs = conflictAwareSourceRefs(result.sources, kos, conflicts).filter(
+    const knownRefs = conflictAwareSourceRefs([koA.id, koB.id], kos, conflicts).filter(
       (s) => s.known,
     );
-    expect(knownRefs.length).toBeGreaterThan(0);
+    expect(knownRefs.length).toBe(2);
     for (const r of knownRefs) {
       expect(r.usability).not.toBe("ready");
     }
-    // Server-Status der Antwort bleibt unverändert (kein Eingriff in die Antwortlogik) …
-    expect(
-      answerStatus(
-        answerGrade({
-          answered: true,
-          knowledgeClass: result.knowledgeClass,
-          sourcesConflicted: false,
-          // AUFTRAG-mega33 A3: die Abdeckungsbedingung ist Pflicht. Dieser Lauf prueft den
-          // Validierungs-Lebenszyklus, nicht die Erkennungsabdeckung — deshalb steht die
-          // Annahme hier AUSDRUECKLICH da, statt stillschweigend wegzufallen.
-          sourcesCheckUnproven: false,
-          conflictsUnproven: false,
-        }),
-      ),
-    ).toBeDefined();
 
     // 6) Konflikt lösen → fällt aus der unresolved-Liste → der Konflikt-Impact ist weg. SCRUM-358:
     //    das KO bleibt bewusst review-pflichtig (offen) und wird über die normale Bewertung wieder

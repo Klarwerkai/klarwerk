@@ -61,6 +61,17 @@ describe("PMO-FEA-0002: Wirkungs-Rückmeldung an den Autor", () => {
     return res.json().receipt as string;
   }
 
+  async function freigeben(app: App, headers: Record<string, string>, koId: string) {
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${koId}`,
+      headers,
+      // Der Demo-Bestand kann eine Dublette melden; sie ist für diesen Fall unerheblich.
+      payload: { action: "admin-validate", duplicateAcknowledged: true },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+  }
+
   it("fremder Hat-geholfen-Klick erscheint beim Autor im Feed — nicht beim Klickenden", async () => {
     const { app, admin, erik } = await setup();
     const created = await app.inject({
@@ -76,6 +87,8 @@ describe("PMO-FEA-0002: Wirkungs-Rückmeldung an den Autor", () => {
     });
     expect(created.statusCode).toBe(201);
     const koId = created.json().id as string;
+    // R-0278 (Nacharbeit 3): nur Geprüftes wird Antwortquelle und damit Teil des Belegs.
+    await freigeben(app, admin.headers, koId);
 
     // Erik (nicht Autor) meldet: hat geholfen — mit Beleg aus einem echten Antwortvorgang.
     const helpful = await app.inject({
@@ -113,6 +126,7 @@ describe("PMO-FEA-0002: Wirkungs-Rückmeldung an den Autor", () => {
       },
     });
     const koId = created.json().id as string;
+    await freigeben(app, admin.headers, koId);
     await app.inject({
       method: "POST",
       url: "/api/ask/helpful",

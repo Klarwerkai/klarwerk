@@ -164,26 +164,20 @@ describe("SCRUM-350: Evidence & Attachments → Review → Use E2E (HTTP + Objec
     const ctx = attachmentContext(withEvidence.attachments ?? []);
     expect(ctx).toMatchObject({ imageCount: 1, fileCount: 1, total: 2, hasAny: true });
 
-    // 9) USE VOR Validierung: trotz Evidence ehrlich ungeprüft.
+    // 9) USE VOR Validierung: R-0278 (Nacharbeit 3) — Evidence ersetzt keine Freigabe. Das offene KO
+    //    trägt KEINE Antwort; Klara legt die Lücke an und meldet die fehlende Freigabe.
     const askBefore = await ask(app, admin, "Wie wird der Riemen am Förderband FB12 gespannt?");
-    const beforeResult = askBefore.json().result as AnswerResult;
-    expect(beforeResult.answered).toBe(true);
-    expect(beforeResult.sources).toContain(id);
+    const beforeBody = askBefore.json();
+    const beforeResult = beforeBody.result as AnswerResult;
+    expect(beforeResult.answered).toBe(false);
+    expect(beforeResult.sources).not.toContain(id);
     expect(beforeResult.knowledgeClass).not.toBe("gesichert");
-    expect(
-      answerStatus(
-        answerGrade({
-          answered: true,
-          knowledgeClass: beforeResult.knowledgeClass,
-          sourcesConflicted: false,
-          // AUFTRAG-mega33 A3: die Abdeckungsbedingung ist Pflicht. Dieser Lauf prueft den
-          // Validierungs-Lebenszyklus, nicht die Erkennungsabdeckung — deshalb steht die
-          // Annahme hier AUSDRUECKLICH da, statt stillschweigend wegzufallen.
-          sourcesCheckUnproven: false,
-          conflictsUnproven: false,
-        }),
-      ).key,
-    ).toBe("unverified");
+    expect(beforeBody.gap).not.toBeNull();
+    const torlage = (beforeBody.verschlossen ?? []) as Array<{
+      id: string;
+      freigabeFehlt: boolean;
+    }>;
+    expect(torlage.find((h) => h.id === id)?.freigabeFehlt).toBe(true);
 
     // 10) Echte Validierung (needed=1 → ein Up) → validiert/Trust 100. Evidence bleibt erhalten.
     await app.inject({

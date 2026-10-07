@@ -65,7 +65,7 @@ describe("FUNKE: /api/me/impact + idempotentes Danke (HTTP end-to-end)", () => {
   }
 
   it("ohne Belege ehrliche Nullen; eigener Beitrag zählt; Danke eines ANDEREN erscheint genau einmal", async () => {
-    const { app, anna, vera, koId } = await setup();
+    const { app, services, anna, vera, koId } = await setup();
     const before = await app.inject({
       method: "GET",
       url: "/api/me/impact",
@@ -79,6 +79,9 @@ describe("FUNKE: /api/me/impact + idempotentes Danke (HTTP end-to-end)", () => {
       helpfulReceived: 0,
     });
 
+    // R-0278 (Nacharbeit 3): Quelle einer Antwort — und damit eines Belegs — kann nur noch
+    // Geprüftes sein. Freigegeben wird NACH der Nullstands-Messung oben.
+    await services.ko.setValidationState(koId, { trust: 0, status: "validiert" });
     // FUNKE F2: Vera dankt — zweimal geklickt, zählt EINMAL (idempotent je Nutzer+Ziel).
     const veraReceipt = await receiptFor(app, vera.headers);
     const first = await app.inject({
@@ -119,7 +122,8 @@ describe("FUNKE: /api/me/impact + idempotentes Danke (HTTP end-to-end)", () => {
   // Answer-Receipt ist NICHT wirksam — die früher frei wählbare KO-ID ist zu (403), und die Wirkung
   // des Autors bleibt bei 0.
   it("unbelegte/fremd gewählte KO-ID → 403, keine Wirkung erzeugt", async () => {
-    const { app, anna, vera, koId } = await setup();
+    const { app, services, anna, vera, koId } = await setup();
+    await services.ko.setValidationState(koId, { trust: 0, status: "validiert" });
     // (a) gar kein Receipt.
     const noReceipt = await app.inject({
       method: "POST",

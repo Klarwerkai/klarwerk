@@ -162,8 +162,8 @@ describe("JOB 1591 D1 · W5 — vorhanden, aber ungeprueft: gemeldet statt versc
 
   it("W4 · gegen mega77s Grund 1: ohne Betrachter wird NICHTS gemeldet — `null`, nicht `[]`", async () => {
     const { app, headers } = await bestueckteApp();
-    // Der Konsolenweg (ohne `mode`) kennt die Enge gar nicht: dort ist ein ungeprueftes Objekt
-    // ohnehin zulaessige Grundlage, es gibt nichts zu melden.
+    // Der Konsolenweg (ohne `mode`) fuehrt dieses Feld nicht. Seit R-0278 (Nacharbeit 3) gilt dort
+    // ebenfalls `validatedOnly`; ueber Ungepruefte unterrichtet ihn die Torlage `verschlossen`.
     const res = await app.inject({
       method: "POST",
       url: "/api/ask",

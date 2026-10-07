@@ -196,6 +196,13 @@ describe("§12.3 · jede genannte Aktion erzeugt einen Eintrag mit wer, was, wan
         title: "Dichtungswechsel L6",
       })
     ).json().id as string;
+    // R-0278 (Nacharbeit 3): Antwortquelle kann nur Freigegebenes sein. Inhaltsgleich mit `ko` —
+    // eine gemeldete Dublette ist für diesen Belegfall unerheblich und wird bestätigt.
+    const freigegeben = await fahre(app, kopf(b, "admin"), "PUT", `/api/kos/${quelle}`, {
+      action: "admin-validate",
+      duplicateAcknowledged: true,
+    });
+    expect(freigegeben.statusCode, freigegeben.body).toBe(200);
     const gefragt = (
       await fahre(app, kopf(b, "experte"), "POST", "/api/ask", { question: PASSENDE_FRAGE })
     ).json() as { receipt?: string; result?: { sources?: string[] } };

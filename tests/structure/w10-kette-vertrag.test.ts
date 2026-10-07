@@ -316,11 +316,19 @@ describe("JOB 550 · Teil B — die acht IST-Stufen laufen heute", () => {
     expect(board.statusCode).toBe(200);
     expect((board.json() as KnowledgeObject[]).some((k) => k.id === ko.id)).toBe(true);
 
-    // S6 — Nutzung VOR der Validierung: beantwortet, aber ehrlich ungeprüft.
-    const vorher = (await ask(app, admin, FRAGE)).json().result as AnswerResult;
-    expect(vorher.answered).toBe(true);
-    expect(vorher.sources).toContain(ko.id);
+    // S6 — Nutzung VOR der Validierung: R-0278 (Nacharbeit 3) — keine Antwort aus Ungeprüftem,
+    //      sondern eine Wissenslücke; die Torlage meldet die fehlende Freigabe.
+    const vorherKoerper = (await ask(app, admin, FRAGE)).json();
+    const vorher = vorherKoerper.result as AnswerResult;
+    expect(vorher.answered).toBe(false);
+    expect(vorher.sources).not.toContain(ko.id);
     expect(vorher.knowledgeClass).not.toBe("gesichert");
+    expect(vorherKoerper.gap).not.toBeNull();
+    const torlage = (vorherKoerper.verschlossen ?? []) as Array<{
+      id: string;
+      freigabeFehlt: boolean;
+    }>;
+    expect(torlage.find((h) => h.id === ko.id)?.freigabeFehlt).toBe(true);
 
     // S7 — Validierung über die echte Bewertung.
     const rate = await app.inject({
@@ -371,7 +379,14 @@ describe("JOB 550 · Teil B — die acht IST-Stufen laufen heute", () => {
 describe("JOB 550 · Teil C — alle sechs Negativkanten laufen", () => {
   it("N1 · zweiter Lauf: zwei Werke teilen keinen Bestand", async () => {
     const erstes = await frischesWerk();
-    await erfasse(erstes.app, erstes.admin);
+    const erfasst = (await erfasse(erstes.app, erstes.admin)).created.json() as KnowledgeObject;
+    // R-0278 (Nacharbeit 3): ein Treffer braucht freigegebenes Wissen.
+    await erstes.app.inject({
+      method: "PUT",
+      url: `/api/kos/${erfasst.id}`,
+      headers: erstes.admin,
+      payload: { action: "rate", verdict: "up" },
+    });
     const treffer = (await ask(erstes.app, erstes.admin, FRAGE)).json().result as AnswerResult;
     expect(treffer.answered).toBe(true);
 

@@ -1134,7 +1134,12 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     tor: "ko.read (danach prüft der Dienst den Beleg aus dem echten Antwortvorgang)",
     erwartet: NUR_LESEN,
     ruesten: async (buehne, akteur) => {
-      await legeKoAn(buehne, "admin");
+      const ko = await legeKoAn(buehne, "admin");
+      // R-0278 (Nacharbeit 3): Quelle einer Antwort — und damit eines Belegs — ist nur Freigegebenes.
+      await musterhaft(buehne.app, kopf(buehne, "admin"), "PUT", `/api/kos/${ko.id}`, {
+        action: "admin-validate",
+        duplicateAcknowledged: true,
+      });
       if (akteur === "anonym") {
         // Ohne Sitzung gibt es keinen Beleg — und es braucht auch keinen: `requirePermission`
         // entscheidet vor jeder Belegprüfung. Die Nutzlast bleibt trotzdem formgerecht, damit die

@@ -100,6 +100,43 @@ describe("R-0473 · welche Fragebegriffe gebunden sind", () => {
     }
   });
 
+  it("R-0278-Nacharbeit 3: gebunden ist die Sachfrage — nicht Anweisungssätze, nicht der Fundortrahmen", () => {
+    // Pedis Freitagsfrage (P-ASK-C02), wörtlich.
+    const lang =
+      "In the fictional Advisor ICT demo data, what is the standard invoice payment period? Answer in English and cite the stored source. If the sources disagree, say so rather than choosing silently.";
+    expect(undVerknuepfteFragebegriffe(lang)).toEqual(
+      queryTokens("standard invoice payment period"),
+    );
+    // Anweisungssätze neben einem Fragesatz binden nicht — der Fragesatz bleibt voll gebunden.
+    expect(undVerknuepfteFragebegriffe(`${FRAGE} Antworte kurz und nenne die Quelle.`)).toEqual(
+      queryTokens("Temperatur Ventil F3"),
+    );
+    // Ein Fundortrahmen bindet nicht …
+    expect(undVerknuepfteFragebegriffe("Im Handbuch, wo stehen die Urlaubszeiten?")).toEqual(
+      queryTokens("Urlaubszeiten"),
+    );
+    // … ein Rahmen mit anderer Präposition aber schon: dort steht die Sache selbst.
+    expect(undVerknuepfteFragebegriffe("Bei Ventil F3, welche Temperatur gilt?")).toEqual(
+      expect.arrayContaining(queryTokens("Ventil F3 Temperatur")),
+    );
+    // Ohne Fragesatz bleibt die ganze Eingabe gebunden (bens Fall, unverändert).
+    expect(undVerknuepfteFragebegriffe("Ventil F3 Temperatur")).toEqual(
+      queryTokens("Ventil F3 Temperatur"),
+    );
+  });
+
+  it("R-0278-Nacharbeit 3: „payment period“ trifft „due date“ nur über die deklarierte Entsprechung", () => {
+    const frage = "What is the standard invoice payment period?";
+    const relevanz = zugeordneteSuchterme(queryTokens(frage));
+    const c02 = "Standard invoice due date Standard invoices are due 30 calendar days.";
+    expect(decktAlleFragebegriffe(frage, c02, relevanz)).toBe(true);
+    // Gegenprobe: ohne Relevanztext fehlt die Zahlungsfrist — die Bindung bleibt scharf.
+    expect(decktAlleFragebegriffe(frage, c02)).toBe(false);
+    // Fachfremd bleibt fachfremd: eine Rechnungsvorlage ohne Frist trägt nicht.
+    const vorlage = "Standard invoice template Use the standard invoice layout for all customers.";
+    expect(decktAlleFragebegriffe(frage, vorlage, relevanz)).toBe(false);
+  });
+
   it("eine deklarierte Entsprechung zählt als derselbe Begriff — sonst nicht", () => {
     const frage = "Wo finde ich die Urlaubsregelungen im Handbuch?";
     const text = "Abwesenheiten Die Urlaubszeiten stehen im Handbuch.";

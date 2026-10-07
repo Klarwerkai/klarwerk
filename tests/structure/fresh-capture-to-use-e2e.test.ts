@@ -114,31 +114,21 @@ describe("SCRUM-348: Fresh Capture → Studio → Review → Use E2E (HTTP + San
     expect(board.statusCode).toBe(200);
     expect((board.json() as KnowledgeObject[]).some((k) => k.id === koId)).toBe(true);
 
-    // 8) USE VOR Validierung: Frage wird beantwortet (Keyword-Treffer), aber EHRLICH ungeprüft —
-    //    keine „gesicherte" Antwort, Quelle als nicht validiert / needs-work markiert.
+    // 8) USE VOR Validierung: R-0278 (Nacharbeit 3) — offenes Wissen trägt KEINE Antwort. Klara legt
+    //    die Wissenslücke an und meldet in der Torlage, dass die Freigabe fehlt.
     const askBefore = await ask(app, admin, "Wie wird der Hydraulikzylinder HZ7 entlüftet?");
     expect(askBefore.statusCode).toBe(200);
-    const beforeResult = askBefore.json().result as AnswerResult;
-    expect(beforeResult.answered).toBe(true);
-    expect(beforeResult.sources).toContain(koId);
-    expect(beforeResult.knowledgeClass).not.toBe("gesichert"); // offen → ungeprueft
-    expect(
-      answerStatus(
-        answerGrade({
-          answered: true,
-          knowledgeClass: beforeResult.knowledgeClass,
-          sourcesConflicted: false,
-          // AUFTRAG-mega33 A3: die Abdeckungsbedingung ist Pflicht. Dieser Lauf prueft den
-          // Validierungs-Lebenszyklus, nicht die Erkennungsabdeckung — deshalb steht die
-          // Annahme hier AUSDRUECKLICH da, statt stillschweigend wegzufallen.
-          sourcesCheckUnproven: false,
-          conflictsUnproven: false,
-        }),
-      ).key,
-    ).toBe("unverified");
-    const refBefore = sourceRefs(beforeResult.sources, [ko])[0];
-    expect(refBefore?.validated).toBe(false);
-    expect(refBefore?.usability).not.toBe("ready");
+    const beforeBody = askBefore.json();
+    const beforeResult = beforeBody.result as AnswerResult;
+    expect(beforeResult.answered).toBe(false);
+    expect(beforeResult.sources).not.toContain(koId);
+    expect(beforeResult.knowledgeClass).not.toBe("gesichert");
+    expect(beforeBody.gap).not.toBeNull();
+    const torlage = (beforeBody.verschlossen ?? []) as Array<{
+      id: string;
+      freigabeFehlt: boolean;
+    }>;
+    expect(torlage.find((h) => h.id === koId)?.freigabeFehlt).toBe(true);
 
     // 9) Validierung über die echte HTTP-Bewertung (needed=1 → ein Admin-Up genügt) → validiert/Trust 100.
     const rate = await app.inject({

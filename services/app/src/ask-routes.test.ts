@@ -11,7 +11,8 @@ import { askRoutes } from "./routes/ask-routes";
 // helpful (Trust +2, gedeckelt). Bewusst OHNE Demo-Seed, damit das Matching kontrollierbar ist.
 describe("SCRUM-242: Ask-Workflow (HTTP end-to-end)", () => {
   async function adminApp() {
-    const app = buildApp(buildServices());
+    const services = buildServices();
+    const app = buildApp(services);
     await app.inject({
       method: "POST",
       url: "/api/auth/register",
@@ -22,7 +23,7 @@ describe("SCRUM-242: Ask-Workflow (HTTP end-to-end)", () => {
       url: "/api/auth/login",
       payload: { email: "a@x.de", password: "secret123" },
     });
-    return { app, headers: { authorization: `Bearer ${login.json().token}` } };
+    return { app, services, headers: { authorization: `Bearer ${login.json().token}` } };
   }
 
   async function createKo(
@@ -98,8 +99,11 @@ describe("SCRUM-242: Ask-Workflow (HTTP end-to-end)", () => {
   });
 
   it("Helpful erhöht Trust nachvollziehbar (+2); unbelegte KO-ID wird abgewiesen", async () => {
-    const { app, headers } = await adminApp();
-    const koId = await createKo(app, headers); // unbewertet → Trust 0
+    const { app, headers, services } = await adminApp();
+    const koId = await createKo(app, headers);
+    // R-0278 (Nacharbeit 3): Quelle einer Antwort kann nur noch Geprüftes sein. Der Fall braucht
+    // dennoch Trust 0 als Ausgangswert — der echte Schreibweg der Bewertungslage setzt beides.
+    await services.ko.setValidationState(koId, { trust: 0, status: "validiert" });
 
     // FUNKE-FIX P0 (bens ROT-1): das „Danke" verlangt den Answer-Receipt aus einem echten
     // Antwortvorgang. Wir fragen passend zum KO, damit die Antwort GENAU dieses KO ausliefert.
@@ -723,7 +727,7 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
     verschlossenSichtbarFuer: expect.any(Function),
   };
 
-  it("KA4-P1: `erlaubt: true` für exakt diese Bindung → die Enge entfällt", async () => {
+  it("KA4-P1: `erlaubt: true` für exakt diese Bindung → das Modell öffnet, der Prüfstand bleibt", async () => {
     let gesehenBindung: unknown = null;
     const { app, gesehen } = await routeMit({
       pruefeExterneAusfuehrung: async (sessionId: string, bindung: unknown) => {
@@ -733,8 +737,8 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
     });
     const res = await frage(app, BINDUNG);
     expect(res.statusCode).toBe(200);
-    // Der normale Answerweg: KEINE erzwungenen Flags mehr.
-    expect(gesehen[0]).toBe(null);
+    // Der Modellweg: `retrievalOnly` entfällt, `validatedOnly` bleibt (R-0278, Nacharbeit 3).
+    expect(gesehen[0]).toEqual({ validatedOnly: true });
     // Und die Bindung wird VOLLSTÄNDIG durchgereicht — Sitzung UND Dokument, nicht nur eines.
     expect(gesehenBindung).toEqual({
       sessionId: "sess-1",

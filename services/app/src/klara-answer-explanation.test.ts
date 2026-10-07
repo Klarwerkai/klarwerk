@@ -68,7 +68,7 @@ async function zweiterNutzer(
 async function frageMitBeleg(
   app: ReturnType<typeof buildApp>,
   auth: Record<string, string>,
-  opts: { vertraulich?: boolean } = {},
+  opts: { vertraulich?: boolean; freigeber?: Record<string, string> } = {},
 ) {
   const ko = await app.inject({
     method: "POST",
@@ -86,6 +86,17 @@ async function frageMitBeleg(
   });
   if (ko.statusCode !== 201) {
     throw new Error(`KO nicht angelegt: ${ko.statusCode} ${ko.body}`);
+  }
+  // R-0278 (Nacharbeit 3): belegfähig ist nur noch, was freigegeben ist — sonst wird es auf keinem
+  // Weg Antwortquelle. Freigeben darf nur ein Verwalter (`users.manage`).
+  const freigabe = await app.inject({
+    method: "PUT",
+    url: `/api/kos/${ko.json().id}`,
+    headers: opts.freigeber ?? auth,
+    payload: { action: "admin-validate" },
+  });
+  if (freigabe.statusCode !== 200) {
+    throw new Error(`KO nicht freigegeben: ${freigabe.statusCode} ${freigabe.body}`);
   }
   const ask = await app.inject({
     method: "POST",
@@ -208,7 +219,7 @@ describe("W3-C · GET /api/klara/answers/:answerId/explanation", () => {
     const systemKonto = { authorization: `Bearer ${login.json().token}` };
 
     // (1) SEINE EIGENE Antwort — der Fall, den D3 verlor.
-    const eigene = await frageMitBeleg(app, systemKonto);
+    const eigene = await frageMitBeleg(app, systemKonto, { freigeber: auth });
     expect(eigene.answerId, "der Antwortlauf muss eine Kennung ausweisen").not.toBeNull();
     const eigeneErklaerung = await erklaerung(app, systemKonto, String(eigene.answerId));
     expect(
@@ -415,7 +426,7 @@ describe("W3-C · GET /api/klara/answers/:answerId/explanation", () => {
       const app = buildApp(services);
       const auth = await admin(app, "tab2@x.de");
       const experte = await zweiterNutzer(app, auth, "experte541@x.de");
-      const { koId, answerId } = await frageMitBeleg(app, experte);
+      const { koId, answerId } = await frageMitBeleg(app, experte, { freigeber: auth });
 
       await services.ko.setConfidentiality(koId, "vertraulich", "anna");
       const res = await erklaerung(app, experte, String(answerId));

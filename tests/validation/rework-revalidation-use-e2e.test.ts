@@ -158,26 +158,20 @@ describe("SCRUM-349: Review → Rework → Revalidation → Use E2E (HTTP + Sani
     const board = await app.inject({ method: "GET", url: "/api/validation/board", headers: admin });
     expect((board.json() as KnowledgeObject[]).some((k) => k.id === id)).toBe(true);
 
-    // 9) USE VOR erneuter Validierung: beantwortet (Treffer), aber EHRLICH ungeprüft.
+    // 9) USE VOR erneuter Validierung: R-0278 (Nacharbeit 3) — die ungeprüfte Revision trägt KEINE
+    //    Antwort. Klara legt die Wissenslücke an und meldet in der Torlage, dass die Freigabe fehlt.
     const askBefore = await ask(app, admin, "Wie wird die Spezialpresse SPX9 entlüftet?");
-    const beforeResult = askBefore.json().result as AnswerResult;
-    expect(beforeResult.answered).toBe(true);
-    expect(beforeResult.sources).toContain(id);
+    const beforeBody = askBefore.json();
+    const beforeResult = beforeBody.result as AnswerResult;
+    expect(beforeResult.answered).toBe(false);
+    expect(beforeResult.sources).not.toContain(id);
     expect(beforeResult.knowledgeClass).not.toBe("gesichert");
-    expect(
-      answerStatus(
-        answerGrade({
-          answered: true,
-          knowledgeClass: beforeResult.knowledgeClass,
-          sourcesConflicted: false,
-          // AUFTRAG-mega33 A3: die Abdeckungsbedingung ist Pflicht. Dieser Lauf prueft den
-          // Validierungs-Lebenszyklus, nicht die Erkennungsabdeckung — deshalb steht die
-          // Annahme hier AUSDRUECKLICH da, statt stillschweigend wegzufallen.
-          sourcesCheckUnproven: false,
-          conflictsUnproven: false,
-        }),
-      ).key,
-    ).toBe("unverified");
+    expect(beforeBody.gap).not.toBeNull();
+    const torlage = (beforeBody.verschlossen ?? []) as Array<{
+      id: string;
+      freigabeFehlt: boolean;
+    }>;
+    expect(torlage.find((h) => h.id === id)?.freigabeFehlt).toBe(true);
     expect(koOverview(revisedKo).usability).not.toBe("ready");
 
     // 10) Erneute Validierung (needed=1 → ein Up genügt) → validiert/Trust 100.

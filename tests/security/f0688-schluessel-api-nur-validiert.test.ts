@@ -196,7 +196,8 @@ describe("JOB 2964 · F-0688 · die Schluessel-API liefert nur validiertes Wisse
   it("M3b · KALIBRIERUNG: dieselbe Frage im Sitzungsweg erreicht das unvalidierte Objekt sehr wohl", async () => {
     // Der Beleg, dass FRAGE_NUR_UNGEPRUEFT das Objekt ueberhaupt findet. Waere sie eine Frage, die
     // im Retrieval danebengreift, waeren M1/M2 Scheinbelege — gruen, weil nichts gesucht wird.
-    // Der Sitzungsweg unterliegt der Add-on-Enge nicht und dient hier als Referenz.
+    // R-0278 (Nacharbeit 3): auch der Sitzungsweg zieht Ungeprueftes nicht mehr heran. Gefunden
+    // wird es trotzdem — die Torlage `verschlossen` meldet es mit „Freigabe fehlt".
     const { app, headers, ungeprueftId } = await appMitBeidenSorten();
     const res = await app.inject({
       method: "POST",
@@ -205,11 +206,15 @@ describe("JOB 2964 · F-0688 · die Schluessel-API liefert nur validiertes Wisse
       payload: { question: FRAGE_NUR_UNGEPRUEFT },
     });
     expect(res.statusCode).toBe(200);
-    const quellen = (res.json().result?.sources ?? []) as string[];
+    const gefunden = (res.json().verschlossen ?? []) as Array<{
+      id: string;
+      freigabeFehlt: boolean;
+    }>;
     expect(
-      quellen,
+      gefunden.find((h) => h.id === ungeprueftId)?.freigabeFehlt,
       "die Frage findet das unvalidierte Objekt gar nicht — dann pruefen M1/M2 nichts",
-    ).toContain(ungeprueftId);
+    ).toBe(true);
+    expect(res.json().result?.sources ?? []).not.toContain(ungeprueftId);
   });
 
   // ==============================================================================================
