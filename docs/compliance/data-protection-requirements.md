@@ -57,7 +57,8 @@
 | **KOs/Anhänge** | fachlicher Lebenszyklus; Admin kann **löschen** (`ko.deleted`) | über UI/Admin |
 | **Audit-Log** | **append-only, hash-verkettet** (Abweichungen rechnerisch prüfbar = tamper-evident; kein extern verankerter Kettenkopf) | **bewusst nicht löschbar** → Abwägung *Recht auf Löschung ↔ Nachweispflicht* **dokumentieren** |
 | **Konto** | bis Löschung; Admin `user.delete` | über Admin |
-| **Server-/Proxy-Logs** | **Betreiber-Logging-Policy** (außerhalb App) | Betreiber |
+| **Server-Logs der App** | keine Inhalte: Fehler nur als erlaubte Felder, E-Mail-Adressen/ausgewiesene Namen geschwärzt (`monitoring-logging.md` §4); Ein-Befehl-Weg: Mengengrenze 5 × 10 MB je Dienst | Rotation löscht die älteste Datei; **Frist in Tagen: Betreiber/DSB** |
+| **Proxy-Logs** | **Betreiber-Logging-Policy** (außerhalb App) | Betreiber |
 
 > **Kritisch/offen:** Für ModelRun-Metadaten und Server-/Proxy-Logs ist die **konkrete Retention-Frist** noch **Betreiberentscheidung**; die **Audit-Löschungs-Abwägung** ist organisatorisch zu dokumentieren.
 

@@ -273,7 +273,7 @@ import {
   type LesevariantenRepo,
   PgLesevariantenRepo,
 } from "./lesevarianten";
-import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
+import { entferneGeheimeEnvWerte, istPersonenFeld, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
 import type { ObjectReferenceSources } from "./object-references";
@@ -2310,8 +2310,9 @@ function istEinfachesObjekt(wert: object): boolean {
  * vorbei. `server.ts` baut vier solche Zeilen per Textbaustein.
  *
  * WAS SIE AUSDRÜCKLICH NICHT IST: ein Schutz für Inhalte. Sie ist eine SPERRLISTE und erkennt
- * Secret-Formen — einen Namen erkennt sie nicht. Der Inhaltsschutz ruht auf der Erlaubnisliste der
- * Serializer; diese Senke ergänzt sie und ersetzt sie nicht. Genau diese Verwechslung war der
+ * Secret-Formen, E-Mail-Adressen, ausgewiesene Namen (`Name: …`) und Personenfelder (R-0664) —
+ * einen Namen OHNE Kennzeichnung erkennt sie nicht. Der Inhaltsschutz ruht auf der Erlaubnisliste
+ * der Serializer; diese Senke ergänzt sie und ersetzt sie nicht. Genau diese Verwechslung war der
  * Fehler von D1.
  */
 export function senkeUeberWert(
@@ -2333,6 +2334,10 @@ export function senkeUeberWert(
   }
   const ergebnis: Record<string, unknown> = {};
   for (const [schluessel, inhalt] of Object.entries(wert)) {
+    // R-0664 (DS20): ein Feld, das eine Person benennt (`name`, `email`, `autor` …), fällt ganz weg.
+    if (istPersonenFeld(schluessel)) {
+      continue;
+    }
     // Ben R3 B8: die Trace-Ausnahme setzt NUR die Token-Regel aus — der Wert einer
     // secret-benannten Env-Variablen wird auch unter einem Trace-Feldnamen entfernt.
     ergebnis[schluessel] = istTraceKennung(schluessel, inhalt)

@@ -239,10 +239,12 @@ describe("JOB 2661 D3: kein Wert und keine Prüfsumme im Log", () => {
     await app.close();
   });
 
-  it("WARUM die Erlaubnisliste nötig war: der Sanitizer allein lässt alle drei Formen durch", () => {
+  it("WARUM die Erlaubnisliste nötig bleibt: der Sanitizer allein lässt Name und Befund durch", () => {
     // Die Gegenprobe zu D1 — nicht am Logger, sondern an der Funktion, auf die D1 sich verliess.
+    // R-0664 (DS20): Die ADRESSE fängt der Sanitizer seit der Personenregel (P1). Ein Name ohne
+    // Etikett und ein Befund sind als Muster nicht erkennbar — davor schützt nur die Erlaubnisliste.
     const gereinigt = sanitizeLogText(MAILER_MELDUNG, {});
-    expect(gereinigt).toContain(ADRESSE);
+    expect(gereinigt).not.toContain(ADRESSE);
     expect(gereinigt).toContain(PERSON);
     expect(gereinigt).toContain("Borreliose");
     // Für Secret-FORMEN taugt er sehr wohl — er war nur am falschen Platz eingesetzt.

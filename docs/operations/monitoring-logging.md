@@ -36,7 +36,7 @@
 
 - **Audit-Log (fachlich):** lückenlos, **append-only Hash-Kette**; nachträgliche Abweichungen sind rechnerisch prüfbar (tamper-evident), nicht verhindert — die Kette hat keinen extern verankerten Kopf. Jede relevante Aktion. Zweck: Nachvollziehbarkeit/Integrität — **nicht** Leistungs-/Verhaltenskontrolle (Betriebsvereinbarung empfohlen, `gdpr-compliance-runbook.md`). Zugriff: Controller/Admin.
 - **ModelRun-Protokoll (KI-Betrieb):** technische Metadaten je Reasoner-Lauf (Provider-Modus, Fallback, Fehler, Timing) — read-only, **ohne Inhalte**.
-- **Technische/Runtime-Logs:** das App-Framework (Fastify) läuft **ohne aktivierten Request-Logger**; technische/Access-Logs entstehen auf der **Coolify-/Traefik-/Container-Ebene** (stdout, Proxy-Logs). → Betreiber zentralisiert diese (s. §11).
+- **Technische/Runtime-Logs:** die App schreibt strukturierte JSON-Zeilen (Fastify/pino) auf **stdout**; Stufe über `KLARWERK_LOG_LEVEL` (Vorgabe `info`, unbekannte Werte fallen auf `info` zurück). Aufbewahrt werden sie auf der **Coolify-/Traefik-/Container-Ebene** (stdout, Proxy-Logs). → Betreiber zentralisiert diese (s. §11). Was in eine Zeile darf, regelt §4.
 
 ---
 
@@ -45,7 +45,10 @@
 - **Kein Prompt-/Request-/Antwort-Content-Logging.** Belegt: ModelRun speichert nur Metadaten + **generischen** Fehlertext („NIE Prompt-/Antwortinhalt"); kein `console.log` von Frage/Antwort im Code.
 - **Keine Secrets in Logs** (G-7; `secrets-management.md`): Schlüssel/Passwörter/Tokens niemals loggen.
 - **IP/Personenbezug:** App-Audit nutzt User-IDs; etwaige IP-Logs entstehen am Proxy → Betreiber-Logging-Policy + DSGVO-Löschfristen.
-- **Regel für eigene Log-Erweiterungen:** nur Metadaten, keine Klartext-Inhalte/PII; vor Aktivierung von Request-Logging Felder schwärzen.
+- **Regel für eigene Log-Erweiterungen:** nur Metadaten, keine Klartext-Inhalte/PII.
+- **Fehler nur als erlaubte, strukturierte Felder** (`services/app/src/build-app.ts`, `baueLoggerOptionen`): `type`, `code`, `herkunft` (`datei:zeile:spalte`); Meldung und Stack stehen nie im Protokoll. `type`/`code` nur von `ERLAUBTE_FEHLERTYPEN`/`ERLAUBTE_FEHLERCODES`, sonst `UNBEKANNT`. Eine neue Fehlerklasse oder ein neuer Code in `services/**` macht `services/app/src/build-app.test.ts` rot, bis sie dort eingetragen ist.
+- **Anfragen:** nur Methode und Pfad ohne Abfrageteil; keine Header, Adressen, Inhalte.
+- **Senke für alles Übrige** (`senkeUeberWert`, `services/app/src/log-sanitize.ts`): entfernt Geheimnisformen, **E-Mail-Adressen** und **ausgewiesene Namen** (`Name: …`, `vorname=…`, `Autor: …`); Felder wie `name`, `email`, `autor`, `empfaenger` fallen in jeder Tiefe ganz weg. **Grenze:** Ein Name ohne Kennzeichnung im Freitext ist nicht erkennbar — davor schützt nur die Erlaubnisliste der Fehlerfelder.
 
 ---
 
@@ -90,7 +93,9 @@
 - **Audit-Log:** bewusst **append-only und hash-verkettet** — nachträgliche Abweichungen sind rechnerisch prüfbar (tamper-evident), nicht verhindert (kein extern verankerter Kettenkopf); keine automatische Löschung (`gdpr-compliance-runbook.md`).
 - **ModelRun-Protokoll:** nur Metadaten; Aufbewahrung vom Betreiber festzulegen (z. B. 90 Tage), keine Inhalte.
 - **Sessions:** TTL 14 Tage; **Reset-Token:** 1 Stunde (technisch gesetzt).
-- **Proxy-/Server-Logs:** Aufbewahrung = Betreiber-Logging-Policy (DSGVO-konforme Frist).
+- **Server-Logs der App:** Sie sind selbst personenbezogen (DSGVO Art. 5 Abs. 1 lit. c, e). Ein-Befehl-Weg (`docker-compose.prod.yml`): Docker rotiert sie technisch begrenzt — höchstens 5 Dateien × 10 MB je Dienst, die älteste wird gelöscht. Das ist eine **Mengengrenze, keine Frist in Tagen**; Docker kann nicht nach Alter löschen. **Coolify:** diese Grenze wirkt dort nicht; Log-Rotation in der Coolify-/Docker-Daemon-Konfiguration setzen.
+- **Frist in Tagen (offen, Betreiber/DSB):** konkrete Löschfrist festlegen und in der Protokollsammlung durchsetzen; Zweck (Fehlersuche, Betrieb) und Zugriff (nur Betrieb) dokumentieren.
+- **Proxy-Logs:** Aufbewahrung = Betreiber-Logging-Policy (DSGVO-konforme Frist).
 
 ---
 

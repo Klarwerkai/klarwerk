@@ -31,6 +31,57 @@ export function entferneGeheimeEnvWerte(
   return out;
 }
 
+// R-0664 (DS20): Bis hierher erkannte diese Senke NUR Geheimnisse — eine E-Mail-Adresse oder ein
+// Name in einer Meldung lief unverändert durch. Die beiden Personenregeln (P1)/(P2) ergänzen das.
+// Ihre Grenze ist bewusst benannt: Ein Name OHNE Kennzeichnung („an Anna Meier abgelehnt") ist
+// als Muster nicht erkennbar. Davor schützt allein die Erlaubnisliste der Serializer (build-app.ts,
+// R-0594); diese Regeln sind die zweite Linie für Freitext, der an ihnen vorbeiläuft.
+
+// (P1) E-Mail-Adressen. Läuft VOR Regel (4): Ein langer lokaler Teil würde sonst zu `[redacted]`
+// und die Domäne bliebe als Rest im Text stehen.
+const EMAIL_ADRESSE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+
+// (P2) Ausdrücklich ausgewiesene Namen: `Name: Anna Meier`, `vorname=Anna`, `Autor: "A. Meier"`.
+// Das Etikett braucht eine Wortgrenze davor (`Dateiname:`/`Hostname:` bleiben stehen); der Wert ist
+// ein angeführter Text oder ein Wort plus höchstens zwei grossgeschriebene Folgewörter. Ein schon
+// redigierter Wert wird nicht erneut getroffen — die Regel bleibt idempotent.
+const NAMENS_ANGABE =
+  /\b((?:[Vv]or|[Nn]ach|[Aa]nzeige|[Bb]enutzer|[Vv]oll|[Uu]ser|[Dd]isplay|[Ff]ull|[Ff]irst|[Ll]ast)?[_-]?(?:[Nn]ame|NAME)|[Aa]utor|[Aa]uthor|[Ee]mpf(?:ä|ae)nger|[Rr]ecipient)(\s*[:=]\s*)(?!\[redacted\])("[^"]*"|'[^']*'|[^\s,;)}\]"']+(?:\s+[A-ZÄÖÜ][a-zäöüß'-]+){0,2})/g;
+
+/**
+ * R-0664 (DS20): Feldnamen, deren WERT eine Person benennt. Die Logsenke (`senkeUeberWert`,
+ * build-app.ts) entfernt solche Felder ganz, in jeder Tiefe — wie `redact.remove`: ein Platzhalter
+ * an dieser Stelle wäre immer noch die Auskunft, dass dort ein Name stand. Verglichen wird ohne
+ * Gross-/Kleinschreibung und ohne `_`/`-`, damit `display_name` und `displayName` gleich zählen.
+ */
+const PERSONEN_FELDER: ReadonlySet<string> = new Set([
+  "name",
+  "vorname",
+  "nachname",
+  "vollername",
+  "anzeigename",
+  "benutzername",
+  "username",
+  "displayname",
+  "fullname",
+  "firstname",
+  "lastname",
+  "email",
+  "mail",
+  "emailadresse",
+  "mailadresse",
+  "autor",
+  "author",
+  "empfaenger",
+  "empfänger",
+  "recipient",
+  "absender",
+]);
+
+export function istPersonenFeld(schluessel: string): boolean {
+  return PERSONEN_FELDER.has(schluessel.toLowerCase().replace(/[_-]/g, ""));
+}
+
 export function sanitizeLogText(
   text: string,
   env: Record<string, string | undefined> = process.env,
@@ -41,6 +92,9 @@ export function sanitizeLogText(
   out = out.replace(/\b(Bearer|Basic)\s+[A-Za-z0-9+/_=.-]{8,}/gi, "$1 [redacted]");
   // (3) Credential-tragende URLs: der userinfo-Teil (user:pass@host) fällt weg.
   out = out.replace(/(\w+:\/\/)[^/\s@]*@/g, "$1[redacted]@");
+  // (P1) E-Mail-Adressen, (P2) ausgewiesene Namen — s. oben.
+  out = out.replace(EMAIL_ADRESSE, "[redacted]");
+  out = out.replace(NAMENS_ANGABE, "$1$2[redacted]");
   // (4) Lange base64-/token-artige Wörter (≥24 Zeichen aus dem Base64-/URL-safe-Alphabet).
   out = out.replace(/[A-Za-z0-9+/_-]{24,}={0,2}/g, "[redacted]");
   return out;

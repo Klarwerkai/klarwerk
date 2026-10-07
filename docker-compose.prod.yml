@@ -154,6 +154,19 @@ services:
       # einen Port, auf dem nichts horcht. Wirtsseitig bleibt es dieselbe Zahl; wer die Instanz
       # hinter einem TLS-Proxy betreibt, bindet sie besser nur lokal (`127.0.0.1:3001:3001`).
       - "3001:3001"
+    # R-0664 (DS20): DIE SERVER-PROTOKOLLE SELBST SIND PERSONENBEZOGEN UND BRAUCHEN EINE GRENZE.
+    # Die App schreibt nur auf die Standardausgabe; aufbewahrt wird beim Docker-Dienst. Ohne diesen
+    # Block wächst `json-file` unbegrenzt — keine Zeile wird je gelöscht. Mit ihm hält der Dienst
+    # höchstens fünf Dateien zu 10 MB und löscht die älteste beim Rotieren.
+    # GRENZE: Das ist eine MENGEN-, keine Tagesfrist; Docker kennt keine zeitbasierte Löschung.
+    # Eine Frist in Tagen legt der Betreiber mit seinem Datenschutzbeauftragten fest und setzt sie
+    # in seiner Protokollsammlung durch (docs/operations/monitoring-logging.md §8). Für Coolify
+    # gilt diese Datei nicht (Kopf dieser Datei). Gehütet von tests/security/log-personenbezug.test.ts.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
 volumes:
   pgdata:
