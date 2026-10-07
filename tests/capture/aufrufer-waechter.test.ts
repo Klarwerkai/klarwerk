@@ -868,7 +868,6 @@ const ALTBESTAND: readonly string[] = [
   "services/app/src/addon-principal.ts::isLiteralAskPath",
   "services/app/src/csrf.ts::COOKIE_STRATEGY",
   "services/app/src/csrf.ts::csrfAssessment",
-  "services/app/src/csrf.ts::requestAuthMode",
   "services/app/src/demo-content.ts::DEMO_GAP_QUESTIONS",
   "services/app/src/demo-corpus.ts::DEMO_CORPUS_PAGE_COUNT",
   "services/app/src/demo-corpus.ts::corpusConflictPairs",

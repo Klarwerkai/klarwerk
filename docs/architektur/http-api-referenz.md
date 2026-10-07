@@ -25,9 +25,13 @@ Codes, die die Route **selbst** setzt; dazu kommen immer die allgemeinen Fälle 
 aus diesem Cookie (`tokenFromRequest`, `services/app/src/http.ts`). Der Web-Client nutzt nur das
 Cookie; der Token im Rumpf ist der Weg für Clients ohne Cookies.
 
-**CSRF.** Kein eigener Anti-CSRF-Token. Zustandsändernde Methoden mit Cookie sind durch
-`SameSite=Lax` begrenzt, mit Bearer nicht cookie-gefährdet; Einschätzung und Restrisiko stehen in
-`csrfAssessment` (`csrf.ts`).
+**CSRF.** Kein eigener Anti-CSRF-Token, sondern eine Herkunftsprüfung (`registerHerkunftspruefung`,
+`csrf.ts`; R-0544, R-0797): ein `POST`/`PUT`/`DELETE`/`PATCH` mit Cookie wird nur angenommen, wenn
+`Sec-Fetch-Site` `same-origin` oder `none` meldet — ohne diesen Kopf, wenn `Origin` auf den eigenen
+Host zeigt. Fremde Herkunft, auch eine Nachbar-Unteradresse derselben Site, bekommt `403 FORBIDDEN`,
+bevor Anmeldung oder Rumpf ausgewertet werden. Ohne beide Köpfe (Programmclients) gilt nur
+`SameSite=Lax`. Mit Bearer ist ein Aufruf nicht cookie-gefährdet und wird nicht geprüft;
+Einschätzung und Restrisiko stehen in `csrfAssessment`.
 
 **Rollen und Rechte** (`services/rbac`):
 
@@ -56,7 +60,7 @@ Jede Fehlerantwort ist JSON `{ "error": "<CODE>", "message": "<Text>" }`. Der Te
 | --- | --- | --- |
 | 401 | `UNAUTHENTICATED` | Gemeinsamer Wächter (`makeGuards`, `http.ts`): kein oder ungültiger Token. |
 | 401 | `INVALID_CREDENTIALS` | Dasselbe an den Routen des Anmeldemoduls (eigener `requireUser`), dazu falsche Zugangsdaten. |
-| 403 | `FORBIDDEN` | Recht fehlt (`requirePermission`; die Meldung nennt das fehlende Recht) oder Rolle ist nicht `admin` (`requireAdmin`). |
+| 403 | `FORBIDDEN` | Recht fehlt (`requirePermission`; die Meldung nennt das fehlende Recht) oder Rolle ist nicht `admin` (`requireAdmin`). Ausserdem: schreibender Cookie-Aufruf fremder Herkunft (`registerHerkunftspruefung`, s. §1 CSRF). |
 | 404 | `NOT_FOUND` | Unbekannte Route (Fastify) oder Objekt fehlt bzw. ist für den Anfragenden nicht sichtbar — bewusst dieselbe Antwort. |
 | 400 | Domänencode | `sendError`: jeder Dienstfehler mit Code aus Grossbuchstaben/Unterstrich, Status aus `STATUS_BY_CODE`, sonst 400. |
 | 409 | `CONFLICT`, `STAND_VERALTET`, `EMAIL_TAKEN`, `CLEANUP_DRIFT`, `CREATE_ANCHOR_TAKEN`, `IDEMPOTENCY_PAYLOAD_MISMATCH`, `CREATE_REPAIR_REQUIRED` | `STATUS_BY_CODE` — der Stand hat sich bewegt oder der Schlüssel ist belegt. |
