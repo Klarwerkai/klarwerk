@@ -639,7 +639,7 @@ const GRUNDWERTE: readonly Startwert[] = [
     geheim: false,
     wofuer:
       "Höchstzahl gleichzeitig auf Freigabe wartender Aufrufe; darüber wird sofort abgelehnt.",
-    ohneIhn: "Es gelten zwanzig.",
+    ohneIhn: "Es dürfen zwanzig Aufrufe gleichzeitig warten.",
   },
   {
     name: "KLARWERK_LOCAL_LLM_URL",

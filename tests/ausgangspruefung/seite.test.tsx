@@ -52,25 +52,27 @@ let root: ReturnType<typeof createRoot>;
 const aufrufe: { url: string; methode: string }[] = [];
 
 const flush = async (): Promise<void> => {
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 20; i++) {
     await new Promise((r) => setTimeout(r, 0));
   }
 };
 
 async function montieren(lage: AusgangspruefungLage): Promise<void> {
   aufrufe.length = 0;
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (url: string, init?: RequestInit) => {
-      aufrufe.push({ url, methode: init?.method ?? "GET" });
-      const koerper =
-        init?.method === "POST" ? { id: "a-1", entscheidung: "freigegeben" } : (lage as unknown);
-      return new Response(JSON.stringify(koerper), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    }),
-  );
+  // Antwortattrappe in derselben Form wie `tests/ki-anbieterwahl/karte-mounted.test.tsx`: der
+  // Client liest nur `ok`, `status`, `statusText` und `text()` (`apps/web/src/api/client.ts`).
+  // Ein echtes `Response` unter jsdom lieferte hier keinen Körper an die Seite.
+  vi.stubGlobal("fetch", (async (url: unknown, init?: { method?: string }) => {
+    const methode = init?.method ?? "GET";
+    aufrufe.push({ url: String(url), methode });
+    const koerper = methode === "POST" ? { id: "a-1", entscheidung: "freigegeben" } : lage;
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: async () => JSON.stringify(koerper),
+    } as unknown as Response;
+  }) as unknown as typeof fetch);
   await i18n.changeLanguage("de");
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -90,6 +92,7 @@ async function montieren(lage: AusgangspruefungLage): Promise<void> {
     );
     await flush();
   });
+  await act(flush);
 }
 
 afterEach(() => {

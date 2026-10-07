@@ -77,10 +77,15 @@ function Pruefkarte({ eintrag }: { eintrag: OffeneAusgangspruefung }): JSX.Eleme
   const { t } = useTranslation();
   const qc = useQueryClient();
   const entscheiden = useMutation({
-    mutationFn: (freigeben: boolean) =>
-      freigeben
-        ? ausgangspruefungApi.freigeben(eintrag.id)
-        : ausgangspruefungApi.ablehnen(eintrag.id),
+    // Ein gemeinsamer Rückgabetyp für beide Wege — die Antwort selbst wird nicht gelesen, die Liste
+    // wird danach neu geladen.
+    mutationFn: async (freigeben: boolean): Promise<void> => {
+      if (freigeben) {
+        await ausgangspruefungApi.freigeben(eintrag.id);
+      } else {
+        await ausgangspruefungApi.ablehnen(eintrag.id);
+      }
+    },
     onSettled: async () => {
       await qc.invalidateQueries({ queryKey: ["ausgangspruefung"] });
     },
