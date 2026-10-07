@@ -160,29 +160,66 @@ describe("JOB 1591 D1 · W5 — vorhanden, aber ungeprueft: gemeldet statt versc
     expect(res.json().result.answered).toBe(true);
   });
 
+  // R-0584 (Auftrag gesamt-datenschutz-voreinstellung): bis hierher fragte W4 den Konsolenweg, weil
+  // er „die Enge gar nicht kennt" und deshalb keinen Betrachter übergab. Seit dem Auftrag antwortet
+  // auch die Konsole nur aus geprüftem Wissen — MIT Betrachter (dem angemeldeten Fragenden). Grund 1
+  // von mega77 (Meldung ohne Betrachter = Abfrageorakel) wird deshalb am einzigen Weg ohne
+  // Betrachter gemessen, dem Add-on-Schlüssel. Die Zusage selbst steht wörtlich wie vorher.
   it("W4 · gegen mega77s Grund 1: ohne Betrachter wird NICHTS gemeldet — `null`, nicht `[]`", async () => {
-    const { app, headers } = await bestueckteApp();
-    // Der Konsolenweg (ohne `mode`) kennt die Enge gar nicht: dort ist ein ungeprueftes Objekt
-    // ohnehin zulaessige Grundlage, es gibt nichts zu melden.
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/ask",
-      headers,
-      payload: { question: "Was gilt beim Turboverdichter TVX99 im Sonderfall?" },
-    });
-    expect(res.statusCode).toBe(200);
-    // JOB 1591 D2: ABWESEND statt `null` — der Name des Feldes erscheint dort gar nicht mehr,
-    // wo kein Betrachter uebergeben wurde. Das ist die Verschaerfung aus Auflage 1: `mega77`
-    // verbietet das Wort im Koerper, und ein Feld mit dem Wert `null` traegt es trotzdem.
-    expect(
-      Object.keys(res.json()),
-      "Ohne Betrachter darf das Feld nicht einmal als Name im Koerper stehen.",
-    ).not.toContain("ungeprueft");
-    expect(
-      res.json().ungeprueft,
-      "abwesend heisst „nicht gefragt“, `[]` hiesse „nachgesehen und nichts gefunden“. Die zwei " +
-        "duerfen nie verwechselt werden — daran ist mega74 gescheitert.",
-    ).toBeUndefined();
+    const gesichert = {
+      api: process.env.KLARWERK_ADDON_API,
+      schluessel: process.env.KLARWERK_ADDON_API_KEY,
+    };
+    process.env.KLARWERK_ADDON_API = "1";
+    process.env.KLARWERK_ADDON_API_KEY = "s3cr3t-addon-key-w4";
+    try {
+      const { app, headers, entwurfId, ENTWURF_INHALT } = await bestueckteApp();
+      // OHNE Betrachter (Add-on-Schlüssel, kein SessionUser).
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/ask",
+        headers: { "x-klarwerk-addon-key": "s3cr3t-addon-key-w4" },
+        payload: { question: "Was gilt beim Turboverdichter TVX99 im Sonderfall?" },
+      });
+      expect(res.statusCode).toBe(200);
+      // JOB 1591 D2: ABWESEND statt `null` — der Name des Feldes erscheint dort gar nicht mehr,
+      // wo kein Betrachter uebergeben wurde. Das ist die Verschaerfung aus Auflage 1: `mega77`
+      // verbietet das Wort im Koerper, und ein Feld mit dem Wert `null` traegt es trotzdem.
+      expect(
+        Object.keys(res.json()),
+        "Ohne Betrachter darf das Feld nicht einmal als Name im Koerper stehen.",
+      ).not.toContain("ungeprueft");
+      expect(
+        res.json().ungeprueft,
+        "abwesend heisst „nicht gefragt“, `[]` hiesse „nachgesehen und nichts gefunden“. Die zwei " +
+          "duerfen nie verwechselt werden — daran ist mega74 gescheitert.",
+      ).toBeUndefined();
+
+      // GEGENPROBE, R-0584: der Konsolenweg MIT Betrachter meldet den ungeprüften Bestand — und
+      // antwortet nicht daraus (Grundlage bleibt nur Geprüftes, der Inhalt steht nirgends).
+      const konsole = await app.inject({
+        method: "POST",
+        url: "/api/ask",
+        headers,
+        payload: { question: "Was gilt beim Turboverdichter TVX99 im Sonderfall?" },
+      });
+      expect(konsole.statusCode).toBe(200);
+      const gemeldet = (konsole.json().ungeprueft as Array<{ id: string }>).map((h) => h.id);
+      expect(gemeldet).toContain(entwurfId);
+      expect(konsole.json().result.sources).not.toContain(entwurfId);
+      expect(konsole.body.includes(ENTWURF_INHALT)).toBe(false);
+    } finally {
+      for (const [name, wert] of [
+        ["KLARWERK_ADDON_API", gesichert.api],
+        ["KLARWERK_ADDON_API_KEY", gesichert.schluessel],
+      ] as const) {
+        if (wert === undefined) {
+          delete process.env[name];
+        } else {
+          process.env[name] = wert;
+        }
+      }
+    }
   });
 
   it("W5 · SICHTBARKEIT: ein vertrauliches ungepruefes Objekt wird NICHT gemeldet", async () => {

@@ -506,6 +506,22 @@ const REGISTER: Record<string, Eintrag> = {
     grund: "requireVisibleDraft (capture-routes.ts) — und die Antwort führt nur Feldnamen.",
   },
   "GET /api/me/impact": { urteil: "EIGENER_BESTAND", grund: "vier eigene Zähler (impact.ts:88)." },
+  "GET /api/livewall/consent": {
+    urteil: "EIGENER_BESTAND",
+    grund: "nur die eigene Namenszustimmung als Wahrheitswert (livewall-routes.ts, user.id).",
+  },
+  "PUT /api/livewall/consent": {
+    urteil: "EIGENER_BESTAND",
+    grund: "setzt/widerruft nur die eigene Namenszustimmung, Antwort nur der Wahrheitswert.",
+  },
+  "PUT /api/livewall/photo": {
+    urteil: "EIGENER_BESTAND",
+    grund: "hinterlegt nur das eigene Foto (user.id), Antwort nur der Wahrheitswert.",
+  },
+  "DELETE /api/livewall/photo": {
+    urteil: "EIGENER_BESTAND",
+    grund: "löscht nur das eigene Foto (user.id), Antwort nur der Wahrheitswert.",
+  },
   // --- Kein Inhalt eines Wissensobjekts ------------------------------------------------------
   "GET /health": { urteil: "KEIN_KO_INHALT", grund: "Betriebszustand." },
   "GET /api/ai-status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },
@@ -546,6 +562,22 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/begriffe/pruefen": {
     urteil: "KEIN_KO_INHALT",
     grund: "Hinweise aus Katalog und mitgesendetem Text; liest kein Wissensobjekt.",
+  },
+  // R-1646 · Ausgangsprüfung (ausgangspruefung-routes.ts): die Vorschau zeigt den ausgehenden Text,
+  // also Frage- und Kandidatentexte — deshalb Kuratorenstufe. Vertrauliches erreicht sie nie: der
+  // Chokepoint lehnt es vor der Prüfung ab (ConfidentialEgressError, model-concurrency.ts).
+  "GET /api/ausgangspruefung": {
+    urteil: "KURATORENTOR",
+    recht: "ko.validate",
+    grund: "Ausgehender Text vor der Freigabe, ohne die ersetzten Originale.",
+  },
+  "POST /api/ausgangspruefung/:id/freigeben": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Antwort ist Kennung und Entscheidung; der Text geht nicht zurück.",
+  },
+  "POST /api/ausgangspruefung/:id/ablehnen": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Antwort ist Kennung und Entscheidung; der Text geht nicht zurück.",
   },
   // Spaces (spaces-routes.ts): Space-Daten sind kein Wissensobjekt; jede Artikelzeile läuft durch
   // `sichtbareFuer`/`darfSehen` samt führendem Space.

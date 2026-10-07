@@ -172,6 +172,7 @@ import { LmsExportService, OutputService, leseLmsEmpfaenger } from "../../output
 import { canChangeRole } from "../../rbac";
 import {
   type AssistPresetRepo,
+  Ausgangspruefung,
   InMemoryAssistPresetRepo,
   // W1 S4: Ablage der Klara-Sitzungen/Zustimmungen — dieselbe Modulgrenze wie die übrige
   // Reasoner-Persistenz (Cross-Modul-Import nur über die öffentliche index.ts).
@@ -187,8 +188,10 @@ import {
   Reasoner,
   type ReasonerPolicyRepo,
   anbieterZugelassen,
+  ausgangspruefungAusEnv,
   createCappedCloudClientFromEnv,
   createCappedLocalClientFromEnv,
+  setzeAusgangspruefung,
 } from "../../reasoner";
 import {
   type AssignmentRepo,
@@ -270,6 +273,13 @@ import {
   type LesevariantenRepo,
   PgLesevariantenRepo,
 } from "./lesevarianten";
+// PMO-FEA-0003: die freiwilligen Fotos der Live-Wand — im Postgres-Betrieb haltbar
+// (`PgLiveWallFotoRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
+import {
+  InMemoryLiveWallFotoRepo,
+  type LiveWallFotoRepo,
+  PgLiveWallFotoRepo,
+} from "./livewall-fotos";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
@@ -284,6 +294,7 @@ import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
 import { askRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
+import { ausgangspruefungRoutes } from "./routes/ausgangspruefung-routes";
 import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
 import { begriffeRoutes } from "./routes/begriffe-routes";
 import { brandingRoutes } from "./routes/branding-routes";
@@ -452,6 +463,13 @@ export interface AppServices {
    * `AppRepos`; im Postgres-Betrieb haltbar (`PgSpacesRepo`), sonst die In-Memory-Ablage.
    */
   spaces: SpacesRepo;
+  /**
+   * PMO-FEA-0003: die freiwilligen Fotos der Live-Wand (`livewall-fotos.ts`). Aus demselben Grund
+   * wie `brandingSettings` NICHT in `AppRepos`; im Postgres-Betrieb haltbar (`PgLiveWallFotoRepo`,
+   * eingehängt in `buildPgServices`), sonst die In-Memory-Ablage. Geht sie beim Neustart des
+   * Dev-Betriebs verloren, verschwindet ein Foto — die sichere Richtung, kein ungefragtes Zeigen.
+   */
+  livewallFotos: LiveWallFotoRepo;
   /**
    * R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — über die Oberfläche umlegbar,
    * von jeder Confluence-Importroute je Anfrage durchgesetzt. Aus demselben Grund wie
@@ -940,6 +958,8 @@ export function assembleServices(
     begriffe?: BegriffeRepo;
     // produkt:20261007:spaces: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     spaces?: SpacesRepo;
+    // PMO-FEA-0003: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    livewallFotos?: LiveWallFotoRepo;
     // R-0134 / R-1005: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     confluenceImportSchalter?: ConfluenceImportSchalterRepo;
     // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
@@ -1248,6 +1268,8 @@ export function assembleServices(
     begriffe: opts.begriffe ?? new InMemoryBegriffeRepo(),
     // produkt:20261007:spaces — Postgres, wenn injiziert, sonst im Speicher.
     spaces: opts.spaces ?? new InMemorySpacesRepo(),
+    // PMO-FEA-0003: die Fotos der Live-Wand — Postgres, wenn injiziert, sonst im Speicher.
+    livewallFotos: opts.livewallFotos ?? new InMemoryLiveWallFotoRepo(),
     // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
     confluenceImportSchalter:
       opts.confluenceImportSchalter ?? new InMemoryConfluenceImportSchalterRepo(),
@@ -1685,6 +1707,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261007:spaces: Spaces und ihre Fassungen liegen in derselben Datenbank wie der
       // Bestand und überleben Neuladen, Neustart und Deploy.
       spaces: new PgSpacesRepo(pool),
+      // PMO-FEA-0003: ein hinterlegtes Foto überlebt Neustart und Deploy; der Widerruf löscht die
+      // Zeile in derselben Datenbank (`LIVEWALL_FOTO_SCHEMA`, angelegt von `migrate()`).
+      livewallFotos: new PgLiveWallFotoRepo(pool),
       // R-0134 / R-1005: der Betreiberschalter überlebt Neustart und Deploy — sonst stünde ein
       // ausgeschalteter Import nach dem nächsten Neustart still wieder auf „an".
       confluenceImportSchalter: new PgConfluenceImportSchalterRepo(pool),
@@ -3454,7 +3479,18 @@ export function buildApp(
     ),
   );
   // Audit-P4 (SCRUM-398): Live-Wall — read-only „frisch gesichert / hat heute geholfen".
-  app.register(livewallRoutes({ ko: services.ko, audit: services.audit }, guards));
+  // PMO-FEA-0003: `konten` liefert Anzeigenamen — die Route nennt davon nur zustimmende Konten.
+  app.register(
+    livewallRoutes(
+      {
+        ko: services.ko,
+        audit: services.audit,
+        konten: () => services.auth.listUsers(),
+        fotos: services.livewallFotos,
+      },
+      guards,
+    ),
+  );
   // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — persönliche Zähler aus eigenen KOs + Audits.
   app.register(impactRoutes({ ko: services.ko, audit: services.audit }, guards));
   app.register(auditRoutes(services.audit, guards, [services.conflicts, services.overlaps]));
@@ -3542,6 +3578,24 @@ export function buildApp(
   // Firmenwörterbuch: Pflege (`ko.validate`), Nachschlagen und der deterministische Abgleich
   // (`ko.read`). Nicht geschaltet: ohne Einträge liefert der Abgleich schlicht keine Hinweise.
   app.register(begriffeRoutes({ begriffe: services.begriffe, audit: services.audit }, guards));
+  // R-1646 · Ausgangsprüfung: nur mit `KLARWERK_AUSGANGSPRUEFUNG=an`. Dann hält der Chokepoint
+  // jeden Aufruf, der das Haus verlassen kann, bis ein Controller den anonymisierten Text freigibt.
+  // Als Person ersetzt werden die Namen der Konten dieser Installation — bei jedem Aufruf frisch
+  // gelesen, damit ein neues Konto sofort mitzählt. Ohne Schalter bleibt der globale Prüfer
+  // unberührt; die Route meldet dann `aktiv: false`.
+  const ausgangsEinstellung = ausgangspruefungAusEnv(process.env);
+  const ausgangspruefung = ausgangsEinstellung
+    ? new Ausgangspruefung({
+        ...ausgangsEinstellung,
+        namenQuelle: async () => (await services.auth.listUsers()).map((u) => u.name),
+      })
+    : null;
+  if (ausgangspruefung) {
+    setzeAusgangspruefung(ausgangspruefung);
+  }
+  app.register(
+    ausgangspruefungRoutes({ pruefung: ausgangspruefung, audit: services.audit }, guards),
+  );
   // produkt:20261007:spaces: Arbeitsräume, Inhalte je Space und Ansicht, Rechtevorschau, Wechsel.
   app.register(
     spacesRoutes(

@@ -628,6 +628,13 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   },
   // Audit-P4 (SCRUM-398): Live-Wall — read-only Aggregation aus KO-Bestand + Wirkungs-Audit.
   "GET /api/livewall": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
+  // PMO-FEA-0003: Zustimmung zur Namensnennung auf der Wand — nur das EIGENE Konto (user.id aus
+  // der Sitzung), lesen und setzen/widerrufen. Wie die Kenntnisnahme: kein zusätzliches Recht.
+  "GET /api/livewall/consent": { protection: "auth" },
+  "PUT /api/livewall/consent": { protection: "auth" },
+  // PMO-FEA-0003: das freiwillige Foto — hinterlegen und widerrufen, nur für das EIGENE Konto.
+  "PUT /api/livewall/photo": { protection: "auth" },
+  "DELETE /api/livewall/photo": { protection: "auth" },
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler — jeder angemeldete Nutzer,
   // AUSSCHLIESSLICH über die eigene Identität (user.id) abgeleitet, nur Zahlen.
   "GET /api/me/impact": { protection: "auth" },
@@ -724,6 +731,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Pflegen wirkt auf alle Texte des Hauses — dieselben Rollen, die über fremde Beiträge urteilen.
   "POST /api/begriffe": { protection: "ko.validate" },
   "PUT /api/begriffe/:id": { protection: "ko.validate" },
+
+  // --- Ausgangsprüfung (ausgangspruefung-routes.ts, R-1646) ---
+  // Der ausgehende Text vor der Freigabe und die Entscheidung darüber: wer über fremde Beiträge urteilt.
+  "GET /api/ausgangspruefung": { protection: "ko.validate" },
+  "POST /api/ausgangspruefung/:id/freigeben": { protection: "ko.validate" },
+  "POST /api/ausgangspruefung/:id/ablehnen": { protection: "ko.validate" },
 
   // --- Spaces (spaces-routes.ts, produkt:20261007:spaces) ---
   // Lesen: wer Wissen lesen darf; welche Artikel erscheinen, entscheidet je Zeile `darfSehen`
