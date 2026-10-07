@@ -79,6 +79,7 @@ import type {
   LesevariantenUebersicht,
   LibraryImageSearchResponse,
   LiveWall,
+  LiveWallConsent,
   ManagementProfiles,
   ManagementSnapshot,
   MediaAnalysis,
@@ -212,6 +213,20 @@ export interface KoDiskussionsbeitrag extends KoComment {
   replyTo?: string;
   koVersion?: number;
   resolution?: { state: "erledigt" | "offen"; by: string; at: string };
+  // P-WIKI-STELLENBEZUG: die Stelle im Text, an der die Rückfrage hängt. Fehlt sie, gilt der
+  // Beitrag dem ganzen Dokument.
+  stelle?: KoDiskussionsStelle;
+}
+
+/** P-WIKI-STELLENBEZUG — Spiegel von `KoCommentStelle` (`services/knowledge-object/src/types.ts`). */
+export interface KoDiskussionsStelle {
+  koVersion: number;
+  art: "absatz" | "tabelle" | "bild";
+  abschnitt: string;
+  /** Gekürzt — nur Anzeige. Die Identität trägt `fingerabdruck`. */
+  text: string;
+  /** SHA-256 über Art, vollständigen Abschnitt und vollständigen Inhalt (`lib/stellenabdruck`). */
+  fingerabdruck: string;
 }
 
 // PUT /api/kos/:id — ein Mutations-Endpunkt, per {action} verzweigt.
@@ -280,7 +295,15 @@ export type KoAction =
   //
   // BEIDE OPTIONAL, weil sie es am Server auch sind: ohne sie ist dies Zeichen für Zeichen der
   // bisherige Kommentarweg, den auch das Prüf-Feedback und die Quellenmeldung benutzen.
-  | { action: "comment"; text: string; replyTo?: string; clientKey?: string }
+  // P-WIKI-STELLENBEZUG: `stelle` nur am Anfang eines Fadens; der Server nimmt sie nur gegen die
+  // gerade gespeicherte Fassung an (sonst 409 `KO_STALE`).
+  | {
+      action: "comment";
+      text: string;
+      replyTo?: string;
+      clientKey?: string;
+      stelle?: KoDiskussionsStelle;
+    }
   // JOB 4146: den Faden als geklärt markieren und wieder öffnen. GEKLÄRT, NICHT FREIGEGEBEN — am
   // Freigabestand des Wissensobjekts ändern beide nichts, und sie verlangen kein neues Recht
   // (dasselbe `requireUser` wie `comment`).
@@ -958,7 +981,16 @@ export const endpoints = {
   },
   directory: { list: () => api.get<{ id: string; name: string }[]>("/directory") },
   // Audit-P4 (SCRUM-398): Live-Wall (read-only Aggregation).
-  livewall: { get: () => api.get<LiveWall>("/livewall") },
+  livewall: {
+    get: () => api.get<LiveWall>("/livewall"),
+    // PMO-FEA-0003: die eigene Zustimmung zur Namensnennung lesen, setzen oder widerrufen.
+    consent: () => api.get<LiveWallConsent>("/livewall/consent"),
+    setConsent: (nameConsent: boolean) =>
+      api.put<LiveWallConsent>("/livewall/consent", { nameConsent }),
+    // PMO-FEA-0003: das eigene Foto hinterlegen (= zustimmen) oder widerrufen (= löschen).
+    setPhoto: (photo: string) => api.put<{ photoConsent: boolean }>("/livewall/photo", { photo }),
+    deletePhoto: () => api.del<{ photoConsent: boolean }>("/livewall/photo"),
+  },
   analytics: {
     overview: () => api.get<Analytics>("/analytics"),
     busfactor: () => api.get<BusFactorEntry[]>("/analytics/busfactor"),
