@@ -1797,6 +1797,17 @@ export interface AnswerResult {
   citedSources?: string[];
   // JOB 3366: gesetzt, wenn der ausgelieferte Antworttext am Token-Limit abgeschnitten wurde.
   abgeschnitten?: AbbruchBefund;
+  // R-1643: die Argumentationskette — je Aussage die Quelle, deren Wortlaut sie belegt (Vertrag
+  // am Serverfeld `AnswerResult.argumentation`, services/reasoner/src/types.ts). Optional: ein
+  // älterer Server sendet sie nicht, und das Protokoll sagt dann, dass keine Kette vorliegt.
+  argumentation?: ArgumentationsGlied[];
+}
+
+/** R-1643: ein Glied der Argumentationskette (Spiegel des Serverfelds). */
+export interface ArgumentationsGlied {
+  aussage: string;
+  quellen: string[];
+  belegtDurch: string;
 }
 
 // JOB 2626 D1: ein Dokument, das die Frage traf, aber nicht antworten konnte — mit den Toren,

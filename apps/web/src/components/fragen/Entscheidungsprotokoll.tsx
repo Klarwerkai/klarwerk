@@ -12,7 +12,12 @@
 // (`buildExportInput` in `pages/Ask.tsx`) über dieselben Hilfen (`decisionProtocolRows`,
 // `sourceFacts`) — Datei und Blatt können damit nichts Verschiedenes über eine Quelle sagen.
 import { Fragment } from "react";
-import { type AnswerExportInput, decisionProtocolRows, sourceFacts } from "../../lib/answerExport";
+import {
+  type AnswerExportInput,
+  decisionArguments,
+  decisionProtocolRows,
+  sourceFacts,
+} from "../../lib/answerExport";
 
 export function Entscheidungsprotokoll({
   eingabe,
@@ -35,6 +40,9 @@ export function Entscheidungsprotokoll({
   // Wie im Markdown: trägt keine Quelle ein Kennzeichen, ist die Zuordnung unbekannt — und das
   // steht über der Liste.
   const ohneKennzeichen = eingabe.sources.every((s) => !s.attributionLabel?.trim());
+  // R-1643 (Ben, Nacharbeit 2): die Argumentationskette, wie im Markdown — oder der Satz, dass
+  // keine vorliegt.
+  const kette = decisionArguments(eingabe, protokoll);
   return (
     <section
       data-testid="ask-entscheidungsprotokoll"
@@ -51,6 +59,20 @@ export function Entscheidungsprotokoll({
         <dt className="text-muted">{L.answer}</dt>
         <dd className="m-0">{einstufung}</dd>
       </dl>
+      <h3 className="m-0 mt-3 text-[13px] font-semibold">{protokoll.labels.argumentation}</h3>
+      {kette ? (
+        <ol data-testid="ask-argumentationskette" className="m-0 mt-1 list-decimal pl-5">
+          {kette.map((glied) => (
+            <li key={`${glied.quelleId}|${glied.aussage}`}>
+              „{glied.aussage}“ — {protokoll.labels.supportedBy}:{" "}
+              {glied.quelleTitel ? `${glied.quelleTitel} ` : null}
+              <span className="font-mono">{glied.quelleId}</span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="m-0 mt-1 italic">{protokoll.labels.argumentationMissing}</p>
+      )}
       {eingabe.steps.length > 0 ? (
         <>
           <h3 className="m-0 mt-3 text-[13px] font-semibold">{L.steps}</h3>

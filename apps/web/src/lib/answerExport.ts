@@ -86,6 +86,21 @@ export interface DecisionProtocolLabels {
   user: string;
   // Fehlt eine angemeldete Person, steht das so da — es wird keine Kennung erfunden.
   userUnknown: string;
+  // R-1643 (Ben, Nacharbeit 2): die Argumentationskette.
+  argumentation: string;
+  // „belegt durch" vor der Quelle eines Glieds.
+  supportedBy: string;
+  // Liefert der Server keine Kette, steht das so da — die Quellenliste ersetzt sie nicht.
+  argumentationMissing: string;
+}
+
+/**
+ * R-1643: ein Glied der Argumentationskette — eine Aussage der Antwort und die Quelle, deren
+ * Wortlaut sie belegt (gemessen vom Reasoner, `pruefeDeckung`).
+ */
+export interface DecisionArgument {
+  aussage: string;
+  belegtDurch: string;
 }
 
 export interface DecisionProtocol {
@@ -95,7 +110,32 @@ export interface DecisionProtocol {
    * bekannt ist, wäre die Lücke, um die es R-1643 geht.
    */
   userId: string | null;
+  /**
+   * Die Argumentationskette der Antwort — `null`, wenn der Server keine geliefert hat. PFLICHT aus
+   * demselben Grund wie `userId`: die Schritte (`steps`) sind Fundstellen, keine Begründung, und
+   * dürfen ihre Stelle nicht stillschweigend einnehmen.
+   */
+  argumentation: readonly DecisionArgument[] | null;
   labels: DecisionProtocolLabels;
+}
+
+/**
+ * R-1643: die Glieder der Kette mit dem Titel ihrer Quelle — von Datei und Druck gemeinsam
+ * gelesen. Der Titel kommt aus der Quellenliste derselben Antwort; steht die Quelle dort nicht,
+ * bleibt es bei der Kennung (nie ein erfundener Titel).
+ */
+export function decisionArguments(
+  input: Pick<AnswerExportInput, "sources">,
+  protocol: DecisionProtocol,
+): { aussage: string; quelleTitel: string | null; quelleId: string }[] | null {
+  if (!protocol.argumentation || protocol.argumentation.length === 0) {
+    return null;
+  }
+  return protocol.argumentation.map((glied) => ({
+    aussage: glied.aussage.trim(),
+    quelleTitel: input.sources.find((s) => s.sourceId === glied.belegtDurch)?.title.trim() || null,
+    quelleId: glied.belegtDurch,
+  }));
 }
 
 export interface AnswerExportInput {
@@ -252,6 +292,21 @@ export function buildAnswerMarkdown(input: AnswerExportInput): string {
     lines.push(`## ${input.protocol.labels.heading}`);
     for (const row of decisionProtocolRows(input, input.protocol)) {
       lines.push(`- ${row.label}: ${row.kennung ? `\`${row.value}\`` : row.value}`);
+    }
+    // R-1643 (Ben, Nacharbeit 2): die Argumentationskette — Aussage für Aussage mit ihrem Beleg.
+    const PL = input.protocol.labels;
+    lines.push("");
+    lines.push(`### ${PL.argumentation}`);
+    const kette = decisionArguments(input, input.protocol);
+    if (kette) {
+      for (const [i, glied] of kette.entries()) {
+        const quelle = glied.quelleTitel
+          ? `${glied.quelleTitel} \`${glied.quelleId}\``
+          : `\`${glied.quelleId}\``;
+        lines.push(`${i + 1}. „${glied.aussage}“ — ${PL.supportedBy}: ${quelle}`);
+      }
+    } else {
+      lines.push(`_${PL.argumentationMissing}_`);
     }
   }
 

@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 import {
   type AnswerExportInput,
   buildAnswerMarkdown,
+  decisionArguments,
   decisionProtocolRows,
   sourceFacts,
 } from "../../apps/web/src/lib/answerExport";
@@ -29,7 +30,17 @@ const PROTOKOLL_LABELS = {
   time: "Zeitpunkt (UTC)",
   user: "Nutzer-ID",
   userUnknown: "nicht angemeldet – keine Kennung vorhanden",
+  argumentation: "Argumentationskette",
+  supportedBy: "belegt durch",
+  argumentationMissing: "Für diese Antwort liegt keine Argumentationskette vor.",
 };
+
+const KETTE = [
+  {
+    aussage: "Alle Firmenwagen werden in Blau bestellt.",
+    belegtDurch: "ko-487",
+  },
+];
 
 function eingabe(ueberschreibung: Partial<AnswerExportInput> = {}): AnswerExportInput {
   return {
@@ -58,7 +69,7 @@ function eingabe(ueberschreibung: Partial<AnswerExportInput> = {}): AnswerExport
       footer: "erstellt am {{date}}",
       aiNotice: "Von künstlicher Intelligenz erzeugt (KLARWERK, Frage beantwortet, 2026-10-08).",
     },
-    protocol: { userId: "u-7", labels: PROTOKOLL_LABELS },
+    protocol: { userId: "u-7", argumentation: KETTE, labels: PROTOKOLL_LABELS },
     ...ueberschreibung,
   };
 }
@@ -105,7 +116,7 @@ describe("R-1643 · Zeitstempel und Nutzer-ID im exportierten Dokument", () => {
 
   it("ohne Sitzung wird KEINE Kennung erfunden — das Dokument sagt, dass niemand angemeldet war", () => {
     const md = buildAnswerMarkdown(
-      eingabe({ protocol: { userId: null, labels: PROTOKOLL_LABELS } }),
+      eingabe({ protocol: { userId: null, argumentation: KETTE, labels: PROTOKOLL_LABELS } }),
     );
     expect(md).toContain("- Nutzer-ID: nicht angemeldet – keine Kennung vorhanden");
     expect(md).not.toContain("user-id:");
@@ -114,7 +125,11 @@ describe("R-1643 · Zeitstempel und Nutzer-ID im exportierten Dokument", () => {
   });
 
   it("eine leere Kennung zählt wie keine", () => {
-    const zeilen = decisionProtocolRows(eingabe(), { userId: "  ", labels: PROTOKOLL_LABELS });
+    const zeilen = decisionProtocolRows(eingabe(), {
+      userId: "  ",
+      argumentation: KETTE,
+      labels: PROTOKOLL_LABELS,
+    });
     expect(zeilen[1]).toEqual({
       label: "Nutzer-ID",
       value: PROTOKOLL_LABELS.userUnknown,
@@ -145,6 +160,74 @@ describe("R-1643 · Zeitstempel und Nutzer-ID im exportierten Dokument", () => {
   });
 });
 
+// ================================================================================================
+// R-1643 · DIE ARGUMENTATIONSKETTE (Ben, Nacharbeit 2).
+// ================================================================================================
+// Befund: exportiert wurden nur Quellenüberschriften und Auszüge (`steps`), die der Reasoner direkt
+// aus den herangezogenen Kandidaten baut — keine Begründung. Jetzt steht je Aussage der Antwort die
+// Quelle da, deren Wortlaut sie belegt (vom Reasoner gemessen, s. `argumentationAus`). Fehlt die
+// Kette, sagt das Dokument das; die Schritte springen NICHT ein.
+describe("R-1643 · Argumentationskette im exportierten Dokument", () => {
+  it("jede Aussage steht nummeriert mit der Quelle, die sie belegt — Titel und Kennung", () => {
+    const md = buildAnswerMarkdown(
+      eingabe({
+        protocol: {
+          userId: "u-7",
+          argumentation: [
+            { aussage: "Alle Firmenwagen werden in Blau bestellt.", belegtDurch: "ko-487" },
+            { aussage: "Ausnahmen gibt es nicht.", belegtDurch: "ko-unbekannt" },
+          ],
+          labels: PROTOKOLL_LABELS,
+        },
+      }),
+    );
+    const zeilen = md.split("\n");
+    const kopf = zeilen.indexOf("### Argumentationskette");
+    expect(kopf, "kein Abschnitt Argumentationskette").toBeGreaterThan(0);
+    expect(zeilen.slice(kopf + 1, kopf + 3)).toEqual([
+      "1. „Alle Firmenwagen werden in Blau bestellt.“ — belegt durch: Farbregelung Firmenwagen `ko-487`",
+      // Steht die Quelle nicht in der Quellenliste, bleibt es bei der Kennung — kein erfundener Titel.
+      "2. „Ausnahmen gibt es nicht.“ — belegt durch: `ko-unbekannt`",
+    ]);
+    // Die Kette gehört zum Protokoll: nach Zeitpunkt und Nutzer-ID, vor der Fußnote.
+    expect(md.indexOf("- Nutzer-ID:")).toBeLessThan(md.indexOf("### Argumentationskette"));
+    expect(md.indexOf("### Argumentationskette")).toBeLessThan(md.indexOf("_erstellt am"));
+  });
+
+  it("ohne Kette sagt das Dokument es — die Schritte ersetzen sie NICHT", () => {
+    for (const argumentation of [null, []]) {
+      const md = buildAnswerMarkdown(
+        eingabe({ protocol: { userId: "u-7", argumentation, labels: PROTOKOLL_LABELS } }),
+      );
+      const zeilen = md.split("\n");
+      const kopf = zeilen.indexOf("### Argumentationskette");
+      expect(kopf).toBeGreaterThan(0);
+      expect(zeilen[kopf + 1]).toBe(`_${PROTOKOLL_LABELS.argumentationMissing}_`);
+      // Kein Glied, und schon gar nicht der Schritt „Quelle: Farbregelung" als Glied.
+      expect(zeilen[kopf + 2] ?? "").not.toMatch(/^1\. /);
+    }
+  });
+
+  it("decisionArguments liefert Datei und Blatt dieselben Glieder", () => {
+    const protokoll = eingabe().protocol;
+    expect(protokoll).toBeDefined();
+    if (!protokoll) return;
+    expect(decisionArguments(eingabe(), protokoll)).toEqual([
+      {
+        aussage: "Alle Firmenwagen werden in Blau bestellt.",
+        quelleTitel: "Farbregelung Firmenwagen",
+        quelleId: "ko-487",
+      },
+    ]);
+  });
+
+  it("die Fragenfläche nimmt die Kette vom Server und setzt keine Schritte an ihre Stelle", () => {
+    const ask = readFileSync(join(WURZEL, "apps/web/src/pages/Ask.tsx"), "utf8");
+    expect(ask).toContain("argumentation: result.argumentation ?? null,");
+    expect(ask).not.toMatch(/argumentation: result\.steps/);
+  });
+});
+
 describe("R-1643 · die Fragenfläche gibt das Protokoll wirklich mit", () => {
   it("Nutzer-ID aus derselben Kontokennung wie der Arbeitsstand, ohne Ersatzwert", () => {
     const ask = readFileSync(join(WURZEL, "apps/web/src/pages/Ask.tsx"), "utf8");
@@ -156,7 +239,15 @@ describe("R-1643 · die Fragenfläche gibt das Protokoll wirklich mit", () => {
   it("die Protokolltexte stehen in allen drei Sprachen", () => {
     for (const sprache of ["de", "en", "nl"]) {
       const datei = readFileSync(join(WURZEL, `apps/web/src/woerterbuch/${sprache}.ts`), "utf8");
-      for (const schluessel of ["heading", "time", "user", "userUnknown"]) {
+      for (const schluessel of [
+        "heading",
+        "time",
+        "user",
+        "userUnknown",
+        "argumentation",
+        "supportedBy",
+        "argumentationMissing",
+      ]) {
         expect(datei, `${sprache}: ask.export.protocol.${schluessel} fehlt`).toContain(
           `"ask.export.protocol.${schluessel}":`,
         );

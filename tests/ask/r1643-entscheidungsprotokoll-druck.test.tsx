@@ -51,6 +51,15 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
           sources: ["k487"],
           citedSources: ["k487"],
           steps: [{ description: "Farbregel geprüft", snippet: "Alle in Blau.", sourceId: "k487" }],
+          // R-1643 (Ben, Nacharbeit 2): die Kette, wie der Reasoner sie aus der Deckungsprüfung
+          // liefert — bewusst ein anderer Text als der Schritt, damit sichtbar ist, WAS gedruckt wird.
+          argumentation: [
+            {
+              aussage: "Alle Firmenwagen werden in Blau bestellt.",
+              quellen: ["k487"],
+              belegtDurch: "k487",
+            },
+          ],
           demo: false,
           captionSources: [],
         },
@@ -192,6 +201,17 @@ describe("R-1643 · Drucken / PDF trägt das Entscheidungs-Protokoll", () => {
     expect(text).toContain("Farbregelung Firmenwagen");
     expect(text).toContain(`${i18n.t("val.trust")} 91`);
     expect(text).toContain("k487");
+    // R-1643 (Ben, Nacharbeit 2): die Argumentationskette — Aussage mit ihrem Beleg.
+    const kette = befund.protokoll?.querySelector('[data-testid="ask-argumentationskette"]');
+    expect(kette, "keine Argumentationskette auf dem Blatt").not.toBeNull();
+    const glieder = [...(kette?.querySelectorAll("li") ?? [])].map((li) => li.textContent ?? "");
+    expect(glieder).toHaveLength(1);
+    expect(glieder[0]).toContain("Alle Firmenwagen werden in Blau bestellt.");
+    expect(glieder[0]).toContain(i18n.t("ask.export.protocol.supportedBy"));
+    expect(glieder[0]).toContain("Farbregelung Firmenwagen");
+    expect(glieder[0]).toContain("k487");
+    // Die Fundstelle „Farbregel geprüft" ist KEIN Glied der Kette.
+    expect(glieder[0]).not.toContain("Farbregel geprüft");
 
     // Nach dem Druck ist es wieder weg.
     await act(async () => {
@@ -242,6 +262,11 @@ describe("R-1643 · Kopieren trägt dasselbe Protokoll als Markdown", () => {
     expect(md).toMatch(/exported-at: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/);
     expect(md).toContain('user-id: "u-7"');
     expect(md).toContain("`k487`");
+    // R-1643 (Ben, Nacharbeit 2): dieselbe Kette im Markdown.
+    expect(md).toContain(`### ${i18n.t("ask.export.protocol.argumentation")}`);
+    expect(md).toContain(
+      `1. „Alle Firmenwagen werden in Blau bestellt.“ — ${i18n.t("ask.export.protocol.supportedBy")}: Farbregelung Firmenwagen \`k487\``,
+    );
     unmount();
   });
 });

@@ -2207,6 +2207,10 @@ const en: typeof de = {
   "ask.export.protocol.time": "Time (UTC)",
   "ask.export.protocol.user": "User ID",
   "ask.export.protocol.userUnknown": "not signed in – no identifier available",
+  "ask.export.protocol.argumentation": "Chain of reasoning",
+  "ask.export.protocol.supportedBy": "supported by",
+  "ask.export.protocol.argumentationMissing":
+    "No chain of reasoning is available for this answer. The source list does not replace it.",
   "ask.sourcesHint":
     "This answer is source-bound — it is only as reliable as the source it uses (status, trust, usability). Listed are all sources consulted for the question; which of them carried the answer is marked. Open the knowledge object for details.",
   // AUFTRAG-mega52 A3/A5 — the answer says what it rests on. Unusable markers mean "unknown", never a guess.

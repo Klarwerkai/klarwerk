@@ -1320,11 +1320,18 @@ export function Ask(): JSX.Element {
       // `null`, und das Protokoll sagt dann „nicht angemeldet" statt eine Kennung zu erfinden.
       protocol: {
         userId: konto,
+        // R-1643 (Ben, Nacharbeit 2): die Argumentationskette kommt vom Server (gemessene Zuordnung
+        // Aussage → Quelle). Fehlt sie, bleibt sie `null` — `result.steps` springt NICHT ein, denn
+        // das sind Fundstellen und keine Begründung.
+        argumentation: result.argumentation ?? null,
         labels: {
           heading: t("ask.export.protocol.heading"),
           time: t("ask.export.protocol.time"),
           user: t("ask.export.protocol.user"),
           userUnknown: t("ask.export.protocol.userUnknown"),
+          argumentation: t("ask.export.protocol.argumentation"),
+          supportedBy: t("ask.export.protocol.supportedBy"),
+          argumentationMissing: t("ask.export.protocol.argumentationMissing"),
         },
       },
     };

@@ -17,7 +17,7 @@ Am Basisstand per Quelleninspektion festgestellt:
 | alle Quellen (rückverfolgbar) | vorhanden im Markdown, mit stabiler Kennung | JOB 502, `tests/ask/answer-export.test.ts` |
 | Trust-Werte | vorhanden im Markdown (Antwort und je Quelle) | SCRUM-430, `tests/ask/answer-export.test.ts` |
 | tragend/konsultiert, KI-Kennzeichnung | vorhanden im Markdown | mega62 E, `tests/legal/mega62-export-kennzeichnung.test.ts` |
-| Argumentationskette | nur als Schritte (`result.steps`) im Markdown | s. Widerspruch 2 |
+| **Argumentationskette** | **fehlte**: `result.steps` sind die herangezogenen Kandidaten (Titel + Kernaussage, direkt aus `relevant`), keine Begründung | `services/reasoner/src/provider-model.ts` (Ben, Nacharbeit 2) |
 | **Zeitstempel** | **nur der Tag** (`YYYY-MM-DD`) in Fußnote und Kopfblock | `answerExport.ts` vor R-1643 |
 | **Nutzer-ID** | **fehlte** | — |
 | **PDF mit allen Angaben** | **fehlte**: der Druck zeigt die Karte, Quellen/Schritte/Wert liegen hinter „Mehr" und standen nicht auf dem Blatt | `pages/Ask.tsx`, `.print-area` |
@@ -35,10 +35,19 @@ Am Basisstand per Quelleninspektion festgestellt:
 - `components/fragen/Entscheidungsprotokoll.tsx` + `.print-only` in `index.css`: Beim „Drucken /
   PDF" steht das Protokoll (Zeitpunkt, Nutzer-ID, Einstufung mit Vertrauenswert, Schritte, Quellen mit
   Kennung und Wert) in der Druckfläche; auf dem Bildschirm nie, nach `afterprint` wieder weg.
+- **Argumentationskette (Nacharbeit 2)**: neues Antwortfeld `AnswerResult.argumentation` —
+  je Aussage der Antwort die Quelle, deren Wortlaut sie belegt. Es ist die Zuordnung, die
+  `pruefeDeckung` ohnehin misst, bevor ein Modelltext hinausgeht (`argumentationAus`); auf dem
+  Rückfallweg je ausgegebenem Quellenwortlaut seine Quelle, auf dem deterministischen Weg ein Glied
+  (die Antwort ist der Wortlaut der besten Quelle). Kein zusätzlicher Modellaufruf, kein formulierter
+  Text. Ohne Antwort fehlt das Feld (auch nach der Herabstufung im Ask-Service). Export und Druck
+  zeigen die Kette nummeriert („Aussage" — belegt durch: Titel `Kennung`); fehlt sie, steht dort
+  ausdrücklich, dass keine vorliegt — die Schritte springen nicht ein.
 - Texte DE/EN/NL: `ask.export.protocol.*`.
 - Tests: `tests/ask/r1643-entscheidungsprotokoll.test.ts` (Dateivertrag),
   `tests/ask/r1643-entscheidungsprotokoll-druck.test.tsx` (echte Fragenseite: Druckaugenblick,
-  ohne Sitzung, Kopieren).
+  ohne Sitzung, Kopieren), `tests/reasoner/r1643-argumentationskette.test.ts` (Kette aus der
+  Deckung, drei Antwortwege).
 
 ## Abgrenzung
 
@@ -54,9 +63,12 @@ Am Basisstand per Quelleninspektion festgestellt:
 1. **PDF**: Das Produkt hat keinen PDF-Erzeuger (s. `mega62-export-kennzeichnung.test.ts`). Das PDF
    entsteht über den Browserdruck („Als PDF sichern"). Ob das gedruckte Blatt in jedem Browser
    vollständig aussieht, ist nur per Quelle und jsdom geprüft, nicht an einem echten Druckdialog.
-2. **Argumentationskette**: Laut mega39 D2 (`pages/Ask.tsx`) „existiert keine protokollierte
-   Herleitung"; exportiert werden die Schritte, die der Reasoner liefert (Fundstellen mit Auszug). Eine
-   echte Begründungskette verspricht dieser Export nicht.
+2. **Argumentationskette**: Geliefert ist die belegte Kette „Aussage → Quelle, deren Wortlaut sie
+   enthält". Eine Begründung in Form freier Schlussfolgerungen zwischen den Aussagen erzeugt das
+   Produkt bewusst nicht (Zitatdeckung, JOB 2659: der Modelltext darf auswählen, nicht
+   umformulieren). Antworten älterer Server oder gespeicherte Antworten von vor dieser Änderung haben
+   keine Kette; das Protokoll sagt das. Ein Ergebnisbeleg an einem echten Modelllauf liegt nicht vor
+   — geprüft ist mit einem Fake-Modell (dieselben Wortlaute wie job2659 P1/P2).
 3. **Nutzer-ID**: Es ist die Kennung der **exportierenden** angemeldeten Person, nicht der Person, die
    auf dieser Grundlage entschieden hat. Eine „Entscheidung" als eigenes Objekt gibt es im Produkt nicht.
 4. **Trust in Prozent**: Der Wortlaut schreibt „Trust 91 %"; exportiert wird der Wert wie überall im
