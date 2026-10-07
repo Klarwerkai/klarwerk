@@ -108,12 +108,19 @@ describe("sqlSichtbarkeitFuer · dieselbe Regel als SQL-Prädikat vor dem LIMIT"
     const erik = sitzung("u-erik", "experte");
     const fritz = sitzung("u-fritz", "experte");
     const basis = { confidentiality: "intern" as const, author: "u-x" };
-    for (const ko of [
+    type Fall = {
+      confidentiality: "intern";
+      author: string;
+      spaceId?: string;
+      deletedAt?: string;
+    };
+    const faelle: Fall[] = [
       { ...basis, spaceId: "s-werkstatt" },
       { ...basis, spaceId: "s-offen" },
       { ...basis },
       { ...basis, spaceId: "s-werkstatt", deletedAt: "2026-10-07" },
-    ]) {
+    ];
+    for (const ko of faelle) {
       for (const wer of [erik, fritz]) {
         expect(sqlSichtbarkeitFuer(wer).trifftZu(ko)).toBe(!ko.deletedAt && darfSehen(wer, ko));
       }

@@ -820,6 +820,9 @@ export type KoErrorCode =
   | "INVALID_TYPE"
   | "INVALID_NEEDED"
   | "INVALID_SOURCE"
+  // produkt:20261007:spaces: der führende Space hat sich seit der Rechtevorschau geändert
+  // (`setLeadingSpace`); die Route antwortet darauf mit 409 VORSCHAU_VERALTET.
+  | "SPACE_STAND_VERALTET"
   // SCRUM-421: ungültige Upload-Grenzen (Admin-Einstellung).
   | "INVALID_UPLOAD_LIMITS"
   // SCRUM-509: ungültige Vertraulichkeitsstufe (kein stilles Normalisieren auf „intern").
