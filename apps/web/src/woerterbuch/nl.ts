@@ -3058,6 +3058,10 @@ const nl: typeof de = {
   "start.livewall.helpedToday": "vandaag geholpen: {{n}}",
   "start.livewall.savedEmpty": "Nog niets vastgelegd — de eerste bijdrage verschijnt hier.",
   "start.livewall.helpedEmpty": "Nog geen „heeft geholpen”-terugkoppeling.",
+  "start.livewall.validated": "Nieuw gevalideerd",
+  "start.livewall.validatedEmpty": "Nog geen gevalideerde kennis.",
+  "start.livewall.nameConsent":
+    "Mijn naam hier bij mijn gevalideerde kennis tonen. Vrijwillig en altijd intrekbaar; zonder toestemming verschijnt geen naam.",
   "con.kicker": "Conflictoverzicht",
   "con.title": "Conflicten oplossen — zonder kennis te verliezen",
   "con.intro":

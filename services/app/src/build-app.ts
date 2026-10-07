@@ -3413,7 +3413,13 @@ export function buildApp(
     ),
   );
   // Audit-P4 (SCRUM-398): Live-Wall — read-only „frisch gesichert / hat heute geholfen".
-  app.register(livewallRoutes({ ko: services.ko, audit: services.audit }, guards));
+  // PMO-FEA-0003: `konten` liefert Anzeigenamen — die Route nennt davon nur zustimmende Konten.
+  app.register(
+    livewallRoutes(
+      { ko: services.ko, audit: services.audit, konten: () => services.auth.listUsers() },
+      guards,
+    ),
+  );
   // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — persönliche Zähler aus eigenen KOs + Audits.
   app.register(impactRoutes({ ko: services.ko, audit: services.audit }, guards));
   app.register(auditRoutes(services.audit, guards, [services.conflicts, services.overlaps]));

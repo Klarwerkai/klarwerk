@@ -4027,6 +4027,11 @@ const de = {
   "start.livewall.helpedToday": "heute geholfen: {{n}}",
   "start.livewall.savedEmpty": "Noch nichts erfasst — der erste Beitrag erscheint hier.",
   "start.livewall.helpedEmpty": "Noch keine „hat geholfen“-Rückmeldung.",
+  // PMO-FEA-0003: hier ist „validiert" wörtlich gemeint — der Zweig filtert auf diesen Status.
+  "start.livewall.validated": "Neu validiert",
+  "start.livewall.validatedEmpty": "Noch kein validiertes Wissen.",
+  "start.livewall.nameConsent":
+    "Meinen Namen bei meinem validierten Wissen hier zeigen. Freiwillig, jederzeit widerrufbar; ohne Zustimmung erscheint kein Name.",
   // AUFTRAG-mega51 BLOCK G1: DE und NL trugen hier die englische Bezeichnung.
   "con.kicker": "Konflikt-Übersicht",
   "con.title": "Konflikte klären — ohne Wissen zu verlieren",

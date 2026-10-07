@@ -333,6 +333,17 @@ export const useNotifications = () =>
 // Audit-P4 (SCRUM-398): Live-Wall („frisch gesichert / hat heute geholfen").
 export const useLiveWall = () =>
   useQuery({ queryKey: ["livewall"], queryFn: endpoints.livewall.get });
+// PMO-FEA-0003: die eigene Zustimmung zur Namensnennung auf der Wand. Nach dem Setzen/Widerrufen
+// wird die Wand neu geholt — der Widerruf soll sofort sichtbar wirken, nicht erst beim nächsten Laden.
+export const useLiveWallConsent = () =>
+  useQuery({ queryKey: ["livewall", "consent"], queryFn: endpoints.livewall.consent });
+export const useSetLiveWallConsent = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (nameConsent: boolean) => endpoints.livewall.setConsent(nameConsent),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["livewall"] }),
+  });
+};
 export const useReasonerStatus = () =>
   useQuery({ queryKey: ["reasoner", "status"], queryFn: endpoints.reasoner.status });
 // SCRUM-166: read-only Reasoner-/Provider-Konfiguration.

@@ -32,6 +32,7 @@ import { KnowledgeCapitalNumbers, OpenGapsSummary } from "../FunkeCards";
 import { KlaraPathTeaser } from "../KlaraPathTeaser";
 import { RoleLink } from "../RoleLink";
 import { StatusPill } from "../trust";
+import { LiveWallValidiert } from "./LiveWallValidiert";
 import type { StartPanelId } from "./startPunkte";
 
 // ================================================================================================
@@ -426,6 +427,9 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
                 </ul>
               )}
             </div>
+            {/* PMO-FEA-0003: neues validiertes Wissen, Namen nur mit Zustimmung — und die eigene
+                Erklärung dazu. Eigene Teilkomponente, damit ihr Abruf nur in DIESEM Blatt läuft. */}
+            <LiveWallValidiert daten={daten} />
           </>
         ) : null}
       </div>

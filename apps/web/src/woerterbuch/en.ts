@@ -3068,6 +3068,10 @@ const en: typeof de = {
   "start.livewall.helpedToday": "helped today: {{n}}",
   "start.livewall.savedEmpty": "Nothing captured yet — the first contribution will appear here.",
   "start.livewall.helpedEmpty": "No “helped” feedback yet.",
+  "start.livewall.validated": "Newly validated",
+  "start.livewall.validatedEmpty": "No validated knowledge yet.",
+  "start.livewall.nameConsent":
+    "Show my name next to my validated knowledge here. Voluntary and revocable at any time; without consent no name appears.",
   "con.kicker": "Conflict board",
   "con.title": "Resolve conflicts — without losing knowledge",
   "con.intro":

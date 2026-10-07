@@ -624,6 +624,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   },
   // Audit-P4 (SCRUM-398): Live-Wall — read-only Aggregation aus KO-Bestand + Wirkungs-Audit.
   "GET /api/livewall": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
+  // PMO-FEA-0003: Zustimmung zur Namensnennung auf der Wand — nur das EIGENE Konto (user.id aus
+  // der Sitzung), lesen und setzen/widerrufen. Wie die Kenntnisnahme: kein zusätzliches Recht.
+  "GET /api/livewall/consent": { protection: "auth" },
+  "PUT /api/livewall/consent": { protection: "auth" },
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler — jeder angemeldete Nutzer,
   // AUSSCHLIESSLICH über die eigene Identität (user.id) abgeleitet, nur Zahlen.
   "GET /api/me/impact": { protection: "auth" },
