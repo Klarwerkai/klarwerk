@@ -14,9 +14,32 @@
 // Chrome/Chromium, Firefox und Safari/WebKit — `history.go(delta)`, schnelle aufeinanderfolgende
 // Traversierungen und `popstate`-Reihenfolgen sind browsernahe Mechanik, und ein Beleg aus EINER
 // Engine sagt darüber wenig. Pedi hat die Nachinstallation freigegeben; hier sind die drei Engines.
-import { defineConfig, devices } from "@playwright/test";
+import { resolve } from "node:path";
+import { chromium, defineConfig, devices } from "@playwright/test";
+import {
+  ENGINE_LAUF_ENV,
+  installiereStartprotokoll,
+  schreibeStarteintrag,
+} from "./tests-smoke/support/engine-bericht";
 
 const PORT = 3123;
+
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+// Aufnahme 20260922 (R-1382, Nacharbeit 2) — DAS STARTPROTOKOLL DER BROWSER.
+//
+// Diese Datei wird im Hauptprozess UND in jedem Arbeiterprozess geladen. Der Hauptprozess legt das
+// Laufverzeichnis fest; die Arbeiter erben die Variable. In jedem Prozess hängt sich das Protokoll
+// an `BrowserType.launch()` (ein gemeinsamer Prototyp für alle drei Engines): nur ein Start, der
+// wirklich einen Browser zurückgibt, wird als Start mit Version vermerkt, ein gescheiterter als
+// Startfehler mit Meldung. Den Lauf selbst verändert das nicht — der Fehler wird weitergeworfen.
+// Die Bilanz druckt `globalTeardown` (unten) — unabhängig von `--reporter` auf der Kommandozeile.
+const ENGINE_LAUF =
+  process.env[ENGINE_LAUF_ENV] ||
+  resolve("test-results", "engine-starts", `lauf-${Date.now()}-${process.pid}`);
+process.env[ENGINE_LAUF_ENV] = ENGINE_LAUF;
+installiereStartprotokoll(Object.getPrototypeOf(chromium), (eintrag) =>
+  schreibeStarteintrag(ENGINE_LAUF, eintrag),
+);
 
 // ────────────────────────────────────────────────────────────────────────────────────────────────
 // AUFTRAG-163 — DER ZWEITE, ZUSTANDSISOLIERTE KONTEXT.
@@ -179,12 +202,13 @@ export default defineConfig({
   testDir: "./tests-smoke",
   timeout: 60_000,
   retries: 0,
-  // Aufnahme 20260922 (R-1382): „der Durchlauf sagt, welche Browser er wirklich gefahren hat". Der
-  // Engine-Bericht zählt am Laufende aus Playwrights Ergebnissen je Engine bestanden/übersprungen/
-  // rot und nennt die nicht gefahrenen. Er ändert NICHT, welche Projekte laufen — das Tor bleibt
-  // einengig (Sperre K7, `tests/smoke/job1094-engine-kette.test.ts`). Grenze: ein Aufruf mit
-  // `--reporter=…` auf der Kommandozeile ersetzt diese Liste, dann fehlt auch der Bericht.
-  reporter: [["list"], ["./tests-smoke/support/engine-bericht.ts"]],
+  reporter: [["list"]],
+  // Aufnahme 20260922 (R-1382): „der Durchlauf sagt, welche Browser er wirklich gefahren hat". Die
+  // Bilanz aus dem Startprotokoll (oben, `installiereStartprotokoll`) druckt der globale Abbau —
+  // bewusst KEIN Reporter: ein `--reporter=…` auf der Kommandozeile (so ruft der Prüfadapter auf)
+  // ersetzt die Reporterliste, den Abbau nicht. Welche Projekte laufen, ändert das nicht; das Tor
+  // bleibt einengig (Sperre K7, `tests/smoke/job1094-engine-kette.test.ts`).
+  globalTeardown: "./tests-smoke/support/engine-bericht.ts",
   // Genau EIN Arbeiter. Der Smoke-Server läuft mit In-Memory-Backend: alle drei Engines teilen sich
   // EINEN Datenbestand und EINE Ersteinrichtung. Liefen sie parallel, würden sie sich gegenseitig
   // den Anmeldezustand unter den Füßen wegziehen — ein grüner oder roter Lauf hätte dann nichts mit
