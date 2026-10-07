@@ -23,6 +23,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const gegenstelle = vi.hoisted(() => ({
   update: async (..._args: unknown[]): Promise<unknown> => ({}),
   create: async (..._args: unknown[]): Promise<unknown> => ({}),
+  // Der Titel, den der „Server" beim Laden liefert — die Nacharbeit lädt nach dem Speichern neu und
+  // stellt dafür genau den Stand ein, den der Schreibaufruf wirklich getragen hat.
+  getTitel: "Wartung der Presse",
 }));
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -39,7 +42,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
       get: vi.fn(async () => ({
         id: "d-1",
         payload: {
-          title: "Wartung der Presse",
+          title: gegenstelle.getTitel,
           bodyHtml: "<p>Anlage freischalten. Ventil prüfen.</p>",
           confidentiality: "intern",
         },
@@ -250,6 +253,7 @@ const QUITTUNG = {
 beforeEach(async () => {
   await i18n.changeLanguage("de");
   onlineManager.setOnline(true);
+  gegenstelle.getTitel = "Wartung der Presse";
   gegenstelle.update = async () => QUITTUNG;
   gegenstelle.create = async () => ({
     id: "d-neu",
@@ -333,6 +337,70 @@ describe("K2 · ohne Netz explizit gespeichert: die Eingabe bleibt, der Erfolg k
     });
     expect(zustand()).toBe("gespeichert");
     expect(gesichertZeile()?.getAttribute("data-entwurf")).toBe("d-1");
+  });
+
+  // ==============================================================================================
+  // NACHARBEIT 1 (BEN) — WÄHREND DES WARTENS WEITERGESCHRIEBEN: GESENDET UND BESTÄTIGT IST DERSELBE.
+  // ==============================================================================================
+  // Befund: Stand A offline gesichert, während des Wartens zu B geändert, Netz zurück. Gesendet
+  // wurde B (die laufende Mutation übernahm die neue `mutationFn`), als gesichert galt A — ein
+  // Zurückändern auf A zeigte „gespeichert", obwohl der Server B trug. Jetzt muss gelten: was
+  // hinausgeht, ist der Klickstand A; B bleibt sichtbar ungespeichert; erst A auf dem Blatt heisst
+  // „gespeichert"; und nach dem Neuladen steht A da, weil der Server A trägt.
+  it("NA1 · A gesichert, B getippt, Netz zurück: A geht hinaus, B ist ungespeichert, Rückänderung auf A bestätigt, Neuladen zeigt A", async () => {
+    const A = "Wartung der Presse (Stand A)";
+    const B = "Wartung der Presse (Stand B, während des Wartens)";
+    await mount("/capture/frontdoor?draft=d-1");
+    await tippeTitel(A);
+    await netz(false);
+    await click(sichern());
+    expect(zustand()).toBe("wartet");
+
+    await tippeTitel(B);
+    expect(zustand()).toBe("wartet");
+    await netz(true);
+
+    // Gesendet wurde der eingefrorene Klickstand — nicht, was danach getippt wurde.
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    const gesendet = updateMock.mock.calls[0]?.[1] as { title?: string } | undefined;
+    expect(gesendet?.title).toBe(A);
+    // B ist NICHT gespeichert, also bestätigt die Anzeige nichts und der Änderungsschutz greift.
+    expect(titelFeld().value).toBe(B);
+    expect(zustand()).toBe("ruhe");
+    expect(gesichertZeile()).toBeNull();
+
+    // Zurück auf A: das ist genau der Stand, den der Server quittiert hat.
+    await tippeTitel(A);
+    expect(zustand()).toBe("gespeichert");
+    expect(gesichertZeile()?.getAttribute("data-entwurf")).toBe("d-1");
+
+    // Neuladen: der Server liefert, was der Schreibaufruf getragen hat — und das ist A.
+    gegenstelle.getTitel = gesendet?.title ?? "";
+    act(() => root.unmount());
+    container.remove();
+    await mount("/capture/frontdoor?draft=d-1");
+    expect(titelFeld().value).toBe(A);
+    expect(zustand()).toBe("ruhe");
+  });
+
+  it("NA2 · GEGENPROBE: B getippt und nicht zurückgeändert — die Anzeige behauptet auch später kein „gespeichert“ für B", async () => {
+    await mount("/capture/frontdoor?draft=d-1");
+    await tippeTitel("Stand A");
+    await netz(false);
+    await click(sichern());
+    await tippeTitel("Stand B");
+    await netz(true);
+    expect((updateMock.mock.calls[0]?.[1] as { title?: string } | undefined)?.title).toBe(
+      "Stand A",
+    );
+    expect(zustand()).toBe("ruhe");
+    // Ein erneutes Sichern schickt jetzt B — und erst dessen Quittung bestätigt B.
+    await click(sichern());
+    expect(updateMock).toHaveBeenCalledTimes(2);
+    expect((updateMock.mock.calls[1]?.[1] as { title?: string } | undefined)?.title).toBe(
+      "Stand B",
+    );
+    expect(zustand()).toBe("gespeichert");
   });
 
   it("K6 · der Wartesatz warnt vor dem Neuladen — er behauptet keinen Schutz", async () => {

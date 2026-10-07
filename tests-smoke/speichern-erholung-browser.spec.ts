@@ -122,6 +122,70 @@ test("K1/K2/K3/K6: ohne Netz gesichert — wartet sichtbar, nach der Rückkehr g
   }
 });
 
+// NACHARBEIT 1 (BEN): Weiterschreiben WÄHREND des Wartens. Gesendet wird der Klickstand; was danach
+// getippt wird, bleibt ungespeichert und wird nicht bestätigt. Erst nach dem Zurückändern auf den
+// gesendeten Stand heisst es „gespeichert" — und das Neuladen zeigt, was der Server wirklich trägt.
+// Geändert wird der TITEL: er lässt sich exakt auf den Klickstand (leer) zurücksetzen, ein
+// Editor-Rundlauf könnte das HTML anders serialisieren.
+test("K2/K3 Nacharbeit: während des Wartens weitergeschrieben — gesendet und bestätigt ist derselbe Stand, nach dem Neuladen steht er da", async ({
+  page,
+  context,
+}) => {
+  await ensureLoggedIn(page);
+  const m = marke();
+  const text = `Lager prüfen, Spiel messen (${m}).`;
+  const nachtrag = `Nachtrag-waehrend-des-Wartens-${m}`;
+  try {
+    await page.goto(VORDERTUER);
+    await expect(fliesstext(page)).toBeVisible({ timeout: 15_000 });
+    await fliesstext(page).fill(text);
+
+    await context.setOffline(true);
+    await sichern(page).click();
+    await expect(anzeige(page)).toHaveAttribute("data-zustand", "wartet", { timeout: 10_000 });
+
+    const titel = page.getByTestId("blatt-titel");
+    await titel.fill(nachtrag);
+    await expect(titel).toHaveValue(nachtrag);
+    await context.setOffline(false);
+
+    // Der Server trägt den Klickstand — der Nachtrag ist NICHT mitgegangen.
+    await expect
+      .poll(async () => (await entwuerfeMit(page, m)).length, { timeout: 15_000 })
+      .toBe(1);
+    const antwort = await page.request.get("/api/drafts");
+    const serverstand = JSON.stringify(
+      ((await antwort.json()) as { payload?: unknown }[]).filter((d) =>
+        JSON.stringify(d.payload ?? {}).includes(m),
+      ),
+    );
+    expect(serverstand).toContain(text);
+    expect(serverstand, "der während des Wartens getippte Nachtrag wurde gesendet").not.toContain(
+      nachtrag,
+    );
+    // Und weil der Nachtrag ungespeichert ist, bestätigt die Anzeige nichts.
+    await expect(anzeige(page)).toHaveAttribute("data-zustand", "ruhe");
+    await expect(page.getByTestId("blatt-entwurf-gespeichert")).toHaveCount(0);
+    await beleg(page, "nacharbeit-nachtrag-unbestaetigt");
+
+    // Zurück auf den gesendeten Stand: jetzt — und erst jetzt — „gespeichert".
+    await titel.fill("");
+    await expect(anzeige(page)).toHaveAttribute("data-zustand", "gespeichert", {
+      timeout: 10_000,
+    });
+    await beleg(page, "nacharbeit-rueckaenderung-bestaetigt");
+
+    // Neuladen: dasselbe, was der Server trägt — der Text, nicht der Nachtrag.
+    await page.reload();
+    await expect(fliesstext(page)).toContainText(text, { timeout: 15_000 });
+    await expect(page.getByTestId("blatt-titel")).not.toHaveValue(nachtrag);
+    expect(await entwuerfeMit(page, m)).toHaveLength(1);
+  } finally {
+    await context.setOffline(false);
+    await aufraeumen(page, m);
+  }
+});
+
 test("K4: Seitenwechsel ohne Netz — Speichern nennt den Grund, Bleiben behält, Verwerfen schreibt nichts", async ({
   page,
   context,
