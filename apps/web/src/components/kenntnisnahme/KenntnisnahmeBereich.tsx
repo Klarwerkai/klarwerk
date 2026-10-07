@@ -398,14 +398,26 @@ export function KenntnisnahmeBereich({
   if (eigene.length === 0 && !darfAnfordern) {
     return null;
   }
+  // H4 / R-1025 (Design-Abgleich): auf der Lesefläche der Bibliothek steht kein Erklärtext im
+  // Sichtfeld — Erklärungen bleiben erhalten, rücken aber hinter einen Klick. Der Bereich ist deshalb
+  // ein Aufklapper mit der Beschriftung „Kenntnisnahme". OFFEN steht er nur, wenn eine EIGENE
+  // Anforderung wartet: was ich tun kann (bestätigen), kommt zuerst. Für die reine Verwaltung
+  // (Anfordern, Übersicht) bleibt er zu. Inhalt und Verneinung (`kenntnisnahme.hinweis`) sind
+  // unverändert — sie stehen beim Aufklappen als Erstes da.
   return (
-    <Card interactive={false} className="space-y-3" data-testid="kenntnisnahme-bereich">
-      <SectionLabel>{t("kenntnisnahme.titel")}</SectionLabel>
-      <p className="text-[12px] text-muted">{t("kenntnisnahme.hinweis")}</p>
-      {eigene.map((e) => (
-        <EigeneAnforderung key={e.anforderungId} eintrag={e} />
-      ))}
-      {darfAnfordern ? <AnfordernUndUebersicht koId={koId} /> : null}
+    <Card interactive={false} data-testid="kenntnisnahme-bereich">
+      <details open={eigene.length > 0} data-testid="kenntnisnahme-aufklapper">
+        <summary className="cursor-pointer list-none">
+          <SectionLabel>{t("kenntnisnahme.titel")}</SectionLabel>
+        </summary>
+        <div className="space-y-3">
+          <p className="text-[12px] text-muted">{t("kenntnisnahme.hinweis")}</p>
+          {eigene.map((e) => (
+            <EigeneAnforderung key={e.anforderungId} eintrag={e} />
+          ))}
+          {darfAnfordern ? <AnfordernUndUebersicht koId={koId} /> : null}
+        </div>
+      </details>
     </Card>
   );
 }

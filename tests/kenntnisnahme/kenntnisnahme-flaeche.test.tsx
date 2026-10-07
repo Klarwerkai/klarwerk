@@ -204,6 +204,12 @@ describe("F1/F2 · anzeigen bestätigt nichts; der Klick bestätigt genau einmal
     const bestaetigen = knopf(flaeche, "kenntnisnahme-bestaetigen");
     expect(bestaetigen?.textContent).toBe("Ich habe Fassung V2 gelesen und nehme sie zur Kenntnis");
     expect(flaeche.textContent).toContain("Das Öffnen oder Lesen dieser Seite bestätigt nichts");
+    // Design-Abgleich H4/R-1025: mit EIGENER Anforderung steht der Aufklapper offen — die
+    // Bestätigung ist ohne zusätzlichen Klick erreichbar.
+    const aufklapper = flaeche.querySelector<HTMLDetailsElement>(
+      '[data-testid="kenntnisnahme-aufklapper"]',
+    );
+    expect(aufklapper?.open).toBe(true);
     // Anzeigen und Warten schreibt nichts.
     await act(flush);
     expect(aufrufe.filter((a) => a.methode !== "GET")).toEqual([]);
@@ -265,6 +271,14 @@ describe("F3 · anfordern über die Fläche", () => {
     flaechenToken = clara.token;
     const flaeche = await montieren(id, true);
     expect(flaeche.textContent).toContain("Für diesen Eintrag wurde noch keine Kenntnisnahme");
+    // Design-Abgleich H4/R-1025: ohne eigene Anforderung (reine Verwaltung) steht der Bereich
+    // zugeklappt da — Beschriftung „Kenntnisnahme" sichtbar, Verneinung und Anfordern dahinter.
+    const aufklapper = flaeche.querySelector<HTMLDetailsElement>(
+      '[data-testid="kenntnisnahme-aufklapper"]',
+    );
+    expect(aufklapper?.open).toBe(false);
+    expect(aufklapper?.querySelector("summary")?.textContent).toBe("Kenntnisnahme");
+    expect(aufklapper?.textContent).toContain("keine elektronische Signatur");
     const auswahlfeld = '[data-testid="kenntnisnahme-empfaenger-wahl"]';
     const wahl = [...flaeche.querySelectorAll<HTMLInputElement>(auswahlfeld)];
     const erikWahl = wahl.find((w) => w.parentElement?.textContent?.includes("Erik Experte"));
