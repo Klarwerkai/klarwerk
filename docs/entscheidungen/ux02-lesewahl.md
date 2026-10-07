@@ -29,17 +29,24 @@ ausgeblendet. Eine Vorwahl entsteht nur aus einer Liste, die selbst Zeilen zeigt
 
 ## Zuordnung der Lieferungen
 
-| Lieferung | Inhalt laut Code und Tests | Zuordnung zu diesem Fall |
-| --- | --- | --- |
-| JOB 3104 (UX-02) | Suchbegriff `q` und Wahl `eintrag` stehen in der Adresse (immer `replace`); tote Kennung → ehrlicher Fehlersatz; Löschen räumt die Adresse. | Grundlage für N-0006, N-0016, P-UX-02. Kein Teil des Verzögerungsfalls, aber die Ableitung `gewaehlt`, auf der er steht. |
-| JOB 3115 (UX-02b) | Wertprüfung des Adressfilters wartet auf einen bestätigten Bestand; Liste schweigt während des Wartens; Erstfehler → Listenfehler. | Genau der Verzögerungsfall, aber nur für die **Liste**. Die Lesefläche fehlte darin; hier ergänzt (L1–L4). |
-| JOB 4263 | Fassungsrückholung im echten Browser (`tests/fassungsrueckholung-echter-browser/`). | Kein Beitrag zum Verzögerungs-/Lesewahlfall. Nutzt nur den direkten Weg `/wissen/:id`. |
-| JOB 4330 | Diskussion am Dokument gegen PostgreSQL (`tests/wiki-diskussion-nutzerweg/`), dazu Toast-Aufräumen (`app/ToastContext.tsx`). | Kein Beitrag. Nutzt `/wissen/:id`. |
-| JOB 4334 | Einordnungskonflikt gegen PostgreSQL (`tests/wiki-einordnung-konflikt/`). | Kein Beitrag. Öffnet `/bibliothek?eintrag=<id>&edit=1`, also die ausdrückliche Wahl, ohne Adressfilter. |
+| Lieferung | Inhalt laut Code und Tests | Fassung (Versionsgeschichte) | Zuordnung zu diesem Fall |
+| --- | --- | --- | --- |
+| JOB 3104 (UX-02) | Suchbegriff `q` und Wahl `eintrag` stehen in der Adresse (immer `replace`); tote Kennung → ehrlicher Fehlersatz; Löschen räumt die Adresse. | Umsetzung `155c55fb`, Versionscommit `e3fcff4a` → **1.0.0-beta.1.117** | Grundlage für N-0006, N-0016, P-UX-02. Kein Teil des Verzögerungsfalls, aber die Ableitung `gewaehlt`, auf der er steht. Beleg im Repository: `tests/ablage-kontext/` A1–A7, B0–B5. |
+| JOB 3115 (UX-02b) | Wertprüfung des Adressfilters wartet auf einen bestätigten Bestand; Liste schweigt während des Wartens; Erstfehler → Listenfehler. | Umsetzung `daaadc61`, Versionscommit `13b4bb56` → **1.0.0-beta.1.130** | Genau der Verzögerungsfall, aber nur für die **Liste**. Beleg: `tests/themenlink-tag/…` F1–F10. Die Lesefläche fehlte darin; ergänzt mit L1–L4. |
+| JOB 4263 | Fassungsrückholung im echten Browser (`tests/fassungsrueckholung-echter-browser/`). Darin **K5** (`kalibrierung.test.ts:134–147`): die Liste ist sichtbar, der **Detailabruf** eines Eintrags wird absichtlich verzögert, und der Abnahmeweg darf die Liste nicht für den gelesenen Bericht halten. | nicht erhoben | Berührt den Lesewahlfall nur von der anderen Seite: dort ist der **Bericht** verzögert, hier der **Listenbestand** (`GET /api/kos`), der einen Adressfilter prüft. K5 ist eine Kalibrierung des eigenen Prüfwegs von 4263, keine Lieferung für die Lesewahl bei ungeklärtem Bestand. Bis zur Detailantwort zeigt die Lesefläche ihren leeren Ladezweig (`BibliothekLesen`); daran ändert diese Lieferung nichts. |
+| JOB 4330 | Diskussion am Dokument gegen PostgreSQL (`tests/wiki-diskussion-nutzerweg/`), dazu Toast-Aufräumen (`app/ToastContext.tsx`). | nicht erhoben | Kein Beitrag. Nutzt `/wissen/:id`. |
+| JOB 4334 | Einordnungskonflikt gegen PostgreSQL (`tests/wiki-einordnung-konflikt/`). | nicht erhoben | Kein Beitrag. Öffnet `/bibliothek?eintrag=<id>&edit=1`, also die ausdrückliche Wahl, ohne Adressfilter. |
+
+**Herkunft der Fassungsangaben:** Die Commits und Versionen für 3104 und 3115 stammen aus Bens
+Auswertung der Versionsgeschichte (Prüfrunde Nacharbeit 1). In dieser Runde wurden sie nicht selbst
+nachgelesen, weil Git-Aufrufe ohne Freigabe abgelehnt wurden. **Versionszuordnung ist kein
+Live-Nachweis:** Dass 1.0.0-beta.1.117 bzw. .130 die Änderung enthalten, sagt nicht, dass die
+Live-Fassung die Befunde N-0006/N-0016/UX-02b nicht mehr zeigt. Eine Gegenprüfung an der
+ausgelieferten Fassung liegt in den Quellen nicht vor (s. offene Punkte).
 
 **Quellenwiderspruch:** Der Auftrag nennt 4263/4330/4334 als Lieferungen zu diesem Fall. Laut Code
-und Tests sind es andere Fachfälle. Sie nutzen nur die ausdrückliche Wahl über die Adresse. Eine
-Commit-Zuordnung über die Versionsgeschichte wurde in dieser Runde nicht erhoben.
+und Tests sind es andere Fachfälle. 4330 und 4334 nutzen nur die ausdrückliche Wahl über die
+Adresse. 4263 enthält mit K5 einen verwandten, aber anderen Verzögerungsfall (Detail statt Bestand).
 
 ## Pflicht und Vorschlag
 
@@ -51,26 +58,51 @@ Commit-Zuordnung über die Versionsgeschichte wurde in dieser Runde nicht erhobe
 - **UX-02b** ist Pflicht samt ihrer Abnahme (bestehende Sitzung, zwei neue gleiche Schlagworte plus
   fachfremde Kontrolle, Themenwahl, Bibliothekslink, Neuladen; DE/EN, Tastatur).
 
+## N-0020 · Leseposition beim Rückweg aus dem Herkunftsgraphen (umgesetzt in Nacharbeit 1)
+
+Suchbegriff und Bericht stehen seit JOB 3104 in der Adresse und kommen mit Browser-Zurück wieder.
+Neu ist der Rest: Beim Klick auf „Im Wissensgraph ansehen“ merkt sich die Lesefläche den
+**Rollstand** der Lesespalte und die **offenen Abschnitte** hinter „Mehr“ (`lib/lesekontext.ts`,
+Sitzungsspeicher). Der Merker ist gebunden an Pfad, gewählten Eintrag und Verlaufsposition. Kommt
+der Mensch per Browser-Zurück an genau diese Stelle, öffnet die Lesefläche „Mehr“ und die
+gemerkten Abschnitte und rollt an die alte Stelle, sobald der Bericht geladen ist. Der Merker wird
+dabei verbraucht. Ein späteres Öffnen desselben Berichts beginnt wie bisher oben; ein anderer
+Bericht erbt nichts. Die Wahl selbst bleibt allein in der Adresse.
+
+Nachweise: `tests/ablage-kontext/adresse-traegt-suche-und-eintrag.test.tsx` R1–R3 („Mehr“,
+Herkunftskette, Verbrauch, fremder Bericht) und `tests/ablage-kontext/herkunftsgraph-rueckweg-in-chromium.test.ts`
+G1–G4 (echter Link, echtes `history.back()`, Rollstand der Lesespalte, Gegenprobe Neuaufruf).
+
+Nicht Teil dieser Lieferung: Der Graph-Link trägt weiterhin keine Objektkennung; der Graph
+fokussiert den Bericht also nicht. Das verlangt N-0020 nicht. Das Original verlangt den
+erhaltenen Kontext beim Hin- und Zurückwechsel.
+
+## UX-02b · Originalabnahme als ausführbarer Fall (Nacharbeit 1)
+
+`tests/themenlink-tag/themenkarte-abnahme-chromium.test.ts` fährt die Abnahme der Prioritätszeile
+gegen die gebaute Anwendung in Chromium: bestehende Sitzung mit geholtem Bestand → zwei neue
+Einträge mit gleichem Schlagwort plus fachfremde Kontrolle am Server → Stand älter als die
+Frischefrist → Wissensnetz innerhalb der Anwendung → Themenknoten per Tastatur (Fokus, Enter) →
+Bibliothekslink per Tastatur → genau die 2, Schlagwort in der Adresse, Filter gesetzt → Neuladen →
+unverändert; einmal DE, einmal EN. Das Ergebnis steht im Prüfbericht des ausführenden Laufs, nicht
+hier.
+
+Grenzen des Falls: Die Einträge entstehen über die Dienste, nicht über die Erfassungsoberfläche.
+Gemeint ist der Befundfall, in dem der Client von ihnen nichts weiß. Fokus wird per Skript gesetzt,
+ausgelöst wird mit echter Enter-Taste; eine vollständige Tab-Reihenfolge ist nicht gemessen. Eine
+Abnahme an der Live-Fassung ersetzt der Fall nicht.
+
 ## Offene Punkte und fehlende Nachweise
 
-1. **UX-02b-Abnahme am echten Bestand.** Die Quelle sagt selbst „NICHT nachgefahren — Beleg ist
-   Quelltext“. F1–F10 sind jsdom-Fälle mit gesteuertem Zwischenspeicher. Sie decken weder Neuladen,
-   DE/EN noch Tastatur am Wissensnetz ab. Enger Abnahmefall: angemeldet `/bibliothek` öffnen
-   (Bestand liegt im Zwischenspeicher) → zwei Einträge mit neuem gleichen Schlagwort plus einen
-   fachfremden anlegen → `/wissensnetz` → Themenkarte per Tastatur (Tab/Enter) wählen →
-   Bibliothekslink → Liste zeigt genau die 2, Filtermenü „· 1“, `?tag=` in der Adresse → Neuladen →
-   unverändert; einmal mit DE, einmal mit EN.
-2. **N-0020 Rückweg über den Herkunftsgraphen.** Suchbegriff und Objekt stehen seit JOB 3104 in der
-   Adresse, die Browser-Zurück wiederherstellt (B4 belegt den Zurück-Weg nur innerhalb der
-   Bibliothek). Die **Leseposition** (Rollstand im Bericht, geöffnete „Mehr“-Abschnitte) wird nicht
-   erhalten. Der Graph-Link (`MehrAbschnitte.tsx`, `to="/graph"`) trägt keine Objektkennung.
-   Enger Abnahmefall: Admin, `/bibliothek` → Titel suchen → Bericht wählen und rollen → „Mehr“ →
-   Herkunftskette → „Im Wissensgraph ansehen“ → Browser-Zurück → Suchfeld, Trefferliste, gewählter
-   Bericht und Rollstand wie vorher.
+1. **UX-02b und N-0020 an der Live-Fassung.** Die neuen Chromium-Fälle laufen gegen die gebaute
+   Anwendung mit Testbestand. Eine Abnahme an der ausgelieferten Fassung mit echtem Konto bleibt
+   offen.
+2. **N-0020, Graph mit Objektbezug.** Siehe oben; nicht verlangt, nicht gebaut.
 3. **Rechteentzug während offener Lesefläche.** Kein eigener Test belegt den Sitzungsfall (Recht
    entzogen, danach Auffrischung mit 403). Enger Abnahmefall: Eintrag geöffnet → Vertraulichkeit
    so ändern, dass der Leser ihn nicht mehr sehen darf → Auffrischung → Stand-Hinweis, kein neuer
    Schreibweg; Neuladen → Fehlersatz ohne Ursache, kein fremder Bericht.
-4. **Lieferbeleg mit Fassung.** Welche ausgelieferte Version JOB 3104/3115 trägt und ob die
-   Live-Fassung die Befunde N-0006/N-0016 (beobachtet an 1.0.0-beta.1.101/.107/.112) nicht mehr
-   zeigt, ist hier nicht belegt. Nötig ist eine Gegenprüfung an der ausgelieferten Fassung.
+4. **Live-Nachweis zu den Fassungen.** JOB 3104 liegt in 1.0.0-beta.1.117, JOB 3115 in .130
+   (Versionszuordnung, s. oben). Ob die Live-Fassung die Befunde N-0006/N-0016 (beobachtet an
+   1.0.0-beta.1.101/.107/.112) nicht mehr zeigt, ist nicht belegt. Nötig ist eine Gegenprüfung an
+   der ausgelieferten Fassung.
