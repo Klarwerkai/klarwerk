@@ -230,6 +230,49 @@ describe("Anlagenzugang · der QR-Code in der Wissensansicht", () => {
     ).toBe(pfad);
   });
 
+  it("W4 · Kontext treibt die Adresse über die Kapazität: Wahl bleibt bedienbar und rücknehmbar", async () => {
+    // Ben Nacharbeit 3: zulässige Kennungen (≤ 120 Zeichen) können zusammen die 213 Byte von
+    // Version 10-M überschreiten. Dann muss die Wahl sichtbar bleiben und zurückzunehmen sein.
+    const standort = `Werk${"n".repeat(96)}`;
+    const version = `Rev${"v".repeat(117)}`;
+    box.ko.anlagenkontext = { standorte: [standort], versionen: [version] };
+    await mount("viewer");
+    kopplungOeffnen();
+    const kennung = "Linie L4 / Dosierstation DP-4";
+
+    waehle("anlagen-qr-kontext-standort", standort);
+    waehle("anlagen-qr-kontext-anlagenversion", version);
+    expect(container.querySelector('[data-testid="anlagen-qr-zu-lang"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="anlagen-qr-bild"]')).toBeNull();
+    expect(
+      container.querySelector('[data-testid="anlagen-qr-kontext-standort"]'),
+      "die Kontextwahl ist im Zustand „zu lang“ verschwunden",
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="anlagen-qr-kontext-zuruecksetzen"]'),
+    ).not.toBeNull();
+
+    // Eine Wahl zurücknehmen: sofort wieder ein Code, mit der verbliebenen Wahl.
+    waehle("anlagen-qr-kontext-anlagenversion", "");
+    expect(container.querySelector('[data-testid="anlagen-qr-zu-lang"]')).toBeNull();
+    expect(gelesenerInhalt()).toBe(
+      `${window.location.origin}${anlagenPfad(kennung, "anlage", { standort })}`,
+    );
+
+    // Erneut über die Grenze, dann die sichtbare Rücksetzung: Code ohne Kontext.
+    waehle("anlagen-qr-kontext-anlagenversion", version);
+    expect(container.querySelector('[data-testid="anlagen-qr-zu-lang"]')).not.toBeNull();
+    const zuruecksetzen = container.querySelector<HTMLButtonElement>(
+      '[data-testid="anlagen-qr-kontext-zuruecksetzen"]',
+    );
+    act(() => {
+      zuruecksetzen?.click();
+    });
+    expect(container.querySelector('[data-testid="anlagen-qr-zu-lang"]')).toBeNull();
+    expect(gelesenerInhalt()).toBe(`${window.location.origin}${anlagenPfad(kennung)}`);
+    expect(container.querySelector('[data-testid="anlagen-qr-kontext-zuruecksetzen"]')).toBeNull();
+  });
+
   it("W2 · ohne Anlage am Objekt gibt es keinen Code", async () => {
     box.ko.asset = null;
     await mount("viewer");

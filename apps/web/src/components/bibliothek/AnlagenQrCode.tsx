@@ -118,11 +118,31 @@ export function AnlagenQrCode({
       ))}
     </select>
   ));
+  // Ben Nacharbeit 3: die Kontextwahl bleibt in JEDEM Zustand bedienbar — auch wenn sie die Adresse
+  // über die Kapazität des Codes treibt. Sonst bliebe eine wirksame Wahl stehen, die niemand mehr
+  // zurücknehmen kann. Dazu eine sichtbare Rücksetzung, sobald überhaupt ein Kontext gewählt ist.
+  const kontextGewaehlt = Object.keys(wirksamerKontext).length > 0;
+  const kontextBlock =
+    kontextWahl.length > 0 ? (
+      <div className="flex flex-wrap items-center gap-1.5">
+        {kontextWahl}
+        {kontextGewaehlt ? (
+          <Button
+            variant="ghost"
+            data-testid="anlagen-qr-kontext-zuruecksetzen"
+            onClick={() => setKontext({})}
+          >
+            {t("anlagenzugang.qr.kontextZuruecksetzen")}
+          </Button>
+        ) : null}
+      </div>
+    ) : null;
 
   if (code === "zuLang") {
     return (
       <div className="mt-2.5 flex flex-col gap-1.5 border-t border-hairline pt-2.5">
         {auswahl}
+        {kontextBlock}
         <p data-testid="anlagen-qr-zu-lang" className="text-[12px] text-trust-warn-text">
           {t("anlagenzugang.qr.zuLang")}
         </p>
@@ -167,9 +187,7 @@ export function AnlagenQrCode({
         </span>
         <p className="text-[12px] text-muted">{t("anlagenzugang.qr.hinweis")}</p>
         {auswahl}
-        {kontextWahl.length > 0 ? (
-          <div className="flex flex-wrap gap-1.5">{kontextWahl}</div>
-        ) : null}
+        {kontextBlock}
         <RoleLink
           to={pfad}
           testId="anlagen-qr-oeffnen"

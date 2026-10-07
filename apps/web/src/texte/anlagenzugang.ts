@@ -39,6 +39,7 @@ export default {
     "anlagenzugang.qr.bezug": "Wofür der QR-Code gilt",
     "anlagenzugang.qr.oeffnen": "Wissen dazu öffnen",
     "anlagenzugang.qr.herunterladen": "QR-Code herunterladen (SVG)",
+    "anlagenzugang.qr.kontextZuruecksetzen": "Kontext zurücksetzen",
     "anlagenzugang.qr.zuLang":
       "Diese Kennung ist für einen QR-Code zu lang. Mit einer kürzeren Kennung entsteht er.",
     "anlagenzugang.pflege.titel": "Bauteile, Material und Geltung",
@@ -74,6 +75,7 @@ export default {
     "anlagenzugang.qr.bezug": "What the QR code is for",
     "anlagenzugang.qr.oeffnen": "Open the related knowledge",
     "anlagenzugang.qr.herunterladen": "Download QR code (SVG)",
+    "anlagenzugang.qr.kontextZuruecksetzen": "Reset context",
     "anlagenzugang.qr.zuLang": "This ID is too long for a QR code. A shorter ID will produce one.",
     "anlagenzugang.pflege.titel": "Parts, material and validity",
     "anlagenzugang.pflege.hinweis":
@@ -108,6 +110,7 @@ export default {
     "anlagenzugang.qr.bezug": "Waarvoor de QR-code geldt",
     "anlagenzugang.qr.oeffnen": "Bijbehorende kennis openen",
     "anlagenzugang.qr.herunterladen": "QR-code downloaden (SVG)",
+    "anlagenzugang.qr.kontextZuruecksetzen": "Context wissen",
     "anlagenzugang.qr.zuLang":
       "Deze code is te lang voor een QR-code. Met een kortere code ontstaat er een.",
     "anlagenzugang.pflege.titel": "Onderdelen, materiaal en geldigheid",
