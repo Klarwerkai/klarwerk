@@ -35,12 +35,19 @@ import {
   withPgTx,
 } from "../services/db-tx";
 
-/** Hat der Bericht etwas zu melden? Ein ungeprüfter Schlüssel zählt mit — er ist Altbestand. */
+/**
+ * Hat der Bericht etwas zu melden? Jeder der vier L6-Befunde zählt, auch als Altbestand: ein
+ * ungeprüfter Schlüssel ebenso wie eine geschlossene Lücke ohne Objektbezug (Nacharbeit 4 — sie
+ * fehlte hier, und der Bericht endete trotz Befund mit Exit 0). Neue Lücken können ohne Bezug nicht
+ * mehr geschlossen werden (`AskService.closeGap`); die alten bleiben sichtbar, bis jemand sie mit
+ * Bezug versieht.
+ */
 export function hatBefund(b: Integritaetsbefund): boolean {
   return (
     b.fremdschluessel.some((s) => s.zustand !== "gueltig") ||
     b.fassungenOhneObjekt > 0 ||
     b.belegeOhneObjekt > 0 ||
+    b.luecken.geschlossenOhneBezug > 0 ||
     b.luecken.bezugOhneObjekt.length > 0 ||
     b.pruefspur.ohneLoeschbeleg.length > 0 ||
     b.waisen.length > 0

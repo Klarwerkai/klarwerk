@@ -885,25 +885,15 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         }
         // Close akzeptiert sowohl { close:true } als auch { action:"close" } (FE-Kopplung).
         if (request.body.close === true || request.body.action === "close") {
-          // R-0846 / L6: der Objektbezug. Nur ein vorhandenes, nicht gelöschtes Wissensobjekt wird
-          // als Bezug gespeichert — sonst stünde die Lücke von Anfang an auf einem Verweis ohne Ziel.
+          // R-0846 / L6: der Objektbezug. Hier wird nur die Form geprüft; ob das Objekt existiert
+          // und ob ohne mitgeschickten Bezug ein gültiger an der Lücke steht, entscheidet
+          // `AskService.closeGap` — fehlt beides, bleibt die Lücke offen (400).
           const roh = request.body.koId;
-          let bezug: string | undefined;
-          if (roh !== undefined) {
-            if (typeof roh !== "string" || roh.trim() === "") {
-              reply
-                .code(400)
-                .send({ error: "BAD_REQUEST", message: "koId muss eine Kennung sein." });
-              return;
-            }
-            bezug = roh.trim();
-            if (!(await deps.ko.get(bezug))) {
-              reply
-                .code(400)
-                .send({ error: "BAD_REQUEST", message: "Das Wissensobjekt existiert nicht." });
-              return;
-            }
+          if (roh !== undefined && (typeof roh !== "string" || roh.trim() === "")) {
+            reply.code(400).send({ error: "BAD_REQUEST", message: "koId muss eine Kennung sein." });
+            return;
           }
+          const bezug = typeof roh === "string" ? roh.trim() : undefined;
           reply.code(200).send(await ask.closeGap(request.params.id, bezug));
           return;
         }

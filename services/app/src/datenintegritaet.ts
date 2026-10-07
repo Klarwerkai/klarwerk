@@ -36,9 +36,18 @@ import { type ObjectRef, isTransientMedia, isWithinRetention } from "../../objec
 //     die Ziele seiner Zeit als Widerspruch — der Bericht unterscheidet das nicht.
 //   · Der Waisenscan vergleicht Zeichenketten über den ganzen Bestand. Auf großem Bestand kann er
 //     die Anweisungsgrenze der Prüfung reißen; dann scheitert er laut, statt zu raten.
-//   · Zwischen dem erneuten Scan in der Bereinigung und ihrem Commit kann eine andere Transaktion
-//     eine neue Referenz auf eine Waise schreiben. Die Schutzfrist (30 Tage ohne jeden Bezug) macht
-//     das unwahrscheinlich, schliesst es aber nicht aus.
+//
+// NACHARBEIT 4 — DAS KONKURRENZFENSTER IST GESCHLOSSEN. Bis hierher konnte zwischen Referenzscan und
+// `DELETE FROM objects` eine andere Transaktion eine neue Referenz auf eine Waise speichern (die
+// geteilte Reset-Sperre hält Schreiber nicht ab, sie hält nur den Reset ab). Jetzt nimmt die
+// Bereinigung als ERSTES `LOCK TABLE … IN SHARE MODE` auf jede Tabelle, die der Scan liest, und auf
+// `objects`. SHARE verträgt Leser, aber keinen Schreiber (INSERT/UPDATE/DELETE): ein Referenzschreiber,
+// der vorher begonnen hat, wird zu Ende abgewartet und ist dann im Scan sichtbar; einer, der danach
+// kommt, wartet bis zum Commit oder Rollback der Bereinigung und schreibt auf deren Ergebnis. Das
+// Warten der Bereinigung selbst ist durch `lock_timeout` begrenzt; scheitert es, rollt sie zurück.
+// Die Sperren sind transaktionsgebunden und fallen mit COMMIT oder ROLLBACK.
+//   PREIS: Für die Dauer der Bereinigung warten ALLE Schreiber auf diese Tabellen (auch Anmeldung,
+//   Sitzungen, Entwürfe). Sie ist ein ausdrücklicher Betreiberschritt, kein Hintergrundlauf.
 
 /** Höchstzahl einzeln genannter Fundstellen je Befund. Zählungen bleiben vollständig. */
 export const BERICHT_HOECHSTENS = 200;
@@ -65,6 +74,20 @@ export interface Bereinigungsergebnis {
   readonly belegeEntfernt: number;
   readonly validiert: readonly string[];
   readonly waisenEntfernt: readonly string[];
+  /** Die Tabellen, die bis zum Ende der Transaktion gegen Schreiber gesperrt waren. */
+  readonly gesperrt: readonly string[];
+}
+
+/** Höchstwartezeit der Bereinigung auf ihre Tabellensperren, in Millisekunden. */
+export const BEREINIGUNG_SPERRE_MS = 10_000;
+
+/**
+ * Prüfhaken der Bereinigung. `nachReferenzscan` läuft NACH dem Waisenscan und VOR dem Löschen —
+ * genau im früheren Konkurrenzfenster. Der Betreiberweg setzt ihn nicht; die Gegenprobe gegen echtes
+ * Postgres (datenintegritaet-pg F8–F10) legt dort einen gleichzeitigen Schreiber hinein.
+ */
+export interface BereinigungsHaken {
+  readonly nachReferenzscan?: (waisen: readonly string[]) => Promise<void>;
 }
 
 function bezeichner(name: string): string {
@@ -192,7 +215,13 @@ export async function erhebeIntegritaet(q: Queryable, jetzt: number): Promise<In
  * in DIESER Transaktion neu ermittelt. Lücken und Prüfspur fasst sie NICHT an: dort ist der
  * Befund eine Auskunft, kein Löschgrund.
  */
-export async function bereinigeBestand(q: Queryable, jetzt: number): Promise<Bereinigungsergebnis> {
+export async function bereinigeBestand(
+  q: Queryable,
+  jetzt: number,
+  haken: BereinigungsHaken = {},
+): Promise<Bereinigungsergebnis> {
+  // ZUERST die Sperre (s. Kopf, Nacharbeit 4) — vor jedem Lesen, auf dem eine Entscheidung beruht.
+  const gesperrt = await sperreReferenzschreiber(q);
   const fassungen = await q.query(
     "DELETE FROM ko_versions v WHERE NOT EXISTS (SELECT 1 FROM kos k WHERE k.id = v.ko_id)",
   );
@@ -209,6 +238,7 @@ export async function bereinigeBestand(q: Queryable, jetzt: number): Promise<Ber
     validiert.push(name);
   }
   const waisen = (await ermittleWaisen(q, jetzt)).map((w) => w.id);
+  await haken.nachReferenzscan?.(waisen);
   if (waisen.length > 0) {
     await q.query("DELETE FROM objects WHERE id = ANY($1::text[])", [waisen]);
   }
@@ -217,5 +247,18 @@ export async function bereinigeBestand(q: Queryable, jetzt: number): Promise<Ber
     belegeEntfernt: belege.rowCount ?? 0,
     validiert,
     waisenEntfernt: waisen,
+    gesperrt,
   };
+}
+
+/**
+ * Sperrt jede Tabelle, die der Waisenscan liest, und `objects` in SHARE MODE — bis zum Ende der
+ * Transaktion. Sortiert, damit zwei Läufe die Sperren in derselben Reihenfolge nehmen.
+ */
+async function sperreReferenzschreiber(q: Queryable): Promise<string[]> {
+  const spalten = await q.query<{ table_name: string }>(SQL_REFERENZSPALTEN);
+  const tabellen = [...new Set([...spalten.rows.map((r) => r.table_name), "objects"])].sort();
+  await q.query(`SET LOCAL lock_timeout = ${BEREINIGUNG_SPERRE_MS}`);
+  await q.query(`LOCK TABLE ${tabellen.map(bezeichner).join(", ")} IN SHARE MODE`);
+  return tabellen;
 }

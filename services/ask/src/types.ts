@@ -52,11 +52,11 @@ export interface Gap {
   // und die Auskunft ärmer. Fehlt bei Altbeständen; die Oberfläche zeigt dann NICHTS, statt eine
   // Häufigkeit zu behaupten, die nie gezählt wurde.
   askCount?: number;
-  // R-0846 / L6 — DER OBJEKTBEZUG. Das Wissensobjekt, das diese Lücke geschlossen hat. Gesetzt beim
-  // Schliessen mit Bezug (`closeGap(id, koId)`, PUT /api/gaps/:id mit `koId`); die Route prüft vorher,
-  // dass das Objekt existiert und nicht im Papierkorb liegt. Fehlt bei Altbeständen und bei Lücken,
-  // die ohne Bezug geschlossen wurden — der Integritätsbericht (services/app/src/datenintegritaet.ts)
-  // zählt beide Lagen und meldet einen Bezug, dessen Objekt inzwischen endgelöscht ist.
+  // R-0846 / L6 — DER OBJEKTBEZUG. Das Wissensobjekt, das diese Lücke geschlossen hat. Pflicht beim
+  // Schliessen (`closeGap(id, koId)`, PUT /api/gaps/:id mit `koId`): der Dienst prüft, dass das
+  // Objekt existiert und nicht im Papierkorb liegt, sonst bleibt die Lücke offen. Fehlen kann er nur
+  // noch bei Altbeständen — der Integritätsbericht (services/app/src/datenintegritaet.ts) zählt sie
+  // als Befund und meldet einen Bezug, dessen Objekt inzwischen endgelöscht ist.
   koId?: string;
 }
 

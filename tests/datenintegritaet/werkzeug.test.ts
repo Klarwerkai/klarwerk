@@ -13,14 +13,26 @@ const SAUBER: Integritaetsbefund = {
   ],
   fassungenOhneObjekt: 0,
   belegeOhneObjekt: 0,
-  luecken: { geschlossenOhneBezug: 3, bezugOhneObjekt: [] },
+  luecken: { geschlossenOhneBezug: 0, bezugOhneObjekt: [] },
   pruefspur: { endgeloeschtBelegt: 2, ohneLoeschbeleg: [] },
   waisen: [],
 };
 
 describe("tools/datenintegritaet · Bericht und Exit-Entscheidung", () => {
-  it("W1 · ein sauberer Bestand hat keinen Befund — Altlücken ohne Bezug sind Auskunft, kein Fehler", () => {
+  it("W1 · ein sauberer Bestand hat keinen Befund — belegte Endlöschungen sind Auskunft, kein Fehler", () => {
     expect(hatBefund(SAUBER)).toBe(false);
+  });
+
+  it("W1b · geschlossene Lücken ohne Objektbezug sind ein Befund — einzeln wie mehrfach (Nacharbeit 4)", () => {
+    for (const anzahl of [1, 3]) {
+      const befund = {
+        ...SAUBER,
+        luecken: { geschlossenOhneBezug: anzahl, bezugOhneObjekt: [] },
+      };
+      expect(hatBefund(befund), `${anzahl} ohne Bezug`).toBe(true);
+      // Der Befund bleibt im Bericht sichtbar.
+      expect(berichtZeilen(befund)).toContain(`Geschlossene Lücken ohne Objektbezug: ${anzahl}`);
+    }
   });
 
   it("W2 · ein ungeprüfter Schlüssel, eine Waise oder ein Widerspruch in der Prüfspur ist ein Befund", () => {

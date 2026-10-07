@@ -38,6 +38,7 @@ import {
 } from "../../services/db-tx";
 
 const TAG = 24 * 60 * 60 * 1000;
+const INSERT_REFERENZ = "INSERT INTO gaps(id, data) VALUES ($1, $2)";
 
 describe("R-0846 / R-1437 · Datenintegrität und begrenzte Prüfung gegen echtes Postgres", () => {
   let container: StartedTestContainer | undefined;
@@ -267,6 +268,19 @@ describe("R-0846 / R-1437 · Datenintegrität und begrenzte Prüfung gegen echte
       // Ohne Schliessrecht (nicht das erste Konto der Instanz) antwortet die Route 403 — dann
       // trägt der Fall nichts, und das soll sichtbar sein statt grün.
       expect(falsch.statusCode, falsch.body).toBe(400);
+      // Nacharbeit 4: der alte Schliessweg ohne Bezug schliesst nicht mehr.
+      const ohneBezug = await app.inject({
+        method: "PUT",
+        url: `/api/gaps/${offen}`,
+        headers,
+        payload: { close: true },
+      });
+      expect(ohneBezug.statusCode, ohneBezug.body).toBe(400);
+      const nochOffen = await p.query<{ data: { status: string } }>(
+        "SELECT data FROM gaps WHERE id = $1",
+        [offen],
+      );
+      expect(nochOffen.rows[0]?.data.status).toBe("offen");
       const richtig = await app.inject({
         method: "PUT",
         url: `/api/gaps/${offen}`,
@@ -323,6 +337,150 @@ describe("R-0846 / R-1437 · Datenintegrität und begrenzte Prüfung gegen echte
       [[waise, imText, imPapierkorb, inFrist]],
     );
     expect(rest.rows.map((z) => z.id).sort()).toEqual([imText, imPapierkorb, inFrist].sort());
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // F8–F10 · Nacharbeit 4 (Ben B1): die Bereinigung gegen GLEICHZEITIGE Referenzschreiber.
+  // ----------------------------------------------------------------------------------------------
+
+  /** Ein eigener Schreiber-Vorrat mit genau einer Verbindung — damit seine PID feststeht. */
+  async function schreiber(ctx: { skip: () => void }): Promise<{ pool: Pool; pid: number }> {
+    if (!url) {
+      ctx.skip();
+      throw new Error("unreachable");
+    }
+    const pool = new Pool({ connectionString: url, max: 1 });
+    nebenpools.push(pool);
+    const r = await pool.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+    return { pool, pid: r.rows[0]?.pid ?? -1 };
+  }
+
+  /** Eine Lückenzeile, deren Fragetext die Objektkennung trägt — eine Referenz im Sinne des Scans. */
+  function referenzzeile(gapId: string, objektId: string): [string, string] {
+    return [
+      gapId,
+      JSON.stringify({
+        id: gapId,
+        question: `Siehe /api/objects/${objektId}/raw`,
+        status: "offen",
+        assignee: null,
+        priority: "mittel",
+        createdAt: new Date().toISOString(),
+      }),
+    ];
+  }
+
+  async function wartetAufSperre(p: Pool, pid: number): Promise<boolean> {
+    for (let i = 0; i < 50; i++) {
+      const r = await p.query("SELECT 1 FROM pg_locks WHERE pid = $1 AND NOT granted", [pid]);
+      if ((r.rowCount ?? 0) > 0) {
+        return true;
+      }
+      await new Promise((fertig) => setTimeout(fertig, 20));
+    }
+    return false;
+  }
+
+  async function relationssperrenVon(p: Pool, pid: number): Promise<number> {
+    const r = await p.query(
+      "SELECT 1 FROM pg_locks WHERE pid = $1 AND locktype = 'relation' AND mode = 'ShareLock'",
+      [pid],
+    );
+    return r.rowCount ?? 0;
+  }
+
+  it("F8 · ein Schreiber im früheren Fenster wartet bis zum Commit — er kann die Entscheidung nicht unterlaufen", async (ctx) => {
+    const { p } = bereit(ctx);
+    const w = await schreiber(ctx);
+    const waise = `obj-fenster-${randomUUID()}`;
+    await legeObjektAn(p, waise, new Date(Date.now() - TAG).toISOString());
+    let geschrieben = false;
+    let schreibLauf: Promise<unknown> | undefined;
+    let bereinigerPid = -1;
+
+    const ergebnis = await withPgTx(p, async (tx) => {
+      const q = pgQueryable(tx);
+      const eigene = await q.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+      bereinigerPid = eigene.rows[0]?.pid ?? -1;
+      return bereinigeBestand(q, Date.now(), {
+        nachReferenzscan: async (waisen) => {
+          expect(waisen).toContain(waise);
+          // Genau jetzt will ein Schreiber eine Referenz auf die Waise speichern.
+          const zeile = referenzzeile(`gap-${waise}`, waise);
+          schreibLauf = w.pool.query(INSERT_REFERENZ, zeile).then(() => {
+            geschrieben = true;
+          });
+          expect(await wartetAufSperre(p, w.pid), "Schreiber wartet an der Sperre").toBe(true);
+          expect(geschrieben).toBe(false);
+        },
+      });
+    });
+    expect(ergebnis.gesperrt).toContain("gaps");
+    expect(ergebnis.gesperrt).toContain("objects");
+    expect(ergebnis.waisenEntfernt).toContain(waise);
+    // Nach dem Commit läuft der Schreiber — auf dem Ergebnis der Bereinigung, nicht mittendrin.
+    await schreibLauf;
+    expect(geschrieben).toBe(true);
+    expect(await relationssperrenVon(p, bereinigerPid), "Sperren nach dem Commit frei").toBe(0);
+  });
+
+  it("F9 · ein Schreiber, der VOR der Bereinigung begann, wird abgewartet — seine Referenz schützt", async (ctx) => {
+    const { p } = bereit(ctx);
+    const w = await schreiber(ctx);
+    const geschuetzt = `obj-vorher-${randomUUID()}`;
+    await legeObjektAn(p, geschuetzt, new Date(Date.now() - TAG).toISOString());
+    const client = await w.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(INSERT_REFERENZ, referenzzeile(`gap-${geschuetzt}`, geschuetzt));
+      let fertig = false;
+      const bereinigung = withPgTx(p, async (tx) => {
+        const e = await bereinigeBestand(pgQueryable(tx), Date.now());
+        fertig = true;
+        return e;
+      });
+      await new Promise((r) => setTimeout(r, 300));
+      expect(fertig, "die Bereinigung wartet auf den offenen Schreiber").toBe(false);
+      await client.query("COMMIT");
+      const ergebnis = await bereinigung;
+      expect(ergebnis.waisenEntfernt).not.toContain(geschuetzt);
+    } finally {
+      await client.query("ROLLBACK").catch(() => undefined);
+      client.release();
+    }
+    const steht = await p.query("SELECT 1 FROM objects WHERE id = $1", [geschuetzt]);
+    expect(steht.rowCount).toBe(1);
+  });
+
+  it("F10 · scheitert die Bereinigung, rollt sie zurück, gibt die Sperren frei und löscht nichts", async (ctx) => {
+    const { p } = bereit(ctx);
+    const w = await schreiber(ctx);
+    const waise = `obj-rueckroll-${randomUUID()}`;
+    await legeObjektAn(p, waise, new Date(Date.now() - TAG).toISOString());
+    let schreibLauf: Promise<unknown> | undefined;
+    let bereinigerPid = -1;
+
+    await expect(
+      withPgTx(p, async (tx) => {
+        const q = pgQueryable(tx);
+        const eigene = await q.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+        bereinigerPid = eigene.rows[0]?.pid ?? -1;
+        return bereinigeBestand(q, Date.now(), {
+          nachReferenzscan: async () => {
+            schreibLauf = w.pool.query(INSERT_REFERENZ, referenzzeile(`gap-${waise}`, waise));
+            expect(await wartetAufSperre(p, w.pid)).toBe(true);
+            throw new Error("Bereinigung bricht ab");
+          },
+        });
+      }),
+    ).rejects.toThrow("Bereinigung bricht ab");
+
+    await schreibLauf;
+    expect(await relationssperrenVon(p, bereinigerPid), "Sperren nach dem Rollback frei").toBe(0);
+    const steht = await p.query("SELECT 1 FROM objects WHERE id = $1", [waise]);
+    expect(steht.rowCount, "nichts gelöscht").toBe(1);
+    const referenz = await p.query("SELECT 1 FROM gaps WHERE id = $1", [`gap-${waise}`]);
+    expect(referenz.rowCount, "der Schreiber kam nach dem Rollback durch").toBe(1);
   });
 
   it("B1 · die begrenzte Prüfung kann nicht schreiben", async (ctx) => {

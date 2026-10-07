@@ -716,7 +716,8 @@ export const endpoints = {
     summary: () => api.get<GapSummary>("/gaps/summary"),
     // Detail-Liste: der Server redigiert den Fragetext adressatengerecht (redacted-Marker).
     list: () => api.get<Gap[]>("/gaps"),
-    close: (id: string) => api.put<Gap>(`/gaps/${id}`, { close: true }),
+    // R-0846 / L6: geschlossen wird nur mit dem Wissensobjekt, das die Lücke beantwortet.
+    close: (id: string, koId: string) => api.put<Gap>(`/gaps/${id}`, { close: true, koId }),
     assign: (id: string, expertId: string) => api.put<Gap>(`/gaps/${id}`, { expertId }),
     // SCRUM-115 / FE-RISK-02: Priorität der Wissenslücke setzen.
     setPriority: (id: string, priority: GapPriority) => api.put<Gap>(`/gaps/${id}`, { priority }),
