@@ -240,6 +240,7 @@ import {
   InMemoryConfluenceImportSchalterRepo,
   PgConfluenceImportSchalterRepo,
 } from "./confluence-import-schalter";
+import { registerHerkunftspruefung } from "./csrf";
 import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
@@ -328,6 +329,7 @@ import { reasonerRoutes } from "./routes/reasoner-routes";
 // JOB 4086: Adapter #2 des quellneutralen Import-Vertrags — SharePoint/OneDrive.
 import { sharepointImportRoutes } from "./routes/sharepoint-import-routes";
 import { slidesRoutes } from "./routes/slides-routes";
+import { spacesRoutes } from "./routes/spaces-routes";
 import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
 import { validationRoutes } from "./routes/validation-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
@@ -340,6 +342,8 @@ import { ImportAccessService } from "./services/import-access-service";
 import { KlaraSessionService } from "./services/klara-session-service";
 import { type AnhangQuellen, sichtbarkeitsfilterFuer } from "./sichtbarkeit";
 import { type SlideConverter, createSofficeSlideConverter } from "./slide-converter";
+// produkt:20261007:spaces — die versionierten Arbeitsräume; im Postgres-Betrieb haltbar.
+import { InMemorySpacesRepo, PgSpacesRepo, type SpacesRepo, lesbareSpaces } from "./spaces";
 import { speicherVorgang } from "./speicher-vorgang";
 // JOB 3655: der Startvertrag — die EINE Stelle, die alle Umgebungswerte namentlich führt, den
 // Start bei fehlenden Pflichtwerten verweigert und beim Hochfahren ohne Geheimniswerte berichtet,
@@ -443,6 +447,11 @@ export interface AppServices {
    * (`PgBegriffeRepo`, eingehängt in `buildPgServices`), sonst die In-Memory-Ablage.
    */
   begriffe: BegriffeRepo;
+  /**
+   * produkt:20261007:spaces — die Fassungen der Spaces (`spaces.ts`). Wie `begriffe` NICHT in
+   * `AppRepos`; im Postgres-Betrieb haltbar (`PgSpacesRepo`), sonst die In-Memory-Ablage.
+   */
+  spaces: SpacesRepo;
   /**
    * R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — über die Oberfläche umlegbar,
    * von jeder Confluence-Importroute je Anfrage durchgesetzt. Aus demselben Grund wie
@@ -929,6 +938,8 @@ export function assembleServices(
     brandingSettings?: BrandingSettingsRepo;
     // Firmenwörterbuch: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     begriffe?: BegriffeRepo;
+    // produkt:20261007:spaces: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    spaces?: SpacesRepo;
     // R-0134 / R-1005: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     confluenceImportSchalter?: ConfluenceImportSchalterRepo;
     // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
@@ -1235,6 +1246,8 @@ export function assembleServices(
     brandingSettings: opts.brandingSettings ?? new InMemoryBrandingSettingsRepo(),
     // Firmenwörterbuch — Postgres, wenn injiziert, sonst im Speicher.
     begriffe: opts.begriffe ?? new InMemoryBegriffeRepo(),
+    // produkt:20261007:spaces — Postgres, wenn injiziert, sonst im Speicher.
+    spaces: opts.spaces ?? new InMemorySpacesRepo(),
     // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
     confluenceImportSchalter:
       opts.confluenceImportSchalter ?? new InMemoryConfluenceImportSchalterRepo(),
@@ -1669,6 +1682,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // Firmenwörterbuch: jede Fassung eines Begriffs liegt in DERSELBEN Datenbank wie der Bestand
       // (eine Kundeninstanz = ein Datenraum) und überlebt Neuladen, Neustart und Deploy.
       begriffe: new PgBegriffeRepo(pool),
+      // produkt:20261007:spaces: Spaces und ihre Fassungen liegen in derselben Datenbank wie der
+      // Bestand und überleben Neuladen, Neustart und Deploy.
+      spaces: new PgSpacesRepo(pool),
       // R-0134 / R-1005: der Betreiberschalter überlebt Neustart und Deploy — sonst stünde ein
       // ausgeschalteter Import nach dem nächsten Neustart still wieder auf „an".
       confluenceImportSchalter: new PgConfluenceImportSchalterRepo(pool),
@@ -2532,7 +2548,11 @@ export function buildApp(
     // wird dagegen zu `[redacted]`).
     app.log.info({ startvertrag: startbericht(process.env, bestand) }, "KLARWERK Startbericht");
   });
-  const guards = makeGuards(services.auth);
+  // produkt:20261007:spaces: jede angemeldete Anfrage trägt die Spaces, deren Inhalte das Konto
+  // lesen darf — ausgewertet allein in `sichtbarkeit.ts` (Detail, Liste, Suche, Anhänge, Klara).
+  const guards = makeGuards(services.auth, {
+    spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
+  });
 
   // D5 (KI aus, Lauf 5 Runde 3 — Bens B2): die Abschalt-Epoche einer Klara-Frage wird beim EINGANG
   // festgehalten, als ERSTER onRequest-Hook dieser App — vor dem asynchronen Anmelde-Hook der Add-on-API
@@ -2546,6 +2566,10 @@ export function buildApp(
       request.askKiBeginn = services.ask.kiStand() ?? null;
     }
   });
+
+  // R-0544 / R-0797 (Aufnahme gesamt-csrf-schutz): schreibende Aufrufe mit Session-Cookie nur aus
+  // der eigenen Herkunft — vor dem Add-on-Anmeldehook, s. `registerHerkunftspruefung` in csrf.ts.
+  registerHerkunftspruefung(app);
 
   // Add-on-API (Klara-Panel), hinter KLARWERK_ADDON_API: CORS NUR bei aktivem Flag, NUR für die eine
   // validierte Add-in-Origin und NUR für POST /api/ask UND POST /api/check-text (SCRUM-491 Slice 5).
@@ -3304,7 +3328,17 @@ export function buildApp(
   // zweiter Dienst. Ohne es verhielte sich die Ask-Route byteweise wie vor KA4 (fail-closed).
   app.register(
     askRoutes(
-      { ask: services.ask, ko: services.ko, conflicts: services.conflicts, klaraSessions },
+      {
+        ask: services.ask,
+        ko: services.ko,
+        conflicts: services.conflicts,
+        klaraSessions,
+        // produkt:20261007:spaces: ohne Sitzungsnutzer (Add-on) nur Inhalt aus offenen Spaces.
+        offeneSpaces: async () =>
+          new Set(
+            (await services.spaces.aktuelle()).filter((s) => s.zugang === "alle").map((s) => s.id),
+          ),
+      },
       guards,
     ),
   );
@@ -3501,6 +3535,13 @@ export function buildApp(
   // Firmenwörterbuch: Pflege (`ko.validate`), Nachschlagen und der deterministische Abgleich
   // (`ko.read`). Nicht geschaltet: ohne Einträge liefert der Abgleich schlicht keine Hinweise.
   app.register(begriffeRoutes({ begriffe: services.begriffe, audit: services.audit }, guards));
+  // produkt:20261007:spaces: Arbeitsräume, Inhalte je Space und Ansicht, Rechtevorschau, Wechsel.
+  app.register(
+    spacesRoutes(
+      { spaces: services.spaces, ko: services.ko, auth: services.auth, audit: services.audit },
+      guards,
+    ),
+  );
   // AUFTRAG-mega67 Block C/D: der ZUGANGS-ZUSTAND des Confluence-Imports, rein lesend. BEWUSST
   // ausserhalb des `confluenceImport`-Schalters registriert (anders als die Import-Routen unten):
   // eine Auskunft, die selbst hinter dem Schalter laege, koennte den Zustand „ausgeschaltet" nicht
