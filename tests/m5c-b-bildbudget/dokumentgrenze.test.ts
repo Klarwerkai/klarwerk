@@ -21,16 +21,18 @@ import { afterEach, describe, expect, it } from "vitest";
 
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
 
-import { buildServices } from "../../services/app/src/build-app";
+import { buildApp, buildServices } from "../../services/app/src/build-app";
 import type { Guards, SessionUser } from "../../services/app/src/http";
 import {
   DOCX_BILDER_MAX_ANZAHL,
   DOCX_BILDGRENZE,
+  DOCX_EINREICH_RUMPF_MAX_BYTES,
   DOCX_ENTWURF_MAX_BYTES,
   DRAFTS_BODY_LIMIT,
   captureRoutes,
 } from "../../services/app/src/routes/capture-routes";
 import { PNG_ROT, baueDocx } from "../m5-docx-bildunterschriften/docx-bauen";
+import { grossesPng } from "./bilder";
 
 const NUTZER = { id: "pedi", role: "admin", name: "Pedi", email: "pedi@bildbudget.test" };
 
@@ -191,6 +193,119 @@ describe("gesamt-bildbudget · der Umfang nach der Verkleinerung ist begrenzt un
     });
     expect(eingereicht.statusCode, eingereicht.body.slice(0, 300)).not.toBe(413);
     expect(eingereicht.body).not.toContain("FST_ERR_CTP_BODY_TOO_LARGE");
+  });
+});
+
+// ================================================================================================
+// D — NACHARBEIT 2 (BEN): DIE GRENZE MISST, WAS WIRKLICH REIST — AM ECHTEN WEG, MIT BILD.
+// ================================================================================================
+//
+// BENS GEGENFALL: drei Millionen Backslashes im Text und ein kleines Bild. Roh unter 3,5 MB, als
+// JSON über 6 MB — jeder Backslash wird beim Serialisieren zu zweien, und der Sanitizer erhält sie.
+// Hier läuft alles echt: Anmeldung, `.docx`, mammoth, Bildverkleinerung (sharp), Sanitizer,
+// Speicher, Speichern und Einreichen über `buildApp` — keine eingesetzte Umwandlung.
+const ZUGANG = { name: "Admin", email: "dokumentgrenze@bildbudget.test", password: "secret123" };
+
+async function angemeldet() {
+  const instanz = buildApp(buildServices());
+  app = instanz;
+  const registriert = await instanz.inject({
+    method: "POST",
+    url: "/api/auth/register",
+    payload: ZUGANG,
+  });
+  expect(registriert.statusCode).toBe(201);
+  const login = await instanz.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: { email: ZUGANG.email, password: ZUGANG.password },
+  });
+  expect(login.statusCode).toBe(200);
+  const headers = {
+    authorization: `Bearer ${login.json().token as string}`,
+    "content-type": "application/json",
+  };
+  return { instanz, headers };
+}
+
+/** Ein echtes Word-Dokument: `backslashes` Backslashes als Fließtext und ein echtes Rasterbild. */
+async function escapeDocx(backslashes: number): Promise<string> {
+  const { bytes } = await baueDocx([
+    { art: "text", text: "Rahmen aus zwei Profilen." },
+    { art: "text", text: "\\".repeat(backslashes) },
+    { art: "bild", png: grossesPng(400, 300).toString("base64"), alt: "profil.png" },
+  ]);
+  return bytes.toString("base64");
+}
+
+describe("gesamt-bildbudget · der serialisierte Speicher- und Einreich-Rumpf ist begrenzt (R-0025)", () => {
+  it("D1 · drei Millionen Backslashes + Bild: roh unter 3,5 MB, serialisiert zu groß → 413 „rumpf“, kein Entwurf", async () => {
+    const { instanz, headers } = await angemeldet();
+    const res = await instanz.inject({
+      method: "POST",
+      url: "/api/drafts/from-docx",
+      headers,
+      payload: JSON.stringify({ name: "bildbudget.docx", data: await escapeDocx(3_000_000) }),
+    });
+    expect(res.statusCode, res.body.slice(0, 300)).toBe(413);
+    const antwort = res.json() as Record<string, number | string | boolean>;
+    expect(antwort).toMatchObject({
+      error: DOCX_BILDGRENZE,
+      grenze: "rumpf",
+      draftCreated: false,
+      imagesTotal: 1,
+      maxRequestBytes: DOCX_EINREICH_RUMPF_MAX_BYTES,
+    });
+    // GEGENPROBE gegen die alte Messung: roh lag der Rumpf UNTER der Umfangsgrenze — die frühere
+    // Prüfung allein hätte diesen Entwurf angelegt.
+    expect(Number(antwort.bodyBytes)).toBeLessThan(DOCX_ENTWURF_MAX_BYTES);
+    expect(Number(antwort.requestBytes)).toBeGreaterThan(DRAFTS_BODY_LIMIT);
+    expect(antwort.message).toContain("beim Speichern und Einreichen zu gross");
+    const liste = await instanz.inject({ method: "GET", url: "/api/drafts", headers });
+    expect(liste.json() as unknown[]).toHaveLength(0);
+  });
+
+  it("D2 · zwei Millionen Backslashes + Bild: angelegt, gespeichert UND eingereicht (201) — kein 413", async () => {
+    const { instanz, headers } = await angemeldet();
+    const angelegt = await instanz.inject({
+      method: "POST",
+      url: "/api/drafts/from-docx",
+      headers,
+      payload: JSON.stringify({ name: "bildbudget.docx", data: await escapeDocx(2_000_000) }),
+    });
+    expect(angelegt.statusCode, angelegt.body.slice(0, 300)).toBe(201);
+    expect(angelegt.json()).toMatchObject({ imagesTotal: 1, imagesEmbedded: 1 });
+    const id = (angelegt.json() as { id: string }).id;
+
+    const geladen = await instanz.inject({ method: "GET", url: `/api/drafts/${id}`, headers });
+    expect(geladen.statusCode).toBe(200);
+    const payload = (geladen.json() as { payload: Record<string, unknown> }).payload;
+    expect(String(payload.bodyHtml)).toContain("\\".repeat(1000));
+    expect(String(payload.bodyHtml)).toMatch(/<img\b[^>]*src="data:image\//);
+
+    const gespeichert = await instanz.inject({
+      method: "PUT",
+      url: `/api/drafts/${id}`,
+      headers,
+      payload: JSON.stringify(payload),
+    });
+    expect(gespeichert.statusCode, gespeichert.body.slice(0, 300)).toBe(200);
+
+    // Der Rumpf, den die Vordertür beim Einreichen schickt: der ganze Stand, ergänzt um die
+    // Pflichtfelder, die erst im Editor gesetzt werden. Er passt unter den 5-MiB-Deckel.
+    const einreichRumpf = JSON.stringify({
+      draftPayload: { ...payload, type: "best_practice", category: "Instandhaltung" },
+    });
+    // Serialisiert liegt er ÜBER der Rohgrenze von 3,5 MB — genau die Lage, die Ben gemeldet hat.
+    expect(Buffer.byteLength(einreichRumpf)).toBeGreaterThan(DOCX_ENTWURF_MAX_BYTES);
+    expect(Buffer.byteLength(einreichRumpf)).toBeLessThan(DRAFTS_BODY_LIMIT);
+    const eingereicht = await instanz.inject({
+      method: "POST",
+      url: `/api/drafts/${id}/promote`,
+      headers,
+      payload: einreichRumpf,
+    });
+    expect(eingereicht.statusCode, eingereicht.body.slice(0, 300)).toBe(201);
   });
 });
 

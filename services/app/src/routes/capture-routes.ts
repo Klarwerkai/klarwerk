@@ -36,7 +36,7 @@ import {
 } from "../../../knowledge-object";
 // JOB 2703 D2: DIE EINE Kuerzungsregel fuer die Kernaussage — dieselbe Funktion wie im
 // Confluence-Mapper (services/confluence/src/mapper.ts). Der Server kuerzt; der Client nicht mehr.
-import { kernaussageAusHtml, kernaussageAusKlartext } from "../../../structure";
+import { kernaussageAusHtml, kernaussageAusKlartext, sanitizeHtml } from "../../../structure";
 import type { ValidationService } from "../../../validation";
 import type { AiCheckWorker } from "../ai-check-worker";
 import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
@@ -309,12 +309,31 @@ function docxDraftTooLargeErrorHandler(
 // Grenze, entsteht KEIN Entwurf und es wird KEIN Bild weggelassen; die Antwort nennt die Grenze und
 // beide Zahlen. Das ist der Unterschied zur „Notbremse" `imageBudgetBytes`, die überzählige Bilder
 // still weglässt (BEN 3229 R2: „das Bild ist restlos weg").
+//
+// NACHARBEIT 2 (BEN): DIE ROHGRÖSSE ALLEIN SICHERT R-0025 NICHT. Gezählt wurde nur das unkodierte
+// `bodyHtml`. Über die Leitung geht beim Speichern und Einreichen aber JSON — und JSON verdoppelt
+// jeden Backslash und jedes Anführungszeichen (der Sanitizer erhält beide, sanitize.ts:157). Drei
+// Millionen Backslashes und ein kleines Bild blieben unter 3,5 MB und brauchten serialisiert über
+// 6 MB: Anlegen ging, Speichern und Einreichen rissen den 5-MiB-Deckel. Deshalb gilt zusätzlich
+// eine dritte Grenze, gemessen an dem, was wirklich reist: der GESÄUBERTE Stand (so, wie `createDraft`
+// ihn speichert) als `JSON.stringify({ draftPayload })` — der Rumpf des Einreichens — plus ein
+// benannter Rand für das, was erst danach dazukommt.
 export const DOCX_BILDER_MAX_ANZAHL = 60;
 export const DOCX_ENTWURF_MAX_BYTES = MAX_INLINE_BODY_HTML_BYTES;
 export const DOCX_BILDGRENZE = "DOCX_BILDGRENZE";
 
-/** Welche der beiden Grenzen griff — die Anzahl wird zuerst geprüft. */
-export type DocxGrenzart = "anzahl" | "umfang";
+/**
+ * Rand im Einreich-Rumpf für Felder, die NACH der Übernahme dazukommen: Typ, Bereich, Schlagworte,
+ * Bedingungen, Maßnahmen, Quellen und Prüfer aus dem Editor (je durch `DRAFT_LIMITS` gedeckelt)
+ * sowie `operationId` und `expectedUpdatedAt` des Einreichens.
+ */
+export const DOCX_EINREICH_RAND_BYTES = 256 * 1024;
+
+/** Größter serialisierter Einreich-Rumpf, den der Dokument-Weg anlegt — Deckel minus Rand. */
+export const DOCX_EINREICH_RUMPF_MAX_BYTES = DRAFTS_BODY_LIMIT - DOCX_EINREICH_RAND_BYTES;
+
+/** Welche Grenze griff — geprüft in dieser Reihenfolge: Anzahl, Umfang, serialisierter Rumpf. */
+export type DocxGrenzart = "anzahl" | "umfang" | "rumpf";
 
 export interface DocxBildgrenzeGerissen {
   error: typeof DOCX_BILDGRENZE;
@@ -326,39 +345,56 @@ export interface DocxBildgrenzeGerissen {
   maxImages: number;
   bodyBytes: number;
   maxBodyBytes: number;
+  /** Bytes von `JSON.stringify({ draftPayload })` des gesäuberten Stands. */
+  requestBytes: number;
+  maxRequestBytes: number;
 }
 
 // Wie `docxZuGrossMessage`: der Satz nennt die Grenze, die WIRKLICH galt, und was jetzt zu tun ist.
 function docxBildgrenzeMessage(grenze: DocxGrenzart, bilder: number, bytes: number): string {
-  return grenze === "anzahl"
-    ? `Das Dokument enthaelt ${bilder} Bilder; uebernommen werden hoechstens ${DOCX_BILDER_MAX_ANZAHL} Bilder je Word-Dokument. Es wurde kein Entwurf angelegt und kein Bild weggelassen. Bitte mit weniger Bildern oder in Teilen erneut senden.`
-    : `Das Dokument ist auch nach dem Verkleinern der Bilder zu gross fuer einen Entwurf (${alsMib(bytes)}, erlaubt sind ${alsMib(DOCX_ENTWURF_MAX_BYTES)}). Es wurde kein Entwurf angelegt und kein Bild weggelassen. Bitte mit weniger oder kleineren Bildern oder in Teilen erneut senden.`;
+  if (grenze === "anzahl") {
+    return `Das Dokument enthaelt ${bilder} Bilder; uebernommen werden hoechstens ${DOCX_BILDER_MAX_ANZAHL} Bilder je Word-Dokument. Es wurde kein Entwurf angelegt und kein Bild weggelassen. Bitte mit weniger Bildern oder in Teilen erneut senden.`;
+  }
+  if (grenze === "umfang") {
+    return `Das Dokument ist auch nach dem Verkleinern der Bilder zu gross fuer einen Entwurf (${alsMib(bytes)}, erlaubt sind ${alsMib(DOCX_ENTWURF_MAX_BYTES)}). Es wurde kein Entwurf angelegt und kein Bild weggelassen. Bitte mit weniger oder kleineren Bildern oder in Teilen erneut senden.`;
+  }
+  return `Der Entwurf aus diesem Dokument waere beim Speichern und Einreichen zu gross (${alsMib(bytes)} mit Kodierung, erlaubt sind ${alsMib(DOCX_EINREICH_RUMPF_MAX_BYTES)}). Es wurde kein Entwurf angelegt und kein Bild weggelassen. Bitte mit weniger Text, weniger oder kleineren Bildern oder in Teilen erneut senden.`;
 }
 
-/** `null` = beide Grenzen gehalten; sonst die Antwort, mit der die Route ablehnt. */
+/**
+ * `null` = alle drei Grenzen gehalten; sonst die Antwort, mit der die Route ablehnt.
+ *
+ * `gespeichert` ist der Stand, wie `createDraft` ihn ablegen würde — mit GESÄUBERTEM `bodyHtml`.
+ * Gemessen wird daran, nicht an der Rohfassung: was der Sanitizer verwirft, reist nie mit.
+ */
 export function pruefeDocxBildgrenzen(
   bilder: number,
-  bodyHtml: string,
+  gespeichert: DraftPayload,
 ): DocxBildgrenzeGerissen | null {
-  const bytes = Buffer.byteLength(bodyHtml, "utf8");
+  const bytes = Buffer.byteLength(gespeichert.bodyHtml ?? "", "utf8");
+  const rumpfBytes = Buffer.byteLength(JSON.stringify({ draftPayload: gespeichert }), "utf8");
   let grenze: DocxGrenzart;
   if (bilder > DOCX_BILDER_MAX_ANZAHL) {
     grenze = "anzahl";
   } else if (bytes > DOCX_ENTWURF_MAX_BYTES) {
     grenze = "umfang";
+  } else if (rumpfBytes > DOCX_EINREICH_RUMPF_MAX_BYTES) {
+    grenze = "rumpf";
   } else {
     return null;
   }
   return {
     error: DOCX_BILDGRENZE,
     grenze,
-    message: docxBildgrenzeMessage(grenze, bilder, bytes),
+    message: docxBildgrenzeMessage(grenze, bilder, grenze === "rumpf" ? rumpfBytes : bytes),
     draftCreated: false,
     imageTransfer: "not_completed",
     imagesTotal: bilder,
     maxImages: DOCX_BILDER_MAX_ANZAHL,
     bodyBytes: bytes,
     maxBodyBytes: DOCX_ENTWURF_MAX_BYTES,
+    requestBytes: rumpfBytes,
+    maxRequestBytes: DOCX_EINREICH_RUMPF_MAX_BYTES,
   };
 }
 
@@ -1438,18 +1474,6 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // Wer hier das falsche Feld nimmt, meldet dem Nutzer einen Bildverlust, den es nicht
           // gibt — oder verschweigt einen echten. Der Test W1 pinnt genau diese Wahl.
           const quellbilder = reich.imageTransfer.totalImages;
-          // AUFNAHME gesamt-bildbudget: die Obergrenze des Dokuments (s. `pruefeDocxBildgrenzen`)
-          // VOR `createDraft` — ein Entwurf, der beim Einreichen an 413 scheitern würde, entsteht
-          // gar nicht erst, und der Aufrufer erfährt, welche Grenze griff.
-          const gerissen = pruefeDocxBildgrenzen(quellbilder, bodyHtml);
-          if (gerissen) {
-            request.log.warn(
-              { grenze: gerissen.grenze, bilder: quellbilder, bytes: gerissen.bodyBytes },
-              "docx-bildgrenze-gerissen",
-            );
-            reply.code(413).send(gerissen);
-            return;
-          }
           // `exactOptionalPropertyTypes`: ein Feld fehlt entweder ganz oder trägt einen Wert —
           // ein ausdrückliches `undefined` ist hier ein Typfehler.
           const titelVorschlag = title ?? name?.replace(/\.docx$/i, "");
@@ -1473,6 +1497,28 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             // Client entscheidet damit fail-closed, ob etwas verloren ging.
             sourceImageCount: quellbilder,
           };
+          // AUFNAHME gesamt-bildbudget: die Obergrenzen des Dokuments (s. `pruefeDocxBildgrenzen`)
+          // VOR `createDraft` — ein Entwurf, der beim Speichern oder Einreichen an 413 scheitern
+          // würde, entsteht gar nicht erst, und der Aufrufer erfährt, welche Grenze griff. Gemessen
+          // am gesäuberten Stand — derselbe Schritt wie `sanitizeDraftPayload` in createDraft
+          // (capture/src/service.ts), der einen leeren Rumpf unberührt lässt.
+          const gerissen = pruefeDocxBildgrenzen(quellbilder, {
+            ...payload,
+            bodyHtml: bodyHtml.trim() ? sanitizeHtml(bodyHtml) : bodyHtml,
+          });
+          if (gerissen) {
+            request.log.warn(
+              {
+                grenze: gerissen.grenze,
+                bilder: quellbilder,
+                bytes: gerissen.bodyBytes,
+                rumpf: gerissen.requestBytes,
+              },
+              "docx-bildgrenze-gerissen",
+            );
+            reply.code(413).send(gerissen);
+            return;
+          }
           // R-0169 (Nacharbeit 5): der neu angelegte Entwurf wird an die Fassung seines
           // Word-Dokuments gebunden (Akte neu, wenn das Dokument noch keine Kennung trägt).
           const draft = await anWordDokumentBinden(
