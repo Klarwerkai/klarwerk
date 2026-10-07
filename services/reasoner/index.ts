@@ -117,6 +117,18 @@ export {
   withModelSlot,
   resetModelSemaphoreForTests,
 } from "./src/model-concurrency";
+// R-1646: die Ausgangsprüfung — der anonymisierte ausgehende Text wartet am Chokepoint auf die
+// Freigabe eines Controllers. Die App schaltet sie ein und stellt die Prüfroute bereit.
+export {
+  Ausgangspruefung,
+  AusgangAbgelehntFehler,
+  ausgangspruefungAusEnv,
+  setzeAusgangspruefung,
+  type AnonymisierungsArt,
+  type AusgangsAbschnitt,
+  type AusgangsEntscheidung,
+  type OffeneAusgangspruefung,
+} from "./src/ausgangspruefung";
 // SCRUM-386: kundeneigene KI-Assist-Presets (Admin verwaltet; Palette zeigt sie allen Rollen).
 export {
   ASSIST_PRESETS_SCHEMA,
