@@ -255,6 +255,9 @@ R-0020 gilt unverändert für **Speichern UND Einreichen**, auch bei verlorener 
 - Offen zur Entscheidung u. a.: Wortlaut „Vordertür-Entwurf geöffnet“ u. a. technische
   Beschriftungen, unsichtbar gesetzte Felder des Blatts (`statement`, `type`, `category`),
   Leertextfarbe `#9AA2B1` (K2b, gesperrt „nicht vor der Vorführung“).
+  Nachtrag `k2b-konkreter-rest`: Sperrbedingung durch LIVE 3801/4337 erfüllt; `--hint` existiert,
+  `#capture-leer` nutzt `--muted`. Rest und Kontrastentscheidung:
+  `docs/entscheidungen/k2b-erfassen-leertextfarbe.md`.
 
 ## 30.09.2026 — Fragen: Arbeit fortsetzen (Pedi 28.09.2026, Ergänzung 1, Prio 3)
 
