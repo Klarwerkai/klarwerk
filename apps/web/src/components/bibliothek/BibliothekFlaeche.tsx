@@ -1,11 +1,15 @@
-import { type UseQueryResult, useQueryClient } from "@tanstack/react-query";
+import { type UseQueryResult, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { ApiError } from "../../api/client";
+import { endpoints } from "../../api/endpoints";
 import { koQueryKey, useConflicts, useKos, useLibrarySearch } from "../../api/hooks";
 import type { KnowledgeObject } from "../../api/types";
 import { useSession } from "../../app/AuthContext";
+import { useRole } from "../../app/RoleContext";
+import { useToast } from "../../app/ToastContext";
 import { auffrischungGescheitert } from "../../lib/abfrageBestand";
 import { vertraulichkeitsAuskunft } from "../../lib/confidentiality";
 import { conflictImpact } from "../../lib/conflictImpact";
@@ -46,6 +50,7 @@ import {
   isFacetNoMatch,
   toggleFacetValue,
 } from "../../lib/facets";
+import { darfWissensobjektLoeschen } from "../../lib/koLoeschrecht";
 import { LIBRARY_RESULT_LIMIT, windowList } from "../../lib/libraryDisplay";
 import { EXPORT_FORMATS, exportFilename, exportUrl } from "../../lib/libraryExport";
 import {
@@ -96,13 +101,19 @@ import { useAuthorName } from "../../lib/useAuthorName";
 import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../../lib/useDebouncedValue";
 import { usePersistentEnum } from "../../lib/usePersistentValue";
 import { useReadiness } from "../../lib/useReadiness";
+import { isStaleKoDeleteError } from "../../lib/validationDelete";
 import { TABLET_LESE_QUERY, useMediaQuery } from "../../shell/useMediaQuery";
 import { DemoBanner } from "../DemoBanner";
 import { RoleLink } from "../RoleLink";
 import { cx } from "../ui";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { BibliothekLesen } from "./BibliothekLesen";
-import { BIB_ANSICHTEN, type BibListenPosten, BibliothekListe } from "./BibliothekListe";
+import {
+  BIB_ANSICHTEN,
+  type BibListenPosten,
+  type BibZeilenLoeschen,
+  BibliothekListe,
+} from "./BibliothekListe";
 import { Menue, MenuePunkt, MenueTrenner, MenueUntermenue, MenueZeile } from "./Menue";
 import {
   BIB_SEGMENT_STANDARD,
@@ -171,6 +182,8 @@ const EINTRAG_PARAM = "eintrag";
 //   Geltungsbereich (JOB 381)       → Menü „Filter" → Geltungsbereich
 //   „Weitere N laden"               → Nachladen beim Scrollen ans Listenende
 //   Karte „Antwort statt nur …?"    → Knopf „Fragen" auf der Lesefläche
+//   Papierkorb an der Trefferzeile  → fehlte hier bis R-0959 (gelöscht wurde nur über „…" der
+//                                     Lesefläche); seitdem wieder am Treffer, mit ruhiger Rückfrage
 //   Kicker, Hilfe-Tipps, Reife-Erklärbox, Bestandssatz → ERSATZLOS (Pedi 04.09.: Erklärtext gehört
 //                                     nicht ins Sichtfeld; die Wahl im Menü sagt dasselbe ohne Satz)
 //
@@ -1611,6 +1624,96 @@ export function BibliothekFlaeche({
   };
 
   // ================================================================================================
+  // R-0959 · LÖSCHEN DIREKT AUS DER TREFFERLISTE — RECHT, AUFRUF UND ABSCHLUSS.
+  // ================================================================================================
+  // DERSELBE LÖSCHWEG WIE AM „…"-MENÜ DER LESEFLÄCHE, nur am Treffer: ein Aufruf von
+  // `endpoints.ko.remove`, dieselbe Rechteregel (`lib/koLoeschrecht.ts`), dieselben Sätze, derselbe
+  // Umgang mit dem 404 (`isStaleKoDeleteError` — „war schon weg" ist kein Fehlschlag, JOB 3777) und
+  // dieselben aufgefrischten Abfragen. Der Server setzt das Recht unverändert durch; der Papierkorb
+  // erscheint nur, wo er gelten würde.
+  //
+  // HÖCHSTENS EINE RÜCKFRAGE ZUGLEICH. Ein Klick auf einen zweiten Papierkorb verlegt sie — nicht
+  // während ein Aufruf läuft (dann sind alle Papierkörbe gesperrt), sonst stünde der laufende
+  // Aufruf ohne Ort da.
+  //
+  // ZWEI LÖSCHUNGEN HINTEREINANDER: nach dem Abschluss ist die Mutation in ihrem Ruhezustand
+  // (`reset()` vor jeder neuen Rückfrage), kein Rest der vorigen Zeile bleibt stehen, und die Liste
+  // kommt frisch vom Server — gemessen in `tests/bibliothek-zeilenloeschen/`.
+  const { role } = useRole();
+  const { push } = useToast();
+  const [zeileLoeschenOffen, setZeileLoeschenOffen] = useState<string | null>(null);
+  const autorJeTreffer = new Map(sorted.map((item) => [item.ko.id, item.ko.author] as const));
+  const nachZeilenLoeschung = (id: string, satz: string): void => {
+    setZeileLoeschenOffen(null);
+    void qc.invalidateQueries({ queryKey: ["ko", id] });
+    void qc.invalidateQueries({ queryKey: ["validation"] });
+    void qc.invalidateQueries({ queryKey: ["kos"] });
+    void qc.invalidateQueries({ queryKey: ["library"] });
+    void qc.invalidateQueries({ queryKey: ["conflicts"] });
+    void qc.invalidateQueries({ queryKey: ["lifecycle"] });
+    setMarkiert((alt) => {
+      if (!alt.has(id)) {
+        return alt;
+      }
+      const neu = new Set(alt);
+      neu.delete(id);
+      return neu;
+    });
+    push("success", satz);
+    // War der gelöschte Treffer auch der GELESENE, verlässt seine Kennung die Adresse — dieselbe
+    // Regel wie `onGeloescht` der Lesefläche unten (JOB 3104 · UX-02): keine tote Kennung, kein
+    // „Der Eintrag ließ sich nicht laden." für den, der gerade selbst gelöscht hat.
+    if (id === gewaehlt) {
+      setParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          p.delete(EINTRAG_PARAM);
+          return p;
+        },
+        { replace: true },
+      );
+      beiLoeschung?.();
+    }
+  };
+  const zeileEntfernen = useMutation({
+    mutationFn: (id: string) => endpoints.ko.remove(id),
+    onSuccess: (_antwort, id) => nachZeilenLoeschung(id, t("ko.deleteDone")),
+    onError: (e, id) => {
+      if (isStaleKoDeleteError(e)) {
+        nachZeilenLoeschung(id, t("ko.deleteAlreadyGone"));
+      }
+      // Sonst ein echter Fehlschlag: er bleibt an der Mutation liegen und steht in der Rückfrage.
+    },
+  });
+  const zeilenLoeschFehler =
+    zeileEntfernen.error && !isStaleKoDeleteError(zeileEntfernen.error)
+      ? zeileEntfernen.error instanceof ApiError
+        ? zeileEntfernen.error.message
+        : t("state.error")
+      : null;
+  const zeilenLoeschen: BibZeilenLoeschen = {
+    darf: (id) => darfWissensobjektLoeschen(role, autorJeTreffer.get(id), user?.id),
+    offen: zeileLoeschenOffen,
+    laeuft: zeileEntfernen.isPending,
+    fehler: zeilenLoeschFehler,
+    onFragen: (id) => {
+      if (zeileEntfernen.isPending) {
+        return;
+      }
+      zeileEntfernen.reset();
+      setZeileLoeschenOffen(id);
+    },
+    onBehalten: () => {
+      if (zeileEntfernen.isPending) {
+        return;
+      }
+      zeileEntfernen.reset();
+      setZeileLoeschenOffen(null);
+    },
+    onLoeschen: (id) => zeileEntfernen.mutate(id),
+  };
+
+  // ================================================================================================
   // JOB 3063 R3/R6 · JOB 3121 — DER SATZ „STAND VON <ZEIT> · AUFFRISCHUNG FEHLGESCHLAGEN".
   // ================================================================================================
   // Er wird EINMAL gebaut und an GENAU EINER Stelle gezeigt: an der Fläche, die gerade da ist.
@@ -1855,6 +1958,9 @@ export function BibliothekFlaeche({
                 }
               : null
           }
+          // R-0959: der Papierkorb je Treffer. Recht, Aufruf und Abschluss stehen oben bei
+          // `zeilenLoeschen`; die Liste zeichnet nur.
+          loeschen={zeilenLoeschen}
           // R-0446 / R-1812: der Nulltreffer nennt den Bestand, in dem gesucht wurde — mit
           // demselben Wort wie die Ortszeile darüber. In der eigenen Ablage ist der Gesamtbestand
           // die plausibel gemeinte andere Suche; der Knopf schaltet nur den Bereich um, Suchwort und

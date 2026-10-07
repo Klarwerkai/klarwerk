@@ -1,11 +1,11 @@
-import { Languages, Search } from "lucide-react";
+import { Languages, Search, Trash2 } from "lucide-react";
 import { type ReactNode, type UIEvent, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { CONF_TONE_CLASS, type ConfidentialityTone } from "../../lib/confidentiality";
 import type { KoPreviewSource } from "../../lib/koPreview";
 import { useLesevariante } from "../../lib/lesevariante";
 import { KoSummaryDisclosure } from "../KoSummaryDisclosure";
-import { cx } from "../ui";
+import { Button, cx } from "../ui";
 import { BIB_SEGMENTE, type BibSegment, type ZustandsTon, amListenende } from "./zustand";
 
 // ==================================================================================================
@@ -183,6 +183,33 @@ export interface BibMarkierung {
   readonly onLeeren: () => void;
 }
 
+// ================================================================================================
+// R-0959 · LÖSCHEN DIREKT AUS DER TREFFERLISTE — DIE LISTE ZEICHNET, DIE FLÄCHE ENTSCHEIDET.
+// ================================================================================================
+// Bis v0.9.32 trug die Trefferzeile einen Papierkorb mit Inline-Rückfrage (SCRUM-401, Layout
+// SCRUM-419). Beim Umbau zur Fläche (JOB 3063) ist er weggefallen, ohne in der Umzugstabelle von
+// `BibliothekFlaeche.tsx` aufzutauchen; gelöscht wurde seitdem nur noch über das „…"-Menü des
+// GELESENEN Eintrags. Hier steht er wieder — als Geschwister des Zeilenknopfs (kein Knopf im Knopf).
+//
+// DIE RÜCKFRAGE IST EINE RUHIGE ZEILE UNTER DEM TREFFER, KEIN DIALOG: sie steht genau dort, wo
+// geklickt wurde (der Befund aus JOB 3637 — eine Rückfrage ausserhalb des Blicks „tut nichts" —
+// kann hier baulich nicht entstehen), sie sperrt den Rest der Liste nicht, und sie nimmt die
+// Bauform der Prüfliste auf (Frage · Behalten · Ja, löschen; `pages/Validation.tsx`). Die Liste
+// kennt weder Rechte noch Aufruf: `darf`, `laeuft` und `fehler` kommen von der Fläche.
+export interface BibZeilenLoeschen {
+  /** Darf der angemeldete Mensch DIESEN Beitrag löschen? Ohne Recht kein Papierkorb. */
+  readonly darf: (id: string) => boolean;
+  /** Die Zeile, deren Rückfrage gerade offen ist — höchstens eine. */
+  readonly offen: string | null;
+  /** Der Löschaufruf läuft: beide Knöpfe der Rückfrage sind gesperrt. */
+  readonly laeuft: boolean;
+  /** Der Grund eines ECHTEN Fehlschlags (nicht 404), am Bedienort; sonst `null`. */
+  readonly fehler: string | null;
+  readonly onFragen: (id: string) => void;
+  readonly onBehalten: () => void;
+  readonly onLoeschen: (id: string) => void;
+}
+
 export function BibliothekListe({
   q,
   onQ,
@@ -206,6 +233,7 @@ export function BibliothekListe({
   lage,
   ansicht = "liste",
   markierung = null,
+  loeschen = null,
 }: {
   q: string;
   onQ: (wert: string) => void;
@@ -258,6 +286,8 @@ export function BibliothekListe({
   // Mehrfachauswahl. Beide optional: ohne sie zeichnet die Liste exakt wie bisher.
   ansicht?: BibAnsicht;
   markierung?: BibMarkierung | null;
+  // R-0959: der Papierkorb je Treffer samt ruhiger Rückfrage. Ohne ihn zeichnet die Liste keinen.
+  loeschen?: BibZeilenLoeschen | null;
 }): JSX.Element {
   const { t } = useTranslation();
   const spur = useRef<HTMLDivElement | null>(null);
@@ -270,6 +300,35 @@ export function BibliothekListe({
       onNachladen();
     }
   });
+
+  // R-0959: öffnet sich die Rückfrage einer Zeile, geht der Fokus auf „Behalten" — der bewahrende
+  // Knopf, damit ein versehentliches Enter nichts löscht. Schliesst sie über „Behalten", kehrt er
+  // auf den Papierkorb derselben Zeile zurück, statt im Nichts zu landen. Gesucht wird über die
+  // Marken in der Spur; die Liste hält dafür keinen Ref je Zeile. Die Kennung wird am Attribut
+  // verglichen und nicht in den Selektor geschrieben — sie ist eine fremde Zeichenkette, und
+  // `CSS.escape` ist nicht überall da (dieselbe Vorsicht wie `MehrAbschnitte.tsx`).
+  const zeileLoeschbar = (id: string): boolean => loeschen?.darf(id) ?? false;
+  const offeneLoeschung = loeschen?.offen ?? null;
+  const vorherOffen = useRef<string | null>(null);
+  useEffect(() => {
+    const el = spur.current;
+    const vorher = vorherOffen.current;
+    vorherOffen.current = offeneLoeschung;
+    if (!el || vorher === offeneLoeschung) {
+      return;
+    }
+    const zuZeile = (marke: string, id: string): HTMLElement | undefined =>
+      [...el.querySelectorAll<HTMLElement>(`[data-testid="${marke}"]`)].find(
+        (k) => k.dataset.bibId === id,
+      );
+    if (offeneLoeschung !== null) {
+      zuZeile("bib-zeile-loeschen-rueckfrage", offeneLoeschung)
+        ?.querySelector<HTMLElement>("[data-zeile-behalten]")
+        ?.focus();
+    } else if (vorher !== null) {
+      zuZeile("bib-zeile-loeschen", vorher)?.focus();
+    }
+  }, [offeneLoeschung]);
 
   const beiScroll = (e: UIEvent<HTMLDivElement>): void => {
     if (amListenende(e.currentTarget)) {
@@ -541,6 +600,8 @@ export function BibliothekListe({
                   ? "overflow-hidden rounded-card border border-hairline"
                   : "border-b border-hairline-soft",
                 p.id === gewaehlt ? "bg-[#FDEADD]" : "hover:bg-hairline-soft",
+                // R-0959: der Papierkorb sitzt oben rechts im Block (s. unten).
+                zeileLoeschbar(p.id) ? "relative" : "",
                 // Im Auswahlmodus ein Raster: Häkchen links über beide Reihen, Zeilenknopf und
                 // Aufklapper rechts — ohne zusätzliche Hülle, die Liste ohne Auswahl bleibt DOM-gleich.
                 markierung ? "grid grid-cols-[auto_minmax(0,1fr)]" : "",
@@ -566,7 +627,12 @@ export function BibliothekListe({
                 data-bib-id={p.id}
                 aria-current={p.id === gewaehlt ? "true" : undefined}
                 onClick={() => onWaehle(p.id)}
-                className="group flex w-full items-start gap-2.5 border-inherit bg-inherit px-4 py-3 text-left outline-none"
+                className={cx(
+                  "group flex w-full items-start gap-2.5 border-inherit bg-inherit px-4 py-3 text-left outline-none",
+                  // R-0959: rechts Platz für den Papierkorb, damit er keinen Titel überdeckt. Nur
+                  // das RECHTE Polster — die gemessenen Zeilenmaße (oben/links, V10) bleiben.
+                  zeileLoeschbar(p.id) ? "pr-11" : "",
+                )}
               >
                 <span
                   aria-hidden
@@ -613,6 +679,72 @@ export function BibliothekListe({
                 source={{ ...p.vorschau, id: p.id }}
                 className="-mt-2 pb-3 pl-[34px] pr-4"
               />
+              {/* R-0959: der Papierkorb — nur für Berechtigte, ruhig in der Textfarbe der Meta-Zeile;
+                  die Warnfarbe trägt erst der bestätigende Knopf der Rückfrage. Er öffnet nichts und
+                  wechselt keine Auswahl, er fragt nur.
+                  WARUM ER IM DOM HINTER DEM AUFKLAPPER STEHT, obwohl er oben rechts sitzt: die
+                  Tastenfolge je Treffer bleibt Zeilenknopf → Vorschau-Umschalter, wie JOB 3488 sie
+                  festgelegt hat, und der Papierkorb kommt als DRITTER Halt desselben Treffers dazu
+                  — vor dem nächsten Treffer. Geschwister, kein Knopf im Knopf. */}
+              {loeschen?.darf(p.id) ? (
+                <button
+                  type="button"
+                  data-testid="bib-zeile-loeschen"
+                  data-bib-id={p.id}
+                  aria-label={t("zeilenloeschen.knopf", { titel: p.titel })}
+                  title={t("ko.deleteButton")}
+                  aria-expanded={loeschen.offen === p.id}
+                  disabled={loeschen.laeuft}
+                  onClick={() => loeschen.onFragen(p.id)}
+                  className="absolute right-2 top-2.5 rounded-btn p-1.5 text-muted outline-none hover:bg-hairline-soft hover:text-text focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-45"
+                >
+                  <Trash2 size={15} aria-hidden="true" />
+                </button>
+              ) : null}
+              {/* R-0959: die ruhige Zeile. Sie steht UNTER dem Treffer, über die volle Breite des
+                  Blocks (im Auswahlraster über beide Spalten), mit einer Haarlinie statt eines
+                  Kastens. Die Frage ist umbruchfähig (`min-w-0 flex-1`), damit ein langer Text die
+                  Knöpfe nicht wegdrückt (Pedis Layout-Befund vom 04.07., gehalten vom Sammler in
+                  `tests/app/mega45-loeschbestaetigung-sammler.test.ts`). `aria-busy` trägt den
+                  laufenden Aufruf; der Fehlergrund steht hier und bleibt, statt als Meldung zu
+                  verfallen — dieselbe Regel wie an der Rückfrage der Lesefläche. */}
+              {loeschen?.offen === p.id ? (
+                <div
+                  data-testid="bib-zeile-loeschen-rueckfrage"
+                  data-bib-id={p.id}
+                  aria-busy={loeschen.laeuft}
+                  className="col-span-full border-t border-hairline-soft px-4 py-2"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="min-w-0 flex-1 text-[12.5px] font-semibold text-text">
+                      {t("ko.deleteQ")}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      data-zeile-behalten=""
+                      disabled={loeschen.laeuft}
+                      onClick={loeschen.onBehalten}
+                    >
+                      {t("ko.deleteKeep")}
+                    </Button>
+                    <Button
+                      variant="danger"
+                      disabled={loeschen.laeuft}
+                      onClick={() => loeschen.onLoeschen(p.id)}
+                    >
+                      {t("ko.deleteYes")}
+                    </Button>
+                  </div>
+                  {loeschen.fehler ? (
+                    <p
+                      data-testid="bib-zeile-loeschen-fehler"
+                      className="mt-2 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+                    >
+                      {loeschen.fehler}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ),
         )}
