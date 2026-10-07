@@ -2126,8 +2126,17 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // an diesem Arbeitsbaum ohne Git-Verlauf nicht namentlich bestimmt. `anbieter` 1 und `traeger`
     // 2 sind in derselben Meldung unverändert — eine neue Bildbeschreibungsfläche ist NICHT
     // hinzugekommen (bens Bedingung an I44 bleibt gewahrt).
+    //
+    // Nacharbeit 2 desselben Auftrags: GEMESSEN 480. Am Kandidaten 515abd35 meldete der Sammler
+    // wörtlich „gemessen: 480 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 596 Quelldateien …
+    // expected { komponenten: 480, … } to deeply equal { komponenten: 470, … }". Zwischen a400f78b
+    // und 515abd35 änderte dieser Auftrag NUR Testdateien (diesen Sollwert und die Ausnahmeliste in
+    // `tests/legal/mega61-rechtsseiten.test.tsx`), keine Quelldatei der Grundmenge. Die 10
+    // Komponenten über 470 kamen mit dem erneut eingemischten Hauptstand (Grundmenge 588 → 596).
+    // Welche es sind, ist ohne Git-Verlauf an diesem Arbeitsbaum nicht namentlich bestimmt.
+    // `anbieter` 1 und `traeger` 2 sind in derselben Meldung unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 470,
+      komponenten: 480,
       anbieter: 1,
       traeger: 2,
     });
