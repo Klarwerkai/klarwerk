@@ -215,6 +215,35 @@ export interface KoComment {
    * dürfen denselben Schlüssel bilden, ohne dass einer von beiden verschluckt wird.
    */
   clientKey?: string;
+  /**
+   * P-WIKI-STELLENBEZUG — WORAN IM TEXT diese Rückfrage hängt (Absatz, Tabelle oder Bild).
+   *
+   * Nur am Anfang eines Fadens; eine Antwort gehört zur Stelle ihres Fadens. Fehlt das Feld, gilt
+   * der Beitrag dem ganzen Dokument — wie jeder Beitrag vor dieser Regel. Form und Prüfung stehen
+   * in `stellen-anker.ts`.
+   */
+  stelle?: KoCommentStelle;
+}
+
+// ================================================================================================
+// P-WIKI-STELLENBEZUG — DER ANKER EINER RÜCKFRAGE: FASSUNG, ABSCHNITT, TEXTSTELLE.
+// ================================================================================================
+//
+// DREI ANGABEN, UND JEDE IST GESPEICHERT, NICHT ABGELEITET. `koVersion` ist die Fassung, in der die
+// Stelle gewählt wurde — der Dienst nimmt den Beitrag nur an, wenn sie die gerade gespeicherte ist
+// (sonst `KO_STALE`). `abschnitt` ist die Kennung des Abschnitts (Text der vorangehenden
+// Überschrift, bei Gleichnamigen mit Zähler; leer = vor der ersten Überschrift). `text` ist die
+// Textstelle selbst — bei Absatz und Tabelle der normalisierte Text (höchstens
+// `STELLE_TEXT_MAX` Zeichen), beim Bild seine `data-image-id`.
+//
+// WEIL DER TEXT MITGESPEICHERT IST, BLEIBT DIE ALTE STELLE LESBAR, auch wenn die neue Fassung sie
+// nicht mehr enthält. Die Zuordnung zur NEUEN Fassung rechnet die Fläche
+// (`apps/web/src/lib/stellenbezug.ts`) — und zwar nur über GLEICHHEIT, nie über Ähnlichkeit.
+export interface KoCommentStelle {
+  koVersion: number;
+  art: "absatz" | "tabelle" | "bild";
+  abschnitt: string;
+  text: string;
 }
 
 // ================================================================================================
