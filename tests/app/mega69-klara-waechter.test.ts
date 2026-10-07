@@ -2752,9 +2752,10 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // erneut zu senden ist, und der benannten Grenze (höchstens 60 Bilder, dieselbe Zahl wie
     // `WORD_ADDIN_MAX_BILDER` und die Serverkante `DOCX_BILDER_MAX_ANZAHL`). Kein neuer Schlüssel,
     // keine neue Zeile, kein neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder Manifeständerung,
-    // kein Sideload. DER PIN MUSS WANDERN; ohne zugelassenes Hash-Werkzeug ist er hier nicht
-    // berechenbar — der Prüflauf meldet den Ist-Wert als „Received", er wird danach gemessen übernommen.
-    const PIN = "eefba3bdd389a30d41f4fbe37ad5bcdc336667559554212971ecbe7dff5f37d3";
+    // kein Sideload. NACHARBEIT 1: PIN BEWUSST AKTUALISIERT (eefba3bd… -> 543d180f…). Im Prüflauf zu
+    // Kandidat 4e98aeda GEMESSEN („Received", HISTORIE/nacharbeit-1/PRUEFUNG/waechter-geaenderte-
+    // flaechen.log) und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    const PIN = "543d180fc060c9e4808fae652e6d44dc562ba4c0d2229402ab460283139c4961";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,

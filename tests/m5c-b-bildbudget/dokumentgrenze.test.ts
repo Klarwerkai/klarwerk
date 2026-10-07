@@ -206,4 +206,26 @@ describe("gesamt-bildbudget · keine dritte Zahl: dieselben Grenzen wie im Word-
     expect(Number(budget)).toBe(DOCX_ENTWURF_MAX_BYTES);
     expect(DOCX_ENTWURF_MAX_BYTES).toBeLessThan(DRAFTS_BODY_LIMIT);
   });
+
+  it("C2 · R-0021: der 413-Satz des Panels ist je Sprache EIN Satz, nennt die Grenze und wann erneut zu senden ist", () => {
+    // Dieselbe Satzzählung wie tests/design/zielbild-k2-kein-erklaertext.test.ts (`saetze`). Jener
+    // Chromium-Fall erreicht seine Sprachschleife im Kandidaten 4e98aeda nicht, weil er vorher an
+    // den fremden Stufen-Knöpfen (`#capture-stufe-*`, R-0632) scheitert — deshalb steht die
+    // Satzprobe für genau diesen geänderten Schlüssel hier.
+    const panel = readFileSync(
+      join(__dirname, "..", "..", "apps", "web", "public", "word-addin", "taskpane.js"),
+      "utf8",
+    );
+    const saetze = [...panel.matchAll(/^\s*sendTooLarge: "(.*)",\s*$/gm)].map((m) => m[1] ?? "");
+    expect(saetze, "de, en und nl").toHaveLength(3);
+    const [de, en, nl] = saetze;
+    expect(de).toContain("KEIN Entwurf angelegt");
+    expect(de).toContain("erneut senden");
+    expect(en).toContain("send again");
+    expect(nl).toContain("opnieuw verzenden");
+    for (const satz of saetze) {
+      expect((satz.match(/[.!?…](?=\s|$)/g) ?? []).length, satz).toBe(1);
+      expect(satz).toContain(String(DOCX_BILDER_MAX_ANZAHL));
+    }
+  });
 });
