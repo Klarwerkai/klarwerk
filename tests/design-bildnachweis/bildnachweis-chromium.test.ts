@@ -11,7 +11,8 @@
 //   test-results/bildnachweis/b2-kenntnisnahme-zu.png             — Lesefläche, Aufklapper zu (K25/K8)
 //   test-results/bildnachweis/b2-kenntnisnahme-offen.png          — derselbe Aufklapper geöffnet
 //   test-results/bildnachweis/b3-werksreset-rueckfrage.png        — Werksreset Stufe 2 (K2)
-//   test-results/bildnachweis/b4-ui-kit.png                       — Bausteinkatalog, ganze Seite (K5/K7/K4)
+//   test-results/bildnachweis/b4-ui-kit-1.png, -2.png, …          — Bausteinkatalog, in Bildschirm-
+//                                                                   höhen durchlaufen (K5/K7/K4)
 //
 // Startbefehl (wie jede Datei der Browsergruppe, nach `./tools/build`):
 //   npx vitest run --config vitest.browser.config.ts tests/design-bildnachweis/bildnachweis-chromium.test.ts
@@ -69,6 +70,23 @@ async function warte(selektor: string): Promise<void> {
   );
 }
 
+// Der Hinweis „Kurz zur Kenntnis" (`legal/NoticeBanner.tsx`) liegt unten über jeder Fläche, bis er
+// quittiert ist. Er wird über seinen vorgesehenen Bedienweg geschlossen — „Verstanden — weiter" —,
+// nicht weggeblendet; die Quittung landet am Server dieser Bühne.
+async function hinweisQuittieren(): Promise<void> {
+  const s = (stand as H4Stand).seite;
+  const da = await s.evaluate<boolean>(
+    fn(`() => !!document.querySelector('[data-testid="notice-ack"]')`),
+  );
+  if (!da) return;
+  await s.click('[data-testid="notice-ack"]');
+  await s.waitForFunction(
+    fn(`() => !document.querySelector('[data-testid="notice-banner"]')`),
+    undefined,
+    { timeout: 15_000 },
+  );
+}
+
 async function ausschnitt(selektor: string, name: string): Promise<void> {
   const s = (stand as H4Stand).seite;
   const clip = await s.evaluate<Rechteck | null>(fn(RECHTECK), selektor);
@@ -95,6 +113,7 @@ describe("R-1399 · Sichtnachweis: Exportumfang, Kenntnisnahme, Werksreset-Rück
   it("B1 · Bibliothek, Menü „…“ → „Export“: der Umfang steht vor den Formaten", async () => {
     expect(fehler).toBeNull();
     const s = (stand as H4Stand).seite;
+    await hinweisQuittieren();
     await s.click('[data-testid="bib-liste-menue"]');
     await warte('[role="menu"]');
     await s.evaluate(
@@ -199,7 +218,7 @@ describe("R-1399 · Sichtnachweis: Exportumfang, Kenntnisnahme, Werksreset-Rück
     }
   }, 90_000);
 
-  it("B4 · Bausteinkatalog /ui-kit: Farbbedeutung, Schriftskala, Radien, Rückfrage — ganze Seite", async () => {
+  it("B4 · Bausteinkatalog /ui-kit: Farbbedeutung, Schriftskala, Radien, Rückfrage — jeder Abschnitt im Bild", async () => {
     expect(fehler).toBeNull();
     const s = (stand as H4Stand).seite;
     await s.goto(`${ORIGIN}/ui-kit`, { waitUntil: "load", timeout: 60_000 });
@@ -228,8 +247,77 @@ describe("R-1399 · Sichtnachweis: Exportumfang, Kenntnisnahme, Werksreset-Rück
     // Die Skala ist im GEBAUTEN Bündel angekommen, nicht nur im Quelltext.
     expect(z.klein).toBe("11px");
     expect(z.zaehler).toBe("10.5px");
-    await s.screenshot({ path: bild("b4-ui-kit"), fullPage: true });
-    console.info(`R-1399 · Bild ${bild("b4-ui-kit")} · ganze Seite`);
+
+    // Ben, Nacharbeit 7: das frühere „fullPage"-Bild zeigte nur den oberen Ausschnitt — die App
+    // scrollt in `<main>` (`shell/AppShell.tsx`), nicht im Dokument, und der Hinweis „Kurz zur
+    // Kenntnis" lag über dem unteren Rand. Deshalb: (1) den Hinweis über seinen vorgesehenen
+    // Bedienweg quittieren („Verstanden — weiter", `legal/NoticeBanner.tsx`), (2) `<main>` in
+    // Bildschirmhöhen durchlaufen, je Stand ein Bild, (3) belegen, dass JEDER Katalogabschnitt in
+    // mindestens einem Bild VOLLSTÄNDIG im sichtbaren Bereich stand.
+    await hinweisQuittieren();
+    const ABSCHNITTE = [
+      "farben",
+      "schrift",
+      "radien",
+      "rueckfrage",
+      "status",
+      "konfidenz",
+      "wissensarten",
+      "ki",
+      "herkunft",
+    ];
+    const hoehe = await s.evaluate<{ scroll: number; sicht: number }>(
+      fn(`() => {
+        const m = document.querySelector('main');
+        m.scrollTop = 0;
+        return { scroll: m.scrollHeight, sicht: m.clientHeight };
+      }`),
+    );
+    // KALIBRIERUNG: der Katalog ist höher als ein Bildschirm — sonst bewiese das Durchlaufen nichts.
+    expect(hoehe.scroll).toBeGreaterThan(hoehe.sicht);
+    const schritt = Math.max(200, hoehe.sicht - 80);
+    const gesehen = new Set<string>();
+    const bilder: string[] = [];
+    let oben = 0;
+    let nr = 1;
+    let ende = false;
+    while (!ende) {
+      const lage = await s.evaluate<{ voll: string[]; ende: boolean; ueberdeckt: boolean }>(
+        fn(`([oben, kennungen]) => {
+          const m = document.querySelector('main');
+          m.scrollTop = oben;
+          const r = m.getBoundingClientRect();
+          const voll = kennungen.filter((k) => {
+            const e = document.querySelector('[data-testid="bausteine-abschnitt-' + k + '"]');
+            if (!e) return false;
+            const b = e.getBoundingClientRect();
+            return b.top >= r.top - 1 && b.bottom <= r.bottom + 1;
+          });
+          return {
+            voll,
+            ende: m.scrollTop + m.clientHeight >= m.scrollHeight - 1,
+            ueberdeckt: !!document.querySelector('[data-testid="notice-banner"]'),
+          };
+        }`),
+        [oben, ABSCHNITTE],
+      );
+      expect(lage.ueberdeckt, "der Hinweis liegt noch über dem Katalog").toBe(false);
+      const name = `b4-ui-kit-${nr}`;
+      await s.screenshot({ path: bild(name) });
+      bilder.push(bild(name));
+      for (const k of lage.voll) gesehen.add(k);
+      console.info(
+        `R-1399 · Bild ${bild(name)} · scrollTop ${oben} · vollständig: ${lage.voll.join(", ")}`,
+      );
+      ende = lage.ende || nr >= 12;
+      oben += schritt;
+      nr += 1;
+    }
+    expect(
+      ABSCHNITTE.filter((k) => !gesehen.has(k)),
+      "Katalogabschnitt in keinem Bild vollständig sichtbar",
+    ).toEqual([]);
+    console.info(`R-1399 · B4 · ${bilder.length} Bilder: ${bilder.join(", ")}`);
     expect((stand as H4Stand).seitenfehler).toEqual([]);
-  }, 90_000);
+  }, 120_000);
 });

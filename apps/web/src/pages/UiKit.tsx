@@ -38,9 +38,14 @@ const ZIELBILD_KLASSEN: Record<number, string> = {
   13.5: "text-[13.5px]",
   14: "text-[14px]",
   15: "text-[15px]",
+  15.5: "text-[15.5px]",
   16: "text-[16px]",
+  17: "text-[17px]",
   20: "text-[20px]",
+  24: "text-[24px]",
   26: "text-[26px]",
+  28: "text-[28px]",
+  30: "text-[30px]",
 };
 
 const RADIEN = [
@@ -51,9 +56,18 @@ const RADIEN = [
   { name: "pill", klasse: "rounded-pill" },
 ] as const;
 
-function Section({ title, children }: { title: string; children: React.ReactNode }): JSX.Element {
+// `kennung` macht jeden Abschnitt im Bildnachweis (R-1399) einzeln auffindbar.
+function Section({
+  title,
+  kennung,
+  children,
+}: {
+  title: string;
+  kennung: string;
+  children: React.ReactNode;
+}): JSX.Element {
   return (
-    <section className="space-y-3">
+    <section data-testid={`bausteine-abschnitt-${kennung}`} className="space-y-3">
       <h2 className="font-mono text-micro uppercase tracking-wider text-muted-2">{title}</h2>
       <div className="rounded-card border border-hairline bg-surface p-4">{children}</div>
     </section>
@@ -66,7 +80,7 @@ export function UiKit(): JSX.Element {
     <div className="mx-auto max-w-3xl space-y-8">
       <h1 className="text-2xl font-semibold text-ink">Vertrauens-System · UI-Kit</h1>
 
-      <Section title={t("bausteine.farben.titel")}>
+      <Section title={t("bausteine.farben.titel")} kennung="farben">
         <ul className="grid gap-2 sm:grid-cols-2">
           {FARBEN.map((f) => (
             <li
@@ -81,14 +95,14 @@ export function UiKit(): JSX.Element {
         </ul>
       </Section>
 
-      <Section title={t("bausteine.schrift.titel")}>
+      <Section title={t("bausteine.schrift.titel")} kennung="schrift">
         <p data-testid="bausteine-untergrenze" className="mb-3 text-[13px] text-text">
           {t("bausteine.schrift.untergrenze", { px: MINDEST_LESEGROESSE_PX })}
         </p>
         <ul className="space-y-1.5">
           {BENANNTE_STUFEN.map((s) => (
             <li key={s.klasse} data-testid="bausteine-stufe" className="flex items-baseline gap-3">
-              <span className="w-28 shrink-0 font-mono text-klein text-muted-2">
+              <span className="w-44 shrink-0 font-mono text-klein text-muted-2">
                 {s.klasse} · {s.px}px
               </span>
               {/* Die Klassen stehen wörtlich in `lib/schriftskala.ts` — Tailwind liest sie dort. */}
@@ -106,7 +120,7 @@ export function UiKit(): JSX.Element {
         </ul>
       </Section>
 
-      <Section title={t("bausteine.radien.titel")}>
+      <Section title={t("bausteine.radien.titel")} kennung="radien">
         <div className="flex flex-wrap gap-3">
           {RADIEN.map((r) => (
             <div
@@ -119,7 +133,7 @@ export function UiKit(): JSX.Element {
         </div>
       </Section>
 
-      <Section title={t("bausteine.rueckfrage.titel")}>
+      <Section title={t("bausteine.rueckfrage.titel")} kennung="rueckfrage">
         <div
           data-testid="bausteine-rueckfrage"
           className="space-y-2.5 rounded-card border border-hairline bg-page px-4 py-3.5"
@@ -135,7 +149,7 @@ export function UiKit(): JSX.Element {
         </div>
       </Section>
 
-      <Section title="Status-Pills">
+      <Section title="Status-Pills" kennung="status">
         <div className="flex flex-wrap gap-2">
           {DISPLAY_STATUSES.map((s) => (
             <StatusPill key={s} status={s} />
@@ -147,7 +161,7 @@ export function UiKit(): JSX.Element {
           KEIN prozentbasiertes Qualitätswort. Bis hierher hing diese Seite am alten Vorgabewert und
           zeigte bei 91 weiterhin „Gesichert", obwohl das Wort überall sonst entfernt ist; /ui-kit
           ist ohne Nav erreichbar und damit sichtbar. */}
-      <Section title="Konfidenz / Reifegrad">
+      <Section title="Konfidenz / Reifegrad" kennung="konfidenz">
         <div className="space-y-3">
           <ConfidenceBar value={42} showLabel={false} />
           <ConfidenceBar value={73} showLabel={false} />
@@ -155,7 +169,7 @@ export function UiKit(): JSX.Element {
         </div>
       </Section>
 
-      <Section title="Wissensarten">
+      <Section title="Wissensarten" kennung="wissensarten">
         <div className="flex flex-wrap gap-2">
           {KNOWLEDGE_TYPES.map((k) => (
             <KnowledgeTypeTag key={k} type={k} />
@@ -163,13 +177,13 @@ export function UiKit(): JSX.Element {
         </div>
       </Section>
 
-      <Section title="KI-Kennung (Reasoner-Entwurf)">
+      <Section title="KI-Kennung (Reasoner-Entwurf)" kennung="ki">
         <ReasonerDraft>
           <p className="text-sm text-text">{t("uikit.sampleStatement")}</p>
         </ReasonerDraft>
       </Section>
 
-      <Section title="Herkunftszeile">
+      <Section title="Herkunftszeile" kennung="herkunft">
         <ProvenanceLine
           author="M. Brandt"
           originalAuthor="D. Roth"

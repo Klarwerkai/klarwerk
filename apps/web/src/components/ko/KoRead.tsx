@@ -67,7 +67,7 @@ export function KoReadStatement({
           </div>
           <SanitizedHtml
             html={ko.bodyHtml}
-            className="prose-kw text-[14.5px] leading-relaxed text-text"
+            className="prose-kw text-[15px] leading-relaxed text-text"
           />
           {/* WP-BILD-1d: Galerie der Beitrags-Bilder (aus den figures des Bodys abgeleitet; erscheint
               nur, wenn mindestens ein verankertes Bild existiert). */}
@@ -77,7 +77,7 @@ export function KoReadStatement({
           </p>
         </div>
       ) : (
-        <p className="text-[14.5px] leading-relaxed text-text">{ko.statement}</p>
+        <p className="text-[15px] leading-relaxed text-text">{ko.statement}</p>
       )}
     </div>
   );

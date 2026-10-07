@@ -362,7 +362,7 @@ export function DuplicateCompare({ kind }: { kind: DuplicateCompareKind }): JSX.
         {/* ---- Ampeln, Zahlen, Legende und Abschnitte: alles im „Mehr" ---------------------- */}
         <PruefenMehr kennung="vergleich">
           <PruefenMehrBlock beschriftung={t("dcmp.textSimilarity")}>
-            <span className="text-[18px] font-semibold text-trust-pos-text">
+            <span className="text-[20px] font-semibold text-trust-pos-text">
               {percent(head.leadPercent)}
             </span>
             <span className="ml-2 text-muted-2">{t("dcmp.noProvenContradiction")}</span>

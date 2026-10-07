@@ -5,6 +5,7 @@ import {
   BENANNTE_STUFEN,
   MINDEST_LESEGROESSE_PX,
   ZIELBILD_GROESSEN_PX,
+  ZIELBILD_HERKUNFT,
 } from "../../apps/web/src/lib/schriftskala";
 import { repoPfad } from "../support/repoPfad";
 
@@ -125,5 +126,62 @@ describe("R-0918 · Schriftskala der Web-App", () => {
     for (const datei of ["pages/Capture.tsx", "pages/Ask.tsx", "pages/Stufe2.tsx"]) {
       expect(mitStufe, datei).toContain(datei);
     }
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // DIE DURCHGÄNGIGE SKALA (Ben, Nacharbeit 7): nicht nur eine Untergrenze, sondern GENAU die
+  // Größen der freigegebenen Vorlagen — vollständig, mit Herkunft, und alle Flächen darauf.
+  // ----------------------------------------------------------------------------------------------
+  const vorlagenAnker = (px: number): RegExp =>
+    new RegExp(`font-size: ?${String(px).replace(".", "\\.")}px[;"]`);
+
+  it("S5 · jeder Skalenwert steht wörtlich als Vorlagen-Anker an seiner Fundstelle", () => {
+    const skala = [10, 10.5, ...ZIELBILD_GROESSEN_PX];
+    expect(
+      Object.keys(ZIELBILD_HERKUNFT)
+        .map(Number)
+        .sort((a, b) => a - b),
+    ).toEqual(skala);
+    const ohneBeleg = skala.filter((px) => {
+      const datei = repoPfad(ZIELBILD_HERKUNFT[String(px)] ?? "");
+      return !vorlagenAnker(px).test(readFileSync(datei, "utf8"));
+    });
+    expect(ohneBeleg, "Skalenwert ohne wörtlichen Vorlagen-Anker").toEqual([]);
+  });
+
+  it("S6 · die Skala ist VOLLSTÄNDIG: jeder Vorlagen-Anker der Zielbild-Messungen liegt auf ihr", () => {
+    const quellen = [
+      ...readdirSync(repoPfad("tests/design"))
+        .filter((n) => /^zielbild-h\d.*\.test\.ts$/.test(n))
+        .map((n) => repoPfad(`tests/design/${n}`)),
+      repoPfad("tools/design-vergleich/werte.ts"),
+    ];
+    const gefunden = new Set<number>();
+    for (const q of quellen) {
+      for (const m of readFileSync(q, "utf8").matchAll(/font-size: ?(\d+(?:\.\d+)?)px[;"]/g)) {
+        gefunden.add(Number(m[1]));
+      }
+    }
+    // KALIBRIERUNG: die Erhebung liest die bekannten Ausreisser nach oben und unten wirklich.
+    expect([...gefunden]).toEqual(expect.arrayContaining([10.5, 15.5, 24, 28, 30]));
+    const skala = new Set([10, 10.5, ...ZIELBILD_GROESSEN_PX]);
+    const fehlt = [...gefunden].filter((px) => !skala.has(px)).sort((a, b) => a - b);
+    expect(fehlt, "Vorlagengröße fehlt in ZIELBILD_GROESSEN_PX").toEqual([]);
+  });
+
+  it("S7 · keine frei gesetzte Größe ab 11 px liegt neben der Skala", () => {
+    const skala = new Set(ZIELBILD_GROESSEN_PX);
+    const daneben = freieGroessen()
+      .filter((f) => f.px >= MINDEST_LESEGROESSE_PX && !skala.has(f.px))
+      .map((f) => `${f.datei}:${f.zeile} ${f.px}px`);
+    expect(daneben, "frei gesetzte Größe ausserhalb der Zielbild-Skala").toEqual([]);
+  });
+
+  it("S8 · die Skala ist in Gebrauch: jede Stufe ab 11 px trägt mindestens eine Fläche", () => {
+    // Der Katalog (`/ui-kit`) zeigt jede Stufe als Muster — er zählt hier nicht als Fläche.
+    const flaechen = freieGroessen().filter((f) => f.datei !== "pages/UiKit.tsx");
+    const genutzt = new Set(flaechen.map((f) => f.px));
+    const ungenutzt = ZIELBILD_GROESSEN_PX.filter((px) => !genutzt.has(px));
+    expect(ungenutzt, "Skalenstufe ohne Verwendung in apps/web/src").toEqual([]);
   });
 });

@@ -5,8 +5,8 @@ import {
   Check,
   CloudOff,
   FilePlus2,
+  FolderOpen,
   RefreshCw,
-  RotateCcw,
   Search,
   Trash2,
   WifiOff,
@@ -648,7 +648,8 @@ export function Mobile(): JSX.Element {
     mutationFn: (id: string) => endpoints.drafts.remove(id),
     onSuccess: (_d, id) => {
       invalidateDrafts();
-      push("success", t("mob.discarded"));
+      // K33 / JOB 3426 §4b.4: `DELETE` heisst „Löschen" — dieselbe Quittung wie die Entwurfsliste.
+      push("success", t("capture.draftDiscarded"));
       setConfirm(clearConfirm());
       if (editingId === id) {
         resetForm();
@@ -1327,23 +1328,32 @@ export function Mobile(): JSX.Element {
                         {draftTitle(d, t("capture.draftFallbackTitle"))}
                       </span>
                       {/* SCRUM-412 (CI): Hinweis in Textfarbe — Rot nur am destruktiven Knopf. */}
+                      {/* K33 (gleiche Aktion, gleiches Wort, gleiches Symbol): der Knopf stösst
+                          `DELETE /api/drafts/:id` an — er heisst wie in der Entwurfsliste
+                          „Löschen" (JOB 3426 §4b.4: „Verwerfen" ist nur das Zurücksetzen
+                          ungespeicherter Eingabe), fragt mit derselben Rückfrage, bestätigt mit
+                          demselben Papierkorb-Symbol und bietet „Behalten" an. */}
                       {isPending(confirm, d.id) ? (
                         <>
                           <span className="text-[11px] text-text">
-                            {t("mob.discardConfirmHint")}
+                            {t("capture.discardDraftQ")}
                           </span>
                           <button
                             type="button"
-                            title={t("mob.confirmDiscard")}
+                            data-testid="mobil-entwurf-loeschen-ja"
+                            title={t("capture.discardDraftYes")}
+                            aria-label={t("capture.discardDraftYes")}
                             disabled={discard.isPending}
                             onClick={() => discard.mutate(d.id)}
                             className="grid h-7 w-7 place-items-center rounded-btn bg-trust-crit-bg text-trust-crit-text hover:opacity-80"
                           >
-                            <Check size={14} />
+                            <Trash2 size={14} />
                           </button>
                           <button
                             type="button"
-                            title={t("mob.cancelDiscard")}
+                            data-testid="mobil-entwurf-loeschen-nein"
+                            title={t("capture.discardDraftKeep")}
+                            aria-label={t("capture.discardDraftKeep")}
                             onClick={() => setConfirm(clearConfirm())}
                             className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text"
                           >
@@ -1354,15 +1364,19 @@ export function Mobile(): JSX.Element {
                         <>
                           <button
                             type="button"
+                            data-testid="mobil-entwurf-fortsetzen"
                             title={t("mob.resume")}
+                            aria-label={t("mob.resume")}
                             onClick={() => resume(d.id)}
                             className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text"
                           >
-                            <RotateCcw size={14} />
+                            <FolderOpen size={14} />
                           </button>
                           <button
                             type="button"
-                            title={t("mob.discard")}
+                            data-testid="mobil-entwurf-loeschen"
+                            title={t("capture.discardDraftYes")}
+                            aria-label={t("capture.discardDraftYes")}
                             onClick={() => setConfirm(requestConfirm(d.id))}
                             className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
                           >

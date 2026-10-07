@@ -3504,12 +3504,12 @@ export function RichTextEditor({
               onDragOver={onDragOver}
               onDragLeave={onDragLeave}
               onPaste={onPaste}
-              className="prose-kw min-h-[260px] p-4 text-[14.5px] leading-relaxed text-text outline-none md:p-6"
+              className="prose-kw min-h-[260px] p-4 text-[15px] leading-relaxed text-text outline-none md:p-6"
             />
             {/* SCRUM-474 P1: Placeholder als aktive Einladung im leeren Editor — pointer-events-none, damit
                 der Klick den Editor fokussiert; verschwindet, sobald Inhalt vorhanden ist. */}
             {placeholder && !bodyReadMode(value).hasBody ? (
-              <div className="pointer-events-none absolute inset-0 p-4 text-[14.5px] leading-relaxed text-muted-2 md:p-6">
+              <div className="pointer-events-none absolute inset-0 p-4 text-[15px] leading-relaxed text-muted-2 md:p-6">
                 {placeholder}
               </div>
             ) : null}
@@ -3559,7 +3559,7 @@ export function RichTextEditor({
       bodyReadMode(value).hasBody ? (
         <SanitizedHtml
           html={value}
-          className="prose-kw min-h-[260px] p-4 text-[14.5px] leading-relaxed text-text md:p-6"
+          className="prose-kw min-h-[260px] p-4 text-[15px] leading-relaxed text-text md:p-6"
         />
       ) : (
         <p className="grid min-h-[260px] place-items-center p-4 text-[12.5px] text-muted md:p-6">

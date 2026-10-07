@@ -537,7 +537,7 @@ export function KnowledgeInputStudio({
                       ) : (
                         <SanitizedHtml
                           html={draft}
-                          className="prose-kw text-[14.5px] leading-relaxed text-text"
+                          className="prose-kw text-[15px] leading-relaxed text-text"
                         />
                       )}
                       <p className="mt-2 border-t border-hairline pt-2 text-[11px] leading-relaxed text-muted">

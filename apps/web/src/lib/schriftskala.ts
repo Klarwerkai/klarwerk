@@ -3,9 +3,10 @@
 // ================================================================================================
 //
 // WOHER DIE WERTE KOMMEN (nicht neu erfunden, R-0906):
-//   · die freigegebenen Zielbilder der Web-App (`design/klarwerk/*.dc.html`), deren Sollwerte
-//     `tools/design-vergleich/werte.ts` und die Chromium-Messungen `tests/design/zielbild-h*.test.ts`
-//     lesen: 11 · 11,5 · 12 · 12,5 · 13 · 13,5 · 14 · 15 · 16 · 20 · 26 px;
+//   · die freigegebenen Zielbilder (`design/klarwerk/*.dc.html`, `design/klara/*.dc.html`,
+//     `DESIGN_ZIELBILD_20260827/*.dc.html`). Jeder Wert unten steht WÖRTLICH als Vorlagen-Anker
+//     („font-size: …px") in einer Chromium-Messung oder in `tools/design-vergleich/werte.ts` —
+//     `ZIELBILD_HERKUNFT` nennt je Wert eine Fundstelle, und der Wächter prüft, dass sie dort steht;
 //   · das Brand Book (`docs/ci/CI_KURZREFERENZ.md`): „Label 11–13 Mono".
 //
 // DIE UNTERGRENZE ist 11 px. Über 400 Stellen lagen darunter (9–10,5 px) — für Berater unter
@@ -38,7 +39,35 @@ export const BENANNTE_STUFEN: readonly Schriftstufe[] = [
   { klasse: "text-micro", px: 11, verwendungKey: "bausteine.schrift.micro" },
 ];
 
-/** Die Größen der freigegebenen Zielbilder (px), aufsteigend — ab der Untergrenze. */
+/**
+ * Die VOLLSTÄNDIGE Skala ab der Untergrenze: jede Schriftgröße, die eine freigegebene Vorlage
+ * nennt, und keine andere. Frei gesetzte Größen der Web-App (`text-[Npx]`) müssen hierauf liegen.
+ */
 export const ZIELBILD_GROESSEN_PX: readonly number[] = [
-  11, 11.5, 12, 12.5, 13, 13.5, 14, 15, 16, 20, 26,
+  11, 11.5, 12, 12.5, 13, 13.5, 14, 15, 15.5, 16, 17, 20, 24, 26, 28, 30,
 ];
+
+/**
+ * Je Skalenwert eine Fundstelle des wörtlichen Vorlagen-Ankers (Datei unter `tests/design/` bzw.
+ * `tools/design-vergleich/`). Repo-relativ; geprüft in `tests/design-schriftskala/`.
+ */
+export const ZIELBILD_HERKUNFT: Readonly<Record<string, string>> = {
+  "10": "tests/design/zielbild-h5-fragen.test.ts",
+  "10.5": "tests/design/zielbild-h1-huelle.test.ts",
+  "11": "tests/design/zielbild-h4-bibliothek.test.ts",
+  "11.5": "tools/design-vergleich/werte.ts",
+  "12": "tests/design/zielbild-h4-bibliothek.test.ts",
+  "12.5": "tests/design/zielbild-h4-bibliothek.test.ts",
+  "13": "tests/design/zielbild-h4-bibliothek.test.ts",
+  "13.5": "tools/design-vergleich/werte.ts",
+  "14": "tests/design/zielbild-h4-bibliothek.test.ts",
+  "15": "tests/design/zielbild-h2-pruefen.test.ts",
+  "15.5": "tests/design/zielbild-h4-bibliothek.test.ts",
+  "16": "tests/design/zielbild-h3-erfassen.test.ts",
+  "17": "tests/design/zielbild-h5-fragen.test.ts",
+  "20": "tests/design/zielbild-h2-pruefen.test.ts",
+  "24": "tests/design/zielbild-h4-bibliothek.test.ts",
+  "26": "tests/design/zielbild-h2-pruefen.test.ts",
+  "28": "tests/design/zielbild-h3-erfassen.test.ts",
+  "30": "tests/design/zielbild-h5-start.test.ts",
+};

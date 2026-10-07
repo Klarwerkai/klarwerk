@@ -29,7 +29,7 @@
 // DIE SUCH- UND SORTIER-BEDIENUNG STEHT HIER NUR EINMAL (`steuerung` unten) und wird von beiden
 // Flächen gezeigt — samt der gemeinsamen Merkschlüssel: wer im Arbeitsraum nach „Ventil" sucht,
 // findet im Editor denselben Filter vor, sichtbar im Feld, nicht heimlich.
-import { ChevronDown, RotateCcw, Trash2 } from "lucide-react";
+import { ChevronDown, FolderOpen, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Draft } from "../api/types";
 import { draftTitle } from "../lib/draftForm";
@@ -594,7 +594,9 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
                     onClick={() => onResume(d)}
                     className="inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
                   >
-                    <RotateCcw size={13} />
+                    {/* K33: Öffnen/Fortsetzen trägt überall das Öffnen-Symbol — der Kreispfeil
+                        steht für Zurücksetzen (Werks-/Demodaten) und hiess hier das Gegenteil. */}
+                    <FolderOpen size={13} />
                     {t("capture.resume")}
                   </button>
                   {/* ====================================================================

@@ -7390,7 +7390,7 @@ export function CaptureArbeitsraum({
                 </div>
               </div>
 
-              <h2 className="flex items-center gap-2 text-[19px] font-bold text-text">
+              <h2 className="flex items-center gap-2 text-[20px] font-bold text-text">
                 <span aria-hidden className="text-ai">
                   ✦
                 </span>

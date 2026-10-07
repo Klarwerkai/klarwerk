@@ -600,7 +600,7 @@ function Stat({
 }): JSX.Element {
   return (
     <div className="rounded-card border border-hairline bg-page px-3 py-2">
-      <div className="text-[18px] font-semibold leading-tight text-text">{value}</div>
+      <div className="text-[20px] font-semibold leading-tight text-text">{value}</div>
       <div className="mt-0.5 text-[11px] uppercase tracking-wide text-muted-2">{label}</div>
       {note !== undefined ? <div className="mt-0.5 text-[11px] text-muted-2">{note}</div> : null}
     </div>
