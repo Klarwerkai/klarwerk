@@ -10,6 +10,7 @@
 //   S5  nach einer Überarbeitung bleibt der Anker UNVERÄNDERT am Beitrag (nie umgehängt), und die
 //       alte Stelle ist in der Fassungsablage weiter lesbar
 //   S6  die Wiederholung derselben Absendung bleibt ein Beitrag; eine ANDERE Stelle ist eine andere
+//   S8  NACHARBEIT 3 (BEN): Art und Abschnitt müssen mit dem Inhalt einen vorhandenen Block bestimmen
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   InMemoryKoRepo,
@@ -18,6 +19,21 @@ import {
   type KoCommentStelle,
   KoService,
 } from "../../services/knowledge-object";
+import { stellenFingerabdruck } from "../../services/knowledge-object/src/stellen-fingerabdruck";
+
+/** Eine Stelle mit dem Abdruck ihres vollständigen Inhalts (hier ist Inhalt = Anzeigezitat). */
+const stelle = (
+  koVersion: number,
+  art: KoCommentStelle["art"],
+  abschnitt: string,
+  text: string,
+): KoCommentStelle => ({
+  koVersion,
+  art,
+  abschnitt,
+  text,
+  fingerabdruck: stellenFingerabdruck(art, abschnitt, text),
+});
 
 const INHALT = [
   "<h2>Ablauf</h2>",
@@ -30,12 +46,8 @@ const INHALT = [
 
 const ERSTER_ABSATZ = "Erst das Ventil X schließen, dann den Druck ablassen.";
 
-const absatz = (koVersion: number, text = ERSTER_ABSATZ): KoCommentStelle => ({
-  koVersion,
-  art: "absatz",
-  abschnitt: "Ablauf",
-  text,
-});
+const absatz = (koVersion: number, text = ERSTER_ABSATZ): KoCommentStelle =>
+  stelle(koVersion, "absatz", "Ablauf", text);
 
 describe("P-WIKI-STELLENBEZUG · D1 — Stelle am Dienst", () => {
   let service: KoService;
@@ -70,16 +82,16 @@ describe("P-WIKI-STELLENBEZUG · D1 — Stelle am Dienst", () => {
 
     await service.addComment(ko.id, "eva", "Welcher Druck genau?", { stelle: absatz(1) });
     await service.addComment(ko.id, "eva", "Gilt das auch bei 8 bar?", {
-      stelle: { koVersion: 1, art: "tabelle", abschnitt: "Grenzwerte", text: "Druck 6 bar" },
+      stelle: stelle(1, "tabelle", "Grenzwerte", "Druck 6 bar"),
     });
     const stand = await service.addComment(ko.id, "eva", "Ist das Schema aktuell?", {
-      stelle: { koVersion: 1, art: "bild", abschnitt: "Grenzwerte", text: "bild-1" },
+      stelle: stelle(1, "bild", "Grenzwerte", "bild-1"),
     });
 
     expect(stand.comments.map((c) => c.stelle)).toEqual([
       absatz(1),
-      { koVersion: 1, art: "tabelle", abschnitt: "Grenzwerte", text: "Druck 6 bar" },
-      { koVersion: 1, art: "bild", abschnitt: "Grenzwerte", text: "bild-1" },
+      stelle(1, "tabelle", "Grenzwerte", "Druck 6 bar"),
+      stelle(1, "bild", "Grenzwerte", "bild-1"),
     ]);
     // Der Fassungsbezug des Beitrags und der seiner Stelle sind dieselbe gelesene Zahl.
     expect(stand.comments.map((c) => c.koVersion)).toEqual([1, 1, 1]);
@@ -107,7 +119,7 @@ describe("P-WIKI-STELLENBEZUG · D1 — Stelle am Dienst", () => {
     );
     const bild = await fehlercode(
       service.addComment(ko.id, "eva", "Frage.", {
-        stelle: { koVersion: 1, art: "bild", abschnitt: "Grenzwerte", text: "bild-99" },
+        stelle: stelle(1, "bild", "Grenzwerte", "bild-99"),
       }),
     );
 
@@ -168,5 +180,23 @@ describe("P-WIKI-STELLENBEZUG · D1 — Stelle am Dienst", () => {
     const ko = await objekt();
     const stand = await service.addComment(ko.id, "eva", "Allgemeine Frage.");
     expect(stand.comments[0]).not.toHaveProperty("stelle");
+  });
+
+  // NACHARBEIT 3 (BEN): das Zitat steht im Inhalt, aber Art oder Abschnitt bestimmen keinen
+  // vorhandenen Block. Vorher nahm der Dienst solche Anker an.
+  it("S8 · falsche Art oder falscher Abschnitt zum vorhandenen Text: abgelehnt, nichts geschrieben", async () => {
+    const ko = await objekt();
+    const faelle = [
+      stelle(1, "tabelle", "Ablauf", ERSTER_ABSATZ),
+      stelle(1, "absatz", "Grenzwerte", ERSTER_ABSATZ),
+      stelle(1, "absatz", "Gibt es nicht", ERSTER_ABSATZ),
+      // Nur ein TEIL des Absatzes — das ist keine Stelle.
+      stelle(1, "absatz", "Ablauf", "Erst das Ventil X schließen"),
+    ];
+    for (const falsch of faelle) {
+      const code = await fehlercode(service.addComment(ko.id, "eva", "Frage.", { stelle: falsch }));
+      expect(code, JSON.stringify(falsch)).toBe("INVALID");
+    }
+    expect((await service.get(ko.id))?.comments ?? []).toEqual([]);
   });
 });

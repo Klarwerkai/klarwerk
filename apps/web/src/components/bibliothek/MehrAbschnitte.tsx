@@ -593,7 +593,9 @@ export function MehrAbschnitte({
   const stellen = useMemo(() => stellenbloecke(ko.bodyHtml), [ko.bodyHtml]);
   const waehlbareStellen = useMemo(() => {
     const anzahl = new Map<string, number>();
-    const schluessel = (s: Stellenblock): string => `${s.art}\u0000${s.abschnitt}\u0000${s.text}`;
+    // Dieselbe Identität wie `stelleZuordnen`: Art, Abschnitt und Abdruck des vollständigen Inhalts.
+    const schluessel = (s: Stellenblock): string =>
+      `${s.art}\u0000${s.abschnitt}\u0000${s.fingerabdruck}`;
     for (const s of stellen) {
       anzahl.set(schluessel(s), (anzahl.get(schluessel(s)) ?? 0) + 1);
     }

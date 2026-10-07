@@ -19,6 +19,7 @@
 // Leerraum wird zusammengezogen. Sonst nähme der Dienst eine Stelle nicht an, die diese Fläche
 // anbietet. Über die Modulgrenze ist sie nicht teilbar; `tests/wiki-stellenbezug` hält beide gegeneinander.
 import type { KoDiskussionsStelle } from "../api/endpoints";
+import { stellenFingerabdruck } from "./stellenabdruck";
 
 /** Höchstlänge der gespeicherten Textstelle — dieselbe Zahl wie `STELLE_TEXT_MAX` im Dienst. */
 export const STELLE_TEXT_MAX = 300;
@@ -120,6 +121,24 @@ export function stellenbloecke(bodyHtml: string | null | undefined): Stellenbloc
   const ueberschriften = new Map<string, number>();
   let abschnitt = "";
 
+  // `abschnittVoll` ist die vollständige Kennung (Identität), `abschnitt` ihre gekürzte Anzeige.
+  let abschnittVoll = "";
+
+  const block = (
+    art: Stellenblock["art"],
+    inhaltVoll: string,
+    text: string,
+    anzeige: string,
+  ): void => {
+    bloecke.push({
+      art,
+      abschnitt,
+      text,
+      fingerabdruck: stellenFingerabdruck(art, abschnittVoll, inhaltVoll),
+      anzeige,
+    });
+  };
+
   const bild = (img: Element, umgebung: Element): void => {
     const kennung = img.getAttribute("data-image-id") ?? "";
     if (kennung.length === 0) {
@@ -132,7 +151,7 @@ export function stellenbloecke(bodyHtml: string | null | undefined): Stellenbloc
       normalisiere(unterschrift ? stellentextVon(unterschrift) : "") ||
       normalisiere(img.getAttribute("alt") ?? "") ||
       kennung;
-    bloecke.push({ art: "bild", abschnitt, text: kennung, anzeige });
+    block("bild", kennung, kennung, anzeige);
   };
 
   const absatz = (el: Element): void => {
@@ -141,7 +160,7 @@ export function stellenbloecke(bodyHtml: string | null | undefined): Stellenbloc
     }
     const voll = stellentextVon(el);
     if (voll.length > 0) {
-      bloecke.push({ art: "absatz", abschnitt, text: textstelle(voll), anzeige: voll });
+      block("absatz", voll, textstelle(voll), voll);
     }
   };
 
@@ -152,13 +171,14 @@ export function stellenbloecke(bodyHtml: string | null | undefined): Stellenbloc
         const titel = stellentextVon(kind);
         const n = (ueberschriften.get(titel) ?? 0) + 1;
         ueberschriften.set(titel, n);
-        abschnitt = textstelle(n === 1 ? titel : `${titel} (${n})`);
+        abschnittVoll = n === 1 ? titel : `${titel} (${n})`;
+        abschnitt = textstelle(abschnittVoll);
         continue;
       }
       if (name === "table") {
         const voll = stellentextVon(kind);
         if (voll.length > 0) {
-          bloecke.push({ art: "tabelle", abschnitt, text: textstelle(voll), anzeige: voll });
+          block("tabelle", voll, textstelle(voll), voll);
         }
         continue;
       }
@@ -190,17 +210,35 @@ export function stellenbloecke(bodyHtml: string | null | undefined): Stellenbloc
 
 /** Die Stelle eines Blocks, gebunden an die Fassung, in der sie gewählt wurde. */
 export function stelleAus(block: Stellenblock, koVersion: number): KoDiskussionsStelle {
-  return { koVersion, art: block.art, abschnitt: block.abschnitt, text: block.text };
+  return {
+    koVersion,
+    art: block.art,
+    abschnitt: block.abschnitt,
+    text: block.text,
+    fingerabdruck: block.fingerabdruck,
+  };
 }
 
-/** Wo steht die gespeicherte Stelle in der angezeigten Fassung? Nur Gleichheit, nie Ähnlichkeit. */
+/**
+ * Wo steht die gespeicherte Stelle in der angezeigten Fassung? Nur Gleichheit, nie Ähnlichkeit.
+ *
+ * DIE IDENTITÄT IST DER FINGERABDRUCK über den VOLLSTÄNDIGEN Inhalt (BEN, Nacharbeit 3): ein
+ * Vergleich nur der gekürzten Textstelle erklärte einen anderen Absatz mit demselben Anfang für
+ * „eindeutig". Fehlt der Abdruck, ist die Identität nicht belegbar — dann „Zuordnung prüfen".
+ */
 export function stelleZuordnen(
   stelle: KoDiskussionsStelle,
   bloecke: readonly Stellenblock[],
   angezeigteVersion: number,
 ): Stellenlage {
+  if (typeof stelle.fingerabdruck !== "string" || stelle.fingerabdruck.length === 0) {
+    return { lage: "unklar" };
+  }
   const treffer = bloecke.filter(
-    (b) => b.art === stelle.art && b.abschnitt === stelle.abschnitt && b.text === stelle.text,
+    (b) =>
+      b.art === stelle.art &&
+      b.abschnitt === stelle.abschnitt &&
+      b.fingerabdruck === stelle.fingerabdruck,
   );
   const [einziger] = treffer;
   if (treffer.length !== 1 || !einziger) {

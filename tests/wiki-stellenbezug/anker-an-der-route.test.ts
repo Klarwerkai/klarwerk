@@ -10,7 +10,10 @@
 // R3  eine erfundene Textstelle: 400, nichts geschrieben
 // R4  nach einer Überarbeitung: die Stelle aus der alten Fassung bekommt 409 `KO_STALE` mit der
 //     jetzt gespeicherten Version; der verankerte Altbeitrag steht unverändert da
+// R5  NACHARBEIT 3 (BEN): <h2>A</h2><p>Hallo</p> — ein Tabellenanker im Abschnitt „B" mit dem Text
+//     „Hallo" wird abgewiesen (400), obwohl „Hallo" im Inhalt steht
 import { describe, expect, it } from "vitest";
+import { stellenFingerabdruck } from "../../services/knowledge-object/src/stellen-fingerabdruck";
 import {
   type App,
   type Kopf,
@@ -30,6 +33,7 @@ const STELLE = {
   art: "absatz",
   abschnitt: "Ablauf",
   text: "Erst das Ventil X schließen.",
+  fingerabdruck: stellenFingerabdruck("absatz", "Ablauf", "Erst das Ventil X schließen."),
 };
 
 async function anlegenMitInhalt(app: App, headers: Kopf): Promise<Objektstand> {
@@ -78,6 +82,9 @@ describe("P-WIKI-STELLENBEZUG · D3 — Stelle an der Route", () => {
       { ...STELLE, art: "fussnote" },
       { ...STELLE, koVersion: 0 },
       { ...STELLE, text: "   " },
+      // Ohne Abdruck des vollständigen Inhalts ist die Identität der Stelle nicht belegbar.
+      { ...STELLE, fingerabdruck: undefined },
+      { ...STELLE, fingerabdruck: "abc" },
     ]) {
       const res = await put(app, admin, ko.id, { action: "comment", text: "Frage.", stelle });
       expect(res.statusCode, JSON.stringify(stelle)).toBe(400);
@@ -128,5 +135,52 @@ describe("P-WIKI-STELLENBEZUG · D3 — Stelle an der Route", () => {
     const liste = beitraege(stand) as unknown as { text: string; stelle?: unknown }[];
     expect(liste).toHaveLength(1);
     expect(liste[0]?.stelle).toEqual(STELLE);
+  });
+
+  it("R5 · BENs Beispiel: Tabellenanker im Abschnitt „B“ zum Text „Hallo“ wird abgewiesen", async () => {
+    const { app, admin } = await flaeche();
+    const angelegt = await app.inject({
+      method: "POST",
+      url: "/api/kos",
+      headers: admin,
+      payload: {
+        confidentiality: "intern",
+        title: "Gruss",
+        statement: "Hallo.",
+        bodyHtml: "<h2>A</h2><p>Hallo</p>",
+        type: "best_practice",
+        category: "Anlage 1",
+      },
+    });
+    expect(angelegt.statusCode).toBe(201);
+    const ko = angelegt.json() as Objektstand;
+
+    const falsch = await put(app, admin, ko.id, {
+      action: "comment",
+      text: "Frage.",
+      stelle: {
+        koVersion: 1,
+        art: "tabelle",
+        abschnitt: "B",
+        text: "Hallo",
+        fingerabdruck: stellenFingerabdruck("tabelle", "B", "Hallo"),
+      },
+    });
+    expect(falsch.statusCode).toBe(400);
+    expect(beitraege(await lesen(app, admin, ko.id))).toEqual([]);
+
+    // KALIBRIERUNG: der echte Block (Absatz in Abschnitt „A“) wird angenommen.
+    const echt = await put(app, admin, ko.id, {
+      action: "comment",
+      text: "Frage.",
+      stelle: {
+        koVersion: 1,
+        art: "absatz",
+        abschnitt: "A",
+        text: "Hallo",
+        fingerabdruck: stellenFingerabdruck("absatz", "A", "Hallo"),
+      },
+    });
+    expect(echt.statusCode).toBe(200);
   });
 });

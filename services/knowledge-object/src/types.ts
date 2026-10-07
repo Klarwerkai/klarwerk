@@ -239,11 +239,16 @@ export interface KoComment {
 // WEIL DER TEXT MITGESPEICHERT IST, BLEIBT DIE ALTE STELLE LESBAR, auch wenn die neue Fassung sie
 // nicht mehr enthält. Die Zuordnung zur NEUEN Fassung rechnet die Fläche
 // (`apps/web/src/lib/stellenbezug.ts`) — und zwar nur über GLEICHHEIT, nie über Ähnlichkeit.
+//
+// `text` IST GEKÜRZT UND DESHALB NUR ANZEIGE (BEN, Nacharbeit 3). Die Identität trägt
+// `fingerabdruck`: SHA-256 über Art, VOLLSTÄNDIGEN Abschnitt und VOLLSTÄNDIGEN normalisierten
+// Inhalt (`stellen-fingerabdruck.ts`). Zwei Absätze mit demselben Anfang sind damit zwei Stellen.
 export interface KoCommentStelle {
   koVersion: number;
   art: "absatz" | "tabelle" | "bild";
   abschnitt: string;
   text: string;
+  fingerabdruck: string;
 }
 
 // ================================================================================================

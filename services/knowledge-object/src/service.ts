@@ -3480,7 +3480,10 @@ export class KoService {
           );
         }
         if (!stelleImInhalt(ko.bodyHtml, stelle)) {
-          throw new KoError("INVALID", "Die gewählte Stelle steht nicht im Text dieser Fassung.");
+          throw new KoError(
+            "INVALID",
+            "Die gewählte Stelle bestimmt in dieser Fassung keinen eindeutigen Block (Art, Abschnitt und Inhalt müssen zusammen passen).",
+          );
         }
       }
       if (replyTo && !bestand.some((c) => c.id === replyTo)) {

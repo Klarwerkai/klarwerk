@@ -17,14 +17,26 @@
 // Z7  das Bild hängt an seinem Anker, nicht an der Beschriftung
 // Z8  DIENST UND FLÄCHE SPRECHEN DIESELBE NORMALFORM: jede Stelle, die die Fläche anbietet, nimmt
 //     die Prüfung des Dienstes an (auch mit Auszeichnung, Entitäten und Tabelle)
+// NACHARBEIT 3 (BEN):
+// Z9  ein langer Absatz, ersetzt durch einen mit denselben ersten 300 Zeichen → unklar
+// Z10 zwei Absätze mit gleichem Anfang sind zwei Stellen
+// Z11 der Dienst weist falsche Art-/Abschnittskombinationen und Teilzitate zurück
+// Z12 Dienst und Fläche zerlegen denselben Inhalt in dieselben Blöcke
+// Z13 der selbstgerechnete SHA-256 der Fläche gleicht `node:crypto`
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import { sha256Hex, stellenFingerabdruck } from "../../apps/web/src/lib/stellenabdruck";
 import {
   type Stellenblock,
   stelleAus,
   stelleZuordnen,
   stellenbloecke,
 } from "../../apps/web/src/lib/stellenbezug";
-import { stelleImInhalt } from "../../services/knowledge-object/src/stellen-anker";
+import {
+  stelleImInhalt,
+  stellenbloeckeAusHtml,
+} from "../../services/knowledge-object/src/stellen-anker";
+import { stellenFingerabdruck as dienstFingerabdruck } from "../../services/knowledge-object/src/stellen-fingerabdruck";
 
 const ABSATZ = "Erst das <strong>Ventil X</strong> schließen, dann den Druck ablassen.";
 
@@ -122,7 +134,109 @@ describe("P-WIKI-STELLENBEZUG · D2 — Zuordnung nach einer Änderung", () => {
     }
     // GEGENPROBE: eine Stelle, die nicht im Inhalt steht, besteht sie nicht.
     expect(
-      stelleImInhalt(html, { koVersion: 1, art: "absatz", abschnitt: "", text: "Gibt es nicht." }),
+      stelleImInhalt(html, {
+        koVersion: 1,
+        art: "absatz",
+        abschnitt: "",
+        text: "Gibt es nicht.",
+        fingerabdruck: stellenFingerabdruck("absatz", "", "Gibt es nicht."),
+      }),
     ).toBe(false);
+  });
+
+  // ==============================================================================================
+  // NACHARBEIT 3 (BEN) — IDENTITÄT ÜBER DEN VOLLSTÄNDIGEN INHALT, PRÜFUNG GEGEN ECHTE BLÖCKE
+  // ==============================================================================================
+
+  it("Z9 · langer Absatz durch einen anderen mit denselben ersten 300 Zeichen ersetzt: unklar", () => {
+    const anfang = "Vor dem Öffnen der Leitung den Druck vollständig ablassen. ".repeat(6).trim();
+    expect(anfang.length).toBeGreaterThan(300);
+    const alt = stellenbloecke(inhalt({ absatz: `${anfang} Danach Ventil X schließen.` }));
+    const stelle = stelleAus(erster(alt), 3);
+    expect(stelle.text.length).toBeLessThanOrEqual(300);
+
+    const neu = stellenbloecke(inhalt({ absatz: `${anfang} Danach Ventil Y öffnen.` }));
+    // Das gekürzte Anzeigezitat ist in beiden Fassungen gleich — der Fall, den BEN beschreibt.
+    expect(erster(neu).text).toBe(stelle.text);
+    expect(stelleZuordnen(stelle, neu, 4)).toEqual({ lage: "unklar" });
+
+    // KALIBRIERUNG: ist der lange Absatz wirklich unverändert, wird er wiedergefunden.
+    const gleich = stellenbloecke(
+      inhalt({ absatz: `${anfang} Danach Ventil X schließen.`, zusatz: "<p>Neu.</p>" }),
+    );
+    expect(stelleZuordnen(stelle, gleich, 4).lage).toBe("eindeutig");
+  });
+
+  it("Z10 · zwei Absätze mit gleichem Anfang sind zwei wählbare, verschiedene Stellen", () => {
+    const anfang = "Ein langer gemeinsamer Anfang. ".repeat(12).trim();
+    const bloecke = stellenbloecke(
+      inhalt({ absatz: `${anfang} Ende A.`, zusatz: `<p>${anfang} Ende B.</p>` }),
+    );
+    const zwei = bloecke.filter((b) => b.abschnitt === "Ablauf" && b.text.startsWith("Ein langer"));
+    expect(zwei).toHaveLength(2);
+    expect(zwei[0]?.text).toBe(zwei[1]?.text);
+    expect(zwei[0]?.fingerabdruck).not.toBe(zwei[1]?.fingerabdruck);
+    const stelleB = stelleAus(zwei[1] as Stellenblock, 3);
+    const lage = stelleZuordnen(stelleB, bloecke, 3);
+    expect(lage.lage === "dieseFassung" ? lage.block.anzeige : null).toContain("Ende B.");
+  });
+
+  it("Z11 · der Dienst weist falsche Art- und Abschnittskombinationen zurück (BENs Beispiel)", () => {
+    const html = "<h2>A</h2><p>Hallo</p>";
+    const echt = stellenbloecke(html)[0] as Stellenblock;
+    expect(stelleImInhalt(html, stelleAus(echt, 1))).toBe(true);
+
+    // Tabelle im Abschnitt „B" — es gibt weder Tabelle noch Abschnitt B.
+    expect(
+      stelleImInhalt(html, {
+        koVersion: 1,
+        art: "tabelle",
+        abschnitt: "B",
+        text: "Hallo",
+        fingerabdruck: stellenFingerabdruck("tabelle", "B", "Hallo"),
+      }),
+    ).toBe(false);
+    // Nur die Art falsch, nur der Abschnitt falsch, nur der Abdruck falsch: jeweils abgewiesen.
+    expect(stelleImInhalt(html, { ...stelleAus(echt, 1), art: "tabelle" })).toBe(false);
+    expect(stelleImInhalt(html, { ...stelleAus(echt, 1), abschnitt: "B" })).toBe(false);
+    expect(
+      stelleImInhalt(html, {
+        ...stelleAus(echt, 1),
+        fingerabdruck: stellenFingerabdruck("absatz", "A", "Hallo Welt"),
+      }),
+    ).toBe(false);
+    // Ein Zitat, das nur als TEIL eines Absatzes vorkommt, ist kein Block.
+    expect(
+      stelleImInhalt("<h2>A</h2><p>Hallo Welt</p>", {
+        ...stelleAus(echt, 1),
+        fingerabdruck: stellenFingerabdruck("absatz", "A", "Hallo"),
+      }),
+    ).toBe(false);
+  });
+
+  it("Z12 · Dienst und Fläche zerlegen denselben Inhalt in dieselben Blöcke", () => {
+    const lang = "Sehr lange Zeile mit Inhalt. ".repeat(15).trim();
+    const faelle = [
+      inhalt(),
+      inhalt({ zusatz: `<p>${ABSATZ}</p><h2>Ablauf</h2><p>Zweiter Ablauf.</p>` }),
+      `<p>${lang}</p><ul><li><p>Im Punkt</p></li><li>Leicht <b>fett</b></li></ul>`,
+      '<p>Bild im Absatz <img src="/api/objects/o2/raw" alt="x" data-image-id="b-2"> mit Text</p>',
+      "<h3>Gleich</h3><p>a</p><h3>Gleich</h3><p>a</p><pre>Code  zeile</pre><blockquote><p>Zitat</p></blockquote>",
+    ];
+    for (const html of faelle) {
+      const flaeche = stellenbloecke(html).map(({ anzeige: _a, ...rest }) => rest);
+      expect(stellenbloeckeAusHtml(html), html).toEqual(flaeche);
+    }
+  });
+
+  it("Z13 · der Abdruck der Fläche ist SHA-256 wie im Dienst (node:crypto)", () => {
+    for (const probe of ["", "abc", "Grüße · „Zitat“ — 😀", "x".repeat(1000)]) {
+      expect(sha256Hex(probe), probe.slice(0, 20)).toBe(
+        createHash("sha256").update(probe, "utf8").digest("hex"),
+      );
+    }
+    expect(stellenFingerabdruck("absatz", "A", "Hallo")).toBe(
+      dienstFingerabdruck("absatz", "A", "Hallo"),
+    );
   });
 });

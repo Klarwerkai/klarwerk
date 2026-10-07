@@ -222,7 +222,10 @@ export interface KoDiskussionsStelle {
   koVersion: number;
   art: "absatz" | "tabelle" | "bild";
   abschnitt: string;
+  /** Gekürzt — nur Anzeige. Die Identität trägt `fingerabdruck`. */
   text: string;
+  /** SHA-256 über Art, vollständigen Abschnitt und vollständigen Inhalt (`lib/stellenabdruck`). */
+  fingerabdruck: string;
 }
 
 // PUT /api/kos/:id — ein Mutations-Endpunkt, per {action} verzweigt.

@@ -46,7 +46,7 @@ export {
   STELLE_TEXT_MAX,
   leseStelle,
   stelleImInhalt,
-  stellenKlartext,
+  stellenbloeckeAusHtml,
 } from "./src/stellen-anker";
 // AUFTRAG-mega20 Block A: der Vorgangsschlüssel der ERSTANLAGE (DB-weit eindeutig, Adopt-Semantik).
 // AUFTRAG-mega21 Block A: dazu der kanonische Inhaltsabdruck des Vorgangs (Regeln K1–K7 in der Datei).

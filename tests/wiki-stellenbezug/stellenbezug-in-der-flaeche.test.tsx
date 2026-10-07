@@ -90,6 +90,7 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
+import { stellenFingerabdruck } from "../../apps/web/src/lib/stellenabdruck";
 import { KnowledgeDetail } from "../../apps/web/src/pages/KnowledgeDetail";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -112,7 +113,13 @@ interface Beitrag {
   text: string;
   at: string;
   koVersion?: number;
-  stelle?: { koVersion: number; art: string; abschnitt: string; text: string };
+  stelle?: {
+    koVersion: number;
+    art: string;
+    abschnitt: string;
+    text: string;
+    fingerabdruck: string;
+  };
 }
 
 function ko(comments: Beitrag[], version = 5, bodyHtml = INHALT): KnowledgeObject {
@@ -149,7 +156,14 @@ const frage = (stelleText: string, stelleVersion = 3): Beitrag => ({
   text: "Welches Ventil genau?",
   at: "2026-08-02T08:00:00.000Z",
   koVersion: stelleVersion,
-  stelle: { koVersion: stelleVersion, art: "absatz", abschnitt: "Ablauf", text: stelleText },
+  // Der Abdruck über den vollständigen Absatz — hier ist der Absatz kürzer als das Zitatlimit.
+  stelle: {
+    koVersion: stelleVersion,
+    art: "absatz",
+    abschnitt: "Ablauf",
+    text: stelleText,
+    fingerabdruck: stellenFingerabdruck("absatz", "Ablauf", stelleText),
+  },
 });
 
 let container: HTMLDivElement;
