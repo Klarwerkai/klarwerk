@@ -7,6 +7,7 @@ import { koQueryKey, useConflicts, useKos, useLibrarySearch } from "../../api/ho
 import type { KnowledgeObject } from "../../api/types";
 import { useSession } from "../../app/AuthContext";
 import { auffrischungGescheitert } from "../../lib/abfrageBestand";
+import { ANLAGE_FACETTE } from "../../lib/anlagenzugang";
 import { vertraulichkeitsAuskunft } from "../../lib/confidentiality";
 import { conflictImpact } from "../../lib/conflictImpact";
 import {
@@ -248,6 +249,10 @@ const LIBRARY_FILTER_CONFIGS: readonly FacetGroupConfig[] = [
   // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet als eigene Achse. Über diese Liste reist es
   // auch in die Adresse (`LIBRARY_FACET_PARAM_KEYS`) und in gemerkte Sichten (`facetSel`).
   { key: "domain", labelKey: "lib.facet.domain" },
+  // R-1631 / R-1647 / R-2174 (gesamt-anlagenzugang): die Anlage als Achse. Der QR-Code an der
+  // Maschine öffnet genau diese Auswahl (`?anlage=…`, `lib/anlagenzugang.ts`); dieselbe Liste trägt
+  // sie in die Adresse und in gemerkte Sichten.
+  { key: ANLAGE_FACETTE, labelKey: "anlagenzugang.facette" },
   { key: "tag", labelKey: "lib.facet.tag" },
   { key: "confidentiality", labelKey: "lib.facet.confidentiality" },
   { key: "author", labelKey: LIBRARY_FACET_LABEL_KEYS.author },

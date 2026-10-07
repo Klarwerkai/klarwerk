@@ -7,6 +7,7 @@
 // Dazu: GESPEICHERTE SICHTEN — benannt, LOKAL je Nutzer (localStorage, wie die Board-Checkboxen;
 // bewusst KEIN Server-Speicher — ehrlich dokumentiert: die Sicht lebt nur in diesem Browser).
 import type { Conflict, KnowledgeObject } from "../api/types";
+import { ANLAGE_FACETTE, anlagenWerte } from "./anlagenzugang";
 import { confidentialityOf } from "./confidentiality";
 import { conflictImpact, conflictLimitedUsability } from "./conflictImpact";
 import { isDemoKnowledge } from "./demoKnowledge";
@@ -122,6 +123,10 @@ export function libraryFilterValues(
     // Kategorie. Nur der am Objekt gespeicherte Wert — ohne Angabe bleibt die Achse leer; aus
     // Kategorie, Titel oder Inhalt wird nichts abgeleitet.
     domain: ko.domain?.trim() ? [ko.domain.trim()] : [],
+    // R-1631 / R-1647 / R-2174 (gesamt-anlagenzugang): die Anlage als eigene Achse — der Einstieg
+    // des QR-Codes (`lib/anlagenzugang.ts`). Nur die am Objekt gespeicherte kanonische Kennung;
+    // ohne Anlage bleibt die Achse leer.
+    [ANLAGE_FACETTE]: anlagenWerte(ko.asset),
   };
 }
 
