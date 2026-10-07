@@ -15,7 +15,12 @@ import type {
 } from "../../api/types";
 import { useSession } from "../../app/AuthContext";
 import { ImageDescribeProvider } from "../../app/ImageDescribeContext";
-import { WACHE_FLAECHE, useNavGuard, useUnloadGuard } from "../../app/NavGuardContext";
+import {
+  NavGuardSaveError,
+  WACHE_FLAECHE,
+  useNavGuard,
+  useUnloadGuard,
+} from "../../app/NavGuardContext";
 import { useToast } from "../../app/ToastContext";
 import { useLiveKnowledgeCheck } from "../../hooks/useLiveKnowledgeCheck";
 import {
@@ -54,6 +59,7 @@ import { erfassenFehlersatz } from "../../lib/erfassenFehlersatz";
 import { dominantCategory, pickExampleKo } from "../../lib/intakeExample";
 import { INTAKE_STARTERS, type IntakeStarter } from "../../lib/intakeStarters";
 import { deriveIntakeSuggestion } from "../../lib/intakeSuggestion";
+import { useNetzOnline } from "../../lib/netzzustand";
 // JOB 3266 (D1): dasselbe Datumsformat wie überall sonst in der Oberfläche — und dieselbe
 // Ehrlichkeit: ein fehlender oder unlesbarer Zeitwert wird `null`, nicht ein erfundenes Datum.
 import { toReasonerLocale } from "../../lib/reasonerLocale";
@@ -61,6 +67,7 @@ import { draftProvenance } from "../../lib/reasonerProvenance";
 import { isEmptyHtml } from "../../lib/richText";
 import { type SpeechRec, diktatSprache, makeRec } from "../../lib/speechDictation";
 import { hasSpeechRecognition, istIosGeraet } from "../../lib/speechSupport";
+import { type Speicherzustand, speicherzustand } from "../../lib/speicherzustand";
 import type { TitelMitQuelle } from "../../lib/titelRangfolge";
 import { useAiBillable } from "../../lib/useAiBillable";
 import { umfangKurz } from "../../lib/vorschauUmfang";
@@ -132,6 +139,57 @@ export type ArbeitsraumModus = "interview" | "datei" | "formular";
  * schreibt ihren Wert als `ArbeitsraumModus`, und dieser Typ kommt aus genau dieser Datei.
  */
 const BLATT_WEGZIEL = "data-wegziel";
+
+/**
+ * SPEICHERN-ERHOLUNG: der Abbruch eines ohne Netz angehaltenen Speicherns, weil der Mensch die
+ * Eingabe inzwischen verworfen hat. Eine eigene Klasse, damit `save.onError` ihn von einem echten
+ * Fehlschlag unterscheiden kann — er ist keiner und bekommt keinen Fehlersatz.
+ */
+class WartendesSpeichernVerworfen extends Error {
+  constructor() {
+    super("Wartendes Speichern verworfen");
+    this.name = "WartendesSpeichernVerworfen";
+  }
+}
+
+/**
+ * SPEICHERN-ERHOLUNG (Nacharbeit 1): der beim Klick EINGEFRORENE Stand eines Speicherns. Aus ihm
+ * baut `save.mutationFn` die Nutzlast und `save.onMutate` den Bezugspunkt „gesichert" — beide
+ * sehen denselben Wert, auch wenn die Mutation ohne Netz wartet und danach weitergetippt wurde.
+ */
+interface Speicherauftrag {
+  readonly title: string;
+  readonly bodyHtml: string;
+  readonly confidentiality: Confidentiality;
+  readonly gewaehlteVertraulichkeit: Confidentiality | undefined;
+  readonly kategorie: string;
+  readonly activeDraftId: string | null;
+  readonly bodyNieGeliefert: boolean;
+  readonly fallbackTitle: string;
+}
+
+/** Der Vergleichsstand für `savedStateRef` — genau die Felder, die das Dirty-Prädikat liest. */
+function abgesendetAus(auftrag: Speicherauftrag): {
+  title: string;
+  bodyHtml: string;
+  confidentiality: Confidentiality;
+  kategorie: string;
+} {
+  return {
+    title: auftrag.title,
+    bodyHtml: auftrag.bodyHtml,
+    confidentiality: auftrag.confidentiality,
+    kategorie: auftrag.kategorie,
+  };
+}
+
+/** SPEICHERN-ERHOLUNG: der Farbton je Lage — neutral, Warnung, Fehler, bestätigt. */
+const SPEICHERLAGE_TON: Record<Speicherzustand, string> = {
+  laeuft: "text-muted",
+  wartet: "text-trust-warn-text",
+  fehlgeschlagen: "text-trust-crit-text",
+  gespeichert: "text-trust-pos-text",
+};
 
 export type ArbeitsraumFabrik = (args: {
   modus: ArbeitsraumModus;
@@ -530,6 +588,20 @@ export function Blatt({
   const submitOperationRef = useRef<string | null>(null);
   const submitDraftRef = useRef<string | null>(null);
   const saveOperationRef = useRef<string | null>(null);
+  // SPEICHERN-ERHOLUNG (Ausbauliste Punkt 6) — EIN WARTENDES SPEICHERN, DAS DER MENSCH VERWORFEN HAT.
+  //
+  // Ohne Verbindung hält react-query das Speichern an (`save.isPaused`) und schickt es von selbst,
+  // sobald das Netz zurück ist. Verwirft der Mensch die Eingabe in dieser Zeit („Verwerfen und
+  // wechseln", „Eingabe verwerfen"), darf der angehaltene Aufruf danach NICHT doch noch schreiben —
+  // sonst entstünde später ein Entwurf aus einem Text, den er ausdrücklich weggeworfen hat. Die
+  // Marke ist ein Ref, weil der wieder anlaufende Aufruf sie lesen muss, auch wenn dieses Blatt
+  // längst ausgehängt ist; der Zustand daneben nimmt nur die Anzeige „wartet" zurück.
+  const wartendVerworfenRef = useRef(false);
+  const [wartendVerworfen, setWartendVerworfen] = useState(false);
+  // Die EINE Quelle des Onlinezustands (`lib/netzzustand.ts`) — dieselbe, aus der react-query sein
+  // `isPaused` ableitet. Gebraucht nur von der Wache: ohne Netz kann „Speichern und wechseln" nicht
+  // halten, was es verspricht.
+  const netzOnline = useNetzOnline();
 
   // ---- Bild und Diktat -------------------------------------------------------------------------
   const [captionRequest, setCaptionRequest] = useState<{
@@ -820,6 +892,11 @@ export function Blatt({
   // Adresse dem Wechsel, der unmittelbar folgt. Ein zweites Leeren daneben gibt es nicht: der
   // Menüweg „Eingabe verwerfen" und jeder andere Aufrufer gehen weiter durch `resetForNewEntry`.
   const blattLeeren = (): void => {
+    // SPEICHERN-ERHOLUNG: ein angehaltenes Speichern gehört zur verworfenen Eingabe (s. Marke oben).
+    if (save.isPaused) {
+      wartendVerworfenRef.current = true;
+      setWartendVerworfen(true);
+    }
     setTitle("");
     setBodyHtml("");
     setQuellBildzahl(null);
@@ -1159,32 +1236,56 @@ export function Blatt({
   // (s. Effekt `formularNachSichern` bei `formularOeffnen`).
   const [formularNachSichern, setFormularNachSichern] = useState<ArbeitsraumModus | null>(null);
   const save = useMutation({
-    mutationFn: () => {
-      if (activeDraftId) {
+    // ==============================================================================================
+    // SPEICHERN-ERHOLUNG (Nacharbeit 1, BEN) — NUTZLAST UND QUITTUNG AUS DEMSELBEN SCHNAPPSCHUSS.
+    // ==============================================================================================
+    //
+    // BIS HIERHER las `mutationFn` Titel, Rumpf, Stufe und Bereich aus dem Abschluss des Renders,
+    // `onMutate` hielt dagegen den Klickstand fest. react-query reicht einer LAUFENDEN Mutation bei
+    // jedem Render die neuen Optionen weiter (`mutationObserver.setOptions`), und eine ohne Netz
+    // angehaltene Mutation ruft beim Wiederanlauf die AKTUELLE `mutationFn`. Wer während des Wartens
+    // von A auf B änderte, schickte also B — und das Blatt hielt A für gespeichert. Ein späteres
+    // Zurückändern auf A zeigte „Gespeichert – vom Server bestätigt", obwohl der Server B trug.
+    //
+    // JETZT ist der Stand eine VARIABLE der Mutation (`Speicherauftrag`, eingefroren beim Klick):
+    // `mutationFn` baut die Nutzlast daraus, `onMutate` den Bezugspunkt `savedStateRef` daraus. Beide
+    // sehen denselben, unveränderlichen Wert; was danach getippt wird, bleibt ungespeichert und zählt
+    // als Änderung. Der gesehene Serverstand (`loadedUpdatedAtRef`) wird bewusst erst beim Absenden
+    // gelesen — er ist keine Eingabe, sondern die Bedingung des Schreibvorgangs.
+    mutationFn: (auftrag: Speicherauftrag) => {
+      // SPEICHERN-ERHOLUNG: der Aufruf läuft erst JETZT an — nach einer Wartezeit ohne Netz womöglich
+      // lange nach dem Klick. Hat der Mensch die Eingabe inzwischen verworfen, geht nichts hinaus.
+      if (wartendVerworfenRef.current) {
+        wartendVerworfenRef.current = false;
+        return Promise.reject(new WartendesSpeichernVerworfen());
+      }
+      const mitAuftragsBereich = (rumpf: DraftPayload): DraftPayload =>
+        auftrag.kategorie.trim() ? { ...rumpf, category: auftrag.kategorie.trim() } : rumpf;
+      if (auftrag.activeDraftId) {
         // AUFTRAG-mega7 Block A: Speichern auf einen BESTEHENDEN Entwurf ist ein PUT über den
         // Bestand — die Entwurfs-Id mitgeben, damit ein bewusst geleerter Rumpf als Löschmarker
         // reist statt vom partiellen Merge durch den Altwert ersetzt zu werden.
         const rumpf = buildFrontDoorPayload({
-          title,
-          bodyHtml,
-          fallbackTitle,
+          title: auftrag.title,
+          bodyHtml: auftrag.bodyHtml,
+          fallbackTitle: auftrag.fallbackTitle,
           // JOB 3082: NUR eine getroffene Wahl reist mit. Sichern bleibt ohne Stufe erlaubt (ein
           // halber Gedanke muss sich wegspeichern lassen) — der Entwurf trägt dann kein Feld, und
           // das Fortsetzen fragt wieder nach.
-          gewaehlteVertraulichkeit: declaredConfidentiality,
-          activeDraftId,
+          gewaehlteVertraulichkeit: auftrag.gewaehlteVertraulichkeit,
+          activeDraftId: auftrag.activeDraftId,
         });
         // JOB 2705 (R2-23 a): DER LÖSCHMARKER AUS DEM NICHTS. Hat der Server den Rumpf nie
         // geliefert und hat der Mensch ihn seither nicht angefasst, geht der Schlüssel GAR NICHT
         // mit — der partielle Merge lässt den Altwert stehen.
-        if (bodyNieGeliefertRef.current && rumpf.bodyHtml === CLEARED_DRAFT_BODY_HTML) {
+        if (auftrag.bodyNieGeliefert && rumpf.bodyHtml === CLEARED_DRAFT_BODY_HTML) {
           // biome-ignore lint/performance/noDelete: Schluessel muss fehlen, nicht leer sein
           delete rumpf.bodyHtml;
         }
         return withFrontDoorSaveTimeout(
           endpoints.drafts.update(
-            activeDraftId,
-            mitBereich(rumpf),
+            auftrag.activeDraftId,
+            mitAuftragsBereich(rumpf),
             loadedUpdatedAtRef.current
               ? { expectedUpdatedAt: loadedUpdatedAtRef.current }
               : undefined,
@@ -1196,19 +1297,25 @@ export function Blatt({
         saveOperationRef.current = newCreateOperationId();
       }
       return createFrontDoorDraft(
-        { title, bodyHtml, fallbackTitle, gewaehlteVertraulichkeit: declaredConfidentiality },
-        (payload, operationId) => endpoints.drafts.create(mitBereich(payload), operationId),
+        {
+          title: auftrag.title,
+          bodyHtml: auftrag.bodyHtml,
+          fallbackTitle: auftrag.fallbackTitle,
+          gewaehlteVertraulichkeit: auftrag.gewaehlteVertraulichkeit,
+        },
+        (payload, operationId) => endpoints.drafts.create(mitAuftragsBereich(payload), operationId),
         undefined,
         saveOperationRef.current,
       );
     },
-    onMutate: () => {
+    onMutate: (auftrag: Speicherauftrag) => {
       setErr(null);
       setSubmittedKo(null);
-      // JOB 2705 (R2-23 c): DER STAND, DER WIRKLICH ABGESENDET WIRD — festgehalten VOR dem Aufruf.
-      return { abgesendet: { title, bodyHtml, confidentiality, kategorie } };
+      // JOB 2705 (R2-23 c): DER STAND, DER WIRKLICH ABGESENDET WIRD — seit der Nacharbeit derselbe
+      // eingefrorene Auftrag, aus dem `mutationFn` die Nutzlast baut.
+      return { abgesendet: abgesendetAus(auftrag) };
     },
-    onSuccess: (draft, _variablen, kontext) => {
+    onSuccess: (draft, auftrag, kontext) => {
       setActiveDraftId(draft.id);
       // JOB 3408 (KI-UEBERNAHME-SPEICHERN): DER VORGANG IST VORBEI, ALSO IST DIE SPERRE VORBEI.
       // `saveRequestedRef` schützt EINEN laufenden Schreibvorgang vor einem zweiten Auslöser im
@@ -1231,7 +1338,7 @@ export function Blatt({
       setErr(null);
       // JOB 2705 (R2-23 c): der ABGESENDETE Stand ist der Bezugspunkt, nicht der aktuelle — sonst
       // gälte als „gesichert", was der Mensch während des Speicherns getippt hat.
-      const abgesendet = kontext?.abgesendet ?? { title, bodyHtml, confidentiality, kategorie };
+      const abgesendet = kontext?.abgesendet ?? abgesendetAus(auftrag);
       savedStateRef.current = abgesendet;
       setSubmitValidation(false);
       push("success", t("fd.toastSaved"));
@@ -1287,6 +1394,14 @@ export function Blatt({
     onError: (e) => {
       saveRequestedRef.current = false;
       nachSichernOeffnenRef.current = null;
+      // SPEICHERN-ERHOLUNG: kein Fehler, sondern die Wirkung der Wahl „Verwerfen". Es wurde nichts
+      // geschickt, also gibt es auch keinen Fehlersatz — und kein Vorgangsschlüssel ist offen.
+      if (e instanceof WartendesSpeichernVerworfen) {
+        saveOperationRef.current = null;
+        guardSaveRef.current = false;
+        setWartendVerworfen(false);
+        return;
+      }
       // JOB 2697: den Schlüssel NUR fallen lassen, wenn der Server EINDEUTIG geantwortet hat.
       if (createOperationIsSettled(e instanceof ApiError ? e.status : undefined)) {
         saveOperationRef.current = null;
@@ -1554,13 +1669,30 @@ export function Blatt({
     [hasPendingProposal, hasSavableContent, confidentiality, t],
   );
 
+  // SPEICHERN-ERHOLUNG (Nacharbeit 1): der eine Ort, an dem der Klickstand eingefroren wird. Die
+  // Wache liest ihn über den Ref, damit ihre Anmeldung nicht bei jedem Tastendruck neu läuft —
+  // gelesen wird trotzdem der Stand des letzten Renders, also genau das, was im Dialog zu sehen war.
+  const speicherauftrag = (): Speicherauftrag =>
+    Object.freeze({
+      title,
+      bodyHtml,
+      confidentiality,
+      gewaehlteVertraulichkeit: declaredConfidentiality,
+      kategorie,
+      activeDraftId,
+      bodyNieGeliefert: bodyNieGeliefertRef.current,
+      fallbackTitle,
+    });
+  const speicherauftragRef = useRef(speicherauftrag);
+  speicherauftragRef.current = speicherauftrag;
+
   const requestSave = (): void => {
     if (!canSave || saveRequestedRef.current) {
       return;
     }
     setLetzteAktion({ art: "speichern" });
     saveRequestedRef.current = true;
-    save.mutate();
+    save.mutate(speicherauftrag());
   };
 
   const requestSubmit = (): void => {
@@ -1659,9 +1791,16 @@ export function Blatt({
         if (!hasSavableContent) {
           return;
         }
+        // SPEICHERN-ERHOLUNG: ohne Netz bliebe `mutateAsync` angehalten, und der Dialog stünde
+        // wortlos mit gesperrten Knöpfen da, bis die Verbindung irgendwann zurückkommt. Stattdessen
+        // sagt er den Grund, bleibt offen und lässt „Hier bleiben" und „Verwerfen" wählbar — die
+        // Wache wechselt bei einem Wurf nicht (`NavGuardContext.saveAndGo`).
+        if (!netzOnline) {
+          throw new NavGuardSaveError(t("erholung.speichern.wechselOhneVerbindung"));
+        }
         guardSaveRef.current = true;
         try {
-          await save.mutateAsync();
+          await save.mutateAsync(speicherauftragRef.current());
         } catch (e) {
           guardSaveRef.current = false;
           throw e;
@@ -1669,7 +1808,7 @@ export function Blatt({
       },
     });
     return () => setGuard(null);
-  }, [setGuard, istSchmutzig, unsicherbareGruende, hasSavableContent, save]);
+  }, [setGuard, istSchmutzig, unsicherbareGruende, hasSavableContent, save, netzOnline, t]);
 
   // ==============================================================================================
   // EINE LAGE, EIN SATZ (Zustandsmodell §9).
@@ -1696,6 +1835,25 @@ export function Blatt({
   const kiFehlerSatz = kiFehler ? `${kiFehler} ${t("fd.originalUnchanged")}` : null;
   const blattFehler: string | null =
     (staleConflict ? t("fd.draftStale") : null) ?? err ?? restartOffer;
+  // ==============================================================================================
+  // SPEICHERN-ERHOLUNG (Ausbauliste Punkt 6) — DIE LAGE DES EXPLIZITEN SPEICHERNS, SICHTBAR.
+  // ==============================================================================================
+  //
+  // Bis hierher sah der Mensch nach „Entwurf sichern" nur einen grauen Knopf: ob die Anfrage
+  // unterwegs war oder ohne Netz angehalten stand, war von aussen nicht zu unterscheiden. Die vier
+  // Lagen kommen aus EINER Ableitung (`lib/speicherzustand.ts`) und lesen nur, was schon da ist:
+  //   · unterwegs / angehalten — die Mutation selbst (`isPending`, `isPaused`). Ein verworfenes
+  //     Warten zählt nicht mehr: die Eingabe ist weg, und „wartet" wäre eine Zusage ohne Gegenstand.
+  //   · fehlgeschlagen — der Satz unter den Knöpfen steht, und er gehört zum SPEICHERN (nicht zum
+  //     Einreichen oder Laden). Der Satz selbst bleibt, wo er war (`BlattLage`).
+  //   · gespeichert — dieselbe Ablesung wie die Bestätigungszeile (`gesichertZeile`): der Server hat
+  //     quittiert, und das Blatt zeigt noch genau diesen Stand.
+  const speicherlage = speicherzustand({
+    unterwegs: save.isPending && !wartendVerworfen,
+    angehalten: save.isPaused,
+    fehlgeschlagen: blattFehler !== null && letzteAktion?.art === "speichern",
+    gespeichert: gesichertZeile !== null,
+  });
 
   // ---- Werkzeuge ------------------------------------------------------------------------------
 
@@ -3371,6 +3529,31 @@ export function Blatt({
               </button>
             )}
           </div>
+          {/* SPEICHERN-ERHOLUNG: die Lage des Speicherns, direkt unter dem Knopf, der sie ausgelöst
+              hat. Die Region steht IMMER im Baum (nur ihr Inhalt wechselt) — ein Vorleseprogramm
+              meldet zuverlässig nur Änderungen in einer Region, die schon vorher da war; dieselbe
+              Bauform wie `bib-offline-ansage`. In Ruhe ist sie leer und trägt keine Prosa. Der
+              Wartesatz sagt ausdrücklich, dass die Eingabe nur in diesem Fenster liegt: ein Neuladen
+              ohne Netz schützt dieses Blatt NICHT, und das wird nicht verschwiegen. */}
+          <output
+            aria-live="polite"
+            data-testid="blatt-speicherzustand"
+            data-zustand={speicherlage ?? "ruhe"}
+            className="pointer-events-auto block max-w-[420px] text-right text-[13px]"
+          >
+            {speicherlage ? (
+              <span className={`block ${SPEICHERLAGE_TON[speicherlage]}`}>
+                <span data-testid="blatt-speicherzustand-satz" className="block font-semibold">
+                  {t(`erholung.speichern.${speicherlage}`)}
+                </span>
+                {speicherlage === "wartet" ? (
+                  <span data-testid="blatt-speicherzustand-hinweis" className="mt-0.5 block">
+                    {t("erholung.speichern.wartetHinweis")}
+                  </span>
+                ) : null}
+              </span>
+            ) : null}
+          </output>
           {/* ========================================================================================
               JOB 3106 (UX-01) — DIE BESTÄTIGUNG NENNT DIE WEGE, STATT ZU VERWEHEN.
               ========================================================================================
