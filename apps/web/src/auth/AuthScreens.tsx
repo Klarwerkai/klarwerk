@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { authApi } from "../api/auth";
 import { ApiError } from "../api/client";
@@ -20,7 +20,7 @@ type Mode = "login" | "register" | "waiting" | "setup" | "forgot" | "forgotSent"
 // Auth/Onboarding (BRIEF §6.1 / §7.2). Vollbild, 2-spaltig: dunkles Marken-
 // Panel links, Formular rechts. Sub-Zustände inkl. Ersteinrichtung.
 export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { refresh, oidcEnabled, selfRegistrationEnabled } = useSession();
   const [mode, setMode] = useState<Mode>(needsSetup ? "setup" : "login");
   const [name, setName] = useState("");
@@ -29,7 +29,21 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
   // Sicherheit: Passwort-Bestätigung bei Account-Erstellung (register/setup) — ein Vertipper
   // im einzigen Passwortfeld würde sonst still ein falsches Passwort setzen (Aussperrung).
   const [pw2, setPw2] = useState("");
-  const [err, setErr] = useState<string | null>(null);
+  // R-0531: „die Wahl wirkt sofort auf alle Texte der Maske" — auch auf einen schon angezeigten
+  // Fehler. Sein Text ist fertig formuliert (vom Server per `Accept-Language` oder hier per `t()`)
+  // und lässt sich nicht nachträglich übersetzen. Er trägt deshalb die Sprache, in der er entstand,
+  // und steht nur, solange diese Sprache gewählt ist; nach dem Umschalten bleibt kein Satz in der
+  // alten Sprache auf der Maske zurück.
+  //
+  // Gestempelt wird mit der Sprache des letzten Absendens: mit ihr ging die Anfrage ab
+  // (`Accept-Language`, `api/client.ts`), also ist eine Serverantwort in DIESER Sprache formuliert,
+  // auch wenn inzwischen umgeschaltet wurde. Die Texte, die die Maske beim Absenden selbst setzt
+  // (`auth.passwordMismatch`), entstehen im selben Augenblick und tragen dieselbe Sprache.
+  const anfrageSprache = useRef(i18n.language);
+  const [fehler, setFehler] = useState<{ text: string; sprache: string } | null>(null);
+  const setErr = (text: string | null): void =>
+    setFehler(text === null ? null : { text, sprache: anfrageSprache.current });
+  const err = fehler !== null && fehler.sprache === i18n.language ? fehler.text : null;
   // AUFTRAG-mega61 Block D: Wer den Hinweis abgelehnt hat, landet nach dem Abmelden hier. Ohne
   // diesen Satz stünde er vor einer Anmeldemaske ohne Erklärung — eine Sackgasse mit Gedächtnis.
   // Einmalig beim ersten Rendern gelesen UND gelöscht (`useState`-Initialisierer), damit der Satz
@@ -220,6 +234,7 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
               className="mt-6 space-y-4"
               onSubmit={(e) => {
                 e.preventDefault();
+                anfrageSprache.current = i18n.language;
                 setErr(null);
                 // JOB 4081 RUNDE 3: Hier und nicht nur am Knopf. Die Eingabetaste gibt ein
                 // Formular ab, ohne den Absendeknopf zu berühren — ein gesperrter Knopf allein

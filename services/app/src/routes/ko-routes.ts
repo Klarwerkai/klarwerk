@@ -917,6 +917,30 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     await guards.requireUser(request, reply);
   };
 
+  // ============================================================================================
+  // R-0676 · DIE ANLEGEWEGE: ERST DAS RECHT, DANN DER KÖRPER.
+  // ============================================================================================
+  //
+  // `POST /api/kos` und `POST /api/kos/from-document` prüften `ko.create` erst im Handler — also
+  // nachdem Fastify den Körper (Vorgabe 1 MiB) gelesen und geparst hatte. Ein Anonymer oder ein
+  // Konto ohne Anlegerecht bekam damit eine Formkritik seines JSON (400), bevor jemand fragte, ob
+  // er überhaupt anlegen darf. Hier steht dasselbe Recht, das der Handler verlangt, VOR dem Parsen.
+  //
+  // WARUM DAS RECHT UND NICHT NUR DIE ANMELDUNG (anders als `requireAuthedBeforeParse` oben): beide
+  // Routen kennen genau EIN Recht, unabhängig vom Körper. Es gibt hier keine Aktion, deren Recht
+  // erst aus dem Körper folgte — also nichts, was ein früheres Urteil verfälschen könnte.
+  //
+  // WARUM ALS BENANNTER HELFER UND NICHT INLINE: der Routenscanner (`tests/security/routeGuardAudit.ts`)
+  // zählt `requirePermission("…")`-Literale im Routenblock. Ein zweites Literal dort machte aus
+  // `ko.create` scheinbar eine `action-dispatched`-Route. Der Handler behält seine eigene Prüfung
+  // (Defense-in-Depth, und er braucht ohnehin den Nutzer).
+  const requireKoCreateBeforeParse = async (
+    request: Parameters<Guards["requirePermission"]>[1],
+    reply: Parameters<Guards["requirePermission"]>[2],
+  ): Promise<void> => {
+    await guards.requirePermission("ko.create", request, reply);
+  };
+
   // R-0247: das Dublettentor der zwei Freigabewege — derselbe Sichtbarkeitszugang wie an
   // `/api/duplicates` (build-app.ts, `koSichtbarkeit`).
   const dublettenTorDeps = { overlaps, audit, kos: { get: (koId: string) => ko.get(koId) } };
@@ -1463,6 +1487,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
 
     app.post<{ Body: Omit<CreateKoInput, "author"> & { reviewerIds?: string[] } }>(
       "/api/kos",
+      { onRequest: requireKoCreateBeforeParse },
       async (request, reply) => {
         const user = await guards.requirePermission("ko.create", request, reply);
         if (!user) {
@@ -1607,511 +1632,515 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     //   (I)  EXTERNE STUFENREGEL — hier unten, `decideExternalAttach` je Belegstelle.
     //   (II) INTERNE BELEGPFLICHT — im Service (`requireDocumentEvidence`), stufenblind.
     // An services/external-search/src/attach-policy.ts ändert sich KEIN Zeichen.
-    app.post<{ Body: FromDocumentBody }>("/api/kos/from-document", async (request, reply) => {
-      const user = await guards.requirePermission("ko.create", request, reply);
-      if (!user) {
-        return;
-      }
-      const badRequest = (message: string): void => {
-        reply.code(400).send({ error: "BAD_REQUEST", message });
-      };
-      try {
-        const body = request.body ?? {};
-        const entries = body.documents ?? [];
-        // ---- UNVERÄNDERLICHE FORMPRÜFUNGEN ----------------------------------------------------
-        if (entries.length === 0) {
-          return badRequest("documents fehlt — kein Inhalt ohne Herkunft.");
-        }
-        for (const entry of entries) {
-          if (!entry?.anchor?.objectId || !entry.anchor.name || !entry.anchor.mime) {
-            return badRequest(
-              "documents[].anchor {objectId, name, mime} fehlt — übernommener Dokumentinhalt braucht sein Original.",
-            );
-          }
-          if (!entry.points || entry.points.length === 0) {
-            return badRequest("documents[].points fehlt — kein Inhalt ohne Herkunft.");
-          }
-          if (entry.points.some((p) => !p?.label?.trim())) {
-            return badRequest("documents[].points[].label fehlt.");
-          }
-        }
-        // ==============================================================================
-        // AUFTRAG-mega22 Block C — `draftId` OHNE `draftPayload` GIBT ES NICHT MEHR.
-        // ==============================================================================
-        //
-        // DER BEFUND (bens SB-D). Der Altweg akzeptierte `draftId` allein; dann trug der Abdruck
-        // weder Entwurfs-Kennung noch Entwurfsinhalt, sondern nur Dokumente und Prüfer. Verschiedene
-        // Entwürfe und verschiedene gespeicherte Entwurfsstände waren damit UNUNTERSCHEIDBAR: nach
-        // einem ersten Erfolg konnte ein Wiederholversuch mit ANDERER Entwurfs-Kennung als identisch
-        // adoptiert werden — der zweite Entwurf blieb unangetastet, und der Aufrufer bekam das
-        // Objekt des ERSTEN Vorgangs zurück, ohne dass ihm das jemand sagte.
-        //
-        // MEINE BEGRÜNDUNG AUS mega21 WAR „KEIN BEKANNTER AUFRUFER". Sie trägt nicht, und ben hat
-        // recht damit: Unbenutztheit ist kein Schutz für einen weiterhin authentifiziert
-        // erreichbaren API-Vertrag. Ein Weg, den niemand geht, wird nicht bewacht — das macht ihn
-        // nicht sicher, sondern nur unbeobachtet.
-        //
-        // ZWEI ZULÄSSIGE WEGE, und warum es DIESER wird:
-        //
-        //   (i)  `draftPayload` VERPFLICHTEND machen — der Vertrag wird abgeschnitten.
-        //   (ii) Einen stabilen Entwurfs-Versions- oder Inhaltsdigest im Request führen, der auch
-        //        nach dem Löschen des Entwurfs im Wiederholversuch mitreist.
-        //
-        // ES WIRD (i). (ii) wäre die reichere Lösung, aber sie erfindet ein ZWEITES Inhaltsmass
-        // neben dem Abdruck und muss es über den Tod des Entwurfs hinweg stabil halten — ein
-        // Digest, den der Client führt, über einen Bestand, den der Server löscht. Das ist genau
-        // die Konstruktion, aus der SB-D entstanden ist, nur eine Ebene höher. (i) beseitigt die
-        // Frage: nach der mega21-Umstellung schickt der einzige Aufrufer den Stand ohnehin mit
-        // (Capture.tsx), und die Ladung IST der stabile Inhaltsvertrag — sie reist mit dem Request
-        // und überlebt das Löschen des Entwurfs, weil sie gar nicht aus ihm stammt.
-        //
-        // WARUM DIE PRÜFUNG HIER OBEN STEHT, über dem Idempotenz-Nachschlag: sie ist eine
-        // UNVERÄNDERLICHE Formprüfung. Eine Wiederholung trägt denselben Body, fällt hier also
-        // entweder beide Male oder keinmal — genau das Kriterium aus mega20 Block A.
-        if (body.draftId && body.draftPayload === undefined) {
-          return badRequest(
-            "draftPayload fehlt — beim Fortsetzen eines Entwurfs muss der aktuelle Stand mitreisen. Ohne ihn kann der Server nicht unterscheiden, ob eine Wiederholung denselben Inhalt meint.",
-          );
-        }
-        // ==============================================================================
-        // AUFTRAG-mega20 Block A — DER NACHSCHLAG STEHT VOR ALLEM VERÄNDERLICHEN.
-        // ==============================================================================
-        //
-        // WAS OBERHALB DIESER ZEILE STEHEN DARF, und warum — dieselbe Prüfung wie in mega19 Block A
-        // beim Append: Authentisierung (das Recht `ko.create` ändert sich nicht dadurch, dass der
-        // erste Aufruf durchlief) und die UNVERÄNDERLICHEN Formprüfungen (fehlende Dokumente,
-        // fehlende Anker, fehlende Punkte, fehlende Labels — eine Wiederholung trägt denselben
-        // Body, fällt dort also entweder beide Male oder keinmal).
-        //
-        // WAS UNTERHALB STEHEN MUSS — und hier ist die Liste LÄNGER als beim Append, weil die
-        // Erstanlage mehr Veränderliches anfasst:
-        //
-        //   · DER ENTWURF. Der erste Aufruf LÖSCHT ihn nach dem Commit. Eine Wiederholung mit
-        //     `draftId` fände ihn nicht mehr und bekäme 404 — für einen Vorgang, der GELUNGEN ist.
-        //     Das ist die schärfste Kante dieses Blocks und der Grund, warum der Nachschlag nicht
-        //     erst hinter der Entwurfs-Ladung stehen kann.
-        //   · die Anhangzahl und die gespeicherte Objektgröße (Kapazität),
-        //   · die Upload-Grenzen und die externe Stufe.
-        //
-        // WARUM DAS KEIN SCHLUPFLOCH IST: `lookupDocumentCreate` SCHREIBT NICHT. Für eine
-        // UNBEKANNTE Kennung liefert es `null`, und der Ablauf läuft ungekürzt durch ALLE Tore —
-        // es gibt keinen Weg, auf dem etwas NEUES entsteht, ohne Kapazität, Stufe und Belegpflicht
-        // passiert zu haben. Und es liefert kein FREMDES Objekt: der Service prüft die Autorschaft
-        // und antwortet auf eine erratene fremde Kennung mit Konflikt statt mit Inhalt.
-        //
-        // AUFTRAG-mega21 Block A: der Nachschlag fragt jetzt mit DEM VORGANG statt mit einer
-        // Nutzerkennung — Eigentümer UND Inhaltsabdruck. Beide sind an DIESER Stelle bereits
-        // bekannt, weil beide aus dem REQUEST kommen: der Eigentümer aus der Sitzung, der Abdruck
-        // aus dem Body. Genau deshalb darf der Nachschlag weiterhin ganz vorne stehen — er braucht
-        // weder den Entwurf noch die Kapazität noch die Stufe, um zu wissen, WER hier WAS wiederholt.
-        const fingerprint = createOperationFingerprint(fromDocumentFingerprintInput(body));
-        const replay = await ko.lookupDocumentCreate(body.operationId ?? "", {
-          actor: user.id,
-          fingerprint,
-        });
-        if (replay) {
-          // 200 statt 201: derselbe Vorgang, aber das Objekt entsteht NICHT jetzt. Die Antwortform
-          // ist unverändert das Wissensobjekt — ein Client, der 2xx als Erfolg liest, braucht
-          // nichts zu lernen; wer genauer hinsieht, unterscheidet „neu angelegt" von „war schon da".
-          // Keine Folgeschritte: sie liefen beim ersten Mal (unten). Sie hier zu wiederholen wäre
-          // kein Fehler, aber auch keine Wahrheit.
-          reply.code(200).send(replay);
+    app.post<{ Body: FromDocumentBody }>(
+      "/api/kos/from-document",
+      { onRequest: requireKoCreateBeforeParse },
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.create", request, reply);
+        if (!user) {
           return;
         }
-        // ---- DIE INHALTSEINGABE: ENTWURF ODER FRISCH ------------------------------------------
-        let input: CreateKoInput;
-        if (body.draftId) {
-          if (!draftPromotion) {
-            // Ehrlich statt halb: ohne verdrahteten Entwurfs-Zugang gibt es diesen Weg nicht.
-            return badRequest("Entwurfs-Übernahme ist in dieser Konfiguration nicht verfügbar.");
+        const badRequest = (message: string): void => {
+          reply.code(400).send({ error: "BAD_REQUEST", message });
+        };
+        try {
+          const body = request.body ?? {};
+          const entries = body.documents ?? [];
+          // ---- UNVERÄNDERLICHE FORMPRÜFUNGEN ----------------------------------------------------
+          if (entries.length === 0) {
+            return badRequest("documents fehlt — kein Inhalt ohne Herkunft.");
           }
-          // AUFTRAG-mega21 Block B: liegt der aktuelle Stand bei, wird er HIER geschrieben — im
-          // selben Vorgang, hinter dem Idempotenz-Nachschlag. Der frühere separate PUT der
-          // Oberfläche entfällt damit; er war es, der den Wiederholversuch mit 404 abfing, bevor
-          // der Nachschlag überhaupt lief.
-          // AUFTRAG-mega22 Block C: nur noch DIESER Zweig. Die Verzweigung auf `load` (Entwurf so
-          // lesen, wie er im Bestand steht) ist entfallen — sie war der Weg, auf dem der Abdruck
-          // den Entwurfsinhalt nicht sah. `draftPromotion.load` bleibt am Vertrag, weil der
-          // Promote-Weg es benutzt (Block H); erreichbar ist es von HIER nicht mehr.
-          // JOB 2684 D3 (R2-17): der gesehene Stand reist mit — dieselbe Lesart wie an den
-          // Entwurfsrouten (nur ein nicht-leerer String zählt).
-          const expectedUpdatedAt =
-            typeof body.expectedUpdatedAt === "string" && body.expectedUpdatedAt.trim().length > 0
-              ? body.expectedUpdatedAt.trim()
-              : undefined;
-          // JOB 2684 D4 (R2-17, BEN: „der Fall ohne Stand bleibt absichtlich gruen"): DER WEG OHNE
-          // STAND IST ZU. Wer einen Entwurf aus dem Dokumentweg befoerdert, hat ihn geladen und
-          // kennt seinen Stand — Capture.tsx setzt ihn beim „Fortsetzen" und sendet ihn seit D3.
-          // Einen legitimen Aufrufer ohne Stand gibt es hier nicht: die drei Stellen, an denen das
-          // Studio selbst Entwuerfe anlegt (Dateipunkte, Ganzdatei), halten den Entwurf nicht,
-          // sondern leeren das Formular — ein `draftId` im Dokumentweg entsteht nur ueber das
-          // Laden. Ein fehlender oder leerer Stand ist deshalb „weggelassen", nicht „neu": 400,
-          // ohne Entwurfs- oder Wissensobjektwirkung. Ein Schutz, den ein Aufrufer weglassen
-          // kann, ist keiner (Befund 3 des ersten Reviews, dieselbe Bauart).
-          // Die Pruefung selbst sitzt im Adapter (build-app.ts, `applyAndLoad`) HINTER der
-          // Sichtbarkeitsregel: ein fremder oder fehlender Entwurf bleibt 403/404, wie bisher —
-          // erst ein sichtbarer Entwurf ohne Stand ist „weggelassen".
-          const loaded = await draftPromotion.applyAndLoad(
-            body.draftId,
-            body.draftPayload,
-            user,
-            expectedUpdatedAt,
-          );
-          if (!loaded.ok) {
-            if (loaded.reason === "stand-fehlt") {
-              reply.code(400).send({
-                error: "DRAFT_STAND_FEHLT",
-                message:
-                  "expectedUpdatedAt fehlt — beim Befoerdern eines gespeicherten Entwurfs muss der beim Laden gesehene Stand mitreisen. Ohne ihn kann der Server einen veralteten Stand nicht abweisen.",
-              });
-              return;
+          for (const entry of entries) {
+            if (!entry?.anchor?.objectId || !entry.anchor.name || !entry.anchor.mime) {
+              return badRequest(
+                "documents[].anchor {objectId, name, mime} fehlt — übernommener Dokumentinhalt braucht sein Original.",
+              );
             }
-            if (loaded.reason === "stale") {
-              // Kein Wissensobjekt, kein Schreiben: der Entwurf wurde inzwischen an anderer Stelle
-              // geändert. Antwortform wie `PUT /api/drafts/:id` und der Promote (capture-routes).
-              reply.code(409).send({
-                error: "DRAFT_STALE",
-                message: loaded.message,
-                currentUpdatedAt: loaded.currentUpdatedAt,
-              });
-              return;
+            if (!entry.points || entry.points.length === 0) {
+              return badRequest("documents[].points fehlt — kein Inhalt ohne Herkunft.");
             }
-            if (loaded.reason === "invalid") {
-              return badRequest(loaded.message ?? "Entwurfsinhalt ungueltig.");
-            }
-            reply.code(loaded.reason === "not-found" ? 404 : 403).send({
-              error: loaded.reason === "not-found" ? "NOT_FOUND" : "FORBIDDEN",
-              message:
-                loaded.reason === "not-found"
-                  ? "Entwurf nicht gefunden."
-                  : "Entwurf nicht verfuegbar.",
-            });
-            return;
-          }
-          input = loaded.input;
-        } else {
-          // Dieselbe Verwerfung wie POST /api/kos: Herkunfts-/Vertrauensanker und der Kandidaten-
-          // Anker kommen NIE vom Client. Was an Quellen entsteht, entsteht unten aus den geprüften
-          // Dokumenten — nicht aus diesem Feld.
-          // R-0139 / FR-EXT-02: `origin` und `importedVia` aus demselben Grund wie an POST /api/kos.
-          // R-0180/R-2108: mit `origin` fällt hier auch jedes `import` (vgl. `ohneImportHerkunft`).
-          const {
-            sources: _ignoredSources,
-            importCandidateId: _ignoredAnchor,
-            origin: _ignoredOrigin,
-            importedVia: _ignoredImportedVia,
-            dokumentHerkunft: _ignoredDokumentHerkunft,
-            // R-0632 (Nacharbeit 10): die Herabstufungssperre setzt allein der Entwurfs-Promote.
-            stufeNurAnheben: _ignoredStufeNurAnheben,
-            ...rest
-          } = body.create ?? ({} as Omit<CreateKoInput, "author">);
-          input = { ...rest, author: user.id } as CreateKoInput;
-        }
-        // ==========================================================================================
-        // JOB 3569 (Q3 c) — AUCH DURCH DIE ZWEITE TÜR ENTSTEHT KEIN UNEINGESTUFTES WISSENSOBJEKT.
-        // ==========================================================================================
-        //
-        // DER BEFUND. JOB 3429 hat die Stufenpflicht an `POST /api/kos` gesetzt (oben, derselbe
-        // Fehlercode, derselbe Satz) und in seiner Testdatei drei Anlagewege gezählt
-        // (`tests/q3c-stufenpflicht/stufenpflicht-am-schreibweg.test.ts:7-10`). Die Zählung war
-        // unvollständig: DIESE Route trägt dieselbe Berechtigung (`ko.create`, oben) und hat
-        // denselben Effekt (ein neues Wissensobjekt, unten `ko.createWithDocuments`) — zwischen
-        // beiden Zeilen stand keine Prüfung der Stufe. Der FRISCHE Zweig baut seine Eingabe direkt
-        // aus dem Client-Rumpf (`body.create`, nur `sources`/`importCandidateId` werden verworfen);
-        // ein Rumpf ohne `confidentiality` legte an. Eine Pflicht, die nur der Client kennt, ist
-        // keine.
-        //
-        // WARUM HIER UND NICHT WEITER OBEN. Erst an dieser Zeile ist `input` für BEIDE Zweige
-        // zusammengestellt — der Entwurfs-Zweig kennt seine Eingabe erst nach `applyAndLoad`
-        // (oben). Eine Prüfung am ROHEN Rumpf gäbe es nur für den frischen Weg und läge ausserdem
-        // über dem Wiederholungs-Nachschlag: die Wiederholung eines GELUNGENEN Entwurfsvorgangs
-        // trägt die Stufe nicht im Rumpf (sie stand im Entwurf, der inzwischen verbraucht ist) und
-        // bekäme dann 400 für etwas, das längst geglückt ist.
-        //
-        // WARUM NICHT IM DIENST. Unverändert der Grund von oben (`ko.create` ist auch der Weg von
-        // Import, Seed und Altbestand): ein bewusst UNEINGESTUFTES Objekt muss herstellbar bleiben,
-        // sonst gäbe es keine Fixtures mehr für „nie eingestuft"
-        // (`confidentialityProvenance: "unknown"`). Verschärft wird der ÖFFENTLICHE Schreibweg.
-        //
-        // WIE DER ENTWURFS-ZWEIG HEUTE DASTEHT (gemessen, nicht angenommen, JOB 3569 Lieferung 1):
-        // er ist bereits zu, aber an anderer Stelle und unter anderem Namen. `applyAndLoad` ruft
-        // `capture.toKoInput` (build-app.ts), und das wirft seit JOB 3082 `CaptureError`
-        // `INCOMPLETE`, sobald `confidentiality` fehlt oder ungültig ist
-        // (`services/capture/src/service.ts`, `KO_PFLICHTFELDER`) — über `sendError` wird daraus
-        // 400 `INCOMPLETE`. Der Wächter hier feuert für diesen Zweig also nie; das ist kein
-        // Grund, ihn auf den frischen Zweig zu verengen. Die Grenze steht an EINER Stelle für
-        // beide, und wenn der Entwurfs-Zugang eines Tages eine Eingabe ohne Stufe durchreicht,
-        // fängt sie diese auf, statt sie durchzulassen.
-        //
-        // NUR DAS FEHLEN steht hier. Ein VORHANDENER, aber ungültiger Wert (auch `null`) wird vom
-        // Dienst abgewiesen (`INVALID_CONFIDENTIALITY`) — zwei Prüfungen für denselben Wert wären
-        // zwei Auslegungen. Kein Vorgabewert, kein stilles „intern".
-        if (input.confidentiality === undefined) {
-          sendMissingConfidentiality(reply);
-          return;
-        }
-        // ---- KAPAZITÄT: derselbe Anhangs-Vertrag wie `attach` und `append-document` -------------
-        const limits = (await uploadLimits.get()) ?? DEFAULT_UPLOAD_LIMITS;
-        if (entries.length > limits.maxAttachments) {
-          return badRequest(`Maximal ${limits.maxAttachments} Anhänge je Objekt.`);
-        }
-        const storedSizes: number[] = [];
-        for (const entry of entries) {
-          const anchor = entry.anchor as { objectId: string };
-          // AUFTRAG-mega22 Block B: die frühere Größenprüfung der Client-Vorschau ist ersatzlos
-          // entfallen — es gibt keine Client-Vorschau mehr, die groß sein könnte.
-          // `objects.metadata` ist der Beleg, dass es das Objekt WIRKLICH gibt — nicht bloß eine
-          // Client-Behauptung. Maßgeblich ist die GESPEICHERTE Größe.
-          const stored = await objects.metadata(anchor.objectId);
-          if (!stored) {
-            return badRequest("Unbekannte objectId.");
-          }
-          if (stored.size > limits.maxAttachmentBytes) {
-            return badRequest("Anhang zu groß (Upload-Grenze überschritten).");
-          }
-          storedSizes.push(stored.size);
-        }
-        // ---- (I) DIE STUFENREGEL, je Belegstelle ------------------------------------------------
-        // Der Anker gilt als BELEGT, weil DIESELBE Operation das nachgeschlagene Dokument als
-        // Anhang DIESES Objekts bindet — der Server behauptet nichts, was er nicht unmittelbar
-        // danach selbst herstellt. Identisch zur Verbund-Operation.
-        const stage = (await externalPolicy.getStage()) ?? DEFAULT_EXTERNAL_KNOWLEDGE_STAGE;
-        for (const entry of entries) {
-          for (const point of entry.points ?? []) {
-            const reach = classifySourceReach(point.url, internalSourceOrigins);
-            const decision = decideExternalAttach({
-              stage,
-              reach,
-              anchoredToOwnAttachment: true,
-            });
-            if (!decision.allowed) {
-              reply.code(403).send({
-                error: "EXTERNAL_ATTACH_BLOCKED",
-                message:
-                  "Auf der eingestellten Stufe darf keine Quelle mit öffentlicher Web-Adresse an ein Wissensobjekt angehängt werden — Suchen bleibt erlaubt, Anhängen nicht. Ein Administrator kann die Stufe unter Verwaltung → Externes Wissen ändern.",
-                stage,
-                reason: decision.denial,
-              });
-              return;
+            if (entry.points.some((p) => !p?.label?.trim())) {
+              return badRequest("documents[].points[].label fehlt.");
             }
           }
-        }
-        // ---- DIE KOMPOSITION: ALLES GEMEINSAM, ODER NICHTS -------------------------------------
-        const created = await ko.createWithDocuments(
-          input,
-          // ==========================================================================================
-          // THUMBNAIL — AUFTRAG-mega22 Block B: ES WIRD NICHT MEHR GESCHRIEBEN.
-          // ==========================================================================================
+          // ==============================================================================
+          // AUFTRAG-mega22 Block C — `draftId` OHNE `draftPayload` GIBT ES NICHT MEHR.
+          // ==============================================================================
           //
-          // DER BEFUND. `anchor.thumbnail` blieb in mega21 bewusst aus dem Abdruck („abgeleitete
-          // Anzeigedaten, den Nutzer dafür büßen zu lassen wäre falsch") — wurde aber unmittelbar
-          // danach als Bestandteil des KO-Anhangs PERSISTIERT. Damit trugen zwei parallele Anfragen
-          // mit demselben Schlüssel, demselben Original und VERSCHIEDENEM Thumbnail denselben
-          // Abdruck und erzeugten je nach Gewinner verschiedenen gespeicherten Anzeigeinhalt. Meine
-          // mega21-Begründung galt nur unter der Annahme, das Thumbnail sei flüchtig. Es war es nicht.
+          // DER BEFUND (bens SB-D). Der Altweg akzeptierte `draftId` allein; dann trug der Abdruck
+          // weder Entwurfs-Kennung noch Entwurfsinhalt, sondern nur Dokumente und Prüfer. Verschiedene
+          // Entwürfe und verschiedene gespeicherte Entwurfsstände waren damit UNUNTERSCHEIDBAR: nach
+          // einem ersten Erfolg konnte ein Wiederholversuch mit ANDERER Entwurfs-Kennung als identisch
+          // adoptiert werden — der zweite Entwurf blieb unangetastet, und der Aufrufer bekam das
+          // Objekt des ERSTEN Vorgangs zurück, ohne dass ihm das jemand sagte.
+          //
+          // MEINE BEGRÜNDUNG AUS mega21 WAR „KEIN BEKANNTER AUFRUFER". Sie trägt nicht, und ben hat
+          // recht damit: Unbenutztheit ist kein Schutz für einen weiterhin authentifiziert
+          // erreichbaren API-Vertrag. Ein Weg, den niemand geht, wird nicht bewacht — das macht ihn
+          // nicht sicher, sondern nur unbeobachtet.
           //
           // ZWEI ZULÄSSIGE WEGE, und warum es DIESER wird:
           //
-          //   (i)  Serverseitig ABLEITEN ODER IGNORIEREN — die Klasse „vom Client gelieferte
-          //        Anzeigedaten am Objekt" verschwindet ganz.
-          //   (ii) Den DIGEST des Thumbnails in den Abdruck aufnehmen — billiger, aber es bleibt
-          //        Client-Anzeigedatum am Objekt, und es KAUFT sich einen neuen Fehler ein: ein
-          //        Client, der die Vorschau beim Wiederholversuch neu erzeugt (andere Skalierung,
-          //        anderer Encoder-Lauf), bekäme einen Konflikt für etwas, das er nicht geändert
-          //        hat. Genau diese Falsch-Positiv-Richtung war der ursprüngliche Grund, das Feld
-          //        aus dem Abdruck zu lassen; (ii) macht sie zur Regel statt sie aufzulösen.
+          //   (i)  `draftPayload` VERPFLICHTEND machen — der Vertrag wird abgeschnitten.
+          //   (ii) Einen stabilen Entwurfs-Versions- oder Inhaltsdigest im Request führen, der auch
+          //        nach dem Löschen des Entwurfs im Wiederholversuch mitreist.
           //
-          // ES WIRD (i), IN DER FORM „IGNORIEREN". Und der Preis dafür ist NULL, was hier
-          // nachgeprüft und nicht angenommen ist: der offizielle Aufrufer schickt auf DIESEM Weg
-          // gar kein Thumbnail (apps/web/src/pages/Capture.tsx — `anchor: { objectId, name, mime }`).
-          // Das Feld war eine offene Tür, durch die nie jemand ging, hinter der aber ein
-          // gewinnerabhängiger Schreibvorgang lag.
+          // ES WIRD (i). (ii) wäre die reichere Lösung, aber sie erfindet ein ZWEITES Inhaltsmass
+          // neben dem Abdruck und muss es über den Tod des Entwurfs hinweg stabil halten — ein
+          // Digest, den der Client führt, über einen Bestand, den der Server löscht. Das ist genau
+          // die Konstruktion, aus der SB-D entstanden ist, nur eine Ebene höher. (i) beseitigt die
+          // Frage: nach der mega21-Umstellung schickt der einzige Aufrufer den Stand ohnehin mit
+          // (Capture.tsx), und die Ladung IST der stabile Inhaltsvertrag — sie reist mit dem Request
+          // und überlebt das Löschen des Entwurfs, weil sie gar nicht aus ihm stammt.
           //
-          // WAS DAS FÜR DIE ANZEIGE HEISST, ehrlich: der Anhang trägt seine `objectId`, und das
-          // Original steht unverändert im Objektspeicher. Eine Vorschau ist daraus jederzeit
-          // ABLEITBAR; sie ist nur nicht mehr etwas, das der Client dem Server über den
-          // Erstanlage-Weg mitgibt. Der `attach`-Weg (KnowledgeDetail) ist davon NICHT berührt —
-          // dort ist das Thumbnail Teil einer eigenen, nicht idempotenzgebundenen Operation.
-          entries.map((entry, index) => {
-            const anchor = entry.anchor as {
-              objectId: string;
-              name: string;
-              mime: string;
-            };
-            return {
-              anchor: {
-                objectId: anchor.objectId,
-                name: anchor.name,
-                mime: anchor.mime,
-                size: storedSizes[index] as number,
-              },
-              sources: (entry.points ?? []).map((p) => ({
-                label: p.label as string,
-                url: p.url ?? null,
-                excerpt: p.excerpt ?? null,
-                // Serverseitig abgeleitet — nie übernommen (mega15 Block B).
-                provider: attributeExternalSource(p.url),
-              })),
-            };
-          }),
-          // AUFTRAG-mega21 Block A: DERSELBE Vorgang wie im Nachschlag oben — dieselbe Kennung,
-          // derselbe Eigentümer, DERSELBE Abdruck. Er wird bewusst nicht neu berechnet: zwei
-          // Berechnungen wären zwei Gelegenheiten, sie auseinanderlaufen zu lassen.
-          { id: body.operationId ?? "", actor: user.id, fingerprint },
-        );
-        // ==================================================================================
-        // AB HIER STEHT DAS WISSENSOBJEKT — MIT ALLEN ANKERN UND ALLEN BELEGSTELLEN.
-        // DER VORGANG IST GELUNGEN. NICHTS UNTERHALB DIESER ZEILE KANN IHN NOCH SCHEITERN LASSEN.
-        // ==================================================================================
-        //
-        // AUFTRAG-mega20 Block A — DIE ERFOLGSDEFINITION, ausgeschrieben.
-        //
-        // Bis mega19 lagen Entwurfs-Rücknahme, Prüfer-Zuweisung, Benachrichtigung und der
-        // KI-Prüf-Vermerk zwischen dem Commit und der 201 — jeder von ihnen konnte werfen, und die
-        // Route antwortete dann mit FEHLER für ein Wissensobjekt, das vollständig und vollständig
-        // belegt im Bestand stand. Der Client las den Fehler als „nicht gespeichert". Das ist
-        // dieselbe Fehlerklasse, die mega18 beim Append zu Datenverlust geführt hat: eine gelungene
-        // Schreiboperation, die sich als gescheiterte meldet.
-        //
-        // DIE ENTSCHEIDUNG: diese vier Schritte sind KEIN Teil der Erfolgsdefinition. Ein
-        // Wissensobjekt, das existiert und dessen Herkunft vollständig belegt ist, dem aber die
-        // Benachrichtigung fehlt, ist ein gelungener Vorgang mit einer offenen Nacharbeit — kein
-        // gescheiterter. Was sie gemeinsam haben und was die Entscheidung trägt:
-        //
-        //   · keiner von ihnen berührt den BELEGVERTRAG. Anker, Belegstellen, Evidence, Snapshot
-        //     und der ko.created-Beleg sind vor dieser Zeile fertig und atomar (createWithDocuments);
-        //   · jeder von ihnen ist NACHHOLBAR: der Entwurf ist sichtbar und löschbar, Prüfer sind
-        //     nachträglich zuweisbar, der KI-Prüf-Job hat einen eigenen Retry-Endpunkt
-        //     (POST /api/kos/:id/ai-check);
-        //   · und keiner von ihnen ist RÜCKNEHMBAR, wenn man den Vorgang scheitern ließe — das
-        //     Wissensobjekt bliebe ja trotzdem stehen. „Fehler melden" hätte also nie bedeutet
-        //     „nichts ist passiert", sondern nur „du erfährst nicht, was passiert ist".
-        //
-        // WAS STATTDESSEN PASSIERT: jeder Fehlschlag wird EINZELN aufgefangen, als Audit-Beleg
-        // festgehalten (`ko.create-followup-failed`) und dem Aufrufer in `followUpsFailed`
-        // ehrlich mitgeteilt. Verschluckt wird nichts — nur nicht mehr fälschlich als Scheitern
-        // des Ganzen ausgegeben.
-        const followUpsFailed: string[] = [];
-        const followUp = async (step: string, run: () => Promise<void>): Promise<void> => {
-          try {
-            await run();
-          } catch (err) {
-            followUpsFailed.push(step);
-            await audit
-              ?.record({
-                actor: user.id,
-                action: "ko.create-followup-failed",
-                target: created.id,
-                // PII-frei: Fehlerklasse statt Meldung (SCRUM-496, log-sanitize).
-                payload: { step, reason: err instanceof Error ? err.name : "unknown" },
-              })
-              .catch(() => undefined);
+          // WARUM DIE PRÜFUNG HIER OBEN STEHT, über dem Idempotenz-Nachschlag: sie ist eine
+          // UNVERÄNDERLICHE Formprüfung. Eine Wiederholung trägt denselben Body, fällt hier also
+          // entweder beide Male oder keinmal — genau das Kriterium aus mega20 Block A.
+          if (body.draftId && body.draftPayload === undefined) {
+            return badRequest(
+              "draftPayload fehlt — beim Fortsetzen eines Entwurfs muss der aktuelle Stand mitreisen. Ohne ihn kann der Server nicht unterscheiden, ob eine Wiederholung denselben Inhalt meint.",
+            );
           }
-        };
-        // Der Entwurf wird ERST JETZT entfernt. Schlägt das fehl, bleibt ein Entwurf stehen, den
-        // sein Autor sieht und löschen kann — unschön, aber kein Verlust und vor allem kein
-        // Wissensobjekt ohne Herkunft. Die umgekehrte Reihenfolge hätte den Entwurf vernichten
-        // können, während die Anlage scheitert.
-        const draftId = body.draftId;
-        if (draftId && draftPromotion) {
-          await followUp("draft-discard", () => draftPromotion.discard(draftId));
-        }
-        const reviewers = [...new Set(body.reviewerIds ?? [])].filter((id) => id !== user.id);
-        if (reviewers.length > 0) {
-          // Zuweisung und Benachrichtigung sind GETRENNTE Nacharbeiten: gelingt die Zuweisung und
-          // nur die Nachricht bleibt aus, wäre „validation-assign offen" eine Unwahrheit.
-          await followUp("validation-assign", () =>
-            validation.assign(created.id, reviewers, user.id),
+          // ==============================================================================
+          // AUFTRAG-mega20 Block A — DER NACHSCHLAG STEHT VOR ALLEM VERÄNDERLICHEN.
+          // ==============================================================================
+          //
+          // WAS OBERHALB DIESER ZEILE STEHEN DARF, und warum — dieselbe Prüfung wie in mega19 Block A
+          // beim Append: Authentisierung (das Recht `ko.create` ändert sich nicht dadurch, dass der
+          // erste Aufruf durchlief) und die UNVERÄNDERLICHEN Formprüfungen (fehlende Dokumente,
+          // fehlende Anker, fehlende Punkte, fehlende Labels — eine Wiederholung trägt denselben
+          // Body, fällt dort also entweder beide Male oder keinmal).
+          //
+          // WAS UNTERHALB STEHEN MUSS — und hier ist die Liste LÄNGER als beim Append, weil die
+          // Erstanlage mehr Veränderliches anfasst:
+          //
+          //   · DER ENTWURF. Der erste Aufruf LÖSCHT ihn nach dem Commit. Eine Wiederholung mit
+          //     `draftId` fände ihn nicht mehr und bekäme 404 — für einen Vorgang, der GELUNGEN ist.
+          //     Das ist die schärfste Kante dieses Blocks und der Grund, warum der Nachschlag nicht
+          //     erst hinter der Entwurfs-Ladung stehen kann.
+          //   · die Anhangzahl und die gespeicherte Objektgröße (Kapazität),
+          //   · die Upload-Grenzen und die externe Stufe.
+          //
+          // WARUM DAS KEIN SCHLUPFLOCH IST: `lookupDocumentCreate` SCHREIBT NICHT. Für eine
+          // UNBEKANNTE Kennung liefert es `null`, und der Ablauf läuft ungekürzt durch ALLE Tore —
+          // es gibt keinen Weg, auf dem etwas NEUES entsteht, ohne Kapazität, Stufe und Belegpflicht
+          // passiert zu haben. Und es liefert kein FREMDES Objekt: der Service prüft die Autorschaft
+          // und antwortet auf eine erratene fremde Kennung mit Konflikt statt mit Inhalt.
+          //
+          // AUFTRAG-mega21 Block A: der Nachschlag fragt jetzt mit DEM VORGANG statt mit einer
+          // Nutzerkennung — Eigentümer UND Inhaltsabdruck. Beide sind an DIESER Stelle bereits
+          // bekannt, weil beide aus dem REQUEST kommen: der Eigentümer aus der Sitzung, der Abdruck
+          // aus dem Body. Genau deshalb darf der Nachschlag weiterhin ganz vorne stehen — er braucht
+          // weder den Entwurf noch die Kapazität noch die Stufe, um zu wissen, WER hier WAS wiederholt.
+          const fingerprint = createOperationFingerprint(fromDocumentFingerprintInput(body));
+          const replay = await ko.lookupDocumentCreate(body.operationId ?? "", {
+            actor: user.id,
+            fingerprint,
+          });
+          if (replay) {
+            // 200 statt 201: derselbe Vorgang, aber das Objekt entsteht NICHT jetzt. Die Antwortform
+            // ist unverändert das Wissensobjekt — ein Client, der 2xx als Erfolg liest, braucht
+            // nichts zu lernen; wer genauer hinsieht, unterscheidet „neu angelegt" von „war schon da".
+            // Keine Folgeschritte: sie liefen beim ersten Mal (unten). Sie hier zu wiederholen wäre
+            // kein Fehler, aber auch keine Wahrheit.
+            reply.code(200).send(replay);
+            return;
+          }
+          // ---- DIE INHALTSEINGABE: ENTWURF ODER FRISCH ------------------------------------------
+          let input: CreateKoInput;
+          if (body.draftId) {
+            if (!draftPromotion) {
+              // Ehrlich statt halb: ohne verdrahteten Entwurfs-Zugang gibt es diesen Weg nicht.
+              return badRequest("Entwurfs-Übernahme ist in dieser Konfiguration nicht verfügbar.");
+            }
+            // AUFTRAG-mega21 Block B: liegt der aktuelle Stand bei, wird er HIER geschrieben — im
+            // selben Vorgang, hinter dem Idempotenz-Nachschlag. Der frühere separate PUT der
+            // Oberfläche entfällt damit; er war es, der den Wiederholversuch mit 404 abfing, bevor
+            // der Nachschlag überhaupt lief.
+            // AUFTRAG-mega22 Block C: nur noch DIESER Zweig. Die Verzweigung auf `load` (Entwurf so
+            // lesen, wie er im Bestand steht) ist entfallen — sie war der Weg, auf dem der Abdruck
+            // den Entwurfsinhalt nicht sah. `draftPromotion.load` bleibt am Vertrag, weil der
+            // Promote-Weg es benutzt (Block H); erreichbar ist es von HIER nicht mehr.
+            // JOB 2684 D3 (R2-17): der gesehene Stand reist mit — dieselbe Lesart wie an den
+            // Entwurfsrouten (nur ein nicht-leerer String zählt).
+            const expectedUpdatedAt =
+              typeof body.expectedUpdatedAt === "string" && body.expectedUpdatedAt.trim().length > 0
+                ? body.expectedUpdatedAt.trim()
+                : undefined;
+            // JOB 2684 D4 (R2-17, BEN: „der Fall ohne Stand bleibt absichtlich gruen"): DER WEG OHNE
+            // STAND IST ZU. Wer einen Entwurf aus dem Dokumentweg befoerdert, hat ihn geladen und
+            // kennt seinen Stand — Capture.tsx setzt ihn beim „Fortsetzen" und sendet ihn seit D3.
+            // Einen legitimen Aufrufer ohne Stand gibt es hier nicht: die drei Stellen, an denen das
+            // Studio selbst Entwuerfe anlegt (Dateipunkte, Ganzdatei), halten den Entwurf nicht,
+            // sondern leeren das Formular — ein `draftId` im Dokumentweg entsteht nur ueber das
+            // Laden. Ein fehlender oder leerer Stand ist deshalb „weggelassen", nicht „neu": 400,
+            // ohne Entwurfs- oder Wissensobjektwirkung. Ein Schutz, den ein Aufrufer weglassen
+            // kann, ist keiner (Befund 3 des ersten Reviews, dieselbe Bauart).
+            // Die Pruefung selbst sitzt im Adapter (build-app.ts, `applyAndLoad`) HINTER der
+            // Sichtbarkeitsregel: ein fremder oder fehlender Entwurf bleibt 403/404, wie bisher —
+            // erst ein sichtbarer Entwurf ohne Stand ist „weggelassen".
+            const loaded = await draftPromotion.applyAndLoad(
+              body.draftId,
+              body.draftPayload,
+              user,
+              expectedUpdatedAt,
+            );
+            if (!loaded.ok) {
+              if (loaded.reason === "stand-fehlt") {
+                reply.code(400).send({
+                  error: "DRAFT_STAND_FEHLT",
+                  message:
+                    "expectedUpdatedAt fehlt — beim Befoerdern eines gespeicherten Entwurfs muss der beim Laden gesehene Stand mitreisen. Ohne ihn kann der Server einen veralteten Stand nicht abweisen.",
+                });
+                return;
+              }
+              if (loaded.reason === "stale") {
+                // Kein Wissensobjekt, kein Schreiben: der Entwurf wurde inzwischen an anderer Stelle
+                // geändert. Antwortform wie `PUT /api/drafts/:id` und der Promote (capture-routes).
+                reply.code(409).send({
+                  error: "DRAFT_STALE",
+                  message: loaded.message,
+                  currentUpdatedAt: loaded.currentUpdatedAt,
+                });
+                return;
+              }
+              if (loaded.reason === "invalid") {
+                return badRequest(loaded.message ?? "Entwurfsinhalt ungueltig.");
+              }
+              reply.code(loaded.reason === "not-found" ? 404 : 403).send({
+                error: loaded.reason === "not-found" ? "NOT_FOUND" : "FORBIDDEN",
+                message:
+                  loaded.reason === "not-found"
+                    ? "Entwurf nicht gefunden."
+                    : "Entwurf nicht verfuegbar.",
+              });
+              return;
+            }
+            input = loaded.input;
+          } else {
+            // Dieselbe Verwerfung wie POST /api/kos: Herkunfts-/Vertrauensanker und der Kandidaten-
+            // Anker kommen NIE vom Client. Was an Quellen entsteht, entsteht unten aus den geprüften
+            // Dokumenten — nicht aus diesem Feld.
+            // R-0139 / FR-EXT-02: `origin` und `importedVia` aus demselben Grund wie an POST /api/kos.
+            // R-0180/R-2108: mit `origin` fällt hier auch jedes `import` (vgl. `ohneImportHerkunft`).
+            const {
+              sources: _ignoredSources,
+              importCandidateId: _ignoredAnchor,
+              origin: _ignoredOrigin,
+              importedVia: _ignoredImportedVia,
+              dokumentHerkunft: _ignoredDokumentHerkunft,
+              // R-0632 (Nacharbeit 10): die Herabstufungssperre setzt allein der Entwurfs-Promote.
+              stufeNurAnheben: _ignoredStufeNurAnheben,
+              ...rest
+            } = body.create ?? ({} as Omit<CreateKoInput, "author">);
+            input = { ...rest, author: user.id } as CreateKoInput;
+          }
+          // ==========================================================================================
+          // JOB 3569 (Q3 c) — AUCH DURCH DIE ZWEITE TÜR ENTSTEHT KEIN UNEINGESTUFTES WISSENSOBJEKT.
+          // ==========================================================================================
+          //
+          // DER BEFUND. JOB 3429 hat die Stufenpflicht an `POST /api/kos` gesetzt (oben, derselbe
+          // Fehlercode, derselbe Satz) und in seiner Testdatei drei Anlagewege gezählt
+          // (`tests/q3c-stufenpflicht/stufenpflicht-am-schreibweg.test.ts:7-10`). Die Zählung war
+          // unvollständig: DIESE Route trägt dieselbe Berechtigung (`ko.create`, oben) und hat
+          // denselben Effekt (ein neues Wissensobjekt, unten `ko.createWithDocuments`) — zwischen
+          // beiden Zeilen stand keine Prüfung der Stufe. Der FRISCHE Zweig baut seine Eingabe direkt
+          // aus dem Client-Rumpf (`body.create`, nur `sources`/`importCandidateId` werden verworfen);
+          // ein Rumpf ohne `confidentiality` legte an. Eine Pflicht, die nur der Client kennt, ist
+          // keine.
+          //
+          // WARUM HIER UND NICHT WEITER OBEN. Erst an dieser Zeile ist `input` für BEIDE Zweige
+          // zusammengestellt — der Entwurfs-Zweig kennt seine Eingabe erst nach `applyAndLoad`
+          // (oben). Eine Prüfung am ROHEN Rumpf gäbe es nur für den frischen Weg und läge ausserdem
+          // über dem Wiederholungs-Nachschlag: die Wiederholung eines GELUNGENEN Entwurfsvorgangs
+          // trägt die Stufe nicht im Rumpf (sie stand im Entwurf, der inzwischen verbraucht ist) und
+          // bekäme dann 400 für etwas, das längst geglückt ist.
+          //
+          // WARUM NICHT IM DIENST. Unverändert der Grund von oben (`ko.create` ist auch der Weg von
+          // Import, Seed und Altbestand): ein bewusst UNEINGESTUFTES Objekt muss herstellbar bleiben,
+          // sonst gäbe es keine Fixtures mehr für „nie eingestuft"
+          // (`confidentialityProvenance: "unknown"`). Verschärft wird der ÖFFENTLICHE Schreibweg.
+          //
+          // WIE DER ENTWURFS-ZWEIG HEUTE DASTEHT (gemessen, nicht angenommen, JOB 3569 Lieferung 1):
+          // er ist bereits zu, aber an anderer Stelle und unter anderem Namen. `applyAndLoad` ruft
+          // `capture.toKoInput` (build-app.ts), und das wirft seit JOB 3082 `CaptureError`
+          // `INCOMPLETE`, sobald `confidentiality` fehlt oder ungültig ist
+          // (`services/capture/src/service.ts`, `KO_PFLICHTFELDER`) — über `sendError` wird daraus
+          // 400 `INCOMPLETE`. Der Wächter hier feuert für diesen Zweig also nie; das ist kein
+          // Grund, ihn auf den frischen Zweig zu verengen. Die Grenze steht an EINER Stelle für
+          // beide, und wenn der Entwurfs-Zugang eines Tages eine Eingabe ohne Stufe durchreicht,
+          // fängt sie diese auf, statt sie durchzulassen.
+          //
+          // NUR DAS FEHLEN steht hier. Ein VORHANDENER, aber ungültiger Wert (auch `null`) wird vom
+          // Dienst abgewiesen (`INVALID_CONFIDENTIALITY`) — zwei Prüfungen für denselben Wert wären
+          // zwei Auslegungen. Kein Vorgabewert, kein stilles „intern".
+          if (input.confidentiality === undefined) {
+            sendMissingConfidentiality(reply);
+            return;
+          }
+          // ---- KAPAZITÄT: derselbe Anhangs-Vertrag wie `attach` und `append-document` -------------
+          const limits = (await uploadLimits.get()) ?? DEFAULT_UPLOAD_LIMITS;
+          if (entries.length > limits.maxAttachments) {
+            return badRequest(`Maximal ${limits.maxAttachments} Anhänge je Objekt.`);
+          }
+          const storedSizes: number[] = [];
+          for (const entry of entries) {
+            const anchor = entry.anchor as { objectId: string };
+            // AUFTRAG-mega22 Block B: die frühere Größenprüfung der Client-Vorschau ist ersatzlos
+            // entfallen — es gibt keine Client-Vorschau mehr, die groß sein könnte.
+            // `objects.metadata` ist der Beleg, dass es das Objekt WIRKLICH gibt — nicht bloß eine
+            // Client-Behauptung. Maßgeblich ist die GESPEICHERTE Größe.
+            const stored = await objects.metadata(anchor.objectId);
+            if (!stored) {
+              return badRequest("Unbekannte objectId.");
+            }
+            if (stored.size > limits.maxAttachmentBytes) {
+              return badRequest("Anhang zu groß (Upload-Grenze überschritten).");
+            }
+            storedSizes.push(stored.size);
+          }
+          // ---- (I) DIE STUFENREGEL, je Belegstelle ------------------------------------------------
+          // Der Anker gilt als BELEGT, weil DIESELBE Operation das nachgeschlagene Dokument als
+          // Anhang DIESES Objekts bindet — der Server behauptet nichts, was er nicht unmittelbar
+          // danach selbst herstellt. Identisch zur Verbund-Operation.
+          const stage = (await externalPolicy.getStage()) ?? DEFAULT_EXTERNAL_KNOWLEDGE_STAGE;
+          for (const entry of entries) {
+            for (const point of entry.points ?? []) {
+              const reach = classifySourceReach(point.url, internalSourceOrigins);
+              const decision = decideExternalAttach({
+                stage,
+                reach,
+                anchoredToOwnAttachment: true,
+              });
+              if (!decision.allowed) {
+                reply.code(403).send({
+                  error: "EXTERNAL_ATTACH_BLOCKED",
+                  message:
+                    "Auf der eingestellten Stufe darf keine Quelle mit öffentlicher Web-Adresse an ein Wissensobjekt angehängt werden — Suchen bleibt erlaubt, Anhängen nicht. Ein Administrator kann die Stufe unter Verwaltung → Externes Wissen ändern.",
+                  stage,
+                  reason: decision.denial,
+                });
+                return;
+              }
+            }
+          }
+          // ---- DIE KOMPOSITION: ALLES GEMEINSAM, ODER NICHTS -------------------------------------
+          const created = await ko.createWithDocuments(
+            input,
+            // ==========================================================================================
+            // THUMBNAIL — AUFTRAG-mega22 Block B: ES WIRD NICHT MEHR GESCHRIEBEN.
+            // ==========================================================================================
+            //
+            // DER BEFUND. `anchor.thumbnail` blieb in mega21 bewusst aus dem Abdruck („abgeleitete
+            // Anzeigedaten, den Nutzer dafür büßen zu lassen wäre falsch") — wurde aber unmittelbar
+            // danach als Bestandteil des KO-Anhangs PERSISTIERT. Damit trugen zwei parallele Anfragen
+            // mit demselben Schlüssel, demselben Original und VERSCHIEDENEM Thumbnail denselben
+            // Abdruck und erzeugten je nach Gewinner verschiedenen gespeicherten Anzeigeinhalt. Meine
+            // mega21-Begründung galt nur unter der Annahme, das Thumbnail sei flüchtig. Es war es nicht.
+            //
+            // ZWEI ZULÄSSIGE WEGE, und warum es DIESER wird:
+            //
+            //   (i)  Serverseitig ABLEITEN ODER IGNORIEREN — die Klasse „vom Client gelieferte
+            //        Anzeigedaten am Objekt" verschwindet ganz.
+            //   (ii) Den DIGEST des Thumbnails in den Abdruck aufnehmen — billiger, aber es bleibt
+            //        Client-Anzeigedatum am Objekt, und es KAUFT sich einen neuen Fehler ein: ein
+            //        Client, der die Vorschau beim Wiederholversuch neu erzeugt (andere Skalierung,
+            //        anderer Encoder-Lauf), bekäme einen Konflikt für etwas, das er nicht geändert
+            //        hat. Genau diese Falsch-Positiv-Richtung war der ursprüngliche Grund, das Feld
+            //        aus dem Abdruck zu lassen; (ii) macht sie zur Regel statt sie aufzulösen.
+            //
+            // ES WIRD (i), IN DER FORM „IGNORIEREN". Und der Preis dafür ist NULL, was hier
+            // nachgeprüft und nicht angenommen ist: der offizielle Aufrufer schickt auf DIESEM Weg
+            // gar kein Thumbnail (apps/web/src/pages/Capture.tsx — `anchor: { objectId, name, mime }`).
+            // Das Feld war eine offene Tür, durch die nie jemand ging, hinter der aber ein
+            // gewinnerabhängiger Schreibvorgang lag.
+            //
+            // WAS DAS FÜR DIE ANZEIGE HEISST, ehrlich: der Anhang trägt seine `objectId`, und das
+            // Original steht unverändert im Objektspeicher. Eine Vorschau ist daraus jederzeit
+            // ABLEITBAR; sie ist nur nicht mehr etwas, das der Client dem Server über den
+            // Erstanlage-Weg mitgibt. Der `attach`-Weg (KnowledgeDetail) ist davon NICHT berührt —
+            // dort ist das Thumbnail Teil einer eigenen, nicht idempotenzgebundenen Operation.
+            entries.map((entry, index) => {
+              const anchor = entry.anchor as {
+                objectId: string;
+                name: string;
+                mime: string;
+              };
+              return {
+                anchor: {
+                  objectId: anchor.objectId,
+                  name: anchor.name,
+                  mime: anchor.mime,
+                  size: storedSizes[index] as number,
+                },
+                sources: (entry.points ?? []).map((p) => ({
+                  label: p.label as string,
+                  url: p.url ?? null,
+                  excerpt: p.excerpt ?? null,
+                  // Serverseitig abgeleitet — nie übernommen (mega15 Block B).
+                  provider: attributeExternalSource(p.url),
+                })),
+              };
+            }),
+            // AUFTRAG-mega21 Block A: DERSELBE Vorgang wie im Nachschlag oben — dieselbe Kennung,
+            // derselbe Eigentümer, DERSELBE Abdruck. Er wird bewusst nicht neu berechnet: zwei
+            // Berechnungen wären zwei Gelegenheiten, sie auseinanderlaufen zu lassen.
+            { id: body.operationId ?? "", actor: user.id, fingerprint },
           );
-          await followUp("notify-assignment", async () => {
-            await notifyAssignment?.(created.id, reviewers);
-          });
-        }
-        // WP-SUBMIT-ASYNC: derselbe Prüf-Job-Vermerk wie auf den beiden anderen Einreich-Wegen.
-        let submitted = created;
-        if (aiCheckWorker) {
-          await followUp("ai-check", async () => {
-            await ko.markAiCheckPending(created.id);
-            submitted = (await ko.get(created.id)) ?? created;
-            aiCheckWorker.enqueue(created.id, submitted.aiCheck?.koVersion);
-          });
-        }
-        // ==============================================================================
-        // AUFTRAG-mega21 Block C-1 — DIE WARNUNG DARF KEINE SACKGASSE SEIN.
-        // ==============================================================================
-        //
-        // Ab hier ist bekannt, WAS nicht gelaufen ist. Bis mega20 endete das Wissen hier: es reiste
-        // in der Antwort mit, die Oberfläche wertete es nicht aus, und im Bestand blieb keine Spur.
-        // Zwei Dinge fehlten, und beide werden jetzt hergestellt, BEVOR die 201 rausgeht:
-        //
-        //   (1) EIN DAUERHAFT AUFFINDBARER ZUSTAND je Objekt (`createFollowUpsFailed`). Ohne ihn
-        //       ist eine fehlgeschlagene Prüferzuweisung nach dem Schließen des Tabs nirgends mehr
-        //       nachlesbar — das Wissensobjekt existiert, gilt als erfolgreich und wartet auf
-        //       niemanden.
-        //
-        //   (2) EIN WIEDERHOLBARER PRÜF-JOB. Scheitert `markAiCheckPending`, gibt es GAR KEINEN
-        //       Vermerk — und der vorhandene Wiederhol-Endpunkt lehnt genau dann ab, weil er
-        //       `failed` oder `pending` verlangt. Der `failed`-Vermerk mit ehrlichem Grund ist der
-        //       Zustand, den dieser Mechanismus ohnehin kennt; damit wirkt der Knopf, den die
-        //       Warnung anbietet.
-        //
-        // BEIDE SIND BEST EFFORT und stehen NACH der Erfolgsdefinition: sie sind Vermerke über
-        // Nacharbeiten, kein Wissensinhalt. Ein Fehlschlag hier darf die 201 nicht kippen — sonst
-        // wäre die Buchführung über gescheiterte Nacharbeiten selbst die nächste Fehlerquelle.
-        //
-        // ==============================================================================
-        // AUFTRAG-mega23 Block B — WAS TATSÄCHLICH GESCHRIEBEN WURDE, REIST MIT.
-        // ==============================================================================
-        //
-        // bens SB-G, unverändert offen seit sammel21: beide Schreibvorgänge verschluckten JEDEN
-        // Fehler, und die 201 meldete nur den ursprünglich gescheiterten SCHRITT — nicht, ob die
-        // BUCHFÜHRUNG darüber gelang. Die Oberfläche behauptete daraufhin in allen drei Sprachen,
-        // die Prüfung SEI als fehlgeschlagen vermerkt und lasse sich neu anstoßen. Fiel der
-        // Best-Effort-Write aus, war der Wiederhol-Endpunkt nicht nutzbar (er verlangt `failed`
-        // oder `pending`) — und der Nutzer hatte eine Zusage bekommen, die niemand gedeckt hat.
-        //
-        // BEIDES BLEIBT BEST EFFORT UND BEIDES BLEIBT NACH DER ERFOLGSDEFINITION: die 201 kippt
-        // NICHT, weil die Buchführung über Nacharbeiten scheiterte. Geändert wird nur, dass der
-        // Client die Tatsache ERFÄHRT, statt sie raten zu müssen. Das kostet ein Feld.
-        let aiCheckFailedVermerkt = false;
-        let nacharbeitenVermerkt = false;
-        if (followUpsFailed.length > 0) {
-          if (followUpsFailed.includes("ai-check")) {
-            aiCheckFailedVermerkt = await ko
-              .markAiCheckFailed(created.id, "submit-followup-failed")
-              .then(async (geschrieben) => {
-                if (geschrieben) {
-                  submitted = (await ko.get(created.id)) ?? submitted;
-                }
-                return geschrieben;
-              })
+          // ==================================================================================
+          // AB HIER STEHT DAS WISSENSOBJEKT — MIT ALLEN ANKERN UND ALLEN BELEGSTELLEN.
+          // DER VORGANG IST GELUNGEN. NICHTS UNTERHALB DIESER ZEILE KANN IHN NOCH SCHEITERN LASSEN.
+          // ==================================================================================
+          //
+          // AUFTRAG-mega20 Block A — DIE ERFOLGSDEFINITION, ausgeschrieben.
+          //
+          // Bis mega19 lagen Entwurfs-Rücknahme, Prüfer-Zuweisung, Benachrichtigung und der
+          // KI-Prüf-Vermerk zwischen dem Commit und der 201 — jeder von ihnen konnte werfen, und die
+          // Route antwortete dann mit FEHLER für ein Wissensobjekt, das vollständig und vollständig
+          // belegt im Bestand stand. Der Client las den Fehler als „nicht gespeichert". Das ist
+          // dieselbe Fehlerklasse, die mega18 beim Append zu Datenverlust geführt hat: eine gelungene
+          // Schreiboperation, die sich als gescheiterte meldet.
+          //
+          // DIE ENTSCHEIDUNG: diese vier Schritte sind KEIN Teil der Erfolgsdefinition. Ein
+          // Wissensobjekt, das existiert und dessen Herkunft vollständig belegt ist, dem aber die
+          // Benachrichtigung fehlt, ist ein gelungener Vorgang mit einer offenen Nacharbeit — kein
+          // gescheiterter. Was sie gemeinsam haben und was die Entscheidung trägt:
+          //
+          //   · keiner von ihnen berührt den BELEGVERTRAG. Anker, Belegstellen, Evidence, Snapshot
+          //     und der ko.created-Beleg sind vor dieser Zeile fertig und atomar (createWithDocuments);
+          //   · jeder von ihnen ist NACHHOLBAR: der Entwurf ist sichtbar und löschbar, Prüfer sind
+          //     nachträglich zuweisbar, der KI-Prüf-Job hat einen eigenen Retry-Endpunkt
+          //     (POST /api/kos/:id/ai-check);
+          //   · und keiner von ihnen ist RÜCKNEHMBAR, wenn man den Vorgang scheitern ließe — das
+          //     Wissensobjekt bliebe ja trotzdem stehen. „Fehler melden" hätte also nie bedeutet
+          //     „nichts ist passiert", sondern nur „du erfährst nicht, was passiert ist".
+          //
+          // WAS STATTDESSEN PASSIERT: jeder Fehlschlag wird EINZELN aufgefangen, als Audit-Beleg
+          // festgehalten (`ko.create-followup-failed`) und dem Aufrufer in `followUpsFailed`
+          // ehrlich mitgeteilt. Verschluckt wird nichts — nur nicht mehr fälschlich als Scheitern
+          // des Ganzen ausgegeben.
+          const followUpsFailed: string[] = [];
+          const followUp = async (step: string, run: () => Promise<void>): Promise<void> => {
+            try {
+              await run();
+            } catch (err) {
+              followUpsFailed.push(step);
+              await audit
+                ?.record({
+                  actor: user.id,
+                  action: "ko.create-followup-failed",
+                  target: created.id,
+                  // PII-frei: Fehlerklasse statt Meldung (SCRUM-496, log-sanitize).
+                  payload: { step, reason: err instanceof Error ? err.name : "unknown" },
+                })
+                .catch(() => undefined);
+            }
+          };
+          // Der Entwurf wird ERST JETZT entfernt. Schlägt das fehl, bleibt ein Entwurf stehen, den
+          // sein Autor sieht und löschen kann — unschön, aber kein Verlust und vor allem kein
+          // Wissensobjekt ohne Herkunft. Die umgekehrte Reihenfolge hätte den Entwurf vernichten
+          // können, während die Anlage scheitert.
+          const draftId = body.draftId;
+          if (draftId && draftPromotion) {
+            await followUp("draft-discard", () => draftPromotion.discard(draftId));
+          }
+          const reviewers = [...new Set(body.reviewerIds ?? [])].filter((id) => id !== user.id);
+          if (reviewers.length > 0) {
+            // Zuweisung und Benachrichtigung sind GETRENNTE Nacharbeiten: gelingt die Zuweisung und
+            // nur die Nachricht bleibt aus, wäre „validation-assign offen" eine Unwahrheit.
+            await followUp("validation-assign", () =>
+              validation.assign(created.id, reviewers, user.id),
+            );
+            await followUp("notify-assignment", async () => {
+              await notifyAssignment?.(created.id, reviewers);
+            });
+          }
+          // WP-SUBMIT-ASYNC: derselbe Prüf-Job-Vermerk wie auf den beiden anderen Einreich-Wegen.
+          let submitted = created;
+          if (aiCheckWorker) {
+            await followUp("ai-check", async () => {
+              await ko.markAiCheckPending(created.id);
+              submitted = (await ko.get(created.id)) ?? created;
+              aiCheckWorker.enqueue(created.id, submitted.aiCheck?.koVersion);
+            });
+          }
+          // ==============================================================================
+          // AUFTRAG-mega21 Block C-1 — DIE WARNUNG DARF KEINE SACKGASSE SEIN.
+          // ==============================================================================
+          //
+          // Ab hier ist bekannt, WAS nicht gelaufen ist. Bis mega20 endete das Wissen hier: es reiste
+          // in der Antwort mit, die Oberfläche wertete es nicht aus, und im Bestand blieb keine Spur.
+          // Zwei Dinge fehlten, und beide werden jetzt hergestellt, BEVOR die 201 rausgeht:
+          //
+          //   (1) EIN DAUERHAFT AUFFINDBARER ZUSTAND je Objekt (`createFollowUpsFailed`). Ohne ihn
+          //       ist eine fehlgeschlagene Prüferzuweisung nach dem Schließen des Tabs nirgends mehr
+          //       nachlesbar — das Wissensobjekt existiert, gilt als erfolgreich und wartet auf
+          //       niemanden.
+          //
+          //   (2) EIN WIEDERHOLBARER PRÜF-JOB. Scheitert `markAiCheckPending`, gibt es GAR KEINEN
+          //       Vermerk — und der vorhandene Wiederhol-Endpunkt lehnt genau dann ab, weil er
+          //       `failed` oder `pending` verlangt. Der `failed`-Vermerk mit ehrlichem Grund ist der
+          //       Zustand, den dieser Mechanismus ohnehin kennt; damit wirkt der Knopf, den die
+          //       Warnung anbietet.
+          //
+          // BEIDE SIND BEST EFFORT und stehen NACH der Erfolgsdefinition: sie sind Vermerke über
+          // Nacharbeiten, kein Wissensinhalt. Ein Fehlschlag hier darf die 201 nicht kippen — sonst
+          // wäre die Buchführung über gescheiterte Nacharbeiten selbst die nächste Fehlerquelle.
+          //
+          // ==============================================================================
+          // AUFTRAG-mega23 Block B — WAS TATSÄCHLICH GESCHRIEBEN WURDE, REIST MIT.
+          // ==============================================================================
+          //
+          // bens SB-G, unverändert offen seit sammel21: beide Schreibvorgänge verschluckten JEDEN
+          // Fehler, und die 201 meldete nur den ursprünglich gescheiterten SCHRITT — nicht, ob die
+          // BUCHFÜHRUNG darüber gelang. Die Oberfläche behauptete daraufhin in allen drei Sprachen,
+          // die Prüfung SEI als fehlgeschlagen vermerkt und lasse sich neu anstoßen. Fiel der
+          // Best-Effort-Write aus, war der Wiederhol-Endpunkt nicht nutzbar (er verlangt `failed`
+          // oder `pending`) — und der Nutzer hatte eine Zusage bekommen, die niemand gedeckt hat.
+          //
+          // BEIDES BLEIBT BEST EFFORT UND BEIDES BLEIBT NACH DER ERFOLGSDEFINITION: die 201 kippt
+          // NICHT, weil die Buchführung über Nacharbeiten scheiterte. Geändert wird nur, dass der
+          // Client die Tatsache ERFÄHRT, statt sie raten zu müssen. Das kostet ein Feld.
+          let aiCheckFailedVermerkt = false;
+          let nacharbeitenVermerkt = false;
+          if (followUpsFailed.length > 0) {
+            if (followUpsFailed.includes("ai-check")) {
+              aiCheckFailedVermerkt = await ko
+                .markAiCheckFailed(created.id, "submit-followup-failed")
+                .then(async (geschrieben) => {
+                  if (geschrieben) {
+                    submitted = (await ko.get(created.id)) ?? submitted;
+                  }
+                  return geschrieben;
+                })
+                .catch(() => false);
+            }
+            nacharbeitenVermerkt = await ko
+              .recordCreateFollowUpFailures(created.id, followUpsFailed)
               .catch(() => false);
           }
-          nacharbeitenVermerkt = await ko
-            .recordCreateFollowUpFailures(created.id, followUpsFailed)
-            .catch(() => false);
+          reply.code(201).send(
+            followUpsFailed.length > 0
+              ? {
+                  ...submitted,
+                  followUpsFailed,
+                  // Zwei getrennte Tatsachen, keine Zusammenfassung: der `failed`-Vermerk ist die
+                  // Voraussetzung des Wiederholwegs, der Nacharbeits-Vermerk die Voraussetzung
+                  // dafür, dass der Fehlschlag nach dem Schließen des Tabs überhaupt noch
+                  // auffindbar ist. Ein gemeinsames „ok" verwischte, welche der beiden fehlt.
+                  followUpsRecorded: {
+                    aiCheckFailed: aiCheckFailedVermerkt,
+                    failures: nacharbeitenVermerkt,
+                  },
+                }
+              : submitted,
+          );
+          await indexKoForDuplicatePrefilter(created, semanticPrefilter);
+        } catch (error) {
+          sendError(reply, error);
         }
-        reply.code(201).send(
-          followUpsFailed.length > 0
-            ? {
-                ...submitted,
-                followUpsFailed,
-                // Zwei getrennte Tatsachen, keine Zusammenfassung: der `failed`-Vermerk ist die
-                // Voraussetzung des Wiederholwegs, der Nacharbeits-Vermerk die Voraussetzung
-                // dafür, dass der Fehlschlag nach dem Schließen des Tabs überhaupt noch
-                // auffindbar ist. Ein gemeinsames „ok" verwischte, welche der beiden fehlt.
-                followUpsRecorded: {
-                  aiCheckFailed: aiCheckFailedVermerkt,
-                  failures: nacharbeitenVermerkt,
-                },
-              }
-            : submitted,
-        );
-        await indexKoForDuplicatePrefilter(created, semanticPrefilter);
-      } catch (error) {
-        sendError(reply, error);
-      }
-    });
+      },
+    );
 
     // WP-SUBMIT-ASYNC (Teil 3, Retry): reiht einen FEHLGESCHLAGENEN (oder festhängenden pending-)
     // Prüf-Job neu ein. Recht ko.validate — der Knopf lebt auf den Validierungs-Karten der Prüfer.

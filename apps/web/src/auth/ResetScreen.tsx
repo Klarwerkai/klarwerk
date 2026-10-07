@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { authApi } from "../api/auth";
 import { ApiError } from "../api/client";
@@ -11,10 +11,17 @@ import { BrandCompact, BrandPanel, PublicLangSwitch } from "./BrandPanel";
 // Passwort-Reset einlösen (FR-AUTH-08). Aufruf über den E-Mail-Link
 // https://klarwerk.ai/reset?token=… — ohne Anmeldung erreichbar.
 export function ResetScreen(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const token = new URLSearchParams(window.location.search).get("token") ?? "";
   const [pw, setPw] = useState("");
-  const [err, setErr] = useState<string | null>(null);
+  // R-0531: derselbe Vertrag wie in `AuthScreens.tsx` — ein Fehlersatz trägt die Sprache, mit der
+  // abgesendet wurde, und steht nur, solange sie gewählt ist; nach dem Umschalten bleibt nichts in
+  // der alten Sprache stehen.
+  const anfrageSprache = useRef(i18n.language);
+  const [fehler, setFehler] = useState<{ text: string; sprache: string } | null>(null);
+  const setErr = (text: string | null): void =>
+    setFehler(text === null ? null : { text, sprache: anfrageSprache.current });
+  const err = fehler !== null && fehler.sprache === i18n.language ? fehler.text : null;
   const [done, setDone] = useState(false);
 
   const reset = useMutation({
@@ -61,6 +68,7 @@ export function ResetScreen(): JSX.Element {
               className="mt-6 space-y-4"
               onSubmit={(e) => {
                 e.preventDefault();
+                anfrageSprache.current = i18n.language;
                 setErr(null);
                 reset.mutate();
               }}
