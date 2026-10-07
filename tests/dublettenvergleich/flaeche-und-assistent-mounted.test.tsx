@@ -192,7 +192,13 @@ async function mounte(pfad: string, inhalt: unknown): Promise<void> {
       ),
     );
   });
-  await act(flush);
+  // Mehrere abgeschlossene `act`-Runden, nicht eine: React wendet die Ergebnisse einer Runde erst
+  // an ihrem Ende an. Abhängige Abfragen — Sitzungsstatus → Nutzer (→ Rolle, Kennung) und
+  // aufgegangener Artikel → Führungsartikel — starten erst in der NÄCHSTEN Runde. Mit einer Runde
+  // sah die Seite noch keinen Nutzer (Sperre „keinRecht") und der Hinweis noch keinen Titel.
+  for (let runde = 0; runde < 6; runde++) {
+    await act(flush);
+  }
 }
 
 const mounteBrett = (): Promise<void> => mounte("/duplikate", createElement(Duplicates) as unknown);
