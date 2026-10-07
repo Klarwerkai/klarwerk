@@ -25,6 +25,14 @@ export default {
       "Deine Zustimmung ist gezählt ({{have}} positive Bewertungen). {{count}} rote Bewertung blockiert die Validierung – der Eintrag ist nicht validiert.",
     "statusfreigabe.zustimmung.blockiert_other":
       "Deine Zustimmung ist gezählt ({{have}} positive Bewertungen). {{count}} rote Bewertungen blockieren die Validierung – der Eintrag ist nicht validiert.",
+    "statusfreigabe.zustimmung.blockiertRest_one":
+      "Deine Zustimmung ist gezählt: {{have}} von {{need}} erforderlichen positiven Bewertungen, noch offen: {{rest}}. Zusätzlich blockiert {{count}} rote Bewertung die Validierung – der Eintrag ist nicht validiert.",
+    "statusfreigabe.zustimmung.blockiertRest_other":
+      "Deine Zustimmung ist gezählt: {{have}} von {{need}} erforderlichen positiven Bewertungen, noch offen: {{rest}}. Zusätzlich blockieren {{count}} rote Bewertungen die Validierung – der Eintrag ist nicht validiert.",
+    "statusfreigabe.zustimmung.blockiertGenug_one":
+      "Deine Zustimmung ist gezählt: {{have}} von {{need}} erforderlichen positiven Bewertungen liegen vor. {{count}} rote Bewertung blockiert trotzdem die Validierung – der Eintrag ist nicht validiert.",
+    "statusfreigabe.zustimmung.blockiertGenug_other":
+      "Deine Zustimmung ist gezählt: {{have}} von {{need}} erforderlichen positiven Bewertungen liegen vor. {{count}} rote Bewertungen blockieren trotzdem die Validierung – der Eintrag ist nicht validiert.",
     "statusfreigabe.zustimmung.validiertZahl":
       "Deine Zustimmung ist gezählt: {{have}} von {{need}} erforderlichen positiven Bewertungen sind erreicht – der Eintrag ist jetzt validiert.",
     "statusfreigabe.zustimmung.validiert":
@@ -49,6 +57,10 @@ export default {
       "Vorschlag übernommen. Eine Freigabe hat der Server dafür nicht gemeldet – der Eintrag zeigt seinen Stand.",
     "statusfreigabe.vorschlag.abgelehnt":
       "Vorschlag abgelehnt. Der Eintrag bleibt unverändert in seinem bisherigen Stand.",
+    "statusfreigabe.vorschlag.eingereichtOffen":
+      "Eingereicht. Die bisherige Fassung bleibt, wie sie ist – offen und nicht freigegeben –, bis jemand anderes deinen Vorschlag übernimmt.",
+    "statusfreigabe.vorschlag.eingereicht":
+      "Eingereicht. Der Eintrag trägt weiter seinen bisherigen Stand, bis jemand anderes deinen Vorschlag übernimmt.",
     "statusfreigabe.klara.titel": "Stand dieses Objekts",
     "statusfreigabe.klara.hinweis":
       "So steht es auf dieser Seite – Klara übernimmt die Anzeige wörtlich und bewertet den Stand nicht selbst.",
@@ -64,6 +76,14 @@ export default {
       "Your approval is counted ({{have}} positive reviews). {{count}} red review blocks validation – the entry is not validated.",
     "statusfreigabe.zustimmung.blockiert_other":
       "Your approval is counted ({{have}} positive reviews). {{count}} red reviews block validation – the entry is not validated.",
+    "statusfreigabe.zustimmung.blockiertRest_one":
+      "Your approval is counted: {{have}} of {{need}} required positive reviews, still open: {{rest}}. In addition, {{count}} red review blocks validation – the entry is not validated.",
+    "statusfreigabe.zustimmung.blockiertRest_other":
+      "Your approval is counted: {{have}} of {{need}} required positive reviews, still open: {{rest}}. In addition, {{count}} red reviews block validation – the entry is not validated.",
+    "statusfreigabe.zustimmung.blockiertGenug_one":
+      "Your approval is counted: {{have}} of {{need}} required positive reviews are in. {{count}} red review still blocks validation – the entry is not validated.",
+    "statusfreigabe.zustimmung.blockiertGenug_other":
+      "Your approval is counted: {{have}} of {{need}} required positive reviews are in. {{count}} red reviews still block validation – the entry is not validated.",
     "statusfreigabe.zustimmung.validiertZahl":
       "Your approval is counted: {{have}} of {{need}} required positive reviews are reached – the entry is now validated.",
     "statusfreigabe.zustimmung.validiert": "Your approval is counted – the entry is now validated.",
@@ -87,6 +107,10 @@ export default {
       "Proposal accepted. The server did not report an approval for it – the entry shows its status.",
     "statusfreigabe.vorschlag.abgelehnt":
       "Proposal rejected. The entry stays unchanged in its previous state.",
+    "statusfreigabe.vorschlag.eingereichtOffen":
+      "Submitted. The previous version stays as it is – open and not approved – until someone else accepts your proposal.",
+    "statusfreigabe.vorschlag.eingereicht":
+      "Submitted. The entry keeps its previous state until someone else accepts your proposal.",
     "statusfreigabe.klara.titel": "Status of this object",
     "statusfreigabe.klara.hinweis":
       "This is what this page shows – Klara repeats the display word for word and does not assess the status herself.",
@@ -102,6 +126,14 @@ export default {
       "Je goedkeuring is geteld ({{have}} positieve beoordelingen). {{count}} rode beoordeling blokkeert de validatie – het item is niet gevalideerd.",
     "statusfreigabe.zustimmung.blockiert_other":
       "Je goedkeuring is geteld ({{have}} positieve beoordelingen). {{count}} rode beoordelingen blokkeren de validatie – het item is niet gevalideerd.",
+    "statusfreigabe.zustimmung.blockiertRest_one":
+      "Je goedkeuring is geteld: {{have}} van {{need}} vereiste positieve beoordelingen, nog open: {{rest}}. Daarnaast blokkeert {{count}} rode beoordeling de validatie – het item is niet gevalideerd.",
+    "statusfreigabe.zustimmung.blockiertRest_other":
+      "Je goedkeuring is geteld: {{have}} van {{need}} vereiste positieve beoordelingen, nog open: {{rest}}. Daarnaast blokkeren {{count}} rode beoordelingen de validatie – het item is niet gevalideerd.",
+    "statusfreigabe.zustimmung.blockiertGenug_one":
+      "Je goedkeuring is geteld: {{have}} van {{need}} vereiste positieve beoordelingen zijn er. {{count}} rode beoordeling blokkeert toch de validatie – het item is niet gevalideerd.",
+    "statusfreigabe.zustimmung.blockiertGenug_other":
+      "Je goedkeuring is geteld: {{have}} van {{need}} vereiste positieve beoordelingen zijn er. {{count}} rode beoordelingen blokkeren toch de validatie – het item is niet gevalideerd.",
     "statusfreigabe.zustimmung.validiertZahl":
       "Je goedkeuring is geteld: {{have}} van {{need}} vereiste positieve beoordelingen zijn bereikt – het item is nu gevalideerd.",
     "statusfreigabe.zustimmung.validiert": "Je goedkeuring is geteld – het item is nu gevalideerd.",
@@ -125,6 +157,10 @@ export default {
       "Voorstel overgenomen. Een goedkeuring heeft de server daarvoor niet gemeld – het item toont zijn stand.",
     "statusfreigabe.vorschlag.abgelehnt":
       "Voorstel afgewezen. Het item blijft ongewijzigd in zijn vorige stand.",
+    "statusfreigabe.vorschlag.eingereichtOffen":
+      "Ingediend. De vorige versie blijft zoals ze is – open en niet goedgekeurd – tot iemand anders je voorstel overneemt.",
+    "statusfreigabe.vorschlag.eingereicht":
+      "Ingediend. Het item behoudt zijn vorige stand tot iemand anders je voorstel overneemt.",
     "statusfreigabe.klara.titel": "Stand van dit object",
     "statusfreigabe.klara.hinweis":
       "Zo staat het op deze pagina – Klara neemt de weergave letterlijk over en beoordeelt de stand niet zelf.",

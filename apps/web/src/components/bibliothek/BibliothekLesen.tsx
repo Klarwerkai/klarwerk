@@ -54,6 +54,7 @@ import {
 } from "../../lib/reviewReworkContext";
 import {
   type SpeicherAntwort,
+  einreichSchluessel,
   speicherAntwortAus,
   speicherFolgeSatz,
   vorschlagFolgeSatz,
@@ -411,7 +412,8 @@ const RW_FREIGABE_ROLLEN = ["admin"];
  */
 type EinreichLage =
   | { art: "pflicht"; text: string }
-  | { art: "eingereicht" }
+  // STATUS-FREIGABE: der Status, den die Antwort des Einreichens trägt — `null` = nicht gemeldet.
+  | { art: "eingereicht"; status: string | null }
   | { art: "stale"; version: number | null }
   | { art: "fehler"; text: string };
 
@@ -1833,14 +1835,20 @@ export function BibliothekLesen({
           origin: "klarwerk_web",
         },
       }),
-    onSuccess: () => {
+    onSuccess: (antwort) => {
       // DAS FORMULAR BLEIBT OFFEN UND BEHÄLT DEN TEXT. Eingereicht ist nicht übernommen: der Mensch
       // soll sehen, was er geschickt hat, und der Eintrag darunter trägt weiter den alten Stand.
       // `invalidate()` holt das Objekt samt der jetzt eingereichten Fassung nach.
+      //
+      // STATUS-FREIGABE (Ben, nacharbeit-2): WELCHER alte Stand das ist, sagt die Antwort — der
+      // freiwillige Prüfweg steht auch an OFFENEN Einträgen offen, und dort ist nichts freigegeben.
       invalidate();
       setErr(null);
       setSperreGemeldet(false);
-      setEinreichLage({ art: "eingereicht" });
+      setEinreichLage({
+        art: "eingereicht",
+        status: speicherAntwortAus(antwort)?.status ?? null,
+      });
     },
     // ==============================================================================================
     // DIE GRENZE DES 409 — HIER STEHT KEINE ZAHL, DIE WIR NICHT HABEN.
@@ -3048,7 +3056,7 @@ export function BibliothekLesen({
                 )}
               >
                 {einreichLage.art === "eingereicht"
-                  ? t("ko.propose.done")
+                  ? t(einreichSchluessel(einreichLage.status))
                   : einreichLage.art === "stale"
                     ? einreichLage.version === null
                       ? t("ko.propose.stale")

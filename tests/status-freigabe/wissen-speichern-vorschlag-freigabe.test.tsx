@@ -36,6 +36,7 @@ import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { BibliothekLesen } from "../../apps/web/src/components/bibliothek/BibliothekLesen";
 import i18n from "../../apps/web/src/i18n";
 import {
+  einreichSchluessel,
   objektstatusAus,
   speicherFolgeSatz,
   vorschlagFolgeSatz,
@@ -425,6 +426,52 @@ describe("G · K2 — an der echten Lesefläche gegen den nachgelesenen Serverst
         version: freigegeben.version,
       }),
     );
+  });
+
+  // Ben (nacharbeit-2): der freiwillige Prüfweg steht Freigabeberechtigten auch an OFFENEN
+  // Einträgen offen. Dort darf die Einreichbestätigung keinen freigegebenen Stand behaupten.
+  it("G4 · Vorschlag zu einem OFFENEN Eintrag: eingereicht, die bisherige Fassung bleibt offen — kein „freigegebener Stand“", async () => {
+    const id = await objektAnlegen();
+    const vorher = await stand(id);
+    expect(vorher.status).toBe("offen");
+
+    flaechenToken = adminToken;
+    await mount(id, true);
+    const haken = suche("bib-pruefweg-haken")?.querySelector("input");
+    expect(haken, "der freiwillige Prüfweg wird nicht angeboten").toBeTruthy();
+    await klick(haken as HTMLInputElement);
+    await tippen(aussagefeld(), MEIN_TEXT);
+    await klick(knopfMitText(i18n.t("ko.propose.submit")));
+
+    const lage = suche("bib-einreichen-lage");
+    expect(lage?.getAttribute("data-lage")).toBe("eingereicht");
+    expect(text(lage)).toBe(satz("statusfreigabe.vorschlag.eingereichtOffen"));
+    expect(seitentext()).not.toContain(satz("ko.propose.done"));
+    expect(seitentext()).not.toContain(satz("ko.revise.saved"));
+
+    // Am Server: nichts übernommen, nichts freigegeben, ein offener Vorschlag.
+    const jetzt = await stand(id);
+    expect(jetzt.status).toBe("offen");
+    expect(jetzt.version).toBe(vorher.version);
+    expect(jetzt.statement).toBe(vorher.statement);
+    expect((jetzt.proposals ?? []).filter((p) => p.status === "offen")).toHaveLength(1);
+  });
+});
+
+describe("A · K2 — die Einreichbestätigung folgt dem gemeldeten Status", () => {
+  it("nur `validiert` trägt „freigegebener Stand“; offen/anderes nicht; ohne Status keine Aussage", () => {
+    expect(einreichSchluessel("validiert")).toBe("ko.propose.done");
+    expect(einreichSchluessel("offen")).toBe("statusfreigabe.vorschlag.eingereichtOffen");
+    expect(einreichSchluessel("in_review")).toBe("statusfreigabe.vorschlag.eingereichtOffen");
+    expect(einreichSchluessel(null)).toBe("statusfreigabe.vorschlag.eingereicht");
+    const saetze = [
+      "statusfreigabe.vorschlag.eingereichtOffen",
+      "statusfreigabe.vorschlag.eingereicht",
+    ];
+    for (const s of saetze) {
+      expect(satz(s)).not.toContain("freigegebenen Stand");
+    }
+    expect(satz("statusfreigabe.vorschlag.eingereichtOffen")).toContain("nicht freigegeben");
   });
 });
 

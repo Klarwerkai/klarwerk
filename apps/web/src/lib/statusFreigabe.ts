@@ -107,6 +107,23 @@ export function objektstatusAus(ziel: Element | null): Objektstatus | null {
 }
 
 /**
+ * Der Satz nach dem EINREICHEN eines Vorschlags — aus dem Status, den die Antwort trägt.
+ *
+ * Der freiwillige Prüfweg steht Freigabeberechtigten auch an OFFENEN Einträgen offen, und der
+ * Server lässt den Status beim Einreichen unverändert (`KoService.addProposal`). „Trägt weiter den
+ * freigegebenen Stand" (`ko.propose.done`) gilt deshalb NUR bei `validiert`; bei jedem anderen
+ * Status bleibt die bisherige Fassung offen bzw. nicht freigegeben, ohne Status wird keiner genannt.
+ */
+export function einreichSchluessel(status: string | null): string {
+  if (status === "validiert") {
+    return "ko.propose.done";
+  }
+  return status === null
+    ? "statusfreigabe.vorschlag.eingereicht"
+    : "statusfreigabe.vorschlag.eingereichtOffen";
+}
+
+/**
  * Der Satz nach einer Entscheidung über einen Änderungsvorschlag. „Freigegeben" nur, wenn die
  * Antwort es trägt — die Übernahme gibt am Server frei (`decideProposal`), die Fläche liest es ab.
  */

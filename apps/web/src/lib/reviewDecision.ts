@@ -132,14 +132,26 @@ export function zustimmungsquittung(lage: Stimmenlage | null): Zustimmungsquittu
           werte: { have: lage.up, need: lage.needed },
         };
   }
+  const rest = lage.needed === null ? 0 : Math.max(0, lage.needed - lage.up);
   if (lage.down > 0) {
+    // Ben (nacharbeit-2): auch blockiert bleiben Bedarf und Rest sichtbar, sofern bekannt — die
+    // rote Bewertung kommt HINZU, sie ersetzt die Zahlen nicht. Validiert wird nichts behauptet.
+    if (lage.needed === null) {
+      return {
+        art: "blockiert",
+        schluessel: "statusfreigabe.zustimmung.blockiert",
+        werte: { count: lage.down, have: lage.up },
+      };
+    }
     return {
       art: "blockiert",
-      schluessel: "statusfreigabe.zustimmung.blockiert",
-      werte: { count: lage.down, have: lage.up },
+      schluessel:
+        rest > 0
+          ? "statusfreigabe.zustimmung.blockiertRest"
+          : "statusfreigabe.zustimmung.blockiertGenug",
+      werte: { count: lage.down, have: lage.up, need: lage.needed, rest },
     };
   }
-  const rest = lage.needed === null ? 0 : Math.max(0, lage.needed - lage.up);
   if (lage.needed === null || rest === 0) {
     // Offen, aber keine fehlende Zahl ablesbar: dann wird keine erfunden.
     return {

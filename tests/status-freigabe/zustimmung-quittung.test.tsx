@@ -213,7 +213,24 @@ describe("A · K1 — die Ableitung liest die Stimmenlage, sie rechnet keine Val
       stimmenlageAus({ up: 1, warn: 0, down: 1, status: "offen" }, 3),
     );
     expect(rot.art).toBe("blockiert");
-    expect(de(rot.schluessel, rot.werte)).toContain("nicht validiert");
+    // Ben (nacharbeit-2): auch blockiert stehen Bedarf und Rest da — die Blockade kommt hinzu.
+    expect(rot).toEqual({
+      art: "blockiert",
+      schluessel: "statusfreigabe.zustimmung.blockiertRest",
+      werte: { count: 1, have: 1, need: 3, rest: 2 },
+    });
+    const satz = de(rot.schluessel, rot.werte);
+    expect(satz).toContain("1 von 3");
+    expect(satz).toContain("noch offen: 2");
+    expect(satz).toContain("1 rote Bewertung");
+    expect(satz).toContain("nicht validiert");
+    // Genug grüne, aber rot: kein Rest, trotzdem nicht validiert.
+    const genug = zustimmungsquittung(
+      stimmenlageAus({ up: 3, warn: 0, down: 2, status: "offen" }, 3),
+    );
+    expect(genug.schluessel).toBe("statusfreigabe.zustimmung.blockiertGenug");
+    expect(de(genug.schluessel, genug.werte)).toContain("3 von 3");
+    expect(de(genug.schluessel, genug.werte)).toContain("nicht validiert");
     expect(zustimmungsquittung(stimmenlageAus({}, 3)).art).toBe("unbekannt");
     expect(zustimmungsquittung(stimmenlageAus({ id: "ko-1", status: "geprüft" }, 3)).art).toBe(
       "unbekannt",
@@ -248,6 +265,11 @@ describe("Q · K1 — die Quittung an der montierten Prüffläche", () => {
     mount();
     await klick(freigebenKnopf());
     expect(quittung()?.getAttribute("data-stimmenlage")).toBe("blockiert");
+    const werte = { count: 1, have: 1, need: 3, rest: 2 };
+    expect(inhalt(quittung())).toBe(
+      `${de("val.decisionSaved")} — ${de("statusfreigabe.zustimmung.blockiertRest", werte)}`,
+    );
+    expect(inhalt(quittung())).not.toContain("jetzt validiert");
   });
 
   it("Q4 · die letzte erforderliche Zustimmung: erst jetzt — und nur weil der Server es meldet — validiert", async () => {
