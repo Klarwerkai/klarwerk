@@ -497,6 +497,19 @@ export interface KnowledgeObject {
   // abgeleitet oder nachgetragen; der Altbestand erscheint in der Facette als „ohne Wert".
   // Gesetzt wird es beim Anlegen (`CreateKoInput.domain`) oder nachträglich über `setDomain`.
   domain?: string;
+  // ============================================================================================
+  // produkt:20261007:spaces — DER FÜHRENDE SPACE. ER BESTIMMT, WER DIESES OBJEKT SEHEN DARF.
+  // ============================================================================================
+  //
+  // Die Kennung genau eines Space (`services/app/src/spaces.ts`). Fehlt das Feld, gehört das Objekt
+  // keinem Space und es gilt allein die bisherige Regel (Stufe + Autor). Ist es gesetzt, sieht das
+  // Objekt nur, wer die Inhalte dieses Space lesen darf — angewendet an der einen Stelle
+  // `services/app/src/sichtbarkeit.ts`. Eine unbekannte Kennung öffnet nichts (fail-closed).
+  //
+  // Gesetzt wird es ausschliesslich über `setLeadingSpace` (Spacewechsel mit Rechtevorschau); die
+  // öffentlichen Anlage- und Überarbeitungswege übernehmen es nicht aus dem Rumpf. Ein Wechsel
+  // ändert weder Inhaltsversion noch `history`, `author` oder `ownership`. Optional, keine Migration.
+  spaceId?: string;
   tags: string[];
   confidence: number;
   trust: number;
