@@ -612,6 +612,35 @@ const GRUNDWERTE: readonly Startwert[] = [
     wofuer: "Wartezeit auf einen freien Platz am Modelldeckel.",
     ohneIhn: "Es gilt die eingebaute Wartezeit.",
   },
+  // R-1646 · Ausgangsprüfung (`services/reasoner/src/ausgangspruefung.ts`).
+  {
+    name: "KLARWERK_AUSGANGSPRUEFUNG",
+    bereich: "KI",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "aus; nur `an` schaltet ein",
+    wofuer:
+      "Hält jeden KI-Aufruf, der das Haus verlassen kann, an, bis ein Controller den anonymisierten Text unter /ausgangspruefung freigibt.",
+    ohneIhn: "Externe KI-Aufrufe gehen ohne Vorschau und ohne Anonymisierung hinaus.",
+  },
+  {
+    name: "KLARWERK_AUSGANGSPRUEFUNG_WARTEZEIT_MS",
+    bereich: "KI",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Wie lange ein ausgehender Aufruf auf die Freigabe wartet, bevor er nicht gesendet wird.",
+    ohneIhn: "Es gelten fünf Minuten.",
+  },
+  {
+    name: "KLARWERK_AUSGANGSPRUEFUNG_MAX_OFFEN",
+    bereich: "KI",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Höchstzahl gleichzeitig auf Freigabe wartender Aufrufe; darüber wird sofort abgelehnt.",
+    ohneIhn: "Es dürfen zwanzig Aufrufe gleichzeitig warten.",
+  },
   {
     name: "KLARWERK_LOCAL_LLM_URL",
     bereich: "KI",

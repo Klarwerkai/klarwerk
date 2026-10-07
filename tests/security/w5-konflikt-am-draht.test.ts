@@ -136,7 +136,16 @@ function tragendeQuellen(antwort: { json: () => unknown }): string[] {
   return body.result?.citedSources ?? [];
 }
 
-/** Legt einen OFFENEN Konflikt zwischen zwei Objekten an — ueber den echten KO-Dispatcher. */
+/**
+ * Legt einen OFFENEN Konflikt zwischen zwei Objekten an — ueber den echten KO-Dispatcher.
+ *
+ * R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der Frageweg antwortet nur aus geprüftem
+ * Wissen. Ein WAHRHEITSkonflikt setzt die validierte Quelle zurück auf „offen" (SCRUM-358,
+ * `markTruthConflictReview`) — sie trüge danach keine Antwort mehr, und `sourcesConflicted` hätte
+ * nichts, woran es wahr werden könnte. Gemessen wird hier aber der Draht für JEDEN offenen
+ * Konflikt an einer tragenden Quelle (`answer-evidence.ts`: kein Typfilter). Deshalb ein
+ * Erfahrungskonflikt: er bleibt offen und lässt den Prüfstand unverändert.
+ */
 async function konfliktAnlegen(a: Aufbau): Promise<void> {
   const res = await a.app.inject({
     method: "PUT",
@@ -147,7 +156,7 @@ async function konfliktAnlegen(a: Aufbau): Promise<void> {
       conflict: {
         koA: a.koTragend,
         koB: a.koPartner,
-        type: "truth",
+        type: "experience",
         description: `Widerspruch zur ${SELTENES_WORT}`,
       },
     },

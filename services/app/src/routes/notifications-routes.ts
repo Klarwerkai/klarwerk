@@ -3,7 +3,6 @@ import { type AskService, redactGapForViewer } from "../../../ask";
 import type { AuditService } from "../../../audit";
 import type { ConflictService, OverlapService } from "../../../conflicts";
 import type { NotificationSeenRepo } from "../../../notifications";
-import { can } from "../../../rbac";
 import type { ValidationService } from "../../../validation";
 import type { Guards, SessionUser } from "../http";
 import {
@@ -62,7 +61,7 @@ export function deriveImpacts(
 // Audit-P3 (SCRUM-397): Feed einmal bauen, Gelesen-Status je Item ehrlich anreichern.
 // FUNKE-FIX3 P0 (bens Blocker B): der Feed wird PRO BETRACHTER gebaut — die Gap-Ableitung läuft
 // durch denselben zentralen Sichtbarkeitsvertrag wie /api/gaps (gap-visibility.redactGapForViewer):
-// Fragetext nur für Owner/Assignee/Detail-Rolle (ko.validate); alle anderen erhalten NUR einen
+// Fragetext nur für Owner/Assignee (R-0585: kein Rollenrecht mehr); alle anderen erhalten NUR einen
 // redigierten Eintrag (leerer Titel + redacted-Marker → neutrale Bezeichnung im Client). Der
 // Betrachter stammt IMMER aus der authentifizierten Session (Route), nie aus dem Body/Client.
 async function loadFeed(
@@ -79,7 +78,7 @@ async function loadFeed(
     deps.audit.list({ action: "answer.helpful" }),
     deps.seen.seenFor(user.id),
   ]);
-  const viewer = { viewerId: user.id, maySeeDetail: can(user.role, "ko.validate") };
+  const viewer = { viewerId: user.id };
   const gapViews = gaps.map((gap) => redactGapForViewer(gap, viewer));
   const impacts = deriveImpacts(helpful, user.id);
   const seen = new Set(seenIds);

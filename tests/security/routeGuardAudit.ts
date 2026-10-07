@@ -722,6 +722,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/begriffe": { protection: "ko.validate" },
   "PUT /api/begriffe/:id": { protection: "ko.validate" },
 
+  // --- Ausgangsprüfung (ausgangspruefung-routes.ts, R-1646) ---
+  // Der ausgehende Text vor der Freigabe und die Entscheidung darüber: wer über fremde Beiträge urteilt.
+  "GET /api/ausgangspruefung": { protection: "ko.validate" },
+  "POST /api/ausgangspruefung/:id/freigeben": { protection: "ko.validate" },
+  "POST /api/ausgangspruefung/:id/ablehnen": { protection: "ko.validate" },
+
   // --- Spaces (spaces-routes.ts, produkt:20261007:spaces) ---
   // Lesen: wer Wissen lesen darf; welche Artikel erscheinen, entscheidet je Zeile `darfSehen`
   // samt führendem Space. Den Space selbst sieht, wer seine Inhalte liest oder Konten verwaltet.

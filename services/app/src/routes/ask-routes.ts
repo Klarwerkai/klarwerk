@@ -8,7 +8,6 @@ import {
 } from "../../../ask";
 import type { ConflictService } from "../../../conflicts";
 import type { KnowledgeObject, KoService } from "../../../knowledge-object";
-import { can } from "../../../rbac";
 import { bindeAnbieter, bindeZustimmung, imBindungsrahmen } from "../../../reasoner";
 import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
@@ -805,7 +804,19 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // hier gibt es einen SessionUser und damit den Sichtbarkeitsvertrag, den mega77 fuer jede
         // Meldung verlangt. Der Add-on-Zweig oben bekommt den Filter weiterhin NICHT (kein
         // SessionUser, kein Vertrag — dort bleibt alles, wie mega77 es hinterlassen hat).
-        await answer(user.id, { verschlossenSichtbarFuer: sichtbarkeitsfilterFuer(user) });
+        //
+        // R-0584 (DS10, Auftrag gesamt-datenschutz-voreinstellung): auch die Konsole antwortet
+        // standardmäßig NUR aus geprüftem Wissen. Bis hierher lief dieser Zweig ohne
+        // `validatedOnly` — der einzige Frageweg, auf dem Ungeprüftes Grundlage einer Antwort werden
+        // konnte. Das ersetzt die Abwägung aus mega52 C (Juli: „Text auf die Wahrheit ziehen statt
+        // Filter") durch den jüngeren Auftrag. Was die Enge verschluckt, wird wie im Panel-Weg
+        // (JOB 1591 W5) GEMELDET, nicht verwendet — gefiltert durch die Sichtbarkeit DIESES Nutzers.
+        // Der ausdrücklich freigegebene Sonderweg (KA4-Einwilligung, oben) bleibt unverändert.
+        await answer(user.id, {
+          validatedOnly: true,
+          ungeprueftSichtbarFuer: sichtbarkeitsfilterFuer(user),
+          verschlossenSichtbarFuer: sichtbarkeitsfilterFuer(user),
+        });
       },
     );
 
@@ -841,20 +852,19 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
     });
 
     // FUNKE-FIX2 P0 (bens Erforderlich 2): Detail-Endpunkt liefert den Fragetext ADRESSATENGERECHT.
-    // Volltext sehen nur der Ersteller/Owner, ein Assignee ODER eine Rolle mit ausdrücklicher Detail-
-    // Berechtigung (ko.validate-Ebene, d. h. Controller/Admin — die Lücken ohnehin kuratieren). Alle
-    // anderen erhalten eine REDIGIERTE Sicht (Kategorie/Neutralbezeichnung, Zähler, KEIN Fragetext).
-    // Fail-closed: im Zweifel redigiert (redactGapForViewer entscheidet zentral).
+    // R-0585 (Auftrag gesamt-datenschutz-voreinstellung): Volltext sehen nur der Ersteller/Owner
+    // (der Fragende) und der Assignee (der Zuständige). Bis hierher sah ihn zusätzlich jede Rolle
+    // mit `ko.validate` (Controller/Admin) — das Rollenrecht ist entfernt. Alle anderen erhalten eine
+    // REDIGIERTE Sicht (Kategorie/Neutralbezeichnung, Zähler, KEIN Fragetext); zuweisen können
+    // Berechtigte weiterhin (PUT /api/gaps/:id, `ko.assign`). Fail-closed: im Zweifel redigiert
+    // (redactGapForViewer entscheidet zentral).
     app.get("/api/gaps", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {
         return;
       }
-      const maySeeDetail = can(user.role, "ko.validate");
       const gaps = await ask.listGaps();
-      reply
-        .code(200)
-        .send(gaps.map((gap) => redactGapForViewer(gap, { viewerId: user.id, maySeeDetail })));
+      reply.code(200).send(gaps.map((gap) => redactGapForViewer(gap, { viewerId: user.id })));
     });
 
     app.put<{

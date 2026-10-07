@@ -93,7 +93,8 @@ describe("Wissenslücke trägt ihre Herkunftssprache", () => {
   it("die Sicht für Berechtigte trägt die Sprache", async () => {
     const ask = await aufbauen();
     const { gap } = await ask.ask(ENGLISCHE_FRAGE, "anna", "en");
-    const sicht = redactGapForViewer(gap!, { viewerId: "anna", maySeeDetail: true });
+    // Anna ist die Fragende (R-0585: Fragende und Zuständige sehen den Text, kein Rollenrecht).
+    const sicht = redactGapForViewer(gap!, { viewerId: "anna" });
     expect(sicht.locale).toBe("en");
     expect(sicht.question).toContain("countersunk screws");
   });
@@ -103,7 +104,7 @@ describe("Wissenslücke trägt ihre Herkunftssprache", () => {
     // Sprachangabe, stünde bei ihm eine Neutralbezeichnung ohne jeden Hinweis auf die Herkunft.
     const ask = await aufbauen();
     const { gap } = await ask.ask(ENGLISCHE_FRAGE, "anna", "en");
-    const sicht = redactGapForViewer(gap!, { viewerId: "fremd", maySeeDetail: false });
+    const sicht = redactGapForViewer(gap!, { viewerId: "fremd" });
     expect(sicht.redacted).toBe(true);
     expect(sicht.question).toBe("");
     expect(sicht.locale).toBe("en");
@@ -113,7 +114,7 @@ describe("Wissenslücke trägt ihre Herkunftssprache", () => {
     // Gegenprobe zur Datensparsamkeit: in der redigierten Sicht darf kein Wort der Frage stehen.
     const ask = await aufbauen();
     const { gap } = await ask.ask(ENGLISCHE_FRAGE, "anna", "en");
-    const sicht = redactGapForViewer(gap!, { viewerId: "fremd", maySeeDetail: false });
+    const sicht = redactGapForViewer(gap!, { viewerId: "fremd" });
     const roh = JSON.stringify(sicht);
     expect(roh).not.toContain("countersunk");
     expect(roh).not.toContain("food contact");

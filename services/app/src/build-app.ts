@@ -172,6 +172,7 @@ import { LmsExportService, OutputService, leseLmsEmpfaenger } from "../../output
 import { canChangeRole } from "../../rbac";
 import {
   type AssistPresetRepo,
+  Ausgangspruefung,
   InMemoryAssistPresetRepo,
   // W1 S4: Ablage der Klara-Sitzungen/Zustimmungen — dieselbe Modulgrenze wie die übrige
   // Reasoner-Persistenz (Cross-Modul-Import nur über die öffentliche index.ts).
@@ -187,8 +188,10 @@ import {
   Reasoner,
   type ReasonerPolicyRepo,
   anbieterZugelassen,
+  ausgangspruefungAusEnv,
   createCappedCloudClientFromEnv,
   createCappedLocalClientFromEnv,
+  setzeAusgangspruefung,
 } from "../../reasoner";
 import {
   type AssignmentRepo,
@@ -240,6 +243,7 @@ import {
   InMemoryConfluenceImportSchalterRepo,
   PgConfluenceImportSchalterRepo,
 } from "./confluence-import-schalter";
+import { registerHerkunftspruefung } from "./csrf";
 import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
@@ -283,6 +287,7 @@ import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
 import { askRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
+import { ausgangspruefungRoutes } from "./routes/ausgangspruefung-routes";
 import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
 import { begriffeRoutes } from "./routes/begriffe-routes";
 import { brandingRoutes } from "./routes/branding-routes";
@@ -2566,6 +2571,10 @@ export function buildApp(
     }
   });
 
+  // R-0544 / R-0797 (Aufnahme gesamt-csrf-schutz): schreibende Aufrufe mit Session-Cookie nur aus
+  // der eigenen Herkunft — vor dem Add-on-Anmeldehook, s. `registerHerkunftspruefung` in csrf.ts.
+  registerHerkunftspruefung(app);
+
   // Add-on-API (Klara-Panel), hinter KLARWERK_ADDON_API: CORS NUR bei aktivem Flag, NUR für die eine
   // validierte Add-in-Origin und NUR für POST /api/ask UND POST /api/check-text (SCRUM-491 Slice 5).
   // Flag AUS → gar nicht registriert → keine CORS-Header (exakt heutiges Verhalten). Kein
@@ -3530,6 +3539,24 @@ export function buildApp(
   // Firmenwörterbuch: Pflege (`ko.validate`), Nachschlagen und der deterministische Abgleich
   // (`ko.read`). Nicht geschaltet: ohne Einträge liefert der Abgleich schlicht keine Hinweise.
   app.register(begriffeRoutes({ begriffe: services.begriffe, audit: services.audit }, guards));
+  // R-1646 · Ausgangsprüfung: nur mit `KLARWERK_AUSGANGSPRUEFUNG=an`. Dann hält der Chokepoint
+  // jeden Aufruf, der das Haus verlassen kann, bis ein Controller den anonymisierten Text freigibt.
+  // Als Person ersetzt werden die Namen der Konten dieser Installation — bei jedem Aufruf frisch
+  // gelesen, damit ein neues Konto sofort mitzählt. Ohne Schalter bleibt der globale Prüfer
+  // unberührt; die Route meldet dann `aktiv: false`.
+  const ausgangsEinstellung = ausgangspruefungAusEnv(process.env);
+  const ausgangspruefung = ausgangsEinstellung
+    ? new Ausgangspruefung({
+        ...ausgangsEinstellung,
+        namenQuelle: async () => (await services.auth.listUsers()).map((u) => u.name),
+      })
+    : null;
+  if (ausgangspruefung) {
+    setzeAusgangspruefung(ausgangspruefung);
+  }
+  app.register(
+    ausgangspruefungRoutes({ pruefung: ausgangspruefung, audit: services.audit }, guards),
+  );
   // produkt:20261007:spaces: Arbeitsräume, Inhalte je Space und Ansicht, Rechtevorschau, Wechsel.
   app.register(
     spacesRoutes(
