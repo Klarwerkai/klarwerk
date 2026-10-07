@@ -240,6 +240,7 @@ import {
   InMemoryConfluenceImportSchalterRepo,
   PgConfluenceImportSchalterRepo,
 } from "./confluence-import-schalter";
+import { registerHerkunftspruefung } from "./csrf";
 import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
@@ -2565,6 +2566,10 @@ export function buildApp(
       request.askKiBeginn = services.ask.kiStand() ?? null;
     }
   });
+
+  // R-0544 / R-0797 (Aufnahme gesamt-csrf-schutz): schreibende Aufrufe mit Session-Cookie nur aus
+  // der eigenen Herkunft — vor dem Add-on-Anmeldehook, s. `registerHerkunftspruefung` in csrf.ts.
+  registerHerkunftspruefung(app);
 
   // Add-on-API (Klara-Panel), hinter KLARWERK_ADDON_API: CORS NUR bei aktivem Flag, NUR für die eine
   // validierte Add-in-Origin und NUR für POST /api/ask UND POST /api/check-text (SCRUM-491 Slice 5).
