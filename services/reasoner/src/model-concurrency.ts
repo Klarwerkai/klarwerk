@@ -8,6 +8,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import { zustimmungenTragen } from "./anbieterbindung";
+import { aktiveAusgangspruefung, entanonymisiere } from "./ausgangspruefung";
 import type { ModelClient } from "./provider-model";
 
 // Backpressure-Signal: KEIN Provider-Fehler (nicht auf den nächsten Provider ausweichen / nicht still
@@ -360,6 +361,29 @@ function pruefeZustimmungVorUebertragung(extern: boolean): void {
   }
 }
 
+// R-1646 · Ausgangsprüfung: ist sie eingeschaltet, wartet ein Aufruf, der das Haus verlassen kann,
+// VOR dem Slot auf die Entscheidung eines Controllers (ein wartender Mensch hält keinen Slot fest).
+// Gesendet wird der angezeigte, anonymisierte Text; die Antwort bekommt die Originale zurück.
+// Ausgeschaltet oder lokal: `senden` läuft unverändert mit dem Originaltext.
+function mitAusgangspruefung(
+  extern: boolean,
+  anbieter: string,
+  system: string,
+  user: string,
+  bild: boolean,
+  senden: (system: string, user: string) => Promise<string>,
+): Promise<string> {
+  const pruefung = extern ? aktiveAusgangspruefung() : null;
+  if (!pruefung) {
+    return senden(system, user);
+  }
+  return pruefung
+    .freigabeEinholen({ anbieter, system, user, bild })
+    .then((frei) =>
+      senden(frei.system, frei.user).then((antwort) => entanonymisiere(antwort, frei.zuordnung)),
+    );
+}
+
 // Umschließt einen ModelClient, sodass JEDER complete()-Aufruf durch den globalen Semaphore geht.
 // Der einzige Ort, an dem der Cap greift — kein Bypass, weil alle Provider-Methoden hierüber laufen.
 // SCRUM-502 Schicht 2/R8: `rejectsConfidential` ist PFLICHT (kein Default) — der Aufrufer MUSS die
@@ -387,14 +411,22 @@ export function cappedModelClient(
       if (opts.rejectsConfidential && confidential) {
         return Promise.reject(new ConfidentialEgressError());
       }
-      return withModelSlot(() => {
-        // JOB 3036 R2: HIER geschieht der Aufruf wirklich — Wächter passiert, Slot erteilt.
-        // Lauf 2 · Bens B7: nach dem Warten auf den Slot, vor der Übertragung — ein inzwischen
-        // abgeschlossener Widerruf oder Sitzungsablauf lässt nichts mehr hinaus, auf jedem Weg.
-        pruefeZustimmungVorUebertragung(opts.rejectsConfidential);
-        vermerkeModellAufruf();
-        return inner.complete(system, user, confidential, maxTokens);
-      });
+      return mitAusgangspruefung(
+        opts.rejectsConfidential,
+        inner.name,
+        system,
+        user,
+        false,
+        (ausgehendSystem, ausgehendUser) =>
+          withModelSlot(() => {
+            // JOB 3036 R2: HIER geschieht der Aufruf wirklich — Wächter passiert, Slot erteilt.
+            // Lauf 2 · Bens B7: nach dem Warten auf den Slot, vor der Übertragung — ein inzwischen
+            // abgeschlossener Widerruf oder Sitzungsablauf lässt nichts mehr hinaus, auf jedem Weg.
+            pruefeZustimmungVorUebertragung(opts.rejectsConfidential);
+            vermerkeModellAufruf();
+            return inner.complete(ausgehendSystem, ausgehendUser, confidential, maxTokens);
+          }),
+      );
     },
     // WP-BILD-1c: der Vision-Pfad läuft durch DENSELBEN Chokepoint (Egress-Wächter + In-Flight-Cap)
     // wie complete — kein Bypass über Bilder. Nur vorhanden, wenn der innere Client Vision kann.
@@ -410,12 +442,27 @@ export function cappedModelClient(
             if (opts.rejectsConfidential && confidential) {
               return Promise.reject(new ConfidentialEgressError());
             }
-            return withModelSlot(() => {
-              // JOB 3036 R2: der Bildweg zählt genauso als Modellaufruf wie der Textweg.
-              pruefeZustimmungVorUebertragung(opts.rejectsConfidential);
-              vermerkeModellAufruf();
-              return innerVision(system, imageDataUrl, user, confidential, maxTokens);
-            });
+            // R-1646: das Bild selbst wird nicht anonymisiert — die Vorschau sagt das ausdrücklich.
+            return mitAusgangspruefung(
+              opts.rejectsConfidential,
+              inner.name,
+              system,
+              user,
+              true,
+              (ausgehendSystem, ausgehendUser) =>
+                withModelSlot(() => {
+                  // JOB 3036 R2: der Bildweg zählt genauso als Modellaufruf wie der Textweg.
+                  pruefeZustimmungVorUebertragung(opts.rejectsConfidential);
+                  vermerkeModellAufruf();
+                  return innerVision(
+                    ausgehendSystem,
+                    imageDataUrl,
+                    ausgehendUser,
+                    confidential,
+                    maxTokens,
+                  );
+                }),
+            );
           },
         }
       : {}),
