@@ -110,7 +110,9 @@ export function AnswerExplanationPanel({
   nameVon = (kennung) => kennung,
 }: {
   erklaerung: AnswerExplanationResponse;
-  nameVon?: NameVon;
+  // `| undefined` ausdrücklich: `AnswerExplanation` reicht seinen eigenen optionalen Wert durch
+  // (exactOptionalPropertyTypes); fehlt er, gilt der Rückfall „Kennung als Name".
+  nameVon?: NameVon | undefined;
 }) {
   const { t } = useTranslation();
   if (erklaerung.state === "NO_SNAPSHOT") {
