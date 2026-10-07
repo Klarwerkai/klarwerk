@@ -10,6 +10,14 @@ export { guardedLocalPgTestUrl } from "./src/pg-test-guard";
 // nach einem Absturz sagen kann, ob der Bestand noch steht. Nur die Kompositionswurzel bindet sie
 // (s. services/app/src/build-app.ts) — kein Adapter kennt sie.
 export { gatedPool } from "./src/gated-pool";
+// R-0776 / R-0798: Zeitgrenzen des einen Vorrats und die saubere Rückgabe ausgeliehener Verbindungen.
+export {
+  type Ausleihe,
+  LEERLAUF_IN_TRANSAKTION_MS,
+  VORRAT_WARTEZEIT_MS,
+  leiheAus,
+  vorratsKonfiguration,
+} from "./src/vorrat";
 export {
   BestandsresetLaeuftError,
   SPERRSCHLUESSEL_BESTANDSRESET,

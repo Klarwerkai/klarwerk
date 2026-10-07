@@ -4,6 +4,7 @@ import { AUDIT_EVENT_ID_SCHEMA, AUDIT_HASH_VERSION_SCHEMA, AUDIT_SCHEMA } from "
 import { AUTH_SCHEMA } from "../../auth";
 import { CAPTURE_CREATE_OPERATION_SCHEMA, CAPTURE_SCHEMA } from "../../capture";
 import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
+import { vorratsKonfiguration } from "../../db-tx";
 import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
 import {
   DOKUMENTAKTE_SCHEMA,
@@ -60,8 +61,10 @@ import { LESEVARIANTEN_SCHEMA } from "./lesevarianten";
 import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
 
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
+// R-0798: mit Zeitgrenzen — begrenztes Warten auf eine freie Verbindung (Notbremse für den Vorrat)
+// und eine Serverfrist für Sitzungen, die in einer offenen Transaktion schweigen (s. db-tx/vorrat.ts).
 export function createPool(connectionString?: string): Pool {
-  return new Pool(connectionString ? { connectionString } : {});
+  return new Pool(vorratsKonfiguration(connectionString));
 }
 
 // ================================================================================================
