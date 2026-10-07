@@ -1821,7 +1821,54 @@ export interface AskResponse {
   // JOB 2626 D1: nur bei Nicht-Antwort UND nur auf Wegen mit Betrachterfilter vorhanden; ein
   // älterer Server sendet das Feld nicht — die Fläche fällt dann auf die generische Leermeldung.
   verschlossen?: VerschlossenHinweis[];
+  // R-0293 (W3-C): die Kennung des dauerhaften Antwortbelegs. `null`, wenn kein Beleg entstand
+  // (Ablage nicht verdrahtet oder ausgefallen); ein älterer Server sendet das Feld nicht.
+  answerId?: string | null;
 }
+
+// R-0293 / R-0276 / R-0317 / R-0340: GET /api/klara/answers/:answerId/explanation — der Weg zur
+// Antwort aus dem gespeicherten Beleg. Spiegel des Server-Lesemodells
+// (services/ask/src/answer-explanation.ts); `apps/web` darf nicht aus `services/` importieren.
+export type AnswerPrimaryResolutionFailure =
+  | "UNKNOWN_REFERENCE"
+  | "UNRESOLVABLE_REFERENCE"
+  | "DAMAGED_REFERENCE"
+  | "ACCESS_DENIED"
+  | "REDACTION_REQUIRED";
+
+export interface AnswerExplanationEvidence {
+  knowledgeObjectId: string;
+  knowledgeObjectVersion: number | null;
+  evidenceRole: "carrying" | "consulted";
+  validationDecisionRef: { auditSeq: number; auditHash: string } | null;
+  validationReferenceAbsenceReason: string | null;
+  sourceRecordId: string | null;
+  sourceRecordIdReason: string | null;
+  locator: string | null;
+  locatorReason: string | null;
+  confidentialityAtExecution: string | null;
+  responsibleAtExecution: string | null;
+  responsibleKindAtExecution: "owner" | "author-fallback" | null;
+  openConflictToday: boolean | null;
+  redacted: boolean;
+}
+
+export type AnswerExplanationResponse =
+  | {
+      state: "OK";
+      answerId: string;
+      createdAt: string;
+      snapshotStatus: "PENDING_EVIDENCE" | "INCOMPLETE" | "PARTIAL" | "COMPLETE";
+      snapshotRevision: number;
+      integrity: "VALID" | "DEGRADED" | "INVALIDATED" | "REDACTED";
+      primaryResolutionFailure: AnswerPrimaryResolutionFailure | null;
+      carryingSourcesValidated: boolean | null;
+      openConflictToday: boolean | null;
+      generationMode: "model" | "deterministic" | null;
+      evidence: AnswerExplanationEvidence[];
+      evidenceCount: number;
+    }
+  | { state: "NO_SNAPSHOT"; answerId: string; createdAt: string };
 
 // FR-EXT-03 / FE-OUT: Output Factory (SCRUM-117/109).
 export type OutputKind =

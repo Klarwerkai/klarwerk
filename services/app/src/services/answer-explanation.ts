@@ -22,11 +22,18 @@ import {
   baueAnswerExplanation,
   gehoertNutzer,
 } from "../../../ask";
+import type { Conflict } from "../../../conflicts";
 import { type KnowledgeObject, type KoService, isConfidential } from "../../../knowledge-object";
 
 export interface AnswerExplanationDeps {
   readonly answerSnapshots: AnswerSnapshotRepo;
   readonly ko: KoService;
+  /**
+   * R-0293: die heute offenen Widersprueche — derselbe interne Leseweg wie `GET /api/conflicts` und
+   * die Evidenz der Ask-Route (`conflicts.unresolved()`). OPTIONAL: ohne ihn ist die Konfliktlage
+   * ehrlich UNBEKANNT (`null`), nicht „keine".
+   */
+  readonly conflicts?: { unresolved(): Promise<Conflict[]> };
 }
 
 /**
@@ -44,10 +51,29 @@ export interface AnswerExplanationLeser {
 export class AnswerExplanationService {
   private readonly answerSnapshots: AnswerSnapshotRepo;
   private readonly ko: KoService;
+  private readonly conflicts: AnswerExplanationDeps["conflicts"];
 
   constructor(deps: AnswerExplanationDeps) {
     this.answerSnapshots = deps.answerSnapshots;
     this.ko = deps.ko;
+    this.conflicts = deps.conflicts;
+  }
+
+  /**
+   * Die Wissenseinheiten mit heute offenem Widerspruch — oder `null`, wenn das nicht feststellbar
+   * ist. Ein gescheiterter Abruf verhindert die Erklaerung nicht; er macht die Konfliktlage nur
+   * UNBEKANNT (dieselbe Beweislast-Umkehr wie `answerEvidence`, mega34).
+   */
+  private async offeneKonflikte(): Promise<ReadonlySet<string> | null> {
+    if (this.conflicts === undefined) {
+      return null;
+    }
+    try {
+      const offen = await this.conflicts.unresolved();
+      return new Set(offen.flatMap((c) => [c.koA, c.koB]));
+    } catch {
+      return null;
+    }
   }
 
   async erklaere(
@@ -81,11 +107,18 @@ export class AnswerExplanationService {
     // Menge. `ko.get` auf eine gebundene Kennung ist eine Aufloesung, keine Suche.
     const gesperrteObjekte = new Set<string>();
     const verschwunden = new Set<string>();
+    const fassungUnaufloesbar = new Set<string>();
     for (const ref of snapshot.evidence) {
       const objekt: KnowledgeObject | undefined = await this.ko.get(ref.knowledgeObjectId);
       if (objekt === undefined) {
         verschwunden.add(ref.knowledgeObjectId);
         continue;
+      }
+      // R-0276: das Objekt gibt es, aber die gebundene Fassung laesst sich nicht aufloesen — sie
+      // fehlt im Beleg, oder sie liegt ueber der heutigen Fassung (Fassungen wachsen nur). Das ist
+      // kein unbekannter Verweis, sondern ein technisch unaufloesbarer.
+      if (ref.knowledgeObjectVersion === null || ref.knowledgeObjectVersion > objekt.version) {
+        fassungUnaufloesbar.add(ref.knowledgeObjectId);
       }
       if (isConfidential(objekt.confidentiality) && !leser.darfVertraulich) {
         gesperrteObjekte.add(ref.knowledgeObjectId);
@@ -93,16 +126,23 @@ export class AnswerExplanationService {
     }
     // Eine TRAGENDE Referenz, die es nicht mehr gibt, macht den Beleg unbelastbar — eine bloss
     // herangezogene nicht. Die Ursache ist benannt und nicht geraten: KW-W3-22 verlangt genau eine
-    // bekannte Ursache, und ein Objekt, das nicht mehr auffindbar ist, ist `UNKNOWN_REFERENCE`.
-    const primaerFehlt = snapshot.evidence.some(
-      (ref) => ref.evidenceRole === "carrying" && verschwunden.has(ref.knowledgeObjectId),
-    );
-    const ursache: AnswerPrimaryResolutionFailure = "UNKNOWN_REFERENCE";
+    // bekannte Ursache. Ein Objekt, das nicht mehr auffindbar ist, ist `UNKNOWN_REFERENCE`; das
+    // wiegt schwerer als eine unaufloesbare Fassung und gewinnt deshalb, wenn beides vorliegt.
+    const tragendIn = (menge: ReadonlySet<string>): boolean =>
+      snapshot.evidence.some(
+        (ref) => ref.evidenceRole === "carrying" && menge.has(ref.knowledgeObjectId),
+      );
+    const ursache: AnswerPrimaryResolutionFailure | undefined = tragendIn(verschwunden)
+      ? "UNKNOWN_REFERENCE"
+      : tragendIn(fassungUnaufloesbar)
+        ? "UNRESOLVABLE_REFERENCE"
+        : undefined;
     return baueAnswerExplanation(record, snapshot, {
-      primaryResolvable: !primaerFehlt,
-      ...(primaerFehlt ? { primaryResolutionFailure: ursache } : {}),
+      primaryResolvable: ursache === undefined,
+      ...(ursache !== undefined ? { primaryResolutionFailure: ursache } : {}),
       gesperrt: false,
       gesperrteObjekte,
+      offeneKonflikte: await this.offeneKonflikte(),
     });
   }
 }

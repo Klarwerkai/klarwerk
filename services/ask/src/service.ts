@@ -10,6 +10,8 @@ import {
   expandSearchTerms,
   isConfidential,
   normalizeSearchTerms,
+  responsibleKindOf,
+  responsibleOf,
 } from "../../knowledge-object";
 import {
   type AnswerResult,
@@ -1234,6 +1236,16 @@ export class AskService {
                 ? ("NOT_AVAILABLE_AT_EXECUTION" as const)
                 : ("NOT_REQUIRED" as const),
             }),
+        // R-0317 / R-0340: Rechtelage und Zustaendigkeit, wie sie DIESER Lauf am Objekt vorfand.
+        // Dieselbe Regel wie bei der Fassung: abgeschrieben aus `herangezogen`, nicht nachgeschlagen.
+        // Fehlt das Objekt, fehlen auch diese Angaben — erfunden wird nichts.
+        ...(ko !== undefined
+          ? {
+              confidentialityAtExecution: ko.confidentiality ?? null,
+              responsibleAtExecution: responsibleOf(ko),
+              responsibleKindAtExecution: responsibleKindOf(ko),
+            }
+          : {}),
       };
     });
     const roh: AnswerEvidenceSnapshot = {
@@ -1253,6 +1265,9 @@ export class AskService {
       validationDecisionRefReason: "w3_23_ref_liegt_je_evidence",
       status: "PENDING_EVIDENCE",
       integrityHash: "",
+      // R-0317: die Erzeugungsart aus der KI-Kennzeichnung; ohne Kennzeichnung aus `demo`, demselben
+      // Marker, aus dem die Kennzeichnung selbst entsteht (model-runs/src/types.ts, aiGeneratedMark).
+      generationMode: result.aiGenerated?.mode ?? (result.demo ? "deterministic" : "model"),
     };
     const mitStatus: AnswerEvidenceSnapshot = { ...roh, status: answerSnapshotStatus(roh) };
     const snapshot: AnswerEvidenceSnapshot = {

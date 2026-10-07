@@ -13,6 +13,7 @@ import { useToast } from "../app/ToastContext";
 // `billable` der Aufgabe „answer", nicht mehr als unbedingter eigener Wortlaut.
 import { AiCostHint } from "../components/AiCostHint";
 import { AiGeneratedNotice } from "../components/AiGeneratedNotice";
+import { AnswerExplanation } from "../components/AnswerExplanation";
 import { DemoBanner } from "../components/DemoBanner";
 import { HelpTip } from "../components/HelpTip";
 // AUFTRAG-mega71 BLOCK E (Befund aus mega70 Block E, jetzt frei): diese Fläche trug dieselbe
@@ -630,6 +631,11 @@ export function Ask(): JSX.Element {
   // FUNKE-FIX P0 (bens ROT-1): der Answer-Receipt DIESES Antwortvorgangs — das „Danke" je Quelle
   // reicht ihn zurück, damit der Server die Quellen-Bindung serverseitig belegen kann.
   const [receipt, setReceipt] = useState(anfang?.antwort?.receipt ?? "");
+  // R-0293: die Kennung des dauerhaften Antwortbelegs DIESER Antwort — der Schlüssel zur Erklärung
+  // „Wie kam diese Antwort zustande?". Bewusst nicht im Arbeitsstand: eine wiederaufgenommene
+  // Antwort trägt keine Kennung, und dann bietet die Fläche die Erklärung nicht an, statt eine
+  // fremde oder veraltete zu öffnen.
+  const [answerId, setAnswerId] = useState<string | null>(null);
   // SCRUM-264: zuletzt gestellte Frage festhalten → für die Anzeige des Rescue-Blocks.
   const [asked, setAsked] = useState(anfang?.antwort?.frage ?? "");
   // FUNKE-FIX2 P0 (bens Erforderlich 4): die vom Server erzeugte Wissenslücke (mit ID) — der Capture-
@@ -804,6 +810,7 @@ export function Ask(): JSX.Element {
       antwortFrage.current = "";
       setResult(null);
       setReceipt("");
+      setAnswerId(null);
       setGapId(null);
       setThankedSources(new Set());
       // JOB 2626 D1: dieselbe Bindung wie für Antwort/Receipt/Lücke — die Torlage gehört zu genau
@@ -822,6 +829,7 @@ export function Ask(): JSX.Element {
       // JOB 2694 D1: eine Antwort ohne Text kommt hier als Lücke an — Begründung am Helfer oben.
       setResult(leereAntwortAlsLuecke(selectAnswer(r)));
       setReceipt(r.receipt);
+      setAnswerId(r.answerId ?? null);
       // JOB 2626 D1: abwesend heißt „nicht gefragt oder nichts zu melden" — beides fällt ehrlich
       // auf die leere Liste und damit auf die generische Leermeldung zurück.
       setVerschlossen(r.verschlossen ?? []);
@@ -926,6 +934,7 @@ export function Ask(): JSX.Element {
       aufgenommeneAntwort.current = antwort?.result ?? null;
       setResult(antwort?.result ?? null);
       setReceipt(antwort?.receipt ?? "");
+      setAnswerId(null);
       setVerschlossen(antwort?.verschlossen ?? []);
       setGapId(antwort?.gapId ?? null);
       setAsked(antwort?.frage ?? "");
@@ -2258,6 +2267,8 @@ export function Ask(): JSX.Element {
                       {t("ask.rueckmeldungAbgelaufen")}
                     </p>
                   )}
+                  {/* R-0293: ein Klick öffnet den gespeicherten Weg zur Antwort — ohne Neusuche. */}
+                  <AnswerExplanation answerId={answerId} nameVon={authorNameOf} />
                 </div>
               </div>
             ) : (

@@ -210,7 +210,35 @@ export interface AnswerEvidenceRef {
    * keines von beiden verhindert `COMPLETE`.
    */
   readonly validationReferenceAbsenceReason?: ValidationReferenceAbsenceReason;
+  /**
+   * R-0317 — DIE RECHTELAGE DIESER WISSENSEINHEIT ZUM AUSFUEHRUNGSZEITPUNKT.
+   *
+   * Die Vertraulichkeitsstufe, die das Objekt trug, als die Antwort entstand. `null` heisst: das
+   * Objekt trug keine Stufe (Altbestand, gilt im Bestand als „intern"). Das ist eine HISTORISCHE
+   * Angabe — gelesen wird trotzdem mit den heutigen Rechten (`answer-explanation.ts`).
+   *
+   * OPTIONAL, weil Belege vor R-0317 sie nicht kennen; fehlt sie, steht sie auch nicht im Hash.
+   */
+  readonly confidentialityAtExecution?: string | null;
+  /**
+   * R-0340 — WER ZUM AUSFUEHRUNGSZEITPUNKT FUER DIESES WISSEN ZUSTAENDIG WAR.
+   *
+   * Abgeschrieben aus `responsibleOf`/`responsibleKindOf` (knowledge-object/src/ownership.ts):
+   * ein benannter Eigentuemer, sonst der Autor als ausgewiesener Rueckfall. Wechselt die
+   * Zustaendigkeit spaeter, bleibt hier der damalige Stand — genau dafuer steht es im Beleg.
+   */
+  readonly responsibleAtExecution?: string;
+  readonly responsibleKindAtExecution?: "owner" | "author-fallback";
 }
+
+/**
+ * R-0317 — WIE DER ANTWORTTEXT ENTSTAND: MIT MODELL ODER DETERMINISTISCH.
+ *
+ * Bewusst die grobe Stufe aus der KI-Kennzeichnung (`AiGeneratedMark.mode`) und KEIN Anbieter- oder
+ * Modellname: der ist Infrastrukturdetail und gehoert allein in die Admin-Sicht
+ * (`/api/reasoner/config`); der Beleg soll laut R-0317 ausdruecklich keine Anbieter-Spuren tragen.
+ */
+export type AnswerGenerationMode = "model" | "deterministic";
 
 /**
  * ================================================================================================
@@ -307,6 +335,8 @@ export interface AnswerEvidenceSnapshot {
   readonly validationDecisionRefReason: AnswerNullReason | null;
   readonly status: AnswerSnapshotStatus;
   readonly integrityHash: string;
+  /** R-0317: Erzeugungsart des Antworttextes. Optional wie die Felder an `AnswerEvidenceRef`. */
+  readonly generationMode?: AnswerGenerationMode;
 }
 
 /**
@@ -351,27 +381,43 @@ export function answerSnapshotHashMaterial(snapshot: AnswerEvidenceSnapshot): re
     `status=${snapshot.status}`,
     `evidenceCount=${snapshot.evidence.length}`,
   ];
+  // R-0317: die Erzeugungsart ist Inhalt des Belegs. Sie geht NUR ein, wenn sie gesetzt ist — so
+  // bleibt das Material eines Belegs von vor R-0317 Zeichen fuer Zeichen gleich, und sein
+  // gespeicherter Hash stimmt weiter. Ein nachtraeglich entferntes Feld aendert dagegen das
+  // Material und faellt damit auf.
+  if (snapshot.generationMode !== undefined) {
+    material.push(`generationMode=${snapshot.generationMode}`);
+  }
   snapshot.evidence.forEach((ref, index) => {
-    material.push(
-      [
-        `evidence[${index}].koId=${ref.knowledgeObjectId}`,
-        `koVersion=${hashWert(ref.knowledgeObjectVersion)}`,
-        `role=${ref.evidenceRole}`,
-        `sourceRecordId=${hashWert(ref.sourceRecordId)}`,
-        `sourceRecordIdReason=${hashWert(ref.sourceRecordIdReason)}`,
-        `locator=${hashWert(ref.locator)}`,
-        `locatorReason=${hashWert(ref.locatorReason)}`,
-        // KW-W3-23: die per-Evidence-Referenz IST Inhalt des Belegs und gehoert deshalb ins
-        // Material. Ohne sie liesse sich eine Entscheidung nachtraeglich an eine Evidence haengen
-        // oder von ihr loesen, ohne dass der Hash es merkt — und genau das soll er merken.
-        `evidenceValidationRef=${
-          ref.validationDecisionRef === undefined
-            ? NULL_MARKER
-            : `${ref.validationDecisionRef.auditSeq}#${ref.validationDecisionRef.auditHash}`
-        }`,
-        `evidenceAbsenceReason=${hashWert(ref.validationReferenceAbsenceReason ?? null)}`,
-      ].join("\u001e"),
-    );
+    const teile = [
+      `evidence[${index}].koId=${ref.knowledgeObjectId}`,
+      `koVersion=${hashWert(ref.knowledgeObjectVersion)}`,
+      `role=${ref.evidenceRole}`,
+      `sourceRecordId=${hashWert(ref.sourceRecordId)}`,
+      `sourceRecordIdReason=${hashWert(ref.sourceRecordIdReason)}`,
+      `locator=${hashWert(ref.locator)}`,
+      `locatorReason=${hashWert(ref.locatorReason)}`,
+      // KW-W3-23: die per-Evidence-Referenz IST Inhalt des Belegs und gehoert deshalb ins
+      // Material. Ohne sie liesse sich eine Entscheidung nachtraeglich an eine Evidence haengen
+      // oder von ihr loesen, ohne dass der Hash es merkt — und genau das soll er merken.
+      `evidenceValidationRef=${
+        ref.validationDecisionRef === undefined
+          ? NULL_MARKER
+          : `${ref.validationDecisionRef.auditSeq}#${ref.validationDecisionRef.auditHash}`
+      }`,
+      `evidenceAbsenceReason=${hashWert(ref.validationReferenceAbsenceReason ?? null)}`,
+    ];
+    // R-0317 / R-0340: dieselbe Regel wie bei `generationMode` — nur gesetzte Felder gehen ein.
+    if (ref.confidentialityAtExecution !== undefined) {
+      teile.push(`confidentiality=${hashWert(ref.confidentialityAtExecution)}`);
+    }
+    if (ref.responsibleAtExecution !== undefined) {
+      teile.push(`responsible=${ref.responsibleAtExecution}`);
+    }
+    if (ref.responsibleKindAtExecution !== undefined) {
+      teile.push(`responsibleKind=${ref.responsibleKindAtExecution}`);
+    }
+    material.push(teile.join("\u001e"));
   });
   return material;
 }
@@ -624,7 +670,7 @@ export type AnswerPrimaryResolutionFailure =
  * pruefbar bleiben muessen. Ein fremder Wert kann aus einem aelteren Aufrufer, aus JSON oder aus
  * einem `as`-Cast stammen; der Compiler sieht ihn dann nicht.
  */
-const BEKANNTE_PRIMAERURSACHEN: readonly string[] = [
+export const BEKANNTE_PRIMAERURSACHEN: readonly string[] = [
   "UNKNOWN_REFERENCE",
   "UNRESOLVABLE_REFERENCE",
   "DAMAGED_REFERENCE",
