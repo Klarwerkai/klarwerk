@@ -27,6 +27,10 @@ echo "▶ modalgrenze";  ./tools/modalgrenze.sh || { echo "✖ Modalgrenze verle
 # da, nichts gemessen" — der Normalfall in jedem Clone, denn `_relay/` steht in `.gitignore:25`.
 echo "▶ zentrale-drift"; zentrale_rc=0; ./tools/zentrale-drift.sh || zentrale_rc=$?
 if [ "$zentrale_rc" = "1" ]; then echo "✖ Drift an einer aenderbaren Lesefläche"; exit 1; fi
+# R-1420 (F-1420, secrets-management.md §10): Zugangsdaten gelangen nicht unbemerkt in den
+# Quellcode. Gelesen wird alles, was uebernommen werden kann (versioniert UND neu, nicht ignoriert).
+# Jeder Fund sperrt; ausgegeben wird er nur maskiert. Eng gefasste Formate — s. tools/geheimnis-scan.ts.
+echo "▶ geheimnis-scan"; bash tools/geheimnis-scan.sh ||{ echo "✖ Geheimnis-Scan rot"; exit 1; }
 echo "▶ test";         ./tools/test "$@"
 
 # AUFTRAG-mega24 Block A: der UI-Smoke gehört INS TOR — und zwar Chromium-only.
