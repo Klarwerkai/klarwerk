@@ -107,30 +107,14 @@ function offenNachTiefe(
 
 function StufenInhalt({ stufe, fach }: { stufe: ArgumentStufe; fach: boolean }): JSX.Element {
   const { t, i18n } = useTranslation();
-  if (stufe.art === "aussage" || stufe.art === "stuetzung") {
+  // Jeder Fall wird über EINE Literalprüfung verengt; der Rest ist Aussage oder Stützung. Eine
+  // Oder-Prüfung auf den zusammengesetzten Diskriminanten verengte den Schlussfall nicht (TS2339).
+  if (stufe.art === "schluss") {
     return (
-      <div className="mt-1 text-[12px] leading-relaxed text-muted">
-        <p className="text-text">{stufe.aussage}</p>
-        {stufe.belegstelle ? (
-          <p className="mt-0.5 font-mono text-[11px] text-muted-2">
-            {t("ask.belastbarkeit.argumentation.belegstelle", { stelle: stufe.belegstelle })}
-          </p>
-        ) : null}
-        <p className="mt-0.5 text-[11px] text-muted-2">
-          {t(`ask.belastbarkeit.wissensart.${stufe.wissensart}`)} ·{" "}
-          {t("ask.belastbarkeit.vertrauenswertKurz", { wert: stufe.vertrauenswert })} ·{" "}
-          {t(
-            stufe.validiert
-              ? "ask.belastbarkeit.quelle.validiert"
-              : "ask.belastbarkeit.quelle.nichtValidiert",
-          )}{" "}
-          ·{" "}
-          {t("ask.belastbarkeit.stand", {
-            datum: formatKoTimestamp(stufe.stand, i18n.language) ?? stufe.stand,
-          })}
-          {fach ? ` · ${stufe.koId}` : ""}
-        </p>
-      </div>
+      <p className="mt-1 text-[12px] leading-relaxed text-text">
+        {t(`ask.belastbarkeit.lage.${stufe.lage}`)} ·{" "}
+        {t(`ask.belastbarkeit.argumentation.einstufung.${stufe.einstufung}`)}
+      </p>
     );
   }
   if (stufe.art === "einwand") {
@@ -154,10 +138,28 @@ function StufenInhalt({ stufe, fach }: { stufe: ArgumentStufe; fach: boolean }):
     );
   }
   return (
-    <p className="mt-1 text-[12px] leading-relaxed text-text">
-      {t(`ask.belastbarkeit.lage.${stufe.lage}`)} ·{" "}
-      {t(`ask.belastbarkeit.argumentation.einstufung.${stufe.einstufung}`)}
-    </p>
+    <div className="mt-1 text-[12px] leading-relaxed text-muted">
+      <p className="text-text">{stufe.aussage}</p>
+      {stufe.belegstelle ? (
+        <p className="mt-0.5 font-mono text-[11px] text-muted-2">
+          {t("ask.belastbarkeit.argumentation.belegstelle", { stelle: stufe.belegstelle })}
+        </p>
+      ) : null}
+      <p className="mt-0.5 text-[11px] text-muted-2">
+        {t(`ask.belastbarkeit.wissensart.${stufe.wissensart}`)} ·{" "}
+        {t("ask.belastbarkeit.vertrauenswertKurz", { wert: stufe.vertrauenswert })} ·{" "}
+        {t(
+          stufe.validiert
+            ? "ask.belastbarkeit.quelle.validiert"
+            : "ask.belastbarkeit.quelle.nichtValidiert",
+        )}{" "}
+        ·{" "}
+        {t("ask.belastbarkeit.stand", {
+          datum: formatKoTimestamp(stufe.stand, i18n.language) ?? stufe.stand,
+        })}
+        {fach ? ` · ${stufe.koId}` : ""}
+      </p>
+    </div>
   );
 }
 

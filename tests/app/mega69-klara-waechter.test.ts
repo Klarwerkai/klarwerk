@@ -2757,6 +2757,12 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // kein neues Abrufziel, keine Nutzlaständerung (der Rumpf von POST /api/ask ist byte-gleich), CSP,
     // Recht und Manifest unverändert, kein Sideload. Ohne zugelassenes Hash-Werkzeug ist der neue Wert
     // hier nicht berechenbar — der Prüflauf meldet ihn als „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 4 (dieser Auftrag): gemessen zu Kandidat 64095a2e war `264cf053…9a2028` — NICHT
+    // übernommen, weil `taskpane.js` danach erneut geändert wurde: drei Lage-Schlüssel sind ohne
+    // ASCII-Umschrift umbenannt (askLageVerantwortungFehlt, askKonfliktTragend, askLageGesperrt), denn
+    // der Umlaut-Wächter (mega69 C) erntet die einzeilige Schlüsselreihe als EINEN Text und traf die
+    // Namen. Gleiche Zeilenzahl, kein Ausdruck sonst geändert. Rechenversuch erneut nicht zugelassen;
+    // der Prüflauf meldet den Wert der endgültigen Fassung als „Received".
     const PIN = "eefba3bdd389a30d41f4fbe37ad5bcdc336667559554212971ecbe7dff5f37d3";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(

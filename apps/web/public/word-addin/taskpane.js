@@ -1737,7 +1737,7 @@
         askConflictConflicted: "Achtung: Eine tragende Quelle steht in einem offenen Konflikt.",
         askConflictUnproven: "Die Konfliktlage ist unbekannt — das heißt nicht, dass keine besteht.",
         askConflictClear: "Keine offenen Konflikte auf den tragenden Quellen.",
-        askLageBelegt: "Lage: belegt.", askLageZustaendigFehlt: "Lage: belegt — die verantwortliche Person ist nicht erreichbar. Das Wissen bleibt nutzbar; Rückfragen brauchen eine neue Zuständigkeit.", askLageKonflikt: "Lage: belegt, aber mit offenem Widerspruch. Beide Seiten:", askKonfliktSeite: "Seite {n}", askKonfliktTraegt: "trägt diese Antwort", askKonfliktNichtEinsehbar: "für dich nicht einsehbar", askKonfliktKeinGewinner: "Klara wählt keine Seite. Den Widerspruch entscheiden Menschen.", askLageGeschwaerzt: "Die Belege dieser Antwort sind für dich gesperrt (geschwärzt).", askLageUnbekannt: "Technischer Fehler: Die Antwort kam in unbekannter Form an. Das ist keine Wissenslücke.",
+        askLageBelegt: "Lage: belegt.", askLageVerantwortungFehlt: "Lage: belegt — die verantwortliche Person ist nicht erreichbar. Das Wissen bleibt nutzbar; Rückfragen brauchen eine neue Zuständigkeit.", askLageKonflikt: "Lage: belegt, aber mit offenem Widerspruch. Beide Seiten:", askKonfliktSeite: "Seite {n}", askKonfliktTragend: "trägt diese Antwort", askKonfliktNichtEinsehbar: "für dich nicht einsehbar", askKonfliktKeinGewinner: "Klara wählt keine Seite. Den Widerspruch entscheiden Menschen.", askLageGesperrt: "Die Belege dieser Antwort sind für dich gesperrt (geschwärzt).", askLageUnbekannt: "Technischer Fehler: Die Antwort kam in unbekannter Form an. Das ist keine Wissenslücke.",
         // ---- AUFTRAG-W1-KLARA-KOPF-CONSENT-06: der sitzungsbezogene Stand ---------------------
         // Eigenes Etikett, eigene Wörter. Diese Texte sprechen über DIESE Sitzung, nicht über den
         // Hausstand — und ausdrücklich nicht über Klaras Antwortweg, der unverändert zitiert.
@@ -2139,7 +2139,7 @@
         askConflictConflicted: "Caution: a carrying source is in an open conflict.",
         askConflictUnproven: "The conflict situation is unknown — that does not mean there is none.",
         askConflictClear: "No open conflicts on the carrying sources.",
-        askLageBelegt: "Status: backed by sources.", askLageZustaendigFehlt: "Status: backed — the responsible person is not reachable. The knowledge stays usable; follow-up questions need a new owner.", askLageKonflikt: "Status: backed, but with an open contradiction. Both sides:", askKonfliktSeite: "Side {n}", askKonfliktTraegt: "carries this answer", askKonfliktNichtEinsehbar: "not visible to you", askKonfliktKeinGewinner: "Klara does not pick a side. People decide the contradiction.", askLageGeschwaerzt: "The evidence for this answer is blocked for you (redacted).", askLageUnbekannt: "Technical error: the answer arrived in an unknown form. This is not a knowledge gap.",
+        askLageBelegt: "Status: backed by sources.", askLageVerantwortungFehlt: "Status: backed — the responsible person is not reachable. The knowledge stays usable; follow-up questions need a new owner.", askLageKonflikt: "Status: backed, but with an open contradiction. Both sides:", askKonfliktSeite: "Side {n}", askKonfliktTragend: "carries this answer", askKonfliktNichtEinsehbar: "not visible to you", askKonfliktKeinGewinner: "Klara does not pick a side. People decide the contradiction.", askLageGesperrt: "The evidence for this answer is blocked for you (redacted).", askLageUnbekannt: "Technical error: the answer arrived in an unknown form. This is not a knowledge gap.",
         s4Label: "In this session",
         s4ModeDeterministic: "Without a model",
         s4ModeInternal: "On-Premise Enterprise AI",
@@ -2479,7 +2479,7 @@
         askConflictConflicted: "Let op: een dragende bron staat in een open conflict.",
         askConflictUnproven: "De conflictsituatie is onbekend — dat betekent niet dat er geen is.",
         askConflictClear: "Geen open conflicten op de dragende bronnen.",
-        askLageBelegt: "Status: onderbouwd.", askLageZustaendigFehlt: "Status: onderbouwd — de verantwoordelijke is niet bereikbaar. De kennis blijft bruikbaar; vervolgvragen hebben een nieuwe verantwoordelijke nodig.", askLageKonflikt: "Status: onderbouwd, maar met een open tegenstrijdigheid. Beide kanten:", askKonfliktSeite: "Kant {n}", askKonfliktTraegt: "draagt dit antwoord", askKonfliktNichtEinsehbar: "voor jou niet in te zien", askKonfliktKeinGewinner: "Klara kiest geen kant. Mensen beslissen over de tegenstrijdigheid.", askLageGeschwaerzt: "De onderbouwing van dit antwoord is voor jou afgeschermd.", askLageUnbekannt: "Technische fout: het antwoord kwam in een onbekende vorm aan. Dit is geen kennishiaat.",
+        askLageBelegt: "Status: onderbouwd.", askLageVerantwortungFehlt: "Status: onderbouwd — de verantwoordelijke is niet bereikbaar. De kennis blijft bruikbaar; vervolgvragen hebben een nieuwe verantwoordelijke nodig.", askLageKonflikt: "Status: onderbouwd, maar met een open tegenstrijdigheid. Beide kanten:", askKonfliktSeite: "Kant {n}", askKonfliktTragend: "draagt dit antwoord", askKonfliktNichtEinsehbar: "voor jou niet in te zien", askKonfliktKeinGewinner: "Klara kiest geen kant. Mensen beslissen over de tegenstrijdigheid.", askLageGesperrt: "De onderbouwing van dit antwoord is voor jou afgeschermd.", askLageUnbekannt: "Technische fout: het antwoord kwam in een onbekende vorm aan. Dit is geen kennishiaat.",
         s4Label: "In deze sessie",
         s4ModeDeterministic: "Zonder model",
         s4ModeInternal: "On-Premise Enterprise AI",
@@ -6048,7 +6048,7 @@
     // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — EINE STELLE FUER DIE GANZE EVIDENZ: liest `currentAskOutcome` (auch nach Sprachwechsel), zeigt
     // GETRENNT Einstufung (mega34), Pruefvorbehalt samt Zaehlung, Konfliktlage und Ausschnitt. Nichts wird berechnet (KW-W1-13).
     // AUFNAHME 20260922 · R-0335/R-0321: dazu die Lage des Servers und BEIDE Seiten offener Widersprueche (renderAskLage) — gelesen, keine Seite gewaehlt.
-    var ASK_LAGE_TEXT_KEYS = { belegt: "askLageBelegt", belegt_zustaendig_fehlt: "askLageZustaendigFehlt", belegt_mit_konflikt: "askLageKonflikt" };
+    var ASK_LAGE_TEXT_KEYS = { belegt: "askLageBelegt", belegt_zustaendig_fehlt: "askLageVerantwortungFehlt", belegt_mit_konflikt: "askLageKonflikt" };
     function renderAskLage() {
       var liste = document.getElementById("ask-konflikt-seiten");
       if (!liste) { return; }
@@ -6060,7 +6060,7 @@
         for (var j = 0; j < ks[i].seiten.length; j += 1) {
           var s = ks[i].seiten[j];
           var li = document.createElement("li");
-          li.textContent = t("askKonfliktSeite", { n: String(j + 1) }) + (s.traegtAntwort ? " · " + t("askKonfliktTraegt") : "") + ": " + (s.einsehbar ? s.titel + " — " + s.aussage : t("askKonfliktNichtEinsehbar"));
+          li.textContent = t("askKonfliktSeite", { n: String(j + 1) }) + (s.traegtAntwort ? " · " + t("askKonfliktTragend") : "") + ": " + (s.einsehbar ? s.titel + " — " + s.aussage : t("askKonfliktNichtEinsehbar"));
           liste.appendChild(li);
         }
       }
@@ -6265,7 +6265,7 @@
       // JOB 3056 K1 (§9): ohne Verbindung EIN Satz „Keine Verbindung." und „Erneut versuchen";
       // ein benannter Serverfehler nennt weiter sein Detail. R-0590: der gesperrte Ausweichweg nennt seinen Grund (bei beendeter Zustimmung ohne „Erneut versuchen").
       // R-0335: geschwaerzt und unbekannte Antwortlage (technischer Fehler) haben je einen eigenen Satz — nie die Wissensluecke.
-      showAskStatus("warn", outcome.kind === "redacted" ? t("askLageGeschwaerzt") : outcome.kind === "fallback-blocked" ? t(outcome.reason === "consent_ended" ? "askFallbackConsentEnded" : "askFallbackBlocked") : outcome.detail === "lage" ? t("askLageUnbekannt") : outcome.detail ? t("askError", { detail: outcome.detail }) : t("askOffline"));
+      showAskStatus("warn", outcome.kind === "redacted" ? t("askLageGesperrt") : outcome.kind === "fallback-blocked" ? t(outcome.reason === "consent_ended" ? "askFallbackConsentEnded" : "askFallbackBlocked") : outcome.detail === "lage" ? t("askLageUnbekannt") : outcome.detail ? t("askError", { detail: outcome.detail }) : t("askOffline"));
       if (outcome.reason !== "consent_ended" && outcome.kind !== "redacted") { askRetryZeigen(); }
     }
 

@@ -227,7 +227,7 @@ describe("R-0321/R-0335 · das ausgelieferte Fenster zeichnet Lage und beide Sei
       (li) => li.textContent ?? "",
     );
     expect(el("ask-konflikt-seiten").className).not.toContain("hidden");
-    const traegt = wort("askKonfliktTraegt");
+    const traegt = wort("askKonfliktTragend");
     expect(zeilen).toEqual([
       `Seite 1 · ${traegt}: Design Guide — ${ANTWORT}`,
       "Seite 2: Halbjahresplan — Ventil V4 wird halbjährlich geprüft.",
@@ -263,7 +263,7 @@ describe("R-0321/R-0335 · das ausgelieferte Fenster zeichnet Lage und beide Sei
     await fragen();
     expect(sichtbar(el("ask-gap-block"))).toBe(false);
     expect(sichtbar(el("ask-answer-block"))).toBe(false);
-    expect(el("ask-status").textContent).toBe(wort("askLageGeschwaerzt"));
+    expect(el("ask-status").textContent).toBe(wort("askLageGesperrt"));
   });
 
   it("Zuständiger fehlt: die Lage benennt die Verantwortungslücke, die Antwort bleibt", async () => {
@@ -271,6 +271,6 @@ describe("R-0321/R-0335 · das ausgelieferte Fenster zeichnet Lage und beide Sei
     await ruhe();
     await fragen();
     expect(sichtbar(el("ask-answer-block"))).toBe(true);
-    expect(el("ask-lage-line").textContent).toBe(wort("askLageZustaendigFehlt"));
+    expect(el("ask-lage-line").textContent).toBe(wort("askLageVerantwortungFehlt"));
   });
 });

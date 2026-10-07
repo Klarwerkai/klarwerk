@@ -176,6 +176,9 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * trägt `#ask-lage-line`/`#ask-konflikt-seiten`. Der Bezugspunkt MUSS wandern; ohne zugelassenes
  * Hash-Werkzeug ist er hier nicht berechenbar. E2 meldet ihn im Prüflauf als „Received"; er wird danach
  * gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 4 (Antwort-Erklärung): gemessen zu Kandidat 64095a2e war `8f2a762d…189c20` — NICHT
+ * übernommen, weil `taskpane.js` danach erneut geändert wurde (drei Lage-Schlüssel ohne
+ * ASCII-Umschrift umbenannt, mega69 C). E2 meldet den Wert der endgültigen Fassung als „Received".
  */
 export const PANEL_VOR_SCHNITT_BLOB = "5d7ae0b8fccc34c05e5c070cea753189729ef841";
 
