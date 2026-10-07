@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Card, SectionLabel } from "../ui";
+import { Button, SectionLabel } from "../ui";
 import {
   type EigeneKenntnisnahme,
   type KenntnisnahmeAnforderung,
@@ -404,8 +404,12 @@ export function KenntnisnahmeBereich({
   // Anforderung wartet: was ich tun kann (bestätigen), kommt zuerst. Für die reine Verwaltung
   // (Anfordern, Übersicht) bleibt er zu. Inhalt und Verneinung (`kenntnisnahme.hinweis`) sind
   // unverändert — sie stehen beim Aufklappen als Erstes da.
+  //
+  // KEINE EIGENE KARTE (H4, `zielbild-h4-bibliothek` D1): die Lesefläche trägt neben der „Mehr"-
+  // Karte höchstens eine weitere; die Kenntnisnahme ist ein Abschnitt des gelesenen Eintrags und
+  // steht deshalb als Zeile mit Haarlinie da, nicht als zusätzliche `rounded-card`.
   return (
-    <Card interactive={false} data-testid="kenntnisnahme-bereich">
+    <section data-testid="kenntnisnahme-bereich" className="border-t border-hairline pt-3">
       <details open={eigene.length > 0} data-testid="kenntnisnahme-aufklapper">
         <summary className="cursor-pointer list-none">
           <SectionLabel>{t("kenntnisnahme.titel")}</SectionLabel>
@@ -418,6 +422,6 @@ export function KenntnisnahmeBereich({
           {darfAnfordern ? <AnfordernUndUebersicht koId={koId} /> : null}
         </div>
       </details>
-    </Card>
+    </section>
   );
 }
