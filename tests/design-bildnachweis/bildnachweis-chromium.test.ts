@@ -254,6 +254,13 @@ describe("R-1399 · Sichtnachweis: Exportumfang, Kenntnisnahme, Werksreset-Rück
     // Bedienweg quittieren („Verstanden — weiter", `legal/NoticeBanner.tsx`), (2) `<main>` in
     // Bildschirmhöhen durchlaufen, je Stand ein Bild, (3) belegen, dass JEDER Katalogabschnitt in
     // mindestens einem Bild VOLLSTÄNDIG im sichtbaren Bereich stand.
+    //
+    // Nacharbeit 8: mit allen 16 Skalenstufen ist der Abschnitt „Schriftskala" höher als der
+    // sichtbare Bereich eines 900-px-Fensters und stand deshalb in KEINEM Bild ganz. Das Fenster für
+    // B4 wird darum höher gesetzt (1620 × 1400), und es gilt zweierlei: jeder Abschnitt, der in den
+    // sichtbaren Bereich passt, steht in mindestens einem Bild GANZ; und JEDER Abschnitt wird von den
+    // Bildern zusammen LÜCKENLOS abgedeckt (überlappende Ausschnitte, gemessen in Inhaltskoordinaten).
+    await s.setViewportSize({ width: 1620, height: 1400 });
     await hinweisQuittieren();
     const ABSCHNITTE = [
       "farben",
@@ -278,25 +285,40 @@ describe("R-1399 · Sichtnachweis: Exportumfang, Kenntnisnahme, Werksreset-Rück
     const schritt = Math.max(200, hoehe.sicht - 80);
     const gesehen = new Set<string>();
     const bilder: string[] = [];
+    // Je Bild der sichtbare Ausschnitt von `<main>` in Inhaltskoordinaten [oben, unten].
+    const fenster: [number, number][] = [];
+    // Je Abschnitt seine Lage in Inhaltskoordinaten (vom ersten Stand an unverändert).
+    let lagen: Record<string, [number, number]> = {};
     let oben = 0;
     let nr = 1;
     let ende = false;
     while (!ende) {
-      const lage = await s.evaluate<{ voll: string[]; ende: boolean; ueberdeckt: boolean }>(
+      const lage = await s.evaluate<{
+        voll: string[];
+        ende: boolean;
+        ueberdeckt: boolean;
+        fenster: [number, number];
+        abschnitte: Record<string, [number, number]>;
+      }>(
         fn(`([oben, kennungen]) => {
           const m = document.querySelector('main');
           m.scrollTop = oben;
           const r = m.getBoundingClientRect();
-          const voll = kennungen.filter((k) => {
+          const abschnitte = {};
+          const voll = [];
+          for (const k of kennungen) {
             const e = document.querySelector('[data-testid="bausteine-abschnitt-' + k + '"]');
-            if (!e) return false;
+            if (!e) continue;
             const b = e.getBoundingClientRect();
-            return b.top >= r.top - 1 && b.bottom <= r.bottom + 1;
-          });
+            abschnitte[k] = [b.top - r.top + m.scrollTop, b.bottom - r.top + m.scrollTop];
+            if (b.top >= r.top - 1 && b.bottom <= r.bottom + 1) voll.push(k);
+          }
           return {
             voll,
             ende: m.scrollTop + m.clientHeight >= m.scrollHeight - 1,
             ueberdeckt: !!document.querySelector('[data-testid="notice-banner"]'),
+            fenster: [m.scrollTop, m.scrollTop + m.clientHeight],
+            abschnitte,
           };
         }`),
         [oben, ABSCHNITTE],
@@ -305,16 +327,42 @@ describe("R-1399 · Sichtnachweis: Exportumfang, Kenntnisnahme, Werksreset-Rück
       const name = `b4-ui-kit-${nr}`;
       await s.screenshot({ path: bild(name) });
       bilder.push(bild(name));
+      fenster.push(lage.fenster);
+      if (nr === 1) lagen = lage.abschnitte;
       for (const k of lage.voll) gesehen.add(k);
       console.info(
-        `R-1399 · Bild ${bild(name)} · scrollTop ${oben} · vollständig: ${lage.voll.join(", ")}`,
+        `R-1399 · Bild ${bild(name)} · Ausschnitt ${lage.fenster.join("–")} · ganz: ${lage.voll.join(", ")}`,
       );
       ende = lage.ende || nr >= 12;
       oben += schritt;
       nr += 1;
     }
+    console.info(`R-1399 · B4 · Abschnitte ${JSON.stringify(lagen)} · Sichthöhe ${hoehe.sicht}`);
+    // (a) LÜCKENLOS: für jeden Abschnitt decken die Bild-Ausschnitte zusammen [oben, unten] ab.
+    const abgedeckt = (von: number, bis: number): boolean => {
+      let bisher = von;
+      for (const [a, b] of [...fenster].sort((x, y) => x[0] - y[0])) {
+        if (a <= bisher + 1 && b > bisher) bisher = b;
+      }
+      return bisher >= bis - 1;
+    };
+    const lageVon = (k: string): [number, number] | null => lagen[k] ?? null;
     expect(
-      ABSCHNITTE.filter((k) => !gesehen.has(k)),
+      ABSCHNITTE.filter((k) => {
+        const l = lageVon(k);
+        return l === null || !abgedeckt(l[0], l[1]);
+      }),
+      "Katalogabschnitt von den Bildern nicht lückenlos abgedeckt",
+    ).toEqual([]);
+    // (b) GANZ: wer in den sichtbaren Bereich passt, steht in mindestens einem Bild vollständig.
+    const passtHinein = ABSCHNITTE.filter((k) => {
+      const l = lageVon(k);
+      return l !== null && l[1] - l[0] <= hoehe.sicht;
+    });
+    // KALIBRIERUNG: mit dem höheren Fenster passen alle neun Abschnitte, auch die Schriftskala.
+    expect(passtHinein).toEqual(ABSCHNITTE);
+    expect(
+      passtHinein.filter((k) => !gesehen.has(k)),
       "Katalogabschnitt in keinem Bild vollständig sichtbar",
     ).toEqual([]);
     console.info(`R-1399 · B4 · ${bilder.length} Bilder: ${bilder.join(", ")}`);
