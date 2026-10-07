@@ -1,13 +1,15 @@
 # Wissensprüfung — der Istvertrag für Quelle, Fassung, Vorschau, Prüfumfang und Freigabe
 
 *Aufnahme 20260922 · wissenspruefung-istvertrag (G1/KW-DKP-00, R-1124, question:K15). Stand:
-Basis `863a0974` (`1.0.0-beta.1.730`), 07.10.2026. Lesende Zuordnung des vorhandenen Codes; diese
-Lieferung ändert keine Produktdatei. Die Fundstellen hält
-`tests/wissenspruefung-istvertrag/istvertrag-fundstellen.test.ts` gegen den Bestand fest.*
+Basis `863a0974` (`1.0.0-beta.1.730`), 07.10.2026; Nacharbeit 1 auf Kandidat `c9be26e7`.
+Zuordnung des vorhandenen Codes plus eine Produktänderung: der wahlweise Vollabgleich (R-1124,
+Abschnitt 5). Die Fundstellen hält `tests/wissenspruefung-istvertrag/istvertrag-fundstellen.test.ts`
+gegen den Bestand fest, den Vollabgleich `tests/wissenspruefung-istvertrag/vollabgleich.test.ts`.*
 
-**Art der Belege.** Alles hier ist **Quelleninspektion** des Arbeitsbaums. Die genannten
-Verhaltenstests sind vorhandene Tests ihrer eigenen Lieferungen; in dieser Lieferung lief keiner
-davon. Ein Testname ist hier eine Fundstelle, kein neuer Lauf.
+**Art der Belege.** Die Zuordnung ist **Quelleninspektion** des Arbeitsbaums. Auf Kandidat
+`c9be26e7` liefen der Fundstellenwächter (22 Fälle) und zwölf genannte Belegdateien der Fälle
+(112 Fälle) grün, dazu Build und Formatprüfung (Prüfbericht der Nacharbeit 1). Alle übrigen
+genannten Tests sind Fundstellen ihrer eigenen Lieferungen, kein neuer Lauf.
 
 **Grundlage, die nicht im Arbeitsbaum liegt.** Der Originalvertrag
 `gespraech/wiki-start-20260915/VERTRAG-QUELLEN-VERSION-PRUEFSTAND.md` (acht Abnahmefälle, `:38-45`)
@@ -43,7 +45,7 @@ Menschen im Prüfbrett und in der Konflikt-/Überschneidungsentscheidung (`confl
 | **Prüfung (Bestand)** | `createAiCheckRunner` (`services/app/src/ai-check-worker.ts`) → `detectConflictsForKo` (`services/app/src/conflict-detection.ts`) und `detectDuplicatesForKo` (`services/app/src/duplicate-detection.ts`) → `ConflictService.detectForSubject` (`services/conflicts/src/service.ts`), `OverlapService.detectForSubject` (`services/conflicts/src/overlap-service.ts`) | `conflicts` (`services/conflicts/src/repo-pg.ts`), `ko_overlaps` (`services/conflicts/src/overlap-repo-pg.ts`), `aiCheck` im KO-Datensatz, Schreibstand `ko_schreibstand` | `tests/conflicts/detection-cap-honesty.test.ts`, `tests/conflicts/coverage-invariant-parity.test.ts`, `services/conflicts/src/repo-pg.integration.test.ts`, `tests/pruefbasis-aktualitaet/pruefbasis-aktualitaet.test.ts` |
 | **Prüfung (Vorschau)** | `checkKnowledge` (`services/app/src/knowledge-check.ts`): `KoService.findCandidates` mit `CANDIDATE_LIMIT` = 40 → `dropConfidential` → Trigramm ≥ 0,18 → Konflikt-Judge nur, wenn die Route ihn übergibt (`ConflictService.assessAgainstPool`) | Kandidatensuche in der Suchprojektion (`services/knowledge-object/src/search-projection-repo-pg.ts`) | `tests/vorschau-reichweite/genau-vierzig.test.ts`, `tests/vorschau-reichweite/vorschau-reichweite-pg-im-browser.integration.test.ts` |
 | **Prüfung (Textprüfung Word)** | `checkText` (`services/app/src/check-text-detection.ts`), Deckel `RETRIEVAL_TOP_K` = `DETECTION_CANDIDATE_CAP`; Unterschiede zur Vorschau in `docs/klara/bestandsblick-zwei-pruefwege.md` | wie Vorschau | `tests/pruefwege-vergleich/zwei-pruefwege-antworten-verschieden.test.ts` |
-| **Rechte** | `ko.validate`, `conflict.resolve`, `ko.relate` (`services/rbac/src/policy.ts`); Vertraulichkeit `isConfidential` (`services/knowledge-object/src/confidentiality.ts`): vertrauliche Paare gehen nie an die Cloud, bleiben aber im deterministischen Bestandsvergleich; die Vorschau nimmt sie ganz heraus | `KO_SICHTBARKEIT_SCHEMA` (`repo-pg.ts`) | `tests/wiki-diskussion/zugriff-entzogen.test.ts`, `tests/wiki-gesamtanweisung/f3-entzogenes-recht.test.ts`, `tests/wissensgraph-integration/rechte-am-draht.test.ts` |
+| **Rechte** | `ko.validate`, `conflict.resolve`, `ko.relate` (`services/rbac/src/policy.ts`). Vertraulichkeit `isConfidential` (`services/knowledge-object/src/confidentiality.ts`) reist als Paarmarke an den Reasoner; ob ein Paar an eine öffentliche KI darf, entscheidet allein `oeffentlicheKiErlaubt` (`services/reasoner/src/service.ts`, JOB 3549, Pedi 10.09.): nur mit Grundfreigabe `kiFreigabe.oeffentlicheKi === true`, ein vertrauliches Paar **zusätzlich** mit `vertraulicheInhalte === true`; sonst nur ein vertraulichkeitstaugliches lokales Modell (`chainForChoice`). Bestandsprüfung: vertrauliche Objekte bleiben im Pool — der **Dublettenweg** hat eine deterministische Ebene (sehr hohe Textdeckung, ohne Modell), der **Konfliktweg** urteilt nur per Modell (`services/conflicts/src/service.ts`, `assessAgainstPool`: „kein deterministischer Pfad"); ohne zulässiges Modell wird das Paar übersprungen (`skippedReasons`). Die Vorschau nimmt vertrauliche Objekte ganz heraus (`dropConfidential`) | `KO_SICHTBARKEIT_SCHEMA` (`repo-pg.ts`) | `tests/wiki-diskussion/zugriff-entzogen.test.ts`, `tests/wiki-gesamtanweisung/f3-entzogenes-recht.test.ts`, `tests/wissensgraph-integration/rechte-am-draht.test.ts` |
 | **Freigabe** | `KoService.setValidationStateMitBeleg` (Compare-and-Set gegen `expectedVersion`), Validierungsdienst `services/validation/src/service.ts`; Gesamtanweisung: keine Freigabe aus Bausteinen | `services/validation/src/repo-pg.ts`, `gesamtanweisungen`/`gesamtanweisung_staende` (`services/knowledge-object/src/gesamtanweisung-repo-pg.ts`) | `tests/wiki-gesamtanweisung/f5-keine-freigabe-aus-bausteinen.test.ts`, `tests/wiki-gesamtanweisung/postgres-atomar.integration.test.ts` |
 | **Herkunft** | `KoSource`/`attachments` am Objekt, Evidenzsätze `ko_evidence` (`KO_EVIDENCE_SCHEMA`); Herkunftsprojektion `services/provenance/src/project.ts` (gekürzt ab `MAX_PROVENANCE_NODES`, ausgewiesen) | `ko_evidence` | `tests/json-herkunft-rundlauf/herkunft-identitaet-importeur.test.ts`, `tests/ux26-herkunft-belege/` |
 | **Versionen** | `KnowledgeObject.version`; Befunde binden **beide** Fassungen (`koAVersion`/`koBVersion`, `isCurrent` vor dem Schreiben); `aiCheck.koVersion` + `aiCheck.basis`; Diskussionsbeitrag `KoComment.koVersion` (vom Server gesetzt, Altbestand bleibt unbekannt); Gesamtanweisung bindet Bausteinfassungen | `ko_versions` | `tests/wiki-diskussion/versionsbezug.test.ts`, `tests/wiki-diskussion/alte-beitraege-bleiben.test.ts`, `tests/wiki-gesamtanweisung-fassungsbindung/postgres-fassungsbindung.integration.test.ts` |
@@ -57,7 +59,7 @@ Keiner dieser Wege prüft „jeder gegen jeden". Ihre Zahlen sind Vorauswahl- od
 |---|---|---|
 | `DETECTION_CANDIDATE_CAP` | 20, `services/app/src/detection-cap.ts` (Pedi 26.07., kehrt „jeder gegen jeden" vom 04.07. um) | höchstens 20 **Vergleiche** je Bestandslauf und Weg |
 | `CANDIDATE_LIMIT` | 40, `services/app/src/knowledge-check.ts` | höchstens 40 vorausgewählte Objekte je Vorschau |
-| Fachliche Vorauswahl des Konfliktwegs | `selectCandidates` (`services/conflicts/src/detect.ts`): nur Nachbarn nach Kategorie, Anlage, Schlagwort oder Textnähe ≥ 0,3 | schneidet **auch ohne Deckel** ab; `coverage.capped` meldet das als Verengung |
+| Fachliche Vorauswahl des Konfliktwegs | `selectCandidates` (`services/conflicts/src/detect.ts`): nur Nachbarn nach Kategorie, Anlage, Schlagwort oder Textnähe ≥ 0,3 | schneidet im Normalfall **auch ohne Deckel** ab; `coverage.capped` meldet das als Verengung. Nur der gewählte Vollabgleich (R-1124) hebt sie auf |
 | Vektorsuche | `SemanticPrefilter.topK` (`services/app/src/duplicate-detection.ts`) | heute nur Indizierung; das Verengen des Erkennungspools ist entfallen (bens V2.2). Kein Prüfnachweis |
 | Ähnlichkeitsprüfsumme | MinHash, `CHECKSUM_CANDIDATE_CAP` = 5 (`services/conflicts/src/similarity-checksum.ts`) | schlägt nur zusätzliche Kandidaten vor, prüft nicht |
 | Gleicher Hash | Gesamtanweisung (`tests/wiki-gesamtanweisung/f7-gleicher-hash.test.ts`) | „Ein gleicher Hash bestaetigt Unveraendertheit, nicht Richtigkeit." (Startvertrag, im Test zitiert) |
@@ -68,9 +70,12 @@ Keiner dieser Wege prüft „jeder gegen jeden". Ihre Zahlen sind Vorauswahl- od
 (`coverage.ts`, Paritätswächter), Prüfbasisbindung (`pruefbasis.ts`), Fassungsbindung der Befunde,
 Prüfumfang der Vorschau, Kantenabweichung, Rechte- und Vertraulichkeitsweg.
 
-**Neuer Implementierungsbedarf (nicht gebaut, Abschnitt 5):** ein wahlweiser Vollabgleich für
-kritische Bestände (R-1124); ein Prüfumfangsnenner der Vorschau; ein Paarnachweis
-(welche Paare geprüft/ungeprüft sind).
+**Neu gebaut (Nacharbeit 1):** der wahlweise Vollabgleich eines Objekts gegen den ganzen Bestand
+(R-1124, Abschnitt 5) — auf dem vorhandenen Deckelparameter, Abdeckungsvertrag und Wiederholen-Weg.
+
+**Neuer Implementierungsbedarf (nicht gebaut):** ein Prüfumfangsnenner der Vorschau (6c); ein
+Paarnachweis (welche Paare geprüft/ungeprüft sind); eine Bedienfläche und ein Merkmal für den
+Vollabgleich (Abschnitt 5).
 
 ## 4. Die acht Abnahmefälle des Originalvertrags
 
@@ -112,31 +117,44 @@ kritische Bestände (R-1124); ein Prüfumfangsnenner der Vorschau; ein Paarnachw
 und keinen Auftrag mit diesem Bezug (die einzige Zeichenfolge „4282" ist ein Prüfwert in
 `OFFEN.md`, Zeile 130). Diese Lieferung legt keinen an.
 
-## 5. Zielzustände, die heute **nicht** erfüllt sind
+## 5. R-1124 (gebaut) und question:K15 (offen)
 
-### R-1124 — wahlweiser Vollabgleich für kritische Bestände
+### R-1124 — wahlweiser Vollabgleich eines Objekts gegen den ganzen Bestand
 
 Zielzustand: Widerspruchs- und Dublettenprüfung wahlweise gegen den ganzen Bestand statt nur gegen
-die 20 nächsten Treffer. **Nicht gebaut.** Was es dazu heute gibt und was fehlt:
+die 20 nächsten Treffer. **Gebaut in Nacharbeit 1** (Bens Befund zu `c9be26e7`: der Vergleich EINES
+Objekts gegen den Bestand ist keine Vollpaarprüfung; die frühere Ausklammerung entfällt).
 
-- **Vorhanden:** Beide Wege nehmen den Deckel als Parameter (`cap`), und beide Auswahlfunktionen
-  behandeln einen unendlichen Deckel. Die Vollständigkeitsregel `isCompleteRun` würde einen echten
-  Vollabgleich bereits als vollständig ausweisen; die Anzeige kann ihn darstellen.
-- **Fehlt 1 — Deckel aufheben genügt nicht.** Im Dublettenweg ergibt `cap = ∞` den ganzen Pool. Im
-  Konfliktweg schneidet die fachliche Vorauswahl (`selectCandidates`) Nicht-Nachbarn trotzdem ab;
-  ein Vollabgleich braucht dort eine Auswahl ohne Nachbarschaftsfilter.
-- **Fehlt 2 — „besonders wichtig" ist nirgends bestimmt.** Es gibt kein Merkmal für kritische
-  Bestände (weder Kategorie noch Feld noch Einstellung) und keine Quelle, die festlegt, wer es setzt.
-- **Fehlt 3 — Kosten und Entscheidung.** Pedi hat den Deckel am 26.07. wegen der Kosten eingeführt
-  (bis zu ~25.000 Urteile je Einreichen bei 12.480 Objekten); `detection-cap.ts` nennt als Antwort auf
-  einen zu engen Deckel einen Wiederaufnahme-/Rescan-Weg, nicht einen größeren Deckel. R-1124 ist
-  laut Register eine Forderung der Zweitprüfung „ohne Entscheidung" (29.08.).
-- **Quellenwiderspruch.** R-1124 (29.08., Idee) verlangt den Vollabgleich; der jüngere Nachtrag zu
-  KW-DKP-00 (15.09., 16:53) sagt „Keine Vollpaar-Implementierung" und ordnet diese Arbeit als lesende
-  Vertragsvorbereitung ein, aus der erst bei Codeänderung ein Bauauftrag entsteht. Ein Vollabgleich
-  je Subjekt ist nicht dasselbe wie eine Vollpaarprüfung, ergibt über einen ganzen kritischen
-  Bestand aber genau sie. Gebaut wird deshalb nicht; die Festlegung (Merkmal, Rechte, Kostenrahmen)
-  liegt bei Pedi.
+| Teil | Umsetzung |
+|---|---|
+| Wahl | `POST /api/kos/:id/ai-check` mit `{ "umfang": "vollstaendig" }`, Recht `ko.validate` (`services/app/src/routes/ko-routes.ts`). Zulässig auch bei einem aktuellen fertigen Nachweis; läuft schon ein Job: `409 AI_CHECK_LAEUFT`; unbekannter Umfang: `400 AI_CHECK_UMFANG_UNBEKANNT`. Ohne Angabe gilt alles wie bisher |
+| Umfang | `PruefUmfang` und `vergleichsDeckel` (`services/app/src/detection-cap.ts`): `gedeckelt` = 20, `vollstaendig` = ohne Deckel |
+| Konfliktweg | `detectConflictsForKo(…, umfang)` → `detectForSubject` mit `cap = ∞` und `vollabgleich: true`; `selectCandidates(…, nurNachbarn = false)` reiht **jedes** aktive Nicht-Demo-Objekt (`services/conflicts/src/detect.ts`, `services/conflicts/src/service.ts`) |
+| Dublettenweg | `detectDuplicatesForKo(…, umfang)` mit `cap = ∞`; `selectOverlapCandidates` hat keinen fachlichen Vorfilter, der Pool ist ganz |
+| Ablauf | Worker trägt den Umfang je Job (`enqueue(…, umfang)`; ein wartender Job wird hochgestuft, nie herab; ein Neueinreihen wegen gewanderter Basis behält ihn), Runner reicht ihn an beide Wege (`services/app/src/ai-check-worker.ts`) |
+| Ergebnis | dieselbe Abdeckung wie immer: vollständig heißt es nur nach `isCompleteRun` — jeder Vergleich hat geurteilt (`selected === available`, `attempted === completed`, nichts übersprungen) |
+
+**Was der Vollabgleich nicht ist:** keine Vollpaarprüfung (es gibt keinen Lauf „alle gegen alle";
+nichts startet automatisch) und keine Freigabe. Einreichen, Abruf der Prüfliste und Import bleiben
+gedeckelt.
+
+**Verbleibende Grenzen, dem Zielzustand zugeordnet:**
+
+- **„Besonders wichtige Bestände"** sind nirgends bestimmt (kein Merkmal, keine Quelle für Kategorie,
+  Feld oder Zuständigkeit). Gebaut ist deshalb die Wahl **je Objekt** durch einen Menschen mit
+  `ko.validate`; ein Bestandsmerkmal mit automatischem Vollabgleich bleibt eine Entscheidung für Pedi.
+- **Bedienfläche:** die Wahl ist ein Serverweg; ein Knopf im Prüfbrett ist nicht gebaut.
+- **Kosten und Frist:** ohne Deckel kostet ein Lauf bis zu zwei Urteile je Bestandsobjekt (Pedi
+  26.07.: Deckel wegen ~25.000 Urteilen bei 12.480 Objekten). Die Jobfrist
+  `AI_CHECK_JOB_TIMEOUT_MS` (120 s) gilt unverändert; reicht sie nicht, endet der Nachweis ehrlich
+  als `failed/timeout`, nie als vollständig. Kein Lauf an einem großen Bestand ist gemessen.
+- **Vertrauliche Paare** urteilt der Konfliktweg nur mit zulässigem Modell (Abschnitt 2, Rechte);
+  ohne es sind sie übersprungen, und der Lauf ist nicht vollständig.
+- **Nicht dauerhaft:** die Wahl lebt nur im Speicher des Workers; nach einem Neustart läuft der
+  wartende Job gedeckelt.
+- **Quellenlage:** R-1124 (29.08.) ist im Register eine Idee ohne Entscheidung; der Nachtrag zu
+  KW-DKP-00 (15.09.) schließt eine Vollpaar-Implementierung aus. Beides trägt der Bau: Vollabgleich
+  je gewähltem Objekt, keine Vollpaarprüfung.
 
 ### question:K15 — was offen bleibt
 
@@ -148,7 +166,7 @@ vollständige fachliche Pflicht (Abschnitt 3). Im konkreten Bestand ungeklärt:
 | **Nenner** | je Bestandslauf `available` (Objekte, nicht Paare); Vorschau ohne Nenner (6c); kein Bestandsnenner über Paare |
 | **Ungeprüfte Paare** | nicht benennbar: das Abdeckungsprotokoll hält Zahlen, keine Kennungen (`pruefbasis.ts`, Kopf) |
 | **Mehrfachkonflikte** | Befunde sind paarweise (`koA`/`koB`, höchstens ein offener je `pairKey`); ein Widerspruch zwischen drei Objekten ist als drei Paare oder gar nicht abgebildet |
-| **Rechte** | vertrauliche Objekte: Bestandsvergleich deterministisch ja, Cloud nein; Vorschau ohne sie. Das Prüfbrett meldet einen Konflikt nur, wenn der Leser die Gegenseite sehen darf (`AiCheck.konfliktGefunden`) — ob ein unsichtbarer Konflikt jemandem gemeldet wird, der ihn sehen darf, ist nicht belegt |
+| **Rechte** | vertrauliche Objekte im Bestandsvergleich: Dubletten deterministisch ja, Modellurteil (Konflikt und Dublette) nur über `oeffentlicheKiErlaubt` mit beiden Freigaben oder ein taugliches lokales Modell; Vorschau ohne sie. Das Prüfbrett meldet einen Konflikt nur, wenn der Leser die Gegenseite sehen darf (`AiCheck.konfliktGefunden`) — ob ein unsichtbarer Konflikt jemandem gemeldet wird, der ihn sehen darf, ist nicht belegt |
 | **Invalidierung** | `aiCheck`: global an die Basis gebunden; Befunde: an beide Fassungen; Kanten: nur an Fassungen (7c); Vorschau: nichts gespeichert, nichts zu entwerten |
 
 „Keine Freigabe von Punkt 3" (K15) bleibt unberührt: diese Lieferung gibt nichts frei.
@@ -167,7 +185,24 @@ vollständige fachliche Pflicht (Abschnitt 3). Im konkreten Bestand ungeklärt:
 ## 7. Fehlende Belege
 
 - Wortlaut von Abnahmefall 3 und die Originalzeilen `:38-45` des Vertrags im Produktbaum.
-- Kein Lauf in dieser Lieferung bestätigt die genannten Verhaltenstests erneut; ihre Ergebnisse
-  stehen in den jeweiligen Lieferungen.
+- Außer den in „Art der Belege" genannten Läufen auf `c9be26e7` bestätigt kein Lauf dieser
+  Lieferung die genannten Verhaltenstests erneut; der Vollabgleich (Nacharbeit 1) ist erst mit dem
+  nächsten Prüflauf belegt.
 - Kein Nachweis an einem echten Kundenbestand: Nenner, ungeprüfte Paare und Laufkosten eines
   Vollabgleichs sind nicht gemessen.
+
+## 8. Quellenwidersprüche in Kommentaren (unverändert, benannt)
+
+Seit JOB 3549 (Pedi 10.09.) entscheidet `oeffentlicheKiErlaubt`; vertrauliche Inhalte dürfen mit
+beiden Freigaben in den Cloudweg. Älter und damit überholt lauten:
+
+- `services/app/src/conflict-detection.ts` (Pool-Kommentar): die Vertraulichkeitsmarke sorge dafür,
+  „dass die Cloud sie nie sieht" — außerdem: „Konflikte haben keine deterministische Ebene" (das
+  stimmt).
+- `services/app/src/duplicate-detection.ts` (Pool-Kommentar): die Marke „hält die Cloud draußen".
+- `services/app/src/ai-check-worker.ts` (Runner): der Reasoner „nimmt bei `confidential` die Cloud
+  aus der Judge-Kette (kein Egress)".
+- `services/knowledge-object/src/types.ts` (`Confidentiality`): vertraulich „gehen NIE in externe
+  Kontexte".
+
+Diese Kommentare sind nicht Gegenstand der Änderung; maßgeblich ist der Reasoner-Code.

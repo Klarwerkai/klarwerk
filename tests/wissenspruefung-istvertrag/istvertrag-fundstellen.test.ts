@@ -8,8 +8,9 @@
 //   · F   jede tragende Funktion, Tabelle oder Konstante steht in der genannten Datei;
 //   · K   die Kennzahlen des Dokuments sind die des Codes (20, 40, 5);
 //   · V   ein Kandidatenlauf ist nie eine Vollprüfung — auch nicht die Vorschau ohne Treffer —, und
-//         im Konfliktweg reicht das Aufheben des Deckels nicht für einen Abgleich mit dem ganzen
-//         Bestand (R-1124, „Fehlt 1").
+//         im Konfliktweg reicht das Aufheben des Deckels allein nicht; erst der gewählte
+//         Vollabgleich (R-1124, `tests/wissenspruefung-istvertrag/vollabgleich.test.ts`) hebt auch
+//         den fachlichen Vorfilter auf.
 //
 // WAS DIESE DATEI NICHT BELEGT: das Verhalten der zugeordneten Wege. Das messen die im Dokument
 // genannten Tests ihrer eigenen Lieferungen.
@@ -41,8 +42,23 @@ function genanntePfade(): string[] {
 const FUNDSTELLEN: ReadonlyArray<readonly [string, readonly string[]]> = [
   ["services/app/src/routes/library-routes.ts", ["recordImportAcceptAiCheck"]],
   ["services/app/src/ai-check-worker.ts", ["createAiCheckRunner"]],
-  ["services/app/src/conflict-detection.ts", ["detectConflictsForKo", "DETECTION_CANDIDATE_CAP"]],
-  ["services/app/src/duplicate-detection.ts", ["detectDuplicatesForKo", "SemanticPrefilter"]],
+  [
+    "services/app/src/conflict-detection.ts",
+    [
+      "detectConflictsForKo",
+      "cap: vergleichsDeckel(umfang)",
+      'vollabgleich: umfang === "vollstaendig"',
+    ],
+  ],
+  [
+    "services/app/src/duplicate-detection.ts",
+    ["detectDuplicatesForKo", "SemanticPrefilter", "cap: vergleichsDeckel(umfang)"],
+  ],
+  [
+    "services/app/src/detection-cap.ts",
+    ["export const DETECTION_CANDIDATE_CAP = 20;", "export function vergleichsDeckel"],
+  ],
+  ["services/reasoner/src/service.ts", ["private oeffentlicheKiErlaubt", "vertraulicheInhalte"]],
   [
     "services/app/src/knowledge-check.ts",
     ["const CANDIDATE_LIMIT = 40;", "dropConfidential", "assessAgainstPool"],
@@ -158,7 +174,7 @@ describe("Istvertrag · V — Kandidatenlauf ist keine Vollprüfung", () => {
     });
   });
 
-  it("V3: Deckel aufheben gibt im Dublettenweg den ganzen Pool, im Konfliktweg nicht", () => {
+  it("V3: ohne Deckel filtert der Konfliktweg weiter — nur der Vollabgleich hebt den Filter auf", () => {
     const ich = subjekt("ich", { title: "Druckluft", statement: "Ventil prüfen", category: "A" });
     const nachbar = subjekt("nachbar", { title: "Kessel", statement: "Wasser", category: "A" });
     const fremd = subjekt("fremd", { title: "Urlaub", statement: "Antrag stellen", category: "B" });
@@ -166,7 +182,10 @@ describe("Istvertrag · V — Kandidatenlauf ist keine Vollprüfung", () => {
     const ohneDeckel = Number.POSITIVE_INFINITY;
     const dubletten = selectOverlapCandidates(ich, pool, ohneDeckel).map((s) => s.refId);
     const konflikte = selectCandidates(ich, pool, ohneDeckel).map((s) => s.refId);
+    const voll = selectCandidates(ich, pool, ohneDeckel, false).map((s) => s.refId);
     expect([...dubletten].sort()).toEqual(["fremd", "nachbar"]);
     expect(konflikte).toEqual(["nachbar"]);
+    // R-1124: im gewählten Vollabgleich ist jedes Objekt außer dem Subjekt Kandidat.
+    expect([...voll].sort()).toEqual(["fremd", "nachbar"]);
   });
 });

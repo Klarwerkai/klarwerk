@@ -318,6 +318,9 @@ export class ConflictService {
       modelLabel?: string;
       isCurrent?: (koId: string, version: number) => boolean | Promise<boolean>;
       coverage?: DetectionCoverage;
+      // AUFNAHME 20260922 · R-1124: true = ohne fachlichen Vorfilter (jedes Bestandsobjekt ist
+      // Kandidat). Zusammen mit `cap = ∞` der gewählte Vollabgleich; ohne Angabe wie bisher.
+      vollabgleich?: boolean;
     } = {},
   ): Promise<Conflict[]> {
     // AUFTRAG-mega29 B2 (bens M28-2): der Deckel begrenzt, was GEPRÜFT wird — nicht, was
@@ -325,7 +328,12 @@ export class ConflictService {
     // sortierte) Liste geholt und der Deckel erst in der Schleife über die tatsächlichen Vergleiche
     // gezogen. Ein Paar mit bereits offenem Befund kostet damit nur seinen Rang, keinen Prüfplatz.
     const cap = options.cap ?? 8;
-    const ranked = selectCandidates(subject, pool, Number.POSITIVE_INFINITY);
+    const ranked = selectCandidates(
+      subject,
+      pool,
+      Number.POSITIVE_INFINITY,
+      options.vollabgleich !== true,
+    );
     const coverage = options.coverage;
     if (coverage) {
       coverage.available = pool.filter((c) => c.refId !== subject.refId).length;

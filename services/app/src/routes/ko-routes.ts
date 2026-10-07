@@ -65,6 +65,7 @@ import {
 // JOB 2009 D2 (H3): der Einstieg, der die PORTS nimmt — nicht das Lesemodell (C1 bleibt gruen).
 import { wissensnetzMetrikFuer } from "../../../wissensnetz";
 import type { AiCheckWorker } from "../ai-check-worker";
+import type { PruefUmfang } from "../detection-cap";
 import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
 import { type Guards, type SessionUser, sendError } from "../http";
 import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten";
@@ -2116,12 +2117,27 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     // WP-SUBMIT-ASYNC (Teil 3, Retry): reiht einen FEHLGESCHLAGENEN (oder festhängenden pending-)
     // Prüf-Job neu ein. Recht ko.validate — der Knopf lebt auf den Validierungs-Karten der Prüfer.
     // done/ohne Feld ist nicht wiederholbar (ehrlicher 409 statt stillem Doppel-Lauf).
+    //
+    // AUFNAHME 20260922 · R-1124: `{ "umfang": "vollstaendig" }` wählt für DIESES Objekt den
+    // Vollabgleich gegen den ganzen Bestand (ohne Deckel, ohne fachlichen Vorfilter; s.
+    // detection-cap.ts). Die Wahl ist auch bei einem aktuellen fertigen Nachweis zulässig — sie
+    // fordert ausdrücklich mehr, als der gedeckelte Lauf belegt hat. Läuft schon ein Job, wird
+    // nichts verdoppelt (409); ein wartender wird hochgestuft. Ohne Angabe gilt alles wie bisher.
     app.post<{ Params: { id: string } }>("/api/kos/:id/ai-check", async (request, reply) => {
       const user = await guards.requirePermission("ko.validate", request, reply);
       if (!user) {
         return;
       }
       try {
+        const gewaehlt = (request.body as { umfang?: unknown } | undefined)?.umfang;
+        if (gewaehlt !== undefined && gewaehlt !== "gedeckelt" && gewaehlt !== "vollstaendig") {
+          reply.code(400).send({
+            error: "AI_CHECK_UMFANG_UNBEKANNT",
+            message: 'Pruefumfang ist "gedeckelt" oder "vollstaendig".',
+          });
+          return;
+        }
+        const umfang: PruefUmfang = gewaehlt === "vollstaendig" ? "vollstaendig" : "gedeckelt";
         const subject = await ko.get(request.params.id);
         if (!subject) {
           reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
@@ -2135,9 +2151,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           return;
         }
         const status = subject.aiCheck?.status;
-        // AUFNAHME 20260922: ein ÜBERHOLTER abgeschlossener Nachweis ist wiederholbar — er gilt für
-        // eine frühere Basis. Läuft für das Objekt schon ein Job, reiht der Worker nicht doppelt ein.
-        if (status !== "failed" && status !== "pending" && !subject.aiCheck?.ueberholt) {
+        if (umfang === "vollstaendig") {
+          // R-1124: ein laufender Job behält seinen Umfang — kein zweiter Lauf daneben.
+          if (aiCheckWorker.laeuft(request.params.id)) {
+            reply.code(409).send({
+              error: "AI_CHECK_LAEUFT",
+              message: "Fuer dieses Wissensobjekt laeuft gerade eine Pruefung.",
+            });
+            return;
+          }
+          // AUFNAHME 20260922: ein ÜBERHOLTER abgeschlossener Nachweis ist wiederholbar — er gilt für
+          // eine frühere Basis. Läuft für das Objekt schon ein Job, reiht der Worker nicht doppelt ein.
+        } else if (status !== "failed" && status !== "pending" && !subject.aiCheck?.ueberholt) {
           reply.code(409).send({
             error: "AI_CHECK_NOT_RETRYABLE",
             message: "Fuer dieses Wissensobjekt steht kein wiederholbarer Pruef-Job an.",
@@ -2148,8 +2173,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         // WP-SHIP8-CLOSE-2 (bens F3): Vermerk NACH dem Setzen frisch lesen — der Job trägt die
         // Zielversion synchron (subject von oben wäre der VERALTETE Vermerk vor dem Retry).
         const marked = await ko.get(request.params.id);
-        aiCheckWorker.enqueue(request.params.id, marked?.aiCheck?.koVersion);
-        reply.code(200).send({ status: "pending" });
+        aiCheckWorker.enqueue(request.params.id, marked?.aiCheck?.koVersion, umfang);
+        if (umfang === "vollstaendig") {
+          reply.code(200).send({ status: "pending", umfang });
+        } else {
+          reply.code(200).send({ status: "pending" });
+        }
       } catch (error) {
         sendError(reply, error);
       }
