@@ -11,7 +11,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
-import type { AntwortBelastbarkeit } from "../../apps/web/src/api/types";
+import type { AntwortBelastbarkeit, ArgumentStufe } from "../../apps/web/src/api/types";
 import { Belastbarkeit, PruefrahmenSatz } from "../../apps/web/src/components/fragen/Belastbarkeit";
 import "../../apps/web/src/i18n";
 
@@ -88,6 +88,48 @@ const MIT_KONFLIKT: AntwortBelastbarkeit = {
   ],
   hinweis: "vertrauen_ist_kein_wahrheitsversprechen",
 };
+
+// Eine Kette in der Gestalt, die der Server liefert (`argumentation` in answer-belastbarkeit.ts).
+const KETTE: ArgumentStufe[] = [
+  {
+    art: "aussage",
+    koId: "a",
+    titel: "Ventil V4 jährlich prüfen",
+    aussage: "Ventil V4 wird jährlich geprüft.",
+    wissensart: "technik",
+    belegstelle: "jährlich zu prüfen",
+    vertrauenswert: 91,
+    validiert: true,
+    stand: "2026-03-05T10:00:00.000Z",
+  },
+  {
+    art: "stuetzung",
+    koId: "b",
+    titel: "Prüfintervall Druckbehälter",
+    aussage: "Druckbehälter werden jährlich geprüft.",
+    wissensart: "best_practice",
+    belegstelle: null,
+    vertrauenswert: 76,
+    validiert: true,
+    stand: "2025-11-20T08:00:00.000Z",
+  },
+  {
+    art: "einwand",
+    konfliktId: "c1",
+    seite: {
+      einsehbar: true,
+      koId: "z",
+      titel: "Ventil V4 halbjährlich",
+      aussage: "Ventil V4 wird halbjährlich geprüft.",
+      version: 1,
+      vertrauenswert: 40,
+      validiert: false,
+      traegtAntwort: false,
+    },
+  },
+  { art: "vorbehalt", grund: "zustaendig_nicht_erreichbar" },
+  { art: "schluss", lage: "belegt_mit_konflikt", einstufung: "unverified" },
+];
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -172,6 +214,76 @@ describe("Antwort-Erklärung · Belastbarkeit in der Konsole", () => {
     const seiten = alle("ask-belastbarkeit-konfliktseite").map((s) => s.textContent ?? "");
     expect(seiten).toHaveLength(2);
     expect(seiten[1]).toContain("nicht einsehbar");
+  });
+
+  it("R-1627: die Argumentationskette steht aufklappbar da, jede Stufe mit ihrer Quelle", () => {
+    const mitKette: AntwortBelastbarkeit = {
+      ...MIT_KONFLIKT,
+      argumentation: KETTE,
+      zuschnitt: {
+        rolle: "experte",
+        anlass: "frage",
+        tiefe: "ausfuehrlich",
+        fachsprache: "fach",
+        reihenfolge: ["technik", "negativwissen", "lernkurve", "best_practice", "bauchgefuehl"],
+      },
+    };
+    montiere(createElement(Belastbarkeit, { b: mitKette }));
+    const stufen = alle("ask-argument-stufe");
+    expect(stufen.map((s) => s.getAttribute("data-art"))).toEqual([
+      "aussage",
+      "stuetzung",
+      "einwand",
+      "vorbehalt",
+      "schluss",
+    ]);
+    // Ausführlich: jede Stufe steht offen, jede ist ein eigenes <details>.
+    const offen = stufen.map((s) => (s.querySelector("details") as HTMLDetailsElement).open);
+    expect(offen).toHaveLength(5);
+    expect(offen.every((o) => o)).toBe(true);
+    expect(stufen[0]?.textContent).toContain("Aussage: Ventil V4 jährlich prüfen");
+    expect(stufen[0]?.textContent).toContain("Belegstelle: „jährlich zu prüfen“");
+    expect(stufen[0]?.textContent).toContain("Technik");
+    expect(stufen[1]?.textContent).toContain("Gestützt durch: Prüfintervall Druckbehälter");
+    expect(stufen[2]?.textContent).toContain("Ventil V4 wird halbjährlich geprüft.");
+    expect(stufen[3]?.textContent).toContain("nicht erreichbar");
+    expect(stufen[4]?.textContent).toContain("Belegt — mit Widerspruch");
+    expect(marke("ask-zuschnitt")?.textContent).toContain("Expertin oder Experte");
+    expect(marke("ask-zuschnitt")?.textContent).toContain("freie Frage");
+    expect(container.textContent).not.toMatch(/%/);
+  });
+
+  it("R-0346: kurz und allgemein — nur Aussage und Schluss offen, keine Fassungsnummer", () => {
+    const kurz: AntwortBelastbarkeit = {
+      ...MIT_KONFLIKT,
+      argumentation: KETTE,
+      zuschnitt: {
+        rolle: "viewer",
+        anlass: "dokument",
+        tiefe: "kurz",
+        fachsprache: "allgemein",
+        reihenfolge: ["best_practice", "negativwissen", "technik", "lernkurve", "bauchgefuehl"],
+      },
+    };
+    montiere(createElement(Belastbarkeit, { b: kurz }));
+    const offen = alle("ask-argument-stufe").map((s) => [
+      s.getAttribute("data-art"),
+      (s.querySelector("details") as HTMLDetailsElement).open,
+    ]);
+    expect(offen).toEqual([
+      ["aussage", true],
+      ["stuetzung", false],
+      ["einwand", false],
+      ["vorbehalt", false],
+      ["schluss", true],
+    ]);
+    // Zugeklappt heisst nicht weggelassen: der Inhalt steht im Baum.
+    expect(container.textContent).toContain("Ventil V4 wird halbjährlich geprüft.");
+    const zeilen = alle("ask-belastbarkeit-quelle").map((z) => z.textContent ?? "");
+    expect(zeilen[0]).not.toContain("v3");
+    // Die rohe Kontokennung ist eine Fachangabe — allgemein steht sie nicht da.
+    expect(alle("ask-belastbarkeit-verantwortung")[1]?.textContent).not.toContain("u-weg");
+    expect(marke("ask-zuschnitt")?.textContent).toContain("Arbeit an einem Dokument");
   });
 
   it("R-0284: der Prüfrahmen einer Wissenslücke statt einer nackten Null", () => {

@@ -73,6 +73,7 @@ export type {
 export {
   ANTWORT_LAGEN,
   antwortBelastbarkeit,
+  antwortZuschnitt,
   konfliktGegenseiten,
 } from "./src/answer-belastbarkeit";
 export type {
@@ -80,6 +81,10 @@ export type {
   AntwortBelastbarkeitInput,
   AntwortKonflikt,
   AntwortLage,
+  AntwortZuschnitt,
+  ArgumentStufe,
+  FrageAnlass,
+  FragendenRolle,
   BelastbarkeitsGrund,
   KonfliktSeite,
   QuellenBelastbarkeit,

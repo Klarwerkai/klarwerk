@@ -695,42 +695,39 @@
                 }
               }
             }
-            if (
-              result &&
-              result.answered === true &&
-              typeof answer === "string" &&
-              answer.trim().length > 0 &&
-              sources.length > 0
-            ) {
-              // JOB 3366: die Tatsache reist NUR MIT, WENN SIE EINE IST. Ein `abgeschnitten: false`
-              // an jeder Antwort waere die positive Gegenaussage „vollstaendig", die §9 verbietet —
-              // und es machte den Spiegel-Vertrag mit `apps/web/src/lib/wordAddin.ts` an JEDEM
-              // Ergebnis ungleich statt nur an den abgeschnittenen (word-addin-ask.test.ts, Teil 3).
+            // AUFNAHME 20260922 · R-0335/R-0321 (Spiegel wordAddin.ts): Lage und Konfliktseiten des Servers (answer-belastbarkeit.ts) werden GELESEN. Nur eine belegte
+            // Wissensluecke ist eine: ein Koerper ohne Ergebnis, eine unbekannte, gestoerte oder zur Antwortform widerspruechliche Lage ist ein technischer Fehler.
+            var bel = result && result.belastbarkeit && typeof result.belastbarkeit === "object" ? result.belastbarkeit : null;
+            var belegt = !!(result && result.answered === true && typeof answer === "string" && answer.trim().length > 0 && sources.length > 0);
+            if (!result || typeof result.answered !== "boolean" || (bel && (["belegt", "belegt_zustaendig_fehlt", "belegt_mit_konflikt", "wissensluecke", "geschwaerzt"].indexOf(bel.lage) === -1 || (bel.lage !== "geschwaerzt" && (bel.lage === "wissensluecke") === belegt)))) { return { kind: "error", detail: "lage" }; }
+            if (bel && bel.lage === "geschwaerzt") { return { kind: "redacted" }; }
+            var konflikte = [];
+            var roheKonflikte = bel && Array.isArray(bel.konflikte) ? bel.konflikte : [];
+            for (var ki = 0; ki < roheKonflikte.length; ki += 1) {
+              var rk = roheKonflikte[ki];
+              if (!rk || !Array.isArray(rk.seiten) || rk.seiten.length !== 2) { continue; }
+              konflikte.push({ beschreibung: typeof rk.beschreibung === "string" ? rk.beschreibung : null, seiten: rk.seiten.map(function (s) { return s && s.einsehbar === true ? { einsehbar: true, titel: String(s.titel || ""), aussage: String(s.aussage || ""), traegtAntwort: s.traegtAntwort === true } : { einsehbar: false, traegtAntwort: !!(s && s.traegtAntwort === true) }; }) });
+            }
+            if (belegt) {
+              // JOB 3366: `abgeschnitten` reist NUR MIT, wenn es eine Tatsache ist — nie als Gegenaussage „vollstaendig" (§9; Spiegelvertrag word-addin-ask Teil 3).
               var fragmentFeld = abgeschnitten ? { abgeschnitten: true } : {};
               return Object.assign(fragmentFeld, {
                 kind: "answered",
-                // WP-UX-WOW-1 U1: Klartext im Panel UND im eingefuegten Text.
-                answer: stripAskAnswerMarkdown(answer),
+                answer: stripAskAnswerMarkdown(answer), // WP-UX-WOW-1 U1: Klartext im Panel UND im eingefuegten Text.
                 sources: sources,
                 trust: typeof result.trust === "number" ? result.trust : 0,
-                // AUFTRAG-mega34 B: die serverseitige Einstufung reist mit. Fehlt sie, ist der
-                // Grad fail-safe "unverified" — Word behauptet nie Sicherheit ohne Beleg.
-                grade: askGradeOf(result.evidence),
+                grade: askGradeOf(result.evidence), // mega34 B: Einstufung vom Server; fehlt sie, fail-safe "unverified".
                 evidence: result.evidence || undefined,
                 citedSources: cited,
                 snippet: snippet,
-                // AUFTRAG-mega81 BLOCK A: das serverseitige Kennzeichnungssignal wird GELESEN.
-                // Auf dem retrieval-only-Weg dieses Fensters fehlt es immer (der Server laesst es
-                // dort bewusst weg) — die Behauptung entsteht also nie aus einer Annahme.
-                // G24: geprueft statt gecastet — siehe KW-KLARA-AI-MARK-* weiter unten.
+                // mega81 A / G24: das Kennzeichnungssignal wird GELESEN und geprueft (KW-KLARA-AI-MARK-*), nie angenommen.
                 aiGenerated: istKiKennzeichnung(result.aiGenerated),
                 ungeprueft: ungeprueft,
+                lage: bel ? bel.lage : undefined,
+                konflikte: bel ? konflikte : undefined,
               });
             }
-            // AUFTRAG-mega77 BLOCK A: die Wissensluecke ist wieder eine reine Wissensluecke — der
-            // Antwortkoerper wird hier NICHT mehr nach einer Bestandszahl durchsucht.
-            // JOB 3092 S6 (W5): sie traegt aber, was der Server AUSDRUECKLICH und betrachter-
-            // gefiltert meldet (JOB 1591) — keine Zahl aus der Vorauswahl, sondern die Liste selbst.
+            // mega77 A: die Wissensluecke durchsucht den Koerper NICHT nach einer Bestandszahl; sie traegt nur die betrachtergefilterte Liste (JOB 3092 S6 / JOB 1591).
             return { kind: "gap", ungeprueft: ungeprueft };
           });
         })
@@ -1740,6 +1737,7 @@
         askConflictConflicted: "Achtung: Eine tragende Quelle steht in einem offenen Konflikt.",
         askConflictUnproven: "Die Konfliktlage ist unbekannt — das heißt nicht, dass keine besteht.",
         askConflictClear: "Keine offenen Konflikte auf den tragenden Quellen.",
+        askLageBelegt: "Lage: belegt.", askLageZustaendigFehlt: "Lage: belegt — die verantwortliche Person ist nicht erreichbar. Das Wissen bleibt nutzbar; Rückfragen brauchen eine neue Zuständigkeit.", askLageKonflikt: "Lage: belegt, aber mit offenem Widerspruch. Beide Seiten:", askKonfliktSeite: "Seite {n}", askKonfliktTraegt: "trägt diese Antwort", askKonfliktNichtEinsehbar: "für dich nicht einsehbar", askKonfliktKeinGewinner: "Klara wählt keine Seite. Den Widerspruch entscheiden Menschen.", askLageGeschwaerzt: "Die Belege dieser Antwort sind für dich gesperrt (geschwärzt).", askLageUnbekannt: "Technischer Fehler: Die Antwort kam in unbekannter Form an. Das ist keine Wissenslücke.",
         // ---- AUFTRAG-W1-KLARA-KOPF-CONSENT-06: der sitzungsbezogene Stand ---------------------
         // Eigenes Etikett, eigene Wörter. Diese Texte sprechen über DIESE Sitzung, nicht über den
         // Hausstand — und ausdrücklich nicht über Klaras Antwortweg, der unverändert zitiert.
@@ -2141,6 +2139,7 @@
         askConflictConflicted: "Caution: a carrying source is in an open conflict.",
         askConflictUnproven: "The conflict situation is unknown — that does not mean there is none.",
         askConflictClear: "No open conflicts on the carrying sources.",
+        askLageBelegt: "Status: backed by sources.", askLageZustaendigFehlt: "Status: backed — the responsible person is not reachable. The knowledge stays usable; follow-up questions need a new owner.", askLageKonflikt: "Status: backed, but with an open contradiction. Both sides:", askKonfliktSeite: "Side {n}", askKonfliktTraegt: "carries this answer", askKonfliktNichtEinsehbar: "not visible to you", askKonfliktKeinGewinner: "Klara does not pick a side. People decide the contradiction.", askLageGeschwaerzt: "The evidence for this answer is blocked for you (redacted).", askLageUnbekannt: "Technical error: the answer arrived in an unknown form. This is not a knowledge gap.",
         s4Label: "In this session",
         s4ModeDeterministic: "Without a model",
         s4ModeInternal: "On-Premise Enterprise AI",
@@ -2480,6 +2479,7 @@
         askConflictConflicted: "Let op: een dragende bron staat in een open conflict.",
         askConflictUnproven: "De conflictsituatie is onbekend — dat betekent niet dat er geen is.",
         askConflictClear: "Geen open conflicten op de dragende bronnen.",
+        askLageBelegt: "Status: onderbouwd.", askLageZustaendigFehlt: "Status: onderbouwd — de verantwoordelijke is niet bereikbaar. De kennis blijft bruikbaar; vervolgvragen hebben een nieuwe verantwoordelijke nodig.", askLageKonflikt: "Status: onderbouwd, maar met een open tegenstrijdigheid. Beide kanten:", askKonfliktSeite: "Kant {n}", askKonfliktTraegt: "draagt dit antwoord", askKonfliktNichtEinsehbar: "voor jou niet in te zien", askKonfliktKeinGewinner: "Klara kiest geen kant. Mensen beslissen over de tegenstrijdigheid.", askLageGeschwaerzt: "De onderbouwing van dit antwoord is voor jou afgeschermd.", askLageUnbekannt: "Technische fout: het antwoord kwam in een onbekende vorm aan. Dit is geen kennishiaat.",
         s4Label: "In deze sessie",
         s4ModeDeterministic: "Zonder model",
         s4ModeInternal: "On-Premise Enterprise AI",
@@ -6045,18 +6045,28 @@
       halter.style.lineHeight = zeilenhoehe > 0 ? zeilenhoehe + "px" : "";
     }
 
-    // ============================================================================================
-    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — EINE STELLE FUER DIE GANZE EVIDENZ.
-    // ============================================================================================
-    //
-    // Sie liest `currentAskOutcome` und ist deshalb auch nach einem SPRACHWECHSEL aufrufbar, ohne
-    // dass die Antwort neu geholt werden muss. Drei Aussagen, sichtbar GETRENNT:
-    //   1. die Einstufung (belegt / nicht belegt)      — unveraendert aus mega34,
-    //   2. der benannte Pruefvorbehalt samt Zaehlung   — bis hierher unsichtbar,
-    //   3. die Konfliktlage                            — bis hierher von 2. ununterscheidbar.
-    // Dazu der real gelieferte Ausschnitt, sofern er nicht ohnehin die Antwort ist.
-    //
-    // Nichts davon wird berechnet: `askEvidenceDetail` liest nur `outcome.evidence` (KW-W1-13).
+    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — EINE STELLE FUER DIE GANZE EVIDENZ: liest `currentAskOutcome` (auch nach Sprachwechsel), zeigt
+    // GETRENNT Einstufung (mega34), Pruefvorbehalt samt Zaehlung, Konfliktlage und Ausschnitt. Nichts wird berechnet (KW-W1-13).
+    // AUFNAHME 20260922 · R-0335/R-0321: dazu die Lage des Servers und BEIDE Seiten offener Widersprueche (renderAskLage) — gelesen, keine Seite gewaehlt.
+    var ASK_LAGE_TEXT_KEYS = { belegt: "askLageBelegt", belegt_zustaendig_fehlt: "askLageZustaendigFehlt", belegt_mit_konflikt: "askLageKonflikt" };
+    function renderAskLage() {
+      var liste = document.getElementById("ask-konflikt-seiten");
+      if (!liste) { return; }
+      var o = currentAskOutcome && currentAskOutcome.kind === "answered" ? currentAskOutcome : null;
+      evidenceLine("ask-lage-line", o && ASK_LAGE_TEXT_KEYS[o.lage] ? t(ASK_LAGE_TEXT_KEYS[o.lage]) : "", o && o.lage === "belegt" ? "ok" : "warn");
+      liste.textContent = "";
+      var ks = o && Array.isArray(o.konflikte) ? o.konflikte : [];
+      for (var i = 0; i < ks.length; i += 1) {
+        for (var j = 0; j < ks[i].seiten.length; j += 1) {
+          var s = ks[i].seiten[j];
+          var li = document.createElement("li");
+          li.textContent = t("askKonfliktSeite", { n: String(j + 1) }) + (s.traegtAntwort ? " · " + t("askKonfliktTraegt") : "") + ": " + (s.einsehbar ? s.titel + " — " + s.aussage : t("askKonfliktNichtEinsehbar"));
+          liste.appendChild(li);
+        }
+      }
+      if (ks.length > 0) { var hinweis = document.createElement("li"); hinweis.textContent = t("askKonfliktKeinGewinner"); liste.appendChild(hinweis); }
+      liste.className = ks.length > 0 ? "" : "hidden";
+    }
     var ASK_CAVEAT_TEXT_KEYS = {
       unknown: "askCaveatUnknown",
       unchecked: "askCaveatUnchecked",
@@ -6090,6 +6100,7 @@
       var noteEl = document.getElementById("ask-evidence-note");
       var snippetBlock = document.getElementById("ask-snippet-block");
       if (!noteEl || !snippetBlock) { return; }
+      renderAskLage();
       var outcome = currentAskOutcome;
       var vorbehaltEl = document.getElementById("ask-vorbehalt");
       if (!outcome || outcome.kind !== "answered") {
@@ -6173,23 +6184,15 @@
         document.getElementById("ask-input").value = "";
         kwFlaecheZeichnen();
         updateAskState();
-        // AUFTRAG-mega34 B2: die Einstufung sichtbar machen — derselbe Text, den auch der
-        // eingefuegte Absatz traegt. Bei belegter Einstufung steht die belegte Fassung da, nicht
-        // gar keine; der Leser soll den Unterschied SEHEN und nicht aus dem Schweigen schliessen.
-        // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: Einstufung, Vorbehalt, Konfliktlage und Ausschnitt
-        // entstehen jetzt an EINER Stelle (renderAskEvidence) — dieselbe, die auch der
-        // Sprachwechsel ruft. Zwei Aufrufstellen waeren zwei Gelegenheiten auseinanderzulaufen.
+        // mega34 B2 / W1-VERTRAUENSKOPF-08 B: Einstufung (derselbe Text wie im eingefuegten Absatz), Vorbehalt, Konfliktlage,
+        // Ausschnitt und (R-0335/R-0321) Lage samt Konfliktseiten entstehen an EINER Stelle, die auch der Sprachwechsel ruft.
         renderAskEvidence();
-        // JOB 3092 S6 (W5): Herkunft (zunaechst „Quellen werden geladen …") und Ungeprueft-Satz —
-        // beide an derselben Stelle wie die Einstufung, damit der Sprachwechsel sie mitnimmt.
+        // JOB 3092 S6 (W5): Herkunft und Ungeprueft-Satz an derselben Stelle, damit der Sprachwechsel sie mitnimmt.
         renderAskHerkunft();
         renderAskUngeprueft();
         renderAskFragment(); // JOB 3366: der Satz an einer abgeschnittenen Antwort
-        // AUFTRAG-mega35 A1: das Feld traegt NUR den Antwortkoerper — das ist der Teil, der der
-        // Nutzerin gehoert. Einstufung und Quellen-Zeile werden NICHT vorbefuellt und deshalb auch
-        // nicht nachgetragen; sie entstehen erst im Moment des Kopierens/Einfuegens
-        // (composeOutputText). Damit gibt es keinen Zustand mehr, in dem der Feldinhalt die
-        // Einstufung verloren hat, die Ausgabewege aber schon offen sind.
+        // mega35 A1: das Feld traegt NUR den Antwortkoerper; Einstufung und Quellen-Zeile entstehen erst beim
+        // Kopieren/Einfuegen (composeOutputText) — kein Zustand, in dem der Feldinhalt die Einstufung verloren hat.
         document.getElementById("ask-answer-edit").value = outcome.answer;
         applyAnswerCompaction(outcome.answer);
         if (truncated) { showAskStatus("warn", truncatedNote.replace(/^\s+/, "")); } else { hideAskStatus(); }
@@ -6261,8 +6264,9 @@
       }
       // JOB 3056 K1 (§9): ohne Verbindung EIN Satz „Keine Verbindung." und „Erneut versuchen";
       // ein benannter Serverfehler nennt weiter sein Detail. R-0590: der gesperrte Ausweichweg nennt seinen Grund (bei beendeter Zustimmung ohne „Erneut versuchen").
-      showAskStatus("warn", outcome.kind === "fallback-blocked" ? t(outcome.reason === "consent_ended" ? "askFallbackConsentEnded" : "askFallbackBlocked") : outcome.detail ? t("askError", { detail: outcome.detail }) : t("askOffline"));
-      if (outcome.reason !== "consent_ended") { askRetryZeigen(); }
+      // R-0335: geschwaerzt und unbekannte Antwortlage (technischer Fehler) haben je einen eigenen Satz — nie die Wissensluecke.
+      showAskStatus("warn", outcome.kind === "redacted" ? t("askLageGeschwaerzt") : outcome.kind === "fallback-blocked" ? t(outcome.reason === "consent_ended" ? "askFallbackConsentEnded" : "askFallbackBlocked") : outcome.detail === "lage" ? t("askLageUnbekannt") : outcome.detail ? t("askError", { detail: outcome.detail }) : t("askOffline"));
+      if (outcome.reason !== "consent_ended" && outcome.kind !== "redacted") { askRetryZeigen(); }
     }
 
     // Auswahl lesen (nur Text — die Frage ist Klartext); ohne Office ehrlich leer → Eingabefeld.

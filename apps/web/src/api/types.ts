@@ -1871,7 +1871,42 @@ export interface AntwortBelastbarkeit {
   quellenAnzahl: { herangezogen: number; tragend: number };
   quellen: QuellenBelastbarkeit[];
   konflikte: AntwortKonflikt[];
+  // R-1627: die quellengebundene Argumentationskette; optional — ein älterer Server sendet sie nicht.
+  argumentation?: ArgumentStufe[];
+  // R-0346: Rolle und Anlass, auf die die Erklärung zugeschnitten ist.
+  zuschnitt?: AntwortZuschnitt;
   hinweis: "vertrauen_ist_kein_wahrheitsversprechen";
+}
+
+export type Wissensart =
+  | "bauchgefuehl"
+  | "best_practice"
+  | "lernkurve"
+  | "technik"
+  | "negativwissen";
+
+export type ArgumentStufe =
+  | {
+      art: "aussage" | "stuetzung";
+      koId: string;
+      titel: string;
+      aussage: string;
+      wissensart: Wissensart;
+      belegstelle: string | null;
+      vertrauenswert: number;
+      validiert: boolean;
+      stand: string;
+    }
+  | { art: "einwand"; konfliktId: string; seite: KonfliktSeite }
+  | { art: "vorbehalt"; grund: BelastbarkeitsGrund }
+  | { art: "schluss"; lage: AntwortLage; einstufung: "verified" | "unverified" | "gap" };
+
+export interface AntwortZuschnitt {
+  rolle: "viewer" | "experte" | "controller" | "admin" | "unbekannt";
+  anlass: "dokument" | "frage";
+  tiefe: "kurz" | "ausfuehrlich";
+  fachsprache: "allgemein" | "fach";
+  reihenfolge: Wissensart[];
 }
 
 // R-0284: wogegen geprüft wurde (Spiegel von `AskPruefrahmen`, services/ask/src/service.ts).

@@ -1,10 +1,13 @@
 import type { FastifyPluginAsync } from "fastify";
 import {
   type AntwortBelastbarkeit,
+  type AntwortZuschnitt,
   AskError,
   type AskService,
+  type FrageAnlass,
   answerEvidence,
   antwortBelastbarkeit,
+  antwortZuschnitt,
   isGapPriority,
   konfliktGegenseiten,
   redactGapForViewer,
@@ -472,16 +475,28 @@ export function kiAbgeschaltetSenden(
 // nach `sichtbarkeitsfilterFuer` (dem bestehenden Prädikat), auf dem Add-on-Weg NUR validiert —
 // der Add-on-Principal besitzt `ask.validated` und kein allgemeines Leserecht (mega77). Namen der
 // Verantwortlichen gehen nur an Sitzungsnutzer; der Add-on-Weg erfährt Art und Erreichbarkeit.
+// R-0346: dazu der Zuschnitt — die Rolle aus der Sitzung (Add-on-Weg: `unbekannt`), der Anlass aus
+// dem Anfragezusammenhang (`dokument`, wenn die Frage aus dem Dokument stammt oder die Anfrage an ein
+// Word-Dokument gebunden ist). Der Dokumenttext selbst geht dafür nirgends hin (KA5).
 interface BelastbarkeitsSicht {
   seiteSichtbar: (ko: KnowledgeObject) => boolean;
   mitPersonen: boolean;
+  zuschnitt: AntwortZuschnitt;
 }
 
-function belastbarkeitsSicht(user: SessionUser | null): BelastbarkeitsSicht {
+function belastbarkeitsSicht(user: SessionUser | null, anlass: FrageAnlass): BelastbarkeitsSicht {
   if (!user) {
-    return { seiteSichtbar: (ko) => ko.status === "validiert", mitPersonen: false };
+    return {
+      seiteSichtbar: (ko) => ko.status === "validiert",
+      mitPersonen: false,
+      zuschnitt: antwortZuschnitt("unbekannt", anlass),
+    };
   }
-  return { seiteSichtbar: sichtbarkeitsfilterFuer(user), mitPersonen: true };
+  return {
+    seiteSichtbar: sichtbarkeitsfilterFuer(user),
+    mitPersonen: true,
+    zuschnitt: antwortZuschnitt(user.role, anlass),
+  };
 }
 
 // AUFTRAG-mega53 B4 — DIE ZWEITE DER VIER STELLEN.
@@ -503,6 +518,7 @@ async function evidenceFor(
     knowledgeClass: string;
     sources: string[];
     citedSources: string[];
+    steps?: { sourceId: string | null; snippet: string | null }[];
   },
   log: { warn: (obj: unknown, msg: string) => void },
   // D5 (KI aus): vor jedem Lesevorgang gerufen, AUSSERHALB der Fangzweige unten — eine Abschaltung
@@ -582,6 +598,8 @@ async function evidenceFor(
     kos,
     openConflicts,
     seiteSichtbar: sicht.seiteSichtbar,
+    zuschnitt: sicht.zuschnitt,
+    ...(result.steps ? { steps: result.steps } : {}),
     ...(personen ? { erreichbar: personen.erreichbar } : {}),
     // Sitzungsnutzer sehen die Kennung auch ohne Verzeichnis (Name dann `null`); der Add-on-Weg nie.
     namen: sicht.mitPersonen ? (personen?.namen ?? new Map<string, string>()) : null,
@@ -747,6 +765,10 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           // `SessionUser` und bekommt die enge Sicht (Begründung an `belastbarkeitsSicht`).
           const sicht = belastbarkeitsSicht(
             request.authContext?.authKind === "addon" ? null : (request.askSessionUser ?? null),
+            // Anlass `dokument`: die Frage stammt aus dem Dokument oder die Anfrage ist an ein
+            // Word-Dokument gebunden. Bewusst NICHT die bloße Markierung — eine Markierung ohne
+            // Suchbegriffe darf den Antwortkörper nicht verändern (KA5-R2, ka5-markierung.test.ts).
+            frageIstDokument || gebunden ? "dokument" : "frage",
           );
           try {
             // D5 (Bens B1): nach dem letzten Warten VOR dem Dienst gegen die Eingangsepoche prüfen.

@@ -13,6 +13,8 @@
 import { useTranslation } from "react-i18next";
 import type {
   AntwortBelastbarkeit,
+  AntwortZuschnitt,
+  ArgumentStufe,
   AskPruefrahmen,
   KonfliktSeite,
   QuellenBelastbarkeit,
@@ -28,10 +30,11 @@ const LAGE_TON: Record<AntwortBelastbarkeit["lage"], string> = {
   geschwaerzt: "bg-page text-muted",
 };
 
-function Verantwortung({ q }: { q: QuellenBelastbarkeit }): JSX.Element {
+function Verantwortung({ q, fach }: { q: QuellenBelastbarkeit; fach: boolean }): JSX.Element {
   const { t } = useTranslation();
   const v = q.verantwortung;
-  const wer = v.person ? (v.person.name ?? v.person.id) : null;
+  // R-0346: die rohe Kontokennung ist eine Fachangabe; allgemein steht nur ein Name, wenn es einen gibt.
+  const wer = v.person ? (v.person.name ?? (fach ? v.person.id : null)) : null;
   const erreichbar =
     v.erreichbar === true
       ? t("ask.belastbarkeit.erreichbar.ja")
@@ -87,9 +90,119 @@ function Seite({ seite, nummer }: { seite: KonfliktSeite; nummer: 1 | 2 }): JSX.
   );
 }
 
+// ================================================================================================
+// R-1627 — DIE ARGUMENTATIONSKETTE, JEDE STUFE AUFKLAPPBAR.
+// ================================================================================================
+//
+// Die Stufen kommen fertig vom Server (Aussage → Stützung → Einwand → Vorbehalt → Schluss), jede an
+// eine Quelle, einen Widerspruch oder einen benannten Grund gebunden. Die Fläche ordnet nichts um.
+// R-0346: bei `tiefe: "kurz"` stehen nur Aussage und Schluss offen; die übrigen Stufen sind
+// zugeklappt, aber vorhanden. Ohne Zuschnitt (älterer Server) steht alles offen.
+function offenNachTiefe(
+  art: ArgumentStufe["art"],
+  zuschnitt: AntwortZuschnitt | undefined,
+): boolean {
+  return zuschnitt?.tiefe !== "kurz" || art === "aussage" || art === "schluss";
+}
+
+function StufenInhalt({ stufe, fach }: { stufe: ArgumentStufe; fach: boolean }): JSX.Element {
+  const { t, i18n } = useTranslation();
+  if (stufe.art === "aussage" || stufe.art === "stuetzung") {
+    return (
+      <div className="mt-1 text-[12px] leading-relaxed text-muted">
+        <p className="text-text">{stufe.aussage}</p>
+        {stufe.belegstelle ? (
+          <p className="mt-0.5 font-mono text-[11px] text-muted-2">
+            {t("ask.belastbarkeit.argumentation.belegstelle", { stelle: stufe.belegstelle })}
+          </p>
+        ) : null}
+        <p className="mt-0.5 text-[11px] text-muted-2">
+          {t(`ask.belastbarkeit.wissensart.${stufe.wissensart}`)} ·{" "}
+          {t("ask.belastbarkeit.vertrauenswertKurz", { wert: stufe.vertrauenswert })} ·{" "}
+          {t(
+            stufe.validiert
+              ? "ask.belastbarkeit.quelle.validiert"
+              : "ask.belastbarkeit.quelle.nichtValidiert",
+          )}{" "}
+          ·{" "}
+          {t("ask.belastbarkeit.stand", {
+            datum: formatKoTimestamp(stufe.stand, i18n.language) ?? stufe.stand,
+          })}
+          {fach ? ` · ${stufe.koId}` : ""}
+        </p>
+      </div>
+    );
+  }
+  if (stufe.art === "einwand") {
+    return (
+      <div className="mt-1 text-[12px] leading-relaxed text-muted">
+        {stufe.seite.einsehbar ? (
+          <p className="text-text">
+            {stufe.seite.titel}: {stufe.seite.aussage}
+          </p>
+        ) : (
+          <p>{t("ask.belastbarkeit.konflikt.nichtEinsehbar")}</p>
+        )}
+      </div>
+    );
+  }
+  if (stufe.art === "vorbehalt") {
+    return (
+      <p className="mt-1 text-[12px] leading-relaxed text-muted">
+        {t(`ask.belastbarkeit.grund.${stufe.grund}`)}
+      </p>
+    );
+  }
+  return (
+    <p className="mt-1 text-[12px] leading-relaxed text-text">
+      {t(`ask.belastbarkeit.lage.${stufe.lage}`)} ·{" "}
+      {t(`ask.belastbarkeit.argumentation.einstufung.${stufe.einstufung}`)}
+    </p>
+  );
+}
+
+function Argumentation({
+  stufen,
+  zuschnitt,
+}: {
+  stufen: readonly ArgumentStufe[];
+  zuschnitt: AntwortZuschnitt | undefined;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const fach = zuschnitt?.fachsprache !== "allgemein";
+  return (
+    <div data-testid="ask-argumentation" className="mt-2">
+      <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+        {t("ask.belastbarkeit.argumentation.titel")}
+      </p>
+      <ol className="mt-1 space-y-1">
+        {stufen.map((stufe, i) => (
+          <li
+            // biome-ignore lint/suspicious/noArrayIndexKey: die Stufenfolge ist die Reihenfolge des Servers.
+            key={i}
+            data-testid="ask-argument-stufe"
+            data-art={stufe.art}
+            className="rounded-btn border border-hairline bg-surface px-2 py-1"
+          >
+            <details open={offenNachTiefe(stufe.art, zuschnitt)}>
+              <summary className="cursor-pointer text-[12px] font-semibold text-text">
+                {i + 1}. {t(`ask.belastbarkeit.argumentation.art.${stufe.art}`)}
+                {stufe.art === "aussage" || stufe.art === "stuetzung" ? `: ${stufe.titel}` : ""}
+              </summary>
+              <StufenInhalt stufe={stufe} fach={fach} />
+            </details>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 export function Belastbarkeit({ b }: { b: AntwortBelastbarkeit }): JSX.Element {
   const { t, i18n } = useTranslation();
   const schwaechste = b.quellen.find((q) => q.koId === b.vertrauenswert.schwaechsteQuelle);
+  // R-0346: `allgemein` lässt technische Angaben (Fassung, Prüfstand-Kennung) in der Darstellung weg.
+  const fach = b.zuschnitt?.fachsprache !== "allgemein";
   return (
     <section
       data-testid="ask-belastbarkeit"
@@ -139,7 +252,7 @@ export function Belastbarkeit({ b }: { b: AntwortBelastbarkeit }): JSX.Element {
               className="flex flex-wrap gap-x-2 text-[11.5px] text-muted"
             >
               <span className="font-semibold text-text">{q.titel}</span>
-              <span>v{q.version}</span>
+              {fach ? <span>v{q.version}</span> : null}
               <span>{t("ask.belastbarkeit.vertrauenswertKurz", { wert: q.vertrauenswert })}</span>
               <span>
                 {t("ask.belastbarkeit.stand", {
@@ -152,9 +265,9 @@ export function Belastbarkeit({ b }: { b: AntwortBelastbarkeit }): JSX.Element {
                     ? "ask.belastbarkeit.quelle.validiert"
                     : "ask.belastbarkeit.quelle.nichtValidiert",
                 )}
-                {q.pruefstand === "proven" ? "" : ` · ${t("ask.checkCaveat.badge")}`}
+                {fach && q.pruefstand !== "proven" ? ` · ${t("ask.checkCaveat.badge")}` : ""}
               </span>
-              <Verantwortung q={q} />
+              <Verantwortung q={q} fach={fach} />
             </li>
           ))}
         </ul>
@@ -180,6 +293,17 @@ export function Belastbarkeit({ b }: { b: AntwortBelastbarkeit }): JSX.Element {
           </p>
         </div>
       ))}
+      {b.argumentation && b.argumentation.length > 0 ? (
+        <Argumentation stufen={b.argumentation} zuschnitt={b.zuschnitt} />
+      ) : null}
+      {b.zuschnitt ? (
+        <p data-testid="ask-zuschnitt" className="mt-1.5 text-[11px] text-muted-2">
+          {t("ask.belastbarkeit.zuschnitt", {
+            rolle: t(`ask.belastbarkeit.rolle.${b.zuschnitt.rolle}`),
+            anlass: t(`ask.belastbarkeit.anlass.${b.zuschnitt.anlass}`),
+          })}
+        </p>
+      ) : null}
       <p className="mt-1.5 text-[11px] text-muted-2">{t("ask.belastbarkeit.hinweis")}</p>
     </section>
   );

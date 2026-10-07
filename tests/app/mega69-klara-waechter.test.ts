@@ -2747,6 +2747,16 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Prüflauf zu Kandidat f4db2037 GEMESSEN („Received", HISTORIE/nacharbeit-10/PRUEFUNG/
     // auslieferungswaechter-fenster.log) und unverändert übernommen; die vier Panel-Dateien sind seit
     // dieser Messung unberührt (`git diff f4db2037 -- apps/web/public/word-addin/` leer).
+    // AUFNAHME 20260922 · ANTWORT-ERKLÄRUNG (Ben nacharbeit-2, R-0321/R-0335) — DER PIN MUSS WANDERN.
+    // `taskpane.js`: `performAsk` liest `result.belastbarkeit` (Lage und Konfliktseiten); ein Körper
+    // ohne Ergebnis, eine unbekannte/gestörte oder zur Antwortform widersprüchliche Lage wird
+    // `{kind:"error",detail:"lage"}`, `geschwaerzt` wird `{kind:"redacted"}`; `renderAskLage` zeichnet
+    // Lage und beide Seiten unter „Mehr"; neun Wörterbuchschlüssel je Sprache in EINER Zeile; Kommentare
+    // im Antwortzweig verdichtet (B3: 12496 Zeilen). `taskpane.html`: `#ask-lage-line` und
+    // `#ask-konflikt-seiten` auf der Zeile von `#ask-conflict-line` (498 Zeilen). Auslieferungsfolgen:
+    // kein neues Abrufziel, keine Nutzlaständerung (der Rumpf von POST /api/ask ist byte-gleich), CSP,
+    // Recht und Manifest unverändert, kein Sideload. Ohne zugelassenes Hash-Werkzeug ist der neue Wert
+    // hier nicht berechenbar — der Prüflauf meldet ihn als „Received", er wird danach gemessen übernommen.
     const PIN = "eefba3bdd389a30d41f4fbe37ad5bcdc336667559554212971ecbe7dff5f37d3";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(

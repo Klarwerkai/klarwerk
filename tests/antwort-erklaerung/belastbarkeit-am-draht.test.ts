@@ -89,6 +89,14 @@ interface Belastbarkeit {
     beschreibung: string | null;
     seiten: { einsehbar: boolean; koId?: string; aussage?: string; traegtAntwort: boolean }[];
   }[];
+  argumentation: { art: string; koId?: string; lage?: string }[];
+  zuschnitt: {
+    rolle: string;
+    anlass: string;
+    tiefe: string;
+    fachsprache: string;
+    reihenfolge: string[];
+  };
   hinweis: string;
 }
 
@@ -247,6 +255,41 @@ describe("Antwort-Erklärung · Belastbarkeit an POST /api/ask", () => {
     expect(b.gruende).toContain("zustaendig_nicht_erreichbar");
     expect(b.quellen[0]?.verantwortung.erreichbar).toBe(false);
     expect(b.quellen[0]?.verantwortung.person?.id).toBe(expertin.id);
+  });
+
+  it("R-1627/R-0346: Kette und Zuschnitt aus Sitzungsrolle und Anlass, an der echten Route", async () => {
+    const { app, admin } = await start("bel-e@antwort.test");
+    const ko = await anlegen(
+      app,
+      admin,
+      `Wartung ${SELTENES_WORT}`,
+      `Die ${SELTENES_WORT} wird vor jeder Wartung entlastet.`,
+    );
+    const frei = belastbarkeit(await fragen(app, admin, `${SELTENES_WORT} Wartung entlasten`));
+    expect(frei.zuschnitt).toMatchObject({
+      rolle: "admin",
+      anlass: "frage",
+      tiefe: "ausfuehrlich",
+      fachsprache: "fach",
+    });
+    expect(frei.argumentation[0]).toMatchObject({ art: "aussage", koId: ko });
+    expect(frei.argumentation.at(-1)).toMatchObject({ art: "schluss", lage: frei.lage });
+
+    // Dieselbe Frage aus dem Dokument (Word-Markierung): Anlass `dokument`, der Text reist nicht mit.
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: admin,
+      payload: {
+        question: `${SELTENES_WORT} Wartung entlasten`,
+        mode: "retrieval-only",
+        questionSource: "selection",
+      },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const dokument = belastbarkeit(res.json() as Antwort);
+    expect(dokument.zuschnitt.anlass).toBe("dokument");
+    expect(dokument.zuschnitt.reihenfolge[0]).toBe("best_practice");
   });
 
   it("R-0284: die Wissenslücke nennt, wogegen geprüft wurde — Konsole und Word-Modus", async () => {

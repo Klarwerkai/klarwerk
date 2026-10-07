@@ -26,11 +26,17 @@
 import type { Conflict } from "../../conflicts";
 import {
   type KnowledgeObject,
+  type KnowledgeType,
   isConfidential,
   responsibleKindOf,
   responsibleOf,
 } from "../../knowledge-object";
-import { type AnswerCheckState, type AnswerEvidence, answerCheckState } from "./answer-evidence";
+import {
+  type AnswerCheckState,
+  type AnswerEvidence,
+  type AnswerGrade,
+  answerCheckState,
+} from "./answer-evidence";
 
 // ================================================================================================
 // DIE ZUSTANDSFAMILIE (R-0335) — sechs Lagen, ein Vokabular für Konsole und Word-Fenster.
@@ -134,6 +140,120 @@ export interface AntwortKonflikt {
   seiten: [KonfliktSeite, KonfliktSeite];
 }
 
+// ================================================================================================
+// R-0346 — WER FRAGT UND WARUM: DER ZUSCHNITT DER ERKLÄRUNG.
+// ================================================================================================
+//
+// Die Rolle kommt aus der Sitzung (`SessionUser.role`), der Anlass aus dem Anfragezusammenhang:
+// stammt die Frage aus dem Dokument (`questionSource: "selection"`) oder ist die Anfrage an ein
+// Word-Dokument gebunden (Klara-Kopfzeilen), ist der Anlass `dokument`, sonst `frage`. Der
+// Dokumenttext selbst wird dafür NICHT gelesen und reist nirgends mit (KA5) — und eine bloße
+// Markierung zählt nicht, damit sie den Antwortkörper nicht verändert (KA5-R2).
+//
+// WAS DER ZUSCHNITT STEUERT (und was nicht):
+//   · Tiefe       — wie viele Stufen der Argumentation offen stehen (kurz: Aussage und Schluss;
+//                   ausführlich: alle). Weggelassen wird NICHTS; zugeklappte Stufen bleiben da.
+//   · Fachsprache — `fach` zeigt Fassung, Prüfstand-Kennung und Personenkennung, `allgemein` lässt
+//                   diese technischen Angaben in der Darstellung weg.
+//   · Reihenfolge — in welcher Folge die Wissensarten der tragenden Quellen in der Argumentation
+//                   stehen.
+// Der Antworttext selbst (Modell oder wörtliche Übernahme) wird NICHT umgeschrieben — das wäre ein
+// Eingriff in den Antwortweg, nicht in seine Erklärung.
+//
+// DIE TABELLE IST EINE BENANNTE VORGABE, KEINE ABGELEITETE WAHRHEIT. Begründung je Zeile:
+//   · Anlass `dokument`: der Text verlässt das Haus — erst die verbindliche Vorgehensweise
+//     (best_practice), dann, was man vermeiden muss (negativwissen), dann Technik und Erfahrung;
+//     das Bauchgefühl zuletzt.
+//   · Frage einer Fachrolle (experte, controller, admin): erst das technische Wissen und die
+//     Erfahrung aus Fehlern, dann die Vorgehensweise; Bauchgefühl zuletzt.
+//   · Sonst (viewer, Add-on ohne Sitzung): erst die Vorgehensweise, dann Technik; Bauchgefühl zuletzt.
+export type FragendenRolle = "viewer" | "experte" | "controller" | "admin" | "unbekannt";
+export type FrageAnlass = "dokument" | "frage";
+
+export interface AntwortZuschnitt {
+  rolle: FragendenRolle;
+  anlass: FrageAnlass;
+  tiefe: "kurz" | "ausfuehrlich";
+  fachsprache: "allgemein" | "fach";
+  reihenfolge: KnowledgeType[];
+}
+
+const REIHENFOLGE_DOKUMENT: KnowledgeType[] = [
+  "best_practice",
+  "negativwissen",
+  "technik",
+  "lernkurve",
+  "bauchgefuehl",
+];
+const REIHENFOLGE_FACH: KnowledgeType[] = [
+  "technik",
+  "negativwissen",
+  "lernkurve",
+  "best_practice",
+  "bauchgefuehl",
+];
+const REIHENFOLGE_ALLGEMEIN: KnowledgeType[] = [
+  "best_practice",
+  "technik",
+  "lernkurve",
+  "negativwissen",
+  "bauchgefuehl",
+];
+
+export function antwortZuschnitt(rolle: FragendenRolle, anlass: FrageAnlass): AntwortZuschnitt {
+  const fachrolle = rolle === "experte" || rolle === "controller" || rolle === "admin";
+  return {
+    rolle,
+    anlass,
+    tiefe: fachrolle ? "ausfuehrlich" : "kurz",
+    fachsprache: fachrolle ? "fach" : "allgemein",
+    reihenfolge: [
+      ...(anlass === "dokument"
+        ? REIHENFOLGE_DOKUMENT
+        : fachrolle
+          ? REIHENFOLGE_FACH
+          : REIHENFOLGE_ALLGEMEIN),
+    ],
+  };
+}
+
+// ================================================================================================
+// R-1627 / R-0281 — DIE MEHRSTUFIGE ARGUMENTATION, QUELLENGEBUNDEN.
+// ================================================================================================
+//
+// Die Kette führt von den Aussagen der TRAGENDEN Quellen über ihre Stützung, die Einwände (offene
+// Widersprüche) und die Vorbehalte zum Schluss. Jede Stufe ist an eine Quelle, einen Konflikt oder
+// einen benannten Grund gebunden; nichts davon stammt aus einem Modell-Gedankengang, und `steps`
+// liefert ausschließlich die wörtliche Belegstelle einer Quelle (FR-ASK-06) — es wird KEINE
+// Herleitung aus `steps` konstruiert (KW-W1-13, mega39 D2). Keine Stufe trägt eine
+// Wahrheitswahrscheinlichkeit (R-0260); der Vertrauenswert ist der der Quelle.
+export type ArgumentStufe =
+  | {
+      art: "aussage" | "stuetzung";
+      koId: string;
+      titel: string;
+      aussage: string;
+      wissensart: KnowledgeType;
+      /** Die wörtliche Belegstelle aus dem Antwortweg (`steps[].snippet`), sonst `null`. */
+      belegstelle: string | null;
+      vertrauenswert: number;
+      validiert: boolean;
+      stand: string;
+    }
+  | { art: "einwand"; konfliktId: string; seite: KonfliktSeite }
+  | { art: "vorbehalt"; grund: BelastbarkeitsGrund }
+  | { art: "schluss"; lage: AntwortLage; einstufung: AnswerGrade };
+
+const VORBEHALTE: readonly BelastbarkeitsGrund[] = [
+  "zuordnung_unbekannt",
+  "tragende_quelle_nicht_validiert",
+  "pruefnachweis_unvollstaendig",
+  "konfliktlage_unbekannt",
+  "zustaendig_nicht_erreichbar",
+  "erreichbarkeit_unbekannt",
+  "verantwortung_nur_autor",
+];
+
 export interface AntwortBelastbarkeit {
   lage: AntwortLage;
   gruende: BelastbarkeitsGrund[];
@@ -148,6 +268,10 @@ export interface AntwortBelastbarkeit {
   quellenAnzahl: { herangezogen: number; tragend: number };
   quellen: QuellenBelastbarkeit[];
   konflikte: AntwortKonflikt[];
+  /** R-1627: die Stufen von den Aussagen zum Schluss, in der Reihenfolge des Zuschnitts. */
+  argumentation: ArgumentStufe[];
+  /** R-0346: auf wen und welchen Anlass die Erklärung zugeschnitten ist. */
+  zuschnitt: AntwortZuschnitt;
   hinweis: "vertrauen_ist_kein_wahrheitsversprechen";
 }
 
@@ -165,6 +289,59 @@ export interface AntwortBelastbarkeitInput {
   erreichbar?: ReadonlyMap<string, boolean>;
   /** Anzeigenamen; nur gesetzt, wenn der Aufrufer Personendaten sehen darf. */
   namen?: ReadonlyMap<string, string> | null;
+  /** Die Belegstellen des Antwortwegs (`AnswerResult.steps`) — nur für die wörtliche Stelle. */
+  steps?: readonly { sourceId: string | null; snippet: string | null }[];
+  /** R-0346: Rolle und Anlass. Fehlt er, gilt die enge Vorgabe (`unbekannt`, `frage`). */
+  zuschnitt?: AntwortZuschnitt;
+}
+
+function argumentation(
+  carryingKos: readonly KnowledgeObject[],
+  konflikte: readonly AntwortKonflikt[],
+  gruende: readonly BelastbarkeitsGrund[],
+  lage: AntwortLage,
+  einstufung: AnswerGrade,
+  input: AntwortBelastbarkeitInput,
+  zuschnitt: AntwortZuschnitt,
+): ArgumentStufe[] {
+  const rang = (art: KnowledgeType): number => {
+    const i = zuschnitt.reihenfolge.indexOf(art);
+    return i < 0 ? zuschnitt.reihenfolge.length : i;
+  };
+  // Stabil sortiert: gleiche Wissensart behält die Reihenfolge der tragenden Quellen.
+  const geordnet = carryingKos
+    .map((ko, i) => ({ ko, i }))
+    .sort((a, b) => rang(a.ko.type) - rang(b.ko.type) || a.i - b.i)
+    .map((e) => e.ko);
+  const stufen: ArgumentStufe[] = geordnet.map((ko, i) => {
+    const stelle = input.steps?.find((s) => s.sourceId === ko.id && (s.snippet ?? "").trim());
+    return {
+      art: i === 0 ? "aussage" : "stuetzung",
+      koId: ko.id,
+      titel: ko.title,
+      aussage: ko.statement,
+      wissensart: ko.type,
+      belegstelle: stelle?.snippet?.trim() ?? null,
+      vertrauenswert: ko.trust,
+      validiert: ko.status === "validiert",
+      stand: standVon(ko),
+    };
+  });
+  // Der Einwand ist die GEGENSEITE — die Seite, die die Antwort nicht trägt.
+  for (const k of konflikte) {
+    for (const s of k.seiten) {
+      if (!s.traegtAntwort) {
+        stufen.push({ art: "einwand", konfliktId: k.konfliktId, seite: s });
+      }
+    }
+  }
+  for (const grund of gruende) {
+    if (VORBEHALTE.includes(grund)) {
+      stufen.push({ art: "vorbehalt", grund });
+    }
+  }
+  stufen.push({ art: "schluss", lage, einstufung });
+  return stufen;
 }
 
 function standVon(ko: KnowledgeObject): string {
@@ -234,6 +411,7 @@ function seite(
 export function antwortBelastbarkeit(input: AntwortBelastbarkeitInput): AntwortBelastbarkeit {
   const { answer, evidence } = input;
   const hinweis = "vertrauen_ist_kein_wahrheitsversprechen" as const;
+  const zuschnitt = input.zuschnitt ?? antwortZuschnitt("unbekannt", "frage");
   if (!answer.answered) {
     return {
       lage: "wissensluecke",
@@ -242,6 +420,8 @@ export function antwortBelastbarkeit(input: AntwortBelastbarkeitInput): AntwortB
       quellenAnzahl: { herangezogen: answer.sources.length, tragend: 0 },
       quellen: [],
       konflikte: [],
+      argumentation: [{ art: "schluss", lage: "wissensluecke", einstufung: evidence.grade }],
+      zuschnitt,
       hinweis,
     };
   }
@@ -299,12 +479,18 @@ export function antwortBelastbarkeit(input: AntwortBelastbarkeitInput): AntwortB
     }
   }
 
+  const lage: AntwortLage = evidence.sourcesConflicted
+    ? "belegt_mit_konflikt"
+    : zustaendigFehlt
+      ? "belegt_zustaendig_fehlt"
+      : "belegt";
+  const carryingKos = carrying.flatMap((id) => {
+    const ko = input.kos.get(id);
+    return ko ? [ko] : [];
+  });
+
   return {
-    lage: evidence.sourcesConflicted
-      ? "belegt_mit_konflikt"
-      : zustaendigFehlt
-        ? "belegt_zustaendig_fehlt"
-        : "belegt",
+    lage,
     gruende,
     vertrauenswert:
       schwaechste === null
@@ -317,6 +503,16 @@ export function antwortBelastbarkeit(input: AntwortBelastbarkeitInput): AntwortB
     quellenAnzahl: { herangezogen: answer.sources.length, tragend: carrying.length },
     quellen,
     konflikte,
+    argumentation: argumentation(
+      carryingKos,
+      konflikte,
+      gruende,
+      lage,
+      evidence.grade,
+      input,
+      zuschnitt,
+    ),
+    zuschnitt,
     hinweis,
   };
 }
