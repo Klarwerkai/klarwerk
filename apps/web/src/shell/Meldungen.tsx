@@ -299,9 +299,7 @@ export function MeldungenListe({
                   className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${
                     read
                       ? "bg-hairline"
-                      : n.kind === "conflict" ||
-                          n.kind === "escalation" ||
-                          n.kind === "reklamation"
+                      : n.kind === "conflict" || n.kind === "escalation" || n.kind === "reklamation"
                         ? "bg-trust-crit-fill"
                         : n.kind === "duplicate"
                           ? "bg-ai"
