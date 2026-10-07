@@ -77,6 +77,9 @@ export interface PdfDocumentText {
   text: string; // zeilen-/absatztreuer Klartext (bis zum Seiten-Cap)
   truncated: boolean; // true, wenn das PDF mehr Seiten hat als gelesen wurden
   pageCount: number; // tatsächlich gelesene Seiten
+  // R-0347: der Klartext JE gelesener Seite, in Seitenreihenfolge (leere Seiten als ""). Die
+  // Dokumentfragen brauchen ihn für die Fundstelle „Seite N"; `text` bleibt zeichengleich.
+  pages?: string[];
 }
 
 // pdfjs-Fragment → positioniertes Item für die Rekonstruktion. Ohne transform (z. B. Stub) fällt das
@@ -144,7 +147,12 @@ export async function extractPdfDocument(
       const content = await page.getTextContent();
       pages.push(reconstructPageLines(content.items.map(toPositioned)));
     }
-    return { text: joinPdfPages(pages), truncated: total > readCount, pageCount: readCount };
+    return {
+      text: joinPdfPages(pages),
+      truncated: total > readCount,
+      pageCount: readCount,
+      pages: pages.map((zeilen) => joinPdfPages([zeilen])),
+    };
   })();
   // Laeuft die Frist ab, darf die weiterlaufende Arbeit spaeter nicht als unbehandelte Ablehnung
   // auftauchen — sie ist dann bereits beantwortet.
