@@ -52,6 +52,12 @@ import {
   reworkNextSteps,
   reworkValidationHref,
 } from "../../lib/reviewReworkContext";
+import {
+  type SpeicherAntwort,
+  speicherAntwortAus,
+  speicherFolgeSatz,
+  vorschlagFolgeSatz,
+} from "../../lib/statusFreigabe";
 import { useAuthorName } from "../../lib/useAuthorName";
 import { isStaleKoDeleteError } from "../../lib/validationDelete";
 import {
@@ -1331,6 +1337,16 @@ export function BibliothekLesen({
       const buchen = (): void => {
         teilstandRef.current = buch.text === null ? null : buch;
       };
+      // STATUS-FREIGABE (produkt:20261007): der Stand, den die LETZTE eigene Serverantwort trägt —
+      // daraus sagt die Erfolgsmeldung, ob die gespeicherte Fassung freigegeben ist oder nicht.
+      // Keine zweite Abfrage: ein fremder Schreibvorgang gehört nicht in die eigene Quittung.
+      const antwort: { stand: SpeicherAntwort | null } = { stand: null };
+      const merkeStand = (geschrieben: unknown): void => {
+        const stand = speicherAntwortAus(geschrieben);
+        if (stand) {
+          antwort.stand = stand;
+        }
+      };
       // ==========================================================================================
       // JOB 4251 · DIE BEDINGUNG DES NÄCHSTEN EINORDNUNGSAUFRUFS — GENAU DIESELBE REGEL WIE BEIM
       // TEXT (`eigeneFassung`), NUR AM ANDEREN GEGENSTAND.
@@ -1400,6 +1416,7 @@ export function BibliothekLesen({
        * Aufruf nicht auf den Stand vom Öffnen zurückfallen — er geht gar nicht hinaus (K14).
        */
       const quittieren = (geschrieben: { metadataRevision?: number } | undefined): void => {
+        merkeStand(geschrieben);
         eigenerAufrufDiesesLaufs = true;
         const stand =
           typeof geschrieben?.metadataRevision === "number" ? geschrieben.metadataRevision : null;
@@ -1480,6 +1497,7 @@ export function BibliothekLesen({
             ...(typeof eigeneFassung === "number" ? { expectedVersion: eigeneFassung } : {}),
           });
           buch.text = marken.text;
+          merkeStand(geschrieben);
           // Die Fassung kommt aus der ANTWORT des Schreibvorgangs, nicht aus einer zweiten Abfrage.
           buch.fassung = typeof geschrieben?.version === "number" ? geschrieben.version : null;
         }
@@ -1560,13 +1578,14 @@ export function BibliothekLesen({
       }
       // Alles angekommen: es gibt nichts mehr nachzuholen.
       teilstandRef.current = null;
+      return antwort.stand;
     },
     // Solange nichts zurück ist, wird nichts behauptet (§9 „laden"): die Auskunft des VORIGEN
     // Versuchs gehört nicht über einen laufenden neuen.
     onMutate: () => {
       setSpeicherLage(null);
     },
-    onSuccess: () => {
+    onSuccess: (antwortStand) => {
       invalidate();
       bearbeitenBeenden();
       setErr(null);
@@ -1574,7 +1593,13 @@ export function BibliothekLesen({
       // etwas angekommen ist. Der Satz kommt über die vorhandene Toast-Fläche, dieselbe, die das
       // Löschen und das Anhängen schon benutzen; eine zweite Mechanik daneben wäre eine stille
       // Ablösung.
-      push("success", t("ko.revise.saved"));
+      //
+      // STATUS-FREIGABE: dahinter steht, ob die gespeicherte Fassung freigegeben IST — abgelesen aus
+      // der eigenen Serverantwort. Eine Änderung an einem offenen Eintrag ist gespeichert, nicht
+      // freigegeben; trägt die Antwort keinen Stand, wird darüber nichts behauptet.
+      const folge = speicherFolgeSatz(antwortStand ?? null);
+      const gespeichert = t("ko.revise.saved");
+      push("success", folge ? `${gespeichert} ${t(folge.schluessel, folge.werte)}` : gespeichert);
       if (reviewReworkContext) {
         setReworkSavedFor(koId);
       }
@@ -1889,10 +1914,14 @@ export function BibliothekLesen({
         expectedVersion: v.expectedVersion,
         ...(v.note && v.note.trim().length > 0 ? { note: v.note.trim() } : {}),
       }),
-    onSuccess: () => {
+    onSuccess: (antwort, v) => {
       invalidate();
       setAblehnung(null);
       setErr(null);
+      // STATUS-FREIGABE: die Entscheidung sagt, was jetzt gilt — „freigegeben" nur, wenn die
+      // Serverantwort es trägt; abgelehnt heisst: der Eintrag bleibt, wie er war.
+      const folge = vorschlagFolgeSatz(v.decision, speicherAntwortAus(antwort));
+      push("success", t(folge.schluessel, folge.werte));
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
@@ -2298,7 +2327,12 @@ export function BibliothekLesen({
 
   return (
     <ImageDescribeProvider provenance={draftProvenance(ko.confidentiality, koId)}>
-      <div data-testid="bib-lesen" className="flex w-[720px] max-w-full flex-col gap-[18px] py-9">
+      <div
+        data-testid="bib-lesen"
+        // STATUS-FREIGABE: die Objektgrenze für Klaras Zeige-Modus; der Status ist die Pille unten.
+        data-objekt="wissen"
+        className="flex w-[720px] max-w-full flex-col gap-[18px] py-9"
+      >
         {/* JOB 3034 R2 · KONFLIKTRUNDE 2: derselbe Hinweis wie auf jeder anderen Fläche, aus
           derselben Quelle — seit JOB 3063 R6 auch in DERSELBEN Bauform (`AuffrischungHinweis`),
           nicht mehr als abgeschriebener Zwilling. Er schweigt, wenn die Liste es schon sagt. */}
@@ -2312,6 +2346,7 @@ export function BibliothekLesen({
             // der Server für diese Antwort nicht erhoben hat. Rein maschinenlesbar: kein neuer Satz,
             // kein neuer Übersetzungsschlüssel, kein Erklärtext auf der Lesefläche (H4).
             {...anzeigestatusAnker(zustand)}
+            data-objektstatus="wissen"
             className={cx(
               "rounded-[999px] px-2.5 py-[3px] text-[11px] font-bold uppercase tracking-[0.3px]",
               PILLEN_TON[ton],
