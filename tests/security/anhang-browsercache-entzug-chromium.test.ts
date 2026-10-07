@@ -108,13 +108,23 @@ async function login(email: string): Promise<Auth & { token: string }> {
   return { token, authorization: `Bearer ${token}` };
 }
 
+/**
+ * Alle Kontexte dieses Laufs. Sie werden ERST in `afterAll` geschlossen, vor dem Browser.
+ * Nacharbeit 3, gemessen: mit `--single-process` riss das Schließen des K0-Kontexts den ganzen
+ * Browser mit („Target page, context or browser has been closed" in E1/E2). Ein Abbau mitten im Lauf
+ * ist für die Aussage dieser Datei nicht nötig — jeder Fall hat seinen eigenen Kontext, also seinen
+ * eigenen Zwischenspeicher.
+ */
+const kontexte: Kontext[] = [];
+
 /** Ein Chromium-Kontext, angemeldet über das echte Sitzungs-Cookie. */
-async function seiteFuer(token: string): Promise<{ kontext: Kontext; seite: Seite }> {
+async function seiteFuer(token: string): Promise<{ seite: Seite }> {
   const kontext = await (browser as Browser).newContext();
+  kontexte.push(kontext);
   await kontext.addCookies([{ name: "kw_session", value: token, url: basis }]);
   const seite = await kontext.newPage();
   await seite.goto(`${basis}${STARTSEITE}`, { waitUntil: "load" });
-  return { kontext, seite };
+  return { seite };
 }
 
 async function koMitAnhang(autor: Auth, vertraulich: boolean) {
@@ -242,37 +252,36 @@ describe("R-0550 · Rechteentzug gegen die schon gespeicherte Browserkopie (Chro
       const { chromium } = verlangeModul("playwright") as {
         chromium: { launch(o: Record<string, unknown>): Promise<Browser> };
       };
-      browser = await chromium.launch({
-        headless: true,
-        args: ["--no-sandbox", "--disable-gpu", "--single-process", "--no-zygote"],
-      });
+      // Ohne `--single-process`/`--no-zygote` (Startform von `gast-nutzerweg/browserweg.ts`, das
+      // ebenfalls mehrere Kontexte fährt): in einem Ein-Prozess-Chromium teilen sich Browser und
+      // Renderer den Prozess, und das Ende eines Kontexts beendete hier den ganzen Browser.
+      browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-gpu"] });
     } catch (e) {
       fehler = String(e).split("\n").slice(0, 5).join(" | ");
     }
   }, 240_000);
 
   afterAll(async () => {
+    for (const kontext of kontexte) {
+      await kontext.close().catch(() => undefined);
+    }
     await schliesseChromium(DATEI, browser);
     await app?.close();
   }, 120_000);
 
   it("K0 · KALIBRIERUNG: dieser Aufbau erkennt eine Wiederverwendung aus dem Browser-Zwischenspeicher", async () => {
     expect(fehler).toBeNull();
-    const { kontext, seite } = await seiteFuer(viewer.token);
-    try {
-      const erst = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${KALIBRIERUNG}`);
-      const zweit = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${KALIBRIERUNG}`);
-      expect(erst.status).toBe(200);
-      expect(zweit.status).toBe(200);
-      // Ohne diese Zeile wäre jede Aussage unten eine Leermessung: der Zwischenspeicher hätte gar
-      // nicht gegriffen, und „der Server wurde erneut gefragt" bewiese nichts über den Vertrag.
-      expect(
-        treffer(KALIBRIERUNG),
-        "eine Antwort mit max-age=300 muss beim zweiten Abruf aus dem Browser kommen",
-      ).toBe(1);
-    } finally {
-      await kontext.close();
-    }
+    const { seite } = await seiteFuer(viewer.token);
+    const erst = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${KALIBRIERUNG}`);
+    const zweit = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${KALIBRIERUNG}`);
+    expect(erst.status).toBe(200);
+    expect(zweit.status).toBe(200);
+    // Ohne diese Zeile wäre jede Aussage unten eine Leermessung: der Zwischenspeicher hätte gar
+    // nicht gegriffen, und „der Server wurde erneut gefragt" bewiese nichts über den Vertrag.
+    expect(
+      treffer(KALIBRIERUNG),
+      "eine Antwort mit max-age=300 muss beim zweiten Abruf aus dem Browser kommen",
+    ).toBe(1);
   }, 90_000);
 
   it("E1 · Hochstufung: zuvor gespeicherte Metadaten und Rohbytes werden nicht wiederverwendet — Server fragt, verweigert sofort", async () => {
@@ -280,60 +289,56 @@ describe("R-0550 · Rechteentzug gegen die schon gespeicherte Browserkopie (Chro
     const { koId, objectId } = await koMitAnhang(autor, false);
     const metaPfad = `/api/objects/${objectId}`;
     const rawPfad = `/api/objects/${objectId}/raw`;
-    const { kontext, seite } = await seiteFuer(viewer.token);
-    try {
-      // 1 · Berechtigt laden — über BEIDE Anhangsrouten, je über fetch; /raw zusätzlich navigiert.
-      const meta1 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${metaPfad}`);
-      const raw1 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${rawPfad}`);
-      expect(meta1.status, meta1.text).toBe(200);
-      expect(meta1.text).toContain("base64");
-      expect(meta1.cacheControl).toBe("private, no-cache, must-revalidate");
-      expect(raw1.status, raw1.text).toBe(200);
-      expect(raw1.cacheControl).toBe("private, no-cache, must-revalidate");
-      expect(raw1.laenge).toBeGreaterThan(0);
+    const { seite } = await seiteFuer(viewer.token);
+    // 1 · Berechtigt laden — über BEIDE Anhangsrouten, je über fetch; /raw zusätzlich navigiert.
+    const meta1 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${metaPfad}`);
+    const raw1 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${rawPfad}`);
+    expect(meta1.status, meta1.text).toBe(200);
+    expect(meta1.text).toContain("base64");
+    expect(meta1.cacheControl).toBe("private, no-cache, must-revalidate");
+    expect(raw1.status, raw1.text).toBe(200);
+    expect(raw1.cacheControl).toBe("private, no-cache, must-revalidate");
+    expect(raw1.laenge).toBeGreaterThan(0);
 
-      // 2 · KONTROLLE OHNE ENTZUG: auch eine unveränderte Berechtigung geht vor der Wiederverwendung
-      //     zum Server. Das ist der Vertrag (`no-cache`), und er ist die Voraussetzung dafür, dass
-      //     ein Entzug überhaupt sofort greifen KANN.
-      const metaVor = treffer(metaPfad);
-      const rawVor = treffer(rawPfad);
-      const meta2 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${metaPfad}`);
-      const raw2 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${rawPfad}`);
-      expect(meta2.status).toBe(200);
-      expect(raw2.status).toBe(200);
-      expect(treffer(metaPfad), "Metadaten: Rückfrage vor Wiederverwendung").toBe(metaVor + 1);
-      expect(treffer(rawPfad), "Rohbytes: Rückfrage vor Wiederverwendung").toBe(rawVor + 1);
-      const nav1 = await seite.goto(`${basis}${rawPfad}`, { waitUntil: "load" });
-      expect(nav1?.status()).toBe(200);
-      expect(treffer(rawPfad), "Navigation auf /raw: Rückfrage").toBe(rawVor + 2);
+    // 2 · KONTROLLE OHNE ENTZUG: auch eine unveränderte Berechtigung geht vor der Wiederverwendung
+    //     zum Server. Das ist der Vertrag (`no-cache`), und er ist die Voraussetzung dafür, dass
+    //     ein Entzug überhaupt sofort greifen KANN.
+    const metaVor = treffer(metaPfad);
+    const rawVor = treffer(rawPfad);
+    const meta2 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${metaPfad}`);
+    const raw2 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${rawPfad}`);
+    expect(meta2.status).toBe(200);
+    expect(raw2.status).toBe(200);
+    expect(treffer(metaPfad), "Metadaten: Rückfrage vor Wiederverwendung").toBe(metaVor + 1);
+    expect(treffer(rawPfad), "Rohbytes: Rückfrage vor Wiederverwendung").toBe(rawVor + 1);
+    const nav1 = await seite.goto(`${basis}${rawPfad}`, { waitUntil: "load" });
+    expect(nav1?.status()).toBe(200);
+    expect(treffer(rawPfad), "Navigation auf /raw: Rückfrage").toBe(rawVor + 2);
 
-      // 3 · DER ENTZUG — ohne Wartezeit danach.
-      await hochstufen(autor, koId);
+    // 3 · DER ENTZUG — ohne Wartezeit danach.
+    await hochstufen(autor, koId);
 
-      // 4 · Erneute Verwendung im SELBEN Browser: der Server wird gefragt und verweigert.
-      const metaN = treffer(metaPfad);
-      const rawN = treffer(rawPfad);
-      const nav2 = await seite.goto(`${basis}${rawPfad}`, { waitUntil: "load" });
-      expect(nav2?.status(), "Navigation auf /raw nach dem Entzug").toBe(404);
-      expect(nav2?.headers()["cache-control"]).toBe("no-store");
-      // Die Seite liegt jetzt auf dem 404 desselben Ursprungs — fetch bleibt same-origin.
-      const meta3 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${metaPfad}`);
-      const raw3 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${rawPfad}`);
-      expect(treffer(rawPfad), "Rohbytes: Navigation und fetch fragen beide den Server").toBe(
-        rawN + 2,
-      );
-      expect(treffer(metaPfad), "Metadaten: fetch fragt den Server").toBe(metaN + 1);
-      expect(meta3.status, "Metadaten nach dem Entzug").toBe(404);
-      expect(raw3.status, "Rohbytes nach dem Entzug").toBe(404);
-      expect(meta3.cacheControl).toBe("no-store");
-      expect(raw3.cacheControl).toBe("no-store");
-      // Keine Bytes aus der alten Kopie: der Rumpf ist die Ablehnung, nicht das Bild.
-      expect(meta3.text).toContain("NOT_FOUND");
-      expect(meta3.text).not.toContain("base64");
-      expect(raw3.text).toContain("NOT_FOUND");
-    } finally {
-      await kontext.close();
-    }
+    // 4 · Erneute Verwendung im SELBEN Browser: der Server wird gefragt und verweigert.
+    const metaN = treffer(metaPfad);
+    const rawN = treffer(rawPfad);
+    const nav2 = await seite.goto(`${basis}${rawPfad}`, { waitUntil: "load" });
+    expect(nav2?.status(), "Navigation auf /raw nach dem Entzug").toBe(404);
+    expect(nav2?.headers()["cache-control"]).toBe("no-store");
+    // Die Seite liegt jetzt auf dem 404 desselben Ursprungs — fetch bleibt same-origin.
+    const meta3 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${metaPfad}`);
+    const raw3 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${rawPfad}`);
+    expect(treffer(rawPfad), "Rohbytes: Navigation und fetch fragen beide den Server").toBe(
+      rawN + 2,
+    );
+    expect(treffer(metaPfad), "Metadaten: fetch fragt den Server").toBe(metaN + 1);
+    expect(meta3.status, "Metadaten nach dem Entzug").toBe(404);
+    expect(raw3.status, "Rohbytes nach dem Entzug").toBe(404);
+    expect(meta3.cacheControl).toBe("no-store");
+    expect(raw3.cacheControl).toBe("no-store");
+    // Keine Bytes aus der alten Kopie: der Rumpf ist die Ablehnung, nicht das Bild.
+    expect(meta3.text).toContain("NOT_FOUND");
+    expect(meta3.text).not.toContain("base64");
+    expect(raw3.text).toContain("NOT_FOUND");
   }, 120_000);
 
   it("E2 · Rollenentzug: derselbe Prüfer, dasselbe Cookie — nach dem Entzug liefert der Browser keine Kopie", async () => {
@@ -341,39 +346,35 @@ describe("R-0550 · Rechteentzug gegen die schon gespeicherte Browserkopie (Chro
     const { objectId } = await koMitAnhang(autor, true);
     const metaPfad = `/api/objects/${objectId}`;
     const rawPfad = `/api/objects/${objectId}/raw`;
-    const { kontext, seite } = await seiteFuer(pruefer.token);
-    try {
-      const meta1 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${metaPfad}`);
-      const raw1 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${rawPfad}`);
-      expect(meta1.status, meta1.text).toBe(200);
-      expect(raw1.status, raw1.text).toBe(200);
-      expect(meta1.cacheControl).toBe("no-store");
-      expect(raw1.cacheControl).toBe("no-store");
+    const { seite } = await seiteFuer(pruefer.token);
+    const meta1 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${metaPfad}`);
+    const raw1 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${rawPfad}`);
+    expect(meta1.status, meta1.text).toBe(200);
+    expect(raw1.status, raw1.text).toBe(200);
+    expect(meta1.cacheControl).toBe("no-store");
+    expect(raw1.cacheControl).toBe("no-store");
 
-      // Der Admin nimmt dem Prüfer `ko.validate` — der einzige Rollenwechsel, der den Zugriff auf
-      // Vertrauliches wirklich entzieht. Das Cookie bleibt gültig.
-      const entzug = await (app as App).inject({
-        method: "PUT",
-        url: `/api/users/${prueferId}`,
-        headers: admin,
-        payload: { role: "viewer" },
-      });
-      expect(entzug.statusCode, entzug.body).toBeLessThan(300);
+    // Der Admin nimmt dem Prüfer `ko.validate` — der einzige Rollenwechsel, der den Zugriff auf
+    // Vertrauliches wirklich entzieht. Das Cookie bleibt gültig.
+    const entzug = await (app as App).inject({
+      method: "PUT",
+      url: `/api/users/${prueferId}`,
+      headers: admin,
+      payload: { role: "viewer" },
+    });
+    expect(entzug.statusCode, entzug.body).toBeLessThan(300);
 
-      const metaN = treffer(metaPfad);
-      const rawN = treffer(rawPfad);
-      const meta2 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${metaPfad}`);
-      const raw2 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${rawPfad}`);
-      const nav = await seite.goto(`${basis}${rawPfad}`, { waitUntil: "load" });
-      expect(treffer(metaPfad), "Metadaten: Server gefragt").toBe(metaN + 1);
-      expect(treffer(rawPfad), "Rohbytes: fetch und Navigation fragen den Server").toBe(rawN + 2);
-      expect(meta2.status).toBe(404);
-      expect(raw2.status).toBe(404);
-      expect(nav?.status()).toBe(404);
-      expect(meta2.text).not.toContain("base64");
-      expect(raw2.text).toContain("NOT_FOUND");
-    } finally {
-      await kontext.close();
-    }
+    const metaN = treffer(metaPfad);
+    const rawN = treffer(rawPfad);
+    const meta2 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${metaPfad}`);
+    const raw2 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${rawPfad}`);
+    const nav = await seite.goto(`${basis}${rawPfad}`, { waitUntil: "load" });
+    expect(treffer(metaPfad), "Metadaten: Server gefragt").toBe(metaN + 1);
+    expect(treffer(rawPfad), "Rohbytes: fetch und Navigation fragen den Server").toBe(rawN + 2);
+    expect(meta2.status).toBe(404);
+    expect(raw2.status).toBe(404);
+    expect(nav?.status()).toBe(404);
+    expect(meta2.text).not.toContain("base64");
+    expect(raw2.text).toContain("NOT_FOUND");
   }, 120_000);
 });
