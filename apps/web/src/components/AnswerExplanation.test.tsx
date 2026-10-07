@@ -168,6 +168,21 @@ describe("Antwortweg · die Anzeige des gespeicherten Belegs", () => {
     expect(html).toContain("Zuständig beim Antworten: Bernd (als Autor – kein Eigentümer benannt)");
   });
 
+  it("R-0317: nennt die Modellfassung als Laufprotokoll-Referenz — oder ihren Grund", () => {
+    const mitLauf = panel(ok({ modelRunId: "lauf-123", modelRunIdReason: null }));
+    expect(mitLauf).toContain("Modellfassung: Eintrag lauf-123 im KI-Laufprotokoll");
+    const ohneLauf = panel(ok({ modelRunId: null, modelRunIdReason: "no_model_run_recorded" }));
+    expect(ohneLauf).toContain("Keine Modellfassung gebunden (no_model_run_recorded)");
+    // Altbestand ohne beide Felder: keine Zeile, keine Behauptung.
+    expect(panel(ok())).not.toContain('data-testid="antwortweg-modelllauf"');
+  });
+
+  it("R-0618: bei geschwärzter tragender Zeile ist die Konfliktlage unbekannt, nicht „kein Widerspruch“", () => {
+    const html = panel(ok({ integrity: "REDACTED", openConflictToday: null }));
+    expect(html).toContain("Ob heute ein Widerspruch offen ist, ist nicht bekannt.");
+    expect(html).not.toContain("Zu den tragenden Quellen ist heute kein Widerspruch offen.");
+  });
+
   it("NO_SNAPSHOT: die Antwort hat keinen gespeicherten Beleg", () => {
     const html = panel({
       state: "NO_SNAPSHOT",

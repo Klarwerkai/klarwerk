@@ -111,10 +111,40 @@ export type AnswerIntegrityState = "VALID" | "DEGRADED" | "INVALIDATED" | "REDAC
 export type AnswerNullReason =
   /** W1 beruehrt den Antwortweg nicht — es gibt keine Resolution, die man binden koennte. */
   | "w1_not_on_answer_path"
-  /** Die W2-A-Quellrevision ist nicht verdrahtet; niemand schreibt ExternalSourceRecords. */
+  /**
+   * Die W2-A-Quellrevision ist nicht verdrahtet; niemand schreibt ExternalSourceRecords.
+   *
+   * SEIT R-0169 UEBERHOLT: die Importwege schreiben `sourceRecordId` an den Quellenanker. Der Wert
+   * bleibt im Wertebereich, weil Altbestand ihn traegt; NEUE Snapshots schreiben ihn nicht mehr
+   * (Antwortbeleg, Nacharbeit 3) — sie binden den Anker oder nennen einen der Gruende darunter.
+   */
   | "w2a_not_wired"
-  /** Der Import erzeugt bis heute keine Fundstelle (buildSource setzt excerpt: null). */
+  /** Altbestand wie `w2a_not_wired`: neue Snapshots binden die Fundstelle aus dem Quellenanker. */
   | "no_locator_from_import"
+  /**
+   * ANTWORTBELEG (R-0293/R-0317) — DIE GRUENDE DER QUELLBINDUNG AUS DEM QUELLENANKER.
+   *
+   * Der Schreibweg bindet Quelle und Fundstelle aus dem Quellenanker (`KoSource`) der Wissenseinheit,
+   * wie der Antwortlauf sie in der Hand hielt. Leer bleibt ein Feld nur, wenn die Angabe wirklich
+   * fehlt — und dann mit genau einem dieser Gruende:
+   *   · `ko_not_in_execution`          die Antwort nennt ein Objekt, das der Lauf nicht hielt
+   *   · `no_source_anchor`             das Objekt traegt keinen Quellenanker (etwa manuell erfasst)
+   *   · `multiple_source_anchors`      mehrere Anker — welcher die Antwort trug, ist nicht belegt,
+   *                                    und geraten wird nicht
+   *   · `anchor_without_source_record` der Anker traegt keine festgeschriebene Quellfassung
+   *                                    (Anker von vor R-0169 oder nicht ueber einen Import entstanden)
+   *   · `anchor_without_excerpt`       der Anker traegt keine woertliche Belegstelle
+   */
+  | "ko_not_in_execution"
+  | "no_source_anchor"
+  | "multiple_source_anchors"
+  | "anchor_without_source_record"
+  | "anchor_without_excerpt"
+  /**
+   * R-0317: zu dieser Antwort gibt es keinen Laufprotokoll-Datensatz — der Retrieval-Weg ruft kein
+   * Modell und protokolliert keinen Lauf, oder es ist kein Laufprotokoll verdrahtet.
+   */
+  | "no_model_run_recorded"
   /**
    * Der Validation-Leseweg (findBySeq) existiert noch nicht — das war W3-B.
    *
@@ -337,6 +367,18 @@ export interface AnswerEvidenceSnapshot {
   readonly integrityHash: string;
   /** R-0317: Erzeugungsart des Antworttextes. Optional wie die Felder an `AnswerEvidenceRef`. */
   readonly generationMode?: AnswerGenerationMode;
+  /**
+   * R-0317 — DIE MODELLFASSUNG ALS UNVERAENDERLICHE INTERNE REFERENZ.
+   *
+   * Die Kennung des Laufprotokoll-Datensatzes (`ModelRunRecord.id`, append-only), der diese Antwort
+   * protokolliert hat: Anbieter, tatsaechlich gerufenes Modell, Rueckfall, Zeitpunkt. Der Beleg
+   * fuehrt bewusst nur die Referenz und keinen Anbieter- oder Modellnamen (keine Anbieter-Spuren im
+   * Beleg); wer den Datensatz liest, liest ihn mit den Rechten des Laufprotokolls.
+   * `null` nur mit Grund (`modelRunIdReason`). Optional, weil Belege vor dieser Regel sie nicht
+   * kennen — dann steht sie auch nicht im Hash.
+   */
+  readonly modelRunId?: string | null;
+  readonly modelRunIdReason?: AnswerNullReason | null;
 }
 
 /**
@@ -387,6 +429,13 @@ export function answerSnapshotHashMaterial(snapshot: AnswerEvidenceSnapshot): re
   // Material und faellt damit auf.
   if (snapshot.generationMode !== undefined) {
     material.push(`generationMode=${snapshot.generationMode}`);
+  }
+  // R-0317: die Modelllauf-Referenz — dieselbe Regel: nur gesetzte Felder gehen ein.
+  if (snapshot.modelRunId !== undefined) {
+    material.push(`modelRunId=${hashWert(snapshot.modelRunId)}`);
+  }
+  if (snapshot.modelRunIdReason !== undefined) {
+    material.push(`modelRunIdReason=${hashWert(snapshot.modelRunIdReason)}`);
   }
   snapshot.evidence.forEach((ref, index) => {
     const teile = [

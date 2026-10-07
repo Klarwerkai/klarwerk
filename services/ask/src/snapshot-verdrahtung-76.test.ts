@@ -164,7 +164,12 @@ describe("W3-C1/76 · ein Antwortlauf persistiert genau einen Snapshot", () => {
     }
   });
 
-  it("resolutionId und sourceRecordId bleiben unveraendert leer mit ihren eigenen Gruenden", async () => {
+  // ANTWORTBELEG-NACHARBEIT 3 (Ben): hier stand `sourceRecordIdReason === "w2a_not_wired"` fuer
+  // JEDE Evidence. Der Grund ist seit R-0169 ueberholt (die Importwege schreiben die Quellfassung an
+  // den Anker). Die Zusicherung bleibt so scharf wie vorher — leer UND mit Grund —, nennt jetzt aber
+  // den Grund, der in diesem Aufbau wirklich gilt: `ko-a`/`ko-b` liegen nicht im Bestand, der Lauf
+  // hielt sie also nicht in der Hand.
+  it("resolutionId und sourceRecordId bleiben leer mit ihren eigenen, zutreffenden Gruenden", async () => {
     const { dienst, snapshots } = await aufbau(true);
     const out = await dienst.ask("Frage", "anna", "de");
     if (!out.answerId) {
@@ -173,9 +178,11 @@ describe("W3-C1/76 · ein Antwortlauf persistiert genau einen Snapshot", () => {
     const s = await snapshots.findSnapshot(out.answerId, 1);
     expect(s?.resolutionId).toBeNull();
     expect(s?.resolutionIdReason).toBe("w1_not_on_answer_path");
+    expect(s?.evidence.length).toBeGreaterThan(0);
     for (const e of s?.evidence ?? []) {
       expect(e.sourceRecordId).toBeNull();
-      expect(e.sourceRecordIdReason).toBe("w2a_not_wired");
+      expect(e.sourceRecordIdReason).toBe("ko_not_in_execution");
+      expect(e.sourceRecordIdReason).not.toBe("w2a_not_wired");
     }
   });
 

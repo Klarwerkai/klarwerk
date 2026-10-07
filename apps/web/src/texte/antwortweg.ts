@@ -49,6 +49,8 @@ export default {
     "antwortweg.erzeugung.model": "Der Antworttext wurde mit einem KI-Modell formuliert.",
     "antwortweg.erzeugung.deterministic":
       "Der Antworttext wurde ohne KI-Modell aus den Quellen zusammengestellt.",
+    "antwortweg.modelllauf": "Modellfassung: Eintrag {{kennung}} im KI-Laufprotokoll",
+    "antwortweg.modelllaufFehlt": "Keine Modellfassung gebunden ({{grund}})",
     "antwortweg.zeile.tragend": "Trägt die Antwort – im Antworttext als Quelle belegt",
     "antwortweg.zeile.herangezogen": "Herangezogen, aber im Antworttext nicht zitiert",
     "antwortweg.zeile.fassung": "Fassung {{version}}",
@@ -103,6 +105,8 @@ export default {
     "antwortweg.erzeugung.model": "The answer text was phrased by an AI model.",
     "antwortweg.erzeugung.deterministic":
       "The answer text was assembled from the sources without an AI model.",
+    "antwortweg.modelllauf": "Model version: entry {{kennung}} in the AI run log",
+    "antwortweg.modelllaufFehlt": "No model version bound ({{grund}})",
     "antwortweg.zeile.tragend": "Carries the answer – cited as a source in the answer text",
     "antwortweg.zeile.herangezogen": "Consulted, but not cited in the answer text",
     "antwortweg.zeile.fassung": "Version {{version}}",
@@ -160,6 +164,8 @@ export default {
     "antwortweg.erzeugung.model": "De antwoordtekst is met een AI-model geformuleerd.",
     "antwortweg.erzeugung.deterministic":
       "De antwoordtekst is zonder AI-model uit de bronnen samengesteld.",
+    "antwortweg.modelllauf": "Modelversie: item {{kennung}} in het AI-runlogboek",
+    "antwortweg.modelllaufFehlt": "Geen modelversie gebonden ({{grund}})",
     "antwortweg.zeile.tragend": "Draagt het antwoord – in de antwoordtekst als bron vermeld",
     "antwortweg.zeile.herangezogen": "Geraadpleegd, maar niet geciteerd in de antwoordtekst",
     "antwortweg.zeile.fassung": "Versie {{version}}",

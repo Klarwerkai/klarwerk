@@ -151,6 +151,16 @@ export function AnswerExplanationPanel({
       {erklaerung.generationMode === null ? null : (
         <p className={ZEILE}>{t(`antwortweg.erzeugung.${erklaerung.generationMode}`)}</p>
       )}
+      {/* R-0317: die Modellfassung als Referenz ins KI-Laufprotokoll — kein Anbietername hier. */}
+      {erklaerung.modelRunId ? (
+        <p data-testid="antwortweg-modelllauf" className={ZEILE}>
+          {t("antwortweg.modelllauf", { kennung: erklaerung.modelRunId })}
+        </p>
+      ) : erklaerung.modelRunIdReason ? (
+        <p data-testid="antwortweg-modelllauf" className={ZEILE}>
+          {t("antwortweg.modelllaufFehlt", { grund: erklaerung.modelRunIdReason })}
+        </p>
+      ) : null}
       {erklaerung.evidence.length > 0 ? (
         <ul className="flex flex-col gap-2">
           {erklaerung.evidence.map((zeile, index) => (

@@ -1414,6 +1414,10 @@ export class Reasoner {
     // bestehenden (positionalen) Aufrufe unverändert bleiben. Ohne Kontext bleibt der Datensatz
     // exakt wie bisher — ein ungebundener Aufrufer schreibt keine leeren Felder.
     context?: ModelRunContext,
+    // ANTWORTBELEG (R-0317): die vom Aufrufer vergebene Kennung des ERFOLGSdatensatzes. So kann der
+    // Aufrufer genau den Laufprotokoll-Eintrag benennen, der sein Ergebnis belegt. Ohne sie vergibt
+    // `recordRun` wie bisher selbst eine Kennung.
+    erfolgsLaufId?: string,
   ): Promise<T> {
     const startedAt = new Date().toISOString();
     // D5: die Abschalt-Epoche beim Start dieses Laufs — vor jedem Warten (s. `kiAbschaltStand`).
@@ -1567,6 +1571,7 @@ export class Reasoner {
           startedAt,
           "success",
           {
+            ...(erfolgsLaufId ? { id: erfolgsLaufId } : {}),
             fallback: i > 0,
             demo: result.demo,
             provider: provider.name,
@@ -1726,6 +1731,8 @@ export class Reasoner {
     startedAt: string,
     status: ModelRunStatus,
     extra: {
+      // ANTWORTBELEG (R-0317): vom Aufrufer vergebene Kennung (s. `runTask`); sonst eine neue.
+      id?: string;
       fallback: boolean;
       demo: boolean;
       provider: string;
@@ -1748,7 +1755,7 @@ export class Reasoner {
     }
     const runContext = sanitizeModelRunContext(context);
     await this.modelRuns.append({
-      id: randomUUID(),
+      id: extra.id ?? randomUUID(),
       task,
       provider: extra.provider,
       demo: extra.demo,
@@ -2278,6 +2285,10 @@ export class Reasoner {
     // bisherige.
     dokumenttext?: string,
   ): Promise<AnswerResult> {
+    // ANTWORTBELEG (R-0317): die Kennung des Laufprotokoll-Datensatzes, der diese Antwort belegt —
+    // hier vergeben, damit sie dem Ergebnis mitgegeben werden kann. `runTask` schreibt den
+    // Erfolgsdatensatz VOR der Rückgabe; kehrt der Aufruf zurück, steht der Datensatz.
+    const laufId = randomUUID();
     const result = await this.runTask(
       "answer",
       locale,
@@ -2287,11 +2298,17 @@ export class Reasoner {
           : p.answer(question, context, locale, confidential, relevanz, dokumenttext),
       confidential,
       runContext,
+      laufId,
     );
     // AUFTRAG-mega61 Block F: die Kennzeichnung wird HIER gesetzt und nicht in den Providern —
     // es gibt drei Provider-Wege zu einer Antwort (Cloud, lokal, deterministisch), und drei
     // Stellen wären drei Gelegenheiten, sie zu vergessen.
-    return { ...result, aiGenerated: aiGeneratedMark("answer", result.demo) };
+    // Ohne Laufprotokoll gibt es keinen Datensatz — dann auch keine Kennung, die auf ihn zeigte.
+    return {
+      ...result,
+      aiGenerated: aiGeneratedMark("answer", result.demo),
+      ...(this.modelRuns ? { modelRunId: laufId } : {}),
+    };
   }
 
   // SCRUM-490 R2 (B1): RETRIEVAL-ONLY-Antwort für den Add-on-Pfad (Klara). Der Eingabetext ist der

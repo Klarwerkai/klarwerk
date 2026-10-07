@@ -1865,6 +1865,10 @@ export type AnswerExplanationResponse =
       carryingSourcesValidated: boolean | null;
       openConflictToday: boolean | null;
       generationMode: "model" | "deterministic" | null;
+      // R-0317: Referenz auf den Laufprotokoll-Datensatz (Modellfassung); kein Anbietername.
+      // Optional, weil ein älterer Server das Feld nicht sendet.
+      modelRunId?: string | null;
+      modelRunIdReason?: string | null;
       evidence: AnswerExplanationEvidence[];
       evidenceCount: number;
     }

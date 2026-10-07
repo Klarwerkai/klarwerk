@@ -172,6 +172,12 @@ export interface AnswerResult {
   // Deckungsrückfall stattdessen den Wortlaut einer Quelle aus (JOB 2659/3353/3365), fehlt das Feld:
   // dieser Text ist vollständig, und ein Unvollständigkeits-Hinweis daran wäre eine Falschaussage.
   abgeschnitten?: AbbruchBefund;
+  // ANTWORTBELEG (R-0317): die Kennung des Laufprotokoll-Datensatzes (`ModelRunRecord.id`), der
+  // GENAU DIESE Antwort protokolliert hat — mit Anbieter und tatsächlich gerufener Modellfassung.
+  // Gesetzt nur, wenn ein Laufprotokoll verdrahtet ist und der Datensatz vor der Rückgabe
+  // geschrieben wurde (`Reasoner.answer`). Eine interne Referenz, kein Anbietername: der Fragedienst
+  // bindet sie in den Antwortbeleg und gibt sie NICHT an die Antwortfläche weiter.
+  modelRunId?: string;
 }
 
 export interface StructureResult {

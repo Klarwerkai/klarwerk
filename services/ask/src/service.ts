@@ -35,6 +35,7 @@ import {
   ANSWER_SNAPSHOT_SCHEMA_VERSION,
   type AnswerEvidenceRef,
   type AnswerEvidenceSnapshot,
+  type AnswerNullReason,
   type AskCaller,
   AskError,
   type Gap,
@@ -45,6 +46,59 @@ import {
 } from "./types";
 
 const HELPFUL_TRUST_STEP = 2;
+
+/**
+ * ================================================================================================
+ * ANTWORTBELEG (R-0293 / R-0317) — QUELLFASSUNG UND FUNDSTELLE AUS DEM QUELLENANKER.
+ * ================================================================================================
+ *
+ * Bis hierher schrieb der Belegweg beide Felder ausnahmslos leer, mit Gruenden aus der Zeit, als
+ * niemand Quellrevisionen schrieb. Das stimmt seit R-0169 nicht mehr: die Importwege legen die
+ * festgeschriebene Quellfassung (`KoSource.sourceRecordId`) an den Quellenanker, und der Anker
+ * reist im Versionsschnappschuss des Objekts mit. Gebunden wird deshalb, was das Objekt IN DER HAND
+ * DIESES LAUFS trug — kein Nachschlagen, keine Neusuche.
+ *
+ * DIE EINE REGEL GEGEN DAS RATEN: Die Antwort zitiert eine Wissenseinheit, nicht einen ihrer Anker.
+ * Traegt das Objekt GENAU EINEN Anker, ist er die Quelle; traegt es mehrere, ist nicht belegt,
+ * welcher die Antwort trug — dann bleiben beide Felder leer, mit `multiple_source_anchors`, statt
+ * den ersten oder letzten zu nehmen.
+ *
+ * Die Fundstelle ist die woertliche Belegstelle des Ankers (`excerpt`) — genau die Textstelle, auf
+ * die sich die Aussage der Wissenseinheit stuetzt.
+ */
+type Quellbindung = Pick<
+  AnswerEvidenceRef,
+  "sourceRecordId" | "sourceRecordIdReason" | "locator" | "locatorReason"
+>;
+
+function quellbindung(ko: KnowledgeObject | undefined): Quellbindung {
+  const leer = (grund: AnswerNullReason): Quellbindung => ({
+    sourceRecordId: null,
+    sourceRecordIdReason: grund,
+    locator: null,
+    locatorReason: grund,
+  });
+  if (ko === undefined) {
+    return leer("ko_not_in_execution");
+  }
+  // `?? []`: Altbestand im JSONB kann das Feld trotz Typ entbehren.
+  const anker = ko.sources ?? [];
+  if (anker.length === 0) {
+    return leer("no_source_anchor");
+  }
+  const [einziger, ...weitere] = anker;
+  if (einziger === undefined || weitere.length > 0) {
+    return leer("multiple_source_anchors");
+  }
+  const fassung = einziger.sourceRecordId?.trim() ? einziger.sourceRecordId : null;
+  const stelle = einziger.excerpt?.trim() ? einziger.excerpt : null;
+  return {
+    sourceRecordId: fassung,
+    sourceRecordIdReason: fassung === null ? "anchor_without_source_record" : null,
+    locator: stelle,
+    locatorReason: stelle === null ? "anchor_without_excerpt" : null,
+  };
+}
 
 /**
  * R-0142: wie viele offene Lücken `offeneLueckenZu` je Aufruf höchstens prüft (die jüngsten). Jede
@@ -995,7 +1049,7 @@ export class AskService {
     // D5: die gelesenen Kandidaten gehen gleich an den Antwortweg (Modell oder deterministischer
     // Ersatz). Wurde inzwischen abgeschaltet, verlassen sie diesen Dienst nicht.
     this.pruefeKiSperre("antwortweg", kiBeginn);
-    const rawResult = await this.mitUebertragungssperre(() =>
+    const rawMitLauf = await this.mitUebertragungssperre(() =>
       opts?.retrievalOnly
         ? // JOB 3049: TOR 2, Weg des Add-ins — derselbe Relevanztext wie an Tor 1. Ohne ihn hier
           // wäre genau der Klara-Weg der eine, der die Zusage nicht einlöst.
@@ -1017,6 +1071,9 @@ export class AskService {
             dokumenttext,
           ),
     );
+    // ANTWORTBELEG (R-0317): die Laufprotokoll-Kennung geht in den Beleg, NICHT an die Antwortfläche.
+    // Sie wird hier abgetrennt, damit alles Weitere (Antwort, Wissenslücke, Ausgabe) feldgleich bleibt.
+    const { modelRunId: modelllauf, ...rawResult } = rawMitLauf;
     // D5: danach werden Beleg, Wissenslücke und (in der Route) die Quellobjekte der Einstufung
     // geschrieben bzw. gelesen. Ist inzwischen abgeschaltet, wird nichts davon mehr ausgeliefert.
     this.pruefeKiSperre("ergebnis", kiBeginn);
@@ -1109,7 +1166,13 @@ export class AskService {
     // Identitaet, und keiner kann sie stillschweigend verlieren.
     // D5: nach dem Warten auf die Volltext-Blicke oben — vor dem Beleg, der die Antwort ablegt.
     this.pruefeKiSperre("ergebnis", kiBeginn);
-    const answerId = await this.schreibeAntwortbeleg(result, prefiltered, aufrufer, kiBeginn);
+    const answerId = await this.schreibeAntwortbeleg(
+      result,
+      prefiltered,
+      aufrufer,
+      kiBeginn,
+      modelllauf,
+    );
     // FR-ANA-02 / SCRUM-361: Telemetrie nachvollziehbar + ehrlich — Prefilter-/Kandidatengröße,
     // Top-K und der Retrieval-Modus (kein Inhaltstext, keine Frage im Audit).
     await this.audit?.record({
@@ -1172,11 +1235,12 @@ export class AskService {
    * Client-Evidence, kein Nachschlagen einer Validierungsentscheidung. Der Schreibweg liest
    * NICHTS — er schreibt nur nieder, was der Antwortlauf ohnehin schon in der Hand hat.
    *
-   * DIE DREI LEEREN FELDER SIND DER EHRLICHE TEIL. `resolutionId` bleibt leer, weil der
-   * Antwortweg W1 nicht beruehrt; `sourceRecordId`, weil niemand Quellrevisionen schreibt; und
-   * `validationDecisionRef`, weil es zwischen Bewertung und Antwort keinen Traeger gibt
-   * (Prewrite 72 §2). Jedes davon traegt seinen maschinenlesbaren Grund — ein leeres Feld ohne
-   * Grund waere ein Schweigen, das wie eine Aussage aussieht.
+   * LEERE FELDER SIND DER EHRLICHE TEIL. `resolutionId` bleibt leer, weil der Antwortweg W1 nicht
+   * beruehrt. Quellfassung und Fundstelle werden aus dem Quellenanker gebunden und bleiben nur leer,
+   * wo der Anker sie nicht traegt (`quellbindung`, Antwortbeleg-Nacharbeit 3). Die
+   * Validierungsreferenz steht je Evidence (KW-W3-23). Jedes leere Feld traegt seinen
+   * maschinenlesbaren Grund — ein leeres Feld ohne Grund waere ein Schweigen, das wie eine Aussage
+   * aussieht.
    *
    * FEHLER HIER DUERFEN DIE ANTWORT NICHT VERSCHLUCKEN: der Beleg ist eine Zugabe, keine
    * Vorbedingung. Schlaegt das Schreiben fehl, bekommt der Fragende trotzdem seine Antwort —
@@ -1189,6 +1253,9 @@ export class AskService {
     // ein Konto meint. Jetzt kommt die Entscheidung fertig an — der Schreibweg trifft sie nicht mehr.
     aufrufer: AskCaller,
     kiBeginn: number | undefined,
+    // R-0317: die Kennung des Laufprotokoll-Datensatzes dieser Antwort (Reasoner.answer) — fehlt
+    // auf dem Retrieval-Weg ohne Modelllauf und ohne verdrahtetes Laufprotokoll.
+    modelllauf: string | undefined,
   ): Promise<string | null> {
     const repo = this.answerSnapshots;
     if (!repo) {
@@ -1221,10 +1288,8 @@ export class AskService {
         knowledgeObjectId: koId,
         knowledgeObjectVersion: ko?.version ?? null,
         evidenceRole: tragend ? "carrying" : "consulted",
-        sourceRecordId: null,
-        sourceRecordIdReason: "w2a_not_wired",
-        locator: null,
-        locatorReason: "no_locator_from_import",
+        // R-0293 / R-0317: Quellfassung und Fundstelle aus dem Quellenanker, den der Lauf hielt.
+        ...quellbindung(ko),
         // KW-W3-23 §2: GENAU EINES von beidem. Traegt das Objekt eine Entscheidung, steht sie hier;
         // sonst der Grund, warum nicht — und der haengt an der ROLLE: eine tragende Quelle SOLL
         // eine Entscheidung haben (`NOT_AVAILABLE_AT_EXECUTION` ist dann eine echte Luecke), eine
@@ -1268,6 +1333,12 @@ export class AskService {
       // R-0317: die Erzeugungsart aus der KI-Kennzeichnung; ohne Kennzeichnung aus `demo`, demselben
       // Marker, aus dem die Kennzeichnung selbst entsteht (model-runs/src/types.ts, aiGeneratedMark).
       generationMode: result.aiGenerated?.mode ?? (result.demo ? "deterministic" : "model"),
+      // R-0317 (Ben, Nacharbeit 3): WELCHE Modellfassung — als unveränderliche interne Referenz auf
+      // den Laufprotokoll-Datensatz, der Anbieter und tatsächlich gerufenes Modell trägt. Der Beleg
+      // selbst trägt keinen Anbieternamen; gelesen wird der Datensatz über das Laufprotokoll mit
+      // dessen eigenen Rechten. Fehlt er, steht der Grund daneben.
+      modelRunId: modelllauf ?? null,
+      modelRunIdReason: modelllauf === undefined ? "no_model_run_recorded" : null,
     };
     const mitStatus: AnswerEvidenceSnapshot = { ...roh, status: answerSnapshotStatus(roh) };
     const snapshot: AnswerEvidenceSnapshot = {

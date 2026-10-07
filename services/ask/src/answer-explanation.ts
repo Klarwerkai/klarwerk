@@ -103,12 +103,20 @@ export interface AnswerExplanationView {
   readonly carryingSourcesValidated: boolean | null;
   /**
    * R-0293 — IST HEUTE EIN WIDERSPRUCH ZU EINER TRAGENDEN QUELLE OFFEN? `null` = unbekannt.
-   * Ueber geschwaerzte Zeilen wird hier nichts verraten, was die Zeile selbst verschweigt: die
-   * Gesamtaussage beruecksichtigt nur Zeilen, die dieser Leser sehen darf.
+   * Ueber geschwaerzte Zeilen wird hier nichts verraten, was die Zeile selbst verschweigt — und
+   * fuer sie auch keine Konfliktfreiheit behauptet: ist eine tragende Zeile geschwaerzt und keine
+   * sichtbare meldet einen Widerspruch, ist die Gesamtaussage `null` (s. `gesamtKonflikt`).
    */
   readonly openConflictToday: boolean | null;
   /** R-0317: Erzeugungsart des Antworttextes; `null` bei Belegen von vor R-0317. */
   readonly generationMode: AnswerGenerationMode | null;
+  /**
+   * R-0317: die Referenz auf den Laufprotokoll-Datensatz (Modellfassung) — nur die Kennung, kein
+   * Anbieter- oder Modellname. Die Auflösung geschieht über `GET /api/model-runs` mit dessen Rechten.
+   * `null` mit Grund, oder `null` ohne Grund bei Belegen von vor dieser Regel.
+   */
+  readonly modelRunId: string | null;
+  readonly modelRunIdReason: AnswerNullReason | null;
   readonly evidence: readonly AnswerExplanationEvidence[];
   /**
    * Wie viele Belege der Snapshot fuehrt — auch dann, wenn keiner davon sichtbar ist.
@@ -190,15 +198,40 @@ export function baueAnswerExplanation(
         integrity === "INVALIDATED" || tragend.some((z) => z.redacted)
           ? null
           : tragend.length > 0 && tragend.every((z) => z.validationDecisionRef !== null),
-      openConflictToday:
-        integrity === "INVALIDATED" || konflikte === null
-          ? null
-          : tragend.some((z) => z.openConflictToday === true),
+      openConflictToday: gesamtKonflikt(integrity, konflikte, tragend),
       generationMode: snapshot.generationMode ?? null,
+      // Ein entwerteter Beleg gibt auch diese Referenz nicht heraus — sie wäre nicht mehr belastbar.
+      modelRunId: integrity === "INVALIDATED" ? null : (snapshot.modelRunId ?? null),
+      modelRunIdReason: integrity === "INVALIDATED" ? null : (snapshot.modelRunIdReason ?? null),
       evidence: zeilen,
       evidenceCount: snapshot.evidence.length,
     },
   };
+}
+
+/**
+ * R-0293 / R-0618 — IST HEUTE EIN WIDERSPRUCH ZU EINER TRAGENDEN QUELLE OFFEN?
+ *
+ *   entwertet oder Konfliktlage unbekannt        -> `null`
+ *   eine SICHTBARE tragende Zeile hat Widerspruch -> `true`
+ *   eine tragende Zeile ist geschwaerzt           -> `null` (die Sicht ist unvollstaendig; ein
+ *                                                   `false` behauptete Konfliktfreiheit auch fuer die
+ *                                                   Zeile, die dieser Leser nicht sehen darf — und
+ *                                                   ein `true` aus ihr verriete, was sie verschweigt)
+ *   sonst                                         -> `false`
+ */
+function gesamtKonflikt(
+  integrity: AnswerIntegrityState,
+  konflikte: ReadonlySet<string> | null,
+  tragend: readonly AnswerExplanationEvidence[],
+): boolean | null {
+  if (integrity === "INVALIDATED" || konflikte === null) {
+    return null;
+  }
+  if (tragend.some((z) => !z.redacted && z.openConflictToday === true)) {
+    return true;
+  }
+  return tragend.some((z) => z.redacted) ? null : false;
 }
 
 /**

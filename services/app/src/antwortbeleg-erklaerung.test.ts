@@ -208,8 +208,122 @@ async function kontoMitDiensten(email: string) {
   if (konto === undefined) {
     throw new Error("Konto fehlt");
   }
-  return { services, app, auth, kontoId: konto.id };
+  return { repos, services, app, auth, kontoId: konto.id };
 }
+
+/**
+ * Hängt Quellenanker an ein bestehendes Objekt — so, wie sie ein Import hinterlässt. Die
+ * öffentlichen Schreibrouten verwerfen `sources`; nur die Importwege setzen sie (types.ts:407-414).
+ * Der Test schreibt deshalb über die Ablage selbst, mit dem CAS-Stand des gelesenen Objekts.
+ */
+async function ankerSetzen(
+  ctx: Awaited<ReturnType<typeof kontoMitDiensten>>,
+  koId: string,
+  anker: Array<{ id: string; sourceRecordId?: string; excerpt: string | null }>,
+): Promise<void> {
+  // Die Hintergrundprüfung kann das Objekt zwischen Lesen und Schreiben fortschreiben (CAS über
+  // `rowVersion`). Dann wird frisch gelesen und erneut geschrieben — nie blind überschrieben.
+  for (let versuch = 0; versuch < 5; versuch += 1) {
+    try {
+      await ankerSchreiben(ctx, koId, anker);
+      return;
+    } catch (fehler) {
+      if ((fehler as { code?: string }).code !== "STALE_WRITE") {
+        throw fehler;
+      }
+    }
+  }
+  throw new Error("Anker ließen sich nicht schreiben (dauernd STALE_WRITE).");
+}
+
+async function ankerSchreiben(
+  ctx: Awaited<ReturnType<typeof kontoMitDiensten>>,
+  koId: string,
+  anker: Array<{ id: string; sourceRecordId?: string; excerpt: string | null }>,
+): Promise<void> {
+  const ko = await ctx.services.ko.get(koId);
+  if (ko === undefined) {
+    throw new Error("KO fehlt");
+  }
+  await ctx.repos.koRepo.update({
+    ...ko,
+    sources: anker.map((a) => ({
+      id: a.id,
+      label: "Betriebshandbuch Anlage 1",
+      url: null,
+      excerpt: a.excerpt,
+      kind: "external" as const,
+      peerValidated: false,
+      provider: "Confluence",
+      externalId: "seite-4711",
+      sourceVersion: 7,
+      ...(a.sourceRecordId !== undefined ? { sourceRecordId: a.sourceRecordId } : {}),
+      author: "import",
+      at: "2026-09-30T08:00:00.000Z",
+    })),
+  });
+}
+
+describe("R-0293 / R-0317 · Quellfassung und Fundstelle aus dem Quellenanker", () => {
+  it("bindet die festgeschriebene Quellfassung und die wörtliche Belegstelle des einzigen Ankers", async () => {
+    const ctx = await kontoMitDiensten("anker1@x.de");
+    const koId = await koAnlegen(ctx.app, ctx.auth);
+    await ankerSetzen(ctx, koId, [
+      {
+        id: "q-1",
+        sourceRecordId: "quellrevision-4711-7",
+        excerpt: "Bei Überdruck ist Ventil X von Hand zu schließen.",
+      },
+    ]);
+    const answerId = await fragen(ctx.app, ctx.auth);
+
+    const beleg = await ctx.services.answerSnapshots.latestSnapshot(answerId);
+    const ref = beleg?.evidence.find((e) => e.knowledgeObjectId === koId);
+    expect(ref?.sourceRecordId).toBe("quellrevision-4711-7");
+    expect(ref?.sourceRecordIdReason).toBeNull();
+    expect(ref?.locator).toBe("Bei Überdruck ist Ventil X von Hand zu schließen.");
+    expect(ref?.locatorReason).toBeNull();
+    // Gebunden heißt: Teil des Abdrucks, also nachträglich nicht unbemerkt änderbar.
+    expect(beleg?.integrityHash).toBe(beleg ? hashAnswerSnapshot(beleg) : "");
+
+    // Ein SPÄTERER Anker ändert den gespeicherten Beleg nicht — es wird nicht neu nachgeschlagen.
+    await ankerSetzen(ctx, koId, [
+      { id: "q-2", sourceRecordId: "quellrevision-4711-8", excerpt: "Neuer Wortlaut." },
+    ]);
+    const zeile = zeileZu((await erklaerung(ctx.app, ctx.auth, answerId)).json(), koId);
+    expect(zeile.sourceRecordId).toBe("quellrevision-4711-7");
+    expect(zeile.locator).toBe("Bei Überdruck ist Ventil X von Hand zu schließen.");
+  });
+
+  it("nennt den zutreffenden Grund, wenn der Anker eine Angabe nicht trägt", async () => {
+    const ctx = await kontoMitDiensten("anker2@x.de");
+    const koId = await koAnlegen(ctx.app, ctx.auth);
+    await ankerSetzen(ctx, koId, [{ id: "q-1", excerpt: null }]);
+    const answerId = await fragen(ctx.app, ctx.auth);
+
+    const zeile = zeileZu((await erklaerung(ctx.app, ctx.auth, answerId)).json(), koId);
+    expect(zeile.sourceRecordId).toBeNull();
+    expect(zeile.sourceRecordIdReason).toBe("anchor_without_source_record");
+    expect(zeile.locator).toBeNull();
+    expect(zeile.locatorReason).toBe("anchor_without_excerpt");
+  });
+
+  it("rät bei mehreren Ankern keinen — beide Felder leer mit benanntem Grund", async () => {
+    const ctx = await kontoMitDiensten("anker3@x.de");
+    const koId = await koAnlegen(ctx.app, ctx.auth);
+    await ankerSetzen(ctx, koId, [
+      { id: "q-1", sourceRecordId: "quellrevision-a", excerpt: "Stelle A" },
+      { id: "q-2", sourceRecordId: "quellrevision-b", excerpt: "Stelle B" },
+    ]);
+    const answerId = await fragen(ctx.app, ctx.auth);
+
+    const zeile = zeileZu((await erklaerung(ctx.app, ctx.auth, answerId)).json(), koId);
+    expect(zeile.sourceRecordId).toBeNull();
+    expect(zeile.sourceRecordIdReason).toBe("multiple_source_anchors");
+    expect(zeile.locator).toBeNull();
+    expect(zeile.locatorReason).toBe("multiple_source_anchors");
+  });
+});
 
 describe("R-0293 / R-0317 · der Weg zur Antwort aus dem gespeicherten Beleg", () => {
   it("nennt Fassung, Rolle, Quelle und Fundstelle samt Grund, Freigabelage, Rechte und Erzeugungsart", async () => {
@@ -225,12 +339,12 @@ describe("R-0293 / R-0317 · der Weg zur Antwort aus dem gespeicherten Beleg", (
     const zeile = zeileZu(body, koId);
     expect(zeile.knowledgeObjectVersion).toBeGreaterThan(0);
     expect(zeile.evidenceRole).toBe("carrying");
-    // Quelle und Fundstelle: heute vom Produktweg nicht erfasst — dann steht der GRUND daneben,
-    // nie ein leeres Feld ohne Grund.
+    // Quelle und Fundstelle: ein über die Erfassung angelegtes Objekt trägt keinen Quellenanker —
+    // dann steht genau DIESER Grund daneben, nie ein leeres Feld ohne Grund und kein Altgrund.
     expect(zeile.sourceRecordId).toBeNull();
-    expect(zeile.sourceRecordIdReason).toBe("w2a_not_wired");
+    expect(zeile.sourceRecordIdReason).toBe("no_source_anchor");
     expect(zeile.locator).toBeNull();
-    expect(zeile.locatorReason).toBe("no_locator_from_import");
+    expect(zeile.locatorReason).toBe("no_source_anchor");
     // R-0317: die Rechtelage zum Antwortzeitpunkt steht im Beleg.
     expect(zeile.confidentialityAtExecution).toBe("intern");
     expect(["model", "deterministic"]).toContain(body.generationMode);
@@ -241,6 +355,45 @@ describe("R-0293 / R-0317 · der Weg zur Antwort aus dem gespeicherten Beleg", (
     expect(body.openConflictToday).toBe(false);
     // Der Hauptbeleg löst auf: kein Grund.
     expect(body.primaryResolutionFailure).toBeNull();
+  });
+
+  it("R-0317: bindet die Modellfassung als Referenz auf genau den Laufprotokoll-Eintrag dieser Antwort", async () => {
+    const app = buildApp(buildServices());
+    const auth = await anmelden(app, "lauf1@x.de");
+    await koAnlegen(app, auth);
+    const ask = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: auth,
+      payload: { question: "Was tun bei Ueberdruck am Ventil?" },
+    });
+    expect(ask.statusCode).toBe(200);
+    // Die interne Referenz geht in den Beleg, NICHT an die Antwortfläche.
+    expect(ask.body.includes("modelRunId")).toBe(false);
+    const answerId = ask.json().answerId as string;
+
+    const res = await erklaerung(app, auth, answerId);
+    const body = res.json();
+    expect(typeof body.modelRunId).toBe("string");
+    expect(body.modelRunIdReason).toBeNull();
+
+    // Die Referenz löst über das Laufprotokoll auf — mit dessen eigener Lesestufe — und trifft genau
+    // einen Antwortlauf, der Anbieter und Erzeugungsart trägt.
+    const laeufe = await app.inject({
+      method: "GET",
+      url: "/api/model-runs?limit=200",
+      headers: auth,
+    });
+    expect(laeufe.statusCode).toBe(200);
+    type Lauf = { id: string; task: string; provider: string; demo: boolean };
+    const treffer = (laeufe.json() as Lauf[]).filter((lauf) => lauf.id === body.modelRunId);
+    expect(treffer).toHaveLength(1);
+    expect(treffer[0]?.task).toBe("answer");
+    expect(treffer[0]?.provider.length).toBeGreaterThan(0);
+    expect(treffer[0]?.demo).toBe(body.generationMode === "deterministic");
+    // Der Beleg selbst trägt weder Anbieter- noch Modellfeld (keine Anbieter-Spuren).
+    expect(res.body.includes('"provider"')).toBe(false);
+    expect(res.body.includes('"model"')).toBe(false);
   });
 
   it("zeigt einen HEUTE offenen Widerspruch an der Zeile und in der Gesamtaussage", async () => {
@@ -328,6 +481,13 @@ describe("R-0340 · die Zuständigkeit zum Antwortzeitpunkt", () => {
     expect(beleg.generationMode).toBeDefined();
     const { generationMode: _entfernt, ...ohneErzeugung } = beleg;
     expect(hashAnswerSnapshot(ohneErzeugung)).not.toBe(beleg.integrityHash);
+    // R-0317: auch die Modelllauf-Referenz ist gebunden — weder austausch- noch entfernbar.
+    expect(typeof beleg.modelRunId).toBe("string");
+    expect(hashAnswerSnapshot({ ...beleg, modelRunId: "anderer-lauf" })).not.toBe(
+      beleg.integrityHash,
+    );
+    const { modelRunId: _lauf, ...ohneLauf } = beleg;
+    expect(hashAnswerSnapshot(ohneLauf)).not.toBe(beleg.integrityHash);
   });
 
   it("ein Beleg von vor R-0317 behält sein Hashmaterial Zeichen für Zeichen", () => {
@@ -374,6 +534,66 @@ describe("R-0340 · die Zuständigkeit zum Antwortzeitpunkt", () => {
         "evidenceAbsenceReason=NOT_AVAILABLE_AT_EXECUTION",
       ].join("\u001e"),
     );
+  });
+});
+
+describe("R-0293 / R-0618 · Konfliktlage bei teilweise geschwärztem Beleg", () => {
+  function zweiTragende(): AnswerEvidenceSnapshot {
+    const ref = (koId: string): AnswerEvidenceRef => ({
+      knowledgeObjectId: koId,
+      knowledgeObjectVersion: 1,
+      evidenceRole: "carrying",
+      sourceRecordId: null,
+      sourceRecordIdReason: "no_source_anchor",
+      locator: null,
+      locatorReason: "no_source_anchor",
+      validationReferenceAbsenceReason: "NOT_AVAILABLE_AT_EXECUTION",
+    });
+    const ohneHash: AnswerEvidenceSnapshot = {
+      answerId: "konflikt-1",
+      snapshotRevision: 1,
+      supersedesSnapshotRevision: null,
+      schemaVersion: ANSWER_SNAPSHOT_SCHEMA_VERSION,
+      capturedAt: "2026-10-01T00:00:00.000Z",
+      citedSources: ["ko-sichtbar", "ko-gesperrt"],
+      evidence: [ref("ko-sichtbar"), ref("ko-gesperrt")],
+      resolutionId: null,
+      resolutionIdReason: "w1_not_on_answer_path",
+      validationDecisionRef: null,
+      validationDecisionRefReason: "w3_23_ref_liegt_je_evidence",
+      status: "INCOMPLETE",
+      integrityHash: "",
+    };
+    return { ...ohneHash, integrityHash: hashAnswerSnapshot(ohneHash) };
+  }
+  const record: AnswerRecord = {
+    answerId: "konflikt-1",
+    askExecutionId: "lauf-konflikt-1",
+    createdAt: "2026-10-01T00:00:00.000Z",
+    schemaVersion: ANSWER_SNAPSHOT_SCHEMA_VERSION,
+    owner: { kind: "user", userId: "u1" },
+  };
+  function gesamt(offen: ReadonlySet<string>): boolean | null {
+    const ergebnis = baueAnswerExplanation(record, zweiTragende(), {
+      primaryResolvable: true,
+      gesperrt: false,
+      gesperrteObjekte: new Set(["ko-gesperrt"]),
+      offeneKonflikte: offen,
+    });
+    if (ergebnis.kind !== "OK") {
+      throw new Error("erwartet: OK");
+    }
+    return ergebnis.view.openConflictToday;
+  }
+
+  it("ohne sichtbaren Befund und mit geschwärzter tragender Zeile: unbekannt, nicht „kein Widerspruch“", () => {
+    expect(gesamt(new Set())).toBeNull();
+    // Und ein Konflikt NUR an der geschwärzten Zeile wird nicht verraten — ebenfalls `null`.
+    expect(gesamt(new Set(["ko-gesperrt"]))).toBeNull();
+  });
+
+  it("ein sichtbarer Widerspruch bleibt eine wahre Aussage über die Antwort", () => {
+    expect(gesamt(new Set(["ko-sichtbar"]))).toBe(true);
   });
 });
 
@@ -454,8 +674,10 @@ describe("R-0276 · genau einer von fünf Gründen — oder entwertet", () => {
       expect(zeile.responsibleKindAtExecution).toBeNull();
       expect(zeile.openConflictToday).toBeNull();
     }
-    // Über eine geschwärzte tragende Zeile verrät die Gesamtaussage nichts.
+    // Über eine geschwärzte tragende Zeile verrät die Gesamtaussage nichts — und behauptet auch
+    // keine Konfliktfreiheit für sie (Ben, nacharbeit-2: vorher `false`).
     expect(body.carryingSourcesValidated).toBeNull();
+    expect(body.openConflictToday).toBeNull();
     expect(res.body.includes(koId)).toBe(false);
   });
 

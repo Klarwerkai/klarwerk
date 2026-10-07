@@ -164,6 +164,11 @@ export function pruefeSnapshotKette(
   if (snapshot.validationDecisionRef === null && snapshot.validationDecisionRefReason === null) {
     throw new AskError("BAD_REQUEST", "Leere validationDecisionRef ohne maschinenlesbaren Grund.");
   }
+  // R-0317: dieselbe Regel fuer die Modelllauf-Referenz — sofern der Beleg sie ueberhaupt fuehrt
+  // (Altbestand kennt das Feld nicht und bleibt gueltig).
+  if (snapshot.modelRunId === null && (snapshot.modelRunIdReason ?? null) === null) {
+    throw new AskError("BAD_REQUEST", "Leere modelRunId ohne maschinenlesbaren Grund.");
+  }
   for (const ref of snapshot.evidence) {
     if (ref.sourceRecordId === null && ref.sourceRecordIdReason === null) {
       throw new AskError("BAD_REQUEST", "Leere sourceRecordId ohne maschinenlesbaren Grund.");

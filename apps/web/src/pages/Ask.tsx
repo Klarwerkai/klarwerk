@@ -632,10 +632,11 @@ export function Ask(): JSX.Element {
   // reicht ihn zurück, damit der Server die Quellen-Bindung serverseitig belegen kann.
   const [receipt, setReceipt] = useState(anfang?.antwort?.receipt ?? "");
   // R-0293: die Kennung des dauerhaften Antwortbelegs DIESER Antwort — der Schlüssel zur Erklärung
-  // „Wie kam diese Antwort zustande?". Bewusst nicht im Arbeitsstand: eine wiederaufgenommene
-  // Antwort trägt keine Kennung, und dann bietet die Fläche die Erklärung nicht an, statt eine
-  // fremde oder veraltete zu öffnen.
-  const [answerId, setAnswerId] = useState<string | null>(null);
+  // „Wie kam diese Antwort zustande?". Sie reist MIT der Antwort im kontogebundenen Arbeitsstand
+  // (lib/fragenArbeitsstand.ts), damit der Erklärweg Neuladen und Wiederaufnahme übersteht.
+  // `undefined` heißt ALTBESTAND (ein Stand von vor dieser Regel, nie eine Kennung gemerkt) und
+  // wird auch so zurückgeschrieben; `null` heißt: der Server hat keinen Beleg geschrieben.
+  const [answerId, setAnswerId] = useState<string | null | undefined>(anfang?.antwort?.answerId);
   // SCRUM-264: zuletzt gestellte Frage festhalten → für die Anzeige des Rescue-Blocks.
   const [asked, setAsked] = useState(anfang?.antwort?.frage ?? "");
   // FUNKE-FIX2 P0 (bens Erforderlich 4): die vom Server erzeugte Wissenslücke (mit ID) — der Capture-
@@ -884,11 +885,24 @@ export function Ask(): JSX.Element {
               verschlossen,
               gapId,
               angezeigtAm: antwortAm ?? new Date().toISOString(),
+              // Altbestand bleibt ohne Feld — er bekommt keine erfundene Kennung und kein `null`.
+              ...(answerId !== undefined ? { answerId } : {}),
             }
           : null,
       startadressen: gemerkteStartadressen,
     });
-  }, [konto, standFuer, q, result, receipt, verschlossen, gapId, antwortAm, gemerkteStartadressen]);
+  }, [
+    konto,
+    standFuer,
+    q,
+    result,
+    receipt,
+    answerId,
+    verschlossen,
+    gapId,
+    antwortAm,
+    gemerkteStartadressen,
+  ]);
 
   // Ergänzung 1 · DIE KENNUNG KOMMT ODER WECHSELT bei stehender Fläche.
   //   · WECHSEL (vorher ein anderes Konto): der Stand des neuen Kontos ersetzt den alten
@@ -934,7 +948,8 @@ export function Ask(): JSX.Element {
       aufgenommeneAntwort.current = antwort?.result ?? null;
       setResult(antwort?.result ?? null);
       setReceipt(antwort?.receipt ?? "");
-      setAnswerId(null);
+      // R-0293: die Kennung gehört zur aufgenommenen Antwort desselben Kontos (Altbestand: undefined).
+      setAnswerId(antwort === null ? null : antwort.answerId);
       setVerschlossen(antwort?.verschlossen ?? []);
       setGapId(antwort?.gapId ?? null);
       setAsked(antwort?.frage ?? "");
@@ -2268,7 +2283,7 @@ export function Ask(): JSX.Element {
                     </p>
                   )}
                   {/* R-0293: ein Klick öffnet den gespeicherten Weg zur Antwort — ohne Neusuche. */}
-                  <AnswerExplanation answerId={answerId} nameVon={authorNameOf} />
+                  <AnswerExplanation answerId={answerId ?? null} nameVon={authorNameOf} />
                 </div>
               </div>
             ) : (
