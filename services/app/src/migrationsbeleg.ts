@@ -267,6 +267,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "SPACES_SCHEMA", risiko: "ADDITIV" },
+  // PMO-FEA-0003: die freiwilligen Fotos der Live-Wand. ADDITIV, nachgezählt: ein einziges
+  // `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "LIVEWALL_FOTO_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

@@ -128,6 +128,9 @@ const KnowledgeIntake = lazy(() =>
 );
 const Library = lazy(() => import("./pages/Library").then((m) => ({ default: m.Library })));
 const Lifecycle = lazy(() => import("./pages/Lifecycle").then((m) => ({ default: m.Lifecycle })));
+const LiveWallBeamer = lazy(() =>
+  import("./pages/LiveWallBeamer").then((m) => ({ default: m.LiveWallBeamer })),
+);
 // JOB 3503: nachgeladen wie jede andere Seite — die Regel oben kennt keine Ausnahme, und der
 // Wächter `tests/erstladezeit/` erhebt seine Sollmenge aus dem Dateisystem.
 const MeineEntwuerfe = lazy(() =>
@@ -313,6 +316,11 @@ export function AppRoutes(): JSX.Element {
             aus jedem Begriffshinweis im Editor; ein eigener Menüpunkt ist bewusst nicht Teil
             dieser Lieferung. */}
         <Route path="/begriffe" element={<Firmenwoerterbuch />} />
+        {/* R-0740: die Live-Wand als Beamer-Ansicht. Ohne `Guarded`, wie `/wissen/:id`: die Tür
+            dahinter fordert ihr Recht am Server (`ko.read`, `services/app/src/routes/
+            livewall-routes.ts`) und filtert nach den Sichtrechten der angemeldeten Person.
+            Erreichbar aus dem Blatt „Was gerade passiert". */}
+        <Route path="/livewall" element={<LiveWallBeamer />} />
         {/* R-1646 · Ausgangsprüfung: der ausgehende Text vor der Freigabe. Ohne `Guarded`, wie
             `/begriffe`: die Türen dahinter fordern `ko.validate` am Server
             (`services/app/src/routes/ausgangspruefung-routes.ts`). */}
