@@ -58,6 +58,9 @@ import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
 // eigener, danebenliegender Datenraum, den kein Lesepfad des Originals berührt.
 import { LESEVARIANTEN_SCHEMA } from "./lesevarianten";
 import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
+// produkt:20261007:spaces: die Fassungen der Arbeitsräume. Im App-Wurzelverzeichnis wie das
+// Firmenwörterbuch: die Sichtbarkeitsregel (`sichtbarkeit.ts`) liest sie, kein Fachmodul besitzt sie.
+import { SPACES_SCHEMA } from "./spaces";
 
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
 export function createPool(connectionString?: string): Pool {
@@ -242,6 +245,9 @@ export const schemas = [
   // Extension; sie steht am Ende, weil das die lesbare Ordnung ist (keine Abhängigkeit zu den
   // Stufen davor — die Reihenfolge nach der Zusammenführung mit main ist frei).
   IMPORT_RUN_SOURCE_SYNC_SCHEMA,
+  // produkt:20261007:spaces: die unveränderlichen Fassungen der Spaces. Additiv und wiederholbar
+  // (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  SPACES_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).

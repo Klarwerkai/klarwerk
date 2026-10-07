@@ -140,6 +140,8 @@ const PlaceholderPage = lazy(() =>
 );
 const Profile = lazy(() => import("./pages/Profile").then((m) => ({ default: m.Profile })));
 const Risk = lazy(() => import("./pages/Risk").then((m) => ({ default: m.Risk })));
+// produkt:20261007:spaces: nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
+const Spaces = lazy(() => import("./pages/Spaces").then((m) => ({ default: m.Spaces })));
 const Start = lazy(() => import("./pages/Start").then((m) => ({ default: m.Start })));
 const Capital = lazy(() => import("./pages/Stufe2").then((m) => ({ default: m.Capital })));
 const GraphView = lazy(() => import("./pages/Stufe2").then((m) => ({ default: m.GraphView })));
@@ -307,6 +309,12 @@ export function AppRoutes(): JSX.Element {
             aus jedem Begriffshinweis im Editor; ein eigener Menüpunkt ist bewusst nicht Teil
             dieser Lieferung. */}
         <Route path="/begriffe" element={<Firmenwoerterbuch />} />
+        {/* Spaces (produkt:20261007:spaces): Arbeitsräume und ihre Inhalte. Ohne `Guarded`, wie
+            `/begriffe`: die Türen dahinter fordern ihr Recht am Server (`ko.read`, `ko.validate`
+            zum Anlegen, Zuständigkeit/Schreibrecht am Space, `services/app/src/routes/
+            spaces-routes.ts`). Erreichbar über die Spacezeile jedes Artikels und über Klara. */}
+        <Route path="/spaces" element={<Spaces />} />
+        <Route path="/spaces/:id" element={<Spaces />} />
         <Route path="/mobile" element={<Mobile />} />
         <Route path="/ui-kit" element={<UiKit />} />
         <Route path="*" element={<Navigate to={HOME_ROUTE} replace />} />
