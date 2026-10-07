@@ -58,6 +58,12 @@ export function poolQueryable(pool: Pool): Queryable {
   return toQueryable(pool);
 }
 
+// R-1437: dieselbe Query-Fläche über EINE selbst ausgeliehene Verbindung — für die begrenzte
+// Prüfung (begrenzte-pruefung.ts), die ihre Klammer selbst führt und nur lesen darf.
+export function clientQueryable(client: PoolClient): Queryable {
+  return toQueryable(client);
+}
+
 // Löst den Kontext in die Query-Fläche des EINEN Transaktions-Clients auf — für Pg-Repo-Adapter, die
 // INNERHALB einer Transaktion auf demselben Client schreiben müssen wie der jeweils andere Aufrufer
 // (genau der Zweck dieses Moduls). Die Laufzeitprüfung ist eine Verteidigungslinie: der Typ schließt

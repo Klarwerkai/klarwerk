@@ -77,20 +77,16 @@ function alsFehler(grund: unknown): Error {
 
 // Testdoppel kennen oft weder `on` noch `removeListener`; dann gibt es auch kein Ereignis, das
 // unbehandelt bleiben könnte. Die Prüfung ist deshalb Verträglichkeit, keine Ausnahme vom Vertrag.
-type Ereignisquelle = {
-  on?: (ereignis: "error", f: (fehler: Error) => void) => unknown;
-  removeListener?: (ereignis: "error", f: (fehler: Error) => void) => unknown;
-};
-
+// Ohne Typumwandlung (R-1152): `PoolClient` ist laut Typ ein EventEmitter, geprüft wird nur, ob
+// das Laufzeitobjekt die Methode wirklich trägt.
 export function leiheAus(client: PoolClient): Ausleihe {
   let grund: unknown;
   let zurueck = false;
   const beiFehler = (fehler: Error): void => {
     grund ??= fehler;
   };
-  const quelle = client as unknown as Ereignisquelle;
-  if (typeof quelle.on === "function") {
-    quelle.on.call(client, "error", beiFehler);
+  if (typeof client.on === "function") {
+    client.on("error", beiFehler);
   }
   return {
     verwerfen(neu: unknown) {
@@ -104,8 +100,8 @@ export function leiheAus(client: PoolClient): Ausleihe {
         return;
       }
       zurueck = true;
-      if (typeof quelle.removeListener === "function") {
-        quelle.removeListener.call(client, "error", beiFehler);
+      if (typeof client.removeListener === "function") {
+        client.removeListener("error", beiFehler);
       }
       const verworfen = grund ?? (zusatz ? zusatz : undefined);
       if (verworfen === undefined) {

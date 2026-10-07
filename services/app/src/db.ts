@@ -12,6 +12,7 @@ import {
   KANTEN_SCHEMA,
   KO_CREATE_OPERATION_SCHEMA,
   KO_EVIDENCE_SCHEMA,
+  KO_FREMDSCHLUESSEL_SCHEMA,
   KO_IMPORT_ANCHOR_SCHEMA,
   KO_METADATA_PROJECTION_SCHEMA,
   KO_PROJECTION_CONTROL_SCHEMA,
@@ -144,6 +145,10 @@ export const schemas = [
   // zurück).
   KO_PROJECTION_CONTROL_SCHEMA,
   KO_EVIDENCE_SCHEMA,
+  // R-0846 / L6: Fremdschlüssel von `ko_versions` und `ko_evidence` auf `kos`. ZWANG zur Stellung:
+  // alle drei Tabellen müssen stehen. Additiv (ADD CONSTRAINT … NOT VALID hinter Existenzprüfung);
+  // der Altbestand wird nicht geprüft, das bleibt ein Betreiberschritt (tools/datenintegritaet.ts).
+  KO_FREMDSCHLUESSEL_SCHEMA,
   // JOB 4151: die kuratierten Beziehungen (`ko_kanten`). NACH `KO_SCHEMA`, weil ihre Endpunkte auf
   // Wissensobjekte zeigen — eine Reihenfolgebedingung im technischen Sinn gibt es nicht (kein
   // Fremdschlüssel, keine Extension; die Begründung dafür steht an der DDL selbst), die Nähe ist

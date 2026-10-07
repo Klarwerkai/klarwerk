@@ -1414,9 +1414,13 @@ export class AskService {
     return this.save({ ...gap, assignee: expertId });
   }
 
-  async closeGap(id: string): Promise<Gap> {
+  // R-0846 / L6: optional mit Objektbezug — dem Wissensobjekt, das die Lücke schliesst. Ob es
+  // existiert, prüft der Aufrufer (die Route kennt den KO-Dienst, dieses Modul nicht). Ohne Bezug
+  // bleibt ein schon gesetzter Bezug erhalten; ein leerer Wert setzt keinen.
+  async closeGap(id: string, koId?: string): Promise<Gap> {
     const gap = await this.require(id);
-    return this.save({ ...gap, status: "geschlossen" });
+    const bezug = koId?.trim();
+    return this.save({ ...gap, status: "geschlossen", ...(bezug ? { koId: bezug } : {}) });
   }
 
   // SCRUM-115 / FE-RISK-02: Priorität einer Wissenslücke setzen.
