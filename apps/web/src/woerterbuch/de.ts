@@ -4466,6 +4466,11 @@ const de = {
   "lib.lesemodus.listeEinblenden": "Trefferliste einblenden",
   "lib.lesemodus.listeAusblenden": "Trefferliste ausblenden",
   "lib.lesen.mehr": "Mehr",
+  "lib.lesen.belegstelle.markiert": "Belegstelle hervorgehoben.",
+  "lib.lesen.belegstelle.nichtGefunden":
+    "Die zitierte Belegstelle steht in dieser Fassung nicht wörtlich im Text.",
+  "lib.lesen.belegstelle.andereFassung":
+    "Die Belegstelle gehört zu Fassung {{fassung}}; hier steht Fassung {{aktuell}}. Nichts ist hervorgehoben.",
   "lib.lesen.bilder_one": "{{count}} Bild",
   "lib.lesen.bilder_other": "{{count}} Bilder",
   "lib.lesen.fehler": "Der Eintrag ließ sich nicht laden.",

@@ -2772,6 +2772,12 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // NACHARBEIT 4: PIN BEWUSST AKTUALISIERT (8cd91a17… -> bd2cae06…). Im Prüflauf zu Kandidat
     // ca6061e4 GEMESSEN („Received", HISTORIE/nacharbeit-3/PRUEFUNG/panel-waechter-und-pins.log) und
     // unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // NACHARBEIT 5 — DER PIN MUSS WANDERN. `taskpane.js`: der Quellenlink trägt die Belegstelle
+    // (`askStelleHref`, `?stelle=…&fassung=…`), „Im Wissensnetz anzeigen" führt auf
+    // `/wissen/:id?abschnitt=nachbarschaft`; zwei Kommentarköpfe verdichtet (B3: 12497 Zeilen).
+    // Auslieferungsfolgen: kein neues Abrufziel, nur gleichherkünftige Linkadressen, keine
+    // Nutzlast-, CSP-, Rechte- oder Manifeständerung, kein Sideload. Der Prüflauf meldet den
+    // Ist-Wert als „Received", er wird danach gemessen übernommen.
     const PIN = "bd2cae06f5bcd3d6113f05974043c56248d17b1b6e994eaa449506a1d29d6fcc";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(

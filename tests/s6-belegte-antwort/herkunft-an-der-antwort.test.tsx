@@ -544,11 +544,29 @@ describe("Aufnahme 20260922 · R-0309/R-0325 — Stand an der Herkunftszeile, tr
       {
         tag: "a",
         text: "Im Wissensnetz anzeigen",
-        href: `${window.location.origin}/wissen/ka`,
+        // R-0329 (Nacharbeit 5): direkt in die geöffnete Nachbarschaft — das Wissensnetz des
+        // Eintrags —, nicht nur auf seine Lesefläche (`BibliothekLesen`, `?abschnitt=`).
+        href: `${window.location.origin}/wissen/ka?abschnitt=nachbarschaft`,
         aus: false,
       },
     ]);
     expect(box?.querySelectorAll("a, button")).toHaveLength(2);
+  });
+
+  it("E4 · R-0326: der Quellenlink trägt die Belegstelle — Passage und Fassung als Textanker für die Web-Ansicht", async () => {
+    starten({ ask: { result: antwort(), gap: null, receipt: "r" }, kos: MIT_STAND });
+    await ruhe();
+    await fragen();
+    const href = (quelle: string): string | null => {
+      const a = document.querySelector(`#ask-sources li.quelle-chip[data-quelle="${quelle}"] a`);
+      return a ? a.getAttribute("href") : null;
+    };
+    const mitStelle = new URL(href("ka") ?? "", window.location.origin);
+    expect(mitStelle.pathname).toBe("/wissen/ka");
+    expect(mitStelle.searchParams.get("stelle")).toBe("Offene Profile sind zu bevorzugen.");
+    expect(mitStelle.searchParams.get("fassung")).toBe("3");
+    // Ohne Aussage am Objekt gibt es keinen Anker — die blosse Objektadresse, nichts Erfundenes.
+    expect(href("kb")).toBe(`${window.location.origin}/wissen/kb`);
   });
 
   it("E2 · Klick auf die Quellenziffer oeffnet den Einschub derselben Quelle; ohne Original ist die Aktion gesperrt und benannt", async () => {

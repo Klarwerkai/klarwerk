@@ -186,6 +186,8 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 4: GEMESSEN im Prüflauf zu Kandidat ca6061e4 (`ebe3b2c0…`, „Received" von E2,
  * HISTORIE/nacharbeit-3/PRUEFUNG/panel-waechter-und-pins.log) und unverändert übernommen; die vier
  * Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 5: `taskpane.js` ändert sich erneut (Belegstelle am Quellenlink, Wissensnetz-Sprung,
+ * 12497 Zeilen). Der Wert unten ist wieder ein PLATZHALTER bis zur Messung („Received" von E2).
  */
 export const PANEL_VOR_SCHNITT_BLOB = "ebe3b2c0d87f358350a17f7f11b83ad686d16564";
 

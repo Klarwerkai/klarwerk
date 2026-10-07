@@ -3389,6 +3389,11 @@ const nl: typeof de = {
   "lib.lesemodus.listeEinblenden": "Resultatenlijst tonen",
   "lib.lesemodus.listeAusblenden": "Resultatenlijst verbergen",
   "lib.lesen.mehr": "Meer",
+  "lib.lesen.belegstelle.markiert": "Bewijspassage gemarkeerd.",
+  "lib.lesen.belegstelle.nichtGefunden":
+    "De geciteerde passage staat in deze versie niet letterlijk in de tekst.",
+  "lib.lesen.belegstelle.andereFassung":
+    "De passage hoort bij versie {{fassung}}; dit is versie {{aktuell}}. Er is niets gemarkeerd.",
   "lib.lesen.bilder_one": "{{count}} afbeelding",
   "lib.lesen.bilder_other": "{{count}} afbeeldingen",
   "lib.lesen.fehler": "Het item kon niet worden geladen.",

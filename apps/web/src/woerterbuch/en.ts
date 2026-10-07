@@ -3405,6 +3405,11 @@ const en: typeof de = {
   "lib.lesemodus.listeEinblenden": "Show result list",
   "lib.lesemodus.listeAusblenden": "Hide result list",
   "lib.lesen.mehr": "More",
+  "lib.lesen.belegstelle.markiert": "Supporting passage highlighted.",
+  "lib.lesen.belegstelle.nichtGefunden":
+    "The cited passage does not appear verbatim in this version of the text.",
+  "lib.lesen.belegstelle.andereFassung":
+    "The passage belongs to version {{fassung}}; this is version {{aktuell}}. Nothing is highlighted.",
   "lib.lesen.bilder_one": "{{count}} image",
   "lib.lesen.bilder_other": "{{count}} images",
   "lib.lesen.fehler": "The entry could not be loaded.",

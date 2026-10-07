@@ -5795,9 +5795,16 @@
       return zeile;
     }
 
-    // R-0325: die TRAGENDEN Quellen — nur Kennungen, die der Server in `citedSources` nennt UND die
-    // unter den herangezogenen `sources` stehen. Fehlt das Feld, ist es leer oder nennt es nur
-    // Fremdes (widerspruechlich), ist das Ergebnis leer: die Zuordnung ist unbekannt, nie „alle".
+    // R-0326: Objektadresse samt Belegstelle — Textanker aus Passage und Fassung (Datenmodell in
+    // apps/web/src/lib/belegstelle.ts); ohne Passage oder bei mehr als 600 Zeichen die blosse Adresse.
+    function askStelleHref(q) {
+      var href = koDetailUrl(window.location.origin, q.id);
+      if (!q.passage || q.passage.length > 600) { return href; }
+      return href + "?stelle=" + encodeURIComponent(q.passage) + (typeof q.version === "number" ? "&fassung=" + q.version : "");
+    }
+
+    // R-0325: TRAGEND sind nur Kennungen aus `citedSources`, die unter `sources` stehen; fehlend,
+    // leer oder nur Fremdes → leer (Zuordnung unbekannt, nie „alle").
     function askZugeordnet(outcome) {
       var cited = outcome && Array.isArray(outcome.citedSources) ? outcome.citedSources : [];
       var sources = outcome && Array.isArray(outcome.sources) ? outcome.sources : [];
@@ -5830,7 +5837,7 @@
         titel.className = "quelle-chip-titel";
         titel.appendChild(document.createTextNode(String(i + 1) + " · "));
         var link = document.createElement("a");
-        link.href = koDetailUrl(window.location.origin, tragend[i].id);
+        link.href = askStelleHref(tragend[i]); // R-0326: mit Belegstelle für die Web-Ansicht
         link.target = "_blank";
         link.rel = "noopener noreferrer";
         link.textContent = tragend[i].title;
@@ -5908,15 +5915,10 @@
       return teile;
     }
 
-    // ============================================================================================
-    // Aufnahme 20260922 · antwort-quellenanzeige (R-0329) — DER EINSCHUB ZU EINER QUELLE.
-    // ============================================================================================
-    // Ein Klick auf Chip oder Ziffer oeffnet unter den Chips den Einschub der TRAGENDEN Quelle:
-    // Titel, Pruefstand · Version · Stand, die belegende Passage (die Aussage des Objekts,
-    // hervorgehoben) und GENAU zwei Aktionen — „Im Original öffnen" (die hinterlegte Originaldatei,
-    // askOriginalHref; fehlt sie, ist die Aktion gesperrt und der Einschub sagt es) und „Im
-    // Wissensnetz anzeigen" (das Objekt auf seiner Leseflaeche). Escape oder ein zweiter Klick auf
-    // denselben Ausloeser schliesst ihn; Mittelklick und Tastenkombinationen behalten den Link.
+    // Aufnahme 20260922 · antwort-quellenanzeige (R-0329/R-0326) — DER EINSCHUB: Klick auf Chip oder
+    // Ziffer zeigt Titel, Pruefstand · Version · Stand, die hervorgehobene Passage und GENAU zwei
+    // Aktionen: Original (askOriginalHref; fehlt es, gesperrt und benannt) und Wissensnetz (die
+    // geoeffnete Nachbarschaft, `?abschnitt=nachbarschaft`). Escape/zweiter Klick schliesst.
     var askEinschubQuelle = null;
 
     function askEinschubAusloeser(el, id) {
@@ -5972,7 +5974,7 @@
       original.textContent = t("askEinschubOriginal");
       var netz = document.createElement("a");
       netz.id = "ask-einschub-netz";
-      netz.href = koDetailUrl(window.location.origin, id);
+      netz.href = koDetailUrl(window.location.origin, id) + "?abschnitt=nachbarschaft"; // geöffnetes Wissensnetz
       netz.target = "_blank";
       netz.rel = "noopener noreferrer";
       netz.textContent = t("askEinschubNetz");
