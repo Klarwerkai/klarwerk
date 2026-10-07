@@ -263,6 +263,11 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein
   // Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "IMPORT_RUN_SOURCE_SYNC_SCHEMA", risiko: "ADDITIV" },
+  // Betroffenenrechte (R-0661): die Löschanträge. ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT
+  // EXISTS`, ein `CREATE UNIQUE INDEX IF NOT EXISTS` (partiell: ein offener Antrag je Konto) und ein
+  // `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "LOESCHANTRAG_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

@@ -2779,7 +2779,8 @@ export type NotificationKind =
   | "gap"
   | "assignment"
   | "impact"
-  | "kenntnisnahme";
+  | "kenntnisnahme"
+  | "loeschantrag";
 
 export interface Notification {
   id: string;
@@ -2797,6 +2798,8 @@ export interface Notification {
   fassung?: number;
   erinnerung?: boolean;
   ueberfaellig?: boolean;
+  // Löschantrag (R-0661): die Frist der Verwalteraufgabe; `ueberfaellig` gilt dort ebenso.
+  fristBis?: string;
 }
 
 // AUFTRAG-mega46 Block F: die Betriebsschalter, die die Oberfläche erfahren darf — AUSSCHLIESSLICH

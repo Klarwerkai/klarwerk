@@ -57,6 +57,9 @@ import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
 // im knowledge-object-Modul, weil sie das KO-Modell ausdrücklich NICHT umbauen: die Variante ist ein
 // eigener, danebenliegender Datenraum, den kein Lesepfad des Originals berührt.
 import { LESEVARIANTEN_SCHEMA } from "./lesevarianten";
+// Betroffenenrechte (R-0661): die Löschanträge. Im App-Wurzelverzeichnis wie die Kenntnisnahme —
+// sie verbinden Konto (auth) und Verwalteraufgabe, kein Fachmodul besitzt sie.
+import { LOESCHANTRAG_SCHEMA } from "./loeschantraege";
 import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
 
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
@@ -242,6 +245,10 @@ export const schemas = [
   // Extension; sie steht am Ende, weil das die lesbare Ordnung ist (keine Abhängigkeit zu den
   // Stufen davor — die Reihenfolge nach der Zusammenführung mit main ist frei).
   IMPORT_RUN_SOURCE_SYNC_SCHEMA,
+  // Betroffenenrechte (R-0661): die Löschanträge der Mitarbeiter. Additiv und wiederholbar (CREATE
+  // TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das
+  // die lesbare Ordnung ist.
+  LOESCHANTRAG_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).

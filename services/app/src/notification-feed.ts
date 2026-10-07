@@ -1,6 +1,7 @@
 import type { GapView } from "../../ask";
 import type { Conflict, OverlapEntry } from "../../conflicts";
 import type { AssignmentNotice } from "../../validation";
+import type { LoeschantragMeldung } from "./loeschantraege";
 
 // In-App-Benachrichtigungen (Abstimmpunkt 2). Das notifications-Modul versendet
 // nur E-Mail; die Glocke/Popover-Quelle wird hier aus vorhandenen Signalen mit
@@ -12,7 +13,8 @@ export type NotificationKind =
   | "gap"
   | "assignment"
   | "impact"
-  | "kenntnisnahme";
+  | "kenntnisnahme"
+  | "loeschantrag";
 
 // Kenntnisnahme: eine offene Anforderung an die aktuelle Person. Bereits auf den Betrachter UND
 // über die Sichtbarkeit gefiltert (Route) — hier wird nichts nachgeprüft und nichts erfunden.
@@ -51,6 +53,9 @@ export interface Notification {
   fassung?: number;
   erinnerung?: boolean;
   ueberfaellig?: boolean;
+  // Löschantrag (R-0661): die Frist der Verwalteraufgabe. Nur bei `kind: "loeschantrag"` gesetzt;
+  // `ueberfaellig` gilt dort ebenso.
+  fristBis?: string;
 }
 
 // SCRUM-363 / AG-15: persönliche offene Review-Zuweisungen kommen als eigene Kategorie in den Feed.
@@ -75,8 +80,23 @@ export function buildNotifications(input: {
   // ein neuer Fund auch ohne Besuch der Duplikate-Seite auffällt.
   overlaps?: (OverlapEntry & { redacted?: boolean })[];
   kenntnisnahmen?: KenntnisnahmeNotice[];
+  // Löschanträge (R-0661): die offenen Anträge als Aufgabe der Verwaltung. Die Route reicht sie NUR
+  // für Betrachter mit `users.manage` herein — hier wird keine Berechtigung nachgeprüft.
+  loeschantraege?: LoeschantragMeldung[];
 }): Notification[] {
   const items: Notification[] = [];
+  // Je Antrag EIN Eintrag. Wird er überfällig, bekommt er eine neue Kennung, damit er wieder als
+  // ungelesen erscheint — dieselbe Regel wie die Erinnerung der Kenntnisnahme.
+  for (const l of input.loeschantraege ?? []) {
+    items.push({
+      id: l.ueberfaellig ? `loeschantrag-${l.antragId}-ueberfaellig` : `loeschantrag-${l.antragId}`,
+      kind: "loeschantrag",
+      title: l.name,
+      at: l.at,
+      fristBis: l.fristBis,
+      ueberfaellig: l.ueberfaellig,
+    });
+  }
   // Je Anforderung EIN Eintrag. Eine Erinnerung bekommt eine neue Kennung (mit ihrem Zeitpunkt),
   // damit sie wieder als ungelesen erscheint — sie ersetzt den Eintrag, statt einen zweiten
   // daneben zu stellen.

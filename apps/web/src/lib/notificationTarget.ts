@@ -1,4 +1,5 @@
 import type { Notification } from "../api/types";
+import { adminHref } from "./adminSections";
 import { validationMineHref } from "./validationFilters";
 
 // SCRUM-220: DOM-freie Ableitung des Sprungziels einer Benachrichtigung aus vorhandenen Daten.
@@ -27,6 +28,10 @@ export function notificationTarget(n: Pick<Notification, "kind" | "koId">): stri
   // Kenntnisnahme: der Eintrag selbst — dort steht die Anforderung samt Bestätigen-Knopf.
   if (n.kind === "kenntnisnahme") {
     return n.koId ? `/wissen/${n.koId}` : null;
+  }
+  // Löschantrag (R-0661): die Datenschutzkarte der Verwaltung — dort stehen Frist und Entscheidung.
+  if (n.kind === "loeschantrag") {
+    return adminHref("sicherheit", "datenschutz");
   }
   return null;
 }

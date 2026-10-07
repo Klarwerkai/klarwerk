@@ -6,6 +6,7 @@ import type { NotificationSeenRepo } from "../../../notifications";
 import { can } from "../../../rbac";
 import type { ValidationService } from "../../../validation";
 import type { Guards, SessionUser } from "../http";
+import type { LoeschantragMeldung } from "../loeschantraege";
 import {
   type ImpactNotice,
   type KenntnisnahmeNotice,
@@ -38,6 +39,9 @@ export interface NotificationRoutesDeps {
   // Optional, weil der Feed auch ohne diesen Dienst gebaut werden kann; die Sichtbarkeit läuft
   // unten in jedem Fall über dieselbe Prüfung wie bei den Zuweisungen.
   kenntnisnahmen?: { meldungenFuer(nutzerId: string): Promise<KenntnisnahmeNotice[]> };
+  // Löschanträge (R-0661): die offenen Anträge als Verwalteraufgabe mit Frist. Optional wie die
+  // Kenntnisnahme; abgefragt wird nur für Betrachter mit `users.manage`.
+  loeschantraege?: { offene(): Promise<LoeschantragMeldung[]> };
 }
 
 // PMO-FEA-0002: „Hat geholfen"-Ereignisse für den Originalautor. Bewusst ehrlich:
@@ -109,6 +113,10 @@ async function loadFeed(
   // entzogen wurde, der sieht auch dessen Titel in der Glocke nicht mehr.
   const offeneKenntnisnahmen = (await deps.kenntnisnahmen?.meldungenFuer(user.id)) ?? [];
   const sichtbareKenntnisnahmen = await sichtbareEintraege(user, offeneKenntnisnahmen, deps.kos);
+  // Löschanträge sind Arbeit der Verwaltung: nur wer Konten löschen darf, sieht sie — und damit
+  // die Namen der Antragsteller.
+  const loeschantraege =
+    deps.loeschantraege && can(user.role, "users.manage") ? await deps.loeschantraege.offene() : [];
   return buildNotifications({
     conflicts: sichtbareKonflikte,
     overlaps: sichtbareUeberschneidungen,
@@ -116,6 +124,7 @@ async function loadFeed(
     assignments: sichtbareZuweisungen,
     impacts,
     kenntnisnahmen: sichtbareKenntnisnahmen,
+    loeschantraege,
   }).map((n) => ({
     ...n,
     seen: seen.has(n.id),
