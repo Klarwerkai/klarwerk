@@ -51,11 +51,14 @@ function TestBlatt(): JSX.Element {
     const uhr = window.setTimeout(() => setTitel(ENTWURF[entwurf] ?? ""), LADEZEIT_MS);
     return () => window.clearTimeout(uhr);
   }, [entwurf]);
+  // `LinkProps` kennt `data-*` nicht als Literal-Eigenschaft (TS2769); als vorab gebautes Objekt
+  // reicht React das Attribut wie im JSX an das <a> durch.
+  const zuEntwurfB = { to: "/erfassen?draft=b", "data-testid": "zu-entwurf-b" };
   return createElement(
     "div",
     null,
     createElement("input", { "data-testid": "blatt-titel", value: titel, readOnly: true }),
-    createElement(Link, { to: "/erfassen?draft=b", "data-testid": "zu-entwurf-b" }, "b"),
+    createElement(Link, zuEntwurfB, "b"),
   );
 }
 
