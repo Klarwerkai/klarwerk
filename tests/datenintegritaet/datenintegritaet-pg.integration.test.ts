@@ -311,11 +311,14 @@ describe("R-0846 / R-1437 · Datenintegrität und begrenzte Prüfung gegen echte
     const { p, s } = bereit(ctx);
     const abgelaufen = new Date(Date.now() - TAG).toISOString();
     const laufend = new Date(Date.now() + 10 * TAG).toISOString();
-    const waise = `obj-waise-${randomUUID()}`;
+    // Der Object-Store vergibt UUIDs; nur diese Form deckt der Verweisschutz (Nacharbeit 5).
+    const waise = randomUUID();
+    // Eine Waise mit anderer Kennungsform (Altbestand/Beispieldaten): gemeldet, aber behalten.
+    const altWaise = `alt-waise-${randomUUID()}`;
     const imText = `obj-imtext-${randomUUID()}`;
     const imPapierkorb = `obj-papierkorb-${randomUUID()}`;
     const inFrist = `obj-frist-${randomUUID()}`;
-    for (const id of [waise, imText, imPapierkorb]) {
+    for (const id of [waise, altWaise, imText, imPapierkorb]) {
       await legeObjektAn(p, id, abgelaufen);
     }
     await legeObjektAn(p, inFrist, laufend);
@@ -326,17 +329,21 @@ describe("R-0846 / R-1437 · Datenintegrität und begrenzte Prüfung gegen echte
     const { ergebnis } = await begrenztePruefung(p, (q) => ermittleWaisen(q, Date.now()));
     const ids = ergebnis.map((w) => w.id);
     expect(ids).toContain(waise);
+    expect(ids).toContain(altWaise);
     expect(ids).not.toContain(imText);
     expect(ids).not.toContain(imPapierkorb);
     expect(ids).not.toContain(inFrist);
 
     const bereinigt = await withPgTx(p, (tx) => bereinigeBestand(pgQueryable(tx), Date.now()));
     expect(bereinigt.waisenEntfernt).toContain(waise);
+    expect(bereinigt.waisenEntfernt).not.toContain(altWaise);
+    expect(bereinigt.waisenBehalten).toContain(altWaise);
     const rest = await p.query<{ id: string }>(
       "SELECT id FROM objects WHERE id = ANY($1::text[]) ORDER BY id",
-      [[waise, imText, imPapierkorb, inFrist]],
+      [[waise, altWaise, imText, imPapierkorb, inFrist]],
     );
-    expect(rest.rows.map((z) => z.id).sort()).toEqual([imText, imPapierkorb, inFrist].sort());
+    const erwartet = [altWaise, imText, imPapierkorb, inFrist].sort();
+    expect(rest.rows.map((z) => z.id).sort()).toEqual(erwartet);
   });
 
   // ----------------------------------------------------------------------------------------------
@@ -389,13 +396,12 @@ describe("R-0846 / R-1437 · Datenintegrität und begrenzte Prüfung gegen echte
     return r.rowCount ?? 0;
   }
 
-  it("F8 · ein Schreiber im früheren Fenster wartet bis zum Commit — er kann die Entscheidung nicht unterlaufen", async (ctx) => {
+  it("F8 · ein Schreiber im früheren Fenster wartet und wird nach dem Commit abgewiesen — kein Verweis auf das gelöschte Objekt", async (ctx) => {
     const { p } = bereit(ctx);
     const w = await schreiber(ctx);
-    const waise = `obj-fenster-${randomUUID()}`;
+    const waise = randomUUID();
     await legeObjektAn(p, waise, new Date(Date.now() - TAG).toISOString());
-    let geschrieben = false;
-    let schreibLauf: Promise<unknown> | undefined;
+    let schreibAusgang: Promise<unknown> | undefined;
     let bereinigerPid = -1;
 
     const ergebnis = await withPgTx(p, async (tx) => {
@@ -407,27 +413,45 @@ describe("R-0846 / R-1437 · Datenintegrität und begrenzte Prüfung gegen echte
           expect(waisen).toContain(waise);
           // Genau jetzt will ein Schreiber eine Referenz auf die Waise speichern.
           const zeile = referenzzeile(`gap-${waise}`, waise);
-          schreibLauf = w.pool.query(INSERT_REFERENZ, zeile).then(() => {
-            geschrieben = true;
-          });
+          schreibAusgang = w.pool.query(INSERT_REFERENZ, zeile).then(
+            () => "geschrieben",
+            (fehler: unknown) => fehler,
+          );
           expect(await wartetAufSperre(p, w.pid), "Schreiber wartet an der Sperre").toBe(true);
-          expect(geschrieben).toBe(false);
         },
       });
     });
     expect(ergebnis.gesperrt).toContain("gaps");
     expect(ergebnis.gesperrt).toContain("objects");
     expect(ergebnis.waisenEntfernt).toContain(waise);
-    // Nach dem Commit läuft der Schreiber — auf dem Ergebnis der Bereinigung, nicht mittendrin.
-    await schreibLauf;
-    expect(geschrieben).toBe(true);
+
+    // Nach dem Commit läuft der Schreiber weiter, prüft gegen den neuen Bestand und scheitert.
+    expect(await schreibAusgang).toMatchObject({ code: "23503" });
+
+    // DER ENDZUSTAND ist widerspruchsfrei: Objekt weg, Grabstein da, KEINE gespeicherte Referenz.
+    const objekt = await p.query("SELECT 1 FROM objects WHERE id = $1", [waise]);
+    expect(objekt.rowCount, "die Waise ist entfernt").toBe(0);
+    const grabstein = await p.query("SELECT 1 FROM objekt_grabsteine WHERE id = $1", [waise]);
+    expect(grabstein.rowCount, "ihr Grabstein steht").toBe(1);
+    const referenz = await p.query("SELECT 1 FROM gaps WHERE id = $1", [`gap-${waise}`]);
+    expect(referenz.rowCount, "keine Referenz auf das gelöschte Objekt").toBe(0);
+    const irgendwo = await p.query("SELECT 1 FROM gaps WHERE strpos(data::text, $1) > 0", [waise]);
+    expect(irgendwo.rowCount).toBe(0);
     expect(await relationssperrenVon(p, bereinigerPid), "Sperren nach dem Commit frei").toBe(0);
+
+    // Auch ein späteres ÄNDERN einer bestehenden Zeile kann den Verweis nicht nachtragen.
+    const [neuId, neuDaten] = referenzzeile(`gap-spaeter-${randomUUID()}`, "nichts");
+    await p.query(INSERT_REFERENZ, [neuId, neuDaten]);
+    const [, verweisDaten] = referenzzeile(neuId, waise);
+    await expect(
+      p.query("UPDATE gaps SET data = $2 WHERE id = $1", [neuId, verweisDaten]),
+    ).rejects.toMatchObject({ code: "23503" });
   });
 
   it("F9 · ein Schreiber, der VOR der Bereinigung begann, wird abgewartet — seine Referenz schützt", async (ctx) => {
     const { p } = bereit(ctx);
     const w = await schreiber(ctx);
-    const geschuetzt = `obj-vorher-${randomUUID()}`;
+    const geschuetzt = randomUUID();
     await legeObjektAn(p, geschuetzt, new Date(Date.now() - TAG).toISOString());
     const client = await w.pool.connect();
     try {
@@ -455,7 +479,7 @@ describe("R-0846 / R-1437 · Datenintegrität und begrenzte Prüfung gegen echte
   it("F10 · scheitert die Bereinigung, rollt sie zurück, gibt die Sperren frei und löscht nichts", async (ctx) => {
     const { p } = bereit(ctx);
     const w = await schreiber(ctx);
-    const waise = `obj-rueckroll-${randomUUID()}`;
+    const waise = randomUUID();
     await legeObjektAn(p, waise, new Date(Date.now() - TAG).toISOString());
     let schreibLauf: Promise<unknown> | undefined;
     let bereinigerPid = -1;

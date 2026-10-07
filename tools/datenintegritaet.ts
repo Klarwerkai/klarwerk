@@ -98,7 +98,7 @@ async function main(): Promise<void> {
     }
     if (!ausfuehren) {
       process.stdout.write(
-        "Trockenlauf: die Bereinigung entfernt Fassungen/Belege ohne Objekt und die Waisen oben und validiert die Fremdschlüssel. Ausführen mit --ausfuehren.\n",
+        "Trockenlauf: die Bereinigung entfernt Fassungen/Belege ohne Objekt und die Waisen oben mit UUID-Kennung (mit Grabstein und Verweisschutz), behält die übrigen und validiert die Fremdschlüssel. Ausführen mit --ausfuehren.\n",
       );
       return;
     }
@@ -118,7 +118,7 @@ async function main(): Promise<void> {
       return ergebnisBereinigung;
     });
     process.stdout.write(
-      `Bereinigt: ${gesamt.fassungenEntfernt} Fassungen, ${gesamt.belegeEntfernt} Belege, ${gesamt.waisenEntfernt.length} Waisen; validiert: ${gesamt.validiert.join(", ") || "keiner"}.\n`,
+      `Bereinigt: ${gesamt.fassungenEntfernt} Fassungen, ${gesamt.belegeEntfernt} Belege, ${gesamt.waisenEntfernt.length} Waisen (${gesamt.waisenBehalten.length} ohne Verweisschutz behalten); validiert: ${gesamt.validiert.join(", ") || "keiner"}.\n`,
     );
   } catch (fehler) {
     if (fehler instanceof HaengendeSitzungError) {

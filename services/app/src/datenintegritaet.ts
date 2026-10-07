@@ -48,6 +48,20 @@ import { type ObjectRef, isTransientMedia, isWithinRetention } from "../../objec
 // Die Sperren sind transaktionsgebunden und fallen mit COMMIT oder ROLLBACK.
 //   PREIS: Für die Dauer der Bereinigung warten ALLE Schreiber auf diese Tabellen (auch Anmeldung,
 //   Sitzungen, Entwürfe). Sie ist ein ausdrücklicher Betreiberschritt, kein Hintergrundlauf.
+//
+// NACHARBEIT 5 — DER WARTENDE SCHREIBER PRÜFT NACH DER FREIGABE NEU. Die Sperre allein verschob
+// den Widerspruch nur hinter den Commit: der wartende Schreiber speicherte danach eine Referenz auf
+// das eben gelöschte Objekt. Jetzt hinterlegt die Bereinigung in DERSELBEN Transaktion jede
+// entfernte Kennung als Grabstein (`objekt_grabsteine`) und stellt sicher, dass auf jeder gescannten
+// Tabelle der Trigger `objektverweis_pruefen` steht. Er läuft vor jedem INSERT und UPDATE, liest die
+// Zeile als Text und weist sie mit SQLSTATE 23503 ab, wenn sie eine begrabene Kennung trägt. Weil
+// der wartende Schreiber erst NACH dem Commit weiterläuft, sieht sein Trigger Grabstein und Trigger
+// bereits — sein Schreiben scheitert, seine Transaktion rollt zurück, und es bleibt kein Verweis
+// auf ein gelöschtes Objekt. Rollt die Bereinigung zurück, gibt es weder Grabstein noch Löschung.
+//   UMFANG DES SCHUTZES: Der Trigger erkennt Kennungen in UUID-Form — die Form, die der
+//   Object-Store vergibt (`randomUUID`). Eine Waise mit anderer Kennung (Beispieldaten, Altbestand)
+//   kann er nicht schützen; die Bereinigung lässt sie deshalb STEHEN und meldet sie
+//   (`waisenBehalten`). Ohne Grabsteine tut der Trigger nichts (erste Abfrage, leerer Bestand).
 
 /** Höchstzahl einzeln genannter Fundstellen je Befund. Zählungen bleiben vollständig. */
 export const BERICHT_HOECHSTENS = 200;
@@ -74,9 +88,50 @@ export interface Bereinigungsergebnis {
   readonly belegeEntfernt: number;
   readonly validiert: readonly string[];
   readonly waisenEntfernt: readonly string[];
+  /** Waisen, deren Kennung der Verweisschutz nicht erkennt — gemeldet, nicht gelöscht. */
+  readonly waisenBehalten: readonly string[];
   /** Die Tabellen, die bis zum Ende der Transaktion gegen Schreiber gesperrt waren. */
   readonly gesperrt: readonly string[];
 }
+
+/** Die Kennungsform, die der Verweisschutz erkennt (Object-Store: `randomUUID`). */
+const UUID_FORM = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Grabsteintabelle und Prüffunktion des Verweisschutzes (Nacharbeit 5, s. Kopf). Bewusst KEINE
+ * `*_SCHEMA`-Stufe: sie entsteht mit der ersten Bereinigung, in deren Transaktion, und ist ohne
+ * Bereinigung wirkungslos. Wiederholbar (`IF NOT EXISTS`, `CREATE OR REPLACE`).
+ */
+export const VERWEISSCHUTZ_DDL: readonly string[] = [
+  `CREATE TABLE IF NOT EXISTS objekt_grabsteine (
+  id text PRIMARY KEY,
+  entfernt_am timestamptz NOT NULL DEFAULT now()
+)`,
+  `CREATE OR REPLACE FUNCTION objektverweis_pruefen() RETURNS trigger LANGUAGE plpgsql AS $f$
+DECLARE
+  treffer text;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM objekt_grabsteine) THEN
+    RETURN NEW;
+  END IF;
+  SELECT g.id INTO treffer
+    FROM regexp_matches(
+           row_to_json(NEW)::text,
+           '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})',
+           'g'
+         ) AS m(kennung)
+    JOIN objekt_grabsteine g ON g.id = lower(m.kennung[1])
+   LIMIT 1;
+  IF treffer IS NOT NULL THEN
+    RAISE EXCEPTION 'Verweis auf ein entferntes Objekt: %', treffer USING ERRCODE = '23503';
+  END IF;
+  RETURN NEW;
+END
+$f$`,
+];
+
+/** Name des Triggers auf jeder gescannten Tabelle. */
+export const VERWEISSCHUTZ_TRIGGER = "objektverweis_pruefen";
 
 /** Höchstwartezeit der Bereinigung auf ihre Tabellensperren, in Millisekunden. */
 export const BEREINIGUNG_SPERRE_MS = 10_000;
@@ -118,7 +173,8 @@ const SQL_PRUEFSPUR_OHNE_OBJEKT = `SELECT a.target AS ziel, count(*)::int AS ein
   GROUP BY a.target
   ORDER BY a.target`;
 
-// Alle Text- und JSON-Spalten echter Tabellen des aktuellen Schemas — ohne `objects` und `audit`.
+// Alle Text- und JSON-Spalten echter Tabellen des aktuellen Schemas — ohne `objects`, `audit` und
+// die Grabsteine des Verweisschutzes.
 const SQL_REFERENZSPALTEN = `SELECT c.table_name, c.column_name
   FROM information_schema.columns c
   JOIN information_schema.tables t
@@ -126,7 +182,7 @@ const SQL_REFERENZSPALTEN = `SELECT c.table_name, c.column_name
   WHERE c.table_schema = current_schema()
     AND t.table_type = 'BASE TABLE'
     AND c.data_type IN ('text', 'json', 'jsonb', 'character varying')
-    AND c.table_name NOT IN ('objects', 'audit')
+    AND c.table_name NOT IN ('objects', 'audit', 'objekt_grabsteine')
   ORDER BY c.table_name, c.column_name`;
 
 async function zahl(q: Queryable, sql: string): Promise<number> {
@@ -222,6 +278,9 @@ export async function bereinigeBestand(
 ): Promise<Bereinigungsergebnis> {
   // ZUERST die Sperre (s. Kopf, Nacharbeit 4) — vor jedem Lesen, auf dem eine Entscheidung beruht.
   const gesperrt = await sperreReferenzschreiber(q);
+  // DANN der Verweisschutz (Nacharbeit 5) — er wird mit dieser Transaktion sichtbar, also genau
+  // dann, wenn die wartenden Schreiber weiterlaufen.
+  await installiereVerweisschutz(q, gesperrt);
   const fassungen = await q.query(
     "DELETE FROM ko_versions v WHERE NOT EXISTS (SELECT 1 FROM kos k WHERE k.id = v.ko_id)",
   );
@@ -237,9 +296,17 @@ export async function bereinigeBestand(
     await q.query(`ALTER TABLE ${bezeichner(tabelle)} VALIDATE CONSTRAINT ${bezeichner(name)}`);
     validiert.push(name);
   }
-  const waisen = (await ermittleWaisen(q, jetzt)).map((w) => w.id);
+  const alleWaisen = (await ermittleWaisen(q, jetzt)).map((w) => w.id);
+  // Nur was der Verweisschutz erkennt, wird gelöscht; der Rest bleibt stehen und wird gemeldet.
+  const waisen = alleWaisen.filter((id) => UUID_FORM.test(id));
+  const waisenBehalten = alleWaisen.filter((id) => !UUID_FORM.test(id));
   await haken.nachReferenzscan?.(waisen);
   if (waisen.length > 0) {
+    // Grabstein VOR dem Löschen, in derselben Transaktion: beides wird gemeinsam sichtbar.
+    await q.query(
+      "INSERT INTO objekt_grabsteine(id) SELECT lower(k) FROM unnest($1::text[]) AS k ON CONFLICT (id) DO NOTHING",
+      [waisen],
+    );
     await q.query("DELETE FROM objects WHERE id = ANY($1::text[])", [waisen]);
   }
   return {
@@ -247,8 +314,34 @@ export async function bereinigeBestand(
     belegeEntfernt: belege.rowCount ?? 0,
     validiert,
     waisenEntfernt: waisen,
+    waisenBehalten,
     gesperrt,
   };
+}
+
+/**
+ * Legt Grabsteintabelle und Prüffunktion an (wiederholbar) und setzt den Trigger auf jede
+ * gescannte Tabelle, die ihn noch nicht trägt. `objects` selbst bekommt keinen: dort steht die
+ * Kennung als eigener Schlüssel, nicht als Verweis.
+ */
+async function installiereVerweisschutz(q: Queryable, tabellen: readonly string[]): Promise<void> {
+  for (const ddl of VERWEISSCHUTZ_DDL) {
+    await q.query(ddl);
+  }
+  const vorhanden = await q.query<{ tabelle: string }>(
+    `SELECT c.relname AS tabelle FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+      WHERE t.tgname = $1`,
+    [VERWEISSCHUTZ_TRIGGER],
+  );
+  const traegt = new Set(vorhanden.rows.map((r) => r.tabelle));
+  for (const tabelle of tabellen) {
+    if (tabelle === "objects" || traegt.has(tabelle)) {
+      continue;
+    }
+    await q.query(
+      `CREATE TRIGGER ${bezeichner(VERWEISSCHUTZ_TRIGGER)} BEFORE INSERT OR UPDATE ON ${bezeichner(tabelle)} FOR EACH ROW EXECUTE FUNCTION objektverweis_pruefen()`,
+    );
+  }
 }
 
 /**
