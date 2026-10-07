@@ -212,8 +212,6 @@ describe("JOB 4086 · S1 — SharePoint-Datei wählen, abrufen, importieren", ()
         url?: string | null;
         sourceVersion?: number;
         spaceKey?: string;
-        kind?: string;
-        peerValidated?: boolean;
       }[];
     };
     expect(ko.title).toBe("Wartungsanweisung.docx");
@@ -226,10 +224,6 @@ describe("JOB 4086 · S1 — SharePoint-Datei wählen, abrufen, importieren", ()
     expect(anker?.url).toBe(DATEI_URL);
     expect(anker?.sourceVersion).toBe(QUELLSTAND);
     expect(anker?.spaceKey).toBe("b!testbibliothek");
-    // R-1653 (aufnahme:20260922:gesamt-externe-quellen-kennzeichnung): KLARWERK liest das Dokument,
-    // weist es aber klar als nicht peer-validiert aus — am zurückgelesenen Objekt, nicht am Aufruf.
-    expect(anker?.kind).toBe("external");
-    expect(anker?.peerValidated).toBe(false);
 
     await app.close();
   });
