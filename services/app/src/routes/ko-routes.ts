@@ -1223,8 +1223,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         }
         const roh = request.query.deckel;
         try {
+          // produkt:20261007:spaces: der ganze Sitzungsnutzer reist mit — samt `spaceLesbar`, sonst
+          // fiele jedes Objekt mit führendem Space aus der Metrik (fail-closed, aber falsch gezählt).
           const metrik = await wissensnetzMetrikFuer(
-            { id: user.id, role: user.role },
+            user,
             {
               kos: { alle: () => ko.list({}) },
               // JOB 4155 (Lieferung 1): die Kantenauskunft. Der Schluessel wird WEGGELASSEN, wenn

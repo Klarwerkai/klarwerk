@@ -6077,6 +6077,48 @@ export class KoService {
     });
   }
 
+  // produkt:20261007:spaces — den führenden Space wechseln. Die Rechte prüft die Route (Schreibrecht
+  // in Quell- und Zielspace, bestätigte Rechtevorschau). Der Dienst sichert nur zweierlei: der
+  // Wechsel geht von GENAU dem Space aus, den die Vorschau gezeigt hat (`erwartet`, sonst
+  // SPACE_STAND_VERALTET), und er berührt nichts ausser `spaceId` — Inhaltsversion, `history`,
+  // `author`, `originalAuthor` und `ownership` bleiben, wie sie sind. `null` löst die Zuordnung.
+  async setLeadingSpace(
+    id: string,
+    spaceId: string | null,
+    actor: string,
+    erwartet: string | null,
+  ): Promise<KnowledgeObject> {
+    return this.mutateKo(id, (ko) => {
+      const vorher = typeof ko.spaceId === "string" ? ko.spaceId : null;
+      if (vorher !== erwartet) {
+        throw new KoError(
+          "SPACE_STAND_VERALTET",
+          "Der Space dieses Wissensobjekts hat sich seit der Vorschau geändert.",
+        );
+      }
+      if (vorher === spaceId) {
+        return { updated: ko, value: ko };
+      }
+      const { spaceId: _alt, ...ohne } = ko;
+      const updated: KnowledgeObject = spaceId ? { ...ohne, spaceId } : ohne;
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.space-changed",
+              target: id,
+              payload: { vorher, nachher: spaceId, version: ko.version },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
   // SCRUM-358 / AG-14-SERVER-TRUST / VC-P1-1 / FR-VAL-01: serverseitige Konfliktwirkung.
   // Ein offener WAHRHEITSKONFLIKT gegen ein VALIDIERTES KO darf serverseitig nicht so tun, als sei das
   // KO unverändert voll vertrauenswürdig: Status validiert → offen (review-pflichtig) und Trust
