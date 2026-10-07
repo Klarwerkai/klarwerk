@@ -10,9 +10,11 @@
 // WAS HIER NICHT LÄUFT, und das gehört zur Aussage: kein echtes Word. Die Attrappe bildet die
 // Office.js-Aufrufe nach, die das Panel benutzt (`body.paragraphs`, `Paragraph.search` mit
 // `matchCase`/`matchWholeWord`, `Range.insertText(…, "Replace")`), und hält jeden Absatz als Folge
-// formatierter Läufe. Dass Word beim Ersetzen die Zeichenformatierung der Stelle übernimmt, ist
-// Words dokumentiertes Verhalten und wird hier NACHGEBILDET, nicht gemessen. Gemessen wird, dass
-// das Panel genau EINE Stelle ersetzt — die gemeinte — und sonst nichts anfasst.
+// formatierter Läufe. Nacharbeit 6: Bis hierher bildete die Attrappe ab, dass Word beim Ersetzen
+// die Formatierung der Stelle übernimmt. Im ECHTEN Word im Web ist das nicht so
+// (WORD-KANDIDAT/WORD-WEB-FORMAT-20261007.json): der neue Text steht in einem eigenen Lauf ohne
+// fett/kursiv. Die Attrappe bildet jetzt genau dieses gemessene Verhalten nach; gemessen wird, dass
+// das Panel genau EINE Stelle ersetzt und deren Formatierung selbst wiederherstellt.
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type BegriffFassung, begriffsHinweise } from "../../services/app/src/firmenwoerterbuch";
@@ -21,6 +23,7 @@ import { repoPfad } from "../support/repoPfad";
 interface Lauf {
   text: string;
   fett: boolean;
+  kursiv?: boolean;
 }
 
 const KONTO: BegriffFassung = {
@@ -28,9 +31,13 @@ const KONTO: BegriffFassung = {
   version: 3,
   geltungsbereich: "Vertrieb",
   verantwortlich: "Vertriebsinnendienst",
-  definition: { de: "Das Konto eines Kunden im Abrechnungssystem." },
+  definition: {
+    de: "Das Konto eines Kunden im Abrechnungssystem.",
+    en: "A customer's account in the billing system.",
+  },
   bezeichnungen: {
     de: { vorzug: "Kundenkonto", synonyme: ["Debitorenkonto"], unerwuenscht: ["Kundenaccount"] },
+    en: { vorzug: "customer account", synonyme: [], unerwuenscht: ["client account"] },
   },
   geaendertVon: "u-carla",
   geaendertAm: "2026-10-06T08:00:00.000Z",
@@ -50,26 +57,101 @@ function istWortzeichen(z: string | undefined): boolean {
   return z !== undefined && /[\p{L}\p{N}_]/u.test(z);
 }
 
-/** Ein Bereich im Absatz: ersetzt seinen Text im Lauf, in dem er beginnt — Formatierung bleibt. */
+/** Die Läufe, die den Bereich berühren. */
+function beruehrt(laeufe: Lauf[], start: number, laenge: number): Lauf[] {
+  let pos = 0;
+  const raus: Lauf[] = [];
+  for (const lauf of laeufe) {
+    if (pos < start + laenge && start < pos + lauf.text.length) {
+      raus.push(lauf);
+    }
+    pos += lauf.text.length;
+  }
+  return raus;
+}
+
+/** Word.Font eines Bereichs: true/false, wenn einheitlich, sonst `null` wie in Word. */
+function schriftVon(laeufe: Lauf[], start: number, laenge: number) {
+  const einheitlich = (merkmal: (l: Lauf) => boolean): boolean | null => {
+    const teile = beruehrt(laeufe, start, laenge);
+    if (teile.every(merkmal)) {
+      return true;
+    }
+    return teile.some(merkmal) ? null : false;
+  };
+  return {
+    load() {},
+    get bold() {
+      return einheitlich((l) => l.fett);
+    },
+    get italic() {
+      return einheitlich((l) => l.kursiv === true);
+    },
+  };
+}
+
+/**
+ * Ein Bereich im Absatz. `insertText(…, "Replace")` verhält sich wie im echten Word im Web
+ * gemessen: der neue Text steht in einem EIGENEN Lauf ohne fett/kursiv; die Läufe davor und
+ * danach behalten ihre Formatierung. Zurück kommt der neue Bereich, dessen Schrift setzbar ist.
+ */
 function bereich(absatz: number, start: number, laenge: number) {
   const laeufe = absaetze[absatz] as Lauf[];
   return {
     text: absatzText(laeufe).slice(start, start + laenge),
+    font: schriftVon(laeufe, start, laenge),
     insertText(neu: string, ort: string) {
+      const alt = absatzText(laeufe).slice(start, start + laenge);
+      const neuerLauf: Lauf = { text: neu, fett: false, kursiv: false };
+      const raus: Lauf[] = [];
       let pos = 0;
+      let eingesetzt = false;
       for (const lauf of laeufe) {
-        if (start >= pos && start + laenge <= pos + lauf.text.length) {
-          const i = start - pos;
-          const alt = lauf.text.slice(i, i + laenge);
-          lauf.text = lauf.text.slice(0, i) + neu + lauf.text.slice(i + laenge);
-          ersetzungen.push({ absatz, alt, neu, ort });
-          return;
-        }
+        const von = pos;
         pos += lauf.text.length;
+        if (pos <= start || von >= start + laenge) {
+          if (von >= start + laenge && !eingesetzt) {
+            raus.push(neuerLauf);
+            eingesetzt = true;
+          }
+          raus.push(lauf);
+          continue;
+        }
+        const vor = lauf.text.slice(0, Math.max(0, start - von));
+        const nach = lauf.text.slice(Math.min(lauf.text.length, start + laenge - von));
+        if (vor) {
+          raus.push({ ...lauf, text: vor });
+        }
+        if (!eingesetzt) {
+          raus.push(neuerLauf);
+          eingesetzt = true;
+        }
+        if (nach) {
+          raus.push({ ...lauf, text: nach });
+        }
       }
-      throw new Error("Attrappe: Bereich über Laufgrenzen");
+      if (!eingesetzt) {
+        raus.push(neuerLauf);
+      }
+      laeufe.splice(0, laeufe.length, ...raus);
+      ersetzungen.push({ absatz, alt, neu, ort });
+      return {
+        font: {
+          set bold(wert: boolean) {
+            neuerLauf.fett = wert;
+          },
+          set italic(wert: boolean) {
+            neuerLauf.kursiv = wert;
+          },
+        },
+      };
     },
   };
+}
+
+/** Die Läufe eines Absatzes als [Text, fett, kursiv] — fehlendes `kursiv` heisst nicht kursiv. */
+function laeufeVon(absatz: number): [string, boolean, boolean][] {
+  return (absaetze[absatz] as Lauf[]).map((l) => [l.text, l.fett, l.kursiv === true]);
 }
 
 function absatzObjekt(index: number) {
@@ -270,12 +352,73 @@ describe("K4 · Word-Host: Übernehmen und Verwerfen am gewählten Text", () => 
     await ruhe();
     (knoepfe("begriffe-uebernehmen")[0] as HTMLButtonElement).click();
     await ruhe();
-    expect(absaetze[0]).toEqual([
-      { text: "Bitte das ", fett: false },
-      { text: "Kundenkonto", fett: true },
-      { text: " prüfen.", fett: false },
+    expect(laeufeVon(0)).toEqual([
+      ["Bitte das ", false, false],
+      ["Kundenkonto", true, false],
+      [" prüfen.", false, false],
     ]);
     expect(ersetzungen).toHaveLength(1);
+  });
+
+  it("Gegenprobe zur Attrappe: Words Ersetzen allein verliert die Formatierung (wie gemessen)", () => {
+    // Ohne das Panel: genau der Aufruf, den das Panel bis Nacharbeit 6 allein machte.
+    absaetze = [[{ text: "Das Kundenaccount bleibt erhalten.", fett: true }]];
+    bereich(0, 4, "Kundenaccount".length).insertText("Kundenkonto", "Replace");
+    expect(laeufeVon(0)).toEqual([
+      ["Das ", true, false],
+      ["Kundenkonto", false, false],
+      [" bleibt erhalten.", true, false],
+    ]);
+  });
+
+  it("DE fett: der ersetzte Begriff bleibt fett, die übrigen Satzteile bleiben fett", async () => {
+    absaetze = [[{ text: "Das Kundenaccount bleibt erhalten.", fett: true }]];
+    panelStarten();
+    (document.getElementById("begriffe-btn") as HTMLButtonElement).click();
+    await ruhe();
+    (knoepfe("begriffe-uebernehmen")[0] as HTMLButtonElement).click();
+    await ruhe();
+    expect(laeufeVon(0)).toEqual([
+      ["Das ", true, false],
+      ["Kundenkonto", true, false],
+      [" bleibt erhalten.", true, false],
+    ]);
+  });
+
+  it("EN kursiv: der ersetzte Begriff bleibt kursiv, die übrigen Satzteile bleiben kursiv", async () => {
+    absaetze = [[{ text: "The QA client account remains unchanged.", fett: false, kursiv: true }]];
+    panelStarten();
+    (document.getElementById("begriffe-btn") as HTMLButtonElement).click();
+    await ruhe();
+    expect(hinweisZeilen()[0]).toContain("customer account");
+    (knoepfe("begriffe-uebernehmen")[0] as HTMLButtonElement).click();
+    await ruhe();
+    expect(laeufeVon(0)).toEqual([
+      ["The QA ", false, true],
+      ["customer account", false, true],
+      [" remains unchanged.", false, true],
+    ]);
+  });
+
+  it("gemischt formatierte Fundstelle: keine Formatierung wird auf den ganzen Begriff ausgeweitet", async () => {
+    absaetze = [
+      [
+        { text: "Das Kunden", fett: false },
+        { text: "account", fett: true },
+        { text: " bleibt.", fett: false },
+      ],
+    ];
+    panelStarten();
+    (document.getElementById("begriffe-btn") as HTMLButtonElement).click();
+    await ruhe();
+    (knoepfe("begriffe-uebernehmen")[0] as HTMLButtonElement).click();
+    await ruhe();
+    // Word meldet `bold: null`; das Panel setzt dann kein Fett. Fremde Läufe bleiben unverändert.
+    expect(laeufeVon(0)).toEqual([
+      ["Das ", false, false],
+      ["Kundenkonto", false, false],
+      [" bleibt.", false, false],
+    ]);
   });
 
   it("Verwerfen blendet nur diesen Hinweis aus und ändert am Dokument nichts", async () => {

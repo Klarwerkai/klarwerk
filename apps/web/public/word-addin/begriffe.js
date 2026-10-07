@@ -5,8 +5,9 @@
 // WOZU: Klara prüft das offene Word-Dokument gegen das Firmenwörterbuch der Instanz und zeigt je
 // Fundstelle die gepflegte Vorzugsbezeichnung mit Bedeutung und Herkunft (Eintrag, Fassung). Der
 // Nutzer übernimmt oder verwirft JEDEN Hinweis einzeln; übernommen wird genau die angezeigte
-// Stelle über `Range.insertText(…, "Replace")` — die Zeichenformatierung der Stelle und alle anderen
-// Textteile bleiben, wie sie sind. Es gibt kein „alle ersetzen".
+// Stelle über `Range.insertText(…, "Replace")`. Weil Word im Web dabei die Formatierung der Stelle
+// verwirft, liest das Panel die Schrift der Fundstelle vorher und setzt sie auf den neuen Text
+// zurück; alle anderen Textteile bleiben, wie sie sind. Es gibt kein „alle ersetzen".
 //
 // WARUM EINE EIGENE DATEI: `taskpane.js` ist in seiner Grösse bewacht
 // (`tests/klara-zerlegung/schnittflaechen.test.ts` B3, „schneiden statt anheben"). Dieselbe Bauform
@@ -395,8 +396,17 @@
               ergebnis = "uneindeutig";
               return null;
             }
-            ziel.insertText(h.vorzug, "Replace");
-            return context.sync().then(function () { ergebnis = "uebernommen"; });
+            // Word im Web übernimmt beim Ersetzen die Formatierung der Stelle NICHT (gemessen:
+            // WORD-KANDIDAT/WORD-WEB-FORMAT-20261007.json — fett bzw. kursiv ging verloren). Deshalb
+            // wird die Schrift der Fundstelle vorher gelesen und auf den neuen Text zurückgesetzt.
+            var schrift = ziel.font;
+            schrift.load(BEGRIFFE_SCHRIFT.join(","));
+            return context.sync().then(function () {
+              var gemerkt = begriffeSchriftMerken(schrift);
+              var neu = ziel.insertText(h.vorzug, "Replace");
+              begriffeSchriftSetzen(neu, gemerkt);
+              return context.sync().then(function () { ergebnis = "uebernommen"; });
+            });
           });
         });
       }).then(function () {
@@ -404,6 +414,34 @@
       }, function () {
         begriffeNachUebernahme(stand, h, "schreibfehler");
       });
+    }
+
+    // Die Zeichenformatierung, die beim Übernehmen erhalten bleibt (Word.Font, WordApi 1.1).
+    var BEGRIFFE_SCHRIFT = [
+      "bold", "italic", "underline", "strikeThrough", "doubleStrikeThrough",
+      "subscript", "superscript", "color", "highlightColor", "name", "size"
+    ];
+
+    /**
+     * Liest die Schrift der Fundstelle. Word meldet `null`, wenn die Stelle gemischt formatiert
+     * ist (etwa halb fett) — solche Eigenschaften werden nicht gesetzt, statt eine Formatierung
+     * auf die ganze Vorzugsbezeichnung auszuweiten.
+     */
+    function begriffeSchriftMerken(schrift) {
+      var gemerkt = {};
+      for (var i = 0; i < BEGRIFFE_SCHRIFT.length; i += 1) {
+        var name = BEGRIFFE_SCHRIFT[i];
+        var wert = schrift ? schrift[name] : undefined;
+        if (wert !== null && wert !== undefined) { gemerkt[name] = wert; }
+      }
+      return gemerkt;
+    }
+
+    function begriffeSchriftSetzen(bereich, gemerkt) {
+      if (!bereich || !bereich.font) { return; }
+      for (var name in gemerkt) {
+        if (Object.prototype.hasOwnProperty.call(gemerkt, name)) { bereich.font[name] = gemerkt[name]; }
+      }
     }
 
     function begriffeNachUebernahme(stand, h, ergebnis) {
