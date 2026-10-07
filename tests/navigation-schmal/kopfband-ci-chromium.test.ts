@@ -160,6 +160,7 @@
 // Produktverhalten entsteht durch sie nicht — sie schärfen den Prüfstand, nicht die Oberfläche.
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { kuerzelFormen } from "../../apps/web/src/lib/tastenkuerzel";
 import {
   type AnkunftBefund,
   type Ankunftsurteil,
@@ -1037,7 +1038,11 @@ describe("JOB 3571 · CI3/CI4 · die zwei gesuchten Wege stehen auch mit Logo vo
       expect(m.geheZuText, `${breite}px: „Gehe zu …“ steht nicht im Kopfband`).toContain(
         "Seite finden",
       ); // FE-002: vormals „Gehe zu …"
-      expect(m.geheZuText, `${breite}px: das Kürzel fehlt`).toContain("⌘K");
+      // R-0987: das Kürzel der Plattform dieser Maschine — „⌘K" auf Apple, sonst „Strg+K".
+      expect(
+        kuerzelFormen("K", "de").some((k) => m.geheZuText.includes(k)),
+        `${breite}px: das Kürzel fehlt`,
+      ).toBe(true);
       // Und der Menü-Knopf steht daneben — die Punkte bleiben über ihn erreichbar.
       expect(m.menueText, `${breite}px: der Menü-Knopf fehlt`).toBe("Menü");
     }, 90_000);

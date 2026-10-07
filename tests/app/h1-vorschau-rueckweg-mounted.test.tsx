@@ -50,6 +50,7 @@ import { RoleProvider, useRole } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import type { Role } from "../../apps/web/src/app/navigation";
 import i18n from "../../apps/web/src/i18n";
+import { aktuellePlattform, kuerzelText } from "../../apps/web/src/lib/tastenkuerzel";
 import { Kopfband } from "../../apps/web/src/shell/Kopfband";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -204,7 +205,8 @@ describe("JOB 3060 · H1 · Rollen-Vorschau: das Kopfband bleibt bei seinem Inve
     // per Container-Abfrage zurück — jsdom zeichnet ohne CSS, das Blatt steht hier also immer).
     "Arbeitsbereiche",
     "Seite finden",
-    "⌘K",
+    // R-0987: das Kürzel folgt der Plattform („⌘K" auf Apple, sonst „Strg+K").
+    kuerzelText("K", "de", aktuellePlattform()),
     "Meldungen",
     // FE-002 Runde 2: die Kurzbeschriftung der Suche (Stufe 3, `kopfbandStufe.ts`) — im Browser nur
     // sichtbar, wenn das Feld keinen Platz hat; jsdom zeichnet ohne CSS, das Blatt steht hier immer.

@@ -10,6 +10,7 @@ import {
   trefferFuer,
   trefferNachGruppen,
 } from "../app/navigationGliederung";
+import { useKuerzel } from "../lib/tastenkuerzel";
 import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../lib/useDebouncedValue";
 
 // Command Palette (FE-FND-03): ⌘K / Strg+K öffnet eine Schnellnavigation über
@@ -92,6 +93,8 @@ type Zeilenziel = Pick<Direktziel, "id" | "label" | "path" | "kontext">;
 
 export function CommandPalette(): JSX.Element | null {
   const { t } = useTranslation();
+  // R-0987: der Platzhalter nennt das Kürzel der eigenen Plattform (`lib/tastenkuerzel.ts`).
+  const kuerzel = useKuerzel("K");
   // AUFTRAG-mega11 Block B-2: dieselbe geschützte Grenze wie Sidebar/Topbar/Logo.
   const navigate = useGuardedNavigate();
   const { role, stufe2 } = useRole();
@@ -452,7 +455,7 @@ export function CommandPalette(): JSX.Element | null {
               }
             }
           }}
-          placeholder={`${t("fe002.seiteFindenMenue")} (⌘K)`}
+          placeholder={`${t("fe002.seiteFindenMenue")} (${kuerzel})`}
           // `shrink-0`: Suchfeld und Trefferzahl behalten ihre Höhe, wenn der Kasten eng wird —
           // schrumpfen soll die LISTE (sie kann scrollen), nicht das Feld, in das man tippt.
           className="w-full shrink-0 border-b border-hairline bg-transparent px-4 py-3 text-sm outline-none"

@@ -92,6 +92,7 @@
 // Läufen importiert — eine zweite Kopie hiesse zwei Wahrheiten über dieselbe Zeile. Was hier bleibt,
 // ist die ZUSAGE dieses Jobs: die Breitenliste, `STRENG` und der Wortlaut der Fälle.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { kuerzelFormen } from "../../apps/web/src/lib/tastenkuerzel";
 import {
   NARROW_QUERY,
   SCHMAL_GEHEZU_QUERY,
@@ -112,6 +113,8 @@ import {
 } from "./kopfband-messung";
 
 const HOEHE = 800;
+/** R-0987: jede zulässige Kürzelform — „⌘K" (Apple), „Strg+K" (de), „Ctrl+K" (en/nl). */
+const KUERZEL = [...kuerzelFormen("K", "de"), ...kuerzelFormen("K", "en")];
 /** Die Kennung, unter der die gemessenen Zahlen von JOB 3525 im Lauf stehen. */
 const KENNUNG = "JOB 3525";
 /** Die Kennung der Sprachmessung (JOB 3587) — jede ihrer Zahlen steht unter ihr im Lauf. */
@@ -239,7 +242,10 @@ describe("JOB 3525 · B · die gesuchten Wege stehen da, wo der Auftrag sie verl
       expect(m.geheZuText, `${breite}px: „Gehe zu …“ steht nicht im Kopfband`).toContain(
         "Seite finden",
       ); // FE-002: vormals „Gehe zu …"
-      expect(m.geheZuText, `${breite}px: das Kürzel fehlt`).toContain("⌘K");
+      expect(
+        KUERZEL.some((k) => m.geheZuText.includes(k)),
+        `${breite}px: das Kürzel fehlt`,
+      ).toBe(true);
       // Und der Menü-Knopf steht daneben — die Punkte bleiben über ihn erreichbar. DASS sie es
       // wirklich sind, misst `kein-sonderpunkt-schmal.test.tsx` (N2/N3); hier geht es um die Zeile.
       expect(m.menueText, `${breite}px: der Menü-Knopf fehlt`).toBe("Menü");
@@ -516,8 +522,11 @@ function pruefePunkte(e: Erhebung, lage: string): void {
       "",
     );
   } else {
-    // Das Kürzel ist keine Übersetzung, es ist ein Zeichen — es steht in jeder Sprache gleich da.
-    expect(e.m.geheZuText, `${lage}: „Gehe zu …" fehlt (oder ohne sein Kürzel)`).toContain("⌘K");
+    // R-0987: das Kürzel folgt Plattform und Sprache — „⌘K" auf Apple, sonst „Strg+K"/„Ctrl+K".
+    expect(
+      KUERZEL.some((k) => e.m.geheZuText.includes(k)),
+      `${lage}: „Gehe zu …" fehlt (oder ohne sein Kürzel)`,
+    ).toBe(true);
   }
 }
 

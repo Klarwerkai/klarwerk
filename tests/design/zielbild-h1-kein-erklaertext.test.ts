@@ -16,6 +16,7 @@
 // am realen `<header>` der gebauten App in Chromium, auf drei Routen.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
+import { kuerzelFormen } from "../../apps/web/src/lib/tastenkuerzel";
 import { APP_VERSION } from "../../apps/web/src/version";
 import { type Strecke, fn, oeffne, strecke, warteBis } from "./h1-chromium";
 
@@ -130,14 +131,17 @@ describe("JOB 3060 · H1 · kein Erklärtext im Kopfband — die echte Seite in 
     "Prüfen",
     "Arbeitsbereiche",
     "Seite finden",
-    "⌘K",
   ];
-  // „Seite finden ⌘K" und das Wort „Meldungen" treten per Container-Abfrage zurück, wenn die rechte
-  // Gruppe zu schmal wird (index.css, `kw-kopfband-rechts`) — bei 1280 px hängt das am Zähler von
-  // „Prüfen" und an den Schriftmassen der Maschine. Sie sind deshalb WAHLWEISE, aber nur als GANZE
-  // Gruppe und nur an ihrer Stelle; alles andere bleibt Pflicht, und nichts darüber hinaus ist erlaubt.
-  const WAHLWEISE = [["Seite", "finden", "⌘K"], ["Meldungen"]];
-  const WAHL_WOERTER = WAHLWEISE.flat();
+  // R-0987: das Kürzel am Knopf folgt der Plattform der Maschine — „⌘K" auf Apple, sonst „Strg+K"
+  // (`lib/tastenkuerzel.ts`). Zugelassen ist genau EINE dieser beiden Formen; welche zur Plattform
+  // gehört, pinnt `tests/barrierefreiheit/tastenkuerzel-plattform.test.tsx`.
+  const KUERZEL_FORMEN = kuerzelFormen("K", "de");
+  // „Seite finden <Kürzel>" und das Wort „Meldungen" treten per Container-Abfrage zurück, wenn die
+  // rechte Gruppe zu schmal wird (index.css, `kw-kopfband-rechts`) — bei 1280 px hängt das am Zähler
+  // von „Prüfen" und an den Schriftmassen der Maschine. Sie sind deshalb WAHLWEISE, aber nur als
+  // GANZE Gruppe und nur an ihrer Stelle; alles andere bleibt Pflicht, nichts darüber hinaus ist erlaubt.
+  const wahlweise = (kuerzel: string): string[][] => [["Seite", "finden", kuerzel], ["Meldungen"]];
+  const WAHL_WOERTER = [...wahlweise("").flat().filter(Boolean), ...KUERZEL_FORMEN];
   const WOERTER = NAMEN.flatMap((n) => n.split(/\s+/)).filter((w) => !WAHL_WOERTER.includes(w));
 
   it("Z · die Namen des Bands sind die Übersetzungen des Produkts (de) — nicht abgeschrieben", () => {
@@ -151,14 +155,12 @@ describe("JOB 3060 · H1 · kein Erklärtext im Kopfband — die echte Seite in 
       i18n.getFixedT("de")("kopfband.pruefen"),
       i18n.getFixedT("de")("fe002.arbeitsbereiche"),
       i18n.getFixedT("de")("fe002.seiteFinden"),
-      // Das Kürzel ist ein Zeichen und keine Übersetzung — es steht so auch in der Zahnrad-Zeile.
-      "⌘K",
     ]).toEqual(NAMEN);
     expect(i18n.getFixedT("de")("fe002.wissenSuchen")).toBe("Wissen suchen");
   });
 
   for (const pfad of ROUTEN) {
-    it(`T · ${pfad}: innerText des Kopfbands = KLARWERK Start Fragen Bibliothek Erfassen Meine Entwürfe Prüfen Arbeitsbereiche Seite finden ⌘K (+ Zähler, + Initialen), Platzhalter Wissen suchen`, () => {
+    it(`T · ${pfad}: innerText des Kopfbands = KLARWERK Start Fragen Bibliothek Erfassen Meine Entwürfe Prüfen Arbeitsbereiche Seite finden <Kürzel> (+ Zähler, + Initialen), Platzhalter Wissen suchen`, () => {
       expect(fehler).toBeNull();
       const inv = jeRoute[pfad];
       expect(inv, "Kopfband nicht gefunden").toBeTruthy();
@@ -169,7 +171,10 @@ describe("JOB 3060 · H1 · kein Erklärtext im Kopfband — die echte Seite in 
       const ohneAusnahmen = inv.woerter.filter((w) => w !== inv.zaehler && w !== inv.initialen);
       expect(ohneAusnahmen.filter((w) => !WAHL_WOERTER.includes(w))).toEqual(WOERTER);
       const gewaehlt = ohneAusnahmen.filter((w) => WAHL_WOERTER.includes(w));
-      expect([[], WAHLWEISE[0], WAHLWEISE[1], WAHL_WOERTER]).toContainEqual(gewaehlt);
+      // Höchstens EINE Kürzelform steht da; ohne Knopf gilt die erste nur als Platzhalter.
+      const kuerzel = gewaehlt.find((w) => KUERZEL_FORMEN.includes(w)) ?? KUERZEL_FORMEN[0] ?? "";
+      const [knopfGruppe = [], meldungen = []] = wahlweise(kuerzel);
+      expect([[], knopfGruppe, meldungen, [...knopfGruppe, ...meldungen]]).toContainEqual(gewaehlt);
       expect(inv.placeholder).toBe("Wissen suchen");
     });
   }
