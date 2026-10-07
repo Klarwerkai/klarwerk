@@ -5306,6 +5306,34 @@ const de = {
     "Abgeleitet aus vorhandenen Wissensobjekten (wer zu einem Thema beigetragen hat). Reihenfolge alphabetisch, ohne Bewertung — als Hilfe, wen man ansprechen könnte.",
   "expertise.invite": "Du hast Erfahrung mit {{topic}} — kannst du das kurz einordnen?",
   "expertise.thanks": "Danke, das hilft dem Team.",
+  // R-1663 / R-2178: begründete Ansprechpartner zu einer Wissenslücke (components/LueckenAnsprechpartner).
+  "ansprechpartner.zeigen": "Ansprechpartner vorschlagen",
+  "ansprechpartner.verbergen": "Vorschläge ausblenden",
+  "ansprechpartner.titel": "Passende Ansprechpartner nach vorhandenen Wissensspuren",
+  "ansprechpartner.hinweis":
+    "Keine Bewertung und keine Rangfolge von Personen — nur, wo vorhandene Wissensspuren auf jemanden zeigen. Reihenfolge alphabetisch.",
+  "ansprechpartner.laden": "Wissensspuren werden gelesen …",
+  "ansprechpartner.fehler": "Die Vorschläge konnten nicht geladen werden.",
+  "ansprechpartner.leer": "Zu dieser Frage zeigen keine sichtbaren Wissensspuren auf eine Person.",
+  "ansprechpartner.grundlage":
+    "Grundlage: passende sichtbare Wissensobjekte {{objekte}} · ähnliche geschlossene Lücken {{luecken}}",
+  "ansprechpartner.zuweisen": "Zuweisen",
+  "ansprechpartner.spur.originalautor_one": "Originalautor von {{count}} passenden Wissensobjekt",
+  "ansprechpartner.spur.originalautor_other":
+    "Originalautor von {{count}} passenden Wissensobjekten",
+  "ansprechpartner.spur.erfasst_one": "hat {{count}} passendes Wissensobjekt erfasst",
+  "ansprechpartner.spur.erfasst_other": "hat {{count}} passende Wissensobjekte erfasst",
+  "ansprechpartner.spur.validiert_one": "hat {{count}} passendes Objekt validiert",
+  "ansprechpartner.spur.validiert_other": "hat {{count}} passende Objekte validiert",
+  "ansprechpartner.spur.pruefung_one": "war für {{count}} passendes Objekt zur Prüfung zugewiesen",
+  "ansprechpartner.spur.pruefung_other":
+    "war für {{count}} passende Objekte zur Prüfung zugewiesen",
+  "ansprechpartner.spur.verantwortlich_one": "verantwortet {{count}} passendes Objekt",
+  "ansprechpartner.spur.verantwortlich_other": "verantwortet {{count}} passende Objekte",
+  "ansprechpartner.spur.aehnlicheLuecken_one":
+    "war für {{count}} ähnliche, inzwischen geschlossene Wissenslücke zuständig",
+  "ansprechpartner.spur.aehnlicheLuecken_other":
+    "war für {{count}} ähnliche, inzwischen geschlossene Wissenslücken zuständig",
   "risk.gaps": "Offene Wissenslücken",
   "risk.gapsEmpty": "Keine offenen Lücken.",
   "risk.gapStatus.offen": "offen",
