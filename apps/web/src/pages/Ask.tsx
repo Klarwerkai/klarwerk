@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Copy, ThumbsUp, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -26,6 +27,7 @@ import { RoleLink } from "../components/RoleLink";
 // FE-003: die Bausteine, die das Tutorial „Fragen“ mit dieser Seite TEILT — Fragefeld, Quellenchip
 // und Plaketten, Warte- und KI-aus-Zustand. Sie standen bis dahin inline hier.
 import { AntwortPlatzhalter, KiNichtVerfuegbar } from "../components/fragen/Antwortbausteine";
+import { Entscheidungsprotokoll } from "../components/fragen/Entscheidungsprotokoll";
 import { FrageFeld } from "../components/fragen/FrageFeld";
 import { EVIDENCE_TONE, QuellenListe } from "../components/fragen/QuellenListe";
 import {
@@ -45,7 +47,11 @@ import { Seitenblatt } from "../components/start/Seitenblatt";
 import { useDiktat } from "../components/start/useDiktat";
 import { ConfidenceBar } from "../components/trust";
 import { Button, Card, SectionLabel } from "../components/ui";
-import { answerExportFilename, buildAnswerMarkdown } from "../lib/answerExport";
+import {
+  type AnswerExportInput,
+  answerExportFilename,
+  buildAnswerMarkdown,
+} from "../lib/answerExport";
 import {
   ANSWER_CONTRACT_TRUST_NOTE_KEY,
   answerContract,
@@ -1194,6 +1200,9 @@ export function Ask(): JSX.Element {
   // Schleife: der Zustand ist ein Schlüssel-String, und ein gleicher Wert lässt React abbrechen.
   const antwortRef = useRef<HTMLDivElement | null>(null);
   const [markenSchluessel, setMarkenSchluessel] = useState<string | null>(null);
+  // R-1643: das Entscheidungs-Protokoll für das gedruckte Blatt — nur zwischen Druckauftrag und
+  // `afterprint` gesetzt (s. `printAnswer`).
+  const [druckProtokoll, setDruckProtokoll] = useState<AnswerExportInput | null>(null);
   useLayoutEffect(() => {
     const wurzel = antwortRef.current;
     const naechster =
@@ -1241,7 +1250,10 @@ export function Ask(): JSX.Element {
       pruefstandHinweis: t("ask.pruefstand.hint", { stand: standWort }),
     };
   });
-  const buildExport = (): { markdown: string; filename: string } | null => {
+  // R-1643 (Entscheidungs-Protokoll): die Eingabe des Exports entsteht EINMAL — Kopieren, Markdown
+  // und Druck/PDF lesen dieselbe. Vorher baute nur der Markdown-Weg sie; der Druck zeigte die Karte,
+  // in der Quellen und Schritte hinter „Mehr" liegen, und damit fehlten sie im PDF.
+  const buildExportInput = (): AnswerExportInput | null => {
     if (!result?.answered || !effective) {
       return null;
     }
@@ -1275,7 +1287,7 @@ export function Ask(): JSX.Element {
         ...(zuordnungTragfaehig ? { attributionLabel: t(VERWENDUNG_BADGE[s.verwendung]) } : {}),
       };
     });
-    const markdown = buildAnswerMarkdown({
+    return {
       question: asked || q,
       answer: result.answer ?? "",
       // AUFTRAG-mega33 A2: Kopieren und Markdown-Download exportieren die EFFEKTIVE Einstufung.
@@ -1303,8 +1315,29 @@ export function Ask(): JSX.Element {
         }),
         ...(zuordnungTragfaehig ? {} : { attributionUnknown: t("ask.attribution.unknown") }),
       },
-    });
-    return { markdown, filename: answerExportFilename(generatedAt) };
+      // R-1643: Zeitstempel und Nutzer-ID. Die Kennung ist DIESELBE, unter der die Seite den
+      // Arbeitsstand führt (`useKontoKennung`, Sitzungsabfrage `["auth", "me"]`) — ohne Sitzung
+      // `null`, und das Protokoll sagt dann „nicht angemeldet" statt eine Kennung zu erfinden.
+      protocol: {
+        userId: konto,
+        labels: {
+          heading: t("ask.export.protocol.heading"),
+          time: t("ask.export.protocol.time"),
+          user: t("ask.export.protocol.user"),
+          userUnknown: t("ask.export.protocol.userUnknown"),
+        },
+      },
+    };
+  };
+  const buildExport = (): { markdown: string; filename: string } | null => {
+    const input = buildExportInput();
+    if (!input) {
+      return null;
+    }
+    return {
+      markdown: buildAnswerMarkdown(input),
+      filename: answerExportFilename(input.generatedAt),
+    };
   };
   const copyAnswer = (): void => {
     const ex = buildExport();
@@ -1330,11 +1363,19 @@ export function Ask(): JSX.Element {
     URL.revokeObjectURL(url);
   };
   // SCRUM-440-Muster: nur den markierten Auszug (.print-area) drucken; Klasse nach dem Druck entfernen.
+  // R-1643: vor dem Druck steht das Entscheidungs-Protokoll IN der Druckfläche — synchron
+  // (`flushSync`), weil `window.print()` sofort das aktuelle DOM abbildet. Nach dem Druck verschwindet
+  // es wieder; auf dem Bildschirm ändert sich nichts.
   const printAnswer = (): void => {
+    const protokoll = buildExportInput();
+    flushSync(() => setDruckProtokoll(protokoll));
     document.body.classList.add("printing-extract");
     window.addEventListener(
       "afterprint",
-      () => document.body.classList.remove("printing-extract"),
+      () => {
+        document.body.classList.remove("printing-extract");
+        setDruckProtokoll(null);
+      },
       {
         once: true,
       },
@@ -2193,6 +2234,9 @@ export function Ask(): JSX.Element {
                       </div>
                     </Seitenblatt>
                   ) : null}
+                  {/* R-1643: das Entscheidungs-Protokoll — nur auf dem gedruckten Blatt, nur
+                    während des Druckauftrags (Begründung am Bauteil). */}
+                  {druckProtokoll ? <Entscheidungsprotokoll eingabe={druckProtokoll} /> : null}
                 </Card>
                 {/* Zielbild Z.44: zwei ruhige Knöpfe, 10/20 Polster, Radius 10, 14 px.
                   „Kopieren" kopiert unverändert die EFFEKTIVE Fassung (`buildExport` → derselbe

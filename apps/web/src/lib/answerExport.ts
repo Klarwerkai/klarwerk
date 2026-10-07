@@ -69,6 +69,35 @@ export interface AnswerExportLabels {
   attributionUnknown?: string;
 }
 
+// ------------------------------------------------------------------------------------------------
+// R-1643 — DAS ENTSCHEIDUNGS-PROTOKOLL.
+// ------------------------------------------------------------------------------------------------
+// Originalwortlaut (Funktions-Roadmap 6.1): eine KLARWERK-gestützte Entscheidung „kann mit einem
+// Klick als Audit-Dokument exportiert werden — PDF mit allen Quellen, Trust-Werten,
+// Argumentationskette, Zeitstempel, Nutzer-ID".
+//
+// Quellen (mit Kennung), Trust-Werte und Schritte trug die Markdown-Datei schon. Es fehlten zwei
+// Angaben: der ZEITSTEMPEL stand nur als Tag (`YYYY-MM-DD`) in Fußnote und Kopfblock, und WER
+// exportiert hat, stand nirgends. Beides ergänzt dieser Block; die Datei bleibt dieselbe. Das
+// gedruckte Blatt (der PDF-Weg) liest dieselben Angaben über `fragen/Entscheidungsprotokoll.tsx`.
+export interface DecisionProtocolLabels {
+  heading: string;
+  time: string;
+  user: string;
+  // Fehlt eine angemeldete Person, steht das so da — es wird keine Kennung erfunden.
+  userUnknown: string;
+}
+
+export interface DecisionProtocol {
+  /**
+   * Die Kennung der angemeldeten Person aus der Sitzung (`SessionUser.id`) — `null`, wenn keine
+   * Sitzung feststeht. PFLICHT und nicht optional: ein Protokoll ohne die Angabe, ob die Person
+   * bekannt ist, wäre die Lücke, um die es R-1643 geht.
+   */
+  userId: string | null;
+  labels: DecisionProtocolLabels;
+}
+
 export interface AnswerExportInput {
   question: string;
   answer: string;
@@ -79,10 +108,18 @@ export interface AnswerExportInput {
   sources: readonly AnswerExportSource[];
   generatedAt: string; // ISO-Zeitstempel
   labels: AnswerExportLabels;
+  // R-1643: optional nur für Aufrufer ohne Sitzung (reine Formatierungsfälle); die Fragenfläche
+  // gibt es immer mit.
+  protocol?: DecisionProtocol;
 }
 
-function sourceLine(source: AnswerExportSource, trustLabel: string): string {
-  const parts = [
+/**
+ * R-1643: die Aussagen über eine Quelle, in fester Reihenfolge — von Markdown-Zeile und
+ * gedrucktem Protokoll GEMEINSAM gelesen, damit Datei und PDF dasselbe über eine Quelle sagen.
+ * Die Kennung steht zuletzt und ohne Auszeichnung; die Markdown-Zeile setzt sie in Backticks.
+ */
+export function sourceFacts(source: AnswerExportSource, trustLabel: string): string[] {
+  return [
     // AUFTRAG-mega62 Block E: das Kennzeichen steht ZUERST — es ist die Aussage über die Quelle,
     // alles Weitere ist ihre Beschreibung. Auf dem Bildschirm steht es aus demselben Grund direkt
     // am Titel.
@@ -93,12 +130,38 @@ function sourceLine(source: AnswerExportSource, trustLabel: string): string {
     // JOB 502: die Kennung steht ZULETZT — und zwar bewusst. Alles davor sind Aussagen ÜBER die
     // Quelle (trägt/angesehen, Status, Wert, Nutzbarkeit); sie werden gelesen. Die Id ist keine
     // Aussage, sondern der Rückweg zur Fundstelle — sie gehört ans Ende, wo sie beim Lesen nicht
-    // im Weg steht, aber jederzeit greifbar ist. Sie steht in Backticks, damit sofort erkennbar
-    // ist, dass es eine technische Kennung ist und kein weiteres Urteilswort.
-    source.sourceId.trim() ? `\`${source.sourceId.trim()}\`` : undefined,
+    // im Weg steht, aber jederzeit greifbar ist.
+    source.sourceId.trim() || undefined,
   ].filter((p): p is string => Boolean(p?.trim()));
+}
+
+function sourceLine(source: AnswerExportSource, trustLabel: string): string {
+  // JOB 502: die Kennung steht in Backticks, damit sofort erkennbar ist, dass es eine technische
+  // Kennung ist und kein weiteres Urteilswort.
+  const id = source.sourceId.trim();
+  const parts = [
+    ...sourceFacts({ ...source, sourceId: "" }, trustLabel),
+    ...(id ? [`\`${id}\``] : []),
+  ];
   const suffix = parts.length > 0 ? ` — ${parts.join(" · ")}` : "";
   return `- ${source.title.trim()}${suffix}`;
+}
+
+/**
+ * R-1643: die Kopfzeilen des Entscheidungs-Protokolls — Zeitpunkt (voller ISO-Zeitstempel, UTC)
+ * und Nutzer-ID. Ebenfalls von Datei und Druck gemeinsam gelesen.
+ */
+export function decisionProtocolRows(
+  input: Pick<AnswerExportInput, "generatedAt">,
+  protocol: DecisionProtocol,
+): { label: string; value: string; kennung: boolean }[] {
+  const user = protocol.userId?.trim();
+  return [
+    { label: protocol.labels.time, value: input.generatedAt, kennung: false },
+    user
+      ? { label: protocol.labels.user, value: user, kennung: true }
+      : { label: protocol.labels.user, value: protocol.labels.userUnknown, kennung: false },
+  ];
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -117,12 +180,24 @@ function sourceLine(source: AnswerExportSource, trustLabel: string): string {
 const FRONTMATTER_TRENNER = "---";
 
 function frontmatter(input: AnswerExportInput): string[] {
+  // R-1643: Zeitpunkt und Person auch MASCHINENLESBAR — eine Ablage, die nach Kopfblöcken
+  // sortiert, findet das Protokoll so ohne Prosa. Die Person steht nur da, wenn sie feststeht;
+  // „unbekannt" ist eine Aussage für Lesende und steht deshalb unten im Text.
+  const protokoll = input.protocol
+    ? [
+        `exported-at: ${input.generatedAt}`,
+        ...(input.protocol.userId?.trim()
+          ? [`user-id: ${JSON.stringify(input.protocol.userId.trim())}`]
+          : []),
+      ]
+    : [];
   return [
     FRONTMATTER_TRENNER,
     "ai-generated: true",
     "ai-system: KLARWERK",
     "ai-task: answer",
     `ai-date: ${input.generatedAt.slice(0, 10)}`,
+    ...protokoll,
     FRONTMATTER_TRENNER,
     "",
   ];
@@ -169,6 +244,14 @@ export function buildAnswerMarkdown(input: AnswerExportInput): string {
     }
     for (const source of input.sources) {
       lines.push(sourceLine(source, L.trust));
+    }
+  }
+
+  if (input.protocol) {
+    lines.push("");
+    lines.push(`## ${input.protocol.labels.heading}`);
+    for (const row of decisionProtocolRows(input, input.protocol)) {
+      lines.push(`- ${row.label}: ${row.kennung ? `\`${row.value}\`` : row.value}`);
     }
   }
 
