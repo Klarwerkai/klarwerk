@@ -80,10 +80,28 @@ export class BestandsresetGesperrtError extends Error {
 // Bestandsreset zugleich eine Werksrückstellung, die niemand bestellt hat; (c) das Audit,
 // einschließlich der Laufakte des Resets selbst — ein Vorgang, der seine eigene Spur mitlöscht,
 // ist nicht nachweisbar, und die Nachweisbarkeit ist der ganze Zweck von JOB 596.
+//
+// AUFNAHME 20260922 (gesamt-bestandsreset, E9): Seit `60b951b8` sind wissensgebundene Tabellen
+// dazugekommen, die die Liste nicht kannte — Gesamtanweisungen samt gebundener KO-Fassungen,
+// Dokumentfassungen, Kenntnisnahmen, Bearbeitungshinweise und der Quellabgleich je Importlauf.
+// Blieben sie stehen, sähe die Testerin nach dem Reset Anweisungen und Kenntnisnahmen über Objekte,
+// die es nicht mehr gibt — genau der Schutt, den E9 wegräumen soll. Mit ihnen gibt es zwei weitere
+// Ordnungszwänge (`kenntnisnahme_empfaenger → kenntnisnahme_anforderungen`; die Gesamtanweisung
+// kaskadiert ohnehin). BEWUSST NICHT in der Liste: `ko_schreibstand` (Ein-Zeilen-Zähler, s. unten)
+// und `begriffe_fassungen` (Firmenwörterbuch: ob es Bestand oder Einstellung ist, entscheidet der
+// Owner — OV-2 —, nicht dieser Vorgabewert).
 export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
-  // Der eine echte Ordnungszwang: das Kind vor dem Elternteil.
+  // Die Ordnungszwänge: das Kind vor dem Elternteil.
   "import_run_item_refs",
+  "import_run_source_sync",
   "import_runs",
+  "kenntnisnahme_empfaenger",
+  "kenntnisnahme_anforderungen",
+  "gesamtanweisung_staende",
+  "gesamtanweisung_bausteine",
+  "gesamtanweisungen",
+  "dokument_fassungen",
+  "ko_bearbeitungen",
   "import_candidates",
   "external_source_records",
   // Projektionen und Ableitungen vor ihren Quellen — nicht erzwungen, aber die ehrliche Reihenfolge.
@@ -111,6 +129,15 @@ export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
   "objects",
   "kos",
 ];
+
+// DER SCHREIBSTAND ZÄHLT AUCH DEN RESET. `ko_schreibstand` ist der instanzweite Zähler, an dem
+// gecachte Lesebilder (Anhangträger, `anhangStand`) erkennen, dass sich der Bestand geändert hat
+// (s. KO_SCHREIBSTAND_TABELLE_DDL in knowledge-object/src/repo-pg.ts). Löschte der Reset die KOs,
+// ohne ihn zu erhöhen, bliebe ein Bild über gelöschtem Wissen gültig. Die Zeile wird deshalb nicht
+// gelöscht, sondern in DERSELBEN Transaktion erhöht wie die Löschungen — wörtlich dieselbe Anweisung
+// wie beim fachlichen Schreiben.
+export const SQL_SCHREIBSTAND_ERHOEHEN =
+  "UPDATE ko_schreibstand SET stand = stand + 1 WHERE id = 1";
 
 /**
  * Führt einen Bestandsreset aus und gibt den belastbaren Abschlusszustand zurück.
@@ -145,6 +172,7 @@ export async function fuehreBestandsresetAus(
         // Parameter gebunden werden.
         await client.query(`DELETE FROM ${tabelle}`);
       }
+      await client.query(SQL_SCHREIBSTAND_ERHOEHEN);
       // DIE LETZTE ANWEISUNG. Ihre Stellung ist der Auditvertrag.
       await client.query(SQL_COMMITMERKMAL_SETZEN, [laufId]);
       await client.query("COMMIT");

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   BESTANDSRESET_LOESCHGRAPH,
   BestandsresetGesperrtError,
+  SQL_SCHREIBSTAND_ERHOEHEN,
   fuehreBestandsresetAus,
 } from "./bestandsreset";
 import { type BestandsresetLauf, bestandsresetBefund } from "./bestandsreset-audit";
@@ -171,6 +172,7 @@ describe("E1 — Erfolg: vom Aufruf bis zum belastbaren OK", () => {
       expect.stringContaining("pg_try_advisory_xact_lock"),
       "DELETE FROM kos",
       "DELETE FROM drafts",
+      SQL_SCHREIBSTAND_ERHOEHEN,
       expect.stringContaining("SET payload_committed_at"),
       "COMMIT",
       expect.stringContaining("SET status = $2"),
@@ -205,6 +207,47 @@ describe("E1 — Erfolg: vom Aufruf bis zum belastbaren OK", () => {
     expect(BESTANDSRESET_LOESCHGRAPH.indexOf("import_run_item_refs")).toBeLessThan(
       BESTANDSRESET_LOESCHGRAPH.indexOf("import_runs"),
     );
+  });
+
+  it("E9: auch die später hinzugekommenen wissensgebundenen Tabellen gehen mit — Konten nicht", () => {
+    // AUFNAHME 20260922 (gesamt-bestandsreset): Gelöscht werden Wissensobjekte und Papierkorb
+    // (getrashte KOs liegen in `kos`), nicht die Konten.
+    for (const tabelle of [
+      "import_run_source_sync",
+      "kenntnisnahme_empfaenger",
+      "kenntnisnahme_anforderungen",
+      "gesamtanweisung_staende",
+      "gesamtanweisung_bausteine",
+      "gesamtanweisungen",
+      "dokument_fassungen",
+      "ko_bearbeitungen",
+    ]) {
+      expect(BESTANDSRESET_LOESCHGRAPH).toContain(tabelle);
+    }
+    expect(BESTANDSRESET_LOESCHGRAPH).not.toContain("password_resets");
+    // Die Zählerzeile wird erhöht, nicht gelöscht — ohne sie schlüge jedes spätere Schreiben fehl.
+    expect(BESTANDSRESET_LOESCHGRAPH).not.toContain("ko_schreibstand");
+    // Die Fremdschlüssel: das Kind vor dem Elternteil.
+    const vor = (kind: string, eltern: string) =>
+      expect(BESTANDSRESET_LOESCHGRAPH.indexOf(kind)).toBeLessThan(
+        BESTANDSRESET_LOESCHGRAPH.indexOf(eltern),
+      );
+    vor("import_run_source_sync", "import_runs");
+    vor("kenntnisnahme_empfaenger", "kenntnisnahme_anforderungen");
+    vor("gesamtanweisung_bausteine", "gesamtanweisungen");
+    vor("gesamtanweisung_staende", "gesamtanweisungen");
+  });
+
+  it("der Schreibstand steigt IN der Nutzdatentransaktion — sonst bliebe ein Bild über gelöschtem Wissen gültig", async () => {
+    const doppel = poolDoppel();
+
+    await fuehreBestandsresetAus(doppel.pool, "lauf-1", ["kos"]);
+
+    const stand = doppel.protokoll.indexOf(SQL_SCHREIBSTAND_ERHOEHEN);
+    const loeschung = doppel.protokoll.indexOf("DELETE FROM kos");
+    const commits = doppel.protokoll.flatMap((z, i) => (z === "COMMIT" ? [i] : []));
+    expect(stand).toBeGreaterThan(loeschung);
+    expect(stand).toBeLessThan(commits[1] ?? -1);
   });
 });
 
@@ -259,8 +302,9 @@ describe("E2 — Rollback: der Bestand steht, und der Lauf sagt das auch", () =>
 describe("E3 — Verbindungsabbruch: kein erfundener Abschluss", () => {
   it("Abbruch VOR dem Commit: der Wiederanlauf sagt „Bestand steht“ — belegt, nicht geraten", async () => {
     const doppel = poolDoppel();
-    // Anweisung 7 ist das Commitmerkmal (BEGIN, INSERT, COMMIT, BEGIN, Sperre, DELETE, Merkmal).
-    doppel.stirbtAb.wert = 7;
+    // Anweisung 8 ist das Commitmerkmal (BEGIN, INSERT, COMMIT, BEGIN, Sperre, DELETE, Schreibstand,
+    // Merkmal).
+    doppel.stirbtAb.wert = 8;
 
     await expect(fuehreBestandsresetAus(doppel.pool, "lauf-4", ["kos"])).rejects.toBeInstanceOf(
       Error,
@@ -284,9 +328,9 @@ describe("E3 — Verbindungsabbruch: kein erfundener Abschluss", () => {
     // ihn für „zurückgerollt" hielte, behauptete, der Bestand stehe — während er gelöscht ist.
     const doppel = poolDoppel();
     // Die Anweisungsfolge: 1 BEGIN · 2 INSERT · 3 COMMIT · 4 BEGIN · 5 Sperre · 6 DELETE ·
-    // 7 Merkmal · 8 COMMIT · 9 Abschluss. Der Tod bei 9 liegt also NACH dem Commit der
-    // Nutzdaten und VOR dem Auditabschluss — genau das gesuchte Fenster.
-    doppel.stirbtAb.wert = 9;
+    // 7 Schreibstand · 8 Merkmal · 9 COMMIT · 10 Abschluss. Der Tod bei 10 liegt also NACH dem
+    // Commit der Nutzdaten und VOR dem Auditabschluss — genau das gesuchte Fenster.
+    doppel.stirbtAb.wert = 10;
 
     await expect(fuehreBestandsresetAus(doppel.pool, "lauf-5", ["kos"])).rejects.toBeInstanceOf(
       Error,
@@ -322,7 +366,7 @@ describe("E4 — es gibt keinen Weg, auf dem ein unbelegter Erfolg entsteht", ()
     // Der erschöpfende Riegel: Wir lassen die Verbindung an JEDER Anweisung sterben und prüfen
     // nach jedem Durchgang den Befund des Wiederanlaufs. Ein einziger Punkt, an dem „Erfolg
     // meldbar" ohne Commitmerkmal herauskäme, würde diesen Fall kippen.
-    for (let punkt = 1; punkt <= 9; punkt += 1) {
+    for (let punkt = 1; punkt <= 10; punkt += 1) {
       const doppel = poolDoppel();
       doppel.stirbtAb.wert = punkt;
 
