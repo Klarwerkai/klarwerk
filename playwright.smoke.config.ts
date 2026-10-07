@@ -179,7 +179,12 @@ export default defineConfig({
   testDir: "./tests-smoke",
   timeout: 60_000,
   retries: 0,
-  reporter: [["list"]],
+  // Aufnahme 20260922 (R-1382): „der Durchlauf sagt, welche Browser er wirklich gefahren hat". Der
+  // Engine-Bericht zählt am Laufende aus Playwrights Ergebnissen je Engine bestanden/übersprungen/
+  // rot und nennt die nicht gefahrenen. Er ändert NICHT, welche Projekte laufen — das Tor bleibt
+  // einengig (Sperre K7, `tests/smoke/job1094-engine-kette.test.ts`). Grenze: ein Aufruf mit
+  // `--reporter=…` auf der Kommandozeile ersetzt diese Liste, dann fehlt auch der Bericht.
+  reporter: [["list"], ["./tests-smoke/support/engine-bericht.ts"]],
   // Genau EIN Arbeiter. Der Smoke-Server läuft mit In-Memory-Backend: alle drei Engines teilen sich
   // EINEN Datenbestand und EINE Ersteinrichtung. Liefen sie parallel, würden sie sich gegenseitig
   // den Anmeldezustand unter den Füßen wegziehen — ein grüner oder roter Lauf hätte dann nichts mit
