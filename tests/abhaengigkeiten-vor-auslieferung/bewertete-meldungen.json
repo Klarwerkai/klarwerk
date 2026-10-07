@@ -1,0 +1,57 @@
+[
+  {
+    "bestand": "wurzel",
+    "kennung": "GHSA-83w8-p2f5-377r",
+    "paket": "@fastify/static",
+    "ort": "node_modules/@fastify/static",
+    "version": "9.1.3",
+    "urteil": "nicht exponiert",
+    "begruendung": "Bedingung ist eine Rechtepruefung ueber statischen Dateien. Es gibt genau eine Registrierung (services/app/src/web-static.ts), sie liefert nur die oeffentliche SPA apps/web/dist ohne Rechtepruefung aus; die Behebung waere ein Hauptwechsel auf 10.x ohne Exposition.",
+    "beleg": "tests/produktionsabhaengigkeiten/README.md, Abschnitt @fastify/static; Waechter statische-auslieferung-bleibt-laut.test.ts",
+    "bewertet_am": "2026-09-17"
+  },
+  {
+    "bestand": "wurzel",
+    "kennung": "GHSA-8pvw-jcv7-9cmj",
+    "paket": "@fastify/static",
+    "ort": "node_modules/@fastify/static",
+    "version": "9.1.3",
+    "urteil": "nicht exponiert",
+    "begruendung": "Gleiche Bedingung wie GHSA-83w8-p2f5-377r (nicht-kanonische Pfadform an einer Rechtepruefung ueber statischen Dateien); ueber apps/web/dist liegt keine Rechtepruefung.",
+    "beleg": "tests/produktionsabhaengigkeiten/README.md, Abschnitt @fastify/static; Waechter statische-auslieferung-bleibt-laut.test.ts",
+    "bewertet_am": "2026-09-17"
+  },
+  {
+    "bestand": "wurzel",
+    "kennung": "GHSA-c96f-x56v-gq3h",
+    "paket": "find-my-way",
+    "ort": "node_modules/find-my-way",
+    "version": "9.6.0",
+    "urteil": "nicht exponiert",
+    "begruendung": "Der beschriebene Absturz setzt einen HTTP/2-Server voraus; buildApp() erzeugt einen node:http-Server und keine Datei unter services/ nennt http2.",
+    "beleg": "tests/produktionsabhaengigkeiten/README.md, Abschnitt find-my-way; Waechter kein-http2.test.ts",
+    "bewertet_am": "2026-09-17"
+  },
+  {
+    "bestand": "wurzel",
+    "kennung": "GHSA-2x7j-588g-ccc2",
+    "paket": "nodemailer",
+    "ort": "node_modules/nodemailer",
+    "version": "6.10.1",
+    "urteil": "exponiert",
+    "begruendung": "Der Adressparser wird ueber services/notifications/src/smtp.ts mit der unveraenderten Empfaengeradresse erreicht (nur mit SMTP_HOST). Erster Stand ohne Advisory ist 9.1.0, drei Hauptwechsel entfernt; als eigene Entscheidung Pedi vorgelegt, nicht nebenbei gehoben.",
+    "beleg": "tests/produktionsabhaengigkeiten/README.md, Abschnitt nodemailer; Messung mailadressen-bleiben-unveraendert.test.ts",
+    "bewertet_am": "2026-09-17"
+  },
+  {
+    "bestand": "wurzel",
+    "kennung": "GHSA-cc9r-2j5m-2m83",
+    "paket": "nodemailer",
+    "ort": "node_modules/nodemailer",
+    "version": "6.10.1",
+    "urteil": "exponiert",
+    "begruendung": "Fehlparsen von RFC-5322-Kommentaren am gebundenen Stand gemessen (Komma-Zerlegung, verschachtelte Kommentare verlieren den Empfaenger); Weg und offene Hauptwechsel-Entscheidung wie GHSA-2x7j-588g-ccc2.",
+    "beleg": "tests/produktionsabhaengigkeiten/README.md, Abschnitt nodemailer; Messung mailadressen-bleiben-unveraendert.test.ts",
+    "bewertet_am": "2026-09-17"
+  }
+]
