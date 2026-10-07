@@ -467,7 +467,10 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     // JOB 3062 · H3: „Eingabe verwerfen" ist ein Eintrag des „…"-Menüs (Auftrag §5a) und heißt
     // dort weiter so. Die RÜCKFRAGE davor ist unverändert — nur der Rückweg auf eine zweite Fläche
     // („Zurück") entfällt, weil es keine zweite Fläche mehr gibt.
-    expect(pageSource).toContain("window.confirm");
+    // FR-MOB-03: die Rückfrage stellt das Blatt jetzt SELBST (Rückfragezeile), nicht mehr
+    // `window.confirm` — derselbe Satz, kein Systemdialog.
+    expect(pageSource).toContain('setRueckfrage({ art: "verwerfen" })');
+    expect(pageSource).not.toMatch(/window\.confirm\(t\("fd\.confirmDiscard"\)\)/);
     expect(pageSource).toContain("fd.confirmDiscard");
     expect(pageSource).toContain("fd.discardInput");
     expect(pageSource.match(/"fd\.discardProposal"/g) ?? []).toHaveLength(2);
