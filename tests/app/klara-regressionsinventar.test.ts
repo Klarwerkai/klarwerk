@@ -208,6 +208,9 @@ const INVENTAR: readonly string[] = [
   // „klara" im Pfad — die Datei kommt über die Achse `taskpane`. Aus der Achsenregel abgeleitet,
   // nicht gemessen (kein Testlauf in diesem Durchgang; der Cloud-Lauf ist der Beleg).
   "tests/m5c-b-bildbudget/dokumentgrenze.test.ts",
+  // Nacharbeit 3 (R-0021): die textbedingte 413 des Dokument-Wegs am gemounteten Panel. Kommt über
+  // die Achse `komponente` (`KlaraPanel` aus der Fixture); aus der Achsenregel abgeleitet.
+  "tests/m5c-b-bildbudget/panel-rumpfgrenze.test.ts",
   // JOB 3281 WORD-VERGLEICH: der Vertragsblock an der ausgelieferten Datei und die drei
   // ausfuehrenden Pruefungen des Absatzvergleichs. K2 hat alle vier gemeldet; keine traegt
   // „klara" im Pfad — sie kommen ueber die Achse `taskpane` herein, also genau ueber den blinden

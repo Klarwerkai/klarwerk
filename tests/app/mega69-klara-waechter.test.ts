@@ -2754,7 +2754,12 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // keine neue Zeile, kein neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder Manifeständerung,
     // kein Sideload. NACHARBEIT 1: PIN BEWUSST AKTUALISIERT (eefba3bd… -> 543d180f…). Im Prüflauf zu
     // Kandidat 4e98aeda GEMESSEN („Received", HISTORIE/nacharbeit-1/PRUEFUNG/waechter-geaenderte-
-    // flaechen.log) und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // flaechen.log) und unverändert übernommen.
+    // NACHARBEIT 3 (R-0021, Ben): `sendTooLarge` (de/en/nl) nennt zusätzlich Kürzen und Aufteilen als
+    // Abhilfe — weiter EIN Satz, kein neuer Schlüssel, keine neue Zeile, kein neues Abrufziel, keine
+    // Nutzlast-, CSP-, Rechte- oder Manifeständerung, kein Sideload. DER PIN MUSS WANDERN; ohne
+    // zugelassenes Hash-Werkzeug ist er hier nicht berechenbar — der Prüflauf meldet den Ist-Wert als
+    // „Received", er wird danach gemessen übernommen.
     const PIN = "543d180fc060c9e4808fae652e6d44dc562ba4c0d2229402ab460283139c4961";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
