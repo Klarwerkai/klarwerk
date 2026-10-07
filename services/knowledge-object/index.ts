@@ -408,10 +408,13 @@ export type {
   ConfidentialityDisclosure,
   ConfidentialityProvenance,
 } from "./src/confidentiality";
+// R-1631 (gesamt-anlagenzugang): Stücklistenbezug und Geltungskontext — die Eingangsprüfung der Route.
+export { anlagenkontextFehler } from "./src/anlagenkontext";
 // R-0658: Schutzdaten vor der Suche — Erkennung und die eine Lesestelle der Quarantäne.
 export { erkenneSchutzdaten, inSchutzdatenQuarantaene } from "./src/schutzdaten";
 export type { SchutzdatenArt, SchutzdatenQuarantaene } from "./src/types";
 export type {
+  AnlagenKontext,
   EvidenceKind,
   EvidenceRecord,
   KnowledgeObject,

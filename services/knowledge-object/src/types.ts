@@ -443,6 +443,16 @@ export interface SchutzdatenQuarantaene {
   seit: string;
 }
 
+// R-1631 (gesamt-anlagenzugang): Stücklistenbezug und Geltungskontext eines Wissensobjekts.
+// Jede Liste fehlt oder trägt mindestens eine Kennung in Normalform (`anlagenkontext.ts`).
+export interface AnlagenKontext {
+  bauteile?: string[];
+  materialien?: string[];
+  versionen?: string[];
+  standorte?: string[];
+  schichten?: string[];
+}
+
 // FR-KO-01: Datenmodell inkl. version/history/originalAuthor/needed/assignments/asset
 // (Pflichtenheft §3.5, Technischer Anhang §1).
 export interface KnowledgeObject {
@@ -582,6 +592,10 @@ export interface KnowledgeObject {
   // Gleichsetzung von Erzeuger und Verantwortlichem, die Pedis Entscheidung zurückgewiesen hat.
   ownership?: KnowledgeOwnership;
   asset: string | null;
+  // R-1631 (gesamt-anlagenzugang): Bauteil-Nummern, Material-Codes und der Geltungskontext
+  // (Version, Standort, Schicht) neben der Anlage. Optional, additiv im JSONB, keine Migration;
+  // Normalform und Begründung in `anlagenkontext.ts`.
+  anlagenkontext?: AnlagenKontext;
   createdAt: string;
   history: HistoryEntry[];
   comments: KoComment[];

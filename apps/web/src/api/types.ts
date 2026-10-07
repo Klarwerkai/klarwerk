@@ -516,6 +516,15 @@ export interface AnzeigestatusHerkunft extends Record<AnzeigestatusEingang, Eing
 /** R-0658: welche Art Schutzdaten der Server erkannt hat — Spiegel von `SchutzdatenArt`. */
 export type SchutzdatenArt = "personalnummer" | "kontodaten";
 
+/** R-1631: Bauteile, Materialien und Geltungskontext — Spiegel von `AnlagenKontext` im Dienst. */
+export interface AnlagenKontext {
+  bauteile?: string[];
+  materialien?: string[];
+  versionen?: string[];
+  standorte?: string[];
+  schichten?: string[];
+}
+
 export interface KnowledgeObject {
   id: string;
   title: string;
@@ -609,6 +618,9 @@ export interface KnowledgeObject {
   // auf die Validierungsentscheidung. Steht er da, hat ein Mensch fachlich entschieden.
   validationDecisionRef?: { auditSeq: number; auditHash: string };
   asset: string | null;
+  // R-1631 (gesamt-anlagenzugang): Spiegel von `services/knowledge-object/src/types.ts` —
+  // Bauteile, Materialien und Geltungskontext (Version, Standort, Schicht). Fehlt = nichts angegeben.
+  anlagenkontext?: AnlagenKontext;
   createdAt: string;
   history: HistoryEntry[];
   comments?: KoComment[];

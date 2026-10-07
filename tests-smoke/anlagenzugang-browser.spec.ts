@@ -13,6 +13,9 @@ import { ensureLoggedIn } from "./support/auth";
 //        Bibliothek, die genau das Wissen dieser Anlage zeigt — das einer anderen Anlage nicht.
 //   B2 · Die Adresse, die der Code trägt, direkt aufgerufen wie nach einem Scan — auf
 //        Telefonbreite und nach einem Neuladen: dieselbe Auswahl.
+//   B3 · R-1631 (Ben Nacharbeit 1): Bauteil-Code und Geltungskontext. Der Code eines Bauteils mit
+//        Standort öffnet das allgemeine und das am Standort geltende Wissen; die Kontextleiste
+//        wechselt im Browser auf eine Schicht, und das Neuladen behält die Wahl.
 //
 // WAS NICHT GEMESSEN IST, ausdrücklich: das Scannen eines gedruckten Etiketts mit einer echten
 // Telefonkamera. Dass der Code GENAU diese Adresse trägt, liest
@@ -29,6 +32,7 @@ async function legeAn(
   request: APIRequestContext,
   title: string,
   asset: string,
+  anlagenkontext?: Record<string, string[]>,
 ): Promise<{ id: string }> {
   const antwort = await request.post("/api/kos", {
     data: {
@@ -38,6 +42,7 @@ async function legeAn(
       category: "Instandhaltung",
       tags: ["anlagenzugang"],
       asset,
+      ...(anlagenkontext ? { anlagenkontext } : {}),
       confidentiality: "intern",
     },
   });
@@ -107,5 +112,54 @@ test.describe("Anlagenzugang · QR-Code und Anlagenauswahl in der echten App", (
     await page.reload();
     await expect(zeilen).toHaveCount(1, { timeout: 15_000 });
     await expect(zeilen.first()).toHaveAttribute("data-bib-id", a.id);
+  });
+
+  test("B3: Bauteil-Code mit Standort, Schicht in der Kontextleiste, Neuladen behält sie", async ({
+    page,
+  }) => {
+    await ensureLoggedIn(page);
+    const m = marke();
+    const anlage = `Smoke Linie ${m}`;
+    const bauteil = `BT-${m}`;
+    const allgemein = await legeAn(page.request, `Lager prüfen ${m}`, anlage, {
+      bauteile: [bauteil],
+    });
+    const nord = await legeAn(page.request, `Lager Nord ${m}`, anlage, {
+      bauteile: [bauteil],
+      standorte: ["Werk Nord"],
+    });
+    await legeAn(page.request, `Lager Süd ${m}`, anlage, {
+      bauteile: [bauteil],
+      standorte: ["Werk Süd"],
+    });
+    const nacht = await legeAn(page.request, `Lager Nacht ${m}`, anlage, {
+      bauteile: [bauteil],
+      schichten: ["Nacht"],
+    });
+    const frueh = await legeAn(page.request, `Lager Früh ${m}`, anlage, {
+      bauteile: [bauteil],
+      schichten: ["Früh"],
+    });
+
+    const p = new URLSearchParams();
+    p.set("bauteil", bauteil);
+    p.set("standort", "Werk Nord");
+    await page.goto(`/bibliothek?${p.toString()}`);
+    const zeilen = zeilenIds(page);
+    const ids = async (): Promise<(string | null)[]> =>
+      (await zeilen.evaluateAll((els) => els.map((e) => e.getAttribute("data-bib-id")))).sort();
+    await expect(zeilen).toHaveCount(4, { timeout: 15_000 });
+    expect(await ids()).toEqual([allgemein.id, nord.id, nacht.id, frueh.id].sort());
+
+    await expect(page.getByTestId("bib-kontext")).toBeVisible();
+    await page.getByTestId("bib-kontext-schicht").selectOption("Nacht");
+    await expect(page).toHaveURL(/schicht=Nacht/);
+    await expect(zeilen).toHaveCount(3, { timeout: 15_000 });
+    expect(await ids()).toEqual([allgemein.id, nord.id, nacht.id].sort());
+
+    await page.reload();
+    await expect(zeilen).toHaveCount(3, { timeout: 15_000 });
+    expect(await ids()).toEqual([allgemein.id, nord.id, nacht.id].sort());
+    await expect(page.getByTestId("bib-kontext-standort")).toHaveValue("Werk Nord");
   });
 });

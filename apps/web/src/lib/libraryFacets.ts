@@ -7,7 +7,7 @@
 // Dazu: GESPEICHERTE SICHTEN — benannt, LOKAL je Nutzer (localStorage, wie die Board-Checkboxen;
 // bewusst KEIN Server-Speicher — ehrlich dokumentiert: die Sicht lebt nur in diesem Browser).
 import type { Conflict, KnowledgeObject } from "../api/types";
-import { ANLAGE_FACETTE, anlagenWerte } from "./anlagenzugang";
+import { bezuegeVon } from "./anlagenzugang";
 import { confidentialityOf } from "./confidentiality";
 import { conflictImpact, conflictLimitedUsability } from "./conflictImpact";
 import { isDemoKnowledge } from "./demoKnowledge";
@@ -123,10 +123,12 @@ export function libraryFilterValues(
     // Kategorie. Nur der am Objekt gespeicherte Wert — ohne Angabe bleibt die Achse leer; aus
     // Kategorie, Titel oder Inhalt wird nichts abgeleitet.
     domain: ko.domain?.trim() ? [ko.domain.trim()] : [],
-    // R-1631 / R-1647 / R-2174 (gesamt-anlagenzugang): die Anlage als eigene Achse — der Einstieg
-    // des QR-Codes (`lib/anlagenzugang.ts`). Nur die am Objekt gespeicherte kanonische Kennung;
-    // ohne Anlage bleibt die Achse leer.
-    [ANLAGE_FACETTE]: anlagenWerte(ko.asset),
+    // R-1631 / R-1647 / R-2174 (gesamt-anlagenzugang): Anlage, Bauteil-Nummern und Material-Codes
+    // als eigene Achsen — der Einstieg eines QR-Codes (`?anlage=…`, `?bauteil=…`, `?material=…`,
+    // `lib/anlagenzugang.ts`). Nur die am Objekt gespeicherten Kennungen; ohne Angabe bleibt die
+    // Achse leer. Der Geltungskontext (Version, Standort, Schicht) ist bewusst KEINE Facette: dort
+    // gilt Wissen ohne Angabe allgemein (`passtZumKontext`).
+    ...bezuegeVon(ko),
   };
 }
 

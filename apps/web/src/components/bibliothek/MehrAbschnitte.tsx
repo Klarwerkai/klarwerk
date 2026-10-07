@@ -80,6 +80,7 @@ import { SanitizedHtml } from "../SanitizedHtml";
 import { UploadLimitsHint } from "../UploadLimitsHint";
 import { ConfidenceBar, KnowledgeTypeTag, ProvenanceLine } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
+import { AnlagenBezugPflege } from "./AnlagenBezugPflege";
 import { AnlagenQrCode } from "./AnlagenQrCode";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { ImportErgebnis } from "./ImportErgebnis";
@@ -1651,8 +1652,11 @@ export function MehrAbschnitte({
             </Button>
           </div>
         ) : null}
-        {/* R-1647 / R-2174 (gesamt-anlagenzugang): der QR-Code der Anlage dieses Objekts. */}
-        <AnlagenQrCode anlage={ko.asset} />
+        {/* R-1631 (gesamt-anlagenzugang): Bauteile, Materialien und Geltungskontext pflegen —
+            dasselbe Recht wie die Kopplung darüber. */}
+        {role !== "viewer" ? <AnlagenBezugPflege ko={ko} onGespeichert={invalidate} /> : null}
+        {/* R-1647 / R-2174: der QR-Code der Anlage, eines Bauteils oder Materials dieses Objekts. */}
+        <AnlagenQrCode ko={ko} />
       </Abschnitt>
 
       {/* 7 — Herkunftskette */}

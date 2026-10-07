@@ -5,6 +5,7 @@ import { ApiError, api } from "./client";
 import type {
   AiCheckCoverageSummary,
   Analytics,
+  AnlagenKontext,
   AnswerResult,
   // JOB 4154 (WIKI-GESAMTANWEISUNG): der Drahtvertrag der zusammengesetzten Anweisung.
   Anweisung,
@@ -316,6 +317,8 @@ export type KoAction =
   | { action: "tags"; tags: string[]; expectedMetadataRevision?: number }
   // R-0431 (K2): das Fachgebiet setzen/ändern; leer entfernt die Angabe (ko-routes.ts `domain`).
   | { action: "domain"; domain: string }
+  // R-1631 (gesamt-anlagenzugang): Bauteile, Materialien und Geltungskontext; ersetzt den bisherigen.
+  | { action: "anlagenkontext"; anlagenkontext: AnlagenKontext }
   // SCRUM-415: Vertraulichkeitsstufe setzen/ändern (mit Audit).
   | { action: "confidentiality"; level: Confidentiality }
   | {

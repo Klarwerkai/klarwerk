@@ -161,7 +161,29 @@ function kopplungOeffnen(): void {
 beforeEach(async () => {
   await i18n.changeLanguage("de");
   box.ko.asset = "Linie L4 / Dosierstation DP-4";
+  box.ko.anlagenkontext = undefined;
 });
+
+function waehle(testId: string, wert: string): void {
+  const feld = container.querySelector(`[data-testid="${testId}"]`);
+  if (!(feld instanceof HTMLSelectElement)) {
+    throw new Error(`Auswahl „${testId}" fehlt; DOM: ${container.textContent}`);
+  }
+  const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set as (
+    v: string,
+  ) => void;
+  act(() => {
+    setter.call(feld, wert);
+    feld.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+
+function gelesenerInhalt(): string {
+  const bild = container.querySelector('[data-testid="anlagen-qr-bild"]');
+  const seite = Number((bild?.getAttribute("viewBox") ?? "").split(" ")[2]);
+  const pfad = bild?.querySelector("path")?.getAttribute("d") ?? "";
+  return leseQr(matrixAusPfad(pfad, seite, QR_RUHEZONE)).text;
+}
 
 afterEach(() => {
   act(() => root?.unmount());
@@ -185,6 +207,27 @@ describe("Anlagenzugang · der QR-Code in der Wissensansicht", () => {
 
     const link = container.querySelector('[data-testid="anlagen-qr-oeffnen"]');
     expect(link?.getAttribute("href")).toBe(anlagenPfad(kennung));
+  });
+
+  it("W3 · Bauteil und Standort gewählt: der Code trägt genau diese Adresse (R-1631)", async () => {
+    box.ko.anlagenkontext = {
+      bauteile: ["BT-4711"],
+      standorte: ["Werk Nord", "Werk Süd"],
+      schichten: ["Nacht"],
+    };
+    await mount("viewer");
+    kopplungOeffnen();
+    const kennung = "Linie L4 / Dosierstation DP-4";
+    expect(gelesenerInhalt()).toBe(`${window.location.origin}${anlagenPfad(kennung)}`);
+
+    waehle("anlagen-qr-bezug", "1");
+    waehle("anlagen-qr-kontext-standort", "Werk Süd");
+    waehle("anlagen-qr-kontext-schicht", "Nacht");
+    const pfad = anlagenPfad("BT-4711", "bauteil", { standort: "Werk Süd", schicht: "Nacht" });
+    expect(gelesenerInhalt()).toBe(`${window.location.origin}${pfad}`);
+    expect(
+      container.querySelector('[data-testid="anlagen-qr-oeffnen"]')?.getAttribute("href"),
+    ).toBe(pfad);
   });
 
   it("W2 · ohne Anlage am Objekt gibt es keinen Code", async () => {

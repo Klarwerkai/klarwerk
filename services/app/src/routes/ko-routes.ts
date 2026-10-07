@@ -30,6 +30,7 @@ import {
   type UploadLimitsRepo,
   alsMenge,
   alsSchreibpatch,
+  anlagenkontextFehler,
   // JOB 4077: die EINE Antwort auf „hängt dieser Anker an DIESEM Objekt?". Sie kennt weder Stufe
   // noch Reichweite und kann deshalb keine Erlaubnis erweitern (Begründung: `source-anchor.ts`).
   confirmedSourceAnchor,
@@ -423,6 +424,8 @@ type KoAktion =
   | "tags"
   // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet am Objekt setzen, ändern oder entfernen.
   | "domain"
+  // R-1631 (gesamt-anlagenzugang): Bauteile, Materialien und Geltungskontext am Objekt.
+  | "anlagenkontext"
   | "confidentiality"
   // JOB 557: die Verantwortung am Objekt benennen (Recht `ko.validate`, s. den Zweig unten).
   | "ownership"
@@ -483,6 +486,8 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   tags: "tor",
   // R-0431 (K2): arbeitet AM Objekt unter `:id` — es passiert das Sichtbarkeitstor wie `category`.
   domain: "tor",
+  // R-1631: arbeitet AM Objekt unter `:id` — dasselbe Tor wie `domain`.
+  anlagenkontext: "tor",
   confidentiality: "tor",
   // JOB 557: die Aktion arbeitet AM Objekt unter `:id` — sie passiert das Sichtbarkeitstor.
   ownership: "tor",
@@ -580,6 +585,8 @@ interface PutBody {
   tags?: string[];
   /** R-0431 (K2): das Fachgebiet (`action: "domain"`). `unknown`, gelesen an der `case`. */
   domain?: unknown;
+  /** R-1631: Bauteile, Materialien, Geltungskontext (`action: "anlagenkontext"`), gelesen an der `case`. */
+  anlagenkontext?: unknown;
   conflict?: ConflictInput;
   /**
    * R-0238 — DIE WIDERSPRECHENDE ABLEHNUNG. Nur an `rate` mit `verdict: "down"`: das Objekt, dem
@@ -1544,6 +1551,15 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           if (input.confidentiality === undefined) {
             sendMissingConfidentiality(reply);
             return;
+          }
+          // R-1631 (gesamt-anlagenzugang): derselbe Eingang wie an `action: "anlagenkontext"` —
+          // Unförmiges ist ein 400, nichts wird gekürzt. Fehlt das Feld, ist nichts angegeben.
+          if (input.anlagenkontext !== undefined && input.anlagenkontext !== null) {
+            const fehler = anlagenkontextFehler(input.anlagenkontext);
+            if (fehler) {
+              reply.code(400).send({ error: "BAD_REQUEST", message: fehler });
+              return;
+            }
           }
           const created = await ko.create({ ...input, author: user.id });
           // SCRUM-395: Prüfer-Vorschlag beim Einreichen — der Autor darf für sein EIGENES,
@@ -3463,6 +3479,20 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return badRequest(`domain ist länger als ${DOMAIN_MAX_LENGTH} Zeichen.`);
             }
             reply.code(200).send(await ko.setDomain(id, body.domain, user.id));
+            return;
+          }
+          case "anlagenkontext": {
+            // R-1631 (gesamt-anlagenzugang): dasselbe Recht wie Fachgebiet und Kategorie
+            // (`ko.create`). Der Kontext ersetzt den bisherigen; Unförmiges ist ein 400.
+            const user = await guards.requirePermission("ko.create", request, reply);
+            if (!user) {
+              return;
+            }
+            const fehler = anlagenkontextFehler(body.anlagenkontext);
+            if (fehler) {
+              return badRequest(fehler);
+            }
+            reply.code(200).send(await ko.setAnlagenkontext(id, body.anlagenkontext, user.id));
             return;
           }
           case "tags": {
