@@ -341,6 +341,7 @@ PFLICHTTABELLEN=(
   kenntnisnahme_anforderungen
   kenntnisnahme_empfaenger
   spaces_fassungen
+  livewall_fotos
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do
