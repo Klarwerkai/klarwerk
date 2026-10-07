@@ -41,6 +41,13 @@ export type { DocumentEvidenceFacts } from "./src/document-append";
 // Stufenentscheidung (die sie als TATSACHE braucht) und dem Speicherweg (der sie festhält).
 export { confirmedSourceAnchor } from "./src/source-anchor";
 export type { AnchorCandidateAttachment } from "./src/source-anchor";
+// P-WIKI-STELLENBEZUG: die Form einer Stelle im Text (Route) und ihre Prüfung (Dienst).
+export {
+  STELLE_TEXT_MAX,
+  leseStelle,
+  stelleImInhalt,
+  stellenbloeckeAusHtml,
+} from "./src/stellen-anker";
 // AUFTRAG-mega20 Block A: der Vorgangsschlüssel der ERSTANLAGE (DB-weit eindeutig, Adopt-Semantik).
 // AUFTRAG-mega21 Block A: dazu der kanonische Inhaltsabdruck des Vorgangs (Regeln K1–K7 in der Datei).
 // AUFTRAG-mega22 Block A: dazu K8 — die SCHREIBLADUNG als eigener, semantiktreuer Baustein.
@@ -422,6 +429,8 @@ export type {
   KoStatus,
   HistoryEntry,
   KoComment,
+  // P-WIKI-STELLENBEZUG: der Anker einer Rückfrage im Text.
+  KoCommentStelle,
   KoAttachment,
   // R-0163: die Quellidentität eines übernommenen Anhangs.
   KoAnhangsquelle,

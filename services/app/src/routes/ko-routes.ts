@@ -43,6 +43,8 @@ import {
   discloseDisplayStatus,
   // R-0658: die eine Lesestelle der Schutzdaten-Quarantäne (Begründung in `schutzdaten.ts`).
   inSchutzdatenQuarantaene,
+  // P-WIKI-STELLENBEZUG: die Form einer mitgeschickten Stelle (Prüfung des Inhalts im Dienst).
+  leseStelle,
   normalizeUploadLimits,
 } from "../../../knowledge-object";
 // JOB 3054: `RevalidierungMerkerLeser` ist die SCHREIBFREIE Haelfte desselben Dienstes — sie kommt
@@ -606,10 +608,13 @@ interface PutBody {
    * `clientKey` — der Beitragsschlüssel des Aufrufers (Vertrag Fall 5): reine Deduplizierung einer
    *   Wiederholung nach unklarer Übertragung, ohne Autorität über irgendetwas.
    * `commentId` — welcher Faden geklärt oder wieder geöffnet wird.
+   * `stelle` — P-WIKI-STELLENBEZUG: Absatz, Tabelle oder Bild, an dem eine neue Rückfrage hängt
+   *   (Form: `leseStelle`; Fassung und Textstelle prüft der Dienst).
    */
   replyTo?: unknown;
   clientKey?: unknown;
   commentId?: unknown;
+  stelle?: unknown;
   attachment?: {
     name?: string;
     mime?: string;
@@ -2967,12 +2972,21 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                 );
               }
             }
+            // P-WIKI-STELLENBEZUG: eine unlesbare Stelle ist ein Formfehler — sie still fallen zu
+            // lassen machte aus der Rückfrage an einen Absatz lautlos eine an das ganze Dokument.
+            const stelle = leseStelle(body.stelle);
+            if (stelle === "unlesbar") {
+              return badRequest(
+                "stelle muss Fassung (koVersion), Art (absatz, tabelle, bild), Abschnitt und Textstelle tragen.",
+              );
+            }
             reply.code(200).send(
               await ko.addComment(id, user.id, body.text.trim(), {
                 ...(typeof body.replyTo === "string" ? { replyTo: body.replyTo.trim() } : {}),
                 ...(typeof body.clientKey === "string"
                   ? { clientKey: body.clientKey.trim() }
                   : {}),
+                ...(stelle ? { stelle } : {}),
               }),
             );
             return;
