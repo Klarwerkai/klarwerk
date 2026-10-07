@@ -355,8 +355,10 @@ const REGISTER: Record<string, Eintrag> = {
       "Einwilligung (zuruf.ts:250) vor jedem Bestandszugriff.",
   },
   "POST /api/knowledge/check": {
-    urteil: "DIENST_FILTERT",
-    grund: "app/src/knowledge-check.ts:110 — dropConfidential auf den Kandidaten.",
+    // produkt:20261007:spaces: zusätzlich zu dropConfidential filtert die Route die Kandidaten
+    // mit `sichtbarkeitsfilterFuer` (führender Space) — nachgeprüft statt nur behauptet.
+    urteil: "PRAEDIKAT",
+    grund: "Kandidaten durch sichtbarkeitsfilterFuer, danach dropConfidential.",
   },
   "POST /api/check-text": {
     urteil: "DIENST_FILTERT",
@@ -544,6 +546,26 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/begriffe/pruefen": {
     urteil: "KEIN_KO_INHALT",
     grund: "Hinweise aus Katalog und mitgesendetem Text; liest kein Wissensobjekt.",
+  },
+  // Spaces (spaces-routes.ts): Space-Daten sind kein Wissensobjekt; jede Artikelzeile läuft durch
+  // `sichtbareFuer`/`darfSehen` samt führendem Space.
+  "GET /api/spaces": { urteil: "PRAEDIKAT", grund: "Zähler je Space über sichtbare Artikel." },
+  "GET /api/spaces/konten": { urteil: "KEIN_KO_INHALT", grund: "Kennung, Name, Rolle der Konten." },
+  "GET /api/spaces/:id": { urteil: "KEIN_KO_INHALT", grund: "Space-Fassung und ihr Verlauf." },
+  "POST /api/spaces": { urteil: "KEIN_KO_INHALT", grund: "Antwort ist die neue Space-Fassung." },
+  "PUT /api/spaces/:id": { urteil: "KEIN_KO_INHALT", grund: "Antwort ist die neue Space-Fassung." },
+  "GET /api/spaces/:id/artikel": { urteil: "PRAEDIKAT", grund: "Artikel je Space/Ansicht." },
+  "GET /api/spaces/kontext/artikel/:koId": {
+    urteil: "PRAEDIKAT",
+    grund: "Spacekontext eines Artikels — 404 statt Auskunft.",
+  },
+  "POST /api/spaces/verschiebung/vorschau": {
+    urteil: "PRAEDIKAT",
+    grund: "Rechtevorschau nur zu einem sichtbaren Artikel.",
+  },
+  "POST /api/spaces/verschiebung": {
+    urteil: "PRAEDIKAT",
+    grund: "Spacewechsel nur an einem sichtbaren Artikel.",
   },
   "GET /api/i18n/locales": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
   "GET /api/i18n/:locale/:key": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },

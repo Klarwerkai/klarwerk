@@ -81,6 +81,11 @@ export interface KnowledgeCheckDeps {
   // (nicht-vertraulich klassifiziert + Modell verfügbar) trifft die Route. Fehlt er (vertraulich/unklar/
   // kein Modell) → KEIN Egress von Freitext: conflicts = [] mit status "pending".
   judge?: DraftConflictJudge | null;
+  // produkt:20261007:spaces — die fertige Sichtbarkeitsentscheidung des Prüfenden
+  // (`sichtbarkeitsfilterFuer`, samt führendem Space). Sie wirkt auf die Vorauswahl, bevor gezählt
+  // oder verglichen wird: ein Artikel, den der Mensch nicht sehen darf, erscheint weder als ähnlich
+  // noch als Widerspruch noch in den Zählern. Fehlt sie, bleibt der Ablauf der bisherige.
+  sichtbar?: ((ko: KnowledgeObject) => boolean) | undefined;
 }
 
 // Kerntext-Subjekt aus dem Freitext (kein KO-Anker). Nur statement trägt den Text; der Rest ist leer.
@@ -386,7 +391,12 @@ export async function checkKnowledge(
     //    vertrauliche KOs aus dem Ergebnis UND aus dem Modell-Pool (kein Egress ihres Kerntexts). Demo-
     //    KOs bleiben DRIN: im Live-Check sind sie regulärer Bestand (der Check persistiert nichts), sonst
     //    fände die Ähnlichkeitssuche im Demo-/Testbetrieb nichts.
-    const roh = await deps.ko.findCandidates({ terms: terms(clean), limit: CANDIDATE_LIMIT });
+    const vorauswahl = await deps.ko.findCandidates({
+      terms: terms(clean),
+      limit: CANDIDATE_LIMIT,
+    });
+    const sichtbar = deps.sichtbar;
+    const roh = sichtbar ? vorauswahl.filter((k) => sichtbar(k)) : vorauswahl;
     const candidates = dropConfidential(
       // Vorschau-Reichweite: die Grenze misst `roh` (die Vorauswahl), die Zahl `candidates`.
       roh,

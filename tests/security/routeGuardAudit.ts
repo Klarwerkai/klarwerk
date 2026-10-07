@@ -429,7 +429,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // R-1089: Meldung „Antwort falsch / Quelle passt nicht" — dasselbe Tor und derselbe Beleg.
   "POST /api/ask/report": { protection: "ko.read" },
   // SCRUM-527: Live-Check (Ähnlichkeit/Widerspruch eines Entwurfstextes gegen den Bestand).
-  "POST /api/knowledge/check": { protection: "ko.read" },
+  // produkt:20261007:spaces: ähnliche Artikel/Widersprüche nur aus dem für den Prüfenden Sichtbaren.
+  "POST /api/knowledge/check": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   // SCRUM-491 Slice 5 (check-text-routes.ts): Session-Zweig erzwingt ko.read; der Add-on-Zweig verlangt
   // checktext.validated (Hook + Handler). Nur bei KLARWERK_ADDON_API registriert.
   // JOB 3216 (M3c): der Sitzungszweig entscheidet seit den Quellenfunden ZUSÄTZLICH je Zeile —
@@ -722,6 +723,21 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Pflegen wirkt auf alle Texte des Hauses — dieselben Rollen, die über fremde Beiträge urteilen.
   "POST /api/begriffe": { protection: "ko.validate" },
   "PUT /api/begriffe/:id": { protection: "ko.validate" },
+
+  // --- Spaces (spaces-routes.ts, produkt:20261007:spaces) ---
+  // Lesen: wer Wissen lesen darf; welche Artikel erscheinen, entscheidet je Zeile `darfSehen`
+  // samt führendem Space. Den Space selbst sieht, wer seine Inhalte liest oder Konten verwaltet.
+  "GET /api/spaces": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
+  "GET /api/spaces/konten": { protection: "ko.read" },
+  "GET /api/spaces/:id": { protection: "ko.read" },
+  "GET /api/spaces/:id/artikel": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
+  "GET /api/spaces/kontext/artikel/:koId": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  // Anlegen wie das Firmenwörterbuch; Bearbeiten prüft zusätzlich Zuständigkeit/Kontoverwaltung
+  // am Space selbst (403), Verschieben das Schreibrecht in Quell- und Zielspace.
+  "POST /api/spaces": { protection: "ko.validate" },
+  "PUT /api/spaces/:id": { protection: "ko.read" },
+  "POST /api/spaces/verschiebung/vorschau": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "POST /api/spaces/verschiebung": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
 
   // --- Zugangs-Zustand des Imports (import-access-routes.ts) ---
   // AUFTRAG-mega67 Block C/D: rein LESEND — Schalter-Zustand, die BENANNTEN Zugangsvariablen mit
