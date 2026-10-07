@@ -27,7 +27,7 @@ import {
 import { type ReactElement, act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import type { AssistPreset } from "../../apps/web/src/api/types";
-import { ToastProvider } from "../../apps/web/src/app/ToastContext";
+import { ToastProvider, useToast } from "../../apps/web/src/app/ToastContext";
 import { AiAssistInstructions } from "../../apps/web/src/components/AiAssistBox";
 import i18n from "../../apps/web/src/i18n";
 import { KiFunktionenDetail } from "../../apps/web/src/pages/AdminKiDetails";
@@ -89,6 +89,26 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// `ToastProvider` zeichnet selbst nichts — die Anzeige gehört der App-Hülle. Der Spion liest
+// deshalb dieselbe Quelle, aus der die Hülle zeichnet (`useToast().toasts`), und legt jede
+// Meldung als Zeile ab.
+function ToastSpion(): ReactElement {
+  const { toasts } = useToast();
+  return createElement(
+    "ul",
+    { "data-testid": "toast-spion" },
+    ...toasts.map((toast) =>
+      createElement("li", { key: toast.id, "data-kind": toast.kind }, toast.message),
+    ),
+  );
+}
+
+const meldungen = (): { kind: string | null; text: string }[] =>
+  [...document.querySelectorAll('[data-testid="toast-spion"] li')].map((li) => ({
+    kind: li.getAttribute("data-kind"),
+    text: li.textContent ?? "",
+  }));
+
 async function mounten(element: ReactElement): Promise<HTMLDivElement> {
   await i18n.changeLanguage("de");
   const container = document.createElement("div");
@@ -101,7 +121,7 @@ async function mounten(element: ReactElement): Promise<HTMLDivElement> {
       createElement(
         QueryClientProvider,
         { client: qc },
-        createElement(ToastProvider, null, element),
+        createElement(ToastProvider, null, element, createElement(ToastSpion)),
       ),
     );
     await durchlaufen();
@@ -166,7 +186,7 @@ describe("R-0292 · Verwalter legt eigene KI-Funktion an, die Palette erklärt s
     expect(feld(karte, t("adm.presets.name")).map((f) => f.value)).toEqual([NAME]);
     expect(feld(karte, t("adm.presets.instruction")).map((f) => f.value)).toEqual([ANWEISUNG]);
     expect(knopf(karte, t("adm.presets.save")).disabled).toBe(true);
-    expect(document.body.textContent).toContain(t("adm.presets.saved"));
+    expect(meldungen()).toEqual([{ kind: "success", text: t("adm.presets.saved") }]);
   });
 
   it("V2 · der gespeicherte Knopf steht in der Palette; das „?“ schlägt die Anweisung wörtlich auf und wieder zu, der Knopf sendet sie unverändert", async () => {
