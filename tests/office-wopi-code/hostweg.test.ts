@@ -20,6 +20,10 @@
 //   H7  Entsperren mit offenem Arbeitsstand ohne Konflikt übernimmt ihn als Fassung.
 //   H8  Entzogenes Bearbeitungsrecht wirkt ab der nächsten Anfrage, auch mit Schreibmarke.
 //   H9  Ohne oder mit fremder Marke: 401.
+//   H10 (Nacharbeit 2, bens Befund) CheckFileInfo.Size ist die Länge des GetFile-Inhalts — für einen
+//       Anhang mit unveränderten Objektspeicher-Metadaten (`size` = Länge der Daten-URL), für
+//       Altbestand ohne `size` und für den Arbeitsstand einer Sitzung (H2). Die Übernahme schreibt
+//       weiter die Speichergröße nach Objektspeicher-Konvention in den Anhang (H3).
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type OfficeRechte, stelleZugangsmarkeAus } from "../../services/app/src/office-wopi";
@@ -40,6 +44,7 @@ import {
 
 const SCHLUESSEL = Buffer.alloc(32, 3);
 const ANHANG = "anh-probe-1";
+const ANHANG_ALT = "anh-probe-alt";
 const KO = "ko-probe-1";
 const ALLE_RECHTE: OfficeRechte = {
   darfLesen: true,
@@ -56,12 +61,27 @@ describe("WOPI-Hostweg über HTTP", () => {
   let server: HostServer;
   let host: ReturnType<typeof erstelleWopiHost>;
 
-  const marke = (nutzerId: string, fassung: number, schreiben = true): string =>
+  let startDateigroesse = 0;
+  let startSpeichergroesse = 0;
+
+  const markeFuer = (anhangId: string, nutzerId: string, fassung: number): string =>
     stelleZugangsmarkeAus(
-      { koId: KO, anhangId: ANHANG, nutzerId, schreiben, fassung },
+      { koId: KO, anhangId, nutzerId, schreiben: true, fassung },
       SCHLUESSEL,
       uhr.jetzt,
     ).marke;
+  const marke = (nutzerId: string, fassung: number): string => markeFuer(ANHANG, nutzerId, fassung);
+
+  /** `Size` aus CheckFileInfo neben der Länge dessen, was GetFile tatsächlich ausliefert. */
+  async function groessen(
+    anhangId: string,
+    zugang: string,
+  ): Promise<{ size: number; getFile: number }> {
+    const pfad = `/wopi/files/${anhangId}`;
+    const info = (await (await rufe("GET", pfad, zugang)).json()) as { Size: number };
+    const geliefert = await (await rufe("GET", `${pfad}/contents`, zugang)).arrayBuffer();
+    return { size: info.Size, getFile: geliefert.byteLength };
+  }
 
   async function rufe(
     methode: "GET" | "POST",
@@ -96,19 +116,32 @@ describe("WOPI-Hostweg über HTTP", () => {
       data: `data:${DOCX_MIME};base64,${start.toString("base64")}`,
       purpose: "attachment",
     });
+    startDateigroesse = start.length;
+    startSpeichergroesse = ref.size;
+    const alt = await fiktivesDocx("Altbestand ohne Groessenangabe");
+    const altRef = await objekte.put({
+      name: "Altbestand.docx",
+      mime: DOCX_MIME,
+      data: `data:${DOCX_MIME};base64,${alt.toString("base64")}`,
+      purpose: "attachment",
+    });
     artikel = new ArtikelAttrappe({
       koId: KO,
       version: 1,
       status: "offen",
       author: "autor-fiktiv",
       attachments: [
+        // Die Metadaten genau so, wie `ko-routes.ts` sie anlegt: `size` ist `stored.size` aus dem
+        // Objektspeicher (Länge der Daten-URL) — nicht die Dateigröße (bens Befund, Nacharbeit 2).
         {
           id: ANHANG,
           name: "Anleitung.docx",
           mime: DOCX_MIME,
           objectId: ref.id,
-          size: start.length,
+          size: ref.size,
         },
+        // Altbestand: ein Anhang ganz ohne `size`.
+        { id: ANHANG_ALT, name: "Altbestand.docx", mime: DOCX_MIME, objectId: altRef.id },
       ],
     });
     host = erstelleWopiHost({
@@ -154,6 +187,21 @@ describe("WOPI-Hostweg über HTTP", () => {
     );
   });
 
+  it("H10: CheckFileInfo.Size = Länge des GetFile-Inhalts", async () => {
+    // Vorbedingung: die Speichergröße am Anhang ist wirklich NICHT die Dateigröße — sonst wäre
+    // dieser Fall keine Gegenprobe zu bens Befund.
+    expect(startSpeichergroesse).toBeGreaterThan(startDateigroesse);
+
+    const anleitung = await groessen(ANHANG, marke("nutzer-a", 1));
+    expect(anleitung.getFile).toBe(startDateigroesse);
+    expect(anleitung.size).toBe(anleitung.getFile);
+
+    // Altbestand ohne `size`: früher 0, jetzt die gemessene Länge.
+    const altbestand = await groessen(ANHANG_ALT, markeFuer(ANHANG_ALT, "nutzer-a", 1));
+    expect(altbestand.getFile).toBeGreaterThan(0);
+    expect(altbestand.size).toBe(altbestand.getFile);
+  });
+
   it("H2: Sperren und Speichern legen einen Arbeitsstand an, GetFile liefert ihn", async () => {
     const a = marke("nutzer-a", 1);
     expect((await sperre(a, "LOCK", "sitzung-1")).status).toBe(200);
@@ -162,6 +210,9 @@ describe("WOPI-Hostweg über HTTP", () => {
     expect(await docxText(Buffer.from(await gelesen.arrayBuffer()))).toBe("Stand A1");
     // Noch keine Fassung: Speichern ist Arbeitsstand, nicht Übernahme.
     expect(artikel.stand.version).toBe(1);
+    // H10 für den Arbeitsstand: Size misst die Bytes, die GetFile in der Sitzung ausliefert.
+    const stand = await groessen(ANHANG, a);
+    expect(stand.size).toBe(stand.getFile);
   });
 
   it("H3: zwei eigene Übernahmen derselben Sitzung — Fassung 2, dann 3, kein KO_STALE", async () => {
@@ -175,6 +226,11 @@ describe("WOPI-Hostweg über HTTP", () => {
     expect(new Set(objekte2).size).toBe(3);
     const fassung2 = await objekte.read(artikel.fassungen[1]?.objectId ?? "");
     expect(fassung2?.data.startsWith(`data:${DOCX_MIME};base64,`)).toBe(true);
+    // Die Übernahme schreibt die Speichergröße nach Objektspeicher-Konvention in den Anhang —
+    // dieselbe Angabe, die `ko-routes.ts` aus `stored.size` übernimmt.
+    const anhang = artikel.stand.attachments.find((x) => x.id === ANHANG);
+    const gespeichert = await objekte.metadata(anhang?.objectId ?? "");
+    expect(anhang?.size).toBe(gespeichert?.size);
   });
 
   it("H4: ein zweiter Teilnehmer mit älterer Marke tritt bei, die Basis bleibt", async () => {

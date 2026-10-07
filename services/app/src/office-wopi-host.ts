@@ -51,6 +51,12 @@ export interface WopiAnhang {
   readonly name: string;
   readonly mime: string;
   readonly objectId?: string;
+  /**
+   * Die SPEICHERGRÖSSE nach der Konvention des Objektspeichers: die Länge der Daten-URL
+   * (`ObjectStore.put`, `size = input.data.length`), wie `ko-routes.ts` sie in den Anhang übernimmt.
+   * Sie ist NICHT die Dateigröße in Bytes und wird für WOPI nie gelesen — CheckFileInfo misst die
+   * Bytes, die GetFile ausliefert (bens Befund, Nacharbeit 2).
+   */
   readonly size?: number;
 }
 
@@ -74,6 +80,7 @@ export interface WopiArtikelZugriff {
     koId: string;
     anhangId: string;
     objectId: string;
+    /** Speichergröße des neuen Objekts (`ObjectRef.size`), dieselbe Konvention wie `WopiAnhang.size`. */
     size: number;
     expectedVersion: number;
     nutzerId: string;
@@ -85,8 +92,12 @@ export interface EditorSitzung {
   readonly sperre: Sperre;
   /** Gegen diese Fassung prüft die nächste Übernahme. Nur eigene Übernahmen ziehen sie nach. */
   readonly basisFassung: number;
-  /** Das zuletzt per PutFile angenommene Objekt; `undefined`, solange nichts gespeichert ist. */
-  readonly arbeitsstand?: { readonly objectId: string; readonly size: number };
+  /**
+   * Das zuletzt per PutFile angenommene Objekt; `undefined`, solange nichts gespeichert ist.
+   * `speichergroesse` ist `ObjectRef.size` (Länge der Daten-URL) — sie geht bei der Übernahme in den
+   * Anhang, damit dort dieselbe Konvention gilt wie bei jedem anderen Klarwerk-Anhang.
+   */
+  readonly arbeitsstand?: { readonly objectId: string; readonly speichergroesse: number };
 }
 
 export interface WopiSitzungsablage {
@@ -223,14 +234,19 @@ export function erstelleWopiHost(deps: WopiHostDeps): {
     const schreiben = marke.schreiben && weg === "direkt";
     const sitzung = await deps.sitzungen.lies(anhangId);
     const laufend = sperreWirkt(sitzung, jetzt) ? sitzung : undefined;
-    const aktuellesObjekt = laufend?.arbeitsstand ?? {
-      objectId: anhang.objectId,
-      size: anhang.size ?? 0,
-    };
+    // Welches Objekt der Editor gerade sieht: der Arbeitsstand der Sitzung, sonst der Anhang.
+    const aktuellesObjekt = { objectId: laufend?.arbeitsstand?.objectId ?? anhang.objectId };
 
     if (anfrage.methode === "GET" && !inhalt) {
+      // WOPI verlangt `Size` in Bytes der Datei. Gemessen wird deshalb an GENAU den Bytes, die
+      // GetFile ausliefert — nicht an `anhang.size`: das ist die Länge der Daten-URL (Konvention des
+      // Objektspeichers) und fehlt bei Altbestand ganz (bens Befund, Nacharbeit 2).
+      const bytes = await lieseObjekt(aktuellesObjekt.objectId);
+      if (!bytes) {
+        return { antwort: antwort(404), vorgang: "CheckFileInfo" };
+      }
       const info = checkFileInfo({
-        anhang: { name: anhang.name, ...aktuellesObjekt },
+        anhang: { name: anhang.name, objectId: aktuellesObjekt.objectId, size: bytes.length },
         artikel: { author: artikel.author, version: artikel.version },
         nutzer: { id: marke.nutzerId, name: await deps.nutzerName(marke.nutzerId) },
         schreiben,
@@ -280,7 +296,7 @@ export function erstelleWopiHost(deps: WopiHostDeps): {
       });
       await deps.sitzungen.schreibe(anhangId, {
         ...laufend,
-        arbeitsstand: { objectId: ref.id, size: anfrage.koerper.length },
+        arbeitsstand: { objectId: ref.id, speichergroesse: ref.size },
       });
       return {
         antwort: {
@@ -446,7 +462,7 @@ async function uebernimmIntern(
       koId,
       anhangId,
       objectId: arbeitsstand.objectId,
-      size: arbeitsstand.size,
+      size: arbeitsstand.speichergroesse,
       expectedVersion: entscheidung.expectedVersion,
       nutzerId,
     });

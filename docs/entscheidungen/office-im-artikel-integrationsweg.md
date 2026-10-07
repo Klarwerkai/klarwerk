@@ -111,6 +111,13 @@ wird im Bedienlauf (Abschnitt 7.4) an festen Prüfdokumenten festgestellt, nicht
   (`objectReferences` in `build-app.ts`) sie vor dem Aufräumen.
 - Größengrenze ist die des Objektspeichers, abgeleitet aus `MAX_OBJECT_BYTES` statt abgeschrieben
   (`passtInObjektspeicher`, Test P5). Darüber antwortet der Host mit 413.
+- **Zwei Größen, getrennt (Nacharbeit 2):**
+  - `KoAttachment.size` bleibt die Speichergröße nach Objektspeicher-Konvention, also die Länge der
+    Daten-URL (`ObjectStore.put`, übernommen in `ko-routes.ts`). Eine Übernahme schreibt weiter genau
+    diese Angabe (`ObjectRef.size`).
+  - WOPI `CheckFileInfo.Size` ist die Dateigröße in Bytes. Der Host misst sie an den Bytes, die
+    GetFile ausliefert; `size` am Anhang liest er dafür nie. Das gilt auch für Altbestand ohne `size`.
+  - Belegt durch `hostweg.test.ts` H10, H2 und H3.
 
 ### 3.3 Artikelbezug
 

@@ -216,7 +216,9 @@ describe("Office im Artikel · CODE-Integrationsprobe (nur .docx)", { timeout: 6
           name: "Probeanleitung.docx",
           mime: DOCX_MIME,
           objectId: ref.id,
-          size: start.length,
+          // Unveränderte Objektspeicher-Metadaten wie in `ko-routes.ts` (Länge der Daten-URL);
+          // die Dateigröße für den Editor misst der Hostweg selbst (Nacharbeit 2).
+          size: ref.size,
         },
       ],
     });
