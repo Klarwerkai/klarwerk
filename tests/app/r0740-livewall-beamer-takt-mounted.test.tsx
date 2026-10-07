@@ -8,23 +8,40 @@
 //      andernorts erklärte Widerrufe erscheinen erst beim nächsten Abruf."
 //   3. „Die Beamer-Ansicht ist nicht umgesetzt."
 //
-// Gemessen am echten Bauteil `LiveWallBeamer` mit der ECHTEN Abfrage (`useLiveWall`) und einer
-// simulierten Uhr: OHNE Neuladen, nur durch Ablauf eines Takts, muss die offene Wand
+// Gemessen am echten Bauteil `LiveWallBeamer` mit der ECHTEN Abfrage (`useLiveWall`): OHNE
+// Neuladen, nur durch Ablauf eines Takts, muss die offene Wand
 //   · einen neuen Eintrag zeigen,
 //   · einen inzwischen widerrufenen Namen und ein widerrufenes Foto NICHT mehr zeigen,
 //   · einen Eintrag, dessen Sichtrecht entzogen wurde, nicht mehr zeigen.
 // Und: reißt die Verbindung ab, verschwinden Personenangaben nach drei verpassten Takten.
+//
+// ECHTE ZEIT, VERKÜRZTER TAKT (Nacharbeit 5). Die erste Fassung lief unter einer simulierten Uhr:
+// der Takt löste den Abruf aus (`abrufe` stieg), die Antwort kam aber nie im DOM an — die
+// Uhrsimulation griff nicht in jede Zustellungsstufe von Abfrage und React. Jetzt läuft die echte
+// Uhr; ersetzt ist allein die TAKTLÄNGE (`LIVEWALL_TAKT_MS` → `TEST_TAKT`). Die Regel
+// „drei verpasste Takte" bleibt die des Produkts: `personenAktuell` ist die echte Funktion, nur mit
+// der Testtaktlänge aufgerufen.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const server = vi.hoisted(() => ({
   wand: null as unknown,
   stoerung: false,
   abrufe: 0,
+  TEST_TAKT: 100,
 }));
 
 vi.mock("../../apps/web/src/app/RoleContext", () => ({
   useRole: () => ({ role: "viewer" }),
 }));
+vi.mock("../../apps/web/src/lib/livewallTakt", async (importOriginal) => {
+  const echt = await importOriginal<typeof import("../../apps/web/src/lib/livewallTakt")>();
+  return {
+    ...echt,
+    LIVEWALL_TAKT_MS: server.TEST_TAKT,
+    personenAktuell: (stand: number, jetzt: number) =>
+      echt.personenAktuell(stand, jetzt, server.TEST_TAKT),
+  };
+});
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
     livewall: {
@@ -48,7 +65,6 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import type { LiveWall } from "../../apps/web/src/api/types";
 import i18n from "../../apps/web/src/i18n";
-import { LIVEWALL_TAKT_MS } from "../../apps/web/src/lib/livewallTakt";
 import { LiveWallBeamer } from "../../apps/web/src/pages/LiveWallBeamer";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -94,11 +110,23 @@ const NACHHER: LiveWall = {
 let wurzel: ReturnType<typeof createRoot> | null = null;
 let behaelter: HTMLDivElement | null = null;
 
-const schritt = async (ms: number): Promise<void> => {
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(ms);
-  });
-};
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Wartet in echter Zeit, bis die Bedingung gilt — höchstens `grenze` ms, dann rot. */
+async function bis(bedingung: () => boolean, beschreibung: string, grenze = 3000): Promise<void> {
+  const ende = Date.now() + grenze;
+  while (Date.now() < ende) {
+    let erfuellt = false;
+    await act(async () => {
+      await pause(10);
+      erfuellt = bedingung();
+    });
+    if (erfuellt) {
+      return;
+    }
+  }
+  throw new Error(`nicht eingetreten binnen ${grenze} ms: ${beschreibung}`);
+}
 
 async function montieren(): Promise<HTMLDivElement> {
   await i18n.changeLanguage("de");
@@ -115,18 +143,18 @@ async function montieren(): Promise<HTMLDivElement> {
       ),
     );
   });
-  for (let i = 0; i < 5; i++) {
-    await schritt(0);
-  }
-  return behaelter;
+  const el = behaelter;
+  const laedt = i18n.t("start.livewall.beamerLoading");
+  await bis(
+    () => server.abrufe > 0 && el.textContent?.includes(laedt) === false,
+    "erster Abruf zugestellt",
+  );
+  return el;
 }
 
 const alle = (el: HTMLElement, id: string) => [...el.querySelectorAll(`[data-testid="${id}"]`)];
 
 beforeEach(() => {
-  vi.useFakeTimers({
-    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
-  });
   server.wand = structuredClone(VORHER);
   server.stoerung = false;
   server.abrufe = 0;
@@ -137,7 +165,6 @@ afterEach(() => {
   behaelter?.remove();
   wurzel = null;
   behaelter = null;
-  vi.useRealTimers();
 });
 
 describe("R-0740 · Beamer-Ansicht `/livewall`", () => {
@@ -159,13 +186,10 @@ describe("R-0740 · Beamer-Ansicht `/livewall`", () => {
     const vorher = server.abrufe;
     server.wand = structuredClone(NACHHER);
 
-    await schritt(LIVEWALL_TAKT_MS);
-    for (let i = 0; i < 5; i++) {
-      await schritt(0);
-    }
+    // Kein Neuladen, kein Fokuswechsel, keine Bedienung — nur der Takt.
+    await bis(() => el.textContent?.includes("Kran K2 Lastprobe") === true, "neuer Eintrag");
 
     expect(server.abrufe).toBeGreaterThan(vorher);
-    expect(el.textContent).toContain("Kran K2 Lastprobe");
     expect(el.textContent).not.toContain("Halle 3 Sicherheitsregel");
     expect(alle(el, "livewall-validiert-name")).toHaveLength(0);
     expect(alle(el, "livewall-validiert-foto")).toHaveLength(0);
@@ -174,20 +198,21 @@ describe("R-0740 · Beamer-Ansicht `/livewall`", () => {
 
   it("ohne Verbindung verschwinden Personenangaben nach drei verpassten Takten", async () => {
     const el = await montieren();
+    const vorher = server.abrufe;
     server.stoerung = true;
 
-    await schritt(LIVEWALL_TAKT_MS);
-    await schritt(0);
-    // Ein verpasster Takt: der Stand ist noch frisch genug.
+    // Ein verpasster Takt: der Stand ist noch frisch genug, Name und Foto bleiben.
+    await bis(() => server.abrufe > vorher, "erster gescheiterter Abruf");
     expect(alle(el, "livewall-validiert-name")).toHaveLength(1);
 
-    for (let i = 0; i < 3; i++) {
-      await schritt(LIVEWALL_TAKT_MS);
-      await schritt(0);
-    }
+    // Mehr als drei Takte ohne frischen Stand: Personenangaben verschwinden, der Hinweis erscheint.
+    await bis(
+      () => el.querySelector('[data-testid="livewall-beamer-veraltet"]') !== null,
+      "Hinweis 'keine frische Verbindung'",
+    );
+    expect(server.abrufe - vorher).toBeGreaterThanOrEqual(3);
     expect(alle(el, "livewall-validiert-name")).toHaveLength(0);
     expect(alle(el, "livewall-validiert-foto")).toHaveLength(0);
-    expect(el.querySelector('[data-testid="livewall-beamer-veraltet"]')).not.toBeNull();
     // Die Einträge selbst bleiben stehen — sie sind keine Personenangabe.
     expect(el.textContent).toContain("Presse P2 entlüften");
   });

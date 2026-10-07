@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useLiveWall } from "../api/hooks";
 import { RoleLink } from "../components/RoleLink";
 import { ValidiertListe } from "../components/start/LiveWallValidiert";
-import { personenAktuell } from "../lib/livewallTakt";
+import { LIVEWALL_TAKT_MS, personenAktuell, useJetzt } from "../lib/livewallTakt";
 
 // ================================================================================================
 // R-0740 — DIE LIVE-WAND ALS BEAMER-ANSICHT (`/livewall`).
@@ -27,7 +27,9 @@ export function LiveWallBeamer(): JSX.Element {
   const wand = useLiveWall(true);
   const flaeche = useRef<HTMLDivElement>(null);
   const daten = wand.data;
-  const personen = personenAktuell(wand.dataUpdatedAt, Date.now());
+  // Die eigene Uhr prüft die Frische je Takt neu — auch wenn die Abfrage nichts Neues meldet.
+  const jetzt = useJetzt(LIVEWALL_TAKT_MS);
+  const personen = personenAktuell(wand.dataUpdatedAt, Math.max(jetzt, Date.now()));
   const zeit = (at: string): string =>
     new Date(at).toLocaleString(i18n.language.startsWith("en") ? "en-GB" : "de-DE", {
       day: "2-digit",

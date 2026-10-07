@@ -8,7 +8,7 @@ import {
 } from "../../api/hooks";
 import type { LiveWall } from "../../api/types";
 import { FOTO_TYPEN, fotoVorbereiten } from "../../lib/livewallFoto";
-import { personenAktuell } from "../../lib/livewallTakt";
+import { LIVEWALL_TAKT_MS, personenAktuell, useJetzt } from "../../lib/livewallTakt";
 import { RoleLink } from "../RoleLink";
 
 // ================================================================================================
@@ -34,6 +34,8 @@ export function LiveWallValidiert({
   aktualisiertAm: number;
 }): JSX.Element {
   const { t } = useTranslation();
+  // Die eigene Uhr prüft die Frische je Takt neu — auch wenn die Abfrage nichts Neues meldet.
+  const jetzt = useJetzt(LIVEWALL_TAKT_MS);
   return (
     <>
       <div data-testid="livewall-validiert">
@@ -42,7 +44,7 @@ export function LiveWallValidiert({
         </div>
         <ValidiertListe
           eintraege={daten.validated ?? []}
-          personen={personenAktuell(aktualisiertAm, Date.now())}
+          personen={personenAktuell(aktualisiertAm, Math.max(jetzt, Date.now()))}
         />
       </div>
       <WandZustimmung />

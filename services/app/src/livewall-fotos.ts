@@ -51,7 +51,8 @@ export class InMemoryLiveWallFotoRepo implements LiveWallFotoRepo {
     return Promise.resolve(treffer);
   }
 
-  setze(kontoId: string, data: string): Promise<void> {
+  // `_am` gehört zum Vertrag (die Pg-Fassung speichert ihn); die Speicherfassung braucht ihn nicht.
+  setze(kontoId: string, data: string, _am: string): Promise<void> {
     this.fotos.set(kontoId, data);
     return Promise.resolve();
   }
