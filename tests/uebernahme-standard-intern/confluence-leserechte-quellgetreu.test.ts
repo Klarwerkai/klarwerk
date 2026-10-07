@@ -1343,7 +1343,7 @@ describe("R-0549 · Space-Leserecht über eine Zugangsklasse", () => {
 
     // Derselbe Eintrag, als „Leser nicht ermittelt" gekennzeichnet und mit leerer Leserliste.
     const echt = await fixture([seite996], undefined, NICHTAUTOREN).adapter.collectAll();
-    const roh = echt.items[0] as MitQuellrechten & Record<string, unknown>;
+    const roh = echt.items[0] as unknown as MitQuellrechten & Record<string, unknown>;
     const markiert = {
       ...roh,
       quellrechte: { ...roh.quellrechte, emails: [], leserNichtErmittelt: true as const },
