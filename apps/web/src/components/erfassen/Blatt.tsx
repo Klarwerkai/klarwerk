@@ -15,7 +15,12 @@ import type {
 } from "../../api/types";
 import { useSession } from "../../app/AuthContext";
 import { ImageDescribeProvider } from "../../app/ImageDescribeContext";
-import { WACHE_FLAECHE, useNavGuard, useUnloadGuard } from "../../app/NavGuardContext";
+import {
+  NavGuardSaveError,
+  WACHE_FLAECHE,
+  useNavGuard,
+  useUnloadGuard,
+} from "../../app/NavGuardContext";
 import { useToast } from "../../app/ToastContext";
 import { useLiveKnowledgeCheck } from "../../hooks/useLiveKnowledgeCheck";
 import {
@@ -54,6 +59,7 @@ import { erfassenFehlersatz } from "../../lib/erfassenFehlersatz";
 import { dominantCategory, pickExampleKo } from "../../lib/intakeExample";
 import { INTAKE_STARTERS, type IntakeStarter } from "../../lib/intakeStarters";
 import { deriveIntakeSuggestion } from "../../lib/intakeSuggestion";
+import { useNetzOnline } from "../../lib/netzzustand";
 // JOB 3266 (D1): dasselbe Datumsformat wie überall sonst in der Oberfläche — und dieselbe
 // Ehrlichkeit: ein fehlender oder unlesbarer Zeitwert wird `null`, nicht ein erfundenes Datum.
 import { toReasonerLocale } from "../../lib/reasonerLocale";
@@ -61,6 +67,7 @@ import { draftProvenance } from "../../lib/reasonerProvenance";
 import { isEmptyHtml } from "../../lib/richText";
 import { type SpeechRec, diktatSprache, makeRec } from "../../lib/speechDictation";
 import { hasSpeechRecognition, istIosGeraet } from "../../lib/speechSupport";
+import { type Speicherzustand, speicherzustand } from "../../lib/speicherzustand";
 import type { TitelMitQuelle } from "../../lib/titelRangfolge";
 import { useAiBillable } from "../../lib/useAiBillable";
 import { umfangKurz } from "../../lib/vorschauUmfang";
@@ -132,6 +139,26 @@ export type ArbeitsraumModus = "interview" | "datei" | "formular";
  * schreibt ihren Wert als `ArbeitsraumModus`, und dieser Typ kommt aus genau dieser Datei.
  */
 const BLATT_WEGZIEL = "data-wegziel";
+
+/**
+ * SPEICHERN-ERHOLUNG: der Abbruch eines ohne Netz angehaltenen Speicherns, weil der Mensch die
+ * Eingabe inzwischen verworfen hat. Eine eigene Klasse, damit `save.onError` ihn von einem echten
+ * Fehlschlag unterscheiden kann — er ist keiner und bekommt keinen Fehlersatz.
+ */
+class WartendesSpeichernVerworfen extends Error {
+  constructor() {
+    super("Wartendes Speichern verworfen");
+    this.name = "WartendesSpeichernVerworfen";
+  }
+}
+
+/** SPEICHERN-ERHOLUNG: der Farbton je Lage — neutral, Warnung, Fehler, bestätigt. */
+const SPEICHERLAGE_TON: Record<Speicherzustand, string> = {
+  laeuft: "text-muted",
+  wartet: "text-trust-warn-text",
+  fehlgeschlagen: "text-trust-crit-text",
+  gespeichert: "text-trust-pos-text",
+};
 
 export type ArbeitsraumFabrik = (args: {
   modus: ArbeitsraumModus;
@@ -530,6 +557,20 @@ export function Blatt({
   const submitOperationRef = useRef<string | null>(null);
   const submitDraftRef = useRef<string | null>(null);
   const saveOperationRef = useRef<string | null>(null);
+  // SPEICHERN-ERHOLUNG (Ausbauliste Punkt 6) — EIN WARTENDES SPEICHERN, DAS DER MENSCH VERWORFEN HAT.
+  //
+  // Ohne Verbindung hält react-query das Speichern an (`save.isPaused`) und schickt es von selbst,
+  // sobald das Netz zurück ist. Verwirft der Mensch die Eingabe in dieser Zeit („Verwerfen und
+  // wechseln", „Eingabe verwerfen"), darf der angehaltene Aufruf danach NICHT doch noch schreiben —
+  // sonst entstünde später ein Entwurf aus einem Text, den er ausdrücklich weggeworfen hat. Die
+  // Marke ist ein Ref, weil der wieder anlaufende Aufruf sie lesen muss, auch wenn dieses Blatt
+  // längst ausgehängt ist; der Zustand daneben nimmt nur die Anzeige „wartet" zurück.
+  const wartendVerworfenRef = useRef(false);
+  const [wartendVerworfen, setWartendVerworfen] = useState(false);
+  // Die EINE Quelle des Onlinezustands (`lib/netzzustand.ts`) — dieselbe, aus der react-query sein
+  // `isPaused` ableitet. Gebraucht nur von der Wache: ohne Netz kann „Speichern und wechseln" nicht
+  // halten, was es verspricht.
+  const netzOnline = useNetzOnline();
 
   // ---- Bild und Diktat -------------------------------------------------------------------------
   const [captionRequest, setCaptionRequest] = useState<{
@@ -820,6 +861,11 @@ export function Blatt({
   // Adresse dem Wechsel, der unmittelbar folgt. Ein zweites Leeren daneben gibt es nicht: der
   // Menüweg „Eingabe verwerfen" und jeder andere Aufrufer gehen weiter durch `resetForNewEntry`.
   const blattLeeren = (): void => {
+    // SPEICHERN-ERHOLUNG: ein angehaltenes Speichern gehört zur verworfenen Eingabe (s. Marke oben).
+    if (save.isPaused) {
+      wartendVerworfenRef.current = true;
+      setWartendVerworfen(true);
+    }
     setTitle("");
     setBodyHtml("");
     setQuellBildzahl(null);
@@ -1160,6 +1206,12 @@ export function Blatt({
   const [formularNachSichern, setFormularNachSichern] = useState<ArbeitsraumModus | null>(null);
   const save = useMutation({
     mutationFn: () => {
+      // SPEICHERN-ERHOLUNG: der Aufruf läuft erst JETZT an — nach einer Wartezeit ohne Netz womöglich
+      // lange nach dem Klick. Hat der Mensch die Eingabe inzwischen verworfen, geht nichts hinaus.
+      if (wartendVerworfenRef.current) {
+        wartendVerworfenRef.current = false;
+        return Promise.reject(new WartendesSpeichernVerworfen());
+      }
       if (activeDraftId) {
         // AUFTRAG-mega7 Block A: Speichern auf einen BESTEHENDEN Entwurf ist ein PUT über den
         // Bestand — die Entwurfs-Id mitgeben, damit ein bewusst geleerter Rumpf als Löschmarker
@@ -1287,6 +1339,14 @@ export function Blatt({
     onError: (e) => {
       saveRequestedRef.current = false;
       nachSichernOeffnenRef.current = null;
+      // SPEICHERN-ERHOLUNG: kein Fehler, sondern die Wirkung der Wahl „Verwerfen". Es wurde nichts
+      // geschickt, also gibt es auch keinen Fehlersatz — und kein Vorgangsschlüssel ist offen.
+      if (e instanceof WartendesSpeichernVerworfen) {
+        saveOperationRef.current = null;
+        guardSaveRef.current = false;
+        setWartendVerworfen(false);
+        return;
+      }
       // JOB 2697: den Schlüssel NUR fallen lassen, wenn der Server EINDEUTIG geantwortet hat.
       if (createOperationIsSettled(e instanceof ApiError ? e.status : undefined)) {
         saveOperationRef.current = null;
@@ -1659,6 +1719,13 @@ export function Blatt({
         if (!hasSavableContent) {
           return;
         }
+        // SPEICHERN-ERHOLUNG: ohne Netz bliebe `mutateAsync` angehalten, und der Dialog stünde
+        // wortlos mit gesperrten Knöpfen da, bis die Verbindung irgendwann zurückkommt. Stattdessen
+        // sagt er den Grund, bleibt offen und lässt „Hier bleiben" und „Verwerfen" wählbar — die
+        // Wache wechselt bei einem Wurf nicht (`NavGuardContext.saveAndGo`).
+        if (!netzOnline) {
+          throw new NavGuardSaveError(t("erholung.speichern.wechselOhneVerbindung"));
+        }
         guardSaveRef.current = true;
         try {
           await save.mutateAsync();
@@ -1669,7 +1736,7 @@ export function Blatt({
       },
     });
     return () => setGuard(null);
-  }, [setGuard, istSchmutzig, unsicherbareGruende, hasSavableContent, save]);
+  }, [setGuard, istSchmutzig, unsicherbareGruende, hasSavableContent, save, netzOnline, t]);
 
   // ==============================================================================================
   // EINE LAGE, EIN SATZ (Zustandsmodell §9).
@@ -1696,6 +1763,25 @@ export function Blatt({
   const kiFehlerSatz = kiFehler ? `${kiFehler} ${t("fd.originalUnchanged")}` : null;
   const blattFehler: string | null =
     (staleConflict ? t("fd.draftStale") : null) ?? err ?? restartOffer;
+  // ==============================================================================================
+  // SPEICHERN-ERHOLUNG (Ausbauliste Punkt 6) — DIE LAGE DES EXPLIZITEN SPEICHERNS, SICHTBAR.
+  // ==============================================================================================
+  //
+  // Bis hierher sah der Mensch nach „Entwurf sichern" nur einen grauen Knopf: ob die Anfrage
+  // unterwegs war oder ohne Netz angehalten stand, war von aussen nicht zu unterscheiden. Die vier
+  // Lagen kommen aus EINER Ableitung (`lib/speicherzustand.ts`) und lesen nur, was schon da ist:
+  //   · unterwegs / angehalten — die Mutation selbst (`isPending`, `isPaused`). Ein verworfenes
+  //     Warten zählt nicht mehr: die Eingabe ist weg, und „wartet" wäre eine Zusage ohne Gegenstand.
+  //   · fehlgeschlagen — der Satz unter den Knöpfen steht, und er gehört zum SPEICHERN (nicht zum
+  //     Einreichen oder Laden). Der Satz selbst bleibt, wo er war (`BlattLage`).
+  //   · gespeichert — dieselbe Ablesung wie die Bestätigungszeile (`gesichertZeile`): der Server hat
+  //     quittiert, und das Blatt zeigt noch genau diesen Stand.
+  const speicherlage = speicherzustand({
+    unterwegs: save.isPending && !wartendVerworfen,
+    angehalten: save.isPaused,
+    fehlgeschlagen: blattFehler !== null && letzteAktion?.art === "speichern",
+    gespeichert: gesichertZeile !== null,
+  });
 
   // ---- Werkzeuge ------------------------------------------------------------------------------
 
@@ -3371,6 +3457,31 @@ export function Blatt({
               </button>
             )}
           </div>
+          {/* SPEICHERN-ERHOLUNG: die Lage des Speicherns, direkt unter dem Knopf, der sie ausgelöst
+              hat. Die Region steht IMMER im Baum (nur ihr Inhalt wechselt) — ein Vorleseprogramm
+              meldet zuverlässig nur Änderungen in einer Region, die schon vorher da war; dieselbe
+              Bauform wie `bib-offline-ansage`. In Ruhe ist sie leer und trägt keine Prosa. Der
+              Wartesatz sagt ausdrücklich, dass die Eingabe nur in diesem Fenster liegt: ein Neuladen
+              ohne Netz schützt dieses Blatt NICHT, und das wird nicht verschwiegen. */}
+          <output
+            aria-live="polite"
+            data-testid="blatt-speicherzustand"
+            data-zustand={speicherlage ?? "ruhe"}
+            className="pointer-events-auto block max-w-[420px] text-right text-[13px]"
+          >
+            {speicherlage ? (
+              <span className={`block ${SPEICHERLAGE_TON[speicherlage]}`}>
+                <span data-testid="blatt-speicherzustand-satz" className="block font-semibold">
+                  {t(`erholung.speichern.${speicherlage}`)}
+                </span>
+                {speicherlage === "wartet" ? (
+                  <span data-testid="blatt-speicherzustand-hinweis" className="mt-0.5 block">
+                    {t("erholung.speichern.wartetHinweis")}
+                  </span>
+                ) : null}
+              </span>
+            ) : null}
+          </output>
           {/* ========================================================================================
               JOB 3106 (UX-01) — DIE BESTÄTIGUNG NENNT DIE WEGE, STATT ZU VERWEHEN.
               ========================================================================================
