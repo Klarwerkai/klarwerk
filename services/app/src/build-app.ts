@@ -273,6 +273,13 @@ import {
   type LesevariantenRepo,
   PgLesevariantenRepo,
 } from "./lesevarianten";
+// PMO-FEA-0003: die freiwilligen Fotos der Live-Wand — im Postgres-Betrieb haltbar
+// (`PgLiveWallFotoRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
+import {
+  InMemoryLiveWallFotoRepo,
+  type LiveWallFotoRepo,
+  PgLiveWallFotoRepo,
+} from "./livewall-fotos";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
@@ -456,6 +463,13 @@ export interface AppServices {
    * `AppRepos`; im Postgres-Betrieb haltbar (`PgSpacesRepo`), sonst die In-Memory-Ablage.
    */
   spaces: SpacesRepo;
+  /**
+   * PMO-FEA-0003: die freiwilligen Fotos der Live-Wand (`livewall-fotos.ts`). Aus demselben Grund
+   * wie `brandingSettings` NICHT in `AppRepos`; im Postgres-Betrieb haltbar (`PgLiveWallFotoRepo`,
+   * eingehängt in `buildPgServices`), sonst die In-Memory-Ablage. Geht sie beim Neustart des
+   * Dev-Betriebs verloren, verschwindet ein Foto — die sichere Richtung, kein ungefragtes Zeigen.
+   */
+  livewallFotos: LiveWallFotoRepo;
   /**
    * R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — über die Oberfläche umlegbar,
    * von jeder Confluence-Importroute je Anfrage durchgesetzt. Aus demselben Grund wie
@@ -944,6 +958,8 @@ export function assembleServices(
     begriffe?: BegriffeRepo;
     // produkt:20261007:spaces: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     spaces?: SpacesRepo;
+    // PMO-FEA-0003: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    livewallFotos?: LiveWallFotoRepo;
     // R-0134 / R-1005: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     confluenceImportSchalter?: ConfluenceImportSchalterRepo;
     // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
@@ -1252,6 +1268,8 @@ export function assembleServices(
     begriffe: opts.begriffe ?? new InMemoryBegriffeRepo(),
     // produkt:20261007:spaces — Postgres, wenn injiziert, sonst im Speicher.
     spaces: opts.spaces ?? new InMemorySpacesRepo(),
+    // PMO-FEA-0003: die Fotos der Live-Wand — Postgres, wenn injiziert, sonst im Speicher.
+    livewallFotos: opts.livewallFotos ?? new InMemoryLiveWallFotoRepo(),
     // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
     confluenceImportSchalter:
       opts.confluenceImportSchalter ?? new InMemoryConfluenceImportSchalterRepo(),
@@ -1689,6 +1707,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261007:spaces: Spaces und ihre Fassungen liegen in derselben Datenbank wie der
       // Bestand und überleben Neuladen, Neustart und Deploy.
       spaces: new PgSpacesRepo(pool),
+      // PMO-FEA-0003: ein hinterlegtes Foto überlebt Neustart und Deploy; der Widerruf löscht die
+      // Zeile in derselben Datenbank (`LIVEWALL_FOTO_SCHEMA`, angelegt von `migrate()`).
+      livewallFotos: new PgLiveWallFotoRepo(pool),
       // R-0134 / R-1005: der Betreiberschalter überlebt Neustart und Deploy — sonst stünde ein
       // ausgeschalteter Import nach dem nächsten Neustart still wieder auf „an".
       confluenceImportSchalter: new PgConfluenceImportSchalterRepo(pool),
@@ -3451,7 +3472,18 @@ export function buildApp(
     ),
   );
   // Audit-P4 (SCRUM-398): Live-Wall — read-only „frisch gesichert / hat heute geholfen".
-  app.register(livewallRoutes({ ko: services.ko, audit: services.audit }, guards));
+  // PMO-FEA-0003: `konten` liefert Anzeigenamen — die Route nennt davon nur zustimmende Konten.
+  app.register(
+    livewallRoutes(
+      {
+        ko: services.ko,
+        audit: services.audit,
+        konten: () => services.auth.listUsers(),
+        fotos: services.livewallFotos,
+      },
+      guards,
+    ),
+  );
   // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — persönliche Zähler aus eigenen KOs + Audits.
   app.register(impactRoutes({ ko: services.ko, audit: services.audit }, guards));
   app.register(auditRoutes(services.audit, guards, [services.conflicts, services.overlaps]));

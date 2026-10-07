@@ -3068,6 +3068,26 @@ const en: typeof de = {
   "start.livewall.helpedToday": "helped today: {{n}}",
   "start.livewall.savedEmpty": "Nothing captured yet — the first contribution will appear here.",
   "start.livewall.helpedEmpty": "No “helped” feedback yet.",
+  "start.livewall.validated": "Newly validated",
+  "start.livewall.validatedEmpty": "No validated knowledge yet.",
+  "start.livewall.nameConsent":
+    "Show my name next to my validated knowledge here. Voluntary and revocable at any time; without consent no name appears.",
+  "start.livewall.photoConsent":
+    "Show my photo next to my validated knowledge here. Voluntary; “Remove photo” deletes it immediately.",
+  "start.livewall.photoAdd": "Choose photo",
+  "start.livewall.photoReplace": "Replace photo",
+  "start.livewall.photoRevoke": "Remove photo",
+  "start.livewall.photoError":
+    "The photo could not be saved. Please choose a PNG, JPEG or WebP image.",
+  "start.livewall.photoAlt": "Photo of the author",
+  "start.livewall.photoOwnAlt": "My photo for the wall",
+  "start.livewall.beamerOpen": "Open as projector view",
+  "start.livewall.beamerFullscreen": "Full screen",
+  "start.livewall.beamerLoading": "Loading …",
+  "start.livewall.beamerError":
+    "The wall is currently unavailable. It will retry on the next cycle.",
+  "start.livewall.beamerStale":
+    "No fresh connection — names and photos are hidden until the wall is up to date again.",
   "con.kicker": "Conflict board",
   "con.title": "Resolve conflicts — without losing knowledge",
   "con.intro":
