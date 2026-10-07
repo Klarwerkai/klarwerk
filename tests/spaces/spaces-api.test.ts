@@ -164,11 +164,12 @@ async function vorschau(b: Buehne, kopf: Kopf, koId: string, zielSpaceId: string
 
 function basisAus(v: {
   quelle: { id: string; version: number } | null;
-  ziel: { version: number } | null;
+  ziel: { id: string; version: number } | null;
 }) {
   return {
     quelleId: v.quelle?.id ?? null,
     quelleVersion: v.quelle?.version ?? null,
+    zielId: v.ziel?.id ?? null,
     zielVersion: v.ziel?.version ?? null,
   };
 }
@@ -572,6 +573,45 @@ describe("K4 · Spacewechsel mit Rechtevorschau; Autorschaft und Historie bleibe
     expect(res.json().error).toBe("VORSCHAU_VERALTET");
     expect(res.json().vorschau.quelle.version).toBe(2);
     expect((await lies(b, b.k.erik, `/api/kos/${koId}`)).json().spaceId).toBe(werkstatt.id);
+  });
+
+  it("die Vorschau ist an ihr Ziel gebunden: gleiche Versionsnummer, anderes Ziel → 409, kein Wechsel", async () => {
+    const b = await buehne();
+    const { werkstatt, qualitaet } = await spaceAnlegen(b);
+    const koId = await artikelAnlegen(b);
+    // Beide Zielspaces stehen auf Fassung 1, haben aber verschiedene Rechte: „Qualität" ist offen,
+    // „Werkstatt Nord" nur für Mitglieder.
+    const offen = (await vorschau(b, b.k.erik, koId, qualitaet.id)).json();
+    expect(offen.ziel).toMatchObject({ id: qualitaet.id, version: 1 });
+    expect(offen.verlieren).toEqual([]);
+    const geschlossen = (await vorschau(b, b.k.erik, koId, werkstatt.id)).json();
+    expect(geschlossen.ziel.version).toBe(offen.ziel.version);
+    expect(geschlossen.verlieren.length).toBeGreaterThan(0);
+
+    // Angezeigt wurde die Wirkung für „Qualität", übernommen werden soll „Werkstatt Nord".
+    const umgelenkt = await b.app.inject({
+      method: "POST",
+      url: "/api/spaces/verschiebung",
+      headers: b.k.erik,
+      payload: { koId, zielSpaceId: werkstatt.id, basis: basisAus(offen) },
+    });
+    expect(umgelenkt.statusCode, umgelenkt.body).toBe(409);
+    expect(umgelenkt.json().error).toBe("VORSCHAU_VERALTET");
+    expect(umgelenkt.json().vorschau.ziel.id).toBe(werkstatt.id);
+
+    // Eine Grundlage ohne Zielkennung gilt ebenfalls nicht.
+    const { zielId: _ohne, ...ohneZiel } = basisAus(geschlossen);
+    const ohne = await b.app.inject({
+      method: "POST",
+      url: "/api/spaces/verschiebung",
+      headers: b.k.erik,
+      payload: { koId, zielSpaceId: werkstatt.id, basis: ohneZiel },
+    });
+    expect(ohne.statusCode, ohne.body).toBe(409);
+
+    // Nichts ist geschehen: kein Space, Fritz sieht den Artikel weiterhin.
+    expect((await lies(b, b.k.erik, `/api/kos/${koId}`)).json().spaceId).toBeUndefined();
+    expect((await lies(b, b.k.fritz, `/api/kos/${koId}`)).statusCode).toBe(200);
   });
 
   it("ein Mitglied mit Leserecht darf nicht verschieben; der Unberechtigte bekommt keine Vorschau", async () => {

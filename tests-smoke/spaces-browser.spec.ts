@@ -148,4 +148,65 @@ test.describe("Spaces · der Weg in der echten App", () => {
     await expect(inAnsicht).toHaveAttribute("data-version", String(ko.version));
     await expect(page.getByText("Ansicht „Prüfmittel“")).toBeVisible();
   });
+
+  // Nacharbeit 3 (Ben, K4): während eine Vorschau für Ziel A noch unterwegs ist, wählt der Mensch
+  // Ziel B. Die verspätete Antwort für A darf weder angezeigt noch übernommen werden; übernommen
+  // wird genau das Ziel, dessen Rechtewirkung zuletzt angezeigt wurde.
+  test("K4: eine verspätete Vorschau für ein abgewähltes Ziel wird verworfen", async ({ page }) => {
+    await ensureLoggedIn(page);
+    const m = marke();
+    const spaceA = `Ziel A ${m}`;
+    const spaceB = `Ziel B ${m}`;
+    await spaceAnlegen(page, spaceA, `pa${m}`);
+    await spaceAnlegen(page, spaceB, `pb${m}`);
+
+    const angelegt = await page.request.post("/api/kos", {
+      data: {
+        confidentiality: "intern",
+        title: `Zielwechsel ${m}`,
+        statement: `Der Zielwechsel ${m} wird geprüft.`,
+        type: "best_practice",
+        category: "Prüfmittel",
+      },
+    });
+    expect(angelegt.status(), await angelegt.text()).toBe(201);
+    const ko = (await angelegt.json()) as { id: string };
+
+    let erste = true;
+    await page.route("**/api/spaces/verschiebung/vorschau", async (route) => {
+      if (erste) {
+        erste = false;
+        await new Promise((fertig) => setTimeout(fertig, 2_000));
+      }
+      await route.continue();
+    });
+
+    await page.goto(`/wissen/${ko.id}`);
+    const zeile = page.getByTestId("space-zeile");
+    await expect(zeile).toBeVisible({ timeout: 15_000 });
+    const auswahl = zeile.getByTestId("space-zeile-ziel");
+    await auswahl.selectOption({ label: spaceA });
+    const antwortA = page.waitForResponse("**/api/spaces/verschiebung/vorschau");
+    await zeile.getByTestId("space-zeile-vorschau").click();
+    // Noch während die Vorschau für A unterwegs ist: Ziel B wählen.
+    await auswahl.selectOption({ label: spaceB });
+    await antwortA;
+    // Der Prüfknopf ist während der laufenden Vorschau gesperrt; frei wird er erst, nachdem die
+    // Antwort für A verarbeitet ist — erst danach sagt „keine Vorschau sichtbar" etwas aus.
+    await expect(zeile.getByTestId("space-zeile-vorschau")).toBeEnabled({ timeout: 15_000 });
+    await expect(zeile.getByTestId("space-vorschau")).toHaveCount(0);
+    await expect(zeile.getByTestId("space-zeile-uebernehmen")).toHaveCount(0);
+
+    await zeile.getByTestId("space-zeile-vorschau").click();
+    const vorschau = zeile.getByTestId("space-vorschau");
+    await expect(vorschau).toContainText(`Nach: ${spaceB}`, { timeout: 15_000 });
+    await expect(vorschau).not.toContainText(spaceA);
+    await zeile.getByTestId("space-zeile-uebernehmen").click();
+    await expect(zeile.getByTestId("space-zeile-meldung")).toContainText(
+      "Fassung und Historie sind unverändert",
+      { timeout: 15_000 },
+    );
+    await expect(zeile.getByTestId("space-zeile-space")).toContainText(spaceB);
+    await expect(zeile.getByTestId("space-zeile-space")).not.toContainText(spaceA);
+  });
 });

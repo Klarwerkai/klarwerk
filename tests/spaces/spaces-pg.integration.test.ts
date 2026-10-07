@@ -201,7 +201,12 @@ describe("Spaces gegen echtes PostgreSQL", () => {
       payload: {
         koId,
         zielSpaceId: space.id,
-        basis: { quelleId: null, quelleVersion: null, zielVersion: v.json().ziel.version },
+        basis: {
+          quelleId: null,
+          quelleVersion: null,
+          zielId: space.id,
+          zielVersion: v.json().ziel.version,
+        },
       },
     });
     expect(wechsel.statusCode, wechsel.body).toBe(200);

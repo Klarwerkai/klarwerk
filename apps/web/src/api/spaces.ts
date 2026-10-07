@@ -148,13 +148,16 @@ export const spacesApi = {
     api.get<ArtikelKontext>(`/spaces/kontext/artikel/${encodeURIComponent(koId)}`),
   vorschau: (koId: string, zielSpaceId: string | null) =>
     api.post<Rechtevorschau>("/spaces/verschiebung/vorschau", { koId, zielSpaceId }),
-  verschieben: (koId: string, zielSpaceId: string | null, vorschau: Rechtevorschau) =>
+  // Nacharbeit 3: Ziel und Grundlage kommen BEIDE aus der angezeigten Vorschau — nie aus der
+  // aktuellen Auswahl. So kann ein späterer Zielwechsel die Übernahme nicht umlenken.
+  verschieben: (koId: string, vorschau: Rechtevorschau) =>
     api.post<{ koId: string; version: number; spaceId: string | null }>("/spaces/verschiebung", {
       koId,
-      zielSpaceId,
+      zielSpaceId: vorschau.ziel?.id ?? null,
       basis: {
         quelleId: vorschau.quelle?.id ?? null,
         quelleVersion: vorschau.quelle?.version ?? null,
+        zielId: vorschau.ziel?.id ?? null,
         zielVersion: vorschau.ziel?.version ?? null,
       },
     }),

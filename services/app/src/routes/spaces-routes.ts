@@ -541,7 +541,12 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
       }
       const body = (request.body ?? {}) as {
         koId?: unknown;
-        basis?: { quelleId?: unknown; quelleVersion?: unknown; zielVersion?: unknown };
+        basis?: {
+          quelleId?: unknown;
+          quelleVersion?: unknown;
+          zielId?: unknown;
+          zielVersion?: unknown;
+        };
       };
       const ko = await sichtbaresKo(user, body.koId);
       if (!ko) {
@@ -569,7 +574,12 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
         return;
       }
       const basis = body.basis;
+      // Nacharbeit 3 (Ben, K4): die Vorschau ist an ihr ZIEL gebunden, nicht nur an Versionen. Zwei
+      // Spaces können dieselbe Versionsnummer tragen; ohne die Kennung ginge ein Wechsel nach B mit
+      // der Rechtewirkung von A durch. Fehlt `zielId` in der Grundlage, gilt sie als nicht passend.
       const stimmt =
+        "zielId" in basis &&
+        (basis.zielId ?? null) === (v.ziel?.id ?? null) &&
         (basis.quelleId ?? null) === (v.quelle?.id ?? null) &&
         (basis.quelleVersion ?? null) === (v.quelle?.version ?? null) &&
         (basis.zielVersion ?? null) === (v.ziel?.version ?? null);

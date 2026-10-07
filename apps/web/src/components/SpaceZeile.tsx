@@ -6,7 +6,7 @@
 // Ist der Artikel für dieses Konto nicht sichtbar, antwortet der Server 404 — dann zeichnet diese
 // Zeile nichts (die Fläche darunter meldet den fehlenden Artikel selbst).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -78,15 +78,25 @@ export function SpaceZeile({ koId }: { koId: string }): JSX.Element | null {
   const [vorschau, setVorschau] = useState<Rechtevorschau | null>(null);
   const [meldung, setMeldung] = useState<string | null>(null);
   const zielId = ziel === OHNE ? null : ziel;
+  // Nacharbeit 3 (Ben, K4): die AKTUELLE Auswahl, auch innerhalb verspäteter Antworten lesbar.
+  // Eine Vorschau, die für ein inzwischen abgewähltes Ziel angefordert wurde, wird verworfen.
+  const auswahlRef = useRef<string | null>(zielId);
+  auswahlRef.current = zielId;
   const pruefen = useMutation({
-    mutationFn: () => spacesApi.vorschau(koId, zielId),
-    onSuccess: (v) => {
+    mutationFn: (fuer: string | null) => spacesApi.vorschau(koId, fuer),
+    onSuccess: (v, fuer) => {
+      if (fuer !== auswahlRef.current || (v.ziel?.id ?? null) !== fuer) {
+        return;
+      }
       setVorschau(v);
       setMeldung(null);
     },
   });
+  // Die Übernahme ist nur möglich, solange die angezeigte Vorschau genau zum gewählten Ziel gehört;
+  // Ziel und Grundlage kommen aus dieser Vorschau (`spacesApi.verschieben`).
+  const vorschauPasst = vorschau !== null && (vorschau.ziel?.id ?? null) === zielId;
   const uebernehmen = useMutation({
-    mutationFn: (v: Rechtevorschau) => spacesApi.verschieben(koId, zielId, v),
+    mutationFn: (v: Rechtevorschau) => spacesApi.verschieben(koId, v),
     onSuccess: async () => {
       setVorschau(null);
       setZiel("");
@@ -178,7 +188,7 @@ export function SpaceZeile({ koId }: { koId: string }): JSX.Element | null {
             <Button
               data-testid="space-zeile-vorschau"
               disabled={!ziel || pruefen.isPending}
-              onClick={() => pruefen.mutate()}
+              onClick={() => pruefen.mutate(zielId)}
             >
               {t("spaces.artikel.vorschau")}
             </Button>
@@ -192,7 +202,7 @@ export function SpaceZeile({ koId }: { koId: string }): JSX.Element | null {
           {t("spaces.artikel.alleSpaces")}
         </Link>
       </div>
-      {vorschau ? (
+      {vorschau && vorschauPasst ? (
         <div className="mt-2 space-y-2">
           <Vorschau v={vorschau} />
           <div className="flex gap-2">
