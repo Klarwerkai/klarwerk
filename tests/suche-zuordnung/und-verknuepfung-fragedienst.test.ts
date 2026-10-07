@@ -111,14 +111,25 @@ describe("R-0473 · welche Fragebegriffe gebunden sind", () => {
     expect(undVerknuepfteFragebegriffe(`${FRAGE} Antworte kurz und nenne die Quelle.`)).toEqual(
       queryTokens("Temperatur Ventil F3"),
     );
-    // Ein Fundortrahmen bindet nicht …
-    expect(undVerknuepfteFragebegriffe("Im Handbuch, wo stehen die Urlaubszeiten?")).toEqual(
+    // Ein Rahmen, der den DATENBESTAND benennt, bindet nicht …
+    expect(undVerknuepfteFragebegriffe("Im Wissensbestand, wo stehen die Urlaubszeiten?")).toEqual(
       queryTokens("Urlaubszeiten"),
     );
-    // … ein Rahmen mit anderer Präposition aber schon: dort steht die Sache selbst.
+    // … ein Rahmen, der eine SACHE benennt, bleibt gebunden (Nacharbeit 5, ben) — gleich mit
+    // welcher Präposition.
     expect(undVerknuepfteFragebegriffe("Bei Ventil F3, welche Temperatur gilt?")).toEqual(
       expect.arrayContaining(queryTokens("Ventil F3 Temperatur")),
     );
+    expect(undVerknuepfteFragebegriffe("Im Kessel K7, welche maximale Temperatur gilt?")).toEqual(
+      expect.arrayContaining(queryTokens("Kessel K7 maximale Temperatur")),
+    );
+    expect(undVerknuepfteFragebegriffe("Im Handbuch, wo stehen die Urlaubszeiten?")).toEqual(
+      expect.arrayContaining(queryTokens("Handbuch Urlaubszeiten")),
+    );
+    // Ein Kontextsatz ohne „?" ist keine Antwortanweisung — seine Sache bleibt gebunden.
+    expect(
+      undVerknuepfteFragebegriffe("Es geht um Ventil F3. Welche maximale Temperatur gilt?"),
+    ).toEqual(expect.arrayContaining(queryTokens("Ventil F3 maximale Temperatur")));
     // Ohne Fragesatz bleibt die ganze Eingabe gebunden (bens Fall, unverändert).
     expect(undVerknuepfteFragebegriffe("Ventil F3 Temperatur")).toEqual(
       queryTokens("Ventil F3 Temperatur"),
@@ -145,6 +156,56 @@ describe("R-0473 · welche Fragebegriffe gebunden sind", () => {
     // Gegenprobe: ohne Relevanztext fehlt „Urlaubsregelung", die Quelle ist unvollständig.
     expect(decktAlleFragebegriffe(frage, text)).toBe(false);
   });
+});
+
+describe("R-0278-Nacharbeit 5 · Kontext- und Rahmensätze binden ihre Sache (ben)", () => {
+  const FAELLE = [
+    {
+      name: "Kontextsatz",
+      frage: "Es geht um Ventil F3. Welche maximale Temperatur gilt?",
+      passend: {
+        title: "Ventil F3",
+        statement: "Die maximale Temperatur am Ventil F3 ist 80 Grad.",
+      },
+      fremd: { title: "Ventil F4", statement: "Die maximale Temperatur am Ventil F4 ist 95 Grad." },
+    },
+    {
+      name: "Im-Rahmen",
+      frage: "Im Kessel K7, welche maximale Temperatur gilt?",
+      passend: {
+        title: "Kessel K7",
+        statement: "Die maximale Temperatur im Kessel K7 ist 120 Grad.",
+      },
+      fremd: {
+        title: "Kessel K8",
+        statement: "Die maximale Temperatur im Kessel K8 ist 140 Grad.",
+      },
+    },
+  ] as const;
+
+  for (const fall of FAELLE) {
+    it(`NEGATIV ${fall.name}: eine Quelle zu einem ANDEREN Gegenstand trägt nicht`, async () => {
+      const { ko, ask } = await stapel();
+      const fremd = (await ko.create({ ...VORLAGE, ...fall.fremd })).id;
+      for (const opts of [{ retrievalOnly: true }, {}]) {
+        const out = await ask.ask(fall.frage, "nutzer-1", "de", opts);
+        expect(out.result.answered, JSON.stringify(opts)).toBe(false);
+        expect(out.result.sources, JSON.stringify(opts)).not.toContain(fremd);
+      }
+    });
+
+    it(`POSITIV ${fall.name}: die Quelle zum genannten Gegenstand trägt — die fremde nicht`, async () => {
+      const { ko, ask } = await stapel();
+      const fremd = (await ko.create({ ...VORLAGE, ...fall.fremd })).id;
+      const passend = (await ko.create({ ...VORLAGE, ...fall.passend })).id;
+      for (const opts of [{ retrievalOnly: true }, {}]) {
+        const out = await ask.ask(fall.frage, "nutzer-1", "de", opts);
+        expect(out.result.answered, JSON.stringify(opts)).toBe(true);
+        expect(out.result.sources, JSON.stringify(opts)).toEqual([passend]);
+        expect(out.result.sources, JSON.stringify(opts)).not.toContain(fremd);
+      }
+    });
+  }
 });
 
 describe("R-0473 · UND im regulären Fragedienst", () => {

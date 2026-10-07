@@ -1515,6 +1515,10 @@ const FRAGEGERUEST: readonly string[] = [
   // „How many days does the customer have to report a defect?" — die Quelle nennt die Zahl
   // (JOB 3298 V1/R1–R3).
   "many",
+  // „Es geht um Ventil F3. Welche maximale Temperatur gilt?" (ben, Nacharbeit 5) — der Satz führt
+  // die Sache ein, „geht" benennt sie nicht; „Ventil F3" bleibt gebunden.
+  "geht",
+  "gehen",
 ];
 
 let fragegeruestCache: ReadonlySet<string> | undefined;
@@ -1534,17 +1538,54 @@ function fragegeruest(): ReadonlySet<string> {
 // aus dem Fundortrahmen. Keine Quelle führt diese Wörter; die vorhandenen Fristen fielen heraus,
 // und mit ihnen die Konfliktdarstellung (ASK-C02-KONFLIKT).
 //
-// ZWEI ENGE REGELN, beide an der Satzform erkennbar, keine an einer Wortliste der Sache:
-//   1. Enthält die Eingabe mindestens einen FRAGESATZ (endet auf „?"), sind NUR die Fragesätze die
-//      Sachfrage. Sätze ohne „?" daneben sind Anweisungen an die Antwort („Answer in English …",
-//      „If the sources disagree, say so …") und binden nichts. Ohne Fragesatz bleibt die ganze
-//      Eingabe gebunden — „Ventil F3 Temperatur" (R-0473) ist unverändert.
-//   2. Beginnt ein Fragesatz mit einem FUNDORTRAHMEN — Präposition des Orts/der Grundlage, dann
-//      Komma, dann das Fragewort („In the … data, what …", „Im Handbuch, wo …") —, sagt der Rahmen,
-//      WO gesucht wird, nicht WONACH. Er bindet nicht. Ein Rahmen mit anderer Präposition („Bei
-//      Ventil F3, welche …") bleibt gebunden: dort steht die Sache selbst.
-// Was übrig bleibt, ist gebunden wie bisher — jedes Inhaltstoken, gleich wie geschrieben.
+// ZWEI ENGE REGELN — Nacharbeit 5 (ben): Nacharbeit 3 hatte hier JEDEN Satz ohne „?" und JEDEN
+// Orts-/Grundlagenrahmen verworfen. Damit fiel in „Es geht um Ventil F3. Welche maximale Temperatur
+// gilt?" das „F3" weg und in „Im Kessel K7, welche …" das „K7" — eine Quelle zu F4 oder K8 hätte die
+// Frage getragen. Jetzt entfällt NUR, was eindeutig keine Sache ist:
+//   1. ANTWORTANWEISUNGEN: ein Satz ohne „?", der als Anweisung an die Antwort beginnt — ein
+//      Antwortverb („Answer in English …", „Antworte kurz …", „Nenne die Quelle …") oder ein
+//      Bedingungssatz über die QUELLEN („If the sources disagree, say so …"). Jeder andere Satz —
+//      Kontext wie „Es geht um Ventil F3." — bleibt gebunden.
+//   2. DER BESTANDSRAHMEN: ein vorangestellter Rahmen vor dem Fragewort, der den DATENBESTAND
+//      SELBST benennt („In the fictional Advisor ICT demo data, what …", „Im Wissensbestand, wo …").
+//      Er sagt, in welchem Bestand gesucht wird, nicht nach welcher Sache. Ein Rahmen, der eine
+//      Sache benennt („Im Kessel K7, welche …", „Im Handbuch, wo …", „Bei Ventil F3, welche …"),
+//      bleibt gebunden.
+// Ohne Fragesatz bleibt die ganze Eingabe gebunden — „Ventil F3 Temperatur" (R-0473) unverändert.
 const FRAGESATZ_ENDE = /\?\s*$/;
+// Antwortverben, EN/DE/NL — die Verben, mit denen man die Antwort formt, nicht die Sache.
+const ANTWORTVERBEN = [
+  "answer",
+  "respond",
+  "reply",
+  "cite",
+  "quote",
+  "name",
+  "list",
+  "give",
+  "use",
+  "write",
+  "keep",
+  "include",
+  "antworte\\w*",
+  "beantworte\\w*",
+  "zitiere\\w*",
+  "nenne\\w*",
+  "gib",
+  "schreibe?",
+  "fasse",
+  "antwoord",
+  "noem",
+  "geef",
+  "citeer",
+];
+// Satzanfang mit Antwortverb — oder ein Bedingungssatz über die QUELLEN („If the sources …").
+const ANTWORTANWEISUNG = new RegExp(
+  `^\\s*(?:(?:bitte|please)\\s+)?(?:${ANTWORTVERBEN.join("|")})\\b|^\\s*(?:if|wenn|falls|als)\\b[^.!?]*\\b(?:sources?|quellen?|bronn?en)\\b`,
+  "i",
+);
+const BESTANDSWORT =
+  "(?:data|dataset|database|knowledge base|daten|datenbestand|demodaten|beispieldaten|bestand|wissensbestand|wissensbasis|gegevens)";
 const RAHMEN_PRAEPOSITIONEN = [
   "in",
   "im",
@@ -1581,18 +1622,21 @@ const FRAGEWOERTER = [
   "waar",
   "waarom",
 ];
-const FUNDORTRAHMEN = new RegExp(
-  `^\\s*(?:${RAHMEN_PRAEPOSITIONEN.join("|")})(?=\\s)[^,?]*,\\s*(?=(?:${FRAGEWOERTER.join("|")})\\b)`,
+// Der Rahmen muss mit einem BESTANDSWORT enden — „… demo data," ja, „… Kessel K7," nein.
+const BESTANDSRAHMEN = new RegExp(
+  `^\\s*(?:${RAHMEN_PRAEPOSITIONEN.join("|")})(?=\\s)[^,?]*\\b${BESTANDSWORT}\\s*,\\s*(?=(?:${FRAGEWOERTER.join("|")})\\b)`,
   "i",
 );
 
 function sachfrage(question: string): string {
   const saetze = question.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0);
-  const fragesaetze = saetze.filter((s) => FRAGESATZ_ENDE.test(s));
-  if (fragesaetze.length === 0) {
+  if (!saetze.some((s) => FRAGESATZ_ENDE.test(s))) {
     return question;
   }
-  return fragesaetze.map((s) => s.replace(FUNDORTRAHMEN, "")).join(" ");
+  return saetze
+    .filter((s) => FRAGESATZ_ENDE.test(s) || !ANTWORTANWEISUNG.test(s))
+    .map((s) => (FRAGESATZ_ENDE.test(s) ? s.replace(BESTANDSRAHMEN, "") : s))
+    .join(" ");
 }
 
 export function undVerknuepfteFragebegriffe(question: string): string[] {
