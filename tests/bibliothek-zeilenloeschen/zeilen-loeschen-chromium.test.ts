@@ -5,7 +5,8 @@
 // „Berechtigte können einen Beitrag direkt aus der Trefferliste löschen; vorher fragt eine ruhige
 // Zeile nach." Der montierte Fall (`zeilen-loeschen-mounted.test.tsx`) belegt Ablauf, Rechte und
 // Fehlerwege; was jsdom nicht kann, steht hier: die ruhige Zeile liegt WIRKLICH im Sichtfenster und
-// obenauf, die Liste rollt dabei nicht weg, der Klick trifft den Papierkorb mit der echten Maus, und
+// obenauf, sie und ihr Treffer stehen im sichtbaren Teil der Liste, der Klick trifft den Papierkorb
+// mit der echten Maus, und
 // der bestätigende Knopf trägt im gerechneten Stil eine andere Farbe als „Behalten".
 //
 // GEBAUTE ANWENDUNG (`apps/web/dist`) in echtem Chromium gegen das ECHTE Fastify-Backend
@@ -98,6 +99,15 @@ const LAGE_FN = `(id) => {
     behaltenFarbe: behalten ? getComputedStyle(behalten).color : null,
     behaltenGrund: behalten ? getComputedStyle(behalten).backgroundColor : null,
     spurOben: spur ? Math.round(spur.scrollTop) : null,
+    // Steht die Rückfrage UND der angeklickte Treffer im sichtbaren Teil der Liste?
+    imSpurBlick: (() => {
+      if (!spur) { return false; }
+      const s = spur.getBoundingClientRect();
+      const zeile = block.querySelector('[data-testid="bib-zeile"]');
+      const z = zeile ? zeile.getBoundingClientRect() : null;
+      const drin = (q) => q.top >= Math.floor(s.top) && q.bottom <= Math.ceil(s.bottom);
+      return drin(r) && z !== null && drin(z);
+    })(),
   };
 }`;
 
@@ -118,6 +128,7 @@ interface Lage {
   behaltenFarbe?: string | null;
   behaltenGrund?: string | null;
   spurOben: number | null;
+  imSpurBlick?: boolean;
 }
 
 const lage = (id: string): Promise<Lage> => seite().evaluate<Lage>(fn(LAGE_FN), id);
@@ -218,10 +229,15 @@ describe("R-0959 · Papierkorb am Treffer — gebaute Seite, echtes Backend", ()
     expect(l.rechts ?? Number.MAX_SAFE_INTEGER).toBeLessThanOrEqual(l.fensterBreite ?? 0);
     expect(l.hoehe ?? 0).toBeGreaterThan(10);
     expect(l.obenauf).toBe(true);
-    // RUHIG: keine Dialogfläche, die Liste ist nicht weggerollt, der gelesene Bericht bleibt.
+    // RUHIG: keine Dialogfläche, und der gelesene Bericht bleibt.
     expect(l.dialog).toBe(false);
-    expect(l.spurOben).toBe(vorher.spurOben);
     expect(await leseTitel()).toBe(leseTitelVorher);
+    // Nacharbeit 1, gemessen: die Liste rollt beim Öffnen (spurOben 0 → 133), weil der Fokus auf
+    // „Behalten" die 167 px hohe Zeile ganz ins Bild holt. Das ist das „im Blick" aus JOB 3637,
+    // kein Wegrollen. Zugesagt wird deshalb: die Rückfrage UND ihr Treffer stehen beide im
+    // sichtbaren Teil der Liste — der Mensch sieht, WAS er löschen würde, und die Frage dazu.
+    console.info(`R-0959 · Z1 Liste gerollt: ${vorher.spurOben} → ${l.spurOben}`);
+    expect(l.imSpurBlick).toBe(true);
     // Der Fokus steht auf dem BEWAHRENDEN Knopf.
     expect(l.fokus).toBe(de("ko.deleteKeep"));
     // Die Warnfarbe trägt der bestätigende Knopf, nicht „Behalten" — gerechnet, nicht gelesen.

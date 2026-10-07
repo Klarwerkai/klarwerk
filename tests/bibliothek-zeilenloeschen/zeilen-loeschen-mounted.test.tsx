@@ -272,9 +272,14 @@ async function klick(el: HTMLElement): Promise<void> {
   await act(flush);
 }
 
+/**
+ * Die Kennungen der Treffer als MENGE (sortiert). Die Reihenfolge entscheidet die Sortierung der
+ * Bibliothek, nicht das Löschen — sie festzuschreiben hiesse, etwas Fremdes zu prüfen (Nacharbeit 1:
+ * die Fläche zeigte `ko-3, ko-2`).
+ */
 function zeilenIds(): string[] {
   const zeilen = [...document.body.querySelectorAll<HTMLElement>(SEL_ZEILE)];
-  return zeilen.map((z) => z.dataset.bibId ?? "");
+  return zeilen.map((z) => z.dataset.bibId ?? "").sort();
 }
 
 /** Der volle Bedienweg EINES Löschens am Treffer: Papierkorb → ruhige Zeile → „Ja, löschen". */
