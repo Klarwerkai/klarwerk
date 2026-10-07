@@ -283,6 +283,10 @@ const REGISTER: Record<string, Eintrag> = {
   // --- Die Anhänge (Block C) ---------------------------------------------------------------
   "GET /api/objects/:id": { urteil: "PRAEDIKAT", grund: "Block C — G2, Anhang erbt seine Stufe." },
   "GET /api/objects/:id/raw": { urteil: "PRAEDIKAT", grund: "Block C — G2 + G4 (no-store)." },
+  "GET /api/objects/:id/traeger": {
+    urteil: "PRAEDIKAT",
+    grund: "R-0095 — Anhang wie /raw, die Träger zusätzlich über sichtbareFuer.",
+  },
   // --- Die Nebenwege (Block D) -------------------------------------------------------------
   // JOB 1546 D2 (A28): das dauerhafte Signal am EIGENEN Objekt. Die Route ruft `sichtbareFuer`
   // über `eigeneKoIds` (conflicts-routes.ts) und filtert danach auf die Autorschaft selbst — sie

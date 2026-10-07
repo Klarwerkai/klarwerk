@@ -197,6 +197,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `POST` | `/api/objects` | `ko.create` (vor dem Einlesen) | Rumpf `{ name, mime, data, kind?, confidentiality?, purpose?, draftId? }` | 201 Objektbeschreibung | Dienstfehler |
 | `GET` | `/api/objects/:id` | `ko.read`, nur Anhänge sichtbarer Träger | — | 200 Objekt | 404 `NOT_FOUND` |
 | `GET` | `/api/objects/:id/raw` | `ko.read`, wie oben | — | 200 Rohbytes mit Inhaltstyp | 404; 415 `UNSUPPORTED` |
+| `GET` | `/api/objects/:id/traeger` | `ko.read`, wie oben; je Träger zusätzlich dessen Lesbarkeit | — | 200 `{ traeger: [{ id, title }] }` — die lesbaren Wissensobjekte, die den Anhang tragen (R-0095) | 404 `NOT_FOUND` |
 | `GET` | `/api/media/status` | `requireUser` | — | 200 Engine-Auskunft | — |
 | `POST` | `/api/media/analyze` | `ko.read` | Rumpf `{ objectId, locale?, confidentiality? }` | 200 Analyse | 404 `NOT_FOUND` |
 

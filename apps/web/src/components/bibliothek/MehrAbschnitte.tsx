@@ -190,6 +190,55 @@ function AnhangVorschau({ src }: { src: string | undefined }): JSX.Element {
   );
 }
 
+// R-0095: der Rückverweis VOM ANHANG auf die Wissensobjekte, die ihn tragen — gefragt beim Anhang
+// selbst (`GET /api/objects/:id/traeger`), nicht aus dem Objekt abgeleitet, in dem die Kachel
+// gerade steht. Jeder Träger ist ein Link; der eigene Eintrag ist als solcher benannt. Ohne
+// gespeicherte Objekt-Referenz (Altbestand mit Daten-URL) gibt es keinen Anhang zu fragen — dann
+// erscheint nichts, statt einer erfundenen Zuordnung. Ein Fehler der Abfrage bleibt ebenso stumm:
+// die Kachel und ihr Öffnen-Weg hängen nicht an dieser Zeile.
+function AnhangTraeger({
+  objectId,
+  aktuellesKo,
+}: {
+  objectId: string | undefined;
+  aktuellesKo: string;
+}): JSX.Element | null {
+  const { t } = useTranslation();
+  const gueltig = objectRawHref(objectId) !== null;
+  const traeger = useQuery({
+    queryKey: ["objekt-traeger", objectId],
+    queryFn: () => endpoints.objects.traeger((objectId ?? "").trim()),
+    enabled: gueltig,
+  });
+  const roh = traeger.data?.traeger;
+  const liste = Array.isArray(roh) ? roh : [];
+  if (!gueltig || liste.length === 0) {
+    return null;
+  }
+  return (
+    <div data-bib-anhang-traeger={objectId} className="mt-0.5 text-[12px] text-muted">
+      {t("anhangtraeger.gehoertZu")}{" "}
+      {liste.map((k, i) => (
+        <span key={k.id}>
+          {i > 0 ? ", " : null}
+          <RoleLink
+            to={`/wissen/${encodeURIComponent(k.id)}`}
+            className="font-semibold text-ai"
+            hoverClassName="hover:underline"
+          >
+            {() => (
+              <>
+                {k.title.trim() || t("anhangtraeger.ohneTitel")}
+                {k.id === aktuellesKo ? ` ${t("anhangtraeger.dieserEintrag")}` : null}
+              </>
+            )}
+          </RoleLink>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // ==================================================================================================
 // JOB 3430 · Q1c — EIN ABSCHNITT HOLT SEINEN STAND SELBST NACH.
 // ==================================================================================================
@@ -2724,6 +2773,7 @@ export function MehrAbschnitte({
                     </span>
                     <span className="mt-0.5 block text-[12px] text-muted">{hinweis}</span>
                   </button>
+                  <AnhangTraeger objectId={a.objectId} aktuellesKo={ko.id} />
                   {canEdit ? (
                     <button
                       type="button"

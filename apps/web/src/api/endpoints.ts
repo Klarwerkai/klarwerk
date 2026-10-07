@@ -998,6 +998,11 @@ export const endpoints = {
       draftId?: string;
     }) => api.post<ObjectRef>("/objects", input),
     read: (id: string) => api.get<ObjectContent>(`/objects/${id}`),
+    // R-0095: der Rückverweis vom Anhang — die lesbaren Wissensobjekte, die ihn tragen.
+    traeger: (id: string) =>
+      api.get<{ traeger: { id: string; title: string }[] }>(
+        `/objects/${encodeURIComponent(id)}/traeger`,
+      ),
   },
   // SCRUM-382: Video-/Audio-Analyse — Transkript serverseitig (Schlüssel bleibt im Backend).
   media: {

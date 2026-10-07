@@ -18,6 +18,11 @@ cd "$(dirname "$0")/.."
 #
 # BEWUSST KEIN `references`-Umbau der Wurzel-Konfiguration: sie ist absichtlich Node-rein, ohne DOM
 # und ohne JSX. Der Web-Typecheck braucht beides und bringt es in seiner EIGENEN Config mit.
+# REGISTER I17 (R-2033): ZUERST die angekommene Fassung gegen die quellseitig gemeldete Bytezahl und
+# Prüfsumme — eine Altfassung soll gar nicht erst gebaut und getestet werden. Ohne gemeldete Liste
+# meldet der Schritt „ungeprüft" und lässt den Bau weiterlaufen (Begründung in der Datei).
+bash tools/fassung-vorab.sh
+
 npm run --silent build
 
 # JOB 3218: tests-smoke fiel durch alle drei Includes: tsconfig.json:19 (services/tests),

@@ -667,6 +667,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/objects": { protection: "ko.create" },
   "GET /api/objects/:id": { protection: "ko.read", zeilenrecht: ["beurteileAnhang"] },
   "GET /api/objects/:id/raw": { protection: "ko.read", zeilenrecht: ["beurteileAnhang"] },
+  // R-0095: Rückverweis vom Anhang — Anhang wie /raw, je Träger zusätzlich der Lesefilter.
+  "GET /api/objects/:id/traeger": {
+    protection: "ko.read",
+    zeilenrecht: ["beurteileAnhang", "sichtbareFuer"],
+  },
 
   // --- media (media-routes.ts, SCRUM-382) ---
   "GET /api/media/status": { protection: "auth" },

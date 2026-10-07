@@ -1912,6 +1912,16 @@ export const TABELLE: Zeile[] = [
     erwartet: NUR_LESEN,
   },
   {
+    // R-0095: der Rückverweis vom Anhang auf seine Träger — dasselbe Tor wie `/raw`.
+    gruppe: "objectRoutes",
+    methode: "GET",
+    pfad: "/api/objects/gibt-es-nicht/traeger",
+    route: "/api/objects/:id/traeger",
+    belegstelle: "services/app/src/routes/object-routes.ts:322",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
     gruppe: "overlapRoutes",
     methode: "GET",
     pfad: "/api/duplicates/settings",

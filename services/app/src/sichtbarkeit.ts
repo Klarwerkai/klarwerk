@@ -694,6 +694,11 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
 export interface AnhangTraeger extends SichtbarkeitsFakten {
   /** Die Kennung des Trägers — ohne sie lässt sich seine Geschichte nicht befragen. */
   id: string;
+  /**
+   * R-0095: der Titel des Trägers — nur für den sichtbaren Rückverweis vom Anhang auf sein
+   * Wissensobjekt (`GET /api/objects/:id/traeger`). Kein Urteilsfakt; `KnowledgeObject` trägt ihn.
+   */
+  title?: string | undefined;
   /** `author` ist der URHEBER DER ZUORDNUNG (serverseitig), nicht der Autor des Objekts. */
   attachments?:
     | readonly { objectId?: string | undefined; author?: string | null | undefined }[]

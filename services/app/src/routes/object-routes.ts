@@ -15,7 +15,14 @@ import {
   KandidatenSpeicher,
   type SichtbarkeitsFakten,
   beurteileAnhang,
+  sichtbareFuer,
 } from "../sichtbarkeit";
+
+/** R-0095: ein Wissensobjekt, das diesen Anhang trägt — so viel, wie ein Rückverweis braucht. */
+export interface AnhangTraegerVerweis {
+  id: string;
+  title: string;
+}
 
 // AUFTRAG-mega20 Block C: die erlaubten Zwecke als LAUFZEIT-Prüfung. Der Typ allein hilft an einer
 // HTTP-Grenze nichts — dort kommt eine beliebige Zeichenkette an, und sie in den Vertrag zu casten
@@ -304,6 +311,43 @@ export function objectRoutes(
       // Die erfolgreiche Antwort hängt am Betrachter — dieselbe Adresse liefert je nach Anmeldung
       // Metadaten oder 404.
       mitVary(reply).code(200).send(obj);
+    });
+
+    // R-0095 — DER RÜCKVERWEIS VOM ANHANG AUF SEIN WISSENSOBJEKT. Bisher kannte nur das Objekt seine
+    // Anhänge (`attachments[].objectId`); vom Anhang führte kein Weg zurück. Diese Route antwortet
+    // aus Sicht des ANHANGS: welche Wissensobjekte tragen ihn als Anhang? Dasselbe Tor wie die
+    // beiden Nachbarrouten (unsichtbar = 404, bytegleich), dazu der Lesefilter `sichtbareFuer` —
+    // ein Rückverweis darf weder Titel noch Kennung eines Objekts verraten, das der Betrachter nicht
+    // lesen darf. Fließtext-Fundstellen zählen bewusst nicht: R-0095 meint die Anhangskopplung.
+    app.get<{ Params: { id: string } }>("/api/objects/:id/traeger", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      const objectId = request.params.id;
+      const obj = await store.read(objectId);
+      if (!obj || !(await urteile(user, objectId, obj.ref)).sichtbar) {
+        mitVary(reply)
+          .header("Cache-Control", CACHE_KEINE_ANTWORT)
+          .code(404)
+          .send({ error: "NOT_FOUND", message: "Objekt nicht gefunden." });
+        return;
+      }
+      // `quellen.kos` ist eine OBERMENGE (Vertrag in sichtbarkeit.ts) — erst auf die echten Träger
+      // eingrenzen, dann EIN unbedingter Lesefilter über alle.
+      const kandidaten = (await quellen.kos(objectId)).filter((ko) =>
+        (ko.attachments ?? []).some((a) => a.objectId === objectId),
+      );
+      const traeger: AnhangTraegerVerweis[] = [];
+      const gesehen = new Set<string>();
+      for (const ko of sichtbareFuer(user, kandidaten)) {
+        if (!gesehen.has(ko.id)) {
+          gesehen.add(ko.id);
+          traeger.push({ id: ko.id, title: ko.title ?? "" });
+        }
+      }
+      // Die Antwort hängt am Betrachter und an jedem späteren Entzug — nichts davon darf liegen.
+      mitVary(reply).header("Cache-Control", CACHE_KEINE_ANTWORT).code(200).send({ traeger });
     });
 
     // SCRUM-45/46/48 (KW-STR): rohe Bytes für <img src="/api/objects/:id/raw"> im Editor-Body.
