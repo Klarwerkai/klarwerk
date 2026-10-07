@@ -49,12 +49,13 @@ export interface AnswerExplanationLeser {
   /**
    * Antwortbeleg-Nacharbeit 5 (Ben, R-0293/R-0317/R-0618): DIE ZENTRALE SICHTBARKEITSENTSCHEIDUNG
    * von heute — `sichtbarkeitsfilterFuer(user)` (services/app/src/sichtbarkeit.ts, `darfSehen`),
-   * einschliesslich des fuehrenden Space. Die Route reicht sie herein; der Dienst wendet sie auf
-   * JEDE gebundene Wissenseinheit an. Sie tritt NEBEN `darfVertraulich` (UND), nie an seine
-   * Stelle: eine Zeile bleibt nur offen, wenn beide sie freigeben.
+   * einschliesslich des fuehrenden Space und der Autorberechtigung. Die Route reicht sie herein;
+   * der Dienst wendet sie auf JEDE gebundene Wissenseinheit an. Liegt sie vor, entscheidet sie
+   * ALLEIN — `darfVertraulich` wird dann nicht zusaetzlich ausgewertet (Ben, Nacharbeit 6).
    *
    * FAIL-CLOSED: Fehlt sie (ein Aufrufer ohne Sichtbarkeitsauskunft), gilt jedes Objekt mit
-   * fuehrendem Space als gesperrt — dieselbe Richtung wie `spaceErlaubt` ohne `spaceLesbar`.
+   * fuehrendem Space als gesperrt — dieselbe Richtung wie `spaceErlaubt` ohne `spaceLesbar` — und
+   * Vertrauliches nur bei `darfVertraulich`.
    */
   readonly darfSehen?: (ko: KnowledgeObject) => boolean;
 }
@@ -136,11 +137,17 @@ export class AnswerExplanationService {
       if (ref.knowledgeObjectVersion === null || ref.knowledgeObjectVersion > objekt.version) {
         fassungUnaufloesbar.add(ref.knowledgeObjectId);
       }
-      // Zwei Bedingungen, beide von HEUTE: die Vertraulichkeitsregel dieser Route und die zentrale
-      // Sichtbarkeitsentscheidung samt Space-Recht. Was eine von beiden sperrt, wird geschwaerzt —
-      // Quelle, Fundstelle (gespeicherter Textauszug), Zustaendigkeit und Konfliktlage inklusive.
-      const zentralSichtbar = (leser.darfSehen ?? ohneSpace)(objekt);
-      if (!zentralSichtbar || (isConfidential(objekt.confidentiality) && !leser.darfVertraulich)) {
+      // Gelesen wird mit den Rechten von HEUTE. Liegt die zentrale Sichtbarkeitsentscheidung vor
+      // (`darfSehen`, samt Space-Recht und Autorberechtigung), gilt AUSSCHLIESSLICH sie — eine
+      // zweite, eigene Rollenregel daneben haette berechtigten Autoren ihre eigenen vertraulichen
+      // Objekte geschwaerzt (Ben, Nacharbeit 6). Fehlt sie, bleibt es fail-closed: kein fuehrender
+      // Space und Vertrauliches nur mit `darfVertraulich`. Gesperrt heisst geschwaerzt — Quelle,
+      // Fundstelle (gespeicherter Textauszug), Zustaendigkeit und Konfliktlage inklusive.
+      const sichtbar =
+        leser.darfSehen !== undefined
+          ? leser.darfSehen(objekt)
+          : ohneSpace(objekt) && (!isConfidential(objekt.confidentiality) || leser.darfVertraulich);
+      if (!sichtbar) {
         gesperrteObjekte.add(ref.knowledgeObjectId);
       }
     }

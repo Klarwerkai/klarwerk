@@ -68,7 +68,10 @@ async function zweiterNutzer(
 async function frageMitBeleg(
   app: ReturnType<typeof buildApp>,
   auth: Record<string, string>,
-  opts: { vertraulich?: boolean } = {},
+  // `frager`: wer die Frage stellt (und damit die Antwort besitzt). Ohne Angabe derselbe, der das
+  // Objekt anlegt. Antwortbeleg-Nacharbeit 6: ein Schwaerzungsfall braucht einen Frager, der NICHT
+  // Autor ist — sonst darf er sein eigenes vertrauliches Objekt nach `darfSehen` ohnehin lesen.
+  opts: { vertraulich?: boolean; frager?: Record<string, string> } = {},
 ) {
   const ko = await app.inject({
     method: "POST",
@@ -90,7 +93,7 @@ async function frageMitBeleg(
   const ask = await app.inject({
     method: "POST",
     url: "/api/ask",
-    headers: auth,
+    headers: opts.frager ?? auth,
     payload: { question: "Was tun bei Ueberdruck am Ventil?" },
   });
   if (ask.statusCode !== 200) {
@@ -408,14 +411,16 @@ describe("W3-C · GET /api/klara/answers/:answerId/explanation", () => {
     });
 
     it("REDACTED · 200, state OK, Zeilen geschwaerzt — und KEINE geschuetzte Kennung im Rumpf", async () => {
-      // Der Eigentuemer ist bewusst ein `experte`: `darfVertraulich` gilt laut Route nur fuer
-      // `admin` und `controller`. Und die Quelle wird ERST NACH der Antwort gesperrt — vorher
-      // haette `dropConfidential` sie gar nicht in den Beleg gelassen.
+      // Der Eigentuemer der Antwort ist bewusst ein `experte` (kein `ko.validate`) und NICHT Autor
+      // der Quelle — Antwortbeleg-Nacharbeit 6: nach der zentralen Regel `darfSehen` darf ein Autor
+      // sein eigenes vertrauliches Objekt lesen; ein echter Schwaerzungsfall braucht deshalb einen
+      // fremden Autor. Die Quelle wird ERST NACH der Antwort gesperrt — vorher haette
+      // `dropConfidential` sie gar nicht in den Beleg gelassen.
       const services = buildServices();
       const app = buildApp(services);
       const auth = await admin(app, "tab2@x.de");
       const experte = await zweiterNutzer(app, auth, "experte541@x.de");
-      const { koId, answerId } = await frageMitBeleg(app, experte);
+      const { koId, answerId } = await frageMitBeleg(app, auth, { frager: experte });
 
       await services.ko.setConfidentiality(koId, "vertraulich", "anna");
       const res = await erklaerung(app, experte, String(answerId));

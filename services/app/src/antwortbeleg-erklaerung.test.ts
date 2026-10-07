@@ -781,7 +781,9 @@ describe("R-0276 · genau einer von fünf Gründen — oder entwertet", () => {
     const app = buildApp(services);
     const admin = await anmelden(app, "grund4@x.de");
     const experte = await experteAnlegen(app, admin, "experte-grund4@x.de");
-    const koId = await koAnlegen(app, experte);
+    // Nacharbeit 6: die Quelle stammt vom ADMIN, gefragt hat der EXPERTE — er ist weder Autor noch
+    // hat er `ko.validate`, ist nach `darfSehen` also tatsächlich unberechtigt.
+    const koId = await koAnlegen(app, admin);
     const answerId = await fragen(app, experte);
     await services.ko.setConfidentiality(koId, "vertraulich", "anna");
 
@@ -804,6 +806,27 @@ describe("R-0276 · genau einer von fünf Gründen — oder entwertet", () => {
     expect(body.carryingSourcesValidated).toBeNull();
     expect(body.openConflictToday).toBeNull();
     expect(res.body.includes(koId)).toBe(false);
+  });
+
+  it("GEGENPROBE · der Autor liest seine eigene, inzwischen vertrauliche Quelle — nichts geschwärzt", async () => {
+    // Nacharbeit 6 (Ben): die zentrale Regel `darfSehen` erlaubt dem Autor sein eigenes
+    // vertrauliches Objekt, auch ohne Admin-/Controller-Rolle. Der Erklärweg darf sie nicht mit
+    // einer eigenen Rollenregel überstimmen.
+    const services = buildServices();
+    const app = buildApp(services);
+    const admin = await anmelden(app, "grund5@x.de");
+    const experte = await experteAnlegen(app, admin, "experte-grund5@x.de");
+    const koId = await koAnlegen(app, experte);
+    const answerId = await fragen(app, experte);
+    await services.ko.setConfidentiality(koId, "vertraulich", "anna");
+
+    const res = await erklaerung(app, experte, answerId);
+    const body = res.json();
+    expect(body.integrity).not.toBe("REDACTED");
+    expect(body.primaryResolutionFailure).toBeNull();
+    const zeile = zeileZu(body, koId);
+    expect(zeile.redacted).toBe(false);
+    expect(zeile.knowledgeObjectVersion).toBeGreaterThan(0);
   });
 
   it("ohne Grund, mit fremdem oder mit widersprüchlichem Grund: entwertet — kein geratener Grund", () => {
