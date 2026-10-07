@@ -45,11 +45,25 @@ async function box(l: Locator): Promise<{ x: number; y: number; width: number; h
 }
 
 async function imFenster(page: Page, l: Locator, wann: string): Promise<void> {
-  const b = await box(l);
   const v = page.viewportSize();
   if (!v) {
     throw new Error("keine Fenstergrösse");
   }
+  // Nacharbeit 6: nach `setViewportSize` zeichnet die App erst auf das `resize`-Ereignis hin neu —
+  // gemessen wurde vorher noch die Lage im alten Fenster (1268 = 1280 − 12, angedockt). Gewartet
+  // wird deshalb, bis die Lage im Fenster liegt; die Grenzen selbst bleiben dieselben.
+  await expect
+    .poll(
+      async () => {
+        const p = await box(l);
+        return (
+          p.x >= 0 && p.y >= 0 && p.x + p.width <= v.width + 1 && p.y + p.height <= v.height + 1
+        );
+      },
+      { message: `${wann}: Element bleibt ausserhalb des Fensters`, timeout: 3_000 },
+    )
+    .toBe(true);
+  const b = await box(l);
   expect(b.x, `${wann}: links abgeschnitten`).toBeGreaterThanOrEqual(0);
   expect(b.y, `${wann}: oben abgeschnitten`).toBeGreaterThanOrEqual(0);
   expect(b.x + b.width, `${wann}: rechts abgeschnitten`).toBeLessThanOrEqual(v.width + 1);
