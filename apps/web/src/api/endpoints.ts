@@ -114,6 +114,9 @@ import type {
   ValidationBoardKo,
   ValidationSettings,
   Verdict,
+  // R-1107: der Drahtvertrag des Zusammenführens.
+  ZusammenfuehrungsAuftrag,
+  ZusammenfuehrungsErgebnis,
 } from "./types";
 
 function qs(params?: Record<string, string | undefined>): string {
@@ -705,6 +708,11 @@ export const endpoints = {
             note?: string;
           },
     ) => api.post<OverlapEntry>(`/duplicates/${id}/status`, eingabe),
+    // R-1107 / R-0201 (Aufnahme gesamt-dublettenvergleich): der vierte Schritt des Assistenten —
+    // erst nach Vorschau und ausdrücklicher Freigabe (`bestaetigt: true`). Kuratorisch: der Server
+    // weist Autoren einer der beiden Seiten mit 403 ab (R-0565).
+    merge: (id: string, auftrag: ZusammenfuehrungsAuftrag) =>
+      api.post<ZusammenfuehrungsErgebnis>(`/duplicates/${id}/merge`, auftrag),
     // Pedi 04.07.: Anzeige-Schwelle (lesen: alle Leseberechtigten; setzen: Admin).
     settings: () => api.get<OverlapSettings>("/duplicates/settings"),
     saveSettings: (minConfidence: number) =>

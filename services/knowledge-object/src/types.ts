@@ -710,6 +710,28 @@ export interface KnowledgeObject {
   // Frist automatisch endgültig entfernt. Demo-Daten landen NIE hier (immer hart).
   deletedAt?: string;
   deletedBy?: string;
+  // ============================================================================================
+  // R-1107 (Aufnahme gesamt-dublettenvergleich) — DER AUFGEGANGENE ARTIKEL BLEIBT, MIT VERWEIS.
+  // ============================================================================================
+  //
+  // Gesetzt ausschliesslich vom Zusammenführen-Assistenten (`KoService.markMergedInto`), wenn der
+  // Inhalt dieses Objekts in einen Führungsartikel übernommen wurde. Das Objekt wird dabei NICHT
+  // gelöscht und nicht in den Papierkorb gelegt (der endlöscht nach Frist und nähme Quellen,
+  // Kommentare und Historie mit): es bleibt dauerhaft lesbar und nennt den verbleibenden Artikel.
+  // Additiv im JSONB, keine Migration; fehlt das Feld, ist das Objekt in nichts aufgegangen.
+  mergedInto?: KoMergedInto;
+}
+
+/** R-1107: wohin ein aufgegangener Artikel zusammengeführt wurde (s. `KnowledgeObject.mergedInto`). */
+export interface KoMergedInto {
+  /** Der verbleibende Führungsartikel. */
+  koId: string;
+  /** Seine Fassung, die den Inhalt aufgenommen hat (eine neue, ungeprüfte Fassung). */
+  version: number;
+  /** Der Dublettenbefund, über den zusammengeführt wurde. */
+  overlapId: string;
+  at: string;
+  by: string;
 }
 
 // SCRUM-422: Papierkorb-Zeile für den Admin — nur Metadaten, keine Inhalte.

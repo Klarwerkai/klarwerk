@@ -119,6 +119,8 @@ import {
   type KoCommentResolution,
   type KoCreateOperation,
   KoError,
+  // R-1107: der Verweis eines aufgegangenen Artikels auf den verbleibenden.
+  type KoMergedInto,
   // JOB 3667 R2: der gebundene Änderungsvorschlag (Fall 2 der Accountregel).
   type KoProposal,
   type KoRepairNote,
@@ -6350,6 +6352,65 @@ export class KoService {
               action: "ko.author-transferred",
               target: id,
               payload: { author },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
+  // ==============================================================================================
+  // R-1107 (Aufnahme gesamt-dublettenvergleich) — DEN AUFGEGANGENEN ARTIKEL KENNZEICHNEN.
+  // ==============================================================================================
+  //
+  // Der letzte Inhaltsschritt des Zusammenführen-Assistenten: der Führungsartikel hat seine neue
+  // Fassung bereits (`revise`), dieses Objekt bekommt den Verweis darauf. Es ändert sich NUR das
+  // Feld `mergedInto` — keine Inhaltsversion, kein Text, keine Quelle, kein Kommentar, keine
+  // Historie. Das Objekt bleibt im Bestand und dauerhaft lesbar.
+  //
+  // Bedingt wie `revise` mit `expectedVersion`: hat sich das Objekt seit der Vorschau bewegt, wird
+  // nichts geschrieben (`KO_STALE`). Ein zweites Zusammenführen desselben Objekts wird ebenso
+  // abgewiesen, statt den ersten Verweis zu überschreiben. WER das darf, entscheidet der Aufrufer
+  // (kuratorisch, R-0565) — dieser Dienst kennt keine Rechte.
+  async markMergedInto(
+    id: string,
+    ziel: Omit<KoMergedInto, "at" | "by">,
+    actor: string,
+    expectedVersion: number,
+  ): Promise<KnowledgeObject> {
+    if (ziel.koId === id) {
+      throw new KoError("INVALID", "Ein Wissensobjekt kann nicht in sich selbst aufgehen.");
+    }
+    return this.mutateKo(id, (ko) => {
+      this.pruefeErwarteteVersion(ko, expectedVersion);
+      if (ko.mergedInto) {
+        throw new KoError(
+          "KO_STALE",
+          "Dieses Wissensobjekt ist bereits in einem anderen Artikel aufgegangen. Es wurde nichts überschrieben.",
+        );
+      }
+      const mergedInto: KoMergedInto = {
+        ...ziel,
+        at: new Date(this.now()).toISOString(),
+        by: actor,
+      };
+      const updated: KnowledgeObject = { ...ko, mergedInto };
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.merged-into",
+              target: id,
+              payload: {
+                koId: ziel.koId,
+                version: ziel.version,
+                overlapId: ziel.overlapId,
+                eigeneVersion: ko.version,
+              },
             },
             tx,
           );
