@@ -2783,15 +2783,25 @@ export interface DemoSeedResult {
 
 // Audit-P4 (SCRUM-398): Live-Wall — „frisch gesichert / hat heute geholfen" (read-only).
 export interface LiveWall {
+  // PMO-FEA-0003: ohne Autorenkennung — eine Person nennt die Wand nur mit Zustimmung (`validated`).
   saved: Array<{
     koId: string;
     title: string;
-    author: string;
     at: string;
     status: "offen" | "validiert";
   }>;
   helped: Array<{ koId: string; title: string; at: string }>;
   helpedToday: number;
+  // PMO-FEA-0003: neues validiertes Wissen; `name` und `foto` (Daten-URL) nur bei wirksamer
+  // Zustimmung der Person. Optional, weil Bestandsserver das Feld nicht kennen.
+  validated?: Array<{ koId: string; title: string; at: string; name?: string; foto?: string }>;
+}
+
+export interface LiveWallConsent {
+  nameConsent: boolean;
+  // PMO-FEA-0003: hat dieses Konto ein Foto hinterlegt? `photo` nur zur eigenen Vorschau.
+  photoConsent?: boolean;
+  photo?: string;
 }
 
 // R-0894: `escalation` = eskalierter Wahrheitskonflikt, `return` = Rückgabe zur Nacharbeit an die
