@@ -1315,6 +1315,11 @@ const INVENTAR: readonly string[] = [
   // GEMESSEN, SONDERN AUS DER QUELLE ABGELEITET: die Bahn dieses Auftrags startet keine Tests; ob
   // K2 mit diesem Eintrag grün ist, zeigt erst der Prüflauf.
   "tests/schnellwahl/wissen-in-der-schnellwahl.test.tsx",
+  // AUFNAHME 20260922 · GESAMT-DOKUMENTERZEUGUNG (Pedi 28.09., Anleitung in Word): der Prüfstand des
+  // Blocks KW-ANLEITUNG fährt `anleitung.js` am Word-Panel und im Teil R den Rückweg über das
+  // Aufgabenfenster — er nennt `taskpane.html`, Achse `taskpane`. Kein „klara" im Pfad, K5 bleibt
+  // unverändert. NICHT GEMESSEN, SONDERN AUS DER QUELLE ABGELEITET: die Bahn startet keine Tests.
+  "tests/anleitung-word/anleitung-word.test.tsx",
 ];
 
 // ------------------------------------------------------------------------------------------------

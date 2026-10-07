@@ -151,9 +151,14 @@ describe("JOB 3014 · B — die Grobstruktur der ausgelieferten Seite", () => {
     // KW-BEGRIFFE wohnt in `begriffe.js` (relativ, gleichherkünftig). Grund ist wieder B3: das
     // Fensterskript wird nicht vergrössert. Sie steht im KOPF hinter office.js und schliesst sich
     // erst bei DOMContentLoaded an (Begründung im Kopf von `begriffe.js`).
+    //
+    // AUFTRAG gesamt-dokumenterzeugung (Pedi 28.09.): eine FÜNFTE eigene Quelle nach derselben
+    // Regel — der Block KW-ANLEITUNG wohnt in `anleitung.js` (relativ, gleichherkünftig), im Kopf
+    // direkt hinter `begriffe.js`. Grund ist wieder B3.
     expect(extern).toEqual([
       "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       `begriffe.js?v=${FASSUNG}`,
+      `anleitung.js?v=${FASSUNG}`,
       `${RUECKWEG_DATEI}?v=${FASSUNG}`,
       `${JS_DATEI}?v=${FASSUNG}`,
       `${MARKE_DATEI}?v=${FASSUNG}`,

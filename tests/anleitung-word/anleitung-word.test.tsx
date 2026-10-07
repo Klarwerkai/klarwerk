@@ -1,0 +1,858 @@
+// @vitest-environment jsdom
+// ================================================================================================
+// ANLEITUNG IN WORD (`anleitung.js`) — Pedi 28.09.2026, Nutzerliste Auftrag 6, am Word-Panel.
+// ================================================================================================
+//
+// Auftrag `aufnahme:20260922:gesamt-dokumenterzeugung`, Ergänzung: Anleitungsvorlage (Zweck,
+// Voraussetzungen, Arbeitsschritte, ggf. Warnhinweise) und ein wiederverwendbarer Inhaltsbaustein in
+// Word; der Rückweg nach Klarwerk ist der bestehende aus Auftrag 4. Die Teile dieser Datei:
+//   V — die Vorlage erklärt, was Pflicht und was optional ist (Nachtrag 1);
+//   B — ein berechtigter Nutzer fügt einen vorhandenen Baustein mit Herkunft und Fassung ein
+//       (Nachtrag 2); Ungeprüftes, Vertrauliches und Unberechtigtes kommen nicht hinein;
+//   P — fehlende Pflichtangaben stehen am betroffenen Abschnitt, mit Empfehlung (Nachtrag 3), und
+//       „formal vollständig" ist getrennt von „fachlich geprüft/freigegeben" (Nachtrag 4);
+//   R — die fertige Anleitung geht über den BESTEHENDEN Rückweg zurück, Gliederung und
+//       Herkunftszeilen kommen in Klarwerk an (Nachtrag 5).
+//
+// WAS HIER LÄUFT: die ausgelieferte Datei `apps/web/public/word-addin/anleitung.js`, unverändert, im
+// jsdom über dem echten Markup von `#begriffe-block` aus `taskpane.html` (dort hängt der Block sich
+// an). `/api/output/*` beantwortet die ECHTE Route (`outputRoutes`) mit dem ECHTEN `OutputService`
+// über `app.inject` — die Regel „nur validiert, nichts Vertrauliches" ist also nicht nachgebaut.
+// `/api/kos/:id` liest aus demselben Bestand. Teil R fährt das echte Aufgabenfenster samt
+// `rueckweg.js` (`tests/app/klara-panel-fixture.ts`).
+//
+// WAS HIER NICHT LÄUFT, und das gehört zur Aussage: kein echtes Word und kein echter Server mit
+// Anmeldung. Die Word-Attrappe bildet die benutzten Aufrufe nach (`getSelection().paragraphs`,
+// `Paragraph.insertParagraph(…, "After")`, `styleBuiltIn`, `body.paragraphs` mit `text`/`style`,
+// `Paragraph.select`). Sie nimmt dabei den UNGÜNSTIGEN Fall an, dass ein neuer Absatz zunächst die
+// Formatvorlage seines Bezugsabsatzes erbt — das Panel muss sie deshalb selbst setzen. Wie Word im
+// Web das wirklich tut, ist nicht gemessen; das belegt nur die Bedienung im echten Host
+// (`docs/operations/word-anleitung-vorlage-baustein.md`).
+import { readFileSync } from "node:fs";
+import Fastify, { type FastifyInstance } from "fastify";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { Guards } from "../../services/app/src/http";
+import { outputRoutes } from "../../services/app/src/routes/output-routes";
+import type { KnowledgeObject, KoService } from "../../services/knowledge-object";
+import { OutputService } from "../../services/output";
+import { type KlaraPanel, createKlaraPanel, reply } from "../app/klara-panel-fixture";
+import { repoPfad } from "../support/repoPfad";
+
+// --- Der Bestand ---------------------------------------------------------------------------------
+
+function wissen(teil: Partial<KnowledgeObject> & { id: string; title: string }): KnowledgeObject {
+  return {
+    statement: `${teil.title}.`,
+    conditions: [],
+    measures: [],
+    status: "validiert",
+    version: 1,
+    trust: 90,
+    author: "u-carla",
+    originalAuthor: "u-carla",
+    category: "Wartung",
+    type: "Arbeitsanweisung",
+    createdAt: "2026-09-30T08:00:00.000Z",
+    confidentiality: "intern",
+    ...teil,
+  } as unknown as KnowledgeObject;
+}
+
+function grundbestand(): Map<string, KnowledgeObject> {
+  const liste = [
+    wissen({
+      id: "ko-ventil",
+      title: "Ventil drucklos schalten",
+      statement: "Vor jeder Wartung das Druckventil drucklos schalten.",
+      conditions: ["Wartung am Druckventil"],
+      measures: ["Absperrhahn schließen.", "Druck am Manometer prüfen (0 bar)."],
+      version: 3,
+      trust: 92,
+    }),
+    wissen({ id: "ko-offen", title: "Entwurf Dichtungstausch", status: "offen" as never }),
+    wissen({ id: "ko-geheim", title: "Rezeptur Dichtmasse", confidentiality: "vertraulich" }),
+    wissen({ id: "ko-wackelig", title: "Prüfintervall Filter", trust: 40, version: 2 }),
+  ];
+  return new Map(liste.map((k) => [k.id, k]));
+}
+
+let bestand = grundbestand();
+
+/** Ändert ein Objekt im Bestand — wie ein anderer Mensch in Klarwerk es zwischendurch täte. */
+function aendern(id: string, teil: Partial<KnowledgeObject>): void {
+  const alt = bestand.get(id);
+  if (!alt) {
+    throw new Error(`${id} fehlt im Bestand`);
+  }
+  bestand.set(id, { ...alt, ...teil });
+}
+
+let berechtigt = true;
+const gefragteRechte: string[] = [];
+/** Läuft unmittelbar vor `GET /api/kos/:id` — damit lässt sich „inzwischen geändert" stellen. */
+let vorKoAbruf: (() => void) | null = null;
+
+let app: FastifyInstance;
+
+beforeAll(async () => {
+  const koService = {
+    list: async (filter?: { status?: string }) =>
+      [...bestand.values()].filter((k) => !filter?.status || k.status === filter.status),
+    get: async (id: string) => bestand.get(id),
+  } as unknown as KoService;
+  const guards = {
+    requireUser: async () => ({ id: "u-erik", role: "editor" }),
+    requirePermission: async (
+      recht: string,
+      _anfrage: unknown,
+      antwort: { code(n: number): { send(b: unknown): void } },
+    ) => {
+      gefragteRechte.push(recht);
+      if (!berechtigt) {
+        antwort.code(403).send({ error: "FORBIDDEN" });
+        return undefined;
+      }
+      return { id: "u-erik", role: "editor" };
+    },
+  } as unknown as Guards;
+  app = Fastify();
+  await app.register(outputRoutes(new OutputService({ koService }), guards));
+  await app.ready();
+});
+
+afterAll(async () => {
+  await app.close();
+});
+
+// --- Server und Fenster-Globale ------------------------------------------------------------------
+
+interface Anfrage {
+  url: string;
+  method: string;
+  body: unknown;
+}
+
+const anfragen: Anfrage[] = [];
+const g = globalThis as unknown as Record<string, unknown>;
+const echtesFetch = g.fetch;
+
+function antwort(status: number, koerper: unknown) {
+  return { ok: status >= 200 && status < 300, status, json: () => Promise.resolve(koerper) };
+}
+
+async function serverAntwort(url: string, init?: { method?: string; body?: string }) {
+  const method = init?.method ?? "GET";
+  anfragen.push({ url, method, body: init?.body ? JSON.parse(init.body) : undefined });
+  if (url.startsWith("/api/output/")) {
+    const res = await app.inject({
+      method: method as "GET" | "POST",
+      url,
+      payload: init?.body,
+      headers: init?.body ? { "content-type": "application/json" } : {},
+    });
+    return antwort(res.statusCode, res.body ? JSON.parse(res.body) : null);
+  }
+  if (url.startsWith("/api/kos/")) {
+    vorKoAbruf?.();
+    const ko = bestand.get(decodeURIComponent(url.slice("/api/kos/".length)));
+    return ko ? antwort(200, ko) : antwort(404, { error: "KO_NOT_FOUND" });
+  }
+  return antwort(404, {});
+}
+
+// --- Die Word-Attrappe ---------------------------------------------------------------------------
+
+interface Absatz {
+  text: string;
+  stil: string;
+}
+
+let dokument: Absatz[] = [];
+let cursor = 0;
+let ausgewaehlt: Absatz | null = null;
+let wordApi13 = true;
+
+/** Was Word im Web für eine eingebaute Vorlage meldet — lokalisiert, wie im Rückweg gemessen. */
+const GEMELDETER_STIL: Record<string, string> = { Heading2: "Überschrift 2", Normal: "Standard" };
+
+function absatzObjekt(a: Absatz) {
+  return {
+    get text() {
+      return a.text;
+    },
+    get style() {
+      return a.stil;
+    },
+    set styleBuiltIn(wert: string) {
+      a.stil = GEMELDETER_STIL[wert] ?? wert;
+    },
+    select() {
+      ausgewaehlt = a;
+    },
+    insertParagraph(text: string, ort: string) {
+      if (ort !== "After") {
+        throw new Error(`Einfügeort ${ort} ist in der Attrappe nicht nachgebildet`);
+      }
+      // Der ungünstige Fall: der neue Absatz erbt zunächst die Vorlage des Bezugsabsatzes.
+      const neu: Absatz = { text, stil: a.stil };
+      dokument.splice(dokument.indexOf(a) + 1, 0, neu);
+      return absatzObjekt(neu);
+    },
+  };
+}
+
+function wordAttrappe() {
+  return {
+    run(arbeit: (kontext: unknown) => unknown) {
+      const kontext = {
+        document: {
+          body: {
+            get paragraphs() {
+              return { items: dokument.map(absatzObjekt), load() {} };
+            },
+          },
+          getSelection() {
+            const hier = dokument[cursor];
+            return { paragraphs: { items: hier ? [absatzObjekt(hier)] : [], load() {} } };
+          },
+        },
+        sync: () => Promise.resolve(),
+      };
+      return Promise.resolve().then(() => arbeit(kontext));
+    },
+  };
+}
+
+// --- Das Panel -----------------------------------------------------------------------------------
+
+function begriffeMarkup(): string {
+  const html = readFileSync(repoPfad("apps/web/public/word-addin/taskpane.html"), "utf8");
+  const treffer = html.match(/<div id="begriffe-block"[^\n]*<\/ul><\/div>/);
+  if (!treffer) {
+    throw new Error("taskpane.html: #begriffe-block nicht gefunden");
+  }
+  return treffer[0];
+}
+
+function panelStarten(): void {
+  document.body.innerHTML = `<div id="ask-ruhe"></div>${begriffeMarkup()}`;
+  g.lang = "de";
+  g.signedIn = true;
+  g.bestandSitzung = "id:u-erik";
+  g.officeUsable = () => true;
+  g.bestandRuheSichtbar = () => true;
+  g.bestandZeichnen = () => {};
+  g.setLang = (next: string) => {
+    g.lang = next;
+  };
+  g.checkSession = () => {};
+  g.Word = wordAttrappe();
+  g.Office = {
+    context: {
+      requirements: {
+        isSetSupported: (name: string, fassung: string) =>
+          name === "WordApi" && (fassung === "1.1" || wordApi13),
+      },
+    },
+  };
+  g.fetch = serverAntwort;
+  const quelle = readFileSync(repoPfad("apps/web/public/word-addin/anleitung.js"), "utf8");
+  new Function(quelle)();
+  if (document.readyState === "loading") {
+    document.dispatchEvent(new Event("DOMContentLoaded"));
+  }
+}
+
+function el<T extends HTMLElement = HTMLElement>(id: string): T {
+  const gefunden = document.getElementById(id);
+  if (!gefunden) {
+    throw new Error(`#${id} fehlt`);
+  }
+  return gefunden as T;
+}
+
+const text = (id: string): string => el(id).textContent ?? "";
+
+/** Wartet, bis die Bedingung gilt — Fastify, Fetch und Word.run sind echte Promise-Ketten. */
+async function bis(bedingung: () => boolean): Promise<void> {
+  for (let i = 0; i < 400; i += 1) {
+    if (bedingung()) {
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  throw new Error("Zeitüberschreitung beim Warten auf das Panel");
+}
+
+const ruhig = (): boolean => !el<HTMLButtonElement>("anleitung-pruefen-btn").disabled;
+
+async function klick(id: string): Promise<void> {
+  el<HTMLButtonElement>(id).click();
+  await bis(ruhig);
+}
+
+async function pruefen(): Promise<void> {
+  await klick("anleitung-pruefen-btn");
+}
+
+function abschnitte(): { schluessel: string; zustand: string; text: string; springen: boolean }[] {
+  return [...document.querySelectorAll("#anleitung-liste li")].map((li) => ({
+    schluessel: li.getAttribute("data-abschnitt") ?? "",
+    zustand: li.getAttribute("data-zustand") ?? "",
+    text: li.querySelector("div")?.textContent ?? "",
+    springen: li.querySelector("button.anleitung-springen") !== null,
+  }));
+}
+
+function texte(): string[] {
+  return dokument.map((a) => a.text);
+}
+
+/** Ersetzt den Hinweis unter einer Überschrift durch eigenen Text — wie ein Mensch in Word. */
+function ausfuellen(ueberschrift: string, ...zeilen: string[]): void {
+  const kopf = dokument.findIndex((a) => a.text === ueberschrift);
+  const hinweis = dokument[kopf + 1];
+  if (kopf < 0 || !hinweis || !hinweis.text.startsWith("[")) {
+    throw new Error(`Abschnitt ${ueberschrift} ohne Hinweis`);
+  }
+  dokument.splice(kopf + 1, 1, ...zeilen.map((t) => ({ text: t, stil: "Standard" })));
+}
+
+beforeEach(() => {
+  bestand = grundbestand();
+  berechtigt = true;
+  gefragteRechte.length = 0;
+  vorKoAbruf = null;
+  anfragen.length = 0;
+  dokument = [{ text: "Anleitung Ventilwartung", stil: "Überschrift 1" }];
+  cursor = 0;
+  ausgewaehlt = null;
+  wordApi13 = true;
+});
+
+afterEach(() => {
+  g.fetch = echtesFetch;
+  for (const name of [
+    "lang",
+    "signedIn",
+    "bestandSitzung",
+    "officeUsable",
+    "bestandRuheSichtbar",
+    "bestandZeichnen",
+    "setLang",
+    "checkSession",
+    "Word",
+    "Office",
+  ]) {
+    Reflect.deleteProperty(g, name);
+  }
+  document.body.innerHTML = "";
+});
+
+const VORLAGE_DE = [
+  ["Zweck", "Überschrift 2"],
+  [
+    "[Pflichtangabe: Wozu dient diese Anleitung, und für wen gilt sie? Ein bis zwei Sätze.]",
+    "Standard",
+  ],
+  ["Voraussetzungen", "Überschrift 2"],
+  [
+    "[Pflichtangabe: Was muss vor dem ersten Schritt erfüllt sein – Berechtigungen, Werkzeuge, Unterlagen? Gibt es nichts, „Keine“ eintragen.]",
+    "Standard",
+  ],
+  ["Arbeitsschritte", "Überschrift 2"],
+  [
+    "[Pflichtangabe: Jeden Arbeitsschritt als eigenen Absatz, in der Reihenfolge der Ausführung, z. B. „1. Anlage ausschalten.“]",
+    "Standard",
+  ],
+  ["Warnhinweise", "Überschrift 2"],
+  [
+    "[Optional: Gefahren und typische Fehler, die man vor oder bei den Schritten kennen muss. Gibt es keine, diesen Abschnitt löschen.]",
+    "Standard",
+  ],
+];
+
+// ================================================================================================
+// V — DIE VORLAGE (Nachtrag 1: erklärt verständlich, was erforderlich und was optional ist)
+// ================================================================================================
+
+describe("V · die Anleitungsvorlage in Word", () => {
+  it("V1: der Block steht nur angemeldet, in der Ruhe und mit offenem Word-Dokument im Bild", () => {
+    panelStarten();
+    expect(el("anleitung-block").className).toBe("");
+    // Er hängt direkt hinter dem Firmenwörterbuch.
+    expect(el("begriffe-block").nextElementSibling?.id).toBe("anleitung-block");
+    g.signedIn = false;
+    (g.bestandZeichnen as () => void)();
+    expect(el("anleitung-block").className).toBe("hidden");
+    // Ohne Zutun des Nutzers geht nichts an den Server.
+    expect(anfragen).toEqual([]);
+  });
+
+  it("V2: die Zeile über den Knöpfen sagt, was Pflicht und was optional ist", () => {
+    panelStarten();
+    expect(text("anleitung-erklaerung")).toBe(
+      "Pflicht: Zweck, Voraussetzungen, Arbeitsschritte. Optional: Warnhinweise. Die Hinweise in eckigen Klammern sagen, was in den Abschnitt gehört; sie werden beim Ausfüllen ersetzt.",
+    );
+    expect(text("anleitung-vorlage-btn")).toBe("Anleitungsvorlage einfügen");
+  });
+
+  it("V3: „Anleitungsvorlage einfügen“ setzt vier Überschriften mit je einem Pflicht-/Optional-Hinweis hinter den Cursor", async () => {
+    panelStarten();
+    await klick("anleitung-vorlage-btn");
+    expect(dokument.map((a) => [a.text, a.stil])).toEqual([
+      ["Anleitung Ventilwartung", "Überschrift 1"],
+      ...VORLAGE_DE,
+    ]);
+    expect(text("anleitung-stand")).toBe(
+      "Vorlage eingefügt. Ersetzen Sie die Hinweise in eckigen Klammern durch Ihren Text.",
+    );
+    // Der Absatz am Cursor bleibt, wie er war — eingefügt wird dahinter, nichts wird ersetzt.
+    expect(dokument[0]).toEqual({ text: "Anleitung Ventilwartung", stil: "Überschrift 1" });
+  });
+
+  it("V4: auf Englisch kommt die Vorlage auf Englisch — und die Prüfung erkennt sie", async () => {
+    panelStarten();
+    (g.setLang as (c: string) => void)("en");
+    expect(text("anleitung-erklaerung")).toContain("Required: Purpose, Prerequisites, Steps.");
+    expect(text("anleitung-erklaerung")).toContain("Optional: Warnings.");
+    await klick("anleitung-vorlage-btn");
+    expect(texte().filter((_, i) => i % 2 === 1)).toEqual([
+      "Purpose",
+      "Prerequisites",
+      "Steps",
+      "Warnings",
+    ]);
+    expect(texte()[2]).toMatch(/^\[Required: /);
+    expect(texte()[8]).toMatch(/^\[Optional: /);
+    await pruefen();
+    expect(text("anleitung-formal")).toBe(
+      "Formally complete: no – 3 of 3 required sections are missing.",
+    );
+  });
+
+  it("V5: meldet Word kein WordApi 1.3, wird keine Formatvorlage gesetzt — der Text kommt trotzdem", async () => {
+    wordApi13 = false;
+    panelStarten();
+    await klick("anleitung-vorlage-btn");
+    expect(texte().slice(1)).toEqual(VORLAGE_DE.map(([t]) => t));
+    // Ehrlich: ohne setzbare Vorlage erbt alles die Vorlage des Cursor-Absatzes (Attrappe).
+    expect(new Set(dokument.map((a) => a.stil))).toEqual(new Set(["Überschrift 1"]));
+  });
+});
+
+// ================================================================================================
+// P — PRÜFEN (Nachtrag 3: am Abschnitt, mit Empfehlung; Nachtrag 4: formal ≠ fachlich)
+// ================================================================================================
+
+describe("P · fehlende Pflichtangaben am Abschnitt, formal getrennt von fachlich", () => {
+  it("P1: frisch eingefügt fehlen alle drei Pflichtangaben — je Abschnitt eine Zeile mit Empfehlung", async () => {
+    panelStarten();
+    await klick("anleitung-vorlage-btn");
+    await pruefen();
+    expect(text("anleitung-formal")).toBe(
+      "Formal vollständig: nein – 3 von 3 Pflichtangaben fehlen.",
+    );
+    expect(abschnitte()).toEqual([
+      {
+        schluessel: "zweck",
+        zustand: "vorlage",
+        text: "„Zweck“ (Pflicht): Angabe fehlt. Schreiben Sie in ein bis zwei Sätzen, wozu die Anleitung dient und für wen sie gilt.",
+        springen: true,
+      },
+      {
+        schluessel: "voraussetzungen",
+        zustand: "vorlage",
+        text: "„Voraussetzungen“ (Pflicht): Angabe fehlt. Nennen Sie, was vor dem ersten Schritt erfüllt sein muss. Gibt es nichts, schreiben Sie „Keine“.",
+        springen: true,
+      },
+      {
+        schluessel: "schritte",
+        zustand: "vorlage",
+        text: "„Arbeitsschritte“ (Pflicht): Angabe fehlt. Tragen Sie mindestens einen Arbeitsschritt ein – jeden als eigenen Absatz, in der Reihenfolge der Ausführung.",
+        springen: true,
+      },
+      {
+        schluessel: "warnhinweise",
+        zustand: "vorlage",
+        text: "„Warnhinweise“ (optional): Es steht noch der Vorlagenhinweis. Tragen Sie Gefahren oder typische Fehler ein – oder löschen Sie den Abschnitt samt Hinweis, wenn es keine gibt.",
+        springen: true,
+      },
+    ]);
+    // Die Prüfung schreibt nichts ins Dokument.
+    expect(texte().slice(1)).toEqual(VORLAGE_DE.map(([t]) => t));
+  });
+
+  it("P2: „Zum Abschnitt“ wählt in Word genau die Stelle, an der die Angabe fehlt", async () => {
+    panelStarten();
+    await klick("anleitung-vorlage-btn");
+    await pruefen();
+    const zeilen = [...document.querySelectorAll<HTMLButtonElement>("button.anleitung-springen")];
+    zeilen[1]?.click();
+    await bis(() => ausgewaehlt !== null);
+    expect(ausgewaehlt).toBe(dokument[4]);
+    expect(ausgewaehlt?.text).toMatch(/^\[Pflichtangabe: Was muss vor dem ersten Schritt/);
+  });
+
+  it("P3: hat sich das Dokument seit der Prüfung verschoben, springt der Knopf NICHT an eine fremde Stelle", async () => {
+    panelStarten();
+    await klick("anleitung-vorlage-btn");
+    await pruefen();
+    dokument.splice(1, 0, { text: "Neu eingefügter Absatz", stil: "Standard" });
+    document.querySelector<HTMLButtonElement>("button.anleitung-springen")?.click();
+    await bis(() => text("anleitung-stand") !== "");
+    expect(ausgewaehlt).toBeNull();
+    expect(text("anleitung-stand")).toBe(
+      "Das Dokument hat sich seit der Prüfung geändert. Bitte erneut prüfen.",
+    );
+  });
+
+  it("P4: ausgefüllt heißt „formal vollständig: ja“ — und die fachliche Prüfung bleibt ausdrücklich offen", async () => {
+    panelStarten();
+    await klick("anleitung-vorlage-btn");
+    ausfuellen(
+      "Zweck",
+      "Diese Anleitung beschreibt die Wartung des Druckventils für das Schichtteam.",
+    );
+    ausfuellen("Voraussetzungen", "Schlüssel zum Technikraum, Manometer.");
+    ausfuellen("Arbeitsschritte", "1. Anlage ausschalten.", "2. Ventil prüfen.");
+    await pruefen();
+    expect(text("anleitung-formal")).toBe(
+      "Formal vollständig: ja – alle Pflichtangaben sind ausgefüllt.",
+    );
+    expect(el("anleitung-formal").className).toBe("");
+    // Getrennt davon, und auch bei „ja“ unverändert da:
+    expect(text("anleitung-fachlich")).toBe(
+      "Fachlich geprüft oder freigegeben: nicht festgestellt. Diese Prüfung sieht nur auf die Form. Fachlich geprüft und freigegeben ist die Anleitung erst, wenn sie unter „Erfassen“ an Klarwerk zurückgegeben und dort von einer berechtigten Person freigegeben wurde.",
+    );
+    expect(text("anleitung-fachlich")).not.toContain("freigegeben: ja");
+    // Der optionale Abschnitt mit stehengebliebenem Hinweis macht die Form NICHT unvollständig.
+    expect(abschnitte().map((a) => [a.schluessel, a.zustand])).toEqual([
+      ["zweck", "ok"],
+      ["voraussetzungen", "ok"],
+      ["schritte", "ok"],
+      ["warnhinweise", "vorlage"],
+    ]);
+  });
+
+  it("P5: ein fehlender Pflichtabschnitt wird benannt; ein gelöschter optionaler ist zulässig", async () => {
+    panelStarten();
+    await klick("anleitung-vorlage-btn");
+    ausfuellen("Zweck", "Wartung des Druckventils.");
+    ausfuellen("Arbeitsschritte", "1. Anlage ausschalten.");
+    // Voraussetzungen samt Hinweis und Warnhinweise samt Hinweis gelöscht.
+    dokument = dokument.filter(
+      (a) =>
+        !["Voraussetzungen", "Warnhinweise"].includes(a.text) &&
+        !a.text.startsWith("[Pflichtangabe: Was muss") &&
+        !a.text.startsWith("[Optional:"),
+    );
+    await pruefen();
+    expect(text("anleitung-formal")).toBe(
+      "Formal vollständig: nein – 1 von 3 Pflichtangaben fehlen.",
+    );
+    const [, voraussetzungen, , warn] = abschnitte();
+    expect(voraussetzungen).toEqual({
+      schluessel: "voraussetzungen",
+      zustand: "fehlt",
+      text: "„Voraussetzungen“ (Pflicht): Abschnitt fehlt. Fügen Sie die Überschrift „Voraussetzungen“ ein oder setzen Sie die Vorlage neu ein.",
+      springen: false,
+    });
+    expect(warn?.text).toBe("„Warnhinweise“ (optional): nicht enthalten – das ist zulässig.");
+  });
+
+  it("P6: ohne Vorlage im Dokument sagt der Block, was zu tun ist", async () => {
+    panelStarten();
+    await pruefen();
+    expect(el("anleitung-ergebnis").className).toBe("hidden");
+    expect(text("anleitung-stand")).toBe(
+      "Im Dokument steht keine Anleitungsvorlage (Überschriften Zweck, Voraussetzungen, Arbeitsschritte). Zuerst „Anleitungsvorlage einfügen“.",
+    );
+  });
+
+  it("P7: ein Abschnitt endet an der nächsten Überschrift — ein fremdes Kapitel füllt keine Pflichtangabe", async () => {
+    panelStarten();
+    await klick("anleitung-vorlage-btn");
+    ausfuellen("Zweck", "Wartung des Druckventils.");
+    ausfuellen("Voraussetzungen", "Keine");
+    // Arbeitsschritte bleibt leer; dahinter ein fremdes Kapitel mit Text.
+    const kopf = dokument.findIndex((a) => a.text === "Arbeitsschritte");
+    dokument.splice(kopf + 1, 1, { text: "Anhang", stil: "Überschrift 2" });
+    dokument.splice(kopf + 2, 0, { text: "Text eines anderen Kapitels.", stil: "Standard" });
+    await pruefen();
+    expect(abschnitte()[2]).toMatchObject({
+      schluessel: "schritte",
+      zustand: "leer",
+      springen: true,
+    });
+    expect(text("anleitung-formal")).toBe(
+      "Formal vollständig: nein – 1 von 3 Pflichtangaben fehlen.",
+    );
+  });
+});
+
+// ================================================================================================
+// B — BAUSTEINE (Nachtrag 2: berechtigt, vorhanden, mit erkennbarer Herkunft und Fassung)
+// ================================================================================================
+
+async function bausteinWaehlen(id: string): Promise<void> {
+  const auswahl = el<HTMLSelectElement>("anleitung-baustein");
+  auswahl.dispatchEvent(new Event("mousedown"));
+  await bis(() => auswahl.options.length > 1 || text("anleitung-stand") !== "");
+  auswahl.value = id;
+}
+
+describe("B · ein vorhandener Baustein mit Herkunft und Fassung", () => {
+  it("B1: die Auswahl kommt erst auf Bedienung — und zeigt nur geprüftes, nicht vertrauliches Wissen", async () => {
+    panelStarten();
+    expect(anfragen).toEqual([]);
+    await bausteinWaehlen("");
+    expect(anfragen.map((a) => `${a.method} ${a.url}`)).toEqual(["GET /api/output/sources"]);
+    expect(gefragteRechte).toEqual(["ko.read"]);
+    const auswahl = el<HTMLSelectElement>("anleitung-baustein");
+    const optionen = [...auswahl.options].map((o) => [o.value, o.textContent]);
+    expect(optionen).toEqual([
+      ["", "Baustein wählen …"],
+      ["ko-ventil", "Ventil drucklos schalten · Fassung 3"],
+      ["ko-wackelig", "Prüfintervall Filter · Fassung 2"],
+    ]);
+  });
+
+  it("B2: „Baustein einfügen“ setzt Inhalt und Herkunftszeile hinter den Cursor — Fassung und Prüfstand aus der Output Factory", async () => {
+    panelStarten();
+    await klick("anleitung-vorlage-btn");
+    cursor = dokument.findIndex((a) => a.text === "Arbeitsschritte");
+    await bausteinWaehlen("ko-ventil");
+    await klick("anleitung-baustein-btn");
+    const kopf = dokument.findIndex((a) => a.text === "Arbeitsschritte");
+    expect(dokument.slice(kopf + 1, kopf + 6)).toEqual([
+      { text: "Vor jeder Wartung das Druckventil drucklos schalten.", stil: "Standard" },
+      { text: "Gilt, wenn: Wartung am Druckventil", stil: "Standard" },
+      { text: "1. Absperrhahn schließen.", stil: "Standard" },
+      { text: "2. Druck am Manometer prüfen (0 bar).", stil: "Standard" },
+      {
+        text: "Baustein aus Klarwerk: „Ventil drucklos schalten“ · Fassung 3 · Prüfstand validiert · Vertrauenswert 92 · Kennung ko-ventil",
+        stil: "Standard",
+      },
+    ]);
+    expect(text("anleitung-stand")).toBe(
+      "Eingefügt: „Ventil drucklos schalten“, Fassung 3 – mit Herkunftszeile.",
+    );
+    // Der Weg: Quellenliste, Output Factory als Tor, dann der Inhalt — alles mit `ko.read`.
+    expect(anfragen.map((a) => `${a.method} ${a.url}`)).toEqual([
+      "GET /api/output/sources",
+      "POST /api/output/generate",
+      "GET /api/kos/ko-ventil",
+    ]);
+    expect(anfragen[1]?.body).toEqual({ kind: "instruction", koIds: ["ko-ventil"] });
+    expect(gefragteRechte).toEqual(["ko.read", "ko.read"]);
+    // Die Prüfung zählt den Baustein und sagt, wofür sein Prüfstand gilt.
+    await pruefen();
+    expect(text("anleitung-bausteine")).toBe(
+      "Bausteine aus Klarwerk im Dokument: 1. Ihr Prüfstand steht in der jeweiligen Herkunftszeile und gilt nur für den Baustein, nicht für die ganze Anleitung.",
+    );
+  });
+
+  it("B3: niedriger Vertrauenswert steht in der Herkunftszeile", async () => {
+    panelStarten();
+    await bausteinWaehlen("ko-wackelig");
+    await klick("anleitung-baustein-btn");
+    expect(texte().at(-1)).toBe(
+      "Baustein aus Klarwerk: „Prüfintervall Filter“ · Fassung 2 · Prüfstand validiert · Vertrauenswert 40 · Kennung ko-wackelig · niedriger Vertrauenswert",
+    );
+  });
+
+  it("B4: wird der Baustein vor dem Einfügen vertraulich, lehnt die Output Factory ab — nichts kommt ins Dokument", async () => {
+    panelStarten();
+    await bausteinWaehlen("ko-ventil");
+    aendern("ko-ventil", { confidentiality: "vertraulich" });
+    const vorher = JSON.stringify(dokument);
+    await klick("anleitung-baustein-btn");
+    expect(JSON.stringify(dokument)).toBe(vorher);
+    expect(text("anleitung-stand")).toBe(
+      "Nur geprüftes, nicht vertrauliches Wissen kann als Baustein eingefügt werden – nichts eingefügt.",
+    );
+    expect(anfragen.map((a) => a.url)).not.toContain("/api/kos/ko-ventil");
+  });
+
+  it("B5: ist der Baustein nicht mehr validiert, ebenso", async () => {
+    panelStarten();
+    await bausteinWaehlen("ko-ventil");
+    aendern("ko-ventil", { status: "offen" as never });
+    const vorher = JSON.stringify(dokument);
+    await klick("anleitung-baustein-btn");
+    expect(JSON.stringify(dokument)).toBe(vorher);
+    expect(text("anleitung-stand")).toContain("nichts eingefügt");
+  });
+
+  it("B6: ändert sich die Fassung zwischen Herkunft und Inhalt, wird nichts eingefügt", async () => {
+    panelStarten();
+    await bausteinWaehlen("ko-ventil");
+    vorKoAbruf = () => {
+      aendern("ko-ventil", { version: 4 });
+    };
+    const vorher = JSON.stringify(dokument);
+    await klick("anleitung-baustein-btn");
+    expect(JSON.stringify(dokument)).toBe(vorher);
+    expect(text("anleitung-stand")).toBe(
+      "Der Baustein hat sich gerade geändert – nichts eingefügt. Bitte erneut wählen.",
+    );
+  });
+
+  it("B7: ohne Recht gibt es keine Auswahl und keinen Baustein — der Server entscheidet", async () => {
+    berechtigt = false;
+    panelStarten();
+    await bausteinWaehlen("ko-ventil");
+    expect(text("anleitung-stand")).toBe("Dafür fehlt das Recht.");
+    const auswahl = el<HTMLSelectElement>("anleitung-baustein");
+    expect([...auswahl.options].map((o) => o.value)).toEqual([""]);
+    // Auch ein am Fenster vorbei gesetzter Wert kommt nicht durch: die Factory antwortet 403.
+    const o = document.createElement("option");
+    o.value = "ko-ventil";
+    auswahl.appendChild(o);
+    auswahl.value = "ko-ventil";
+    const vorher = JSON.stringify(dokument);
+    await klick("anleitung-baustein-btn");
+    expect(JSON.stringify(dokument)).toBe(vorher);
+    expect(text("anleitung-stand")).toBe("Dafür fehlt das Recht.");
+  });
+
+  it("B8: ohne Wahl kein Abruf", async () => {
+    panelStarten();
+    await klick("anleitung-baustein-btn");
+    expect(text("anleitung-stand")).toBe("Bitte zuerst einen Baustein wählen.");
+    expect(anfragen).toEqual([]);
+  });
+});
+
+// ================================================================================================
+// R — DER RÜCKWEG (Nachtrag 5: Struktur und Quellenbezug bleiben nachvollziehbar erhalten)
+// ================================================================================================
+//
+// Die Anleitung entsteht HIER mit `anleitung.js` (Vorlage, ausgefüllt, ein Baustein), dann geht sie
+// über den BESTEHENDEN Rückweg (`rueckweg.js`, Auftrag 4, unverändert) im echten Aufgabenfenster an
+// ein Wissensobjekt zurück. Das Office-HTML der Markierung ist — wie in R20
+// (`tests/word-rueckweg/panel-rueckweg-mounted.test.ts`) — die aus dem Realhostbeleg 06.10.
+// folgende Form: jeder Absatz ein `<p class="MsoNormal">`, Überschriften NICHT ausgezeichnet. Das
+// ist eine Annahme über das Format, keine Aufzeichnung; die Überschriften kommen über die
+// Formatvorlage, die der Rückweg aus Word liest.
+
+function esc(t: string): string {
+  return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+let fenster: KlaraPanel | null = null;
+afterEach(() => {
+  fenster?.restore();
+  fenster = null;
+});
+
+describe("R · zurück nach Klarwerk über den bestehenden Rückweg", () => {
+  it("R1: Überschriften, Reihenfolge und Herkunftszeile kommen im Wissensobjekt an", async () => {
+    // 1. Die Anleitung in Word bauen.
+    panelStarten();
+    await klick("anleitung-vorlage-btn");
+    ausfuellen("Zweck", "Diese Anleitung beschreibt die Wartung des Druckventils.");
+    ausfuellen("Voraussetzungen", "Schlüssel zum Technikraum.");
+    ausfuellen("Arbeitsschritte", "1. Anlage ausschalten.");
+    ausfuellen("Warnhinweise", "Leitung steht unter Druck, bis das Manometer 0 bar zeigt.");
+    cursor = dokument.findIndex((a) => a.text === "1. Anlage ausschalten.");
+    await bausteinWaehlen("ko-ventil");
+    await klick("anleitung-baustein-btn");
+    await pruefen();
+    expect(text("anleitung-formal")).toBe(
+      "Formal vollständig: ja – alle Pflichtangaben sind ausgefüllt.",
+    );
+    const absaetze = dokument.map((a) => ({ text: a.text, stil: a.stil }));
+    const herkunft = absaetze.find((a) => a.text.startsWith("Baustein aus Klarwerk:"))?.text ?? "";
+    expect(herkunft).toContain("Fassung 3");
+    // Das Anleitungsfenster aufräumen — ab hier läuft das echte Aufgabenfenster.
+    g.fetch = echtesFetch;
+    for (const name of ["Word", "Office", "lang", "signedIn", "bestandSitzung"]) {
+      Reflect.deleteProperty(g, name);
+    }
+    document.body.innerHTML = "";
+
+    // 2. Die ganze Anleitung markiert über „Erfassen“ an das Objekt zurückgeben (Rolle admin).
+    const absatzHtml = absaetze.map((a) => `<p class="MsoNormal">${esc(a.text)}</p>`).join("");
+    const office = `<html><body>${absatzHtml}</body></html>`;
+    fenster = createKlaraPanel({
+      selectionText: absaetze.map((a) => a.text).join("\n"),
+      selectionHtml: office,
+      wordMarkierung: { lage: "sofort", absaetze },
+      routes: {
+        "/api/check-text": reply(200, {
+          duplicates: [
+            {
+              koId: "ko-anleitung",
+              koTitle: "Anleitung Ventilwartung",
+              relation: "teilweise",
+              koStatus: "validiert",
+              koCategory: "Wartung",
+            },
+          ],
+          conflicts: [],
+          note: null,
+        }),
+        "/api/auth/me": { status: 200, body: { id: "pedi-1", name: "Pedi", role: "admin" } },
+        "/api/kos/": (_url: string, init: Record<string, unknown> | undefined) => {
+          const methode = typeof init?.method === "string" ? init.method : "GET";
+          const version = methode === "PUT" ? 3 : 2;
+          return {
+            status: 200,
+            body: {
+              id: "ko-anleitung",
+              title: "Anleitung Ventilwartung",
+              version,
+              status: "validiert",
+              trust: 90,
+              comments: [],
+              proposals: [],
+              bodyHtml: null,
+            },
+          };
+        },
+      } as never,
+    });
+    fenster.setTab("capture");
+    await fenster.flush();
+    fenster.q("#rw-liste button")?.click();
+    await fenster.flush();
+    fenster.q("#rw-btn")?.click();
+    await fenster.flush();
+    await fenster.flush();
+
+    const puts = fenster.calls.filter((c) => c.method === "PUT");
+    expect(puts).toHaveLength(1);
+    const koerper = JSON.parse(puts[0]?.body ?? "{}") as {
+      action?: string;
+      changes?: { bodyHtml?: string };
+    };
+    expect(koerper.action).toBe("revise-release");
+    const html = String(koerper.changes?.bodyHtml ?? "");
+
+    // Die Gliederung: Titel als <h1>, die vier Abschnitte als <h2>, in dieser Reihenfolge.
+    const stellen = [
+      "<h1>Anleitung Ventilwartung</h1>",
+      "<h2>Zweck</h2>",
+      "Diese Anleitung beschreibt die Wartung des Druckventils.",
+      "<h2>Voraussetzungen</h2>",
+      "<h2>Arbeitsschritte</h2>",
+      "1. Anlage ausschalten.",
+      "Vor jeder Wartung das Druckventil drucklos schalten.",
+      herkunft,
+      "<h2>Warnhinweise</h2>",
+    ].map((s) => html.indexOf(s));
+    expect(
+      stellen.every((s) => s >= 0),
+      html,
+    ).toBe(true);
+    expect([...stellen].sort((a, b) => a - b)).toEqual(stellen);
+    // Der Quellenbezug reist als lesbare Zeile mit: Titel, Fassung, Prüfstand, Kennung.
+    expect(herkunft).toBe(
+      "Baustein aus Klarwerk: „Ventil drucklos schalten“ · Fassung 3 · Prüfstand validiert · Vertrauenswert 92 · Kennung ko-ventil",
+    );
+    // Keine Überschrift ging verloren, kein Verlustsatz.
+    expect(fenster.text("#rw-status")).toBe(fenster.t("rwFertigFrei", { n: "3" }));
+  });
+});

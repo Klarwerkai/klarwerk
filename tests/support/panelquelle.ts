@@ -171,6 +171,14 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 8 (firmenwoerterbuch): GEMESSEN im Prüflauf zu Kandidat a8ec940f (`5d7ae0b8…`,
  * „Received" von E2, HISTORIE/nacharbeit-8/PRUEFUNG/panel-integration-pins.log) und unverändert
  * übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ *
+ * AUFNAHME 20260922 · GESAMT-DOKUMENTERZEUGUNG (Pedi 28.09., Anleitung in Word): dieselbe Regel.
+ * `taskpane.html` trägt im Kopf GENAU einen Verweis mehr — `anleitung.js` hinter `begriffe.js`, in
+ * derselben Zeile (Zeilenzahl unverändert). `taskpane.js`, `taskpane.css` und `marke.js` bleiben
+ * unberührt; `anleitung.js` selbst ist wie `begriffe.js` kein Teil des zusammengefügten Dokuments.
+ * Der Bezugspunkt MUSS deshalb wandern; ohne zugelassenes Hash-Werkzeug ist er hier nicht
+ * berechenbar. E2 meldet ihn im Prüflauf als „Received"; er wird danach gemessen übernommen. E3
+ * bleibt die Gegenprobe.
  */
 export const PANEL_VOR_SCHNITT_BLOB = "5d7ae0b8fccc34c05e5c070cea753189729ef841";
 

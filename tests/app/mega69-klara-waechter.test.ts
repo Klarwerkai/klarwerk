@@ -2747,6 +2747,17 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Prüflauf zu Kandidat f4db2037 GEMESSEN („Received", HISTORIE/nacharbeit-10/PRUEFUNG/
     // auslieferungswaechter-fenster.log) und unverändert übernommen; die vier Panel-Dateien sind seit
     // dieser Messung unberührt (`git diff f4db2037 -- apps/web/public/word-addin/` leer).
+    // AUFNAHME 20260922 · GESAMT-DOKUMENTERZEUGUNG (Pedi 28.09., Anleitung in Word) — DER PIN MUSS
+    // WANDERN. `taskpane.html` ändert sich um GENAU einen Verweis im Kopf hinter `begriffe.js`:
+    // `<script src="anleitung.js?v=__KW_FASSUNG__"></script>` (Block KW-ANLEITUNG, eigene Datei wie
+    // KW-BEGRIFFE; `taskpane.js`, `taskpane.css` und `marke.js` bleiben unberührt, Zeilenzahl der
+    // Seite unverändert). Auslieferungsfolgen: neue Abrufziele NUR in `anleitung.js` und nur auf
+    // Klick — `GET /api/output/sources`, `POST /api/output/generate`, `GET /api/kos/:id`, alle
+    // gleichherkünftig (`connect-src 'self'`) und alle mit dem bestehenden Recht `ko.read`; keine
+    // CSP-, Rechte- oder Manifeständerung (`Paragraph.select`/`insertParagraph` WordApi 1.1,
+    // `styleBuiltIn` nur, wenn WordApi 1.3 gemeldet wird), kein Sideload. Ohne zugelassenes
+    // Hash-Werkzeug ist der neue Wert hier nicht berechenbar — der Prüflauf meldet ihn als
+    // „Received", er wird danach gemessen übernommen.
     const PIN = "eefba3bdd389a30d41f4fbe37ad5bcdc336667559554212971ecbe7dff5f37d3";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
