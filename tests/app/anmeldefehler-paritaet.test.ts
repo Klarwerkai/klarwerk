@@ -63,7 +63,7 @@ describe("R-0531 · Anmeldefehler: Web-Kopie und Server-Katalog", () => {
   });
 
   it("der eigene Satz kommt im Katalog nicht vor — er darf keinen Serversatz verdecken", () => {
-    const alle = new Set(
+    const alle = new Set<string>(
       Object.values(MELDUNGEN).flatMap((fassungen) => SPRACHEN.map((l) => fassungen[l])),
     );
     for (const l of SPRACHEN) {
