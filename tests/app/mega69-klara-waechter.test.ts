@@ -2753,10 +2753,12 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // bisher alle) je mit Prüfstand und Version (`askTragendeQuellen`, `askDokumentQuellenTitel`);
     // der Kommentarkopf über `composeOutputText` ist verdichtet (Schranke B3: 12494 Zeilen).
     // Auslieferungsfolgen: kein neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder
-    // Manifeständerung, kein neuer Wörterbuchschlüssel, kein Sideload. Ohne zugelassenes
-    // Hash-Werkzeug hier nicht berechenbar — der Prüflauf meldet den Ist-Wert als „Received", er wird
-    // danach gemessen übernommen.
-    const PIN = "eefba3bdd389a30d41f4fbe37ad5bcdc336667559554212971ecbe7dff5f37d3";
+    // Manifeständerung, kein neuer Wörterbuchschlüssel, kein Sideload.
+    // NACHARBEIT 1 (antwort-quellenanzeige): PIN BEWUSST AKTUALISIERT (eefba3bd… -> 8cd91a17…). Im
+    // Prüflauf zu Kandidat 95df9979 GEMESSEN („Received", HISTORIE/nacharbeit-1/PRUEFUNG/
+    // panel-ausgabe-und-waechter.log) und unverändert übernommen; die Panel-Dateien sind seit dieser
+    // Messung unberührt.
+    const PIN = "8cd91a17cd404821f8314b7a6a01da00c5b12652175f96cfaae1805e3ac2b14f";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,

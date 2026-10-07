@@ -177,8 +177,11 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * verdichteter Kommentarkopf; 12494 Zeilen). Der Wert unten ist damit ein PLATZHALTER bis zur
  * Messung — ohne zugelassenes Hash-Werkzeug hier nicht berechenbar; E2 meldet den neuen Blob im
  * Prüflauf als „Received", er wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 1 (antwort-quellenanzeige): GEMESSEN im Prüflauf zu Kandidat 95df9979 (`c8b2ec45…`,
+ * „Received" von E2, HISTORIE/nacharbeit-1/PRUEFUNG/panel-ausgabe-und-waechter.log) und unverändert
+ * übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "5d7ae0b8fccc34c05e5c070cea753189729ef841";
+export const PANEL_VOR_SCHNITT_BLOB = "c8b2ec453983b4672aeed6f3a69f9daf0ff2c829";
 
 export interface PanelTeile {
   html: string;
