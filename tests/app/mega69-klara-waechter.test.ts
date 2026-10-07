@@ -2747,6 +2747,15 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Prüflauf zu Kandidat f4db2037 GEMESSEN („Received", HISTORIE/nacharbeit-10/PRUEFUNG/
     // auslieferungswaechter-fenster.log) und unverändert übernommen; die vier Panel-Dateien sind seit
     // dieser Messung unberührt (`git diff f4db2037 -- apps/web/public/word-addin/` leer).
+    // AUFNAHME 20260922 · ANTWORT-QUELLENANZEIGE (R-0309/R-0325) — DER PIN MUSS WANDERN. `taskpane.js`:
+    // die Herkunftszeile trägt bei belegtem Datum „Stand …" (vorhandener Schlüssel `askChipStand`);
+    // die Quellen-Zeile im Dokument nennt nur die tragenden Quellen (`citedSources`, ohne das Feld wie
+    // bisher alle) je mit Prüfstand und Version (`askTragendeQuellen`, `askDokumentQuellenTitel`);
+    // der Kommentarkopf über `composeOutputText` ist verdichtet (Schranke B3: 12494 Zeilen).
+    // Auslieferungsfolgen: kein neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder
+    // Manifeständerung, kein neuer Wörterbuchschlüssel, kein Sideload. Ohne zugelassenes
+    // Hash-Werkzeug hier nicht berechenbar — der Prüflauf meldet den Ist-Wert als „Received", er wird
+    // danach gemessen übernommen.
     const PIN = "eefba3bdd389a30d41f4fbe37ad5bcdc336667559554212971ecbe7dff5f37d3";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(

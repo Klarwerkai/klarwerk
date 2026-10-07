@@ -5309,6 +5309,7 @@
     // (fuer die Quellen-Zeile) und die gestellte Frage (fuer den Offene-Frage-Entwurf).
     var currentAskOutcome = null;
     var currentAskSourceTitles = [];
+    var currentAskSourcesTragend = []; // R-0309/R-0325: die tragenden aufgeloesten Quellen der Dokumentzeile
     // WP-KLARA-ASK-FIX (bens Fix 3): belegte Quell-Daten (history/createdAt) fuer die ehrliche
     // Stand-Angabe; Fix 2: Einfuegen erst NACH abgeschlossener Quellenaufloesung.
     var currentAskSourceDates = [];
@@ -5371,6 +5372,7 @@
     function resetAskResult() {
       currentAskOutcome = null;
       currentAskSourceTitles = [];
+      currentAskSourcesTragend = [];
       currentAskSourceDates = [];
       currentAskSourcesResolved = false;
       askAnswerExpanded = false;
@@ -5881,6 +5883,9 @@
             ? t("askHerkunftVersionUnbekannt")
             : t("askHerkunftVersion", { n: String(quelle.version) })
         );
+        // R-0309: das Datum des letzten Standes — nur, wenn das Objekt eines belegt (wie im Chip-Detail).
+        var stand = quelle.standDate ? new Date(quelle.standDate) : null;
+        if (stand !== null && !isNaN(stand.getTime())) { teile.push(t("askChipStand", { date: formatAskDateLabel(stand) })); }
       }
       zeile.appendChild(document.createTextNode(" · " + teile.join(" · ")));
       return zeile;
@@ -6204,8 +6209,10 @@
         var generation = askErgebnisGeneration;
         resolveAskSources(outcome.sources || []).then(function (resolved) {
           if (generation !== askErgebnisGeneration || currentAskOutcome !== outcome) { return; }
-          currentAskSourceTitles = resolved.map(function (r) { return r.title; });
-          currentAskSourceDates = resolved.map(function (r) { return r.standDate; });
+          // R-0309/R-0325: Quellen-Zeile und Stand im Dokument kommen nur aus den TRAGENDEN Quellen.
+          currentAskSourcesTragend = askTragendeQuellen(resolved, outcome.citedSources);
+          currentAskSourceTitles = currentAskSourcesTragend.map(function (r) { return r.title; });
+          currentAskSourceDates = currentAskSourcesTragend.map(function (r) { return r.standDate; });
           currentAskSourcesResolved = true; // ab jetzt ist die Quellen-Zeile vollstaendig
           renderAskSources(resolved);
           // JOB 3092 S6 (W5): jetzt sind Titel, Pruefstand und Version da — die Ladezeile weicht
@@ -6459,51 +6466,46 @@
     // „einziger Weg, auf dem Text das Panel verlaesst" war FALSCH — er kannte nur die beiden
     // Schaltflaechen und uebersah den nativen Kopierweg des Antwortfelds.
     //
-    // AUFTRAG-mega37 BLOCK D — WAS DIESE LISTE IST UND WAS SIE NICHT IST (bens GELB-2). Sie zaehlt
-    // die GEFUNDENEN produktdefinierten Ausgaenge auf. Der Negativ-Durchgang (kein Netz-, Datei-,
-    // Druck-, Teilen-, Download- oder Zweitfenster-Ziel fuer den Antworttext) ist von ben fuer
-    // diesen Quelltext nachgeprueft und bestaetigt — aber eine ABZAEHLUNG ist kein Beweis der
-    // Vollstaendigkeit, und die Zahl mischt Zaehlebenen (Word.run und setSelectedDataAsync sind
-    // zwei Wege EINER Schaltflaeche; Tastatur und Kontextmenue sind EIN `copy`-Ereignis). Die Zahl
-    // taugt deshalb NICHT als Architekturbeweis. Tragfaehig ist dieser Satz:
-    //   Jede gefundene VOLLSTAENDIGE Antwortausgabe laeuft entweder durch composeOutputText oder
-    //   stammt aus einem bereits dadurch erzeugten, nur lesbaren Volltext.
-    // Die gefundenen Wege:
-    //   - „In Word einfuegen"        → composeOutputText  (insertAnswer)
-    //   - „Kopieren"                 → composeOutputText  (copyAnswer)
-    //   - Cmd+C / Strg+C             → composeOutputText  (handleAnswerClipboard, `copy`)
-    //   - Kontextmenue „Kopieren"    → composeOutputText  (dasselbe `copy`-Ereignis)
-    //   - Ausschneiden               → composeOutputText  (handleAnswerClipboard, `cut`)
-    //   - Ziehen einer Auswahl       → composeOutputText  (handleAnswerDragStart)
-    //   - Zwischenablage-Rueckfall   → composeOutputText  (showCopyFallback, nur lesbares Feld)
-    // ZWEI AUSNAHMEN, benannt statt verschwiegen — im Kern dieselbe: ein Bruchstueck ist keine
-    // Antwort und traegt deshalb keine Einstufung.
-    //   1. Eine TEILAUSWAHL des Antwortfelds bleibt roh (Block B2). Die Oberflaeche sagt das in dem
-    //      Moment ausdruecklich (askCopyPartial) — seit mega37 B an ALLEN drei nativen Wegen
-    //      gleich, also auch beim Ziehen, wo sie bis mega36 kommentarlos schwieg.
-    //   2. Eine TEILAUSWAHL im Rueckfallfeld (`#ask-copy-fallback-text`, bens GELB-2). Sein Wert
-    //      ist bereits abgeleitet und vollstaendig vorgewaehlt, eine Vollauswahl dort also sicher;
-    //      wer von Hand ein Stueck markiert oder zieht, bekommt dasselbe rohe Bruchstueck. Das
-    //      Feld hat KEINE eigenen Rueckrufe — hier steht es, statt unerwaehnt zu bleiben.
-    //
-    // AUFTRAG-mega37 BLOCK A / AUFTRAG-mega38 BLOCK D: alle nativen Wege stehen zusaetzlich hinter
-    // dem QUELLEN-TOR (s. handleAnswerClipboard). Hier stand bis mega37 „solange
-    // `currentAskSourcesResolved === false` ist, geht ueberhaupt nichts hinaus" — und das war
-    // wieder ein Satz, der mehr behauptet, als der Code deckt. Zwei Dinge gehen sehr wohl:
-    //   - Eine bewusste TEILAUSWAHL wird VOR dem Tor abgefangen (askCopyPartial) und darf roh
-    //     hinaus — das ist die entschiedene Ausnahme 1 von oben, nicht ein Loch im Tor.
-    //   - Der Zweig ohne brauchbaren Datenbehaelter (mega38 B) ist eine ZWEITE Grenze hinter dem
-    //     Tor; er bricht ab und bietet den abgeleiteten Volltext im Rueckfallfeld an.
-    // BELEGT ist deshalb genau dieser Satz und kein groesserer:
-    //   Solange `currentAskSourcesResolved === false` ist, passiert KEINE VOLLSTAENDIGE
-    //   ANTWORTAUSGABE das Tor — auf keinem der oben aufgezaehlten Wege.
-    //
-    // „Stand <Datum>" NUR mit belegtem KO-Datum (WP-KLARA-ASK-FIX, bens Fix 3), ohne Beleg ehrlich
+    // AUFTRAG-mega37 BLOCK D (bens GELB-2): die GEFUNDENEN produktdefinierten Ausgaenge — eine
+    // Abzaehlung, kein Vollstaendigkeitsbeweis (Negativ-Durchgang kein Netz-/Datei-/Druck-/Teilen-/
+    // Download-/Zweitfenster-Ziel von ben bestaetigt). Tragfaehig: jede gefundene VOLLSTAENDIGE
+    // Antwortausgabe laeuft durch composeOutputText oder stammt aus einem dadurch erzeugten, nur
+    // lesbaren Volltext — Einfuegen (insertAnswer), Kopieren (copyAnswer), Cmd/Strg+C, Kontextmenue
+    // und Ausschneiden (handleAnswerClipboard), Ziehen (handleAnswerDragStart), Rueckfall
+    // (showCopyFallback). ZWEI AUSNAHMEN, im Kern dieselbe (ein Bruchstueck traegt keine Einstufung):
+    // eine TEILAUSWAHL des Antwortfelds bleibt roh und wird an allen drei nativen Wegen gesagt
+    // (askCopyPartial, mega37 B); eine Teilauswahl im Rueckfallfeld `#ask-copy-fallback-text` ebenso
+    // (das Feld hat keine eigenen Rueckrufe).
+    // AUFTRAG-mega37 BLOCK A / mega38 BLOCK D: die nativen Wege stehen hinter dem QUELLEN-TOR
+    // (handleAnswerClipboard); die Teilauswahl wird davor abgefangen, der Zweig ohne Datenbehaelter
+    // (mega38 B) bricht dahinter ab. BELEGT ist genau: solange `currentAskSourcesResolved === false`
+    // ist, passiert KEINE VOLLSTAENDIGE ANTWORTAUSGABE das Tor.
+    // „Stand <Datum>" NUR mit belegtem KO-Datum (WP-KLARA-ASK-FIX, bens Fix 3), sonst ehrlich
     // "abgerufen am <heute>".
+    //
+    // Aufnahme 20260922 · antwort-quellenanzeige (R-0309/R-0325): die Quellen-Zeile im Dokument
+    // nennt die TRAGENDEN Quellen (`citedSources`; ohne das Feld wie bisher alle) je mit Pruefstand
+    // und Version — dieselben Angaben wie die Herkunftszeile im Panel. Eine nicht geladene Quelle
+    // behauptet keines von beiden. Die Vorlagen (askSourceLine*) bleiben unveraendert.
+    function askTragendeQuellen(resolved, cited) {
+      if (!Array.isArray(cited) || cited.length === 0) { return resolved; }
+      var tragend = resolved.filter(function (r) { return cited.indexOf(r.id) !== -1; });
+      return tragend.length > 0 ? tragend : resolved;
+    }
+
+    function askDokumentQuellenTitel(quellen) {
+      return quellen.map(function (q) {
+        if (!q.geladen) { return q.title; }
+        var version = q.version === null || q.version === undefined
+          ? t("askHerkunftVersionUnbekannt") : t("askHerkunftVersion", { n: String(q.version) });
+        return q.title + " (" + t(ASK_STATUS_KEYS[q.status] || "askStatusUnknown") + ", " + version + ")";
+      });
+    }
+
     function composeOutputText(body) {
       return composeAnswerOutput({
         body: body,
-        sourceTitles: currentAskSourceTitles,
+        sourceTitles: askDokumentQuellenTitel(currentAskSourcesTragend),
         sourceDates: currentAskSourceDates,
         truncated: currentAskTruncated,
         grade: askGradeOf(currentAskOutcome && currentAskOutcome.evidence),

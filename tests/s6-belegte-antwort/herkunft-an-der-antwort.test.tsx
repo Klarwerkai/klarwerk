@@ -308,3 +308,128 @@ describe("JOB 3092 · S6 — Herkunft und Ungeprueft-Satz an der Antwort (gemoun
     expect(sichtbar(el("ask-gap-ungeprueft"))).toBe(false);
   });
 });
+
+// ================================================================================================
+// AUFNAHME 20260922 · ANTWORT-QUELLENANZEIGE (R-0309, R-0325) — STAND AN DER ZEILE, TRAGENDE QUELLEN
+// IM DOKUMENT.
+// ================================================================================================
+//
+// R-0309: die Quellenzeile nennt Titel, Pruefstand und das DATUM DES LETZTEN STANDES, und diese
+// Zeile wandert mit in das Word-Dokument. R-0325: unter der Antwort stehen nur die Quellen, die
+// wirklich beigetragen haben. Gemessen wird die Herkunftszeile im DOM und der Text, der beim Klick
+// auf „In Word einfuegen" tatsaechlich an `setSelectedDataAsync` geht.
+describe("Aufnahme 20260922 · R-0309/R-0325 — Stand an der Herkunftszeile, tragende Quellen im Dokument (gemountet)", () => {
+  afterEach(() => {
+    panelAbraeumen();
+  });
+
+  /** Die Objekte mit belegtem Stand (letzte history-Zeile), Zeit mittags UTC gegen Zonenversatz. */
+  const MIT_STAND: Record<string, Antwort> = {
+    ka: {
+      status: 200,
+      body: {
+        id: "ka",
+        title: "Design Guide",
+        status: "validiert",
+        version: 3,
+        trust: 80,
+        createdAt: "2026-01-10T12:00:00Z",
+        history: [{ at: "2026-02-01T12:00:00Z" }, { at: "2026-03-02T12:00:00Z" }],
+      },
+    },
+    kb: {
+      status: 200,
+      body: {
+        id: "kb",
+        title: "HD Handbook",
+        status: "offen",
+        version: 1,
+        createdAt: "2026-01-05T12:00:00Z",
+      },
+    },
+    kc: {
+      status: 200,
+      body: {
+        id: "kc",
+        title: "Randnotiz",
+        status: "validiert",
+        version: 7,
+        createdAt: "2026-04-20T12:00:00Z",
+      },
+    },
+  };
+
+  /** Faengt den Text ab, den „In Word einfuegen" an Office uebergibt (kein Word.run in jsdom). */
+  function einfuegenMitschreiben(): string[] {
+    const eingefuegt: string[] = [];
+    const w = window as unknown as { Office: { context: { document: Record<string, unknown> } } };
+    w.Office.context.document.setSelectedDataAsync = (
+      text: string,
+      _o: unknown,
+      cb: (r: unknown) => void,
+    ) => {
+      eingefuegt.push(text);
+      cb({ status: "succeeded" });
+    };
+    return eingefuegt;
+  }
+
+  it("Q1 · R-0309: mit belegtem Datum traegt jede Herkunftszeile „Stand <Datum>“ — das neueste der history, sonst createdAt", async () => {
+    starten({ ask: { result: antwort(), gap: null, receipt: "r" }, kos: MIT_STAND });
+    await ruhe();
+    await fragen();
+    expect(herkunftZeilen().map((z) => z.text)).toEqual([
+      "Quelle: Design Guide · Validiert · Version 3 · Stand 02.03.2026",
+      "Quelle: HD Handbook · Offen · Version 1 · Stand 05.01.2026",
+    ]);
+  });
+
+  it("Q2 · R-0309/R-0325: der in Word eingefuegte Text nennt NUR die tragenden Quellen, je mit Pruefstand und Version, und deren neuesten Stand", async () => {
+    starten({ ask: { result: antwort(), gap: null, receipt: "r" }, kos: MIT_STAND });
+    await ruhe();
+    await fragen();
+    const eingefuegt = einfuegenMitschreiben();
+    expect(el<HTMLButtonElement>("ask-insert-btn").disabled).toBe(false);
+    el("ask-insert-btn").click();
+    await ruhe();
+    expect(eingefuegt).toHaveLength(1);
+    const text = eingefuegt[0] ?? "";
+    expect(text.startsWith("Offene Profile sind zu bevorzugen.\n\n")).toBe(true);
+    expect(text).toContain(
+      "Quelle: Design Guide (Validiert, Version 3), HD Handbook (Offen, Version 1) (KLARWERK-Wissen, Stand 02.03.2026)",
+    );
+    // Die nur herangezogene dritte Quelle reist nicht mit — weder ihr Titel noch ihr juengeres Datum.
+    expect(text).not.toContain("Randnotiz");
+    expect(text).not.toContain("20.04.2026");
+  });
+
+  it("Q3 · ohne `citedSources` (alter Server) nennt die Dokumentzeile wie bisher ALLE Quellen — nichts wird als tragend behauptet oder weggelassen", async () => {
+    starten({
+      ask: { result: antwort({ citedSources: undefined }), gap: null, receipt: "r" },
+      kos: MIT_STAND,
+    });
+    await ruhe();
+    await fragen();
+    const eingefuegt = einfuegenMitschreiben();
+    el("ask-insert-btn").click();
+    await ruhe();
+    expect(eingefuegt[0] ?? "").toContain(
+      "Quelle: Design Guide (Validiert, Version 3), HD Handbook (Offen, Version 1), Randnotiz (Validiert, Version 7) (KLARWERK-Wissen, Stand 20.04.2026)",
+    );
+  });
+
+  it("Q4 · eine nicht ladbare tragende Quelle behauptet im Dokument weder Pruefstand noch Version", async () => {
+    starten({
+      ask: { result: antwort({ citedSources: ["ka"], sources: ["ka"] }), gap: null, receipt: "r" },
+      kos: { ka: { status: 503 } },
+    });
+    await ruhe();
+    await fragen();
+    const eingefuegt = einfuegenMitschreiben();
+    el("ask-insert-btn").click();
+    await ruhe();
+    const text = eingefuegt[0] ?? "";
+    expect(text).toContain("Quelle: ka (KLARWERK-Wissen, abgerufen am ");
+    expect(text).not.toMatch(/Validiert|Version/);
+  });
+});
