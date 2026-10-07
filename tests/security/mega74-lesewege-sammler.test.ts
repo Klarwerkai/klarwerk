@@ -545,6 +545,22 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "KEIN_KO_INHALT",
     grund: "Hinweise aus Katalog und mitgesendetem Text; liest kein Wissensobjekt.",
   },
+  // R-1646 · Ausgangsprüfung (ausgangspruefung-routes.ts): die Vorschau zeigt den ausgehenden Text,
+  // also Frage- und Kandidatentexte — deshalb Kuratorenstufe. Vertrauliches erreicht sie nie: der
+  // Chokepoint lehnt es vor der Prüfung ab (ConfidentialEgressError, model-concurrency.ts).
+  "GET /api/ausgangspruefung": {
+    urteil: "KURATORENTOR",
+    recht: "ko.validate",
+    grund: "Ausgehender Text vor der Freigabe, ohne die ersetzten Originale.",
+  },
+  "POST /api/ausgangspruefung/:id/freigeben": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Antwort ist Kennung und Entscheidung; der Text geht nicht zurück.",
+  },
+  "POST /api/ausgangspruefung/:id/ablehnen": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Antwort ist Kennung und Entscheidung; der Text geht nicht zurück.",
+  },
   "GET /api/i18n/locales": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
   "GET /api/i18n/:locale/:key": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
   "GET /addin": { urteil: "KEIN_KO_INHALT", grund: "statisches Add-in-Bundle." },
