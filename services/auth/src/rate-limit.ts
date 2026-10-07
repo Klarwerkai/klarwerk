@@ -10,6 +10,10 @@
 // - Das Verhalten ist für bekannte UND unbekannte Login-IDs identisch (der Limiter kennt keine
 //   Nutzer) → keine User-Enumeration.
 // - Nach Ablauf des Fensters wird der Schlüssel wieder frei (TTL).
+// - R-0601 (DS19): der Schlüssel trägt die IP. Sie bleibt nur im Fenster im Speicher — abgelaufene
+//   Einträge werden bei jedem Zugriff verworfen, sobald seit dem letzten Aufräumen höchstens ein
+//   Fenster (gedeckelt auf eine Minute) vergangen ist. Vorher räumte erst die Speichergrenze ab
+//   10 000 Einträgen; bis dahin blieb jede IP für die Laufzeit des Prozesses liegen.
 
 export interface RateLimitDecision {
   // true → aktuell gesperrt (Aufrufer soll 429 + Retry-After senden).
@@ -37,17 +41,29 @@ const DEFAULT_WINDOW_MS = 15 * 60 * 1000; // 15 Minuten
 // Schutz vor unbegrenztem Speicherwachstum (In-Memory): ab dieser Größe werden abgelaufene
 // Einträge opportunistisch entfernt. Reicht für eine Beta-Instanz locker aus.
 const PRUNE_THRESHOLD = 10_000;
+// R-0601: höchster Abstand zwischen zwei zeitgesteuerten Aufräumläufen. Ein Lauf ist linear in der
+// Zahl der Einträge; je Zugriff liefe er unter Last quadratisch.
+const PRUNE_INTERVAL_CAP_MS = 60 * 1000;
 
 export class LoginRateLimiter {
   private readonly maxAttempts: number;
   private readonly windowMs: number;
   private readonly now: () => number;
   private readonly entries = new Map<string, WindowEntry>();
+  private readonly pruneIntervalMs: number;
+  private lastPruneAt: number;
 
   constructor(options: LoginRateLimiterOptions = {}) {
     this.maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
     this.windowMs = options.windowMs ?? DEFAULT_WINDOW_MS;
     this.now = options.now ?? (() => Date.now());
+    this.pruneIntervalMs = Math.min(this.windowMs, PRUNE_INTERVAL_CAP_MS);
+    this.lastPruneAt = this.now();
+  }
+
+  // R-0601: wie viele Schlüssel (und damit IP-Adressen) gerade im Speicher liegen. Nur Auskunft.
+  get size(): number {
+    return this.entries.size;
   }
 
   // Stabiler Schlüssel aus Quelle (IP) + normalisierter Login-ID. Login-ID wird klein geschrieben und
@@ -60,6 +76,7 @@ export class LoginRateLimiter {
 
   // Liest (ohne zu zählen), ob der Schlüssel gerade gesperrt ist. Abgelaufene Fenster gelten als frei.
   check(key: string): RateLimitDecision {
+    this.pruneDue(this.now());
     const entry = this.entries.get(key);
     if (!entry) {
       return { limited: false, retryAfterSeconds: 0 };
@@ -88,6 +105,8 @@ export class LoginRateLimiter {
     }
     if (this.entries.size > PRUNE_THRESHOLD) {
       this.pruneExpired(now);
+    } else {
+      this.pruneDue(now);
     }
   }
 
@@ -96,8 +115,16 @@ export class LoginRateLimiter {
     this.entries.delete(key);
   }
 
-  // Entfernt abgelaufene Fenster (nur zur Speicherbegrenzung).
+  // R-0601: räumt ab, wenn seit dem letzten Lauf das Aufräumintervall vergangen ist.
+  private pruneDue(now: number): void {
+    if (now - this.lastPruneAt >= this.pruneIntervalMs) {
+      this.pruneExpired(now);
+    }
+  }
+
+  // Entfernt abgelaufene Fenster (Speicherbegrenzung und R-0601: keine IP über ihr Fenster hinaus).
   private pruneExpired(now: number): void {
+    this.lastPruneAt = now;
     for (const [key, entry] of this.entries) {
       if (now - entry.windowStartedAt >= this.windowMs) {
         this.entries.delete(key);

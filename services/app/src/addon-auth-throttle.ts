@@ -35,14 +35,33 @@ export function addonAuthThrottleConfigFromEnv(
 
 export class AddonAuthAttemptThrottle {
   private readonly hits = new Map<string, number[]>();
+  // R-0601 (DS19): Zeitpunkt des letzten Aufräumlaufs über ALLE IPs (s. registerFailure).
+  private lastSweepAt: number | undefined;
 
   constructor(private readonly config: AddonAuthThrottleConfig) {}
+
+  // R-0601: wie viele IP-Adressen gerade im Speicher liegen. Nur Auskunft.
+  get size(): number {
+    return this.hits.size;
+  }
 
   // Registriert einen Fehlversuch für `ip` und meldet, ob er noch ERLAUBT ist (unter dem Limit).
   // false → über dem Limit → der Aufrufer antwortet 429. Alte Einträge außerhalb des Fensters werden
   // verworfen (Sliding-Window). Nur fehlgeschlagene Versuche kommen hier an (der Aufrufer filtert).
+  //
+  // R-0601 (DS19): bis hierher wurde nur die Liste DER anfragenden IP gekürzt — jede andere IP blieb
+  // mit ihren Zeitstempeln für die Laufzeit des Prozesses in der Map. Jetzt verwirft ein Aufräumlauf
+  // höchstens einmal je Fenster alle IPs, deren jüngster Versuch außerhalb des Fensters liegt.
   registerFailure(ip: string, now: number): boolean {
     const win = this.config.windowMs;
+    if (this.lastSweepAt === undefined || now - this.lastSweepAt >= win) {
+      this.lastSweepAt = now;
+      for (const [bekannt, zeiten] of this.hits) {
+        if (!zeiten.some((t) => now - t < win)) {
+          this.hits.delete(bekannt);
+        }
+      }
+    }
     const recent = (this.hits.get(ip) ?? []).filter((t) => now - t < win);
     recent.push(now);
     this.hits.set(ip, recent);
