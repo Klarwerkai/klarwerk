@@ -9,9 +9,12 @@
 //   M2  Mit benanntem Eigentümer erreicht sie den Eigentümer — nicht den Autor, nicht die Prüfer.
 //   M3  Die Quittung nennt Nummer, Zeitpunkt und Zustellart, aber nicht die Kennung der Person.
 //   M4  Doppelt gemeldet ist einmal zugestellt; dieselbe Nummer, `bereitsGemeldet`.
+//   M4b Wird dazwischen ein Eigentümer benannt, nennt die Wiederholungsquittung die GESPEICHERTE
+//       Zustellung (Autor-Ersatz), nicht die heutige Zuständigkeit.
 //   M5  Ohne passenden Beleg (fremd, leer, andere Quelle) oder mit unbekanntem Grund wird nichts
 //       zugestellt.
 //   M6  Erfasst ist die Rückmeldung im Protokoll (`answer.reported`) — Grund, Quelle, Meldender.
+//   M7  Keine Kürzung: auch bei mehr als 20 Meldungen bleibt jede im Feed der Person erreichbar.
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { deriveReklamationen } from "../../services/app/src/routes/notifications-routes";
@@ -188,6 +191,34 @@ describe("R-1089 · Meldung einer falschen Antwort an die verantwortliche Person
     expect(await glocke(app, autor)).toHaveLength(1);
   });
 
+  it("M4b · Eigentümer zwischen Erst- und Wiederholungsmeldung benannt: die Quittung nennt die gespeicherte Zustellung", async () => {
+    const { app, admin, autor, eignerin, frager, koId } = await setup();
+    const receipt = await belegFuer(app, frager, koId);
+    const erst = await melden(app, frager, { koId, receipt, grund: "antwort-falsch" });
+    expect(erst.json()).toMatchObject({ zugestelltAn: "author-fallback", bereitsGemeldet: false });
+
+    const vergeben = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${koId}`,
+      headers: admin.headers,
+      payload: { action: "ownership", ownership: { owner: eignerin.id } },
+    });
+    expect(vergeben.statusCode).toBe(200);
+
+    const zweit = await melden(app, frager, { koId, receipt, grund: "antwort-falsch" });
+    expect(zweit.statusCode).toBe(200);
+    // Die Meldung liegt weiterhin beim Autor — und genau das sagt auch die zweite Quittung.
+    expect(zweit.json()).toMatchObject({
+      meldungId: erst.json().meldungId,
+      at: erst.json().at,
+      koTitle: TITEL,
+      zugestelltAn: "author-fallback",
+      bereitsGemeldet: true,
+    });
+    expect(await glocke(app, autor)).toHaveLength(1);
+    expect(await glocke(app, eignerin)).toEqual([]);
+  });
+
   it("M5 · ohne passenden Beleg oder mit unbekanntem Grund: abgewiesen, nichts zugestellt", async () => {
     const { app, autor, frager, dritte, koId } = await setup();
     const fremderBeleg = await belegFuer(app, dritte, koId);
@@ -241,7 +272,30 @@ describe("R-1089 · Meldung einer falschen Antwort an die verantwortliche Person
     ]);
   });
 
-  it("deriveReklamationen: nur eigene, vollständige Einträge; gedeckelt auf 20", () => {
+  it("M7 · mehr als 20 Meldungen vor dem nächsten Abruf: alle stehen im Feed, auch die erste", async () => {
+    const { services, app, autor, koId } = await setup();
+    // 25 zugestellte Meldungen in genau der Form, die `reportAnswer` schreibt — direkt ins
+    // Protokoll, weil 25 unterscheidbare Antwortbelege über HTTP keine zusätzliche Aussage trügen.
+    for (let i = 0; i < 25; i++) {
+      await services.audit.record({
+        actor: `frager-${i}`,
+        action: "answer.reported",
+        target: koId,
+        payload: {
+          meldungId: `M-TEST${String(i).padStart(4, "0")}`,
+          grund: "antwort-falsch",
+          koTitle: TITEL,
+          responsible: autor.id,
+          responsibleKind: "author-fallback",
+        },
+      });
+    }
+    const beimAutor = await glocke(app, autor);
+    expect(beimAutor).toHaveLength(25);
+    expect(beimAutor.map((n) => n.meldungId)).toContain("M-TEST0000");
+  });
+
+  it("deriveReklamationen: nur eigene, vollständige Einträge — und alle davon, keine Kürzung", () => {
     const mk = (i: number, responsible: string, grund = "antwort-falsch") => ({
       target: `ko-${i}`,
       at: `2026-09-0${(i % 9) + 1}T10:00:00Z`,
@@ -256,7 +310,9 @@ describe("R-1089 · Meldung einer falschen Antwort an die verantwortliche Person
       ],
       "u-a",
     );
-    expect(liste).toHaveLength(20);
+    // Alle 25 eigenen Meldungen — auch die erste ist noch erreichbar (Ben, Nacharbeit 3).
+    expect(liste).toHaveLength(25);
+    expect(liste.map((r) => r.meldungId)).toEqual(Array.from({ length: 25 }, (_, i) => `M-${i}`));
     expect(liste.every((r) => r.title.startsWith("T") && r.grund === "antwort-falsch")).toBe(true);
   });
 });

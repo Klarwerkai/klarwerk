@@ -68,7 +68,9 @@ export function deriveImpacts(
 // R-1089: Meldungen „Antwort falsch / Quelle passt nicht" für die verantwortliche Person. Zugestellt
 // ist, was der Dienst beim Melden als `responsible` festgehalten hat — dieselbe Auskunft, die die
 // Quittung des Meldenden nennt; ein späterer Eigentümerwechsel verschiebt keine alte Meldung.
-// Nur Einträge mit vollständiger Payload; die letzten 20.
+// Nur Einträge mit vollständiger Payload — und ALLE davon. Ben (Nacharbeit 3): eine Kürzung auf die
+// letzten N machte eine quittierte Meldung unerreichbar, sobald vor dem nächsten Abruf mehr
+// eingingen; ein Weg zu älteren Meldungen existiert nicht. Was zugestellt ist, bleibt im Feed.
 export function deriveReklamationen(
   entries: Array<{ target: string; at: string; payload: Record<string, unknown> }>,
   userId: string,
@@ -86,7 +88,7 @@ export function deriveReklamationen(
     }
     out.push({ meldungId, koId: e.target, title: koTitle, grund, at: e.at });
   }
-  return out.slice(-20);
+  return out;
 }
 
 // Audit-P3 (SCRUM-397): Feed einmal bauen, Gelesen-Status je Item ehrlich anreichern.

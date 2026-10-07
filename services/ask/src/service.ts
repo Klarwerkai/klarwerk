@@ -1446,7 +1446,6 @@ export class AskService {
     }
     const eventId = antwortMeldungEventId(actor, koId, grund, receipt);
     const meldungId = antwortMeldungId(eventId);
-    const zugestelltAn = responsibleKindOf(ko);
     const won = await audit.recordOnce(eventId, {
       actor,
       action: ANTWORT_MELDUNG_ACTION,
@@ -1456,19 +1455,26 @@ export class AskService {
         grund,
         koTitle: ko.title,
         responsible: responsibleOf(ko),
-        responsibleKind: zugestelltAn,
+        responsibleKind: responsibleKindOf(ko),
       },
     });
+    // Ben (Nacharbeit 3): die Quittung beschreibt die Zustellung, die TATSÄCHLICH gilt — und das
+    // ist die gespeicherte. Bei einer Wiederholung hat `recordOnce` das erste Ereignis behalten;
+    // wurde inzwischen ein Eigentümer benannt oder der Titel geändert, liegt die Meldung trotzdem
+    // beim damaligen Empfänger (die Glocke liest `responsible` aus genau diesem Ereignis). Zustellart
+    // und Titel kommen deshalb aus dem Ereignis, nicht aus dem heutigen Objekt.
     const eintrag = (await audit.list({ action: ANTWORT_MELDUNG_ACTION, target: koId })).find(
       (e) => e.eventId === eventId,
     );
+    const gespeichert = eintrag?.payload ?? {};
+    const kind = gespeichert.responsibleKind;
     return {
       meldungId,
       koId,
-      koTitle: ko.title,
+      koTitle: typeof gespeichert.koTitle === "string" ? gespeichert.koTitle : ko.title,
       grund,
       at: eintrag?.at ?? new Date(this.now()).toISOString(),
-      zugestelltAn,
+      zugestelltAn: kind === "owner" || kind === "author-fallback" ? kind : responsibleKindOf(ko),
       bereitsGemeldet: !won,
     };
   }
