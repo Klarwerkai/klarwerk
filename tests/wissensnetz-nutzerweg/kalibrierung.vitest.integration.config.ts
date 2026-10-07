@@ -25,6 +25,7 @@
 // Prüfplatz die Wahrheit über diesen Lauf — er umgeht keine Sicherung, er nennt eine Voraussetzung.
 import { resolve } from "node:path";
 import { defineConfig } from "vitest/config";
+import { UEBERSPRUNGEN_LAUT } from "../../vitest.integration.config";
 
 const WURZEL = resolve(import.meta.dirname, "../..");
 
@@ -36,7 +37,7 @@ export default defineConfig({
     include: ["tests/wissensnetz-nutzerweg/kalibrierung.integration.test.ts"],
     // Dieselben Setupdateien und Fristen wie `vitest.integration.config.ts` — die Kalibrierung
     // fährt dieselbe Strecke und braucht dieselbe Umgebung, nur mit dem Schalter davor.
-    setupFiles: ["tests/setup-env.ts"],
+    setupFiles: ["tests/setup-env.ts", UEBERSPRUNGEN_LAUT],
     testTimeout: 1_800_000,
     hookTimeout: 900_000,
     env: {
