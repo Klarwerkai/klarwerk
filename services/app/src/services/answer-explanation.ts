@@ -46,6 +46,22 @@ export interface AnswerExplanationDeps {
 export interface AnswerExplanationLeser {
   readonly userId: string;
   readonly darfVertraulich: boolean;
+  /**
+   * Antwortbeleg-Nacharbeit 5 (Ben, R-0293/R-0317/R-0618): DIE ZENTRALE SICHTBARKEITSENTSCHEIDUNG
+   * von heute — `sichtbarkeitsfilterFuer(user)` (services/app/src/sichtbarkeit.ts, `darfSehen`),
+   * einschliesslich des fuehrenden Space. Die Route reicht sie herein; der Dienst wendet sie auf
+   * JEDE gebundene Wissenseinheit an. Sie tritt NEBEN `darfVertraulich` (UND), nie an seine
+   * Stelle: eine Zeile bleibt nur offen, wenn beide sie freigeben.
+   *
+   * FAIL-CLOSED: Fehlt sie (ein Aufrufer ohne Sichtbarkeitsauskunft), gilt jedes Objekt mit
+   * fuehrendem Space als gesperrt — dieselbe Richtung wie `spaceErlaubt` ohne `spaceLesbar`.
+   */
+  readonly darfSehen?: (ko: KnowledgeObject) => boolean;
+}
+
+/** Fail-closed-Ersatz, wenn keine zentrale Entscheidung hereinkommt: führender Space ⇒ gesperrt. */
+function ohneSpace(ko: KnowledgeObject): boolean {
+  return typeof ko.spaceId !== "string";
 }
 
 export class AnswerExplanationService {
@@ -120,7 +136,11 @@ export class AnswerExplanationService {
       if (ref.knowledgeObjectVersion === null || ref.knowledgeObjectVersion > objekt.version) {
         fassungUnaufloesbar.add(ref.knowledgeObjectId);
       }
-      if (isConfidential(objekt.confidentiality) && !leser.darfVertraulich) {
+      // Zwei Bedingungen, beide von HEUTE: die Vertraulichkeitsregel dieser Route und die zentrale
+      // Sichtbarkeitsentscheidung samt Space-Recht. Was eine von beiden sperrt, wird geschwaerzt —
+      // Quelle, Fundstelle (gespeicherter Textauszug), Zustaendigkeit und Konfliktlage inklusive.
+      const zentralSichtbar = (leser.darfSehen ?? ohneSpace)(objekt);
+      if (!zentralSichtbar || (isConfidential(objekt.confidentiality) && !leser.darfVertraulich)) {
         gesperrteObjekte.add(ref.knowledgeObjectId);
       }
     }

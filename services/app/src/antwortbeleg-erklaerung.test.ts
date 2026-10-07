@@ -325,6 +325,131 @@ describe("R-0293 / R-0317 · Quellfassung und Fundstelle aus dem Quellenanker", 
   });
 });
 
+/**
+ * Verschiebt eine Wissenseinheit in einen Space, den das Konto nicht lesen darf — über den echten
+ * Dienstweg (`KoService.setLeadingSpace`). Die Hintergrundprüfung kann das Objekt zeitgleich
+ * fortschreiben; dann wird erneut versucht, nie an der Fachschicht vorbei geschrieben.
+ */
+async function spaceWechseln(
+  ctx: Awaited<ReturnType<typeof kontoMitDiensten>>,
+  koId: string,
+): Promise<void> {
+  for (let versuch = 0; versuch < 5; versuch += 1) {
+    try {
+      await ctx.services.ko.setLeadingSpace(koId, "space-ohne-zugang", ctx.kontoId, null);
+      return;
+    } catch (fehler) {
+      if ((fehler as { code?: string }).code !== "STALE_WRITE") {
+        throw fehler;
+      }
+    }
+  }
+  throw new Error("Space-Wechsel ließ sich nicht schreiben (dauernd STALE_WRITE).");
+}
+
+describe("R-0293 / R-0317 / R-0618 · Space-Rechte von heute gelten auch im Erklärweg", () => {
+  it("verliert der Eigentümer den Space-Zugang, wird genau diese Zeile geschwärzt — samt Fundstelle", async () => {
+    const ctx = await kontoMitDiensten("space1@x.de");
+    const koId = await koAnlegen(ctx.app, ctx.auth);
+    await ankerSetzen(ctx, koId, [
+      {
+        id: "q-1",
+        sourceRecordId: "quellrevision-space-1",
+        excerpt: "Geheimer Wortlaut aus Space A.",
+      },
+    ]);
+    const answerId = await fragen(ctx.app, ctx.auth);
+    // Vorher: die Zeile ist offen, die Fundstelle steht im Rumpf.
+    const vorher = await erklaerung(ctx.app, ctx.auth, answerId);
+    expect(vorher.body.includes("Geheimer Wortlaut aus Space A.")).toBe(true);
+
+    // Danach liegt die Wissenseinheit in einem Space, den dieses Konto nicht lesen darf. Auch der
+    // Admin hat keinen Rollen-Durchgriff auf fremde Spaces (sichtbarkeit.ts, `spaceErlaubt`).
+    await spaceWechseln(ctx, koId);
+
+    const res = await erklaerung(ctx.app, ctx.auth, answerId);
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.integrity).toBe("REDACTED");
+    expect(body.primaryResolutionFailure).toBe("ACCESS_DENIED");
+    expect(body.evidenceCount).toBeGreaterThan(0);
+    for (const zeile of body.evidence as Zeile[]) {
+      expect(zeile.redacted).toBe(true);
+      expect(zeile.locator).toBeNull();
+      expect(zeile.sourceRecordId).toBeNull();
+      expect(zeile.responsibleAtExecution).toBeNull();
+    }
+    expect(res.body.includes(koId)).toBe(false);
+    expect(res.body.includes("Geheimer Wortlaut aus Space A.")).toBe(false);
+    expect(res.body.includes("quellrevision-space-1")).toBe(false);
+  });
+
+  it("erlaubte Zeilen bleiben offen — geschwärzt wird nur die Wissenseinheit im fremden Space", async () => {
+    const ctx = await kontoMitDiensten("space2@x.de");
+    const imSpace = await koAnlegen(ctx.app, ctx.auth, "Ventil im fremden Space");
+    const offen = await koAnlegen(ctx.app, ctx.auth, "Ventil ohne Space");
+    const fassung = async (id: string) => (await ctx.services.ko.get(id))?.version ?? 1;
+    const zeileVon = async (
+      id: string,
+      rolle: "carrying" | "consulted",
+      stelle: string,
+    ): Promise<AnswerEvidenceRef> => ({
+      knowledgeObjectId: id,
+      knowledgeObjectVersion: await fassung(id),
+      evidenceRole: rolle,
+      sourceRecordId: `quellrevision-${id}`,
+      sourceRecordIdReason: null,
+      locator: stelle,
+      locatorReason: null,
+      validationReferenceAbsenceReason:
+        rolle === "carrying" ? "NOT_AVAILABLE_AT_EXECUTION" : "NOT_REQUIRED",
+    });
+    await ctx.services.answerSnapshots.createRecord({
+      answerId: "space-gemischt",
+      askExecutionId: "lauf-space-gemischt",
+      createdAt: "2026-10-08T08:00:00.000Z",
+      schemaVersion: ANSWER_SNAPSHOT_SCHEMA_VERSION,
+      owner: { kind: "user", userId: ctx.kontoId },
+    });
+    const ohneHash: AnswerEvidenceSnapshot = {
+      answerId: "space-gemischt",
+      snapshotRevision: 1,
+      supersedesSnapshotRevision: null,
+      schemaVersion: ANSWER_SNAPSHOT_SCHEMA_VERSION,
+      capturedAt: "2026-10-08T08:00:00.000Z",
+      citedSources: [imSpace],
+      evidence: [
+        await zeileVon(imSpace, "carrying", "Stelle im fremden Space"),
+        await zeileVon(offen, "consulted", "Stelle ohne Space"),
+      ],
+      resolutionId: null,
+      resolutionIdReason: "w1_not_on_answer_path",
+      validationDecisionRef: null,
+      validationDecisionRefReason: "w3_23_ref_liegt_je_evidence",
+      status: "INCOMPLETE",
+      integrityHash: "",
+    };
+    await ctx.services.answerSnapshots.appendSnapshot({
+      ...ohneHash,
+      integrityHash: hashAnswerSnapshot(ohneHash),
+    });
+    await spaceWechseln(ctx, imSpace);
+
+    const res = await erklaerung(ctx.app, ctx.auth, "space-gemischt");
+    const body = res.json();
+    expect(body.primaryResolutionFailure).toBe("ACCESS_DENIED");
+    expect(body.evidence).toHaveLength(2);
+    const [gesperrt, sichtbar] = body.evidence as Zeile[];
+    expect(gesperrt?.redacted).toBe(true);
+    expect(gesperrt?.locator).toBeNull();
+    expect(sichtbar?.redacted).toBe(false);
+    expect(sichtbar?.knowledgeObjectId).toBe(offen);
+    expect(sichtbar?.locator).toBe("Stelle ohne Space");
+    expect(res.body.includes("Stelle im fremden Space")).toBe(false);
+    expect(res.body.includes(imSpace)).toBe(false);
+  });
+});
+
 describe("R-0293 / R-0317 · der Weg zur Antwort aus dem gespeicherten Beleg", () => {
   it("nennt Fassung, Rolle, Quelle und Fundstelle samt Grund, Freigabelage, Rechte und Erzeugungsart", async () => {
     const app = buildApp(buildServices());

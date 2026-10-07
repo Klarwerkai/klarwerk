@@ -32,6 +32,7 @@ import type {
   AnswerExplanationLeser,
   AnswerExplanationService,
 } from "../services/answer-explanation";
+import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
 export interface KlaraAnswerExplanationDeps {
   readonly explanations: AnswerExplanationService;
@@ -98,6 +99,9 @@ export function klaraAnswerExplanationRoutes(
         const leser: AnswerExplanationLeser = {
           userId: user.id,
           darfVertraulich: user.role === "admin" || user.role === "controller",
+          // Antwortbeleg-Nacharbeit 5: die zentrale Sichtbarkeit von heute, samt Space-Recht
+          // (`spaceLesbar` am Sitzungsnutzer, erhoben in `makeGuards`).
+          darfSehen: sichtbarkeitsfilterFuer(user),
         };
         const ergebnis = await deps.explanations.erklaere(request.params.answerId, leser);
         if (ergebnis.kind === "NOT_FOUND") {
