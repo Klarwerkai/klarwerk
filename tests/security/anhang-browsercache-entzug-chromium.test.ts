@@ -69,6 +69,13 @@ interface Abruf {
   status: number;
   cacheControl: string | null;
   laenge: number;
+  /**
+   * Trägt der VOLLSTÄNDIGE Rumpf eine Daten-URL (`base64,`)? In der Seite über den ganzen Text
+   * bestimmt — `text` unten ist auf 200 Zeichen gekürzt, und in der Metadatenantwort steht `data`
+   * erst hinter dem langen `ref`-Block (Nacharbeit 4: die Prüfung am gekürzten Text sah die Bytes
+   * nie, und ihre Verneinung wäre wirkungslos gewesen).
+   */
+  traegtBytes: boolean;
   text: string;
 }
 
@@ -84,6 +91,7 @@ const ABRUFEN = new Function(
       status: res.status,
       cacheControl: res.headers.get("cache-control"),
       laenge: text.length,
+      traegtBytes: text.includes("base64,"),
       text: text.slice(0, 200),
     };
   })(url);`,
@@ -294,7 +302,7 @@ describe("R-0550 · Rechteentzug gegen die schon gespeicherte Browserkopie (Chro
     const meta1 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${metaPfad}`);
     const raw1 = await seite.evaluate<Abruf>(ABRUFEN, `${basis}${rawPfad}`);
     expect(meta1.status, meta1.text).toBe(200);
-    expect(meta1.text).toContain("base64");
+    expect(meta1.traegtBytes, "die Metadatenantwort trägt die Bytes als Daten-URL").toBe(true);
     expect(meta1.cacheControl).toBe("private, no-cache, must-revalidate");
     expect(raw1.status, raw1.text).toBe(200);
     expect(raw1.cacheControl).toBe("private, no-cache, must-revalidate");
@@ -337,7 +345,7 @@ describe("R-0550 · Rechteentzug gegen die schon gespeicherte Browserkopie (Chro
     expect(raw3.cacheControl).toBe("no-store");
     // Keine Bytes aus der alten Kopie: der Rumpf ist die Ablehnung, nicht das Bild.
     expect(meta3.text).toContain("NOT_FOUND");
-    expect(meta3.text).not.toContain("base64");
+    expect(meta3.traegtBytes, "keine Bytes nach dem Entzug").toBe(false);
     expect(raw3.text).toContain("NOT_FOUND");
   }, 120_000);
 
@@ -374,7 +382,8 @@ describe("R-0550 · Rechteentzug gegen die schon gespeicherte Browserkopie (Chro
     expect(meta2.status).toBe(404);
     expect(raw2.status).toBe(404);
     expect(nav?.status()).toBe(404);
-    expect(meta2.text).not.toContain("base64");
+    expect(meta1.traegtBytes, "vor dem Entzug: Metadaten mit Bytes").toBe(true);
+    expect(meta2.traegtBytes, "keine Bytes nach dem Entzug").toBe(false);
     expect(raw2.text).toContain("NOT_FOUND");
   }, 120_000);
 });
