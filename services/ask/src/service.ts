@@ -844,6 +844,12 @@ export class AskService {
        */
       dokumenttextFreigegeben?: boolean;
     },
+    // produkt:20261007:spaces — WAS DER FRAGENDE ÜBERHAUPT SEHEN DARF, als fertige Entscheidung der
+    // Route (`sichtbarkeitsfilterFuer`, samt führendem Space). Bewusst ein EIGENER Parameter und
+    // nicht Teil von `opts`: `opts` ist je Zweig wörtlich vertraglich festgelegt (KA4-E1, mega52).
+    // Er wirkt auf die Vorauswahl, VOR `dropConfidential` und `validatedOnly`, und kann damit nur
+    // verengen. Ungesetzt (Systemaufrufe, bestehende Aufrufer) bleibt der Ablauf der bisherige.
+    grundlageSichtbarFuer?: (ko: KnowledgeObject) => boolean,
   ): Promise<AskResult> {
     // D5: die Abschalt-Epoche beim Beginn DIESER Frage — jede Prüfung unten vergleicht mit ihr.
     const kiBeginn = this.kiSperre?.stand();
@@ -896,7 +902,10 @@ export class AskService {
     const suchterme = [...eingabeterme, ...relevanz.flatMap((paar) => [...paar.ergaenzt])];
     // D5: bis hierher wurde nur die Frage selbst zerlegt — ab der nächsten Zeile wird Bestand gelesen.
     this.pruefeKiSperre("vorauswahl", kiBeginn);
-    const prefilteredRaw = await this.prefilterCandidates(suchterme, kiBeginn);
+    const vorauswahl = await this.prefilterCandidates(suchterme, kiBeginn);
+    const prefilteredRaw = grundlageSichtbarFuer
+      ? vorauswahl.filter((ko) => grundlageSichtbarFuer(ko))
+      : vorauswahl;
     // SCRUM-490 D2: Der Add-on-Principal (ask.validated) darf nie aus unvalidierten Inhalten antworten
     // — hier fallen alle nicht-„validiert"en Kandidaten weg, bevor der Reasoner sie sieht.
     // SCRUM-502: vertrauliche KOs gehen NIE in einen externen Kontext — hier upstream entfernt, damit sie

@@ -117,6 +117,12 @@ export interface AskRouteDeps {
    */
   klaraSessions?: Ka4Freigabepruefer | undefined;
   /**
+   * produkt:20261007:spaces — die Spaces mit Zugang „alle". Nur der Add-on-Zweig braucht sie: dort
+   * gibt es keinen Sitzungsnutzer, also darf nur Inhalt ohne Space oder aus offenen Spaces Grundlage
+   * werden. Fehlt die Quelle, fällt dort JEDES Objekt mit führendem Space weg (fail-closed).
+   */
+  offeneSpaces?: (() => Promise<ReadonlySet<string>>) | undefined;
+  /**
    * AUFNAHME 20260922 · R-0322: wer ist als Verantwortlicher erreichbar? OPTIONAL und additiv —
    * fehlt die Auskunft oder scheitert sie, gilt die Erreichbarkeit als UNBEKANNT, nie als gegeben.
    */
@@ -478,16 +484,23 @@ export function kiAbgeschaltetSenden(
 // R-0346: dazu der Zuschnitt — die Rolle aus der Sitzung (Add-on-Weg: `unbekannt`), der Anlass aus
 // dem Anfragezusammenhang (`dokument`, wenn die Frage aus dem Dokument stammt oder die Anfrage an ein
 // Word-Dokument gebunden ist). Der Dokumenttext selbst geht dafür nirgends hin (KA5).
-interface BelastbarkeitsSicht {
+export interface BelastbarkeitsSicht {
   seiteSichtbar: (ko: KnowledgeObject) => boolean;
   mitPersonen: boolean;
   zuschnitt: AntwortZuschnitt;
 }
 
-function belastbarkeitsSicht(user: SessionUser | null, anlass: FrageAnlass): BelastbarkeitsSicht {
+// produkt:20261007:spaces (Integration mit main e04ae5ea): ohne Sitzungsnutzer gilt für die
+// Gegenseite ZUSÄTZLICH dieselbe Space-Grundlage wie für die Antwort (`grundlage`: kein Space oder
+// ein offener) — sonst nennte die Belastbarkeit Inhalt aus einem geschlossenen Space.
+export function belastbarkeitsSicht(
+  user: SessionUser | null,
+  anlass: FrageAnlass,
+  grundlage: (ko: KnowledgeObject) => boolean,
+): BelastbarkeitsSicht {
   if (!user) {
     return {
-      seiteSichtbar: (ko) => ko.status === "validiert",
+      seiteSichtbar: (ko) => ko.status === "validiert" && grundlage(ko),
       mitPersonen: false,
       zuschnitt: antwortZuschnitt("unbekannt", anlass),
     };
@@ -753,6 +766,14 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
               ? { dokumenttextFreigegeben: true as const }
               : {};
           const mitMarkierung = markierung ? { ...opts, ...markierung, ...dokumenttextFeld } : opts;
+          const betrachter = request.askSessionUser;
+          let grundlage: (ko: KnowledgeObject) => boolean;
+          if (betrachter) {
+            grundlage = sichtbarkeitsfilterFuer(betrachter);
+          } else {
+            const offen = (await deps.offeneSpaces?.()) ?? new Set<string>();
+            grundlage = (ko) => typeof ko.spaceId !== "string" || offen.has(ko.spaceId);
+          }
           // D5: die Abschalt-Epoche beim EINGANG dieser Frage (onRequest oben). Jede Prüfung bis zur
           // Auslieferung vergleicht mit ihr — auch eine Aus-/Wiedereinschaltung dazwischen entwertet
           // die Frage, und zwar auch dann, wenn sie VOR dem Dienst (Einwilligungsprüfung) stand.
@@ -769,13 +790,18 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             // Word-Dokument gebunden. Bewusst NICHT die bloße Markierung — eine Markierung ohne
             // Suchbegriffe darf den Antwortkörper nicht verändern (KA5-R2, ka5-markierung.test.ts).
             frageIstDokument || gebunden ? "dokument" : "frage",
+            grundlage,
           );
           try {
             // D5 (Bens B1): nach dem letzten Warten VOR dem Dienst gegen die Eingangsepoche prüfen.
             // Zwischen dieser Prüfung und dem Einstieg in `ask.ask` (der dort seine eigene Epoche
             // liest, bevor er zum ersten Mal wartet) liegt kein `await` — also kein Fenster.
             ask.kiSperreVorFrage(kiBeginn);
-            out = await ask.ask(question, actorId, locale, mitMarkierung);
+            // produkt:20261007:spaces — die Grundlage ist, was DIESER Fragende sehen darf
+            // (`darfSehen` samt führendem Space). Ohne Sitzungsnutzer (Add-on-Schlüssel) nur Inhalt
+            // ohne Space oder aus offenen Spaces. Erhoben NACH der letzten Sperrprüfung oben wäre ein
+            // `await` im Fenster — deshalb VOR `kiSperreVorFrage` vorbereitet (`grundlage`).
+            out = await ask.ask(question, actorId, locale, mitMarkierung, grundlage);
             // D5: `evidenceFor` liest die Quellobjekte und die offenen Konflikte nach — vor JEDEM
             // dieser Lesevorgänge wird erneut geprüft (s. dort), und nach dem letzten Warten noch
             // einmal, bevor irgendetwas davon hinausgeht.
