@@ -316,11 +316,16 @@ describe("JOB 550 · Teil B — die acht IST-Stufen laufen heute", () => {
     expect(board.statusCode).toBe(200);
     expect((board.json() as KnowledgeObject[]).some((k) => k.id === ko.id)).toBe(true);
 
-    // S6 — Nutzung VOR der Validierung: beantwortet, aber ehrlich ungeprüft.
-    const vorher = (await ask(app, admin, FRAGE)).json().result as AnswerResult;
-    expect(vorher.answered).toBe(true);
-    expect(vorher.sources).toContain(ko.id);
-    expect(vorher.knowledgeClass).not.toBe("gesichert");
+    // S6 — Nutzung VOR der Validierung. R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der
+    // normale Frageweg antwortet nur aus geprüftem Wissen — das offene KO trägt keine Antwort, es
+    // wird dem berechtigten Fragenden als ungeprüfter Treffer gemeldet (Gegenprobe: die Frage trifft).
+    const vorherKoerper = (await ask(app, admin, FRAGE)).json() as {
+      result: AnswerResult;
+      ungeprueft?: Array<{ id: string }>;
+    };
+    expect(vorherKoerper.result.answered).toBe(false);
+    expect(vorherKoerper.result.sources).not.toContain(ko.id);
+    expect(vorherKoerper.ungeprueft?.map((h) => h.id)).toContain(ko.id);
 
     // S7 — Validierung über die echte Bewertung.
     const rate = await app.inject({
@@ -371,7 +376,15 @@ describe("JOB 550 · Teil B — die acht IST-Stufen laufen heute", () => {
 describe("JOB 550 · Teil C — alle sechs Negativkanten laufen", () => {
   it("N1 · zweiter Lauf: zwei Werke teilen keinen Bestand", async () => {
     const erstes = await frischesWerk();
-    await erfasse(erstes.app, erstes.admin);
+    const erfasst = (await erfasse(erstes.app, erstes.admin)).created.json() as KnowledgeObject;
+    // R-0584: das erste Werk antwortet erst aus validiertem Wissen — validiert wird über die echte
+    // Bewertung, damit „das erste Werk kennt das KO" weiter an einer ANTWORT gemessen wird.
+    await erstes.app.inject({
+      method: "PUT",
+      url: `/api/kos/${erfasst.id}`,
+      headers: erstes.admin,
+      payload: { action: "rate", verdict: "up" },
+    });
     const treffer = (await ask(erstes.app, erstes.admin, FRAGE)).json().result as AnswerResult;
     expect(treffer.answered).toBe(true);
 
