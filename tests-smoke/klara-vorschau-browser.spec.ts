@@ -348,6 +348,29 @@ test("Klara-Vorschau · schmal 390 px mit reduzierter Bewegung und Touch-Zeiger"
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: "reduce" });
+  // Nacharbeit 3 (Bens Befund): eine Bildschirmtastatur verkleinert im Browser den SICHTBAREN
+  // Bereich (`window.visualViewport`), nicht das Fenster. Kein Playwright-Browser blendet eine echte
+  // Bildschirmtastatur ein; nachgebildet wird deshalb genau das, worauf das Produkt reagiert: ein
+  // visualViewport, dessen Höhe um die Tastatur kleiner wird und der dabei `resize` meldet.
+  await page.addInitScript(() => {
+    const vv = new EventTarget();
+    let tastatur = 0;
+    const fest = (wert: () => number) => ({ get: wert, configurable: true });
+    Object.defineProperties(vv, {
+      width: fest(() => window.innerWidth),
+      height: fest(() => window.innerHeight - tastatur),
+      offsetTop: fest(() => 0),
+      offsetLeft: fest(() => 0),
+      pageTop: fest(() => window.scrollY),
+      pageLeft: fest(() => window.scrollX),
+      scale: fest(() => 1),
+    });
+    Object.defineProperty(window, "visualViewport", { configurable: true, get: () => vv });
+    (window as unknown as { klaraTastatur: (px: number) => void }).klaraTastatur = (px) => {
+      tastatur = px;
+      vv.dispatchEvent(new Event("resize"));
+    };
+  });
   await ensureLoggedIn(page);
   await page.goto("/klara-vorschau");
   const figur = page.getByTestId("klara-figur");
@@ -403,4 +426,49 @@ test("Klara-Vorschau · schmal 390 px mit reduzierter Bewegung und Touch-Zeiger"
   await page.keyboard.press("Escape");
   await expect(gespraech).toHaveCount(0);
   await expect(figur).toBeFocused();
+
+  // K3 · Bildschirmtastatur: 320 px des Fensters sind verdeckt. In kompakter UND seitlicher Ansicht
+  // müssen Eingabe, Senden und Schliessen im sichtbaren Bereich liegen und bedienbar sein.
+  const TASTATUR = 320;
+  const sichtbarBis = 844 - TASTATUR;
+  for (const ansicht of ["kompakt", "seitlich"] as const) {
+    await figur.focus();
+    await page.keyboard.press("Enter");
+    await expect(gespraech).toBeVisible();
+    if ((await gespraech.getAttribute("data-ansicht")) !== ansicht) {
+      await page.getByTestId("klara-ansicht").click();
+    }
+    await expect(gespraech).toHaveAttribute("data-ansicht", ansicht);
+    await page.evaluate(
+      (px) => (window as unknown as { klaraTastatur: (px: number) => void }).klaraTastatur(px),
+      TASTATUR,
+    );
+    await eingabe.focus();
+    await eingabe.fill(`Frage mit Tastatur (${ansicht})`);
+    for (const id of ["klara-eingabe", "klara-senden", "klara-schliessen"]) {
+      const b = await box(page.getByTestId(id));
+      expect(b.y, `${ansicht}: ${id} oben abgeschnitten`).toBeGreaterThanOrEqual(0);
+      expect(b.y + b.height, `${ansicht}: ${id} unter der Tastatur`).toBeLessThanOrEqual(
+        sichtbarBis + 1,
+      );
+    }
+    const f = await box(figur);
+    expect(f.y + f.height, `${ansicht}: Figur unter der Tastatur`).toBeLessThanOrEqual(
+      sichtbarBis + 1,
+    );
+    await info.attach(`Klara-Vorschau — schmal, Bildschirmtastatur, ${ansicht}`, {
+      body: await page.screenshot({ fullPage: false }),
+      contentType: "image/png",
+    });
+    const vorher = await page.getByTestId("klara-nachricht").count();
+    await page.getByTestId("klara-senden").click();
+    await expect(page.getByTestId("klara-nachricht")).toHaveCount(vorher + 2);
+    await expect(page.getByTestId("klara-status-text")).toHaveText("Antwort bereit");
+    await page.getByTestId("klara-schliessen").click();
+    await expect(gespraech).toHaveCount(0);
+    await expect(figur).toBeFocused();
+    await page.evaluate(() =>
+      (window as unknown as { klaraTastatur: (px: number) => void }).klaraTastatur(0),
+    );
+  }
 });

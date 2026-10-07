@@ -40,7 +40,13 @@ import { setzeKlaraVorschauAktiv } from "./aktiv";
 import { antwortAufAuswahl, antwortAufFrage, entwurfsInhalt, kuerze } from "./antworten";
 import { VORSCHAU_PFAD, artikelPfad, demoArtikel } from "./artikel";
 import { klaraAvatarUrl } from "./avatar";
-import { type Uebersetzer, ermittleKontext, herkunftFuer, seitenErklaerung } from "./kontext";
+import {
+  type Uebersetzer,
+  ermittleKontext,
+  herkunftFuer,
+  seiteAusPfad,
+  seitenErklaerung,
+} from "./kontext";
 import {
   type Aktion,
   type Entwurf,
@@ -192,12 +198,30 @@ export function KlaraVorschau(): JSX.Element {
   );
   const kontextRef = useRef(kontext);
   kontextRef.current = kontext;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `z.offen` misst beim Öffnen nach.
+  // NACHARBEIT 3 (Bens Befund): Ein Entwurf lädt oft erst nach dem Seitenwechsel, und ein Wechsel
+  // über `?draft=` setzt den Titel PROGRAMMATISCH (`Blatt.tsx` → `setTitle`) — ohne input-Ereignis.
+  // Klara liest deshalb auf Seiten, deren Objekt aus einem Feld kommt (Erfassung, Fragen), das
+  // tatsächlich angezeigte Objekt fortlaufend nach und reagiert zusätzlich auf jeden Wechsel der
+  // Abfrage (`location.search`). Neu gesetzt wird nur, wenn sich wirklich etwas geändert hat.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `z.offen` und `location.search` sind Auslöser.
   useEffect(() => {
-    const neu = (): void => setKontext(ermittleKontext(location.pathname, t, document));
+    const neu = (): void => {
+      const gemessen = ermittleKontext(location.pathname, t, document);
+      setKontext((alt) =>
+        alt.pfad === gemessen.pfad &&
+        alt.seitenName === gemessen.seitenName &&
+        alt.objekt === gemessen.objekt &&
+        alt.artikelId === gemessen.artikelId
+          ? alt
+          : gemessen,
+      );
+    };
     neu();
     // Seiten werden nachgeladen — ihr Objekt steht erst kurz nach dem Seitenwechsel da.
     const spaet = window.setTimeout(neu, 400);
+    const seite = seiteAusPfad(location.pathname).seite;
+    const nachlesen =
+      seite === "erfassung" || seite === "fragen" ? window.setInterval(neu, 300) : 0;
     let eingabeUhr = 0;
     const beiEingabe = (): void => {
       window.clearTimeout(eingabeUhr);
@@ -206,10 +230,11 @@ export function KlaraVorschau(): JSX.Element {
     document.addEventListener("input", beiEingabe, true);
     return () => {
       window.clearTimeout(spaet);
+      window.clearInterval(nachlesen);
       window.clearTimeout(eingabeUhr);
       document.removeEventListener("input", beiEingabe, true);
     };
-  }, [location.pathname, t, z.offen]);
+  }, [location.pathname, location.search, t, z.offen]);
 
   const lageRef = useRef<TutorialFernLage | null>(tutorial.lage);
   lageRef.current = tutorial.lage;
