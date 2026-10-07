@@ -90,6 +90,11 @@ const DIENSTE = PRODUKTCODE.filter((p) => p.startsWith("services/"));
 const DOPPELUMWANDLUNGEN: Readonly<Record<string, number>> = {
   "services/app/src/ai-check-worker.ts": 1,
   "services/app/src/dev-persist.ts": 2,
+  // Lesezugriff, kein Schreibweg: `lesevarianten.ts:259` schlägt eine Sprache in einem
+  // Lokalisierungssatz nach und prüft den Fund danach (`istLokalisierungsText`). Beim ersten Abgleich
+  // per Textsuche übersehen, weil die Datei ein Nullbyte trägt und als binär übersprungen wurde —
+  // der Parser hier zählt sie, genau dafür steht T4 auf dem Syntaxbaum.
+  "services/app/src/lesevarianten.ts": 1,
   "services/app/src/routes/addin-static-routes.ts": 1,
   "services/app/src/routes/confluence-import-routes.ts": 1,
   "services/app/src/routes/ko-routes.ts": 1,
