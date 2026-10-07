@@ -286,6 +286,7 @@ describe("JOB 3121 · UX-14 · die Bibliothek auf dem Telefon (Chromium, gebaute
       titel: Kante | null;
       quellen: Kante | null;
       anhaenge: Kante | null;
+      davor: Array<{ was: string; top: number; hoehe: number }>;
     }>(
       fn(`() => {
         const r = (sel) => {
@@ -300,11 +301,28 @@ describe("JOB 3121 · UX-14 · die Bibliothek auf dem Telefon (Chromium, gebaute
           titel: r('[data-testid="bib-titel"]'),
           quellen: r('[data-testid="bib-sprung-quellen"]'),
           anhaenge: r('[data-testid="bib-sprung-anhaenge"]'),
+          // Diagnose: was in der Lesespalte VOR dem Titel steht und wie hoch es ist.
+          davor: [...(document.querySelector('[data-testid="bib-lesen"]')?.children ?? [])]
+            .map((el) => {
+              const b = el.getBoundingClientRect();
+              return {
+                was: el.getAttribute('data-testid') || el.tagName.toLowerCase(),
+                top: Math.round(b.top),
+                hoehe: Math.round(b.height),
+              };
+            })
+            .filter((x) => x.hoehe > 0),
         };
       }`),
     );
     console.info(`N-0037 · 390 px nach Neuladen: ${JSON.stringify(m)}`);
     expect(m.titel?.text).toBe(TITEL_FREI);
+    // Die Ursache des ersten Laufs (Kenntnisnahme-Formular vor dem Titel) ist auf dem Telefon
+    // hinter den Bericht gewandert: VOR dem Titel steht sie nicht mehr.
+    const titelOben = m.titel?.top ?? Number.POSITIVE_INFINITY;
+    expect(m.davor.filter((x) => x.was === "kenntnisnahme-bereich" && x.top < titelOben)).toEqual(
+      [],
+    );
     for (const [name, k] of [
       ["Titel", m.titel],
       ["Quellen", m.quellen],

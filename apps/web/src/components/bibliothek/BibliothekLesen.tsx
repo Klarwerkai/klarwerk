@@ -61,6 +61,7 @@ import {
   latestValidationFeedback,
 } from "../../lib/validationFeedback";
 import { isReturnedForRework } from "../../lib/validationStatus";
+import { TELEFON_LESE_QUERY, useMediaQuery } from "../../shell/useMediaQuery";
 import { AiAssistBox } from "../AiAssistBox";
 import { BodyExtractPanel } from "../BodyExtractPanel";
 import { BodyImageGallery } from "../BodyImageGallery";
@@ -958,6 +959,8 @@ export function BibliothekLesen({
   // Aus der EINEN Quelle (`lib/netzzustand.ts`, `onlineManager`), nicht aus `navigator.onLine`.
   const netzOnline = useNetzOnline();
   const { role } = useRole();
+  // N-0037: auf dem Telefon steht der Kenntnisnahme-Bereich NACH dem Bericht (s. dort).
+  const telefon = useMediaQuery(TELEFON_LESE_QUERY);
   const { user } = useSession();
   const { push } = useToast();
   const qc = useQueryClient();
@@ -2295,6 +2298,10 @@ export function BibliothekLesen({
   const rueckzugMoeglich =
     eigenesObjekt && darfLoeschen && (kollision.art === "dublette" || kollision.art === "beides");
   const fb = latestValidationFeedback(ko.comments);
+  // Kenntnisnahme einer gültigen Fassung — EIN Element, je nach Breite an einer von zwei Stellen.
+  const kenntnisnahme = (
+    <KenntnisnahmeBereich koId={koId} darfAnfordern={role === "controller" || role === "admin"} />
+  );
 
   return (
     <ImageDescribeProvider provenance={draftProvenance(ko.confidentiality, koId)}>
@@ -2616,11 +2623,13 @@ export function BibliothekLesen({
         {/* Kenntnisnahme einer gültigen Fassung: die eigene Anforderung (Bestätigen nur per Klick)
             und — mit Zuweisungsrecht — Anfordern und Übersicht. Ohne beides erscheint nichts.
             `darfAnfordern` spiegelt `ko.assign` (Controller/Admin) nur für die Anzeige; entschieden
-            wird am Server. */}
-        <KenntnisnahmeBereich
-          koId={koId}
-          darfAnfordern={role === "controller" || role === "admin"}
-        />
+            wird am Server.
+            Aufnahme 20260922 · antwort-quellenanzeige (N-0037): auf dem Telefon (< 760 px) steht
+            der Bereich NACH dem Bericht. Mit Zuweisungsrecht ist er ein ganzes Formular (Empfänger,
+            Frist, Übersicht) und schob Titel und die Sprünge zu Quellen und Anhängen unter das
+            erste Bild (390 px, nach Neuladen: Titel bei 995–1058 px, Bildhöhe 844 —
+            tests/bibliothek-schmal/telefon-chromium.test.ts C7). Breit bleibt er hier. */}
+        {telefon ? null : kenntnisnahme}
         {edit ? (
           // ---- Bearbeiten: dasselbe Formular wie bisher, an derselben Stelle -------------------
           <div className="space-y-3">
@@ -3565,6 +3574,8 @@ export function BibliothekLesen({
             ) : null}
           </>
         )}
+        {/* N-0037: auf dem Telefon die Kenntnisnahme NACH dem Bericht (Begründung oben). */}
+        {telefon ? kenntnisnahme : null}
         {/* ============================================================================================
             JOB 3637 · DIE RÜCKFRAGE ZUM LÖSCHEN STEHT DA, WO GEKLICKT WURDE.
             ============================================================================================
