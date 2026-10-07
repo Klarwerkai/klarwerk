@@ -58,7 +58,9 @@ echo ""
 #
 # `npm audit --omit=dev` fuer beide ausgelieferten Bestaende (Laufzeit-Image und gebuendelte SPA),
 # jede Meldung gegen ihre Bewertung an der gebundenen Version
-# (tests/abhaengigkeiten-vor-auslieferung/bewertete-meldungen.json). Hier, nicht in tools/check, weil
+# (tools/abhaengigkeiten-bewertet.json). Dieselbe Pruefung laeuft noch einmal im Image-Bau (Dockerfile,
+# Stufe `abhaengigkeiten`) fuer jeden Lieferweg; hier ist sie die fruehere Sperre VOR dem Push.
+# Hier und in Dockerfile, nicht in tools/check, weil
 # das Tor hermetisch ist und die Pruefung die Registry braucht. Vor dem Runner, weil sie Sekunden
 # kostet und der Runner Minuten. Exit 1 (unbewertet/veraltet) UND Exit 2 (nicht geprueft) brechen
 # ab: ohne Pruefung wird nichts hochgezaehlt, committet, gepusht oder deployt.

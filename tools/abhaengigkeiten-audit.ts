@@ -12,10 +12,17 @@
 //
 // WARUM NICHT IN `tools/check`. Das Tor ist bewusst hermetisch (kein Modell, kein Schlüssel, kein
 // Egress — `tools/check`, Abschnitt zum UI-Smoke). `npm audit` braucht die Registry. Im Tor wäre
-// die Prüfung entweder netzabhängig rot oder still übersprungen — beides falsch. Der Weg, der
-// ohnehin ins Netz geht und unmittelbar vor der Auslieferung steht, ist
-// `scripts/deploy/klarwerk-ship.command`; dort ruft der Starter `tools/abhaengigkeiten-audit.sh`
-// diese Prüfung, BEVOR irgendetwas hochgezählt, committet, gepusht oder deployt wird.
+// die Prüfung entweder netzabhängig rot oder still übersprungen — beides falsch.
+//
+// DIE ZWEI AUFRUFER, und warum es zwei sind (BEN, nacharbeit-2):
+//   1. `Dockerfile`, Stufe `abhaengigkeiten`. JEDER Lieferweg endet dort: Coolify baut nach dem
+//      Push das Dockerfile, und die Laufzeitstufe übernimmt das Prüfergebnis aus dieser Stufe
+//      (`COPY --from=abhaengigkeiten`). Exit 1 oder 2 lässt den Image-Bau scheitern — die Fassung
+//      geht nicht live, gleich ob über das Ship-Skript oder den automatischen Veröffentlichungsweg
+//      der Produktionsbahn veröffentlicht wurde. Diese Sperre greift NACH dem Push, nicht davor:
+//      den Adapter der Produktionsbahn ändert dieses Repository nicht.
+//   2. `scripts/deploy/klarwerk-ship.command` (Schritt 0b) über `tools/abhaengigkeiten-audit.sh`,
+//      BEVOR hochgezählt, committet oder gepusht wird — die frühere Sperre für den Handweg.
 //
 // ZWEI BESTÄNDE, weil zwei ausgeliefert werden (Dockerfile):
 //   wurzel  `package-lock.json`          — `npm ci --omit=dev` im Laufzeit-Image (Dockerfile:34)
@@ -25,9 +32,8 @@
 //
 // EIN GRÜNER SCANNER IST NICHT DAS ZIEL. Gemeldet bleiben darf, was BEWERTET ist — mit konkreter
 // Exposition, an genau der Version, an der bewertet wurde
-// (`tests/abhaengigkeiten-vor-auslieferung/bewertete-meldungen.json`; die Urteile dort hält ein
-// Test gleich mit dem Expositionsbericht `tests/produktionsabhaengigkeiten/README.md`). Die
-// Prüfung sperrt, wenn
+// (`tools/abhaengigkeiten-bewertet.json`; die Urteile dort hält ein Test gleich mit dem
+// Expositionsbericht `tests/produktionsabhaengigkeiten/README.md`). Die Prüfung sperrt, wenn
 //   · eine Meldung keine Bewertung hat (neu veröffentlicht, neues Paket, neuer Ort), oder
 //   · die Bewertung an einer anderen Version hängt als der heute gebundenen (veraltet).
 // Eine Bewertung „exponiert" sperrt nicht, sie wird bei JEDEM Lauf laut ausgegeben: sie ist eine
@@ -37,17 +43,18 @@
 //   0 = jede Meldung bewertet, an der gebundenen Version
 //   1 = unbewertete oder veraltete Meldung, oder das Register selbst ist ungültig
 //   2 = nicht geprüft (Registry nicht erreichbar, npm-Fehler, unbekanntes Berichtsformat)
-// Der Ship-Weg bricht bei 1 UND 2 ab: „nicht geprüft" ist nicht lieferbar.
+// Beide Aufrufer brechen bei 1 UND 2 ab: „nicht geprüft" ist nicht lieferbar.
 //
 // RUNNER: `node`, nicht `tsx`/`npx` — wie `tools/zentrale-drift.sh` (Type-Stripping, kein
 // Nachladen aus dem Netz).
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const WURZEL = join(import.meta.dirname, "..");
 
-export const REGISTER_DATEI = "tests/abhaengigkeiten-vor-auslieferung/bewertete-meldungen.json";
+/** Unter `tools/`, nicht unter `tests/`: `.dockerignore` hält `tests` aus dem Image-Bau heraus. */
+export const REGISTER_DATEI = "tools/abhaengigkeiten-bewertet.json";
 
 export const BESTAENDE = {
   wurzel: { verzeichnis: ".", lockdatei: "package-lock.json" },
@@ -351,7 +358,10 @@ function liesJson<T>(pfad: string): T {
 if (process.argv[1]?.endsWith("abhaengigkeiten-audit.ts")) {
   // `--bericht-wurzel <datei>` / `--bericht-web <datei>` lesen einen gespeicherten Bericht, statt
   // die Registry zu fragen — für den Aufrufertest und zum Nachvollziehen eines früheren Laufs. Die
-  // Quelle steht in der Ausgabe; der Ship-Weg übergibt keine Datei.
+  // Quelle steht in der Ausgabe; Ship-Weg und Image-Bau übergeben keine Datei.
+  // `--ausgabe <datei>` legt dieselben Zeilen zusätzlich als Datei ab — der Image-Bau (Dockerfile,
+  // Stufe `abhaengigkeiten`) übernimmt sie ins Laufzeit-Image, damit die ausgelieferte Fassung ihr
+  // Prüfergebnis mitträgt.
   const argv = process.argv.slice(2);
   const wert = (name: string): string | undefined => {
     const stelle = argv.indexOf(name);
@@ -360,11 +370,14 @@ if (process.argv[1]?.endsWith("abhaengigkeiten-audit.ts")) {
   const wurzel = wert("--wurzel") ?? WURZEL;
   const berichte = {} as Record<Bestand, Bericht>;
   const locks = {} as Record<Bestand, Lockdatei>;
-  console.log("Abhängigkeitsprüfung vor der Auslieferung (npm audit --omit=dev, R-1398)");
+  const ausgabe: string[] = [
+    "Abhängigkeitsprüfung vor der Auslieferung (npm audit --omit=dev, R-1398)",
+    `  Stand: ${new Date().toISOString()}`,
+  ];
   for (const bestand of BESTANDSNAMEN) {
     const datei = wert(`--bericht-${bestand}`);
     const quelle = datei ? `gespeicherter Bericht ${datei}` : "npm audit, jetzt";
-    console.log(`  Quelle ${bestand}: ${quelle}`);
+    ausgabe.push(`  Quelle ${bestand}: ${quelle}`);
     berichte[bestand] = datei
       ? liesAuditBericht(readFileSync(datei, "utf8"))
       : fuehreAuditAus(join(wurzel, BESTAENDE[bestand].verzeichnis));
@@ -372,8 +385,13 @@ if (process.argv[1]?.endsWith("abhaengigkeiten-audit.ts")) {
   }
   const register = liesJson<Bewertung[]>(join(wurzel, REGISTER_DATEI));
   const ergebnis = pruefe(berichte, register, locks);
-  for (const z of ergebnis.zeilen) {
+  ausgabe.push(...ergebnis.zeilen);
+  for (const z of ausgabe) {
     console.log(z);
+  }
+  const ausgabeDatei = wert("--ausgabe");
+  if (ausgabeDatei) {
+    writeFileSync(ausgabeDatei, `${ausgabe.join("\n")}\n`);
   }
   process.exit(ergebnis.code);
 }

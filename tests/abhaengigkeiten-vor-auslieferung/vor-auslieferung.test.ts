@@ -3,9 +3,11 @@
 // SCHWACHSTELLEN HABEN.
 // ================================================================================================
 //
-// Die Prüfung selbst steht in `tools/abhaengigkeiten-audit.ts`, ihr Aufrufer ist
+// Die Prüfung selbst steht in `tools/abhaengigkeiten-audit.ts`. Aufrufer sind der Image-Bau
+// (`Dockerfile`, Stufe `abhaengigkeiten`; belegt in `dockerfile-sperre.test.ts` daneben) und
 // `scripts/deploy/klarwerk-ship.command` (Schritt 0b; der Abbruch dort ist in
-// `tests/deploy-liefernachweis/live-update-liefernachweis.test.ts` AUSGEFÜHRT belegt).
+// `tests/deploy-liefernachweis/live-update-liefernachweis.test.ts` AUSGEFÜHRT belegt). Die echte
+// Registry-Messung beider Bestände steht in `echter-audit.integration.test.ts`.
 //
 // KEIN NETZ IN DIESEM TEST. Die Auditberichte unten sind SYNTHETISCH — gebaut in der Form, die
 // `npm audit --json` liefert (`auditReportVersion: 2`), mit den fünf Advisories, die nach JOB 4272

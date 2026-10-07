@@ -508,15 +508,15 @@ den Test anzupassen.
 
 Dieser Ordner hält die Einordnung vom 17.09. gegen die Lockdatei. Das bemerkt eine
 **Versionsänderung**, aber keine **neu veröffentlichte** Advisory gegen eine unveränderte Version.
-Dafür gibt es seit diesem Nachtrag `tools/abhaengigkeiten-audit.ts`. Gerufen wird es von
-`scripts/deploy/klarwerk-ship.command` (Schritt 0b), bevor hochgezählt, committet, gepusht oder
-deployt wird. Es fragt `npm audit --omit=dev` für beide ausgelieferten Bestände (Laufzeit-Image
+Dafür gibt es seit diesem Nachtrag `tools/abhaengigkeiten-audit.ts`. Gerufen wird es an zwei
+Stellen: im Image-Bau (`Dockerfile`, Stufe `abhaengigkeiten`), über den jeder Lieferweg nach dem
+Push geht, und vorher in `scripts/deploy/klarwerk-ship.command` (Schritt 0b). Es fragt `npm audit --omit=dev` für beide ausgelieferten Bestände (Laufzeit-Image
 und gebündelte SPA unter `apps/web`) und sperrt jede Meldung, die keine Bewertung an der gebundenen
 Version hat. Es sperrt auch, wenn die Prüfung nicht durchführbar war.
 
 Die Bewertungen der fünf heute noch gemeldeten Advisories (`@fastify/static` ×2, `find-my-way`,
 `nodemailer` ×2) stehen maschinenlesbar in
-`tests/abhaengigkeiten-vor-auslieferung/bewertete-meldungen.json`. Dort steht auch die bewertete
+`tools/abhaengigkeiten-bewertet.json` (dort, weil `.dockerignore` `tests` ausschliesst). Dort steht auch die bewertete
 Version, denn eine Bewertung gilt nur für die Version, an der sie gemacht wurde. Dass die Urteile
 dort mit der Tabelle in Abschnitt 1 übereinstimmen und die Versionen mit der Lockdatei, hält
 `tests/abhaengigkeiten-vor-auslieferung/vor-auslieferung.test.ts` fest. Die Einordnung in diesem
