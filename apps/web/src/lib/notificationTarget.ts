@@ -11,8 +11,14 @@ export function notificationTarget(n: Pick<Notification, "kind" | "koId">): stri
   if (n.kind === "impact") {
     return n.koId ? `/wissen/${n.koId}` : null;
   }
-  if (n.kind === "conflict") {
+  // R-0894: eine Eskalation wird dort entschieden, wo der Konflikt steht.
+  if (n.kind === "conflict" || n.kind === "escalation") {
     return "/konflikte";
+  }
+  // R-0894: eine Rückgabe zur Nacharbeit führt in den Eintrag — dort wird überarbeitet, nicht in
+  // der Prüfliste.
+  if (n.kind === "return") {
+    return n.koId ? `/wissen/${n.koId}` : null;
   }
   // Pedi 04.07.: Duplikat-Benachrichtigung führt aufs Duplikate-Board.
   if (n.kind === "duplicate") {
