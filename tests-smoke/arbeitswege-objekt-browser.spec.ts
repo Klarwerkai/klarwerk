@@ -251,7 +251,10 @@ test.describe("Arbeitswege am selben Artikel · der Weg in der echten App", () =
     await expect(kopf).toHaveValue(`Ventil ${m}`);
 
     // Die Seitensuche ist ein eigenes Feld und übernimmt den Suchtext nicht.
-    await page.getByTestId("kopfband-gehezu").click();
+    // Über das Tastenkürzel, nicht den Knopf: der Knopf „Seite finden" tritt in der breiten
+    // Bauform bei enger Zeile bewusst zurück (FE-002, `index.css`) und ist bei 1280 px unsichtbar
+    // — gemessen im Prüflauf nacharbeit-2. Strg+K ist der eigentliche Weg (`CommandPalette.tsx`).
+    await page.keyboard.press("Control+k");
     // Der sprachfreie Griff der Palette (`CommandPalette.tsx`, `data-cmd="suchfeld"`).
     const seitensuche = page.locator('[data-cmd="suchfeld"]');
     await expect(seitensuche).toBeVisible();
