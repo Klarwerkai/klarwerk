@@ -872,6 +872,61 @@ export class ConfluenceRestClient {
   }
 
   /**
+   * Nacharbeit 18 (Ben, K1): das GANZE lesende Gruppenverzeichnis (`GET /rest/api/group`) — derselbe
+   * Weg, dieselbe Seitenlogik und Seitenobergrenze wie `cloudGruppenId`. Es ist der reguläre
+   * Quellkontenweg für Leserechte über Zugangsklassen: deren Konten nennt die Quelle nicht, wohl
+   * aber die Gruppen, in denen sie stehen. Nur Cloud (der PAT-Weg prüft Leserechte je Konto nicht).
+   * Ein Fehler, eine unlesbare Antwort oder die Grenze ergeben `vollstaendig: false`.
+   */
+  async getGruppenverzeichnis(): Promise<{
+    gruppen: { name: string; id: string }[];
+    vollstaendig: boolean;
+  }> {
+    const gruppen: { name: string; id: string }[] = [];
+    if (this.config.authMode === "pat") {
+      return { gruppen, vollstaendig: false };
+    }
+    const limit = 200;
+    const allowedOrigin = this.allowedOrigin();
+    const ersteSeite = (start: number) =>
+      `${this.baseUrl}/rest/api/group?${new URLSearchParams({ start: String(start), limit: String(limit) })}`;
+    let url = ersteSeite(0);
+    let gelesen = 0;
+    for (let seite = 0; seite < CONFLUENCE_MAX_GRUPPENSEITEN; seite += 1) {
+      let data: unknown;
+      try {
+        data = await this.getJson(url, allowedOrigin);
+      } catch {
+        return { gruppen, vollstaendig: false };
+      }
+      const antwort = data as { results?: unknown; _links?: { next?: unknown } } | undefined;
+      if (!Array.isArray(antwort?.results)) {
+        return { gruppen, vollstaendig: false };
+      }
+      for (const gruppe of antwort.results as { name?: unknown; id?: unknown }[]) {
+        const name = typeof gruppe?.name === "string" ? gruppe.name.trim() : "";
+        const id = typeof gruppe?.id === "string" ? gruppe.id.trim() : "";
+        if (name && id) {
+          gruppen.push({ name, id });
+        }
+      }
+      gelesen += antwort.results.length;
+      if (antwort._links && typeof antwort._links === "object") {
+        if (typeof antwort._links.next === "string" && antwort._links.next) {
+          url = this.nextUrl(antwort._links.next, allowedOrigin);
+          continue;
+        }
+        return { gruppen, vollstaendig: true };
+      }
+      if (antwort.results.length < limit) {
+        return { gruppen, vollstaendig: true };
+      }
+      url = ersteSeite(gelesen);
+    }
+    return { gruppen, vollstaendig: false };
+  }
+
+  /**
    * Die Mitglieder einer Gruppe, seitenweise. Bricht ein Abruf ab, bleibt es bei den bis dahin
    * gelesenen — weniger Leser, nie mehr. `vollstaendig` sagt, ob das Ende erreicht wurde.
    */
@@ -886,13 +941,20 @@ export class ConfluenceRestClient {
   //     heißt „es kann mehr geben", weitergelesen wird ab `start + gelesen`.
   // Ein Abruffehler, eine unlesbare Antwort und das Erreichen der technischen Grenze
   // (`CONFLUENCE_MAX_GRUPPENSEITEN`) ergeben `vollstaendig: false` — nie eine still gekürzte Gruppe.
-  async getGruppenmitglieder(name: string): Promise<{ users: unknown[]; vollstaendig: boolean }> {
+  async getGruppenmitglieder(
+    name: string,
+    // Nacharbeit 18: die ID aus dem bereits gelesenen Gruppenverzeichnis — dann ohne erneute Suche.
+    bekannteId?: string,
+  ): Promise<{ users: unknown[]; vollstaendig: boolean }> {
     const users: unknown[] = [];
     const limit = 200;
     const allowedOrigin = this.allowedOrigin();
     // CF-REST-01: Cloud liest über die Gruppen-ID; der PAT-Weg (selbst betrieben) behält den
     // Namensweg. Eine Cloud-Gruppe ohne zuordenbare ID bleibt unbekannt — keine Leser daraus.
-    const groupId = this.config.authMode === "pat" ? undefined : await this.cloudGruppenId(name);
+    let groupId: string | undefined;
+    if (this.config.authMode !== "pat") {
+      groupId = bekannteId || (await this.cloudGruppenId(name));
+    }
     if (this.config.authMode !== "pat" && !groupId) {
       return { users, vollstaendig: false };
     }

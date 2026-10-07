@@ -199,7 +199,7 @@ interface KontenEbene extends ConfluenceLeseEbene {
   konten?: string[];
 }
 
-/** Höchstzahl der Leseprüfungen je Konto und Seite in einem Lauf — ein Schutz gegen Abrufstürme. */
+/** Höchstzahl bearbeiteter Kandidaten (Mailnachfrage, Leseprüfung) je Lauf — gegen Abrufstürme. */
 const MAX_LESEPRUEFUNGEN = 500;
 
 class RechteLauf {
@@ -237,6 +237,10 @@ class RechteLauf {
    * Quelle geprüft (`pruefeLeserecht`). Nur ein bestätigtes Konto mit zuordenbarer Mailadresse
    * kommt dazu. Die Ebene bleibt `unvollstaendig` — Konten, die nur die Zugangsklasse kennt, kann
    * die Quelle nicht aufzählen; der Vermerk reist bis zum Laufergebnis.
+   *
+   * Nacharbeit 18 (Ben, K1): dazu die Konten des Gruppenverzeichnisses der Quelle
+   * (`verzeichnisKonten`) — unabhängig von Autorenrolle und Restriktionseinträgen. Auch sie werden
+   * einzeln an der Quelle geprüft und nur mit regulär zugeordneter Mailadresse übernommen.
    */
   async spaceFuer(
     space: RaumEbene | undefined,
@@ -248,20 +252,62 @@ class RechteLauf {
     }
     const emails = new Set(space.emails);
     const pageId = page.id?.trim();
-    for (const accountId of new Set(kandidaten)) {
+    const alle = new Set(kandidaten);
+    for (const accountId of (await this.verzeichnisKonten()).konten) {
+      alle.add(accountId);
+    }
+    for (const accountId of alle) {
       if (!pageId || this.pruefungen >= MAX_LESEPRUEFUNGEN) {
         break;
       }
+      // Nacharbeit 18: die Grenze zählt jeden bearbeiteten Kandidaten (Mailnachfrage und Prüfung).
+      this.pruefungen += 1;
       const email = await this.emailVon({ accountId });
       if (!email || emails.has(email)) {
         continue; // ohne Mailadresse keine Zuordnung; schon Leser
       }
-      this.pruefungen += 1;
       if ((await this.client.pruefeLeserecht(pageId, accountId)) === true) {
         emails.add(email);
       }
     }
     return { beschraenkt: true, emails: [...emails], unvollstaendig: true };
+  }
+
+  /**
+   * Nacharbeit 18 (Ben, K1): der reguläre Quellkontenweg für Zugangsklassen — alle Mitglieder der
+   * Gruppen im lesenden Gruppenverzeichnis (`getGruppenverzeichnis`, Mitglieder über die
+   * Gruppen-ID). EINMAL je Lauf, erst wenn eine Seite ihn braucht. Mitgelieferte Mailadressen
+   * gelten für spätere Nachfragen per Kennung. Ein Konto in keiner lesbaren Gruppe bleibt
+   * unbekannt; deshalb bleibt die Space-Ebene `unvollstaendig`.
+   */
+  private verzeichnis: Promise<{ konten: string[] }> | undefined;
+
+  private verzeichnisKonten(): Promise<{ konten: string[] }> {
+    if (!this.verzeichnis) {
+      this.verzeichnis = (async () => {
+        const konten = new Set<string>();
+        const { gruppen } = await this.client.getGruppenverzeichnis();
+        for (const gruppe of gruppen) {
+          const { users } = await this.client.getGruppenmitglieder(gruppe.name, gruppe.id);
+          for (const user of users) {
+            const accountId = kennungVon(user);
+            if (accountId) {
+              konten.add(accountId);
+              this.merkeMitgelieferteAdresse(user, accountId);
+            }
+          }
+        }
+        return { konten: [...konten] };
+      })();
+    }
+    return this.verzeichnis;
+  }
+
+  private merkeMitgelieferteAdresse(user: unknown, accountId: string): void {
+    const email = (user as { email?: unknown }).email;
+    if (typeof email === "string" && email.trim().length > 0 && !this.konten.has(accountId)) {
+      this.konten.set(accountId, Promise.resolve(email.trim().toLowerCase()));
+    }
   }
 
   /** Die eigene Ebene einer Seite, VOLL aufgelöst (Benutzer und Mitglieder genannter Gruppen). */

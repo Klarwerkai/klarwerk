@@ -98,8 +98,15 @@ function fixture(
   rechte: FixtureRechte = {},
 ) {
   const abgerufen: string[] = [];
+  // Nacharbeit 18: jeder Abruf mit dem Konto, das er betrifft (Kontoabfrage bzw. Leseprüfung).
+  const aufrufe: { pfad: string; konto?: string }[] = [];
   const fetchFn = (async (url: string | URL | Request, init?: RequestInit) => {
     const u = new URL(String(url));
+    const geprueft = init?.body
+      ? (JSON.parse(String(init.body)) as { subject?: { identifier?: string } }).subject?.identifier
+      : undefined;
+    const konto = u.searchParams.get("accountId") ?? geprueft;
+    aufrufe.push({ pfad: u.pathname, ...(konto ? { konto } : {}) });
     // Nacharbeit 16: die Leseprüfung je Konto (`POST …/permission/check`) und die V2-Principals.
     if (/\/rest\/api\/content\/[^/]+\/permission\/check$/.test(u.pathname)) {
       const anfrage = JSON.parse(String(init?.body ?? "{}")) as {
@@ -210,7 +217,7 @@ function fixture(
     spaceKey: "K",
     fetchFn,
   });
-  return { adapter, abgerufen };
+  return { adapter, abgerufen, aufrufe };
 }
 
 // Baum: Wurzel (offen) → Personal (Gruppe „hr") → Gehalt (selbst offen) → Detail (selbst offen)
@@ -1165,6 +1172,53 @@ describe("R-0549 · Space-Leserecht über eine Zugangsklasse", () => {
     const rechte = (items[0] as MitQuellrechten).quellrechte;
     expect(rechte?.emails).toEqual([]);
     expect(rechte?.leserUnvollstaendig).toBeUndefined();
+  });
+
+  // Nacharbeit 18 (Ben, K1): Lea und Otto sind weder Autoren noch Restriktionssubjekte — die
+  // Seite trägt explizit leere Restriktionen, ihr Autor ist ein drittes Konto. Der reguläre
+  // Quellkontenweg (Gruppenverzeichnis, Mitglieder über die ID) liefert beide; ihre Mailadressen
+  // kommen über die Kontoabfrage. Die Quelle bestätigt Lea und verneint Otto.
+  const NICHTAUTOREN: FixtureRechte = {
+    space: { users: [], groups: [] },
+    gruppen: { lizenziert: [{ accountId: "acc-lea" }, { accountId: "acc-otto" }] },
+    kontoEmails: { "acc-lea": "lea@example.com", "acc-otto": "otto@example.com" },
+    zugangsklasse: { klasse: "ALL_LICENSED_USERS", berechtigt: ["acc-lea"] },
+  };
+  const offenMitFremdemAutor = (): ConfluencePage => ({
+    ...seite("996", [], { user: [], group: [] }),
+    version: { number: 1, by: { accountId: "acc-autor", displayName: "Autor" } },
+  });
+  const kontoNachweise = (aufrufe: { pfad: string; konto?: string }[]) => {
+    for (const konto of ["acc-lea", "acc-otto"]) {
+      expect(
+        aufrufe.some((a) => a.pfad.endsWith("/rest/api/user/email") && a.konto === konto),
+        `Kontoabfrage ${konto}`,
+      ).toBe(true);
+      expect(
+        aufrufe.some((a) => a.pfad.endsWith("/996/permission/check") && a.konto === konto),
+        `Leseprüfung ${konto}`,
+      ).toBe(true);
+    }
+    expect(aufrufe.some((a) => a.pfad.endsWith("/rest/api/group"))).toBe(true);
+  };
+
+  it("Z4 · collectAll: der reguläre Kontoweg liefert Lea und Otto — Lea wird Leserin, Otto bleibt ausgeschlossen", async () => {
+    const { adapter, aufrufe } = fixture([offenMitFremdemAutor()], undefined, NICHTAUTOREN);
+    const { items } = await adapter.collectAll();
+    const rechte = (items[0] as MitQuellrechten).quellrechte;
+    expect(rechte?.emails).toEqual(["lea@example.com"]);
+    expect(rechte?.leserUnvollstaendig).toBe(true);
+    expect(items[0]?.confidentiality).toBe("intern");
+    kontoNachweise(aufrufe);
+  });
+
+  it("Z5 · fetchItem: derselbe Nachweis beim Nachladen je ID", async () => {
+    const { adapter, aufrufe } = fixture([], [offenMitFremdemAutor()], NICHTAUTOREN);
+    const item = await adapter.fetchItem("996");
+    const rechte = (item as MitQuellrechten | undefined)?.quellrechte;
+    expect(rechte?.emails).toEqual(["lea@example.com"]);
+    expect(rechte?.leserUnvollstaendig).toBe(true);
+    kontoNachweise(aufrufe);
   });
 
   it("Z3 · derselbe Schutz beim Nachladen je ID (fetchItem)", async () => {
