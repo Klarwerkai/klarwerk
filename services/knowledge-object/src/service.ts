@@ -101,6 +101,8 @@ import {
 import { confirmedSourceAnchor } from "./source-anchor";
 // SCRUM-527 (WP2): Quell-URL-Allowlist an der Persistenzgrenze (nur absolute http/https).
 import { safeSourceUrl, sanitizeSources } from "./source-url";
+// P-WIKI-STELLENBEZUG: der Anker einer Rückfrage im Text — Prüfung und Vergleich.
+import { gleicheStelle, stelleImInhalt } from "./stellen-anker";
 import {
   type AiCheckBasis,
   type AiCheckCoverage,
@@ -117,6 +119,7 @@ import {
   type KoComment,
   // JOB 4146: der Klärungsstand eines Diskussionsfadens (geklärt, nicht freigegeben).
   type KoCommentResolution,
+  type KoCommentStelle,
   type KoCreateOperation,
   KoError,
   // R-1107: der Verweis eines aufgegangenen Artikels auf den verbleibenden.
@@ -155,6 +158,7 @@ export interface CreateOperationRequester {
  * DIESELBE ABSENDUNG IST DAHER: gleicher Schlüssel · gleicher Verfasser · gleicher Text · gleicher
  * Antwortbezug. Der Bezug gehört dazu, weil dieselben Worte an einem anderen Faden eine andere
  * Aussage sind. Fehlender und leerer Bezug sind dabei dasselbe — beides heisst „Wurzelbeitrag".
+ * P-WIKI-STELLENBEZUG: aus demselben Grund gehört die Stelle im Text dazu.
  */
 function gleicheAbsendung(
   vorhanden: KoComment,
@@ -162,12 +166,14 @@ function gleicheAbsendung(
   text: string,
   replyTo: string | undefined,
   clientKey: string,
+  stelle: KoCommentStelle | undefined,
 ): boolean {
   return (
     vorhanden.clientKey === clientKey &&
     vorhanden.author === author &&
     vorhanden.text === text &&
-    (vorhanden.replyTo ?? "") === (replyTo ?? "")
+    (vorhanden.replyTo ?? "") === (replyTo ?? "") &&
+    gleicheStelle(vorhanden.stelle, stelle)
   );
 }
 
@@ -3420,14 +3426,27 @@ export class KoService {
   // KENNUNG UND ZEITPUNKT ENTSTEHEN EINMAL, VOR DEM ERSTEN VERSUCH: ein Wiederholversuch mit neuer
   // Kennung könnte denselben Beitrag zweimal in den Bestand legen, wenn der erste Schreibvorgang
   // doch noch durchging.
+  //
+  // P-WIKI-STELLENBEZUG — `stelle` (Form bereits an der Route geprüft, `leseStelle`) wird NUR
+  // gegen die GERADE GESPEICHERTE Fassung angenommen. Wurde die Stelle in einer älteren Fassung
+  // gewählt, antwortet der Dienst `KO_STALE` und schreibt nichts: sie an die neue Fassung zu
+  // binden hiesse, sie still an einen Text zu hängen, den der Verfasser nie gesehen hat. Steht die
+  // Textstelle nicht im Inhalt dieser Fassung, ist sie erfunden (`INVALID`, 400).
   async addComment(
     id: string,
     author: string,
     text: string,
-    opts: { replyTo?: string; clientKey?: string } = {},
+    opts: { replyTo?: string; clientKey?: string; stelle?: KoCommentStelle } = {},
   ): Promise<KnowledgeObject> {
     const replyTo = opts.replyTo?.trim();
     const clientKey = opts.clientKey?.trim();
+    const stelle = opts.stelle;
+    if (stelle && replyTo) {
+      throw new KoError(
+        "INVALID",
+        "Eine Antwort gehört zur Stelle ihres Fadens und trägt keine eigene.",
+      );
+    }
     const neu: KoComment = {
       id: this.genId(),
       author,
@@ -3435,6 +3454,7 @@ export class KoService {
       at: new Date(this.now()).toISOString(),
       ...(replyTo ? { replyTo } : {}),
       ...(clientKey ? { clientKey } : {}),
+      ...(stelle ? { stelle } : {}),
     };
 
     const versuch = async (): Promise<{ ko: KnowledgeObject; geschrieben: boolean }> => {
@@ -3448,8 +3468,25 @@ export class KoService {
       // wer nach einer verlorenen Antwort seinen Text nachbesserte und erneut sendete, bekam ein
       // HTTP 200 über den ALTEN Beitrag, während der neue nirgends landete (BEN, Runde 4).
       // Dieselbe Absendung heisst: derselbe Verfasser, derselbe Text, derselbe Antwortbezug.
-      if (clientKey && bestand.some((c) => gleicheAbsendung(c, author, text, replyTo, clientKey))) {
+      if (
+        clientKey &&
+        bestand.some((c) => gleicheAbsendung(c, author, text, replyTo, clientKey, stelle))
+      ) {
         return { ko, geschrieben: false };
+      }
+      if (stelle) {
+        if (stelle.koVersion !== ko.version) {
+          throw new KoError(
+            "KO_STALE",
+            `Die Stelle wurde in Fassung v${stelle.koVersion} gewählt; der Eintrag steht inzwischen auf v${ko.version}. Der Beitrag wurde nicht angefügt — bitte die Stelle in der aktuellen Fassung neu wählen.`,
+          );
+        }
+        if (!stelleImInhalt(ko.bodyHtml, stelle)) {
+          throw new KoError(
+            "INVALID",
+            "Die gewählte Stelle bestimmt in dieser Fassung keinen eindeutigen Block (Art, Abschnitt und Inhalt müssen zusammen passen).",
+          );
+        }
       }
       if (replyTo && !bestand.some((c) => c.id === replyTo)) {
         throw new KoError(
