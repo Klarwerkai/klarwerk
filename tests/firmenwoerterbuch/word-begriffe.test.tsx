@@ -95,12 +95,72 @@ function schriftVon(laeufe: Lauf[], start: number, laenge: number) {
  * gemessen: der neue Text steht in einem EIGENEN Lauf ohne fett/kursiv; die Läufe davor und
  * danach behalten ihre Formatierung. Zurück kommt der neue Bereich, dessen Schrift setzbar ist.
  */
-function bereich(absatz: number, start: number, laenge: number) {
+interface Bereich {
+  text: string;
+  font: ReturnType<typeof schriftVon>;
+  search(
+    begriff: string,
+    optionen: { matchCase?: boolean; matchWholeWord?: boolean },
+  ): { items: Bereich[]; load(): void };
+  expandTo(anderer: Bereich & { start: number; laenge: number }): Bereich;
+  delete(): void;
+  insertText(neu: string, ort: string): { font: { bold: boolean; italic: boolean } };
+  start: number;
+  laenge: number;
+}
+
+/** Alle Fundstellen eines Textes im Span [von, von+laenge) eines Absatzes. */
+function sucheIn(
+  absatz: number,
+  von: number,
+  laenge: number,
+  begriff: string,
+  optionen: { matchCase?: boolean; matchWholeWord?: boolean },
+): Bereich[] {
+  const ganz = absatzText(absaetze[absatz] as Lauf[]);
+  const text = ganz.slice(von, von + laenge);
+  const heu = optionen.matchCase ? text : text.toLowerCase();
+  const nadel = optionen.matchCase ? begriff : begriff.toLowerCase();
+  const items: Bereich[] = [];
+  let i = heu.indexOf(nadel);
+  while (i >= 0) {
+    const a = von + i;
+    const wort = !istWortzeichen(ganz[a - 1]) && !istWortzeichen(ganz[a + begriff.length]);
+    if (wort || !(optionen.matchWholeWord && suchtGanzeWoerter)) {
+      items.push(bereich(absatz, a, begriff.length));
+    }
+    i = heu.indexOf(nadel, i + 1);
+  }
+  return items;
+}
+
+function bereich(absatz: number, start: number, laenge: number): Bereich {
   const laeufe = absaetze[absatz] as Lauf[];
   return {
+    start,
+    laenge,
     text: absatzText(laeufe).slice(start, start + laenge),
     font: schriftVon(laeufe, start, laenge),
+    search(begriff, optionen) {
+      return { items: sucheIn(absatz, start, laenge, begriff, optionen), load() {} };
+    },
+    expandTo(anderer) {
+      const ende = Math.max(start + laenge, anderer.start + anderer.laenge);
+      const anfang = Math.min(start, anderer.start);
+      return bereich(absatz, anfang, ende - anfang);
+    },
+    delete() {
+      this.insertText("", "Replace");
+    },
     insertText(neu: string, ort: string) {
+      if (ort === "After" || ort === "Before") {
+        // Einfügen an einer Kante: wie Ersetzen eines leeren Bereichs dort — gemessen ohne
+        // Formatübernahme wie beim Ersetzen.
+        return bereich(absatz, ort === "After" ? start + laenge : start, 0).insertText(
+          neu,
+          "Replace",
+        );
+      }
       const alt = absatzText(laeufe).slice(start, start + laenge);
       const neuerLauf: Lauf = { text: neu, fett: false, kursiv: false };
       const raus: Lauf[] = [];
@@ -133,7 +193,8 @@ function bereich(absatz: number, start: number, laenge: number) {
       if (!eingesetzt) {
         raus.push(neuerLauf);
       }
-      laeufe.splice(0, laeufe.length, ...raus);
+      // Ein leerer neuer Lauf (Löschen) bleibt nicht als leerer Lauf stehen.
+      laeufe.splice(0, laeufe.length, ...raus.filter((l) => l.text !== ""));
       ersetzungen.push({ absatz, alt, neu, ort });
       return {
         font: {
@@ -335,9 +396,8 @@ describe("K4 · Word-Host: Übernehmen und Verwerfen am gewählten Text", () => 
     (knoepfe("begriffe-uebernehmen")[2] as HTMLButtonElement).click();
     await ruhe();
 
-    expect(ersetzungen).toEqual([
-      { absatz: 1, alt: "Kundenaccount", neu: "Kundenkonto", ort: "Replace" },
-    ]);
+    // Ersetzt wird nur der abweichende Teil („account" → „konto"); „Kunden" bleibt stehen.
+    expect(ersetzungen).toEqual([{ absatz: 1, alt: "account", neu: "konto", ort: "Replace" }]);
     expect(absatzText(absaetze[1] as Lauf[])).toBe("Kundenaccount und Kundenkonto.");
     expect(absatzText(absaetze[0] as Lauf[])).toBe("Bitte das Kundenaccount prüfen.");
     expect(absatzText(absaetze[2] as Lauf[])).toBe("Das Debitorenkonto ist korrekt.");
@@ -354,7 +414,8 @@ describe("K4 · Word-Host: Übernehmen und Verwerfen am gewählten Text", () => 
     await ruhe();
     expect(laeufeVon(0)).toEqual([
       ["Bitte das ", false, false],
-      ["Kundenkonto", true, false],
+      ["Kunden", true, false],
+      ["konto", true, false],
       [" prüfen.", false, false],
     ]);
     expect(ersetzungen).toHaveLength(1);
@@ -379,8 +440,8 @@ describe("K4 · Word-Host: Übernehmen und Verwerfen am gewählten Text", () => 
     (knoepfe("begriffe-uebernehmen")[0] as HTMLButtonElement).click();
     await ruhe();
     expect(laeufeVon(0)).toEqual([
-      ["Das ", true, false],
-      ["Kundenkonto", true, false],
+      ["Das Kunden", true, false],
+      ["konto", true, false],
       [" bleibt erhalten.", true, false],
     ]);
   });
@@ -393,14 +454,16 @@ describe("K4 · Word-Host: Übernehmen und Verwerfen am gewählten Text", () => 
     expect(hinweisZeilen()[0]).toContain("customer account");
     (knoepfe("begriffe-uebernehmen")[0] as HTMLButtonElement).click();
     await ruhe();
+    // Nur „lient" → „ustomer" wird ersetzt; „c" und „ account" bleiben stehen.
     expect(laeufeVon(0)).toEqual([
-      ["The QA ", false, true],
-      ["customer account", false, true],
-      [" remains unchanged.", false, true],
+      ["The QA c", false, true],
+      ["ustomer", false, true],
+      [" account remains unchanged.", false, true],
     ]);
   });
 
-  it("gemischt formatierte Fundstelle: keine Formatierung wird auf den ganzen Begriff ausgeweitet", async () => {
+  it("gemischt formatierte Fundstelle Kunden<b>account</b>: die Fettung bleibt am geänderten Teil", async () => {
+    // Nacharbeit 9 (Bens Befund K4): hier stand bis dahin der VERLUST der Fettung als Erwartung.
     absaetze = [
       [
         { text: "Das Kunden", fett: false },
@@ -413,12 +476,35 @@ describe("K4 · Word-Host: Übernehmen und Verwerfen am gewählten Text", () => 
     await ruhe();
     (knoepfe("begriffe-uebernehmen")[0] as HTMLButtonElement).click();
     await ruhe();
-    // Word meldet `bold: null`; das Panel setzt dann kein Fett. Fremde Läufe bleiben unverändert.
     expect(laeufeVon(0)).toEqual([
-      ["Das ", false, false],
-      ["Kundenkonto", false, false],
+      ["Das Kunden", false, false],
+      ["konto", true, false],
       [" bleibt.", false, false],
     ]);
+  });
+
+  it("geänderter Teil über zwei Läufe Kundenac<b>count</b>: beide Läufe behalten ihre Schrift", async () => {
+    absaetze = [
+      [
+        { text: "Das Kundenac", fett: false },
+        { text: "count", fett: true },
+        { text: " bleibt.", fett: false },
+      ],
+    ];
+    panelStarten();
+    (document.getElementById("begriffe-btn") as HTMLButtonElement).click();
+    await ruhe();
+    (knoepfe("begriffe-uebernehmen")[0] as HTMLButtonElement).click();
+    await ruhe();
+    // Dieselbe mechanische Verteilung wie im Editor: jeder Lauf zuerst ein Zeichen, Rest nach
+    // altem Anteil — „ko" ungefettet, „nto" fett. Kein Lauf verschwindet, keiner wird ausgeweitet.
+    expect(laeufeVon(0)).toEqual([
+      ["Das Kunden", false, false],
+      ["ko", false, false],
+      ["nto", true, false],
+      [" bleibt.", false, false],
+    ]);
+    expect(absatzText(absaetze[0] as Lauf[])).toBe("Das Kundenkonto bleibt.");
   });
 
   it("Verwerfen blendet nur diesen Hinweis aus und ändert am Dokument nichts", async () => {

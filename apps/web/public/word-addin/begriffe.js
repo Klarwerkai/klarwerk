@@ -5,9 +5,9 @@
 // WOZU: Klara prüft das offene Word-Dokument gegen das Firmenwörterbuch der Instanz und zeigt je
 // Fundstelle die gepflegte Vorzugsbezeichnung mit Bedeutung und Herkunft (Eintrag, Fassung). Der
 // Nutzer übernimmt oder verwirft JEDEN Hinweis einzeln; übernommen wird genau die angezeigte
-// Stelle über `Range.insertText(…, "Replace")`. Weil Word im Web dabei die Formatierung der Stelle
-// verwirft, liest das Panel die Schrift der Fundstelle vorher und setzt sie auf den neuen Text
-// zurück; alle anderen Textteile bleiben, wie sie sind. Es gibt kein „alle ersetzen".
+// Stelle, und zwar nur der Teil, in dem sich Fund und Vorzugsbezeichnung unterscheiden, laufweise
+// mit der Schrift jedes betroffenen Laufs (Abschnitt FORMATIERUNGSERHALTENDES ERSETZEN). Alle
+// anderen Textteile bleiben, wie sie sind. Es gibt kein „alle ersetzen".
 //
 // WARUM EINE EIGENE DATEI: `taskpane.js` ist in seiner Grösse bewacht
 // (`tests/klara-zerlegung/schnittflaechen.test.ts` B3, „schneiden statt anheben"). Dieselbe Bauform
@@ -396,16 +396,8 @@
               ergebnis = "uneindeutig";
               return null;
             }
-            // Word im Web übernimmt beim Ersetzen die Formatierung der Stelle NICHT (gemessen:
-            // WORD-KANDIDAT/WORD-WEB-FORMAT-20261007.json — fett bzw. kursiv ging verloren). Deshalb
-            // wird die Schrift der Fundstelle vorher gelesen und auf den neuen Text zurückgesetzt.
-            var schrift = ziel.font;
-            schrift.load(BEGRIFFE_SCHRIFT.join(","));
-            return context.sync().then(function () {
-              var gemerkt = begriffeSchriftMerken(schrift);
-              var neu = ziel.insertText(h.vorzug, "Replace");
-              begriffeSchriftSetzen(neu, gemerkt);
-              return context.sync().then(function () { ergebnis = "uebernommen"; });
+            return begriffeLaufweiseErsetzen(context, ziel, h).then(function (lage) {
+              ergebnis = lage;
             });
           });
         });
@@ -416,6 +408,147 @@
       });
     }
 
+    // ==========================================================================================
+    // FORMATIERUNGSERHALTENDES ERSETZEN (Nacharbeit 6 und 9)
+    // ==========================================================================================
+    //
+    // Word im Web übernimmt beim Ersetzen die Formatierung der Stelle NICHT (gemessen:
+    // WORD-KANDIDAT/WORD-WEB-FORMAT-20261007.json). Und eine Fundstelle kann gemischt formatiert
+    // sein („Kunden<b>account</b>"), dann meldet Word für die ganze Stelle `null`. Deshalb wird —
+    // wie im Editor (`apps/web/src/lib/begriffshinweise.ts`) — nur der Teil ersetzt, in dem sich
+    // Fund und Vorzugsbezeichnung unterscheiden, und zwar laufweise:
+    //   1. gleicher Anfang und gleiches Ende bleiben unberührt im Dokument;
+    //   2. die Zeichen des geänderten Teils werden einzeln in der Fundstelle gesucht, ihre Schrift
+    //      gelesen und zu Läufen gleicher Schrift zusammengefasst;
+    //   3. der neue Text wird mechanisch auf diese Läufe verteilt (jeder Lauf zuerst ein Zeichen,
+    //      der Rest nach Anteil), jeder Lauf ersetzt und seine Schrift zurückgesetzt.
+    // Aus „Kunden<b>account</b>" wird „Kunden<b>konto</b>". Findet Words Suche ein Zeichen nicht
+    // in der erwarteten Zahl, wird NICHTS ersetzt („uneindeutig").
+
+    /** Gemeinsamer Anfang/Ende fallen heraus: Bereich [von, bis) des Funds und der neue Text. */
+    function begriffeAenderung(alt, neu) {
+      var max = Math.min(alt.length, neu.length);
+      var vorn = 0;
+      while (vorn < max && alt.charAt(vorn) === neu.charAt(vorn)) { vorn += 1; }
+      var hinten = 0;
+      while (hinten < max - vorn &&
+          alt.charAt(alt.length - 1 - hinten) === neu.charAt(neu.length - 1 - hinten)) {
+        hinten += 1;
+      }
+      return { von: vorn, bis: alt.length - hinten, neu: neu.slice(vorn, neu.length - hinten) };
+    }
+
+    /** Wie `verteile` im Editor: jeder Lauf zuerst ein Zeichen, der Rest nach altem Anteil. */
+    function begriffeVerteile(neu, laengen) {
+      var k = laengen.length;
+      if (k <= 1) { return [neu]; }
+      var sockel = neu.length >= k ? 1 : 0;
+      var rest = neu.length - sockel * k;
+      var summe = 0;
+      for (var s = 0; s < k; s += 1) { summe += laengen[s]; }
+      var raus = [];
+      var pos = 0;
+      var kumuliert = 0;
+      var vergeben = 0;
+      for (var i = 0; i < k; i += 1) {
+        kumuliert += laengen[i];
+        var bisHier = i === k - 1 || summe === 0 ? rest : Math.round((rest * kumuliert) / summe);
+        var anzahl = sockel + bisHier - vergeben;
+        vergeben = bisHier;
+        raus.push(neu.slice(pos, pos + anzahl));
+        pos += anzahl;
+      }
+      return raus;
+    }
+
+    function begriffeZaehle(text, zeichen, bis) {
+      var n = 0;
+      for (var i = 0; i < bis; i += 1) { if (text.charAt(i) === zeichen) { n += 1; } }
+      return n;
+    }
+
+    /** Ersetzt laufweise; liefert „uebernommen" oder „uneindeutig". */
+    function begriffeLaufweiseErsetzen(context, ziel, h) {
+      var alt = h.gefunden;
+      var aenderung = begriffeAenderung(alt, h.vorzug);
+      var einfuegen = aenderung.von === aenderung.bis;
+      // Frühe Antworten laufen über `context.sync()` — das Fenster ist ES5, ein globales Promise ist
+      // im Word-Host nicht zugesagt, die Office-Zusage schon.
+      var sofort = function (lage) { return context.sync().then(function () { return lage; }); };
+      if (einfuegen && !aenderung.neu) { return sofort("uebernommen"); }
+      // Die Zeichen, deren Bereich gebraucht wird: der geänderte Teil — beim reinen Einfügen das
+      // Zeichen davor (oder, ohne gemeinsamen Anfang, das erste danach) als Anker.
+      var positionen = [];
+      if (einfuegen) {
+        positionen.push(aenderung.von > 0 ? aenderung.von - 1 : aenderung.von);
+      } else {
+        for (var p = aenderung.von; p < aenderung.bis; p += 1) { positionen.push(p); }
+      }
+      var suchen = {};
+      for (var i = 0; i < positionen.length; i += 1) {
+        var z = alt.charAt(positionen[i]);
+        // „^" ist in Words Suche ein Steuerzeichen, Ersatzpaare lassen sich nicht einzeln suchen.
+        if (z === "^" || /[\uD800-\uDFFF]/.test(z)) { return sofort("uneindeutig"); }
+        if (!suchen[z]) {
+          suchen[z] = ziel.search(z, { matchCase: true });
+          suchen[z].load("items/text");
+        }
+      }
+      return context.sync().then(function () {
+        for (var zeichen in suchen) {
+          if (Object.prototype.hasOwnProperty.call(suchen, zeichen) &&
+              suchen[zeichen].items.length !== begriffeZaehle(alt, zeichen, alt.length)) {
+            return "uneindeutig";
+          }
+        }
+        var bereiche = [];
+        for (var j = 0; j < positionen.length; j += 1) {
+          var c = alt.charAt(positionen[j]);
+          var r = suchen[c].items[begriffeZaehle(alt, c, positionen[j])];
+          r.font.load(BEGRIFFE_SCHRIFT.join(","));
+          bereiche.push(r);
+        }
+        return context.sync().then(function () {
+          var schriften = [];
+          for (var m = 0; m < bereiche.length; m += 1) {
+            schriften.push(begriffeSchriftMerken(bereiche[m].font));
+          }
+          if (einfuegen) {
+            var ort = aenderung.von > 0 ? "After" : "Before";
+            begriffeSchriftSetzen(bereiche[0].insertText(aenderung.neu, ort), schriften[0]);
+            return context.sync().then(function () { return "uebernommen"; });
+          }
+          // Läufe gleicher Schrift.
+          var laeufe = [];
+          for (var n = 0; n < bereiche.length; n += 1) {
+            var kennung = JSON.stringify(schriften[n]);
+            var letzter = laeufe[laeufe.length - 1];
+            if (letzter && letzter.kennung === kennung) {
+              letzter.bis = n;
+            } else {
+              laeufe.push({ kennung: kennung, von: n, bis: n });
+            }
+          }
+          var laengen = [];
+          for (var q = 0; q < laeufe.length; q += 1) { laengen.push(laeufe[q].bis - laeufe[q].von + 1); }
+          var anteile = begriffeVerteile(aenderung.neu, laengen);
+          // Von hinten nach vorn: frühere Bereiche bleiben dabei unberührt.
+          for (var w = laeufe.length - 1; w >= 0; w -= 1) {
+            var lauf = laeufe[w];
+            var bereich = lauf.von === lauf.bis
+              ? bereiche[lauf.von]
+              : bereiche[lauf.von].expandTo(bereiche[lauf.bis]);
+            if (anteile[w]) {
+              begriffeSchriftSetzen(bereich.insertText(anteile[w], "Replace"), schriften[lauf.von]);
+            } else {
+              bereich.delete();
+            }
+          }
+          return context.sync().then(function () { return "uebernommen"; });
+        });
+      });
+    }
+
     // Die Zeichenformatierung, die beim Übernehmen erhalten bleibt (Word.Font, WordApi 1.1).
     var BEGRIFFE_SCHRIFT = [
       "bold", "italic", "underline", "strikeThrough", "doubleStrikeThrough",
@@ -423,9 +556,9 @@
     ];
 
     /**
-     * Liest die Schrift der Fundstelle. Word meldet `null`, wenn die Stelle gemischt formatiert
-     * ist (etwa halb fett) — solche Eigenschaften werden nicht gesetzt, statt eine Formatierung
-     * auf die ganze Vorzugsbezeichnung auszuweiten.
+     * Liest die Schrift eines Bereichs. Word meldet `null` für gemischte Werte — die werden nicht
+     * gesetzt. Seit Nacharbeit 9 wird je Zeichen gelesen, gemischte Werte treten also nur noch bei
+     * Eigenschaften auf, die Word selbst nicht einheitlich meldet.
      */
     function begriffeSchriftMerken(schrift) {
       var gemerkt = {};
