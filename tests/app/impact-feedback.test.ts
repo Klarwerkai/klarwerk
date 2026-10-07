@@ -61,15 +61,20 @@ describe("PMO-FEA-0002: Wirkungs-Rückmeldung an den Autor", () => {
     return res.json().receipt as string;
   }
 
-  async function freigeben(app: App, headers: Record<string, string>, koId: string) {
+  // R-0278 (Nacharbeit 3) / R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der Frageweg
+  // antwortet nur aus geprüftem
+  // Wissen — ohne Validierung gäbe es keine Antwort mit diesem KO und damit keinen Receipt. Das KO
+  // trägt `neededValidations: 1`, ein Admin-Up über die echte Bewertung genügt.
+  async function validieren(app: App, headers: Record<string, string>, koId: string) {
     const res = await app.inject({
       method: "PUT",
       url: `/api/kos/${koId}`,
       headers,
-      // Der Demo-Bestand kann eine Dublette melden; sie ist für diesen Fall unerheblich.
-      payload: { action: "admin-validate", duplicateAcknowledged: true },
+      payload: { action: "rate", verdict: "up" },
     });
-    expect(res.statusCode, res.body).toBe(200);
+    expect(res.statusCode).toBe(200);
+    const ko = await app.inject({ method: "GET", url: `/api/kos/${koId}`, headers });
+    expect(ko.json().status).toBe("validiert");
   }
 
   it("fremder Hat-geholfen-Klick erscheint beim Autor im Feed — nicht beim Klickenden", async () => {
@@ -83,12 +88,12 @@ describe("PMO-FEA-0002: Wirkungs-Rückmeldung an den Autor", () => {
         title: "Spindel SP-7 nur im Stillstand schmieren",
         statement: "Schmierung bei Drehung verteilt Fett in die Lager.",
         type: "best_practice",
+        neededValidations: 1,
       },
     });
     expect(created.statusCode).toBe(201);
     const koId = created.json().id as string;
-    // R-0278 (Nacharbeit 3): nur Geprüftes wird Antwortquelle und damit Teil des Belegs.
-    await freigeben(app, admin.headers, koId);
+    await validieren(app, admin.headers, koId);
 
     // Erik (nicht Autor) meldet: hat geholfen — mit Beleg aus einem echten Antwortvorgang.
     const helpful = await app.inject({
@@ -123,10 +128,11 @@ describe("PMO-FEA-0002: Wirkungs-Rückmeldung an den Autor", () => {
         title: "Eigenes Wissen",
         statement: "Test.",
         type: "best_practice",
+        neededValidations: 1,
       },
     });
     const koId = created.json().id as string;
-    await freigeben(app, admin.headers, koId);
+    await validieren(app, admin.headers, koId);
     await app.inject({
       method: "POST",
       url: "/api/ask/helpful",

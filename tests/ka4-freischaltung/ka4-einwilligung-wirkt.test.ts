@@ -334,8 +334,14 @@ describe("JOB 3033 · KA4 · die Einwilligung hebt die Enge — und nur sie", ()
 
   it("KA4-F7 · DER KONSOLEN-ASK ohne `mode` und OHNE Bindung ist von KA4 gar nicht berührt", async () => {
     // Er kennt die Weiche nicht und darf sich durch eine Einwilligung nicht verändern.
-    // R-0278 (Nacharbeit 3): auch die Konsole trägt `validatedOnly` — unabhängig von KA4.
-    const KONSOLE = { validatedOnly: true, verschlossenSichtbarFuer: expect.any(Function) };
+    // R-0278 (Nacharbeit 3) und R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der Konsolenweg
+    // antwortet nur aus geprüftem Wissen — und bleibt von der Einwilligung unberührt (beide Male
+    // derselbe Satz).
+    const KONSOLE = {
+      validatedOnly: true,
+      ungeprueftSichtbarFuer: expect.any(Function),
+      verschlossenSichtbarFuer: expect.any(Function),
+    };
     const a = await aufbauen();
     await fragen(a.app, {}, "");
     expect(await einwilligen(a)).toBe("granted");

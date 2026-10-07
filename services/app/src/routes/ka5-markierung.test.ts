@@ -301,7 +301,10 @@ describe("KA5 · der Serververtrag der Markierung", () => {
     await m.fragen({ selection: PASSAGE });
     expect(m.gesehen[0]?.selection).toBe(PASSAGE);
     // Und sie wird NICHT in die Frage gemischt — dafür steht die Frage selbst gerade.
-    expect(m.gesehen[0]).toMatchObject({ verschlossenSichtbarFuer: expect.any(Function) });
+    expect(m.gesehen[0]).toMatchObject({
+      validatedOnly: true,
+      verschlossenSichtbarFuer: expect.any(Function),
+    });
     await m.app.close();
   });
 
@@ -337,9 +340,11 @@ describe("KA5 · der Serververtrag der Markierung", () => {
     await m.fragen({}, true);
     // Eine leere/rein weiße Markierung ist keine Markierung (§5.6) — vierter Fall, gleiche Erwartung.
     await m.fragen({ mode: "retrieval-only", selection: "   \n\t  " });
-    // R-0278 (Nacharbeit 3, ben): die Web-Ansicht trägt seitdem `validatedOnly`.
+    // R-0278 (Nacharbeit 3, ben) und R-0584 (Auftrag gesamt-datenschutz-voreinstellung): auch die
+    // Konsole antwortet nur aus geprüftem Wissen und meldet, was die Enge verschluckt.
     expect(m.gesehen[0]).toEqual({
       validatedOnly: true,
+      ungeprueftSichtbarFuer: expect.any(Function),
       verschlossenSichtbarFuer: expect.any(Function),
     });
     expect(m.gesehen[1]).toEqual({

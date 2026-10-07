@@ -345,16 +345,18 @@ describe("Restliche API end-to-end (§2.4/§2.5)", () => {
         statement: "Bei Überdruck Ventil X schließen.",
         type: "best_practice",
         category: "Anlage 1",
+        neededValidations: 1,
       },
     });
-    // R-0278 (Nacharbeit 3): beantwortbar ist eine Frage nur aus Geprüftem.
-    const freigabe = await app.inject({
+    // R-0278 (Nacharbeit 3) / R-0584 (Auftrag gesamt-datenschutz-voreinstellung): beantwortbar ist
+    // eine Frage nur aus geprüftem Wissen — das KO wird über die echte Bewertung validiert.
+    const bewertet = await app.inject({
       method: "PUT",
       url: `/api/kos/${angelegt.json().id}`,
       headers,
-      payload: { action: "admin-validate" },
+      payload: { action: "rate", verdict: "up" },
     });
-    expect(freigabe.statusCode, freigabe.body).toBe(200);
+    expect(bewertet.statusCode).toBe(200);
 
     // Eine beantwortbare Frage und eine ohne belastbares Wissen (→ Lücke).
     await app.inject({

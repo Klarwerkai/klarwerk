@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AnswerResult, Conflict, KnowledgeObject } from "../../apps/web/src/api/types";
-import { conflictAwareSourceRefs } from "../../apps/web/src/lib/askView";
+import { answerGrade } from "../../apps/web/src/lib/answerGrade";
+import { answerStatus, conflictAwareSourceRefs } from "../../apps/web/src/lib/askView";
 import {
   conflictImpact,
   conflictLimitedUsability,
@@ -135,32 +136,56 @@ describe("SCRUM-357: Conflict → Trust/Usability/Review-Integrität (HTTP + FE-
     expect(notice?.titleKey).toBe("conflict.impact.truthTitle");
     expect(notice?.to).toBe("/konflikte");
 
-    // 5) Ask: R-0278 (Nacharbeit 3) — beide KOs sind nach dem Konflikt wieder „offen" (Schritt 3) und
-    //    tragen deshalb KEINE Antwort mehr; Klara legt die Lücke an und meldet die fehlende Freigabe.
+    // 5) Ask — R-0278 (Nacharbeit 3) und R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der
+    //    normale Frageweg antwortet nur aus geprüftem Wissen. Der Konflikt hat KO-A zurück auf
+    //    „offen" gesetzt, KO-B war nie validiert — also trägt KEINES die Antwort. Klara legt die
+    //    Lücke an, meldet die ungeprüften Treffer (JOB 1591 W5) und die fehlende Freigabe (Torlage);
+    //    die KONFLIKTBEWUSSTE Quellensicht zeigt sie NICHT als uneingeschränkt nutzbar.
     const askRes = await app.inject({
       method: "POST",
       url: "/api/ask",
       headers: admin,
       payload: { question: "Wie wird der Hydraulikzylinder HZ7 entlüftet?" },
     });
-    const askBody = askRes.json();
-    const result = askBody.result as AnswerResult;
-    expect(result.answered).toBe(false);
-    expect(result.sources).not.toContain(koA.id);
-    expect(result.sources).not.toContain(koB.id);
+    const askBody = askRes.json() as {
+      result: AnswerResult;
+      gap: unknown;
+      ungeprueft?: Array<{ id: string }>;
+      verschlossen?: Array<{ id: string; freigabeFehlt: boolean }>;
+    };
+    expect(askBody.result.answered).toBe(false);
+    expect(askBody.result.sources).toEqual([]);
     expect(askBody.gap).not.toBeNull();
-    const torlage = (askBody.verschlossen ?? []) as Array<{ id: string; freigabeFehlt: boolean }>;
-    expect(torlage.find((h) => h.id === koA.id)?.freigabeFehlt).toBe(true);
-    // Die KONFLIKTBEWUSSTE Quellensicht bleibt dieselbe: beide KOs stehen im selben Truth-Konflikt
-    // und erscheinen NICHT als „ready".
+    expect(askBody.verschlossen?.find((h) => h.id === koA.id)?.freigabeFehlt).toBe(true);
+    const gemeldet = (askBody.ungeprueft ?? []).map((h) => h.id);
+    expect(gemeldet).toContain(koA.id);
     const kos = [reviewedA, await getKo(app, admin, koB.id)];
-    const knownRefs = conflictAwareSourceRefs([koA.id, koB.id], kos, conflicts).filter(
-      (s) => s.known,
-    );
-    expect(knownRefs.length).toBe(2);
+    const knownRefs = conflictAwareSourceRefs(gemeldet, kos, conflicts).filter((s) => s.known);
+    expect(knownRefs.length).toBeGreaterThan(0);
     for (const r of knownRefs) {
       expect(r.usability).not.toBe("ready");
     }
+    // Beide KOs zusammen: dieselbe Sicht, keines ist „ready".
+    const beide = conflictAwareSourceRefs([koA.id, koB.id], kos, conflicts).filter((s) => s.known);
+    expect(beide.length).toBe(2);
+    for (const r of beide) {
+      expect(r.usability).not.toBe("ready");
+    }
+    // Und die Antwortstufe behauptet ohne Antwort keine Sicherung.
+    expect(
+      answerStatus(
+        answerGrade({
+          answered: false,
+          knowledgeClass: askBody.result.knowledgeClass,
+          sourcesConflicted: false,
+          // AUFTRAG-mega33 A3: die Abdeckungsbedingung ist Pflicht. Dieser Lauf prueft den
+          // Validierungs-Lebenszyklus, nicht die Erkennungsabdeckung — deshalb steht die
+          // Annahme hier AUSDRUECKLICH da, statt stillschweigend wegzufallen.
+          sourcesCheckUnproven: false,
+          conflictsUnproven: false,
+        }),
+      ).key,
+    ).not.toBe("verified");
 
     // 6) Konflikt lösen → fällt aus der unresolved-Liste → der Konflikt-Impact ist weg. SCRUM-358:
     //    das KO bleibt bewusst review-pflichtig (offen) und wird über die normale Bewertung wieder
