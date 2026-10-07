@@ -828,6 +828,8 @@ export const endpoints = {
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler (nur eigene Beiträge, nur Zahlen).
   me: {
     impact: () => api.get<MyImpact>("/me/impact"),
+    // Autorenübergabe-Auftrag K3: nur die Zahl der an mich zurückgegebenen Entwürfe (Kopfband).
+    returnedSummary: () => api.get<{ open: number }>("/me/returned-tasks/summary"),
   },
   // SCRUM-527: Live-Check eines Entwurfstextes (Ähnlichkeit/Widerspruch gegen den Bestand).
   //

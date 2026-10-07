@@ -261,6 +261,7 @@ import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
 import { askRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
+import { aufgabenZaehlerRoutes } from "./routes/aufgaben-zaehler-routes";
 import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
 import { brandingRoutes } from "./routes/branding-routes";
 import { canManageDraft, captureRoutes } from "./routes/capture-routes";
@@ -3283,6 +3284,8 @@ export function buildApp(
   app.register(livewallRoutes({ ko: services.ko, audit: services.audit }, guards));
   // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — persönliche Zähler aus eigenen KOs + Audits.
   app.register(impactRoutes({ ko: services.ko, audit: services.audit }, guards));
+  // Autorenübergabe-Auftrag K3: textfreier Zähler der an mich zurückgegebenen Entwürfe (Kopfband).
+  app.register(aufgabenZaehlerRoutes({ ko: services.ko, audit: services.audit }, guards));
   app.register(auditRoutes(services.audit, guards, [services.conflicts, services.overlaps]));
   // JOB 2692 D1: der KA4-Riegel gilt auch auf /api/reasoner und /describe — DIESELBE Instanz des
   // Ausführungstors wie bei askRoutes oben, kein zweiter Dienst. `capture` kommt aus `services`

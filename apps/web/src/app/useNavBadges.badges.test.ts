@@ -14,12 +14,10 @@
 //   · Der Ladezustand ist ATOMAR: solange EINE tragende Quelle fehlt, ist der Badge „loading" —
 //     nie eine zu kleine Zahl. Genau das ist der Unterschied zwischen „lädt" und „echte 0"
 //     (mega2 Block C), und er darf durch eine neue Quelle nicht verloren gehen.
-//   · NICHT gepinnt: die zurückgegebenen Entwürfe. Sie fehlen dem Badge weiterhin — sie bräuchten
-//     zwei VOLLTEXTQUELLEN (`returnedToAuthor(audit, kos, user)`), und die Sidebar ist auf JEDER
-//     Seite gemountet (FUNKE-FIX3 P0, `useNavBadges.ts:37-39`). Der Weg wäre ein kleiner
-//     Serverzähler nach dem Muster `/gaps/summary`; das ist ein eigenes Vorhaben. Im Demo-Bestand
-//     sind es null — dann stimmen die Zahlen exakt; sobald einer existiert, zeigt der Badge eine
-//     KLEINERE Zahl als die Seite. Diese Datei behauptet deshalb KEINE vollständige Übereinstimmung.
+//   · Autorenübergabe-Auftrag K3 (Ben, Nacharbeit 1): dazu die an mich zurückgegebenen Entwürfe.
+//     Bis hierher fehlten sie, und ein eigener zurückgegebener Entwurf ergab Liste=1, Badge=0. Sie
+//     kommen jetzt aus dem textfreien Serverzähler `GET /api/me/returned-tasks/summary`. Der rechnet
+//     mit derselben Funktion `returnedToAuthor` wie die Seite.
 //
 // KEIN MOUNT, und das ist begründet: `apps/web` fährt `environment: "node"` (`vite.config.ts:74`),
 // `@testing-library/react`/`jsdom` stehen dort nicht im Paket. Der RENDERER-Vertrag (reale Sidebar,
@@ -57,6 +55,7 @@ const q = vi.hoisted(() => {
     duplicates: leer(),
     gaps: leer(),
     lifecycle: leer(),
+    returned: leer(),
   };
 });
 
@@ -66,6 +65,7 @@ vi.mock("../api/hooks", () => ({
   useDuplicates: () => q.duplicates,
   useGapsSummary: () => q.gaps,
   useLifecyclePending: () => q.lifecycle,
+  useReturnedTasksSummary: () => q.returned,
 }));
 
 import { type NavBadge, useNavBadges } from "./useNavBadges";
@@ -99,9 +99,17 @@ function setze(werte: Partial<Record<keyof typeof q, unknown>>): void {
 }
 
 beforeEach(() => {
-  for (const name of ["board", "conflicts", "duplicates", "gaps", "lifecycle"] as const) {
+  for (const name of [
+    "board",
+    "conflicts",
+    "duplicates",
+    "gaps",
+    "lifecycle",
+    "returned",
+  ] as const) {
     q[name].data = undefined;
     q[name].isError = false;
+    q[name].refetch = () => {};
   }
 });
 
@@ -113,6 +121,7 @@ describe("JOB 690 D-019: der Aufgaben-Badge zählt dieselben Quellen wie die Auf
       conflicts: KONFLIKTE,
       lifecycle: ["l1", "l2", "l3", "l4"],
       duplicates: [],
+      returned: { open: 0 },
     });
     const badges = badgesLesen();
     expect(
@@ -129,6 +138,7 @@ describe("JOB 690 D-019: der Aufgaben-Badge zählt dieselben Quellen wie die Auf
       conflicts: KONFLIKTE,
       lifecycle: [],
       duplicates: [],
+      returned: { open: 0 },
     });
     const badges = badgesLesen();
     expect(badges.conflicts?.count, "Der Konflikte-Badge zählt den gelösten Konflikt c3 mit").toBe(
@@ -142,6 +152,7 @@ describe("JOB 690 D-019: der Aufgaben-Badge zählt dieselben Quellen wie die Auf
       gaps: { open: 1, byPriority: { hoch: 1, mittel: 0, niedrig: 0 } },
       conflicts: KONFLIKTE,
       duplicates: [],
+      returned: { open: 0 },
       // lifecycle bleibt bewusst `undefined` — die Quelle lädt noch.
     });
     const badges = badgesLesen();
@@ -158,10 +169,74 @@ describe("JOB 690 D-019: der Aufgaben-Badge zählt dieselben Quellen wie die Auf
       conflicts: [],
       lifecycle: [],
       duplicates: [],
+      returned: { open: 0 },
     });
     const badges = badgesLesen();
     expect(badges.tasks?.count).toBe(0);
     expect(badges.tasks?.state).toBe("loaded");
     expect(badges.conflicts?.count).toBe(0);
+  });
+});
+
+// ================================================================================================
+// Autorenübergabe-Auftrag K3 (Ben, Nacharbeit 1) — die sechste Quelle: zurückgegebene Entwürfe.
+// ================================================================================================
+describe("K3: der Aufgaben-Badge zählt die an mich zurückgegebenen Entwürfe mit", () => {
+  it("Gegenfall aus Bens Befund: EIN eigener zurückgegebener Entwurf, sonst alles leer ⇒ 1, nicht 0", () => {
+    setze({
+      board: [],
+      gaps: { open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } },
+      conflicts: [],
+      lifecycle: [],
+      duplicates: [],
+      returned: { open: 1 },
+    });
+    const badges = badgesLesen();
+    expect(badges.tasks?.count, "Liste=1, Badge=0: der zurückgegebene Entwurf fehlt").toBe(1);
+    expect(badges.tasks?.state).toBe("loaded");
+    // Die Prüfzahl bleibt das Board allein: ein zurückgegebener Entwurf ist keine Prüfung.
+    expect(badges.validation?.count).toBe(0);
+  });
+
+  it("zählt den Summanden zu den übrigen Quellen hinzu", () => {
+    setze({
+      board: [{ id: "k1" }, { id: "k2" }, { id: "k3" }],
+      gaps: { open: 5, byPriority: { hoch: 1, mittel: 2, niedrig: 2 } },
+      conflicts: KONFLIKTE,
+      lifecycle: ["l1", "l2", "l3", "l4"],
+      duplicates: [],
+      returned: { open: 2 },
+    });
+    // Board 3 + Lücken 5 + ungelöste Konflikte 2 + Lebenszyklus 4 + zurückgegeben 2.
+    expect(badgesLesen().tasks?.count).toBe(16);
+  });
+
+  it("solange die Rückgabe-Quelle lädt, steht keine zu kleine Zahl (Ladezustand)", () => {
+    setze({
+      board: [{ id: "k1" }],
+      gaps: { open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } },
+      conflicts: [],
+      lifecycle: [],
+      duplicates: [],
+      // returned bleibt bewusst `undefined` — die Quelle lädt noch.
+    });
+    expect(badgesLesen().tasks?.state).toBe("loading");
+  });
+
+  it("scheitert die Rückgabe-Quelle ohne Daten, ist der Badge im Fehlerzustand und holt sie neu", () => {
+    setze({
+      board: [{ id: "k1" }],
+      gaps: { open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } },
+      conflicts: [],
+      lifecycle: [],
+      duplicates: [],
+    });
+    q.returned.isError = true;
+    const neuGeholt = vi.fn();
+    q.returned.refetch = neuGeholt;
+    const badges = badgesLesen();
+    expect(badges.tasks?.state).toBe("error");
+    badges.tasks?.refetch();
+    expect(neuGeholt, "Wiederholen holt die Rückgabe-Quelle nicht neu").toHaveBeenCalledTimes(1);
   });
 });

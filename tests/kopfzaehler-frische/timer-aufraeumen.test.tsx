@@ -28,6 +28,8 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useDuplicates: quelle([]),
     useGapsSummary: quelle({ open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } }),
     useLifecyclePending: quelle([]),
+    // Autorenübergabe-Auftrag K3: die sechste Zählquelle (an mich zurückgegebene Entwürfe).
+    useReturnedTasksSummary: quelle({ open: 0 }),
   };
 });
 

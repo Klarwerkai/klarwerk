@@ -35,7 +35,15 @@ const d = vi.hoisted(() => {
       reject: (e: unknown) => state.reject(e),
     };
   };
-  return { board: mk(), conflicts: mk(), duplicates: mk(), gaps: mk(), lifecycle: mk() };
+  return {
+    board: mk(),
+    conflicts: mk(),
+    duplicates: mk(),
+    gaps: mk(),
+    lifecycle: mk(),
+    // Autorenübergabe-Auftrag K3: die sechste Quelle, an mich zurückgegebene Entwürfe.
+    returned: mk(),
+  };
 });
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -53,6 +61,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     duplicates: { list: d.duplicates.fn },
     gaps: { summary: d.gaps.fn },
     lifecycle: { pending: d.lifecycle.fn },
+    me: { returnedSummary: d.returned.fn },
     notifications: { list: vi.fn(async () => []), markSeen: vi.fn(async () => ({})) },
     features: { get: vi.fn(async () => ({ features: {} })) },
     // Das Zahnrad-Menü (Admin) trägt die Status-Zeilen — ihre Quellen sind hier nicht Gegenstand.
@@ -180,6 +189,7 @@ describe("JOB 690 D-019 → H1: die echte Hülle zählt alle fünf Aufgabenquell
       d.conflicts.resolve(KONFLIKTE);
       d.lifecycle.resolve(["l1", "l2", "l3"]);
       d.duplicates.resolve([]);
+      d.returned.resolve({ open: 0 });
       await flush();
     });
     await weitereBereicheOeffnen();
@@ -207,6 +217,7 @@ describe("JOB 690 D-019 → H1: die echte Hülle zählt alle fünf Aufgabenquell
       d.conflicts.resolve([{ id: "c3", status: "geloest" }]);
       d.lifecycle.resolve([]);
       d.duplicates.resolve([]);
+      d.returned.resolve({ open: 0 });
       await flush();
     });
     await weitereBereicheOeffnen();
@@ -231,6 +242,7 @@ describe("JOB 690 D-019 → H1: die echte Hülle zählt alle fünf Aufgabenquell
       d.gaps.resolve({ open: 1, byPriority: { hoch: 1, mittel: 0, niedrig: 0 } });
       d.conflicts.resolve(KONFLIKTE);
       d.duplicates.resolve([]);
+      d.returned.resolve({ open: 0 });
       await flush();
     });
     await weitereBereicheOeffnen();
@@ -257,5 +269,52 @@ describe("JOB 690 D-019 → H1: die echte Hülle zählt alle fünf Aufgabenquell
     expect(aufgabenZahl()).toBeNull();
     expect(container.querySelector('[data-testid="bereich-aufgaben"]')).not.toBeNull();
     expect(container.querySelector('header[data-testid="kopfband"]')).not.toBeNull();
+  });
+
+  // ==============================================================================================
+  // Autorenübergabe-Auftrag K3 (Ben, Nacharbeit 1): Liste=1, Badge=0 war der Befund.
+  // ==============================================================================================
+  it("(d) ein eigener zurückgegebener Entwurf bei sonst leeren, frisch geladenen Quellen zählt 1", async () => {
+    await mount();
+    await act(async () => {
+      d.board.resolve([]);
+      d.gaps.resolve({ open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } });
+      d.conflicts.resolve([]);
+      d.lifecycle.resolve([]);
+      d.duplicates.resolve([]);
+      d.returned.resolve({ open: 1 });
+      await flush();
+    });
+    await weitereBereicheOeffnen();
+
+    expect(d.returned.fn, "die Hülle fragt die sechste Zählquelle ab").toHaveBeenCalled();
+    expect(badge("tasks", 1), "Rückgabe fehlt im Aufgaben-Zähler").not.toBeNull();
+    expect(aufgabenZahl()).toBe("1");
+  });
+
+  it("(e) solange die Rückgabe-Quelle lädt oder scheitert, steht keine Teilsumme", async () => {
+    await mount();
+    await act(async () => {
+      d.board.resolve([{ id: "k1" }, { id: "k2" }]);
+      d.gaps.resolve({ open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } });
+      d.conflicts.resolve([]);
+      d.lifecycle.resolve([]);
+      d.duplicates.resolve([]);
+      await flush();
+    });
+    await weitereBereicheOeffnen();
+
+    // Board 2 ist da, die Rückgabe-Quelle lädt: die 2 wäre eine zu kleine Zahl.
+    expect(badge("tasks", 2), "Teilsumme trotz ladender Rückgabe-Quelle").toBeNull();
+    expect(aufgabenZahl()).toBeNull();
+    expect(badge("validation", 2)).not.toBeNull();
+
+    await act(async () => {
+      d.returned.reject(new Error("kaputt"));
+      await flush();
+    });
+    expect(errorBadges().length).toBe(0);
+    expect(badge("tasks", 2), "Teilsumme trotz gescheiterter Rückgabe-Quelle").toBeNull();
+    expect(aufgabenZahl()).toBeNull();
   });
 });

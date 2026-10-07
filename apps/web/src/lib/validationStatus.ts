@@ -53,6 +53,15 @@ const OWNER_RETURN_ACTION = "ko.returned-to-owner";
 const RETURN_ACTIONS = new Set([AUTHOR_RETURN_ACTION, OWNER_RETURN_ACTION]);
 const REWORK_RESET_ACTIONS = new Set(["ko.revised", "ko.rated"]);
 
+/**
+ * Die Protokollaktionen, aus denen `returnedToAuthor` rechnet, und nur diese. Der Serverzähler holt
+ * genau sie und nicht die ganze Kette, ohne die Aktionsnamen ein zweites Mal aufzuschreiben.
+ */
+export const RUECKGABE_REGEL_AKTIONEN: readonly string[] = [
+  ...RETURN_ACTIONS,
+  ...REWORK_RESET_ACTIONS,
+];
+
 // SCRUM-124: Ist dieses KO aktuell zur Nacharbeit zurückgegeben?
 // „Aktuell" = letztes relevantes Ereignis ist eine Rückgabe (nach einer späteren
 // Überarbeitung/Neubewertung gilt es als abgearbeitet).
@@ -80,9 +89,14 @@ export interface ReturnedKo {
 // benannten Eigentümerin, und ein Eintrag in der Liste der Autorin wäre genau die Falschauskunft,
 // gegen die dieser Durchgang gebaut ist. Der Nacharbeitsstatus AM OBJEKT bleibt davon unberührt
 // (`isReturnedForRework` oben).
+//
+// Autorenübergabe-Auftrag (Ben, Nacharbeit 1): Dieselbe Funktion rechnet auch den textfreien
+// Serverzähler hinter dem Kopfband (`services/app/src/routes/aufgaben-zaehler-routes.ts`). Deshalb
+// verlangt sie vom Objekt nur Kennung und Autor. Eine zweite Fassung der Regel auf dem Server wäre
+// die Drift, aus der Liste=1 und Badge=0 entstanden ist.
 export function returnedToAuthor(
   entries: readonly AuditEntry[],
-  kos: readonly KnowledgeObject[],
+  kos: readonly Pick<KnowledgeObject, "id" | "author">[],
   authorId: string,
 ): ReturnedKo[] {
   const mine = new Set(kos.filter((k) => k.author === authorId).map((k) => k.id));

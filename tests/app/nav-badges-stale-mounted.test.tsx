@@ -26,7 +26,15 @@ const d = vi.hoisted(() => {
     };
   };
   const sofortLeer = () => ({ fn: vi.fn(async () => [] as string[]) });
-  return { board: mk(), conflicts: mk(), duplicates: mk(), gaps: mk(), lifecycle: sofortLeer() };
+  return {
+    board: mk(),
+    conflicts: mk(),
+    duplicates: mk(),
+    gaps: mk(),
+    lifecycle: sofortLeer(),
+    // Autorenübergabe-Auftrag K3: die sechste Quelle (zurückgegebene Entwürfe), gesteuert.
+    returned: mk(),
+  };
 });
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -44,6 +52,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     duplicates: { list: d.duplicates.fn },
     gaps: { summary: d.gaps.fn },
     lifecycle: { pending: d.lifecycle.fn },
+    me: { returnedSummary: d.returned.fn },
     notifications: { list: vi.fn(async () => []), markSeen: vi.fn(async () => ({})) },
     features: { get: vi.fn(async () => ({ features: {} })) },
     reasoner: {
@@ -119,6 +128,8 @@ const pruefenZaehler = (): Element | null =>
   container.querySelector('header a[data-kopfband-punkt="validierung"] .kw-kopfband-zaehler');
 const byAria = (label: string): Element | null =>
   container.querySelector(`[aria-label="${label}"]`);
+const aufgabenZahl = (): string | null =>
+  container.querySelector('[data-testid="bereich-aufgaben"] .kw-menue-wert')?.textContent ?? null;
 
 beforeEach(async () => {
   await i18n.changeLanguage("de");
@@ -140,6 +151,7 @@ describe("Block B → H1: ein gestörter Refetch zeigt KEINE alte Zahl — der Z
       d.conflicts.resolve([]);
       d.duplicates.resolve([]);
       d.gaps.resolve({ open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } });
+      d.returned.resolve({ open: 0 });
       await flush();
     });
     const validationLabel = i18n.t("nav.badge.validation", { count: 2 });
@@ -181,5 +193,49 @@ describe("Block B → H1: ein gestörter Refetch zeigt KEINE alte Zahl — der Z
     });
     expect(pruefenZaehler()?.textContent).toBe("3");
     expect(byAria(i18n.t("nav.badge.validation", { count: 3 }))).not.toBeNull();
+  });
+
+  // Autorenübergabe-Auftrag K3 (Ben, Nacharbeit 1): die Rückgabe-Quelle als AUSFALLENDE Quelle.
+  it("K3: scheitert der Neuabruf der Rückgabe-Quelle, verschwindet die Aufgabenzahl; gelingt er, steht sie wieder", async () => {
+    await mount();
+    await act(async () => {
+      d.board.resolve([]);
+      d.conflicts.resolve([]);
+      d.duplicates.resolve([]);
+      d.gaps.resolve({ open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } });
+      d.returned.resolve({ open: 1 });
+      await flush();
+    });
+    // FE-002: „Arbeitsbereiche" im Kopfband trägt die Zeile „Offene Aufgaben" mit ihrer Zahl.
+    const knopf = container.querySelector('[data-testid="kopfband-arbeitsbereiche"]');
+    if (!(knopf instanceof HTMLElement)) {
+      throw new Error("Einstieg „Arbeitsbereiche“ fehlt");
+    }
+    await act(async () => {
+      knopf.click();
+      await flush();
+    });
+    expect(aufgabenZahl(), "der zurückgegebene Entwurf zählt im Aufgaben-Zähler").toBe("1");
+
+    await act(async () => {
+      void qc.refetchQueries({ queryKey: ["me", "returned-tasks", "summary"] });
+      await flush();
+    });
+    await act(async () => {
+      d.returned.reject(new Error("Refetch kaputt"));
+      await flush();
+    });
+    expect(aufgabenZahl(), "nach gescheitertem Neuabruf steht keine alte Zahl").toBeNull();
+    expect(byAria(i18n.t("nav.badge.error"))).toBeNull();
+
+    await act(async () => {
+      void qc.refetchQueries({ queryKey: ["me", "returned-tasks", "summary"] });
+      await flush();
+    });
+    await act(async () => {
+      d.returned.resolve({ open: 2 });
+      await flush();
+    });
+    expect(aufgabenZahl()).toBe("2");
   });
 });

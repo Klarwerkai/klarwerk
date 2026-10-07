@@ -4,6 +4,7 @@ import {
   useDuplicates,
   useGapsSummary,
   useLifecyclePending,
+  useReturnedTasksSummary,
   useValidationBoard,
 } from "../api/hooks";
 import {
@@ -67,6 +68,12 @@ export function useNavBadges(): Record<string, NavBadge> {
   // Id-Liste (`api/endpoints.ts:573`) — textfrei, also FUNKE-FIX3 P0 gewahrt: die Shell holt
   // keinen Volltext, nur eine Länge.
   const lifecycle = useLifecyclePending();
+  // Autorenübergabe-Auftrag K3 (Ben, Nacharbeit 1): die SECHSTE Aufgabenquelle, die an mich
+  // zurückgegebenen Entwürfe. Die Seite rechnet sie mit `returnedToAuthor(audit, kos, user.id)` aus
+  // zwei Volltextquellen. Die Shell holt nur die Zahl, die der Server mit DERSELBEN Funktion, für
+  // denselben angemeldeten Betrachter und über dieselbe sichtbare Grundmenge rechnet
+  // (`services/app/src/routes/aufgaben-zaehler-routes.ts`).
+  const zurueckgegeben = useReturnedTasksSummary();
   // ==============================================================================================
   // JOB 3113 H1b — DIE UHR, DIE GENAU EINMAL SCHLÄGT.
   // ==============================================================================================
@@ -79,7 +86,7 @@ export function useNavBadges(): Record<string, NavBadge> {
   // Stand aufgeräumt (kein Leck, kein zweiter Timer). Ist nichts mehr zu befristen (noch kein
   // Erfolg, oder alles bereits abgelaufen), läuft gar kein Timer.
   const jetzt = Date.now();
-  const quellen = [board, conflicts, duplicates, gaps, lifecycle];
+  const quellen = [board, conflicts, duplicates, gaps, lifecycle, zurueckgegeben];
   const naechsterAblauf = naechsterFristablauf(quellen, jetzt);
   const [, neuZeichnen] = useState(0);
   useEffect(() => {
@@ -114,21 +121,23 @@ export function useNavBadges(): Record<string, NavBadge> {
     conflicts.data as { status: string }[] | undefined,
   );
   const lifecycleCount = lifecycle.data?.length ?? 0;
+  const zurueckgegebenCount = zurueckgegeben.data?.open ?? 0;
   return {
-    // JOB 690 D-019: vier Quellen statt zwei — Board, offene Lücken, UNGELÖSTE Konflikte,
-    // Lebenszyklus-Fällige. Die zurückgegebenen Entwürfe fehlen weiterhin (sie bräuchten zwei
-    // Volltextquellen, s. Kommentar zu FUNKE-FIX3 P0 oben); der Badge behauptet deshalb KEINE
-    // vollständige Übereinstimmung mit der Seitenzahl. Im Demo-Bestand sind es null.
+    // JOB 690 D-019: Board, offene Lücken, UNGELÖSTE Konflikte, Lebenszyklus-Fällige.
+    // Autorenübergabe-Auftrag K3: dazu die an mich zurückgegebenen Entwürfe. Bis hierher fehlten
+    // sie, und ein eigener zurückgegebener Entwurf ergab Liste=1, Badge=0. Damit zählt der Badge
+    // dieselben fünf Aufgabenarten wie die Seite.
     //
-    // ALLE VIER QUELLEN STEHEN AUCH IN DER LADEZUSTANDSLISTE, nicht nur im Summanden. Das ist
+    // ALLE QUELLEN STEHEN AUCH IN DER LADEZUSTANDSLISTE, nicht nur im Summanden. Das ist
     // kein Beiwerk: ohne sie zeigte der Badge eine zu kleine Zahl, während zwei Quellen noch
     // laden — eine stille Falschaussage statt eines ehrlichen Ladepunkts (mega2 Block C).
     tasks: badge(
-      boardCount + (gaps.data?.open ?? 0) + offeneKonflikte + lifecycleCount,
+      boardCount + (gaps.data?.open ?? 0) + offeneKonflikte + lifecycleCount + zurueckgegebenCount,
       board,
       gaps,
       conflicts,
       lifecycle,
+      zurueckgegeben,
     ),
     validation: badge(boardCount, board),
     // JOB 690 D-019: derselbe Helfer — ein GELÖSTER Konflikt ist keine offene Arbeit und zählt

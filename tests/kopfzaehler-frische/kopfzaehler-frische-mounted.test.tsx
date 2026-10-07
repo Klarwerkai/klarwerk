@@ -32,7 +32,15 @@ const d = vi.hoisted(() => {
     };
   };
   const sofortLeer = () => ({ fn: vi.fn(async () => [] as string[]) });
-  return { board: mk(), conflicts: mk(), duplicates: mk(), gaps: mk(), lifecycle: sofortLeer() };
+  return {
+    board: mk(),
+    conflicts: mk(),
+    duplicates: mk(),
+    gaps: mk(),
+    lifecycle: sofortLeer(),
+    // Autorenübergabe-Auftrag K3: die sechste Zählquelle (zurückgegebene Entwürfe), sofort leer.
+    returned: { fn: vi.fn(async () => ({ open: 0 })) },
+  };
 });
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -50,6 +58,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     duplicates: { list: d.duplicates.fn },
     gaps: { summary: d.gaps.fn },
     lifecycle: { pending: d.lifecycle.fn },
+    me: { returnedSummary: d.returned.fn },
     notifications: { list: vi.fn(async () => []), markSeen: vi.fn(async () => ({})) },
     features: { get: vi.fn(async () => ({ features: {} })) },
     reasoner: {
@@ -169,13 +178,14 @@ const bereichZaehler = (): Element | null =>
 const byAria = (label: string): Element | null =>
   container.querySelector(`[aria-label="${label}"]`);
 
-/** Wie oft jede der fünf Zählquellen bisher wirklich beim Server war. */
+/** Wie oft jede der sechs Zählquellen bisher wirklich beim Server war. */
 const abrufe = (): number[] => [
   d.board.fn.mock.calls.length,
   d.conflicts.fn.mock.calls.length,
   d.duplicates.fn.mock.calls.length,
   d.gaps.fn.mock.calls.length,
   d.lifecycle.fn.mock.calls.length,
+  d.returned.fn.mock.calls.length,
 ];
 
 /** Alle fünf Quellen erfolgreich beantworten: Board mit 2 offenen Prüfungen, sonst leer. */

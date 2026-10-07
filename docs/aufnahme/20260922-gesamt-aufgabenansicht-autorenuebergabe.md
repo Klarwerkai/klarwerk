@@ -8,7 +8,8 @@ Kurzfassung: Das Kriterium K2 verlangt, vor dem Bau festzuhalten, **was** eine A
 anstehende Aufgabe auslöst, **wem** sie angezeigt wird und **wann** sie als erledigt gilt. Zwei der
 drei Punkte lassen sich aus den Quellen ableiten. Der Auslöser lässt sich nicht ableiten. Nach K2 wird
 er deshalb nicht selbst entschieden, sondern unten als Frage mit Optionen an Pedi gestellt. Bis zur
-Antwort ist an der Aufgabenfläche, an `setAuthor` und am Kopfband **nichts gebaut** worden.
+Antwort ist an der Aufgabenfläche und an `setAuthor` **nichts gebaut** worden. Am Kopfband ist in
+Nacharbeit 1 nur Bens Zählbefund behoben (siehe unten). Die Autorenaufgabe selbst ist das nicht.
 
 ## Was die Quellen sagen
 
@@ -84,6 +85,52 @@ Folgen für den Bau nach Option A oder B, zur Einschätzung:
 - Kommt die Autorenübergabe nach Pedis Antwort (A, B oder C) auf die Fläche, weicht der Satz von
   R-0962 ab. Dann ist er in allen drei Sprachen mitzuändern, und die Abweichung zu D-003 wird als
   Pedis Entscheidung vermerkt, nicht stillschweigend.
+
+## Nacharbeit 1 (07.10.2026): Zählgleichheit Kopfband und Liste (K3, Bens Befund)
+
+Bens Befund (Kandidat `0928a8f0`): Die Aufgabenliste führt die an mich zurückgegebenen Entwürfe
+(`pages/MyTasks.tsx`, `returnedToAuthor`), der Kopfband-Zähler (`app/useNavBadges.ts`) zählte sie
+nicht. Ein eigener zurückgegebener Entwurf bei sonst leeren Quellen ergab Liste=1, Badge=0. Das ist
+ein Fehler aus dem Bestand. Er hängt nicht am offenen Auslöser der Autorenübergabe.
+
+Behoben:
+
+- Neue textfreie Zählquelle `GET /api/me/returned-tasks/summary` → `{ open }`
+  (`services/app/src/routes/aufgaben-zaehler-routes.ts`). Sie gilt für den angemeldeten Betrachter,
+  hat dieselbe Tür (`ko.read`) und dieselbe sichtbare Grundmenge wie `GET /api/kos`
+  (`sqlSichtbarkeitFuer`, `sichtbareFuer`).
+- Gerechnet wird mit derselben Funktion `returnedToAuthor` wie auf der Seite. Sie wird importiert,
+  nicht nachgebaut. Gelesen werden nur die Protokollaktionen, aus denen die Regel rechnet
+  (`RUECKGABE_REGEL_AKTIONEN`).
+- Client: `endpoints.me.returnedSummary` und `useReturnedTasksSummary`. Im Aufgaben-Badge ist die
+  Quelle in Summe, Ladezustand, Fehler, Frische (Fristtimer) und Wiederholen eingebunden.
+- Die Inventare kennen die Route: Rollenabnahme, Guard-Audit, HTTP-API-Referenz und Abrufmitschnitt
+  der Chromium-Abnahme.
+
+Gegenproben:
+
+- `tests/aufgaben-ansicht/rueckgabe-zaehler-kopfband.test.ts` (Server):
+  - 0 bzw. 1, nur die Zahl;
+  - ein fremder Entwurf zählt nicht;
+  - nach `ko.revised` ist die Rückgabe abgearbeitet;
+  - ein Entwurf im Papierkorb zählt nicht;
+  - Gleichheit mit der Listenrechnung aus `GET /api/kos` und dem Protokoll;
+  - ohne Anmeldung 401.
+- `apps/web/src/app/useNavBadges.badges.test.ts` und
+  `tests/app/nav-badges-sidebar-mounted.test.tsx`: der Gegenfall Liste=1 ⇒ Badge 1, dazu Laden und
+  Fehler ohne Teilsumme.
+- `tests/app/nav-badges-stale-mounted.test.tsx`: Die Quelle fällt beim Neuabruf aus, die Zahl
+  verschwindet und kommt wieder.
+
+Nicht behoben, getrennt benannt (Quelleninspektion, unverändert aus dem Bestand):
+
+- Die Aufgabenliste liest die Protokolleinträge über `GET /api/audit`, und das verlangt
+  `ko.validate`.
+- Für die Rolle Experte scheitert dieser Abruf. Die Liste kann deren zurückgegebene Entwürfe
+  deshalb nicht zeigen (`ladephase` „error“), obwohl sie sich gerade an Autorinnen richten.
+- Der Zähler rechnet serverseitig und ist davon nicht betroffen.
+- Diese Lücke der Liste gehört nicht zu Bens Befund. Ihre Behebung ist eine eigene Entscheidung,
+  etwa ob die Liste dieselbe Serverquelle mit Kennungen bekommt.
 
 ## Unverändert (K3, K4)
 

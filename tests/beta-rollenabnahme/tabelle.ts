@@ -854,6 +854,15 @@ export const TABELLE: Zeile[] = [
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
+  // Autorenübergabe-Auftrag K3: die textfreie Zählquelle der an mich zurückgegebenen Entwürfe.
+  {
+    gruppe: "aufgabenZaehlerRoutes",
+    methode: "GET",
+    pfad: "/api/me/returned-tasks/summary",
+    belegstelle: "services/app/src/routes/aufgaben-zaehler-routes.ts:33",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
   // R-1064: der Supportweg der Installation. Jede angemeldete Rolle braucht ihn (Hilfeseite
   // `minRole: "viewer"`), deshalb bewusst kein Recht über die Anmeldung hinaus.
   {

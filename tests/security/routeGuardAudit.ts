@@ -600,6 +600,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler — jeder angemeldete Nutzer,
   // AUSSCHLIESSLICH über die eigene Identität (user.id) abgeleitet, nur Zahlen.
   "GET /api/me/impact": { protection: "auth" },
+  // Autorenübergabe-Auftrag K3: Zahl der an MICH zurückgegebenen Entwürfe für das Kopfband —
+  // dieselbe Tür und Grundmenge wie `GET /api/kos`, nur die Zahl, kein Titel, keine Kennung.
+  "GET /api/me/returned-tasks/summary": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
   // SCRUM-501 (nacht24 Paket 7.2): Simulationskorpus laden — nur Admin (users.manage), nie automatisch.
   "POST /api/admin/sim-corpus": { protection: "users.manage" },
   // Klara Stufe 2: KI-gestuetzte Hilfe-Antwort — jeder angemeldete Leser (viewer inkl.).

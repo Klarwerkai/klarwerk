@@ -466,6 +466,12 @@ const REGISTER: Record<string, Eintrag> = {
     grund: "requireVisibleDraft (capture-routes.ts) — und die Antwort führt nur Feldnamen.",
   },
   "GET /api/me/impact": { urteil: "EIGENER_BESTAND", grund: "vier eigene Zähler (impact.ts:88)." },
+  // Autorenübergabe-Auftrag K3: Zahl der an mich zurückgegebenen Entwürfe, über derselben
+  // sichtbaren Grundmenge wie `GET /api/kos` gerechnet.
+  "GET /api/me/returned-tasks/summary": {
+    urteil: "PRAEDIKAT",
+    grund: "K3 — sichtbareFuer + sqlSichtbarkeitFuer über der Grundmenge, nur die Zahl.",
+  },
   // --- Kein Inhalt eines Wissensobjekts ------------------------------------------------------
   "GET /health": { urteil: "KEIN_KO_INHALT", grund: "Betriebszustand." },
   "GET /api/ai-status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },

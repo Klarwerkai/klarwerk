@@ -31,6 +31,8 @@ const d = vi.hoisted(() => {
     duplicates: mk(),
     gaps: mk(),
     lifecycle: sofortLeer(),
+    // Autorenübergabe-Auftrag K3: die sechste Zählquelle (zurückgegebene Entwürfe), sofort leer.
+    returned: { fn: vi.fn(async () => ({ open: 0 })) },
   };
 });
 
@@ -51,6 +53,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     duplicates: { list: d.duplicates.fn },
     gaps: { summary: d.gaps.fn },
     lifecycle: { pending: d.lifecycle.fn },
+    me: { returnedSummary: d.returned.fn },
     notifications: { list: vi.fn(async () => []), markSeen: vi.fn(async () => ({})) },
     features: { get: vi.fn(async () => ({ features: {} })) },
     reasoner: {

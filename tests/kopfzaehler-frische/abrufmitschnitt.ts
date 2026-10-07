@@ -16,13 +16,17 @@
 // `abrufmitschnitt-kalibrierung.test.ts` sie ohne Browser prüfen kann (Browser-Gruppe:
 // `tests/tor-inventar/browser-gruppe.ts`, berechnet aus dem Importgraphen).
 
-/** Die fünf Quellen der Kopfband-Zahlen (`app/useNavBadges.ts`). */
+/**
+ * Die sechs Quellen der Kopfband-Zahlen (`app/useNavBadges.ts`). Die sechste (an mich
+ * zurückgegebene Entwürfe) kam mit dem Autorenübergabe-Auftrag, K3, hinzu.
+ */
 export const ZAEHLQUELLEN = [
   "/api/validation/board",
   "/api/conflicts",
   "/api/duplicates",
   "/api/gaps/summary",
   "/api/lifecycle/pending",
+  "/api/me/returned-tasks/summary",
 ] as const;
 
 export interface Anfrage {

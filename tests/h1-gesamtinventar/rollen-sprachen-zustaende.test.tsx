@@ -66,6 +66,8 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
         ),
       },
       lifecycle: { pending: vi.fn(quelle(["ko-x"], [])) },
+      // Autorenübergabe-Auftrag K3: die sechste Zählquelle, an mich zurückgegebene Entwürfe.
+      me: { returnedSummary: vi.fn(quelle({ open: 1 }, { open: 0 })) },
       notifications: { list: vi.fn(async () => []), markSeen: vi.fn(async () => ({})) },
       features: { get: vi.fn(async () => ({ features: {} })) },
     },
@@ -116,10 +118,11 @@ const ZUSTAENDE = [
 type Zustand = (typeof ZUSTAENDE)[number];
 
 /** Die Zahl je Zählquelle im Zustand „geladen" (`app/useNavBadges.ts`): Board 2, 1 offener
- *  Konflikt, 1 Dublette, 1 offene Lücke, 1 fällige Re-Validierung. */
+ *  Konflikt, 1 Dublette, 1 offene Lücke, 1 fällige Re-Validierung, 1 an mich zurückgegebener
+ *  Entwurf (Autorenübergabe-Auftrag K3). */
 const ZAHL: Record<string, string> = {
   validierung: "2",
-  aufgaben: "5",
+  aufgaben: "6",
   konflikte: "1",
   duplikate: "1",
 };

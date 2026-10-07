@@ -32,6 +32,14 @@ export const useLibrarySearch = (params: KoFilter & { q?: string }, enabled = tr
 // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler.
 export const useMyImpact = () =>
   useQuery({ queryKey: ["me", "impact"], queryFn: () => endpoints.me.impact() });
+// Autorenübergabe-Auftrag K3: textfreier Zähler der an mich zurückgegebenen Entwürfe — die sechste
+// Quelle des Aufgaben-Badges. Lazy wie `useConflicts`: ein Testbestand, der den Endpunkt nicht
+// kennt, reißt beim bloßen Rendern nicht ab.
+export const useReturnedTasksSummary = () =>
+  useQuery({
+    queryKey: ["me", "returned-tasks", "summary"],
+    queryFn: () => endpoints.me.returnedSummary(),
+  });
 export const useImportCandidates = () =>
   useQuery({
     queryKey: ["import-candidates"],
