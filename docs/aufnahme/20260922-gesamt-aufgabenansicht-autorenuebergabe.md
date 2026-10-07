@@ -132,6 +132,27 @@ Nicht behoben, getrennt benannt (Quelleninspektion, unverändert aus dem Bestand
 - Diese Lücke der Liste gehört nicht zu Bens Befund. Ihre Behebung ist eine eigene Entscheidung,
   etwa ob die Liste dieselbe Serverquelle mit Kennungen bekommt.
 
+## Nacharbeit 2 (Prüflauf am Kandidaten `ed5fa535`): rote globale Inventare, fremder Bestand
+
+Drei globale Inventartests waren rot:
+
+- `http-api-referenz` A2/A4,
+- `jede-gruppe-steht-in-der-tabelle` W2/W8,
+- `jede-registrierte-route-ist-abgenommen` E2/E8.
+
+Ihre Fehlerlisten nennen nur Routen anderer Lieferungen:
+
+- `begriffeRoutes`,
+- die Kenntnisnahmen,
+- `/api/audit/export` und `/api/audit/ko/:koId/findings`,
+- `/api/admin/import/knowledge/:koId`,
+- die Gesamtanweisungs-Bausteine,
+- die Belegstelle von `PUT /api/drafts/:id/pool`.
+
+`/api/me/returned-tasks/summary` steht in keiner dieser Listen. `rollen-am-draht`,
+`route-guard-audit` und `mega74-lesewege-sammler` waren mit der neuen Route grün. Der fremde Bestand
+wird hier nicht nachgetragen, und die Prüfauswahl dieses Auftrags ist entsprechend korrigiert.
+
 ## Unverändert (K3, K4)
 
 - `setAuthor`, `transferAuthor`, die Route `transfer-author` und das Audit `ko.author-transferred`
