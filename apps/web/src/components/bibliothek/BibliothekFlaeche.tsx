@@ -2058,12 +2058,30 @@ export function BibliothekFlaeche({
                     </MenuePunkt>
                     <MenueTrenner />
                     <MenueUntermenue beschriftung={t("lib.export")}>
+                      {/* REVIEW26 „Exportumfang": der Export lädt NICHT die sichtbaren Treffer,
+                          sondern alle validierten Einträge (`library-routes.ts`, nur `format`);
+                          vertrauliche nur mit `ko.validate` (controller/admin, services/rbac).
+                          Der Satz steht vor den Formaten, also vor dem Download (texte/exportumfang.ts). */}
+                      <MenueZeile>
+                        <span
+                          id="bib-export-umfang"
+                          data-testid="bib-export-umfang"
+                          className="block text-[12px] leading-snug text-muted whitespace-normal [overflow-wrap:anywhere]"
+                        >
+                          {t(
+                            user?.role === "controller" || user?.role === "admin"
+                              ? "exportumfang.mitVertraulichen"
+                              : "exportumfang.ohneVertrauliche",
+                          )}
+                        </span>
+                      </MenueZeile>
                       {EXPORT_FORMATS.map((fmt) => (
                         <MenueZeile key={fmt}>
                           <a
                             href={exportUrl(fmt)}
                             download={exportFilename(fmt)}
                             data-testid={`bib-export-${fmt}`}
+                            aria-describedby="bib-export-umfang"
                             className="block w-full"
                           >
                             {t(`lib.format.${fmt}`)}
