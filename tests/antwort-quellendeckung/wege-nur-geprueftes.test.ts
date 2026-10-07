@@ -28,7 +28,17 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { askRoutes } from "../../services/app/src/routes/ask-routes";
 import { KlaraSessionService } from "../../services/app/src/services/klara-session-service";
-import { InMemoryKlaraSessionRepo } from "../../services/reasoner";
+import { AskService, InMemoryGapRepo } from "../../services/ask";
+import { AuditService, InMemoryAuditRepo } from "../../services/audit";
+import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
+import {
+  type AnswerResult,
+  InMemoryKlaraSessionRepo,
+  type KnowledgeRef,
+  Reasoner,
+  type ReasonerProvider,
+} from "../../services/reasoner";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 /** Die Torlage einer Nicht-Antwort (`AskResult.verschlossen`), soweit hier gelesen. */
 type Torlage = Array<{ id: string; freigabeFehlt: boolean }>;
@@ -287,18 +297,38 @@ describe("R-0278 · alle Wege nebeneinander: Ungeprüftes wird nie Grundlage", (
 
   it("W-WORD-EINWILLIGUNG · Word-Panel MIT Modelleinwilligung: Ungeprüftes bleibt ausgeschlossen", async () => {
     // Ohne konfigurierte Cloud lehnt der echte Aufbau die Einwilligung ab (409, KA4-I0). Deshalb
-    // hier dieselbe Bauform wie `ka4-endzustand.test.ts`: die ECHTE Sitzung mit der Lage eines
-    // Betriebs MIT Cloud — aber, anders als dort, der ECHTE Ask-Dienst mit echtem Bestand.
-    const services = buildServices();
+    // hier dieselbe Bauform wie `ka4-einwilligung-wirkt.test.ts` (`echtAufbauen`): die ECHTE Sitzung
+    // mit der Lage eines Betriebs MIT Cloud, der ECHTE Ask-Dienst mit echtem Bestand — und an der
+    // Stelle der Cloud ein Anbieter, der mitschreibt, was in den Modellkontext reist. Gemessen wird
+    // damit genau das, worum es bei der Einwilligung geht: was das MODELL zu sehen bekommt.
+    const modellkontext: string[][] = [];
+    const anbieter = {
+      name: "mitschreiber",
+      isAvailable: () => true,
+      answer: async (_frage: string, kontext: readonly KnowledgeRef[]): Promise<AnswerResult> => {
+        modellkontext.push(kontext.map((k) => k.id));
+        return {
+          answered: false,
+          answer: null,
+          knowledgeClass: "unbekannt",
+          trust: 0,
+          sources: [],
+          citedSources: [],
+          steps: [],
+          demo: false,
+        };
+      },
+    } as unknown as ReasonerProvider;
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    await koService.activateSearchProjectionV2();
     const anlegen = async (title: string, statement: string) =>
       (
-        await services.ko.create({
+        await koService.create({
           title,
           statement,
           type: "best_practice",
           category: "R0278",
-          author: "nutzer-1",
-          confidentiality: "intern",
+          author: "anna",
         })
       ).id;
     const validiertId = await anlegen(
@@ -309,25 +339,34 @@ describe("R-0278 · alle Wege nebeneinander: Ungeprüftes wird nie Grundlage", (
       "Kesselspeisepumpe KSP-7 Schnellstart",
       "Die Kesselspeisepumpe KSP-7 wird ueber den Schnellstartknopf NOTSTART-4 angefahren.",
     );
-    await services.ko.setValidationState(validiertId, { trust: 90, status: "validiert" });
+    await koService.setValidationState(validiertId, { trust: 90, status: "validiert" });
+    const reasoner = new Reasoner(anbieter);
+    // Grundfreigabe, sonst würde der Anbieter nie gerufen und die Messung sagte nichts.
+    await erteileKiFreigabe(reasoner);
+    const echterDienst = new AskService({
+      reasoner,
+      koService,
+      gaps: new InMemoryGapRepo(),
+      audit: new AuditService({ repo: new InMemoryAuditRepo() }),
+    });
 
     const dienst = new KlaraSessionService({
       repo: new InMemoryKlaraSessionRepo(),
       policy: () => CLOUD_LAGE,
     });
     const gesehen: unknown[] = [];
-    const echt = services.ask.ask.bind(services.ask);
-    services.ask.ask = (async (q: string, a?: string, l?: string, o?: unknown) => {
+    const echt = echterDienst.ask.bind(echterDienst);
+    echterDienst.ask = (async (q: string, a?: string, l?: string, o?: unknown) => {
       gesehen.push(o ?? null);
       return echt(q, a, l as never, o as never);
-    }) as typeof services.ask.ask;
+    }) as typeof echterDienst.ask;
     const app = Fastify();
     app.register(
       askRoutes(
         {
-          ask: services.ask,
-          ko: services.ko,
-          conflicts: services.conflicts,
+          ask: echterDienst,
+          ko: koService,
+          conflicts: { unresolved: async () => [] } as never,
           klaraSessions: dienst as never,
         },
         {
@@ -370,11 +409,16 @@ describe("R-0278 · alle Wege nebeneinander: Ungeprüftes wird nie Grundlage", (
     expect(JSON.stringify(koerper.result)).not.toContain(UNGEPRUEFTER_INHALT);
     expect(koerper.result.answered).toBe(false);
     expect(koerper.gap, "ohne geprüfte Grundlage keine Wissenslücke").not.toBeNull();
+    // Und das Modell hat das ungeprüfte Objekt nie zu sehen bekommen.
+    expect(modellkontext.flat()).not.toContain(ungeprueftId);
 
-    // KALIBRIERUNG im selben Aufbau: Geprüftes kommt über denselben Zweig an.
+    // KALIBRIERUNG im selben Aufbau: über denselben Zweig erreicht Geprüftes WIRKLICH das Modell —
+    // ohne diese Zeile wäre „nichts Ungeprüftes kam an" auch dann wahr, wenn gar nichts ankäme.
     const breit = await frage(FRAGE_BREIT);
     expect(breit.statusCode).toBe(200);
-    expect(breit.json().result.sources ?? []).toContain(validiertId);
+    expect(gesehen[1]).toEqual({ validatedOnly: true });
+    expect(modellkontext.flat()).toContain(validiertId);
+    expect(modellkontext.flat()).not.toContain(ungeprueftId);
     await app.close();
   });
 });

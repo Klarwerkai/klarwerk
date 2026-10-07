@@ -1108,7 +1108,7 @@ export const SUCH_ZUORDNUNGEN: readonly SuchZuordnung[] = [
   {
     begriffe: ["payment period", "due date"],
     quelle:
-      "P-ASK-C02 (Codex-Livebefund d1710126, JOB 3353) — ‚Frage nach Zahlungsfrist' findet C02 ‚Standard invoice due date'",
+      "PRIORITAETEN.md ASK-C02 (Codex-Livebefund d1710126, JOB 3353) — ‚Frage nach Zahlungsfrist' findet C02 ‚Standard invoice due date'",
   },
 ];
 

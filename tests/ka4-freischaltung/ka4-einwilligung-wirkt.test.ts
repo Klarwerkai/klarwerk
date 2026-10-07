@@ -591,6 +591,11 @@ describe("JOB 3033 · KA4 · Umfang und Vertraulichkeit des Egress", () => {
       category: "Betrieb",
       author: "anna",
     });
+    // R-0278 (Nacharbeit 3/4): auch mit Einwilligung reist nur Freigegebenes in den Modellkontext.
+    // BEIDE Objekte sind deshalb freigegeben — so beweist F8b weiterhin, dass die VERTRAULICHKEIT
+    // das geheime Objekt ausschließt, nicht bloß sein Prüfstand.
+    await koService.setValidationState(offen.id, { trust: 90, status: "validiert" });
+    await koService.setValidationState(geheim.id, { trust: 90, status: "validiert" });
 
     const reasoner = new Reasoner(provider);
     // JOB 3588: NUR die GRUNDFREIGABE. KA4-S3 und KA4-F8a messen, dass der Anbieter über diesen Weg
