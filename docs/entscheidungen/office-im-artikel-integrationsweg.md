@@ -10,12 +10,20 @@ deshalb protokollgleich, damit Microsoft später ohne Umbau angeschlossen werden
 
 **Was dieser Auftrag liefert und was nicht:**
 
-- Geliefert werden dieser Plan und eine **Teilprobe**: `services/app/src/office-wopi.ts`. Das ist der
-  Entscheidungskern des Hosts für Formate, Schreibweg, Zugangsmarke, Sperren und Speichern. Er ist
-  nicht verdrahtet und wird ohne Netz durch `services/app/src/office-wopi.test.ts` geprüft.
-- **Office im Artikel ist damit nicht geliefert.** Es gibt keinen Editor, keine Route und keine
-  Bedienung im Browser. Das gilt auch dann, wenn das Word-Add-in oder ein Download funktioniert.
-  Beides ersetzt den eingebetteten Editor nicht.
+- Geliefert werden dieser Plan und eine **Teilprobe** in drei Teilen:
+  - `services/app/src/office-wopi.ts` ist der Entscheidungskern des Hosts für Formate, Schreibweg,
+    Zugangsmarke, Sperren, Speichern und Sitzungsbasis. Geprüft wird er durch
+    `services/app/src/office-wopi.test.ts`.
+  - `services/app/src/office-wopi-host.ts` ist seit Nacharbeit 1 der **WOPI-Hostweg**: CheckFileInfo,
+    GetFile, PutFile, die Sperrvorgänge und die Übernahme als eine rahmenunabhängige Funktion. Geprüft
+    wird er über HTTP durch `tests/office-wopi-code/hostweg.test.ts`.
+  - `tests/office-wopi-code/code-probe.integration.test.ts` ist die **Integrationsprobe mit einem echten
+    Collabora-Editor** (CODE-Container, Chromium). Sie umfasst nur `.docx`: Öffnen, Ändern,
+    Speichern, zwei Übernahmen und Wiederöffnen (Abschnitt 7.3).
+- **Office im Artikel ist damit nicht geliefert.** Der Hostweg ist nicht in die App-Routen
+  verdrahtet, und auf der Artikelseite gibt es kein Editor-iframe. Die Probe läuft mit einer
+  Artikel-Attrappe statt dem Wissensobjektdienst. Das gilt auch dann, wenn das Word-Add-in oder ein
+  Download funktioniert; beides ersetzt den eingebetteten Editor nicht.
 
 Die Aufträge `aufnahme:20260922:word-echter-arbeitsweg` (Word-Host und Add-in) und
 `aufnahme:20260922:wiki-gesamtweg` sind eigenständig. Dieser Auftrag hat dort nichts geändert.
@@ -71,7 +79,7 @@ ersetzt den Editor nicht.
 
 **Grenze von C:** Collabora stellt komplexe OOXML-Inhalte weniger getreu dar als Microsoft. Betroffen
 sein können Makros, SmartArt, bestimmte Diagramme und Folienübergänge. Das ist nicht gemessen; es
-wird im Bedienlauf (Abschnitt 7.3) an festen Prüfdokumenten festgestellt, nicht angenommen.
+wird im Bedienlauf (Abschnitt 7.4) an festen Prüfdokumenten festgestellt, nicht angenommen.
 
 ---
 
@@ -108,7 +116,9 @@ wird im Bedienlauf (Abschnitt 7.3) an festen Prüfdokumenten festgestellt, nicht
 
 - Die WOPI-Dateikennung ist die Anhangskennung (`KoAttachment.id`).
 - Die Zugangsmarke bindet `koId`, `anhangId`, `nutzerId`, das Schreibrecht und die
-  **Ausgangsfassung**. Eine Marke für Anhang A öffnet Anhang B nie (Test M2).
+  **Öffnungsfassung**. Eine Marke für Anhang A öffnet Anhang B nie (Test M2).
+- Die Öffnungsfassung entscheidet nur, ob eine **neue** Editor-Sitzung beginnen darf. Für
+  Übernahmen gilt die Sitzungsbasis des Hosts (Abschnitt 5.1), nicht die Marke.
 - Nur Anhänge mit einem Format aus Abschnitt 4 bekommen die Editor-Aktion. Ein Widerspruch zwischen
   Endung und Medientyp gilt als „kein Office-Anhang“ (Test F3).
 
@@ -148,11 +158,15 @@ wird im Bedienlauf (Abschnitt 7.3) an festen Prüfdokumenten festgestellt, nicht
 
 ### 3.6 WOPI-Endpunkte und Teilprobe
 
-| WOPI-Vorgang | Klarwerk-Route (geplant) | Entscheidung aus `office-wopi.ts` |
+Die Endpunkte bedient `erstelleWopiHost` (`office-wopi-host.ts`). Die Integrationsprobe stellt
+diese Funktion hinter einen schlichten `node:http`-Server. U2 hängt sie in Fastify ein und ergänzt
+dort Protokollschwärzung und CSP.
+
+| WOPI-Vorgang | Klarwerk-Route | Entscheidung aus `office-wopi.ts` |
 |---|---|---|
 | CheckFileInfo | `GET /wopi/files/:anhangId` | `pruefeZugangsmarke`, `officeSchreibweg`, `checkFileInfo` (`UserCanWrite`, `ReadOnly`, `Version` = Fassung + Objekt, `UserCanNotWriteRelative`) |
 | GetFile | `GET /wopi/files/:anhangId/contents` | Marke; liefert den Arbeitsstand der Sitzung, sonst das Objekt der aktuellen Fassung |
-| Lock, RefreshLock, Unlock, UnlockAndRelock, GetLock | `POST /wopi/files/:anhangId` mit `X-WOPI-Override` | `wendeSperreAn` (30 Minuten, 409 mit `X-WOPI-Lock`, Tests S1–S7) |
+| Lock, RefreshLock, Unlock, UnlockAndRelock, GetLock | `POST /wopi/files/:anhangId` mit `X-WOPI-Override` | `wendeSperreAn` (30 Minuten, 409 mit `X-WOPI-Lock`, Tests S1–S7). Die erste Sperre einer freien Datei beginnt die Sitzung: `entscheideSitzungsbeginn` (U1). Unlock beendet sie. |
 | PutFile | `POST /wopi/files/:anhangId/contents` | `entscheidePutFile` (Schreibmarke, eigene Sperre, Größe; Tests P1–P5) |
 | PutRelativeFile, RenameFile | — | nicht angeboten (`UserCanNotWriteRelative`, `SupportsRename: false`). Neben dem Artikel entsteht keine zweite Datei. |
 
@@ -173,13 +187,14 @@ hält beide gleich.
 | `.xls` | Excel | nur lesen; Bearbeiten erst nach ausdrücklicher Umwandlung in `.xlsx` als neue Fassung |
 | `.ppt` | PowerPoint | nur lesen; Bearbeiten erst nach ausdrücklicher Umwandlung in `.pptx` als neue Fassung |
 
-**Umfang der funktionierenden Teilprobe:** Sie trifft Host-Entscheidungen ohne Netz.
+**Umfang der funktionierenden Teilprobe:**
 
-- **Geprüft:** Formaterkennung für alle drei Anwendungen, Schreibweg, Zugangsmarke, CheckFileInfo,
-  Sperren, PutFile-Annahme und Größengrenze. Am echten Objektspeicher (nicht über das Netz) sind
-  außerdem Größengrenze und Versionsablage geprüft.
-- **Nicht geprüft:** ob Collabora oder Microsoft diese Antworten im Browser verarbeiten, die
-  Darstellungstreue, Excel-Formeln und PowerPoint-Folien im Editor.
+- **Ohne Editor geprüft:** Formaterkennung für alle drei Anwendungen, Schreibweg, Zugangsmarke,
+  CheckFileInfo, Sperren, PutFile-Annahme, Größengrenze, Sitzungsbasis und der Hostweg über HTTP.
+- **Mit echtem Editor (CODE) geprüft, nur Word:** Die Integrationsprobe öffnet, ändert, speichert,
+  übernimmt zweimal und öffnet eine **`.docx`** wieder.
+- **Nicht geprüft:** `.xlsx` und `.pptx` im Editor, Microsoft als Editor, die Darstellungstreue sowie
+  Excel-Formeln und PowerPoint-Folien.
 
 ---
 
@@ -197,7 +212,26 @@ hält beide gleich.
    - Neu ist eine Dienstmethode, die in **einer** Transaktion (`mutateKoTx`) die `objectId` des
      Anhangs tauscht **und** die Fassung erhöht. Heute sind das zwei getrennte Wege: `updateAttachment`
      ohne Fassung, `revise` ohne Anhangstausch.
-   - Bedingung ist `expectedVersion = Ausgangsfassung der Marke`; das ist das vorhandene CAS.
+   - Bedingung ist `expectedVersion = Sitzungsbasis`; das ist das vorhandene CAS. Wie die
+     Sitzungsbasis entsteht und nachgezogen wird, regelt Abschnitt 5.1a.
+
+### 5.1a Sitzungsbasis (Nacharbeit 1)
+
+Runde 1 band die Übernahme an die Fassung in der Zugangsmarke. Die Marke ändert sich während einer
+Sitzung nicht, die Artikelfassung aber schon, nämlich durch die eigene Übernahme. Die zweite
+Übernahme derselben Sitzung wäre deshalb an der ersten gescheitert (`KO_STALE` gegen sich selbst).
+Seit Nacharbeit 1 gilt:
+
+| Schritt | Regel | Beleg |
+|---|---|---|
+| Sitzungsbeginn | Die erste Sperre einer freien Datei beginnt die Sitzung. Ihre **Basis** ist die Öffnungsfassung der Marke, aber nur, wenn diese gleich der aktuellen Artikelfassung ist. Sonst kommt `409` mit `X-WOPI-LockFailureReason`, und die Seite öffnet mit frischer Marke neu. | `entscheideSitzungsbeginn`, U1; `hostweg.test.ts` H6 |
+| Beitritt | Weitere Teilnehmer der gemeinsamen Editor-Sitzung ändern die Basis nicht, auch wenn ihre Marke eine andere Öffnungsfassung trägt. | H4 |
+| Eigene Übernahme | CAS gegen die Basis. Gelingt sie, wird die **neue Fassung die Basis**. Die nächste Übernahme derselben Sitzung ist damit kein Konflikt. Die Marken bleiben gültig und werden für die Übernahme nicht befragt; eine neue Marke ist nicht nötig. | U2; H3; CODE-Probe C3 |
+| Fremde Änderung | Weicht die Artikelfassung von der Basis ab, hat jemand außerhalb der Sitzung geschrieben. Dann ist das Ergebnis ein Konflikt (`fremde-aenderung` bzw. `KO_STALE`). Die Basis wird **nicht** still nachgezogen; auch der zweite Versuch bleibt ein Konflikt. Aufgelöst wird durch Schließen und Neuöffnen (neue Basis) oder durch Einreichen als Vorschlag. | U3; H5 |
+| Sitzungsende | Unlock beendet die Sitzung. Ein noch nicht übernommener Arbeitsstand wird dabei übernommen. Scheitert das an einer fremden Änderung, bleibt das Objekt erhalten und wird protokolliert; nichts wird überschrieben. Eine abgelaufene Sperre endet ebenso, sobald die nächste Sitzung beginnt. | H6, H7; CODE-Probe C4 |
+
+Die Basis liegt beim Host, je Anhang. In der Probe liegt sie im Arbeitsspeicher
+(`SpeicherWopiSitzungen`); für mehrere App-Prozesse braucht es die Postgres-Ablage aus U2.
 
 ### 5.2 Gleichzeitige Bearbeitung und Konflikte
 
@@ -206,7 +240,8 @@ hält beide gleich.
 | Mehrere Nutzer öffnen dieselbe Datei im Editor | Der Editor führt **eine** gemeinsame Sitzung je `WOPISrc`. Gearbeitet wird gemeinsam in Echtzeit, die Sperre gehört der Editor-Sitzung. Beim Öffnen meldet Klarwerk die Teilnehmer über den vorhandenen Bearbeitungshinweis (`PUT /api/kos/:id/bearbeitungen/:sitzung`). |
 | Zweite Editor-Sitzung trifft eine fremde Sperre (z. B. ein zweiter Editor-Knoten) | `409` mit der bestehenden Sperre in `X-WOPI-Lock`. Gespeichert wird nichts (Tests S2, P3). |
 | Speichern ohne oder mit abgelaufener Sperre | `409`, `X-WOPI-Lock` leer. Gespeichert wird nichts (Test P4). |
-| Während der Editor-Sitzung schreibt jemand anderes am Artikel (Klarwerk-Texteditor, Import, Word-Add-in, eine andere Übernahme) | Die Übernahme läuft ins CAS und bekommt `409 KO_STALE` mit `currentVersion`. Der Arbeitsstand bleibt als Objekt erhalten. Der Mensch wählt „Stand neu laden“ oder „als Vorschlag einreichen“. Es wird **nichts überschrieben**. |
+| Während der Editor-Sitzung schreibt jemand anderes am Artikel (Klarwerk-Texteditor, Import, Word-Add-in) | Die Übernahme prüft gegen die Sitzungsbasis (5.1a) und meldet `fremde-aenderung`; auch der CAS-Weg selbst ergibt `KO_STALE`. Der Arbeitsstand bleibt als Objekt erhalten. Der Mensch wählt „Stand neu laden“ oder „als Vorschlag einreichen“. Es wird **nichts überschrieben** (H5). |
+| Dieselbe Sitzung übernimmt mehrmals | Jede eigene Übernahme zieht die Basis nach; die zweite und jede weitere gelingt (H3, CODE-Probe C3). |
 | Lesemarke versucht zu speichern | `401` (Test P2) |
 
 ### 5.3 Auswirkungen auf den Artikel und den fachlichen Status
@@ -262,10 +297,11 @@ der Anbieter; gebucht wird nichts ohne Freigabe (Nichtziel).
 |---|---|
 | M365-Business-Basic-Testmandant mit Globalem Admin | **vorhanden** (Nutzerangabe), läuft am 20.10.2026 ab. Taugt für eine Messung an Weg B (Vorschau-Einbettung); **taugt nicht** als Nachweis für Weg A. |
 | Docker-Betriebsweg | **vorhanden** (`docker-compose.yml`), aber ohne Editor-Dienst. Die Baubahn startet keine Dienste. |
-| CODE-Abbild | frei erhältlich, **noch nicht eingebunden** (U1) |
+| CODE-Abbild | frei erhältlich. Die Integrationsprobe startet es als Testcontainer (`collabora/code`, überschreibbar mit `KLARWERK_CODE_ABBILD`). Im Betriebsweg (`docker-compose.yml`) ist es **noch nicht eingebunden** (U1). |
 | Prüfdokumente | `.docx`-Sollpaket **vorhanden** (`tools/word-host-wiederoeffnen.ts sollpaket`). Fiktive `.xlsx` mit Formeln und `.pptx` mit Bild und Notiz **fehlen** (U1). |
-| Automatische Hostprüfung | **vorhanden**: `services/app/src/office-wopi.test.ts` |
-| Mensch im Browser für den Bedienbeleg | **nötig, noch nicht erfolgt** (Abschnitt 7.3) |
+| Automatische Hostprüfung | **vorhanden**: `services/app/src/office-wopi.test.ts`, `tests/office-wopi-code/hostweg.test.ts` |
+| Docker und Chromium in der Prüfbahn für die CODE-Probe | Nötig, um das CODE-Abbild zu laden und zu starten. Ob die Prüfbahn das darf, zeigt erst ihr Lauf; die Baubahn startet keine Dienste. |
+| Mensch im Browser für den Bedienbeleg | **nötig, noch nicht erfolgt** (Abschnitt 7.4) |
 
 ---
 
@@ -280,10 +316,48 @@ Gelesen am Stand `863a0974`: `office-host.ts`, `graph-client.ts`, `ABNAHME-M365.
 
 ### 7.2 Automatische Prüfung (Teilprobe)
 
-`services/app/src/office-wopi.test.ts`: Fälle F1–F3, R1–R5, M1–M7, C1, S1–S7, P1–P5, V1, D1.
-Ausgeführt wird sie durch die Prüfbahn; die Baubahn startet keine Tests.
+- `services/app/src/office-wopi.test.ts`: Fälle F1–F3, R1–R5, M1–M7, C1, S1–S7, P1–P5, U1–U4, V1,
+  D1. In Runde 1 lief die Fassung ohne U1–U4: 30 Fälle grün (Prüfbericht in `HISTORIE/nacharbeit-1`).
+- `tests/office-wopi-code/hostweg.test.ts` prüft den Hostweg über HTTP ohne Editor (H1–H9).
 
-### 7.3 Offen: erster Bedienlauf im Browser (nach U1–U4)
+Ausgeführt werden beide durch die Prüfbahn; die Baubahn startet keine Tests.
+
+### 7.3 Integrationsprobe mit echtem Editor (Nacharbeit 1)
+
+`tests/office-wopi-code/code-probe.integration.test.ts`:
+
+- **Aufbau:**
+  - Der Hostweg `erstelleWopiHost` läuft hinter `node:http`. Eine fiktive `.docx` liegt im
+    Objektspeicher, der Artikel ist die `ArtikelAttrappe`.
+  - Ein Testcontainer `collabora/code` hat `aliasgroup1` auf den Hostweg und `net.frame_ancestors`
+    auf die Host-Seite.
+  - Chromium lädt die Host-Seite, und diese bettet den Editor nach dem WOPI-Muster ein (Formular-POST
+    mit Marke in ein iframe).
+- **C1 Öffnen:** Discovery, Editor lädt (`Document_Loaded`). Der Hostweg sah CheckFileInfo, GetFile
+  und LOCK, jeweils mit 200.
+- **C2 Ändern und Speichern:** Text wird über die Nachrichtenschnittstelle des Editors eingefügt
+  (`Send_UNO_Command` `.uno:InsertText`), danach kommt `Action_Save`. Der Editor schickt PutFile;
+  die gespeicherte DOCX enthält Ausgangstext und Änderung.
+- **C3:** Zwei Übernahmen derselben offenen Sitzung ergeben Fassung 2, dann 3.
+- **C4 Schließen und Wiederöffnen:** Der Editor entsperrt. Die neue Öffnung liest per GetFile das
+  Objekt der übernommenen Fassung mit beiden Änderungen. Die Ausgangsfassung ist unverändert lesbar.
+- **Bildschirmfotos:** `test-results/office-wopi-code/01-geoeffnet.png`,
+  `02-geaendert-gespeichert.png`, `03-wiedergeoeffnet.png`.
+
+**Grenzen der Probe:**
+
+- Nur `.docx`.
+- Geändert wird nicht per Tastatur.
+- Artikel-Attrappe statt Wissensobjektdienst (U3).
+- Keine Klarwerk-Anmeldung und keine Artikelseite (U2, U4).
+- Keine Beurteilung der Darstellungstreue.
+
+**Stand der Ausführung:** Bis zur Abgabe dieser Nacharbeit ist die Probe **nicht gelaufen**. Sie
+braucht Docker mit Zugriff auf die Abbilder `collabora/code` und `testcontainers/sshd` sowie
+Chromium. Scheitert sie am Start (Abbild nicht ladbar, kein Docker), fehlt ein Prüfmittel. Das ist
+dann als solches zu belegen und kein Befund am Hostweg.
+
+### 7.4 Offen: menschlicher Bedienlauf im Artikel (nach U1–U4)
 
 1. Testserver mit CODE-Dienst; Umgebung: `KLARWERK_OFFICE_EDITOR_URL`, `KLARWERK_WOPI_SCHLUESSEL`.
    Den Schlüssel erzeugt der Betreiber; er gehört nicht in den Beleg.
@@ -300,8 +374,11 @@ Ausgeführt wird sie durch die Prüfbahn; die Baubahn startet keine Tests.
 Belege sind Bildschirmfotos und die JSON-Antworten (`/api/kos/:id`, `/versions`), ohne Marken,
 Cookies oder Schlüssel.
 
-**Nicht gemessen und nicht behauptet:** dass irgendein Editor heute im Artikel läuft, die
-Darstellungstreue von Collabora und die Bearbeitbarkeit der Microsoft-Vorschau (Weg B).
+**Nicht gemessen und nicht behauptet:**
+
+- dass ein Editor heute auf der Klarwerk-Artikelseite läuft;
+- die Darstellungstreue von Collabora;
+- die Bearbeitbarkeit der Microsoft-Vorschau (Weg B).
 
 ---
 
@@ -312,17 +389,19 @@ Darstellungstreue von Collabora und die Bearbeitbarkeit der Microsoft-Vorschau (
 - **U1:** CODE als zusätzlicher Dienst in `docker-compose.yml`, nur im Testprofil, mit
   `frame_ancestors` und `storage.wopi.host` auf die eine Klarwerk-Herkunft. Dazu fiktive
   Prüfdokumente `.xlsx` und `.pptx`.
-- **U2:** WOPI-Routen aus Abschnitt 3.6 auf `office-wopi.ts` verdrahten. Dazu gehören ein
-  Sperren-Repo (Postgres, je `anhangId`), die Schwärzung von `access_token` in der Protokollierung
-  und die CSP-Erweiterung `frame-src`.
+- **U2:** Den vorhandenen Hostweg `erstelleWopiHost` in Fastify verdrahten. Dazu gehören eine
+  Sitzungsablage in Postgres (je `anhangId`, statt `SpeicherWopiSitzungen`), die Schwärzung von
+  `access_token` in der Protokollierung und die CSP-Erweiterung `frame-src`.
 - **U3:** Dienstmethode „Office-Fassung übernehmen“: Anhangstausch und Fassung in einer Transaktion,
-  mit CAS. Dazu der Rückweg über eine frühere `objectId` und der Anstoß des Dokumentauszugs.
-- **U4:** Editor-iframe auf der Artikelseite. Danach der Bedienlauf aus 7.3.
+  mit CAS. Sie erfüllt den Vertrag `WopiArtikelZugriff.uebernimm` und ersetzt die Attrappe. Dazu
+  gehören der Rückweg über eine frühere `objectId` und der Anstoß des Dokumentauszugs.
+- **U4:** Editor-iframe auf der Artikelseite. Danach folgt der menschliche Bedienlauf aus 7.4.
 
 **Externe Mittel, genau benannt:**
 
 | Für | Externes Mittel | Wer |
 |---|---|---|
+| Integrationsprobe 7.3 | **keins** außer einer Prüfbahn mit Docker (Abbilder `collabora/code`, `testcontainers/sshd` aus dem Netz ladbar) und Chromium | Betreiber der Prüfbahn |
 | U1–U4 (Test) | **keins** außer der Betriebsfreigabe, auf dem Testserver einen weiteren Docker-Dienst (CODE) zu starten | Betreiber/Pedi |
 | Produktivbetrieb Weg C | **Collabora-Online-Subscription** (Angebot und Kauffreigabe) | Pedi |
 | Microsoft 365 im Artikel (Weg A) | **CSPP-Zulassung durch Microsoft** (Bewerbung und Programmvertrag) | Klarwerk-Inhaber gegenüber Microsoft |

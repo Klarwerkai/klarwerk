@@ -13,6 +13,7 @@
 //   C1     CheckFileInfo spiegelt den Schreibweg, kein „Speichern unter" neben dem Artikel.
 //   S1–S7  Sperrregeln mit 409 und bestehender Sperre im `X-WOPI-Lock`.
 //   P1–P5  PutFile nur mit eigener Sperre und Schreibmarke; Größengrenze = Objektspeicher.
+//   U1–U4  Sitzungsbasis: eigene Übernahmen nacheinander ohne Konflikt, fremde Änderung = Konflikt.
 //   V1     Versionsrückweg: zwei Speicherungen sind zwei Objekte, das erste bleibt lesbar.
 //   D1     Plan und Formattabelle nennen dieselben Formate.
 
@@ -30,6 +31,8 @@ import {
   ZUGANGSMARKE_GUELTIG_MS,
   checkFileInfo,
   entscheidePutFile,
+  entscheideSitzungsbeginn,
+  entscheideUebernahme,
   officeFormatFuer,
   officeSchreibweg,
   passtInObjektspeicher,
@@ -369,6 +372,58 @@ describe("PutFile", () => {
     const zuGross = alsDatenUrl(groesste + 3);
     const abgewiesen = store.put({ name: "zu-gross.pptx", mime: PPTX, data: zuGross });
     await expect(abgewiesen).rejects.toThrow(/zu groß/);
+  });
+});
+
+describe("Sitzungsbasis — eigene Übernahme und fremde Änderung getrennt (Nacharbeit 1)", () => {
+  it("U1: eine Sitzung beginnt nur auf der aktuellen Fassung", () => {
+    expect(entscheideSitzungsbeginn(3, 3)).toEqual({ erlaubt: true, basisFassung: 3 });
+    expect(entscheideSitzungsbeginn(3, 4)).toEqual({
+      erlaubt: false,
+      markenFassung: 3,
+      artikelFassung: 4,
+    });
+  });
+
+  it("U2: zwei eigene Übernahmen nacheinander — die zweite prüft gegen die nachgezogene Basis", () => {
+    // Die Marke trägt weiterhin Fassung 3; geprüft wird gegen die Basis der Sitzung.
+    const erste = entscheideUebernahme({
+      basisFassung: 3,
+      artikelFassung: 3,
+      hatArbeitsstand: true,
+    });
+    expect(erste).toEqual({ art: "uebernehmen", expectedVersion: 3 });
+    // Nach der ersten Übernahme steht der Artikel auf 4, und der Host hat die Basis auf 4 gezogen.
+    const zweite = entscheideUebernahme({
+      basisFassung: 4,
+      artikelFassung: 4,
+      hatArbeitsstand: true,
+    });
+    expect(zweite).toEqual({ art: "uebernehmen", expectedVersion: 4 });
+  });
+
+  it("U3: eine fremde Änderung außerhalb der Sitzung ist ein Konflikt, keine neue Basis", () => {
+    const fremd = entscheideUebernahme({
+      basisFassung: 4,
+      artikelFassung: 5,
+      hatArbeitsstand: true,
+    });
+    expect(fremd).toEqual({ art: "fremde-aenderung", basisFassung: 4, artikelFassung: 5 });
+  });
+
+  it("U4: ohne Sitzung oder ohne gespeicherten Arbeitsstand wird nichts übernommen", () => {
+    const ohneSitzung = entscheideUebernahme({
+      basisFassung: undefined,
+      artikelFassung: 4,
+      hatArbeitsstand: true,
+    });
+    expect(ohneSitzung).toEqual({ art: "ohne-sitzung" });
+    const ohneStand = entscheideUebernahme({
+      basisFassung: 4,
+      artikelFassung: 4,
+      hatArbeitsstand: false,
+    });
+    expect(ohneStand).toEqual({ art: "ohne-arbeitsstand" });
   });
 });
 

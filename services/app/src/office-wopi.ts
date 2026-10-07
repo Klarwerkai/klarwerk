@@ -160,7 +160,11 @@ export interface ZugangsmarkenInhalt {
   readonly nutzerId: string;
   /** Nur bei Schreibweg `direkt` wahr. */
   readonly schreiben: boolean;
-  /** Die Artikelfassung, die beim Öffnen galt — Grundlage der Konfliktprüfung bei der Übernahme. */
+  /**
+   * Die Artikelfassung, die beim ÖFFNEN galt. Sie entscheidet nur, ob eine NEUE Editor-Sitzung
+   * beginnen darf (`entscheideSitzungsbeginn`). Die Übernahme prüft NICHT gegen sie, sondern gegen
+   * die Sitzungsbasis, die der Host nach jeder eigenen Übernahme nachzieht (`entscheideUebernahme`).
+   */
   readonly fassung: number;
   /** Ablauf in Millisekunden seit der Epoche (WOPI: `access_token_ttl`). */
   readonly bis: number;
@@ -275,6 +279,8 @@ export interface CheckFileInfo {
   /** „Speichern unter" legt keine Datei neben dem Artikel an — es gibt nur DIESEN Anhang. */
   readonly UserCanNotWriteRelative: true;
   readonly SupportsRename: false;
+  /** Die Herkunft der einbettenden Seite; nur sie darf dem Editor Nachrichten schicken. */
+  readonly PostMessageOrigin?: string;
 }
 
 export function checkFileInfo(args: {
@@ -282,8 +288,9 @@ export function checkFileInfo(args: {
   artikel: { readonly author: string; readonly version: number };
   nutzer: { readonly id: string; readonly name: string };
   schreiben: boolean;
+  postMessageOrigin?: string;
 }): CheckFileInfo {
-  const { anhang, artikel, nutzer, schreiben } = args;
+  const { anhang, artikel, nutzer, schreiben, postMessageOrigin } = args;
   return {
     BaseFileName: anhang.name,
     OwnerId: artikel.author,
@@ -297,6 +304,7 @@ export function checkFileInfo(args: {
     SupportsUpdate: schreiben,
     UserCanNotWriteRelative: true,
     SupportsRename: false,
+    ...(postMessageOrigin === undefined ? {} : { PostMessageOrigin: postMessageOrigin }),
   };
 }
 
@@ -391,8 +399,8 @@ export function wendeSperreAn(
 // unveränderlich je Kennung) und vermerkt es als Arbeitsstand der Sitzung. Es erzeugt KEINE
 // Artikelfassung: Editoren speichern automatisch alle paar Minuten, und jede Speicherung als
 // Fassung wäre Rauschen. Die Fassung entsteht bei der Übernahme (Plan, Abschnitt 5) — mit
-// `expectedVersion = marke.fassung` über das bestehende CAS; wer dazwischen geschrieben hat, bekommt
-// dort den bekannten `KO_STALE`-Konflikt.
+// `expectedVersion = Sitzungsbasis` über das bestehende CAS (siehe SITZUNGSBASIS unten); wer
+// außerhalb der Sitzung dazwischen geschrieben hat, bekommt dort den `KO_STALE`-Konflikt.
 
 /**
  * Größte Datei, deren Daten-URL in den Objektspeicher passt (`MAX_OBJECT_BYTES` misst die Länge
@@ -438,6 +446,78 @@ export function entscheidePutFile(args: {
     return { status: 413 };
   }
   return { status: 200 };
+}
+
+// ------------------------------------------------------------------------------------------------
+// SITZUNGSBASIS — eigene Übernahmen und fremde Änderungen getrennt (bens Befund, Nacharbeit 1)
+// ------------------------------------------------------------------------------------------------
+//
+// Runde 1 band die Konfliktprüfung an die Fassung IN DER MARKE. Eine Marke ändert sich während der
+// Sitzung nicht, die Artikelfassung aber schon — durch die EIGENE Übernahme. Die zweite Übernahme
+// derselben Sitzung wäre dann an der ersten gescheitert (`KO_STALE` gegen sich selbst), und jeder
+// weitere Teilnehmer der gemeinsamen Sitzung hätte eine andere Marke mit einer anderen Fassung.
+//
+// DIE REGEL: Die Basis gehört der EDITOR-SITZUNG (eine je Anhang, serverseitig beim Host), nicht der
+// Marke und nicht dem Nutzer.
+//   · Beginn   — die erste Sperre einer freien Datei beginnt die Sitzung. Basis = Markenfassung,
+//                aber nur, wenn sie GLEICH der aktuellen Artikelfassung ist; sonst 409, der Editor
+//                lädt neu und bekommt eine frische Marke. Wer einer laufenden Sitzung beitritt, ändert
+//                die Basis nicht — der Editor zeigt ihm den Inhalt der Sitzung, nicht seine Fassung.
+//   · Übernahme — CAS gegen die Basis. Gelingt sie, wird die NEUE Fassung die Basis: die eigene
+//                Übernahme ist danach kein Konflikt. Die Marken bleiben gültig; sie tragen nur die
+//                Öffnungsfassung und werden für die Übernahme nicht mehr befragt.
+//   · Fremde Änderung — weicht die Artikelfassung von der Basis ab, hat jemand AUSSERHALB der Sitzung
+//                geschrieben (Klarwerk-Texteditor, Import, Word-Add-in). Dann `KO_STALE`; die Basis
+//                wird NICHT still nachgezogen — sonst überschriebe die nächste Übernahme die fremde
+//                Änderung. Aufgelöst wird durch Schließen der Sitzung und Neuöffnen (neue Basis) oder
+//                durch Einreichen des Arbeitsstands als Vorschlag.
+//   · Ende     — ein erfolgreiches Entsperren beendet die Sitzung samt Basis und Arbeitsstand-Zeiger;
+//                eine abgelaufene Sperre ebenso, sobald die nächste Sitzung beginnt. Die Objekte des
+//                Arbeitsstands bleiben im Objektspeicher.
+
+export type Sitzungsbeginn =
+  | { readonly erlaubt: true; readonly basisFassung: number }
+  | { readonly erlaubt: false; readonly markenFassung: number; readonly artikelFassung: number };
+
+export function entscheideSitzungsbeginn(
+  markenFassung: number,
+  artikelFassung: number,
+): Sitzungsbeginn {
+  return markenFassung === artikelFassung
+    ? { erlaubt: true, basisFassung: artikelFassung }
+    : { erlaubt: false, markenFassung, artikelFassung };
+}
+
+export type UebernahmeEntscheidung =
+  | { readonly art: "uebernehmen"; readonly expectedVersion: number }
+  | { readonly art: "ohne-sitzung" }
+  | { readonly art: "ohne-arbeitsstand" }
+  | {
+      readonly art: "fremde-aenderung";
+      readonly basisFassung: number;
+      readonly artikelFassung: number;
+    };
+
+export function entscheideUebernahme(args: {
+  /** `undefined`: keine laufende Sitzung für diesen Anhang. */
+  basisFassung: number | undefined;
+  artikelFassung: number;
+  hatArbeitsstand: boolean;
+}): UebernahmeEntscheidung {
+  if (args.basisFassung === undefined) {
+    return { art: "ohne-sitzung" };
+  }
+  if (!args.hatArbeitsstand) {
+    return { art: "ohne-arbeitsstand" };
+  }
+  if (args.artikelFassung !== args.basisFassung) {
+    return {
+      art: "fremde-aenderung",
+      basisFassung: args.basisFassung,
+      artikelFassung: args.artikelFassung,
+    };
+  }
+  return { art: "uebernehmen", expectedVersion: args.basisFassung };
 }
 
 function asciiKlein(text: string): string {
