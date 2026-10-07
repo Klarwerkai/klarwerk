@@ -3,11 +3,11 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import {
-  useAudit,
   useConflicts,
   useGaps,
   useKos,
   useLifecyclePending,
+  useReturnedTasks,
   useValidationBoard,
 } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
@@ -45,7 +45,6 @@ import {
   writeTaskFilterToParams,
 } from "../lib/taskViewState";
 import { useAuthorName } from "../lib/useAuthorName";
-import { returnedToAuthor } from "../lib/validationStatus";
 import { type WorkSeverity, groupTasks, severityForType } from "../lib/workCenter";
 
 // ================================================================================================
@@ -152,7 +151,11 @@ export function MyTasks(): JSX.Element {
   const conflicts = useConflicts();
   const lifecycle = useLifecyclePending();
   const gaps = useGaps();
-  const audit = useAudit();
+  // Autorenübergabe-Auftrag K3 (Ben, Nacharbeit 3): die an MICH zurückgegebenen Entwürfe kommen vom
+  // Server (`GET /api/me/returned-tasks`, nur `ko.read`), nicht mehr aus dem ganzen Protokoll
+  // (`GET /api/audit`, `ko.validate`). Daran scheiterte die Liste für Experten, während das
+  // Kopfband sie zählte. Liste und Zahl rechnen jetzt serverseitig mit derselben Auswahl.
+  const zurueckgegeben = useReturnedTasks();
   const kos = useKos();
   const { user } = useSession();
 
@@ -167,7 +170,7 @@ export function MyTasks(): JSX.Element {
   // SCRUM-247: alle echten Signale zu EINER flachen Aufgabenliste verdichten.
   const tasks: Task[] = [
     ...(user
-      ? returnedToAuthor(audit.data ?? [], kos.data ?? [], user.id).map((r) =>
+      ? (zurueckgegeben.data ?? []).map((r) =>
           task({
             id: `rw-${r.koId}`,
             label: kosById.get(r.koId)?.title ?? r.koId,
@@ -257,7 +260,7 @@ export function MyTasks(): JSX.Element {
   // die Liste oben gebaut ist. Zusammengehörig und atomar: erst wenn jede geliefert hat, darf über
   // den Bestand etwas ausgesagt werden. Ein gescheiterter Refetch bei vorhandenen Daten bleibt
   // `loaded` — die Liste bleibt sichtbar, sie schlägt nicht auf „Nichts offen." um.
-  const quellen = [board, conflicts, lifecycle, gaps, audit, kos];
+  const quellen = [board, conflicts, lifecycle, gaps, zurueckgegeben, kos];
   const ladephase = groupLoadPhase(quellen);
 
   // ==============================================================================================

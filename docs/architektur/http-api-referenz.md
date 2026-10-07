@@ -303,6 +303,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `POST` | `/api/notifications/seen` | `requireUser` | Rumpf `{ ids }` | 200 `{ unseenCount }` | 400 (`ids` fehlt) |
 | `GET` | `/api/livewall` | `ko.read` | — | 200 Live-Wand | — |
 | `GET` | `/api/me/impact` | `requireUser` | — | 200 eigene Wirkung | — |
+| `GET` | `/api/me/returned-tasks` | `ko.read`, sichtbar | — | 200 `[{ koId, at, verdict }]` — an mich zurückgegebene Entwürfe | — |
 | `GET` | `/api/me/returned-tasks/summary` | `ko.read`, sichtbar | — | 200 `{ open }` — Zahl der an mich zurückgegebenen Entwürfe | — |
 | `GET` | `/api/gesamtanweisungen` | `ko.read` | — | 200 sichtbare Anweisungen | — |
 | `POST` | `/api/gesamtanweisungen` | `ko.create` | Rumpf `{ titel?, zweck?, geltungsbereich?, voraussetzungen? }` | 201 Anweisung | Dienstfehler |

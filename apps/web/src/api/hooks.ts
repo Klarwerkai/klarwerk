@@ -40,6 +40,13 @@ export const useReturnedTasksSummary = () =>
     queryKey: ["me", "returned-tasks", "summary"],
     queryFn: () => endpoints.me.returnedSummary(),
   });
+// Dieselbe Auswahl als Liste für die Aufgabenseite (`pages/MyTasks.tsx`). Beide Schlüssel liegen
+// unter `["me", "returned-tasks"]`: wer diesen Präfix entwertet, frischt Liste und Zahl gemeinsam auf.
+export const useReturnedTasks = () =>
+  useQuery({
+    queryKey: ["me", "returned-tasks", "list"],
+    queryFn: () => endpoints.me.returnedTasks(),
+  });
 export const useImportCandidates = () =>
   useQuery({
     queryKey: ["import-candidates"],

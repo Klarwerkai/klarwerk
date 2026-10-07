@@ -69,9 +69,8 @@ export function useNavBadges(): Record<string, NavBadge> {
   // keinen Volltext, nur eine Länge.
   const lifecycle = useLifecyclePending();
   // Autorenübergabe-Auftrag K3 (Ben, Nacharbeit 1): die SECHSTE Aufgabenquelle, die an mich
-  // zurückgegebenen Entwürfe. Die Seite rechnet sie mit `returnedToAuthor(audit, kos, user.id)` aus
-  // zwei Volltextquellen. Die Shell holt nur die Zahl, die der Server mit DERSELBEN Funktion, für
-  // denselben angemeldeten Betrachter und über dieselbe sichtbare Grundmenge rechnet
+  // zurückgegebenen Entwürfe. Die Seite holt sie als Liste (`GET /api/me/returned-tasks`), die Shell
+  // nur die Zahl (`/summary`). Beide rechnet der Server mit DERSELBEN Auswahl
   // (`services/app/src/routes/aufgaben-zaehler-routes.ts`).
   const zurueckgegeben = useReturnedTasksSummary();
   // ==============================================================================================

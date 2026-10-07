@@ -510,6 +510,10 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "K3 — sichtbareFuer + sqlSichtbarkeitFuer über der Grundmenge, nur die Zahl.",
   },
+  "GET /api/me/returned-tasks": {
+    urteil: "PRAEDIKAT",
+    grund: "K3 — dieselbe Auswahl als Liste { koId, at, verdict }, nur eigene sichtbare Objekte.",
+  },
   // --- Kein Inhalt eines Wissensobjekts ------------------------------------------------------
   "GET /health": { urteil: "KEIN_KO_INHALT", grund: "Betriebszustand." },
   "GET /api/ai-status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },

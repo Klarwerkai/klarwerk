@@ -902,12 +902,21 @@ export const TABELLE: Zeile[] = [
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
-  // Autorenübergabe-Auftrag K3: die textfreie Zählquelle der an mich zurückgegebenen Entwürfe.
+  // Autorenübergabe-Auftrag K3: die an mich zurückgegebenen Entwürfe — Liste für die Aufgabenseite
+  // und textfreie Zahl für das Kopfband, beide nur mit `ko.read` (Experten eingeschlossen).
+  {
+    gruppe: "aufgabenZaehlerRoutes",
+    methode: "GET",
+    pfad: "/api/me/returned-tasks",
+    belegstelle: "services/app/src/routes/aufgaben-zaehler-routes.ts:49",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
   {
     gruppe: "aufgabenZaehlerRoutes",
     methode: "GET",
     pfad: "/api/me/returned-tasks/summary",
-    belegstelle: "services/app/src/routes/aufgaben-zaehler-routes.ts:33",
+    belegstelle: "services/app/src/routes/aufgaben-zaehler-routes.ts:58",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },

@@ -122,7 +122,7 @@ Gegenproben:
 - `tests/app/nav-badges-stale-mounted.test.tsx`: Die Quelle fällt beim Neuabruf aus, die Zahl
   verschwindet und kommt wieder.
 
-Nicht behoben, getrennt benannt (Quelleninspektion, unverändert aus dem Bestand):
+Damals nicht behoben, in Nacharbeit 3 behoben (siehe unten):
 
 - Die Aufgabenliste liest die Protokolleinträge über `GET /api/audit`, und das verlangt
   `ko.validate`.
@@ -152,6 +152,35 @@ Ihre Fehlerlisten nennen nur Routen anderer Lieferungen:
 `/api/me/returned-tasks/summary` steht in keiner dieser Listen. `rollen-am-draht`,
 `route-guard-audit` und `mega74-lesewege-sammler` waren mit der neuen Route grün. Der fremde Bestand
 wird hier nicht nachgetragen, und die Prüfauswahl dieses Auftrags ist entsprechend korrigiert.
+
+## Nacharbeit 3 (Kandidat `f5eadfb4`): Liste der Rückgaben ohne `/api/audit` (K3, Bens Befund)
+
+Bens Befund: Der Zähler zählte die Rückgaben für Experten, die Liste brauchte aber
+`GET /api/audit` (`ko.validate`), und das ist für Experten gesperrt
+(`services/rbac/src/policy.ts`). Zählgleichheit gab es damit nicht. Die frühere Gleichheitsprobe las
+das Protokoll direkt über den Dienst und umging so genau diese Tür.
+
+Behoben:
+
+- Neue Route `GET /api/me/returned-tasks` → `[{ koId, at, verdict }]`
+  (`services/app/src/routes/aufgaben-zaehler-routes.ts`).
+  - Sie braucht nur `ko.read`.
+  - Sie gilt für den angemeldeten Betrachter, über dieselbe sichtbare Grundmenge wie `GET /api/kos`.
+  - Gerechnet wird mit derselben Funktion `returnedToAuthor` wie bei der Summary.
+  - Kein Protokolleintrag, kein Titel verlässt dafür den Server.
+- `GET /api/audit` bleibt unverändert bei `ko.validate`.
+- `pages/MyTasks.tsx` liest die persönlichen Rückgaben über `useReturnedTasks`
+  (`["me", "returned-tasks", "list"]`). `useAudit` ist aus der Seite und aus den Lade-, Fehler- und
+  Wiederholquellen entfernt.
+- Kennung `rw-<id>`, `reworkHref`, Autorauflösung über `/api/kos`, Filter und Rückweg bleiben
+  unverändert.
+
+Gegenprobe über HTTP (`tests/aufgaben-ansicht/rueckgabe-zaehler-kopfband.test.ts`):
+
+- Anna und Bert sind Expertinnen bzw. Experte. Jede Person liest mit ihrer eigenen Anmeldung Liste,
+  `/api/kos` und Summary.
+- Anna erhält genau a1/a2 und `open: 2`, Bert genau b1 und `open: 1`.
+- `GET /api/audit` bleibt für beide 403.
 
 ## Unverändert (K3, K4)
 

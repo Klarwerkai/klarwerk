@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { AuditEntry as WebAuditEntry } from "../../apps/web/src/api/types";
-import { returnedToAuthor } from "../../apps/web/src/lib/validationStatus";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 
 // ================================================================================================
@@ -111,7 +109,13 @@ describe("K3: GET /api/me/returned-tasks/summary zählt, was die Aufgabenliste z
     expect((await zaehler(anna.headers)).json()).toEqual({ open: 0 });
   });
 
-  it("GLEICHHEIT: Zahl der Route = Länge der Liste aus `GET /api/kos` und dem Protokoll", async () => {
+  // Ben, Nacharbeit 3: Die frühere Fassung las das Protokoll über `services.audit.list()` und umging
+  // damit die Tür, an der die Liste für Experten scheiterte (`GET /api/audit` verlangt `ko.validate`).
+  // Jetzt dienen Dienstaufrufe NUR dem Herstellen der Daten. Jeder lesende Schritt läuft über HTTP
+  // mit der Anmeldung der Person, für die er gilt: genau die Abrufe, die die Aufgabenseite
+  // (`pages/MyTasks.tsx`: `/api/me/returned-tasks` und `/api/kos` für Titel und Autor) und das
+  // Kopfband (`/api/me/returned-tasks/summary`) machen.
+  it("GLEICHHEIT über HTTP: Anna (Expertin) sieht a1/a2 und zählt 2, Bert sieht b1 und zählt 1", async () => {
     const { app, services, anna, bert, entwurf, zaehler } = await setup();
     const a1 = await entwurf(anna.id, "Anna 1");
     const a2 = await entwurf(anna.id, "Anna 2");
@@ -123,21 +127,57 @@ describe("K3: GET /api/me/returned-tasks/summary zählt, was die Aufgabenliste z
     // a3 ist abgearbeitet; a1 und a2 liegen weiter bei Anna, b1 bei Bert.
     await services.ko.revise(a3.id, { statement: "Überarbeitet." }, anna.id);
 
-    // Was die Seite für Anna rechnet: ihre sichtbaren Objekte aus `GET /api/kos`, das Protokoll und
-    // dieselbe Funktion. Das Protokoll wird hier über den Dienst gelesen; die Seite liest es über
-    // `GET /api/audit`, das dieselben Einträge ungefiltert ausgibt.
-    const kosAntwort = await app.inject({ method: "GET", url: "/api/kos", headers: anna.headers });
-    const kos = kosAntwort.json() as { id: string; author: string }[];
-    const protokoll = (await services.audit.list()) as unknown as WebAuditEntry[];
-    const liste = returnedToAuthor(protokoll, kos, anna.id);
-    expect(liste.map((r) => r.koId).sort()).toEqual([a1.id, a2.id].sort());
+    const lesen = (url: string, headers: Record<string, string>) =>
+      app.inject({ method: "GET", url, headers });
 
-    expect((await zaehler(anna.headers)).json()).toEqual({ open: liste.length });
+    for (const [wer, soll] of [
+      [anna, [a1.id, a2.id]],
+      [bert, [b1.id]],
+    ] as const) {
+      // Die Liste der Aufgabenseite, mit der eigenen Anmeldung.
+      const liste = await lesen("/api/me/returned-tasks", wer.headers);
+      expect(liste.statusCode, liste.body).toBe(200);
+      const koIds = (liste.json() as { koId: string }[]).map((r) => r.koId).sort();
+      expect(koIds, "fremde oder abgearbeitete Rückgaben in der Liste").toEqual([...soll].sort());
+
+      // Die Objekte, aus denen die Seite Titel und Autor der Zeilen nimmt: jede Zeile ist darin.
+      const kos = await lesen("/api/kos", wer.headers);
+      expect(kos.statusCode, kos.body).toBe(200);
+      const sichtbar = new Set((kos.json() as { id: string }[]).map((k) => k.id));
+      expect(koIds.every((id) => sichtbar.has(id))).toBe(true);
+
+      // Das Kopfband, mit derselben Anmeldung: dieselbe Zahl wie die Liste.
+      const zahl = await zaehler(wer.headers);
+      expect(zahl.statusCode, zahl.body).toBe(200);
+      expect(zahl.json(), "Liste und Kopfband zählen verschieden").toEqual({ open: koIds.length });
+
+      // Die Liste kommt ohne das ganze Protokoll aus: das bleibt für Experten gesperrt.
+      expect((await lesen("/api/audit", wer.headers)).statusCode).toBe(403);
+    }
   });
 
-  it("ohne Anmeldung: 401 — der Zähler ist nie offen", async () => {
+  it("die Liste antwortet nur mit Kennung, Zeitpunkt und Urteil — kein Titel, kein Protokoll", async () => {
+    const { app, services, anna, entwurf } = await setup();
+    const ko = await entwurf(anna.id, "Annas vertraulicher Titel");
+    await services.validation.rate(ko.id, "pruefer", "warn");
+    const liste = await app.inject({
+      method: "GET",
+      url: "/api/me/returned-tasks",
+      headers: anna.headers,
+    });
+    expect(liste.statusCode).toBe(200);
+    expect(liste.body).not.toContain("Annas vertraulicher Titel");
+    const zeilen = liste.json() as Record<string, unknown>[];
+    expect(zeilen).toHaveLength(1);
+    expect(Object.keys(zeilen[0] ?? {}).sort()).toEqual(["at", "koId", "verdict"]);
+    expect(zeilen[0]?.koId).toBe(ko.id);
+  });
+
+  it("ohne Anmeldung: 401 — Zähler und Liste sind nie offen", async () => {
     const { app } = await setup();
     const res = await app.inject({ method: "GET", url: "/api/me/returned-tasks/summary" });
     expect(res.statusCode).toBe(401);
+    const liste = await app.inject({ method: "GET", url: "/api/me/returned-tasks" });
+    expect(liste.statusCode).toBe(401);
   });
 });

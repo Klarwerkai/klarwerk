@@ -23,6 +23,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
       lifecycle: { pending: ok([]) },
       gaps: { list: ok([]), summary: ok({ open: 0, byPriority: {} }) },
       audit: { list: ok([]) },
+      me: { returnedTasks: ok([]) },
       ko: { list: ok([]) },
       directory: { list: ok([{ id: "u1", name: "Pia", email: "p@x.de", role: "editor" }]) },
     },

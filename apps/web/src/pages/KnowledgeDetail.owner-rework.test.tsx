@@ -16,6 +16,11 @@
 //     aus `isReturnedForRework(audit, koId)`; ein unbekannter Aktionsname lässt ihn stumm.
 //   · `MyTasks.tsx:98`          — die persönliche Aufgabenliste. Sie entsteht aus
 //     `returnedToAuthor(audit, kos, userId)`; hier DARF die Owner-Rückgabe nicht auftauchen.
+//     Autorenübergabe-Auftrag K3: Seit Nacharbeit 3 rechnet der SERVER diese Liste
+//     (`GET /api/me/returned-tasks`, gleiche Funktion, angemeldete Person). Der Teilmock unten
+//     liefert deshalb für `useReturnedTasks` genau das, was der Server für die Autorin rechnet:
+//     `returnedToAuthor(audit, kos, AUTORIN)`. Den HTTP-Weg selbst misst
+//     `tests/aufgaben-ansicht/rueckgabe-zaehler-kopfband.test.ts`.
 //
 // DIE ZWEI HÄLFTEN SIND EINE AUSSAGE, NICHT ZWEI. „Sichtbar" allein wäre erfüllt, wenn die
 // Owner-Rückgabe zusätzlich in der Autorenliste stünde — dann hätte die Autorin eine Aufgabe, die
@@ -86,6 +91,7 @@ const lage = vi.hoisted(() => ({
 // TEILMOCK, kein Vollersatz — s. Kopfkommentar.
 vi.mock("../api/hooks", async (importOriginal) => {
   const echt = await importOriginal<Record<string, unknown>>();
+  const { returnedToAuthor } = await import("../lib/validationStatus");
   const ok = <T,>(data: T) => ({ data, isLoading: false, isError: false, error: null });
   const leer = () => ok([]);
   return {
@@ -93,6 +99,15 @@ vi.mock("../api/hooks", async (importOriginal) => {
     useKo: () => ok(lage.ko),
     useKos: () => ok(lage.kos),
     useAudit: () => ok(lage.audit),
+    // Was `GET /api/me/returned-tasks` für die angemeldete Autorin („u-autorin") liefert.
+    useReturnedTasks: () =>
+      ok(
+        returnedToAuthor(
+          lage.audit as Parameters<typeof returnedToAuthor>[0],
+          lage.kos as Parameters<typeof returnedToAuthor>[1],
+          "u-autorin",
+        ),
+      ),
     useConflicts: leer,
     useDirectory: leer,
     useGaps: leer,

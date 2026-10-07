@@ -35,6 +35,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuditEntry, KnowledgeObject } from "../api/types";
+import { returnedToAuthor } from "../lib/validationStatus";
 
 const AUTORIN = "u-autorin";
 const EIGENTUEMERIN = "u-eigentuemerin";
@@ -129,6 +130,14 @@ function transport(pfad: string): unknown {
   const ohneFrage = pfad.split("?")[0] ?? pfad;
   if (ohneFrage === "/api/audit") {
     return antwort(auditNutzlast);
+  }
+  if (ohneFrage === "/api/me/returned-tasks") {
+    // Autorenübergabe-Auftrag K3 (Nacharbeit 3): die Aufgabenliste holt die an MICH
+    // zurückgegebenen Entwürfe seit hier vom Server statt aus `GET /api/audit` (das Experten nicht
+    // lesen dürfen). Der Server rechnet `returnedToAuthor` über SEINEN Bestand für die angemeldete
+    // Person (`services/app/src/routes/aufgaben-zaehler-routes.ts`). Diese Grenze antwortet genauso,
+    // über dieselben Ereignisse, die sie für `/api/audit` ausliefert.
+    return antwort(returnedToAuthor(auditNutzlast, [ko()], AUTORIN));
   }
   if (ohneFrage === `/api/kos/${KO_ID}`) {
     return antwort(ko());

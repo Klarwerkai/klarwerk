@@ -19,6 +19,7 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useGaps: () => ok(lage.gaps),
     useKos: () => ok([]),
     useAudit: () => ok([]),
+    useReturnedTasks: () => ok([]),
     useConflicts: () => ok(lage.conflicts),
     useLifecyclePending: () => ok([]),
     useValidationBoard: () => ok([]),

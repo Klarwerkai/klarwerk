@@ -833,6 +833,10 @@ export const endpoints = {
     impact: () => api.get<MyImpact>("/me/impact"),
     // Autorenübergabe-Auftrag K3: nur die Zahl der an mich zurückgegebenen Entwürfe (Kopfband).
     returnedSummary: () => api.get<{ open: number }>("/me/returned-tasks/summary"),
+    // Dieselbe Auswahl als Liste für die Aufgabenseite. Nur `ko.read` — Experten sehen ihre
+    // Rückgaben, ohne das ganze Protokoll (`/audit`, `ko.validate`) lesen zu dürfen.
+    returnedTasks: () =>
+      api.get<{ koId: string; at: string; verdict: string }[]>("/me/returned-tasks"),
   },
   // SCRUM-527: Live-Check eines Entwurfstextes (Ähnlichkeit/Widerspruch gegen den Bestand).
   //
