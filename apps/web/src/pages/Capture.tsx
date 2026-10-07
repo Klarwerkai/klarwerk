@@ -76,6 +76,7 @@ import { RoleLink } from "../components/RoleLink";
 import { UploadLimitsHint } from "../components/UploadLimitsHint";
 import { ListEditor, TagEditor } from "../components/editors";
 import { Blatt } from "../components/erfassen/Blatt";
+import { ExterneQuelleKennung } from "../components/ko/ExterneQuelleKennung";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, SectionLabel, TextInput } from "../components/ui";
 import { aiModelUsable } from "../lib/aiAvailability";
@@ -6724,6 +6725,8 @@ export function CaptureArbeitsraum({
                                     <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
                                       {t("ko.sourceUnvalidated")}
                                     </span>
+                                    {/* R-0205: eine Warteliste-Quelle ist immer extern und ungeprüft. */}
+                                    <ExterneQuelleKennung source={{ peerValidated: false }} />
                                     {s.provider ? (
                                       <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
                                         {s.provider}

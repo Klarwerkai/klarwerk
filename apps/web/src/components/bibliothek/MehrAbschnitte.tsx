@@ -78,6 +78,7 @@ import { KnowledgeNeighborhood } from "../KnowledgeNeighborhood";
 import { RoleLink } from "../RoleLink";
 import { SanitizedHtml } from "../SanitizedHtml";
 import { UploadLimitsHint } from "../UploadLimitsHint";
+import { ExterneQuelleKennung } from "../ko/ExterneQuelleKennung";
 import { ConfidenceBar, KnowledgeTypeTag, ProvenanceLine } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
@@ -1187,6 +1188,8 @@ export function MehrAbschnitte({
                         <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
                           {t(sourceBadgeKey(s))}
                         </span>
+                        {/* R-0205: „Stufe 2" + „Extern · ungeprüft" — derselbe Baustein wie überall. */}
+                        <ExterneQuelleKennung source={s} />
                         {s.provider ? (
                           <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
                             {s.provider}
