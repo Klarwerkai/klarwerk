@@ -8,10 +8,24 @@
 // serverseitig rechte-gefilterten Auskunft GET /api/kos/:id/neighbors (KnowledgeNeighborhood).
 import type { AuditEntry, KnowledgeObject } from "../api/types";
 
-/** Nennt der Beleg das Objekt in seiner Nutzlast (`koId` oder in der Liste `koIds`)? */
+/**
+ * Nennt der Beleg das Objekt in seiner Nutzlast (`koId`, in der Liste `koIds` oder als `koId` eines
+ * Eintrags in `objekte`)?
+ *
+ * `objekte: [{ koId, version }]` schreibt der SCORM-Export (`output.lms-export`,
+ * `services/app/src/routes/lms-export-routes.ts`); sein Ziel ist das Exportpaket, nicht das Objekt.
+ * Gelesen wird der gespeicherte Beleg, deshalb erscheinen auch bereits vorhandene Exporte.
+ */
 function nenntObjekt(e: AuditEntry, koId: string): boolean {
-  const p = e.payload as { koId?: unknown; koIds?: unknown } | undefined;
-  return p?.koId === koId || (Array.isArray(p?.koIds) && p.koIds.includes(koId));
+  const p = e.payload as { koId?: unknown; koIds?: unknown; objekte?: unknown } | undefined;
+  return (
+    p?.koId === koId ||
+    (Array.isArray(p?.koIds) && p.koIds.includes(koId)) ||
+    (Array.isArray(p?.objekte) &&
+      p.objekte.some(
+        (o) => typeof o === "object" && o !== null && (o as { koId?: unknown }).koId === koId,
+      ))
+  );
 }
 
 /**
@@ -32,7 +46,8 @@ function istBefundBeleg(e: AuditEntry): boolean {
 // und Exporte (Ziel `library`) fehlten, obwohl sie das Objekt betreffen. Jetzt gehören dazu:
 //   · jeder Beleg mit dem Objekt als Ziel,
 //   · jeder Beleg, der das Objekt in der Nutzlast nennt (`koId`, `koIds` — z. B. `library.export`,
-//     `conflict.created`, `overlap.auto-created`, `overlap.kept-separate`),
+//     `conflict.created`, `overlap.auto-created`, `overlap.kept-separate`; `objekte[].koId` —
+//     `output.lms-export`),
 //   · jeder Beleg zu einem Konflikt oder einer Überschneidung, an der das Objekt beteiligt ist.
 //     Die Befund-Kennungen kommen aus den Belegen selbst und — für Altbelege ohne `koIds` — aus
 //     `verbundeneBefunde` (Lauf 2: alle Konflikte UND Überschneidungen des Objekts, auch

@@ -6,7 +6,25 @@ import type { AssignmentNotice } from "../../validation";
 // nur E-Mail; die Glocke/Popover-Quelle wird hier aus vorhandenen Signalen mit
 // Zeitstempel aggregiert: offene Konflikte, offene Wissenslücken und — SCRUM-363 —
 // die persönlichen offenen Review-Zuweisungen der aktuellen Person.
-export type NotificationKind = "conflict" | "duplicate" | "gap" | "assignment" | "impact";
+export type NotificationKind =
+  | "conflict"
+  | "duplicate"
+  | "gap"
+  | "assignment"
+  | "impact"
+  | "kenntnisnahme";
+
+// Kenntnisnahme: eine offene Anforderung an die aktuelle Person. Bereits auf den Betrachter UND
+// über die Sichtbarkeit gefiltert (Route) — hier wird nichts nachgeprüft und nichts erfunden.
+export interface KenntnisnahmeNotice {
+  anforderungId: string;
+  koId: string;
+  title: string;
+  fassung: number;
+  at: string;
+  erinnerung: boolean;
+  ueberfaellig: boolean;
+}
 
 // PMO-FEA-0002: Wirkungs-Rückmeldung an den Originalautor („Dein Wissen hat geholfen").
 // Quelle: Audit-Einträge answer.helpful — keine eigene Persistenz, keine Zähler/Scores.
@@ -28,6 +46,11 @@ export interface Notification {
   // JOB 1125: gilt jetzt genauso für `conflict` (description) und `duplicate` (Modell-Begründung).
   // Die Bedeutung ist in allen drei Fällen dieselbe — Titel leer, Neutralbezeichnung im Client.
   redacted?: boolean;
+  // Kenntnisnahme: die angeforderte Fassung, ob es eine Erinnerung ist und ob die Frist verstrichen
+  // ist. Nur bei `kind: "kenntnisnahme"` gesetzt.
+  fassung?: number;
+  erinnerung?: boolean;
+  ueberfaellig?: boolean;
 }
 
 // SCRUM-363 / AG-15: persönliche offene Review-Zuweisungen kommen als eigene Kategorie in den Feed.
@@ -51,8 +74,24 @@ export function buildNotifications(input: {
   // Pedi 04.07.: offene Überschneidungen (Duplikate) erscheinen wie Konflikte in der Glocke, damit
   // ein neuer Fund auch ohne Besuch der Duplikate-Seite auffällt.
   overlaps?: (OverlapEntry & { redacted?: boolean })[];
+  kenntnisnahmen?: KenntnisnahmeNotice[];
 }): Notification[] {
   const items: Notification[] = [];
+  // Je Anforderung EIN Eintrag. Eine Erinnerung bekommt eine neue Kennung (mit ihrem Zeitpunkt),
+  // damit sie wieder als ungelesen erscheint — sie ersetzt den Eintrag, statt einen zweiten
+  // daneben zu stellen.
+  for (const k of input.kenntnisnahmen ?? []) {
+    items.push({
+      id: k.erinnerung ? `kn-${k.anforderungId}-${k.at}` : `kn-${k.anforderungId}`,
+      kind: "kenntnisnahme",
+      title: k.title,
+      at: k.at,
+      koId: k.koId,
+      fassung: k.fassung,
+      erinnerung: k.erinnerung,
+      ueberfaellig: k.ueberfaellig,
+    });
+  }
   for (const im of input.impacts ?? []) {
     items.push({
       id: `impact-${im.koId}-${im.at}`,

@@ -124,8 +124,55 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 11: gemessen zu Kandidat 10b99093 war `99c60bac…` — NICHT übernommen, weil
  * `taskpane.js` wegen der Zeilenschranke B3 (ausgeliefert 12500) danach um zwei Kommentarzeilen
  * kürzer wurde. Root hat den neuen Blob direkt aus den vier Quelldateien berechnet.
+ * AUFTRAG gesamt-ki-einwilligung:bindung (R-0590, Ben nacharbeit-3/-4): `taskpane.js` ändert sich
+ * an `performAsk` (409 `KLARA_AUSWEICHWEG_GESPERRT` → Grund), an der Statusanzeige des Fragenwegs,
+ * um zwei Wörterbuchschlüssel je Sprache und an einem umformulierten Kommentar; netto null Zeilen.
+ * Der Bezugspunkt MUSS wandern; ohne zugelassenes Hash-Werkzeug ist er hier nicht berechenbar. E2
+ * meldet ihn im Prüflauf als „Received"; er wird danach gemessen übernommen.
+ * NACHARBEIT 5 (dieser Auftrag): GEMESSEN im Prüflauf zu Kandidat 430c247c (`33e52280…`, „Received"
+ * von E2, HISTORIE/nacharbeit-5/PRUEFUNG/panel-auslieferung-pins.log) und unverändert übernommen;
+ * die vier Panel-Dateien sind seit dieser Messung unberührt.
+ * AUFTRAG firmenwoerterbuch: `taskpane.html` ändert sich um den Block `#begriffe-block` (Markup,
+ * ohne Text) und den Verweis auf `begriffe.js` im Kopf hinter office.js; `taskpane.js`, `taskpane.css`
+ * und `marke.js` bleiben unberührt. Der Bezugspunkt MUSS deshalb wandern; ohne zugelassenes
+ * Hash-Werkzeug ist er hier nicht berechenbar. E2 meldet ihn im Prüflauf als „Received"; er wird
+ * danach gemessen übernommen.
+ * NACHARBEIT 1 (firmenwoerterbuch): gemessen zu Kandidat aac85540 war `84436ffdd17714a1…` — NICHT
+ * übernommen, weil `taskpane.html` danach um eine Zeile kürzer wurde (der Block steht jetzt in der
+ * Schlusszeile des Bestandsblocks, Schranke A2/E5 „unter 500 Zeilen"). Die vollständige Kennung
+ * stand im Prüfbericht nur gekürzt, und kein Hash-Werkzeug war zugelassen. E2 meldet den Wert der
+ * endgültigen Fassung als „Received"; er wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 2 (firmenwoerterbuch): GEMESSEN am Kandidaten 64d3d35d durch Rekonstruktion nach
+ * `fuegePanelZusammen` aus den vier Quelldateien (`f96a6710…`, Beleg
+ * BAHN17-PANEL-BLOB-MESSUNG-20261006.json samt SHA-256 der vier Quellen) und unverändert
+ * übernommen. Die Integration mit `main` danach hat keine der vier Panel-Dateien berührt.
+ *
+ * Aufnahme 20260922 · gesamt-bestandsblick (R-0427; Integration mit `main` d19886ff): dieselbe
+ * Regel. Auf den Stand oben kommt GENAU der Absatzwechselweg nach bewusstem Ja — Einstellungszeile
+ * `#einst-absatzblick` (in der Zeile hinter `#einst-mitlesen`, Markup unter 500 Zeilen), drei Texte
+ * DE/EN/NL in `KA3_TEXTE`, `ka3AbsatzPruefen()` in `ka3Planen`, Beschriftung in `ka3Neuzeichnen`,
+ * Block `ka3AbsatzPruefen`/Schalter und die Bindung an die gültige Aktivierung (`ka3AbsatzRunde`,
+ * `gilt()` in `ka3Ausfuehren`). Damit `taskpane.js` unter der Schranke B3 bleibt (zusammengeführt
+ * 12544 Zeilen), sind die Kommentarköpfe der Blöcke KA2-BESTAND und W6 verdichtet — nur Kommentar,
+ * kein Ausdruck geändert; die Datei hat 12492 Zeilen. GEMESSEN beim Auflösen: das genau nach
+ * `fuegePanelZusammen` zusammengesetzte Dokument hat den Blob `2d5d9c26…` (`git diff --no-index
+ * --full-index`); dasselbe Verfahren ergibt an den vier Dateien von `main` d19886ff wörtlich
+ * `33e52280…`. Frühere Messungen dieses Auftrags: `0f733b04…`, `eb344beb…`, `fd19fe43…`.
+ *
+ * INTEGRATION firmenwoerterbuch × gesamt-bestandsblick (Kandidat 1194ffaa, Nacharbeit 7): BEIDE
+ * Änderungen stehen jetzt in den Panel-Dateien — `#begriffe-block` und der Verweis auf
+ * `begriffe.js` (firmenwoerterbuch) UND `#einst-absatzblick` samt Absatzwechselweg in
+ * `taskpane.js` (gesamt-bestandsblick). `taskpane.html` hat 498 Zeilen, `taskpane.js` 12492.
+ * Keine der beiden Messungen (`f96a6710…` firmenwoerterbuch, `2d5d9c26…` gesamt-bestandsblick)
+ * beschreibt dieses zusammengefügte Dokument; beide galten nur für ihren Zweig. Der Wert unten ist
+ * der von `main` und damit ein PLATZHALTER bis zur Messung: ohne zugelassenes Hash-Werkzeug ist
+ * der neue Blob hier nicht berechenbar. E2 meldet ihn im Prüflauf als „Received"; er wird danach
+ * gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 8 (firmenwoerterbuch): GEMESSEN im Prüflauf zu Kandidat a8ec940f (`5d7ae0b8…`,
+ * „Received" von E2, HISTORIE/nacharbeit-8/PRUEFUNG/panel-integration-pins.log) und unverändert
+ * übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "cb4cde214ee3f29e30d928322e1a200504a80e81";
+export const PANEL_VOR_SCHNITT_BLOB = "5d7ae0b8fccc34c05e5c070cea753189729ef841";
 
 export interface PanelTeile {
   html: string;

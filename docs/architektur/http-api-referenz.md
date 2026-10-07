@@ -281,6 +281,8 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `GET` | `/api/categories` | `requireUser` | — | 200 `{ categories }` | — |
 | `GET` | `/api/output/sources` | `ko.read` | — | 200 geeignete Quellen | — |
 | `POST` | `/api/output/generate` | `ko.read` | Rumpf `{ kind, koIds, audienceRole? }` | 200 Dokument | 400 `NO_SOURCES`, `NOT_VALIDATED`, `UNKNOWN_KO`, `UNKNOWN_KIND`, `CONFIDENTIAL` |
+| `POST` | `/api/output/scorm/pruefen` | `ko.read` | Rumpf `{ koIds, sprache: de \| en, empfaenger, titel? }` | 200 Prüfung `{ exportierbar, format, empfaenger, befunde, fassung }` (erzeugt und schreibt nichts) | 400 `BAD_REQUEST` |
+| `POST` | `/api/output/scorm/paket` | `ko.read` | Rumpf wie `/api/output/scorm/pruefen` | 200 `application/zip` (SCORM-1.2-Paket), Kopf `x-klarwerk-exportfassung`, `x-klarwerk-paket-sha256`; Auditeintrag `output.lms-export` | 400 `BAD_REQUEST`; 422 `EXPORT_BLOCKED` mit Prüfung |
 | `GET` | `/api/management/snapshot` | `ko.read` | — | 200 Lagebild | — |
 | `GET` | `/api/management/risk-horizon` | `ko.read` (alle Bereiche nur mit `users.manage`) | — | 200 Bereichsblick mit Ruhestandshorizonten, sichtbarkeitsgefiltert | — |
 | `GET` | `/api/management/profiles` | `users.manage` | — | 200 `{ categories, retirement }` | — |

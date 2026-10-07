@@ -19,7 +19,7 @@
        geschickt hat — und ein Neuladen aendert sie WIRKLICH. Unersetzt (Quelle/Dev): "dev". -->
   <meta name="kw-loaded-version" content="__KW_FASSUNG__" />
   <title>Klara — KLARWERK</title>
-  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script><script src="begriffe.js?v=__KW_FASSUNG__"></script>
   <link rel="stylesheet" href="taskpane.css?v=__KW_FASSUNG__" />
 </head>
 <body>
@@ -114,7 +114,7 @@
         <summary id="quellenfund-stand" class="muted"></summary>
         <ul id="quellenfund-liste"></ul>
       </details>
-    </div>
+    </div><div id="begriffe-block" class="hidden"><div id="begriffe-kopf" style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;"><button type="button" class="ghost" id="begriffe-btn"></button><select id="begriffe-bereich"></select></div><p id="begriffe-grenze" class="muted"></p><p id="begriffe-stand" class="muted" aria-live="polite"></p><ul id="begriffe-liste"></ul></div>
     <!-- ========================================================================================
          KW-D2-LUECKE-START — DIE EHRLICHE LUECKE NACH ZIELBILD KeinWissen.dc.html (JOB 3046).
          ========================================================================================
@@ -338,7 +338,7 @@
       <div class="einst-zeile">
         <span data-t="einstMitlesen"></span>
         <button type="button" class="schalter an" id="einst-mitlesen" role="switch" aria-checked="true"><span class="knopf"></span></button>
-      </div>
+      </div><div class="einst-zeile"><span data-t="einstAbsatzblick" id="einst-absatzblick-text"></span><button type="button" class="schalter" id="einst-absatzblick" role="switch" aria-checked="false"><span class="knopf"></span></button></div>
       <div class="einst-zeile hidden" id="klara-consent-zeile">
         <span id="klara-consent-title"></span>
         <button type="button" class="schalter hidden" id="klara-consent-grant" role="switch" aria-checked="false"><span class="knopf"></span></button>

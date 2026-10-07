@@ -48,10 +48,16 @@ import { KO_BEARBEITUNG_SCHEMA } from "./bearbeitungshinweis";
 import { BRANDING_SETTINGS_SCHEMA } from "./branding-settings";
 // R-0134 / R-1005: der Betreiberschalter des Confluence-Imports (umlegbar über die Oberfläche).
 import { CONFLUENCE_IMPORT_SCHALTER_SCHEMA } from "./confluence-import-schalter";
+// Firmenwörterbuch: die Fassungen des Begriffskatalogs. Im App-Wurzelverzeichnis wie die
+// Markenwahl: Editor und Word-Panel lesen ihn, kein Fachmodul besitzt ihn.
+import { BEGRIFFE_SCHEMA } from "./firmenwoerterbuch";
+// Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen.
+import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
 // JOB 3326: die Lesevarianten (gekennzeichnete Leseübersetzungen). Sie wohnen im App-Root und nicht
 // im knowledge-object-Modul, weil sie das KO-Modell ausdrücklich NICHT umbauen: die Variante ist ein
 // eigener, danebenliegender Datenraum, den kein Lesepfad des Originals berührt.
 import { LESEVARIANTEN_SCHEMA } from "./lesevarianten";
+import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
 
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
 export function createPool(connectionString?: string): Pool {
@@ -224,6 +230,18 @@ export const schemas = [
   // Prioritätsfaktoren) und Ruhestandshorizonte (24/36 Monate). Additiv und wiederholbar (CREATE
   // TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
   MANAGEMENT_PROFILE_SCHEMA,
+  // Firmenwörterbuch: die unveränderlichen Fassungen des Begriffskatalogs. Additiv und
+  // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  BEGRIFFE_SCHEMA,
+  // Kenntnisnahme einer gültigen Fassung: Kopf der Anforderung und je Empfänger eine Zeile. Additiv
+  // und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS); der einzige Fremdschlüssel zeigt auf den
+  // eigenen Kopf, keine Extension, kein Seed.
+  KENNTNISNAHME_SCHEMA,
+  // R-0162 (Confluence-Gesamtimport): das dauerhafte Quellabgleichsergebnis je Importlauf. Additiv
+  // und wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel auf `import_runs` und ohne
+  // Extension; sie steht am Ende, weil das die lesbare Ordnung ist (keine Abhängigkeit zu den
+  // Stufen davor — die Reihenfolge nach der Zusammenführung mit main ist frei).
+  IMPORT_RUN_SOURCE_SYNC_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).

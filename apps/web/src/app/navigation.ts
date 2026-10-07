@@ -566,6 +566,18 @@ export const EXTRA_GUARDED_ITEMS: NavItem[] = [
     section: "7.3",
     shot: "03",
   },
+  // BILDSCHIRMABLÄUFE (produkt:wettbewerb:20261003:bildschirmablaeufe): die Übernahme eines außerhalb
+  // Klarwerks aufgezeichneten Ablaufs. Dieselbe Rolle wie das Erfassen; erreichbar über „Meine
+  // Entwürfe". Ohne eigenen Menüpunkt — das Zahnrad findet über `istAktiverEintrag` `/erfassen`.
+  {
+    id: "ablauf",
+    path: "/erfassen/ablauf",
+    labelKey: "nav.capture",
+    icon: Plus,
+    minRole: "experte",
+    section: "7.3",
+    shot: "03",
+  },
   {
     id: "duplicateCompare",
     path: "/duplikate/:id/vergleich",

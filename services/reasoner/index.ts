@@ -240,4 +240,7 @@ export {
   bindeAnbieter,
   bindeZustimmung,
   anbieterZugelassen,
+  // R-0590 · Ben nacharbeit-1: der gesperrte Ausweichweg — die App bildet ihn auf 409 mit Grund ab.
+  KlaraAusweichwegGesperrtFehler,
+  type KlaraAusweichwegGrund,
 } from "./src/anbieterbindung";

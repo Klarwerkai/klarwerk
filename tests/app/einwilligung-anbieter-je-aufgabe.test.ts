@@ -344,3 +344,97 @@ describe("Bens B5 · ein abgeschlossener Widerruf sperrt die schon am Tor stehen
     await k.app.close();
   });
 });
+
+// ================================================================================================
+// R-0590 · BEN NACHARBEIT-1 — DER GRUND DES GESPERRTEN AUSWEICHWEGS ERREICHT DIE FLÄCHE.
+// ================================================================================================
+//
+// Echte App, echte Klara-Sitzung und Zustimmung, echtes Tor, echter Reasoner mit Anthropic als
+// einzigem externen Anbieter. Ersetzt ist nur Anthropics Antwort (scheitert oder antwortet); der
+// deterministische Ersatz ist der echte, mit einem Spion daneben. Gemessen am Draht von
+// `POST /api/ask` — dem Weg, den das Word-Panel fährt.
+//
+// WARUM ANTHROPIC IN DEN VORHANDENEN REASONER GEHÄNGT WIRD und kein neuer übergeben: der Fragedienst
+// entsteht schon in `buildServices` mit DIESEM Reasoner. Ein ausgetauschter Reasoner erreichte die
+// Route `/api/ask` nicht — der Test mäße dann den Ersatzweg einer anderen Instanz.
+
+async function antwortAufbau(anthropicScheitert: boolean) {
+  const services = buildServices();
+  const anthropic = new ModelProvider({ name: "anthropic:claude", complete: vi.fn() });
+  const anthropicAntwort = vi.fn(async () => {
+    if (anthropicScheitert) {
+      throw new Error("Anthropic: HTTP 503");
+    }
+    return {
+      answered: true,
+      answer: "von Anthropic",
+      knowledgeClass: "gesichert",
+      trust: 60,
+      sources: [],
+      citedSources: [],
+      steps: [],
+      demo: false,
+    };
+  });
+  (anthropic as unknown as { answer: unknown }).answer = anthropicAntwort;
+  const intern = services.reasoner as unknown as {
+    cloud: Record<string, unknown>;
+    fallback: { answer: () => unknown };
+  };
+  intern.cloud.anthropic = anthropic;
+  await services.reasoner.setTaskConfig(
+    mitKiFreigabe({ global: "anthropic", perTask: { answer: "anthropic" } }),
+  );
+  const ersatzAntwort = vi.spyOn(intern.fallback, "answer");
+  const app = buildApp(services);
+  const auth = await anmelden(app);
+  const gebunden = await klaraBindung(app, auth);
+  const zustimmung = await app.inject({
+    method: "POST",
+    url: `/api/klara/sessions/${gebunden["x-klara-session"]}/consent`,
+    headers: gebunden,
+  });
+  const fragen = (headers: Record<string, string>) =>
+    app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers,
+      payload: { question: "Wie wird die Pumpe geschmiert?", questionSource: "manual" },
+    });
+  return { app, auth, gebunden, zustimmung, fragen, anthropicAntwort, ersatzAntwort };
+}
+
+describe("R-0590 · Klara-Antwort unter Zustimmung: kein Ausweichweg, und der Grund kommt an", () => {
+  it("GEGENPROBE: Anthropic antwortet — HTTP 200 mit seiner Antwort, der Ersatz läuft nicht", async () => {
+    const k = await antwortAufbau(false);
+    expect(k.zustimmung.statusCode).toBe(200);
+    const res = await k.fragen(k.gebunden);
+    expect(res.statusCode).toBe(200);
+    expect(k.anthropicAntwort).toHaveBeenCalledTimes(1);
+    expect(k.ersatzAntwort).not.toHaveBeenCalled();
+    await k.app.close();
+  });
+
+  it("Anthropic scheitert: kein Ersatz — 409 `KLARA_AUSWEICHWEG_GESPERRT` mit Grund an der Fläche", async () => {
+    const k = await antwortAufbau(true);
+    expect(k.zustimmung.statusCode).toBe(200);
+    const res = await k.fragen(k.gebunden);
+    expect(k.anthropicAntwort).toHaveBeenCalledTimes(1);
+    expect(k.ersatzAntwort, "der deterministische Ersatz springt nicht ein").not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(409);
+    const body = res.json() as { error: string; reason: string; message: string };
+    expect(body.error).toBe("KLARA_AUSWEICHWEG_GESPERRT");
+    expect(body.reason).toBe("fallback_not_equivalent");
+    expect(body.message).toContain("anthropic");
+    expect(body.message).not.toContain("Pumpe");
+    await k.app.close();
+  });
+
+  it("GRENZE: dieselbe Frage OHNE Klara-Bindung (Konsole) behält den bisherigen Ersatzweg", async () => {
+    const k = await antwortAufbau(true);
+    const res = await k.fragen(k.auth);
+    expect(res.statusCode).toBe(200);
+    expect(k.ersatzAntwort).toHaveBeenCalledTimes(1);
+    await k.app.close();
+  });
+});

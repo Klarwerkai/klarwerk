@@ -68,6 +68,8 @@ const PANEL_JS_DATEI = join(WURZEL, "apps/web/public/word-addin/taskpane.js");
 const PANEL_CSS_DATEI = join(WURZEL, "apps/web/public/word-addin/taskpane.css");
 /** Zerlegungsauftrag Bestandsblick: der Block KW-MARKE, geladen unmittelbar nach taskpane.js. */
 const MARKE_DATEI = join(WURZEL, "apps/web/public/word-addin/marke.js");
+/** AUFTRAG firmenwoerterbuch: der Block KW-BEGRIFFE, geladen nach marke.js. */
+const BEGRIFFE_DATEI = join(WURZEL, "apps/web/public/word-addin/begriffe.js");
 const ZIELBILD =
   "/Users/peterkohnert/Documents/Projekt_klarwerk/DESIGN_ZIELBILD_20260827/KeinWissen.dc.html";
 const ORIGIN = "http://klarwerk.test";
@@ -567,6 +569,8 @@ describe.runIf(zielbildDa)(
             "/word-addin/taskpane.js": [PANEL_JS_DATEI, "application/javascript; charset=utf-8"],
             "/word-addin/taskpane.css": [PANEL_CSS_DATEI, "text/css; charset=utf-8"],
             "/word-addin/marke.js": [MARKE_DATEI, "application/javascript; charset=utf-8"],
+            // AUFTRAG firmenwoerterbuch: ebenso `begriffe.js` (Block KW-BEGRIFFE).
+            "/word-addin/begriffe.js": [BEGRIFFE_DATEI, "application/javascript; charset=utf-8"],
           };
           const teil = geschwister[url.pathname];
           if (teil !== undefined) {

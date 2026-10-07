@@ -18,4 +18,11 @@ export {
 } from "./src/draft-payload-schema";
 // AUFTRAG-mega6 Block D: die gemeinsamen Persistenzgrenzen sind Teil des öffentlichen Modulvertrags.
 export { DRAFT_LIMITS } from "./src/draft-limits";
+// BILDSCHIRMABLÄUFE: Grenzen und Gestalt des übernommenen Ablaufs am Entwurf.
+export {
+  ABLAUF_GRENZEN,
+  type DraftAblauf,
+  type DraftAblaufQuelle,
+  type DraftAblaufSchritt,
+} from "./src/ablauf";
 export type { Draft, DraftPayload, CaptureErrorCode } from "./src/types";

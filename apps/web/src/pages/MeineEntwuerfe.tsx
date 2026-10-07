@@ -120,8 +120,14 @@ export function MeineEntwuerfe(): JSX.Element {
   // `Blatt.tsx` lädt sie über `resumeDraftId` (`?draft=…`). Kein zweiter Ladeweg, kein
   // Zwischenzustand, der unterwegs verloren gehen könnte. Über den Ungespeichert-Wächter, weil der
   // Klick diese Seite wirklich verlässt.
-  const entwurfOeffnen = (id: string): void => {
-    navigate(`/erfassen?draft=${encodeURIComponent(id)}`);
+  // BILDSCHIRMABLÄUFE: ein Entwurf mit übernommenem Ablauf öffnet in seiner Schrittbearbeitung —
+  // dort stehen Reihenfolge, Bilder und Herkunft, die das Blatt nicht kennt.
+  const entwurfOeffnen = (id: string, mitAblauf = false): void => {
+    navigate(
+      mitAblauf
+        ? `/erfassen/ablauf?entwurf=${encodeURIComponent(id)}`
+        : `/erfassen?draft=${encodeURIComponent(id)}`,
+    );
   };
 
   // ================================================================================================
@@ -241,6 +247,17 @@ export function MeineEntwuerfe(): JSX.Element {
         </div>
       ) : null}
 
+      {/* BILDSCHIRMABLÄUFE: der Einstieg in die Übernahme eines aufgezeichneten Ablaufs. */}
+      <div className="mb-2">
+        <GuardedLink
+          to="/erfassen/ablauf"
+          data-testid="entwuerfe-ablauf-uebernehmen"
+          className="inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
+        >
+          {t("ablauf.einstieg")}
+        </GuardedLink>
+      </div>
+
       {laedt ? (
         <p data-testid="entwuerfe-laedt" className="text-[12.5px] text-muted">
           {t("state.loading")}
@@ -295,7 +312,7 @@ export function MeineEntwuerfe(): JSX.Element {
         onConfirmDiscard={setConfirmDiscardId}
         discardPending={entwurfLoeschen.isPending}
         onDiscard={(id) => entwurfLoeschen.mutate(id)}
-        onResume={(d) => entwurfOeffnen(d.id)}
+        onResume={(d) => entwurfOeffnen(d.id, Boolean(d.payload.ablauf))}
         // Pool-Auftrag: wer angemeldet ist, entscheidet, welche Zeilen „eigene" sind — nur sie
         // tragen Löschen und den Pool-Knopf (297afc57).
         nutzerKennung={user?.id}

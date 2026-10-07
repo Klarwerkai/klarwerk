@@ -16,6 +16,7 @@ import {
   type ConflictDetector,
   ConflictError,
   type ConflictInput,
+  type ConflictResolutionReason,
   type ConflictType,
 } from "./types";
 import {
@@ -51,6 +52,17 @@ export interface ConflictServiceDeps {
   // SICHTBAR gemeldet (nie kommentarlos verschluckt — sonst bliebe der Datensatz geschlossen ohne
   // Audit still). Default: console.error. Der Read bleibt entkoppelt (fire-and-forget/Makrotask).
   onError?: (context: string, error: unknown) => void;
+}
+
+// Aufnahme gesamt-auditprotokoll:aktionsabdeckung · R-0733: eine menschliche Entscheidung über
+// einen Konflikt steht mit ihrem AUSGANG im Protokoll (entschieden / Fehlalarm) und mit den beiden
+// beteiligten Objekten (R-0766) — nicht nur als „es wurde entschieden". Der Begründungstext bleibt
+// am Konflikt (`decision`, `decidedBy`); in die unlöschbare Kette wandert kein Freitext.
+function entscheidungsBeleg(
+  conflict: Conflict,
+  resolutionReason: ConflictResolutionReason,
+): Record<string, unknown> {
+  return { koIds: [conflict.koA, conflict.koB], resolutionReason };
 }
 
 export class ConflictService {
@@ -171,7 +183,12 @@ export class ConflictService {
       decision: note ?? null,
       resolutionReason: "dismissed",
     });
-    await this.audit?.record({ actor: by, action: "conflict.dismissed", target: id });
+    await this.audit?.record({
+      actor: by,
+      action: "conflict.dismissed",
+      target: id,
+      payload: entscheidungsBeleg(conflict, "dismissed"),
+    });
     return saved;
   }
 
@@ -185,7 +202,12 @@ export class ConflictService {
       );
     }
     const saved = await this.save({ ...conflict, status: "eskaliert" });
-    await this.audit?.record({ actor, action: "conflict.escalated", target: id });
+    await this.audit?.record({
+      actor,
+      action: "conflict.escalated",
+      target: id,
+      payload: { koIds: [conflict.koA, conflict.koB] },
+    });
     return saved;
   }
 
@@ -207,7 +229,12 @@ export class ConflictService {
       decision,
       resolutionReason: "decided",
     });
-    await this.audit?.record({ actor: decidedBy, action: "conflict.resolved", target: id });
+    await this.audit?.record({
+      actor: decidedBy,
+      action: "conflict.resolved",
+      target: id,
+      payload: entscheidungsBeleg(conflict, "decided"),
+    });
     return saved;
   }
 

@@ -107,6 +107,9 @@ const ExternalKnowledge = lazy(() =>
 // daneben in einen zweiten Ordner zu legen hiesse, den Bereich an zwei Orten zu führen. Für die
 // Aufteilung des Bündels ändert das nichts: `tests/erstladezeit/` erhebt seine Sollmenge aus den
 // `lazy`-Zeilen DIESER Datei, nicht aus dem Verzeichnisnamen.
+const Firmenwoerterbuch = lazy(() =>
+  import("./pages/Firmenwoerterbuch").then((m) => ({ default: m.Firmenwoerterbuch })),
+);
 const GesamtanweisungBereich = lazy(() =>
   import("./components/gesamtanweisung/GesamtanweisungBereich").then((m) => ({
     default: m.GesamtanweisungBereich,
@@ -125,6 +128,10 @@ const Lifecycle = lazy(() => import("./pages/Lifecycle").then((m) => ({ default:
 // Wächter `tests/erstladezeit/` erhebt seine Sollmenge aus dem Dateisystem.
 const MeineEntwuerfe = lazy(() =>
   import("./pages/MeineEntwuerfe").then((m) => ({ default: m.MeineEntwuerfe })),
+);
+// BILDSCHIRMABLÄUFE: nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
+const AblaufUebernahme = lazy(() =>
+  import("./pages/AblaufUebernahme").then((m) => ({ default: m.AblaufUebernahme })),
 );
 const Mobile = lazy(() => import("./pages/Mobile").then((m) => ({ default: m.Mobile })));
 const MyTasks = lazy(() => import("./pages/MyTasks").then((m) => ({ default: m.MyTasks })));
@@ -167,6 +174,8 @@ const PAGES: Record<string, ComponentType> = {
   // JOB 3503: der eigene Ort der Entwürfe. Er liest denselben Bestand wie der Editor (`useDrafts`),
   // legt keinen zweiten an.
   entwuerfe: MeineEntwuerfe,
+  // BILDSCHIRMABLÄUFE: `/erfassen/ablauf` (bewachter Eintrag `ablauf` in `app/navigation.ts`).
+  ablauf: AblaufUebernahme,
   // JOB 4309: der Einstieg der Gesamtanweisung, jetzt über den REGULÄREN Weg. Der Schlüssel heisst
   // wie die `id` des Menüpunkts (`app/navigation.ts`) — `Guarded` schlägt hier genau darunter nach.
   // Ohne diesen Eintrag fiele die berechtigte Rolle auf `PlaceholderPage` statt auf die Fläche.
@@ -292,6 +301,12 @@ export function AppRoutes(): JSX.Element {
             `services/app/src/routes/gesamtanweisung-routes.ts`), gemessen in
             `tests/wiki-gesamtanweisung-abnahme/a1-tuer-in-der-gebauten-app.test.ts`. */}
         <Route path="/gesamtanweisungen/:id" element={<GesamtanweisungBereich />} />
+        {/* Firmenwörterbuch: Nachschlagen und Pflege des Begriffskatalogs. Ohne `Guarded`, wie
+            `/wissen/:id`: die Türen dahinter fordern ihr Recht am Server (`ko.read` zum Lesen,
+            `ko.validate` zum Pflegen, `services/app/src/routes/begriffe-routes.ts`). Erreichbar
+            aus jedem Begriffshinweis im Editor; ein eigener Menüpunkt ist bewusst nicht Teil
+            dieser Lieferung. */}
+        <Route path="/begriffe" element={<Firmenwoerterbuch />} />
         <Route path="/mobile" element={<Mobile />} />
         <Route path="/ui-kit" element={<UiKit />} />
         <Route path="*" element={<Navigate to={HOME_ROUTE} replace />} />

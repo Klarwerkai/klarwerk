@@ -1027,11 +1027,14 @@ export function authRoutes(
         // Behoben ist das an seiner Ursache (`service.approveUser` schreibt eine Kopie), nicht
         // durch eine zweite Aufräumstelle hier — die hätte denselben Fehler nur später gemacht.
         // ────────────────────────────────────────────────────────────────────────────────────
-        const created = await service.register({
-          name: body.name.trim(),
-          email: body.email.trim(),
-          password: body.password,
-        });
+        const created = await service.register(
+          {
+            name: body.name.trim(),
+            email: body.email.trim(),
+            password: body.password,
+          },
+          admin.id,
+        );
         let user: PublicUser = created;
         try {
           // `null` und „fehlt" laufen hier gemeinsam vorbei: beide heissen „unbefristet", und für

@@ -9,6 +9,9 @@ export {
   type CollectResult,
   createConfluenceAdapterFromEnv,
 } from "./src/adapter";
+// R-0549/R-0163: nur die FORM der Quellangaben am Item (Leserestriktion, Anhänge) — ein Typ, keine
+// Mapper-Funktion. Der Import-Lauf der App liest daraus die Anhänge unveränderter Seiten.
+export type { ConfluenceImportItem } from "./src/mapper";
 // AUFTRAG-mega67 BLOCK C: der ZUSTAND der Zugangsdaten — je Variable benannt und ja/nein, NIE ein
 // Wert und nie eine Maske mit Länge. Diese Auskunft darf nach außen, weil sie strukturell kein
 // Geheimnis tragen kann (s. credential-state.ts); der Token-tragende Resolver bleibt modul-intern.

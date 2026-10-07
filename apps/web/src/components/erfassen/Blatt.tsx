@@ -67,6 +67,7 @@ import { umfangKurz } from "../../lib/vorschauUmfang";
 import { AiAssistInstructions } from "../AiAssistBox";
 import { AiCostHint } from "../AiCostHint";
 import { AiGeneratedNotice } from "../AiGeneratedNotice";
+import { Begriffshinweise } from "../Begriffshinweise";
 // JOB 3426: die EINE Entwurfsliste des Produkts (Suche, Sortierung, Löschen) — bis hierher nur im
 // alten Arbeitsraum verdrahtet, siehe der Block an ihrem Aufruf unten.
 import { CaptureDraftList } from "../CaptureDraftList";
@@ -3107,6 +3108,18 @@ export function Blatt({
             }
             quellBildzahl={quellBildzahl}
           />
+
+          {/* Firmenwörterbuch: Begriffshinweise zum Text des Blattes — nur im Fall, je Fundstelle
+              bewusst zu übernehmen oder zu verwerfen. Der Geltungsbereich ist der gewählte Bereich
+              des Blattes; ohne Bereich gelten alle Einträge, und mehrdeutige Funde sagen das.
+              Übernehmen läuft über denselben Weg wie eine Eingabe (`changeBodyHtml`). */}
+          {blattNimmtAn ? (
+            <Begriffshinweise
+              bodyHtml={bodyHtml}
+              kontext={kategorie.trim() || null}
+              onUebernehmen={changeBodyHtml}
+            />
+          ) : null}
 
           {/* ==========================================================================================
               §5 — EIN STILLER CHIP UNTER DEM BLATT, NUR IM FALL, AUFKLAPPBAR.

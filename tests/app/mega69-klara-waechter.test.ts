@@ -2718,7 +2718,36 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // weil `taskpane.js` danach erneut geändert werden musste: die AUSGELIEFERTE Datei zählte 12500
     // Zeilen (schnittflaechen B3, Schranke < 12500); zwei eigene Kommentarzeilen sind verdichtet,
     // Verhalten unverändert. Root hat den Pin direkt aus diesen vier Quelldateien berechnet; kein Messlauf nötig.
-    const PIN = "f1d0e89f870beac807ea86be34ffa2ef5df1f53c8534fa084b9b6bb217e21f4a";
+    // AUFTRAG gesamt-ki-einwilligung:bindung (R-0590, Ben nacharbeit-3/-4): `taskpane.js` wertet in
+    // `performAsk` die 409 `KLARA_AUSWEICHWEG_GESPERRT` aus und nennt in `#ask-status` den Grund
+    // (zwei neue Wörterbuchschlüssel je Sprache, `askFallbackBlocked`/`askFallbackConsentEnded`);
+    // ein fremder Kommentar ist umformuliert (er enthielt die Zeichenfolge „import " und machte den
+    // Buildlos-Pin in word-addin-ask rot). Netto null Zeilen (B3: 12497). Auslieferungsfolgen: kein
+    // neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder Manifeständerung, kein Sideload. Gemessen
+    // zu Kandidat f0687be0 war `9fdf44f2…` — NICHT übernommen, weil `taskpane.js` danach erneut
+    // geändert wurde (B3, „import "). DER PIN MUSS WANDERN; ohne zugelassenes Hash-Werkzeug ist er
+    // hier nicht berechenbar — der Prüflauf meldet den Ist-Wert als „Received", er wird danach
+    // gemessen übernommen.
+    // NACHARBEIT 5 (dieser Auftrag): PIN BEWUSST AKTUALISIERT (f1d0e89f… -> fabd6ab5…). Im Prüflauf zu
+    // Kandidat 430c247c GEMESSEN („Received", HISTORIE/nacharbeit-5/PRUEFUNG/panel-auslieferung-pins.log)
+    // und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // AUFNAHME 20260922 · GESAMT-BESTANDSBLICK (R-0427; Integration mit main d19886ff) — DER PIN MUSS
+    // WANDERN. Auf den Stand oben kommt die Einstellungszeile `#einst-absatzblick` (Schalter, AUS bis
+    // zum bewussten Ja, nur für dieses Fenster) und `ka3AbsatzPruefen` in `taskpane.js`: nach dem Ja
+    // liest ein `Word.run` je Markierungsanlass nur die ZAHL der Absätze bis zur Markierung (kein
+    // Text) und ruft bei einem Wechsel denselben Bestandsblick wie nach der Schreibruhe; ein Abruf
+    // gilt nur in der Aktivierungsrunde, in der er begann (`ka3AbsatzRunde`, `gilt()`). Dazu sind die
+    // Kommentarköpfe KA2-BESTAND und W6 verdichtet (Schranke B3; kein Ausdruck geändert).
+    // Auslieferungsfolgen: kein neues Abrufziel, keine neue Nutzlast, CSP/Recht/Manifest unverändert,
+    // kein Sideload; `Range.expandTo` (WordApi 1.3) — fehlt sie, schweigt der Weg. Gemessene Werte
+    // dieses Auftrags vor der Integration: a4461e39… (c8ade1c9), 9effe6a0… (b4415199). Unten steht
+    // der gemessene Wert von main; der neue SHA-256 ist ohne zugelassenes Hash-Werkzeug nicht
+    // messbar, der Blob ist gemessen (`2d5d9c26…`, `tests/support/panelquelle.ts`).
+    // NACHARBEIT 10 (gesamt-bestandsblick): PIN BEWUSST AKTUALISIERT (fabd6ab5… -> eefba3bd…). Im
+    // Prüflauf zu Kandidat f4db2037 GEMESSEN („Received", HISTORIE/nacharbeit-10/PRUEFUNG/
+    // auslieferungswaechter-fenster.log) und unverändert übernommen; die vier Panel-Dateien sind seit
+    // dieser Messung unberührt (`git diff f4db2037 -- apps/web/public/word-addin/` leer).
+    const PIN = "eefba3bdd389a30d41f4fbe37ad5bcdc336667559554212971ecbe7dff5f37d3";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,

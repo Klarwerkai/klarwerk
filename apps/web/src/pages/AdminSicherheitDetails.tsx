@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useAnalytics, useAudit, useDirectory, useValidationBoard } from "../api/hooks";
+import type { AuditEntry } from "../api/types";
 import { useToast } from "../app/ToastContext";
 // JOB 3670: die Seitenhilfe dieser drei Karten — je Karte ein eigener Text, weil es drei
 // Bildschirme sind. `HelpTip` rendert nichts; er meldet beim Sammler an, das Zahnrad listet.
@@ -30,6 +31,7 @@ import {
   type DetailZeile,
   type VerzeichnisLage,
   auditEventDetail,
+  protokollNamen,
   verzeichnisNamen,
 } from "../lib/auditEventDetail";
 import { type AuditVerifyTone, auditVerifyView } from "../lib/auditVerifyState";
@@ -52,6 +54,26 @@ const AUDIT_VERIFY_TONE_CLASS: Record<AuditVerifyTone, string> = {
   warn: "bg-trust-warn-bg text-trust-warn-text",
   crit: "bg-trust-crit-bg text-trust-crit-text",
 };
+
+// Verwalteransicht (N-0027): die Spaltenköpfe des Prüfprotokolls in ihrer Reihenfolge.
+const AUDIT_SPALTEN = [
+  "auditprotokoll.spalte.zeit",
+  "audit.detail.event",
+  "audit.detail.actor",
+  "audit.detail.target",
+  "audit.detail.roleBefore",
+  "audit.detail.roleAfter",
+  "auditprotokoll.spalte.technik",
+] as const;
+
+// Welche Detailzeile (`lib/auditEventDetail.ts`) in welche Spalte fällt. Die Spalte „Betroffen"
+// nimmt ein Konto ebenso wie ein Objekt auf; die Zeile behält ihre eigene Beschriftung als Merkmal.
+const ZEILEN_SPALTEN: readonly (readonly string[])[] = [
+  ["audit.detail.actor"],
+  ["audit.detail.target", "audit.detail.targetObject"],
+  ["audit.detail.roleBefore"],
+  ["audit.detail.roleAfter"],
+];
 
 // SCRUM-440: nur den markierten Auszug drucken — eine Body-Klasse isoliert den Druck (via CSS),
 // damit normales Strg+P auf anderen Seiten unberührt bleibt. Klasse nach dem Druck wieder entfernen.
@@ -77,14 +99,19 @@ function DruckKnopf(): JSX.Element {
  *
  * Drei Formen, drei Bedeutungen: ein Wert; eine Kennung mit dem GRUND, warum kein Name danebensteht;
  * oder die ehrliche Auskunft „nicht gespeichert". Welche davon gilt, entscheidet
- * `lib/auditEventDetail.ts` — hier wird nur gerendert. Die Kennung bleibt in jeder Form lesbar
- * (monospace, kleiner): sie beherrscht die Zeile nicht mehr, verschwindet aber auch nicht.
+ * `lib/auditEventDetail.ts` — hier wird nur gerendert.
+ *
+ * Verwalteransicht (N-0027): die Kennung eines KONTOS steht nicht mehr in der Spalte, sondern in der
+ * Detailansicht „Technische Angaben" desselben Eintrags (`TechnikAngaben`). In der Spalte bleibt der
+ * Name oder der Grund, warum keiner dasteht. Nur ein Objektziel hat außer seiner Kennung nichts,
+ * was es benennt — dort bleibt sie auch in der Spalte stehen.
  */
 function DetailWert({ zeile }: { zeile: DetailZeile }): JSX.Element {
   const { t } = useTranslation();
   if (zeile.kind === "missing") {
     return <span className="italic text-muted-2">{t("audit.detail.notStored")}</span>;
   }
+  const kennungInSpalte = zeile.kind === "id" && zeile.hinweisKey === undefined;
   return (
     <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
       {zeile.kind === "text" ? (
@@ -95,10 +122,57 @@ function DetailWert({ zeile }: { zeile: DetailZeile }): JSX.Element {
       {zeile.hinweisKey === undefined ? null : (
         <span className="italic text-muted-2">{t(zeile.hinweisKey)}</span>
       )}
-      {zeile.id === undefined ? null : (
+      {kennungInSpalte && zeile.id !== undefined ? (
         <span className="truncate font-mono text-[10.5px] text-muted-2">{zeile.id}</span>
-      )}
+      ) : null}
     </span>
+  );
+}
+
+/**
+ * Verwalteransicht (N-0027): die technischen Kennungen eines Eintrags — ergänzend, eingeklappt.
+ *
+ * Die Kennungen kommen roh aus dem Eintrag (`actor`, `target`), nicht aus der Namensauflösung:
+ * genau sie braucht, wer einen Eintrag mit der exportierten Kette oder einer Rückfrage abgleicht.
+ * Der rohe Aktionscode steht hier bewusst nicht — die Spalte „Ereignis" benennt ihn.
+ */
+function TechnikAngaben({
+  eintrag,
+  zielLabelKey,
+}: {
+  eintrag: AuditEntry;
+  zielLabelKey: string;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const zeilen: { key: string; labelKey: string; wert: string }[] = [
+    { key: "seq", labelKey: "auditprotokoll.technik.nr", wert: String(eintrag.seq) },
+    { key: "audit.detail.actor", labelKey: "auditprotokoll.technik.akteur", wert: eintrag.actor },
+    {
+      key: zielLabelKey,
+      labelKey:
+        zielLabelKey === "audit.detail.targetObject"
+          ? "auditprotokoll.technik.objekt"
+          : "auditprotokoll.technik.konto",
+      wert: eintrag.target,
+    },
+    { key: "hash", labelKey: "auditprotokoll.technik.hash", wert: eintrag.hash },
+  ];
+  return (
+    <details data-audit-technik={eintrag.seq} className="text-[11px]">
+      <summary className="cursor-pointer text-muted-2 hover:text-text">
+        {t("auditprotokoll.technik.anzeigen")}
+      </summary>
+      <dl className="mt-1 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-2 gap-y-0.5">
+        {zeilen.map((z) => (
+          <Fragment key={z.key}>
+            <dt className="text-muted-2">{t(z.labelKey)}</dt>
+            <dd data-audit-kennung={z.key} className="min-w-0 break-all font-mono text-muted">
+              {z.wert === "" ? t("audit.detail.notStored") : z.wert}
+            </dd>
+          </Fragment>
+        ))}
+      </dl>
+    </details>
   );
 }
 
@@ -152,6 +226,8 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
       stand: verzeichnisVeraltet ? "veraltet" : verzeichnisLaeuft ? "laeuftNach" : "frisch",
     };
   }, [verzeichnisBefund.art, verzeichnisVeraltet, verzeichnisLaeuft, verzeichnisDaten]);
+  // N-0027: Namen, die die Kette selbst gespeichert hat — benennt auch gelöschte Konten.
+  const protokoll = useMemo(() => protokollNamen(audit.data), [audit.data]);
   // SCRUM-439: aktive Integritätsprüfung der Audit-Kette — echte Verifikation statt Aussage.
   const verifyAudit = useMutation({
     mutationFn: () => endpoints.audit.verify(),
@@ -189,6 +265,10 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
           { titel: t("adm.sich.auditTitle"), text: t("adm.sich.auditHelp") },
           { titel: t("adm.sich.auditTitle"), text: t("adm.sich.auditIntro") },
           { titel: t("adm.sich.auditTitle"), text: t("adm.sich.qualityNote") },
+          {
+            titel: t("auditprotokoll.spalte.technik"),
+            text: t("auditprotokoll.technik.hilfe"),
+          },
         ]}
       >
         {/* JOB 3670: AUSSERHALB der Hülle — der Erklärtext gilt auch, während die Kette noch lädt
@@ -283,33 +363,71 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
                 {recent.length === 0 ? (
                   <p className="text-[13px] text-muted">{t("adm.auditEmpty")}</p>
                 ) : (
-                  <div className="divide-y divide-hairline">
-                    {recent.map((e) => (
-                      <div key={e.seq} data-audit-eintrag={e.seq} className="py-2 text-[12.5px]">
-                        <span className="font-mono text-[11px] text-muted-2">
-                          {new Date(e.at).toLocaleString()}
-                        </span>
-                        {/* Beschriftungsliste statt Spaltenreihe: erst die Beschriftung sagt, wer
-                            wer ist. Reiner Text — kein Tabstopp, kein Bedienelement. */}
-                        <dl className="mt-1 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-0.5">
-                          <dt className="text-[11.5px] text-muted-2">{t("audit.detail.event")}</dt>
-                          <dd
-                            data-audit-zeile="audit.detail.event"
-                            className="min-w-0 font-semibold text-text"
-                          >
-                            {auditActionLabel(e.action, t)}
-                          </dd>
-                          {auditEventDetail(e, verzeichnis).map((zeile) => (
-                            <Fragment key={zeile.labelKey}>
-                              <dt className="text-[11.5px] text-muted-2">{t(zeile.labelKey)}</dt>
-                              <dd data-audit-zeile={zeile.labelKey} className="min-w-0 text-muted">
-                                <DetailWert zeile={zeile} />
-                              </dd>
-                            </Fragment>
+                  // Verwalteransicht (N-0027): beschriftete Spalten statt Beschriftungsliste — die
+                  // Spaltenköpfe sagen, wer wer ist; die Zellen sind reiner Text. Das einzige
+                  // Bedienelement je Eintrag ist die eingeklappte Detailansicht mit den Kennungen.
+                  <div className="overflow-x-auto">
+                    <table data-audit-tabelle="" className="w-full text-left text-[12.5px]">
+                      <caption className="pb-1 text-left text-[11.5px] text-muted-2">
+                        {t("auditprotokoll.tabelle.titel", {
+                          shown: recent.length,
+                          count: entries.length,
+                        })}
+                      </caption>
+                      <thead>
+                        <tr className="border-b border-hairline text-[11px] text-muted-2">
+                          {AUDIT_SPALTEN.map((key) => (
+                            <th
+                              key={key}
+                              scope="col"
+                              data-audit-spalte={key}
+                              className="px-2 py-1.5 align-bottom font-semibold"
+                            >
+                              {t(key)}
+                            </th>
                           ))}
-                        </dl>
-                      </div>
-                    ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-hairline">
+                        {recent.map((e) => {
+                          const zeilen = auditEventDetail(e, verzeichnis, protokoll);
+                          const zielZeile = zeilen[1];
+                          return (
+                            <tr key={e.seq} data-audit-eintrag={e.seq} className="align-top">
+                              <td className="whitespace-nowrap px-2 py-2 font-mono text-[11px] text-muted-2">
+                                {new Date(e.at).toLocaleString()}
+                              </td>
+                              <td
+                                data-audit-zeile="audit.detail.event"
+                                className="px-2 py-2 font-semibold text-text"
+                              >
+                                {auditActionLabel(e.action, t)}
+                              </td>
+                              {ZEILEN_SPALTEN.map((spalte) => {
+                                const zeile = zeilen.find((z) => spalte.includes(z.labelKey));
+                                return zeile === undefined ? (
+                                  <td key={spalte[0]} className="px-2 py-2" />
+                                ) : (
+                                  <td
+                                    key={spalte[0]}
+                                    data-audit-zeile={zeile.labelKey}
+                                    className="min-w-0 px-2 py-2 text-muted"
+                                  >
+                                    <DetailWert zeile={zeile} />
+                                  </td>
+                                );
+                              })}
+                              <td className="px-2 py-2">
+                                <TechnikAngaben
+                                  eintrag={e}
+                                  zielLabelKey={zielZeile?.labelKey ?? "audit.detail.target"}
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </>
