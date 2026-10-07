@@ -80,6 +80,7 @@ import type {
   LesevariantenUebersicht,
   LibraryImageSearchResponse,
   LiveWall,
+  LiveWallConsent,
   ManagementProfiles,
   ManagementSnapshot,
   MediaAnalysis,
@@ -961,7 +962,16 @@ export const endpoints = {
   },
   directory: { list: () => api.get<{ id: string; name: string }[]>("/directory") },
   // Audit-P4 (SCRUM-398): Live-Wall (read-only Aggregation).
-  livewall: { get: () => api.get<LiveWall>("/livewall") },
+  livewall: {
+    get: () => api.get<LiveWall>("/livewall"),
+    // PMO-FEA-0003: die eigene Zustimmung zur Namensnennung lesen, setzen oder widerrufen.
+    consent: () => api.get<LiveWallConsent>("/livewall/consent"),
+    setConsent: (nameConsent: boolean) =>
+      api.put<LiveWallConsent>("/livewall/consent", { nameConsent }),
+    // PMO-FEA-0003: das eigene Foto hinterlegen (= zustimmen) oder widerrufen (= löschen).
+    setPhoto: (photo: string) => api.put<{ photoConsent: boolean }>("/livewall/photo", { photo }),
+    deletePhoto: () => api.del<{ photoConsent: boolean }>("/livewall/photo"),
+  },
   analytics: {
     overview: () => api.get<Analytics>("/analytics"),
     busfactor: () => api.get<BusFactorEntry[]>("/analytics/busfactor"),
