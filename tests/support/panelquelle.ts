@@ -180,6 +180,9 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 1 (antwort-quellenanzeige): GEMESSEN im Prüflauf zu Kandidat 95df9979 (`c8b2ec45…`,
  * „Received" von E2, HISTORIE/nacharbeit-1/PRUEFUNG/panel-ausgabe-und-waechter.log) und unverändert
  * übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 3 (antwort-quellenanzeige): `taskpane.js` (tragende Quellen, Stand je Quelle,
+ * Einschub, verdichtete Kommentare; 12495 Zeilen) und `taskpane.css` ändern sich erneut. Der Wert
+ * unten ist damit wieder ein PLATZHALTER bis zur Messung; E2 meldet den neuen Blob als „Received".
  */
 export const PANEL_VOR_SCHNITT_BLOB = "c8b2ec453983b4672aeed6f3a69f9daf0ff2c829";
 

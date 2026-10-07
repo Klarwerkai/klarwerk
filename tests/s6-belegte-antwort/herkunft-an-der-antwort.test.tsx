@@ -335,6 +335,13 @@ describe("Aufnahme 20260922 · R-0309/R-0325 — Stand an der Herkunftszeile, tr
         trust: 80,
         createdAt: "2026-01-10T12:00:00Z",
         history: [{ at: "2026-02-01T12:00:00Z" }, { at: "2026-03-02T12:00:00Z" }],
+        statement: "Offene Profile sind zu bevorzugen.",
+        // Ein loser Anhang und das Original, auf das die Quelle zeigt — der Einschub waehlt dieses.
+        attachments: [
+          { objectId: "obj-lose", name: "Notiz.txt" },
+          { objectId: "obj-original", name: "Design-Guide.docx" },
+        ],
+        sources: [{ kind: "file", objectId: "obj-original" }],
       },
     },
     kb: {
@@ -384,37 +391,93 @@ describe("Aufnahme 20260922 · R-0309/R-0325 — Stand an der Herkunftszeile, tr
     ]);
   });
 
-  it("Q2 · R-0309/R-0325: der in Word eingefuegte Text nennt NUR die tragenden Quellen, je mit Pruefstand und Version, und deren neuesten Stand", async () => {
-    starten({ ask: { result: antwort(), gap: null, receipt: "r" }, kos: MIT_STAND });
-    await ruhe();
-    await fragen();
+  /** Die Quellen-Zeile des eingefuegten Texts — „abgerufen am" ist das Datum des Laufs. */
+  const QUELLENZEILE = /^Quelle: (.*) \(KLARWERK-Wissen, abgerufen am \d\d\.\d\d\.\d{4}\)$/m;
+
+  async function einfuegen(): Promise<string> {
     const eingefuegt = einfuegenMitschreiben();
     expect(el<HTMLButtonElement>("ask-insert-btn").disabled).toBe(false);
     el("ask-insert-btn").click();
     await ruhe();
     expect(eingefuegt).toHaveLength(1);
-    const text = eingefuegt[0] ?? "";
+    return eingefuegt[0] ?? "";
+  }
+
+  function chipQuellen(): Array<string | null> {
+    return [...document.querySelectorAll("#ask-sources li.quelle-chip")].map((c) =>
+      c.getAttribute("data-quelle"),
+    );
+  }
+
+  it("Q2 · R-0309/R-0325: der in Word eingefuegte Text nennt NUR die tragenden Quellen — je mit Pruefstand, Version und IHREM Stand", async () => {
+    starten({ ask: { result: antwort(), gap: null, receipt: "r" }, kos: MIT_STAND });
+    await ruhe();
+    await fragen();
+    const text = await einfuegen();
     expect(text.startsWith("Offene Profile sind zu bevorzugen.\n\n")).toBe(true);
-    expect(text).toContain(
-      "Quelle: Design Guide (Validiert, Version 3), HD Handbook (Offen, Version 1) (KLARWERK-Wissen, Stand 02.03.2026)",
+    // Jede Quelle traegt ihr eigenes Datum; keines wird durch das einer anderen ersetzt.
+    expect(QUELLENZEILE.exec(text)?.[1]).toBe(
+      "Design Guide (Validiert, Version 3, Stand 02.03.2026), HD Handbook (Offen, Version 1, Stand 05.01.2026)",
     );
     // Die nur herangezogene dritte Quelle reist nicht mit — weder ihr Titel noch ihr juengeres Datum.
     expect(text).not.toContain("Randnotiz");
     expect(text).not.toContain("20.04.2026");
   });
 
-  it("Q3 · ohne `citedSources` (alter Server) nennt die Dokumentzeile wie bisher ALLE Quellen — nichts wird als tragend behauptet oder weggelassen", async () => {
+  it("Q3 · ohne `citedSources` (alter Server): KEINE Quelle wird als tragend ausgegeben — Panel und Dokument benennen die fehlende Zuordnung", async () => {
     starten({
       ask: { result: antwort({ citedSources: undefined }), gap: null, receipt: "r" },
       kos: MIT_STAND,
     });
     await ruhe();
     await fragen();
-    const eingefuegt = einfuegenMitschreiben();
-    el("ask-insert-btn").click();
+    expect(sichtbarerText(el("ask-herkunft"))).toBe("Dafür habe ich keinen Beleg.");
+    expect(chipQuellen()).toEqual([]);
+    const text = await einfuegen();
+    expect(QUELLENZEILE.exec(text)?.[1]).toBe("keine tragende Quelle belegt");
+    for (const titel of ["Design Guide", "HD Handbook", "Randnotiz"]) {
+      expect(text).not.toContain(titel);
+    }
+  });
+
+  it("Q3b · leere und widerspruechliche Zuordnung (`citedSources` nennt nur Fremdes) werden genauso behandelt — nie „alle Suchtreffer“", async () => {
+    for (const citedSources of [[], ["ko-gibt-es-nicht"]]) {
+      starten({
+        ask: { result: antwort({ citedSources }), gap: null, receipt: "r" },
+        kos: MIT_STAND,
+      });
+      await ruhe();
+      await fragen();
+      expect(sichtbarerText(el("ask-herkunft"))).toBe("Dafür habe ich keinen Beleg.");
+      expect(herkunftZeilen()).toEqual([]);
+      expect(chipQuellen()).toEqual([]);
+      expect(document.querySelectorAll("#ask-fussnoten sup.fussnote")).toHaveLength(0);
+      expect(QUELLENZEILE.exec(await einfuegen())?.[1]).toBe("keine tragende Quelle belegt");
+      panelAbraeumen();
+    }
+  });
+
+  it("Q3c · teilweise widerspruechlich: nur die Kennung, die unter `sources` steht, traegt — Chips, Ziffern und Dokument sind sich einig", async () => {
+    starten({
+      ask: {
+        result: antwort({ citedSources: ["kb", "ko-gibt-es-nicht"] }),
+        gap: null,
+        receipt: "r",
+      },
+      kos: MIT_STAND,
+    });
     await ruhe();
-    expect(eingefuegt[0] ?? "").toContain(
-      "Quelle: Design Guide (Validiert, Version 3), HD Handbook (Offen, Version 1), Randnotiz (Validiert, Version 7) (KLARWERK-Wissen, Stand 20.04.2026)",
+    await fragen();
+    expect(chipQuellen()).toEqual(["kb"]);
+    expect(
+      [...document.querySelectorAll("#ask-fussnoten sup.fussnote")].map((s) => [
+        s.textContent,
+        s.getAttribute("data-quelle"),
+      ]),
+    ).toEqual([["1", "kb"]]);
+    expect(herkunftZeilen().map((z) => z.quelle)).toEqual(["kb"]);
+    expect(QUELLENZEILE.exec(await einfuegen())?.[1]).toBe(
+      "HD Handbook (Offen, Version 1, Stand 05.01.2026)",
     );
   });
 
@@ -425,11 +488,120 @@ describe("Aufnahme 20260922 · R-0309/R-0325 — Stand an der Herkunftszeile, tr
     });
     await ruhe();
     await fragen();
-    const eingefuegt = einfuegenMitschreiben();
-    el("ask-insert-btn").click();
-    await ruhe();
-    const text = eingefuegt[0] ?? "";
-    expect(text).toContain("Quelle: ka (KLARWERK-Wissen, abgerufen am ");
+    const text = await einfuegen();
+    expect(QUELLENZEILE.exec(text)?.[1]).toBe("ka");
     expect(text).not.toMatch(/Validiert|Version/);
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // R-0329 — DER EINSCHUB: Titel, Version/Stand, belegende Passage, GENAU zwei Aktionen.
+  // ----------------------------------------------------------------------------------------------
+  function einschub(): HTMLElement | null {
+    return document.getElementById("ask-einschub");
+  }
+
+  function aktionen(): Array<{ tag: string; text: string; href: string | null; aus: boolean }> {
+    return [...(einschub()?.querySelectorAll(".einschub-aktionen > *") ?? [])].map((a) => ({
+      tag: a.tagName.toLowerCase(),
+      text: (a.textContent ?? "").trim(),
+      href: a.getAttribute("href"),
+      aus: (a as HTMLButtonElement).disabled === true,
+    }));
+  }
+
+  it("E1 · Klick auf den Quellenchip oeffnet den Einschub: Titel, Pruefstand · Version · Stand, hervorgehobene Passage, Original und Wissensnetz", async () => {
+    starten({ ask: { result: antwort(), gap: null, receipt: "r" }, kos: MIT_STAND });
+    await ruhe();
+    await fragen();
+    expect(einschub()).toBeNull();
+    const link = document.querySelector<HTMLAnchorElement>(
+      '#ask-sources li.quelle-chip[data-quelle="ka"] a',
+    );
+    expect(link).not.toBeNull();
+    // Der Link bleibt ein Link (Mittelklick/neuer Tab); der einfache Klick oeffnet den Einschub.
+    const klick = new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 });
+    link?.dispatchEvent(klick);
+    await ruhe();
+    expect(klick.defaultPrevented).toBe(true);
+    const box = einschub();
+    expect(box).not.toBeNull();
+    expect(box?.getAttribute("data-quelle")).toBe("ka");
+    expect(box?.querySelector("h3")?.textContent).toBe("Design Guide");
+    expect(box?.querySelector(".einschub-stand")?.textContent).toBe(
+      "Validiert · Version 3 · Stand 02.03.2026",
+    );
+    expect(box?.querySelector(".einschub-passage mark")?.textContent).toBe(
+      "Offene Profile sind zu bevorzugen.",
+    );
+    // GENAU zwei Aktionen; das Original ist die Datei, auf die die Quelle zeigt (nicht der lose Anhang).
+    expect(aktionen()).toEqual([
+      {
+        tag: "a",
+        text: "Im Original öffnen",
+        href: `${window.location.origin}/api/objects/obj-original/raw`,
+        aus: false,
+      },
+      {
+        tag: "a",
+        text: "Im Wissensnetz anzeigen",
+        href: `${window.location.origin}/wissen/ka`,
+        aus: false,
+      },
+    ]);
+    expect(box?.querySelectorAll("a, button")).toHaveLength(2);
+  });
+
+  it("E2 · Klick auf die Quellenziffer oeffnet den Einschub derselben Quelle; ohne Original ist die Aktion gesperrt und benannt", async () => {
+    starten({ ask: { result: antwort(), gap: null, receipt: "r" }, kos: MIT_STAND });
+    await ruhe();
+    await fragen();
+    const ziffer = document.querySelector<HTMLElement>('#ask-fussnoten sup[data-quelle="kb"]');
+    expect(ziffer?.textContent).toBe("2");
+    ziffer?.click();
+    await ruhe();
+    expect(einschub()?.getAttribute("data-quelle")).toBe("kb");
+    expect(einschub()?.querySelector(".einschub-stand")?.textContent).toBe(
+      "Offen · Version 1 · Stand 05.01.2026",
+    );
+    // Ohne Aussage am Objekt: keine erfundene Passage.
+    expect(einschub()?.querySelector(".einschub-passage")?.textContent).toBe(
+      "Keine Belegstelle übermittelt.",
+    );
+    expect(einschub()?.querySelector("mark")).toBeNull();
+    expect(aktionen().map((a) => [a.tag, a.text, a.aus])).toEqual([
+      ["button", "Im Original öffnen", true],
+      ["a", "Im Wissensnetz anzeigen", false],
+    ]);
+    expect(document.getElementById("ask-einschub-kein-original")?.textContent).toBe(
+      "Kein Original hinterlegt.",
+    );
+  });
+
+  it("E3 · zweiter Klick und Escape schliessen den Einschub; die naechste Frage raeumt ihn ab; EN zieht nach", async () => {
+    starten({ ask: { result: antwort(), gap: null, receipt: "r" }, kos: MIT_STAND });
+    await ruhe();
+    await fragen();
+    const ziffer = (): HTMLElement | null =>
+      document.querySelector<HTMLElement>('#ask-fussnoten sup[data-quelle="ka"]');
+    ziffer()?.click();
+    await ruhe();
+    expect(einschub()).not.toBeNull();
+    ziffer()?.click();
+    await ruhe();
+    expect(einschub()).toBeNull();
+    ziffer()?.click();
+    await ruhe();
+    einschub()?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(einschub()).toBeNull();
+    ziffer()?.click();
+    await ruhe();
+    el("lang-en").click();
+    await ruhe();
+    expect(aktionen().map((a) => a.text)).toEqual(["Open original", "Show in knowledge network"]);
+    el("lang-de").click();
+    await ruhe();
+    el("kw-zurueck").click();
+    await ruhe();
+    expect(einschub()).toBeNull();
   });
 });

@@ -1885,6 +1885,11 @@
         askHerkunftNichtGeladen: "konnte nicht geladen werden",
         askHerkunftLaden: "Quellen werden geladen …",
         askHerkunftKeinBeleg: "Dafür habe ich keinen Beleg.",
+        askQuelleOhneZuordnung: "keine tragende Quelle belegt",
+        askEinschubOriginal: "Im Original öffnen",
+        askEinschubNetz: "Im Wissensnetz anzeigen",
+        askEinschubKeinOriginal: "Kein Original hinterlegt.",
+        askEinschubKeinePassage: "Keine Belegstelle übermittelt.",
         askUngeprueftEins: "Dazu gibt es einen Eintrag, der noch nicht geprüft ist: {titel}",
         askUngeprueftMehrere: "Dazu gibt es {n} Einträge, die noch nicht geprüft sind: {titel}",
         // JOB 3366: wortgleich mit `ai.truncated.hint` der Web-App (apps/web/src/i18n.ts) — derselbe
@@ -2244,6 +2249,11 @@
         askHerkunftNichtGeladen: "could not be loaded",
         askHerkunftLaden: "Loading sources …",
         askHerkunftKeinBeleg: "I have no evidence for this.",
+        askQuelleOhneZuordnung: "no carrying source established",
+        askEinschubOriginal: "Open original",
+        askEinschubNetz: "Show in knowledge network",
+        askEinschubKeinOriginal: "No original on file.",
+        askEinschubKeinePassage: "No supporting passage provided.",
         askUngeprueftEins: "There is one entry on this that has not been reviewed yet: {titel}",
         askUngeprueftMehrere: "There are {n} entries on this that have not been reviewed yet: {titel}",
         askFragment: "This answer was cut off at the length limit and may be incomplete.",
@@ -2583,6 +2593,11 @@
         askHerkunftNichtGeladen: "kon niet worden geladen",
         askHerkunftLaden: "Bronnen worden geladen …",
         askHerkunftKeinBeleg: "Hiervoor heb ik geen bewijs.",
+        askQuelleOhneZuordnung: "geen dragende bron vastgesteld",
+        askEinschubOriginal: "Origineel openen",
+        askEinschubNetz: "Tonen in kennisnetwerk",
+        askEinschubKeinOriginal: "Geen origineel opgeslagen.",
+        askEinschubKeinePassage: "Geen bewijspassage ontvangen.",
         askUngeprueftEins: "Hierover is één item dat nog niet is beoordeeld: {titel}",
         askUngeprueftMehrere: "Hierover zijn {n} items die nog niet zijn beoordeeld: {titel}",
         askFragment: "Dit antwoord is bij de lengtelimiet afgebroken en kan onvolledig zijn.",
@@ -2926,6 +2941,7 @@
       // Sprachwechsel in der alten Sprache da — dieselbe Falle, die refreshAnswerToggleLabel loest.
       renderAskEvidence();
       renderAskHerkunft(); // JOB 3092 S6: Herkunftszeilen und Ungeprueft-Satz in der neuen Sprache
+      if (askEinschubQuelle) { askEinschubOeffnen(askEinschubQuelle); } // R-0329: Einschub ebenso
       renderAskUngeprueft();
       renderAskFragment(); // JOB 3366: derselbe gehaltene Zustand, neuer Text
       refreshAnswerToggleLabel(); // klara1b: „mehr/weniger anzeigen" in der neuen Sprache
@@ -5308,24 +5324,15 @@
     // Zustand des letzten Ask-Laufs: outcome (fuer das Einfuege-Gating), aufgeloeste Quellen-Titel
     // (fuer die Quellen-Zeile) und die gestellte Frage (fuer den Offene-Frage-Entwurf).
     var currentAskOutcome = null;
-    var currentAskSourceTitles = [];
-    var currentAskSourcesTragend = []; // R-0309/R-0325: die tragenden aufgeloesten Quellen der Dokumentzeile
-    // WP-KLARA-ASK-FIX (bens Fix 3): belegte Quell-Daten (history/createdAt) fuer die ehrliche
-    // Stand-Angabe; Fix 2: Einfuegen erst NACH abgeschlossener Quellenaufloesung.
-    var currentAskSourceDates = [];
+    var currentAskSourceTitles = []; // R-0325: Titel der TRAGENDEN Quellen (askQuellenTragend)
+    // WP-KLARA-ASK-FIX Fix 2: Einfuegen erst NACH abgeschlossener Quellenaufloesung.
     var currentAskSourcesResolved = false;
     var currentAskTruncated = false;
     var currentAskQuestion = "";
-    // AUFTRAG-mega35 A2: die Vorbefuellungs-Merkvariable ist ersatzlos entfallen. Sie war der
-    // Torwaechter, der Feldinhalt gegen Vorbefuellung verglich — und genau der schlug fehl, sobald
-    // waehrend der Quellenaufloesung editiert wurde: dann wurde nichts nachgetragen, die
-    // Ausgabewege gingen aber trotzdem auf. Es wird nichts mehr nachgetragen, also gibt es nichts
-    // mehr zu vergleichen. Geblieben ist der Auf-/Zuklapp-Zustand von „mehr anzeigen".
+    // AUFTRAG-mega35 A2: nichts wird mehr nachgetragen; geblieben ist „mehr anzeigen" auf/zu.
     var askAnswerExpanded = false;
-    // JOB 3046 D2 (Runde 2): die Generation des Ergebniszustands. resetAskResult() zaehlt sie hoch;
-    // der Entwurfsversand (sendOpenQuestion) merkt sich seine Generation und laesst einen Ruecklauf,
-    // der eine aeltere traegt, die Oberflaeche NICHT mehr anfassen — ein verspaeteter Erfolg oder
-    // Fehler der alten Frage darf nie im Zustand der neuen erscheinen.
+    // JOB 3046 D2 (Runde 2): die Generation des Ergebniszustands (resetAskResult zaehlt sie hoch) —
+    // ein Ruecklauf einer aelteren Generation fasst die Oberflaeche der neuen Frage nie an.
     var askErgebnisGeneration = 0;
 
     function showAskStatus(kind, text) {
@@ -5347,21 +5354,14 @@
       document.getElementById("ask-retry-btn").className = "ghost";
     }
 
-    // JOB 3016 D3 „PruefungLaeuft": der Wartezustand als EIN Zustand. `askLaeuft` ist die einzige
-    // Quelle fuer die Sperre von Eingabefeld und Knopf waehrend der Suche; updateAskState() liest
-    // sie, damit ein zwischenzeitlicher Statusabruf (checkSession, S4) die Sperre weder aufhebt
-    // noch stehen laesst. Der drehende Kreis im Sendeknopf (JOB 3056, §9; askBusy als sein
-    // zugaenglicher Name) erscheint und verschwindet NUR hier —
-    // der Ausgang aus dem Wartezustand hat genau eine Stelle (askKlara, nach performAsk), nicht
-    // fuenf Zweige. Beim Eintritt wird #ask-status verborgen: der Warnkasten gehoert den echten
-    // Warnungen, nicht dem normalen Warten. Fail-open: der Ausgang gibt das Feld IMMER frei, auch
-    // nach Frist, Fehler oder fehlender Anmeldung — ein gesperrtes Feld ohne Suche waere ein
-    // unbenutzbares Fenster.
+    // JOB 3016 D3 „PruefungLaeuft": `askLaeuft` ist die EINE Quelle fuer die Sperre von Feld und
+    // Knopf (updateAskState liest sie; checkSession S4 hebt sie weder auf noch laesst sie stehen).
+    // Ein- und Ausgang nur hier (askKlara nach performAsk); beim Eintritt wird #ask-status verborgen.
+    // Fail-open: der Ausgang gibt das Feld IMMER frei, auch nach Frist, Fehler oder ohne Anmeldung.
     var askLaeuft = false;
 
-    // JOB 3056 K1 (§9): Laden zeigt der Sendeknopf — der Pfeil weicht dem drehenden Kreis (Klasse
-    // `laeuft`, updateAskState), der Wortlaut askBusy ist solange sein zugaenglicher Name. Keine
-    // Ladekarte, kein Satz im Sichtfeld.
+    // JOB 3056 K1 (§9): Laden zeigt der Sendeknopf (drehender Kreis, Klasse `laeuft`; askBusy als
+    // zugaenglicher Name) — keine Ladekarte, kein Satz im Sichtfeld.
     function askWartezustand(an) {
       askLaeuft = an === true;
       hideAskStatus();
@@ -5372,8 +5372,6 @@
     function resetAskResult() {
       currentAskOutcome = null;
       currentAskSourceTitles = [];
-      currentAskSourcesTragend = [];
-      currentAskSourceDates = [];
       currentAskSourcesResolved = false;
       askAnswerExpanded = false;
       document.getElementById("ask-answer-block").className = "hidden";
@@ -5405,6 +5403,8 @@
       // lagebezogene Satz unter der Karte und die Quellen-Details werden geleert, die Ruhe kehrt
       // zurueck (kwFlaecheZeichnen).
       askQuellenAufgeloest = [];
+      askQuellenTragend = [];
+      askEinschubSchliessen(); // R-0329: kein Einschub einer frueheren Antwort bleibt stehen
       askQuellenAlleSichtbar = false;
       askMehrOffen = false;
       document.getElementById("ask-quellen-detail").textContent = "";
@@ -5654,6 +5654,17 @@
       return document.getElementById("ask-answer-edit").value;
     }
 
+    // Aufnahme 20260922 · antwort-quellenanzeige (R-0329): das hinterlegte Original eines Objekts —
+    // dieselbe Regel wie `originalweg`/`objectRawHref` im Web: ein Anhang mit gueltiger Kennung UND
+    // Namen, bevorzugt der, auf den eine Quelle zeigt; sonst null (die Flaeche sagt es dann ehrlich).
+    function askOriginalHref(ko) {
+      var anhaenge = ko && Array.isArray(ko.attachments) ? ko.attachments : [];
+      var anker = (ko && Array.isArray(ko.sources) ? ko.sources : []).map(function (s) { return s && typeof s.objectId === "string" ? s.objectId.trim() : ""; });
+      var gueltig = anhaenge.filter(function (a) { return a && typeof a.objectId === "string" && /^[\w-]+$/.test(a.objectId.trim()) && typeof a.name === "string" && a.name.trim().length > 0; });
+      var wahl = gueltig.filter(function (a) { return anker.indexOf(a.objectId.trim()) !== -1; })[0] || gueltig[0];
+      return wahl ? "/api/objects/" + wahl.objectId.trim() + "/raw" : null;
+    }
+
     // Quellen-Titel + Trust je KO nachladen (GET /api/kos/:id, dieselbe ko.read-Permission wie
     // /api/ask) — best-effort: eine nicht ladbare Quelle zeigt ehrlich ihre Id statt eines Fakes.
     function resolveAskSources(ids) {
@@ -5685,21 +5696,21 @@
                 // JOB 3092 S6 (W5): die Inhaltsversion des Objekts fuer die Herkunftszeile —
                 // GELESEN; fehlt sie, bleibt sie null und die Zeile sagt „Version unbekannt".
                 version: ko && typeof ko.version === "number" && isFinite(ko.version) ? ko.version : null,
+                // R-0329: die belegende Passage ist die Aussage des Objekts — derselbe Text, den der
+                // Server als `steps[].snippet` dieser Quelle fuehrt (provider: snippet = statement).
+                passage: ko && typeof ko.statement === "string" && ko.statement.trim().length > 0 ? ko.statement.trim() : null,
+                original: askOriginalHref(ko),
                 // JOB 3092 S6 (Lehre JOB 3091 R3): ein GESCHEITERTER Abruf ist keine Auskunft ueber
-                // das Objekt. `geladen: false` laesst die Herkunftszeile „konnte nicht geladen werden"
-                // sagen statt einen Pruefstand oder eine Version zu behaupten.
+                // das Objekt — `geladen: false` behauptet weder Pruefstand noch Version.
                 geladen: true,
               };
             })
-            .catch(function () { return { id: id, title: id, trust: null, standDate: null, status: "unknown", version: null, geladen: false }; });
+            .catch(function () { return { id: id, title: id, trust: null, standDate: null, status: "unknown", version: null, passage: null, original: null, geladen: false }; });
         })
       );
     }
 
-    // K2/K3 (AUFTRAG-klara1 Paket 2): jede Quelle ist ein klickbarer Deep-Link auf die
-    // KO-Detailseite (/wissen/:id, oeffnet extern/neuer Tab) mit Status-Badge (Bibliotheks-
-    // Logik: Validiert / In Pruefung / Offen / Status unbekannt) und dem bestehenden Trust-Wert.
-    // Aufbau ueber DOM-APIs (textContent) — kein HTML-Sink, Titel bleiben escaped.
+    // K2/K3 (AUFTRAG-klara1 Paket 2): Bearbeitungsstatus nach Bibliotheks-Logik.
     var ASK_STATUS_KEYS = {
       validiert: "askStatusValidiert",
       pruefung: "askStatusPruefung",
@@ -5707,14 +5718,16 @@
       unknown: "askStatusUnknown",
     };
 
-    // JOB 3004 D1: die Quelle ist der CHIP (Vorlage Main.dc.html Z.34-44) — Dokumentsymbol,
-    // „n · Titel" als Deep-Link auf das ECHTE Wissensobjekt, daneben die Fassung: Bearbeitungs-
-    // status, Rolle in der Antwort, Vertrauen und belegtes Stand-Datum. Nichts davon ist erfunden;
-    // jede Angabe kommt wie bisher aus dem geladenen Objekt (resolveAskSources) bzw. aus
-    // `citedSources`. Mehr Quellen als Platz (zwei, wie in der Vorlage) → der „+n"-Chip; ein Klick
-    // darauf zeigt alle. Aufbau ueber DOM-APIs, kein HTML-Sink: Titel bleiben escaped.
+    // JOB 3004 D1: die Quelle ist der CHIP (Vorlage Main.dc.html Z.34-44) — Dokumentsymbol und
+    // „n · Titel" als Link auf das Wissensobjekt; mehr Quellen als Platz (zwei) → der „+n"-Chip.
+    // Aufnahme 20260922 · antwort-quellenanzeige (R-0325): Chips und Ziffern zeigen NUR die
+    // TRAGENDEN Quellen (`askQuellenTragend`, Nummer = Chip = Ziffer); alles Herangezogene steht mit
+    // seiner Rolle in der Detailliste unter „Mehr". Ohne verwertbare Zuordnung gibt es keinen Chip.
+    // R-0329: ein Klick auf Chip oder Ziffer oeffnet den Einschub (askEinschubOeffnen); der Link
+    // bleibt fuer Mittelklick/neuen Tab. Aufbau ueber DOM-APIs, kein HTML-Sink.
     var ASK_QUELLEN_CHIPS_SICHTBAR = 2;
     var askQuellenAufgeloest = [];
+    var askQuellenTragend = [];
     var askQuellenAlleSichtbar = false;
 
     function askChipSymbol() {
@@ -5748,7 +5761,7 @@
       knopf.textContent = "+" + String(rest);
       knopf.addEventListener("click", function () {
         askQuellenAlleSichtbar = true;
-        renderAskSources(askQuellenAufgeloest);
+        renderAskSources(askQuellenAufgeloest, askQuellenTragend);
       });
       item.appendChild(knopf);
       return item;
@@ -5761,10 +5774,10 @@
       var teile = [String(nummer) + " · " + quelle.title];
       teile.push(t(ASK_STATUS_KEYS[quelle.status] || "askStatusUnknown"));
       // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: die ROLLE dieser Quelle IN DER ANTWORT — tragend
-      // oder nur herangezogen. Ohne `citedSources` (alter Server) wird keine Rolle behauptet.
+      // oder nur herangezogen. Ohne verwertbare Zuordnung (R-0325) wird keine Rolle behauptet.
       var rolle = askSourceRole(
         quelle.id,
-        currentAskOutcome ? currentAskOutcome.citedSources : undefined
+        currentAskOutcome && askQuellenTragend.length > 0 ? currentAskOutcome.citedSources : undefined
       );
       if (rolle !== "unknown") {
         teile.push(t(rolle === "carrying" ? "askRoleCarrying" : "askRoleConsulted"));
@@ -5782,30 +5795,46 @@
       return zeile;
     }
 
-    function renderAskSources(resolved) {
+    // R-0325: die TRAGENDEN Quellen — nur Kennungen, die der Server in `citedSources` nennt UND die
+    // unter den herangezogenen `sources` stehen. Fehlt das Feld, ist es leer oder nennt es nur
+    // Fremdes (widerspruechlich), ist das Ergebnis leer: die Zuordnung ist unbekannt, nie „alle".
+    function askZugeordnet(outcome) {
+      var cited = outcome && Array.isArray(outcome.citedSources) ? outcome.citedSources : [];
+      var sources = outcome && Array.isArray(outcome.sources) ? outcome.sources : [];
+      return cited.filter(function (id) { return sources.indexOf(id) !== -1; });
+    }
+
+    function askTragendeQuellen(resolved, outcome) {
+      var zugeordnet = askZugeordnet(outcome);
+      return resolved.filter(function (r) { return zugeordnet.indexOf(r.id) !== -1; });
+    }
+
+    function renderAskSources(resolved, tragend) {
       askQuellenAufgeloest = resolved;
+      askQuellenTragend = tragend;
       var list = document.getElementById("ask-sources");
       list.textContent = "";
       var detail = document.getElementById("ask-quellen-detail");
       detail.textContent = "";
       var sichtbar = askQuellenAlleSichtbar
-        ? resolved.length
-        : Math.min(resolved.length, ASK_QUELLEN_CHIPS_SICHTBAR);
+        ? tragend.length
+        : Math.min(tragend.length, ASK_QUELLEN_CHIPS_SICHTBAR);
       for (var i = 0; i < sichtbar; i += 1) {
         var item = document.createElement("li");
         item.className = "quelle-chip";
         // Runde 4: die Quelle des Chips, damit eine Fussnotenziffer (renderAskFussnoten) und ihr
         // Chip nachweislich dasselbe Wissensobjekt meinen.
-        item.setAttribute("data-quelle", resolved[i].id);
+        item.setAttribute("data-quelle", tragend[i].id);
         item.appendChild(askChipSymbol());
         var titel = document.createElement("span");
         titel.className = "quelle-chip-titel";
         titel.appendChild(document.createTextNode(String(i + 1) + " · "));
         var link = document.createElement("a");
-        link.href = koDetailUrl(window.location.origin, resolved[i].id);
+        link.href = koDetailUrl(window.location.origin, tragend[i].id);
         link.target = "_blank";
         link.rel = "noopener noreferrer";
-        link.textContent = resolved[i].title;
+        link.textContent = tragend[i].title;
+        askEinschubAusloeser(link, tragend[i].id);
         titel.appendChild(link);
         item.appendChild(titel);
         list.appendChild(item);
@@ -5813,8 +5842,8 @@
       for (var d = 0; d < resolved.length; d += 1) {
         detail.appendChild(askQuellenDetailZeile(d + 1, resolved[d]));
       }
-      if (resolved.length > sichtbar) {
-        list.appendChild(askQuellenMehrChip(resolved.length - sichtbar));
+      if (tragend.length > sichtbar) {
+        list.appendChild(askQuellenMehrChip(tragend.length - sichtbar));
       }
       // „Mehr": der letzte Chip der Reihe klappt die Auskunft zur Antwort auf (Funktionsinventar).
       if (resolved.length > 0) {
@@ -5838,27 +5867,13 @@
     // JOB 3092 · S6 (W5) — DIE HERKUNFT AN DER ANTWORT UND DER UNGEPRUEFT-SATZ.
     // ============================================================================================
     //
-    // PEDIS VERTRAUENSBOTSCHAFT (05.09., M2 Geschichte A/B): an jeder Antwort steht sichtbar, worauf
-    // sie beruht — Titel, Pruefstand und Version je TRAGENDER Quelle, direkt unter dem Text, kein
-    // Wechsel in Verwaltungsseiten. Bis hierher lag die Herkunft im „Mehr"-Block (askHerkunft,
-    // askQuellenDetailZeile); der bleibt fuer Einstufung/Vorbehalt und wird nicht angefasst.
-    //
-    // WOHER JEDE ANGABE KOMMT — nichts wird hergeleitet:
-    //   · WELCHE Quellen: `citedSources` der Antwort (services/reasoner/src/types.ts, Gate G-2) —
-    //     die tragende Teilmenge, NICHT `sources` (alles Herangezogene). Fehlt das Feld oder ist es
-    //     leer, sagt die Zeile „Dafuer habe ich keinen Beleg." — das ist die Aussage des SERVERS
-    //     (keine benannte tragende Quelle), keine Folge eines gescheiterten Abrufs.
-    //   · Titel, Pruefstand, Version: aus dem geladenen Objekt (resolveAskSources, GET /api/kos/:id),
-    //     dieselbe Aufloesung, die auch die Chips speist. Kein zweiter Abruf.
-    //   · LEHRE JOB 3091 R3 (Codex): ein gescheiterter Abruf ist KEINE festgestellte Quellenlosigkeit.
-    //     Solange die Aufloesung laeuft, steht „Quellen werden geladen …"; scheitert sie fuer eine
-    //     Quelle (`geladen: false`), sagt ihre Zeile „konnte nicht geladen werden" und behauptet
-    //     weder Pruefstand noch Version.
-    //   · UNGEPRUEFT: das Feld `ungeprueft` des Antwortkoerpers (JOB 1591 D1, betrachtergefiltert,
-    //     nur auf dem Sitzungsweg). Nicht leer → EIN Satz mit Titel(n), in der Antwortkarte UND in
-    //     der Luecke (Pedis Fall: „haben wir dazu etwas?" — ja, aber ungeprueft). Leer oder abwesend
-    //     → kein Satz. Es gibt KEIN „alles geprueft": die Leere der Liste ist kein Versprechen ueber
-    //     den Bestand (mega77 Grund 2, w5-ungeprueft-gemeldet W3).
+    // PEDIS VERTRAUENSBOTSCHAFT (05.09., M2): an jeder Antwort steht, worauf sie beruht — Titel,
+    // Pruefstand, Version und Stand je TRAGENDER Quelle (askZugeordnet), direkt unter dem Text.
+    // Ohne verwertbare Zuordnung: „Dafuer habe ich keinen Beleg." (Aussage des Servers, keine Folge
+    // eines Abrufs). LEHRE JOB 3091 R3: waehrend der Aufloesung „Quellen werden geladen …"; ein
+    // gescheiterter Abruf sagt „konnte nicht geladen werden" und behauptet weder Pruefstand noch
+    // Version. UNGEPRUEFT (`ungeprueft`, JOB 1591 D1): nicht leer → EIN Satz mit Titel(n) in Karte
+    // und Luecke; leer/abwesend → kein Satz, nie „alles geprueft" (mega77 Grund 2).
     // Aufbau ueber DOM-APIs (textContent), kein HTML-Sink: Titel bleiben escaped.
     function s6HerkunftZeile(id, quelle) {
       var zeile = document.createElement("p");
@@ -5873,22 +5888,108 @@
       link.rel = "noopener noreferrer";
       link.textContent = geladen ? quelle.title : id;
       zeile.appendChild(link);
-      var teile = [];
-      if (!geladen) {
-        teile.push(t("askHerkunftNichtGeladen"));
-      } else {
-        teile.push(t(ASK_STATUS_KEYS[quelle.status] || "askStatusUnknown"));
-        teile.push(
-          quelle.version === null || quelle.version === undefined
-            ? t("askHerkunftVersionUnbekannt")
-            : t("askHerkunftVersion", { n: String(quelle.version) })
-        );
-        // R-0309: das Datum des letzten Standes — nur, wenn das Objekt eines belegt (wie im Chip-Detail).
-        var stand = quelle.standDate ? new Date(quelle.standDate) : null;
-        if (stand !== null && !isNaN(stand.getTime())) { teile.push(t("askChipStand", { date: formatAskDateLabel(stand) })); }
-      }
+      var teile = geladen ? askQuelleStandTeile(quelle) : [t("askHerkunftNichtGeladen")];
       zeile.appendChild(document.createTextNode(" · " + teile.join(" · ")));
       return zeile;
+    }
+
+    // R-0309: Pruefstand, Version und das Datum des letzten Standes EINER geladenen Quelle — dieselben
+    // Angaben an Herkunftszeile, Einschub und Dokumentzeile. Ein fehlendes Datum bleibt weg; es wird
+    // nie durch das einer anderen Quelle ersetzt.
+    function askQuelleStandTeile(quelle) {
+      var teile = [t(ASK_STATUS_KEYS[quelle.status] || "askStatusUnknown")];
+      teile.push(
+        quelle.version === null || quelle.version === undefined
+          ? t("askHerkunftVersionUnbekannt")
+          : t("askHerkunftVersion", { n: String(quelle.version) })
+      );
+      var stand = quelle.standDate ? new Date(quelle.standDate) : null;
+      if (stand !== null && !isNaN(stand.getTime())) { teile.push(t("askChipStand", { date: formatAskDateLabel(stand) })); }
+      return teile;
+    }
+
+    // ============================================================================================
+    // Aufnahme 20260922 · antwort-quellenanzeige (R-0329) — DER EINSCHUB ZU EINER QUELLE.
+    // ============================================================================================
+    // Ein Klick auf Chip oder Ziffer oeffnet unter den Chips den Einschub der TRAGENDEN Quelle:
+    // Titel, Pruefstand · Version · Stand, die belegende Passage (die Aussage des Objekts,
+    // hervorgehoben) und GENAU zwei Aktionen — „Im Original öffnen" (die hinterlegte Originaldatei,
+    // askOriginalHref; fehlt sie, ist die Aktion gesperrt und der Einschub sagt es) und „Im
+    // Wissensnetz anzeigen" (das Objekt auf seiner Leseflaeche). Escape oder ein zweiter Klick auf
+    // denselben Ausloeser schliesst ihn; Mittelklick und Tastenkombinationen behalten den Link.
+    var askEinschubQuelle = null;
+
+    function askEinschubAusloeser(el, id) {
+      el.addEventListener("click", function (ev) {
+        if (ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) { return; }
+        ev.preventDefault();
+        if (askEinschubQuelle === id) { askEinschubSchliessen(); } else { askEinschubOeffnen(id); }
+      });
+    }
+
+    function askEinschubSchliessen() {
+      askEinschubQuelle = null;
+      var alt = document.getElementById("ask-einschub");
+      if (alt && alt.parentNode) { alt.parentNode.removeChild(alt); }
+    }
+
+    function askEinschubOeffnen(id) {
+      askEinschubSchliessen();
+      var q = askQuellenTragend.filter(function (r) { return r.id === id; })[0];
+      var block = document.getElementById("ask-sources-block");
+      if (!q || !block) { return; }
+      askEinschubQuelle = id;
+      var box = document.createElement("section");
+      box.id = "ask-einschub";
+      box.setAttribute("data-quelle", id);
+      box.setAttribute("aria-label", q.title);
+      box.tabIndex = -1;
+      var kopf = document.createElement("h3");
+      kopf.textContent = q.title;
+      var stand = document.createElement("p");
+      stand.className = "einschub-stand";
+      stand.textContent = q.geladen ? askQuelleStandTeile(q).join(" · ") : t("askHerkunftNichtGeladen");
+      var passage = document.createElement("blockquote");
+      passage.className = "einschub-passage";
+      if (q.passage) {
+        var mark = document.createElement("mark");
+        mark.textContent = q.passage;
+        passage.appendChild(mark);
+      } else {
+        passage.textContent = t("askEinschubKeinePassage");
+      }
+      var original = document.createElement(q.original ? "a" : "button");
+      if (q.original) {
+        original.href = window.location.origin + q.original;
+        original.target = "_blank";
+        original.rel = "noopener noreferrer";
+      } else {
+        original.type = "button";
+        original.disabled = true;
+        original.setAttribute("aria-describedby", "ask-einschub-kein-original");
+      }
+      original.id = "ask-einschub-original";
+      original.textContent = t("askEinschubOriginal");
+      var netz = document.createElement("a");
+      netz.id = "ask-einschub-netz";
+      netz.href = koDetailUrl(window.location.origin, id);
+      netz.target = "_blank";
+      netz.rel = "noopener noreferrer";
+      netz.textContent = t("askEinschubNetz");
+      var aktionen = document.createElement("p");
+      aktionen.className = "einschub-aktionen";
+      aktionen.appendChild(original);
+      aktionen.appendChild(netz);
+      [kopf, stand, passage, aktionen].forEach(function (k) { box.appendChild(k); });
+      if (!q.original) {
+        var fehlt = document.createElement("p");
+        fehlt.id = "ask-einschub-kein-original";
+        fehlt.textContent = t("askEinschubKeinOriginal");
+        box.appendChild(fehlt);
+      }
+      box.addEventListener("keydown", function (ev) { if (ev.key === "Escape") { askEinschubSchliessen(); } });
+      block.appendChild(box);
+      try { box.focus(); } catch (err) { /* Fokus ist Komfort, kein Vertrag */ }
     }
 
     function renderAskHerkunft() {
@@ -5898,7 +5999,7 @@
       var outcome = currentAskOutcome;
       if (!outcome || outcome.kind !== "answered") { block.className = "hidden"; return; }
       block.className = "";
-      var cited = Array.isArray(outcome.citedSources) ? outcome.citedSources : [];
+      var cited = askZugeordnet(outcome);
       if (cited.length === 0) {
         var kein = document.createElement("p");
         kein.id = "ask-herkunft-kein-beleg";
@@ -5978,26 +6079,16 @@
     // JOB 3056 Runde 4 (Codex Pflicht 1) — DIE FUSSNOTENZIFFERN IM ANTWORTTEXT (Main.dc.html Z.28).
     // ============================================================================================
     //
-    // Hinter dem Antworttext stehen hochgestellte Ziffern, die auf die Chips „n · Titel" zeigen.
-    // Der Antworttext bleibt das bearbeitbare Feld (mega35/36: EIN Feld, alle Ausgaenge — Einfuegen,
-    // Kopieren, Cmd+C, Ausschneiden, Ziehen lesen `value` und die Auswahl des Felds), und ein Feld
-    // kann kein <sup> tragen. Die Ziffern sind deshalb EIGENE <sup>-Elemente (#ask-fussnoten), die
-    // an der GEMESSENEN Stelle nach dem letzten Zeichen stehen: ein unsichtbarer Spiegel
-    // (#ask-answer-spiegel) traegt denselben Text mit denselben Schriftmassen und derselben Breite,
-    // eine Marke an seinem Ende liefert die Koordinaten — dieselbe Bauform, mit der Textfelder ihre
-    // Cursorposition bestimmen. Neu gemessen wird nach jeder Aenderung des Texts, der Hoehe
-    // (kompakt / aufgeklappt) und der Fensterbreite; ist das Textende in der kompakten Ansicht
-    // abgeschnitten, sind die Ziffern es auch (verborgen, nicht falsch platziert).
-    //
-    // WELCHE ZIFFER WOHIN — nichts wird erfunden. Eine Ziffer bekommt, was die Antwort TRAEGT:
-    // `citedSources` (askSourceRole = carrying), nummeriert wie der Chip derselben Quelle. Der
-    // retrieval-only-Weg dieses Panels liefert die Antwort als Aussage GENAU EINER Quelle
-    // (services/reasoner/src/provider.ts: answer = best.statement, citedSources = [best.id]) —
-    // dann steht „1". Nennt ein Server mehrere tragende Quellen, stehen alle ihre Ziffern in
-    // Chip-Reihenfolge am Textende: der Vertrag ordnet Quellen der ANTWORT zu, nicht einzelnen
-    // Saetzen, und eine Zuordnung je Absatz stuende auf nichts. Nur herangezogene Quellen
-    // (consulted) und ein Server ohne `citedSources` bekommen KEINE Ziffer — keine Rolle wird
-    // behauptet, die niemand gesagt hat.
+    // Hochgestellte Ziffern hinter dem Antworttext zeigen auf die Chips „n · Titel". Das Feld bleibt
+    // das EINE bearbeitbare Feld (mega35/36) und kann kein <sup> tragen; die Ziffern (#ask-fussnoten)
+    // stehen an der GEMESSENEN Stelle nach dem letzten Zeichen (unsichtbarer Spiegel
+    // #ask-answer-spiegel mit denselben Schriftmassen, neu gemessen nach Text-, Hoehen- und
+    // Breitenwechsel; ist das Ende in der kompakten Ansicht abgeschnitten, sind sie verborgen).
+    // WELCHE ZIFFER WOHIN: je TRAGENDER Quelle (askQuellenTragend) eine, mit der Nummer ihres Chips.
+    // Der retrieval-only-Weg liefert die Aussage GENAU EINER Quelle (provider.ts: answer =
+    // best.statement, citedSources = [best.id]) — dann steht „1". Der Vertrag ordnet Quellen der
+    // ANTWORT zu, nicht einzelnen Absaetzen; ohne verwertbare Zuordnung steht KEINE Ziffer.
+    // R-0329: ein Klick auf die Ziffer oeffnet den Einschub ihrer Quelle.
     var ASK_SPIEGEL_EIGENSCHAFTEN = [
       "font-family", "font-size", "font-weight", "font-style", "letter-spacing", "word-spacing",
       "line-height", "text-transform", "text-indent", "tab-size", "box-sizing",
@@ -6007,15 +6098,13 @@
       var halter = document.getElementById("ask-fussnoten");
       if (!halter) { return; }
       halter.textContent = "";
-      var outcome = currentAskOutcome;
-      var cited = outcome && outcome.kind === "answered" ? outcome.citedSources : undefined;
-      var quellen = askQuellenAufgeloest || [];
+      var quellen = currentAskOutcome && currentAskOutcome.kind === "answered" ? askQuellenTragend : [];
       for (var i = 0; i < quellen.length; i += 1) {
-        if (askSourceRole(quellen[i].id, cited) !== "carrying") { continue; }
         var ziffer = document.createElement("sup");
         ziffer.className = "fussnote";
         ziffer.setAttribute("data-quelle", quellen[i].id);
         ziffer.textContent = String(i + 1);
+        askEinschubAusloeser(ziffer, quellen[i].id);
         halter.appendChild(ziffer);
       }
       askFussnotenSetzen();
@@ -6050,18 +6139,10 @@
       halter.style.lineHeight = zeilenhoehe > 0 ? zeilenhoehe + "px" : "";
     }
 
-    // ============================================================================================
-    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — EINE STELLE FUER DIE GANZE EVIDENZ.
-    // ============================================================================================
-    //
-    // Sie liest `currentAskOutcome` und ist deshalb auch nach einem SPRACHWECHSEL aufrufbar, ohne
-    // dass die Antwort neu geholt werden muss. Drei Aussagen, sichtbar GETRENNT:
-    //   1. die Einstufung (belegt / nicht belegt)      — unveraendert aus mega34,
-    //   2. der benannte Pruefvorbehalt samt Zaehlung   — bis hierher unsichtbar,
-    //   3. die Konfliktlage                            — bis hierher von 2. ununterscheidbar.
-    // Dazu der real gelieferte Ausschnitt, sofern er nicht ohnehin die Antwort ist.
-    //
-    // Nichts davon wird berechnet: `askEvidenceDetail` liest nur `outcome.evidence` (KW-W1-13).
+    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — EINE STELLE FUER DIE GANZE EVIDENZ, aus
+    // `currentAskOutcome` (auch nach Sprachwechsel aufrufbar). Drei Aussagen, sichtbar GETRENNT:
+    // Einstufung (mega34), benannter Pruefvorbehalt samt Zaehlung, Konfliktlage; dazu der gelieferte
+    // Ausschnitt, sofern er nicht die Antwort ist. Nichts wird berechnet (askEvidenceDetail, KW-W1-13).
     var ASK_CAVEAT_TEXT_KEYS = {
       unknown: "askCaveatUnknown",
       unchecked: "askCaveatUnchecked",
@@ -6076,9 +6157,7 @@
       clear: "askConflictClear",
     };
 
-    // Die beiden Zeilen sind FESTE Elemente des Markups: sie werden gefuellt und ein-/ausgeblendet,
-    // nicht erzeugt. Sie benutzen dieselben `.status`-Toene wie die Einstufungszeile darueber —
-    // deckende Flaechen, vom Kontrastwaechter eindeutig messbar (s. Stilblock).
+    // Feste Markup-Zeilen (gefuellt, nicht erzeugt) mit den `.status`-Toenen der Einstufungszeile.
     function evidenceLine(id, textValue, tone) {
       var el = document.getElementById(id);
       if (!el) { return; }
@@ -6178,49 +6257,32 @@
         document.getElementById("ask-input").value = "";
         kwFlaecheZeichnen();
         updateAskState();
-        // AUFTRAG-mega34 B2: die Einstufung sichtbar machen — derselbe Text, den auch der
-        // eingefuegte Absatz traegt. Bei belegter Einstufung steht die belegte Fassung da, nicht
-        // gar keine; der Leser soll den Unterschied SEHEN und nicht aus dem Schweigen schliessen.
-        // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: Einstufung, Vorbehalt, Konfliktlage und Ausschnitt
-        // entstehen jetzt an EINER Stelle (renderAskEvidence) — dieselbe, die auch der
-        // Sprachwechsel ruft. Zwei Aufrufstellen waeren zwei Gelegenheiten auseinanderzulaufen.
+        // AUFTRAG-mega34 B2 / W1-VERTRAUENSKOPF-08 B: Einstufung, Vorbehalt, Konfliktlage und
+        // Ausschnitt an EINER Stelle (renderAskEvidence, auch vom Sprachwechsel gerufen); JOB 3092 S6:
+        // ebenso Herkunft (zunaechst „Quellen werden geladen …") und Ungeprueft-Satz.
         renderAskEvidence();
-        // JOB 3092 S6 (W5): Herkunft (zunaechst „Quellen werden geladen …") und Ungeprueft-Satz —
-        // beide an derselben Stelle wie die Einstufung, damit der Sprachwechsel sie mitnimmt.
         renderAskHerkunft();
         renderAskUngeprueft();
         renderAskFragment(); // JOB 3366: der Satz an einer abgeschnittenen Antwort
-        // AUFTRAG-mega35 A1: das Feld traegt NUR den Antwortkoerper — das ist der Teil, der der
-        // Nutzerin gehoert. Einstufung und Quellen-Zeile werden NICHT vorbefuellt und deshalb auch
-        // nicht nachgetragen; sie entstehen erst im Moment des Kopierens/Einfuegens
-        // (composeOutputText). Damit gibt es keinen Zustand mehr, in dem der Feldinhalt die
-        // Einstufung verloren hat, die Ausgabewege aber schon offen sind.
+        // AUFTRAG-mega35 A1: das Feld traegt NUR den Antwortkoerper; Einstufung und Quellen-Zeile
+        // entstehen erst beim Kopieren/Einfuegen (composeOutputText) und koennen nicht verloren gehen.
         document.getElementById("ask-answer-edit").value = outcome.answer;
         applyAnswerCompaction(outcome.answer);
         if (truncated) { showAskStatus("warn", truncatedNote.replace(/^\s+/, "")); } else { hideAskStatus(); }
         updateInsertState(); // noch gesperrt — die Quellenaufloesung laeuft (Fix 2)
-        // JOB 3056 Runde 6 (Codex): DIESER RUECKLAUF GEHOERT DIESER ANTWORT. Das Frage-Feld bleibt
-        // unter der Antwort stehen (es IST die neue Frage) — wer die naechste Frage stellt, waehrend
-        // die Quellen der vorigen noch geladen werden, bekam bis Runde 5 deren Chip, Ziffer und
-        // Quellen-Zeile untergeschoben, und der fremde Ruecklauf oeffnete das Ausgabetor der neuen
-        // Antwort. Der Ruecklauf traegt deshalb die Generation des Ergebniszustands (resetAskResult
-        // zaehlt sie bei jeder Frage und beim Zurueck hoch) UND das Ergebnisobjekt selbst; passt
-        // eines nicht mehr, wird er verworfen — kein DOM, keine Metadaten, kein Tor.
+        // JOB 3056 Runde 6 (Codex): DIESER RUECKLAUF GEHOERT DIESER ANTWORT. Er traegt die Generation
+        // des Ergebniszustands (resetAskResult zaehlt sie hoch) UND das Ergebnisobjekt; passt eines
+        // nicht mehr, wird er verworfen — kein Chip, keine Ziffer, keine Quellen-Zeile, kein Tor.
         var generation = askErgebnisGeneration;
         resolveAskSources(outcome.sources || []).then(function (resolved) {
           if (generation !== askErgebnisGeneration || currentAskOutcome !== outcome) { return; }
-          // R-0309/R-0325: Quellen-Zeile und Stand im Dokument kommen nur aus den TRAGENDEN Quellen.
-          currentAskSourcesTragend = askTragendeQuellen(resolved, outcome.citedSources);
-          currentAskSourceTitles = currentAskSourcesTragend.map(function (r) { return r.title; });
-          currentAskSourceDates = currentAskSourcesTragend.map(function (r) { return r.standDate; });
+          // R-0309/R-0325: Chips, Ziffern und Dokumentzeile nur aus den TRAGENDEN Quellen.
+          var tragend = askTragendeQuellen(resolved, outcome);
+          currentAskSourceTitles = tragend.map(function (r) { return r.title; });
           currentAskSourcesResolved = true; // ab jetzt ist die Quellen-Zeile vollstaendig
-          renderAskSources(resolved);
-          // JOB 3092 S6 (W5): jetzt sind Titel, Pruefstand und Version da — die Ladezeile weicht
-          // den Herkunftszeilen (bzw. „konnte nicht geladen werden" je gescheiterter Quelle).
-          renderAskHerkunft();
-          // Das Feld wird hier NICHT mehr angefasst — eine laufende Bearbeitung kann nichts kaputt
-          // machen und nichts verlieren.
-          updateInsertState();
+          renderAskSources(resolved, tragend);
+          renderAskHerkunft(); // JOB 3092 S6: die Ladezeile weicht den Herkunftszeilen
+          updateInsertState(); // das Feld wird NICHT angefasst — laufende Bearbeitung bleibt
         });
         return;
       }
@@ -6310,17 +6372,11 @@
       }
     }
 
-    // JOB 3056 K1 (Rebase auf KA5): die Wahrheitstabelle der zwei Deckel (`askSelectionTruncated`,
-    // `askBothTruncated`, `askDeckelHinweis`) ist mit dem Herkunftshinweis selbst entfallen — die
-    // Ruhe zeigt vor dem Absenden nur noch den EINEN Verwerfungssatz (s.u.), keinen Deckelhinweis
-    // mehr; die Statuszeile nach der Antwort zeigt `askTruncated` unveraendert (renderAskOutcome).
-
-    // AUFTRAG-mega74 TEIL 2b: die Zeile ueber dem Eingabefeld sagt, WORAUS die Frage entsteht.
-    // Sie benutzt dieselbe Entscheidung wie der Absendeweg (prepareAskQuestion) — nicht eine
-    // zweite, die morgen anders ausfaellt. Sie behauptet nichts, wenn sie nichts weiss: ohne
-    // Office bleibt sie leer.
-    // JOB 3017 D4: die Zeile ist zustandsgebunden — ohne Inhalt verborgen, damit unter dem Feld
-    // genau EIN Satz steht (Zielbild Z.44) und kein leerer Absatz Platz haelt.
+    // JOB 3056 K1 (Rebase auf KA5): kein Deckelhinweis vor dem Absenden mehr; nach der Antwort
+    // zeigt die Statuszeile `askTruncated` unveraendert (renderAskOutcome).
+    // AUFTRAG-mega74 TEIL 2b: die Zeile ueber dem Feld sagt, WORAUS die Frage entsteht — mit
+    // derselben Entscheidung wie der Absendeweg (prepareAskQuestion); ohne Office leer. JOB 3017
+    // D4: ohne Inhalt verborgen, damit unter dem Feld genau EIN Satz steht (Zielbild Z.44).
     function setzeAskSourceNote(note, text) {
       note.textContent = text;
       note.className = text ? "muted" : "muted hidden";
@@ -6332,10 +6388,8 @@
       if (!officeUsable()) { setzeAskSourceNote(note, ""); return; }
       readAskSelection(function (selectionText) {
         var prep = prepareAskQuestion(selectionText, document.getElementById("ask-input").value);
-        // JOB 3056 K1 (Rebase auf KA5): nur der EINE Fall bekommt einen Satz — getippter Text UND
-        // Markierung sind da, die Markierung reist zusaetzlich mit (`prep.from === "manual"` seit
-        // KA5, `prep.selection` ist dann die mitgesendete Markierung). Sonst steht nichts ueber dem
-        // Feld (die Ruhe sagt es, der Schalter „Text in Word mitlesen" entscheidet).
+        // JOB 3056 K1 (Rebase auf KA5): nur getippter Text UND Markierung (die zusaetzlich mitreist,
+        // `prep.selection`) bekommen einen Satz; sonst steht nichts ueber dem Feld.
         setzeAskSourceNote(note, prep.from === "manual" && prep.selection.length > 0
           ? t("askSourceSelectionOverride")
           : "");
@@ -6349,9 +6403,8 @@
     }
 
     function askKlara() {
-      // AUFTRAG-W1-KLARA-KOPF-CONSENT-06: der zweite Riegel. Der gesperrte Knopf ist die Anzeige,
-      // DIESE Zeile ist die Wirkung — bei `executionAllowed: false` verlaesst KEINE Anfrage das
-      // Aufgabenfenster. Ein Gate, das nur ein `disabled`-Attribut ist, ist kein Gate.
+      // AUFTRAG-W1-KLARA-KOPF-CONSENT-06: der zweite Riegel — bei `executionAllowed: false` verlaesst
+      // KEINE Anfrage das Fenster (der gesperrte Knopf ist nur die Anzeige).
       if (klaraS4FragenGesperrt()) {
         resetAskResult();
         showAskStatus("warn", t("s4FragenGesperrt"));
@@ -6360,28 +6413,13 @@
         updateAskState();
         return;
       }
-      // JOB 3016 D3 (Runde 4, BEN): SINGLE FLIGHT — das Tor faellt SYNCHRON, VOR dem asynchronen
-      // Auswahlrueckruf von Word. Bis Runde 3 lag zwischen Klick und Wartezustand die Zeit von
-      // `getSelectedDataAsync`; ein zweiter Klick in dieser Luecke startete einen zweiten Lauf,
-      // und der erste Ausgang gab Karte und Feld frei, waehrend der zweite Fetch noch lief.
-      // `askLaeuft` ist deshalb kein Anzeigeschalter mehr, sondern das Tor: solange es steht, geht
-      // KEIN zweiter Auswahlrueckruf und KEIN zweiter Ask ab. Es faellt bei leerer Frage, nach
-      // jedem Ergebnis und — fail-open — bei jedem Fehler vor dem Fetch.
-      //
-      // Runde 5 (BEN): DIE AUSWAHLPHASE IST EIN BEGRENZTER LAUF. Zwischen Klick und Rueckruf haengt
-      // das Fenster an Word — und Word kann den Rueckruf schuldig bleiben, synchron werfen oder
-      // ihn erst liefern, wenn niemand mehr wartet. Jeder Lauf traegt deshalb sein eigenes Ticket
-      // (`lauf`): eine Frist (WORD_ADDIN_ASK_TIMEOUT_MS) beendet ihn fail-open mit einer ehrlichen
-      // Meldung (askSelectionTimeout), OHNE dass ein Ask abgegangen waere; ein synchroner Fehler
-      // beendet ihn mit askError; ein Rueckruf, dessen Lauf vorbei ist (verspaetet oder doppelt),
-      // wird ignoriert und loest KEINEN Ask mehr aus.
-      //
-      // Runde 6 (BEN): EINE ABSOLUTE GESAMTFRIST AB KLICK. Das Versprechen lautet „wartet bis zu
-      // 15 Sekunden" — fuer den ganzen Lauf, nicht je Teilstueck. Die Auswahlfrist und die Frist von
-      // performAsk teilen sich deshalb dieselbe Uhr: performAsk bekommt nach dem Rueckruf nur die
-      // vom Klick an VERBLEIBENDE Zeit (mindestens 1 ms), nicht erneut die volle Konstante. Spaetestens
-      // WORD_ADDIN_ASK_TIMEOUT_MS nach dem Klick sind Karte und Sperre weg — Word langsam oder Server
-      // langsam, es ist dieselbe Wartezeit des Menschen.
+      // JOB 3016 D3 (Runde 4, BEN): SINGLE FLIGHT — `askLaeuft` ist das Tor und faellt SYNCHRON vor
+      // dem Auswahlrueckruf von Word: kein zweiter Rueckruf, kein zweiter Ask; es faellt bei leerer
+      // Frage, nach jedem Ergebnis und fail-open bei jedem Fehler vor dem Fetch.
+      // Runde 5: jeder Lauf traegt sein Ticket (`lauf`) — eine Frist beendet ihn fail-open mit
+      // askSelectionTimeout ohne Ask, ein synchroner Fehler mit askError, ein verspaeteter oder
+      // doppelter Rueckruf wird ignoriert. Runde 6: EINE Gesamtfrist ab Klick — performAsk bekommt
+      // nur die VERBLEIBENDE Zeit (mindestens 1 ms) von WORD_ADDIN_ASK_TIMEOUT_MS.
       if (askLaeuft) { return; }
       resetAskResult();
       // Der Wartezustand ist die Ladekarte, nicht der Warnkasten — und die Sperre trifft
@@ -6393,9 +6431,8 @@
         lauf.offen = false;
         if (lauf.timer !== null) { clearTimeout(lauf.timer); lauf.timer = null; }
       };
-      // Der EINE Ausgang „Word war zu langsam": vom Timer gerufen — oder vom Rueckruf selbst, wenn
-      // er die Frist schon ueberschritten vorfindet (Runde 7, BEN: die Reihenfolge asynchroner
-      // Timer ist keine Garantie; die Uhr wird im Rueckruf selbst gelesen).
+      // Der EINE Ausgang „Word war zu langsam": vom Timer oder vom Rueckruf selbst, wenn er die Frist
+      // schon ueberschritten vorfindet (Runde 7: Timer-Reihenfolge ist keine Garantie).
       var auswahlAbgelaufen = function () {
         laufBeenden();
         askWartezustand(false);
@@ -6480,33 +6517,25 @@
     // (handleAnswerClipboard); die Teilauswahl wird davor abgefangen, der Zweig ohne Datenbehaelter
     // (mega38 B) bricht dahinter ab. BELEGT ist genau: solange `currentAskSourcesResolved === false`
     // ist, passiert KEINE VOLLSTAENDIGE ANTWORTAUSGABE das Tor.
-    // „Stand <Datum>" NUR mit belegtem KO-Datum (WP-KLARA-ASK-FIX, bens Fix 3), sonst ehrlich
-    // "abgerufen am <heute>".
     //
     // Aufnahme 20260922 · antwort-quellenanzeige (R-0309/R-0325): die Quellen-Zeile im Dokument
-    // nennt die TRAGENDEN Quellen (`citedSources`; ohne das Feld wie bisher alle) je mit Pruefstand
-    // und Version — dieselben Angaben wie die Herkunftszeile im Panel. Eine nicht geladene Quelle
-    // behauptet keines von beiden. Die Vorlagen (askSourceLine*) bleiben unveraendert.
-    function askTragendeQuellen(resolved, cited) {
-      if (!Array.isArray(cited) || cited.length === 0) { return resolved; }
-      var tragend = resolved.filter(function (r) { return cited.indexOf(r.id) !== -1; });
-      return tragend.length > 0 ? tragend : resolved;
-    }
-
+    // nennt NUR die TRAGENDEN Quellen (askQuellenTragend), je mit Pruefstand, Version und IHREM
+    // belegten Stand (askQuelleStandTeile); die Zeile endet darum mit „abgerufen am <heute>" statt
+    // mit einem gemeinsamen Datum. Ohne verwertbare Zuordnung sagt sie „keine tragende Quelle
+    // belegt" — dieselbe Lage, in der das Panel „Dafuer habe ich keinen Beleg." zeigt. Eine nicht
+    // geladene Quelle behauptet nichts. Die Vorlagen (askSourceLine*) bleiben unveraendert.
     function askDokumentQuellenTitel(quellen) {
+      if (quellen.length === 0) { return [t("askQuelleOhneZuordnung")]; }
       return quellen.map(function (q) {
-        if (!q.geladen) { return q.title; }
-        var version = q.version === null || q.version === undefined
-          ? t("askHerkunftVersionUnbekannt") : t("askHerkunftVersion", { n: String(q.version) });
-        return q.title + " (" + t(ASK_STATUS_KEYS[q.status] || "askStatusUnknown") + ", " + version + ")";
+        return q.geladen ? q.title + " (" + askQuelleStandTeile(q).join(", ") + ")" : q.title;
       });
     }
 
     function composeOutputText(body) {
       return composeAnswerOutput({
         body: body,
-        sourceTitles: askDokumentQuellenTitel(currentAskSourcesTragend),
-        sourceDates: currentAskSourceDates,
+        sourceTitles: askDokumentQuellenTitel(askQuellenTragend),
+        sourceDates: [],
         truncated: currentAskTruncated,
         grade: askGradeOf(currentAskOutcome && currentAskOutcome.evidence),
         now: new Date(),
@@ -6632,16 +6661,10 @@
       document.getElementById("ask-copy-fallback-text").value = "";
     }
 
-    // ============================================================================================
-    // AUFTRAG-mega36 BLOCK B1/B2 — DER NATIVE AUSGANG.
-    // ============================================================================================
-    //
-    // Das Antwortfeld traegt NUR den Antwortkoerper (mega35 A1). Ohne dieses Abfangen nimmt ein
-    // natives Cmd+C/Strg+C, ein Kontextmenue-Kopieren oder ein Ausschneiden genau diesen Koerper —
-    // ohne Einstufung, ohne Quellen-Zeile, ohne Kappungshinweis. Tastatur und Kontextmenue loesen
-    // DASSELBE `copy`-Ereignis aus; beide sind damit hier erledigt.
-    //
-    // Der Text entsteht auch hier ueber composeOutputText — ein Bauer, alle Wege.
+    // AUFTRAG-mega36 BLOCK B1/B2 — DER NATIVE AUSGANG. Das Feld traegt NUR den Antwortkoerper
+    // (mega35 A1); ohne dieses Abfangen naehme Cmd/Strg+C, Kontextmenue-Kopieren oder Ausschneiden
+    // ihn ohne Einstufung, Quellen-Zeile und Kappungshinweis mit. Tastatur und Kontextmenue loesen
+    // DASSELBE `copy`-Ereignis aus. Der Text entsteht ueber composeOutputText — ein Bauer, alle Wege.
     function handleAnswerClipboard(ev, schneiden) {
       // Nur bei einer echten, belegten Antwort greift die Ableitung; sonst ist das Feld ein Feld.
       if (!currentAskOutcome || currentAskOutcome.kind !== "answered") { return; }
@@ -6653,21 +6676,11 @@
         showAskStatus("warn", t("askCopyPartial"));
         return;
       }
-      // AUFTRAG-mega37 BLOCK A — DAS QUELLEN-TOR, UND ES GILT HIER GENAUSO WIE AN DEN SCHALTFLAECHEN.
-      //
-      // bens ROT-Befund zu mega36: sobald `/api/ask` geantwortet hat, steht der Antwortkoerper im
-      // Feld — die Quellentitel werden DANACH asynchron geladen. Die beiden Schaltflaechen bleiben
-      // in diesem Fenster gesperrt (`updateInsertState`, Fix 2); die nativen Wege pruefen den
-      // Zustand bis mega36 NICHT. Ein Cmd+C in genau diesem Moment baute die Quellen-Zeile mit dem
-      // generischen Namen `KLARWERK` (buildAskSourceLine) — eine Angabe, die aussieht wie ein Beleg
-      // und keiner ist. Das ist nicht dieselbe Klasse wie eine FEHLENDE Einstufung, es ist die
-      // schlechtere. Deshalb FAIL-CLOSED, und zwar VOR jeder Textbildung und vor der Pruefung der
-      // Zwischenablage-Schnittstelle (A6: auch der Rueckfall darf hier keinen Volltext anbieten):
-      //   A1 nichts wird geschrieben · A2 Ausschneiden schneidet nicht · A3 der Standard-Export des
-      //   Browsers wird verhindert · A4 die Oberflaeche sagt es · A5 erst nach der Aufloesung gibt
-      //   composeOutputText aus.
-      // Die TEILAUSWAHL steht bewusst DAVOR: ein Bruchstueck traegt ohnehin keine Quellen-Zeile,
-      // fuer sie ist der Zustand der Aufloesung gleichgueltig.
+      // AUFTRAG-mega37 BLOCK A — DAS QUELLEN-TOR wie an den Schaltflaechen (bens ROT zu mega36: ein
+      // Cmd+C vor der Quellenaufloesung baute eine Quellen-Zeile mit dem generischen `KLARWERK`).
+      // FAIL-CLOSED vor jeder Textbildung (A1 nichts geschrieben · A2 nicht geschnitten · A3 Export
+      // verhindert · A4 gesagt · A5/A6 kein Volltext, auch nicht im Rueckfall). Die TEILAUSWAHL steht
+      // bewusst davor: ein Bruchstueck traegt ohnehin keine Quellen-Zeile.
       if (!currentAskSourcesResolved) {
         if (ev.preventDefault) { ev.preventDefault(); }
         showAskStatus("warn", t("askCopyNativePending"));
@@ -6691,10 +6704,7 @@
         var bis = Math.min(wert.length, Math.max(feld.selectionStart, feld.selectionEnd));
         feld.value = wert.slice(0, von) + wert.slice(bis);
       }
-      // Hier ist die Aufloesung nachweislich durch (das Tor oben ist die einzige Vorbedingung) —
-      // die Quellen-Zeile traegt die echten KO-Titel. Der frueher hier stehende Zweig „kopiert,
-      // aber die Titel fehlten noch" ist mit mega37 A ersatzlos weg: er beschrieb einen Zustand,
-      // den es nicht mehr gibt.
+      // Die Aufloesung ist hier nachweislich durch (Tor oben) — die Quellen-Zeile traegt echte Titel.
       showAskStatus("ok", t("askCopyNativeOk"));
     }
 
@@ -6705,29 +6715,20 @@
       var wert = feld.value;
       if (wert.replace(/^\s+|\s+$/g, "").length === 0) { return; }
       if (!answerSelectionIsWhole(wert, feld.selectionStart, feld.selectionEnd)) {
-        // AUFTRAG-mega37 BLOCK B: die Ausnahme SELBST bleibt — ein Satzfragment braucht keinen
-        // Metablock, das ist entschieden, und der Ziehvorgang laeuft deshalb normal weiter. Falsch
-        // war nur, dass das Panel hier KOMMENTARLOS zurueckkehrte, waehrend der Kommentar
-        // versprach, die Ausnahme werde an jedem Ausgang benannt. Jetzt sagt sie ueberall dasselbe.
+        // AUFTRAG-mega37 BLOCK B: ein Satzfragment braucht keinen Metablock (entschieden), der
+        // Ziehvorgang laeuft weiter — aber die Ausnahme wird wie an jedem Ausgang benannt.
         showAskStatus("warn", t("askCopyPartial"));
         return;
       }
-      // AUFTRAG-mega37 BLOCK A: dasselbe Tor wie beim Kopieren/Ausschneiden — und hier wog der
-      // Mangel am schwersten, weil beim Ziehen bisher nicht einmal ein Hinweis erschien. Der
-      // Ziehvorgang wird abgebrochen (A3), es wird nichts angelegt (A1), die Oberflaeche sagt es (A4).
+      // AUFTRAG-mega37 BLOCK A: dasselbe Tor — abbrechen (A3), nichts anlegen (A1), sagen (A4).
       if (!currentAskSourcesResolved) {
         if (ev.preventDefault) { ev.preventDefault(); }
         showAskStatus("warn", t("askCopyNativePending"));
         return;
       }
-      // AUFTRAG-mega38 BLOCK B: hier stand bis mega37 ein blankes `return` — ohne preventDefault,
-      // ohne Hinweis. Das ist der schlechteste aller Ausgaenge: der Host darf seinen EIGENEN
-      // Standard-Ziehvorgang danach fortsetzen, und der traegt fuer eine Textauswahl den rohen
-      // Antwortkoerper hinaus — ohne Einstufung, ohne Quellen-Zeile, ohne Kappungshinweis.
-      // Jetzt gilt derselbe Vertrag wie am Kopier-/Ausschneideweg (s. handleAnswerClipboard):
-      // abbrechen, nichts roh hinauslassen, den ABGELEITETEN Volltext im Rueckfallfeld anbieten
-      // und es sagen. Ob ein echter Word-/WKWebView-Host diesen Zweig je erreicht, ist UNBELEGT —
-      // gepinnt ist das Verhalten, nicht eine Behauptung ueber den Host.
+      // AUFTRAG-mega38 BLOCK B: ohne Datenbehaelter derselbe Vertrag wie am Kopierweg — abbrechen,
+      // nichts roh hinauslassen, den ABGELEITETEN Volltext im Rueckfallfeld anbieten und es sagen.
+      // Ob ein echter Word-/WKWebView-Host diesen Zweig erreicht, ist UNBELEGT (gepinnt: Verhalten).
       var daten = ev.dataTransfer || null;
       if (!daten || typeof daten.setData !== "function") {
         if (ev.preventDefault) { ev.preventDefault(); }

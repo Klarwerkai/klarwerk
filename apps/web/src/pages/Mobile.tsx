@@ -1500,8 +1500,12 @@ export function Mobile(): JSX.Element {
                                 {t("ask.sources")}
                               </span>
                               {/* WP-SHIP9-S2 Paket 4 (W4): KO-Titel statt roher UUID (Titel aus dem
-                                  vorhandenen Bestand — nie eine ID zeigen, wenn ein KO bekannt ist);
-                                  line-clamp gegen Überlauf, Volltitel im Tooltip. */}
+                                  vorhandenen Bestand — nie eine ID zeigen, wenn ein KO bekannt ist).
+                                  Aufnahme 20260922 · antwort-quellenanzeige (R-1026): auf dem
+                                  Telefon bleibt der Titel LESBAR — er bricht um (auch lange
+                                  Dateinamen, `[overflow-wrap:anywhere]`, `min-w-0` als Flex-Kind)
+                                  statt auf eine Zeile mit „…" gekappt zu werden; ein Tooltip gibt
+                                  es auf Touch nicht. Der Tooltip bleibt für die Maus. */}
                               {s.sources.map((ref) => (
                                 // AUFTRAG-mega12 Block C (echter Treffer, gefunden beim Bauen der
                                 // Architekturprüfung): Mobile MELDET einen Wächter an
@@ -1514,7 +1518,7 @@ export function Mobile(): JSX.Element {
                                   key={ref.id}
                                   to={`/wissen/${ref.id}`}
                                   title={ref.label}
-                                  className="line-clamp-1 max-w-[220px] text-[12px] font-semibold text-brand-text hover:underline"
+                                  className="min-w-0 max-w-full whitespace-normal text-[12px] font-semibold text-brand-text hover:underline [overflow-wrap:anywhere]"
                                 >
                                   {ref.label}
                                 </GuardedLink>

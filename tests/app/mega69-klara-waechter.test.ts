@@ -2758,6 +2758,17 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Prüflauf zu Kandidat 95df9979 GEMESSEN („Received", HISTORIE/nacharbeit-1/PRUEFUNG/
     // panel-ausgabe-und-waechter.log) und unverändert übernommen; die Panel-Dateien sind seit dieser
     // Messung unberührt.
+    // NACHARBEIT 3 (antwort-quellenanzeige, Ben zu 36386e17) — DER PIN MUSS WANDERN. `taskpane.js`:
+    // Chips, Ziffern und Dokumentzeile nur aus TRAGENDEN Quellen (`askZugeordnet`,
+    // `askTragendeQuellen`; fehlende/leere/widersprüchliche Zuordnung → „keine tragende Quelle
+    // belegt"), Stand je Quelle (`askQuelleStandTeile`), der Einschub (`askEinschubOeffnen`,
+    // Passage = Aussage des Objekts, Original über `/api/objects/:id/raw`, Wissensnetz über
+    // `/wissen/:id`), fünf neue Wörterbuchschlüssel je Sprache, verdichtete Kommentarköpfe (B3);
+    // `taskpane.css`: Ziffern klickbar, Einschub-Stil. Auslieferungsfolgen: KEIN neues Abrufziel
+    // (`/api/kos/:id` liefert Aussage und Anhänge bereits), Links sind gleichherkünftig, keine
+    // Nutzlast-, CSP-, Rechte- oder Manifeständerung, kein Sideload. Ohne zugelassenes Hash-Werkzeug
+    // nicht berechenbar — der Prüflauf meldet den Ist-Wert als „Received", er wird danach gemessen
+    // übernommen.
     const PIN = "8cd91a17cd404821f8314b7a6a01da00c5b12652175f96cfaae1805e3ac2b14f";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
