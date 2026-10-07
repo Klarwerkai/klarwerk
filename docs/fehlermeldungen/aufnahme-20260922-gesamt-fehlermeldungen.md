@@ -37,6 +37,17 @@ laufenden Instanz gesehen — das hat dieser Lauf **nicht** getan.
   `expectedUpdatedAt fehlt …`) sind Vertragsfehler eines Aufrufers, die die Oberfläche nicht
   erzeugt; sie bleiben unverändert und sind hier nur benannt.
 * Q8 (Profil-Persistenz der Sprache) ist ausdrücklich nicht Teil von P-Q9.
+* **Unveränderter fremder Basisfehler (Nacharbeit 1):** `tests/q9-fremde-flaechen/keine-deutschen-literale.test.ts`
+  ist schon an der Basis `ceb29795` rot (R5, R6 Fundzahl/Ausnahmenzahl, R7 Kalibrierung). Er findet in
+  `services/app/src/routes/capture-routes.ts` drei Stellen, die keine Ausnahme tragen:
+  `error: "DOKUMENT_UNBEKANNT"` und der Satz „Diese Dokumentkennung wurde hier nicht vergeben …"
+  (`sendeUnbekannteDokumentkennung`, eingeführt mit `4a88a5ef` „Importiertes Wissen mit dauerhafter
+  Herkunft …") sowie „confidentiality muss intern, vertraulich oder streng_vertraulich sein." an der
+  .docx-Übernahme (`f4ee706e` „Vertraulichkeitswahl beim Erfassen …"). Weder die Datei noch der
+  Wächter sind in diesem Auftrag verändert. Es sind 400-Antworten des Word-/.docx-Wegs, nicht die
+  401-Texte von P-Q9; für diesen Weg hält der Wächter fest, dass er „als Ganzes übersetzt" gehört.
+  Ob übersetzt oder als begründete Ausnahme eingetragen wird, ist eine offene Folgezeile der
+  Q9-Kette und hier **nicht** entschieden. Der Wächter bleibt unverändert rot im Bestand.
 * Die ASCII-Schreibweise „verfuegbar" bleibt (Bestandsentscheidung JOB 3956, mehrere Pins).
 
 ## Fehlende Belege
