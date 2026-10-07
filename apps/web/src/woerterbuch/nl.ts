@@ -2310,6 +2310,62 @@ const nl: typeof de = {
     "Geen enkele bron past nauw genoeg bij deze vraag om een antwoord te dragen. Dat betekent niet per se dat de kennis ontbreekt — misschien staat ze alleen onder andere woorden in de basis. Hoe dan ook is het een hiaat dat jullie kunnen dichten, geen fout.",
   "ask.contract.trustNote":
     "Vertrouwen en bruikbaarheid tonen hoe betrouwbaar een bron is — geen belofte van waarheid.",
+  // AUFNAHME 20260922 · Antwort-Erklärung (Begründung im deutschen Block).
+  "ask.belastbarkeit.titel": "Hoe betrouwbaar is dit?",
+  "ask.belastbarkeit.lage.belegt": "Onderbouwd",
+  "ask.belastbarkeit.lage.belegt_zustaendig_fehlt":
+    "Onderbouwd — verantwoordelijke niet bereikbaar",
+  "ask.belastbarkeit.lage.belegt_mit_konflikt": "Onderbouwd — met tegenstrijdigheid",
+  "ask.belastbarkeit.lage.wissensluecke": "Kennishiaat",
+  "ask.belastbarkeit.lage.technischer_fehler": "Technische fout",
+  "ask.belastbarkeit.lage.geschwaerzt": "Afgeschermd",
+  "ask.belastbarkeit.anzahl":
+    "{{tragend}} van {{herangezogen}} geraadpleegde bronnen dragen het antwoord",
+  "ask.belastbarkeit.vertrauenswert":
+    "Vertrouwenswaarde {{wert}} — zo betrouwbaar als de zwakste dragende bron („{{quelle}}”). De bibliotheek toont hetzelfde getal bij die vermelding.",
+  "ask.belastbarkeit.vertrauenswertKeiner":
+    "Geen vertrouwenswaarde: er is geen dragende bron bekend.",
+  "ask.belastbarkeit.vertrauenswertKurz": "Vertrouwenswaarde {{wert}}",
+  "ask.belastbarkeit.stand": "Stand {{datum}}",
+  "ask.belastbarkeit.quelle.validiert": "gevalideerd",
+  "ask.belastbarkeit.quelle.nichtValidiert": "niet gevalideerd",
+  "ask.belastbarkeit.verantwortung.eigentuemer": "Verantwoordelijk",
+  "ask.belastbarkeit.verantwortung.autor": "Geen verantwoordelijke genoemd, de auteur geldt",
+  "ask.belastbarkeit.erreichbar.ja": "bereikbaar",
+  "ask.belastbarkeit.erreichbar.nein": "niet bereikbaar",
+  "ask.belastbarkeit.erreichbar.unbekannt": "bereikbaarheid onbekend",
+  "ask.belastbarkeit.grund.keine_tragfaehige_quelle":
+    "Geen enkele bron draagt een antwoord op deze vraag.",
+  "ask.belastbarkeit.grund.zuordnung_unbekannt": "Welke bron het antwoord draagt, is niet bekend.",
+  "ask.belastbarkeit.grund.alle_tragenden_quellen_validiert":
+    "Alle dragende bronnen zijn gevalideerd.",
+  "ask.belastbarkeit.grund.tragende_quelle_nicht_validiert":
+    "Minstens één dragende bron is niet gevalideerd.",
+  "ask.belastbarkeit.grund.pruefnachweis_unvollstaendig":
+    "Voor minstens één dragende bron is de conflictcontrole niet volledig aangetoond.",
+  "ask.belastbarkeit.grund.offener_konflikt":
+    "Een dragende bron staat in een open tegenstrijdigheid.",
+  "ask.belastbarkeit.grund.konfliktlage_unbekannt":
+    "De conflictstatus kon niet worden opgevraagd — dat betekent niet dat er geen is.",
+  "ask.belastbarkeit.grund.zustaendig_nicht_erreichbar":
+    "De verantwoordelijke is niet bereikbaar (geen goedgekeurd account). De kennis blijft bruikbaar; vervolgvragen hebben een nieuwe verantwoordelijke nodig.",
+  "ask.belastbarkeit.grund.erreichbarkeit_unbekannt":
+    "Of de verantwoordelijke bereikbaar is, kon niet worden vastgesteld.",
+  "ask.belastbarkeit.grund.verantwortung_nur_autor":
+    "Voor minstens één bron is geen verantwoordelijke genoemd; de auteur geldt.",
+  "ask.belastbarkeit.konflikt.titel": "Tegenstrijdigheid — beide kanten",
+  "ask.belastbarkeit.konflikt.seite": "Kant {{nummer}}",
+  "ask.belastbarkeit.konflikt.traegt": "draagt dit antwoord",
+  "ask.belastbarkeit.konflikt.nichtEinsehbar": "Deze kant kun je niet inzien.",
+  "ask.belastbarkeit.konflikt.keinGewinner":
+    "Er wordt geen kant gekozen. Mensen beslissen over de tegenstrijdigheid onder „Conflicten”.",
+  "ask.belastbarkeit.hinweis":
+    "De vertrouwenswaarde zegt hoe betrouwbaar de bronnen zijn. Ze zegt niets over of iets waar is.",
+  "ask.pruefrahmen.satz":
+    "Gecontroleerd tegen {{umfang}}: {{verglichen}} passende vermeldingen zijn vergeleken (hoogstens {{hoechstens}} per vraag), geen enkele draagt een antwoord.",
+  "ask.pruefrahmen.umfang.validiert": "alleen gevalideerde, niet-vertrouwelijke kennis",
+  "ask.pruefrahmen.umfang.nicht_vertraulich": "alle niet-vertrouwelijke kennis",
+  "ask.pruefrahmen.woertlich": "Er is letterlijk gezocht, zonder AI-samenvatting.",
   // JOB 3366: der Satz an einer abgeschnittenen KI-Antwort (Begründung im deutschen Block).
   "ai.truncated.hint": "Dit antwoord is bij de lengtelimiet afgebroken en kan onvolledig zijn.",
   "ask.contract.sumTotal_one": "{{count}} bron geraadpleegd",

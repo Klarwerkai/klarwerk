@@ -499,6 +499,31 @@ export interface AskResult {
   // bleibt fuer ihn die ehrliche Auskunft. Die Sperrlogik selbst ist unberuehrt
   // (E-VERTRAULICHKEIT-OHNE-STUFE-20260828: erklaeren ja, sperren oder entsperren nein).
   verschlossen?: VerschlossenHinweis[];
+  // AUFNAHME 20260922 · R-0284 — WOGEGEN GEPRÜFT WURDE. Eine Wissenslücke ohne ihren Rahmen ist
+  // eine nackte Null: niemand weiss, ob sie etwas bedeutet. Der Dienst setzt das Feld auf JEDEM
+  // Rückgabeweg; optional nur, damit Aufrufer mit eigenen Ergebnisattrappen unberührt bleiben.
+  pruefrahmen?: AskPruefrahmen;
+}
+
+/**
+ * Der Rahmen einer Suche — eine Aussage über den WEG, nie über den Bestand.
+ *
+ * WARUM DAS KEIN ZWEITES `ungeprueftUnterdrueckt` IST (mega77): gezählt wird nicht die gedeckelte
+ * Vorauswahl und nichts Ungeprüftes neben der Enge, sondern genau die Kandidaten, die dem
+ * Antwortweg vorgelegt wurden — hinter `dropConfidential` und, wo verlangt, hinter `validatedOnly`.
+ * Das ist dieselbe Menge, aus der dieser Aufrufer ohnehin Quellen bekommen hätte; die Zahl verrät
+ * nichts, was er nicht sehen darf. Und sie behauptet nichts über den Bestand: „0 verglichen" heisst
+ * „keine Quelle deckte alle Fragebegriffe", nicht „es gibt nichts".
+ */
+export interface AskPruefrahmen {
+  /** Wogegen gesucht wurde: nur validiertes Wissen, oder jedes nicht vertrauliche. */
+  umfang: "validiert" | "nicht_vertraulich";
+  /** Wie viele passende Einträge (alle Fragebegriffe gedeckt) dem Antwortweg vorlagen. */
+  verglichen: number;
+  /** Höchstzahl je Frage (Top-K). */
+  hoechstens: number;
+  /** `true`: nur wörtliche Übernahme validierter Aussagen, keine Synthese durch ein Modell. */
+  nurWoertlich: boolean;
 }
 
 /**
@@ -970,6 +995,13 @@ export class AskService {
       ),
     );
     const candidates = waehleKandidaten(question, vollstaendig, DEFAULT_TOP_K, relevanz);
+    // R-0284: der Rahmen dieser Suche, aus genau den Werten, die den Weg bestimmt haben.
+    const pruefrahmen: AskPruefrahmen = {
+      umfang: opts?.validatedOnly ? "validiert" : "nicht_vertraulich",
+      verglichen: candidates.length,
+      hoechstens: DEFAULT_TOP_K,
+      nurWoertlich: opts?.retrievalOnly === true,
+    };
     // SCRUM-490 R2 (B1): Add-on-Pfad → RETRIEVAL-ONLY (kein Modell-/Embedder-Egress des Dokumenttexts).
     // Sonst der übliche Reasoner-Weg (Session-Pfad unverändert).
     // AUFTRAG-mega61 BLOCK G — DAS ZWEITE NETZ, AUS DEM KONTEXT ABGELEITET.
@@ -1143,7 +1175,15 @@ export class AskService {
       // liefert das oben emittierte metadata-only ask.query-Audit (trägt Actor + answered=false, keinen
       // Text). Ohne die Option bleibt der Pfad byte-identisch: Gap anlegen.
       if (opts?.gapPolicy === "count_only") {
-        return { result, answerId, gap: null, receipt, ...ungeprueftFeld, ...verschlossenFeld };
+        return {
+          result,
+          answerId,
+          gap: null,
+          receipt,
+          ...ungeprueftFeld,
+          ...verschlossenFeld,
+          pruefrahmen,
+        };
       }
       // GAP-SPRACHHERKUNFT: `locale` steuert schon die Antwortsprache des Reasoners und liegt hier
       // ohnehin vor — es ging bisher nur verloren. Mitgegeben, damit die Oberfläche einen
@@ -1153,9 +1193,25 @@ export class AskService {
       const gap = await this.createGap(question, actorId, opts?.demoSeed, locale, () =>
         this.pruefeKiSperre("ergebnis", kiBeginn),
       );
-      return { result, answerId, gap, receipt, ...ungeprueftFeld, ...verschlossenFeld };
+      return {
+        result,
+        answerId,
+        gap,
+        receipt,
+        ...ungeprueftFeld,
+        ...verschlossenFeld,
+        pruefrahmen,
+      };
     }
-    return { result, answerId, gap: null, receipt, ...ungeprueftFeld, ...verschlossenFeld };
+    return {
+      result,
+      answerId,
+      gap: null,
+      receipt,
+      ...ungeprueftFeld,
+      ...verschlossenFeld,
+      pruefrahmen,
+    };
   }
 
   /**

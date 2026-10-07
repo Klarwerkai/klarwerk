@@ -2320,6 +2320,57 @@ const en: typeof de = {
     "No source matches this question closely enough to carry an answer. That does not necessarily mean the knowledge is missing — it may simply be recorded under different words. Either way it's a gap you can close, not an error.",
   "ask.contract.trustNote":
     "Trust and usability show how reliable a source is — not a guarantee of truth.",
+  // AUFNAHME 20260922 · Antwort-Erklärung (Begründung im deutschen Block).
+  "ask.belastbarkeit.titel": "How reliable is this?",
+  "ask.belastbarkeit.lage.belegt": "Backed by sources",
+  "ask.belastbarkeit.lage.belegt_zustaendig_fehlt": "Backed — responsible person not reachable",
+  "ask.belastbarkeit.lage.belegt_mit_konflikt": "Backed — with a contradiction",
+  "ask.belastbarkeit.lage.wissensluecke": "Knowledge gap",
+  "ask.belastbarkeit.lage.technischer_fehler": "Technical error",
+  "ask.belastbarkeit.lage.geschwaerzt": "Redacted",
+  "ask.belastbarkeit.anzahl": "{{tragend}} of {{herangezogen}} consulted sources carry the answer",
+  "ask.belastbarkeit.vertrauenswert":
+    "Trust value {{wert}} — as reliable as the weakest carrying source (“{{quelle}}”). The library shows the same number on that entry.",
+  "ask.belastbarkeit.vertrauenswertKeiner": "No trust value: no carrying source is known.",
+  "ask.belastbarkeit.vertrauenswertKurz": "Trust value {{wert}}",
+  "ask.belastbarkeit.stand": "As of {{datum}}",
+  "ask.belastbarkeit.quelle.validiert": "validated",
+  "ask.belastbarkeit.quelle.nichtValidiert": "not validated",
+  "ask.belastbarkeit.verantwortung.eigentuemer": "Responsible",
+  "ask.belastbarkeit.verantwortung.autor": "No responsible person named, the author applies",
+  "ask.belastbarkeit.erreichbar.ja": "reachable",
+  "ask.belastbarkeit.erreichbar.nein": "not reachable",
+  "ask.belastbarkeit.erreichbar.unbekannt": "reachability unknown",
+  "ask.belastbarkeit.grund.keine_tragfaehige_quelle":
+    "No source carries an answer to this question.",
+  "ask.belastbarkeit.grund.zuordnung_unbekannt": "It is not known which source carries the answer.",
+  "ask.belastbarkeit.grund.alle_tragenden_quellen_validiert": "All carrying sources are validated.",
+  "ask.belastbarkeit.grund.tragende_quelle_nicht_validiert":
+    "At least one carrying source is not validated.",
+  "ask.belastbarkeit.grund.pruefnachweis_unvollstaendig":
+    "For at least one carrying source, the conflict check is not fully documented.",
+  "ask.belastbarkeit.grund.offener_konflikt": "A carrying source is part of an open contradiction.",
+  "ask.belastbarkeit.grund.konfliktlage_unbekannt":
+    "The conflict status could not be retrieved — that does not mean there is none.",
+  "ask.belastbarkeit.grund.zustaendig_nicht_erreichbar":
+    "The responsible person is not reachable (no approved account). The knowledge remains usable; follow-up questions need a new owner.",
+  "ask.belastbarkeit.grund.erreichbarkeit_unbekannt":
+    "Whether the responsible person is reachable could not be determined.",
+  "ask.belastbarkeit.grund.verantwortung_nur_autor":
+    "For at least one source no responsible person is named; the author applies.",
+  "ask.belastbarkeit.konflikt.titel": "Contradiction — both sides",
+  "ask.belastbarkeit.konflikt.seite": "Side {{nummer}}",
+  "ask.belastbarkeit.konflikt.traegt": "carries this answer",
+  "ask.belastbarkeit.konflikt.nichtEinsehbar": "You cannot view this side.",
+  "ask.belastbarkeit.konflikt.keinGewinner":
+    "No side is chosen. People decide the contradiction under “Conflicts”.",
+  "ask.belastbarkeit.hinweis":
+    "The trust value says how reliable the sources are. It says nothing about whether something is true.",
+  "ask.pruefrahmen.satz":
+    "Checked against {{umfang}}: {{verglichen}} matching entries were compared (at most {{hoechstens}} per question), none carries an answer.",
+  "ask.pruefrahmen.umfang.validiert": "validated, non-confidential knowledge only",
+  "ask.pruefrahmen.umfang.nicht_vertraulich": "all non-confidential knowledge",
+  "ask.pruefrahmen.woertlich": "The search was literal, without an AI summary.",
   // JOB 3366: der Satz an einer abgeschnittenen KI-Antwort (Begründung im deutschen Block).
   "ai.truncated.hint": "This answer was cut off at the length limit and may be incomplete.",
   "ask.contract.sumTotal_one": "{{count}} source consulted",

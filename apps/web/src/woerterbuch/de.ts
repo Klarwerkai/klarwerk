@@ -2998,6 +2998,66 @@ const de = {
     "Keine Quelle passt sicher genug zu dieser Frage, um eine Antwort zu tragen. Das heißt nicht zwingend, dass das Wissen fehlt — vielleicht steht es nur unter anderen Wörtern in der Basis. Beides ist eine Lücke, die ihr schließen könnt, kein Fehler.",
   "ask.contract.trustNote":
     "Vertrauen und Nutzbarkeit zeigen, wie belastbar eine Quelle ist — kein Wahrheitsversprechen.",
+  // AUFNAHME 20260922 · Antwort-Erklärung: die Belastbarkeit vom Server an der Antwort
+  // (components/fragen/Belastbarkeit.tsx). Die Gründe und Lagen sind die geschlossenen Mengen aus
+  // services/ask/src/answer-belastbarkeit.ts — je Wert genau ein Satz.
+  "ask.belastbarkeit.titel": "Wie belastbar ist das?",
+  "ask.belastbarkeit.lage.belegt": "Belegt",
+  "ask.belastbarkeit.lage.belegt_zustaendig_fehlt":
+    "Belegt — Verantwortliche Person nicht erreichbar",
+  "ask.belastbarkeit.lage.belegt_mit_konflikt": "Belegt — mit Widerspruch",
+  "ask.belastbarkeit.lage.wissensluecke": "Wissenslücke",
+  "ask.belastbarkeit.lage.technischer_fehler": "Technischer Fehler",
+  "ask.belastbarkeit.lage.geschwaerzt": "Geschwärzt",
+  "ask.belastbarkeit.anzahl":
+    "{{tragend}} von {{herangezogen}} herangezogenen Quellen tragen die Antwort",
+  "ask.belastbarkeit.vertrauenswert":
+    "Vertrauenswert {{wert}} — so belastbar wie die schwächste tragende Quelle („{{quelle}}“). Dieselbe Zahl steht in der Bibliothek an diesem Eintrag.",
+  "ask.belastbarkeit.vertrauenswertKeiner":
+    "Kein Vertrauenswert: Es ist keine tragende Quelle bekannt.",
+  "ask.belastbarkeit.vertrauenswertKurz": "Vertrauenswert {{wert}}",
+  "ask.belastbarkeit.stand": "Stand {{datum}}",
+  "ask.belastbarkeit.quelle.validiert": "validiert",
+  "ask.belastbarkeit.quelle.nichtValidiert": "nicht validiert",
+  "ask.belastbarkeit.verantwortung.eigentuemer": "Verantwortlich",
+  "ask.belastbarkeit.verantwortung.autor":
+    "Keine verantwortliche Person benannt, es gilt der Autor",
+  "ask.belastbarkeit.erreichbar.ja": "erreichbar",
+  "ask.belastbarkeit.erreichbar.nein": "nicht erreichbar",
+  "ask.belastbarkeit.erreichbar.unbekannt": "Erreichbarkeit unbekannt",
+  "ask.belastbarkeit.grund.keine_tragfaehige_quelle":
+    "Keine Quelle trägt eine Antwort auf diese Frage.",
+  "ask.belastbarkeit.grund.zuordnung_unbekannt":
+    "Welche Quelle die Antwort trägt, ist nicht bekannt.",
+  "ask.belastbarkeit.grund.alle_tragenden_quellen_validiert":
+    "Alle tragenden Quellen sind validiert.",
+  "ask.belastbarkeit.grund.tragende_quelle_nicht_validiert":
+    "Mindestens eine tragende Quelle ist nicht validiert.",
+  "ask.belastbarkeit.grund.pruefnachweis_unvollstaendig":
+    "Für mindestens eine tragende Quelle ist die Konfliktprüfung nicht vollständig belegt.",
+  "ask.belastbarkeit.grund.offener_konflikt":
+    "Eine tragende Quelle steht in einem offenen Widerspruch.",
+  "ask.belastbarkeit.grund.konfliktlage_unbekannt":
+    "Die Konfliktlage ließ sich nicht abfragen — das heißt nicht, dass keine besteht.",
+  "ask.belastbarkeit.grund.zustaendig_nicht_erreichbar":
+    "Die verantwortliche Person ist nicht erreichbar (kein freigegebenes Konto). Das Wissen bleibt nutzbar; Rückfragen brauchen eine neue Zuständigkeit.",
+  "ask.belastbarkeit.grund.erreichbarkeit_unbekannt":
+    "Ob die verantwortliche Person erreichbar ist, ließ sich nicht feststellen.",
+  "ask.belastbarkeit.grund.verantwortung_nur_autor":
+    "Für mindestens eine Quelle ist keine verantwortliche Person benannt; es gilt der Autor.",
+  "ask.belastbarkeit.konflikt.titel": "Widerspruch — beide Seiten",
+  "ask.belastbarkeit.konflikt.seite": "Seite {{nummer}}",
+  "ask.belastbarkeit.konflikt.traegt": "trägt diese Antwort",
+  "ask.belastbarkeit.konflikt.nichtEinsehbar": "Diese Seite ist für dich nicht einsehbar.",
+  "ask.belastbarkeit.konflikt.keinGewinner":
+    "Es wird keine Seite gewählt. Den Widerspruch entscheiden Menschen unter „Konflikte“.",
+  "ask.belastbarkeit.hinweis":
+    "Der Vertrauenswert sagt, wie belastbar die Quellen sind. Er ist keine Aussage darüber, ob etwas wahr ist.",
+  "ask.pruefrahmen.satz":
+    "Geprüft gegen {{umfang}}: {{verglichen}} passende Einträge wurden verglichen (höchstens {{hoechstens}} je Frage), keiner trägt eine Antwort.",
+  "ask.pruefrahmen.umfang.validiert": "nur validiertes, nicht vertrauliches Wissen",
+  "ask.pruefrahmen.umfang.nicht_vertraulich": "alles nicht vertrauliche Wissen",
+  "ask.pruefrahmen.woertlich": "Gesucht wurde wörtlich, ohne KI-Zusammenfassung.",
   // ==============================================================================================
   // JOB 3366 · KI-FRAGMENT-SICHTBAR — DER EINE SATZ AN EINER ABGESCHNITTENEN ANTWORT.
   // ==============================================================================================

@@ -1,13 +1,16 @@
 import type { FastifyPluginAsync } from "fastify";
 import {
+  type AntwortBelastbarkeit,
   AskError,
   type AskService,
   answerEvidence,
+  antwortBelastbarkeit,
   isGapPriority,
+  konfliktGegenseiten,
   redactGapForViewer,
 } from "../../../ask";
 import type { ConflictService } from "../../../conflicts";
-import type { KnowledgeObject, KoService } from "../../../knowledge-object";
+import { type KnowledgeObject, type KoService, responsibleOf } from "../../../knowledge-object";
 import { can } from "../../../rbac";
 import { bindeAnbieter, bindeZustimmung, imBindungsrahmen } from "../../../reasoner";
 import { authorizesAsk } from "../addon-principal";
@@ -110,6 +113,23 @@ export interface AskRouteDeps {
    * additiv — fehlt es, verhält sich diese Route byteweise wie vor KA4 (siehe `ka4Freigabe`).
    */
   klaraSessions?: Ka4Freigabepruefer | undefined;
+  /**
+   * AUFNAHME 20260922 · R-0322: wer ist als Verantwortlicher erreichbar? OPTIONAL und additiv —
+   * fehlt die Auskunft oder scheitert sie, gilt die Erreichbarkeit als UNBEKANNT, nie als gegeben.
+   */
+  personen?: PersonenAuskunft | undefined;
+}
+
+/**
+ * Die schmale Sicht auf das Nutzerverzeichnis. „Erreichbar" heisst hier genau: es gibt ein
+ * freigegebenes Konto mit dieser Kennung. Ein gelöschtes oder gesperrtes Konto ist nicht
+ * erreichbar — mehr (Urlaub, Vertretung) weiss das Verzeichnis nicht, und es wird nicht geraten.
+ */
+export interface PersonenAuskunft {
+  erreichbarkeit(ids: readonly string[]): Promise<{
+    erreichbar: ReadonlyMap<string, boolean>;
+    namen: ReadonlyMap<string, string>;
+  }>;
 }
 
 // ================================================================================================
@@ -445,6 +465,25 @@ export function kiAbgeschaltetSenden(
   return true;
 }
 
+// AUFNAHME 20260922 · Antwort-Erklärung — WER DARF WAS VON DER BELASTBARKEIT SEHEN.
+//
+// Die Gegenseite eines Konflikts ist ein Wissensobjekt, das der Aufrufer NICHT als Quelle bekommen
+// hat. Sie wird deshalb nach derselben Regel gezeigt wie jedes andere Objekt: auf dem Sitzungsweg
+// nach `sichtbarkeitsfilterFuer` (dem bestehenden Prädikat), auf dem Add-on-Weg NUR validiert —
+// der Add-on-Principal besitzt `ask.validated` und kein allgemeines Leserecht (mega77). Namen der
+// Verantwortlichen gehen nur an Sitzungsnutzer; der Add-on-Weg erfährt Art und Erreichbarkeit.
+interface BelastbarkeitsSicht {
+  seiteSichtbar: (ko: KnowledgeObject) => boolean;
+  mitPersonen: boolean;
+}
+
+function belastbarkeitsSicht(user: SessionUser | null): BelastbarkeitsSicht {
+  if (!user) {
+    return { seiteSichtbar: (ko) => ko.status === "validiert", mitPersonen: false };
+  }
+  return { seiteSichtbar: sichtbarkeitsfilterFuer(user), mitPersonen: true };
+}
+
 // AUFTRAG-mega53 B4 — DIE ZWEITE DER VIER STELLEN.
 //
 // Diese Route beschafft nur die Eingaben; entschieden wird in `answerEvidence`. Neu ist, dass sie
@@ -455,6 +494,8 @@ export function kiAbgeschaltetSenden(
 // ein Nachschlagewerk, und die Regel greift daraus die tragende Teilmenge. So bleibt der
 // Auflösungs-Warnpfad für jede ausgelieferte Quelle erhalten, ohne dass eine bloß angesehene
 // Quelle die Einstufung berührt.
+// AUFNAHME 20260922: daneben entsteht die Belastbarkeit (`antwortBelastbarkeit`) aus denselben
+// Eingaben, ergänzt um die Gegenseiten offener Konflikte und die Erreichbarkeit der Verantwortlichen.
 async function evidenceFor(
   deps: AskRouteDeps,
   result: {
@@ -467,28 +508,31 @@ async function evidenceFor(
   // D5 (KI aus): vor jedem Lesevorgang gerufen, AUSSERHALB der Fangzweige unten — eine Abschaltung
   // ist kein „nicht auflösbar" und kein „Konfliktabruf gescheitert", sie wird durchgereicht.
   pruefen: () => void,
-): Promise<ReturnType<typeof answerEvidence>> {
+  sicht: BelastbarkeitsSicht,
+): Promise<{
+  evidence: ReturnType<typeof answerEvidence>;
+  belastbarkeit: AntwortBelastbarkeit;
+}> {
   const sourceKos = new Map<string, KnowledgeObject>();
+  const lies = async (id: string, ziel: Map<string, KnowledgeObject>): Promise<void> => {
+    pruefen();
+    try {
+      // D5: die Sperre auch IN `get` — nach dem Objekt liest dessen Lesefassung noch weiter.
+      const ko = await deps.ko.get(id, pruefen);
+      if (ko) {
+        ziel.set(id, ko);
+      }
+    } catch (err) {
+      if (err instanceof AskError && err.code === "KI_ABGESCHALTET") {
+        throw err;
+      }
+      // Nicht auflösbar ⇒ die Regel führt sie als `unknown`. Genau das ist gewollt.
+      log.warn({ err, koId: id }, "ask.evidence: Quell-KO nicht auflösbar");
+    }
+  };
   // Höchstens DEFAULT_TOP_K Quellen (8) — dieselbe N+1-Runde, die das Add-in heute schon für
   // Titel und Datum fährt, nur einmal statt clientseitig.
-  await Promise.all(
-    result.sources.map(async (id) => {
-      pruefen();
-      try {
-        // D5: die Sperre auch IN `get` — nach dem Objekt liest dessen Lesefassung noch weiter.
-        const ko = await deps.ko.get(id, pruefen);
-        if (ko) {
-          sourceKos.set(id, ko);
-        }
-      } catch (err) {
-        if (err instanceof AskError && err.code === "KI_ABGESCHALTET") {
-          throw err;
-        }
-        // Nicht auflösbar ⇒ die Regel führt sie als `unknown`. Genau das ist gewollt.
-        log.warn({ err, koId: id }, "ask.evidence: Quell-KO nicht auflösbar");
-      }
-    }),
-  );
+  await Promise.all(result.sources.map((id) => lies(id, sourceKos)));
   let openConflicts: Awaited<ReturnType<ConflictService["unresolved"]>> | null = null;
   pruefen();
   try {
@@ -502,11 +546,47 @@ async function evidenceFor(
     }
     log.warn({ err }, "ask.evidence: Konfliktabruf gescheitert — Einstufung bleibt unbelegt");
   }
-  return answerEvidence({
+  const evidence = answerEvidence({
     answer: result as Parameters<typeof answerEvidence>[0]["answer"],
     sourceKos,
     openConflicts,
   });
+  // R-0321: die Gegenseiten offener Konflikte über DENSELBEN Leseweg. Eine Seite, die sich nicht
+  // auflösen lässt, bleibt „nicht einsehbar" — der Konflikt wird trotzdem benannt.
+  const kos = new Map(sourceKos);
+  await Promise.all(
+    konfliktGegenseiten(result.citedSources, openConflicts).map((id) => lies(id, kos)),
+  );
+  // R-0322: Erreichbarkeit der Verantwortlichen. Scheitert die Auskunft, bleibt sie UNBEKANNT —
+  // eine Störung des Verzeichnisses darf weder eine Lücke erfinden noch eine verschweigen.
+  let personen: Awaited<ReturnType<PersonenAuskunft["erreichbarkeit"]>> | null = null;
+  if (deps.personen && result.answered && result.citedSources.length > 0) {
+    const ids = [
+      ...new Set(
+        result.citedSources.flatMap((id) => {
+          const ko = sourceKos.get(id);
+          return ko ? [responsibleOf(ko)] : [];
+        }),
+      ),
+    ];
+    pruefen();
+    try {
+      personen = await deps.personen.erreichbarkeit(ids);
+    } catch (err) {
+      log.warn({ err }, "ask.belastbarkeit: Erreichbarkeit nicht ermittelbar");
+    }
+  }
+  const belastbarkeit = antwortBelastbarkeit({
+    answer: result,
+    evidence,
+    kos,
+    openConflicts,
+    seiteSichtbar: sicht.seiteSichtbar,
+    ...(personen ? { erreichbar: personen.erreichbar } : {}),
+    // Sitzungsnutzer sehen die Kennung auch ohne Verzeichnis (Name dann `null`); der Add-on-Weg nie.
+    namen: sicht.mitPersonen ? (personen?.namen ?? new Map<string, string>()) : null,
+  });
+  return { evidence, belastbarkeit };
 }
 
 // Fragen & Wissenslücken (§2.4 / FR-ASK).
@@ -662,6 +742,12 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           const pruefen = (): void => ask.kiSperreVorAuslieferung(kiBeginn);
           let out: Awaited<ReturnType<AskService["ask"]>>;
           let evidence: ReturnType<typeof answerEvidence>;
+          let belastbarkeit: AntwortBelastbarkeit;
+          // Die Sicht folgt dem Anmeldeweg dieser Anfrage — der Add-on-Principal hat keinen
+          // `SessionUser` und bekommt die enge Sicht (Begründung an `belastbarkeitsSicht`).
+          const sicht = belastbarkeitsSicht(
+            request.authContext?.authKind === "addon" ? null : (request.askSessionUser ?? null),
+          );
           try {
             // D5 (Bens B1): nach dem letzten Warten VOR dem Dienst gegen die Eingangsepoche prüfen.
             // Zwischen dieser Prüfung und dem Einstieg in `ask.ask` (der dort seine eigene Epoche
@@ -672,7 +758,13 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             // dieser Lesevorgänge wird erneut geprüft (s. dort), und nach dem letzten Warten noch
             // einmal, bevor irgendetwas davon hinausgeht.
             pruefen();
-            evidence = await evidenceFor(deps, out.result, request.log, pruefen);
+            ({ evidence, belastbarkeit } = await evidenceFor(
+              deps,
+              out.result,
+              request.log,
+              pruefen,
+              sicht,
+            ));
             pruefen();
           } catch (fehler) {
             // D5: ALLE Zweige dieser Route laufen hier durch — Konsole, Word-Panel mit und ohne
@@ -682,7 +774,9 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             }
             throw fehler;
           }
-          reply.code(200).send({ ...out, result: { ...out.result, evidence } });
+          // AUFNAHME 20260922: `belastbarkeit` steht NEBEN `evidence`, nicht darin — die Einstufung
+          // bleibt der unveränderte Vertrag, den Word und die Paritätstafel lesen.
+          reply.code(200).send({ ...out, result: { ...out.result, evidence, belastbarkeit } });
         };
         const auth = request.authContext;
         if (auth?.authKind === "addon") {

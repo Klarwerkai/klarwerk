@@ -1,6 +1,6 @@
 // Öffentliche API des Moduls ask.
 export { AskService } from "./src/service";
-export type { AskServiceDeps, AskResult, UngeprueftHinweis } from "./src/service";
+export type { AskServiceDeps, AskPruefrahmen, AskResult, UngeprueftHinweis } from "./src/service";
 export { InMemoryGapRepo, type GapRepo } from "./src/repo";
 export { PgGapRepo, ASK_SCHEMA } from "./src/repo-pg";
 // W3-A (KW-W3-18): der Repo-Kern der Antwortbelege. Die Fassade wird MITGESCHRIEBEN und nicht
@@ -68,5 +68,21 @@ export type {
   AnswerEvidenceInput,
   AnswerGrade,
 } from "./src/answer-evidence";
+// AUFNAHME 20260922 · Antwort-Erklärung: Belastbarkeit, Zustandsfamilie und Konfliktseiten an der
+// Antwort — gelesen aus der fertigen Einstufung, nicht neu eingestuft.
+export {
+  ANTWORT_LAGEN,
+  antwortBelastbarkeit,
+  konfliktGegenseiten,
+} from "./src/answer-belastbarkeit";
+export type {
+  AntwortBelastbarkeit,
+  AntwortBelastbarkeitInput,
+  AntwortKonflikt,
+  AntwortLage,
+  BelastbarkeitsGrund,
+  KonfliktSeite,
+  QuellenBelastbarkeit,
+} from "./src/answer-belastbarkeit";
 export { redactGapForViewer, summarizeGaps } from "./src/gap-visibility";
 export type { GapView, GapViewerContext, GapSummary } from "./src/gap-visibility";
