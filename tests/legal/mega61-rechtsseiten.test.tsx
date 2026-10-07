@@ -140,10 +140,20 @@ function artVon(dateiname: string): ts.ScriptKind {
 // abgeschnittenen Textsuche statt mit der Erhebung selbst. Die dritte Stelle lag außerhalb der
 // ersten 25 Treffer. Jetzt ist die Liste GEMESSEN: dieselbe Erhebung über alle 865 Dateien, und
 // sie meldet genau diese drei.
+//
+// AUFNAHME 20260922 · BILDBESCHREIBUNG-BEDIENUNG (Nacharbeit 1): eine VIERTE Stelle, gemessen am
+// Kandidaten a400f78b („tests/audit-gesamt/vorher-nachher.integration.test.ts:131"). Sie kam mit dem
+// Hauptstand, nicht mit diesem Auftrag, und liegt auf fremder Fläche:
+//   · `vorher-nachher.integration.test.ts:131` lädt `services/app/index.ts` aus einem FRISCH
+//     angelegten Temp-Ordner, in dem die Vorher-Fassung per `git apply` hergestellt wurde. Der Pfad
+//     entsteht erst zur Laufzeit (`mkdtemp`); ein statischer Pfad träfe den Kandidaten statt der
+//     Vorher-Fassung — „vorher" wäre heimlich „nachher", wogegen die Datei selbst (`:116`) prüft.
+//     Geladen wird der Dienst-Eintritt, nicht `apps/web/src/App`.
 const BEKANNT_UNAUFLOESBAR = new Set<string>([
   "tests/app/write-fence-race.test.ts:71",
   "tests/app/job642-testpfade-cwd-unabhaengig.test.ts:104",
   "tests/library/support/wissensraum-ort-vertrag.ts:90",
+  "tests/audit-gesamt/vorher-nachher.integration.test.ts:131",
 ]);
 
 // AUFTRAG-mega86 Block D: die Modulpfade, die eine Datei WIRKLICH lädt — erhoben aus dem

@@ -2115,8 +2115,19 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // die drei Komponenten über 448 kamen mit dem erneut eingemischten Hauptstand (Grundmenge
     // 549 → 559, davon 2 aus diesem Auftrag). Welche es sind, ist ohne Git-Verlauf an diesem
     // Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // Aufnahme gesamt-bildbeschreibung-bedienung, Nacharbeit 1: GEMESSEN 470. Am Kandidaten
+    // a400f78b meldete der Sammler wörtlich „gemessen: 470 Komponenten · 1 Anbieter · 2 Traeger ·
+    // Grundmenge 588 Quelldateien … expected { komponenten: 470, … } to deeply equal
+    // { komponenten: 451, … }". Dieser Auftrag trägt KEIN Bauteil bei: er ändert in
+    // `BodyImageGallery.tsx` nur Zustand und Markup der vorhandenen Großansicht (Ladezustand,
+    // R-0899) und legt das Textmodul `texte/bildergalerie.ts` an — reine Daten, keine Komponente.
+    // Die 19 Komponenten über 451 kamen mit dem Hauptstand (Basis 863a0974). Welche es sind, ist
+    // an diesem Arbeitsbaum ohne Git-Verlauf nicht namentlich bestimmt. `anbieter` 1 und `traeger`
+    // 2 sind in derselben Meldung unverändert — eine neue Bildbeschreibungsfläche ist NICHT
+    // hinzugekommen (bens Bedingung an I44 bleibt gewahrt).
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 451,
+      komponenten: 470,
       anbieter: 1,
       traeger: 2,
     });
