@@ -1090,6 +1090,10 @@ export function BibliothekLesen({
     void qc.invalidateQueries({ queryKey: ["library"] });
     void qc.invalidateQueries({ queryKey: ["conflicts"] });
     void qc.invalidateQueries({ queryKey: ["lifecycle"] });
+    // Autorenübergabe-Auftrag K3 (Nacharbeit 4): Eine Überarbeitung (`ko.revised`) beendet eine
+    // Rückgabe. Liste und Zahl der an MICH zurückgegebenen Entwürfe dürfen sie dann nicht bis zum
+    // Ablauf der Frischefrist weiterführen — dieselbe Lücke wie bei der Übergabe in MehrAbschnitte.
+    void qc.invalidateQueries({ queryKey: ["me", "returned-tasks"] });
   };
 
   const act = useMutation({

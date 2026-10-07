@@ -384,6 +384,11 @@ export function MehrAbschnitte({
     void qc.invalidateQueries({ queryKey: ["kos"] });
     void qc.invalidateQueries({ queryKey: ["library"] });
     void qc.invalidateQueries({ queryKey: ["conflicts"] });
+    // Autorenübergabe-Auftrag K3 (Ben, Nacharbeit 4): Eine Übergabe (`transfer`) ändert, bei WEM
+    // eine Rückgabe liegt. Die Liste der Aufgabenseite und die Zahl im Kopfband
+    // (`["me", "returned-tasks", …]`, api/hooks.ts) blieben sonst bis zum Ablauf der Frischefrist
+    // (30 s, main.tsx) beim alten Autor stehen. Der gemeinsame Präfix trifft beide zugleich.
+    void qc.invalidateQueries({ queryKey: ["me", "returned-tasks"] });
   };
   const fehlerToast = (e: unknown): void =>
     push("error", e instanceof ApiError ? e.message : t("state.error"));

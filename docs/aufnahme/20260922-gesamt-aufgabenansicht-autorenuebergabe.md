@@ -182,6 +182,40 @@ Gegenprobe über HTTP (`tests/aufgaben-ansicht/rueckgabe-zaehler-kopfband.test.t
 - Anna erhält genau a1/a2 und `open: 2`, Bert genau b1 und `open: 1`.
 - `GET /api/audit` bleibt für beide 403.
 
+## Nacharbeit 4 (Kandidat `c3e04138`): Auffrischung nach der Übergabe (K3/K4, Bens Befund)
+
+Bens Befund:
+
+- Nach einer erfolgreichen Autorenübergabe (`MehrAbschnitte.tsx`, `transfer`) wurden Liste und
+  Zahl der an mich zurückgegebenen Entwürfe (`["me", "returned-tasks", …]`) nicht entwertet.
+- Beide gelten im Produkt 30 s als frisch (`main.tsx`, `staleTime: ZAEHLER_FRISCHE_MS`).
+- Wer übergab und sofort zurückging, sah die alte eigene Rückgabe weiter.
+
+Behoben:
+
+- Der gemeinsame Erfolgshelfer `invalidate()` in `MehrAbschnitte.tsx` entwertet zusätzlich den
+  Präfix `["me", "returned-tasks"]`. Die aktive Zahl im Kopfband holt sofort neu, die beim Absprung
+  inaktive Liste beim Rückweg.
+- Dieselbe Lücke bestand beim Überarbeiten: `ko.revised` beendet eine Rückgabe. Deshalb entwertet
+  auch `invalidate()` in `BibliothekLesen.tsx` diesen Präfix.
+- Audit, Rollenrechte und die bisherigen Entwertungen sind unverändert.
+
+Gegenprobe (`tests/aufgaben-ansicht/uebergabe-frischt-rueckgaben-auf.test.tsx`):
+
+- Aufbau:
+  - ein QueryClient mit der produktiven Frist, über den ganzen Weg derselbe;
+  - echte Lese-Hooks und echte Flächen (Kopfbandzeile, Aufgabenseite, Detailseite).
+- Der Weg:
+  - echter Absprung über die Aufgabenzeile;
+  - tatsächliche Übergabe über „Mehr“ → „Provenienz“;
+  - sofortiger Rückweg.
+- Ergebnis R1: Die Rückgabe ist aus der Liste weg, die Zahl im Kopfband ist weg, der Filter
+  `?art=returned` steht noch in der Adresse.
+- Ergebnis R2: Scheitert die Übergabe, bleiben Rückgabe und Zahl stehen.
+- Der Test entwertet nichts selbst.
+- Für die Überarbeitung gibt es keine eigene Gegenprobe; dort ist die Änderung nur aus dem Quelltext
+  begründet.
+
 ## Unverändert (K3, K4)
 
 - `setAuthor`, `transferAuthor`, die Route `transfer-author` und das Audit `ko.author-transferred`
