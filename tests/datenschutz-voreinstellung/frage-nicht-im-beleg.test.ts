@@ -137,8 +137,10 @@ describe("R-0585 · Fragetext nur für Fragende und Zuständige, Prüfprotokoll 
       throw new Error("keine Wissenslücke angelegt");
     }
     const zugewiesen = { ...luecke, assignee: "bert" };
-    const sicht = (viewerId: string) =>
-      redactGapForViewer(zugewiesen, { viewerId, maySeeDetail: false });
+    // Kein Rollenrecht mehr im Kontext (R-0585): Prüfrollen ohne Zuständigkeit misst
+    // services/app/src/ask-routes.test.ts am echten /api/gaps, die Glocke
+    // tests/app/notifications-gap-redaction.test.ts.
+    const sicht = (viewerId: string) => redactGapForViewer(zugewiesen, { viewerId });
     expect(sicht("anna").question).toBe(FRAGE);
     expect(sicht("bert").question).toBe(FRAGE);
     expect(sicht("carla").question).toBe("");

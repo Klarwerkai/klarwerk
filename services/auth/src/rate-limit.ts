@@ -10,10 +10,12 @@
 // - Das Verhalten ist für bekannte UND unbekannte Login-IDs identisch (der Limiter kennt keine
 //   Nutzer) → keine User-Enumeration.
 // - Nach Ablauf des Fensters wird der Schlüssel wieder frei (TTL).
-// - R-0601 (DS19): der Schlüssel trägt die IP. Sie bleibt nur im Fenster im Speicher — abgelaufene
-//   Einträge werden bei jedem Zugriff verworfen, sobald seit dem letzten Aufräumen höchstens ein
+// - R-0601 (DS19): der Schlüssel trägt die IP. Sie bleibt nur im Fenster im Speicher. Zwei Wege
+//   räumen ab: (1) ein Zeitgeber, geplant auf den frühesten Ablauf eines gespeicherten Fensters —
+//   er wirkt OHNE jede weitere Anfrage; (2) bei Zugriffen, sobald seit dem letzten Aufräumen ein
 //   Fenster (gedeckelt auf eine Minute) vergangen ist. Vorher räumte erst die Speichergrenze ab
-//   10 000 Einträgen; bis dahin blieb jede IP für die Laufzeit des Prozesses liegen.
+//   10 000 Einträgen; bis dahin blieb jede IP für die Laufzeit des Prozesses liegen. Der Zeitgeber
+//   ist abgekoppelt (`unref`): er hält keinen Prozess am Leben.
 
 export interface RateLimitDecision {
   // true → aktuell gesperrt (Aufrufer soll 429 + Retry-After senden).
@@ -29,6 +31,16 @@ export interface LoginRateLimiterOptions {
   windowMs?: number;
   // Einspritzbare Uhr (Tests). Default: Date.now.
   now?: () => number;
+  // R-0601: einspritzbarer Zeitgeber für das Aufräumen ohne Folgezugriff (Tests). Default:
+  // `setTimeout`, abgekoppelt per `unref`.
+  planen?: (lauf: () => void, verzoegerungMs: number) => void;
+}
+
+// R-0601: der Standard-Zeitgeber. `unref`, damit ein geplanter Aufräumlauf weder einen Server beim
+// Herunterfahren noch einen Testprozess am Ende festhält.
+function planeAbgekoppelt(lauf: () => void, verzoegerungMs: number): void {
+  const zeitgeber = setTimeout(lauf, verzoegerungMs) as unknown as { unref?: () => void };
+  zeitgeber.unref?.();
 }
 
 interface WindowEntry {
@@ -52,11 +64,15 @@ export class LoginRateLimiter {
   private readonly entries = new Map<string, WindowEntry>();
   private readonly pruneIntervalMs: number;
   private lastPruneAt: number;
+  private readonly planen: (lauf: () => void, verzoegerungMs: number) => void;
+  // R-0601: höchstens EIN geplanter Aufräumlauf je Limiter; er plant sich nach Bedarf neu.
+  private ablaufGeplant = false;
 
   constructor(options: LoginRateLimiterOptions = {}) {
     this.maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
     this.windowMs = options.windowMs ?? DEFAULT_WINDOW_MS;
     this.now = options.now ?? (() => Date.now());
+    this.planen = options.planen ?? planeAbgekoppelt;
     this.pruneIntervalMs = Math.min(this.windowMs, PRUNE_INTERVAL_CAP_MS);
     this.lastPruneAt = this.now();
   }
@@ -108,11 +124,36 @@ export class LoginRateLimiter {
     } else {
       this.pruneDue(now);
     }
+    this.planeAblauf(now);
   }
 
   // Erfolgreicher Login (oder bewusster Reset): Fehlversuchszähler für den Schlüssel löschen.
   reset(key: string): void {
     this.entries.delete(key);
+  }
+
+  // R-0601: plant den Aufräumlauf auf den frühesten Ablauf eines gespeicherten Fensters. Läuft er,
+  // verwirft er das Abgelaufene und plant sich auf den nächsten Ablauf neu — bis nichts mehr liegt.
+  // Ein zu früher Lauf (Uhr und Zeitgeber laufen auseinander) löscht nichts im Fenster: er prüft
+  // dieselbe Bedingung wie jeder andere Aufräumweg.
+  private planeAblauf(now: number): void {
+    if (this.ablaufGeplant || this.entries.size === 0) {
+      return;
+    }
+    let fruehesterAblauf = Number.POSITIVE_INFINITY;
+    for (const entry of this.entries.values()) {
+      fruehesterAblauf = Math.min(fruehesterAblauf, entry.windowStartedAt + this.windowMs);
+    }
+    this.ablaufGeplant = true;
+    this.planen(
+      () => {
+        this.ablaufGeplant = false;
+        const jetzt = this.now();
+        this.pruneExpired(jetzt);
+        this.planeAblauf(jetzt);
+      },
+      Math.max(0, fruehesterAblauf - now),
+    );
   }
 
   // R-0601: räumt ab, wenn seit dem letzten Lauf das Aufräumintervall vergangen ist.
