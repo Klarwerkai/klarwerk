@@ -83,6 +83,10 @@ import { CAPTURE_FRONT_DOOR_ROUTE } from "./lib/captureFrontDoor";
 const Admin = lazy(() => import("./pages/Admin").then((m) => ({ default: m.Admin })));
 const Analytics = lazy(() => import("./pages/Analytics").then((m) => ({ default: m.Analytics })));
 const Ask = lazy(() => import("./pages/Ask").then((m) => ({ default: m.Ask })));
+// R-1646: die Ausgangsprüfung — nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
+const Ausgangspruefung = lazy(() =>
+  import("./pages/Ausgangspruefung").then((m) => ({ default: m.Ausgangspruefung })),
+);
 const Capture = lazy(() => import("./pages/Capture").then((m) => ({ default: m.Capture })));
 const CaptureFrontDoor = lazy(() =>
   import("./pages/CaptureFrontDoor").then((m) => ({ default: m.CaptureFrontDoor })),
@@ -332,6 +336,10 @@ export function AppRoutes(): JSX.Element {
             </ErrorBoundary>
           }
         />
+        {/* R-1646 · Ausgangsprüfung: der ausgehende Text vor der Freigabe. Ohne `Guarded`, wie
+            `/begriffe`: die Türen dahinter fordern `ko.validate` am Server
+            (`services/app/src/routes/ausgangspruefung-routes.ts`). */}
+        <Route path="/ausgangspruefung" element={<Ausgangspruefung />} />
         {/* Spaces (produkt:20261007:spaces): Arbeitsräume und ihre Inhalte. Ohne `Guarded`, wie
             `/begriffe`: die Türen dahinter fordern ihr Recht am Server (`ko.read`, `ko.validate`
             zum Anlegen, Zuständigkeit/Schreibrecht am Space, `services/app/src/routes/

@@ -125,6 +125,16 @@ export function PruefenKopf({
           })}
         </nav>
         {filter}
+        {/* R-1646: der Weg zur Ausgangsprüfung — derselbe Kreis (controller, admin) urteilt dort über
+            ausgehende KI-Aufrufe. Bewusst ein Link neben dem Segment, kein fünfter Reiter: die vier
+            Reiter zählen Bestand, die Ausgangsprüfung wartende Aufrufe. */}
+        <Link
+          to="/ausgangspruefung"
+          data-testid="pruefen-ausgang"
+          className="text-[13px] leading-tight text-muted hover:text-text"
+        >
+          {t("ausgangspruefung.seite.titel")}
+        </Link>
       </div>
     </div>
   );
