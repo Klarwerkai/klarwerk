@@ -129,6 +129,10 @@ const Lifecycle = lazy(() => import("./pages/Lifecycle").then((m) => ({ default:
 const MeineEntwuerfe = lazy(() =>
   import("./pages/MeineEntwuerfe").then((m) => ({ default: m.MeineEntwuerfe })),
 );
+// BILDSCHIRMABLÄUFE: nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
+const AblaufUebernahme = lazy(() =>
+  import("./pages/AblaufUebernahme").then((m) => ({ default: m.AblaufUebernahme })),
+);
 const Mobile = lazy(() => import("./pages/Mobile").then((m) => ({ default: m.Mobile })));
 const MyTasks = lazy(() => import("./pages/MyTasks").then((m) => ({ default: m.MyTasks })));
 const PlaceholderPage = lazy(() =>
@@ -170,6 +174,8 @@ const PAGES: Record<string, ComponentType> = {
   // JOB 3503: der eigene Ort der Entwürfe. Er liest denselben Bestand wie der Editor (`useDrafts`),
   // legt keinen zweiten an.
   entwuerfe: MeineEntwuerfe,
+  // BILDSCHIRMABLÄUFE: `/erfassen/ablauf` (bewachter Eintrag `ablauf` in `app/navigation.ts`).
+  ablauf: AblaufUebernahme,
   // JOB 4309: der Einstieg der Gesamtanweisung, jetzt über den REGULÄREN Weg. Der Schlüssel heisst
   // wie die `id` des Menüpunkts (`app/navigation.ts`) — `Guarded` schlägt hier genau darunter nach.
   // Ohne diesen Eintrag fiele die berechtigte Rolle auf `PlaceholderPage` statt auf die Fläche.

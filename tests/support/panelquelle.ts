@@ -146,8 +146,30 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * `fuegePanelZusammen` aus den vier Quelldateien (`f96a6710…`, Beleg
  * BAHN17-PANEL-BLOB-MESSUNG-20261006.json samt SHA-256 der vier Quellen) und unverändert
  * übernommen. Die Integration mit `main` danach hat keine der vier Panel-Dateien berührt.
+ *
+ * Aufnahme 20260922 · gesamt-bestandsblick (R-0427; Integration mit `main` d19886ff): dieselbe
+ * Regel. Auf den Stand oben kommt GENAU der Absatzwechselweg nach bewusstem Ja — Einstellungszeile
+ * `#einst-absatzblick` (in der Zeile hinter `#einst-mitlesen`, Markup unter 500 Zeilen), drei Texte
+ * DE/EN/NL in `KA3_TEXTE`, `ka3AbsatzPruefen()` in `ka3Planen`, Beschriftung in `ka3Neuzeichnen`,
+ * Block `ka3AbsatzPruefen`/Schalter und die Bindung an die gültige Aktivierung (`ka3AbsatzRunde`,
+ * `gilt()` in `ka3Ausfuehren`). Damit `taskpane.js` unter der Schranke B3 bleibt (zusammengeführt
+ * 12544 Zeilen), sind die Kommentarköpfe der Blöcke KA2-BESTAND und W6 verdichtet — nur Kommentar,
+ * kein Ausdruck geändert; die Datei hat 12492 Zeilen. GEMESSEN beim Auflösen: das genau nach
+ * `fuegePanelZusammen` zusammengesetzte Dokument hat den Blob `2d5d9c26…` (`git diff --no-index
+ * --full-index`); dasselbe Verfahren ergibt an den vier Dateien von `main` d19886ff wörtlich
+ * `33e52280…`. Frühere Messungen dieses Auftrags: `0f733b04…`, `eb344beb…`, `fd19fe43…`.
+ *
+ * INTEGRATION firmenwoerterbuch × gesamt-bestandsblick (Kandidat 1194ffaa, Nacharbeit 7): BEIDE
+ * Änderungen stehen jetzt in den Panel-Dateien — `#begriffe-block` und der Verweis auf
+ * `begriffe.js` (firmenwoerterbuch) UND `#einst-absatzblick` samt Absatzwechselweg in
+ * `taskpane.js` (gesamt-bestandsblick). `taskpane.html` hat 498 Zeilen, `taskpane.js` 12492.
+ * Keine der beiden Messungen (`f96a6710…` firmenwoerterbuch, `2d5d9c26…` gesamt-bestandsblick)
+ * beschreibt dieses zusammengefügte Dokument; beide galten nur für ihren Zweig. Der Wert unten ist
+ * der von `main` und damit ein PLATZHALTER bis zur Messung: ohne zugelassenes Hash-Werkzeug ist
+ * der neue Blob hier nicht berechenbar. E2 meldet ihn im Prüflauf als „Received"; er wird danach
+ * gemessen übernommen. E3 bleibt die Gegenprobe.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "f96a6710facce23542f46adf2a198f18db9df7e4";
+export const PANEL_VOR_SCHNITT_BLOB = "2d5d9c26bd4fbf4fa289f06314aac06856685c06";
 
 export interface PanelTeile {
   html: string;

@@ -7502,52 +7502,18 @@
     // ============================================================================================
     // JOB 1571 · D1 · KA2 — DER BESTANDSBLICK. „Gibt es dazu schon etwas?"
     // ============================================================================================
-    //
-    // DER VERTRAG, woertlich aus dem Auftrag (Chef, 21.08. 00:47):
-    //
-    //     window.klaraBestandsblick(grund)  ->  Promise<{treffer:[{id,title,status}]}>
-    //
-    // KA3 ist seit JOB 1151 gebaut und wartet auf GENAU diesen Namen und GENAU diese Form
-    // (`ka3Vertrag`, `ka3Normalisieren` — Zeilen unter `KW-KA3-KARTEN-START`). Bis heute erzeugte
-    // ihn niemand im Baum; KA3 lief deshalb fail-closed ins Leere. Dieser Block ist die fehlende
-    // Haelfte der Naht — nicht eine neue Faehigkeit, sondern der Anschluss zweier gebauter.
-    //
-    // WAS DIESER BLOCK TUT: er nimmt die KA1-Begriffe des offenen Dokuments, stellt damit EINE
-    // Frage ueber den BESTEHENDEN Weg `performAsk` -> `POST /api/ask` und reicht die aufgeloesten
-    // Quellen als Treffer weiter. Das ist woertlich die Abnahme aus `OFFEN.md` (KA2): „Die
-    // KA1-Begriffe fragen den validierten Bestand ueber die bestehende Frage-/Suchmechanik ab".
-    //
-    // WAS ER AUSDRUECKLICH NICHT TUT — und das ist die Zusage, nicht eine Nebenbemerkung:
-    //   · KEIN neues Abrufziel. Er ruft `performAsk` und `resolveAskSources`, die beiden bereits
-    //     vorhandenen Abrufstellen. Die Menge der `fetch(...)`-Ziele bleibt unveraendert
-    //     (`BEKANNTE_ABRUFZIELE` in `tests/app/mega69-klara-merkmale.test.ts`).
-    //   · KEINE zweite Suche, KEINE eigene Tokenisierung, KEINE Dublettenbewertung. Die
-    //     Dubletten-Kette (`services/app/src/routes/check-text-routes.ts`, JOB 989/686/631) wird
-    //     nicht angefasst — `OFFEN.md` sagt das bei KA2 zweimal.
-    //   · KEIN zweiter Office-Schnappschuss. Die Begriffe werden GELESEN, wo KA1 sie haelt
-    //     (`ka1Terms`), nicht ein zweites Mal aus dem Dokument geholt.
-    //   · KEINE eigene Anzeige. Die Trefferanzeige mit Status ist KA3s Karte; ein zweites
-    //     Anzeigefeld waere der zweite Weg neben einem bestehenden (`ENTSCHEIDUNGEN/JOB-646.md`).
-    //   · KEIN Timer, kein Takt, kein Autostart. WANN nachgesehen wird, entscheidet allein KA3.
-    //
-    // WARUM OHNE BINDUNGSKOEPFE — die eine Entwurfsentscheidung, die Begruendung braucht:
-    // `performAsk` schickt immer `mode: "retrieval-only"`. Das ist eine BITTE um die Enge, nicht
-    // ihre Garantie: liegt fuer diese Sitzung UND dieses Dokument eine KA4-Einwilligung vor, hebt
-    // der Server die Zwangsflags auf und antwortet ueber den vollen Weg — mit Modellaufruf
-    // (`services/app/src/routes/ask-routes.ts`, Zweig `request.body.mode === "retrieval-only"`).
-    // Der Server findet diese Einwilligung ausschliesslich ueber die drei Bindungs-Kopfzeilen.
-    // KA2 schickt sie deshalb NICHT: dieser Blick laeuft UNGEFRAGT und WIEDERHOLT (Oeffnen,
-    // Tastenruhe). Was der Anwender fuer seine eigene Frage erlaubt hat, hat er nicht fuer einen
-    // Hintergrundvorgang erlaubt, der die Begriffe seines ganzen Dokuments traegt. Ohne die
-    // Koepfe faellt die Route zwingend in `validatedOnly` + `retrievalOnly` — der
-    // deterministische Pfad `answerRetrievalOnly` (`services/reasoner/src/service.ts:1119`),
-    // kein Modell- und kein Embedder-Aufruf erreichbar. Damit ist „kein Modellaufruf" aus §4 des
-    // Auftrags nicht beabsichtigt, sondern strukturell erzwungen. Das ist STRENGER als der
-    // Bestandsweg, nie lockerer; weggenommen wird keine Zusicherung.
-    //
-    // `grund` wird entgegengenommen und bewusst NICHT ausgewertet: der Bestand haengt davon ab,
-    // WORUEBER geschrieben wird, nicht davon, WARUM gerade nachgesehen wird. Der Parameter steht
-    // im Vertrag und wird deshalb gefuehrt, statt eine Form zu liefern, die KA3 nicht erwartet.
+    // VERTRAG (Chef, 21.08.): `window.klaraBestandsblick(grund)` -> Promise<{treffer:[{id,title,
+    // status}]}> — genau die Form, auf die KA3 (`ka3Vertrag`, `ka3Normalisieren`) wartet. Der Block
+    // nimmt die KA1-Begriffe (`ka1Terms`, kein zweiter Office-Schnappschuss), fragt EINMAL ueber den
+    // bestehenden Weg `performAsk` -> `POST /api/ask` und reicht die ueber `resolveAskSources`
+    // aufgeloesten Quellen als Treffer weiter (Abnahme OFFEN.md KA2). Kein neues Abrufziel, keine
+    // zweite Suche, keine Dublettenbewertung, keine eigene Anzeige, kein Timer — WANN, sagt KA3.
+    // OHNE BINDUNGSKOEPFE, mit Absicht: `retrieval-only` ist nur eine Bitte; mit KA4-Einwilligung
+    // hebt der Server sie auf (ask-routes.ts). Dieser Blick laeuft ungefragt und wiederholt ueber die
+    // Begriffe des ganzen Dokuments — ohne die Koepfe faellt die Route zwingend in `validatedOnly` +
+    // `retrievalOnly` (`answerRetrievalOnly`), kein Modell- und kein Embedderaufruf erreichbar.
+    // Strenger als der Bestandsweg, nie lockerer. `grund` wird gefuehrt (Vertragsform), aber nicht
+    // ausgewertet: der Bestand haengt am Inhalt, nicht am Anlass.
     var KA2_MAX_BEGRIFFE = 12;
     var KA2_MAX_TREFFER = 5;
 
@@ -7690,18 +7656,21 @@
         // C3 (JOB 1963 D2): der Wortlaut steht im Register und ist deshalb NICHT frei gewaehlt.
         // Die Fuellstelle `{anweisung}` ist die validierte Anweisung, von der abgewichen wird.
         klaraOfferDeviation: "Deine Formulierung weicht ab von: {anweisung}",
+        einstAbsatzblick: "Beim Absatzwechsel nachsehen, ob es das schon gibt",
       },
       en: {
         klaraOfferLabel: "Klara's suggestions",
         klaraOfferLead: "There is already something on this:",
         klaraOfferOpen: "View",
         klaraOfferDeviation: "Your wording deviates from: {anweisung}",
+        einstAbsatzblick: "When I start a new paragraph, check whether this already exists",
       },
       nl: {
         klaraOfferLabel: "Klara's suggesties",
         klaraOfferLead: "Hierover is al iets:",
         klaraOfferOpen: "Bekijken",
         klaraOfferDeviation: "Je formulering wijkt af van: {anweisung}",
+        einstAbsatzblick: "Bij een nieuwe alinea kijken of dit al bestaat",
       },
     };
     for (var ka3Sprache in KA3_TEXTE) {
@@ -7727,33 +7696,15 @@
     // ============================================================================================
     // W6 (OFFEN.md) — DER WEG ZUR DUBLETTENPRUEFUNG. Aufruf, nicht Vertragsort.
     // ============================================================================================
-    //
-    // W6 lautet: „`POST /api/check-text` ist die Dublettenpruefung — und Klara benutzt sie
-    // nirgends." Gemessen auf diesem Stand: `check-text` hat in `apps/` NULL Treffer; niemand
-    // ruft sie. Das ist der ganze Befund, und diese Funktion ist sein fehlendes Glied.
-    //
-    // WARUM SIE NICHT DER BESTANDSBLICK IST — die Unterscheidung traegt den ganzen Auftrag:
-    // KA2 speist `window.klaraBestandsblick` aus `POST /api/ask` (retrieval-only) und
-    // `GET /api/kos/:id` — belegt in RUECKGABE-BASIC2-JOB-1571-D1, Bausteintabelle; die
-    // Dubletten-Kette bleibt dort ausdruecklich unberuehrt. „Gibt es dazu schon etwas?" und
-    // „ist dieser Text eine Dublette?" sind zwei verschiedene Fragen mit zwei Diensten.
-    // DESHALB SCHLIESST KA2 W6 NICHT — und deshalb steht diese Funktion hier.
-    //
-    // SIE BESETZT DEN VERTRAGSORT NICHT. Sie wird hier NICHT an `window.klaraBestandsblick`
-    // gehaengt: dieser Slot gehoert PRO3 (1571 D3), und zwei Anbieter an einem Slot waeren genau
-    // der zweite Weg, den `ENTSCHEIDUNGEN/JOB-646.md` verbietet. Sie liefert deshalb GENAU die
-    // Vertragsform `{treffer:[{id,title,status}]}`, damit der Vertragsort sie ohne Anpassung
-    // einsetzen oder mit dem Bestandsblick zusammenfuehren kann. Bis dahin ist sie inert.
-    //
-    // KEIN ZWEITER OFFICE-SCHNAPPSCHUSS: den Text reicht der Aufrufer herein (`leseText`) —
-    // dieselbe Zurueckhaltung, mit der KA2 `ka1Terms` benutzt statt selbst zu lesen. Auch `fetchFn`
-    // wird hereingereicht, genau wie bei `performAsk` (:999) — so ist der Weg ohne Netz und ohne
-    // Word-Host ausfuehrbar und damit pruefbar.
-    //
-    // FAIL-CLOSED IN JEDER RICHTUNG: zu kurzer Text, Fehlerantwort, kaputter Koerper, Ausnahme —
-    // immer `{treffer: []}`. Klara schweigt lieber, als etwas zu behaupten. Ein Eintrag ohne
-    // Kennung ist kein Treffer (dieselbe Regel wie `ka3Normalisieren`), und `status` bleibt
-    // `null`: die Dublettenpruefung fuehrt kein Statusfeld, und ein erfundenes waere eine Luege.
+    // W6: „`POST /api/check-text` ist die Dublettenpruefung — und Klara benutzt sie nirgends."
+    // Diese Funktion ist das fehlende Glied. Sie ist NICHT der Bestandsblick: KA2 fragt „gibt es
+    // dazu schon etwas?" ueber `/api/ask`, W6 „ist dieser Text eine Dublette?" — zwei Fragen, zwei
+    // Dienste. Sie besetzt den Vertragsort von KA2 nicht (ein Slot, ein Anbieter, JOB-646), liefert
+    // aber genau dessen Form `{treffer:[{id,title,status}]}`. Text (`leseText`) und `fetchFn` reicht
+    // der Aufrufer herein — kein zweiter Office-Schnappschuss, ohne Netz und Word-Host pruefbar.
+    // FAIL-CLOSED: zu kurzer Text, Fehlerantwort, kaputter Koerper, Ausnahme — immer `{treffer: []}`.
+    // Ein Eintrag ohne Kennung ist kein Treffer (wie `ka3Normalisieren`); `status` bleibt `null`,
+    // die Dublettenpruefung fuehrt kein Statusfeld.
     var W6_MINDESTZEICHEN = 40;   // check-text-routes.ts:20 — darunter antwortet die Route 400.
     var W6_HOECHSTZEICHEN = 8000; // check-text-routes.ts:21 — darueber ebenfalls.
 
@@ -8093,6 +8044,7 @@
 
     /** Sprachwechsel: derselbe gehaltene Stand, neuer Text. Nur wenn es die Karte schon gibt. */
     function ka3Neuzeichnen() {
+      ka3AbsatzBeschriften();
       if (document.getElementById("ka3-karten")) { ka3Zeichnen(); }
     }
 
@@ -8107,6 +8059,8 @@
       if (!vertrag) { return; }
       ka3Laeuft = true;
       var generation = ka3Generation;
+      var runde = grund === "absatzwechsel" ? ka3AbsatzRunde : null; // R-0427: am gueltigen Ja
+      var gilt = function () { return !ka3Beendet && (runde === null || (ka3AbsatzAn && runde === ka3AbsatzRunde)); };
       // Aufnahme 20260922 (Bens Befunde 1+2): der Bestandsblick fragt mit dem Begriffsbild des
       // AKTUELLEN Dokuments. Beim Oeffnen wird auf die laufende Startlesung gewartet (sonst fragt
       // KA2 mit leeren Begriffen und schweigt); nach der Schreibruhe liest KA1 das Dokument neu,
@@ -8119,16 +8073,16 @@
           return ka1Aktuell();
         })
         .then(function () {
-          if (ka3Beendet) { return { treffer: [] }; }
+          if (!gilt()) { return { treffer: [] }; }
           return vertrag(grund);
         })
         .then(function (ergebnis) {
-          if (ka3Beendet || generation !== ka3Generation) { return; }
+          if (!gilt() || generation !== ka3Generation) { return; }
           ka3Treffer = ka3Normalisieren(ergebnis);
           ka3Zeichnen();
         })
         .catch(function () {
-          if (ka3Beendet || generation !== ka3Generation) { return; }
+          if (!gilt() || generation !== ka3Generation) { return; }
           // Ein Fehler ist kein Bestand: die Karte geht: weder alt noch erfunden.
           ka3Treffer = [];
           ka3Zeichnen();
@@ -8147,7 +8101,48 @@
         if (generation !== ka3Generation) { return; }
         ka3Ausfuehren("tastenruhe");
       }, KA3_TASTENRUHE_MS);
+      ka3AbsatzPruefen();
     }
+
+    // R-0427 — BESTANDSBLICK BEIM ABSATZWECHSEL NUR NACH BEWUSSTEM JA (Schalter, nur dieses Fenster).
+    // Gelesen wird nur die Absatzzahl bis zur Markierung; jeder Klick beginnt eine neue `ka3AbsatzRunde`,
+    // ein laufender Abruf gilt nur in seiner Runde. Ohne WordApi 1.3 `expandTo` schweigt der Weg.
+    var ka3AbsatzAn = false, ka3AbsatzRunde = 0;
+    var ka3Absatz = null;
+    var ka3AbsatzSchalter = document.getElementById("einst-absatzblick");
+
+    function ka3AbsatzPruefen() {
+      if (!ka3AbsatzAn || ka3Beendet || !window.Word || typeof Word.run !== "function") { return; }
+      Promise.resolve().then(function () {
+        return Word.run(function (context) {
+          var dok = context.document;
+          var absaetze = dok.body.getRange("Start")
+            .expandTo(dok.getSelection().getRange("Start")).paragraphs;
+          absaetze.load("items/alignment");
+          return context.sync().then(function () {
+            var vorher = ka3Absatz;
+            ka3Absatz = absaetze.items.length;
+            if (ka3AbsatzAn && vorher !== null && vorher !== ka3Absatz) { ka3Ausfuehren("absatzwechsel"); }
+          });
+        });
+      }).catch(function () { ka3Absatz = null; });
+    }
+
+    function ka3AbsatzBeschriften() {
+      if (!ka3AbsatzSchalter) { return; }
+      document.getElementById("einst-absatzblick-text").textContent = t("einstAbsatzblick");
+      ka3AbsatzSchalter.setAttribute("aria-label", t("einstAbsatzblick"));
+    }
+    if (ka3AbsatzSchalter) {
+      ka3AbsatzSchalter.addEventListener("click", function () {
+        ka3AbsatzAn = !ka3AbsatzAn;
+        ka3Absatz = null; ka3AbsatzRunde += 1; // ein laufender Absatzwechselabruf verliert seine Geltung
+        ka3AbsatzSchalter.className = ka3AbsatzAn ? "schalter an" : "schalter";
+        ka3AbsatzSchalter.setAttribute("aria-checked", ka3AbsatzAn ? "true" : "false");
+        ka3AbsatzPruefen(); // merkt nur den Ausgangsabsatz; gefragt wird erst beim naechsten Wechsel
+      });
+    }
+    ka3AbsatzBeschriften();
 
     /** Nach `pagehide` laeuft nichts nach — kein Timer, keine spaete Antwort. */
     function ka3Stoppen() {
