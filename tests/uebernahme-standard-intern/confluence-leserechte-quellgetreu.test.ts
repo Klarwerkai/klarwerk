@@ -1267,7 +1267,70 @@ describe("R-0549 · Space-Leserecht über eine Zugangsklasse", () => {
     expect((await liest(k.app, k.otto.headers, r.koId!)).einzeln.statusCode).toBe(404);
   });
 
-  it("Z7 · über der Seitengrenze nicht ermittelt: nichts wird übernommen, der gespeicherte Leser bleibt", async () => {
+  // Nacharbeit 20 (Ben, K1; Beleg QUELLEN-HILFE-20261007-1d62cf71.json): Lea steht HINTER der
+  // früheren Grenze von 500 Prüfungen — davor der bisherige Leser Carl und 500 weitere zuordenbare
+  // Konten. Jedes Konto wird geprüft; ein Rechtewechsel bei unveränderter Seitenversion kommt an.
+  const grosseGruppe = (): unknown[] => [
+    { accountId: "acc-carl", email: "carl@example.com" },
+    ...Array.from({ length: 500 }, (_, i) => ({
+      accountId: `acc-m${i}`,
+      email: `m${i}@example.com`,
+    })),
+    { accountId: "acc-lea" },
+    { accountId: "acc-otto" },
+  ];
+  const mitGrosserGruppe = (berechtigt: string[]): FixtureRechte => ({
+    ...NICHTAUTOREN,
+    gruppen: { lizenziert: grosseGruppe() },
+    zugangsklasse: { klasse: "ALL_LICENSED_USERS", berechtigt },
+  });
+
+  it("Z7 · jenseits der früheren Grenze: alle Konten geprüft, Bereich und Einzelabruf gleich, der Rechtewechsel kommt am selben Objekt an", async () => {
+    const seite996 = offenMitFremdemAutor();
+    // Zuerst darf nur Carl lesen (erster Eintrag), danach nur Lea (Position 502).
+    const vorher = mitGrosserGruppe(["acc-carl"]);
+    const nachher = mitGrosserGruppe(["acc-lea"]);
+
+    const { adapter, aufrufe } = fixture([seite996], undefined, nachher);
+    const { items } = await adapter.collectAll();
+    const rechte = (items[0] as MitQuellrechten).quellrechte as
+      | { emails?: string[]; leserNichtErmittelt?: true }
+      | undefined;
+    expect(rechte?.emails).toEqual(["lea@example.com"]);
+    expect(rechte?.leserNichtErmittelt).toBeUndefined();
+    for (const konto of ["acc-lea", "acc-otto", "acc-carl"]) {
+      expect(
+        aufrufe.some((a) => a.pfad.endsWith("/996/permission/check") && a.konto === konto),
+        `Leseprüfung ${konto}`,
+      ).toBe(true);
+    }
+    expect(aufrufe.filter((a) => a.pfad.endsWith("/996/permission/check")).length).toBe(503);
+    const einzeln = await fixture([], [seite996], nachher).adapter.fetchItem("996");
+    expect((einzeln as MitQuellrechten | undefined)?.quellrechte?.emails).toEqual([
+      "lea@example.com",
+    ]);
+
+    // Der reguläre Weg: übernommen mit Carl, dann bei UNVERÄNDERTER Fassung Carl entzogen, Lea
+    // (hinter der früheren Grenze) berechtigt — nach dem Wiederabgleich liest dasselbe Objekt nur Lea.
+    const k = await appMitKonten();
+    await bereichsabgleich(k, [seite996], vorher);
+    const r = await k.services.library.reviewImportCandidate(
+      (await kandidatFuer(k, "996")).id,
+      "accept",
+      k.adminId,
+    );
+    expect((await k.services.ko.get(r.koId!))?.quellrechte?.leser).toEqual([k.carl.id]);
+    const wieder = await bereichsabgleich(k, [seite996], nachher);
+    expect(wieder.failed).toBe(0);
+    const objekt = await k.services.ko.get(r.koId!);
+    expect(objekt?.id).toBe(r.koId);
+    expect(objekt?.quellrechte?.leser).toEqual([k.lea.id]);
+    expect((await liest(k.app, k.lea.headers, r.koId!)).einzeln.statusCode).toBe(200);
+    expect((await liest(k.app, k.carl.headers, r.koId!)).einzeln.statusCode).toBe(404);
+    expect((await liest(k.app, k.otto.headers, r.koId!)).einzeln.statusCode).toBe(404);
+  });
+
+  it("Z8 · Abbruchschutz bleibt: ein nicht ermittelter Eintrag setzt keine Rechte, der gespeicherte Leser bleibt", async () => {
     const k = await appMitKonten();
     const seite996 = offenMitFremdemAutor();
     await bereichsabgleich(k, [seite996], NICHTAUTOREN);
@@ -1278,21 +1341,25 @@ describe("R-0549 · Space-Leserecht über eine Zugangsklasse", () => {
     );
     expect((await k.services.ko.get(r.koId!))?.quellrechte?.leser).toEqual([k.lea.id]);
 
-    // Dasselbe Verzeichnis, jetzt mit 501 weiteren zuordenbaren Konten vor Lea: die Seitengrenze
-    // (500 Prüfungen) endet, bevor alle Konten geprüft sind.
-    const viele = Array.from({ length: 501 }, (_, i) => ({
-      accountId: `acc-m${i}`,
-      email: `m${i}@example.com`,
-    }));
-    const zuViele: FixtureRechte = {
-      ...NICHTAUTOREN,
-      gruppen: { lizenziert: [...viele, { accountId: "acc-lea" }, { accountId: "acc-otto" }] },
+    // Derselbe Eintrag, als „Leser nicht ermittelt" gekennzeichnet und mit leerer Leserliste.
+    const echt = await fixture([seite996], undefined, NICHTAUTOREN).adapter.collectAll();
+    const roh = echt.items[0] as MitQuellrechten & Record<string, unknown>;
+    const markiert = {
+      ...roh,
+      quellrechte: { ...roh.quellrechte, emails: [], leserNichtErmittelt: true as const },
     };
-    const { items } = await fixture([seite996], undefined, zuViele).adapter.collectAll();
-    const markiert = (items[0] as { quellrechte?: { leserNichtErmittelt?: true } }).quellrechte;
-    expect(markiert?.leserNichtErmittelt).toBe(true);
-
-    const lauf = await bereichsabgleich(k, [seite996], zuViele);
+    const adapter = {
+      source: "Confluence",
+      sourceScope: "K",
+      collectAll: async () => ({ items: [markiert], failed: [], truncated: false }),
+    } as unknown as Parameters<typeof runConfluenceImport>[0]["adapter"];
+    const lauf = await runConfluenceImport({
+      adapter,
+      library: k.services.library,
+      koService: k.services.ko,
+      dryRun: false,
+      actor: k.adminId,
+    });
     expect(lauf.failed).toBe(1);
     expect(lauf.perPage.find((p) => p.ref === "996")).toMatchObject({ status: "failed" });
     expect((await k.services.ko.get(r.koId!))?.quellrechte?.leser).toEqual([k.lea.id]);

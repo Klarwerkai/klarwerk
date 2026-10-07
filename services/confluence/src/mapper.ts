@@ -229,8 +229,9 @@ export interface ConfluenceLeseEbene {
   unvollstaendig?: true;
   /**
    * Nacharbeit 19 (Ben, K1): die Leser dieser Ebene wurden NICHT ermittelt — die Prüfung je Konto
-   * endete an der Grenze, bevor alle bekannten Konten geprüft waren. Kein Ergebnis, das übernommen
-   * werden darf (sonst würde eine nicht geprüfte Seite als leere Leserliste gespeichert).
+   * ließ sich nicht abschließen (seit Nacharbeit 20 ohne Abbruchgrenze: etwa eine Seite ohne
+   * Kennung). Kein Ergebnis, das übernommen werden darf (sonst würde eine nicht geprüfte Seite als
+   * leere Leserliste gespeichert).
    */
   nichtErmittelt?: true;
 }
