@@ -32,6 +32,7 @@ import { AiModelInfo } from "./AiModelInfo";
 import { AiUnavailableHint } from "./AiUnavailableHint";
 // WP-UX-WOW-1 U1: Antwort-Markdown sicher rendern (React-Subset, kein HTML-Sink).
 import { AnswerMarkdown } from "./AnswerMarkdown";
+import { KlaraSpaceKontext } from "./KlaraSpaceKontext";
 
 // Stimmwahl und Textbereinigung fürs Vorlesen stehen seit FE-003 in `lib/vorlesen.ts` — das
 // Seitentutorial liest mit denselben Hilfen vor.
@@ -372,6 +373,9 @@ export function KlaraAssistant(): JSX.Element {
                 {speakButton("page", t(page.titleKey), t(page.bodyKey))}
               </div>
             ) : null}
+
+            {/* produkt:20261007:spaces — der tatsächliche Spacekontext dieses Orts (vom Server). */}
+            <KlaraSpaceKontext pfad={location.pathname} />
 
             {/* Aktives Element — data-help-Anker der Seite. */}
             <div>
