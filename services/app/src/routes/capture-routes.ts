@@ -9,7 +9,11 @@ import JSZip from "jszip";
 // (`docx.ts:1-4`), und `mammoth` löst NUR von dort aus auf (`apps/web/package.json:23`; im
 // Wurzelpaket fehlt es — gemessen in JOB 2613 D3). Eine Kopie hier wäre ein zweiter
 // Extraktionsweg und damit genau der Ablösefall, den Weg B vermeidet.
-import { extractDocxRich, isDocxDocumentLike } from "../../../../apps/web/src/lib/docx";
+import {
+  MAX_INLINE_BODY_HTML_BYTES,
+  extractDocxRich,
+  isDocxDocumentLike,
+} from "../../../../apps/web/src/lib/docx";
 // JOB 3956 (Q9): der Meldungskatalog und die EINE Lesestelle des Sprachkopfes — derselbe Zugang,
 // den `services/app/src/http.ts:2` und `services/rbac/src/guard.ts:2` schon nehmen. Kein zweiter
 // Katalog und keine eigene Sprachermittlung in diesem Modul.
@@ -282,6 +286,80 @@ function docxDraftTooLargeErrorHandler(
     draftCreated: false,
     imageTransfer: "not_completed",
   });
+}
+
+// ================================================================================================
+// AUFNAHME gesamt-bildbudget (R-0013, R-0025, R-0412, M5c-b-R2) — DIE OBERGRENZE DES ENTWURFS, DEN
+// DER ADD-IN-WEG SPEICHERT.
+// ================================================================================================
+//
+// JOB 3400 verkleinert jedes Bild EINZELN. Eine Grenze für das GANZE Dokument gab es danach weiter
+// nicht: ein Word-Dokument mit vielen Fotos — oder mit einem Bild, das die Ableitung im Original
+// lässt (`eingabe-zu-gross`, bis 32 MiB) — legte einen Entwurf an, der größer ist als das, was
+// Speichern (`PUT /api/drafts/:id`) und Einreichen (`POST /api/drafts/:id/promote`) annehmen
+// (DRAFTS_BODY_LIMIT, 5 MiB). Anlegen ging, Einreichen scheiterte mit 413 — genau R-0025.
+//
+// KEINE DRITTE ZAHL: es gelten die Grenzen, die die anderen Importwege schon haben.
+//   · Umfang: `MAX_INLINE_BODY_HTML_BYTES` (3,5 MB, docx.ts) — Browser-Import und Panel
+//     (`WORD_ADDIN_BODY_BUDGET_BYTES`) halten `bodyHtml` unter derselben Kante, abgeleitet vom
+//     5-MiB-Deckel mit Rand für Titel, Aussage und JSON-Escaping.
+//   · Anzahl: 60 Bilder je Word-Dokument — dieselbe Zahl wie `WORD_ADDIN_MAX_BILDER` im Panel.
+//
+// GEMESSEN WIRD NACH DER VERKLEINERUNG, an dem `bodyHtml`, das gespeichert würde. Greift eine
+// Grenze, entsteht KEIN Entwurf und es wird KEIN Bild weggelassen; die Antwort nennt die Grenze und
+// beide Zahlen. Das ist der Unterschied zur „Notbremse" `imageBudgetBytes`, die überzählige Bilder
+// still weglässt (BEN 3229 R2: „das Bild ist restlos weg").
+export const DOCX_BILDER_MAX_ANZAHL = 60;
+export const DOCX_ENTWURF_MAX_BYTES = MAX_INLINE_BODY_HTML_BYTES;
+export const DOCX_BILDGRENZE = "DOCX_BILDGRENZE";
+
+/** Welche der beiden Grenzen griff — die Anzahl wird zuerst geprüft. */
+export type DocxGrenzart = "anzahl" | "umfang";
+
+export interface DocxBildgrenzeGerissen {
+  error: typeof DOCX_BILDGRENZE;
+  grenze: DocxGrenzart;
+  message: string;
+  draftCreated: false;
+  imageTransfer: "not_completed";
+  imagesTotal: number;
+  maxImages: number;
+  bodyBytes: number;
+  maxBodyBytes: number;
+}
+
+// Wie `docxZuGrossMessage`: der Satz nennt die Grenze, die WIRKLICH galt, und was jetzt zu tun ist.
+function docxBildgrenzeMessage(grenze: DocxGrenzart, bilder: number, bytes: number): string {
+  return grenze === "anzahl"
+    ? `Das Dokument enthaelt ${bilder} Bilder; uebernommen werden hoechstens ${DOCX_BILDER_MAX_ANZAHL} Bilder je Word-Dokument. Es wurde kein Entwurf angelegt und kein Bild weggelassen. Bitte mit weniger Bildern oder in Teilen erneut senden.`
+    : `Das Dokument ist auch nach dem Verkleinern der Bilder zu gross fuer einen Entwurf (${alsMib(bytes)}, erlaubt sind ${alsMib(DOCX_ENTWURF_MAX_BYTES)}). Es wurde kein Entwurf angelegt und kein Bild weggelassen. Bitte mit weniger oder kleineren Bildern oder in Teilen erneut senden.`;
+}
+
+/** `null` = beide Grenzen gehalten; sonst die Antwort, mit der die Route ablehnt. */
+export function pruefeDocxBildgrenzen(
+  bilder: number,
+  bodyHtml: string,
+): DocxBildgrenzeGerissen | null {
+  const bytes = Buffer.byteLength(bodyHtml, "utf8");
+  let grenze: DocxGrenzart;
+  if (bilder > DOCX_BILDER_MAX_ANZAHL) {
+    grenze = "anzahl";
+  } else if (bytes > DOCX_ENTWURF_MAX_BYTES) {
+    grenze = "umfang";
+  } else {
+    return null;
+  }
+  return {
+    error: DOCX_BILDGRENZE,
+    grenze,
+    message: docxBildgrenzeMessage(grenze, bilder, bytes),
+    draftCreated: false,
+    imageTransfer: "not_completed",
+    imagesTotal: bilder,
+    maxImages: DOCX_BILDER_MAX_ANZAHL,
+    bodyBytes: bytes,
+    maxBodyBytes: DOCX_ENTWURF_MAX_BYTES,
+  };
 }
 
 /**
@@ -1360,6 +1438,18 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // Wer hier das falsche Feld nimmt, meldet dem Nutzer einen Bildverlust, den es nicht
           // gibt — oder verschweigt einen echten. Der Test W1 pinnt genau diese Wahl.
           const quellbilder = reich.imageTransfer.totalImages;
+          // AUFNAHME gesamt-bildbudget: die Obergrenze des Dokuments (s. `pruefeDocxBildgrenzen`)
+          // VOR `createDraft` — ein Entwurf, der beim Einreichen an 413 scheitern würde, entsteht
+          // gar nicht erst, und der Aufrufer erfährt, welche Grenze griff.
+          const gerissen = pruefeDocxBildgrenzen(quellbilder, bodyHtml);
+          if (gerissen) {
+            request.log.warn(
+              { grenze: gerissen.grenze, bilder: quellbilder, bytes: gerissen.bodyBytes },
+              "docx-bildgrenze-gerissen",
+            );
+            reply.code(413).send(gerissen);
+            return;
+          }
           // `exactOptionalPropertyTypes`: ein Feld fehlt entweder ganz oder trägt einen Wert —
           // ein ausdrückliches `undefined` ist hier ein Typfehler.
           const titelVorschlag = title ?? name?.replace(/\.docx$/i, "");

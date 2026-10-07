@@ -2747,6 +2747,13 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Prüflauf zu Kandidat f4db2037 GEMESSEN („Received", HISTORIE/nacharbeit-10/PRUEFUNG/
     // auslieferungswaechter-fenster.log) und unverändert übernommen; die vier Panel-Dateien sind seit
     // dieser Messung unberührt (`git diff f4db2037 -- apps/web/public/word-addin/` leer).
+    // AUFNAHME 20260922 · GESAMT-BILDBUDGET (R-0021, R-0412): in `taskpane.js` ist allein der Wert von
+    // `sendTooLarge` je Sprache (de/en/nl) umformuliert — weiter EIN Satz, jetzt mit dem Hinweis, wann
+    // erneut zu senden ist, und der benannten Grenze (höchstens 60 Bilder, dieselbe Zahl wie
+    // `WORD_ADDIN_MAX_BILDER` und die Serverkante `DOCX_BILDER_MAX_ANZAHL`). Kein neuer Schlüssel,
+    // keine neue Zeile, kein neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder Manifeständerung,
+    // kein Sideload. DER PIN MUSS WANDERN; ohne zugelassenes Hash-Werkzeug ist er hier nicht
+    // berechenbar — der Prüflauf meldet den Ist-Wert als „Received", er wird danach gemessen übernommen.
     const PIN = "eefba3bdd389a30d41f4fbe37ad5bcdc336667559554212971ecbe7dff5f37d3";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
