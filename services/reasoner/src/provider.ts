@@ -1465,8 +1465,8 @@ export function queryTokens(text: string): string[] {
 //   · Stoppwörter und Kurzwörter — die Zerlegung entfernt sie ohnehin;
 //   · die mehrdeutigen Funktionsformen aus mega57 („würd", „woll" …), solange sie nicht als
 //     Nominalisierung im Satz stehen — dieselbe Regel wie für die Substanz;
-//   · das FRAGEGERÜST (`FRAGEGERUEST` unten): Verben, mit denen man nach einer Sache FRAGT, ohne sie
-//     zu benennen („Wo FINDE ich …", „Was GILT für …", „Wo STEHT …"). Ohne diese Ausnahme wäre
+//   · das FRAGEGERÜST (`FRAGEGERUEST` unten): Verben und Frageergänzungen, mit denen man nach einer
+//     Sache FRAGT, ohne sie zu benennen („Wo FINDE ich …", „Was GILT für …", „Wie HOCH ist …"). Ohne diese Ausnahme wäre
 //     „Wo finde ich die Urlaubsregelungen im Handbuch?" gegen „Die Urlaubszeiten stehen im Handbuch."
 //     eine Wissenslücke (N2 Z1) — die Quelle sagt nicht „finden".
 //
@@ -1506,6 +1506,15 @@ const FRAGEGERUEST: readonly string[] = [
   // „Was sagt der Betrieb zum Ventil?" (mega59-komposita)
   "sagt",
   "sagen",
+  // „Wozu dient der Schnellstartknopf NOTSTART-4?" — die Quelle sagt, WIE er angefahren wird, nicht
+  // „dient" (F-0688 M3b, R-0278 W0; seit R-0473 Wissenslücke trotz passender Quelle).
+  "dient",
+  "dienen",
+  // „Wie hoch ist das Nachspannmoment an der Presse?" — die Quelle nennt den Wert (G27).
+  "hoch",
+  // „How many days does the customer have to report a defect?" — die Quelle nennt die Zahl
+  // (JOB 3298 V1/R1–R3).
+  "many",
 ];
 
 let fragegeruestCache: ReadonlySet<string> | undefined;

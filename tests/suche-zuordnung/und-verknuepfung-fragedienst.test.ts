@@ -85,6 +85,21 @@ describe("R-0473 · welche Fragebegriffe gebunden sind", () => {
     );
   });
 
+  it("R-0278-Nacharbeit: „dient“, „hoch“, „many“ sind Fragegerüst — die Sachbegriffe bleiben gebunden", () => {
+    const faelle: Array<[string, string, string[]]> = [
+      ["Wozu dient der Schnellstartknopf NOTSTART-4?", "dient", ["Schnellstartknopf"]],
+      ["Wie hoch ist das Nachspannmoment an der Presse?", "hoch", ["Nachspannmoment", "Presse"]],
+      ["How many days does the customer have to report a defect?", "many", ["customer", "defect"]],
+    ];
+    for (const [frage, geruest, sache] of faelle) {
+      const gebunden = undVerknuepfteFragebegriffe(frage);
+      expect(gebunden, frage).not.toContain(queryTokens(geruest)[0]);
+      for (const wort of sache) {
+        expect(gebunden, frage).toContain(queryTokens(wort)[0]);
+      }
+    }
+  });
+
   it("eine deklarierte Entsprechung zählt als derselbe Begriff — sonst nicht", () => {
     const frage = "Wo finde ich die Urlaubsregelungen im Handbuch?";
     const text = "Abwesenheiten Die Urlaubszeiten stehen im Handbuch.";
@@ -121,6 +136,17 @@ describe("R-0473 · UND im regulären Fragedienst", () => {
     const out = await ask.ask("Ventil F3 Temperatur", "nutzer-1", "de", { retrievalOnly: true });
     expect(out.result.answered).toBe(false);
     expect(out.result.sources).not.toContain(teil);
+  });
+
+  it("R-0278-Nacharbeit, NEGATIV: „Wie hoch …“ öffnet die Bindung nicht — „Temperatur“ fehlt weiter", async () => {
+    const { ko, ask } = await stapel();
+    const teil = (await ko.create({ ...VORLAGE, ...TEIL })).id;
+    const frage = "Wie hoch ist die Temperatur am Ventil F3?";
+    for (const opts of [{ retrievalOnly: true }, {}]) {
+      const out = await ask.ask(frage, "nutzer-1", "de", opts);
+      expect(out.result.answered, JSON.stringify(opts)).toBe(false);
+      expect(out.result.sources, JSON.stringify(opts)).not.toContain(teil);
+    }
   });
 
   // Nacharbeit 3 (ben, K8): klein geschrieben und mit dem fehlenden Begriff am Satzanfang, jeweils
