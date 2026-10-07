@@ -1,0 +1,80 @@
+// ================================================================================================
+// BAUSTEINKATALOG `/ui-kit` · DIE TEXTE DER GRUNDWERTE (R-0919 / R-0996 / R-0918 / R-0896).
+// ================================================================================================
+//
+// Der Katalog (`pages/UiKit.tsx`, FE-FND-07) zeigte bis hierher nur die Vertrauensbausteine. Er
+// zeigt jetzt auch die Grundwerte, an denen sich alle Flächen ausrichten: Farbbedeutung, Schrift-
+// skala, Radien und die neutrale Rückfrage vor einer gefährlichen Aktion. Jede Zeile nennt ihre
+// Regel in einem Satz — es ist die Vorführ- und Vergleichsfläche, keine Arbeitsfläche.
+import type { Textmodul } from "./intern/pruefung";
+
+export default {
+  praefix: "bausteine.",
+  legacySchluessel: [],
+  de: {
+    "bausteine.farben.titel": "Farben und ihre Bedeutung",
+    "bausteine.farben.marke": "Orange — nur Marke und Auswahl",
+    "bausteine.farben.pos": "Grün — nur Reife/Status: validiert",
+    "bausteine.farben.warn": "Gelb — nur Reife/Status: in Prüfung",
+    "bausteine.farben.crit": "Rot — nur Reife/Status: Konflikt",
+    "bausteine.farben.ki": "Violett — nur KI-Inhalte",
+    "bausteine.farben.ink": "Stahl — Text und Kontrastflächen",
+    "bausteine.schrift.titel": "Schriftskala",
+    "bausteine.schrift.untergrenze": "Untergrenze für Lesetext: {{px}} px",
+    "bausteine.schrift.klein": "kleinste Lesegröße",
+    "bausteine.schrift.micro": "Mono-Kicker und Abschnittsbeschriftung",
+    "bausteine.schrift.zaehler": "nur Zahl-Plakette im Kopfband",
+    "bausteine.schrift.fussnote": "nur hochgestellte Quellenmarke",
+    "bausteine.schrift.zielbild": "Größen der freigegebenen Zielbilder",
+    "bausteine.radien.titel": "Radien",
+    "bausteine.rueckfrage.titel": "Rückfrage vor einer gefährlichen Aktion",
+    "bausteine.rueckfrage.frage": "Diesen Eintrag endgültig löschen?",
+    "bausteine.rueckfrage.regel": "Neutrale Fläche — Rot nur am gefährlichen Knopf.",
+    "bausteine.rueckfrage.behalten": "Behalten",
+    "bausteine.rueckfrage.loeschen": "Endgültig löschen",
+  },
+  en: {
+    "bausteine.farben.titel": "Colours and their meaning",
+    "bausteine.farben.marke": "Orange — brand and selection only",
+    "bausteine.farben.pos": "Green — maturity/status only: validated",
+    "bausteine.farben.warn": "Yellow — maturity/status only: under review",
+    "bausteine.farben.crit": "Red — maturity/status only: conflict",
+    "bausteine.farben.ki": "Violet — AI content only",
+    "bausteine.farben.ink": "Steel — text and contrast areas",
+    "bausteine.schrift.titel": "Type scale",
+    "bausteine.schrift.untergrenze": "Minimum for reading text: {{px}} px",
+    "bausteine.schrift.klein": "smallest reading size",
+    "bausteine.schrift.micro": "mono kicker and section label",
+    "bausteine.schrift.zaehler": "count badge in the header band only",
+    "bausteine.schrift.fussnote": "superscript source mark only",
+    "bausteine.schrift.zielbild": "Sizes of the approved target designs",
+    "bausteine.radien.titel": "Radii",
+    "bausteine.rueckfrage.titel": "Confirmation before a dangerous action",
+    "bausteine.rueckfrage.frage": "Delete this entry permanently?",
+    "bausteine.rueckfrage.regel": "Neutral surface — red only on the dangerous button.",
+    "bausteine.rueckfrage.behalten": "Keep",
+    "bausteine.rueckfrage.loeschen": "Delete permanently",
+  },
+  nl: {
+    "bausteine.farben.titel": "Kleuren en hun betekenis",
+    "bausteine.farben.marke": "Oranje — alleen merk en selectie",
+    "bausteine.farben.pos": "Groen — alleen rijpheid/status: gevalideerd",
+    "bausteine.farben.warn": "Geel — alleen rijpheid/status: in beoordeling",
+    "bausteine.farben.crit": "Rood — alleen rijpheid/status: conflict",
+    "bausteine.farben.ki": "Violet — alleen AI-inhoud",
+    "bausteine.farben.ink": "Staal — tekst en contrastvlakken",
+    "bausteine.schrift.titel": "Lettergrootteschaal",
+    "bausteine.schrift.untergrenze": "Ondergrens voor leestekst: {{px}} px",
+    "bausteine.schrift.klein": "kleinste leesgrootte",
+    "bausteine.schrift.micro": "mono-kicker en sectielabel",
+    "bausteine.schrift.zaehler": "alleen telbadge in de kopbalk",
+    "bausteine.schrift.fussnote": "alleen superscript bronmarkering",
+    "bausteine.schrift.zielbild": "Groottes van de goedgekeurde doelontwerpen",
+    "bausteine.radien.titel": "Radii",
+    "bausteine.rueckfrage.titel": "Bevestiging vóór een gevaarlijke actie",
+    "bausteine.rueckfrage.frage": "Dit item definitief verwijderen?",
+    "bausteine.rueckfrage.regel": "Neutraal vlak — rood alleen op de gevaarlijke knop.",
+    "bausteine.rueckfrage.behalten": "Behouden",
+    "bausteine.rueckfrage.loeschen": "Definitief verwijderen",
+  },
+} satisfies Textmodul;

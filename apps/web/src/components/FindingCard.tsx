@@ -54,14 +54,14 @@ export function FindingCard({
         <span className="inline-flex flex-wrap items-center gap-1.5">
           {/* WAS — ehrlich benannt. */}
           <span
-            className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${
+            className={`rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${
               critical ? "bg-trust-crit-bg text-trust-crit-text" : "bg-ai/10 text-ai"
             }`}
           >
             {t(view.kindLabelKey)}
           </span>
           {/* Erkennungsweg — „mit KI" nur bei echtem Modell-Fund mit Konfidenz. */}
-          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted-2">
+          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2">
             {t(view.wayLabelKey)}
           </span>
         </span>
@@ -104,11 +104,11 @@ export function FindingGroupHeader({
   const { t } = useTranslation();
   return (
     <div className="mb-2 flex flex-wrap items-center gap-2">
-      <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-2">
+      <span className="font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
         {t("finding.groupKicker")}
       </span>
       <FindingSideLink ko={ko} />
-      <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10.5px] font-semibold text-muted">
+      <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold text-muted">
         {t("finding.groupCount", { n: count })}
       </span>
     </div>

@@ -1008,7 +1008,7 @@ export function Mobile(): JSX.Element {
                           data-testid="mob-stand-offline"
                           className="rounded-input border border-hairline bg-surface p-2"
                         >
-                          <div className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                          <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
                             {t("mob.stand.offlineFassung")}
                           </div>
                           <div className="break-words text-[12px] text-text">
@@ -1022,7 +1022,7 @@ export function Mobile(): JSX.Element {
                           data-testid="mob-stand-server"
                           className="rounded-input border border-hairline bg-surface p-2"
                         >
-                          <div className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                          <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
                             {t("mob.stand.serverFassung")}
                           </div>
                           <div className="break-words text-[12px] text-text">
@@ -1062,7 +1062,7 @@ export function Mobile(): JSX.Element {
                 data-testid="mob-stand-meine-fassung"
                 className="mt-3 rounded-card border border-dashed border-hairline p-2.5"
               >
-                <div className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
                   {t("mob.stand.meineFassung")}
                 </div>
                 <div className="break-words text-[12px] text-text">{beiseite.titel}</div>
@@ -1130,7 +1130,7 @@ export function Mobile(): JSX.Element {
                       <div className="mb-1.5 flex items-center justify-between">
                         <span
                           data-testid="mob-queue-zaehler"
-                          className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2"
+                          className="font-mono text-klein uppercase tracking-wider text-muted-2"
                         >
                           {t("mob.queue")} · {vorgaengeAmGeraet}
                         </span>
@@ -1151,7 +1151,7 @@ export function Mobile(): JSX.Element {
                           Lage, in der es ihn gibt. */}
                       <span
                         data-testid="mob-queue-zaehler"
-                        className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2"
+                        className="font-mono text-klein uppercase tracking-wider text-muted-2"
                       >
                         {t("mob.queue")} · {queue.pending}
                       </span>
@@ -1205,7 +1205,7 @@ export function Mobile(): JSX.Element {
                               {op.title}
                             </span>
                             <span
-                              className={`rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${QUEUE_TONE[op.status]}`}
+                              className={`rounded-pill px-1.5 py-0.5 font-mono text-klein font-semibold uppercase ${QUEUE_TONE[op.status]}`}
                             >
                               {t(`mob.status.${op.status}`)}
                             </span>
@@ -1290,7 +1290,7 @@ export function Mobile(): JSX.Element {
             ) : null}
 
             <div className="mt-4">
-              <div className="mb-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+              <div className="mb-1.5 font-mono text-klein uppercase tracking-wider text-muted-2">
                 {t("mob.drafts")}
               </div>
               {/* D-036: „keine Entwürfe" ist eine AUSSAGE ÜBER DEN BESTAND — sie darf erst
@@ -1447,7 +1447,7 @@ export function Mobile(): JSX.Element {
                             {/* AUFTRAG-mega33 A2: die EFFEKTIVE Evidenz — dieselbe Einstufung wie
                                 auf dem Desktop, nicht mehr die rohe Klasse. */}
                             <span
-                              className={`rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${EVIDENCE_TONE[s.evidence.tone]}`}
+                              className={`rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${EVIDENCE_TONE[s.evidence.tone]}`}
                             >
                               {t("ask.evidence")}: {t(s.evidence.labelKey)}
                             </span>
@@ -1496,7 +1496,7 @@ export function Mobile(): JSX.Element {
                           />
                           {s.sources.length > 0 ? (
                             <div className="mt-2 flex flex-wrap items-center gap-2">
-                              <span className="font-mono text-[10px] uppercase text-muted-2">
+                              <span className="font-mono text-klein uppercase text-muted-2">
                                 {t("ask.sources")}
                               </span>
                               {/* WP-SHIP9-S2 Paket 4 (W4): KO-Titel statt roher UUID (Titel aus dem
@@ -1618,7 +1618,7 @@ export function Mobile(): JSX.Element {
                                 <StatusPill status={trefferStatus(k).status} />
                               </span>
                               <KnowledgeTypeTag type={k.type} />
-                              <span className="ml-auto font-mono text-[10px] text-muted-2">
+                              <span className="ml-auto font-mono text-klein text-muted-2">
                                 T{k.trust}
                               </span>
                             </div>

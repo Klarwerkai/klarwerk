@@ -276,9 +276,7 @@ export function KnowledgeNeighborhood({
                       >
                         {n.title}
                       </button>
-                      <span className="font-mono text-[10.5px] text-muted-2">
-                        {n.via.join(" · ")}
-                      </span>
+                      <span className="font-mono text-klein text-muted-2">{n.via.join(" · ")}</span>
                       <Link
                         to={koDetailPath(n.id)}
                         className="ml-auto shrink-0 text-[11.5px] font-semibold text-ai hover:underline"

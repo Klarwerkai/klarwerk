@@ -78,13 +78,13 @@ export function GroupApprovalPanel({
           {t(IMPORT_GROUPS_TEXT.selectedCount, { x: counts.selected, y: counts.total })}
         </span>
         {demo ? (
-          <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+          <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text">
             {reasonKey
               ? t(IMPORT_GROUPS_TEXT.noAiReason, { reason: t(reasonKey) })
               : t(IMPORT_GROUPS_TEXT.noAi)}
           </span>
         ) : (
-          <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
+          <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-klein font-semibold uppercase text-ai">
             {t(IMPORT_GROUPS_TEXT.aiGrouped)}
           </span>
         )}
@@ -161,14 +161,14 @@ export function GroupApprovalPanel({
                           zur Prüfung vorgemerkt", bewusst in anderer Farbe und anderem Text als
                           der neutrale „bereits importiert"-Hinweis (ehrliche Trennung). */}
                       {candidate.alreadyQueued === true ? (
-                        <span className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+                        <span className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text">
                           {t(IMPORT_GROUPS_TEXT.hintQueued)}
                         </span>
                       ) : null}
                       {/* WP-IC-6b: nüchternes Badge — Quelle wurde seit dem Import aktualisiert;
                           der Kandidat ist als Aktualisierung wählbar (neue KO-Version im Review). */}
                       {candidate.sourceNewer ? (
-                        <span className="shrink-0 rounded-pill bg-ai-surface-1 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
+                        <span className="shrink-0 rounded-pill bg-ai-surface-1 px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-ai">
                           {t(IMPORT_GROUPS_TEXT.hintSourceNewer)}
                         </span>
                       ) : null}
@@ -177,7 +177,7 @@ export function GroupApprovalPanel({
                         return key ? (
                           <span
                             key={hint}
-                            className="shrink-0 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2"
+                            className="shrink-0 rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2"
                           >
                             {t(key)}
                           </span>

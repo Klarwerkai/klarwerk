@@ -73,7 +73,7 @@ export function BodyTemplateChooser({
 
           {/* Vorschau: nur sicheres, sanitisiertes Template-HTML. */}
           <div className="mt-1.5">
-            <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+            <p className="font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
               {t("editor.template.preview")}
             </p>
             <SanitizedHtml

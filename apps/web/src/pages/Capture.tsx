@@ -4937,7 +4937,7 @@ export function CaptureArbeitsraum({
   // SCRUM-308 (KnowledgeDetail): neutral, kein Statussignal, dieselbe Optik wie am Wissensobjekt.
   const beispielMarkierung = (): JSX.Element | null =>
     exampleInForm ? (
-      <span className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2">
+      <span className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2">
         {t("demo.badge.label")}
       </span>
     ) : null;
@@ -5396,7 +5396,7 @@ export function CaptureArbeitsraum({
                 {t("capture.savedTitle")}
               </div>
               {/* SCRUM-286: ehrlicher Status — gespeichert, aber noch offen/nicht validiert. */}
-              <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+              <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text">
                 {t(captureSavedStatus().badgeKey)}
               </span>
             </div>
@@ -5684,7 +5684,7 @@ export function CaptureArbeitsraum({
             {/* SCRUM-369 / AG-12/13: geführter Arbeitsauftrag — Frage → Erfahrung → KI strukturiert → Prüfung.
               Progressive Disclosure, gleiche Schrittfolge wie in der Ask-Lücke (eine Quelle). */}
             <div className="mt-2 border-t border-hairline pt-2">
-              <div className="mb-1 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+              <div className="mb-1 font-mono text-klein uppercase tracking-wider text-muted-2">
                 {t("capture.gapStepsTitle")}
               </div>
               <ol className="space-y-1">
@@ -5895,7 +5895,7 @@ export function CaptureArbeitsraum({
                         {t("capture.ivTurn", { n: ivAnswers.length + 1 })}
                       </span>
                       {ivResult ? (
-                        <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
+                        <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-klein font-semibold uppercase text-ai">
                           {t(interviewSourceKey(ivResult))}
                         </span>
                       ) : null}
@@ -6334,7 +6334,7 @@ export function CaptureArbeitsraum({
                                   {p.summary}
                                 </span>
                                 <span className="mt-1.5 block rounded-input bg-page px-2.5 py-1.5 text-[11.5px] leading-relaxed text-muted-2">
-                                  <span className="font-mono text-[9.5px] font-semibold uppercase tracking-wider">
+                                  <span className="font-mono text-klein font-semibold uppercase tracking-wider">
                                     {t(CAPTURE_FILE_TEXT.excerptLabel)}
                                     {fileName ? ` · ${fileName}` : ""}
                                   </span>
@@ -6446,7 +6446,7 @@ export function CaptureArbeitsraum({
                     <span className="flex flex-wrap items-center gap-1.5 text-[12.5px] font-semibold text-text">
                       {t(ADVANCED_FIELDS_KEYS.title)}
                       {advancedSummary.filledCount > 0 ? (
-                        <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted-2">
+                        <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2">
                           {t(ADVANCED_FIELDS_KEYS.filled, { count: advancedSummary.filledCount })}
                         </span>
                       ) : null}
@@ -6540,7 +6540,7 @@ export function CaptureArbeitsraum({
 
                   {/* SCRUM-395: Prüfer direkt beim Einreichen vorschlagen (optional). */}
                   <div className="rounded-card border border-dashed border-hairline p-3">
-                    <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                    <div className="mb-2 flex items-center gap-1.5 font-mono text-klein uppercase tracking-wider text-muted-2">
                       {t("capture.reviewers.title")}
                     </div>
                     {reviewerChoices.length === 0 ? (
@@ -6587,7 +6587,7 @@ export function CaptureArbeitsraum({
 
                   {/* Dokumente */}
                   <div className="rounded-card border border-dashed border-hairline p-3">
-                    <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                    <div className="mb-2 flex items-center gap-1.5 font-mono text-klein uppercase tracking-wider text-muted-2">
                       <FileText size={13} />
                       {t("capture.documents")}
                     </div>
@@ -6621,7 +6621,7 @@ export function CaptureArbeitsraum({
                                 type="button"
                                 disabled={videoBusy !== null}
                                 onClick={() => void onTranscribe(d)}
-                                className="rounded-btn border border-hairline px-1.5 py-0.5 text-[10.5px] font-semibold text-muted hover:text-text disabled:opacity-50"
+                                className="rounded-btn border border-hairline px-1.5 py-0.5 text-klein font-semibold text-muted hover:text-text disabled:opacity-50"
                               >
                                 {videoBusy === d.id
                                   ? t("capture.videoBusy")
@@ -6644,7 +6644,7 @@ export function CaptureArbeitsraum({
 
                   {/* Bilder */}
                   <div className="rounded-card border border-dashed border-hairline p-3">
-                    <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                    <div className="mb-2 flex items-center gap-1.5 font-mono text-klein uppercase tracking-wider text-muted-2">
                       <Paperclip size={13} />
                       {t("capture.images")}
                     </div>
@@ -6685,7 +6685,7 @@ export function CaptureArbeitsraum({
                               type="button"
                               disabled={ocrBusy === img.id}
                               onClick={() => void onOcr(img)}
-                              className="absolute inset-x-1 bottom-1 truncate rounded-btn bg-ink/70 px-1 py-0.5 text-center text-[9.5px] font-semibold text-white opacity-0 group-hover:opacity-100 disabled:opacity-100"
+                              className="absolute inset-x-1 bottom-1 truncate rounded-btn bg-ink/70 px-1 py-0.5 text-center text-klein font-semibold text-white opacity-0 group-hover:opacity-100 disabled:opacity-100"
                             >
                               {ocrBusy === img.id ? t("capture.ocrRunningShort") : t("capture.ocr")}
                             </button>
@@ -6701,7 +6701,7 @@ export function CaptureArbeitsraum({
                     angehängt wird beim Einreichen. Stufe 2, nie peer-validiert, nichts automatisch. */}
                   {canSources ? (
                     <div className="rounded-card border border-dashed border-hairline p-3">
-                      <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                      <div className="mb-2 flex items-center gap-1.5 font-mono text-klein uppercase tracking-wider text-muted-2">
                         <Globe size={13} />
                         {t("capture.sourcesTitle")}
                       </div>
@@ -6721,11 +6721,11 @@ export function CaptureArbeitsraum({
                                     <span className="text-[13px] font-medium text-text">
                                       {s.label}
                                     </span>
-                                    <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+                                    <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text">
                                       {t("ko.sourceUnvalidated")}
                                     </span>
                                     {s.provider ? (
-                                      <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
+                                      <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted">
                                         {s.provider}
                                       </span>
                                     ) : null}
@@ -6890,7 +6890,7 @@ export function CaptureArbeitsraum({
                                         <span className="text-[13px] font-medium text-text">
                                           {r.title}
                                         </span>
-                                        <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted">
+                                        <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted">
                                           {r.provider}
                                         </span>
                                       </div>
@@ -6901,7 +6901,7 @@ export function CaptureArbeitsraum({
                                       ) : null}
                                       <ExternalUrlText
                                         url={r.url}
-                                        className="block truncate font-mono text-[10.5px] text-ai hover:underline"
+                                        className="block truncate font-mono text-klein text-ai hover:underline"
                                       />
                                     </div>
                                     <Button
@@ -7116,7 +7116,7 @@ export function CaptureArbeitsraum({
                           className="inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
                         >
                           <Sparkles size={14} /> {t("studio.fromDraft.cta")}
-                          <span className="rounded-pill bg-white/20 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase">
+                          <span className="rounded-pill bg-white/20 px-1.5 py-0.5 font-mono text-klein font-semibold uppercase">
                             {t(CAPTURE_FLOW_TEXT.studioRecommended)}
                           </span>
                         </button>
@@ -7234,7 +7234,7 @@ export function CaptureArbeitsraum({
                           {readiness.checks.map((c) => (
                             <li key={c.key} className="flex items-center gap-2 text-[12.5px]">
                               <span
-                                className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-[10px] font-bold ${
+                                className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-klein font-bold ${
                                   c.ok
                                     ? "bg-trust-pos-bg text-trust-pos-text"
                                     : c.required
@@ -7248,7 +7248,7 @@ export function CaptureArbeitsraum({
                                 {t(`capture.ready.${c.key}`)}
                                 {c.key === "attachments" ? ` (${images.length})` : ""}
                               </span>
-                              <span className="font-mono text-[10.5px] uppercase text-muted-2">
+                              <span className="font-mono text-klein uppercase text-muted-2">
                                 {c.ok
                                   ? t("capture.readyDone")
                                   : c.required
@@ -7347,7 +7347,7 @@ export function CaptureArbeitsraum({
                 wird einzeln geprüft/eingereicht, Überspringen ist bewusst möglich. */}
               {fileQueue ? (
                 <div className="flex flex-wrap items-center gap-2 rounded-card border border-dashed border-ai-dashed bg-ai-surface-2 px-3 py-2">
-                  <span className="font-mono text-[10.5px] font-semibold uppercase tracking-wider text-ai">
+                  <span className="font-mono text-klein font-semibold uppercase tracking-wider text-ai">
                     {t(CAPTURE_FILE_TEXT.queueBadge, {
                       current: queueProgress(fileQueue).current,
                       total: queueProgress(fileQueue).total,
@@ -7373,7 +7373,7 @@ export function CaptureArbeitsraum({
                   ← {t(CAPTURE_WIZARD_TEXT.back)}
                 </button>
                 <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1 rounded-pill border border-dashed border-ai-dashed bg-ai-surface-2 px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
+                  <span className="inline-flex items-center gap-1 rounded-pill border border-dashed border-ai-dashed bg-ai-surface-2 px-2 py-0.5 font-mono text-klein font-semibold uppercase tracking-wider text-ai">
                     <span aria-hidden>✦</span>
                     {t("reasoner.draftLabel")}
                   </span>
@@ -7499,7 +7499,7 @@ export function CaptureArbeitsraum({
                     >
                       <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-text">
                         {t(CAPTURE_WIZARD_TEXT.structData)}
-                        <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold text-muted-2">
+                        <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold text-muted-2">
                           {draft.conditions.length + draft.measures.length}
                         </span>
                       </span>
@@ -7577,7 +7577,7 @@ export function CaptureArbeitsraum({
                       {readiness.checks.map((c) => (
                         <li key={c.key} className="flex items-center gap-2 text-[12.5px]">
                           <span
-                            className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-[10px] font-bold ${
+                            className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-klein font-bold ${
                               c.ok
                                 ? "bg-trust-pos-bg text-trust-pos-text"
                                 : c.required
@@ -7591,7 +7591,7 @@ export function CaptureArbeitsraum({
                             {t(`capture.ready.${c.key}`)}
                             {c.key === "attachments" ? ` (${images.length})` : ""}
                           </span>
-                          <span className="font-mono text-[10.5px] uppercase text-muted-2">
+                          <span className="font-mono text-klein uppercase text-muted-2">
                             {c.ok
                               ? t("capture.readyDone")
                               : c.required

@@ -123,7 +123,7 @@ function DetailWert({ zeile }: { zeile: DetailZeile }): JSX.Element {
         <span className="italic text-muted-2">{t(zeile.hinweisKey)}</span>
       )}
       {kennungInSpalte && zeile.id !== undefined ? (
-        <span className="truncate font-mono text-[10.5px] text-muted-2">{zeile.id}</span>
+        <span className="truncate font-mono text-klein text-muted-2">{zeile.id}</span>
       ) : null}
     </span>
   );
@@ -308,7 +308,7 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
             return (
               <>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-pos-text">
+                  <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase text-trust-pos-text">
                     {t("adm.sich.auditCount", { count: entries.length })}
                   </span>
                   {/* SCRUM-439: Knopf print-versteckt, Ergebnis bleibt sichtbar. */}

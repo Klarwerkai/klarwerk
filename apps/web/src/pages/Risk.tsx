@@ -137,7 +137,7 @@ export function Risk(): JSX.Element {
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           {cockpitTiles.map((tile) => (
             <Card key={tile.key} className="p-3">
-              <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+              <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
                 {tile.label}
               </div>
               <div
@@ -202,7 +202,7 @@ export function Risk(): JSX.Element {
                           {r.category}
                         </span>
                         <span
-                          className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${RISK_TONE[r.level]}`}
+                          className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${RISK_TONE[r.level]}`}
                         >
                           {t(`risk.level.${r.level}`)}
                         </span>
@@ -400,7 +400,7 @@ export function Risk(): JSX.Element {
                     className="flex items-center gap-3 px-4 py-2.5 aria-[current=true]:ring-2 aria-[current=true]:ring-inset aria-[current=true]:ring-brand"
                   >
                     <span
-                      className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${PRIORITY_TONE[priorityTone(g.priority)]}`}
+                      className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${PRIORITY_TONE[priorityTone(g.priority)]}`}
                     >
                       {t(`risk.priority.${g.priority}`)}
                     </span>
@@ -419,7 +419,7 @@ export function Risk(): JSX.Element {
                         {(() => {
                           const sprache = gapLocaleTag(g.locale, i18n.language);
                           return sprache ? (
-                            <span className="shrink-0 rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                            <span className="shrink-0 rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-klein uppercase tracking-wider text-muted-2">
                               {sprache}
                             </span>
                           ) : null;
@@ -429,7 +429,7 @@ export function Risk(): JSX.Element {
                       {g.status === "offen" ? (
                         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted">
                           {/* SCRUM-298: Knowledge-OS-Phase — offene Lücke ist „Erfassen"-Arbeit (gleiche Kreis-Sprache wie Start/MyTasks). */}
-                          <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-muted-2">
+                          <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein uppercase tracking-wider text-muted-2">
                             {t("task.phaseLabel")} {t(phaseLabelKey(gapPhase(g)))}
                           </span>
                           <span>
@@ -441,7 +441,7 @@ export function Risk(): JSX.Element {
                         </div>
                       ) : null}
                     </div>
-                    <span className="shrink-0 font-mono text-[10.5px] uppercase text-muted-2">
+                    <span className="shrink-0 font-mono text-klein uppercase text-muted-2">
                       {g.assignee ? `→ ${nameOf(g.assignee)}` : t(`risk.gapStatus.${g.status}`)}
                     </span>
                     {g.status === "offen" ? (

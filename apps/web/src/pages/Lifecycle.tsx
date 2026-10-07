@@ -165,7 +165,7 @@ export function Lifecycle(): JSX.Element {
                       {stepDone ? (
                         <Check size={12} aria-hidden="true" />
                       ) : (
-                        <span className="text-[10px]">{i + 1}</span>
+                        <span className="text-klein">{i + 1}</span>
                       )}
                     </button>
                     <span className={stepDone ? "text-muted line-through" : "text-text"}>

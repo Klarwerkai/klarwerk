@@ -107,7 +107,7 @@ export function ExternalKnowledge(): JSX.Element {
                 <li key={r.url} className="rounded-input border border-hairline p-3">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[14px] font-medium text-text">{r.title}</span>
-                    <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted">
+                    <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted">
                       {r.provider}
                     </span>
                   </div>
@@ -117,7 +117,7 @@ export function ExternalKnowledge(): JSX.Element {
                   <ExternalUrlText
                     url={r.url}
                     leading={<ExternalLink size={11} />}
-                    className="mt-1.5 inline-flex items-center gap-1 truncate font-mono text-[10.5px] text-ai hover:underline"
+                    className="mt-1.5 inline-flex items-center gap-1 truncate font-mono text-klein text-ai hover:underline"
                   />
                 </li>
               ))}

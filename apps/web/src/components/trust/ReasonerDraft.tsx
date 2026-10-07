@@ -7,7 +7,7 @@ export function ReasonerDraft({ children }: { children: ReactNode }): JSX.Elemen
   const { t } = useTranslation();
   return (
     <div className="rounded-card border border-dashed border-ai-dashed bg-ai-surface-2 p-4">
-      <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] font-semibold uppercase tracking-wider text-ai">
+      <div className="mb-2 flex items-center gap-1.5 font-mono text-klein font-semibold uppercase tracking-wider text-ai">
         <span aria-hidden>✦</span>
         {t("reasoner.draftLabel")}
       </div>

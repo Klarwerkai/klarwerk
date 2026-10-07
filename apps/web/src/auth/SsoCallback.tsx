@@ -48,7 +48,7 @@ export function SsoCallback(): JSX.Element {
           </span>
           <span className="leading-tight">
             <span className="block text-[15px] font-bold tracking-[2px]">KLARWERK</span>
-            <span className="block font-mono text-[10px] uppercase tracking-[1.5px] text-white/50">
+            <span className="block font-mono text-klein uppercase tracking-[1.5px] text-white/50">
               Reasoning System
             </span>
           </span>

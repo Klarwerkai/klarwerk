@@ -299,7 +299,7 @@ function MehrFlaechenInfo({
           <span
             data-testid="ask-reasoner-mode"
             title={t("ask.reasoner.hint")}
-            className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${REASONER_TONE[badge.tone]}`}
+            className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${REASONER_TONE[badge.tone]}`}
           >
             {t(badge.labelKey)}
           </span>
@@ -357,7 +357,7 @@ function MehrFlaechenInfo({
                 {() => (
                   <>
                     <span
-                      className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
+                      className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
                     >
                       {t(item.labelKey)}
                     </span>
@@ -401,7 +401,7 @@ function MehrLueckenInfo({
     <div data-testid="ask-mehr-luecke" className="mt-4 border-t border-hairline pt-3">
       {/* SCRUM-366 / AG-P2-2 / AG-P2-3 / PI-K2: Antwortvertrag — quellengebunden, ehrlich
           (gesichert vs. ungeprüft vs. Wissenslücke), kein generischer Chatbot. */}
-      <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+      <span className="font-mono text-klein uppercase tracking-wider text-muted-2">
         {t("ask.contract.label")}
       </span>
       <p
@@ -414,21 +414,21 @@ function MehrLueckenInfo({
       <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{t(contract.bodyKey)}</p>
       {sourceSummary && sourceSummary.total > 0 ? (
         <div className="mt-2 flex flex-wrap gap-1.5">
-          <span className="rounded-pill bg-surface px-2 py-0.5 font-mono text-[10px] font-semibold text-text">
+          <span className="rounded-pill bg-surface px-2 py-0.5 font-mono text-klein font-semibold text-text">
             {t("ask.contract.sumTotal", { count: sourceSummary.total })}
           </span>
           {sourceSummary.validated > 0 ? (
-            <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-pos-text">
+            <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-klein font-semibold text-trust-pos-text">
               {t("ask.contract.sumValidated", { count: sourceSummary.validated })}
             </span>
           ) : null}
           {sourceSummary.open > 0 ? (
-            <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text">
+            <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold text-trust-warn-text">
               {t("ask.contract.sumOpen", { count: sourceSummary.open })}
             </span>
           ) : null}
           {sourceSummary.conflictLimited > 0 ? (
-            <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-crit-text">
+            <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-klein font-semibold text-trust-crit-text">
               {t("ask.contract.sumConflict", { count: sourceSummary.conflictLimited })}
             </span>
           ) : null}
@@ -452,7 +452,7 @@ function MehrLueckenInfo({
           {t(GAP_RESCUE_TEXT.noInvent)}
         </p>
         <div className="mt-2 border-t border-hairline pt-2">
-          <div className="mb-1 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+          <div className="mb-1 font-mono text-klein uppercase tracking-wider text-muted-2">
             {t(GAP_RESCUE_TEXT.stepsTitle)}
           </div>
           <ol className="space-y-1">
@@ -1543,8 +1543,8 @@ export function Ask(): JSX.Element {
             SOFORT-Zusage; die KOSTEN-Hälfte steht daneben als zentraler, BEDINGTER AiCostHint —
             derselbe Schlüssel, dieselbe Ableitung (billable je Aufgabe) wie überall sonst. Läuft
             „answer" lokal/deterministisch oder fehlt die Auskunft noch, schweigt der Kostensatz. */}
-          <span className="text-[10.5px] text-muted-2">{t("ask.examplesSendHint")}</span>
-          <AiCostHint billable={answerBillable} className="text-[10.5px]" />
+          <span className="text-klein text-muted-2">{t("ask.examplesSendHint")}</span>
+          <AiCostHint billable={answerBillable} className="text-klein" />
           {exampleChips.map((chip) => {
             const question =
               chip.kind === "ko" ? t("ask.koQuestion", { title: chip.title }) : t(chip.questionKey);
@@ -1570,12 +1570,12 @@ export function Ask(): JSX.Element {
                 <span className="min-w-0 max-w-[16rem] truncate">{question}</span>
                 {expect ? (
                   <span
-                    className={`shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${EXPECT_TONE[expect.tone]}`}
+                    className={`shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-klein font-semibold uppercase ${EXPECT_TONE[expect.tone]}`}
                   >
                     {t(expect.labelKey)}
                   </span>
                 ) : (
-                  <span className="shrink-0 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted-2">
+                  <span className="shrink-0 rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2">
                     {t("ask.expect.neutral")}
                   </span>
                 )}
@@ -1977,7 +1977,7 @@ export function Ask(): JSX.Element {
                           data-testid="ask-contract-line"
                           className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1"
                         >
-                          <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                          <span className="font-mono text-klein uppercase tracking-wider text-muted-2">
                             {t("ask.contract.label")}
                           </span>
                           <span
@@ -1991,23 +1991,23 @@ export function Ask(): JSX.Element {
                           </span>
                           {sourceSummary && sourceSummary.total > 0 ? (
                             <>
-                              <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold text-text">
+                              <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold text-text">
                                 {t("ask.contract.sumTotal", { count: sourceSummary.total })}
                               </span>
                               {sourceSummary.validated > 0 ? (
-                                <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-pos-text">
+                                <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-klein font-semibold text-trust-pos-text">
                                   {t("ask.contract.sumValidated", {
                                     count: sourceSummary.validated,
                                   })}
                                 </span>
                               ) : null}
                               {sourceSummary.open > 0 ? (
-                                <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text">
+                                <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold text-trust-warn-text">
                                   {t("ask.contract.sumOpen", { count: sourceSummary.open })}
                                 </span>
                               ) : null}
                               {sourceSummary.conflictLimited > 0 ? (
-                                <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-crit-text">
+                                <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-klein font-semibold text-trust-crit-text">
                                   {t("ask.contract.sumConflict", {
                                     count: sourceSummary.conflictLimited,
                                   })}
@@ -2036,7 +2036,7 @@ export function Ask(): JSX.Element {
                       Deshalb kann hier kein „Gesichert" mehr stehen, während oben ein
                       Prüfvorbehalt sitzt (bens ROT 3). */}
                             <span
-                              className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${EVIDENCE_TONE[effective?.status.tone ?? "warn"]}`}
+                              className={`rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${EVIDENCE_TONE[effective?.status.tone ?? "warn"]}`}
                             >
                               {t(`ask.status.${effective?.status.key ?? "unverified"}`)}
                             </span>
@@ -2061,7 +2061,7 @@ export function Ask(): JSX.Element {
                             ) ? null : (
                               <span
                                 data-testid="ask-evidenz-plakette"
-                                className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${EVIDENCE_TONE[effective?.evidence.tone ?? "neutral"]}`}
+                                className={`rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${EVIDENCE_TONE[effective?.evidence.tone ?? "neutral"]}`}
                               >
                                 {t("ask.evidence")}:{" "}
                                 {t(effective?.evidence.labelKey ?? "ask.knowledgeClass.unbekannt")}
@@ -2089,7 +2089,7 @@ export function Ask(): JSX.Element {
                           {!zuordnungTragfaehig ? (
                             <span
                               data-testid="ask-trust-unattributed"
-                              className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-muted-2"
+                              className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2"
                             >
                               {t("ask.trust.unattributed")}
                             </span>
@@ -2106,7 +2106,7 @@ export function Ask(): JSX.Element {
                       `showLabel` bleibt unangetastet: das QUALITAETSWORT („Gesichert" ab 85) darf
                       weiterhin nur stehen, wenn die Einstufung es traegt (mega33 A4/mega35 E). */
                             <span className="flex items-center gap-1.5">
-                              <span className="font-mono text-[10.5px] font-semibold uppercase text-muted-2">
+                              <span className="font-mono text-klein font-semibold uppercase text-muted-2">
                                 {t("val.trust")}
                               </span>
                               <ConfidenceBar
@@ -2339,7 +2339,7 @@ export function Ask(): JSX.Element {
                                 role="note"
                                 title={t("ask.verschlossen.freigabeHint")}
                                 aria-label={t("ask.verschlossen.freigabeHint")}
-                                className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
+                                className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold text-trust-warn-text"
                               >
                                 {t("ask.verschlossen.freigabe")}
                               </span>
@@ -2349,7 +2349,7 @@ export function Ask(): JSX.Element {
                                 role="note"
                                 title={t("ask.verschlossen.stufeHint")}
                                 aria-label={t("ask.verschlossen.stufeHint")}
-                                className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
+                                className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold text-trust-warn-text"
                               >
                                 {t("ask.verschlossen.stufe")}
                               </span>
@@ -2359,7 +2359,7 @@ export function Ask(): JSX.Element {
                                 role="note"
                                 title={t("ask.verschlossen.volltextHint")}
                                 aria-label={t("ask.verschlossen.volltextHint")}
-                                className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
+                                className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold text-trust-warn-text"
                               >
                                 {t("ask.verschlossen.volltext")}
                               </span>
@@ -2404,7 +2404,7 @@ export function Ask(): JSX.Element {
                     ) : null}
                   </>
                 ) : null}
-                <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
+                <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text">
                   {t("ask.gapBadge")}
                 </span>
                 <p className="mt-2 text-[15px] font-semibold text-text">{t("ask.noBasisTitle")}</p>

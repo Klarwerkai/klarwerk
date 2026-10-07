@@ -381,7 +381,7 @@ export function Kopfband({
               <span>{t("fe002.seiteFinden")}</span>
               {/* Kein neuer Textschlüssel: das Kürzel ist ein Zeichen, keine Übersetzung — genauso
                 steht es in der Zahnrad-Zeile (`ZahnradMenue.tsx`, `wert="⌘K"`). */}
-              <span className="rounded-[5px] bg-hairline/15 px-1.5 py-px font-mono text-[10.5px] text-hairline">
+              <span className="rounded-[5px] bg-hairline/15 px-1.5 py-px font-mono text-klein text-hairline">
                 ⌘K
               </span>
             </button>

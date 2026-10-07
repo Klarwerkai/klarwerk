@@ -995,19 +995,19 @@ export function ImportSelect({
         {displayImportText(entry.title, entry.textCodec)}
       </span>
       {entry.alreadyImported ? (
-        <span className="shrink-0 rounded-pill bg-trust-pos-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-pos-text">
+        <span className="shrink-0 rounded-pill bg-trust-pos-bg px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-trust-pos-text">
           {t("imp.preview.imported")}
         </span>
       ) : null}
       {/* WP-SHIP9-S1b: eigener Zustand in EIGENER Farbe — offener Kandidat ist
           „bereits zur Prüfung vorgemerkt", nicht „bereits importiert". */}
       {entry.alreadyQueued ? (
-        <span className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+        <span className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text">
           {t("imp.preview.queued")}
         </span>
       ) : null}
       {entry.sourceNewer ? (
-        <span className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+        <span className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text">
           {t("imp.preview.sourceNewer")}
         </span>
       ) : null}
@@ -1377,7 +1377,7 @@ export function ImportSelect({
                 {/* B4: MASSENAKTIONEN — sie ändern die Auswahl, nicht die Sicht, und haben deshalb
                     ihre eigene Zeile. D2 „Alle wählen/abwählen" · RT5b „alle <Sprache> abwählen". */}
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11.5px] text-muted">
-                  <span className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+                  <span className="font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
                     {t("imp.select.bulkLabel")}
                   </span>
                   <button

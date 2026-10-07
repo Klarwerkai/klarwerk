@@ -151,7 +151,7 @@ function KopfbandPunkt({
         item,
         badges,
         online,
-        "kw-kopfband-zaehler rounded-[999px] bg-hairline px-1.5 py-px text-[10.5px] font-bold leading-normal text-ink",
+        "kw-kopfband-zaehler rounded-[999px] bg-hairline px-1.5 py-px text-zaehler font-bold leading-normal text-ink",
       )}
     </GuardedLink>
   );
@@ -260,7 +260,7 @@ export function KopfbandPunkteListe(): JSX.Element {
             item,
             badges,
             online,
-            "rounded-full bg-hairline px-1.5 py-px text-[10.5px] font-bold text-ink",
+            "rounded-full bg-hairline px-1.5 py-px text-zaehler font-bold text-ink",
           )}
         >
           {t(anzeigeNameKey(item))}
@@ -301,8 +301,8 @@ export function WeitereBereicheZeilen(): JSX.Element {
                 badges,
                 online,
                 item.badgeTone === "crit"
-                  ? "rounded-full bg-trust-crit-bg px-1.5 py-px text-[10.5px] font-bold text-trust-crit-text"
-                  : "rounded-full bg-hairline px-1.5 py-px text-[10.5px] font-bold text-ink",
+                  ? "rounded-full bg-trust-crit-bg px-1.5 py-px text-zaehler font-bold text-trust-crit-text"
+                  : "rounded-full bg-hairline px-1.5 py-px text-zaehler font-bold text-ink",
               )}
             >
               {t(anzeigeNameKey(item))}

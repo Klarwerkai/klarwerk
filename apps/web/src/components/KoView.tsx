@@ -13,7 +13,7 @@ export function KoView({ ko }: { ko: KnowledgeObject }): JSX.Element {
       <p className="text-[12.5px] leading-relaxed text-muted">{ko.statement}</p>
       {ko.conditions.length > 0 ? (
         <div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+          <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
             {t("con.conditions")}
           </div>
           <ul className="list-disc pl-4 text-[12px] text-text">
@@ -25,7 +25,7 @@ export function KoView({ ko }: { ko: KnowledgeObject }): JSX.Element {
       ) : null}
       {ko.measures.length > 0 ? (
         <div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+          <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
             {t("con.measures")}
           </div>
           <ul className="list-disc pl-4 text-[12px] text-text">
@@ -37,7 +37,7 @@ export function KoView({ ko }: { ko: KnowledgeObject }): JSX.Element {
       ) : null}
       {(ko.sources ?? []).length > 0 ? (
         <div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+          <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
             {t("con.sources")}
           </div>
           <ul className="space-y-1">
@@ -57,7 +57,7 @@ export function KoView({ ko }: { ko: KnowledgeObject }): JSX.Element {
                     Als TEXT und nicht als `title` oder Farbe: Ein Hinweis, den ein Screenreader
                     nicht vorliest, ist keiner. */}
                 {s.peerValidated ? null : (
-                  <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-trust-warn-text">
+                  <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text">
                     {t("ko.sourceExternUnchecked")}
                   </span>
                 )}

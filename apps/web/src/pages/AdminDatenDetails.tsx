@@ -597,7 +597,7 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
             data-testid="demo-einmalkennwoerter"
             className="mt-2 rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-3 text-trust-warn-text"
           >
-            <div className="font-mono text-[10px] uppercase tracking-wider">
+            <div className="font-mono text-klein uppercase tracking-wider">
               {t("adm.seedCredsTitle")}
             </div>
             <p className="mt-0.5 text-[12.5px] leading-relaxed">{t("adm.seedCredsHint")}</p>
@@ -612,7 +612,7 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
         ) : null}
         {demoSeed.isSuccess && !demoSeed.data?.skipped ? (
           <div className="mt-2 rounded-card border border-hairline bg-surface p-3">
-            <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+            <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
               {t("pilot.next.title")}
             </div>
             <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">

@@ -89,7 +89,7 @@ export function WissensPriorisierung({
                     key={fl}
                     data-testid="prio-flag"
                     data-flag={fl}
-                    className="shrink-0 rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-trust-warn-text"
+                    className="shrink-0 rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text"
                   >
                     {t(`mgmt.prio.flag.${fl}`)}
                   </span>

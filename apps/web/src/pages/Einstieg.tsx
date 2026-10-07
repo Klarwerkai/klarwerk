@@ -44,7 +44,7 @@ export function Einstieg(): JSX.Element {
       aria-labelledby="einstieg-titel"
       className="mx-auto flex max-w-2xl flex-col gap-5 py-10"
     >
-      <p className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+      <p className="font-mono text-klein uppercase tracking-wider text-muted-2">
         {t("erstnutzer.einstieg.kicker")}
       </p>
       <h1 id="einstieg-titel" className="text-[26px] font-[650] text-text">

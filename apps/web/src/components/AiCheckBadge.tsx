@@ -77,7 +77,7 @@ export function AiCheckBadge({
       <span className="inline-flex items-center gap-1" data-ki-pruefzustand={zustand ?? undefined}>
         <span
           title={t("pruefbasis.ueberholtHinweis")}
-          className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
+          className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-klein font-semibold text-trust-warn-text"
         >
           {t("pruefbasis.ueberholt")}
         </span>
@@ -85,7 +85,7 @@ export function AiCheckBadge({
           type="button"
           onClick={onRetry}
           disabled={retryBusy}
-          className="rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted hover:text-text disabled:opacity-50"
+          className="rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-klein font-semibold text-muted hover:text-text disabled:opacity-50"
         >
           {t("val.aiCheck.retry")}
         </button>
@@ -98,7 +98,7 @@ export function AiCheckBadge({
         <span
           data-ki-pruefzustand="konflikt"
           title={t("pruefstatus.ki.konfliktHinweis")}
-          className="rounded-pill bg-trust-crit-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold text-trust-crit-text"
+          className="rounded-pill bg-trust-crit-bg px-1.5 py-0.5 font-mono text-klein font-semibold text-trust-crit-text"
         >
           {t("pruefstatus.ki.konflikt")}
         </span>
@@ -110,7 +110,7 @@ export function AiCheckBadge({
       <span
         data-ki-pruefzustand="unsicher"
         title={coverageTip}
-        className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
+        className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-klein font-semibold text-trust-warn-text"
       >
         {t("pruefstatus.ki.unsicher")}
       </span>
@@ -118,7 +118,7 @@ export function AiCheckBadge({
       <span
         data-ki-pruefzustand="geprueft"
         title={t("pruefstatus.ki.geprueftHinweis")}
-        className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[10px] font-semibold text-text"
+        className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold text-text"
       >
         {t(modelActive ? "pruefstatus.ki.geprueftKi" : "pruefstatus.ki.geprueft")}
       </span>
@@ -130,7 +130,7 @@ export function AiCheckBadge({
         <span
           data-ki-pruefzustand="ausstehend"
           title={t("pruefstatus.ki.ausstehendHinweis")}
-          className="inline-flex items-center gap-1 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted"
+          className="inline-flex items-center gap-1 rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold text-muted"
         >
           <Clock className="h-3 w-3" aria-hidden="true" />
           {t(modelActive ? "pruefstatus.ki.ausstehendKi" : "pruefstatus.ki.ausstehend")}
@@ -141,7 +141,7 @@ export function AiCheckBadge({
       <span
         data-ki-pruefzustand="laeuft"
         title={t(aiCheckPendingHintKey(modelActive))}
-        className="inline-flex items-center gap-1 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted"
+        className="inline-flex items-center gap-1 rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold text-muted"
       >
         <Clock className="h-3 w-3 animate-pulse" aria-hidden="true" />
         {t(aiCheckPendingLabelKey(modelActive))}
@@ -152,7 +152,7 @@ export function AiCheckBadge({
     <span className="inline-flex items-center gap-1" data-ki-pruefzustand={zustand ?? undefined}>
       <span
         title={t(aiCheckFailureReasonKey(aiCheck.fallbackReason, subjectConfidentiality))}
-        className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
+        className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-klein font-semibold text-trust-warn-text"
       >
         {t(
           zustand === "nicht_verfuegbar" ? "pruefstatus.ki.nichtVerfuegbar" : "val.aiCheck.failed",
@@ -163,7 +163,7 @@ export function AiCheckBadge({
       {coverage ? (
         <span
           title={coverageTip}
-          className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted"
+          className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold text-muted"
         >
           {t("val.aiCheck.coverage.partial")}
         </span>
@@ -172,7 +172,7 @@ export function AiCheckBadge({
         type="button"
         onClick={onRetry}
         disabled={retryBusy}
-        className="rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted hover:text-text disabled:opacity-50"
+        className="rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-klein font-semibold text-muted hover:text-text disabled:opacity-50"
       >
         {t("val.aiCheck.retry")}
       </button>

@@ -20,7 +20,7 @@ export function ConflictKoSide({
     return (
       <div className="rounded-card border border-dashed border-hairline bg-page p-3 text-[12.5px] text-muted-2">
         {t("board.koRemoved")}
-        <span className="ml-1 font-mono text-[10.5px]">({fallbackId})</span>
+        <span className="ml-1 font-mono text-klein">({fallbackId})</span>
       </div>
     );
   }
@@ -33,7 +33,7 @@ export function ConflictKoSide({
       <p className="text-[13px] font-semibold leading-snug text-text">{ko.title}</p>
       <p className="mt-1 line-clamp-3 text-[12.5px] leading-relaxed text-muted">{ko.statement}</p>
       <div className="mt-2 border-t border-hairline pt-2">
-        <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-muted-2">
+        <div className="mb-1 font-mono text-klein uppercase tracking-wider text-muted-2">
           {t("con.evidenceSideLabel")}
         </div>
         <SourceEvidence

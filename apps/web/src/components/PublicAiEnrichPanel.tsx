@@ -86,7 +86,7 @@ export function PublicAiEnrichPanel({
             `experte`; `/admin` verlangt `admin`. */}
         <RoleLink
           to="/admin"
-          className="mt-1.5 inline-flex items-center gap-1 font-mono text-[10.5px] font-semibold uppercase tracking-wider text-ai"
+          className="mt-1.5 inline-flex items-center gap-1 font-mono text-klein font-semibold uppercase tracking-wider text-ai"
           hoverClassName="hover:underline"
         >
           {(erreichbar) => (
@@ -188,7 +188,7 @@ export function PublicAiEnrichPanel({
           <p className="text-[12px] text-muted-2">{t("enrich.noModel")}</p>
         ) : (
           <div className="rounded-card border border-hairline bg-surface p-2.5">
-            <span className="mb-1 inline-block rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-ai">
+            <span className="mb-1 inline-block rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-klein font-semibold uppercase text-ai">
               {externLabel}
             </span>
             <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-text">
@@ -210,7 +210,7 @@ export function PublicAiEnrichPanel({
             <li key={r.url} className="rounded-card border border-hairline bg-surface p-2.5">
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
-                  <span className="mb-1 inline-block rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-ai">
+                  <span className="mb-1 inline-block rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-klein font-semibold uppercase text-ai">
                     {externLabel}
                   </span>
                   <div className="text-[13px] font-medium text-text">{r.title}</div>
@@ -219,7 +219,7 @@ export function PublicAiEnrichPanel({
                   ) : null}
                   <ExternalUrlText
                     url={r.url}
-                    className="block truncate font-mono text-[10.5px] text-ai hover:underline"
+                    className="block truncate font-mono text-klein text-ai hover:underline"
                   />
                 </div>
                 <Button variant="ghost" onClick={() => takeWeb(r)}>

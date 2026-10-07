@@ -104,7 +104,7 @@ export function AnswerSourceDetails({
       <div className="flex flex-wrap items-center gap-1.5">
         {/* Status + Trust — dieselbe Sprache wie Bibliothek/Validierung, kein neues Vokabular. */}
         <StatusPill status={status ?? deriveStatus(ko)} />
-        <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted">
+        <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted">
           {t("answerSource.trust", { n: ko.trust })}
         </span>
         {authorName ? (
@@ -123,7 +123,7 @@ export function AnswerSourceDetails({
           Ohne jedes erreichbare Original steht der ehrliche Satz — kein leerer Platz, der wie ein
           noch nicht geladener Beleg aussähe, und keine angedeutete Tür. */}
       <div data-testid="answer-source-originals" className="mt-1">
-        <div className="font-mono text-[9px] font-semibold uppercase tracking-wider text-muted-2">
+        <div className="font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
           {t("answerSource.originalsTitle")}
         </div>
         {!standBestaetigt ? (

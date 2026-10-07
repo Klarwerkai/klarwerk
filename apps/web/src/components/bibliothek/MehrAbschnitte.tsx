@@ -1184,11 +1184,11 @@ export function MehrAbschnitte({
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-[13.5px] font-medium text-text">{s.label}</span>
-                        <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+                        <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text">
                           {t(sourceBadgeKey(s))}
                         </span>
                         {s.provider ? (
-                          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
+                          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted">
                             {s.provider}
                           </span>
                         ) : null}
@@ -1199,7 +1199,7 @@ export function MehrAbschnitte({
                         {nachweis.zeit ? (
                           <span
                             data-testid="bib-quelle-zeit"
-                            className="font-mono text-[10px] text-muted-2"
+                            className="font-mono text-klein text-muted-2"
                           >
                             {nachweis.zeit}
                           </span>
@@ -1220,7 +1220,7 @@ export function MehrAbschnitte({
                         {nachweis.stand ? (
                           <span
                             data-testid="bib-quelle-stand"
-                            className="font-mono text-[10px] text-muted-2"
+                            className="font-mono text-klein text-muted-2"
                           >
                             {`${t("w2.source.version")} ${nachweis.stand}`}
                           </span>
@@ -1457,7 +1457,7 @@ export function MehrAbschnitte({
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="text-[13px] font-medium text-text">{r.title}</span>
-                          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted">
+                          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted">
                             {r.provider}
                           </span>
                         </div>
@@ -1466,7 +1466,7 @@ export function MehrAbschnitte({
                         ) : null}
                         <ExternalUrlText
                           url={r.url}
-                          className="block truncate font-mono text-[10.5px] text-ai hover:underline"
+                          className="block truncate font-mono text-klein text-ai hover:underline"
                         />
                       </div>
                       <Button
@@ -1530,7 +1530,7 @@ export function MehrAbschnitte({
           {isDemoKnowledge(ko) ? (
             <span
               title={t("demo.badge.hint")}
-              className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2"
+              className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2"
             >
               {t("demo.badge.label")}
             </span>
@@ -1540,7 +1540,7 @@ export function MehrAbschnitte({
           {containsExternalUnchecked(ko.bodyHtml) ? (
             <span
               title={t("ko.externalUnchecked.hint")}
-              className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai"
+              className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-klein font-semibold uppercase text-ai"
             >
               {t("ko.externalUnchecked.label")}
             </span>
@@ -1550,7 +1550,7 @@ export function MehrAbschnitte({
             <span
               data-testid="ko-origin-word-addin"
               title={t("ko.originWordAddin.hint")}
-              className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2"
+              className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2"
             >
               {t("ko.originWordAddin.label")}
             </span>
@@ -1882,7 +1882,7 @@ export function MehrAbschnitte({
                         <dt className="text-muted">{t("ko.evFresh.title")}</dt>
                         <dd className="text-text">
                           {t(evidenceFreshnessLabelKey(fresh.status))}
-                          <span className="ml-2 font-mono text-[10.5px] text-muted-2">
+                          <span className="ml-2 font-mono text-klein text-muted-2">
                             {t("ko.evFresh.counts", {
                               version: String(fresh.version),
                               current: String(fresh.currentCount),
@@ -1893,7 +1893,7 @@ export function MehrAbschnitte({
                       </div>
                     </dl>
                   ) : null}
-                  <div className="mb-3 space-y-1.5 font-mono text-[10.5px] text-muted-2">
+                  <div className="mb-3 space-y-1.5 font-mono text-klein text-muted-2">
                     <div>
                       {t(`ko.evCons.status.${consistency.status}`)} ·{" "}
                       {t("ko.evCons.counts", {
@@ -2002,12 +2002,12 @@ export function MehrAbschnitte({
                     <div className="break-words text-[13px] font-semibold text-text">
                       {ev.title}
                     </div>
-                    <div className="mt-1 font-mono text-[10.5px] text-muted-2">
+                    <div className="mt-1 font-mono text-klein text-muted-2">
                       {t(`ko.evidenceKind.${ev.kind}`)} · {nameOf(ev.createdBy)} ·{" "}
                       {new Date(ev.createdAt).toLocaleDateString(i18n.language)}
                     </div>
                     {ev.meta.length > 0 ? (
-                      <div className="mt-1 font-mono text-[10px] text-muted-2">
+                      <div className="mt-1 font-mono text-klein text-muted-2">
                         {ev.meta.join(" · ")}
                       </div>
                     ) : null}
@@ -2188,18 +2188,18 @@ export function MehrAbschnitte({
                             );
                           return (
                             <div key={f.feld} data-bib-fassung-vergleich-feld={f.feld}>
-                              <dt className="font-mono text-[10.5px] text-muted-2">
+                              <dt className="font-mono text-klein text-muted-2">
                                 {t(`ko.snapshotField.${f.feld}`)}
                               </dt>
                               <dd className="mt-0.5 grid gap-1 text-[12.5px] text-text">
                                 <div data-bib-vergleich-alt={f.feld}>
-                                  <span className="mr-1 font-mono text-[10.5px] text-muted-2">
+                                  <span className="mr-1 font-mono text-klein text-muted-2">
                                     {`v${gegenueber.von}`}
                                   </span>
                                   {lesbar(f.alt)}
                                 </div>
                                 <div data-bib-vergleich-neu={f.feld}>
-                                  <span className="mr-1 font-mono text-[10.5px] text-muted-2">
+                                  <span className="mr-1 font-mono text-klein text-muted-2">
                                     {`v${gegenueber.bis}`}
                                   </span>
                                   {lesbar(f.neu)}
@@ -2271,17 +2271,17 @@ export function MehrAbschnitte({
                         const diff = diffForVersion(fassungen, v.version);
                         if (!diff || diff.fromVersion === null) {
                           return (
-                            <p className="mt-1 font-mono text-[10.5px] text-muted-2">
+                            <p className="mt-1 font-mono text-klein text-muted-2">
                               {t("ko.snapshotInitial")}
                             </p>
                           );
                         }
                         return diff.changed.length === 0 ? (
-                          <p className="mt-1 font-mono text-[10.5px] text-muted-2">
+                          <p className="mt-1 font-mono text-klein text-muted-2">
                             {t("ko.snapshotNoChanges")}
                           </p>
                         ) : (
-                          <p className="mt-1 font-mono text-[10.5px] text-muted-2">
+                          <p className="mt-1 font-mono text-klein text-muted-2">
                             {diff.changed.map((f) => t(`ko.snapshotField.${f}`)).join(" · ")}
                           </p>
                         );
@@ -2296,7 +2296,7 @@ export function MehrAbschnitte({
                         Draht-Leser wie oben. */}
                       <p
                         data-bib-fassung-vermerk={v.key}
-                        className="mt-1 font-mono text-[10.5px] text-muted-2"
+                        className="mt-1 font-mono text-klein text-muted-2"
                       >
                         {koHistoryNote(v.note, t)}
                         {v.herkunft === null
@@ -2316,7 +2316,7 @@ export function MehrAbschnitte({
                       >
                         {aktion}
                         {groesse ? (
-                          <span className="font-mono text-[10.5px] text-muted-2">· {groesse}</span>
+                          <span className="font-mono text-klein text-muted-2">· {groesse}</span>
                         ) : null}
                       </button>
                       {offen ? (
@@ -2333,7 +2333,7 @@ export function MehrAbschnitte({
                             wäre damit eine Behauptung über einen Weg, den es gibt. Wahr bleibt, was
                             der Satz jetzt sagt: DIESE Fassung selbst ändert sich nicht — eine
                             Übernahme KOPIERT sie in eine neue, sie bewegt sie nicht. */}
-                          <p className="font-mono text-[10.5px] text-muted-2">
+                          <p className="font-mono text-klein text-muted-2">
                             {t("ko.snapshotReadOnly", { version: v.version })}
                           </p>
                           <dl className="mt-1.5 grid gap-1.5">
@@ -2341,7 +2341,7 @@ export function MehrAbschnitte({
                               .filter(([, wert]) => wert.trim().length > 0)
                               .map(([feld, wert]) => (
                                 <div key={feld}>
-                                  <dt className="font-mono text-[10.5px] text-muted-2">
+                                  <dt className="font-mono text-klein text-muted-2">
                                     {t(`ko.snapshotField.${feld}`)}
                                   </dt>
                                   <dd className="text-[12.5px] text-text">{wert}</dd>

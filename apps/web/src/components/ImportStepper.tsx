@@ -206,7 +206,7 @@ export function ImportStepperBar(): JSX.Element {
               {status === "done" ? (
                 <Check size={13} aria-hidden className="shrink-0" />
               ) : (
-                <span className="shrink-0 font-mono text-[10.5px]">{i + 1}</span>
+                <span className="shrink-0 font-mono text-klein">{i + 1}</span>
               )}
               <span className="min-w-0 truncate">{t(IMPORT_STEP_TEXT[step].title)}</span>
               {status === "done" ? <span className="sr-only">{t("imp.step.done")}</span> : null}

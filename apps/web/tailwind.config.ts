@@ -64,8 +64,18 @@ export default {
         popover: "var(--kw-shadow-popover)",
         tile: "var(--kw-shadow-tile)",
       },
+      // R-0918 (Design-Abgleich): die feste Untergrenze der Schriftskala. Werte und Begründung
+      // stehen in `src/lib/schriftskala.ts`; der Wächter `tests/design-schriftskala/` hält fest,
+      // dass keine Fläche darunter frei setzt.
+      //   klein   11px   — kleinste Lesegröße (Brand Book „Label 11–13 Mono"; Zielbilder ab 11px)
+      //   zaehler 10.5px — NUR Zahl-Plaketten im Kopfband (Zielbild Main.dc.html, Zähler 10.5px)
+      //   fussnote 10px  — NUR die hochgestellte Quellenmarke (Zielbild Fragen.dc.html, 10px/700)
+      //   micro          — Mono-Kicker/SectionLabel, seit R-0918 auf 11px (Zielbild Admin: Kicker 11px)
       fontSize: {
-        micro: ["10.5px", { lineHeight: "1.2", letterSpacing: "0.5px" }],
+        micro: ["11px", { lineHeight: "1.2", letterSpacing: "0.5px" }],
+        klein: "11px",
+        zaehler: "10.5px",
+        fussnote: "10px",
       },
     },
   },

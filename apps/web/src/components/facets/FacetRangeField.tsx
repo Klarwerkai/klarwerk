@@ -31,12 +31,12 @@ export function FacetRangeField({
 
   return (
     <div className="border-b border-hairline-soft py-3 last:border-b-0">
-      <div className="mb-1.5 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+      <div className="mb-1.5 font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
         {t(labelKey)}
       </div>
       <div className="grid grid-cols-2 gap-1.5">
         <div>
-          <label htmlFor={fromId} className="mb-0.5 block text-[10.5px] text-muted-2">
+          <label htmlFor={fromId} className="mb-0.5 block text-klein text-muted-2">
             {t("facet.rangeFrom")}
           </label>
           <input
@@ -48,7 +48,7 @@ export function FacetRangeField({
           />
         </div>
         <div>
-          <label htmlFor={toId} className="mb-0.5 block text-[10.5px] text-muted-2">
+          <label htmlFor={toId} className="mb-0.5 block text-klein text-muted-2">
             {t("facet.rangeTo")}
           </label>
           <input

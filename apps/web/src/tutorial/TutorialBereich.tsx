@@ -570,7 +570,7 @@ export function TutorialBereich({
 
           {/* Die Vorführung als Liste: jeder Teil lesbar und einzeln anwählbar. */}
           <div className="mt-4">
-            <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-2">
+            <p className="font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
               {t("tutorial.vorfuehrung")}
             </p>
             <ol className="mt-1.5 space-y-1">
@@ -601,7 +601,7 @@ export function TutorialBereich({
         {/* Rechts: die Demo — jederzeit als Demo erkennbar. */}
         <div className="min-w-0">
           <div className="mb-1.5 flex flex-wrap items-center gap-2">
-            <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-ai">
+            <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-klein font-semibold uppercase tracking-wider text-ai">
               {t("tutorial.demo.kennzeichen")}
             </span>
             <span className="text-[11.5px] text-muted-2">{t("tutorial.demo.hinweis")}</span>

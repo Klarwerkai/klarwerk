@@ -1114,7 +1114,7 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
               <span className="text-[12.5px] font-semibold text-text">
                 {t("adm.ai.detail")}
                 {Object.keys(effPerTask).length > 0 ? (
-                  <span className="ml-1.5 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold text-muted-2">
+                  <span className="ml-1.5 rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold text-muted-2">
                     {Object.keys(effPerTask).length}
                   </span>
                 ) : null}
@@ -1128,7 +1128,7 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                     <span className="inline-flex items-center gap-1.5">
                       {t(`adm.ai.task.${task}`)}
                       <span
-                        className={`rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${
+                        className={`rounded-pill px-1.5 py-0.5 font-mono text-klein font-semibold uppercase ${
                           aiConfig.data?.effective[task] === "model"
                             ? "bg-ai-surface-1 text-ai"
                             : "bg-page text-muted-2"
@@ -1224,7 +1224,7 @@ export function KiZugaengeDetail({ onZurueck }: { onZurueck: () => void }): JSX.
                   <span className="font-mono text-[11px] text-muted-2">{row.detail}</span>
                 ) : null}
                 <span
-                  className={`ml-auto rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${ACCESS_STATE_TONE[row.state]}`}
+                  className={`ml-auto rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${ACCESS_STATE_TONE[row.state]}`}
                 >
                   {t(`adm.ai.state.${row.state}`)}
                 </span>

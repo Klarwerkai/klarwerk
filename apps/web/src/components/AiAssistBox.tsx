@@ -123,7 +123,7 @@ export function AiAssistBox({
       {boxErr ? <p className="mt-2 text-[12px] text-trust-crit-text">{boxErr}</p> : null}
       {preview !== null ? (
         <div className="mt-2 rounded-btn border border-ai/30 bg-surface p-2.5">
-          <div className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+          <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
             {t("capture.ai.previewTitle")}
           </div>
           <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-text">
@@ -152,7 +152,7 @@ export function AiAssistBox({
           {extraApplyActions.length > 0 ? (
             <div className="mt-2 border-t border-hairline pt-2">
               {/* SCRUM-343: strukturierte Übernahme-Modi klar gruppiert (als Abschnitt / als Block). */}
-              <div className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+              <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
                 {t("capture.ai.applyAsLabel")}
               </div>
               <div className="mt-1 flex flex-wrap gap-1.5">

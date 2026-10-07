@@ -78,7 +78,8 @@ describe("JOB 3064 · F · die Fussnotenmarke im Antworttext", () => {
     // wer eine davon streicht, wird hier rot, ohne dass ein Browser noetig waere.
     const klasse =
       antwort("Vermeiden [1].").querySelector("sup[data-fussnote]")?.getAttribute("class") ?? "";
-    expect(klasse, "Schriftgrad fehlt").toContain("text-[10px]");
+    // R-0918: der Zielbildwert 10 px steht als Skalenstufe `fussnote` (apps/web/tailwind.config.ts).
+    expect(klasse, "Schriftgrad fehlt").toContain("text-fussnote");
     expect(klasse, "Fettung fehlt").toContain("font-bold");
     expect(klasse, "der Ton des Zielbilds fehlt").toContain("text-[#9C5009]");
   });

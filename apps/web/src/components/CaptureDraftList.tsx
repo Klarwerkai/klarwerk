@@ -326,7 +326,7 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
         </select>
       ) : null}
       <label className="inline-flex items-center gap-1.5">
-        <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+        <span className="font-mono text-klein uppercase tracking-wider text-muted-2">
           {t("capture.draftSortLabel")}
         </span>
         <select
@@ -428,13 +428,13 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
                         {editingId === d.id ? (
                           <span
                             data-testid="blatt-entwurf-eintrag-offen"
-                            className="font-mono text-[10px] uppercase text-ai"
+                            className="font-mono text-klein uppercase text-ai"
                           >
                             {t("capture.editingBadge")}
                           </span>
                         ) : null}
                         {highlightId === d.id ? (
-                          <span className="font-mono text-[10px] uppercase text-trust-pos-text">
+                          <span className="font-mono text-klein uppercase text-trust-pos-text">
                             {t("capture.draftJustSaved")}
                           </span>
                         ) : null}
@@ -442,7 +442,7 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
                         {d.imPool ? (
                           <span
                             data-testid="entwurfsliste-eintrag-pool"
-                            className="font-mono text-[10px] uppercase text-ai"
+                            className="font-mono text-klein uppercase text-ai"
                           >
                             {t("entwurfspool.marke")}
                           </span>
@@ -529,12 +529,12 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
                     {draftTitle(d, fallbackTitle)}
                   </span>
                   {editingId === d.id ? (
-                    <span className="ml-2 font-mono text-[10px] uppercase text-ai">
+                    <span className="ml-2 font-mono text-klein uppercase text-ai">
                       {t("capture.editingBadge")}
                     </span>
                   ) : null}
                   {highlightId === d.id ? (
-                    <span className="ml-2 font-mono text-[10px] uppercase text-trust-pos-text">
+                    <span className="ml-2 font-mono text-klein uppercase text-trust-pos-text">
                       {t("capture.draftJustSaved")}
                     </span>
                   ) : null}
@@ -543,7 +543,7 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
                   {d.imPool ? (
                     <span
                       data-testid="entwurfsliste-eintrag-pool"
-                      className="ml-2 font-mono text-[10px] uppercase text-ai"
+                      className="ml-2 font-mono text-klein uppercase text-ai"
                     >
                       {t("entwurfspool.marke")}
                     </span>
@@ -640,13 +640,13 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
       <div data-testid="entwuerfe-liste" className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           {isAdmin ? (
-            <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2">
+            <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2">
               {props.scopeLabel}
             </span>
           ) : null}
           <span
             data-testid="entwurfsliste-anzahl"
-            className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2"
+            className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2"
           >
             {totalCount}
           </span>
@@ -669,11 +669,11 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
               ENTWÜRFE") schlicht nicht ihre Angelegenheit. Sie erscheint nur noch, wo sie etwas
               unterscheidet. */}
           {isAdmin ? (
-            <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2">
+            <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2">
               {scopeLabel}
             </span>
           ) : null}
-          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2">
+          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2">
             {totalCount}
           </span>
         </div>

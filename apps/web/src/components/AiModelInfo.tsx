@@ -61,7 +61,7 @@ export function AiModelInfo({ task }: { task: ReasonerTask }): JSX.Element {
               className="fixed inset-0 z-30 cursor-default"
             />
             <div className="absolute left-0 top-6 z-40 w-64 rounded-card border border-hairline bg-surface p-3 text-left shadow-popover">
-              <div className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+              <div className="font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
                 {t(AI_TASK_INFO_TEXT.title)}
               </div>
               <div className="mt-1 text-[13px] font-semibold text-ink">{t(info.modeLabelKey)}</div>
@@ -77,7 +77,7 @@ export function AiModelInfo({ task }: { task: ReasonerTask }): JSX.Element {
               {info.dsgvo !== "unknown" ? (
                 <div className="mt-2">
                   <span
-                    className={`inline-flex items-center gap-1 rounded-pill px-1.5 py-0.5 font-mono text-[10px] font-semibold ${
+                    className={`inline-flex items-center gap-1 rounded-pill px-1.5 py-0.5 font-mono text-klein font-semibold ${
                       info.dsgvo === "inhouse"
                         ? "bg-trust-pos-bg text-trust-pos-text"
                         : "bg-trust-warn-bg text-trust-warn-text"

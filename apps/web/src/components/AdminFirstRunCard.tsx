@@ -88,7 +88,7 @@ export function AdminFirstRunCard(): JSX.Element | null {
         <div className="flex items-center gap-2">
           <Sparkles size={16} className="text-ai" />
           <div>
-            <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+            <p className="font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
               {t("adm.firstrun.kicker")}
             </p>
             <h2 className="text-[15px] font-semibold text-ink">{t("adm.firstrun.title")}</h2>
@@ -140,7 +140,7 @@ export function AdminFirstRunCard(): JSX.Element | null {
                     )}
                     {t(step.titleKey)}
                     {done ? (
-                      <span className="rounded-pill bg-trust-pos-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-pos-text">
+                      <span className="rounded-pill bg-trust-pos-bg px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-trust-pos-text">
                         {t("adm.firstrun.doneBadge")}
                       </span>
                     ) : null}

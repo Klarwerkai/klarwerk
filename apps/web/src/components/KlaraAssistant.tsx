@@ -339,7 +339,7 @@ export function KlaraAssistant(): JSX.Element {
           <div className="flex items-center justify-between border-b border-hairline px-4 py-3">
             <div>
               <div className="text-[14px] font-semibold text-ink">{t("klara.title")}</div>
-              <div className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+              <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
                 {t("klara.subtitle")}
               </div>
             </div>
@@ -358,7 +358,7 @@ export function KlaraAssistant(): JSX.Element {
             {/* Du bist hier — Erklärung der aktuellen Seite. */}
             {page ? (
               <div>
-                <div className="mb-1 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+                <div className="mb-1 font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
                   {t("klara.pageLabel")}
                 </div>
                 <div className="text-[12.5px] font-semibold text-text">{t(page.titleKey)}</div>
@@ -369,7 +369,7 @@ export function KlaraAssistant(): JSX.Element {
 
             {/* Aktives Element — data-help-Anker der Seite. */}
             <div>
-              <div className="mb-1 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+              <div className="mb-1 font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
                 {t("klara.fieldLabel")}
               </div>
               {fieldEntry ? (
@@ -390,7 +390,7 @@ export function KlaraAssistant(): JSX.Element {
             {/* Zeige-Modus-Ergebnis: exakter Anker ODER Treffer zur Element-Beschriftung — ehrlich. */}
             {inspected ? (
               <div>
-                <div className="mb-1 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+                <div className="mb-1 font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
                   {t("klara.inspectFor", { label: inspected.label || "…" })}
                 </div>
                 {inspectedEntry ? (
@@ -484,11 +484,11 @@ export function KlaraAssistant(): JSX.Element {
                 ) : aiAsk.data ? (
                   <div className="rounded-card border border-ai/30 bg-ai-surface-2 px-3 py-2.5">
                     <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                      <span className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
+                      <span className="font-mono text-klein font-semibold uppercase tracking-wider text-ai">
                         {t("klara.aiAnswerTitle")}
                       </span>
                       {/* Pedi 05.07.: jede KI-Antwort klar gekennzeichnet — generiert, nicht voll geprüft. */}
-                      <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-warn-text">
+                      <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text">
                         {t("klara.aiDisclaimer")}
                       </span>
                       {/* JOB 2660 D2 — DIE EINSTUFUNG DIESER ANTWORT, SICHTBAR.
@@ -511,7 +511,7 @@ export function KlaraAssistant(): JSX.Element {
                         seinem Trust-Balken (dort ausführlich begründet, AUFTRAG-mega53 B2). */}
                       <span
                         data-testid="klara-ai-evidence"
-                        className="rounded-pill border border-hairline bg-surface px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted"
+                        className="rounded-pill border border-hairline bg-surface px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted"
                       >
                         {t(knowledgeClassMeta(aiAsk.data.knowledgeClass).labelKey)}
                       </span>
@@ -563,7 +563,7 @@ export function KlaraAssistant(): JSX.Element {
                         ) : null}
                         {speakButton("ai", t("klara.aiAnswerTitle"), aiAsk.data.answer)}
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                          <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                          <span className="font-mono text-klein uppercase tracking-wider text-muted-2">
                             {t("klara.aiSources")}:
                           </span>
                           {aiAsk.data.sources.map((sourceId) => {
@@ -593,7 +593,7 @@ export function KlaraAssistant(): JSX.Element {
             {query.trim().length > 1 ? (
               results.length > 0 ? (
                 <div className="space-y-2">
-                  <div className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+                  <div className="font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
                     {t("klara.resultsFor", { q: query.trim() })}
                   </div>
                   {results.slice(0, 6).map((entry) => (

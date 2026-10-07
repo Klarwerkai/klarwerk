@@ -181,7 +181,7 @@ function DemoAntwortKarte({
   const [menueHinweis, setMenueHinweis] = useState(false);
   return (
     <Card className="relative mt-0 flex flex-col gap-3 !rounded-[14px] border-hairline px-5 py-4 shadow-tile">
-      <span className="self-start rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
+      <span className="self-start rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-klein font-semibold uppercase text-ai">
         {uebung
           ? t("tutorial.fragen.demo.uebungsantwort")
           : t("tutorial.fragen.demo.beispielantwort")}
@@ -268,7 +268,7 @@ function DemoAntwortKarte({
           {lage.begleitung}
           <div data-tutorial-demo="fragen" className="tutorial-demo">
             <p className="mb-2 flex flex-wrap items-center gap-2 text-[11.5px] text-muted-2">
-              <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-ai">
+              <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-klein font-semibold uppercase tracking-wider text-ai">
                 {t("tutorial.demo.kennzeichen")}
               </span>
               {t("tutorial.fragen.demo.mehrHinweis")}
@@ -342,7 +342,7 @@ function DemoLuecke(): JSX.Element {
     <Card className="mt-0 border-dashed">
       <span
         data-tutorial-ziel={FRAGEN_ZIEL.luecke}
-        className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text"
+        className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text"
       >
         {t("ask.gapBadge")}
       </span>

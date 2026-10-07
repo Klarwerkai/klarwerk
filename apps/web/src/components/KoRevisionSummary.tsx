@@ -26,7 +26,7 @@ export function KoRevisionSummary({
           {summary.items.map((item) => (
             <span
               key={item.id}
-              className="rounded-pill bg-ai-surface-2 px-2 py-0.5 text-[10.5px] font-semibold text-ai"
+              className="rounded-pill bg-ai-surface-2 px-2 py-0.5 text-klein font-semibold text-ai"
             >
               {t(item.labelKey)}
             </span>

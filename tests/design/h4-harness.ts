@@ -174,6 +174,11 @@ export interface Seite {
   click(selektor: string): Promise<void>;
   /** Eine Auswahl in einem `select` setzen — `belegstelle-ueberlebt-neuladen-chromium.test.ts:259`. */
   selectOption(selektor: string, wert: string): Promise<unknown>;
+  /**
+   * Das Bild der gebauten Fläche (R-1399, Sichtnachweis) — `design-bildnachweis/bildnachweis-
+   * chromium.test.ts`. Gelesen werden dort nur `path`, `clip` und `fullPage`.
+   */
+  screenshot(opts: Record<string, unknown>): Promise<unknown>;
 }
 interface Browser {
   version(): string;

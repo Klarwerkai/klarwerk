@@ -997,7 +997,7 @@ export function RolleDetail({
           }
           return (
             <li key={gruppe.id}>
-              <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+              <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
                 {t(gruppe.titleKey)}
               </div>
               <div className="mt-1 flex flex-wrap gap-1.5">

@@ -150,7 +150,7 @@ export function Help(): JSX.Element {
               >
                 <ExternalLink size={12} aria-hidden="true" className="self-center" />
                 <span>{support.bezeichnung ?? t("help.support.linkDefault")}</span>
-                <span className="font-mono text-[10px] font-normal text-muted-2">
+                <span className="font-mono text-klein font-normal text-muted-2">
                   ({t("help.support.newTab")})
                 </span>
               </a>
@@ -240,7 +240,7 @@ export function Help(): JSX.Element {
         <ol className="mt-3 space-y-2">
           {schritte.map((schritt) => (
             <li key={schritt.item.id} className="flex items-start gap-2.5">
-              <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink font-mono text-[10px] font-semibold text-white">
+              <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink font-mono text-klein font-semibold text-white">
                 {schritt.item.n}
               </span>
               <span className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-text">
@@ -280,7 +280,7 @@ export function Help(): JSX.Element {
             <li key={obs.id} className="flex flex-col gap-1 border-l-2 border-hairline pl-3">
               <span className="text-[12.5px] leading-relaxed text-text">{t(obs.labelKey)}</span>
               <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-muted">
-                <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                <span className="font-mono text-klein uppercase tracking-wider text-muted-2">
                   {t("pilot.obs.mapLabel")}:
                 </span>
                 <span>{t(obs.mapKey)}</span>
@@ -335,7 +335,7 @@ export function Help(): JSX.Element {
             const merkmale = topic.tags.map((tag) => (
               <span
                 key={tag}
-                className="rounded-pill bg-hairline-soft px-1.5 py-0.5 font-mono text-[10px] text-muted-2"
+                className="rounded-pill bg-hairline-soft px-1.5 py-0.5 font-mono text-klein text-muted-2"
               >
                 {tag}
               </span>
@@ -372,7 +372,7 @@ export function Help(): JSX.Element {
                   // `2701` ist ein SUCHALIAS, keine Normbezeichnung. Bei den ISO-Kapiteln bekommt
                   // die Merkmalsleiste deshalb eine Überschrift, die genau das sagt.
                   <div className="mt-2.5" data-testid={`hilfe-suchbegriffe-${topic.id}`}>
-                    <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                    <span className="font-mono text-klein uppercase tracking-wider text-muted-2">
                       {ISO_HELP_LABELS.searchTerms[isoLng]}
                     </span>
                     <div className="mt-1 flex flex-wrap gap-1">{merkmale}</div>
@@ -385,7 +385,7 @@ export function Help(): JSX.Element {
                     data-testid={`hilfe-quellen-${topic.id}`}
                     className="mt-3 rounded-input border border-hairline bg-page px-2.5 py-2"
                   >
-                    <div className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                    <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
                       {ISO_HELP_LABELS.sources[isoLng]}
                     </div>
                     <ul className="mt-1.5 space-y-1">
@@ -401,7 +401,7 @@ export function Help(): JSX.Element {
                           >
                             <ExternalLink size={11} aria-hidden="true" className="self-center" />
                             <span className="break-all">{isoQuellenAnzeige(quelle)}</span>
-                            <span className="font-mono text-[10px] font-normal text-muted-2">
+                            <span className="font-mono text-klein font-normal text-muted-2">
                               ({ISO_HELP_LABELS.newTab[isoLng]})
                             </span>
                           </a>

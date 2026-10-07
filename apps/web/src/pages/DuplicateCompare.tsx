@@ -99,7 +99,7 @@ function TonePill({ tone }: { tone: CompareSection["tone"] }): JSX.Element {
   return (
     <span
       className={cx(
-        "rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase",
+        "rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase",
         tone === "green" && "bg-trust-pos-bg text-trust-pos-text",
         tone === "yellow" && "bg-trust-warn-bg text-trust-warn-text",
         tone === "red" && "bg-trust-crit-bg text-trust-crit-text",
@@ -117,7 +117,7 @@ function SectionRow({ section }: { section: CompareSection }): JSX.Element {
   return (
     <div className="grid gap-3 border-b border-hairline-soft py-3 last:border-b-0 lg:grid-cols-[1fr_220px_1fr]">
       <div>
-        <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+        <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
           {t("dcmp.left")}
         </div>
         <p className="mt-1 whitespace-pre-wrap text-[12.5px] leading-relaxed text-text">
@@ -147,7 +147,7 @@ function SectionRow({ section }: { section: CompareSection }): JSX.Element {
         <p className="mt-2 text-[11.5px] leading-relaxed text-muted">{t(section.reason)}</p>
       </div>
       <div>
-        <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+        <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
           {t("dcmp.right")}
         </div>
         <p className="mt-1 whitespace-pre-wrap text-[12.5px] leading-relaxed text-text">

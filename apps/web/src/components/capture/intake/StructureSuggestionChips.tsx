@@ -19,7 +19,7 @@ function Chip({
 }): JSX.Element {
   return (
     <label className="inline-flex items-center gap-1.5 rounded-pill border border-hairline bg-surface px-2.5 py-1">
-      <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">{label}</span>
+      <span className="font-mono text-klein uppercase tracking-wider text-muted-2">{label}</span>
       <input
         type="text"
         value={value}
@@ -52,7 +52,7 @@ export function StructureSuggestionChips({
           {t("intake.structure.heading")}
         </span>
         {derived ? (
-          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[9.5px] uppercase text-muted-2">
+          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein uppercase text-muted-2">
             {t("intake.structure.derived")}
           </span>
         ) : null}

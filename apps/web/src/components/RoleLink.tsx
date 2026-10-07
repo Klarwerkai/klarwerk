@@ -97,7 +97,7 @@ export function RoleLink({
       className={`${className} cursor-default opacity-70`}
     >
       {children(false)}
-      <span className="shrink-0 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted-2">
+      <span className="shrink-0 rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2">
         {t("roleLink.noReach")}
       </span>
     </div>

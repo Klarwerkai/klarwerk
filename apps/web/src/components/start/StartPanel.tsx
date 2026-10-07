@@ -131,7 +131,7 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
           </p>
           {FAEHIGKEITS_SCHRITTE.map((schritt) => (
             <div key={schritt} className="mt-3">
-              <h4 className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+              <h4 className="font-mono text-klein uppercase tracking-wider text-muted-2">
                 {t(faehigkeitsSchrittKey(schritt))}
               </h4>
               <ul className="mt-1.5 grid gap-2">
@@ -270,7 +270,7 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
                 {() => (
                   <>
                     <span
-                      className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
+                      className={`rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
                     >
                       {t(item.labelKey)}
                     </span>
@@ -288,7 +288,7 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
           <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{t("demo.subtitle")}</p>
           {/* SCRUM-301: sichtbare Pilot-Beweiskette. */}
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+            <span className="font-mono text-klein uppercase tracking-wider text-muted-2">
               {t("demo.proof.label")}
             </span>
             {PROOF_CHAIN.map((beat) => (
@@ -311,7 +311,7 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
                   {() => (
                     <>
                       <div className="flex items-center gap-2">
-                        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink font-mono text-[10px] font-semibold text-white">
+                        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink font-mono text-klein font-semibold text-white">
                           {step.n}
                         </span>
                         <span className="text-[13.5px] font-semibold text-ink">
@@ -362,12 +362,12 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
         {daten ? (
           <>
             {daten.helpedToday > 0 ? (
-              <span className="inline-flex rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold text-trust-pos-text">
+              <span className="inline-flex rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-klein font-semibold text-trust-pos-text">
                 {t("start.livewall.helpedToday", { n: daten.helpedToday })}
               </span>
             ) : null}
             <div>
-              <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-2">
+              <div className="mb-1.5 font-mono text-klein uppercase tracking-wider text-muted-2">
                 {t("start.livewall.saved")}
               </div>
               {daten.saved.length === 0 ? (
@@ -387,7 +387,7 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
                       <span className="shrink-0">
                         <StatusPill status={s.status} />
                       </span>
-                      <span className="shrink-0 font-mono text-[10.5px] text-muted-2">
+                      <span className="shrink-0 font-mono text-klein text-muted-2">
                         {new Date(s.at).toLocaleString(
                           i18n.language.startsWith("en") ? "en-GB" : "de-DE",
                           { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" },
@@ -399,7 +399,7 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
               )}
             </div>
             <div>
-              <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-2">
+              <div className="mb-1.5 font-mono text-klein uppercase tracking-wider text-muted-2">
                 {t("start.livewall.helped")}
               </div>
               {daten.helped.length === 0 ? (
@@ -415,7 +415,7 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
                       >
                         {() => h.title}
                       </RoleLink>
-                      <span className="shrink-0 font-mono text-[10.5px] text-muted-2">
+                      <span className="shrink-0 font-mono text-klein text-muted-2">
                         {new Date(h.at).toLocaleString(
                           i18n.language.startsWith("en") ? "en-GB" : "de-DE",
                           { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" },

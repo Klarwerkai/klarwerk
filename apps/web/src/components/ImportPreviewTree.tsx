@@ -61,7 +61,7 @@ function FolderSummary({
         <span
           data-testid="ordner-ohne-seite"
           title={ohneSeite.hinweis}
-          className="shrink-0 rounded-pill bg-trust-warn-bg px-2 py-0.5 text-[10.5px] font-semibold text-trust-warn-text"
+          className="shrink-0 rounded-pill bg-trust-warn-bg px-2 py-0.5 text-klein font-semibold text-trust-warn-text"
         >
           {ohneSeite.marke}
         </span>

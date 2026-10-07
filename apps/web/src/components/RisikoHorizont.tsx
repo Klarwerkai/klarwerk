@@ -59,7 +59,7 @@ function Bereich({
         {area.singleSource ? (
           <span
             data-testid="horizont-busfaktor"
-            className="shrink-0 rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-crit-text"
+            className="shrink-0 rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase text-trust-crit-text"
           >
             {t("risk.horizon.busFactorOne")}
           </span>

@@ -47,16 +47,16 @@ export function SourceLink({
         ) : (
           <span className="inline-flex items-center gap-1.5">
             <span className="text-[12.5px] font-medium text-text">{source.label}</span>
-            <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted-2">
+            <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2">
               {t("evidence.internalSource")}
             </span>
           </span>
         )}
-        <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-trust-warn-text">
+        <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text">
           {t(sourceBadgeKey(source))}
         </span>
         {source.provider ? (
-          <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted">
+          <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-klein font-semibold uppercase text-muted">
             {source.provider}
           </span>
         ) : null}
@@ -96,7 +96,7 @@ export function SourceEvidence({
           <>
             <SourceLink source={first} />
             {sources.length > 1 ? (
-              <span className="font-mono text-[10.5px] text-muted-2">
+              <span className="font-mono text-klein text-muted-2">
                 {t("evidence.more", { count: sources.length - 1 })}
               </span>
             ) : null}

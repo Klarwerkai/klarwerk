@@ -320,7 +320,7 @@ export function KnowledgeInputStudio({
             <>
               {/* SCRUM-339: sichtbarer Dirty-Status — unübernommene Änderungen klar markiert. */}
               <span
-                className={`rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${
+                className={`rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${
                   studioState.dirty
                     ? "bg-trust-warn-bg text-trust-warn-text"
                     : "bg-page text-muted-2"
@@ -411,7 +411,7 @@ export function KnowledgeInputStudio({
         <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
           {/* Kontext & Struktur: Orientierung, Anhänge, Inhaltsqualität, Strukturvorlagen. */}
           <aside className="space-y-2">
-            <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+            <p className="font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
               {t(knowledgeStudioSectionLabelKey("context"))}
             </p>
             {/* SCRUM-353: Beitragswert/Qualität zuerst — was ist gut, was fehlt, warum wertvoll. */}
@@ -455,7 +455,7 @@ export function KnowledgeInputStudio({
           {/* Zentrale Editorfläche — sichtbar der Hauptarbeitsbereich (mehr vertikale Fläche). */}
           <section className="min-w-0 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+              <p className="font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
                 {t(knowledgeStudioSectionLabelKey("editor"))}
               </p>
               {/* SCRUM-346: klare Trennung Bearbeiten ↔ Vorschau/Review (kein Layout-Umbau). */}
@@ -525,7 +525,7 @@ export function KnowledgeInputStudio({
                           {t(BODY_READ_TITLE_KEY)}
                         </span>
                         {previewState.hasBlocks ? (
-                          <span className="rounded-pill bg-page px-2 py-0.5 text-[10.5px] font-semibold text-muted">
+                          <span className="rounded-pill bg-page px-2 py-0.5 text-klein font-semibold text-muted">
                             {t(BODY_READ_BLOCKS_KEY)}
                           </span>
                         ) : null}

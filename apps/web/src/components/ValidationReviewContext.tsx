@@ -15,7 +15,7 @@ export function ValidationReviewContext({ ko }: { ko: ReviewContextInput }): JSX
   return (
     <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] leading-relaxed text-muted">
       <span
-        className={`rounded-pill px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${TONE[ctx.tone]}`}
+        className={`rounded-pill px-1.5 py-0.5 font-mono text-klein font-semibold uppercase ${TONE[ctx.tone]}`}
       >
         {t(ctx.labelKey)} · v{ctx.version}
       </span>

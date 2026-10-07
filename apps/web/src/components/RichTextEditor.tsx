@@ -2541,7 +2541,7 @@ export function RichTextEditor({
                     </p>
                   ) : (
                     <div className="border-hairline border-t pt-1">
-                      <p className="px-2 pb-0.5 text-[10.5px] text-muted-2">
+                      <p className="px-2 pb-0.5 text-klein text-muted-2">
                         {t("editor.imageFromAttachment")}
                       </p>
                       {images.map((img) => (
@@ -2653,7 +2653,7 @@ export function RichTextEditor({
             ) : null}
           </>
         ) : (
-          <span className="rounded-pill border border-ai/30 bg-ai-surface-1 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-ai">
+          <span className="rounded-pill border border-ai/30 bg-ai-surface-1 px-2.5 py-1 font-mono text-klein font-semibold uppercase tracking-wider text-ai">
             {t("editor.previewBadge")}
           </span>
         )}
@@ -3014,7 +3014,7 @@ export function RichTextEditor({
                           {ohneVorschau ? (
                             <span
                               data-testid="caption-form-assign-preview-missing"
-                              className="flex h-16 w-full items-center justify-center rounded-input border border-dashed border-hairline px-1 text-center text-[10.5px] font-normal leading-snug text-muted-2"
+                              className="flex h-16 w-full items-center justify-center rounded-input border border-dashed border-hairline px-1 text-center text-klein font-normal leading-snug text-muted-2"
                             >
                               {t("editor.assignPreviewMissing")}
                             </span>
@@ -3204,11 +3204,11 @@ export function RichTextEditor({
                   data-testid="caption-form-suggestion"
                   className="mt-2 rounded-card border border-ai/30 bg-surface p-2"
                 >
-                  <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
+                  <p className="font-mono text-klein font-semibold uppercase tracking-wider text-ai">
                     {t(CAPTION_AI_TEXT.panelTitle)} · {t(CAPTION_AI_TEXT.aiBadge)}
                   </p>
                   {captionFormAi.withContext ? (
-                    <p className="mt-0.5 text-[10.5px] leading-snug text-muted">
+                    <p className="mt-0.5 text-klein leading-snug text-muted">
                       {t(CAPTION_AI_TEXT.withContext)}
                     </p>
                   ) : null}
@@ -3348,7 +3348,7 @@ export function RichTextEditor({
             </p>
           ) : (
             <div data-testid="caption-form-title-suggestion">
-              <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
+              <p className="font-mono text-klein font-semibold uppercase tracking-wider text-ai">
                 {t(CAPTION_AI_TEXT.titleLabel)}
               </p>
               {/* JOB 2440 D1: eigener Anker für den VORGESCHLAGENEN TITEL allein. Der Block darüber

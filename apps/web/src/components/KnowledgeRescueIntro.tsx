@@ -24,7 +24,7 @@ export function KnowledgeRescueIntro({
             <Sparkles size={15} />
           </span>
           <div className="min-w-0">
-            <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
+            <p className="font-mono text-klein font-semibold uppercase tracking-wider text-ai">
               {t("capture.rescue.kicker")}
             </p>
             <h2 className="text-[15px] font-semibold leading-snug text-text">
@@ -52,7 +52,7 @@ export function KnowledgeRescueIntro({
             {KNOWLEDGE_RESCUE_STEPS.map((step, i) => (
               <li key={step.id} className="rounded-card border border-hairline bg-page p-2.5">
                 <div className="flex items-center gap-1.5">
-                  <span className="grid h-5 w-5 place-items-center rounded-full bg-ink text-[10px] font-semibold text-white">
+                  <span className="grid h-5 w-5 place-items-center rounded-full bg-ink text-klein font-semibold text-white">
                     {i + 1}
                   </span>
                   <span className="text-[12.5px] font-semibold text-text">{t(step.labelKey)}</span>

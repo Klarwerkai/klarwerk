@@ -117,7 +117,7 @@ function TileInhalt({ source, icon }: { source: GallerySource; icon: ReactNode }
         {/* Zustand als TEXT im Badge (nicht nur Farbe) — barrierearm. */}
         <span
           data-tile-badge
-          className={`shrink-0 rounded-pill px-1.5 py-0.5 text-[10px] font-medium ${BADGE_CLASS[source.state]}`}
+          className={`shrink-0 rounded-pill px-1.5 py-0.5 text-klein font-medium ${BADGE_CLASS[source.state]}`}
         >
           {t(STATE_BADGE_KEY[source.state])}
         </span>

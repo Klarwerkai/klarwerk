@@ -30,7 +30,7 @@ export function StudioContributionPanel({
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11.5px] font-semibold text-ink">{t("studio.contrib.title")}</span>
         <span
-          className={`rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${LEVEL_TONE[contribution.tone]}`}
+          className={`rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${LEVEL_TONE[contribution.tone]}`}
         >
           {t(contribution.levelLabelKey)}
         </span>
@@ -39,7 +39,7 @@ export function StudioContributionPanel({
 
       {contribution.strengths.length > 0 ? (
         <div className="mt-2">
-          <p className="text-[10.5px] font-semibold uppercase tracking-wide text-trust-pos-text">
+          <p className="text-klein font-semibold uppercase tracking-wide text-trust-pos-text">
             {t("studio.contrib.strengthsTitle")}
           </p>
           <ul className="mt-1 flex flex-col gap-0.5">
@@ -57,7 +57,7 @@ export function StudioContributionPanel({
 
       {contribution.suggestions.length > 0 ? (
         <div className="mt-2">
-          <p className="text-[10.5px] font-semibold uppercase tracking-wide text-muted-2">
+          <p className="text-klein font-semibold uppercase tracking-wide text-muted-2">
             {t("studio.contrib.suggestionsTitle")}
           </p>
           <ul className="mt-1 flex flex-col gap-0.5">

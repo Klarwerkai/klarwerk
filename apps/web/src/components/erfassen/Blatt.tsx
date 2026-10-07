@@ -3157,7 +3157,7 @@ export function Blatt({
                 onClick={() => setLiveOffen((v) => !v)}
                 className="inline-flex w-fit items-center gap-1.5 rounded-[999px] border border-hairline bg-page px-2.5 py-1 text-[12px] text-muted hover:text-text"
               >
-                <span className="font-semibold uppercase text-[10.5px]">{t("vorschau.name")}</span>
+                <span className="font-semibold uppercase text-klein">{t("vorschau.name")}</span>
                 {verdict.status === "conflict"
                   ? t("erfassen.live.widerspruch")
                   : verdict.status === "similar"
@@ -3189,7 +3189,7 @@ export function Blatt({
               data-testid="blatt-ki-fehler"
               className="rounded-[10px] border border-ai/30 bg-surface p-3"
             >
-              <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 text-[10.5px] font-semibold uppercase text-ai">
+              <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 text-klein font-semibold uppercase text-ai">
                 {t("erfassen.ki.pille")}
               </span>
               <p className="mt-1.5 text-[13px] leading-relaxed text-trust-crit-text">
@@ -3214,7 +3214,7 @@ export function Blatt({
               data-testid="blatt-ki-vorschlag"
               className="rounded-[10px] border border-ai/30 bg-surface p-3"
             >
-              <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 text-[10.5px] font-semibold uppercase text-ai">
+              <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 text-klein font-semibold uppercase text-ai">
                 {t("erfassen.ki.pille")}
               </span>
               {/* WP-D8 (Pedis Live-ROT B) / WP-D10 Fix 3 / WP-SHIP9-S2: Ein Fallback-Kennzeichen
@@ -3223,7 +3223,7 @@ export function Blatt({
                   vertraulichkeitsbedingter Cloud-Ausschluss. Vier Ursachen, vier Sätze. */}
               {structureProposal.demo ? (
                 <>
-                  <span className="ml-1.5 rounded-pill bg-trust-warn-bg px-2 py-0.5 text-[10.5px] font-semibold uppercase text-trust-warn-text">
+                  <span className="ml-1.5 rounded-pill bg-trust-warn-bg px-2 py-0.5 text-klein font-semibold uppercase text-trust-warn-text">
                     {t("fd.fallback")}
                   </span>
                   <p className="mt-1.5 text-[12px] leading-relaxed text-trust-warn-text">
@@ -3278,11 +3278,11 @@ export function Blatt({
               data-testid="blatt-ki-vorschlag"
               className="rounded-[10px] border border-ai/30 bg-surface p-3"
             >
-              <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 text-[10.5px] font-semibold uppercase text-ai">
+              <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 text-klein font-semibold uppercase text-ai">
                 {t("erfassen.ki.pille")}
               </span>
               {assistProposal.demo ? (
-                <span className="ml-1.5 rounded-pill bg-trust-warn-bg px-2 py-0.5 text-[10.5px] font-semibold uppercase text-trust-warn-text">
+                <span className="ml-1.5 rounded-pill bg-trust-warn-bg px-2 py-0.5 text-klein font-semibold uppercase text-trust-warn-text">
                   {t("fd.fallback")}
                 </span>
               ) : null}

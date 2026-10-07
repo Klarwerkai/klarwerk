@@ -194,7 +194,7 @@ export function LibraryScopeBar({
             {t("lib.raum.scopeAll")}
             {/* Regel 4: die Zahl steht hier NUR, wenn der Server sie geliefert hat. */}
             {count !== null ? (
-              <span className="rounded-pill bg-hairline-soft px-1.5 py-0.5 text-[10.5px] text-muted">
+              <span className="rounded-pill bg-hairline-soft px-1.5 py-0.5 text-klein text-muted">
                 {count}
               </span>
             ) : null}

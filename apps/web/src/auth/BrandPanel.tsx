@@ -167,7 +167,7 @@ function Wortmarke({ hell }: { hell: boolean }): JSX.Element {
           KLARWERK
         </span>
         <span
-          className={`block font-mono text-[10px] uppercase tracking-[1.5px] ${
+          className={`block font-mono text-klein uppercase tracking-[1.5px] ${
             hell ? "text-white/50" : "text-muted-2"
           }`}
         >

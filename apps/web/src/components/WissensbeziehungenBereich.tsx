@@ -738,7 +738,7 @@ export function WissensbeziehungenBereich({ koId }: { koId: string }): JSX.Eleme
                   <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                     {/* Die Herkunft dieser Verbindung, als Wort. Nicht als Farbe. */}
                     <span
-                      className="rounded-btn bg-hairline-soft px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-muted"
+                      className="rounded-btn bg-hairline-soft px-1.5 py-0.5 text-klein font-semibold uppercase tracking-wide text-muted"
                       data-testid="wb-herkunft"
                     >
                       {t("wb.herkunft.gesetzt")}
@@ -749,7 +749,7 @@ export function WissensbeziehungenBereich({ koId }: { koId: string }): JSX.Eleme
                         sie sagt. Er steht IMMER — auch bei „gilt" —, damit niemand aus seiner
                         Abwesenheit etwas schliesst, genau wie beim Fassungsvermerk unten. */}
                     <span
-                      className="rounded-btn bg-hairline-soft px-1.5 py-0.5 text-[10.5px] font-semibold text-muted"
+                      className="rounded-btn bg-hairline-soft px-1.5 py-0.5 text-klein font-semibold text-muted"
                       data-testid="wb-status"
                       data-status={kante.status}
                     >
@@ -876,7 +876,7 @@ export function WissensbeziehungenBereich({ koId }: { koId: string }): JSX.Eleme
           )}
           <p className="text-[11.5px]">
             <span
-              className="rounded-btn bg-hairline-soft px-1.5 py-0.5 text-[10.5px] font-semibold text-muted"
+              className="rounded-btn bg-hairline-soft px-1.5 py-0.5 text-klein font-semibold text-muted"
               data-testid="wb-antwort-status"
               data-status={widerrufAntwort.status}
             >
