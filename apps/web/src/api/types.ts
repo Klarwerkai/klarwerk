@@ -2783,11 +2783,15 @@ export interface LiveWallConsent {
   photo?: string;
 }
 
+// R-0894: `escalation` = eskalierter Wahrheitskonflikt, `return` = Rückgabe zur Nacharbeit an die
+// verantwortliche Person (Spiegel von services/app/src/notification-feed.ts).
 export type NotificationKind =
   | "conflict"
+  | "escalation"
   | "duplicate"
   | "gap"
   | "assignment"
+  | "return"
   | "impact"
   | "kenntnisnahme";
 

@@ -263,6 +263,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein
   // Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "IMPORT_RUN_SOURCE_SYNC_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261007:spaces: die Fassungen der Spaces. ADDITIV, nachgezählt: ein einziges
+  // `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "SPACES_SCHEMA", risiko: "ADDITIV" },
   // PMO-FEA-0003: die freiwilligen Fotos der Live-Wand. ADDITIV, nachgezählt: ein einziges
   // `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.

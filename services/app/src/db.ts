@@ -60,6 +60,9 @@ import { LESEVARIANTEN_SCHEMA } from "./lesevarianten";
 // PMO-FEA-0003: die freiwilligen Fotos der Live-Wand (eine Zeile je zustimmendem Konto).
 import { LIVEWALL_FOTO_SCHEMA } from "./livewall-fotos";
 import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
+// produkt:20261007:spaces: die Fassungen der Arbeitsräume. Im App-Wurzelverzeichnis wie das
+// Firmenwörterbuch: die Sichtbarkeitsregel (`sichtbarkeit.ts`) liest sie, kein Fachmodul besitzt sie.
+import { SPACES_SCHEMA } from "./spaces";
 
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
 export function createPool(connectionString?: string): Pool {
@@ -244,6 +247,9 @@ export const schemas = [
   // Extension; sie steht am Ende, weil das die lesbare Ordnung ist (keine Abhängigkeit zu den
   // Stufen davor — die Reihenfolge nach der Zusammenführung mit main ist frei).
   IMPORT_RUN_SOURCE_SYNC_SCHEMA,
+  // produkt:20261007:spaces: die unveränderlichen Fassungen der Spaces. Additiv und wiederholbar
+  // (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  SPACES_SCHEMA,
   // PMO-FEA-0003: die freiwilligen Fotos der Live-Wand. Additiv und wiederholbar (CREATE TABLE IF
   // NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare
   // Ordnung ist.

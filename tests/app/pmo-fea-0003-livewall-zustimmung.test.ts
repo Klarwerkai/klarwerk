@@ -350,6 +350,43 @@ describe("PMO-FEA-0003 · Foto: Zustimmung, Sichtrechte, Widerruf", () => {
     await app.close();
   });
 
+  // Zusammenführung mit main (produkt:20261007:spaces): `darfSehen` kennt seitdem geschlossene
+  // Spaces. Die Wand filtert über dieselbe Regel — ein validierter Eintrag in einem Space, den der
+  // Leser nicht lesen darf, erscheint nicht, und mit ihm weder Name noch Foto seiner Autorin.
+  it("Spaces: kein Eintrag, Name oder Foto aus einem Space ohne Leserecht", async () => {
+    const imSpace = {
+      ...ko("s1", "Rezeptur Linie 4", "validiert", "u-geheim", "2026-07-04T08:00:00.000Z"),
+      spaceId: "space-geschlossen",
+    } as unknown as KnowledgeObject;
+    const w = aufbau(geheim, [kos[0] as KnowledgeObject, imSpace], konten);
+    const app = await w.start();
+    await hinterlegen(app);
+    await app.inject({
+      method: "PUT",
+      url: "/api/livewall/consent",
+      payload: { nameConsent: true },
+    });
+
+    const ohneRecht = { ...tom, spaceLesbar: new Set<string>() } as unknown as SessionUser;
+    w.als(ohneRecht);
+    const roh = (await app.inject({ method: "GET", url: "/api/livewall" })).body;
+    expect(roh).not.toContain("Rezeptur Linie 4");
+    expect(roh).not.toContain("Gisela Geheim");
+    expect(roh).not.toContain("base64");
+
+    // Gegenprobe: mit Leserecht am Space erscheint der Eintrag samt Name und Foto.
+    const mitRecht = {
+      ...tom,
+      spaceLesbar: new Set(["space-geschlossen"]),
+    } as unknown as SessionUser;
+    w.als(mitRecht);
+    const wand = (await app.inject({ method: "GET", url: "/api/livewall" })).json() as Wand;
+    const eintrag = wand.validated.find((v) => v.koId === "s1");
+    expect(eintrag?.name).toBe("Gisela Geheim");
+    expect(eintrag?.foto).toBe(FOTO);
+    await app.close();
+  });
+
   it("ein gelöschtes Konto bekommt kein Foto, auch wenn noch eines abgelegt ist", async () => {
     const w = aufbau(tom, kos, [{ id: "u-tom", name: "Tom Test" }]);
     await w.fotos.setze("u-eva", FOTO, "2026-07-01T00:00:00.000Z");
