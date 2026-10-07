@@ -3,8 +3,6 @@
 // übersetzt sie in eine ehrliche Klartext-Aussage: nutzbar (validiert) · in Prüfung · zu prüfen.
 // Offene KOs erscheinen damit NIE als „nutzbar". Keine neue Suche, keine Mutation, kein Backend.
 import type { KnowledgeObject } from "../api/types";
-import { askAnswerHref, askConfidentialQuestionHref } from "./askQuestion";
-import { isKnownNonConfidential } from "./confidentiality";
 import { type KoUsability, koOverview } from "./koOverview";
 import { useReadiness } from "./useReadiness";
 
@@ -14,12 +12,6 @@ export interface LibraryMaturity {
   usability: KoUsability;
   labelKey: string;
   tone: MaturityTone;
-}
-
-export interface LibraryUseCta {
-  labelKey: string;
-  href: string;
-  kind: "ask" | "review";
 }
 
 // SCRUM-293: Label + Tönung kommen aus der GETEILTEN Use-Readiness-Sprache (useReadiness), damit
@@ -42,29 +34,10 @@ export function libraryMaturity(ko: KnowledgeObject): LibraryMaturity {
   return { usability, ...META[usability] };
 }
 
-// SCRUM-288: In der Bibliothek führt nur nutzbares/validiertes Wissen in den Ask-Flow. Alles,
-// was noch offen oder in Prüfung ist, wird ehrlich Richtung Validierung geführt — keine neue
-// Suche, keine Mutation, nur sichere CTA-Wahl aus der vorhandenen Reife.
-// WP-UX-WOW-1 U5 (Kopfs Befund): der Fragen-Knopf stellt eine ECHTE, lokalisierte Frage (der
-// Aufrufer reicht sie via i18n-Muster „Was gilt zu: <Titel>?" herein) und sendet DIREKT (ein
-// Klick → Antwort, über den bestehenden ?ask=1-Auto-Antwort-Weg der Suche). Ohne question-Parameter
-// bleibt der Titel die Startfrage (Alt-Verhalten der übrigen Aufrufer).
-// WP-POLISH-CLOSE (bens Punkt 1): für VERTRAULICHE/streng vertrauliche KOs (fail-safe: alles, was
-// nicht eindeutig nicht-vertraulich ist) KEIN Auto-Send — Variante (a), die ehrlichere: der Knopf
-// bleibt und befüllt die Frage, aber der Nutzer sendet bewusst selbst; die Ask-Seite zeigt den
-// nüchternen Vertraulichkeits-Hinweis. Ein ganz entfernter Auto-Send-Knopf würde die legitime
-// Frage-Fähigkeit kappen, ohne die Kante ehrlicher zu machen.
-export function libraryUseCta(ko: KnowledgeObject, question?: string): LibraryUseCta {
-  const maturity = libraryMaturity(ko);
-  if (maturity.usability === "ready") {
-    const startQuestion = question ?? ko.title;
-    return isKnownNonConfidential(ko.confidentiality)
-      ? { labelKey: "lib.ask", href: askAnswerHref(startQuestion), kind: "ask" }
-      : { labelKey: "lib.ask", href: askConfidentialQuestionHref(startQuestion), kind: "ask" };
-  }
-  return { labelKey: "lib.review", href: "/validierung", kind: "review" };
-}
-
+// Hier stand `libraryUseCta` (SCRUM-288). Seit JOB 3063 Runde 5 zieht die Lesefläche ihre Aktion
+// für JEDEN Eintrag aus `components/bibliothek/fragen.ts::fragenHref` — dort lebt auch der
+// Vertraulichkeitsweg ohne Auto-Senden weiter. Die Reife-Weiche hatte keinen Produktaufrufer mehr
+// und ist mit R-1349 entfernt.
 // SCRUM-267: einfacher Reife-Filter für die Bibliothek. „all" + die drei Reifearten — dieselbe
 // Logik wie die Plakette (libraryMaturity → koOverview). Arbeitet auf der bereits server-gefilterten
 // und client-seitig gerankten Trefferliste; keine neue Suche, kein Backend.

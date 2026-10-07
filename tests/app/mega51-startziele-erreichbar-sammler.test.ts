@@ -27,8 +27,8 @@
 //      liste, nur eine Datei weiter. Der gemountete Fall hat sie gefunden, der Sammler hält sie.
 //
 //  (2) DIE ZIELE — aus den PRODUKTIVEN Tabellen, die die Seite rendert, nicht abgeschrieben:
-//      `KNOWLEDGE_CYCLE`, `DEMO_PILOT_PATH`, `knowledgeGuidance("start")`, `buildWorkOverview`,
-//      `CTA_PRIMARY`/`CTA_QUEUE` — dazu jedes `to="…"`-Literal aus dem Quelltext der Seite. Damit
+//      `KNOWLEDGE_CYCLE`, `DEMO_PILOT_PATH`, `knowledgeGuidance("start")`, `buildWorkOverview`
+//      — dazu jedes `to="…"`-Literal aus dem Quelltext der Seite. Damit
 //      keine Tabelle still danebenstehen kann, prüft eine Vollständigkeitsregel jeden `to=`-
 //      AUSDRUCK der Seite gegen ein benanntes Register: ein unbekannter Ausdruck ist rot und wird
 //      wörtlich zitiert, statt lautlos aus der Erhebung zu fallen.
@@ -67,7 +67,6 @@ import { EINSTIEGE } from "../../apps/web/src/lib/einstiege";
 import { FAEHIGKEITEN } from "../../apps/web/src/lib/faehigkeiten";
 import { KNOWLEDGE_CYCLE } from "../../apps/web/src/lib/knowledgeCycle";
 import { knowledgeGuidance } from "../../apps/web/src/lib/knowledgeGuidance";
-import { CTA_PRIMARY, CTA_QUEUE } from "../../apps/web/src/lib/startCtas";
 import { buildWorkOverview } from "../../apps/web/src/lib/workCenter";
 
 const WEB_SRC = join(__dirname, "../../apps/web/src");
@@ -159,8 +158,9 @@ describe("mega51 A3 · Stufe 1 — die Startseite hält kein navigierendes Mitte
 // rot — sonst fiele eine neue Tabelle lautlos aus der Erhebung.
 const AUSDRUCK_HERKUNFT: { muster: RegExp; herkunft: string }[] = [
   { muster: /^`\/wissen\/\$\{[^}]+\}`$/, herkunft: "Live-Wall → /wissen/:id (ohne Rollen-Gate)" },
-  { muster: /^cta\.to$/, herkunft: "lib/startCtas.ts · CTA_PRIMARY" },
-  { muster: /^queueCta\.to$/, herkunft: "lib/startCtas.ts · CTA_QUEUE" },
+  // Hier standen `cta.to`/`queueCta.to` aus `lib/startCtas.ts`. Seit JOB 3015 D5 rendert die Seite
+  // diese Tabellen nicht mehr; der Aufrufer-Wächter hat sie als tot gemeldet, und die Datei ist mit
+  // dem Auftrag „Gebauten Code ohne tatsächliche Verwendung erkennen" (R-1349) entfernt.
   { muster: /^step\.to$/, herkunft: "lib/knowledgeCycle.ts + lib/demoPilotPath.ts" },
   { muster: /^item\.to$/, herkunft: "lib/knowledgeGuidance.ts" },
   { muster: /^it\.to$/, herkunft: "lib/workCenter.ts · buildWorkOverview" },
@@ -241,8 +241,6 @@ const ZIELE: { ziel: string; herkunft: string }[] = [
     criticalGaps: 1,
     learningOpenSteps: 1,
   }).map((i) => ({ ziel: i.to, herkunft: `buildWorkOverview/${i.key}` })),
-  ...Object.entries(CTA_PRIMARY).map(([r, c]) => ({ ziel: c.to, herkunft: `CTA_PRIMARY/${r}` })),
-  ...Object.entries(CTA_QUEUE).map(([r, c]) => ({ ziel: c.to, herkunft: `CTA_QUEUE/${r}` })),
   { ziel: captureDemoHref(), herkunft: "captureDemoHref" },
   ...FAEHIGKEITEN.map((f) => ({ ziel: f.to, herkunft: `FAEHIGKEITEN/${f.id}` })),
   ...EINSTIEGE.map((e) => ({ ziel: e.pfad, herkunft: `EINSTIEGE/${e.thema}` })),

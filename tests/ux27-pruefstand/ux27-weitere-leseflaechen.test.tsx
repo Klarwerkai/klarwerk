@@ -2,8 +2,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
-import { IntakeEmptyState } from "../../apps/web/src/components/capture/intake/IntakeEmptyState";
-import { ConflictKoSide } from "../../apps/web/src/components/conflicts/ConflictKoSide";
 import { KoReadView } from "../../apps/web/src/components/ko/KoReadView";
 import { SourceEvidence } from "../../apps/web/src/components/ko/SourceEvidence";
 import i18n from "../../apps/web/src/i18n";
@@ -17,8 +15,11 @@ afterEach(async () => {
 
 // Lieferung 8: dieselben echten Verbraucher, deren alte Wortlaut-Pins in Runde 1 rot wurden.
 // Die bestehenden Tests außerhalb der Zielpfade bleiben aktiv; diese Fälle ersetzen sie nicht.
+// R-1349: Die Fälle „erfassen" (IntakeEmptyState) und „konflikt" (ConflictKoSide) sind mit ihren
+// Komponenten entfallen — beide hatten seit JOB 3062 bzw. 3061 keinen Produktaufrufer mehr. Ihr
+// Beleg kommt auf den heutigen Flächen aus derselben `SourceEvidence`, die hier weiter geprüft wird.
 describe.each(["de", "en"])("UX-27 weitere Leseflächen · %s", (lng) => {
-  it.each(["lesen", "quelle-voll", "quelle-kompakt", "erfassen", "konflikt"] as const)(
+  it.each(["lesen", "quelle-voll", "quelle-kompakt"] as const)(
     "%s: sichtbarer Prüfstand und zugänglicher Name passen zur unveränderten Quelle und Zahl",
     async (flaeche) => {
       await i18n.changeLanguage(lng);
@@ -27,16 +28,12 @@ describe.each(["de", "en"])("UX-27 weitere Leseflächen · %s", (lng) => {
       const element =
         flaeche === "lesen"
           ? createElement(KoReadView, { ko })
-          : flaeche === "erfassen"
-            ? createElement(IntakeEmptyState, { example: ko, onStart: () => {} })
-            : flaeche === "konflikt"
-              ? createElement(ConflictKoSide, { ko, fallbackId: ko.id })
-              : createElement(SourceEvidence, {
-                  sources: [source],
-                  confidence: ko.confidence,
-                  date: source.at,
-                  variant: flaeche === "quelle-voll" ? "full" : "compact",
-                });
+          : createElement(SourceEvidence, {
+              sources: [source],
+              confidence: ko.confidence,
+              date: source.at,
+              variant: flaeche === "quelle-voll" ? "full" : "compact",
+            });
       const host = document.createElement("div");
       document.body.append(host);
       const root = createRoot(host);
@@ -57,7 +54,7 @@ describe.each(["de", "en"])("UX-27 weitere Leseflächen · %s", (lng) => {
         const link = host.querySelector('a[href="https://example.com/protokoll"]');
         expect(link?.textContent).toBe("Prüfprotokoll");
         expect(host.textContent).toContain(lng === "de" ? "Quelle vom" : "Source dated");
-        if (flaeche === "lesen" || flaeche === "erfassen" || flaeche === "konflikt") {
+        if (flaeche === "lesen") {
           expect(host.textContent).toContain("Ventil prüfen");
         }
       } finally {

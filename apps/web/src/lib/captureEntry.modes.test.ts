@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EXPERT_MODE, NARRATE_MODES, initialCaptureWorkspaceOpen } from "./captureEntry";
+import { EXPERT_MODE, NARRATE_MODES } from "./captureEntry";
 
 // SCRUM-458: Die zweite Aufklapp-Ebene („weitere Optionen/weniger Optionen") ist entfernt — sobald
 // „Weitere Wege" aufgeklappt ist, zeigt die Modus-Leiste ALLE Erzähl-Modi direkt und dauerhaft, plus
@@ -20,25 +20,6 @@ describe("SCRUM-458: alle Erfassungs-Modi ohne zweite Aufklapp-Ebene", () => {
   });
 });
 
-// SCRUM-458 (Nullschulung): Der Erfassungs-Arbeitsraum (Schritt-Leiste · Erzähl-Modi · Formular) startet
-// EINGEKLAPPT — Schritt 1 zeigt zunächst nur den ruhigen Aufklapp-Einstieg. Defensiv aufgeklappt, wenn
-// beim Betreten bereits ein aktiver Kontext vorliegt, der sonst verdeckt wäre.
-describe("SCRUM-458: Erfassungs-Arbeitsraum standardmäßig eingeklappt", () => {
-  it("Standard (kein Kontext) → eingeklappt", () => {
-    expect(initialCaptureWorkspaceOpen({ hasGapContext: false, hasPrefilledRaw: false })).toBe(
-      false,
-    );
-  });
-
-  it("Lücken-Kontext (?gap=) → aufgeklappt, damit der Gap-Entwurf nicht verdeckt startet", () => {
-    expect(initialCaptureWorkspaceOpen({ hasGapContext: true, hasPrefilledRaw: false })).toBe(true);
-  });
-
-  it("vorbefüllter Rohtext (Deep-Link/Entwurf) → aufgeklappt", () => {
-    expect(initialCaptureWorkspaceOpen({ hasGapContext: false, hasPrefilledRaw: true })).toBe(true);
-  });
-
-  it("beide Kontexte → aufgeklappt", () => {
-    expect(initialCaptureWorkspaceOpen({ hasGapContext: true, hasPrefilledRaw: true })).toBe(true);
-  });
-});
+// R-1349: Die Fälle zu `initialCaptureWorkspaceOpen` sind mit der Funktion entfallen. Das Blatt
+// (JOB 3062) ist immer offen; einen eingeklappten Arbeitsraum gibt es nicht mehr (Capture.tsx ruft
+// die Funktion seither nicht mehr).

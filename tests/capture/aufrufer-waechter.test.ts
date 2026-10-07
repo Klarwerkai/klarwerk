@@ -1008,96 +1008,33 @@ const NEUZUGANG_GEMELDET: readonly Ausnahme[] = [
 ];
 
 // ------------------------------------------------------------------------------------------------
-// REGISTER 4b · ERSETZT, ABBAU LIEGT AUSSERHALB DER ZIELPFADE (JOB 3015 D5)
+// R-1349 · DIE REGISTER 4b UND 4c SIND ABGEBAUT, NICHT LEER STEHEN GEBLIEBEN
 // ------------------------------------------------------------------------------------------------
-// JOB 3015 D5 macht die Startseite zur Konsole (Zielbild KonsoleStart.dc.html): Die beiden
-// CTA-Knoepfe des Seitenkopfs („Frage stellen"/„Wissen erfassen" und „Validierung oeffnen") sind
-// durch die drei Karten Suchen/Pruefen/Hinzufuegen ersetzt, deren Ziele als Literale in
-// `pages/Start.tsx` stehen. Damit hat die Tabelle `lib/startCtas.ts` ihren einzigen Produkt-Leser
-// verloren. Die Datei liegt AUSSERHALB der Zielpfade des Auftrags (Start.tsx, i18n.ts, der neue
-// Design-Test) und darf von der Bahn nicht angefasst werden; ihr Abbau (Datei, die Schluessel
-// `start.ctaAsk/ctaCapture/ctaValidate`, die Regel `.kw-cta-primary` im modernen Thema (Block D
-// der Werkbank-Regeln) und der Import im mega51-Sammler) ist in der Rueckgabe zu JOB 3015 als
-// Folgeauftrag benannt. Gemeldet, nicht abgelegt — A3 streicht die Eintraege, sobald die Datei weg
-// ist. (Der Pfad des Stylesheets steht hier absichtlich nicht: das Deckungsregister der
-// Theme-Waechter, tests/app/theme-deckungsregister.test.ts, sammelt jeden Test, der ihn nennt,
-// und dieser Test deckt das Thema nicht.)
-const ERSETZT_JOB3015: readonly Ausnahme[] = [
-  {
-    schluessel: "apps/web/src/lib/startCtas.ts::startCta",
-    grund:
-      "Seit JOB 3015 D5 ohne Produktaufrufer: der Haupt-CTA der Startseite ist durch die Karten " +
-      "Suchen (/fragen) und Hinzufuegen (/erfassen) ersetzt. Abbau ausserhalb der Zielpfade, " +
-      "Folgeauftrag benannt (RUECKGABE JOB 3015).",
-  },
-  {
-    schluessel: "apps/web/src/lib/startCtas.ts::startQueueCta",
-    grund:
-      "Seit JOB 3015 D5 ohne Produktaufrufer: der Warteschlangen-Link der Startseite ist durch " +
-      "die Karte Pruefen (/validierung) mit der Pille „N offen“ ersetzt. Abbau ausserhalb der " +
-      "Zielpfade, Folgeauftrag benannt (RUECKGABE JOB 3015).",
-  },
-];
-
-// ------------------------------------------------------------------------------------------------
-// REGISTER 4c · ERSETZT, ABBAU LIEGT AUSSERHALB DER ZIELPFADE (JOB 3061 H2)
-// ------------------------------------------------------------------------------------------------
-// JOB 3061 baut die vier Pruefseiten auf die Mockups vom 04.09. um (Pruefen/Konflikte/Duplikate
-// unter einem gemeinsamen Reiterkopf). Zwei Praesentations-Bauteile haben dabei ihren einzigen
-// Produkt-Aufrufer verloren, weil die FLAECHE ihre Aufgabe uebernommen hat:
-//
-//   FindingCard / FindingGroupHeader — die Befundkarte mit Gruppen-Ueberschrift. Ihre INHALTE sind
-//     nicht entfallen: die ehrliche Benennung von WAS und ERKENNUNGSWEG kommt weiterhin aus
-//     `lib/findingGroups.ts` (`conflictFinding` / `overlapFinding`) und steht im „Mehr" beider
-//     Karten; die Ordnung „je Beitrag, neueste zuerst" kommt weiterhin aus
-//     `groupFindingsByBeitrag`, der Gruppentitel aus `resolveKo`. Nur die KARTE ist ersetzt.
-//   ConflictKoSide — die Belegkachel je Konfliktseite. Ihr Beleg (klickbare Quelle, Quelldatum,
-//     KO-Konfidenz) steht jetzt im „Mehr" der jeweiligen Karte, aus DERSELBEN geteilten Komponente
-//     `components/ko/SourceEvidence` mit denselben Feldern.
-//
-// Die zwei Dateien liegen AUSSERHALB der Zielpfade des Auftrags (`pages/Validation*.tsx`,
-// `pages/Conflicts*.tsx`, `pages/Duplicate*.tsx`, `pages/Lifecycle*.tsx`,
-// `components/pruefen/**`, `i18n.ts`, `tests/**`) und duerfen von der Bahn nicht geloescht werden;
-// ihr Abbau (die zwei Dateien samt der mitgehenden Schluessel `finding.*` und
-// `con.evidenceSideLabel`, soweit dann ungenutzt) ist in der RUECKGABE zu JOB 3061 als
-// Folgeauftrag benannt. Gemeldet, nicht abgelegt — A3 streicht die Eintraege, sobald sie weg sind.
-const ERSETZT_JOB3061: readonly Ausnahme[] = [
-  {
-    schluessel: "apps/web/src/components/FindingCard.tsx::FindingCard",
-    grund:
-      "Seit JOB 3061 H2 ohne Produktaufrufer: die Befundkarte ist durch das Kartenpaar der " +
-      "Pruefflaeche ersetzt (design/klarwerk/Konflikte.dc.html, Duplikate.dc.html). Ihre Inhalte " +
-      "leben ueber `lib/findingGroups.ts` im Mehr-Aufklapper weiter. Abbau ausserhalb der Zielpfade, " +
-      "Folgeauftrag benannt (RUECKGABE JOB 3061).",
-  },
-  {
-    schluessel: "apps/web/src/components/FindingCard.tsx::FindingGroupHeader",
-    grund:
-      "Seit JOB 3061 H2 ohne Produktaufrufer: die Gruppen-Ueberschrift ist entfallen (es steht " +
-      "genau ein Befund da, mit der Pille k von n); die Gruppierung selbst wirkt weiter als " +
-      "REIHENFOLGE ueber `groupFindingsByBeitrag`. Abbau ausserhalb der Zielpfade " +
-      "(RUECKGABE JOB 3061).",
-  },
-  {
-    schluessel: "apps/web/src/components/conflicts/ConflictKoSide.tsx::ConflictKoSide",
-    grund:
-      "Seit JOB 3061 H2 ohne Produktaufrufer: der Beleg je Konfliktseite steht jetzt im " +
-      "Mehr-Aufklapper der jeweiligen Karte, aus derselben geteilten Komponente " +
-      "`components/ko/SourceEvidence`. " +
-      "Abbau ausserhalb der Zielpfade, Folgeauftrag benannt (RUECKGABE JOB 3061).",
-  },
-];
+// Sie fuehrten Bausteine, die durch einen Umbau ersetzt waren und deren Abbau ausserhalb der
+// damaligen Zielpfade lag:
+//   · 4b (JOB 3015 D5) — `lib/startCtas.ts` (`startCta`, `startQueueCta`): die Startseite fuehrt
+//     ihre Wege seit der Konsole ueber Karten mit Literalzielen.
+//   · 4c (JOB 3061 H2) — `components/FindingCard.tsx` (`FindingCard`, `FindingGroupHeader`) und
+//     `components/conflicts/ConflictKoSide.tsx`: Befund und Beleg stehen seither im „Mehr" der
+//     Kartenpaare, aus `lib/findingGroups.ts` und `components/ko/SourceEvidence`.
+// Der Auftrag „Gebauten Code ohne tatsaechliche Verwendung erkennen" (R-1349: „Jeder Fall soll
+// entweder angeschlossen oder begruendet entfernt werden") hat die Pfade und hat die Dateien samt
+// ihrer reinen Komponententests entfernt. Die Woerterbuchschluessel bleiben stehen: der Textbestand
+// ist durch `tests/i18n-textmodule/bestand-unveraendert.test.ts` Wert fuer Wert festgehalten.
 
 // ------------------------------------------------------------------------------------------------
 // REGISTER 4d · SEIT JOB 3063 (H4) OHNE PRODUKTAUFRUFER — GEMELDET, NICHT ABGELEGT
 // ------------------------------------------------------------------------------------------------
 // JOB 3063 macht aus der Bibliothek eine Flaeche (Liste links, Lesefläche rechts) und aus der
-// Detailseite mit dreizehn Karten deren rechte Haelfte. Zwei Bausteine der ABGELOESTEN Flaechen
-// verlieren dabei ihren einzigen Produktleser. Beide Dateien liegen AUSSERHALB der Zielpfade des
-// Auftrags (`pages/Library*.tsx`, `pages/KnowledgeDetail*.tsx`, `components/bibliothek/**`,
-// `i18n.ts`, `tests/**`) und duerfen von der Bahn nicht angefasst werden; ihr Abbau ist in der
-// RUECKGABE zu JOB 3063 unter ABWEICHUNGEN als Folgeauftrag benannt. A3 streicht die Eintraege,
-// sobald die Dateien weg sind.
+// Detailseite mit dreizehn Karten deren rechte Haelfte. Drei Bausteine der ABGELOESTEN Flaechen
+// verloren dabei ihren einzigen Produktleser.
+//
+// R-1349: `lib/koCta.ts::koCta` und `lib/libraryMaturity.ts::libraryUseCta` sind entfernt — beide
+// sind durch `components/bibliothek/fragen.ts::fragenHref` ersetzt. Stehen geblieben ist allein
+// `KoReadView`, und zwar mit Grund: an ihr haengt die ganze Datei `components/ko/KoRead.tsx`
+// (`KoReadHeader`, `KoReadStatement`, `KoReadDetails` haben keinen anderen Produktleser, `KoReadBody`
+// steht im ALTBESTAND_WEB), und `tests/k3-bedarfsabgleich/bedarfsabgleich.ts` (R-0991, Nr. 57) fuehrt
+// `KoReadView.tsx` als Beleg eines Alternativwegs. Ihr Abbau ist ein eigener Schnitt.
 const ERSETZT_JOB3063: readonly Ausnahme[] = [
   {
     schluessel: "apps/web/src/components/ko/KoReadView.tsx::KoReadView",
@@ -1105,26 +1042,7 @@ const ERSETZT_JOB3063: readonly Ausnahme[] = [
       "Seit JOB 3063 ohne Produktaufrufer: die Zonen-Leseansicht (Rahmen „Was in diesem Beitrag " +
       "steht“, Belegzone, Schlusshinweis) ist durch die Lesefläche der Bibliothek ersetzt — Titel, " +
       "Text, Quellen-Chips, sonst nichts (Pedi 04.09.: Erklärtext gehört hinter Menüs). Abbau " +
-      "ausserhalb der Zielpfade, Folgeauftrag benannt.",
-  },
-  {
-    schluessel: "apps/web/src/lib/koCta.ts::koCta",
-    grund:
-      "Seit JOB 3063 ohne Produktaufrufer: die „nächste Handlung“ der alten Detailseite ist durch " +
-      "den Knopf „Fragen“ der Lesefläche ersetzt, der aus `components/bibliothek/fragen.ts::" +
-      "fragenHref` kommt. Zwei Wege nebeneinander waeren genau die zweite Wahrheit, die dieser " +
-      "Umbau abschafft. Abbau ausserhalb der Zielpfade.",
-  },
-  {
-    schluessel: "apps/web/src/lib/libraryMaturity.ts::libraryUseCta",
-    grund:
-      "Seit JOB 3063 Runde 5 ohne Produktaufrufer: diese Regel verzweigte die verbindliche Aktion " +
-      "ueber die REIFE — nur ein validierter Eintrag bekam „Fragen“, alles andere „Pruefen“ und " +
-      "das Ziel /validierung. Pedis Vorgabe vom 04.09. (Auftrag §5.3/§5a) verlangt fuer JEDEN " +
-      "gewaehlten Eintrag dieselbe Aktion „Fragen“ mit Bezug auf den Eintrag (`ko=<id>`); die " +
-      "Lesefläche zieht ihre Adresse deshalb aus `components/bibliothek/fragen.ts::fragenHref`. " +
-      "Die uebrigen Exporte der Datei (libraryMaturity, filterByMaturity, …) tragen weiter. Abbau " +
-      "ausserhalb der Zielpfade (`apps/web/src/lib/**`), Folgeauftrag benannt.",
+      "zieht `components/ko/KoRead.tsx` und den Beleg R-0991 Nr. 57 mit; eigener Schnitt.",
   },
 ];
 
@@ -1151,29 +1069,15 @@ const ERSETZT_JOB3063: readonly Ausnahme[] = [
 // Fall aus, ist aber KEINER — seine Leistung (das domaenennahe Beispiel) hat im Blatt keinen
 // Ersatz. Ihn hier einzutragen haette einen stillen Funktionsverlust als „ersetzt" getarnt; er ist
 // stattdessen in `Blatt.tsx` wieder verdrahtet (Menue „…" -> „Beispiel ansehen").
+//
+// R-1349 · ABGEBAUT: `IntakeEmptyState`, `IntakeCompletion`, `StructureSuggestionChips` (samt ihrer
+// Komponententests), `captureWizard.ts::wizardChips` und die elf Exporte der alten Modus-Leiste,
+// Erstnutzer-Fuehrung und Vordertuer-Optionsliste in `lib/captureEntry.ts` (dazu die drei Helfer,
+// die nur sie lasen: `RECOMMENDED_NARRATE_MODE`, `CAPTURE_INTRO_SEEN_KEY`,
+// `CAPTURE_FRONT_DOOR_OPTIONS_OPEN_KEY`). Stehen geblieben ist `KnowledgeRescueIntro`, und zwar mit
+// Grund: an ihr haengen `lib/knowledgeRescue.ts` (`KNOWLEDGE_RESCUE_STEPS` haette danach keinen
+// Produktleser mehr) und der Beleg R-0991 Nr. 33 in `tests/k3-bedarfsabgleich/bedarfsabgleich.ts`.
 const ERSETZT_JOB3062: readonly Ausnahme[] = [
-  {
-    schluessel: "apps/web/src/components/capture/intake/IntakeEmptyState.tsx::IntakeEmptyState",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: der Leerzustand der Intake-Flaeche ist durch das leere " +
-      "Blatt ersetzt. Seine Starter-Chips leben im Titel-Menue, sein Beispiel-KO im Menue „…“ -> " +
-      "„Beispiel ansehen“. Abbau ausserhalb der Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/components/capture/intake/IntakeCompletion.tsx::IntakeCompletion",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: die Abschlusskarte „Geschafft“ ist durch die EINE " +
-      "Erfolgszeile „Eingereicht“ mit Link zum Objekt ersetzt (Zustandsmodell §9). Abbau " +
-      "ausserhalb der Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
-  },
-  {
-    schluessel:
-      "apps/web/src/components/capture/intake/StructureSuggestionChips.tsx::StructureSuggestionChips",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: die Struktur-Chips sind auf ihre Orte verteilt — Titel " +
-      "ins Blatt, Kategorie ins Menue „Bereich“, Quelle in „…“ -> „Status“. Abbau ausserhalb der " +
-      "Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
-  },
   {
     schluessel: "apps/web/src/components/KnowledgeRescueIntro.tsx::KnowledgeRescueIntro",
     grund:
@@ -1189,89 +1093,6 @@ const ERSETZT_JOB3062: readonly Ausnahme[] = [
   // denselben Namen tragen. ben hat den Verlust gemessen („Eine Quellenzeile im Status fehlt").
   // Seit R6 ruft `Blatt.tsx` die Ableitung wirklich auf (`quellenVorschlag`), der Export hat damit
   // einen Produktaufrufer, und A3 hat den Eintrag zu Recht als Leiche gemeldet.
-  {
-    schluessel: "apps/web/src/lib/captureWizard.ts::wizardChips",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: die sichtbare Schritt-Leiste ist von der Flaeche " +
-      "genommen. Der Zustand selbst bleibt verdrahtet (`resolveWizardStep` hat weiter Aufrufer). " +
-      "Abbau ausserhalb der Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::isRecommendedMode",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: das Empfehlungs-Badge der Modus-Leiste ist fort, weil " +
-      "der empfohlene Weg jetzt das Blatt SELBST ist statt einer Auszeichnung an einem von fuenf " +
-      "Knoepfen. Abbau ausserhalb der Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::CAPTURE_ENTRY_TEXT",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: die Schluesseltabelle bediente Kicker, Experten-" +
-      "Umschalter und Rueckweg der Modus-Leiste; alle drei sind von der Flaeche genommen, der " +
-      "Expertenweg liegt im Menue „Datei ▾“. Abbau ausserhalb der Zielpfade (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::initialCaptureWorkspaceOpen",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: der Arbeitsraum, den diese Funktion auf- oder " +
-      "zugeklappt startete, existiert nicht mehr — das Blatt ist immer offen. Abbau ausserhalb " +
-      "der Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::isCaptureFirstRun",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: die geführte Erstnutzer-Einfuehrung ist von der " +
-      "Flaeche genommen (Auftrag §5, „keine Erklaerabsaetze“). Abbau ausserhalb der Zielpfade, " +
-      "Folgeauftrag benannt (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::markCaptureIntroSeen",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: Gegenstueck zu `isCaptureFirstRun`, merkte den " +
-      "gesehenen Erstbesuch. Ohne Einfuehrung gibt es nichts zu merken. Abbau ausserhalb der " +
-      "Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::FRONT_DOOR_OPTION_MODES",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: die aufklappbare Optionsliste „Weitere Wege“ der " +
-      "Vordertuer ist durch das Menue „Datei ▾“ ersetzt, dessen Wege `BLATT_WEGE` fuehrt (von " +
-      "Blatt.tsx gerufen). Abbau ausserhalb der Zielpfade (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::FRONT_DOOR_OPTIONS_TEXT",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: Schluesseltabelle derselben Optionsliste wie " +
-      "`FRONT_DOOR_OPTION_MODES`; das Menue „Datei ▾“ fuehrt seine Beschriftungen ueber " +
-      "`blattWegLabelKey`. Abbau ausserhalb der Zielpfade (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::frontDoorOptionLabelKey",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: abgeloest durch `blattWegLabelKey`, das dieselbe " +
-      "Aufgabe fuer das Menue „Datei ▾“ erfuellt. Abbau ausserhalb der Zielpfade (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::frontDoorOptionHintKey",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: der Zusatzsatz je Option ist ersatzlos von der Flaeche " +
-      "genommen — ein Menueeintrag nach Pages-Art traegt sein Wort allein (Auftrag §5). Abbau " +
-      "ausserhalb der Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::frontDoorOptionsOpen",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: merkte den Aufklapp-Zustand der Optionsliste. Ein " +
-      "Pages-Menue merkt sich nichts, es oeffnet auf Klick. Abbau ausserhalb der Zielpfade, " +
-      "Folgeauftrag benannt (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::rememberFrontDoorOptionsOpen",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: Schreib-Gegenstueck zu `frontDoorOptionsOpen`, " +
-      "dieselbe Lage und derselbe Grund. Abbau ausserhalb der Zielpfade, Folgeauftrag benannt " +
-      "(RUECKGABE 3062).",
-  },
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -1527,8 +1348,6 @@ const GEDULDET = new Set<string>([
   ...BEWUSST.map((a) => a.schluessel),
   ...DURCH_VERSCHAERFUNG_SICHTBAR.map((a) => a.schluessel),
   ...NEUZUGANG_GEMELDET.map((a) => a.schluessel),
-  ...ERSETZT_JOB3015.map((a) => a.schluessel),
-  ...ERSETZT_JOB3061.map((a) => a.schluessel),
   ...ERSETZT_JOB3063.map((a) => a.schluessel),
   ...ERSETZT_JOB3062.map((a) => a.schluessel),
   ...ALTBESTAND,
@@ -1651,9 +1470,8 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
       ...BEWUSST,
       ...DURCH_VERSCHAERFUNG_SICHTBAR,
       ...NEUZUGANG_GEMELDET,
-      ...ERSETZT_JOB3015,
-      ...ERSETZT_JOB3061,
       ...ERSETZT_JOB3062,
+      ...ERSETZT_JOB3063,
       ...BEWUSST_WEB,
     ]) {
       expect(a.grund.length, `Ausnahme ${a.schluessel} ohne Begruendung`).toBeGreaterThan(40);
