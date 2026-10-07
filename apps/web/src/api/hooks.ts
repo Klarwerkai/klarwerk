@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 // Hilfszeile — die Begründung, warum 403 und 5xx ausdrücklich NICHT dazugehören, gehört an genau
 // eine Stelle und nicht in drei Hook-Kommentare (s. api/abwesenheit.ts).
 import { importRunStateView } from "../lib/importResultView";
+import { LIVEWALL_TAKT_MS } from "../lib/livewallTakt";
 import { alsAbwesenheit } from "./abwesenheit";
 import { type KoFilter, endpoints } from "./endpoints";
 import type { BeziehungSetzenBody } from "./types";
@@ -331,8 +332,47 @@ export const useBeziehungWiderrufen = (koId: string) => {
 export const useNotifications = () =>
   useQuery({ queryKey: ["notifications"], queryFn: endpoints.notifications.list });
 // Audit-P4 (SCRUM-398): Live-Wall („frisch gesichert / hat heute geholfen").
-export const useLiveWall = () =>
-  useQuery({ queryKey: ["livewall"], queryFn: endpoints.livewall.get });
+// R-0740 („zeigt LAUFEND"): die Wand holt sich im festen Takt neu (`lib/livewallTakt.ts`) — neue
+// Einträge, geänderte Sichtrechte und andernorts erklärte Widerrufe erreichen so auch eine offen
+// stehende Wand. `imHintergrund` setzt nur die Beamer-Ansicht: eine Projektion hat oft keinen Fokus
+// und muss trotzdem weiterlaufen; die Startseite pausiert in einem verdeckten Tab.
+export const useLiveWall = (imHintergrund = false) =>
+  useQuery({
+    queryKey: ["livewall"],
+    queryFn: endpoints.livewall.get,
+    refetchInterval: LIVEWALL_TAKT_MS,
+    refetchIntervalInBackground: imHintergrund,
+  });
+// PMO-FEA-0003: die eigene Zustimmung (Name, Foto) zur Wand. Im selben Takt wie die Wand, damit ein
+// in einem anderen Tab erklärter Widerruf auch hier als „aus" erscheint. Nach dem Setzen/Widerrufen
+// wird alles unter „livewall" neu geholt — der Widerruf wirkt sofort, nicht erst beim nächsten Takt.
+export const useLiveWallConsent = () =>
+  useQuery({
+    queryKey: ["livewall", "consent"],
+    queryFn: endpoints.livewall.consent,
+    refetchInterval: LIVEWALL_TAKT_MS,
+  });
+export const useSetLiveWallConsent = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (nameConsent: boolean) => endpoints.livewall.setConsent(nameConsent),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["livewall"] }),
+  });
+};
+export const useSetLiveWallPhoto = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (photo: string) => endpoints.livewall.setPhoto(photo),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["livewall"] }),
+  });
+};
+export const useDeleteLiveWallPhoto = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => endpoints.livewall.deletePhoto(),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["livewall"] }),
+  });
+};
 export const useReasonerStatus = () =>
   useQuery({ queryKey: ["reasoner", "status"], queryFn: endpoints.reasoner.status });
 // SCRUM-166: read-only Reasoner-/Provider-Konfiguration.
