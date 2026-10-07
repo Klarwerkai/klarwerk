@@ -28,5 +28,9 @@ export function notificationTarget(n: Pick<Notification, "kind" | "koId">): stri
   if (n.kind === "kenntnisnahme") {
     return n.koId ? `/wissen/${n.koId}` : null;
   }
+  // R-1089: gemeldete Antwort → das zitierte Wissensobjekt, dort wird korrigiert.
+  if (n.kind === "reklamation") {
+    return n.koId ? `/wissen/${n.koId}` : null;
+  }
   return null;
 }

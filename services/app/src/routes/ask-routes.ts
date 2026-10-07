@@ -812,6 +812,26 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
       },
     );
 
+    // R-1089 / R-1721: „Antwort falsch" / „Quelle passt nicht" — an den Verantwortlichen des
+    // zitierten Wissensobjekts, mit Quittung. Dieselbe Beleg-Bindung wie „Hat geholfen".
+    app.post<{ Body: { koId?: string; receipt?: string; grund?: string } }>(
+      "/api/ask/report",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          const body = request.body ?? {};
+          reply
+            .code(200)
+            .send(await ask.reportAnswer(body.receipt ?? "", body.koId ?? "", body.grund, user.id));
+        } catch (error) {
+          sendError(reply, error);
+        }
+      },
+    );
+
     // FUNKE-FIX2 P0 (bens Erforderlich 1): rein aggregierte Zähler — KEIN Fragetext. Die Startseite
     // nutzt AUSSCHLIESSLICH diesen Endpunkt (kein Volltext-Fetch der Lücken mehr auf /start).
     app.get("/api/gaps/summary", async (request, reply) => {

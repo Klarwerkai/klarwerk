@@ -10,6 +10,8 @@ import {
   expandSearchTerms,
   isConfidential,
   normalizeSearchTerms,
+  responsibleKindOf,
+  responsibleOf,
 } from "../../knowledge-object";
 import {
   type AnswerResult,
@@ -25,6 +27,13 @@ import {
   waehleKandidaten,
 } from "../../reasoner";
 import { TRUST_MAX } from "../../validation";
+import {
+  ANTWORT_MELDUNG_ACTION,
+  type AntwortMeldungQuittung,
+  antwortMeldungEventId,
+  antwortMeldungId,
+  isAntwortMeldeGrund,
+} from "./antwort-meldung";
 import { gapCompareKey, normalizeGapQuestion } from "./gap-text";
 import { type GapSummary, summarizeGaps } from "./gap-visibility";
 import { signAnswerReceipt, verifyAnswerReceipt } from "./receipt";
@@ -1406,6 +1415,62 @@ export class AskService {
       return;
     }
     await this.koService.bumpTrust(koId, HELPFUL_TRUST_STEP, TRUST_MAX);
+  }
+
+  // R-1089 / R-1721: „Antwort falsch" bzw. „Quelle passt nicht" melden. Dieselbe Beleg-Bindung wie
+  // `markHelpful` — nur eine in DIESEM Antwortvorgang ausgelieferte Quelle ist meldbar. Zugestellt
+  // wird an `responsibleOf(ko)`; die Glocke dieser Person liest den Eintrag (notifications-routes).
+  // Kein Trust-Abzug: eine Meldung ist ein Hinweis an einen Menschen, kein Urteil über das Objekt.
+  async reportAnswer(
+    receipt: string,
+    koId: string,
+    grund: unknown,
+    actor: string,
+  ): Promise<AntwortMeldungQuittung> {
+    if (!isAntwortMeldeGrund(grund)) {
+      throw new AskError("BAD_REQUEST", "Unbekannter Meldegrund.");
+    }
+    const bound = verifyAnswerReceipt(this.receiptSecret, receipt, this.now());
+    if (!bound || bound.userId !== actor || !bound.sources.includes(koId)) {
+      throw new AskError("FORBIDDEN", "Kein gültiger Antwort-Beleg für dieses Wissensobjekt.");
+    }
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      throw new AskError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    // Ohne Protokoll gibt es keinen Weg zum Verantwortlichen — dann wird nichts quittiert, was
+    // niemand je sehen würde. In Produktion ist das Protokoll immer verdrahtet.
+    const audit = this.audit;
+    if (!audit) {
+      throw new AskError("NOT_FOUND", "Meldeweg nicht verfügbar.");
+    }
+    const eventId = antwortMeldungEventId(actor, koId, grund, receipt);
+    const meldungId = antwortMeldungId(eventId);
+    const zugestelltAn = responsibleKindOf(ko);
+    const won = await audit.recordOnce(eventId, {
+      actor,
+      action: ANTWORT_MELDUNG_ACTION,
+      target: koId,
+      payload: {
+        meldungId,
+        grund,
+        koTitle: ko.title,
+        responsible: responsibleOf(ko),
+        responsibleKind: zugestelltAn,
+      },
+    });
+    const eintrag = (await audit.list({ action: ANTWORT_MELDUNG_ACTION, target: koId })).find(
+      (e) => e.eventId === eventId,
+    );
+    return {
+      meldungId,
+      koId,
+      koTitle: ko.title,
+      grund,
+      at: eintrag?.at ?? new Date(this.now()).toISOString(),
+      zugestelltAn,
+      bereitsGemeldet: !won,
+    };
   }
 
   // FR-ASK-05: Wissenslücken verwalten.

@@ -6,6 +6,8 @@ import type {
   AiCheckCoverageSummary,
   Analytics,
   AnswerResult,
+  AntwortMeldeGrund,
+  AntwortMeldungQuittung,
   // JOB 4154 (WIKI-GESAMTANWEISUNG): der Drahtvertrag der zusammengesetzten Anweisung.
   Anweisung,
   AnweisungKopfEingabe,
@@ -827,6 +829,9 @@ export const endpoints = {
     // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang
     // zurück — ohne gültigen, dieses KO belegenden Receipt antwortet der Server 403.
     helpful: (koId: string, receipt: string) => api.post<void>("/ask/helpful", { koId, receipt }),
+    // R-1089: „Antwort falsch / Quelle passt nicht" — derselbe Beleg; die Antwort ist die Quittung.
+    report: (koId: string, receipt: string, grund: AntwortMeldeGrund) =>
+      api.post<AntwortMeldungQuittung>("/ask/report", { koId, receipt, grund }),
   },
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler (nur eigene Beiträge, nur Zahlen).
   me: {

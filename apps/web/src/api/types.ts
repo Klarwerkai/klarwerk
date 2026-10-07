@@ -2779,7 +2779,24 @@ export type NotificationKind =
   | "gap"
   | "assignment"
   | "impact"
-  | "kenntnisnahme";
+  | "kenntnisnahme"
+  | "reklamation";
+
+// R-1089: der Meldeweg „Antwort falsch / Quelle passt nicht". Eigenständig getippt wie der Rest
+// dieser Datei — apps/web importiert nicht über die Modulgrenze nach services.
+export type AntwortMeldeGrund = "antwort-falsch" | "quelle-passt-nicht";
+
+export interface AntwortMeldungQuittung {
+  meldungId: string;
+  koId: string;
+  koTitle: string;
+  grund: AntwortMeldeGrund;
+  at: string;
+  // Wohin die Meldung ging — benannte verantwortliche Person oder ersatzweise der Autor. Wer das
+  // ist, sagt die Quittung bewusst nicht.
+  zugestelltAn: "owner" | "author-fallback";
+  bereitsGemeldet: boolean;
+}
 
 export interface Notification {
   id: string;
@@ -2797,6 +2814,9 @@ export interface Notification {
   fassung?: number;
   erinnerung?: boolean;
   ueberfaellig?: boolean;
+  // R-1089: Meldegrund und Meldungsnummer (nur bei `kind: "reklamation"`).
+  grund?: AntwortMeldeGrund;
+  meldungId?: string;
 }
 
 // AUFTRAG-mega46 Block F: die Betriebsschalter, die die Oberfläche erfahren darf — AUSSCHLIESSLICH
