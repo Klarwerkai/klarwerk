@@ -168,8 +168,11 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * der von `main` und damit ein PLATZHALTER bis zur Messung: ohne zugelassenes Hash-Werkzeug ist
  * der neue Blob hier nicht berechenbar. E2 meldet ihn im Prüflauf als „Received"; er wird danach
  * gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 8 (firmenwoerterbuch): GEMESSEN im Prüflauf zu Kandidat a8ec940f (`5d7ae0b8…`,
+ * „Received" von E2, HISTORIE/nacharbeit-8/PRUEFUNG/panel-integration-pins.log) und unverändert
+ * übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "2d5d9c26bd4fbf4fa289f06314aac06856685c06";
+export const PANEL_VOR_SCHNITT_BLOB = "5d7ae0b8fccc34c05e5c070cea753189729ef841";
 
 export interface PanelTeile {
   html: string;
