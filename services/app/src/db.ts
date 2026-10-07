@@ -59,6 +59,8 @@ import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
 // im knowledge-object-Modul, weil sie das KO-Modell ausdrücklich NICHT umbauen: die Variante ist ein
 // eigener, danebenliegender Datenraum, den kein Lesepfad des Originals berührt.
 import { LESEVARIANTEN_SCHEMA } from "./lesevarianten";
+// PMO-FEA-0003: die freiwilligen Fotos der Live-Wand (eine Zeile je zustimmendem Konto).
+import { LIVEWALL_FOTO_SCHEMA } from "./livewall-fotos";
 import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
 // produkt:20261007:spaces: die Fassungen der Arbeitsräume. Im App-Wurzelverzeichnis wie das
 // Firmenwörterbuch: die Sichtbarkeitsregel (`sichtbarkeit.ts`) liest sie, kein Fachmodul besitzt sie.
@@ -256,6 +258,10 @@ export const schemas = [
   // produkt:20261007:spaces: die unveränderlichen Fassungen der Spaces. Additiv und wiederholbar
   // (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
   SPACES_SCHEMA,
+  // PMO-FEA-0003: die freiwilligen Fotos der Live-Wand. Additiv und wiederholbar (CREATE TABLE IF
+  // NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare
+  // Ordnung ist.
+  LIVEWALL_FOTO_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).
