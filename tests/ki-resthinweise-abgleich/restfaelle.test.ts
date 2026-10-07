@@ -22,7 +22,7 @@ const PRAEFIX = "[KLARWERK] Modellantwort abgeschnitten: ";
 const FREMDE_GRUENDE = ["content_filter", "tool_calls", "LENGTH"] as const;
 
 interface Antwort {
-  choices: { message: { content: string | null }; finish_reason?: string | null }[];
+  choices: { message: { content: string | null }; finish_reason?: string | null | undefined }[];
 }
 
 function antwort(content: string | null, finishReason?: string | null): Antwort {
