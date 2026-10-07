@@ -123,7 +123,10 @@ describe("R-1643 · Zeitstempel und Nutzer-ID im exportierten Dokument", () => {
   });
 
   it("KALIBRIERUNG: ohne Protokoll bleibt die Datei zeichengleich wie vor R-1643", () => {
-    const md = buildAnswerMarkdown(eingabe({ protocol: undefined }));
+    // `exactOptionalPropertyTypes`: „kein Protokoll" heißt, das Feld FEHLT — nicht `undefined`.
+    const ohneProtokoll = eingabe();
+    delete ohneProtokoll.protocol;
+    const md = buildAnswerMarkdown(ohneProtokoll);
     expect(md).not.toContain("Entscheidungs-Protokoll");
     expect(md).not.toContain("exported-at:");
     expect(md.split("\n")[5]).toBe("---");
