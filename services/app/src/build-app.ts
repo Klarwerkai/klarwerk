@@ -2032,6 +2032,12 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   // jetzt allein, und der zweite Weg ist entfernt (Prüfpunkt 7). Der Eintrag ist deshalb mit ihr
   // gegangen: ein Name in dieser Liste, zu dem keine Klasse mehr gehört, ist eine Leiche.
   "StartvertragError",
+  // R-1372 (Aufnahme gesamt-fehlerprotokoll): der LMS-Export (`services/output/src/scorm.ts`) kam
+  // mit main ohne Eintrag hierher — der Wächter in build-app.test.ts wurde rot, wie vorgesehen.
+  // ENTSCHEIDUNG: der Name darf ins Protokoll. Er ist ein fester Klassenname ohne Nutzerdaten; die
+  // Lage steht im Code (`LmsExportCode`, ein geschlossener Literaltyp), die Meldung unterdrückt
+  // der Serializer ohnehin.
+  "LmsExportError",
   "TranscriberConfidentialError",
   "ValidationError",
   "ZurufError",
@@ -2205,6 +2211,25 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   // richtige Auskunft ist: der Aufrufer hat etwas falsch gemacht und kann es besser machen).
   "VALIDATION",
   "WEAK_PASSWORD",
+  // R-1372 (Aufnahme gesamt-fehlerprotokoll): Codes, die mit main ohne Eintrag kamen — der Wächter
+  // in build-app.test.ts meldete sie. ENTSCHEIDUNG: alle dürfen ins Protokoll. Jeder ist ein Wert
+  // eines geschlossenen Literaltyps und trägt weder Nutzertext noch Kennung; er sagt nur, WELCHER
+  // Zweig lief.
+  // LMS-Export (`LmsExportCode`, services/output/src/scorm.ts):
+  "ATTACHMENTS_NOT_INCLUDED",
+  "EXTERNAL_LINK",
+  "LINK_INTERNAL_REMOVED",
+  "MEDIA_FOREIGN",
+  "MEDIA_UNSUPPORTED",
+  "RECIPIENTS_NOT_CONFIGURED",
+  "RECIPIENT_NOT_ALLOWED",
+  "SCHUTZDATEN",
+  "SOURCE_RESTRICTED",
+  "TOO_MANY_SOURCES",
+  // Erfassung (services/capture/src/types.ts): Herabstufung der Vertraulichkeit abgewiesen.
+  "CONFIDENTIALITY_DOWNGRADE",
+  // Spaces (services/knowledge-object/src/types.ts): veralteter Space-Stand beim Schreiben.
+  "SPACE_STAND_VERALTET",
   // --- Fremdcodes, namentlich ---
   // PostgreSQL: die beiden, an denen im Betrieb wirklich etwas hängt.
   "23505", // unique_violation — die Sequenz-Kollision aus JOB 2677
