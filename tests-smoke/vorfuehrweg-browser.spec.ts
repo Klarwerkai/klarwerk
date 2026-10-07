@@ -3,7 +3,8 @@
 // ================================================================================================
 //
 // Was jsdom nicht kann (`tests/vorfuehrweg/vorfuehrweg-dom.test.tsx`), misst diese Sonde am
-// laufenden Kandidaten, in allen drei Engines:
+// laufenden Kandidaten. Die Datei steht in allen drei Engine-Projekten der Konfiguration; welche
+// davon ein Lauf wirklich fährt, entscheidet sein Aufruf (der Prüflauf vom 07.10. fuhr Chromium):
 //   · Jeder Stationslink öffnet KLARWERK im benannten Vorführfenster — beim ersten Klick als neues
 //     Fenster, danach in DASSELBE. Der Vorführweg selbst bleibt stehen und schickt keine Anfrage:
 //     so ist er auf dem zweiten Bildschirm nutzbar.
