@@ -3062,6 +3062,22 @@ const nl: typeof de = {
   "start.livewall.validatedEmpty": "Nog geen gevalideerde kennis.",
   "start.livewall.nameConsent":
     "Mijn naam hier bij mijn gevalideerde kennis tonen. Vrijwillig en altijd intrekbaar; zonder toestemming verschijnt geen naam.",
+  "start.livewall.photoConsent":
+    "Mijn foto hier bij mijn gevalideerde kennis tonen. Vrijwillig; „Foto verwijderen” wist hem direct.",
+  "start.livewall.photoAdd": "Foto kiezen",
+  "start.livewall.photoReplace": "Foto vervangen",
+  "start.livewall.photoRevoke": "Foto verwijderen",
+  "start.livewall.photoError":
+    "De foto kon niet worden opgeslagen. Kies een PNG-, JPEG- of WebP-afbeelding.",
+  "start.livewall.photoAlt": "Foto van de auteur",
+  "start.livewall.photoOwnAlt": "Mijn foto voor de wand",
+  "start.livewall.beamerOpen": "Als beamerweergave openen",
+  "start.livewall.beamerFullscreen": "Volledig scherm",
+  "start.livewall.beamerLoading": "Laden …",
+  "start.livewall.beamerError":
+    "De wand is momenteel niet bereikbaar. Bij de volgende cyclus wordt het opnieuw geprobeerd.",
+  "start.livewall.beamerStale":
+    "Geen actuele verbinding — namen en foto's zijn verborgen tot de wand weer actueel is.",
   "con.kicker": "Conflictoverzicht",
   "con.title": "Conflicten oplossen — zonder kennis te verliezen",
   "con.intro":

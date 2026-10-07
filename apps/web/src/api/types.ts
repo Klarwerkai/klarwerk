@@ -2771,13 +2771,16 @@ export interface LiveWall {
   }>;
   helped: Array<{ koId: string; title: string; at: string }>;
   helpedToday: number;
-  // PMO-FEA-0003: neues validiertes Wissen; `name` nur bei wirksamer Zustimmung der Person.
-  // Optional, weil Bestandsserver das Feld nicht kennen.
-  validated?: Array<{ koId: string; title: string; at: string; name?: string }>;
+  // PMO-FEA-0003: neues validiertes Wissen; `name` und `foto` (Daten-URL) nur bei wirksamer
+  // Zustimmung der Person. Optional, weil Bestandsserver das Feld nicht kennen.
+  validated?: Array<{ koId: string; title: string; at: string; name?: string; foto?: string }>;
 }
 
 export interface LiveWallConsent {
   nameConsent: boolean;
+  // PMO-FEA-0003: hat dieses Konto ein Foto hinterlegt? `photo` nur zur eigenen Vorschau.
+  photoConsent?: boolean;
+  photo?: string;
 }
 
 export type NotificationKind =

@@ -427,9 +427,19 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
                 </ul>
               )}
             </div>
-            {/* PMO-FEA-0003: neues validiertes Wissen, Namen nur mit Zustimmung — und die eigene
-                Erklärung dazu. Eigene Teilkomponente, damit ihr Abruf nur in DIESEM Blatt läuft. */}
-            <LiveWallValidiert daten={daten} />
+            {/* PMO-FEA-0003: neues validiertes Wissen, Name/Foto nur mit Zustimmung — und die
+                eigene Erklärung dazu. Eigene Teilkomponente, damit ihr Abruf nur in DIESEM Blatt
+                läuft. */}
+            <LiveWallValidiert daten={daten} aktualisiertAm={liveWall.dataUpdatedAt} />
+            {/* R-0740: dieselbe Wand als Projektion (Beamer) — eigene Seite, gleicher Abruf. */}
+            <RoleLink
+              to="/livewall"
+              testId="livewall-beamer-link"
+              className="inline-flex text-[12.5px] text-muted underline underline-offset-2"
+              hoverClassName="hover:text-ink"
+            >
+              {() => t("start.livewall.beamerOpen")}
+            </RoleLink>
           </>
         ) : null}
       </div>

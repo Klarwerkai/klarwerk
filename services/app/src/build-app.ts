@@ -269,6 +269,13 @@ import {
   type LesevariantenRepo,
   PgLesevariantenRepo,
 } from "./lesevarianten";
+// PMO-FEA-0003: die freiwilligen Fotos der Live-Wand — im Postgres-Betrieb haltbar
+// (`PgLiveWallFotoRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
+import {
+  InMemoryLiveWallFotoRepo,
+  type LiveWallFotoRepo,
+  PgLiveWallFotoRepo,
+} from "./livewall-fotos";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
@@ -443,6 +450,13 @@ export interface AppServices {
    * (`PgBegriffeRepo`, eingehängt in `buildPgServices`), sonst die In-Memory-Ablage.
    */
   begriffe: BegriffeRepo;
+  /**
+   * PMO-FEA-0003: die freiwilligen Fotos der Live-Wand (`livewall-fotos.ts`). Aus demselben Grund
+   * wie `brandingSettings` NICHT in `AppRepos`; im Postgres-Betrieb haltbar (`PgLiveWallFotoRepo`,
+   * eingehängt in `buildPgServices`), sonst die In-Memory-Ablage. Geht sie beim Neustart des
+   * Dev-Betriebs verloren, verschwindet ein Foto — die sichere Richtung, kein ungefragtes Zeigen.
+   */
+  livewallFotos: LiveWallFotoRepo;
   /**
    * R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — über die Oberfläche umlegbar,
    * von jeder Confluence-Importroute je Anfrage durchgesetzt. Aus demselben Grund wie
@@ -929,6 +943,8 @@ export function assembleServices(
     brandingSettings?: BrandingSettingsRepo;
     // Firmenwörterbuch: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     begriffe?: BegriffeRepo;
+    // PMO-FEA-0003: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    livewallFotos?: LiveWallFotoRepo;
     // R-0134 / R-1005: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     confluenceImportSchalter?: ConfluenceImportSchalterRepo;
     // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
@@ -1235,6 +1251,8 @@ export function assembleServices(
     brandingSettings: opts.brandingSettings ?? new InMemoryBrandingSettingsRepo(),
     // Firmenwörterbuch — Postgres, wenn injiziert, sonst im Speicher.
     begriffe: opts.begriffe ?? new InMemoryBegriffeRepo(),
+    // PMO-FEA-0003: die Fotos der Live-Wand — Postgres, wenn injiziert, sonst im Speicher.
+    livewallFotos: opts.livewallFotos ?? new InMemoryLiveWallFotoRepo(),
     // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
     confluenceImportSchalter:
       opts.confluenceImportSchalter ?? new InMemoryConfluenceImportSchalterRepo(),
@@ -1669,6 +1687,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // Firmenwörterbuch: jede Fassung eines Begriffs liegt in DERSELBEN Datenbank wie der Bestand
       // (eine Kundeninstanz = ein Datenraum) und überlebt Neuladen, Neustart und Deploy.
       begriffe: new PgBegriffeRepo(pool),
+      // PMO-FEA-0003: ein hinterlegtes Foto überlebt Neustart und Deploy; der Widerruf löscht die
+      // Zeile in derselben Datenbank (`LIVEWALL_FOTO_SCHEMA`, angelegt von `migrate()`).
+      livewallFotos: new PgLiveWallFotoRepo(pool),
       // R-0134 / R-1005: der Betreiberschalter überlebt Neustart und Deploy — sonst stünde ein
       // ausgeschalteter Import nach dem nächsten Neustart still wieder auf „an".
       confluenceImportSchalter: new PgConfluenceImportSchalterRepo(pool),
@@ -3416,7 +3437,12 @@ export function buildApp(
   // PMO-FEA-0003: `konten` liefert Anzeigenamen — die Route nennt davon nur zustimmende Konten.
   app.register(
     livewallRoutes(
-      { ko: services.ko, audit: services.audit, konten: () => services.auth.listUsers() },
+      {
+        ko: services.ko,
+        audit: services.audit,
+        konten: () => services.auth.listUsers(),
+        fotos: services.livewallFotos,
+      },
       guards,
     ),
   );

@@ -512,6 +512,14 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "EIGENER_BESTAND",
     grund: "setzt/widerruft nur die eigene Namenszustimmung, Antwort nur der Wahrheitswert.",
   },
+  "PUT /api/livewall/photo": {
+    urteil: "EIGENER_BESTAND",
+    grund: "hinterlegt nur das eigene Foto (user.id), Antwort nur der Wahrheitswert.",
+  },
+  "DELETE /api/livewall/photo": {
+    urteil: "EIGENER_BESTAND",
+    grund: "löscht nur das eigene Foto (user.id), Antwort nur der Wahrheitswert.",
+  },
   // --- Kein Inhalt eines Wissensobjekts ------------------------------------------------------
   "GET /health": { urteil: "KEIN_KO_INHALT", grund: "Betriebszustand." },
   "GET /api/ai-status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },

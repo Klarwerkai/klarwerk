@@ -24,12 +24,14 @@ export interface LiveWallHelpedItem {
 }
 
 // Neues validiertes Wissen. `name` fehlt, solange die Autorin/der Autor nicht zugestimmt hat —
-// „kein Name" ist der Normalzustand, nicht ein Fehler. Kein Foto: das Produkt führt keines.
+// „kein Name" ist der Normalzustand, nicht ein Fehler. Dasselbe gilt für `foto`: es steht nur da,
+// wenn die Person selbst ein Foto für die Wand hinterlegt hat (livewall-fotos.ts).
 export interface LiveWallValidatedItem {
   koId: string;
   title: string;
   at: string;
   name?: string;
+  foto?: string;
 }
 
 export interface LiveWall {
@@ -44,12 +46,14 @@ const DEFAULT_LIMIT = 6;
 
 // `today` wird hereingereicht (testbar, keine versteckte Uhr): ISO-Datum "YYYY-MM-DD".
 // `zugestimmt`: Kontokennung → Anzeigename, AUSSCHLIESSLICH für Konten mit wirksamer Zustimmung.
+// `fotos`: Kontokennung → Foto, AUSSCHLIESSLICH für Konten, die selbst eines hinterlegt haben.
 export function buildLiveWall(input: {
   kos: KnowledgeObject[];
   helpful: Array<{ target: string; at: string; payload: Record<string, unknown> }>;
   today: string;
   limit?: number;
   zugestimmt?: ReadonlyMap<string, string>;
+  fotos?: ReadonlyMap<string, string>;
 }): LiveWall {
   const limit = input.limit && input.limit > 0 && input.limit <= 20 ? input.limit : DEFAULT_LIMIT;
   const neuesteZuerst = [...input.kos].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -60,16 +64,19 @@ export function buildLiveWall(input: {
     status: ko.status,
   }));
   const zugestimmt = input.zugestimmt ?? new Map<string, string>();
+  const fotos = input.fotos ?? new Map<string, string>();
   const validated = neuesteZuerst
     .filter((ko) => ko.status === "validiert")
     .slice(0, limit)
     .map((ko) => {
       const name = zugestimmt.get(ko.author);
+      const foto = fotos.get(ko.author);
       return {
         koId: ko.id,
         title: ko.title,
         at: ko.createdAt,
         ...(name ? { name } : {}),
+        ...(foto ? { foto } : {}),
       };
     });
   // Nur Einträge mit echtem Titel-Payload — nichts erfinden, nichts Halbes anzeigen.

@@ -57,6 +57,8 @@ import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
 // im knowledge-object-Modul, weil sie das KO-Modell ausdrücklich NICHT umbauen: die Variante ist ein
 // eigener, danebenliegender Datenraum, den kein Lesepfad des Originals berührt.
 import { LESEVARIANTEN_SCHEMA } from "./lesevarianten";
+// PMO-FEA-0003: die freiwilligen Fotos der Live-Wand (eine Zeile je zustimmendem Konto).
+import { LIVEWALL_FOTO_SCHEMA } from "./livewall-fotos";
 import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
 
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
@@ -242,6 +244,10 @@ export const schemas = [
   // Extension; sie steht am Ende, weil das die lesbare Ordnung ist (keine Abhängigkeit zu den
   // Stufen davor — die Reihenfolge nach der Zusammenführung mit main ist frei).
   IMPORT_RUN_SOURCE_SYNC_SCHEMA,
+  // PMO-FEA-0003: die freiwilligen Fotos der Live-Wand. Additiv und wiederholbar (CREATE TABLE IF
+  // NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare
+  // Ordnung ist.
+  LIVEWALL_FOTO_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).

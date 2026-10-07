@@ -965,6 +965,9 @@ export const endpoints = {
     consent: () => api.get<LiveWallConsent>("/livewall/consent"),
     setConsent: (nameConsent: boolean) =>
       api.put<LiveWallConsent>("/livewall/consent", { nameConsent }),
+    // PMO-FEA-0003: das eigene Foto hinterlegen (= zustimmen) oder widerrufen (= löschen).
+    setPhoto: (photo: string) => api.put<{ photoConsent: boolean }>("/livewall/photo", { photo }),
+    deletePhoto: () => api.del<{ photoConsent: boolean }>("/livewall/photo"),
   },
   analytics: {
     overview: () => api.get<Analytics>("/analytics"),

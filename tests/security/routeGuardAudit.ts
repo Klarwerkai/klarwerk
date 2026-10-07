@@ -628,6 +628,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // der Sitzung), lesen und setzen/widerrufen. Wie die Kenntnisnahme: kein zusätzliches Recht.
   "GET /api/livewall/consent": { protection: "auth" },
   "PUT /api/livewall/consent": { protection: "auth" },
+  // PMO-FEA-0003: das freiwillige Foto — hinterlegen und widerrufen, nur für das EIGENE Konto.
+  "PUT /api/livewall/photo": { protection: "auth" },
+  "DELETE /api/livewall/photo": { protection: "auth" },
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler — jeder angemeldete Nutzer,
   // AUSSCHLIESSLICH über die eigene Identität (user.id) abgeleitet, nur Zahlen.
   "GET /api/me/impact": { protection: "auth" },

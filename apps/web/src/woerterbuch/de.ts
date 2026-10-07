@@ -4032,6 +4032,22 @@ const de = {
   "start.livewall.validatedEmpty": "Noch kein validiertes Wissen.",
   "start.livewall.nameConsent":
     "Meinen Namen bei meinem validierten Wissen hier zeigen. Freiwillig, jederzeit widerrufbar; ohne Zustimmung erscheint kein Name.",
+  "start.livewall.photoConsent":
+    "Mein Foto bei meinem validierten Wissen hier zeigen. Freiwillig; „Foto entfernen“ löscht es sofort.",
+  "start.livewall.photoAdd": "Foto wählen",
+  "start.livewall.photoReplace": "Foto ersetzen",
+  "start.livewall.photoRevoke": "Foto entfernen",
+  "start.livewall.photoError":
+    "Das Foto konnte nicht übernommen werden. Bitte ein PNG-, JPEG- oder WebP-Bild wählen.",
+  "start.livewall.photoAlt": "Foto der Autorin oder des Autors",
+  "start.livewall.photoOwnAlt": "Mein Foto für die Wand",
+  "start.livewall.beamerOpen": "Als Beamer-Ansicht öffnen",
+  "start.livewall.beamerFullscreen": "Vollbild",
+  "start.livewall.beamerLoading": "Lädt …",
+  "start.livewall.beamerError":
+    "Die Wand ist gerade nicht abrufbar. Sie versucht es im nächsten Takt erneut.",
+  "start.livewall.beamerStale":
+    "Keine frische Verbindung — Namen und Fotos sind ausgeblendet, bis die Wand wieder aktuell ist.",
   // AUFTRAG-mega51 BLOCK G1: DE und NL trugen hier die englische Bezeichnung.
   "con.kicker": "Konflikt-Übersicht",
   "con.title": "Konflikte klären — ohne Wissen zu verlieren",
