@@ -48,6 +48,9 @@ import { KO_BEARBEITUNG_SCHEMA } from "./bearbeitungshinweis";
 import { BRANDING_SETTINGS_SCHEMA } from "./branding-settings";
 // R-0134 / R-1005: der Betreiberschalter des Confluence-Imports (umlegbar über die Oberfläche).
 import { CONFLUENCE_IMPORT_SCHALTER_SCHEMA } from "./confluence-import-schalter";
+// Firmenwörterbuch: die Fassungen des Begriffskatalogs. Im App-Wurzelverzeichnis wie die
+// Markenwahl: Editor und Word-Panel lesen ihn, kein Fachmodul besitzt ihn.
+import { BEGRIFFE_SCHEMA } from "./firmenwoerterbuch";
 // Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen.
 import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
 // JOB 3326: die Lesevarianten (gekennzeichnete Leseübersetzungen). Sie wohnen im App-Root und nicht
@@ -227,6 +230,9 @@ export const schemas = [
   // Prioritätsfaktoren) und Ruhestandshorizonte (24/36 Monate). Additiv und wiederholbar (CREATE
   // TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
   MANAGEMENT_PROFILE_SCHEMA,
+  // Firmenwörterbuch: die unveränderlichen Fassungen des Begriffskatalogs. Additiv und
+  // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  BEGRIFFE_SCHEMA,
   // Kenntnisnahme einer gültigen Fassung: Kopf der Anforderung und je Empfänger eine Zeile. Additiv
   // und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS); der einzige Fremdschlüssel zeigt auf den
   // eigenen Kopf, keine Extension, kein Seed.

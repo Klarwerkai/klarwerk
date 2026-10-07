@@ -528,6 +528,23 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "KEIN_KO_INHALT",
     grund: "JOB 3510 — Antwort ist derselbe Stand wie der Leseweg; users.manage im Rumpf.",
   },
+  // Firmenwörterbuch (begriffe-routes.ts): Katalogeinträge und Hinweise. Kein Feld stammt aus
+  // einem Wissensobjekt — der Abgleich liest nur den Katalog und den mitgesendeten Text.
+  "GET /api/begriffe": { urteil: "KEIN_KO_INHALT", grund: "Begriffskatalog, kein Bestand." },
+  "GET /api/begriffe/:id": { urteil: "KEIN_KO_INHALT", grund: "Fassungen eines Katalogeintrags." },
+  "GET /api/begriffe/:id/fassungen/:version": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Eine Fassung eines Katalogeintrags.",
+  },
+  "POST /api/begriffe": { urteil: "KEIN_KO_INHALT", grund: "Antwort ist die neue Katalogfassung." },
+  "PUT /api/begriffe/:id": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Antwort ist die neue Katalogfassung.",
+  },
+  "POST /api/begriffe/pruefen": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Hinweise aus Katalog und mitgesendetem Text; liest kein Wissensobjekt.",
+  },
   "GET /api/i18n/locales": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
   "GET /api/i18n/:locale/:key": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
   "GET /addin": { urteil: "KEIN_KO_INHALT", grund: "statisches Add-in-Bundle." },

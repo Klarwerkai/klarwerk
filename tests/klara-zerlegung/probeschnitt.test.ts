@@ -42,7 +42,7 @@
 //     TCP und keine Browser-Ursprungsprüfung.
 //   · Kein echtes office.js. Der Word-Zustand wird von einer Attrappe gestellt, die jeden
 //     Office-Zugriff mitschreibt — sie ist in beiden Fassungen dieselbe.
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -64,6 +64,7 @@ import {
   PANEL_MARKE_VERWEIS,
   markeAbschnitt,
 } from "../support/panelquelle";
+import { repoPfad } from "../support/repoPfad";
 import {
   type Fingerabdruck,
   type Lauf,
@@ -100,6 +101,17 @@ const RUECKWEG_PFAD = `/word-addin/${RUECKWEG_DATEI}`;
  * Inline-Skripts; NACHHER kommt er aus der eigenen Datei.
  */
 const MARKE_PFAD = `/word-addin/${MARKE_DATEI}`;
+/**
+ * AUFTRAG firmenwoerterbuch: der Block KW-BEGRIFFE. Er ist KEIN Teil des Schnitts — beide Fassungen
+ * verweisen auf ihn hinter `marke.js` und holen ihn gleich. Er liegt deshalb wie `rueckweg.js`
+ * immer bei.
+ */
+const BEGRIFFE_DATEI = "begriffe.js";
+const BEGRIFFE_PFAD = `/word-addin/${BEGRIFFE_DATEI}`;
+const BEGRIFFE_QUELLE = readFileSync(
+  repoPfad(`apps/web/public/word-addin/${BEGRIFFE_DATEI}`),
+  "utf8",
+);
 
 /** VORHER: das Fenster als EIN Dokument (byte-gleich zum Basisstand, s. `schnitt-echt.test.ts`). */
 const QUELLE = taskpaneQuelle();
@@ -135,6 +147,7 @@ function dist(dateien: Record<string, string>): string {
   for (const [name, inhalt] of Object.entries({
     [RUECKWEG_DATEI]: RUECKWEG_QUELLE,
     [MARKE_DATEI]: MARKE_QUELLE,
+    [BEGRIFFE_DATEI]: BEGRIFFE_QUELLE,
     ...dateien,
   })) {
     writeFileSync(join(dir, "word-addin", name), inhalt);
@@ -220,7 +233,9 @@ describe("R-1611 · A — der echte Schnitt ist die mechanische Textoperation", 
     // stempelt derselbe `stempleFassung`-Lauf; keiner darf in die geschnittenen Dateien wandern,
     // denn die gehen NICHT durch die Stempelroute (sie kämen roh beim Browser an).
     // Zerlegungsauftrag Bestandsblick: FÜNF Vorkommen — dazu die Kennung am Verweis auf `marke.js`.
-    expect(SCHNITT.html.split(KLARA_FASSUNG_PLATZHALTER)).toHaveLength(6);
+    // AUFTRAG firmenwoerterbuch: SECHS — dazu die Kennung am Verweis auf `begriffe.js`.
+    expect(SCHNITT.html.split(KLARA_FASSUNG_PLATZHALTER)).toHaveLength(7);
+    expect(SCHNITT.html).toContain(`${BEGRIFFE_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`);
     expect(SCHNITT.html).toContain(`content="${KLARA_FASSUNG_PLATZHALTER}"`);
     expect(SCHNITT.html).toContain(`${RUECKWEG_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`);
     expect(SCHNITT.html).toContain(`${CSS_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`);
@@ -348,6 +363,8 @@ describe("R-1611 · C — was HTML, JS und CSS an Kopfzeilen tragen", () => {
     const skriptquellen = [...SCHNITT.html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1]);
     expect(skriptquellen).toEqual([
       "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
+      // AUFTRAG firmenwoerterbuch: der Block KW-BEGRIFFE, relativ und gleichherkünftig, im Kopf.
+      `${BEGRIFFE_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
       `${RUECKWEG_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
       `${JS_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
       `${MARKE_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
@@ -465,9 +482,11 @@ describe("R-1611 · D — derselbe Startzustand, vor dem Schnitt wie nach dem Sc
     // JOB 3667 R8: `rueckweg.js` holen BEIDE Fassungen, denn sie steht schon in der Quelle. Verglichen
     // wird die SORTIERTE Menge: die Reihenfolge, in der jsdom seine Ressourcen anfordert, ist keine
     // Zusage dieses Falls.
+    // AUFTRAG firmenwoerterbuch: `begriffe.js` holen ebenfalls BEIDE Fassungen.
     expect([...original.geholt].sort()).toEqual(
       [
         `http://localhost${RUECKWEG_PFAD}?v=${FASSUNG}`,
+        `http://localhost${BEGRIFFE_PFAD}?v=${FASSUNG}`,
         "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       ].sort(),
     );
@@ -479,6 +498,7 @@ describe("R-1611 · D — derselbe Startzustand, vor dem Schnitt wie nach dem Sc
         `http://localhost${RUECKWEG_PFAD}?v=${FASSUNG}`,
         `http://localhost${JS_PFAD}?v=${FASSUNG}`,
         `http://localhost${MARKE_PFAD}?v=${FASSUNG}`,
+        `http://localhost${BEGRIFFE_PFAD}?v=${FASSUNG}`,
         "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       ].sort(),
     );

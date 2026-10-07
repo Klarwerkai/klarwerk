@@ -337,6 +337,7 @@ PFLICHTTABELLEN=(
   import_run_source_sync
   dokument_fassungen
   confluence_import_schalter
+  begriffe_fassungen
   kenntnisnahme_anforderungen
   kenntnisnahme_empfaenger
 )

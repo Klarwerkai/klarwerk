@@ -226,6 +226,9 @@ describe("AUFTRAG-JOB507-D4: CSP und Panelverhalten sind konsistent", () => {
     // in `marke.js` (relativ, gleichherkuenftig), unmittelbar nach `taskpane.js`.
     expect(externeScripts).toEqual([
       "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
+      // AUFTRAG firmenwoerterbuch: eine FÜNFTE nach derselben Regel — `begriffe.js` (KW-BEGRIFFE),
+      // relativ und gleichherkünftig, im Kopf hinter office.js.
+      "begriffe.js?v=__KW_FASSUNG__",
       "rueckweg.js?v=__KW_FASSUNG__",
       "taskpane.js?v=__KW_FASSUNG__",
       "marke.js?v=__KW_FASSUNG__",
