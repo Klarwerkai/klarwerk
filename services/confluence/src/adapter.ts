@@ -199,8 +199,13 @@ interface KontenEbene extends ConfluenceLeseEbene {
   konten?: string[];
 }
 
-/** Höchstzahl bearbeiteter Kandidaten (Mailnachfrage, Leseprüfung) je Lauf — gegen Abrufstürme. */
-const MAX_LESEPRUEFUNGEN = 500;
+/**
+ * Nacharbeit 19 (Ben, K1): Höchstzahl der Leseprüfungen JE SEITE — gegen Abrufstürme. Bis hierher
+ * galt die Grenze für den ganzen Lauf: nach 250 Seiten mit zwei Kandidaten wurde keine weitere
+ * Seite geprüft und kam mit leerer Leserliste an. Jetzt bekommt jede Seite ihre eigene Grenze;
+ * die Mailadresse je Konto wird über den Lauf hinweg nur einmal nachgefragt.
+ */
+const MAX_LESEPRUEFUNGEN_JE_SEITE = 500;
 
 class RechteLauf {
   /** VOR dem ersten Abruf gesetzt: die Rechte gelten höchstens ab diesem Zeitpunkt. */
@@ -210,7 +215,6 @@ class RechteLauf {
     Promise<{ emails: string[]; konten: string[]; vollstaendig: boolean }>
   >();
   private readonly konten = new Map<string, Promise<string | undefined>>();
-  private pruefungen = 0;
 
   constructor(private readonly client: ConfluenceRestClient) {}
 
@@ -256,21 +260,35 @@ class RechteLauf {
     for (const accountId of (await this.verzeichnisKonten()).konten) {
       alle.add(accountId);
     }
+    // Nacharbeit 19: die Grenze gilt je Seite. Wird sie erreicht, bevor alle zuordenbaren Konten
+    // geprüft sind, ist die Seite NICHT ermittelt (`nichtErmittelt`) — kein Leserergebnis, das ein
+    // Lauf übernehmen darf; eine teilgeprüfte Liste ist nie „die Leser der Seite".
+    let geprueft = 0;
+    let nichtErmittelt = false;
     for (const accountId of alle) {
-      if (!pageId || this.pruefungen >= MAX_LESEPRUEFUNGEN) {
+      if (!pageId) {
+        nichtErmittelt = true;
         break;
       }
-      // Nacharbeit 18: die Grenze zählt jeden bearbeiteten Kandidaten (Mailnachfrage und Prüfung).
-      this.pruefungen += 1;
-      const email = await this.emailVon({ accountId });
+      const email = await this.emailVon({ accountId }); // je Konto einmal im Lauf
       if (!email || emails.has(email)) {
         continue; // ohne Mailadresse keine Zuordnung; schon Leser
       }
+      if (geprueft >= MAX_LESEPRUEFUNGEN_JE_SEITE) {
+        nichtErmittelt = true;
+        break;
+      }
+      geprueft += 1;
       if ((await this.client.pruefeLeserecht(pageId, accountId)) === true) {
         emails.add(email);
       }
     }
-    return { beschraenkt: true, emails: [...emails], unvollstaendig: true };
+    return {
+      beschraenkt: true,
+      emails: [...emails],
+      unvollstaendig: true,
+      ...(nichtErmittelt ? { nichtErmittelt: true as const } : {}),
+    };
   }
 
   /**

@@ -1221,6 +1221,84 @@ describe("R-0549 · Space-Leserecht über eine Zugangsklasse", () => {
     kontoNachweise(aufrufe);
   });
 
+  // Nacharbeit 19 (Ben, K1; Beleg QUELLEN-HILFE-20261007-0923fd30.json): die Prüfgrenze galt für
+  // den ganzen Lauf — bei 251 Seiten und zwei Verzeichniskonten kam Seite 251 ungeprüft und ohne
+  // Lea an, und der reguläre Wiederabgleich entfernte Lea am gespeicherten Objekt.
+  const bereich251 = (): ConfluencePage[] =>
+    Array.from({ length: 251 }, (_, i) => ({
+      ...seite(`b${i + 1}`, [], { user: [], group: [] }),
+      version: { number: 1, by: { accountId: "acc-autor", displayName: "Autor" } },
+    }));
+
+  it("Z6 · 251 Seiten: auch die letzte Seite ist geprüft — Bereich und Einzelabruf gleich, der Wiederabgleich behält Lea", async () => {
+    const seiten = bereich251();
+    const { adapter, aufrufe } = fixture(seiten, undefined, NICHTAUTOREN);
+    const { items } = await adapter.collectAll();
+    expect(items).toHaveLength(251);
+    for (const item of items) {
+      const rechte = (item as MitQuellrechten).quellrechte;
+      expect(rechte?.emails, `Leser von ${item.externalId}`).toEqual(["lea@example.com"]);
+      expect(Object.hasOwn(rechte ?? {}, "leserNichtErmittelt")).toBe(false);
+    }
+    for (const konto of ["acc-lea", "acc-otto"]) {
+      expect(
+        aufrufe.some((a) => a.pfad.endsWith("/b251/permission/check") && a.konto === konto),
+        `Leseprüfung ${konto} an Seite 251`,
+      ).toBe(true);
+    }
+    const einzeln = await fixture([], seiten, NICHTAUTOREN).adapter.fetchItem("b251");
+    expect((einzeln as MitQuellrechten | undefined)?.quellrechte?.emails).toEqual([
+      "lea@example.com",
+    ]);
+
+    // Der reguläre Bereichsabgleich: übernommen, dann bei unveränderter Fassung erneut abgeglichen.
+    const k = await appMitKonten();
+    await bereichsabgleich(k, seiten, NICHTAUTOREN);
+    const r = await k.services.library.reviewImportCandidate(
+      (await kandidatFuer(k, "b251")).id,
+      "accept",
+      k.adminId,
+    );
+    const wieder = await bereichsabgleich(k, seiten, NICHTAUTOREN);
+    expect(wieder.failed).toBe(0);
+    const objekt = await k.services.ko.get(r.koId!);
+    expect(objekt?.quellrechte?.leser).toEqual([k.lea.id]);
+    expect((await liest(k.app, k.lea.headers, r.koId!)).einzeln.statusCode).toBe(200);
+    expect((await liest(k.app, k.otto.headers, r.koId!)).einzeln.statusCode).toBe(404);
+  });
+
+  it("Z7 · über der Seitengrenze nicht ermittelt: nichts wird übernommen, der gespeicherte Leser bleibt", async () => {
+    const k = await appMitKonten();
+    const seite996 = offenMitFremdemAutor();
+    await bereichsabgleich(k, [seite996], NICHTAUTOREN);
+    const r = await k.services.library.reviewImportCandidate(
+      (await kandidatFuer(k, "996")).id,
+      "accept",
+      k.adminId,
+    );
+    expect((await k.services.ko.get(r.koId!))?.quellrechte?.leser).toEqual([k.lea.id]);
+
+    // Dasselbe Verzeichnis, jetzt mit 501 weiteren zuordenbaren Konten vor Lea: die Seitengrenze
+    // (500 Prüfungen) endet, bevor alle Konten geprüft sind.
+    const viele = Array.from({ length: 501 }, (_, i) => ({
+      accountId: `acc-m${i}`,
+      email: `m${i}@example.com`,
+    }));
+    const zuViele: FixtureRechte = {
+      ...NICHTAUTOREN,
+      gruppen: { lizenziert: [...viele, { accountId: "acc-lea" }, { accountId: "acc-otto" }] },
+    };
+    const { items } = await fixture([seite996], undefined, zuViele).adapter.collectAll();
+    const markiert = (items[0] as { quellrechte?: { leserNichtErmittelt?: true } }).quellrechte;
+    expect(markiert?.leserNichtErmittelt).toBe(true);
+
+    const lauf = await bereichsabgleich(k, [seite996], zuViele);
+    expect(lauf.failed).toBe(1);
+    expect(lauf.perPage.find((p) => p.ref === "996")).toMatchObject({ status: "failed" });
+    expect((await k.services.ko.get(r.koId!))?.quellrechte?.leser).toEqual([k.lea.id]);
+    expect((await liest(k.app, k.lea.headers, r.koId!)).einzeln.statusCode).toBe(200);
+  });
+
   it("Z3 · derselbe Schutz beim Nachladen je ID (fetchItem)", async () => {
     const seite995 = zuLeaUndOtto();
     const item = await fixture([], [seite995], ZUGANG).adapter.fetchItem("995");

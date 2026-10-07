@@ -106,6 +106,20 @@ function traegtUnvollstaendigeLeser(item: ImportItem): boolean {
   );
 }
 
+/**
+ * Nacharbeit 19 (Ben, K1): trägt der Eintrag die Marke „Leser nicht ermittelt" (die Prüfung je
+ * Konto endete an der Seitengrenze)? Ein solcher Eintrag darf KEINE Rechte setzen — weder als neuer
+ * Kandidat noch im Rechteabgleich eines bestehenden Objekts.
+ */
+export function traegtNichtErmittelteLeser(item: unknown): boolean {
+  const rechte = (item as { readonly quellrechte?: unknown } | null)?.quellrechte;
+  return (
+    rechte !== null &&
+    typeof rechte === "object" &&
+    (rechte as { leserNichtErmittelt?: unknown }).leserNichtErmittelt === true
+  );
+}
+
 // ================================================================================================
 // R-0162 — ÄNDERUNGEN UND LÖSCHUNGEN NACHZIEHEN.
 // ================================================================================================
@@ -684,11 +698,25 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
   const rechteAbzugleichen: { item: ImportItem; perPageIdx: number }[] = [];
   // Nacharbeit 6 (Befund F3): Seiten, deren Leserkreis nicht vollständig gelesen werden konnte.
   let leserUnvollstaendig = 0;
+  // Seiten, deren Leserechte nicht abgeglichen bzw. nicht ermittelt wurden (je perPage-Index).
+  const rechteGescheitert = new Set<number>();
   for (const item of items) {
     if (traegtUnvollstaendigeLeser(item)) {
       leserUnvollstaendig += 1;
     }
     const ref = item.externalId ?? item.title;
+    // Nacharbeit 19 (Ben, K1): eine Seite, deren Leser NICHT ermittelt wurden, wird weder
+    // eingereiht noch abgeglichen — sonst ersetzte eine nicht geprüfte, leere Liste die
+    // gespeicherten Leser. Der bisherige Stand bleibt, die Seite zählt als gescheitert.
+    if (traegtNichtErmittelteLeser(item)) {
+      rechteGescheitert.add(perPage.length);
+      perPage.push({
+        ref,
+        status: "failed",
+        note: "Leserechte nicht ermittelt — nichts übernommen, der bisherige Stand bleibt.",
+      });
+      continue;
+    }
     const version = item.sourceVersion ?? 1;
     // bens F3: In-Run-/Pending-/Bestands-Schlüssel sind provider-scoped (wie die Queue selbst).
     const runKey = item.externalId
@@ -777,7 +805,6 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
   // geschützten Abgleich nach (`setQuellrechte`, Aktualitätsschutz) und an offenen Kandidaten
   // derselben Version. Scheitert das, ist die Seite NICHT abgeglichen — sie zählt als gescheitert,
   // und der Lauf sagt es, statt „unverändert" zu melden (der alte, womöglich offenere Stand bleibt).
-  const rechteGescheitert = new Set<number>();
   if (
     !deps.dryRun &&
     rechteAbzugleichen.length > 0 &&

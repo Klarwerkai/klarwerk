@@ -227,6 +227,12 @@ export interface ConfluenceLeseEbene {
   emails: string[];
   /** Nacharbeit 6: die Leser dieser Ebene konnten nicht vollständig gelesen werden (Gruppenabruf). */
   unvollstaendig?: true;
+  /**
+   * Nacharbeit 19 (Ben, K1): die Leser dieser Ebene wurden NICHT ermittelt — die Prüfung je Konto
+   * endete an der Grenze, bevor alle bekannten Konten geprüft waren. Kein Ergebnis, das übernommen
+   * werden darf (sonst würde eine nicht geprüfte Seite als leere Leserliste gespeichert).
+   */
+  nichtErmittelt?: true;
 }
 
 /**
@@ -353,6 +359,8 @@ export interface ConfluenceQuellrechte {
   beobachtetAm?: string;
   /** Nacharbeit 6: die Leser sind eine Untermenge — ein Gruppenabruf blieb unvollständig. */
   leserUnvollstaendig?: true;
+  /** Nacharbeit 19: die Leser wurden nicht ermittelt — der Eintrag darf keine Rechte setzen. */
+  leserNichtErmittelt?: true;
 }
 
 // ================================================================================================
@@ -593,6 +601,7 @@ export function mapConfluencePageToImportItem(
       ...(leser !== undefined ? { emails: leser } : {}),
       ...(kontext?.beobachtetAm ? { beobachtetAm: kontext.beobachtetAm } : {}),
       ...(leserUnvollstaendig ? { leserUnvollstaendig: true as const } : {}),
+      ...(kontext?.space?.nichtErmittelt ? { leserNichtErmittelt: true as const } : {}),
     },
     // SCRUM-510 R2b: quellneutrale Provenienz — externalId = Confluence-pageId (Re-Sync-Anker),
     // sourceScope = Confluence-Space. Der Import-Kern kennt nur diese neutralen Begriffe.
