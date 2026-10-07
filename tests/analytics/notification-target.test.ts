@@ -23,6 +23,12 @@ describe("SCRUM-220: notificationTarget", () => {
     expect(notificationTarget({ kind: "impact" })).toBeNull();
   });
 
+  it("R-0894: Eskalation → /konflikte; Rückgabe → der eigene Eintrag (ohne koId kein Ziel)", () => {
+    expect(notificationTarget({ kind: "escalation" })).toBe("/konflikte");
+    expect(notificationTarget({ kind: "return", koId: "ko-7" })).toBe("/wissen/ko-7");
+    expect(notificationTarget({ kind: "return" })).toBeNull();
+  });
+
   it("unbekanntes Kind → null (kein Fake-Ziel)", () => {
     expect(notificationTarget({ kind: "other" as never })).toBeNull();
   });
