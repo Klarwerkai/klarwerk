@@ -1,19 +1,24 @@
 // @vitest-environment jsdom
 // ================================================================================================
-// R-0531 — DIE SPRACHWAHL WIRKT SOFORT AUF ALLE TEXTE DER MASKE, AUCH AUF EINEN SCHON GEZEIGTEN FEHLER
+// R-0531 — DIE SPRACHWAHL WIRKT SOFORT AUF ALLE TEXTE DER MASKE, AUCH AUF DEN FEHLER
 // ================================================================================================
 //
 // Der Rest aus der Abnahme vom 05.09. (Live 1.97): „echte Serverfehlermeldungen bleiben jedoch auch
 // bei EN und NL deutsch". Die SERVERSEITE ist seit Q9 geschlossen — der Server formuliert nach
-// `Accept-Language` (`tests/q9-serverfehlertexte/server.test.ts` R1/R2/R4). Offen blieb die Kante,
-// dass ein bereits angezeigter Satz nach dem Umschalten in der ALTEN Sprache stehen blieb.
+// `Accept-Language` (`tests/q9-serverfehlertexte/server.test.ts` R1/R2/R4). Offen war die Maske: ein
+// schon angezeigter Satz musste nach dem Umschalten in der GEWÄHLTEN Sprache dastehen.
 //
-// Gemessen an beiden öffentlichen Masken, gemountet: Fehler in der Absendesprache sichtbar; nach dem
-// Umschalten kein Satz der alten Sprache mehr; zurückgeschaltet steht er wieder (er ist ja in dieser
-// Sprache formuliert).
+// Nacharbeit 1 (BEN): die erste Fassung liess den Satz nach dem Umschalten verschwinden, und dieser
+// Test prüfte nur das Verschwinden. Jetzt verlangt jeder Fall den INHALTLICH PASSENDEN Satz in der
+// Zielsprache — für beide Masken, für eine Ablehnung, die erst NACH dem Umschalten eintrifft, für
+// einen lokalen Netzfehler und für einen Serversatz, der nirgends vorrätig ist.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const draht = vi.hoisted(() => ({ satz: "" }));
+const draht = vi.hoisted(() => ({
+  art: "api" as "api" | "netz",
+  satz: "",
+  bremse: null as Promise<void> | null,
+}));
 
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
   useSession: () => ({ refresh: () => {}, oidcEnabled: false, user: null }),
@@ -21,6 +26,13 @@ vi.mock("../../apps/web/src/app/AuthContext", () => ({
 vi.mock("../../apps/web/src/api/auth", async () => {
   const { ApiError } = await import("../../apps/web/src/api/client");
   const ablehnen = async (): Promise<never> => {
+    if (draht.bremse) {
+      await draht.bremse;
+    }
+    if (draht.art === "netz") {
+      // Was `fetch` bei getrenntem Netz wirft — kein ApiError, also der lokale Satz der Maske.
+      throw new TypeError("Failed to fetch");
+    }
     throw new ApiError(401, "INVALID_CREDENTIALS", draht.satz);
   };
   return {
@@ -49,6 +61,8 @@ import { MELDUNGEN } from "../../services/auth/src/meldungen";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+type Sprache = "de" | "en" | "nl";
+
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
@@ -69,6 +83,9 @@ function mount(el: unknown): void {
 }
 
 beforeEach(async () => {
+  draht.art = "api";
+  draht.satz = "";
+  draht.bremse = null;
   await i18n.changeLanguage("de");
 });
 
@@ -81,9 +98,11 @@ afterEach(async () => {
 });
 
 const text = (): string => container.textContent ?? "";
+const wort = (sprache: Sprache, schluessel: string): string =>
+  String(i18n.getResource(sprache, "translation", schluessel));
 
 /** Der Umschalter der öffentlichen Strecke — exakt über seinen Knopftext, nicht über Teiltreffer. */
-async function waehle(sprache: "de" | "en" | "nl"): Promise<void> {
+async function waehle(sprache: Sprache): Promise<void> {
   const knopf = [...container.querySelectorAll('[data-testid="auth-lang-switch"] button')].find(
     (b) => b.textContent === sprache,
   ) as HTMLButtonElement | undefined;
@@ -95,6 +114,12 @@ async function waehle(sprache: "de" | "en" | "nl"): Promise<void> {
   expect(i18n.language).toBe(sprache);
 }
 
+async function ticken(): Promise<void> {
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+  });
+}
+
 /** Das Formular absenden, wie es die Eingabetaste täte, und die Ablehnung abwarten. */
 async function absenden(): Promise<void> {
   const form = container.querySelector("form");
@@ -102,18 +127,18 @@ async function absenden(): Promise<void> {
   await act(async () => {
     form?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
   });
-  await act(async () => {
-    await new Promise((r) => setTimeout(r, 0));
-  });
+  await ticken();
 }
 
 const MASKEN = [
   {
     name: "Anmeldung",
+    satz: MELDUNGEN.INVALID_CREDENTIALS,
     mounten: () => mount(createElement(AuthScreens, { needsSetup: false } as never)),
   },
   {
     name: "Zurücksetzen",
+    satz: MELDUNGEN.RESET_TOKEN_INVALID,
     mounten: () => {
       window.history.replaceState({}, "", "/reset?token=t-123");
       mount(createElement(ResetScreen));
@@ -121,33 +146,97 @@ const MASKEN = [
   },
 ] as const;
 
-describe("R-0531 · ein angezeigter Fehler folgt der Sprachwahl", () => {
+describe("R-0531 · ein Fehler der öffentlichen Masken steht in der gewählten Sprache", () => {
   for (const maske of MASKEN) {
-    it(`${maske.name}: DE-Fehler steht, nach EN ist er weg, zurück auf DE steht er wieder`, async () => {
-      draht.satz = MELDUNGEN.INVALID_CREDENTIALS.de;
+    it(`${maske.name}: in DE abgewiesen, nach EN und NL steht derselbe Satz übersetzt`, async () => {
+      draht.satz = maske.satz.de;
       maske.mounten();
       await absenden();
-      // Kalibrierung: ohne sichtbaren Fehler wäre „weg" unten trivial wahr.
-      expect(text()).toContain(MELDUNGEN.INVALID_CREDENTIALS.de);
+      expect(text()).toContain(maske.satz.de);
 
       await waehle("en");
-      expect(text(), "der deutsche Satz bleibt nach dem Umschalten stehen").not.toContain(
-        MELDUNGEN.INVALID_CREDENTIALS.de,
+      expect(text(), "der Fehler steht nach dem Umschalten nicht auf Englisch").toContain(
+        maske.satz.en,
       );
+      expect(text(), "der deutsche Satz bleibt stehen").not.toContain(maske.satz.de);
 
-      await waehle("de");
-      expect(text()).toContain(MELDUNGEN.INVALID_CREDENTIALS.de);
+      await waehle("nl");
+      expect(text()).toContain(maske.satz.nl);
+      expect(text()).not.toContain(maske.satz.en);
     });
 
-    it(`${maske.name}: in NL abgesendet, steht der NL-Satz; nach EN kein NL-Satz mehr`, async () => {
+    it(`${maske.name}: eine Ablehnung, die erst NACH dem Umschalten eintrifft, steht in der neuen Sprache`, async () => {
+      let freigeben: () => void = () => {};
+      draht.bremse = new Promise<void>((r) => {
+        freigeben = r;
+      });
+      // Abgesendet auf Deutsch — der Server antwortet also auf Deutsch.
+      draht.satz = maske.satz.de;
       maske.mounten();
-      await waehle("nl");
-      draht.satz = MELDUNGEN.INVALID_CREDENTIALS.nl;
       await absenden();
-      expect(text()).toContain(MELDUNGEN.INVALID_CREDENTIALS.nl);
+      await waehle("en");
+
+      await act(async () => {
+        freigeben();
+      });
+      await ticken();
+
+      expect(text(), "die späte Ablehnung ist verborgen oder deutsch").toContain(maske.satz.en);
+      expect(text()).not.toContain(maske.satz.de);
+    });
+
+    it(`${maske.name}: ein lokaler Netzfehler folgt der Sprachwahl`, async () => {
+      draht.art = "netz";
+      maske.mounten();
+      await absenden();
+      const de = wort("de", "state.error");
+      const en = wort("en", "state.error");
+      // Kalibrierung: ohne zwei verschiedene Fassungen wäre der Fall trivial grün.
+      expect(en).not.toBe(de);
+      expect(text()).toContain(de);
 
       await waehle("en");
-      expect(text()).not.toContain(MELDUNGEN.INVALID_CREDENTIALS.nl);
+      expect(text()).toContain(en);
+      expect(text()).not.toContain(de);
+    });
+
+    it(`${maske.name}: ein nirgends vorrätiger Serversatz wird nach dem Umschalten erklärt, nicht verschwiegen`, async () => {
+      const fremd = "Zugang vorübergehend gesperrt (Wartung).";
+      draht.satz = fremd;
+      maske.mounten();
+      await absenden();
+      // In der Sprache, in der er formuliert ist, steht er wörtlich.
+      expect(text()).toContain(fremd);
+
+      await waehle("en");
+      expect(text()).not.toContain(fremd);
+      expect(text(), "statt des Fehlers steht nichts da").toContain(
+        wort("en", "anmeldefehler.unbekannt"),
+      );
     });
   }
+
+  it("Anmeldung: ein lokaler Satz der Maske (Passwörter ungleich) folgt der Sprachwahl", async () => {
+    mount(createElement(AuthScreens, { needsSetup: true } as never));
+    const felder = [...container.querySelectorAll('input[type="password"]')] as HTMLInputElement[];
+    expect(felder).toHaveLength(2);
+    // React liest den Wert über seinen eigenen Setter; ein `input`-Ereignis trägt ihn in den Zustand.
+    const setzen = (feld: HTMLInputElement, wert: string): void => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      setter?.call(feld, wert);
+      feld.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    act(() => {
+      setzen(felder[0] as HTMLInputElement, "geheim123");
+      setzen(felder[1] as HTMLInputElement, "geheim124");
+    });
+    await absenden();
+    const kasten = (): string =>
+      [...container.querySelectorAll("div.rounded-btn")].map((d) => d.textContent ?? "").join(" ");
+    expect(kasten()).toContain(wort("de", "auth.passwordMismatch"));
+
+    await waehle("en");
+    expect(kasten()).toContain(wort("en", "auth.passwordMismatch"));
+    expect(kasten()).not.toContain(wort("de", "auth.passwordMismatch"));
+  });
 });

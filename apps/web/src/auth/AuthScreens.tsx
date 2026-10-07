@@ -14,6 +14,7 @@ import { NoticeText, takeDeclineMarker } from "../legal/NoticeBanner";
 // Markenblock stand vorher zeichengleich auch in `ResetScreen.tsx` — jede Änderung hätte an beide
 // Stellen gemusst, sonst wären sie auseinandergelaufen.
 import { BrandCompact, BrandPanel, PublicLangSwitch } from "./BrandPanel";
+import { type Maskenfehler, maskenfehlerAus, maskenfehlerText } from "./maskenfehler";
 
 type Mode = "login" | "register" | "waiting" | "setup" | "forgot" | "forgotSent";
 
@@ -29,21 +30,19 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
   // Sicherheit: Passwort-Bestätigung bei Account-Erstellung (register/setup) — ein Vertipper
   // im einzigen Passwortfeld würde sonst still ein falsches Passwort setzen (Aussperrung).
   const [pw2, setPw2] = useState("");
-  // R-0531: „die Wahl wirkt sofort auf alle Texte der Maske" — auch auf einen schon angezeigten
-  // Fehler. Sein Text ist fertig formuliert (vom Server per `Accept-Language` oder hier per `t()`)
-  // und lässt sich nicht nachträglich übersetzen. Er trägt deshalb die Sprache, in der er entstand,
-  // und steht nur, solange diese Sprache gewählt ist; nach dem Umschalten bleibt kein Satz in der
-  // alten Sprache auf der Maske zurück.
+  // R-0531: „die Wahl wirkt sofort auf alle Texte der Maske" — auch auf einen schon angezeigten oder
+  // erst nach dem Umschalten eintreffenden Fehler. Im Zustand liegt deshalb kein fertiger Satz,
+  // sondern sein Schlüssel; formuliert wird beim Zeichnen in der gewählten Sprache
+  // (`auth/maskenfehler.ts`).
   //
-  // Gestempelt wird mit der Sprache des letzten Absendens: mit ihr ging die Anfrage ab
-  // (`Accept-Language`, `api/client.ts`), also ist eine Serverantwort in DIESER Sprache formuliert,
-  // auch wenn inzwischen umgeschaltet wurde. Die Texte, die die Maske beim Absenden selbst setzt
-  // (`auth.passwordMismatch`), entstehen im selben Augenblick und tragen dieselbe Sprache.
+  // `anfrageSprache` ist die Sprache des letzten Absendens (`Accept-Language`, `api/client.ts`). Sie
+  // zählt nur für einen Satz, der nirgends vorrätig ist: er steht in dieser Sprache, sonst steht die
+  // Erklärung in der gewählten.
   const anfrageSprache = useRef(i18n.language);
-  const [fehler, setFehler] = useState<{ text: string; sprache: string } | null>(null);
+  const [fehler, setFehler] = useState<Maskenfehler | null>(null);
   const setErr = (text: string | null): void =>
-    setFehler(text === null ? null : { text, sprache: anfrageSprache.current });
-  const err = fehler !== null && fehler.sprache === i18n.language ? fehler.text : null;
+    setFehler(text === null ? null : maskenfehlerAus(text, anfrageSprache.current, i18n));
+  const err = fehler === null ? null : maskenfehlerText(fehler, (k) => t(k), i18n.language);
   // AUFTRAG-mega61 Block D: Wer den Hinweis abgelehnt hat, landet nach dem Abmelden hier. Ohne
   // diesen Satz stünde er vor einer Anmeldemaske ohne Erklärung — eine Sackgasse mit Gedächtnis.
   // Einmalig beim ersten Rendern gelesen UND gelöscht (`useState`-Initialisierer), damit der Satz

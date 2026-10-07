@@ -7,6 +7,7 @@ import { Button, Field, TextInput } from "../components/ui";
 // JOB 1097 / D-028 + D-027: dieselbe Markenfläche und dieselbe Sprachwahl wie die Anmeldemaske —
 // aus EINER Quelle. Der Markenblock stand hier vorher zeichengleich ein zweites Mal.
 import { BrandCompact, BrandPanel, PublicLangSwitch } from "./BrandPanel";
+import { type Maskenfehler, maskenfehlerAus, maskenfehlerText } from "./maskenfehler";
 
 // Passwort-Reset einlösen (FR-AUTH-08). Aufruf über den E-Mail-Link
 // https://klarwerk.ai/reset?token=… — ohne Anmeldung erreichbar.
@@ -14,14 +15,13 @@ export function ResetScreen(): JSX.Element {
   const { t, i18n } = useTranslation();
   const token = new URLSearchParams(window.location.search).get("token") ?? "";
   const [pw, setPw] = useState("");
-  // R-0531: derselbe Vertrag wie in `AuthScreens.tsx` — ein Fehlersatz trägt die Sprache, mit der
-  // abgesendet wurde, und steht nur, solange sie gewählt ist; nach dem Umschalten bleibt nichts in
-  // der alten Sprache stehen.
+  // R-0531: derselbe Vertrag wie in `AuthScreens.tsx` — im Zustand liegt der Schlüssel des Fehlers,
+  // formuliert wird beim Zeichnen in der gewählten Sprache (`auth/maskenfehler.ts`).
   const anfrageSprache = useRef(i18n.language);
-  const [fehler, setFehler] = useState<{ text: string; sprache: string } | null>(null);
+  const [fehler, setFehler] = useState<Maskenfehler | null>(null);
   const setErr = (text: string | null): void =>
-    setFehler(text === null ? null : { text, sprache: anfrageSprache.current });
-  const err = fehler !== null && fehler.sprache === i18n.language ? fehler.text : null;
+    setFehler(text === null ? null : maskenfehlerAus(text, anfrageSprache.current, i18n));
+  const err = fehler === null ? null : maskenfehlerText(fehler, (k) => t(k), i18n.language);
   const [done, setDone] = useState(false);
 
   const reset = useMutation({
