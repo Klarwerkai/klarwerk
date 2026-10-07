@@ -10,7 +10,16 @@ const SESSION_COOKIE = "kw_session";
 export interface SessionUser {
   id: string;
   role: Role;
+  /**
+   * produkt:20261007:spaces — die Spaces, deren Inhalte dieser Mensch lesen darf, EINMAL je Anfrage
+   * erhoben (`makeGuards`, Option `spaceLesbar`). Ausgewertet allein in `sichtbarkeit.ts`. FEHLT das
+   * Feld (ein Aufbau ohne Spaces), ist kein Objekt mit führendem Space sichtbar — fail-closed.
+   */
+  spaceLesbar?: ReadonlySet<string>;
 }
+
+/** Erhebt je Anfrage die lesbaren Spaces eines angemeldeten Kontos (s. `SessionUser.spaceLesbar`). */
+export type SpaceLesbarQuelle = (user: { id: string; role: Role }) => Promise<ReadonlySet<string>>;
 
 export interface Guards {
   requireUser(request: FastifyRequest, reply: FastifyReply): Promise<SessionUser | undefined>;
@@ -206,7 +215,10 @@ export function sendError(reply: FastifyReply, error: unknown): void {
   reply.code(INTERNAL_ERROR_STATUS).send(internalErrorBody(reply.request));
 }
 
-export function makeGuards(auth: AuthService): Guards {
+export function makeGuards(
+  auth: AuthService,
+  opts: { spaceLesbar?: SpaceLesbarQuelle } = {},
+): Guards {
   const requireUser = async (
     request: FastifyRequest,
     reply: FastifyReply,
@@ -222,7 +234,14 @@ export function makeGuards(auth: AuthService): Guards {
         .send({ error: "UNAUTHENTICATED", message: meldung("NOT_SIGNED_IN", sprache(request)) });
       return undefined;
     }
-    return { id: user.id, role: user.role };
+    if (!opts.spaceLesbar) {
+      return { id: user.id, role: user.role };
+    }
+    return {
+      id: user.id,
+      role: user.role,
+      spaceLesbar: await opts.spaceLesbar({ id: user.id, role: user.role }),
+    };
   };
 
   const requirePermission = async (

@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { HelpTip } from "../components/HelpTip";
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 import { SanitizedHtml } from "../components/SanitizedHtml";
+import { SpaceZeile } from "../components/SpaceZeile";
 import { BibliothekFlaeche } from "../components/bibliothek/BibliothekFlaeche";
 import { Card, SectionLabel } from "../components/ui";
 import { sprachcode, useFrischeLesevariante } from "../lib/lesevariante";
@@ -130,6 +131,10 @@ export function KnowledgeDetail(): JSX.Element {
           {t("lesevariante.abrufFehler")}
         </p>
       ) : null}
+      {/* produkt:20261007:spaces: führender Space, Spacezuständigkeit und Artikelverantwortung
+          getrennt, dazu der Spacewechsel mit Rechtevorschau. Unsichtbar → der Server sagt 404,
+          die Zeile zeichnet dann nichts. */}
+      <SpaceZeile koId={id} />
       <BibliothekFlaeche vorgewaehlt={id} beiWahl={beiWahl} beiLoeschung={beiLoeschung} />
     </div>
   );
