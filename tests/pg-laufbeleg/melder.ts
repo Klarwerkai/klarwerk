@@ -10,9 +10,9 @@
 // gelöst; die übrigen über hundert schweigen weiter.
 //
 // DIE ABHILFE STEHT ZENTRAL und nicht hundertfach: `vitest.integration.config.ts` hängt
-//   · `tests/pg-laufbeleg/laut-uebersprungen.ts` als Setup-Datei ein — sie meldet nach JEDER
-//     Datei deren übersprungene Fälle mit Namen. Das hängt an keinem Reporter, gilt also auch,
-//     wenn ein Aufrufer `--reporter` selbst wählt;
+//   · `tests/pg-laufbeleg/laut-runner.ts` als Testläufer ein — er meldet nach JEDER Datei deren
+//     übersprungene Fälle mit Namen, auch für eine Datei, die ganz statisch übersprungen ist. Das
+//     hängt an keinem Reporter, gilt also auch, wenn ein Aufrufer `--reporter` selbst wählt;
 //   · `PgLaufMelder` als zusätzlichen Reporter ein — er schreibt am Ende EINE Bilanz des ganzen
 //     Laufs. Läuft kein einziger Fall, sagt sie ausdrücklich, dass dieser Lauf keinen echten
 //     Datenbankbetrieb belegt (R-2211).

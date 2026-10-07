@@ -4,7 +4,7 @@
 //
 // Drei Teile:
 //   · M — die Zählung und die Meldetexte an gebauten Aufgabenbäumen (schnell, ohne Unterprozess);
-//   · V — `vitest.integration.config.ts` hängt Setup-Datei und Reporter wirklich ein;
+//   · V — `vitest.integration.config.ts` hängt Testläufer und Reporter wirklich ein;
 //   · L — ein echter Vitest-Unterprozess über `probe/probe.vitest.config.ts` mit Probedateien in
 //     der Hausform einer Postgres-Suite ohne Datenbank. Gemessen wird die AUSGABE, nicht der Code:
 //     was der Lauf sagt, wenn er nichts gegen die Datenbank prüft.
@@ -14,12 +14,13 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import integration, { UEBERSPRUNGEN_LAUT } from "../../vitest.integration.config";
+import integration, { UEBERSPRUNGEN_RUNNER } from "../../vitest.integration.config";
 import { type Aufgabe, PgLaufMelder, dateiMeldung, gesamtMeldung, laufbild } from "./melder";
 
 const WURZEL = fileURLToPath(new URL("../..", import.meta.url));
 const PROBE_KONFIG = "tests/pg-laufbeleg/probe/probe.vitest.config.ts";
 const NUR_UEBERSPRUNGEN = "tests/pg-laufbeleg/probe/nur-uebersprungen.probe.ts";
+const NUR_STATISCH = "tests/pg-laufbeleg/probe/nur-statisch.probe.ts";
 const GELAUFEN = "tests/pg-laufbeleg/probe/gelaufen.probe.ts";
 
 function fall(name: string, mode: string, state?: string): Aufgabe {
@@ -94,8 +95,8 @@ describe("R-1327 · M · Zählung und Meldetext", () => {
 });
 
 describe("R-1327 · V · der Integrationslauf ist verdrahtet", () => {
-  it("V1 · Setup-Datei und Reporter stehen in `vitest.integration.config.ts`", () => {
-    expect(integration.test?.setupFiles).toContain(UEBERSPRUNGEN_LAUT);
+  it("V1 · Testläufer und Reporter stehen in `vitest.integration.config.ts`", () => {
+    expect(integration.test?.runner).toBe(UEBERSPRUNGEN_RUNNER);
     const reporter = integration.test?.reporters;
     expect(Array.isArray(reporter) ? reporter : [reporter]).toEqual(
       expect.arrayContaining(["default", expect.any(PgLaufMelder)]),
@@ -156,11 +157,26 @@ describe("R-1327 · L · der echte Lauf meldet das Überspringen laut", () => {
 
   it("L4 · mit eigenem `--reporter` entfällt die Bilanz, die Dateimeldung bleibt", () => {
     // Ein Aufrufer, der den Reporter selbst wählt, ersetzt die Reporterliste der Konfiguration.
-    // Die Meldung je Datei hängt deshalb an der Setup-Datei und nicht am Reporter.
+    // Die Meldung je Datei hängt deshalb am Testläufer und nicht am Reporter.
     const l = lauf([NUR_UEBERSPRUNGEN], ["--reporter=dot"]);
     expect(l.ausgabe, beleg(l)).toContain(
       `ÜBERSPRUNGEN: ${NUR_UEBERSPRUNGEN} › Probe-Pg-Suite › schreibt eine Zeile in die echte Datenbank`,
     );
     expect(l.ausgabe, beleg(l)).not.toContain("INTEGRATIONSLAUF:");
+  });
+
+  it("L5 · eine ganz statisch übersprungene Datei meldet sich auch mit eigenem `--reporter`", () => {
+    // Bens Befund (Nacharbeit 2): steht die ganze Datei auf `mode=skip`, fährt Vitest keinen ihrer
+    // Hooks, und der eigene Reporter nimmt die Bilanz weg. Die Meldung muss trotzdem kommen.
+    const l = lauf([NUR_STATISCH], ["--reporter=dot"]);
+    expect(l.ausgabe, beleg(l)).toContain("2 Fall/Fälle ÜBERSPRUNGEN");
+    expect(l.ausgabe, beleg(l)).toContain(
+      `ÜBERSPRUNGEN: ${NUR_STATISCH} › Probe-Statisch-Suite › prüft die echte Datenbank`,
+    );
+    expect(l.ausgabe, beleg(l)).toContain(
+      `ÜBERSPRUNGEN: ${NUR_STATISCH} › Probe-Statisch-Suite › prüft sie ein zweites Mal`,
+    );
+    expect(l.ausgabe, beleg(l)).not.toContain("INTEGRATIONSLAUF:");
+    expect(l.code, beleg(l)).toBe(0);
   });
 });
