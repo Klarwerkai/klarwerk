@@ -3,10 +3,11 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Pool, type PoolClient } from "pg";
+import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildPgServices, createPool, migrate } from "../../services/app";
+import { MIGRATIONSSPERRE, schemas } from "../../services/app/src/db";
 import { AuditService, PgAuditRepo } from "../../services/audit";
 import { type TxContext, guardedLocalPgTestUrl, withPgTx } from "../../services/db-tx";
 import {
@@ -58,6 +59,7 @@ import {
 const PREFIX = "[KLARWERK][pg-start-audit-konkurrenz]";
 const DB_E1 = "klarwerk_test_konkurrenz_e1";
 const DB_E2 = "klarwerk_test_konkurrenz_e2";
+const DB_E2K = "klarwerk_test_konkurrenz_e2k";
 const DB_E3 = "klarwerk_test_konkurrenz_e3";
 const DB_E1K_ENTFERNT = "klarwerk_test_konkurrenz_e1k_entfernt";
 const DB_E1K_UMGANGEN = "klarwerk_test_konkurrenz_e1k_umgangen";
@@ -107,11 +109,16 @@ function protokolliere(fall: string, daten: unknown): void {
 }
 
 /**
- * `migrate()` nimmt einen Pool und ruft darauf nur `query(ddl)`. Diese Hülle gibt ihm einen
- * EINZELNEN Client — so läuft der ganze Schemaaufbau in der offenen Transaktion des Falls.
+ * Der Schemaaufbau in der Bauform VOR R-0800: dieselben Stufen in derselben Reihenfolge, aber ohne
+ * Migrationssperre. Nur für die Kalibrierung E2-K — sie belegt, dass die Überlappung ohne Sperre
+ * wirklich scheitert und E2 deshalb etwas misst.
  */
-function alsPool(client: PoolClient): Pool {
-  return { query: (sql: string) => client.query(sql) } as unknown as Pool;
+async function ungesperrterAufbau(ziel: {
+  query: (sql: string) => Promise<unknown>;
+}): Promise<void> {
+  for (const ddl of schemas) {
+    await ziel.query(ddl);
+  }
 }
 
 describe("Aufnahme pg-start-audit-konkurrenz · paralleler Erstaufbau auf frischer PostgreSQL", () => {
@@ -156,7 +163,7 @@ describe("Aufnahme pg-start-audit-konkurrenz · paralleler Erstaufbau auf frisch
   }, 180_000);
 
   afterAll(async () => {
-    for (const db of [DB_E1, DB_E1K_ENTFERNT, DB_E1K_UMGANGEN, DB_E2, DB_E3]) {
+    for (const db of [DB_E1, DB_E1K_ENTFERNT, DB_E1K_UMGANGEN, DB_E2, DB_E2K, DB_E3]) {
       await verwaltung?.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`).catch(() => undefined);
     }
     await verwaltung?.end();
@@ -519,34 +526,38 @@ describe("Aufnahme pg-start-audit-konkurrenz · paralleler Erstaufbau auf frisch
     const poolB = new Pool({ connectionString: url, max: 4 });
     const bericht: Record<string, unknown> = {};
     try {
-      // (a) Der Schemaaufbau überlappt: A hält den GANZEN `migrate()` in einer offenen
-      //     Transaktion, B läuft ungeschützt los — so, wie `server.ts` es heute tut.
+      // (a) Der Schemaaufbau überlappt: A steht MITTEN in `migrate()` — er hält die
+      //     Migrationssperre und hat alle Stufen in einer offenen Transaktion ausgeführt. B startet
+      //     `migrate()` so, wie `server.ts` es tut.
+      //
+      // BIS R-0800 STAND HIER DER REPRODUZIERTE REST: `migrate()` lief ohne Sperre, und B fiel mit
+      // `23505` im Katalog aus (gemessen `pg_type_typname_nsp_index`, Testserver-Lauf
+      // pa-1790428493-d9a9274b). Die Behebung ist gelandet (`services/app/src/db.ts`,
+      // `MIGRATIONSSPERRE`); die Zusicherung lautet deshalb jetzt „B wartet an der Sperre und kommt
+      // durch". Dass die Überlappung ohne Sperre WIRKLICH scheitert, hält E2-K unten fest.
       const a = await poolA.connect();
       let ausgangB: Ausgang;
       try {
+        await a.query("SELECT pg_advisory_lock($1)", [MIGRATIONSSPERRE]);
         await a.query("BEGIN");
-        await migrate(alsPool(a));
+        for (const ddl of schemas) {
+          await a.query(ddl);
+        }
         const laufB = miss(() => migrate(poolB));
-        bericht.wartendBeiMigrate = await warteAufWartende(DB_E2, 1);
+        // `advisory` und nicht irgendeine Sperre: B hängt an GENAU dem Schlüssel, den A hält —
+        // A hält keinen anderen. Damit ist belegt, dass der Produktweg von B die Sperre nimmt.
+        bericht.wartendBeiMigrate = await warteAufWartende(DB_E2, 1, "advisory");
         await a.query("COMMIT");
+        await a.query("SELECT pg_advisory_unlock($1)", [MIGRATIONSSPERRE]);
         ausgangB = await laufB;
       } finally {
         a.release();
       }
       bericht.migrateB = ausgangB;
       expect(bericht.wartendBeiMigrate as number).toBeGreaterThanOrEqual(1);
+      expect(ausgangB.ok, JSON.stringify(ausgangB)).toBe(true);
 
-      // REPRODUZIERTER REST, NICHT BEHOBEN (Arbeitsart dieser Aufnahme: Prüfung). `migrate()`
-      // (`services/app/src/db.ts`) läuft ohne Sperre; die Zweitinstanz fällt beim Erstaufbau mit
-      // einer Eindeutigkeitsverletzung im Katalog aus — gemessen `pg_type_typname_nsp_index`
-      // (Testserver-Lauf pa-1790428493-d9a9274b). Passende Behebung: `migrate()` unter eine
-      // datenbankweite Beratungssperre stellen (Bauform wie `stelleTrigrammErweiterungSicher`).
-      // Landet sie, kippt DIESE Zusicherung — und muss zu „B kommt durch" umgeschrieben werden.
-      expect(ausgangB.ok, JSON.stringify(ausgangB)).toBe(false);
-      expect(ausgangB.code).toBe("23505");
-      expect(ausgangB.constraint).toMatch(/^pg_(type_typname|class_relname|extension_name)/);
-
-      // (b) KEIN HALBER STAND: ein Neustart von B findet das fertige Schema und kommt durch.
+      // (b) WIEDERHOLBAR: ein weiterer Lauf von B findet das fertige Schema und ist folgenlos.
       bericht.migrateBNeustart = await miss(() => migrate(poolB));
       expect((bericht.migrateBNeustart as Ausgang).ok).toBe(true);
 
@@ -604,6 +615,48 @@ describe("Aufnahme pg-start-audit-konkurrenz · paralleler Erstaufbau auf frisch
       expect((bericht.readyNeustart as Ausgang).ok, JSON.stringify(bericht.readyNeustart)).toBe(
         true,
       );
+    } finally {
+      await poolA.end().catch(() => undefined);
+      await poolB.end().catch(() => undefined);
+    }
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // E2-K · KALIBRIERUNG ZU E2 — dieselbe Überlappung OHNE Migrationssperre scheitert.
+  // ----------------------------------------------------------------------------------------------
+  //
+  // Ohne diesen Fall bliebe offen, ob E2 grün ist, weil die Sperre wirkt, oder weil die Überlappung
+  // gar nicht schadet. Hier laufen dieselben Stufen in der Bauform vor R-0800 (`ungesperrterAufbau`)
+  // — und die Zweitinstanz fällt genau so aus, wie es der Testserver-Lauf pa-1790428493-d9a9274b
+  // gemessen hat.
+  it("E2-K · KALIBRIERUNG: derselbe überlappende Erstaufbau ohne Sperre lässt die Zweitinstanz an 23505 scheitern", async (ctx) => {
+    if (!verwaltung) {
+      ctx.skip();
+      return;
+    }
+    const url = await frischeDatenbank(DB_E2K);
+    const poolA = new Pool({ connectionString: url, max: 1 });
+    const poolB = new Pool({ connectionString: url, max: 1 });
+    try {
+      const a = await poolA.connect();
+      let ausgangB: Ausgang;
+      let wartend = 0;
+      try {
+        await a.query("BEGIN");
+        await ungesperrterAufbau(a);
+        const laufB = miss(() => ungesperrterAufbau(poolB));
+        // Ohne Sperre wartet B NICHT an `advisory`, sondern an der offenen Anlage von A.
+        wartend = await warteAufWartende(DB_E2K, 1);
+        await a.query("COMMIT");
+        ausgangB = await laufB;
+      } finally {
+        a.release();
+      }
+      protokolliere("E2-K", { wartend, migrateB: ausgangB });
+      expect(wartend).toBeGreaterThanOrEqual(1);
+      expect(ausgangB.ok, JSON.stringify(ausgangB)).toBe(false);
+      expect(ausgangB.code).toBe("23505");
+      expect(ausgangB.constraint).toMatch(/^pg_(type_typname|class_relname|extension_name)/);
     } finally {
       await poolA.end().catch(() => undefined);
       await poolB.end().catch(() => undefined);
