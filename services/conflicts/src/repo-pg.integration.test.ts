@@ -349,7 +349,11 @@ describe("aistate-fix4 (bens V5): insertIfVersionsCurrent gegen echtes Postgres"
   it("JOB 3914: die Entscheidung mit Freitext ist nach NEUEM Verbindungsaufbau vollständig lesbar", async (ctx) => {
     const p = requirePool(ctx);
     await reset(p);
-    await new PgConflictRepo(p).insert(conflict("vermerk1", { koAVersion: 2, koBVersion: 3 }));
+    // R-0215 (Aufnahme gesamt-konfliktklassifikation): ein Wahrheitskonflikt wird erst nach der
+    // Eskalation entschieden — der Startdatensatz steht deshalb auf „eskaliert".
+    await new PgConflictRepo(p).insert(
+      conflict("vermerk1", { koAVersion: 2, koBVersion: 3, status: "eskaliert" }),
+    );
 
     await mitNeuemPool(p, (_repo, dienst) =>
       dienst.resolve(
@@ -372,7 +376,7 @@ describe("aistate-fix4 (bens V5): insertIfVersionsCurrent gegen echtes Postgres"
     await reset(p);
     const start = new PgConflictRepo(p);
     await start.insert(conflict("ohne"));
-    await start.insert(conflict("mit"));
+    await start.insert(conflict("mit", { status: "eskaliert" })); // R-0215: entschieden nach Eskalation
 
     await mitNeuemPool(p, async (_repo, dienst) => {
       await dienst.dismiss("ohne", "controller-1"); // OHNE Notiz — `decision: note ?? null` (:159)
