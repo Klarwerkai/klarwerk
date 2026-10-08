@@ -390,6 +390,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // kuratorische Schutzart wie die drei Aktionen darüber — es ist derselbe Vorgang, nur mit
   // ausdrücklich gewähltem Grund statt mit einem Grund je Knopf.
   "POST /api/duplicates/:id/status": { protection: "ko.validate" },
+  // R-1107 / R-0565 (Aufnahme gesamt-dublettenvergleich): Zusammenführen — dieselbe kuratorische
+  // Schutzart; dass kein Autor einer der beiden Seiten zusammenführt, prüft der Dienst dahinter.
+  "POST /api/duplicates/:id/merge": { protection: "ko.validate" },
 
   // --- Capture/Drafts (capture-routes.ts) ---
   "GET /api/drafts": { protection: "ko.create" },
