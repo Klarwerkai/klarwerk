@@ -16,6 +16,14 @@
 //   B2  Dieselbe Frage mit Spätschicht neu gestellt — dann gehört die stehende Antwort zu
 //       Spätschicht, und die Zweitmeinung folgt ihr.
 //   B3  Ohne Kontext gefragt — die Zweitmeinung trägt keinen Kontext (der bisherige Aufruf).
+//
+// Ben, Nacharbeit 10 — DIE WIEDERAUFNAHME (Neuladen, erneute Anmeldung desselben Kontos):
+//   B4  Frühschicht gefragt → Seite neu montiert (gespeicherte Antwort, keine neue Frage) →
+//       Auswahl Spätschicht → Zweitmeinung geht mit Frühschicht hinaus.
+//   B5  Ohne Kontext gefragt → neu montiert → Zweitmeinung ohne Kontext (nicht „unbekannt").
+//   B6  Altstand ohne gespeicherten Kontext → KEIN Zweitmeinungsknopf, sondern der Hinweis und
+//       „Frage erneut stellen" — die neue Frage geht mit dem gewählten Kontext, danach folgt die
+//       Zweitmeinung genau diesem Kontext.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../apps/web/src/app/RoleContext", () => ({
@@ -75,6 +83,10 @@ import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { endpoints } from "../../apps/web/src/api/endpoints";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
+import {
+  arbeitsstandLesen,
+  arbeitsstandSchreiben,
+} from "../../apps/web/src/lib/fragenArbeitsstand";
 import { Ask } from "../../apps/web/src/pages/Ask";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -214,6 +226,70 @@ describe("R-0305/R-1099 · die Zweitmeinung trägt den Kontext der stehenden Ant
     await frage(c);
     expect(askMock.mock.calls[1]?.[3]).toEqual(SPAET);
 
+    await klicke(c, '[data-testid="ask-zweitmeinung-knopf"]');
+    expect(zweitMock.mock.calls[0]?.[3]).toEqual(SPAET);
+  });
+
+  it("B4 · Frage mit Kontext → Wiederaufnahme → Zweitmeinung mit dem ursprünglichen Kontext", async () => {
+    const c1 = await montiere();
+    await kontext(c1, "Werk Nord", "Frühschicht");
+    await frage(c1);
+    expect(arbeitsstandLesen(localStorage, "u1")?.antwort?.fragekontext).toEqual(FRUEH);
+    abbauen?.();
+    abbauen = null;
+
+    // Neu montiert: die gespeicherte Antwort steht wieder da, es geht keine neue Frage hinaus.
+    const c2 = await montiere();
+    expect(askMock).toHaveBeenCalledTimes(1);
+    expect(c2.querySelector('[data-testid="ask-zweitmeinung-kontext-unbekannt"]')).toBeNull();
+    await kontext(c2, "Werk Nord", "Spätschicht");
+    await klicke(c2, '[data-testid="ask-zweitmeinung-knopf"]');
+    expect(zweitMock).toHaveBeenCalledTimes(1);
+    expect(zweitMock.mock.calls[0]?.[3]).toEqual(FRUEH);
+  });
+
+  it("B5 · ohne Kontext gefragt → Wiederaufnahme → Zweitmeinung ohne Kontext", async () => {
+    const c1 = await montiere();
+    await frage(c1);
+    expect(arbeitsstandLesen(localStorage, "u1")?.antwort?.fragekontext).toBeNull();
+    abbauen?.();
+    abbauen = null;
+
+    const c2 = await montiere();
+    expect(c2.querySelector('[data-testid="ask-zweitmeinung-kontext-unbekannt"]')).toBeNull();
+    await klicke(c2, '[data-testid="ask-zweitmeinung-knopf"]');
+    expect(zweitMock.mock.calls[0]?.[3]).toBeUndefined();
+  });
+
+  it("B6 · Altstand mit unbekanntem Kontext: keine kontextgleiche Zweitmeinung, erneut fragen", async () => {
+    arbeitsstandSchreiben(localStorage, "u1", {
+      entwurf: "",
+      antwort: {
+        frage: FRAGE,
+        result: ANTWORT.result as never,
+        receipt: "beleg-1",
+        verschlossen: [],
+        gapId: null,
+        angezeigtAm: "2026-10-01T08:00:00.000Z",
+      },
+      startadressen: [],
+    });
+    const c = await montiere();
+    expect(askMock).not.toHaveBeenCalled();
+    expect(c.querySelector('[data-testid="ask-zweitmeinung-knopf"]')).toBeNull();
+    expect(c.querySelector('[data-testid="ask-zweitmeinung-kontext-unbekannt"]')?.textContent).toBe(
+      i18n.t("zweitmeinung.kontextUnbekannt"),
+    );
+
+    // Den Kontext wählen und die Frage damit erneut stellen.
+    await kontext(c, "Werk Nord", "Spätschicht");
+    await klicke(c, '[data-testid="ask-zweitmeinung-neu-fragen"]');
+    expect(askMock).toHaveBeenCalledTimes(1);
+    expect(askMock.mock.calls[0]?.[3]).toEqual(SPAET);
+    expect(arbeitsstandLesen(localStorage, "u1")?.antwort?.fragekontext).toEqual(SPAET);
+
+    // Jetzt ist der Kontext der stehenden Antwort bekannt — die Zweitmeinung folgt ihm.
+    expect(c.querySelector('[data-testid="ask-zweitmeinung-kontext-unbekannt"]')).toBeNull();
     await klicke(c, '[data-testid="ask-zweitmeinung-knopf"]');
     expect(zweitMock.mock.calls[0]?.[3]).toEqual(SPAET);
   });

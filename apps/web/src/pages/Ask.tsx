@@ -677,7 +677,12 @@ export function Ask(): JSX.Element {
   // wurde — gesetzt beim Eintreffen der Antwort, nicht aus der aktuellen Auswahl gelesen. Die
   // Zweitmeinung stellt dieselbe Frage mit genau diesem Kontext, auch wenn die Auswahl inzwischen
   // geändert wurde; sonst bezöge sie sich auf eine anders gewichtete Frage.
-  const [antwortKontext, setAntwortKontext] = useState<Fragekontext | undefined>(undefined);
+  // Ben (Nacharbeit 10): der Kontext reist mit der Antwort durch den Arbeitsstand. Drei Lesarten —
+  // ein Objekt (mit Kontext gefragt), `null` (ohne Kontext gefragt), `undefined` (UNBEKANNT: ein
+  // Altstand von vor dieser Ablage). Unbekannt behauptet keine kontextgleiche Zweitmeinung.
+  const [antwortKontext, setAntwortKontext] = useState<Fragekontext | null | undefined>(() =>
+    anfang?.antwort ? anfang.antwort.fragekontext : null,
+  );
   // Ben, Nacharbeit 2: „Neues Thema" während einer laufenden Nachfrage. Die später eintreffende
   // Antwort darf ihre Frage nicht wieder in den geleerten Faden tragen — sie gehört zum alten
   // Thema. Jede Anfrage trägt die Generation, unter der sie startete (wie `kontoGeneration`).
@@ -877,7 +882,7 @@ export function Ask(): JSX.Element {
       // R-1633: dieselbe Bindung — die Gewichtungsauskunft gehört zu genau einer Antwort.
       setGeltungsAuskunft(null);
       // R-0305/R-1099: ebenso der Kontext, an den die Zweitmeinung gebunden ist.
-      setAntwortKontext(undefined);
+      setAntwortKontext(null);
     },
     // SCRUM-138: Backend liefert { result, gap, receipt } — Antwort + Answer-Receipt entpacken.
     onSuccess: (r, { frage: question, generation, fadenGeneration: fadenStand, kontext }) => {
@@ -902,7 +907,7 @@ export function Ask(): JSX.Element {
       // R-1633: abwesend heißt „ohne Fragekontext gefragt" — dann steht keine Auskunft da.
       setGeltungsAuskunft(r.geltung ?? null);
       // R-0305/R-1099 (Ben, Nacharbeit 9): der Kontext DIESER Anfrage, nicht der aktuellen Auswahl.
-      setAntwortKontext(kontext);
+      setAntwortKontext(kontext ?? null);
       // FUNKE-FIX2 P0: die neue Lücke merken (ID für den Capture-Einstieg) und die Gap-Liste
       // invalidieren, damit Capture die frisch erzeugte Lücke über ihre ID auflösen kann (der Ersteller
       // ist berechtigt → Volltext). Kein Fragetext in der URL.
@@ -983,11 +988,25 @@ export function Ask(): JSX.Element {
               verschlossen,
               gapId,
               angezeigtAm: antwortAm ?? new Date().toISOString(),
+              // R-0305/R-1099 (Ben, Nacharbeit 10): der Kontext der Antwort reist mit; ein
+              // unbekannter (Altstand) bleibt unbekannt und wird nicht zu „ohne Kontext".
+              ...(antwortKontext === undefined ? {} : { fragekontext: antwortKontext }),
             }
           : null,
       startadressen: gemerkteStartadressen,
     });
-  }, [konto, standFuer, q, result, receipt, verschlossen, gapId, antwortAm, gemerkteStartadressen]);
+  }, [
+    konto,
+    standFuer,
+    q,
+    result,
+    receipt,
+    verschlossen,
+    gapId,
+    antwortAm,
+    antwortKontext,
+    gemerkteStartadressen,
+  ]);
 
   // Ergänzung 1 · DIE KENNUNG KOMMT ODER WECHSELT bei stehender Fläche.
   //   · WECHSEL (vorher ein anderes Konto): der Stand des neuen Kontos ersetzt den alten
@@ -1036,8 +1055,9 @@ export function Ask(): JSX.Element {
       setVerschlossen(antwort?.verschlossen ?? []);
       setGapId(antwort?.gapId ?? null);
       setAsked(antwort?.frage ?? "");
-      // R-0305/R-1099: der Arbeitsstand speichert keinen Fragekontext — kein fremder bleibt stehen.
-      setAntwortKontext(undefined);
+      // R-0305/R-1099 (Ben, Nacharbeit 10): der gespeicherte Kontext DIESER Antwort — fehlt er
+      // (Altstand), ist er unbekannt (`undefined`), nicht „ohne Kontext".
+      setAntwortKontext(antwort ? antwort.fragekontext : null);
       // R-0348: der Faden gehört zum Konto — er beginnt bei der übernommenen Antwort neu.
       setFaden(antwort?.frage ? [antwort.frage] : []);
       setAntwortAm(antwort?.angezeigtAm ?? null);
@@ -2497,10 +2517,12 @@ export function Ask(): JSX.Element {
                   Baustein). `key` bindet sie an genau diese Frage und ihren Kontext: eine neue
                   Frage oder eine im anderen Kontext neu gestellte Antwort beginnt leer. */}
                 <Zweitmeinung
-                  key={`${asked}\u0000${JSON.stringify(antwortKontext ?? {})}`}
+                  key={`${asked}\u0000${JSON.stringify(antwortKontext ?? String(antwortKontext))}`}
                   frage={asked}
                   faden={fadenFuerAnfrage(faden, asked)}
-                  kontext={antwortKontext}
+                  kontext={antwortKontext ?? undefined}
+                  kontextUnbekannt={antwortKontext === undefined}
+                  onNeuFragen={() => submitAsk(asked)}
                   billable={deriveZweitmeinungBillable(reasonerStatus.data)}
                   titelVon={(id) => (kos.data ?? []).find((k) => k.id === id)?.title}
                 />

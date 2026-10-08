@@ -48,6 +48,9 @@ export default {
     "zweitmeinung.grund.fehlgeschlagen":
       "Das zweite Modell hat keine Antwort geliefert. Bitte später erneut versuchen.",
     "zweitmeinung.fehler": "Die Zweitmeinung konnte nicht eingeholt werden.",
+    "zweitmeinung.kontextUnbekannt":
+      "Für diese gespeicherte Antwort ist nicht bekannt, für welches Werk, welche Schicht oder Rolle sie gestellt wurde. Eine Zweitmeinung zu genau derselben Frage lässt sich so nicht zusichern. Stelle die Frage mit dem oben gewählten Kontext erneut — danach kannst du die Zweitmeinung einholen.",
+    "zweitmeinung.neuFragen": "Frage erneut stellen",
     "zweitmeinung.admin.titel": "Zweitmeinung zu Antworten",
     "zweitmeinung.admin.text":
       "Auf Wunsch beantwortet ein zweites Modell dieselbe Frage, damit sich niemand auf einen einzigen Weg verlässt. Frage und Grundlage gehen dann zusätzlich an dieses Modell. Ein externer Anbieter braucht die Freigabe für die öffentliche KI.",
@@ -88,6 +91,9 @@ export default {
     "zweitmeinung.grund.fehlgeschlagen":
       "The second model did not deliver an answer. Please try again later.",
     "zweitmeinung.fehler": "The second opinion could not be obtained.",
+    "zweitmeinung.kontextUnbekannt":
+      "It is not known for which plant, shift or role this saved answer was asked. A second opinion on exactly the same question cannot be assured this way. Ask the question again with the context selected above — then you can get the second opinion.",
+    "zweitmeinung.neuFragen": "Ask the question again",
     "zweitmeinung.admin.titel": "Second opinion on answers",
     "zweitmeinung.admin.text":
       "On request a second model answers the same question, so nobody relies on a single path. The question and its basis then also go to this model. An external provider needs the public AI clearance.",
@@ -131,6 +137,9 @@ export default {
     "zweitmeinung.grund.fehlgeschlagen":
       "Het tweede model heeft geen antwoord geleverd. Probeer het later opnieuw.",
     "zweitmeinung.fehler": "De tweede mening kon niet worden ingewonnen.",
+    "zweitmeinung.kontextUnbekannt":
+      "Het is niet bekend voor welke vestiging, ploeg of rol dit opgeslagen antwoord is gesteld. Een tweede mening over precies dezelfde vraag is zo niet te garanderen. Stel de vraag opnieuw met de hierboven gekozen context — daarna kun je de tweede mening inwinnen.",
+    "zweitmeinung.neuFragen": "Vraag opnieuw stellen",
     "zweitmeinung.admin.titel": "Tweede mening bij antwoorden",
     "zweitmeinung.admin.text":
       "Op verzoek beantwoordt een tweede model dezelfde vraag, zodat niemand op één enkele weg vertrouwt. Vraag en basis gaan dan ook naar dit model. Een externe aanbieder heeft de vrijgave voor de openbare AI nodig.",

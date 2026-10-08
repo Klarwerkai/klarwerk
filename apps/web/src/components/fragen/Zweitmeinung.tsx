@@ -90,6 +90,8 @@ export function Zweitmeinung({
   frage,
   faden,
   kontext,
+  kontextUnbekannt = false,
+  onNeuFragen,
   billable,
   titelVon,
 }: {
@@ -100,6 +102,12 @@ export function Zweitmeinung({
   /** Ben (Nacharbeit 9): der Fragekontext (R-1633), mit dem die stehende Antwort gestellt wurde —
    *  nicht die aktuelle Auswahl. Ohne Kontext gefragt: abwesend. */
   kontext?: Fragekontext | undefined;
+  /** Ben (Nacharbeit 10): die stehende Antwort ist ein wiederaufgenommener Altstand, dessen
+   *  Fragekontext niemand kennt. Dann wird KEINE kontextgleiche Zweitmeinung angeboten — die
+   *  Fläche sagt warum und bietet an, die Frage mit dem gewählten Kontext neu zu stellen. */
+  kontextUnbekannt?: boolean;
+  /** Die Frage erneut stellen (mit dem aktuell gewählten Kontext der Seite). */
+  onNeuFragen?: (() => void) | undefined;
   /** Kann der Klick etwas kosten? Er fragt den Antwortweg UND das gewählte Zweitmodell — die Seite
    *  leitet das aus beiden ab (`deriveZweitmeinungBillable`, lib/aiAvailability.ts). */
   billable: boolean | undefined;
@@ -114,6 +122,27 @@ export function Zweitmeinung({
   const stufe = (wert: ZweitmeinungStufe): string => t(`zweitmeinung.stufe.${wert}`);
   const antwort = anfrage.data;
   const ergebnis = antwort?.zweitmeinung;
+  if (kontextUnbekannt) {
+    return (
+      <section data-testid="ask-zweitmeinung" className="print-hide mt-1 flex flex-col gap-2">
+        <p data-testid="ask-zweitmeinung-kontext-unbekannt" className="text-[13px] text-muted-2">
+          {t("zweitmeinung.kontextUnbekannt")}
+        </p>
+        {onNeuFragen ? (
+          <div>
+            <button
+              type="button"
+              data-testid="ask-zweitmeinung-neu-fragen"
+              onClick={onNeuFragen}
+              className="inline-flex items-center gap-1.5 rounded-[10px] border border-hairline bg-surface px-5 py-2.5 text-[14px] text-text hover:bg-hairline-soft"
+            >
+              {t("zweitmeinung.neuFragen")}
+            </button>
+          </div>
+        ) : null}
+      </section>
+    );
+  }
   return (
     <section data-testid="ask-zweitmeinung" className="print-hide mt-1 flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">

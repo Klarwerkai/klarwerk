@@ -22,7 +22,7 @@
 //     „kein Arbeitsstand" — dieselbe fehlertolerante Grenze wie `persistentToggle.ts`.
 //
 // DOM-frei: der Speicher wird hereingereicht, damit die Regeln ohne Browser prüfbar sind.
-import type { AnswerResult, VerschlossenHinweis } from "../api/types";
+import type { AnswerResult, Fragekontext, VerschlossenHinweis } from "../api/types";
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -39,6 +39,41 @@ export interface GespeicherteAntwort {
   gapId: string | null;
   /** Zeitpunkt der Antwort (ISO) — die Fläche nennt ihn, damit niemand sie für frisch hält. */
   angezeigtAm: string;
+  /**
+   * R-0305/R-1099 (Ben, Nacharbeit 10): der Fragekontext (R-1633), mit dem DIESE Antwort gestellt
+   * wurde — die Zweitmeinung nach einer Wiederaufnahme fragt mit genau ihm. Drei Lesarten:
+   *   · ein Objekt — mit diesem Werk/dieser Schicht/Rolle gefragt;
+   *   · `null`     — ausdrücklich OHNE Kontext gefragt;
+   *   · fehlt      — Altstand von vor dieser Ablage: der Kontext ist UNBEKANNT. Dann wird keine
+   *                  kontextgleiche Zweitmeinung behauptet (s. `components/fragen/Zweitmeinung.tsx`).
+   */
+  fragekontext?: Fragekontext | null;
+}
+
+/**
+ * Der gespeicherte Fragekontext — streng gelesen: `null` bleibt „ohne Kontext", ein Objekt nur mit
+ * Zeichenketten in `werk`/`schicht`/`rolle`, alles andere (fehlt, beschädigt) ist `undefined` =
+ * UNBEKANNT. Ein beschädigter Kontext wird nie zu „ohne Kontext" umgedeutet.
+ */
+function fragekontextAus(roh: unknown): Fragekontext | null | undefined {
+  if (roh === null) {
+    return null;
+  }
+  if (!istObjekt(roh)) {
+    return undefined;
+  }
+  const kontext: Fragekontext = {};
+  for (const feld of ["werk", "schicht", "rolle"] as const) {
+    const wert = roh[feld];
+    if (wert === undefined) {
+      continue;
+    }
+    if (typeof wert !== "string") {
+      return undefined;
+    }
+    kontext[feld] = wert;
+  }
+  return kontext;
 }
 
 export interface FragenArbeitsstand {
@@ -91,6 +126,7 @@ function antwortAus(roh: unknown): GespeicherteAntwort | null {
     return null;
   }
   const { frage, result, receipt, verschlossen, gapId, angezeigtAm } = roh;
+  const fragekontext = fragekontextAus(roh.fragekontext);
   if (
     typeof frage !== "string" ||
     frage.trim() === "" ||
@@ -112,6 +148,8 @@ function antwortAus(roh: unknown): GespeicherteAntwort | null {
     verschlossen: verschlossen as VerschlossenHinweis[],
     gapId,
     angezeigtAm,
+    // Fehlt oder beschädigt: das Feld fehlt auch hier — „unbekannt" hat genau eine Darstellung.
+    ...(fragekontext === undefined ? {} : { fragekontext }),
   };
 }
 
