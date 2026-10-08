@@ -20,7 +20,7 @@
 // Modul wird nicht gebuendelt und nicht beim Start ausgefuehrt — es ist ein Werkzeug des Tors,
 // wie `tools/check-cwd-contract.mjs` und `depcruise`.
 
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, sep } from "node:path";
 import ts from "typescript";
 
@@ -242,7 +242,8 @@ export function sammleDeklarationen(sf: ts.SourceFile): Deklarationen {
       ts.isBindingElement(n) ||
       ts.isParameter(n) ||
       ts.isTypeAliasDeclaration(n) ||
-      ts.isInterfaceDeclaration(n)
+      ts.isInterfaceDeclaration(n) ||
+      ts.isFunctionDeclaration(n)
     ) {
       merke(n.name, n);
     }
@@ -250,6 +251,79 @@ export function sammleDeklarationen(sf: ts.SourceFile): Deklarationen {
   };
   gehe(sf);
   return index;
+}
+
+// ------------------------------------------------------------------------------------------------
+// Nacharbeit 6: MODULE LESEN — der Rückgabetyp einer importierten Funktion.
+// ------------------------------------------------------------------------------------------------
+//
+// `<div {...anzeigestatusAnker(zustand)} />` (BibliothekFlaeche, BibliothekLesen, Mobile) galt als
+// abgerissene Kette und machte das Tor am Bestand rot — obwohl `lib/displayStatus.ts` den
+// Rückgabetyp `AnzeigestatusAnker` deklariert und der nachweislich KEINE Rolle trägt. Ein Aufruf
+// wird deshalb über den deklarierten Rückgabetyp der Funktion beurteilt, auch über einen relativen
+// Import hinweg. Ohne Rückgabetyp, bei Paketimporten und Methoden bleibt die Kette abgerissen.
+
+/** Liest ein Quellmodul des Bestands (posix-Pfad ab der Wurzel) — `undefined`, wenn es fehlt. */
+export type Modulleser = (datei: string) => Quelle | undefined;
+
+const BESTANDSMODULE = new Map<string, Quelle | null>();
+
+/** Der Leser für den echten Bestand unter `WURZEL`, mit Zwischenspeicher je Datei. */
+export function bestandsLeser(datei: string): Quelle | undefined {
+  let quelle = BESTANDSMODULE.get(datei);
+  if (quelle === undefined) {
+    quelle = existsSync(join(WURZEL, datei)) ? ladeQuelle(datei) : null;
+    BESTANDSMODULE.set(datei, quelle);
+  }
+  return quelle ?? undefined;
+}
+
+/** `../lib/x` von `apps/web/src/pages/A.tsx` aus → die möglichen Moduldateien. */
+function modulKandidaten(vonDatei: string, spezifizierer: string): string[] {
+  if (!spezifizierer.startsWith(".")) {
+    return [];
+  }
+  const teile = vonDatei.split("/").slice(0, -1);
+  for (const stueck of spezifizierer.split("/")) {
+    if (stueck === ".." && teile.length > 0) {
+      teile.pop();
+    } else if (stueck !== "." && stueck !== "" && stueck !== "..") {
+      teile.push(stueck);
+    }
+  }
+  const basis = teile.join("/");
+  return [`${basis}.ts`, `${basis}.tsx`, `${basis}/index.ts`, `${basis}/index.tsx`];
+}
+
+/** Der deklarierte Rückgabetyp einer Funktion — Deklaration oder `const f = (…): T => …`. */
+function rueckgabeTyp(d: ts.Node): ts.TypeNode | undefined {
+  if (ts.isFunctionDeclaration(d)) {
+    return d.type;
+  }
+  if (ts.isVariableDeclaration(d) && d.initializer) {
+    const init = d.initializer;
+    if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) {
+      return init.type;
+    }
+  }
+  return undefined;
+}
+
+/** Die exportierte Funktion `name` eines Moduls, auf oberster Ebene. */
+function exportierteFunktion(quelle: Quelle, name: string): ts.Node | undefined {
+  for (const anweisung of quelle.ast.statements) {
+    if (ts.isFunctionDeclaration(anweisung) && anweisung.name?.text === name) {
+      return istExportiert(anweisung) ? anweisung : undefined;
+    }
+    if (ts.isVariableStatement(anweisung)) {
+      for (const d of anweisung.declarationList.declarations) {
+        if (ts.isIdentifier(d.name) && d.name.text === name) {
+          return istExportiert(d) ? d : undefined;
+        }
+      }
+    }
+  }
+  return undefined;
 }
 
 /** Der Sichtbarkeitsraum einer Deklaration: Block, Datei, Funktion oder Schleifenkopf. */
@@ -448,14 +522,73 @@ function rolleAusTyp(deklarationen: Deklarationen, typ: ts.TypeNode | undefined)
   return rolle ? { bild: typWerteIn(deklarationen, rolle, 0), abbrueche: [] } : keineRolle();
 }
 
+/** Woher eine Datei ihre Importe liest: ihr eigener Pfad und der Modulleser. */
+export interface Modulumfeld {
+  datei: string;
+  leser: Modulleser;
+}
+
+/**
+ * Nacharbeit 6: die Rolle eines Aufrufs `f(…)` — aus dem deklarierten Rückgabetyp von `f`, lokal
+ * oder im relativ importierten Modul (dort mit DESSEN Typen). Ohne Rückgabetyp reisst die Kette ab.
+ */
+function rolleAusAufruf(
+  aufruf: ts.CallExpression,
+  deklarationen: Deklarationen,
+  umfeld: Modulumfeld | undefined,
+): PropsRolle {
+  const abbruch: PropsRolle = { bild: { werte: [], offen: [] }, abbrueche: [aufruf] };
+  const name = aufruf.expression;
+  if (!ts.isIdentifier(name)) {
+    return abbruch;
+  }
+  const lokal = sichtbareDeklarationen(deklarationen, name);
+  if (lokal.length > 0) {
+    return vereineRollen(
+      lokal.map((d) => {
+        const typ = rueckgabeTyp(d);
+        return typ ? rolleAusTyp(deklarationen, typ) : abbruch;
+      }),
+    );
+  }
+  if (umfeld === undefined) {
+    return abbruch;
+  }
+  for (const anweisung of name.getSourceFile().statements) {
+    if (!ts.isImportDeclaration(anweisung) || !ts.isStringLiteral(anweisung.moduleSpecifier)) {
+      continue;
+    }
+    const bindungen = anweisung.importClause?.namedBindings;
+    if (bindungen === undefined || !ts.isNamedImports(bindungen)) {
+      continue;
+    }
+    const element = bindungen.elements.find((e) => e.name.text === name.text);
+    if (element === undefined) {
+      continue;
+    }
+    const exportName = (element.propertyName ?? element.name).text;
+    for (const kandidat of modulKandidaten(umfeld.datei, anweisung.moduleSpecifier.text)) {
+      const ziel = umfeld.leser(kandidat);
+      const funktion = ziel ? exportierteFunktion(ziel, exportName) : undefined;
+      const typ = funktion ? rueckgabeTyp(funktion) : undefined;
+      if (ziel && typ) {
+        return rolleAusTyp(sammleDeklarationen(ziel.ast), typ);
+      }
+    }
+    return abbruch;
+  }
+  return abbruch;
+}
+
 export function propsRolle(
   ausdruck: ts.Node,
   deklarationen: Deklarationen,
+  umfeld?: Modulumfeld,
   tiefe = 0,
   pfad: Set<ts.Node> = new Set(),
 ): PropsRolle {
   const abbruch = (n: ts.Node): PropsRolle => ({ bild: { werte: [], offen: [] }, abbrueche: [n] });
-  const weiter = (n: ts.Node): PropsRolle => propsRolle(n, deklarationen, tiefe + 1, pfad);
+  const weiter = (n: ts.Node): PropsRolle => propsRolle(n, deklarationen, umfeld, tiefe + 1, pfad);
   if (tiefe > MAX_TIEFE) {
     return abbruch(ausdruck);
   }
@@ -488,6 +621,9 @@ export function propsRolle(
   }
   if (k.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(k) && k.text === "undefined")) {
     return keineRolle();
+  }
+  if (ts.isCallExpression(k)) {
+    return rolleAusAufruf(k, deklarationen, umfeld);
   }
   if (!ts.isIdentifier(k)) {
     return abbruch(k);
@@ -800,8 +936,11 @@ export function istTextToken(n: ts.Node): boolean {
   );
 }
 
-export function erhebeDatei(quelle: Quelle): DateiErhebung {
+// Nacharbeit 6: `leser` liefert importierte Module für die Rückgabetypen gespreizter Aufrufe. Die
+// Vorgabe liest den echten Bestand; das Tor reicht die Module seines eigenen Baums herein.
+export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): DateiErhebung {
   const sf = quelle.ast;
+  const umfeld: Modulumfeld = { datei: quelle.datei, leser };
   const kandidaten: Kandidat[] = [];
   const prosaSpannen: Array<readonly [number, number]> = [];
   const exportierte: string[] = [];
@@ -852,7 +991,7 @@ export function erhebeDatei(quelle: Quelle): DateiErhebung {
   // wird `role` unmittelbar zum Attribut. Bei einem Bauteil beurteilt dessen eigene Datei, was es
   // mit den Props baut (dort ist der Spread wieder ein Ausgangspunkt).
   const meldePropsRolle = (ausdruck: ts.Node, aufDomElement: boolean): void => {
-    const { bild, abbrueche } = propsRolle(ausdruck, deklarationen);
+    const { bild, abbrueche } = propsRolle(ausdruck, deklarationen, umfeld);
     const text = ausdruck.getText(sf).replace(/\s+/g, " ").slice(0, 60);
     for (const w of bild.werte) {
       if (istDialogName(w.text)) {
@@ -1334,9 +1473,13 @@ export function pruefeModalgrenze(wurzel: string = WURZEL): {
   // Register A17b: gelesen wird unter DERSELBEN Wurzel, unter der gesucht wurde. Bis hierher las
   // `ladeQuelle` immer unter `WURZEL` — mit einer anderen Wurzel hätte das Tor Dateien als gelesen
   // gezählt, die es nie gelesen hat (bens Frage aus sammel70).
-  const erhoben = dateien.map((d) =>
-    erhebeDatei(quelleAus(posix(d), readFileSync(join(wurzel, d), "utf8"))),
-  );
+  const quellen = new Map<string, Quelle>();
+  for (const d of dateien) {
+    quellen.set(posix(d), quelleAus(posix(d), readFileSync(join(wurzel, d), "utf8")));
+  }
+  // Nacharbeit 6: Importe werden aus DEMSELBEN Baum gelesen, nicht aus `WURZEL`.
+  const leser: Modulleser = (datei) => quellen.get(datei);
+  const erhoben = [...quellen.values()].map((q) => erhebeDatei(q, leser));
 
   // Was der Parser nicht lesen konnte, wird rot — nicht still uebergangen.
   // (`leseFehler` haengt an der Quelle, nicht an der Erhebung — s. `interface Quelle`.)

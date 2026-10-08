@@ -534,6 +534,19 @@ describe("Register A17b · Nacharbeit (ben Befund 1): Rollenwerte werden am Synt
     expect(modalAbgleich(bauteil)).toEqual([]);
   });
 
+  it("Nacharbeit 6: ein gespreizter Aufruf wird über den deklarierten Rückgabetyp beurteilt", () => {
+    const datei = "apps/web/src/components/A17bAufruf.tsx";
+    const e = synth(datei, [
+      "function anker(): { id: string } { return { id: 'x' }; }",
+      "function dialogAnker(): { role: 'alertdialog' } { return JSON.parse('{}'); }",
+      "export function F(): JSX.Element {",
+      "  return <div {...anker()}><span {...dialogAnker()} /></div>;",
+      "}",
+    ]);
+    expect(e.kandidaten).toEqual([{ datei, zeile: 4, art: "role-dialog" }]);
+    expect(modalAbgleich(e), "anker(): nachweislich keine Rolle").toEqual([]);
+  });
+
   it("GEGENPROBE: die Bauformen des Bestands bleiben ohne Befund (Parameter-Vorgabe mit Literal-Union, Bedingung)", () => {
     // Die Form aus `apps/web/src/shell/Menue.tsx`: destrukturierter Parameter, Vorgabe und
     // Literal-Union im Typ — vollständig bestimmbar, kein Dialog.
@@ -713,6 +726,55 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     );
     expect(rot).toHaveLength(1);
     expect(rot[0]).toContain("apps/web/src/components/Weitergereicht.tsx:3 — role-dialog");
+  });
+
+  it("Nacharbeit 6: importierte Funktionen werden über ihren Rückgabetyp im Zielmodul beurteilt", () => {
+    // Die Bauform aus BibliothekFlaeche/BibliothekLesen/Mobile: `{...anzeigestatusAnker(x)}` mit
+    // einem Rückgabetyp ohne `role` — nachweislich keine Rolle, kein Befund.
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/lib/anker.ts": [
+          'export interface Anker { "data-x": string; }',
+          "export function anker(x: string): Anker {",
+          '  return { "data-x": x };',
+          "}",
+          "export function dialogAnker(): { role: 'dialog' } {",
+          "  return JSON.parse('{}');",
+          "}",
+          "export function ohneTyp() {",
+          "  return {};",
+          "}",
+        ],
+        "apps/web/src/components/Gruen.tsx": [
+          'import { anker } from "../lib/anker";',
+          "export function Gruen(): JSX.Element {",
+          '  return <div {...anker("1")} />;',
+          "}",
+        ],
+        "apps/web/src/components/Dialog.tsx": [
+          'import { dialogAnker as d } from "../lib/anker";',
+          "export function Dialog(): JSX.Element {",
+          "  return <div {...d()} />;",
+          "}",
+        ],
+        "apps/web/src/components/Offen.tsx": [
+          'import { ohneTyp } from "../lib/anker";',
+          "export function Offen(): JSX.Element {",
+          "  return <div {...ohneTyp()} />;",
+          "}",
+        ],
+      }),
+    );
+    const imDialog = (z: string): boolean => z.includes("components/Dialog.tsx:3 — role-dialog");
+    const imOffen = (z: string): boolean => z.includes("components/Offen.tsx:3");
+    expect(
+      rot.some((z) => z.includes("Gruen.tsx")),
+      "ohne role: kein Befund",
+    ).toBe(false);
+    expect(rot.filter(imDialog)).toHaveLength(1);
+    expect(rot.filter(imOffen)).toHaveLength(1);
+    expect(rot).toHaveLength(2);
   });
 
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
