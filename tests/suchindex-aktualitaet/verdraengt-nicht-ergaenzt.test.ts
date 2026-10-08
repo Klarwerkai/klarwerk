@@ -67,7 +67,9 @@ describe("Suchindex-Aktualität · Überarbeitung (R-0195, R-0470)", () => {
     const a = await ko.create({ ...EINGABE, category: "Altkategoriekk" });
     expect((await beideFlaechen(ko, "altkategoriekk")).bibliothek).toEqual([a.id]);
 
-    await ko.revise(a.id, { category: "Neukategoriekk" }, "anna");
+    // Die Kategorie ist Metadatum ohne neue Fassung (G27 S2) — ihr Schreibweg ist `updateCategory`,
+    // nicht `revise`; er führt die versionslose Metadatenprojektion im selben Vorgang nach.
+    await ko.updateCategory(a.id, "Neukategoriekk", "anna");
 
     expect(await beideFlaechen(ko, "neukategoriekk")).toEqual({
       bibliothek: [a.id],
