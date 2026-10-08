@@ -18,6 +18,7 @@ import { NAV_GROUPS, ROLES, type Role, roleAllows } from "../app/navigation";
 // JE KARTE EIN EIGENER TEXT: die vier Karten sind vier Bildschirme, und ein gemeinsamer Satz an der
 // Dateiwurzel stünde auf allen vieren gleich und erklärte keine.
 import { HelpTip } from "../components/HelpTip";
+import { VerantwortungUebergabe } from "../components/VerantwortungUebergabe";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { freiheitenSchluessel, kiWahlFrei } from "../components/einstellungen/rollenFreiheiten";
@@ -538,6 +539,11 @@ export function NutzerDetail({
                 {t("adm.approve")}
               </button>
             )}
+
+            {/* produkt:20261007:ownership-uebergabe — Hauptverantwortung einzeln oder gesammelt an
+                Nachfolger übergeben, mit Vorschau; Zugang erst ohne Restbestand beenden. Für jedes
+                Konto, auch ein gesperrtes: gerade dort liegt Bestand, der eine Vertretung braucht. */}
+            <VerantwortungUebergabe personId={nutzer.id} personName={nutzer.name} />
 
             <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-4">
               <Button
