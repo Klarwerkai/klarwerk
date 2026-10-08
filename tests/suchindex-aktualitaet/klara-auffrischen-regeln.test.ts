@@ -99,7 +99,6 @@ describe("R-0338 · Auffrischen-Vertrag — Regeln", () => {
     expect(beobachtet).toEqual({ "ko-1": 2 });
     const frisch = { quellen: ["ko-1", "ko-2"], stand: undefined, beobachtet, am: AM };
     const vorDerAntwort = Date.parse(VORHER);
-    const nachDerAntwort = Date.parse(NACHHER);
     // ko-1 trägt Fassung 2 ohne Verlauf — beobachtet war 2: keine Änderung nach der Antwort.
     // ko-2 kannte die Fläche nie; solange der Bestand noch der von damals ist, belegt sein Fehlen
     // keine Änderung nach der Antwort.
