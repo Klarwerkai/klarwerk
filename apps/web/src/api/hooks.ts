@@ -126,8 +126,22 @@ export const useKoEvidence = (id: string) =>
   });
 export const useValidationBoard = (f?: KoFilter) =>
   useQuery({ queryKey: ["validation", "board", f], queryFn: () => endpoints.validation.board(f) });
+// R-0756: LAZY — der Adminbereich zeigt die Zahlen je Person jetzt ebenfalls.
 export const useValidationOverview = () =>
-  useQuery({ queryKey: ["validation", "overview"], queryFn: endpoints.validation.overview });
+  useQuery({
+    queryKey: ["validation", "overview"],
+    queryFn: () => endpoints.validation.overview(),
+  });
+// R-0265: Prüfer-Vorschlag zum Thema des Formulars. Ohne Kategorie und Schlagwort gibt es kein
+// Thema — dann wird gar nicht gefragt.
+export const useReviewerSuggestions = (category: string, tags: readonly string[]) => {
+  const thema = category.trim();
+  return useQuery({
+    queryKey: ["validation", "reviewer-suggestions", thema, [...tags]],
+    queryFn: () => endpoints.validation.reviewerSuggestions({ category: thema, tags }),
+    enabled: thema.length > 0 || tags.length > 0,
+  });
+};
 // AUFTRAG-mega29 C2: die Abdeckungs-Zusammenfassung für die LEEREN Konflikt-/Duplikat-Boards.
 export const useAiCheckCoverageSummary = () =>
   useQuery({
@@ -253,8 +267,11 @@ export const useLearningProgress = (pathId: string | undefined) =>
     enabled: !!pathId,
   });
 export const useUsers = () => useQuery({ queryKey: ["users"], queryFn: endpoints.users.list });
+// R-0756: LAZY wie `useConflicts` — seit die Auswertung die Namen der Prüfaufträge je Person
+// braucht, rendert der Hook auch auf Flächen, deren Prüfungen das Endpunkt-Objekt nur teilweise
+// setzen.
 export const useDirectory = () =>
-  useQuery({ queryKey: ["directory"], queryFn: endpoints.directory.list });
+  useQuery({ queryKey: ["directory"], queryFn: () => endpoints.directory.list() });
 export const useGraph = () => useQuery({ queryKey: ["graph"], queryFn: endpoints.library.graph });
 // AUFTRAG-mega68: Nachbarschaft eines Objekts — je Mitte ein eigener Cache-Eintrag (die Fläche
 // wandert per Klick durch das Netz, der Rückweg trifft dann den warmen Cache).

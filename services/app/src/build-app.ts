@@ -2553,6 +2553,11 @@ export function buildApp(
   // Optional aufgerufen: Prüfaufbauten ersetzen `modelRuns` teils durch eine schmale Attrappe nur
   // mit `recent` (tests/deploy-health-commit) — die App muss auch dann entstehen.
   services.modelRuns.logAn?.((zeile) => app.log.info(zeile, "ki_lauf"));
+  // R-0679: ohne Mailserver landet jede Nachricht ersatzweise im Protokoll — Ereignis und Betreff,
+  // nie Empfänger oder Text (Begründung in `notifications/src/mailer.ts`).
+  if (services.mailer instanceof ConsoleMailer) {
+    services.mailer.logAn((zeile) => app.log.warn(zeile, "mail_ersatzzustellung"));
+  }
   const preisgrundlage = services.modelRuns.preisgrundlage?.();
   if (preisgrundlage?.fehler) {
     app.log.warn({ event: "ki_preisliste" }, preisgrundlage.fehler);
@@ -3362,11 +3367,17 @@ export function buildApp(
     ),
   );
   app.register(
-    validationRoutes(services.validation, guards, {
-      ko: services.ko,
-      worker: aiCheckWorker,
-      conflicts: services.conflicts,
-    }),
+    validationRoutes(
+      services.validation,
+      guards,
+      {
+        ko: services.ko,
+        worker: aiCheckWorker,
+        conflicts: services.conflicts,
+      },
+      // R-0265: Prüfer-Vorschlag — dieselbe Personenliste wie `GET /api/directory`.
+      { ko: services.ko, kanten: services.kanten, personen: () => services.auth.listUsers() },
+    ),
   );
   // AUFTRAG-mega74 BLOCK D (G5): der EINE Zugang, über den die Nebenwege die Sichtbarkeit ihrer
   // beteiligten Wissensobjekte erfragen. Hier gebaut, damit alle drei dieselbe Quelle benutzen.

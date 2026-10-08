@@ -45,5 +45,13 @@ export type {
   ConfidentialityProvenance,
   HerkunftsFakten,
 } from "./src/board-herkunft";
+// R-0265: Prüfer-Vorschlag aus der Historie (deterministisch, ohne Modell).
+export {
+  prueferVorschlag,
+  VORSCHLAG_GEWICHTE,
+  DECKEL_JE_SIGNAL,
+  VORSCHLAG_STANDARD_ANZAHL,
+} from "./src/pruefer-vorschlag";
+export type { PrueferVorschlag, VorschlagsGrund } from "./src/pruefer-vorschlag";
 export { ValidationError } from "./src/types";
 export type { Verdict, Rating, Assignment, ValidationErrorCode } from "./src/types";

@@ -103,6 +103,7 @@ import type {
   RetirementEntry,
   RetirementHorizon,
   ReviewAction,
+  ReviewerSuggestion,
   RiskHorizonView,
   Role,
   ScormExportBody,
@@ -684,6 +685,24 @@ export const endpoints = {
     // jetzt; vorher las die Oberfläche eine Auskunft, von der ihr Vertrag nichts wusste.
     board: (f?: KoFilter) => api.get<ValidationBoardKo[]>(`/validation/board${qs(f)}`),
     overview: () => api.get<AssignmentSummary[]>("/validation/overview"),
+    // R-0265: wer ein neues Objekt dieses Themas prüfen sollte (Autorenschaft, frühere Prüfungen,
+    // Netznähe). Liest nur; zugewiesen wird erst mit dem Einreichen.
+    reviewerSuggestions: (q: { category?: string; tags?: readonly string[]; koId?: string }) => {
+      const params = new URLSearchParams();
+      if (q.category) {
+        params.set("category", q.category);
+      }
+      if (q.tags && q.tags.length > 0) {
+        params.set("tags", q.tags.join(","));
+      }
+      if (q.koId) {
+        params.set("koId", q.koId);
+      }
+      const query = params.toString();
+      return api.get<ReviewerSuggestion[]>(
+        `/validation/reviewer-suggestions${query ? `?${query}` : ""}`,
+      );
+    },
     // SCRUM-395: Standard-Prüferanzahl (lesen: alle Leseberechtigten; setzen: Admin).
     settings: () => api.get<ValidationSettings>("/validation/settings"),
     saveSettings: (defaultNeededValidations: number) =>

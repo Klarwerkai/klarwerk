@@ -47,7 +47,13 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
-import { useAnalytics, useAudit, useUsers, useValidationBoard } from "../api/hooks";
+import {
+  useAnalytics,
+  useAudit,
+  useUsers,
+  useValidationBoard,
+  useValidationOverview,
+} from "../api/hooks";
 import type { PublicUser } from "../api/types";
 import { GuardedLink, useGuardedNavigate } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
@@ -82,6 +88,7 @@ import {
 } from "../lib/adminSections";
 import { aiAccessRows, anbieterUndModell } from "../lib/aiOverview";
 import { ANALYTICS_AUDIT_PATH } from "../lib/analyticsSections";
+import { auftraegeJePerson } from "../lib/auftraegeJePerson";
 import { SECURITY_POINTS } from "../lib/securityStatements";
 import { readinessRows } from "../lib/vipReadiness";
 // JOB 4025 (KUNDENBETRIEB-BACKUP): die Betriebs-Auskünfte des Reiters „System" — bisher genau eine,
@@ -298,6 +305,11 @@ export function Admin(): JSX.Element {
   const audit = useAudit();
   const analytics = useAnalytics();
   const board = useValidationBoard();
+  // R-0756: Prüfaufträge je Person (Namen aus derselben Kontenliste wie die Nutzerzeilen).
+  const pruefOverview = useValidationOverview();
+  const auftragsZeilen = auftraegeJePerson(pruefOverview.data ?? [], users.data ?? []);
+  const auftragsWert = (offen: number, erledigt: number): string =>
+    `${t("prueferzuweisung.person.offen")} ${offen} · ${t("prueferzuweisung.person.erledigt")} ${erledigt}`;
   const aiConfig = useQuery({ queryKey: ["reasonerConfig"], queryFn: endpoints.reasoner.config });
   const presets = useQuery({
     queryKey: ["reasoner", "assistPresets"],
@@ -613,6 +625,27 @@ export function Admin(): JSX.Element {
                   />
                 ))}
               </Zeilenkarte>
+              {/* R-0756: offene und erledigte Prüfaufträge je Person — dieselbe Ableitung wie in
+                  der Auswertung (`auftraegeJePerson`). Erst sichtbar, wenn die Übersicht antwortet. */}
+              {pruefOverview.data ? (
+                <>
+                  <Kicker>{t("prueferzuweisung.person.titel")}</Kicker>
+                  <Zeilenkarte testId="flaeche-pruefauftraege">
+                    {auftragsZeilen.length === 0 ? (
+                      <Zeile label={t("prueferzuweisung.person.leer")} />
+                    ) : (
+                      auftragsZeilen.map((z) => (
+                        <Zeile
+                          key={z.userId}
+                          label={z.name ?? t("prueferzuweisung.person.unbekannt")}
+                          wert={auftragsWert(z.open, z.done)}
+                          testId={`zeile-pruefauftraege-${z.userId}`}
+                        />
+                      ))
+                    )}
+                  </Zeilenkarte>
+                </>
+              ) : null}
             </>
           ) : null}
 

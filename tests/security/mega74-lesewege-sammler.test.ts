@@ -732,6 +732,10 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/ai-check/coverage-summary": { urteil: "PRAEDIKAT", grund: "Block D — vier Zähler." },
   "GET /api/validation/overview": { urteil: "PRAEDIKAT", grund: "Block D — Personenzeilen." },
   "GET /api/validation/settings": { urteil: "KEIN_KO_INHALT", grund: "Einstellungen." },
+  "GET /api/validation/reviewer-suggestions": {
+    urteil: "PRAEDIKAT",
+    grund: "R-0265 — Vorschlag nur über den sichtbaren Bestand; fremdes Zielobjekt → 404.",
+  },
   "GET /api/duplicates/settings": { urteil: "KEIN_KO_INHALT", grund: "Schwellenwert." },
   "GET /api/upload-limits": { urteil: "KEIN_KO_INHALT", grund: "Obergrenzen." },
   "GET /api/external/policy": { urteil: "KEIN_KO_INHALT", grund: "Stufenregel." },

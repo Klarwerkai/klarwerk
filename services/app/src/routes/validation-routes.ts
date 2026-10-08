@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import type { AuditService } from "../../../audit";
 import type { OverlapService } from "../../../conflicts";
-import type { AiCheck, KoService } from "../../../knowledge-object";
+import type { AiCheck, KantenRepo, KoService } from "../../../knowledge-object";
 import { type BoardFilter, type ValidationService, mitHerkunft } from "../../../validation";
 import { type AiCheckWorker, shouldReEnqueueAiCheck } from "../ai-check-worker";
 import { type Guards, type SessionUser, sendError } from "../http";
@@ -154,11 +154,39 @@ async function mitKiPruefauskunft<T extends { id: string; aiCheck?: AiCheck }>(
   });
 }
 
+// R-0265: was der Prüfer-Vorschlag aus der Kompositionswurzel braucht. Die Personen sind dieselbe
+// Liste wie die manuelle Auswahl (`GET /api/directory`); die Beziehungen kommen aus demselben
+// Kantenbestand wie das Wissensnetz.
+export interface PrueferVorschlagDeps {
+  ko: Pick<KoService, "get">;
+  kanten: Pick<KantenRepo, "fuerKo">;
+  personen: () => Promise<readonly { id: string }[]>;
+}
+
+/**
+ * `tags` kommt als kommagetrennte Liste; leere Teile fallen weg. Ein wiederholter Parameter
+ * (`?tags=a&tags=b`) kommt als Feld an und wird ebenso gelesen; alles andere zählt nicht.
+ */
+function schlagworteAus(roh: unknown): string[] {
+  const teile = Array.isArray(roh) ? roh : [roh];
+  return teile
+    .filter((t): t is string => typeof t === "string")
+    .flatMap((t) => t.split(","))
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+}
+
+/** Ein Abfragewert als Text — ein Feld oder ein Fremdtyp gilt als nicht angegeben. */
+function textAus(roh: unknown): string {
+  return typeof roh === "string" ? roh.trim() : "";
+}
+
 // Validierungs-Leseansichten (§2.3). Bewerten/Zuweisen laufen über den KO-Dispatcher.
 export function validationRoutes(
   validation: ValidationService,
   guards: Guards,
   aiCheck?: ValidationAiCheckDeps,
+  vorschlag?: PrueferVorschlagDeps,
 ): FastifyPluginAsync {
   return async (app) => {
     app.get<{ Querystring: BoardFilter }>("/api/validation/board", async (request, reply) => {
@@ -230,6 +258,61 @@ export function validationRoutes(
       // AUFTRAG-mega76 BLOCK D: die Personenzeilen rechnen über den SICHTBAREN Zuweisungen.
       reply.code(200).send(await validation.overview({ sichtbar: sichtbarkeitsfilterFuer(user) }));
     });
+
+    // R-0265: Prüfer-Vorschlag. Zwei Lagen:
+    //   · ohne `koId` — ein NEUES Objekt beim Einreichen: Thema aus `category`/`tags`, Autor ist
+    //     der Fragende selbst, Beziehungen gibt es noch keine.
+    //   · mit `koId` — ein vorhandenes Objekt: Thema und Autor vom Objekt, dazu seine aktiven
+    //     Beziehungen. Ein Objekt, das der Fragende nicht sehen darf, ist für ihn nicht da (404).
+    // Rechnet nur über den SICHTBAREN Bestand. Weist niemanden zu.
+    app.get<{ Querystring: { category?: string; tags?: string; koId?: string } }>(
+      "/api/validation/reviewer-suggestions",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.create", request, reply);
+        if (!user) {
+          return;
+        }
+        if (!vorschlag) {
+          reply.code(503).send({
+            error: "SUGGESTIONS_UNAVAILABLE",
+            message: "Der Prüfer-Vorschlag ist in dieser Umgebung nicht verdrahtet.",
+          });
+          return;
+        }
+        const sichtbar = sichtbarkeitsfilterFuer(user);
+        const koId = textAus(request.query.koId);
+        let ziel: { id?: string; category?: string; tags?: readonly string[] } = {
+          category: textAus(request.query.category),
+          tags: schlagworteAus(request.query.tags),
+        };
+        const ausgeschlossen = [user.id];
+        const nachbarn = new Set<string>();
+        if (koId) {
+          const ko = await vorschlag.ko.get(koId);
+          if (!ko || !sichtbar(ko)) {
+            reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
+            return;
+          }
+          ziel = { id: ko.id, category: ko.category, tags: ko.tags };
+          ausgeschlossen.push(ko.author);
+          for (const k of await vorschlag.kanten.fuerKo(ko.id)) {
+            if (k.status === "aktiv") {
+              nachbarn.add(k.quelleId === ko.id ? k.zielId : k.quelleId);
+            }
+          }
+        }
+        const kandidaten = (await vorschlag.personen()).map((p) => p.id);
+        reply.code(200).send(
+          await validation.prueferVorschlagFuer({
+            ziel,
+            ausgeschlossen,
+            kandidaten,
+            nachbarn,
+            sichtbar,
+          }),
+        );
+      },
+    );
 
     // SCRUM-395: Standard-Prüferanzahl. Lesen dürfen alle Leseberechtigten (die
     // Erfassen-Seite zeigt den Standard an); ändern darf nur die Nutzerverwaltung.

@@ -7,6 +7,7 @@ import {
   useAudit,
   useBusFactor,
   useConflicts,
+  useDirectory,
   useGaps,
   useImpact,
   useKos,
@@ -14,6 +15,7 @@ import {
   useValidationOverview,
 } from "../api/hooks";
 import type { AuditFilter } from "../api/types";
+import { AuftraegeJePerson } from "../components/AuftraegeJePerson";
 import { HelpTip } from "../components/HelpTip";
 import { LoadErrorState, StaleMarker } from "../components/LoadState";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
@@ -70,6 +72,7 @@ export function Analytics(): JSX.Element {
   const audit = useAudit();
   const kos = useKos();
   const overview = useValidationOverview();
+  const directory = useDirectory();
   const impact = useImpact();
   const gaps = useGaps();
   const conflicts = useConflicts();
@@ -325,6 +328,11 @@ export function Analytics(): JSX.Element {
                 <Kpi label={t("ana.openTasks")} value={work.openTotal} />
                 <Kpi label={t("ana.doneTasks")} value={work.doneTotal} />
               </div>
+
+              {/* R-0756: dieselben Zahlen je Person — erst wenn die Übersicht geantwortet hat. */}
+              {overview.data ? (
+                <AuftraegeJePerson summaries={overview.data} personen={directory.data ?? []} />
+              ) : null}
 
               <Card>
                 <SectionLabel>{t("ana.byType")}</SectionLabel>

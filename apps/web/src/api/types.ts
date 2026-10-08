@@ -730,6 +730,15 @@ export interface AssignmentSummary {
   done: number;
 }
 
+// R-0265: ein Prüfer-Vorschlag (services/validation/src/pruefer-vorschlag.ts). Nur die tragenden
+// Gründe, in fester Reihenfolge; die Punktzahl ordnet, sie wird nicht angezeigt.
+export type ReviewerSuggestionReason = "autorschaft" | "pruefungen" | "netznaehe";
+export interface ReviewerSuggestion {
+  userId: string;
+  punkte: number;
+  gruende: ReviewerSuggestionReason[];
+}
+
 // SCRUM-395: Validierungs-Einstellungen (Standard-Prüferanzahl für neue Einreichungen).
 export interface ValidationSettings {
   defaultNeededValidations: number;

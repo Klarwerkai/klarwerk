@@ -346,6 +346,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // SCRUM-395: Standard-Prüferanzahl — lesen dürfen alle Leseberechtigten (Anzeige beim
   // Erfassen), ändern nur die Nutzerverwaltung.
   "GET /api/validation/settings": { protection: "ko.read" },
+  // R-0265: Prüfer-Vorschlag — rechnet nur über den sichtbaren Bestand.
+  "GET /api/validation/reviewer-suggestions": {
+    protection: "ko.create",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
   "PUT /api/validation/settings": { protection: "users.manage" },
   // SCRUM-414: Regler „externe Wissensabfrage" — lesen alle Leseberechtigten, setzen nur Admin.
   "GET /api/external/policy": { protection: "ko.read" },

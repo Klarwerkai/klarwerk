@@ -2000,4 +2000,13 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // R-0265: Prüfer-Vorschlag beim Einreichen — dasselbe Recht wie das Einreichen selbst.
+  {
+    gruppe: "validationRoutes",
+    methode: "GET",
+    pfad: "/api/validation/reviewer-suggestions",
+    belegstelle: "services/app/src/routes/validation-routes.ts:268",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
 ];

@@ -4,6 +4,11 @@ import type { KnowledgeObject, KoFilter, KoService } from "../../knowledge-objec
 // JOB 557 (Pedi 13.08.2026): „der Erzeuger ist nicht der Verantwortliche." Beide Helfer kommen über
 // die MODULFASSADE — keine Kante in die Innereien von knowledge-object.
 import { responsibleKindOf, responsibleOf } from "../../knowledge-object";
+import {
+  type PrueferVorschlag,
+  type VorschlagsEingabe,
+  prueferVorschlag,
+} from "./pruefer-vorschlag";
 import type { AssignmentRepo, RatingRepo } from "./repo";
 import {
   FALLBACK_NEEDED_VALIDATIONS,
@@ -821,6 +826,23 @@ export class ValidationService {
     );
     const letzte = relevant.sort((x, y) => x.seq - y.seq).at(-1);
     return letzte && RUECKGABE_AKTIONEN.has(letzte.action) ? letzte.at : undefined;
+  }
+
+  // R-0265: wer dieses Objekt prüfen sollte — abgeleitet aus Autorenschaft, früheren Prüfungen und
+  // der Nähe im Wissensnetz (Ableitung und Gewichte in `pruefer-vorschlag.ts`). Liest nur; weist
+  // niemanden zu. `sichtbar` ist PFLICHT wie bei `overview`: ein Grund wie „hat zu diesem Thema
+  // geprüft" darf sich nur auf Objekte stützen, die der Fragende sehen darf.
+  async prueferVorschlagFuer(opts: {
+    ziel: VorschlagsEingabe["ziel"];
+    ausgeschlossen: readonly string[];
+    kandidaten: readonly string[];
+    nachbarn: ReadonlySet<string>;
+    sichtbar: (ko: KnowledgeObject) => boolean;
+    anzahl?: number;
+  }): Promise<PrueferVorschlag[]> {
+    const bestand = (await this.koService.list({})).filter(opts.sichtbar);
+    const bewertungen = await this.ratings.listByKos(bestand.map((ko) => ko.id));
+    return prueferVorschlag({ ...opts, bestand, bewertungen });
   }
 
   // FR-VAL-06: Übersicht offen/erledigt pro Person.

@@ -213,6 +213,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `GET` | `/api/validation/overview` | `ko.read` | — | 200 Übersicht | — |
 | `GET` | `/api/validation/settings` | `ko.read` | — | 200 `{ defaultNeededValidations }` | — |
 | `PUT` | `/api/validation/settings` | `users.manage` | Rumpf `{ defaultNeededValidations }` | 200 `{ defaultNeededValidations }` | Dienstfehler |
+| `GET` | `/api/validation/reviewer-suggestions` | `ko.create`, sichtbar | Abfrage `category`, `tags` (kommagetrennt), `koId` | 200 Prüfer-Vorschläge `{ userId, punkte, gruende }[]` aus dem sichtbaren Bestand | 404 `NOT_FOUND`, 503 `SUGGESTIONS_UNAVAILABLE` |
 | `GET` | `/api/conflicts` | `ko.read` | — | 200 offene Konflikte, sichtbarkeitsgefiltert | — |
 | `GET` | `/api/conflicts/:id` | `ko.read`, sichtbar | — | 200 Konflikt | 404 `NOT_FOUND` |
 | `POST` | `/api/conflicts/:id/escalate` | `conflict.resolve` | — | 200 Konflikt | Dienstfehler |
