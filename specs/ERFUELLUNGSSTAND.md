@@ -12,12 +12,12 @@
   Pflichtenhefts genau einmal mit ihrer Priorität hier steht, jeder genannte Code- und Testpfad existiert,
   jeder Testtitel in seiner Datei vorkommt und die Quote unten aus den Zeilen gerechnet stimmt.
 
-Nachweisquote: **65 von 105**
+Nachweisquote: **63 von 105**
 
 | Status | Anzahl | Bedeutung |
 |---|---|---|
-| nachgewiesen | 65 | Code und Testfall, der das Abnahmekriterium prüft |
-| teilweise | 17 | Code und Test vorhanden, der Test deckt das Abnahmekriterium nur zum Teil |
+| nachgewiesen | 63 | Code und Testfall, der das Abnahmekriterium prüft |
+| teilweise | 19 | Code und Test vorhanden, der Test deckt das Abnahmekriterium nur zum Teil |
 | ohne Testnachweis | 0 | Code vorhanden, kein Testfall zum Abnahmekriterium |
 | Code fehlt | 2 | ein Teil des Abnahmekriteriums ist im Code nicht umgesetzt |
 | Abnahme außerhalb Tests | 19 | Abnahmekriterium ist kein Testfall (Review, Audit, Lasttest, SLA, Vertrag, Dokument) — Abnahmeschuld, keine Bauschuld |
@@ -83,7 +83,7 @@ für den oben genannten Stand.
 | FR-ASK-04 | MUSS | nachgewiesen | `services/ask/src/service.ts` | `services/ask/src/service.test.ts` › „erhöht Trust und erzeugt Audit-Eintrag“ | — |
 | FR-ASK-05 | MUSS | nachgewiesen | `services/ask/src/service.ts` | `services/ask/src/service.test.ts` › „FR-ASK-05: Wissenslücke zuweisen, schließen, mit Bestätigung löschen“ | — |
 | FR-ASK-06 | KANN | nachgewiesen | `services/reasoner/src/provider.ts` | `services/reasoner/src/service.test.ts` › „klassifiziert validiertes Wissen als gesichert mit Quellen“ | Der Fall prüft die Belegstelle (`steps[0].snippet`). |
-| FR-LIB-01 | MUSS | nachgewiesen | `services/library-analytics/src/service.ts` | `services/library-analytics/src/service.test.ts` › „FR-LIB-01: Suche findet KO über Text“ | — |
+| FR-LIB-01 | MUSS | teilweise | `services/library-analytics/src/service.ts`<br>`apps/web/src/lib/facetFilter.ts` | `services/library-analytics/src/service.test.ts` › „FR-LIB-01: Suche findet KO über Text“<br>`tests/library/g27-bibliothek-volltext.test.ts` › „Kategorie-Filter und Volltextsuche greifen gemeinsam“<br>`tests/library/facet-filter-logic.test.ts` › „KOMBINIERBAR: fremde Auswahl senkt die Zähler“ | Belegt sind Textsuche, Kategoriefilter zusammen mit der Volltextsuche und die allgemeine Facettenlogik. Kein Testfall ist der KI-Suche der Bibliothek und den Filtern nach Domäne, Status und Tags zugeordnet. |
 | FR-LIB-02 | MUSS | teilweise | `services/library-analytics/src/service.ts`<br>`apps/web/src/lib/libraryExport.ts` | `services/library-analytics/src/service.test.ts` › „FR-LIB-02: Export als JSON und MediaWiki“<br>`services/library-analytics/src/service.test.ts` › „FR-LIB-02: Import ohne Duplikate“<br>`tests/library/library-export.test.ts` › „kennt alle vier Formate mit Label-Key + Endung“ | JSON, MediaWiki, Markdown und Import sind belegt; einen PDF-Export gibt es nicht (HTML ist laut Code eine Druckansicht, s. Quellenwidersprüche). |
 | FR-LIB-03 | SOLL | nachgewiesen | `services/library-analytics/src/service.ts` | `services/library-analytics/src/service.test.ts` › „FR-LIB-03: Bus-Faktor erkennt Einzelquellen“ | — |
 | FR-LIB-04 | SOLL | nachgewiesen | `services/library-analytics/src/service.ts` | `services/library-analytics/src/service.test.ts` › „FR-LIB-04: Graph verbindet KOs mit gemeinsamem Tag“ | — |
@@ -103,7 +103,7 @@ für den oben genannten Stand.
 | FR-RSN-06 | MUSS | teilweise | `services/reasoner/src/model-client.ts` | `services/reasoner/src/service.test.ts` › „liefert keinerlei Secret-/Key-/Prompt-Felder“<br>`tests/security/egress-encapsulation.test.ts` › „reasoner-Index exportiert keinen rohen Client“ | Statusauskunft und Kapselung sind belegt; eine Prüfung des gebauten Frontend-Bundles auf Schlüssel ist keinem Testfall zugeordnet. |
 | FR-MOB-01 | MUSS | teilweise | `apps/web/public/manifest.webmanifest` | `tests/capture/sw-rules.test.ts` › „Manifest ist installierbar: standalone + 192/512-Icons + maskable“ | Belegt ist die technische Voraussetzung; „Zum Home-Bildschirm liefert Vollbild-App“ verlangt Bedienung auf einem echten Gerät. |
 | FR-MOB-02 | MUSS | Code fehlt | `apps/web/src/pages/Mobile.tsx` | — | Die Mobilfläche hat die Reiter Erfassen/Fragen/Nachschlagen; einen Interview-Modus gibt es dort nicht. Die Abnahme in `specs/stories/mobile.md` ist offen. |
-| FR-MOB-03 | MUSS | nachgewiesen | `apps/web/src/lib/mobileConfirm.ts` | `tests/capture/mobile-confirm.test.ts` › „confirm erkennt den finalen Löschschritt nur für den pending-Eintrag“ | — |
+| FR-MOB-03 | MUSS | teilweise | `apps/web/src/lib/mobileConfirm.ts`<br>`apps/web/src/pages/Mobile.tsx` | `tests/capture/mobile-confirm.test.ts` › „confirm erkennt den finalen Löschschritt nur für den pending-Eintrag“ | Getestet ist nur die Hilfsfunktion. Kein Testfall prüft am mobilen Löschweg, dass Löschen erst nach der Inline-Bestätigung ausgeführt wird. |
 | FR-I18N-01 | MUSS | teilweise | `services/i18n/src/service.ts` | `services/i18n/src/service.test.ts` › „FR-I18N-01: liefert DE und EN je nach Locale“<br>`services/reasoner/src/service.test.ts` › „liefert die nächste Frage auf Englisch bei locale 'en'“ | Belegt sind der Sprachdienst an einem Testschlüssel, englische Interviewfragen und DE/EN-Texte einzelner Flächen. Kein Testfall prüft die komplette Oberfläche (alle Texte, keine fest verdrahteten) und alle KI-Aufgaben in beiden Sprachen. |
 | FR-I18N-02 | SOLL | nachgewiesen | `services/i18n/src/service.ts` | `services/i18n/src/service.test.ts` › „FR-I18N-02: neue Sprache ohne Code-Umbau ergänzbar“ | — |
 | FR-EXT-01 | KANN | teilweise | `apps/web/src/lib/extConcept.ts` | `tests/library/ext-concept.test.ts` › „Schritte in konzeptioneller Reihenfolge“<br>`tests/library/ext-concept.test.ts` › „candidateFindings leitet Badges ehrlich ab“ | Pipeline-Logik und Befunde sind belegt; der Bildschirm selbst ist keinem Testfall zugeordnet. |
