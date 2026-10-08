@@ -5,7 +5,7 @@
 // Suche über alle Hilfetexte. Stufe 2 (geerdete LLM-Antworten) folgt auf dieser Basis.
 import { useMutation } from "@tanstack/react-query";
 import { HelpCircle, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
@@ -61,6 +61,20 @@ export function KlaraAssistant(): JSX.Element {
   const { t, i18n } = useTranslation();
   const location = useLocation();
   const [open, setOpen] = useState(false);
+  // R-0942: Klara ist eine aufklappende Fläche, kein sperrendes Fenster. Der Auslöser meldet seinen
+  // Zustand (`aria-expanded`/`aria-controls`), beim Öffnen springt der Fokus hinein, und beim
+  // Schließen kehrt er NUR dann zum Auslöser zurück, wenn er noch im Panel stand — wer inzwischen
+  // anderswo auf der Seite arbeitet, wird nicht zurückgerissen.
+  const panelId = useId();
+  const ausloeserRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const schliessen = (): void => {
+    const fokusDrin = panelRef.current?.contains(document.activeElement) ?? false;
+    setOpen(false);
+    if (fokusDrin) {
+      ausloeserRef.current?.focus();
+    }
+  };
   const [query, setQuery] = useState("");
   // PAKET 1 (D-AISTATE, Pedi 23.07.): die KI-Antwort (Reasoner-Task „answer") ohne nutzbares Modell
   // HART ausgrauen — Klaras Registry-Suche (ohne KI) bleibt davon unberührt bedienbar.
@@ -156,9 +170,17 @@ export function KlaraAssistant(): JSX.Element {
       setSpeakingId(null);
       return;
     }
+    // R-0942: beim Öffnen springt der Fokus in die Fläche (die Fläche selbst, nicht das Suchfeld —
+    // auf dem Telefon würde ein fokussiertes Feld sofort die Bildschirmtastatur öffnen).
+    panelRef.current?.focus();
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
+        // Dieselbe Regel wie `schliessen`, hier über die Refs, damit der Effekt an `open` hängt.
+        const fokusDrin = panelRef.current?.contains(document.activeElement) ?? false;
         setOpen(false);
+        if (fokusDrin) {
+          ausloeserRef.current?.focus();
+        }
       }
     };
     document.addEventListener("keydown", onKey);
@@ -322,20 +344,26 @@ export function KlaraAssistant(): JSX.Element {
   return (
     <>
       <button
+        ref={ausloeserRef}
         type="button"
         data-klara="1"
         aria-label={t("klara.open")}
         title={t("klara.open")}
-        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        onClick={() => (open ? schliessen() : setOpen(true))}
         className="fixed bottom-5 right-5 z-40 grid h-11 w-11 place-items-center rounded-full border border-hairline bg-ink text-page shadow-popover transition-opacity hover:opacity-85"
       >
         <HelpCircle size={20} />
       </button>
       {open ? (
         <section
+          ref={panelRef}
+          id={panelId}
+          tabIndex={-1}
           data-klara="1"
           aria-label={t("klara.title")}
-          className="fixed bottom-20 right-5 z-40 flex max-h-[68vh] w-[min(340px,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-card border border-hairline bg-surface shadow-popover"
+          className="fixed bottom-20 right-5 z-40 flex max-h-[68vh] w-[min(340px,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-card border border-hairline bg-surface shadow-popover outline-none"
         >
           <div className="flex items-center justify-between border-b border-hairline px-4 py-3">
             <div>
@@ -347,7 +375,7 @@ export function KlaraAssistant(): JSX.Element {
             <button
               type="button"
               aria-label={t("cmd.close")}
-              onClick={() => setOpen(false)}
+              onClick={schliessen}
               className="grid h-7 w-7 place-items-center rounded-btn text-muted-2 hover:bg-hairline-soft hover:text-text"
             >
               <X size={15} />

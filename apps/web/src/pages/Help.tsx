@@ -7,6 +7,7 @@ import { useRole } from "../app/RoleContext";
 import { type Role, routePathAllows } from "../app/navigation";
 import { UploadLimitsHint } from "../components/UploadLimitsHint";
 import { Card, PageHeader } from "../components/ui";
+import { FAQ_CONTENT } from "../lib/faqContent";
 import { HELP_TOPICS, type HelpSearchItem, filterHelpTopics } from "../lib/helpTopics";
 import {
   ISO_HELP_LABELS,
@@ -116,6 +117,23 @@ export function Help(): JSX.Element {
     })),
   ];
   const visible = filterHelpTopics(items, q);
+  // R-0935 / R-0924: die häufigen Fragen als eigene Sammlung unter den Kapiteln — dieselbe Suche,
+  // aber KEIN Kapitel (`data-hilfe-thema` bleibt den Kapiteln vorbehalten; die Seitenhilfe des
+  // Zahnrads zählt Kapitel je Route). Die Antworten liegen nur deutsch vor (`faqContent.ts:1-3`);
+  // in EN/NL steht statt einer halben Liste der ehrliche Satz `hilfefaq.nurDeutsch`.
+  const faqDeutsch = i18n.language.startsWith("de");
+  const faqTreffer = faqDeutsch
+    ? filterHelpTopics(
+        FAQ_CONTENT.map((faq) => ({
+          id: faq.id,
+          title: faq.question,
+          body: faq.answer,
+          tags: [],
+          to: faq.route,
+        })),
+        q,
+      )
+    : [];
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -305,7 +323,7 @@ export function Help(): JSX.Element {
         data-testid="hilfe-suche"
         className="mb-5 h-10 w-full rounded-input border border-hairline bg-surface px-3 text-sm outline-none focus:border-ink/30"
       />
-      {visible.length === 0 ? (
+      {visible.length === 0 && faqTreffer.length === 0 ? (
         // R-0474: unter dem Satz steht der nächste Schritt. Die Frage an das Wissen nur, wenn die
         // Rolle aus einer Sitzung stammt UND der Router sie auf `/fragen` lässt — dieselbe
         // Zurückhaltung wie die Einstiegsführung oben (JOB 4358).
@@ -327,7 +345,8 @@ export function Help(): JSX.Element {
             <p className="mt-1">{t("erstnutzer.hilfe.anderesWort")}</p>
           )}
         </Card>
-      ) : (
+      ) : null}
+      {visible.length > 0 ? (
         <div className="grid gap-3 sm:grid-cols-2">
           {visible.map((topic) => {
             // Ein ISO-Kapitel erkennt man an seinen externen Quellen — nicht an seiner ID.
@@ -452,6 +471,49 @@ export function Help(): JSX.Element {
             );
           })}
         </div>
+      ) : null}
+      {/* R-0935 / R-0924: DIE SAMMLUNG HÄUFIGER FRAGEN. Eine Frage ist ein natives
+          `details`/`summary` — aufklappbar mit Tastatur, ohne eigenen Zustand. Der Sprung in den
+          Bereich steht nur, wenn die Rolle aus einer Sitzung stammt UND der Router sie hineinlässt
+          (dieselbe Zurückhaltung wie die Einstiegsführung oben, JOB 4022/4358), und nie auf
+          `/hilfe` selbst. Ohne Treffer bei laufender Suche steht die Sammlung gar nicht da. */}
+      {faqDeutsch && faqTreffer.length > 0 ? (
+        <section data-testid="hilfe-faq" className="mt-6">
+          <h2 className="text-[15px] font-semibold text-ink">{t("hilfefaq.titel")}</h2>
+          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+            {t("hilfefaq.untertitel")}
+          </p>
+          <ul className="mt-3 space-y-2">
+            {faqTreffer.map((faq) => (
+              <li key={faq.id} data-hilfe-faq={faq.id}>
+                <details className="rounded-card border border-hairline bg-surface px-3.5 py-2.5">
+                  <summary className="cursor-pointer text-[13px] font-semibold text-ink">
+                    {faq.title}
+                  </summary>
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-muted">{faq.body}</p>
+                  {rolle !== null && faq.to !== "/hilfe" && routePathAllows(faq.to, rolle) ? (
+                    <Link
+                      to={faq.to}
+                      data-testid={`hilfe-faq-route-${faq.id}`}
+                      className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-semibold text-ai hover:opacity-80"
+                    >
+                      {t("help.openRoute")}
+                      <ArrowRight size={13} />
+                    </Link>
+                  ) : null}
+                </details>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {faqDeutsch ? null : (
+        <Card data-testid="hilfe-faq" className="mt-6 border-dashed">
+          <h2 className="text-[14px] font-semibold text-ink">{t("hilfefaq.titel")}</h2>
+          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+            {t("hilfefaq.nurDeutsch")}
+          </p>
+        </Card>
       )}
     </div>
   );
