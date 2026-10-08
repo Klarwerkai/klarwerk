@@ -112,6 +112,7 @@ import { UploadLimitsHint } from "../UploadLimitsHint";
 import { useDiktat } from "../start/useDiktat";
 import { ConfidenceBar, KnowledgeTypeTag, ProvenanceLine } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
+import { WissensauskunftBereich } from "../wissensauskunft/WissensauskunftBereich";
 import { AnhangZeichnung } from "./AnhangZeichnung";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { FassungsGegenueberstellung } from "./Fassungsvergleich";
@@ -2228,6 +2229,20 @@ export function MehrAbschnitte({
           ))}
         </ol>
       </Abschnitt>
+
+      {/* R-1644 — Wer wusste was wann: die Auskunft zu einem Zeitpunkt. Nur mit Prüferecht
+          (`ko.validate`, dieselbe Einsichtsstufe wie das Audit-Protokoll); die Rolle steuert nur
+          die Anzeige, entschieden wird am Server. Abgefragt wird erst auf den Klick. */}
+      {canReview ? (
+        <Abschnitt
+          schluessel="wissensauskunft"
+          titel={t("wissensauskunft.titel")}
+          offen={offene.has("wissensauskunft")}
+          aufWechsel={(o) => abschnittUmschalten("wissensauskunft", o)}
+        >
+          <WissensauskunftBereich koId={ko.id} />
+        </Abschnitt>
+      ) : null}
 
       {/* 9 — Belege (samt Vertrauen, Konsistenz, Frische, Gültigkeit) */}
       <Abschnitt
