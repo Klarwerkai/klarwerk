@@ -184,6 +184,11 @@ interface Browser {
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "application/javascript",
+  // PLAN-SPRACHANMERKUNG: der pdfjs-Worker der gebauten Oberfläche ist eine `.mjs`-Datei. Als
+  // `application/octet-stream` verweigert Chromium ihn als Modul — die Bühne mässe dann ihren eigenen
+  // Auslieferungsfehler statt der PDF-Darstellung. Dieselbe Zuordnung wie in den übrigen Bühnen
+  // (`tests/design/h3-blatt-buehne.ts`, `tests/entwurf-pool/pool-tastatur-chromium.test.ts`).
+  ".mjs": "application/javascript",
   ".css": "text/css",
   ".svg": "image/svg+xml",
   ".png": "image/png",

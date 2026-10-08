@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { guardedLocalPgTestUrl } from "../../db-tx";
 import { OVERLAP_SCHEMA, PgOverlapRepo } from "./overlap-repo-pg";
 import type { OverlapEntry } from "./overlap-types";
+import { type PairMemoryEntry, PgConflictMemoryRepo } from "./pair-memory";
 import { CONFLICTS_SCHEMA, PgConflictRepo } from "./repo-pg";
 // JOB 3914: der Entscheidungsweg selbst — `dismiss`/`resolve` schreiben über `save()` →
 // `repo.update()`. Ohne ihn misse dieser Lauf einen nachgebauten Datensatz statt der Ablage,
@@ -118,6 +119,7 @@ describe("aistate-fix4 (bens V5): insertIfVersionsCurrent gegen echtes Postgres"
 
   async function reset(p: Pool): Promise<void> {
     await p.query("DROP TABLE IF EXISTS conflicts CASCADE");
+    await p.query("DROP TABLE IF EXISTS conflict_pair_memory CASCADE");
     await p.query("DROP TABLE IF EXISTS ko_overlaps CASCADE");
     await p.query("DROP TABLE IF EXISTS kos CASCADE");
     await p.query(KOS_STANDIN_SCHEMA);
@@ -254,6 +256,38 @@ describe("aistate-fix4 (bens V5): insertIfVersionsCurrent gegen echtes Postgres"
     expect(row.resolution.reason).toBe("superseded");
     expect(row.resolution.by).toBeNull();
     expect(await repo.supersedeIfOpen("ocas1", supersededOverlap)).toBe(false);
+  });
+
+  // Aufnahme 20260922 · Prüfung-Gedächtnis (R-1103/R-1105): die Tabelle kommt aus CONFLICTS_SCHEMA,
+  // `find` liest alle Paare eines Laufs in EINEM Abruf, `put` ersetzt je Paar — und ein Fehlalarm,
+  // der über den Dienst geschlossen wird, steht danach in der echten Ablage.
+  it("Prüfgedächtnis: Upsert je Paar, Mengenabruf, Fehlalarm-Abschluss über den Dienst", async (ctx) => {
+    const p = requirePool(ctx);
+    await reset(p);
+    const memory = new PgConflictMemoryRepo(p);
+    const eintrag: PairMemoryEntry = {
+      pairKey: "ko:a|ko:b",
+      stand: "1".repeat(64),
+      outcome: "created",
+      conflictId: "gm1",
+      at: "2026-10-08T00:00:00.000Z",
+    };
+    await memory.put({ ...eintrag, outcome: "none" });
+    await memory.put(eintrag);
+    expect(await memory.find([])).toEqual([]);
+    expect(await memory.find(["ko:a|ko:b", "ko:a|ko:b", "ko:x|ko:y"])).toEqual([eintrag]);
+
+    const repo = new PgConflictRepo(p);
+    await repo.insert(conflict("gm1"));
+    const dienst = new ConflictService({ repo, memory });
+    await dienst.dismiss("gm1", "controller-1", "Kein Widerspruch.");
+    const [nachher] = await memory.find(["ko:a|ko:b"]);
+    expect(nachher).toMatchObject({
+      outcome: "dismissed",
+      stand: eintrag.stand,
+      conflictId: "gm1",
+    });
+    expect((await p.query("SELECT pair_key FROM conflict_pair_memory")).rowCount).toBe(1);
   });
 
   // ==============================================================================================
