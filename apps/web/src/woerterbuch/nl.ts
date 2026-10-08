@@ -481,6 +481,9 @@ const nl: typeof de = {
   "auth.toSignIn": "Naar aanmelden",
   "auth.or": "of",
   "auth.ssoButton": "Aanmelden met SSO",
+  // R-0541: de aanmeldpagina wanneer alleen de bedrijfslogin geldt (KLARWERK_SSO_ONLY).
+  "auth.ssoOnlyNote":
+    "Op deze installatie meld je je aan met je bedrijfsaccount. Een apart wachtwoord voor Klara is hier niet nodig.",
   "auth.ssoUnavailable": "SSO is niet geconfigureerd voor deze instantie.",
   "auth.ssoTitle": "SSO-aanmelding",
   "auth.ssoBusy": "Aanmelding wordt afgerond …",

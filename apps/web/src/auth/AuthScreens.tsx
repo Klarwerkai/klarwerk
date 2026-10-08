@@ -21,8 +21,12 @@ type Mode = "login" | "register" | "waiting" | "setup" | "forgot" | "forgotSent"
 // Panel links, Formular rechts. Sub-Zustände inkl. Ersteinrichtung.
 export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Element {
   const { t } = useTranslation();
-  const { refresh, oidcEnabled, selfRegistrationEnabled } = useSession();
+  const { refresh, oidcEnabled, selfRegistrationEnabled, passwordLoginEnabled } = useSession();
   const [mode, setMode] = useState<Mode>(needsSetup ? "setup" : "login");
+  // R-0541: NUR FIRMEN-LOGIN. Erst wenn der Server AUSDRÜCKLICH `false` sagt UND SSO aktiv ist,
+  // verschwinden Passwortformular, „Passwort vergessen" und „Registrieren" — sie führten alle in
+  // eine 403. Unbekannt (`undefined`) ändert nichts. Die Ersteinrichtung bleibt unberührt.
+  const nurFirmenLogin = !needsSetup && oidcEnabled && passwordLoginEnabled === false;
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
@@ -215,6 +219,20 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
                 {t("auth.backToLogin")}
               </Button>
             </div>
+          ) : nurFirmenLogin ? (
+            // R-0541: kein Passwortfeld, das in eine 403 führt — der eine Weg, der gilt, und warum.
+            <div data-testid="auth-sso-only" className="mt-6 space-y-4">
+              <p className="rounded-card border border-hairline p-3 text-[12.5px] text-muted">
+                {t("auth.ssoOnlyNote")}
+              </p>
+              <Button
+                variant="primary"
+                className="w-full"
+                onClick={() => window.location.assign(authApi.ssoStartUrl)}
+              >
+                {t("auth.ssoButton")}
+              </Button>
+            </div>
           ) : (
             <form
               className="mt-6 space-y-4"
@@ -347,7 +365,7 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
               Nicht-Funktion — und `oidcEnabled` hat den Vorgabewert `false`, das stand auf einer
               Instanz ohne OIDC also DAUERHAFT da. Ein „oder"-Trenner, auf den nichts folgt, ist
               zudem ein Trenner ohne zweite Seite. */}
-          {mode === "login" && !needsSetup && oidcEnabled ? (
+          {mode === "login" && !needsSetup && oidcEnabled && !nurFirmenLogin ? (
             <div className="mt-5">
               <div className="mb-3 flex items-center gap-3 text-[11px] uppercase tracking-wider text-muted-2">
                 <span className="h-px flex-1 bg-hairline" />
@@ -367,7 +385,7 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
           {/* D-025 (b): Reihenfolge und Gewicht getauscht. „Passwort vergessen?" ist der
               Alltagsfall und stand vorher unten und leise; „Registrieren" trifft die meisten
               Besucher genau einmal und stand oben und halbfett. */}
-          {!needsSetup && mode === "login" ? (
+          {!needsSetup && mode === "login" && !nurFirmenLogin ? (
             <div className="mt-5 space-y-2 text-center text-[13px] text-muted">
               <button type="button" className="font-semibold text-ink" onClick={() => go("forgot")}>
                 {t("auth.toForgot")}

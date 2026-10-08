@@ -687,6 +687,8 @@ const AUS_DER_ROUTE = [
   "OIDC_DISABLED",
   "OIDC_LOGIN_FAILED",
   "OIDC_STATE_INVALID",
+  // R-0541 (Firmenanmeldung): der abgeschaltete Passwortweg, gesendet von `passwortwegZu`.
+  "PASSWORD_LOGIN_DISABLED",
   "REGISTRATION_DISABLED",
   "REGISTRATION_RATE_LIMITED",
   "RESET_RATE_LIMITED",
@@ -1568,6 +1570,11 @@ const GEMESSEN_VON = {
   // deshalb sah der Wächter es bis K5 nicht.
   OIDC_UNREACHABLE: [
     "tests/q9-oidc-literalquelle/jeder-fehler-traegt-einen-katalogschluessel.test.ts · E.1 der echte Callback liefert in %s den OIDC_UNREACHABLE-Satz, nicht INTERNAL",
+  ],
+  // R-0541 (Firmenanmeldung) · der Satz des abgeschalteten Passwortwegs, gemessen am Tag seiner
+  // Einführung: ein Fall, dessen `each`-Tabelle EN und NL wörtlich trägt.
+  PASSWORD_LOGIN_DISABLED: [
+    "tests/firmenanmeldung/passwort-abschaltbar.test.ts · P2 PASSWORD_LOGIN_DISABLED · alle vier Passwortwege antworten 403 auf %s",
   ],
   // JOB 3956 · der Satz des RBAC-Wächters. DREI Fälle und nicht zwei: G4 fährt den
   // zusammengesetzten Sprachkopf („en-GB,en;q=0.9" und zwei weitere) und holt seine Erwartung über

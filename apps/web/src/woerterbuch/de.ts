@@ -726,6 +726,9 @@ const de = {
   "auth.toSignIn": "Zur Anmeldung",
   "auth.or": "oder",
   "auth.ssoButton": "Mit SSO anmelden",
+  // R-0541: die Anmeldeseite, wenn nur noch der Firmen-Login gilt (KLARWERK_SSO_ONLY).
+  "auth.ssoOnlyNote":
+    "Auf dieser Installation meldest du dich mit deinem Firmenkonto an. Ein eigenes Passwort für Klara gibt es hier nicht.",
   "auth.ssoUnavailable": "SSO ist für diese Instanz nicht konfiguriert.",
   "auth.ssoTitle": "SSO-Anmeldung",
   "auth.ssoBusy": "Anmeldung wird abgeschlossen …",

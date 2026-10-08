@@ -109,7 +109,7 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 | `POST` | `/api/auth/reset` | keines | Rumpf `{ token, newPassword }` | 204 | 429 `RATE_LIMITED`; Dienstfehler |
 | `GET` | `/api/auth/oidc/start` | keines | — | Weiterleitung zum Anbieter, setzt die Ablauf-Cookies (state, nonce, PKCE) | 501 `OIDC_DISABLED` |
 | `POST` | `/api/auth/oidc` | keines | Rumpf `{ code, state }` | 200 `{ user, token }`, setzt `kw_session` | 501 `OIDC_DISABLED`; 400 `OIDC_INVALID` (state passt nicht); 401 `OIDC_INVALID` (Anmeldung gescheitert) |
-| `GET` | `/api/auth/status` | keines | — | 200 `{ needsSetup, oidcEnabled, selfRegistrationEnabled }` | — |
+| `GET` | `/api/auth/status` | keines | — | 200 `{ needsSetup, oidcEnabled, selfRegistrationEnabled, passwordLoginEnabled }` | — |
 | `POST` | `/api/auth/setup` | keines (nur auf leerer Instanz) | Rumpf `{ name, email, password }` | 201 `{ user, token }`, setzt `kw_session` — erstes Konto, Admin | 409 `ALREADY_SETUP`; Dienstfehler |
 | `POST` | `/api/auth/users/:id/approve` | `requireAdmin` | — | 200 freigegebenes Konto | 401; 403 `FORBIDDEN`; Dienstfehler |
 | `POST` | `/api/auth/users/:id/reset` | `requireAdmin` | Rumpf `{ password }` | 204 | 401; 403; Dienstfehler |

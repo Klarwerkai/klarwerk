@@ -261,6 +261,12 @@ export const MELDUNGEN = {
     en: "The sign-in service is not responding.",
     nl: "De aanmelddienst reageert niet.",
   },
+  // R-0541: die Anmeldung mit Passwort ist abgeschaltet, es gilt nur der Firmen-Login.
+  PASSWORD_LOGIN_DISABLED: {
+    de: "Die Anmeldung mit Passwort ist auf dieser Instanz abgeschaltet. Bitte über den Firmen-Login (SSO) anmelden.",
+    en: "Password sign-in is switched off on this instance. Please sign in with your company login (SSO).",
+    nl: "Aanmelden met een wachtwoord is op deze instantie uitgeschakeld. Meld je aan via de bedrijfslogin (SSO).",
+  },
 } as const satisfies Record<string, Record<Sprache, string>>;
 
 export type Meldungsschluessel = keyof typeof MELDUNGEN;

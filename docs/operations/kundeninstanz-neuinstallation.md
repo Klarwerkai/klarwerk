@@ -93,7 +93,19 @@ APP_BASE_URL=
 # OIDC_ISSUER=
 # OIDC_AUDIENCE=
 # OIDC_JWKS_URI=
+# OIDC_AUTHORIZE_URL=
+# OIDC_TOKEN_URL=
+# OIDC_CLIENT_ID=
+# OIDC_REDIRECT_URI=
+# OIDC_CLIENT_SECRET=
 # OIDC_AUTOPROVISION=
+# OIDC_ROLE_CLAIM=
+# OIDC_GROUP_ADMIN=
+# OIDC_GROUP_CONTROLLER=
+# OIDC_GROUP_EXPERTE=
+# OIDC_REQUIRE_EMAIL_VERIFIED=
+# OIDC_SESSION_TTL_HOURS=
+# KLARWERK_SSO_ONLY=
 # KLARWERK_M365_MANDANTEN=
 ```
 
@@ -227,6 +239,24 @@ oder je verworfenem Eintrag eine Warnung mit Grund. Einzelheiten und die Live-Ab
 `docs/operations/word-web-hostabnahme.md`.
 
 ---
+
+### 2.7 Optional: Firmen-Login (SSO/OIDC) und „nur Firmen-Login"
+
+Der Firmen-Login ist nur aktiv, wenn **alle sieben** Werte stehen: `OIDC_ISSUER`, `OIDC_AUDIENCE`,
+`OIDC_JWKS_URI`, `OIDC_AUTHORIZE_URL`, `OIDC_TOKEN_URL`, `OIDC_CLIENT_ID` und `OIDC_REDIRECT_URI`
+(öffentliche Adresse dieser Instanz + `/sso/callback`). Die Compose-Datei reicht jeden davon durch.
+Fehlt nur ein Teil, ist SSO aus, und der Startbericht im Protokoll nennt **jeden fehlenden Namen**
+(„SSO ist unvollständig konfiguriert …").
+
+Die Rolle in Klara kommt aus den Gruppen des Anmeldedienstes: `OIDC_ROLE_CLAIM` (Vorgabe `roles`)
+nennt das Token-Feld, `OIDC_GROUP_ADMIN`, `OIDC_GROUP_CONTROLLER` und `OIDC_GROUP_EXPERTE` die
+Gruppennamen. Ohne Gruppe wird niemand per SSO Administrator. `OIDC_AUTOPROVISION=true` legt
+unbekannte Mitarbeiter beim ersten Anmelden selbst an.
+
+`KLARWERK_SSO_ONLY=1` schaltet die Anmeldung mit Passwort ab — Anmelden, Registrieren, „Passwort
+vergessen" und Zurücksetzen antworten dann 403, die Anmeldeseite zeigt nur noch den Firmen-Login.
+Der Schalter **wirkt nur bei vollständigem SSO**: sonst bliebe kein Weg herein, und das Passwort
+bleibt offen — der Startbericht meldet diesen Widerspruch ausdrücklich.
 
 ## 3. Der Start
 
@@ -414,8 +444,10 @@ Die Daten liegen im Docker-Volume `pgdata`. **Löschen Sie es nie** ohne Sicheru
   übersprungener Lauf ist kein bestandener.
   Auf dem Prüfplatz misst die Strecke aus §9 denselben Abbruch am echten `up` (K6a) — dort ohne
   Übersprung.
-- SSO/OIDC, eine echte Microsoft-365-Anbindung, SMTP im Echtbetrieb, Skalierung und Monitoring sind
-  eigene Themen und hier bewusst nicht beschrieben.
+- Die Anbindung an einen **echten** Anmeldedienst (Entra ID o. ä.) ist nicht gemessen; §2.7
+  beschreibt die Werte, nicht die Einrichtung beim Anbieter. Eine echte Microsoft-365-Anbindung,
+  SMTP im Echtbetrieb, Skalierung und Monitoring sind eigene Themen und hier bewusst nicht
+  beschrieben.
 
 ---
 

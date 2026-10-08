@@ -484,6 +484,9 @@ const en: typeof de = {
   "auth.toSignIn": "Go to sign in",
   "auth.or": "or",
   "auth.ssoButton": "Sign in with SSO",
+  // R-0541: the sign-in page when only the company login applies (KLARWERK_SSO_ONLY).
+  "auth.ssoOnlyNote":
+    "On this installation you sign in with your company account. There is no separate Klara password here.",
   "auth.ssoUnavailable": "SSO is not configured for this instance.",
   "auth.ssoTitle": "SSO sign-in",
   "auth.ssoBusy": "Completing sign-in …",

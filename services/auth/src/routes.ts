@@ -230,6 +230,28 @@ export function selfRegistrationEnabled(
   return flag === "1" || flag === "true";
 }
 
+// R-0541 (FIRMENANMELDUNG): DIE ANMELDUNG MIT PASSWORT IST ABSCHALTBAR — dann gilt nur der
+// Firmen-Login und damit dessen Zwei-Faktor-Schutz. Dieselbe Schalterform wie
+// `selfRegistrationEnabled` (nur ein ausdrückliches =1/true schaltet), zur LAUFZEIT je Anfrage
+// gelesen.
+//
+// DER SCHALTER GREIFT NUR, WENN SSO WIRKLICH AKTIV IST. Ohne vollständige OIDC-Konfiguration
+// (`createOidcProviderFromEnv` liefert dann `undefined`) gäbe es sonst gar keinen Weg mehr herein —
+// eine Instanz, die sich mit einem Tippfehler in einer OIDC-Variablen selbst aussperrt. In diesem
+// Fall bleibt das Passwort offen, und der Startbericht nennt den Widerspruch
+// (`services/app/src/start-vertrag.ts`, Mangel zu KLARWERK_SSO_ONLY).
+export function ssoOnlyRequested(env: Record<string, string | undefined> = process.env): boolean {
+  const flag = env.KLARWERK_SSO_ONLY;
+  return flag === "1" || flag === "true";
+}
+
+export function passwordLoginEnabled(
+  oidcAktiv: boolean,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return !(oidcAktiv && ssoOnlyRequested(env));
+}
+
 // WP-VIP2-GATE (bens P1): Registrierungs-Rate-Limit (Konstante) — 5 Versuche je Minute je IP;
 // JEDER Versuch zählt (auch erfolgreiche: Konto-Anlage ist der Abuse-Vektor, nicht der Fehlschlag).
 export const REGISTER_MAX_ATTEMPTS_PER_MINUTE = 5;
@@ -351,9 +373,28 @@ export function authRoutes(
       return user;
     };
 
+    // R-0541: Ist die Anmeldung mit Passwort abgeschaltet, antwortet JEDER Weg, der ein Passwort
+    // annimmt oder neu ausstellt (Anmelden, Registrieren, Vergessen, Zurücksetzen), mit 403 — VOR
+    // jedem Zähler und jeder Kontoabfrage. Ein „Passwort vergessen", das weiter Mails verschickt,
+    // stellte Passwörter für einen Weg aus, den es nicht mehr gibt. Die Ersteinrichtung bleibt
+    // offen: sie greift nur auf einer Instanz ohne ein einziges Konto, dort ist nichts zu schützen.
+    const passwortwegZu = (request: FastifyRequest, reply: FastifyReply): boolean => {
+      if (passwordLoginEnabled(Boolean(options.oidc))) {
+        return false;
+      }
+      reply.code(403).send({
+        error: "PASSWORD_LOGIN_DISABLED",
+        message: meldung("PASSWORD_LOGIN_DISABLED", sprache(request)),
+      });
+      return true;
+    };
+
     app.post<{ Body: { name?: unknown; email?: unknown; password?: unknown } }>(
       "/api/auth/register",
       async (request, reply) => {
+        if (passwortwegZu(request, reply)) {
+          return;
+        }
         // WP-VIP2-GATE (bens P1): Schalter ZUERST — bei AUS entsteht weder Konto noch Zählung,
         // und die Antwort ist eine ehrliche, generische 403 (kein Hinweis auf Kontenbestand).
         if (!selfRegistrationEnabled()) {
@@ -416,6 +457,9 @@ export function authRoutes(
     app.post<{ Body: { email: string; password: string } }>(
       "/api/auth/login",
       async (request, reply) => {
+        if (passwortwegZu(request, reply)) {
+          return;
+        }
         // SCRUM-356 / AG-06 / NFR-SEC-04: Brute-Force-Schutz. Schlüssel = IP + normalisierte E-Mail.
         // Bewusst NUR um den Login herum, identisch für bekannte/unbekannte Konten (keine Enumeration).
         const limiterKey = loginLimiter.keyFor(request.ip, request.body?.email);
@@ -624,6 +668,11 @@ export function authRoutes(
 
     // FR-AUTH-08: Reset anfordern. Antwort immer 204 — die Existenz der E-Mail wird nicht verraten.
     app.post<{ Body: { email: string } }>("/api/auth/forgot", async (request, reply) => {
+      // R-0541: der Schalter ist über `GET /api/auth/status` ohnehin öffentlich lesbar; die 403
+      // verrät deshalb nichts über Konten.
+      if (passwortwegZu(request, reply)) {
+        return;
+      }
       // SCRUM-367 / AG-06-RESET: Anti-Mail-Spam. Schlüssel = IP (NICHT die E-Mail → keine Enumeration,
       // identisch für bekannt/unbekannt). Bei Überschreitung: trotzdem 204, aber KEINE Mail versenden —
       // die 204-immer-Semantik bleibt unverändert (kein Leak von Kontoexistenz oder Limit-Zustand).
@@ -657,6 +706,9 @@ export function authRoutes(
     app.post<{ Body: { token: string; newPassword: string } }>(
       "/api/auth/reset",
       async (request, reply) => {
+        if (passwortwegZu(request, reply)) {
+          return;
+        }
         // SCRUM-367 / AG-06-RESET: Token-Bruteforce drosseln. Schlüssel = IP (kein Token im Schlüssel →
         // kein Leak, ob ein Token existiert). NUR fehlgeschlagene Einlösungen zählen (wie beim Login);
         // ein legitimer Single-Reset wird nie blockiert. Bei Sperre: 429 + Retry-After, vor der
@@ -831,6 +883,8 @@ export function authRoutes(
         needsSetup: await service.needsSetup(),
         oidcEnabled: Boolean(options.oidc),
         selfRegistrationEnabled: selfRegistrationEnabled(),
+        // R-0541: derselbe Aufruf, der oben die Passwortwege schliesst — keine zweite Auslegung.
+        passwordLoginEnabled: passwordLoginEnabled(Boolean(options.oidc)),
       });
     });
 

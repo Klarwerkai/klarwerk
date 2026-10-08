@@ -975,6 +975,17 @@ const GRUNDWERTE: readonly Startwert[] = [
     wofuer: "Selbstregistrierung neuer Konten.",
     ohneIhn: "Konten legt nur ein Administrator an (nach der Ersteinrichtung).",
   },
+  // R-0541: der Schalter „nur Firmen-Login" (services/auth/src/routes.ts, `passwordLoginEnabled`).
+  {
+    name: "KLARWERK_SSO_ONLY",
+    bereich: "Anmeldung",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "aus",
+    wofuer:
+      "Schaltet die Anmeldung mit Passwort ab (1/true): es gilt nur noch der Firmen-Login (SSO) und damit dessen Zwei-Faktor-Schutz. Wirkt nur bei vollständig konfiguriertem SSO.",
+    ohneIhn: "Anmeldung mit Passwort und Firmen-Login stehen beide offen.",
+  },
   // ------------------------------------------------------------------------------- Externe Quellen
   {
     name: "EXTERNAL_SEARCH",
@@ -1470,6 +1481,16 @@ export function startbericht(
     maengel.push({
       befund: "SSO ist unvollständig konfiguriert und damit AUS — diese Werte fehlen:",
       betrifft: oidcFehlt,
+    });
+  }
+  // R-0541: „nur Firmen-Login" verlangt, SSO aber nicht aktiv. `passwordLoginEnabled` lässt das
+  // Passwort dann bewusst offen (sonst wäre die Instanz ausgesperrt) — und genau das muss der
+  // Betreiber erfahren, sonst glaubt er an einen Schutz, der nicht wirkt.
+  if (istAn(env.KLARWERK_SSO_ONLY) && oidcFehlt.length > 0) {
+    maengel.push({
+      befund:
+        "Nur-Firmen-Login ist verlangt, aber SSO ist nicht vollständig konfiguriert — die Anmeldung mit Passwort bleibt deshalb OFFEN. Es fehlen:",
+      betrifft: ["KLARWERK_SSO_ONLY", ...oidcFehlt],
     });
   }
   if (istAn(env.KLARWERK_ADDON_API) && !gesetzt(env.KLARWERK_ADDON_API_KEY)) {

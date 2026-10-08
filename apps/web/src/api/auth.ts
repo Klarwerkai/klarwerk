@@ -18,6 +18,9 @@ export interface AuthStatus {
   // UNBEKANNT — nicht „aus". Wer es zu `false` verrechnet, lässt die Maske über eine Instanz
   // urteilen, die dazu nichts gesagt hat (s. `AuthContext`).
   selfRegistrationEnabled?: boolean;
+  // R-0541: `false` heißt „nur Firmen-Login" (KLARWERK_SSO_ONLY bei aktivem SSO). Optional aus
+  // demselben Grund wie oben.
+  passwordLoginEnabled?: boolean;
 }
 
 // AUFTRAG-mega61 Block C: der Vermerk am Konto. `due` entscheidet der SERVER — die Oberfläche
