@@ -2088,10 +2088,16 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
       k = k.parent;
     }
     const p = k.parent;
+    // Nacharbeit 23 (ben): auch eine spätere Ablage per Zuweisung an ein Feld oder Element
+    // (`o.p = p`, `liste[0] = p`) — die Zuweisung an eine Variable verfolgt die Aliaslogik.
     const abgelegt =
       (ts.isPropertyAssignment(p) && p.initializer === k) ||
       ts.isShorthandPropertyAssignment(p) ||
-      ts.isArrayLiteralExpression(p);
+      ts.isArrayLiteralExpression(p) ||
+      (ts.isBinaryExpression(p) &&
+        p.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        p.right === k &&
+        (ts.isPropertyAccessExpression(p.left) || ts.isElementAccessExpression(p.left)));
     if (abgelegt && imPropsFluss(id)) {
       unbekannteBauformen.push(
         `${quelle.datei}:${zeileVon(sf, id)} — Props-Objekt „${id.text}“ wird in einem anderen Objekt oder Array abgelegt: Änderungen darüber kann dieser Sammler nicht verfolgen`,
@@ -2212,6 +2218,12 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
         return;
       }
       if (ts.isIdentifier(n) && n.text === name && !istNurName(n) && !lesend(n)) {
+        veraendert = true;
+        return;
+      }
+      // Nacharbeit 23 (ben): `arguments[0].role = …` erreicht das Argument ohne den
+      // Parameternamen — wer `arguments` benutzt, ist nicht nachweislich lesend.
+      if (ts.isIdentifier(n) && n.text === "arguments" && !istNurName(n)) {
         veraendert = true;
         return;
       }

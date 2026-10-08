@@ -1461,6 +1461,35 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     expect(rot).toHaveLength(6);
   });
 
+  it("Nacharbeit 23: Ablage per Feldzuweisung und Änderung über arguments werden erkannt", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Ablage.tsx": [
+          "function aendere(x: {}): void { arguments[0].role = holeRolle(); }",
+          "export function F(): JSX.Element {",
+          "  const p: { role?: string } = {};",
+          "  aendere(p);",
+          "  const q: { role?: string } = {};",
+          "  const o: { q?: typeof q } = {};",
+          "  o.q = q;",
+          "  o.q.role = holeRolle();",
+          "  const liste: unknown[] = [];",
+          "  liste[0] = q;",
+          "  return <div {...p}><i {...q} /></div>;",
+          "}",
+        ],
+      }),
+    );
+    const an = (stelle: string): string[] => rot.filter((z) => z.includes(stelle));
+    // bens Fall 2 wörtlich: `aendere` benutzt `x` nie, verändert das Argument aber über arguments.
+    expect(an("components/Ablage.tsx:4")[0]).toContain("kann dort verändert werden");
+    // bens Fall 1 wörtlich: die spätere Ablage `o.q = q` — und dieselbe in ein Arrayelement.
+    expect(an("components/Ablage.tsx:7")[0]).toContain("in einem anderen Objekt");
+    expect(an("components/Ablage.tsx:10")[0]).toContain("in einem anderen Objekt");
+    expect(rot).toHaveLength(3);
+  });
+
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
     const { rot } = pruefeModalgrenze(
       legeBaum({
