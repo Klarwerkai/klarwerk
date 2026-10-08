@@ -1,5 +1,6 @@
 import type { Pool, PoolClient, QueryResult } from "pg";
 import { BestandsresetLaeuftError, sperreOderAbweisen } from "./reset-lock";
+import { leiheAus } from "./vorrat";
 
 // ================================================================================================
 // JOB 596 — DIE EINE KAPSELUNG.
@@ -159,8 +160,26 @@ function anweisungstext(wert: unknown): string | undefined {
 // Transaktion offen ist. Hat sie selbst aufgeräumt, sind `ROLLBACK` und `COMMIT` des Aufrufers
 // wirkungslos, bis ein neues `BEGIN` kommt. Der Aufrufer darf seinen Fang unverändert behalten —
 // sein Vertrag bleibt gültig —, und die Datenbank sieht trotzdem genau ein `ROLLBACK`.
+//
+// R-0776 — DIE RÜCKGABE PRÜFT DENSELBEN ZUSTAND. Gibt ein Aufrufer die Verbindung zurück, während
+// nach diesem Zustand noch eine Transaktion offen ist (er hat COMMIT/ROLLBACK übersprungen, oder
+// sein Fang lief nicht), oder ist ein ROLLBACK gescheitert, legt die Hülle sie NICHT in den Vorrat
+// zurück, sondern verwirft sie. Der Server rollt die offene Klammer mit dem Sitzungsende zurück;
+// der nächste Ausleiher bekommt eine frische Verbindung statt eines halben Zustands.
+const OFFEN_ZURUECKGEGEBEN =
+  "Verbindung mit offener Transaktion zurückgegeben — verworfen statt wiederverwendet.";
+
 function gatedClient(client: PoolClient): PoolClient {
   const zustand: GateZustand = { transaktionOffen: false };
+  const ausleihe = leiheAus(client);
+  const zurueckgeben = (fehler?: unknown): void => {
+    const offen = zustand.transaktionOffen;
+    zustand.transaktionOffen = false;
+    if (offen) {
+      ausleihe.verwerfen(new Error(OFFEN_ZURUECKGEGEBEN));
+    }
+    ausleihe.zurueckgeben(fehler);
+  };
 
   const gateQuery = async (...args: unknown[]): Promise<unknown> => {
     const [erstes] = args;
@@ -195,7 +214,17 @@ function gatedClient(client: PoolClient): PoolClient {
         return LEERES_ERGEBNIS;
       }
       zustand.transaktionOffen = false;
-      return (client.query as (...a: unknown[]) => Promise<unknown>)(...args);
+      try {
+        return await (client.query as (...a: unknown[]) => Promise<unknown>)(...args);
+      } catch (fehler) {
+        // Ein gescheitertes ROLLBACK lässt offen, ob die Klammer noch steht — die Verbindung geht
+        // dann nicht zurück in den Vorrat (R-0776). Ein gescheitertes COMMIT beendet die
+        // Transaktion serverseitig ohnehin; dort bleibt es beim Weiterreichen.
+        if (steuerung === "ROLLBACK") {
+          ausleihe.verwerfen(fehler);
+        }
+        throw fehler;
+      }
     }
 
     // ============================================================================================
@@ -230,7 +259,7 @@ function gatedClient(client: PoolClient): PoolClient {
       // Aufgeräumt wird an genau einer Stelle — dieselbe Regel wie im Einzelquery-Weg. Der Zustand
       // bleibt `false`, ein späteres `ROLLBACK` des Aufrufers erreicht die Datenbank deshalb nicht
       // (Fall M5).
-      await client.query("ROLLBACK").catch(() => undefined);
+      await client.query("ROLLBACK").catch((f: unknown) => ausleihe.verwerfen(f));
       throw fehler;
     }
   };
@@ -243,6 +272,9 @@ function gatedClient(client: PoolClient): PoolClient {
     get(ziel, eigenschaft, _empfaenger) {
       if (eigenschaft === "query") {
         return gateQuery;
+      }
+      if (eigenschaft === "release") {
+        return zurueckgeben;
       }
       const wert = Reflect.get(ziel, eigenschaft, ziel);
       return typeof wert === "function" ? (wert as (...a: unknown[]) => unknown).bind(ziel) : wert;
@@ -261,9 +293,13 @@ function gatedClient(client: PoolClient): PoolClient {
 // AUFGERÄUMT WIRD AN GENAU EINER STELLE. Der Fang unten ist die einzige, und `sperreOderAbweisen`
 // stellt nur fest (s. reset-lock.ts). Zwei Aufräumer wären zwei `ROLLBACK` — derselbe Fehler, den
 // der Mehrquery-Weg oben mit dem Zustand vermeidet.
+//
+// R-0776: Scheitert das ROLLBACK oder reißt die Verbindung ab, wird sie verworfen statt in den
+// Vorrat zurückgelegt (s. vorrat.ts).
 export function gatedPool(rohPool: Pool): Pool {
   const gateQuery = async (...args: unknown[]): Promise<unknown> => {
     const client = await rohPool.connect();
+    const ausleihe = leiheAus(client);
     try {
       await client.query("BEGIN");
       await sperreOderAbweisen(client);
@@ -271,10 +307,10 @@ export function gatedPool(rohPool: Pool): Pool {
       await client.query("COMMIT");
       return ergebnis;
     } catch (fehler) {
-      await client.query("ROLLBACK").catch(() => undefined);
+      await client.query("ROLLBACK").catch((f: unknown) => ausleihe.verwerfen(f));
       throw fehler;
     } finally {
-      client.release();
+      ausleihe.zurueckgeben();
     }
   };
 

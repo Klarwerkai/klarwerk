@@ -108,6 +108,8 @@ describe("R-0212 · Konflikt im Anzeigestatus von `/api/kos/:id` und `/api/kos`"
       description: "Widerspruch",
     });
     expect((await detail(admin, a)).anzeigestatus).toBe("konflikt");
+    // R-0215 (Aufnahme gesamt-konfliktklassifikation): verbindlich erst eskalieren, dann entscheiden.
+    await services.conflicts.escalate(konflikt.id, "u-admin");
     await services.conflicts.resolve(konflikt.id, "u-admin", "A gilt");
     expect((await detail(admin, a)).anzeigestatus).toBe("offen");
   });
