@@ -14,6 +14,11 @@
 // „Links gilt / Rechts gilt / Beide gelten, je nach Kontext / Kein Widerspruch" und rechts der
 // Textlink „Zweitmeinung anfragen".
 //
+// R-0252: VOR den Karten steht ein Satz, welche Art von Arbeit vorliegt (Regel, Sache, Version), und
+// das Band richtet sich danach (`lib/conflictView.ts`, `conflictWorkActions`): der Sachkonflikt
+// behält genau die Knöpfe oben; der Regelkonflikt bietet keine Zweitmeinung an; der
+// Versionskonflikt fragt „Linker/Rechter Stand gilt", ohne „Beide gelten" und ohne Zweitmeinung.
+//
 // NICHTS GEHT VERLOREN (Auftrag §11): Eskalieren, Eskalationspfad, Vergleichsseite und Details
 // liegen im „···" jeder Karte; Herkunft, Sicherheit, Begründung, Zitate, Bedingungen, Maßnahmen,
 // Quellen, Status, nächster Schritt, Beweislage und der Wirkungssatz liegen im „Mehr" jeder Karte;
@@ -73,6 +78,8 @@ import {
   conflictEvidenceBalance,
   conflictKoPair,
   conflictNextStep,
+  conflictWorkActions,
+  conflictWorkKind,
   resolutionEffect,
 } from "../lib/conflictView";
 import { leseFall } from "../lib/fallAbsprung";
@@ -316,6 +323,18 @@ export function Conflicts(): JSX.Element {
     // KEIN Satz über die Abwesenheit — Nichtwissen wird nicht zu einer Auskunft.
     const beschreibung = redigiert || origin.isAuto ? "" : (c.description ?? "").trim();
 
+    // R-0252: die Art der Arbeit steht VOR den Karten — EIN Satz, flach, ohne Aufklappen. Er sagt
+    // dazu, ob die Einordnung bei der Anlage gewählt oder aus der Art abgeleitet wurde. Das Band
+    // darunter richtet sich nach ihr (`conflictWorkActions`). Die Arbeitsart ist eine Einordnung,
+    // kein Inhalt: sie bleibt auch bei Redaktion stehen (Redaktion leert Text und Zitate).
+    const arbeit = conflictWorkKind(c);
+    const band = conflictWorkActions(arbeit.kind);
+    const arbeitSatz = `${t(`konfliktarbeit.satz.${arbeit.kind}`)} ${
+      arbeit.ausdruecklich
+        ? t("konfliktarbeit.gewaehlt")
+        : t("konfliktarbeit.abgeleitet", { art: t(`con.type.${c.type}`) })
+    }`;
+
     const mehr = (seite: "a" | "b"): JSX.Element => {
       const ko = seite === "a" ? pair.a : pair.b;
       const zitat = seite === "a" ? origin.quoteA : origin.quoteB;
@@ -510,6 +529,10 @@ export function Conflicts(): JSX.Element {
           ) : null}
         </PruefenPaarZeile>
 
+        <p data-testid="konflikt-arbeitsart" className="text-[13px] leading-relaxed text-muted">
+          {arbeitSatz}
+        </p>
+
         {/* Ohne Beschriftung — und das ist eine Entscheidung, keine Lücke: es gibt keinen
             bestehenden Schlüssel, der „der bei der Anlage erfasste Satz" sachlich richtig benennt
             (`con.autoWhy` = „Begründung" gehört dem automatischen Befund und würde die zwei
@@ -558,7 +581,7 @@ export function Conflicts(): JSX.Element {
                 oeffneAufloesung(t("con.prefill.side", { title: pair.a?.title ?? "" }))
               }
             >
-              {t("con.side.left")}
+              {t(band.linksKey)}
             </PruefenKnopf>
             <PruefenKnopf
               ton="primaer"
@@ -567,14 +590,16 @@ export function Conflicts(): JSX.Element {
                 oeffneAufloesung(t("con.prefill.side", { title: pair.b?.title ?? "" }))
               }
             >
-              {t("con.side.right")}
+              {t(band.rechtsKey)}
             </PruefenKnopf>
-            <PruefenKnopf
-              kennung="beide-gelten"
-              onClick={() => oeffneAufloesung(t("con.prefill.both"))}
-            >
-              {t("con.side.both")}
-            </PruefenKnopf>
+            {band.beideGelten ? (
+              <PruefenKnopf
+                kennung="beide-gelten"
+                onClick={() => oeffneAufloesung(t("con.prefill.both"))}
+              >
+                {t("con.side.both")}
+              </PruefenKnopf>
+            ) : null}
             {canDismiss(c) ? (
               <PruefenKnopf
                 kennung="kein-widerspruch"
@@ -584,16 +609,18 @@ export function Conflicts(): JSX.Element {
                 {t("con.side.none")}
               </PruefenKnopf>
             ) : null}
-            <PruefenBandLink
-              kennung="zweitmeinung"
-              onClick={() => {
-                setErr(null);
-                setOpinion("");
-                setOpinionId(opinionId === c.id ? null : c.id);
-              }}
-            >
-              {t("con.secondOpinionAdd")}
-            </PruefenBandLink>
+            {band.zweitmeinung ? (
+              <PruefenBandLink
+                kennung="zweitmeinung"
+                onClick={() => {
+                  setErr(null);
+                  setOpinion("");
+                  setOpinionId(opinionId === c.id ? null : c.id);
+                }}
+              >
+                {t("con.secondOpinionAdd")}
+              </PruefenBandLink>
+            ) : null}
           </PruefenAktionsband>
         ) : null}
 

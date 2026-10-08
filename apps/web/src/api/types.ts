@@ -781,6 +781,8 @@ export interface TrashedKo {
 
 export type ConflictType = "truth" | "experience" | "context" | "temporal" | "role";
 export type ConflictStatus = "offen" | "eskaliert" | "zweitmeinung" | "geloest";
+// R-0252: die Art der nötigen Arbeit (Regel/Sache/Version) — Spiegel von services/conflicts/src/types.ts.
+export type ConflictWorkKind = "regel" | "sache" | "version";
 
 // Berater-Konzept 04.07. (Stufe 4): Herkunft + Erkennungs-Metadaten eines automatisch erkannten
 // Konflikts — macht den Fund am Board erklärbar (Sicherheit, Begründung, wörtliche Zitate).
@@ -815,6 +817,8 @@ export interface Conflict {
   koA: string;
   koB: string;
   type: ConflictType;
+  // R-0252: nur gesetzt, wenn ein Mensch sie bei der Anlage gewählt hat (sonst abgeleitet).
+  arbeitsart?: ConflictWorkKind;
   description: string;
   status: ConflictStatus;
   secondOpinion: string | null;

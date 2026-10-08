@@ -30,6 +30,7 @@ import {
 import type {
   Confidentiality,
   ConflictType,
+  ConflictWorkKind,
   ExternalResult,
   KnowledgeObject,
 } from "../../api/types";
@@ -298,6 +299,10 @@ const CONFLICT_TYPES: readonly ConflictType[] = [
   "temporal",
   "role",
 ];
+
+// R-0252: die wählbaren Arbeitsarten. Die leere Wahl („aus der Art ableiten") schickt kein Feld —
+// die Konfliktseite leitet dann ab und sagt das dazu.
+const CONFLICT_WORK_KINDS: readonly ConflictWorkKind[] = ["regel", "sache", "version"];
 
 const textareaCls =
   "w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none focus:border-ink/30";
@@ -942,7 +947,12 @@ export function MehrAbschnitte({
   };
 
   // ---- Konflikt melden -------------------------------------------------------------------------
-  const [conflict, setConflict] = useState({ koB: "", type: "truth" as ConflictType, desc: "" });
+  const [conflict, setConflict] = useState({
+    koB: "",
+    type: "truth" as ConflictType,
+    arbeitsart: "" as ConflictWorkKind | "",
+    desc: "",
+  });
   const [pickOpen, setPickOpen] = useState(false);
   const conflictTitle = (koList.data ?? []).find((k) => k.id === conflict.koB)?.title ?? "";
   const report = useMutation({
@@ -953,12 +963,13 @@ export function MehrAbschnitte({
           koA: id,
           koB: conflict.koB,
           type: conflict.type,
+          ...(conflict.arbeitsart ? { arbeitsart: conflict.arbeitsart } : {}),
           description: conflict.desc,
         },
       }),
     onSuccess: () => {
       invalidate();
-      setConflict({ koB: "", type: "truth", desc: "" });
+      setConflict({ koB: "", type: "truth", arbeitsart: "", desc: "" });
     },
     onError: fehlerToast,
   });
@@ -1261,6 +1272,22 @@ export function MehrAbschnitte({
                 {CONFLICT_TYPES.map((ct) => (
                   <option key={ct} value={ct}>
                     {t(`con.type.${ct}`)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t("konfliktarbeit.feld")}>
+              <select
+                value={conflict.arbeitsart}
+                onChange={(e) =>
+                  setConflict({ ...conflict, arbeitsart: e.target.value as ConflictWorkKind | "" })
+                }
+                className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
+              >
+                <option value="">{t("konfliktarbeit.feld.automatisch")}</option>
+                {CONFLICT_WORK_KINDS.map((wk) => (
+                  <option key={wk} value={wk}>
+                    {t(`konfliktarbeit.name.${wk}`)}
                   </option>
                 ))}
               </select>

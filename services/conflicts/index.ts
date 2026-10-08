@@ -6,9 +6,12 @@ export type { ConflictServiceDeps, DryRunConflict } from "./src/service";
 export { InMemoryConflictRepo, type ConflictRepo, type IsKoVersionCurrent } from "./src/repo";
 export { PgConflictRepo, CONFLICTS_SCHEMA } from "./src/repo-pg";
 export { ConflictError } from "./src/types";
+// R-0252: die Arbeitsart (Regel/Sache/Version) — das Prädikat prüft den Drahtwert der Anlage-Route.
+export { isConflictWorkKind } from "./src/types";
 export type {
   Conflict,
   ConflictType,
+  ConflictWorkKind,
   ConflictStatus,
   ConflictInput,
   ConflictErrorCode,

@@ -94,6 +94,8 @@ export class ConflictService {
       koA: input.koA,
       koB: input.koB,
       type: input.type,
+      // R-0252: die ausdrücklich gewählte Arbeitsart — nur wenn ein Mensch sie gewählt hat.
+      ...(input.arbeitsart !== undefined ? { arbeitsart: input.arbeitsart } : {}),
       description: input.description,
       status: "offen",
       secondOpinion: null,

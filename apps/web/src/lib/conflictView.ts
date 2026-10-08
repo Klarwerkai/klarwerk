@@ -1,7 +1,7 @@
 // Reine, DOM-freie Logik fürs Conflict Board (SCRUM-127 / SCRUM-128).
 // Keine Backend-Änderung, keine KO-Mutation: nur Auflösung von IDs zu echten KOs
 // und die fachliche Definition der (Nicht-)Wirkung einer Konfliktauflösung.
-import type { Conflict, KnowledgeObject } from "../api/types";
+import type { Conflict, ConflictWorkKind, KnowledgeObject } from "../api/types";
 
 export interface ConflictKoPair {
   a: KnowledgeObject | null;
@@ -81,29 +81,97 @@ export function resolutionEffect(conflict: Pick<Conflict, "type">): ResolutionEf
   };
 }
 
+// ================================================================================================
+// R-0252 (Aufnahme gesamt-konfliktklassifikation) — WELCHE ART VON ARBEIT LIEGT VOR?
+// ================================================================================================
+//
+// Die Fläche sagt VOR dem Inhalt, womit der Prüfende es zu tun hat — und bietet je Arbeitsart
+// andere Knöpfe an:
+//   regel   — zwei interne Festlegungen; keine Quelle entscheidet, nur eine befugte Person
+//             (die Entscheidung verlangt ohnehin `conflict.resolve`). Keine Zweitmeinung im Band.
+//   sache   — durch Belege entscheidbar. Das bisherige Band, unverändert.
+//   version — dieselbe Sache in zwei Ständen. „Welcher Stand gilt", kein „beide gelten", keine
+//             Zweitmeinung.
+//
+// DIE ACHSE IST EINE ZWEITE, NICHT DIE FÜNF ARTEN NOCHMAL (Registernotiz zu R-0252). Ausdrücklich
+// gewählt wird sie nur bei der manuellen Anlage. Fehlt sie, wird sie aus der Art ABGELEITET — und
+// die Fläche sagt das dazu, statt eine Ableitung als Feststellung auszugeben:
+//   truth      → sache   (Wahrheit: was stimmt, zeigen Belege)
+//   experience → sache   (Erfahrungen lassen sich an Beobachtungen und Nachweisen messen)
+//   temporal   → version (die Erkennung legt „überholt" als Zeitkonflikt an: zwei Stände)
+//   context    → regel   (wo welche Festlegung gilt, legt eine befugte Person fest)
+//   role       → regel   (Festlegungen verschiedener Rollen — dieselbe Frage)
+// GRENZE, benannt: ein automatisch erkannter Widerspruch zweier interner Festlegungen ist „truth"
+// und erscheint deshalb als Sachkonflikt. Eine Umordnung nach der Anlage gibt es nicht.
+export interface ConflictWorkKindInfo {
+  kind: ConflictWorkKind;
+  /** true = bei der Anlage gewählt; false = aus der Art abgeleitet. */
+  ausdruecklich: boolean;
+}
+
+const ABGELEITETE_ARBEITSART: Readonly<Record<Conflict["type"], ConflictWorkKind>> = {
+  truth: "sache",
+  experience: "sache",
+  temporal: "version",
+  context: "regel",
+  role: "regel",
+};
+
+export function conflictWorkKind(
+  conflict: Pick<Conflict, "type" | "arbeitsart">,
+): ConflictWorkKindInfo {
+  if (conflict.arbeitsart) {
+    return { kind: conflict.arbeitsart, ausdruecklich: true };
+  }
+  return { kind: ABGELEITETE_ARBEITSART[conflict.type] ?? "sache", ausdruecklich: false };
+}
+
+/** Das Band je Arbeitsart: Beschriftung der zwei Seitenknöpfe und welche Zusatzwege es gibt. */
+export interface ConflictWorkActions {
+  linksKey: string;
+  rechtsKey: string;
+  beideGelten: boolean;
+  zweitmeinung: boolean;
+}
+
+export function conflictWorkActions(kind: ConflictWorkKind): ConflictWorkActions {
+  if (kind === "version") {
+    return {
+      linksKey: "konfliktarbeit.knopf.standLinks",
+      rechtsKey: "konfliktarbeit.knopf.standRechts",
+      beideGelten: false,
+      zweitmeinung: false,
+    };
+  }
+  return {
+    linksKey: "con.side.left",
+    rechtsKey: "con.side.right",
+    beideGelten: true,
+    zweitmeinung: kind === "sache",
+  };
+}
+
 // SCRUM-252: genau EINE sinnvolle nächste Handlung aus Art + Status ableiten.
 // Verweist nur auf bestehende echte Aktionen (escalate/secondOpinion/resolve) — keine neue Logik,
 // keine automatische Lösung. Spiegelt die Aktionsverfügbarkeit der Konfliktseite wider:
 //  - gelöst                       → keine offene Handlung (done)
-//  - Wahrheitskonflikt, offen     → an einen Menschen eskalieren
-//  - Wahrheitskonflikt, eskaliert → Zweitmeinung einholen
-//  - Wahrheitskonflikt, Zweitm.   → entscheiden/lösen
-//  - Nicht-Wahrheit (nicht eskalierbar): offen → Zweitmeinung, Zweitm. → entscheiden/lösen.
+//  - Wahrheitskonflikt, offen     → an einen Menschen eskalieren (R-0215: nur er, und er zwingend)
+//  - Sachkonflikt (auch Wahrheit, eskaliert): offen/eskaliert → Zweitmeinung, Zweitm. → entscheiden
+//  - R-0252: Regel- und Versionskonflikt → entscheiden; eine Zweitmeinung bietet das Band dort
+//    nicht an (keine Quelle entscheidet eine Festlegung; bei zwei Ständen wird der geltende gewählt).
 export type ConflictNextStep = "escalate" | "secondOpinion" | "resolve" | "done";
 
-export function conflictNextStep(conflict: Pick<Conflict, "type" | "status">): ConflictNextStep {
+export function conflictNextStep(
+  conflict: Pick<Conflict, "type" | "status" | "arbeitsart">,
+): ConflictNextStep {
   if (conflict.status === "geloest") {
     return "done";
   }
-  if (conflict.type === "truth") {
-    if (conflict.status === "offen") {
-      return "escalate";
-    }
-    if (conflict.status === "eskaliert") {
-      return "secondOpinion";
-    }
-    return "resolve"; // zweitmeinung
+  if (conflict.type === "truth" && conflict.status === "offen") {
+    return "escalate";
   }
-  // Nicht-Wahrheitskonflikte sind nicht eskalierbar: erst Zweitmeinung, dann entscheiden.
+  if (!conflictWorkActions(conflictWorkKind(conflict).kind).zweitmeinung) {
+    return "resolve";
+  }
   return conflict.status === "zweitmeinung" ? "resolve" : "secondOpinion";
 }

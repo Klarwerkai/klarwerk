@@ -1,11 +1,12 @@
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import type { AuditService } from "../../../audit";
-import type {
-  ConflictInput,
-  ConflictService,
-  ConflictType,
-  OverlapService,
-  OverlapSettingsRepo,
+import {
+  type ConflictInput,
+  type ConflictService,
+  type ConflictType,
+  type OverlapService,
+  type OverlapSettingsRepo,
+  isConflictWorkKind,
 } from "../../../conflicts";
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE_STAGE,
@@ -3564,6 +3565,14 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             }
             if (!body.conflict) {
               return badRequest("conflict fehlt.");
+            }
+            // R-0252: die Arbeitsart ist optional; steht sie da, muss sie eine der drei sein. Ein
+            // unbekannter Wert würde sonst als Auskunft „Art der Arbeit" am Konflikt stehen.
+            if (
+              body.conflict.arbeitsart !== undefined &&
+              !isConflictWorkKind(body.conflict.arbeitsart)
+            ) {
+              return badRequest("conflict.arbeitsart muss eines von regel, sache, version sein.");
             }
             reply.code(201).send(await konfliktAnlegen(body.conflict, user.id));
             return;

@@ -248,12 +248,20 @@ const umriss = (): string => {
  * soll: Ist die Konfliktfläche im AUTOMATISCHEN Fall absichtlich anders geworden? Dann gehört der
  * neue Umriss hier hinein — und in die Rückgabe des ändernden Jobs, mit Begründung. Wer ihn ohne
  * diese Frage überschreibt, hebt den Wächter auf.
+ *
+ * NACHGEFÜHRT, ABSICHTLICH (Aufnahme gesamt-konfliktklassifikation, R-0252): „Das System sagt
+ * vorab, welche Art von Arbeit vor einem liegt." Dafür steht im AUTOMATISCHEN wie im manuellen Fall
+ * GENAU EINE neue Zeile zwischen Kopfzeile und Kartenpaar: `p#konflikt-arbeitsart`. Sonst ist der
+ * Umriss Zeichen für Zeichen der am Basisstand `883db64` gemessene — der Wahrheitskonflikt ist ein
+ * Sachkonflikt und behält sein Band unverändert. Die Frage dieses Pins bleibt also beantwortbar:
+ * eine Zeile kam dazu, keine ging weg, nichts wurde vertauscht, die Beschreibung steht nirgends.
  */
 const AUTOMATIK_UMRISS_BASIS = `div#pruefen-flaeche
   div
     div "Beitrag A"
     span#pruefen-pille-lauf "1 von 1"
     span#pruefen-pille-art "Wahrheit"
+  p#konflikt-arbeitsart "Sachkonflikt: durch Belege entscheidbar — welche Aussage zutrifft, zeigen Quellen und Nachweise. Eingeordnet nach der Art „Wahrheit“."
   div#pruefen-paar
     div#pruefen-paar-karte-a
       div

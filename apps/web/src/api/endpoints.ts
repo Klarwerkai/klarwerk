@@ -31,6 +31,7 @@ import type {
   Conflict,
   ConflictSelfTestResult,
   ConflictType,
+  ConflictWorkKind,
   DemoPackageListResponse,
   DemoPackagePreview,
   DemoPackageResult,
@@ -349,7 +350,14 @@ export type KoAction =
   | { action: "confidentiality"; level: Confidentiality }
   | {
       action: "conflict";
-      conflict: { koA: string; koB: string; type: ConflictType; description: string };
+      // R-0252: `arbeitsart` optional — fehlt sie, leitet die Konfliktseite sie aus `type` ab.
+      conflict: {
+        koA: string;
+        koB: string;
+        type: ConflictType;
+        arbeitsart?: ConflictWorkKind;
+        description: string;
+      };
     }
   | { action: "resolve-conflict"; conflictId: string; decision: string }
   | { action: "transfer-author"; newAuthor: string }

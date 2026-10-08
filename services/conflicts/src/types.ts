@@ -3,6 +3,25 @@ export type ConflictType = "truth" | "experience" | "context" | "temporal" | "ro
 
 export type ConflictStatus = "offen" | "eskaliert" | "zweitmeinung" | "geloest";
 
+// R-0252 (Aufnahme gesamt-konfliktklassifikation): die ART DER NÖTIGEN ARBEIT — eine zweite Achse
+// neben `ConflictType`, nicht deren Ersatz. Die fünf Arten sagen, wie ein Konflikt auf den
+// Vertrauenswert wirkt (und dass nur „truth" eskaliert); die Arbeitsart sagt dem Prüfenden VORAB,
+// womit er es zu tun hat:
+//   regel   — zwei interne Festlegungen; keine Quelle der Welt entscheidet, nur eine befugte Person,
+//   sache   — durch Belege entscheidbar,
+//   version — dieselbe Sache in zwei Ständen.
+// Additiv/optional, JSON-persistiert (keine Migration). Gesetzt wird sie nur, wenn ein Mensch sie
+// bei der manuellen Anlage ausdrücklich wählt; fehlt sie, leitet die Oberfläche sie aus der Art ab
+// und sagt dazu, dass es eine Ableitung ist (apps/web/src/lib/conflictView.ts, `conflictWorkKind`).
+export type ConflictWorkKind = "regel" | "sache" | "version";
+
+export const CONFLICT_WORK_KINDS: readonly ConflictWorkKind[] = ["regel", "sache", "version"];
+
+/** Prüft den rohen Drahtwert, BEVOR er den Dienst erreicht (Muster `isHumanOverlapCloseReason`). */
+export function isConflictWorkKind(wert: unknown): wert is ConflictWorkKind {
+  return typeof wert === "string" && (CONFLICT_WORK_KINDS as readonly string[]).includes(wert);
+}
+
 // Konzept 04.07. (Stufe 1): warum ein Konflikt endete. Additiv/optional — Alt-Daten haben das
 // Feld nicht (JSON-persistiert, keine DB-Migration). "participant_deleted" = ein Beteiligter
 // wurde gelöscht (systemische Beendigung, kein menschlicher Entscheider).
@@ -54,6 +73,8 @@ export interface Conflict {
   koA: string;
   koB: string;
   type: ConflictType;
+  // R-0252: ausdrücklich gewählte Arbeitsart (s. ConflictWorkKind). Fehlt = nicht gewählt.
+  arbeitsart?: ConflictWorkKind;
   description: string;
   status: ConflictStatus;
   secondOpinion: string | null;
@@ -91,6 +112,8 @@ export interface ConflictInput {
   koA: string;
   koB: string;
   type: ConflictType;
+  // R-0252: optional — nur die manuelle Anlage reicht sie durch.
+  arbeitsart?: ConflictWorkKind;
   description: string;
   // D-AISTATE PAKET 4 (bens V5): geprüfte KO-Versionen (additiv, optional).
   koAVersion?: number;
