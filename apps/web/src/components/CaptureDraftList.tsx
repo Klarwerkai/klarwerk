@@ -46,6 +46,7 @@ import {
 } from "../lib/draftListView";
 import { formatKoTimestamp } from "../lib/koDates";
 import { usePersistentEnum, usePersistentString } from "../lib/usePersistentValue";
+import { HelpTip } from "./HelpTip";
 import { Button, Card, SectionLabel } from "./ui";
 
 // Ehrlicher, lokalisierbarer Zeitstempel (dieselbe Darstellung wie zuvor inline in Capture).
@@ -663,6 +664,12 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <SectionLabel>{t("capture.resumeTitle")}</SectionLabel>
+          {/* R-0888 (gesamt-hilfen, Nacharbeit 13): die Abschnittserklärung in der Seitenhilfe —
+              berichtigt um den gemeinsamen Pool (Begründung in `texte/abschnittshilfe.ts`). */}
+          <HelpTip
+            title={t("capture.resumeTitle")}
+            body={t("abschnittshilfe.capture.resumeTitle")}
+          />
           {/* AUFTRAG-mega38 BLOCK J4: die Reichweiten-Plakette ist eine ADMIN-Auskunft. Für alle
               anderen stand dort „Meine Entwürfe" neben einer Überschrift, die schon „Entwürfe
               fortsetzen" heisst — doppelt gesagt und im Admin-Fall („ADMIN-ANSICHT: ALLE
