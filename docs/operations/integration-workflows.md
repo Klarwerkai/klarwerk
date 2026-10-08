@@ -7,6 +7,14 @@
 > Integrationsfläche** — sie behauptet **keine** aktive Drittanbindung.
 > Verwandt: `docs/onboarding/user-quickstart.md`, `docs/demo/stage-1-demo-path.md`,
 > `secrets-management.md`, `monitoring-logging.md`, `gdpr-compliance-runbook.md`, `deploy-hetzner.md`.
+>
+> **Nachtrag (Aufnahme gesamt-integrations-api, Oktober 2026):** Es gibt jetzt **Dienst-Schlüssel**
+> für Maschinen (eigener Kopf `x-klarwerk-service-key`, eigene Rechte und eigene Anfragegrenze je
+> Schlüssel, wechselbar über mehrere Prüfsummen), eine **Zugriffsbremse** für modellgestützte
+> Anfragen angemeldeter Nutzer, eine **verbindliche Zustandstabelle** und eine **OpenAPI-
+> Beschreibung**. Maßgeblich dafür ist `docs/architektur/integrations-schnittstelle.md`. Die
+> Aussagen unten zu „keine API-Keys / kein Rate-Limit" (§2, §3, §8, §9) beschreiben den Stand vor
+> diesem Nachtrag. Eine produktive Drittanbindung ist weiterhin **nicht** belegt (§10).
 
 ---
 

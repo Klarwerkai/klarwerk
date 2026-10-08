@@ -92,6 +92,7 @@ import {
   imageWidthPercent,
   normalizeImageWidth,
 } from "../lib/imageResize";
+import { kiBremsSatz } from "../lib/kiBremse";
 // JOB 3095: die eine Quelle des Onlinezustands (JOB 3084) für den ehrlichen Offline-Satz der Bildsuche.
 import { useNetzOnline } from "../lib/netzzustand";
 import {
@@ -142,7 +143,9 @@ const BLOCK_BTN_CLASS: Record<EditorBlock, string> = {
 type CaptionAiState =
   | null
   | { status: "loading" }
-  | { status: "fallback"; messageKey: string }
+  // R-0842: `satz` = der Wartesatz des Servers, wenn die KI-Bremse abgewiesen hat. Er steht dann
+  // statt des übersetzten `messageKey`, weil nur er die Wartezeit kennt.
+  | { status: "fallback"; messageKey: string; satz?: string }
   // WP-BILD-1f: withContext = der Vorschlag wurde mit umgebendem Dokument-Kontext erzeugt.
   // JOB 2402 D1 (TV1 Scheibe b): `titelVorschlag` reist im SELBEN Zustand mit — er stammt aus
   // demselben describe-Lauf. `null` heisst „nicht ableitbar" und wird als solches ANGEZEIGT; es
@@ -1281,10 +1284,16 @@ export function RichTextEditor({
             }
           : { status: "fallback", messageKey: outcome.messageKey },
       );
-    } catch {
+    } catch (fehler) {
       // Netz-/Serverfehler (inkl. 413-Größendeckel) → ehrliche Fehlermeldung, kein Pseudo-Text.
+      // R-0842: hat die KI-Bremse abgewiesen, reist ihr Satz mit Wartezeit bis ins Formular.
       if (stillCurrent()) {
-        report({ status: "fallback", messageKey: CAPTION_AI_TEXT.fallbackError });
+        const satz = kiBremsSatz(fehler);
+        report({
+          status: "fallback",
+          messageKey: CAPTION_AI_TEXT.fallbackError,
+          ...(satz ? { satz } : {}),
+        });
       }
     }
   };
@@ -3261,7 +3270,7 @@ export function RichTextEditor({
                   data-testid="caption-form-fallback"
                   className="mt-2 rounded-btn bg-trust-warn-bg px-2 py-1.5 text-[11.5px] leading-relaxed text-trust-warn-text"
                 >
-                  {t(captionFormAi.messageKey)}
+                  {captionFormAi.satz ?? t(captionFormAi.messageKey)}
                 </p>
               ) : null}
               {captionFormAi === null ? (

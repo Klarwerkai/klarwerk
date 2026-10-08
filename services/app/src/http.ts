@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { type AuthService, type Role, meldung, sprache } from "../../auth";
 import { type Permission, can } from "../../rbac";
+import { dienstSitzungsnutzer } from "./dienst-schluessel";
 
 // Gemeinsamer HTTP-Baustein der App: Auth-Guard, RBAC-Guard und einheitliches
 // Fehler-Mapping für alle modulübergreifenden Routen (FR-RBAC-04: serverseitig).
@@ -223,6 +224,12 @@ export function makeGuards(
     request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<SessionUser | undefined> => {
+    // Aufnahme gesamt-integrations-api: ein im Anmeldehook bestätigter Dienst-Schlüssel gilt NUR auf
+    // seinen Routen und nur mit der dort genannten schmalen Rolle (`dienst-schluessel.ts`).
+    const dienst = dienstSitzungsnutzer(request);
+    if (dienst) {
+      return dienst;
+    }
     const token = tokenFromRequest(request);
     const user = token ? await auth.authenticate(token) : undefined;
     if (!user) {
