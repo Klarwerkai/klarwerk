@@ -59,6 +59,14 @@ interface Ansicht {
   beweis: string[];
   /** Ein Bedienelement, das vor der Aufnahme geklickt wird (die Sprachwahl der Erklärseite). */
   klick?: string;
+  /**
+   * Die Station zeigt einen bestimmten Konflikt: die Konfliktseite zeigt immer genau EINEN, den
+   * jüngsten zuerst (`lib/findingGroups.ts`, nach `createdAt` absteigend). Welcher der beiden
+   * Demo-Konflikte das ist, hängt davon ab, ob sie in derselben Millisekunde entstanden — die
+   * Vorwahl über `?fall=<id>` (derselbe Weg wie aus der Aufgabenliste, `lib/fallAbsprung.ts`)
+   * macht die Ansicht davon unabhängig.
+   */
+  mitFall?: true;
 }
 
 /** Der Bildname je Sprache — derselbe, den der Vorführweg verlinkt. */
@@ -115,7 +123,9 @@ function ansichten(sprache: Sprache): readonly Ansicht[] {
       kennung: "konflikte",
       pfad: "/konflikte",
       warteAuf: '[data-testid="page-konflikte"]',
-      beweis: [de ? "Kaltstart" : "cold start"],
+      // Beide Seiten des Vorwärmungs-Konflikts, so wie die Station sie beschreibt.
+      beweis: [t.koWarm.title, t.koNoWarm.title],
+      mitFall: true,
     },
     {
       kennung: "importwege",
@@ -136,6 +146,8 @@ const SICHTBAR = "(liste) => liste.every((text) => document.body.innerText.inclu
 for (const sprache of ["de", "en"] as const) {
   describe(`Vorführweg · Bildschirmansichten der gebauten Fassung mit Demodaten (${sprache})`, () => {
     let stand: Stand;
+    /** Die Kennung des Vorwärmungs-Konflikts, gelesen über die echte Route. */
+    let vorwaermung = "";
 
     beforeAll(async () => {
       mkdirSync(ZIEL, { recursive: true });
@@ -159,6 +171,20 @@ for (const sprache of ["de", "en"] as const) {
         if ((laden.json() as { skipped: boolean }).skipped) {
           throw new Error("Demodaten laden: übersprungen — der Bestand ist nicht der erwartete");
         }
+        const offen = await app.inject({
+          method: "GET",
+          url: "/api/conflicts",
+          headers: { authorization: `Bearer ${token}` },
+        });
+        type Fall = { id: string; detector?: { kollision?: { streitpunkt?: string } } };
+        const streitpunkt = DEMO_TEXTS[sprache].warmConflict.streitpunkt;
+        const fall = (offen.json() as Fall[]).find(
+          (c) => c.detector?.kollision?.streitpunkt === streitpunkt,
+        );
+        if (!fall) {
+          throw new Error(`Konflikt „${streitpunkt}“ fehlt nach dem Laden der Demodaten`);
+        }
+        vorwaermung = fall.id;
       });
       if (sprache !== "de" && stand.fehler === null) {
         // Die Sprachwahl des Produkts — gewartet wird auf `<html lang>`, nicht auf eine Frist.
@@ -177,7 +203,8 @@ for (const sprache of ["de", "en"] as const) {
     for (const ansicht of ansichten(sprache)) {
       it(`${ansicht.kennung}: zeigt sein Demo-Ergebnis und wird als Bild abgelegt`, async () => {
         expect(stand.fehler).toBeNull();
-        await wechsle(stand, ansicht.pfad, ansicht.warteAuf);
+        const pfad = ansicht.mitFall ? `${ansicht.pfad}?fall=${q(vorwaermung)}` : ansicht.pfad;
+        await wechsle(stand, pfad, ansicht.warteAuf);
         expect(stand.fehler, `${ansicht.kennung}: Station nicht erreicht`).toBeNull();
         const seite = stand.seite;
         if (seite === null) return;
