@@ -305,6 +305,13 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "R-0263 — Paar-Tor je Eintrag, Geltungsbereich hinter feldFreigabe.",
   },
+  // R-0252 (Nacharbeit 6): der Einordnungsweg ändert UND antwortet mit dem Konflikt — deshalb das
+  // Paar-Tor vor der Änderung (unsichtbar ⇒ 404, nichts geändert) und die Antwort durch
+  // feldFreigabe/redigiereKonflikt wie der Detailweg.
+  "POST /api/conflicts/:id/arbeitsart": {
+    urteil: "PRAEDIKAT",
+    grund: "R-0252 — Paar-Tor vor der Einordnung, Antwort redigiert wie GET /api/conflicts/:id.",
+  },
   "GET /api/duplicates": { urteil: "PRAEDIKAT", grund: "Block D — Eigenanteile/Aspekte." },
   "GET /api/duplicates/:id": { urteil: "PRAEDIKAT", grund: "Block D — Paar-Tor." },
   // AUFTRAG-mega76 BLOCK C: war `PRAEDIKAT_IM_MODUL` — das schwächere Urteil „irgendwo in
@@ -799,7 +806,6 @@ const REGISTER: Record<string, Eintrag> = {
     "PUT /api/library/import/candidates/:id": "ko.validate.",
     "POST /api/admin/import/cleanup": "users.manage.",
     "POST /api/conflicts/:id/escalate": "conflict.resolve.",
-    "POST /api/conflicts/:id/arbeitsart": "conflict.resolve.",
     "POST /api/conflicts/:id/dismiss": "conflict.resolve.",
     "POST /api/conflicts/:id/second-opinion": "ko.validate.",
     "POST /api/duplicates/:id/dismiss": "ko.validate.",

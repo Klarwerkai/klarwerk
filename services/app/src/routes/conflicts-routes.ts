@@ -312,6 +312,13 @@ export function conflictRoutes(
     // R-0252 (Aufnahme gesamt-konfliktklassifikation, Nacharbeit 5): der Einordnungsweg. Eine
     // befugte Person ordnet einen Konflikt als Regel-, Sach- oder Versionskonflikt ein — dasselbe
     // Recht wie Eskalieren und Entscheiden. Die Form wird hier geprüft, der Rest im Dienst.
+    //
+    // Nacharbeit 6 (Ben): das Recht allein genügt nicht. `conflict.resolve` sagt nichts darüber, ob
+    // dieser Mensch das PAAR sehen darf (Stufe, Space). Deshalb dieselben zwei Stufen wie der
+    // Detailweg `GET /api/conflicts/:id` darüber: erst `paarSichtbar` — ein unsichtbarer Konflikt
+    // sieht aus wie ein fehlender (404) und wird NICHT verändert —, dann die Antwort durch
+    // `feldFreigabe` + `redigiereKonflikt`, damit Beschreibung, Belegzitate und Klaras
+    // vorgeschlagener Geltungsbereich nicht über diesen Weg hinausgehen, wo der Lesweg sie zurückhält.
     app.post<{ Params: { id: string }; Body: { arbeitsart?: unknown } | null }>(
       "/api/conflicts/:id/arbeitsart",
       async (request, reply) => {
@@ -327,8 +334,15 @@ export function conflictRoutes(
           });
           return;
         }
+        const vorher = await conflicts.get(request.params.id);
+        if (!vorher || !(await paarSichtbar(user, vorher.koA, vorher.koB, kos))) {
+          reply.code(404).send({ error: "NOT_FOUND", message: "Konflikt nicht gefunden." });
+          return;
+        }
         try {
-          reply.code(200).send(await conflicts.einordnen(request.params.id, arbeitsart, user.id));
+          const eingeordnet = await conflicts.einordnen(vorher.id, arbeitsart, user.id);
+          const freigabe = await feldFreigabe(user, eingeordnet.koA, eingeordnet.koB, kos);
+          reply.code(200).send(redigiereKonflikt(eingeordnet, freigabe));
         } catch (error) {
           sendError(reply, error);
         }
