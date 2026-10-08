@@ -52,15 +52,16 @@ import { ERLAUBTE_SPRACHEN } from "../lib/htmlLang";
 import { abonniereAngelegteSprachen, angelegteSprachen } from "../lib/instanzSprachen";
 
 /**
- * Die aktive Sprache als Element der erlaubten Menge.
+ * Ist dieser Knopf die gewählte Sprache? Verglichen wird die VOLLSTÄNDIGE Kennung.
  *
- * `startsWith` statt `===` — dieselbe Regel, die `pages/Profile.tsx` und `auth/BrandPanel.tsx`
- * schon anwenden. `i18n.language` ist heute zugesichert exakt „de" | „en" | „nl" (kein Detector,
- * keine Normalisierung, s. `lib/htmlLang.ts`); käme je ein Regionalcode dazu, zeichnet der Schalter
- * trotzdem die richtige Sprache aus, statt gar keine.
+ * Bis FR-I18N-02 stand hier `startsWith`. Seit im Betrieb angelegte Sprachen wählbar sind, können
+ * `fr` und `fr-CA` nebeneinander stehen — mit `startsWith` wären bei gewähltem `fr-CA` beide Knöpfe
+ * aktiv (BEN, Nacharbeit 5). `i18n.language` ist stets genau eine wählbare Kennung (kein Detector,
+ * keine Normalisierung, s. `lib/sprachwahl.ts`); der exakte Vergleich trifft also genau einen Knopf.
+ * Das Profil (`pages/Profile.tsx`) bezieht dieselbe Regel von hier.
  */
-function istAktiv(sprache: string, kandidat: string): boolean {
-  return sprache.startsWith(kandidat);
+export function istAktiv(sprache: string, kandidat: string): boolean {
+  return sprache === kandidat;
 }
 
 /**

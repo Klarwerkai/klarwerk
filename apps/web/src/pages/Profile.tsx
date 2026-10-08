@@ -11,6 +11,7 @@ import { useMyImpact } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
 // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — Zahlen nur über eigene Beiträge.
 import { MyImpactNumbers } from "../components/FunkeCards";
+import { istAktiv } from "../components/SprachSchalter";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { EinstellungenSeite } from "../components/einstellungen/Seite";
@@ -52,7 +53,9 @@ function WirkungDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
 // trägt die Zeile keinen zusätzlichen Werttext — er stünde sonst zweimal da.
 const SPRACH_KNOEPFE = "sprach-knoepfe";
 
-function SprachWahl(): JSX.Element {
+// Exportiert für die Gegenprobe mit regionalen Sprachen (`tests/uebersetzungspflege/
+// regionale-sprache-aktiv.test.tsx`); die Seite bleibt ihr einziger Verwender.
+export function SprachWahl(): JSX.Element {
   const { i18n } = useTranslation();
   // FR-I18N-02: hinter den mitgelieferten die im Betrieb angelegten Sprachen
   // (`lib/instanzSprachen.ts`) — dieselbe Quelle wie das Kontomenü, ohne Codeänderung wählbar.
@@ -61,6 +64,8 @@ function SprachWahl(): JSX.Element {
     angelegteSprachen,
     angelegteSprachen,
   );
+  // Aktiv ist allein die VOLLSTÄNDIGE Kennung (`istAktiv`, wie im Kontomenü) — mit `startsWith`
+  // wären bei gewähltem `fr-CA` auch `fr` gedrückt und hervorgehoben (BEN, Nacharbeit 5).
   return (
     /* E2E-020: Profil-Sprachwahl auf DE/EN/NL wie im Header — NL war hier zuvor nicht wählbar. */
     <span data-testid={SPRACH_KNOEPFE} className="flex gap-1.5">
@@ -69,10 +74,10 @@ function SprachWahl(): JSX.Element {
           key={l}
           type="button"
           aria-label={angelegt.find((s) => s.kennung === l)?.name}
-          aria-pressed={i18n.language.startsWith(l)}
+          aria-pressed={istAktiv(i18n.language, l)}
           onClick={() => void i18n.changeLanguage(l)}
           className={`rounded-btn px-2.5 py-1 text-[13px] font-semibold uppercase ${
-            i18n.language.startsWith(l) ? "bg-ink text-white" : "border border-hairline text-muted"
+            istAktiv(i18n.language, l) ? "bg-ink text-white" : "border border-hairline text-muted"
           }`}
         >
           {l}
