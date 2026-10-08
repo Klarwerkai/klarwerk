@@ -46,6 +46,11 @@ import { EDITOR_BLOCKS } from "../../lib/editorBlocks";
 import { eigeneKollisionDetail } from "../../lib/eigeneKollision";
 import { formatKoTimestamp } from "../../lib/koDates";
 import { type KoRevisionItemId, koRevisionSummary } from "../../lib/koRevisionSummary";
+import {
+  lesekontextLesen,
+  lesekontextVergessen,
+  lesespalteRollbereich,
+} from "../../lib/lesekontext";
 import { sprachcode, useFrischeLesevariante } from "../../lib/lesevariante";
 import type { MatchField } from "../../lib/librarySearch";
 import { useNetzOnline } from "../../lib/netzzustand";
@@ -985,7 +990,11 @@ export function BibliothekLesen({
   const [studioOpen, setStudioOpen] = useState(false);
   const [studioApplied, setStudioApplied] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [mehrOffen, setMehrOffen] = useState(false);
+  // N-0020: kehrt der Mensch per Browser-Zurück aus dem Herkunftsgraphen zurück, steht hier, wo er
+  // gelesen hat (`lib/lesekontext.ts`). Gelesen EINMAL beim Aufbau — die Adresse kann danach ersetzt
+  // werden, der Kontext gehört zu diesem Öffnen. Ohne Merker bleibt alles wie bisher: „Mehr" zu.
+  const [gemerkt] = useState(() => lesekontextLesen(koId));
+  const [mehrOffen, setMehrOffen] = useState(gemerkt !== null);
   // JOB 3108 · UX-03: wohin die Sprungzeile am Kopf führt. `nonce`, damit derselbe Abschnitt
   // zweimal hintereinander anspringbar bleibt (zwischendurch von Hand zugeklappt).
   const [sprungZiel, setSprungZiel] = useState<Sprungziel | null>(null);
@@ -2134,6 +2143,57 @@ export function BibliothekLesen({
     }
   }, [query.data, params, canEdit]);
 
+  // ================================================================================================
+  // N-0020 · DIE LESEPOSITION KOMMT ZURÜCK, SOBALD DER BERICHT DA IST.
+  // ================================================================================================
+  // „Mehr" und die gemerkten Abschnitte stehen schon beim Aufbau offen (oben, `gemerkt`); hier
+  // folgt der Rollstand. Der Bericht wächst nach dem ersten Zeichnen weiter (Abschnitte laden ihre
+  // eigenen Daten nach) — ein zu früh gesetzter Rollstand würde an der noch kurzen Spalte gekappt.
+  // Deshalb wird nachgesetzt, solange die Spalte wächst, höchstens fünf Sekunden lang, und nie
+  // gegen den Menschen: rollt, wischt oder tippt er selbst, endet das Nachsetzen sofort.
+  const leseWurzel = useRef<HTMLDivElement | null>(null);
+  const berichtDa = query.data !== undefined;
+  useEffect(() => {
+    if (gemerkt === null || !berichtDa) {
+      return;
+    }
+    lesekontextVergessen();
+    const roll = lesespalteRollbereich(leseWurzel.current);
+    const inhalt = leseWurzel.current;
+    if (roll === null || inhalt === null) {
+      return;
+    }
+    const ziel = gemerkt.rollTop;
+    const setzen = (): boolean => {
+      roll.scrollTop = ziel;
+      return Math.abs(roll.scrollTop - ziel) <= 1;
+    };
+    if (setzen() || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const beobachter = new ResizeObserver(() => {
+      if (setzen()) {
+        aufhoeren();
+      }
+    });
+    const frist = window.setTimeout(() => aufhoeren(), 5_000);
+    const eingriffe = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
+    // Eine Pfeilfunktion, keine `function`-Deklaration: nur sie behält die Null-Prüfung von `roll`
+    // oben (eine gehobene Deklaration gilt TypeScript als vor der Prüfung entstanden).
+    const aufhoeren = (): void => {
+      beobachter.disconnect();
+      window.clearTimeout(frist);
+      for (const e of eingriffe) {
+        roll.removeEventListener(e, aufhoeren);
+      }
+    };
+    for (const e of eingriffe) {
+      roll.addEventListener(e, aufhoeren, { passive: true });
+    }
+    beobachter.observe(inhalt);
+    return aufhoeren;
+  }, [gemerkt, berichtDa]);
+
   // JOB 3034 R2 · KONFLIKTRUNDE 2 (nachgezogen): scheitert die Auffrischung eines schon geholten
   // Eintrags, bleiben Eintrag und Stufenkennzeichen stehen — der Fehler wird als Hinweis über der
   // Fläche gesagt, nicht als Verlust des Bestands (`lib/abfrageBestand.ts`, `abfrageMitBestand`).
@@ -2351,6 +2411,7 @@ export function BibliothekLesen({
   return (
     <ImageDescribeProvider provenance={draftProvenance(ko.confidentiality, koId)}>
       <div
+        ref={leseWurzel}
         data-testid="bib-lesen"
         // STATUS-FREIGABE: die Objektgrenze für Klaras Zeige-Modus; der Status ist die Pille unten.
         data-objekt="wissen"
@@ -3581,7 +3642,11 @@ export function BibliothekLesen({
               </button>
               {mehrOffen ? (
                 <div className="border-t border-hairline-soft">
-                  <MehrAbschnitte ko={ko} sprungZiel={sprungZiel ?? undefined} />
+                  <MehrAbschnitte
+                    ko={ko}
+                    sprungZiel={sprungZiel ?? undefined}
+                    anfangsOffen={gemerkt?.abschnitte}
+                  />
                 </div>
               ) : null}
             </div>
