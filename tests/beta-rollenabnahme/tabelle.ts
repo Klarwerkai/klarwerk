@@ -787,6 +787,17 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // R-1644 · Wissensauskunft zum Zeitpunkt. Dieselbe Einsichtsstufe wie das Audit-Protokoll
+  // (`ko.validate`, Controller/Admin). Ohne Zeitpunkt endet die Tür hinter dem Tor im 400.
+  {
+    gruppe: "wissensauskunftRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/wissensauskunft",
+    route: "/api/kos/:id/wissensauskunft",
+    belegstelle: "services/app/src/routes/wissensauskunft-routes.ts:31",
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+  },
   {
     gruppe: "brandingRoutes",
     methode: "GET",
