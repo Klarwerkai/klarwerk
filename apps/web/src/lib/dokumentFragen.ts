@@ -347,22 +347,54 @@ function saetze(text: string): string[] {
   return teile.map((s) => s.trim()).filter((s) => s.length > 0);
 }
 
-/** Die Sätze der Stelle, die Begriffe tragen — wörtlich, in ihrer Reihenfolge. */
+// Satzanfänge, die auf den VORIGEN Satz verweisen („Danach …", „Dies …"). Ein solcher Satz sagt
+// allein nichts — „Danach wird das Protokoll unterschrieben" verschweigt, wonach.
+const BEZUG_DE =
+  "anschliessend ausserdem dabei daher damit danach dann darauf dadurch davor deshalb dies diese dieser dieses dort ebenso er es hierbei hierzu sie somit zudem";
+const BEZUG_EN = "afterwards also it then therefore these they this those";
+const BEZUG_NL = "daarna dan daarom dit deze hierbij";
+const BEZUGSWOERTER = new Set(`${BEZUG_DE} ${BEZUG_EN} ${BEZUG_NL}`.split(" "));
+
+function brauchtVorsatz(satz: string): boolean {
+  const erstes = woerter(satz)[0];
+  return erstes !== undefined && BEZUGSWOERTER.has(erstes);
+}
+
+/**
+ * Das Zitat einer Stelle — wörtlich und so, dass es für sich verständlich bleibt.
+ *
+ * BEN, Nacharbeit 2: Auf „Wann wird das Protokoll unterschrieben?" stand allein „Danach wird das
+ * Protokoll unterschrieben." — der Satz mit den 500 Betriebsstunden, auf den „Danach" zeigt, fehlte.
+ * Deshalb zwei Regeln:
+ *   1. Ein kurzer Absatz (bis `MAX_ZITAT_ZEICHEN`) wird VOLLSTÄNDIG zitiert. Er ist die kleinste
+ *      Einheit, in der der Zusammenhang sicher steht.
+ *   2. Ist der Absatz länger, werden die tragenden Sätze gewählt, und jeder, der mit einem
+ *      Bezugswort beginnt, nimmt seinen Vorgängersatz mit.
+ */
 function zitatAus(
   stelle: Fundstelle,
   begriffe: readonly FrageBegriff[],
 ): { zitat: string; gekuerzt: boolean } {
+  if (stelle.text.length <= MAX_ZITAT_ZEICHEN) {
+    return { zitat: stelle.text, gekuerzt: false };
+  }
   const alle = saetze(stelle.text);
   const gewertet = alle.map((satz, i) => ({
     i,
     satz,
     treffer: begriffe.filter((b) => traegt(woerter(satz), b)).length,
   }));
-  const gewaehlt = gewertet
+  const tragend = gewertet
     .filter((s) => s.treffer > 0)
     .sort((a, b) => b.treffer - a.treffer || a.i - b.i)
-    .slice(0, MAX_SAETZE_JE_STELLE)
-    .sort((a, b) => a.i - b.i);
+    .slice(0, MAX_SAETZE_JE_STELLE);
+  const nummern = new Set(tragend.map((s) => s.i));
+  for (const s of tragend) {
+    if (s.i > 0 && brauchtVorsatz(s.satz)) {
+      nummern.add(s.i - 1);
+    }
+  }
+  const gewaehlt = gewertet.filter((s) => nummern.has(s.i));
   const quelle = gewaehlt.length > 0 ? gewaehlt : gewertet.slice(0, 1);
   // Benachbarte Sätze stehen wie im Original nebeneinander; „…" markiert nur echte Auslassungen.
   let zitat = quelle

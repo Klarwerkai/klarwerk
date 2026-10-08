@@ -210,11 +210,28 @@ describe("R-0347 · B — die Antwort verknüpft die Inhalte", () => {
 });
 
 describe("R-0347 · C — jede Aussage verweist auf ihre Fundstelle, wörtlich", () => {
-  it("C1 · das Zitat ist der tragende Satz der Stelle, nicht die ganze Stelle und kein eigener Text", () => {
+  // BEN, Nacharbeit 2: hier stand die Erwartung, das Zitat sei allein „Danach wird das Protokoll
+  // unterschrieben." — ein Satz, der verschweigt, WONACH. Der grüne Fall bestätigte das Fehlverhalten.
+  // Der kurze Absatz wird jetzt vollständig zitiert; die 500 Betriebsstunden gehören zur Antwort.
+  it("C1 · ein kurzer Absatz wird vollständig zitiert — der Bezugssatz zu „Danach“ fehlt nicht", () => {
     const antwort = beantworte("Wann wird das Protokoll unterschrieben?", stellenHandbuch());
     const [aussage] = antwort.aussagen;
     expect(aussage?.fundstelle).toMatchObject({ nummer: 2, abschnitt: "Wartung", absatz: 2 });
-    expect(aussage?.zitat).toBe("Danach wird das Protokoll unterschrieben.");
+    expect(aussage?.zitat).toBe(
+      "Das Wartungsintervall beträgt 500 Betriebsstunden. Danach wird das Protokoll unterschrieben.",
+    );
+    expect(aussage?.gekuerzt).toBe(false);
+    erwarteWoertlich(antwort);
+  });
+
+  it("C3 · im langen Absatz nimmt ein Satz mit Bezugswort („Danach …“) seinen Vorgängersatz mit", () => {
+    const fuell = "Die Anlage steht in Halle drei und wird von zwei Schichten bedient. ".repeat(6);
+    const lang = `${fuell}Das Ventil wird nach 300 Stunden getauscht. Danach wird der Druck geprüft. ${fuell}`;
+    const antwort = beantworte("Wann wird der Druck geprüft?", gliedere(bausteineAusText(lang)));
+    const [aussage] = antwort.aussagen;
+    expect(aussage?.zitat).toBe(
+      "Das Ventil wird nach 300 Stunden getauscht. Danach wird der Druck geprüft.",
+    );
     expect(aussage?.gekuerzt).toBe(true);
     erwarteWoertlich(antwort);
   });
