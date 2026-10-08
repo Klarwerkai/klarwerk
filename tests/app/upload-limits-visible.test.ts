@@ -84,9 +84,13 @@ describe("SCRUM-421: die Upload-Grenzen sind an jeder Auswahlstelle sichtbar", (
     // des Editors: auch dort wird verkleinert in den Body eingebettet, und auch dort steht er.
     const mobile = stripComments(read("pages/Mobile.tsx"));
     expect(mobile).toContain('type="file"');
-    expect(mobile).toContain('capture="environment"');
     expect(mobile).toContain("<UploadLimitsHint");
     expect(mobile).not.toContain("dataTransfer");
+    // Die Kamera-Quelle wird am UNGEFILTERTEN Quelltext gemessen, und zwar als Attribut eines
+    // `<input>`: `stripComments` liest `accept="image/*"` als Beginn eines Blockkommentars und
+    // schluckt alles bis zum nächsten `*/` — das folgende `capture`-Attribut verschwände mit.
+    // `[^>]*` hält die Suche innerhalb des einen Tags (vor `onChange={(e) => …}` steht kein `>`).
+    expect(read("pages/Mobile.tsx")).toMatch(/<input[^>]*\bcapture="environment"/);
   });
 
   it("die Anzeige liest die Serverquelle — KEINE fest verdrahteten Zahlen", () => {
