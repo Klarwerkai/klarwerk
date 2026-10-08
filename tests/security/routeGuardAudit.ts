@@ -368,7 +368,17 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/duplicate-signal": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
   "GET /api/conflicts": { protection: "ko.read", zeilenrecht: ["sichtbarePaare"] },
   "GET /api/conflicts/:id": { protection: "ko.read", zeilenrecht: ["paarSichtbar"] },
+  // Aufnahme gesamt-konfliktklassifikation · R-0263: der Vorrang am Punkt — dasselbe Paar-Tor je
+  // Eintrag, der Geltungsbereich zusätzlich über `feldFreigabe` (wie `description`).
+  "GET /api/conflicts/vorrang/:id": { protection: "ko.read", zeilenrecht: ["paarSichtbar"] },
   "POST /api/conflicts/:id/escalate": { protection: "conflict.resolve" },
+  // R-0252 (Nacharbeit 5): der Einordnungsweg — dasselbe Recht wie Eskalieren und Entscheiden.
+  // Nacharbeit 6: dasselbe Paar-Tor wie der Detailweg — unsichtbar ⇒ 404 und keine Änderung; die
+  // Antwort geht durch `feldFreigabe`/`redigiereKonflikt`.
+  "POST /api/conflicts/:id/arbeitsart": {
+    protection: "conflict.resolve",
+    zeilenrecht: ["paarSichtbar"],
+  },
   "POST /api/conflicts/:id/dismiss": { protection: "conflict.resolve" },
   "POST /api/conflicts/:id/second-opinion": { protection: "ko.validate" },
 
@@ -429,6 +439,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // unterscheiden. Der Add-on-Zweig derselben Route fuehrt das Praedikat NICHT.
   "POST /api/ask": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   "POST /api/ask/helpful": { protection: "ko.read" },
+  // R-1649: ko.read; ein mitgeschickter Weg wird ein Entwurf und verlangt im Handler ko.create.
+  "POST /api/ask/not-helpful": { protection: "ko.read" },
   // SCRUM-527: Live-Check (Ähnlichkeit/Widerspruch eines Entwurfstextes gegen den Bestand).
   // produkt:20261007:spaces: ähnliche Artikel/Widersprüche nur aus dem für den Prüfenden Sichtbaren.
   "POST /api/knowledge/check": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
@@ -635,6 +647,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // PMO-FEA-0003: das freiwillige Foto — hinterlegen und widerrufen, nur für das EIGENE Konto.
   "PUT /api/livewall/photo": { protection: "auth" },
   "DELETE /api/livewall/photo": { protection: "auth" },
+  // R-0466: das eigene Interaktionsgedächtnis — lesen, merken, einzeln und ganz löschen, jeweils
+  // nur für das EIGENE Konto (user.id aus der Sitzung). Wie die Live-Wand: kein zusätzliches Recht.
+  "GET /api/me/gedaechtnis": { protection: "auth" },
+  "POST /api/me/gedaechtnis": { protection: "auth" },
+  "DELETE /api/me/gedaechtnis/:id": { protection: "auth" },
+  "DELETE /api/me/gedaechtnis": { protection: "auth" },
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler — jeder angemeldete Nutzer,
   // AUSSCHLIESSLICH über die eigene Identität (user.id) abgeleitet, nur Zahlen.
   "GET /api/me/impact": { protection: "auth" },

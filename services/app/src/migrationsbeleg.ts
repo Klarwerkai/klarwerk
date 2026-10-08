@@ -275,6 +275,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "LIVEWALL_FOTO_SCHEMA", risiko: "ADDITIV" },
+  // R-0466: das Interaktionsgedächtnis. ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT EXISTS` und
+  // zwei `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "GEDAECHTNIS_SCHEMA", risiko: "ADDITIV" },
   // produkt:20261007:ownership-uebergabe: die Nachfolge bei Befristung. ADDITIV, nachgezählt: ein
   // einziges `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.

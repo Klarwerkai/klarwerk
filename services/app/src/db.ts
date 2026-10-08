@@ -53,6 +53,9 @@ import { CONFLUENCE_IMPORT_SCHALTER_SCHEMA } from "./confluence-import-schalter"
 // Firmenwörterbuch: die Fassungen des Begriffskatalogs. Im App-Wurzelverzeichnis wie die
 // Markenwahl: Editor und Word-Panel lesen ihn, kein Fachmodul besitzt ihn.
 import { BEGRIFFE_SCHEMA } from "./firmenwoerterbuch";
+// R-0466: das Interaktionsgedächtnis (frühere Fragen, Antworten, Vorlieben je Konto). Im
+// App-Wurzelverzeichnis wie die Live-Wand-Fotos: ein eigener Datenraum, den kein Fachmodul besitzt.
+import { GEDAECHTNIS_SCHEMA } from "./interaktionsgedaechtnis";
 // Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen.
 import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
 // JOB 3326: die Lesevarianten (gekennzeichnete Leseübersetzungen). Sie wohnen im App-Root und nicht
@@ -263,6 +266,10 @@ export const schemas = [
   // NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare
   // Ordnung ist.
   LIVEWALL_FOTO_SCHEMA,
+  // R-0466: das Interaktionsgedächtnis. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT
+  // EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare
+  // Ordnung ist.
+  GEDAECHTNIS_SCHEMA,
   // produkt:20261007:ownership-uebergabe: die Nachfolge bei Befristung je Konto. Additiv und
   // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
   VERANTWORTUNG_NACHFOLGE_SCHEMA,

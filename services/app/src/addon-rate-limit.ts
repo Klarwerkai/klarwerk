@@ -39,6 +39,10 @@ export function addonRateLimit() {
       request.authContext?.authKind === "addon"
         ? request.authContext.principal.id
         : `ip:${request.ip}`,
-    allowList: (request: FastifyRequest): boolean => request.authContext?.authKind !== "addon",
+    // Aufnahme gesamt-integrations-api: ein Dienst-Schlüssel hat seine EIGENE Grenze (je Schlüssel,
+    // im Anmeldehook von build-app) und wird hier nicht ein zweites Mal gezählt.
+    allowList: (request: FastifyRequest): boolean =>
+      request.authContext?.authKind !== "addon" ||
+      request.authContext.principal.dienst !== undefined,
   };
 }
