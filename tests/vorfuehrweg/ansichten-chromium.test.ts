@@ -55,10 +55,19 @@ interface Ansicht {
   kennung: string;
   pfad: string;
   warteAuf: string;
-  /** Texte, die sichtbar sein müssen, bevor aufgenommen wird — das Demo-Ergebnis der Station. */
+  /**
+   * Texte, die vor der Aufnahme IM BILDAUSSCHNITT stehen müssen — vollständig innerhalb des
+   * Fensters und an ihrer Stelle zuoberst, also nicht von einem Banner oder einer Karte verdeckt.
+   * Das ist das Demo-Ergebnis der Station; Text irgendwo im Dokument genügt nicht.
+   */
   beweis: string[];
-  /** Ein Bedienelement, das vor der Aufnahme geklickt wird (die Sprachwahl der Erklärseite). */
-  klick?: string;
+  /** Bedienelemente, die vor der Aufnahme der Reihe nach geklickt werden (reguläre Bedienung). */
+  klicks?: string[];
+  /**
+   * Wohin der Ausschnitt gerückt wird: ein Selektor (oberer Rand) — ohne Angabe der erste
+   * Nachweistext (mittig).
+   */
+  zeigen?: string;
   /**
    * Die Station zeigt einen bestimmten Konflikt: die Konfliktseite zeigt immer genau EINEN, den
    * jüngsten zuerst (`lib/findingGroups.ts`, nach `createdAt` absteigend). Welcher der beiden
@@ -101,16 +110,25 @@ function ansichten(sprache: Sprache): readonly Ansicht[] {
       beweis: [],
     },
     {
+      // Karls Erfahrung selbst, nicht nur der Titel in der Trefferliste: der Kern seiner Aussage
+      // steht nur in der geöffneten Lesefläche.
       kennung: "lagerfall",
       pfad: `/bibliothek?q=${q(de ? "Hauptlager" : "main bearing")}`,
       warteAuf: '[data-testid="bib-suche"]',
-      beweis: [t.koLagerKarl.title],
+      beweis: [
+        de
+          ? "legt er die Hand auf das Gehäuse des Hauptlagers der Presse 3"
+          : "he puts his hand on the housing of the main bearing of press 3",
+      ],
     },
     {
+      // Der geöffnete Fassungsverlauf: „Mehr“ → Abschnitt „schnappschuesse“, darin V1, V2, V3.
       kennung: "schweissnaht",
       pfad: `/bibliothek?q=${q(de ? "Schweißnaht" : "Weld seam")}`,
       warteAuf: '[data-testid="bib-suche"]',
-      beweis: [t.koSchweiss.title],
+      klicks: ['[data-testid="bib-mehr"]', '[data-bib-abschnitt="schnappschuesse"] > summary'],
+      zeigen: '[data-bib-abschnitt="schnappschuesse"]',
+      beweis: [t.koSchweissV1.title, t.koSchweissV2.title, t.koSchweiss.title],
     },
     { kennung: "erfassen", pfad: "/erfassen", warteAuf: '[data-testid="blatt-titel"]', beweis: [] },
     {
@@ -136,12 +154,53 @@ function ansichten(sprache: Sprache): readonly Ansicht[] {
           ? "Aus Jira und Confluence wird nutzbares Wissen"
           : "Turn Jira and Confluence content into usable knowledge",
       ],
-      ...(de ? {} : { klick: 'label[for="language-en"]' }),
+      ...(de ? {} : { klicks: ['label[for="language-en"]'] }),
     },
   ];
 }
 
-const SICHTBAR = "(liste) => liste.every((text) => document.body.innerText.includes(text))";
+/**
+ * In der Seite: steht jeder Text IM BILD? Gesucht wird je Text das tiefste Element, das ihn ganz
+ * enthält; es muss vollständig im Fenster liegen und an seiner Stelle zuoberst sein
+ * (`elementFromPoint`) — ein Banner oder eine Karte darüber zählt als verdeckt.
+ */
+const IM_BILD = `(liste) => liste.every((text) => {
+  const enthaelt = (el) => (el.textContent || '').includes(text);
+  const tiefste = [...document.querySelectorAll('body *')].filter(
+    (el) => enthaelt(el) && ![...el.children].some(enthaelt),
+  );
+  return tiefste.some((el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) return false;
+    if (r.top < 0 || r.left < 0 || r.bottom > innerHeight || r.right > innerWidth) return false;
+    const oben = document.elementFromPoint(r.left + Math.min(r.width / 2, 24), r.top + r.height / 2);
+    return oben !== null && (oben === el || el.contains(oben) || oben.contains(el));
+  });
+})`;
+
+/** In der Seite: den Ausschnitt an einen Selektor (oben) oder an einen Text (mittig) rücken. */
+const ZEIGEN = `([selektor, text]) => {
+  let ziel = selektor ? document.querySelector(selektor) : null;
+  if (!ziel && text) {
+    const enthaelt = (el) => (el.textContent || '').includes(text);
+    ziel = [...document.querySelectorAll('body *')].find(
+      (el) => enthaelt(el) && ![...el.children].some(enthaelt),
+    ) || null;
+  }
+  if (ziel) ziel.scrollIntoView({ block: selektor ? 'start' : 'center' });
+  return ziel !== null;
+}`;
+
+/** Der Nutzungshinweis wird regulär bestätigt (`legal/NoticeBanner.tsx`, Knopf `notice-ack`). */
+async function hinweisBestaetigen(stand: Stand): Promise<void> {
+  const seite = stand.seite;
+  if (seite === null) return;
+  const knopf = seite.getByTestId("notice-ack");
+  if ((await knopf.count()) > 0 && (await knopf.isVisible())) {
+    await knopf.click();
+    await seite.getByTestId("notice-banner").waitFor({ state: "hidden" });
+  }
+}
 
 for (const sprache of ["de", "en"] as const) {
   describe(`Vorführweg · Bildschirmansichten der gebauten Fassung mit Demodaten (${sprache})`, () => {
@@ -190,6 +249,9 @@ for (const sprache of ["de", "en"] as const) {
         // Die Sprachwahl des Produkts — gewartet wird auf `<html lang>`, nicht auf eine Frist.
         await setzeSprache(stand, sprache);
       }
+      if (stand.fehler === null) {
+        await hinweisBestaetigen(stand);
+      }
     }, 180_000);
 
     afterAll(async () => {
@@ -208,10 +270,16 @@ for (const sprache of ["de", "en"] as const) {
         expect(stand.fehler, `${ansicht.kennung}: Station nicht erreicht`).toBeNull();
         const seite = stand.seite;
         if (seite === null) return;
-        if (ansicht.klick !== undefined) {
-          await seite.locator(ansicht.klick).click();
+        // Kein Nutzungshinweis über der Aufnahme — er wurde beim Aufbau bestätigt.
+        expect(await seite.getByTestId("notice-banner").count(), "Nutzungshinweis offen").toBe(0);
+        for (const selektor of ansicht.klicks ?? []) {
+          await seite.locator(selektor).click();
         }
-        await seite.waitForFunction(fn(SICHTBAR), ansicht.beweis, { timeout: 30_000 });
+        const ziel = [ansicht.zeigen ?? null, ansicht.beweis[0] ?? null];
+        if (ziel[0] !== null || ziel[1] !== null) {
+          await seite.waitForFunction(fn(ZEIGEN), ziel, { timeout: 30_000 });
+        }
+        await seite.waitForFunction(fn(IM_BILD), ansicht.beweis, { timeout: 30_000 });
         const datei = join(ZIEL, bildname(ansicht.kennung, sprache));
         await seite.screenshot({ path: datei });
         const bytes = readFileSync(datei);
