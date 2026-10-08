@@ -64,6 +64,10 @@ describe("SCRUM-367: RBAC route guard audit", () => {
       // Nachweis mit (einmaliger, 120-s-Code aus einer angemeldeten Sitzung) und kann keinen
       // Sitzungsnachweis mitbringen, weil er aus einem Rahmen fremder Herkunft kommt.
       "POST /api/auth/office-handover/redeem",
+      // R-0562: der zweite Anmeldeschritt IST ein Auth-Einstieg — es gibt noch keine Sitzung; der
+      // Nachweis sind die Anmeldeanfrage aus dem Passwortschritt (5 min, einmalig, höchstens fünf
+      // Versuche) und der Code vom zweiten Gerät. Je IP gedrosselt.
+      "POST /api/auth/login/second-factor",
     ]);
     const unexpected = publicMutating.filter((k) => !allowed.has(k));
     expect(unexpected).toEqual([]);
