@@ -97,7 +97,7 @@ async function anlegen(
   app: App,
   kopf: Kopf,
   titel: string,
-  felder: { conditions?: string[]; measures?: string[] } = {},
+  felder: { statement?: string; conditions?: string[]; measures?: string[] } = {},
 ): Promise<string> {
   const res = await app.inject({
     method: "POST",
@@ -223,7 +223,11 @@ describe("R-1627 · belegte Beziehungen statt Listenposition, an der echten Rout
   it("ohne Kante: zwei gleichrangige Aussagen, ausdrücklich unabhängig; mit Kante: die Beziehung", async () => {
     const { app, services, admin, adminId } = await start("zu-d@antwort.test");
     const eins = await anlegen(app, admin, `Wartung ${SELTENES_WORT}`);
-    const zwei = await anlegen(app, admin, `Entlastung ${SELTENES_WORT}`);
+    // Eine EIGENE Aussage: bei wortgleicher Aussage legte die Dublettenprüfung (R-0247) automatisch
+    // eine offene Dublette an, und die Freigabe verlangte zu Recht eine Bestätigung (409).
+    const zwei = await anlegen(app, admin, `Frostschutz ${SELTENES_WORT}`, {
+      statement: `Bei Frost bekommt die ${SELTENES_WORT} zur Wartung nach dem Entlasten eine Matte.`,
+    });
 
     const ohne = await fragen(app, admin);
     expect([...ohne.result.citedSources].sort()).toEqual([eins, zwei].sort());
