@@ -46,6 +46,8 @@ import {
   type EffectiveSearchDocument,
   composeEffectiveSearchDocument,
 } from "./effective-search-document";
+// R-1632 / R-1633: die Geltungsregel (Konzern/Werk/Schicht) — eine Fassung, Begründung dort.
+import { normalizeGeltung } from "./geltung";
 import {
   type KoMetadataProjection,
   metadataTextsEqual,
@@ -6074,6 +6076,37 @@ export class KoService {
             action: "ko.domain-changed",
             target: id,
             payload: { vorher, nachher },
+          });
+        },
+      };
+    });
+  }
+
+  // R-1632 / R-1633: die Geltung (Konzern/Werk/Schicht, optional Rolle) setzen, ändern oder mit
+  // `null` entfernen. Bauform wie `setDomain`: per KO serialisiert, Beleg im Audit, keine neue
+  // Inhaltsversion. Die Prüfung steht in `normalizeGeltung`; ein ungültiger Wert ist `INVALID` (400).
+  async setGeltung(id: string, roh: unknown, actor: string): Promise<KnowledgeObject> {
+    const eingang = normalizeGeltung(roh);
+    if (!eingang.ok) {
+      throw new KoError("INVALID", eingang.grund);
+    }
+    const nachher = eingang.geltung;
+    return this.mutateKo(id, (ko) => {
+      const vorher = ko.geltung;
+      if (JSON.stringify(vorher ?? null) === JSON.stringify(nachher ?? null)) {
+        return { updated: ko, value: ko };
+      }
+      const { geltung: _alt, ...ohne } = ko;
+      const updated: KnowledgeObject = nachher ? { ...ohne, geltung: nachher } : ohne;
+      return {
+        updated,
+        value: updated,
+        audit: async () => {
+          await this.audit?.record({
+            actor,
+            action: "ko.geltung-changed",
+            target: id,
+            payload: { vorher: vorher ?? null, nachher: nachher ?? null },
           });
         },
       };
