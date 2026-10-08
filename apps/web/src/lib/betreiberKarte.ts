@@ -23,6 +23,10 @@ export const BETREIBER_KARTE_TEXT = {
   quellenbedarf: "kilage.karte.quellenbedarf",
   keinModell: "kilage.karte.keinModell",
   hinweis: "kilage.karte.hinweis",
+  verfuegbarkeit: "kilage.karte.verfuegbarkeit",
+  verfuegbarErreichbar: "kilage.verfuegbarkeit.erreichbar",
+  verfuegbarUngeprueft: "kilage.verfuegbarkeit.ungeprueft",
+  verfuegbarUnerreichbar: "kilage.verfuegbarkeit.unerreichbar",
 } as const;
 
 /** Ein Satz der Karte: Schlüssel und Einsetzwerte, oder ein wörtlicher Wert (Name, Kennung). */
@@ -33,6 +37,12 @@ export type KartenWert =
 export interface BetreiberKartenAnzeige {
   /** `false`: kein Modell arbeitet — die Karte sagt nur das, ohne Betreiber und Stichtag. */
   modellArbeitet: boolean;
+  /**
+   * Ben nacharbeit-7: arbeitet kein Modell, WEIL das eingerichtete zuletzt nicht antwortete, sagt
+   * die Karte genau das (statt „kein Modell"); arbeitet eins, steht hier, ob es zuletzt antwortete
+   * oder noch ungeprüft ist.
+   */
+  verfuegbarkeit: KartenWert | null;
   betreiber: KartenWert | null;
   modell: KartenWert | null;
   herkunft: KiHerkunftAnzeige | null;
@@ -42,9 +52,18 @@ export interface BetreiberKartenAnzeige {
 }
 
 export function betreiberKartenAnzeige(karte: ReasonerBetreiberKarte): BetreiberKartenAnzeige {
+  const verfuegbarkeit: KartenWert | null =
+    karte.verfuegbarkeit === "erreichbar"
+      ? { key: BETREIBER_KARTE_TEXT.verfuegbarErreichbar }
+      : karte.verfuegbarkeit === "ungeprueft"
+        ? { key: BETREIBER_KARTE_TEXT.verfuegbarUngeprueft }
+        : karte.verfuegbarkeit === "unerreichbar"
+          ? { key: BETREIBER_KARTE_TEXT.verfuegbarUnerreichbar }
+          : null;
   if (karte.zugang === null) {
     return {
       modellArbeitet: false,
+      verfuegbarkeit,
       betreiber: null,
       modell: null,
       herkunft: null,
@@ -64,6 +83,7 @@ export function betreiberKartenAnzeige(karte: ReasonerBetreiberKarte): Betreiber
       : null;
   return {
     modellArbeitet: true,
+    verfuegbarkeit,
     betreiber,
     modell,
     herkunft: kiHerkunftAnzeige(karte.herkunft ?? undefined),

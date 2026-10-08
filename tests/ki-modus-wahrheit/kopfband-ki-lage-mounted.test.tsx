@@ -78,6 +78,39 @@ describe("R-0599 · die Kopfzeile zeigt die KI-Lage des Servers", () => {
     expect((await zeile()).textContent).toBe("Keine KI · regelbasiert");
   });
 
+  // Ben nacharbeit-7 (R-0940/R-2142): die bekannte Erreichbarkeit steht im sichtbaren Satz.
+  it("M4 · bestätigt erreichbar und noch ungeprüft sind zwei verschiedene Sätze", async () => {
+    await i18n.changeLanguage("de");
+    const lage = {
+      modus: "extern",
+      anbieter: "openai",
+      anbieterName: "ChatGPT (OpenAI)",
+      herkunft: { land: "us", nachweis: "behauptet" },
+    };
+    kiLage.mockResolvedValue({ ...lage, verfuegbarkeit: "erreichbar" });
+    expect((await zeile()).textContent).toBe("KI: extern · ChatGPT (OpenAI) · antwortet");
+    act(() => root?.unmount());
+    container?.remove();
+    kiLage.mockResolvedValue({ ...lage, verfuegbarkeit: "ungeprueft" });
+    expect((await zeile()).textContent).toBe(
+      "KI: extern · ChatGPT (OpenAI) · Erreichbarkeit noch nicht bestätigt",
+    );
+  });
+
+  it("M5 · eingerichtet, aber zuletzt unerreichbar: kein Anbieter, sondern der Ersatz", async () => {
+    await i18n.changeLanguage("de");
+    kiLage.mockResolvedValue({
+      modus: "keine",
+      anbieter: null,
+      anbieterName: null,
+      herkunft: null,
+      verfuegbarkeit: "unerreichbar",
+    });
+    const el = await zeile();
+    expect(el.textContent).toBe("KI nicht erreichbar · regelbasierter Ersatz");
+    expect(el.getAttribute("title") ?? "").toContain("zuletzt nicht geantwortet");
+  });
+
   it("M3 · Abruf gescheitert: „unbekannt“, keine erfundene Lage", async () => {
     await i18n.changeLanguage("de");
     kiLage.mockRejectedValue(new Error("401"));

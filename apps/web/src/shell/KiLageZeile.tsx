@@ -22,7 +22,12 @@ export function KiLageZeile(): JSX.Element {
   const { t } = useTranslation();
   const { data } = useKiLage();
   const anzeige = kiLageAnzeige(data);
-  const kurz = t(anzeige.textKey, anzeige.params);
+  // Ben nacharbeit-7: die bekannte Erreichbarkeit gehört zum sichtbaren Satz, nicht nur in den
+  // Zeigehinweis — „KI: extern · ChatGPT (OpenAI) · antwortet" ist eine andere Auskunft als
+  // „… · Erreichbarkeit noch nicht bestätigt".
+  const kurz = anzeige.verfuegbarkeitKey
+    ? `${t(anzeige.textKey, anzeige.params)} · ${t(anzeige.verfuegbarkeitKey)}`
+    : t(anzeige.textKey, anzeige.params);
   const herkunft = anzeige.herkunft
     ? t(anzeige.herkunft.key, {
         land: anzeige.herkunft.landKey ? t(anzeige.herkunft.landKey) : anzeige.herkunft.landCode,

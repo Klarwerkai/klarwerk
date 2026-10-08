@@ -387,7 +387,19 @@ export interface ReasonerBetreiberKarte {
   modell: string | null;
   herkunft: ReasonerZugangHerkunft | null;
   wissensstand: ReasonerModellWissensstand | null;
+  /** Wie es um die Erreichbarkeit des Zugangs steht — siehe `ReasonerKiVerfuegbarkeit`. */
+  verfuegbarkeit: ReasonerKiVerfuegbarkeit | null;
 }
+
+// Ben nacharbeit-7 (R-0940/R-2142): was der Server über die Erreichbarkeit WEISS — aus den
+// vorhandenen Kantensignalen (`providerReachability`), nie angenommen:
+//   · "erreichbar"   — der Zugang hat zuletzt (innerhalb der Frist) wirklich geantwortet;
+//   · "ungeprueft"   — eingerichtet und freigegeben, aber noch ohne frischen Befund;
+//   · "unerreichbar" — JEDES Modellglied der freigegebenen Kette ist zuletzt gescheitert; es
+//                      antwortet der regelbasierte Ersatz (dann ist `modus` „keine").
+// `null`: es ist gar kein Modell in der freigegebenen Kette (keins eingerichtet, keine Freigabe,
+// abgeschaltet) — dann gibt es auch nichts zu erreichen.
+export type ReasonerKiVerfuegbarkeit = "erreichbar" | "ungeprueft" | "unerreichbar";
 
 // R-0599: die KI-Lage für JEDEN angemeldeten Nutzer (GET /api/ki-lage, ko.read) — ob gerade eine
 // externe, eine hausinterne oder keine KI arbeitet, welcher Anbieter dahintersteht und woher er
@@ -398,6 +410,7 @@ export interface ReasonerKiLage {
   anbieter: ReasonerCloudAnbieter | "local" | null;
   anbieterName: string | null;
   herkunft: ReasonerZugangHerkunft | null;
+  verfuegbarkeit: ReasonerKiVerfuegbarkeit | null;
 }
 
 // SCRUM-525 P.5 (WP-C): Herkunft der AKTIVEN Policy — "env" (Deploy-ENV KLARWERK_REASONER_POLICY,

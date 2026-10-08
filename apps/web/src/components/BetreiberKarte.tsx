@@ -40,6 +40,13 @@ export function BetreiberKarte({ karte }: { karte: ReasonerBetreiberKarte }): JS
       testid: "betreiber-karte-modell",
     });
   }
+  if (anzeige.modellArbeitet && anzeige.verfuegbarkeit) {
+    zeilen.push({
+      label: t(BETREIBER_KARTE_TEXT.verfuegbarkeit),
+      wert: text(anzeige.verfuegbarkeit),
+      testid: "betreiber-karte-verfuegbarkeit",
+    });
+  }
   if (anzeige.wissensstand) {
     zeilen.push({
       label: t(BETREIBER_KARTE_TEXT.wissensstand),
@@ -65,7 +72,9 @@ export function BetreiberKarte({ karte }: { karte: ReasonerBetreiberKarte }): JS
         </dl>
       ) : (
         <p className="text-[12px] text-muted" data-testid="betreiber-karte-kein-modell">
-          {t(BETREIBER_KARTE_TEXT.keinModell)}
+          {anzeige.verfuegbarkeit
+            ? text(anzeige.verfuegbarkeit)
+            : t(BETREIBER_KARTE_TEXT.keinModell)}
         </p>
       )}
       {anzeige.quellenbedarf ? (

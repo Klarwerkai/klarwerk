@@ -2655,7 +2655,11 @@ export interface ReasonerBetreiberKarte {
   modell: string | null;
   herkunft: ReasonerZugangHerkunft | null;
   wissensstand: ReasonerModellWissensstand | null;
+  verfuegbarkeit: ReasonerKiVerfuegbarkeit | null;
 }
+
+// Ben nacharbeit-7: WORTGLEICH zum Server — was über die Erreichbarkeit BEKANNT ist.
+export type ReasonerKiVerfuegbarkeit = "erreichbar" | "ungeprueft" | "unerreichbar";
 
 // R-0599: WORTGLEICH zu `ReasonerKiLage` (Server) — die KI-Lage der Kopfzeile, für jeden
 // angemeldeten Nutzer (GET /api/ki-lage). Ohne Modellnamen, ohne Schlüssel.
@@ -2664,6 +2668,7 @@ export interface ReasonerKiLage {
   anbieter: ReasonerCloudAnbieter | "local" | null;
   anbieterName: string | null;
   herkunft: ReasonerZugangHerkunft | null;
+  verfuegbarkeit: ReasonerKiVerfuegbarkeit | null;
 }
 
 // Welcher abgelöste Wert wohin überführt wurde — nachvollziehbar, nicht still.
