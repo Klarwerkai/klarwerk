@@ -17,9 +17,9 @@ import {
   allFaqEntries,
   allKlaraEntries,
   klaraEntryById,
+  klaraGrundlage,
   pageEntryFor,
   pageTitleKeyForRoute,
-  rankKlara,
   resolveKlaraEntries,
   searchKlara,
 } from "../lib/klaraRegistry";
@@ -302,26 +302,36 @@ export function KlaraAssistant(): JSX.Element {
     [t, i18n.language],
   );
   // R-0890 / R-0935: die Bibliotheksartikel sind in Klaras SICHTBARER Suche auffindbar (Suchfeld
-  // und Zeige-Modus über die Beschriftung) — hinter den Registry- und FAQ-Treffern. In die
-  // KI-Grundlage (`rankKlara` unten) gehen sie nicht; Begründung an `allBibliothekEntries`.
+  // und Zeige-Modus über die Beschriftung) — hinter den Registry- und FAQ-Treffern. R-0943
+  // (Nacharbeit 7): in die KI-Grundlage gehen sie als Auszüge je Artikelteil (`klaraGrundlage`).
   // Nachgeladen beim ersten Öffnen (`lib/klaraBibliothek.ts`): statisch eingebunden hoben die
   // Artikel den ersten geladenen Brocken über den Deckel aus R-0801.
-  const [bibliothek, setBibliothek] = useState<ResolvedKlaraEntry[]>([]);
+  const [bibliothek, setBibliothek] = useState<{
+    artikel: ResolvedKlaraEntry[];
+    auszuege: ResolvedKlaraEntry[];
+  }>({ artikel: [], auszuege: [] });
   useEffect(() => {
     if (!open) {
       return;
     }
     let aktuell = true;
-    void import("../lib/klaraBibliothek").then(({ allBibliothekEntries }) => {
+    void import("../lib/klaraBibliothek").then((modul) => {
       if (aktuell) {
-        setBibliothek(allBibliothekEntries(i18n.language, (key) => t(key)));
+        const uebersetzen = (key: string): string => t(key);
+        setBibliothek({
+          artikel: modul.allBibliothekEntries(i18n.language, uebersetzen),
+          auszuege: modul.bibliothekAuszuege(i18n.language, uebersetzen),
+        });
       }
     });
     return () => {
       aktuell = false;
     };
   }, [open, t, i18n.language]);
-  const auffindbar = useMemo(() => [...resolved, ...bibliothek], [resolved, bibliothek]);
+  const auffindbar = useMemo(
+    () => [...resolved, ...bibliothek.artikel],
+    [resolved, bibliothek.artikel],
+  );
 
   const page = pageEntryFor(location.pathname);
   const fieldEntry = fieldId ? klaraEntryById(fieldId) : null;
@@ -329,8 +339,10 @@ export function KlaraAssistant(): JSX.Element {
   // „Zum Bereich"-Link unter der KI-Antwort (Pedi 05.07.): beste Quelle → direkter Absprung.
   // Lookup über den AUFGELÖSTEN Bestand, damit auch FAQ-Quellen (faq:*) Titel + Route liefern.
   const aiFirstSourceId = aiAsk.data?.answered ? aiAsk.data.sources[0] : undefined;
+  // R-0943: auch ein Bibliotheksauszug als Quelle führt in seinen Bereich.
+  const quellen = [...resolved, ...bibliothek.auszuege];
   const aiTargetEntry = aiFirstSourceId
-    ? (resolved.find((e) => e.id === aiFirstSourceId) ?? null)
+    ? (quellen.find((e) => e.id === aiFirstSourceId) ?? null)
     : null;
 
   // Zeige-Modus-Auflösung: exakter Anker gewinnt; sonst Beschriftung als tolerante Suche.
@@ -353,7 +365,9 @@ export function KlaraAssistant(): JSX.Element {
     if (question.length < 3 || aiAsk.isPending) {
       return;
     }
-    const grounding = rankKlara(resolved, question, 12);
+    // R-0943 (Nacharbeit 7): Registry + FAQ wie bisher, dazu passende Bibliotheksauszüge — ohne
+    // eine FAQ-Antwort zu verdrängen (Regel an `klaraGrundlage`).
+    const grounding = klaraGrundlage(resolved, bibliothek.auszuege, question, 12);
     setAskedFor(question);
     if (grounding.length === 0) {
       setAiNoGrounding(true);
@@ -703,7 +717,7 @@ export function KlaraAssistant(): JSX.Element {
                             {t("klara.aiSources")}:
                           </span>
                           {aiAsk.data.sources.map((sourceId) => {
-                            const src = resolved.find((e) => e.id === sourceId);
+                            const src = quellen.find((e) => e.id === sourceId);
                             return src ? (
                               <Link
                                 key={sourceId}

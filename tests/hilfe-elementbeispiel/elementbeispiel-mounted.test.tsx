@@ -30,6 +30,7 @@ import {
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
+import { endpoints } from "../../apps/web/src/api/endpoints";
 import { KlaraAssistant } from "../../apps/web/src/components/KlaraAssistant";
 import i18n from "../../apps/web/src/i18n";
 import {
@@ -40,8 +41,10 @@ import {
 import { klaraEntryById } from "../../apps/web/src/lib/klaraRegistry";
 import { cleanForSpeech } from "../../apps/web/src/lib/vorlesen";
 
+// E6 schaltet die Modellverfügbarkeit ein, alle anderen Fälle laufen ohne Modell.
+const ki = vi.hoisted(() => ({ verfuegbar: false }));
 vi.mock("../../apps/web/src/lib/useAiAvailable", () => ({
-  useAiAvailable: () => ({ available: false, isLoading: false }),
+  useAiAvailable: () => ({ available: ki.verfuegbar, isLoading: false }),
 }));
 vi.mock("../../apps/web/src/components/AiModelInfo", () => ({ AiModelInfo: () => null }));
 
@@ -105,8 +108,28 @@ afterEach(async () => {
   client = null;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  ki.verfuegbar = false;
   await i18n.changeLanguage("de");
 });
+
+/** Wartet, bis das Panel die Bibliothek nachgeladen hat (`lib/klaraBibliothek.ts`, Deckel R-0801). */
+async function bibliothekGeladen(): Promise<void> {
+  await act(async () => {
+    await import("../../apps/web/src/lib/klaraBibliothek");
+    await new Promise((fertig) => setTimeout(fertig, 0));
+  });
+}
+
+async function tippen(panel: HTMLElement, text: string): Promise<void> {
+  const feld = panel.querySelector<HTMLInputElement>(
+    `input[placeholder="${i18n.t("klara.searchPlaceholder")}"]`,
+  );
+  if (!feld) throw new Error("Klaras Suchfeld fehlt.");
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(feld, text);
+    feld.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
 
 async function oeffnen(flaeche: HTMLElement): Promise<HTMLElement> {
   const knopf = flaeche.querySelector<HTMLButtonElement>(
@@ -193,26 +216,37 @@ describe("R-0941 · das konkrete Beispiel in Klaras Elementerklärung", () => {
     // R-0801); der Test wartet, bis dieses Nachladen durch ist, bevor er tippt.
     const flaeche = await klaraMounten("de");
     const panel = await oeffnen(flaeche);
-    await act(async () => {
-      await import("../../apps/web/src/lib/klaraBibliothek");
-      await new Promise((fertig) => setTimeout(fertig, 0));
-    });
-    const feld = panel.querySelector<HTMLInputElement>(
-      `input[placeholder="${i18n.t("klara.searchPlaceholder")}"]`,
-    );
-    if (!feld) throw new Error("Klaras Suchfeld fehlt.");
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
-        feld,
-        "Leimzeit",
-      );
-      feld.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+    await bibliothekGeladen();
+    await tippen(panel, "Leimzeit");
     const text = panel.textContent ?? "";
     expect(text, "der Artikel erscheint nicht unter Klaras Treffern").toContain(
       i18n.t("help.capture.title"),
     );
     expect(text).toContain("Leimzeit");
+  });
+
+  it("E6 · Nacharbeit 7: die KI-Suche nach „Leimzeit“ bekommt den Bibliotheksauszug als Grundlage", async () => {
+    // R-0943 (Ben): „Bei „Leimzeit“ erscheint ein Artikel, während die KI-Suche fehlende Grundlage
+    // meldet." Gelesen wird der Anfragekörper, den das Panel wirklich an `help.explain` gibt; die
+    // Antwort bleibt aus (die Modellkante ist nicht Gegenstand dieses Falls).
+    // GEGENPROBE: in `askAi` wieder `rankKlara(resolved, question, 12)` → kein Aufruf, E6 rot.
+    ki.verfuegbar = true;
+    const erklaeren = vi.spyOn(endpoints.help, "explain");
+    erklaeren.mockReturnValue(new Promise<never>(() => {}));
+    const flaeche = await klaraMounten("de");
+    const panel = await oeffnen(flaeche);
+    await bibliothekGeladen();
+    await tippen(panel, "Leimzeit");
+    const knopf = [...panel.querySelectorAll("button")].find(
+      (b) => (b.textContent ?? "").trim() === i18n.t("klara.aiSearch"),
+    );
+    if (!knopf) throw new Error("Der Knopf der KI-Suche fehlt.");
+    await act(async () => knopf.click());
+    expect(erklaeren, "die KI-Suche ging ohne Grundlage nicht hinaus").toHaveBeenCalledTimes(1);
+    const grundlage = erklaeren.mock.calls[0]?.[0].snippets ?? [];
+    const auszug = grundlage.find((s) => s.id === "artikel:capture:was");
+    expect(auszug, "der Auszug zu „Wissen erfassen“ fehlt in der Grundlage").toBeDefined();
+    expect(auszug?.body).toContain("Leimzeit");
   });
 
   it("E4 · „Vorlesen“ liest das Beispiel mit", async () => {

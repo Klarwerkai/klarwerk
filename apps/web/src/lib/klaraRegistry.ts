@@ -317,6 +317,21 @@ export function rankKlara(
   query: string,
   limit = 6,
 ): ResolvedKlaraEntry[] {
+  return bewerteKlara(entries, query)
+    .slice(0, limit)
+    .map((s) => s.entry);
+}
+
+interface BewerteterEintrag {
+  entry: ResolvedKlaraEntry;
+  score: number;
+}
+
+// Die Wortdeckung hinter `rankKlara`, mit Punktzahl — `klaraGrundlage` braucht sie zum Abwägen.
+function bewerteKlara(
+  entries: readonly ResolvedKlaraEntry[],
+  query: string,
+): readonly BewerteterEintrag[] {
   const q = normalizeForSearch(query);
   const tokens = q.split(" ").filter((tok) => tok.length > 2);
   if (tokens.length === 0) {
@@ -333,5 +348,42 @@ export function rankKlara(
     })
     .filter((s) => s.score > 0);
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, limit).map((s) => s.entry);
+  return scored;
+}
+
+// R-0943 (Nacharbeit 7, Ben): höchstens so viele Bibliotheksauszüge kommen in die KI-Grundlage.
+export const BIBLIOTHEK_PLAETZE = 3;
+
+// R-0943 · Die KI-Grundlage aus Registry + FAQ (`bestand`) UND Bibliotheksauszügen
+// (`lib/klaraBibliothek.ts`). Die Registry-Rangliste bleibt, wie sie war; die besten Auszüge
+// (höchstens `BIBLIOTHEK_PLAETZE`) kommen dazu:
+//   · ist noch Platz unter `limit`, füllen sie ihn;
+//   · ist kein Platz, verdrängt ein Auszug nur einen Eintrag, der WENIGER Suchwörter trifft als er,
+//     und dann den schwächsten — NIE eine FAQ-Antwort. So bleibt jede FAQ-Antwort, die heute in den
+//     zwölf Schnipseln steht, auch drin (`tests/app/f0304-klara-assistenzflaeche.test.tsx`).
+// Ohne passenden Auszug ist das Ergebnis zeichengleich mit `rankKlara(bestand, query, limit)`.
+export function klaraGrundlage(
+  bestand: readonly ResolvedKlaraEntry[],
+  auszuege: readonly ResolvedKlaraEntry[],
+  query: string,
+  limit = 12,
+): ResolvedKlaraEntry[] {
+  const grundlage = bewerteKlara(bestand, query).slice(0, limit);
+  for (const auszug of bewerteKlara(auszuege, query).slice(0, BIBLIOTHEK_PLAETZE)) {
+    if (grundlage.length < limit) {
+      grundlage.push(auszug);
+      continue;
+    }
+    const verdraengbar = grundlage
+      .map((s, index) => ({ s, index }))
+      .filter(({ s }) => s.entry.kind !== "faq" && s.entry.kind !== "artikel")
+      .filter(({ s }) => s.score < auszug.score);
+    if (verdraengbar.length === 0) {
+      break; // die Auszüge sind absteigend sortiert — die folgenden verdrängen erst recht nichts
+    }
+    const schwaechster = verdraengbar.reduce((a, b) => (b.s.score <= a.s.score ? b : a));
+    grundlage.splice(schwaechster.index, 1);
+    grundlage.push(auszug);
+  }
+  return grundlage.map((s) => s.entry);
 }

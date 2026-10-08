@@ -30,15 +30,26 @@
 //   GEGENPROBEN: eine Zuordnung streichen → G1 rot; das Stichwort aus dem Artikel nehmen → G2 rot;
 //   „Diktieren" wieder dem Bereichsartikel zuordnen → G3 rot; `suchtext` aus `filterHelpTopics`
 //   nehmen → S1/S2 rot.
+//
+// BENS BEFUNDE (Nacharbeit 7):
+//   G2/G5/G6 · B5-6 „Eine Antwort weitergeben“ hat seinen Artikel; eine Auslassung gilt nur, wenn
+//        ihre Art am Bestand nachgemessen stimmt (Rollenvertrag, Routen, Teil jedes Artikels).
+//   S6/S7 · jeder Funktionsartikel führt rollengeprüft in seinen Bereich.
+//   K1–K3 · die KI-Grundlage nimmt Bibliotheksauszüge, ohne eine FAQ-Antwort zu verdrängen.
+//   GEGENPROBEN: B5-6 wieder ohne Artikel → G5/G6 rot; den Bereichslink aus `Help.tsx` nehmen →
+//   S6/S7 rot; in `klaraGrundlage` FAQ verdrängbar machen → K2 rot.
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
+import { routePathAllows } from "../../apps/web/src/app/navigation";
 import i18n from "../../apps/web/src/i18n";
+import { FAQ_CONTENT } from "../../apps/web/src/lib/faqContent";
 import { HELP_TOPICS } from "../../apps/web/src/lib/helpTopics";
 import { ISO_HELP_TOPICS } from "../../apps/web/src/lib/helpTopics.iso";
 import {
+  type Auslassung,
   BIBLIOTHEK_GRUPPEN,
   BIBLIOTHEK_TEILE,
   FUNKTIONS_ARTIKEL,
@@ -46,17 +57,29 @@ import {
   HILFE_BIBLIOTHEK,
   artikelText,
 } from "../../apps/web/src/lib/hilfeBibliothek";
-import { allBibliothekEntries } from "../../apps/web/src/lib/klaraBibliothek";
-import { searchKlara } from "../../apps/web/src/lib/klaraRegistry";
+import { allBibliothekEntries, bibliothekAuszuege } from "../../apps/web/src/lib/klaraBibliothek";
+import {
+  BIBLIOTHEK_PLAETZE,
+  allFaqEntries,
+  allKlaraEntries,
+  klaraGrundlage,
+  rankKlara,
+  resolveKlaraEntries,
+  searchKlara,
+} from "../../apps/web/src/lib/klaraRegistry";
 import { Help } from "../../apps/web/src/pages/Help";
+import { ROLE_PERMISSIONS } from "../../services/rbac/src/policy";
 import { SPRACHEN, funde } from "../hilfe-faq-sammlung/wortwahl";
 import { repoPfad } from "../support/repoPfad";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+// S6 (Nacharbeit 7) wechselt die Rolle; alle anderen Fälle lesen als Controller.
+const rollenquelle = vi.hoisted(() => ({ rolle: "controller" as string }));
+
 vi.mock("../../apps/web/src/app/RoleContext", () => ({
   useRole: () => ({
-    role: "controller",
+    role: rollenquelle.rolle,
     setRole: () => {},
     stufe2: false,
     setStufe2: () => {},
@@ -79,6 +102,7 @@ afterEach(async () => {
   container?.remove();
   root = null;
   container = null;
+  rollenquelle.rolle = "controller";
   await i18n.changeLanguage("de");
 });
 
@@ -169,6 +193,42 @@ describe("R-0890 · die Anwender-Wissensbibliothek nach festem Bauplan", () => {
   });
 });
 
+/** Die Pfade aller Routen der Anwendung, aus `routes.tsx` gelesen. */
+function routenpfade(): string[] {
+  const routen = readFileSync(repoPfad("apps/web/src/routes.tsx"), "utf8");
+  return [...routen.matchAll(/path="([^"]*)"/g)].map((treffer) => treffer[1] ?? "");
+}
+
+/** Hält die Art einer Auslassung am Bestand nach — `null`, wenn sie stimmt, sonst der Befund. */
+function auslassungBefund(auslassung: Auslassung): string | null {
+  switch (auslassung.art) {
+    case "ohne-recht": {
+      // Der Rollenvertrag sagt, ob die Rolle das Recht hat — dann gäbe es die Funktion doch.
+      const rechte = (ROLE_PERMISSIONS as Record<string, readonly string[]>)[auslassung.rolle];
+      if (rechte === undefined) return `die Rolle „${auslassung.rolle}“ gibt es nicht`;
+      return rechte.includes(auslassung.recht)
+        ? `die Rolle „${auslassung.rolle}“ hat „${auslassung.recht}“ — die Funktion besteht`
+        : null;
+    }
+    case "jeder-artikel": {
+      const artikel = [
+        ...Object.values(HILFE_BIBLIOTHEK).map((a) => a[auslassung.teil]),
+        ...FUNKTIONS_ARTIKEL.map((a) => a.teile[auslassung.teil]),
+      ];
+      const leer = artikel.filter((text) => SPRACHEN.some((s) => text[s].trim().length < 20));
+      return leer.length > 0 ? `${leer.length} Artikel ohne Teil „${auslassung.teil}“` : null;
+    }
+    case "keine-flaeche": {
+      const pfade = routenpfade();
+      if (pfade.length < 20) return "die Routen wurden nicht gelesen";
+      const passt = (pfad: string): boolean =>
+        auslassung.routenwoerter.some((wort) => pfad.toLowerCase().includes(wort));
+      const treffer = pfade.filter(passt);
+      return treffer.length > 0 ? `es gibt die Fläche doch: ${treffer.join(", ")}` : null;
+    }
+  }
+}
+
 /** Die Punkte B0-1 … B10-4 aus Abschnitt B des Quelldokuments — gelesen, nicht abgeschrieben. */
 function quellpunkte(): string[] {
   const quelle = readFileSync(
@@ -195,7 +255,10 @@ describe("R-0890 · Nacharbeit 5 — jede Funktion der Quellengliederung ist erk
     const fehlt: string[] = [];
     for (const punkt of GLIEDERUNG) {
       if (punkt.artikel === null) {
-        if (punkt.grund.trim().length < 40) fehlt.push(`${punkt.id}: ohne Artikel und ohne Grund`);
+        // Nacharbeit 7 (Ben): eine Auslassung gilt nicht wegen ihres Begründungstexts, sondern nur,
+        // wenn ihre Art am Bestand nachgemessen stimmt (G5).
+        const befund = auslassungBefund(punkt.auslassung);
+        if (befund !== null) fehlt.push(`${punkt.id}: ohne Artikel, aber ${befund}`);
         continue;
       }
       for (const sprache of SPRACHEN) {
@@ -319,5 +382,127 @@ describe("R-0935 / R-1671 · Nacharbeit 5 — die Artikel sind auffindbar", () =
     }
     expect(alle.map((d) => d.dataset.hilfeArtikel)).toEqual(reihenfolge);
     expect(alle.every((d) => !d.open)).toBe(true);
+  });
+
+  it.each(["controller", "viewer"] as const)(
+    "S6 · %s: jeder Funktionsartikel führt in seinen Bereich, so weit die Rolle reicht",
+    async (rolle) => {
+      // Ben (Nacharbeit 7): „Die neuen Funktionsartikel zeigen keinen direkten Sprung in ihren
+      // Anwendungsbereich." Erwartet wird dieselbe Regel wie bei der FAQ: Router lässt die Rolle
+      // hinein, und nie auf `/hilfe` selbst. GEGENPROBE: den Link aus `Help.tsx` nehmen → rot;
+      // die Rollenprüfung weglassen → für den Betrachter rot.
+      rollenquelle.rolle = rolle;
+      const flaeche = await hilfeMounten("de");
+      const erwartet: string[] = [];
+      const gefunden: string[] = [];
+      for (const artikel of FUNKTIONS_ARTIKEL) {
+        if (artikel.route !== "/hilfe" && routePathAllows(artikel.route, rolle)) {
+          erwartet.push(artikel.id);
+        }
+        const link = flaeche.querySelector(`[data-testid="hilfe-funktion-route-${artikel.id}"]`);
+        if (link?.getAttribute("href") === artikel.route) gefunden.push(artikel.id);
+      }
+      expect(gefunden).toEqual(erwartet);
+      expect(erwartet.length, "kein Artikel führt in einen Bereich").toBeGreaterThan(0);
+      if (rolle === "viewer") {
+        expect(erwartet.length, "die Rolle schränkt nichts ein").toBeLessThan(
+          FUNKTIONS_ARTIKEL.length,
+        );
+      }
+    },
+  );
+
+  it("S7 · „Spracherkennung“ trifft nur den Artikel — und der offene Artikel führt hin", async () => {
+    const flaeche = await hilfeMounten("de");
+    await suche(flaeche, "Spracherkennung");
+    const diktieren = FUNKTIONS_ARTIKEL.find((artikel) => artikel.id === "diktieren");
+    const auswahl = 'details[data-hilfe-artikel="diktieren"]';
+    const offen = flaeche.querySelector<HTMLDetailsElement>(auswahl);
+    expect(offen?.open).toBe(true);
+    const link = offen?.querySelector('[data-testid="hilfe-funktion-route-diktieren"]');
+    expect(link?.getAttribute("href")).toBe(diktieren?.route);
+  });
+});
+
+describe("R-0890 · Nacharbeit 7 — „Eine Antwort weitergeben“ und nachgemessene Auslassungen", () => {
+  it("G5 · B5-6 hat seinen Artikel, und er nennt die echten Beschriftungen des Weitergabewegs", () => {
+    // Ben: „Ask.tsx:1280–1364 implementiert Markdown-Erzeugung, Kopieren und Download; :1993–2004
+    // verbindet den Download mit dem Antwortmenü." Der Artikel muss genau diese Bedienelemente bei
+    // ihrem angezeigten Namen nennen — in jeder Sprache.
+    const zuordnung = new Map(GLIEDERUNG.map((punkt) => [punkt.id, punkt.artikel]));
+    expect(zuordnung.get("B5-6")).toBe("antwort-weitergeben");
+    const fragen = readFileSync(repoPfad("apps/web/src/pages/Ask.tsx"), "utf8");
+    expect(fragen).toContain('{ id: "download", label: t("ask.export.download") }');
+    expect(fragen).toContain('{ id: "print", label: t("ask.export.print") }');
+    expect(fragen).toContain('{t("ask.export.copy")}');
+    const fehlt: string[] = [];
+    for (const sprache of SPRACHEN) {
+      const t = i18n.getFixedT(sprache);
+      const text = artikelText("antwort-weitergeben", sprache) ?? "";
+      for (const key of ["ask.export.copy", "ask.export.download", "ask.export.print"]) {
+        if (!text.includes(t(key))) fehlt.push(`${sprache}: „${t(key)}“ fehlt`);
+      }
+      if (!text.includes(t("ask.menu.label"))) fehlt.push(`${sprache}: das Antwortmenü fehlt`);
+    }
+    expect(fehlt).toEqual([]);
+  });
+
+  it("G6 · GEGENPROBE: die Auslassungsprüfung ist keine Konstante", () => {
+    // Jede Art schlägt an, wenn sie am Bestand nicht stimmt.
+    const falsch: Auslassung[] = [
+      { art: "ohne-recht", rolle: "controller", recht: "ko.validate" },
+      { art: "ohne-recht", rolle: "gibtsnicht", recht: "ko.read" },
+      { art: "keine-flaeche", routenwoerter: ["hilfe"] },
+    ];
+    for (const auslassung of falsch) {
+      expect(auslassungBefund(auslassung), JSON.stringify(auslassung)).not.toBeNull();
+    }
+    // Und die heute geführten Auslassungen stimmen — die Begründung allein trägt keine.
+    const ohne = GLIEDERUNG.filter((punkt) => punkt.artikel === null).map((punkt) => punkt.id);
+    expect(ohne).toEqual(["B2-9", "B10-1", "B10-3", "B10-4"]);
+  });
+});
+
+describe("R-0943 · Nacharbeit 7 — die KI-Grundlage nimmt Bibliotheksauszüge, ohne FAQ zu verdrängen", () => {
+  const t = i18n.getFixedT("de");
+  const bestand = [
+    ...resolveKlaraEntries(allKlaraEntries(), (key) => t(key)),
+    ...allFaqEntries("de"),
+  ];
+  const auszuege = bibliothekAuszuege("de", (key) => t(key));
+
+  it("K1 · „Leimzeit“: bisher keine Grundlage, jetzt der passende Auszug", () => {
+    expect(rankKlara(bestand, "Leimzeit", 12), "schon die Registry kennt das Wort").toEqual([]);
+    const ids = klaraGrundlage(bestand, auszuege, "Leimzeit", 12).map((eintrag) => eintrag.id);
+    expect(ids).toContain("artikel:capture:was");
+  });
+
+  it("K2 · für jede FAQ-Frage bleibt jede FAQ-Antwort der bisherigen Grundlage drin", () => {
+    const verloren: string[] = [];
+    for (const faq of FAQ_CONTENT) {
+      const vorher = rankKlara(bestand, faq.question, 12).filter((e) => e.kind === "faq");
+      const nachher = klaraGrundlage(bestand, auszuege, faq.question, 12);
+      expect(nachher.length).toBeLessThanOrEqual(12);
+      const artikel = nachher.filter((e) => e.kind === "artikel").length;
+      expect(artikel).toBeLessThanOrEqual(BIBLIOTHEK_PLAETZE);
+      for (const antwort of vorher) {
+        if (!nachher.includes(antwort)) verloren.push(`${faq.id}: ${antwort.id}`);
+      }
+    }
+    expect(verloren).toEqual([]);
+  });
+
+  it("K3 · jeder Auszug kommt ungekürzt an der Modellkante an (Titel ≤ 160, Text ≤ 700)", () => {
+    const zuLang: string[] = [];
+    for (const sprache of SPRACHEN) {
+      const fest = i18n.getFixedT(sprache);
+      for (const auszug of bibliothekAuszuege(sprache, (key) => fest(key))) {
+        if (auszug.title.length > 160) zuLang.push(`${sprache} · ${auszug.id}: Titel`);
+        if (auszug.body.length > 700 || auszug.body.trim().length === 0) {
+          zuLang.push(`${sprache} · ${auszug.id}: Text ${auszug.body.length}`);
+        }
+      }
+    }
+    expect(zuLang).toEqual([]);
   });
 });

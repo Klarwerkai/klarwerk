@@ -1245,6 +1245,46 @@ export const FUNKTIONS_ARTIKEL: readonly FunktionsArtikel[] = [
       ),
     },
   },
+  // Nacharbeit 7 (Ben, B5-6): am Quelltext abgeglichen — `pages/Ask.tsx` `buildExport`,
+  // `copyAnswer`, `downloadAnswer`, `printAnswer`; Knopf „Kopieren“ unter der Antwortkarte, „Als
+  // Markdown“ und „Drucken / PDF“ im „…“-Menü der Karte („Mehr zu dieser Antwort“).
+  {
+    id: "antwort-weitergeben",
+    gruppe: 5,
+    route: "/fragen",
+    titel: T(
+      "Eine Antwort weitergeben: kopieren, als Markdown speichern, drucken",
+      "Passing on an answer: copy, save as Markdown, print",
+      "Een antwoord doorgeven: kopiëren, als Markdown opslaan, afdrukken",
+    ),
+    teile: {
+      was: T(
+        "Eine beantwortete Frage lässt sich samt ihren Quellen mitnehmen — etwa, um einer Kollegin die Antwort in eine E-Mail zu kopieren oder sie für eine Besprechung auszudrucken.",
+        "An answered question can be taken along together with its sources — for instance to copy the answer into an email for a colleague or to print it for a meeting.",
+        "Een beantwoorde vraag kun je samen met de bronnen meenemen — bijvoorbeeld om het antwoord in een e-mail voor een collega te kopiëren of het voor een overleg af te drukken.",
+      ),
+      wie: T(
+        "Unter der Antwort steht „Kopieren“: es legt die Antwort mit Frage, Einstufung, Quellen und KI-Kennzeichnung in die Zwischenablage. Das „…“ oben rechts in der Antwortkarte („Mehr zu dieser Antwort“) bietet „Als Markdown“ — eine Textdatei zum Speichern — und „Drucken / PDF“, das nur die Antwort druckt.",
+        "Below the answer is “Copy”: it puts the answer with question, rating, sources and AI label on the clipboard. The “…” at the top right of the answer card (“More about this answer”) offers “As Markdown” — a text file to save — and “Print / PDF”, which prints only the answer.",
+        "Onder het antwoord staat “Kopiëren”: dat zet het antwoord met vraag, inschaling, bronnen en AI-vermelding op het klembord. De “…” rechtsboven in de antwoordkaart (“Meer over dit antwoord”) biedt “Als Markdown” — een tekstbestand om op te slaan — en “Afdrukken / PDF”, dat alleen het antwoord afdrukt.",
+      ),
+      warum: T(
+        "Eine Antwort ist nur so belastbar wie ihre Quellen. Darum reisen Einstufung und Quellen mit, und am Ende steht, dass die Antwort von künstlicher Intelligenz erzeugt wurde und inhaltlich zu prüfen ist — auch dort, wo Klarwerk nicht mehr zu sehen ist.",
+        "An answer is only as reliable as its sources. That is why rating and sources travel with it, and at the end it says that the answer was produced by artificial intelligence and must be checked for content — even where Klarwerk is no longer in view.",
+        "Een antwoord is maar zo betrouwbaar als zijn bronnen. Daarom reizen inschaling en bronnen mee, en aan het eind staat dat het antwoord door kunstmatige intelligentie is gemaakt en inhoudelijk moet worden gecontroleerd — ook waar Klarwerk niet meer te zien is.",
+      ),
+      danach: T(
+        "Was du kopiert oder gespeichert hast, liegt bei dir: du entscheidest, wo du es einfügst und wem du es gibst. Klarwerk verschickt nichts von selbst.",
+        "What you copied or saved is in your hands: you decide where to paste it and whom to give it to. Klarwerk sends nothing on its own.",
+        "Wat je hebt gekopieerd of opgeslagen, ligt bij jou: jij beslist waar je het plakt en aan wie je het geeft. Klarwerk verstuurt niets uit zichzelf.",
+      ),
+      missverstaendnisse: T(
+        "„Weitergeben schickt die Antwort an jemanden.“ — Nein: es gibt keinen Versand, du fügst sie selbst ein. „Die Kopie klingt sicherer als der Bildschirm.“ — Nein: sie trägt dieselbe Einstufung wie die Seite, samt Vorbehalt. „Weitergeben geht immer.“ — Nur bei einer beantworteten Frage; ohne Antwort gibt es nichts zu kopieren.",
+        "“Passing it on sends the answer to someone.” — No: there is no sending, you paste it yourself. “The copy sounds more certain than the screen.” — No: it carries the same rating as the page, including any reservation. “Passing it on always works.” — Only for an answered question; without an answer there is nothing to copy.",
+        "“Doorgeven stuurt het antwoord naar iemand.” — Nee: er wordt niets verstuurd, je plakt het zelf. “De kopie klinkt zekerder dan het scherm.” — Nee: ze draagt dezelfde inschaling als de pagina, met eventueel voorbehoud. “Doorgeven kan altijd.” — Alleen bij een beantwoorde vraag; zonder antwoord valt er niets te kopiëren.",
+      ),
+    },
+  },
   {
     id: "konflikt-wege",
     gruppe: 6,
@@ -1447,19 +1487,38 @@ export function funktionsArtikel(
 // `artikel` ist die Kennung eines Bereichsartikels (`HILFE_BIBLIOTHEK`) oder eines
 // Funktionsartikels (`FUNKTIONS_ARTIKEL`). `stichwort` muss je Sprache im zugeordneten Artikel
 // stehen — so ist geprüft, dass der Artikel diese Funktion WIRKLICH behandelt und nicht nur
-// zugeordnet ist. Ohne Artikel steht der Grund da.
+// zugeordnet ist. Ohne Artikel steht der Grund da — und seit Nacharbeit 7 (Ben: „Die
+// Vollständigkeitsprüfung darf diese Lücke nicht allein aufgrund eines Begründungstexts
+// akzeptieren") eine ART der Auslassung, die die Prüfung am Bestand nachmisst.
 export type GliederungsPunkt =
   | { readonly id: string; readonly artikel: string; readonly stichwort: Text }
-  | { readonly id: string; readonly artikel: null; readonly grund: string };
+  | {
+      readonly id: string;
+      readonly artikel: null;
+      readonly auslassung: Auslassung;
+      readonly grund: string;
+    };
+
+/**
+ * Warum ein Punkt keinen Artikel hat, nachprüfbar (`tests/hilfe-bibliothek/bibliothek-bauplan`, G2):
+ *   · `ohne-recht`    — die Funktion gibt es für diese Rolle nicht (Rollenvertrag
+ *                       `services/rbac/src/policy.ts`: die Rolle hat das Recht nicht);
+ *   · `jeder-artikel` — der Inhalt ist ein fester Teil JEDES Artikels;
+ *   · `keine-flaeche` — die Fläche gibt es nicht (keine Route trägt eines dieser Wörter).
+ */
+export type Auslassung =
+  | { readonly art: "ohne-recht"; readonly rolle: string; readonly recht: string }
+  | { readonly art: "jeder-artikel"; readonly teil: BibliothekTeil }
+  | { readonly art: "keine-flaeche"; readonly routenwoerter: readonly string[] };
 
 /** Ein Gliederungspunkt mit Artikel; das Stichwort muss je Sprache im Artikel stehen. */
 function punkt(id: string, artikel: string, de: string, en: string, nl: string): GliederungsPunkt {
   return { id, artikel, stichwort: { de, en, nl } };
 }
 
-/** Ein Gliederungspunkt ohne Artikel — mit Grund. */
-function ohneArtikel(id: string, grund: string): GliederungsPunkt {
-  return { id, artikel: null, grund };
+/** Ein Gliederungspunkt ohne Artikel — mit nachprüfbarer Auslassung und Grund. */
+function ohneArtikel(id: string, auslassung: Auslassung, grund: string): GliederungsPunkt {
+  return { id, artikel: null, auslassung, grund };
 }
 
 export const GLIEDERUNG: readonly GliederungsPunkt[] = [
@@ -1547,6 +1606,7 @@ export const GLIEDERUNG: readonly GliederungsPunkt[] = [
   punkt("B2-8", "nacharbeit", "Nacharbeit", "rework", "nawerk"),
   ohneArtikel(
     "B2-9",
+    { art: "ohne-recht", rolle: "experte", recht: "ko.validate" },
     "Prüfen als Experte (wirksame Rolle): Bau-Status schon in der Quelle offen (P-3); laut Rollenvertrag (`services/rbac/src/policy.ts`) hat die Rolle Experte kein Prüfrecht — die Funktion besteht so nicht.",
   ),
   punkt(
@@ -1595,10 +1655,8 @@ export const GLIEDERUNG: readonly GliederungsPunkt[] = [
   punkt("B5-3", "wissensluecke", "ehrliche Auskunft", "honest statement", "eerlijke mededeling"),
   punkt("B5-4", "wissensluecke", "schließt sie selbst", "close it yourself", "sluit je het zelf"),
   punkt("B5-5", "extern", "außerhalb von Klarwerk", "outside Klarwerk", "buiten Klarwerk"),
-  ohneArtikel(
-    "B5-6",
-    "Eine beantwortete Frage weitergeben: Bau-Status schon in der Quelle offen (P-8); für diese Lesefassung nicht am heutigen Quelltext nachgeprüft, deshalb kein Artikel.",
-  ),
+  // Nacharbeit 7 (Ben): die Funktion besteht (`pages/Ask.tsx`, Kopieren · Als Markdown · Drucken).
+  punkt("B5-6", "antwort-weitergeben", "Kopieren", "Copy", "Kopiëren"),
   punkt("B6-1", "konflikte", "Widerspruch", "contradiction", "tegenspraak"),
   punkt("B6-2", "konflikt-wege", "Zweitmeinung", "second opinion", "tweede mening"),
   punkt(
@@ -1675,16 +1733,19 @@ export const GLIEDERUNG: readonly GliederungsPunkt[] = [
   punkt("B9-2", "mobile", "Ohne Verbindung", "Without a connection", "Zonder verbinding"),
   ohneArtikel(
     "B10-1",
+    { art: "keine-flaeche", routenwoerter: ["glossar", "glossary", "woordenlijst"] },
     "Glossar: eine solche Fläche gibt es nicht. Begriffe erklären die Artikel selbst und Klara (Begriff eintippen oder markieren).",
   ),
   punkt("B10-2", "grundprinzip", "erfundene Antwort", "invented answer", "verzonnen antwoord"),
   ohneArtikel(
     "B10-3",
+    { art: "jeder-artikel", teil: "missverstaendnisse" },
     "Sammlung der häufigsten Missverständnisse: kein eigener Artikel, sondern der feste fünfte Teil „Typische Missverständnisse“ JEDES Artikels.",
   ),
   ohneArtikel(
     "B10-4",
-    "Aufgaben-Schnellwege: eine solche Fläche gibt es nicht. Den ersten Arbeitsweg führt die Einstiegsführung auf der Hilfeseite; jeder Artikel nennt seinen Bereich.",
+    { art: "keine-flaeche", routenwoerter: ["schnellweg", "quick", "snelweg"] },
+    "Aufgaben-Schnellwege (Ziel → kürzester Klickweg): eine solche Sammlung gibt es nicht. Die Schnellwahl (⌘K/Strg+K) springt zu Seiten und Wissenseinträgen, nennt aber keine Klickwege; den ersten Arbeitsweg führt die Einstiegsführung auf der Hilfeseite, und jeder Artikel nennt seinen Bereich.",
   ),
 ];
 

@@ -613,6 +613,20 @@ export function Help(): JSX.Element {
                               </div>
                             ))}
                           </dl>
+                          {/* R-0935 (Nacharbeit 7, Ben): der Sprung in den Anwendungsbereich des
+                              Artikels — mit derselben Rollenprüfung wie bei der FAQ darunter. */}
+                          {rolle !== null &&
+                          artikel.route !== "/hilfe" &&
+                          routePathAllows(artikel.route, rolle) ? (
+                            <Link
+                              to={artikel.route}
+                              data-testid={`hilfe-funktion-route-${artikel.id}`}
+                              className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-semibold text-ai hover:opacity-80"
+                            >
+                              {t("help.openRoute")}
+                              <ArrowRight size={13} />
+                            </Link>
+                          ) : null}
                         </details>
                       </li>
                     );
