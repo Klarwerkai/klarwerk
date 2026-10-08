@@ -3,8 +3,8 @@
 Auftrag `aufnahme:20260922:gesamt-navigation` („Navigation, Logo und aktiven Bereich konsistent
 bedienen“), Lauf 1, 08.10.2026. Basis `dd696e5e` (`1.0.0-beta.1.756`). Die Fassung, in der dieser
 Lauf ausgeliefert wird, steht erst nach der Veröffentlichung fest; bis dahin ist „dieser Lauf“ der
-Kandidat auf dieser Basis. Ausgeführte Tests gibt es zu diesem Lauf noch nicht. Den Prüflauf führt der
-Adapter aus; sein Bericht ist der Beleg.
+Kandidat auf dieser Basis. Den Prüflauf führt der Adapter aus; sein Bericht ist der Beleg (Ergebnis
+der ersten Prüfung siehe „Nacharbeit 1“).
 
 Quelle der Anliegen: `QUELLEN.json` des Auftrags, Punkte R-0881, R-0892, R-1023, R-1045, R-1813,
 N-0012 und `package:navigation`.
@@ -17,7 +17,7 @@ N-0012 und `package:navigation`.
 | R-0892 dasselbe im Drawer auf dem Tablet | **gemessen in diesem Lauf** | dieser Lauf (nur Test) | `tests/gesamt-navigation/tablet-chromium.test.ts` T1 (768 × 1024), T4 (1024 × 768) |
 | R-0892 Menü auf dem Tablet bedienbar | geliefert (vorher): Drawer ≤ 899 px mit beschriftetem „Menü“ | JOB 3060, JOB 3525, JOB 3605, FE-002 | `tests/navigation-schmal/kein-sonderpunkt-schmal.test.tsx`, `tests/navigation-schmal/kopfband-schmal-chromium.test.ts`, T1 |
 | R-1023 / R-1813 Name „Meine Aufgaben“ | Menüpunkt, Hilfe, Seitenhilfe: geliefert (vorher, R-0962). **Verweis aus der leeren Prüfliste: geliefert in diesem Lauf** | R-0962 (`docs/aufnahme/20260922-gesamt-aufgabenansicht.md`); dieser Lauf | `tests/aufgaben-ansicht/gegenstand-statt-besitzer.test.tsx`, `tests/gesamt-navigation/aufgaben-verweis.test.ts` |
-| R-1813 U3-Browserweg | **nachgeführt in diesem Lauf** (der Smoke suchte den alten Weg „Zahnrad → Weitere Bereiche → Meine Aufgaben“) | dieser Lauf (nur Test) | `tests-smoke/erstnutzer-u2-u3-browser.spec.ts`, Fall U3 |
+| R-1813 U3-Browserweg | **nachgeführt in diesem Lauf** (der Smoke suchte den alten Weg „Zahnrad → Weitere Bereiche → Meine Aufgaben“) | dieser Lauf (nur Test) | `tests-smoke/gesamt-navigation-u3-browser.spec.ts` (Nacharbeit 1: aus `erstnutzer-u2-u3-browser.spec.ts` herausgelöst) |
 | R-1023 Navigation selbsterklärend | geliefert (vorher): vier Obergruppen, „Arbeitsbereiche“ statt Zahnrad, „Seite finden ⌘K“, Seitenhilfe je Menüpunkt | JOB 3337, FE-002, JOB 3028 | `tests/fe002-kopfband/kopfband-fe002.test.tsx`, `tests/bedienbarkeit/u3-menuepunkt-erklaert-sich.test.tsx` |
 | R-1023 Teilstück (b) „zu viele Informationen auf einer Seite“ | **offen** (siehe unten) | — | — |
 | R-1045 „es geht unten weiter“ | **geliefert in diesem Lauf** | dieser Lauf | `tests/gesamt-navigation/weiter-unten-mounted.test.tsx`, `tablet-chromium.test.ts` T2, T4, T5 |
@@ -27,6 +27,20 @@ N-0012 und `package:navigation`.
 | package:navigation, „Gehe zu“ sichtbar und per Kürzel | geliefert (vorher), heute „Seite finden ⌘K“ | JOB 3525, FE-002 | `tests/entwuerfe-menuepunkt/gehe-zu-im-kopfband.test.tsx`, `tests/fe002-kopfband/kopfband-fe002-chromium.test.ts` |
 | R-0881 Logo führt zur Startseite | historisch erledigt (KW-LOGO-HOME-01), nicht Teil der Kriterien | — | `tests/app/logo-home-route.test.ts` (in diesem Lauf nicht ausgewählt) |
 | N-0012 Namen „Admin“/„Validierung“, Quellenhinweis | **gesonderter Auftrag** `arbeit:ux08-quellenhinweis-20260921` | — | nicht in diesem Lauf |
+
+## Nacharbeit 1 (Prüfung am Kandidaten `e2e29642`)
+
+Bis auf eine Suite waren alle Suiten grün: Build, drei jsdom-Suiten, `tablet-chromium` mit
+`kopfband-fe002-chromium` und Format. In der Smoke-Datei `erstnutzer-u2-u3-browser.spec.ts` waren
+U3 und „U2 · Bibliothek“ grün. Rot war nur **„U2 · Meine Entwürfe“**. Der Fall erwartet den
+Admin-Satz `capture.draftScope.noteAdmin` („… (Admin-Ansicht: alle) …“). „Meine Entwürfe“ zeigt seit
+Pedis Entscheidung `debbb8e8` (Entwürfe sind privat, Auftrag gesamt-entwurf-einreichen,
+`pages/MeineEntwuerfe.tsx:66-72`) bewusst immer `capture.draftScope.note`. Das ist ein Fall von
+R-1507 auf einer Basisänderung vor diesem Auftrag und betrifft keine Datei dieses Auftrags.
+Behoben wurde er hier nicht. Weil das Smoke-Tor ganze Dateien wählt, steht U3 jetzt in einer eigenen
+Datei, `tests-smoke/gesamt-navigation-u3-browser.spec.ts`. Der U2-Teil bleibt unverändert. Das
+Mengenmanifest `tests/smoke/smoke-mengen-manifest.json` ist auf Version 14 nachgeführt: Der Fall ist
+umgezogen und trägt den heutigen Titel, die Mengen bleiben gleich.
 
 ## Was dieser Lauf gebaut hat
 
