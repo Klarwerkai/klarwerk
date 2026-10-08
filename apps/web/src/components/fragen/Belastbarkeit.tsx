@@ -94,8 +94,11 @@ function Seite({ seite, nummer }: { seite: KonfliktSeite; nummer: 1 | 2 }): JSX.
 // R-1627 — DIE ARGUMENTATIONSKETTE, JEDE STUFE AUFKLAPPBAR.
 // ================================================================================================
 //
-// Die Stufen kommen fertig vom Server (Aussage → Stützung → Einwand → Vorbehalt → Schluss), jede an
-// eine Quelle, einen Widerspruch oder einen benannten Grund gebunden. Die Fläche ordnet nichts um.
+// Die Stufen kommen fertig vom Server (Aussagen → belegte Beziehungen → Einwand → Vorbehalt →
+// Schluss), jede an eine Quelle, eine kuratierte Kante, einen Widerspruch oder einen benannten Grund
+// gebunden. Die Fläche ordnet nichts um und leitet keine Beziehung aus der Reihenfolge ab (Ben
+// nacharbeit-9): ohne belegte Beziehung steht am Schluss ausdrücklich, dass die Aussagen unabhängig
+// sind.
 // R-0346: bei `tiefe: "kurz"` stehen nur Aussage und Schluss offen; die übrigen Stufen sind
 // zugeklappt, aber vorhanden. Ohne Zuschnitt (älterer Server) steht alles offen.
 function offenNachTiefe(
@@ -105,16 +108,58 @@ function offenNachTiefe(
   return zuschnitt?.tiefe !== "kurz" || art === "aussage" || art === "schluss";
 }
 
-function StufenInhalt({ stufe, fach }: { stufe: ArgumentStufe; fach: boolean }): JSX.Element {
+function StufenInhalt({
+  stufe,
+  fach,
+  titel,
+}: {
+  stufe: ArgumentStufe;
+  fach: boolean;
+  titel: ReadonlyMap<string, string>;
+}): JSX.Element {
   const { t, i18n } = useTranslation();
-  // Jeder Fall wird über EINE Literalprüfung verengt; der Rest ist Aussage oder Stützung. Eine
-  // Oder-Prüfung auf den zusammengesetzten Diskriminanten verengte den Schlussfall nicht (TS2339).
+  // Jeder Fall wird über EINE Literalprüfung verengt; der Rest ist eine Aussage.
   if (stufe.art === "schluss") {
     return (
-      <p className="mt-1 text-[12px] leading-relaxed text-text">
-        {t(`ask.belastbarkeit.lage.${stufe.lage}`)} ·{" "}
-        {t(`ask.belastbarkeit.argumentation.einstufung.${stufe.einstufung}`)}
-      </p>
+      <div className="mt-1 text-[12px] leading-relaxed text-muted">
+        {stufe.aussage ? (
+          <p data-testid="ask-argument-schluss-aussage" className="whitespace-pre-line text-text">
+            {stufe.aussage}
+          </p>
+        ) : null}
+        {stufe.gestuetztAuf.length > 0 ? (
+          <p className="mt-0.5 text-[11px] text-muted-2">
+            {t("ask.belastbarkeit.argumentation.gestuetztAuf", {
+              quellen: stufe.gestuetztAuf.map((id) => titel.get(id) ?? id).join(", "),
+            })}
+          </p>
+        ) : null}
+        {stufe.unabhaengig ? (
+          <p data-testid="ask-argument-unabhaengig" className="mt-0.5 text-[11px] text-muted-2">
+            {t("ask.belastbarkeit.argumentation.unabhaengig")}
+          </p>
+        ) : null}
+        <p className="mt-0.5 text-[11px] text-muted-2">
+          {t(`ask.belastbarkeit.lage.${stufe.lage}`)} ·{" "}
+          {t(`ask.belastbarkeit.argumentation.einstufung.${stufe.einstufung}`)}
+        </p>
+      </div>
+    );
+  }
+  if (stufe.art === "beziehung") {
+    return (
+      <div className="mt-1 text-[12px] leading-relaxed text-muted">
+        <p className="text-text">
+          {stufe.vonTitel} {stufe.gerichtet ? "→" : "↔"}{" "}
+          {t(`ask.belastbarkeit.argumentation.beziehung.${stufe.beziehung}`)}{" "}
+          {stufe.gerichtet ? "→" : "↔"} {stufe.zuTitel}
+        </p>
+        {stufe.gesetztVon ? (
+          <p className="mt-0.5 text-[11px] text-muted-2">
+            {t("ask.belastbarkeit.argumentation.gesetztVon", { wer: stufe.gesetztVon })}
+          </p>
+        ) : null}
+      </div>
     );
   }
   if (stufe.art === "einwand") {
@@ -172,6 +217,9 @@ function Argumentation({
 }): JSX.Element {
   const { t } = useTranslation();
   const fach = zuschnitt?.fachsprache !== "allgemein";
+  const titel = new Map(
+    stufen.flatMap((s): [string, string][] => (s.art === "aussage" ? [[s.koId, s.titel]] : [])),
+  );
   return (
     <div data-testid="ask-argumentation" className="mt-2">
       <p className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
@@ -189,9 +237,9 @@ function Argumentation({
             <details open={offenNachTiefe(stufe.art, zuschnitt)}>
               <summary className="cursor-pointer text-[12px] font-semibold text-text">
                 {i + 1}. {t(`ask.belastbarkeit.argumentation.art.${stufe.art}`)}
-                {stufe.art === "aussage" || stufe.art === "stuetzung" ? `: ${stufe.titel}` : ""}
+                {stufe.art === "aussage" ? `: ${stufe.titel}` : ""}
               </summary>
-              <StufenInhalt stufe={stufe} fach={fach} />
+              <StufenInhalt stufe={stufe} fach={fach} titel={titel} />
             </details>
           </li>
         ))}

@@ -103,7 +103,7 @@ const KETTE: ArgumentStufe[] = [
     stand: "2026-03-05T10:00:00.000Z",
   },
   {
-    art: "stuetzung",
+    art: "aussage",
     koId: "b",
     titel: "Prüfintervall Druckbehälter",
     aussage: "Druckbehälter werden jährlich geprüft.",
@@ -112,6 +112,17 @@ const KETTE: ArgumentStufe[] = [
     vertrauenswert: 76,
     validiert: true,
     stand: "2025-11-20T08:00:00.000Z",
+  },
+  {
+    art: "beziehung",
+    kanteId: "k1",
+    beziehung: "beispiel_fuer",
+    gerichtet: true,
+    vonKoId: "a",
+    vonTitel: "Ventil V4 jährlich prüfen",
+    zuKoId: "b",
+    zuTitel: "Prüfintervall Druckbehälter",
+    gesetztVon: "Karl Muster",
   },
   {
     art: "einwand",
@@ -128,7 +139,14 @@ const KETTE: ArgumentStufe[] = [
     },
   },
   { art: "vorbehalt", grund: "zustaendig_nicht_erreichbar" },
-  { art: "schluss", lage: "belegt_mit_konflikt", einstufung: "unverified" },
+  {
+    art: "schluss",
+    lage: "belegt_mit_konflikt",
+    einstufung: "unverified",
+    aussage: "Ventil V4 ist jährlich zu prüfen.",
+    gestuetztAuf: ["a", "b"],
+    unabhaengig: false,
+  },
 ];
 
 let container: HTMLDivElement;
@@ -232,22 +250,37 @@ describe("Antwort-Erklärung · Belastbarkeit in der Konsole", () => {
     const stufen = alle("ask-argument-stufe");
     expect(stufen.map((s) => s.getAttribute("data-art"))).toEqual([
       "aussage",
-      "stuetzung",
+      "aussage",
+      "beziehung",
       "einwand",
       "vorbehalt",
       "schluss",
     ]);
     // Ausführlich: jede Stufe steht offen, jede ist ein eigenes <details>.
     const offen = stufen.map((s) => (s.querySelector("details") as HTMLDetailsElement).open);
-    expect(offen).toHaveLength(5);
+    expect(offen).toHaveLength(6);
     expect(offen.every((o) => o)).toBe(true);
     expect(stufen[0]?.textContent).toContain("Aussage: Ventil V4 jährlich prüfen");
     expect(stufen[0]?.textContent).toContain("Belegstelle: „jährlich zu prüfen“");
     expect(stufen[0]?.textContent).toContain("Technik");
-    expect(stufen[1]?.textContent).toContain("Gestützt durch: Prüfintervall Druckbehälter");
-    expect(stufen[2]?.textContent).toContain("Ventil V4 wird halbjährlich geprüft.");
-    expect(stufen[3]?.textContent).toContain("nicht erreichbar");
-    expect(stufen[4]?.textContent).toContain("Belegt — mit Widerspruch");
+    // Ben nacharbeit-9: die zweite Quelle ist eine eigene Aussage, keine „Stützung" nach Position.
+    expect(stufen[1]?.textContent).toContain("Aussage: Prüfintervall Druckbehälter");
+    expect(container.textContent).not.toContain("Gestützt durch");
+    // Die Beziehung steht nur, weil der Server eine kuratierte Kante liefert — mit Art und Urheber.
+    expect(stufen[2]?.textContent).toContain("Belegte Beziehung");
+    expect(stufen[2]?.textContent).toContain(
+      "Ventil V4 jährlich prüfen → ist ein Beispiel für → Prüfintervall Druckbehälter",
+    );
+    expect(stufen[2]?.textContent).toContain("Beziehung gesetzt von Karl Muster");
+    expect(stufen[3]?.textContent).toContain("Ventil V4 wird halbjährlich geprüft.");
+    expect(stufen[4]?.textContent).toContain("nicht erreichbar");
+    // Der Schluss trägt die inhaltliche Schlussfolgerung und ihre Quellen, dazu die Einstufung.
+    expect(stufen[5]?.textContent).toContain("Ventil V4 ist jährlich zu prüfen.");
+    expect(stufen[5]?.textContent).toContain(
+      "Gestützt auf: Ventil V4 jährlich prüfen, Prüfintervall Druckbehälter",
+    );
+    expect(stufen[5]?.textContent).toContain("Belegt — mit Widerspruch");
+    expect(marke("ask-argument-unabhaengig")).toBeNull();
     expect(marke("ask-zuschnitt")?.textContent).toContain("Expertin oder Experte");
     expect(marke("ask-zuschnitt")?.textContent).toContain("freie Frage");
     expect(container.textContent).not.toMatch(/%/);
@@ -272,7 +305,8 @@ describe("Antwort-Erklärung · Belastbarkeit in der Konsole", () => {
     ]);
     expect(offen).toEqual([
       ["aussage", true],
-      ["stuetzung", false],
+      ["aussage", true],
+      ["beziehung", false],
       ["einwand", false],
       ["vorbehalt", false],
       ["schluss", true],
@@ -284,6 +318,24 @@ describe("Antwort-Erklärung · Belastbarkeit in der Konsole", () => {
     // Die rohe Kontokennung ist eine Fachangabe — allgemein steht sie nicht da.
     expect(alle("ask-belastbarkeit-verantwortung")[1]?.textContent).not.toContain("u-weg");
     expect(marke("ask-zuschnitt")?.textContent).toContain("Arbeit an einem Dokument");
+  });
+
+  it("R-1627: ohne belegte Beziehung sagt der Schluss, dass die Quellen unabhängig stehen", () => {
+    const stufen: ArgumentStufe[] = [];
+    for (const s of KETTE) {
+      if (s.art === "schluss") {
+        stufen.push({ ...s, unabhaengig: true });
+      } else if (s.art !== "beziehung") {
+        stufen.push(s);
+      }
+    }
+    const ohneKante: AntwortBelastbarkeit = { ...MIT_KONFLIKT, argumentation: stufen };
+    montiere(createElement(Belastbarkeit, { b: ohneKante }));
+    const arten = alle("ask-argument-stufe").map((s) => s.getAttribute("data-art"));
+    expect(arten).not.toContain("beziehung");
+    expect(marke("ask-argument-unabhaengig")?.textContent).toContain(
+      "keine Beziehung belegt — sie stehen unabhängig nebeneinander",
+    );
   });
 
   it("R-0284: der Prüfrahmen einer Wissenslücke statt einer nackten Null", () => {

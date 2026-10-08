@@ -3,16 +3,19 @@
 // ================================================================================================
 //
 // Gemessen an der reinen Rechnung `antwortBelastbarkeit` (services/ask/src/answer-belastbarkeit.ts):
-//   R-1627/R-0281  Kette Aussage → Stützung → Einwand → Vorbehalt → Schluss, jede Stufe an eine
-//                  Quelle, einen Widerspruch oder einen benannten Grund gebunden; Belegstelle nur
-//                  aus `steps[].snippet` der gleichen Quelle; keine Wahrheitswahrscheinlichkeit.
+//   R-1627/R-0281  Kette Aussagen → belegte Beziehungen → Einwand → Vorbehalt → Schluss, jede Stufe
+//                  an eine Quelle, eine kuratierte Kante, einen Widerspruch oder einen benannten
+//                  Grund gebunden; Belegstelle nur aus `steps[].snippet` der gleichen Quelle; der
+//                  Schluss trägt die Antwortaussage; keine Wahrheitswahrscheinlichkeit.
 //   R-0346         Rolle und Anlass steuern Tiefe, Fachsprache und die Reihenfolge der Wissensarten.
 import { describe, expect, it } from "vitest";
 import {
   type AntwortZuschnitt,
+  type BelegteBeziehung,
   answerEvidence,
   antwortBelastbarkeit,
   antwortZuschnitt,
+  schneideAntwortZu,
 } from "../../services/ask";
 import type { Conflict } from "../../services/conflicts";
 import type { KnowledgeObject } from "../../services/knowledge-object";
@@ -61,11 +64,26 @@ const KONFLIKT = {
   createdAt: "2026-04-01T00:00:00.000Z",
 } as Conflict;
 
+function kante(
+  teil: Partial<BelegteBeziehung> & Pick<BelegteBeziehung, "quelleId" | "zielId">,
+): BelegteBeziehung {
+  return {
+    id: `k-${teil.quelleId}-${teil.zielId}`,
+    art: "ergaenzt" as const,
+    richtung: "gerichtet" as const,
+    urheber: "kurator-1",
+    status: "aktiv" as const,
+    ...teil,
+  };
+}
+
 function rechne(
   kos: KnowledgeObject[],
   cited: string[],
   zuschnitt?: AntwortZuschnitt,
   konflikte: Conflict[] = [],
+  beziehungen: BelegteBeziehung[] = [],
+  antworttext: string | null = "Ventil V4 jährlich prüfen.",
 ) {
   const map = new Map(kos.map((k): [string, KnowledgeObject] => [k.id, k]));
   const answer = {
@@ -73,6 +91,7 @@ function rechne(
     knowledgeClass: "gesichert" as const,
     sources: cited,
     citedSources: cited,
+    answer: antworttext,
   };
   const evidence = answerEvidence({ answer, sourceKos: map, openConflicts: konflikte });
   return antwortBelastbarkeit({
@@ -82,47 +101,91 @@ function rechne(
     openConflicts: konflikte,
     seiteSichtbar: () => true,
     erreichbar: new Map(kos.map((k): [string, boolean] => [k.author, true])),
-    namen: new Map(),
+    namen: new Map([["kurator-1", "Kim Kurator"]]),
     steps: [
       { sourceId: "b", snippet: "  Ventil V4 jährlich  " },
       { sourceId: null, snippet: "frei schwebend" },
     ],
+    beziehungen,
     ...(zuschnitt ? { zuschnitt } : {}),
   });
 }
 
 describe("R-1627 · die mehrstufige, quellengebundene Argumentation", () => {
-  it("Aussage → Stützung → Einwand → Schluss, jede Stufe an Quelle oder Widerspruch gebunden", () => {
+  it("Aussagen → Einwand → Schluss mit Antwortaussage, jede Stufe an Quelle oder Widerspruch gebunden", () => {
     const b = rechne(
       [ko("a"), ko("b", { trust: 60 }), ko("g", { status: "offen" } as Partial<KnowledgeObject>)],
       ["a", "b"],
       undefined,
       [KONFLIKT],
     );
-    expect(b.argumentation.map((s) => s.art)).toEqual([
-      "aussage",
-      "stuetzung",
-      "einwand",
-      "schluss",
-    ]);
-    const [aussage, stuetzung, einwand, schluss] = b.argumentation;
-    expect(aussage).toMatchObject({ koId: "a", aussage: "Aussage a", belegstelle: null });
+    expect(b.argumentation.map((s) => s.art)).toEqual(["aussage", "aussage", "einwand", "schluss"]);
+    const [aussageA, aussageB, einwand, schluss] = b.argumentation;
+    expect(aussageA).toMatchObject({ koId: "a", aussage: "Aussage a", belegstelle: null });
     // Die Belegstelle stammt NUR aus dem Schritt derselben Quelle, getrimmt — nie aus einem
     // quellenlosen Schritt.
-    expect(stuetzung).toMatchObject({ koId: "b", belegstelle: "Ventil V4 jährlich" });
+    expect(aussageB).toMatchObject({ koId: "b", belegstelle: "Ventil V4 jährlich" });
     expect(einwand).toEqual({
       art: "einwand",
       konfliktId: "c1",
       seite: expect.objectContaining({ einsehbar: true, koId: "g", traegtAntwort: false }),
     });
     // Ein offener Konflikt auf einer tragenden Quelle lässt die Einstufung nicht „belegt" werden.
+    // Der Schluss trägt die INHALTLICHE Schlussfolgerung — die gegebene Antwortaussage — und die
+    // Quellen, auf die sie gestützt ist. Ohne belegte Beziehung stehen diese ausdrücklich unabhängig.
     expect(schluss).toEqual({
       art: "schluss",
       lage: "belegt_mit_konflikt",
       einstufung: "unverified",
+      aussage: "Ventil V4 jährlich prüfen.",
+      gestuetztAuf: ["a", "b"],
+      unabhaengig: true,
     });
     // Keine Stufe trägt eine Wahrheitswahrscheinlichkeit (R-0260).
     expect(JSON.stringify(b.argumentation)).not.toMatch(/%|wahrscheinlich|probability/i);
+  });
+
+  it("Ben nacharbeit-9: die Listenposition stiftet keine Stützung — vertauscht bleibt alles gleichrangig", () => {
+    const kos = [ko("a"), ko("b")];
+    const vorwaerts = rechne(kos, ["a", "b"]);
+    const rueckwaerts = rechne(kos, ["b", "a"]);
+    for (const b of [vorwaerts, rueckwaerts]) {
+      expect(b.argumentation.filter((s) => s.art === "aussage")).toHaveLength(2);
+      expect(b.argumentation.some((s) => s.art === "beziehung")).toBe(false);
+      expect(b.argumentation.at(-1)).toMatchObject({ art: "schluss", unabhaengig: true });
+    }
+  });
+
+  it("eine Beziehung steht nur aus einer aktiven kuratierten Kante zwischen zwei tragenden Quellen", () => {
+    const kos = [ko("a"), ko("b"), ko("x")];
+    const kanten = [
+      kante({ quelleId: "b", zielId: "a", art: "ergaenzt" }),
+      // widerrufen → keine Beziehung
+      kante({ id: "k-w", quelleId: "a", zielId: "b", art: "ersetzt", status: "widerrufen" }),
+      // ein Ende keine tragende Quelle → keine Beziehung
+      kante({ quelleId: "a", zielId: "x", art: "gehoert_zu" }),
+    ];
+    const b = rechne(kos, ["a", "b"], undefined, [], kanten);
+    const beziehungen = b.argumentation.filter((s) => s.art === "beziehung");
+    expect(beziehungen).toEqual([
+      {
+        art: "beziehung",
+        kanteId: "k-b-a",
+        beziehung: "ergaenzt",
+        gerichtet: true,
+        vonKoId: "b",
+        vonTitel: "Wissen b",
+        zuKoId: "a",
+        zuTitel: "Wissen a",
+        gesetztVon: "Kim Kurator",
+      },
+    ]);
+    // Beide Aussagen sind durch die belegte Beziehung verbunden — nicht mehr unabhängig.
+    expect(b.argumentation.at(-1)).toMatchObject({
+      art: "schluss",
+      gestuetztAuf: ["a", "b"],
+      unabhaengig: false,
+    });
   });
 
   it("benannte Vorbehalte stehen als eigene Stufen vor dem Schluss", () => {
@@ -143,7 +206,16 @@ describe("R-1627 · die mehrstufige, quellengebundene Argumentation", () => {
     };
     const evidence = answerEvidence({ answer, sourceKos: new Map(), openConflicts: [] });
     const b = antwortBelastbarkeit({ answer, evidence, kos: new Map(), openConflicts: [] });
-    expect(b.argumentation).toEqual([{ art: "schluss", lage: "wissensluecke", einstufung: "gap" }]);
+    expect(b.argumentation).toEqual([
+      {
+        art: "schluss",
+        lage: "wissensluecke",
+        einstufung: "gap",
+        aussage: null,
+        gestuetztAuf: [],
+        unabhaengig: false,
+      },
+    ]);
   });
 });
 
@@ -185,9 +257,7 @@ describe("R-0346 · Rolle und Anlass steuern Tiefe, Fachsprache und Reihenfolge"
     const fach = rechne([technik, praxis], ["p", "t"], antwortZuschnitt("experte", "frage"));
     const dokument = rechne([technik, praxis], ["p", "t"], antwortZuschnitt("experte", "dokument"));
     const tragende = (b: typeof fach): string[] =>
-      b.argumentation.flatMap((s) =>
-        s.art === "aussage" || s.art === "stuetzung" ? [s.koId] : [],
-      );
+      b.argumentation.flatMap((s) => (s.art === "aussage" ? [s.koId] : []));
     expect(tragende(fach)).toEqual(["t", "p"]);
     expect(tragende(dokument)).toEqual(["p", "t"]);
     // Der Zuschnitt ändert weder Lage noch Vertrauenswert noch die Quellenliste.
@@ -201,5 +271,87 @@ describe("R-0346 · Rolle und Anlass steuern Tiefe, Fachsprache und Reihenfolge"
   it("ohne Angabe gilt die enge Vorgabe: unbekannte Rolle, freie Frage", () => {
     const b = rechne([ko("a")], ["a"]);
     expect(b.zuschnitt).toEqual(antwortZuschnitt("unbekannt", "frage"));
+  });
+});
+
+// Ben nacharbeit-9, Befund 2: der Zuschnitt wirkt auf die ANTWORT selbst — nur mit Wörtlichem aus
+// den tragenden Quellen und Definitionen aus dem Firmenwörterbuch.
+describe("R-0346 · der Zuschnitt verändert die Antwort, quellengebunden", () => {
+  const technik = ko("t", {
+    type: "technik",
+    title: "Druckprüfung",
+    conditions: ["Anlage drucklos"],
+    measures: ["Ventil V4 prüfen", "Dichtung tauschen"],
+  } as Partial<KnowledgeObject>);
+  const praxis = ko("p", {
+    type: "best_practice",
+    title: "Freigabe",
+    measures: ["Freigabe durch Schichtleitung"],
+  } as Partial<KnowledgeObject>);
+  const antwort = "Ventil V4 prüfen, bevor der Kessel wieder anläuft.";
+  const begriffe = [
+    { benennung: "Kessel", definition: "Druckbehälter der Dampfanlage." },
+    { benennung: "Turbine", definition: "Kommt in der Antwort nicht vor." },
+  ];
+
+  it("Fachrolle: ausführlich — wörtliche Voraussetzungen und Maßnahmen, keine Begriffserklärung", () => {
+    const z = schneideAntwortZu(
+      antwort,
+      [technik],
+      antwortZuschnitt("experte", "frage"),
+      begriffe,
+      "de",
+    );
+    expect(z.ergaenzungen).toEqual([
+      { art: "voraussetzungen", quelleId: "t", eintraege: ["Anlage drucklos"] },
+      // „Ventil V4 prüfen" steht schon in der Antwort und wird nicht noch einmal angehängt.
+      { art: "massnahmen", quelleId: "t", eintraege: ["Dichtung tauschen"] },
+    ]);
+    expect(z.text.startsWith(antwort)).toBe(true);
+    expect(z.text).toContain("Voraussetzungen (Druckprüfung):\n- Anlage drucklos");
+    expect(z.text).toContain("Maßnahmen (Druckprüfung):\n- Dichtung tauschen");
+    expect(z.text).not.toContain("Begriffe:");
+  });
+
+  it("Lesende: kurz und allgemein — nur Wörterbuchbegriffe, die in der Antwort vorkommen", () => {
+    const z = schneideAntwortZu(
+      antwort,
+      [technik],
+      antwortZuschnitt("viewer", "frage"),
+      begriffe,
+      "de",
+    );
+    expect(z.ergaenzungen).toEqual([
+      { art: "begriffe", quelleId: null, eintraege: ["Kessel: Druckbehälter der Dampfanlage."] },
+    ]);
+    expect(z.text).not.toContain("Dichtung tauschen");
+    expect(z.text).not.toContain("Turbine");
+  });
+
+  it("die Reihenfolge der Wissensarten ordnet die Ergänzungen — Anlass Dokument: Praxis vor Technik", () => {
+    const fach = schneideAntwortZu(
+      antwort,
+      [technik, praxis],
+      antwortZuschnitt("experte", "frage"),
+      [],
+      "de",
+    );
+    const dokument = schneideAntwortZu(
+      antwort,
+      [technik, praxis],
+      antwortZuschnitt("experte", "dokument"),
+      [],
+      "de",
+    );
+    expect(fach.ergaenzungen.map((e) => e.quelleId)).toEqual(["t", "t", "p"]);
+    expect(dokument.ergaenzungen.map((e) => e.quelleId)).toEqual(["p", "t", "t"]);
+    expect(dokument.text.indexOf("Freigabe durch Schichtleitung")).toBeLessThan(
+      dokument.text.indexOf("Dichtung tauschen"),
+    );
+  });
+
+  it("nichts zu ergänzen → die Antwort bleibt Zeichen für Zeichen dieselbe", () => {
+    const z = schneideAntwortZu(antwort, [ko("a")], antwortZuschnitt("admin", "frage"), [], "de");
+    expect(z).toEqual({ text: antwort, ergaenzungen: [] });
   });
 });

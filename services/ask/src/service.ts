@@ -4,6 +4,7 @@ import {
   type Fragekontext,
   type GeltungsPassung,
   type KnowledgeObject,
+  type KnowledgeType,
   type KoGeltung,
   type KoService,
   SUCH_ZUORDNUNGEN,
@@ -29,6 +30,12 @@ import {
   waehleKandidaten,
 } from "../../reasoner";
 import { TRUST_MAX } from "../../validation";
+import {
+  type ZuschnittBegriff,
+  type ZuschnittDerAntwort,
+  type ZuschnittErgaenzung,
+  schneideAntwortZu,
+} from "./antwort-zuschnitt";
 import { gapCompareKey, normalizeGapQuestion } from "./gap-text";
 import { type GapSummary, summarizeGaps } from "./gap-visibility";
 import { signAnswerReceipt, verifyAnswerReceipt } from "./receipt";
@@ -550,6 +557,18 @@ export interface AskResult {
   // eine nackte Null: niemand weiss, ob sie etwas bedeutet. Der Dienst setzt das Feld auf JEDEM
   // Rückgabeweg; optional nur, damit Aufrufer mit eigenen Ergebnisattrappen unberührt bleiben.
   pruefrahmen?: AskPruefrahmen;
+  // AUFNAHME 20260922 · R-0346 (Ben nacharbeit-9): WIE die Antwort zugeschnitten wurde — Tiefe,
+  // Fachsprache, Reihenfolge und GENAU die angehängten Ergänzungen samt ihrer Quelle. Fehlt das
+  // Feld, ist die Antwort unverändert (wörtlicher Weg, kein Zuschnitt übergeben, keine Antwort).
+  antwortZuschnitt?: AskAntwortZuschnitt;
+}
+
+/** R-0346: der angewandte Zuschnitt der Antwort (Regel und Grenzen: `antwort-zuschnitt.ts`). */
+export interface AskAntwortZuschnitt {
+  tiefe: ZuschnittDerAntwort["tiefe"];
+  fachsprache: ZuschnittDerAntwort["fachsprache"];
+  reihenfolge: KnowledgeType[];
+  ergaenzungen: ZuschnittErgaenzung[];
 }
 
 /**
@@ -923,6 +942,14 @@ export class AskService {
     // Er wirkt auf die Vorauswahl, VOR `dropConfidential` und `validatedOnly`, und kann damit nur
     // verengen. Ungesetzt (Systemaufrufe, bestehende Aufrufer) bleibt der Ablauf der bisherige.
     grundlageSichtbarFuer?: (ko: KnowledgeObject) => boolean,
+    // AUFNAHME 20260922 · R-0346 (Ben nacharbeit-9): Rolle und Dokumentanlass für die ANTWORT selbst —
+    // Tiefe (wörtliche Voraussetzungen/Maßnahmen der tragenden Quellen), Fachsprache (Erklärungen
+    // aus dem Firmenwörterbuch) und Reihenfolge der Wissensarten (`antwort-zuschnitt.ts`). Wie
+    // `grundlageSichtbarFuer` ein EIGENER Parameter und nicht Teil von `opts` (KA4-E1, mega52).
+    // Ungesetzt, und auf dem wörtlichen Weg (`retrievalOnly`), bleibt die Antwort unverändert.
+    zuschnitt?: ZuschnittDerAntwort & {
+      begriffe?: (locale: ReasonerLocale) => Promise<readonly ZuschnittBegriff[]>;
+    },
   ): Promise<AskResult> {
     // D5: die Abschalt-Epoche beim Beginn DIESER Frage — jede Prüfung unten vergleicht mit ihr.
     const kiBeginn = this.kiSperre?.stand();
@@ -1185,7 +1212,36 @@ export class AskService {
         !frageterme.some((t) => core.includes(t))
       );
     });
-    const result = { ...resultCore, captionSources };
+    // AUFNAHME 20260922 · R-0346 (Ben nacharbeit-9): der Zuschnitt verändert die Antwort SELBST —
+    // nur auf dem Antwortweg mit Synthese bzw. Rückfall, NIE auf dem wörtlichen (`retrievalOnly`).
+    // Ergänzt wird ausschließlich Wörtliches aus den TRAGENDEN Quellen und Definitionen aus dem
+    // Firmenwörterbuch; Quellen, Zuordnung und Belegstellen bleiben unberührt.
+    let antwortZuschnitt: AskAntwortZuschnitt | undefined;
+    const basisText = resultCore.answer;
+    let zugeschnittenerText = basisText;
+    if (zuschnitt && opts?.retrievalOnly !== true && resultCore.answered && basisText) {
+      const getragen: readonly string[] = resultCore.citedSources;
+      const tragende = getragen.flatMap((id) => {
+        const ko = prefiltered.find((k) => k.id === id);
+        return ko ? [ko] : [];
+      });
+      const begriffe =
+        zuschnitt.fachsprache === "allgemein" && zuschnitt.begriffe
+          ? await zuschnitt.begriffe(locale).catch(() => [])
+          : [];
+      const zugeschnitten = schneideAntwortZu(basisText, tragende, zuschnitt, begriffe, locale);
+      zugeschnittenerText = zugeschnitten.text;
+      antwortZuschnitt = {
+        tiefe: zuschnitt.tiefe,
+        fachsprache: zuschnitt.fachsprache,
+        reihenfolge: [...zuschnitt.reihenfolge],
+        ergaenzungen: zugeschnitten.ergaenzungen,
+      };
+    }
+    const result = { ...resultCore, answer: zugeschnittenerText, captionSources };
+    const zuschnittFeld: { antwortZuschnitt?: AskAntwortZuschnitt } = antwortZuschnitt
+      ? { antwortZuschnitt }
+      : {};
     // R-1633 — „Sichtbar im UI": je herangezogener Quelle Geltung und Passung, aus denselben
     // Objekten (`prefiltered`) und derselben Regel, die den Rang gesetzt hat. Ohne Kontext fehlt
     // das Feld; eine Quelle ohne Objekt in `prefiltered` gilt als ohne Geltungsangabe.
@@ -1297,6 +1353,7 @@ export class AskService {
           ...ungeprueftFeld,
           ...verschlossenFeld,
           ...geltungFeld,
+          ...zuschnittFeld,
           pruefrahmen,
         };
       }
@@ -1318,6 +1375,7 @@ export class AskService {
         ...ungeprueftFeld,
         ...verschlossenFeld,
         ...geltungFeld,
+        ...zuschnittFeld,
         pruefrahmen,
       };
     }
@@ -1329,6 +1387,7 @@ export class AskService {
       ...ungeprueftFeld,
       ...verschlossenFeld,
       ...geltungFeld,
+      ...zuschnittFeld,
       pruefrahmen,
     };
   }

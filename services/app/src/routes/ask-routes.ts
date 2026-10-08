@@ -4,8 +4,10 @@ import {
   type AntwortZuschnitt,
   AskError,
   type AskService,
+  type BelegteBeziehung,
   type FrageAnlass,
   GESPRAECHSFADEN_MAX_FRAGEN,
+  type ZuschnittBegriff,
   answerEvidence,
   antwortBelastbarkeit,
   antwortZuschnitt,
@@ -164,6 +166,43 @@ export interface AskRouteDeps {
    * fehlt die Auskunft oder scheitert sie, gilt die Erreichbarkeit als UNBEKANNT, nie als gegeben.
    */
   personen?: PersonenAuskunft | undefined;
+  /**
+   * AUFNAHME 20260922 · R-1627 (Ben nacharbeit-9): die kuratierten Kanten — menschlich gesetzte
+   * fachliche Beziehungen — der tragenden Quellen. OPTIONAL: fehlt die Auskunft oder scheitert sie,
+   * steht in der Argumentation keine Beziehung, und die Aussagen bleiben ausdrücklich unabhängig.
+   */
+  kanten?: { fuerKos(koIds: readonly string[]): Promise<readonly BelegteBeziehung[]> } | undefined;
+  /**
+   * AUFNAHME 20260922 · R-0346 (Ben nacharbeit-9): das gepflegte Firmenwörterbuch für die
+   * Begriffserklärungen einer allgemeinsprachlichen Antwort. Gelesen NUR für Sitzungsnutzer — der
+   * Katalog verlangt `ko.read`, das der Add-on-Principal nicht hat (mega77). OPTIONAL: fehlt die
+   * Quelle oder scheitert sie, wird nichts erklärt.
+   */
+  begriffe?: (() => Promise<readonly WoerterbuchEintrag[]>) | undefined;
+}
+
+/** Die schmale Sicht auf einen Eintrag des Firmenwörterbuchs (`BegriffFassung`). */
+export interface WoerterbuchEintrag {
+  definition: Partial<Record<string, string>>;
+  bezeichnungen: Partial<Record<string, { vorzug: string; synonyme: string[] }>>;
+}
+
+// R-0346: das Wörterbuch in der Antwortsprache — je Vorzugsbenennung und Synonym ein Begriff mit der
+// Definition DIESER Sprache. Ohne Definition in der Sprache wird nichts erklärt (nichts übersetzt).
+function zuschnittBegriffe(
+  eintraege: readonly WoerterbuchEintrag[],
+  locale: string,
+): ZuschnittBegriff[] {
+  return eintraege.flatMap((e) => {
+    const definition = e.definition[locale]?.trim();
+    const benennung = e.bezeichnungen[locale];
+    if (!definition || !benennung) {
+      return [];
+    }
+    return [benennung.vorzug, ...benennung.synonyme]
+      .filter((b) => b.trim().length > 0)
+      .map((b) => ({ benennung: b, definition }));
+  });
 }
 
 /**
@@ -604,6 +643,7 @@ async function evidenceFor(
     sources: string[];
     citedSources: string[];
     steps?: { sourceId: string | null; snippet: string | null }[];
+    answer?: string | null;
   },
   log: { warn: (obj: unknown, msg: string) => void },
   // D5 (KI aus): vor jedem Lesevorgang gerufen, AUSSERHALB der Fangzweige unten — eine Abschaltung
@@ -658,17 +698,32 @@ async function evidenceFor(
   await Promise.all(
     konfliktGegenseiten(result.citedSources, openConflicts).map((id) => lies(id, kos)),
   );
+  // R-1627 (Ben nacharbeit-9): die kuratierten Kanten der TRAGENDEN Quellen. Gelesen werden nur
+  // Kanten zu Objekten, die der Aufrufer bereits als Quelle bekommen hat; welche davon zwischen zwei
+  // tragenden Quellen liegen und aktiv sind, entscheidet `antwortBelastbarkeit`. Scheitert der Abruf,
+  // steht keine Beziehung da — und die Aussagen gelten ehrlich als unabhängig.
+  let beziehungen: readonly BelegteBeziehung[] = [];
+  if (deps.kanten && result.answered && result.citedSources.length > 1) {
+    pruefen();
+    try {
+      beziehungen = await deps.kanten.fuerKos(result.citedSources);
+    } catch (err) {
+      log.warn({ err }, "ask.belastbarkeit: Beziehungen nicht lesbar");
+    }
+  }
   // R-0322: Erreichbarkeit der Verantwortlichen. Scheitert die Auskunft, bleibt sie UNBEKANNT —
-  // eine Störung des Verzeichnisses darf weder eine Lücke erfinden noch eine verschweigen.
+  // eine Störung des Verzeichnisses darf weder eine Lücke erfinden noch eine verschweigen. Dieselbe
+  // Abfrage liefert die Namen derer, die eine gezeigte Beziehung gesetzt haben.
   let personen: Awaited<ReturnType<PersonenAuskunft["erreichbarkeit"]>> | null = null;
   if (deps.personen && result.answered && result.citedSources.length > 0) {
     const ids = [
-      ...new Set(
-        result.citedSources.flatMap((id) => {
+      ...new Set([
+        ...result.citedSources.flatMap((id) => {
           const ko = sourceKos.get(id);
           return ko ? [responsibleOf(ko)] : [];
         }),
-      ),
+        ...beziehungen.map((k) => k.urheber),
+      ]),
     ];
     pruefen();
     try {
@@ -684,6 +739,7 @@ async function evidenceFor(
     openConflicts,
     seiteSichtbar: sicht.seiteSichtbar,
     zuschnitt: sicht.zuschnitt,
+    beziehungen,
     ...(result.steps ? { steps: result.steps } : {}),
     ...(personen ? { erreichbar: personen.erreichbar } : {}),
     // Sitzungsnutzer sehen die Kennung auch ohne Verzeichnis (Name dann `null`); der Add-on-Weg nie.
@@ -906,7 +962,21 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             // (`darfSehen` samt führendem Space). Ohne Sitzungsnutzer (Add-on-Schlüssel) nur Inhalt
             // ohne Space oder aus offenen Spaces. Erhoben NACH der letzten Sperrprüfung oben wäre ein
             // `await` im Fenster — deshalb VOR `kiSperreVorFrage` vorbereitet (`grundlage`).
-            out = await ask.ask(question, actorId, locale, mitMarkierung, grundlage);
+            // R-0346 (Ben nacharbeit-9): derselbe Zuschnitt wirkt auf die Antwort selbst (Regel und
+            // Grenzen in `services/ask/src/antwort-zuschnitt.ts`; der wörtliche Weg bleibt unberührt).
+            // Das Wörterbuch nur mit Sitzungsnutzer — dieselbe Grenze wie die Personennamen.
+            const lexikon = deps.begriffe;
+            out = await ask.ask(question, actorId, locale, mitMarkierung, grundlage, {
+              tiefe: sicht.zuschnitt.tiefe,
+              fachsprache: sicht.zuschnitt.fachsprache,
+              reihenfolge: sicht.zuschnitt.reihenfolge,
+              ...(sicht.mitPersonen && lexikon
+                ? {
+                    begriffe: async (sprache: string) =>
+                      zuschnittBegriffe(await lexikon(), sprache),
+                  }
+                : {}),
+            });
             // D5: `evidenceFor` liest die Quellobjekte und die offenen Konflikte nach — vor JEDEM
             // dieser Lesevorgänge wird erneut geprüft (s. dort), und nach dem letzten Warten noch
             // einmal, bevor irgendetwas davon hinausgeht.

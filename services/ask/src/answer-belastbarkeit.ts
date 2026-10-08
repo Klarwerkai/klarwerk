@@ -221,15 +221,27 @@ export function antwortZuschnitt(rolle: FragendenRolle, anlass: FrageAnlass): An
 // R-1627 / R-0281 — DIE MEHRSTUFIGE ARGUMENTATION, QUELLENGEBUNDEN.
 // ================================================================================================
 //
-// Die Kette führt von den Aussagen der TRAGENDEN Quellen über ihre Stützung, die Einwände (offene
-// Widersprüche) und die Vorbehalte zum Schluss. Jede Stufe ist an eine Quelle, einen Konflikt oder
-// einen benannten Grund gebunden; nichts davon stammt aus einem Modell-Gedankengang, und `steps`
-// liefert ausschließlich die wörtliche Belegstelle einer Quelle (FR-ASK-06) — es wird KEINE
-// Herleitung aus `steps` konstruiert (KW-W1-13, mega39 D2). Keine Stufe trägt eine
-// Wahrheitswahrscheinlichkeit (R-0260); der Vertrauenswert ist der der Quelle.
+// Die Kette führt von den Aussagen der TRAGENDEN Quellen über ihre BELEGTEN fachlichen Beziehungen,
+// die Einwände (offene Widersprüche) und die Vorbehalte zur inhaltlichen Schlussfolgerung. Jede Stufe
+// ist an eine Quelle, eine Beziehung, einen Konflikt oder einen benannten Grund gebunden; nichts
+// davon stammt aus einem Modell-Gedankengang, und `steps` liefert ausschließlich die wörtliche
+// Belegstelle einer Quelle (FR-ASK-06) — es wird KEINE Herleitung aus `steps` konstruiert (KW-W1-13,
+// mega39 D2). Keine Stufe trägt eine Wahrheitswahrscheinlichkeit (R-0260).
+//
+// BEN NACHARBEIT-9 (Befund 1): bis hierher hieß die erste tragende Quelle „Aussage" und jede weitere
+// „Stützung" — allein nach Listenposition, ohne dass eine fachliche Beziehung belegt war; ein
+// anderer Zuschnitt drehte die behauptete Richtung um. Jetzt gilt:
+//   · Jede tragende Quelle ist eine eigene AUSSAGE. Die Reihenfolge des Zuschnitts ordnet nur die
+//     Darstellung, sie stiftet keine Beziehung.
+//   · Eine BEZIEHUNG zwischen zwei Aussagen steht nur da, wenn ein Mensch sie als kuratierte Kante
+//     gesetzt hat (`KuratierteKante`, aktiv) — mit ihrer Art und Richtung, wie gesetzt.
+//   · Ohne belegte Beziehung bleiben Aussagen UNABHÄNGIG (`unabhaengig` am Schluss) — keine stillen
+//     gegenseitigen Stützungen.
+//   · Der SCHLUSS trägt die inhaltliche Schlussfolgerung: die gegebene Antwortaussage samt der
+//     Quellen, auf die sie gestützt ist, dazu Lage und Einstufung.
 export type ArgumentStufe =
   | {
-      art: "aussage" | "stuetzung";
+      art: "aussage";
       koId: string;
       titel: string;
       aussage: string;
@@ -240,9 +252,51 @@ export type ArgumentStufe =
       validiert: boolean;
       stand: string;
     }
+  | {
+      art: "beziehung";
+      /** Die Kennung der kuratierten Kante — die Beziehung ist ein eigener, prüfbarer Datensatz. */
+      kanteId: string;
+      beziehung: BelegteBeziehungsArt;
+      gerichtet: boolean;
+      vonKoId: string;
+      vonTitel: string;
+      zuKoId: string;
+      zuTitel: string;
+      /** Wer die Beziehung gesetzt hat — `null` ohne Personensicht (Add-on-Weg). */
+      gesetztVon: string | null;
+    }
   | { art: "einwand"; konfliktId: string; seite: KonfliktSeite }
   | { art: "vorbehalt"; grund: BelastbarkeitsGrund }
-  | { art: "schluss"; lage: AntwortLage; einstufung: AnswerGrade };
+  | {
+      art: "schluss";
+      lage: AntwortLage;
+      einstufung: AnswerGrade;
+      /** Die inhaltliche Schlussfolgerung — die gegebene Antwortaussage; `null` ohne Antwort. */
+      aussage: string | null;
+      /** Die Quellen, auf die der Schluss gestützt ist (die tragenden). */
+      gestuetztAuf: string[];
+      /** Tragende Quellen ohne belegte Beziehung untereinander stehen unabhängig nebeneinander. */
+      unabhaengig: boolean;
+    };
+
+/** Die Beziehungsarten der kuratierten Kanten (`KantenArt`, knowledge-object/kanten-types.ts). */
+export type BelegteBeziehungsArt =
+  | "gehoert_zu"
+  | "ergaenzt"
+  | "ersetzt"
+  | "widerspricht"
+  | "beispiel_fuer";
+
+/** Eine aktive, von einem Menschen gesetzte Beziehung zwischen zwei Wissensobjekten. */
+export interface BelegteBeziehung {
+  id: string;
+  quelleId: string;
+  zielId: string;
+  art: BelegteBeziehungsArt;
+  richtung: "gerichtet" | "ungerichtet" | "symmetrisch";
+  urheber: string;
+  status: "aktiv" | "widerrufen";
+}
 
 const VORBEHALTE: readonly BelastbarkeitsGrund[] = [
   "zuordnung_unbekannt",
@@ -276,7 +330,15 @@ export interface AntwortBelastbarkeit {
 }
 
 export interface AntwortBelastbarkeitInput {
-  answer: { answered: boolean; sources: readonly string[]; citedSources: readonly string[] };
+  answer: {
+    answered: boolean;
+    sources: readonly string[];
+    citedSources: readonly string[];
+    /** Der Antworttext — er ist die inhaltliche Schlussfolgerung der Kette. */
+    answer?: string | null;
+  };
+  /** R-1627: die kuratierten Kanten, die die Route zu den tragenden Quellen gelesen hat. */
+  beziehungen?: readonly BelegteBeziehung[];
   /** Die bereits gefällte Einstufung — sie wird gelesen, nicht nachgerechnet. */
   evidence: AnswerEvidence;
   /** Aufgelöste Wissensobjekte: die herangezogenen Quellen UND die Gegenseiten der Konflikte. */
@@ -313,10 +375,10 @@ function argumentation(
     .map((ko, i) => ({ ko, i }))
     .sort((a, b) => rang(a.ko.type) - rang(b.ko.type) || a.i - b.i)
     .map((e) => e.ko);
-  const stufen: ArgumentStufe[] = geordnet.map((ko, i) => {
+  const stufen: ArgumentStufe[] = geordnet.map((ko) => {
     const stelle = input.steps?.find((s) => s.sourceId === ko.id && (s.snippet ?? "").trim());
     return {
-      art: i === 0 ? "aussage" : "stuetzung",
+      art: "aussage",
       koId: ko.id,
       titel: ko.title,
       aussage: ko.statement,
@@ -327,6 +389,32 @@ function argumentation(
       stand: standVon(ko),
     };
   });
+  // Belegte Beziehungen: NUR aktive kuratierte Kanten, deren BEIDE Enden tragende Quellen sind.
+  // Eine Kante zu einem fremden Objekt wäre eine Aussage über etwas, das die Antwort nicht trägt.
+  const tragend = new Map(carryingKos.map((ko): [string, KnowledgeObject] => [ko.id, ko]));
+  const verbunden = new Set<string>();
+  const gesehen = new Set<string>();
+  for (const k of input.beziehungen ?? []) {
+    const von = tragend.get(k.quelleId);
+    const zu = tragend.get(k.zielId);
+    if (k.status !== "aktiv" || !von || !zu || von.id === zu.id || gesehen.has(k.id)) {
+      continue;
+    }
+    gesehen.add(k.id);
+    verbunden.add(von.id);
+    verbunden.add(zu.id);
+    stufen.push({
+      art: "beziehung",
+      kanteId: k.id,
+      beziehung: k.art,
+      gerichtet: k.richtung === "gerichtet",
+      vonKoId: von.id,
+      vonTitel: von.title,
+      zuKoId: zu.id,
+      zuTitel: zu.title,
+      gesetztVon: input.namen ? (input.namen.get(k.urheber) ?? k.urheber) : null,
+    });
+  }
   // Der Einwand ist die GEGENSEITE — die Seite, die die Antwort nicht trägt.
   for (const k of konflikte) {
     for (const s of k.seiten) {
@@ -340,7 +428,14 @@ function argumentation(
       stufen.push({ art: "vorbehalt", grund });
     }
   }
-  stufen.push({ art: "schluss", lage, einstufung });
+  stufen.push({
+    art: "schluss",
+    lage,
+    einstufung,
+    aussage: input.answer.answer?.trim() ? input.answer.answer.trim() : null,
+    gestuetztAuf: geordnet.map((ko) => ko.id),
+    unabhaengig: geordnet.length > 1 && geordnet.some((ko) => !verbunden.has(ko.id)),
+  });
   return stufen;
 }
 
@@ -420,7 +515,16 @@ export function antwortBelastbarkeit(input: AntwortBelastbarkeitInput): AntwortB
       quellenAnzahl: { herangezogen: answer.sources.length, tragend: 0 },
       quellen: [],
       konflikte: [],
-      argumentation: [{ art: "schluss", lage: "wissensluecke", einstufung: evidence.grade }],
+      argumentation: [
+        {
+          art: "schluss",
+          lage: "wissensluecke",
+          einstufung: evidence.grade,
+          aussage: null,
+          gestuetztAuf: [],
+          unabhaengig: false,
+        },
+      ],
       zuschnitt,
       hinweis,
     };

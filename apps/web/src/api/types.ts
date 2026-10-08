@@ -1964,9 +1964,19 @@ export type Wissensart =
   | "technik"
   | "negativwissen";
 
+// R-1627 (Ben nacharbeit-9): Spiegel von `ArgumentStufe` (services/ask/src/answer-belastbarkeit.ts).
+// Jede tragende Quelle ist eine eigene Aussage; eine Beziehung steht nur da, wo ein Mensch sie als
+// kuratierte Kante gesetzt hat; der Schluss trägt die gegebene Antwortaussage.
+export type BelegteBeziehungsArt =
+  | "gehoert_zu"
+  | "ergaenzt"
+  | "ersetzt"
+  | "widerspricht"
+  | "beispiel_fuer";
+
 export type ArgumentStufe =
   | {
-      art: "aussage" | "stuetzung";
+      art: "aussage";
       koId: string;
       titel: string;
       aussage: string;
@@ -1976,9 +1986,27 @@ export type ArgumentStufe =
       validiert: boolean;
       stand: string;
     }
+  | {
+      art: "beziehung";
+      kanteId: string;
+      beziehung: BelegteBeziehungsArt;
+      gerichtet: boolean;
+      vonKoId: string;
+      vonTitel: string;
+      zuKoId: string;
+      zuTitel: string;
+      gesetztVon: string | null;
+    }
   | { art: "einwand"; konfliktId: string; seite: KonfliktSeite }
   | { art: "vorbehalt"; grund: BelastbarkeitsGrund }
-  | { art: "schluss"; lage: AntwortLage; einstufung: "verified" | "unverified" | "gap" };
+  | {
+      art: "schluss";
+      lage: AntwortLage;
+      einstufung: "verified" | "unverified" | "gap";
+      aussage: string | null;
+      gestuetztAuf: string[];
+      unabhaengig: boolean;
+    };
 
 export interface AntwortZuschnitt {
   rolle: "viewer" | "experte" | "controller" | "admin" | "unbekannt";
@@ -2023,6 +2051,20 @@ export interface AskResponse {
   // R-1633: nur wenn ein Fragekontext mitgeschickt wurde — wofür gewichtet wurde und je Quelle
   // ihre Geltung und Passung (Spiegel von `AskGeltungsauskunft`, services/ask/src/service.ts).
   geltung?: AskGeltungsauskunft;
+  // R-0346 (Ben nacharbeit-9): wie die Antwort selbst zugeschnitten wurde und was angehängt ist
+  // (Spiegel von `AskAntwortZuschnitt`); fehlt das Feld, ist die Antwort unverändert.
+  antwortZuschnitt?: AskAntwortZuschnitt;
+}
+
+export interface AskAntwortZuschnitt {
+  tiefe: "kurz" | "ausfuehrlich";
+  fachsprache: "allgemein" | "fach";
+  reihenfolge: Wissensart[];
+  ergaenzungen: {
+    art: "voraussetzungen" | "massnahmen" | "begriffe";
+    quelleId: string | null;
+    eintraege: string[];
+  }[];
 }
 
 // ================================================================================================

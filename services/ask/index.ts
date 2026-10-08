@@ -1,6 +1,19 @@
 // Öffentliche API des Moduls ask.
 export { AskService, GESPRAECHSFADEN_MAX_FRAGEN } from "./src/service";
-export type { AskServiceDeps, AskPruefrahmen, AskResult, UngeprueftHinweis } from "./src/service";
+export type {
+  AskAntwortZuschnitt,
+  AskServiceDeps,
+  AskPruefrahmen,
+  AskResult,
+  UngeprueftHinweis,
+} from "./src/service";
+// AUFNAHME 20260922 · R-0346 (Ben nacharbeit-9): der Zuschnitt der Antwort selbst.
+export { schneideAntwortZu } from "./src/antwort-zuschnitt";
+export type {
+  ZuschnittBegriff,
+  ZuschnittDerAntwort,
+  ZuschnittErgaenzung,
+} from "./src/antwort-zuschnitt";
 export { InMemoryGapRepo, type GapRepo } from "./src/repo";
 export { PgGapRepo, ASK_SCHEMA } from "./src/repo-pg";
 // W3-A (KW-W3-18): der Repo-Kern der Antwortbelege. Die Fassade wird MITGESCHRIEBEN und nicht
@@ -83,6 +96,8 @@ export type {
   AntwortLage,
   AntwortZuschnitt,
   ArgumentStufe,
+  BelegteBeziehung,
+  BelegteBeziehungsArt,
   FrageAnlass,
   FragendenRolle,
   BelastbarkeitsGrund,
