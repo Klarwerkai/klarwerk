@@ -25,7 +25,9 @@
 // aufeinanderfolgender Fassungen ist eine Beobachtung, wie lange ein Stand in dieser Kategorie
 // trug. `lerneHalbwertszeiten` nimmt je Kategorie den Median dieser Abstände, sobald genug
 // Beobachtungen vorliegen. Bis dahin gilt die AUSGANGSVORGABE je Wissensart
-// (`HALBWERTSZEIT_TAGE`) — ausgewiesen als `halbwertszeitHerkunft: "vorgabe"`.
+// (`HALBWERTSZEIT_TAGE`) — ausgewiesen als `halbwertszeitHerkunft: "vorgabe"`. Die Frist eines
+// Objekts nutzt den Lernstand ZUM BEGINN seines laufenden Stands (s. `GelernteHalbwertszeiten`):
+// eine später gelernte längere Zeit gibt abgelaufenes Wissen nicht ohne Bestätigung wieder frei.
 //
 // SCHUTZBEDARF (R-0652 / FR-EXT-06): „öffentlich … streng vertraulich". Die Zugriffs- und
 // Egress-Stufe `confidentiality` bleibt unverändert dreistufig; „öffentlich" ist eine VERFEINERUNG
@@ -94,8 +96,61 @@ export interface GelernteHalbwertszeit {
   beobachtungen: number;
 }
 
-/** Schlüssel: die normalisierte Kategorie (`kategorieSchluessel`). */
-export type GelernteHalbwertszeiten = ReadonlyMap<string, GelernteHalbwertszeit>;
+/** R-1636: eine Beobachtung — wie lange ein Stand trug, und wann er endete (ms). */
+interface Beobachtung {
+  ende: number;
+  tage: number;
+}
+
+/**
+ * R-1636 / R-0248 (Nacharbeit 4, Bens Befund) — DER LERNSTAND IST DATIERT.
+ *
+ * Bis hierher galt für die Frist eines Objekts immer der JETZIGE Lernwert seiner Kategorie. Stieg
+ * er durch Fassungen ANDERER Objekte (etwa von 40 auf 100 Tage), wurde ein seit 60 Tagen
+ * unverändertes, bereits abgelaufenes Objekt wieder „gesichert" — ohne dass sein Verantwortlicher
+ * etwas bestätigt hätte. Genau das schliesst R-0248 aus.
+ *
+ * DIE REGEL: jede Beobachtung trägt den Zeitpunkt, an dem sie entstand (das Ende des gemessenen
+ * Stands). Die Frist eines Objekts rechnet mit dem Lernstand ZUM BEGINN SEINES LAUFENDEN STANDS —
+ * also zur letzten Fassung bzw. zur letzten Fristbestätigung des Verantwortlichen (`zum`). Was
+ * danach anderswo gelernt wird, ändert diese Frist nicht mehr; es wirkt erst, wenn das Objekt
+ * selbst neu bestätigt wird. Die Fassungsfolge ist unveränderlich (append-only), der Lernstand zu
+ * einem vergangenen Zeitpunkt ist damit festgehalten, ohne einen zweiten Speicherort.
+ *
+ * `get`/`has` beantworten den Lernstand JETZT — für die Auskunft „was wird gerade gelernt".
+ */
+export class GelernteHalbwertszeiten {
+  constructor(private readonly verlauf: ReadonlyMap<string, readonly Beobachtung[]>) {}
+
+  /** Der Lernstand der Kategorie zum Zeitpunkt `zeitpunkt` (ms) — oder `undefined` (Vorgabe). */
+  zum(schluessel: string, zeitpunkt: number): GelernteHalbwertszeit | undefined {
+    const liste = (this.verlauf.get(schluessel) ?? [])
+      .filter((b) => b.ende <= zeitpunkt)
+      .map((b) => b.tage);
+    if (liste.length < HALBWERTSZEIT_MINDESTBEOBACHTUNGEN) {
+      return undefined;
+    }
+    const sortiert = [...liste].sort((a, b) => a - b);
+    const mitte = Math.floor(sortiert.length / 2);
+    const median =
+      sortiert.length % 2 === 1
+        ? (sortiert[mitte] ?? 0)
+        : ((sortiert[mitte - 1] ?? 0) + (sortiert[mitte] ?? 0)) / 2;
+    const tage = Math.round(
+      Math.min(HALBWERTSZEIT_GRENZEN_TAGE.max, Math.max(HALBWERTSZEIT_GRENZEN_TAGE.min, median)),
+    );
+    return { tage, beobachtungen: liste.length };
+  }
+
+  /** Der Lernstand JETZT. */
+  get(schluessel: string): GelernteHalbwertszeit | undefined {
+    return this.zum(schluessel, Number.POSITIVE_INFINITY);
+  }
+
+  has(schluessel: string): boolean {
+    return this.get(schluessel) !== undefined;
+  }
+}
 
 export interface FrischeAuskunft {
   stufe: FrischeStufe;
@@ -174,16 +229,16 @@ export function kategorieSchluessel(kategorie: string | undefined): string {
 /**
  * R-1636: lernt je Kategorie die typische Halbwertszeit aus der Bewährungs-Historie.
  *
- * Beobachtung = Abstand zweier aufeinanderfolgender Fassungen desselben Objekts (in Tagen, > 0).
+ * Beobachtung = Abstand zweier aufeinanderfolgender Fassungen desselben Objekts (in Tagen, ab
+ * `HALBWERTSZEIT_MINDESTABSTAND_TAGE`), datiert auf die spätere der beiden Fassungen.
  * Ergebnis je Kategorie = Median der Beobachtungen, begrenzt auf `HALBWERTSZEIT_GRENZEN_TAGE` —
- * aber NUR, wenn mindestens `HALBWERTSZEIT_MINDESTBEOBACHTUNGEN` vorliegen. Eine Kategorie ohne
- * genug Beobachtungen fehlt in der Tabelle; für sie gilt die Vorgabe der Wissensart.
- * Gelöschte Objekte zählen nicht; Objekte ohne Kategorie auch nicht.
+ * aber NUR, wenn mindestens `HALBWERTSZEIT_MINDESTBEOBACHTUNGEN` vorliegen; sonst gilt die
+ * Vorgabe der Wissensart. Gelöschte Objekte zählen nicht; Objekte ohne Kategorie auch nicht.
  */
 export function lerneHalbwertszeiten(
   kos: readonly Pick<KnowledgeObject, "category" | "history" | "deletedAt">[],
 ): GelernteHalbwertszeiten {
-  const abstaende = new Map<string, number[]>();
+  const abstaende = new Map<string, Beobachtung[]>();
   for (const ko of kos) {
     const schluessel = kategorieSchluessel(ko.category);
     if (ko.deletedAt || schluessel === "") {
@@ -194,33 +249,18 @@ export function lerneHalbwertszeiten(
       .filter((ms) => Number.isFinite(ms))
       .sort((a, b) => a - b);
     for (let i = 1; i < zeiten.length; i++) {
-      const tage = ((zeiten[i] ?? 0) - (zeiten[i - 1] ?? 0)) / TAG_MS;
+      const ende = zeiten[i] ?? 0;
+      const tage = (ende - (zeiten[i - 1] ?? 0)) / TAG_MS;
       // Fassungen am selben Tag (Tippfehler, Freigabe direkt nach Anlage) sagen nichts darüber,
       // wie lange ein Stand trägt — erst ein Abstand ab einem Tag ist eine Beobachtung.
       if (tage >= HALBWERTSZEIT_MINDESTABSTAND_TAGE) {
         const liste = abstaende.get(schluessel) ?? [];
-        liste.push(tage);
+        liste.push({ ende, tage });
         abstaende.set(schluessel, liste);
       }
     }
   }
-  const tabelle = new Map<string, GelernteHalbwertszeit>();
-  for (const [schluessel, liste] of abstaende) {
-    if (liste.length < HALBWERTSZEIT_MINDESTBEOBACHTUNGEN) {
-      continue;
-    }
-    const sortiert = [...liste].sort((a, b) => a - b);
-    const mitte = Math.floor(sortiert.length / 2);
-    const median =
-      sortiert.length % 2 === 1
-        ? (sortiert[mitte] ?? 0)
-        : ((sortiert[mitte - 1] ?? 0) + (sortiert[mitte] ?? 0)) / 2;
-    const tage = Math.round(
-      Math.min(HALBWERTSZEIT_GRENZEN_TAGE.max, Math.max(HALBWERTSZEIT_GRENZEN_TAGE.min, median)),
-    );
-    tabelle.set(schluessel, { tage, beobachtungen: liste.length });
-  }
-  return tabelle;
+  return new GelernteHalbwertszeiten(abstaende);
 }
 
 interface Halbwertszeit {
@@ -229,12 +269,26 @@ interface Halbwertszeit {
   beobachtungen: number;
 }
 
-/** R-1636: die Halbwertszeit des Objekts — gelernt für seine Kategorie, sonst die Vorgabe. */
+/** Beginn des laufenden Stands in ms: letzte Fassung oder letzte Fristbestätigung — `NaN` ohne Datum. */
+function fristBezugMs(ko: FrischeKo): number {
+  return spaetester(letzteFassungMs(ko), zeit(ko.fristBestaetigung?.at));
+}
+
+/**
+ * R-1636: die Halbwertszeit des Objekts — gelernt für seine Kategorie, sonst die Vorgabe.
+ * Nacharbeit 4 (R-0248): gelernt ZUM BEGINN DES LAUFENDEN STANDS (`GelernteHalbwertszeiten.zum`),
+ * damit eine spätere Verlängerung der Kategoriezeit abgelaufenes Wissen nicht wieder freigibt.
+ * Ohne lesbaren Beginn gibt es keinen Lernstand — dann gilt die Vorgabe (die Frist ist ohnehin
+ * nicht belegt und damit abgelaufen).
+ */
 function halbwertszeitVon(
-  ko: Pick<KnowledgeObject, "type" | "category">,
+  ko: FrischeKo,
   gelernt: GelernteHalbwertszeiten | undefined,
 ): Halbwertszeit {
-  const aus = gelernt?.get(kategorieSchluessel(ko.category));
+  const beginn = fristBezugMs(ko);
+  const aus = Number.isFinite(beginn)
+    ? gelernt?.zum(kategorieSchluessel(ko.category), beginn)
+    : undefined;
   if (aus) {
     return { tage: aus.tage, herkunft: "gelernt", beobachtungen: aus.beobachtungen };
   }
@@ -243,8 +297,7 @@ function halbwertszeitVon(
 
 /** Ende der Haltbarkeit in ms — `NaN` ohne lesbares Datum. */
 function haltbarBisMs(ko: FrischeKo, tage: number): number {
-  const bezug = spaetester(letzteFassungMs(ko), zeit(ko.fristBestaetigung?.at));
-  return bezug + tage * TAG_MS;
+  return fristBezugMs(ko) + tage * TAG_MS;
 }
 
 /**

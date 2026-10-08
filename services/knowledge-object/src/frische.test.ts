@@ -214,6 +214,15 @@ function mitFassungen(id: string, kategorie: string, abstaende: number[]): Knowl
   return ko({ id, category: kategorie, history, version: history.length });
 }
 
+/** Ein Objekt, dessen einzige Fassung `tage` Tage nach START entstand. */
+function standAb(tage: number): KnowledgeObject {
+  const beginn = new Date(START + tage * TAG).toISOString();
+  return ko({
+    createdAt: beginn,
+    history: [{ version: 1, at: beginn, author: "anna", note: "erstellt" }],
+  });
+}
+
 describe("R-0652 · Schutzbedarf „öffentlich“", () => {
   it("öffentlich ist eine eigene Stufe der Schutzsicht mit eigener Empfehlung", () => {
     const offen = frischeVon(ko({ oeffentlich: true }), START, erhoben);
@@ -255,22 +264,82 @@ describe("R-1636 · aus der Bewährungs-Historie gelernte Halbwertszeit je Kateg
   });
 
   it("die gelernte Zeit steuert Stufe und Frist; ohne Lernstand gilt ausgewiesen die Vorgabe", () => {
+    // Beobachtungen enden bei START+40/80/120 — der Stand des Objekts beginnt danach (START+130).
     const gelernt = lerneHalbwertszeiten([mitFassungen("a", "Anlage 1", [40, 40, 40])]);
-    const jetzt = START + 60 * TAG;
-    const mit = frischeVon(ko(), jetzt, erhoben, gelernt);
+    const stand = standAb(130);
+    const jetzt = START + 190 * TAG;
+    const mit = frischeVon(stand, jetzt, erhoben, gelernt);
     expect(mit.halbwertszeitHerkunft).toBe("gelernt");
     expect(mit.halbwertszeitTage).toBe(40);
     expect(mit.halbwertszeitBeobachtungen).toBe(3);
     expect(mit.stufe).toBe("faellig");
     expect(mit.gesichert).toBe(false);
-    expect(haltbarkeitAbgelaufen(ko(), jetzt, gelernt)).toBe(true);
+    expect(haltbarkeitAbgelaufen(stand, jetzt, gelernt)).toBe(true);
     // GEGENPROBE: dasselbe Objekt ohne Lernstand — Vorgabe der Wissensart (365 Tage), noch frisch.
-    const ohne = frischeVon(ko(), jetzt, erhoben);
+    const ohne = frischeVon(stand, jetzt, erhoben);
     expect(ohne.halbwertszeitHerkunft).toBe("vorgabe");
     expect(ohne.halbwertszeitTage).toBe(H);
     expect(ohne.halbwertszeitBeobachtungen).toBe(0);
     expect(ohne.stufe).toBe("frisch");
-    expect(haltbarkeitAbgelaufen(ko(), jetzt)).toBe(false);
+    expect(haltbarkeitAbgelaufen(stand, jetzt)).toBe(false);
+  });
+
+  it("Nacharbeit 4 · eine später verlängerte Kategoriezeit gibt abgelaufenes Wissen nicht frei", () => {
+    // Lernstand 40 Tage bis START+120; der Stand des Objekts beginnt bei START+130.
+    const frueh = [mitFassungen("a", "Anlage 1", [40, 40, 40])];
+    const beginn = new Date(START + 130 * TAG).toISOString();
+    const stand = standAb(130);
+    const jetzt = START + 190 * TAG; // 60 Tage unverändert → nach 40 Tagen abgelaufen
+    const vorher = lerneHalbwertszeiten(frueh);
+    expect(haltbarkeitAbgelaufen(stand, jetzt, vorher)).toBe(true);
+
+    // Danach lernen ANDERE Objekte derselben Kategorie lange Abstände — ihre Beobachtungen enden
+    // NACH dem Beginn des Stands (START+150/160/170) und vor `jetzt`.
+    const lang = (id: string, endeTage: number): KnowledgeObject => {
+      const von = new Date(START - 300 * TAG).toISOString();
+      const bis = new Date(START + endeTage * TAG).toISOString();
+      return ko({
+        id,
+        history: [
+          { version: 1, at: von, author: "anna", note: "erstellt" },
+          { version: 2, at: bis, author: "anna", note: "überarbeitet" },
+        ],
+      });
+    };
+    const verlaengert = lerneHalbwertszeiten([
+      ...frueh,
+      lang("b", 150),
+      lang("c", 160),
+      lang("d", 170),
+    ]);
+    expect(verlaengert.get("anlage 1")?.tage, "der Lernstand JETZT ist länger").toBeGreaterThan(
+      100,
+    );
+
+    // Das abgelaufene Objekt bleibt abgelaufen — in der Auskunft UND im Antwortpfad.
+    const auskunft = frischeVon(stand, jetzt, erhoben, verlaengert);
+    expect(auskunft.halbwertszeitTage).toBe(40);
+    expect(auskunft.gesichert).toBe(false);
+    expect(auskunft.stufe).toBe("faellig");
+    expect(haltbarkeitAbgelaufen(stand, jetzt, verlaengert)).toBe(true);
+
+    // Erst die Bestätigung des Verantwortlichen beginnt einen neuen Stand — mit dem neuen Lernstand.
+    const bestaetigt = ko({
+      createdAt: beginn,
+      history: [{ version: 1, at: beginn, author: "anna", note: "erstellt" }],
+      fristBestaetigung: { at: new Date(jetzt).toISOString(), by: "anna" },
+    });
+    const danach = frischeVon(bestaetigt, jetzt, erhoben, verlaengert);
+    expect(danach.gesichert).toBe(true);
+    expect(danach.halbwertszeitTage).toBe(verlaengert.get("anlage 1")?.tage);
+    expect(haltbarkeitAbgelaufen(bestaetigt, jetzt, verlaengert)).toBe(false);
+    // GEGENPROBE: ein fremdes Frische-Signal beginnt keinen neuen Stand.
+    const fremd = ko({
+      createdAt: beginn,
+      history: [{ version: 1, at: beginn, author: "anna", note: "erstellt" }],
+      frischeSignal: { at: new Date(jetzt).toISOString(), by: "carla" },
+    });
+    expect(haltbarkeitAbgelaufen(fremd, jetzt, verlaengert)).toBe(true);
   });
 
   it("eine gelernte Zeit bleibt in ihren Grenzen", () => {
