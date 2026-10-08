@@ -237,10 +237,13 @@ async function unsicherbareQuelle(): Promise<void> {
       await flush();
     });
   }
-  expect(container.textContent).toContain(
-    i18n.t("capture.unsavable.sourceUrl", { urls: "www.beispiel.de/seite" }),
-  );
+  // Am Feld steht die Grenze (wie in source-url-unsavable-mounted); den benannten Grund mit der
+  // Adresse zeigt erst der Grenzen-Dialog — das prüfen die Fälle dort.
+  expect(container.textContent).toContain(i18n.t("capture.sourceUrlLimit"));
 }
+
+const GRUND_URL = (): string =>
+  i18n.t("capture.unsavable.sourceUrl", { urls: "www.beispiel.de/seite" });
 
 function feldMitWert(wert: string): boolean {
   return [...container.querySelectorAll("input, textarea")].some(
@@ -429,6 +432,7 @@ describe("Lücken-Interview am echten Arbeitsraum", () => {
     await klick(knopf(i18n.t("interview.recherche.sichernUndRecherchieren")));
     // Erst die ausdrückliche Bestätigung — noch nichts gesichert, nichts gesucht.
     expect(container.textContent).toContain(i18n.t("capture.saveLimit.title"));
+    expect(container.textContent).toContain(GRUND_URL());
     expect(box.erstellt).toHaveLength(0);
     expect(interviewMock.mock.calls.length).toBe(vorher);
 
@@ -457,6 +461,7 @@ describe("Lücken-Interview am echten Arbeitsraum", () => {
     await unsicherbareQuelle();
     await klick(knopf(i18n.t("interview.recherche.sichernUndRecherchieren")));
     expect(container.textContent).toContain(i18n.t("capture.saveLimit.title"));
+    expect(container.textContent).toContain(GRUND_URL());
     // Der Dialog steht am Ende des Arbeitsraums — sein „Abbrechen" ist der letzte gleichnamige Knopf.
     const abbrechen = [...container.querySelectorAll("button")]
       .filter((b) => (b.textContent ?? "").trim() === i18n.t("capture.saveLimit.cancel"))
