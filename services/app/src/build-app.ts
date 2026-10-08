@@ -2358,7 +2358,13 @@ const SERIALISIERTE_FELDER: ReadonlySet<string> = new Set(["req", "res", "err"])
  * Herausgelöst aus `baueLoggerOptionen`, damit die Senke einen Fehler, der NICHT unter `err` steht,
  * in dieselbe Form bringt (R-0664, Ben Nacharbeit 4) — statt ihn zu verwerfen oder roh zu lassen.
  */
-export function serialisiereFehler(fehler: Error & { code?: unknown }): Record<string, string> {
+export function serialisiereFehler(fehler: Error & { code?: unknown }): {
+  type: string;
+  code: string;
+  herkunft: string;
+  message: string;
+  stack: string;
+} {
   return {
     type: erlaubterTyp(fehler.name),
     code: erlaubterCode(fehler.code),
