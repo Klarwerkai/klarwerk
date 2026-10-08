@@ -1105,6 +1105,16 @@ export function BibliothekLesen({
     onSuccess: invalidate,
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
+  // R-0235 / R-0749: „Hat geholfen" am Objekt selbst — Bewährung, keine Prüfstimme. Der Server
+  // zählt je Person und Objekt genau einmal; ein zweiter Klick ist ein ehrlicher No-op.
+  const hilfreich = useMutation({
+    mutationFn: () => endpoints.ko.helpful(koId),
+    onSuccess: () => {
+      invalidate();
+      push("success", t("ask.thanked"));
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
+  });
   const detailReview = useMutation({
     mutationFn: async ({ verdict, text }: { verdict: FeedbackVerdict; text: string }) => {
       await endpoints.ko.act(koId, {
@@ -2453,6 +2463,16 @@ export function BibliothekLesen({
                       {t("lib.revalidate")}
                     </MenuePunkt>
                   ) : null}
+                  <MenuePunkt
+                    testId="bib-menue-hilfreich"
+                    disabled={hilfreich.isPending || hilfreich.isSuccess}
+                    onClick={() => {
+                      hilfreich.mutate();
+                      schliessen();
+                    }}
+                  >
+                    {hilfreich.isSuccess ? t("ask.thanked") : t("ask.helpful")}
+                  </MenuePunkt>
                   {darfLoeschen ? (
                     <>
                       <MenueTrenner />
