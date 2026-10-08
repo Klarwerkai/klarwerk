@@ -301,3 +301,62 @@ describe("F3 · die Verwaltung erledigt den Antrag", () => {
     expect((await services.loeschantraege.alle())[0]?.status).toBe("erledigt");
   });
 });
+
+// Nacharbeit 5 (BEN): eine abgebrochene Erledigung bleibt `in_bearbeitung` gespeichert. Die Uhr
+// dieser Datei steht auf START (08:00); eine Übernahme von 07:00 ist damit älter als die fünf
+// Minuten (`UEBERNAHME_GUELTIG_MS`), eine von 08:00 nicht.
+describe("F4 · eine abgebrochene Erledigung wird über die Fläche wieder aufgenommen", () => {
+  async function antragInBearbeitung(am: string): Promise<string> {
+    const gestellt = await app.inject({
+      method: "POST",
+      url: "/api/me/loeschantrag",
+      headers: { authorization: `Bearer ${erik.token}` },
+      payload: {},
+    });
+    expect(gestellt.statusCode).toBe(201);
+    const id = (gestellt.json() as { id: string }).id;
+    // So hinterlässt ein Prozessabbruch den Antrag: übernommen, Konto noch da, nicht abgeschlossen.
+    const uebernommen = await services.loeschantraege.uebernehmen(
+      id,
+      { token: "abgebrochen", am, von: "admin-vorher" },
+      "2026-10-06T00:00:00.000Z",
+    );
+    expect(uebernommen?.status).toBe("in_bearbeitung");
+    return id;
+  }
+
+  it("nach erneutem Laden bietet die Karte die Wiederaufnahme an — und sie schliesst ab", async () => {
+    const id = await antragInBearbeitung("2026-10-06T07:00:00.000Z");
+
+    flaechenToken = adminToken;
+    // Das erneute Laden: eine frisch montierte Karte mit frischem Abruf.
+    const flaeche = await montieren(createElement(BetroffenenrechteVerwaltung));
+    expect(flaeche.querySelector('[data-testid="loeschantrag-abgebrochen"]')).not.toBeNull();
+    // Ablehnen und die normale Erledigung gibt es hier nicht — der Antrag ist nicht offen.
+    expect(flaeche.querySelector('[data-testid="loeschantrag-erledigen"]')).toBeNull();
+    expect(flaeche.querySelector('[data-testid="loeschantrag-ablehnen"]')).toBeNull();
+
+    await klicke(knopf(flaeche, "loeschantrag-wiederaufnehmen"));
+    // Erst die Bestätigung löscht.
+    expect((await services.auth.listUsers()).some((u) => u.id === erik.id)).toBe(true);
+    await klicke(knopf(flaeche, "loeschantrag-erledigen-ja"));
+
+    expect((await services.auth.listUsers()).some((u) => u.id === erik.id)).toBe(false);
+    const antrag = await services.loeschantraege.finde(id);
+    expect(antrag?.status).toBe("erledigt");
+    // Die neue Übernahme ist die der Wiederaufnahme, nicht die abgebrochene.
+    expect(antrag?.uebernahme?.token).not.toBe("abgebrochen");
+    expect((await services.audit.list({ action: "loeschantrag.erledigt" })).length).toBe(1);
+    // Nach dem Neuladen der Liste steht der Antrag als erledigt da, ohne Aktion.
+    expect(flaeche.querySelector('[data-testid="loeschantrag-wiederaufnehmen"]')).toBeNull();
+  });
+
+  it("eine noch laufende Übernahme bietet keine Wiederaufnahme an", async () => {
+    await antragInBearbeitung("2026-10-06T08:00:00.000Z");
+    flaechenToken = adminToken;
+    const flaeche = await montieren(createElement(BetroffenenrechteVerwaltung));
+    expect(flaeche.querySelector('[data-testid="loeschantrag-wiederaufnehmen"]')).toBeNull();
+    expect(flaeche.querySelector('[data-testid="loeschantrag-erledigen"]')).toBeNull();
+    expect((await services.auth.listUsers()).some((u) => u.id === erik.id)).toBe(true);
+  });
+});

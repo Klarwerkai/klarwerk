@@ -37,9 +37,10 @@ import {
   type Loeschantrag,
   LoeschantragFehler,
   type LoeschantragRepo,
-  UEBERNAHME_GUELTIG_MS,
   istUeberfaellig,
+  istWiederaufnehmbar,
   neuerLoeschantrag,
+  uebernahmeAbgelaufenVor,
 } from "../loeschantraege";
 import { type SelbstauskunftQuellen, erstelleSelbstauskunft } from "../selbstauskunft";
 import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
@@ -90,12 +91,14 @@ function verwaltungssicht(
 ): Loeschantrag & {
   nutzer: { name: string; email: string } | null;
   ueberfaellig: boolean;
+  wiederaufnehmbar: boolean;
 } {
   const konto = konten.find((k) => k.id === antrag.nutzerId);
   return {
     ...antrag,
     nutzer: konto ? { name: konto.name, email: konto.email } : null,
     ueberfaellig: istUeberfaellig(antrag, jetzt),
+    wiederaufnehmbar: istWiederaufnehmbar(antrag, jetzt),
   };
 }
 
@@ -250,7 +253,7 @@ export function datenschutzRoutes(
           const antrag = await dienste.loeschantraege.uebernehmen(
             request.params.id,
             uebernahme,
-            new Date(t - UEBERNAHME_GUELTIG_MS).toISOString(),
+            uebernahmeAbgelaufenVor(t),
           );
           if (!antrag) {
             if (!(await dienste.loeschantraege.finde(request.params.id))) {
@@ -303,7 +306,9 @@ export function datenschutzRoutes(
             target: antrag.id,
             payload: { nutzerId: antrag.nutzerId, fristBis: antrag.fristBis },
           });
-          reply.code(200).send({ ...neu, nutzer: null, ueberfaellig: false });
+          reply
+            .code(200)
+            .send({ ...neu, nutzer: null, ueberfaellig: false, wiederaufnehmbar: false });
         } catch (e) {
           fehler(reply, e);
         }

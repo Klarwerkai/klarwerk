@@ -27,6 +27,8 @@ export interface Loeschantrag {
 
 export interface LoeschantragVerwaltung extends Loeschantrag {
   nutzer: { name: string; email: string } | null;
+  /** Eine abgebrochene Erledigung (`in_bearbeitung`, Übernahme abgelaufen): erneut erledigbar. */
+  wiederaufnehmbar: boolean;
 }
 
 /** Die Selbstauskunft — nur die Felder, die die Fläche liest; der Rest reist in der Datei mit. */

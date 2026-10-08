@@ -27,7 +27,10 @@ mit der Veröffentlichung; bis dahin gilt hier: **gebaut und im Prüflauf, nicht
   `erledigt`. Zurückziehen, Ablehnen und eine zweite Erledigung scheitern in dieser Zeit mit 409.
   Scheitert das Löschen, wird die Übernahme freigegeben (wieder `offen`); bricht der Vorgang ganz ab,
   ist sie nach 5 Minuten (`UEBERNAHME_GUELTIG_MS`, technischer Wert) wieder übernehmbar — die
-  nächste Erledigung findet das Konto dann ggf. bereits gelöscht und vermerkt das.
+  nächste Erledigung findet das Konto dann ggf. bereits gelöscht und vermerkt das. Die Liste der
+  Verwaltung liefert dafür `wiederaufnehmbar`; die Datenschutzkarte zeigt an einem solchen Antrag
+  „Erledigung wieder aufnehmen" (Nacharbeit 5). Ablehnen bietet sie dort nicht an, weil der Server
+  es nur an offenen Anträgen zulässt.
 - **Protokollzeilen über den eigenen Antrag:** Entscheidungen der Verwaltung (`loeschantrag.erledigt`,
   `loeschantrag.abgelehnt`) erscheinen in der Auskunft des Antragstellers über `payload.nutzerId`.
 - **Frist:** ein Kalendermonat ab Antrag (Art. 12 Abs. 3 Satz 1). Die Quellen nennen keine Frist;

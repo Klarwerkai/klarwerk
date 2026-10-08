@@ -72,6 +72,8 @@ export default {
     "datenschutz.verwaltung.wirkung":
       "Erledigen löscht Konto und Anmeldesitzungen über den vorhandenen Löschweg. Verweise in Beiträgen, Bewertungen und Protokoll bleiben stehen.",
     "datenschutz.verwaltung.erledigen": "Konto löschen und erledigen",
+    "datenschutz.verwaltung.abgebrochen": "Die Erledigung wurde abgebrochen.",
+    "datenschutz.verwaltung.wiederaufnehmen": "Erledigung wieder aufnehmen",
     "datenschutz.verwaltung.bestaetigen": "Konto von {{name}} jetzt löschen?",
     "datenschutz.verwaltung.ja": "Ja, löschen",
     "datenschutz.verwaltung.abbrechen": "Abbrechen",
@@ -157,6 +159,8 @@ export default {
     "datenschutz.verwaltung.wirkung":
       "Completing deletes the account and its sign-in sessions through the existing deletion path. References in contributions, ratings and the log remain.",
     "datenschutz.verwaltung.erledigen": "Delete account and complete",
+    "datenschutz.verwaltung.abgebrochen": "Completing was interrupted.",
+    "datenschutz.verwaltung.wiederaufnehmen": "Resume completion",
     "datenschutz.verwaltung.bestaetigen": "Delete the account of {{name}} now?",
     "datenschutz.verwaltung.ja": "Yes, delete",
     "datenschutz.verwaltung.abbrechen": "Cancel",
@@ -243,6 +247,8 @@ export default {
     "datenschutz.verwaltung.wirkung":
       "Afhandelen verwijdert account en aanmeldsessies via de bestaande verwijderroute. Verwijzingen in bijdragen, beoordelingen en het logboek blijven staan.",
     "datenschutz.verwaltung.erledigen": "Account verwijderen en afhandelen",
+    "datenschutz.verwaltung.abgebrochen": "Het afhandelen is onderbroken.",
+    "datenschutz.verwaltung.wiederaufnehmen": "Afhandeling hervatten",
     "datenschutz.verwaltung.bestaetigen": "Het account van {{name}} nu verwijderen?",
     "datenschutz.verwaltung.ja": "Ja, verwijderen",
     "datenschutz.verwaltung.abbrechen": "Annuleren",

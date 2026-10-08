@@ -101,6 +101,23 @@ function AntragZeile({ antrag }: { antrag: LoeschantragVerwaltung }): JSX.Elemen
       {antrag.status !== "offen" && antrag.entscheidungsgrund ? (
         <p className="text-[12.5px] text-muted">{antrag.entscheidungsgrund}</p>
       ) : null}
+      {/* Nacharbeit 5 (BEN): eine abgebrochene Erledigung (in Bearbeitung, Übernahme abgelaufen)
+          lässt sich wieder aufnehmen — der Server übernimmt sie atomar neu. Ablehnen bietet die
+          Karte hier nicht an: der Server lässt es nur an offenen Anträgen zu. */}
+      {antrag.wiederaufnehmbar && modus === "ruhe" ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[12.5px] text-muted" data-testid="loeschantrag-abgebrochen">
+            {t("datenschutz.verwaltung.abgebrochen")}
+          </span>
+          <Button
+            variant="danger"
+            onClick={() => setModus("loeschen")}
+            data-testid="loeschantrag-wiederaufnehmen"
+          >
+            {t("datenschutz.verwaltung.wiederaufnehmen")}
+          </Button>
+        </div>
+      ) : null}
       {antrag.status === "offen" && modus === "ruhe" ? (
         <div className="flex flex-wrap gap-2">
           <Button
@@ -123,7 +140,7 @@ function AntragZeile({ antrag }: { antrag: LoeschantragVerwaltung }): JSX.Elemen
           </Button>
         </div>
       ) : null}
-      {antrag.status === "offen" && modus === "loeschen" ? (
+      {(antrag.status === "offen" || antrag.wiederaufnehmbar) && modus === "loeschen" ? (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-text">{t("datenschutz.verwaltung.bestaetigen", { name })}</span>
           <Button

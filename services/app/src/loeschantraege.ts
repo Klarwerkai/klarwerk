@@ -50,6 +50,23 @@ export interface LoeschantragUebernahme {
  */
 export const UEBERNAHME_GUELTIG_MS = 5 * 60 * 1000;
 
+/** Die Grenze, vor der eine Übernahme als liegengeblieben gilt — dieselbe für Route und Anzeige. */
+export function uebernahmeAbgelaufenVor(jetzt: number): string {
+  return new Date(jetzt - UEBERNAHME_GUELTIG_MS).toISOString();
+}
+
+/**
+ * Nacharbeit 5 (BEN): eine abgebrochene Erledigung — `in_bearbeitung` mit abgelaufener Übernahme.
+ * Der Server übernimmt sie neu (`uebernehmen(…, abgelaufenVor)`); die Verwaltung bekommt dieses
+ * Merkmal mitgeliefert, damit sie die Wiederaufnahme anbieten kann, statt den Antrag hängen zu lassen.
+ */
+export function istWiederaufnehmbar(antrag: Loeschantrag, jetzt: number): boolean {
+  return (
+    antrag.status === "in_bearbeitung" &&
+    (antrag.uebernahme?.am ?? "") < uebernahmeAbgelaufenVor(jetzt)
+  );
+}
+
 /** Ein noch nicht entschiedener Antrag: offen oder gerade in Bearbeitung. */
 export function istAktiv(antrag: Pick<Loeschantrag, "status">): boolean {
   return antrag.status === "offen" || antrag.status === "in_bearbeitung";
