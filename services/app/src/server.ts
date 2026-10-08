@@ -7,11 +7,8 @@ import { buildApp, buildPgServices, buildServices } from "./build-app";
 import { createPool, migrate } from "./db";
 import { buildDevPersistServices } from "./dev-persist";
 import { type FactoryReset, factoryResetUnavailable } from "./factory-reset";
-import {
-  HINTERGRUNDLAUF_INTERVAL_MS,
-  type HintergrundlaufBericht,
-  starteHintergrundpruefung,
-} from "./hintergrundpruefung";
+import { HINTERGRUNDLAUF_INTERVAL_MS, type HintergrundlaufBericht } from "./hintergrundpruefung";
+import { starteHintergrundpruefung } from "./hintergrundpruefung-start";
 import { GedaechtnisDienst } from "./interaktionsgedaechtnis";
 import { resolveKlaraAufraeumIntervalMs, starteKlaraAufraeumen } from "./klara-aufraeumen";
 import { registerNoindexHook } from "./noindex-hook";
