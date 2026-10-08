@@ -57,9 +57,13 @@ Offen bzw. anderswo geführt:
   menschlichen Freitext; die Konfliktprüfung des Reasoners ist dort nicht angebunden. Der Ablauf
   Eskalation → Zweitmeinung → Entscheidung gehört zum Auftrag `gesamt-konfliktentscheidung`, die
   Zweitmeinung zu Klara-Antworten zu `gesamt-klara-zweitmeinung`.
-- **Mandantenfähigkeit (NFR-MNT-03).** Nicht umgesetzt: das Produkt führt kein Mandantenmodell;
-  die KI-Zuordnung gilt je Instanz (eine Zeile `reasoner_policy`). Isolation pro Kunde besteht
-  heute nur über getrennte Instanzen.
+- **Mandantenfähigkeit (NFR-MNT-03).** Umgesetzt im festgelegten Mandantenmodell des Produkts:
+  ein Kunde = eine Instanz mit eigenem Datenbestand (`services/app/src/addon-principal.ts:25-29`).
+  Daten, Konten, Sitzungen und KI-Zuordnung (`reasoner_policy` je Datenbank) sind damit je Kunde
+  getrennt. Beleg: `tests/mandanten-isolation/instanz-ist-mandantengrenze.test.ts` — zwei
+  Kunden-Instanzen über die echten HTTP-Routen; keine sieht Wissensobjekte, Anmeldung oder
+  KI-Zuordnung der anderen. NICHT gebaut ist der Betrieb mehrerer Kunden in EINER Instanz mit
+  Trennung je Anfrage; das ist eine eigene Architekturentscheidung (dort als „v2/SSO" geführt).
 
 ## Datenmodell (Auszug)
 Keine eigene Persistenz außer Konfiguration + KI-Kosten-/Nutzungs-Logging (NFR-OPS-03).
