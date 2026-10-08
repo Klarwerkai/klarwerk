@@ -583,8 +583,91 @@ function dynamischeZugriffeAus(sf: ts.SourceFile): DynamischerZugriff[] {
       if (roh && ts.isVariableDeclaration(roh) && roh.initializer) {
         ausNamensraum(roh.name, sf, spezifikator);
       }
+      // Form 3 (R-1349, Nacharbeit 7): mehrere Module gemeinsam — `Promise.all([import("./a"),
+      // import("./b")])`. Der Namensraum steht dann an DERSELBEN STELLE der Ergebnisliste, an der
+      // der Import in der Liste steht; nur diese Bindung wird gelesen, sonst deckte `a` den Export
+      // von `b`. Gemessen an `apps/web/src/components/KlaraAssistant.tsx` (Klaras Bibliothek und
+      // Elementbeispiele, `laden.then(([modul, beispiele]) => …)`).
+      if (zugriff && ts.isArrayLiteralExpression(zugriff)) {
+        zugriffeAusPromiseAll(zugriff, zugriff.elements.indexOf(n), spezifikator);
+      }
     }
     ts.forEachChild(n, gehe);
+  };
+
+  /** Ein `.then(fn)` bzw. `.then(function …)` an `ausdruck` — sein erster Parameter und Rumpf. */
+  const handlerVon = (aufruf: ts.Node): { name: ts.BindingName; rumpf: ts.Node } | undefined => {
+    if (!ts.isCallExpression(aufruf)) {
+      return undefined;
+    }
+    const fn = aufruf.arguments[0];
+    if (!fn || !(ts.isArrowFunction(fn) || ts.isFunctionExpression(fn))) {
+      return undefined;
+    }
+    const erster = fn.parameters[0];
+    return erster ? { name: erster.name, rumpf: fn.body } : undefined;
+  };
+
+  const zugriffeAusPromiseAll = (
+    liste: ts.ArrayLiteralExpression,
+    stelle: number,
+    spezifikator: string,
+  ): void => {
+    const alle = liste.parent;
+    if (
+      !alle ||
+      !ts.isCallExpression(alle) ||
+      alle.arguments[0] !== liste ||
+      !ts.isPropertyAccessExpression(alle.expression) ||
+      !ts.isIdentifier(alle.expression.expression) ||
+      alle.expression.expression.text !== "Promise" ||
+      alle.expression.name.text !== "all"
+    ) {
+      return;
+    }
+    const ausListe = (bindung: ts.BindingName, rumpf: ts.Node): void => {
+      const element = ts.isArrayBindingPattern(bindung) ? bindung.elements[stelle] : undefined;
+      if (element && ts.isBindingElement(element)) {
+        ausNamensraum(element.name, rumpf, spezifikator);
+      }
+    };
+    const thenAn = (ziel: ts.Node): ts.Node | undefined => {
+      const zugriff = ziel.parent;
+      return zugriff &&
+        ts.isPropertyAccessExpression(zugriff) &&
+        zugriff.expression === ziel &&
+        zugriff.name.text === "then"
+        ? zugriff.parent
+        : undefined;
+    };
+    // `Promise.all([...]).then(([a, b]) => …)`
+    const direkt = thenAn(alle);
+    const h = direkt ? handlerVon(direkt) : undefined;
+    if (h) {
+      ausListe(h.name, h.rumpf);
+    }
+    // `const [a, b] = await Promise.all([...])` bzw. `const laden = Promise.all([...])` und später
+    // `laden.then(([a, b]) => …)`.
+    const oben =
+      alle.parent && ts.isAwaitExpression(alle.parent) ? alle.parent.parent : alle.parent;
+    if (oben && ts.isVariableDeclaration(oben) && oben.initializer) {
+      if (ts.isArrayBindingPattern(oben.name)) {
+        ausListe(oben.name, sf);
+      } else if (ts.isIdentifier(oben.name) && oben.initializer === alle) {
+        const lokal = oben.name.text;
+        const suche = (k: ts.Node): void => {
+          if (ts.isIdentifier(k) && k.text === lokal && k !== oben.name) {
+            const spaeter = thenAn(k);
+            const hs = spaeter ? handlerVon(spaeter) : undefined;
+            if (hs) {
+              ausListe(hs.name, hs.rumpf);
+            }
+          }
+          ts.forEachChild(k, suche);
+        };
+        ts.forEachChild(sf, suche);
+      }
+    }
   };
   ts.forEachChild(sf, gehe);
   return raus;
@@ -2142,6 +2225,49 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
       expect(gefangen, "ein gleichnamiger Bindungsname verdeckt, liest aber nichts").toContain(
         "hoehe",
       );
+    } finally {
+      rmSync(baum, { recursive: true, force: true });
+    }
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // R-1349 (Nacharbeit 7) — A10 · MEHRERE DYNAMISCHE IMPORTE GEMEINSAM (`Promise.all`)
+  // ----------------------------------------------------------------------------------------------
+  // Gemessen an `apps/web/src/components/KlaraAssistant.tsx`: `laden.then(([modul, beispiele]) =>
+  // modul.allBibliothekEntries(…))`. Der Wächter kannte nur `import(…).then((m) => …)` und meldete die
+  // drei so geladenen Exporte als „ohne Aufrufer". Die Gegenprobe hält die andere Richtung: ein
+  // Namensraum deckt nur die Exporte SEINES Moduls, nicht die des Nachbarn in derselben Liste.
+  it("A10 · Promise.all: jede Ergebnisstelle deckt genau ihr Modul — direkt, über Variable, mit await", () => {
+    const baum = mkdtempSync(join(tmpdir(), "kw1349-promiseall-"));
+    try {
+      const src = join(baum, "services", "probe", "src");
+      mkdirSync(src, { recursive: true });
+      const schreib = (datei: string, text: string): void =>
+        writeFileSync(join(src, datei), text, "utf8");
+      schreib("a.ts", "export const eins = 1;\nexport const zwei = 2;\n");
+      schreib("b.ts", "export const drei = 3;\n");
+      schreib("c.ts", "export const vier = 4;\n");
+      schreib("d.ts", "export const fuenf = 5;\nexport const sechs = 6;\n");
+      schreib(
+        "nutzer.ts",
+        'const laden = Promise.all([import("./a"), import("./b")]);\n' +
+          "void laden.then(([m, n]) => m.eins + n.drei + n.zwei);\n" +
+          'void Promise.all([import("./c")]).then(([k]) => k.vier);\n' +
+          "async function start(): Promise<number> {\n" +
+          '  const [p] = await Promise.all([import("./d")]);\n' +
+          "  return p.fuenf;\n" +
+          "}\n" +
+          "void start();\n",
+      );
+      const gefangen = erhebe(baum, ["services"], ["services"], [], []).ohneAufrufer.map(
+        (f) => f.name,
+      );
+      expect(gefangen, "über eine Variable und `.then`").not.toContain("eins");
+      expect(gefangen, "die zweite Stelle der Liste").not.toContain("drei");
+      expect(gefangen, "direkt an `Promise.all(…).then`").not.toContain("vier");
+      expect(gefangen, "`const [p] = await Promise.all(…)`").not.toContain("fuenf");
+      expect(gefangen, "der Nachbar-Namensraum deckt nicht").toContain("zwei");
+      expect(gefangen, "nicht abgegriffen ist nicht gerufen").toContain("sechs");
     } finally {
       rmSync(baum, { recursive: true, force: true });
     }

@@ -265,12 +265,35 @@ Jeder Eintrag nennt seinen Grund im Register, A3 prüft ihn.
     - Ohne Leserliste deckt nichts.
 - **Destrukturierung:** Ein Vorgabewert (`{ x = WERT } = o`) zählt als Leseoperation; Eigenschafts-
   und Bindungsnamen zählen nicht. Kalibrierung A9.
+- **Mehrere dynamische Importe gemeinsam (Nacharbeit 7):** `Promise.all([import("./a"),
+  import("./b")])` wird jetzt erkannt. Das gilt direkt mit `.then(([a, b]) => …)`, über eine
+  Variable mit späterem `.then` und als `const [a, b] = await Promise.all(…)`.
+  - Jede Ergebnisstelle deckt nur die Exporte ihres eigenen Moduls.
+  - Kalibrierung A10 mit Negativfällen: Der Nachbar-Namensraum deckt nicht, und ein Export ohne
+    Abgriff gilt nicht als gerufen.
+  - Anlass waren drei Fehlalarme am Kandidaten `ed909e8e`: `allBibliothekEntries`,
+    `bibliothekAuszuege` und `klaraBeispiel`, geladen in `KlaraAssistant.tsx`.
 - **A3 erweitert:**
   - Grund-Pflicht in jedem Register;
   - in `OFFENER_REST`: Entscheider, Beleg, Auftragskennung beim gesonderten Auftrag und eine
     vorhandene Belegdatei;
   - kein Schlüssel in zwei Registern;
   - jeder Fremdleser mit Grund und vorhandener Leserdatei.
+
+## Neuzugänge aus dem Hauptstand (Nacharbeit 7)
+
+Am Kandidaten `ed909e8e` meldete A1 neun Exporte ohne Produktaufrufer. Sie kamen mit dem
+integrierten Hauptstand aus den Aufträgen gesamt-hilfen und Wissensereignisse (R-0710) ins Werk.
+Genau dafür ist der Wächter da. Jeder Fall ist einzeln abgeschlossen:
+
+| Export | Ausgang | Grund |
+|---|---|---|
+| `klaraBibliothek.ts::allBibliothekEntries`, `bibliothekAuszuege`, `klaraBeispiele.ts::klaraBeispiel` | **Fehlalarm, Wächter berichtigt** | `KlaraAssistant.tsx` lädt beide Module über `Promise.all([import(…), import(…)])` und ruft sie (A10) |
+| `klaraRegistry.ts::rankKlara` | **in den Test gezogen** | Das Produkt ruft `klaraGrundlage`, laut Quelltext ohne Bibliotheksauszüge zeichengleich. Die fünf Prüfstände messen dieselbe Rangliste über `tests/support/klara-rangfolge.ts` am Produktweg. |
+| `hilfeBibliothek.ts::GLIEDERUNG`, `artikelText` | **in den Test gezogen** | Prüferwartung des Bauplan-Wächters (`artikelText`: „für Prüfungen“). Unverändert nach `tests/support/hilfe-gliederung.ts`; die Artikel bleiben im Produkt. |
+| `klaraBeispiele.ts::BEISPIEL_PFLICHT` | **in den Test gezogen** | Pflichtliste nur des Prüfstands, jetzt lokal in `elementbeispiel-mounted.test.tsx`, unverändert aus denselben Registern abgeleitet |
+| `wissensereignisse.ts::WEBHOOKS_TAKT_ENV` | **angeschlossen** | `server.ts` las den Namen als zweite Schreibweise `process.env.KLARWERK_WEBHOOKS_TAKT_SEK`; jetzt `process.env[WEBHOOKS_TAKT_ENV]` |
+| `wissensereignisse.ts::erhebeBefunde` | **entfernt** | Hülle um `befundeAus(await ladeStand(…))`, die weder der Melder noch ein Test rief |
 
 ## Mitgeführte Prüfstände anderer Aufträge
 
@@ -388,7 +411,20 @@ jetzt an der Stelle, die das Produkt wirklich benutzt. Keiner ist abgeschwächt.
 - **Prüfbeleg am Kandidaten `75adf52f`** (Archiv `HISTORIE/nacharbeit-6/PRUEFUNG`): Build, Format
   und Wächter/Bedarfsabgleich (16 von 16) grün. Dieser Stand ist mit Nacharbeit 6 überholt, weil
   sich Wächter und Register geändert haben.
+- **Prüfbeleg am Kandidaten `ed909e8e`** (Archiv `HISTORIE/nacharbeit-7/PRUEFUNG`):
+  - Wächter: 8 von 9 grün, darunter A2, A3 (mit `OFFENER_REST`) und A8 (Fremdleser am
+    Syntaxbaum). Bedarfsabgleich 7 von 7 grün.
+  - Rot war allein A1, mit den neun Neuzugängen oben. A1 nannte keinen Namen aus `wordAddin.ts` oder
+    `migrationsbeleg.ts`: Beide echten Fremdlesekanten decken also auch unter der strengeren
+    Messung aus Nacharbeit 6.
+  - `kanten-lesekette-sichtbarkeit` und `modulgrenze` grün.
+  - In `mega61-rechtsseiten` ist der eigene Fall grün („jede benannte Ausnahme zeigt noch auf eine
+    wirklich unauflösbare Stelle“, also die Streichung der Schreibsperren-Ladestelle). Rot ist
+    allein die neue, fremde Ladestelle
+    `tests/audit-gesamt/vorher-nachher.integration.test.ts:131` (`await import(eintritt)` des
+    Vorher/Nachher-Gerüsts aus `audit-gesamt`). Diese Datei berührt der Auftrag nicht; `mega61`
+    ist deshalb aus der Auswahl genommen, der rote Bericht bleibt im Archiv.
 - **Fehlender Beleg:**
-  - Die Prüfläufe zu Nacharbeit 6 (neue Fremdlesermessung, A8, `OFFENER_REST`, drei Abbauten)
-    stehen aus. Dieser Arbeitsgang hat keine Tests gestartet.
+  - Die Prüfläufe zu Nacharbeit 7 stehen aus: Wächter mit A10, die neun Abschlüsse und die
+    nachgezogenen Prüfstände. Dieser Arbeitsgang hat keine Tests gestartet.
   - Der Lieferbeleg (Fassung) entsteht erst mit der Veröffentlichung.
