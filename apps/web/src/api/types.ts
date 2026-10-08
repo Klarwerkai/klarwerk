@@ -3070,6 +3070,14 @@ export interface UebernommeneAenderung {
   uebernommenAm: string;
 }
 
+/** Drahtform von `AnweisungEntscheidung` (`gesamtanweisung-types.ts`). `von` ist eine Kontokennung. */
+export interface AnweisungEntscheidung {
+  ergebnis: "angenommen" | "abgelehnt";
+  von: string;
+  am: string;
+  version: number;
+}
+
 export interface AnweisungLesestand {
   id: string;
   titel: string;
@@ -3081,6 +3089,11 @@ export interface AnweisungLesestand {
   urheber: string;
   erstelltAm: string;
   geaendertAm: string;
+  /**
+   * STATUS-FREIGABE · die festgehaltene letzte Entscheidung (wer, wann, welche Fassung). Fehlt sie,
+   * ist nichts festgehalten — die Fläche nennt dann keine Person und keine geratene.
+   */
+  entscheidung?: AnweisungEntscheidung;
   /** NUR die zugänglichen Bausteine. Ein verborgener steht hier gar nicht, auch nicht leer. */
   bausteine: BausteinLesestand[];
   unvollstaendig: boolean;
@@ -3136,6 +3149,7 @@ export interface Anweisung {
   urheber: string;
   erstelltAm: string;
   geaendertAm: string;
+  entscheidung?: AnweisungEntscheidung;
 }
 
 export interface AnweisungKopfEingabe {

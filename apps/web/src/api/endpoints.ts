@@ -9,6 +9,7 @@ import type {
   AnswerResult,
   // JOB 4154 (WIKI-GESAMTANWEISUNG): der Drahtvertrag der zusammengesetzten Anweisung.
   Anweisung,
+  AnweisungEntscheidung,
   AnweisungKopfEingabe,
   AnweisungLesestand,
   AnweisungStaende,
@@ -156,6 +157,8 @@ export interface AnweisungListeneintrag {
   urheber: string;
   erstelltAm: string;
   geaendertAm: string;
+  /** STATUS-FREIGABE · dieselbe festgehaltene Entscheidung wie am Einzelabruf; fehlt = nicht festgehalten. */
+  entscheidung?: AnweisungEntscheidung;
   sichtbareBausteine: number;
   verborgeneBausteine: number;
   unvollstaendig: boolean;
