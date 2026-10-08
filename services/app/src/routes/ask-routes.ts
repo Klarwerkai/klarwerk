@@ -1089,12 +1089,29 @@ export function klaraAusfuehrungRoutes(
             ))
               ? { dokumenttextFreigegeben: true as const }
               : {};
+          // gesamt-ki-freigaberegeln (Ben Nacharbeit 2, aus main integriert): geht vertraulich
+          // markierter Dokumenttext hinaus — als Markierung oder als Frage selbst —, dann nur, weil
+          // die zweite zentrale Adminfreigabe ihn gedeckt hat. Die EINSTUFUNG reist dann mit bis in
+          // den Reasoner, damit der Kern und der Chokepoint dieselbe Freigabe noch einmal fragen.
+          // Sonst fehlt das Feld. (`freigegeben` ist hier, was im früheren Klara-Zweig des
+          // allgemeinen Wegs `ka4Bestaetigt` hieß.)
+          const vertraulichHinaus =
+            vertraulich &&
+            ("dokumenttextFreigegeben" in dokumenttextFeld || (freigegeben && frageIstDokument));
+          const vertraulichFeld = vertraulichHinaus
+            ? { dokumenttextVertraulich: true as const }
+            : {};
+          const zusatz = markierung
+            ? { ...markierung, ...dokumenttextFeld, ...vertraulichFeld }
+            : vertraulichHinaus
+              ? vertraulichFeld
+              : undefined;
           await antwortLauf(deps, request, reply, {
             question,
             locale,
             actorId,
             ...(opts ? { opts } : {}),
-            ...(markierung ? { zusatz: { ...markierung, ...dokumenttextFeld } } : {}),
+            ...(zusatz ? { zusatz } : {}),
           });
         };
         if (freigegeben) {
