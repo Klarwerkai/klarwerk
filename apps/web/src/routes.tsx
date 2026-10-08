@@ -95,6 +95,11 @@ const Conflicts = lazy(() => import("./pages/Conflicts").then((m) => ({ default:
 const DuplicateCompare = lazy(() =>
   import("./pages/DuplicateCompare").then((m) => ({ default: m.DuplicateCompare })),
 );
+// R-1107 (Aufnahme gesamt-dublettenvergleich): der Zusammenführen-Assistent — nachgeladen wie jede
+// andere Seite (Regel oben, JOB 3503).
+const DuplicateMerge = lazy(() =>
+  import("./pages/DuplicateMerge").then((m) => ({ default: m.DuplicateMerge })),
+);
 const Duplicates = lazy(() =>
   import("./pages/Duplicates").then((m) => ({ default: m.Duplicates })),
 );
@@ -120,6 +125,10 @@ const GesamtanweisungBereich = lazy(() =>
   })),
 );
 const Help = lazy(() => import("./pages/Help").then((m) => ({ default: m.Help })));
+// KLARA-VORSCHAU (produkt:20261007:klara-vorschau): der dokumentierte Einstieg `/klara-vorschau`.
+const KlaraVorschauSeite = lazy(() =>
+  import("./pages/KlaraVorschau").then((m) => ({ default: m.KlaraVorschauSeite })),
+);
 const KnowledgeDetail = lazy(() =>
   import("./pages/KnowledgeDetail").then((m) => ({ default: m.KnowledgeDetail })),
 );
@@ -128,6 +137,9 @@ const KnowledgeIntake = lazy(() =>
 );
 const Library = lazy(() => import("./pages/Library").then((m) => ({ default: m.Library })));
 const Lifecycle = lazy(() => import("./pages/Lifecycle").then((m) => ({ default: m.Lifecycle })));
+const LiveWallBeamer = lazy(() =>
+  import("./pages/LiveWallBeamer").then((m) => ({ default: m.LiveWallBeamer })),
+);
 // JOB 3503: nachgeladen wie jede andere Seite — die Regel oben kennt keine Ausnahme, und der
 // Wächter `tests/erstladezeit/` erhebt seine Sollmenge aus dem Dateisystem.
 const MeineEntwuerfe = lazy(() =>
@@ -193,6 +205,7 @@ const PAGES: Record<string, ComponentType> = {
   konflikte: Conflicts,
   duplikate: Duplicates,
   duplicateCompare: DuplicateComparePage,
+  duplicateMerge: DuplicateMerge,
   conflictCompare: ConflictComparePage,
   risiko: Risk,
   lebenszyklus: Lifecycle,
@@ -313,6 +326,30 @@ export function AppRoutes(): JSX.Element {
             aus jedem Begriffshinweis im Editor; ein eigener Menüpunkt ist bewusst nicht Teil
             dieser Lieferung. */}
         <Route path="/begriffe" element={<Firmenwoerterbuch />} />
+        {/* KLARA-VORSCHAU: Einstieg und fiktiver Artikel. Ohne `Guarded` und ohne Serverabruf —
+            die Seite zeigt nur Demodaten und schaltet Klara für die Sitzung ein
+            (docs/klara/klara-vorschau.md). Eigene Fehlergrenze: ein Fehler nimmt die Hülle nicht mit. */}
+        <Route
+          path="/klara-vorschau"
+          element={
+            <ErrorBoundary key="klara-vorschau">
+              <KlaraVorschauSeite />
+            </ErrorBoundary>
+          }
+        />
+        <Route
+          path="/klara-vorschau/artikel/:id"
+          element={
+            <ErrorBoundary key="klara-vorschau-artikel">
+              <KlaraVorschauSeite />
+            </ErrorBoundary>
+          }
+        />
+        {/* R-0740: die Live-Wand als Beamer-Ansicht. Ohne `Guarded`, wie `/wissen/:id`: die Tür
+            dahinter fordert ihr Recht am Server (`ko.read`, `services/app/src/routes/
+            livewall-routes.ts`) und filtert nach den Sichtrechten der angemeldeten Person.
+            Erreichbar aus dem Blatt „Was gerade passiert". */}
+        <Route path="/livewall" element={<LiveWallBeamer />} />
         {/* R-1646 · Ausgangsprüfung: der ausgehende Text vor der Freigabe. Ohne `Guarded`, wie
             `/begriffe`: die Türen dahinter fordern `ko.validate` am Server
             (`services/app/src/routes/ausgangspruefung-routes.ts`). */}

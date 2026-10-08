@@ -24,7 +24,12 @@ import {
   commitDocumentAppend,
   newAppendOperationId,
 } from "../../lib/appendToArticle";
-import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../../lib/bodyAiAssist";
+import {
+  applyBodyAssist,
+  applyBodyAssistBlock,
+  bodyTextForAssist,
+  spellingAssistHtmlOrNull,
+} from "../../lib/bodyAiAssist";
 import { appendExtractSections, normalizeExtractLocale } from "../../lib/bodyExtract";
 import {
   bodyFileLinksFromHtml,
@@ -52,6 +57,13 @@ import {
   reworkNextSteps,
   reworkValidationHref,
 } from "../../lib/reviewReworkContext";
+import {
+  type SpeicherAntwort,
+  einreichSchluessel,
+  speicherAntwortAus,
+  speicherFolgeSatz,
+  vorschlagFolgeSatz,
+} from "../../lib/statusFreigabe";
 import { useAuthorName } from "../../lib/useAuthorName";
 import { isStaleKoDeleteError } from "../../lib/validationDelete";
 import {
@@ -405,7 +417,8 @@ const RW_FREIGABE_ROLLEN = ["admin"];
  */
 type EinreichLage =
   | { art: "pflicht"; text: string }
-  | { art: "eingereicht" }
+  // STATUS-FREIGABE: der Status, den die Antwort des Einreichens trägt — `null` = nicht gemeldet.
+  | { art: "eingereicht"; status: string | null }
   | { art: "stale"; version: number | null }
   | { art: "fehler"; text: string };
 
@@ -1097,6 +1110,16 @@ export function BibliothekLesen({
     onSuccess: invalidate,
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
+  // R-0235 / R-0749: „Hat geholfen" am Objekt selbst — Bewährung, keine Prüfstimme. Der Server
+  // zählt je Person und Objekt genau einmal; ein zweiter Klick ist ein ehrlicher No-op.
+  const hilfreich = useMutation({
+    mutationFn: () => endpoints.ko.helpful(koId),
+    onSuccess: () => {
+      invalidate();
+      push("success", t("ask.thanked"));
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
+  });
   const detailReview = useMutation({
     mutationFn: async ({ verdict, text }: { verdict: FeedbackVerdict; text: string }) => {
       await endpoints.ko.act(koId, {
@@ -1331,6 +1354,16 @@ export function BibliothekLesen({
       const buchen = (): void => {
         teilstandRef.current = buch.text === null ? null : buch;
       };
+      // STATUS-FREIGABE (produkt:20261007): der Stand, den die LETZTE eigene Serverantwort trägt —
+      // daraus sagt die Erfolgsmeldung, ob die gespeicherte Fassung freigegeben ist oder nicht.
+      // Keine zweite Abfrage: ein fremder Schreibvorgang gehört nicht in die eigene Quittung.
+      const antwort: { stand: SpeicherAntwort | null } = { stand: null };
+      const merkeStand = (geschrieben: unknown): void => {
+        const stand = speicherAntwortAus(geschrieben);
+        if (stand) {
+          antwort.stand = stand;
+        }
+      };
       // ==========================================================================================
       // JOB 4251 · DIE BEDINGUNG DES NÄCHSTEN EINORDNUNGSAUFRUFS — GENAU DIESELBE REGEL WIE BEIM
       // TEXT (`eigeneFassung`), NUR AM ANDEREN GEGENSTAND.
@@ -1400,6 +1433,7 @@ export function BibliothekLesen({
        * Aufruf nicht auf den Stand vom Öffnen zurückfallen — er geht gar nicht hinaus (K14).
        */
       const quittieren = (geschrieben: { metadataRevision?: number } | undefined): void => {
+        merkeStand(geschrieben);
         eigenerAufrufDiesesLaufs = true;
         const stand =
           typeof geschrieben?.metadataRevision === "number" ? geschrieben.metadataRevision : null;
@@ -1480,6 +1514,7 @@ export function BibliothekLesen({
             ...(typeof eigeneFassung === "number" ? { expectedVersion: eigeneFassung } : {}),
           });
           buch.text = marken.text;
+          merkeStand(geschrieben);
           // Die Fassung kommt aus der ANTWORT des Schreibvorgangs, nicht aus einer zweiten Abfrage.
           buch.fassung = typeof geschrieben?.version === "number" ? geschrieben.version : null;
         }
@@ -1560,13 +1595,14 @@ export function BibliothekLesen({
       }
       // Alles angekommen: es gibt nichts mehr nachzuholen.
       teilstandRef.current = null;
+      return antwort.stand;
     },
     // Solange nichts zurück ist, wird nichts behauptet (§9 „laden"): die Auskunft des VORIGEN
     // Versuchs gehört nicht über einen laufenden neuen.
     onMutate: () => {
       setSpeicherLage(null);
     },
-    onSuccess: () => {
+    onSuccess: (antwortStand) => {
       invalidate();
       bearbeitenBeenden();
       setErr(null);
@@ -1574,7 +1610,13 @@ export function BibliothekLesen({
       // etwas angekommen ist. Der Satz kommt über die vorhandene Toast-Fläche, dieselbe, die das
       // Löschen und das Anhängen schon benutzen; eine zweite Mechanik daneben wäre eine stille
       // Ablösung.
-      push("success", t("ko.revise.saved"));
+      //
+      // STATUS-FREIGABE: dahinter steht, ob die gespeicherte Fassung freigegeben IST — abgelesen aus
+      // der eigenen Serverantwort. Eine Änderung an einem offenen Eintrag ist gespeichert, nicht
+      // freigegeben; trägt die Antwort keinen Stand, wird darüber nichts behauptet.
+      const folge = speicherFolgeSatz(antwortStand ?? null);
+      const gespeichert = t("ko.revise.saved");
+      push("success", folge ? `${gespeichert} ${t(folge.schluessel, folge.werte)}` : gespeichert);
       if (reviewReworkContext) {
         setReworkSavedFor(koId);
       }
@@ -1808,14 +1850,20 @@ export function BibliothekLesen({
           origin: "klarwerk_web",
         },
       }),
-    onSuccess: () => {
+    onSuccess: (antwort) => {
       // DAS FORMULAR BLEIBT OFFEN UND BEHÄLT DEN TEXT. Eingereicht ist nicht übernommen: der Mensch
       // soll sehen, was er geschickt hat, und der Eintrag darunter trägt weiter den alten Stand.
       // `invalidate()` holt das Objekt samt der jetzt eingereichten Fassung nach.
+      //
+      // STATUS-FREIGABE (Ben, nacharbeit-2): WELCHER alte Stand das ist, sagt die Antwort — der
+      // freiwillige Prüfweg steht auch an OFFENEN Einträgen offen, und dort ist nichts freigegeben.
       invalidate();
       setErr(null);
       setSperreGemeldet(false);
-      setEinreichLage({ art: "eingereicht" });
+      setEinreichLage({
+        art: "eingereicht",
+        status: speicherAntwortAus(antwort)?.status ?? null,
+      });
     },
     // ==============================================================================================
     // DIE GRENZE DES 409 — HIER STEHT KEINE ZAHL, DIE WIR NICHT HABEN.
@@ -1889,10 +1937,14 @@ export function BibliothekLesen({
         expectedVersion: v.expectedVersion,
         ...(v.note && v.note.trim().length > 0 ? { note: v.note.trim() } : {}),
       }),
-    onSuccess: () => {
+    onSuccess: (antwort, v) => {
       invalidate();
       setAblehnung(null);
       setErr(null);
+      // STATUS-FREIGABE: die Entscheidung sagt, was jetzt gilt — „freigegeben" nur, wenn die
+      // Serverantwort es trägt; abgelehnt heisst: der Eintrag bleibt, wie er war.
+      const folge = vorschlagFolgeSatz(v.decision, speicherAntwortAus(antwort));
+      push("success", t(folge.schluessel, folge.werte));
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
@@ -2298,7 +2350,12 @@ export function BibliothekLesen({
 
   return (
     <ImageDescribeProvider provenance={draftProvenance(ko.confidentiality, koId)}>
-      <div data-testid="bib-lesen" className="flex w-[720px] max-w-full flex-col gap-[18px] py-9">
+      <div
+        data-testid="bib-lesen"
+        // STATUS-FREIGABE: die Objektgrenze für Klaras Zeige-Modus; der Status ist die Pille unten.
+        data-objekt="wissen"
+        className="flex w-[720px] max-w-full flex-col gap-[18px] py-9"
+      >
         {/* JOB 3034 R2 · KONFLIKTRUNDE 2: derselbe Hinweis wie auf jeder anderen Fläche, aus
           derselben Quelle — seit JOB 3063 R6 auch in DERSELBEN Bauform (`AuffrischungHinweis`),
           nicht mehr als abgeschriebener Zwilling. Er schweigt, wenn die Liste es schon sagt. */}
@@ -2312,6 +2369,7 @@ export function BibliothekLesen({
             // der Server für diese Antwort nicht erhoben hat. Rein maschinenlesbar: kein neuer Satz,
             // kein neuer Übersetzungsschlüssel, kein Erklärtext auf der Lesefläche (H4).
             {...anzeigestatusAnker(zustand)}
+            data-objektstatus="wissen"
             className={cx(
               "rounded-[999px] px-2.5 py-[3px] text-[11px] font-bold uppercase tracking-[0.3px]",
               PILLEN_TON[ton],
@@ -2410,6 +2468,16 @@ export function BibliothekLesen({
                       {t("lib.revalidate")}
                     </MenuePunkt>
                   ) : null}
+                  <MenuePunkt
+                    testId="bib-menue-hilfreich"
+                    disabled={hilfreich.isPending || hilfreich.isSuccess}
+                    onClick={() => {
+                      hilfreich.mutate();
+                      schliessen();
+                    }}
+                  >
+                    {hilfreich.isSuccess ? t("ask.thanked") : t("ask.helpful")}
+                  </MenuePunkt>
                   {darfLoeschen ? (
                     <>
                       <MenueTrenner />
@@ -2730,6 +2798,7 @@ export function BibliothekLesen({
                 applyFn={(mode, _original, suggestion) =>
                   applyBodyAssist(mode, edit.bodyHtml, suggestion)
                 }
+                applySpelling={(suggestion) => spellingAssistHtmlOrNull(edit.bodyHtml, suggestion)}
                 onApply={(bodyHtml) => setEdit({ ...edit, bodyHtml })}
                 hintKey="capture.ai.bodyHint"
                 extraApplyActions={EDITOR_BLOCKS.map((block) => ({
@@ -3013,7 +3082,7 @@ export function BibliothekLesen({
                 )}
               >
                 {einreichLage.art === "eingereicht"
-                  ? t("ko.propose.done")
+                  ? t(einreichSchluessel(einreichLage.status))
                   : einreichLage.art === "stale"
                     ? einreichLage.version === null
                       ? t("ko.propose.stale")

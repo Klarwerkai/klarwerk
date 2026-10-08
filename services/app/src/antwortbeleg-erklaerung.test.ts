@@ -70,10 +70,20 @@ async function experteAnlegen(
   return { authorization: `Bearer ${login.json().token}` };
 }
 
+/**
+ * Legt eine Wissenseinheit an und gibt sie über die ECHTE Bewertungsroute frei.
+ *
+ * R-0584 (integriert aus main, Auftrag gesamt-datenschutz-voreinstellung): der Frageweg antwortet nur
+ * noch aus geprüftem Wissen. Ein unbewertetes Objekt trägt deshalb keine Antwort mehr — derselbe
+ * Aufbau wie `frageMitBeleg` in klara-answer-explanation.test.ts. Ein Konto ohne `ko.validate`
+ * (Rolle experte) braucht einen `pruefer`. `bewerten: false` lässt die Freigabe aus, wenn ein Fall
+ * sie über einen anderen echten Weg setzt (`adminValidate`).
+ */
 async function koAnlegen(
   app: ReturnType<typeof buildApp>,
   auth: Record<string, string>,
   titel = "Ventil bei Ueberdruck schliessen",
+  opts: { pruefer?: Record<string, string>; bewerten?: boolean } = {},
 ): Promise<string> {
   const ko = await app.inject({
     method: "POST",
@@ -85,12 +95,25 @@ async function koAnlegen(
       type: "best_practice",
       category: "Anlage 1",
       confidentiality: "intern",
+      neededValidations: 1,
     },
   });
   if (ko.statusCode !== 201) {
     throw new Error(`KO nicht angelegt: ${ko.statusCode} ${ko.body}`);
   }
-  return ko.json().id as string;
+  const id = ko.json().id as string;
+  if (opts.bewerten !== false) {
+    const bewertung = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${id}`,
+      headers: opts.pruefer ?? auth,
+      payload: { action: "rate", verdict: "up" },
+    });
+    if (bewertung.statusCode !== 200) {
+      throw new Error(`KO nicht validiert: ${bewertung.statusCode} ${bewertung.body}`);
+    }
+  }
+  return id;
 }
 
 async function fragen(app: ReturnType<typeof buildApp>, auth: Record<string, string>) {
@@ -350,7 +373,7 @@ async function spaceWechseln(
 describe("R-0293 · Freigabe und Prüf-Lauf sind zwei Aussagen (Ben, Nacharbeit 7)", () => {
   it("BELEGTER FALL: freigegebene Quelle ohne vollständigen Prüf-Lauf — die Erklärung widerspricht der Antwort nicht", async () => {
     const ctx = await kontoMitDiensten("prueflauf1@x.de");
-    const koId = await koAnlegen(ctx.app, ctx.auth);
+    const koId = await koAnlegen(ctx.app, ctx.auth, undefined, { bewerten: false });
     // Die Freigabe über den echten Validierungsweg — sie setzt die Freigabereferenz am Objekt.
     const entscheidung = await ctx.services.validation.adminValidate(koId, ctx.kontoId);
     expect(entscheidung.validationDecisionRef).not.toBeNull();
@@ -572,8 +595,11 @@ describe("R-0293 / R-0317 · der Weg zur Antwort aus dem gespeicherten Beleg", (
     // R-0317: die Rechtelage zum Antwortzeitpunkt steht im Beleg.
     expect(zeile.confidentialityAtExecution).toBe("intern");
     expect(["model", "deterministic"]).toContain(body.generationMode);
-    // R-0293 „ob die Quellen vollständig geprüft sind": ein nie freigegebenes Objekt ist es nicht.
-    expect(body.carryingSourcesValidated).toBe(false);
+    // R-0293 „ob die Quellen vollständig geprüft sind" — seit R-0584 (main) trägt nur noch
+    // freigegebenes Wissen eine Antwort. Die Quelle ist hier über die echte Bewertungsroute
+    // freigegeben, hat aber keinen vollständigen Prüf-Lauf: beide Aussagen stehen getrennt da.
+    expect(body.carryingSourcesValidated).toBe(true);
+    expect(body.carryingSourcesChecked).toBe(false);
     // Die Konfliktlage ist bekannt (der Dienst ist verdrahtet) — und es gibt keinen Widerspruch.
     expect(zeile.openConflictToday).toBe(false);
     expect(body.openConflictToday).toBe(false);
@@ -915,7 +941,8 @@ describe("R-0276 · genau einer von fünf Gründen — oder entwertet", () => {
     const app = buildApp(services);
     const admin = await anmelden(app, "grund5@x.de");
     const experte = await experteAnlegen(app, admin, "experte-grund5@x.de");
-    const koId = await koAnlegen(app, experte);
+    // R-0584: der Experte darf nicht selbst freigeben — der Admin bewertet seine Quelle.
+    const koId = await koAnlegen(app, experte, undefined, { pruefer: admin });
     const answerId = await fragen(app, experte);
     await services.ko.setConfidentiality(koId, "vertraulich", "anna");
 

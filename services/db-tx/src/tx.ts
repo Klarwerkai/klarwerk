@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from "pg";
+import { leiheAus } from "./vorrat";
 
 // SCRUM-523 P.3 (WP-A2): gemeinsamer, storage-neutraler Transaktions-Kernel. Modul-Grund: repo.delete
 // (knowledge-object) und audit.record (audit) müssen für den Purge-Chokepoint ATOMAR committen/
@@ -57,6 +58,12 @@ export function poolQueryable(pool: Pool): Queryable {
   return toQueryable(pool);
 }
 
+// R-1437: dieselbe Query-Fläche über EINE selbst ausgeliehene Verbindung — für die begrenzte
+// Prüfung (begrenzte-pruefung.ts), die ihre Klammer selbst führt und nur lesen darf.
+export function clientQueryable(client: PoolClient): Queryable {
+  return toQueryable(client);
+}
+
 // Löst den Kontext in die Query-Fläche des EINEN Transaktions-Clients auf — für Pg-Repo-Adapter, die
 // INNERHALB einer Transaktion auf demselben Client schreiben müssen wie der jeweils andere Aufrufer
 // (genau der Zweck dieses Moduls). Die Laufzeitprüfung ist eine Verteidigungslinie: der Typ schließt
@@ -76,8 +83,13 @@ export function pgQueryable(tx: TxContext): Queryable {
 // jeder Fehler (inkl. eines Fehlers im COMMIT selbst) rollt zurück und wird weitergereicht — nie ein
 // stiller Teilzustand. Der Client wird in JEDEM Fall freigegeben (finally), das Rollback-Ergebnis wird
 // nicht geschluckt (nur sein möglicher eigener Fehler, damit der ursprüngliche Fehler nicht verdeckt wird).
+//
+// R-0776: Scheitert das ROLLBACK selbst oder reißt die Verbindung während der Klammer ab, kommt sie
+// NICHT in den Vorrat zurück, sondern wird verworfen — sonst erbte der nächste Ausleiher eine halbe
+// Transaktion (s. vorrat.ts).
 export async function withPgTx<T>(pool: Pool, fn: (tx: TxContext) => Promise<T>): Promise<T> {
   const client = await pool.connect();
+  const ausleihe = leiheAus(client);
   try {
     await client.query("BEGIN");
     const tx: InternalTxContext = { brand: "TxContext", client };
@@ -85,9 +97,9 @@ export async function withPgTx<T>(pool: Pool, fn: (tx: TxContext) => Promise<T>)
     await client.query("COMMIT");
     return result;
   } catch (err) {
-    await client.query("ROLLBACK").catch(() => undefined);
+    await client.query("ROLLBACK").catch((fehler: unknown) => ausleihe.verwerfen(fehler));
     throw err;
   } finally {
-    client.release();
+    ausleihe.zurueckgeben();
   }
 }

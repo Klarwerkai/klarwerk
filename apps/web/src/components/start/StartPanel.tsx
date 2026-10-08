@@ -32,6 +32,7 @@ import { KnowledgeCapitalNumbers, OpenGapsSummary } from "../FunkeCards";
 import { KlaraPathTeaser } from "../KlaraPathTeaser";
 import { RoleLink } from "../RoleLink";
 import { StatusPill } from "../trust";
+import { LiveWallValidiert } from "./LiveWallValidiert";
 import type { StartPanelId } from "./startPunkte";
 
 // ================================================================================================
@@ -426,6 +427,19 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
                 </ul>
               )}
             </div>
+            {/* PMO-FEA-0003: neues validiertes Wissen, Name/Foto nur mit Zustimmung — und die
+                eigene Erklärung dazu. Eigene Teilkomponente, damit ihr Abruf nur in DIESEM Blatt
+                läuft. */}
+            <LiveWallValidiert daten={daten} aktualisiertAm={liveWall.dataUpdatedAt} />
+            {/* R-0740: dieselbe Wand als Projektion (Beamer) — eigene Seite, gleicher Abruf. */}
+            <RoleLink
+              to="/livewall"
+              testId="livewall-beamer-link"
+              className="inline-flex text-[12.5px] text-muted underline underline-offset-2"
+              hoverClassName="hover:text-ink"
+            >
+              {() => t("start.livewall.beamerOpen")}
+            </RoleLink>
           </>
         ) : null}
       </div>
@@ -503,7 +517,9 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
       <div>
         <h3 className="text-[14px] font-semibold text-ink">{t("start.stufe2.title")}</h3>
         <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
-          {t("start.stufe2.body", { features: stufe2Features, toggle: t("role.stage2") })}
+          {/* R-0923: der Satz nennt den heutigen Ort des Schalters (System), nicht die entfernte
+              Seitenleiste — `texte/zweitestufe.ts`. */}
+          {t("zweitestufe.start.body", { features: stufe2Features, toggle: t("role.stage2") })}
         </p>
       </div>
     );

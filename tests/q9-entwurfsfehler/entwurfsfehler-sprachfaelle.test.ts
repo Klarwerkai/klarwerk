@@ -29,6 +29,12 @@
 // H1–H3 HALTEN DEN DRAHT NACH AUSSEN FEST. Status und `error`-Code sind Vertrag und ändern sich
 // NICHT, weil der Satz übersetzt wird: `toEqual` statt `toMatchObject`, damit auch ein
 // hinzugekommenes Feld auffällt.
+//
+// I (Aufnahme gesamt-fehlermeldungen, P-Q9) · DER DOKUMENTWEG. `POST /api/kos/from-document` mit
+// `draftId` lädt denselben Entwurf über `draftPromotion.applyAndLoad` und sandte bei unbekannter
+// oder fremder Kennung bis hierher die beiden deutschen Sätze als Literal (`ko-routes.ts`) — in
+// jeder Sitzungssprache. Jetzt dieselben Katalogschlüssel wie E und F, gemessen am echten Draht.
+import { randomUUID } from "node:crypto";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
@@ -72,6 +78,36 @@ async function entwurfsabruf(token: string, id: string, sprache?: string): Promi
     headers: {
       authorization: `Bearer ${token}`,
       ...(sprache ? { "accept-language": sprache } : {}),
+    },
+  });
+  return { status: res.statusCode, koerper: res.json() as Koerper };
+}
+
+/**
+ * I: der Dokumentweg mit Entwurf. Der Rumpf besteht alle Formprüfungen vor der Entwurfsladung
+ * (`documents` mit Anker und Punkt, `draftPayload`, ein frischer Wiederholschlüssel), damit die
+ * Antwort aus genau dem Zweig kommt, um den es geht. Der Anker zeigt auf kein echtes Objekt — er
+ * wird erst NACH der Entwurfsladung gebraucht, und die endet hier mit 404/403.
+ */
+async function dokumentweg(token: string, draftId: string, sprache?: string): Promise<Antwort> {
+  const res = await app.inject({
+    method: "POST",
+    url: "/api/kos/from-document",
+    headers: {
+      authorization: `Bearer ${token}`,
+      ...(sprache ? { "accept-language": sprache } : {}),
+    },
+    payload: {
+      operationId: randomUUID(),
+      draftId,
+      draftPayload: { statement: "Fassung aus dem Dokument" },
+      expectedUpdatedAt: "2026-10-08T00:00:00.000Z",
+      documents: [
+        {
+          anchor: { objectId: "anker-ohne-objekt", name: "original.png", mime: "image/png" },
+          points: [{ label: "Seite 1", excerpt: "Anlage freischalten." }],
+        },
+      ],
     },
   });
   return { status: res.statusCode, koerper: res.json() as Koerper };
@@ -302,5 +338,77 @@ describe("H · Status und Fehlercode bleiben buchstäblich stehen", () => {
       expect(Object.keys(antwort.koerper).sort(), sprache).toEqual(["error", "message"]);
       expect(antwort.koerper.error, sprache).toBe("FORBIDDEN");
     }
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// I · DER DOKUMENTWEG (`POST /api/kos/from-document` mit `draftId`)
+// ------------------------------------------------------------------------------------------------
+// Derselbe Entwurf, dieselben zwei Lagen wie E und F — nur über die zweite Tür. Ohne diese Fälle
+// bliebe E/F grün, während derselbe Mensch auf dem Dokumentweg weiter Deutsch läse.
+describe("I · der Dokumentweg spricht dieselben zwei Sätze in der Sprache der Sitzung", () => {
+  it("I1 EN · Dokumentweg mit unbekanntem Entwurf: 404 NOT_FOUND mit englischem Satz", async () => {
+    const antwort = await dokumentweg(tokenEignerin, UNBEKANNT, "en");
+    expect(antwort.status).toBe(404);
+    expect(antwort.koerper.error).toBe("NOT_FOUND");
+    expect(antwort.koerper.message).toBe("Draft not found.");
+    expect(antwort.koerper.message).toBe(MELDUNGEN.DRAFT_NOT_FOUND.en);
+  });
+
+  it("I2 NL · Dokumentweg mit unbekanntem Entwurf: 404 NOT_FOUND mit niederländischem Satz", async () => {
+    const antwort = await dokumentweg(tokenEignerin, UNBEKANNT, "nl");
+    expect(antwort.status).toBe(404);
+    expect(antwort.koerper.error).toBe("NOT_FOUND");
+    expect(antwort.koerper.message).toBe("Concept niet gevonden.");
+    expect(antwort.koerper.message).toBe(MELDUNGEN.DRAFT_NOT_FOUND.nl);
+  });
+
+  it("I3 EN · Dokumentweg mit fremdem Entwurf: 403 FORBIDDEN mit englischem Satz", async () => {
+    const antwort = await dokumentweg(tokenFremde, eigeneKennung, "en");
+    expect(antwort.status).toBe(403);
+    expect(antwort.koerper.error).toBe("FORBIDDEN");
+    expect(antwort.koerper.message).toBe("This draft is not available to you.");
+    expect(antwort.koerper.message).toBe(MELDUNGEN.DRAFT_NOT_VISIBLE.en);
+  });
+
+  it("I4 NL · Dokumentweg mit fremdem Entwurf: 403 FORBIDDEN mit niederländischem Satz", async () => {
+    const antwort = await dokumentweg(tokenFremde, eigeneKennung, "nl");
+    expect(antwort.status).toBe(403);
+    expect(antwort.koerper.error).toBe("FORBIDDEN");
+    expect(antwort.koerper.message).toBe("Dit concept is niet voor jou beschikbaar.");
+    expect(antwort.koerper.message).toBe(MELDUNGEN.DRAFT_NOT_VISIBLE.nl);
+  });
+
+  it("I5 DE · Dokumentweg: zeichengleicher deutscher Wortlaut, Draht unverändert", async () => {
+    // Status, Code und Feldmenge sind Vertrag (`toEqual`, wie E3/F3) — die Übersetzung verschiebt
+    // nichts davon, und ohne Sprachkopf bleibt es bei den bisherigen deutschen Sätzen.
+    for (const sprache of [undefined, "de", "fr"]) {
+      const unbekannt = await dokumentweg(tokenEignerin, UNBEKANNT, sprache);
+      expect(unbekannt.status, String(sprache)).toBe(404);
+      expect(unbekannt.koerper, String(sprache)).toEqual({
+        error: "NOT_FOUND",
+        message: "Entwurf nicht gefunden.",
+      });
+      const fremd = await dokumentweg(tokenFremde, eigeneKennung, sprache);
+      expect(fremd.status, String(sprache)).toBe(403);
+      expect(fremd.koerper, String(sprache)).toEqual({
+        error: "FORBIDDEN",
+        message: "Entwurf nicht verfuegbar.",
+      });
+    }
+  });
+
+  it("I6 · der fremde Versuch lässt den Entwurf der Eignerin unberührt", async () => {
+    // Eine übersetzte Absage, hinter der trotzdem geschrieben oder verbraucht wurde, wäre schlimmer
+    // als ein deutscher Satz. Nach I3–I5 liegt der Entwurf weiter bei der Eignerin.
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/drafts/${eigeneKennung}`,
+      headers: { authorization: `Bearer ${tokenEignerin}` },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect((res.json() as { payload: { statement?: string } }).payload.statement).toBe(
+      "Vor jedem Anlauf die Schmierstellen pruefen.",
+    );
   });
 });

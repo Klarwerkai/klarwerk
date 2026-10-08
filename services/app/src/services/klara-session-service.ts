@@ -138,6 +138,14 @@ export interface KlaraPolicyQuelle {
    */
   zentralFreigegeben?: boolean | undefined;
   /**
+   * Auftrag gesamt-ki-freigaberegeln (Ben Nacharbeit 2) · DIE ZWEITE ADMINFREIGABE: auch als
+   * vertraulich markierter Dokumenttext darf hinaus. Gesetzt von der Wurzel aus
+   * `Reasoner.vertraulicheAusleitungFreigegeben()` — entschieden wird dort, nicht hier. Nur `true`
+   * zählt; fehlt das Feld, bleibt Vertrauliches draussen. Gelesen ausschliesslich in
+   * `pruefeDokumenttextFreigabe`, frisch je Anfrage.
+   */
+  vertraulichFreigegeben?: boolean | undefined;
+  /**
    * Bens B3: der wirksame Anbieter je Aufgabe (plus `global`). Bedeutung und Wirkung stehen am
    * gleichnamigen Feld in `klara-policy.ts`; fehlt sie, trägt die Zustimmung nur `answer`.
    */
@@ -461,8 +469,15 @@ const BEENDET_VERMERK_MS = 6 * 60 * 60 * 1000;
 // ist, und fragt DANACH diese Prüfung. Sie beantwortet die Frage, die die allgemeine Deckung nicht
 // stellt: darf zusätzlich zur Frage der markierte Text DIESES Dokuments hinaus?
 //
+// JÜNGERE ENTSCHEIDUNG (Pedi 10.09., Auftrag gesamt-ki-freigaberegeln, decision-evidence K18): die
+// zentrale Adminfreigabe „auch vertrauliche Inhalte an die öffentliche KI" gilt in ALLEN KI-Wegen,
+// ausdrücklich auch in Word, ohne widersprüchliche Zusatzsperren. Stufe 1 hebt deshalb seit Ben
+// Nacharbeit 2 GENAU diese Freigabe auf — und nichts sonst: Zustimmung je Dokument, Riegel, Klasse
+// und Dokumentbindung gelten unverändert dahinter.
+//
 // DIE REIHENFOLGE IST DER BELEG, und sie ist mit Absicht so:
-//   1. VERTRAULICH zuerst und unbedingt — kein Riegel, keine Zustimmung hebt das auf.
+//   1. VERTRAULICH zuerst — keine Zustimmung und kein Riegel hebt das auf, nur die zweite zentrale
+//      Adminfreigabe (`vertraulichFreigegeben`).
 //   2. Die ZUSTIMMUNG: dieselbe, die der Antwortweg soeben als deckend erkannt hat (`consentId`).
 //   3. Der RIEGEL.
 //   4. Erst bei offenem Riegel: die Zustimmung nennt die Klasse `document_text` ausdrücklich und
@@ -495,8 +510,10 @@ export function pruefeDokumenttextDeckung(lage: {
   readonly documentContextId: string;
   readonly vertraulich: boolean;
   readonly riegelOffen: boolean;
+  /** Die zweite zentrale Adminfreigabe; nur `true` hebt Stufe 1 auf. */
+  readonly vertraulichFreigegeben?: boolean | undefined;
 }): KlaraDokumenttextDeckung {
-  if (lage.vertraulich !== false) {
+  if (lage.vertraulich !== false && lage.vertraulichFreigegeben !== true) {
     return { gedeckt: false, grund: "vertraulich" };
   }
   const consent = lage.consent;
@@ -1143,7 +1160,8 @@ export class KlaraSessionService {
    * damit eine Absage wegen Modus oder Zustimmung nie wie eine Absage des Riegels aussieht.
    *
    * DIE VERTRAULICHKEIT KOMMT VOM AUFRUFER (der Route), weil nur sie den Rumpf der Anfrage kennt.
-   * Sie kann hier nur ENGER machen: `vertraulich !== false` sperrt.
+   * Sie kann hier nur ENGER machen: `vertraulich !== false` sperrt — ausser die zweite zentrale
+   * Adminfreigabe steht (gesamt-ki-freigaberegeln). Sie wird hier frisch aus der Policyquelle gelesen.
    */
   async pruefeDokumenttextFreigabe(
     sessionId: string,
@@ -1160,6 +1178,7 @@ export class KlaraSessionService {
       documentContextId: bindung.documentContextId,
       vertraulich: lage.vertraulich,
       riegelOffen: this.dokumenttextRiegelOffen,
+      vertraulichFreigegeben: (await this.policy()).vertraulichFreigegeben === true,
     });
     return deckung.gedeckt ? { erlaubt: true } : { erlaubt: false, grund: deckung.grund };
   }
