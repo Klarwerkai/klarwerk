@@ -75,6 +75,7 @@ import { type Guards, type SessionUser, sendError } from "../http";
 import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten";
 import type { AssignmentNotifier } from "../notify";
 import { darfSehen, sichtbareFuer, sichtbarePaare, sqlSichtbarkeitFuer } from "../sichtbarkeit";
+import { verifizierungFuer } from "../verifizierungsmarke";
 import { dublettenTor } from "./validation-routes";
 
 // Knowledge-Object-API (§2.3). Mutationen laufen über EINEN Endpunkt
@@ -1403,8 +1404,13 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       // Einordnungsfelder sind nach KW-ARCH-G27 ausdrücklich keine Sicherheitsmerkmale.
       const einordnung = await ko.einordnungsstandVon(item.id);
       const varianten = (await lesevarianten?.forKo(item.id)) ?? [];
+      // Aufnahme gesamt-wissen-herkunft (R-0228): die Verifizierungsmarke — menschliche Prüfung
+      // aus dem verwiesenen Protokolleintrag, NACH dem Sichtbarkeitstor oben. Begründung und
+      // Grenzen in ../verifizierungsmarke.ts.
+      const verifizierung = await verifizierungFuer(item, audit);
       reply.code(200).send({
         ...item,
+        verifizierung,
         ...discloseConfidentiality(item.confidentiality),
         ...discloseDisplayStatus(item, await anzeigestatusEingaengeFuer(user, item)),
         ...(einordnung

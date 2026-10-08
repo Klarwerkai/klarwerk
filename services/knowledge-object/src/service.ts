@@ -48,6 +48,8 @@ import {
 } from "./effective-search-document";
 // R-1632 / R-1633: die Geltungsregel (Konzern/Werk/Schicht) — eine Fassung, Begründung dort.
 import { normalizeGeltung } from "./geltung";
+// R-1355: die Herkunftsangaben des Wissensobjekts entstehen an genau einer Stelle.
+import { herkunftsmerkmaleBeiAnlage, urheberschaftBeiAnlage } from "./herkunft";
 import {
   type KoMetadataProjection,
   metadataTextsEqual,
@@ -2256,8 +2258,8 @@ export class KoService {
       status: "offen",
       version: 1,
       // WP-SAMMEL21-FIX (Fix 4): abweichender Wissensträger nur, wenn explizit gesetzt (Import).
-      originalAuthor: input.originalAuthor?.trim() ? input.originalAuthor : input.author,
-      author: input.author,
+      // R-1355: die Regel steht an EINER Stelle (./herkunft.ts) und wird am Quelltext geprüft.
+      ...urheberschaftBeiAnlage(input),
       neededValidations: needed,
       assignments: [],
       // JOB 593 (Option A, N5): die kanonische Anlagenkennung entsteht HIER in ihrer Normalform.
@@ -2299,14 +2301,12 @@ export class KoService {
       // dieselbe Bauform wie `confidentiality` und `importCandidateId` daneben. Kein stiller
       // Default: ein KO ohne Herkunft bleibt ein KO ohne Herkunft, und genau das liest die
       // Oberflaeche als „unbekannt" statt als „Vordertuer".
-      ...(input.origin ? { origin: input.origin } : {}),
       // WP-SHIP8-CLOSE-3/4 (bens ROT-1): stabiler Kandidaten-Anker des Import-Accepts (DB-unique
       // erzwungen — der Insert eines zweiten KO desselben Kandidaten scheitert am Index/Guard).
-      ...(input.importCandidateId ? { importCandidateId: input.importCandidateId } : {}),
       // R-0139 / FR-EXT-02: der Importweg — dieselbe Bauform, kein stiller Default.
-      ...(input.importedVia ? { importedVia: input.importedVia } : {}),
       // R-0169 (Nacharbeit 5): der Fassungsbezug — dieselbe Bauform, kein stiller Default.
-      ...(input.dokumentHerkunft ? { dokumentHerkunft: input.dokumentHerkunft } : {}),
+      // R-1355: alle vier entstehen an EINER Stelle (./herkunft.ts), in derselben Reihenfolge.
+      ...herkunftsmerkmaleBeiAnlage(input),
       // R-0632 (Nacharbeit 10): die Herabstufungssperre — dieselbe Bauform, kein stiller Default.
       ...(input.stufeNurAnheben === true ? { stufeNurAnheben: true as const } : {}),
       // JOB 557: das Eigentümer-Aggregat nur setzen, wenn der Aufrufer eines MITBRINGT — dieselbe

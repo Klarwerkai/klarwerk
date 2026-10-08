@@ -1,7 +1,7 @@
 // Öffentliche API des Moduls audit.
 export { AuditService } from "./src/service";
 export type { AuditServiceDeps } from "./src/service";
-export { InMemoryAuditRepo, type AuditRepo } from "./src/repo";
+export { InMemoryAuditRepo, type AuditRepo, VALIDATION_DECISION_ACTIONS } from "./src/repo";
 export {
   PgAuditRepo,
   AUDIT_SCHEMA,

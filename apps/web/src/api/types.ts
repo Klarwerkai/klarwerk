@@ -527,6 +527,23 @@ export interface AnzeigestatusHerkunft extends Record<AnzeigestatusEingang, Eing
 /** R-0658: welche Art Schutzdaten der Server erkannt hat — Spiegel von `SchutzdatenArt`. */
 export type SchutzdatenArt = "personalnummer" | "kontodaten";
 
+/** R-0228: Spiegel von `Verifizierung` in services/app/src/verifizierungsmarke.ts. */
+export interface KoVerifizierung {
+  mensch:
+    | { stand: "keine" }
+    | { stand: "nicht_auffindbar" }
+    | { stand: "nicht_abrufbar" }
+    | {
+        stand: "belegt";
+        art: "bewertung" | "verwalter" | "rueckgabe";
+        pruefer: string;
+        zeitpunkt: string;
+        fassung: number | null;
+        aktuell: boolean;
+      };
+  validiertVon: string[];
+}
+
 export interface KnowledgeObject {
   id: string;
   title: string;
@@ -622,6 +639,10 @@ export interface KnowledgeObject {
   // PRÜFSTATUS-ANZEIGE (N-0054): Spiegel von `services/knowledge-object/src/types.ts` — der Verweis
   // auf die Validierungsentscheidung. Steht er da, hat ein Mensch fachlich entschieden.
   validationDecisionRef?: { auditSeq: number; auditHash: string };
+  // Aufnahme gesamt-wissen-herkunft (R-0228): die Verifizierungsmarke — Spiegel von
+  // `services/app/src/verifizierungsmarke.ts`. Nur `GET /api/kos/:id` liefert sie; fehlt das Feld,
+  // ist sie in dieser Antwort NICHT ERHOBEN (Liste, Suche, Prüfbrett) — nicht „ungeprüft".
+  verifizierung?: KoVerifizierung;
   asset: string | null;
   createdAt: string;
   history: HistoryEntry[];

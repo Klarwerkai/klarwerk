@@ -97,6 +97,7 @@ import { type D44Eintrag, d44LeisteZeigen, d44SichtbareEintraege } from "../d44S
 import { ListEditor, TagEditor } from "../editors";
 import { KenntnisnahmeBereich } from "../kenntnisnahme/KenntnisnahmeBereich";
 import { KNOWLEDGE_TYPES } from "../trust";
+import { Verifizierungsmarke } from "../trust/Verifizierungsmarke";
 import { Button, Field, TextInput, cx } from "../ui";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { Bearbeitungshinweis, useEigeneBearbeitung } from "./Bearbeitungshinweis";
@@ -2505,6 +2506,10 @@ export function BibliothekLesen({
             </Menue>
           </div>
         </div>
+
+        {/* Aufnahme gesamt-wissen-herkunft (R-0228): wer wann fachlich prüfte und ob der
+            maschinelle Prüflauf vollständig war — unmittelbar am Eintrag, nicht in der Kette. */}
+        <Verifizierungsmarke ko={ko} nameOf={nameOf} />
 
         {/* SCRUM-245: der Treffergrund — nur bei aktiver Suche, sonst steht hier nichts. */}
         {suchtext.trim().length > 0 && treffer.length > 0 ? (
