@@ -17,8 +17,8 @@
 //   M2  Markierung → „Dahinter einfügen": der Vorschlag steht hinter der Stelle, sie selbst bleibt.
 //   M3  Markierung über Fettschrift → „Rechtschreibung": korrigiert, Fett innerhalb bleibt,
 //       der Absatz davor ist unberührt.
-//   M4  Nach der Anfrage weitergeschrieben: die Stelle trägt nicht mehr den angefragten Text →
-//       NICHTS wird übernommen, der Satz sagt es.
+//   M4  Nach der Anfrage weitergeschrieben: der Vorschlag ist zurückgezogen, NICHTS wird
+//       übernommen (die Sperre der Übernahme selbst: `auswahl-assist.test.ts`).
 //   M5  Ohne Markierung: der bisherige Gesamttextweg — ganzer Text geht hin, ganzer Text wird ersetzt.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -290,7 +290,12 @@ describe("R-0300 · KI-Schreibhilfe auf der Markierung im Standardeditor", () =>
     expect(html).toContain("<p><strong>Der Kunde</strong> received den Router.</p>");
   });
 
-  it("M4 · nach der Anfrage weitergeschrieben: nichts wird übernommen, der Satz sagt warum", async () => {
+  it("M4 · nach der Anfrage weitergeschrieben: der Vorschlag ist zurückgezogen, nichts wird übernommen", async () => {
+    // Prüflauf Nacharbeit 2: hier stand die Annahme, die Karte bliebe nach dem Weiterschreiben
+    // stehen und „Übernehmen“ melde dann die veraltete Stelle. Das Blatt tut mehr: jede Eingabe
+    // im Schreibfeld verwirft den offenen Vorschlag (`changeBodyHtml` → `clearAssistState`). Ein
+    // veralteter Vorschlag ist auf diesem Weg also gar nicht mehr anzunehmen. Die Sperre der
+    // Übernahme selbst prüft `auswahl-assist.test.ts` (A3) an der Funktion.
     await mitEntwurf(RUMPF);
     box.antwort = "Der Kunde hat den Router erhalten.";
     const knoten = textknoten(editor(), SATZ);
@@ -307,12 +312,10 @@ describe("R-0300 · KI-Schreibhilfe auf der Markierung im Standardeditor", () =>
       await flush();
     });
 
-    await click(knopf(i18n.t("fd.accept")));
-
+    expect(vorschlag(), "Vorschlag zu überholtem Text steht noch da").toBeNull();
+    expect(knopf(i18n.t("fd.accept"))).toBeUndefined();
     expect(editor().innerHTML).toContain("Ganz anderer Satz steht hier jetzt.");
     expect(editor().innerHTML).not.toContain("Der Kunde hat den Router erhalten.");
-    const fehler = container.querySelector('[data-testid="blatt-ki-fehler"]');
-    expect(fehler?.textContent ?? "").toContain(i18n.t("schreibhilfe.auswahlVeraltet"));
   });
 
   it("M5 · ohne Markierung bleibt der Gesamttextweg: ganzer Text hin, ganzer Text ersetzt", async () => {
