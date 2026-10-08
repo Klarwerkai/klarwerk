@@ -2115,8 +2115,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // die drei Komponenten über 448 kamen mit dem erneut eingemischten Hauptstand (Grundmenge
     // 549 → 559, davon 2 aus diesem Auftrag). Welche es sind, ist ohne Git-Verlauf an diesem
     // Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // PLAN-SPRACHANMERKUNG (R-1625, R-2177): 451 → 452. GENAU EIN Bauteil kommt dazu:
+    //     + `Zeichnung` (`components/bibliothek/Zeichnung.tsx`) — die Zeichnung einer Rückfrage
+    //       mit ihrer Marke; antippbar beim Schreiben, nur lesend am gespeicherten Beitrag.
+    // Sie zeigt ein Bild aus dem Inhalt, bietet aber keine Bildbeschreibung an (kein
+    // `CAPTION_AI_TEXT`) und trägt keinen eigenen Titel (kein `documentTitle`-Prop): `anbieter` 1
+    // und `traeger` 2 bleiben. EHRLICH GESAGT: die 452 ist GERECHNET (451 + 1) — dieser Auftrag
+    // durfte keinen Testlauf selbst starten; weicht der Prüflauf ab, gehört die gemessene Zahl hin.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 451,
+      komponenten: 452,
       anbieter: 1,
       traeger: 2,
     });

@@ -233,6 +233,8 @@ export interface KoDiskussionsStelle {
   text: string;
   /** SHA-256 über Art, vollständigen Abschnitt und vollständigen Inhalt (`lib/stellenabdruck`). */
   fingerabdruck: string;
+  /** PLAN-SPRACHANMERKUNG: Position in einer Zeichnung (nur `bild`), relativ, je 0..1. */
+  punkt?: { x: number; y: number };
 }
 
 // PUT /api/kos/:id — ein Mutations-Endpunkt, per {action} verzweigt.

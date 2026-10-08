@@ -434,6 +434,8 @@ export type {
   KoComment,
   // P-WIKI-STELLENBEZUG: der Anker einer Rückfrage im Text.
   KoCommentStelle,
+  // PLAN-SPRACHANMERKUNG: die Position einer Notiz in einer Zeichnung.
+  KoStellenPunkt,
   KoAttachment,
   // R-0163: die Quellidentität eines übernommenen Anhangs.
   KoAnhangsquelle,

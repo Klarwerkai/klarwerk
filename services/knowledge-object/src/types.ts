@@ -249,6 +249,21 @@ export interface KoCommentStelle {
   abschnitt: string;
   text: string;
   fingerabdruck: string;
+  /**
+   * PLAN-SPRACHANMERKUNG (R-1625, R-2177) — WO IN DER ZEICHNUNG die Notiz hängt. Nur bei `art: "bild"`.
+   *
+   * Fehlt das Feld, gilt die Rückfrage dem ganzen Bild — wie jede Bildrückfrage vor dieser Regel.
+   * Die Position ist RELATIV zum Bild (0 = links/oben, 1 = rechts/unten) und damit unabhängig von der
+   * Anzeigegrösse. Sie gehört NICHT zur Identität der Stelle (`fingerabdruck`): das Bild wird über
+   * seinen Anker wiedergefunden, die Position reist unverändert mit.
+   */
+  punkt?: KoStellenPunkt;
+}
+
+/** PLAN-SPRACHANMERKUNG — eine Position im Bild, relativ zu Breite (`x`) und Höhe (`y`), je 0..1. */
+export interface KoStellenPunkt {
+  x: number;
+  y: number;
 }
 
 // ================================================================================================

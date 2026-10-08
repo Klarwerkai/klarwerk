@@ -1,5 +1,5 @@
 import { type UseQueryResult, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link2, Paperclip, X } from "lucide-react";
+import { Link2, Mic, Paperclip, X } from "lucide-react";
 import {
   type ChangeEvent,
   type ReactNode,
@@ -80,6 +80,7 @@ import {
   formatSourceComment,
   isSourceContributionValid,
 } from "../../lib/sourceContribution";
+import { istIosGeraet } from "../../lib/speechSupport";
 import {
   type Stellenblock,
   stelleAus,
@@ -89,6 +90,7 @@ import {
 import { trustExplainer } from "../../lib/trustExplainer";
 import { useAuthorName } from "../../lib/useAuthorName";
 import { useReadiness } from "../../lib/useReadiness";
+import { type Zeichnungspunkt, bildQuelle, punktProzent } from "../../lib/zeichnungspunkt";
 import { AiCheckCoverageNotes } from "../AiCheckCoverageHint";
 import { ConflictTargetPicker } from "../ConflictTargetPicker";
 import { ExternalUrlText } from "../ExternalUrlText";
@@ -96,10 +98,12 @@ import { KnowledgeNeighborhood } from "../KnowledgeNeighborhood";
 import { RoleLink } from "../RoleLink";
 import { SanitizedHtml } from "../SanitizedHtml";
 import { UploadLimitsHint } from "../UploadLimitsHint";
+import { useDiktat } from "../start/useDiktat";
 import { ConfidenceBar, KnowledgeTypeTag, ProvenanceLine } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { ImportErgebnis } from "./ImportErgebnis";
+import { Zeichnung } from "./Zeichnung";
 
 // ==================================================================================================
 // JOB 3063 · H4 — „MEHR": DIE DREIZEHN ABSCHNITTE, ZUGEKLAPPT ALS VORGABE.
@@ -606,8 +610,23 @@ export function MehrAbschnitte({
   const [stellenWahl, setStellenWahl] = useState<{ version: number; index: number } | null>(null);
   const gewaehlterBlock =
     stellenWahl && stellenWahl.version === ko.version ? stellen[stellenWahl.index] : undefined;
-  const gewaehlteStelle = gewaehlterBlock ? stelleAus(gewaehlterBlock, ko.version) : undefined;
+  // PLAN-SPRACHANMERKUNG (R-1625, R-2177): ist die gewählte Stelle eine Zeichnung, lässt sich
+  // die Notiz an einen Punkt darin hängen. Die Position gehört zur Wahl: ein Wechsel der Stelle
+  // hebt sie auf (`stelleWaehlen`), und verfällt die Wahl, verfällt sie mit.
+  const [zeichnungsPunkt, setZeichnungsPunkt] = useState<Zeichnungspunkt | null>(null);
+  const gewaehlteZeichnung =
+    gewaehlterBlock?.art === "bild" ? bildQuelle(ko.bodyHtml, gewaehlterBlock.text) : undefined;
+  const gewaehlteStelle = gewaehlterBlock
+    ? {
+        ...stelleAus(gewaehlterBlock, ko.version),
+        ...(gewaehlteZeichnung && zeichnungsPunkt ? { punkt: zeichnungsPunkt } : {}),
+      }
+    : undefined;
   const stelleVerfallen = stellenWahl !== null && gewaehlteStelle === undefined;
+  const stelleWaehlen = (wahl: { version: number; index: number } | null): void => {
+    setStellenWahl(wahl);
+    setZeichnungsPunkt(null);
+  };
 
   const antwortEntwurf = (bezug: string): string => antwortEntwuerfe[bezug] ?? "";
 
@@ -615,6 +634,16 @@ export function MehrAbschnitte({
     commentTextSpiegel.current = wert;
     setCommentText(wert);
   };
+
+  // PLAN-SPRACHANMERKUNG: die Notiz sprechen statt tippen — derselbe Diktathaken wie im Fragefeld
+  // (`start/useDiktat`). Das Erkannte wird angehängt, nie ersetzt; die Erkennung bleibt im Browser.
+  const notizDiktat = useDiktat((erkannt) => {
+    const bisher = commentTextSpiegel.current;
+    const teil = erkannt.trim();
+    if (teil.length > 0) {
+      beitragSetzen(bisher.trim().length > 0 ? `${bisher.trimEnd()} ${teil}` : teil);
+    }
+  });
 
   const antwortSetzen = (bezug: string, wert: string): void => {
     antwortEntwuerfeSpiegel.current = { ...antwortEntwuerfeSpiegel.current, [bezug]: wert };
@@ -685,7 +714,7 @@ export function MehrAbschnitte({
         return;
       }
       beitragSetzen("");
-      setStellenWahl(null);
+      stelleWaehlen(null);
       setCommentKey(crypto.randomUUID());
     },
     onError: (e) => {
@@ -810,6 +839,13 @@ export function MehrAbschnitte({
           : zuordnung.block.anzeige
         : stelle.text;
     const fruehereFassung = stelle.koVersion < ko.version;
+    // PLAN-SPRACHANMERKUNG: die Marke steht nur auf einer Zeichnung, die in der angezeigten
+    // Fassung eindeutig wiedergefunden ist. Sonst bleibt die gespeicherte Position als Satz
+    // lesbar — sie auf ein anderes Bild zu setzen, hiesse einen Ort zu behaupten, den niemand
+    // gewählt hat.
+    const punkt = stelle.art === "bild" ? stelle.punkt : undefined;
+    const zeichnung =
+      punkt && zuordnung.lage !== "unklar" ? bildQuelle(ko.bodyHtml, stelle.text) : undefined;
     return (
       <div data-bib-diskussion-stelle={b.id} className="mt-0.5 text-[11px] text-muted-2">
         <div>
@@ -825,6 +861,21 @@ export function MehrAbschnitte({
         >
           {zitat}
         </blockquote>
+        {punkt ? (
+          <div data-bib-diskussion-stelle-punkt={b.id}>
+            <div>{t("stellenbezug.punkt.lage", punktProzent(punkt))}</div>
+            {zeichnung ? (
+              <Zeichnung
+                src={zeichnung}
+                punkt={punkt}
+                beschriftung={t("stellenbezug.punkt.markiert", {
+                  bild: zitat,
+                  ...punktProzent(punkt),
+                })}
+              />
+            ) : null}
+          </div>
+        ) : null}
         <div
           data-bib-diskussion-stelle-lage={zuordnung.lage}
           className={cx(zuordnung.lage === "unklar" && "font-semibold text-trust-crit-text")}
@@ -2793,7 +2844,7 @@ export function MehrAbschnitte({
                       : ""
                 }
                 onChange={(e) =>
-                  setStellenWahl(
+                  stelleWaehlen(
                     e.target.value === "" || e.target.value === "verfallen"
                       ? null
                       : { version: ko.version, index: Number(e.target.value) },
@@ -2830,6 +2881,35 @@ export function MehrAbschnitte({
               {t("stellenbezug.neuWaehlen")}
             </output>
           ) : null}
+          {/* PLAN-SPRACHANMERKUNG (R-1625, R-2177): ist die gewählte Stelle eine Zeichnung, steht
+              sie hier — ein Tipp hängt die Notiz an genau diesen Punkt. Ohne Tipp gilt sie dem
+              ganzen Bild, wie jede Bildrückfrage vorher. */}
+          {gewaehlterBlock && gewaehlteZeichnung ? (
+            <div data-bib-diskussion-zeichnung="" className="space-y-1">
+              <p className="text-[12px] text-muted">{t("stellenbezug.punkt.hinweis")}</p>
+              <Zeichnung
+                src={gewaehlteZeichnung}
+                punkt={zeichnungsPunkt ?? undefined}
+                onPunkt={setZeichnungsPunkt}
+                beschriftung={t("stellenbezug.punkt.waehlen", { bild: gewaehlterBlock.anzeige })}
+              />
+              {zeichnungsPunkt ? (
+                <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted">
+                  <output aria-live="polite" data-bib-diskussion-punkt="">
+                    {t("stellenbezug.punkt.lage", punktProzent(zeichnungsPunkt))}
+                  </output>
+                  <button
+                    type="button"
+                    data-bib-diskussion-punkt-entfernen=""
+                    onClick={() => setZeichnungsPunkt(null)}
+                    className={diskussionsKnopfCls}
+                  >
+                    {t("stellenbezug.punkt.entfernen")}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <textarea
             value={commentText}
             onChange={(e) => beitragSetzen(e.target.value)}
@@ -2837,14 +2917,42 @@ export function MehrAbschnitte({
             placeholder={t("ko.commentPlaceholder")}
             className={textareaCls}
           />
-          <Button
-            variant="primary"
-            data-bib-diskussion-senden=""
-            disabled={comment.isPending || commentText.trim().length === 0 || stelleVerfallen}
-            onClick={() => comment.mutate(commentText.trim())}
-          >
-            {t("ko.commentAdd")}
-          </Button>
+          {/* FR-CAP-03: was gerade gesprochen wird, steht sichtbar daneben — ins Feld kommt nur das
+              endgültig Erkannte. Ohne Spracherkennung steht kein Mikrofon da (JOB 3038). */}
+          {notizDiktat.laeuft && notizDiktat.zwischen ? (
+            <p aria-live="polite" className="text-[12.5px] italic text-muted-2">
+              {notizDiktat.zwischen}
+            </p>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="primary"
+              data-bib-diskussion-senden=""
+              disabled={comment.isPending || commentText.trim().length === 0 || stelleVerfallen}
+              onClick={() => comment.mutate(commentText.trim())}
+            >
+              {t("ko.commentAdd")}
+            </Button>
+            {notizDiktat.moeglich ? (
+              <button
+                type="button"
+                data-bib-diskussion-sprechen=""
+                aria-pressed={notizDiktat.laeuft}
+                onClick={notizDiktat.umschalten}
+                className={diskussionsKnopfCls}
+              >
+                <Mic size={14} strokeWidth={1.8} aria-hidden="true" />
+                {notizDiktat.laeuft
+                  ? t("stellenbezug.sprechen.stop")
+                  : t("stellenbezug.sprechen.start")}
+              </button>
+            ) : istIosGeraet(window) ? (
+              // FR-CAP-03: auf iPhone/iPad kein Browser-Diktat — der ehrliche Ausweg steht da.
+              <span data-bib-diskussion-sprechen-ios="" className="text-[12px] text-muted">
+                {t("diktat.iosTastatur")}
+              </span>
+            ) : null}
+          </div>
         </div>
         {/* Der Satz steht am ENDE des Abschnitts und bleibt stehen, bis der nächste Versuch
             gelingt — anders als ein Toast, der verschwindet, während der Text noch im Feld wartet.

@@ -22,7 +22,7 @@
 // kleinen Baum unten; `tests/wiki-stellenbezug/zuordnung.test.tsx` hält beide Zerlegungen gleich.
 import { decodeHtmlEntities } from "../../structure";
 import { stellenFingerabdruck } from "./stellen-fingerabdruck";
-import type { KoCommentStelle } from "./types";
+import type { KoCommentStelle, KoStellenPunkt } from "./types";
 
 /** Höchstlänge der gespeicherten Textstelle und der Abschnittskennung (Zeichen). */
 export const STELLE_TEXT_MAX = 300;
@@ -296,7 +296,7 @@ export function leseStelle(roh: unknown): KoCommentStelle | "unlesbar" | undefin
   if (!roh || typeof roh !== "object") {
     return "unlesbar";
   }
-  const { koVersion, art, abschnitt, text, fingerabdruck } = roh as Record<string, unknown>;
+  const { koVersion, art, abschnitt, text, fingerabdruck, punkt } = roh as Record<string, unknown>;
   if (typeof koVersion !== "number" || !Number.isInteger(koVersion) || koVersion < 1) {
     return "unlesbar";
   }
@@ -318,6 +318,11 @@ export function leseStelle(roh: unknown): KoCommentStelle | "unlesbar" | undefin
   ) {
     return "unlesbar";
   }
+  const punktForm = lesePunkt(punkt);
+  // Eine Position gibt es nur in einem Bild; an Absatz oder Tabelle wäre sie eine Angabe ohne Ort.
+  if (punktForm === "unlesbar" || (punktForm !== undefined && art !== "bild")) {
+    return "unlesbar";
+  }
   // Feste Schlüsselreihenfolge: der Dienst vergleicht Stellen beim Wiederholungsschutz.
   return {
     koVersion,
@@ -325,6 +330,34 @@ export function leseStelle(roh: unknown): KoCommentStelle | "unlesbar" | undefin
     abschnitt: abschnittNorm,
     text: textNorm,
     fingerabdruck,
+    ...(punktForm ? { punkt: punktForm } : {}),
+  };
+}
+
+/** Nachkommastellen der gespeicherten Position — ein Zehntausendstel der Bildkante genügt. */
+const PUNKT_STELLEN = 10_000;
+
+/**
+ * PLAN-SPRACHANMERKUNG — die Form einer mitgeschickten Position in einer Zeichnung. Beide Werte
+ * relativ zum Bild, je 0..1 (Ränder eingeschlossen). Alles andere ist kein Ort im Bild und wird
+ * abgelehnt, statt es still auf den Rand zu ziehen. Gespeichert wird auf vier Nachkommastellen.
+ */
+function lesePunkt(roh: unknown): KoStellenPunkt | "unlesbar" | undefined {
+  if (roh === undefined) {
+    return undefined;
+  }
+  if (!roh || typeof roh !== "object") {
+    return "unlesbar";
+  }
+  const { x, y } = roh as Record<string, unknown>;
+  const imBild = (w: unknown): w is number =>
+    typeof w === "number" && Number.isFinite(w) && w >= 0 && w <= 1;
+  if (!imBild(x) || !imBild(y)) {
+    return "unlesbar";
+  }
+  return {
+    x: Math.round(x * PUNKT_STELLEN) / PUNKT_STELLEN,
+    y: Math.round(y * PUNKT_STELLEN) / PUNKT_STELLEN,
   };
 }
 
@@ -360,6 +393,8 @@ export function gleicheStelle(
     a.art === b.art &&
     a.abschnitt === b.abschnitt &&
     a.text === b.text &&
-    a.fingerabdruck === b.fingerabdruck
+    a.fingerabdruck === b.fingerabdruck &&
+    a.punkt?.x === b.punkt?.x &&
+    a.punkt?.y === b.punkt?.y
   );
 }
