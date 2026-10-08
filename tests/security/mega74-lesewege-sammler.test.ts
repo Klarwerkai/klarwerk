@@ -399,9 +399,19 @@ const REGISTER: Record<string, Eintrag> = {
   },
   // --- Kuratorentore: nur Rollen, die Vertrauliches ohnehin sehen dürfen ---------------------
   "GET /api/kos/trash": { urteil: "KURATORENTOR", recht: "users.manage", grund: "Papierkorb." },
-  "GET /api/audit": { urteil: "KURATORENTOR", recht: "ko.validate", grund: "Protokoll." },
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 13): `lesevarianten.load` trägt nur noch
+  // Paketangaben; Alteinträge mit bestandsweiter Bilanz werden für jeden Leser ausgeblendet.
+  "GET /api/audit": {
+    urteil: "KURATORENTOR",
+    recht: "ko.validate",
+    grund: "Protokoll; alte Ladebilanz ausgeblendet.",
+  },
   "GET /api/audit/verify": { urteil: "KURATORENTOR", recht: "ko.validate", grund: "Protokoll." },
-  "GET /api/audit/export": { urteil: "KURATORENTOR", recht: "ko.validate", grund: "Protokoll." },
+  "GET /api/audit/export": {
+    urteil: "KURATORENTOR",
+    recht: "ko.validate",
+    grund: "Protokoll; alte Ladebilanz ausgeblendet.",
+  },
   "GET /api/audit/ko/:koId/findings": {
     urteil: "KURATORENTOR",
     recht: "ko.validate",

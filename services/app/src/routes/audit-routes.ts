@@ -1,10 +1,44 @@
 import type { FastifyPluginAsync } from "fastify";
-import type { AuditFilter, AuditService } from "../../../audit";
+import type { AuditEntry, AuditFilter, AuditService } from "../../../audit";
 import type { Guards } from "../http";
+import { LESEVARIANTEN_LADE_AKTION, LESEVARIANTEN_LADE_PROTOKOLLFELDER } from "../lesevarianten";
 
 /** Wer die Befunde (Konflikte, Überschneidungen) eines Objekts kennt — nur deren Kennungen. */
 export interface BefundKennungen {
   idsForKo(koId: string): Promise<string[]>;
+}
+
+// ================================================================================================
+// aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 13) — ALTE LADEBILANZEN IM PROTOKOLL.
+// ================================================================================================
+//
+// `lesevarianten.load` trug bis Nacharbeit 13 die bestandsweite Ladebilanz: Kennungen und
+// Zählwerte auch von Objekten in geschlossenen Spaces. `ko.validate` ersetzt kein Space-Leserecht.
+// Neue Einträge tragen nur noch Paketangaben (`lesevarianten.ts`, `ladeLesevarianten`) und gehen
+// unverändert hinaus — prüfbar wie jeder andere Eintrag. Ein Alteintrag lässt sich nicht nach dem
+// Leserecht des Lesers umrechnen (seine Zählwerte nennen nicht, welche Objekte sie zählen); er wird
+// deshalb in Liste und Export für JEDEN Leser gleich ausgeblendet — fail-closed, und gleich für
+// alle, damit die Ausblendung selbst nichts verrät. Die gespeicherte Kette bleibt unverändert;
+// geprüft wird sie serverseitig (`verify`, `inspection` im Export).
+function ohneAlteLadebilanz(eintraege: readonly AuditEntry[]): AuditEntry[] {
+  return eintraege.map((e) => {
+    if (e.action !== LESEVARIANTEN_LADE_AKTION) {
+      return e;
+    }
+    const nurPaket = Object.keys(e.payload).every((k) =>
+      LESEVARIANTEN_LADE_PROTOKOLLFELDER.includes(k),
+    );
+    if (nurPaket) {
+      return e;
+    }
+    return {
+      ...e,
+      payload: {
+        ansicht: "ausgeblendet",
+        ...(typeof e.payload.records === "number" ? { records: e.payload.records } : {}),
+      },
+    };
+  });
 }
 
 // Audit-Log (§2.4 / FR-AUD). Governance-Einsicht: Controller/Admin (ko.validate-Recht).
@@ -19,7 +53,7 @@ export function auditRoutes(
       if (!user) {
         return;
       }
-      reply.code(200).send(await audit.list(request.query));
+      reply.code(200).send(ohneAlteLadebilanz(await audit.list(request.query)));
     });
 
     // SCRUM-439: aktive Integritätsprüfung der Audit-Kette (verify statt nur Aussage). Governance-
@@ -64,7 +98,10 @@ export function auditRoutes(
       if (!user) {
         return;
       }
-      const datei = await audit.exportChain(user.id);
+      const kette = await audit.exportChain(user.id);
+      // Kopf, Zähler und Prüfbericht beschreiben die gespeicherte Kette; nur ein Alteintrag mit
+      // Ladebilanz erscheint ausgeblendet (s. `ohneAlteLadebilanz`).
+      const datei = { ...kette, entries: ohneAlteLadebilanz(kette.entries) };
       const stempel = datei.exportedAt.replace(/[:.]/g, "-");
       reply
         .header("content-disposition", `attachment; filename="klarwerk-audit-${stempel}.json"`)

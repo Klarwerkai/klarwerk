@@ -728,48 +728,24 @@ export async function ladeLesevarianten(
 ): Promise<LesevariantenLadeBilanz> {
   const jetzt = (deps.jetzt?.() ?? new Date()).toISOString();
   const kos = await deps.kos();
-  const { treffer, ohneObjekt } = ordneZu(paket.package_id, paket.records, kos);
+  const { treffer } = ordneZu(paket.package_id, paket.records, kos);
   // Die Originalsprache steht je Datensatz; geladen werden alle ANDEREN Sprachen der Lieferung.
   const sprachen = [
     ...new Set(
       paket.records.flatMap((r) => paket.languages.filter((l) => l !== r.original_language)),
     ),
   ];
-  const bilanzUeber = (
-    menge: readonly Zuordnung[],
-    nichtZugeordnet: string[],
-  ): LesevariantenLadeBilanz => ({
+  // Das Protokoll dieses Laufs — EINE Zeile je Zuordnung, in Lauf-Reihenfolge. Aus ihm entsteht die
+  // Antwort (`bilanzAusProtokoll`); es bleibt im Speicher und geht nicht ins Auditprotokoll.
+  const protokoll: LesevariantenLadeProtokoll = {
     paket: paket.package_id,
-    records: paket.records.length,
+    records: paket.records.map((r) => r.key),
     sprachen,
-    zugeordnet: new Set(menge.map((t) => t.record.key)).size,
-    objekte: new Set(menge.map((t) => t.ko.id)).size,
-    ueberConfluence: menge.filter((t) => t.weg === "confluence").length,
-    ueberPaketschluessel: menge.filter((t) => t.weg === "paketschluessel").length,
-    neu: 0,
-    aktualisiert: 0,
-    textGeaendert: [],
-    nichtZugeordnet,
-    originalGeaendert: [],
-    quellabgleichBestaetigt: 0,
-    quellabgleichUnbestaetigt: 0,
-    ohneText: [],
-  });
-  // `bilanz` ist die bestandsweite (Audit), `ausgabe` die des Aufrufers (Antwort). Ohne Filter
-  // ist es dasselbe Objekt.
-  const bilanz = bilanzUeber(treffer, ohneObjekt);
-  const sichtbar = deps.sichtbar;
-  let ausgabe = bilanz;
-  if (sichtbar) {
-    const sichtbareTreffer = treffer.filter((t) => sichtbar(t.ko));
-    const mitSichtbarem = new Set(sichtbareTreffer.map((t) => t.record.key));
-    ausgabe = bilanzUeber(
-      sichtbareTreffer,
-      paket.records.map((r) => r.key).filter((key) => !mitSichtbarem.has(key)),
-    );
-  }
-  for (const { record, ko } of treffer) {
-    const ziele = ausgabe === bilanz || !sichtbar?.(ko) ? [bilanz] : [bilanz, ausgabe];
+    zuordnungen: [],
+  };
+  for (const { record, ko, weg } of treffer) {
+    const zeile: LadeZuordnung = { record: record.key, koId: ko.id, weg, varianten: [] };
+    protokoll.zuordnungen.push(zeile);
     const abdruck = originalAbdruck(ko);
     for (const lang of paket.languages) {
       if (lang === record.original_language) {
@@ -781,9 +757,7 @@ export async function ladeLesevarianten(
       // Datensatz mit kaputtem Textfeld zählt jetzt als „ohne Text" statt eine Ausnahme zu werfen.
       const text = textFuerSprache(paket, record, lang);
       if (!text || text.paragraphs.length === 0) {
-        for (const b of ziele) {
-          b.ohneText.push(`${record.key}/${lang}`);
-        }
+        zeile.varianten.push({ lang, ohneText: true });
         continue;
       }
       const vorher = await deps.repo.get(ko.id, lang);
@@ -801,11 +775,6 @@ export async function ladeLesevarianten(
       // NEU → der Abdruck wird gesetzt und der Quellabgleich neu erhoben; die Übersetzung ist
       // frisch gegen das heutige Original.
       const gleicheUebersetzung = vorher?.uebersetzungSha256 === uebersetzungSha256;
-      if (vorher && !gleicheUebersetzung) {
-        for (const b of ziele) {
-          b.textGeaendert.push(ko.id);
-        }
-      }
       const originalSha256 = gleicheUebersetzung && vorher ? vorher.originalSha256 : abdruck;
       const quellabgleich =
         gleicheUebersetzung && vorher ? vorher.quellabgleich : quellabgleichFuer(record, ko);
@@ -824,42 +793,136 @@ export async function ladeLesevarianten(
         quellabgleich,
         updatedAt: gleicheUebersetzung && vorher ? vorher.updatedAt : jetzt,
       });
-      for (const b of ziele) {
-        if (warVorhanden) {
-          b.aktualisiert += 1;
-        } else {
-          b.neu += 1;
-        }
-        if (quellabgleich === "bestaetigt") {
-          b.quellabgleichBestaetigt += 1;
-        } else {
-          b.quellabgleichUnbestaetigt += 1;
-        }
-        // Der Bericht steht NACH dem Schreiben und beschreibt den Zustand, den der Leser gleich
-        // sieht — nicht den, der vorher galt.
-        if (originalSha256 !== abdruck && !b.originalGeaendert.includes(ko.id)) {
-          b.originalGeaendert.push(ko.id);
-        }
+      // Der Bericht steht NACH dem Schreiben und beschreibt den Zustand, den der Leser gleich
+      // sieht — nicht den, der vorher galt.
+      zeile.varianten.push({
+        lang,
+        ohneText: false,
+        neu: !warVorhanden,
+        textGeaendert: Boolean(vorher) && !gleicheUebersetzung,
+        originalGeaendert: originalSha256 !== abdruck,
+        quellabgleich,
+      });
+    }
+  }
+  // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 13): der Auditeintrag trägt NUR, was die
+  // Lieferung selbst sagt — Paket (`target`), Zahl der Datensätze, Sprachen. Bis hierher stand die
+  // bestandsweite Bilanz darin (Kennungen und Zählwerte auch aus geschlossenen Spaces), und
+  // `GET /api/audit`/`/api/audit/export` gaben sie mit `ko.validate` aus. Sie in der Ausgabe je
+  // Leser umzuschreiben ginge nicht ohne den Export zu brechen: der Eintragshash deckt die ganze
+  // Nutzlast (`canonicalJson(payload)`, audit/src/chain.ts), und der Export ist für das
+  // Nachrechnen außerhalb gedacht (R-0613). Was je Objekt geschah, steht unverändert im Bestand der
+  // Lesevarianten (Zeile je Objekt × Sprache, mit `updatedAt` und Quellabgleich) und ist dort nur
+  // über die Leserouten mit `darfSehen` erreichbar. Alteinträge mit Bestandsdaten blendet
+  // `audit-routes.ts` für jeden Leser gleich aus.
+  await deps.audit?.record({
+    actor,
+    action: LESEVARIANTEN_LADE_AKTION,
+    target: paket.package_id,
+    payload: { records: protokoll.records.length, sprachen },
+  });
+  const bilanz = bilanzAusProtokoll(protokoll, () => true);
+  const sichtbar = deps.sichtbar;
+  if (!sichtbar) {
+    return bilanz;
+  }
+  const sichtbareIds = new Set(treffer.filter((t) => sichtbar(t.ko)).map((t) => t.ko.id));
+  return bilanzAusProtokoll(protokoll, (koId) => sichtbareIds.has(koId));
+}
+
+// ================================================================================================
+// aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 10) — DIE BILANZ AUS DEM PROTOKOLL.
+// ================================================================================================
+//
+// Die Ladebilanz nennt Objektkennungen und zählt Objekte. Wer sie liest, darf darin nur sehen, was
+// er nach der Lesepolicy sehen darf. Die bestandsweite und die Bilanz des Aufrufers rechnet
+// deshalb dieselbe Funktion aus demselben Protokoll: eine Zeile je Zuordnung, ein Eintrag je
+// Sprache. Eine unsichtbare Zuordnung fällt GANZ heraus; ein Datensatz ohne sichtbare Zuordnung
+// steht unter `nichtZugeordnet` — genau wie ein Datensatz ohne Objekt, sonst wäre der Unterschied
+// eine Existenzauskunft.
+
+export const LESEVARIANTEN_LADE_AKTION = "lesevarianten.load";
+
+/**
+ * Die Schlüssel, die ein Auditeintrag `lesevarianten.load` tragen darf, ohne etwas über den
+ * Bestand zu sagen (Nacharbeit 13). Alles darüber hinaus stammt aus Alteinträgen mit Bilanz.
+ */
+export const LESEVARIANTEN_LADE_PROTOKOLLFELDER: readonly string[] = ["records", "sprachen"];
+
+export type LadeVariante =
+  | { lang: string; ohneText: true }
+  | {
+      lang: string;
+      ohneText: false;
+      neu: boolean;
+      textGeaendert: boolean;
+      originalGeaendert: boolean;
+      quellabgleich: Quellabgleich;
+    };
+
+export interface LadeZuordnung {
+  record: string;
+  koId: string;
+  weg: Zuordnungsweg;
+  varianten: LadeVariante[];
+}
+
+export interface LesevariantenLadeProtokoll {
+  paket: string;
+  /** Die Datensatzschlüssel der Lieferung, in Lieferreihenfolge. */
+  records: string[];
+  sprachen: string[];
+  zuordnungen: LadeZuordnung[];
+}
+
+export function bilanzAusProtokoll(
+  protokoll: LesevariantenLadeProtokoll,
+  sichtbar: (koId: string) => boolean,
+): LesevariantenLadeBilanz {
+  const menge = protokoll.zuordnungen.filter((z) => sichtbar(z.koId));
+  const mitSichtbarem = new Set(menge.map((z) => z.record));
+  const bilanz: LesevariantenLadeBilanz = {
+    paket: protokoll.paket,
+    records: protokoll.records.length,
+    sprachen: [...protokoll.sprachen],
+    zugeordnet: mitSichtbarem.size,
+    objekte: new Set(menge.map((z) => z.koId)).size,
+    ueberConfluence: menge.filter((z) => z.weg === "confluence").length,
+    ueberPaketschluessel: menge.filter((z) => z.weg === "paketschluessel").length,
+    neu: 0,
+    aktualisiert: 0,
+    textGeaendert: [],
+    nichtZugeordnet: protokoll.records.filter((key) => !mitSichtbarem.has(key)),
+    originalGeaendert: [],
+    quellabgleichBestaetigt: 0,
+    quellabgleichUnbestaetigt: 0,
+    ohneText: [],
+  };
+  for (const zeile of menge) {
+    for (const v of zeile.varianten) {
+      if (v.ohneText) {
+        bilanz.ohneText.push(`${zeile.record}/${v.lang}`);
+        continue;
+      }
+      if (v.textGeaendert) {
+        bilanz.textGeaendert.push(zeile.koId);
+      }
+      if (v.neu) {
+        bilanz.neu += 1;
+      } else {
+        bilanz.aktualisiert += 1;
+      }
+      if (v.quellabgleich === "bestaetigt") {
+        bilanz.quellabgleichBestaetigt += 1;
+      } else {
+        bilanz.quellabgleichUnbestaetigt += 1;
+      }
+      if (v.originalGeaendert && !bilanz.originalGeaendert.includes(zeile.koId)) {
+        bilanz.originalGeaendert.push(zeile.koId);
       }
     }
   }
-  await deps.audit?.record({
-    actor,
-    action: "lesevarianten.load",
-    target: paket.package_id,
-    payload: {
-      records: bilanz.records,
-      zugeordnet: bilanz.zugeordnet,
-      objekte: bilanz.objekte,
-      neu: bilanz.neu,
-      aktualisiert: bilanz.aktualisiert,
-      textGeaendert: bilanz.textGeaendert,
-      nichtZugeordnet: bilanz.nichtZugeordnet,
-      quellabgleichBestaetigt: bilanz.quellabgleichBestaetigt,
-      quellabgleichUnbestaetigt: bilanz.quellabgleichUnbestaetigt,
-    },
-  });
-  return ausgabe;
+  return bilanz;
 }
 
 // ================================================================================================

@@ -21,6 +21,7 @@
 import { describe, expect, it } from "vitest";
 import { type AppServices, buildApp, buildServices } from "../../services/app/src/build-app";
 import { lokalisierungsPaket } from "../../services/app/src/lesevarianten";
+import { type AuditEntry, verifyChain } from "../../services/audit";
 import type { KoSource } from "../../services/knowledge-object";
 
 type App = ReturnType<typeof buildApp>;
@@ -145,7 +146,7 @@ async function buehne(opts: { mitGeschuetztem: boolean }) {
     "Offenes Onboarding",
   );
   if (!opts.mitGeschuetztem) {
-    return { app, k, offenId, geschuetztId: null };
+    return { app, services, k, offenId, geschuetztId: null };
   }
 
   // Der Space — Lea zuständig, Erik schreibt, Carla und Mia lesen; Ada ist kein Mitglied.
@@ -220,7 +221,7 @@ async function buehne(opts: { mitGeschuetztem: boolean }) {
     quellabgleich: "unbestaetigt",
     updatedAt: "2026-01-01T00:00:00.000Z",
   });
-  return { app, k, offenId, geschuetztId };
+  return { app, services, k, offenId, geschuetztId };
 }
 
 const laden = (app: App, kopf: Kopf) =>
@@ -274,5 +275,126 @@ describe("POST /api/admin/lesevarianten/laden — die Bilanz folgt der Lesepolic
     expect(fremd.statusCode).toBe(404);
     await mit.app.close();
     await ohne.app.close();
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// Ben, Nacharbeit 13 — DER NEBENWEG ÜBER DAS PROTOKOLL. `lesevarianten.load` hielt die
+// bestandsweite Bilanz fest, und `GET /api/audit` sowie `GET /api/audit/export` (`ko.validate`)
+// gaben sie ungefiltert aus. Jetzt trägt der Eintrag nur Paketangaben; ein Alteintrag mit Bilanz
+// wird für jeden Leser gleich ausgeblendet. Gemessen werden Liste UND Export, mit dem Admin ohne
+// Space-Mitgliedschaft und — als Vergleich — mit dem Mitglied.
+// ------------------------------------------------------------------------------------------------
+interface Eintrag {
+  action: string;
+  target: string;
+  payload: Record<string, unknown>;
+}
+
+async function protokoll(
+  app: App,
+  kopf: Kopf,
+): Promise<{ liste: Eintrag[]; export: Eintrag[]; alle: AuditEntry[] }> {
+  const liste = await app.inject({
+    method: "GET",
+    url: "/api/audit?action=lesevarianten.load",
+    headers: kopf,
+  });
+  expect(liste.statusCode, liste.body).toBe(200);
+  const datei = await app.inject({ method: "GET", url: "/api/audit/export", headers: kopf });
+  expect(datei.statusCode, datei.body).toBe(200);
+  const alle = (datei.json() as { entries: AuditEntry[] }).entries;
+  return {
+    liste: (liste.json() as Eintrag[]).filter((e) => e.action === "lesevarianten.load"),
+    export: alle.filter((e) => e.action === "lesevarianten.load"),
+    alle,
+  };
+}
+
+describe("lesevarianten.load im Protokoll — Liste und Export verraten nichts Unsichtbares", () => {
+  it("neuer Eintrag: nur Paketangaben, für Mitglied und Nichtmitglied gleich, wie ohne das Objekt", async () => {
+    const mit = await buehne({ mitGeschuetztem: true });
+    // Geladen hat das MITGLIED — der Lauf hat das geschützte Objekt also wirklich berührt.
+    const lauf = await laden(mit.app, mit.k.mia);
+    expect(lauf.statusCode, lauf.body).toBe(200);
+    // GEGENPROBE: die Ladeantwort des Mitglieds nennt die Kennung (der Weg trägt).
+    expect(lauf.json().textGeaendert).toContain(mit.geschuetztId);
+
+    const ohne = await buehne({ mitGeschuetztem: false });
+    expect((await laden(ohne.app, ohne.k.mia)).statusCode).toBe(200);
+    const vergleich = await protokoll(ohne.app, ohne.k.ada);
+    expect(vergleich.liste.length).toBe(1);
+
+    for (const [wer, kopf] of [
+      ["Ada (ohne Mitgliedschaft)", mit.k.ada],
+      ["Mia (Mitglied)", mit.k.mia],
+    ] as const) {
+      const p = await protokoll(mit.app, kopf);
+      expect(p.liste.length, wer).toBe(1);
+      expect(p.export.length, wer).toBe(1);
+      for (const [weg, e] of [
+        ["Liste", p.liste[0] as Eintrag],
+        ["Export", p.export[0] as Eintrag],
+      ] as const) {
+        expect(JSON.stringify(e), `${wer} · ${weg}`).not.toContain(mit.geschuetztId as string);
+        expect(Object.keys(e.payload).sort(), `${wer} · ${weg}`).toEqual(["records", "sprachen"]);
+        // Feld für Feld wie in einem Bestand, in dem das geschützte Objekt nicht existiert.
+        expect(e.payload, `${wer} · ${weg}`).toEqual(vergleich.liste[0]?.payload);
+      }
+      // Die Kette bleibt AUSSERHALB nachrechenbar (R-0613): der Export wurde nicht umgeschrieben.
+      expect(verifyChain(p.alle), wer).toBe(true);
+    }
+    await mit.app.close();
+    await ohne.app.close();
+  });
+
+  it("Alteintrag mit bestandsweiter Bilanz: für jeden Leser gleich ausgeblendet, Kette bleibt prüfbar", async () => {
+    const mit = await buehne({ mitGeschuetztem: true });
+    const geschuetztId = mit.geschuetztId as string;
+    // Die Form, die `ladeLesevarianten` bis Nacharbeit 13 schrieb — mit Kennung und Zählwerten.
+    await mit.services.audit.record({
+      actor: "alt",
+      action: "lesevarianten.load",
+      target: PAKET,
+      payload: {
+        records: 40,
+        zugeordnet: 2,
+        objekte: 2,
+        neu: 0,
+        aktualisiert: 2,
+        textGeaendert: [geschuetztId],
+        nichtZugeordnet: [],
+        quellabgleichBestaetigt: 0,
+        quellabgleichUnbestaetigt: 2,
+      },
+    });
+
+    const gesehen: Eintrag[] = [];
+    for (const [wer, kopf] of [
+      ["Ada (ohne Mitgliedschaft)", mit.k.ada],
+      ["Mia (Mitglied)", mit.k.mia],
+    ] as const) {
+      const p = await protokoll(mit.app, kopf);
+      for (const [weg, e] of [
+        ["Liste", p.liste[0] as Eintrag],
+        ["Export", p.export[0] as Eintrag],
+      ] as const) {
+        expect(JSON.stringify(e), `${wer} · ${weg}`).not.toContain(geschuetztId);
+        expect(e.payload, `${wer} · ${weg}`).toEqual({ ansicht: "ausgeblendet", records: 40 });
+        gesehen.push(e);
+      }
+    }
+    // Gleich für alle — die Ausblendung selbst ist keine Auskunft über die Mitgliedschaft.
+    expect(new Set(gesehen.map((e) => JSON.stringify(e.payload))).size).toBe(1);
+
+    // Die GESPEICHERTE Kette ist unverändert und prüfbar.
+    const pruefung = await mit.app.inject({
+      method: "GET",
+      url: "/api/audit/verify",
+      headers: mit.k.ada,
+    });
+    expect(pruefung.statusCode, pruefung.body).toBe(200);
+    expect(pruefung.json().ok).toBe(true);
+    await mit.app.close();
   });
 });
