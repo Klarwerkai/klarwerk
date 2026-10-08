@@ -179,6 +179,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `resolve-conflict` | `conflict.resolve` | `conflictId`, `decision` |
 | `transfer-author` | `users.manage` | `newAuthor` |
 | `revalidate` | `ko.create` | — |
+| `helpful` | `ko.read` | — (antwortet 204; „Hat geholfen" am Objekt, Trust-Schritt + Audit `answer.helpful`, genau einmal je Person und Objekt, keine Prüfstimme) |
 
 ### 3.4 Entwürfe und Erfassung (`captureRoutes`, `slidesRoutes`, `objectRoutes`, `mediaRoutes`)
 
