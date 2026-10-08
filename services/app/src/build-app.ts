@@ -343,6 +343,7 @@ import { slidesRoutes } from "./routes/slides-routes";
 import { spacesRoutes } from "./routes/spaces-routes";
 import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
 import { validationRoutes } from "./routes/validation-routes";
+import { kontoendeSperre, verantwortungRoutes } from "./routes/verantwortung-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
 import { stelleSuchprojektionBereit } from "./search-projection-startup";
@@ -2904,6 +2905,9 @@ export function buildApp(
   // HTTP-Oberfläche der Module. Auth bringt seine eigenen Routen mit; die übrigen
   // Module werden über App-Routen verdrahtet, die den gemeinsamen Guard nutzen.
   const resetBaseUrl = process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/reset` : undefined;
+  // produkt:20261007:ownership-uebergabe: kein Konto wird gelöscht, das noch Hauptverantwortung
+  // trägt (beide Löschwege der Auth-Routen) — sonst blieben Beiträge ohne Verantwortung zurück.
+  kontoendeSperre(app, { ko: services.ko, auth: services.auth });
   app.register(
     authRoutes(services.auth, {
       mailer: services.mailer,
@@ -3593,6 +3597,14 @@ export function buildApp(
   app.register(
     spacesRoutes(
       { spaces: services.spaces, ko: services.ko, auth: services.auth, audit: services.audit },
+      guards,
+    ),
+  );
+  // produkt:20261007:ownership-uebergabe: Hauptverantwortung einzeln und gesammelt übergeben,
+  // Vorschau, Teilfehler mit Wiederaufnahme, Deaktivierung ohne Restbestand.
+  app.register(
+    verantwortungRoutes(
+      { ko: services.ko, auth: services.auth, spaces: services.spaces, audit: services.audit },
       guards,
     ),
   );
