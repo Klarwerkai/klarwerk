@@ -24,44 +24,29 @@ Ohne Zertifikat läuft die Anwendung wie bisher im Klartext; in Produktion steht
 mit „R-2057" im Protokoll. Belegt in `tests/security/tls-bis-zur-anwendung.test.ts` (echter
 Socket: HTTPS mit Prüfung 200, Klartext ohne Antwort, fremder Anker und falscher Name abgelehnt).
 
-## Umstellung einer Installation (Coolify + Traefik)
+## Umstellung der Installation app.klarwerk.ai
 
-Die Schritte brauchen Zugang zum Server und zur Coolify-Anwendung. Werte in spitzen Klammern sind
-Platzhalter.
+Werte aus dem Betriebsbefund vom 08.10.2026 — vor dem Lauf nicht zu ändern, die Skripte prüfen sie:
 
-### 1. Interne CA und Serverzertifikat
+| Gegenstand | Wert |
+| --- | --- |
+| Coolify-Anwendung | `b3rgijsv5jtuhreh9ypyjase` |
+| Traefik-Dienst | `https-1-b3rgijsv5jtuhreh9ypyjase` (Port-Label `3000`) |
+| Proxy-Container | `coolify-proxy` (traefik:v3.6), Dateikonfiguration aus `/traefik/dynamic` |
+| Docker-Netz | `coolify` |
+| Zertifikatsname | `klarwerk-app` (SAN zusätzlich `127.0.0.1` für den Selbsttest) |
+| Zertifikatsdateien auf dem Wirt | `/data/klarwerk/tls/` (CA-Schlüssel getrennt in `/data/klarwerk/tls-ca/`, nur root) |
+| Einbindung im App-Container | `/run/klarwerk-tls/` |
 
-Auf einem vertrauenswürdigen Rechner, nicht im Repository:
+### Schritt 1 — Server (root): Zertifikate und Proxy-Transport
 
 ```sh
-openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 825 \
-  -subj "/CN=KLARWERK interne CA" -keyout ca.key -out ca.pem \
-  -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign"
-openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
-  -subj "/CN=klarwerk-app" -keyout app.key -out app.csr
-printf 'subjectAltName=DNS:klarwerk-app,IP:127.0.0.1\nbasicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=serverAuth\n' > app.ext
-openssl x509 -req -in app.csr -CA ca.pem -CAkey ca.key -CAcreateserial -days 397 \
-  -out app.pem -extfile app.ext
+bash <repo>/scripts/betrieb/tls-intern-einrichten.sh
 ```
 
-`ca.key` bleibt offline. `app.key` ist ein Geheimnis der Installation.
-
-### 2. Dateien und Umgebung der Anwendung
-
-In Coolify als schreibgeschützte Datei-Einbindung (lesbar für Benutzer `node`), z. B. unter
-`/run/klarwerk-tls/`: `app.pem`, `app.key`, `ca.pem`. Umgebung:
-
-```
-KLARWERK_TLS_CERT_FILE=/run/klarwerk-tls/app.pem
-KLARWERK_TLS_KEY_FILE=/run/klarwerk-tls/app.key
-KLARWERK_TLS_CA_FILE=/run/klarwerk-tls/ca.pem
-KLARWERK_TLS_SERVERNAME=klarwerk-app
-```
-
-### 3. Traefik: Upstream über HTTPS, mit Prüfung
-
-Dynamische Datei im Konfigurationsordner des Coolify-Proxys (vor Ort prüfen, wo er eingebunden ist),
-`ca.pem` daneben für den Proxy lesbar:
+Das Skript bricht ab, wenn `coolify-proxy` keine Dateikonfiguration aus `/traefik/dynamic` liest.
+Es legt die interne CA und das Serverzertifikat an, gibt den Vertrauensanker dem Proxy und schreibt
+`<wirt-von-/traefik>/dynamic/klarwerk-intern.yml`:
 
 ```yaml
 http:
@@ -69,47 +54,69 @@ http:
     klarwerk-intern:
       serverName: klarwerk-app
       rootCAs:
-        - <pfad-im-proxy>/ca.pem
+        - /traefik/klarwerk-intern/ca.pem
 ```
 
-Labels der Anwendung (Coolify, „Container Labels"), zusätzlich zu den vorhandenen:
+Es ist idempotent, ändert nichts an der laufenden Anwendung und gibt keinen Schlüssel aus. Die
+Datei wirkt erst, wenn die Labels aus Schritt 2 auf sie zeigen.
 
-```
-traefik.http.services.<dienst>.loadbalancer.server.scheme=https
-traefik.http.services.<dienst>.loadbalancer.serversTransport=klarwerk-intern@file
-```
+### Schritt 2 — Coolify-Anwendung `b3rgijsv5jtuhreh9ypyjase`, ein Ausrollen
 
-`<dienst>` ist der Name aus dem vorhandenen Label `…loadbalancer.server.port` (gemessen:
-`https-1-b3rgijsv5jtuhreh9ypyjase`). Kein `insecureSkipVerify`.
+Alles zusammen setzen und **in einem** Ausrollen des Kandidaten übernehmen — Anwendung und Proxy
+wechseln damit gemeinsam. Getrennt ausgerollt spräche einer der beiden Klartext gegen TLS.
 
-### 4. Reihenfolge
+- Persistent Storage, Verzeichnis-Einbindung: `/data/klarwerk/tls` → `/run/klarwerk-tls`
+- Umgebung:
 
-1. Datei aus Schritt 3 anlegen (wirkt erst mit den Labels).
-2. Dateien, Umgebung und Labels aus Schritt 2 und 3 setzen und **in einem** Ausrollen übernehmen —
-   Anwendung und Proxy wechseln damit gemeinsam. Getrennt ausgerollt, spräche einer der beiden
-   Klartext gegen TLS, und die Instanz wäre bis zum zweiten Schritt nicht erreichbar.
-3. Nachweis (unten). Erst danach `KLARWERK_TLS_PFLICHT=1` setzen.
+  ```
+  KLARWERK_TLS_CERT_FILE=/run/klarwerk-tls/app.pem
+  KLARWERK_TLS_KEY_FILE=/run/klarwerk-tls/app.key
+  KLARWERK_TLS_CA_FILE=/run/klarwerk-tls/ca.pem
+  KLARWERK_TLS_SERVERNAME=klarwerk-app
+  ```
 
-### 5. Nachweis
+- Container Labels, zusätzlich zu den vorhandenen:
 
-Vom laufenden Proxy-Container, mit Bezug zur ausgelieferten Fassung:
+  ```
+  traefik.http.services.https-1-b3rgijsv5jtuhreh9ypyjase.loadbalancer.server.scheme=https
+  traefik.http.services.https-1-b3rgijsv5jtuhreh9ypyjase.loadbalancer.serversTransport=klarwerk-intern@file
+  ```
+
+Kein `insecureSkipVerify`. Der Container-Selbsttest prüft danach selbst über HTTPS gegen die CA.
+
+### Schritt 3 — Server (root): Nachweis mit Kandidatenbezug
 
 ```sh
-docker exec coolify-proxy wget -q -O - --ca-certificate=<pfad-im-proxy>/ca.pem \
-  https://klarwerk-app:3000/health          # muss {"status":"ok","commit":"<kandidat>"} liefern
-docker exec coolify-proxy wget -q -T 10 -O - http://<app-ip>:3000/health   # muss scheitern
-curl -s https://app.klarwerk.ai/health                                     # derselbe commit
+bash <repo>/scripts/betrieb/tls-intern-nachweis.sh <40-stelliger-commit-des-kandidaten>
 ```
 
-`klarwerk-app` muss dazu im Docker-Netz auflösbar sein (Netzwerk-Alias); sonst die IP verwenden und
-den Namen über `--header`/SNI-fähiges Werkzeug prüfen. Das Protokoll des Proxys darf nach dem
-Ausrollen keine `x509`-Fehler für den Dienst zeigen.
+Misst an der laufenden Installation, ohne etwas zu ändern, und schreibt den Beleg nach
+`/data/klarwerk/tls-nachweis/`. Bestanden nur, wenn alle sechs Proben gelten:
+
+| Probe | Erwartung |
+| --- | --- |
+| N1 | Image-Tag des App-Containers trägt den Commit |
+| N2 | App-Umgebung mit Zertifikat und Schlüssel; Labels `scheme=https`, `serversTransport=klarwerk-intern@file`; Transportdatei mit `rootCAs`, ohne `insecureSkipVerify` |
+| N3 | aus `coolify-proxy`: `http://<app-ip>:3000/health` scheitert |
+| N4 | im Netz `coolify`: `https://<app-ip>:3000/health` mit Servername `klarwerk-app` und interner CA → 200 und der Commit |
+| N5 | dieselbe Verbindung ohne den internen Anker wird abgelehnt (die Prüfung wirkt) |
+| N6 | `https://app.klarwerk.ai/health` → 200 und der Commit — über den Proxy, dessen Upstream nur noch geprüftes TLS annimmt |
+
+Erst nach bestandenem Nachweis `KLARWERK_TLS_PFLICHT=1` in Coolify setzen und erneut ausrollen;
+ab dann kann ein Neustart nicht mehr still in den Klartext fallen.
+
+Grenze von N4: Das Traefik-Image bringt kein Werkzeug mit, das Zertifikate gegen eine eigene CA
+prüft (sein `wget` kennt keinen Anker). Die geprüfte TLS-Verbindung wird deshalb im selben Netz aus
+dem App-Container zur Container-IP gemessen; dass der Proxy selbst prüft, belegen N2 (Konfiguration
+ohne Abschaltung) zusammen mit N3 und N6.
 
 ### Rückweg
 
-Labels aus Schritt 3 und die vier Umgebungswerte entfernen, `KLARWERK_TLS_PFLICHT` entfernen, neu
-ausrollen. Die Anwendung spricht dann wieder Klartext, mit Warnung im Protokoll.
+Labels und die vier Umgebungswerte aus Schritt 2 entfernen, `KLARWERK_TLS_PFLICHT` entfernen, neu
+ausrollen. Die Anwendung spricht dann wieder Klartext, mit Warnung im Protokoll. Die Dateien aus
+Schritt 1 dürfen liegen bleiben; ohne Labels wirken sie nicht.
 
 ## Zertifikatswechsel
 
-Die Anwendung liest Zertifikat und Schlüssel beim Start. Nach einem Wechsel der Dateien neu starten.
+Das Serverzertifikat gilt 397 Tage. `tls-intern-einrichten.sh` stellt es neu aus, wenn es in weniger
+als 30 Tagen abläuft; danach die Anwendung neu starten, sie liest die Dateien beim Start.
