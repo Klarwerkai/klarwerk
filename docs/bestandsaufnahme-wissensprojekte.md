@@ -53,11 +53,17 @@ löschen) und Spaces der einzige Bestand mit dieser Form sind.
    wie beim Bearbeiten (Spacezuständige oder Kontoverwaltung; sonst 403, unsichtbar 404).
    Abgelehnt (409) bei veralteter Version (`VERSION_VERALTET`) oder solange ein Artikel — auch im
    Papierkorb — den Space trägt (`SPACE_NICHT_LEER`). Audit `space.geloescht`.
-4. **Konsistenz bei Gleichzeitigkeit.** Läuft ein Spacewechsel in den Space zwischen Prüfung und
-   Vermerk, nimmt die Löschung sich mit einer neuen Fassung ohne Vermerk zurück (409). Wird der
-   Zielspace während eines Spacewechsels gelöscht, geht der Artikel in seinen bisherigen Space
-   zurück (409 `VORSCHAU_VERALTET`). So entsteht kein Artikel mit der Kennung eines gelöschten
-   Space; ein solcher wäre nach `sichtbarkeit.ts` fail-closed für alle unsichtbar.
+4. **Konsistenz bei Gleichzeitigkeit (Nacharbeit 4, Bens Befund).** Spacewechsel und
+   Spacelöschung prüfen und schreiben jeweils vollständig unter einer gemeinsamen Sperre
+   (`SpacesRepo.exklusiv`): im Speicherbetrieb eine prozessweite Warteschlange, in PostgreSQL
+   zusätzlich `pg_advisory_lock`, damit auch mehrere App-Prozesse an derselben Datenbank sich
+   ausschliessen. Die frühere Nachkontrolle mit Rücknahme ist entfernt — sie konnte einen Artikel
+   ungeprüft in einen inzwischen gelöschten Quellspace zurückschreiben. Ergebnis: Eine Löschung
+   sieht jeden vorher abgeschlossenen Wechsel; ein Wechsel findet einen vorher gelöschten Space
+   nicht mehr (404). So entsteht kein Artikel mit der Kennung eines gelöschten Space; ein solcher
+   wäre nach `sichtbarkeit.ts` fail-closed für alle unsichtbar. Gegenproben:
+   `space-loeschen.test.ts` L3 (beide Reihenfolgen und Bens Ablauf A→B mit Löschung von B und A
+   im Fenster), `spaces-pg.integration.test.ts` (Sperre über zwei Pools).
 5. **Oberfläche** (`apps/web/src/pages/Spaces.tsx`, Texte `apps/web/src/texte/spaces.ts` DE/EN/NL).
    „Space löschen“ für Berechtigte öffnet die Folgenkarte; der Bestätigungsknopf ist gesperrt,
    solange Artikel den Space tragen, die sichtbaren sind verlinkt. Nach der Löschung zeigt die
@@ -80,7 +86,10 @@ Sichtbarkeit vieler Artikel auf einmal und bräuchte je Artikel die bestehende R
    Gegenstand. Nicht zu verwechseln: der Confluence-„Firmenfilter“ gehört zu `package:confluence`
    (gesonderter Auftrag, `docs/bestandsaufnahme-confluence-import.md`), die nicht montierte
    Ortszeile „gesamtes Unternehmen“ (`apps/web/src/components/LibraryScopeBar.tsx`) zu einer offenen
-   Ownerentscheidung (PLAN PRO 378 §9). Beides ist hier nicht bearbeitet.
+   Ownerentscheidung (PLAN PRO 378 §9). Beides ist hier nicht bearbeitet. **Damit ist das
+   Kriterium „Firmenfilter stimmen“ weder erfüllt noch belegt, und es ist auch nicht ausdrücklich
+   ersetzt.** Ob es entfällt, auf einen anderen Filter zielt oder eine Firmenentität verlangt, ist
+   eine offene Entscheidung für Pedi; dieser Auftrag wählt sie nicht selbst.
 3. **Herkunft der Kriterien.** Laut Quelle Planvorschläge ohne zugeordnete Nutzerquelle; der
    historische Satz „Löschen als offen gemeldet“ ist kein Prüfbeleg.
 4. **Lieferbeleg mit Fassung.** Die Fassungsnummer dieses Laufs vergibt der Starter; der

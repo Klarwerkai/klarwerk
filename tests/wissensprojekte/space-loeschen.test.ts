@@ -157,6 +157,57 @@ async function verschieben(b: Buehne, koId: string, zielSpaceId: string | null) 
   });
 }
 
+type Antwort = Awaited<ReturnType<typeof loeschen>>;
+
+interface Grundlage {
+  quelleId: string | null;
+  quelleVersion: number | null;
+  zielId: string | null;
+  zielVersion: number | null;
+}
+
+/** Die Grundlage einer Rechtevorschau, so wie die Oberfläche sie für die Übernahme mitschickt. */
+async function grundlage(b: Buehne, koId: string, zielSpaceId: string | null): Promise<Grundlage> {
+  const v = await b.app.inject({
+    method: "POST",
+    url: "/api/spaces/verschiebung/vorschau",
+    headers: b.k.erik,
+    payload: { koId, zielSpaceId },
+  });
+  expect(v.statusCode, v.body).toBe(200);
+  const vj = v.json();
+  return {
+    quelleId: vj.quelle?.id ?? null,
+    quelleVersion: vj.quelle?.version ?? null,
+    zielId: vj.ziel?.id ?? null,
+    zielVersion: vj.ziel?.version ?? null,
+  };
+}
+
+/** Die Übernahme mit einer vorher geholten Grundlage — ohne eigene Vorschau davor. */
+async function wechselMit(b: Buehne, koId: string, zielSpaceId: string | null, basis: Grundlage) {
+  return b.app.inject({
+    method: "POST",
+    url: "/api/spaces/verschiebung",
+    headers: b.k.erik,
+    payload: { koId, zielSpaceId, basis },
+  });
+}
+
+/** Hält das kritische Fenster offen — lang genug, dass eine ungesperrte Gegenseite durchliefe. */
+function fensterOffen(): Promise<void> {
+  return new Promise((fertig) => setTimeout(fertig, 50));
+}
+
+/** Kein Artikel (samt Papierkorb) trägt die Kennung eines Space, den es nicht mehr gibt. */
+async function keineWaise(b: Buehne): Promise<void> {
+  const da = new Set((await b.services.spaces.aktuelle()).map((s) => s.id));
+  const waisen = (await b.services.ko.listEinschliesslichPapierkorb()).filter(
+    (k) => typeof k.spaceId === "string" && !da.has(k.spaceId),
+  );
+  expect(waisen.map((k) => [k.id, k.spaceId])).toEqual([]);
+}
+
 async function loeschVorschau(b: Buehne, kopf: Kopf, spaceId: string) {
   return b.app.inject({
     method: "POST",
@@ -340,49 +391,97 @@ describe("L3 · Verknüpfungen bleiben konsistent", () => {
     expect(zuGeloeschtem.statusCode).toBe(404);
   });
 
-  it("Spacewechsel und Löschung gleichzeitig: der Wechsel wird zurückgenommen, keine Waise", async () => {
+  // Nacharbeit 4 (Bens Befund): Spacewechsel und Spacelöschung laufen unter EINER Sperre
+  // (`SpacesRepo.exklusiv`). Die Gegenseite wird deshalb in den folgenden Fällen genau im
+  // kritischen Fenster GESTARTET, aber nicht abgewartet — sie muss hinter der laufenden Arbeit
+  // warten. Hinge sie nicht an der Sperre, liefe sie sofort hinein und die Sollwerte wären verletzt.
+
+  it("Löschung während des Wechsels: sie wartet, findet den Artikel im Ziel und lehnt ab", async () => {
     const b = await buehne();
     const koId = await artikelAnlegen(b);
-    // Die Löschung landet genau zwischen Vorschau-Prüfung und Schreiben des Wechsels.
+    const basis = await grundlage(b, koId, b.werkstatt.id);
     const original = b.services.ko.setLeadingSpace.bind(b.services.ko);
-    let einmal = true;
+    let geloescht: Promise<Antwort> | undefined;
     b.services.ko.setLeadingSpace = async (id, spaceId, actor, erwartet) => {
-      if (einmal) {
-        einmal = false;
-        const res = await loeschen(b, b.k.lea, b.werkstatt.id, 1);
-        expect(res.statusCode, res.body).toBe(200);
-      }
+      // Zwischen Prüfung und Schreiben des Wechsels — dort, wo früher die Lücke war.
+      geloescht ??= loeschen(b, b.k.lea, b.werkstatt.id, 1);
+      await fensterOffen();
       return original(id, spaceId, actor, erwartet);
     };
-    const res = await verschieben(b, koId, b.werkstatt.id);
-    expect(res.statusCode, res.body).toBe(409);
-    expect(res.json().error).toBe("VORSCHAU_VERALTET");
-    const ko = (await lies(b, b.k.erik, `/api/kos/${koId}`)).json();
-    expect(ko.spaceId).toBeUndefined();
+    const res = await wechselMit(b, koId, b.werkstatt.id, basis);
+    expect(res.statusCode, res.body).toBe(200);
+    expect(geloescht, "die Löschung wurde im Fenster gestartet").toBeDefined();
+    const loesch = await geloescht;
+    expect(loesch?.statusCode, loesch?.body).toBe(409);
+    expect(loesch?.json().error).toBe("SPACE_NICHT_LEER");
+    expect((await lies(b, b.k.erik, `/api/kos/${koId}`)).json().spaceId).toBe(b.werkstatt.id);
+    expect((await lies(b, b.k.lea, `/api/spaces/${b.werkstatt.id}`)).statusCode).toBe(200);
+    await keineWaise(b);
   });
 
-  it("Löschung und Spacewechsel gleichzeitig: die Löschung wird zurückgenommen, der Artikel bleibt sichtbar", async () => {
+  it("Wechsel während der Löschung: er wartet, findet das Ziel nicht mehr und schreibt nichts", async () => {
     const b = await buehne();
     const koId = await artikelAnlegen(b);
-    // Der Wechsel landet genau zwischen Prüfung und Löschvermerk.
+    const basis = await grundlage(b, koId, b.werkstatt.id);
     const repo = b.services.spaces;
     const lege = repo.lege.bind(repo);
-    let einmal = true;
+    let gewechselt: Promise<Antwort> | undefined;
     repo.lege = async (fassung) => {
-      if (einmal && fassung.geloeschtAm) {
-        einmal = false;
-        await b.services.ko.setLeadingSpace(koId, b.werkstatt.id, "test", null);
+      // Zwischen Leer-Prüfung und Löschvermerk.
+      if (fassung.geloeschtAm && !gewechselt) {
+        gewechselt = wechselMit(b, koId, b.werkstatt.id, basis);
+        await fensterOffen();
       }
       return lege(fassung);
     };
     const res = await loeschen(b, b.k.lea, b.werkstatt.id, 1);
-    expect(res.statusCode, res.body).toBe(409);
-    expect(res.json().error).toBe("SPACE_NICHT_LEER");
-    const space = await lies(b, b.k.lea, `/api/spaces/${b.werkstatt.id}`);
-    expect(space.statusCode).toBe(200);
-    expect(space.json().space.version).toBe(3);
-    const artikel = (await lies(b, b.k.erik, `/api/spaces/${b.werkstatt.id}/artikel`)).json();
-    expect(artikel.artikel.map((a: { id: string }) => a.id)).toEqual([koId]);
+    expect(res.statusCode, res.body).toBe(200);
+    expect(gewechselt, "der Wechsel wurde im Fenster gestartet").toBeDefined();
+    const wechsel = await gewechselt;
+    expect(wechsel?.statusCode, wechsel?.body).toBe(404);
+    expect((await lies(b, b.k.erik, `/api/kos/${koId}`)).json().spaceId).toBeUndefined();
+    // Keine Rücknahme mehr: der Space bleibt bei Fassung 2 (Löschvermerk), keine Fassung 3.
+    expect(await b.services.spaces.fassungen(b.werkstatt.id)).toHaveLength(2);
+    await keineWaise(b);
+  });
+
+  it("Bens Ablauf: Wechsel A→B, B und dann das leere A werden im Fenster gelöscht — keine Waise", async () => {
+    const b = await buehne();
+    const koId = await artikelAnlegen(b);
+    // A = Werkstatt Nord (Lea zuständig), B = Qualität (Carla zuständig, offen für alle).
+    expect((await verschieben(b, koId, b.werkstatt.id)).statusCode).toBe(200);
+    const vorher = (await lies(b, b.k.erik, `/api/kos/${koId}`)).json();
+    const basis = await grundlage(b, koId, b.qualitaet.id);
+    const original = b.services.ko.setLeadingSpace.bind(b.services.ko);
+    let loeschB: Promise<Antwort> | undefined;
+    let loeschA: Promise<Antwort> | undefined;
+    b.services.ko.setLeadingSpace = async (id, spaceId, actor, erwartet) => {
+      // Genau Bens Reihenfolge: B wird vor dem Schreiben gelöscht, danach das (dann leere) A.
+      if (!loeschB) {
+        loeschB = loeschen(b, b.k.carla, b.qualitaet.id, 1);
+        await fensterOffen();
+        loeschA = loeschen(b, b.k.lea, b.werkstatt.id, 1);
+        await fensterOffen();
+      }
+      return original(id, spaceId, actor, erwartet);
+    };
+    const res = await wechselMit(b, koId, b.qualitaet.id, basis);
+    expect(res.statusCode, res.body).toBe(200);
+    const b2 = await loeschB;
+    const a2 = await loeschA;
+    // B trägt jetzt den Artikel → bleibt; A ist leer → darf gehen.
+    expect(b2?.statusCode, b2?.body).toBe(409);
+    expect(b2?.json().error).toBe("SPACE_NICHT_LEER");
+    expect(a2?.statusCode, a2?.body).toBe(200);
+
+    const nachher = (await lies(b, b.k.erik, `/api/kos/${koId}`)).json();
+    expect(nachher.spaceId).toBe(b.qualitaet.id);
+    expect(nachher.version).toBe(vorher.version);
+    // Sichtbar — für das Mitglied wie für einen Fremden im offenen Space B.
+    expect((await lies(b, b.k.fritz, `/api/kos/${koId}`)).statusCode).toBe(200);
+    expect((await lies(b, b.k.lea, `/api/spaces/${b.werkstatt.id}`)).statusCode).toBe(404);
+    expect((await lies(b, b.k.carla, `/api/spaces/${b.qualitaet.id}`)).statusCode).toBe(200);
+    await keineWaise(b);
   });
 });
 

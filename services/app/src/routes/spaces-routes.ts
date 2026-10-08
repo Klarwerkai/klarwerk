@@ -316,6 +316,161 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
     return aktuell;
   }
 
+  /**
+   * Die Löschung — nur unter `dienste.spaces.exklusiv` aufzurufen. Prüfung (Recht, Version, kein
+   * führender Artikel) und Löschvermerk liegen in derselben Sperre wie jeder Spacewechsel; ein
+   * Wechsel in diesen Space kann also weder zwischen Prüfung und Vermerk geschehen noch danach (der
+   * Space fehlt dann in `aktuelle()`).
+   */
+  async function fuehreLoeschungAus(
+    id: string,
+    gesehen: unknown,
+    user: SessionUser,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const aktuell = await loeschbarerSpace(id, user, reply);
+    if (!aktuell) {
+      return;
+    }
+    if (typeof gesehen !== "number") {
+      reply.code(400).send({
+        error: "VERSION_FEHLT",
+        message: "Die zuletzt gesehene Version des Space fehlt.",
+      });
+      return;
+    }
+    const lage = await loeschLage(aktuell, user);
+    if (gesehen !== aktuell.version) {
+      reply.code(409).send({
+        error: "VERSION_VERALTET",
+        message: "Der Space wurde inzwischen geändert. Bitte die neue Vorschau prüfen.",
+        vorschau: lage,
+      });
+      return;
+    }
+    if (!lage.darfLoeschen) {
+      reply.code(409).send({
+        error: "SPACE_NICHT_LEER",
+        message: "Der Space ist noch führender Space von Artikeln. Bitte sie zuerst verschieben.",
+        vorschau: lage,
+      });
+      return;
+    }
+    const am = jetzt().toISOString();
+    const vermerk: SpaceFassung = {
+      ...aktuell,
+      version: aktuell.version + 1,
+      geaendertVon: user.id,
+      geaendertAm: am,
+      geloeschtAm: am,
+    };
+    // Ein paralleler Bearbeiter (PUT, ausserhalb der Sperre) kann dieselbe Version belegt haben.
+    if (!(await dienste.spaces.lege(vermerk))) {
+      reply.code(409).send({
+        error: "VERSION_VERALTET",
+        message: "Der Space wurde inzwischen geändert. Bitte neu laden.",
+      });
+      return;
+    }
+    await dienste.audit?.record({
+      actor: user.id,
+      action: "space.geloescht",
+      target: aktuell.id,
+      payload: {
+        vorherVersion: aktuell.version,
+        version: vermerk.version,
+        ansichten: aktuell.ansichten.length,
+        mitglieder: aktuell.mitglieder.length,
+      },
+    });
+    reply.code(200).send({ id: aktuell.id, version: vermerk.version, geloescht: true });
+  }
+
+  /** Der Spacewechsel — nur unter `dienste.spaces.exklusiv` aufzurufen. */
+  async function fuehreWechselAus(
+    rumpf: unknown,
+    user: SessionUser,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const body = (rumpf ?? {}) as {
+      koId?: unknown;
+      basis?: {
+        quelleId?: unknown;
+        quelleVersion?: unknown;
+        zielId?: unknown;
+        zielVersion?: unknown;
+      };
+    };
+    const ko = await sichtbaresKo(user, body.koId);
+    if (!ko) {
+      nichtGefunden(reply, "Wissensobjekt");
+      return;
+    }
+    const ziel = zielAus(rumpf);
+    if (ziel === undefined) {
+      reply.code(400).send({
+        error: "ZIEL_FEHLT",
+        message: "Erwartet wird zielSpaceId (Kennung oder null für „ohne Space“).",
+      });
+      return;
+    }
+    if (!body.basis || typeof body.basis !== "object") {
+      reply.code(400).send({
+        error: "VORSCHAU_FEHLT",
+        message: "Ein Spacewechsel braucht die Grundlage der bestätigten Rechtevorschau.",
+      });
+      return;
+    }
+    const v = await vorschau(ko, ziel, user);
+    if (v === "ZIEL_UNBEKANNT") {
+      nichtGefunden(reply, "Space");
+      return;
+    }
+    const basis = body.basis;
+    // Nacharbeit 3 (Ben, K4): die Vorschau ist an ihr ZIEL gebunden, nicht nur an Versionen. Zwei
+    // Spaces können dieselbe Versionsnummer tragen; ohne die Kennung ginge ein Wechsel nach B mit
+    // der Rechtewirkung von A durch. Fehlt `zielId` in der Grundlage, gilt sie als nicht passend.
+    const stimmt =
+      "zielId" in basis &&
+      (basis.zielId ?? null) === (v.ziel?.id ?? null) &&
+      (basis.quelleId ?? null) === (v.quelle?.id ?? null) &&
+      (basis.quelleVersion ?? null) === (v.quelle?.version ?? null) &&
+      (basis.zielVersion ?? null) === (v.ziel?.version ?? null);
+    if (!stimmt) {
+      reply.code(409).send({
+        error: "VORSCHAU_VERALTET",
+        message:
+          "Die Rechtelage hat sich seit der Vorschau geändert. Bitte die neue Vorschau prüfen.",
+        vorschau: v,
+      });
+      return;
+    }
+    if (!v.darfAusfuehren) {
+      reply.code(403).send({ error: "FORBIDDEN", message: v.grund ?? "Nicht erlaubt." });
+      return;
+    }
+    try {
+      const nachher = await dienste.ko.setLeadingSpace(ko.id, ziel, user.id, v.quelle?.id ?? null);
+      reply.code(200).send({
+        koId: nachher.id,
+        version: nachher.version,
+        author: nachher.author,
+        historyEintraege: nachher.history.length,
+        spaceId: typeof nachher.spaceId === "string" ? nachher.spaceId : null,
+        vorschau: v,
+      });
+    } catch (e) {
+      if ((e as { code?: unknown }).code === "SPACE_STAND_VERALTET") {
+        reply.code(409).send({
+          error: "VORSCHAU_VERALTET",
+          message: "Der Space dieses Artikels hat sich inzwischen geändert.",
+        });
+        return;
+      }
+      sendError(reply, e);
+    }
+  }
+
   return async (app) => {
     // Die Spaces, die dieser Mensch sehen darf — mit seinem Recht und der Zahl SEINER sichtbaren
     // Artikel darin (keine Gesamtzahl: die wäre eine Auskunft über Unsichtbares).
@@ -507,82 +662,11 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
         if (!user) {
           return;
         }
-        const aktuell = await loeschbarerSpace(request.params.id, user, reply);
-        if (!aktuell) {
-          return;
-        }
         const gesehen = (request.body as { version?: unknown } | null)?.version;
-        if (typeof gesehen !== "number") {
-          reply.code(400).send({
-            error: "VERSION_FEHLT",
-            message: "Die zuletzt gesehene Version des Space fehlt.",
-          });
-          return;
-        }
-        const lage = await loeschLage(aktuell, user);
-        if (gesehen !== aktuell.version) {
-          reply.code(409).send({
-            error: "VERSION_VERALTET",
-            message: "Der Space wurde inzwischen geändert. Bitte die neue Vorschau prüfen.",
-            vorschau: lage,
-          });
-          return;
-        }
-        if (!lage.darfLoeschen) {
-          reply.code(409).send({
-            error: "SPACE_NICHT_LEER",
-            message:
-              "Der Space ist noch führender Space von Artikeln. Bitte sie zuerst verschieben.",
-            vorschau: lage,
-          });
-          return;
-        }
-        const am = jetzt().toISOString();
-        const vermerk: SpaceFassung = {
-          ...aktuell,
-          version: aktuell.version + 1,
-          geaendertVon: user.id,
-          geaendertAm: am,
-          geloeschtAm: am,
-        };
-        if (!(await dienste.spaces.lege(vermerk))) {
-          reply.code(409).send({
-            error: "VERSION_VERALTET",
-            message: "Der Space wurde inzwischen geändert. Bitte neu laden.",
-          });
-          return;
-        }
-        // Nachkontrolle gegen einen Spacewechsel, der zwischen Prüfung und Vermerk hineinlief: dann
-        // gilt der Space wieder (neue Fassung ohne Vermerk), und die Löschung wird abgelehnt. Das
-        // Gegenstück steht am Spacewechsel unten.
-        const nachher = await loeschLage(aktuell, user);
-        if (!nachher.darfLoeschen) {
-          await dienste.spaces.lege({
-            ...aktuell,
-            version: vermerk.version + 1,
-            geaendertVon: user.id,
-            geaendertAm: jetzt().toISOString(),
-          });
-          reply.code(409).send({
-            error: "SPACE_NICHT_LEER",
-            message:
-              "Der Space ist noch führender Space von Artikeln. Bitte sie zuerst verschieben.",
-            vorschau: { ...nachher, space: { ...nachher.space, version: vermerk.version + 1 } },
-          });
-          return;
-        }
-        await dienste.audit?.record({
-          actor: user.id,
-          action: "space.geloescht",
-          target: aktuell.id,
-          payload: {
-            vorherVersion: aktuell.version,
-            version: vermerk.version,
-            ansichten: aktuell.ansichten.length,
-            mitglieder: aktuell.mitglieder.length,
-          },
-        });
-        reply.code(200).send({ id: aktuell.id, version: vermerk.version, geloescht: true });
+        // Prüfen und Schreiben unter derselben Sperre wie jeder Spacewechsel (`exklusiv`).
+        await dienste.spaces.exklusiv(() =>
+          fuehreLoeschungAus(request.params.id, gesehen, user, reply),
+        );
       },
     );
 
@@ -713,98 +797,11 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
       if (!user) {
         return;
       }
-      const body = (request.body ?? {}) as {
-        koId?: unknown;
-        basis?: {
-          quelleId?: unknown;
-          quelleVersion?: unknown;
-          zielId?: unknown;
-          zielVersion?: unknown;
-        };
-      };
-      const ko = await sichtbaresKo(user, body.koId);
-      if (!ko) {
-        nichtGefunden(reply, "Wissensobjekt");
-        return;
-      }
-      const ziel = zielAus(request.body);
-      if (ziel === undefined) {
-        reply.code(400).send({
-          error: "ZIEL_FEHLT",
-          message: "Erwartet wird zielSpaceId (Kennung oder null für „ohne Space“).",
-        });
-        return;
-      }
-      if (!body.basis || typeof body.basis !== "object") {
-        reply.code(400).send({
-          error: "VORSCHAU_FEHLT",
-          message: "Ein Spacewechsel braucht die Grundlage der bestätigten Rechtevorschau.",
-        });
-        return;
-      }
-      const v = await vorschau(ko, ziel, user);
-      if (v === "ZIEL_UNBEKANNT") {
-        nichtGefunden(reply, "Space");
-        return;
-      }
-      const basis = body.basis;
-      // Nacharbeit 3 (Ben, K4): die Vorschau ist an ihr ZIEL gebunden, nicht nur an Versionen. Zwei
-      // Spaces können dieselbe Versionsnummer tragen; ohne die Kennung ginge ein Wechsel nach B mit
-      // der Rechtewirkung von A durch. Fehlt `zielId` in der Grundlage, gilt sie als nicht passend.
-      const stimmt =
-        "zielId" in basis &&
-        (basis.zielId ?? null) === (v.ziel?.id ?? null) &&
-        (basis.quelleId ?? null) === (v.quelle?.id ?? null) &&
-        (basis.quelleVersion ?? null) === (v.quelle?.version ?? null) &&
-        (basis.zielVersion ?? null) === (v.ziel?.version ?? null);
-      if (!stimmt) {
-        reply.code(409).send({
-          error: "VORSCHAU_VERALTET",
-          message:
-            "Die Rechtelage hat sich seit der Vorschau geändert. Bitte die neue Vorschau prüfen.",
-          vorschau: v,
-        });
-        return;
-      }
-      if (!v.darfAusfuehren) {
-        reply.code(403).send({ error: "FORBIDDEN", message: v.grund ?? "Nicht erlaubt." });
-        return;
-      }
-      try {
-        const nachher = await dienste.ko.setLeadingSpace(
-          ko.id,
-          ziel,
-          user.id,
-          v.quelle?.id ?? null,
-        );
-        // Wurde der Zielspace gelöscht, während dieser Wechsel lief, geht der Artikel in seinen
-        // bisherigen Space zurück — eine Kennung ohne Space verbärge ihn vor allen.
-        if (ziel && !(await dienste.spaces.aktuelle()).some((s) => s.id === ziel)) {
-          await dienste.ko.setLeadingSpace(ko.id, v.quelle?.id ?? null, user.id, ziel);
-          reply.code(409).send({
-            error: "VORSCHAU_VERALTET",
-            message: "Der Zielspace wurde inzwischen gelöscht.",
-          });
-          return;
-        }
-        reply.code(200).send({
-          koId: nachher.id,
-          version: nachher.version,
-          author: nachher.author,
-          historyEintraege: nachher.history.length,
-          spaceId: typeof nachher.spaceId === "string" ? nachher.spaceId : null,
-          vorschau: v,
-        });
-      } catch (e) {
-        if ((e as { code?: unknown }).code === "SPACE_STAND_VERALTET") {
-          reply.code(409).send({
-            error: "VORSCHAU_VERALTET",
-            message: "Der Space dieses Artikels hat sich inzwischen geändert.",
-          });
-          return;
-        }
-        sendError(reply, e);
-      }
+      // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 4, Bens Befund): Artikel lesen,
+      // Vorschau prüfen und schreiben unter derselben Sperre wie jede Spacelöschung. Quelle und Ziel
+      // können so zwischen Prüfung und Schreiben nicht gelöscht werden — und eine Rücknahme, die
+      // ungeprüft in einen inzwischen gelöschten Quellspace zurückschriebe, gibt es nicht mehr.
+      await dienste.spaces.exklusiv(() => fuehreWechselAus(request.body, user, reply));
     });
   };
 }

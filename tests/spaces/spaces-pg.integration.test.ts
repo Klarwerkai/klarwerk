@@ -322,4 +322,38 @@ describe("Spaces gegen echtes PostgreSQL", () => {
       await zweiter.end();
     }
   });
+
+  // Nacharbeit 4 (Bens Befund): Spacewechsel und Spacelöschung laufen unter `exklusiv`. Zwei Repos
+  // an ZWEI Pools stehen für zwei App-Prozesse an derselben Datenbank — die prozessweite
+  // Warteschlange allein trennte sie nicht, erst die Datenbanksperre.
+  it("exklusiv schliesst zwei Prozesse an derselben Datenbank gegenseitig aus", async () => {
+    const poolA = createPool(url);
+    const poolB = createPool(url);
+    try {
+      const a = new PgSpacesRepo(poolA);
+      const b = new PgSpacesRepo(poolB);
+      const ablauf: string[] = [];
+      let zweite: Promise<void> | undefined;
+      await a.exklusiv(async () => {
+        ablauf.push("a-beginn");
+        zweite = b.exklusiv(async () => {
+          ablauf.push("b");
+        });
+        await new Promise((fertig) => setTimeout(fertig, 300));
+        ablauf.push("a-ende");
+      });
+      await zweite;
+      expect(ablauf).toEqual(["a-beginn", "a-ende", "b"]);
+      // Auch nach einem Fehler in der Arbeit ist die Sperre wieder frei.
+      await expect(
+        a.exklusiv(async () => {
+          throw new Error("Probe");
+        }),
+      ).rejects.toThrow("Probe");
+      expect(await b.exklusiv(async () => "frei")).toBe("frei");
+    } finally {
+      await poolA.end();
+      await poolB.end();
+    }
+  });
 });

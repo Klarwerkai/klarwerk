@@ -280,10 +280,32 @@ export interface SpacesRepo {
   fassungen(id: string): Promise<SpaceFassung[]>;
   /** Legt eine neue Fassung ab. `false`, wenn es diese Version schon gibt (paralleler Schreiber). */
   lege(fassung: SpaceFassung): Promise<boolean>;
+  /**
+   * aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 4, Bens Befund) — führt `arbeit` exklusiv
+   * gegen jede andere `exklusiv`-Arbeit aus. Spacewechsel und Spacelöschung prüfen UND schreiben
+   * darunter, sodass zwischen Prüfung und Schreiben weder Quelle noch Ziel gelöscht und kein Artikel
+   * in einen zu löschenden Space gelegt werden kann. Eine Rücknahme im Nachhinein gibt es nicht mehr.
+   */
+  exklusiv<T>(arbeit: () => Promise<T>): Promise<T>;
+}
+
+/** Eine prozessweite Warteschlange: jede Arbeit beginnt erst, wenn die vorige beendet ist. */
+function warteschlange(): <T>(arbeit: () => Promise<T>) => Promise<T> {
+  let kette: Promise<unknown> = Promise.resolve();
+  return <T>(arbeit: () => Promise<T>): Promise<T> => {
+    const lauf = kette.then(arbeit);
+    kette = lauf.catch(() => undefined);
+    return lauf;
+  };
 }
 
 export class InMemorySpacesRepo implements SpacesRepo {
   private readonly zeilen = new Map<string, SpaceFassung[]>();
+  private readonly reihe = warteschlange();
+
+  exklusiv<T>(arbeit: () => Promise<T>): Promise<T> {
+    return this.reihe(arbeit);
+  }
 
   aktuelle(): Promise<SpaceFassung[]> {
     const raus: SpaceFassung[] = [];
@@ -334,8 +356,41 @@ interface FassungsZeile {
   data: SpaceFassung;
 }
 
+/** Schlüssel der Datenbanksperre für Spacewechsel und Spacelöschung (`pg_advisory_lock`). */
+export const SPACES_SPERRE = "746120091801";
+
 export class PgSpacesRepo implements SpacesRepo {
+  private readonly reihe = warteschlange();
+
   constructor(private readonly pool: Pool) {}
+
+  /**
+   * Erst die prozessweite Warteschlange, dann die Datenbanksperre: so hält je Prozess höchstens eine
+   * wartende Arbeit eine Verbindung, und mehrere App-Prozesse an derselben Datenbank schliessen sich
+   * ebenfalls aus. Die Arbeit selbst nutzt gewöhnliche Pool-Verbindungen.
+   */
+  exklusiv<T>(arbeit: () => Promise<T>): Promise<T> {
+    return this.reihe(async () => {
+      const verbindung = await this.pool.connect();
+      try {
+        await verbindung.query("SELECT pg_advisory_lock($1::bigint)", [SPACES_SPERRE]);
+      } catch (e) {
+        verbindung.release(true);
+        throw e;
+      }
+      try {
+        return await arbeit();
+      } finally {
+        try {
+          await verbindung.query("SELECT pg_advisory_unlock($1::bigint)", [SPACES_SPERRE]);
+          verbindung.release();
+        } catch {
+          // Endet die Sitzung, gibt PostgreSQL die Sperre selbst frei.
+          verbindung.release(true);
+        }
+      }
+    });
+  }
 
   async aktuelle(): Promise<SpaceFassung[]> {
     // Erst die jüngste Fassung je Space, DANN der Löschvermerk — sonst träte eine ältere Fassung
