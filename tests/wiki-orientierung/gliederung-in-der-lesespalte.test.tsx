@@ -597,6 +597,12 @@ describe("JOB 4145 · WIKI-ORIENTIERUNG — die Gliederung steht in der Lesespal
     const prosa = flaeche.querySelector<HTMLElement>(".prose-kw");
     expect(prosa, "der Fliesstext wird nicht mehr als `prose-kw` gezeichnet").not.toBeNull();
     expect((prosa as HTMLElement).querySelector("table tbody tr td")?.textContent).toBe("Takt");
+    // R-1160: die Tabelle steht in der Lesehülle, die als Element neben dem Sanitizer entsteht —
+    // und die Leiste unten findet die Überschriften davor und dahinter trotzdem.
+    expect(
+      (prosa as HTMLElement).querySelector("table")?.closest('[data-kw-lesehuelle="tabelle"]'),
+      "die Tabelle der Lesefläche hat keine Lesehülle",
+    ).not.toBeNull();
     expect((prosa as HTMLElement).querySelector('img[data-image-id="bild-1"]')).not.toBeNull();
     expect((prosa as HTMLElement).querySelector("figcaption")?.textContent).toBe(
       "Zeichnung der Zone",
