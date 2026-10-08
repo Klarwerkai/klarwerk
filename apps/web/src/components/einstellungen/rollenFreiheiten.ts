@@ -68,6 +68,8 @@ export const STICHWORT_JE_EINTRAG: Record<string, string | null> = {
   analytics: "adm.sec.berichte",
   output: "adm.sec.berichte",
   import: "adm.sec.quellen",
+  // R-0920: die Ergebnisadresse eines Laufs ist dieselbe Freiheit wie der Import selbst.
+  importLauf: "adm.sec.quellen",
   graph: "adm.sec.berichte",
   kapital: "adm.sec.berichte",
   // Der Eintrag „/admin" IST diese Fläche — seine Freiheiten sind ihre Reiter (adminSections.ts).

@@ -3757,6 +3757,24 @@ const nl: typeof de = {
   "imp.groups.regroup": "Opnieuw groeperen",
   "imp.groups.refreshGrouping": "Groepering bijwerken",
   // JOB 3357: het kenmerk van deze overname plus de uitkomst uit het uitvoeringsdossier.
+  // R-0920: het eigen resultaatadres van een importuitvoering (`pages/ImportLauf.tsx`).
+  "imp.lauf.oeffnen": "Resultaatpagina van deze uitvoering openen",
+  "imp.lauf.titel": "Resultaat van een importuitvoering",
+  "imp.lauf.lead":
+    "Deze pagina toont precies één uitvoering, zoals de server die vastlegt. Het adres kan opnieuw worden geladen en gedeeld.",
+  "imp.lauf.kennung": "Uitvoeringskenmerk",
+  "imp.lauf.ausgang": "Uitkomst",
+  "imp.lauf.nichtGefunden":
+    "De server kent geen uitvoering met dit kenmerk. Over toestand en tellingen wordt daarom niets gezegd.",
+  "imp.lauf.zaehler.gesamt": "Elementen in totaal",
+  "imp.lauf.zaehler.angelegt": "Nieuw aangemaakt",
+  "imp.lauf.zaehler.gebunden": "Aan bestaande gekoppeld",
+  "imp.lauf.zaehler.uebersprungen": "Overgeslagen",
+  "imp.lauf.zaehler.gescheitert": "Mislukt",
+  "imp.lauf.gestartet": "Gestart",
+  "imp.lauf.beendet": "Beëindigd",
+  "imp.lauf.nochNichtBeendet": "Nog niet beëindigd",
+  "imp.lauf.zurueck": "Terug naar import",
   "imp.groups.runHeading": "Uitvoering van deze overname",
   "imp.groups.runIdLabel": "Uitvoeringskenmerk",
   "imp.groups.runCall": "Aanroep {{n}}",

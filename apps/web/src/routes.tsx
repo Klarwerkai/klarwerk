@@ -120,6 +120,10 @@ const GesamtanweisungBereich = lazy(() =>
   })),
 );
 const Help = lazy(() => import("./pages/Help").then((m) => ({ default: m.Help })));
+// R-0920: die Ergebnisadresse eines Importlaufs — nachgeladen wie jede andere Seite.
+const ImportLauf = lazy(() =>
+  import("./pages/ImportLauf").then((m) => ({ default: m.ImportLauf })),
+);
 const KnowledgeDetail = lazy(() =>
   import("./pages/KnowledgeDetail").then((m) => ({ default: m.KnowledgeDetail })),
 );
@@ -203,6 +207,8 @@ const PAGES: Record<string, ComponentType> = {
   admin: Admin,
   output: Output,
   import: ImportReview,
+  // R-0920: `/import/lauf/:importId` (bewachter Eintrag `importLauf` in `app/navigation.ts`).
+  importLauf: ImportLauf,
   graph: GraphView,
   // JOB 2600 D1: die Themenkarte auf der bestehenden Oberflaeche.
   wissensnetz: Wissensnetz,

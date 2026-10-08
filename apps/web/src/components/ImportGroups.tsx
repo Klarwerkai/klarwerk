@@ -41,6 +41,7 @@ import { AiCostHint } from "./AiCostHint";
 import { AiGeneratedNotice } from "./AiGeneratedNotice";
 // WP-COCKPIT-LINIE: Schritt-Überschriften (4 Gruppen freigeben · 5 Übernehmen & Bilanz) +
 // Meilenstein-Meldungen an die Schritt-Leiste.
+import { ImportLaufLink } from "./ImportLaufLink";
 import { ImportStepHeading, useReportImportStage, useRewindImportStage } from "./ImportStepper";
 // JOB 3357: der vorhandene Zustandsrenderer des Laufs — benutzt, nicht nachgebaut (Auftrag §7).
 import { RunStateBanner } from "./confluence-import/RunStateBanner";
@@ -235,8 +236,14 @@ const IMPORT_GROUPS_RUN_TEXT = {
   outcomeOffline: "imp.groups.runOutcomeOffline",
 } as const;
 
-/** Der Ausgang GENAU EINES Laufs. Wird nur gerendert, wenn eine Kennung vorliegt. */
-function LaufAusgang({ importId }: { importId: string }): JSX.Element {
+/**
+ * Der Ausgang GENAU EINES Laufs. Wird nur gerendert, wenn eine Kennung vorliegt.
+ *
+ * R-0920: exportiert, weil die eigene Ergebnisadresse eines Laufs (`pages/ImportLauf.tsx`) GENAU
+ * diesen Ausgang zeigt — dieselben Lagen (lädt, gelesen, nicht abrufbar, ausgesetzt, alter Stand),
+ * dieselben Sätze. Ein Nachbau dort wäre die zweite Wahrheit über denselben Lauf.
+ */
+export function LaufAusgang({ importId }: { importId: string }): JSX.Element {
   const { t } = useTranslation();
   const lauf = useImportRun(importId);
   const akte = lauf.data;
@@ -387,6 +394,8 @@ function LaufKennungen({
       </ul>
       {/* Der Ausgang gehört zum ZULETZT gelaufenen — das ist der, nach dem gerade gefragt wird. */}
       {letzte !== null ? <LaufAusgang importId={letzte} /> : null}
+      {/* R-0920: der Weg auf die eigene Ergebnisadresse dieses Laufs. */}
+      {letzte !== null ? <ImportLaufLink importId={letzte} /> : null}
     </div>
   );
 }

@@ -578,6 +578,19 @@ export const EXTRA_GUARDED_ITEMS: NavItem[] = [
     section: "7.3",
     shot: "03",
   },
+  // R-0920: das Ergebnis EINES Importlaufs unter eigener Adresse (`pages/ImportLauf.tsx`). Dieselbe
+  // Schranke wie `/import` (Admin, Stufe 2) — die Ansicht zeigt, was nur dort entsteht. Ohne eigenen
+  // Menüpunkt: das Zahnrad findet über `istAktiverEintrag` den Elternpunkt `/import`.
+  {
+    id: "importLauf",
+    path: "/import/lauf/:importId",
+    labelKey: "nav.import",
+    icon: Inbox,
+    minRole: "admin",
+    stufe2: true,
+    section: "7.11",
+    shot: "17",
+  },
   {
     id: "duplicateCompare",
     path: "/duplikate/:id/vergleich",

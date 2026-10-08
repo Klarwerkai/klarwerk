@@ -3771,6 +3771,24 @@ const en: typeof de = {
   "imp.groups.regroup": "Group again",
   "imp.groups.refreshGrouping": "Refresh grouping",
   // JOB 3357: the run identifier of this import, plus its outcome from the server's run record.
+  // R-0920: the own result address of an import run (`pages/ImportLauf.tsx`).
+  "imp.lauf.oeffnen": "Open the result page of this run",
+  "imp.lauf.titel": "Result of an import run",
+  "imp.lauf.lead":
+    "This page shows exactly one run, as recorded by the server. Its address can be reloaded and shared.",
+  "imp.lauf.kennung": "Run ID",
+  "imp.lauf.ausgang": "Outcome",
+  "imp.lauf.nichtGefunden":
+    "The server knows no run with this ID. Nothing is therefore said about its state or counts.",
+  "imp.lauf.zaehler.gesamt": "Items in total",
+  "imp.lauf.zaehler.angelegt": "Newly created",
+  "imp.lauf.zaehler.gebunden": "Bound to existing",
+  "imp.lauf.zaehler.uebersprungen": "Skipped",
+  "imp.lauf.zaehler.gescheitert": "Failed",
+  "imp.lauf.gestartet": "Started",
+  "imp.lauf.beendet": "Finished",
+  "imp.lauf.nochNichtBeendet": "Not finished yet",
+  "imp.lauf.zurueck": "Back to import",
   "imp.groups.runHeading": "Run of this import",
   "imp.groups.runIdLabel": "Run ID",
   "imp.groups.runCall": "Call {{n}}",

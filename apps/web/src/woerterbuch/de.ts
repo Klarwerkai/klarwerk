@@ -4930,6 +4930,24 @@ const de = {
   // sichtbar angeboten." Der Server führt den Lauf und schickt seine Kennung mit; die Bilanz nennt
   // sie ab jetzt, samt Ausgang aus der Laufakte. Der Ausgang selbst spricht das Vokabular der
   // Lauf-Kachel (`w2.run.*`) — dieselbe Sache, dieselben Worte.
+  // R-0920: die eigene Ergebnisadresse eines Importlaufs (`pages/ImportLauf.tsx`).
+  "imp.lauf.oeffnen": "Ergebnisseite dieses Laufs öffnen",
+  "imp.lauf.titel": "Ergebnis eines Importlaufs",
+  "imp.lauf.lead":
+    "Diese Seite zeigt genau einen Lauf, so wie der Server ihn festhält. Ihre Adresse lässt sich neu laden und weitergeben.",
+  "imp.lauf.kennung": "Lauf-Kennung",
+  "imp.lauf.ausgang": "Ausgang",
+  "imp.lauf.nichtGefunden":
+    "Zu dieser Kennung kennt der Server keinen Lauf. Über Zustand und Zähler wird deshalb nichts gesagt.",
+  "imp.lauf.zaehler.gesamt": "Elemente insgesamt",
+  "imp.lauf.zaehler.angelegt": "Neu angelegt",
+  "imp.lauf.zaehler.gebunden": "An Bestehendes gebunden",
+  "imp.lauf.zaehler.uebersprungen": "Übersprungen",
+  "imp.lauf.zaehler.gescheitert": "Gescheitert",
+  "imp.lauf.gestartet": "Gestartet",
+  "imp.lauf.beendet": "Beendet",
+  "imp.lauf.nochNichtBeendet": "Noch nicht beendet",
+  "imp.lauf.zurueck": "Zurück zum Import",
   "imp.groups.runHeading": "Lauf dieser Übernahme",
   "imp.groups.runIdLabel": "Lauf-Kennung",
   "imp.groups.runCall": "Aufruf {{n}}",
