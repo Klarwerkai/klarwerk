@@ -37,6 +37,7 @@ import type { Pool } from "pg";
 import { type Queryable, pgQueryable, withPgTx } from "../../db-tx";
 import type {
   Anweisung,
+  AnweisungEntscheidung,
   AnweisungRepo,
   AnweisungStand,
   AnweisungStandAufnahme,
@@ -64,6 +65,10 @@ import { anweisungFehler } from "./gesamtanweisung-types";
 //
 // ADDITIV: kein DROP, kein TRUNCATE, kein UPDATE auf Bestandsdaten. `IF NOT EXISTS` durchgehend,
 // damit die Stufe beliebig oft laufen darf.
+//
+// STATUS-FREIGABE (produkt:20261007): die vier `entsch…`-Spalten halten die letzte Entscheidung
+// fest (wer, wann, welche Fassung). Sie kommen NULL in bestehende Zeilen und bleiben dort NULL —
+// eine ältere Freigabe hat keine festgehaltene Person, und es wird keine nachgetragen.
 export const GESAMTANWEISUNG_SCHEMA = `
 CREATE TABLE IF NOT EXISTS gesamtanweisungen (
   id text PRIMARY KEY,
@@ -78,6 +83,10 @@ CREATE TABLE IF NOT EXISTS gesamtanweisungen (
   geaendert_am text NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_gesamtanweisungen_stand ON gesamtanweisungen(stand);
+ALTER TABLE gesamtanweisungen ADD COLUMN IF NOT EXISTS entscheidung text;
+ALTER TABLE gesamtanweisungen ADD COLUMN IF NOT EXISTS entschieden_von text;
+ALTER TABLE gesamtanweisungen ADD COLUMN IF NOT EXISTS entschieden_am text;
+ALTER TABLE gesamtanweisungen ADD COLUMN IF NOT EXISTS entschieden_version int;
 
 CREATE TABLE IF NOT EXISTS gesamtanweisung_bausteine (
   anweisung_id text NOT NULL REFERENCES gesamtanweisungen(id) ON DELETE CASCADE,
@@ -112,6 +121,56 @@ interface KopfZeile {
   urheber: string;
   erstellt_am: string;
   geaendert_am: string;
+  entscheidung: string | null;
+  entschieden_von: string | null;
+  entschieden_am: string | null;
+  entschieden_version: number | null;
+}
+
+const KOPF_SPALTEN =
+  "id,version,stand,titel,zweck,geltungsbereich,voraussetzungen,urheber,erstellt_am,geaendert_am,entscheidung,entschieden_von,entschieden_am,entschieden_version";
+
+/**
+ * Die festgehaltene Entscheidung einer Zeile — nur, wenn ALLE vier Angaben da sind. Eine halbe
+ * Angabe (etwa eine Person ohne Fassung) wird nicht zu einer ganzen ergänzt, sondern gilt als nicht
+ * festgehalten: lieber „nicht festgehalten" als eine zusammengereimte Freigabe.
+ */
+function entscheidungAus(zeile: KopfZeile): AnweisungEntscheidung | undefined {
+  const ergebnis = zeile.entscheidung;
+  if (
+    (ergebnis !== "angenommen" && ergebnis !== "abgelehnt") ||
+    !zeile.entschieden_von ||
+    !zeile.entschieden_am ||
+    typeof zeile.entschieden_version !== "number"
+  ) {
+    return undefined;
+  }
+  return {
+    ergebnis,
+    von: zeile.entschieden_von,
+    am: zeile.entschieden_am,
+    version: zeile.entschieden_version,
+  };
+}
+
+/** Kopf + Bausteine → Anweisung; ein Weg für `get` und `liste`. */
+function alsAnweisung(zeile: KopfZeile, bausteine: Baustein[]): Anweisung {
+  const entscheidung = entscheidungAus(zeile);
+  return {
+    id: zeile.id,
+    titel: zeile.titel,
+    zweck: zeile.zweck,
+    geltungsbereich: zeile.geltungsbereich,
+    voraussetzungen: zeile.voraussetzungen,
+    bausteine,
+    // Ein fremder Stand bricht ab, statt zu „entwurf" zu werden — für Einzelabruf und Liste gleich.
+    stand: alsStand(zeile.stand),
+    version: zeile.version,
+    urheber: zeile.urheber,
+    erstelltAm: zeile.erstellt_am,
+    geaendertAm: zeile.geaendert_am,
+    ...(entscheidung ? { entscheidung } : {}),
+  };
 }
 
 interface BausteinZeile {
@@ -166,8 +225,7 @@ export class PgAnweisungRepo implements AnweisungRepo {
 
   async get(id: string): Promise<Anweisung | undefined> {
     const kopf = await this.pool.query<KopfZeile>(
-      `SELECT id,version,stand,titel,zweck,geltungsbereich,voraussetzungen,urheber,erstellt_am,geaendert_am
-         FROM gesamtanweisungen WHERE id=$1`,
+      `SELECT ${KOPF_SPALTEN} FROM gesamtanweisungen WHERE id=$1`,
       [id],
     );
     const zeile = kopf.rows[0];
@@ -179,19 +237,7 @@ export class PgAnweisungRepo implements AnweisungRepo {
          FROM gesamtanweisung_bausteine WHERE anweisung_id=$1 ORDER BY pos`,
       [id],
     );
-    return {
-      id: zeile.id,
-      titel: zeile.titel,
-      zweck: zeile.zweck,
-      geltungsbereich: zeile.geltungsbereich,
-      voraussetzungen: zeile.voraussetzungen,
-      bausteine: bausteine.rows.map(alsBaustein),
-      stand: alsStand(zeile.stand),
-      version: zeile.version,
-      urheber: zeile.urheber,
-      erstelltAm: zeile.erstellt_am,
-      geaendertAm: zeile.geaendert_am,
-    };
+    return alsAnweisung(zeile, bausteine.rows.map(alsBaustein));
   }
 
   /**
@@ -262,7 +308,8 @@ export class PgAnweisungRepo implements AnweisungRepo {
       const q = pgQueryable(tx);
       const res = await q.query(
         `UPDATE gesamtanweisungen
-            SET version=$2,stand=$3,titel=$4,zweck=$5,geltungsbereich=$6,voraussetzungen=$7,geaendert_am=$8
+            SET version=$2,stand=$3,titel=$4,zweck=$5,geltungsbereich=$6,voraussetzungen=$7,geaendert_am=$8,
+                entscheidung=$10,entschieden_von=$11,entschieden_am=$12,entschieden_version=$13
           WHERE id=$1 AND version=$9`,
         [
           anweisung.id,
@@ -274,6 +321,11 @@ export class PgAnweisungRepo implements AnweisungRepo {
           anweisung.voraussetzungen,
           anweisung.geaendertAm,
           erwartet,
+          // Fehlt die Entscheidung, bleibt NULL stehen — kein Ersatzwert.
+          anweisung.entscheidung?.ergebnis ?? null,
+          anweisung.entscheidung?.von ?? null,
+          anweisung.entscheidung?.am ?? null,
+          anweisung.entscheidung?.version ?? null,
         ],
       );
       if (res.rowCount === 0) {
@@ -346,8 +398,7 @@ export class PgAnweisungRepo implements AnweisungRepo {
    */
   async liste(): Promise<readonly Anweisung[]> {
     const koepfe = await this.pool.query<KopfZeile>(
-      `SELECT id,version,stand,titel,zweck,geltungsbereich,voraussetzungen,urheber,erstellt_am,geaendert_am
-         FROM gesamtanweisungen ORDER BY id`,
+      `SELECT ${KOPF_SPALTEN} FROM gesamtanweisungen ORDER BY id`,
     );
     if (koepfe.rows.length === 0) {
       return [];
@@ -365,22 +416,9 @@ export class PgAnweisungRepo implements AnweisungRepo {
         jeAnweisung.set(zeile.anweisung_id, [alsBaustein(zeile)]);
       }
     }
-    return koepfe.rows.map((zeile) => ({
-      id: zeile.id,
-      titel: zeile.titel,
-      zweck: zeile.zweck,
-      geltungsbereich: zeile.geltungsbereich,
-      voraussetzungen: zeile.voraussetzungen,
-      bausteine: jeAnweisung.get(zeile.id) ?? [],
-      // Dasselbe fail-closed wie in `get()`: ein fremder Stand bricht ab, statt zu „entwurf" zu
-      // werden. Eine LISTE darf das nicht milder auslegen als der Einzelabruf — sonst hinge die
-      // Bewertung derselben Zeile davon ab, über welchen Weg sie gelesen wird.
-      stand: alsStand(zeile.stand),
-      version: zeile.version,
-      urheber: zeile.urheber,
-      erstelltAm: zeile.erstellt_am,
-      geaendertAm: zeile.geaendert_am,
-    }));
+    // Dasselbe fail-closed wie in `get()` (`alsAnweisung`): ein fremder Stand bricht ab, statt zu
+    // „entwurf" zu werden. Eine LISTE darf das nicht milder auslegen als der Einzelabruf.
+    return koepfe.rows.map((zeile) => alsAnweisung(zeile, jeAnweisung.get(zeile.id) ?? []));
   }
 }
 
