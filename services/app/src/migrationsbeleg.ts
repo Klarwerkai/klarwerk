@@ -279,6 +279,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // zwei `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "GEDAECHTNIS_SCHEMA", risiko: "ADDITIV" },
+  // R-0470: der dauerhafte Vektorspeicher. ADDITIV, nachgezählt: ein einziges `CREATE TABLE IF NOT
+  // EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf
+  // ist folgenlos.
+  { stufe: "EMBEDDING_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

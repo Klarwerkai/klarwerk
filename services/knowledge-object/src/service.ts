@@ -760,7 +760,7 @@ export class KoService {
   // conflicts/overlaps/Embedding-Cleanup erst NACH dem KoService erstellt (Reihenfolge in assembleServices).
   private onPurge: ((koId: string, actor: string) => Promise<void>) | undefined;
   // R-0195 / R-0470: s. `setAenderungsNachlauf`.
-  private nachAenderung: ((koId: string) => void) | undefined;
+  private nachAenderung: ((koId: string, stand?: KnowledgeObject) => void) | undefined;
   // JOB 1104 (S0-TX): der transaktionsgebundene Haken. Ebenfalls spät bindbar, aus demselben Grund.
   private onPurgeTx: PurgeTxCleanup | undefined;
   // SCRUM-523 P.3 (WP-A2): s. Typ-Kommentar an WithTx oben.
@@ -824,14 +824,18 @@ export class KoService {
   // die Reindex-Warteschlange herein); das Neuindizieren selbst geschieht nicht im Aufruf. Die
   // Suchprojektion braucht ihn nicht — sie entsteht im selben Schreibvorgang wie die neue Fassung.
   // Nur EIN Haken, aus demselben Grund wie bei `setPurgeCleanup`.
-  setAenderungsNachlauf(hook: (koId: string) => void): void {
+  //
+  // `stand` (Ben, Nacharbeit 3) ist das soeben GESPEICHERTE Objekt, wo der Schreibweg es kennt. Mit
+  // ihm entscheidet die Kompositionswurzel SOFORT, ob ein Vektor nicht mehr stehen darf
+  // (Heraufstufung, Papierkorb, Zusammenführen) — unabhängig vom Rückstau der Warteschlange.
+  setAenderungsNachlauf(hook: (koId: string, stand?: KnowledgeObject) => void): void {
     this.nachAenderung = hook;
   }
 
   // Ein Nachlauf, der wirft, darf die bereits gespeicherte Änderung nicht nachträglich kippen.
-  private meldeAenderung(id: string): void {
+  private meldeAenderung(id: string, stand?: KnowledgeObject): void {
     try {
-      this.nachAenderung?.(id);
+      this.nachAenderung?.(id, stand);
     } catch (err) {
       this.onError("Änderungsnachlauf", err);
     }
@@ -880,6 +884,7 @@ export class KoService {
       audit?: (tx?: TxContext) => Promise<void>;
     },
   ): Promise<T> {
+    let gespeichert: KnowledgeObject | undefined;
     const value = await this.withKoLock(id, async () => {
       const ko = await this.require(id);
       const { updated, value, audit } = apply(ko);
@@ -891,9 +896,10 @@ export class KoService {
         () => this.rollbackKo(ko),
         id,
       );
+      gespeichert = updated;
       return value;
     });
-    this.meldeAenderung(id);
+    this.meldeAenderung(id, gespeichert);
     return this.lesefassungWert(value);
   }
 
@@ -985,9 +991,14 @@ export class KoService {
     },
   ): Promise<T> {
     // AUFNAHME 20260922: das zurückgegebene Objekt trägt die Lesefassung des Prüfnachweises.
-    const value = await this.mutateKoTxRoh(id, build);
+    let gespeichert: KnowledgeObject | undefined;
+    const value = await this.mutateKoTxRoh(id, (ko) => {
+      const gebaut = build(ko);
+      gespeichert = gebaut.updated;
+      return gebaut;
+    });
     // R-0195 / R-0470: erst NACH dem Speichern — ein Wurf endet vorher, dann reiht nichts ein.
-    this.meldeAenderung(id);
+    this.meldeAenderung(id, gespeichert);
     return this.lesefassungWert(value);
   }
 
@@ -6650,7 +6661,7 @@ export class KoService {
         await audit.record(beleg(zusatz), tx);
       });
       // R-0483: Papierkorb und Wiederherstellen ändern, ob das Objekt im Index stehen darf.
-      this.meldeAenderung(neu.id);
+      this.meldeAenderung(neu.id, neu);
       return;
     }
     // Nur ein KoService, den jemand OHNE Kompositionswurzel und ohne Klammer baut (Einzeltests
@@ -6666,7 +6677,7 @@ export class KoService {
       },
       () => this.rollbackKo(vorher),
     );
-    this.meldeAenderung(neu.id);
+    this.meldeAenderung(neu.id, neu);
   }
 
   // ==============================================================================================

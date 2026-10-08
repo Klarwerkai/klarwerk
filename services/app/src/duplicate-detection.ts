@@ -4,6 +4,7 @@
 // sauber: conflicts kennt weder KO noch Reasoner, es bekommt modul-reine Kerntext-Subjekte + einen
 // judge-Callback. Best-effort: ein Fehler in der Erkennung darf das Einreichen NIE kippen — das KO
 // ist zu diesem Zeitpunkt bereits gespeichert.
+import { createHash } from "node:crypto";
 import {
   DEFAULT_OVERLAP_SETTINGS,
   type DetectSubject,
@@ -168,7 +169,8 @@ export async function indexKoForDuplicatePrefilter(
     if (!vector) {
       return;
     }
-    await semanticPrefilter.store.upsert(ko.id, vector, embeddingVersion);
+    // R-0470: mit Stand, damit die Nachführung nach einem Neustart diesen Vektor als passend erkennt.
+    await semanticPrefilter.store.upsert(ko.id, vector, embeddingVersion, kerntextStand(ko));
   } catch (err) {
     // Niemals den Submit beeinflussen (läuft ohnehin nach dem 201) — ehrlich loggen und schlucken.
     log(`Embedden/Ablegen für KO ${ko.id} fehlgeschlagen`, err);
@@ -186,12 +188,20 @@ export async function indexKoForDuplicatePrefilter(
 // Diese Funktion ist der EINE Eintrag, den die Reindex-Warteschlange (reindex-queue.ts) je
 // Änderung abarbeitet. Sie liest das Objekt FRISCH (nicht den Stand des Aufrufers) und entscheidet:
 //   · kein lebendes Objekt mehr (Papierkorb, endgelöscht), aufgegangen (`mergedInto`), vertraulich
-//     oder Demo  →  der Vektor wird ENTFERNT (verdrängt, nicht ergänzt; vertraulich verlässt den
-//     Index, sobald die Stufe steigt);
-//   · sonst  →  der Kerntext wird neu eingebettet — aber nur, wenn er sich seit der letzten Ablage
-//     geändert hat (`zuletzt`), damit eine Bewertung oder ein Kommentar keinen Embedder-Aufruf kostet.
+//     oder Demo  →  der Vektor wird ENTFERNT (verdrängt, nicht ergänzt);
+//   · sonst  →  der Kerntext wird neu eingebettet — aber nur, wenn sein Fingerabdruck (`stand`) vom
+//     abgelegten abweicht, damit eine Bewertung oder ein Kommentar keinen Embedder-Aufruf kostet.
+//     Der Stand liegt IM Speicher, nicht im Prozess: nach einem Neustart gilt er weiter.
 // Fehler wirft sie weiter: die Warteschlange isoliert und meldet sie (`onError` ist dort Pflicht).
-function vektorBleibtFuer(ko: KnowledgeObject | undefined): ko is KnowledgeObject {
+//
+// BEN, NACHARBEIT 3 — EINE LAUFENDE EINBETTUNG SCHREIBT KEINEN ÜBERHOLTEN STAND. Zwischen dem
+// Lesen und dem Ablegen liegt das Warten auf den Embedder. Steigt in dieser Zeit die Stufe, darf der
+// vorher gelesene öffentliche Stand nicht mehr geschrieben werden. Deshalb wird nach dem Einbetten
+// frisch gelesen, bevor geschrieben wird, und nach dem Schreiben noch einmal: hat der sofortige
+// Entzug (`setAenderungsNachlauf` in build-app.ts) schon vor unserem Schreiben gelöscht, löscht
+// diese zweite Prüfung den eben geschriebenen Vektor wieder. Die Heraufstufung ist gespeichert,
+// bevor ihr Entzug läuft — die Prüfung nach dem Schreiben sieht sie also in jedem Fall.
+export function vektorBleibtFuer(ko: KnowledgeObject | undefined): ko is KnowledgeObject {
   return (
     ko !== undefined &&
     !ko.deletedAt &&
@@ -201,37 +211,117 @@ function vektorBleibtFuer(ko: KnowledgeObject | undefined): ko is KnowledgeObjec
   );
 }
 
+/** Der Fingerabdruck des eingebetteten Kerntexts — eine Prüfsumme, kein Inhalt. */
+function kerntextStand(ko: KnowledgeObject): string {
+  return createHash("sha256")
+    .update(coreText(toDetectSubject(ko)))
+    .digest("hex");
+}
+
 export async function reindexKoForDuplicatePrefilter(
   koId: string,
-  deps: {
-    ko: Pick<KoService, "get">;
-    semanticPrefilter: SemanticPrefilter;
-    // Kerntext je Kennung bei der letzten Ablage durch DIESEN Weg — gehört dem Aufrufer, damit er
-    // die Lebensdauer bestimmt (eine Warteschlange, eine Merkliste).
-    zuletzt: Map<string, string>;
-  },
+  deps: { ko: Pick<KoService, "get">; semanticPrefilter: SemanticPrefilter },
 ): Promise<void> {
-  const { semanticPrefilter, zuletzt } = deps;
+  const { store, embedder } = deps.semanticPrefilter;
   const ko = await deps.ko.get(koId);
   if (!vektorBleibtFuer(ko)) {
-    zuletzt.delete(koId);
-    await semanticPrefilter.store.delete(koId);
+    await store.delete(koId);
     return;
   }
-  const text = coreText(toDetectSubject(ko));
-  if (zuletzt.get(koId) === text) {
+  const stand = kerntextStand(ko);
+  const abgelegt = await store.standVon(koId);
+  // NACHGEFÜHRT WIRD, WAS IM INDEX STEHT — es wird nichts NEU aufgenommen. Ob ein Objekt überhaupt
+  // eingebettet wird, entscheidet weiter der Einreicheweg (`indexKoForDuplicatePrefilter`); der
+  // Bulk-Import und alle Antwortwege betten bewusst nicht ein (Kosten, Datenabfluss —
+  // tests/library/import-json-zero-model-calls.test.ts). Diese Nachführung hält das ein.
+  if (abgelegt === undefined || abgelegt === stand) {
     return;
   }
-  const { vectors, embeddingVersion } = await semanticPrefilter.embedder.embed([text]);
+  const { vectors, embeddingVersion } = await embedder.embed([coreText(toDetectSubject(ko))]);
   const vector = vectors[0];
+  // Frisch gelesen VOR dem Schreiben: was während des Einbettens geschah, gewinnt.
+  const vorDemSchreiben = await deps.ko.get(koId);
+  if (!vektorBleibtFuer(vorDemSchreiben)) {
+    await store.delete(koId);
+    return;
+  }
+  if (kerntextStand(vorDemSchreiben) !== stand) {
+    // Ein neuerer Text ist gespeichert — und hat seinen eigenen Eintrag in der Schlange.
+    return;
+  }
   if (!vector) {
     // Kein Vektor für den neuen Stand: der alte darf nicht als „aktuell" stehen bleiben.
-    zuletzt.delete(koId);
-    await semanticPrefilter.store.delete(koId);
+    await store.delete(koId);
     return;
   }
-  await semanticPrefilter.store.upsert(koId, vector, embeddingVersion);
-  zuletzt.set(koId, text);
+  await store.upsert(koId, vector, embeddingVersion, stand);
+  // Und NACH dem Schreiben: eine Heraufstufung, deren Entzug unserem Schreiben zuvorkam.
+  if (!vektorBleibtFuer(await deps.ko.get(koId))) {
+    await store.delete(koId);
+  }
+}
+
+/**
+ * Der Speicher, den die Kompositionswurzel an ALLE Schreiber reicht — auch an den Einreicheweg
+ * (`indexKoForDuplicatePrefilter`), der den Vektor aus dem Objekt des Aufrufers baut. Jede Ablage
+ * prüft danach das lebende Objekt; darf es keinen Vektor mehr tragen (inzwischen heraufgestuft,
+ * zurückgezogen, aufgegangen), wird der eben geschriebene Vektor sofort wieder entfernt.
+ */
+export function gesicherterVektorspeicher(
+  store: EmbeddingStore,
+  ko: Pick<KoService, "get">,
+): EmbeddingStore {
+  return {
+    async upsert(id, vector, embeddingVersion, stand) {
+      await store.upsert(id, vector, embeddingVersion, stand);
+      if (!vektorBleibtFuer(await ko.get(id))) {
+        await store.delete(id);
+      }
+    },
+    nearest: (query, embeddingVersion, topK, excludeId) =>
+      store.nearest(query, embeddingVersion, topK, excludeId),
+    delete: (id) => store.delete(id),
+    standVon: (id) => store.standVon(id),
+    staende: () => store.staende(),
+  };
+}
+
+/**
+ * R-0470 — DIE NACHFÜHRUNG ÜBERLEBT DEN NEUSTART.
+ *
+ * Die Warteschlange lebt im Prozess; stirbt er, sind wartende Einträge weg. Statt sie zusätzlich
+ * zu speichern, wird beim Start der Bestand gegen den dauerhaften Speicher gehalten: jeder
+ * abgelegte Vektor, dessen Stand nicht zum heutigen Kerntext passt, jeder Vektor eines Objekts, das
+ * keinen tragen darf, und jeder Vektor ohne lebendes Objekt wird eingereiht. Damit ist jede vor dem
+ * Neustart unterbrochene Änderung nachgeholt — auch eine, die nie eingereiht wurde. Objekte ohne
+ * Vektor bleiben ohne (s. `reindexKoForDuplicatePrefilter`). Rückgabe: die Zahl der eingereihten
+ * Kennungen (keine Inhalte).
+ */
+export async function nachfuehrungNachStart(deps: {
+  ko: Pick<KoService, "list">;
+  store: EmbeddingStore;
+  enqueue: (koId: string) => void;
+}): Promise<number> {
+  const abgelegt = await deps.store.staende();
+  const offen = new Set<string>();
+  for (const ko of await deps.ko.list()) {
+    if (!abgelegt.has(ko.id)) {
+      continue;
+    }
+    const stand = abgelegt.get(ko.id);
+    abgelegt.delete(ko.id);
+    if (!vektorBleibtFuer(ko) || stand !== kerntextStand(ko)) {
+      offen.add(ko.id);
+    }
+  }
+  // Was jetzt noch übrig ist, hat kein lebendes Objekt mehr (Papierkorb, Endlöschung).
+  for (const id of abgelegt.keys()) {
+    offen.add(id);
+  }
+  for (const id of offen) {
+    deps.enqueue(id);
+  }
+  return offen.size;
 }
 
 // GDPR Art. 17 (Kaskadenlöschung, gdpr-compliance-runbook.md §3): Wird ein KO HART gelöscht (endgültig

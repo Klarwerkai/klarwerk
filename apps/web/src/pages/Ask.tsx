@@ -87,6 +87,7 @@ import {
   arbeitsstandLesen,
   arbeitsstandSchreiben,
   belegNochGueltig,
+  beobachtungAus,
   fragenSpeicher,
   quellenStandAus,
   startadresseMarke,
@@ -570,10 +571,14 @@ export function Ask(): JSX.Element {
   );
   // Der Zeitpunkt der stehenden Antwort — gespeichert mit ihr, genannt im Hinweis.
   const [antwortAm, setAntwortAm] = useState<string | null>(anfang?.antwort?.angezeigtAm ?? null);
-  // R-0338: die Fassungen der Quellen der stehenden Antwort — s. den Auffrischen-Vertrag in
-  // `lib/fragenArbeitsstand.ts`.
+  // R-0338: der Quellenstand der stehenden Antwort, wie der SERVER ihn meldete, und die Fassungen,
+  // die diese Fläche beim Eintreffen kannte — s. den Auffrischen-Vertrag in
+  // `lib/fragenArbeitsstand.ts` (Regeln 3 und 4).
   const [quellenStand, setQuellenStand] = useState<QuellenStand | undefined>(
-    anfang?.antwort?.quellenStand,
+    anfang?.antwort?.serverQuellenStand,
+  );
+  const [beobachtet, setBeobachtet] = useState<QuellenStand | undefined>(
+    anfang?.antwort?.beobachtet,
   );
   // R-0474 (Ben, Runde 1, B1): der Router montiert `/fragen` bei einem Wechsel NUR der Adresszeile
   // nicht neu — der Anfangswert oben sah eine zweite Übergabe (`/fragen?q=Alt` → Palette/Hilfe →
@@ -893,9 +898,11 @@ export function Ask(): JSX.Element {
       // JOB 2694 D1: eine Antwort ohne Text kommt hier als Lücke an — Begründung am Helfer oben.
       const angekommen = leereAntwortAlsLuecke(selectAnswer(r));
       setResult(angekommen);
-      // R-0338: die Fassung ihrer Quellen, wie der Bestand sie gerade kennt — die Grundlage, auf
-      // der eine spätere Änderung die Antwort als überholt erkennt (s. `antwortFrische`).
-      setQuellenStand(quellenStandAus(angekommen.sources, kos.data));
+      // R-0338 (Ben, Nacharbeit 3): die Fassung ihrer Quellen, wie der SERVER sie zu dieser Antwort
+      // gelesen hat — und daneben, getrennt, was diese Fläche gerade von ihnen kennt (nur Untergrenze
+      // für spätere Änderungen, Regel 4 an `antwortFrische`).
+      setQuellenStand(quellenStandAus(angekommen.sources, r.quellenStand));
+      setBeobachtet(beobachtungAus(angekommen.sources, kos.data));
       setReceipt(r.receipt);
       // JOB 2626 D1: abwesend heißt „nicht gefragt oder nichts zu melden" — beides fällt ehrlich
       // auf die leere Liste und damit auf die generische Leermeldung zurück.
@@ -982,7 +989,8 @@ export function Ask(): JSX.Element {
               verschlossen,
               gapId,
               angezeigtAm: antwortAm ?? new Date().toISOString(),
-              ...(quellenStand ? { quellenStand } : {}),
+              ...(quellenStand ? { serverQuellenStand: quellenStand } : {}),
+              ...(beobachtet ? { beobachtet } : {}),
             }
           : null,
       startadressen: gemerkteStartadressen,
@@ -997,6 +1005,7 @@ export function Ask(): JSX.Element {
     gapId,
     antwortAm,
     quellenStand,
+    beobachtet,
     gemerkteStartadressen,
   ]);
 
@@ -1050,7 +1059,8 @@ export function Ask(): JSX.Element {
       // R-0348: der Faden gehört zum Konto — er beginnt bei der übernommenen Antwort neu.
       setFaden(antwort?.frage ? [antwort.frage] : []);
       setAntwortAm(antwort?.angezeigtAm ?? null);
-      setQuellenStand(antwort?.quellenStand);
+      setQuellenStand(antwort?.serverQuellenStand);
+      setBeobachtet(antwort?.beobachtet);
       setThankedSources(new Set());
     }
     setStartfrageGilt(startfrageBleibt);
@@ -1127,7 +1137,11 @@ export function Ask(): JSX.Element {
   // gegen denselben Bestand, aus dem die Quellenzeilen ihre Titel lesen; er lädt beim Öffnen und
   // bei Fensterfokus neu. Neu erzeugt wird nichts von selbst — „Neu fragen" stellt die Frage.
   const antwortUeberholt =
-    Boolean(result) && antwortFrische(quellenStand, kos.data) === "ueberholt";
+    result !== null &&
+    antwortFrische(
+      { quellen: result.sources, stand: quellenStand, beobachtet, am: antwortAm },
+      kos.data,
+    ) === "ueberholt";
   const karteSichtbar =
     Boolean(result) && Boolean(contract) && !pruefungGestoert && !antwortUeberholt;
   // Ben R2, F10: welche Sperrgründe liegen in der Torlage WIRKLICH vor — in fester Reihenfolge —,

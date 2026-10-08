@@ -1895,6 +1895,10 @@ export interface AskResponse {
   // FUNKE-FIX P0 (bens ROT-1): opaker Beleg über die ausgelieferten Quell-KOs. Beim „Danke"
   // (/api/ask/helpful) zurückgereicht — der Server verifiziert die Quellen-Bindung serverseitig.
   receipt: string;
+  // R-0338: die Fassung jeder herangezogenen Quelle, wie DIESE Antwort sie gelesen hat (Spiegel von
+  // `AskResult.quellenStand`). Ein älterer Server sendet das Feld nicht — die Antwort hat dann
+  // keinen belastbaren Quellenstand (Regeln an `antwortFrische`, lib/fragenArbeitsstand.ts).
+  quellenStand?: Record<string, number>;
   // JOB 2626 D1: nur bei Nicht-Antwort UND nur auf Wegen mit Betrachterfilter vorhanden; ein
   // älterer Server sendet das Feld nicht — die Fläche fällt dann auf die generische Leermeldung.
   verschlossen?: VerschlossenHinweis[];

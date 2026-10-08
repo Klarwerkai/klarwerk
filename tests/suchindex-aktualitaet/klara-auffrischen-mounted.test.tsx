@@ -12,9 +12,20 @@
 //       geht dafür keine Modellanfrage hinaus.
 //   K3  „Neu fragen" stellt genau die gespeicherte Frage — danach steht die neue Antwort da.
 //   K4  Eine Quelle ist aus dem Bestand verschwunden (Papierkorb, nicht mehr sichtbar): ebenso.
+// Ben, Nacharbeit 3 — der Stand kommt vom SERVER (`quellenStand` der Antwort), und die Restfälle:
+//   K5  Eine Altantwort OHNE Quellenstand, deren Quelle sich seither geändert hat, steht nicht mehr
+//       da (Kalibrierung: ohne spätere Änderung steht sie, wie bisher, mit Zeitpunkt).
+//   K6  Antwort- und Browserfassung laufen auseinander: der Server las Fassung 2, der Browser
+//       kennt noch Fassung 1 — die Antwort ist die neuere und bleibt stehen.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const lage = vi.hoisted(() => ({ fassung: 1, vorhanden: true }));
+const lage = vi.hoisted(() => ({
+  fassung: 1,
+  vorhanden: true,
+  // Die Fassung, die der Server zu einer Antwort meldet (`quellenStand`); `null` = meldet keine.
+  serverFassung: 1 as number | null,
+  verlauf: [] as { version: number; at: string; author: string; note: string }[],
+}));
 
 vi.mock("../../apps/web/src/app/RoleContext", () => ({
   useRole: () => ({ role: "experte" }),
@@ -44,7 +55,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
                 assignments: [],
                 asset: null,
                 createdAt: "2026-01-01T00:00:00.000Z",
-                history: [],
+                history: lage.verlauf,
               },
             ]
           : [],
@@ -75,6 +86,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
         },
         gap: null,
         receipt: "beleg-1",
+        ...(lage.serverFassung === null ? {} : { quellenStand: { "ko-1": lage.serverFassung } }),
       })),
       helpful: vi.fn(async () => ({})),
     },
@@ -180,8 +192,40 @@ beforeEach(async () => {
   localStorage.clear();
   lage.fassung = 1;
   lage.vorhanden = true;
+  lage.serverFassung = 1;
+  lage.verlauf = [];
   await i18n.changeLanguage("de");
 });
+
+const ANTWORT_AM = "2026-10-01T08:00:00.000Z";
+
+/** Eine Altantwort im Speicher, wie sie ein Stand OHNE Quellenstand abgelegt hat. */
+function altantwortAblegen(): void {
+  localStorage.setItem(
+    "kw.fragen.arbeitsstand.v1:u1",
+    JSON.stringify({
+      entwurf: "",
+      antwort: {
+        frage: FRAGE,
+        result: {
+          answered: true,
+          answer: "Ventil V4 wird jährlich geprüft [1].",
+          knowledgeClass: "gesichert",
+          trust: 90,
+          sources: ["ko-1"],
+          citedSources: ["ko-1"],
+          steps: [],
+          demo: false,
+        },
+        receipt: "beleg-1",
+        verschlossen: [],
+        gapId: null,
+        angezeigtAm: ANTWORT_AM,
+      },
+      startadressen: [],
+    }),
+  );
+}
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -217,6 +261,8 @@ describe("R-0338 · Klara zeigt nach Änderungen den neuen Stand", () => {
     await antwortBeiFassungEins();
     vi.mocked(endpoints.ask.ask).mockClear();
     lage.fassung = 2;
+    // Die neue Antwort liest die neue Fassung — und der Server sagt das.
+    lage.serverFassung = 2;
     const wieder = await oeffnen(neuerCache());
     const knopf = wieder.container.querySelector<HTMLButtonElement>(
       '[data-testid="ask-neu-fragen"]',
@@ -240,6 +286,50 @@ describe("R-0338 · Klara zeigt nach Änderungen den neuen Stand", () => {
 
     const wieder = await oeffnen(neuerCache());
 
+    expect(antwortkarte(wieder)).toBeNull();
+    expect(ueberholt(wieder)).toBeTruthy();
+  });
+
+  it("K5 · Altantwort ohne Quellenstand: nach einer späteren Änderung der Quelle steht sie nicht mehr da", async () => {
+    // Kalibrierung: die Quelle wurde VOR der Antwort geändert — die Antwort steht wie bisher.
+    altantwortAblegen();
+    lage.fassung = 2;
+    lage.verlauf = [
+      { version: 2, at: "2026-09-30T08:00:00.000Z", author: "u9", note: "vor der Antwort" },
+    ];
+    const vorher = await oeffnen(neuerCache());
+    expect(antwortkarte(vorher)).toBeTruthy();
+    expect(ueberholt(vorher)).toBeNull();
+    vorher.abbauen();
+
+    // Dieselbe Altantwort, die Quelle wurde NACH der Antwort geändert.
+    altantwortAblegen();
+    lage.fassung = 3;
+    lage.verlauf = [
+      ...lage.verlauf,
+      { version: 3, at: "2026-10-02T08:00:00.000Z", author: "u9", note: "nach der Antwort" },
+    ];
+    const nachher = await oeffnen(neuerCache());
+
+    expect(antwortkarte(nachher)).toBeNull();
+    expect(ueberholt(nachher)).toBeTruthy();
+    expect(endpoints.ask.ask).not.toHaveBeenCalled();
+  });
+
+  it("K6 · der Server las eine neuere Fassung als der Browser kennt: die Antwort bleibt stehen", async () => {
+    lage.fassung = 1;
+    lage.serverFassung = 2;
+    const erst = await oeffnen(neuerCache());
+    await fragen(erst, FRAGE);
+
+    // Die Antwort ist neuer als der Browserbestand — kein Grund, sie als überholt zu verstecken.
+    expect(antwortkarte(erst)).toBeTruthy();
+    expect(ueberholt(erst)).toBeNull();
+    erst.abbauen();
+
+    // Erst eine Fassung NACH der gelesenen macht sie überholt.
+    lage.fassung = 3;
+    const wieder = await oeffnen(neuerCache());
     expect(antwortkarte(wieder)).toBeNull();
     expect(ueberholt(wieder)).toBeTruthy();
   });
