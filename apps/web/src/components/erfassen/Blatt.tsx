@@ -3152,24 +3152,34 @@ export function Blatt({
                 data-testid="blatt-menue-titel"
                 className="absolute left-0 top-full z-40 mt-1 min-w-[260px] rounded-[10px] border border-hairline bg-surface p-1 shadow-tile"
               >
+                {/* R-0071: „die Herkunft des Vorschlags nennt" — SICHTBAR am Eintrag, nicht nur als
+                    `title`-Tooltip: den gibt es ohne Zeiger (Telefon, Tastatur) nicht. Die Zeile
+                    steht im Menü, also erst, wenn jemand den Titel anfasst (JOB 3062 R6). */}
                 {titelVorschlag ? (
                   <MenueEintrag
-                    titel={t(
-                      titelVorschlag.quelle === "objekttext"
-                        ? "editor.titleSuggest.sourceText"
-                        : "editor.titleSuggest.sourceImage",
-                    )}
                     onClick={() => {
                       changeTitle(titelVorschlag.titel);
                       setOffenesMenue(null);
                     }}
                   >
-                    <span
-                      data-testid="blatt-titelvorschlag"
-                      data-quelle={titelVorschlag.quelle}
-                      className="truncate"
-                    >
-                      {t("editor.titleSuggest.label")}: {titelVorschlag.titel}
+                    <span className="flex min-w-0 flex-col leading-tight">
+                      <span
+                        data-testid="blatt-titelvorschlag"
+                        data-quelle={titelVorschlag.quelle}
+                        className="truncate"
+                      >
+                        {t("editor.titleSuggest.label")}: {titelVorschlag.titel}
+                      </span>
+                      <span
+                        data-testid="blatt-titelvorschlag-herkunft"
+                        className="truncate text-[11px] text-muted-2"
+                      >
+                        {t(
+                          titelVorschlag.quelle === "objekttext"
+                            ? "editor.titleSuggest.sourceText"
+                            : "editor.titleSuggest.sourceImage",
+                        )}
+                      </span>
                     </span>
                   </MenueEintrag>
                 ) : null}

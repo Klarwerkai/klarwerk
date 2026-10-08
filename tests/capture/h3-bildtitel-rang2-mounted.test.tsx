@@ -291,6 +291,10 @@ describe("JOB 3062 R7 · Rang 2 — der Titel aus der Bildbeschreibung steht im 
     // Die Herkunft ist die eigentliche Zusage der Rangfolge: „eine Quelle je Objekt“ ist ohne sie
     // nicht zu erkennen (JOB 2489 D1).
     expect(vorschlag?.getAttribute("data-quelle")).toBe("bild");
+    // R-0071: die Herkunft steht SICHTBAR am Eintrag — nicht nur als Zeiger-Tooltip.
+    expect(
+      container.querySelector('[data-testid="blatt-titelvorschlag-herkunft"]')?.textContent ?? "",
+    ).toBe("Aus der Bildbeschreibung — dein Beitrag hat noch keinen Text.");
 
     // 3. Die Übernahme setzt den Blatt-Titel — geprüft wird die WIRKUNG, nicht die Anzeige.
     const eintrag = vorschlag?.closest('[role="menuitem"]');
@@ -321,6 +325,9 @@ describe("JOB 3062 R7 · Rang 2 — der Titel aus der Bildbeschreibung steht im 
     expect(vorschlag, "ohne Vorschlag wäre auch die Rangfolge nicht geprüft").not.toBeNull();
     // Der Objekttext gewinnt — auch wenn das Bild einen brauchbaren Titel hergäbe.
     expect(vorschlag?.getAttribute("data-quelle")).toBe("objekttext");
+    expect(
+      container.querySelector('[data-testid="blatt-titelvorschlag-herkunft"]')?.textContent ?? "",
+    ).toBe("Aus dem Text dieses Beitrags.");
     expect(vorschlag?.textContent ?? "").toContain("Das Getriebe der Pumpe P-12");
     expect(vorschlag?.textContent ?? "").not.toContain("Kegelradgetriebe");
   });
