@@ -52,7 +52,7 @@ import {
   sanitizeImportFailureReason,
 } from "../../../library-analytics";
 import type { Guards } from "../http";
-import { sanitizeLogText } from "../log-sanitize";
+import { inhaltsfreieFehlerkennung } from "../log-positivliste";
 
 export interface JiraImportRouteDeps {
   library: LibraryService;
@@ -95,7 +95,8 @@ const MELDUNG: Record<string, string> = {
 
 function warne(log: FastifyBaseLogger, stelle: string, err: unknown): void {
   log.warn(
-    { stelle, fehler: sanitizeLogText(err instanceof Error ? err.message : String(err)) },
+    // R-0623: statt des freien Fehlertexts die inhaltsfreie Fehlerkennung.
+    { stelle, fehler: inhaltsfreieFehlerkennung(err) },
     `jira-import: ${stelle} fehlgeschlagen`,
   );
 }

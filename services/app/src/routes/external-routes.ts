@@ -82,16 +82,11 @@ export function externalRoutes(deps: ExternalRoutesDeps, guards: Guards): Fastif
       try {
         reply.code(200).send(await search.search(request.query.q ?? ""));
       } catch (error) {
-        // JOB 2683 D1 (Review R2-36): die ROHE Ursache (Host, DNS, Statuscode) bleibt hier im Log —
-        // request-gebunden, mit Request-Id. Nach außen geht über `sendError` nur noch die generische
-        // `message` des Providers; bis hierher stand dort der Netzfehlertext im Wortlaut.
-        const detail =
-          error && typeof error === "object" && "detail" in error
-            ? (error as { detail?: unknown }).detail
-            : undefined;
-        if (typeof detail === "string" && detail.length > 0) {
-          request.log.warn({ detail }, "external-search: Anfrage an den Anbieter fehlgeschlagen");
-        }
+        // JOB 2683 D1 (Review R2-36): nach außen geht über `sendError` nur die generische `message`
+        // des Providers. R-0623 (Ben, Nacharbeit 1): ins Log geht nicht mehr der freie Netzfehlertext
+        // (`detail`: Host, DNS), sondern der Fehler über den Erlaubnislisten-Serializer — Typ, Code
+        // und Quelltextstelle, request-gebunden über die Request-Id.
+        request.log.warn({ err: error }, "external-search: Anfrage an den Anbieter fehlgeschlagen");
         sendError(reply, error);
       }
     });

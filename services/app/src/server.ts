@@ -217,17 +217,20 @@ async function start(): Promise<void> {
   // SCRUM-523 P.3 (WP2): die abgelaufene-Papierkorb-Endlöschung ist eine EXPLIZITE Operation (nicht mehr
   // lazy beim Lesen — Lesen/Import-Dry-Run bleiben schreibfrei). Einmal beim Start anstoßen, damit die
   // Frist aus `TRASH_RETENTION_DAYS` ohne Cron greift; ein KO-Fehler bricht den Lauf nicht ab (per-KO onSweepError-Log).
+  // R-0623 (Ben, Nacharbeit 1): die Fehler dieser Läufe gehen als `err` über den
+  // Erlaubnislisten-Serializer ins Log (Typ, Code, Quelltextstelle) — nicht mehr als `String(error)`
+  // im Meldungstext, der Datenbankmeldungen samt Inhalten trägt.
+  const sweepFehler = (id: string, error: unknown) =>
+    app.log.warn({ err: error, koId: id }, "Papierkorb-Endlöschung eines KO fehlgeschlagen");
   services.ko
-    .runTrashSweep("system", (id, error) =>
-      app.log.warn(`Papierkorb-Endlöschung von ${id} fehlgeschlagen: ${String(error)}`),
-    )
+    .runTrashSweep("system", sweepFehler)
     .then((purged) => {
       if (purged > 0) {
         app.log.info(`Papierkorb-Endlöschung beim Start: ${purged} abgelaufene KO(s) entfernt.`);
       }
     })
     .catch((error) => {
-      app.log.warn(`Papierkorb-Endlöschung beim Start übersprungen: ${String(error)}`);
+      app.log.warn({ err: error }, "Papierkorb-Endlöschung beim Start übersprungen");
     });
   // SCRUM-523 P.3 (WP1-Batch3): zusätzlich PERIODISCH sweepen (nicht nur beim Start), damit abgelaufene
   // Einträge auch in langlaufenden Prozessen ohne Neustart endgültig verschwinden. Intervall aus der
@@ -235,14 +238,10 @@ async function start(): Promise<void> {
   const sweepInterval = resolveTrashSweepIntervalMs(process.env.KLARWERK_TRASH_SWEEP_INTERVAL_MS);
   startTrashSweepScheduler({
     intervalMs: sweepInterval,
-    runSweep: () =>
-      services.ko.runTrashSweep("system", (id, error) =>
-        app.log.warn(`Papierkorb-Endlöschung von ${id} fehlgeschlagen: ${String(error)}`),
-      ),
+    runSweep: () => services.ko.runTrashSweep("system", sweepFehler),
     onSwept: (purged) =>
       app.log.info(`Papierkorb-Endlöschung (periodisch): ${purged} abgelaufene KO(s) entfernt.`),
-    onError: (error) =>
-      app.log.warn(`Periodischer Papierkorb-Sweep übersprungen: ${String(error)}`),
+    onError: (error) => app.log.warn({ err: error }, "Periodischer Papierkorb-Sweep übersprungen"),
   });
   app.log.info(`Papierkorb-Sweep aktiv — Intervall ${Math.round(sweepInterval / 60000)} min.`);
   if (klaraAufraeumLauf) {
@@ -268,12 +267,12 @@ async function start(): Promise<void> {
   gedaechtnis
     .raeumeAbgelaufeneAuf()
     .then(gedaechtnisGeloescht("Start"))
-    .catch((error) => app.log.warn(`Gedächtnis-Aufräumlauf übersprungen: ${String(error)}`));
+    .catch((error) => app.log.warn({ err: error }, "Gedächtnis-Aufräumlauf übersprungen"));
   startTrashSweepScheduler({
     intervalMs: sweepInterval,
     runSweep: () => gedaechtnis.raeumeAbgelaufeneAuf(),
     onSwept: gedaechtnisGeloescht("periodisch"),
-    onError: (error) => app.log.warn(`Gedächtnis-Aufräumlauf übersprungen: ${String(error)}`),
+    onError: (error) => app.log.warn({ err: error }, "Gedächtnis-Aufräumlauf übersprungen"),
   });
 }
 
