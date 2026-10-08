@@ -141,10 +141,14 @@ export interface ReasonerProvider {
     confidential?: boolean,
   ): Promise<AssistResult>;
   // SCRUM-132: nächste Interview-Frage + aus den Antworten verdichteter Entwurf.
+  // Aufnahme `gesamt-ocr` (FR-CAP-05): `context` = ausdrücklich im Bild erkannter Text. Nur das
+  // Modell nutzt ihn für die Formulierung der Frage; der Entwurf entsteht weiter allein aus den
+  // Antworten. Der deterministische Fallback ignoriert ihn (er formuliert nichts um).
   interview(
     answers: readonly string[],
     locale?: ReasonerLocale,
     confidential?: boolean,
+    context?: string,
   ): Promise<InterviewResult>;
   // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag des
   // Experten). G-2: NUR was im Text steht — der deterministische Fallback liefert ehrlich

@@ -493,6 +493,10 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         instruction?: string;
         // PMO-FEA-0006: optionaler Suchauftrag des Experten für 'extract' (wonach suchen?).
         query?: string;
+        // Aufnahme `gesamt-ocr` (FR-CAP-05): optional der auf Klick im Bild erkannte Text als
+        // Kontext für 'interview'. Er reist im selben Request und damit über dieselbe
+        // Vertraulichkeitsentscheidung wie die Antworten.
+        context?: unknown;
         // SCRUM-451: Ergebnis-Sprache für 'extract' — "system" (Default, UI-Sprache) oder
         // "source" (Sprache des Dokuments, nichts übersetzen).
         outputLanguage?: "system" | "source";
@@ -634,9 +638,11 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             log: request.log,
           },
         );
-        reply
-          .code(200)
-          .send(await reasoner.interview(request.body.answers ?? [], locale, confidential));
+        // Nur eine Zeichenkette ist Kontext; alles andere wird nicht weitergereicht.
+        const roherKontext = request.body.context;
+        const context = typeof roherKontext === "string" ? roherKontext : undefined;
+        const antworten = request.body.answers ?? [];
+        reply.code(200).send(await reasoner.interview(antworten, locale, confidential, context));
         return;
       }
       if (task === "extract") {

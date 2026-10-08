@@ -1607,6 +1607,10 @@ function interviewSystem(locale: ReasonerLocale): string {
   return `${base} ${outputLanguageRule(locale)}`;
 }
 
+// Aufnahme `gesamt-ocr` (FR-CAP-05): Deckel für den erkannten Bildtext im Interview-Prompt — die
+// Frage soll Begriffe aufgreifen, nicht ein ganzes Dokument lesen (Token-Schutz).
+export const MAX_INTERVIEW_CONTEXT_LENGTH = 6_000;
+
 // Sprachbewusste User-Prompt-Labels (kein Quelleninhalt wird übersetzt).
 const LABELS: Record<ReasonerLocale, Record<string, string>> = {
   de: {
@@ -1622,6 +1626,10 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     // F-0295 / R-0639: die markierte Passage aus dem Word-Dokument. Sie steht VOR den Quellen und
     // ohne Nummer: sie ist Kontext der Frage und keine Quelle, die das Modell zitieren dürfte.
     selection: "Markierte Passage im Dokument (Kontext der Frage, keine Quelle)",
+    // Aufnahme `gesamt-ocr` (FR-CAP-05): der auf Klick im Bild erkannte Text. Er steht VOR den
+    // Antworten und ist ausdrücklich keine Antwort — das Modell darf Begriffe daraus aufgreifen,
+    // aber nichts daraus als Aussage des Menschen ausgeben.
+    recognized: "Im Bild erkannter Text (Kontext, keine Antwort)",
   },
   en: {
     question: "Question",
@@ -1631,6 +1639,7 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     none: "(none yet)",
     excerpt: "Document text (excerpt)",
     selection: "Selected passage in the document (context of the question, not a source)",
+    recognized: "Text recognized in the image (context, not an answer)",
   },
   // mega52 D1: Niederländisch ist eine eigene Reasoner-Sprache — der Compiler verlangt diesen
   // Zweig jetzt, statt ihn stillschweigend auf Deutsch fallen zu lassen.
@@ -1642,6 +1651,7 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     none: "(nog geen)",
     excerpt: "Documenttekst (fragment)",
     selection: "Gemarkeerde passage in het document (context van de vraag, geen bron)",
+    recognized: "In de afbeelding herkende tekst (context, geen antwoord)",
   },
 };
 
@@ -2079,6 +2089,10 @@ export class ModelProvider implements ReasonerProvider {
     locale: ReasonerLocale = "de",
     // SCRUM-502 Schicht 2: an den Chokepoint durchgereicht.
     confidential = false,
+    // Aufnahme `gesamt-ocr` (FR-CAP-05): ausdrücklich im Bild erkannter Text als Kontext. Er reist
+    // über DENSELBEN Chokepoint wie die Antworten (gleiche Vertraulichkeit) und ändert nur die
+    // Formulierung der Frage — Abschluss und Entwurf bleiben allein aus den Antworten.
+    context?: string,
   ): Promise<InterviewResult> {
     const base = deterministicInterview(answers, false, locale);
     if (base.done || base.question === null) {
@@ -2087,10 +2101,12 @@ export class ModelProvider implements ReasonerProvider {
     const client = this.requireClient();
     const labels = LABELS[locale];
     const prior = answers.map((a, i) => `A${i + 1}: ${a}`).join("\n");
+    const kontext = (context ?? "").trim().slice(0, MAX_INTERVIEW_CONTEXT_LENGTH);
+    const kontextBlock = kontext ? `${labels.recognized}:\n${kontext}\n\n` : "";
     const phrased = (
       await client.complete(
         interviewSystem(locale),
-        `${labels.priorAnswers}:\n${prior || labels.none}\n\n${labels.guiding}: ${base.question}`,
+        `${kontextBlock}${labels.priorAnswers}:\n${prior || labels.none}\n\n${labels.guiding}: ${base.question}`,
         confidential,
       )
     ).trim();

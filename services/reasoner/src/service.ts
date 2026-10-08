@@ -2427,11 +2427,14 @@ export class Reasoner {
     locale: ReasonerLocale = "de",
     // SCRUM-502 Schicht 2: vertraulicher Draft → Cloud aus der Kette.
     confidential = false,
+    // Aufnahme `gesamt-ocr` (FR-CAP-05): im Bild erkannter Text als Kontext — dieselbe Kette,
+    // dieselbe Vertraulichkeit wie die Antworten.
+    context?: string,
   ): Promise<InterviewResult> {
     const result = await this.runTask(
       "interview",
       locale,
-      (p) => p.interview(answers, locale, confidential),
+      (p) => p.interview(answers, locale, confidential, context),
       confidential,
     );
     // mega61 Block F: Interviewfragen sind erzeugter Text — gekennzeichnet.

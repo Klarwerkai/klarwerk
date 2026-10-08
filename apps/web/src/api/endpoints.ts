@@ -928,15 +928,19 @@ export const endpoints = {
         ...provenanceFields(provenance),
       }),
     // SCRUM-132: reasoner-getriebenes Interview, stateless.
+    // Aufnahme `gesamt-ocr` (FR-CAP-05): optional der auf Klick im Bild erkannte Text als Kontext —
+    // im selben Request, also unter derselben Provenienz/Vertraulichkeit wie die Antworten.
     interview: (
       answers: string[],
       locale: ReasonerLocale | undefined,
       provenance: ReasonerProvenance,
+      context?: string,
     ) =>
       api.post<InterviewResult>("/reasoner", {
         task: "interview",
         answers,
         ...(locale ? { locale } : {}),
+        ...(context?.trim() ? { context: context.trim() } : {}),
         ...provenanceFields(provenance),
       }),
     // WP-BILD-1c/1f: KI-Bildbeschreibung als VORSCHLAG für die Bild-Fußnote (Vision). EIGENE
