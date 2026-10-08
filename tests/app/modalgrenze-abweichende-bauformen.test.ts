@@ -1315,6 +1315,38 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     expect(rot).toHaveLength(5);
   });
 
+  it("Nacharbeit 19: eine Bedingung im Spread ist kein Props-Objekt, ihr Zweig schon", () => {
+    // Die Bestandsformen aus FileTypePicker.tsx:172 und MehrAbschnitte.tsx:480: die Variable steht
+    // nur in der BEDINGUNG (`hinweis ? { title: t(hinweis) } : {}`) und wird an Funktionen gereicht.
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Bedingung.tsx": [
+          "export function F({ id }: { id: string }): JSX.Element {",
+          "  const hinweis = holeHinweis();",
+          "  const gate = holeGate();",
+          "  const p = { id };",
+          "  pruefe(gate);",
+          "  veraendere(p);",
+          "  return (",
+          "    <div>",
+          "      <a {...(hinweis ? { title: t(hinweis) } : {})} />",
+          "      <b {...(gate ? { 'aria-describedby': id } : {})} />",
+          "      <i {...(gate === 'x' ? p : {})} />",
+          "    </div>",
+          "  );",
+          "}",
+        ],
+      }),
+    );
+    const an = (stelle: string): string[] => rot.filter((z) => z.includes(stelle));
+    expect(an("components/Bedingung.tsx:5"), "gate steht nur in Bedingungen").toEqual([]);
+    expect(an("components/Bedingung.tsx:9"), "t(hinweis): hinweis ist die Bedingung").toEqual([]);
+    // `p` ist ein ZWEIG der Bedingung und damit Props — seine Weitergabe bleibt rot.
+    expect(an("components/Bedingung.tsx:6")[0]).toContain("kann dort verändert werden");
+    expect(rot).toHaveLength(1);
+  });
+
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
     const { rot } = pruefeModalgrenze(
       legeBaum({

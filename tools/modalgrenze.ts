@@ -1622,6 +1622,33 @@ function istWerthuelle(n: ts.Node): boolean {
 }
 
 /**
+ * Nacharbeit 19: reicht `huelle` den Wert ihres Kindes `kind` als ihren eigenen Wert durch?
+ * Klammer, `as`, `satisfies`, `!`; die Zweige (nicht die Bedingung) von `x ? a : b`; beide Seiten
+ * von `??`/`||`, nur die rechte von `&&`. Ein Vergleich oder eine Rechnung reicht nichts durch.
+ */
+function reichtWertDurch(huelle: ts.Node, kind: ts.Node): boolean {
+  if (
+    ts.isParenthesizedExpression(huelle) ||
+    ts.isAsExpression(huelle) ||
+    ts.isSatisfiesExpression(huelle) ||
+    ts.isNonNullExpression(huelle)
+  ) {
+    return true;
+  }
+  if (ts.isConditionalExpression(huelle)) {
+    return huelle.whenTrue === kind || huelle.whenFalse === kind;
+  }
+  if (ts.isBinaryExpression(huelle)) {
+    const op = huelle.operatorToken.kind;
+    if (op === ts.SyntaxKind.QuestionQuestionToken || op === ts.SyntaxKind.BarBarToken) {
+      return true;
+    }
+    return op === ts.SyntaxKind.AmpersandAmpersandToken && huelle.right === kind;
+  }
+  return false;
+}
+
+/**
  * Ein Textattribut an einem INTRINSISCHEN Element (`<span title="dialog" />`) — nicht `role`.
  * Ein kleingeschriebener Tag ist ein DOM-Element; seine übrigen Attribute sind Text und bauen
  * keine Fläche. Ein Bauteil (`<Huelle as="dialog" />`) kann seine Props dagegen zu einem Element
@@ -1865,7 +1892,10 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
     }
     let k: ts.Node = objekt;
     let p: ts.Node | undefined = k.parent;
-    while (p !== undefined && (istWerthuelle(p) || ts.isSpreadAssignment(p))) {
+    // Nacharbeit 19: nur hinauf, wo der WERT durchgereicht wird — nicht aus der Bedingung von
+    // `x ? a : b` und nicht aus einem Vergleich (`hinweis ? { title: t(hinweis) } : {}` macht
+    // `hinweis` nicht zu Props).
+    while (p !== undefined && (reichtWertDurch(p, k) || ts.isSpreadAssignment(p))) {
       k = ts.isSpreadAssignment(p) ? p.parent : p;
       p = k.parent;
     }
