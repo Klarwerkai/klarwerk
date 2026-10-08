@@ -214,6 +214,34 @@ function lueckenwert(): number {
   return Number(zahl);
 }
 
+// Bens Befund nacharbeit-9: eine NICHT sicherbare Quelladresse (ohne Schema) im Quellenformular —
+// derselbe Weg wie tests/capture/source-url-unsavable-mounted.test.tsx. Sie zwingt jedes Sichern
+// durch den Grenzen-Dialog.
+async function unsicherbareQuelle(): Promise<void> {
+  await klick(knopf(i18n.t("capture.advanced.title")));
+  const feld = (platzhalter: string): HTMLInputElement => {
+    const el = [...container.querySelectorAll("input")].find((i) => i.placeholder === platzhalter);
+    if (!(el instanceof HTMLInputElement)) {
+      throw new Error(`Feld „${platzhalter}“ nicht gefunden`);
+    }
+    return el;
+  };
+  for (const [platzhalter, wert] of [
+    [i18n.t("ko.sourceLabel"), "Handbuch S. 12"],
+    [i18n.t("ko.sourceUrl"), "www.beispiel.de/seite"],
+  ] as const) {
+    const el = feld(platzhalter);
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(el, wert);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      await flush();
+    });
+  }
+  expect(container.textContent).toContain(
+    i18n.t("capture.unsavable.sourceUrl", { urls: "www.beispiel.de/seite" }),
+  );
+}
+
 function feldMitWert(wert: string): boolean {
   return [...container.querySelectorAll("input, textarea")].some(
     (el) => (el as HTMLInputElement).value === wert,
@@ -379,6 +407,75 @@ describe("Lücken-Interview am echten Arbeitsraum", () => {
     expect(feldMitWert("Ventil X bei Überdruck schließen")).toBe(true);
     // Übernommen ist nur, was der Mensch gesagt hat — der Recherchehinweis steht nirgends mehr.
     expect(container.innerHTML).not.toContain(HINWEIS);
+  });
+
+  // Bens Befund nacharbeit-9: der Rechercheauftrag übersteht den Grenzen-Dialog.
+  it("nicht sicherbarer Inhalt: nach „trotzdem speichern“ bleibt das Interview und die Recherche läuft", async () => {
+    const PUNKT = {
+      node: "schwelle",
+      hint: "Dampfventile sprechen oft bei 6 bar an.",
+      source: {
+        title: "Sicherheitsventil",
+        url: "https://de.wikipedia.org/wiki/Sicherheitsventil",
+      },
+    };
+    box.recherche = [PUNKT];
+    await mount(null);
+    await klick(knopf(i18n.t("capture.ivStart")));
+    await antworte("Ventil X bei Überdruck schließen");
+    await unsicherbareQuelle();
+    const vorher = interviewMock.mock.calls.length;
+
+    await klick(knopf(i18n.t("interview.recherche.sichernUndRecherchieren")));
+    // Erst die ausdrückliche Bestätigung — noch nichts gesichert, nichts gesucht.
+    expect(container.textContent).toContain(i18n.t("capture.saveLimit.title"));
+    expect(box.erstellt).toHaveLength(0);
+    expect(interviewMock.mock.calls.length).toBe(vorher);
+
+    await klick(knopf(i18n.t("capture.saveLimit.confirm")));
+    expect(box.erstellt).toHaveLength(1);
+    // Die Folgeaktion hat den Dialog überstanden: derselbe Turn mit Wunsch und neuem Anker …
+    expect(interviewMock.mock.calls.length).toBe(vorher + 1);
+    const wunsch = interviewMock.mock.calls[vorher];
+    expect(wunsch?.[0]).toEqual(["Ventil X bei Überdruck schließen"]);
+    expect(wunsch?.[2]).toMatchObject({ source: "draft", draftId: "d1" });
+    expect(wunsch?.[4]).toMatchObject({ recherchieren: true });
+    // … und das Interview steht noch da, jetzt mit der Recherche — nicht geräumt.
+    expect(teil("interview-recherche")?.textContent).toContain(PUNKT.hint);
+    expect(
+      [...container.querySelectorAll("textarea")].some(
+        (t) => t.placeholder === i18n.t("capture.ivAnswerHint"),
+      ),
+    ).toBe(true);
+  });
+
+  it("Grenzen-Dialog abgebrochen: die Folgeaktion verfällt, das nächste Speichern ist gewöhnlich", async () => {
+    box.recherche = [];
+    await mount(null);
+    await klick(knopf(i18n.t("capture.ivStart")));
+    await antworte("Ventil X bei Überdruck schließen");
+    await unsicherbareQuelle();
+    await klick(knopf(i18n.t("interview.recherche.sichernUndRecherchieren")));
+    expect(container.textContent).toContain(i18n.t("capture.saveLimit.title"));
+    // Der Dialog steht am Ende des Arbeitsraums — sein „Abbrechen" ist der letzte gleichnamige Knopf.
+    const abbrechen = [...container.querySelectorAll("button")]
+      .filter((b) => (b.textContent ?? "").trim() === i18n.t("capture.saveLimit.cancel"))
+      .pop();
+    if (!(abbrechen instanceof HTMLButtonElement)) {
+      throw new Error("Abbrechen im Grenzen-Dialog nicht gefunden");
+    }
+    await klick(abbrechen);
+    expect(container.textContent).not.toContain(i18n.t("capture.saveLimit.title"));
+    expect(box.erstellt).toHaveLength(0);
+    const vorher = interviewMock.mock.calls.length;
+
+    // Danach der gewöhnliche Speichern-Knopf: Bestätigen sichert und räumt wie immer — es startet
+    // KEINE Recherche, denn die wurde mit dem Abbruch verworfen.
+    await klick(knopf(i18n.t("capture.saveDraft")));
+    await klick(knopf(i18n.t("capture.saveLimit.confirm")));
+    expect(box.erstellt).toHaveLength(1);
+    expect(interviewMock.mock.calls.length).toBe(vorher);
+    expect(knopf(i18n.t("capture.ivStart"))).toBeInstanceOf(HTMLButtonElement);
   });
 
   it("gewünschte Recherche ohne Ergebnis wird gesagt; ein zweiter Versuch braucht kein neues Sichern", async () => {

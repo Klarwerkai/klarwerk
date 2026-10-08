@@ -2644,6 +2644,13 @@ export function CaptureArbeitsraum({
       // aktualisiert genau diesen Entwurf), dann läuft die Recherche mit genau dieser Kennung.
       if (ivRechercheNachSichernRef.current) {
         ivRechercheNachSichernRef.current = false;
+        // Bens Befund nacharbeit-9: lief das Sichern über den Grenzen-Dialog, hat der Mensch das
+        // Verwerfen der benannten, nicht sicherbaren Inhalte bestätigt — dieselben, die der
+        // gewöhnliche Abschluss unten räumt (Bilder, Dokumente, Trefferliste). Das Interview bleibt.
+        setImages([]);
+        setDocs([]);
+        setExtResults([]);
+        setExtListDropped(false);
         setDraftId(_d.id);
         loadedUpdatedAtRef.current = _d.updatedAt ?? null;
         setStaleConflict(false);
@@ -5038,16 +5045,22 @@ export function CaptureArbeitsraum({
     // Dieselben Tore wie der Speichern-Knopf (`requestManualSave`): das Speicher-Tor gilt, und nicht
     // sicherbare Inhalte verlangen erst die ausdrückliche Bestätigung — über den gewöhnlichen Weg.
     if (!speicherTor.erlaubt) {
+      ivRechercheNachSichernRef.current = false;
       if (speicherTor.grund) {
         setErr(speicherTor.grund);
       }
       return;
     }
+    // BENS BEFUND (nacharbeit-9): der Auftrag „danach recherchieren" wird VOR dem Dialog gemerkt.
+    // Bis hierher kehrte dieser Zweig vor dem Merken zurück — nach „trotzdem speichern" lief dann
+    // der gewöhnliche Abschluss: Interview geräumt, Recherche nie gestartet. Jetzt trägt der
+    // Merker durch die Bestätigung (`saveDespiteLimits`); Abbruch, Tor-Sperre und Fehler setzen
+    // ihn zurück (`saveLimitAbbrechen`, `saveDraft.onError`).
+    ivRechercheNachSichernRef.current = true;
     if (unsavableDirtyReasons.length > 0) {
       setConfirmSaveLimit(true);
       return;
     }
-    ivRechercheNachSichernRef.current = true;
     saveDraft.mutate();
   };
   const ivRechercheKnopf = !ivRechercheMoeglich ? null : draftId ? (
@@ -5539,12 +5552,19 @@ export function CaptureArbeitsraum({
     }
     void manuellSichern(dateiTraeger);
   };
+  // Bens Befund nacharbeit-9: wer den Grenzen-Dialog abbricht, hat auch die Folgeaktion („danach
+  // recherchieren") abgebrochen — das nächste Speichern ist wieder ein gewöhnliches.
+  const saveLimitAbbrechen = (): void => {
+    ivRechercheNachSichernRef.current = false;
+    setConfirmSaveLimit(false);
+  };
   const saveDespiteLimits = (): void => {
     setConfirmSaveLimit(false);
     // Auch hier: die Bestätigung gilt den benannten, nicht sicherbaren Inhalten — sie hebt das
     // Speicher-Tor NICHT auf. Wer „trotzdem speichern" wählt, während ein Original fehlt, bekäme
     // sonst genau den ausgedünnten Überschreibvorgang, den Block F verhindert.
     if (!speicherTor.erlaubt) {
+      ivRechercheNachSichernRef.current = false;
       if (speicherTor.grund) {
         setErr(speicherTor.grund);
       }
@@ -8160,7 +8180,7 @@ export function CaptureArbeitsraum({
           kein stiller Verlust hinter einer erfolgreichen Speicheraktion mehr. */}
         <Modal
           open={confirmSaveLimit}
-          onClose={() => setConfirmSaveLimit(false)}
+          onClose={saveLimitAbbrechen}
           title={t("capture.saveLimit.title")}
         >
           <p className="text-[13px] leading-relaxed text-text">{t("capture.saveLimit.lead")}</p>
@@ -8170,7 +8190,7 @@ export function CaptureArbeitsraum({
             ))}
           </ul>
           <div className="mt-4 flex flex-wrap justify-end gap-2">
-            <Button variant="primary" onClick={() => setConfirmSaveLimit(false)}>
+            <Button variant="primary" onClick={saveLimitAbbrechen}>
               {t("capture.saveLimit.cancel")}
             </Button>
             <Button variant="ghost" onClick={saveDespiteLimits}>
