@@ -127,13 +127,40 @@ export function setzeTextZurueck(i18n: TextpflegeI18n, sprache: string, schluess
 }
 
 /**
+ * Übernimmt den VOLLSTÄNDIGEN Serverbestand einer Sprache (`GET /api/i18n/:locale`).
+ *
+ * Anders als `legeTexteUeber` (eine einzelne Speicherantwort, also eine Teiländerung) ist diese
+ * Antwort die ganze Wahrheit: eine Anpassung, die diese Sitzung früher übernommen hat und die jetzt
+ * fehlt, ist auf dem Server zurückgesetzt worden — etwa von einer anderen Administratorin. Sie wird
+ * hier zurückgenommen; sonst stünde der entfernte Text in jeder schon geöffneten Sitzung weiter da,
+ * auch nach einem Sprachwechsel. Wie `legeTexteUeber` nur für eine bereits geladene Sprache.
+ */
+export function uebernimmBestand(
+  i18n: TextpflegeI18n,
+  sprache: string,
+  texte: Readonly<Record<string, string>>,
+): void {
+  if (!i18n.hasResourceBundle(sprache, NAMENSRAUM)) {
+    return;
+  }
+  const bisher = [...(originaleVon(i18n).get(sprache)?.keys() ?? [])];
+  for (const schluessel of bisher) {
+    if (!Object.hasOwn(texte, schluessel)) {
+      setzeTextZurueck(i18n, sprache, schluessel);
+    }
+  }
+  legeTexteUeber(i18n, sprache, texte);
+}
+
+/**
  * Beim App-Start (main.tsx, NACH `sprachBereit`): die gepflegten Texte der aktiven Sprache holen und
  * bei jedem Sprachwechsel die der neuen Sprache. Rückgabe ist die Abmeldung (idempotent, für Tests).
  */
 export function bindTextpflege(i18n: TextpflegeI18n, laden: TextpflegeLader): () => void {
   const hole = (sprache: string): void => {
     laden(sprache).then(
-      (texte) => legeTexteUeber(i18n, sprache, texte),
+      // Der Abruf liefert den ganzen Bestand — entfernte Anpassungen werden mit zurückgenommen.
+      (texte) => uebernimmBestand(i18n, sprache, texte),
       () => {
         // Ausfall: der mitgelieferte Text bleibt stehen — kein Banner, kein Abbruch.
       },

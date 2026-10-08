@@ -12,7 +12,9 @@
 //   T3  ein Ausfall des Abrufs lässt den mitgelieferten Text stehen;
 //   T4  „Zurücksetzen" stellt den mitgelieferten Text wieder her, auch wenn er überdeckt war;
 //   T5  eine nicht geladene Sprache bekommt KEIN Bündel untergeschoben (sonst bliebe ihr Paket aus);
-//   T6  die Platzhalterprüfung der Pflegekarte.
+//   T6  die Platzhalterprüfung der Pflegekarte;
+//   T7  ein extern zurückgesetzter Text verschwindet beim nächsten Abruf des ganzen Bestands;
+//   T8  eine einzelne Speicherantwort ist eine Teiländerung und nimmt nichts zurück.
 import { describe, expect, it } from "vitest";
 import { createInstance } from "../../apps/web/node_modules/i18next";
 import { sprachNachlader } from "../../apps/web/src/lib/sprachNachlader";
@@ -22,6 +24,7 @@ import {
   mitgelieferterText,
   platzhalterAbweichung,
   setzeTextZurueck,
+  uebernimmBestand,
 } from "../../apps/web/src/lib/textpflege";
 
 const DE = { gruss: "Hallo", titel: "Sicherung", zahl: "{{n}} Texte" };
@@ -132,6 +135,47 @@ describe("R-1034 · gepflegte Texte über dem mitgelieferten Bestand", () => {
       fehlend: [],
       fremd: [],
     });
+  });
+
+  // BEN, Nacharbeit 2: der Abruf liefert den GANZEN Serverbestand. Eine Anpassung, die eine andere
+  // Sitzung inzwischen zurückgesetzt hat, darf hier nicht stehen bleiben.
+  it("T7 · Anpassung geladen → extern zurückgesetzt → Sprache wechseln und zurück: der mitgelieferte Text gilt wieder", async () => {
+    const i18n = await baueI18n();
+    const server: Record<string, Record<string, string>> = {
+      de: { titel: "Datensicherung", gruss: "Servus" },
+      en: {},
+    };
+    const ab = bindTextpflege(i18n, async (s) => ({ ...(server[s] ?? {}) }));
+    await ruhe();
+    expect(i18n.t("titel")).toBe("Datensicherung");
+    expect(i18n.t("gruss")).toBe("Servus");
+
+    // Eine andere Administratorin setzt „titel“ zurück; „gruss“ bleibt angepasst.
+    server.de = { gruss: "Servus" };
+    await i18n.changeLanguage("en");
+    await ruhe();
+    await i18n.changeLanguage("de");
+    await ruhe();
+
+    expect(i18n.t("titel"), "der entfernte Text bleibt nicht stehen").toBe("Sicherung");
+    expect(i18n.t("gruss"), "die weiter bestehende Anpassung bleibt").toBe("Servus");
+
+    // Und ein leerer Bestand nimmt auch die letzte Anpassung zurück.
+    server.de = {};
+    await i18n.changeLanguage("en");
+    await ruhe();
+    await i18n.changeLanguage("de");
+    await ruhe();
+    expect(i18n.t("gruss")).toBe("Hallo");
+    ab();
+  });
+
+  it("T8 · eine einzelne Speicherantwort bleibt eine Teiländerung — andere Anpassungen bleiben", async () => {
+    const i18n = await baueI18n();
+    uebernimmBestand(i18n, "de", { titel: "Datensicherung", gruss: "Servus" });
+    legeTexteUeber(i18n, "de", { titel: "Sicherungen" });
+    expect(i18n.t("titel")).toBe("Sicherungen");
+    expect(i18n.t("gruss"), "nicht in der Speicherantwort, aber weiter angepasst").toBe("Servus");
   });
 
   it("die Abmeldung hört auf — ein späterer Wechsel holt nichts mehr", async () => {
