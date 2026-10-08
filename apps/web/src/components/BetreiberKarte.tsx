@@ -12,7 +12,7 @@ export function BetreiberKarte({ karte }: { karte: ReasonerBetreiberKarte }): JS
   const { t } = useTranslation();
   const anzeige = betreiberKartenAnzeige(karte);
   const text = (wert: KartenWert): string =>
-    "wortlaut" in wert ? wert.wortlaut : t(wert.key, wert.params);
+    "wortlaut" in wert ? wert.wortlaut : wert.params ? t(wert.key, wert.params) : t(wert.key);
   const zeilen: Array<{ label: string; wert: string; testid: string }> = [];
   if (anzeige.betreiber) {
     const herkunft = anzeige.herkunft
