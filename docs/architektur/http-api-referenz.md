@@ -368,6 +368,16 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `GET` | `/addin` | keines | — | — (immer 404, kein Verzeichnislisting) | 404 `NOT_FOUND` |
 | `GET` | `/addin/*` | keines | Dateipfad im Bündel | 200 Datei aus der festen Dateiliste | 404 `NOT_FOUND` |
 
+### 3.10 MCP-Zugang für fremde KI-Programme (`mcpRoutes`, nur mit `KLARWERK_SERVICE_KEYS`)
+
+Registriert nur, wenn ein Dienst-Schlüssel konfiguriert ist. Eine Sitzung jeder Rolle ist hier
+unangemeldet; die Rollenabnahme (`tests/beta-rollenabnahme/tabelle.ts`) misst das mit fünf Akteuren.
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/mcp` | Dienst-Schlüssel mit `mcp.werkzeug` (Kopf `x-klarwerk-service-key`), keine Sitzung | — | — (405 `METHOD_NOT_ALLOWED`, kein Ereignisstrom) | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN` bei Browseraufruf (`Origin`) |
+| `POST` | `/mcp` | Dienst-Schlüssel mit `mcp.werkzeug` (Kopf `x-klarwerk-service-key`), keine Sitzung | JSON-RPC-2.0-Nachricht | 200 JSON-RPC-Antwort; Werkzeugaufrufe laufen intern über die Route ihres Rechts | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN` bei Browseraufruf; JSON-RPC-Fehler im Rumpf |
+
 ## 4 Testabdeckung und Abdeckungsziel
 
 Das Abdeckungsziel ist das vorhandene und wird hier nicht neu gesetzt: `vitest.config.ts`,

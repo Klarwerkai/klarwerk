@@ -78,6 +78,20 @@ const SCHALTER: Record<string, string> = {
   // die Zeile misst dann die Abwesenheit der Route, nicht die Wirkung des Tors. Mit dem Schalter
   // misst sie das einzige Recht (`ko.assign`), das sonst in keiner Zeile der Tabelle vorkäme.
   KLARWERK_EXPERT_MATCHING: "1",
+  // aufnahme:20260922:gesamt-leserechte (R-0543): `mcpRoutes` (Aufnahme gesamt-mcp) registriert
+  // `build-app.ts` NUR, wenn ein Dienst-Schlüssel konfiguriert ist. Ohne ihn fehlte die Gruppe in
+  // der Abnahme — und „nicht registriert" sähe wie „gesperrt" aus. Eingetragen wird allein eine
+  // PRÜFSUMME mit dem Recht `mcp.werkzeug`; den zugehörigen Schlüssel kennt niemand, und keine
+  // Zeile schickt ihn. Gemessen wird damit genau die Frage dieser Abnahme: öffnet eine SITZUNG —
+  // gleich welcher Rolle — den MCP-Zugang? (Sie darf es nicht; der Weg mit Schlüssel ist in den
+  // Tests des MCP-Auftrags abgenommen.)
+  KLARWERK_SERVICE_KEYS: JSON.stringify([
+    {
+      id: "rollenabnahme-mcp",
+      sha256: [`${"0".repeat(63)}1`],
+      rechte: ["mcp.werkzeug"],
+    },
+  ]),
 };
 
 export interface Buehne {

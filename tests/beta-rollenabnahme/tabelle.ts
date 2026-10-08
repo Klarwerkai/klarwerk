@@ -613,6 +613,21 @@ export const NUR_ADMIN: Erwartungen = {
 };
 
 /**
+ * aufnahme:20260922:gesamt-leserechte (R-0543): eine Tür, die KEINE Sitzung öffnet — nur ein
+ * Dienst-Schlüssel (`x-klarwerk-service-key`). Jede Rolle bekommt deshalb dieselbe 401 wie ein
+ * Unangemeldeter; ein Durchlass für eine Sitzungsrolle wäre hier der Befund.
+ */
+const NUR_DIENST_GRUND =
+  "Der MCP-Zugang nimmt nur einen Dienst-Schlüssel an (mcp-routes.ts, `zugang`); eine Sitzung jeder Rolle ist dort unangemeldet.";
+export const NUR_DIENSTSCHLUESSEL: Erwartungen = {
+  anonym: "401",
+  viewer: { soll: "401", grund: NUR_DIENST_GRUND },
+  experte: { soll: "401", grund: NUR_DIENST_GRUND },
+  controller: { soll: "401", grund: NUR_DIENST_GRUND },
+  admin: { soll: "401", grund: NUR_DIENST_GRUND },
+};
+
+/**
  * Eine Tür ohne Tor. Sie ist erlaubt — aber nur mit ausgeschriebenem Grund: eine öffentliche Route
  * ist genau das, was eine Abnahme benennen muss, statt sie unter „grün" zu verbuchen.
  */
@@ -1445,6 +1460,28 @@ export const TABELLE: Zeile[] = [
     belegstelle: "services/app/src/routes/output-routes.ts:14",
     tor: "ko.read",
     erwartet: NUR_LESEN,
+  },
+  // aufnahme:20260922:gesamt-leserechte (R-0543): der MCP-Zugang (Aufnahme gesamt-mcp). Er ist
+  // AUSSCHLIESSLICH für einen Dienst-Schlüssel mit `mcp.werkzeug` gebaut (`mcp-routes.ts`, `zugang`);
+  // eine Sitzung — gleich welcher Rolle, auch der Admin — kommt nicht herein und bekommt 401. Genau
+  // das misst diese Zeile mit fünf Akteuren. Die Bühne trägt dafür nur eine Schlüssel-PRÜFSUMME
+  // (`buehne.ts`, `KLARWERK_SERVICE_KEYS`); der Weg MIT Schlüssel gehört den Tests des MCP-Auftrags.
+  {
+    gruppe: "mcpRoutes",
+    methode: "GET",
+    pfad: "/mcp",
+    belegstelle: "services/app/src/routes/mcp-routes.ts:273",
+    tor: "Dienst-Schlüssel mit mcp.werkzeug — keine Sitzungsrolle",
+    erwartet: NUR_DIENSTSCHLUESSEL,
+  },
+  {
+    gruppe: "mcpRoutes",
+    methode: "POST",
+    pfad: "/mcp",
+    belegstelle: "services/app/src/routes/mcp-routes.ts:284",
+    tor: "Dienst-Schlüssel mit mcp.werkzeug — keine Sitzungsrolle",
+    payload: { jsonrpc: "2.0", id: 1, method: "tools/list" },
+    erwartet: NUR_DIENSTSCHLUESSEL,
   },
   // aufnahme:20260922:gesamt-leserechte (R-0543): die Tür der Ausgabeerzeugung. Die leere
   // Quellenauswahl endet für jede Rolle in `NO_SOURCES` (400), also HINTER dem Rechtetor; es wird
