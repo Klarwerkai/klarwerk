@@ -14,19 +14,19 @@ export default {
   de: {
     "vorfuehrweg.hilfe.titel": "KLARWERK vorführen",
     "vorfuehrweg.hilfe.text":
-      "Ein geführter Vorführweg in sieben Stationen für den zweiten Bildschirm: je Station Ziel, Handlung und erwartetes Ergebnis, dazu ein Link an genau die Stelle in KLARWERK. Auf Deutsch und Englisch.",
+      "Ein geführter Vorführweg in neun Stationen für den zweiten Bildschirm: je Station Ziel, Handlung und erwartetes Ergebnis, dazu ein Link an genau die Stelle in KLARWERK und eine Bildschirmansicht. Auf Deutsch und Englisch.",
     "vorfuehrweg.hilfe.link": "Vorführweg öffnen",
   },
   en: {
     "vorfuehrweg.hilfe.titel": "Present KLARWERK",
     "vorfuehrweg.hilfe.text":
-      "A guided presentation route in seven stations for the second screen: for each station the goal, the action and the expected result, plus a link to exactly that place in KLARWERK. In German and English.",
+      "A guided presentation route in nine stations for the second screen: for each station the goal, the action and the expected result, plus a link to exactly that place in KLARWERK and a screen view. In German and English.",
     "vorfuehrweg.hilfe.link": "Open presentation route",
   },
   nl: {
     "vorfuehrweg.hilfe.titel": "KLARWERK demonstreren",
     "vorfuehrweg.hilfe.text":
-      "Een begeleide demonstratieroute in zeven stations voor het tweede scherm: per station het doel, de handeling en het verwachte resultaat, met een link naar precies die plek in KLARWERK. Beschikbaar in het Duits en het Engels.",
+      "Een begeleide demonstratieroute in negen stations voor het tweede scherm: per station het doel, de handeling en het verwachte resultaat, met een link naar precies die plek in KLARWERK en een schermweergave. Beschikbaar in het Duits en het Engels.",
     "vorfuehrweg.hilfe.link": "Demonstratieroute openen",
   },
 } satisfies Textmodul;

@@ -477,19 +477,41 @@ async function buildDemoContent(
   // purge-bar). Wortwahl weiterhin OHNE Inhaltstoken der Demo-Wissenslücken-Frage
   // (schwankt/Dosierwert/Linie/jedem/Schichtwechsel) — sonst fände der deterministische
   // Reasoner eine Pseudo-Antwort und die Demo-Lücke entstünde nicht mehr (Seed-Test prüft).
-  await ko.create({
+  // R-1660 (Schaufenster-Modus, „Schweißnaht V1/V2/V3"): die Lernkurve steht im FASSUNGSVERLAUF
+  // desselben Objekts. V1 wird angelegt, V2 und V3 entstehen über den echten Überarbeitungsweg
+  // (`KoService.revise`: Version +1, Verlaufseintrag, Fassungs-Schnappschuss). V3 ist der bisherige
+  // Text (`koSchweiss`) — wer nur den heutigen Stand liest, sieht dasselbe wie vorher.
+  const koSchweiss = await ko.create({
     demoSeed: true,
-    title: t.koSchweiss.title,
-    statement: t.koSchweiss.statement,
+    title: t.koSchweissV1.title,
+    statement: t.koSchweissV1.statement,
     type: "lernkurve",
     category: "Anlage 2",
     author: erikId,
     tags: ["schweißen", "nacharbeit", "qualität", DEMO_TAG],
-    conditions: t.koSchweiss.conditions ?? [],
-    measures: t.koSchweiss.measures ?? [],
     confidence: 55,
     neededValidations: 2,
   });
+  await ko.revise(
+    koSchweiss.id,
+    {
+      title: t.koSchweissV2.title,
+      statement: t.koSchweissV2.statement,
+      conditions: t.koSchweissV2.conditions ?? [],
+      measures: t.koSchweissV2.measures ?? [],
+    },
+    erikId,
+  );
+  await ko.revise(
+    koSchweiss.id,
+    {
+      title: t.koSchweiss.title,
+      statement: t.koSchweiss.statement,
+      conditions: t.koSchweiss.conditions ?? [],
+      measures: t.koSchweiss.measures ?? [],
+    },
+    erikId,
+  );
   await ko.create({
     demoSeed: true,
     title: t.koPresse.title,
@@ -623,6 +645,24 @@ async function buildDemoContent(
     neededValidations: 2,
   });
 
+  // R-1660 (Schaufenster-Modus, „Lager-Fall Karl/Tom"): Karls Erfahrung zum Hauptlager der Presse 3,
+  // erfasst für seinen Nachfolger Tom. Karl und Tom sind Personen der Geschichte, keine Konten —
+  // Urheber im System bleibt der Demo-Experte. Das Objekt wird unten validiert, damit Toms Frage
+  // (`lagerFrage`) auf geprüftes Wissen trifft.
+  const koLagerKarl = await ko.create({
+    demoSeed: true,
+    title: t.koLagerKarl.title,
+    statement: t.koLagerKarl.statement,
+    type: "best_practice",
+    category: "Anlage 2",
+    author: erikId,
+    tags: ["lager", "instandhaltung", "presse", DEMO_TAG],
+    conditions: t.koLagerKarl.conditions ?? [],
+    measures: t.koLagerKarl.measures ?? [],
+    confidence: 80,
+    neededValidations: 2,
+  });
+
   // --- SCRUM-487 Proben: Duplikatpaar (reifen), stale-date-Seite, unbelegter Claim ---
   // Alle demoSeed → der chirurgische Purge (KO.demoSeed) erfasst sie samt Folge-Einträgen.
   // Duplikatpaar: zwei sehr ähnliche, eigenständige Aussagen → zwei echte KOs. Die eigentliche
@@ -708,6 +748,9 @@ async function buildDemoContent(
   await validation.rate(koLieferantFrei.id, adminId, "up");
   await validation.rate(koWartung.id, carlaId, "up");
   await validation.rate(koWartung.id, adminId, "up");
+  // R-1660: Karls Lager-Fall ist geprüftes Wissen — Tom bekommt eine belastbare Antwort.
+  await validation.rate(koLagerKarl.id, carlaId, "up");
+  await validation.rate(koLagerKarl.id, adminId, "up");
 
   // --- Offene Validierungsaufgabe: koOpen Carla zuweisen (erscheint im Board/MyTasks) ---
   await validation.assign(koOpen.id, [carlaId], adminId);

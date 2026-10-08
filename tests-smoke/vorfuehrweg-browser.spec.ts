@@ -56,6 +56,21 @@ const STATIONEN: readonly Station[] = [
     wert: "Wie oft muss Filter F3 geprüft werden?",
   },
   {
+    // R-1660 · Lager-Fall Karl/Tom: Toms Frage steht im Fragefeld.
+    kennung: "lagerfall",
+    pfad: "/fragen",
+    landung: (f) =>
+      f.getByTestId("page-fragen").locator('input[data-tutorial-ziel="fragen.fragefeld"]'),
+    wert: "Woran erkenne ich, dass das Hauptlager der Presse 3 getauscht werden muss?",
+  },
+  {
+    // R-1660 · Schweißnaht V1/V2/V3: die Bibliothek sucht nach der Schweißnaht.
+    kennung: "schweissnaht",
+    pfad: "/bibliothek",
+    landung: (f) => f.getByTestId("bib-suche"),
+    wert: "Schweißnaht",
+  },
+  {
     kennung: "erfassen",
     pfad: "/erfassen",
     landung: (f) => f.getByTestId("blatt-titel"),

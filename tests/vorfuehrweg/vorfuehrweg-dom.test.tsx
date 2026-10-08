@@ -60,6 +60,8 @@ const STATIONEN = [
   "start",
   "bibliothek",
   "fragen",
+  "lagerfall",
+  "schweissnaht",
   "erfassen",
   "validierung",
   "konflikte",
@@ -112,7 +114,7 @@ function ziel(a: HTMLAnchorElement): URL {
 }
 
 describe("Vorführweg · Stationen am vollständigen Dokument", () => {
-  it("V1 · acht Stationen in fester Reihenfolge, je mit Ziel, Handlung und Ergebnis in DE und EN", () => {
+  it("V1 · zehn Stationen in fester Reihenfolge, je mit Ziel, Handlung und Ergebnis in DE und EN", () => {
     const { document } = laden();
     const sektionen = document.querySelectorAll<HTMLElement>("section.station");
     expect([...sektionen].map((s) => s.dataset.station)).toEqual([...STATIONEN]);
@@ -185,9 +187,26 @@ describe("Vorführweg · jeder Link öffnet die richtige Stelle", () => {
       expect(a.getAttribute("target")).toBe(FENSTER);
     }
     // Alle übrigen Links bleiben auf dieser Seite (Übersicht und Blättern).
-    for (const a of document.querySelectorAll("a:not(.oeffnen)")) {
+    for (const a of document.querySelectorAll("a:not(.oeffnen):not(.ansicht)")) {
       expect(a.getAttribute("href")).toMatch(/^#/);
       expect(a.hasAttribute("target")).toBe(false);
+    }
+  });
+
+  it("L1b · jede Station verlinkt ihre Bildschirmansicht, ebenfalls im Vorführfenster", () => {
+    // Die Bilder selbst entstehen an der gebauten Fassung mit geladenen Demodaten
+    // (`tests/vorfuehrweg/ansichten-chromium.test.ts`); hier steht die Zuordnung Station → Bild.
+    const { document } = laden();
+    expect(document.querySelectorAll("a.ansicht")).toHaveLength(STATIONEN.length * 2);
+    for (const kennung of STATIONEN) {
+      const el = station(document, kennung);
+      for (const sprache of SPRACHEN) {
+        const a = el.querySelector(`a.ansicht.${sprache}`);
+        expect(a, `${kennung}: keine Bildschirmansicht (${sprache})`).not.toBeNull();
+        const bild = `/demonstration/vorfuehrweg-ansichten/${kennung}.png`;
+        expect(a?.getAttribute("href")).toBe(bild);
+        expect(a?.getAttribute("target")).toBe(FENSTER);
+      }
     }
   });
 
@@ -238,8 +257,11 @@ describe("Vorführweg · jeder Link öffnet die richtige Stelle", () => {
         de: "Wie oft muss Filter F3 geprüft werden?",
         en: "How often does filter F3 have to be checked?",
       },
+      // Toms Frage ist die des Demobestands (`lagerFrage`), nicht eine Abschrift.
+      lagerfall: { de: DEMO_TEXTS.de.lagerFrage, en: DEMO_TEXTS.en.lagerFrage },
+      schweissnaht: { de: "Schweißnaht", en: "Weld seam" },
     } as const;
-    for (const kennung of ["bibliothek", "fragen"] as const) {
+    for (const kennung of ["bibliothek", "fragen", "lagerfall", "schweissnaht"] as const) {
       const el = station(document, kennung);
       for (const sprache of SPRACHEN) {
         const q = ziel(link(el, sprache)).searchParams.get("q");
@@ -250,7 +272,7 @@ describe("Vorführweg · jeder Link öffnet die richtige Stelle", () => {
     }
   });
 
-  it("L5 · Station 7 öffnet die ausgelieferte Jira/Confluence-Erklärseite und nennt ihren Titel", () => {
+  it("L5 · Station 9 öffnet die ausgelieferte Jira/Confluence-Erklärseite und nennt ihren Titel", () => {
     const { document } = laden();
     const quelle = readFileSync(join(OEFFENTLICH, "demonstration", "importwege.html"), "utf8");
     const importseite = new JSDOM(quelle, { url: `${BASIS}/demonstration/importwege.html` });
@@ -284,6 +306,26 @@ describe("Vorführweg · die Beispiele passen zum ausgelieferten Demobestand (Fe
       expect(feld(konflikt, "handlung", sprache)).toContain(t.warmConflict.streitpunkt);
       expect(feld(konflikt, "ergebnis", sprache)).toContain(t.warmConflict.quoteA);
       expect(feld(konflikt, "ergebnis", sprache)).toContain(t.warmConflict.quoteB);
+    }
+  });
+
+  it("D1b · R-1660: Lager-Fall Karl/Tom und Schweißnaht V1/V2/V3 stehen so im Demobestand", () => {
+    const { document } = laden();
+    for (const sprache of SPRACHEN) {
+      const t = DEMO_TEXTS[sprache];
+      const lager = feld(station(document, "lagerfall"), "ergebnis", sprache);
+      expect(lager).toContain(t.koLagerKarl.title);
+      expect(t.koLagerKarl.statement).toContain("Karl");
+      expect(t.koLagerKarl.statement).toContain("Tom");
+      // Die drei Fassungen, in ihrer Reihenfolge: V1, V2, V3 (= heutiger Stand `koSchweiss`).
+      const fassungen = feld(station(document, "schweissnaht"), "ergebnis", sprache);
+      const titel = [t.koSchweissV1.title, t.koSchweissV2.title, t.koSchweiss.title];
+      const stellen = titel.map((x) => fassungen.indexOf(x));
+      expect(
+        stellen.every((s) => s >= 0),
+        `${sprache}: eine Fassung fehlt`,
+      ).toBe(true);
+      expect([...stellen].sort((a, b) => a - b)).toEqual(stellen);
     }
   });
 
