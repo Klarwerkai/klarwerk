@@ -29,6 +29,7 @@ import type {
   GroupCandidateInput,
   GroupCandidatesResult,
   InterviewResult,
+  KlaraVorschlagUrteil,
   KnowledgeRef,
   Kollision,
   KollisionSeite,
@@ -1245,7 +1246,7 @@ function conflictSystem(locale: ReasonerLocale): string {
   // nötigen Arbeit ein — unabhängig von der Konfliktart. Additiv; eine Antwort ohne das Feld
   // parst wie bisher (dann bleibt die Arbeitsart offen).
   const contract =
-    '{"relation":"widerspruch|doppelung|ueberholt|kein_konflikt|unsicher","older":"a|b|null","confidence":0.0-1.0,"begruendung":"...","zitat_a":"...","zitat_b":"...","arbeit":"regel|sache|null","kollision":{"streitpunkt":"...","seite_a":{"kernaussage":"...","streitwert":"..."},"seite_b":{"kernaussage":"...","streitwert":"..."}}}';
+    '{"relation":"widerspruch|doppelung|ueberholt|kein_konflikt|unsicher","older":"a|b|null","confidence":0.0-1.0,"begruendung":"...","zitat_a":"...","zitat_b":"...","arbeit":"regel|sache|null","vorschlag":{"art":"widerspruch|praezisierung","spezieller":"a|b|null","geltungsbereich":"..."},"kollision":{"streitpunkt":"...","seite_a":{"kernaussage":"...","streitwert":"..."},"seite_b":{"kernaussage":"...","streitwert":"..."}}}';
   const arbeitRule = taskInstruction(
     locale,
     '"arbeit" nur bei "widerspruch", sonst null: "regel", wenn A und B interne Festlegungen sind (Vorgaben, Regeln, Anweisungen des Hauses, die keine äußere Quelle entscheiden kann — nur eine befugte Person); "sache", wenn es um Tatsachen geht, die sich durch Belege entscheiden lassen.',
@@ -1264,7 +1265,14 @@ function conflictSystem(locale: ReasonerLocale): string {
     "Die wörtlichen Zitate bleiben unverändert in ihrer Originalsprache.",
     "The verbatim quotes stay unchanged in their original language.",
   );
-  return `${base} ${arbeitRule} ${quoteRule} ${outputLanguageRule(locale)}`;
+  // R-0263 (Aufnahme gesamt-konfliktklassifikation): Klara SCHLÄGT den Unterschied Widerspruch /
+  // Präzisierung vor — entschieden wird auf der Konfliktseite von einer befugten Person.
+  const vorschlagRule = taskInstruction(
+    locale,
+    '"vorschlag" nur bei "widerspruch", sonst weglassen: "art":"praezisierung", wenn eine Aussage die andere nur für einen engeren Geltungsbereich genauer festlegt (z. B. "10 Nm für Bolzen X" gegenüber "alle Bolzen handfest"), dann "spezieller" = die engere Seite ("a" oder "b") und "geltungsbereich" = dieser engere Bereich in wenigen Worten; sonst "art":"widerspruch" mit "spezieller":null. Das ist ein Vorschlag, keine Entscheidung.',
+    '"vorschlag" only for "widerspruch", otherwise omit: "art":"praezisierung" if one statement only specifies the other more precisely for a narrower scope (e.g. "10 Nm for bolt X" versus "all bolts hand-tight"), then "spezieller" = the narrower side ("a" or "b") and "geltungsbereich" = that narrower scope in a few words; otherwise "art":"widerspruch" with "spezieller":null. This is a suggestion, not a decision.',
+  );
+  return `${base} ${arbeitRule} ${vorschlagRule} ${quoteRule} ${outputLanguageRule(locale)}`;
 }
 
 const CONFLICT_RELATIONS: readonly string[] = [
@@ -1321,6 +1329,27 @@ export function parseKollision(
   return { streitpunkt: k.streitpunkt, seiteA, seiteB };
 }
 
+// R-0263: Klaras Vorschlag defensiv lesen. Unbekannte Art → kein Vorschlag. Eine Präzisierung
+// braucht die speziellere Seite UND einen Geltungsbereich, sonst ist sie keine — dann bleibt
+// nichts übrig (nie ein halber Vorschlag, der wie ein vollständiger aussieht).
+function parseKlaraVorschlag(raw: unknown): KlaraVorschlagUrteil | undefined {
+  if (typeof raw !== "object" || raw === null) {
+    return undefined;
+  }
+  const v = raw as Record<string, unknown>;
+  if (v.art === "widerspruch") {
+    return { art: "widerspruch" };
+  }
+  if (v.art !== "praezisierung") {
+    return undefined;
+  }
+  const bereich = typeof v.geltungsbereich === "string" ? v.geltungsbereich.trim() : "";
+  if ((v.spezieller !== "a" && v.spezieller !== "b") || bereich.length === 0) {
+    return undefined;
+  }
+  return { art: "praezisierung", spezieller: v.spezieller, geltungsbereich: bereich };
+}
+
 // kon-v1: striktes, defensives Parsen des Modellurteils. Ungültiges JSON, unbekannte Relation,
 // fehlende/nicht-numerische confidence oder Nicht-String-Zitate → null (kein Konflikt aus kaputten
 // Antworten). confidence wird auf 0..1 geklemmt; older nur "a"/"b", sonst null.
@@ -1355,6 +1384,7 @@ export function parseConflictResponse(raw: string): ConflictJudgeResult | null {
     relation === "widerspruch" && (o.arbeit === "regel" || o.arbeit === "sache")
       ? o.arbeit
       : undefined;
+  const vorschlag = relation === "widerspruch" ? parseKlaraVorschlag(o.vorschlag) : undefined;
   return {
     relation: relation as ConflictJudgeResult["relation"],
     older,
@@ -1364,6 +1394,7 @@ export function parseConflictResponse(raw: string): ConflictJudgeResult | null {
     zitat_b: o.zitat_b,
     ...(kollision ? { kollision } : {}),
     ...(arbeit ? { arbeit } : {}),
+    ...(vorschlag ? { vorschlag } : {}),
   };
 }
 

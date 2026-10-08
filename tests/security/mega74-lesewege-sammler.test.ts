@@ -799,6 +799,7 @@ const REGISTER: Record<string, Eintrag> = {
     "PUT /api/library/import/candidates/:id": "ko.validate.",
     "POST /api/admin/import/cleanup": "users.manage.",
     "POST /api/conflicts/:id/escalate": "conflict.resolve.",
+    "POST /api/conflicts/:id/arbeitsart": "conflict.resolve.",
     "POST /api/conflicts/:id/dismiss": "conflict.resolve.",
     "POST /api/conflicts/:id/second-opinion": "ko.validate.",
     "POST /api/duplicates/:id/dismiss": "ko.validate.",

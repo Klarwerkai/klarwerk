@@ -18,7 +18,9 @@
 // das Band richtet sich danach (`lib/conflictView.ts`, `conflictWorkActions`): der Sachkonflikt
 // behält genau die Knöpfe oben; der Regelkonflikt bietet keine Zweitmeinung an; der
 // Versionskonflikt fragt „Linker/Rechter Stand gilt", ohne „Beide gelten" und ohne Zweitmeinung.
-// Ohne Einordnung („nicht bestimmt") bleibt das volle Band.
+// Ohne Einordnung (Nacharbeit 5): drei Knöpfe „Als Regel-/Sach-/Versionskonflikt einordnen" stehen
+// vorn; die typabhängigen Aktionen sind bis dahin sichtbar gesperrt, ein Satz nennt den Grund. Die
+// Einordnung wird gespeichert (`POST /api/conflicts/:id/arbeitsart`), danach gilt das passende Band.
 //
 // R-0215 / R-1714: ein OFFENER Wahrheitskonflikt ist noch nicht eskaliert. Dann steht „Eskalieren"
 // vorn im Band, Entscheidungen und Zweitmeinung sind sichtbar gesperrt (der Dienst lehnt sie mit
@@ -45,7 +47,13 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos } from "../api/hooks";
-import type { Conflict, ConflictStatus, KnowledgeObject, VorrangArt } from "../api/types";
+import type {
+  Conflict,
+  ConflictStatus,
+  ConflictWorkKind,
+  KnowledgeObject,
+  VorrangArt,
+} from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
 import { SourceEvidence } from "../components/ko/SourceEvidence";
@@ -89,7 +97,10 @@ import {
   conflictNextStep,
   conflictWorkActions,
   conflictWorkKind,
+  einordnungAusstehend,
   eskalationAusstehend,
+  klaraVorschlag,
+  naechsterSchrittSchluessel,
   resolutionEffect,
 } from "../lib/conflictView";
 import { leseFall } from "../lib/fallAbsprung";
@@ -98,6 +109,9 @@ import { clusterReihenfolge, konfliktCluster } from "../lib/konfliktCluster";
 import { REVIEW_HELP_TOPICS } from "../lib/reviewHelp";
 
 const PATH: ConflictStatus[] = ["eskaliert", "zweitmeinung", "geloest"];
+
+/** R-0252: die drei Arbeitsarten des Einordnungswegs, in der Reihenfolge der Auftragsquelle. */
+const EINORDNUNG: readonly ConflictWorkKind[] = ["regel", "sache", "version"];
 
 // JOB 1125: der Redaktionsmarker der Serversicht. Ohne ihn verschwänden zurückgehaltene Belege
 // LAUTLOS, und ein Betrachter hielte einen Fund ohne Zitate für einen Fund ohne Belege.
@@ -150,6 +164,17 @@ export function Conflicts(): JSX.Element {
   const escalate = useMutation({
     mutationFn: (id: string) => endpoints.conflicts.escalate(id),
     onSuccess: invalidate,
+    onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
+  });
+
+  // R-0252 (Nacharbeit 5): der Einordnungsweg — die befugte Person legt die Arbeitsart fest.
+  const einordnen = useMutation({
+    mutationFn: (v: { id: string; arbeitsart: ConflictWorkKind }) =>
+      endpoints.conflicts.einordnen(v.id, v.arbeitsart),
+    onSuccess: () => {
+      invalidate();
+      setErr(null);
+    },
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
 
@@ -441,6 +466,19 @@ export function Conflicts(): JSX.Element {
     // R-0215 / R-1714: solange der Wahrheitskonflikt nicht eskaliert ist, sind Entscheidung und
     // Zweitmeinung gesperrt — sichtbar, mit Grund, und „Eskalieren" steht vorn im Band.
     const gesperrt = eskalationAusstehend(c);
+    // R-0252 (Nacharbeit 5): ohne Arbeitsart wird ZUERST eingeordnet — die typabhängigen Aktionen
+    // stehen sichtbar, aber gesperrt da, bis die befugte Person Regel, Sache oder Version gewählt hat.
+    const einordnungOffen = einordnungAusstehend(c);
+    const entscheidungGesperrt = gesperrt || einordnungOffen;
+    // R-0263 (Nacharbeit 5): Klaras Vorschlag Widerspruch/Präzisierung — er steht im
+    // Entscheidungsweg, entscheiden muss die Person (`klaraVorschlag`, lib/conflictView.ts).
+    const vorschlag = klaraVorschlag(c);
+    const vorschlagSatz = vorschlag
+      ? t(vorschlag.schluessel, {
+          title: (vorschlag.seite === "a" ? pair.a?.title : pair.b?.title) ?? "",
+          bereich: vorschlag.geltungsbereich || t("konfliktarbeit.amPunkt.bereichZurueck"),
+        })
+      : null;
 
     const mehr = (seite: "a" | "b"): JSX.Element => {
       const ko = seite === "a" ? pair.a : pair.b;
@@ -521,7 +559,7 @@ export function Conflicts(): JSX.Element {
             </PruefenMehrBlock>
           ) : null}
           <PruefenMehrBlock beschriftung={t("con.nextLabel")}>
-            {t(`con.next.${conflictNextStep(c)}`)}
+            {t(naechsterSchrittSchluessel(conflictNextStep(c)))}
           </PruefenMehrBlock>
           <PruefenMehrBlock beschriftung={t("pruefen.mehr.effect")}>
             {t("con.resolveEffect")}
@@ -698,10 +736,22 @@ export function Conflicts(): JSX.Element {
                 {t("con.escalate")}
               </PruefenKnopf>
             ) : null}
+            {einordnungOffen
+              ? EINORDNUNG.map((art) => (
+                  <PruefenKnopf
+                    key={art}
+                    kennung={`einordnen-${art}`}
+                    disabled={einordnen.isPending}
+                    onClick={() => einordnen.mutate({ id: c.id, arbeitsart: art })}
+                  >
+                    {t(`konfliktarbeit.einordnen.${art}`)}
+                  </PruefenKnopf>
+                ))
+              : null}
             <PruefenKnopf
               ton="primaer"
               kennung="links-gilt"
-              disabled={gesperrt}
+              disabled={entscheidungGesperrt}
               onClick={() =>
                 oeffneAufloesung(t("con.prefill.side", { title: pair.a?.title ?? "" }), "a")
               }
@@ -711,7 +761,7 @@ export function Conflicts(): JSX.Element {
             <PruefenKnopf
               ton="primaer"
               kennung="rechts-gilt"
-              disabled={gesperrt}
+              disabled={entscheidungGesperrt}
               onClick={() =>
                 oeffneAufloesung(t("con.prefill.side", { title: pair.b?.title ?? "" }), "b")
               }
@@ -721,7 +771,7 @@ export function Conflicts(): JSX.Element {
             {band.beideGelten ? (
               <PruefenKnopf
                 kennung="beide-gelten"
-                disabled={gesperrt}
+                disabled={entscheidungGesperrt}
                 onClick={() => oeffneAufloesung(t("con.prefill.both"), null)}
               >
                 {t("con.side.both")}
@@ -739,7 +789,7 @@ export function Conflicts(): JSX.Element {
             {band.zweitmeinung ? (
               <PruefenBandLink
                 kennung="zweitmeinung"
-                disabled={gesperrt}
+                disabled={entscheidungGesperrt}
                 onClick={() => {
                   setErr(null);
                   setOpinion("");
@@ -756,6 +806,11 @@ export function Conflicts(): JSX.Element {
             {t("konfliktarbeit.eskalation.zuerst")}
           </p>
         ) : null}
+        {offen && einordnungOffen ? (
+          <p data-testid="konflikt-einordnung-zuerst" className="text-[12.5px] text-muted">
+            {t("konfliktarbeit.einordnung.zuerst")}
+          </p>
+        ) : null}
 
         {/* Die Begründung ist vorbelegt und EDITIERBAR — die Entscheidung bleibt beim Menschen. */}
         {resolvingId === c.id ? (
@@ -764,6 +819,13 @@ export function Conflicts(): JSX.Element {
               {t("con.resolveEffect")}
               {wirkung.revalidationRecommended ? <span> {t("con.resolveRevalidate")}</span> : null}
             </div>
+            {/* R-0263 (Nacharbeit 5): Klaras Vorschlag steht im Entscheidungsweg — als Vorschlag,
+                nicht als Vorbelegung. Wählen und den Geltungsbereich festlegen tut die Person. */}
+            {vorschlagSatz && band.praezisierung ? (
+              <p data-testid="konflikt-vorschlag" className="text-[12.5px] text-muted">
+                {vorschlagSatz}
+              </p>
+            ) : null}
             {/* R-0263: gilt die gewählte Seite überall, oder präzisiert sie die andere nur in einem
                 Geltungsbereich? Beim Versionskonflikt gibt es nur das Überstimmen. */}
             {gewaehlteSeite !== null && band.praezisierung ? (

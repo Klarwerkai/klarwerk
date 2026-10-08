@@ -44,12 +44,18 @@ Sache), sodass ein automatisch erkannter Widerspruch zweier interner Festlegunge
 mit Zweitmeinung erschien. Diese Ableitung ist entfernt.
 
 - **Herkunft der Arbeitsart** (`Conflict.arbeitsart`, JSONB, keine Migration):
-  - manuelle Anlage — der Mensch wählt sie (Feld „Art der Arbeit“, Vorgabe „Nicht einordnen“);
+  - manuelle Anlage — der Mensch wählt sie; seit Nacharbeit 5 ist die Wahl **Pflicht** (Feld „Art
+    der Arbeit“ ohne wählbare Leer-Option, „Konflikt eröffnen“ bleibt bis zur Wahl gesperrt);
   - automatische Erkennung — „überholt“ ist ein Versionskonflikt; bei „widerspruch“ ordnet die
     Konfliktprüfung selbst ein: das Urteil trägt `arbeit: "regel" | "sache"`
     (`services/reasoner/src/provider-model.ts`, Vertrag und Regel; Parser verwirft andere Werte).
     Ein Widerspruch zweier interner Festlegungen wird so ein **Regelkonflikt der Art „truth“**.
-  - fehlt sie, ist sie **nicht bestimmt** — die Seite sagt das und bietet das volle Band an.
+  - fehlt sie (Altbestand, widersprechende Ablehnung R-0238, oder die Prüfung hat nicht
+    eingeordnet), gibt es den **Einordnungsweg** (Nacharbeit 5): auf der Konfliktseite stehen vorn
+    „Als Regel-/Sach-/Versionskonflikt einordnen“; `POST /api/conflicts/:id/arbeitsart` (Recht
+    `conflict.resolve`) speichert die Wahl und protokolliert sie als `conflict.classified`. Bis dahin
+    sind die typabhängigen Aktionen (Entscheidungen, Zweitmeinung) sichtbar gesperrt, ein Satz nennt
+    den Grund, der nächste Schritt heißt „einordnen“. „Kein Widerspruch“ bleibt offen.
 - **Vorab gesagt**: Satz vor dem Kartenpaar (`konflikt-arbeitsart`) mit Herkunft („bei der Anlage
   so eingeordnet“ / „von der Konfliktprüfung so eingeordnet“).
 - **Knöpfe je Typ** (`conflictWorkActions`): Sachkonflikt — Links/Rechts/Beide, (Kein Widerspruch),
@@ -87,8 +93,18 @@ befugte Person“). Gebaut ist genau diese Richtung — die Entscheidung trifft 
 - Neue Route eingetragen in `tests/beta-rollenabnahme/tabelle.ts`, `tests/security/routeGuardAudit.ts`,
   `tests/security/mega74-lesewege-sammler.test.ts` und `docs/architektur/http-api-referenz.md`.
 
-**Grenzen.** Klara schlägt den Unterschied Widerspruch/Präzisierung noch nicht selbst vor; die Wahl
-trifft der Mensch auf der Konfliktseite. Eine eigene Weisungsbefugnis im Rechtemodell gibt es nicht —
+- **Klaras Vorschlag** (Nacharbeit 5): die Konfliktprüfung liefert bei einem Widerspruch zusätzlich
+  `vorschlag` — „widerspruch“ oder „praezisierung“ mit der spezielleren Seite und dem engeren
+  Geltungsbereich (Parser: nur vollständige Vorschläge). Er wird am Befund abgelegt
+  (`detector.vorschlag`, die speziellere Seite als Kennung), im Entscheidungsfeld als „Klaras
+  Vorschlag … Entscheiden müssen Sie.“ angezeigt und belegt **nichts** vor: die Wahl überstimmt /
+  präzisiert samt Geltungsbereich trifft die befugte Person. Bei Redaktion wird der vorgeschlagene
+  Geltungsbereich geleert wie die Begründung.
+
+**Grenzen.** Den Vorschlag gibt es nur bei automatisch erkannten Befunden; bei einem von Hand
+gemeldeten Konflikt hat der Mensch die Lage selbst beschrieben und es läuft keine Prüfung. Wie gut
+ein echtes Modell Präzisierungen erkennt, belegt kein Test. Eine eigene Weisungsbefugnis im
+Rechtemodell gibt es nicht —
 entscheiden darf, wer `conflict.resolve` trägt. Die Erkennung prüft nicht gegen bereits festgelegten
 Vorrang (ein erneut erkannter Widerspruch desselben Paars wird wie bisher als Befund angelegt).
 
@@ -101,6 +117,10 @@ Vorrang (ein erneut erkannter Widerspruch desselben Paars wird wie bisher als Be
 - Der **manuell** angelegte Wahrheitskonflikt holt validierte Bezugsobjekte zurück in die Prüfung
   (`markTruthConflictReview`); der **automatisch** erkannte tut das nicht. Die Quelle äußert sich
   dazu nicht; hier unverändert.
-- Die Prompt-Erweiterung um `arbeit` ist additiv; die Prompt-Kennung bleibt `kon-v1`. Wie zuverlässig
+- Die Einordnungspflicht vor der Bearbeitung setzt die **Oberfläche** durch. Der Dienst nimmt
+  `resolve` auch ohne Arbeitsart an, weil API-Aufrufer und die widersprechende Ablehnung (R-0238)
+  Konflikte ohne sie anlegen; ob das am Server ebenfalls gesperrt werden soll, ist eine
+  Produktentscheidung.
+- Die Prompt-Erweiterungen um `arbeit` und `vorschlag` sind additiv; die Prompt-Kennung bleibt `kon-v1`. Wie zuverlässig
   ein echtes Modell Regel und Sache trennt, belegt kein Test — das wäre ein Lauf gegen ein Modell.
 - Keine echte menschliche Bedienung und kein Produktivlauf sind Teil dieses Belegs.

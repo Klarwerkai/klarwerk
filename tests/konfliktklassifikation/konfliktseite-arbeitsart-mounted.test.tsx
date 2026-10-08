@@ -36,6 +36,10 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
           daten.rufe.push(["escalate", id]);
           return {};
         }),
+        einordnen: vi.fn(async (id: string, arbeitsart: string) => {
+          daten.rufe.push(["einordnen", id, arbeitsart]);
+          return {};
+        }),
       },
       duplicates: { list: ok(() => []), settings: ok(() => ({ minConfidence: 0.5 })) },
       validation: { board: ok(() => []), overview: ok(() => []) },
@@ -222,17 +226,40 @@ describe("R-0252 · die Konfliktseite sagt vorab, welche Arbeit vorliegt", () =>
     expect((p as Node).compareDocumentPosition(paar as Node) & 4).toBe(4);
   });
 
-  it("ohne Einordnung: „nicht bestimmt“ — und das volle Band, kein Weg wird verschwiegen", async () => {
+  it("ohne Einordnung: erst einordnen — die typabhängigen Aktionen sind bis dahin gesperrt", async () => {
     daten.konflikte = [automatisch("truth", { status: "eskaliert" })];
     await mount();
     expect(satz()).toBe(t("konfliktarbeit.satz.offen"));
     expect(band()).toEqual([
+      t("konfliktarbeit.einordnen.regel"),
+      t("konfliktarbeit.einordnen.sache"),
+      t("konfliktarbeit.einordnen.version"),
       t("con.side.left"),
       t("con.side.right"),
       t("con.side.both"),
       t("con.side.none"),
       t("con.secondOpinionAdd"),
     ]);
+    for (const kennung of ["links-gilt", "rechts-gilt", "beide-gelten", "zweitmeinung"]) {
+      expect(knopf(kennung)?.disabled, kennung).toBe(true);
+    }
+    // „Kein Widerspruch" verneint den Befund und braucht keine Art der Arbeit.
+    expect(knopf("kein-widerspruch")?.disabled).toBe(false);
+    expect(marke("konflikt-einordnung-zuerst")?.textContent).toBe(
+      t("konfliktarbeit.einordnung.zuerst"),
+    );
+
+    // Die Einordnung ruft den echten Weg und speichert die gewählte Art.
+    await klick(knopf("einordnen-regel"));
+    expect(daten.rufe).toEqual([["einordnen", "c-truth", "regel"]]);
+  });
+
+  it("nach der Einordnung: kein Einordnungsknopf mehr, das Band der gewählten Art gilt", async () => {
+    daten.konflikte = [automatisch("truth", { status: "eskaliert", arbeitsart: "sache" })];
+    await mount();
+    expect(knopf("einordnen-regel")).toBeNull();
+    expect(marke("konflikt-einordnung-zuerst")).toBeNull();
+    expect(knopf("links-gilt")?.disabled).toBe(false);
   });
 
   it("von der Prüfung als Regelkonflikt erkannt (Art „truth“): Regel-Satz, keine Zweitmeinung", async () => {
@@ -296,7 +323,7 @@ describe("R-0215 · der Eskalationspfad des Wahrheitskonflikts ist verbindlich",
   });
 
   it("eskalierter Wahrheitskonflikt: kein Eskalieren-Knopf mehr, die Entscheidungen sind frei", async () => {
-    daten.konflikte = [automatisch("truth", { status: "eskaliert" })];
+    daten.konflikte = [automatisch("truth", { status: "eskaliert", arbeitsart: "sache" })];
     await mount();
     expect(knopf("eskalieren")).toBeNull();
     expect(knopf("links-gilt")?.disabled).toBe(false);
@@ -304,7 +331,7 @@ describe("R-0215 · der Eskalationspfad des Wahrheitskonflikts ist verbindlich",
   });
 
   it("offener Kontextkonflikt: keine Eskalation, keine Sperre", async () => {
-    daten.konflikte = [automatisch("context")];
+    daten.konflikte = [automatisch("context", { arbeitsart: "sache" })];
     await mount();
     expect(knopf("eskalieren")).toBeNull();
     expect(knopf("links-gilt")?.disabled).toBe(false);
@@ -315,7 +342,7 @@ describe("R-0215 · der Eskalationspfad des Wahrheitskonflikts ist verbindlich",
 
 describe("R-0263 · Vorrang und Geltungsbereich bei der Entscheidung", () => {
   it("„Links gilt“ überstimmt: der Vorrang der linken Seite reist mit — ohne Geltungsbereich", async () => {
-    daten.konflikte = [automatisch("context")];
+    daten.konflikte = [automatisch("context", { arbeitsart: "sache" })];
     await mount();
     await klick(knopf("links-gilt"));
     expect(marke("konflikt-vorrang")).not.toBeNull();
@@ -336,7 +363,7 @@ describe("R-0263 · Vorrang und Geltungsbereich bei der Entscheidung", () => {
   });
 
   it("Präzisierung: erst mit Geltungsbereich bestätigbar, dann reist er mit", async () => {
-    daten.konflikte = [automatisch("context")];
+    daten.konflikte = [automatisch("context", { arbeitsart: "sache" })];
     await mount();
     await klick(knopf("rechts-gilt"));
     await klick(marke("konflikt-vorrang-praezisiert"));
@@ -361,13 +388,48 @@ describe("R-0263 · Vorrang und Geltungsbereich bei der Entscheidung", () => {
   });
 
   it("„Beide gelten“ legt keinen Vorrang fest; der Versionskonflikt kennt keine Präzisierung", async () => {
-    daten.konflikte = [automatisch("context")];
+    daten.konflikte = [automatisch("context", { arbeitsart: "sache" })];
     await mount();
     await klick(knopf("beide-gelten"));
     expect(marke("konflikt-vorrang")).toBeNull();
     await klick(bestaetigen() ?? null);
     const [ruf] = daten.rufe;
     expect(ruf?.[2]).not.toHaveProperty("vorrang");
+  });
+
+  it("Klaras Vorschlag steht im Entscheidungsweg — er belegt nichts vor, entscheiden tut die Person", async () => {
+    daten.konflikte = [
+      automatisch("context", {
+        arbeitsart: "sache",
+        detector: {
+          trigger: "background",
+          method: "model",
+          confidence: 0.9,
+          rationale: "Grund.",
+          vorschlag: { art: "praezisierung", spezieller: "ko-b", geltungsbereich: "Bolzen X" },
+        },
+      }),
+    ];
+    await mount();
+    await klick(knopf("links-gilt"));
+    expect(marke("konflikt-vorschlag")?.textContent).toBe(
+      t("konfliktarbeit.vorschlag.praezisierung", { title: "Beitrag B", bereich: "Bolzen X" }),
+    );
+    // Kein Vorbelegen: die Wahl steht auf „überstimmt“, bis die Person anders wählt.
+    expect(marke("konflikt-geltungsbereich")).toBeNull();
+    await klick(bestaetigen() ?? null);
+    const [ruf] = daten.rufe;
+    expect((ruf?.[2] as { vorrang?: unknown }).vorrang).toEqual({
+      art: "ueberstimmt",
+      gilt: "ko-a",
+    });
+  });
+
+  it("ohne Vorschlag der Prüfung behauptet die Fläche keinen", async () => {
+    daten.konflikte = [automatisch("context", { arbeitsart: "sache" })];
+    await mount();
+    await klick(knopf("links-gilt"));
+    expect(marke("konflikt-vorschlag")).toBeNull();
   });
 
   it("Versionskonflikt: „Linker Stand gilt“ überstimmt ohne Wahl der Präzisierung", async () => {

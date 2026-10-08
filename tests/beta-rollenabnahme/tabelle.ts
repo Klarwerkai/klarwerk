@@ -848,6 +848,19 @@ export const TABELLE: Zeile[] = [
     payload: {},
     erwartet: AB_CONTROLLER,
   },
+  // Aufnahme gesamt-konfliktklassifikation · R-0252 (Nacharbeit 5): der Einordnungsweg — dasselbe
+  // Recht wie Eskalieren und Entscheiden. Die Nutzlast ist formgerecht, damit die Zeile das Tor
+  // misst und nicht die Rumpfprüfung.
+  {
+    gruppe: "conflictRoutes",
+    methode: "POST",
+    pfad: "/api/conflicts/gibt-es-nicht/arbeitsart",
+    route: "/api/conflicts/:id/arbeitsart",
+    belegstelle: "services/app/src/routes/conflicts-routes.ts:316",
+    tor: "conflict.resolve",
+    payload: { arbeitsart: "regel" },
+    erwartet: AB_CONTROLLER,
+  },
   {
     gruppe: "confluenceImportRoutes",
     methode: "POST",

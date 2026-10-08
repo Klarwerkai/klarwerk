@@ -533,6 +533,9 @@ const KONFLIKT_MANUELL: Record<string, unknown> = {
 const eskaliert = (k: Record<string, unknown>): Record<string, unknown> => ({
   ...k,
   status: "eskaliert",
+  // R-0252 (Nacharbeit 5): ohne Arbeitsart wird zuerst eingeordnet; diese Fälle fahren den Weg
+  // danach — als Sachkonflikt, dessen Band genau die drei Wahlen des Kapitels anbietet.
+  arbeitsart: "sache",
 });
 
 const ZWEI_KONFLIKTE = [

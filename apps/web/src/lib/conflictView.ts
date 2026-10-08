@@ -197,8 +197,10 @@ export function vorrangAmPunkt(
 //  - Wahrheitskonflikt, offen     → an einen Menschen eskalieren (R-0215: verbindlich)
 //  - R-0252: Regel- und Versionskonflikt → entscheiden; eine Zweitmeinung bietet das Band dort
 //    nicht an (keine Quelle entscheidet eine Festlegung; bei zwei Ständen wird der geltende gewählt).
-//  - sonst (Sache oder nicht bestimmt): Zweitmeinung, nach der Zweitmeinung entscheiden.
-export type ConflictNextStep = "escalate" | "secondOpinion" | "resolve" | "done";
+//  - R-0252 (Nacharbeit 5): noch nicht eingeordnet → einordnen; erst danach steht fest, welche
+//    Aktionen passen.
+//  - Sachkonflikt: Zweitmeinung, nach der Zweitmeinung entscheiden.
+export type ConflictNextStep = "escalate" | "classify" | "secondOpinion" | "resolve" | "done";
 
 export function conflictNextStep(
   conflict: Pick<Conflict, "type" | "status" | "arbeitsart" | "origin">,
@@ -209,8 +211,51 @@ export function conflictNextStep(
   if (eskalationAusstehend(conflict)) {
     return "escalate";
   }
-  if (!conflictWorkActions(conflictWorkKind(conflict).kind).zweitmeinung) {
+  const kind = conflictWorkKind(conflict).kind;
+  if (kind === null) {
+    return "classify";
+  }
+  if (!conflictWorkActions(kind).zweitmeinung) {
     return "resolve";
   }
   return conflict.status === "zweitmeinung" ? "resolve" : "secondOpinion";
+}
+
+/**
+ * Der Textschlüssel des nächsten Schritts. Die vier alten Schritte wohnen im Grundbestand
+ * (`con.next.*`); „einordnen" ist neu und wohnt deshalb im Textmodul dieses Auftrags.
+ */
+export function naechsterSchrittSchluessel(step: ConflictNextStep): string {
+  return step === "classify" ? "konfliktarbeit.next.einordnen" : `con.next.${step}`;
+}
+
+/**
+ * R-0252 (Nacharbeit 5): ein Konflikt ohne Arbeitsart wird VOR der typabhängigen Bearbeitung
+ * eingeordnet. Bis dahin sind Entscheidung und Zweitmeinung gesperrt; „Kein Widerspruch" bleibt
+ * offen — er verneint den Befund und braucht keine Art der Arbeit.
+ */
+export function einordnungAusstehend(conflict: Pick<Conflict, "arbeitsart" | "status">): boolean {
+  return conflict.status !== "geloest" && !conflict.arbeitsart;
+}
+
+/**
+ * R-0263 (Nacharbeit 5): Klaras Vorschlag Widerspruch/Präzisierung als Satzschlüssel samt der
+ * spezielleren Seite. `null`, wenn es keinen Vorschlag gibt (manuell angelegt, oder die Prüfung
+ * hat keinen geliefert) — dann wird nichts behauptet.
+ */
+export function klaraVorschlag(
+  conflict: Pick<Conflict, "detector" | "koA" | "koB">,
+): { schluessel: string; seite: "a" | "b" | null; geltungsbereich: string } | null {
+  const v = conflict.detector?.vorschlag;
+  if (!v) {
+    return null;
+  }
+  if (v.art === "praezisierung" && v.spezieller) {
+    return {
+      schluessel: "konfliktarbeit.vorschlag.praezisierung",
+      seite: v.spezieller === conflict.koA ? "a" : "b",
+      geltungsbereich: v.geltungsbereich ?? "",
+    };
+  }
+  return { schluessel: "konfliktarbeit.vorschlag.widerspruch", seite: null, geltungsbereich: "" };
 }

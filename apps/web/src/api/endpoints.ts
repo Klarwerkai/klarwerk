@@ -721,6 +721,9 @@ export const endpoints = {
     // Berater-Konzept 04.07. (Stufe 4): „Fehlalarm — kein Widerspruch" schließt den Konflikt.
     dismiss: (id: string, note?: string) =>
       api.post<Conflict>(`/conflicts/${id}/dismiss`, note ? { note } : {}),
+    // R-0252: der Einordnungsweg — Arbeitsart eines noch nicht eingeordneten Konflikts festlegen.
+    einordnen: (id: string, arbeitsart: ConflictWorkKind) =>
+      api.post<Conflict>(`/conflicts/${id}/arbeitsart`, { arbeitsart }),
     // R-0263: der festgelegte Vorrang am einzelnen Punkt (`koId` = Wissensobjekt).
     vorrang: (koId: string) => api.get<VorrangAmPunkt[]>(`/conflicts/vorrang/${koId}`),
   },

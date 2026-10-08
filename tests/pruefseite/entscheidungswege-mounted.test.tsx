@@ -126,6 +126,8 @@ const KONFLIKT = {
   koA: "ko-a",
   koB: "ko-b",
   type: "truth",
+  // R-0252 (Nacharbeit 5): bereits eingeordnet — ohne Arbeitsart wären die Entscheidungen gesperrt.
+  arbeitsart: "sache",
   description: "Widerspruch",
   status: "eskaliert",
   secondOpinion: null,

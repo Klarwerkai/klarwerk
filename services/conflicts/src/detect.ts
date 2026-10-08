@@ -3,7 +3,7 @@
 // Diese Datei entscheidet NUR aus Texten + einem bereits vorliegenden Modellurteil, ob und welcher
 // Konflikt entsteht. Der Modellaufruf (Reasoner „Konfliktprüfung") und die Verdrahtung an KO-
 // Ereignisse leben außerhalb (App-Composition-Root, injizierter judge-Callback).
-import type { ConflictType, ConflictWorkKind, Kollision } from "./types";
+import type { ConflictType, ConflictWorkKind, KlaraVorschlag, Kollision } from "./types";
 
 // K0-2: Erkennungs-Gegenstand ist der Kerntext eines Beitrags (nicht das volle bodyHtml).
 export interface DetectSubject {
@@ -45,6 +45,37 @@ export interface ConflictVerdict {
   // (zwei interne Festlegungen, keine Quelle entscheidet) oder „sache" (durch Belege entscheidbar).
   // Optional: fehlt sie, bleibt die Arbeitsart unbestimmt — sie wird NICHT aus der Relation geraten.
   arbeit?: "regel" | "sache";
+  // R-0263: Klaras Vorschlag Widerspruch/Präzisierung — Seiten als „a"/„b" (s. `vorschlagAusUrteil`).
+  vorschlag?: {
+    art: "widerspruch" | "praezisierung";
+    spezieller?: "a" | "b";
+    geltungsbereich?: string;
+  };
+}
+
+/**
+ * R-0263: Klaras Vorschlag aus dem Urteil auf die zwei Punkte abbilden — „a" ist der geprüfte
+ * Beitrag, „b" der Kandidat. Nur ein vollständiger Präzisierungsvorschlag (Seite UND Bereich) wird
+ * übernommen; alles andere bleibt ein schlichter Widerspruchsvorschlag oder gar keiner.
+ */
+export function vorschlagAusUrteil(
+  verdict: ConflictVerdict,
+  koA: string,
+  koB: string,
+): KlaraVorschlag | undefined {
+  const v = verdict.vorschlag;
+  if (verdict.relation !== "widerspruch" || !v) {
+    return undefined;
+  }
+  const bereich = (v.geltungsbereich ?? "").trim();
+  if (v.art === "praezisierung" && (v.spezieller === "a" || v.spezieller === "b") && bereich) {
+    return {
+      art: "praezisierung",
+      spezieller: v.spezieller === "a" ? koA : koB,
+      geltungsbereich: bereich,
+    };
+  }
+  return v.art === "widerspruch" ? { art: "widerspruch" } : undefined;
 }
 
 // K0-2: Kerntext aus title + statement + conditions + measures (trägt die prüfbare Aussage).

@@ -9,6 +9,7 @@ import {
   coreText,
   decideFromVerdict,
   selectCandidates,
+  vorschlagAusUrteil,
 } from "./detect";
 import type { ConflictRepo } from "./repo";
 import {
@@ -18,8 +19,10 @@ import {
   type ConflictInput,
   type ConflictResolutionReason,
   type ConflictType,
+  type ConflictWorkKind,
   type KonfliktVorrang,
   type VorrangWahl,
+  isConflictWorkKind,
 } from "./types";
 import {
   type CurrentVersionLookup,
@@ -241,6 +244,27 @@ export class ConflictService {
       action: "conflict.escalated",
       target: id,
       payload: { koIds: [conflict.koA, conflict.koB] },
+    });
+    return saved;
+  }
+
+  // R-0252 (Nacharbeit 5, Ben): der EINORDNUNGSWEG. Ein Konflikt ohne Arbeitsart (Altbestand, die
+  // widersprechende Ablehnung R-0238, oder ein Befund, den die Prüfung nicht eingeordnet hat) wird
+  // von einer befugten Person als Regel-, Sach- oder Versionskonflikt eingeordnet. Die Einordnung
+  // wird gespeichert und protokolliert; danach bietet die Konfliktseite die passenden Aktionen an.
+  // Nur an nicht gelösten Konflikten; eine vorhandene Einordnung darf korrigiert werden — die
+  // Prüfung kann sich irren, die Person ordnet ein.
+  async einordnen(id: string, arbeitsart: ConflictWorkKind, actor = "system"): Promise<Conflict> {
+    const conflict = await this.requireOpen(id);
+    if (!isConflictWorkKind(arbeitsart)) {
+      throw new ConflictError("VALIDATION", "Arbeitsart muss regel, sache oder version sein.");
+    }
+    const saved = await this.save({ ...conflict, arbeitsart });
+    await this.audit?.record({
+      actor,
+      action: "conflict.classified",
+      target: id,
+      payload: { koIds: [conflict.koA, conflict.koB], arbeitsart },
     });
     return saved;
   }
@@ -485,6 +509,7 @@ export class ConflictService {
       }
       // Stufe 4: Herkunfts-/Erkennungs-Metadaten mitschreiben (Board zeigt „Automatisch erkannt ·
       // Sicherheit % · Begründung + Zitate"). modelLabel optional (vom Aufrufer, sonst weglassen).
+      const vorschlag = vorschlagAusUrteil(verdict, subject.refId, cand.refId);
       const detector: ConflictDetector = {
         trigger: "validation",
         method: "model",
@@ -495,6 +520,8 @@ export class ConflictService {
         ...(options.modelLabel ? { modelLabel: options.modelLabel } : {}),
         // SCRUM-492: strukturierte Kollisionsfelder mitschreiben (Board-Kacheln), wenn vorhanden.
         ...(verdict.kollision ? { kollision: verdict.kollision } : {}),
+        // R-0263: Klaras Vorschlag Widerspruch/Präzisierung, auf die zwei Punkte abgebildet.
+        ...(vorschlag ? { vorschlag } : {}),
       };
       // D-AISTATE PAKET 4 (bens V5, aistate-fix5): versions-konditionale Aktivierung — Umfang und
       // ehrliche Grenze der Absicherung s. createAutoVersionBound.

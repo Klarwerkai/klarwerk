@@ -20,10 +20,15 @@ import {
   conflictNextStep,
   conflictWorkActions,
   conflictWorkKind,
+  einordnungAusstehend,
   eskalationAusstehend,
+  klaraVorschlag,
+  naechsterSchrittSchluessel,
   vorrangAmPunkt,
 } from "../../apps/web/src/lib/conflictView";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { redigiereKonflikt } from "../../services/app/src/sichtbarkeit";
+import { AuditService, InMemoryAuditRepo } from "../../services/audit";
 import {
   ConflictService,
   type ConflictType,
@@ -33,6 +38,7 @@ import {
   isConflictWorkKind,
   isVorrangWahl,
 } from "../../services/conflicts";
+import { vorschlagAusUrteil } from "../../services/conflicts/src/detect";
 import { parseConflictResponse } from "../../services/reasoner";
 
 const ARTEN: readonly ConflictType[] = ["truth", "experience", "context", "temporal", "role"];
@@ -388,7 +394,10 @@ describe("R-0252 · Arbeitsart unabhängig von der Konfliktart", () => {
     expect(conflictNextStep({ type: "experience", status: "offen", arbeitsart: "sache" })).toBe(
       "secondOpinion",
     );
-    expect(conflictNextStep({ type: "context", status: "offen" })).toBe("secondOpinion");
+    // Nacharbeit 5: ohne Arbeitsart ist der nächste Schritt das Einordnen.
+    expect(conflictNextStep({ type: "context", status: "offen" })).toBe("classify");
+    expect(naechsterSchrittSchluessel("classify")).toBe("konfliktarbeit.next.einordnen");
+    expect(naechsterSchrittSchluessel("resolve")).toBe("con.next.resolve");
     // Ein Regelkonflikt der Art „truth“ eskaliert zuerst (R-0215) und wird dann entschieden.
     expect(conflictNextStep({ type: "truth", status: "offen", arbeitsart: "regel" })).toBe(
       "escalate",
@@ -396,6 +405,136 @@ describe("R-0252 · Arbeitsart unabhängig von der Konfliktart", () => {
     expect(conflictNextStep({ type: "truth", status: "eskaliert", arbeitsart: "regel" })).toBe(
       "resolve",
     );
+  });
+
+  it("Einordnungsweg am Dienst: ein nicht eingeordneter Konflikt wird gespeichert eingeordnet und protokolliert", async () => {
+    const repo = new InMemoryConflictRepo();
+    const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+    const service = new ConflictService({ repo, audit });
+    const c = await service.create({ koA: "A", koB: "B", type: "truth", description: "x" }, "m");
+    expect(einordnungAusstehend(c)).toBe(true);
+
+    const eingeordnet = await service.einordnen(c.id, "regel", "controller");
+    expect(eingeordnet.arbeitsart).toBe("regel");
+    // Gespeichert — zurückgelesen, nicht am Rückgabewert.
+    const gelesen = await service.get(c.id);
+    expect(gelesen?.arbeitsart).toBe("regel");
+    expect(einordnungAusstehend(gelesen ?? c)).toBe(false);
+    // Danach das passende Band: Regelkonflikt ohne Zweitmeinung.
+    expect(conflictWorkActions(conflictWorkKind(gelesen ?? {}).kind).zweitmeinung).toBe(false);
+
+    const beleg = (await audit.list()).find((e) => e.action === "conflict.classified");
+    expect(beleg?.actor).toBe("controller");
+    expect(beleg?.payload).toEqual({ koIds: ["A", "B"], arbeitsart: "regel" });
+
+    // Ein gelöster Konflikt wird nicht mehr eingeordnet.
+    const k = await service.create({ koA: "A", koB: "B", type: "context", description: "y" });
+    await service.resolve(k.id, "m", "entschieden");
+    await expect(service.einordnen(k.id, "sache", "m")).rejects.toMatchObject({
+      code: "ALREADY_RESOLVED",
+    });
+  });
+
+  it("Einordnungsweg über die echte Route: 200 und gespeichert; fremder Wert 400", async () => {
+    const { app, headers, koA, koB } = await adminApp();
+    const angelegt = await konfliktAnlegen(app, headers, koA, koB, "context");
+    const url = `/api/conflicts/${angelegt.id}/arbeitsart`;
+    const schlecht = await app.inject({
+      method: "POST",
+      url,
+      headers,
+      payload: { arbeitsart: "x" },
+    });
+    expect(schlecht.statusCode).toBe(400);
+    const gut = await app.inject({
+      method: "POST",
+      url,
+      headers,
+      payload: { arbeitsart: "version" },
+    });
+    expect(gut.statusCode, gut.body).toBe(200);
+    const lesen = `/api/conflicts/${angelegt.id}`;
+    const detail = await app.inject({ method: "GET", url: lesen, headers });
+    expect(detail.json().arbeitsart).toBe("version");
+  });
+});
+
+describe("R-0263 · Klaras Vorschlag Widerspruch / Präzisierung", () => {
+  it("die Konfliktprüfung liefert den Vorschlag nur vollständig und nur bei „widerspruch“", () => {
+    const basis = '"older":null,"confidence":0.9,"begruendung":"x","zitat_a":"a","zitat_b":"b"';
+    const urteil = (relation: string, vorschlag: string) =>
+      parseConflictResponse(`{"relation":"${relation}",${basis},"vorschlag":${vorschlag}}`);
+    const praez = '{"art":"praezisierung","spezieller":"b","geltungsbereich":" Bolzen X "}';
+    expect(urteil("widerspruch", praez)?.vorschlag).toEqual({
+      art: "praezisierung",
+      spezieller: "b",
+      geltungsbereich: "Bolzen X",
+    });
+    expect(urteil("widerspruch", '{"art":"widerspruch","spezieller":null}')?.vorschlag).toEqual({
+      art: "widerspruch",
+    });
+    // Unvollständige Präzisierung, fremde Art, falsche Relation → kein Vorschlag.
+    expect(urteil("widerspruch", '{"art":"praezisierung","spezieller":"b"}')?.vorschlag).toBe(
+      undefined,
+    );
+    expect(urteil("widerspruch", '{"art":"vielleicht"}')?.vorschlag).toBeUndefined();
+    expect(urteil("ueberholt", praez)?.vorschlag).toBeUndefined();
+  });
+
+  it("die Erkennung legt den Vorschlag am Befund ab — die speziellere Seite als Kennung, offen und ohne Vorrang", async () => {
+    const { service } = dienst();
+    const { a, b, verdict } = erkennung({
+      vorschlag: { art: "praezisierung", spezieller: "b", geltungsbereich: "Bolzen X" },
+    });
+    const [c] = await service.detectForSubject(a, [a, b], async () => verdict);
+    expect(c?.detector?.vorschlag).toEqual({
+      art: "praezisierung",
+      spezieller: "B",
+      geltungsbereich: "Bolzen X",
+    });
+    // Ein Vorschlag entscheidet nichts.
+    expect(c?.status).toBe("offen");
+    expect(c?.vorrang).toBeUndefined();
+    expect(vorschlagAusUrteil({ ...verdict, relation: "ueberholt" }, "A", "B")).toBeUndefined();
+  });
+
+  it("die Oberfläche liest den Vorschlag mit Seite und Bereich; ohne Vorschlag behauptet sie nichts", () => {
+    const vorschlag = {
+      art: "praezisierung" as const,
+      spezieller: "B",
+      geltungsbereich: "Bolzen X",
+    };
+    const mitVorschlag = {
+      koA: "A",
+      koB: "B",
+      detector: { trigger: "validation" as const, method: "model" as const, vorschlag },
+    };
+    expect(klaraVorschlag(mitVorschlag)).toEqual({
+      schluessel: "konfliktarbeit.vorschlag.praezisierung",
+      seite: "b",
+      geltungsbereich: "Bolzen X",
+    });
+    expect(klaraVorschlag({ koA: "A", koB: "B" })).toBeNull();
+  });
+
+  it("Redaktion leert den vorgeschlagenen Geltungsbereich wie die Begründung", () => {
+    const konflikt = {
+      koA: "A",
+      koB: "B",
+      description: "geheim",
+      detector: {
+        rationale: "geheim",
+        quotes: { a: "x", b: "y" },
+        vorschlag: { art: "praezisierung", spezieller: "B", geltungsbereich: "Bolzen X" },
+      },
+    };
+    const sicht = redigiereKonflikt(konflikt, { a: true, b: false });
+    expect(sicht.detector?.vorschlag).toEqual({
+      art: "praezisierung",
+      spezieller: "B",
+      geltungsbereich: "",
+    });
+    expect(redigiereKonflikt(konflikt, { a: true, b: true })).toBe(konflikt);
   });
 });
 

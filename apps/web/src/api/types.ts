@@ -831,6 +831,13 @@ export interface ConflictDetector {
   quotes?: { a: string; b: string };
   // SCRUM-492: optionale strukturierte Gegenüberstellung für die Kollisions-Kacheln.
   kollision?: Kollision;
+  // R-0263: Klaras Vorschlag Widerspruch/Präzisierung — Spiegel von services/conflicts (`spezieller`
+  // ist die Kennung des engeren Punkts). Ein Vorschlag, keine Entscheidung.
+  vorschlag?: {
+    art: "widerspruch" | "praezisierung";
+    spezieller?: string;
+    geltungsbereich?: string;
+  };
 }
 
 export interface Conflict {

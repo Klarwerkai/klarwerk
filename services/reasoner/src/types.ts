@@ -511,6 +511,18 @@ export interface ConflictJudgeResult {
   // R-0252 (Aufnahme gesamt-konfliktklassifikation): nur bei „widerspruch" — welche Arbeit vorliegt:
   // „regel" (zwei interne Festlegungen) oder „sache" (durch Belege entscheidbar). Fehlt = offen.
   arbeit?: "regel" | "sache";
+  // R-0263: nur bei „widerspruch" — Klaras VORSCHLAG, ob B die Aussage A wirklich bestreitet
+  // („widerspruch") oder sie nur für einen engeren Geltungsbereich genauer festlegt
+  // („praezisierung", dann mit der spezielleren Seite und dem Geltungsbereich). Ein Vorschlag, keine
+  // Entscheidung: entschieden wird auf der Konfliktseite von einer befugten Person.
+  vorschlag?: KlaraVorschlagUrteil;
+}
+
+/** R-0263: Klaras Vorschlag im Urteil — Seiten als „a"/„b" (der Erkennungskern bildet sie auf Kennungen ab). */
+export interface KlaraVorschlagUrteil {
+  art: "widerspruch" | "praezisierung";
+  spezieller?: "a" | "b";
+  geltungsbereich?: string;
 }
 
 // WP-SHIP8-CLOSE (bens F1): schmaler Ergebnis-Vertrag der Judge-Flächen — der AUSGANG wird

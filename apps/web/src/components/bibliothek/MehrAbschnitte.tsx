@@ -301,8 +301,8 @@ const CONFLICT_TYPES: readonly ConflictType[] = [
   "role",
 ];
 
-// R-0252: die wählbaren Arbeitsarten. Die leere Wahl („Nicht einordnen") schickt kein Feld — die
-// Konfliktseite sagt dann „nicht bestimmt" und rät nichts aus der Konfliktart.
+// R-0252: die wählbaren Arbeitsarten. Seit Nacharbeit 5 ist die Wahl PFLICHT: ohne sie bleibt
+// „Konflikt eröffnen" gesperrt — die Arbeitsart steht damit fest, bevor bearbeitet wird.
 const CONFLICT_WORK_KINDS: readonly ConflictWorkKind[] = ["regel", "sache", "version"];
 
 const textareaCls =
@@ -1316,7 +1316,11 @@ export function MehrAbschnitte({
                 }
                 className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
               >
-                <option value="">{t("konfliktarbeit.feld.offen")}</option>
+                {/* R-0252 (Nacharbeit 5): Pflichtwahl — der Platzhalter ist nicht wählbar, und
+                    „Konflikt eröffnen" bleibt gesperrt, bis eine Arbeitsart gewählt ist. */}
+                <option value="" disabled>
+                  {t("konfliktarbeit.feld.offen")}
+                </option>
                 {CONFLICT_WORK_KINDS.map((wk) => (
                   <option key={wk} value={wk}>
                     {t(`konfliktarbeit.name.${wk}`)}
@@ -1334,7 +1338,7 @@ export function MehrAbschnitte({
             </Field>
             <Button
               variant="primary"
-              disabled={report.isPending || !conflict.koB}
+              disabled={report.isPending || !conflict.koB || !conflict.arbeitsart}
               onClick={() => report.mutate()}
             >
               {t("ko.conflictSubmit")}

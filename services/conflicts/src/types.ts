@@ -126,6 +126,20 @@ export interface ConflictDetector {
   quotes?: { a: string; b: string };
   // SCRUM-492: strukturierte Gegenüberstellung für die Board-Kacheln (optional, additiv).
   kollision?: Kollision;
+  // R-0263: Klaras VORSCHLAG Widerspruch/Präzisierung (optional, additiv). Er entscheidet nichts —
+  // die Vorrang-Wahl samt Geltungsbereich trifft die befugte Person bei der Entscheidung.
+  vorschlag?: KlaraVorschlag;
+}
+
+/**
+ * R-0263: Klaras Vorschlag am Befund. `spezieller` ist hier die KENNUNG des engeren Punkts (nicht
+ * „a"/„b" des Modellurteils). Der vorgeschlagene Geltungsbereich ist Modelltext über den Inhalt und
+ * wird bei Redaktion geleert wie `rationale` (services/app/src/sichtbarkeit.ts `redigiereKonflikt`).
+ */
+export interface KlaraVorschlag {
+  art: "widerspruch" | "praezisierung";
+  spezieller?: string;
+  geltungsbereich?: string;
 }
 
 export interface Conflict {

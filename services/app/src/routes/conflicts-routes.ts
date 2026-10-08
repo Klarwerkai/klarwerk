@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { type ConflictService, isCompleteRun } from "../../../conflicts";
+import { type ConflictService, isCompleteRun, isConflictWorkKind } from "../../../conflicts";
 import type { AiCheck } from "../../../knowledge-object";
 import {
   type BefundPaar,
@@ -308,6 +308,32 @@ export function conflictRoutes(
         sendError(reply, error);
       }
     });
+
+    // R-0252 (Aufnahme gesamt-konfliktklassifikation, Nacharbeit 5): der Einordnungsweg. Eine
+    // befugte Person ordnet einen Konflikt als Regel-, Sach- oder Versionskonflikt ein — dasselbe
+    // Recht wie Eskalieren und Entscheiden. Die Form wird hier geprüft, der Rest im Dienst.
+    app.post<{ Params: { id: string }; Body: { arbeitsart?: unknown } | null }>(
+      "/api/conflicts/:id/arbeitsart",
+      async (request, reply) => {
+        const user = await guards.requirePermission("conflict.resolve", request, reply);
+        if (!user) {
+          return;
+        }
+        const arbeitsart = request.body?.arbeitsart;
+        if (!isConflictWorkKind(arbeitsart)) {
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: "arbeitsart muss eines von regel, sache, version sein.",
+          });
+          return;
+        }
+        try {
+          reply.code(200).send(await conflicts.einordnen(request.params.id, arbeitsart, user.id));
+        } catch (error) {
+          sendError(reply, error);
+        }
+      },
+    );
 
     // Berater-Konzept 04.07. (Stufe 4): „Fehlalarm — kein Widerspruch" schließt einen (meist
     // automatisch erkannten) Konflikt bewusst als falsch-positiv. Menschlicher Entscheider (⚑).

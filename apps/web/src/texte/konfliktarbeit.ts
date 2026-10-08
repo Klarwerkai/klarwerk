@@ -21,7 +21,17 @@ export default {
     "konfliktarbeit.satz.version":
       "Versionskonflikt: dieselbe Sache in zwei Ständen — zu klären ist, welcher Stand gilt.",
     "konfliktarbeit.satz.offen":
-      "Art der Arbeit nicht bestimmt: dieser Befund ist weder als Regel-, Sach- noch als Versionskonflikt eingeordnet. Alle Entscheidungswege stehen offen.",
+      "Noch nicht eingeordnet: ob ein Regel-, Sach- oder Versionskonflikt vorliegt, legt eine befugte Person fest, bevor entschieden wird.",
+    "konfliktarbeit.einordnen.regel": "Als Regelkonflikt einordnen",
+    "konfliktarbeit.einordnen.sache": "Als Sachkonflikt einordnen",
+    "konfliktarbeit.einordnen.version": "Als Versionskonflikt einordnen",
+    "konfliktarbeit.einordnung.zuerst":
+      "Erst einordnen: je nach Art der Arbeit stehen andere Entscheidungen offen.",
+    "konfliktarbeit.next.einordnen": "Als Regel-, Sach- oder Versionskonflikt einordnen.",
+    "konfliktarbeit.vorschlag.widerspruch":
+      "Klaras Vorschlag: ein Widerspruch — eine Aussage überstimmt die andere. Entscheiden müssen Sie.",
+    "konfliktarbeit.vorschlag.praezisierung":
+      "Klaras Vorschlag: eine Präzisierung — „{{title}}“ legt es für den Geltungsbereich „{{bereich}}“ genauer fest, die andere Aussage bleibt außerhalb davon gültig. Entscheiden müssen Sie.",
     "konfliktarbeit.gewaehlt": "Bei der Anlage so eingeordnet.",
     "konfliktarbeit.erkannt": "Von der Konfliktprüfung so eingeordnet.",
     "konfliktarbeit.knopf.standLinks": "Linker Stand gilt",
@@ -29,7 +39,7 @@ export default {
     "konfliktarbeit.eskalation.zuerst":
       "Ein Wahrheitskonflikt wird zuerst an einen Menschen eskaliert. Danach stehen Zweitmeinung und Entscheidung offen.",
     "konfliktarbeit.feld": "Art der Arbeit",
-    "konfliktarbeit.feld.offen": "Nicht einordnen",
+    "konfliktarbeit.feld.offen": "Art der Arbeit wählen …",
     "konfliktarbeit.name.regel": "Regelkonflikt — nur eine befugte Person entscheidet",
     "konfliktarbeit.name.sache": "Sachkonflikt — durch Belege entscheidbar",
     "konfliktarbeit.name.version": "Versionskonflikt — dieselbe Sache, zwei Stände",
@@ -60,7 +70,17 @@ export default {
     "konfliktarbeit.satz.version":
       "Version conflict: the same thing in two states — the question is which state applies.",
     "konfliktarbeit.satz.offen":
-      "Kind of work not determined: this finding is classified neither as a rule, factual nor version conflict. All ways of deciding remain open.",
+      "Not classified yet: whether this is a rule, factual or version conflict is set by an authorised person before deciding.",
+    "konfliktarbeit.einordnen.regel": "Classify as rule conflict",
+    "konfliktarbeit.einordnen.sache": "Classify as factual conflict",
+    "konfliktarbeit.einordnen.version": "Classify as version conflict",
+    "konfliktarbeit.einordnung.zuerst":
+      "Classify first: depending on the kind of work, different decisions are available.",
+    "konfliktarbeit.next.einordnen": "Classify as a rule, factual or version conflict.",
+    "konfliktarbeit.vorschlag.widerspruch":
+      "Klara suggests: a contradiction — one statement overrules the other. The decision is yours.",
+    "konfliktarbeit.vorschlag.praezisierung":
+      "Klara suggests: a refinement — “{{title}}” specifies it for the scope “{{bereich}}”, the other statement stays valid outside of it. The decision is yours.",
     "konfliktarbeit.gewaehlt": "Classified this way when it was reported.",
     "konfliktarbeit.erkannt": "Classified this way by the conflict check.",
     "konfliktarbeit.knopf.standLinks": "Left state applies",
@@ -68,7 +88,7 @@ export default {
     "konfliktarbeit.eskalation.zuerst":
       "A truth conflict is first escalated to a person. After that, second opinion and decision are open.",
     "konfliktarbeit.feld": "Kind of work",
-    "konfliktarbeit.feld.offen": "Do not classify",
+    "konfliktarbeit.feld.offen": "Choose the kind of work …",
     "konfliktarbeit.name.regel": "Rule conflict — only an authorised person decides",
     "konfliktarbeit.name.sache": "Factual conflict — can be settled by evidence",
     "konfliktarbeit.name.version": "Version conflict — the same thing, two states",
@@ -98,7 +118,17 @@ export default {
     "konfliktarbeit.satz.version":
       "Versieconflict: dezelfde zaak in twee stadia — te verduidelijken is welk stadium geldt.",
     "konfliktarbeit.satz.offen":
-      "Soort werk niet bepaald: deze bevinding is niet ingedeeld als regel-, inhoudelijk of versieconflict. Alle beslissingswegen blijven open.",
+      "Nog niet ingedeeld: of het een regel-, inhoudelijk of versieconflict is, legt een bevoegde persoon vast voordat er beslist wordt.",
+    "konfliktarbeit.einordnen.regel": "Indelen als regelconflict",
+    "konfliktarbeit.einordnen.sache": "Indelen als inhoudelijk conflict",
+    "konfliktarbeit.einordnen.version": "Indelen als versieconflict",
+    "konfliktarbeit.einordnung.zuerst":
+      "Eerst indelen: afhankelijk van de soort werk staan andere beslissingen open.",
+    "konfliktarbeit.next.einordnen": "Indelen als regel-, inhoudelijk of versieconflict.",
+    "konfliktarbeit.vorschlag.widerspruch":
+      "Voorstel van Klara: een tegenstrijdigheid — de ene uitspraak overstemt de andere. U beslist.",
+    "konfliktarbeit.vorschlag.praezisierung":
+      "Voorstel van Klara: een verfijning — ‘{{title}}’ legt het nauwkeuriger vast voor het toepassingsgebied ‘{{bereich}}’, de andere uitspraak blijft daarbuiten geldig. U beslist.",
     "konfliktarbeit.gewaehlt": "Bij het melden zo ingedeeld.",
     "konfliktarbeit.erkannt": "Door de conflictcontrole zo ingedeeld.",
     "konfliktarbeit.knopf.standLinks": "Linker stadium geldt",
@@ -106,7 +136,7 @@ export default {
     "konfliktarbeit.eskalation.zuerst":
       "Een waarheidsconflict wordt eerst naar een mens geëscaleerd. Daarna staan tweede mening en beslissing open.",
     "konfliktarbeit.feld": "Soort werk",
-    "konfliktarbeit.feld.offen": "Niet indelen",
+    "konfliktarbeit.feld.offen": "Soort werk kiezen …",
     "konfliktarbeit.name.regel": "Regelconflict — alleen een bevoegde persoon beslist",
     "konfliktarbeit.name.sache": "Inhoudelijk conflict — met bewijs te beslissen",
     "konfliktarbeit.name.version": "Versieconflict — dezelfde zaak, twee stadia",

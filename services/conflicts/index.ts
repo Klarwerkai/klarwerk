@@ -15,6 +15,7 @@ export type {
   Conflict,
   ConflictType,
   ConflictWorkKind,
+  KlaraVorschlag,
   KonfliktVorrang,
   VorrangArt,
   VorrangWahl,
