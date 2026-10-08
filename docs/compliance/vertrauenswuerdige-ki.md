@@ -44,8 +44,11 @@ gesondert in `docs/compliance/unterrichtung-artikel-4.md`.
 | Jede Antwort mit ihren Quellen; ohne Quelle keine „belegte" Antwort (NFR-TAI-01) | Quellenpflicht im Frageweg | `services/ask/src/service.ts` |
 | Dass externer KI-Verkehr nur über die bewachten Clients läuft | Architekturwächter | `tests/security/egress-chokepoint.test.ts` |
 
-## Offene Punkte, die dieses Dokument nicht schliesst
+## Sichtbarkeit der Freigabe für alle Nutzer
 
-Benannt in `docs/entscheidungen/gesamt-ki-freigaberegeln.md`: die zweite Freigabe für vertrauliche Inhalte
-wirkt in der Produktionsverdrahtung noch nicht bis zum Anbieter, und die Kopfzeilenanzeige
-„Extern: Blockiert" gibt es nicht.
+Der wirksame Stand der zentralen Adminfreigabe steht über der Kopfzeile („Extern: Blockiert" /
+„Extern: Freigegeben" / „… auch Vertrauliches"): `apps/web/src/shell/ExternStatus.tsx`, gemessen in
+`tests/ki-freigaberegeln/extern-kopfzeile.test.tsx`. Dass die zweite Freigabe bis zum Anbieter wirkt und
+eine fehlende Dokumentzustimmung trotzdem sperrt, misst
+`tests/admin-ki-freigabe/vertrauliche-freigabe-bis-zum-anbieter.test.ts`. Offene Belege nennt
+`docs/entscheidungen/gesamt-ki-freigaberegeln.md`.

@@ -239,6 +239,24 @@ export interface ModellAufrufSpur {
    * hinaus. Fehlt sie, ändert sich nichts.
    */
   vorUebertragung?: () => void;
+  /**
+   * Auftrag gesamt-ki-freigaberegeln (P-ADMIN-KI-FREIGABE, Ben Nacharbeit 2): Der Lauf hat für DIESEN
+   * Versuch entschieden, dass als vertraulich eingestufter Text an diesen externen Anbieter darf. Das
+   * gilt nur, wenn beide zentralen Adminfreigaben stehen (`Reasoner.oeffentlicheKiErlaubt(true)`) und
+   * der Anbieter in der Kette dieser Anfrage zugelassen ist (Klara-Bindung, `anbieterZugelassen`).
+   * Gesetzt ausschliesslich vom Reasoner (`runTask`, `Laufbuch`). Fehlt der Merker, weist der
+   * Chokepoint Vertrauliches ab wie bisher.
+   */
+  vertraulichFreigegeben?: boolean;
+}
+
+/**
+ * Darf der laufende Versuch vertraulichen Text an einen externen Client geben? Nur, wenn der Reasoner
+ * es für genau diesen Versuch vermerkt hat UND die Zustimmungen der Anfrage noch tragen. Ohne Lauf-
+ * Kontext (Probe, completeRaw, direkte Client-Nutzung) nie.
+ */
+function vertraulicheUebertragungFreigegeben(): boolean {
+  return modellAufrufSpur.getStore()?.vertraulichFreigegeben === true && zustimmungenTragen();
 }
 
 // DIE EINZIGE STELLE, DIE ZWEI VERBRÄUCHE ZU EINEM ADDIERT. `runTask` braucht sie über die
@@ -408,7 +426,9 @@ export function cappedModelClient(
     // `model: undefined`-Feld wäre eine Angabe, die keine ist.
     ...(inner.model ? { model: inner.model } : {}),
     complete: (system: string, user: string, confidential: boolean, maxTokens?: number) => {
-      if (opts.rejectsConfidential && confidential) {
+      // gesamt-ki-freigaberegeln: die zentrale Freigabe für Vertrauliches wirkt bis hierher — aber
+      // nur über den Merker, den der Reasoner je Versuch setzt; die Einstufung selbst bleibt `true`.
+      if (opts.rejectsConfidential && confidential && !vertraulicheUebertragungFreigegeben()) {
         return Promise.reject(new ConfidentialEgressError());
       }
       return mitAusgangspruefung(
@@ -439,7 +459,11 @@ export function cappedModelClient(
             confidential: boolean,
             maxTokens?: number,
           ) => {
-            if (opts.rejectsConfidential && confidential) {
+            if (
+              opts.rejectsConfidential &&
+              confidential &&
+              !vertraulicheUebertragungFreigegeben()
+            ) {
               return Promise.reject(new ConfidentialEgressError());
             }
             // R-1646: das Bild selbst wird nicht anonymisiert — die Vorschau sagt das ausdrücklich.

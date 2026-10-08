@@ -10,7 +10,7 @@
       "dateien": ["services/reasoner/src/model-client.ts"],
       "hosts": ["api.anthropic.com"],
       "umgebung": [],
-      "freigabe": "Zentrale Adminfreigabe (Reasoner.oeffentlicheKiErlaubt); Vertrauliches zusaetzlich die zweite Freigabe; Chokepoint cappedModelClient mit rejectsConfidential: true"
+      "freigabe": "Zentrale Adminfreigabe (Reasoner.oeffentlicheKiErlaubt); Vertrauliches zusaetzlich die zweite Freigabe, am Chokepoint cappedModelClient (rejectsConfidential: true) nur mit dem Merker des Laufs (ModellAufrufSpur.vertraulichFreigegeben); Klara-Bindung ohne Zustimmung sperrt immer"
     },
     {
       "kennung": "ki-openai",
@@ -34,7 +34,7 @@
       "dateien": ["services/media/src/transcriber.ts"],
       "hosts": ["api.openai.com"],
       "umgebung": [],
-      "freigabe": "Zentrale Adminfreigabe (MediaAnalysisDeps.zentralFreigegeben); vertrauliche Medien nie (mediaIsConfidential, Chokepoint cappedTranscriber)"
+      "freigabe": "Zentrale Adminfreigabe (MediaAnalysisDeps.zentralFreigegeben); vertrauliche Medien nur mit der zweiten Freigabe (MediaAnalysisDeps.vertraulichFreigegeben, Chokepoint cappedTranscriber fragt dieselbe Entscheidung)"
     },
     {
       "kennung": "wissenssuche-wikipedia",

@@ -19,10 +19,16 @@
 // ZWEI FREIGABESTUFEN, DIESELBEN FÄLLE:
 //   · nur die GRUNDFREIGABE — ein vertraulicher Aufruf verliert die Cloud schon in der Kette des
 //     Reasoners; die Ursache heißt dann `confidential`.
-//   · BEIDE zentralen Freigaben — dann steht die Cloud auch für Vertrauliches in der Kette, und
-//     allein der harte Wrapper am Client (`ConfidentialEgressError`) hält den Aufruf auf. Die
-//     Ursache heißt dann `model-error`: ein Modell stand in der Kette und wurde nicht erreicht.
-//     Genau diese Unterscheidung macht den Wrapper zum gemessenen Teil der Gegenprobe.
+//   · BEIDE zentralen Freigaben — NACHGEFÜHRT im Auftrag gesamt-ki-freigaberegeln (Ben Nacharbeit 2,
+//     Pedis Entscheidung vom 10.09.: die zweite Freigabe gilt bis zum Anbieter). Bis dahin hielt
+//     hier allein der harte Wrapper am Client jeden vertraulichen Aufruf auf (`model-error`) — die
+//     Freigabe war im Betrieb wirkungslos. Jetzt gilt getrennt:
+//       – FEHLENDE Zustimmung oder FREMDE Dokumentbindung sperren weiter, und zwar schon im Kettenbau
+//         (`bindeAnbieter(null)` → `anbieterZugelassen`): null Abrufe, Ursache `confidential`
+//         (die Route stuft den ungedeckten Text ein, und die Cloud fiel aus der Kette).
+//       – der gespeichert VERTRAULICHE Entwurf mit Zustimmung und richtiger Bindung geht hinaus —
+//         durch den echten gekapselten Client, weil der Reasoner den Versuch freigegeben hat
+//         (`ModellAufrufSpur.vertraulichFreigegeben`). Mit nur der Grundfreigabe bleibt er gesperrt.
 //
 // WARUM DIESE DATEI HIER LIEGT. Die zweite Freigabe darf außerhalb von `tests/admin-ki-freigabe/`
 // in keiner Testquelle gesetzt werden (Freigabe-Wächter F2 in
@@ -283,7 +289,7 @@ async function aufbauen(stufe: Freigabestufe): Promise<Aufbau> {
 /** Was nach einer Sperre an Ursache erwartet wird — der Unterschied der beiden Stufen. */
 const SPERRURSACHE: Record<Freigabestufe, string> = {
   grund: "confidential",
-  beide: "model-error",
+  beide: "confidential",
 };
 
 /** Beide direkten Wege mit denselben Kopfzeilen und demselben Entwurf: NULL Abrufe. */
@@ -384,9 +390,32 @@ for (const stufe of ["grund", "beide"] as const) {
       await a.app.close();
     });
 
-    it(`K6 · SPERRE (${stufe}): gespeichert vertraulicher Entwurf trotz Zustimmung und richtiger Bindung — null Abrufe`, async () => {
+    // gesamt-ki-freigaberegeln: nur MIT der zweiten Freigabe öffnet sich dieser Fall (s. Kopf).
+    it(`K6 · ${stufe === "beide" ? "POSITIV" : "SPERRE"} (${stufe}): gespeichert vertraulicher Entwurf mit Zustimmung und richtiger Bindung`, async () => {
       const a = await aufbauen(stufe);
       expect(await zustimmen(a.app, a.gebunden)).toBe(200);
+      if (stufe === "beide") {
+        // Durch den ECHTEN gekapselten Client (`rejectsConfidential: true`) bis zum Transport.
+        const s = await structure(a.app, a.gebunden, a.vertraulich);
+        expect(s.status).toBe(200);
+        expect(s.body.demo).toBe(false);
+        expect(s.body.title).toBe(STRUKTUR_TITEL);
+        expect(a.abrufe).toHaveLength(1);
+        expect(a.abrufe[0]?.url).toBe(ANTHROPIC_URL);
+        expect(a.abrufe[0]?.koerper.messages?.[0]?.content).toBe(STRUKTURTEXT);
+        const d = await describeBild(a.app, a.gebunden, a.vertraulich);
+        expect(d.status).toBe(200);
+        expect(d.body.demo).toBe(false);
+        expect(d.body.text).toBe(BILD_ANTWORT);
+        expect(a.abrufe).toHaveLength(2);
+        const freigaben = ka4Zeilen(a.zeilen);
+        expect(freigaben).toHaveLength(2);
+        for (const e of freigaben) {
+          expect(e.entscheidung).toBe("freigegeben");
+        }
+        await a.app.close();
+        return;
+      }
       await beideWegeGesperrt(a, stufe, a.gebunden, a.vertraulich);
       // Das Tor hat FREIGEGEBEN — gesperrt hat die gespeicherte Stufe, nicht die Einwilligung.
       const entscheidungen = ka4Zeilen(a.zeilen);

@@ -70,6 +70,24 @@ export interface MediaAnalysisDeps {
    * Die Vertraulichkeitsregel oben bleibt unverändert davor.
    */
   zentralFreigegeben?: (() => boolean) | undefined;
+  /**
+   * Auftrag gesamt-ki-freigaberegeln (Ben Nacharbeit 2) · DIE ZWEITE ADMINFREIGABE: auch als vertraulich
+   * eingestufte Medien dürfen zur Transkription hinaus. Wie oben nur durchgereicht
+   * (`Reasoner.vertraulicheAusleitungFreigegeben`), nur `true` zählt. Bis hierher sperrte dieser Weg
+   * Vertrauliches unabhängig von der Freigabe — eine eigene Zusatzsperre gegen Pedis Entscheidung vom
+   * 10.09. Die Einstufung selbst (`mediaIsConfidential`) bleibt unverändert und reist bis zum
+   * Chokepoint (`cappedTranscriber`) mit, der dieselbe Freigabe fragt.
+   */
+  vertraulichFreigegeben?: (() => boolean) | undefined;
+}
+
+// Nur `true` zählt; ein Wurf der Auskunft ist keine Erlaubnis.
+function nurWahr(auskunft: (() => boolean) | undefined): boolean {
+  try {
+    return auskunft?.() === true;
+  } catch {
+    return false;
+  }
 }
 
 // SCRUM-382: Analyse eines hochgeladenen Video-/Audio-Objekts. Bewusst schmal:
@@ -82,22 +100,19 @@ export class MediaAnalysisService {
     | ((objectId: string) => Promise<readonly string[]>)
     | undefined;
   private readonly zentralFreigegeben: (() => boolean) | undefined;
+  private readonly vertraulichFreigegeben: (() => boolean) | undefined;
 
   constructor(deps: MediaAnalysisDeps) {
     this.objects = deps.objects;
     this.transcriber = deps.transcriber;
     this.koConfidentiality = deps.koConfidentiality;
     this.zentralFreigegeben = deps.zentralFreigegeben;
+    this.vertraulichFreigegeben = deps.vertraulichFreigegeben;
   }
 
-  // Nur `true` zählt (s. `MediaAnalysisDeps.zentralFreigegeben`). Ein Wurf der Auskunft ist keine
-  // Erlaubnis.
+  // Nur `true` zählt (s. `MediaAnalysisDeps.zentralFreigegeben`).
   private oeffentlicheKiFreigegeben(): boolean {
-    try {
-      return this.zentralFreigegeben?.() === true;
-    } catch {
-      return false;
-    }
+    return nurWahr(this.zentralFreigegeben);
   }
 
   engineInfo(): { active: boolean; engine: string | null } {
@@ -142,7 +157,9 @@ export class MediaAnalysisService {
       requestConfidentiality,
       koLevels,
     );
-    if (confidential) {
+    // gesamt-ki-freigaberegeln: Vertrauliches bleibt ohne die zweite Adminfreigabe drinnen; mit ihr
+    // gilt dieselbe Kette wie für alles andere (Schlüssel, Grundfreigabe, Chokepoint).
+    if (confidential && !nurWahr(this.vertraulichFreigegeben)) {
       // Vertrauliches Medium → kein externer Egress. Ehrlich, wie der Inaktiv-Zustand.
       return {
         objectId,
@@ -185,7 +202,8 @@ export class MediaAnalysisService {
       throw new MediaAnalysisError("ENGINE_FAILED", "Objektdaten sind nicht lesbar.");
     }
     try {
-      // confidential ist hier false (oben geprüft); der cappedTranscriber-Wächter bleibt als Belt.
+      // confidential ist hier false oder durch die zweite Adminfreigabe gedeckt (oben geprüft); der
+      // cappedTranscriber-Wächter fragt dieselbe Freigabe noch einmal (Belt & Suspenders).
       const transcript = await this.transcriber.transcribe(
         decoded.bytes,
         decoded.mime,

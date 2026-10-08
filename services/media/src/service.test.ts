@@ -451,6 +451,88 @@ describe("gesamt-ki-freigaberegeln: Transkription nur mit zentraler Adminfreigab
     expect(result.note).toContain("Vertrauliche");
   });
 
+  // Ben Nacharbeit 2: die ZWEITE Adminfreigabe öffnet auch vertrauliche Medien — mit derselben Kette
+  // dahinter (Grundfreigabe, Chokepoint). Die Einstufung reist unverändert als `true` mit.
+  it("beide Freigaben: ein vertrauliches Medium wird transkribiert, die Einstufung reist mit", async () => {
+    const objects = makeStore();
+    const ref = await objects.put({
+      name: "vertraulich-frei.mp4",
+      mime: "video/mp4",
+      data: videoDataUrl,
+      confidentiality: "vertraulich",
+    });
+    const gesehen: boolean[] = [];
+    const media = new MediaAnalysisService({
+      objects,
+      transcriber: {
+        name: "spy",
+        transcribe: async (_b, _m, _l, confidential) => {
+          gesehen.push(confidential);
+          return "Vertraulicher Mitschnitt.";
+        },
+      },
+      zentralFreigegeben: freigegeben,
+      vertraulichFreigegeben: freigegeben,
+    });
+    const result = await media.analyze(ref.id, "de");
+    expect(result.transcript).toBe("Vertraulicher Mitschnitt.");
+    expect(gesehen).toEqual([true]);
+  });
+
+  it("zweite Freigabe ohne Grundfreigabe ist wirkungslos — nichts geht hinaus", async () => {
+    const objects = makeStore();
+    const ref = await objects.put({
+      name: "vertraulich-halb.mp4",
+      mime: "video/mp4",
+      data: videoDataUrl,
+      confidentiality: "vertraulich",
+    });
+    const spy = makeSpy();
+    const media = new MediaAnalysisService({
+      objects,
+      transcriber: spy.transcriber,
+      zentralFreigegeben: () => false,
+      vertraulichFreigegeben: freigegeben,
+    });
+    const result = await media.analyze(ref.id, "de");
+    expect(spy.wasCalled()).toBe(false);
+    expect(result.note).toContain("nicht freigegeben");
+  });
+
+  it("Chokepoint: cappedTranscriber lässt Vertrauliches nur mit der Freigabeauskunft durch", async () => {
+    let innen = 0;
+    const inner: Transcriber = {
+      name: "cloud",
+      transcribe: async () => {
+        innen += 1;
+        return "x";
+      },
+    };
+    const gesperrt: readonly ((() => boolean) | undefined)[] = [
+      undefined,
+      () => false,
+      () => {
+        throw new Error("nicht lesbar");
+      },
+    ];
+    for (const vertraulichFreigegeben of gesperrt) {
+      const capped = cappedTranscriber(inner, {
+        rejectsConfidential: true,
+        vertraulichFreigegeben,
+      });
+      await expect(
+        capped.transcribe(Buffer.from("x"), "video/mp4", "de", true),
+      ).rejects.toBeInstanceOf(TranscriberConfidentialError);
+    }
+    expect(innen).toBe(0);
+    const frei = cappedTranscriber(inner, {
+      rejectsConfidential: true,
+      vertraulichFreigegeben: () => true,
+    });
+    expect(await frei.transcribe(Buffer.from("x"), "video/mp4", "de", true)).toBe("x");
+    expect(innen).toBe(1);
+  });
+
   it("ohne Schlüssel bleibt der Inaktiv-Zustand unterscheidbar von „nicht freigegeben“", async () => {
     const objects = makeStore();
     const id = await internesVideo(objects);

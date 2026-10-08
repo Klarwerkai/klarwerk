@@ -76,7 +76,7 @@ function transportMitschreiben(): string[] {
   return urls;
 }
 
-async function aufbauen() {
+async function aufbauen(stufe: "intern" | "vertraulich" = "intern") {
   const urls = transportMitschreiben();
   const services = buildServices();
   const app = buildApp(services);
@@ -99,7 +99,7 @@ async function aufbauen() {
       name: "uebergabe.mp4",
       mime: "video/mp4",
       data: `data:video/mp4;base64,${Buffer.from("clip").toString("base64")}`,
-      confidentiality: "intern",
+      confidentiality: stufe,
     },
   });
   expect(put.statusCode).toBe(201);
@@ -139,6 +139,28 @@ describe("gesamt-ki-freigaberegeln · Transkription über die echte Wurzel", () 
 
     // GEGENPROBE IM SELBEN AUFBAU: die Grundfreigabe über den Schreibweg des Kerns.
     await erteileKiFreigabe(a.services.reasoner);
+    const frei = await a.analysieren();
+    expect(frei.transcript).toBe(TRANSKRIPT);
+    expect(frei.engineActive).toBe(true);
+    expect(a.urls.filter((u) => u === TRANSKRIPTION_URL)).toHaveLength(1);
+    await a.app.close();
+  });
+
+  // Ben Nacharbeit 2: die ZWEITE Freigabe öffnet auch ein vertrauliches Medium — durch den echten
+  // gekapselten Transkriber (`cappedTranscriber`, `rejectsConfidential: true`), der dieselbe
+  // Entscheidung des Reasoners fragt. Mit nur der Grundfreigabe bleibt es drinnen.
+  it("vertrauliches Medium: nur Grundfreigabe → NULL Abrufe; beide Freigaben → derselbe Aufruf geht hinaus", async () => {
+    const a = await aufbauen("vertraulich");
+    await erteileKiFreigabe(a.services.reasoner);
+    const gesperrt = await a.analysieren();
+    expect(gesperrt.transcript).toBeNull();
+    expect(gesperrt.note).toContain("Vertrauliche");
+    expect(a.urls.filter((u) => u === TRANSKRIPTION_URL)).toEqual([]);
+
+    await erteileKiFreigabe(a.services.reasoner, {
+      oeffentlicheKi: true,
+      vertraulicheInhalte: true,
+    });
     const frei = await a.analysieren();
     expect(frei.transcript).toBe(TRANSKRIPT);
     expect(frei.engineActive).toBe(true);

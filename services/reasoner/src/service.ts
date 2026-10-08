@@ -389,8 +389,16 @@ class Laufbuch {
   // Ben R2 B3/B5: jeder Versuch mit eigenem Modell, Verbrauch und Span.
   readonly versuchsliste: ModelRunVersuch[] = [];
 
-  async versuch<T>(provider: ReasonerProvider, aufruf: () => Promise<T>): Promise<T> {
-    const spur: ModellAufrufSpur = { gerufen: false };
+  async versuch<T>(
+    provider: ReasonerProvider,
+    aufruf: () => Promise<T>,
+    // gesamt-ki-freigaberegeln: vom Reasoner je Versuch entschieden (`vertraulichFuerVersuch`).
+    vertraulichFreigegeben = false,
+  ): Promise<T> {
+    const spur: ModellAufrufSpur = {
+      gerufen: false,
+      ...(vertraulichFreigegeben ? { vertraulichFreigegeben: true } : {}),
+    };
     const beginn = Date.now();
     this.versuche += 1;
     this.provider = provider.name;
@@ -867,6 +875,31 @@ export class Reasoner {
       return false;
     }
     return !confidential || freigabe.vertraulicheInhalte === true;
+  }
+
+  /**
+   * Auftrag gesamt-ki-freigaberegeln (Ben Nacharbeit 2): DIESELBE Entscheidung für die Wege ausserhalb
+   * des Reasoners — Word-Dokumenttext, Wissenscheck, Transkription. Sie fragen hier und legen die Regel
+   * nicht ein zweites Mal aus. `true` heisst: beide zentralen Adminfreigaben stehen. Zustimmung je
+   * Dokument und Anbieterbindung prüfen die Wege weiterhin selbst; diese Auskunft ersetzt sie nicht.
+   */
+  vertraulicheAusleitungFreigegeben(): boolean {
+    return this.oeffentlicheKiErlaubt(true);
+  }
+
+  /**
+   * Der Merker für den Chokepoint (`ModellAufrufSpur.vertraulichFreigegeben`): nur für einen externen
+   * Anbieter, nur bei vertraulichem Text, nur mit beiden Freigaben und nur, wenn die Anfrage diesen
+   * Anbieter überhaupt zulässt (Klara-Bindung).
+   */
+  private vertraulichFuerVersuch(provider: ReasonerProvider, confidential: boolean): boolean {
+    const extern = this.anbieterVon(provider);
+    return (
+      confidential &&
+      extern !== undefined &&
+      anbieterZugelassen(extern) &&
+      this.oeffentlicheKiErlaubt(true)
+    );
   }
 
   private chainForChoice(
@@ -1517,6 +1550,9 @@ export class Reasoner {
       const kiSperre = task === "answer";
       const spur: ModellAufrufSpur = {
         gerufen: false,
+        ...(this.vertraulichFuerVersuch(provider, confidential)
+          ? { vertraulichFreigegeben: true }
+          : {}),
         ...(kiSperre || extern !== undefined
           ? {
               vorUebertragung: () => {
@@ -1952,6 +1988,7 @@ export class Reasoner {
     tasks: ReasonerTaskMap;
     billable: ReasonerTaskMap;
     kiAbgeschaltet: boolean;
+    extern: "blockiert" | "frei" | "frei_vertraulich";
   } {
     const active = this.usingAnyModel();
     return {
@@ -1964,6 +2001,14 @@ export class Reasoner {
       // D5: nur ein Boolean — die Fragefläche unterscheidet damit „vom Administrator abgeschaltet"
       // von „kein Modell nutzbar" (Störung), ohne einen Anbieter- oder Modellnamen zu erfahren.
       kiAbgeschaltet: this.kiAbschaltung().abgeschaltet,
+      // Auftrag gesamt-ki-freigaberegeln (R-0606, Ben Nacharbeit 2): der WIRKSAME Stand der zentralen
+      // Adminfreigabe für die Kopfzeile („Extern: Blockiert"). Aus derselben Entscheidungsstelle wie
+      // jeder Lauf (`oeffentlicheKiErlaubt`) — keine zweite Auslegung, kein Anbietername.
+      extern: this.oeffentlicheKiErlaubt(true)
+        ? "frei_vertraulich"
+        : this.oeffentlicheKiErlaubt(false)
+          ? "frei"
+          : "blockiert",
     };
   }
 
@@ -2748,8 +2793,10 @@ export class Reasoner {
       const urteilen = provider.judgeConflict.bind(provider);
       try {
         // aistate-fix3 (bens V1): das ECHTE Paar-Bit reist bis zum ModelClient.complete-Wächter.
-        const result = await lb.versuch(provider, () =>
-          urteilen(coreA, coreB, locale, confidential),
+        const result = await lb.versuch(
+          provider,
+          () => urteilen(coreA, coreB, locale, confidential),
+          this.vertraulichFuerVersuch(provider, confidential),
         );
         if (result) {
           await this.protokolliereLaufbuch("conflict", locale, startedAt, lb, {
@@ -2833,8 +2880,10 @@ export class Reasoner {
       const urteilen = provider.judgeDuplicate.bind(provider);
       try {
         // aistate-fix3 (bens V1): das ECHTE Paar-Bit reist bis zum ModelClient.complete-Wächter.
-        const result = await lb.versuch(provider, () =>
-          urteilen(coreA, coreB, locale, confidential),
+        const result = await lb.versuch(
+          provider,
+          () => urteilen(coreA, coreB, locale, confidential),
+          this.vertraulichFuerVersuch(provider, confidential),
         );
         if (result) {
           await this.protokolliereLaufbuch("duplicate", locale, startedAt, lb, {
