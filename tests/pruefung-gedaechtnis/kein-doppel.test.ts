@@ -122,7 +122,10 @@ describe("R-1103 · gleiche Textstände gehen nicht erneut an die KI", () => {
     const { service, repo } = dienst();
     const judge = widerspruch();
     const [befund] = await service.detectForSubject(rot, [blau], judge);
-    await service.resolve(befund?.id ?? "", "controller-1", "Rot gilt.");
+    // R-0215/R-1714: ein Wahrheitskonflikt wird erst eskaliert, dann entschieden.
+    await service.escalate(befund?.id ?? "", "controller-1");
+    const entschieden = await service.resolve(befund?.id ?? "", "controller-1", "Rot gilt.");
+    expect(entschieden).toMatchObject({ status: "geloest", resolutionReason: "decided" });
 
     const again = await service.detectForSubject(rot, [blau], judge);
     expect(again).toHaveLength(0);
