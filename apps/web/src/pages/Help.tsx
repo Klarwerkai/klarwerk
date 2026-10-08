@@ -47,6 +47,9 @@ type HilfeEintrag = HelpSearchItem & {
   to: string;
   sources?: readonly string[];
   uploadLimits?: boolean;
+  // R-0935 / R-0924: eine häufige Frage statt eines Kapitels. Sie läuft durch DENSELBEN Suchraum und
+  // DIESELBE Suchregel; erst das Ergebnis wird an diesem Merkmal in Kapitel und Fragen geteilt.
+  faq?: true;
 };
 
 // ================================================================================================
@@ -95,6 +98,12 @@ export function Help(): JSX.Element {
   // Die Lieferung kennt DE und EN; alles andere (nl) fällt auf DE — wie `fallbackLng` in i18n.ts.
   const isoLng = isoHelpSprache(i18n.language);
 
+  // R-0935 / R-0924: die häufigen Fragen als eigene Sammlung unter den Kapiteln — derselbe Suchraum,
+  // aber KEIN Kapitel (`data-hilfe-thema` bleibt den Kapiteln vorbehalten; die Seitenhilfe des
+  // Zahnrads zählt Kapitel je Route). Die Antworten liegen nur deutsch vor (`faqContent.ts:1-3`);
+  // in EN/NL kommen sie nicht in den Suchraum, dort steht der ehrliche Satz `hilfefaq.nurDeutsch`.
+  const faqDeutsch = i18n.language.startsWith("de");
+
   // i18n-Texte auflösen → durchsuchbare Items (DOM-freie Filterung im Helper).
   const items: HilfeEintrag[] = [
     ...HELP_TOPICS.map((topic) => ({
@@ -115,25 +124,20 @@ export function Help(): JSX.Element {
       to: topic.to,
       sources: topic.sources,
     })),
-  ];
-  const visible = filterHelpTopics(items, q);
-  // R-0935 / R-0924: die häufigen Fragen als eigene Sammlung unter den Kapiteln — dieselbe Suche,
-  // aber KEIN Kapitel (`data-hilfe-thema` bleibt den Kapiteln vorbehalten; die Seitenhilfe des
-  // Zahnrads zählt Kapitel je Route). Die Antworten liegen nur deutsch vor (`faqContent.ts:1-3`);
-  // in EN/NL steht statt einer halben Liste der ehrliche Satz `hilfefaq.nurDeutsch`.
-  const faqDeutsch = i18n.language.startsWith("de");
-  const faqTreffer = faqDeutsch
-    ? filterHelpTopics(
-        FAQ_CONTENT.map((faq) => ({
+    ...(faqDeutsch
+      ? FAQ_CONTENT.map((faq) => ({
           id: faq.id,
           title: faq.question,
           body: faq.answer,
           tags: [],
           to: faq.route,
-        })),
-        q,
-      )
-    : [];
+          faq: true as const,
+        }))
+      : []),
+  ];
+  const treffer = filterHelpTopics(items, q);
+  const visible = treffer.filter((eintrag) => eintrag.faq !== true);
+  const faqTreffer = treffer.filter((eintrag) => eintrag.faq === true);
 
   return (
     <div className="mx-auto max-w-3xl">
