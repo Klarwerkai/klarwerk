@@ -379,11 +379,13 @@ test("Klara 01 · Stopp, fehlgeschlagene Speicherung und abgelaufene Anmeldung z
 // Generierung (Serverantwort `answered`, `demo: false`, `aiGenerated.mode = "model"`), der angezeigte
 // Antworttext in der beweglichen Klara und die Kennzeichnung „KI-Antwort".
 //
-// MELDET DIE INSTANZ KEIN NUTZBARES MODELL (das hermetische Tor: kein Anbieter, kein Schlüssel), wird
-// der Fall mit Grund ÜBERSPRUNGEN und der Status als Anhang abgelegt — er gilt dann ausdrücklich als
-// NICHT belegt, nicht als bestanden. Ein Modell aufzusetzen oder vorzutäuschen ist nicht Sache dieses
-// Tests.
-test("Klara 01 · tatsächliche Modellantwort in der beweglichen Klara (nur mit eingerichtetem Modell)", async ({
+// DER PRÜFWEG (Bens Befund, nacharbeit-4): der Fall trägt `@modell` wie die übrigen Modellfälle
+// (`ui-smoke.spec.ts`). Das hermetische Tor `smoke:ui:gate` schliesst ihn deshalb aus — dort gibt es
+// kein Modell, ein Lauf dort belegt nichts. Er gehört in den VOLLEN Smoke `npm run smoke:ui`, dessen
+// Modell ausschliesslich aus `KLARWERK_SHIP_SMOKE_API_KEY` kommt (`playwright.smoke.config.ts`). Dort
+// wird NICHT übersprungen: meldet die Instanz kein nutzbares Modell, ist der Fall ROT und der
+// Statusanhang nennt den Grund — fehlender Zugang ist dann sichtbar, nicht still.
+test("Klara 01 · tatsächliche Modellantwort in der beweglichen Klara @modell", async ({
   page,
   browser,
 }, info) => {
@@ -405,10 +407,10 @@ test("Klara 01 · tatsächliche Modellantwort in der beweglichen Klara (nur mit 
     status.tasks?.answer === true &&
     status.kiAbgeschaltet !== true &&
     status.reachable !== "unreachable";
-  test.skip(
-    !modellNutzbar,
-    "Diese Instanz meldet kein nutzbares Modell für „answer“ — K1 (tatsächliche Modellantwort) bleibt hier OFFEN, nicht bestanden.",
-  );
+  expect(
+    modellNutzbar,
+    `Kein nutzbares Modell für „answer“ (Status ${JSON.stringify(status)}) — der volle Smoke braucht KLARWERK_SHIP_SMOKE_API_KEY.`,
+  ).toBe(true);
 
   // Ein geprüfter Eintrag, dessen Aussage die Frage vollständig deckt (Tor 1, R-0473).
   const m = marke();
