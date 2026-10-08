@@ -530,8 +530,31 @@ export function Mobile(): JSX.Element {
   // der EINZIGE Ort, der `drafts.update` ruft — hier kann kein Aufrufer mehr vorbei, auch kein
   // künftiger. Fehlt die Voraussetzung, wird nicht geschrieben, sondern der Vergleich ANGESTOSSEN
   // (`speicherfehler` → `konfliktOeffnen`): dieselbe eine Konfliktlogik, kein zweiter Mechanismus.
+  // ============================================================================================
+  // Prüfung Nacharbeit 4 — EIN NEUER ENTWURF OHNE TITEL UND OHNE AUSSAGE (nur Foto, oder ein
+  // Interview ohne Kernaussage) WIRD VOM SERVER ABGEWIESEN.
+  // ============================================================================================
+  //
+  // `createDraftVorgang` (services/capture/src/service.ts, E2E-004) verlangt Titel ODER Aussage
+  // und antwortet sonst mit EMPTY_DRAFT. Eine alleinige Fotoerfassung schickte nur `bodyHtml` —
+  // am Knopf, im Weggeh-Dialog und beim Nachsenden aus der Warteschlange. Beim NEUEN Erfassen
+  // bekommt sie deshalb den Titel, den diese Fläche ohnehin für titellose Entwürfe anzeigt
+  // (`capture.draftFallbackTitle`, s. `titelVon`). Fortgesetzte Entwürfe bleiben unberührt: dort
+  // steht der Titel schon am Server, und der partielle Merge lässt ihn stehen.
+  const vorgangVon = (f: DraftFormState): ReturnType<typeof formToUpdate> => {
+    const vorgang = formToUpdate(f);
+    const { title, statement } = vorgang.payload;
+    if (!editingId && !title?.trim() && !statement?.trim()) {
+      return {
+        ...vorgang,
+        payload: { ...vorgang.payload, title: t("capture.draftFallbackTitle") },
+      };
+    }
+    return vorgang;
+  };
+
   const sendeEntwurf = (f: DraftFormState): Promise<unknown> => {
-    const { payload, expectedUpdatedAt } = formToUpdate(f);
+    const { payload, expectedUpdatedAt } = vorgangVon(f);
     if (!editingId) {
       return endpoints.drafts.create(payload);
     }
@@ -547,7 +570,7 @@ export function Mobile(): JSX.Element {
    * beim Nachsenden wieder nach „letzter Schreiber gewinnt" raus.
    */
   const neuerVorgang = (f: DraftFormState): NeuerVorgang => {
-    const { payload, expectedUpdatedAt } = formToUpdate(f);
+    const { payload, expectedUpdatedAt } = vorgangVon(f);
     return {
       id: crypto.randomUUID(),
       kind: editingId ? "draft.update" : "draft.create",

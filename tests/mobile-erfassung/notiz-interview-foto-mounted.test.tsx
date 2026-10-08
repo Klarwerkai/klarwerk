@@ -476,8 +476,23 @@ describe("FR-CAP-04 · laufende Fotoumwandlung und Speicherweg", () => {
     const entwuerfe = await box.alle();
     expect(entwuerfe).toHaveLength(1);
     expect(String(entwuerfe[0]?.bodyHtml)).toContain(BILD_P4);
+    // Ohne Titel und Aussage wiese der Server den Entwurf ab (EMPTY_DRAFT) — er trägt deshalb den
+    // Titel, den die Fläche für titellose Entwürfe ohnehin zeigt.
+    expect(entwuerfe[0]?.title).toBe(i18n.t("capture.draftFallbackTitle"));
     expect(container.textContent).toContain("START-SEITE");
     abbauen();
+  });
+
+  it("Knopf, nur Foto: der Entwurf wird angelegt (kein EMPTY_DRAFT) und trägt das Foto", async () => {
+    await mount("mobile");
+    await waehleDatei(el('[data-testid="mob-foto-mediathek"]'), "P4.jpg");
+    await click(el<HTMLButtonElement>('[data-testid="mob-primaer"]'));
+    abbauen();
+
+    const entwuerfe = await box.alle();
+    expect(entwuerfe).toHaveLength(1);
+    expect(entwuerfe[0]?.title).toBe(i18n.t("capture.draftFallbackTitle"));
+    expect(String(entwuerfe[0]?.bodyHtml)).toContain("data:image/jpeg;base64,QUJD");
   });
 
   it("Formularwechsel: ein verspätetes Foto gerät NICHT in den fortgesetzten anderen Entwurf", async () => {
