@@ -887,6 +887,14 @@ export interface Conflict {
   redacted?: true;
 }
 
+/** R-1662: eine Zeile von `GET /api/lifecycle/revalidiert` — eine frühere Bestätigung „stimmt
+ *  noch" (Beleg `ko.revalidated`). Spiegel von `services/app/src/routes/lifecycle-routes.ts`. */
+export interface RevalidierungBestaetigt {
+  koId: string;
+  am: string;
+  version: number | null;
+}
+
 // Berater-Konzept Duplikate 04.07. (Stufe D4): Überschneidungs-/Duplikat-Eintrag fürs Board.
 // Spiegelt die öffentliche Form des conflicts-Moduls (OverlapEntry) — schlanker Lebenszyklus als
 // Konflikte: es geht um Redaktion (Zusammenführen), nicht um Wahrheit.

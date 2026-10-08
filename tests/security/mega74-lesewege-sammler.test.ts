@@ -761,6 +761,10 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "KEIN_KO_INHALT",
     grund: "string[] mit KO-IDs (lifecycle/src/service.ts:46) — kein Inhalt.",
   },
+  "GET /api/lifecycle/revalidiert": {
+    urteil: "PRAEDIKAT",
+    grund: "R-1662 — sichtbareEintraege vor dem Lesen; nur Kennung, Zeitpunkt und Fassung.",
+  },
   "GET /api/lifecycle/couplings/:koId": {
     urteil: "KEIN_KO_INHALT",
     grund: "string[] mit assetRefs (lifecycle/src/service.ts:29).",

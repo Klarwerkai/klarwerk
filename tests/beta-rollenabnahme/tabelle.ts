@@ -1326,6 +1326,14 @@ export const TABELLE: Zeile[] = [
     erwartet: NUR_LESEN,
   },
   {
+    gruppe: "lifecycleRoutes",
+    methode: "GET",
+    pfad: "/api/lifecycle/revalidiert",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:150",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
     gruppe: "livewallRoutes",
     methode: "GET",
     pfad: "/api/livewall",

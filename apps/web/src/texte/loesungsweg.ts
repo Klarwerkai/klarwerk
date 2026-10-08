@@ -44,6 +44,13 @@ export default {
       "Diese Quellen sind zur erneuten Prüfung vorgemerkt – ihre Gültigkeit ist derzeit nicht bestätigt.",
     "loesungsweg.revalidierung.fall": "Zum Revalidierungsfall",
     "loesungsweg.revalidierung.keine": "Keine dieser Quellen ist zur Revalidierung vorgemerkt.",
+    "loesungsweg.revalidierung.offenTitel": "Offen",
+    "loesungsweg.revalidierung.frueherTitel": "Früher bestätigt",
+    "loesungsweg.revalidierung.frueher":
+      "Zuletzt am {{datum}} als weiterhin gültig bestätigt (Fassung {{version}}). Bestätigungen insgesamt: {{anzahl}}.",
+    "loesungsweg.revalidierung.frueherOhneFassung":
+      "Zuletzt am {{datum}} als weiterhin gültig bestätigt. Bestätigungen insgesamt: {{anzahl}}.",
+    "loesungsweg.revalidierung.frueherKeine": "Keine dieser Quellen wurde bisher revalidiert.",
     "loesungsweg.stand.laedt": "Wird geprüft …",
     "loesungsweg.stand.fehler": "Nicht abrufbar – darüber ist gerade nichts bekannt.",
   },
@@ -78,6 +85,13 @@ export default {
       "These sources are marked for another review – their validity is not confirmed at the moment.",
     "loesungsweg.revalidierung.fall": "Open the revalidation case",
     "loesungsweg.revalidierung.keine": "None of these sources is marked for revalidation.",
+    "loesungsweg.revalidierung.offenTitel": "Open",
+    "loesungsweg.revalidierung.frueherTitel": "Confirmed earlier",
+    "loesungsweg.revalidierung.frueher":
+      "Last confirmed as still valid on {{datum}} (version {{version}}). Confirmations in total: {{anzahl}}.",
+    "loesungsweg.revalidierung.frueherOhneFassung":
+      "Last confirmed as still valid on {{datum}}. Confirmations in total: {{anzahl}}.",
+    "loesungsweg.revalidierung.frueherKeine": "None of these sources has been revalidated so far.",
     "loesungsweg.stand.laedt": "Checking …",
     "loesungsweg.stand.fehler": "Not available – nothing is known about this right now.",
   },
@@ -112,6 +126,13 @@ export default {
       "Deze bronnen zijn gemarkeerd voor een nieuwe controle – hun geldigheid is op dit moment niet bevestigd.",
     "loesungsweg.revalidierung.fall": "Naar het hervalidatiegeval",
     "loesungsweg.revalidierung.keine": "Geen van deze bronnen is gemarkeerd voor hervalidatie.",
+    "loesungsweg.revalidierung.offenTitel": "Open",
+    "loesungsweg.revalidierung.frueherTitel": "Eerder bevestigd",
+    "loesungsweg.revalidierung.frueher":
+      "Laatst op {{datum}} bevestigd als nog geldig (versie {{version}}). Bevestigingen in totaal: {{anzahl}}.",
+    "loesungsweg.revalidierung.frueherOhneFassung":
+      "Laatst op {{datum}} bevestigd als nog geldig. Bevestigingen in totaal: {{anzahl}}.",
+    "loesungsweg.revalidierung.frueherKeine": "Geen van deze bronnen is tot nu toe hervalideerd.",
     "loesungsweg.stand.laedt": "Wordt gecontroleerd …",
     "loesungsweg.stand.fehler": "Niet beschikbaar – hierover is op dit moment niets bekend.",
   },

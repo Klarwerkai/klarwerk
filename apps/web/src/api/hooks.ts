@@ -249,6 +249,13 @@ export const useLifecyclePendingWenn = (aktiv: boolean) =>
     queryFn: () => endpoints.lifecycle.pending(),
     enabled: aktiv,
   });
+// R-1662: frühere Revalidierungen zu den Quellen EINER Antwort — erst mit offenem Blatt, lazy.
+export const useFruehereRevalidierungen = (koIds: readonly string[], aktiv: boolean) =>
+  useQuery({
+    queryKey: ["lifecycle", "revalidiert", [...koIds].sort().join(",")],
+    queryFn: () => endpoints.lifecycle.revalidiert(koIds),
+    enabled: aktiv && koIds.length > 0,
+  });
 // R-1662: die gelösten Konflikte zu den Quellen EINER Antwort — erst mit offenem Blatt, lazy.
 export const useGeloesteKonflikte = (koIds: readonly string[], aktiv: boolean) =>
   useQuery({

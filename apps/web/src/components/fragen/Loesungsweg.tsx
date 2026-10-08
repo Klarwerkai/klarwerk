@@ -12,7 +12,9 @@
 import { ArrowRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
+import { formatKoTimestamp } from "../../lib/koDates";
 import type {
+  FruehereRevalidierung,
   GeloesterKonfliktHinweis,
   Problemloesungsweg,
   WegBefund,
@@ -76,6 +78,7 @@ export function LoesungswegSchritte({
   weg,
   konflikte,
   revalidierung,
+  frueher,
   wissenHref,
   nameVon,
 }: {
@@ -84,10 +87,12 @@ export function LoesungswegSchritte({
   konflikte: WegBefund<GeloesterKonfliktHinweis>;
   /** R-1662 Prüfpunkt 6: Quellen mit offenem Revalidierungsfall. */
   revalidierung: WegBefund<WegQuelle>;
+  /** R-1662 Prüfpunkt 6 (Ben, Nacharbeit 5): frühere, schon bestätigte Revalidierungen. */
+  frueher: WegBefund<FruehereRevalidierung>;
   wissenHref: (id: string) => string;
   nameVon: (ref: string) => string;
 }): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   return (
     <div data-testid="ask-loesungsweg-inhalt" className="text-[13px] text-text">
       <p data-testid="ask-loesungsweg-hinweis" className="text-[12.5px] leading-relaxed text-muted">
@@ -126,46 +131,90 @@ export function LoesungswegSchritte({
         ) : null}
         <li data-testid="ask-loesungsweg-revalidierung">
           <span className="block font-semibold">{t("loesungsweg.schritt.revalidierung")}</span>
-          <BefundStand befund={revalidierung} />
-          {revalidierung.stand === "da" && revalidierung.eintraege.length === 0 ? (
-            <span className="block text-[12px] text-muted-2">
-              {t("loesungsweg.revalidierung.keine")}
+          {/* Ben, Nacharbeit 5: OFFENE Fälle (Merker gesetzt) und FRÜHERE Bestätigungen (Beleg im
+              Prüfprotokoll) sind zwei Aussagen — sie stehen getrennt, jede mit eigenem Stand. */}
+          <div data-testid="ask-loesungsweg-revalidierung-offen" className="mt-1">
+            <span className="block text-[11px] font-semibold uppercase text-muted-2">
+              {t("loesungsweg.revalidierung.offenTitel")}
             </span>
-          ) : null}
-          {revalidierung.stand === "da" && revalidierung.eintraege.length > 0 ? (
-            <>
+            <BefundStand befund={revalidierung} />
+            {revalidierung.stand === "da" && revalidierung.eintraege.length === 0 ? (
               <span className="block text-[12px] text-muted-2">
-                {t("loesungsweg.revalidierung.text")}
+                {t("loesungsweg.revalidierung.keine")}
               </span>
+            ) : null}
+            {revalidierung.stand === "da" && revalidierung.eintraege.length > 0 ? (
+              <>
+                <span className="block text-[12px] text-muted-2">
+                  {t("loesungsweg.revalidierung.text")}
+                </span>
+                <ul className="mt-1 space-y-1">
+                  {revalidierung.eintraege.map((q) => (
+                    <li key={q.id} data-testid="ask-loesungsweg-revalidierung-fall">
+                      <Link
+                        to={wissenHref(q.id)}
+                        className="mr-3 inline-flex items-center gap-1 font-medium text-brand-text hover:underline"
+                      >
+                        {q.label}
+                      </Link>
+                      {/* /lebenszyklus verlangt „controller": über `RoleLink` sieht, wer den Fall
+                          nicht öffnen darf, die Lage statt eines toten Links. */}
+                      <RoleLink
+                        to={`/lebenszyklus?fall=${encodeURIComponent(q.id)}`}
+                        testId="ask-loesungsweg-revalidierung-link"
+                        className="inline-flex items-center gap-1 text-[12px] font-semibold text-brand-text"
+                        hoverClassName="hover:underline"
+                      >
+                        {(erreichbar) => (
+                          <>
+                            {t("loesungsweg.revalidierung.fall")}
+                            {erreichbar ? <ArrowRight size={12} aria-hidden="true" /> : null}
+                          </>
+                        )}
+                      </RoleLink>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+          </div>
+          <div data-testid="ask-loesungsweg-revalidierung-frueher" className="mt-2">
+            <span className="block text-[11px] font-semibold uppercase text-muted-2">
+              {t("loesungsweg.revalidierung.frueherTitel")}
+            </span>
+            <BefundStand befund={frueher} />
+            {frueher.stand === "da" && frueher.eintraege.length === 0 ? (
+              <span className="block text-[12px] text-muted-2">
+                {t("loesungsweg.revalidierung.frueherKeine")}
+              </span>
+            ) : null}
+            {frueher.stand === "da" && frueher.eintraege.length > 0 ? (
               <ul className="mt-1 space-y-1">
-                {revalidierung.eintraege.map((q) => (
-                  <li key={q.id} data-testid="ask-loesungsweg-revalidierung-fall">
+                {frueher.eintraege.map((f) => (
+                  <li key={f.quelle.id} data-testid="ask-loesungsweg-revalidierung-bestaetigt">
                     <Link
-                      to={wissenHref(q.id)}
-                      className="mr-3 inline-flex items-center gap-1 font-medium text-brand-text hover:underline"
+                      to={wissenHref(f.quelle.id)}
+                      className="font-medium text-brand-text hover:underline"
                     >
-                      {q.label}
+                      {f.quelle.label}
                     </Link>
-                    {/* /lebenszyklus verlangt „controller": über `RoleLink` sieht, wer den Fall
-                        nicht öffnen darf, die Lage statt eines toten Links. */}
-                    <RoleLink
-                      to={`/lebenszyklus?fall=${encodeURIComponent(q.id)}`}
-                      testId="ask-loesungsweg-revalidierung-link"
-                      className="inline-flex items-center gap-1 text-[12px] font-semibold text-brand-text"
-                      hoverClassName="hover:underline"
-                    >
-                      {(erreichbar) => (
-                        <>
-                          {t("loesungsweg.revalidierung.fall")}
-                          {erreichbar ? <ArrowRight size={12} aria-hidden="true" /> : null}
-                        </>
+                    <span className="block text-[12px] text-muted-2">
+                      {t(
+                        f.version === null
+                          ? "loesungsweg.revalidierung.frueherOhneFassung"
+                          : "loesungsweg.revalidierung.frueher",
+                        {
+                          datum: formatKoTimestamp(f.zuletztAm, i18n.language) ?? f.zuletztAm,
+                          version: f.version,
+                          anzahl: f.anzahl,
+                        },
                       )}
-                    </RoleLink>
+                    </span>
                   </li>
                 ))}
               </ul>
-            </>
-          ) : null}
+            ) : null}
+          </div>
         </li>
         <li data-testid="ask-loesungsweg-konflikte">
           <span className="block font-semibold">{t("loesungsweg.schritt.konflikte")}</span>

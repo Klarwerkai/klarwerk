@@ -16,6 +16,8 @@ const bestand = vi.hoisted(() => ({
   geloest: [] as unknown[],
   faellig: [] as string[],
   faelligFehler: false,
+  // Ben, Nacharbeit 5: frühere Bestätigungen aus `ko.revalidated`.
+  revalidiert: [] as unknown[],
 }));
 
 vi.mock("../../apps/web/src/app/RoleContext", () => ({
@@ -35,6 +37,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
         }
         return bestand.faellig;
       }),
+      revalidiert: vi.fn(async () => bestand.revalidiert),
     },
     directory: {
       list: vi.fn(async () => [
@@ -182,6 +185,7 @@ afterEach(() => {
   bestand.geloest = [];
   bestand.faellig = [];
   bestand.faelligFehler = false;
+  bestand.revalidiert = [];
 });
 
 describe("R-1662 · Lösungsweg an der echten Fragen-Seite", () => {
@@ -314,6 +318,41 @@ describe("R-1662 · Lösungsweg an der echten Fragen-Seite", () => {
     // Abgerufen wird mit genau den Quellen der Antwort.
     const { endpoints } = await import("../../apps/web/src/api/endpoints");
     expect(endpoints.conflicts.geloest).toHaveBeenCalledWith(["k1"]);
+    unmount();
+  });
+
+  // Ben, Nacharbeit 5 — frühere Bestätigungen stehen GETRENNT von offenen Fällen.
+  it("frühere Revalidierung: bestätigte Quelle unter „Früher bestätigt“, offene unter „Offen“", async () => {
+    await i18n.changeLanguage("de");
+    bestand.kos = [LOESUNG, FEHLER];
+    bestand.antwort = antwort(["k1", "k2"], ["k1"]);
+    bestand.faellig = ["k1"];
+    bestand.revalidiert = [
+      { koId: "k2", am: "2026-05-01T08:00:00.000Z", version: 6 },
+      { koId: "k2", am: "2026-03-01T08:00:00.000Z", version: 4 },
+    ];
+    const { container, unmount } = await mountAsk();
+    const blatt = await blattOeffnen(container);
+    await act(flush);
+
+    const offenTeil = blatt.querySelector('[data-testid="ask-loesungsweg-revalidierung-offen"]');
+    expect(offenTeil?.textContent).toContain("Druckspeicher prüfen");
+    expect(offenTeil?.textContent).not.toContain("Dichtung nicht nachziehen");
+
+    const frueherTeil = blatt.querySelector(
+      '[data-testid="ask-loesungsweg-revalidierung-frueher"]',
+    );
+    const zeilen = '[data-testid="ask-loesungsweg-revalidierung-bestaetigt"]';
+    const bestaetigt = frueherTeil ? [...frueherTeil.querySelectorAll(zeilen)] : [];
+    expect(bestaetigt, "nur die bestätigte Quelle, nicht die offene").toHaveLength(1);
+    const zeile = bestaetigt[0]?.textContent ?? "";
+    expect(zeile).toContain("Dichtung nicht nachziehen");
+    expect(zeile).toContain("Fassung 6");
+    expect(zeile).toContain("Bestätigungen insgesamt: 2");
+    expect(bestaetigt[0]?.querySelector("a")?.getAttribute("href")).toBe("/wissen/k2");
+    // Abgerufen wird mit genau den Quellen der Antwort.
+    const { endpoints } = await import("../../apps/web/src/api/endpoints");
+    expect(endpoints.lifecycle.revalidiert).toHaveBeenCalledWith(["k1", "k2"]);
     unmount();
   });
 

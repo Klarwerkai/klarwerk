@@ -24,7 +24,12 @@
 //     (`GET /api/lifecycle/pending`) — ein offener Fall heisst, die Gültigkeit ist neu zu prüfen.
 // Beide sagen „nicht abrufbar", wenn der Abruf scheitert, und nie „keine": ein Netzfehler ist
 // keine Auskunft über den Bestand (dieselbe Regel wie `conflictKnowledge`).
-import type { Conflict, KnowledgeObject } from "../api/types";
+//
+// Ben, Nacharbeit 5 — „alte" Revalidierungsfälle sind auch die schon BESTÄTIGTEN: Nach „stimmt
+// noch" ist der offene Merker gelöscht, der Beleg `ko.revalidated` bleibt im Prüfprotokoll.
+// `fruehereRevalidierungen` liest ihn über `GET /api/lifecycle/revalidiert` (Kennung, Zeitpunkt,
+// Fassung) und hält ihn getrennt von den offenen Fällen.
+import type { Conflict, KnowledgeObject, RevalidierungBestaetigt } from "../api/types";
 import type { AnswerGrade } from "./answerGrade";
 
 export interface WegQuelle {
@@ -174,4 +179,43 @@ export function revalidierungsfaelle(
   }
   const faellig = new Set(abruf.daten);
   return { stand: "da", eintraege: quellen.filter((q) => faellig.has(q.id)) };
+}
+
+export interface FruehereRevalidierung {
+  quelle: WegQuelle;
+  /** Die jüngste Bestätigung „stimmt noch" (ISO-Zeitpunkt) und ihre Fassung, soweit belegt. */
+  zuletztAm: string;
+  version: number | null;
+  /** Wie oft diese Quelle schon bestätigt wurde. */
+  anzahl: number;
+}
+
+/** Frühere, schon BESTÄTIGTE Revalidierungen je Quelle — in der Reihenfolge der Quellen. */
+export function fruehereRevalidierungen(
+  quellen: readonly WegQuelle[],
+  abruf: WegAbruf<readonly RevalidierungBestaetigt[]>,
+): WegBefund<FruehereRevalidierung> {
+  if (abruf.stand !== "da") {
+    return abruf;
+  }
+  if (!Array.isArray(abruf.daten)) {
+    return { stand: "fehler" };
+  }
+  const eintraege: FruehereRevalidierung[] = [];
+  for (const q of quellen) {
+    const belege = abruf.daten.filter((b) => b.koId === q.id);
+    const juengster = belege.reduce<RevalidierungBestaetigt | null>(
+      (best, b) => (best === null || b.am > best.am ? b : best),
+      null,
+    );
+    if (juengster) {
+      eintraege.push({
+        quelle: q,
+        zuletztAm: juengster.am,
+        version: juengster.version,
+        anzahl: belege.length,
+      });
+    }
+  }
+  return { stand: "da", eintraege };
 }

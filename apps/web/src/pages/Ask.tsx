@@ -7,6 +7,7 @@ import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import {
   useConflicts,
+  useFruehereRevalidierungen,
   useGeloesteKonflikte,
   useKos,
   useLifecyclePendingWenn,
@@ -104,6 +105,7 @@ import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeG
 import { formatKoTimestamp } from "../lib/koDates";
 import { erkenneNichtHilfreich } from "../lib/nichtHilfreich";
 import {
+  fruehereRevalidierungen,
   geloesteKonflikte,
   problemloesungsweg,
   revalidierungsfaelle,
@@ -1329,8 +1331,11 @@ export function Ask(): JSX.Element {
   const wegQuellenIds = weg ? answerSources.map((s) => s.id) : [];
   const geloestAbruf = useGeloesteKonflikte(wegQuellenIds, wegGeprueft);
   const faelligAbruf = useLifecyclePendingWenn(wegGeprueft);
+  // Ben, Nacharbeit 5: frühere, schon bestätigte Revalidierungen — getrennt von den offenen Fällen.
+  const frueherAbruf = useFruehereRevalidierungen(wegQuellenIds, wegGeprueft);
   const wegKonflikte = geloesteKonflikte(answerSources, kosById, wegAbrufAus(geloestAbruf));
   const wegRevalidierung = revalidierungsfaelle(answerSources, wegAbrufAus(faelligAbruf));
+  const wegFrueher = fruehereRevalidierungen(answerSources, wegAbrufAus(frueherAbruf));
   // ==============================================================================================
   // JOB 3267 Q1 — DIE GERENDERTEN FUSSNOTEN, AM DOM GEMESSEN.
   // ==============================================================================================
@@ -2549,6 +2554,7 @@ export function Ask(): JSX.Element {
                       weg={weg}
                       konflikte={wegKonflikte}
                       revalidierung={wegRevalidierung}
+                      frueher={wegFrueher}
                       wissenHref={(id) => demoHref(`/wissen/${id}`, params)}
                       nameVon={authorNameOf}
                     />

@@ -305,6 +305,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `GET` | `/api/lifecycle/couplings/:koId` | `ko.read`, sichtbar | — | 200 Kopplungen | 404 |
 | `POST` | `/api/lifecycle/asset-changed` | `ko.validate` | Rumpf `{ assetRef }` | 200 betroffene Objekte | Dienstfehler |
 | `GET` | `/api/lifecycle/pending` | `ko.read` | — | 200 Kennungen sichtbarer offener Objekte | — |
+| `GET` | `/api/lifecycle/revalidiert` | `ko.read`, sichtbar | Abfrage `ko=<id>,<id>` (höchstens 50) | 200 frühere Bestätigungen `[{ koId, am, version }]` aus `ko.revalidated`, neueste zuerst; kein Akteur, keine Nutzlast | — |
 | `POST` | `/api/learning-paths` | `ko.create` | Rumpf `{ role, steps: [{ title }] }` | 201 Lernpfad | Dienstfehler |
 | `GET` | `/api/learning-paths/:role` | `ko.read` | — | 200 Lernpfad | 404 `NOT_FOUND` |
 | `POST` | `/api/learning-paths/:pathId/complete` | `ko.read` | Rumpf `{ stepId }` | 200 Fortschritt | Dienstfehler |

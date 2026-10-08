@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import type { Conflict } from "../../apps/web/src/api/types";
 import {
+  fruehereRevalidierungen,
   geloesteKonflikte,
   problemloesungsweg,
   revalidierungsfaelle,
@@ -154,6 +155,42 @@ describe("R-1662 · geloesteKonflikte", () => {
     // Eine Antwort, die keine Liste ist, ist keine Auskunft.
     const keineListe = { stand: "da", daten: {} as unknown as Conflict[] } as const;
     expect(geloesteKonflikte([q("k1", true)], titel, keineListe)).toEqual({ stand: "fehler" });
+  });
+});
+
+// Ben, Nacharbeit 5 — frühere, schon BESTÄTIGTE Revalidierungen, getrennt von offenen Fällen.
+describe("R-1662 · fruehereRevalidierungen", () => {
+  it("je Quelle die jüngste Bestätigung mit Fassung und Anzahl, in der Ordnung der Quellen", () => {
+    const quellen = [q("k1", true), q("k3", false), q("k2", false)];
+    const befund = fruehereRevalidierungen(quellen, {
+      stand: "da",
+      daten: [
+        { koId: "k3", am: "2026-03-01T08:00:00.000Z", version: 4 },
+        { koId: "k3", am: "2026-05-01T08:00:00.000Z", version: 6 },
+        { koId: "k1", am: "2026-02-01T08:00:00.000Z", version: null },
+        { koId: "fremd", am: "2026-06-01T08:00:00.000Z", version: 9 },
+      ],
+    });
+    expect(befund).toEqual({
+      stand: "da",
+      eintraege: [
+        { quelle: q("k1", true), zuletztAm: "2026-02-01T08:00:00.000Z", version: null, anzahl: 1 },
+        { quelle: q("k3", false), zuletztAm: "2026-05-01T08:00:00.000Z", version: 6, anzahl: 2 },
+      ],
+    });
+  });
+
+  it("keine Bestätigung heisst „keine“; Laden und Fehler bleiben eigene Zustände", () => {
+    expect(fruehereRevalidierungen([q("k1", true)], { stand: "da", daten: [] })).toEqual({
+      stand: "da",
+      eintraege: [],
+    });
+    expect(fruehereRevalidierungen([q("k1", true)], { stand: "fehler" })).toEqual({
+      stand: "fehler",
+    });
+    expect(fruehereRevalidierungen([q("k1", true)], { stand: "laedt" })).toEqual({
+      stand: "laedt",
+    });
   });
 });
 

@@ -590,6 +590,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.read",
     zeilenrecht: ["sichtbareEintraege"],
   },
+  // R-1662: frühere Bestätigungen (`ko.revalidated`) zu den Quellen einer Antwort — dasselbe Tor
+  // wie `pending`; hinaus gehen nur Kennung, Zeitpunkt und Fassung, nie Akteur oder Nutzlast.
+  "GET /api/lifecycle/revalidiert": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbareEintraege"],
+  },
   // AUFTRAG-JOB2017 (G7): dieser Weg faehrt seit D1 ein Zeilenrecht — `sichtbareEintraege` gegen
   // die angefragte Kennung, davor gab er die Kopplungen JEDES Objekts heraus
   // (`lifecycle-routes.ts:47`). Der Eintrag ist die Pflicht aus JOB 1331 D1: eine Route mit
