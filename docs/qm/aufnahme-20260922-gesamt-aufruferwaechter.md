@@ -34,6 +34,17 @@ der Zielpfade der jeweiligen Umbauten:
   Erstnutzer-Führung und Vordertür-Optionsliste in `lib/captureEntry.ts` sowie die drei Helfer, die
   nur sie lasen.
 
+**Nacharbeit 1 (Prüflauf am Kandidaten `caa7baba`):** A1 meldete zwei Exporte aus dem Basisstand
+(`services/management`, 1.0.0-beta.1.669). Diese Änderung hatte sie nicht angefasst.
+
+- `horizon.ts::riskHorizon` war ein Fehlalarm des Wächters. `service.ts` ruft die Funktion in der
+  gleichnamigen Methode `async riskHorizon()`, und der Wächter zählte Methodennamen als Verdeckung.
+  `bindungenVon` behandelt jetzt nur noch Funktionsdeklarationen und benannte Funktionsausdrücke als
+  Bindung. Die Gegenprobe A7 prüft beide Richtungen.
+- `profiles.ts::RETIREMENT_HORIZONS` war wirklich ungelesen. Jetzt ist die Konstante angeschlossen:
+  `normalizeRetirementHorizon` prüft gegen diese Liste statt gegen ein zweites Literal `24 || 36`.
+  Das Verhalten ist unverändert (`services/management/src/horizon.test.ts`).
+
 Die Wörterbuchschlüssel dieser Bausteine bleiben stehen. Der Textbestand ist Wert für Wert
 festgeschrieben (`tests/i18n-textmodule/bestand-unveraendert.test.ts`).
 

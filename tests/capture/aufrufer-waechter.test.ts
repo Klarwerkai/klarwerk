@@ -248,7 +248,12 @@ function bindungenVon(n: ts.Node): string[] {
     for (const p of n.parameters) {
       ausBindung(p.name);
     }
-    if (!ts.isArrowFunction(n) && "name" in n && n.name && ts.isIdentifier(n.name)) {
+    // Nur eine Funktionsdeklaration oder ein benannter Funktionsausdruck bindet ihren Namen im
+    // eigenen Rumpf. Ein METHODEN- oder Accessor-Name bindet nichts: in
+    // `async riskHorizon() { return riskHorizon(…); }` (services/management/src/service.ts) ruft
+    // der Rumpf den IMPORT. Vorher galt der Methodenname als Verdeckung, und der Wächter meldete
+    // den gerufenen Export `horizon.ts::riskHorizon` fälschlich als ohne Aufrufer (A7).
+    if ((ts.isFunctionDeclaration(n) || ts.isFunctionExpression(n)) && n.name) {
       namen.push(n.name.text);
     }
   }
@@ -1707,6 +1712,47 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
         namen(),
         "der Spezifikator ist Teil des Vertrags — ein Abgriff am FALSCHEN Modul deckt nichts",
       ).toContain("LazyWaise");
+    } finally {
+      rmSync(baum, { recursive: true, force: true });
+    }
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // R-1349 (Nacharbeit 1) — EIN METHODENNAME VERDECKT KEINEN IMPORT
+  // ----------------------------------------------------------------------------------------------
+  // Der rote Lauf am Kandidaten meldete `services/management/src/horizon.ts::riskHorizon`, obwohl
+  // `service.ts` ihn in der gleichnamigen Methode `async riskHorizon()` ruft. Beide Richtungen:
+  // der Aufruf im Methodenrumpf deckt, eine bloss gleichnamige Methode ohne Aufruf deckt nicht.
+  it("A7 · GLEICHNAMIGE METHODE: der Aufruf im Rumpf zählt, der Methodenname allein nicht", () => {
+    const baum = mkdtempSync(join(tmpdir(), "kw1349-methode-"));
+    try {
+      const src = join(baum, "services", "probe", "src");
+      mkdirSync(src, { recursive: true });
+      const schreib = (name: string, text: string): void =>
+        writeFileSync(join(src, name), text, "utf8");
+      const namen = (): string[] =>
+        erhebe(baum, ["services"], ["services"]).ohneAufrufer.map((f) => f.name);
+
+      schreib("ableitung.ts", "export function ableitung(): number {\n  return 1;\n}\n");
+      schreib("nur-name.ts", "export function nurName(): number {\n  return 2;\n}\n");
+      schreib(
+        "dienst.ts",
+        'import { ableitung } from "./ableitung";\nimport { nurName } from "./nur-name";\n\n' +
+          "export class Dienst {\n" +
+          "  async ableitung(): Promise<number> {\n    return ableitung();\n  }\n" +
+          "  nurName(): number {\n    return 3;\n  }\n" +
+          "}\n" +
+          "export const dienst = new Dienst();\n",
+      );
+      const gefangen = namen();
+      expect(
+        gefangen,
+        "der Aufruf des Imports im Rumpf einer gleichnamigen Methode IST ein Aufruf",
+      ).not.toContain("ableitung");
+      expect(
+        gefangen,
+        "eine gleichnamige Methode ohne Aufruf des Imports deckt den Export NICHT",
+      ).toContain("nurName");
     } finally {
       rmSync(baum, { recursive: true, force: true });
     }
