@@ -221,7 +221,6 @@ async function klick(el: Element | null | undefined): Promise<void> {
 }
 
 const q = (sel: string): HTMLElement | null => container.querySelector<HTMLElement>(sel);
-const qa = (sel: string): HTMLElement[] => [...container.querySelectorAll<HTMLElement>(sel)];
 
 const fallListe = async (): Promise<HTMLAnchorElement[]> => {
   if (!q('[data-testid="pruefen-menue-panel-faelle"]')) {
