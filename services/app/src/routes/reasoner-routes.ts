@@ -18,6 +18,7 @@ import {
   type ReasonerLocale,
   ReasonerPolicyLockedError,
   imBindungsrahmen,
+  sperreAusleitung,
   validateDescribeImageDataUrl,
 } from "../../../reasoner";
 import { runConflictSelfTest } from "../conflict-self-test";
@@ -432,6 +433,22 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
     const ankerSperre = source === "draft" && !ankerAufgeloest && !zustimmungMachtIntern;
     if (ankerSperre) {
       confidential = true;
+    }
+    // ==========================================================================================
+    // Auftrag gesamt-ki-freigaberegeln · BEN NACHARBEIT 3 — HERKUNFT IST KEINE KLASSE.
+    // ==========================================================================================
+    // Die zweite zentrale Adminfreigabe hebt nur die KLASSENSPERRE auf. Ein Entwurfstext ohne
+    // auflösbaren Anker (`ankerSperre`) und ein Text, dessen Herkunft kein Client-Text-Weg ist
+    // (`source` "ko"/fehlend/ungültig — „frei gelieferter Text wird nie freigegeben", s.
+    // `classifyProvenanceConfidential`), sind HERKUNFTSSPERREN: Sie gelten mit und ohne Freigabe.
+    // Deshalb wird die Sperre zusätzlich im Rahmen der Anfrage vermerkt (`sperreAusleitung`) —
+    // `anbieterZugelassen` lässt danach keinen externen Anbieter mehr zu. Die ausdrücklich zugestimmte
+    // Ausnahme für NICHT eingestuften Text (`zustimmungMachtIntern`) bleibt: sie setzt `ankerSperre`
+    // gar nicht erst. Ohne Rahmen lässt sich die Sperre nicht festhalten — dann wird abgebrochen
+    // (fail-closed), statt mit beiden Freigaben still zu öffnen.
+    const herkunftGesperrt = ankerSperre || !clientText;
+    if (herkunftGesperrt && !sperreAusleitung()) {
+      throw new Error("Herkunftssperre ohne Anfragerahmen — der Aufruf wird nicht ausgeführt.");
     }
     if (gebunden && !dokumentZustimmung) {
       confidential = true;

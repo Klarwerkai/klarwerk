@@ -37,6 +37,10 @@ const fakeTranscriber: Transcriber = {
     locale === "de" ? "Spindel nur im Stillstand schmieren." : "Grease only at standstill.",
 };
 
+// Auftrag gesamt-ki-freigaberegeln: die Fälle, die die TRANSKRIPTION selbst messen, laufen mit
+// erteilter zentraler Adminfreigabe. Ohne sie geht nichts hinaus — das messen die Fälle am Ende.
+const freigegeben = (): boolean => true;
+
 describe("SCRUM-382/521: MediaAnalysisService", () => {
   it("transkribiert ein als intern gespeichertes Video-Objekt und weist die Herkunft aus", async () => {
     const objects = makeStore();
@@ -46,7 +50,11 @@ describe("SCRUM-382/521: MediaAnalysisService", () => {
       data: videoDataUrl,
       confidentiality: "intern",
     });
-    const media = new MediaAnalysisService({ objects, transcriber: fakeTranscriber });
+    const media = new MediaAnalysisService({
+      objects,
+      transcriber: fakeTranscriber,
+      zentralFreigegeben: freigegeben,
+    });
     const result = await media.analyze(ref.id, "de");
     expect(result.engineActive).toBe(true);
     expect(result.engine).toBe("fake:test");
@@ -101,6 +109,7 @@ describe("SCRUM-382/521: MediaAnalysisService", () => {
           throw new Error("503");
         },
       },
+      zentralFreigegeben: freigegeben,
     });
     await expect(kaputt.analyze(ref.id, "de")).rejects.toBeInstanceOf(MediaAnalysisError);
   });
@@ -191,7 +200,11 @@ describe("SCRUM-382/521: MediaAnalysisService", () => {
       confidentiality: "intern",
     });
     const spy = makeSpy();
-    const media = new MediaAnalysisService({ objects, transcriber: spy.transcriber });
+    const media = new MediaAnalysisService({
+      objects,
+      transcriber: spy.transcriber,
+      zentralFreigegeben: freigegeben,
+    });
     const result = await media.analyze(ref.id, "de");
     expect(spy.wasCalled()).toBe(true);
     expect(result.transcript).not.toBeNull();
@@ -284,6 +297,7 @@ describe("SCRUM-382/521: MediaAnalysisService", () => {
       objects,
       transcriber: spy.transcriber,
       koConfidentiality: async () => ["intern"],
+      zentralFreigegeben: freigegeben,
     });
     const result = await media.analyze(ref.id, "de");
     expect(spy.wasCalled()).toBe(true);
@@ -355,5 +369,176 @@ describe("SCRUM-382/521: MediaAnalysisService", () => {
     expect(innerCalled).toBe(false);
     // nicht vertraulich → reicht durch
     expect(await capped.transcribe(Buffer.from("x"), "video/mp4", "de", false)).toBe("x");
+  });
+});
+
+// Auftrag gesamt-ki-freigaberegeln (P-ADMIN-KI-FREIGABE, package:kiwahl): auch die Transkription
+// ist ein Weg zu einer öffentlichen KI. Ohne zentrale Adminfreigabe geht nichts hinaus — und mit ihr
+// derselbe Aufbau doch (Gegenprobe), damit die Sperre nachweislich an der Freigabe hängt.
+describe("gesamt-ki-freigaberegeln: Transkription nur mit zentraler Adminfreigabe", () => {
+  async function internesVideo(objects: ObjectStore): Promise<string> {
+    const ref = await objects.put({
+      name: "freigabe.mp4",
+      mime: "video/mp4",
+      data: videoDataUrl,
+      confidentiality: "intern",
+    });
+    return ref.id;
+  }
+
+  const ohneFreigabe: readonly [string, (() => boolean) | undefined][] = [
+    ["Auskunft fehlt", undefined],
+    ["ausdrücklich nicht freigegeben", () => false],
+    [
+      "Auskunft wirft",
+      () => {
+        throw new Error("Policy nicht lesbar");
+      },
+    ],
+  ];
+  for (const [fall, zentralFreigegeben] of ohneFreigabe) {
+    it(`${fall}: der Transkriber wird NIE gerufen, der Anbieter bleibt benannt`, async () => {
+      const objects = makeStore();
+      const id = await internesVideo(objects);
+      const spy = makeSpy();
+      const media = new MediaAnalysisService({
+        objects,
+        transcriber: spy.transcriber,
+        ...(zentralFreigegeben ? { zentralFreigegeben } : {}),
+      });
+      const result = await media.analyze(id, "de");
+      expect(spy.wasCalled()).toBe(false);
+      expect(result.transcript).toBeNull();
+      expect(result.engineActive).toBe(false);
+      expect(result.engine).toBe("spy");
+      expect(result.note).toContain("nicht freigegeben");
+    });
+  }
+
+  it("die Auskunft wird je Analyse frisch gelesen: Rücknahme sperrt, Erteilung öffnet", async () => {
+    const objects = makeStore();
+    const id = await internesVideo(objects);
+    const spy = makeSpy();
+    let frei = false;
+    const media = new MediaAnalysisService({
+      objects,
+      transcriber: spy.transcriber,
+      zentralFreigegeben: () => frei,
+    });
+    expect((await media.analyze(id, "de")).transcript).toBeNull();
+    expect(spy.wasCalled()).toBe(false);
+    frei = true;
+    expect((await media.analyze(id, "de")).transcript).not.toBeNull();
+    expect(spy.wasCalled()).toBe(true);
+  });
+
+  it("die Vertraulichkeit bleibt davor: Freigabe öffnet KEIN vertrauliches Medium", async () => {
+    const objects = makeStore();
+    const ref = await objects.put({
+      name: "vertraulich.mp4",
+      mime: "video/mp4",
+      data: videoDataUrl,
+      confidentiality: "vertraulich",
+    });
+    const spy = makeSpy();
+    const media = new MediaAnalysisService({
+      objects,
+      transcriber: spy.transcriber,
+      zentralFreigegeben: freigegeben,
+    });
+    const result = await media.analyze(ref.id, "de");
+    expect(spy.wasCalled()).toBe(false);
+    expect(result.note).toContain("Vertrauliche");
+  });
+
+  // Ben Nacharbeit 2: die ZWEITE Adminfreigabe öffnet auch vertrauliche Medien — mit derselben Kette
+  // dahinter (Grundfreigabe, Chokepoint). Die Einstufung reist unverändert als `true` mit.
+  it("beide Freigaben: ein vertrauliches Medium wird transkribiert, die Einstufung reist mit", async () => {
+    const objects = makeStore();
+    const ref = await objects.put({
+      name: "vertraulich-frei.mp4",
+      mime: "video/mp4",
+      data: videoDataUrl,
+      confidentiality: "vertraulich",
+    });
+    const gesehen: boolean[] = [];
+    const media = new MediaAnalysisService({
+      objects,
+      transcriber: {
+        name: "spy",
+        transcribe: async (_b, _m, _l, confidential) => {
+          gesehen.push(confidential);
+          return "Vertraulicher Mitschnitt.";
+        },
+      },
+      zentralFreigegeben: freigegeben,
+      vertraulichFreigegeben: freigegeben,
+    });
+    const result = await media.analyze(ref.id, "de");
+    expect(result.transcript).toBe("Vertraulicher Mitschnitt.");
+    expect(gesehen).toEqual([true]);
+  });
+
+  it("zweite Freigabe ohne Grundfreigabe ist wirkungslos — nichts geht hinaus", async () => {
+    const objects = makeStore();
+    const ref = await objects.put({
+      name: "vertraulich-halb.mp4",
+      mime: "video/mp4",
+      data: videoDataUrl,
+      confidentiality: "vertraulich",
+    });
+    const spy = makeSpy();
+    const media = new MediaAnalysisService({
+      objects,
+      transcriber: spy.transcriber,
+      zentralFreigegeben: () => false,
+      vertraulichFreigegeben: freigegeben,
+    });
+    const result = await media.analyze(ref.id, "de");
+    expect(spy.wasCalled()).toBe(false);
+    expect(result.note).toContain("nicht freigegeben");
+  });
+
+  it("Chokepoint: cappedTranscriber lässt Vertrauliches nur mit der Freigabeauskunft durch", async () => {
+    let innen = 0;
+    const inner: Transcriber = {
+      name: "cloud",
+      transcribe: async () => {
+        innen += 1;
+        return "x";
+      },
+    };
+    const gesperrt: readonly ((() => boolean) | undefined)[] = [
+      undefined,
+      () => false,
+      () => {
+        throw new Error("nicht lesbar");
+      },
+    ];
+    for (const vertraulichFreigegeben of gesperrt) {
+      const capped = cappedTranscriber(inner, {
+        rejectsConfidential: true,
+        vertraulichFreigegeben,
+      });
+      await expect(
+        capped.transcribe(Buffer.from("x"), "video/mp4", "de", true),
+      ).rejects.toBeInstanceOf(TranscriberConfidentialError);
+    }
+    expect(innen).toBe(0);
+    const frei = cappedTranscriber(inner, {
+      rejectsConfidential: true,
+      vertraulichFreigegeben: () => true,
+    });
+    expect(await frei.transcribe(Buffer.from("x"), "video/mp4", "de", true)).toBe("x");
+    expect(innen).toBe(1);
+  });
+
+  it("ohne Schlüssel bleibt der Inaktiv-Zustand unterscheidbar von „nicht freigegeben“", async () => {
+    const objects = makeStore();
+    const id = await internesVideo(objects);
+    const media = new MediaAnalysisService({ objects });
+    const result = await media.analyze(id, "de");
+    expect(result.engine).toBeNull();
+    expect(result.note).toContain("nicht aktiv");
   });
 });

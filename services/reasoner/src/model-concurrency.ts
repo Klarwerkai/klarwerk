@@ -239,6 +239,37 @@ export interface ModellAufrufSpur {
    * hinaus. Fehlt sie, ändert sich nichts.
    */
   vorUebertragung?: () => void;
+  /**
+   * Auftrag gesamt-ki-freigaberegeln (P-ADMIN-KI-FREIGABE, Ben Nacharbeit 2): Der Lauf hat für DIESEN
+   * Versuch entschieden, dass als vertraulich eingestufter Text an diesen externen Anbieter darf. Das
+   * gilt nur, wenn beide zentralen Adminfreigaben stehen (`Reasoner.oeffentlicheKiErlaubt(true)`) und
+   * der Anbieter in der Kette dieser Anfrage zugelassen ist (Klara-Bindung, `anbieterZugelassen`).
+   * Gesetzt ausschliesslich vom Reasoner (`runTask`, `Laufbuch`). Fehlt der Merker, weist der
+   * Chokepoint Vertrauliches ab wie bisher.
+   *
+   * Ben Nacharbeit 3: KEIN gespeicherter Wahrheitswert, sondern eine PRÜFUNG, die der Chokepoint
+   * zweimal FRISCH fragt — beim Eintritt und noch einmal INNERHALB des Slot-Rahmens, also nach
+   * Ausgangsprüfung und Warteschlange, unmittelbar vor der Übertragung. Nimmt der Administrator die
+   * Freigabe während des Wartens zurück, geht nichts mehr hinaus.
+   */
+  vertraulichFreigegeben?: () => boolean;
+}
+
+/**
+ * Darf der laufende Versuch vertraulichen Text an einen externen Client geben? Nur, wenn der Reasoner
+ * es für genau diesen Versuch JETZT bestätigt UND die Zustimmungen der Anfrage noch tragen. Ohne Lauf-
+ * Kontext (Probe, completeRaw, direkte Client-Nutzung) nie. Ein Wurf der Prüfung ist kein Ja.
+ */
+function vertraulicheUebertragungFreigegeben(): boolean {
+  const pruefung = modellAufrufSpur.getStore()?.vertraulichFreigegeben;
+  if (typeof pruefung !== "function") {
+    return false;
+  }
+  try {
+    return pruefung() === true && zustimmungenTragen();
+  } catch {
+    return false;
+  }
 }
 
 // DIE EINZIGE STELLE, DIE ZWEI VERBRÄUCHE ZU EINEM ADDIERT. `runTask` braucht sie über die
@@ -361,6 +392,15 @@ function pruefeZustimmungVorUebertragung(extern: boolean): void {
   }
 }
 
+// Auftrag gesamt-ki-freigaberegeln (Ben Nacharbeit 3): die Vertraulichkeitsfreigabe gilt im
+// AUGENBLICK DER ÜBERTRAGUNG, nicht beim Eintritt. Innerhalb des Slot-Rahmens gefragt — nach
+// Ausgangsprüfung und Warteschlange. Fällt sie inzwischen weg, geht nichts hinaus.
+function pruefeVertraulichVorUebertragung(extern: boolean, confidential: boolean): void {
+  if (extern && confidential && !vertraulicheUebertragungFreigegeben()) {
+    throw new ConfidentialEgressError();
+  }
+}
+
 // R-1646 · Ausgangsprüfung: ist sie eingeschaltet, wartet ein Aufruf, der das Haus verlassen kann,
 // VOR dem Slot auf die Entscheidung eines Controllers (ein wartender Mensch hält keinen Slot fest).
 // Gesendet wird der angezeigte, anonymisierte Text; die Antwort bekommt die Originale zurück.
@@ -408,7 +448,9 @@ export function cappedModelClient(
     // `model: undefined`-Feld wäre eine Angabe, die keine ist.
     ...(inner.model ? { model: inner.model } : {}),
     complete: (system: string, user: string, confidential: boolean, maxTokens?: number) => {
-      if (opts.rejectsConfidential && confidential) {
+      // gesamt-ki-freigaberegeln: die zentrale Freigabe für Vertrauliches wirkt bis hierher — aber
+      // nur über den Merker, den der Reasoner je Versuch setzt; die Einstufung selbst bleibt `true`.
+      if (opts.rejectsConfidential && confidential && !vertraulicheUebertragungFreigegeben()) {
         return Promise.reject(new ConfidentialEgressError());
       }
       return mitAusgangspruefung(
@@ -423,6 +465,8 @@ export function cappedModelClient(
             // Lauf 2 · Bens B7: nach dem Warten auf den Slot, vor der Übertragung — ein inzwischen
             // abgeschlossener Widerruf oder Sitzungsablauf lässt nichts mehr hinaus, auf jedem Weg.
             pruefeZustimmungVorUebertragung(opts.rejectsConfidential);
+            // Ben Nacharbeit 3: die Vertraulichkeitsfreigabe FRISCH, nach jedem Warten.
+            pruefeVertraulichVorUebertragung(opts.rejectsConfidential, confidential);
             vermerkeModellAufruf();
             return inner.complete(ausgehendSystem, ausgehendUser, confidential, maxTokens);
           }),
@@ -439,7 +483,11 @@ export function cappedModelClient(
             confidential: boolean,
             maxTokens?: number,
           ) => {
-            if (opts.rejectsConfidential && confidential) {
+            if (
+              opts.rejectsConfidential &&
+              confidential &&
+              !vertraulicheUebertragungFreigegeben()
+            ) {
               return Promise.reject(new ConfidentialEgressError());
             }
             // R-1646: das Bild selbst wird nicht anonymisiert — die Vorschau sagt das ausdrücklich.
@@ -453,6 +501,7 @@ export function cappedModelClient(
                 withModelSlot(() => {
                   // JOB 3036 R2: der Bildweg zählt genauso als Modellaufruf wie der Textweg.
                   pruefeZustimmungVorUebertragung(opts.rejectsConfidential);
+                  pruefeVertraulichVorUebertragung(opts.rejectsConfidential, confidential);
                   vermerkeModellAufruf();
                   return innerVision(
                     ausgehendSystem,
