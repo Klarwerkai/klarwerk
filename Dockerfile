@@ -14,15 +14,18 @@
 # (nicht prüfbar) lässt den Bau scheitern; die Laufzeitstufe hängt über `COPY --from` an dieser
 # Stufe, deshalb kann sie nicht übersprungen werden. Node 24 führt das TypeScript-Werkzeug direkt
 # aus (wie tools/abhaengigkeiten-audit.sh), ohne tsx und ohne Nachladen.
-# SOURCE_COMMIT steht im RUN, damit ein neuer Commit den Bau-Cache dieser Stufe verwirft und die
-# Registry erneut gefragt wird — sonst bliebe bei unveränderten Lockdateien ein altes Ergebnis
-# stehen. Reicht die Auslieferung den Wert nicht herein, entscheidet der Cache des Builders (s.
-# Kommentar zu SOURCE_COMMIT unten); der Zeitstempel im Ergebnis zeigt dann, wann gefragt wurde.
 FROM node:24-bookworm-slim AS abhaengigkeiten
 WORKDIR /pruef
 COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/package-lock.json apps/web/
 COPY tools/abhaengigkeiten-audit.ts tools/abhaengigkeiten-bewertet.json tools/
+# SOURCE_COMMIT steht im RUN, damit ein neuer Commit den Bau-Cache dieser Stufe verwirft und die
+# Registry erneut gefragt wird — sonst bliebe bei unveränderten Lockdateien ein altes Ergebnis
+# stehen. DER NAME `SOURCE_COMMIT` IST HIER DIESELBE ANNAHME ÜBER DIE AUSLIEFERUNG wie in der
+# Laufzeitstufe unten, keine Messung. Fehlt der Wert oder ist er unbrauchbar, nennt die Ausgabe den
+# Commit „unbekannt“, und der Cache des Builders entscheidet, ob erneut gefragt wird; der
+# Zeitstempel im Ergebnis zeigt, wann. Für /health prüft weiterhin allein `buildCommit()` in
+# build-app.ts den Wert der Laufzeitstufe.
 ARG SOURCE_COMMIT=""
 RUN echo "Abhängigkeitsprüfung für Commit ${SOURCE_COMMIT:-unbekannt}" && \
     node tools/abhaengigkeiten-audit.ts --ausgabe /pruef/abhaengigkeiten-audit.txt
