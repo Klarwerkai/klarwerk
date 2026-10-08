@@ -2,7 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { describe, expect, it } from "vitest";
 import { ModelCapacityError } from "../../reasoner";
 import { buildApp, buildServices } from "./build-app";
-import { askRoutes } from "./routes/ask-routes";
+import { askRoutes, klaraAusfuehrungRoutes } from "./routes/ask-routes";
 
 // SCRUM-242: Ask-/Fragen-Workflow über die ECHTEN HTTP-Routen absichern (kein Service-Direktaufruf,
 // keine Repo-Manipulation). Frage via POST /api/ask (ko.read) → { result: AnswerResult, gap }.
@@ -571,6 +571,8 @@ describe("KW-KA4 · Ohne Einwilligung bleibt der Server bytegleich", () => {
     };
   }
 
+  // R-0700: der Klara-Ask läuft über Klaras EIGENEN Zugang (`/api/klara/sessions/{id}/execute`).
+  // Der eingefrorene Optionssatz ist derselbe — die Enge ist mit dem Zugang umgezogen, nicht gelockert.
   it("KA4-S1 (SNAPSHOT): der Klara-Ask ohne Einwilligung trägt exakt validatedOnly + retrievalOnly", async () => {
     const { app, gesehen } = mitSpion();
     const auth = await adminHeaders(app);
@@ -578,9 +580,9 @@ describe("KW-KA4 · Ohne Einwilligung bleibt der Server bytegleich", () => {
 
     const res = await app.inject({
       method: "POST",
-      url: "/api/ask",
+      url: `/api/klara/sessions/${sitzung.sessionId}/execute`,
       headers: sitzung.headers,
-      payload: { question: "Wie entlüfte ich die Pumpe?", mode: "retrieval-only" },
+      payload: { question: "Wie entlüfte ich die Pumpe?" },
     });
 
     expect(res.statusCode).toBe(200);
@@ -608,7 +610,7 @@ describe("KW-KA4 · Ohne Einwilligung bleibt der Server bytegleich", () => {
 
     await app.inject({
       method: "POST",
-      url: "/api/ask",
+      url: `/api/klara/sessions/${sitzung.sessionId}/execute`,
       headers: sitzung.headers,
       payload: { question: "Wie entlüfte ich die Pumpe?", mode: "retrieval-only" },
     });
@@ -643,6 +645,22 @@ describe("KW-KA4 · Ohne Einwilligung bleibt der Server bytegleich", () => {
       headers: sitzung.headers,
     });
     expect(res.statusCode).toBe(409);
+  });
+
+  it("KA4-S4 · R-0700: dieselbe Sitzung am ALLGEMEINEN Frageweg — abgewiesen, der Dienst wird nicht gefragt", async () => {
+    const { app, gesehen } = mitSpion();
+    const auth = await adminHeaders(app);
+    const sitzung = await klaraSitzung(app, auth);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: sitzung.headers,
+      payload: { question: "Wie entlüfte ich die Pumpe?", mode: "retrieval-only" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("KLARA_EIGENER_WEG");
+    expect(gesehen).toHaveLength(0);
   });
 });
 
@@ -680,7 +698,14 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
    * Eine minimale App mit genau dieser Route. `guards` gibt einen Sitzungsnutzer zurück; der
    * Ask-Dienst ist ein Spion, der den Optionssatz festhält, statt zu antworten.
    */
-  async function routeMit(pruefer: unknown) {
+  // R-0700: die Matrix fährt Klaras EIGENEN Zugang (`klaraAusfuehrungRoutes`). Das Tor bekommt dort
+  // zusätzlich die Bindungsprüfung `pruefeBindung`; sie gelingt hier, solange ein Fall nicht
+  // ausdrücklich etwas anderes verlangt. Der allgemeine Weg ist mitregistriert, damit derselbe
+  // Aufbau zeigt, dass er die Bindung abweist.
+  async function routeMit(
+    pruefer: Record<string, unknown> | undefined,
+    pruefeBindung: () => Promise<unknown> = async () => undefined,
+  ) {
     const gesehen: unknown[] = [];
     const ask = {
       // D5 (KI aus): die Route prüft nach der Antwort erneut; bei eingeschalteter KI tut das nichts.
@@ -703,34 +728,35 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
         };
       },
     };
+    const guards = {
+      requireUser: async () => ({ id: "nutzer-1", role: "admin" }),
+      requirePermission: async () => ({ id: "nutzer-1", role: "admin" }),
+    } as never;
+    const basis = {
+      ask: ask as never,
+      ko: { get: async () => undefined } as never,
+      conflicts: { unresolved: async () => [] } as never,
+    };
     const app = Fastify();
+    app.register(askRoutes(basis, guards));
     app.register(
-      askRoutes(
-        {
-          ask: ask as never,
-          ko: { get: async () => undefined } as never,
-          conflicts: { unresolved: async () => [] } as never,
-          klaraSessions: pruefer as never,
-        },
-        {
-          requireUser: async () => ({ id: "nutzer-1", role: "admin" }),
-          requirePermission: async () => ({ id: "nutzer-1", role: "admin" }),
-        } as never,
+      klaraAusfuehrungRoutes(
+        { ...basis, klaraSessions: { ...(pruefer ?? {}), pruefeBindung } as never },
+        guards,
       ),
     );
     await app.ready();
     return { app, gesehen };
   }
 
-  const frage = (app: FastifyInstance, headers: Record<string, string>) =>
+  const frage = (app: FastifyInstance, headers: Record<string, string>, pfadSitzung = "sess-1") =>
     app.inject({
       method: "POST",
-      url: "/api/ask",
+      url: `/api/klara/sessions/${pfadSitzung}/execute`,
       headers,
       // R-0639 Runde 3 (Bens Befund B1): mit Klara-Bindung ist nur ausdrücklich `manual` getippt.
       payload: {
         question: "Wie entlüfte ich die Pumpe?",
-        mode: "retrieval-only",
         questionSource: "manual",
       },
     });
@@ -809,7 +835,10 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
     await app.close();
   });
 
-  it("KA4-N3: fehlende Kopfzeilen → gar keine Torbefragung, unveränderte Enge", async () => {
+  // R-0700: am eigenen Zugang ist eine unvollständige Zuordnung KEINE Enge, sondern GAR KEINE
+  // Antwort. Instanz und Dokument sind Pflicht; fehlt eine, wird weder das Tor noch der Fragedienst
+  // gefragt, und die Absage ist generisch (404).
+  it("KA4-N3: fehlende Instanz- oder Dokumentkopfzeile → 404, weder Tor noch Fragedienst", async () => {
     let gefragt = 0;
     const { app, gesehen } = await routeMit({
       pruefeExterneAusfuehrung: async () => {
@@ -817,13 +846,43 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
         return { erlaubt: true };
       },
     });
-    // Jede der drei Angaben einzeln weggelassen — jede für sich muss die Freigabe verhindern.
-    await frage(app, { "x-klara-instance": "inst-1", "x-klara-document": "doc-s-1" });
-    await frage(app, { "x-klara-session": "sess-1", "x-klara-document": "doc-s-1" });
-    await frage(app, { "x-klara-session": "sess-1", "x-klara-instance": "inst-1" });
-    await frage(app, {});
+    const antworten = [
+      await frage(app, { "x-klara-session": "sess-1", "x-klara-document": "doc-s-1" }),
+      await frage(app, { "x-klara-session": "sess-1", "x-klara-instance": "inst-1" }),
+      await frage(app, {}),
+    ];
+    expect(antworten.map((r) => r.statusCode)).toEqual([404, 404, 404]);
     expect(gefragt, "ohne vollständige Bindung wird das Tor gar nicht erst gefragt").toBe(0);
-    expect(gesehen).toEqual([ENGE, ENGE, ENGE, ENGE]);
+    expect(gesehen).toEqual([]);
+    await app.close();
+  });
+
+  it("KA4-N3b: die Sitzung steht im PFAD — eine fehlende Sitzungskopfzeile ist kein Mangel", async () => {
+    let gesehenSitzung: unknown = null;
+    const { app } = await routeMit({
+      pruefeExterneAusfuehrung: async (sessionId: string) => {
+        gesehenSitzung = sessionId;
+        return { erlaubt: false };
+      },
+    });
+    const res = await frage(app, { "x-klara-instance": "inst-1", "x-klara-document": "doc-s-1" });
+    expect(res.statusCode).toBe(200);
+    expect(gesehenSitzung).toBe("sess-1");
+    await app.close();
+  });
+
+  it("KA4-N3c: eine abweichende Sitzungskopfzeile ist dieselbe Absage wie eine fremde Sitzung", async () => {
+    let gefragt = 0;
+    const { app, gesehen } = await routeMit({
+      pruefeExterneAusfuehrung: async () => {
+        gefragt += 1;
+        return { erlaubt: true };
+      },
+    });
+    const res = await frage(app, { ...BINDUNG, "x-klara-session": "sess-anders" }, "sess-1");
+    expect(res.statusCode).toBe(404);
+    expect(gefragt).toBe(0);
+    expect(gesehen).toEqual([]);
     await app.close();
   });
 
@@ -835,20 +894,69 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
         return { erlaubt: true };
       },
     });
-    await frage(app, {
-      "x-klara-session": "  ",
-      "x-klara-instance": "inst-1",
+    const res = await frage(app, {
+      "x-klara-session": "sess-1",
+      "x-klara-instance": "  ",
       "x-klara-document": "doc-s-1",
     });
+    expect(res.statusCode).toBe(404);
     expect(gefragt).toBe(0);
+    expect(gesehen).toEqual([]);
+    await app.close();
+  });
+
+  it("KA4-N4b: die Sitzungsbindung trägt nicht (fremd/abgelaufen) → 404, kein Fragedienst", async () => {
+    let gefragt = 0;
+    const { app, gesehen } = await routeMit(
+      {
+        pruefeExterneAusfuehrung: async () => {
+          gefragt += 1;
+          return { erlaubt: true };
+        },
+      },
+      async () => {
+        throw Object.assign(new Error("Keine gültige Klara-Sitzung."), { code: "NOT_FOUND" });
+      },
+    );
+    const res = await frage(app, BINDUNG);
+    expect(res.statusCode).toBe(404);
+    expect(gefragt).toBe(0);
+    expect(gesehen).toEqual([]);
+    await app.close();
+  });
+
+  it("KA4-N5: ein Tor ohne Freigabeprüfung → unveränderte Enge (mega76-Bauart)", async () => {
+    const { app, gesehen } = await routeMit(undefined);
+    await frage(app, BINDUNG);
     expect(gesehen[0]).toEqual(ENGE);
     await app.close();
   });
 
-  it("KA4-N5: gar kein Tor verdrahtet → unveränderte Enge (mega76-Bauart)", async () => {
-    const { app, gesehen } = await routeMit(undefined);
-    await frage(app, BINDUNG);
-    expect(gesehen[0]).toEqual(ENGE);
+  it("KA4-N8 · R-0700: der allgemeine Frageweg weist dieselbe Bindung ab und fragt niemanden", async () => {
+    let gefragt = 0;
+    const { app, gesehen } = await routeMit({
+      pruefeExterneAusfuehrung: async () => {
+        gefragt += 1;
+        return { erlaubt: true };
+      },
+    });
+    const mitBindung = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: BINDUNG,
+      payload: { question: "Wie entlüfte ich die Pumpe?", mode: "retrieval-only" },
+    });
+    const mitFeld = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      payload: { question: "Wie entlüfte ich die Pumpe?", questionSource: "selection" },
+    });
+    expect(mitBindung.statusCode).toBe(400);
+    expect(mitBindung.json().error).toBe("KLARA_EIGENER_WEG");
+    expect(mitFeld.statusCode).toBe(400);
+    expect(mitFeld.json().error).toBe("KLARA_EIGENER_WEG");
+    expect(gefragt).toBe(0);
+    expect(gesehen).toEqual([]);
     await app.close();
   });
 
@@ -859,7 +967,7 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
     });
     await app.inject({
       method: "POST",
-      url: "/api/ask",
+      url: "/api/klara/sessions/sess-1/execute",
       headers: BINDUNG,
       payload: {
         question: "Wie entlüfte ich die Pumpe?",

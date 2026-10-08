@@ -1,4 +1,8 @@
-import type { ReasonerCloudAnbieter, ReasonerZugangHerkunft } from "./types";
+import type {
+  ReasonerCloudAnbieter,
+  ReasonerModellWissensstand,
+  ReasonerZugangHerkunft,
+} from "./types";
 
 // ================================================================================================
 // R-0702 · DIE HERKUNFT JE KI-ZUGANG STEHT HIER, NICHT IM BROWSER.
@@ -30,5 +34,51 @@ export function zugangHerkunft(): Record<ReasonerCloudAnbieter | "local", Reason
     openai: { ...ZUGANG_HERKUNFT.openai },
     anthropic: { ...ZUGANG_HERKUNFT.anthropic },
     local: { ...ZUGANG_HERKUNFT.local },
+  };
+}
+
+// ================================================================================================
+// R-0299 · BIS WANN REICHT DAS WISSEN DES MODELLS? NUR AUS BELEGTEN ANGABEN.
+// ================================================================================================
+//
+// Die Karte „Betreiber und Wissensstand" soll in der Vorführung keine falsche Aktualität
+// suggerieren. Der Wissensstand eines Modells (der Stichtag seiner Trainingsdaten) ist eine Angabe
+// des HERSTELLERS je Modellkennung — er lässt sich weder aus dem Namen ableiten noch erfragen.
+//
+// DESHALB GIBT ES HIER NUR EINE TABELLE BELEGTER ANGABEN, geschlüsselt nach der EXAKTEN
+// Modellkennung, wie sie der Client meldet. Jeder Eintrag trägt seinen Beleg (Dokument/Fundstelle
+// des Herstellers) und das Abrufdatum. HEUTE IST SIE LEER: für die angebotenen Modelle liegt in
+// diesem Bestand keine belegte Herstellerangabe vor, und eine aus dem Gedächtnis eingetragene Zahl
+// wäre genau die falsche Aktualität, gegen die die Karte gebaut ist. Fehlt der Eintrag, sagt die
+// Auskunft ehrlich „unbekannt" und nennt, WELCHE Quelle fehlt (`quellenbedarf`).
+interface BelegterWissensstand {
+  /** Stichtag der Trainingsdaten, wie der Hersteller ihn nennt (ISO-Monat oder -Datum). */
+  readonly stand: string;
+  /** Fundstelle des Herstellers (Modellkarte, Dokumentationsseite) — nie eine Vermutung. */
+  readonly quelle: string;
+  /** Wann die Fundstelle gelesen wurde (ISO-Datum). */
+  readonly abgerufen: string;
+}
+
+const BELEGTE_WISSENSSTAENDE: Readonly<Record<string, BelegterWissensstand>> = {};
+
+/**
+ * Der Wissensstand eines Modells — belegt aus der Tabelle oben, sonst ausdrücklich unbekannt mit
+ * benanntem Quellenbedarf. `modell` ist die Kennung, die der Client meldet (z. B. `gpt-4o-mini`);
+ * fehlt sie, gibt es nichts nachzuschlagen.
+ */
+export function modellWissensstand(modell: string | null | undefined): ReasonerModellWissensstand {
+  const kennung = (modell ?? "").trim();
+  const beleg = kennung ? BELEGTE_WISSENSSTAENDE[kennung] : undefined;
+  if (beleg) {
+    return { stand: beleg.stand, nachweis: "belegt", quelle: beleg.quelle, quellenbedarf: null };
+  }
+  return {
+    stand: null,
+    nachweis: "unbekannt",
+    quelle: null,
+    quellenbedarf: kennung
+      ? `Herstellerangabe zum Trainingsdaten-Stichtag des Modells „${kennung}" (Modellkarte oder Dokumentation des Anbieters, mit Fundstelle und Abrufdatum).`
+      : "Keine Modellkennung gemeldet — ohne sie lässt sich kein Stichtag belegen.",
   };
 }

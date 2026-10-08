@@ -2610,6 +2610,33 @@ export interface ReasonerZugangHerkunft {
   nachweis: ReasonerHerkunftNachweis;
 }
 
+// R-0299: WORTGLEICH zu `ReasonerModellWissensstand` / `ReasonerBetreiberKarte` in
+// `services/reasoner/src/types.ts`. Der Wissensstand kommt NUR aus belegten Herstellerangaben;
+// fehlt der Beleg, ist er `unbekannt`, und `quellenbedarf` nennt die fehlende Quelle.
+export interface ReasonerModellWissensstand {
+  stand: string | null;
+  nachweis: "belegt" | "unbekannt";
+  quelle: string | null;
+  quellenbedarf: string | null;
+}
+
+export interface ReasonerBetreiberKarte {
+  zugang: ReasonerCloudAnbieter | "local" | null;
+  betreiber: string | null;
+  modell: string | null;
+  herkunft: ReasonerZugangHerkunft | null;
+  wissensstand: ReasonerModellWissensstand | null;
+}
+
+// R-0599: WORTGLEICH zu `ReasonerKiLage` (Server) — die KI-Lage der Kopfzeile, für jeden
+// angemeldeten Nutzer (GET /api/ki-lage). Ohne Modellnamen, ohne Schlüssel.
+export interface ReasonerKiLage {
+  modus: "extern" | "intern" | "keine";
+  anbieter: ReasonerCloudAnbieter | "local" | null;
+  anbieterName: string | null;
+  herkunft: ReasonerZugangHerkunft | null;
+}
+
 // Welcher abgelöste Wert wohin überführt wurde — nachvollziehbar, nicht still.
 export interface ReasonerWahlMigration {
   von: "model" | "cloud";
@@ -2641,6 +2668,8 @@ export interface ReasonerConfigStatus {
   // R-0702: Herkunft je Zugang mit Nachweisstufe. Optional — ein älterer Server sendet sie nicht,
   // dann zeigt die Fläche „Herkunft unbekannt" statt zu raten.
   herkunft?: Record<ReasonerCloudAnbieter | "local", ReasonerZugangHerkunft>;
+  // R-0299: Betreiber und Wissensstand des gerade antwortenden Modells (Karte in der KI-Verwaltung).
+  betreiber?: ReasonerBetreiberKarte;
   // JOB 3134: der Anbieter hinter „Auto" (der erste eingerichtete); null, wenn keiner eingerichtet.
   autoAnbieter?: ReasonerCloudAnbieter | null;
   // JOB 3134: nachvollziehbare Migration abgelöster Werte (`cloud`/`model`) — nur solange die

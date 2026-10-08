@@ -38,6 +38,27 @@ export default {
     "kilage.aktion.keiner": "Kein Versand an eine KI",
     "kilage.aktion.keinerText":
       "Diese Aufgabe läuft rein regelbasiert in Klarwerk; die Inhalte gehen an kein KI-Modell.",
+    "kilage.zeile.extern": "KI: extern · {{anbieter}}",
+    "kilage.zeile.externOhneName": "KI: extern",
+    "kilage.zeile.intern": "KI: Server des Betreibers",
+    "kilage.zeile.keine": "Keine KI · regelbasiert",
+    "kilage.zeile.unbekannt": "KI-Lage unbekannt",
+    "kilage.karte.titel": "Betreiber und Wissensstand des Modells",
+    "kilage.karte.betreiber": "Betreiber",
+    "kilage.karte.betreiberServer": "Server des Betreibers dieser Installation",
+    "kilage.karte.modell": "Modell",
+    "kilage.karte.modellUnbekannt": "nicht gemeldet",
+    "kilage.karte.herkunft": "Herkunft",
+    "kilage.karte.wissensstand": "Wissensstand",
+    "kilage.karte.wissensstandBelegt": "{{stand}} (Beleg: {{quelle}})",
+    "kilage.karte.wissensstandUnbekannt":
+      "unbekannt — für dieses Modell ist kein belegter Stichtag hinterlegt",
+    "kilage.karte.quellenbedarf":
+      "Fehlende Quelle: die Herstellerangabe zum Trainingsdaten-Stichtag von „{{modell}}“ (Modellkarte oder Dokumentation des Anbieters, mit Fundstelle und Abrufdatum).",
+    "kilage.karte.keinModell":
+      "Gerade arbeitet kein KI-Modell — Antworten entstehen regelbasiert aus geprüftem Wissen. Einen Wissensstand, der veralten könnte, gibt es deshalb nicht.",
+    "kilage.karte.hinweis":
+      "Ein Modell kennt nur, was bis zu seinem Stichtag in seinen Trainingsdaten stand. Aktuelles kommt ausschliesslich aus dem geprüften Wissen dieser Installation.",
   },
   en: {
     "kilage.kopf.hinweisExtern":
@@ -62,6 +83,27 @@ export default {
     "kilage.aktion.keiner": "Nothing is sent to an AI",
     "kilage.aktion.keinerText":
       "This task runs purely rule-based in Klarwerk; the content goes to no AI model.",
+    "kilage.zeile.extern": "AI: external · {{anbieter}}",
+    "kilage.zeile.externOhneName": "AI: external",
+    "kilage.zeile.intern": "AI: operator's server",
+    "kilage.zeile.keine": "No AI · rule-based",
+    "kilage.zeile.unbekannt": "AI status unknown",
+    "kilage.karte.titel": "Operator and knowledge cut-off of the model",
+    "kilage.karte.betreiber": "Operator",
+    "kilage.karte.betreiberServer": "The AI server of this installation's operator",
+    "kilage.karte.modell": "Model",
+    "kilage.karte.modellUnbekannt": "not reported",
+    "kilage.karte.herkunft": "Origin",
+    "kilage.karte.wissensstand": "Knowledge cut-off",
+    "kilage.karte.wissensstandBelegt": "{{stand}} (source: {{quelle}})",
+    "kilage.karte.wissensstandUnbekannt":
+      "unknown — no documented cut-off date is recorded for this model",
+    "kilage.karte.quellenbedarf":
+      "Missing source: the vendor's statement of the training-data cut-off for “{{modell}}” (model card or vendor documentation, with location and retrieval date).",
+    "kilage.karte.keinModell":
+      "No AI model is working right now — answers are produced rule-based from validated knowledge. There is therefore no knowledge cut-off that could be outdated.",
+    "kilage.karte.hinweis":
+      "A model only knows what was in its training data up to its cut-off. Anything current comes solely from the validated knowledge of this installation.",
   },
   nl: {
     "kilage.kopf.hinweisExtern":
@@ -86,5 +128,26 @@ export default {
     "kilage.aktion.keiner": "Niets gaat naar een AI",
     "kilage.aktion.keinerText":
       "Deze taak draait puur op regels in Klarwerk; de inhoud gaat naar geen enkel AI-model.",
+    "kilage.zeile.extern": "AI: extern · {{anbieter}}",
+    "kilage.zeile.externOhneName": "AI: extern",
+    "kilage.zeile.intern": "AI: server van de beheerder",
+    "kilage.zeile.keine": "Geen AI · op regels gebaseerd",
+    "kilage.zeile.unbekannt": "AI-status onbekend",
+    "kilage.karte.titel": "Beheerder en kennisstand van het model",
+    "kilage.karte.betreiber": "Beheerder",
+    "kilage.karte.betreiberServer": "De AI-server van de beheerder van deze installatie",
+    "kilage.karte.modell": "Model",
+    "kilage.karte.modellUnbekannt": "niet gemeld",
+    "kilage.karte.herkunft": "Herkomst",
+    "kilage.karte.wissensstand": "Kennisstand",
+    "kilage.karte.wissensstandBelegt": "{{stand}} (bron: {{quelle}})",
+    "kilage.karte.wissensstandUnbekannt":
+      "onbekend — voor dit model is geen onderbouwde peildatum vastgelegd",
+    "kilage.karte.quellenbedarf":
+      "Ontbrekende bron: de opgave van de fabrikant over de peildatum van de trainingsgegevens van „{{modell}}” (modelkaart of documentatie van de aanbieder, met vindplaats en datum van raadpleging).",
+    "kilage.karte.keinModell":
+      "Er werkt op dit moment geen AI-model — antwoorden ontstaan op basis van regels uit gecontroleerde kennis. Er is daarom geen kennisstand die verouderd kan zijn.",
+    "kilage.karte.hinweis":
+      "Een model kent alleen wat tot zijn peildatum in zijn trainingsgegevens stond. Actuele informatie komt uitsluitend uit de gecontroleerde kennis van deze installatie.",
   },
 } satisfies Textmodul;

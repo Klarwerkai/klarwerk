@@ -13,7 +13,7 @@ import {
   traceFuerLauf,
 } from "../../model-runs";
 // R-0702: die Herkunft je KI-Zugang aus der zentralen Zugangsverwaltung (statt im Browser geraten).
-import { zugangHerkunft } from "./anbieter-herkunft";
+import { modellWissensstand, zugangHerkunft } from "./anbieter-herkunft";
 import {
   KlaraAusweichwegGesperrtFehler,
   anbieterZugelassen,
@@ -74,11 +74,13 @@ import type {
   JudgeFailure,
   KnowledgeRef,
   ReasonerAktiveWahl,
+  ReasonerBetreiberKarte,
   ReasonerCloudAnbieter,
   ReasonerCloudAnbieterStatus,
   ReasonerConfigStatus,
   ReasonerKiAbschaltung,
   ReasonerKiFreigabe,
+  ReasonerKiLage,
   ReasonerLegacyChoice,
   ReasonerLocale,
   ReasonerPolicyMigration,
@@ -1969,6 +1971,60 @@ export class Reasoner {
     };
   }
 
+  // ==============================================================================================
+  // R-0599 / R-0299 · WELCHE KI ARBEITET GERADE — UND WER BETREIBT SIE?
+  // ==============================================================================================
+  //
+  // Gemessen an der Aufgabe, um die es den Menschen geht: dem ANTWORTEN (`answer`). „Arbeitet"
+  // heisst: die Kette dieser Aufgabe beginnt WIRKLICH mit einem Modell (`effectiveFor`, gegated
+  // durch Adminfreigabe und Abschaltung) — nicht bloss „ein Anbieter ist eingerichtet und gewählt"
+  // (`effectiveAnbieterFor` ist Anzeige der Wahl, JOB 3549). Läuft kein Modell, ist die Lage
+  // ehrlich „keine", auch wenn ein Anbieter gewählt wäre.
+  private arbeitenderZugang(): ReasonerCloudAnbieter | "local" | null {
+    if (this.kiAbschaltung().abgeschaltet || this.effectiveFor("answer") !== "model") {
+      return null;
+    }
+    const zugang = this.effectiveAnbieterFor("answer");
+    return zugang === "deterministic" ? null : zugang;
+  }
+
+  /** R-0599: die KI-Lage für jeden angemeldeten Nutzer — ohne Modellnamen, ohne Schlüssel. */
+  kiLage(): ReasonerKiLage {
+    const zugang = this.arbeitenderZugang();
+    if (zugang === null) {
+      return { modus: "keine", anbieter: null, anbieterName: null, herkunft: null };
+    }
+    const herkunft = zugangHerkunft()[zugang];
+    if (zugang === "local") {
+      return { modus: "intern", anbieter: "local", anbieterName: null, herkunft };
+    }
+    return {
+      modus: "extern",
+      anbieter: zugang,
+      anbieterName: REASONER_CLOUD_ANBIETER_NAME[zugang],
+      herkunft,
+    };
+  }
+
+  /** R-0299: Betreiber, Modell, Herkunft und Wissensstand des gerade antwortenden Modells. */
+  private betreiberKarte(): ReasonerBetreiberKarte {
+    const zugang = this.arbeitenderZugang();
+    if (zugang === null) {
+      return { zugang: null, betreiber: null, modell: null, herkunft: null, wissensstand: null };
+    }
+    const modell =
+      zugang === "local"
+        ? (this.secondary.modelName?.() ?? null)
+        : (this.cloudProvider(zugang)?.modelName?.() ?? null);
+    return {
+      zugang,
+      betreiber: zugang === "local" ? null : REASONER_CLOUD_ANBIETER_NAME[zugang],
+      modell,
+      herkunft: zugangHerkunft()[zugang],
+      wissensstand: modellWissensstand(modell),
+    };
+  }
+
   // SCRUM-166: read-only Provider-/Model-Konfiguration. Nur Metadaten — keine Secrets,
   // keine Prompt-/Antwortinhalte. Ohne konfiguriertes Modell ehrlich Demo-Modus.
   // JOB 3134: was die Fläche über EINEN externen Anbieter erfährt — eingerichtet (Clientname und
@@ -2030,6 +2086,8 @@ export class Reasoner {
       },
       // R-0702: Herkunft je Zugang mit Nachweisstufe — nur Angaben, nie ein Schlüssel.
       herkunft: zugangHerkunft(),
+      // R-0299: Betreiber und Wissensstand des gerade antwortenden Modells.
+      betreiber: this.betreiberKarte(),
       autoAnbieter: this.vorgabeAnbieter() ?? null,
       ...(this.migration ? { migration: this.migration } : {}),
       persisted: this.policySource === "db",

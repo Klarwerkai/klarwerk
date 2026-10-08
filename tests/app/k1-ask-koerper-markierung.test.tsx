@@ -22,6 +22,7 @@
 // Die Sitzung ist gueltig und die Aufloesung frisch — der Ask darf also abgehen; was er traegt,
 // ist die Messgroesse.
 import { afterEach, describe, expect, it } from "vitest";
+import { istFrageAufruf } from "../support/frageweg";
 import { panelQuelleAus } from "../support/panelquelle";
 import {
   type Antwort,
@@ -58,7 +59,8 @@ function bedienen(url: string, methode: string): Antwort {
   if (methode === "HEAD") return { status: 200 };
   if (url === "/api/klara/sessions" && methode === "POST") return { status: 200, body: sicht() };
   if (url === "/api/klara/ai-status") return { status: 200, body: aufloesung() };
-  if (url === "/api/ask") {
+  // R-0700: mit Sitzung fragt das Panel über Klaras eigenen Zugang — derselbe Körper, dieselbe Antwort.
+  if (istFrageAufruf(url)) {
     return {
       status: 200,
       body: { result: { answered: false, answer: null, sources: [], trust: 0 } },
@@ -104,8 +106,8 @@ async function fragen(lage: { markierung: string; eingabe: string }): Promise<La
 
 /** Der Koerper des EINEN `POST /api/ask` — oder ein Testfehler, wenn keiner oder mehrere abgingen. */
 function askKoerper(lauf: Lauf): Record<string, unknown> {
-  const asks = lauf.aufrufe.filter((a) => a.url === "/api/ask" && a.methode === "POST");
-  expect(asks.length, "genau ein POST /api/ask erwartet").toBe(1);
+  const asks = lauf.aufrufe.filter((a) => istFrageAufruf(a.url) && a.methode === "POST");
+  expect(asks.length, "genau eine Frage erwartet").toBe(1);
   return asks[0]?.body as Record<string, unknown>;
 }
 
@@ -189,6 +191,6 @@ describe("JOB 3056 Nachzug · KA5 am Koerper — Fall D: ohne Markierung bleibt 
 
   it("ohne Markierung UND ohne Eingabe geht gar keine Frage hinaus", async () => {
     const lauf = await fragen({ markierung: "", eingabe: "" });
-    expect(lauf.aufrufe.filter((a) => a.url === "/api/ask")).toEqual([]);
+    expect(lauf.aufrufe.filter((a) => istFrageAufruf(a.url))).toEqual([]);
   });
 });

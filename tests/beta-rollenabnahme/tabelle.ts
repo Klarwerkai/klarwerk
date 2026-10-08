@@ -358,6 +358,13 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     grund:
       "Schliesst die eigene Sitzung; jeder Folgeaufruf ist danach ein Konflikt. Setzt eine offene, echte Sitzung voraus.",
   },
+  {
+    methode: "POST",
+    pfad: "/api/klara/sessions/:sessionId/execute",
+    art: "zurueckgestellt",
+    grund:
+      "R-0700: Klaras eigener Ausführungszugang. Ohne echte, gebundene Sitzung (Instanz- und Dokumentkopfzeile) antwortet er für jede Rolle gleich mit NOT_FOUND; der Prüfgegenstand ist die Sitzungsbindung, nicht die Rolle.",
+  },
 
   // --- Bibliothek, Import, Lebenszyklus, Ausgabe -------------------------------------------------
   {
@@ -1462,6 +1469,16 @@ export const TABELLE: Zeile[] = [
     erwartet: OEFFENTLICH(
       "Dieselbe abstrahierte Auskunft wie `/api/reasoner/status`, nur in der Hülle `{ ai: … }` (§2.1 des Pflichtenhefts). Derselbe Grund, dieselbe Grenze.",
     ),
+  },
+  {
+    // R-0599: die KI-Lage der Kopfzeile (Modus, Anbieter, Herkunft) — anders als die zwei Zeilen
+    // darüber NICHT öffentlich, sondern für jede Rolle mit Leserecht.
+    gruppe: DIREKT,
+    methode: "GET",
+    pfad: "/api/ki-lage",
+    belegstelle: "services/app/src/build-app.ts:2781",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
   },
   {
     gruppe: DIREKT,

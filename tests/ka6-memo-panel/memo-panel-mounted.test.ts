@@ -21,6 +21,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { istFrageAufruf } from "../support/frageweg";
 import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
@@ -226,7 +227,8 @@ function router(lage: Lage) {
       }
       return Promise.resolve(antwort({ error: "INTERNAL" }, 500));
     }
-    if (url === "/api/ask" && methode === "POST") {
+    // R-0700: mit Sitzung fragt das Panel über Klaras eigenen Zugang — dieselbe Antwortform.
+    if (istFrageAufruf(url) && methode === "POST") {
       askAbgesetzt += 1;
       return Promise.resolve(antwort(askKoerper()));
     }
@@ -376,7 +378,7 @@ async function fragen(): Promise<void> {
   el("ask-input").dispatchEvent(new umgebung.window.Event("input", { bubbles: true }));
   el("ask-btn").click();
   await leerlauf(30);
-  expect(askAbgesetzt, "Die Frage ging nicht an /api/ask").toBeGreaterThan(0);
+  expect(askAbgesetzt, "Die Frage ging nicht hinaus").toBeGreaterThan(0);
   expect(el("ask-answer-edit").value, "Keine Antwort im Feld").toContain(ANTWORT);
 }
 

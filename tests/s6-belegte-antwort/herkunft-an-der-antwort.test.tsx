@@ -28,6 +28,7 @@ import {
   sichtbar,
   sichtbarerText,
 } from "../app/k1-panel-lauf";
+import { istFrageAufruf } from "../support/frageweg";
 
 const QUELLEN: Record<string, { title: string; status: string; version: number }> = {
   ka: { title: "Design Guide", status: "validiert", version: 3 },
@@ -51,7 +52,8 @@ function starten(stand: Stand): Lauf {
     if (url === "/api/klara/sessions" && methode === "POST") return { status: 200, body: sicht() };
     if (url === "/api/klara/ai-status") return { status: 200, body: aufloesung() };
     if (url.endsWith("/close")) return { status: 200, body: {} };
-    if (url === "/api/ask") return { status: 200, body: stand.ask };
+    // R-0700: mit Sitzung fragt das Panel über Klaras eigenen Zugang — dieselbe Antwortform.
+    if (istFrageAufruf(url)) return { status: 200, body: stand.ask };
     if (url.startsWith("/api/kos/")) {
       const id = decodeURIComponent(url.slice("/api/kos/".length));
       const eigen = stand.kos?.[id];

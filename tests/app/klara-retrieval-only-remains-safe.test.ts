@@ -143,12 +143,13 @@ describe("W1 S4 R2 · ROT-8 · echte Zähler statt behaupteter Nullen", () => {
     await wissenAnlegen(app, auth);
     embedSpy.calls = 0;
 
-    const { headers } = await registriert(app, auth);
+    // R-0700: die gebundene Frage geht über Klaras eigenen Zugang — ohne Einwilligung in der Enge.
+    const { sessionId, headers } = await registriert(app, auth);
     const frage = await app.inject({
       method: "POST",
-      url: "/api/ask",
+      url: `/api/klara/sessions/${sessionId}/execute`,
       headers,
-      payload: { question: "Was tun bei Überdruck?", mode: "retrieval-only" },
+      payload: { question: "Was tun bei Überdruck?" },
     });
     expect(frage.statusCode).toBe(200);
 

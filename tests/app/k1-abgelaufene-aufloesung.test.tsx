@@ -32,6 +32,7 @@
 // `expiresAt` → Tippen sperrt (ohne weiteren Abruf) → weiterer Fehlschlag → Klick, entferntes
 // `disabled`, Enter: 0× POST /api/ask → erst das frische GET gibt frei und sendet genau einmal.
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { istFrageAufruf } from "../support/frageweg";
 import {
   type Antwort,
   type Lauf,
@@ -90,8 +91,10 @@ function fragenGesperrt(): boolean {
   const knopf = el<HTMLButtonElement>("ask-btn");
   return knopf.disabled && knopf.title === wortlaut("s4FragenGesperrt");
 }
+// R-0700: mit Sitzung fragt das Panel über Klaras eigenen Zugang — gezählt werden BEIDE Ziele, sonst
+// wäre „KEIN POST" schon deshalb wahr, weil die Frage anderswohin ginge.
 function askAufrufe(lauf: Lauf): number {
-  return lauf.aufrufe.filter((a) => a.url === "/api/ask" && a.methode === "POST").length;
+  return lauf.aufrufe.filter((a) => istFrageAufruf(a.url) && a.methode === "POST").length;
 }
 function frageTippen(text: string): void {
   const feld = el<HTMLTextAreaElement>("ask-input");
@@ -304,5 +307,75 @@ describe("JOB 3056 R8 · abgelaufene Aufloesung — „–“, kein Anbieter, ke
     expect(kiZeile()).toBe(wortlaut("s4ModeExternal"));
     expect(anbieterSichtbar()).toBe(true);
     expect(el<HTMLButtonElement>("ask-btn").disabled).toBe(false);
+  });
+});
+
+// ================================================================================================
+// R-0378 (Ben nacharbeit-2) — DIESELBE AUFLOESUNG STEHT DAUERHAFT IM KOPF.
+// ================================================================================================
+// Ganz oben im Fenster (`#kw-kopf-ki` im <header>, ohne Zahnrad) steht, mit welcher KI gerade
+// gearbeitet wird: Modus, Anbieter · Modell, die Vorgabe des Verwalters und eine etwaige Abweichung
+// oder Sperre — gebaut in `renderKlaraS4` aus DERSELBEN Auflösung, die Einstellungen und
+// Ausführung lesen. Ohne frischen Stand nennt die Zeile nur den Zustand, nie einen Anbieter.
+function fuelle(vorlage: string, werte: Record<string, string>): string {
+  return Object.entries(werte).reduce((t, [k, v]) => t.split(`{${k}}`).join(v), vorlage);
+}
+function kopfZeile(): string {
+  return el("kw-kopf-ki").textContent ?? "";
+}
+
+describe("R-0378 · die KI-Zeile im Kopf des Aufgabenfensters", () => {
+  afterEach(() => {
+    panelAbraeumen();
+    vi.restoreAllMocks();
+  });
+
+  it("K1 · frische Aufloesung: Modus, Anbieter · Modell und Vorgabe — sichtbar OHNE Zahnrad", async () => {
+    starten({ status: [{ status: 200, body: aufloesung() }] });
+    await ruhe();
+    const kopf = el("kw-kopf-ki");
+    expect(kopf.closest("header")?.id).toBe("kw-kopf");
+    expect(sichtbar(kopf)).toBe(true);
+    expect(kopf.getAttribute("role")).toBe("status");
+    expect(kopfZeile()).toBe(
+      fuelle(wortlaut("s4KopfKi"), {
+        modus: wortlaut("s4ModeExternal"),
+        anbieter: "srv-anbieter · srv-modell",
+        vorgabe: wortlaut("s4ModeExternal"),
+      }),
+    );
+    // EINE Ableitung: der Kopf sagt denselben Modus wie die Zeile in den Einstellungen.
+    el("kw-zahnrad").click();
+    expect(kopfZeile()).toContain(kiZeile());
+  });
+
+  it("K2 · Abweichung: der Kopf nennt die Vorgabe des Verwalters UND die Abweichung mit Grund", async () => {
+    const abweichend = aufloesung({
+      mode: "deterministic",
+      effectiveMode: "deterministic",
+      adminConfiguredMode: "external",
+      provider: null,
+      model: null,
+      deviation: true,
+      deviationReason: "external_not_configured",
+    });
+    starten({ status: [{ status: 200, body: abweichend }], sitzung: abweichend });
+    await ruhe();
+    const zeile = kopfZeile();
+    const anfang = fuelle(wortlaut("s4KopfKi"), {
+      modus: wortlaut("s4ModeDeterministic"),
+      anbieter: "–",
+      vorgabe: wortlaut("s4ModeExternal"),
+    });
+    expect(zeile.startsWith(anfang), `${zeile} beginnt nicht mit ${anfang}`).toBe(true);
+    expect(zeile).toContain(wortlaut("s4ReasonExternalNotConfigured"));
+    expect(zeile).not.toContain("srv-anbieter");
+  });
+
+  it("K3 · abgelaufene Aufloesung: nur der Zustand — kein Modus, kein Anbieter", async () => {
+    starten({ status: [{ status: 200, body: abgelaufen() }, "haengt"] });
+    await ruhe();
+    expect(kopfZeile()).toBe(wortlaut("s4StateVeraltet"));
+    expect(kopfZeile()).not.toContain("srv-anbieter");
   });
 });

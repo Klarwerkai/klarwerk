@@ -15,7 +15,14 @@
 // zu tun hat — die Prüfauswahl soll ihn nicht mitziehen).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WORD_ADDIN_ASK_TIMEOUT_MS } from "../../apps/web/src/lib/wordAddin";
-import { type FakeWordAuswahl, type KlaraPanel, createKlaraPanel } from "./klara-panel-fixture";
+import { aufloesung, sicht } from "./k1-panel-lauf";
+import {
+  type FakeWordAuswahl,
+  type KlaraPanel,
+  createKlaraPanel,
+  istFrageAufruf,
+  reply,
+} from "./klara-panel-fixture";
 
 const AUSWAHL_MARKIERUNG = "Ventil vor der Wartung drucklos schalten.";
 const AUSWAHL_FRAGE = "Was gilt vor der Wartung?";
@@ -31,6 +38,13 @@ function auswahlOeffnen(optionen: {
     selectionText: optionen.selectionText ?? "",
     ...(optionen.wordAuswahl ? { wordAuswahl: optionen.wordAuswahl } : {}),
     ...(optionen.auswahlHaengt ? { auswahlHaengt: true } : {}),
+    // R-0700: die Markierung und ihre Herkunft sind KLARA-Felder und reisen nur über Klaras eigenen,
+    // sitzungsgebundenen Zugang. Das Fenster bekommt deshalb eine registrierte Sitzung — wie im
+    // echten Word, wo sie beim Laden entsteht.
+    routes: {
+      "/api/klara/sessions": reply(200, sicht()),
+      "/api/klara/ai-status": reply(200, aufloesung()),
+    },
   });
   return auswahlPanel;
 }
@@ -43,10 +57,10 @@ function frageEintippen(p: KlaraPanel, frage: string): void {
   feld.value = frage;
 }
 
-/** Was wirklich an `/api/ask` ging — jeder Aufruf mit seinem Körper. */
+/** Was wirklich als Frage hinausging (R-0700: an Klaras eigenen Zugang) — jeder Aufruf mit Körper. */
 function askKoerper(p: KlaraPanel): Array<Record<string, unknown>> {
   return p.calls
-    .filter((c) => c.url === "/api/ask" && c.method === "POST")
+    .filter((c) => istFrageAufruf(c.url) && c.method === "POST")
     .map((c) => JSON.parse(c.body ?? "{}") as Record<string, unknown>);
 }
 

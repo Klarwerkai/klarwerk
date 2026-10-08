@@ -611,16 +611,18 @@
       var markierung = typeof selection === "string" ? selection.trim() : "";
       var askKopf = { "content-type": "application/json" };
       var bindung = bindungsKopf || {};
+      // R-0700 (KW-S4-24): MIT Sitzung fragt Klara ueber ihren EIGENEN Zugang (Sitzung im Pfad, Kopfzeilen und Koerper wie bisher); OHNE Sitzung bleibt der allgemeine retrieval-only-Weg — ohne Bindungskopfzeilen und ohne Klara-Felder, die er nicht mehr annimmt.
+      var sitzung = typeof bindung["x-klara-session"] === "string" ? bindung["x-klara-session"] : "";
       for (var kopfName in bindung) {
-        if (Object.prototype.hasOwnProperty.call(bindung, kopfName) && bindung[kopfName]) {
+        if (sitzung && Object.prototype.hasOwnProperty.call(bindung, kopfName) && bindung[kopfName]) {
           askKopf[kopfName] = bindung[kopfName];
         }
       }
-      return fetchFn("/api/ask", {
+      return fetchFn(sitzung ? "/api/klara/sessions/" + encodeURIComponent(sitzung) + "/execute" : "/api/ask", {
         method: "POST",
         credentials: "include",
         headers: askKopf,
-        body: JSON.stringify({ question: question, locale: locale, mode: "retrieval-only", selection: markierung.length > 0 ? markierung : undefined, questionSource: questionSource === "selection" || questionSource === "manual" ? questionSource : undefined }),
+        body: JSON.stringify(sitzung ? { question: question, locale: locale, mode: "retrieval-only", selection: markierung.length > 0 ? markierung : undefined, questionSource: questionSource === "selection" || questionSource === "manual" ? questionSource : undefined } : { question: question, locale: locale, mode: "retrieval-only" }),
         signal: controller.signal,
       })
         .then(function (res) {
@@ -1759,6 +1761,7 @@
         s4StateGesperrtLokal:
           "Der letzte Aufruf ist fehlgeschlagen. Bis der Server einen neuen Stand bestätigt, gilt hier nichts als erlaubt.",
         s4Anbieter: "Anbieter {provider} · Modell {model}",
+        s4KopfKi: "KI: {modus} · {anbieter} · Vorgabe: {vorgabe}",
         s4Abweichung: "Eingerichtet war {soll}. Grund der Abweichung: {grund}",
         s4Blockiert: "Gesperrt. Grund: {grund}",
         s4Veraltet: "Dieser Stand ist abgelaufen und wird neu abgerufen.",
@@ -2157,6 +2160,7 @@
         s4StateGesperrtLokal:
           "The last call failed. Until the server confirms a new status, nothing counts as allowed here.",
         s4Anbieter: "Provider {provider} · Model {model}",
+        s4KopfKi: "AI: {modus} · {anbieter} · Admin setting: {vorgabe}",
         s4Abweichung: "Configured was {soll}. Reason for the deviation: {grund}",
         s4Blockiert: "Blocked. Reason: {grund}",
         s4Veraltet: "This status has expired and is being retrieved again.",
@@ -2496,6 +2500,7 @@
         s4StateGesperrtLokal:
           "De laatste aanroep is mislukt. Totdat de server een nieuwe stand bevestigt, geldt hier niets als toegestaan.",
         s4Anbieter: "Aanbieder {provider} · Model {model}",
+        s4KopfKi: "AI: {modus} · {anbieter} · Instelling beheerder: {vorgabe}",
         s4Abweichung: "Ingericht was {soll}. Reden van de afwijking: {grund}",
         s4Blockiert: "Geblokkeerd. Reden: {grund}",
         s4Veraltet: "Deze stand is verlopen en wordt opnieuw opgehaald.",
@@ -3645,7 +3650,7 @@
             ? t("s4Veraltet")
             : "";
       abw.textContent = abwText;
-      abw.className = abwText ? "einst-detail" : "einst-detail hidden";
+      abw.className = abwText ? "einst-detail" : "einst-detail hidden"; var kopfKi = document.getElementById("kw-kopf-ki"); if (kopfKi) { kopfKi.textContent = a.modeKey ? t("s4KopfKi", { modus: t(a.modeKey), anbieter: a.provider && a.model ? a.provider + " · " + a.model : "–", vorgabe: t(klaraS4ModeKey(klaraS4Sicht.resolution.adminConfiguredMode)) }) + (abwText ? " · " + abwText : "") : t(a.stateKey); kopfKi.title = kopfKi.textContent; } // R-0378: DIESELBE Aufloesung wie Einstellungen und Ausfuehrung, dauerhaft im Kopf (Modus, Anbieter, Modell, Vorgabe des Verwalters, Abweichung/Sperre); ohne frischen Stand nur der Zustand
       // JOB 2621 §1 (Befund 2, 26.08. — Pedi: „keine zustimmung obwohl ich zugestimmt hatte"):
       // Fehlt die SITZUNG, nennt die Zeile die URSACHE und nur sie (R3: Stoerung sieht niemals aus
       // wie Leere — und Folge sieht niemals aus wie Verlust). In den uebrigen Faellen ohne

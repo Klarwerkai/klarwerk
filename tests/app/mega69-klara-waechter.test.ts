@@ -2759,6 +2759,22 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Prüflauf zu Kandidat e9529cb7 GEMESSEN („Received", HISTORIE/nacharbeit-3/PRUEFUNG/
     // word-addin-auslieferungswaechter.log) und unverändert übernommen; die vier Panel-Dateien sind
     // seit dieser Messung unberührt (Nacharbeit 3 ändert nur Testdateien).
+    // AUFTRAG ki-modus-wahrheit (R-0700, Ben nacharbeit-2) — DER PIN MUSS WANDERN. `taskpane.js`
+    // ändert sich allein in `performAsk`: MIT registrierter Sitzung geht die Frage an Klaras eigenen
+    // Zugang `POST /api/klara/sessions/{sessionId}/execute` (Sitzung im Pfad; Kopfzeilen und Körper
+    // Byte für Byte wie bisher), OHNE Sitzung an `/api/ask` im retrieval-only-Modus OHNE
+    // Bindungskopfzeilen und Klara-Felder (der allgemeine Weg weist beides seit R-0700 ab).
+    // Auslieferungsfolgen: kein neues Abrufziel im Sinn von M7 (dieselbe `fetchFn`-Stelle,
+    // same-origin, `connect-src 'self'` deckt den Pfad), keine Nutzlast-, CSP-, Rechte- oder
+    // Manifeständerung, kein neuer Wörterbuchschlüssel, kein Sideload; netto +2 Zeilen (B3: 12495).
+    // DAZU (R-0378, Ben nacharbeit-2): die KI-Zeile der Sitzung dauerhaft im Kopf — `#kw-kopf-ki`
+    // (role=status) in der Schlusszeile des `<header>` (Markup 498 Zeilen, A2), absolut im unteren
+    // Kopfpolster (`taskpane.css`, ohne Einfluss auf Polster/Flex des Kopfs), gefüllt in
+    // `renderKlaraS4` aus DERSELBEN Auflösung wie Einstellungen und Ausführung; ein neuer
+    // Wörterbuchschlüssel je Sprache (`s4KopfKi`). Kein neues Abrufziel, keine Nutzlast-, CSP-,
+    // Rechte- oder Manifeständerung, kein Sideload; `taskpane.js` 12498 Zeilen (B3).
+    // Ohne zugelassenes Hash-Werkzeug ist der neue Wert hier nicht berechenbar — der Prüflauf
+    // meldet den Ist-Wert als „Received", er wird danach gemessen übernommen.
     const PIN = "dce012c092e3445073b0629f1b8348a5f4b04457c1986e3c68657c7ad5860d64";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(

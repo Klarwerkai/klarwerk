@@ -23,6 +23,7 @@
 // wird im `afterEach` UNBEDINGT gerufen — nicht „falls exportiert", nicht „wenn vorhanden".
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { KLARA_AUSFUEHRUNG, istFrageAufruf } from "../support/frageweg";
 import { panelQuelleAus } from "../support/panelquelle";
 
 export const TASKPANE_PATH = "apps/web/public/word-addin/taskpane.html";
@@ -131,6 +132,10 @@ function toResponse(init: FakeReplyInit): FakeResponse {
     json: async (): Promise<unknown> => body,
   };
 }
+
+// R-0700: Klaras eigener Ausführungszugang und die Frage-Erkennung leben in `support/frageweg.ts`
+// (ohne Griff auf das Fenster); hier weitergereicht für Tests, die ohnehin an dieser Bühne hängen.
+export { KLARA_AUSFUEHRUNG, istFrageAufruf };
 
 // Die Grundversorgung: genau die Endpunkte, die das Panel beim Laden von selbst ruft. Ein Test
 // ueberschreibt nur das, worum es ihm geht — alles andere bleibt ein ehrlicher, ruhiger Zustand.
@@ -572,8 +577,16 @@ export function createKlaraPanel(options: KlaraPanelOptions = {}): KlaraPanel {
     const method = typeof init?.method === "string" ? init.method : "GET";
     const body = typeof init?.body === "string" ? init.body : undefined;
     calls.push({ url, method, body });
+    // R-0700: Klaras EIGENER Ausführungszugang (`/api/klara/sessions/{id}/execute`) antwortet in
+    // DERSELBEN Form wie der allgemeine Frageweg — beide laufen serverseitig durch denselben
+    // `antwortLauf`. Hat ein Test keine eigene Route dafür, bedient ihn deshalb seine Ask-Route
+    // (nicht die Sitzungsroute, die der Präfixvergleich sonst träfe). Mitgeschrieben bleibt die
+    // WIRKLICHE URL — gezählt wird, was das Panel abgesetzt hat.
+    const klaraAusfuehrung =
+      KLARA_AUSFUEHRUNG.test(url) && !Object.keys(routes).some((k) => k.endsWith("/execute"));
+    const suchUrl = klaraAusfuehrung ? "/api/ask" : url;
     const key = Object.keys(routes)
-      .filter((candidate) => url.startsWith(candidate))
+      .filter((candidate) => suchUrl.startsWith(candidate))
       .sort((a, b) => b.length - a.length)[0];
     if (key === undefined) {
       throw new Error(`Fake-Fetch: keine Route fuer ${url}`);

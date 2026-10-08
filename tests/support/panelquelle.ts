@@ -171,6 +171,15 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 8 (firmenwoerterbuch): GEMESSEN im Prüflauf zu Kandidat a8ec940f (`5d7ae0b8…`,
  * „Received" von E2, HISTORIE/nacharbeit-8/PRUEFUNG/panel-integration-pins.log) und unverändert
  * übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ *
+ * AUFTRAG ki-modus-wahrheit (R-0700, Ben nacharbeit-2): `taskpane.js` ändert sich allein in
+ * `performAsk` (Klaras eigener Zugang `/api/klara/sessions/{sessionId}/execute` mit Sitzung; ohne
+ * Sitzung `/api/ask` ohne Bindungskopfzeilen und Klara-Felder). DAZU R-0378: `#kw-kopf-ki` in der
+ * Schlusszeile des `<header>` (`taskpane.html`, 498 Zeilen), seine Regel in `taskpane.css`, die
+ * Befüllung in `renderKlaraS4` und `s4KopfKi` je Sprache (`taskpane.js`); `marke.js` bleibt
+ * unberührt. Der Bezugspunkt MUSS deshalb wandern; ohne zugelassenes
+ * Hash-Werkzeug ist er hier nicht berechenbar. E2 meldet ihn im Prüflauf als „Received"; er wird
+ * danach gemessen übernommen. E3 bleibt die Gegenprobe.
  */
 export const PANEL_VOR_SCHNITT_BLOB = "5d7ae0b8fccc34c05e5c070cea753189729ef841";
 
