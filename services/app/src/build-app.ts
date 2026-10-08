@@ -263,6 +263,13 @@ import {
   tokenFromRequest,
 } from "./http";
 import { impactReport } from "./impact";
+// R-0466: das Interaktionsgedächtnis — haltbar im Postgres-Betrieb, im Speicher ohne Datenbank.
+import {
+  GedaechtnisDienst,
+  type GedaechtnisRepo,
+  InMemoryGedaechtnisRepo,
+  PgGedaechtnisRepo,
+} from "./interaktionsgedaechtnis";
 // Kenntnisnahme einer gültigen Fassung — haltbar im Postgres-Betrieb, im Speicher ohne Datenbank.
 import {
   InMemoryKenntnisnahmeRepo,
@@ -309,6 +316,7 @@ import { conflictRoutes } from "./routes/conflicts-routes";
 import { confluenceImportRoutes } from "./routes/confluence-import-routes";
 import { externalRoutes } from "./routes/external-routes";
 import { featuresRoutes } from "./routes/features-routes";
+import { gedaechtnisRoutes } from "./routes/gedaechtnis-routes";
 // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): das seit JOB 4154 fertige, aber an keiner App
 // angemeldete Routen-Plugin der Gesamtanweisung. Hier — und nur hier — bekommt es seinen Aufrufer.
 import { gesamtanweisungRoutes } from "./routes/gesamtanweisung-routes";
@@ -476,6 +484,13 @@ export interface AppServices {
    * Dev-Betriebs verloren, verschwindet ein Foto — die sichere Richtung, kein ungefragtes Zeigen.
    */
   livewallFotos: LiveWallFotoRepo;
+  /**
+   * R-0466: das Interaktionsgedächtnis (`interaktionsgedaechtnis.ts`) — frühere Fragen, Antworten
+   * und Vorlieben je Konto. Aus demselben Grund wie `livewallFotos` NICHT in `AppRepos`; im
+   * Postgres-Betrieb haltbar (`PgGedaechtnisRepo`), sonst die In-Memory-Ablage. Geht sie beim
+   * Neustart des Dev-Betriebs verloren, ist das die Richtung des Löschens, nicht des Offenlegens.
+   */
+  gedaechtnis: GedaechtnisRepo;
   /**
    * R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — über die Oberfläche umlegbar,
    * von jeder Confluence-Importroute je Anfrage durchgesetzt. Aus demselben Grund wie
@@ -966,6 +981,8 @@ export function assembleServices(
     spaces?: SpacesRepo;
     // PMO-FEA-0003: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     livewallFotos?: LiveWallFotoRepo;
+    // R-0466: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    gedaechtnis?: GedaechtnisRepo;
     // R-0134 / R-1005: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     confluenceImportSchalter?: ConfluenceImportSchalterRepo;
     // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
@@ -1278,6 +1295,8 @@ export function assembleServices(
     spaces: opts.spaces ?? new InMemorySpacesRepo(),
     // PMO-FEA-0003: die Fotos der Live-Wand — Postgres, wenn injiziert, sonst im Speicher.
     livewallFotos: opts.livewallFotos ?? new InMemoryLiveWallFotoRepo(),
+    // R-0466: das Interaktionsgedächtnis — Postgres, wenn injiziert, sonst im Speicher.
+    gedaechtnis: opts.gedaechtnis ?? new InMemoryGedaechtnisRepo(),
     // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
     confluenceImportSchalter:
       opts.confluenceImportSchalter ?? new InMemoryConfluenceImportSchalterRepo(),
@@ -1718,6 +1737,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // PMO-FEA-0003: ein hinterlegtes Foto überlebt Neustart und Deploy; der Widerruf löscht die
       // Zeile in derselben Datenbank (`LIVEWALL_FOTO_SCHEMA`, angelegt von `migrate()`).
       livewallFotos: new PgLiveWallFotoRepo(pool),
+      // R-0466: Gedächtniseinträge überleben Neustart und Deploy bis zu ihrer Frist; Löschen und
+      // Fristablauf entfernen die Zeile in derselben Datenbank (`GEDAECHTNIS_SCHEMA`).
+      gedaechtnis: new PgGedaechtnisRepo(pool),
       // R-0134 / R-1005: der Betreiberschalter überlebt Neustart und Deploy — sonst stünde ein
       // ausgeschalteter Import nach dem nächsten Neustart still wieder auf „an".
       confluenceImportSchalter: new PgConfluenceImportSchalterRepo(pool),
@@ -3586,6 +3608,20 @@ export function buildApp(
   );
   // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — persönliche Zähler aus eigenen KOs + Audits.
   app.register(impactRoutes({ ko: services.ko, audit: services.audit }, guards));
+  // R-0466: das eigene Interaktionsgedächtnis. Die Herkunft „antwort" wird gegen DIESELBE
+  // Antwortablage geprüft, die auch die Erklärroute liest.
+  app.register(
+    gedaechtnisRoutes(
+      {
+        dienst: new GedaechtnisDienst({
+          repo: services.gedaechtnis,
+          antworten: services.answerSnapshots,
+        }),
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
   app.register(auditRoutes(services.audit, guards, [services.conflicts, services.overlaps]));
   // JOB 2692 D1: der KA4-Riegel gilt auch auf /api/reasoner und /describe — DIESELBE Instanz des
   // Ausführungstors wie bei askRoutes oben, kein zweiter Dienst. `capture` kommt aus `services`
