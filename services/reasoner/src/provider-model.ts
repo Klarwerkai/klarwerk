@@ -514,6 +514,107 @@ function kuerzeAufWortgrenze(text: string, deckel: number): string {
   return (letzte > 0 ? roh.slice(0, letzte) : roh).trim();
 }
 
+// ------------------------------------------------------------------------------------------------
+// AUFNAHME 20260922 · gesamt-import-volltext (R-0452/R-1848) — DER ÜBERLANGE SATZ WIRD UM DEN
+// TREFFER GESCHNITTEN, NICHT AN SEINEM ANFANG.
+// ------------------------------------------------------------------------------------------------
+//
+// DER BEFUND (Quelleninspektion, nicht aus einem Vorfall): `bodyText` kollabiert JEDEN Leerraum
+// (`normalizeSearchFragment`, search-projection.ts), und jede Tag-Grenze ist dort nur ein
+// Leerzeichen. Eine Tabelle oder Liste ohne Satzzeichen — genau die Form, in der Grenzwerte und
+// Ablaufschritte stehen — ist für `saetze` deshalb EIN Satz. Ist er länger als der Quelldeckel,
+// schnitt `kuerzeAufWortgrenze` seinen ANFANG ab: die Zeile mit dem Grenzwert lag weiter hinten
+// und erreichte das Modell nie. Die 500er-Grenze aus G27 kehrte so als 600er-Grenze je Tabelle
+// zurück, obwohl Suche, Relevanztor und Zitatprüfung den ganzen Text sahen.
+//
+// WAS SICH ÄNDERT, und nur das: gesucht wird die Stelle, an der die meisten VERSCHIEDENEN
+// Frage-Token beieinanderstehen (der Kern), und das Fenster legt sich MITTIG um sie — der Wert kann
+// hinter seiner Bezeichnung stehen („Nachspannventil … maximal 185 bar") oder davor („185 bar
+// maximal zulässiger Haltedruck Nachspannventil"). Das Fenster ist ein zusammenhängender
+// Ausschnitt EINES Segments — `istAusschnitt` deckt ihn unverändert, die Segmentregel D4 wird nicht
+// gelockert. Es enthält nur ganze Wörter, wörtlich aus dem Satz, und bleibt unter demselben Deckel.
+interface FensterWort {
+  von: number;
+  bis: number;
+  treffer: string[];
+}
+
+function fensterUmTreffer(satz: string, frageWoerter: ReadonlySet<string>, deckel: number): string {
+  if (satz.length <= deckel) {
+    return satz;
+  }
+  const woerter: FensterWort[] = [...satz.matchAll(/\S+/g)].map((m) => ({
+    von: m.index ?? 0,
+    bis: (m.index ?? 0) + m[0].length,
+    treffer: queryTokens(m[0]).filter((w) => frageWoerter.has(w)),
+  }));
+  const wort = (i: number): FensterWort => woerter[i] as FensterWort;
+  // Gleitendes Fenster: `zaehler` zählt die Frage-Token der Wörter in [start, ende).
+  const zaehler = new Map<string, number>();
+  let besterStart = -1;
+  let besteZahl = 0;
+  let ende = 0;
+  for (let start = 0; start < woerter.length; start += 1) {
+    ende = Math.max(ende, start);
+    while (ende < woerter.length && wort(ende).bis - wort(start).von <= deckel) {
+      for (const w of wort(ende).treffer) {
+        zaehler.set(w, (zaehler.get(w) ?? 0) + 1);
+      }
+      ende += 1;
+    }
+    const zulaessig = start === 0 || wort(start).treffer.length > 0;
+    if (zulaessig && zaehler.size > besteZahl) {
+      besteZahl = zaehler.size;
+      besterStart = start;
+    }
+    if (ende > start) {
+      for (const w of wort(start).treffer) {
+        const rest = (zaehler.get(w) ?? 0) - 1;
+        if (rest > 0) {
+          zaehler.set(w, rest);
+        } else {
+          zaehler.delete(w);
+        }
+      }
+    }
+  }
+  if (besterStart < 0) {
+    return kuerzeAufWortgrenze(satz, deckel);
+  }
+  // Der KERN: vom ersten Trefferwort des besten Fensters bis zu dem Wort, mit dem es die beste
+  // Zahl verschiedener Frage-Token erreicht. Er passt in den Deckel, weil das beste Fenster ihn
+  // schon enthielt.
+  let kernAnfang = besterStart;
+  while (wort(kernAnfang).treffer.length === 0) {
+    kernAnfang += 1;
+  }
+  const gesehen = new Set<string>();
+  let kernEnde = kernAnfang;
+  for (let i = kernAnfang; gesehen.size < besteZahl; i += 1) {
+    for (const w of wort(i).treffer) {
+      gesehen.add(w);
+    }
+    kernEnde = i;
+  }
+  // Ben, Nacharbeit 2: der Rest des Deckels verteilt sich HÄLFTIG vor und hinter den Kern. Ein
+  // Wert steht in Tabellen ebenso VOR seiner Bezeichnung („185 bar maximal zulässiger Haltedruck
+  // Nachspannventil") wie dahinter; eine reine Vorwärtserweiterung verlöre ihn, sobald genug
+  // Tabelle folgt. Was eine Seite nicht braucht (Satzanfang oder -ende erreicht), bekommt die andere.
+  let erstes = kernAnfang;
+  let letztes = kernEnde;
+  const vorlauf = Math.floor((deckel - (wort(kernEnde).bis - wort(kernAnfang).von)) / 2);
+  while (erstes > 0 && wort(kernAnfang).von - wort(erstes - 1).von <= vorlauf) {
+    erstes -= 1;
+  }
+  while (letztes + 1 < woerter.length && wort(letztes + 1).bis - wort(erstes).von <= deckel) {
+    letztes += 1;
+  }
+  while (erstes > 0 && wort(letztes).bis - wort(erstes - 1).von <= deckel) {
+    erstes -= 1;
+  }
+  return satz.slice(wort(erstes).von, wort(letztes).bis);
+}
+
 /**
  * Der Auszug EINER Quelle: die Sätze ihres Dokumenttexts, die mit der Frage Inhaltstoken teilen.
  *
@@ -560,8 +661,9 @@ export function dokumentAuszug(
       continue;
     }
     if (genommen.length === 0) {
-      // Der bestbewertete Satz allein sprengt den Deckel: gekürzt ist er mehr wert als gar nichts.
-      const gekuerzt = kuerzeAufWortgrenze(satz, budget);
+      // Der bestbewertete Satz allein sprengt den Deckel: gekürzt ist er mehr wert als gar nichts —
+      // und zwar um die Frage-Token herum, nicht an seinem Anfang (`fensterUmTreffer`).
+      const gekuerzt = fensterUmTreffer(satz, frageWoerter, budget);
       if (gekuerzt.length > 0) {
         genommen.push({ satz: gekuerzt, stelle });
       }
