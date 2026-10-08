@@ -111,3 +111,13 @@ am Kandidaten `366e624e` war grün: 189 Fälle in elf Dateien, Bau und Format be
 (`HISTORIE/nacharbeit-1/PRUEFUNG`). Nacharbeit 1 ändert Produktcode (siehe „Der Sprachweg“).
 Welche Tests der Prüfadapter dafür ausführt, steht im Prüfplan des Auftrags; die Ergebnisse
 stehen in dessen Bericht, nicht in diesem Dokument.
+
+**Nacharbeit 2 (Prüflauf am Kandidaten `3565804e`):** Grün waren die neuen Sprachwegtests, die
+Bestandstests der berührten Wege, die Chromium-Zielbilder und der Bau. Rot waren acht Fälle der
+globalen Routenwächter (HTTP-Referenz, Rollenabnahme, Zeilenrecht, Lesewege-Sammler,
+Routenaudit). Alle betreffen Routen anderer Aufträge aus dem integrierten Hauptstand, darunter
+spaces, begriffe, ausgangspruefung, mcp, library-import, duplicates-merge und drafts-pool.
+`POST /api/ask` erscheint als „public“, weil `mcp-routes.ts` den Pfad in einem
+Weiterleitungsaufruf nennt. `POST /api/media/transcribe` stand in keiner dieser Fehlerlisten. Die
+Wächter bleiben unverändert. Die neue Tür prüft gezielt
+`tests/sprachweg/transcribe-in-den-registern.test.ts`.
