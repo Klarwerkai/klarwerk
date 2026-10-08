@@ -587,6 +587,18 @@ export const EXTRA_GUARDED_ITEMS: NavItem[] = [
     section: "7.7",
     shot: "11",
   },
+  // R-1107 (Aufnahme gesamt-dublettenvergleich): der Zusammenführen-Assistent. Dieselbe Schwelle
+  // wie Dubletten und Vergleich — Zusammenführen ist kuratorisch (`ko.validate` am Server). Ohne
+  // eigenen Menüpunkt: das Zahnrad findet über `istAktiverEintrag` den Elternpunkt `/duplikate`.
+  {
+    id: "duplicateMerge",
+    path: "/duplikate/:id/zusammenfuehren",
+    labelKey: "nav.duplicates",
+    icon: Plus,
+    minRole: "controller",
+    section: "7.7",
+    shot: "11",
+  },
   {
     id: "conflictCompare",
     path: "/konflikte/:id/vergleich",

@@ -7,7 +7,8 @@
 // Oberfläche hat eigene Abhängigkeiten, ohne den zweiten Schritt scheitert der Build), und legt den
 // Testbestand an, den die Probe braucht:
 //   · einen Administrator und eine Expertin (niedrigere Rolle) — Kennwörter werden bei JEDEM Start
-//     zufällig erzeugt und nur auf der Konsole ausgegeben; im Repository steht kein Zugang
+//     zufällig erzeugt und nur am kontrollierenden Terminal (`/dev/tty`) ausgegeben, nicht auf
+//     `stdout`/`stderr` (R-1144, s. `meldePruefumgebung`); im Repository steht kein Zugang
 //   · zwei ECHTE ungelesene Meldungen: zwei Fragen, auf die der leere Bestand keine Antwort hat,
 //     werden über die normale Frage-Route gestellt; daraus entstehen offene Wissenslücken, die
 //     `/api/notifications` als Meldungen liefert (keine erfundenen Meldungen)
@@ -23,6 +24,7 @@ import { existsSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { join, resolve } from "node:path";
 import { buildApp, buildServices } from "../services/app/src/build-app";
+import { TERMINAL, amTerminalUebergeben } from "../services/app/src/kennwort-uebergabe";
 import { registerWebStatic } from "../services/app/src/web-static";
 
 export interface Zugang {
@@ -121,22 +123,66 @@ function wert(name: string): string | undefined {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
+// ================================================================================================
+// R-1144 — DIE ZUGÄNGE GEHEN AUF DAS KONTROLLIERENDE TERMINAL, NICHT AUF `stdout`.
+// ================================================================================================
+//
+// Bis hierher standen die frisch erzeugten Kennwörter der beiden neu angelegten Konten mit
+// `process.stdout.write` in der Ausgabe — dem Kanal, den `> log.txt`, `| tee` und jeder
+// automatische Lauf mitschreiben. Derselbe Befund wie in `seed.ts` vor mega65, nur in einem
+// zweiten Anlegebefehl. Deshalb hier derselbe Helfer (`kennwort-uebergabe.ts`) mit seiner Schleife
+// über den Byte-Offset; Adresse und Kennzahlen bleiben auf `stdout`, sie sind kein Geheimnis.
+//
+// Gelingt die Übergabe nicht (kein Terminal oder nicht vollständig angenommen), gibt es KEINEN
+// Rückfall auf einen anderen Kanal. Anders als beim Demo-Seed gibt es hier keinen Adminweg
+// zurück — der einzige Administrator ist eines der nicht übergebenen Konten, und der Bestand lebt
+// nur in diesem Prozess. Eine Prüfumgebung ohne Zugang ist nutzlos; sie wird deshalb beendet und
+// der Lauf endet mit Fehlercode.
+
+/**
+ * Meldet die bereitgestellte Prüfumgebung: Adresse und Kennzahlen auf `stdout`, die Zugänge
+ * ausschließlich über das kontrollierende Terminal.
+ *
+ * @returns `true`, wenn die Zugangsliste vollständig am Terminal angenommen wurde.
+ */
+export function meldePruefumgebung(u: Pruefumgebung): boolean {
+  process.stdout.write(
+    [
+      "FE-002 Prüfumgebung steht (Datenbestand nur im Arbeitsspeicher; Strg+C beendet).",
+      `Adresse:  ${u.adresse}/start`,
+      `Ungelesene Meldungen des Administrators: ${u.ungeleseneMeldungen}`,
+      "",
+    ].join("\n"),
+  );
+  const uebergeben = amTerminalUebergeben([
+    ...u.zugaenge.map((z) => `Zugang ${z.rolle.padEnd(8)} ${z.email}  Kennwort: ${z.passwort}`),
+    "",
+  ]);
+  if (!uebergeben) {
+    const meldung = [
+      `FE-002 Prüfumgebung: Die Übergabe der Zugänge am kontrollierenden Terminal (${TERMINAL})`,
+      "hat NICHT stattgefunden: entweder gibt es keines — typisch für CI, Container und",
+      "Pipelines — oder der Kanal hat den Text nicht vollständig angenommen. Die Kennwörter werden",
+      "hier NICHT nachgereicht, sie würden sonst in einem Protokoll landen; ein abgeschnittener",
+      "Anfang am Terminal ist nicht zu verwenden. Ohne Zugang ist die Prüfumgebung nutzlos und wird",
+      "beendet. Für die Übergabe: den Befehl in einem Terminal starten.",
+    ].join(" ");
+    process.stderr.write(`${meldung}\n`);
+  }
+  return uebergeben;
+}
+
 if (process.argv[1]?.endsWith("fe002-pruefumgebung.ts")) {
   stellePruefumgebungBereit({
     port: Number(wert("--port") ?? "4702"),
     host: wert("--host") ?? "127.0.0.1",
     firmenCi: process.argv.includes("--firmen-ci"),
   })
-    .then((u) => {
-      process.stdout.write(
-        [
-          "FE-002 Prüfumgebung steht (Datenbestand nur im Arbeitsspeicher; Strg+C beendet).",
-          `Adresse:  ${u.adresse}/start`,
-          ...u.zugaenge.map((z) => `Zugang ${z.rolle.padEnd(8)} ${z.email}  Kennwort: ${z.passwort}`),
-          `Ungelesene Meldungen des Administrators: ${u.ungeleseneMeldungen}`,
-          "",
-        ].join("\n"),
-      );
+    .then(async (u) => {
+      if (!meldePruefumgebung(u)) {
+        await u.schliessen();
+        process.exitCode = 1;
+      }
     })
     .catch((e: unknown) => {
       process.stderr.write(`FE-002 Prüfumgebung: ${String(e)}\n`);

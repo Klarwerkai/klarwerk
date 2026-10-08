@@ -50,6 +50,10 @@ export interface OverlapResolution {
   by: string | null;
   note: string | null;
   at: string;
+  // R-1107 (Aufnahme gesamt-dublettenvergleich): NUR bei `merged` — der verbleibende
+  // Führungsartikel und seine Fassung, die den Inhalt aufgenommen hat. Additiv, Altbestand ohne.
+  mergedIntoKoId?: string;
+  mergedVersion?: number;
 }
 
 export interface OverlapEntry {

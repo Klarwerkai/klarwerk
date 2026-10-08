@@ -79,6 +79,7 @@ export function PruefenPaarKarte({
   ton,
   markeTitel,
   aktionen,
+  beleg,
   mehr,
 }: {
   /** „a" oder „b" — der Anker, an dem die Messung links von rechts unterscheidet. */
@@ -91,6 +92,11 @@ export function PruefenPaarKarte({
   markeTitel?: string | undefined;
   /** Das „···"-Menü dieser Karte. */
   aktionen?: ReactNode;
+  /**
+   * R-0261 (Aufnahme gesamt-dublettenvergleich): der Beleg dieser Seite OHNE Aufklappen — Quelle,
+   * Quelldatum, Konfidenz. Steht zwischen Text und „Mehr"; fehlt er, ändert sich an der Karte nichts.
+   */
+  beleg?: ReactNode;
   /** Das „Mehr" dieser Karte (Herkunft, Sicherheit, Zitate, Status …). */
   mehr?: ReactNode;
 }): JSX.Element {
@@ -127,6 +133,11 @@ export function PruefenPaarKarte({
           </span>
         ))}
       </p>
+      {beleg ? (
+        <div data-testid={`pruefen-paar-beleg-${seite}`} className="px-[22px] pb-[14px]">
+          {beleg}
+        </div>
+      ) : null}
       {mehr ? <div className="px-[22px] pb-[18px]">{mehr}</div> : null}
     </div>
   );
