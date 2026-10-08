@@ -430,6 +430,16 @@ function zweitmeinungAus(konfig: ReasonerConfigStatus | undefined): string {
 const KEINE_AUFGABEN: Record<string, string> = {};
 
 /**
+ * DIE EINE SCHREIBSTELLE der Karte neben `endpoints.reasoner.updateConfig` — für die Freigabe
+ * (JOB 3783) und die Wahl der Zweitmeinung (R-0305/R-1099). Beide gehen über denselben Adminweg;
+ * eine zweite Abschrift desselben `put` wäre ein zweiter Schreibweg im Quelltext
+ * (`tests/admin-ki-oberflaeche/freigabe-texte-und-einziger-weg.test.tsx`, W1).
+ */
+function konfigSchreiben(rumpf: Record<string, unknown>): Promise<ReasonerConfigStatus> {
+  return api.put<ReasonerConfigStatus>("/reasoner/config", rumpf);
+}
+
+/**
  * Die Freigabe aus einer Serverantwort — „nur `true` zählt", wortgleich zur Lesart des Servers
  * (`services/app/src/routes/reasoner-routes.ts:279-289` und `service.ts:658-660`): `false`,
  * „fehlt" und ein fremder Wert sind dasselbe, nämlich NICHT freigegeben.
@@ -688,7 +698,7 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
   // Zielpfaden dieses Auftrags. Sein Platz dort steht in der Rückgabe unter ABWEICHUNGEN.
   const freigabeSpeichern = useMutation({
     mutationFn: (auftrag: { naechste: KiFreigabeStand; nummer: number }) =>
-      api.put<ReasonerConfigStatus>("/reasoner/config", {
+      konfigSchreiben({
         // Die BESTÄTIGTE Zuordnung, nicht der Entwurf: ein Klick auf einen Freigabeschalter darf
         // keine ungespeicherte Anbieterwahl nebenbei übernehmen — und keine gespeicherte verlieren.
         // RUNDE 2: `basis` ist hier verlässlich, weil der Kanal frei war — es kann kein Schreiben
@@ -737,7 +747,7 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
   // „aus" wird als `null` geschrieben — Weglassen hieße am Server „unverändert".
   const zweitmeinungSpeichern = useMutation({
     mutationFn: (auftrag: { wahl: string; nummer: number }) =>
-      api.put<ReasonerConfigStatus>("/reasoner/config", {
+      konfigSchreiben({
         global: basis.global,
         perTask: basis.perTask,
         zweitmeinung: auftrag.wahl === "aus" ? null : auftrag.wahl,
