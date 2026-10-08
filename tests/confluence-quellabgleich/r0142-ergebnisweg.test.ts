@@ -361,7 +361,16 @@ describe("R-0142 · der Ergebnisweg des Confluence-Imports", () => {
       expect(passend.gap?.id, "der Antwortweg muss eine Lücke anlegen").toBeTruthy();
       expect(fremd.gap?.id).toBeTruthy();
       expect(geschlossen.gap?.id).toBeTruthy();
-      await t.services.ask.closeGap(geschlossen.gap?.id ?? "");
+      // R-0846 / L6: eine Lücke schliesst nur mit dem Wissensobjekt, das sie beantwortet. Dafür
+      // steht hier ein eigenes Objekt, damit der Import unten unberührt bleibt.
+      const antwort = await t.services.ko.create({
+        title: "Abschlussvermerk Wartungsfrage",
+        statement: "Die Frage ist anderweitig beantwortet.",
+        type: "best_practice",
+        category: "Vermerk",
+        author: "admin",
+      });
+      await t.services.ask.closeGap(geschlossen.gap?.id ?? "", antwort.id);
 
       t.bereich.set("P-1", seite("P-1", 1));
       const importId = await t.lauf();
