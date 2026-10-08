@@ -170,8 +170,40 @@ describe("R-0920 · R — dieselbe Schranke wie `/import`", () => {
   });
 
   it("R2: die Rollenkarte nennt dafür dieselbe Freiheit wie für den Import", () => {
+    // Gegenprobe zu `tests/app/h6-rollenfreiheiten.test.ts` Fall 1, beschränkt auf den Eintrag
+    // dieses Auftrags: jener Fall ist am Basisstand wegen des fremden Eintrags `ablauf` rot.
+    expect("importLauf" in STICHWORT_JE_EINTRAG).toBe(true);
     expect(STICHWORT_JE_EINTRAG.importLauf).toBe(STICHWORT_JE_EINTRAG.import);
+    expect(STICHWORT_JE_EINTRAG.importLauf).toBe("adm.sec.quellen");
   });
+});
+
+describe("R-0920 · K — die neuen Klassenbindungen sind auflösbar", () => {
+  // Gegenprobe zu `tests/app/mega47-modale-flaechen-sammler.test.tsx` (JOB 1181), beschränkt auf die
+  // Dateien dieses Auftrags: dessen Gesamtzahl 226 ist am Basisstand durch fremde Bindungen
+  // überholt. Dieselbe Regel wie dort: eine Bindung ist aufgelöst, wenn sie ein Literal ist oder ein
+  // Bezeichner, den DIESE Datei mit literalem Wert deklariert.
+  for (const datei of [
+    "apps/web/src/pages/ImportLauf.tsx",
+    "apps/web/src/components/ImportLaufLink.tsx",
+  ]) {
+    it(`K1: ${datei} trägt keine unauflösbare className-Bindung`, () => {
+      const quelle = readFileSync(datei, "utf8");
+      const ausdruecke = [...quelle.matchAll(/className=\{([^}]*)\}/g)].map((m) =>
+        (m[1] ?? "").trim(),
+      );
+      const offen = ausdruecke.filter((a) => {
+        if (/^"[^"]*"$/.test(a)) {
+          return false;
+        }
+        if (/^[A-Z_][A-Z0-9_]*$/.test(a)) {
+          return !new RegExp(`const ${a} =\\s*"[^"]*";`).test(quelle);
+        }
+        return true;
+      });
+      expect(offen, datei).toEqual([]);
+    });
+  }
 });
 
 describe("R-0920 · S — Deutsch, Englisch, Niederländisch", () => {
