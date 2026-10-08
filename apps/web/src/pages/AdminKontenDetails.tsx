@@ -195,8 +195,10 @@ export function NutzerDetail({
     onSuccess: invalidate,
     onError: fail,
   });
+  // R-0554: entfernt mit Nachfolger, läuft vorher serverseitig die Wissensübergabe.
   const remove = useMutation({
-    mutationFn: (id: string) => endpoints.users.remove(id),
+    mutationFn: (v: { id: string; nachfolger: string }) =>
+      endpoints.users.remove(v.id, v.nachfolger || undefined),
     onSuccess: () => {
       invalidate();
       onZurueck();
@@ -261,6 +263,8 @@ export function NutzerDetail({
   // JOB 3065: Löschen bekommt die Rückfrage, die es auf der alten Kartenwand nie hatte (mega45:
   // genau EIN Knopf trägt die Warnfarbe, keiner die neutrale Vorgabe).
   const [confirmRemove, setConfirmRemove] = useState(false);
+  // R-0554: wer das Wissen beim Entfernen übernimmt — leer heisst „ohne Übergabe" (wie bisher).
+  const [nachfolgerBeimEntfernen, setNachfolgerBeimEntfernen] = useState("");
   // JOB 4021: die Datumseingabe der Befristung. Sie steht ZU, bis der Admin sie öffnet — ein leeres
   // Feld ist keine Aussage über den Zugang (Auftrag §9), und eine Vorgabedauer („+30 Tage") gibt es
   // ausdrücklich nicht: „kein Ablauf" ist der gültige Normalzustand.
@@ -562,13 +566,31 @@ export function NutzerDetail({
               {confirmRemove ? (
                 <span className="inline-flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-page px-2.5 py-1.5">
                   <span className="text-[12px] font-semibold text-text">{t("adm.removeQ")}</span>
+                  <select
+                    data-entfernen-nachfolger
+                    aria-label={t("verantwortung.entfernenNachfolger")}
+                    value={nachfolgerBeimEntfernen}
+                    onChange={(e) => setNachfolgerBeimEntfernen(e.target.value)}
+                    className="h-8 rounded-input border border-hairline bg-surface px-2 text-[12px]"
+                  >
+                    <option value="">{t("verantwortung.entfernenOhneUebergabe")}</option>
+                    {(users.data ?? [])
+                      .filter((u) => u.approved && u.id !== nutzer.id)
+                      .map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {t("verantwortung.entfernenAn", { name: u.name })}
+                        </option>
+                      ))}
+                  </select>
                   <Button variant="ghost" onClick={() => setConfirmRemove(false)}>
                     {t("adm.removeKeep")}
                   </Button>
                   <Button
                     variant="danger"
                     disabled={remove.isPending}
-                    onClick={() => remove.mutate(nutzer.id)}
+                    onClick={() =>
+                      remove.mutate({ id: nutzer.id, nachfolger: nachfolgerBeimEntfernen })
+                    }
                   >
                     {t("adm.removeYes")}
                   </Button>

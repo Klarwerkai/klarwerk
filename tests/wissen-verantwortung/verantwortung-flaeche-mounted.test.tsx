@@ -36,14 +36,17 @@ const PROVENIENZ = "provenienz";
 const feld = (name: string): HTMLElement | null =>
   document.querySelector<HTMLElement>(`[data-ko-verantwortung-${name}]`);
 
-function rueckgabeKnopf(): HTMLButtonElement | null {
+function knopfMit(beschriftung: string): HTMLButtonElement | null {
   const bereich = document.querySelector("[data-ko-verantwortung]");
   return (
     [...(bereich?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find(
-      (b) => text(b) === i18n.t("verantwortung.zurueckgeben"),
+      (b) => text(b) === beschriftung,
     ) ?? null
   );
 }
+
+const rueckgabeKnopf = (): HTMLButtonElement | null =>
+  knopfMit(i18n.t("verantwortung.zurueckgeben"));
 
 beforeEach(() => {
   zuruecksetzen();
@@ -84,6 +87,36 @@ describe("R-0507 · wer verantwortlich ist, wer geprüft und wer freigegeben hat
     await flaecheMit(PROVENIENZ, {});
     expect(text(feld("eigentuemer"))).toBe(i18n.t("verantwortung.eigentuemerFehlt"));
     expect(rueckgabeKnopf()).toBeNull();
+  });
+
+  it("V5 · die freigabeberechtigte Eigentümerin gibt ein offenes Objekt frei — getrennt von der Rückgabe", async () => {
+    // Angemeldet ist u1 als Admin (Freigaberecht); das Objekt ist offen.
+    await flaecheMit(PROVENIENZ, {
+      status: "offen",
+      ownership: { owner: "u1", reviewers: [], validators: [] },
+    });
+    const freigabe = knopfMit(i18n.t("verantwortung.freigeben"));
+    expect(freigabe, "die Eigentümerin sieht den Freigabeweg nicht").not.toBeNull();
+    expect(rueckgabeKnopf(), "die Rückgabe bleibt daneben erhalten").not.toBeNull();
+    await ausloesen(freigabe as HTMLButtonElement);
+    expect(netz.aufrufe).toEqual([{ action: "owner-validate" }]);
+  });
+
+  it("V6 · ohne Freigaberecht oder bei bereits freigegebenem Objekt kein Freigabeknopf", async () => {
+    netz.rolle = "experte";
+    await flaecheMit(PROVENIENZ, {
+      status: "offen",
+      ownership: { owner: "u1", reviewers: [], validators: [] },
+    });
+    expect(knopfMit(i18n.t("verantwortung.freigeben"))).toBeNull();
+    expect(rueckgabeKnopf()).not.toBeNull();
+    abbauen();
+    netz.rolle = "admin";
+    await flaecheMit(PROVENIENZ, {
+      status: "validiert",
+      ownership: { owner: "u1", reviewers: [], validators: [] },
+    });
+    expect(knopfMit(i18n.t("verantwortung.freigeben"))).toBeNull();
   });
 
   it("V4 · auf Englisch und Niederländisch steht die eigene Sprache da", async () => {

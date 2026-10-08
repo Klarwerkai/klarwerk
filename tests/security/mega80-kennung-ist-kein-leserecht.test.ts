@@ -202,6 +202,9 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
     // Eigentümer IST, entscheidet der Dienst (`NOT_OWNER`); das Tor davor muss vorher greifen.
     case "ownership-release":
       return { action };
+    // R-0507: die Eigentümerfreigabe — ob der Anfragende Eigentümer ist, entscheidet der Dienst.
+    case "owner-validate":
+      return { action };
     case "conflict":
       return {
         action,

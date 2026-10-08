@@ -377,6 +377,8 @@ export type KoAction =
   | { action: "transfer-author"; newAuthor: string }
   // R-0507: der benannte Eigentümer gibt seine Verantwortung zurück (sonst 403 `NOT_OWNER`).
   | { action: "ownership-release" }
+  // R-0507: der benannte Eigentümer gibt inhaltlich frei (Recht `ko.validate`, sonst 403).
+  | { action: "owner-validate"; duplicateAcknowledged?: true }
   // AUFTRAG-mega15 Block B (bens SB-4): dieser Vertrag war schon richtig — falsch war der
   // Laufzeitpfad, der zusätzlich ein `provider` mitschickte, und der Server, der seine Stufen-
   // Sperre nach diesem Client-Feld ausrichtete. Beides ist jetzt aufgeräumt: die Herkunft leitet
@@ -1408,7 +1410,12 @@ export const endpoints = {
     ) => api.post<PublicUser>("/users", { name, email, password, role, accessExpiresAt }),
     approve: (id: string) => api.post<void>(`/auth/users/${id}/approve`),
     setRole: (id: string, role: Role) => api.put<void>(`/users/${id}`, { role }),
-    remove: (id: string) => api.del<void>(`/users/${id}`),
+    // R-0554: mit `nachfolger` läuft vor dem Entfernen die Wissensübergabe (Auslöser aus der
+    // Verzeichnispflege); bleibt etwas liegen, antwortet der Server 409 und entfernt nichts.
+    remove: (id: string, nachfolger?: string) =>
+      api.del<void>(
+        nachfolger ? `/users/${id}?nachfolger=${encodeURIComponent(nachfolger)}` : `/users/${id}`,
+      ),
     // SCRUM-148: Admin-Passwort-Reset (eigener Pfad; invalidiert Sitzungen serverseitig).
     resetPassword: (id: string, password: string) =>
       api.post<void>(`/auth/users/${id}/reset`, { password }),

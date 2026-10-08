@@ -217,8 +217,19 @@ export class Wissensuebergabe {
     }
     for (const z of m.pruefaufgaben) {
       await schritt("pruefaufgabe", z.koId, async () => {
-        // Hat der Nachfolger dieselbe Prüfaufgabe schon, entsteht keine zweite.
-        if (!(await this.q.assignments.find(z.koId, an))) {
+        // Je Objekt und Person gibt es genau EINE Zuweisung (`find` filtert nicht nach Status).
+        //   · keine beim Nachfolger → offene anlegen, dann die der Person entfernen;
+        //   · eine OFFENE beim Nachfolger → die Arbeit steht dort schon, keine zweite;
+        //   · eine ERLEDIGTE beim Nachfolger → nicht auflösbar: sie wieder zu öffnen löschte seine
+        //     erledigte Prüfung aus der Spur, sie zu übergehen verlöre die ausstehende Aufgabe.
+        //     Die Aufgabe der Person bleibt bestehen, der Schritt ist benannt gescheitert.
+        const beimNachfolger = await this.q.assignments.find(z.koId, an);
+        if (beimNachfolger?.status === "done") {
+          throw new Error(
+            "Der Nachfolger hat dieses Objekt bereits geprüft; die offene Prüfaufgabe bleibt bei der ausscheidenden Person.",
+          );
+        }
+        if (!beimNachfolger) {
           await this.q.assignments.create({ koId: z.koId, userId: an, status: "open" });
         }
         await this.q.assignments.remove(z.koId, von);

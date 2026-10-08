@@ -270,6 +270,28 @@ describe("R-0554 · Wissensübergabe beim Ausscheiden", () => {
     expect((await w.drafts.findById("d-anna"))?.originalAuthor).toBe(ANNA);
   });
 
+  it("U8 · hat der Nachfolger dasselbe Objekt schon ERLEDIGT, bleibt die offene Aufgabe stehen", async () => {
+    // Bert hat `vonClara` bereits geprüft (done); Anna hat dort eine offene Prüfaufgabe.
+    await w.assignments.create({ koId: w.ids.vonClara, userId: BERT, status: "done" });
+    const e = await w.uebergabe.uebergeben(ANNA, BERT, ADMIN);
+    expect(e.fehlgeschlagen).toEqual([
+      expect.objectContaining({ art: "pruefaufgabe", id: w.ids.vonClara }),
+    ]);
+    // Nur die auflösbare Aufgabe (annaVerantwortet, Bert offen) zählt als übergeben.
+    expect(e.uebergeben.pruefaufgabe).toBe(1);
+    // Annas offene Aufgabe besteht weiter, Berts erledigte bleibt erledigt — nichts ging verloren.
+    expect(await w.assignments.find(w.ids.vonClara, ANNA)).toEqual({
+      koId: w.ids.vonClara,
+      userId: ANNA,
+      status: "open",
+    });
+    expect((await w.assignments.find(w.ids.vonClara, BERT))?.status).toBe("done");
+    const vorgang = (await w.audit.list()).find((x) => x.action === "lifecycle.handover");
+    expect(vorgang?.payload).toMatchObject({
+      failed: [{ art: "pruefaufgabe", id: w.ids.vonClara }],
+    });
+  });
+
   it("U6 · ungültige Eingaben werden abgelehnt, bevor etwas gelesen wird", async () => {
     await expect(w.uebergabe.vorschau(ANNA, ANNA)).rejects.toMatchObject({ code: "INVALID" });
     await expect(w.uebergabe.vorschau("", BERT)).rejects.toMatchObject({ code: "INVALID" });

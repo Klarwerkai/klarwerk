@@ -3,7 +3,7 @@ import type { TxContext } from "../../db-tx";
 import type { KnowledgeObject, KoFilter, KoService } from "../../knowledge-object";
 // JOB 557 (Pedi 13.08.2026): „der Erzeuger ist nicht der Verantwortliche." Beide Helfer kommen über
 // die MODULFASSADE — keine Kante in die Innereien von knowledge-object.
-import { responsibleKindOf, responsibleOf } from "../../knowledge-object";
+import { ownershipOf, responsibleKindOf, responsibleOf } from "../../knowledge-object";
 import type { AssignmentRepo, RatingRepo } from "./repo";
 import {
   FALLBACK_NEEDED_VALIDATIONS,
@@ -457,6 +457,68 @@ export class ValidationService {
       status: "validiert",
       validationDecisionRef: referenz,
     };
+  }
+
+  // ==============================================================================================
+  // R-0507 — „DER EIGENTÜMER KANN ES FREIGEBEN."
+  // ==============================================================================================
+  //
+  // Die Freigabe durch den benannten Eigentümer ist eine abgeschlossene Validierung mit genau EINER
+  // tragenden Identität — derselbe Weg wie `adminValidate` (Compare-and-Set gegen die gelesene
+  // Fassung, Zustand und Beleg in einer Klammer, Fortschreibung von `validators`). Zwei
+  // Unterschiede, beide gewollt:
+  //   · WER: nur der benannte Eigentümer (`ownership.owner`), geprüft HIER gegen den gelesenen
+  //     Stand. Das Freigaberecht selbst (`ko.validate`) prüft die Route — der Eigentum allein
+  //     verleiht keine Freigabebefugnis (ownership.ts: „keine Rechtevergabe"), es BENENNT nur,
+  //     wer unter den Freigabeberechtigten das letzte Wort am eigenen Objekt hat.
+  //   · WIE VIEL: das Vertrauen bleibt, wie es die Stimmen ergeben. Die Eigentümerfreigabe ist eine
+  //     Entscheidung, keine zusätzliche Evidenz — anders als der Admin-Deckel (TRUST_MAX).
+  // Der Beleg heisst `ko.owner-validated`; die Rückgabe der Verantwortung
+  // (`KoService.releaseOwnership`) bleibt ein eigener, davon getrennter Weg.
+  async ownerValidate(koId: string, actorId: string): Promise<ValidationDecision> {
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    if (ownershipOf(ko)?.owner !== actorId) {
+      throw new ValidationError(
+        "NOT_OWNER",
+        "Nur der benannte Eigentümer kann dieses Wissensobjekt als Eigentümer freigeben.",
+      );
+    }
+    const geleseneFassung = ko.version;
+    const {
+      ko: gespeichert,
+      geschrieben,
+      ref,
+    } = await this.koService.setValidationStateMitBeleg(
+      koId,
+      async () => ({ trust: ko.trust, status: "validiert" }),
+      { expectedVersion: geleseneFassung, beiVersionswechsel: "nichts" },
+      async (tx) =>
+        refAus(
+          await this.audit?.record(
+            {
+              actor: actorId,
+              action: "ko.owner-validated",
+              target: koId,
+              payload: { koVersion: geleseneFassung },
+            },
+            tx,
+          ),
+        ),
+    );
+    const { votes } = stimmenAus(await this.ratings.listByKo(koId), gespeichert.version);
+    if (!geschrieben) {
+      return {
+        ...votes,
+        trust: gespeichert.trust,
+        status: gespeichert.status,
+        validationDecisionRef: null,
+      };
+    }
+    await this.koService.recordOwnershipRole(koId, "validators", [actorId], actorId);
+    return { ...votes, trust: ko.trust, status: "validiert", validationDecisionRef: ref };
   }
 
   // SCRUM-124: dedupliziert eine offene Zuweisung an den VERANTWORTLICHEN + Audit-Event.

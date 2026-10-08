@@ -14,9 +14,20 @@ import type { Textmodul } from "./intern/pruefung";
 
 export default {
   praefix: "verantwortung.",
-  legacySchluessel: ["audit.action.ko_ownership_released", "audit.action.lifecycle_handover"],
+  legacySchluessel: [
+    "audit.action.ko_ownership_released",
+    "audit.action.ko_owner_validated",
+    "audit.action.lifecycle_handover",
+  ],
   de: {
     "audit.action.ko_ownership_released": "Verantwortung zurückgegeben",
+    "audit.action.ko_owner_validated": "Vom Eigentümer freigegeben",
+    "verantwortung.freigeben": "Als Eigentümer freigeben",
+    "verantwortung.freigebenDublette": "Dublette gesehen – trotzdem freigeben",
+    "verantwortung.freigegeben": "Als Eigentümer freigegeben. Die Freigabe steht im Prüfprotokoll.",
+    "verantwortung.entfernenNachfolger": "Wissen vor dem Entfernen übergeben an",
+    "verantwortung.entfernenOhneUebergabe": "Ohne Wissensübergabe entfernen",
+    "verantwortung.entfernenAn": "Wissen übergeben an {{name}}",
     "audit.action.lifecycle_handover": "Wissen beim Ausscheiden übergeben",
     "verantwortung.eigentuemer": "Verantwortlich",
     "verantwortung.eigentuemerFehlt":
@@ -49,6 +60,13 @@ export default {
   },
   en: {
     "audit.action.ko_ownership_released": "Responsibility handed back",
+    "audit.action.ko_owner_validated": "Approved by the owner",
+    "verantwortung.freigeben": "Approve as owner",
+    "verantwortung.freigebenDublette": "Duplicate seen – approve anyway",
+    "verantwortung.freigegeben": "Approved as owner. The approval is recorded in the audit log.",
+    "verantwortung.entfernenNachfolger": "Hand over knowledge before removing to",
+    "verantwortung.entfernenOhneUebergabe": "Remove without knowledge handover",
+    "verantwortung.entfernenAn": "Hand over knowledge to {{name}}",
     "audit.action.lifecycle_handover": "Knowledge handed over on departure",
     "verantwortung.eigentuemer": "Responsible",
     "verantwortung.eigentuemerFehlt":
@@ -81,6 +99,13 @@ export default {
   },
   nl: {
     "audit.action.ko_ownership_released": "Verantwoordelijkheid teruggegeven",
+    "audit.action.ko_owner_validated": "Vrijgegeven door de eigenaar",
+    "verantwortung.freigeben": "Als eigenaar vrijgeven",
+    "verantwortung.freigebenDublette": "Duplicaat gezien – toch vrijgeven",
+    "verantwortung.freigegeben": "Als eigenaar vrijgegeven. De vrijgave staat in het auditlogboek.",
+    "verantwortung.entfernenNachfolger": "Kennis vóór het verwijderen overdragen aan",
+    "verantwortung.entfernenOhneUebergabe": "Verwijderen zonder kennisoverdracht",
+    "verantwortung.entfernenAn": "Kennis overdragen aan {{name}}",
     "audit.action.lifecycle_handover": "Kennis overgedragen bij vertrek",
     "verantwortung.eigentuemer": "Verantwoordelijk",
     "verantwortung.eigentuemerFehlt":

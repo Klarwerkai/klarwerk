@@ -102,6 +102,59 @@ describe("R-0507 · Verantwortung am Draht", () => {
     expect(danach.json().ownership).toEqual({ reviewers: [erik.id], validators: [] });
     expect(danach.json().author).toBe(admin.id);
   });
+
+  it("V2 · die Eigentümerin gibt inhaltlich frei — getrennt von der Rückgabe, mit Freigabespur", async () => {
+    const { app, admin, erik, carla } = await aufbau();
+    const koId = await anlegen(app, admin.headers, "Hydraulikschlauch nur drucklos tauschen");
+    const benenne = (owner: string) =>
+      app.inject({
+        method: "PUT",
+        url: `/api/kos/${koId}`,
+        headers: admin.headers,
+        payload: { action: "ownership", ownership: { owner } },
+      });
+    const freigabe = (wer: { headers: Record<string, string> }) =>
+      app.inject({
+        method: "PUT",
+        url: `/api/kos/${koId}`,
+        headers: wer.headers,
+        payload: { action: "owner-validate" },
+      });
+    expect((await lesen(app, admin.headers, koId)).json().status).toBe("offen");
+
+    // Eigentum allein verleiht kein Freigaberecht: Erik (ohne `ko.validate`) wird am Tor abgewiesen.
+    expect((await benenne(erik.id)).statusCode).toBe(200);
+    const ohneRecht = await freigabe(erik);
+    expect(ohneRecht.statusCode, ohneRecht.body).toBe(403);
+    expect(ohneRecht.json().error).toBe("FORBIDDEN");
+
+    // Freigabeberechtigt, aber nicht Eigentümer: auch der Admin bekommt NOT_OWNER.
+    expect((await benenne(carla.id)).statusCode).toBe(200);
+    const fremd = await freigabe(admin);
+    expect(fremd.statusCode, fremd.body).toBe(403);
+    expect(fremd.json().error).toBe("NOT_OWNER");
+    expect((await lesen(app, admin.headers, koId)).json().status).toBe("offen");
+
+    const ok = await freigabe(carla);
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect(ok.json().status).toBe("validiert");
+    const danach = (await lesen(app, admin.headers, koId)).json();
+    expect(danach.status).toBe("validiert");
+    // Freigabespur: Carla steht unter `validators`; sie bleibt Eigentümerin (keine Rückgabe).
+    expect(danach.ownership).toEqual({ owner: carla.id, reviewers: [], validators: [carla.id] });
+
+    const protokoll = await app.inject({
+      method: "GET",
+      url: "/api/audit",
+      headers: admin.headers,
+    });
+    const eintraege = protokoll.json() as Array<{ action: string; actor: string; target: string }>;
+    expect(
+      eintraege.some(
+        (e) => e.action === "ko.owner-validated" && e.actor === carla.id && e.target === koId,
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("R-0554 / R-2128 · Wissensübergabe am Draht", () => {
@@ -176,5 +229,51 @@ describe("R-0554 / R-2128 · Wissensübergabe am Draht", () => {
       payload: { from: erik.id, to: "gibt-es-nicht" },
     });
     expect(unbekannt.statusCode).toBe(404);
+  });
+
+  it("W4 · Auslöser aus der Verzeichnispflege: Konto entfernen mit Nachfolger übergibt zuerst", async () => {
+    const { app, admin, carla } = await aufbau();
+    // Ein eigenes, frisches Konto — unabhängig vom Demobestand.
+    const angelegt = await app.inject({
+      method: "POST",
+      url: "/api/users",
+      headers: admin.headers,
+      payload: {
+        name: "Gerd Geht",
+        email: "gerd@verantwortung.test",
+        password: "secret123",
+        role: "experte",
+      },
+    });
+    expect(angelegt.statusCode, angelegt.body).toBe(201);
+    const gerd = await login(app, "gerd@verantwortung.test", "secret123");
+    const koId = await anlegen(app, gerd.headers, "Kettenspanner monatlich nachstellen");
+    const konten = async (): Promise<string[]> => {
+      const res = await app.inject({ method: "GET", url: "/api/users", headers: admin.headers });
+      return (res.json() as { id: string }[]).map((u) => u.id);
+    };
+
+    // Unbekannter Nachfolger: nichts übergeben, nichts entfernt.
+    const unbekannt = await app.inject({
+      method: "DELETE",
+      url: `/api/users/${gerd.id}?nachfolger=gibt-es-nicht`,
+      headers: admin.headers,
+    });
+    expect(unbekannt.statusCode, unbekannt.body).toBe(404);
+    expect(await konten()).toContain(gerd.id);
+    expect((await lesen(app, admin.headers, koId)).json().author).toBe(gerd.id);
+
+    const entfernt = await app.inject({
+      method: "DELETE",
+      url: `/api/users/${gerd.id}?nachfolger=${carla.id}`,
+      headers: admin.headers,
+    });
+    expect(entfernt.statusCode, entfernt.body).toBe(200);
+    expect(entfernt.json().uebergabe.fehlgeschlagen).toEqual([]);
+    expect(entfernt.json().uebergabe.uebergeben.wissensobjekt).toBe(1);
+    expect(await konten()).not.toContain(gerd.id);
+    const ko = (await lesen(app, admin.headers, koId)).json();
+    expect(ko.author).toBe(carla.id);
+    expect(ko.originalAuthor).toBe(gerd.id);
   });
 });

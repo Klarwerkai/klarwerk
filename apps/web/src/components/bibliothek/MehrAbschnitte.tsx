@@ -1951,7 +1951,12 @@ export function MehrAbschnitte({
         />
         {/* R-0507 / R-0546: wem das Objekt gehört, wer es geprüft und freigegeben hat — und dass
             Bearbeiternamen keine Verantwortung aussagen. */}
-        <Verantwortung ko={ko} nameOf={nameOf} angemeldet={session.user?.id} />
+        <Verantwortung
+          ko={ko}
+          nameOf={nameOf}
+          angemeldet={session.user?.id}
+          darfFreigeben={canReview}
+        />
         {canEdit ? (
           <label className="mt-3 flex items-center gap-2 text-[12px] text-muted">
             <span>{t("conf.field")}</span>
