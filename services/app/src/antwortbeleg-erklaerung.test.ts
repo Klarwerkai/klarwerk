@@ -83,7 +83,16 @@ async function koAnlegen(
   app: ReturnType<typeof buildApp>,
   auth: Record<string, string>,
   titel = "Ventil bei Ueberdruck schliessen",
-  opts: { pruefer?: Record<string, string>; bewerten?: boolean } = {},
+  // `aussage`: eigene Aussage für ein UNABHÄNGIGES zweites Objekt — sonst ist es eine Dublette.
+  // `dubletteGesehen`: ein Fall legt BEWUSST ein ähnliches Objekt an (Widerspruch, späterer Treffer).
+  // Dann bestätigt der Bewertende die offene Dublette, wie das Dublettentor (R-0247) es im Produkt
+  // verlangt — `duplicateAcknowledged: true` auf der echten Route, kein Umweg an ihr vorbei.
+  opts: {
+    pruefer?: Record<string, string>;
+    bewerten?: boolean;
+    aussage?: string;
+    dubletteGesehen?: boolean;
+  } = {},
 ): Promise<string> {
   const ko = await app.inject({
     method: "POST",
@@ -91,7 +100,7 @@ async function koAnlegen(
     headers: auth,
     payload: {
       title: titel,
-      statement: "Bei Ueberdruck Ventil X manuell schliessen.",
+      statement: opts.aussage ?? "Bei Ueberdruck Ventil X manuell schliessen.",
       type: "best_practice",
       category: "Anlage 1",
       confidentiality: "intern",
@@ -107,7 +116,11 @@ async function koAnlegen(
       method: "PUT",
       url: `/api/kos/${id}`,
       headers: opts.pruefer ?? auth,
-      payload: { action: "rate", verdict: "up" },
+      payload: {
+        action: "rate",
+        verdict: "up",
+        ...(opts.dubletteGesehen ? { duplicateAcknowledged: true } : {}),
+      },
     });
     if (bewertung.statusCode !== 200) {
       throw new Error(`KO nicht validiert: ${bewertung.statusCode} ${bewertung.body}`);
@@ -508,8 +521,13 @@ describe("R-0293 / R-0317 / R-0618 · Space-Rechte von heute gelten auch im Erkl
 
   it("erlaubte Zeilen bleiben offen — geschwärzt wird nur die Wissenseinheit im fremden Space", async () => {
     const ctx = await kontoMitDiensten("space2@x.de");
-    const imSpace = await koAnlegen(ctx.app, ctx.auth, "Ventil im fremden Space");
-    const offen = await koAnlegen(ctx.app, ctx.auth, "Ventil ohne Space");
+    // Zwei UNABHÄNGIGE Wissenseinheiten mit eigenen Aussagen — keine Dublette (R-0247).
+    const imSpace = await koAnlegen(ctx.app, ctx.auth, "Ventil im fremden Space", {
+      aussage: "Im Werk A wird das Ventil vor Schichtbeginn auf Dichtheit geprueft.",
+    });
+    const offen = await koAnlegen(ctx.app, ctx.auth, "Pumpe ohne Space", {
+      aussage: "Die Pumpe P2 wird monatlich entlueftet und das Ergebnis protokolliert.",
+    });
     const fassung = async (id: string) => (await ctx.services.ko.get(id))?.version ?? 1;
     const zeileVon = async (
       id: string,
@@ -652,7 +670,10 @@ describe("R-0293 / R-0317 · der Weg zur Antwort aus dem gespeicherten Beleg", (
     const auth = await anmelden(app, "weg2@x.de");
     const koId = await koAnlegen(app, auth);
     const answerId = await fragen(app, auth);
-    const anderes = await koAnlegen(app, auth, "Ventil bei Ueberdruck offen lassen");
+    // Bewusst ähnlich — es soll der Quelle widersprechen; die offene Dublette wird bestätigt.
+    const anderes = await koAnlegen(app, auth, "Ventil bei Ueberdruck offen lassen", {
+      dubletteGesehen: true,
+    });
     const a = await services.ko.get(koId);
     const b = await services.ko.get(anderes);
     await services.conflicts.create({
@@ -678,7 +699,11 @@ describe("R-0293 / R-0317 · der Weg zur Antwort aus dem gespeicherten Beleg", (
     const vorher = await services.answerSnapshots.latestSnapshot(answerId);
 
     // Ein neues, passenderes Objekt NACH der Antwort darf im Beleg nicht auftauchen.
-    const spaeter = await koAnlegen(app, auth, "Ventil bei Ueberdruck sofort schliessen");
+    // Bewusst ähnlich und freigegeben — ein späterer, ebenso passender Treffer, den eine Neusuche
+    // fände. Die offene Dublette wird über die echte Route bestätigt.
+    const spaeter = await koAnlegen(app, auth, "Ventil bei Ueberdruck sofort schliessen", {
+      dubletteGesehen: true,
+    });
     const body = (await erklaerung(app, auth, answerId)).json();
     expect(body.evidence.some((z: Zeile) => z.knowledgeObjectId === spaeter)).toBe(false);
     expect(zeileZu(body, koId)).toBeDefined();
