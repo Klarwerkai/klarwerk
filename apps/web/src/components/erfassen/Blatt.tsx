@@ -88,6 +88,7 @@ import { LiveReactionZone } from "../capture/intake/LiveReactionZone";
 import { StatusPill } from "../trust/StatusPill";
 import type { DisplayStatus } from "../trust/types";
 import { Menue, MenueEintrag, MenueFlaeche, MenueTrenner } from "./Menue";
+import { NegativwissenHinweis } from "./NegativwissenHinweis";
 import {
   SymbolBild,
   SymbolDatei,
@@ -765,7 +766,7 @@ export function Blatt({
         : draftProvenance(declaredConfidentiality, undefined, activeDraftId ?? undefined),
     [declaredConfidentiality, activeDraftId],
   );
-  const { verdict, checkStatus, pruefumfang } = useLiveKnowledgeCheck(
+  const { verdict, checkStatus, pruefumfang, negativwissen } = useLiveKnowledgeCheck(
     liveText,
     livePruefHerkunft,
     gespeicherterStand,
@@ -3286,6 +3287,11 @@ export function Blatt({
               onUebernehmen={changeBodyHtml}
             />
           ) : null}
+
+          {/* AUFNAHME 20260922 · NEGATIVWISSEN-HINWEIS (R-1629): ähnelt der Text einem dokumentierten
+              Fehlschlag, steht das OFFEN da — nicht im zugeklappten Chip darunter. Ohne Treffer
+              rendert nichts. */}
+          <NegativwissenHinweis treffer={negativwissen} />
 
           {/* ==========================================================================================
               §5 — EIN STILLER CHIP UNTER DEM BLATT, NUR IM FALL, AUFKLAPPBAR.

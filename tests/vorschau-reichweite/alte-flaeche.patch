@@ -152,8 +152,8 @@ index da90a288..c7e49ac9 100644
          : draftProvenance(declaredConfidentiality, undefined, activeDraftId ?? undefined),
      [declaredConfidentiality, activeDraftId],
    );
--  const { verdict, checkStatus, pruefumfang } = useLiveKnowledgeCheck(
-+  const { verdict, checkStatus } = useLiveKnowledgeCheck(
+-  const { verdict, checkStatus, pruefumfang, negativwissen } = useLiveKnowledgeCheck(
++  const { verdict, checkStatus, negativwissen } = useLiveKnowledgeCheck(
      liveText,
      livePruefHerkunft,
      gespeicherterStand,
