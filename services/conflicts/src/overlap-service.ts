@@ -167,7 +167,8 @@ export class OverlapService {
     this.onError =
       deps.onError ??
       ((context, error) => {
-        console.error(`[overlaps] ${context}:`, error);
+        // R-0623: nur die Fehlerklasse — Meldung und Stack können Inhalte tragen.
+        console.error(`[overlaps] ${context}: ${error instanceof Error ? error.name : "unknown"}`);
       });
   }
 
