@@ -1230,6 +1230,38 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
       return { pfad: "/api/ask/helpful", payload: { koId: quelle, receipt: antwort.receipt } };
     },
   },
+  // R-1649: dieselbe Vorbereitung wie „Hat geholfen" — ein echter Beleg je Akteur. Gemessen wird das
+  // Tor `ko.read` mit dem reinen Vermerk; der Entwurfszweig (`alternative`, zusätzlich `ko.create`)
+  // steht in `tests/sprachfeedback/nicht-hilfreich-route.test.ts`.
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    route: "/api/ask/not-helpful",
+    belegstelle: "services/app/src/routes/ask-routes.ts:935",
+    erfolg: [200],
+    tor: "ko.read (danach prüft der Dienst den Beleg aus dem echten Antwortvorgang)",
+    erwartet: NUR_LESEN,
+    ruesten: async (buehne, akteur) => {
+      await legeKoAn(buehne, "admin");
+      if (akteur === "anonym") {
+        return {
+          pfad: "/api/ask/not-helpful",
+          payload: { koId: "ohne-sitzung-gibt-es-keinen-beleg", receipt: "" },
+        };
+      }
+      const gefragt = await musterhaft(buehne.app, kopf(buehne, akteur), "POST", "/api/ask", {
+        question: PASSENDE_FRAGE,
+      });
+      const antwort = gefragt.json() as { receipt?: string; result?: { sources?: string[] } };
+      const quelle = antwort.result?.sources?.[0];
+      if (typeof antwort.receipt !== "string" || typeof quelle !== "string") {
+        throw new Error(
+          `Vorbereitung fehlgeschlagen: POST /api/ask lieferte keinen Beleg mit Quelle — ${gefragt.body.slice(0, 300)}`,
+        );
+      }
+      return { pfad: "/api/ask/not-helpful", payload: { koId: quelle, receipt: antwort.receipt } };
+    },
+  },
   {
     gruppe: "askRoutes",
     methode: "PUT",
