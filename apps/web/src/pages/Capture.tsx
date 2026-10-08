@@ -221,7 +221,6 @@ import { detectFileKind } from "../lib/extract";
 // SCRUM-409 (PMO-FEA-0008-Delta): Mehrpunkt-Entwürfe + Zusammenführen im „Aus Datei"-Weg.
 import { createPointDrafts } from "../lib/fileMultiPoint";
 import {
-  PdfTooLargeError,
   fileToThumbDataUrl,
   isImage,
   readDocxFile,
@@ -250,8 +249,9 @@ import {
   unsavableSourceUrls,
 } from "../lib/koSource";
 // JOB 2700 D1: die Groessenkante des PDF-Weges ist die Grenze des Original-Anhangs (dieselbe
-// Ableitung wie 2676 fuer PPTX) — und die Frist des Parsers hat einen eigenen Fehler.
-import { PdfTimeoutError } from "../lib/pdf";
+// Ableitung wie 2676 fuer PPTX) — und die Frist des Parsers hat einen eigenen Fehler. Der Satz
+// dazu ist seit `gesamt-ocr` (R-0138) mit „Aus Dokument ergaenzen" geteilt.
+import { pdfLesefehlerSatz } from "../lib/pdfLesefehler";
 // WP-D5b (bens GELB-Fix 3): ehrlicher Importfehler bei Überschreitung des Archiv-/Dekompressionsbudgets.
 import { PptxTooLargeError } from "../lib/pptx";
 import { toReasonerLocale } from "../lib/reasonerLocale";
@@ -797,21 +797,8 @@ export function CaptureArbeitsraum({
   // Was nicht als Original angehaengt werden kann, wird auch nicht geparst.
   const pdfLimitBytes = maxRawAttachmentBytes(uploadLimitsData.maxAttachmentBytes);
   /** Die ehrliche Meldung zu einer PDF, die zu gross ist oder zu lange braucht — sonst null. */
-  const pdfFehlerText = (error: unknown, name: string): string | null => {
-    if (error instanceof PdfTooLargeError) {
-      // Die Grenze ABGERUNDET (14,9 statt 15,0): was angezeigt wird, muss real durchgehen — dieselbe
-      // Regel wie maxRawAttachmentMb in uploadLimits.ts.
-      return t("capture.file.pdfTooLarge", {
-        name,
-        mb: (error.size / 1_000_000).toFixed(1),
-        limitMb: (Math.floor(error.limit / 100_000) / 10).toFixed(1),
-      });
-    }
-    if (error instanceof PdfTimeoutError) {
-      return t("capture.file.pdfTimeout", { name, s: Math.round(error.timeoutMs / 1000) });
-    }
-    return null;
-  };
+  const pdfFehlerText = (error: unknown, name: string): string | null =>
+    pdfLesefehlerSatz(error, name, t);
   const reviewerChoices = (directory.data ?? []).filter((p) => p.id !== user?.id);
   // AUFTRAG-mega6 Block D (bens Ehrlichkeitskante): die Persistenzgrenze speichert höchstens
   // DRAFT_LIMITS.reviewers Prüfer. Die Auswahl war ein unbeschränktes Toggle — der Server kappte
