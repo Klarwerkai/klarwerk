@@ -647,6 +647,10 @@ export interface KnowledgeObject {
     laeuft?: boolean;
     konfliktGefunden?: boolean;
   };
+  // R-1107 (Aufnahme gesamt-dublettenvergleich): Spiegel von `services/knowledge-object/src/
+  // types.ts` — gesetzt, wenn dieser Artikel über den Zusammenführen-Assistenten in einem
+  // Führungsartikel aufgegangen ist. Er bleibt lesbar; das Feld nennt den verbleibenden Artikel.
+  mergedInto?: { koId: string; version: number; overlapId: string; at: string; by: string };
 }
 
 // ================================================================================================
@@ -876,6 +880,31 @@ export interface OverlapResolution {
   by: string | null;
   note: string | null;
   at: string;
+  // R-1107: nur bei `merged` — der verbleibende Führungsartikel und seine neue Fassung.
+  mergedIntoKoId?: string;
+  mergedVersion?: number;
+}
+
+// R-1107 / R-0201 (Aufnahme gesamt-dublettenvergleich): der Drahtvertrag von
+// `POST /api/duplicates/:id/merge` — Spiegel von `services/app/src/dubletten-zusammenfuehrung.ts`.
+export type ZusammenfuehrungsSeite = "fuehrend" | "aufgehend";
+
+export interface ZusammenfuehrungsAuftrag {
+  fuehrend: { id: string; version: number };
+  aufgehend: { id: string; version: number };
+  titel: ZusammenfuehrungsSeite;
+  kernaussage: ZusammenfuehrungsSeite;
+  bedingungen: string[];
+  massnahmen: string[];
+  quellen: string[];
+  bestaetigt: true;
+  vermerk?: string;
+}
+
+export interface ZusammenfuehrungsErgebnis {
+  befund: OverlapEntry;
+  fuehrend: { id: string; version: number; status: KoStatus };
+  aufgehend: { id: string; mergedInto?: KnowledgeObject["mergedInto"] };
 }
 
 export interface OverlapEntry {
