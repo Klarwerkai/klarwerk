@@ -215,8 +215,11 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * (Lücke nennt die unbekannte Zuordnung, `#ask-gap-zuordnung`). Der Wert unten ist wieder ein
  * PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet den Ist-Wert als „Received", er wird danach
  * gemessen übernommen.
+ * NACHARBEIT 17: GEMESSEN im Prüflauf zu Kandidat 2c099872 (`cb99796c…`, „Received" von E2,
+ * HISTORIE/nacharbeit-17/PRUEFUNG/r0310-panel-und-pins.log) und unverändert übernommen; die vier
+ * Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "3cd144224816d260b9c30811a4e249e50c196f3e";
+export const PANEL_VOR_SCHNITT_BLOB = "cb99796c9a3134f0ffd02a97c3c1eb270055e4b8";
 
 export interface PanelTeile {
   html: string;

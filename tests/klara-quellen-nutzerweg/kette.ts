@@ -363,7 +363,17 @@ export async function eintragMitOriginal(
 // DIE HANDGRIFFE DER KETTE
 // ================================================================================================
 
-export const FRAGE = "Wie wird die Zylinderkopfdichtung XQ42 vor dem Wechsel behandelt?";
+// Aufnahme 20260922 · antwort-quellenanzeige (K05, Prüflauf zu 2c099872) — WARUM NICHT MEHR
+// „… behandelt?": Seit R-0473 (mit dem Hauptstand eingemischt, `services/ask/src/service.ts`,
+// `decktAlleFragebegriffe`) müssen ALLE gebundenen Fragebegriffe in der Quelle vorkommen.
+// „behandelt" steht weder im Titel noch in der Kernaussage (`BELEGSTELLE`: „… entlastet.") noch im
+// Original; die Frage wurde damit — vertragsgemäß — eine Wissenslücke, und alle sieben Fälle G1–G7
+// von `tests/d5-gesamtweg/gesamtweg-pg-browser.integration.test.ts` liefen in ihre Zeitgrenze
+// („Gefunden — aber diese Tore sind zu", HISTORIE/nacharbeit-17/PRUEFUNG/k05-d5-gesamtweg-
+// postgres.log). Dieselbe Korrektur wie in `tests/design/h5-funktionsinventar.test.ts` (FRAGE,
+// Nacharbeit 13 dort): die Frage benutzt nur Begriffe, die der Eintrag wirklich trägt; was die
+// Fälle danach verlangen, ist unverändert.
+export const FRAGE = "Wie wird die Zylinderkopfdichtung XQ42 vor dem Wechsel entlastet?";
 
 export interface Antwortlage {
   status: number;
