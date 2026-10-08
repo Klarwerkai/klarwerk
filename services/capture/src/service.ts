@@ -279,6 +279,9 @@ const MAX_EXT_QUERY_LEN = DRAFT_LIMITS.extQuery;
 const MAX_INTERVIEW_ANSWERS = DRAFT_LIMITS.interviewAnswers;
 const MAX_INTERVIEW_TEXT_LEN = DRAFT_LIMITS.interviewText;
 const MAX_INTERVIEW_QUESTION_LEN = DRAFT_LIMITS.interviewQuestion;
+// R-1624: dieselbe Obergrenze wie der Bildbefund im Reasoner (`MAX_INTERVIEW_IMAGE_CONTEXT_LENGTH`,
+// services/reasoner/src/provider.ts) — hier eigenständig, damit capture nicht vom reasoner abhängt.
+const MAX_INTERVIEW_IMAGE_CONTEXT_LEN = 300;
 
 function cappedString(value: unknown, max: number): string | undefined {
   return typeof value === "string" ? value.slice(0, max) : undefined;
@@ -411,6 +414,11 @@ function normalizeInterview(value: unknown): DraftPayload["interview"] {
     .slice(0, MAX_INTERVIEW_ANSWERS);
   const answer = cappedString(raw.answer, MAX_INTERVIEW_TEXT_LEN);
   const question = cappedString(raw.question, MAX_INTERVIEW_QUESTION_LEN);
+  // R-1624: Bildbefund nur als nichtleerer, gekappter Text; alles andere fällt weg.
+  const imageContext =
+    typeof raw.imageContext === "string"
+      ? raw.imageContext.trim().slice(0, MAX_INTERVIEW_IMAGE_CONTEXT_LEN).trim()
+      : "";
   const started = raw.started === true;
   // Substanzlose Hülle ({} o. ä.) gar nicht erst speichern — der Resume hätte nichts wiederherzustellen.
   if (!started && answers.length === 0 && answer === undefined && question === undefined) {
@@ -423,6 +431,7 @@ function normalizeInterview(value: unknown): DraftPayload["interview"] {
     ...(question !== undefined ? { question } : {}),
     ...(typeof raw.done === "boolean" ? { done: raw.done } : {}),
     ...(typeof raw.demo === "boolean" ? { demo: raw.demo } : {}),
+    ...(imageContext.length > 0 ? { imageContext } : {}),
   };
 }
 
