@@ -153,6 +153,41 @@ function erweiterteSuchterme(frageterme: readonly string[], selection?: string):
 }
 
 // ================================================================================================
+// R-0348 — GESPRÄCHSFADEN STATT EINZELFRAGEN, INNERHALB DER AUFGABENGEBUNDENEN FRAGESTRECKE.
+// ================================================================================================
+//
+// WAS HIER GESCHIEHT: Eine Nachfrage („Und bei Teilzeit?") bringt die vorangegangenen Fragen
+// derselben Fragestrecke mit. Aus beiden entsteht die FRAGE IM ZUSAMMENHANG — sie geht an die
+// Kandidatenwahl (Tor 1 und Tor 2) und an den Antwortweg, damit die Nachfrage nicht bei null
+// anfängt. Vorher war jede Frage ein Einzelschuss: eine Nachfrage mit einem Inhaltswort erreichte
+// `MIN_ANSWER_SUBSTANCE` nie und endete als Wissenslücke.
+//
+// WAS AUSDRÜCKLICH BLEIBT (R-0345, kein offener Chatbot):
+//   · Die Antwort bleibt quellengebunden; der Faden schafft keine Grundlage, er findet sie nur.
+//   · GEBUNDEN wird weiter NUR die getippte Frage (`decktAlleFragebegriffe(question, …)`): jede
+//     Quelle muss alle Begriffe der Nachfrage tragen. Ein früheres Thema kann deshalb keine Quelle
+//     zur Antwort machen, die zur neuen Frage nichts sagt.
+//   · `frageterme` bleibt das Getippte — jede Aussage ÜBER die Antwort (Fundstelle, Etikett)
+//     rechnet weiter darauf (s. die Trennung an `erweiterteSuchterme`).
+//   · Die Fadenterme hängen in der Vorauswahl HINTER den Termen der Frage, der Markierung und
+//     den deklarierten Entsprechungen; unter dem Deckel `ASK_PREFILTER_MAX_TERMS` verdrängen sie
+//     keinen davon. Die Lastgrenze je Frage bleibt die alte.
+// Ohne Faden ist die Frage im Zusammenhang Zeichen für Zeichen die Frage, und der Ablauf ist der
+// bisherige.
+export const GESPRAECHSFADEN_MAX_FRAGEN = 3;
+const FADEN_TRENNER = " → ";
+
+// Begrenzt wird wie auf der Fragen-Seite: die ERSTE Frage ist der Themenanker und bleibt, dazu die
+// jüngsten Nachfragen (Ben, Nacharbeit 2 — sonst fiel das Thema nach drei Nachfragen heraus).
+function fadenfragen(faden?: readonly string[]): string[] {
+  const fragen = (faden ?? []).map((frage) => frage.trim()).filter((frage) => frage.length > 0);
+  if (fragen.length <= GESPRAECHSFADEN_MAX_FRAGEN) {
+    return fragen;
+  }
+  return [...fragen.slice(0, 1), ...fragen.slice(-(GESPRAECHSFADEN_MAX_FRAGEN - 1))];
+}
+
+// ================================================================================================
 // JOB 3021 (N2) — DIE DEKLARIERTE WORTZUORDNUNG GILT AUCH, WENN KLARA ANTWORTET.
 // ================================================================================================
 //
@@ -214,6 +249,9 @@ function erweiterteSuchterme(frageterme: readonly string[], selection?: string):
 // `reasoner/src/types.ts`). Er ist ein eigener Wert NEBEN der Frage. `question` wird nirgends
 // umgeschrieben oder angereichert: Antworttext, Modellprompt, Wissenslücke, `sources`,
 // `citedSources` und das Prüfprotokoll rechnen unverändert auf dem, wonach wirklich gesucht wurde.
+// R-0348 ist die eine benannte Ausnahme, und sie ist keine Ableitung: eine Nachfrage reist mit den
+// vorher GETIPPTEN Fragen ihrer Fragestrecke als Frage im Zusammenhang (`fadenfragen`). Gebunden
+// bleibt dabei allein die neue Frage; ohne Faden gilt der Satz oben wörtlich.
 //
 // WARUM PAARE UND NICHT DIE GEWEITETE FRAGE — das ist der ganze Unterschied zu der Bauform, die
 // JOB 3039 gemessen und zurückgebaut hat (Zahlen in `tests/suche-zuordnung/…`):
@@ -818,6 +856,12 @@ export class AskService {
        * `Reasoner.answer`. Kein Rumpffeld: gesetzt wird es ausschliesslich von der Route.
        */
       dokumenttextFreigegeben?: boolean;
+      /**
+       * R-0348: die vorangegangenen Fragen derselben Fragestrecke, älteste zuerst (höchstens
+       * `GESPRAECHSFADEN_MAX_FRAGEN` zählen). Wirkung und Grenzen an `fadenfragen`. Gesetzt nur
+       * von der Route, und nur im Konsolenzweig.
+       */
+      gespraechsfaden?: readonly string[];
     },
     // produkt:20261007:spaces — WAS DER FRAGENDE ÜBERHAUPT SEHEN DARF, als fertige Entscheidung der
     // Route (`sichtbarkeitsfilterFuer`, samt führendem Space). Bewusst ein EIGENER Parameter und
@@ -874,7 +918,12 @@ export class AskService {
     const frageterme = queryTokens(question);
     const eingabeterme = erweiterteSuchterme(frageterme, opts?.selection);
     const relevanz = zugeordneteSuchterme(eingabeterme);
-    const suchterme = [...eingabeterme, ...relevanz.flatMap((paar) => [...paar.ergaenzt])];
+    const vorFaden = [...eingabeterme, ...relevanz.flatMap((paar) => [...paar.ergaenzt])];
+    // R-0348: der Gesprächsfaden — Begründung und Grenzen an `fadenfragen`.
+    const faden = fadenfragen(opts?.gespraechsfaden);
+    const frageImZusammenhang =
+      faden.length > 0 ? [...faden, question].join(FADEN_TRENNER) : question;
+    const suchterme = faden.length > 0 ? erweiterteSuchterme(vorFaden, faden.join(" ")) : vorFaden;
     // D5: bis hierher wurde nur die Frage selbst zerlegt — ab der nächsten Zeile wird Bestand gelesen.
     this.pruefeKiSperre("vorauswahl", kiBeginn);
     const vorauswahl = await this.prefilterCandidates(suchterme, kiBeginn);
@@ -978,7 +1027,8 @@ export class AskService {
         relevanz,
       ),
     );
-    const candidates = waehleKandidaten(question, vollstaendig, DEFAULT_TOP_K, relevanz);
+    // R-0348: gebunden hat oben die getippte Frage; gewählt und beantwortet wird im Zusammenhang.
+    const candidates = waehleKandidaten(frageImZusammenhang, vollstaendig, DEFAULT_TOP_K, relevanz);
     // SCRUM-490 R2 (B1): Add-on-Pfad → RETRIEVAL-ONLY (kein Modell-/Embedder-Egress des Dokumenttexts).
     // Sonst der übliche Reasoner-Weg (Session-Pfad unverändert).
     // AUFTRAG-mega61 BLOCK G — DAS ZWEITE NETZ, AUS DEM KONTEXT ABGELEITET.
@@ -1006,9 +1056,9 @@ export class AskService {
       opts?.retrievalOnly
         ? // JOB 3049: TOR 2, Weg des Add-ins — derselbe Relevanztext wie an Tor 1. Ohne ihn hier
           // wäre genau der Klara-Weg der eine, der die Zusage nicht einlöst.
-          this.reasoner.answerRetrievalOnly(question, candidates, locale, relevanz)
+          this.reasoner.answerRetrievalOnly(frageImZusammenhang, candidates, locale, relevanz)
         : this.reasoner.answer(
-            question,
+            frageImZusammenhang,
             candidates,
             locale,
             kontextVertraulich,
@@ -1159,7 +1209,9 @@ export class AskService {
       // fremdsprachigen Lückentitel erklären kann, statt ihn wie einen Fehler aussehen zu lassen.
       // D5: nach Beleg und Protokoll — vor der Lückensuche, die den Lückenbestand liest.
       this.pruefeKiSperre("ergebnis", kiBeginn);
-      const gap = await this.createGap(question, actorId, opts?.demoSeed, locale, () =>
+      // R-0348: eine Lücke „Und bei Teilzeit?" wäre für den Experten unlesbar — sie trägt deshalb
+      // die Frage im Zusammenhang (ohne Faden ist das die Frage selbst).
+      const gap = await this.createGap(frageImZusammenhang, actorId, opts?.demoSeed, locale, () =>
         this.pruefeKiSperre("ergebnis", kiBeginn),
       );
       return { result, answerId, gap, receipt, ...ungeprueftFeld, ...verschlossenFeld };
