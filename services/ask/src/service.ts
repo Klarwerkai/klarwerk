@@ -30,6 +30,7 @@ import {
   waehleKandidaten,
 } from "../../reasoner";
 import { TRUST_MAX } from "../../validation";
+import { type AnsprechpartnerAuskunft, leiteAnsprechpartnerAb } from "./ansprechpartner";
 import {
   type ZuschnittBegriff,
   type ZuschnittDerAntwort,
@@ -1833,6 +1834,35 @@ export class AskService {
       }
     }
     return { bezug, geprueft: geprueft.length, offen: offene.length };
+  }
+
+  /**
+   * R-1663 / R-2178 — passende Ansprechpartner zu EINER Lücke, begründet aus Wissensspuren
+   * (Regeln in `ansprechpartner.ts`).
+   *
+   * Die Objektgrundlage ist dieselbe Rechnung wie bei `offeneLueckenZu`: die deterministische
+   * Vorauswahl über die Inhaltstoken der Frage — KEIN KI-Aufruf, KEIN Schreiben, keine neue
+   * Zuordnungsregel. Davon zählen nur die `DEFAULT_TOP_K` relevantesten Objekte, die der Betrachter
+   * sehen darf (`sichtbar`, die fertige Entscheidung der Route) und die NICHT vertraulich sind: eine
+   * Person darf nicht deshalb vorgeschlagen werden, weil sie an vertraulichem Wissen beteiligt ist —
+   * schon der Vorschlag verriete dessen Existenz.
+   *
+   * Der Fragetext verlässt diese Methode nicht; die Antwort trägt nur Kennungen, Zahlen und die
+   * Titel sichtbarer Objekte.
+   */
+  async ansprechpartnerZuLuecke(
+    id: string,
+    opts: { readonly sichtbar: (ko: KnowledgeObject) => boolean },
+  ): Promise<AnsprechpartnerAuskunft> {
+    const gap = await this.require(id);
+    const frageterme = queryTokens(gap.question);
+    const objekte = dropConfidential(await this.prefilterCandidates(frageterme, undefined))
+      .filter((ko) => opts.sichtbar(ko))
+      .slice(0, DEFAULT_TOP_K);
+    const geschlosseneLuecken = (await this.listGaps())
+      .filter((g) => g.id !== gap.id && g.status === "geschlossen" && g.assignee)
+      .map((g) => ({ assignee: g.assignee as string, terme: queryTokens(g.question) }));
+    return leiteAnsprechpartnerAb({ frageterme, objekte, geschlosseneLuecken });
   }
 
   // SCRUM-115 / FE-RISK: aggregierte Zähler der offenen Lücken — NUR Zahlen, KEIN Fragetext. Die
