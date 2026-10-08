@@ -838,6 +838,32 @@ const BEWUSST: readonly Ausnahme[] = [
       "Eingetragen von einem fremden Auftrag (Suchraum/Facetten), dessen Zielpfade ko-routes.ts " +
       "nicht umfassen; Streichen des Helfers oder ein Routenfall gehoert dem Importauftrag.",
   },
+  // R-1349 (Nacharbeit 2): drei Vertragspruefhilfen der Integrationsschnittstelle, mit dem
+  // Hauptstand 1.0.0-beta.1.771 hereingekommen und am Code geprueft. Ihr einziger Leser ist der
+  // Vertragstest; das ist ihre Aufgabe und keine Luecke.
+  {
+    schluessel: "services/app/src/integrations-vertrag.ts::integrationsOpenApi",
+    grund:
+      "Erzeugt die OpenAPI-Beschreibung aus der Zustandstabelle. Ausgeliefert wird sie als Datei " +
+      "`docs/generated/integrations-openapi.json`, nicht ueber eine HTTP-Route — so festgehalten in " +
+      "`docs/architektur/integrations-schnittstelle.md` (Grenzen). Der Vertragstest " +
+      "`tests/integrations-api/zustandstabelle-am-draht.test.ts` (O1) verlangt Gleichheit von Datei " +
+      "und Erzeugung. Eine Route waere eine eigene Produktentscheidung, kein Anschluss.",
+  },
+  {
+    schluessel: "services/app/src/integrations-vertrag.ts::vertragUndRoutenGleich",
+    grund:
+      "Prueft, dass Vertragstabelle und `DIENST_ROUTEN` dieselben Routen mit denselben Rechten " +
+      "fuehren. Das ist eine Gleichlaufpruefung fuer den Vertragstest; ein Aufruf im Betrieb " +
+      "aenderte nichts, weil beide Tabellen zur Bauzeit feststehen.",
+  },
+  {
+    schluessel: "services/app/src/integrations-vertrag.ts::zustandErlaubt",
+    grund:
+      "Fragt, ob eine beobachtete Antwort (Status und `error`) in der Zustandstabelle steht — der " +
+      "Massstab, an dem der Vertragstest jede Routenantwort misst. Die Routen selbst setzen ihre " +
+      "Zustaende; eine Durchsetzung zur Laufzeit waere eine eigene Produktentscheidung.",
+  },
   // JOB 3110 (06.09.2026): Der Eintrag fuer `klara-session-routes.ts::klaraZurufRoutes` ist
   // GESTRICHEN und nicht umformuliert — er war ausdruecklich selbstauslaufend („sobald build-app.ts
   // die Route registriert, hat sie einen Aufrufer, und A3 verlangt die Streichung dieser Zeile").
@@ -1158,6 +1184,15 @@ const BEWUSST_WEB: readonly Ausnahme[] = [
       "`tests/app/capture-advanced-fields.test.ts` und " +
       "`tests/capture/job2683-d2-suche-flaeche.test.tsx` als Pruefhilfe dafuer, dass der Zaehler alle neun Angaben erreicht. Ein erfundener " +
       "Produktaufruf waere hier der Fehler; entfaellt die Pruefhilfe, ist der Export zu streichen.",
+  },
+  {
+    schluessel: "apps/web/src/components/klara-vorschau/avatar.ts::KLARA_AVATAR_SHA256",
+    grund:
+      "R-1349 (Nacharbeit 2), mit dem Hauptstand 1.0.0-beta.1.771 hereingekommen und am Code " +
+      "geprueft: die Pruefsumme der freigegebenen Figur `klara/klara-avatar-v1.png`. Gelesen wird " +
+      "sie in `tests/klara-vorschau/avatar.test.ts`, das Datei und Summe gegen die Freigabe haelt. " +
+      "Die Oberflaeche laedt die Figur ueber `klaraAvatarUrl()`; ein Produktaufruf der Summe waere " +
+      "eine Laufzeitpruefung im Browser, die niemand beschlossen hat.",
   },
   // HIER STAND `GesamtanweisungSeite` (JOB 4154) UND IST MIT JOB 4156 GESTRICHEN — ebenfalls
   // selbstauslaufend und ebenfalls von A3 erzwungen. Ihr Aufrufer ist jetzt

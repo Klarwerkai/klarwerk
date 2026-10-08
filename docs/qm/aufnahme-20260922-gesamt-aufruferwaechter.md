@@ -45,6 +45,18 @@ der Zielpfade der jeweiligen Umbauten:
   `normalizeRetirementHorizon` prüft gegen diese Liste statt gegen ein zweites Literal `24 || 36`.
   Das Verhalten ist unverändert (`services/management/src/horizon.test.ts`).
 
+**Nacharbeit 2 (Kandidat `13d3b438`, Hauptstand 1.0.0-beta.1.771 integriert):** A1 meldete fünf
+Exporte aus fremden Aufträgen, die mit dem Hauptstand hereingekommen sind.
+
+- `interaktionsgedaechtnis.ts::GEDAECHTNIS_ARTEN` ist angeschlossen. `merken` prüft die Art gegen
+  diese Liste statt gegen ein zweites Literal. Der Gegenfall `art: "notiz"` in
+  `tests/interaktionsgedaechtnis/gedaechtnis-dienst.test.ts` bleibt abgewiesen.
+- Drei Vertragsprüfhilfen in `integrations-vertrag.ts` stehen jetzt mit Grund in `BEWUSST`:
+  `integrationsOpenApi`, `vertragUndRoutenGleich` und `zustandErlaubt`. Die OpenAPI-Datei wird laut
+  `docs/architektur/integrations-schnittstelle.md` nicht über eine Route ausgeliefert. Eine Route
+  oder eine Prüfung zur Laufzeit wäre eine offene Produktentscheidung.
+- Der Prüfwert `klara-vorschau/avatar.ts::KLARA_AVATAR_SHA256` steht mit Grund in `BEWUSST_WEB`.
+
 Die Wörterbuchschlüssel dieser Bausteine bleiben stehen. Der Textbestand ist Wert für Wert
 festgeschrieben (`tests/i18n-textmodule/bestand-unveraendert.test.ts`).
 
