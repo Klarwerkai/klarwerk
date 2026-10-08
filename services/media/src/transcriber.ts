@@ -5,14 +5,26 @@ import { type Transcriber, TranscriberConfidentialError } from "./types";
 // umgehen. `true` (Cloud, build-app): wirft bei confidential=true, BEVOR die Rohbytes gesendet werden —
 // fail-safe by construction, analog cappedModelClient des Reasoners. `false` (späterer on-prem
 // Transkriber): bedient vertrauliche Medien weiter.
+//
+// Auftrag gesamt-ki-freigaberegeln (Ben Nacharbeit 2): `vertraulichFreigegeben` ist die zentrale
+// Adminfreigabe für Vertrauliches (`Reasoner.vertraulicheAusleitungFreigegeben`), je Aufruf frisch
+// gefragt. Nur ihr `true` lässt ein vertrauliches Medium durch; fehlt sie oder wirft sie, bleibt es
+// gesperrt. Die Einstufung reist unverändert weiter.
 export function cappedTranscriber(
   inner: Transcriber,
-  opts: { rejectsConfidential: boolean },
+  opts: { rejectsConfidential: boolean; vertraulichFreigegeben?: (() => boolean) | undefined },
 ): Transcriber {
+  const freigegeben = (): boolean => {
+    try {
+      return opts.vertraulichFreigegeben?.() === true;
+    } catch {
+      return false;
+    }
+  };
   return {
     name: inner.name,
     transcribe: (bytes, mime, locale, confidential) => {
-      if (opts.rejectsConfidential && confidential) {
+      if (opts.rejectsConfidential && confidential && !freigegeben()) {
         return Promise.reject(new TranscriberConfidentialError());
       }
       return inner.transcribe(bytes, mime, locale, confidential);
@@ -120,7 +132,13 @@ export function createTranscriberFromEnv(
 // (rejectsConfidential=true). Ohne Schlüssel → undefined (ehrlicher Inaktiv-Zustand, kein Fake).
 export function createCappedTranscriberFromEnv(
   env: Record<string, string | undefined> = process.env,
+  freigabe: { vertraulichFreigegeben?: (() => boolean) | undefined } = {},
 ): Transcriber | undefined {
   const raw = createTranscriberFromEnv(env);
-  return raw ? cappedTranscriber(raw, { rejectsConfidential: true }) : undefined;
+  return raw
+    ? cappedTranscriber(raw, {
+        rejectsConfidential: true,
+        vertraulichFreigegeben: freigabe.vertraulichFreigegeben,
+      })
+    : undefined;
 }
