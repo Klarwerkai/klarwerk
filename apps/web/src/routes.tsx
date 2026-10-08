@@ -95,6 +95,11 @@ const Conflicts = lazy(() => import("./pages/Conflicts").then((m) => ({ default:
 const DuplicateCompare = lazy(() =>
   import("./pages/DuplicateCompare").then((m) => ({ default: m.DuplicateCompare })),
 );
+// R-1107 (Aufnahme gesamt-dublettenvergleich): der Zusammenführen-Assistent — nachgeladen wie jede
+// andere Seite (Regel oben, JOB 3503).
+const DuplicateMerge = lazy(() =>
+  import("./pages/DuplicateMerge").then((m) => ({ default: m.DuplicateMerge })),
+);
 const Duplicates = lazy(() =>
   import("./pages/Duplicates").then((m) => ({ default: m.Duplicates })),
 );
@@ -128,6 +133,9 @@ const KnowledgeIntake = lazy(() =>
 );
 const Library = lazy(() => import("./pages/Library").then((m) => ({ default: m.Library })));
 const Lifecycle = lazy(() => import("./pages/Lifecycle").then((m) => ({ default: m.Lifecycle })));
+const LiveWallBeamer = lazy(() =>
+  import("./pages/LiveWallBeamer").then((m) => ({ default: m.LiveWallBeamer })),
+);
 // JOB 3503: nachgeladen wie jede andere Seite — die Regel oben kennt keine Ausnahme, und der
 // Wächter `tests/erstladezeit/` erhebt seine Sollmenge aus dem Dateisystem.
 const MeineEntwuerfe = lazy(() =>
@@ -193,6 +201,7 @@ const PAGES: Record<string, ComponentType> = {
   konflikte: Conflicts,
   duplikate: Duplicates,
   duplicateCompare: DuplicateComparePage,
+  duplicateMerge: DuplicateMerge,
   conflictCompare: ConflictComparePage,
   risiko: Risk,
   lebenszyklus: Lifecycle,
@@ -313,6 +322,11 @@ export function AppRoutes(): JSX.Element {
             aus jedem Begriffshinweis im Editor; ein eigener Menüpunkt ist bewusst nicht Teil
             dieser Lieferung. */}
         <Route path="/begriffe" element={<Firmenwoerterbuch />} />
+        {/* R-0740: die Live-Wand als Beamer-Ansicht. Ohne `Guarded`, wie `/wissen/:id`: die Tür
+            dahinter fordert ihr Recht am Server (`ko.read`, `services/app/src/routes/
+            livewall-routes.ts`) und filtert nach den Sichtrechten der angemeldeten Person.
+            Erreichbar aus dem Blatt „Was gerade passiert". */}
+        <Route path="/livewall" element={<LiveWallBeamer />} />
         {/* R-1646 · Ausgangsprüfung: der ausgehende Text vor der Freigabe. Ohne `Guarded`, wie
             `/begriffe`: die Türen dahinter fordern `ko.validate` am Server
             (`services/app/src/routes/ausgangspruefung-routes.ts`). */}

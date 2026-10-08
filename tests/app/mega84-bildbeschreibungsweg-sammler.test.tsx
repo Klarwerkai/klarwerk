@@ -2135,8 +2135,33 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Komponenten über 470 kamen mit dem erneut eingemischten Hauptstand (Grundmenge 588 → 596).
     // Welche es sind, ist ohne Git-Verlauf an diesem Arbeitsbaum nicht namentlich bestimmt.
     // `anbieter` 1 und `traeger` 2 sind in derselben Meldung unverändert.
+    //
+    // PLAN-SPRACHANMERKUNG (R-1625, R-2177): 451 → 452. GENAU EIN Bauteil kommt dazu:
+    //     + `Zeichnung` (`components/bibliothek/Zeichnung.tsx`) — die Zeichnung einer Rückfrage
+    //       mit ihrer Marke; antippbar beim Schreiben, nur lesend am gespeicherten Beitrag.
+    // Sie zeigt ein Bild aus dem Inhalt, bietet aber keine Bildbeschreibung an (kein
+    // `CAPTION_AI_TEXT`) und trägt keinen eigenen Titel (kein `documentTitle`-Prop): `anbieter` 1
+    // und `traeger` 2 bleiben. EHRLICH GESAGT: die 452 ist GERECHNET (451 + 1) — dieser Auftrag
+    // durfte keinen Testlauf selbst starten; weicht der Prüflauf ab, gehört die gemessene Zahl hin.
+    // NACHARBEIT 2 (BEN: CAD-/PDF-Arbeitsweg): 452 → 453, GENAU EIN Bauteil mehr:
+    //     + `AnhangZeichnung` (`components/bibliothek/AnhangZeichnung.tsx`) — die hochgeladene
+    //       Zeichnung (PDF-Seite, DXF, Bild) mit Seitenwahl, gereicht an `Zeichnung`.
+    // Kein `CAPTION_AI_TEXT`, kein `documentTitle`. Ebenfalls GERECHNET (452 + 1). Hinweis: der
+    // Prüflauf von nacharbeit-1 mass 494 am integrierten Stand — die Abweichung über diese eine
+    // Komponente hinaus stammt aus fremden Lieferungen und ist hier nicht nachgezogen.
+    //
+    // ZUSAMMENFÜHRUNG (Aufnahme gesamt-bildbeschreibung-bedienung, Nacharbeit 5, Kandidat
+    // 48fcaba0 mit main fadddf37): Die beiden Zweige standen auf verschiedenen Zahlen — hier GEMESSEN
+    // 480 (Kandidat 515abd35, ohne `Zeichnung`/`AnhangZeichnung`), auf main GERECHNET 453 bei
+    // GEMESSENEN 494 am integrierten Stand der Sprachanmerkung. Im zusammengeführten Baum liegen
+    // beide Bauteile (`components/bibliothek/Zeichnung.tsx`, `AnhangZeichnung.tsx`); dieser Auftrag
+    // trägt weiterhin KEINE Komponente bei. Eingesetzt ist deshalb die einzige an einem Stand MIT
+    // diesen Bauteilen gemessene Zahl, 494. EHRLICH GESAGT: an DIESEM Kandidaten ist sie nicht
+    // gemessen — ob in den 494 `AnhangZeichnung` schon enthalten war, sagt die Quelle nicht. Weicht
+    // der Prüflauf ab, nennt die Meldung oben die gemessene Zahl, und DIE gehört hier hin.
+    // `anbieter` 1 und `traeger` 2 sind in beiden Zweigen gleich und bleiben exakt geprüft.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 480,
+      komponenten: 494,
       anbieter: 1,
       traeger: 2,
     });
