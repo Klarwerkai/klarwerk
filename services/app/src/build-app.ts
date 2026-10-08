@@ -1001,6 +1001,10 @@ export function assembleServices(
     ...(speicher ? { kettenSperre: speicher.kettenSperre } : {}),
   });
   const verantwortungNachfolge = opts.verantwortungNachfolge ?? new InMemoryNachfolgeRepo();
+  // produkt:20261007:spaces — hier schon gebaut, weil die Nachfolge bei Anlage (Nacharbeit 6) das
+  // Leserecht der Nachfolge am führenden Space des neuen Beitrags prüft. Dieselbe Instanz geht
+  // unten in die Dienste.
+  const spaces = opts.spaces ?? new InMemorySpacesRepo();
   const ko = new KoService({
     repo: repos.koRepo,
     audit,
@@ -1009,6 +1013,7 @@ export function assembleServices(
     verantwortungBeiAnlage: verantwortungBeiAnlage(
       (id) => repos.users.findById(id),
       verantwortungNachfolge,
+      () => spaces.aktuelle(),
       () => Date.now(),
     ),
     versions: repos.koVersions,
@@ -1289,7 +1294,7 @@ export function assembleServices(
     // Firmenwörterbuch — Postgres, wenn injiziert, sonst im Speicher.
     begriffe: opts.begriffe ?? new InMemoryBegriffeRepo(),
     // produkt:20261007:spaces — Postgres, wenn injiziert, sonst im Speicher.
-    spaces: opts.spaces ?? new InMemorySpacesRepo(),
+    spaces,
     verantwortungNachfolge,
     // PMO-FEA-0003: die Fotos der Live-Wand — Postgres, wenn injiziert, sonst im Speicher.
     livewallFotos: opts.livewallFotos ?? new InMemoryLiveWallFotoRepo(),

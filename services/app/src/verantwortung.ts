@@ -219,27 +219,52 @@ export class NachfolgeFehlt extends Error {
 }
 
 /**
- * Nacharbeit 4 (Ben K5): wer die Hauptverantwortung für einen NEUEN Beitrag dieses Autors trägt.
+ * Nacharbeit 6 (Ben): die Nachfolge ist aktiv, darf aber DIESEN Beitrag nicht lesen (Vertraulichkeit
+ * oder Space). Eine Übergabe erweitert keine Rechte — also entsteht der Beitrag so nicht, und der
+ * Klärungsbedarf wird benannt.
+ */
+export class NachfolgeSiehtBeitragNicht extends Error {
+  readonly code = "NACHFOLGE_SIEHT_BEITRAG_NICHT";
+  constructor() {
+    super(
+      "Dieser Zugang ist befristet, und die benannte Nachfolge darf diesen Beitrag (Vertraulichkeit oder Space) nicht lesen. Es wurde nichts angelegt — bitte eine andere Stufe oder einen anderen Space wählen oder die Kontoverwaltung eine Nachfolge mit Zugang benennen lassen. Zugriffsrechte wurden nicht verändert.",
+    );
+    this.name = "NachfolgeSiehtBeitragNicht";
+  }
+}
+
+/**
+ * Nacharbeit 4/6 (Ben K5): wer die Hauptverantwortung für einen NEUEN Beitrag trägt.
  *
  * `undefined` heisst: der Autor selbst (unbefristet aktiv, oder kein Konto — Import/Seed). Ist der
  * Autor befristet und darf Wissen anlegen, trägt die benannte Nachfolge die Verantwortung ab der
- * Anlage — über das Kontoende hinaus. Fehlt sie oder ist sie nicht (mehr) zulässig, entsteht der
- * Beitrag nicht, statt nach dem Fristablauf ohne aktive Verantwortung dazustehen.
+ * Anlage — über das Kontoende hinaus. Geprüft wird sie mit DERSELBEN Regel wie jede reguläre
+ * Übergabe (`zielGrund`): aktiv, unbefristet, Bearbeitungsrecht UND Leserecht an genau diesem
+ * Beitrag (Vertraulichkeit, Space — `darfSehen`). Ist sie nicht zulässig, entsteht der Beitrag
+ * nicht, und der Grund wird benannt; Rechte werden dabei nicht erweitert.
  */
 export function verantwortungBeiAnlage(
   konto: (id: string) => Promise<PublicUser | undefined>,
   nachfolge: NachfolgeRepo,
+  spaces: () => Promise<readonly SpaceFassung[]>,
   jetzt: () => number,
-): (author: string) => Promise<string | undefined> {
-  return async (author) => {
+): (ko: KnowledgeObject) => Promise<string | undefined> {
+  return async (ko) => {
     const zeit = jetzt();
-    const autor = await konto(author);
+    const autor = await konto(ko.author);
     if (!autor || zugangsstand(autor, zeit) !== "befristet" || !can(autor.role, "ko.create")) {
       return undefined;
     }
-    const eintrag = await nachfolge.lies(author);
+    const eintrag = await nachfolge.lies(ko.author);
     const ziel = eintrag ? await konto(eintrag.nachfolger) : undefined;
-    if (!ziel || ziel.id === author || !kannVerantworten(ziel, zeit)) {
+    if (!ziel || ziel.id === ko.author) {
+      throw new NachfolgeFehlt();
+    }
+    const grund = zielGrund(ko, ziel, await spaces(), zeit);
+    if (grund === "ZIEL_SIEHT_BEITRAG_NICHT") {
+      throw new NachfolgeSiehtBeitragNicht();
+    }
+    if (grund !== null) {
       throw new NachfolgeFehlt();
     }
     return ziel.id;

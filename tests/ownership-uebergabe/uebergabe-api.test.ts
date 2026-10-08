@@ -21,7 +21,14 @@
 //   K6 · Keine Neufreigabe, keine stille Rechteerweiterung.
 import { describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
-import { responsibleOf } from "../../services/knowledge-object";
+import type { SpaceFassung } from "../../services/app/src/spaces";
+import {
+  NachfolgeSiehtBeitragNicht,
+  verantwortungBeiAnlage,
+} from "../../services/app/src/verantwortung";
+import { InMemoryNachfolgeRepo } from "../../services/app/src/verantwortung-nachfolge";
+import type { PublicUser } from "../../services/auth";
+import { type KnowledgeObject, responsibleOf } from "../../services/knowledge-object";
 
 type App = ReturnType<typeof buildApp>;
 type Kopf = { authorization: string };
@@ -1010,5 +1017,149 @@ describe("Nacharbeit 4 · K5 — Beiträge, die nach gesetzter Befristung entste
     expect(danach.statusCode, danach.body).toBe(201);
     const neu = await b.services.ko.get(danach.json().id as string);
     expect(neu?.ownership?.owner).toBe(b.ids.ada);
+  });
+});
+
+// ================================================================================================
+// NACHARBEIT 6 — die Nachfolge bei Anlage prüft das Leserecht am KONKRETEN Beitrag.
+// ================================================================================================
+
+describe("Nacharbeit 6 · K5/K6 — Nachfolge bei Anlage: Vertraulichkeit und Space", () => {
+  it("eine Nachfolge, die einen vertraulichen Beitrag nicht lesen darf, wird nicht Owner — die Anlage nennt den Grund", async () => {
+    const b = await buehne();
+    const anlegen = await b.app.inject({
+      method: "POST",
+      url: "/api/users",
+      headers: b.k.admin,
+      payload: {
+        name: "Bea Befristet",
+        email: "bea6@uebergabe.test",
+        password: KENNWORT,
+        role: "experte",
+      },
+    });
+    expect(anlegen.statusCode, anlegen.body).toBe(201);
+    const bea = anlegen.json().id as string;
+    const beaKopf = await anmelden(b.app, "bea6@uebergabe.test");
+    // Nachfolge: Nora (Expertin) — sie sieht Vertrauliches fremder Autoren NICHT.
+    const gesetzt = await b.app.inject({
+      method: "PUT",
+      url: `/api/users/${bea}`,
+      headers: b.k.admin,
+      payload: { accessExpiresAt: KUENFTIG, verantwortungNachfolge: b.ids.nora },
+    });
+    expect(gesetzt.statusCode, gesetzt.body).toBe(200);
+
+    const neuAls = (stufe: string, titel: string) =>
+      b.app.inject({
+        method: "POST",
+        url: "/api/kos",
+        headers: beaKopf,
+        payload: {
+          confidentiality: stufe,
+          title: titel,
+          statement: `${titel}: nur für das Labor.`,
+          type: "best_practice",
+          category: "Prüfmittel",
+        },
+      });
+    const vorher = (await b.services.ko.list({})).length;
+    const geheim = await neuAls("vertraulich", "Beas Laborzugang");
+    expect(geheim.statusCode, geheim.body).toBe(400);
+    expect(geheim.json().error).toBe("NACHFOLGE_SIEHT_BEITRAG_NICHT");
+    expect((await b.services.ko.list({})).length, "es ist nichts entstanden").toBe(vorher);
+
+    // Derselbe Weg mit einem internen Beitrag: Nora darf lesen und wird Owner.
+    const intern = await neuAls("intern", "Beas Messanweisung");
+    expect(intern.statusCode, intern.body).toBe(201);
+    const ko = await b.services.ko.get(intern.json().id as string);
+    expect(ko?.ownership?.owner).toBe(b.ids.nora);
+    expect(ko?.author).toBe(bea);
+
+    // Mit einer Nachfolge, die Vertrauliches lesen darf (Otto, Controller), gelingt auch der
+    // vertrauliche Beitrag — ohne dass Nora dadurch Zugang bekommt.
+    const umgestellt = await b.app.inject({
+      method: "PUT",
+      url: `/api/users/${bea}`,
+      headers: b.k.admin,
+      payload: { accessExpiresAt: KUENFTIG, verantwortungNachfolge: b.ids.otto },
+    });
+    expect(umgestellt.statusCode, umgestellt.body).toBe(200);
+    const zweiter = await neuAls("vertraulich", "Beas Laborzugang");
+    expect(zweiter.statusCode, zweiter.body).toBe(201);
+    const zweitesKo = zweiter.json().id as string;
+    expect((await b.services.ko.get(zweitesKo))?.ownership?.owner).toBe(b.ids.otto);
+    const nora = await b.app.inject({
+      method: "GET",
+      url: `/api/kos/${zweitesKo}`,
+      headers: b.k.nora,
+    });
+    expect(nora.statusCode, "keine Rechteerweiterung").toBe(404);
+  });
+
+  it("der Lieferant prüft den führenden Space des Beitrags: ohne Leserecht im Space keine Nachfolge", async () => {
+    // Am Lieferanten selbst, weil kein Anlageweg einen Space mitgibt (er entsteht nur über den
+    // Spacewechsel mit Rechtevorschau). Die Regel ist dieselbe `darfSehen`-Prüfung wie bei jeder
+    // Übergabe; hier wird sie mit einem geschlossenen Space vorgelegt.
+    const jetzt = Date.parse("2026-10-08T12:00:00.000Z");
+    const konten: Record<string, PublicUser> = {
+      bea: {
+        id: "bea",
+        name: "Bea",
+        email: "bea@lieferant.test",
+        role: "experte",
+        approved: true,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        accessExpiresAt: "2099-12-31T23:59:59.000Z",
+      },
+      nora: {
+        id: "nora",
+        name: "Nora",
+        email: "nora@lieferant.test",
+        role: "experte",
+        approved: true,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+    };
+    const raum = (mitglieder: SpaceFassung["mitglieder"]): SpaceFassung => ({
+      id: "werkstatt",
+      version: 1,
+      name: "Werkstatt",
+      zweck: "Geschlossener Arbeitsraum.",
+      verantwortlich: "bea",
+      zugang: "mitglieder",
+      mitglieder,
+      ansichten: [],
+      angelegtVon: "bea",
+      angelegtAm: "2026-01-01T00:00:00.000Z",
+      geaendertVon: "bea",
+      geaendertAm: "2026-01-01T00:00:00.000Z",
+    });
+    const nachfolge = new InMemoryNachfolgeRepo();
+    await nachfolge.setze({
+      konto: "bea",
+      nachfolger: "nora",
+      gesetztVon: "ada",
+      gesetztAm: "2026-10-08T00:00:00.000Z",
+    });
+    const beitrag = {
+      id: "k1",
+      author: "bea",
+      confidentiality: "intern",
+      spaceId: "werkstatt",
+    } as unknown as KnowledgeObject;
+    const lieferant = (mitglieder: SpaceFassung["mitglieder"]) =>
+      verantwortungBeiAnlage(
+        async (id) => konten[id],
+        nachfolge,
+        async () => [raum(mitglieder)],
+        () => jetzt,
+      );
+
+    await expect(lieferant([])(beitrag)).rejects.toBeInstanceOf(NachfolgeSiehtBeitragNicht);
+    await expect(lieferant([{ nutzer: "nora", recht: "lesen" }])(beitrag)).resolves.toBe("nora");
+    // Ohne Space genügt das allgemeine Leserecht.
+    const ohneSpace = { ...beitrag, spaceId: undefined } as unknown as KnowledgeObject;
+    await expect(lieferant([])(ohneSpace)).resolves.toBe("nora");
   });
 });

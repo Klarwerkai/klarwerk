@@ -342,7 +342,8 @@ export interface KoServiceDeps {
   // Objekt dieses Autors trägt, wenn es nicht der Autor selbst sein kann (befristeter Zugang).
   // `undefined` = kein Eingriff (Rückfall auf den Autor wie bisher). Wirft der Lieferant, entsteht
   // kein Objekt. Als injizierte Funktion — KEIN Import über die Modulgrenze.
-  verantwortungBeiAnlage?: (author: string) => Promise<string | undefined>;
+  // Nacharbeit 6: gefragt wird mit dem fertig aufgebauten Objekt (Autor, Stufe, Space).
+  verantwortungBeiAnlage?: (ko: KnowledgeObject) => Promise<string | undefined>;
   // SCRUM-523 P.3 (WP-A2): optionale echte DB-Transaktion für purgeKo (repo.delete + audit.record).
   withTx?: WithTx;
   // Auftrag gesamt-dubletten-rueckzug (Runde 2, Bens BEN-R3-1): die Klammer des Rücknahme-Wegs
@@ -777,7 +778,7 @@ export class KoService {
   // R-0098: s. KoServiceDeps.bildObjektDaten.
   private readonly bildObjektDaten: BildObjektDaten | undefined;
   private readonly verantwortungBeiAnlage:
-    | ((author: string) => Promise<string | undefined>)
+    | ((ko: KnowledgeObject) => Promise<string | undefined>)
     | undefined;
   // SCRUM-509 R2 / 507 R2: EIN per-KO Schreib-Lock serialisiert die zueinander wettlaufenden KO-
   // Mutationen (Vertraulichkeit setzen, Validierungsstatus setzen, Revision). So gibt es kein Inter-
@@ -2234,21 +2235,7 @@ export class KoService {
     if (needed < 1 || needed > 5) {
       throw new KoError("INVALID_NEEDED", "Nötige Validierungen müssen zwischen 1 und 5 liegen.");
     }
-    // produkt:20261007:ownership-uebergabe (Nacharbeit 4): nennt der Aufrufer keinen Eigentümer und
-    // kann der Autor selbst die Verantwortung nicht über sein Kontoende hinaus tragen (befristeter
-    // Zugang), trägt sie ab der Anlage die benannte Nachfolge. Prüfende/Validierende einer
-    // mitgebrachten Angabe bleiben; die Autorschaft bleibt beim Autor.
-    let ownership = normalizeOwnership(input.ownership);
-    if (!ownership?.owner && this.verantwortungBeiAnlage) {
-      const nachfolge = await this.verantwortungBeiAnlage(input.author);
-      if (nachfolge) {
-        ownership = normalizeOwnership({
-          owner: nachfolge,
-          reviewers: ownership?.reviewers ?? [],
-          validators: ownership?.validators ?? [],
-        });
-      }
-    }
+    const ownership = normalizeOwnership(input.ownership);
     const at = new Date(this.now()).toISOString();
     const bodyHtml = cleanBody(input.bodyHtml);
     // statement bleibt führend; falls leer, aus dem HTML-Body ableiten.
@@ -2355,9 +2342,29 @@ export class KoService {
       // SCRUM-527 (WP2): jede übernommene Quell-URL durch die Allowlist (nur absolute http/https).
       sources: sanitizeSources([...(input.sources ?? []), ...(extras?.sources ?? [])]),
     };
+    // produkt:20261007:ownership-uebergabe (Nacharbeit 4/6): nennt der Aufrufer keinen Eigentümer
+    // und kann der Autor selbst die Verantwortung nicht über sein Kontoende hinaus tragen
+    // (befristeter Zugang), trägt sie ab der Anlage die benannte Nachfolge. Gefragt wird mit dem
+    // FERTIGEN Objekt — die Zulässigkeit hängt an Vertraulichkeit und Space genau dieses Beitrags
+    // (Nacharbeit 6). Prüfende/Validierende einer mitgebrachten Angabe bleiben; die Autorschaft
+    // bleibt beim Autor.
+    const nachfolge =
+      !ownership?.owner && this.verantwortungBeiAnlage
+        ? await this.verantwortungBeiAnlage(ko)
+        : undefined;
+    const mitNachfolge: KnowledgeObject = nachfolge
+      ? {
+          ...ko,
+          ownership: {
+            owner: nachfolge,
+            reviewers: ownership?.reviewers ?? [],
+            validators: ownership?.validators ?? [],
+          },
+        }
+      : ko;
     // R-0658: VOR der ersten Suchprojektion (finishCreated) — trägt der Inhalt Schutzdaten, liegt
     // das Objekt ab seiner Entstehung in Quarantäne und wird nie mit diesem Text durchsuchbar.
-    return mitSchutzdatenBefund(ko, at);
+    return mitSchutzdatenBefund(mitNachfolge, at);
   }
 
   // ============================================================================================
