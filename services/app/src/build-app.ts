@@ -344,6 +344,7 @@ import { lifecycleRoutes } from "./routes/lifecycle-routes";
 import { livewallRoutes } from "./routes/livewall-routes";
 import { lmsExportRoutes } from "./routes/lms-export-routes";
 import { managementRoutes } from "./routes/management-routes";
+import { mcpRoutes } from "./routes/mcp-routes";
 import { mediaRoutes } from "./routes/media-routes";
 import { modelRunRoutes } from "./routes/model-runs-routes";
 import { notificationsRoutes } from "./routes/notifications-routes";
@@ -3565,6 +3566,14 @@ export function buildApp(
         },
         guards,
       ),
+    );
+  }
+  // Aufnahme gesamt-mcp (R-0713): der MCP-Zugang für fremde KI-Programme — nur, wenn Dienst-
+  // Schlüssel konfiguriert sind, und nur für einen Schlüssel mit `mcp.werkzeug` (Anmeldehook oben).
+  // Werkzeugaufrufe gehen intern mit demselben Schlüssel an die bestehende Route ihres Rechts.
+  if (dienstLage.schluessel.length > 0) {
+    app.register(
+      mcpRoutes({ weiterleiten: (anfrage) => app.inject(anfrage), version: buildVersion() }),
     );
   }
   // SCRUM-470 (S6): Erkennung nach Import-Accept — dasselbe Deps-Bündel wie der Promote-Pfad.
