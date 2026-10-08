@@ -2160,8 +2160,17 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // gemessen — ob in den 494 `AnhangZeichnung` schon enthalten war, sagt die Quelle nicht. Weicht
     // der Prüflauf ab, nennt die Meldung oben die gemessene Zahl, und DIE gehört hier hin.
     // `anbieter` 1 und `traeger` 2 sind in beiden Zweigen gleich und bleiben exakt geprüft.
+    //
+    // Nacharbeit 6: GEMESSEN 512 — die 494 der Zusammenführung waren übernommen, nicht gemessen.
+    // Am zusammengeführten Kandidaten 2100605a meldete der Sammler wörtlich „gemessen: 512
+    // Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 644 Quelldateien … expected
+    // { komponenten: 512, … } to deeply equal { komponenten: 494, … }"; die übrigen 43 Fälle der
+    // Datei waren grün. Seit der Zusammenführung änderte dieser Auftrag nur diesen Sollwert; die
+    // Komponenten über 480 kamen mit main (Grundmenge 596 → 644). Welche es außer `Zeichnung` und
+    // `AnhangZeichnung` sind, ist ohne Git-Verlauf nicht namentlich bestimmt. `anbieter` 1 und
+    // `traeger` 2 sind in derselben Meldung unverändert — keine neue Bildbeschreibungsfläche.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 494,
+      komponenten: 512,
       anbieter: 1,
       traeger: 2,
     });
