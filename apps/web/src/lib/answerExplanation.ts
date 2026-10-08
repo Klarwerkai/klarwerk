@@ -28,8 +28,13 @@ export const AUFLOESUNGSGRUND_SCHLUESSEL: GrundTexte = {
 };
 
 export interface AntwortwegLage {
-  /** Sind die tragenden Quellen vollständig geprüft (Freigabeentscheidung je Quelle gebunden)? */
+  /** Sind die tragenden Quellen FREIGEGEBEN (Freigabeentscheidung je Quelle gebunden)? */
   readonly geprueft: Dreiwertig;
+  /**
+   * R-0293 (Ben, Nacharbeit 7): sind die tragenden Quellen VOLLSTÄNDIG GEPRÜFT (Prüf-Lauf)? Eine
+   * eigene Aussage — eine Freigabe allein begründet sie nie. Ein Server ohne das Feld: unbekannt.
+   */
+  readonly pruefLauf: Dreiwertig;
   /** Ist heute ein Widerspruch zu einer tragenden Quelle offen? */
   readonly widerspruch: Dreiwertig;
   /** Der Textschlüssel des Auflösungsgrundes — oder `null`, wenn der Hauptbeleg auflöst. */
@@ -56,6 +61,7 @@ export function antwortwegLage(erklaerung: OkErklaerung): AntwortwegLage {
   const grundSchluessel = grund === null ? null : (AUFLOESUNGSGRUND_SCHLUESSEL[grund] ?? null);
   return {
     geprueft: dreiwertig(erklaerung.carryingSourcesValidated),
+    pruefLauf: dreiwertig(erklaerung.carryingSourcesChecked ?? null),
     widerspruch: dreiwertig(erklaerung.openConflictToday),
     grundSchluessel,
     entwertetOhneGrund: erklaerung.integrity === "INVALIDATED" && grundSchluessel === null,

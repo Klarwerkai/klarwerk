@@ -39,10 +39,22 @@ export default {
     "antwortweg.grund.geschwaerzt": "geschwärzt – die tragende Quelle ist geschwärzt",
     "antwortweg.entwertetOhneGrund":
       "Für die Entwertung ist kein Grund benannt. Ein Beleg ohne Grund gilt als entwertet.",
-    "antwortweg.geprueft.ja": "Alle tragenden Quellen sind geprüft und freigegeben.",
-    "antwortweg.geprueft.nein": "Nicht alle tragenden Quellen sind geprüft und freigegeben.",
+    "antwortweg.geprueft.ja": "Alle tragenden Quellen sind freigegeben.",
+    "antwortweg.geprueft.nein": "Nicht alle tragenden Quellen sind freigegeben.",
     "antwortweg.geprueft.unbekannt":
-      "Ob alle tragenden Quellen geprüft sind, lässt sich für dich nicht feststellen.",
+      "Ob alle tragenden Quellen freigegeben sind, lässt sich für dich nicht feststellen.",
+    "antwortweg.prueflauf.ja": "Alle tragenden Quellen haben einen vollständigen Prüf-Lauf.",
+    "antwortweg.prueflauf.nein":
+      "Nicht alle tragenden Quellen sind vollständig geprüft – mindestens ein Prüf-Lauf fehlt oder ist unvollständig.",
+    "antwortweg.prueflauf.unbekannt":
+      "Ob alle tragenden Quellen vollständig geprüft sind, lässt sich für dich nicht feststellen.",
+    "antwortweg.zeile.prueflauf.proven": "Prüf-Lauf beim Antworten: vollständig",
+    "antwortweg.zeile.prueflauf.incomplete": "Prüf-Lauf beim Antworten: unvollständig",
+    "antwortweg.zeile.prueflauf.noCoverage":
+      "Prüf-Lauf beim Antworten: ohne Nachweis, was geprüft wurde",
+    "antwortweg.zeile.prueflauf.unchecked": "Prüf-Lauf beim Antworten: fehlt",
+    "antwortweg.zeile.prueflauf.unknown": "Prüf-Lauf beim Antworten: Quelle nicht auffindbar",
+    "antwortweg.zeile.prueflauf.nichtErfasst": "Prüf-Lauf beim Antworten: nicht festgehalten",
     "antwortweg.widerspruch.ja": "Zu einer tragenden Quelle ist heute ein Widerspruch offen.",
     "antwortweg.widerspruch.nein": "Zu den tragenden Quellen ist heute kein Widerspruch offen.",
     "antwortweg.widerspruch.unbekannt": "Ob heute ein Widerspruch offen ist, ist nicht bekannt.",
@@ -95,10 +107,22 @@ export default {
     "antwortweg.grund.geschwaerzt": "redacted – the carrying source is redacted",
     "antwortweg.entwertetOhneGrund":
       "No reason is given for the invalidation. A record without a reason counts as invalidated.",
-    "antwortweg.geprueft.ja": "All carrying sources are reviewed and approved.",
-    "antwortweg.geprueft.nein": "Not all carrying sources are reviewed and approved.",
+    "antwortweg.geprueft.ja": "All carrying sources are approved.",
+    "antwortweg.geprueft.nein": "Not all carrying sources are approved.",
     "antwortweg.geprueft.unbekannt":
-      "Whether all carrying sources are reviewed cannot be determined for you.",
+      "Whether all carrying sources are approved cannot be determined for you.",
+    "antwortweg.prueflauf.ja": "All carrying sources have a complete check run.",
+    "antwortweg.prueflauf.nein":
+      "Not all carrying sources are fully checked – at least one check run is missing or incomplete.",
+    "antwortweg.prueflauf.unbekannt":
+      "Whether all carrying sources are fully checked cannot be determined for you.",
+    "antwortweg.zeile.prueflauf.proven": "Check run when answered: complete",
+    "antwortweg.zeile.prueflauf.incomplete": "Check run when answered: incomplete",
+    "antwortweg.zeile.prueflauf.noCoverage":
+      "Check run when answered: no record of what was checked",
+    "antwortweg.zeile.prueflauf.unchecked": "Check run when answered: missing",
+    "antwortweg.zeile.prueflauf.unknown": "Check run when answered: source not found",
+    "antwortweg.zeile.prueflauf.nichtErfasst": "Check run when answered: not recorded",
     "antwortweg.widerspruch.ja": "A contradiction is open today for a carrying source.",
     "antwortweg.widerspruch.nein": "No contradiction is open today for the carrying sources.",
     "antwortweg.widerspruch.unbekannt": "Whether a contradiction is open today is not known.",
@@ -152,10 +176,22 @@ export default {
     "antwortweg.grund.geschwaerzt": "zwartgemaakt – de dragende bron is zwartgemaakt",
     "antwortweg.entwertetOhneGrund":
       "Voor de ongeldigheid is geen reden genoemd. Een bewijs zonder reden geldt als ongeldig.",
-    "antwortweg.geprueft.ja": "Alle dragende bronnen zijn gecontroleerd en vrijgegeven.",
-    "antwortweg.geprueft.nein": "Niet alle dragende bronnen zijn gecontroleerd en vrijgegeven.",
+    "antwortweg.geprueft.ja": "Alle dragende bronnen zijn vrijgegeven.",
+    "antwortweg.geprueft.nein": "Niet alle dragende bronnen zijn vrijgegeven.",
     "antwortweg.geprueft.unbekannt":
-      "Of alle dragende bronnen gecontroleerd zijn, kan voor jou niet worden vastgesteld.",
+      "Of alle dragende bronnen vrijgegeven zijn, kan voor jou niet worden vastgesteld.",
+    "antwortweg.prueflauf.ja": "Alle dragende bronnen hebben een volledige controlerun.",
+    "antwortweg.prueflauf.nein":
+      "Niet alle dragende bronnen zijn volledig gecontroleerd – ten minste één controlerun ontbreekt of is onvolledig.",
+    "antwortweg.prueflauf.unbekannt":
+      "Of alle dragende bronnen volledig gecontroleerd zijn, kan voor jou niet worden vastgesteld.",
+    "antwortweg.zeile.prueflauf.proven": "Controlerun bij het antwoorden: volledig",
+    "antwortweg.zeile.prueflauf.incomplete": "Controlerun bij het antwoorden: onvolledig",
+    "antwortweg.zeile.prueflauf.noCoverage":
+      "Controlerun bij het antwoorden: zonder bewijs van wat gecontroleerd is",
+    "antwortweg.zeile.prueflauf.unchecked": "Controlerun bij het antwoorden: ontbreekt",
+    "antwortweg.zeile.prueflauf.unknown": "Controlerun bij het antwoorden: bron niet gevonden",
+    "antwortweg.zeile.prueflauf.nichtErfasst": "Controlerun bij het antwoorden: niet vastgelegd",
     "antwortweg.widerspruch.ja": "Voor een dragende bron staat vandaag een tegenstrijdigheid open.",
     "antwortweg.widerspruch.nein":
       "Voor de dragende bronnen staat vandaag geen tegenstrijdigheid open.",

@@ -75,7 +75,11 @@ describe("Antwortweg · die Anzeige des gespeicherten Belegs", () => {
     expect(html).toContain("Freigabe im Prüfbuch: Eintrag 42, Prüfsumme abcdef012345");
     expect(html).toContain("Vertraulichkeit beim Antworten: intern");
     expect(html).toContain("Zuständig beim Antworten: Bernd");
-    expect(html).toContain("Alle tragenden Quellen sind geprüft und freigegeben.");
+    // Nacharbeit 7: Freigabe und Prüf-Lauf sind zwei Aussagen. `ok()` liefert keinen Prüf-Lauf-Befund
+    // (älterer Server) — die Freigabe steht, über die Vollständigkeit wird nichts behauptet.
+    expect(html).toContain("Alle tragenden Quellen sind freigegeben.");
+    expect(html).toContain("Ob alle tragenden Quellen vollständig geprüft sind");
+    expect(html).not.toContain("geprüft und freigegeben");
     expect(html).toContain("Zu den tragenden Quellen ist heute kein Widerspruch offen.");
     expect(html).toContain("ohne KI-Modell");
     expect(html).not.toContain('data-testid="antwortweg-grund"');
@@ -89,13 +93,41 @@ describe("Antwortweg · die Anzeige des gespeicherten Belegs", () => {
         evidence: [zeile({ openConflictToday: true, validationDecisionRef: null })],
       }),
     );
-    expect(offen).toContain("Nicht alle tragenden Quellen sind geprüft und freigegeben.");
+    expect(offen).toContain("Nicht alle tragenden Quellen sind freigegeben.");
     expect(offen).toContain("Zu einer tragenden Quelle ist heute ein Widerspruch offen.");
     expect(offen).toContain("Heute ist ein Widerspruch offen.");
 
     const unbekannt = panel(ok({ carryingSourcesValidated: null, openConflictToday: null }));
     expect(unbekannt).toContain("lässt sich für dich nicht feststellen");
     expect(unbekannt).toContain("Ob heute ein Widerspruch offen ist, ist nicht bekannt.");
+  });
+
+  it("R-0293 · BELEGTER FALL: freigegeben, aber ohne Prüf-Lauf — nie „vollständig geprüft“", () => {
+    // Ben, Nacharbeit 7: dieselbe Antwort meldete „Prüf-Lauf fehlt" (checkCaveat unchecked), das
+    // Erklärpanel dagegen „geprüft und freigegeben". Jetzt stehen beide Aussagen getrennt da.
+    const html = panel(
+      ok({
+        carryingSourcesValidated: true,
+        carryingSourcesChecked: false,
+        evidence: [zeile({ checkStateAtExecution: "unchecked" })],
+      }),
+    );
+    expect(html).toContain("Alle tragenden Quellen sind freigegeben.");
+    expect(html).toContain("Nicht alle tragenden Quellen sind vollständig geprüft");
+    expect(html).toContain("Prüf-Lauf beim Antworten: fehlt");
+    expect(html).toContain("Freigabe im Prüfbuch: Eintrag 42");
+    expect(html).not.toContain("Alle tragenden Quellen haben einen vollständigen Prüf-Lauf.");
+    expect(html).not.toContain("geprüft und freigegeben");
+
+    const vollstaendig = panel(
+      ok({
+        carryingSourcesValidated: true,
+        carryingSourcesChecked: true,
+        evidence: [zeile({ checkStateAtExecution: "proven" })],
+      }),
+    );
+    expect(vollstaendig).toContain("Alle tragenden Quellen haben einen vollständigen Prüf-Lauf.");
+    expect(vollstaendig).toContain("Prüf-Lauf beim Antworten: vollständig");
   });
 
   it("R-0276: nennt genau den einen Grund — und ohne Grund die Entwertung", () => {

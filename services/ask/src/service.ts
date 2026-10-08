@@ -27,6 +27,7 @@ import {
   waehleKandidaten,
 } from "../../reasoner";
 import { TRUST_MAX } from "../../validation";
+import { answerCheckState } from "./answer-evidence";
 import { gapCompareKey, normalizeGapQuestion } from "./gap-text";
 import { type GapSummary, summarizeGaps } from "./gap-visibility";
 import { signAnswerReceipt, verifyAnswerReceipt } from "./receipt";
@@ -1320,6 +1321,10 @@ export class AskService {
               responsibleKindAtExecution: responsibleKindOf(ko),
             }
           : {}),
+        // R-0293 (Ben, Nacharbeit 7): der Pruef-Lauf, wie ihn die Antwort fuer ihren Pruefvorbehalt
+        // liest (`answerCheckState`) — getrennt von der Freigabe oben. Ein Objekt, das der Lauf nicht
+        // hielt, ist `unknown`, genau wie in der Antwortbewertung.
+        checkStateAtExecution: answerCheckState(ko),
       };
     });
     const roh: AnswerEvidenceSnapshot = {

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ReasonerLocale } from "../../reasoner";
+import type { AnswerCheckState } from "./answer-evidence";
 
 // FR-ASK-05 / SCRUM-115: Priorität einer Wissenslücke. Default "mittel".
 export type GapPriority = "hoch" | "mittel" | "niedrig";
@@ -259,6 +260,16 @@ export interface AnswerEvidenceRef {
    */
   readonly responsibleAtExecution?: string;
   readonly responsibleKindAtExecution?: "owner" | "author-fallback";
+  /**
+   * R-0293 (Ben, Nacharbeit 7) — DER PRUEF-LAUF DIESER WISSENSEINHEIT ZUM AUSFUEHRUNGSZEITPUNKT.
+   *
+   * Abgeschrieben mit DERSELBEN Ableitung, aus der die Antwort ihren Pruefvorbehalt bildet
+   * (`answerCheckState`, answer-evidence.ts). Sie ist etwas ANDERES als die Freigabe
+   * (`validationDecisionRef`): eine freigegebene Quelle kann ohne vollstaendigen Konflikt-Pruef-Lauf
+   * sein, und genau diese Lage darf die Erklaerung nicht als „vollstaendig geprueft" ausgeben.
+   * Optional, weil Belege vor dieser Regel sie nicht kennen; fehlt sie, steht sie nicht im Hash.
+   */
+  readonly checkStateAtExecution?: AnswerCheckState;
 }
 
 /**
@@ -465,6 +476,9 @@ export function answerSnapshotHashMaterial(snapshot: AnswerEvidenceSnapshot): re
     }
     if (ref.responsibleKindAtExecution !== undefined) {
       teile.push(`responsibleKind=${ref.responsibleKindAtExecution}`);
+    }
+    if (ref.checkStateAtExecution !== undefined) {
+      teile.push(`checkState=${ref.checkStateAtExecution}`);
     }
     material.push(teile.join("\u001e"));
   });

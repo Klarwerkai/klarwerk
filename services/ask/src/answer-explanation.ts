@@ -16,6 +16,7 @@
 //
 // WAS HIER AUSDRUECKLICH NICHT GESCHIEHT: kein Modellaufruf, kein Egress, keine zweite
 // Provenienz-Domaene, kein Chain-of-Thought und keine internen Prompts (KW-W3-18, No-Gos).
+import type { AnswerCheckState } from "./answer-evidence";
 import {
   type AnswerEvidenceRef,
   type AnswerEvidenceSnapshot,
@@ -66,6 +67,11 @@ export interface AnswerExplanationEvidence {
   readonly responsibleAtExecution: string | null;
   readonly responsibleKindAtExecution: "owner" | "author-fallback" | null;
   /**
+   * R-0293 (Ben, Nacharbeit 7): der Pruef-Lauf zum Antwortzeitpunkt — getrennt von der Freigabe
+   * (`validationDecisionRef`). `null`: geschwaerzt oder ein Beleg von vor dieser Regel.
+   */
+  readonly checkStateAtExecution: AnswerCheckState | null;
+  /**
    * R-0293 — IST HEUTE EIN WIDERSPRUCH ZU DIESER WISSENSEINHEIT OFFEN?
    *
    * Eine Aussage von HEUTE, keine historische: der Beleg hielt keine Konfliktlage fest, und eine
@@ -94,13 +100,24 @@ export interface AnswerExplanationView {
    */
   readonly primaryResolutionFailure: AnswerPrimaryResolutionFailure | null;
   /**
-   * R-0293 — SIND DIE TRAGENDEN QUELLEN VOLLSTAENDIG GEPRUEFT? Ja genau dann, wenn jede tragende
-   * Evidence eine wirksame Freigabereferenz (`auditSeq`/`auditHash`) traegt. Gibt es keine tragende
+   * R-0293 — SIND DIE TRAGENDEN QUELLEN FREIGEGEBEN? Ja genau dann, wenn jede tragende Evidence
+   * eine wirksame Freigabereferenz (`auditSeq`/`auditHash`) traegt. Das ist NUR die Freigabe, keine
+   * Aussage ueber den Pruef-Lauf (dafuer `carryingSourcesChecked`). Gibt es keine tragende
    * Evidence, ist das KEIN Ja. `null` heisst: fuer DIESEN Leser nicht feststellbar — der Beleg ist
    * entwertet, oder eine tragende Zeile ist ihm geschwaerzt (sonst verriete die Gesamtaussage, was
    * die Zeile verschweigt).
    */
   readonly carryingSourcesValidated: boolean | null;
+  /**
+   * R-0293 (Ben, Nacharbeit 7) — SIND DIE TRAGENDEN QUELLEN VOLLSTAENDIG GEPRUEFT?
+   *
+   * Eine EIGENE Aussage neben der Freigabe: ja genau dann, wenn jede tragende Evidence beim
+   * Antworten einen vollstaendig belegten Pruef-Lauf trug (`checkStateAtExecution === "proven"`,
+   * dieselbe Regel wie der Pruefvorbehalt der Antwort). Eine Freigabereferenz allein begruendet
+   * KEINE vollstaendige Pruefung. `null`: entwertet, eine tragende Zeile geschwaerzt, oder ein Beleg
+   * von vor dieser Regel (der Zustand wurde nie festgehalten — er wird nicht nachgeraten).
+   */
+  readonly carryingSourcesChecked: boolean | null;
   /**
    * R-0293 — IST HEUTE EIN WIDERSPRUCH ZU EINER TRAGENDEN QUELLE OFFEN? `null` = unbekannt.
    * Ueber geschwaerzte Zeilen wird hier nichts verraten, was die Zeile selbst verschweigt — und
@@ -198,6 +215,11 @@ export function baueAnswerExplanation(
         integrity === "INVALIDATED" || tragend.some((z) => z.redacted)
           ? null
           : tragend.length > 0 && tragend.every((z) => z.validationDecisionRef !== null),
+      carryingSourcesChecked:
+        integrity === "INVALIDATED" ||
+        tragend.some((z) => z.redacted || z.checkStateAtExecution === null)
+          ? null
+          : tragend.length > 0 && tragend.every((z) => z.checkStateAtExecution === "proven"),
       openConflictToday: gesamtKonflikt(integrity, konflikte, tragend),
       generationMode: snapshot.generationMode ?? null,
       // Ein entwerteter Beleg gibt auch diese Referenz nicht heraus — sie wäre nicht mehr belastbar.
@@ -292,6 +314,7 @@ function zeile(
       confidentialityAtExecution: null,
       responsibleAtExecution: null,
       responsibleKindAtExecution: null,
+      checkStateAtExecution: null,
       openConflictToday: null,
       redacted: true,
     };
@@ -309,6 +332,7 @@ function zeile(
     confidentialityAtExecution: ref.confidentialityAtExecution ?? null,
     responsibleAtExecution: ref.responsibleAtExecution ?? null,
     responsibleKindAtExecution: ref.responsibleKindAtExecution ?? null,
+    checkStateAtExecution: ref.checkStateAtExecution ?? null,
     openConflictToday: konflikte === null ? null : konflikte.has(ref.knowledgeObjectId),
     redacted: false,
   };

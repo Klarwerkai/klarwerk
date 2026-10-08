@@ -1849,6 +1849,9 @@ export interface AnswerExplanationEvidence {
   confidentialityAtExecution: string | null;
   responsibleAtExecution: string | null;
   responsibleKindAtExecution: "owner" | "author-fallback" | null;
+  // R-0293: der Prüf-Lauf zum Antwortzeitpunkt (getrennt von der Freigabe). Ein älterer Server
+  // sendet das Feld nicht — dann gilt es als unbekannt.
+  checkStateAtExecution?: "unknown" | "unchecked" | "noCoverage" | "incomplete" | "proven" | null;
   openConflictToday: boolean | null;
   redacted: boolean;
 }
@@ -1862,7 +1865,10 @@ export type AnswerExplanationResponse =
       snapshotRevision: number;
       integrity: "VALID" | "DEGRADED" | "INVALIDATED" | "REDACTED";
       primaryResolutionFailure: AnswerPrimaryResolutionFailure | null;
+      // Freigabe der tragenden Quellen — NUR Freigabe, keine Aussage über den Prüf-Lauf.
       carryingSourcesValidated: boolean | null;
+      // R-0293: vollständiger Prüf-Lauf aller tragenden Quellen; fehlt bei älteren Servern.
+      carryingSourcesChecked?: boolean | null;
       openConflictToday: boolean | null;
       generationMode: "model" | "deterministic" | null;
       // R-0317: Referenz auf den Laufprotokoll-Datensatz (Modellfassung); kein Anbietername.

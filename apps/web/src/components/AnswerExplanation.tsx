@@ -80,6 +80,9 @@ function BelegZeile({
               kurz: ref.auditHash.slice(0, 12),
             })}
       </span>
+      <span data-testid="antwortweg-zeile-prueflauf" className={ZEILE}>
+        {t(`antwortweg.zeile.prueflauf.${zeile.checkStateAtExecution ?? "nichtErfasst"}`)}
+      </span>
       <span className={ZEILE}>
         {zeile.confidentialityAtExecution === null
           ? t("antwortweg.zeile.rechteFehlt")
@@ -144,6 +147,10 @@ export function AnswerExplanationPanel({
       ) : null}
       <p data-testid="antwortweg-geprueft" data-wert={lage.geprueft} className={ZEILE}>
         {t(`antwortweg.geprueft.${lage.geprueft}`)}
+      </p>
+      {/* R-0293 (Nacharbeit 7): der Prüf-Lauf ist eine EIGENE Aussage neben der Freigabe. */}
+      <p data-testid="antwortweg-prueflauf" data-wert={lage.pruefLauf} className={ZEILE}>
+        {t(`antwortweg.prueflauf.${lage.pruefLauf}`)}
       </p>
       <p data-testid="antwortweg-widerspruch" data-wert={lage.widerspruch} className={ZEILE}>
         {t(`antwortweg.widerspruch.${lage.widerspruch}`)}

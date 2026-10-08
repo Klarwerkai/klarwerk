@@ -347,6 +347,105 @@ async function spaceWechseln(
   throw new Error("Space-Wechsel ließ sich nicht schreiben (dauernd STALE_WRITE).");
 }
 
+describe("R-0293 · Freigabe und Prüf-Lauf sind zwei Aussagen (Ben, Nacharbeit 7)", () => {
+  it("BELEGTER FALL: freigegebene Quelle ohne vollständigen Prüf-Lauf — die Erklärung widerspricht der Antwort nicht", async () => {
+    const ctx = await kontoMitDiensten("prueflauf1@x.de");
+    const koId = await koAnlegen(ctx.app, ctx.auth);
+    // Die Freigabe über den echten Validierungsweg — sie setzt die Freigabereferenz am Objekt.
+    const entscheidung = await ctx.services.validation.adminValidate(koId, ctx.kontoId);
+    expect(entscheidung.validationDecisionRef).not.toBeNull();
+
+    const ask = await ctx.app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: ctx.auth,
+      payload: { question: "Was tun bei Ueberdruck am Ventil?" },
+    });
+    expect(ask.statusCode).toBe(200);
+    const antwort = ask.json();
+    // Die Antwort selbst meldet den Prüfvorbehalt (kein vollständig belegter Prüf-Lauf) …
+    expect(antwort.result.evidence.checkCaveat).not.toBeNull();
+
+    const body = (await erklaerung(ctx.app, ctx.auth, antwort.answerId as string)).json();
+    const zeile = zeileZu(body, koId) as Zeile & {
+      validationDecisionRef: unknown;
+      checkStateAtExecution: string | null;
+    };
+    // … und die Erklärung sagt dasselbe: freigegeben JA, vollständig geprüft NEIN.
+    expect(zeile.validationDecisionRef).not.toBeNull();
+    expect(body.carryingSourcesValidated).toBe(true);
+    expect(zeile.checkStateAtExecution).not.toBeNull();
+    expect(zeile.checkStateAtExecution).not.toBe("proven");
+    expect(body.carryingSourcesChecked).toBe(false);
+  });
+
+  it("der Prüf-Lauf-Zustand ist Teil des Abdrucks — nachträglich nicht zu „vollständig“ umschreibbar", async () => {
+    const ctx = await kontoMitDiensten("prueflauf2@x.de");
+    await koAnlegen(ctx.app, ctx.auth);
+    const answerId = await fragen(ctx.app, ctx.auth);
+    const beleg = await ctx.services.answerSnapshots.latestSnapshot(answerId);
+    const [erste, ...rest] = beleg?.evidence ?? [];
+    if (beleg === undefined || erste === undefined) {
+      throw new Error("Beleg fehlt");
+    }
+    expect(erste.checkStateAtExecution).toBeDefined();
+    const geschoent: AnswerEvidenceSnapshot = {
+      ...beleg,
+      evidence: [{ ...erste, checkStateAtExecution: "proven" }, ...rest],
+    };
+    if (erste.checkStateAtExecution !== "proven") {
+      expect(hashAnswerSnapshot(geschoent)).not.toBe(beleg.integrityHash);
+    }
+  });
+
+  it("ein Beleg ohne festgehaltenen Prüf-Lauf (Altbestand) sagt „unbekannt“, nicht „vollständig“", () => {
+    const record: AnswerRecord = {
+      answerId: "alt-prueflauf",
+      askExecutionId: "lauf-alt-prueflauf",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      schemaVersion: ANSWER_SNAPSHOT_SCHEMA_VERSION,
+      owner: { kind: "user", userId: "u1" },
+    };
+    const ohneHash: AnswerEvidenceSnapshot = {
+      answerId: "alt-prueflauf",
+      snapshotRevision: 1,
+      supersedesSnapshotRevision: null,
+      schemaVersion: ANSWER_SNAPSHOT_SCHEMA_VERSION,
+      capturedAt: "2026-09-01T00:00:00.000Z",
+      citedSources: ["ko-1"],
+      evidence: [
+        {
+          knowledgeObjectId: "ko-1",
+          knowledgeObjectVersion: 1,
+          evidenceRole: "carrying",
+          sourceRecordId: null,
+          sourceRecordIdReason: "w2a_not_wired",
+          locator: null,
+          locatorReason: "no_locator_from_import",
+          validationDecisionRef: { auditSeq: 7, auditHash: "hash-7" },
+        },
+      ],
+      resolutionId: null,
+      resolutionIdReason: "w1_not_on_answer_path",
+      validationDecisionRef: null,
+      validationDecisionRefReason: "w3_23_ref_liegt_je_evidence",
+      status: "PARTIAL",
+      integrityHash: "",
+    };
+    const ergebnis = baueAnswerExplanation(
+      record,
+      { ...ohneHash, integrityHash: hashAnswerSnapshot(ohneHash) },
+      { primaryResolvable: true, gesperrt: false },
+    );
+    if (ergebnis.kind !== "OK") {
+      throw new Error("erwartet: OK");
+    }
+    // Die Freigabe steht — über die Vollständigkeit der Prüfung wird nichts behauptet.
+    expect(ergebnis.view.carryingSourcesValidated).toBe(true);
+    expect(ergebnis.view.carryingSourcesChecked).toBeNull();
+  });
+});
+
 describe("R-0293 / R-0317 / R-0618 · Space-Rechte von heute gelten auch im Erklärweg", () => {
   it("verliert der Eigentümer den Space-Zugang, wird genau diese Zeile geschwärzt — samt Fundstelle", async () => {
     const ctx = await kontoMitDiensten("space1@x.de");
