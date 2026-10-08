@@ -291,6 +291,10 @@ describe("JOB 3062 R7 · Rang 2 — der Titel aus der Bildbeschreibung steht im 
     // Die Herkunft ist die eigentliche Zusage der Rangfolge: „eine Quelle je Objekt“ ist ohne sie
     // nicht zu erkennen (JOB 2489 D1).
     expect(vorschlag?.getAttribute("data-quelle")).toBe("bild");
+    // R-0071: die Herkunft steht SICHTBAR am Eintrag — nicht nur als Zeiger-Tooltip.
+    expect(
+      container.querySelector('[data-testid="blatt-titelvorschlag-herkunft"]')?.textContent ?? "",
+    ).toBe("Aus der Bildbeschreibung — dein Beitrag hat noch keinen Text.");
 
     // 3. Die Übernahme setzt den Blatt-Titel — geprüft wird die WIRKUNG, nicht die Anzeige.
     const eintrag = vorschlag?.closest('[role="menuitem"]');
@@ -321,6 +325,9 @@ describe("JOB 3062 R7 · Rang 2 — der Titel aus der Bildbeschreibung steht im 
     expect(vorschlag, "ohne Vorschlag wäre auch die Rangfolge nicht geprüft").not.toBeNull();
     // Der Objekttext gewinnt — auch wenn das Bild einen brauchbaren Titel hergäbe.
     expect(vorschlag?.getAttribute("data-quelle")).toBe("objekttext");
+    expect(
+      container.querySelector('[data-testid="blatt-titelvorschlag-herkunft"]')?.textContent ?? "",
+    ).toBe("Aus dem Text dieses Beitrags.");
     expect(vorschlag?.textContent ?? "").toContain("Das Getriebe der Pumpe P-12");
     expect(vorschlag?.textContent ?? "").not.toContain("Kegelradgetriebe");
   });
@@ -452,5 +459,103 @@ describe("JOB 3062 R8 · die verspätete Bildantwort verändert weder Editor noc
     expect(container.querySelector<HTMLInputElement>('[data-testid="blatt-titel"]')?.value).toBe(
       "Ein Kegelradgetriebe",
     );
+  });
+});
+
+// ==================================================================================================
+// R-0071 (Ben, Nacharbeit 4) — DIE TITELZEILE ÜBER DEM SCHREIBFELD BLEIBT IMMER SICHTBAR.
+// ==================================================================================================
+//
+// „Über dem Schreibfeld steht dafür eine Titelzeile, die immer sichtbar bleibt und die Herkunft des
+// Vorschlags nennt. Lässt sich nichts ableiten, wird nichts erfunden; ein selbst geschriebener Titel
+// wird nie verdrängt." Gemessen OHNE das Titel-Menü zu öffnen — die Zeile steht von selbst da.
+function titelzeile(): HTMLButtonElement | null {
+  return container.querySelector<HTMLButtonElement>('[data-testid="blatt-titelzeile"]');
+}
+function titelfeld(): HTMLInputElement | null {
+  return container.querySelector<HTMLInputElement>('[data-testid="blatt-titel"]');
+}
+
+describe("R-0071 · die Titelzeile über dem Schreibfeld ist immer sichtbar", () => {
+  it("Z1 · nichts ableitbar: die Zeile steht trotzdem da, gesperrt, und erfindet nichts", async () => {
+    getMock.mockResolvedValue({
+      id: "d-zeile-1",
+      payload: { title: "", bodyHtml: NUR_BILD, confidentiality: "intern" },
+    });
+    mount("/capture/frontdoor?draft=d-zeile-1");
+    await settle(350);
+
+    const zeile = titelzeile();
+    expect(zeile, "keine Titelzeile über dem Schreibfeld").not.toBeNull();
+    expect(container.querySelector('[data-testid="blatt-menue-titel"]')).toBeNull();
+    expect(zeile?.disabled).toBe(true);
+    expect(zeile?.getAttribute("data-quelle")).toBe("keine");
+    expect((zeile?.textContent ?? "").trim()).toBe("Titelvorschlag: noch keiner");
+    // ÜBER dem Schreibfeld: die Zeile steht im Dokument vor der Schreibfläche.
+    const schreibfeld = container.querySelector('[data-testid="blatt-text"]');
+    expect(schreibfeld).not.toBeNull();
+    expect(
+      (zeile as Node).compareDocumentPosition(schreibfeld as Node) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(titelfeld()?.value).toBe("");
+  });
+
+  it("Z2 · Rang 1: Vorschlag und Herkunft stehen ohne Menü da; erst der Klick übernimmt", async () => {
+    getMock.mockResolvedValue({
+      id: "d-zeile-2",
+      payload: { title: "", bodyHtml: MIT_TEXT, confidentiality: "intern" },
+    });
+    mount("/capture/frontdoor?draft=d-zeile-2");
+    await settle(350);
+
+    const zeile = titelzeile();
+    expect(container.querySelector('[data-testid="blatt-menue-titel"]')).toBeNull();
+    expect(zeile?.disabled).toBe(false);
+    expect(zeile?.getAttribute("data-quelle")).toBe("objekttext");
+    const abgeleitet = "Das Getriebe der Pumpe P-12 faellt bei Frost aus";
+    expect(zeile?.textContent ?? "").toContain(abgeleitet);
+    expect(
+      container.querySelector('[data-testid="blatt-titelzeile-herkunft"]')?.textContent ?? "",
+    ).toBe("Aus dem Text dieses Beitrags.");
+    // Anzeigen ist nicht Übernehmen.
+    expect(titelfeld()?.value).toBe("");
+
+    await act(async () => {
+      zeile?.click();
+    });
+    await settle();
+    expect(titelfeld()?.value).toBe(abgeleitet);
+  });
+
+  it("Z3 · ein selbst geschriebener Titel wird nicht verdrängt — die Zeile steht daneben", async () => {
+    getMock.mockResolvedValue({
+      id: "d-zeile-3",
+      payload: { title: "Mein eigener Titel", bodyHtml: MIT_TEXT, confidentiality: "intern" },
+    });
+    mount("/capture/frontdoor?draft=d-zeile-3");
+    await settle(350);
+
+    expect(titelzeile()?.textContent ?? "").toContain("Das Getriebe der Pumpe P-12");
+    expect(titelfeld()?.value).toBe("Mein eigener Titel");
+  });
+
+  it("Z4 · Rang 2: der Titel aus der Bildbeschreibung erscheint mit seiner Herkunft in der Zeile", async () => {
+    getMock.mockResolvedValue({
+      id: "d-zeile-4",
+      payload: { title: "", bodyHtml: NUR_BILD, confidentiality: "intern" },
+    });
+    mount("/capture/frontdoor?draft=d-zeile-4");
+    await settle();
+
+    await bildVorschlagAnfordern();
+
+    const zeile = titelzeile();
+    expect(zeile?.getAttribute("data-quelle")).toBe("bild");
+    expect(zeile?.textContent ?? "").toContain("Ein Kegelradgetriebe");
+    expect(
+      container.querySelector('[data-testid="blatt-titelzeile-herkunft"]')?.textContent ?? "",
+    ).toBe("Aus der Bildbeschreibung — dein Beitrag hat noch keinen Text.");
+    expect(titelfeld()?.value).toBe("");
   });
 });

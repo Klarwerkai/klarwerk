@@ -250,7 +250,9 @@ type TesseractModule = {
 let pdfEnginePromise: Promise<PdfEngine> | null = null;
 
 // pdfjs-dist@4 legacy build lazy laden + Worker Vite-kompatibel (new URL(..., import.meta.url)).
-async function pdfEngine(): Promise<PdfEngine> {
+// PLAN-SPRACHANMERKUNG: exportiert, damit die Seitendarstellung einer angehängten Zeichnung
+// (`lib/zeichnungsanhang.ts`) DIESELBE Engine nutzt — kein zweiter Ladeweg für pdfjs.
+export async function pdfEngine(): Promise<PdfEngine> {
   if (!pdfEnginePromise) {
     pdfEnginePromise = (async () => {
       const pdfjs = (await import("pdfjs-dist/legacy/build/pdf.mjs")) as unknown as PdfjsModule;
