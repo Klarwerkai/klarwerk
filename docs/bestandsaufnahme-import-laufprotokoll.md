@@ -39,9 +39,12 @@ Legende: **geliefert** = im Code mit Test belegt · **dieser Lauf** = in diesem 
    Zeit oder Volumen und bleiben ohne Code. Die HTTP-Ausgänge der Türen (JOB 4232: „kein neuer
    Fehlercode“) sind unverändert; der neue Code steht nur am Lauf.
 *Nacharbeit 1 — zurückgenommen:* Eine Laufbindung der SharePoint-Übernahme (wie Confluence
-`/apply`) machte am Kandidaten `e915a112` jede SharePoint-Übernahme mit echten Fassungen rot
-(`LibraryError`, 25 Fälle in `tests/sharepoint-*`). Sie ist entfernt; der SharePoint-Aufruf von
-`createImportCandidates` ist wieder der Ausgangsstand. Grund und offene Entscheidung: Widerspruch 9.
+`/apply`) ist entfernt; der SharePoint-Aufruf von `createImportCandidates` ist wieder der
+Ausgangsstand. *Korrektur Nacharbeit 2:* Die in Nacharbeit 1 genannte Ursache war falsch. Dieselben
+25 roten SharePoint-Fälle (`LibraryError` beim Einreihen) stehen am Kandidaten `e915a112` (mit
+Bindung) und `c0f1cd69` (ohne Bindung) gleich rot — sie hängen nicht an dieser Lieferung, s.
+Widerspruch 11. Die Bindung bleibt trotzdem draußen, weil sie ohne die Entscheidung aus
+Widerspruch 9 keine Revision schreiben könnte.
 
 Test: `tests/import-laufprotokoll/abbruchgrund-am-lauf.test.ts` — C1–C3 (Confluence `/apply`:
 Grenzgrund, kein erfundener Grund, Kalibrierung ohne Störung), S1–S2 (SharePoint: Volumengrund,
@@ -102,8 +105,8 @@ Die eingefrorenen Dateien des Laufvertrags (FREEZE-144: `library-analytics/index
    `tests/sharepoint-onedrive-import/wiederholimport-am-draht.test.ts` W2-REST). Die Quellrevision
    erlaubt höchstens `MAX_SOURCE_VERSION = 999_999_999` (`library-analytics/src/repo.ts`, in PG als
    `^[0-9]{1,9}$`; FREEZE-144). Ein `ExternalSourceRecord` und damit Elementreferenzen in
-   `/runs/:id/result` sind für SharePoint deshalb ohne Vertragsänderung nicht schreibbar; der
-   Versuch in diesem Auftrag brach die bestehende Übernahme. Zu entscheiden ist entweder eine andere
+   `/runs/:id/result` sind für SharePoint deshalb ohne Vertragsänderung nicht schreibbar. Zu
+   entscheiden ist entweder eine andere
    Fassungszählung im SharePoint-Mapper oder eine Erweiterung der Revisionsidentität (Freigabe nach
    FREEZE-144). Diese Wahl trifft dieser Auftrag nicht.
 10. **Fremde Basisfehler im Wächter `services/app/src/build-app.test.ts`.** Am Kandidaten rot:
@@ -111,3 +114,16 @@ Die eingefrorenen Dateien des Laufvertrags (FREEZE-144: `library-analytics/index
    `ATTACHMENTS_NOT_INCLUDED`, `SCHUTZDATEN`, `TOO_MANY_SOURCES`) aus `services/db-tx`,
    `services/output` u. a. fehlen auf den Loglisten. Keiner stammt aus dieser Lieferung; der
    Wächter ist unverändert und aus dieser Prüfauswahl herausgenommen.
+11. **Fremder Basisfehler: SharePoint-Übernahme mit echten Fassungen.** Bei eingeschaltetem
+   SharePoint-Import (Anker-/Upsert-Strang) prüft der Import-Kern jede Ankerfassung vor dem Einreihen
+   gegen `MAX_SOURCE_VERSION = 999_999_999` (`pruefeAnkerEintrag`,
+   `services/library-analytics/src/service.ts`, NACHARBEIT 2 / bens F5). Der SharePoint-Mapper setzt
+   die Fassung als Unix-Sekunden (`services/sharepoint/src/mapper.ts`, JOB 4086), heute rund
+   1,79 Mrd. Jede solche Datei endet deshalb als `failed` mit `LibraryError`; rot sind 25 Fälle in
+   `tests/sharepoint-inhalt/weg-am-draht-und-neustart.test.ts`,
+   `tests/sharepoint-onedrive-import/{erster-weg,wiederholimport,ordner-in-losen}-am-draht.test.ts`.
+   Der betroffene Aufruf ist zeichengleich mit dem Ausgangsstand; das Bild ist an zwei Kandidaten mit
+   und ohne Änderung dieses Auftrags identisch. Die Fälle gehören den SharePoint-Aufträgen
+   (JOB 4086/4125/4232, R-0145/R-0190); die Behebung ist dieselbe offene Entscheidung wie in
+   Widerspruch 9 und wird hier nicht getroffen. Die Fälle sind aus dieser Prüfauswahl
+   herausgenommen; die Tests selbst bleiben unverändert.
