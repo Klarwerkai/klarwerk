@@ -14,6 +14,7 @@ import { registerSecurityHeaders } from "./security-headers";
 // JOB 3776: der Startvertrag wird am Einstiegspunkt gerufen — als erste Anweisung von `start()`,
 // damit sein Abbruch durch `start().catch(...)` läuft und als EINE lesbare Zeile erscheint.
 import { pruefeStartvertrag } from "./start-vertrag";
+import { startfehlerZeile } from "./startfehler-zeile";
 import { assertPersistentStore, normalizeEnv } from "./storage-guard";
 import { resolveTrashSweepIntervalMs, startTrashSweepScheduler } from "./trash-sweep-scheduler";
 import { registerWebStatic } from "./web-static";
@@ -167,8 +168,11 @@ async function start(): Promise<void> {
     // die Log-Meldung darf das nicht suggerieren. Bis zum Neustart bleibt fail-closed=deterministic aktiv;
     // ein Admin kann die Zuordnung in der Zwischenzeit über die API neu setzen (setTaskConfig ist nicht
     // ENV-gesperrt, s. ReasonerPolicyLockedError).
+    // R-0623 (Ben, Nacharbeit 3): `policy.detail` ist hier der rohe Text des Datenbankfehlers — er
+    // steht nicht im Log; die Lage nennt das Ereignis, der Text bleibt fest.
     app.log.error(
-      `KI-Zuordnung konnte NICHT geladen werden (${policy.detail ?? "unbekannt"}) — fail-closed auf global=${policy.config.global} (kein Cloud-Egress). Bitte DB prüfen und den Prozess NEU STARTEN, um die persistierte Wahl zu laden (keine automatische Wiederherstellung im laufenden Betrieb) — oder die Zuordnung in der Zwischenzeit unter KI-Verwaltung neu setzen.`,
+      { event: "ki_zuordnung_ladefehler" },
+      `KI-Zuordnung konnte NICHT geladen werden — fail-closed auf global=${policy.config.global} (kein Cloud-Egress). Bitte DB prüfen und den Prozess NEU STARTEN, um die persistierte Wahl zu laden (keine automatische Wiederherstellung im laufenden Betrieb) — oder die Zuordnung in der Zwischenzeit unter KI-Verwaltung neu setzen.`,
     );
   } else if (policy.source === "env") {
     app.log.info(
@@ -205,17 +209,20 @@ async function start(): Promise<void> {
   // SCRUM-523 P.3 (WP2): die abgelaufene-Papierkorb-Endlöschung ist eine EXPLIZITE Operation (nicht mehr
   // lazy beim Lesen — Lesen/Import-Dry-Run bleiben schreibfrei). Einmal beim Start anstoßen, damit die
   // Frist aus `TRASH_RETENTION_DAYS` ohne Cron greift; ein KO-Fehler bricht den Lauf nicht ab (per-KO onSweepError-Log).
+  // R-0623 (Ben, Nacharbeit 1): die Fehler dieser Läufe gehen als `err` über den
+  // Erlaubnislisten-Serializer ins Log (Typ, Code, Quelltextstelle) — nicht mehr als `String(error)`
+  // im Meldungstext, der Datenbankmeldungen samt Inhalten trägt.
+  const sweepFehler = (id: string, error: unknown) =>
+    app.log.warn({ err: error, koId: id }, "Papierkorb-Endlöschung eines KO fehlgeschlagen");
   services.ko
-    .runTrashSweep("system", (id, error) =>
-      app.log.warn(`Papierkorb-Endlöschung von ${id} fehlgeschlagen: ${String(error)}`),
-    )
+    .runTrashSweep("system", sweepFehler)
     .then((purged) => {
       if (purged > 0) {
         app.log.info(`Papierkorb-Endlöschung beim Start: ${purged} abgelaufene KO(s) entfernt.`);
       }
     })
     .catch((error) => {
-      app.log.warn(`Papierkorb-Endlöschung beim Start übersprungen: ${String(error)}`);
+      app.log.warn({ err: error }, "Papierkorb-Endlöschung beim Start übersprungen");
     });
   // SCRUM-523 P.3 (WP1-Batch3): zusätzlich PERIODISCH sweepen (nicht nur beim Start), damit abgelaufene
   // Einträge auch in langlaufenden Prozessen ohne Neustart endgültig verschwinden. Intervall aus der
@@ -223,14 +230,10 @@ async function start(): Promise<void> {
   const sweepInterval = resolveTrashSweepIntervalMs(process.env.KLARWERK_TRASH_SWEEP_INTERVAL_MS);
   startTrashSweepScheduler({
     intervalMs: sweepInterval,
-    runSweep: () =>
-      services.ko.runTrashSweep("system", (id, error) =>
-        app.log.warn(`Papierkorb-Endlöschung von ${id} fehlgeschlagen: ${String(error)}`),
-      ),
+    runSweep: () => services.ko.runTrashSweep("system", sweepFehler),
     onSwept: (purged) =>
       app.log.info(`Papierkorb-Endlöschung (periodisch): ${purged} abgelaufene KO(s) entfernt.`),
-    onError: (error) =>
-      app.log.warn(`Periodischer Papierkorb-Sweep übersprungen: ${String(error)}`),
+    onError: (error) => app.log.warn({ err: error }, "Periodischer Papierkorb-Sweep übersprungen"),
   });
   app.log.info(`Papierkorb-Sweep aktiv — Intervall ${Math.round(sweepInterval / 60000)} min.`);
   if (klaraAufraeumLauf) {
@@ -240,7 +243,7 @@ async function start(): Promise<void> {
     starteKlaraAufraeumen({
       lauf: klaraAufraeumLauf,
       intervalMs: klaraInterval,
-      log: { info: (t) => app.log.info(t), warn: (t) => app.log.warn(t) },
+      log: { info: (t) => app.log.info(t), warn: (felder, t) => app.log.warn(felder, t) },
     });
     app.log.info(`Klara-Aufräumlauf aktiv — Intervall ${Math.round(klaraInterval / 60000)} min.`);
   }
@@ -256,12 +259,12 @@ async function start(): Promise<void> {
   gedaechtnis
     .raeumeAbgelaufeneAuf()
     .then(gedaechtnisGeloescht("Start"))
-    .catch((error) => app.log.warn(`Gedächtnis-Aufräumlauf übersprungen: ${String(error)}`));
+    .catch((error) => app.log.warn({ err: error }, "Gedächtnis-Aufräumlauf übersprungen"));
   startTrashSweepScheduler({
     intervalMs: sweepInterval,
     runSweep: () => gedaechtnis.raeumeAbgelaufeneAuf(),
     onSwept: gedaechtnisGeloescht("periodisch"),
-    onError: (error) => app.log.warn(`Gedächtnis-Aufräumlauf übersprungen: ${String(error)}`),
+    onError: (error) => app.log.warn({ err: error }, "Gedächtnis-Aufräumlauf übersprungen"),
   });
   // R-0710: Wissensereignisse an Fremdwerkzeuge (`wissensereignisse.ts`). Ohne gültiges Ziel in
   // KLARWERK_WEBHOOKS läuft nichts — kein Takt, kein Protokolleintrag.
@@ -294,6 +297,8 @@ async function start(): Promise<void> {
 }
 
 start().catch((error) => {
-  process.stderr.write(`Serverstart fehlgeschlagen: ${String(error)}\n`);
+  // R-0623 (Ben, Nacharbeit 5): nur Ereignistext und freigegebene Fehlerkennungen — nie die rohe
+  // Meldung oder der Stack (`startfehler-zeile.ts`).
+  process.stderr.write(`${startfehlerZeile(error)}\n`);
   process.exit(1);
 });
