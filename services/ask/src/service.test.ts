@@ -204,14 +204,66 @@ describe("AskService", () => {
     }
     const assigned = await ctx.ask.assignGap(gap.id, "experte-1");
     expect(assigned.assignee).toBe("experte-1");
-    const closed = await ctx.ask.closeGap(gap.id);
+    const ko = (await ctx.koService.list())[0];
+    if (!ko) {
+      throw new Error("KO fehlt.");
+    }
+    // R-0846 / L6: geschlossen wird mit dem Wissensobjekt, das die Lücke beantwortet.
+    const closed = await ctx.ask.closeGap(gap.id, ko.id);
     expect(closed.status).toBe("geschlossen");
+    expect(closed.koId).toBe(ko.id);
 
     await expect(ctx.ask.deleteGap(gap.id, false)).rejects.toMatchObject({
       code: "CONFIRM_REQUIRED",
     });
     await ctx.ask.deleteGap(gap.id, true);
     expect(await ctx.ask.listGaps()).toHaveLength(0);
+  });
+
+  // R-0846 / L6: ohne gültigen Objektbezug schliesst keine Lücke — sie bleibt offen.
+  it("L6: ohne Bezug, mit unbekanntem oder gelöschtem Objekt bleibt die Lücke offen", async () => {
+    const { gap } = await ctx.ask.ask("Unbekannte Frage zum Bezug?");
+    if (!gap) {
+      throw new Error("Lücke erwartet.");
+    }
+    const ko = (await ctx.koService.list())[0];
+    if (!ko) {
+      throw new Error("KO fehlt.");
+    }
+    await expect(ctx.ask.closeGap(gap.id)).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(ctx.ask.closeGap(gap.id, "   ")).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(ctx.ask.closeGap(gap.id, "ko-gibt-es-nicht")).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await ctx.koService.delete(ko.id, "anna");
+    await expect(ctx.ask.closeGap(gap.id, ko.id)).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    const danach = await ctx.gaps.findById(gap.id);
+    expect(danach?.status).toBe("offen");
+    expect(danach?.koId).toBeUndefined();
+  });
+
+  it("L6: ein schon an der Lücke stehender gültiger Bezug trägt das Schliessen; ein verwaister nicht", async () => {
+    const ko = (await ctx.koService.list())[0];
+    if (!ko) {
+      throw new Error("KO fehlt.");
+    }
+    const basis: Gap = {
+      id: "gap-mit-bezug",
+      question: "Frage mit Bezug",
+      status: "offen",
+      assignee: null,
+      priority: "mittel",
+      createdAt: new Date().toISOString(),
+      koId: ko.id,
+    };
+    await ctx.gaps.insert(basis);
+    const geschlossen = await ctx.ask.closeGap(basis.id);
+    expect(geschlossen.status).toBe("geschlossen");
+    expect(geschlossen.koId).toBe(ko.id);
+
+    await ctx.gaps.insert({ ...basis, id: "gap-verwaist", koId: "ko-endgeloescht" });
+    await expect(ctx.ask.closeGap("gap-verwaist")).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect((await ctx.gaps.findById("gap-verwaist"))?.status).toBe("offen");
   });
 
   it("SCRUM-115: neue Lücke hat Default-Priorität 'mittel'", async () => {

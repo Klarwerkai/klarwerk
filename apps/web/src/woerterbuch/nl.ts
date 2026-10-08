@@ -4129,6 +4129,8 @@ const nl: typeof de = {
   "risk.priority.mittel": "middel",
   "risk.priority.niedrig": "laag",
   "risk.close": "Sluiten",
+  "risk.closeWithTitle": "Sluiten met het kennisobject dat dit hiaat beantwoordt",
+  "risk.closeFailed": "Niet gesloten — het kennisobject ontbreekt of staat in de prullenbak.",
   "risk.assign": "Expert …",
   "risk.delete": "Verwijderen",
   "risk.gapNextLabel": "Volgende stap",

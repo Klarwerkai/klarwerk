@@ -891,7 +891,13 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
 
     app.put<{
       Params: { id: string };
-      Body: { expertId?: string; close?: boolean; action?: string; priority?: string };
+      Body: {
+        expertId?: string;
+        close?: boolean;
+        action?: string;
+        priority?: string;
+        koId?: unknown;
+      };
     }>("/api/gaps/:id", async (request, reply) => {
       const user = await guards.requirePermission("ko.assign", request, reply);
       if (!user) {
@@ -911,7 +917,16 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         }
         // Close akzeptiert sowohl { close:true } als auch { action:"close" } (FE-Kopplung).
         if (request.body.close === true || request.body.action === "close") {
-          reply.code(200).send(await ask.closeGap(request.params.id));
+          // R-0846 / L6: der Objektbezug. Hier wird nur die Form geprüft; ob das Objekt existiert
+          // und ob ohne mitgeschickten Bezug ein gültiger an der Lücke steht, entscheidet
+          // `AskService.closeGap` — fehlt beides, bleibt die Lücke offen (400).
+          const roh = request.body.koId;
+          if (roh !== undefined && (typeof roh !== "string" || roh.trim() === "")) {
+            reply.code(400).send({ error: "BAD_REQUEST", message: "koId muss eine Kennung sein." });
+            return;
+          }
+          const bezug = typeof roh === "string" ? roh.trim() : undefined;
+          reply.code(200).send(await ask.closeGap(request.params.id, bezug));
           return;
         }
         if (request.body.expertId) {
