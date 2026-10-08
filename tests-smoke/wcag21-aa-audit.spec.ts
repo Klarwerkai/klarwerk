@@ -29,7 +29,8 @@
 //                                      nicht durchsichtig ist — verglichen wird fokussiert gegen
 //                                      unfokussiert, nicht „irgendein Schatten ist da" (ben nacharbeit-5)
 //   1.4.11 Nicht-Text-Kontrast       — diese Fokuskennzeichnung hebt sich mit ≥ 3:1 von der Fläche ab,
-//                                      auf der sie steht
+//                                      auf der sie steht; ebenso die erforderlichen Feldgrenzen und
+//                                      Symbole (Regel bei `grenzenImBrowser`)
 //   1.4.12 Textabstand               — mit Zeilenhöhe 1,5, Buchstabenabstand 0,12 em, Wortabstand
 //                                      0,16 em und Absatzabstand 2 em wird kein Text abgeschnitten,
 //                                      der vorher vollständig stand
@@ -60,14 +61,45 @@ import {
   test,
 } from "@playwright/test";
 import { ensureLoggedIn, workspaceMarker } from "./support/auth";
+import { schalteStufe2Ein } from "./support/import-json-kasten";
 
 test.skip(
   ({ browserName }) => browserName !== "chromium",
   "Der AX-Baum wird über das Chrome DevTools Protocol gelesen; Firefox und WebKit sprechen es nicht.",
 );
 
-/** Die angemeldeten Kernflächen. Die Anmeldemaske kommt in einem frischen Kontext dazu. */
-const ROUTEN = ["/start", "/fragen", "/bibliothek", "/erfassen", "/validierung"] as const;
+/**
+ * Die angemeldeten Flächen. Die Anmeldemaske kommt in einem frischen Kontext dazu, das
+ * Wissensdetail mit einem eigens angelegten Wissensobjekt (unten).
+ *
+ * Seit nacharbeit-7 ALLE Flächen der Navigation, die das Smoke-Konto (Admin) sieht
+ * (`apps/web/src/app/navigation.ts`), darunter `/admin` (Einstellungen und Verwaltung: das
+ * Zahnrad-Menü „Einstellungen" führt dorthin) und `/profil` (Kontoeinstellungen). Die vier
+ * Stufe-2-Flächen laufen gesondert, nach dem Einschalten über den echten Bedienweg.
+ */
+const ROUTEN = [
+  "/start",
+  "/aufgaben",
+  "/erfassen",
+  "/entwuerfe",
+  "/gesamtanweisungen",
+  "/fragen",
+  "/bibliothek",
+  "/wissensnetz",
+  "/extern",
+  "/validierung",
+  "/konflikte",
+  "/duplikate",
+  "/risiko",
+  "/lebenszyklus",
+  "/analytics",
+  "/admin",
+  "/hilfe",
+  "/profil",
+] as const;
+
+/** Stufe 2 (`stufe2: true` in navigation.ts) — erst nach dem Einschalten sichtbar. */
+const STUFE2_ROUTEN = ["/output", "/import", "/graph", "/kapital"] as const;
 
 /** Rollen, die bedienbar sind und deshalb einen Namen brauchen (Chromium-Rollennamen). */
 const BEDIENBAR = new Set([
@@ -318,15 +350,22 @@ interface Kontrastbericht {
   verstoesse: string[];
   gemessen: number;
   unbestimmt: number;
+  /** Jeder unbestimmte Fall EINZELN benannt (ben nacharbeit-7) — er ist ein Befund, keine Zahl. */
+  unbestimmtListe: string[];
 }
 
 function kontrastImBrowser(): Kontrastbericht {
   const h = (window as unknown as { __kwA11y: Helfer }).__kwA11y;
-  const bericht: Kontrastbericht = { verstoesse: [], gemessen: 0, unbestimmt: 0 };
+  const bericht: Kontrastbericht = {
+    verstoesse: [],
+    gemessen: 0,
+    unbestimmt: 0,
+    unbestimmtListe: [],
+  };
   const fmt = (f: Rgba): string => `rgb(${f.slice(0, 3).map(Math.round).join(",")})`;
   const miss = (was: string, el: Element, farbe: string): void => {
     // Durchscheinende Vorfahren ändern die gemalte Farbe auf eine Weise, die hier nicht gerechnet
-    // wird — gezählt statt geraten.
+    // wird — nicht geraten, sondern einzeln als unbestimmt benannt.
     let deckkraft = 1;
     for (let v: Element | null = el; v; v = v.parentElement) {
       deckkraft *= Number(getComputedStyle(v).opacity);
@@ -335,6 +374,12 @@ function kontrastImBrowser(): Kontrastbericht {
     const vorne = h.lies(farbe);
     if (deckkraft < 1 || !grund || !vorne) {
       bericht.unbestimmt += 1;
+      const warum = !grund
+        ? "Hintergrund nicht rechenbar (Bild/Verlauf)"
+        : !vorne
+          ? `Farbformat nicht lesbar (${farbe})`
+          : `durchscheinend (Deckkraft ${deckkraft.toFixed(2)})`;
+      bericht.unbestimmtListe.push(`${was} ${h.beschreibe(el)} — ${warum}`);
       return;
     }
     const stil = getComputedStyle(el);
@@ -383,6 +428,211 @@ function kontrastImBrowser(): Kontrastbericht {
       feld,
       getComputedStyle(feld, "::placeholder").color,
     );
+  }
+  return bericht;
+}
+
+// ------------------------------------------------------------------------------------------------
+// 1.4.11 — Feldgrenzen und Symbole (ben nacharbeit-7: „bestimmen, welche zur Erkennung
+// erforderlich sind, und deren Kontrast nachweisen").
+//
+// DIE REGEL, WELCHE GRENZE ERFORDERLICH IST — festgelegt und hier gemessen:
+//   A · EINGABEFELDER (einzeilige Felder, Textbereiche, Auswahllisten, Kombi- und Suchfelder): Wo
+//       das Feld liegt und wohin man klickt, zeigt allein seine Grenze — eine Beschriftung sagt, WAS
+//       einzugeben ist, nicht WO. Erforderlich ist deshalb: die Füllung des Feldes ODER ein Rand
+//       (auch ein Innenschatten-Rand) hebt sich mit ≥ 3:1 von der Umgebung ab — am Feld selbst oder
+//       an einer eng anliegenden Hülle (Suchfeld mit Lupe). Ausgenommen sind Schreibflächen eines
+//       Dokuments (`contenteditable`): Sie SIND die Seite, der Text darin und die Schreibmarke
+//       zeigen, wo geschrieben wird.
+//   B · SYMBOLE: Trägt ein Bedienelement keinen sichtbaren Text, ist sein Symbol das einzige
+//       Erkennungszeichen — Strich- bzw. Füllfarbe ≥ 3:1 gegen die Fläche, auf der es steht. Ebenso
+//       jedes bedeutungstragende Bild-Symbol (`role="img"` mit Namen). Symbole NEBEN Text sind
+//       Schmuck (der Text trägt die Bedeutung) und nicht erforderlich.
+// ------------------------------------------------------------------------------------------------
+interface Grenzbericht {
+  befunde: string[];
+  felder: number;
+  symbole: number;
+}
+
+function grenzenImBrowser(): Grenzbericht {
+  const h = (window as unknown as { __kwA11y: Helfer }).__kwA11y;
+  const bericht: Grenzbericht = { befunde: [], felder: 0, symbole: 0 };
+  const inaktiv = (e: Element): boolean =>
+    e.closest("[disabled], [aria-disabled='true'], [aria-hidden='true']") !== null;
+  const deckkraft = (e: Element): number => {
+    let d = 1;
+    for (let v: Element | null = e; v; v = v.parentElement) {
+      d *= Number(getComputedStyle(v).opacity);
+    }
+    return d;
+  };
+
+  // A · Eingabefelder.
+  const textTypen = new Set([
+    "",
+    "text",
+    "search",
+    "email",
+    "password",
+    "url",
+    "tel",
+    "number",
+    "date",
+    "datetime-local",
+    "month",
+    "time",
+    "week",
+  ]);
+  const felder = [
+    ...document.querySelectorAll<HTMLElement>(
+      "input, textarea, select, [role='combobox'], [role='searchbox'], [role='textbox']",
+    ),
+  ].filter((f) => {
+    if (f.isContentEditable || !h.sichtbar(f) || inaktiv(f)) {
+      return false;
+    }
+    if (f instanceof HTMLInputElement) {
+      return textTypen.has((f.getAttribute("type") ?? "").toLowerCase());
+    }
+    return true;
+  });
+  for (const feld of felder) {
+    bericht.felder += 1;
+    const r = feld.getBoundingClientRect();
+    const kandidaten: Element[] = [feld];
+    let v = feld.parentElement;
+    for (let i = 0; v && i < 2; i++, v = v.parentElement) {
+      const vr = v.getBoundingClientRect();
+      if (vr.width <= r.width + 120 && vr.height <= r.height + 40) {
+        kandidaten.push(v);
+      }
+    }
+    let bester = 0;
+    let rechenbar = false;
+    for (const k of kandidaten) {
+      const innen = h.hintergrund(k);
+      const aussen = h.hintergrund(k.parentElement ?? k);
+      if (!innen || !aussen) {
+        continue;
+      }
+      rechenbar = true;
+      bester = Math.max(bester, h.verhaeltnis(innen, aussen));
+      const s = getComputedStyle(k);
+      const raender: Array<[string, string, string]> = [
+        [s.borderTopWidth, s.borderTopStyle, s.borderTopColor],
+        [s.borderRightWidth, s.borderRightStyle, s.borderRightColor],
+        [s.borderBottomWidth, s.borderBottomStyle, s.borderBottomColor],
+        [s.borderLeftWidth, s.borderLeftStyle, s.borderLeftColor],
+      ];
+      const farben: Rgba[] = [];
+      for (const [breite, art, farbe] of raender) {
+        const f = h.lies(farbe);
+        const gezeichnet = Number.parseFloat(breite) >= 1 && art !== "none" && art !== "hidden";
+        if (gezeichnet && f && f[3] > 0) {
+          farben.push(f);
+        }
+      }
+      // Ein Innenschatten mit Ausdehnung ist ein gezeichneter Rand (`ring-inset`, `inset 0 0 0 1px`).
+      for (const roh of s.boxShadow === "none" ? [] : s.boxShadow.split(/,(?![^(]*\))/)) {
+        const f = h.lies(roh.match(/rgba?\([^)]*\)/)?.[0] ?? "");
+        const zahlen = (roh.replace(/rgba?\([^)]*\)/, "").match(/-?[\d.]+px/g) ?? []).map((z) =>
+          Number.parseFloat(z),
+        );
+        if (/\binset\b/.test(roh) && f && f[3] > 0 && (zahlen[3] ?? 0) >= 1) {
+          farben.push(f);
+        }
+      }
+      for (const f of farben) {
+        const gemalt = f[3] < 1 ? h.ueber(f, aussen) : f;
+        bester = Math.max(bester, h.verhaeltnis(gemalt, aussen), h.verhaeltnis(gemalt, innen));
+      }
+    }
+    if (!rechenbar) {
+      bericht.befunde.push(
+        `Feldgrenze unbestimmt (Hintergrund nicht rechenbar) an ${h.beschreibe(feld)}`,
+      );
+    } else if (bester < 3) {
+      bericht.befunde.push(
+        `Feldgrenze an ${h.beschreibe(feld)} hebt sich nur mit ${bester.toFixed(2)}:1 ab (Soll 3:1, Füllung oder Rand)`,
+      );
+    }
+  }
+
+  // B · Symbole ohne Text daneben, und bedeutungstragende Bild-Symbole.
+  const hatSichtbarenText = (e: Element): boolean => {
+    const gang = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+    for (let t = gang.nextNode(); t; t = gang.nextNode()) {
+      const p = t.parentElement;
+      if ((t.textContent ?? "").trim() && p && h.sichtbar(p) && !p.closest("svg")) {
+        return true;
+      }
+    }
+    return false;
+  };
+  const FORMEN = "path, circle, rect, line, polyline, polygon, ellipse";
+  const symbolFarbe = (svg: Element): string | null => {
+    for (const teil of [svg, ...svg.querySelectorAll(FORMEN)]) {
+      const s = getComputedStyle(teil);
+      if (s.stroke && s.stroke !== "none") {
+        return s.stroke;
+      }
+      if (s.fill && s.fill !== "none") {
+        return s.fill;
+      }
+    }
+    return null;
+  };
+  const miss = (symbol: Element, flaecheVon: Element, farbe: string | null, wo: Element): void => {
+    bericht.symbole += 1;
+    const grund = h.hintergrund(flaecheVon);
+    const roh = farbe ? h.lies(farbe) : null;
+    if (!grund || !roh) {
+      bericht.befunde.push(
+        `Symbol unbestimmt an ${h.beschreibe(wo)} (${!grund ? "Hintergrund nicht rechenbar" : `Farbe ${farbe ?? "keine"}`})`,
+      );
+      return;
+    }
+    const d = deckkraft(symbol);
+    const f: Rgba = [roh[0], roh[1], roh[2], roh[3] * d];
+    const wert = h.verhaeltnis(f[3] < 1 ? h.ueber(f, grund) : f, grund);
+    if (wert < 3) {
+      bericht.befunde.push(
+        `Symbol an ${h.beschreibe(wo)} hebt sich nur mit ${wert.toFixed(2)}:1 ab (Soll 3:1)`,
+      );
+    }
+  };
+  const bedienelemente = document.querySelectorAll(
+    "button, a[href], summary, [role='button'], [role='link'], [role='menuitem'], [role='tab'], [role='switch']",
+  );
+  for (const b of bedienelemente) {
+    if (!h.sichtbar(b) || inaktiv(b) || hatSichtbarenText(b)) {
+      continue;
+    }
+    for (const symbol of b.querySelectorAll("svg, img")) {
+      if (!h.sichtbar(symbol)) {
+        continue;
+      }
+      if (symbol instanceof HTMLImageElement) {
+        bericht.symbole += 1;
+        bericht.befunde.push(
+          `Symbol unbestimmt an ${h.beschreibe(b)} (Bilddatei, Pixel nicht gerechnet)`,
+        );
+        continue;
+      }
+      miss(symbol, symbol, symbolFarbe(symbol), b);
+    }
+  }
+  for (const bild of document.querySelectorAll("[role='img']")) {
+    if (!h.sichtbar(bild) || inaktiv(bild) || bild.closest("button, a[href], [role='button']")) {
+      continue;
+    }
+    if (bild instanceof SVGElement) {
+      miss(bild, bild, symbolFarbe(bild), bild);
+    } else {
+      // Ein gefüllter Punkt o. ä.: seine Füllung gegen die Fläche darunter.
+      miss(bild, bild.parentElement ?? bild, getComputedStyle(bild).backgroundColor, bild);
+    }
   }
   return bericht;
 }
@@ -794,11 +1044,18 @@ async function pruefeFlaeche(page: Page, wo: string, testInfo: TestInfo): Promis
   const themaMessen = async (thema: string, voll: boolean): Promise<void> => {
     const kontrast = await page.evaluate(kontrastImBrowser);
     befunde.push(...kontrast.verstoesse.map((v) => `1.4.3 [${thema}]: ${v}`));
+    // Ein unbestimmter Fall ist nicht „bestanden" — er wird einzeln benannt und muss bearbeitet
+    // werden (ben nacharbeit-7).
+    befunde.push(...kontrast.unbestimmtListe.map((u) => `1.4.3 [${thema}]: unbestimmt: ${u}`));
+    const grenzen = await page.evaluate(grenzenImBrowser);
+    befunde.push(...grenzen.befunde.map((g) => `1.4.11 [${thema}]: ${g}`));
     const weg = await tastaturweg(page);
     befunde.push(...weg.befunde.map((b) => b.replace(/^([\d.]+):/, `$1 [${thema}]:`)));
     const eintrag: Record<string, unknown> = {
       kontrastGemessen: kontrast.gemessen,
       kontrastUnbestimmt: kontrast.unbestimmt,
+      felderGemessen: grenzen.felder,
+      symboleGemessen: grenzen.symbole,
       fokusGemessen: weg.fokus.gemessen,
       fokusUnbestimmt: weg.fokus.unbestimmt,
     };
@@ -876,6 +1133,10 @@ const KALIBRIERUNG = `
   input:focus { outline: 2px solid #000; }
   .eng { width: 600px; height: 20px; line-height: 20px; overflow: hidden; }
   .breit { width: 900px; }
+  #feld-blass { border: 1px solid #eeeeee; background: #fff; }
+  #feld-klar { border: 1px solid #767676; background: #fff; }
+  #feld-flaeche { border: none; background: #666666; color: #fff; }
+  .verlauf { background-image: linear-gradient(#000, #333); color: #fff; }
 </style></head>
 <body>
   <p class="grau">Grau auf Weiß, ~2,8:1</p>
@@ -897,6 +1158,12 @@ const KALIBRIERUNG = `
   <div class="eng" data-testid="f-eng">Eine Zeile, die mit Textabstand nicht mehr passt</div>
   <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" width="10" height="10">
   <div class="breit">Breit</div>
+  <input id="feld-blass" aria-label="Feld blass">
+  <input id="feld-klar" aria-label="Feld klar">
+  <input id="feld-flaeche" aria-label="Feld Fläche">
+  <button data-testid="s-blass" aria-label="Symbol blass"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#cccccc" stroke-width="2"><path d="M2 2L14 14"/></svg></button>
+  <button data-testid="s-klar" aria-label="Symbol klar"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#333333" stroke-width="2"><path d="M2 2L14 14"/></svg></button>
+  <p class="verlauf" data-testid="f-verlauf">Text auf Verlauf</p>
   <script>
     const knopf = document.getElementById("f-tip");
     const tip = document.getElementById("tip");
@@ -927,6 +1194,14 @@ test("KALIBRIERUNG · jede Messart schlägt an einer fehlerhaften Fixture an —
   hat(/1\.4\.12: .*data-testid=f-eng/, "das Abschneiden bei Textabstand wird nicht erkannt");
   hat(/1\.4\.13.*f-tip.*Escape/, "der stehende Hinweis wird nicht erkannt");
   hat(/1\.4\.10: /, "der waagerechte Überlauf bei 320 px wird nicht erkannt");
+  // 1.4.11 Feldgrenzen und Symbole (nacharbeit-7): blasser Rand ohne Füllung und blasses Symbol
+  // ohne Text werden rot; deutlicher Rand, deutliche Füllung und deutliches Symbol bleiben grün.
+  hat(/1\.4\.11 \[\w+\]: Feldgrenze an .*Feld blass/, "die blasse Feldgrenze wird nicht erkannt");
+  hat(/1\.4\.11 \[\w+\]: Symbol an .*s-blass/, "das blasse Symbol wird nicht erkannt");
+  expect(text).not.toMatch(/1\.4\.11 \[\w+\]: Feldgrenze .*Feld (klar|Fläche)/);
+  expect(text).not.toMatch(/1\.4\.11 \[\w+\]: Symbol .*s-klar/);
+  // Ein unbestimmter Fall wird einzeln benannt, nicht stillschweigend gezählt.
+  hat(/1\.4\.3 \[\w+\]: unbestimmt: „Text auf Verlauf“/, "der unbestimmte Fall wird nicht benannt");
   // Und das Richtige wird nicht beanstandet.
   expect(text).not.toMatch(/(2\.4\.7|1\.4\.11) \[\w+\]: .*„f-gut“/);
   expect(text).not.toContain("Schwarz auf Weiß");
@@ -946,22 +1221,72 @@ test("AUDIT · Anmeldemaske (ohne Sitzung)", async ({ browser }, testInfo) => {
   expect(befunde, "WCAG-2.1-AA-Befunde auf der Anmeldemaske").toEqual([]);
 });
 
+/** Eine angemeldete Fläche: öffnen, alles messen, dazu 2.4.1 (Technik ARIA11). */
+async function pruefeAngemeldet(
+  page: Page,
+  route: string,
+  wo: string,
+  testInfo: TestInfo,
+): Promise<string[]> {
+  await page.goto(route);
+  await expect(workspaceMarker(page)).toBeVisible({ timeout: 15_000 });
+  // Nachladende Abfragen fertig werden lassen, ohne auf ein Netz-Ruhefenster zu warten, das
+  // Abfragen mit Wiederholung nie erreichen.
+  await page.waitForTimeout(1_000);
+  // Gemessen wird die genannte Fläche — eine Umleitung (Rollen- oder Stufe-2-Tor) hieße, dass hier
+  // still eine andere Seite geprüft würde.
+  const angekommen = new URL(page.url()).pathname;
+  expect(angekommen, `${wo}: umgeleitet nach ${angekommen}`).toBe(route);
+  const befunde = await pruefeFlaeche(page, wo, testInfo);
+  // Kopfband und Navigation lassen sich über die Landmarke `main` überspringen — genau eine,
+  // damit Vorlesewerkzeuge eindeutig dorthin springen.
+  const hauptbereiche = await page.locator("main").count();
+  if (hauptbereiche !== 1) {
+    befunde.push(`2.4.1: ${hauptbereiche} main-Landmarken statt genau einer`);
+  }
+  return befunde;
+}
+
 for (const route of ROUTEN) {
   test(`AUDIT · ${route}`, async ({ page }, testInfo) => {
     test.setTimeout(180_000);
     await ensureLoggedIn(page);
-    await page.goto(route);
-    await expect(workspaceMarker(page)).toBeVisible({ timeout: 15_000 });
-    // Nachladende Abfragen fertig werden lassen, ohne auf ein Netz-Ruhefenster zu warten, das
-    // Abfragen mit Wiederholung nie erreichen.
-    await page.waitForTimeout(1_000);
-    const befunde = await pruefeFlaeche(page, route, testInfo);
-    // 2.4.1 (Technik ARIA11): Kopfband und Navigation lassen sich über die Landmarke `main`
-    // überspringen — genau eine, damit Vorlesewerkzeuge eindeutig dorthin springen.
-    const hauptbereiche = await page.locator("main").count();
-    if (hauptbereiche !== 1) {
-      befunde.push(`2.4.1: ${hauptbereiche} main-Landmarken statt genau einer`);
-    }
+    const befunde = await pruefeAngemeldet(page, route, route, testInfo);
     expect(befunde, `WCAG-2.1-AA-Befunde auf ${route}`).toEqual([]);
   });
 }
+
+for (const route of STUFE2_ROUTEN) {
+  test(`AUDIT · ${route} (Stufe 2)`, async ({ page }, testInfo) => {
+    test.setTimeout(180_000);
+    await ensureLoggedIn(page);
+    // Derselbe Bedienweg wie in den Import-Sonden: die Torkarte, ein Knopf. Der Zustand gilt nur
+    // in diesem Browserkontext.
+    await schalteStufe2Ein(page);
+    const befunde = await pruefeAngemeldet(page, route, `${route} (Stufe 2)`, testInfo);
+    expect(befunde, `WCAG-2.1-AA-Befunde auf ${route}`).toEqual([]);
+  });
+}
+
+// Das Wissensdetail braucht ein Wissensobjekt. Es wird über denselben Produktweg angelegt wie in
+// `spaces-browser.spec.ts` und `wg-luecken-beziehungen-browser.spec.ts` (POST /api/kos), mit einem
+// eindeutigen Titel — kein Entwurf, also kein Eingriff in die Entwurfszählungen anderer Sonden.
+test("AUDIT · /wissen/:id (Wissensdetail)", async ({ page }, testInfo) => {
+  test.setTimeout(180_000);
+  await ensureLoggedIn(page);
+  const marke = Date.now().toString(36);
+  const angelegt = await page.request.post("/api/kos", {
+    data: {
+      confidentiality: "intern",
+      title: `Audit-Messplatz ${marke}`,
+      statement: `Der Messplatz ${marke} wird vor jeder Schicht auf Nullpunkt und Sauberkeit geprüft.`,
+      type: "best_practice",
+      category: "Prüfmittel",
+      tags: [`audit${marke}`],
+    },
+  });
+  expect(angelegt.status(), await angelegt.text()).toBe(201);
+  const ko = (await angelegt.json()) as { id: string };
+  const befunde = await pruefeAngemeldet(page, `/wissen/${ko.id}`, "/wissen/:id", testInfo);
+  expect(befunde, "WCAG-2.1-AA-Befunde auf dem Wissensdetail").toEqual([]);
+});

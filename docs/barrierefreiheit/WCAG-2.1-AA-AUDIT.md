@@ -15,11 +15,18 @@ unterscheidet streng:
 - **N/A (nicht anwendbar)**: Das Produkt enthält den Gegenstand nicht. Die Begründung ist angegeben.
 
 Gemessene Flächen des maschinellen Audits (`tests-smoke/wcag21-aa-audit.spec.ts`): Anmeldemaske,
-`/start`, `/fragen`, `/bibliothek`, `/erfassen`, `/validierung`. Gemessen wird im echten Chromium am
-echten Server, und zwar in **beiden** Themen: Kontrast, Fokus und Tastaturweg laufen je Fläche
-einmal klassisch und einmal modern (`data-theme="modern"`). Die übrigen Messungen laufen einmal.
-Jede Messart hat eine Kalibrierung an einer fehlerhaften Fixture, die rot werden muss. Die
-Pflichtflächen (Hinweisbanner,
+`/start`, `/fragen`, `/bibliothek`, `/erfassen`, `/validierung`. Seit nacharbeit-7 **jede Fläche
+der Navigation** (`apps/web/src/app/navigation.ts`), die das Admin-Konto sieht: zusätzlich
+`/aufgaben`, `/entwuerfe`, `/gesamtanweisungen`, `/wissensnetz`, `/extern`, `/konflikte`,
+`/duplikate`, `/risiko`, `/lebenszyklus`, `/analytics`, `/admin` (Einstellungen und Verwaltung;
+dorthin führt das Zahnrad-Menü „Einstellungen“), `/hilfe`, `/profil`. Die Stufe-2-Flächen
+`/output`, `/import`, `/graph`, `/kapital` laufen nach dem Einschalten über den echten Bedienweg.
+Dazu kommt `/wissen/:id` (Wissensdetail, mit einem eigens angelegten Wissensobjekt). Eine
+Umleitung, etwa durch ein Rollen- oder Stufe-2-Tor, lässt den Fall scheitern, statt still eine
+andere Seite zu messen. Gemessen wird im echten Chromium am echten Server, und zwar in **beiden** Themen:
+Kontrast, Feldgrenzen und Symbole, Fokus und Tastaturweg laufen je Fläche einmal klassisch und
+einmal modern (`data-theme="modern"`). Die übrigen Messungen laufen einmal. Jede Messart hat eine
+Kalibrierung an einer fehlerhaften Fixture, die rot werden muss. Die Pflichtflächen (Hinweisbanner,
 Impressum, Datenschutz, Sperrfläche, Rechtshinweise der Anmeldemaske) rechnet zusätzlich
 `apps/web/src/legal/kontrast-dom-paarungen.test.tsx` in **beiden** Themen.
 
@@ -40,11 +47,11 @@ Impressum, Datenschutz, Sperrfläche, Rechtshinweise der Anmeldemaske) rechnet z
 | 1.3.5 | AA | Eingabezweck bestimmen | Q | `autoComplete` an Name, E-Mail, Passwort (`auth/AuthScreens.tsx`, `auth/ResetScreen.tsx`). Weitere personenbezogene Felder nicht inventarisiert. |
 | 1.4.1 | A | Benutzung von Farbe | H | Belegt nur Einzelstellen (Hinweisbanner: Form und Text unterscheiden die Knöpfe). Status-/Reifefarben auf durchgehende Textbeschriftung prüfen. |
 | 1.4.2 | A | Audio-Steuerelement | N/A | Kein selbststartendes Audio. |
-| 1.4.3 | AA | Kontrast (Minimum) | M | Audit: jeder sichtbare Textknoten, gemalte Farbe gegen zusammengesetzten Hintergrund, 4,5:1 bzw. 3:1 (Großtext). Pflichtflächen in beiden Themen: `kontrast-dom-paarungen.test.tsx`, `tests/legal/mega62-kontrast-pflichtflaechen.test.ts`. **Behoben in dieser Runde:** `klarwerk.ai` in der Markenspalte (Weiß/40 auf Ink ≈ 3,7:1 → Weiß/60 ≈ 6,4:1, `BrandPanel.tsx`, `SsoCallback.tsx`); Titel-Platzhalter im Erfassungsblatt (`muted-2/60` ≈ 2,5:1 → `muted-2`, `erfassen/Blatt.tsx`). **Seit nacharbeit-5 zusätzlich gemessen:** Platzhaltertext (über `::placeholder`, mit Kalibrierung) und das jeweils andere Thema auf allen sechs Kernflächen. **Dabei gefunden und behoben (nacharbeit-6):** (1) Platzhalter „Wissen suchen“ im Kopfband, modernes Thema: `shell-muted-2` auf `night-2` = 4,43:1. Jetzt `shell-muted` mit ≈ 8,9:1 (`styles/modern.css`), im Mockup-Test V14 benannt abweichend (`tests/design/zielbild-h1-huelle.test.ts`). (2) Platzhalter „Bibliothek durchsuchen“: Mockup-Grau `#9AA2B1` = 2,3–2,4:1. Jetzt Tinte-2 (`muted`) wie auf Start und Fragen (`bibliothek/BibliothekListe.tsx`). **Bewusst nicht angefasst:** Auf den Klara-Flächen trägt das Hinweisgrau `#9AA2B1` eine dokumentierte Eigentümer-Vorgabe vom 04.09. (`tests/app/mega43-klara-werkbank-palette.test.ts`). Diese Flächen liegen nicht unter den sechs gemessenen. Der Kontrastpunkt bleibt dort als Entscheidung des Eigentümers offen. **Offen (technisch):** Text über Hintergrundbildern und in durchscheinenden Ebenen wird gezählt, nicht gerechnet (Anhang je Fläche und Thema: `kontrastUnbestimmt`); Flächen außer den sechs gemessenen. |
+| 1.4.3 | AA | Kontrast (Minimum) | M | Audit: jeder sichtbare Textknoten, gemalte Farbe gegen zusammengesetzten Hintergrund, 4,5:1 bzw. 3:1 (Großtext). Pflichtflächen in beiden Themen: `kontrast-dom-paarungen.test.tsx`, `tests/legal/mega62-kontrast-pflichtflaechen.test.ts`. **Behoben in dieser Runde:** `klarwerk.ai` in der Markenspalte (Weiß/40 auf Ink ≈ 3,7:1 → Weiß/60 ≈ 6,4:1, `BrandPanel.tsx`, `SsoCallback.tsx`); Titel-Platzhalter im Erfassungsblatt (`muted-2/60` ≈ 2,5:1 → `muted-2`, `erfassen/Blatt.tsx`). **Seit nacharbeit-5 zusätzlich gemessen:** Platzhaltertext (über `::placeholder`, mit Kalibrierung) und das jeweils andere Thema auf allen sechs Kernflächen. **Dabei gefunden und behoben (nacharbeit-6):** (1) Platzhalter „Wissen suchen“ im Kopfband, modernes Thema: `shell-muted-2` auf `night-2` = 4,43:1. Jetzt `shell-muted` mit ≈ 8,9:1 (`styles/modern.css`), im Mockup-Test V14 benannt abweichend (`tests/design/zielbild-h1-huelle.test.ts`). (2) Platzhalter „Bibliothek durchsuchen“: Mockup-Grau `#9AA2B1` = 2,3–2,4:1. Jetzt Tinte-2 (`muted`) wie auf Start und Fragen (`bibliothek/BibliothekListe.tsx`). **Bewusst nicht angefasst:** Auf den Klara-Flächen trägt das Hinweisgrau `#9AA2B1` eine dokumentierte Eigentümer-Vorgabe vom 04.09. (`tests/app/mega43-klara-werkbank-palette.test.ts`). Diese Flächen liegen nicht unter den sechs gemessenen. Der Kontrastpunkt bleibt dort als Entscheidung des Eigentümers offen. **Unbestimmte Fälle (seit nacharbeit-7):** Text über Hintergrundbildern, in durchscheinenden Ebenen oder in einem nicht lesbaren Farbformat gilt nicht mehr als bestanden. Jeder Fall wird mit Element und Grund einzeln als Befund gemeldet und muss bearbeitet werden (Kalibrierung: Text auf Verlauf). Auf den sechs Kernflächen trat in nacharbeit-6/-7 keiner auf. |
 | 1.4.4 | AA | Textgröße ändern | M | Audit: Fenster 640 × 400 CSS-px (entspricht 200 % Zoom von 1280 × 800). Gemessen werden kein waagerechtes Scrollen und kein Text, der dabei neu abgeschnitten wird. Gewollte Kürzung mit Auslassungszeichen wird gezählt (`zoomGekuerzt`). Grenze: Viewport-Verkleinerung statt echtem Browser-Zoom. |
 | 1.4.5 | AA | Bilder von Text | H | Keine bekannten Textbilder außer Logo (ausgenommen); nicht inventarisiert. |
 | 1.4.10 | AA | Umbruch (Reflow) | M | Audit: 320 CSS-px, kein waagerechtes Scrollen der Seite. Bestand: TEST-A19 (390 px), Kopfband-Chromium-Tests 390–1440 px. |
-| 1.4.11 | AA | Nicht-Text-Kontrast | T | Audit: Die Fokuskennzeichnung jedes per Tab erreichten Elements hebt sich mit ≥ 3:1 von der Fläche ab, auf der sie steht (beide Themen). **Befund behoben:** Der globale Fokusring `ring-brand/60` maß auf der Seitenfläche ≈ 1,85:1. Jetzt `ring-brand-text` (≈ 5,3–5,9:1 auf hellen Flächen). Auf dem dunklen Kopfband trägt der helle Offset-Streifen den Kontrast (`index.css`, Vertrag `tests/app/focus-visible-global-contract.test.ts`). **Offen (technisch):** Ränder von Eingabefeldern und Symbole sind nicht gemessen. Messbar ist der Randkontrast, aber ob der Rand zur Erkennung des Feldes nötig ist (oder Beschriftung und Fläche genügen), ist eine Gestaltungsfrage, die vor einer Messregel zu entscheiden ist. |
+| 1.4.11 | AA | Nicht-Text-Kontrast | M | **Erforderliche Grenzen, festgelegt (nacharbeit-7):** (A) Eingabefelder (einzeilig, Textbereich, Auswahl, Kombi- und Suchfeld): Wo das Feld liegt, zeigt allein seine Grenze; eine Beschriftung sagt, WAS einzugeben ist, nicht WO. Erforderlich ist deshalb, dass Füllung oder Rand (auch Innenschatten-Rand) des Feldes oder seiner eng anliegenden Hülle sich mit ≥ 3:1 von der Umgebung abhebt. Ausgenommen sind Schreibflächen eines Dokuments (`contenteditable`): Text und Schreibmarke zeigen dort, wo geschrieben wird. (B) Symbole: Trägt ein Bedienelement keinen sichtbaren Text, muss sein Symbol ≥ 3:1 gegen seine Fläche erreichen, ebenso jedes bedeutungstragende Bild-Symbol (`role="img"`). Symbole neben Text sind Schmuck. Gemessen auf allen Audit-Flächen in beiden Themen, mit Kalibrierung (blasser Rand und blasses Symbol rot, deutlicher Rand, deutliche Füllung und deutliches Symbol grün). Ein Bild-Symbol aus einer Bilddatei wird als unbestimmt gemeldet. Audit: Die Fokuskennzeichnung jedes per Tab erreichten Elements hebt sich mit ≥ 3:1 von der Fläche ab, auf der sie steht (beide Themen). **Befund behoben:** Der globale Fokusring `ring-brand/60` maß auf der Seitenfläche ≈ 1,85:1. Jetzt `ring-brand-text` (≈ 5,3–5,9:1 auf hellen Flächen). Auf dem dunklen Kopfband trägt der helle Offset-Streifen den Kontrast (`index.css`, Vertrag `tests/app/focus-visible-global-contract.test.ts`). **Grenze:** Gemessen werden berechnete Stile, nicht gemalte Pixel. Symbole aus Bilddateien und Verläufe werden als unbestimmt gemeldet, nicht gerechnet. |
 | 1.4.12 | AA | Textabstand | M | Audit: Zeilenhöhe 1,5, Buchstabenabstand 0,12 em, Wortabstand 0,16 em, Absatzabstand 2 em als Stil mit Vorrang. Danach darf kein Element mit `overflow: hidden/clip` Text abschneiden, der vorher vollständig stand. Gewollte Kürzung mit Auslassungszeichen wird gezählt (`textabstandGekuerzt`). |
 | 1.4.13 | AA | Inhalt bei Hover oder Fokus | M | Audit: Jedes per Tab erreichte Element wird fokussiert und überfahren. Erscheint ein `role="tooltip"`, muss er beim Überfahren stehen bleiben und mit Escape schließen. Gefundene Hinweise je Fläche: `hoverInhalte`. Native `title`-Hinweise steuert der Browser, sie sind nach WCAG ausgenommen. |
 | 2.1.1 | A | Tastatur | T | Audit: Tab-Weg je Fläche. Bestand: Chromium-Tastaturwege (`tests/entwurf-pool/pool-tastatur-chromium.test.ts`, `tests/entwuerfe-verwalten/abnahmefolge-tastatur-chromium.test.ts`, `tests/anhang-upload-tastatur/foto-anhaengen-tastatur.test.ts`, `tests/admin-navigation/bedienbarkeit.test.tsx`). **Offen (H):** Gleichwertigkeit jeder Mausfunktion (Ziehen, Graph). |
@@ -78,21 +85,29 @@ Impressum, Datenschutz, Sperrfläche, Rechtshinweise der Anmeldemaske) rechnet z
 | 4.1.2 | A | Name, Rolle, Wert | M | Audit: jedes bedienbare Element im AX-Baum von Chromium hat einen Namen. |
 | 4.1.3 | AA | Statusmeldungen | M | `tests-smoke/a18-live-region-browser.spec.ts` (AX-Baum: Toast `status`/`polite`), JOB-2064-Verträge. |
 
-Bilanz: 14 M, 11 T, 3 Q, 15 H, 7 N/A (Summe 50).
+Bilanz: 15 M, 10 T, 3 Q, 15 H, 7 N/A (Summe 50).
 
 ## Vollständigkeit
 
-Das Audit ist **nicht vollständig**. Vollständig ist es erst, wenn die beiden folgenden Listen
-abgearbeitet sind. Sie sind bewusst getrennt.
+Der **technische** Auditumfang ist seit nacharbeit-7 geschlossen, soweit er sich an
+Zuständen messen lässt, die man über die Navigation erreicht. Das betrifft alle Navigationsflächen
+inklusive Stufe 2 und Wissensdetail, beide Themen, Feldgrenzen und Symbole nach festgelegter
+Regel, und unbestimmte Fälle einzeln. Ob die Messung grün ist, belegt der Prüflauf des Smokes, nicht
+dieses Dokument.
 
-### Technisch offen (maschinell lösbar, noch nicht gemessen)
+### Technische Grenzen (benannt, nicht übergangen)
 
-1. **1.4.11 Ränder von Eingabefeldern und Symbole:** Vor einer Messregel ist zu entscheiden,
-   ob der Rand das Feld erkennbar machen muss oder Beschriftung und Fläche genügen.
-2. **1.4.3 Text über Hintergrundbildern und in durchscheinenden Ebenen:** wird gezählt, nicht
-   gerechnet. Rechnen hieße, die gemalten Pixel auszuwerten.
-3. **Flächen außerhalb der sechs Kernflächen** (Einstellungen, Admin, Wissensdetail usw.): Sie
-   lassen sich mit demselben Smoke anhängen.
+1. **Zustände hinter einer Handlung** werden auf den Flächen nur so weit gemessen, wie der
+   Tab-Weg (30 Schritte) und das Überfahren sie öffnen. Gemeint sind aufgeklappte Abschnitte der
+   Verwaltung, Dialoge, Fehlerzustände von Formularen und Ergebnislisten mit Daten. Bestehende
+   Einzelbelege dazu: Ablehnungsweg des Hinweisbanners und Sperrfläche
+   (`kontrast-dom-paarungen.test.tsx`), Modalgrenze (`tests-smoke/ui-smoke.spec.ts`, mega48),
+   Toast (`tests-smoke/a18-live-region-browser.spec.ts`).
+2. **Pixel statt Stil:** Gemessen werden berechnete Stile. Was nur über gemalte Pixel
+   entscheidbar ist (Text über Bildern, Symbole aus Bilddateien), wird als unbestimmt gemeldet
+   und ist dann einzeln zu bearbeiten.
+3. **Klara-Flächen** (Word-Seitenleiste, Ruhe) gehören nicht zur Web-Navigation. Ihr Hinweisgrau
+   `#9AA2B1` steht unter einer dokumentierten Eigentümer-Vorgabe (siehe 1.4.3).
 
 ### Ausdrücklich menschliche oder externe Prüfungen
 
@@ -100,7 +115,7 @@ Diese Punkte lassen sich auch maschinell nicht entscheiden. Sie bleiben offen un
 durch Tests ersetzt:
 
 1. **Tatsächliche Vorleseausgabe** (R-1090, A18) mit NVDA/JAWS (Windows) und VoiceOver (macOS/iOS)
-   auf den sechs Kernflächen. Gemessen ist nur die Rechnung des Browsers (AX-Baum).
+   auf den Audit-Flächen. Gemessen ist nur die Rechnung des Browsers (AX-Baum).
 2. **Industriebedingungen** (R-0891): Bedienung mit Handschuhen (Zielgrößen, Abstände) und
    Lesbarkeit bei wechselndem Licht. Dafür sind Gerät und Einsatzort nötig.
 3. Die inhaltliche Hälfte der **T**-Kriterien und die **H**-Kriterien oben. Dort geht es um
