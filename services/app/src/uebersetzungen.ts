@@ -13,11 +13,10 @@ import type { Pool } from "pg";
 //
 // WEITERE SPRACHEN (FR-I18N-02): Eine Sprache, die das Bündel nicht mitbringt, wird hier als
 // Kennung mit Namen angelegt und dann Text für Text übersetzt — ohne Code und ohne Bau. Was ihr
-// fehlt, fällt in der Oberfläche auf Deutsch zurück (`fallbackLng`). Ob eine solche Sprache in der
-// Sprachwahl der Anwendung ERSCHEINT, entscheidet diese Ablage ausdrücklich NICHT: die wählbare
-// Menge ist per Ownerentscheidung zu JOB 536 genau `de|en|nl` (`apps/web/src/lib/htmlLang.ts`,
-// `ERLAUBTE_SPRACHEN`). Die Ablage bereitet eine Sprache vollständig vor; ihre Freischaltung in der
-// Sprachwahl bleibt eine offene Entscheidung und ist hier nicht vorweggenommen.
+// fehlt, fällt in der Oberfläche auf Deutsch zurück (`fallbackLng`). Über `GET /api/i18n/locales`
+// erfährt die Oberfläche von ihr und bietet sie in Kontomenü und Profil zur Wahl an
+// (`apps/web/src/lib/instanzSprachen.ts`). Die Ownerentscheidung zu JOB 536 betrifft allein das
+// `<html lang>`-Attribut und begrenzt das nicht.
 //
 // DAS MUSTER ist das der übrigen instanzweiten Einstellungen (`branding-settings.ts`,
 // `livewall-fotos.ts`): Schnittstelle, Speicherfassung für Tests und Dev-Betrieb, haltbare

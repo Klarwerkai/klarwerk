@@ -10,8 +10,9 @@ import "./index.css";
 import { initBrandTheme } from "./lib/brandTheme";
 import { initDesignTheme } from "./lib/designTheme";
 import { bindHtmlLang } from "./lib/htmlLang";
+import { gleicheAngelegteSprachenAb } from "./lib/instanzSprachen";
 import { ZAEHLER_FRISCHE_MS } from "./lib/loadingState";
-import { bindSpracheSpeichern } from "./lib/sprachwahl";
+import { STANDARD_SPRACHE, bindSpracheSpeichern } from "./lib/sprachwahl";
 import { bindTextpflege } from "./lib/textpflege";
 
 // AUFTRAG-mega40 B: gespeicherte Design-Wahl VOR dem ersten Render anwenden (kein Aufblitzen des
@@ -77,6 +78,9 @@ void sprachBereit.finally(() => {
   // Paket da ist (Begründung im Kopf von `lib/textpflege.ts`). Ein Ausfall lässt die mitgelieferten
   // Texte stehen und hält den Start nicht auf.
   bindTextpflege(i18n, (sprache) => endpoints.i18n.texte(sprache).then((a) => a.texte));
+  // FR-I18N-02: die im Betrieb angelegten Sprachen in Kontomenü und Profil wählbar machen und für
+  // den nächsten Start merken (`lib/instanzSprachen.ts`). Hält den Start nicht auf.
+  void gleicheAngelegteSprachenAb(i18n, endpoints.i18n.sprachen, STANDARD_SPRACHE);
   wurzel.render(
     <StrictMode>
       <QueryClientProvider client={queryClient}>

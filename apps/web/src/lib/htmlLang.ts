@@ -60,6 +60,12 @@ export type I18nLike = {
 // behandeln, ausdrücklich nicht normalisieren". Das ist kein Widerspruch zur Notiz im Dateikopf:
 // dort ist die NORMALISIERUNG ausgeschlossen (aus `de-DE` würde `de`), nicht die Prüfung. `de-DE`
 // wird deshalb nicht zurechtgebogen, sondern gar nicht erst geschrieben.
+//
+// GELTUNGSBEREICH (FR-I18N-02, Übersetzungspflege): Die Entscheidung zu JOB 536 beantwortet die
+// Baufrage zu `html lang`. Diese Menge ist deshalb die der MITGELIEFERTEN Sprachen und die des
+// `lang`-Attributs (`applyHtmlLang` bleibt für alles andere ein No-op). WÄHLBAR sind darüber hinaus
+// die im Betrieb angelegten Sprachen (`lib/instanzSprachen.ts`) — ein allgemeines Verbot weiterer
+// Sprachen folgt aus JOB 536 nicht.
 export const ERLAUBTE_SPRACHEN: readonly string[] = ["de", "en", "nl"];
 
 // ==================================================================================================

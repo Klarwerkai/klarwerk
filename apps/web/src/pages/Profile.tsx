@@ -3,7 +3,7 @@
 // Kein Kicker, keine Einleitung: Name (Wert = Rolle), E-Mail, Sprache, Passwort ändern, die eigene
 // Wirkung und das Abmelden — jede Zeile mit ihrem Wert, die Karten dahinter unverändert.
 import { useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { authApi } from "../api/auth";
 import { ApiError } from "../api/client";
@@ -16,6 +16,7 @@ import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { EinstellungenSeite } from "../components/einstellungen/Seite";
 import { Zeile, Zeilenkarte } from "../components/einstellungen/Zeilenkarte";
 import { Avatar, Button, Field, TextInput } from "../components/ui";
+import { abonniereAngelegteSprachen, angelegteSprachen } from "../lib/instanzSprachen";
 import { useSeitenhilfeAnmeldung } from "../shell/SeitenhilfeContext";
 
 const SPRACHEN = ["de", "en", "nl"] as const;
@@ -53,13 +54,21 @@ const SPRACH_KNOEPFE = "sprach-knoepfe";
 
 function SprachWahl(): JSX.Element {
   const { i18n } = useTranslation();
+  // FR-I18N-02: hinter den mitgelieferten die im Betrieb angelegten Sprachen
+  // (`lib/instanzSprachen.ts`) — dieselbe Quelle wie das Kontomenü, ohne Codeänderung wählbar.
+  const angelegt = useSyncExternalStore(
+    abonniereAngelegteSprachen,
+    angelegteSprachen,
+    angelegteSprachen,
+  );
   return (
     /* E2E-020: Profil-Sprachwahl auf DE/EN/NL wie im Header — NL war hier zuvor nicht wählbar. */
     <span data-testid={SPRACH_KNOEPFE} className="flex gap-1.5">
-      {SPRACHEN.map((l) => (
+      {[...SPRACHEN, ...angelegt.map((s) => s.kennung)].map((l) => (
         <button
           key={l}
           type="button"
+          aria-label={angelegt.find((s) => s.kennung === l)?.name}
           aria-pressed={i18n.language.startsWith(l)}
           onClick={() => void i18n.changeLanguage(l)}
           className={`rounded-btn px-2.5 py-1 text-[13px] font-semibold uppercase ${

@@ -9,17 +9,24 @@
 //    Anwendungswurzel (`main.tsx`), nicht im Umschalter. Sonst merkt sich genau ein Umschalter
 //    die Wahl und der nächste nicht — dieselbe Lehre wie bei `bindHtmlLang` (htmlLang.ts:10-14).
 //  · KEIN LanguageDetector, keine Browsersprache, keine Normalisierung. Was aus dem Speicher
-//    kommt, muss in `ERLAUBTE_SPRACHEN` stehen, sonst gilt die Vorgabe — Ownerentscheidung zu
-//    JOB 536 vom 13.08.2026, zitiert in htmlLang.ts:53-57. Deshalb bleibt `i18n.language` auch
-//    mit Persistenz exakt „de" | „en" | „nl".
+//    kommt, muss eine WÄHLBARE Sprache sein (siehe den Absatz FR-I18N-02 darunter), sonst gilt die
+//    Vorgabe. Die Regel „nicht normalisieren, sondern verwerfen" stammt aus der Spezifikation zu
+//    JOB 536 (htmlLang.ts); `i18n.language` ist damit stets eine wählbare Sprache, nie ein
+//    zurechtgebogener Wert.
 // DOM-frei (globalThis über persistentToggle, strukturelle Typen statt lib.dom) — importierbar aus
 // node-env-Tests.
-import { ERLAUBTE_SPRACHEN, I18N_LANGUAGE_CHANGED_EVENT } from "./htmlLang";
+//
+// FR-I18N-02 (Übersetzungspflege): wählbar sind die mitgelieferten `ERLAUBTE_SPRACHEN` UND die im
+// Betrieb angelegten Sprachen (`lib/instanzSprachen.ts`). Alles andere gilt weiter als nicht gesagt
+// und fällt auf die Vorgabe — ohne Normalisierung. Die Ownerentscheidung zu JOB 536 betrifft das
+// `<html lang>`-Attribut (`htmlLang.ts`); sie verbietet keine weiteren wählbaren Sprachen.
+import { I18N_LANGUAGE_CHANGED_EVENT } from "./htmlLang";
 import type { I18nLike, SprachZuhoerer } from "./htmlLang";
+import { istWaehlbareSprache } from "./instanzSprachen";
 import { readStoredString, safeLocalStorage, writeStoredString } from "./persistentToggle";
 
-// Der localStorage-Schlüssel der Wahl. Werte sind exakt die ERLAUBTE_SPRACHEN; alles andere
-// (Alt-/Fremdformat, Regionalcode, leer) fällt in `gespeicherteSprache()` auf die Vorgabe zurück.
+// Der localStorage-Schlüssel der Wahl. Werte sind die wählbaren Sprachen; alles andere (Alt-/
+// Fremdformat, Regionalcode, leer, nicht angelegt) fällt in `gespeicherteSprache()` auf die Vorgabe.
 export const SPRACHE_STORAGE_KEY = "kw.sprache";
 
 /** Die Vorgabe für jeden Browser ohne gespeicherte Wahl — wie der Startwert in `index.html`. */
@@ -28,13 +35,14 @@ export const STANDARD_SPRACHE = "de";
 /**
  * Die Sprache, die beim Start gilt: die gespeicherte Wahl, sonst die Vorgabe „de".
  *
- * Die Prüfung gegen `ERLAUBTE_SPRACHEN` steht hier und nicht erst in der Oberfläche: nur so ist
- * zugesichert, dass `lng` — und damit `i18n.language` — die erlaubte Menge nie verlässt. Sonst
- * täte `applyHtmlLang` (htmlLang.ts:66-69) still nichts mehr und `<html lang>` stünde falsch.
+ * Die Prüfung gegen die wählbaren Sprachen steht hier und nicht erst in der Oberfläche: nur so ist
+ * zugesichert, dass `lng` — und damit `i18n.language` — die wählbare Menge nie verlässt. Eine im
+ * Betrieb angelegte Sprache wird nur angenommen, solange dieser Browser sie aus der letzten
+ * Serverauskunft kennt (`lib/instanzSprachen.ts`).
  */
 export function gespeicherteSprache(): string {
   const gespeichert = readStoredString(safeLocalStorage(), SPRACHE_STORAGE_KEY);
-  if (gespeichert !== null && ERLAUBTE_SPRACHEN.includes(gespeichert)) {
+  if (gespeichert !== null && istWaehlbareSprache(gespeichert)) {
     return gespeichert;
   }
   return STANDARD_SPRACHE;
@@ -60,7 +68,7 @@ export function gespeicherteSprache(): string {
  */
 export function bindSpracheSpeichern(i18n: I18nLike): () => void {
   const zuhoerer: SprachZuhoerer = (sprache) => {
-    if (!ERLAUBTE_SPRACHEN.includes(sprache)) {
+    if (!istWaehlbareSprache(sprache)) {
       return;
     }
     writeStoredString(safeLocalStorage(), SPRACHE_STORAGE_KEY, sprache);

@@ -9,9 +9,10 @@
 // die Änderung sofort, jede andere beim nächsten Öffnen oder Sprachwechsel (`lib/textpflege.ts`).
 //
 // WEITERE SPRACHEN: Eine angelegte Sprache wird hier Text für Text übersetzt; was fehlt, fällt auf
-// Deutsch zurück. Ihre Aufnahme in die Sprachwahl der Anwendung ist NICHT Teil dieser Karte — die
-// wählbare Menge ist per Ownerentscheidung `de|en|nl` (`lib/htmlLang.ts`, `ERLAUBTE_SPRACHEN`). Die
-// Karte sagt das ausdrücklich, statt es den Leser vermuten zu lassen.
+// Deutsch zurück. Sie ist ohne Codeänderung in Kontomenü und Profil wählbar
+// (`lib/instanzSprachen.ts`); diese Karte führt die Liste nach jedem Abruf dort nach, damit eine
+// soeben angelegte Sprache sofort wählbar ist. Die Ownerentscheidung zu JOB 536 betrifft allein das
+// `<html lang>`-Attribut (`lib/htmlLang.ts`) und gilt dort weiter; sie begrenzt die Sprachwahl nicht.
 //
 // PLATZHALTER: Ein Text mit `{{name}}` verliert ohne diesen Platzhalter seinen Inhalt, und ein
 // fremder Platzhalter bliebe als Klammertext stehen. Gespeichert wird deshalb nur, wenn die
@@ -22,6 +23,7 @@ import { useTranslation } from "react-i18next";
 import { ApiError } from "../../api/client";
 import { endpoints } from "../../api/endpoints";
 import { ERLAUBTE_SPRACHEN } from "../../lib/htmlLang";
+import { setzeAngelegteSprachen } from "../../lib/instanzSprachen";
 import {
   legeTexteUeber,
   mitgelieferterText,
@@ -81,6 +83,14 @@ export function UebersetzungenDetail({ onZurueck }: { onZurueck: () => void }): 
   });
 
   const zusatz = (sprachen.data?.sprachen ?? []).filter((s) => !s.grundsprache);
+
+  // FR-I18N-02: jede frische Serverauskunft macht die angelegten Sprachen in Kontomenü und Profil
+  // wählbar — auch die eben hier angelegte, ohne Neuladen.
+  useEffect(() => {
+    if (sprachen.data) {
+      setzeAngelegteSprachen(sprachen.data.sprachen.filter((s) => !s.grundsprache));
+    }
+  }, [sprachen.data]);
   const auswahl = [
     ...ERLAUBTE_SPRACHEN.map((k) => ({ kennung: k, name: t(`lib.facet.lang.${k}`) })),
     ...zusatz.map((s) => ({ kennung: s.kennung, name: `${s.name ?? s.kennung} (${s.kennung})` })),

@@ -42,8 +42,14 @@
 // des Konto-Menüs mit aria-pressed". Drei weitere Knöpfe mit `aria-pressed` in derselben Fläche
 // hätten diesen Wächter stumpf gemacht. Die Auszeichnung ist hier ohnehin die richtigere:
 // `role="menuitemradio"` + `aria-checked` sagt „eine aus drei", `aria-pressed` sagt „an/aus".
+//
+// FR-I18N-02 (Übersetzungspflege): hinter den drei mitgelieferten Sprachen stehen die im Betrieb
+// angelegten (`lib/instanzSprachen.ts`) — ohne Codeänderung, sobald der Server sie meldet. Sichtbar
+// ist auch dort das Kürzel, vorgelesen der gepflegte Name.
+import { useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { ERLAUBTE_SPRACHEN } from "../lib/htmlLang";
+import { abonniereAngelegteSprachen, angelegteSprachen } from "../lib/instanzSprachen";
 
 /**
  * Die aktive Sprache als Element der erlaubten Menge.
@@ -72,6 +78,14 @@ function istAktiv(sprache: string, kandidat: string): boolean {
  */
 export function SprachSchalter(): JSX.Element {
   const { t, i18n } = useTranslation();
+  const angelegt = useSyncExternalStore(
+    abonniereAngelegteSprachen,
+    angelegteSprachen,
+    angelegteSprachen,
+  );
+  const sprachen = [...ERLAUBTE_SPRACHEN, ...angelegt.map((s) => s.kennung)];
+  const sprachname = (l: string): string =>
+    angelegt.find((s) => s.kennung === l)?.name ?? t(`lib.facet.lang.${l}`);
   return (
     <div className="flex items-center gap-2 px-2.5 py-1.5 text-[13px]">
       <span className="min-w-0 flex-1 truncate text-text">{t("prof.language")}</span>
@@ -87,7 +101,7 @@ export function SprachSchalter(): JSX.Element {
         data-testid="sprach-schalter"
         className="flex shrink-0 gap-1"
       >
-        {ERLAUBTE_SPRACHEN.map((l) => {
+        {sprachen.map((l) => {
           const aktiv = istAktiv(i18n.language, l);
           // ======================================================================================
           // WARUM DIE ENTSCHEIDUNG HIER STEHT UND NICHT IM `className`.
@@ -110,7 +124,7 @@ export function SprachSchalter(): JSX.Element {
               type="button"
               role="menuitemradio"
               aria-checked={aktiv}
-              aria-label={t(`lib.facet.lang.${l}`)}
+              aria-label={sprachname(l)}
               data-testid={`sprach-schalter-${l}`}
               onClick={() => {
                 void i18n.changeLanguage(l);

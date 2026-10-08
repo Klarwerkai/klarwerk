@@ -43,7 +43,7 @@ export default {
     "uebersetzungen.anlegen": "Anlegen",
     "uebersetzungen.angelegt": "Sprache „{{name}}“ angelegt.",
     "uebersetzungen.sprachwahlHinweis":
-      "Angelegte Sprachen lassen sich hier vollständig übersetzen. In der Sprachwahl der Anwendung stehen derzeit nur Deutsch, Englisch und Niederländisch; ob weitere dort erscheinen, ist noch nicht entschieden.",
+      "Eine angelegte Sprache erscheint sofort in der Sprachwahl im Kontomenü und im Profil. Texte, die hier noch nicht übersetzt sind, zeigt die Oberfläche auf Deutsch.",
   },
   en: {
     "uebersetzungen.titel": "Translations",
@@ -78,7 +78,7 @@ export default {
     "uebersetzungen.anlegen": "Add",
     "uebersetzungen.angelegt": "Language “{{name}}” added.",
     "uebersetzungen.sprachwahlHinweis":
-      "Added languages can be fully translated here. The application's language choice currently offers only German, English and Dutch; whether more appear there has not been decided yet.",
+      "An added language appears right away in the language choice in the account menu and the profile. Texts not yet translated here are shown in German.",
   },
   nl: {
     "uebersetzungen.titel": "Vertalingen",
@@ -114,6 +114,6 @@ export default {
     "uebersetzungen.anlegen": "Toevoegen",
     "uebersetzungen.angelegt": "Taal „{{name}}” toegevoegd.",
     "uebersetzungen.sprachwahlHinweis":
-      "Toegevoegde talen kunnen hier volledig worden vertaald. De taalkeuze van de toepassing biedt momenteel alleen Duits, Engels en Nederlands; of er meer bijkomen, is nog niet besloten.",
+      "Een toegevoegde taal verschijnt direct in de taalkeuze in het accountmenu en het profiel. Teksten die hier nog niet vertaald zijn, toont de interface in het Duits.",
   },
 } satisfies Textmodul;

@@ -19,7 +19,12 @@
 // ihn sich beim ersten Überdecken und gibt ihn der Pflegekarte als Vergleichstext heraus.
 //
 // DOM-frei, strukturell typisiert wie `htmlLang.ts` — prüfbar ohne das große Wörterbuch.
-import { I18N_LANGUAGE_CHANGED_EVENT, type I18nLike, type SprachZuhoerer } from "./htmlLang";
+import {
+  ERLAUBTE_SPRACHEN,
+  I18N_LANGUAGE_CHANGED_EVENT,
+  type I18nLike,
+  type SprachZuhoerer,
+} from "./htmlLang";
 
 /** Die Antwort von `GET /api/i18n/:locale`. */
 export interface GepflegteTexte {
@@ -94,15 +99,24 @@ export function mitgelieferterText(
 }
 
 /**
- * Legt gepflegte Texte über eine Sprache — nur, wenn i18next diese Sprache schon geladen hat (siehe
- * Kopf). Eine noch nicht geladene Sprache bekommt ihre Texte beim nächsten Wechsel dorthin.
+ * Darf jetzt überlegt werden? Eine MITGELIEFERTE Sprache erst, wenn ihr Paket da ist (siehe Kopf).
+ * Eine im Betrieb angelegte Sprache (FR-I18N-02) hat nie ein Paket, das ausbleiben könnte — ihre
+ * gepflegten Texte SIND ihr Bestand und dürfen immer gelegt werden.
+ */
+function darfUeberlegen(i18n: TextpflegeI18n, sprache: string): boolean {
+  return !ERLAUBTE_SPRACHEN.includes(sprache) || i18n.hasResourceBundle(sprache, NAMENSRAUM);
+}
+
+/**
+ * Legt gepflegte Texte über eine Sprache — eine mitgelieferte nur, wenn i18next ihr Paket schon
+ * geladen hat (siehe Kopf). Eine noch nicht geladene bekommt ihre Texte beim nächsten Wechsel dorthin.
  */
 export function legeTexteUeber(
   i18n: TextpflegeI18n,
   sprache: string,
   texte: Readonly<Record<string, string>>,
 ): void {
-  if (!i18n.hasResourceBundle(sprache, NAMENSRAUM)) {
+  if (!darfUeberlegen(i18n, sprache)) {
     return;
   }
   for (const [schluessel, text] of Object.entries(texte)) {
@@ -140,7 +154,7 @@ export function uebernimmBestand(
   sprache: string,
   texte: Readonly<Record<string, string>>,
 ): void {
-  if (!i18n.hasResourceBundle(sprache, NAMENSRAUM)) {
+  if (!darfUeberlegen(i18n, sprache)) {
     return;
   }
   const bisher = [...(originaleVon(i18n).get(sprache)?.keys() ?? [])];
