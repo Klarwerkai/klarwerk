@@ -9,6 +9,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
+import { klaraBeispiel } from "../lib/klaraBeispiele";
 import {
   type ResolvedKlaraEntry,
   allFaqEntries,
@@ -42,11 +43,22 @@ function KlaraResult({
   entry,
   onNavigate,
 }: { entry: ResolvedKlaraEntry; onNavigate: () => void }): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  // R-0941: auch ein über die Beschriftung gefundenes Element zeigt sein Beispiel, falls es eines hat.
+  const beispiel = klaraBeispiel(entry.id, i18n.language);
   return (
     <div className="rounded-card border border-hairline bg-page px-3 py-2.5">
       <div className="text-[12.5px] font-semibold text-text">{entry.title}</div>
       <p className="mt-0.5 text-[12px] leading-relaxed text-muted">{entry.body}</p>
+      {beispiel ? (
+        <p
+          data-testid="klara-beispiel-treffer"
+          className="mt-1 text-[12px] leading-relaxed text-text"
+        >
+          <span className="font-semibold">{t("klarabeispiel.titel")}: </span>
+          {beispiel}
+        </p>
+      ) : null}
       <Link
         to={entry.route}
         onClick={onNavigate}
@@ -290,6 +302,12 @@ export function KlaraAssistant(): JSX.Element {
 
   // Zeige-Modus-Auflösung: exakter Anker gewinnt; sonst Beschriftung als tolerante Suche.
   const inspectedEntry = inspected?.entryId ? klaraEntryById(inspected.entryId) : null;
+  // R-0941: das konkrete Beispiel zur Elementerklärung (`lib/klaraBeispiele.ts`) — es steht unter
+  // dem Text und wird mit vorgelesen. Ohne Beispiel bleibt die Erklärung, wie sie war.
+  const fieldBeispiel = fieldEntry ? klaraBeispiel(fieldEntry.id, i18n.language) : null;
+  const inspectedBeispiel = inspectedEntry ? klaraBeispiel(inspectedEntry.id, i18n.language) : null;
+  const mitBeispiel = (body: string, beispiel: string | null): string =>
+    beispiel ? `${body} ${t("klarabeispiel.titel")}: ${beispiel}` : body;
   const inspectedHits =
     inspected && !inspectedEntry && inspected.label.length > 1
       ? searchKlara(resolved, inspected.label)
@@ -418,7 +436,20 @@ export function KlaraAssistant(): JSX.Element {
                   <p className="mt-0.5 text-[12px] leading-relaxed text-muted">
                     {t(fieldEntry.bodyKey)}
                   </p>
-                  {speakButton("field", t(fieldEntry.titleKey), t(fieldEntry.bodyKey))}
+                  {fieldBeispiel ? (
+                    <p
+                      data-testid="klara-beispiel-feld"
+                      className="mt-1 rounded-input bg-page px-2 py-1.5 text-[12px] leading-relaxed text-text"
+                    >
+                      <span className="font-semibold">{t("klarabeispiel.titel")}: </span>
+                      {fieldBeispiel}
+                    </p>
+                  ) : null}
+                  {speakButton(
+                    "field",
+                    t(fieldEntry.titleKey),
+                    mitBeispiel(t(fieldEntry.bodyKey), fieldBeispiel),
+                  )}
                 </div>
               ) : (
                 <p className="text-[12px] leading-relaxed text-muted-2">{t("klara.fieldHint")}</p>
@@ -464,10 +495,19 @@ export function KlaraAssistant(): JSX.Element {
                     <p className="mt-0.5 text-[12px] leading-relaxed text-muted">
                       {t(inspectedEntry.bodyKey)}
                     </p>
+                    {inspectedBeispiel ? (
+                      <p
+                        data-testid="klara-beispiel-element"
+                        className="mt-1 rounded-input bg-page px-2 py-1.5 text-[12px] leading-relaxed text-text"
+                      >
+                        <span className="font-semibold">{t("klarabeispiel.titel")}: </span>
+                        {inspectedBeispiel}
+                      </p>
+                    ) : null}
                     {speakButton(
                       "inspected",
                       t(inspectedEntry.titleKey),
-                      t(inspectedEntry.bodyKey),
+                      mitBeispiel(t(inspectedEntry.bodyKey), inspectedBeispiel),
                     )}
                   </div>
                 ) : inspectedHits.length > 0 ? (

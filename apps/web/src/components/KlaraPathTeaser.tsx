@@ -53,6 +53,15 @@ export function KlaraPathTeaser({ surface }: { surface: KlaraPathSurface }): JSX
           >
             {t("klara.path.helpLink")}
           </Link>
+          {/* N-0042: die benannte Anlaufstelle für den Word-Zugang — der Supportweg dieser
+              Installation, den die Hilfeseite oben zeigt. Bewusst KEIN zweiter Link und keine
+              Verfügbarkeitsbehauptung (JOB 3144: genau ein Weg zur Hilfe). */}
+          <p
+            data-testid="klara-path-anlaufstelle"
+            className="mt-1 max-w-2xl text-[12px] leading-relaxed text-muted"
+          >
+            {t("wordvorschau.anlaufstelle")}
+          </p>
         </div>
       </div>
     </aside>

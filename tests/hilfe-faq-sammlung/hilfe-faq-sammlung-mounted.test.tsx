@@ -1,29 +1,35 @@
 // @vitest-environment jsdom
 // ================================================================================================
-// Aufnahme `gesamt-hilfen` · R-0935 / R-0924 — DIE HÄUFIGEN FRAGEN STEHEN AUF DER HILFESEITE.
+// Aufnahme `gesamt-hilfen` · R-0935 / R-0924 — DIE HÄUFIGEN FRAGEN STEHEN AUF DER HILFESEITE,
+// IN DE/EN/NL UND IN ANWENDERSPRACHE.
 // ================================================================================================
 //
-// DER BEFUND (Quelltext am Basisstand 6f9e961b): die 77 ausformulierten FAQ-Antworten
-// (`lib/faqContent.ts`) hatten genau EINEN Leser — `allFaqEntries` in `lib/klaraRegistry.ts`, also
-// Klaras Suche. `pages/Help.tsx` importierte sie nicht. R-0935 verlangt neben den Themenkarten
-// „eine Sammlung häufiger Fragen"; R-0924 den Fragenkatalog je Seite und Funktion mit Antworten.
+// DER BEFUND (Quelltext am Basisstand 6f9e961b): die ausformulierten FAQ-Antworten
+// (`lib/faqContent.ts`) hatten genau EINEN Leser — Klaras Suche. R-0935 verlangt neben den
+// Themenkarten „eine Sammlung häufiger Fragen" in beiden Sprachen; R-0924 den Fragenkatalog je
+// Seite und Funktion mit Antworten.
+//
+// NACHARBEIT 3 (Ben): die erste Fassung blendete `faqContent.ts` WÖRTLICH ein — mit Rollen- und
+// Prüfbegriffen und nur auf Deutsch. Die Seite liest jetzt die Lesefassung `lib/hilfeFaq.ts`; die
+// Wortwahl und die Rollenausnahme prüft `hilfe-faq-anwendersprache.test.ts` daneben.
 //
 // GEPRÜFT WIRD DIE ECHTE SEITE mit echtem Router und echtem i18n — ein DOM-freier Zwilling bliebe
 // grün, wenn die Seite die Liste gar nicht zeichnet.
 //
-// GEGENPROBEN (beim Bau gedanklich angesetzt, je Fall genannt):
+// GEGENPROBEN (je Fall genannt):
 //   · FAQ-Block aus `Help.tsx` entfernen                         → S1, S2 rot
+//   · wieder `faqContent.ts` wörtlich einblenden                  → S2 rot (andere Texte)
 //   · Suche nicht auf die FAQ anwenden                            → S3 rot
 //   · Nulltreffer nur an den Kapiteln entscheiden                 → S3 rot
 //   · Rollenprüfung am Sprunglink weglassen                       → S5 rot
-//   · FAQ in EN/NL deutsch einblenden                             → S6 rot
+//   · EN/NL wieder ausblenden oder deutsch zeigen                 → S6 rot
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { type Role, routePathAllows } from "../../apps/web/src/app/navigation";
 import i18n from "../../apps/web/src/i18n";
-import { FAQ_CONTENT } from "../../apps/web/src/lib/faqContent";
+import { HILFE_FAQ } from "../../apps/web/src/lib/hilfeFaq";
 import { Help } from "../../apps/web/src/pages/Help";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -60,7 +66,7 @@ async function hilfeMounten(rolle: Role, sprache: string): Promise<HTMLElement> 
   return flaeche;
 }
 
-afterEach(async () => {
+async function abbauen(): Promise<void> {
   const wurzel = root;
   if (wurzel) {
     await act(async () => {
@@ -70,6 +76,10 @@ afterEach(async () => {
   container?.remove();
   root = null;
   container = null;
+}
+
+afterEach(async () => {
+  await abbauen();
   await i18n.changeLanguage("de");
 });
 
@@ -96,33 +106,42 @@ function faqEintrag(flaeche: HTMLElement, id: string): HTMLElement {
   return eintrag;
 }
 
+const SPRACHEN = ["de", "en", "nl"] as const;
+
 describe("R-0935 / R-0924 · die Sammlung häufiger Fragen auf der Hilfeseite", () => {
-  it("S1 · DE: die Sammlung steht da — mit Überschrift und JEDER der Originalfragen", async () => {
+  it("S1 · DE: die Sammlung steht da — mit Überschrift und JEDER Frage der Lesefassung", async () => {
     const flaeche = await hilfeMounten("controller", "de");
     const sammlung = flaeche.querySelector('[data-testid="hilfe-faq"]');
     expect(sammlung, "keine FAQ-Sammlung auf der Hilfeseite").not.toBeNull();
     expect(sammlung?.querySelector("h2")?.textContent).toBe(i18n.t("hilfefaq.titel"));
     expect(faqEintraege(flaeche).map((eintrag) => eintrag.dataset.hilfeFaq)).toEqual(
-      FAQ_CONTENT.map((faq) => faq.id),
+      HILFE_FAQ.map((faq) => faq.id),
     );
   });
 
-  it("S2 · DE: jede Frage ist eine aufklappbare Zusammenfassung, darunter die WÖRTLICHE Antwort", async () => {
-    const flaeche = await hilfeMounten("controller", "de");
-    for (const faq of FAQ_CONTENT) {
-      const eintrag = faqEintrag(flaeche, faq.id);
-      expect(eintrag.querySelector("details > summary")?.textContent, faq.id).toBe(faq.question);
-      expect(eintrag.querySelector("details > p")?.textContent, faq.id).toBe(faq.answer);
-    }
-  });
+  it.each(SPRACHEN)(
+    "S2 · %s: jede Frage ist eine aufklappbare Zusammenfassung, darunter die Antwort der Lesefassung",
+    async (sprache) => {
+      const flaeche = await hilfeMounten("controller", sprache);
+      for (const faq of HILFE_FAQ) {
+        const eintrag = faqEintrag(flaeche, faq.id);
+        expect(eintrag.querySelector("details > summary")?.textContent, faq.id).toBe(
+          faq.frage[sprache],
+        );
+        expect(eintrag.querySelector("details > p")?.textContent, faq.id).toBe(
+          faq.antwort[sprache],
+        );
+      }
+    },
+  );
 
   it("S3 · DE: dieselbe Suche filtert die Fragen; ein reiner FAQ-Treffer ist KEIN Nulltreffer", async () => {
     const flaeche = await hilfeMounten("controller", "de");
-    const frage = FAQ_CONTENT.find((faq) => faq.id === "faq.bibliothek.6");
+    const frage = HILFE_FAQ.find((faq) => faq.id === "faq.bibliothek.6");
     if (!frage) {
-      throw new Error("FAQ faq.bibliothek.6 fehlt im Bestand.");
+      throw new Error("FAQ faq.bibliothek.6 fehlt in der Lesefassung.");
     }
-    await suche(flaeche, frage.question);
+    await suche(flaeche, frage.frage.de);
     expect(faqEintraege(flaeche).map((eintrag) => eintrag.dataset.hilfeFaq)).toEqual([
       "faq.bibliothek.6",
     ]);
@@ -144,7 +163,7 @@ describe("R-0935 / R-0924 · die Sammlung häufiger Fragen auf der Hilfeseite", 
     for (const rolle of ["viewer", "controller"] as const) {
       const flaeche = await hilfeMounten(rolle, "de");
       const mitLink = new Set<string>();
-      for (const faq of FAQ_CONTENT) {
+      for (const faq of HILFE_FAQ) {
         const link = faqEintrag(flaeche, faq.id).querySelector<HTMLAnchorElement>("a");
         const erwartet = faq.route !== "/hilfe" && routePathAllows(faq.route, rolle);
         expect(link !== null, `${rolle} ${faq.id} → ${faq.route}`).toBe(erwartet);
@@ -155,15 +174,7 @@ describe("R-0935 / R-0924 · die Sammlung häufiger Fragen auf der Hilfeseite", 
         }
       }
       gesehen[rolle] = mitLink;
-      const wurzel = root;
-      if (wurzel) {
-        await act(async () => {
-          wurzel.unmount();
-        });
-      }
-      container?.remove();
-      root = null;
-      container = null;
+      await abbauen();
     }
     // Gerechnet, nicht verdrahtet: dieselbe Liste, zwei Rollen, zwei verschiedene Linkmengen.
     expect(gesehen.controller?.has("faq.pruefen.1")).toBe(true);
@@ -171,16 +182,27 @@ describe("R-0935 / R-0924 · die Sammlung häufiger Fragen auf der Hilfeseite", 
   });
 
   it.each(["en", "nl"] as const)(
-    "S6 · %s: keine deutsche Liste, stattdessen der ehrliche Satz in der Sprache der Oberfläche",
+    "S6 · %s: die Sammlung steht in der Sprache der Oberfläche da — kein deutscher Rückfall",
     async (sprache) => {
       const flaeche = await hilfeMounten("controller", sprache);
-      expect(faqEintraege(flaeche)).toHaveLength(0);
-      const karte = flaeche.querySelector('[data-testid="hilfe-faq"]');
-      expect(karte, "der Hinweis auf die deutsche Fassung fehlt").not.toBeNull();
-      expect(karte?.textContent).toContain(i18n.t("hilfefaq.titel"));
-      expect(karte?.textContent).toContain(i18n.t("hilfefaq.nurDeutsch"));
-      // Wirklich übersetzt — kein stiller Rückfall auf den deutschen Text.
-      expect(i18n.t("hilfefaq.nurDeutsch")).not.toBe(i18n.getFixedT("de")("hilfefaq.nurDeutsch"));
+      const sammlung = flaeche.querySelector('[data-testid="hilfe-faq"]');
+      expect(sammlung, "keine FAQ-Sammlung in dieser Sprache").not.toBeNull();
+      expect(sammlung?.querySelector("h2")?.textContent).toBe(i18n.t("hilfefaq.titel"));
+      expect(i18n.t("hilfefaq.titel")).not.toBe(i18n.getFixedT("de")("hilfefaq.titel"));
+      expect(faqEintraege(flaeche)).toHaveLength(HILFE_FAQ.length);
+      for (const faq of HILFE_FAQ) {
+        expect(faq.frage[sprache], `${faq.id}: Frage nicht übersetzt`).not.toBe(faq.frage.de);
+        expect(faq.antwort[sprache], `${faq.id}: Antwort nicht übersetzt`).not.toBe(faq.antwort.de);
+      }
+      // Die Suche läuft in der Sprache der Oberfläche über die übersetzte Frage.
+      const frage = HILFE_FAQ.find((faq) => faq.id === "faq.bibliothek.6");
+      if (!frage) {
+        throw new Error("FAQ faq.bibliothek.6 fehlt in der Lesefassung.");
+      }
+      await suche(flaeche, frage.frage[sprache]);
+      expect(faqEintraege(flaeche).map((eintrag) => eintrag.dataset.hilfeFaq)).toEqual([
+        "faq.bibliothek.6",
+      ]);
     },
   );
 });

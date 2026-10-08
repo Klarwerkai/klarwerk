@@ -7,7 +7,6 @@ import { useRole } from "../app/RoleContext";
 import { type Role, routePathAllows } from "../app/navigation";
 import { UploadLimitsHint } from "../components/UploadLimitsHint";
 import { Card, PageHeader } from "../components/ui";
-import { FAQ_CONTENT } from "../lib/faqContent";
 import { HELP_TOPICS, type HelpSearchItem, filterHelpTopics } from "../lib/helpTopics";
 import {
   ISO_HELP_LABELS,
@@ -16,6 +15,8 @@ import {
   isoHelpSprache,
   isoQuellenAnzeige,
 } from "../lib/helpTopics.iso";
+import { BIBLIOTHEK_TEILE, hilfeArtikel } from "../lib/hilfeBibliothek";
+import { HILFE_FAQ, hilfeFaqSprache } from "../lib/hilfeFaq";
 import { type PilotSchritt, pilotRolleAusSitzung, pilotSchritte } from "../lib/pilotChecklist";
 import { PILOT_OBSERVATIONS } from "../lib/pilotObservationGuide";
 
@@ -100,9 +101,10 @@ export function Help(): JSX.Element {
 
   // R-0935 / R-0924: die häufigen Fragen als eigene Sammlung unter den Kapiteln — derselbe Suchraum,
   // aber KEIN Kapitel (`data-hilfe-thema` bleibt den Kapiteln vorbehalten; die Seitenhilfe des
-  // Zahnrads zählt Kapitel je Route). Die Antworten liegen nur deutsch vor (`faqContent.ts:1-3`);
-  // in EN/NL kommen sie nicht in den Suchraum, dort steht der ehrliche Satz `hilfefaq.nurDeutsch`.
-  const faqDeutsch = i18n.language.startsWith("de");
+  // Zahnrads zählt Kapitel je Route). Quelle ist die Lesefassung `lib/hilfeFaq.ts` in
+  // Anwendersprache und DE/EN/NL (P-HILFE-ANWENDERSPRACHE) — NICHT `faqContent.ts` wörtlich, das
+  // Rollen- und Prüfbegriffe trägt und Klaras Wissensbasis bleibt.
+  const faqLng = hilfeFaqSprache(i18n.language);
 
   // i18n-Texte auflösen → durchsuchbare Items (DOM-freie Filterung im Helper).
   const items: HilfeEintrag[] = [
@@ -124,16 +126,14 @@ export function Help(): JSX.Element {
       to: topic.to,
       sources: topic.sources,
     })),
-    ...(faqDeutsch
-      ? FAQ_CONTENT.map((faq) => ({
-          id: faq.id,
-          title: faq.question,
-          body: faq.answer,
-          tags: [],
-          to: faq.route,
-          faq: true as const,
-        }))
-      : []),
+    ...HILFE_FAQ.map((faq) => ({
+      id: faq.id,
+      title: faq.frage[faqLng],
+      body: faq.antwort[faqLng],
+      tags: [],
+      to: faq.route,
+      faq: true as const,
+    })),
   ];
   const treffer = filterHelpTopics(items, q);
   const visible = treffer.filter((eintrag) => eintrag.faq !== true);
@@ -363,6 +363,9 @@ export function Help(): JSX.Element {
                 {tag}
               </span>
             ));
+            // R-0890: der Bibliotheksartikel zu dieser Funktion nach dem Fünf-Teil-Bauplan
+            // (`lib/hilfeBibliothek.ts`). ISO-Kapitel haben keinen — dort ist er `null`.
+            const artikel = hilfeArtikel(topic.id, i18n.language);
             // Der Inhalt ist für beide Kartenformen DERSELBE und wird einmal gebaut.
             const inhalt = (
               <>
@@ -380,6 +383,35 @@ export function Help(): JSX.Element {
                     </p>
                   ))}
                 </div>
+                {/* R-0890: „Ausführlich erklärt" — natives `details`, standardmäßig zugeklappt, damit
+                    die Seite kurz bleibt (P-HILFE-ANWENDERSPRACHE). Die Teile tragen KEIN
+                    `data-hilfe-absatz`: das bleibt dem Kapiteltext vorbehalten, den die
+                    vorhandenen Wächter lesen. */}
+                {artikel ? (
+                  <details
+                    data-hilfe-artikel={topic.id}
+                    className="mt-2.5 rounded-input border border-hairline bg-page px-2.5 py-2"
+                  >
+                    <summary className="cursor-pointer text-[12.5px] font-semibold text-ink">
+                      {t("hilfebibliothek.oeffnen")}
+                    </summary>
+                    <dl className="mt-1.5 space-y-2">
+                      {BIBLIOTHEK_TEILE.map((teil) => (
+                        <div key={teil}>
+                          <dt className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                            {t(`hilfebibliothek.teil.${teil}`)}
+                          </dt>
+                          <dd
+                            data-hilfe-artikel-teil={teil}
+                            className="mt-0.5 text-[12.5px] leading-relaxed text-text"
+                          >
+                            {artikel[teil]}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </details>
+                ) : null}
                 {/* JOB 3468: die geltenden Upload-Grenzen — AUS DER SERVERQUELLE, über die eine
                     vorhandene Anzeige. Sie entscheidet selbst, ob sie etwas sagt: ohne Werte
                     (laden, leer, Fehler, offline, kein Abfragekontext) rendert sie `null`
@@ -481,7 +513,7 @@ export function Help(): JSX.Element {
           Bereich steht nur, wenn die Rolle aus einer Sitzung stammt UND der Router sie hineinlässt
           (dieselbe Zurückhaltung wie die Einstiegsführung oben, JOB 4022/4358), und nie auf
           `/hilfe` selbst. Ohne Treffer bei laufender Suche steht die Sammlung gar nicht da. */}
-      {faqDeutsch && faqTreffer.length > 0 ? (
+      {faqTreffer.length > 0 ? (
         <section data-testid="hilfe-faq" className="mt-6">
           <h2 className="text-[15px] font-semibold text-ink">{t("hilfefaq.titel")}</h2>
           <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
@@ -511,14 +543,6 @@ export function Help(): JSX.Element {
           </ul>
         </section>
       ) : null}
-      {faqDeutsch ? null : (
-        <Card data-testid="hilfe-faq" className="mt-6 border-dashed">
-          <h2 className="text-[14px] font-semibold text-ink">{t("hilfefaq.titel")}</h2>
-          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
-            {t("hilfefaq.nurDeutsch")}
-          </p>
-        </Card>
-      )}
     </div>
   );
 }
