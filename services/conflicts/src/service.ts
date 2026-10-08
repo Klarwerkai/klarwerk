@@ -5,6 +5,7 @@ import { type ComparisonJudgement, type DetectionCoverage, comparisonOutcome } f
 import {
   type ConflictVerdict,
   type DetectSubject,
+  type GeltungsKollisionsRegel,
   autoDescription,
   coreText,
   decideFromVerdict,
@@ -441,6 +442,10 @@ export class ConflictService {
       modelLabel?: string;
       isCurrent?: (koId: string, version: number) => boolean | Promise<boolean>;
       coverage?: DetectionCoverage;
+      // R-1632 / R-1633: geben BEIDE Seiten eine Geltung an und liegt sie verschieden, ist ein
+      // erkannter Widerspruch ein Kontext- bzw. Rollenkonflikt statt eines Wahrheitskonflikts
+      // (Regel in knowledge-object `geltungsKollision`). Ohne Regel: Bestandsverhalten.
+      geltungsKollision?: GeltungsKollisionsRegel;
     } = {},
   ): Promise<Conflict[]> {
     // AUFTRAG-mega29 B2 (bens M28-2): der Deckel begrenzt, was GEPRÜFT wird — nicht, was
@@ -609,16 +614,26 @@ export class ConflictService {
         // R-0263: Klaras Vorschlag Widerspruch/Präzisierung, auf die zwei Punkte abgebildet.
         ...(vorschlag ? { vorschlag } : {}),
       };
+      // R-1632 / R-1633: ein Widerspruch zweier Punkte mit VERSCHIEDENER Geltung ist ein
+      // Kontext- (anderer Ort) bzw. Rollenkonflikt (gleicher Ort, andere Rolle) — beide Aussagen
+      // können in ihrem Bereich gelten. Die Beschreibung nennt beide Geltungen. Nur „truth" wird
+      // umgeordnet; ein Versionskonflikt („ueberholt") bleibt, was er ist.
+      const kollision =
+        decision.type === "truth"
+          ? (options.geltungsKollision?.(subject.geltung, cand.geltung) ?? null)
+          : null;
       // D-AISTATE PAKET 4 (bens V5, aistate-fix5): versions-konditionale Aktivierung — Umfang und
       // ehrliche Grenze der Absicherung s. createAutoVersionBound.
       const conflict = await this.createAutoVersionBound(
         {
           koA: subject.refId,
           koB: cand.refId,
-          type: decision.type,
+          type: kollision ? kollision.art : decision.type,
           // R-0252: unabhängig von `type` eingeordnet (detect.ts `arbeitsartAusUrteil`).
           ...(decision.arbeitsart ? { arbeitsart: decision.arbeitsart } : {}),
-          description: autoDescription(verdict),
+          description: kollision
+            ? `${autoDescription(verdict)} ${kollision.vermerk}`
+            : autoDescription(verdict),
           ...(subject.version !== undefined ? { koAVersion: subject.version } : {}),
           ...(cand.version !== undefined ? { koBVersion: cand.version } : {}),
         },

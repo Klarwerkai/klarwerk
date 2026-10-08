@@ -37,6 +37,9 @@ export type {
 // Berater-Konzept 04.07. (Stufe 2/3): Kerntext-Subjekt der automatischen Erkennung (der App-Root
 // bildet Wissensobjekte auf diese modul-reine Form ab; conflicts kennt knowledge-object nicht).
 export type { DetectSubject, ConflictVerdict } from "./src/detect";
+// R-1632 / R-1633: die Geltungsform und der Rückruf, über den die App-Wurzel die Geltungsregel aus
+// knowledge-object hereinreicht (conflicts legt Geltung selbst nicht aus).
+export type { DetectGeltung, GeltungsKollisionsRegel } from "./src/detect";
 // Weg 3 (Prefilter): Kerntext eines Subjekts (K0-2) — derselbe String, den der Duplikat-Judge
 // vergleicht. Wird für die semantische Vorfilterung eingebettet, damit Prefilter und Urteil denselben
 // Gegenstand sehen.

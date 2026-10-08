@@ -188,6 +188,9 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
     // R-0431 (K2): das Fachgebiet — dieselbe Torregel wie `category`.
     case "domain":
       return { action, domain: "Instandhaltung" };
+    // R-1632 / R-1633: die Geltung — dieselbe Torregel wie `domain`.
+    case "geltung":
+      return { action, geltung: { ebene: "werk", werk: "Werk Nord" } };
     case "confidentiality":
       return { action, level: "intern" };
     // JOB 557: die Verantwortung am Objekt benennen. Eine fachlich gültige Mindestnutzlast —

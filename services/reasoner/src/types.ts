@@ -46,6 +46,12 @@ export interface KnowledgeRef {
   // Fehler wie die 500 aus `wordAddin.ts:925`, nur mit einer größeren Ziffer. Die Menge gehört zum
   // Aufrufer, wo sie messbar ist; fehlt das Feld, matcht der Altbestand wie bisher.
   bodyText?: string;
+  // R-1633 (Schicht- und Rollen-Filter beim Fragen): wie gut die Geltung dieser Quelle zum
+  // Fragekontext passt (3 eigene Schicht · 2 eigenes Werk · 1 Konzern/unbestimmt · 0 anderswo).
+  // Gesetzt NUR vom Fragedienst, und nur wenn der Fragende einen Kontext angegeben hat; fehlt das
+  // Feld überall, rechnet `rankCandidates` Zeichen für Zeichen wie bisher. Der Reasoner kennt die
+  // Geltung selbst nicht — er bekommt nur diese Zahl (Regel: knowledge-object `geltungFuerFrage`).
+  geltungsrang?: number;
 }
 
 // ================================================================================================

@@ -23,7 +23,29 @@ export interface DetectSubject {
   // D-AISTATE PAKET 4 (bens V5): Inhaltsversion des Beitrags zum Prüfzeitpunkt. Befunde werden an
   // BEIDE beteiligten Versionen gebunden (additiv); ein Aufrufer kann darüber Stale-Läufe verwerfen.
   version?: number;
+  // R-1632 / R-1633: die Geltung des Beitrags (Konzern/Werk/Schicht, Rolle), strukturgleich zu
+  // `KoGeltung` in knowledge-object — hier nur durchgereicht. Ausgewertet wird sie ausschliesslich
+  // über die injizierte Regel `geltungsKollision` (detectForSubject); dieses Modul legt sie nicht aus.
+  geltung?: DetectGeltung;
 }
+
+/** R-1632 / R-1633: strukturgleich zu `KoGeltung` (knowledge-object) — bewusst eigenständig. */
+export interface DetectGeltung {
+  ebene: "konzern" | "werk" | "schicht";
+  werk?: string;
+  schicht?: string;
+  rolle?: string;
+}
+
+/**
+ * R-1632 / R-1633: die Regel, die aus zwei Geltungen die Konfliktart eines erkannten Widerspruchs
+ * macht — oder `null` (dann bleibt es beim Wahrheitskonflikt). Die App-Wurzel reicht sie aus
+ * knowledge-object herein (`geltungsKollision`); `vermerk` wird an die Beschreibung gehängt.
+ */
+export type GeltungsKollisionsRegel = (
+  a: DetectGeltung | undefined,
+  b: DetectGeltung | undefined,
+) => { art: "context" | "role"; vermerk: string } | null;
 
 // kon-v1 Modellurteil (striktes JSON aus der Reasoner-Aufgabe „Konfliktprüfung").
 export type ConflictRelation =
