@@ -14,6 +14,7 @@ import { aiSperrHinweisKey } from "../lib/aiAvailability";
 import { klaraBeispiel } from "../lib/klaraBeispiele";
 import {
   type ResolvedKlaraEntry,
+  allBibliothekEntries,
   allFaqEntries,
   allKlaraEntries,
   klaraEntryById,
@@ -301,10 +302,17 @@ export function KlaraAssistant(): JSX.Element {
     ],
     [t, i18n.language],
   );
+  // R-0890 / R-0935: die Bibliotheksartikel sind in Klaras SICHTBARER Suche auffindbar (Suchfeld
+  // und Zeige-Modus über die Beschriftung) — hinter den Registry- und FAQ-Treffern. In die
+  // KI-Grundlage (`rankKlara` unten) gehen sie nicht; Begründung an `allBibliothekEntries`.
+  const auffindbar = useMemo(
+    () => [...resolved, ...allBibliothekEntries(i18n.language, (key) => t(key))],
+    [resolved, t, i18n.language],
+  );
 
   const page = pageEntryFor(location.pathname);
   const fieldEntry = fieldId ? klaraEntryById(fieldId) : null;
-  const results = searchKlara(resolved, query);
+  const results = searchKlara(auffindbar, query);
   // „Zum Bereich"-Link unter der KI-Antwort (Pedi 05.07.): beste Quelle → direkter Absprung.
   // Lookup über den AUFGELÖSTEN Bestand, damit auch FAQ-Quellen (faq:*) Titel + Route liefern.
   const aiFirstSourceId = aiAsk.data?.answered ? aiAsk.data.sources[0] : undefined;
@@ -322,7 +330,7 @@ export function KlaraAssistant(): JSX.Element {
     beispiel ? `${body} ${t("klarabeispiel.titel")}: ${beispiel}` : body;
   const inspectedHits =
     inspected && !inspectedEntry && inspected.label.length > 1
-      ? searchKlara(resolved, inspected.label)
+      ? searchKlara(auffindbar, inspected.label)
       : [];
 
   // KI-Suche: beste Hilfe-Schnipsel als einzige Antwort-Grundlage mitgeben; ohne Treffer

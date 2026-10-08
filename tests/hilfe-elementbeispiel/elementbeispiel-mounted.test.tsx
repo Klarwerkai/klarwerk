@@ -186,6 +186,29 @@ describe("R-0941 · das konkrete Beispiel in Klaras Elementerklärung", () => {
     expect(zeile?.textContent).toContain(klaraBeispiel("cap:tagsField", "de"));
   });
 
+  it("E5 · Nacharbeit 5: Klaras Suchfeld findet einen Bibliotheksartikel („Leimzeit“)", async () => {
+    // R-0890 / R-0935: „Leimzeit“ steht ausschließlich im Bereichsartikel „Wissen erfassen“
+    // (`lib/hilfeBibliothek.ts`) — gefunden wird es nur, wenn das Panel die Artikel durchsucht.
+    const flaeche = await klaraMounten("de");
+    const panel = await oeffnen(flaeche);
+    const feld = panel.querySelector<HTMLInputElement>(
+      `input[placeholder="${i18n.t("klara.searchPlaceholder")}"]`,
+    );
+    if (!feld) throw new Error("Klaras Suchfeld fehlt.");
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
+        feld,
+        "Leimzeit",
+      );
+      feld.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const text = panel.textContent ?? "";
+    expect(text, "der Artikel erscheint nicht unter Klaras Treffern").toContain(
+      i18n.t("help.capture.title"),
+    );
+    expect(text).toContain("Leimzeit");
+  });
+
   it("E4 · „Vorlesen“ liest das Beispiel mit", async () => {
     const gesprochen: string[] = [];
     vi.stubGlobal(

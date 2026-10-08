@@ -15,7 +15,13 @@ import {
   isoHelpSprache,
   isoQuellenAnzeige,
 } from "../lib/helpTopics.iso";
-import { BIBLIOTHEK_TEILE, hilfeArtikel } from "../lib/hilfeBibliothek";
+import {
+  BIBLIOTHEK_GRUPPEN,
+  BIBLIOTHEK_TEILE,
+  FUNKTIONS_ARTIKEL,
+  funktionsArtikel,
+  hilfeArtikel,
+} from "../lib/hilfeBibliothek";
 import { HILFE_FAQ, hilfeFaqSprache } from "../lib/hilfeFaq";
 import { type PilotSchritt, pilotRolleAusSitzung, pilotSchritte } from "../lib/pilotChecklist";
 import { PILOT_OBSERVATIONS } from "../lib/pilotObservationGuide";
@@ -51,6 +57,9 @@ type HilfeEintrag = HelpSearchItem & {
   // R-0935 / R-0924: eine häufige Frage statt eines Kapitels. Sie läuft durch DENSELBEN Suchraum und
   // DIESELBE Suchregel; erst das Ergebnis wird an diesem Merkmal in Kapitel und Fragen geteilt.
   faq?: true;
+  // R-0890 (Nacharbeit 5): ein Funktionsartikel der Bibliothek — die Kennung des Artikels. Auch er
+  // läuft durch denselben Suchraum und wird erst im Ergebnis abgetrennt.
+  funktion?: string;
 };
 
 // ================================================================================================
@@ -106,18 +115,29 @@ export function Help(): JSX.Element {
   // Rollen- und Prüfbegriffe trägt und Klaras Wissensbasis bleibt.
   const faqLng = hilfeFaqSprache(i18n.language);
 
+  // R-0890 / R-0935: der Bibliotheksartikel eines Kapitels als ein Text — für die Suche.
+  const artikeltext = (kapitelId: string): string | null => {
+    const artikel = hilfeArtikel(kapitelId, i18n.language);
+    return artikel ? BIBLIOTHEK_TEILE.map((teil) => artikel[teil]).join(" ") : null;
+  };
+
   // i18n-Texte auflösen → durchsuchbare Items (DOM-freie Filterung im Helper).
   const items: HilfeEintrag[] = [
-    ...HELP_TOPICS.map((topic) => ({
-      id: topic.id,
-      title: t(topic.titleKey),
-      body: t(topic.bodyKey),
-      tags: topic.tags,
-      to: topic.to,
-      // Nur setzen, wenn das Kapitel es WIRKLICH verlangt: ein Feld mit `undefined` ist unter
-      // `exactOptionalPropertyTypes` etwas anderes als ein fehlendes.
-      ...(topic.uploadLimits === true ? { uploadLimits: true } : {}),
-    })),
+    ...HELP_TOPICS.map((topic) => {
+      const suchtext = artikeltext(topic.id);
+      return {
+        id: topic.id,
+        title: t(topic.titleKey),
+        body: t(topic.bodyKey),
+        tags: topic.tags,
+        to: topic.to,
+        // Nur setzen, wenn das Kapitel es WIRKLICH verlangt: ein Feld mit `undefined` ist unter
+        // `exactOptionalPropertyTypes` etwas anderes als ein fehlendes.
+        ...(topic.uploadLimits === true ? { uploadLimits: true } : {}),
+        // R-0890 / R-0935: der zugeklappte Artikel ist durchsuchbar, ohne angezeigt zu werden.
+        ...(suchtext ? { suchtext } : {}),
+      };
+    }),
     ...ISO_HELP_TOPICS.map((topic) => ({
       id: topic.id,
       title: topic.title[isoLng],
@@ -134,10 +154,28 @@ export function Help(): JSX.Element {
       to: faq.route,
       faq: true as const,
     })),
+    ...FUNKTIONS_ARTIKEL.map((artikel) => {
+      const { titel, teile } = funktionsArtikel(artikel, i18n.language);
+      return {
+        id: `funktion:${artikel.id}`,
+        title: titel,
+        body: "",
+        tags: [],
+        to: artikel.route,
+        funktion: artikel.id,
+        suchtext: BIBLIOTHEK_TEILE.map((teil) => teile[teil]).join(" "),
+      };
+    }),
   ];
   const treffer = filterHelpTopics(items, q);
-  const visible = treffer.filter((eintrag) => eintrag.faq !== true);
+  const visible = treffer.filter(
+    (eintrag) => eintrag.faq !== true && eintrag.funktion === undefined,
+  );
   const faqTreffer = treffer.filter((eintrag) => eintrag.faq === true);
+  const funktionTreffer = new Set(
+    treffer.flatMap((eintrag) => (eintrag.funktion === undefined ? [] : [eintrag.funktion])),
+  );
+  const suchAktiv = q.trim().length > 0;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -227,6 +265,17 @@ export function Help(): JSX.Element {
           </p>
         ) : null}
       </Card>
+      {/* R-0443 (Aufnahme gesamt-hilfen): der Einstieg in die eigene Seite „So arbeitet Klarwerk“
+          (`pages/Arbeitsweise.tsx`). Nicht durchsuchbar — ein fester Orientierungspunkt wie die
+          Karten darunter. */}
+      <Link
+        to="/so-arbeitet-klarwerk"
+        data-testid="hilfe-arbeitsweise"
+        className="mb-5 flex items-center justify-between gap-2 rounded-card border border-hairline bg-surface px-4 py-3 text-[13px] font-semibold text-ink hover:border-ink/30"
+      >
+        <span>{t("arbeitsweise.einstieg")}</span>
+        <ArrowRight size={14} aria-hidden="true" />
+      </Link>
       {/* SCRUM-305: kompakte Einstiegsführung für den ersten Nutzerlauf — ehrlich, Stage-1, nicht
           durchsuchbar (fixer Orientierungspunkt), stört die normale Hilfe-Suche nicht.
           JOB 4022: jeder Schritt sagt jetzt, ob er für die lesende Rolle begehbar ist. */}
@@ -327,7 +376,7 @@ export function Help(): JSX.Element {
         data-testid="hilfe-suche"
         className="mb-5 h-10 w-full rounded-input border border-hairline bg-surface px-3 text-sm outline-none focus:border-ink/30"
       />
-      {visible.length === 0 && faqTreffer.length === 0 ? (
+      {visible.length === 0 && faqTreffer.length === 0 && funktionTreffer.size === 0 ? (
         // R-0474: unter dem Satz steht der nächste Schritt. Die Frage an das Wissen nur, wenn die
         // Rolle aus einer Sitzung stammt UND der Router sie auf `/fragen` lässt — dieselbe
         // Zurückhaltung wie die Einstiegsführung oben (JOB 4358).
@@ -366,6 +415,10 @@ export function Help(): JSX.Element {
             // R-0890: der Bibliotheksartikel zu dieser Funktion nach dem Fünf-Teil-Bauplan
             // (`lib/hilfeBibliothek.ts`). ISO-Kapitel haben keinen — dort ist er `null`.
             const artikel = hilfeArtikel(topic.id, i18n.language);
+            // Trifft die Suche im Artikel, steht er offen — sonst sähe man nicht, WO sie traf.
+            const suche = q.trim().toLowerCase();
+            const artikelTrifft =
+              suche.length > 0 && (topic.suchtext ?? "").toLowerCase().includes(suche);
             // Der Inhalt ist für beide Kartenformen DERSELBE und wird einmal gebaut.
             const inhalt = (
               <>
@@ -390,6 +443,7 @@ export function Help(): JSX.Element {
                 {artikel ? (
                   <details
                     data-hilfe-artikel={topic.id}
+                    open={artikelTrifft || undefined}
                     className="mt-2.5 rounded-input border border-hairline bg-page px-2.5 py-2"
                   >
                     <summary className="cursor-pointer text-[12.5px] font-semibold text-ink">
@@ -507,6 +561,67 @@ export function Help(): JSX.Element {
             );
           })}
         </div>
+      ) : null}
+      {/* R-0890 (Nacharbeit 5): DIE FUNKTIONSARTIKEL, gegliedert nach den Teilen der Quelle. Jeder
+          ist ein natives `details`, zugeklappt — bei einer laufenden Suche stehen die Treffer offen.
+          Ohne Treffer bei laufender Suche steht der Abschnitt gar nicht da. */}
+      {funktionTreffer.size > 0 ? (
+        <section data-testid="hilfe-funktionen" className="mt-6">
+          <h2 className="text-[15px] font-semibold text-ink">
+            {t("hilfebibliothek.funktionen.titel")}
+          </h2>
+          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+            {t("hilfebibliothek.funktionen.untertitel")}
+          </p>
+          {BIBLIOTHEK_GRUPPEN.map((gruppe) => {
+            const inGruppe = FUNKTIONS_ARTIKEL.filter(
+              (artikel) => artikel.gruppe === gruppe && funktionTreffer.has(artikel.id),
+            );
+            if (inGruppe.length === 0) {
+              return null;
+            }
+            return (
+              <div key={gruppe} data-hilfe-gruppe={gruppe} className="mt-3">
+                <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+                  {t(`hilfebibliothek.gruppe.${gruppe}`)}
+                </h3>
+                <ul className="mt-1.5 space-y-2">
+                  {inGruppe.map((artikel) => {
+                    const { titel, teile } = funktionsArtikel(artikel, i18n.language);
+                    return (
+                      <li key={artikel.id}>
+                        <details
+                          data-hilfe-artikel={artikel.id}
+                          open={suchAktiv || undefined}
+                          className="rounded-card border border-hairline bg-surface px-3.5 py-2.5"
+                        >
+                          <summary className="cursor-pointer text-[13px] font-semibold text-ink">
+                            {titel}
+                          </summary>
+                          <dl className="mt-1.5 space-y-2">
+                            {BIBLIOTHEK_TEILE.map((teil) => (
+                              <div key={teil}>
+                                <dt className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                                  {t(`hilfebibliothek.teil.${teil}`)}
+                                </dt>
+                                <dd
+                                  data-hilfe-artikel-teil={teil}
+                                  className="mt-0.5 text-[12.5px] leading-relaxed text-text"
+                                >
+                                  {teile[teil]}
+                                </dd>
+                              </div>
+                            ))}
+                          </dl>
+                        </details>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            );
+          })}
+        </section>
       ) : null}
       {/* R-0935 / R-0924: DIE SAMMLUNG HÄUFIGER FRAGEN. Eine Frage ist ein natives
           `details`/`summary` — aufklappbar mit Tastatur, ohne eigenen Zustand. Der Sprung in den

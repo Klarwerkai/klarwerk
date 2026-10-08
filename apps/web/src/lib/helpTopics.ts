@@ -601,9 +601,15 @@ export interface HelpSearchItem {
   title: string;
   body: string;
   tags: readonly string[];
+  /**
+   * R-0890 / R-0935: weiterer durchsuchbarer Text, der NICHT als Kapiteltext angezeigt wird — der
+   * Bibliotheksartikel des Kapitels (`lib/hilfeBibliothek.ts`), der zugeklappt unter der Karte
+   * steht. Ohne dieses Feld blieben seine Inhalte für die Suche unauffindbar.
+   */
+  suchtext?: string;
 }
 
-// DOM-freie Suche über Titel, Text und Tags. Leere/whitespace-Query → alle Kapitel.
+// DOM-freie Suche über Titel, Text, Tags und den zusätzlichen Suchtext. Leere Query → alle Kapitel.
 export function filterHelpTopics<T extends HelpSearchItem>(
   items: readonly T[],
   query: string,
@@ -613,7 +619,8 @@ export function filterHelpTopics<T extends HelpSearchItem>(
     return [...items];
   }
   return items.filter((item) => {
-    const haystack = `${item.title} ${item.body} ${item.tags.join(" ")}`.toLowerCase();
+    const haystack =
+      `${item.title} ${item.body} ${item.tags.join(" ")} ${item.suchtext ?? ""}`.toLowerCase();
     return haystack.includes(q);
   });
 }

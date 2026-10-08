@@ -2840,18 +2840,25 @@ function GraphObjektliste({
 // gekürzt, steht die Lieferzahl neben der Gesamtzahl. Standardmäßig zugeklappt: eine Vorführsicht
 // wird geöffnet, sie drängt sich nicht vor das Bild. Gemessen in
 // `tests/wissensnetz-flaeche/netz-verwaltung.test.tsx` (S1–S4).
-function SoArbeitetKlarwerk({
+//
+// R-0443 (Aufnahme gesamt-hilfen): dieselbe Sicht steht auch auf der eigenen Seite „So arbeitet
+// Klarwerk“ (`pages/Arbeitsweise.tsx`). Dort gibt es kein Bild — die drei Sätze über Punkte und
+// Linien „im Bild“ entfallen deshalb mit `mitBildschritten={false}`; die Seite erklärt den Aufbau
+// selbst. Liste, Leer- und Kürzungszustände bleiben dieselben.
+export function SoArbeitetKlarwerk({
   kanten,
   gesamt,
   gekuerzt,
   titelVon,
   bekannt,
+  mitBildschritten = true,
 }: {
   kanten: readonly GraphKuratierteKante[] | undefined;
   gesamt: number | undefined;
   gekuerzt: boolean | undefined;
   titelVon: ReadonlyMap<string, string>;
   bekannt: ReadonlySet<string>;
+  mitBildschritten?: boolean;
 }): JSX.Element {
   const { t } = useTranslation();
   const [offen, setOffen] = useState(false);
@@ -2889,11 +2896,13 @@ function SoArbeitetKlarwerk({
       {offen ? (
         <div id="graph-sicht-inhalt" data-testid="graph-sicht-inhalt" className="mt-2 text-sm">
           <h2 className="font-semibold text-text">{t("wissensgraph.sicht.titel")}</h2>
-          <ol className="mt-1 list-decimal pl-5 text-[12.5px] text-muted">
-            <li>{t("wissensgraph.sicht.schritt1")}</li>
-            <li>{t("wissensgraph.sicht.schritt2")}</li>
-            <li>{t("wissensgraph.sicht.schritt3")}</li>
-          </ol>
+          {mitBildschritten ? (
+            <ol className="mt-1 list-decimal pl-5 text-[12.5px] text-muted">
+              <li>{t("wissensgraph.sicht.schritt1")}</li>
+              <li>{t("wissensgraph.sicht.schritt2")}</li>
+              <li>{t("wissensgraph.sicht.schritt3")}</li>
+            </ol>
+          ) : null}
           {kanten === undefined ? (
             <p data-testid="graph-sicht-nicht-geliefert" className="mt-2 text-muted">
               {t("wissensgraph.sicht.nichtGeliefert")}
