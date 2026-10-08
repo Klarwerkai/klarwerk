@@ -94,6 +94,16 @@ Sichtbarkeit vieler Artikel auf einmal und bräuchte je Artikel die bestehende R
 - Jira-Import mit Projektleserechten (`1.0.0-beta.1.750`–`.754`) — „Projekt“ meint dort das
   Jira-Projekt als Importquelle, nicht ein Wissensprojekt.
 
+## Fremde rote Wächter (nicht aus diesem Auftrag)
+
+Am Kandidaten `54828f07` waren drei globale Sicherheitswächter rot, ohne dass dieser Auftrag die
+betroffenen Stellen berührt: `route-guard-audit.test.ts` (der Textscanner liest
+`mcp-routes.ts:284` `app.post(MCP_PFAD, …)` und nimmt das Literal `"/api/ask"` aus Zeile 357 als
+Pfad — „POST /api/ask ist public“), `g10-herkunft-zentrum-vertraulich.test.ts` (drei Importrouten in
+`library-routes.ts` ohne `zeilenrecht`) und `mega74-lesewege-sammler.test.ts`
+(`POST /api/duplicates/:id/merge` ohne Urteil). Die beiden neuen Löschrouten stehen in keiner dieser
+Fehlerlisten. Die Wächter bleiben unverändert; die Behebung gehört zu den jeweiligen Aufträgen.
+
 ## Nicht geprüft
 
 Mehrere echte Menschen mit verschiedenen Rechten in der Oberfläche (die Smoke-Suite kennt ein
