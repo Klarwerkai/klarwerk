@@ -85,6 +85,8 @@ describe("R-0348 · Nachfragen im Gesprächsfaden", () => {
     const res = await fragen({ question: NACHFRAGE });
     expect(res.statusCode).toBe(200);
     expect(res.json().result.answered).toBe(false);
+    // Gegenprobe: ohne Faden bleibt die Frage wörtlich die Frage — auch in der Lücke.
+    expect(res.json().gap.question).toBe(NACHFRAGE);
   });
 
   it("F3 · KERN: mit Faden knüpft die Nachfrage an — die Urlaubsquelle antwortet, die Gleitzeitquelle nicht", async () => {
