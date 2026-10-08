@@ -40,7 +40,14 @@ const KONTO_LANG: Konto = {
   email: "maximiliane.schweighofer-brandenburg@abnahme.klarwerk.example",
 };
 
-const ZEILEN = ["zeile-name", "zeile-email", "zeile-sprache", "zeile-passwort"] as const;
+// R-0582: „Kontodaten berichtigen" ist eine neue Zeile derselben Karte — sie misst mit.
+const ZEILEN = [
+  "zeile-name",
+  "zeile-email",
+  "zeile-kontodaten",
+  "zeile-sprache",
+  "zeile-passwort",
+] as const;
 type ZeilenId = (typeof ZEILEN)[number];
 
 interface Mass {
@@ -384,6 +391,7 @@ describe("JOB 3117 UX-13 · Profil bei 320 px — gemessen an der gebauten Seite
       // Der Name DARF hier umbrechen — er ist länger als die Zeile. Die feste Beschriftung nicht:
       // sie passt, und dann bricht die Zeile um, nicht das Wort.
       beschriftungEinzeilig(m, "zeile-email");
+      beschriftungEinzeilig(m, "zeile-kontodaten");
       beschriftungEinzeilig(m, "zeile-sprache");
       beschriftungEinzeilig(m, "zeile-passwort");
       expect(m.documentWidth, `${sprache}: horizontaler Überlauf`).toBe(320);

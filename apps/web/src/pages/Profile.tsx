@@ -1,8 +1,8 @@
 // JOB 3065 H6 — DAS PROFIL IN DERSELBEN ZEILENKARTE WIE DIE EINSTELLUNGEN.
 //
-// Kein Kicker, keine Einleitung: Name (Wert = Rolle), E-Mail, Sprache, Passwort ändern, die eigene
-// Wirkung und das Abmelden — jede Zeile mit ihrem Wert, die Karten dahinter unverändert.
-import { useMutation } from "@tanstack/react-query";
+// Kein Kicker, keine Einleitung: Name (Wert = Rolle), E-Mail, Kontodaten berichtigen, Sprache,
+// Passwort ändern, die eigene Wirkung und das Abmelden — jede Zeile mit ihrem Wert.
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { authApi } from "../api/auth";
@@ -144,11 +144,100 @@ function PasswortDetail({
   );
 }
 
+// R-0582 (DS13): DIE EIGENEN KONTODATEN BERICHTIGEN — ohne Antrag, ohne Admin.
+//
+// Vorbelegt mit dem Stand der Sitzung. Gesendet werden nur geänderte Felder; der neue Stand kommt
+// aus der ANTWORT und ersetzt den Sitzungsnutzer sofort (Name in Profil und Kopfzeile). Das
+// Passwortfeld erscheint erst, wenn die E-Mail wirklich anders lautet — der Server verlangt es nur
+// dann. Die Meldung eines Fehlers ist der Satz des Servers (Adresse vergeben, Passwort falsch).
+function KontodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const { user } = useSession();
+  const [name, setName] = useState(user?.name ?? "");
+  const [email, setEmail] = useState(user?.email ?? "");
+  const [passwort, setPasswort] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [hinweis, setHinweis] = useState<string | null>(null);
+  const neueEmail = email.trim() !== (user?.email ?? "");
+
+  const speichern = useMutation({
+    mutationFn: () =>
+      authApi.correctAccount({
+        ...(name.trim() !== (user?.name ?? "") ? { name: name.trim() } : {}),
+        ...(neueEmail ? { email: email.trim(), currentPassword: passwort } : {}),
+      }),
+    onSuccess: (stand) => {
+      qc.setQueryData(["auth", "me"], stand);
+      void qc.invalidateQueries({ queryKey: ["auth", "me"] });
+      setPasswort("");
+      setHinweis(t("prof.correctSaved"));
+    },
+    onError: (e: unknown) => setErr(e instanceof ApiError ? e.message : t("state.error")),
+  });
+
+  return (
+    <Detailkarte titel={t("prof.correctTitle")} onZurueck={onZurueck} testId="detail-kontodaten">
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setErr(null);
+          setHinweis(null);
+          if (name.trim() === (user?.name ?? "") && !neueEmail) {
+            setHinweis(t("prof.correctUnchanged"));
+            return;
+          }
+          speichern.mutate();
+        }}
+      >
+        <Field label={t("adm.name")}>
+          <TextInput value={name} onChange={(e) => setName(e.target.value)} required />
+        </Field>
+        <Field label={t("adm.email")}>
+          <TextInput
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </Field>
+        {neueEmail ? (
+          <Field label={t("prof.correctPassword")}>
+            <TextInput
+              type="password"
+              value={passwort}
+              onChange={(e) => setPasswort(e.target.value)}
+              required
+            />
+          </Field>
+        ) : null}
+        {err ? (
+          <div
+            role="alert"
+            className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+          >
+            {err}
+          </div>
+        ) : null}
+        {hinweis ? (
+          <div className="rounded-card border border-trust-pos-fill/30 bg-trust-pos-bg p-3 text-[13px] text-trust-pos-text">
+            {hinweis}
+          </div>
+        ) : null}
+        <Button type="submit" variant="primary" disabled={speichern.isPending}>
+          {t("prof.correctSubmit")}
+        </Button>
+      </form>
+    </Detailkarte>
+  );
+}
+
 export function Profile(): JSX.Element {
   const { t } = useTranslation();
   const { user, signOut } = useSession();
   const [busy, setBusy] = useState(false);
-  const [detail, setDetail] = useState<null | "passwort" | "wirkung">(null);
+  const [detail, setDetail] = useState<null | "passwort" | "wirkung" | "kontodaten">(null);
   const zurueck = (): void => setDetail(null);
   // JOB 3742 · DIE SEITENHILFE DIESER FLÄCHE — und warum hier der HAKEN steht und nicht der
   // Baustein, den die anderen fünf Seiten dieses Auftrags nehmen.
@@ -168,6 +257,7 @@ export function Profile(): JSX.Element {
         <PasswortDetail onZurueck={zurueck} onChanged={() => void signOut()} />
       ) : null}
       {detail === "wirkung" ? <WirkungDetail onZurueck={zurueck} /> : null}
+      {detail === "kontodaten" ? <KontodatenDetail onZurueck={zurueck} /> : null}
       {detail === null ? (
         <Zeilenkarte>
           <Zeile
@@ -178,6 +268,11 @@ export function Profile(): JSX.Element {
             testId="zeile-name"
           />
           <Zeile label={t("adm.email")} wert={user?.email ?? "—"} testId="zeile-email" />
+          <Zeile
+            label={t("prof.correctTitle")}
+            onOeffnen={() => setDetail("kontodaten")}
+            testId="zeile-kontodaten"
+          />
           <Zeile label={t("prof.language")} steuerung={<SprachWahl />} testId="zeile-sprache" />
           <Zeile
             label={t("prof.passwordTitle")}

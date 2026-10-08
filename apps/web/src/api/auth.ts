@@ -48,6 +48,12 @@ export const authApi = {
   // Self-Service: angemeldeter Nutzer ändert sein eigenes Passwort (altes Passwort nötig).
   changePassword: (oldPassword: string, newPassword: string): Promise<void> =>
     api.post<void>("/auth/password", { oldPassword, newPassword }),
+  // R-0582: eigene Kontodaten berichtigen. Eine neue E-Mail verlangt das aktuelle Passwort.
+  correctAccount: (eingabe: {
+    name?: string;
+    email?: string;
+    currentPassword?: string;
+  }): Promise<SessionUser> => api.put<SessionUser>("/auth/me", eingabe),
   // FR-AUTH-08: Reset anfordern (Antwort immer 204) und einlösen (Token + neues Passwort).
   forgot: (email: string): Promise<void> => api.post<void>("/auth/forgot", { email }),
   reset: (token: string, newPassword: string): Promise<void> =>

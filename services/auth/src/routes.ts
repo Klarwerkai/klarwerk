@@ -351,6 +351,36 @@ export function authRoutes(
       return user;
     };
 
+    // R-0582: die Formwache der Kontodaten-Berichtigung (selbst und durch den Admin). Byte-gleich
+    // zu den Antworten beim Anlegen — fehlende Felder sind „unverändert", ein vorhandenes Feld muss
+    // eine nicht leere Zeichenkette bzw. eine Adresse sein. `null` heisst: die 400 ist gesendet.
+    const kontodatenForm = (
+      request: FastifyRequest,
+      reply: FastifyReply,
+    ): { name?: string; email?: string } | null => {
+      const body = (request.body ?? {}) as { name?: unknown; email?: unknown };
+      const ergebnis: { name?: string; email?: string } = {};
+      if (body.name !== undefined) {
+        if (typeof body.name !== "string" || body.name.trim().length === 0) {
+          reply
+            .code(400)
+            .send({ error: "BAD_REQUEST", message: meldung("NAME_REQUIRED", sprache(request)) });
+          return null;
+        }
+        ergebnis.name = body.name.trim();
+      }
+      if (body.email !== undefined) {
+        if (typeof body.email !== "string" || !/.+@.+\..+/.test(body.email.trim())) {
+          reply
+            .code(400)
+            .send({ error: "BAD_REQUEST", message: meldung("EMAIL_REQUIRED", sprache(request)) });
+          return null;
+        }
+        ergebnis.email = body.email.trim();
+      }
+      return ergebnis;
+    };
+
     app.post<{ Body: { name?: unknown; email?: unknown; password?: unknown } }>(
       "/api/auth/register",
       async (request, reply) => {
@@ -467,6 +497,41 @@ export function authRoutes(
         reply.code(200).send(user);
       }
     });
+
+    // R-0582 (DS13): DAS EIGENE KONTO BERICHTIGEN — Name und E-Mail, ohne Antrag.
+    //
+    // Fehlende Felder bleiben unverändert. Die Formwache ist dieselbe wie beim Anlegen
+    // (`kontodatenForm`). Wer die ADRESSE ändert, bestätigt mit dem aktuellen Passwort: an ihr hängt
+    // die Anmeldung und der Weg „Passwort vergessen" — eine offen stehende Sitzung allein soll das
+    // Konto nicht auf ein fremdes Postfach umlenken können. Der Name braucht das nicht.
+    app.put<{ Body: { name?: unknown; email?: unknown; currentPassword?: unknown } }>(
+      "/api/auth/me",
+      async (request, reply) => {
+        const user = await requireUser(request, reply);
+        if (!user) {
+          return;
+        }
+        const body = (request.body ?? {}) as { currentPassword?: unknown };
+        const eingabe = kontodatenForm(request, reply);
+        if (eingabe === null) {
+          return;
+        }
+        try {
+          if (eingabe.email !== undefined && eingabe.email !== user.email) {
+            const passwort = typeof body.currentPassword === "string" ? body.currentPassword : "";
+            if (!(await service.verifyUserPassword(user.id, passwort))) {
+              throw new AuthError(
+                "INVALID_CREDENTIALS",
+                "CURRENT_PASSWORD_INCORRECT" satisfies Meldungsschluessel,
+              );
+            }
+          }
+          reply.code(200).send(await service.correctAccountData(user.id, eingabe, user.id));
+        } catch (error) {
+          sendError(reply, error, sprache(request));
+        }
+      },
+    );
 
     // ============================================================================================
     // JOB 4076 — DER ÜBERGABECODE UND SEIN EINLÖSEN. Siehe den Kopfkommentar zu
@@ -1165,6 +1230,9 @@ export function authRoutes(
         approve?: unknown;
         password?: unknown;
         accessExpiresAt?: unknown;
+        // R-0582: der Admin berichtigt Name und E-Mail eines Kontos (ohne dessen Passwort).
+        name?: unknown;
+        email?: unknown;
       };
     }>("/api/users/:id", async (request, reply) => {
       const admin = await requireAdmin(request, reply);
@@ -1173,6 +1241,11 @@ export function authRoutes(
       }
       const { id } = request.params;
       const { role, approve, password, accessExpiresAt } = request.body;
+      // R-0582: auch die Kontodaten gehören zur Formwache VOR jedem Schreiben.
+      const kontodaten = kontodatenForm(request, reply);
+      if (kontodaten === null) {
+        return;
+      }
       try {
         // ────────────────────────────────────────────────────────────────────────────────────────
         // DIE FORMWACHE — SIE STEHT VOR JEDEM SCHREIBVORGANG, ALLE VIER FELDER IN EINEM BLOCK.
@@ -1217,6 +1290,11 @@ export function authRoutes(
           throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
         }
         let user: PublicUser | undefined;
+        // R-0582: die Berichtigung ZUERST — ihre einzige inhaltliche Ablehnung (Adresse vergeben,
+        // 409) fällt damit, bevor Freigabe, Rolle oder Passwort geschrieben sind.
+        if (kontodaten.name !== undefined || kontodaten.email !== undefined) {
+          user = await service.correctAccountData(id, kontodaten, admin.id);
+        }
         if (approve === true) {
           user = await service.approveUser(id, admin.id);
         }
