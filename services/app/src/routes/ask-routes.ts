@@ -5,6 +5,7 @@ import {
   AskError,
   type AskService,
   type FrageAnlass,
+  GESPRAECHSFADEN_MAX_FRAGEN,
   answerEvidence,
   antwortBelastbarkeit,
   antwortZuschnitt,
@@ -13,8 +14,13 @@ import {
   redactGapForViewer,
 } from "../../../ask";
 import type { ConflictService } from "../../../conflicts";
-import { type KnowledgeObject, type KoService, responsibleOf } from "../../../knowledge-object";
-import { can } from "../../../rbac";
+import {
+  GELTUNG_TEXT_MAX,
+  type KnowledgeObject,
+  type KoService,
+  normalizeFragekontext,
+  responsibleOf,
+} from "../../../knowledge-object";
 import { bindeAnbieter, bindeZustimmung, imBindungsrahmen } from "../../../reasoner";
 import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
@@ -74,6 +80,27 @@ const askBodySchema = {
     // Dokumenttext (Bens Befund B1, Runde 2: ältere Fenster melden nichts). Begründung an
     // `frageAusDokument`.
     questionSource: { type: "string" },
+    // R-0348 — DER GESPRÄCHSFADEN: die vorangegangenen Fragen derselben Fragestrecke, älteste
+    // zuerst, je Frage dasselbe Maß wie `question`. Mehr als `GESPRAECHSFADEN_MAX_FRAGEN` ist 400
+    // aus dem Schema. Wirksam NUR im Konsolenzweig (s. `fadenErlaubt` im Handler); Add-on- und
+    // Word-Wege lassen ihn liegen, ihre Egress-Verträge bleiben damit unverändert.
+    thread: {
+      type: "array",
+      maxItems: GESPRAECHSFADEN_MAX_FRAGEN,
+      items: { type: "string", maxLength: 8_000 },
+    },
+    // R-1633 — WOFÜR GEFRAGT WIRD: Werk, Schicht, Rolle (je optional, ≤ GELTUNG_TEXT_MAX). Wirkt
+    // wie der Faden NUR im Konsolenzweig: es ordnet gleich relevante Quellen nach ihrer Geltung und
+    // liefert die Auskunft `geltung`. Add-on- und Word-Wege lassen es liegen.
+    fragekontext: {
+      type: "object",
+      properties: {
+        werk: { type: "string", maxLength: GELTUNG_TEXT_MAX },
+        schicht: { type: "string", maxLength: GELTUNG_TEXT_MAX },
+        rolle: { type: "string", maxLength: GELTUNG_TEXT_MAX },
+      },
+      additionalProperties: false,
+    },
   },
 } as const;
 
@@ -643,6 +670,8 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         selection?: string;
         selectionConfidentiality?: string;
         questionSource?: string;
+        thread?: string[];
+        fragekontext?: unknown;
       };
     }>(
       "/api/ask",
@@ -728,6 +757,16 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // hängt der Vertrag von `KA4-E1`.
         // R-0639: gesetzt ausschliesslich in den beiden Zweigen, deren KA4-Freigabe bestätigt ist.
         let ka4Bestaetigt = false;
+        // R-0348: der Gesprächsfaden der Konsole. Gesetzt ausschliesslich unmittelbar vor dem
+        // Konsolenzweig; ohne Faden bleibt `opts` dort wie bisher unangetastet.
+        const faden = (request.body.thread ?? []).filter((frage) => frage.trim().length > 0);
+        let fadenErlaubt = false;
+        // R-1633: der Fragekontext — geprüft hier, wirksam nur dort, wo auch der Faden wirkt.
+        const fragekontext = normalizeFragekontext(request.body.fragekontext);
+        if (fragekontext === null) {
+          reply.code(400).send({ error: "INVALID", message: "fragekontext ist ungültig." });
+          return;
+        }
         // R-0639, Befund B1: STAMMT DIE FRAGE SELBST AUS DEM DOKUMENT, verlässt sie die Enge nur mit
         // bestandener Dokumenttext-Prüfung — dieselbe Prüfung, dieselbe Vertraulichkeitsregel wie
         // für `selection`. Hält sie, läuft der Zweig in die unveränderte Enge (retrieval-only, kein
@@ -765,7 +804,28 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             ))
               ? { dokumenttextFreigegeben: true as const }
               : {};
-          const mitMarkierung = markierung ? { ...opts, ...markierung, ...dokumenttextFeld } : opts;
+          // gesamt-ki-freigaberegeln (Ben Nacharbeit 2): geht vertraulich markierter Dokumenttext
+          // hinaus — als Markierung oder als Frage selbst —, dann nur, weil die zweite zentrale
+          // Adminfreigabe ihn gedeckt hat. Die EINSTUFUNG reist dann mit bis in den Reasoner, damit der
+          // Kern und der Chokepoint dieselbe Freigabe noch einmal fragen. Sonst fehlt das Feld.
+          const vertraulichHinaus =
+            markierungVertraulich(request.body.selectionConfidentiality) &&
+            ("dokumenttextFreigegeben" in dokumenttextFeld || (ka4Bestaetigt && frageIstDokument));
+          const vertraulichFeld = vertraulichHinaus
+            ? { dokumenttextVertraulich: true as const }
+            : {};
+          const mitAuswahl = markierung
+            ? { ...opts, ...markierung, ...dokumenttextFeld, ...vertraulichFeld }
+            : vertraulichHinaus
+              ? { ...opts, ...vertraulichFeld }
+              : opts;
+          const mitFaden =
+            fadenErlaubt && faden.length > 0
+              ? { ...mitAuswahl, gespraechsfaden: faden }
+              : mitAuswahl;
+          // R-1633: dieselbe Grenze wie der Faden — nur im Konsolenzweig, sonst unangetastet.
+          const mitMarkierung =
+            fadenErlaubt && fragekontext ? { ...mitFaden, fragekontext } : mitFaden;
           const betrachter = request.askSessionUser;
           let grundlage: (ko: KnowledgeObject) => boolean;
           if (betrachter) {
@@ -831,7 +891,11 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           // KW-KA4: NUR eine serverbestätigte Einwilligung für exakt diese Sitzung UND dieses
           // Dokument hebt die Enge auf. Ohne sie fällt der Ablauf in den unveränderten Zweig
           // darunter — Zeile für Zeile derselbe wie vor KA4.
+          // Aufnahme gesamt-integrations-api (R-0688): ein DIENST-Schlüssel hat keine Klara-Sitzung
+          // und nie eine Einwilligung — er bekommt ausschließlich den engen Zweig darunter
+          // (validiertes Wissen, kein Modell), auch wenn er Klara-Köpfe mitschickt.
           if (
+            !auth.principal.dienst &&
             (await ka4Freigabe(
               deps.klaraSessions,
               request.headers,
@@ -929,7 +993,22 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // hier gibt es einen SessionUser und damit den Sichtbarkeitsvertrag, den mega77 fuer jede
         // Meldung verlangt. Der Add-on-Zweig oben bekommt den Filter weiterhin NICHT (kein
         // SessionUser, kein Vertrag — dort bleibt alles, wie mega77 es hinterlassen hat).
-        await answer(user.id, { verschlossenSichtbarFuer: sichtbarkeitsfilterFuer(user) });
+        //
+        // R-0584 (DS10, Auftrag gesamt-datenschutz-voreinstellung): auch die Konsole antwortet
+        // standardmäßig NUR aus geprüftem Wissen. Bis hierher lief dieser Zweig ohne
+        // `validatedOnly` — der einzige Frageweg, auf dem Ungeprüftes Grundlage einer Antwort werden
+        // konnte. Das ersetzt die Abwägung aus mega52 C (Juli: „Text auf die Wahrheit ziehen statt
+        // Filter") durch den jüngeren Auftrag. Was die Enge verschluckt, wird wie im Panel-Weg
+        // (JOB 1591 W5) GEMELDET, nicht verwendet — gefiltert durch die Sichtbarkeit DIESES Nutzers.
+        // Der ausdrücklich freigegebene Sonderweg (KA4-Einwilligung, oben) bleibt unverändert.
+        // R-0348: nur hier — getippte Fragen eines Sitzungsnutzers ohne Dokumentbezug — reist der
+        // Gesprächsfaden mit (Wirkung und Grenzen an `fadenfragen` im Fragedienst).
+        fadenErlaubt = true;
+        await answer(user.id, {
+          validatedOnly: true,
+          ungeprueftSichtbarFuer: sichtbarkeitsfilterFuer(user),
+          verschlossenSichtbarFuer: sichtbarkeitsfilterFuer(user),
+        });
       },
     );
 
@@ -965,25 +1044,30 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
     });
 
     // FUNKE-FIX2 P0 (bens Erforderlich 2): Detail-Endpunkt liefert den Fragetext ADRESSATENGERECHT.
-    // Volltext sehen nur der Ersteller/Owner, ein Assignee ODER eine Rolle mit ausdrücklicher Detail-
-    // Berechtigung (ko.validate-Ebene, d. h. Controller/Admin — die Lücken ohnehin kuratieren). Alle
-    // anderen erhalten eine REDIGIERTE Sicht (Kategorie/Neutralbezeichnung, Zähler, KEIN Fragetext).
-    // Fail-closed: im Zweifel redigiert (redactGapForViewer entscheidet zentral).
+    // R-0585 (Auftrag gesamt-datenschutz-voreinstellung): Volltext sehen nur der Ersteller/Owner
+    // (der Fragende) und der Assignee (der Zuständige). Bis hierher sah ihn zusätzlich jede Rolle
+    // mit `ko.validate` (Controller/Admin) — das Rollenrecht ist entfernt. Alle anderen erhalten eine
+    // REDIGIERTE Sicht (Kategorie/Neutralbezeichnung, Zähler, KEIN Fragetext); zuweisen können
+    // Berechtigte weiterhin (PUT /api/gaps/:id, `ko.assign`). Fail-closed: im Zweifel redigiert
+    // (redactGapForViewer entscheidet zentral).
     app.get("/api/gaps", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {
         return;
       }
-      const maySeeDetail = can(user.role, "ko.validate");
       const gaps = await ask.listGaps();
-      reply
-        .code(200)
-        .send(gaps.map((gap) => redactGapForViewer(gap, { viewerId: user.id, maySeeDetail })));
+      reply.code(200).send(gaps.map((gap) => redactGapForViewer(gap, { viewerId: user.id })));
     });
 
     app.put<{
       Params: { id: string };
-      Body: { expertId?: string; close?: boolean; action?: string; priority?: string };
+      Body: {
+        expertId?: string;
+        close?: boolean;
+        action?: string;
+        priority?: string;
+        koId?: unknown;
+      };
     }>("/api/gaps/:id", async (request, reply) => {
       const user = await guards.requirePermission("ko.assign", request, reply);
       if (!user) {
@@ -1003,7 +1087,16 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         }
         // Close akzeptiert sowohl { close:true } als auch { action:"close" } (FE-Kopplung).
         if (request.body.close === true || request.body.action === "close") {
-          reply.code(200).send(await ask.closeGap(request.params.id));
+          // R-0846 / L6: der Objektbezug. Hier wird nur die Form geprüft; ob das Objekt existiert
+          // und ob ohne mitgeschickten Bezug ein gültiger an der Lücke steht, entscheidet
+          // `AskService.closeGap` — fehlt beides, bleibt die Lücke offen (400).
+          const roh = request.body.koId;
+          if (roh !== undefined && (typeof roh !== "string" || roh.trim() === "")) {
+            reply.code(400).send({ error: "BAD_REQUEST", message: "koId muss eine Kennung sein." });
+            return;
+          }
+          const bezug = typeof roh === "string" ? roh.trim() : undefined;
+          reply.code(200).send(await ask.closeGap(request.params.id, bezug));
           return;
         }
         if (request.body.expertId) {

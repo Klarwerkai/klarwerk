@@ -209,6 +209,11 @@ const en: typeof de = {
     "Shows whether the AI is currently answering. “Unverified” only means no answer has come back since startup — it is not an error.",
   "topbar.plain.external":
     "Shows whether Klarwerk may also look things up on the open internet when answering. “Blocked” means: no, it stays with your own knowledge.",
+  "topbar.extern.blockiert": "External: Blocked",
+  "topbar.extern.frei": "External: Allowed",
+  "topbar.extern.freiVertraulich": "External: Allowed, including confidential content",
+  "topbar.extern.hinweis":
+    "The administrator decides whether content may go to a public AI. Default: blocked.",
   "topbar.kiExternal": "AI runs in the cloud",
   "topbar.kiInternal": "AI runs on your own systems",
   "topbar.kiMixed": "AI runs in the cloud and on your own systems",
@@ -2143,6 +2148,7 @@ const en: typeof de = {
   "ask.error.body":
     "The request got stuck on the way. This is NOT a statement about the knowledge — it does not mean there is no answer. Please try again.",
   "ask.error.retry": "Try again",
+  "ask.gebremst.titel": "Please wait a moment.",
   "ask.offline": "No connection.",
   "ask.wiederaufnahme.entwurf":
     "Pick up where you left off: your unsent draft is back in the question field.",
@@ -2926,6 +2932,7 @@ const en: typeof de = {
   "ko.attachmentPreviewUnavailable": "No preview available",
   "ko.attachmentOriginalUnavailable": "Original unavailable",
   "pruefen.title": "Review",
+  "pruefen.handeltAls": "You are reviewing as {{role}}",
   "pruefen.tab.offen": "Open",
   "pruefen.tab.konflikte": "Conflicts",
   "pruefen.tab.duplikate": "Duplicates",
@@ -3142,6 +3149,26 @@ const en: typeof de = {
   "start.livewall.helpedToday": "helped today: {{n}}",
   "start.livewall.savedEmpty": "Nothing captured yet — the first contribution will appear here.",
   "start.livewall.helpedEmpty": "No “helped” feedback yet.",
+  "start.livewall.validated": "Newly validated",
+  "start.livewall.validatedEmpty": "No validated knowledge yet.",
+  "start.livewall.nameConsent":
+    "Show my name next to my validated knowledge here. Voluntary and revocable at any time; without consent no name appears.",
+  "start.livewall.photoConsent":
+    "Show my photo next to my validated knowledge here. Voluntary; “Remove photo” deletes it immediately.",
+  "start.livewall.photoAdd": "Choose photo",
+  "start.livewall.photoReplace": "Replace photo",
+  "start.livewall.photoRevoke": "Remove photo",
+  "start.livewall.photoError":
+    "The photo could not be saved. Please choose a PNG, JPEG or WebP image.",
+  "start.livewall.photoAlt": "Photo of the author",
+  "start.livewall.photoOwnAlt": "My photo for the wall",
+  "start.livewall.beamerOpen": "Open as projector view",
+  "start.livewall.beamerFullscreen": "Full screen",
+  "start.livewall.beamerLoading": "Loading …",
+  "start.livewall.beamerError":
+    "The wall is currently unavailable. It will retry on the next cycle.",
+  "start.livewall.beamerStale":
+    "No fresh connection — names and photos are hidden until the wall is up to date again.",
   "con.kicker": "Conflict board",
   "con.title": "Resolve conflicts — without losing knowledge",
   "con.intro":
@@ -4195,6 +4222,8 @@ const en: typeof de = {
   "risk.priority.mittel": "medium",
   "risk.priority.niedrig": "low",
   "risk.close": "Close",
+  "risk.closeWithTitle": "Close with the knowledge object that answers this gap",
+  "risk.closeFailed": "Not closed — the knowledge object is missing or in the trash.",
   "risk.assign": "Expert …",
   "risk.delete": "Delete",
   "risk.gapNextLabel": "Next step",

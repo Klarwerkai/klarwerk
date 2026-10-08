@@ -12,6 +12,7 @@ import {
   applyBodyAssist,
   bodyAssistStructuredActions,
   bodyTextForAssist,
+  spellingAssistHtmlOrNull,
 } from "../lib/bodyAiAssist";
 import type { EditorFile } from "../lib/bodyFileLink";
 import { BODY_READ_BLOCKS_KEY, BODY_READ_TITLE_KEY } from "../lib/bodyReadMode";
@@ -504,6 +505,7 @@ export function KnowledgeInputStudio({
                       applyFn={(mode, _original, suggestion) =>
                         applyBodyAssist(mode, draft, suggestion)
                       }
+                      applySpelling={(suggestion) => spellingAssistHtmlOrNull(draft, suggestion)}
                       onApply={setDraft}
                       hintKey="capture.ai.bodyHint"
                       extraApplyActions={blockActions}

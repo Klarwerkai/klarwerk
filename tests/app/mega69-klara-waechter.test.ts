@@ -2747,6 +2747,18 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Prüflauf zu Kandidat f4db2037 GEMESSEN („Received", HISTORIE/nacharbeit-10/PRUEFUNG/
     // auslieferungswaechter-fenster.log) und unverändert übernommen; die vier Panel-Dateien sind seit
     // dieser Messung unberührt (`git diff f4db2037 -- apps/web/public/word-addin/` leer).
+    // AUFNAHME gesamt-funktionsschalter (R-1040, Ben nacharbeit-2) — DER PIN MUSS WANDERN.
+    // `taskpane.js` wertet in `performAsk` die 503 `KI_ABGESCHALTET` aus (Ergebnisart
+    // `ki-abgeschaltet`) und nennt in `#ask-status` die administrative Abschaltung statt
+    // „Fragen fehlgeschlagen (HTTP 503)"; dort kein „Erneut versuchen". Ein neuer Wörterbuchschlüssel
+    // je Sprache (`askKiAbgeschaltet`, in der Zeile von `askFallbackConsentEnded`); netto eine Zeile
+    // (B3: 12493). Gemessen in `tests/app/word-addin-ask.test.ts` (R-1040, DE/EN/NL + Gegenprobe).
+    // Auslieferungsfolgen: kein neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder
+    // Manifeständerung, kein Sideload.
+    // NACHARBEIT 3 (gesamt-funktionsschalter): PIN BEWUSST AKTUALISIERT (eefba3bd… -> dce012c0…). Im
+    // Prüflauf zu Kandidat e9529cb7 GEMESSEN („Received", HISTORIE/nacharbeit-3/PRUEFUNG/
+    // word-addin-auslieferungswaechter.log) und unverändert übernommen; die vier Panel-Dateien sind
+    // seit dieser Messung unberührt (Nacharbeit 3 ändert nur Testdateien).
     // AUFNAHME 20260922 · ANTWORT-ERKLÄRUNG (Ben nacharbeit-2, R-0321/R-0335) — DER PIN MUSS WANDERN.
     // `taskpane.js`: `performAsk` liest `result.belastbarkeit` (Lage und Konfliktseiten); ein Körper
     // ohne Ergebnis, eine unbekannte/gestörte oder zur Antwortform widersprüchliche Lage wird
@@ -2767,7 +2779,14 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Kandidat 0bd4f3cb GEMESSEN („Received", HISTORIE/nacharbeit-5/PRUEFUNG/word-fenster-pins.log)
     // und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt
     // (`git diff 0bd4f3cb -- apps/web/public/word-addin/` leer).
-    const PIN = "3a0471fa76eb812c14d02ca0d157409923559cae9edc25ec7b173f4338cb93db";
+    // INTEGRATION Antwort-Erklärung × gesamt-funktionsschalter (main d8717621, nacharbeit-6): BEIDE
+    // Änderungen stehen jetzt in `taskpane.js` — `ki-abgeschaltet` (R-1040) und Lage/Konfliktseiten
+    // (R-0321/R-0335); die Statuszeile in `renderAskOutcome` trägt beide Fälle in EINEM Ausdruck (kein
+    // „Erneut versuchen" bei Abschaltung oder Schwärzung). B3: 12497 Zeilen. Keiner der beiden
+    // gemessenen Werte (3a0471fa… dieser Auftrag, dce012c0… main) beschreibt das zusammengefügte
+    // Fenster. Der Wert unten ist der von main und damit ein PLATZHALTER bis zur Messung; ohne
+    // zugelassenes Hash-Werkzeug ist er hier nicht berechenbar — der Prüflauf meldet ihn als „Received".
+    const PIN = "dce012c092e3445073b0629f1b8348a5f4b04457c1986e3c68657c7ad5860d64";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,

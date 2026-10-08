@@ -182,6 +182,10 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 5 (Antwort-Erklärung): GEMESSEN im Prüflauf zu Kandidat 0bd4f3cb (`469de4a6…`,
  * „Received" von E2, HISTORIE/nacharbeit-5/PRUEFUNG/word-fenster-pins.log) und unverändert
  * übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ * INTEGRATION mit main d8717621 (nacharbeit-6): `taskpane.js` trägt zusätzlich `ki-abgeschaltet`
+ * (R-1040, gesamt-funktionsschalter). Der Bezugspunkt MUSS wandern; der Wert unten beschreibt nur den
+ * Stand vor der Integration. Ohne zugelassenes Hash-Werkzeug nicht berechenbar — E2 meldet ihn im
+ * Prüflauf als „Received"; er wird danach gemessen übernommen.
  */
 export const PANEL_VOR_SCHNITT_BLOB = "469de4a65de681dbbad2e31b48bbb63ec07fa567";
 
