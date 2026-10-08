@@ -498,6 +498,8 @@ interface AskAnfrage {
   generation: number;
   // R-0348: die vorangegangenen Fragen, zu denen diese eine Nachfrage ist (ohne sie selbst).
   faden: string[];
+  // Ben, Nacharbeit 2: die Fadengeneration beim Absenden — „Neues Thema" zählt sie hoch.
+  fadenGeneration: number;
 }
 
 export function Ask(): JSX.Element {
@@ -643,6 +645,14 @@ export function Ask(): JSX.Element {
   );
   // Die zuletzt gestellte Frage steht schon in der Fragezeile; aufgezählt werden die früheren.
   const fadenFrueher = faden.filter((frage) => frage !== asked);
+  // Ben, Nacharbeit 2: „Neues Thema" während einer laufenden Nachfrage. Die später eintreffende
+  // Antwort darf ihre Frage nicht wieder in den geleerten Faden tragen — sie gehört zum alten
+  // Thema. Jede Anfrage trägt die Generation, unter der sie startete (wie `kontoGeneration`).
+  const fadenGeneration = useRef(0);
+  const neuesThema = (): void => {
+    fadenGeneration.current += 1;
+    setFaden([]);
+  };
   // FUNKE-FIX2 P0 (bens Erforderlich 4): die vom Server erzeugte Wissenslücke (mit ID) — der Capture-
   // Einstieg trägt die GAP-ID (kein Fragetext in der URL); Capture lädt den Text nach Berechtigung.
   const [gapId, setGapId] = useState<string | null>(anfang?.antwort?.gapId ?? null);
@@ -825,7 +835,7 @@ export function Ask(): JSX.Element {
       setVerschlossen([]);
     },
     // SCRUM-138: Backend liefert { result, gap, receipt } — Antwort + Answer-Receipt entpacken.
-    onSuccess: (r, { frage: question, generation }) => {
+    onSuccess: (r, { frage: question, generation, fadenGeneration: fadenStand }) => {
       // Ben R1, F1: die Antwort eines anderen (früheren) Kontos berührt nichts.
       if (generation !== kontoGeneration.current) {
         return;
@@ -833,7 +843,10 @@ export function Ask(): JSX.Element {
       // Der Beleg für „zu welcher Frage gehört das, was da steht" — s. `onMutate`.
       antwortFrage.current = question;
       // R-0348: die angekommene Frage wird Teil des Fadens, an den die nächste Frage anknüpft.
-      setFaden((vorher) => fadenNachAntwort(vorher, question));
+      // Nicht, wenn inzwischen ein neues Thema begonnen wurde (Ben, Nacharbeit 2).
+      if (fadenStand === fadenGeneration.current) {
+        setFaden((vorher) => fadenNachAntwort(vorher, question));
+      }
       setAntwortAm(new Date().toISOString());
       // JOB 2694 D1: eine Antwort ohne Text kommt hier als Lücke an — Begründung am Helfer oben.
       setResult(leereAntwortAlsLuecke(selectAnswer(r)));
@@ -1130,6 +1143,7 @@ export function Ask(): JSX.Element {
         frage: trimmed,
         generation: kontoGeneration.current,
         faden: fadenFuerAnfrage(faden, trimmed),
+        fadenGeneration: fadenGeneration.current,
       });
     },
     [answerAi.available, ask.isPending, ask.mutate, faden],
@@ -1494,7 +1508,7 @@ export function Ask(): JSX.Element {
             <button
               type="button"
               data-testid="ask-gespraechsfaden-neu"
-              onClick={() => setFaden([])}
+              onClick={neuesThema}
               className="shrink-0 text-[12.5px] font-semibold text-brand-text underline-offset-2 hover:underline"
             >
               {t("fragenseite.fadenNeu")}

@@ -228,4 +228,35 @@ describe("R-0348 · Gesprächsfaden auf der Fragenseite", () => {
     expect(askMock).toHaveBeenCalledTimes(2);
     expect(askMock.mock.calls[1]).toEqual([ERSTFRAGE, "de"]);
   });
+
+  it("M5 · Ben, Nacharbeit 2: „Neues Thema“ während einer laufenden Nachfrage — die späte Antwort bringt den alten Faden nicht zurück", async () => {
+    const standard = askMock.getMockImplementation();
+    const f = await oeffnen();
+    await fragen(f, ERSTFRAGE);
+    // Die Nachfrage bleibt in der Leitung, bis der Test sie freigibt.
+    let freigeben: (wert: unknown) => void = () => undefined;
+    askMock.mockImplementationOnce(
+      () =>
+        new Promise((aufloesen) => {
+          freigeben = aufloesen;
+        }),
+    );
+    await fragen(f, NACHFRAGE);
+    expect(askMock.mock.calls[1]).toEqual([NACHFRAGE, "de", [ERSTFRAGE]]);
+    await act(async () => {
+      f.container.querySelector<HTMLButtonElement>(NEUES_THEMA)?.click();
+      await flush();
+    });
+    expect(faden(f)).toBeNull();
+    // Jetzt kommt die Antwort auf die alte Nachfrage an.
+    const antwort = await standard?.();
+    await act(async () => {
+      freigeben(antwort);
+      await flush();
+    });
+    expect(faden(f)).toBeNull();
+    // Die nächste Frage fängt wirklich neu an — ohne alten Zusammenhang.
+    await fragen(f, "Wie beantrage ich Sonderurlaub?");
+    expect(askMock.mock.calls[2]).toEqual(["Wie beantrage ich Sonderurlaub?", "de"]);
+  });
 });

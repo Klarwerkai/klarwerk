@@ -116,6 +116,19 @@ describe("R-0348 · Nachfragen im Gesprächsfaden", () => {
     expect(res.json().result.answered).toBe(false);
   });
 
+  it("F7 · Ben, Nacharbeit 2: nach mehreren Nachfragen trägt der Anker im Faden weiter das Thema", async () => {
+    const { fragen, urlaub, gleitzeit } = await fadenBestand();
+    // So sendet die Fragen-Seite nach mehreren Nachfragen: Anker plus die jüngsten zwei.
+    const res = await fragen({
+      question: NACHFRAGE,
+      thread: [ERSTFRAGE, "Und bei Azubis?", "Und im Minijob?"],
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().result.answered).toBe(true);
+    expect(res.json().result.sources).toContain(urlaub);
+    expect(res.json().result.sources).not.toContain(gleitzeit);
+  });
+
   it("F6 · mehr als drei Fadenfragen sind 400 aus dem Schema", async () => {
     const { fragen } = await fadenBestand();
     const res = await fragen({ question: NACHFRAGE, thread: ["a", "b", "c", "d"] });

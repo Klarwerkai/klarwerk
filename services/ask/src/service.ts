@@ -177,11 +177,14 @@ function erweiterteSuchterme(frageterme: readonly string[], selection?: string):
 export const GESPRAECHSFADEN_MAX_FRAGEN = 3;
 const FADEN_TRENNER = " → ";
 
+// Begrenzt wird wie auf der Fragen-Seite: die ERSTE Frage ist der Themenanker und bleibt, dazu die
+// jüngsten Nachfragen (Ben, Nacharbeit 2 — sonst fiel das Thema nach drei Nachfragen heraus).
 function fadenfragen(faden?: readonly string[]): string[] {
-  return (faden ?? [])
-    .map((frage) => frage.trim())
-    .filter((frage) => frage.length > 0)
-    .slice(-GESPRAECHSFADEN_MAX_FRAGEN);
+  const fragen = (faden ?? []).map((frage) => frage.trim()).filter((frage) => frage.length > 0);
+  if (fragen.length <= GESPRAECHSFADEN_MAX_FRAGEN) {
+    return fragen;
+  }
+  return [...fragen.slice(0, 1), ...fragen.slice(-(GESPRAECHSFADEN_MAX_FRAGEN - 1))];
 }
 
 // ================================================================================================
