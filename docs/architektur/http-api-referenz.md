@@ -216,7 +216,9 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `PUT` | `/api/validation/settings` | `users.manage` | Rumpf `{ defaultNeededValidations }` | 200 `{ defaultNeededValidations }` | Dienstfehler |
 | `GET` | `/api/conflicts` | `ko.read` | — | 200 offene Konflikte, sichtbarkeitsgefiltert | — |
 | `GET` | `/api/conflicts/:id` | `ko.read`, sichtbar | — | 200 Konflikt | 404 `NOT_FOUND` |
+| `GET` | `/api/conflicts/vorrang/:id` | `ko.read`, Paar sichtbar | Pfad `:id` = Wissensobjekt | 200 Liste festgelegter Vorrang-Beziehungen (R-0263) | — |
 | `POST` | `/api/conflicts/:id/escalate` | `conflict.resolve` | — | 200 Konflikt | Dienstfehler |
+| `POST` | `/api/conflicts/:id/arbeitsart` | `conflict.resolve` | Rumpf `{ arbeitsart: regel\|sache\|version }` | 200 Konflikt (R-0252) | 400 `BAD_REQUEST`, Dienstfehler |
 | `POST` | `/api/conflicts/:id/dismiss` | `conflict.resolve` | Rumpf `{ note? }` | 200 Konflikt | Dienstfehler |
 | `POST` | `/api/conflicts/:id/second-opinion` | `ko.validate` | Rumpf `{ opinion }` | 200 Konflikt | Dienstfehler |
 | `GET` | `/api/duplicate-signal` | `ko.read` | — | 200 eigene Objekte mit offenem Befund | — |
