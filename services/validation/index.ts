@@ -13,7 +13,13 @@ export type {
   KoPruefstand,
 } from "./src/service";
 export { computeOutcome, TRUST_WEIGHTS, TRUST_MAX } from "./src/trust";
-export type { ValidationOutcome } from "./src/trust";
+// R-0256: abgestufte Konfliktwirkung je Art (Technischer Anhang §3.3) in derselben Formel.
+export {
+  applyConflictImpact,
+  CONFLICT_TRUST_IMPACT,
+  CONFLICT_TRUST_FLOOR,
+} from "./src/trust";
+export type { ValidationOutcome, KonfliktArt } from "./src/trust";
 export {
   InMemoryRatingRepo,
   InMemoryAssignmentRepo,

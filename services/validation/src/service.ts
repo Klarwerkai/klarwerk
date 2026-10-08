@@ -10,7 +10,7 @@ import {
   type ValidationSettingsRepo,
   normalizeDefaultNeeded,
 } from "./settings";
-import { TRUST_MAX, type ValidationOutcome, computeOutcome } from "./trust";
+import { type KonfliktArt, TRUST_MAX, type ValidationOutcome, computeOutcome } from "./trust";
 import type { Assignment, Rating } from "./types";
 import { ValidationError, type Verdict } from "./types";
 
@@ -185,6 +185,10 @@ export interface ValidationServiceDeps {
   // SCRUM-395: persistierte Admin-Einstellung „Standard-Prüferanzahl" (optional —
   // ohne Repo gilt der feste Fallback aus settings.ts).
   settings?: ValidationSettingsRepo;
+  // R-0256: die Arten der OFFENEN Konflikte eines Objekts, damit die Neuberechnung beim Bewerten die
+  // Konfliktwirkung je Art trägt, statt sie wegzurechnen. Optional — ohne Verdrahtung gilt die
+  // reine Stimmenformel wie bisher (Test-Doubles, Werkzeuge).
+  offeneKonfliktArten?: (koId: string) => Promise<KonfliktArt[]>;
 }
 
 export class ValidationService {
@@ -194,6 +198,7 @@ export class ValidationService {
   private readonly audit: AuditService | undefined;
   private readonly now: () => number;
   private readonly settings: ValidationSettingsRepo | undefined;
+  private readonly offeneKonfliktArten: ((koId: string) => Promise<KonfliktArt[]>) | undefined;
 
   constructor(deps: ValidationServiceDeps) {
     this.koService = deps.koService;
@@ -202,6 +207,7 @@ export class ValidationService {
     this.audit = deps.audit;
     this.now = deps.now ?? (() => Date.now());
     this.settings = deps.settings;
+    this.offeneKonfliktArten = deps.offeneKonfliktArten;
   }
 
   // SCRUM-395: Standard-Prüferanzahl für neue Einreichungen — Admin-Wert, sonst Fallback 3.
@@ -246,6 +252,10 @@ export class ValidationService {
       createdAt: new Date(this.now()).toISOString(),
       koVersion: ratedVersion,
     };
+    // R-0256: die offenen Konflikte VOR der Klammer, einmal je Bewertung. Die Konfliktabfrage liest
+    // selbst Objektfassungen (Versionsbindung im Konfliktdienst) und gehört deshalb nicht unter den
+    // KO-Lock, den `lese` unten hält.
+    const offeneKonflikte = (await this.offeneKonfliktArten?.(koId)) ?? [];
     // Aufnahme gesamt-auditprotokoll (Lauf 3, Runde 3, BEN-R2-B1): die Stimmenlage wird NICHT mehr
     // vor der Klammer gebildet, sondern in ihr (`lese`, aufgerufen aus `zustand` unter dem KO-Lock
     // und — bei einer zweiten Instanz — nach dem neuen Lesen). Zwei gleichzeitige Bewertungen sahen
@@ -271,7 +281,7 @@ export class ValidationService {
       stand = {
         vorherige,
         all,
-        outcome: computeOutcome(currentVotes, ko.neededValidations),
+        outcome: computeOutcome(currentVotes, ko.neededValidations, offeneKonflikte),
         zuweisung: await this.assignments.find(koId, userId),
       };
       return stand;

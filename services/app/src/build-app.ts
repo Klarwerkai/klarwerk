@@ -1425,6 +1425,11 @@ export function assembleServices(
       audit,
       // SCRUM-395: persistierte Standard-Prüferanzahl (Admin pflegt sie über die Route).
       settings: repos.validationSettings,
+      // R-0256: dieselbe Lesart von „offen" wie Board und Badge (`unresolved`, versionsgebunden).
+      offeneKonfliktArten: async (koId) =>
+        (await conflicts.unresolved())
+          .filter((c) => c.koA === koId || c.koB === koId)
+          .map((c) => c.type),
     }),
     conflicts,
     overlaps,
