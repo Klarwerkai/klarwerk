@@ -307,7 +307,7 @@ function verkette(knoten: ts.Node, links: Wertbild, rechts: Wertbild): Wertbild 
 }
 
 // Die Typauflösung liegt auf Modulebene: die Wertauswertung (`statischeWerte`) und die Rolle
-// gespreizter Props (`propsRollenwerte`, Nacharbeit 4) lesen dieselben lokalen Typen.
+// gespreizter Props (`propsRolle`, Nacharbeit 4/5) lesen dieselben lokalen Typen.
 
 function typNamen(deklarationen: Deklarationen, name: string): ts.Node[] {
   const alle = deklarationen.get(name) ?? [];
@@ -415,78 +415,163 @@ function bindungsTypIn(
   return mitgliedsTypIn(deklarationen, halter.type, name.text, 0);
 }
 
-/** Steht im Wert (auch hinter Klammer, Bedingung, `as`, Rückfallkette) ein Objektliteral? */
-function traegtObjektliteral(n: ts.Node): boolean {
-  if (ts.isObjectLiteralExpression(n)) {
-    return true;
-  }
-  if (!istWerthuelle(n)) {
-    return false;
-  }
-  return ts.forEachChild(n, (c) => traegtObjektliteral(c) || undefined) ?? false;
+/**
+ * Nacharbeit 4/5 (ben): die Rolle eines GESPREIZTEN Props-Ausdrucks, am Verwendungsort bestimmt.
+ *
+ * Drei Ausgänge, und sie werden auseinandergehalten:
+ *  · `bild.werte`   — die Rolle steht fest (lokaler Typ `role: "dialog"`);
+ *  · `bild.offen`   — eine Rolle ist da, ihr Wert nicht (`role?: string`);
+ *  · `abbrueche`    — die lokale Kette reisst ab (Aufruf, Feldzugriff, `let`, Import): ob eine
+ *                     Rolle da ist, kann diese Datei nicht sagen.
+ * Alles leer heisst: nachweislich keine Rolle — oder ein Typ, der nicht in dieser Datei steht
+ * (`InputHTMLAttributes`); ihn liest dieser Sammler ohne Typprüfung nicht.
+ */
+export interface PropsRolle {
+  bild: Wertbild;
+  abbrueche: ts.Node[];
 }
 
-/**
- * Der Objekttyp, den eine Deklaration als Props-Wert trägt — nur wenn er LOKAL steht. Ein
- * Objektliteral als Initialisierer gibt `undefined`: dessen `role` erhebt der Eigenschaftsbesucher
- * (`istPropsObjekt`), eine zweite Meldung derselben Stelle wäre eine Doppelzählung.
- */
-function propsTypVon(deklarationen: Deklarationen, d: ts.Node): ts.TypeNode | undefined {
+function keineRolle(): PropsRolle {
+  return { bild: { werte: [], offen: [] }, abbrueche: [] };
+}
+
+function vereineRollen(teile: PropsRolle[]): PropsRolle {
+  return {
+    bild: vereine(teile.map((t) => t.bild)),
+    abbrueche: teile.flatMap((t) => t.abbrueche),
+  };
+}
+
+/** Die Rolle aus einem LOKAL deklarierten Objekttyp; fehlt der Eintrag, ist es keine Rolle. */
+function rolleAusTyp(deklarationen: Deklarationen, typ: ts.TypeNode | undefined): PropsRolle {
+  const rolle = typ ? mitgliedsTypIn(deklarationen, typ, "role", 0) : undefined;
+  return rolle ? { bild: typWerteIn(deklarationen, rolle, 0), abbrueche: [] } : keineRolle();
+}
+
+export function propsRolle(
+  ausdruck: ts.Node,
+  deklarationen: Deklarationen,
+  tiefe = 0,
+  pfad: Set<ts.Node> = new Set(),
+): PropsRolle {
+  const abbruch = (n: ts.Node): PropsRolle => ({ bild: { werte: [], offen: [] }, abbrueche: [n] });
+  const weiter = (n: ts.Node): PropsRolle => propsRolle(n, deklarationen, tiefe + 1, pfad);
+  if (tiefe > MAX_TIEFE) {
+    return abbruch(ausdruck);
+  }
+  let k: ts.Node = ausdruck;
+  while (
+    ts.isParenthesizedExpression(k) ||
+    ts.isNonNullExpression(k) ||
+    ts.isAsExpression(k) ||
+    ts.isSatisfiesExpression(k)
+  ) {
+    k = k.expression;
+  }
+  if (ts.isObjectLiteralExpression(k)) {
+    // Eigene `role`-Einträge erhebt der Eigenschaftsbesucher (`istPropsObjekt`); hier zählen nur
+    // die gespreizten Teile — `{ ...props, id }` trägt die Rolle von `props` weiter.
+    const teile = k.properties.filter(ts.isSpreadAssignment).map((s) => weiter(s.expression));
+    return vereineRollen(teile);
+  }
+  if (ts.isConditionalExpression(k)) {
+    return vereineRollen([weiter(k.whenTrue), weiter(k.whenFalse)]);
+  }
+  if (ts.isBinaryExpression(k)) {
+    const op = k.operatorToken.kind;
+    if (op === ts.SyntaxKind.QuestionQuestionToken || op === ts.SyntaxKind.BarBarToken) {
+      return vereineRollen([weiter(k.left), weiter(k.right)]);
+    }
+    if (op === ts.SyntaxKind.AmpersandAmpersandToken) {
+      return weiter(k.right);
+    }
+  }
+  if (k.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(k) && k.text === "undefined")) {
+    return keineRolle();
+  }
+  if (!ts.isIdentifier(k)) {
+    return abbruch(k);
+  }
+  const decls = sichtbareDeklarationen(deklarationen, k);
+  if (decls.length === 0) {
+    return abbruch(k);
+  }
+  return vereineRollen(
+    decls.map((d) => {
+      if (pfad.has(d)) {
+        return abbruch(d);
+      }
+      pfad.add(d);
+      try {
+        return deklarationsRolle(deklarationen, d, weiter);
+      } finally {
+        pfad.delete(d);
+      }
+    }),
+  );
+}
+
+/** Die Rolle, die eine Deklaration als Props-Wert trägt — über ihren Typ oder ihre Herkunft. */
+function deklarationsRolle(
+  deklarationen: Deklarationen,
+  d: ts.Node,
+  weiter: (n: ts.Node) => PropsRolle,
+): PropsRolle {
   if (ts.isParameter(d) && ts.isIdentifier(d.name)) {
-    return d.type;
+    return rolleAusTyp(deklarationen, d.type);
   }
   if (ts.isVariableDeclaration(d)) {
-    return d.initializer !== undefined && traegtObjektliteral(d.initializer) ? undefined : d.type;
+    // Nacharbeit 5 (ben): die Kette läuft über den Initialisierer weiter (`const q = props`).
+    // Nur wenn sie abreisst, gilt eine eigene Typangabe als Ersatz.
+    const konstant = (ts.getCombinedNodeFlags(d) & ts.NodeFlags.Const) !== 0;
+    if (konstant && d.initializer) {
+      const herkunft = weiter(d.initializer);
+      if (herkunft.abbrueche.length > 0 && d.type) {
+        return rolleAusTyp(deklarationen, d.type);
+      }
+      return herkunft;
+    }
+    return d.type ? rolleAusTyp(deklarationen, d.type) : { ...keineRolle(), abbrueche: [d] };
   }
   if (ts.isBindingElement(d) && d.dotDotDotToken !== undefined) {
     // `{ a, ...rest }: Props` — `rest` trägt `role`, sofern es nicht daneben herausgelöst wurde.
     const muster = d.parent;
     if (!ts.isObjectBindingPattern(muster)) {
-      return undefined;
+      return keineRolle();
     }
     const herausgeloest = muster.elements.some((e) => {
       const name = e.propertyName ?? e.name;
       return e !== d && ts.isIdentifier(name) && name.text === "role";
     });
     const halter = muster.parent;
-    if (herausgeloest || !(ts.isParameter(halter) || ts.isVariableDeclaration(halter))) {
-      return undefined;
+    if (herausgeloest) {
+      return keineRolle();
     }
-    return halter.type;
+    if (ts.isParameter(halter)) {
+      return rolleAusTyp(deklarationen, halter.type);
+    }
+    if (ts.isVariableDeclaration(halter)) {
+      // `const { a, ...rest } = props` — ohne Typangabe trägt der Rest die Rolle der Quelle.
+      if (halter.type) {
+        return rolleAusTyp(deklarationen, halter.type);
+      }
+      return halter.initializer ? weiter(halter.initializer) : { ...keineRolle(), abbrueche: [d] };
+    }
+    return { ...keineRolle(), abbrueche: [d] };
   }
   if (ts.isBindingElement(d)) {
-    return bindungsTypIn(deklarationen, d);
-  }
-  return undefined;
-}
-
-/**
- * Nacharbeit 4 (ben): die Rolle eines GESPREIZTEN Props-Ausdrucks, am Verwendungsort bestimmt —
- * `<div {...props} />` oder `createElement("div", props)`, wenn `props` ein Parameter, eine
- * destrukturierte Bindung oder ein Rest mit lokal deklariertem Typ ist. `undefined` heisst: nach
- * allem, was diese Datei sagt, trägt der Ausdruck keine Rolle (oder sein Typ ist importiert und
- * hier nicht lesbar). Ein Wertbild mit `offen` heisst: eine Rolle ist da, ihr Wert steht nicht fest.
- */
-export function propsRollenwerte(
-  ausdruck: ts.Node,
-  deklarationen: Deklarationen,
-): Wertbild | undefined {
-  let k: ts.Node = ausdruck;
-  while (ts.isParenthesizedExpression(k) || ts.isNonNullExpression(k) || ts.isAsExpression(k)) {
-    k = k.expression;
-  }
-  if (!ts.isIdentifier(k)) {
-    return undefined;
-  }
-  const bilder: Wertbild[] = [];
-  for (const d of sichtbareDeklarationen(deklarationen, k)) {
-    const typ = propsTypVon(deklarationen, d);
-    const rolle = typ ? mitgliedsTypIn(deklarationen, typ, "role", 0) : undefined;
-    if (rolle) {
-      bilder.push(typWerteIn(deklarationen, rolle, 0));
+    const typ = bindungsTypIn(deklarationen, d);
+    if (typ) {
+      return rolleAusTyp(deklarationen, typ);
     }
+    // Ein Feld einer Bindung ohne lesbaren Typ: der Wert kommt von woanders — Kette reisst ab,
+    // ausser es ist ein Parameterfeld (dort gilt wie beim Parameter: Typ nicht in dieser Datei).
+    if (ts.isVariableDeclaration(d.parent.parent)) {
+      return { ...keineRolle(), abbrueche: [d] };
+    }
+    return keineRolle();
   }
-  return bilder.length > 0 ? vereine(bilder) : undefined;
+  return { ...keineRolle(), abbrueche: [d] };
 }
 
 /**
@@ -763,11 +848,12 @@ export function erhebeDatei(quelle: Quelle): DateiErhebung {
 
   // Die Rolle gespreizter Props: ein Dialogwert wird Kandidat am Spread, eine vorhandene, aber
   // unbestimmbare Rolle (`role?: string`) eine unbekannte Bauform — rot mit Datei und Zeile.
-  const meldePropsRolle = (ausdruck: ts.Node): void => {
-    const bild = propsRollenwerte(ausdruck, deklarationen);
-    if (bild === undefined) {
-      return;
-    }
+  // Nacharbeit 5: reisst die lokale Herkunft ab, ist das an einem DOM-Element ebenfalls rot — dort
+  // wird `role` unmittelbar zum Attribut. Bei einem Bauteil beurteilt dessen eigene Datei, was es
+  // mit den Props baut (dort ist der Spread wieder ein Ausgangspunkt).
+  const meldePropsRolle = (ausdruck: ts.Node, aufDomElement: boolean): void => {
+    const { bild, abbrueche } = propsRolle(ausdruck, deklarationen);
+    const text = ausdruck.getText(sf).replace(/\s+/g, " ").slice(0, 60);
     for (const w of bild.werte) {
       if (istDialogName(w.text)) {
         melde(ausdruck, "role-dialog");
@@ -776,7 +862,12 @@ export function erhebeDatei(quelle: Quelle): DateiErhebung {
     }
     if (bild.offen.length > 0) {
       unbekannteBauformen.push(
-        `${quelle.datei}:${zeileVon(sf, ausdruck)} — gespreizte Props „${ausdruck.getText(sf).slice(0, 60)}“ tragen eine Rolle, deren Wert statisch nicht bestimmbar ist: ob hier ein Dialog entsteht, kann dieser Sammler nicht beurteilen`,
+        `${quelle.datei}:${zeileVon(sf, ausdruck)} — gespreizte Props „${text}“ tragen eine Rolle, deren Wert statisch nicht bestimmbar ist: ob hier ein Dialog entsteht, kann dieser Sammler nicht beurteilen`,
+      );
+    }
+    if (aufDomElement && abbrueche.length > 0) {
+      unbekannteBauformen.push(
+        `${quelle.datei}:${zeileVon(sf, ausdruck)} — gespreizte Props „${text}“ an einem DOM-Element: ihre Herkunft ist lokal nicht auflösbar, ob sie eine Rolle tragen, kann dieser Sammler nicht beurteilen`,
       );
     }
   };
@@ -966,14 +1057,20 @@ export function erhebeDatei(quelle: Quelle): DateiErhebung {
     }
     // Nacharbeit 4 (ben): der SPREAD ist selbst Ausgangspunkt. `<div {...props} />` mit
     // `props: { role: "dialog" }` hat kein Objektliteral, an dem der Besucher oben ansetzen könnte —
-    // die Rolle steht nur im lokalen Typ des Parameters (`propsRollenwerte`).
+    // die Rolle steht nur im lokalen Typ des Parameters (`propsRolle`). Nacharbeit 5: auch über
+    // lokale Initialisierer und Bindungsketten (`const q = props; <div {...q} />`).
     if (ts.isJsxSpreadAttribute(node)) {
-      meldePropsRolle(node.expression);
+      const element = node.parent.parent;
+      const aufDom = ts.isIdentifier(element.tagName) && /^[a-z]/.test(element.tagName.text);
+      meldePropsRolle(node.expression, aufDom);
     }
     if (ts.isCallExpression(node) && aufrufName(node) === "createElement") {
-      const props = node.arguments[1];
-      if (props) {
-        meldePropsRolle(props);
+      const [tag, props] = node.arguments;
+      if (tag && props) {
+        // Ein bestimmter Zeichenkettenwert als Tag ist ein DOM-Element (`createElement("div", …)`).
+        const tagWerte = statischeWerte(tag, deklarationen);
+        const aufDom = tagWerte.werte.length > 0 && tagWerte.offen.length === 0;
+        meldePropsRolle(props, aufDom);
       }
     }
     if (ts.isCallExpression(node) && aufrufName(node) === "setAttribute") {
