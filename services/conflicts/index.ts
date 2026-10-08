@@ -6,9 +6,19 @@ export type { ConflictServiceDeps, DryRunConflict } from "./src/service";
 export { InMemoryConflictRepo, type ConflictRepo, type IsKoVersionCurrent } from "./src/repo";
 export { PgConflictRepo, CONFLICTS_SCHEMA } from "./src/repo-pg";
 export { ConflictError } from "./src/types";
+// R-0252: die Arbeitsart (Regel/Sache/Version) — das Prädikat prüft den Drahtwert der Anlage-Route.
+export { isConflictWorkKind } from "./src/types";
+// R-0263: Vorrang/Geltungsbereich zwischen den zwei Punkten einer Entscheidung — das Prädikat prüft
+// die Form der Wahl im Rumpf von `resolve-conflict`, bevor sie den Dienst erreicht.
+export { isVorrangWahl } from "./src/types";
 export type {
   Conflict,
   ConflictType,
+  ConflictWorkKind,
+  KlaraVorschlag,
+  KonfliktVorrang,
+  VorrangArt,
+  VorrangWahl,
   ConflictStatus,
   ConflictInput,
   ConflictErrorCode,

@@ -141,6 +141,9 @@ describe("R-0733 · getroffene Entscheidungen stehen mit Ausgang im Protokoll (H
     const { koA, koB, id } = await legeKonfliktAn(b);
     const entscheidung = "Vor dem Anlauf gilt.";
 
+    // R-0215 (Aufnahme gesamt-konfliktklassifikation): ein Wahrheitskonflikt wird verbindlich erst
+    // eskaliert, dann entschieden. Der Beleg der Entscheidung bleibt derselbe.
+    await fahre(b.app, kopf(b, "admin"), "POST", `/api/conflicts/${id}/escalate`);
     await fahre(b.app, kopf(b, "admin"), "PUT", `/api/kos/${koA}`, {
       action: "resolve-conflict",
       conflictId: id,

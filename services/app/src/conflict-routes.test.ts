@@ -59,6 +59,14 @@ describe("SCRUM-234: Konflikt-Workflow (HTTP end-to-end)", () => {
     expect(list.statusCode).toBe(200);
     expect(list.json().some((c: { id: string }) => c.id === id)).toBe(true);
 
+    // 2b) R-0215 (Nacharbeit 2): der Wahrheitskonflikt geht verbindlich zuerst an einen Menschen.
+    const esc = await app.inject({
+      method: "POST",
+      url: `/api/conflicts/${id}/escalate`,
+      headers,
+    });
+    expect(esc.statusCode).toBe(200);
+
     // 3) Zweitmeinung → Status zweitmeinung, Opinion gesetzt; im GET verifiziert.
     const opinion = await app.inject({
       method: "POST",
