@@ -1,10 +1,10 @@
 {
-  "version": 13,
+  "version": 14,
   "erhoben_am": "2026-10-01",
-  "nachgefuehrt_von": "produkt:20261007:speichern-erholung, Nacharbeit 1: ein weiterer Fall je Projekt chromium, firefox und webkit (K2/K3 Nacharbeit: Weiterschreiben waehrend des Wartens). Version 12 davor: drei Faelle mehr je Projekt chromium, firefox und webkit, alle in speichern-erholung-browser.spec.ts — Speicherzustand ohne Netz, Seitenwechsel ohne Netz, Nulltreffer mit Filterruecksetzen. NICHT gemessen, sondern aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt). Vorgefundene, fremde Drift unveraendert gelassen: firmenwoerterbuch-browser.spec.ts und bildschirmablauf-browser.spec.ts stehen nicht im Manifest. Vorher: gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3), drei Faelle in erstnutzer-u2-u3-browser.spec.ts.",
+  "nachgefuehrt_von": "aufnahme:20260922:gesamt-nutzerverwaltung (N-0025): zwei Faelle mehr je Projekt chromium, firefox und webkit, beide in konten-schmal-browser.spec.ts — Kontenliste bei 390 px mit echtem Konto und mit langem Kontonamen. NICHT gemessen, sondern aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt). Vorgefundene, fremde Drift unveraendert gelassen: firmenwoerterbuch-browser.spec.ts, bildschirmablauf-browser.spec.ts und spaces-browser.spec.ts stehen nicht im Manifest. Version 13 davor: produkt:20261007:speichern-erholung, Nacharbeit 1: ein weiterer Fall je Projekt chromium, firefox und webkit (K2/K3 Nacharbeit: Weiterschreiben waehrend des Wartens). Version 12 davor: drei Faelle mehr je Projekt chromium, firefox und webkit, alle in speichern-erholung-browser.spec.ts — Speicherzustand ohne Netz, Seitenwechsel ohne Netz, Nulltreffer mit Filterruecksetzen. NICHT gemessen, sondern aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt). Vorgefundene, fremde Drift unveraendert gelassen: firmenwoerterbuch-browser.spec.ts und bildschirmablauf-browser.spec.ts stehen nicht im Manifest. Vorher: gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3), drei Faelle in erstnutzer-u2-u3-browser.spec.ts.",
   "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
   "zweck": "Sollmanifest der Smoke-Mengen je Projekt. Drift (Hinzufuegen, Entfernen, Umbenennen) macht die Mengenpruefung rot.",
-  "gesamt_fallinstanzen": 213,
+  "gesamt_fallinstanzen": 219,
   "projekte": {
     "setup-zustand": {
       "soll": 1,
@@ -19,7 +19,7 @@
       ]
     },
     "chromium": {
-      "soll": 65,
+      "soll": 67,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -39,6 +39,8 @@
         "fe003-tutorial-fragen.spec.ts › FE-003 · reduzierte Bewegung: die Beispielfrage steht sofort vollständig da",
         "huelle-tabelle-browser.spec.ts › huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, Speichern und Wiederöffnen",
         "huelle2-reihenfolge-browser.spec.ts › huelle2: steht die Struktur VOR dem direkten Bild, bleibt die Beschreibung beim richtigen Bild",
+        "konten-schmal-browser.spec.ts › N-0025 · 390×844: Bereichsauswahl über der Kontenliste, Name und Rolle vollständig sichtbar",
+        "konten-schmal-browser.spec.ts › N-0025 · 390×844: ein langer Kontoname wird nicht gekürzt, die Rolle rückt darunter",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser überlebt die MAUS-Auswahl den Klick auf Fett",
         "mega87-caption-formatierung-browser.spec.ts › mega87: ohne Markierung sagt der echte Browser den Grund, statt stumm zu bleiben",
@@ -89,7 +91,7 @@
       ]
     },
     "firefox": {
-      "soll": 65,
+      "soll": 67,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -109,6 +111,8 @@
         "fe003-tutorial-fragen.spec.ts › FE-003 · reduzierte Bewegung: die Beispielfrage steht sofort vollständig da",
         "huelle-tabelle-browser.spec.ts › huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, Speichern und Wiederöffnen",
         "huelle2-reihenfolge-browser.spec.ts › huelle2: steht die Struktur VOR dem direkten Bild, bleibt die Beschreibung beim richtigen Bild",
+        "konten-schmal-browser.spec.ts › N-0025 · 390×844: Bereichsauswahl über der Kontenliste, Name und Rolle vollständig sichtbar",
+        "konten-schmal-browser.spec.ts › N-0025 · 390×844: ein langer Kontoname wird nicht gekürzt, die Rolle rückt darunter",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser überlebt die MAUS-Auswahl den Klick auf Fett",
         "mega87-caption-formatierung-browser.spec.ts › mega87: ohne Markierung sagt der echte Browser den Grund, statt stumm zu bleiben",
@@ -159,7 +163,7 @@
       ]
     },
     "webkit": {
-      "soll": 65,
+      "soll": 67,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -179,6 +183,8 @@
         "fe003-tutorial-fragen.spec.ts › FE-003 · reduzierte Bewegung: die Beispielfrage steht sofort vollständig da",
         "huelle-tabelle-browser.spec.ts › huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, Speichern und Wiederöffnen",
         "huelle2-reihenfolge-browser.spec.ts › huelle2: steht die Struktur VOR dem direkten Bild, bleibt die Beschreibung beim richtigen Bild",
+        "konten-schmal-browser.spec.ts › N-0025 · 390×844: Bereichsauswahl über der Kontenliste, Name und Rolle vollständig sichtbar",
+        "konten-schmal-browser.spec.ts › N-0025 · 390×844: ein langer Kontoname wird nicht gekürzt, die Rolle rückt darunter",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser überlebt die MAUS-Auswahl den Klick auf Fett",
         "mega87-caption-formatierung-browser.spec.ts › mega87: ohne Markierung sagt der echte Browser den Grund, statt stumm zu bleiben",

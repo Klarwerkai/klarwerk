@@ -22,6 +22,10 @@
 //   W7  Duplikat-Schwelle schreiben/lesen/zurücknehmen · Fehler: Wert außerhalb des Bandes
 //   W8  Prüferanzahl      Standard-Prüferanzahl mit ihrem eigenen Speichern-Knopf schreiben/lesen/
 //                         zurücknehmen · Fehler: Störung beim Speichern, Stand unverändert
+//   W9  Löschen           „Entfernen" in der Nutzerkarte · „Behalten" lässt das Konto stehen ·
+//                         bestätigtes Löschen: Konto fehlt in /api/users, Login tot, genau ein
+//                         `user.delete` mit dem Admin als Handelndem · Fehler: Störung beim Senden
+//                         lässt das Konto stehen (gesamt-nutzerverwaltung, R-1756 / FR-RBAC-02)
 //
 // Die KI-Konfiguration (Anbieter-/Modellwahl je Aufgabe) ist hier BEWUSST nicht noch einmal gebaut:
 // sie hat ihren eigenen Durchstich am echten Server samt Fehler- und Rücknahmefällen
@@ -423,6 +427,70 @@ describe("W3 · Passwort-Reset über die Nutzerkarte", () => {
     expect(knopf(t("adm.resetConfirm")).disabled, "Bestätigen ist gesperrt").toBe(true);
     expect(text()).toContain(t("adm.passwordMismatch"));
     expect((await anmelden(WANDA.email, WANDA.password)).status, "altes Passwort").toBe(200);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// W9 · Löschen durch den Admin
+// ------------------------------------------------------------------------------------------------
+describe("W9 · Löschen über die Nutzerkarte", () => {
+  let zurueck = 0;
+
+  async function loeschKarte(): Promise<void> {
+    zurueck = 0;
+    await montiere(
+      createElement(NutzerDetail, {
+        nutzerId: wandaId,
+        onZurueck: () => {
+          zurueck += 1;
+        },
+      }),
+    );
+    await warteBis(() => container.querySelector("select") !== null, "Nutzerkarte");
+  }
+
+  const loeschBelege = (): Promise<{ actor: string }[]> =>
+    lies<{ actor: string }[]>(`/api/audit?action=user.delete&target=${wandaId}`);
+
+  it("„Behalten“ lässt das Konto stehen; bestätigtes Löschen entfernt es mit genau einem Beleg", async () => {
+    await freigebenPerDraht();
+    await loeschKarte();
+
+    await klick(knopf(t("adm.remove")));
+    expect(text(), "die Rückfrage steht da").toContain(t("adm.removeQ"));
+    await klick(knopf(t("adm.removeKeep")));
+    expect(text()).not.toContain(t("adm.removeQ"));
+    expect((await nutzer(wandaId)).approved, "nach „Behalten“ besteht das Konto").toBe(true);
+    expect(await loeschBelege(), "kein Beleg ohne Löschen").toEqual([]);
+
+    await klick(knopf(t("adm.remove")));
+    await klick(knopf(t("adm.removeYes")));
+    await warteBis(() => zurueck === 1, "die Karte führt nach dem Löschen zurück");
+
+    const liste = await lies<{ id: string }[]>("/api/users");
+    expect(
+      liste.some((u) => u.id === wandaId),
+      "/api/users nach dem Löschen",
+    ).toBe(false);
+    expect((await anmelden(WANDA.email, WANDA.password)).status, "Login danach").toBe(401);
+    const belege = await loeschBelege();
+    expect(belege, "genau ein Löschbeleg").toHaveLength(1);
+    expect(belege[0]?.actor, "der Admin hat gelöscht").toBe(adminId);
+    expect(fehlerToasts(), "kein Fehler auf dem gelungenen Weg").toEqual([]);
+  });
+
+  it("Fehler: bricht die Verbindung beim Löschen, meldet die Karte es — das Konto bleibt", async () => {
+    await freigebenPerDraht();
+    await loeschKarte();
+    stoerung = { methode: "DELETE", pfad: `/api/users/${wandaId}` };
+    await klick(knopf(t("adm.remove")));
+    await klick(knopf(t("adm.removeYes")));
+    await warteBis(() => fehlerToasts().length > 0, "Fehlermeldung");
+    expect(gestoerteAufrufe, "die Störung ist wirklich eingetreten").toBe(1);
+    expect(zurueck, "die Karte bleibt offen").toBe(0);
+    expect((await nutzer(wandaId)).approved, "das Konto besteht weiter").toBe(true);
+    expect((await anmelden(WANDA.email, WANDA.password)).status, "Login weiter möglich").toBe(200);
+    expect(await loeschBelege(), "kein Beleg ohne Löschen").toEqual([]);
   });
 });
 
