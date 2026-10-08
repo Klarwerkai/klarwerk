@@ -35,7 +35,11 @@ import { dirname, join, resolve } from "node:path";
 import { runInThisContext } from "node:vm";
 import ts from "typescript";
 import { basisSchluesselAusQuelltext, pruefeTextmodule } from "./pruefung";
-import { pruefeHartkodierteTexte, pruefeSprachdateien } from "./sprachwaechter";
+import {
+  pruefeHartkodierteTexte,
+  pruefeSprachdateien,
+  registrierteSprachen,
+} from "./sprachwaechter";
 
 /** Der Ordner, in dem die Textmodule wohnen — relativ zu `apps/web/src`. */
 export const TEXTE_ORDNER = "texte";
@@ -220,7 +224,10 @@ export function ladeTextbaum(srcOrdner: string): Textbaum {
  */
 export function pruefeTextbaum(srcOrdner: string): string[] {
   const baum = ladeTextbaum(srcOrdner);
-  return [...baum.ladefehler, ...pruefeTextmodule(baum.module, baum.basisSchluessel)];
+  // R-0997: geprüft wird gegen die aus `woerterbuch/` ANGEMELDETEN Sprachen — eine neue Sprache
+  // verlangt damit ihren Block in jedem Textmodul, ohne dass hier eine Liste wächst.
+  const sprachen = registrierteSprachen(srcOrdner);
+  return [...baum.ladefehler, ...pruefeTextmodule(baum.module, baum.basisSchluessel, sprachen)];
 }
 
 /**

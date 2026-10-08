@@ -85,7 +85,10 @@ describe("K15 · U — eine unbekannte Sprache fällt nicht mehr still durch", (
     expect(pruefeTextmodule(modul(), new Set<string>())).toEqual([]);
   });
 
-  it("U-3: eine Sprachdatei ausserhalb de/en/nl im Grundbestand wird gemeldet", () => {
+  // R-0997 (Nacharbeit 10): eine GEBUNDENE Datei (`const fr: typeof de = {`) meldet ihre Sprache an
+  // — belegt in `tests/sprache-begriffe/neue-sprache-aus-ressourcen.test.ts` R-3. Diese hier ist
+  // ungebunden und bleibt deshalb eine unbekannte Sprache.
+  it("U-3: eine ungebundene Sprachdatei ausserhalb de/en/nl im Grundbestand wird gemeldet", () => {
     const wurzel = buehne({
       "woerterbuch/de.ts": "export const de = {};\n",
       "woerterbuch/fr.ts": "export const fr = {};\n",

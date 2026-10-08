@@ -27,10 +27,50 @@
 // sie sowohl im Anwendungsbündel (Browser) als auch im Bauwerkzeug (Node) laufen. Was Dateien
 // liest, steht in `./sammeln.ts` und wird nie vom Browser angefasst.
 
-/** Die drei Sprachen der Oberfläche. Eine vierte ist NICHT Gegenstand dieses Auftrags. */
+/**
+ * Die PFLICHTSPRACHEN der Oberfläche (R-0960/R-0983: vollständig in DE, EN und NL). Sie sind die
+ * Untergrenze, nicht die Obergrenze: R-0997 / FR-I18N-02 („neue Sprache ohne Code-Umbau
+ * ergänzbar") — jede WEITERE Sprache meldet sich über ihre Ressource an (`woerterbuch/<kürzel>.ts`,
+ * siehe `sprachenAusRessourcen`). Die Regel für `<html lang>` (JOB 536, genau de|en|nl) ist davon
+ * getrennt und steht unverändert in `lib/htmlLang.ts`.
+ */
 export const SPRACHEN = ["de", "en", "nl"] as const;
 
 export type Sprache = (typeof SPRACHEN)[number];
+
+/** Die Basissprache: Grundbestand, Rückfall (`fallbackLng`) und Bezug jedes weiteren Wörterbuchs. */
+export const BASISSPRACHE = "de";
+
+/** Ein Ressourcenname, der eine Sprache anmeldet: zwei Kleinbuchstaben (`fr.ts`, `it.ts`). */
+const SPRACHKUERZEL = /^[a-z]{2}$/;
+
+/** Die Sprache, die eine Ressource (`…/woerterbuch/fr.ts`) anmeldet — oder `null`. */
+export function spracheAusPfad(pfad: string): string | null {
+  const letzte = pfad.split("/").pop() ?? pfad;
+  if (!letzte.endsWith(".ts")) {
+    return null;
+  }
+  const name = letzte.slice(0, -".ts".length);
+  return SPRACHKUERZEL.test(name) ? name : null;
+}
+
+/**
+ * R-0997 · DIE SPRACHREGISTRIERUNG AUS DEN RESSOURCEN. Aus den Dateinamen der Grundwörterbücher
+ * wird die Menge der Oberflächensprachen abgeleitet: die Pflichtsprachen in fester Reihenfolge, dann
+ * jede weitere angemeldete Sprache alphabetisch. Wer eine Sprache ergänzt, legt Ressourcen an — er
+ * ändert keine Liste im Programm.
+ */
+export function sprachenAusRessourcen(pfade: readonly string[]): string[] {
+  const pflicht: readonly string[] = SPRACHEN;
+  const weitere = new Set<string>();
+  for (const pfad of pfade) {
+    const sprache = spracheAusPfad(pfad);
+    if (sprache !== null && !pflicht.includes(sprache)) {
+      weitere.add(sprache);
+    }
+  }
+  return [...pflicht, ...[...weitere].sort()];
+}
 
 /**
  * Ein Textmodul — die Texte EINER Funktion in DE/EN/NL.
@@ -48,6 +88,14 @@ export interface Textmodul {
   readonly de: Readonly<Record<string, string>>;
   readonly en: Readonly<Record<string, string>>;
   readonly nl: Readonly<Record<string, string>>;
+  /** R-0997: der Block jeder weiteren, über `woerterbuch/` angemeldeten Sprache (`fr: {…}`). */
+  readonly [sprache: string]: Readonly<Record<string, string>> | string | readonly string[];
+}
+
+/** Der Textblock einer Sprache — leer, wenn das Modul ihn nicht führt. */
+function block(modul: Textmodul, sprache: string): Readonly<Record<string, string>> {
+  const wert = (modul as unknown as Record<string, unknown>)[sprache];
+  return istRecordAusZeichenketten(wert) ? wert : {};
 }
 
 /** Der Dateiname ohne Pfad und ohne Endung — daraus leitet sich das Pflicht-Präfix ab. */
@@ -69,7 +117,7 @@ function istRecordAusZeichenketten(wert: unknown): wert is Record<string, string
  * Prüft die Grundform eines eingesammelten Moduls. Gibt die Befunde zurück; eine leere Liste heisst
  * „die Form trägt" und erst dann lohnt sich die inhaltliche Prüfung.
  */
-function pruefeForm(pfad: string, roh: unknown): string[] {
+function pruefeForm(pfad: string, roh: unknown, sprachen: readonly string[]): string[] {
   const fehler: string[] = [];
   if (typeof roh !== "object" || roh === null) {
     return [
@@ -90,19 +138,20 @@ function pruefeForm(pfad: string, roh: unknown): string[] {
   } else if (modul.legacySchluessel.some((eintrag) => typeof eintrag !== "string")) {
     fehler.push(`${pfad}: legacySchluessel enthält einen Eintrag, der keine Zeichenkette ist.`);
   }
-  for (const sprache of SPRACHEN) {
-    if (!istRecordAusZeichenketten(modul[sprache])) {
+  for (const sprache of sprachen) {
+    if (!istRecordAusZeichenketten((roh as Record<string, unknown>)[sprache])) {
       fehler.push(`${pfad}: ${sprache} fehlt oder ist kein Objekt aus Zeichenketten.`);
     }
   }
-  // R-1169 / R-0983: eine Sprache AUSSERHALB von de/en/nl (etwa `fr: {…}`) fiel bis hierher still
-  // durch — der Sammler liest nur die drei Blöcke, der vierte wurde nie ausgeliefert und nie
-  // gemeldet. Jetzt ist jeder unbekannte Eintrag der Modulform ein Befund.
-  const bekannt = new Set<string>(["praefix", "legacySchluessel", ...SPRACHEN]);
+  // R-1169 / R-0983: eine Sprache AUSSERHALB der angemeldeten (etwa `fr: {…}` ohne
+  // `woerterbuch/fr.ts`) fiel bis hierher still durch — der Sammler liest nur die angemeldeten
+  // Blöcke, der übrige wurde nie ausgeliefert und nie gemeldet. Jeder unbekannte Eintrag der
+  // Modulform ist ein Befund. Angemeldet wird eine Sprache über ihre Ressource (R-0997), nicht hier.
+  const bekannt = new Set<string>(["praefix", "legacySchluessel", ...sprachen]);
   for (const feld of Object.keys(roh as object).sort()) {
     if (!bekannt.has(feld)) {
       fehler.push(
-        `${pfad}: unbekannter Eintrag "${feld}" — ein Textmodul kennt nur ${SPRACHEN.join(", ")}; eine weitere Sprache wäre still ignoriert worden.`,
+        `${pfad}: unbekannter Eintrag "${feld}" — ein Textmodul kennt nur ${sprachen.join(", ")}; eine weitere Sprache wäre still ignoriert worden.`,
       );
     }
   }
@@ -116,23 +165,26 @@ function pruefeForm(pfad: string, roh: unknown): string[] {
  *   1. Jedes Modul hat ein `praefix`, das zu seinem Dateinamen passt.
  *   2. Jeder Schlüssel trägt das Präfix seines Moduls ODER steht in dessen `legacySchluessel`.
  *   3. Kein Eintrag in `legacySchluessel`, den es im Modul gar nicht gibt (tote Ausnahme).
- *   4. Jeder Schlüssel liegt in ALLEN DREI Sprachen vor — kein stilles Zurückfallen auf Deutsch.
+ *   4. Jeder Schlüssel liegt in ALLEN angemeldeten Sprachen vor (mindestens DE/EN/NL) — kein
+ *      stilles Zurückfallen auf Deutsch.
  *   5. Kein Schlüssel kommt in zwei Modulen vor.
  *   6. Kein Schlüssel des Moduls steht noch im Grundbestand (`i18n.ts` samt gespreadeter Blöcke).
  *
  * @param module   Pfad (wie ihn `import.meta.glob` liefert) → Standardexport des Moduls, ungeprüft.
  * @param basisSchluessel Alle Schlüssel, die der Grundbestand schon trägt.
+ * @param sprachen Die angemeldeten Oberflächensprachen (`sprachenAusRessourcen`); Vorgabe: DE/EN/NL.
  */
 export function pruefeTextmodule(
   module: Readonly<Record<string, unknown>>,
   basisSchluessel: ReadonlySet<string>,
+  sprachen: readonly string[] = SPRACHEN,
 ): string[] {
   const fehler: string[] = [];
   const herkunft = new Map<string, string>();
 
   for (const pfad of Object.keys(module).sort()) {
     const roh = module[pfad];
-    const formfehler = pruefeForm(pfad, roh);
+    const formfehler = pruefeForm(pfad, roh, sprachen);
     if (formfehler.length > 0) {
       fehler.push(...formfehler);
       continue;
@@ -147,9 +199,9 @@ export function pruefeTextmodule(
           `${pfad}: Schlüssel "${schluessel}" trägt weder das Präfix "${modul.praefix}" noch steht er in legacySchluessel.`,
         );
       }
-      // (4) Alle drei Sprachen — je Sprache gemeldet, nicht als Sammelmeldung.
-      for (const sprache of SPRACHEN) {
-        if (!(schluessel in modul[sprache])) {
+      // (4) Alle angemeldeten Sprachen — je Sprache gemeldet, nicht als Sammelmeldung.
+      for (const sprache of sprachen) {
+        if (!(schluessel in block(modul, sprache))) {
           fehler.push(`${pfad}: Schlüssel "${schluessel}" fehlt in der Sprache "${sprache}".`);
         }
       }
@@ -168,9 +220,9 @@ export function pruefeTextmodule(
       }
     }
 
-    // Schlüssel, die NUR in en oder nl stehen: dieselbe Lücke, andere Richtung.
-    for (const sprache of SPRACHEN) {
-      for (const schluessel of Object.keys(modul[sprache]).sort()) {
+    // Schlüssel, die NUR in einer anderen Sprache stehen: dieselbe Lücke, andere Richtung.
+    for (const sprache of sprachen) {
+      for (const schluessel of Object.keys(block(modul, sprache)).sort()) {
         if (!(schluessel in modul.de)) {
           fehler.push(
             `${pfad}: Schlüssel "${schluessel}" steht in "${sprache}", fehlt aber in der Sprache "de".`,
@@ -198,12 +250,16 @@ export function pruefeTextmodule(
  */
 export function fuehreTextmoduleZusammen(
   module: Readonly<Record<string, Textmodul>>,
-): Record<Sprache, Record<string, string>> {
-  const zusammen: Record<Sprache, Record<string, string>> = { de: {}, en: {}, nl: {} };
+  sprachen: readonly string[] = SPRACHEN,
+): Record<string, Record<string, string>> {
+  const zusammen: Record<string, Record<string, string>> = {};
+  for (const sprache of sprachen) {
+    zusammen[sprache] = {};
+  }
   for (const pfad of Object.keys(module).sort()) {
     const modul = module[pfad] as Textmodul;
-    for (const sprache of SPRACHEN) {
-      Object.assign(zusammen[sprache], modul[sprache]);
+    for (const sprache of sprachen) {
+      Object.assign(zusammen[sprache] ?? {}, block(modul, sprache));
     }
   }
   return zusammen;

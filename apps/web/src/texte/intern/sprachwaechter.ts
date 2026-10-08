@@ -8,9 +8,9 @@
 // (`./pruefung.ts`, Regel 4 und „unbekannter Eintrag" in der Modulform). Diese Datei trägt die
 // beiden anderen:
 //
-//   1. UNBEKANNTE SPRACHE IM GRUNDBESTAND. `woerterbuch/` führt je Sprache eine Datei. Eine
-//      `fr.ts` dort wäre still: `i18n.ts` importiert sie nicht, niemand sähe sie. Der Wächter lässt
-//      nur die Sprachen der Oberfläche zu (`SPRACHEN` aus `./pruefung.ts`).
+//   1. UNBEKANNTE SPRACHE IM GRUNDBESTAND. `woerterbuch/` führt je Sprache eine Datei. Seit R-0997
+//      meldet eine gebundene Datei ihre Sprache AN (unten, `registrierteSprachen`); eine Datei ohne
+//      Bindung oder ohne Sprachkürzel als Namen bliebe still und ist deshalb ein Befund.
 //
 //   2. HART CODIERTE ANZEIGETEXTE IN TSX — ANHAND DER JSX-STRUKTUR, nicht zeilenweise. Jede
 //      `.tsx`-Datei (ohne Tests) wird mit dem TypeScript-Parser gelesen; gemeldet wird:
@@ -41,7 +41,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
-import { SPRACHEN } from "./pruefung";
+import { BASISSPRACHE, SPRACHEN, spracheAusPfad, sprachenAusRessourcen } from "./pruefung";
 
 /** Die Attribute, deren Wert Anzeige- oder Vorlesetext ist. */
 export const TEXTATTRIBUTE: ReadonlySet<string> = new Set([
@@ -261,22 +261,79 @@ export function pruefeHartkodierteTexte(
   return fehler;
 }
 
-/** Unbekannte Sprachen im Grundbestand: jede Datei in `woerterbuch/` ausser de/en/nl. */
-export function pruefeSprachdateien(srcOrdner: string): string[] {
+// ================================================================================================
+// R-0997 · EINE WEITERE SPRACHE MELDET SICH ÜBER IHRE RESSOURCE AN — GEBUNDEN, NICHT LOSE.
+// ================================================================================================
+//
+// FR-I18N-02: „Neue Sprache ohne Code-Umbau ergänzbar." Eine Sprache ergänzen heisst: eine Datei
+// `woerterbuch/<kürzel>.ts` anlegen (wie `en.ts`: `const fr: typeof de = {` … `export { fr };`) und
+// jedem Textmodul seinen `fr`-Block geben. Keine Liste im Programm wird angefasst — `i18n.ts`, der
+// Sprachschalter, Profil, Anmeldung und die gespeicherte Wahl lesen die Menge aus den Ressourcen
+// (`lib/sprachregister.ts`, `sprachenAusRessourcen` in `./pruefung.ts`).
+//
+// WARUM „GEBUNDEN": `typeof de` lässt den Typcheck jede fehlende oder überzählige Zeile gegenüber
+// dem deutschen Bestand melden — die Vollständigkeit aus R-0983 gilt so auch für jede neue Sprache.
+// Eine Datei, die diese Bindung nicht trägt (oder deren Name kein Sprachkürzel ist), meldet KEINE
+// Sprache an und bleibt, was sie vorher war: eine unbekannte Sprache, die den Bau anhält
+// (R-1169). Was ein Wächter so nicht prüft, steht im Kopf von `lib/sprachregister.ts`.
+
+/** Trägt die Datei die Bindung an den deutschen Bestand? Deutsch selbst ist der Bezug. */
+function gebunden(ordner: string, datei: string): boolean {
+  const sprache = spracheAusPfad(datei);
+  if (sprache === null) {
+    return false;
+  }
+  if (sprache === BASISSPRACHE) {
+    return true;
+  }
+  let text = "";
+  try {
+    text = readFileSync(join(ordner, datei), "utf8");
+  } catch {
+    return false;
+  }
+  return (
+    text.includes(`\nconst ${sprache}: typeof ${BASISSPRACHE} = {\n`) &&
+    text.includes(`\nexport { ${sprache} };`)
+  );
+}
+
+/**
+ * Die angemeldeten Oberflächensprachen eines `src`-Ordners — dieselbe Ableitung wie im Browser,
+ * aus dem Dateibaum statt aus dem Bündel. Ohne `woerterbuch/` (Bühnen der Vertragstests): DE/EN/NL.
+ */
+export function registrierteSprachen(srcOrdner: string): string[] {
+  const ordner = join(srcOrdner, "woerterbuch");
   let dateien: string[] = [];
   try {
-    dateien = readdirSync(join(srcOrdner, "woerterbuch"));
+    dateien = readdirSync(ordner);
+  } catch {
+    return [...SPRACHEN];
+  }
+  return sprachenAusRessourcen(dateien.filter((datei) => gebunden(ordner, datei)));
+}
+
+/** Unbekannte Sprachen im Grundbestand: jede Datei in `woerterbuch/`, die keine Sprache anmeldet. */
+export function pruefeSprachdateien(srcOrdner: string): string[] {
+  const ordner = join(srcOrdner, "woerterbuch");
+  let dateien: string[] = [];
+  try {
+    dateien = readdirSync(ordner);
   } catch {
     return []; // kein Grundbestand-Ordner (Bühnen der Vertragstests) — nichts zu prüfen
   }
-  const erlaubt = new Set<string>(SPRACHEN.map((sprache) => `${sprache}.ts`));
   const fehler: string[] = [];
   for (const datei of [...dateien].sort()) {
-    if (datei.startsWith(".") || erlaubt.has(datei)) {
+    if (datei.startsWith(".") || gebunden(ordner, datei)) {
       continue;
     }
+    const sprache = spracheAusPfad(datei);
+    const grund =
+      sprache === null
+        ? "der Dateiname ist kein Sprachkürzel (zwei Kleinbuchstaben, Endung .ts)"
+        : `eine Sprache meldet sich nur an, wenn die Datei an den deutschen Bestand gebunden ist: „const ${sprache}: typeof de = {" und „export { ${sprache} };", wie woerterbuch/en.ts`;
     fehler.push(
-      `woerterbuch/${datei}: unbekannte Sprache — die Oberfläche kennt nur ${SPRACHEN.join(", ")}. Eine weitere Sprache wäre hier still ignoriert worden.`,
+      `woerterbuch/${datei}: unbekannte Sprache — ${grund}. Ungebunden wäre sie still ignoriert worden.`,
     );
   }
   return fehler;
