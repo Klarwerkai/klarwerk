@@ -3350,6 +3350,13 @@ export function buildApp(
         audit: services.audit,
         kos: koSichtbarkeit,
         papierkorb: { get: (id: string) => services.ko.papierkorbFakten(id) },
+        // R-1107 (Aufnahme gesamt-dublettenvergleich): der Zusammenführen-Assistent — dieselben
+        // Dienste und derselbe Nachlauf einer neuen Fassung wie am Überarbeitungsweg (ko-routes.ts).
+        zusammenfuehrung: {
+          ko: services.ko,
+          conflicts: services.conflicts,
+          ...(aiCheckWorker ? { aiCheckWorker } : {}),
+        },
       },
       guards,
     ),
