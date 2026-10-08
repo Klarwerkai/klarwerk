@@ -2658,7 +2658,8 @@ export interface ReasonerBetreiberKarte {
   verfuegbarkeit: ReasonerKiVerfuegbarkeit | null;
 }
 
-// Ben nacharbeit-7: WORTGLEICH zum Server — was über die Erreichbarkeit BEKANNT ist.
+// Ben nacharbeit-7/-9: WORTGLEICH zum Server — was über die Erreichbarkeit des zuerst gerufenen
+// Glieds BEKANNT ist. „unerreichbar" heißt: zuletzt gescheitert, der nächste Lauf versucht es erneut.
 export type ReasonerKiVerfuegbarkeit = "erreichbar" | "ungeprueft" | "unerreichbar";
 
 // R-0599: WORTGLEICH zu `ReasonerKiLage` (Server) — die KI-Lage der Kopfzeile, für jeden

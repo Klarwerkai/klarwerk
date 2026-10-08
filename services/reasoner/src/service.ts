@@ -1985,11 +1985,13 @@ export class Reasoner {
   // `effectiveAnbieterFor` die Anzeige — bei „auto" mit Cloud UND lokalem Modell, aber ohne
   // Cloud-Freigabe, begann die Ausführung lokal und die Kopfzeile behauptete „extern".
   //
-  // UND AUS DEN ERREICHBARKEITSSIGNALEN, die der Server schon führt (`providerReachability`, dieselbe
-  // Grundlage wie `taskModelUsable`): es zählt das ERSTE Modellglied der Kette, das nicht zuletzt
-  // unerreichbar war — genau das Glied, auf das die Ausführung durchfällt. Ist jedes Modellglied
-  // zuletzt gescheitert, antwortet der regelbasierte Ersatz, und die Lage sagt das („keine",
-  // `unerreichbar`) statt eines Modells, das gerade nicht antwortet.
+  // UND MIT DEM ERREICHBARKEITSBEFUND, den der Server schon führt (`providerReachability`) — aber
+  // für DASSELBE Glied, das die Ausführung zuerst ruft. Ben nacharbeit-9: `runTask` versucht das erste
+  // Modellglied der Kette bei JEDEM Lauf erneut, auch nach einem negativen Befund; nur wenn es dann
+  // wieder scheitert, fällt der Lauf weiter. Die Anzeige darf deshalb keinen lokalen oder
+  // regelbasierten Weg als feststehend behaupten (das tat Nacharbeit 8, indem sie unerreichbare
+  // Glieder übersprang), sondern nennt das Glied, an das der nächste Lauf die Inhalte zuerst sendet,
+  // mit seinem letzten Befund — auch wenn der „zuletzt nicht erreichbar" lautet.
   private antwortAufloesung(): {
     zugang: ReasonerCloudAnbieter | "local" | null;
     provider: ReasonerProvider | null;
@@ -1998,23 +2000,20 @@ export class Reasoner {
     if (this.kiAbschaltung().abgeschaltet) {
       return { zugang: null, provider: null, verfuegbarkeit: null };
     }
-    const modelle = this.providerChain("answer").filter((p) => p !== this.fallback);
-    if (modelle.length === 0) {
+    // Dieselbe Kette, dasselbe erste Modellglied wie `runTask` — ohne einen Filter, den die
+    // Ausführung nicht kennt.
+    const erstes = this.providerChain("answer").find((p) => p !== this.fallback);
+    if (!erstes) {
       return { zugang: null, provider: null, verfuegbarkeit: null };
     }
-    for (const provider of modelle) {
-      const kante = this.kanteVon(provider);
-      const lage = this.providerReachability(kante);
-      if (lage === "unreachable") {
-        continue;
-      }
-      return {
-        zugang: kante,
-        provider,
-        verfuegbarkeit: lage === "active" ? "erreichbar" : "ungeprueft",
-      };
-    }
-    return { zugang: null, provider: null, verfuegbarkeit: "unerreichbar" };
+    const kante = this.kanteVon(erstes);
+    const lage = this.providerReachability(kante);
+    return {
+      zugang: kante,
+      provider: erstes,
+      verfuegbarkeit:
+        lage === "active" ? "erreichbar" : lage === "unreachable" ? "unerreichbar" : "ungeprueft",
+    };
   }
 
   /** R-0599: die KI-Lage für jeden angemeldeten Nutzer — ohne Modellnamen, ohne Schlüssel. */

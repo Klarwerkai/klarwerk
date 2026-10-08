@@ -1190,7 +1190,7 @@ const FREIGABE_ERLAUBT: ReadonlyMap<string, string> = new Map([
   [
     "tests/ki-modus-wahrheit/ki-lage-und-betreiber.test.ts",
     "Misst Kopfzeile (kiLage) und Betreiberkarte an der tatsächlich freigegebenen Ausführungskette " +
-      "statt an einem Mock. L2/L5/W2 brauchen die Grundfreigabe, sonst stünde der Cloud-Zugang nie in " +
+      "statt an einem Mock. L2/L5/L7/L8/W2 brauchen die Grundfreigabe, sonst stünde die Cloud nie in " +
       "der Kette und „extern“ wäre unmessbar; L1/L3/L4 bekommen keine — L3 IST der Sperrfall (Cloud " +
       "eingerichtet, Freigabe fehlt → lokal). Nie mehr als die Grundfreigabe, kein Modellaufruf.",
   ],
@@ -2764,7 +2764,10 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       L2: { boden: 8, freigaben: [AM_REASONER] },
       L3: { boden: 8, freigaben: [] },
       L4: { boden: 6, freigaben: [] },
-      L5: { boden: 4, freigaben: [AM_REASONER, "erteileKiFreigabe(nurCloud)"] },
+      L5: { boden: 4, freigaben: [AM_REASONER] },
+      // Ben nacharbeit-9: Status und anschließender Antwortlauf mit Provider-Attrappen.
+      L7: { boden: 3, freigaben: [AM_REASONER] },
+      L8: { boden: 4, freigaben: [AM_REASONER] },
       W2: { boden: 7, freigaben: [AM_REASONER] },
     },
   },

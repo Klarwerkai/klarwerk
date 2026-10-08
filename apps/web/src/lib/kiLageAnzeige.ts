@@ -20,9 +20,9 @@ export const KI_LAGE_TEXT = {
   intern: "kilage.zeile.intern",
   keine: "kilage.zeile.keine",
   unbekannt: "kilage.zeile.unbekannt",
-  unerreichbar: "kilage.zeile.unerreichbar",
   verfuegbarErreichbar: "kilage.verfuegbarkeit.erreichbar",
   verfuegbarUngeprueft: "kilage.verfuegbarkeit.ungeprueft",
+  verfuegbarZuletztGescheitert: "kilage.verfuegbarkeit.zuletztGescheitert",
   verfuegbarUnerreichbar: "kilage.verfuegbarkeit.unerreichbar",
 } as const;
 
@@ -31,10 +31,11 @@ export interface KiLageAnzeige {
   textKey: string;
   params: Record<string, string>;
   /**
-   * Ben nacharbeit-7 (R-0940/R-2142): was der Server über die Erreichbarkeit WEISS, als Zusatz zum
-   * Kurzsatz („antwortet" / „Erreichbarkeit noch nicht bestätigt") — `null`, wenn es nichts zu
-   * erreichen gibt. Eine eingerichtete, aber zuletzt unerreichbare KI steht nicht hier, sondern als
-   * eigener Kurzsatz (`unerreichbar`): dann arbeitet sie eben nicht.
+   * Ben nacharbeit-7/-9 (R-0940/R-2142): was der Server über die Erreichbarkeit der KI WEISS, an die
+   * der nächste Lauf zuerst sendet — als Zusatz zum Kurzsatz („antwortet" / „Erreichbarkeit noch
+   * nicht bestätigt" / „zuletzt nicht erreichbar"). `null`, wenn es nichts zu erreichen gibt. Auch
+   * nach einem Fehlschlag bleibt der Anbieter genannt: die Ausführung versucht ihn erneut, und erst
+   * wenn das wieder scheitert, steht ein Ersatzweg fest — den behauptet die Zeile deshalb nicht.
    */
   verfuegbarkeitKey: string | null;
   /** Die Sätze des Zeigehinweises, in Reihenfolge. */
@@ -60,13 +61,18 @@ export function kiLageAnzeige(lage: ReasonerKiLage | undefined): KiLageAnzeige {
       ? KI_LAGE_TEXT.verfuegbarErreichbar
       : lage.verfuegbarkeit === "ungeprueft"
         ? KI_LAGE_TEXT.verfuegbarUngeprueft
-        : null;
+        : lage.verfuegbarkeit === "unerreichbar"
+          ? KI_LAGE_TEXT.verfuegbarZuletztGescheitert
+          : null;
+  // Der Fehlschlag gehört in den Zeigehinweis mit dem ausgeschriebenen Satz — ohne Ersatzzusage.
+  const fehlschlag =
+    lage.verfuegbarkeit === "unerreichbar" ? [KI_LAGE_TEXT.verfuegbarUnerreichbar] : [];
   if (lage.modus === "extern") {
     return {
       textKey: lage.anbieterName ? KI_LAGE_TEXT.extern : KI_LAGE_TEXT.externOhneName,
       params: lage.anbieterName ? { anbieter: lage.anbieterName } : {},
       verfuegbarkeitKey,
-      hinweisKeys: [KI_HEADER_TEXT.hintExternal, KI_HEADER_TEXT.offenePruefungen],
+      hinweisKeys: [...fehlschlag, KI_HEADER_TEXT.hintExternal, KI_HEADER_TEXT.offenePruefungen],
       herkunft: kiHerkunftAnzeige(lage.herkunft ?? undefined),
       ton: "warn",
     };
@@ -76,22 +82,9 @@ export function kiLageAnzeige(lage: ReasonerKiLage | undefined): KiLageAnzeige {
       textKey: KI_LAGE_TEXT.intern,
       params: {},
       verfuegbarkeitKey,
-      hinweisKeys: [KI_HEADER_TEXT.hintInternal, KI_HEADER_TEXT.offenePruefungen],
+      hinweisKeys: [...fehlschlag, KI_HEADER_TEXT.hintInternal, KI_HEADER_TEXT.offenePruefungen],
       herkunft: kiHerkunftAnzeige(lage.herkunft ?? undefined),
       ton: "warn",
-    };
-  }
-  if (lage.verfuegbarkeit === "unerreichbar") {
-    // Eingerichtet, freigegeben, aber zuletzt ohne Antwort: es arbeitet der regelbasierte Ersatz —
-    // und die Zeile sagt beides, statt „keine KI" (falsch: eingerichtet ist eine) oder den Anbieter
-    // (falsch: er antwortet gerade nicht).
-    return {
-      textKey: KI_LAGE_TEXT.unerreichbar,
-      params: {},
-      verfuegbarkeitKey: null,
-      hinweisKeys: [KI_LAGE_TEXT.verfuegbarUnerreichbar],
-      herkunft: null,
-      ton: "neutral",
     };
   }
   return {

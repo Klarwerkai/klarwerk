@@ -97,18 +97,22 @@ describe("R-0599 · die Kopfzeile zeigt die KI-Lage des Servers", () => {
     );
   });
 
-  it("M5 · eingerichtet, aber zuletzt unerreichbar: kein Anbieter, sondern der Ersatz", async () => {
+  // Ben nacharbeit-9: der nächste Lauf sendet zuerst wieder an diesen Anbieter — die Zeile nennt ihn
+  // weiter, mit dem Fehlschlag, und behauptet keinen Ersatzweg.
+  it("M5 · zuletzt gescheitert: der Anbieter bleibt genannt, mit Fehlschlag, ohne Ersatzzusage", async () => {
     await i18n.changeLanguage("de");
     kiLage.mockResolvedValue({
-      modus: "keine",
-      anbieter: null,
-      anbieterName: null,
-      herkunft: null,
+      modus: "extern",
+      anbieter: "openai",
+      anbieterName: "ChatGPT (OpenAI)",
+      herkunft: { land: "us", nachweis: "behauptet" },
       verfuegbarkeit: "unerreichbar",
     });
     const el = await zeile();
-    expect(el.textContent).toBe("KI nicht erreichbar · regelbasierter Ersatz");
-    expect(el.getAttribute("title") ?? "").toContain("zuletzt nicht geantwortet");
+    expect(el.textContent).toBe("KI: extern · ChatGPT (OpenAI) · zuletzt nicht erreichbar");
+    const hinweis = el.getAttribute("title") ?? "";
+    expect(hinweis).toContain("beim letzten Versuch nicht geantwortet");
+    expect(hinweis).not.toMatch(/regelbasiert|Ersatz/);
   });
 
   it("M3 · Abruf gescheitert: „unbekannt“, keine erfundene Lage", async () => {

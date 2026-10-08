@@ -391,12 +391,13 @@ export interface ReasonerBetreiberKarte {
   verfuegbarkeit: ReasonerKiVerfuegbarkeit | null;
 }
 
-// Ben nacharbeit-7 (R-0940/R-2142): was der Server über die Erreichbarkeit WEISS — aus den
-// vorhandenen Kantensignalen (`providerReachability`), nie angenommen:
-//   · "erreichbar"   — der Zugang hat zuletzt (innerhalb der Frist) wirklich geantwortet;
+// Ben nacharbeit-7/-9 (R-0940/R-2142): was der Server über die Erreichbarkeit des Glieds WEISS, das
+// die Ausführung als ERSTES ruft — aus den vorhandenen Kantensignalen (`providerReachability`):
+//   · "erreichbar"   — es hat zuletzt (innerhalb der Frist) wirklich geantwortet;
 //   · "ungeprueft"   — eingerichtet und freigegeben, aber noch ohne frischen Befund;
-//   · "unerreichbar" — JEDES Modellglied der freigegebenen Kette ist zuletzt gescheitert; es
-//                      antwortet der regelbasierte Ersatz (dann ist `modus` „keine").
+//   · "unerreichbar" — es ist zuletzt gescheitert. Der nächste Lauf versucht es TROTZDEM zuerst
+//                      (`runTask`); `modus` und `anbieter` nennen es deshalb weiter. Ein Ersatzweg
+//                      wird nicht behauptet — er steht erst fest, wenn dieser Versuch scheitert.
 // `null`: es ist gar kein Modell in der freigegebenen Kette (keins eingerichtet, keine Freigabe,
 // abgeschaltet) — dann gibt es auch nichts zu erreichen.
 export type ReasonerKiVerfuegbarkeit = "erreichbar" | "ungeprueft" | "unerreichbar";

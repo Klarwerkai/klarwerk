@@ -16,6 +16,7 @@ import {
   createCappedCloudClientFromEnv,
   createCappedLocalClientFromEnv,
 } from "../../services/reasoner/src/model-client";
+import type { ModelClient } from "../../services/reasoner/src/provider-model";
 import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 // ================================================================================================
@@ -116,42 +117,43 @@ describe("R-0599 · die KI-Lage kommt aus der freigegebenen Ausführungskette �
     expect(JSON.stringify(cfg.betreiber)).not.toContain("gpt-test-modell");
   });
 
-  it("L4 · bekannte Unerreichbarkeit: das einzige Modell scheitert zuletzt → „keine“, ausdrücklich unerreichbar", () => {
+  // Ben nacharbeit-9: die Ausführung (`runTask`) versucht das erste Modellglied bei JEDEM Lauf
+  // erneut, auch nach einem negativen Befund. Die Lage nennt deshalb weiter DIESES Glied — mit seinem
+  // letzten Fehlschlag — und behauptet keinen lokalen oder regelbasierten Weg als feststehend.
+  it("L4 · bekannte Unerreichbarkeit: das Glied bleibt genannt, mit seinem letzten Fehlschlag", () => {
     const reasoner = reasonerWieImProdukt(LOKAL);
     expect(reasoner.kiLage().modus).toBe("intern");
     reasoner.recordReachability(false, "local");
     expect(reasoner.kiLage()).toEqual({
-      modus: "keine",
-      anbieter: null,
+      modus: "intern",
+      anbieter: "local",
       anbieterName: null,
-      herkunft: null,
+      herkunft: { land: null, nachweis: "unbekannt" },
       verfuegbarkeit: "unerreichbar",
     });
     const karte = reasoner.configStatus().betreiber;
-    expect(karte?.zugang).toBeNull();
-    expect(karte?.modell).toBeNull();
+    expect(karte?.zugang).toBe("local");
+    expect(karte?.modell).toBe("lokal-test-modell");
     expect(karte?.verfuegbarkeit).toBe("unerreichbar");
-    // Und zurück: antwortet es wieder, arbeitet es wieder — gemeldet als erreichbar.
+    // Und zurück: antwortet es wieder, ist es wieder als erreichbar gemeldet.
     reasoner.recordReachability(true, "local");
     expect(reasoner.kiLage()).toMatchObject({ modus: "intern", verfuegbarkeit: "erreichbar" });
   });
 
-  it("L5 · Ersatzweg nur wie aufgelöst: Cloud freigegeben, aber unerreichbar → das lokale Glied arbeitet", async () => {
+  it("L5 · Cloud freigegeben, aber zuletzt gescheitert: die Lage nennt WEITER die Cloud — kein vorweggenommener Ersatz", async () => {
     const reasoner = reasonerWieImProdukt({ ...CLOUD, ...LOKAL });
     await erteileKiFreigabe(reasoner);
     expect(reasoner.kiLage().modus).toBe("extern");
     reasoner.recordReachability(false, "openai");
     expect(reasoner.kiLage()).toMatchObject({
-      modus: "intern",
-      anbieter: "local",
-      verfuegbarkeit: "ungeprueft",
+      modus: "extern",
+      anbieter: "openai",
+      verfuegbarkeit: "unerreichbar",
     });
-    expect(reasoner.configStatus().betreiber?.modell).toBe("lokal-test-modell");
-    // Ohne Ersatzglied (nur Cloud) bleibt nach demselben Befund NICHTS — der regelbasierte Ersatz.
-    const nurCloud = reasonerWieImProdukt(CLOUD);
-    await erteileKiFreigabe(nurCloud);
-    nurCloud.recordReachability(false, "openai");
-    expect(nurCloud.kiLage()).toMatchObject({ modus: "keine", verfuegbarkeit: "unerreichbar" });
+    // Die Karte nennt dasselbe Glied — nicht das lokale Modell, auf das ein Lauf erst NACH einem
+    // weiteren Fehlschlag fiele.
+    expect(reasoner.configStatus().betreiber?.zugang).toBe("openai");
+    expect(reasoner.configStatus().betreiber?.modell).toBe("gpt-test-modell");
   });
 
   it("L6 · die Kopfzeilen-Ableitung zeigt die Serverauskunft — keine DSGVO-Aussage", () => {
@@ -188,19 +190,99 @@ describe("R-0599 · die KI-Lage kommt aus der freigegebenen Ausführungskette �
       KI_LAGE_TEXT.verfuegbarErreichbar,
     );
 
-    // Eingerichtet, aber unerreichbar: ein EIGENER Satz — weder „keine KI" noch ein Anbieter.
-    const weg = kiLageAnzeige({
-      modus: "keine",
-      anbieter: null,
-      anbieterName: null,
-      herkunft: null,
-      verfuegbarkeit: "unerreichbar",
-    });
-    expect(weg.textKey).toBe(KI_LAGE_TEXT.unerreichbar);
-    expect(weg.hinweisKeys).toEqual([KI_LAGE_TEXT.verfuegbarUnerreichbar]);
-    expect(weg.herkunft).toBeNull();
+    // Zuletzt gescheitert: der Anbieter BLEIBT im Satz (der nächste Lauf sendet zuerst wieder an
+    // ihn), dazu der Fehlschlag — und im Hinweis der ausgeschriebene Satz, ohne Ersatzzusage.
+    const gescheitert = kiLageAnzeige({ ...lage, verfuegbarkeit: "unerreichbar" });
+    expect(gescheitert.textKey).toBe(KI_LAGE_TEXT.extern);
+    expect(gescheitert.params).toEqual({ anbieter: "OpenAI" });
+    expect(gescheitert.verfuegbarkeitKey).toBe(KI_LAGE_TEXT.verfuegbarZuletztGescheitert);
+    expect(gescheitert.hinweisKeys).toEqual([
+      KI_LAGE_TEXT.verfuegbarUnerreichbar,
+      KI_HEADER_TEXT.hintExternal,
+      KI_HEADER_TEXT.offenePruefungen,
+    ]);
 
     expect(kiLageAnzeige(undefined).textKey).toBe(KI_LAGE_TEXT.unbekannt);
+  });
+});
+
+// ================================================================================================
+// Ben nacharbeit-9 · STATUS UND ANSCHLIESSENDER ANTWORTLAUF HÄNGEN ZUSAMMEN — mit Attrappen gemessen.
+// ================================================================================================
+//
+// Zwei zählende Provider-Attrappen (Cloud unter „cloud:openai:…", lokal unter „local:…") statt echter
+// Clients: gelesen wird erst die Lage, dann läuft ein echter Antwortlauf (`Reasoner.answer`, Aufgabe
+// `answer`) durch DIESELBE Kette, und gezählt wird, wohin er zuerst sendet. Die Lage stimmt, wenn
+// das von ihr genannte Glied genau das ist, das der Lauf zuerst ruft.
+function zaehlendeAttrappe(name: string, reihenfolge: string[], antwort: () => string) {
+  const client: ModelClient = {
+    name,
+    complete: async () => {
+      reihenfolge.push(name);
+      return antwort();
+    },
+  };
+  return { client, rufe: () => reihenfolge.filter((n) => n === name).length };
+}
+
+const KONTEXT = [
+  {
+    id: "ko-1",
+    title: "Pumpe P2",
+    statement: "Pumpe P2 wird alle 200 Betriebsstunden geschmiert.",
+    status: "validiert" as const,
+    trust: 92,
+  },
+];
+
+// Der Name ist der, unter dem `Reasoner` einen Bestands-`primary` dem Anbieter OpenAI zuordnet.
+const CLOUD_ATTRAPPE = "cloud:openai:attrappen-modell";
+const LOKAL_ATTRAPPE = "local:attrappen-lokal";
+
+function attrappenReasoner(cloudAntwort: () => string) {
+  const reihenfolge: string[] = [];
+  const cloud = zaehlendeAttrappe(CLOUD_ATTRAPPE, reihenfolge, cloudAntwort);
+  const lokal = zaehlendeAttrappe(LOKAL_ATTRAPPE, reihenfolge, () => "Lokale Antwort.");
+  const reasoner = new Reasoner(
+    new ModelProvider(cloud.client),
+    undefined,
+    undefined,
+    undefined,
+    new ModelProvider(lokal.client),
+  );
+  return { reasoner, cloud, lokal, reihenfolge };
+}
+
+describe("Ben nacharbeit-9 · die Lage nennt das Glied, an das der nächste Lauf zuerst sendet", () => {
+  it("L7 · Cloud zuletzt gescheitert: die Lage nennt die Cloud, und der nächste Lauf ruft sie zuerst", async () => {
+    const { reasoner, cloud, reihenfolge } = attrappenReasoner(() => "Pumpe P2: alle 200 h.");
+    await erteileKiFreigabe(reasoner);
+    reasoner.recordReachability(false, "openai");
+    expect(reasoner.kiLage()).toMatchObject({
+      modus: "extern",
+      anbieter: "openai",
+      verfuegbarkeit: "unerreichbar",
+    });
+    await reasoner.answer("Wie oft wird Pumpe P2 geschmiert?", KONTEXT, "de");
+    // Genau das gemeldete Glied hat die Inhalte ZUERST bekommen — nicht der lokale Weg, den die
+    // Anzeige bis Nacharbeit 8 an dieser Stelle schon als feststehend behauptete.
+    expect(reihenfolge[0]).toBe(CLOUD_ATTRAPPE);
+    expect(cloud.rufe()).toBeGreaterThan(0);
+  });
+
+  it("L8 · scheitert die Cloud im Lauf wirklich, fällt ERST DANN der Lauf auf das lokale Glied", async () => {
+    const { reasoner, lokal, reihenfolge } = attrappenReasoner(() => {
+      throw new Error("Attrappe: 503");
+    });
+    await erteileKiFreigabe(reasoner);
+    // Vor dem Lauf: kein Befund — die Lage nennt die Cloud, ungeprüft, und behauptet keinen Ersatz.
+    expect(reasoner.kiLage()).toMatchObject({ modus: "extern", verfuegbarkeit: "ungeprueft" });
+    await reasoner.answer("Wie oft wird Pumpe P2 geschmiert?", KONTEXT, "de");
+    expect(reihenfolge[0]).toBe(CLOUD_ATTRAPPE);
+    expect(lokal.rufe()).toBeGreaterThan(0);
+    expect(reihenfolge.indexOf(LOKAL_ATTRAPPE)).toBeGreaterThan(
+      reihenfolge.indexOf(CLOUD_ATTRAPPE),
+    );
   });
 });
 
@@ -284,16 +366,17 @@ describe("R-0299 · Betreiber und Wissensstand — nur aus belegten Angaben", ()
     expect(anzeige.quellenbedarf).toBeNull();
   });
 
-  it("W6 · eingerichtet, aber unerreichbar: die Karte sagt genau das statt „kein Modell“", () => {
+  it("W6 · zuletzt gescheitert: die Karte nennt Betreiber und Modell weiter und den Fehlschlag dazu", () => {
     const anzeige = betreiberKartenAnzeige({
-      zugang: null,
-      betreiber: null,
-      modell: null,
-      herkunft: null,
-      wissensstand: null,
+      zugang: "openai",
+      betreiber: "OpenAI",
+      modell: "gpt-test-modell",
+      herkunft: { land: "us", nachweis: "behauptet" },
+      wissensstand: modellWissensstand("gpt-test-modell"),
       verfuegbarkeit: "unerreichbar",
     });
-    expect(anzeige.modellArbeitet).toBe(false);
+    expect(anzeige.modellArbeitet).toBe(true);
+    expect(anzeige.betreiber).toEqual({ wortlaut: "OpenAI" });
     expect(anzeige.verfuegbarkeit).toEqual({
       key: BETREIBER_KARTE_TEXT.verfuegbarUnerreichbar,
     });
