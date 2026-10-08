@@ -2,8 +2,10 @@ import type { FastifyPluginAsync } from "fastify";
 import {
   type AntwortBelastbarkeit,
   type AntwortZuschnitt,
+  type AskAntwortZuschnitt,
   AskError,
   type AskService,
+  type BegriffHerkunft,
   type BelegteBeziehung,
   type FrageAnlass,
   GESPRAECHSFADEN_MAX_FRAGEN,
@@ -181,14 +183,26 @@ export interface AskRouteDeps {
   begriffe?: (() => Promise<readonly WoerterbuchEintrag[]>) | undefined;
 }
 
-/** Die schmale Sicht auf einen Eintrag des Firmenwörterbuchs (`BegriffFassung`). */
+/**
+ * Die schmale Sicht auf einen Eintrag des Firmenwörterbuchs (`BegriffFassung`) — samt der Angaben,
+ * die seine Herkunft ausmachen (Ben nacharbeit-11): Identität, Fassung, Geltungsbereich,
+ * Verantwortung und Stand. Die Kennung dessen, der zuletzt geändert hat, wird NICHT übernommen.
+ */
 export interface WoerterbuchEintrag {
+  id: string;
+  version: number;
+  geltungsbereich?: string;
+  verantwortlich?: string;
+  geaendertAm?: string;
   definition: Partial<Record<string, string>>;
   bezeichnungen: Partial<Record<string, { vorzug: string; synonyme: string[] }>>;
 }
 
+const leerZuNull = (wert: string | undefined): string | null => wert?.trim() || null;
+
 // R-0346: das Wörterbuch in der Antwortsprache — je Vorzugsbenennung und Synonym ein Begriff mit der
 // Definition DIESER Sprache. Ohne Definition in der Sprache wird nichts erklärt (nichts übersetzt).
+// Jeder Begriff trägt die Herkunft seines Eintrags; was der Eintrag nicht ausweist, bleibt `null`.
 function zuschnittBegriffe(
   eintraege: readonly WoerterbuchEintrag[],
   locale: string,
@@ -199,10 +213,29 @@ function zuschnittBegriffe(
     if (!definition || !benennung) {
       return [];
     }
+    const herkunft = {
+      eintragId: e.id,
+      fassung: e.version,
+      geltungsbereich: leerZuNull(e.geltungsbereich),
+      verantwortlich: leerZuNull(e.verantwortlich),
+      geaendertAm: leerZuNull(e.geaendertAm),
+    };
     return [benennung.vorzug, ...benennung.synonyme]
       .filter((b) => b.trim().length > 0)
-      .map((b) => ({ benennung: b, definition }));
+      .map((b) => ({ benennung: b, definition, herkunft }));
   });
+}
+
+// Ben nacharbeit-11: die tatsächlich angehängten Begriffserklärungen samt Herkunft — für den
+// abgegrenzten Abschnitt der Belastbarkeit.
+function angehaengteBegriffe(
+  zuschnitt: AskAntwortZuschnitt | undefined,
+): { benennung: string; herkunft: BegriffHerkunft }[] {
+  return (zuschnitt?.ergaenzungen ?? []).flatMap((e) =>
+    e.art === "begriffe"
+      ? e.herkunft.map((herkunft, i) => ({ benennung: e.benennungen[i] ?? "", herkunft }))
+      : [],
+  );
 }
 
 /**
@@ -650,6 +683,8 @@ async function evidenceFor(
   // ist kein „nicht auflösbar" und kein „Konfliktabruf gescheitert", sie wird durchgereicht.
   pruefen: () => void,
   sicht: BelastbarkeitsSicht,
+  // Ben nacharbeit-11: die angehängten Wörterbucherklärungen — getrennt von der Quellenbilanz.
+  woerterbuch: readonly { benennung: string; herkunft: BegriffHerkunft }[] = [],
 ): Promise<{
   evidence: ReturnType<typeof answerEvidence>;
   belastbarkeit: AntwortBelastbarkeit;
@@ -740,6 +775,7 @@ async function evidenceFor(
     seiteSichtbar: sicht.seiteSichtbar,
     zuschnitt: sicht.zuschnitt,
     beziehungen,
+    woerterbuch,
     ...(result.steps ? { steps: result.steps } : {}),
     ...(personen ? { erreichbar: personen.erreichbar } : {}),
     // Sitzungsnutzer sehen die Kennung auch ohne Verzeichnis (Name dann `null`); der Add-on-Weg nie.
@@ -987,6 +1023,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
               request.log,
               pruefen,
               sicht,
+              angehaengteBegriffe(out.antwortZuschnitt),
             ));
             pruefen();
           } catch (fehler) {

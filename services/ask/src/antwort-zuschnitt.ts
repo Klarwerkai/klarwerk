@@ -14,7 +14,8 @@
 //     des Zuschnitts (z. B. Anlass Dokument: bewährte Vorgehensweise vor Technik).
 //   · FACHSPRACHE `allgemein` ergänzt Erklärungen der Fachbegriffe, die in der Antwort vorkommen —
 //     AUSSCHLIESSLICH aus dem gepflegten Firmenwörterbuch (Vorzugsbenennung oder Synonym mit
-//     Definition). `fach` ergänzt keine Erklärungen.
+//     Definition), je Zeile mit Eintrag, Fassung, Geltungsbereich und Verantwortung, und unter
+//     einem Kopf, der sie von der Quellenbilanz abgrenzt. `fach` ergänzt keine Erklärungen.
 //
 // WAS AUSDRÜCKLICH NICHT GESCHIEHT:
 //   · Der wörtliche Antwortweg (Word ohne Einwilligung, Add-on-Schlüssel, `retrievalOnly`) bleibt
@@ -23,9 +24,22 @@
 //   · Was schon in der Antwort steht, wird nicht noch einmal angehängt.
 import type { KnowledgeObject, KnowledgeType } from "../../knowledge-object";
 
+// Ben nacharbeit-11: eine Begriffserklärung ist eine fachliche Aussage mit EIGENER Herkunft — dem
+// Wörterbucheintrag, nicht den Wissensobjekten der Antwort. Sie reist deshalb mit Identität,
+// Fassung, Geltungsbereich, Verantwortung und Stand des Eintrags, steht so an der Erklärung und
+// wird in der Belastbarkeit getrennt von der Quellenbilanz geführt (ohne Vertrauenswert).
+export interface BegriffHerkunft {
+  eintragId: string;
+  fassung: number;
+  geltungsbereich: string | null;
+  verantwortlich: string | null;
+  geaendertAm: string | null;
+}
+
 export interface ZuschnittBegriff {
   benennung: string;
   definition: string;
+  herkunft: BegriffHerkunft;
 }
 
 export interface ZuschnittDerAntwort {
@@ -35,12 +49,23 @@ export interface ZuschnittDerAntwort {
 }
 
 /** Was der Zuschnitt an der Antwort tatsächlich ergänzt hat — sichtbar und prüfbar. */
-export interface ZuschnittErgaenzung {
-  art: "voraussetzungen" | "massnahmen" | "begriffe";
-  /** Die tragende Quelle, aus der die Einträge wörtlich stammen; bei Begriffen `null`. */
-  quelleId: string | null;
-  eintraege: string[];
-}
+export type ZuschnittErgaenzung =
+  | {
+      art: "voraussetzungen" | "massnahmen";
+      /** Die tragende Quelle, aus der die Einträge wörtlich stammen. */
+      quelleId: string;
+      eintraege: string[];
+    }
+  | {
+      art: "begriffe";
+      /** Keine Wissensobjekt-Quelle: die Herkunft steht je Eintrag in `herkunft`. */
+      quelleId: null;
+      eintraege: string[];
+      /** Je Eintrag (gleiche Stelle wie in `eintraege`) die erklärte Benennung … */
+      benennungen: string[];
+      /** … und der Wörterbucheintrag, aus dem die Erklärung stammt. */
+      herkunft: BegriffHerkunft[];
+    };
 
 export interface ZugeschnitteneAntwort {
   text: string;
@@ -52,6 +77,48 @@ const BESCHRIFTUNG: Record<"de" | "en" | "nl", Record<ZuschnittErgaenzung["art"]
   en: { voraussetzungen: "Conditions", massnahmen: "Measures", begriffe: "Terms" },
   nl: { voraussetzungen: "Voorwaarden", massnahmen: "Maatregelen", begriffe: "Begrippen" },
 };
+
+// Die Herkunftsangabe der Begriffserklärungen im Antworttext — die Abgrenzung von der Quellenbilanz
+// steht im Kopf, Eintrag, Fassung und Verantwortung an jeder Zeile.
+interface WoerterbuchBeschriftung {
+  kopf: string;
+  eintrag: string;
+  fassung: string;
+  verantwortlich: string;
+}
+
+const WOERTERBUCH: Record<"de" | "en" | "nl", WoerterbuchBeschriftung> = {
+  de: {
+    kopf: "aus dem Firmenwörterbuch, nicht Teil der Quellenbilanz",
+    eintrag: "Wörterbucheintrag",
+    fassung: "Fassung",
+    verantwortlich: "verantwortlich",
+  },
+  en: {
+    kopf: "from the company glossary, not part of the source count",
+    eintrag: "glossary entry",
+    fassung: "version",
+    verantwortlich: "responsible",
+  },
+  nl: {
+    kopf: "uit het bedrijfswoordenboek, geen deel van de bronnentelling",
+    eintrag: "woordenboekitem",
+    fassung: "versie",
+    verantwortlich: "verantwoordelijk",
+  },
+};
+
+function herkunftsZusatz(h: BegriffHerkunft, locale: "de" | "en" | "nl"): string {
+  const w = WOERTERBUCH[locale];
+  const teile = [`${w.eintrag} ${h.eintragId}`, `${w.fassung} ${h.fassung}`];
+  if (h.geltungsbereich) {
+    teile.push(h.geltungsbereich);
+  }
+  if (h.verantwortlich) {
+    teile.push(`${w.verantwortlich}: ${h.verantwortlich}`);
+  }
+  return `[${teile.join(", ")}]`;
+}
 
 function schonEnthalten(text: string, eintrag: string): boolean {
   return text.toLocaleLowerCase().includes(eintrag.trim().toLocaleLowerCase());
@@ -108,6 +175,8 @@ export function schneideAntwortZu(
   if (zuschnitt.fachsprache === "allgemein") {
     const erklaert = new Set<string>();
     const eintraege: string[] = [];
+    const benennungen: string[] = [];
+    const herkunft: BegriffHerkunft[] = [];
     for (const b of begriffe) {
       const schluessel = b.benennung.trim().toLocaleLowerCase();
       if (!b.definition.trim() || erklaert.has(schluessel) || !kommtVor(antwort, b.benennung)) {
@@ -115,9 +184,11 @@ export function schneideAntwortZu(
       }
       erklaert.add(schluessel);
       eintraege.push(`${b.benennung.trim()}: ${b.definition.trim()}`);
+      benennungen.push(b.benennung.trim());
+      herkunft.push({ ...b.herkunft });
     }
     if (eintraege.length > 0) {
-      ergaenzungen.push({ art: "begriffe", quelleId: null, eintraege });
+      ergaenzungen.push({ art: "begriffe", quelleId: null, eintraege, benennungen, herkunft });
     }
   }
   if (ergaenzungen.length === 0) {
@@ -126,7 +197,14 @@ export function schneideAntwortZu(
   const titel = new Map(tragende.map((ko): [string, string] => [ko.id, ko.title]));
   const abschnitte = ergaenzungen.map((e) => {
     const name = BESCHRIFTUNG[locale][e.art];
-    const kopf = e.quelleId ? `${name} (${titel.get(e.quelleId) ?? e.quelleId}):` : `${name}:`;
+    if (e.art === "begriffe") {
+      const zeilen = e.eintraege.map((x, i) => {
+        const h = e.herkunft[i];
+        return h ? `- ${x} ${herkunftsZusatz(h, locale)}` : `- ${x}`;
+      });
+      return `${name} (${WOERTERBUCH[locale].kopf}):\n${zeilen.join("\n")}`;
+    }
+    const kopf = `${name} (${titel.get(e.quelleId) ?? e.quelleId}):`;
     return `${kopf}\n${e.eintraege.map((x) => `- ${x}`).join("\n")}`;
   });
   return { text: `${antwort.trimEnd()}\n\n${abschnitte.join("\n\n")}`, ergaenzungen };

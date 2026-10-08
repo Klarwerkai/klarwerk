@@ -289,9 +289,20 @@ describe("R-0346 · der Zuschnitt verändert die Antwort, quellengebunden", () =
     measures: ["Freigabe durch Schichtleitung"],
   } as Partial<KnowledgeObject>);
   const antwort = "Ventil V4 prüfen, bevor der Kessel wieder anläuft.";
+  const KESSEL = {
+    eintragId: "begriff-kessel",
+    fassung: 3,
+    geltungsbereich: "Werk Nord",
+    verantwortlich: "Instandhaltung",
+    geaendertAm: "2026-09-01T00:00:00.000Z",
+  };
   const begriffe = [
-    { benennung: "Kessel", definition: "Druckbehälter der Dampfanlage." },
-    { benennung: "Turbine", definition: "Kommt in der Antwort nicht vor." },
+    { benennung: "Kessel", definition: "Druckbehälter der Dampfanlage.", herkunft: KESSEL },
+    {
+      benennung: "Turbine",
+      definition: "Kommt in der Antwort nicht vor.",
+      herkunft: { ...KESSEL, eintragId: "begriff-turbine" },
+    },
   ];
 
   it("Fachrolle: ausführlich — wörtliche Voraussetzungen und Maßnahmen, keine Begriffserklärung", () => {
@@ -321,11 +332,40 @@ describe("R-0346 · der Zuschnitt verändert die Antwort, quellengebunden", () =
       begriffe,
       "de",
     );
+    // Ben nacharbeit-11: die Erklärung trägt die Herkunft ihres Wörterbucheintrags — keine
+    // Wissensobjekt-Quelle (quelleId null), sondern Eintrag, Fassung, Geltungsbereich, Verantwortung.
     expect(z.ergaenzungen).toEqual([
-      { art: "begriffe", quelleId: null, eintraege: ["Kessel: Druckbehälter der Dampfanlage."] },
+      {
+        art: "begriffe",
+        quelleId: null,
+        eintraege: ["Kessel: Druckbehälter der Dampfanlage."],
+        benennungen: ["Kessel"],
+        herkunft: [KESSEL],
+      },
     ]);
+    // Am Text: abgegrenzt von der Quellenbilanz und je Zeile zugeordnet.
+    expect(z.text).toContain(
+      "Begriffe (aus dem Firmenwörterbuch, nicht Teil der Quellenbilanz):\n" +
+        "- Kessel: Druckbehälter der Dampfanlage. " +
+        "[Wörterbucheintrag begriff-kessel, Fassung 3, Werk Nord, verantwortlich: Instandhaltung]",
+    );
     expect(z.text).not.toContain("Dichtung tauschen");
     expect(z.text).not.toContain("Turbine");
+  });
+
+  it("fehlende Herkunftsangaben des Eintrags werden nicht erfunden", () => {
+    const ohne = [
+      {
+        benennung: "Kessel",
+        definition: "Druckbehälter der Dampfanlage.",
+        herkunft: { ...KESSEL, geltungsbereich: null, verantwortlich: null, geaendertAm: null },
+      },
+    ];
+    const z = schneideAntwortZu(antwort, [], antwortZuschnitt("viewer", "frage"), ohne, "de");
+    expect(z.text).toContain(
+      "- Kessel: Druckbehälter der Dampfanlage. [Wörterbucheintrag begriff-kessel, Fassung 3]",
+    );
+    expect(z.text).not.toContain("verantwortlich");
   });
 
   it("die Reihenfolge der Wissensarten ordnet die Ergänzungen — Anlass Dokument: Praxis vor Technik", () => {

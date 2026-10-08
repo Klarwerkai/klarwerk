@@ -2375,6 +2375,12 @@ const en: typeof de = {
   "ask.belastbarkeit.argumentation.titel": "How the answer comes about",
   "ask.belastbarkeit.argumentation.belegstelle": "Evidence passage: “{{stelle}}”",
   "ask.belastbarkeit.argumentation.art.aussage": "Statement",
+  "ask.belastbarkeit.woerterbuch.titel":
+    "Terms added from the company glossary — not part of the source count and without a trust value:",
+  "ask.belastbarkeit.woerterbuch.eintrag": "Glossary entry {{id}}, version {{fassung}}",
+  "ask.belastbarkeit.woerterbuch.verantwortlich": "Responsible: {{wer}}",
+  "ask.belastbarkeit.woerterbuch.ohneVerantwortung": "No responsible party given",
+  "ask.belastbarkeit.woerterbuch.nichtBewertet": "Reliability not assessed",
   "ask.belastbarkeit.argumentation.art.beziehung": "Documented relation",
   "ask.belastbarkeit.argumentation.beziehung.gehoert_zu": "belongs to",
   "ask.belastbarkeit.argumentation.beziehung.ergaenzt": "complements",

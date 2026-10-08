@@ -37,6 +37,7 @@ import {
   type AnswerGrade,
   answerCheckState,
 } from "./answer-evidence";
+import type { BegriffHerkunft } from "./antwort-zuschnitt";
 
 // ================================================================================================
 // DIE ZUSTANDSFAMILIE (R-0335) — sechs Lagen, ein Vokabular für Konsole und Word-Fenster.
@@ -326,7 +327,23 @@ export interface AntwortBelastbarkeit {
   argumentation: ArgumentStufe[];
   /** R-0346: auf wen und welchen Anlass die Erklärung zugeschnitten ist. */
   zuschnitt: AntwortZuschnitt;
+  /**
+   * Ben nacharbeit-11: Begriffserklärungen, die der Zuschnitt aus dem Firmenwörterbuch angehängt
+   * hat — AUSSERHALB der Quellenbilanz. Sie zählen nicht in `quellenAnzahl`, tragen nicht zum
+   * Vertrauenswert bei und stehen nicht in `argumentation`; ihre Belastbarkeit ist ausdrücklich
+   * NICHT bewertet (das Wörterbuch kennt keinen Vertrauenswert und keinen Prüfstand). Fehlt das
+   * Feld, wurde nichts aus dem Wörterbuch ergänzt.
+   */
+  woerterbuch?: WoerterbuchErgaenzung[];
   hinweis: "vertrauen_ist_kein_wahrheitsversprechen";
+}
+
+export interface WoerterbuchErgaenzung {
+  benennung: string;
+  herkunft: BegriffHerkunft;
+  /** Immer `null`: kein Wert wird behauptet, auch nicht der der Wissensquellen. */
+  vertrauenswert: null;
+  belastbarkeit: "nicht_bewertet";
 }
 
 export interface AntwortBelastbarkeitInput {
@@ -355,6 +372,8 @@ export interface AntwortBelastbarkeitInput {
   steps?: readonly { sourceId: string | null; snippet: string | null }[];
   /** R-0346: Rolle und Anlass. Fehlt er, gilt die enge Vorgabe (`unbekannt`, `frage`). */
   zuschnitt?: AntwortZuschnitt;
+  /** Ben nacharbeit-11: die tatsächlich angehängten Wörterbucheinträge (aus `antwortZuschnitt`). */
+  woerterbuch?: readonly { benennung: string; herkunft: BegriffHerkunft }[];
 }
 
 function argumentation(
@@ -617,6 +636,18 @@ export function antwortBelastbarkeit(input: AntwortBelastbarkeitInput): AntwortB
       zuschnitt,
     ),
     zuschnitt,
+    ...(input.woerterbuch && input.woerterbuch.length > 0
+      ? {
+          woerterbuch: input.woerterbuch.map(
+            (w): WoerterbuchErgaenzung => ({
+              benennung: w.benennung,
+              herkunft: { ...w.herkunft },
+              vertrauenswert: null,
+              belastbarkeit: "nicht_bewertet",
+            }),
+          ),
+        }
+      : {}),
     hinweis,
   };
 }

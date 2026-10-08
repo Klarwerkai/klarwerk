@@ -10,6 +10,7 @@ export type {
 // AUFNAHME 20260922 · R-0346 (Ben nacharbeit-9): der Zuschnitt der Antwort selbst.
 export { schneideAntwortZu } from "./src/antwort-zuschnitt";
 export type {
+  BegriffHerkunft,
   ZuschnittBegriff,
   ZuschnittDerAntwort,
   ZuschnittErgaenzung,
@@ -103,6 +104,7 @@ export type {
   BelastbarkeitsGrund,
   KonfliktSeite,
   QuellenBelastbarkeit,
+  WoerterbuchErgaenzung,
 } from "./src/answer-belastbarkeit";
 export { redactGapForViewer, summarizeGaps } from "./src/gap-visibility";
 export type { GapView, GapViewerContext, GapSummary } from "./src/gap-visibility";

@@ -338,6 +338,46 @@ describe("Antwort-Erklärung · Belastbarkeit in der Konsole", () => {
     );
   });
 
+  it("Ben nacharbeit-11: Wörterbucherklärungen stehen getrennt von der Quellenbilanz, mit Herkunft", () => {
+    const mitWoerterbuch: AntwortBelastbarkeit = {
+      ...MIT_KONFLIKT,
+      woerterbuch: [
+        {
+          benennung: "Druckbehälter",
+          herkunft: {
+            eintragId: "begriff-db",
+            fassung: 2,
+            geltungsbereich: "Werk Nord",
+            verantwortlich: "Instandhaltung",
+            geaendertAm: "2026-09-01T08:00:00.000Z",
+          },
+          vertrauenswert: null,
+          belastbarkeit: "nicht_bewertet",
+        },
+      ],
+    };
+    montiere(createElement(Belastbarkeit, { b: mitWoerterbuch }));
+    const abschnitt = marke("ask-belastbarkeit-woerterbuch")?.textContent ?? "";
+    expect(abschnitt).toContain("nicht Teil der Quellenbilanz und ohne Vertrauenswert");
+    const eintraege = alle("ask-belastbarkeit-woerterbuch-eintrag");
+    expect(eintraege).toHaveLength(1);
+    const eintrag = eintraege[0]?.textContent ?? "";
+    expect(eintrag).toContain("Druckbehälter");
+    expect(eintrag).toContain("Wörterbucheintrag begriff-db, Fassung 2");
+    expect(eintrag).toContain("Werk Nord");
+    expect(eintrag).toContain("Verantwortlich: Instandhaltung");
+    expect(eintrag).toContain("Stand 01.09.2026");
+    expect(eintrag).toContain("Belastbarkeit nicht bewertet");
+    // Die Quellenbilanz bleibt die der Wissensobjekte.
+    expect(alle("ask-belastbarkeit-quelle")).toHaveLength(2);
+    expect(container.textContent).toContain("2 von 3 herangezogenen Quellen");
+  });
+
+  it("ohne Wörterbuchergänzung kein Wörterbuchabschnitt", () => {
+    montiere(createElement(Belastbarkeit, { b: MIT_KONFLIKT }));
+    expect(marke("ask-belastbarkeit-woerterbuch")).toBeNull();
+  });
+
   it("R-0284: der Prüfrahmen einer Wissenslücke statt einer nackten Null", () => {
     montiere(
       createElement(PruefrahmenSatz, {

@@ -3067,6 +3067,12 @@ const de = {
   "ask.belastbarkeit.argumentation.titel": "So kommt die Antwort zustande",
   "ask.belastbarkeit.argumentation.belegstelle": "Belegstelle: „{{stelle}}“",
   "ask.belastbarkeit.argumentation.art.aussage": "Aussage",
+  "ask.belastbarkeit.woerterbuch.titel":
+    "Begriffe ergänzt aus dem Firmenwörterbuch — nicht Teil der Quellenbilanz und ohne Vertrauenswert:",
+  "ask.belastbarkeit.woerterbuch.eintrag": "Wörterbucheintrag {{id}}, Fassung {{fassung}}",
+  "ask.belastbarkeit.woerterbuch.verantwortlich": "Verantwortlich: {{wer}}",
+  "ask.belastbarkeit.woerterbuch.ohneVerantwortung": "Keine Verantwortung angegeben",
+  "ask.belastbarkeit.woerterbuch.nichtBewertet": "Belastbarkeit nicht bewertet",
   "ask.belastbarkeit.argumentation.art.beziehung": "Belegte Beziehung",
   "ask.belastbarkeit.argumentation.beziehung.gehoert_zu": "gehört zu",
   "ask.belastbarkeit.argumentation.beziehung.ergaenzt": "ergänzt",

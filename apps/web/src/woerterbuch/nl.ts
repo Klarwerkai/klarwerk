@@ -2370,6 +2370,12 @@ const nl: typeof de = {
   "ask.belastbarkeit.argumentation.titel": "Zo komt het antwoord tot stand",
   "ask.belastbarkeit.argumentation.belegstelle": "Bewijsplaats: „{{stelle}}”",
   "ask.belastbarkeit.argumentation.art.aussage": "Bewering",
+  "ask.belastbarkeit.woerterbuch.titel":
+    "Begrippen aangevuld uit het bedrijfswoordenboek — geen deel van de bronnentelling en zonder vertrouwenswaarde:",
+  "ask.belastbarkeit.woerterbuch.eintrag": "Woordenboekitem {{id}}, versie {{fassung}}",
+  "ask.belastbarkeit.woerterbuch.verantwortlich": "Verantwoordelijk: {{wer}}",
+  "ask.belastbarkeit.woerterbuch.ohneVerantwortung": "Geen verantwoordelijke opgegeven",
+  "ask.belastbarkeit.woerterbuch.nichtBewertet": "Betrouwbaarheid niet beoordeeld",
   "ask.belastbarkeit.argumentation.art.beziehung": "Vastgelegde relatie",
   "ask.belastbarkeit.argumentation.beziehung.gehoert_zu": "hoort bij",
   "ask.belastbarkeit.argumentation.beziehung.ergaenzt": "vult aan",

@@ -41,7 +41,18 @@ interface Antwort {
     answered: boolean;
     answer: string | null;
     citedSources: string[];
-    belastbarkeit: { argumentation: Stufe[] };
+    belastbarkeit: {
+      argumentation: Stufe[];
+      quellenAnzahl: { herangezogen: number; tragend: number };
+      quellen: { koId: string }[];
+      vertrauenswert: { wert: number | null; schwaechsteQuelle: string | null };
+      woerterbuch?: {
+        benennung: string;
+        herkunft: Record<string, unknown>;
+        vertrauenswert: null;
+        belastbarkeit: string;
+      }[];
+    };
   };
   antwortZuschnitt?: {
     tiefe: string;
@@ -211,11 +222,48 @@ describe("R-0346 · Rolle und Anlass wirken auf die Antwort selbst", () => {
     const leserin = await anmelden(app, "leserin@antwort.test");
     const a = await fragen(app, leserin.kopf);
     expect(a.result.answered).toBe(true);
+    // Ben nacharbeit-11: die Erklärung steht mit ihrer Herkunft da und ist von der Quellenbilanz
+    // abgegrenzt — Eintrag, Fassung, Geltungsbereich, Verantwortung.
+    const kopf = "Begriffe (aus dem Firmenwörterbuch, nicht Teil der Quellenbilanz):";
+    const zusatz =
+      "[Wörterbucheintrag begriff-haube, Fassung 1, Anlage 1, verantwortlich: Instandhaltung]";
     expect(a.result.answer).toContain(
-      `Begriffe:\n- ${SELTENES_WORT}: Abdeckung über dem Querstromventil.`,
+      `${kopf}\n- ${SELTENES_WORT}: Abdeckung über dem Querstromventil. ${zusatz}`,
     );
     expect(a.result.answer).not.toContain("Manometer");
-    expect(a.antwortZuschnitt).toMatchObject({ tiefe: "kurz", fachsprache: "allgemein" });
+    const herkunft = {
+      eintragId: "begriff-haube",
+      fassung: 1,
+      geltungsbereich: "Anlage 1",
+      verantwortlich: "Instandhaltung",
+      geaendertAm: JETZT,
+    };
+    expect(a.antwortZuschnitt).toMatchObject({
+      tiefe: "kurz",
+      fachsprache: "allgemein",
+      ergaenzungen: [
+        { art: "begriffe", quelleId: null, benennungen: [SELTENES_WORT], herkunft: [herkunft] },
+      ],
+    });
+    // Die Kennung dessen, der den Eintrag zuletzt geändert hat, geht nicht hinaus.
+    expect(JSON.stringify(a.antwortZuschnitt)).not.toContain("geaendertVon");
+    // Die Quellenbilanz bleibt die der Wissensobjekte; das Wörterbuch steht GETRENNT daneben —
+    // ohne Vertrauenswert, ausdrücklich nicht bewertet, nicht in der Kette.
+    const b = a.result.belastbarkeit;
+    expect(b.quellenAnzahl.tragend).toBe(a.result.citedSources.length);
+    expect(b.quellen.map((q) => q.koId)).toEqual(a.result.citedSources);
+    expect(b.vertrauenswert.schwaechsteQuelle).toBe(a.result.citedSources[0]);
+    expect(b.woerterbuch).toEqual([
+      { benennung: SELTENES_WORT, herkunft, vertrauenswert: null, belastbarkeit: "nicht_bewertet" },
+    ]);
+    expect(JSON.stringify(b.argumentation)).not.toContain("begriff-haube");
+  });
+
+  it("ohne angehängten Begriff steht kein Wörterbuchabschnitt an der Belastbarkeit", async () => {
+    const { app, admin } = await start("zu-e@antwort.test");
+    await anlegen(app, admin, `Wartung ${SELTENES_WORT}`);
+    const a = await fragen(app, admin);
+    expect(a.result.belastbarkeit.woerterbuch).toBeUndefined();
   });
 });
 

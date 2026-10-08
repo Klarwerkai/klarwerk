@@ -322,6 +322,48 @@ export function Belastbarkeit({ b }: { b: AntwortBelastbarkeit }): JSX.Element {
           ))}
         </ul>
       ) : null}
+      {b.woerterbuch && b.woerterbuch.length > 0 ? (
+        // Ben nacharbeit-11: Begriffserklärungen aus dem Firmenwörterbuch stehen GETRENNT von der
+        // Quellenbilanz — ohne Vertrauenswert, mit Eintrag, Fassung und Verantwortung.
+        <div data-testid="ask-belastbarkeit-woerterbuch" className="mt-1.5">
+          <p className="text-[11.5px] text-muted">{t("ask.belastbarkeit.woerterbuch.titel")}</p>
+          <ul className="mt-0.5 space-y-0.5">
+            {b.woerterbuch.map((w) => (
+              <li
+                key={`${w.herkunft.eintragId}:${w.benennung}`}
+                data-testid="ask-belastbarkeit-woerterbuch-eintrag"
+                className="flex flex-wrap gap-x-2 text-[11.5px] text-muted"
+              >
+                <span className="font-semibold text-text">{w.benennung}</span>
+                <span>
+                  {t("ask.belastbarkeit.woerterbuch.eintrag", {
+                    id: w.herkunft.eintragId,
+                    fassung: w.herkunft.fassung,
+                  })}
+                </span>
+                {w.herkunft.geltungsbereich ? <span>{w.herkunft.geltungsbereich}</span> : null}
+                <span>
+                  {w.herkunft.verantwortlich
+                    ? t("ask.belastbarkeit.woerterbuch.verantwortlich", {
+                        wer: w.herkunft.verantwortlich,
+                      })
+                    : t("ask.belastbarkeit.woerterbuch.ohneVerantwortung")}
+                </span>
+                {w.herkunft.geaendertAm ? (
+                  <span>
+                    {t("ask.belastbarkeit.stand", {
+                      datum:
+                        formatKoTimestamp(w.herkunft.geaendertAm, i18n.language) ??
+                        w.herkunft.geaendertAm,
+                    })}
+                  </span>
+                ) : null}
+                <span>{t("ask.belastbarkeit.woerterbuch.nichtBewertet")}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {b.konflikte.map((k) => (
         <div
           key={k.konfliktId}

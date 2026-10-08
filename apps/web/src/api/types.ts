@@ -1954,6 +1954,14 @@ export interface AntwortBelastbarkeit {
   argumentation?: ArgumentStufe[];
   // R-0346: Rolle und Anlass, auf die die Erklärung zugeschnitten ist.
   zuschnitt?: AntwortZuschnitt;
+  // Ben nacharbeit-11: Wörterbucherklärungen AUSSERHALB der Quellenbilanz — ohne Vertrauenswert,
+  // ausdrücklich nicht bewertet. Fehlt das Feld, wurde nichts aus dem Wörterbuch ergänzt.
+  woerterbuch?: {
+    benennung: string;
+    herkunft: BegriffHerkunft;
+    vertrauenswert: null;
+    belastbarkeit: "nicht_bewertet";
+  }[];
   hinweis: "vertrauen_ist_kein_wahrheitsversprechen";
 }
 
@@ -2060,11 +2068,26 @@ export interface AskAntwortZuschnitt {
   tiefe: "kurz" | "ausfuehrlich";
   fachsprache: "allgemein" | "fach";
   reihenfolge: Wissensart[];
-  ergaenzungen: {
-    art: "voraussetzungen" | "massnahmen" | "begriffe";
-    quelleId: string | null;
-    eintraege: string[];
-  }[];
+  ergaenzungen: (
+    | { art: "voraussetzungen" | "massnahmen"; quelleId: string; eintraege: string[] }
+    | {
+        art: "begriffe";
+        quelleId: null;
+        eintraege: string[];
+        benennungen: string[];
+        herkunft: BegriffHerkunft[];
+      }
+  )[];
+}
+
+// Ben nacharbeit-11: Herkunft einer Begriffserklärung aus dem Firmenwörterbuch (Spiegel von
+// `BegriffHerkunft`, services/ask/src/antwort-zuschnitt.ts).
+export interface BegriffHerkunft {
+  eintragId: string;
+  fassung: number;
+  geltungsbereich: string | null;
+  verantwortlich: string | null;
+  geaendertAm: string | null;
 }
 
 // ================================================================================================
