@@ -655,6 +655,24 @@ function normalizeDomain(domain: string | null | undefined): string | undefined 
   return wert.length > 0 ? wert : undefined;
 }
 
+// R-0082 (Ben, Nacharbeit 5): eine mitgeschickte Anlagenliste wird GEPRÜFT, bevor geschrieben
+// wird. `normalizeAssets` allein machte aus jeder Nichtliste die leere Liste — ein Änderungsaufruf
+// mit `assets: "DP-4"` löschte damit still sämtliche Anlagen. Jetzt gilt: eine Liste aus nicht
+// leeren Texten wird angenommen (leere Liste = alle entfernen); alles andere ist INVALID (400),
+// und der gespeicherte Stand bleibt unberührt. `null` als ausdrücklicher Löschwert behandelt der
+// Aufrufer vorher.
+function gepruefteAnlagenliste(wert: unknown): string[] {
+  if (!Array.isArray(wert)) {
+    throw new KoError("INVALID", "assets muss eine Liste von Anlagenkennungen sein.");
+  }
+  for (const eintrag of wert) {
+    if (normalizeAsset(eintrag) === null) {
+      throw new KoError("INVALID", "assets enthält einen leeren oder ungültigen Eintrag.");
+    }
+  }
+  return normalizeAssets(wert);
+}
+
 // R-1690: der Re-Validierungstermin ist ein KALENDERTAG `JJJJ-MM-TT`, den es wirklich gibt.
 // Fehlend, `null` oder leer = kein Termin. Alles andere (andere Form, 2026-02-30) wird
 // abgewiesen statt still verworfen oder umgedeutet.
@@ -2263,7 +2281,7 @@ export class KoService {
     // R-0082: die kanonische Anlagenliste — die Liste, wenn eine kommt, sonst die Einzelangabe.
     const anlagen =
       input.assets !== undefined && input.assets !== null
-        ? normalizeAssets(input.assets)
+        ? gepruefteAnlagenliste(input.assets)
         : anlagenVon({ asset: input.asset ?? null });
     const at = new Date(this.now()).toISOString();
     const bodyHtml = cleanBody(input.bodyHtml);
@@ -5164,7 +5182,9 @@ export class KoService {
     const neueErste = normalizeAsset(changes.asset);
     const anlagenNachher =
       changes.assets !== undefined
-        ? normalizeAssets(changes.assets ?? [])
+        ? changes.assets === null
+          ? []
+          : gepruefteAnlagenliste(changes.assets)
         : changes.asset !== undefined
           ? [...(neueErste === null ? [] : [neueErste]), ...bisherigeAnlagen.slice(1)]
           : bisherigeAnlagen;

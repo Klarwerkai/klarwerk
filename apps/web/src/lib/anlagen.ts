@@ -6,8 +6,9 @@
 // kanonische Liste, `asset` die erste Anlage (Altbestand trägt nur `asset`). Die Fläche liest
 // Anlagen ausschliesslich über `anlagenVon` — Facette, Matrix und Leseansicht sehen dieselbe Liste.
 //
-// EINGABE: mehrere Anlagen stehen in EINEM Textfeld, getrennt durch Semikolon oder Zeilenumbruch.
-// Ein Komma trennt bewusst NICHT — Anlagenkennungen tragen Kommas („Linie 4, Station 2").
+// EINGABE: mehrere Anlagen stehen in EINEM Textfeld, getrennt durch Semikolon oder Zeilenumbruch;
+// ein Semikolon IN einer Kennung wird als `\;` geschrieben (Escape-Regel unten). Ein Komma trennt
+// bewusst NICHT — Anlagenkennungen tragen Kommas („Linie 4, Station 2").
 
 /** Dieselbe Normalform wie am Server (`normalizeAsset`): NFC, Leerraum einfach, getrimmt. */
 export function normalisiereAnlage(wert: unknown): string | null {
@@ -39,14 +40,42 @@ export function anlagenVon(ko: { asset?: string | null; assets?: readonly string
   return einzeln === null ? [] : [einzeln];
 }
 
-/** Das Eingabefeld → Anlagenliste (Trenner: Semikolon oder Zeilenumbruch). */
+// ------------------------------------------------------------------------------------------------
+// DIE ESCAPE-REGEL — damit jede vorhandene Kennung Öffnen und Speichern UNVERÄNDERT übersteht.
+// ------------------------------------------------------------------------------------------------
+//
+// Der Server erlaubt Semikolons in einer Kennung („Linie;Station"). Ohne Maskierung würde das Feld
+// sie beim Wiederöffnen als ZWEI Anlagen lesen und beim Speichern die Zuordnung zerlegen. Deshalb:
+//   · `\;` steht für ein Semikolon IN der Kennung, `\\` für einen Backslash;
+//   · ein Backslash vor jedem anderen Zeichen bleibt ein gewöhnlicher Backslash („A\B" bleibt so);
+//   · ein unmaskiertes Semikolon oder ein Zeilenumbruch trennt zwei Anlagen.
+// `anlagenAlsEingabe` maskiert genau diese zwei Zeichen, `anlagenAusEingabe` hebt sie wieder auf —
+// für jede Liste gilt: anlagenAusEingabe(anlagenAlsEingabe(liste)) === liste (in Normalform).
+
+/** Das Eingabefeld → Anlagenliste (Trenner: unmaskiertes Semikolon oder Zeilenumbruch). */
 export function anlagenAusEingabe(text: string): string[] {
-  return normalisiereAnlagen(text.split(/[;\n]/));
+  const teile: string[] = [];
+  let aktuell = "";
+  for (let i = 0; i < text.length; i += 1) {
+    const zeichen = text[i] as string;
+    const folgt = text[i + 1];
+    if (zeichen === "\\" && (folgt === ";" || folgt === "\\")) {
+      aktuell += folgt;
+      i += 1;
+    } else if (zeichen === ";" || zeichen === "\n") {
+      teile.push(aktuell);
+      aktuell = "";
+    } else {
+      aktuell += zeichen;
+    }
+  }
+  teile.push(aktuell);
+  return normalisiereAnlagen(teile);
 }
 
-/** Anlagenliste → Text für das Eingabefeld. */
+/** Anlagenliste → Text für das Eingabefeld (Semikolon und Backslash maskiert). */
 export function anlagenAlsEingabe(liste: readonly string[]): string {
-  return liste.join("; ");
+  return liste.map((anlage) => anlage.replace(/[\\;]/g, (zeichen) => `\\${zeichen}`)).join("; ");
 }
 
 /**

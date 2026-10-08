@@ -24,7 +24,11 @@
 // überhaupt nichts annimmt.
 import { describe, expect, it } from "vitest";
 import type { KnowledgeObject as WebKo } from "../../apps/web/src/api/types";
-import { anlagenMatrix } from "../../apps/web/src/lib/anlagen";
+import {
+  anlagenAlsEingabe,
+  anlagenAusEingabe,
+  anlagenMatrix,
+} from "../../apps/web/src/lib/anlagen";
 import { libraryFilterValues } from "../../apps/web/src/lib/libraryFacets";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { validateDraftPayloadShape } from "../../services/capture/src/draft-payload-schema";
@@ -368,10 +372,10 @@ async function revidiere(app: App, wer: Auth, id: string, changes: Record<string
 describe("Mehrere Anlagen kanonisch am Wissensobjekt (R-0082)", () => {
   it("ein Objekt trägt mehrere Anlagen, eine Anlage hängt an mehreren Objekten", async () => {
     const { app, autor } = await setup("wm11");
-    const a = await legeAn(app, autor, { assets: [" DP-4 ", "FB-2", "DP-4", "  "] });
+    const a = await legeAn(app, autor, { assets: [" DP-4 ", "FB-2", "DP-4"] });
     const b = await legeAn(app, autor, { assets: ["DP-4"] });
     const koA = await lies(app, autor, a);
-    // Normalform, ohne Doppelte und Leere, in Erfassungsreihenfolge; `asset` spiegelt die erste.
+    // Normalform, ohne Doppelte, in Erfassungsreihenfolge; `asset` spiegelt die erste.
     expect(koA.assets).toEqual(["DP-4", "FB-2"]);
     expect(koA.asset).toBe("DP-4");
     const koB = await lies(app, autor, b);
@@ -414,6 +418,60 @@ describe("Mehrere Anlagen kanonisch am Wissensobjekt (R-0082)", () => {
     const leer = await revidiere(app, autor, id, { assets: [] });
     expect(leer.asset).toBeNull();
     expect("assets" in leer).toBe(false);
+  });
+});
+
+describe("Eine ungültige Anlagenliste wird abgewiesen, nicht als Löschung gelesen (R-0082)", () => {
+  it("Änderung mit Nichtliste oder ungültigem Eintrag: 400, die Anlagen bleiben", async () => {
+    const { app, autor } = await setup("wm16");
+    const id = await legeAn(app, autor, { assets: ["DP-4", "FB-2"] });
+    for (const falsch of ["DP-4", 7, { a: 1 }, [7], ["DP-4", "  "], ["DP-4", null]]) {
+      const res = await app.inject({
+        method: "PUT",
+        url: `/api/kos/${id}`,
+        headers: autor,
+        payload: { action: "revise", changes: { assets: falsch } },
+      });
+      expect(res.statusCode, `assets ${JSON.stringify(falsch)}: ${res.body}`).toBe(400);
+      const ko = await lies(app, autor, id);
+      expect(ko.assets, `nach ${JSON.stringify(falsch)}`).toEqual(["DP-4", "FB-2"]);
+      expect(ko.version, "es entstand keine neue Fassung").toBe(1);
+    }
+  });
+
+  it("ausdrücklich erlaubte Löschwerte bleiben: null und die leere Liste", async () => {
+    const { app, autor } = await setup("wm17");
+    const mitNull = await legeAn(app, autor, { assets: ["DP-4", "FB-2"] });
+    const geleertNull = await revidiere(app, autor, mitNull, { assets: null });
+    expect(geleertNull.asset).toBeNull();
+    expect("assets" in geleertNull).toBe(false);
+    const mitLeer = await legeAn(app, autor, { assets: ["DP-4", "FB-2"] });
+    const geleert = await revidiere(app, autor, mitLeer, { assets: [] });
+    expect(geleert.asset).toBeNull();
+  });
+
+  it("auch beim Anlegen: Nichtliste oder leerer Eintrag ist ein 400, kein Objekt entsteht", async () => {
+    const { app, autor } = await setup("wm18");
+    const vorher = await anzahlObjekte(app, autor);
+    for (const falsch of ["DP-4", ["DP-4", ""]]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/kos",
+        headers: autor,
+        payload: { ...GRUNDLAGE, assets: falsch },
+      });
+      expect(res.statusCode, `assets ${JSON.stringify(falsch)}: ${res.body}`).toBe(400);
+    }
+    expect(await anzahlObjekte(app, autor)).toBe(vorher);
+  });
+
+  it("eine Kennung mit Semikolon übersteht die Bearbeitungsdarstellung unverändert", () => {
+    const liste = ["Linie;Station", "A\\B", "Ende\\", "DP-4"];
+    expect(anlagenAusEingabe(anlagenAlsEingabe(liste))).toEqual(liste);
+    expect(anlagenAusEingabe(anlagenAlsEingabe(["Linie;Station"]))).toEqual(["Linie;Station"]);
+    // Ein unmaskiertes Semikolon trennt weiterhin, ein maskiertes nicht.
+    expect(anlagenAusEingabe("Linie\\;Station; DP-4")).toEqual(["Linie;Station", "DP-4"]);
+    expect(anlagenAusEingabe("DP-4;FB-2")).toEqual(["DP-4", "FB-2"]);
   });
 });
 

@@ -234,6 +234,35 @@ describe("R-0082 · die Anlagenliste am Objekt ändern", () => {
     expect(gespeichert).toEqual([["DP-4", "PR-7"]]);
   });
 
+  it("L3 · eine Kennung mit Semikolon bleibt beim Öffnen und Speichern EINE Anlage", () => {
+    const gespeichert: string[][] = [];
+    render(
+      createElement(AnlagenFeld, {
+        ko: { asset: "Linie;Station" },
+        darfAendern: true,
+        wartet: false,
+        onSpeichern: (anlagen: string[]) => gespeichert.push(anlagen),
+      }),
+    );
+    const liste = [...container.querySelectorAll('[data-testid="ko-anlagen-liste"] li')].map(
+      (li) => li.textContent,
+    );
+    expect(liste).toEqual(["Linie;Station"]);
+    const knopf = container.querySelector<HTMLButtonElement>(
+      '[data-testid="ko-anlagen-speichern"]',
+    );
+    const feld = container.querySelector<HTMLInputElement>('[data-testid="ko-anlagen-eingabe"]');
+    if (!knopf || !feld) {
+      throw new Error("Anlagenfeld nicht gerendert");
+    }
+    // Wiederöffnet zeigt das Feld die maskierte Form — und gilt als UNVERÄNDERT.
+    expect(feld.value).toBe("Linie\\;Station");
+    expect(knopf.disabled).toBe(true);
+    tippe(feld, `${feld.value}; DP-4`);
+    act(() => knopf.click());
+    expect(gespeichert).toEqual([["Linie;Station", "DP-4"]]);
+  });
+
   it("L2 · Altbestand mit nur `asset` zeigt seine Einzelzuordnung", () => {
     render(
       createElement(AnlagenFeld, {
