@@ -120,7 +120,9 @@ export class OutputService {
     const generatedAt = new Date(this.now()).toISOString();
     const pruefungen = await this.pruefnachweise(selected);
     const provenance = selected.map((ko, i) =>
-      toProvenance(ko, { marke: `Q${i + 1}`, pruefung: pruefungen[i] }),
+      // `pruefnachweise` liefert je Quelle genau einen Eintrag; der Rückfall bedient nur den
+      // indizierten Zugriff (exactOptionalPropertyTypes) und heißt „kein Nachweis", nie „belegt".
+      toProvenance(ko, { marke: `Q${i + 1}`, pruefung: pruefungen[i] ?? { zustand: "MISSING" } }),
     );
     const marken = selected.map((ko, i) => quellenMarke(i, ko));
     const title = KIND_TITLE[input.kind];
