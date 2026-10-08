@@ -2778,7 +2778,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Auslieferungsfolgen: kein neues Abrufziel, nur gleichherkünftige Linkadressen, keine
     // Nutzlast-, CSP-, Rechte- oder Manifeständerung, kein Sideload. Der Prüflauf meldet den
     // Ist-Wert als „Received", er wird danach gemessen übernommen.
-    const PIN = "bd2cae06f5bcd3d6113f05974043c56248d17b1b6e994eaa449506a1d29d6fcc";
+    // NACHARBEIT 6: PIN BEWUSST AKTUALISIERT (bd2cae06… -> 68c44d3c…). Im Prüflauf zu Kandidat
+    // 300b9834 GEMESSEN („Received", HISTORIE/nacharbeit-5/PRUEFUNG/
+    // panel-belegstelle-und-wissensnetz.log) und unverändert übernommen; die Panel-Dateien sind seit
+    // dieser Messung unberührt.
+    const PIN = "68c44d3c4eacb639f0f629d7fe6d291593e234dc8747edf9214a06b7242cf5e0";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,

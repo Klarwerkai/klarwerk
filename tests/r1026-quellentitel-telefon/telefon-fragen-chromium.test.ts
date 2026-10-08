@@ -42,7 +42,7 @@ interface Befund {
 }
 
 const MESSEN = `(titel) => {
-  const a = [...document.querySelectorAll('main a[title]')].find((x) => x.getAttribute('title') === titel);
+  const a = [...document.querySelectorAll('a[title]')].find((x) => x.getAttribute('title') === titel);
   if (!a) { return null; }
   const r = a.getBoundingClientRect();
   const cs = getComputedStyle(a);
@@ -65,27 +65,27 @@ async function fragenBei(breite: number, hoehe: number): Promise<Befund> {
   const s = stand as H4Stand;
   await s.seite.setViewportSize({ width: breite, height: hoehe });
   await s.seite.goto(`${ORIGIN}/mobile`, { waitUntil: "load" });
-  // Reiter „Fragen" der Telefonfläche (ein echter Knopf in <main>).
+  // Reiter „Fragen" der Telefonfläche. `/mobile` läuft OHNE App-Hülle (`App.tsx`, „/mobile OHNE
+  // Shell") — es gibt dort kein `<main>`; gesucht wird deshalb im Dokument, das nur diese Fläche
+  // trägt. (Nacharbeit 5 suchte in `main` und lief deshalb in die Frist, ohne die Fläche zu sehen.)
   await s.seite.waitForFunction(
     fn(
-      `() => [...document.querySelectorAll('main button')].some((b) => (b.textContent || '').trim() === 'Fragen')`,
+      `() => [...document.querySelectorAll('button')].some((b) => (b.textContent || '').trim() === 'Fragen')`,
     ),
     undefined,
     { timeout: 30_000 },
   );
   await s.seite.evaluate(
     fn(
-      `() => [...document.querySelectorAll('main button')].find((b) => (b.textContent || '').trim() === 'Fragen').click()`,
+      `() => [...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Fragen').click()`,
     ),
   );
-  await s.seite.waitForFunction(
-    fn(`() => !!document.querySelector('main form input')`),
-    undefined,
-    { timeout: 30_000 },
-  );
+  await s.seite.waitForFunction(fn(`() => !!document.querySelector('forminput')`), undefined, {
+    timeout: 30_000,
+  });
   await s.seite.evaluate(
     fn(`(frage) => {
-      const input = document.querySelector('main form input');
+      const input = document.querySelector('forminput');
       const setzen = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
       setzen.call(input, frage);
       input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -94,17 +94,15 @@ async function fragenBei(breite: number, hoehe: number): Promise<Befund> {
   );
   await s.seite.waitForFunction(
     fn(
-      `() => { const b = document.querySelector('main form button[type="submit"]'); return !!b && !b.disabled; }`,
+      `() => { const b = document.querySelector('formbutton[type="submit"]'); return !!b && !b.disabled; }`,
     ),
     undefined,
     { timeout: 30_000 },
   );
-  await s.seite.evaluate(
-    fn(`() => document.querySelector('main form button[type="submit"]').click()`),
-  );
+  await s.seite.evaluate(fn(`() => document.querySelector('formbutton[type="submit"]').click()`));
   await s.seite.waitForFunction(
     fn(
-      `(titel) => [...document.querySelectorAll('main a[title]')].some((x) => x.getAttribute('title') === titel)`,
+      `(titel) => [...document.querySelectorAll('a[title]')].some((x) => x.getAttribute('title') === titel)`,
     ),
     TITEL_LANG,
     { timeout: 45_000 },
