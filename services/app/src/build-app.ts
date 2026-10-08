@@ -34,6 +34,7 @@ import {
   type UserRepo,
   authRoutes,
   createOidcProviderFromEnv,
+  sprache,
 } from "../../auth";
 import {
   CaptureError,
@@ -223,6 +224,7 @@ import {
 } from "./addon-auth-throttle";
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import { type AiCheckWorker, createAiCheckRunner, createAiCheckWorker } from "./ai-check-worker";
+import { Anfragebremse, bremsSatz } from "./anfragebremse";
 import {
   type BearbeitungsRepo,
   InMemoryBearbeitungsRepo,
@@ -244,6 +246,7 @@ import {
   PgConfluenceImportSchalterRepo,
 } from "./confluence-import-schalter";
 import { registerHerkunftspruefung } from "./csrf";
+import { ladeDienstSchluessel, matchDienstRoute } from "./dienst-schluessel";
 import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
@@ -267,6 +270,7 @@ import {
   type KenntnisnahmeRepo,
   PgKenntnisnahmeRepo,
 } from "./kenntnisnahme";
+import { kiGrenzeAusEnv, registriereKiAnfragebremse } from "./ki-anfragebremse";
 // WP-D11: PPTX-Folien → PNG (Route + injizierbarer Konverter).
 import {
   InMemoryLesevariantenRepo,
@@ -313,6 +317,8 @@ import { i18nRoutes } from "./routes/i18n-routes";
 import { impactRoutes } from "./routes/impact-routes";
 import { importAccessRoutes } from "./routes/import-access-routes";
 import { importRunRoutes } from "./routes/import-run-routes";
+// R-0170: der Jira-Import — Vorgänge und Epics eines Projekts, Projektrollen als Leserechte.
+import { jiraImportRoutes } from "./routes/jira-import-routes";
 import { kantenRoutes } from "./routes/kanten-routes";
 import { kenntnisnahmeRoutes } from "./routes/kenntnisnahme-routes";
 import { klaraAiRoutes } from "./routes/klara-ai-routes";
@@ -1159,14 +1165,16 @@ export function assembleServices(
   //
   // Hier stand „künftig: || jiraEnabled || …". Der Satz beschrieb einen Plan und ist mit
   // SharePoint/OneDrive eingelöst; als Kommentar STEHEN ZU BLEIBEN hiesse, dass die Zeile weiter
-  // eine Zukunft ankündigt, die schon Gegenwart ist. Jira bleibt eine mögliche dritte Quelle —
-  // sie OR-t dann genauso ihren eigenen Schalter hinzu.
+  // eine Zukunft ankündigt, die schon Gegenwart ist.
+  //
+  // R-0170: Jira ist die dritte Quelle und OR-t seinen eigenen Schalter genauso hinzu.
   //
   // WARUM DAS ODER HIER NOTWENDIG IST UND NICHT NUR ORDENTLICH: Ohne es schriebe der Import-Kern
-  // für einen Betrieb, der NUR SharePoint angebunden hat, gar keinen Herkunfts-Anker
+  // für einen Betrieb, der NUR SharePoint (oder nur Jira) angebunden hat, gar keinen Herkunfts-Anker
   // (`acceptToKo`: `const externalId = this.externalUpsert ? item.externalId : undefined`). Das
-  // Wissensobjekt entstünde, verlöre aber lautlos seine Quelle.
-  const externalImportEnabled = schalterAn("confluenceImport") || schalterAn("sharepointImport");
+  // Wissensobjekt entstünde, verlöre aber lautlos seine Quelle — und mit ihr die Leserechte.
+  const externalImportEnabled =
+    schalterAn("confluenceImport") || schalterAn("sharepointImport") || schalterAn("jiraImport");
   // JOB 4155 (WG-LUECKEN): DER KANTENBESTAND ENTSTEHT JETZT HIER, EINE STUFE FRÜHER — und zwar
   // GENAU EINMAL. Er stand bis hierher erst im `return`-Objekt weiter unten (`kanten:` dort), und
   // damit konnte ihn der `LibraryService` nicht bekommen, der davor gebaut wird. Ihn dort ein
@@ -1987,6 +1995,11 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "DraftStaleError",
   "ExternalSearchError",
   "FencingVeraltetError",
+  // R-0170: der EINE Fehlertyp des Jira-Moduls (`services/jira/src/rest-client.ts`). ENTSCHEIDUNG:
+  // der Name darf ins Protokoll — dieselbe Klasse Betriebsauskunft wie `SharePointRequestError`
+  // weiter unten: die Lage steckt im Feld `lage`, die Meldung ist ein fester Satz ohne Host,
+  // Adresse oder Zugangsmerkmal.
+  "JiraRequestError",
   "KlaraError",
   // JOB 4151: aus `services/knowledge-object/src/kanten-types.ts` — der Fachfehler der kuratierten
   // Beziehungen. ENTSCHEIDUNG: der Name darf ins Protokoll. Er trägt, wie jeder Nachbar hier,
@@ -2604,7 +2617,18 @@ export function buildApp(
   // ben-Review SCRUM-490 (P2): (1) Origin fail-closed validieren — "*"/leer/malformed → gar kein CORS
   // (resolveAddonOrigin === null). (2) Scope über einen Delegator strikt auf die Add-on-Pfade begrenzen;
   // alle anderen Routen bekommen { origin: false } → keinerlei CORS-Header (nicht mehr app-weit).
-  if (addonApiEnabled()) {
+  //
+  // Aufnahme gesamt-integrations-api (R-0677/R-0688/R-0698/R-0704): derselbe Anmeldehook nimmt
+  // zusätzlich DIENST-SCHLÜSSEL an (`dienst-schluessel.ts`) — unabhängig vom Klara-Flag, sobald
+  // `KLARWERK_SERVICE_KEYS` mindestens einen gültigen Eintrag hat. Ein Dienst-Schlüssel erreicht
+  // nur die Routen seiner Rechte (`DIENST_ROUTEN`, sonst 403) und zählt gegen seine eigene Grenze
+  // (429 + Retry-After). CORS und das Add-in-Bündel bleiben allein am Klara-Flag.
+  const dienstLage = ladeDienstSchluessel();
+  for (const grund of dienstLage.fehler) {
+    console.warn(`[dienst-schluessel] Eintrag verworfen: ${grund}`);
+  }
+  const dienstBremse = new Anfragebremse();
+  if (addonApiEnabled() || dienstLage.schluessel.length > 0) {
     // SCRUM-490 D2: request-lokaler Auth-Kontext. Der Add-on-Key wird hier GENAU EINMAL pro Request
     // validiert und der Principal (Capabilities ask.validated + checktext.validated) am Request
     // getragen; Rate-Limiter, allowList und
@@ -2622,7 +2646,7 @@ export function buildApp(
     // ausgenommen (Session-Pfad ungedrosselt).
     const authAttemptThrottle = new AddonAuthAttemptThrottle(addonAuthThrottleConfigFromEnv());
     app.addHook("onRequest", async (request, reply) => {
-      const auth = resolveAddonAuth(request);
+      const auth = resolveAddonAuth(request, dienstLage);
       // SCRUM-490 R3/R4 (B2): Throttle für fehlgeschlagene Add-on-Auth-Versuche — VOR dem 401/Principal.
       //  Fix 3: ein UNGÜLTIGER Key zählt auf JEDER Route (kein 401/403-Gültigkeitsorakel, keine
       //         ungedrosselte Fremdroute); fehlende Auth zählt gegen die NORMALISIERTEN Add-on-Endpunkte
@@ -2664,8 +2688,39 @@ export function buildApp(
         }
       }
       if (auth.kind === "invalid") {
-        reply.code(401).send({ error: "UNAUTHENTICATED", message: "Ungültiger Add-in-Zugang." });
+        reply.code(401).send({
+          error: "UNAUTHENTICATED",
+          message: auth.dienst ? "Ungültiger Dienst-Schlüssel." : "Ungültiger Add-in-Zugang.",
+        });
         return reply;
+      }
+      if (auth.kind === "valid" && auth.principal.dienst) {
+        request.authContext = { authKind: "addon", principal: auth.principal };
+        const route = matchDienstRoute(request.method, request.routeOptions?.url, request.raw.url);
+        if (!route || !principalHasCapability(auth.principal, route.recht)) {
+          reply.code(403).send({
+            error: "FORBIDDEN",
+            message: "Dieser Dienst-Schlüssel hat kein Recht für diese Anfrage.",
+          });
+          return reply;
+        }
+        const urteil = dienstBremse.zaehle(
+          auth.principal.id,
+          auth.principal.dienst.grenze,
+          Date.now(),
+        );
+        if (!urteil.erlaubt) {
+          reply
+            .code(429)
+            .header("retry-after", String(urteil.wartenSek))
+            .send({
+              error: "RATE_LIMITED",
+              message: bremsSatz("dienst", sprache(request), urteil.wartenSek),
+              wartenSek: urteil.wartenSek,
+            });
+          return reply;
+        }
+        return;
       }
       if (auth.kind === "valid") {
         request.authContext = { authKind: "addon", principal: auth.principal };
@@ -2692,7 +2747,7 @@ export function buildApp(
     // Enge (nur addon-Principal, gekeyt auf den Actor; Session-Requests exempt) steckt in
     // addonRateLimit(). Flag AUS → hier gar nicht registriert → /api/ask exakt wie heute.
     app.register(rateLimit, { global: false });
-    const addonOrigin = resolveAddonOrigin();
+    const addonOrigin = addonApiEnabled() ? resolveAddonOrigin() : null;
     if (addonOrigin !== null) {
       app.register(
         cors,
@@ -2715,8 +2770,40 @@ export function buildApp(
     // SCRUM-490 H: das statische Klara-Add-in-Bundle unter /addin/* — NUR bei aktivem Flag. Traversal-
     // sicher (explizite Datei-Map), kein Directory-Listing, öffentlich lesbar (kein Key), berührt den
     // Add-on-Auth/Throttle-Pfad nicht und öffnet keinen neuen API-Weg. Flag AUS → nicht registriert → 404.
-    app.register(addinStaticRoutes());
+    if (addonApiEnabled()) {
+      app.register(addinStaticRoutes());
+    }
+  } else {
+    // Nacharbeit 2 (Bens Befund): auch OHNE Klara-Flag und ohne einen einzigen konfigurierten
+    // Dienst-Schlüssel bleibt der Anmeldehook für den Dienst-Schlüssel-Kopf wirksam. Wird der letzte
+    // Schlüssel entfernt, sendet ein angebundenes System ihn womöglich weiter — er ist dann ein
+    // ungültiger Anmeldeversuch (401, gedrosselt wie oben) und fällt NICHT auf eine mitgesendete
+    // Sitzung zurück. Ohne den Kopf bleibt jede Anfrage exakt wie vorher (kein authContext, kein
+    // CORS, keine Drossel).
+    const dienstFehlversuche = new AddonAuthAttemptThrottle(addonAuthThrottleConfigFromEnv());
+    app.addHook("onRequest", async (request, reply) => {
+      if (resolveAddonAuth(request, dienstLage).kind !== "invalid") {
+        return;
+      }
+      if (!dienstFehlversuche.registerFailure(request.ip, Date.now())) {
+        reply.code(429).header("retry-after", String(dienstFehlversuche.retryAfterSeconds())).send({
+          error: "RATE_LIMITED",
+          message: "Zu viele Zugangsversuche — bitte später erneut.",
+        });
+        return reply;
+      }
+      reply.code(401).send({ error: "UNAUTHENTICATED", message: "Ungültiger Dienst-Schlüssel." });
+      return reply;
+    });
   }
+
+  // Aufnahme gesamt-integrations-api (R-0842): die Bremse für modellgestützte Anfragen ANGEMELDETER
+  // Nutzer — nach dem Anmeldehook oben, damit Schlüsselzugänge schon erkannt sind und nicht doppelt
+  // zählen. `KLARWERK_KI_ANFRAGEN_MAX=aus` schaltet sie ab (s. ki-anfragebremse.ts).
+  registriereKiAnfragebremse(app, {
+    authenticate: (token) => services.auth.authenticate(token),
+    grenze: kiGrenzeAusEnv(),
+  });
 
   // JOB 1113 (JOB-947-B3): /health nennt jetzt zusätzlich VERSION und DEPLOY-COMMIT.
   //
@@ -3414,7 +3501,9 @@ export function buildApp(
   // registriert → Endpunkt existiert nicht → bit-identisch zum heutigen Verhalten. Deterministische
   // Stufe-1-Dry-Run-Prüfung (kein Modell, keine Persistenz; nur Validiertes gilt allein für den
   // Add-in-Pfad, der Session-Pfad prüft seit JOB 3020 auch Ungeprüftes — check-text-routes.ts).
-  if (addonApiEnabled()) {
+  // Aufnahme gesamt-integrations-api: ebenso, sobald Dienst-Schlüssel konfiguriert sind (Recht
+  // `checktext.validated`).
+  if (addonApiEnabled() || dienstLage.schluessel.length > 0) {
     app.register(
       checkTextRoutes(
         {
@@ -3652,7 +3741,10 @@ export function buildApp(
   // Importweg, der Läufe schreibt — nicht nur hinter Confluence. Bis R-0145 hing er allein am
   // Confluence-Schalter: eine Instanz nur mit SharePoint gab eine `importId` heraus, hinter der eine
   // 404 stand. Sind alle Importwege aus, gibt es keine Läufe und damit auch keinen Leseweg.
-  if (schalterAn("confluenceImport") || schalterAn("sharepointImport")) {
+  // R-0170: der Jira-Import schreibt Läufe genauso und gehört deshalb in dieselbe Bedingung.
+  const importLaeufeLesbar =
+    schalterAn("confluenceImport") || schalterAn("sharepointImport") || schalterAn("jiraImport");
+  if (importLaeufeLesbar) {
     app.register(
       importRunRoutes({
         importRuns: services.importRuns,
@@ -3677,6 +3769,19 @@ export function buildApp(
         guards,
         // Der Übernahmelauf bekommt seine Identität VOR dem ersten Effekt (KW-S4-26 §133) — und
         // erst dadurch kann die Zugangs-Auskunft „zuletzt erfolgreich importiert" belegen.
+        importRuns: services.importRuns,
+      }),
+    );
+  }
+
+  // R-0170: der Jira-Import — Vorgänge und Epics eines Projekts als Kandidaten, die Projektrollen
+  // als Leserechte am Herkunftsanker. Hinter SEINEM eigenen Schalter; Schalter aus, Route existiert
+  // nicht. Dieselben Abhängigkeiten wie der SharePoint-Weg darüber.
+  if (schalterAn("jiraImport")) {
+    app.register(
+      jiraImportRoutes({
+        library: services.library,
+        guards,
         importRuns: services.importRuns,
       }),
     );
