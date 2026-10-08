@@ -111,7 +111,8 @@ beliebig oft hintereinander auslösen. Gezählt wird je Konto über diese Routen
 - Darüber: `429`, `error = "KI_ANFRAGEN_GEBREMST"`, `Retry-After` und ein Satz in der Sprache der
   Anfrage mit der Wartezeit, z. B. „Sie haben in kurzer Zeit sehr viele KI-Anfragen gestellt. Bitte
   warten Sie 42 Sekunden und versuchen Sie es dann erneut." Die Fragen-Seite, die KI-Hilfesuche im
-  Klara-Panel und das Bildbeschreibungsformular im Editor zeigen genau diesen Satz statt des allgemeinen Fehlertexts (`apps/web/src/lib/kiBremse.ts`).
+  Klara-Panel, das Bildbeschreibungsformular im Editor sowie Strukturierung und KI-Assistent im
+  Erfassungsblatt zeigen genau diesen Satz statt des allgemeinen Fehlertexts (`apps/web/src/lib/kiBremse.ts`).
 - Schlüsselzugänge zählen hier nicht — sie haben ihre eigene Grenze.
 
 ## 5. Grenzen (ehrlich)
