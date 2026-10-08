@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   BENANNTE_STUFEN,
   MINDEST_LESEGROESSE_PX,
+  PROJEKTIONS_DATEIEN,
+  PROJEKTIONS_STUFEN,
   ZIELBILD_GROESSEN_PX,
   ZIELBILD_HERKUNFT,
 } from "../../apps/web/src/lib/schriftskala";
@@ -183,5 +185,48 @@ describe("R-0918 · Schriftskala der Web-App", () => {
     const genutzt = new Set(flaechen.map((f) => f.px));
     const ungenutzt = ZIELBILD_GROESSEN_PX.filter((px) => !genutzt.has(px));
     expect(ungenutzt, "Skalenstufe ohne Verwendung in apps/web/src").toEqual([]);
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // R8 (Ben, Nacharbeit 19): die Beamer-Ansicht der LiveWall liegt NICHT neben der Ordnung, sondern
+  // auf einer eigenen, abgegrenzten Medienstufe. S7 bleibt unverändert streng (keine Datei-
+  // ausnahme): die zwölf früheren Fundstellen 18/22/44 px setzen keine freien Pixel mehr, sondern
+  // tragen die benannten Projektionsstufen — und S9 hält fest, dass diese Stufen nur dort stehen.
+  // ----------------------------------------------------------------------------------------------
+  it("S9 · die Projektionsstufen sind benannt, abgegrenzt und nur in der Beamer-Ansicht in Gebrauch", () => {
+    expect(TAILWIND).toContain('"projektion-klein": "18px"');
+    expect(TAILWIND).toContain('projektion: "22px"');
+    expect(TAILWIND).toContain('"projektion-titel": "44px"');
+    expect(PROJEKTIONS_STUFEN.map((s) => [s.klasse, s.px])).toEqual([
+      ["text-projektion-klein", 18],
+      ["text-projektion", 22],
+      ["text-projektion-titel", 44],
+    ]);
+    // Eine Medienstufe, kein Ersatz der Bildschirmskala: kein Wert fällt mit ihr zusammen.
+    const skala = new Set(ZIELBILD_GROESSEN_PX);
+    expect(PROJEKTIONS_STUFEN.filter((s) => skala.has(s.px))).toEqual([]);
+
+    const zaehler: Record<string, number> = {};
+    const orte = new Set<string>();
+    for (const pfad of quelldateien(WEB_SRC)) {
+      const datei = relative(WEB_SRC, pfad);
+      if (datei === "lib/schriftskala.ts") continue;
+      const text = readFileSync(pfad, "utf8");
+      for (const { klasse } of PROJEKTIONS_STUFEN) {
+        // Ganze Klasse: `text-projektion` zählt nicht in `text-projektion-klein` mit.
+        const treffer = text.match(new RegExp(`${klasse}(?![\\w-])`, "g")) ?? [];
+        if (treffer.length > 0) {
+          zaehler[klasse] = (zaehler[klasse] ?? 0) + treffer.length;
+          orte.add(datei);
+        }
+      }
+    }
+    expect([...orte].sort()).toEqual([...PROJEKTIONS_DATEIEN].sort());
+    // KALIBRIERUNG: genau die zwölf früheren Fundstellen (9 in LiveWallBeamer, 3 im `gross`-Zweig).
+    expect(zaehler).toEqual({
+      "text-projektion-klein": 4,
+      "text-projektion": 7,
+      "text-projektion-titel": 1,
+    });
   });
 });

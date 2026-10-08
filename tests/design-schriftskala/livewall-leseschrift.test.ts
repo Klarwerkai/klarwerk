@@ -12,10 +12,11 @@ import { repoPfad } from "../support/repoPfad";
 // unter der Untergrenze. Sie tragen jetzt `text-klein` (11 px).
 //
 // GETRENNT DAVON: der Zweig `gross` derselben Liste und `pages/LiveWallBeamer.tsx` sind die
-// PROJEKTIONSANSICHT (18/22/44 px). Ob sie eine eigene, abgegrenzte Medienstufe bekommen oder auf
-// die Skala gezogen werden, ist eine offene Entscheidung und wird hier NICHT getroffen. Diese Datei
-// mischt die beiden Fälle deshalb nicht: L1 gilt für beide Dateien (nichts unter 11 px), L2 nur
-// für den normalen Zweig.
+// PROJEKTIONSANSICHT. Ihre Größen 18/22/44 px tragen seit Nacharbeit 19 die benannten
+// Projektionsstufen (`lib/schriftskala.ts` PROJEKTIONS_STUFEN, bewacht in `schriftskala.test.ts`
+// S9). Die frühere Angabe hier, das sei eine offene Entscheidung, war unbelegt — die Quellen
+// verlangen dafür keine. Diese Datei mischt die beiden Fälle weiterhin nicht: L1 gilt für beide
+// Dateien (nichts unter 11 px), L2 nur für den normalen Zweig.
 
 const VALIDIERT = "apps/web/src/components/start/LiveWallValidiert.tsx";
 const BEAMER = "apps/web/src/pages/LiveWallBeamer.tsx";

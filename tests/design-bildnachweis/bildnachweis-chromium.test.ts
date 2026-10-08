@@ -803,6 +803,44 @@ describe("R-1399 · Sichtnachweis: Lesetexte aus dem Hauptstand auf 11 px", () =
   }, 120_000);
 
   // ----------------------------------------------------------------------------------------------
+  // Ben, Nacharbeit 19 · R8: die Beamer-Ansicht `/livewall` auf den benannten Projektionsstufen
+  // (`text-projektion-titel` 44 px, `text-projektion` 22 px, `text-projektion-klein` 18 px).
+  //   b13-livewall-projektion.png — die ganze Beamer-Fläche
+  // Gemessen wird jede Stelle mit einer Projektionsstufe gegen ihren Sollwert; die Kalibrierung
+  // verlangt Titel und Untertitel, die ohne Datenlage immer stehen. Läuft VOR B11/B12, weil die
+  // Erfassung dort einen ungesicherten Inhalt hinterlässt.
+  // ----------------------------------------------------------------------------------------------
+  it("B13 · Beamer-Ansicht: Titel, Untertitel und Liste tragen die Projektionsstufen", async () => {
+    expect(fehler2).toBeNull();
+    const s = (stand2 as H4Stand).seite;
+    await s.setViewportSize({ width: 1600, height: 1000 });
+    await s.goto(`${ORIGIN}/livewall`, { waitUntil: "load", timeout: 60_000 });
+    await warte2('[data-testid="livewall-beamer"] h1');
+    const soll: Record<string, string> = {
+      "text-projektion-titel": "44px",
+      "text-projektion": "22px",
+      "text-projektion-klein": "18px",
+    };
+    const gemessen = await s.evaluate<{ klasse: string; px: string }[]>(
+      fn(`(stufen) => [...document.querySelectorAll('[data-testid="livewall-beamer"] *')]
+        .flatMap((el) => {
+          const k = [...el.classList].find((c) => stufen.includes(c));
+          return k ? [{ klasse: k, px: getComputedStyle(el).fontSize }] : [];
+        })`),
+      Object.keys(soll),
+    );
+    console.info(`R-1399 · B13 · ${JSON.stringify(gemessen)}`);
+    const klassen = new Set(gemessen.map((g) => g.klasse));
+    expect(klassen.has("text-projektion-titel"), "Titel").toBe(true);
+    expect(klassen.has("text-projektion"), "Untertitel").toBe(true);
+    expect(gemessen.filter((g) => g.px !== soll[g.klasse])).toEqual([]);
+    await s.screenshot({ path: bild("b13-livewall-projektion") });
+    console.info(`R-1399 · Bild ${bild("b13-livewall-projektion")}`);
+    await s.setViewportSize({ width: 1280, height: 900 });
+    expect((stand2 as H4Stand).seitenfehler).toEqual([]);
+  }, 90_000);
+
+  // ----------------------------------------------------------------------------------------------
   // Ben, Nacharbeit 18 · die zwei Foto-/Interview-Plaketten an der gebauten Erfassungsfläche:
   //   b11-foto-befund-ki.png          — /erfassen?weg=interview, Foto gewählt, „Bild auswerten“
   //                                     → Plakette „KI-Vorschlag“ (FotoInterviewStart.tsx)

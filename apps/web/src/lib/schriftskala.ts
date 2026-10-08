@@ -71,3 +71,36 @@ export const ZIELBILD_HERKUNFT: Readonly<Record<string, string>> = {
   "28": "tests/design/zielbild-h3-erfassen.test.ts",
   "30": "tests/design/zielbild-h5-start.test.ts",
 };
+
+// ================================================================================================
+// R-0918 / Restvertrag R8 · DIE PROJEKTIONSSTUFEN — eine abgegrenzte Medienstufe, keine Ausnahme.
+// ================================================================================================
+//
+// Die Beamer-Ansicht der LiveWall (`pages/LiveWallBeamer.tsx`, dazu der `gross`-Zweig von
+// `ValidiertListe` in `components/start/LiveWallValidiert.tsx`, den nur sie benutzt) wird aus
+// Raumdistanz gelesen. Ihre drei Größen 18/22/44 px liegen bewusst ÜBER der Bildschirmskala und
+// gehören in keine Bildschirmvorlage. Statt frei gesetzter Pixel tragen sie jetzt benannte Stufen
+// (`text-projektion-klein`, `text-projektion`, `text-projektion-titel`, `tailwind.config.ts`).
+//
+// HERKUNFT, EHRLICH: es gibt KEINE freigegebene Designvorlage für die Beamer-Ansicht. Die Werte sind
+// die der gelieferten Fläche (Auftrag „Frisch gesichertes und bewährtes Wissen berechtigt anzeigen",
+// unverändert übernommen, nicht neu erfunden). Die Stufen gelten nur an den unten genannten Dateien;
+// `tests/design-schriftskala/schriftskala.test.ts` S9 hält das fest. Die übrigen Beamer-Größen
+// (16/24/28 px) liegen bereits auf der Bildschirmskala und bleiben dort.
+
+export interface Projektionsstufe {
+  klasse: string;
+  px: number;
+}
+
+export const PROJEKTIONS_STUFEN: readonly Projektionsstufe[] = [
+  { klasse: "text-projektion-klein", px: 18 },
+  { klasse: "text-projektion", px: 22 },
+  { klasse: "text-projektion-titel", px: 44 },
+];
+
+/** Die einzigen Dateien, in denen eine Projektionsstufe stehen darf (relativ zu `apps/web/src`). */
+export const PROJEKTIONS_DATEIEN: readonly string[] = [
+  "components/start/LiveWallValidiert.tsx",
+  "pages/LiveWallBeamer.tsx",
+];

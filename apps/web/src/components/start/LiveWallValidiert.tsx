@@ -66,7 +66,7 @@ export function ValidiertListe({
   const { t, i18n } = useTranslation();
   if (eintraege.length === 0) {
     return (
-      <p className={gross ? "text-[22px] text-muted" : "text-[12.5px] text-muted"}>
+      <p className={gross ? "text-projektion text-muted" : "text-[12.5px] text-muted"}>
         {t("start.livewall.validatedEmpty")}
       </p>
     );
@@ -99,7 +99,7 @@ export function ValidiertListe({
             <span
               data-testid="livewall-validiert-name"
               className={
-                gross ? "shrink-0 text-[22px] text-muted" : "shrink-0 text-[12px] text-muted"
+                gross ? "shrink-0 text-projektion text-muted" : "shrink-0 text-[12px] text-muted"
               }
             >
               {v.name}
@@ -108,7 +108,7 @@ export function ValidiertListe({
           <span
             className={
               gross
-                ? "shrink-0 font-mono text-[18px] text-muted-2"
+                ? "shrink-0 font-mono text-projektion-klein text-muted-2"
                 : "shrink-0 font-mono text-klein text-muted-2"
             }
           >

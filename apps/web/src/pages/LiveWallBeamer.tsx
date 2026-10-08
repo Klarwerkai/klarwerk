@@ -46,11 +46,14 @@ export function LiveWallBeamer(): JSX.Element {
     >
       <header className="flex items-start gap-6">
         <div className="flex-1">
-          <h1 className="text-[44px] font-semibold text-ink">{t("start.livewall.title")}</h1>
-          <p className="mt-1 text-[22px] text-muted">{t("start.livewall.subtitle")}</p>
+          {/* R-0918 / R8: Projektionsstufen statt freier Pixel (`lib/schriftskala.ts`). */}
+          <h1 className="text-projektion-titel font-semibold text-ink">
+            {t("start.livewall.title")}
+          </h1>
+          <p className="mt-1 text-projektion text-muted">{t("start.livewall.subtitle")}</p>
         </div>
         {daten && daten.helpedToday > 0 ? (
-          <span className="rounded-pill bg-trust-pos-bg px-4 py-2 font-mono text-[22px] font-semibold text-trust-pos-text">
+          <span className="rounded-pill bg-trust-pos-bg px-4 py-2 font-mono text-projektion font-semibold text-trust-pos-text">
             {t("start.livewall.helpedToday", { n: daten.helpedToday })}
           </span>
         ) : null}
@@ -69,13 +72,16 @@ export function LiveWallBeamer(): JSX.Element {
       {/* Eine Störung darf nicht wie Leere aussehen: ohne Stand steht „lädt" oder die Störung,
           nie „noch nichts erfasst". */}
       {!daten ? (
-        <p data-testid="livewall-beamer-lage" className="text-[22px] text-muted">
+        <p data-testid="livewall-beamer-lage" className="text-projektion text-muted">
           {wand.isError ? t("start.livewall.beamerError") : t("start.livewall.beamerLoading")}
         </p>
       ) : (
         <>
           {!personen ? (
-            <output data-testid="livewall-beamer-veraltet" className="block text-[18px] text-muted">
+            <output
+              data-testid="livewall-beamer-veraltet"
+              className="block text-projektion-klein text-muted"
+            >
               {t("start.livewall.beamerStale")}
             </output>
           ) : null}
@@ -91,7 +97,7 @@ export function LiveWallBeamer(): JSX.Element {
                 {t("start.livewall.saved")}
               </h2>
               {daten.saved.length === 0 ? (
-                <p className="text-[22px] text-muted">{t("start.livewall.savedEmpty")}</p>
+                <p className="text-projektion text-muted">{t("start.livewall.savedEmpty")}</p>
               ) : (
                 <ul className="space-y-3">
                   {daten.saved.map((s) => (
@@ -103,7 +109,7 @@ export function LiveWallBeamer(): JSX.Element {
                       >
                         {() => s.title}
                       </RoleLink>
-                      <span className="shrink-0 font-mono text-[18px] text-muted-2">
+                      <span className="shrink-0 font-mono text-projektion-klein text-muted-2">
                         {zeit(s.at)}
                       </span>
                     </li>
@@ -116,7 +122,7 @@ export function LiveWallBeamer(): JSX.Element {
                 {t("start.livewall.helped")}
               </h2>
               {daten.helped.length === 0 ? (
-                <p className="text-[22px] text-muted">{t("start.livewall.helpedEmpty")}</p>
+                <p className="text-projektion text-muted">{t("start.livewall.helpedEmpty")}</p>
               ) : (
                 <ul className="space-y-3">
                   {daten.helped.map((h) => (
@@ -128,7 +134,7 @@ export function LiveWallBeamer(): JSX.Element {
                       >
                         {() => h.title}
                       </RoleLink>
-                      <span className="shrink-0 font-mono text-[18px] text-muted-2">
+                      <span className="shrink-0 font-mono text-projektion-klein text-muted-2">
                         {zeit(h.at)}
                       </span>
                     </li>

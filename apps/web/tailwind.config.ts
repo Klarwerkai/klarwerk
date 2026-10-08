@@ -71,11 +71,17 @@ export default {
       //   zaehler 10.5px — NUR Zahl-Plaketten im Kopfband (Zielbild Main.dc.html, Zähler 10.5px)
       //   fussnote 10px  — NUR die hochgestellte Quellenmarke (Zielbild Fragen.dc.html, 10px/700)
       //   micro          — Mono-Kicker/SectionLabel, seit R-0918 auf 11px (Zielbild Admin: Kicker 11px)
+      //   projektion-*   — NUR die Beamer-Ansicht der LiveWall (`pages/LiveWallBeamer.tsx` und der
+      //                    `gross`-Zweig von `ValidiertListe`): Lesen aus Raumdistanz. Werte aus der
+      //                    gelieferten Beamer-Fläche übernommen, Herkunft in `lib/schriftskala.ts`.
       fontSize: {
         micro: ["11px", { lineHeight: "1.2", letterSpacing: "0.5px" }],
         klein: "11px",
         zaehler: "10.5px",
         fussnote: "10px",
+        "projektion-klein": "18px",
+        projektion: "22px",
+        "projektion-titel": "44px",
       },
     },
   },
