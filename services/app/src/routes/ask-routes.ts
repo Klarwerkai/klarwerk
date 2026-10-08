@@ -725,7 +725,11 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           // KW-KA4: NUR eine serverbestätigte Einwilligung für exakt diese Sitzung UND dieses
           // Dokument hebt die Enge auf. Ohne sie fällt der Ablauf in den unveränderten Zweig
           // darunter — Zeile für Zeile derselbe wie vor KA4.
+          // Aufnahme gesamt-integrations-api (R-0688): ein DIENST-Schlüssel hat keine Klara-Sitzung
+          // und nie eine Einwilligung — er bekommt ausschließlich den engen Zweig darunter
+          // (validiertes Wissen, kein Modell), auch wenn er Klara-Köpfe mitschickt.
           if (
+            !auth.principal.dienst &&
             (await ka4Freigabe(
               deps.klaraSessions,
               request.headers,

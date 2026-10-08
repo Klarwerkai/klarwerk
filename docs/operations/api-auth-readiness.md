@@ -7,6 +7,13 @@
 > kein Rate-Limit/Quota installiert, kein SDK gebaut.** Verwandt: `integration-workflows.md`,
 > `secrets-management.md`, `scaling-cost-control-readiness.md`, `monitoring-logging.md`,
 > `deploy-hetzner.md`.
+>
+> **Nachtrag (Aufnahme gesamt-integrations-api, Oktober 2026):** Die Aussagen dieses Runbooks zu
+> „keine API-Key-/Service-Token-Auth" und „kein Rate-Limit" (§4, §5) beschreiben den Stand ihrer
+> Erstellung. Seitdem gibt es Dienst-Schlüssel mit eigenen Rechten und eigener Grenze je
+> Schlüssel, eine Bremse für modellgestützte Anfragen angemeldeter Nutzer, eine verbindliche
+> Zustandstabelle und eine OpenAPI-Beschreibung — maßgeblich ist
+> `docs/architektur/integrations-schnittstelle.md`.
 
 ---
 
