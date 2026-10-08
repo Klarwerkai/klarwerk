@@ -1204,7 +1204,15 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     tor: "ko.read (danach prüft der Dienst den Beleg aus dem echten Antwortvorgang)",
     erwartet: NUR_LESEN,
     ruesten: async (buehne, akteur) => {
-      await legeKoAn(buehne, "admin");
+      const ko = await legeKoAn(buehne, "admin");
+      // R-0584 (Auftrag gesamt-datenschutz-voreinstellung): die Konsole antwortet seither nur aus
+      // GEPRÜFTEM Wissen (`validatedOnly`, ask-routes.ts). Ein ungeprüftes Objekt ist dort keine
+      // Quelle mehr — ohne Freigabe gäbe es keinen Beleg, und die Zeile mässe die Vorbereitung statt
+      // der Tür. Die Freigabe geschieht über den echten Produktweg (`admin-validate`).
+      await musterhaft(buehne.app, kopf(buehne, "admin"), "PUT", `/api/kos/${ko.id}`, {
+        action: "admin-validate",
+        duplicateAcknowledged: true,
+      });
       if (akteur === "anonym") {
         // Ohne Sitzung gibt es keinen Beleg — und es braucht auch keinen: `requirePermission`
         // entscheidet vor jeder Belegprüfung. Die Nutzlast bleibt trotzdem formgerecht, damit die

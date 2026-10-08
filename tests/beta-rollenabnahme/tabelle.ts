@@ -1312,6 +1312,43 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // aufnahme:20260922:gesamt-leserechte (R-0543 · jeder Zugriffspunkt × jede Rolle): die Türen der
+  // eigenen Live-Wand-Zustimmung. Jede wirkt nur auf das EIGENE Konto (`user.id`); die Nutzlasten
+  // enden in der Eingabeprüfung (400), der Widerruf löscht höchstens ein eigenes Foto.
+  {
+    gruppe: "livewallRoutes",
+    methode: "GET",
+    pfad: "/api/livewall/consent",
+    belegstelle: "services/app/src/routes/livewall-routes.ts:107",
+    tor: "angemeldet (eigener Stand)",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "livewallRoutes",
+    methode: "PUT",
+    pfad: "/api/livewall/consent",
+    belegstelle: "services/app/src/routes/livewall-routes.ts:123",
+    tor: "angemeldet (ohne Wahrheitswert, 400)",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "livewallRoutes",
+    methode: "PUT",
+    pfad: "/api/livewall/photo",
+    belegstelle: "services/app/src/routes/livewall-routes.ts:148",
+    tor: "angemeldet (ohne Bild, 400)",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "livewallRoutes",
+    methode: "DELETE",
+    pfad: "/api/livewall/photo",
+    belegstelle: "services/app/src/routes/livewall-routes.ts:171",
+    tor: "angemeldet (Widerruf des eigenen Fotos)",
+    erwartet: ANGEMELDET,
+  },
   {
     gruppe: "managementRoutes",
     methode: "GET",
@@ -1943,6 +1980,17 @@ export const TABELLE: Zeile[] = [
     pfad: "/api/admin/import/source-records/gibt-es-nicht",
     route: "/api/admin/import/source-records/:sourceRecordId",
     belegstelle: "services/app/src/routes/import-run-routes.ts:164",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  // aufnahme:20260922:gesamt-leserechte (R-0543): das Importergebnis EINES Wissensobjekts —
+  // `users.manage`, danach `darfSehen` je Zeile (routeGuardAudit). Erfundene Kennung, 404.
+  {
+    gruppe: "importRunRoutes",
+    methode: "GET",
+    pfad: "/api/admin/import/knowledge/gibt-es-nicht",
+    route: "/api/admin/import/knowledge/:koId",
+    belegstelle: "services/app/src/routes/import-run-routes.ts:342",
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },
