@@ -153,6 +153,9 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // „fixture" allein meldete A2 `der Griff hat sich geaendert`.
   "tests/word-vergleich/zwei-laeufe-und-spaete-antworten.test.ts": "pfad,fixture",
   "tests/word-vergleich/word-buehne.ts": "pfad,fixture",
+  // R-0336/R-0708 („Markierung prüfen", Zustimmung zum noch nicht validierten Bestand): hängt wie
+  // die Fälle darüber an `createKlaraPanel` (`fixture`) und nennt den ausgelieferten Pfad nicht.
+  "tests/word-vergleich/behauptung-und-zustimmung.test.ts": "fixture",
   // N11b: Versandmessung liest das Word-Fenster und führt den W6-Block entlang seiner Marke aus.
   "tests/n11b-zustimmung-macht-intern/einstiege.test.ts": "pfad,marken,panelquelle",
   "tests/app/csp-upgrade-insecure-requests.test.ts": "pfad",

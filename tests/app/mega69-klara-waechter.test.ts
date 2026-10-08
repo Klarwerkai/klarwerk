@@ -2759,6 +2759,27 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Prüflauf zu Kandidat e9529cb7 GEMESSEN („Received", HISTORIE/nacharbeit-3/PRUEFUNG/
     // word-addin-auslieferungswaechter.log) und unverändert übernommen; die vier Panel-Dateien sind
     // seit dieser Messung unberührt (Nacharbeit 3 ändert nur Testdateien).
+    // AUFTRAG „Geschriebene Behauptungen gegen den Wissensbestand prüfen" (R-0336, R-0708) — DER PIN
+    // MUSS WANDERN. Zwei Änderungen, nur EINE bewegt ihn:
+    //   (1) Der Abschnitt KW-WORDVERGLEICH wohnt in einer eigenen Datei `wortvergleich.js`, geladen
+    //       als klassisches Skript UNMITTELBAR NACH `taskpane.js` (Verweis in derselben Zeile) und vor
+    //       `marke.js`; `panelQuelleAus` setzt ihn beim Zusammenfügen wieder an seine Stelle. Grund:
+    //       B3 (`taskpane.js` stand bei 12493 von < 12500 Zeilen). Kein Byte des zusammengefügten
+    //       Dokuments ändert sich dadurch (Rest und Abschnitt mit `cmp` gegen 817d5347 verglichen).
+    //   (2) Im Abschnitt: Knopf „Markierung prüfen" (`#wv-markierung`, liest die Markierung über
+    //       `Word.run`/`getSelection`, LESEND, schreibt weder Text noch Farbe), die Fundstelle eines
+    //       Quellenfunds als Zitat, der Haken „Auch noch nicht validierten Bestand einbeziehen"
+    //       (`#wv-ungeprueft`, AUS bis zum Haken, nur für dieses Fenster, fällt beim Logout) und
+    //       acht neue Wörterbuchschlüssel je Sprache.
+    // Auslieferungsfolgen: EIN Abruf mehr beim Öffnen (`wortvergleich.js`, gleicher Ursprung,
+    // `script-src 'self'`, dieselbe Cachekennung). Abrufziel: keines neu (dieselbe Route
+    // `/api/check-text`). Nutzlast: der Prüfweg des Vergleichs trägt zusätzlich
+    // `ungeprueftEinbeziehen` (true/false); kein Text mehr als vorher, bei „Markierung prüfen" nur die
+    // Markierung statt eines Absatzes. CSP, Recht, Manifest unverändert (WordApi 1.1 deckt
+    // `getSelection`), kein Sideload. Ein alter Server ohne die Datei liefert 404 — das Fenster bleibt
+    // bedienbar, nur ohne Word-Vergleich. Ohne zugelassenes Hash-Werkzeug (`git hash-object` und
+    // `shasum` waren in dieser Bahn gesperrt) ist der neue Wert hier nicht berechenbar; der Prüflauf
+    // meldet ihn als „Received", er wird danach gemessen übernommen.
     const PIN = "dce012c092e3445073b0629f1b8348a5f4b04457c1986e3c68657c7ad5860d64";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(

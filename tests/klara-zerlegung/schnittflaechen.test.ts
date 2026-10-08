@@ -30,6 +30,7 @@ import {
   JS_DATEI,
   MARKE_DATEI,
   RUECKWEG_DATEI,
+  WV_DATEI,
   bloeckeVon,
   bytes,
   echterSchnitt,
@@ -151,11 +152,17 @@ describe("JOB 3014 · B — die Grobstruktur der ausgelieferten Seite", () => {
     // KW-BEGRIFFE wohnt in `begriffe.js` (relativ, gleichherkünftig). Grund ist wieder B3: das
     // Fensterskript wird nicht vergrössert. Sie steht im KOPF hinter office.js und schliesst sich
     // erst bei DOMContentLoaded an (Begründung im Kopf von `begriffe.js`).
+    //
+    // AUFTRAG „Geschriebene Behauptungen gegen den Wissensbestand prüfen" (R-0336, R-0708): eine
+    // FÜNFTE nach der Regel von `marke.js` — der Block KW-WORDVERGLEICH, bis dahin das Ende von
+    // `taskpane.js`, wohnt in `wortvergleich.js`, geladen UNMITTELBAR NACH `taskpane.js` und vor
+    // `marke.js`. Grund ist wieder B3: der Auftrag baut an diesem Block weiter.
     expect(extern).toEqual([
       "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       `begriffe.js?v=${FASSUNG}`,
       `${RUECKWEG_DATEI}?v=${FASSUNG}`,
       `${JS_DATEI}?v=${FASSUNG}`,
+      `${WV_DATEI}?v=${FASSUNG}`,
       `${MARKE_DATEI}?v=${FASSUNG}`,
     ]);
     const stilblaetter = [
