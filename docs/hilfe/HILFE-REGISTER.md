@@ -1,7 +1,7 @@
 # KLARWERK Hilfe-Register — Überschriften-Abdeckung + Voll-Inventur der Hilfe-Texte
 
 > **Zweck (Pedi 05.07.):** Jede Überschrift (wo möglich) hat eine Erklärung — und dieses Register dokumentiert, WAS wo erklärt wird, damit bei App-Änderungen die Erklärungen nachgezogen werden.
-> **Pflege-Regel:** Dieses Dokument ist AUS DEM CODE GENERIERT (Quellen: alle `pages/*.tsx` + `i18n.ts`). Es wird nicht von Hand editiert — nach jedem UI-Batch, der Überschriften oder Hilfen ändert, generiert Paul es neu und liefert es mit. Stand: 05.07.2026. Zeile `adm.trash.help` am 17.09.2026 aus `i18n.ts` nachgeführt (JOB 4327; kein Generator im Repo). Zeile `entwurfspool.saveDraftHelp.body` am 06.10.2026 aus `texte/entwurfspool.ts` nachgeführt (Aufnahme entwurf-in-gemeinsamen-pool-geben). Die sieben Stufe-2-Überschriften und die Vertraulichkeitshilfe am 08.10.2026 aus `texte/fachwort.ts` nachgeführt (Aufnahme gesamt-sprache-begriffe, R-0908: ohne „Reasoner", „Evidence", „Knowledge-OS", „Output Factory").
+> **Pflege-Regel:** Dieses Dokument ist AUS DEM CODE GENERIERT (Quellen: alle `pages/*.tsx` + `i18n.ts`). Es wird nicht von Hand editiert — nach jedem UI-Batch, der Überschriften oder Hilfen ändert, generiert Paul es neu und liefert es mit. Stand: 05.07.2026. Zeile `adm.trash.help` am 17.09.2026 aus `i18n.ts` nachgeführt (JOB 4327; kein Generator im Repo). Zeile `entwurfspool.saveDraftHelp.body` am 06.10.2026 aus `texte/entwurfspool.ts` nachgeführt (Aufnahme entwurf-in-gemeinsamen-pool-geben). Die sieben Stufe-2-Überschriften, die Analytics-Überschrift „Knowledge Health“ und die Vertraulichkeitshilfe am 08.10.2026 aus `texte/fachwort.ts` nachgeführt (Aufnahme gesamt-sprache-begriffe, R-0908: ohne „Reasoner", „Evidence", „Knowledge-OS", „Output Factory").
 > **Doppelnutzen:** Teil 2 ist zugleich die vollständige Inventur für den Berater (Lieferung 2: Audit aller Kurzhilfen).
 
 ## Teil 1 · Überschriften-Abdeckung (SectionLabel je Seite)
@@ -26,7 +26,7 @@
 | Admin | `adm.sich.dataTitle` | Datenschutz & Sicherheit | ✅ |
 | Admin | `adm.ready.title` | VIP-Bereitschaft | ✅ |
 | Analytics | `ana.exec.title` | Executive-Blick | ✅ |
-| Analytics | `health.title` | Knowledge Health | ✅ |
+| Analytics | `fachwort.gesundheit.titel` | Zustand der Wissensbasis | ✅ |
 | Analytics | `ana.byType` | Verteilung nach Wissensart | ❌ |
 | Analytics | `ana.impact` | Wirkung | ✅ |
 | Analytics | `ana.weekly` | Validiert je Woche | ❌ |

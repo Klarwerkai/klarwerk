@@ -133,6 +133,7 @@ const ABGELOEST: readonly string[] = [
   "mgmt.prio.flag.busFactorOne",
   "readiness.title",
   "shelp.cycle.title",
+  "health.title",
 ];
 const ABGELOEST_MENGE = new Set(ABGELOEST);
 
@@ -287,6 +288,7 @@ describe("K1 · C — die abgelösten Schlüssel liest keine Fläche mehr", () =
     );
     expect(quelle("apps/web/src/lib/startHelp.ts")).toContain('"fachwort.kreis.titel"');
     expect(quelle("apps/web/src/pages/Stufe2.tsx")).toContain('"fachwort.bereitschaft.titel"');
+    expect(quelle("apps/web/src/pages/Analytics.tsx")).toContain('"fachwort.gesundheit.titel"');
   });
 
   it("C-3: Kalibrierung — ein noch gelesener Altschlüssel würde gefunden", () => {

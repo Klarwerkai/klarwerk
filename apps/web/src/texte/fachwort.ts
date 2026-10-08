@@ -16,6 +16,7 @@
 //   · Stufe 2: Ergebnis einer Fundannahme      (vorher `ext.finding.acceptedKo`, „KO erzeugt")
 //   · Stufe 2: Startklarheit                   (vorher `readiness.title`, „Knowledge-OS Readiness")
 //   · Start: Hilfe zu den vier Kacheln         (vorher `shelp.cycle.title`, „Knowledge-OS-Kreis")
+//   · Analytics: Überschrift der Gesundheitskarte (vorher `health.title`, „Knowledge Health")
 //   · Risiko und Priorisierung: „Bus-Faktor 1" (vorher `risk.horizon.busFactorOne`,
 //                                               `mgmt.prio.filter|flag.busFactorOne`) — das Wort
 //                                               bleibt als Suchwort stehen, aber mit Erklärung.
@@ -93,6 +94,7 @@ export default {
     "fachwort.einzelperson.markierung": "nur eine Person",
     "fachwort.bereitschaft.titel": "Startklarheit des Wissenssystems",
     "fachwort.kreis.titel": "Der Wissenskreis",
+    "fachwort.gesundheit.titel": "Zustand der Wissensbasis",
   },
   en: {
     "fachwort.vertraulichkeit.hilfe":
@@ -154,6 +156,7 @@ export default {
     "fachwort.einzelperson.markierung": "only one person",
     "fachwort.bereitschaft.titel": "Knowledge system readiness",
     "fachwort.kreis.titel": "The knowledge cycle",
+    "fachwort.gesundheit.titel": "State of the knowledge base",
   },
   nl: {
     "fachwort.vertraulichkeit.hilfe":
@@ -216,5 +219,6 @@ export default {
     "fachwort.einzelperson.markierung": "slechts één persoon",
     "fachwort.bereitschaft.titel": "Startklaarheid van het kennissysteem",
     "fachwort.kreis.titel": "De kenniscyclus",
+    "fachwort.gesundheit.titel": "Staat van de kennisbank",
   },
 } satisfies Textmodul;
