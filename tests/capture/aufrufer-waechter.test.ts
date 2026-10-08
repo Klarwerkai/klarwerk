@@ -769,14 +769,36 @@ const FREMDLESER: readonly FremdLeser[] = [
 // Leser als JavaScript geparst und am Syntaxbaum gemessen; Zeichenketten und Kommentare sind dort
 // keine Bezeichner und decken nichts.
 
-function jsBaum(pfad: string): ts.SourceFile {
-  return ts.createSourceFile(
-    pfad,
-    readFileSync(pfad, "utf8"),
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.JS,
-  );
+//
+// Nacharbeit 9 (BEN): auch das genügte für den Spiegel nicht. Gesammelt wurden Bezeichner nach ihrem
+// TEXT; ein gleichnamiger Parameter (`function fremd(ziel) { ziel(); }`) oder eine lokale
+// Schattenbindung deckte damit den ungerufenen Spiegel `ziel`. Jetzt löst der TypeScript-Prüfer
+// jeden Verweis zu SEINER Deklaration auf (`getSymbolAtLocation`); es zählt nur, was an das Symbol
+// des Spiegels gebunden ist. Der Prüfer läuft ohne Standardbibliothek und ohne Modulauflösung — für
+// die Bindung lokaler Namen braucht er beides nicht.
+interface JsLeser {
+  readonly sf: ts.SourceFile;
+  readonly pruefer: ts.TypeChecker;
+}
+
+function jsBaum(pfad: string): JsLeser {
+  const programm = ts.createProgram({
+    rootNames: [pfad],
+    options: {
+      allowJs: true,
+      checkJs: false,
+      noEmit: true,
+      noLib: true,
+      noResolve: true,
+      types: [],
+      target: ts.ScriptTarget.Latest,
+    },
+  });
+  const sf = programm.getSourceFile(pfad);
+  if (!sf) {
+    throw new Error(`Fremdleser ${pfad} liess sich nicht als JavaScript lesen`);
+  }
+  return { sf, pruefer: programm.getTypeChecker() };
 }
 
 function besucheAlle(wurzel: ts.Node, tu: (n: ts.Node) => void): void {
@@ -809,11 +831,11 @@ function istVerweis(id: ts.Identifier): boolean {
 
 /**
  * Art `spiegel`: der Leser DEKLARIERT den Namen (Funktion, Klasse, Variable) und VERWEIST ausserhalb
- * dieser Deklaration auf das Symbol. Ein Selbstaufruf im eigenen Rumpf ist kein Aufrufer.
+ * dieser Deklaration auf GENAU DIESES Symbol. Ein Selbstaufruf im eigenen Rumpf ist kein Aufrufer;
+ * ein gleichnamiger Parameter oder eine lokale Schattenbindung ist ein anderes Symbol.
  */
-function spiegelVerwendet(sf: ts.SourceFile, name: string): boolean {
-  const deklarationen: ts.Node[] = [];
-  const verweise: ts.Identifier[] = [];
+function spiegelVerwendet({ sf, pruefer }: JsLeser, name: string): boolean {
+  const kandidaten: { dekl: ts.Node; bezeichner: ts.Identifier; tiefe: number }[] = [];
   besucheAlle(sf, (n) => {
     if (
       (ts.isFunctionDeclaration(n) || ts.isClassDeclaration(n) || ts.isVariableDeclaration(n)) &&
@@ -821,14 +843,53 @@ function spiegelVerwendet(sf: ts.SourceFile, name: string): boolean {
       ts.isIdentifier(n.name) &&
       n.name.text === name
     ) {
-      deklarationen.push(n);
-    } else if (ts.isIdentifier(n) && n.text === name && istVerweis(n)) {
-      verweise.push(n);
+      kandidaten.push({ dekl: n, bezeichner: n.name, tiefe: funktionsTiefe(n) });
     }
   });
+  if (kandidaten.length === 0) {
+    return false;
+  }
+  // Der SPIEGEL ist die äußerste gleichnamige Deklaration (im Aufgabenfenster: die Ebene der Hülle).
+  // Eine tiefer liegende gleichnamige Bindung in einem Funktionsrumpf ist ein Schatten — ihre
+  // Verwendungen gehören zu ihr, nicht zum Spiegel.
+  const aussen = Math.min(...kandidaten.map((k) => k.tiefe));
+  const deklarationen: ts.Node[] = [];
+  const spiegel = new Set<ts.Symbol>();
+  for (const k of kandidaten.filter((k) => k.tiefe === aussen)) {
+    const symbol = pruefer.getSymbolAtLocation(k.bezeichner);
+    if (symbol) {
+      deklarationen.push(k.dekl);
+      spiegel.add(symbol);
+    }
+  }
+  if (spiegel.size === 0) {
+    return false;
+  }
   const innerhalb = (v: ts.Node): boolean =>
     deklarationen.some((d) => v.getStart() >= d.getStart() && v.getEnd() <= d.getEnd());
-  return deklarationen.length > 0 && verweise.some((v) => !innerhalb(v));
+  let gebunden = false;
+  besucheAlle(sf, (n) => {
+    if (gebunden || !ts.isIdentifier(n) || n.text !== name || !istVerweis(n) || innerhalb(n)) {
+      return;
+    }
+    // `{ ziel }` als Kurzschreibweise: das Symbol am Ort ist die Eigenschaft, gelesen wird der Wert.
+    const symbol = ts.isShorthandPropertyAssignment(n.parent)
+      ? pruefer.getShorthandAssignmentValueSymbol(n.parent)
+      : pruefer.getSymbolAtLocation(n);
+    gebunden = symbol !== undefined && spiegel.has(symbol);
+  });
+  return gebunden;
+}
+
+/** Wie viele Funktionen umschließen diesen Knoten? Die eigene Deklaration zählt nicht mit. */
+function funktionsTiefe(knoten: ts.Node): number {
+  let tiefe = 0;
+  for (let p = knoten.parent; p !== undefined; p = p.parent) {
+    if (ts.isFunctionLike(p)) {
+      tiefe++;
+    }
+  }
+  return tiefe;
 }
 
 /**
@@ -932,7 +993,7 @@ function fremdGelesen(
   f: Fund,
   wurzel: string,
   fremdleser: readonly FremdLeser[],
-  baeume: Map<string, ts.SourceFile> = new Map(),
+  baeume: Map<string, JsLeser> = new Map(),
 ): boolean {
   for (const eintrag of fremdleser.filter((e) => e.modul === f.datei)) {
     for (const datei of eintrag.leser) {
@@ -940,12 +1001,12 @@ function fremdGelesen(
       if (!existsSync(pfad)) {
         continue;
       }
-      const sf = baeume.get(pfad) ?? jsBaum(pfad);
-      baeume.set(pfad, sf);
+      const leser = baeume.get(pfad) ?? jsBaum(pfad);
+      baeume.set(pfad, leser);
       if (
         eintrag.art === "spiegel"
-          ? spiegelVerwendet(sf, f.name)
-          : quelltextAusgewertet(sf, eintrag.modul, f.name)
+          ? spiegelVerwendet(leser, f.name)
+          : quelltextAusgewertet(leser.sf, eintrag.modul, f.name)
       ) {
         return true;
       }
@@ -1105,7 +1166,7 @@ function erhebe(
     return false;
   };
 
-  const leserbaeume = new Map<string, ts.SourceFile>();
+  const leserbaeume = new Map<string, JsLeser>();
   const ohneAufrufer = exporte
     .filter((f) => !fremdGenutzt(f))
     .filter((f) => !(nutzung.get(f.datei)?.has(f.name) ?? false))
@@ -2088,7 +2149,9 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
           "export function nurKommentiert(): number {\n  return 3;\n}\n" +
           "export function nurGenannt(): number {\n  return 4;\n}\n" +
           "export function nurEigenschaft(): number {\n  return 5;\n}\n" +
-          "export function nurSelbst(n: number): number {\n  return n;\n}\n",
+          "export function nurSelbst(n: number): number {\n  return n;\n}\n" +
+          "export function nurParameter(): number {\n  return 6;\n}\n" +
+          "export function nurGeschattet(): number {\n  return 7;\n}\n",
       );
       schreib(
         "public/spiegel.js",
@@ -2098,6 +2161,14 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
           "function nurEigenschaft() { return 5; }\nvar o = { nurEigenschaft: 1 };\n" +
           "o.nurEigenschaft();\n" +
           "function nurSelbst(n) { return n > 0 ? nurSelbst(n - 1) : 0; }\n" +
+          // Nacharbeit 9 (BEN): ein gleichnamiger PARAMETER, der im Rumpf gerufen wird …
+          "function nurParameter() { return 6; }\n" +
+          "function fremd(nurParameter) { return nurParameter(); }\n" +
+          "fremd(function () { return 0; });\n" +
+          // … und eine lokale SCHATTENBINDUNG mit Verwendung. Beide sind ein anderes Symbol.
+          "function nurGeschattet() { return 7; }\n" +
+          "function lokal() { var nurGeschattet = 1; return nurGeschattet; }\n" +
+          "lokal();\n" +
           "console.log(gerufen());\n",
       );
       schreib(
@@ -2178,6 +2249,8 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
       expect(gefangen, "eine Zeichenkette mit dem Namen ist kein Verweis").toContain("nurGenannt");
       expect(gefangen, "ein Eigenschaftsname ist kein Verweis").toContain("nurEigenschaft");
       expect(gefangen, "ein Selbstaufruf ist kein Aufrufer").toContain("nurSelbst");
+      expect(gefangen, "ein gleichnamiger Parameter deckt nicht").toContain("nurParameter");
+      expect(gefangen, "eine lokale Schattenbindung deckt nicht").toContain("nurGeschattet");
       expect(gefangen, "lesen, auswerten, Namen anwenden deckt").not.toContain("LISTE_A");
       expect(gefangen, "nicht ausgewählt ist nicht gelesen").toContain("LISTE_B");
       expect(gefangen, "ohne den Modulpfad deckt eine Zeichenkette nichts").toContain("LISTE_C");

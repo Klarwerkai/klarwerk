@@ -251,6 +251,13 @@ Jeder Eintrag nennt seinen Grund im Register, A3 prüft ihn.
   - Art `spiegel`: Der Leser deklariert den Namen (Funktion, Klasse, Variable) und verweist
     außerhalb dieser Deklaration auf das Symbol. Zeichenketten, Kommentare, Eigenschafts- und
     Parameternamen sind keine Verweise; ein Selbstaufruf im eigenen Rumpf ist kein Aufrufer.
+  - Seit Nacharbeit 9 (BEN) zählt die **Symbolbindung**, nicht der gleiche Name.
+    - Der TypeScript-Prüfer (`getSymbolAtLocation`, ohne Standardbibliothek und ohne
+      Modulauflösung) ordnet jeden Verweis seiner Deklaration zu.
+    - Spiegel ist die äußerste gleichnamige Deklaration. Gezählt wird nur ein Verweis auf genau
+      dieses Symbol.
+    - Vorher deckte ein gleichnamiger Parameter (`function fremd(ziel) { ziel(); }`) oder eine
+      lokale Schattenbindung den ungerufenen Spiegel.
   - Art `quelltext`: Die Kette muss im Leser stehen.
     1. `readFileSync` mit dem Modulpfad, direkt oder über eine Variable;
     2. das Gelesene geht als Argument an eine Funktion desselben Lesers;
@@ -259,7 +266,9 @@ Jeder Eintrag nennt seinen Grund im Register, A3 prüft ihn.
   - Kalibrierung A8 mit Positiv- und Negativfällen:
     - Es decken ein gerufener Spiegel und eine echte Lesekette.
     - Nicht decken: eine bloße Definition, ein Kommentar, eine Zeichenkette (`nurGenannt`), ein
-      Eigenschaftsname (`nurEigenschaft`), ein Selbstaufruf (`nurSelbst`), eine pfadlose
+      Eigenschaftsname (`nurEigenschaft`), ein Selbstaufruf (`nurSelbst`), ein gleichnamiger
+      Parameter mit Verwendung (`nurParameter`), eine lokale Schattenbindung mit Verwendung
+      (`nurGeschattet`, beide seit Nacharbeit 9), eine pfadlose
       Zeichenkette, BENs Fall mit Pfad und Name als losen Zeichenketten (`LISTE_D`) und ein Lesen
       ohne Anwendung des Namens (`LISTE_E`).
     - Ohne Leserliste deckt nichts.
@@ -438,5 +447,8 @@ jetzt an der Stelle, die das Produkt wirklich benutzt. Keiner ist abgeschwächt.
       `server.ts:278`) steht nicht in der Liste; der Name ist weiter im Vertrag und wird über die
       Konstante erhoben.
     - Der Prüfstand ist aus der Auswahl genommen, der rote Bericht bleibt im Archiv.
-- **Fehlender Beleg:** keiner zu den Änderungen dieses Auftrags.
+- **Fehlender Beleg:** Der Prüflauf zu Nacharbeit 9 (Symbolbindung im Spiegel, A8 mit
+  `nurParameter` und `nurGeschattet`) steht aus; dieser Arbeitsgang hat keine Tests gestartet.
+  Er muss auch zeigen, dass die 29 Word-Namen in `taskpane.js` unter der Bindungsprüfung weiter
+  decken (A1).
   - Der Lieferbeleg (Fassung) entsteht erst mit der Veröffentlichung.
