@@ -91,8 +91,11 @@ keine Umsetzung.
      gesperrt.“
 4. **Heutiger Stand im Code:**
    - Stufe 1 und die Farben grün/gelb/türkis: ohne Modell, ohne Textabfluss.
-   - Stufe 2 „Widerspruch“: nur im tiefen Zweig, `deepAllowed = wantDeep && !confidential`; bei
-     Klara-Bindung ohne Dokumenteinwilligung gilt der Text als vertraulich. Die Route
+   - Stufe 2 „Widerspruch“: nur im tiefen Zweig,
+     `deepAllowed = wantDeep && (!confidential || vertraulichFreigegeben)`; bei Klara-Bindung ohne
+     Dokumenteinwilligung ist der Zweig immer gesperrt (`ausleitungGesperrt`). Vertraulicher Text
+     erreicht ihn nur mit der zweiten zentralen Adminfreigabe (nachgeführt im Auftrag
+     gesamt-ki-freigaberegeln, Pedis Entscheidung vom 10.09.). Die Route
      unterscheidet dabei **nicht** zwischen hausinternem und Cloud-Modell — beides braucht die
      Einwilligung (strenger als §7, nicht lockerer).
    - Zuruf-Weg (verwandt zu Stufe 3): die Klara-Policy verlangt die Nutzerzustimmung nur für den
@@ -100,8 +103,8 @@ keine Umsetzung.
      braucht zusätzlich Adminwahl, verdrahtete Cloud und zentrale Freigabe. `internal` (lokal)
      braucht keine Egress-Zustimmung — das ist die Drei-Wege-Regel aus §7 im Code.
 5. **Ergebnis:** Die W9-Zeile „kein neuer Egress“ beschreibt **nicht** den heutigen Zielzustand.
-   Gilt heute: **kein Egress ohne Adminfreigabe und Dokumenteinwilligung; vertraulicher Text nie im
-   tiefen Zweig; hausinterne KI ohne Egress möglich, aber ohne Maschine nicht verdrahtet (S6
+   Gilt heute: **kein Egress ohne Adminfreigabe und Dokumenteinwilligung; vertraulicher Text im
+   tiefen Zweig nur mit der zweiten zentralen Adminfreigabe; hausinterne KI ohne Egress möglich, aber ohne Maschine nicht verdrahtet (S6
    offen).** Ob ein hausinternes Modell beschafft wird, ist Pedis offene Entscheidung und wird hier
    nicht vorweggenommen.
 
