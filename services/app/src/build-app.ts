@@ -378,6 +378,7 @@ import { speicherVorgang } from "./speicher-vorgang";
 // Start bei fehlenden Pflichtwerten verweigert und beim Hochfahren ohne Geheimniswerte berichtet,
 // was diese Instanz hat und was ihr fehlt.
 import { ermittleBestand, pruefeStartvertrag, startbericht } from "./start-vertrag";
+import { type TransportTls, tlsServerFabrik } from "./transport-tls";
 
 // ================================================================================================
 // JOB 3776 — WO DER STARTVERTRAG GERUFEN WIRD: AM EINSTIEGSPUNKT. HIER NICHT MEHR.
@@ -2526,6 +2527,9 @@ export function buildApp(
     factoryReset?: FactoryReset;
     log?: { senke?: LogSenke; stufe?: string };
     klaraAufraeumen?: (lauf: () => Promise<number>) => void;
+    // R-2057: TLS am App-Port (`transport-tls.ts`). Nur `server.ts` reicht es durch; ohne Option
+    // bleibt der Aufbau wie bisher (Tests mit `inject`, Klartextbetrieb).
+    tls?: TransportTls | undefined;
   } = {},
 ): FastifyInstance {
   // SCRUM-490 R3 (B2, Fix 4): trustProxy gezielt aus env (KLARWERK_TRUST_PROXY) — request.ip = echte
@@ -2546,6 +2550,7 @@ export function buildApp(
   const app = Fastify({
     trustProxy: resolveTrustProxy(),
     logger: baueLoggerOptionen(opts.log),
+    ...(opts.tls ? { serverFactory: tlsServerFabrik(opts.tls) } : {}),
   });
   // GHSA-3m5p-2c4r-xxw2: eine Hop-Anzahl wird verworfen (resolveTrustProxy). Ohne diese Zeile sähe ein
   // Betreiber nur, dass alle Drosseln plötzlich gegen die Proxy-IP zählen.
