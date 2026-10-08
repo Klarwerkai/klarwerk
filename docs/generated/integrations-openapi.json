@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "KLARWERK Integrationsschnittstelle",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "description": "Anmeldung mit Dienst-Schlüssel im Kopf x-klarwerk-service-key. Jeder Schlüssel hat eigene Rechte und eine eigene Anfragegrenze. Antworten aus Wissen stammen ausschließlich aus validiertem Wissen. Zustandstabelle: docs/architektur/integrations-schnittstelle.md."
   },
   "paths": {
@@ -279,6 +279,97 @@
           },
           "401": { "$ref": "#/components/responses/NichtAngemeldet" },
           "403": { "$ref": "#/components/responses/RechtFehlt" },
+          "429": { "$ref": "#/components/responses/Gebremst" },
+          "500": { "$ref": "#/components/responses/Intern" }
+        }
+      }
+    },
+    "/mcp": {
+      "post": {
+        "summary": "MCP-Zugang für fremde KI-Programme (Model Context Protocol, Streamable HTTP, zustandslos): eine JSON-RPC-2.0-Nachricht je Anfrage. Werkzeug klara_fragen nur mit zusätzlichem Recht ask.validated; es fragt über POST /api/ask mit demselben Schlüssel und liefert nur validiertes Wissen mit Beleg. Kein Browseraufruf (Anfrage mit Origin: 403).",
+        "x-klarwerk-recht": "mcp.werkzeug",
+        "security": [{ "dienstSchluessel": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/McpNachricht" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "JSON-RPC-Antwort: Ergebnis (initialize, ping, tools/list, tools/call) oder JSON-RPC-Fehler (-32600, -32601, -32602). Ein Werkzeugfehler steht als result.isError = true im Ergebnis.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/McpAntwort" } }
+            }
+          },
+          "202": {
+            "description": "Benachrichtigung oder Antwort des Clients angenommen; kein Antwortkörper."
+          },
+          "400": {
+            "description": "Bad Request: Rumpf ist kein JSON oder leer (code: FST_ERR_CTP_…).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Fehler" },
+                    { "properties": { "error": { "const": "Bad Request" } } }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/NichtAngemeldet" },
+          "403": { "$ref": "#/components/responses/RechtFehlt" },
+          "413": {
+            "description": "Payload Too Large: Rumpf größer als 128 KiB (code: FST_ERR_CTP_BODY_TOO_LARGE).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Fehler" },
+                    { "properties": { "error": { "const": "Payload Too Large" } } }
+                  ]
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type: Rumpf ist nicht application/json (code: FST_ERR_CTP_INVALID_MEDIA_TYPE).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Fehler" },
+                    { "properties": { "error": { "const": "Unsupported Media Type" } } }
+                  ]
+                }
+              }
+            }
+          },
+          "429": { "$ref": "#/components/responses/Gebremst" },
+          "500": { "$ref": "#/components/responses/Intern" }
+        }
+      },
+      "get": {
+        "summary": "Ereignisstrom des MCP-Zugangs — nicht angeboten (zustandsloser Server).",
+        "x-klarwerk-recht": "mcp.werkzeug",
+        "security": [{ "dienstSchluessel": [] }],
+        "responses": {
+          "401": { "$ref": "#/components/responses/NichtAngemeldet" },
+          "403": { "$ref": "#/components/responses/RechtFehlt" },
+          "405": {
+            "description": "METHOD_NOT_ALLOWED: Kein Ereignisstrom; Nachrichten nur per POST.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Fehler" },
+                    { "properties": { "error": { "const": "METHOD_NOT_ALLOWED" } } }
+                  ]
+                }
+              }
+            }
+          },
           "429": { "$ref": "#/components/responses/Gebremst" },
           "500": { "$ref": "#/components/responses/Intern" }
         }
@@ -738,6 +829,40 @@
             }
           }
         }
+      },
+      "McpNachricht": {
+        "type": "object",
+        "required": ["jsonrpc"],
+        "properties": {
+          "jsonrpc": { "const": "2.0" },
+          "id": { "type": ["string", "integer"] },
+          "method": {
+            "type": "string",
+            "description": "initialize, ping, tools/list, tools/call; Benachrichtigungen ohne id."
+          },
+          "params": { "type": "object" }
+        }
+      },
+      "McpAntwort": {
+        "type": "object",
+        "required": ["jsonrpc", "id"],
+        "properties": {
+          "jsonrpc": { "const": "2.0" },
+          "id": { "type": ["string", "integer", "null"] },
+          "result": { "type": "object" },
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "integer", "enum": [-32600, -32601, -32602] },
+              "message": { "type": "string" }
+            }
+          }
+        },
+        "oneOf": [
+          { "title": "Ergebnis", "required": ["result"] },
+          { "title": "JSON-RPC-Fehler", "required": ["error"] }
+        ]
       }
     }
   }
