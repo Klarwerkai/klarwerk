@@ -57,6 +57,7 @@ import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { Blatt } from "../../apps/web/src/components/erfassen/Blatt";
 import i18n from "../../apps/web/src/i18n";
 import { captureGapHref } from "../../apps/web/src/lib/captureFromGap";
+import { einzelquelleErfassenHref } from "../../apps/web/src/lib/meineEinzelquellen";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -171,6 +172,21 @@ describe("N-0084 · die Ausgangsfrage über dem Antworteditor", () => {
     await mount(captureGapHref("g2"));
     expect(lage.gapsAbgefragt, "KALIBRIERUNG: die Lückenliste wurde gefragt").toBeGreaterThan(0);
     expect(ausgangsfrage()).toBeNull();
+  }, 20000);
+
+  it("R-1626: aus „Wissen, das nur bei dir liegt“ geöffnet — das Thema steht über dem Blatt", async () => {
+    await mount("/erfassen?thema=Pumpen");
+    expect(container.querySelector('[data-testid="blatt"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="blatt-thema"]')?.textContent).toContain("Pumpen");
+  }, 20000);
+
+  it("R-1626: auch das geöffnete Interview trägt das Thema als Kontext", async () => {
+    await mount(einzelquelleErfassenHref("Pumpen"));
+    expect(
+      container.querySelector('[data-testid="blatt-arbeitsraum"]'),
+      "KALIBRIERUNG: der Einstieg öffnet den Arbeitsraum des Interviews",
+    ).not.toBeNull();
+    expect(container.querySelector('[data-testid="blatt-thema"]')?.textContent).toContain("Pumpen");
   }, 20000);
 
   it("ohne Lücke: das ruhende Blatt fragt die Lückenliste gar nicht erst ab", async () => {

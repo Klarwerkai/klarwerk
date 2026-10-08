@@ -15,6 +15,7 @@ import { readHistoryIndex } from "../app/navHistory";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { PausedMarker, StaleMarker } from "../components/LoadState";
+import { MeineEinzelquellen } from "../components/MeineEinzelquellen";
 import { KoAuthorLine } from "../components/trust";
 import { PageHeader } from "../components/ui";
 import { fallHref } from "../lib/fallAbsprung";
@@ -576,6 +577,12 @@ export function MyTasks(): JSX.Element {
             </div>
           );
         })}
+        {/* R-1626 (ROADMAP 1.4): die kurze persönliche Liste „Wissen, das nur bei dir liegt" —
+            nur in der ungefilterten Ansicht, nur mit geladenem Bestand, und nichts, wenn es kein
+            solches Thema gibt (`components/MeineEinzelquellen.tsx`). */}
+        {taskFilter === "all" && kos.data !== undefined ? (
+          <MeineEinzelquellen objekte={kos.data} userId={user?.id} />
+        ) : null}
       </div>
     </div>
   );

@@ -2958,6 +2958,11 @@ const de = {
   "ask.verschlossen.freigabe": "Freigabe fehlt",
   "ask.verschlossen.freigabeHint": "Das Dokument ist noch nicht freigegeben.",
   "ask.verschlossen.stufe": "Stufe fehlt",
+  // R-0303: dasselbe Wort wie die Validierung beim Anlegen (services/capture/src/service.ts,
+  // ko-routes.ts: „Vertraulichkeitsstufe fehlt — …") — Antwortfläche und Validierung sprechen gleich.
+  // Die Torlage und der Belegbedarf einer Lücke rendern DIESEN Schlüssel; der kurze darüber bleibt
+  // als Bestandswert stehen (tests/i18n-textmodule/werte-vorher.json), wird aber nicht mehr gezeigt.
+  "ask.verschlossen.vertraulichkeitsstufe": "Vertraulichkeitsstufe fehlt",
   "ask.verschlossen.stufeHint": "Für das Dokument ist keine Vertraulichkeitsstufe gesetzt.",
   "ask.verschlossen.volltext": "Kein durchsuchbarer Text",
   "ask.verschlossen.volltextHint": "Von diesem Dokument liegt noch kein durchsuchbarer Text vor.",
@@ -3059,6 +3064,32 @@ const de = {
   // SCRUM-283: datensparsamer, ehrlicher Hinweis zur gespeicherten Wissenslücke (Ask + Risk).
   "gap.privacyNotice":
     "Die Frage wird als Wissenslücke gespeichert — keine Antwort und kein validiertes Wissen. Bitte keine sensiblen oder personenbezogenen Details erfassen; ergänze später geprüfte Erfahrung.",
+  // R-0307 / R-1061: das neutrale Etikett für Lücken ohne Sprachangabe (Altbestand) — immer wahr,
+  // weil der Titel die gestellte Frage im Wortlaut ist; es behauptet keine Sprache.
+  "gap.originalfrage": "Originalfrage",
+  // R-0333 / R-0753: die Häufigkeit derselben Frage, erst ab zwei.
+  "gap.askCount": "{{count}}× gefragt",
+  // N-0084: die Ausgangsfrage über dem Editor, wenn das Blatt aus einer Lücke geöffnet wurde.
+  "gap.ausgangsfrage": "Ausgangsfrage der Wissenslücke",
+  // R-0291: welcher Beleg für eine tragfähige Antwort fehlen würde. Die drei Tore benutzen die
+  // Schlüssel `ask.verschlossen.*` — hier stehen nur die zwei Fälle ohne Tor.
+  "gap.belegbedarf.label": "Fehlender Beleg",
+  "gap.belegbedarf.wissensobjekt":
+    "Kein passendes Wissensobjekt gefunden — es fehlt eines, das die Frage beantwortet",
+  "gap.belegbedarf.unbestimmt": "Unbestimmt — welcher Beleg fehlt, lässt sich nicht herleiten",
+  // R-0773: die eigenen Suchen ohne Treffer (nur die eigene Liste).
+  "nulltreffer.titel": "Deine Suchen ohne Treffer",
+  "nulltreffer.hinweis":
+    "Zu diesen Begriffen hat deine Suche nichts gefunden, was du sehen darfst — ein Hinweis, wo Wissen fehlen könnte. Nur du siehst diese Liste.",
+  "nulltreffer.anzahl": "{{count}}× gesucht",
+  "nulltreffer.erfassen": "Wissen erfassen",
+  // R-1626 (ROADMAP 1.4): die kurze persönliche Liste der Themen mit Bus-Faktor 1.
+  "einzelquelle.titel": "Wissen, das nur bei dir liegt",
+  "einzelquelle.satz":
+    "Themen mit Bus-Faktor 1, deren sichtbares Wissen nur von dir stammt: {{count}}",
+  "einzelquelle.zeile": "„{{thema}}“ — möchtest du dazu jetzt fünf Minuten erzählen?",
+  "einzelquelle.einstieg": "Interview starten",
+  "einzelquelle.themaLabel": "Thema",
   "ask.toGaps": "Zu den Wissenslücken",
   "ask.toCapture": "Wissen erfassen",
   "ko.use.ready": "Produktionsnah nutzbar",
@@ -9910,6 +9941,7 @@ const en: typeof de = {
   "ask.verschlossen.freigabe": "Approval missing",
   "ask.verschlossen.freigabeHint": "The document has not been approved yet.",
   "ask.verschlossen.stufe": "Level missing",
+  "ask.verschlossen.vertraulichkeitsstufe": "Confidentiality level missing",
   "ask.verschlossen.stufeHint": "No confidentiality level is set for the document.",
   "ask.verschlossen.volltext": "No searchable text",
   "ask.verschlossen.volltextHint": "No searchable text of this document is available yet.",
@@ -9962,6 +9994,24 @@ const en: typeof de = {
   // SCRUM-283: data-minimising, honest notice about the stored knowledge gap (Ask + Risk).
   "gap.privacyNotice":
     "The question is stored as a knowledge gap — not an answer and not validated knowledge. Please avoid sensitive or personal details; add reviewed experience later.",
+  "gap.originalfrage": "Original question",
+  "gap.askCount": "asked {{count}}×",
+  "gap.ausgangsfrage": "Question behind this knowledge gap",
+  "gap.belegbedarf.label": "Missing evidence",
+  "gap.belegbedarf.wissensobjekt":
+    "No matching knowledge object found — one that answers the question is missing",
+  "gap.belegbedarf.unbestimmt": "Undetermined — which evidence is missing cannot be derived",
+  "nulltreffer.titel": "Your searches without results",
+  "nulltreffer.hinweis":
+    "For these terms your search found nothing you are allowed to see — a hint where knowledge may be missing. Only you see this list.",
+  "nulltreffer.anzahl": "searched {{count}}×",
+  "nulltreffer.erfassen": "Capture knowledge",
+  "einzelquelle.titel": "Knowledge only you hold",
+  "einzelquelle.satz":
+    "Topics with bus factor 1 whose visible knowledge comes only from you: {{count}}",
+  "einzelquelle.zeile": "“{{thema}}” — would you like to spend five minutes on it now?",
+  "einzelquelle.einstieg": "Start interview",
+  "einzelquelle.themaLabel": "Topic",
   "ask.toGaps": "To the knowledge gaps",
   "ask.toCapture": "Capture knowledge",
   "ko.use.ready": "Ready to use",
@@ -15733,6 +15783,7 @@ const nl: typeof de = {
   "ask.verschlossen.freigabe": "Vrijgave ontbreekt",
   "ask.verschlossen.freigabeHint": "Het document is nog niet vrijgegeven.",
   "ask.verschlossen.stufe": "Niveau ontbreekt",
+  "ask.verschlossen.vertraulichkeitsstufe": "Vertrouwelijkheidsniveau ontbreekt",
   "ask.verschlossen.stufeHint": "Voor het document is geen vertrouwelijkheidsniveau ingesteld.",
   "ask.verschlossen.volltext": "Geen doorzoekbare tekst",
   "ask.verschlossen.volltextHint": "Van dit document is nog geen doorzoekbare tekst beschikbaar.",
@@ -15785,6 +15836,24 @@ const nl: typeof de = {
     "De bekende tegenstrijdigheden konden niet worden opgehaald. Of een van de bronnen in een open conflict staat, is daarmee onbekend; dit antwoord geldt daarom als ongecontroleerd.",
   "gap.privacyNotice":
     "De vraag wordt als kennishiaat opgeslagen — geen antwoord en geen gevalideerde kennis. Leg alsjeblieft geen gevoelige of persoonsgebonden details vast; vul later gecontroleerde ervaring aan.",
+  "gap.originalfrage": "Oorspronkelijke vraag",
+  "gap.askCount": "{{count}}× gevraagd",
+  "gap.ausgangsfrage": "Vraag achter dit kennishiaat",
+  "gap.belegbedarf.label": "Ontbrekend bewijs",
+  "gap.belegbedarf.wissensobjekt":
+    "Geen passend kennisobject gevonden — er ontbreekt er een dat de vraag beantwoordt",
+  "gap.belegbedarf.unbestimmt": "Onbepaald — welk bewijs ontbreekt, valt niet af te leiden",
+  "nulltreffer.titel": "Jouw zoekopdrachten zonder resultaat",
+  "nulltreffer.hinweis":
+    "Voor deze termen vond je zoekopdracht niets wat je mag zien — een aanwijzing waar kennis kan ontbreken. Alleen jij ziet deze lijst.",
+  "nulltreffer.anzahl": "{{count}}× gezocht",
+  "nulltreffer.erfassen": "Kennis vastleggen",
+  "einzelquelle.titel": "Kennis die alleen bij jou ligt",
+  "einzelquelle.satz":
+    "Onderwerpen met busfactor 1 waarvan de zichtbare kennis alleen van jou komt: {{count}}",
+  "einzelquelle.zeile": "„{{thema}}” — wil je er nu vijf minuten over vertellen?",
+  "einzelquelle.einstieg": "Interview starten",
+  "einzelquelle.themaLabel": "Onderwerp",
   "ask.toGaps": "Naar de kennishiaten",
   "ask.toCapture": "Kennis vastleggen",
   "ko.use.ready": "Bruikbaar in de praktijk",

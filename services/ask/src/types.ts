@@ -10,6 +10,31 @@ export function isGapPriority(value: unknown): value is GapPriority {
   return value === "hoch" || value === "mittel" || value === "niedrig";
 }
 
+/**
+ * R-0291 — WELCHER BELEG FÜR EINE TRAGFÄHIGE ANTWORT FEHLEN WÜRDE.
+ *
+ * Erhoben beim Entstehen der Lücke, aus DERSELBEN Vorauswahl, die die Antwort gespeist hat
+ * (`dropConfidential` + Betrachterfilter des Fragenden) — keine zweite Suche, keine Aussage über
+ * den Bestand jenseits dieser Vorauswahl. Die drei Torbegriffe sind dieselben wie die der
+ * Torlage (`VerschlossenHinweis`), damit Lücke, Antwortfläche und Validierung gleich sprechen.
+ *   · `wissensobjekt` — in der Vorauswahl lag kein verwendbares Objekt; es fehlt eines, das die
+ *     Frage beantwortet.
+ *   · `freigabe` / `stufe` / `volltext` — Objekte lagen vor, aber an mindestens einem war dieses
+ *     Tor zu (nicht freigegeben, keine Vertraulichkeitsstufe, kein durchsuchbarer Text).
+ *   · `unbestimmt` — Objekte lagen vor, alle Tore offen, und sie trugen trotzdem nicht: welcher
+ *     Beleg fehlt, lässt sich daraus NICHT herleiten. Es wird nichts geraten.
+ * Es sind nur Kategorien — keine Objektkennung, kein Titel.
+ */
+export type GapBelegbedarf = "wissensobjekt" | "freigabe" | "stufe" | "volltext" | "unbestimmt";
+
+export const GAP_BELEGBEDARF: readonly GapBelegbedarf[] = [
+  "wissensobjekt",
+  "freigabe",
+  "stufe",
+  "volltext",
+  "unbestimmt",
+];
+
 export interface Gap {
   id: string;
   question: string;
@@ -58,6 +83,11 @@ export interface Gap {
   // noch bei Altbeständen — der Integritätsbericht (services/app/src/datenintegritaet.ts) zählt sie
   // als Befund und meldet einen Bezug, dessen Objekt inzwischen endgelöscht ist.
   koId?: string;
+  // R-0291: der Belegbedarf (Typ oben). Gesetzt beim Anlegen; beim Zusammenführen derselben Frage
+  // bleibt der erste Befund stehen (`insertOrIncrement` zählt nur hoch), beim Bearbeiten
+  // (zuweisen, priorisieren, schliessen) reist er unverändert mit. Fehlt bei Altbeständen — die
+  // Oberfläche zeigt dann „unbestimmt" statt eines erfundenen Bedarfs.
+  belegbedarf?: GapBelegbedarf[];
 }
 
 // FUNKE-FIX P0 (bens ROT-1): FORBIDDEN — ein „Danke" ohne gültigen, dieses KO belegenden

@@ -119,6 +119,7 @@ genau diesen Satz (`MUTATING_METHODS` in `dev-persist.ts` ist ein vollständiger
 | `validationSettings` | `InMemoryValidationSettingsRepo` | `PgValidationSettingsRepo` |
 | `externalKnowledge` | `InMemoryExternalKnowledgePolicyRepo` | `PgExternalKnowledgePolicyRepo` |
 | `uploadLimits` | `InMemoryUploadLimitsRepo` | `PgUploadLimitsRepo` |
+| `nulltreffer` | `InMemoryNulltrefferRepo` | `PgNulltrefferRepo` |
 | `answerSnapshots` | `InMemoryAnswerSnapshotRepo` | `PgAnswerSnapshotRepo` |
 
 **Einhängestellen ausserhalb von `AppRepos`** — die Optionen von `assembleServices`. Sie stehen

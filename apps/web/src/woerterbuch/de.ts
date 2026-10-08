@@ -2960,6 +2960,11 @@ const de = {
   "ask.verschlossen.freigabe": "Freigabe fehlt",
   "ask.verschlossen.freigabeHint": "Das Dokument ist noch nicht freigegeben.",
   "ask.verschlossen.stufe": "Stufe fehlt",
+  // R-0303: dasselbe Wort wie die Validierung beim Anlegen (services/capture/src/service.ts,
+  // ko-routes.ts: „Vertraulichkeitsstufe fehlt — …") — Antwortfläche und Validierung sprechen gleich.
+  // Die Torlage und der Belegbedarf einer Lücke rendern DIESEN Schlüssel; der kurze darüber bleibt
+  // als Bestandswert stehen (tests/i18n-textmodule/werte-vorher.json), wird aber nicht mehr gezeigt.
+  "ask.verschlossen.vertraulichkeitsstufe": "Vertraulichkeitsstufe fehlt",
   "ask.verschlossen.stufeHint": "Für das Dokument ist keine Vertraulichkeitsstufe gesetzt.",
   "ask.verschlossen.volltext": "Kein durchsuchbarer Text",
   "ask.verschlossen.volltextHint": "Von diesem Dokument liegt noch kein durchsuchbarer Text vor.",
@@ -3068,6 +3073,25 @@ const de = {
   "gap.askCount": "{{count}}× gefragt",
   // N-0084: die Ausgangsfrage über dem Editor, wenn das Blatt aus einer Lücke geöffnet wurde.
   "gap.ausgangsfrage": "Ausgangsfrage der Wissenslücke",
+  // R-0291: welcher Beleg für eine tragfähige Antwort fehlen würde. Die drei Tore benutzen die
+  // Schlüssel `ask.verschlossen.*` — hier stehen nur die zwei Fälle ohne Tor.
+  "gap.belegbedarf.label": "Fehlender Beleg",
+  "gap.belegbedarf.wissensobjekt":
+    "Kein passendes Wissensobjekt gefunden — es fehlt eines, das die Frage beantwortet",
+  "gap.belegbedarf.unbestimmt": "Unbestimmt — welcher Beleg fehlt, lässt sich nicht herleiten",
+  // R-0773: die eigenen Suchen ohne Treffer (nur die eigene Liste).
+  "nulltreffer.titel": "Deine Suchen ohne Treffer",
+  "nulltreffer.hinweis":
+    "Zu diesen Begriffen hat deine Suche nichts gefunden, was du sehen darfst — ein Hinweis, wo Wissen fehlen könnte. Nur du siehst diese Liste.",
+  "nulltreffer.anzahl": "{{count}}× gesucht",
+  "nulltreffer.erfassen": "Wissen erfassen",
+  // R-1626 (ROADMAP 1.4): die kurze persönliche Liste der Themen mit Bus-Faktor 1.
+  "einzelquelle.titel": "Wissen, das nur bei dir liegt",
+  "einzelquelle.satz":
+    "Themen mit Bus-Faktor 1, deren sichtbares Wissen nur von dir stammt: {{count}}",
+  "einzelquelle.zeile": "„{{thema}}“ — möchtest du dazu jetzt fünf Minuten erzählen?",
+  "einzelquelle.einstieg": "Interview starten",
+  "einzelquelle.themaLabel": "Thema",
   "ask.toGaps": "Zu den Wissenslücken",
   "ask.toCapture": "Wissen erfassen",
   "ko.use.ready": "Produktionsnah nutzbar",

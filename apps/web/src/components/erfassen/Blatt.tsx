@@ -349,6 +349,9 @@ const BLATT_LADEN_HINWEIS_ID = "blatt-laden-hinweis";
  * serverseitig berechtigungsgefilterten Lückenliste; eine redigierte oder unbekannte Lücke zeigt
  * nichts. Eine eigene Komponente, damit die Lückenliste NUR bei `?gap=` abgefragt wird.
  */
+/** R-1626: der Adressparameter des Themas (Einstieg aus `lib/meineEinzelquellen.ts`). */
+const BLATT_THEMA_PARAMETER = "thema";
+
 function BlattAusgangsfrage({ gapId }: { gapId: string }): JSX.Element | null {
   const { t } = useTranslation();
   const gaps = useGaps();
@@ -401,6 +404,17 @@ export function Blatt({
   const [searchParams, setSearchParams] = useSearchParams();
   const resumeDraftId = searchParams.get("draft");
   const gapId = readGapId(searchParams);
+  // R-1626: aus „Wissen, das nur bei dir liegt" geöffnet — das Thema steht als Kontext über dem
+  // Blatt bzw. dem Interview. Ein Kategoriename, kein Freitext; begrenzt wie ein Lückentitel.
+  const thema = (searchParams.get(BLATT_THEMA_PARAMETER) ?? "").trim().slice(0, 120);
+  const themaZeile = thema ? (
+    <p data-testid="blatt-thema" className="px-1 text-[12.5px] text-muted">
+      <span className="font-mono text-[11px] uppercase tracking-wider text-muted-2">
+        {t("einzelquelle.themaLabel")}:
+      </span>{" "}
+      <span className="break-words text-text">{thema}</span>
+    </p>
+  ) : null;
 
   // ---- Inhalt des Blattes ----------------------------------------------------------------------
   const [title, setTitle] = useState("");
@@ -3200,6 +3214,7 @@ export function Blatt({
     return (
       <div className="mx-auto flex w-[820px] max-w-full flex-col gap-3.5 pt-6">
         {werkzeugzeile}
+        {themaZeile}
         <div
           data-testid="blatt-arbeitsraum"
           ref={arbeitsraumRef}
@@ -3285,6 +3300,7 @@ export function Blatt({
         {werkzeugzeile}
         {/* N-0084: aus einer Lücke geöffnet — die Ausgangsfrage steht über dem Blatt. */}
         {gapId ? <BlattAusgangsfrage gapId={gapId} /> : null}
+        {themaZeile}
 
         <div
           data-testid="blatt"

@@ -17,6 +17,7 @@ import type { GapPriority } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
 import { BereichsprofilPflege } from "../components/BereichsprofilPflege";
+import { EigeneNulltreffer } from "../components/EigeneNulltreffer";
 import { HelpTip } from "../components/HelpTip";
 import { LueckenAnsprechpartner } from "../components/LueckenAnsprechpartner";
 import { RisikoHorizont } from "../components/RisikoHorizont";
@@ -24,6 +25,7 @@ import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { canSeeExpertise, contributorNamesFor, expertiseVisible } from "../lib/expertiseView";
 import { leseFall } from "../lib/fallAbsprung";
+import { gapBelegbedarfSchluessel } from "../lib/gapBelegbedarf";
 import { gapTitelEtikett } from "../lib/gapLocaleTag";
 import {
   GAP_PRIORITIES,
@@ -450,6 +452,22 @@ export function Risk(): JSX.Element {
                           </span>
                         ) : null}
                       </div>
+                      {/* R-0291: welcher Beleg für eine tragfähige Antwort fehlen würde — nur in der
+                          berechtigten Sicht (bei redigierten Lücken hält der Server ihn zurück). */}
+                      {(() => {
+                        const bedarf = g.status === "offen" ? gapBelegbedarfSchluessel(g) : null;
+                        return bedarf ? (
+                          <div
+                            data-testid="luecke-belegbedarf"
+                            className="mt-0.5 text-[11px] text-muted"
+                          >
+                            <span className="font-mono uppercase tracking-wider text-muted-2">
+                              {t("gap.belegbedarf.label")}:
+                            </span>{" "}
+                            {bedarf.map((k) => t(k)).join(" · ")}
+                          </div>
+                        ) : null;
+                      })()}
                       {/* SCRUM-253: ehrliche nächste Handlung je offener Lücke (priorisieren/zuweisen/erfassen). */}
                       {g.status === "offen" ? (
                         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted">
@@ -566,6 +584,10 @@ export function Risk(): JSX.Element {
           )}
         </QueryState>
       </div>
+
+      {/* R-0773: getrennt von den unbeantworteten Fragen darüber — die eigenen SUCHEN, die nichts
+          Sichtbares fanden (components/EigeneNulltreffer.tsx). */}
+      <EigeneNulltreffer />
     </div>
   );
 }

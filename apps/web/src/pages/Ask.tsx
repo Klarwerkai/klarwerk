@@ -2573,7 +2573,8 @@ export function Ask(): JSX.Element {
                                 aria-label={t("ask.verschlossen.stufeHint")}
                                 className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
                               >
-                                {t("ask.verschlossen.stufe")}
+                                {/* R-0303: dasselbe Wort wie die Validierung beim Anlegen. */}
+                                {t("ask.verschlossen.vertraulichkeitsstufe")}
                               </span>
                             ) : null}
                             {h.volltextFehlt ? (

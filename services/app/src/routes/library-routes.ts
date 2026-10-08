@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
+import { NULLTREFFER_DECKEL, type NulltrefferRepo, nulltrefferBegriff } from "../../../ask";
 import {
   type ConflictService,
   type OverlapService,
@@ -725,8 +726,21 @@ export function libraryRoutes(
   library: LibraryService,
   guards: Guards,
   detection?: ImportDetectionDeps,
+  // R-0773: optional — ohne Ablage (Teilaufbauten in Tests) bleibt die Suche wie bisher.
+  nulltreffer?: NulltrefferRepo,
 ): FastifyPluginAsync {
   return async (app) => {
+    // R-0773: die EIGENEN Suchen ohne Treffer. Nur die eigene Liste — ein Suchbegriff ist Freitext
+    // derselben Art wie der Fragetext einer Lücke (R-0585), fremde Suchen liest hier niemand.
+    app.get("/api/library/nulltreffer", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      const eigene = nulltreffer ? await nulltreffer.fuer(user.id, NULLTREFFER_DECKEL) : [];
+      reply.code(200).send(eigene);
+    });
+
     app.get<{ Querystring: KoFilter & { q?: string } }>(
       "/api/library/search",
       async (request, reply) => {
@@ -764,14 +778,31 @@ export function libraryRoutes(
         // (etwa in einem zweiten Aufbau) nicht anwendet, findet hier weiterhin das Tor vor, das
         // seit mega74 hier steht. Die Zusage der Route ändert sich damit nicht — sie wird nur
         // billiger und, was mehr zählt, paginierbar.
-        reply
-          .code(200)
-          .send(
-            sichtbareFuer(
-              user,
-              await library.search(q ?? "", filter, { trim: sqlSichtbarkeitFuer(user) }),
-            ),
-          );
+        const treffer = sichtbareFuer(
+          user,
+          await library.search(q ?? "", filter, { trim: sqlSichtbarkeitFuer(user) }),
+        );
+        // R-0773: eine Suche OHNE Treffer wird für den Suchenden vermerkt — nur mit nicht-leerem
+        // Begriff, nur ohne weitere Filter (sonst spräche die leere Liste über den Filter) und
+        // gemessen an DIESER, schon sichtbarkeitsgeschnittenen Liste. Ein Fehler der Suche hat die
+        // Route oben bereits verlassen und wird nie als Nulltreffer gezählt. Ein Fehler beim
+        // Vermerken nimmt dem Suchenden sein (leeres) Ergebnis nicht.
+        const begriff = nulltrefferBegriff(q ?? "");
+        const ohneFilter = Object.values(filter).every(
+          (wert) => wert === undefined || wert === null || String(wert).trim() === "",
+        );
+        if (nulltreffer && treffer.length === 0 && begriff && ohneFilter) {
+          try {
+            await nulltreffer.erfasse({
+              userId: user.id,
+              ...begriff,
+              zeitpunkt: new Date().toISOString(),
+            });
+          } catch (fehler) {
+            request.log.warn({ err: fehler }, "Nulltreffer-Suche konnte nicht vermerkt werden");
+          }
+        }
+        reply.code(200).send(treffer);
       },
     );
 
