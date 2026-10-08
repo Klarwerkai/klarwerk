@@ -580,3 +580,196 @@ describe("R-1399 · Sichtnachweis: Exportumfang, Kenntnisnahme, Werksreset-Rück
     expect((stand as H4Stand).seitenfehler).toEqual([]);
   }, 120_000);
 });
+
+// ================================================================================================
+// Ben, Nacharbeit 16 · R-1399 zu R-0918: die Lesetexte unter 11 px aus dem Hauptstand tragen jetzt
+// `text-klein`. Bild und gemessene Größe (getComputedStyle) je Fläche:
+//   b8-duplikate-beleg.png              — /duplikate, Belegzeile der Karte („Beleg“)
+//   b9-zusammenfuehren-inhalte.png      — /duplikate/:id/zusammenfuehren, Schritt „Inhalte“
+//   b10-klara-vorschau-artikel.png      — /klara-vorschau/artikel/…: Kennzeichen, „geändert“,
+//                                         Figur-Status, „geparkt“, Gespräch mit Kleintiteln,
+//                                         Verlaufskopf und Demo-Schild
+// EIGENE BÜHNE: das Dublettenpaar entsteht über die echten Dienste (`overlaps.createAuto`, derselbe
+// Weg wie `zielbild-h2-pruefen`), damit die Bibliothek der Bühne oben unverändert bleibt. Der Zustand
+// der Klara-Vorschau ist der Sitzungszustand, den das Produkt selbst schreibt (`klara-vorschau/
+// zustand.ts`, sessionStorage) — gesetzt wird er vor dem Laden, gerendert wird die gebaute Fläche.
+// ================================================================================================
+const DUP_A = "Bildnachweis Spannrolle nachstellen";
+const DUP_B = "Bildnachweis Spannrolle nachziehen";
+const DUP_GEMEINSAM = "Spannrolle bei stehendem Band um eine halbe Umdrehung nachstellen.";
+
+let stand2: H4Stand | null = null;
+let fehler2: string | null = null;
+let dublettenId = "";
+
+async function warte2(selektor: string): Promise<void> {
+  await (stand2 as H4Stand).seite.waitForFunction(
+    fn("(sel) => !!document.querySelector(sel)"),
+    selektor,
+    { timeout: 30_000 },
+  );
+}
+
+// In der Seite: berechnete Schriftgröße und Text aller Treffer eines Selektors.
+const GROESSEN = `(sel) => [...document.querySelectorAll(sel)].map((el) => ({
+  px: getComputedStyle(el).fontSize,
+  text: (el.textContent || '').trim().slice(0, 40),
+}))`;
+
+async function groessen(selektor: string): Promise<{ px: string; text: string }[]> {
+  return (stand2 as H4Stand).seite.evaluate<{ px: string; text: string }[]>(fn(GROESSEN), selektor);
+}
+
+async function ausschnitt2(selektor: string, name: string): Promise<void> {
+  const s = (stand2 as H4Stand).seite;
+  const clip = await s.evaluate<Rechteck | null>(fn(RECHTECK), selektor);
+  expect(clip, `${selektor} nicht gefunden`).not.toBeNull();
+  await s.screenshot({ path: bild(name), clip });
+  console.info(`R-1399 · Bild ${bild(name)} · Ausschnitt ${JSON.stringify(clip)}`);
+}
+
+describe("R-1399 · Sichtnachweis: Lesetexte aus dem Hauptstand auf 11 px", () => {
+  beforeAll(async () => {
+    mkdirSync(ORDNER, { recursive: true });
+    try {
+      stand2 = await h4Stand("/bibliothek", "bild2@design-bildnachweis.test", async (z) => {
+        const anlegen = async (title: string, zusatz: string): Promise<string> => {
+          const ko = (await z.services.ko.create({
+            title,
+            statement: `${DUP_GEMEINSAM} ${zusatz}`,
+            bodyHtml: `<p>${DUP_GEMEINSAM} ${zusatz}</p>`,
+            type: "best_practice",
+            category: "Instandhaltung",
+            author: z.autorId,
+          } as never)) as { id: string };
+          return ko.id;
+        };
+        const a = await anlegen(DUP_A, "Danach Lauf prüfen.");
+        const b = await anlegen(DUP_B, "Danach Spannung messen.");
+        const eintrag = (await z.services.overlaps.createAuto(
+          {
+            koA: a,
+            koB: b,
+            relation: "identisch",
+            aspects: [
+              {
+                beschreibung: "Spannrolle nachstellen",
+                zitatA: DUP_GEMEINSAM,
+                zitatB: DUP_GEMEINSAM,
+              },
+            ],
+            eigenanteilA: "Danach Lauf prüfen.",
+            eigenanteilB: "Danach Spannung messen.",
+            recommendation: "zusammenfuehren_pruefen",
+          } as never,
+          {
+            trigger: "background",
+            method: "model",
+            lexicalScore: 0.9,
+            confidence: 0.93,
+            rationale: "Dieselbe Handlungsanweisung.",
+          } as never,
+        )) as { id: string };
+        dublettenId = eintrag.id;
+      });
+      await stand2.seite.setViewportSize({ width: 1280, height: 900 });
+    } catch (e) {
+      fehler2 = String(e).split("\n").slice(0, 4).join(" | ");
+    }
+  }, 180_000);
+
+  afterAll(async () => {
+    await stand2?.browser.close();
+    await stand2?.app.close();
+  }, 60_000);
+
+  it("B8 · Duplikatvergleich: die Belegzeile der Karte steht in 11 px", async () => {
+    expect(fehler2).toBeNull();
+    const s = (stand2 as H4Stand).seite;
+    await s.goto(`${ORIGIN}/duplikate`, { waitUntil: "load", timeout: 60_000 });
+    await warte2('[data-testid="pruefen-paar"] [data-text="meta"]');
+    const beleg = await groessen('[data-text="meta"] > div:first-child');
+    console.info(`R-1399 · B8 · ${JSON.stringify(beleg)}`);
+    expect(beleg.length).toBeGreaterThan(0);
+    expect(beleg.map((b) => b.px)).toEqual(beleg.map(() => "11px"));
+    await ausschnitt2('[data-testid="pruefen-paar"]', "b8-duplikate-beleg");
+    expect((stand2 as H4Stand).seitenfehler).toEqual([]);
+  }, 90_000);
+
+  it("B9 · Zusammenführen, Schritt „Inhalte“: Seiten- und Fließtext-Beschriftung in 11 px", async () => {
+    expect(fehler2).toBeNull();
+    const s = (stand2 as H4Stand).seite;
+    await s.goto(`${ORIGIN}/duplikate/${encodeURIComponent(dublettenId)}/zusammenfuehren`, {
+      waitUntil: "load",
+      timeout: 60_000,
+    });
+    await warte2('[data-testid="zusammenfuehren-weiter"]');
+    await s.click('[data-testid="zusammenfuehren-weiter"]');
+    await warte2('[data-testid="feld-kernaussage"]');
+    // Die einzigen Mono-Marken des Schritts: Seitenmarke (führend/aufgehend) und Fließtext-Marke.
+    const marken = await groessen('[data-testid="schritt-inhalte"] span.font-mono');
+    console.info(`R-1399 · B9 · ${JSON.stringify(marken)}`);
+    // Titel und Kernaussage je zwei Seitenmarken, dazu die Fließtext-Marken.
+    expect(marken.length).toBeGreaterThanOrEqual(4);
+    expect(marken.map((m) => m.px)).toEqual(marken.map(() => "11px"));
+    await ausschnitt2('[data-testid="schritt-inhalte"]', "b9-zusammenfuehren-inhalte");
+    expect((stand2 as H4Stand).seitenfehler).toEqual([]);
+  }, 90_000);
+
+  it("B10 · Klara-Vorschau am Artikel: Kennzeichen, Plaketten, Kleintitel und Verlaufskopf in 11 px", async () => {
+    expect(fehler2).toBeNull();
+    const s = (stand2 as H4Stand).seite;
+    const artikel = "foerderbandrolle";
+    const pfad = `/klara-vorschau/artikel/${artikel}`;
+    const herkunft = {
+      pfad,
+      seite: "artikel",
+      seitenName: "Artikel",
+      objekt: "Bildnachweis",
+      artikelId: artikel,
+      absatz: 1,
+    };
+    const zustand = {
+      offen: true,
+      ansicht: "kompakt",
+      status: "entscheidung",
+      geparkt: { artikelId: artikel, absatz: 1 },
+      verlauf: [
+        { id: "b10-1", von: "du", text: "Bitte umformulieren.", herkunft, demo: false },
+        { id: "b10-2", von: "klara", text: "Vorgefertigte Antwort.", herkunft, demo: true },
+      ],
+      artikelText: { [`${artikel}#1`]: "Geänderter Absatz für den Bildnachweis." },
+    };
+    await s.evaluate(
+      fn(`(z) => {
+        sessionStorage.setItem("klarwerk.klaraVorschau.aktiv", "1");
+        sessionStorage.setItem("klarwerk.klaraVorschau.zustand", JSON.stringify(z));
+      }`),
+      zustand,
+    );
+    await s.goto(`${ORIGIN}${pfad}`, { waitUntil: "load", timeout: 60_000 });
+    await warte2('[data-testid="klara-gespraech"]');
+    await warte2('[data-testid="klara-absatz-geaendert"]');
+    const sel = [
+      '[data-testid="klara-vorschau-kennzeichen"]',
+      '[data-testid="klara-absatz-geaendert"]',
+      '[data-testid="klara-figur-status"]',
+      '[data-testid="klara-geparkt"]',
+      '[data-testid="klara-demo-kennzeichen"]',
+      '[data-testid="klara-nachricht"] > div:first-child',
+      '[data-testid="klara-gespraech"] .text-klein',
+    ];
+    const je: Record<string, string[]> = {};
+    for (const x of sel) {
+      je[x] = (await groessen(x)).map((g) => g.px);
+    }
+    console.info(`R-1399 · B10 · ${JSON.stringify(je)}`);
+    for (const x of sel) {
+      expect(je[x]?.length ?? 0, `${x} nicht gerendert`).toBeGreaterThan(0);
+      expect(je[x], x).toEqual((je[x] ?? []).map(() => "11px"));
+    }
+    await s.screenshot({ path: bild("b10-klara-vorschau-artikel") });
+    console.info(`R-1399 · Bild ${bild("b10-klara-vorschau-artikel")}`);
+    expect((stand2 as H4Stand).seitenfehler).toEqual([]);
+  }, 120_000);
+});
