@@ -1193,6 +1193,17 @@ export interface Graph {
   nodes: GraphNode[];
   edges: GraphEdge[];
   /**
+   * R-0711 (Wissensnetz-Export): die Grenzen der Schlagwortkanten, die der Server seit JOB 3022
+   * mitsendet (`library-analytics/src/types.ts`, `Graph`). Bis hierhin las der Client sie nicht;
+   * der Export schreibt sie in die Datei, damit eine gekürzte Ausgabe nicht wie der ganze Bestand
+   * aussieht. OPTIONAL aus demselben Grund wie `kuratierteKanten`: fehlt ein Feld, steht in der
+   * Datei keine Aussage dazu — keine erfundene `0` und kein erfundenes „vollständig".
+   */
+  totalEdges?: number;
+  truncated?: boolean;
+  edgeLimit?: number;
+  excludedTags?: string[];
+  /**
    * JOB 4153 (WG-ANZEIGE) — DIE KURATIERTEN KANTEN DERSELBEN ANTWORT, UND WARUM SIE OPTIONAL SIND.
    *
    * Die gesetzten Fachbeziehungen kommen aus DERSELBEN `/api/graph`-Antwort und nicht aus einer
