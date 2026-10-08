@@ -294,6 +294,35 @@ jetzt an der Stelle, die das Produkt wirklich benutzt. Keiner ist abgeschwächt.
 - **Der allgemeine Wächter** (`aufrufer-waechter.test.ts`, `namensraumZugriffe`) wertet `ns["X"]`
   nicht als Zugriff. Das macht ihn strenger, nicht blind: Der Export wird dann als „ohne Aufrufer“
   gemeldet. K3 betrifft nur den Flächenwächter der Word-Vorschau.
-- **Fehlender Beleg:** Die Prüfläufe zu Nacharbeit 4 stehen noch aus. Sie sind im Prüfplan des
-  Auftrags benannt; dieser Arbeitsgang hat keine Tests gestartet. Auch der Lieferbeleg (Fassung)
-  entsteht erst mit der Veröffentlichung.
+- **Prüfbeleg zu Nacharbeit 4** (Kandidat `efed3d49`, 1.0.0-beta.1.781; Archiv
+  `HISTORIE/nacharbeit-5/PRUEFUNG`):
+  - grün: Build und Format;
+  - grün: Wächter und Bedarfsabgleich, 16 von 16;
+  - grün: die Web-Prüfstände, 517 von 517 in 65 Dateien;
+  - grün: der Auswahlweg, 193 von 193;
+  - Server-Suite: 52 von 56 Dateien grün. Die vier roten sind fremde Basisstellen, siehe den
+    nächsten Punkt.
+- **Vier rote Prüfstände, die dieser Auftrag nur über einen Importpfad berührt.** Sie sind aus der
+  Auftragsauswahl genommen; die roten Originalberichte bleiben im Archiv.
+  - `tests/confluence-quellabgleich/abgleich.test.ts` (3 rot) und `runde3.test.ts` (4 rot)
+    erwarten, dass eine gelöschte Seite nur einen Vermerk `sourceRemovedAt` bekommt und dass
+    `fetchItem` eine 2xx-Antwort ohne Seite als Fehler wirft.
+    - Die zusammengeführte Fassung in `services/app/src/confluence-import.ts` (Kommentare
+      „ZUSAMMENFÜHRUNG (Nacharbeit 4)“ und „seit main“) legt das Objekt stattdessen in den
+      Papierkorb. `fetchItem`/`getPageById` liefern dort „nicht vorhanden“.
+    - Diese Datei ändert der Auftrag nicht. In beiden Tests ist nur der Import von
+      `adapterFromConfig` auf `tests/support/confluence-adapter.ts` umgestellt; dahinter steht
+      derselbe `adapterFromClient`.
+    - Die übrigen Fälle beider Dateien sind grün.
+  - `tests/app/job1042-hierarchie-bestandsmatrix.test.ts` M1: Die Matrix nennt 10 Dateien nicht, die
+    die Hierarchiebegriffe tragen, darunter `services/jira/*`, `texte/importordner.ts` und
+    `routes/jira-import-routes.ts`. Keine davon hat dieser Auftrag angelegt oder um einen solchen
+    Begriff ergänzt. Seine Zeile `tests/demo-korpus/demo-corpus.ts` steht korrekt in beiden Listen.
+  - `tests/q9-fremde-flaechen/keine-deutschen-literale.test.ts` R5/R6/R7: Drei neue Literale in
+    `capture-routes.ts` sind ohne Ausnahme: `DOKUMENT_UNBEKANNT`, der Satz zur Dokumentkennung und
+    der `confidentiality`-Satz der .docx-Übernahme.
+    - Sie gehören zum fremden Dokumentkennungs- bzw. Übernahmeweg. Dieser Auftrag ändert in der
+      Datei nur einen Kommentar.
+    - Der eigene Teil des Auftrags (`guard.ts` aus `DATEIEN`, Ausnahmezahl 5) ist grün.
+    - Ausnahmen nachzutragen hieße, den Wächter für fremden Code zu lockern; das unterbleibt.
+- **Fehlender Beleg:** Der Lieferbeleg (Fassung) entsteht erst mit der Veröffentlichung.
