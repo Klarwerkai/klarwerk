@@ -9,6 +9,9 @@
 import "./i18n";
 import { useLocation } from "react-router-dom";
 import { AuthProvider, useSession } from "./app/AuthContext";
+// R-1029 / R-1674: die geteilten Stände der Hülle im Takt nachladen — nur hinter dem Tor, also nie
+// auf der Sperrfläche nach gescheitertem Abmelden und nie auf dem Anmeldeweg.
+import { GeteilterStandNachlader } from "./app/GeteilterStandNachlader";
 // AUFTRAG-mega50 Block A: der Weg zur Bildbeschreibung für die ganze App. Er steht hier und nicht in
 // der AppShell, weil er — anders als die Modalgrenze — keinen DOM-Anker braucht: `AppShell` hat drei
 // Rückgaben (/mobile, schmal, breit), das wären drei Montagen und damit wieder drei Wahrheiten.
@@ -85,9 +88,12 @@ function Gate(): JSX.Element {
   // JOB 4333: die Anwendung selbst — EINMAL gebildet, damit der neue Zweig unten sie durchreichen
   // kann, statt eine zweite Hülle daneben aufzubauen.
   const anwendung = (
-    <AppShell>
-      <AppRoutes />
-    </AppShell>
+    <>
+      <GeteilterStandNachlader />
+      <AppShell>
+        <AppRoutes />
+      </AppShell>
+    </>
   );
 
   // Passwort-Reset (E-Mail-Link) ist ohne Anmeldung erreichbar.
