@@ -18,7 +18,7 @@ entsteht erst mit ihrer Veröffentlichung und steht hier deshalb noch nicht.
 |---|---|---|---|
 | **R-1192** Aufrufer-Wächter: gebauter Code ohne Aufrufer fällt auf | JOB 2605 D3 `fd44fb52` · JOB 2609 D1 `af733b53` · JOB 2611 D1 `081f60f5` (alle 27.08.2026, ab .30) · dynamischer Import JOB 3030 D11 `7b37c385` | `tests/capture/aufrufer-waechter.test.ts` A1–A7 | historisch erledigt, Wächter läuft im regulären Unit-Lauf |
 | **R-1306** Ein Werkzeug findet Bausteine, die niemand aufruft (K1) | wie R-1192: derselbe Wächter; in diesem Auftrag geschärft (siehe „Wächter“) | A1 (Fang), A2 (Kalibrierung), A4/A5 (Gegenprobe), A7 (Methodenname), **A8** (Fremdlesekante am Syntaxbaum, seit Nacharbeit 6), **A9** (Vorgabewert in der Destrukturierung) | erfüllt; drei Messlücken in diesem Auftrag geschlossen |
-| **R-1349** Jeder Fall wird angeschlossen oder begründet entfernt (K2) | dieser Auftrag, Nacharbeit 1–6 (siehe „R-1349 je Fall“) | A1 und A3 des Wächters, `tests/k3-bedarfsabgleich/bedarfsabgleich.test.ts` T3/T4/T6/T7 sowie die nachgezogenen Prüfstände | **teilweise erfüllt.** 164 der 176 Fälle sind abgeschlossen. **12 Fälle sind unerledigter Rest** (`OFFENER_REST`): Sie haben weiterhin keinen Aufrufer. Jeder ist durch eine belegte Sperre oder einen gesonderten Auftrag vom Abschluss in diesem Auftrag ausgenommen. Kein eingefrorener Eintrag mehr. |
+| **R-1349** Jeder Fall wird angeschlossen oder begründet entfernt (K2) | dieser Auftrag, Nacharbeit 1–10 (siehe „R-1349 je Fall“) | A1 und A3 des Wächters, `tests/k3-bedarfsabgleich/bedarfsabgleich.test.ts` T3/T4/T6/T7 sowie die nachgezogenen Prüfstände | **teilweise erfüllt.** 171 der 176 Fälle sind abgeschlossen. **5 Fälle sind unerledigter Rest** (`OFFENER_REST`): Sie haben weiterhin keinen Aufrufer und gehören zwei gesonderten, noch nicht gelieferten Aufträgen (gesamt-bestandsreset 4, gesamt-antwortbeleg 1). Kein eingefrorener Eintrag, keine „Sperre“ mehr als Abgrenzung. |
 | **UX-16b-R** Klammerzugriff auf die Word-Vorschau-Fläche muss rot werden (K3) | JOB 3264 D1 `966874cb` · ship `72b2fd17` **1.0.0-beta.1.221** (09.09.2026) | `tests/klara-webhilfe-schmal/word-weg-naechster-schritt.test.tsx` F12 (Fixtures `kalibrierung/punkt.tsx`, `kalibrierung/klammer.tsx`), F12b–F12f | erfüllt im Bestand, in diesem Auftrag nicht neu gebaut |
 
 ## Zahlen: historisch und heute
@@ -30,7 +30,8 @@ Alle Zahlen dieses Abschnitts zählen Einträge im Wächter `tests/capture/aufru
 | *historisch:* Abgleich 07.10.2026 (Dokument bis Nacharbeit 3) | „175“ bzw. „174“ | „22“ | „197“ | frühere Fassung dieses Dokuments — **widersprüchlich**, siehe unten |
 | Kandidat `b7be5168` (gemessen mit `git grep` am Commit) | **171** (`ALTBESTAND` 57, `ALTBESTAND_WEB` 114) | **24** (`BEWUSST` 9, `DURCH_VERSCHAERFUNG_SICHTBAR` 3, `ERSETZT_*` 2, `BEWUSST_WEB` 10) | **195** | Zählung am Commit |
 | *historisch:* nach Nacharbeit 4 | **0** | **33**: `BEWUSST` 9, `BEWUSST_WEB` 9, `OFFENE_ENTSCHEIDUNG` 15, `NEUZUGANG_GEMELDET` 0 | **33** | Register am Kandidaten `75adf52f` |
-| **heute** (nach Nacharbeit 6) | **0** — die Register `ALTBESTAND`, `ALTBESTAND_WEB`, `DURCH_VERSCHAERFUNG_SICHTBAR` und `ERSETZT_*` sind abgebaut | **30**: `BEWUSST` 9, `BEWUSST_WEB` 9, `OFFENER_REST` 12 (unerledigt, je mit Sperre oder gesondertem Auftrag), `NEUZUGANG_GEMELDET` 0 | **30** | Register im Arbeitsbaum |
+| *historisch:* nach Nacharbeit 6 | **0** | **30**: `BEWUSST` 9, `BEWUSST_WEB` 9, `OFFENER_REST` 12, `NEUZUGANG_GEMELDET` 0 | **30** | Register am Kandidaten `7d47317c` |
+| **heute** (nach Nacharbeit 10) | **0** — die Register `ALTBESTAND`, `ALTBESTAND_WEB`, `DURCH_VERSCHAERFUNG_SICHTBAR` und `ERSETZT_*` sind abgebaut | **23**: `BEWUSST` 9, `BEWUSST_WEB` 9, `OFFENER_REST` 5 (unerledigt, je einem gesonderten Auftrag zugeordnet), `NEUZUGANG_GEMELDET` 0 | **23** | Register im Arbeitsbaum |
 
 Dazu kommen **31 gemessene Fremdlesekanten** (`FREMDLESER`), keine Ausnahmen:
 
@@ -57,11 +58,11 @@ Ausgangsmenge sind die **176 Einträge** am Kandidaten ohne Einzelabschluss:
 
 | Ausgang | Anzahl | Bedeutung |
 |---|---|---|
-| entfernt | 102 | überholt; der Weg, den das Produkt wirklich nimmt, ist benannt (3 davon in Nacharbeit 6) |
+| entfernt | 109 | überholt; der Weg, den das Produkt wirklich nimmt, ist benannt (3 davon in Nacharbeit 6, 7 in Nacharbeit 10) |
 | angeschlossen | 17 | der Produktweg ruft jetzt genau diesen Baustein statt einer Abschrift daneben |
 | in den Test gezogen | 13 | Prüfzeug; aus dem Produkt nach `tests/` verlegt |
 | gemessene Fremdlesekante | 28 | Word-Spiegel bzw. Schema-Vertrag; der Wächter misst die Verwendung je Name |
-| **unerledigter Rest** | **12** | **nicht** angeschlossen und **nicht** entfernt; abgegrenzt durch belegte Sperre (6) oder gesonderten Auftrag (6), siehe unten |
+| **unerledigter Rest** | **5** | **nicht** angeschlossen und **nicht** entfernt; je einem gesonderten, noch nicht gelieferten Auftrag zugeordnet, siehe unten |
 | begründet behalten | 3 | Prüfnähte am Produktmodul (`BEWUSST`/`BEWUSST_WEB`) |
 | Fehlalarm des Wächters | 1 | Wächter berichtigt (A9) |
 | **zusammen** | **176** | |
@@ -119,21 +120,25 @@ Aus den Registern mit Einzelbegründung kommen zwei weitere Ausgänge hinzu:
   (samt `write-fence.test.ts` und `tests/app/write-fence-race.test.ts`) und
   `kanten-service.ts::netzQualitaet` (samt dem Prüfstand `h3-551-netzqualitaet`). Gründe siehe
   „Unerledigter Rest“.
-- **Unerledigter Rest (6)** und **begründet behalten (1, `InMemoryKantenRepo`):** siehe unten.
+- **Entfernt in Nacharbeit 10 (1):** `reindex-queue.ts::createReindexQueue` samt
+  `reindex-queue.test.ts`. Gründe siehe „Unerledigter Rest“.
+- **Unerledigter Rest (5)** und **begründet behalten (1, `InMemoryKantenRepo`):** siehe unten.
 
 ### Web (`ALTBESTAND_WEB`, 114)
 
 - **Fremdlesekante (26):** die Exporte aus `lib/wordAddin.ts`.
 - **R-0991-Kandidaten (53 B/C-Fälle ohne Word):** Der Ausgang je Fall steht maschinenlesbar in
   `tests/k3-bedarfsabgleich/bedarfsabgleich.ts` (`R1349_AUSGANG`). T7 zählt ihn nach:
-  44 entfernt, 3 angeschlossen, 3 in den Test, 3 offen.
+  47 entfernt, 3 angeschlossen, 3 in den Test, 0 offen (bis Nacharbeit 9: 44 entfernt, 3 offen).
   - Angeschlossen:
     - `conflictImpact.ts::effectiveUsability`: Bibliotheks-„Mehr“ statt der eigenen Verkettung.
     - `importSelectView.ts::folderTreeSegmentKey`: der Ordnerbaum ruft ihn selbst.
     - `reviewerMinimum.ts::isNeededValidationsValid`: KI-Verwaltung statt der Literale 1 und 5.
   - In den Test gezogen: `stripAnswerMarkdown` (nach `tests/support/antwort-klartext.ts`),
     `EXAMPLE_PACKAGES_ALL_KEYS` und `KNOWLEDGE_STORY_SURFACES`.
-  - Unerledigter Rest: die drei `librarySpace.ts`-Exporte.
+  - Entfernt in Nacharbeit 10: die drei `librarySpace.ts`-Exporte (Nr. 45–47). Ihr alter Beleg
+    (`KoHomeLine.tsx`) ist mit entfernt; Nachweis ist die Raumzeile des gelieferten Space-Wegs
+    (`SpaceZeile.tsx`).
   - Entfernt: alle übrigen. Für jeden gilt der Alternativweg aus R-0991 weiter (T4). Die Ausnahme
     sind die zwei Fälle, deren Belegdatei selbst entfernt ist (Nr. 33, Nr. 57; siehe unten).
 - **Übrige Web-Einträge (35):**
@@ -142,7 +147,7 @@ Aus den Registern mit Einzelbegründung kommen zwei weitere Ausgänge hinzu:
     - `facets.ts::combinableFacetCounts`: `buildFacetGroups` zählt damit statt mit einer zweiten
       Schleife.
     - `libraryExport.ts::exportFormatMeta`: die Bibliothek liest den Formatschlüssel.
-  - Unerledigter Rest (3): `ImportResultView`, `LibraryScopeBar`, `KoHomeLine`.
+  - Entfernt in Nacharbeit 10 (3): `ImportResultView`, `LibraryScopeBar`, `KoHomeLine`.
   - Begründet behalten (2): `ImageDescribeValueProvider` und `RICH_TEXT_ALLOWED_TAGS`.
   - Fehlalarm (1): `facetRail.ts::FACET_SEARCH_THRESHOLD`. Der Export wird als Vorgabewert einer
     Destrukturierung gelesen, das Bindungsmuster übersprang der Wächter bisher. Er ist berichtigt,
@@ -183,7 +188,7 @@ Aus den Registern mit Einzelbegründung kommen zwei weitere Ausgänge hinzu:
 Die Wörterbuchschlüssel aller entfernten Bausteine bleiben stehen. Der Textbestand ist Wert für Wert
 festgeschrieben (`tests/i18n-textmodule/bestand-unveraendert.test.ts`).
 
-### Unerledigter Rest (`OFFENER_REST`, 12) und die drei Abschlüsse aus Nacharbeit 6
+### Unerledigter Rest (`OFFENER_REST`, 5) und die Abschlüsse aus Nacharbeit 6 und 10
 
 Nacharbeit 4 führte 15 Fälle als „offene Produktentscheidung“ und nannte R-1349 trotzdem
 „abgeschlossen“. Das war falsch (BEN, Nacharbeit 6): Diese Bausteine haben weiterhin keinen
@@ -211,17 +216,71 @@ gegen die Quellen abgeglichen worden.
       `tests/app/write-fence-race.test.ts`. Die dynamische Ladestelle dieses Prüfstands ist aus
       `tests/legal/mega61-rechtsseiten.test.tsx` (`BEKANNT_UNAUFLOESBAR`) gestrichen; der
       `verwaist`-Fall dort verlangt genau das.
-- **Mit belegter Sperre oder gesondertem Auftrag ⇒ unerledigter Rest (12):**
+- **Nacharbeit 10 (BEN): angeführte Abgrenzung trug nicht ⇒ abgeschlossen (7, entfernt).** Nach
+  Nacharbeit 6 standen 12 Fälle hier. Sieben davon waren mit einem gelieferten Auftrag bzw. mit
+  historischen Schnittgrenzen und Planfragen begründet, die keine heute belegte Nutzersperre sind.
+  Am heutigen Produkt abgeglichen:
+  - `components/confluence-import/ImportResultView.tsx::ImportResultView` (W2-Resultatfläche,
+    KW-S4-26). Der angeführte Auftrag `gesamt-confluence-import` mit R-0142 **ist geliefert**:
+    1.0.0-beta.1.723, Commit `a173f5fe`, Abschluss 06.10.2026, Ben „erfüllt“, Vorfahr des
+    Kandidaten. Sein Weg ist `components/bibliothek/ImportErgebnis.tsx`, montiert in
+    `MehrAbschnitte.tsx:1729`; er liest seine Daten selbst
+    (`endpoints.admin.import.knowledgeResult`). Die Altfläche blieb unverbunden. Der Testfall in
+    `w2a-import-run-routes-148.test.ts` („keinen Aufrufer“) war eine Schnittgrenze bis zu dieser
+    Lieferung, keine Nutzerentscheidung.
+    - Entfernt sind `ImportResultView.tsx`, `SourceRecordCard.tsx`, `KnowledgeItemList.tsx`, aus
+      `lib/importResultView.ts` die Ableitungen `importResultView`, `sourceBlockView` und
+      `knowledgeBlockView` samt Typen, sowie die Prüfstände, die nur diese maßen
+      (`w2-import-result-view-kern.test.tsx`, `w2-resultatview-a11y-vertrag-81.test.tsx`, die
+      Blöcke B–D von `w2-import-result-view-kern.test.ts`).
+    - Was beide Wege teilen, bleibt: Laufzustände, `importRunStateView`, `RunStateBanner`.
+    - Nachgezogen:
+      - `w2-i18n-schluessel-aufloesbar-81` liest jetzt die gelieferte Fläche mit.
+      - Der Ansageneintrag N2 (`a18-ansagen-ereignisse`) beschreibt jetzt das Importergebnis des
+        gelieferten Wegs.
+      - `w2a-import-run-routes-148` hat einen neuen Fall: Die Altfläche ist entfernt, und
+        `ImportErgebnis` ist montiert.
+    - Eine zweite Fläche, nur um einen Aufrufer zu erzeugen, ist nicht gebaut.
+  - `reindex-queue.ts::createReindexQueue` (JOB 1163). Der Satz „Anschlusswahl weiterhin nicht
+    freigegeben“ war die Scopegrenze des damaligen Baus; eine heute wirksame Nutzerentscheidung
+    dazu ist nicht belegt.
+    - Heutiger Produktweg: Die Suchprojektion entsteht im selben kontrollierten Schreibvorgang wie
+      die neue Inhaltsversion (G27, `persistSearchProjection` in
+      `services/knowledge-object/src/service.ts`). Die Metadatenzeile zieht ein `revise` mit;
+      Nachzug und Abgleich laufen über `backfillSearchProjections` und
+      `reconcileSearchProjections`.
+    - Eine Kennungswarteschlange im Speicher ohne Reindex-Funktion und ohne Erzeuger hat daneben
+      keinen Zweck. Dauerhaft war sie auch nicht: Laut Quellenhilfe beantwortet J08-JOB556
+      „Warteschlange + dauerhaft“.
+    - Entfernt samt `reindex-queue.test.ts`.
+  - `LibraryScopeBar`, `KoHomeLine` sowie `librarySpace.ts::koHomePath`, `serializeSpace` und
+    `spaceFromParams` (PRO 381).
+    - Die angeführte „Sperre“ stand nicht in PLAN PRO 378 §9, sondern in §10 Zeile 408. Sie war
+      ein historisches Klarheitsgate zu Planfragen: Benennung von Space, Unterraum und Heimat sowie
+      die Kollision mit „Bereich“.
+    - Heutiger Produktweg: Das Raummodell ist geliefert (`produkt:20261007:spaces`). Es ist flach,
+      mit einem führenden Space je Artikel (`SpaceZeile.tsx` in der Wissensdetailansicht) sowie
+      `/spaces` und `/spaces/:id` mit den Artikeln je Space. Dazu gibt es eine eigene Sprache in
+      DE/EN/NL: „Space“, „Ohne Space“, „Alle Spaces“.
+    - Die Bausteine warteten auf zwei Dinge, die der gelieferte Weg nicht braucht:
+      - technisch: eine `home`-Kette, die der Server nie lieferte, und fünf `lib.raum.*`-Texte, die
+        nie geschrieben wurden;
+      - fachlich: eine Antwort auf die alten Benennungsfragen, die inzwischen „Space“ heißt.
+    - Sie waren nie montiert. Entfernt sind sie samt `lib/librarySpace.ts`, den Prüfständen
+      `wissensraum381-bauteile`, `-ortsprojektion` und `-sicherheit-leckfreiheit`, den Fällen (c)
+      und (d) von `-sicherheit-keine-ortszahl` sowie dem Artefaktlader der Testhilfe. Seine
+      Ladestelle ist aus `mega61` gestrichen.
+    - Die Bewahrungsanker der Bibliothek gelten unverändert: `raum`-Parameter wird ignoriert, keine
+      Ortsfacette.
+    - R-0991 Nr. 45–47 stehen jetzt auf „entfernt“ (T7: 47/3/3/25/0).
+- **Gesonderter, noch nicht gelieferter Auftrag ⇒ unerledigter Rest (5):**
 
 | Baustein | Abgrenzung | Beleg | Anschluss entscheidet |
 |---|---|---|---|
-| `reindex-queue.ts::createReindexQueue` | Sperre | BEN zu JOB 1163 (Kopf von `services/app/src/reindex-queue.ts`, Z. 16–18): Die Wahl zwischen Service-Hook und Routenanschluss ist „weiterhin nicht freigegeben“; `build-app.ts` bleibt unberührt | Produktverantwortung (Freigabe), Prüfung BEN |
-| `audit/repo.ts::pruefeValidationDecisionRef` | gesonderter Auftrag | `aufnahme:20260922:gesamt-antwortbeleg` („Antwortbelege dauerhaft speichern und ihre Auflösung erklären“), R-0308. Der Anschlussort ist `AnswerExplanationService` (`services/app/src/services/answer-explanation.ts`); er liefert `evidenceValidationRefStates` heute nicht | Auftrag gesamt-antwortbeleg |
-| `bestandsreset.ts::fuehreBestandsresetAus`, `bestandsreset-audit.ts::bestandsresetBefund`, `SQL_SCHEMA_BESTANDSRESET`, `reset-lock.ts::SQL_SPERRE_WIRD_GEHALTEN` | gesonderter Auftrag | `aufnahme:20260922:gesamt-bestandsreset`: R-0774 mit offenen Owner-Punkten OV-1 bis OV-5 (Sperrrichtung, Löschgraph, Auditwahrheit bei Absturz, Zielpfade, zweiter Server); R-1911 Entscheidung E9 „OFFEN“ | Owner (OV-1 bis OV-5) |
-| `ImportResultView` | gesonderter Auftrag, dazu Sperre | `aufnahme:20260922:gesamt-confluence-import`, R-0142 (Original und abgeleitete Wissenseinheiten auf einer Fläche, hinter Rechte- und Funktionsschalter). Bis dahin verlangt `tests/app/w2a-import-run-routes-148.test.ts`: „ImportResultView hat weiterhin keinen Aufrufer in der Oberfläche“ | Auftrag gesamt-confluence-import (KW-S4-26) |
-| `LibraryScopeBar`, `KoHomeLine`, `librarySpace.ts::koHomePath`, `serializeSpace`, `spaceFromParams` | Sperre | PLAN PRO 378 §9 führt B-1, B-2, B-3 und B-6 als **offene Sperren** („ohne Produktsprache bleiben P-1/P-2 unbenennbar“; zitiert im Kopf von `tests/library/wissensraum381-bauteile.test.tsx`). Der Server liefert kein `home` | Owner (PLAN PRO 378) |
+| `audit/repo.ts::pruefeValidationDecisionRef` | gesonderter Auftrag | `aufnahme:20260922:gesamt-antwortbeleg` („Antwortbelege dauerhaft speichern und ihre Auflösung erklären“), R-0308. Der Anschlussort ist `AnswerExplanationService` (`services/app/src/services/answer-explanation.ts`); er liefert `evidenceValidationRefStates` heute nicht. Laut Quellenhilfe (F4) ist keine Lieferung gefunden, das Gesamturteil dieser Bahn ist offen. | Auftrag gesamt-antwortbeleg |
+| `bestandsreset.ts::fuehreBestandsresetAus`, `bestandsreset-audit.ts::bestandsresetBefund`, `SQL_SCHEMA_BESTANDSRESET`, `reset-lock.ts::SQL_SPERRE_WIRD_GEHALTEN` | gesonderter Auftrag | `aufnahme:20260922:gesamt-bestandsreset`: R-0774 und R-1911. Laut Quellenhilfe (F4) ist keine Lieferung gefunden. Offen sind dort der Löschumfang (Firmenwörterbuch `begriffe_fassungen` erhalten oder mitlöschen) und der Produktaufruf O-596-1 (Betriebsbefehl, Adminroute oder Adminroute mit Zweitbestätigung). | Auftrag gesamt-bestandsreset |
 
-Der Wächter führt diese 12 in `OFFENER_REST` mit Art der Abgrenzung, Beleg und Entscheider. A3
+Der Wächter führt diese 5 in `OFFENER_REST` mit Art der Abgrenzung, Beleg und Entscheider. A3
 verlangt alle drei. Bei einem gesonderten Auftrag muss dessen Kennung genannt sein; eine genannte
 Belegdatei muss im Baum stehen. Sobald ein Baustein einen Aufrufer hat oder entfernt ist, verlangt A3
 die Streichung.
@@ -339,11 +398,17 @@ jetzt an der Stelle, die das Produkt wirklich benutzt. Keiner ist abgeschwächt.
   um den R-1349-Ausgang ergänzt.
 - **Die Folgeaufträge aus den Rückgaben zu JOB 3015, 3061, 3062 und 3063** (Abbau ersetzter
   Bausteine) sind mit diesem Auftrag erledigt. Ein eigener Auftrag dazu lag in den Quellen nicht vor.
-- **Der unerledigte Rest (12)** ist **nicht** erledigt. Er ist je Fall abgegrenzt:
-  - Gesonderte Aufträge: `gesamt-bestandsreset` (4), `gesamt-antwortbeleg` (1),
-    `gesamt-confluence-import` (1, dazu die Sperre in `w2a-import-run-routes-148`).
-  - Ausdrückliche Sperren: BEN zu JOB 1163 (1) und PLAN PRO 378 §9 (5).
-  - Dieser Auftrag schließt sie weder an noch entfernt er sie. Er erfindet auch keine Freigabe dafür.
+- **Der unerledigte Rest (5)** ist **nicht** erledigt. Er gehört zwei gesonderten, laut
+  Quellenhilfe noch nicht gelieferten Aufträgen: `gesamt-bestandsreset` (4) und
+  `gesamt-antwortbeleg` (1).
+  - Was dort offen ist, steht in der Tabelle oben. Dieser Auftrag schließt sie weder an noch
+    entfernt er sie, und er erfindet keine Freigabe dafür.
+  - Als „Sperre“ ist seit Nacharbeit 10 kein Fall mehr abgegrenzt.
+- **`gesamt-confluence-import`** ist geliefert (1.0.0-beta.1.723) und kein Wartegrund mehr. Die
+  frühere Abgrenzung von `ImportResultView` dorthin war falsch (Nacharbeit 10, siehe oben).
+- **`produkt:20261007:spaces`** hat das Raummodell geliefert, das die Wissensraum-Bausteine aus PRO
+  381 überholt. Dieser Auftrag baut darauf nichts Neues, er entfernt nur die nie montierte
+  Vorgängerfläche.
 - **Grenze der Quellenprüfung:** Die Auftragsliste in `QUELLEN.json` reicht nur von
   `gesamt-abhaengigkeiten-sicherheit` bis `deploy-health-commit`. Spätere Aufträge (alphabetisch nach
   „d“) konnten nicht nachgesehen werden. `gesamt-wissensnetz` ist über sein Dokument im Baum belegt,
@@ -447,8 +512,12 @@ jetzt an der Stelle, die das Produkt wirklich benutzt. Keiner ist abgeschwächt.
       `server.ts:278`) steht nicht in der Liste; der Name ist weiter im Vertrag und wird über die
       Konstante erhoben.
     - Der Prüfstand ist aus der Auswahl genommen, der rote Bericht bleibt im Archiv.
-- **Fehlender Beleg:** Der Prüflauf zu Nacharbeit 9 (Symbolbindung im Spiegel, A8 mit
-  `nurParameter` und `nurGeschattet`) steht aus; dieser Arbeitsgang hat keine Tests gestartet.
-  Er muss auch zeigen, dass die 29 Word-Namen in `taskpane.js` unter der Bindungsprüfung weiter
-  decken (A1).
+- **Prüfbeleg zu Nacharbeit 9** (Kandidat `7d47317c`; Archiv `HISTORIE/nacharbeit-10/PRUEFUNG`):
+  - Wächter und Bedarfsabgleich 17 von 17 grün, Build und Format grün.
+  - Damit sind belegt: die Symbolbindung im Spiegel, A8 mit `nurParameter` und `nurGeschattet`
+    sowie A1. Die 29 Word-Namen in `taskpane.js` decken also auch unter der Bindungsprüfung.
+- **Fehlender Beleg:** Die Prüfläufe zu Nacharbeit 10 stehen aus. Es geht um die sieben Abbauten
+  (`ImportResultView` samt Abhängigkeiten, `createReindexQueue`, fünf Wissensraum-Bausteine), das
+  verkleinerte Register und die nachgezogenen Prüfstände. Dieser Arbeitsgang hat keine Tests
+  gestartet.
   - Der Lieferbeleg (Fassung) entsteht erst mit der Veröffentlichung.

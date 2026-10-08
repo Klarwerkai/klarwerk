@@ -185,6 +185,7 @@ describe("R-0991 (K3) · Bedarfsabgleich der 82 Kandidaten", () => {
       "in-den-test": zahl("in-den-test"),
       fremdleser: zahl("fremdleser"),
       offen: zahl("offen"),
-    }).toEqual({ entfernt: 44, angeschlossen: 3, "in-den-test": 3, fremdleser: 25, offen: 3 });
+      // Nacharbeit 10: die drei Wissensraum-Fälle von „offen“ nach „entfernt“ (gelieferte Spaces).
+    }).toEqual({ entfernt: 47, angeschlossen: 3, "in-den-test": 3, fremdleser: 25, offen: 0 });
   });
 });

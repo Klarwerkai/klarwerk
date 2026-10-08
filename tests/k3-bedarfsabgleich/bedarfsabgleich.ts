@@ -755,6 +755,16 @@ export interface R1349Stand {
 
 const ENTFERNT: R1349Stand = { ausgang: "entfernt" };
 
+/** Ersetzt durch das gelieferte Space-Modell: die Raumzeile am Wissensobjekt (Nacharbeit 10). */
+const SPACE_ENTFERNT: R1349Stand = {
+  ausgang: "entfernt",
+  nachweis: {
+    datei: "apps/web/src/components/SpaceZeile.tsx",
+    muster: 't\\("spaces\\.artikel\\.fuehrend"\\)',
+  },
+  alterBelegEntfaellt: true,
+};
+
 export const R1349_AUSGANG: Readonly<Record<string, R1349Stand>> = {
   "adminForms.ts::isNewUserValid": ENTFERNT,
   "answerMarkdown.ts::stripAnswerMarkdown": {
@@ -828,9 +838,15 @@ export const R1349_AUSGANG: Readonly<Record<string, R1349Stand>> = {
   "libraryMaturity.ts::MATURITY_FILTERS": ENTFERNT,
   "libraryMaturity.ts::maturityFilterLabelKey": ENTFERNT,
   "librarySort.ts::isLibrarySortKey": ENTFERNT,
-  "librarySpace.ts::koHomePath": { ausgang: "offen" },
-  "librarySpace.ts::serializeSpace": { ausgang: "offen" },
-  "librarySpace.ts::spaceFromParams": { ausgang: "offen" },
+  // Nacharbeit 10 (BEN): die drei waren als „offen“ geführt — wartend auf `home` vom Server und eine
+  // Ownerentscheidung zum Wort für den Ort (PLAN PRO 378). Beides ist überholt: das Raummodell ist
+  // geliefert (produkt:20261007:spaces) als FLACHER führender Space je Artikel, mit eigener Sprache
+  // („Space“, „Ohne Space“, „Alle Spaces“, DE/EN/NL). Es kennt weder `home`-Ketten noch den
+  // `raum`-Parameter. Die Wissensraum-Bausteine samt `librarySpace.ts` sind entfernt; der alte Beleg
+  // (`KoHomeLine.tsx`) mit ihnen. Nachweis ist die Raumzeile des gelieferten Wegs.
+  "librarySpace.ts::koHomePath": SPACE_ENTFERNT,
+  "librarySpace.ts::serializeSpace": SPACE_ENTFERNT,
+  "librarySpace.ts::spaceFromParams": SPACE_ENTFERNT,
   "loadingState.ts::isGroupLoaded": ENTFERNT,
   "mobileConfirm.ts::confirmsDelete": ENTFERNT,
   "mobileConfirm.ts::needsConfirmation": ENTFERNT,

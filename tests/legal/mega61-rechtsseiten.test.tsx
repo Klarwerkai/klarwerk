@@ -128,9 +128,8 @@ function artVon(dateiname: string): ts.ScriptKind {
 //   · (entfallen, R-1349) der Prüfstand der Schreibsperre lud ein Modul, das FEHLEN DURFTE.
 //   · `job642-testpfade-cwd-unabhaengig.test.ts:104` hängt einen Frischezähler an den Pfad, um den
 //     Modul-Cache zu umgehen — das ist der Zweck genau dieses Tests.
-//   · `wissensraum-ort-vertrag.ts:90` lädt ein Artefakt über `pathToFileURL(absolut).href`, das
-//     VOR der Umsetzungswelle noch nicht existiert; die Datei sagt es in ihrer eigenen Meldung
-//     (`:87`): „Kein Test darf dafür künstlich grün gemacht werden."
+//   · (entfallen, R-1349) die Wissensraum-Testhilfe lud Artefakte einer Umsetzungswelle, die nicht
+//     kam; die Artefakte, ihr Lader und die Prüfstände, die nur sie maßen, sind entfernt.
 //
 // EINE AUSNAHME MIT ORT UND GRUND IST ETWAS ANDERES ALS EINE BLINDSTELLE: sie steht hier, sie wird
 // unten in BEIDE Richtungen gefahren, und eine VIERTE Stelle macht den Wächter sofort rot.
@@ -145,9 +144,11 @@ function artVon(dateiname: string): ts.ScriptKind {
 // Datei entfallen. Der Prüfstand maß die Schreibsperre `services/db-tx/src/write-fence.ts`, die kein
 // Dienst band; Sperre und Prüfstand sind entfernt. Es bleiben zwei, und `verwaist` unten hält fest,
 // dass die Liste mitschrumpft.
+//
+// R-1349 (Nacharbeit 10): auch die dritte ist entfallen — `wissensraum-ort-vertrag.ts` lädt keine
+// Artefakte mehr (die Wissensraum-Bausteine sind entfernt, geliefert ist das Space-Modell).
 const BEKANNT_UNAUFLOESBAR = new Set<string>([
   "tests/app/job642-testpfade-cwd-unabhaengig.test.ts:104",
-  "tests/library/support/wissensraum-ort-vertrag.ts:90",
 ]);
 
 // AUFTRAG-mega86 Block D: die Modulpfade, die eine Datei WIRKLICH lädt — erhoben aus dem

@@ -1295,8 +1295,10 @@ const BEWUSST: readonly Ausnahme[] = [
 // Abgrenzung. Hier steht deshalb nur, was eine ausdrückliche SPERRE trägt oder einem belegten
 // GESONDERTEN AUFTRAG gehört, und jeder Eintrag nennt diesen Beleg. Ohne eine solche Einschränkung
 // wurde abgeschlossen: in Nacharbeit 6 sind `PgWriteFence`, `fenceKey` und `netzQualitaet`
-// entfernt worden (Kommentare an den früheren Stellen). A3 verlangt die Streichung, sobald ein
-// Baustein einen Aufrufer hat oder entfernt ist, und prüft, dass jede genannte Belegdatei existiert.
+// entfernt worden, in Nacharbeit 10 `createReindexQueue`, `ImportResultView` und die fünf
+// Wissensraum-Bausteine — dort trugen die angeführten „Sperren“ und der „gesonderte Auftrag“ nicht
+// mehr (Kommentare an den früheren Stellen). A3 verlangt die Streichung, sobald ein Baustein einen
+// Aufrufer hat oder entfernt ist, und prüft, dass jede genannte Belegdatei existiert.
 interface OffenerRest extends Ausnahme {
   /** Warum dieser Auftrag den Fall nicht abschliesst. */
   readonly abgrenzung: "sperre" | "gesonderter-auftrag";
@@ -1312,26 +1314,17 @@ const AUFTRAG_BESTANDSRESET =
   "Auftrag aufnahme:20260922:gesamt-bestandsreset — R-0774: offene Owner-Punkte OV-1 bis OV-5 " +
   "(Sperrrichtung, Löschgraph, Auditwahrheit bei Absturz, Zielpfade, zweiter Server); " +
   "R-1911: E9 OFFEN";
-const SPERRE_WISSENSRAUM =
-  "PLAN PRO 378 §9 führt B-1, B-2, B-3 und B-6 als offene Sperren („ohne Produktsprache bleiben " +
-  "P-1/P-2 unbenennbar“), zitiert im Kopf von tests/library/wissensraum381-bauteile.test.tsx; " +
-  "der Server liefert kein `home`";
+// R-1349 (Nacharbeit 10, BEN): hier stand `services/app/src/reindex-queue.ts::createReindexQueue`
+// als „Sperre“ — begründet mit BENs Satz aus JOB 1163, die Anschlusswahl sei „weiterhin nicht
+// freigegeben“. Das war eine historische Schnittgrenze des damaligen Baus, keine heute wirksame
+// Nutzersperre. Am heutigen Produktweg abgeglichen: die Suchprojektion entsteht im SELBEN
+// kontrollierten Schreibvorgang wie die neue Inhaltsversion (G27, `persistSearchProjection` in
+// `services/knowledge-object/src/service.ts`; die Metadatenzeile zieht ein `revise` mit), Nachzug
+// und Abgleich laufen über `backfillSearchProjections`/`reconcileSearchProjections`. Für eine
+// Kennungswarteschlange im Speicher ohne Reindex-Funktion und ohne Erzeuger bleibt kein Zweck — sie
+// war zudem nicht „dauerhaft“. Sie ist samt Prüfstand entfernt.
 
 const OFFENER_REST: readonly OffenerRest[] = [
-  {
-    schluessel: "services/app/src/reindex-queue.ts::createReindexQueue",
-    grund:
-      "Die Neuindizierungs-Warteschlange ist gebaut und am Verhalten geprueft (`reindex-queue.test.ts`). " +
-      "Ihr Kopf haelt fest, dass die Anschlusswahl zwischen Service-Hook und Routenanschluss und " +
-      "die Herkunft der Kennungen „weiterhin nicht freigegeben“ sind; das Modul wird deshalb " +
-      "nirgends registriert.",
-    abgrenzung: "sperre",
-    beleg:
-      "BEN zu JOB 1163 (Kopf von reindex-queue.ts, Zeilen 16-18): die Wahl zwischen Service-Hook " +
-      "und Routenanschluss ist „weiterhin nicht freigegeben“; build-app.ts bleibt unberührt",
-    belegdatei: "services/app/src/reindex-queue.ts",
-    entscheidet: "Produktverantwortung (Freigabe der Anschlusswahl, Pruefung durch BEN)",
-  },
   {
     schluessel: "services/audit/src/repo.ts::pruefeValidationDecisionRef",
     grund:
@@ -1389,71 +1382,24 @@ const OFFENER_REST: readonly OffenerRest[] = [
   // R-1349 (Nacharbeit 6): `kanten-service.ts::netzQualitaet` stand hier, weil „ob und wo“ die Zahl
   // gezeigt werde, offen sei. Das ist entschieden: der Qualitätsblick ist ohne neuen Server-Weg
   // geliefert (`apps/web/src/lib/netzQualitaet.ts`, R-0744). Die Funktion ist entfernt.
-  {
-    schluessel: "apps/web/src/components/confluence-import/ImportResultView.tsx::ImportResultView",
-    grund:
-      "Die W2-Resultatflaeche des Confluence-Imports ist gebaut und gemountet geprueft; ihre " +
-      "Sichtbarkeit ist eine eigene Tranche. `tests/app/w2a-import-run-routes-148.test.ts` (Block 5) " +
-      "verlangt ausdruecklich, dass sie bis dahin keinen Aufrufer in der Oberflaeche hat.",
-    abgrenzung: "gesonderter-auftrag",
-    beleg:
-      "Auftrag aufnahme:20260922:gesamt-confluence-import, R-0142 (Original und abgeleitete " +
-      "Wissenseinheiten auf einer Fläche, hinter Rechte- und Funktionsschalter); bis dahin sperrt " +
-      "w2a-import-run-routes-148 „ImportResultView hat weiterhin keinen Aufrufer in der Oberfläche“",
-    belegdatei: "tests/app/w2a-import-run-routes-148.test.ts",
-    entscheidet: "Auftrag gesamt-confluence-import (Freigabe der W2-Resultattranche, KW-S4-26)",
-  },
-  {
-    schluessel: "apps/web/src/components/LibraryScopeBar.tsx::LibraryScopeBar",
-    grund:
-      "Wissensraeume (PRO 381): der Server liefert heute kein `home`, und das Wort fuer den Ort ist " +
-      "eine offene Ownerentscheidung (PLAN PRO 378). Das Bauteil ist geprueft " +
-      "(`tests/library/wissensraum381-bauteile.test.tsx`) und wartet auf diese Entscheidung.",
-    abgrenzung: "sperre",
-    beleg: SPERRE_WISSENSRAUM,
-    belegdatei: "tests/library/wissensraum381-bauteile.test.tsx",
-    entscheidet: "Owner (PLAN PRO 378, Wissensraeume)",
-  },
-  {
-    schluessel: "apps/web/src/components/trust/KoHomeLine.tsx::KoHomeLine",
-    grund:
-      "Wie `LibraryScopeBar`: die Heimatzeile eines Objekts braucht ein `home` vom Server und die " +
-      "Ownerentscheidung PLAN PRO 378; geprueft in `tests/library/wissensraum381-bauteile.test.tsx`.",
-    abgrenzung: "sperre",
-    beleg: SPERRE_WISSENSRAUM,
-    belegdatei: "tests/library/wissensraum381-bauteile.test.tsx",
-    entscheidet: "Owner (PLAN PRO 378, Wissensraeume)",
-  },
-  {
-    schluessel: "apps/web/src/lib/librarySpace.ts::koHomePath",
-    grund:
-      "Wissensraeume (R-0991 Nr. 45, Fall C): der Server liefert kein `home`, das Wort fuer den Ort " +
-      "ist eine offene Ownerentscheidung (PLAN PRO 378).",
-    abgrenzung: "sperre",
-    beleg: SPERRE_WISSENSRAUM,
-    belegdatei: "tests/library/wissensraum381-bauteile.test.tsx",
-    entscheidet: "Owner (PLAN PRO 378, Wissensraeume)",
-  },
-  {
-    schluessel: "apps/web/src/lib/librarySpace.ts::serializeSpace",
-    grund:
-      "Wissensraum in der Adresse (R-0991 Nr. 46, Fall C); offen mit derselben Ownerentscheidung " +
-      "wie `koHomePath`.",
-    abgrenzung: "sperre",
-    beleg: SPERRE_WISSENSRAUM,
-    belegdatei: "tests/library/wissensraum381-bauteile.test.tsx",
-    entscheidet: "Owner (PLAN PRO 378, Wissensraeume)",
-  },
-  {
-    schluessel: "apps/web/src/lib/librarySpace.ts::spaceFromParams",
-    grund:
-      "Wissensraum aus der Adresse lesen (R-0991 Nr. 47, Fall C); offen mit derselben " +
-      "Ownerentscheidung wie `koHomePath`.",
-    abgrenzung: "sperre",
-    beleg: SPERRE_WISSENSRAUM,
-    belegdatei: "tests/library/wissensraum381-bauteile.test.tsx",
-    entscheidet: "Owner (PLAN PRO 378, Wissensraeume)",
-  },
+  //
+  // R-1349 (Nacharbeit 10, BEN): `ImportResultView` stand hier als Rest des gesonderten Auftrags
+  // gesamt-confluence-import. Der ist geliefert (1.0.0-beta.1.723, `a173f5fe`, Vorfahr des
+  // Kandidaten); sein Weg R-0142 ist `components/bibliothek/ImportErgebnis.tsx`, montiert in
+  // `MehrAbschnitte.tsx`. Die Altfläche blieb unverbunden und ist mit `SourceRecordCard`,
+  // `KnowledgeItemList`, ihren Ableitungen in `lib/importResultView.ts` und den Prüfständen, die nur
+  // sie maßen, entfernt. Was beide teilen (Laufzustände, `RunStateBanner`), bleibt.
+  //
+  // R-1349 (Nacharbeit 10, BEN): die fünf Wissensraum-Bausteine (`LibraryScopeBar`, `KoHomeLine` und
+  // aus `lib/librarySpace.ts` `koHomePath`, `serializeSpace`, `spaceFromParams`) standen hier als
+  // „Sperre“ aus PLAN PRO 378 (B-1, B-2, B-3, B-6 — tatsächlich §10, nicht §9). Das waren historische
+  // Planfragen, keine heute belegte Nutzersperre. Am heutigen Produkt abgeglichen: das Raummodell ist
+  // geliefert (produkt:20261007:spaces) als flacher führender Space je Artikel (`SpaceZeile.tsx` in
+  // der Wissensdetailansicht, `/spaces`, `/spaces/:id`) mit eigener Sprache in DE/EN/NL („Space“,
+  // „Ohne Space“, „Alle Spaces“). Es braucht weder die `home`-Kette, die der Server nie lieferte,
+  // noch die `lib.raum.*`-Texte, die nie geschrieben wurden. Die Bausteine waren nie montiert und
+  // sind samt `librarySpace.ts` und den Prüfständen, die nur sie maßen, entfernt; die
+  // Bewahrungsanker der Bibliothek (`wissensraum381-bewahrung-*`) gelten unverändert.
 ];
 
 // Frühere Erledigungen aus der Zeit des eingefrorenen Altbestands, unverändert zur Herkunft:
