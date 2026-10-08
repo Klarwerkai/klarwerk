@@ -39,7 +39,8 @@ export function LiveWallValidiert({
   return (
     <>
       <div data-testid="livewall-validiert">
-        <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-2">
+        {/* R-0918: Leseschrift-Untergrenze 11 px — `text-klein` statt frei gesetzter 10 px. */}
+        <div className="mb-1.5 font-mono text-klein uppercase tracking-wider text-muted-2">
           {t("start.livewall.validated")}
         </div>
         <ValidiertListe
@@ -108,7 +109,7 @@ export function ValidiertListe({
             className={
               gross
                 ? "shrink-0 font-mono text-[18px] text-muted-2"
-                : "shrink-0 font-mono text-[10.5px] text-muted-2"
+                : "shrink-0 font-mono text-klein text-muted-2"
             }
           >
             {new Date(v.at).toLocaleString(i18n.language.startsWith("en") ? "en-GB" : "de-DE", {
