@@ -131,5 +131,30 @@ das Ausleiten entscheiden der Kern und der Chokepoint.
 
 ## Prüfstand
 
-Lokal ausgeführt wurde nichts. In dieser Umgebung sind keine Test- oder Buildläufe erlaubt. Die Auswahl
-der Suiten steht im Prüfplan des Auftrags; die Ergebnisse liefert der Prüflauf.
+Lokal ausgeführt wurde nichts. In dieser Umgebung sind keine Test- oder Buildläufe erlaubt.
+
+Prüflauf am Kandidaten `a7de8eb9` (Nacharbeit 1, Bericht im Auftragsarchiv `HISTORIE/nacharbeit-1`):
+`tools/build` grün; grün sind `ausgehende-ziele` (4), `vertraulichkeit-eine-lesart` (3),
+`prinzipien-beleg` (2), `transkription-grundfreigabe` (35, inklusive Medien-E2E und G8),
+`external-policy-e2e` (3), `freigabe-kern` (54), `rollen-und-protokoll` (12),
+`freigabe-texte-und-einziger-weg` (12), `egress-chokepoint`, `egress-encapsulation` und Biome auf allen
+geänderten Dateien.
+
+**Rot in fremden, unveränderten Bestandsdateien.** Keine dieser Dateien und kein Produktcode auf ihrem
+Weg (Reasoner, Ask-Freigabe, Klara-Sitzung, `reasoner-routes.ts`) wurde in diesem Auftrag geändert.
+Der Auftragscommit ändert nur `build-app.ts` (Medienverdrahtung), den Mediendienst, die Zielliste, Dokumente
+und eigene Tests.
+- `tests/admin-ki-freigabe/ka4-direktwege-volle-kette.test.ts`: Zwei Sperrfälle der Stufe „beide“
+  melden die Ursache `confidential` statt `model-error`. Die Null-Abruf-Sperre selbst ist nicht der
+  gemeldete Fehler. Für W1 heisst das: Auch dort ging mit beiden Freigaben nichts hinaus, die
+  Kette schloss die Cloud nur früher aus.
+- `tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts` R5d, R5e, R7b, R7f, R7g: Die
+  Gegenproben erwarten einen Modellaufruf und sehen keinen, auch auf der ungebundenen Konsole (R7g).
+- `tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts` F1/F4: Das Register kennt zwei fremde Helfer-Benutzer
+  (`tests/uebernahme-standard-intern/datei-import-bis-egress.test.ts`,
+  `tests/vertraulichkeit-pflicht/word-uebernahme-bis-wissensobjekt.test.ts`) und neue Fälle in
+  `services/reasoner/src/anbieterbindung.test.ts` nicht. Die Dateien dieses Auftrags sind nicht betroffen.
+  F2 (keine Freigabefelder von Hand) ist grün.
+
+Die Ursachen gehören den jeweiligen Eigentümern; dieser Auftrag ändert dort weder Produktcode noch
+Sollwerte. Die roten Berichte bleiben im Archiv erhalten.
