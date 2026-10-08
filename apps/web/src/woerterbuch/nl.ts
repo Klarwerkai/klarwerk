@@ -2359,6 +2359,12 @@ const nl: typeof de = {
     "Voor deze termen vond je zoekopdracht niets wat je mag zien — een aanwijzing waar kennis kan ontbreken. Alleen jij ziet deze lijst.",
   "nulltreffer.anzahl": "{{count}}× gezocht",
   "nulltreffer.erfassen": "Kennis vastleggen",
+  "nulltreffer.eingegrenzt":
+    "Alleen binnen deze afbakening gezocht ({{filter}}) — geen bevinding over het hele bestand.",
+  "nulltreffer.feld.type": "Kennissoort",
+  "nulltreffer.feld.status": "Status",
+  "nulltreffer.feld.category": "Categorie",
+  "nulltreffer.feld.tag": "Trefwoord",
   "einzelquelle.titel": "Kennis die alleen bij jou ligt",
   "einzelquelle.satz":
     "Onderwerpen met busfactor 1 waarvan de zichtbare kennis alleen van jou komt: {{count}}",

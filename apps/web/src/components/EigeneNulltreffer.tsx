@@ -35,26 +35,43 @@ export function EigeneNulltreffer(): JSX.Element | null {
       <p className="mb-2 text-[12px] text-muted-2">{t("nulltreffer.hinweis")}</p>
       <Card className="p-0">
         <div className="divide-y divide-hairline">
-          {eintraege.map((e) => (
-            <div
-              key={e.begriff}
-              data-testid="nulltreffer-zeile"
-              className="flex flex-wrap items-center gap-3 px-4 py-2.5"
-            >
-              <span className="min-w-0 flex-1 break-words text-[13.5px] text-text">
-                „{e.begriff}“
-              </span>
-              <span className="shrink-0 font-mono text-[10.5px] text-muted-2">
-                {t("nulltreffer.anzahl", { count: e.anzahl })}
-              </span>
-              <Link
-                to="/erfassen"
-                className="inline-flex shrink-0 items-center rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-text hover:bg-hairline-soft"
+          {eintraege.map((e) => {
+            // BEN, Nacharbeit 3: eine gefilterte Suche steht MIT ihrer Eingrenzung da — sie sagt
+            // nur etwas über diese Auswahl, nicht über den ganzen Bestand.
+            const eingrenzung = Object.entries(e.eingrenzung ?? {});
+            return (
+              <div
+                key={`${e.begriff}\u0000${JSON.stringify(eingrenzung)}`}
+                data-testid="nulltreffer-zeile"
+                className="flex flex-wrap items-center gap-3 px-4 py-2.5"
               >
-                {t("nulltreffer.erfassen")}
-              </Link>
-            </div>
-          ))}
+                <span className="min-w-0 flex-1 break-words text-[13.5px] text-text">
+                  „{e.begriff}“
+                  {eingrenzung.length > 0 ? (
+                    <span
+                      data-testid="nulltreffer-eingrenzung"
+                      className="mt-0.5 block text-[11.5px] text-muted"
+                    >
+                      {t("nulltreffer.eingegrenzt", {
+                        filter: eingrenzung
+                          .map(([feld, wert]) => `${t(`nulltreffer.feld.${feld}`)}: ${wert}`)
+                          .join(" · "),
+                      })}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="shrink-0 font-mono text-[10.5px] text-muted-2">
+                  {t("nulltreffer.anzahl", { count: e.anzahl })}
+                </span>
+                <Link
+                  to="/erfassen"
+                  className="inline-flex shrink-0 items-center rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-text hover:bg-hairline-soft"
+                >
+                  {t("nulltreffer.erfassen")}
+                </Link>
+              </div>
+            );
+          })}
         </div>
       </Card>
     </div>

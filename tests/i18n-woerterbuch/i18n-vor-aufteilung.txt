@@ -3083,6 +3083,12 @@ const de = {
     "Zu diesen Begriffen hat deine Suche nichts gefunden, was du sehen darfst — ein Hinweis, wo Wissen fehlen könnte. Nur du siehst diese Liste.",
   "nulltreffer.anzahl": "{{count}}× gesucht",
   "nulltreffer.erfassen": "Wissen erfassen",
+  "nulltreffer.eingegrenzt":
+    "Nur innerhalb dieser Eingrenzung gesucht ({{filter}}) — kein Befund über den ganzen Bestand.",
+  "nulltreffer.feld.type": "Wissensart",
+  "nulltreffer.feld.status": "Status",
+  "nulltreffer.feld.category": "Kategorie",
+  "nulltreffer.feld.tag": "Schlagwort",
   // R-1626 (ROADMAP 1.4): die kurze persönliche Liste der Themen mit Bus-Faktor 1.
   "einzelquelle.titel": "Wissen, das nur bei dir liegt",
   "einzelquelle.satz":
@@ -10006,6 +10012,12 @@ const en: typeof de = {
     "For these terms your search found nothing you are allowed to see — a hint where knowledge may be missing. Only you see this list.",
   "nulltreffer.anzahl": "searched {{count}}×",
   "nulltreffer.erfassen": "Capture knowledge",
+  "nulltreffer.eingegrenzt":
+    "Searched only within this filter ({{filter}}) — no finding about the whole collection.",
+  "nulltreffer.feld.type": "Knowledge type",
+  "nulltreffer.feld.status": "Status",
+  "nulltreffer.feld.category": "Category",
+  "nulltreffer.feld.tag": "Keyword",
   "einzelquelle.titel": "Knowledge only you hold",
   "einzelquelle.satz":
     "Topics with bus factor 1 whose visible knowledge comes only from you: {{count}}",
@@ -15848,6 +15860,12 @@ const nl: typeof de = {
     "Voor deze termen vond je zoekopdracht niets wat je mag zien — een aanwijzing waar kennis kan ontbreken. Alleen jij ziet deze lijst.",
   "nulltreffer.anzahl": "{{count}}× gezocht",
   "nulltreffer.erfassen": "Kennis vastleggen",
+  "nulltreffer.eingegrenzt":
+    "Alleen binnen deze afbakening gezocht ({{filter}}) — geen bevinding over het hele bestand.",
+  "nulltreffer.feld.type": "Kennissoort",
+  "nulltreffer.feld.status": "Status",
+  "nulltreffer.feld.category": "Categorie",
+  "nulltreffer.feld.tag": "Trefwoord",
   "einzelquelle.titel": "Kennis die alleen bij jou ligt",
   "einzelquelle.satz":
     "Onderwerpen met busfactor 1 waarvan de zichtbare kennis alleen van jou komt: {{count}}",

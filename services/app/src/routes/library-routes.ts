@@ -1,5 +1,10 @@
 import type { FastifyPluginAsync } from "fastify";
-import { NULLTREFFER_DECKEL, type NulltrefferRepo, nulltrefferBegriff } from "../../../ask";
+import {
+  NULLTREFFER_DECKEL,
+  type NulltrefferRepo,
+  nulltrefferBegriff,
+  nulltrefferEingrenzung,
+} from "../../../ask";
 import {
   type ConflictService,
   type OverlapService,
@@ -783,19 +788,18 @@ export function libraryRoutes(
           await library.search(q ?? "", filter, { trim: sqlSichtbarkeitFuer(user) }),
         );
         // R-0773: eine Suche OHNE Treffer wird für den Suchenden vermerkt — nur mit nicht-leerem
-        // Begriff, nur ohne weitere Filter (sonst spräche die leere Liste über den Filter) und
-        // gemessen an DIESER, schon sichtbarkeitsgeschnittenen Liste. Ein Fehler der Suche hat die
-        // Route oben bereits verlassen und wird nie als Nulltreffer gezählt. Ein Fehler beim
-        // Vermerken nimmt dem Suchenden sein (leeres) Ergebnis nicht.
+        // Begriff und gemessen an DIESER, schon sichtbarkeitsgeschnittenen Liste. Eine gefilterte
+        // Suche wird MIT ihrer Eingrenzung vermerkt (BEN, Nacharbeit 3): sie sagt nur etwas über
+        // diese Auswahl, die Fläche kennzeichnet das. Ein Fehler der Suche hat die Route oben
+        // bereits verlassen und wird nie als Nulltreffer gezählt. Ein Fehler beim Vermerken nimmt
+        // dem Suchenden sein (leeres) Ergebnis nicht.
         const begriff = nulltrefferBegriff(q ?? "");
-        const ohneFilter = Object.values(filter).every(
-          (wert) => wert === undefined || wert === null || String(wert).trim() === "",
-        );
-        if (nulltreffer && treffer.length === 0 && begriff && ohneFilter) {
+        if (nulltreffer && treffer.length === 0 && begriff) {
           try {
             await nulltreffer.erfasse({
               userId: user.id,
               ...begriff,
+              eingrenzung: nulltrefferEingrenzung(filter),
               zeitpunkt: new Date().toISOString(),
             });
           } catch (fehler) {

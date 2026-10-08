@@ -1017,6 +1017,8 @@ export interface NulltrefferSuche {
   begriff: string;
   anzahl: number;
   zuletzt: string;
+  // Die Filter der Suche (type/status/category/tag → Wert); leer = ohne Eingrenzung gesucht.
+  eingrenzung?: Record<string, string>;
 }
 
 // FUNKE-FIX2 P0 (bens Erforderlich 1): rein aggregierte Zähler der offenen Wissenslücken — KEIN

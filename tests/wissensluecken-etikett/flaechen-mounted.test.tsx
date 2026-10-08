@@ -172,6 +172,26 @@ describe("R-0773 · die eigenen Suchen ohne Treffer", () => {
     expect(links.map((a) => a.getAttribute("href"))).toEqual(["/erfassen"]);
   });
 
+  it("F7 · gefilterte Nulltreffer tragen ihre Eingrenzung — kein Befund über den ganzen Bestand", () => {
+    mount(Risk, {
+      nulltreffer: [
+        {
+          begriff: "Kesselflansch",
+          anzahl: 1,
+          zuletzt: "2026-10-09T10:00:00.000Z",
+          eingrenzung: { category: "Wartung" },
+        },
+        { begriff: "Kesselflansch", anzahl: 1, zuletzt: "2026-10-09T09:00:00.000Z" },
+      ],
+    });
+    const zeilen = Array.from(container.querySelectorAll('[data-testid="nulltreffer-zeile"]'));
+    expect(zeilen, "zwei Einträge, nicht einer").toHaveLength(2);
+    const marken = container.querySelectorAll('[data-testid="nulltreffer-eingrenzung"]');
+    expect(marken, "nur die gefilterte Suche ist gekennzeichnet").toHaveLength(1);
+    expect(marken[0]?.textContent).toContain(i18n.t("nulltreffer.feld.category"));
+    expect(marken[0]?.textContent).toContain("Wartung");
+  });
+
   it("F6 · ohne eigene Nulltreffer keine Fläche und kein Leersatz", () => {
     mount(Risk, { nulltreffer: [] });
     expect(container.querySelector('[data-testid="eigene-nulltreffer"]')).toBeNull();

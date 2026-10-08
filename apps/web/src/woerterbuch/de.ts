@@ -3085,6 +3085,12 @@ const de = {
     "Zu diesen Begriffen hat deine Suche nichts gefunden, was du sehen darfst — ein Hinweis, wo Wissen fehlen könnte. Nur du siehst diese Liste.",
   "nulltreffer.anzahl": "{{count}}× gesucht",
   "nulltreffer.erfassen": "Wissen erfassen",
+  "nulltreffer.eingegrenzt":
+    "Nur innerhalb dieser Eingrenzung gesucht ({{filter}}) — kein Befund über den ganzen Bestand.",
+  "nulltreffer.feld.type": "Wissensart",
+  "nulltreffer.feld.status": "Status",
+  "nulltreffer.feld.category": "Kategorie",
+  "nulltreffer.feld.tag": "Schlagwort",
   // R-1626 (ROADMAP 1.4): die kurze persönliche Liste der Themen mit Bus-Faktor 1.
   "einzelquelle.titel": "Wissen, das nur bei dir liegt",
   "einzelquelle.satz":

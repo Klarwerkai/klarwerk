@@ -2369,6 +2369,12 @@ const en: typeof de = {
     "For these terms your search found nothing you are allowed to see — a hint where knowledge may be missing. Only you see this list.",
   "nulltreffer.anzahl": "searched {{count}}×",
   "nulltreffer.erfassen": "Capture knowledge",
+  "nulltreffer.eingegrenzt":
+    "Searched only within this filter ({{filter}}) — no finding about the whole collection.",
+  "nulltreffer.feld.type": "Knowledge type",
+  "nulltreffer.feld.status": "Status",
+  "nulltreffer.feld.category": "Category",
+  "nulltreffer.feld.tag": "Keyword",
   "einzelquelle.titel": "Knowledge only you hold",
   "einzelquelle.satz":
     "Topics with bus factor 1 whose visible knowledge comes only from you: {{count}}",

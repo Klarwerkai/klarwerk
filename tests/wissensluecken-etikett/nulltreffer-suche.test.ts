@@ -7,7 +7,8 @@
 //   N1 · ein nicht-leerer Begriff ohne sichtbaren Treffer wird vermerkt; dieselbe Schreibung in
 //        anderer Form zählt hoch statt einen zweiten Eintrag anzulegen
 //   N2 · eine leere Abfrage ist kein Nulltreffer
-//   N3 · mit zusätzlichem Filter ist eine leere Liste kein Nulltreffer
+//   N3 · mit zusätzlichem Filter wird vermerkt — mit Eingrenzung, als eigener Eintrag (BEN,
+//        Nacharbeit 3: der Originalauftrag kennt keinen Ausschluss gefilterter Suchen)
 //   N4 · mit Treffer kein Eintrag
 //   N5 · gemessen an dem, was DER SUCHENDE sieht: ein für ihn unsichtbares Objekt ist kein Treffer
 //   N6 · jede Person sieht nur ihre eigenen Nulltreffer
@@ -66,7 +67,13 @@ async function suche(app: App, wer: Auth, query: string) {
   return app.inject({ method: "GET", url: `/api/library/search?${query}`, headers: wer });
 }
 
-async function eigene(app: App, wer: Auth): Promise<{ begriff: string; anzahl: number }[]> {
+interface Eigene {
+  begriff: string;
+  anzahl: number;
+  eingrenzung: Record<string, string>;
+}
+
+async function eigene(app: App, wer: Auth): Promise<Eigene[]> {
   const res = await app.inject({ method: "GET", url: "/api/library/nulltreffer", headers: wer });
   expect(res.statusCode, res.body).toBe(200);
   return res.json();
@@ -92,11 +99,20 @@ describe("R-0773 · erfolglose Suchen werden sichtbar", () => {
     expect(await eigene(app, anna)).toEqual([]);
   });
 
-  it("N3 · mit zusätzlichem Filter sagt die leere Liste nichts über fehlendes Wissen", async () => {
+  it("N3 · mit Filter vermerkt — MIT Eingrenzung, getrennt von der ungefilterten Suche", async () => {
     const { app, anna } = await setup("n3");
     const res = await suche(app, anna, "q=Kesselflansch&category=Wartung");
     expect(res.statusCode, res.body).toBe(200);
-    expect(await eigene(app, anna)).toEqual([]);
+    expect(res.json(), "KALIBRIERUNG: wirklich kein Treffer").toEqual([]);
+    let liste = await eigene(app, anna);
+    expect(liste).toHaveLength(1);
+    expect(liste[0]?.eingrenzung, "der Suchkontext reist mit").toEqual({ category: "Wartung" });
+    // Derselbe Begriff ohne Filter ist eine ANDERE Aussage (über den ganzen sichtbaren Bestand).
+    await suche(app, anna, "q=Kesselflansch");
+    liste = await eigene(app, anna);
+    expect(liste).toHaveLength(2);
+    expect(liste.map((e) => e.eingrenzung)).toContainEqual({});
+    expect(liste.every((e) => e.anzahl === 1)).toBe(true);
   });
 
   it("N4 · mit Treffer kein Eintrag", async () => {

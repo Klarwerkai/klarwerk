@@ -10,10 +10,13 @@ import { gapCompareKey, normalizeGapQuestion } from "./gap-text";
 //
 // WAS ALS NULLTREFFER GILT — die Route entscheidet, hier steht nur die Form:
 //   · ein NICHT-LEERER Suchbegriff (eine leere Abfrage ist ein Blick in den Bestand, keine Suche),
-//   · ohne zusätzliche Filter (mit Filter sagt eine leere Liste etwas über den Filter, nicht über
-//     fehlendes Wissen),
 //   · und NACH dem Sichtbarkeitsschnitt leer — gemessen an dem, was DER SUCHENDE sehen darf.
 // Ein technischer Fehler der Suche wirft und erreicht die Erfassung gar nicht.
+//
+// DIE EINGRENZUNG REIST MIT (BEN, Nacharbeit 3): eine erfolglose Suche MIT Filter (Art, Status,
+// Kategorie, Schlagwort) wird ebenfalls vermerkt — aber mit ihrem Suchkontext. Sie sagt nur etwas
+// über diese Auswahl, nicht über den ganzen Bestand; die Fläche kennzeichnet das. Derselbe Begriff
+// mit und ohne Eingrenzung sind deshalb zwei Einträge, nie einer.
 //
 // WER ES SIEHT — dieselbe Regel wie beim Fragetext einer Lücke (R-0585: „Was jemand gefragt hat,
 // sieht nur er selbst und der Zuständige"). Ein Suchbegriff ist Nutzer-Freitext ohne
@@ -36,6 +39,8 @@ export interface NulltrefferErfassung {
   readonly vergleichsschluessel: string;
   /** Der Begriff, wie er angezeigt wird (normalisiert und begrenzt). */
   readonly begriff: string;
+  /** Kanonische Eingrenzung (`nulltrefferEingrenzung`); "" heisst: ohne Filter gesucht. */
+  readonly eingrenzung: string;
   readonly zeitpunkt: string;
 }
 
@@ -43,6 +48,54 @@ export interface NulltrefferSuche {
   readonly begriff: string;
   readonly anzahl: number;
   readonly zuletzt: string;
+  /** Die Filter der Suche, Feld → Wert; leer heisst: im ganzen sichtbaren Bestand gesucht. */
+  readonly eingrenzung: Readonly<Record<string, string>>;
+}
+
+const BEGRENZUNG = NULLTREFFER_BEGRIFF_MAX;
+
+/** Die Filterfelder der Bibliothekssuche (`KoFilter`), in fester Reihenfolge. */
+export const NULLTREFFER_FILTERFELDER = ["type", "status", "category", "tag"] as const;
+
+/**
+ * Die Eingrenzung einer Suche in kanonischer Form: nur bekannte Filterfelder mit nicht-leerem
+ * Wert, in fester Reihenfolge, als JSON-Text — "" ohne Filter. Kanonisch, damit dieselbe
+ * Eingrenzung immer derselbe Schlüssel ist; begrenzt wie der Begriff.
+ */
+export function nulltrefferEingrenzung(filter: object): string {
+  const felder = filter as Record<string, unknown>;
+  const paare: [string, string][] = [];
+  for (const feld of NULLTREFFER_FILTERFELDER) {
+    const wert = felder[feld];
+    const text = typeof wert === "string" ? normalizeGapQuestion(wert, BEGRENZUNG) : "";
+    if (text) {
+      paare.push([feld, text]);
+    }
+  }
+  return paare.length > 0 ? JSON.stringify(Object.fromEntries(paare)) : "";
+}
+
+/** Die gespeicherte Eingrenzung zurück in Feld → Wert; Unlesbares wird zu „ohne Angabe". */
+export function leseEingrenzung(text: string): Record<string, string> {
+  if (!text) {
+    return {};
+  }
+  try {
+    const roh = JSON.parse(text) as unknown;
+    if (!roh || typeof roh !== "object") {
+      return {};
+    }
+    const ergebnis: Record<string, string> = {};
+    for (const feld of NULLTREFFER_FILTERFELDER) {
+      const wert = (roh as Record<string, unknown>)[feld];
+      if (typeof wert === "string" && wert) {
+        ergebnis[feld] = wert;
+      }
+    }
+    return ergebnis;
+  } catch {
+    return {};
+  }
 }
 
 export interface NulltrefferRepo {
@@ -66,17 +119,27 @@ export function nulltrefferBegriff(
     : null;
 }
 
+interface Gespeichert {
+  readonly userId: string;
+  readonly begriff: string;
+  readonly anzahl: number;
+  readonly zuletzt: string;
+  readonly eingrenzung: string;
+}
+
 export class InMemoryNulltrefferRepo implements NulltrefferRepo {
-  private readonly eintraege = new Map<string, NulltrefferSuche & { readonly userId: string }>();
+  private readonly eintraege = new Map<string, Gespeichert>();
 
   async erfasse(eintrag: NulltrefferErfassung): Promise<void> {
-    const schluessel = `${eintrag.userId}\u0000${eintrag.vergleichsschluessel}`;
+    const teile = [eintrag.userId, eintrag.vergleichsschluessel, eintrag.eingrenzung];
+    const schluessel = teile.join("\u0000");
     const vorhanden = this.eintraege.get(schluessel);
     this.eintraege.set(schluessel, {
       userId: eintrag.userId,
       begriff: eintrag.begriff,
       anzahl: (vorhanden?.anzahl ?? 0) + 1,
       zuletzt: eintrag.zeitpunkt,
+      eingrenzung: eintrag.eingrenzung,
     });
   }
 
@@ -85,6 +148,11 @@ export class InMemoryNulltrefferRepo implements NulltrefferRepo {
       .filter((e) => e.userId === userId)
       .sort((a, b) => (a.zuletzt < b.zuletzt ? 1 : a.zuletzt > b.zuletzt ? -1 : 0))
       .slice(0, Math.max(0, deckel))
-      .map(({ begriff, anzahl, zuletzt }) => ({ begriff, anzahl, zuletzt }));
+      .map(({ begriff, anzahl, zuletzt, eingrenzung }) => ({
+        begriff,
+        anzahl,
+        zuletzt,
+        eingrenzung: leseEingrenzung(eingrenzung),
+      }));
   }
 }

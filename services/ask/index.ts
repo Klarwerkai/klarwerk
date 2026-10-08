@@ -8,6 +8,7 @@ export {
   InMemoryNulltrefferRepo,
   NULLTREFFER_DECKEL,
   nulltrefferBegriff,
+  nulltrefferEingrenzung,
   type NulltrefferRepo,
   type NulltrefferSuche,
 } from "./src/nulltreffer";
