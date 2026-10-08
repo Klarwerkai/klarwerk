@@ -31,6 +31,36 @@ und serverseitiger Schlüsselhaltung.
 ## API / Schnittstellen (Entwurf)
 Interne Schicht `reasoner.structure|answer|interview|search|secondOpinion|assist`. HTTP `GET /api/reasoner/status`. Adapter pro Anbieter hinter einheitlichem Interface; Konfiguration via ENV/Secret-Store.
 
+## Aufgabenvertrag im Code (Aufnahme 20260922 · gesamt-reasoner-vertrag, Stand 2026-10-08)
+Die Namen im Entwurf oben weichen vom Code ab. Die sechs Aufgaben der Quelle (R-0687, FR-RSN-01)
+liegen an der öffentlichen Fläche `services/reasoner/index.ts` (Klasse `Reasoner`):
+
+| Aufgabe (Quelle) | Entwurf oben | Reasoner-Methode | Einstellung je Aufgabe |
+|---|---|---|---|
+| Strukturieren | `structure` | `structure` | `structure` |
+| Antworten | `answer` | `answer` | `answer` |
+| Interview | `interview` | `interview` | `interview` |
+| Kandidaten-Auswahl / semantische Suche | `search` | `select` | `select` |
+| Zweitmeinung | `secondOpinion` | `judgeConflictOutcome` (Konfliktprüfung zweier Kerntexte) | folgt der globalen Wahl |
+| Schreibhilfe | `assist` | `assistText` | `assist` |
+
+Modell und Endpunkt sind Einstellung, nicht Code (FR-RSN-02, NFR-MNT-01): `REASONER_MODEL`,
+`OPENAI_MODEL`, `ANTHROPIC_MODEL`, `OPENAI_BASE_URL` und der lokale LLM (`model-client.ts`), dazu
+die Admin-Zuordnung global und je Aufgabe (`PUT /api/reasoner/config`, persistiert in
+`reasoner_policy`). Belege: `tests/ki-aufgabenvertrag/sechs-aufgaben.test.ts` (alle sechs über eine
+Schicht, Umstellen per Einstellung), `tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts`
+(Anbieterwechsel am Netzweg), `tests/openai-cloud-anbieter/openai-ist-ein-externer-cloud-anbieter.test.ts`
+(Modell und Endpunkt aus der Umgebung).
+
+Offen bzw. anderswo geführt:
+- **Zweitmeinung im Konfliktablauf.** `POST /api/conflicts/:id/second-opinion` nimmt heute nur
+  menschlichen Freitext; die Konfliktprüfung des Reasoners ist dort nicht angebunden. Der Ablauf
+  Eskalation → Zweitmeinung → Entscheidung gehört zum Auftrag `gesamt-konfliktentscheidung`, die
+  Zweitmeinung zu Klara-Antworten zu `gesamt-klara-zweitmeinung`.
+- **Mandantenfähigkeit (NFR-MNT-03).** Nicht umgesetzt: das Produkt führt kein Mandantenmodell;
+  die KI-Zuordnung gilt je Instanz (eine Zeile `reasoner_policy`). Isolation pro Kunde besteht
+  heute nur über getrennte Instanzen.
+
 ## Datenmodell (Auszug)
 Keine eigene Persistenz außer Konfiguration + KI-Kosten-/Nutzungs-Logging (NFR-OPS-03).
 
