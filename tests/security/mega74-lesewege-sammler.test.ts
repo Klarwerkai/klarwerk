@@ -522,6 +522,22 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "EIGENER_BESTAND",
     grund: "löscht nur das eigene Foto (user.id), Antwort nur der Wahrheitswert.",
   },
+  "GET /api/me/gedaechtnis": {
+    urteil: "EIGENER_BESTAND",
+    grund: "nur die eigenen Gedächtniseinträge (gedaechtnis-routes.ts, user.id); kein KO-Inhalt.",
+  },
+  "POST /api/me/gedaechtnis": {
+    urteil: "EIGENER_BESTAND",
+    grund: "legt nur einen eigenen Eintrag an; die Antwortkennung muss eine eigene sein.",
+  },
+  "DELETE /api/me/gedaechtnis/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund: "löscht nur einen eigenen Eintrag (user.id), fremd und unbekannt antworten 404.",
+  },
+  "DELETE /api/me/gedaechtnis": {
+    urteil: "EIGENER_BESTAND",
+    grund: "löscht nur das eigene Gedächtnis (user.id), Antwort nur die Zahl.",
+  },
   // --- Kein Inhalt eines Wissensobjekts ------------------------------------------------------
   "GET /health": { urteil: "KEIN_KO_INHALT", grund: "Betriebszustand." },
   "GET /api/ai-status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },
