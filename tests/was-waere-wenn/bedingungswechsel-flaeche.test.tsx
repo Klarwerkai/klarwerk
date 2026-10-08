@@ -4,12 +4,18 @@
 // ================================================================================================
 //
 // Die echte `Ask`-Seite; gemockt sind nur die Endpunkte. Gemessen wird, was die Fläche aus dem
-// geladenen Bestand zeigt — und dass dabei keine Frage an die KI hinausgeht.
+// geladenen Bestand zeigt — die Einordnung selbst fragt die KI nicht — und dass „Mit Klara
+// durchspielen" den Wechsel über den bestehenden Frageweg stellt.
 //
 //   B1  Zugeklappt steht kein Eingabefeld der Gegenüberstellung im Baum; das Fragefeld bleibt vorn.
-//   B2  Statt 5083-H111 jetzt 6082-T6: gebunden / beide / nur neu mit Fundstelle und Verweis aufs
-//       Objekt; was keine nennt, wird gezählt; kein KI-Aufruf. Unvollständig oder gleich: ein Satz.
+//   B2  Statt 5083-H111 jetzt 6082-T6: gebunden / ausgeschlossen / beide / nur neu mit Fundstelle,
+//       Bewertung und Verweis aufs Objekt; was keine nennt, wird gezählt; die Einordnung allein
+//       ruft die KI nicht. Unvollständig oder gleich: ein Satz.
 //   B3  Mit Thema steht „nennt keine von beiden" einzeln da.
+//   B4  „Mit Klara durchspielen": die Frage der Quelle mit beiden Bedingungen geht über `ask`
+//       hinaus, steht im Fragefeld, und die Antwort erscheint mit ihrer Quelle.
+//   B5  KI gesperrt: der Knopf ist aus, die Fläche sagt warum, nichts geht hinaus — die Einordnung
+//       bleibt nutzbar.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../apps/web/src/app/RoleContext", () => ({
@@ -47,6 +53,8 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
           ko("ko-beide", "Schutzgas Argon", "Reines Argon verwenden.", ["5083-H111", "6082-T6"]),
           ko("ko-neu", "Nahtvorbereitung", "Bei 6082-T6 die Kanten entgraten.", []),
           ko("ko-ohne", "Schweißnaht reinigen", "Nach dem Schweißen die Naht bürsten.", []),
+          // Bens Gegenfall (Nacharbeit 1): nennt beide — und schließt die neue aus.
+          ko("ko-ausschluss", "Haltezeit", "Gilt für 5083-H111, nicht für 6082-T6.", []),
         ]),
       },
       conflicts: { list: vi.fn(async () => []) },
@@ -61,7 +69,20 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
         })),
       },
       ask: {
-        ask: vi.fn(async () => ({})),
+        ask: vi.fn(async () => ({
+          result: {
+            answered: true,
+            answer: "Das Schutzgas Argon gilt für beide Werkstoffe [1].",
+            knowledgeClass: "gesichert",
+            trust: 90,
+            sources: ["ko-beide"],
+            citedSources: ["ko-beide"],
+            steps: [],
+            demo: false,
+          },
+          gap: null,
+          receipt: "beleg-1",
+        })),
         helpful: vi.fn(async () => ({})),
       },
     },
@@ -212,14 +233,24 @@ describe("R-1628 · Was wäre, wenn … auf der Fragen-Seite", () => {
     );
     expect(gebunden?.querySelector('[data-testid="bedingungswechsel-fund-neu"]')).toBeNull();
 
+    // Bens Gegenfall: nennt beide, schließt die neue aus — steht NICHT unter „übertragbar belegt".
+    expect(eintraege(c, "neu_ausgeschlossen")).toEqual(["ko-ausschluss"]);
+    const ausschluss = gruppe(c, "neu_ausgeschlossen")?.querySelector<HTMLElement>(
+      '[data-testid="bedingungswechsel-fund-neu"]',
+    );
+    expect(ausschluss?.getAttribute("data-bewertung")).toBe("ausgeschlossen");
+    expect(ausschluss?.textContent).toContain(i18n.t("bedingungswechsel.bewertung.ausgeschlossen"));
+    expect(ausschluss?.textContent).toContain("Gilt für 5083-H111, nicht für 6082-T6.");
+
     expect(eintraege(c, "beide")).toEqual(["ko-beide"]);
     expect(eintraege(c, "nur_neu")).toEqual(["ko-neu"]);
+    expect(eintraege(c, "ungeklaert")).toEqual([]);
     // Ohne Thema: keine Liste „nennt keine", sondern die Zahl samt Satz.
     expect(gruppe(c, "keine")).toBeNull();
     expect(c.querySelector('[data-testid="bedingungswechsel-ohne-nennung"]')?.textContent).toBe(
       i18n.t("bedingungswechsel.ohneNennung", { count: 1, neu: "6082-T6" }),
     );
-    // Nichts ist an die KI gegangen.
+    // Die Einordnung allein hat nichts an die KI geschickt.
     expect(askMock).not.toHaveBeenCalled();
   });
 
@@ -235,5 +266,52 @@ describe("R-1628 · Was wäre, wenn … auf der Fragen-Seite", () => {
     expect(gruppe(c, "nur_bisher")?.textContent).toContain(i18n.t("bedingungswechsel.leer"));
     expect(c.querySelector('[data-testid="bedingungswechsel-ohne-nennung"]')).toBeNull();
     expect(askMock).not.toHaveBeenCalled();
+  });
+
+  it("B4 · „Mit Klara durchspielen“ stellt den Wechsel über den Frageweg", async () => {
+    const c = await montiere();
+    await klicke(c, '[data-testid="bedingungswechsel-umschalten"]');
+    await tippe(c, '[data-testid="bedingungswechsel-bisher"]', "5083-H111");
+    await tippe(c, '[data-testid="bedingungswechsel-neu"]', "6082-T6");
+    const knopf = c.querySelector<HTMLButtonElement>('[data-testid="bedingungswechsel-ki-knopf"]');
+    expect(knopf?.disabled).toBe(false);
+    expect(knopf?.textContent).toBe(i18n.t("bedingungswechsel.ki.knopf"));
+    await klicke(c, '[data-testid="bedingungswechsel-ki-knopf"]');
+
+    const frage = i18n.t("bedingungswechsel.ki.frage", { bisher: "5083-H111", neu: "6082-T6" });
+    expect(frage).toContain("5083-H111");
+    expect(frage).toContain("6082-T6");
+    expect(askMock).toHaveBeenCalledTimes(1);
+    expect(askMock.mock.calls[0]?.[0]).toBe(frage);
+    // Die Frage steht im Fragefeld (dem Feld im Frageformular) — sichtbar, was gefragt wurde.
+    expect(c.querySelector<HTMLInputElement>("form input")?.value).toBe(frage);
+    // Die Antwort kommt über die übliche Antwortfläche, die Einordnung bleibt stehen.
+    expect(c.textContent).toContain("Das Schutzgas Argon gilt für beide Werkstoffe");
+    expect(eintraege(c, "neu_ausgeschlossen")).toEqual(["ko-ausschluss"]);
+  });
+
+  it("B5 · KI gesperrt: Knopf aus, Grund sichtbar, nichts geht hinaus", async () => {
+    const statusMock = endpoints.reasoner.status as unknown as ReturnType<typeof vi.fn>;
+    const aktiv = { active: true, mode: "cloud", reachable: "active", tasks: { answer: true } };
+    statusMock.mockResolvedValue({ ...aktiv, tasks: { answer: false } });
+    try {
+      const c = await montiere();
+      await klicke(c, '[data-testid="bedingungswechsel-umschalten"]');
+      await tippe(c, '[data-testid="bedingungswechsel-bisher"]', "5083-H111");
+      await tippe(c, '[data-testid="bedingungswechsel-neu"]', "6082-T6");
+      // Die Einordnung ohne KI steht trotzdem.
+      expect(eintraege(c, "nur_bisher")).toEqual(["ko-gebunden"]);
+      const knopf = c.querySelector<HTMLButtonElement>(
+        '[data-testid="bedingungswechsel-ki-knopf"]',
+      );
+      expect(knopf?.disabled).toBe(true);
+      expect(c.querySelector('[data-testid="bedingungswechsel-ki-gesperrt"]')?.textContent).toBe(
+        i18n.t("ai.unavailable.hint"),
+      );
+      await klicke(c, '[data-testid="bedingungswechsel-ki-knopf"]');
+      expect(askMock).not.toHaveBeenCalled();
+    } finally {
+      statusMock.mockResolvedValue(aktiv);
+    }
   });
 });

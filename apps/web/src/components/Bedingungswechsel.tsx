@@ -3,9 +3,15 @@
 // ================================================================================================
 //
 // „Statt 5083-H111 jetzt 6082-T6": die Fläche ordnet den geladenen Bestand nach der EINEN Regel in
-// `lib/bedingungswechsel.ts` ein und zeigt je Wissensobjekt die Fundstelle. Sie rechnet sofort
-// beim Tippen — es geht nichts hinaus, keine KI wird gefragt, und deshalb steht sie auch dann zur
-// Verfügung, wenn die KI-Antwort gesperrt ist.
+// `lib/bedingungswechsel.ts` ein und zeigt je Wissensobjekt die Fundstelle samt Bewertung
+// (ausgeschlossen / nur erwähnt). Diese Einordnung rechnet sofort beim Tippen, ohne KI — sie steht
+// deshalb auch dann zur Verfügung, wenn die KI-Antwort gesperrt ist.
+//
+// DURCHSPIELEN MIT DER KI (Wortlaut der Quelle: „Der Nutzer kann mit der KI durchspielen"): der
+// Knopf „Mit Klara durchspielen" stellt den Wechsel als Frage über den BESTEHENDEN Frageweg der
+// Seite (`onDurchspielen` → `submitAsk` in `pages/Ask.tsx`). Damit gelten dieselben Regeln wie für
+// jede Frage: nur der sichtbare Bestand, Quellenpflicht, ohne tragende Quelle eine Lücke statt einer
+// Antwort, dieselbe KI-Sperre. Ein zweiter, eigener KI-Weg wäre ein Weg an diesen Regeln vorbei.
 //
 // Zugeklappt stehen KEINE Eingabefelder im Baum — dieselbe Zusage wie `FragekontextWahl`: das
 // Fragefeld bleibt das erste Eingabefeld der Seite.
@@ -18,10 +24,11 @@ import {
   BEDINGUNG_TEXT_MAX,
   type BedingungsEinordnung,
   type Fundstelle,
+  bedingungsFrage,
   bedingungsVorschlaege,
   vergleicheBedingungen,
 } from "../lib/bedingungswechsel";
-import { TextInput } from "./ui";
+import { Button, TextInput } from "./ui";
 
 function FundZeile({
   begriff,
@@ -37,9 +44,19 @@ function FundZeile({
     return null;
   }
   return (
-    <p data-testid={testid} data-fundort={fund.fundort} className="text-muted-2">
-      <span className="font-semibold">{begriff}</span> ·{" "}
-      {t(`bedingungswechsel.fundort.${fund.fundort}`)}: {fund.text}
+    <p
+      data-testid={testid}
+      data-fundort={fund.fundort}
+      data-bewertung={fund.bewertung}
+      className="text-muted-2"
+    >
+      <span className="font-semibold">{begriff}</span>
+      {fund.bewertung === "gilt" ? null : (
+        <span className="font-semibold text-trust-warn-text">
+          {` (${t(`bedingungswechsel.bewertung.${fund.bewertung}`)})`}
+        </span>
+      )}{" "}
+      · {t(`bedingungswechsel.fundort.${fund.fundort}`)}: {fund.text}
     </p>
   );
 }
@@ -70,10 +87,21 @@ function Eintrag({
 export function Bedingungswechsel({
   kos,
   fehler,
+  onDurchspielen,
+  kiVerfuegbar,
+  kiSperrHinweis,
+  wartet,
 }: {
   /** `undefined` = noch nicht geladen. */
   kos: readonly KnowledgeObject[] | undefined;
   fehler: boolean;
+  /** Stellt die Frage über den Frageweg der Seite — dieselbe Sperre wie das Fragefeld. */
+  onDurchspielen: (frage: string) => void;
+  kiVerfuegbar: boolean;
+  /** Warum die KI gerade nicht fragen kann — derselbe Satz wie am Fragefeld. */
+  kiSperrHinweis?: string | undefined;
+  /** Eine Frage läuft schon. */
+  wartet: boolean;
 }): JSX.Element {
   const { t } = useTranslation();
   const [offen, setOffen] = useState(false);
@@ -149,6 +177,22 @@ export function Bedingungswechsel({
               {t("bedingungswechsel.ohneNennung", { count: ohneThemaVerdeckt, neu: v.neu })}
             </p>
           ) : null}
+          <div data-testid="bedingungswechsel-ki" className="border-t border-hairline pt-2">
+            <Button
+              data-testid="bedingungswechsel-ki-knopf"
+              variant="primary"
+              disabled={!kiVerfuegbar || wartet}
+              onClick={() => onDurchspielen(bedingungsFrage(v, t))}
+            >
+              {t("bedingungswechsel.ki.knopf")}
+            </Button>
+            <p className="mt-1 text-muted-2">{t("bedingungswechsel.ki.hinweis")}</p>
+            {!kiVerfuegbar && kiSperrHinweis ? (
+              <p data-testid="bedingungswechsel-ki-gesperrt" className="mt-1">
+                {kiSperrHinweis}
+              </p>
+            ) : null}
+          </div>
         </div>
       );
     }

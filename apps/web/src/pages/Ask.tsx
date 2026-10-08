@@ -1556,8 +1556,17 @@ export function Ask(): JSX.Element {
             stehen vorn; nichts wird ausgeblendet. Zugeklappt, solange niemand es braucht. */}
         <FragekontextWahl wert={fragekontext} onWert={setFragekontext} kos={kos.data ?? []} />
         {/* R-1628: „Was wäre, wenn …" — welche Wissensobjekte an die bisherige Bedingung gebunden
-            sind und welche auch die neue nennen. Ohne KI, aus dem geladenen Bestand; zugeklappt. */}
-        <Bedingungswechsel kos={kos.data} fehler={kos.isError} />
+            sind, welche die neue ausschließen und welche für beide belegt sind (ohne KI, aus dem
+            geladenen Bestand; zugeklappt). „Mit Klara durchspielen" stellt den Wechsel als Frage
+            über DENSELBEN Submit wie Feld und Chips — Quellenpflicht und KI-Sperre inklusive. */}
+        <Bedingungswechsel
+          kos={kos.data}
+          fehler={kos.isError}
+          onDurchspielen={askExample}
+          kiVerfuegbar={answerAi.available}
+          kiSperrHinweis={!answerAi.available ? t(aiHintKey) : undefined}
+          wartet={ask.isPending}
+        />
         <FrageFeld
           wert={q}
           onWert={setQ}
