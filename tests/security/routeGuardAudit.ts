@@ -16,6 +16,9 @@ import { readdirSync } from "node:fs";
 //  - <Permission>         : serverseitige Rechteprüfung (requirePermission).
 //  - "action-dispatched"  : ein Endpunkt mit mehreren Aktionen, jede mit eigener Rechteprüfung
 //                           (z. B. PUT /api/kos/:id) — nie öffentlich.
+//  - "dienst-schluessel"  : nur ein Dienst-Schlüssel kommt durch; die Route ruft eine dateieigene
+//                           Torwache, deren RUMPF `principal.dienst` und den Schlüsselkopf prüft und
+//                           sonst 401 sendet (R-0713, `/mcp`). Nie öffentlich.
 export type Protection =
   | "public"
   | "auth"
@@ -28,7 +31,8 @@ export type Protection =
   | "ko.relate"
   | "conflict.resolve"
   | "users.manage"
-  | "action-dispatched";
+  | "action-dispatched"
+  | "dienst-schluessel";
 
 export const KNOWN_PERMISSIONS: readonly Protection[] = [
   "ko.read",
@@ -51,16 +55,72 @@ export interface ScannedRoute {
 
 const ROUTE_RE = /app\.(get|post|put|delete|patch)\b/g;
 
+// Der Pfad steht im ERSTEN Argument der Registrierung — nicht irgendwo im Block.
+//
+// Befund (Prüfung am Kandidaten dbb4ec4f): `mcp-routes.ts` registriert `app.post(MCP_PFAD, …)` mit
+// einer Konstante. Der Scanner nahm bis hier das erste `"/…"`-Literal im GANZEN Block — dort das
+// Ziel der internen Weiterleitung `url: "/api/ask"`. Er meldete dadurch `POST /api/ask` als
+// öffentlich (die geschützte echte Route wurde überschrieben) und sah `/mcp` gar nicht.
+// Deshalb: optionale Typargumente `<…>` überspringen, dann `(`, dann entweder ein Literal oder ein
+// Bezeichner, der in DERSELBEN Datei als `const NAME = "/…"` steht. Alles andere bleibt unbekannt
+// und wird wie bisher übergangen.
+function registrierterPfad(text: string, nachMethode: number): string | undefined {
+  let i = nachMethode;
+  if (text[i] === "<") {
+    let tiefe = 0;
+    for (; i < text.length; i++) {
+      if (text[i] === "<") {
+        tiefe += 1;
+      } else if (text[i] === ">" && text[i - 1] !== "=") {
+        tiefe -= 1;
+        if (tiefe === 0) {
+          i += 1;
+          break;
+        }
+      }
+    }
+  }
+  const KOPF_RE = /^\s*\(\s*(?:"(\/[A-Za-z0-9/:_.-]+)"|([A-Za-z_$][\w$]*))/;
+  const kopf = KOPF_RE.exec(text.slice(i, i + 400));
+  if (!kopf) {
+    return undefined;
+  }
+  if (kopf[1] !== undefined) {
+    return kopf[1];
+  }
+  const konstante = new RegExp(`\\bconst ${kopf[2]}\\s*=\\s*"(\\/[A-Za-z0-9/:_.-]+)"`).exec(text);
+  return konstante?.[1];
+}
+
+// Dateieigene Torwachen für Dienst-Schlüssel, erkannt an ihrem RUMPF statt an ihrem Namen: eine
+// `const NAME = (request…) => { … }`, die `principal.dienst` und `DIENST_SCHLUESSEL_HEADER` prüft
+// und mit 401 abweist.
+function dienstSchluesselWachen(text: string): string[] {
+  const wachen: string[] = [];
+  for (const m of text.matchAll(/const (\w+) = \(request[^)]*\)[^{]*=> \{([\s\S]*?)\n\s*\};/g)) {
+    const rumpf = m[2] ?? "";
+    if (
+      rumpf.includes("principal.dienst") &&
+      rumpf.includes("DIENST_SCHLUESSEL_HEADER") &&
+      rumpf.includes("code(401)")
+    ) {
+      wachen.push(m[1] ?? "");
+    }
+  }
+  return wachen;
+}
+
 // Scannt eine einzelne Quelldatei: findet jede Routen-Registrierung, ihre URL und die im
 // Handler-Block verwendete Schutzart. Block = von einer app.<method>(-Stelle bis zur nächsten.
 export function scanRouteFile(text: string, file: string): ScannedRoute[] {
-  const marks: { method: string; idx: number }[] = [];
+  const wachen = dienstSchluesselWachen(text);
+  const marks: { method: string; idx: number; nach: number }[] = [];
   let m: RegExpExecArray | null;
   // Frischer Regex-Zustand je Aufruf (g-Flag teilt lastIndex).
   const re = new RegExp(ROUTE_RE.source, "g");
   // biome-ignore lint/suspicious/noAssignInExpressions: idiomatischer Regex-Scan
   while ((m = re.exec(text))) {
-    marks.push({ method: (m[1] ?? "").toUpperCase(), idx: m.index });
+    marks.push({ method: (m[1] ?? "").toUpperCase(), idx: m.index, nach: m.index + m[0].length });
   }
   const out: ScannedRoute[] = [];
   for (let i = 0; i < marks.length; i++) {
@@ -70,8 +130,7 @@ export function scanRouteFile(text: string, file: string): ScannedRoute[] {
     }
     const end = marks[i + 1]?.idx ?? text.length;
     const block = text.slice(mark.idx, end);
-    const urlMatch = block.match(/"(\/[A-Za-z0-9/:_.-]+)"/);
-    const url = urlMatch?.[1] ?? "(unknown)";
+    const url = registrierterPfad(text, mark.nach) ?? "(unknown)";
     if (!url.startsWith("/")) {
       continue;
     }
@@ -90,6 +149,8 @@ export function scanRouteFile(text: string, file: string): ScannedRoute[] {
       // gültiger Add-in-Key liefert einen synthetischen viewer (RBAC viewer = EXAKT ko.read), sonst
       // unverändert der Session-Guard requirePermission("ko.read"). Also niemals öffentlich.
       protection = "ko.read";
+    } else if (wachen.some((w) => new RegExp(`\\b${w}\\(request`).test(block))) {
+      protection = "dienst-schluessel";
     } else {
       protection = "public";
     }
@@ -429,6 +490,13 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // unterscheiden. Der Add-on-Zweig derselben Route fuehrt das Praedikat NICHT.
   "POST /api/ask": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   "POST /api/ask/helpful": { protection: "ko.read" },
+
+  // --- MCP (mcp-routes.ts, R-0713) ---
+  // Registriert mit der Konstante `MCP_PFAD`; erst seit der Scanner den Registrierungskopf liest,
+  // stehen sie hier. Beide nur mit Dienst-Schlüssel (`zugang`: 401 ohne, 403 mit `Origin`); die
+  // Frage selbst läuft danach über `POST /api/ask` mit demselben Schlüssel.
+  "GET /mcp": { protection: "dienst-schluessel" },
+  "POST /mcp": { protection: "dienst-schluessel" },
   // SCRUM-527: Live-Check (Ähnlichkeit/Widerspruch eines Entwurfstextes gegen den Bestand).
   // produkt:20261007:spaces: ähnliche Artikel/Widersprüche nur aus dem für den Prüfenden Sichtbaren.
   "POST /api/knowledge/check": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
