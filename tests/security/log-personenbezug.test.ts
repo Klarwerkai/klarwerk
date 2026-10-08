@@ -61,6 +61,10 @@ describe("R-0664 · Personenmuster in der Logsenke", () => {
     expect(sanitizeLogText(`Zustellung an ${ADRESSE} abgelehnt`, {})).toBe(
       "Zustellung an [redacted] abgelehnt",
     );
+    // URL-kodiert — so steht sie in Fastifys Meldung zu einer unbekannten Route.
+    expect(sanitizeLogText("Route GET:/api/nutzer/anna.meier%40klinik-nord.de not found", {})).toBe(
+      "Route GET:/api/nutzer/[redacted] not found",
+    );
     const lang = "vorname.nachname.abteilung.standort@klinik-nord.de";
     const gereinigt = sanitizeLogText(`an ${lang}`, {});
     expect(gereinigt).not.toContain("klinik-nord.de");
@@ -252,6 +256,47 @@ describe("R-0664 · Personenmuster in der Logsenke", () => {
     expect(zeile?.req).toEqual({ methode: "GET", pfad: "/api/x" });
     expect(puffer.roh()).not.toContain("Meier");
     expect(puffer.roh()).not.toContain(ADRESSE);
+    await app.close();
+  });
+
+  // Ben, Nacharbeit 6: `req` läuft an der Senke vorbei zu seinem Serializer — der entfernte nur den
+  // Abfrageteil. Eine Adresse IM PFAD stand damit im Protokoll.
+  it("am ECHTEN Logger: eine Adresse im Pfad steht nicht in der Zeile — auch kodiert nicht", async () => {
+    const puffer = logPuffer();
+    const app = buildApp(buildServices(), { log: { senke: puffer.senke, stufe: "info" } });
+    app.log.warn({ probe: "pfad-roh", req: { method: "GET", url: `/${ADRESSE}` } }, "Probe");
+    app.log.warn(
+      {
+        probe: "pfad-kodiert",
+        req: { method: "GET", url: "/api/nutzer/anna.meier%40klinik-nord.de/profil?x=1" },
+      },
+      "Probe",
+    );
+    const zeilen = puffer.zeilen();
+    expect(zeilen.find((z) => z.probe === "pfad-roh")?.req).toEqual({
+      methode: "GET",
+      pfad: "/[redacted]",
+    });
+    expect(zeilen.find((z) => z.probe === "pfad-kodiert")?.req).toEqual({
+      methode: "GET",
+      pfad: "/api/nutzer/[redacted]/profil",
+    });
+    expect(puffer.roh()).not.toContain("anna.meier");
+    expect(puffer.roh()).not.toContain("klinik-nord");
+    await app.close();
+  });
+
+  it("am ECHTEN Logger: eine echte Anfrage behält ihre lesbare Route", async () => {
+    const puffer = logPuffer();
+    const app = buildApp(buildServices(), { log: { senke: puffer.senke, stufe: "info" } });
+    // Eine echte FastifyRequest-Instanz — sie geht unverändert an den Serializer.
+    await app.inject({ method: "GET", url: `/api/nutzer/${encodeURIComponent(ADRESSE)}` });
+    const pfade = puffer
+      .zeilen()
+      .map((z) => (z.req as Record<string, unknown> | undefined)?.pfad)
+      .filter((p): p is string => typeof p === "string");
+    expect(pfade).toContain("/api/nutzer/[redacted]");
+    expect(puffer.roh()).not.toContain("anna.meier");
     await app.close();
   });
 

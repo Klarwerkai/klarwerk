@@ -2296,6 +2296,33 @@ export function pfadOhneAbfrage(url: string): string {
 }
 
 /**
+ * R-0664 (Ben, Nacharbeit 6): der Pfad, wie er ins Protokoll darf — ohne Abfrageteil und JE
+ * SEGMENT durch `sanitizeLogText`.
+ *
+ * WARUM JE SEGMENT: Regel 4 von `sanitizeLogText` zählt `/` zum Token-Alphabet. Über den ganzen
+ * Pfad angewandt, würde schon `/api/knowledge-objects/<kennung>` als EIN langes Wort komplett zu
+ * `[redacted]` — die Route wäre nicht mehr lesbar. Je Segment fällt nur das Segment, das selbst
+ * verdächtig ist (Adresse, Token, lange Kennung); die Route bleibt erkennbar.
+ *
+ * Kodierte Segmente (`anna.meier%40example.org`) werden vorher dekodiert, sonst sähe die
+ * Adressregel das `@` nie. Ein nicht dekodierbares Segment wird roh bereinigt.
+ */
+export function pfadFuerProtokoll(url: string): string {
+  return pfadOhneAbfrage(String(url))
+    .split("/")
+    .map((segment) => sanitizeLogText(dekodiertOderRoh(segment)).split("/").join("%2F"))
+    .join("/");
+}
+
+function dekodiertOderRoh(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+/**
  * JOB 2661 D2 — DER ORT IM CODE, AN DEM DER FEHLER ENTSTAND. OHNE SEINEN TEXT.
  *
  * Das ist die Antwort auf „ein Fehlercode ohne Text macht die Fehlersuche schwerer". Aus dem Stack
@@ -2496,9 +2523,12 @@ export function baueLoggerOptionen(vorgabe?: {
       //
       // Die Parametertypen sind bewusst die schmalstmöglichen: der Serializer darf nur sehen, was
       // er verarbeitet. Bei `FastifyRequest` läge der ganze Request offen.
+      // R-0664 (Ben, Nacharbeit 6): `req` läuft unberührt an der Senke vorbei (sonst würde die
+      // `FastifyRequest`-Instanz ersetzt) — die beiden ausgewählten Textwerte werden deshalb HIER
+      // bereinigt. Eine Adresse im Pfad (`/nutzer/anna.meier@…`) stand sonst im Protokoll.
       req: (request: { method: string; url: string }) => ({
-        methode: request.method,
-        pfad: pfadOhneAbfrage(request.url),
+        methode: sanitizeLogText(String(request.method)),
+        pfad: pfadFuerProtokoll(request.url),
       }),
       res: (reply: { statusCode: number }) => ({ status: reply.statusCode }),
       // ==========================================================================================

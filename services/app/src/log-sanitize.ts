@@ -38,8 +38,9 @@ export function entferneGeheimeEnvWerte(
 // R-0594); diese Regeln sind die zweite Linie für Freitext, der an ihnen vorbeiläuft.
 
 // (P1) E-Mail-Adressen. Läuft VOR Regel (4): Ein langer lokaler Teil würde sonst zu `[redacted]`
-// und die Domäne bliebe als Rest im Text stehen.
-const EMAIL_ADRESSE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+// und die Domäne bliebe als Rest im Text stehen. Auch URL-kodiert (`%40`): Fastify schreibt eine
+// unbekannte Route als `Route GET:/…/anna.meier%40… not found` ins Protokoll (Ben, Nacharbeit 6).
+const EMAIL_ADRESSE = /[A-Za-z0-9._%+-]+(?:@|%40)[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
 
 // (P2) Ausdrücklich ausgewiesene Namen: `Name: Anna Meier`, `vorname=Anna`, `Autor: "A. Meier"`.
 // Das Etikett braucht eine Wortgrenze davor (`Dateiname:`/`Hostname:` bleiben stehen); der Wert ist
