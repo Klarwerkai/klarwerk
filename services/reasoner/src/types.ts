@@ -180,6 +180,24 @@ export interface AnswerResult {
   abgeschnitten?: AbbruchBefund;
 }
 
+// FR-STR-01 (R-0315): die Wissensart des Strukturierungsvorschlags. Dieselben fünf Werte wie
+// `KnowledgeType` im Modul knowledge-object — hier gespiegelt, weil der Reasoner knowledge-object
+// nicht direkt kennt (siehe KnowledgeRef). Gleichlauf ist in provider-model.test.ts gepinnt.
+export type StructureKnowledgeType =
+  | "bauchgefuehl"
+  | "best_practice"
+  | "lernkurve"
+  | "technik"
+  | "negativwissen";
+
+export const STRUCTURE_KNOWLEDGE_TYPES: readonly StructureKnowledgeType[] = [
+  "bauchgefuehl",
+  "best_practice",
+  "lernkurve",
+  "technik",
+  "negativwissen",
+];
+
 export interface StructureResult {
   title: string;
   statement: string;
@@ -187,6 +205,9 @@ export interface StructureResult {
   measures: string[];
   tags: string[];
   confidence: number;
+  // FR-STR-01: die vom Modell vorgeschlagene Wissensart. Fehlt, wenn das Modell keinen der fünf
+  // gültigen Werte liefert oder der deterministische Fallback lief — dort wird nie geraten (G-2).
+  knowledgeType?: StructureKnowledgeType;
   demo: boolean;
   // WP-D8 (Pedis Live-ROT B): WARUM lief der deterministische Fallback? demo:true allein verschluckte
   // drei verschiedene Ursachen — die UI konnte nur ein erklärungsloses FALLBACK-Badge zeigen.

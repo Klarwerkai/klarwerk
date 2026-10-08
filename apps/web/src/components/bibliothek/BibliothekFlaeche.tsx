@@ -1245,15 +1245,24 @@ export function BibliothekFlaeche({
   // Bericht die Fläche und die Liste ist (in der Vorgabe) eingeklappt. Eine Vorwahl stellte den
   // Erstbesuch in einen Bericht, den niemand gewählt hat, mit weggeklappter Liste davor. Ohne Wahl
   // trägt deshalb die Liste die Fläche allein — wie auf dem Telefon.
+  //
+  // UX-02 · LESEWAHL BEI VERZÖGERTEM BESTAND (`docs/entscheidungen/ux02-lesewahl.md`) — DIE VORWAHL
+  // FOLGT DER LISTE, NICHT DER UNGEPRÜFTEN MENGE DAHINTER. Schweigt die Liste (`listeSchweigt`:
+  // Adresskeim wartet auf den bestätigten Bestand, oder dessen Erstabruf ist gescheitert), steht
+  // links KEINE Zeile — `win.visible` ist dann aber schon die ungeprüft gefilterte Menge. Ihr erster
+  // Eintrag rechts wäre ein Bericht, den weder der Mensch gewählt noch die Liste als Treffer
+  // genannt hat: genau der stille Ersatz aus N-0006, nur zeitlich verschoben. Die AUSDRÜCKLICHE
+  // Wahl (`gewaehlt`, Pfad oder `EINTRAG_PARAM`) hängt nicht an der Liste und bleibt stehen; die
+  // Lesefläche selbst wird nicht ausgeblendet, sie bleibt bis zur Antwort nur ohne Bericht.
   const einspaltig = schmal || tablet;
-  const vorwahl = einspaltig ? null : (sichtbareIds[0] ?? null);
+  const vorwahl = einspaltig || listeSchweigt ? null : (sichtbareIds[0] ?? null);
   const gewaehltEffektiv = gewaehlt ?? vorwahl;
   // N-0074 (K27): die AUSDRÜCKLICHE Wahl bleibt stehen (N-0006, oben) — aber die Lesefläche sagt
   // jetzt, wenn Suche, Facetten, Zeitraum, Umschalter oder Bereich sie aus der Treffermenge
   // ausschliessen. Geprüft wird gegen die VOLLE gefilterte Menge (`sorted`), nicht gegen das
   // sichtbare Fenster: ein Eintrag hinter „Mehr laden" ist ein Treffer. Nur bei frischem Abruf
   // und geprüfter Auswahl — sonst wäre „nicht dabei" eine Aussage ohne Grundlage. Die Vorwahl
-  // (`vorwahl`) ist per Bau immer ein Treffer und braucht die Prüfung nicht.
+  // (`vorwahl`) ist per Bau immer ein Treffer einer zeichnenden Liste und braucht die Prüfung nicht.
   const auswahlAusserhalbTreffer =
     gewaehlt !== null &&
     frisch &&
