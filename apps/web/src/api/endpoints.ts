@@ -977,11 +977,14 @@ export const endpoints = {
       answers: string[],
       locale: ReasonerLocale | undefined,
       provenance: ReasonerProvenance,
+      // R-1624: bestätigter Bildbefund des Fotos (Klartext, kein Bild) → Foto-Fragenfolge.
+      imageContext?: string,
     ) =>
       api.post<InterviewResult>("/reasoner", {
         task: "interview",
         answers,
         ...(locale ? { locale } : {}),
+        ...(imageContext?.trim() ? { imageContext: imageContext.trim() } : {}),
         ...provenanceFields(provenance),
       }),
     // WP-BILD-1c/1f: KI-Bildbeschreibung als VORSCHLAG für die Bild-Fußnote (Vision). EIGENE
