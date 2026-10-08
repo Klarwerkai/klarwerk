@@ -579,7 +579,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/klara/ai-status": { protection: "ko.read" },
   // W3-C (JOB 541 D3): die kanonische Antwort-Erklaerung. `ko.read`, weil sie Kennungen und
   // Fassungen von Wissensobjekten zeigt; die Eigentumspruefung liegt zusaetzlich im Dienst.
-  "GET /api/klara/answers/:answerId/explanation": { protection: "ko.read" },
+  // R-1175 (Nacharbeit 3): die Belege fahren zusätzlich die EINE Sichtbarkeitsentscheidung.
+  "GET /api/klara/answers/:answerId/explanation": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
   // (b) Registriert die Zuordnung autoritativ und vergibt die opake documentContextId. Legt nur
   // Sitzungsmetadaten an, liest und schreibt kein KO.
   "POST /api/klara/sessions": { protection: "ko.read" },
@@ -600,7 +604,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Klara-Endpunkte — die Route liest validierte, nicht vertrauliche KOs (dropConfidential im
   // Erzeuger) und erzeugt einen Vorschlag; ob sie das darf, entscheidet das Sitzungstor je
   // Sitzung und Dokument (pruefeExterneAusfuehrung), nicht RBAC. Sie schreibt nichts.
-  "POST /api/klara/sessions/:sessionId/zuruf": { protection: "ko.read" },
+  // R-1175 (Nacharbeit 3): die Quellen fahren zusätzlich die EINE Sichtbarkeitsentscheidung.
+  "POST /api/klara/sessions/:sessionId/zuruf": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
 
   // --- Library / Import / Analytics / Graph (library-routes.ts) ---
   // JOB 3507: requireUser öffnet die Auskunft; fehlendes ko.read liefert 200 + leere Liste.
@@ -708,12 +716,19 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/learning-paths/:pathId/progress": { protection: "ko.read" },
 
   // --- Output (output-routes.ts) ---
-  "GET /api/output/sources": { protection: "ko.read" },
-  "POST /api/output/generate": { protection: "ko.read" },
+  // R-1175 (Nacharbeit 3): Quellen und Erzeugung fahren die EINE Sichtbarkeitsentscheidung.
+  "GET /api/output/sources": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
+  "POST /api/output/generate": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
 
   // --- Lernplattform-Übergabe (lms-export-routes.ts) ---
-  "POST /api/output/scorm/pruefen": { protection: "ko.read" },
-  "POST /api/output/scorm/paket": { protection: "ko.read" },
+  "POST /api/output/scorm/pruefen": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/output/scorm/paket": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
 
   // --- Management / Model-runs / External / Audit / Reasoner / Objects ---
   "GET /api/management/snapshot": {
@@ -777,7 +792,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/capture/slides": { protection: "ko.create" },
   // WP-RETEST7 R8: leichter Verfügbarkeits-Check vor dem großen Upload (gleicher Guard).
   "GET /api/capture/slides/availability": { protection: "ko.create" },
-  "POST /api/reasoner": { protection: "ko.read" },
+  // R-1175 (Nacharbeit 3): die Aufgabe `ask` fährt dieselbe Grundlage wie `/api/ask`.
+  "POST /api/reasoner": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   // WP-BILD-1c/1f: KI-Bildbeschreibungs-Vorschlag — eigene Route mit großem bodyLimit; gleicher
   // Guard wie der Text-Dispatcher, zusätzlich Auth VOR dem Body-Parsing (onRequest requireUser).
   "POST /api/reasoner/describe": { protection: "ko.read" },

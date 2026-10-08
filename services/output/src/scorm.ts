@@ -479,13 +479,23 @@ export class LmsExportService {
   }
 
   /** Prüfung vor dem Export: sagt, was blockiert und was nicht mitgeht — erzeugt kein Paket. */
-  async pruefe(eingabe: ScormExportEingabe): Promise<ScormPruefung> {
-    return (await this.bereite(eingabe)).pruefung;
+  //
+  // R-1175: `sichtbar` ist die EINE Sichtbarkeitsentscheidung des Betrachters (von der Route aus
+  // `sichtbarkeitsfilterFuer`). Ein Objekt, das er nicht sehen darf, blockiert wie ein unbekanntes
+  // (`UNKNOWN_KO`) — ohne Titel im Befund. Die Vertraulichkeitssperre bleibt daneben bestehen.
+  async pruefe(
+    eingabe: ScormExportEingabe,
+    sichtbar: (ko: KnowledgeObject) => boolean = () => true,
+  ): Promise<ScormPruefung> {
+    return (await this.bereite(eingabe, sichtbar)).pruefung;
   }
 
   /** Paket erzeugen. Bei blockierenden Befunden kein Paket, sondern die Prüfung als Antwort. */
-  async exportiere(eingabe: ScormExportEingabe): Promise<ScormPaket | { pruefung: ScormPruefung }> {
-    const { pruefung, dateien } = await this.bereite(eingabe);
+  async exportiere(
+    eingabe: ScormExportEingabe,
+    sichtbar: (ko: KnowledgeObject) => boolean = () => true,
+  ): Promise<ScormPaket | { pruefung: ScormPruefung }> {
+    const { pruefung, dateien } = await this.bereite(eingabe, sichtbar);
     if (!pruefung.exportierbar || !pruefung.fassung) {
       return { pruefung };
     }
@@ -505,9 +515,13 @@ export class LmsExportService {
   // Exportiert wird immer die AKTUELLE Fassung. Eine frühere Fassung erneut auszugeben ist bewusst
   // nicht Teil dieser Lieferung: ein Versions-Schnappschuss entsteht beim Schreiben, die Validierung
   // oft später — er belegt also nicht, dass genau diese Fassung je validiert war.
-  private async lade(id: string, befunde: ScormBefund[]): Promise<Einheit | null> {
+  private async lade(
+    id: string,
+    befunde: ScormBefund[],
+    sichtbar: (ko: KnowledgeObject) => boolean,
+  ): Promise<Einheit | null> {
     const aktuell = await this.deps.koService.get(id);
-    if (!aktuell) {
+    if (!aktuell || !sichtbar(aktuell)) {
       befunde.push(blockiert("UNKNOWN_KO", "inhalt", id, id));
       return null;
     }
@@ -540,7 +554,10 @@ export class LmsExportService {
     return { ko, version: ko.version, stand };
   }
 
-  private async bereite(eingabe: ScormExportEingabe): Promise<Vorbereitung> {
+  private async bereite(
+    eingabe: ScormExportEingabe,
+    sichtbar: (ko: KnowledgeObject) => boolean,
+  ): Promise<Vorbereitung> {
     const befunde: ScormBefund[] = [];
     const sprache = eingabe.sprache;
     const b = SCORM_BESCHRIFTUNG[sprache];
@@ -580,7 +597,7 @@ export class LmsExportService {
     let inhaltVollstaendig = ids.length > 0 && ids.length <= MAX_SCORM_EINHEITEN;
     if (inhaltVollstaendig) {
       for (const id of ids) {
-        const e = await this.lade(id, befunde);
+        const e = await this.lade(id, befunde, sichtbar);
         if (e) {
           einheiten.push(e);
         } else {
