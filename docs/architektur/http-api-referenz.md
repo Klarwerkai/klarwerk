@@ -200,8 +200,8 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `GET` | `/api/capture/slides/availability` | `ko.create` | — | 200 `{ available }` | — |
 | `POST` | `/api/capture/slides` | `ko.create` (vor dem Einlesen) | Rumpf `{ data }` (Base64 PPTX) | 200 Folienbilder | 400 `BAD_REQUEST`; 413 `PAYLOAD_TOO_LARGE`; 415 `SLIDES_INVALID`; 422 `SLIDES_TIMEOUT`; 429 `RATE_LIMITED`, `CONVERSION_BUSY`; 408 `CLIENT_ABORTED`; 503 `SLIDES_UNAVAILABLE`; 500 `SLIDES_FAILED` |
 | `POST` | `/api/objects` | `ko.create` (vor dem Einlesen) | Rumpf `{ name, mime, data, kind?, confidentiality?, purpose?, draftId? }` | 201 Objektbeschreibung | Dienstfehler |
-| `GET` | `/api/objects/:id` | `ko.read`, nur Anhänge sichtbarer Träger | — | 200 Objekt | 404 `NOT_FOUND` |
-| `GET` | `/api/objects/:id/raw` | `ko.read`, wie oben | — | 200 Rohbytes mit Inhaltstyp | 404; 415 `UNSUPPORTED` |
+| `GET` | `/api/objects/:id` | `ko.read`, nur Anhänge sichtbarer Träger | — | 200 Objekt (`Cache-Control` nach Trägerurteil: vertraulich `no-store`, sonst `private, no-cache, must-revalidate`; `Vary: Cookie, Authorization`) | 404 `NOT_FOUND` (`no-store`) |
+| `GET` | `/api/objects/:id/raw` | `ko.read`, wie oben | — | 200 Rohbytes mit Inhaltstyp (Cachevertrag wie oben) | 404; 415 `UNSUPPORTED` (beide `no-store`) |
 | `GET` | `/api/media/status` | `requireUser` | — | 200 Engine-Auskunft | — |
 | `POST` | `/api/media/analyze` | `ko.read` | Rumpf `{ objectId, locale?, confidentiality? }` | 200 Analyse | 404 `NOT_FOUND` |
 
