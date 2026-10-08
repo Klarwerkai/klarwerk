@@ -38,6 +38,8 @@
 //   · die Bewertung an einer anderen Version hängt als der heute gebundenen (veraltet).
 // Eine Bewertung „exponiert" sperrt nicht, sie wird bei JEDEM Lauf laut ausgegeben: sie ist eine
 // bewusst offene, vorgelegte Entscheidung (z. B. `nodemailer`, Hauptwechsel 6 → 9), kein Freibrief.
+// AUSNAHME, und sie sperrt: „exponiert" mit `behebung_ausstehend` — eine kompatible Behebung ist
+// bekannt, aber nicht umgesetzt. Offen bleiben darf nur, was sich nicht kompatibel beheben lässt.
 //
 // RÜCKGABEWERTE:
 //   0 = jede Meldung bewertet, an der gebundenen Version
@@ -75,6 +77,12 @@ export interface Meldung {
   readonly titel: string;
   readonly bereich: string;
   readonly ort: string;
+  /**
+   * Was npm selbst über die Behebbarkeit meldet (`fixAvailable` des Pakets): „kompatibel" (ein
+   * `npm audit fix` ohne `--force` behebt es), „keine" oder `name@version` mit Hinweis auf einen
+   * Hauptwechsel. Eine AUSKUNFT der Registry, keine geprüfte Zielversion.
+   */
+  readonly fix: string;
 }
 
 /** Ein Eintrag des Registers — die Bewertung EINER Advisory an EINEM Ort in EINER Version. */
@@ -88,6 +96,12 @@ export interface Bewertung {
   readonly begruendung: string;
   readonly beleg: string;
   readonly bewertet_am: string;
+  /**
+   * Nur bei „exponiert": eine kompatible Behebung ist bekannt, aber noch nicht umgesetzt (was fehlt
+   * und warum). Solange das Feld steht, SPERRT die Prüfung — der Auftrag verlangt die kompatible
+   * Behebung; offen bleiben darf nur, was sich nicht kompatibel beheben lässt.
+   */
+  readonly behebung_ausstehend?: string;
 }
 
 export interface Fund extends Meldung {
@@ -121,6 +135,21 @@ interface AuditEintrag {
   readonly name?: string;
   readonly nodes?: readonly string[];
   readonly via?: readonly unknown[];
+  readonly fixAvailable?:
+    | boolean
+    | { readonly name?: string; readonly version?: string; readonly isSemVerMajor?: boolean };
+}
+
+function fixVon(eintrag: AuditEintrag): string {
+  const f = eintrag.fixAvailable;
+  if (f === true) {
+    return "kompatibel";
+  }
+  if (f === false || f === undefined) {
+    return "keine";
+  }
+  const ziel = `${f.name ?? "?"}@${f.version ?? "?"}`;
+  return f.isSemVerMajor ? `${ziel} (Hauptwechsel)` : ziel;
 }
 
 interface AuditRoh {
@@ -187,6 +216,7 @@ export function liesAuditBericht(text: string): Bericht {
           titel: v.title ?? "",
           bereich: v.range ?? "",
           ort,
+          fix: fixVon(eintrag),
         });
       }
     }
@@ -209,6 +239,11 @@ export function registerFehler(register: readonly Bewertung[]): string[] {
       [Boolean(b.begruendung?.trim()), "ohne Begründung"],
       [Boolean(b.beleg?.trim()), "ohne Beleg"],
       [/^\d{4}-\d{2}-\d{2}$/.test(b.bewertet_am ?? ""), "ohne Datum"],
+      [
+        b.behebung_ausstehend === undefined ||
+          (b.behebung_ausstehend.trim() !== "" && b.urteil === "exponiert"),
+        "behebung_ausstehend nur mit Inhalt und nur bei „exponiert“",
+      ],
     ];
     for (const [ok, text] of pruefungen) {
       if (!ok) {
@@ -262,7 +297,8 @@ export interface Ergebnis {
 
 function fundZeile(f: Fund): { readonly sperrt: boolean; readonly zeile: string } {
   const version = f.version ?? "fehlt in der Lockdatei";
-  const was = `${f.kennung} ${f.paket}@${version} (${f.ort}, ${f.schwere})`;
+  const ort = `${f.ort}, ${f.schwere}; npm-Behebung: ${f.fix}`;
+  const was = `${f.kennung} ${f.paket}@${version} (${ort})`;
   const b = f.bewertung;
   if (f.zustand === "unbewertet") {
     const bereich = f.bereich ? ` [betroffen ${f.bereich}]` : "";
@@ -271,6 +307,11 @@ function fundZeile(f: Fund): { readonly sperrt: boolean; readonly zeile: string 
   if (f.zustand === "veraltet") {
     const alt = `bewertet war ${b?.version} am ${b?.bewertet_am}`;
     return { sperrt: true, zeile: `  ✖ Bewertung veraltet: ${was} — ${alt}` };
+  }
+  if (b?.behebung_ausstehend) {
+    const grund = `${b.behebung_ausstehend} (${b.beleg})`;
+    const zeile = `  ✖ exponiert, kompatible Behebung ausstehend: ${was} — ${grund}`;
+    return { sperrt: true, zeile };
   }
   if (b?.urteil === "exponiert") {
     const grund = `${b.begruendung} (${b.beleg})`;

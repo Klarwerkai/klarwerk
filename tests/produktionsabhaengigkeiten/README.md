@@ -537,21 +537,29 @@ Version, in `tools/abhaengigkeiten-bewertet.json`. Jede Bewertung ruht auf einem
   Der Eintrag ist der von npm erzeugte aus `package-lock.json`, wo 0.8.15 schon gebunden war und der
   echte Audit nichts meldete. Er liegt ausserhalb aller zehn Bereiche (≤ 0.8.14). Wichtig, weil
   `docx.ts` mammoth aus `apps/web` lädt, auch serverseitig im Weg `POST /api/drafts/from-docx`.
-- `sharp` (GHSA-wq5f-xc86-pv6w, librsvg): der Aufrufpfad ist geschlossen. `istVektorMarkup()` in
-  `bildverkleinerung.ts` lässt SVG/SVGZ nicht mehr bis zu sharp; das Bild bleibt unverändert mit
-  Hinweis, wie bei EMF. Die Versionsbehebung (laut Advisory ab 0.35.5) steht in keiner Lockdatei.
+- React Router (GHSA-wrjc-x8rr-h8h6, GHSA-jjmj-jmhj-qwj2, Open Redirect über `//` oder `/\`):
+  Alle 155 Navigationsstellen der Oberfläche sind erhoben. Jedes Ziel ist eine Konstante, ein
+  Eintrag fester Konfigurationslisten oder eine Vorlage mit festem Anfang. Nur zwei übernahmen einen
+  früher gelesenen `location.pathname` (Rückweg der Handyfläche, Herkunftssprung der
+  Klara-Vorschau). Beide laufen jetzt durch `internerPfad()` (`apps/web/src/lib/internerPfad.ts`).
+
+**Exponiert, kompatible Behebung ausstehend — sperrt die Auslieferung:** `sharp` 0.35.4
+(GHSA-wq5f-xc86-pv6w, librsvg). Ein SVG aus einer `.docx` wird über sharp → librsvg zu WebP
+gerastert; nur so bleibt es nach dem Sanitizer sichtbar. Eine Sperre davor (Stand 08.10.) nahm diese
+Funktion weg und ist zurückgenommen. Die Behebung ist sharp ≥ 0.35.5 innerhalb `^0.35.4`; sie
+braucht eine von npm erzeugte Lockdatei samt `@img/sharp-*`-Plattformpaketen. Die liegt im
+Repository nicht vor und ist in diesem Arbeitsweg nicht erzeugbar.
 
 **Exponiert, bewusst offen:** vier weitere `nodemailer`-Meldungen am Adressparser (Behebung nur mit
-Hauptwechsel, dieselbe offene Entscheidung wie in Abschnitt 1) und die beiden Open-Redirect-
-Meldungen von React Router. Für diese ist kein Navigationsziel aus URL-Parametern gefunden; die
-Ziele aus Datenfeldern sind aber nur stichprobenhaft verfolgt. Die Behebung von GHSA-wrjc liegt
-erst bei 7.18.0; ob ein 6.30.x-Stand über 6.30.5 existiert, war ohne Registry-Zugang nicht prüfbar.
+Hauptwechsel, dieselbe offene Entscheidung wie in Abschnitt 1).
 
 **Nicht exponiert**, mit der Bedingung im Register: die fünf `fastify`-Meldungen. Bei GHSA-hwr6 ist
 die Bedingung vorhanden (`additionalProperties: false` in `fragekontext`), die Folge aber
 wirkungslos, weil `normalizeFragekontext` nur drei Felder übernimmt. Ferner neun
 `nodemailer`-Meldungen an Optionen, die Klarwerk nicht setzt, beide `sprintf-js`-Meldungen (zur
-Laufzeit gemessen: nicht in mammoths Modulgraph) und die SSR-Meldung von React Router.
+Laufzeit gemessen: nicht in mammoths Modulgraph), die SSR-Meldung und die beiden
+Open-Redirect-Meldungen von React Router (siehe oben). Die Prüfung gibt seit diesem Stand je Meldung
+npms eigene Auskunft zur Behebbarkeit (`fixAvailable`) aus.
 
 ## Nicht gemessen
 

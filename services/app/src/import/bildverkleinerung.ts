@@ -443,44 +443,18 @@ export function bildausfaelleVermerken(html: string, ausfaelle: readonly Bildaus
 }
 
 /**
- * R-1398 / GHSA-wq5f-xc86-pv6w (sharp < 0.35.5, librsvg): Vektor-Markup erreicht `sharp` nicht.
- *
- * `sharp` erkennt das Format am Inhalt und dekodiert SVG (auch gzip-gepacktes SVGZ) über librsvg —
- * die Bibliothek der Advisory. Eine `.docx` kann ein SVG als Bildquelle tragen. Kein Rasterformat,
- * das sharp liest, beginnt mit `<` (PNG 0x89, JPEG 0xFF, GIF `G`, WebP/RIFF `R`, TIFF `I`/`M`,
- * BMP `B`, HEIF/AVIF mit einem Längenfeld), deshalb genügt der erste Inhaltsbyte nach optionalem
- * BOM und Leerraum. Gzip (0x1F 0x8B) ist kein Bildformat für diesen Weg und wird ebenso gesperrt.
- * Ein gesperrtes Bild gilt als „nicht-dekodierbar": die Quelle bleibt unverändert, der Hinweis
- * steht dahinter — derselbe Weg wie bei EMF. Der Sanitizer lässt SVG ohnehin nicht durch
- * (`isSafeImgSrc`: png|jpeg|gif|webp); vorher wurde SVG nur über diese Rasterung sichtbar.
- */
-export function istVektorMarkup(quelle: Uint8Array): boolean {
-  if (quelle[0] === 0x1f && quelle[1] === 0x8b) {
-    return true;
-  }
-  let i = 0;
-  if (quelle[0] === 0xef && quelle[1] === 0xbb && quelle[2] === 0xbf) {
-    i = 3; // UTF-8-BOM
-  } else if (
-    (quelle[0] === 0xff && quelle[1] === 0xfe) ||
-    (quelle[0] === 0xfe && quelle[1] === 0xff)
-  ) {
-    return true; // UTF-16-BOM: Text, kein Rasterbild
-  }
-  while (i < quelle.length && [0x09, 0x0a, 0x0d, 0x20].includes(quelle[i] ?? -1)) {
-    i += 1;
-  }
-  return quelle[i] === 0x3c; // "<"
-}
-
-/**
  * Die eigentliche Umwandlung. Liefert entweder die Ableitung ODER den Grund, warum es keine gibt —
  * nie einen geworfenen Fehler: ein einzelnes schlechtes Bild darf den Import nicht kippen.
+ *
+ * R-1398 / GHSA-wq5f-xc86-pv6w (sharp < 0.35.5, librsvg): SVG-Quellen laufen hier bewusst WEITER
+ * durch sharp und damit durch librsvg — die Rasterung zu WebP ist der einzige Weg, auf dem ein
+ * SVG-Bild aus einer `.docx` sichtbar bleibt (der Sanitizer lässt `image/svg+xml` nicht durch).
+ * Eine Sperre an dieser Stelle (Kandidat 8721fb0c) nahm diese Funktion weg und ist zurückgenommen.
+ * Die Behebung ist die Hebung auf sharp ≥ 0.35.5; bis dahin führt
+ * `tools/abhaengigkeiten-bewertet.json` die Meldung als exponiert mit ausstehender Behebung, und die
+ * Abhängigkeitsprüfung vor der Auslieferung sperrt.
  */
 async function ableiten(quelle: Buffer): Promise<Buffer | Uebersprungsgrund> {
-  if (istVektorMarkup(quelle)) {
-    return "nicht-dekodierbar";
-  }
   try {
     const bild = sharp(quelle, EINGABE);
     // `metadata()` liest den KOPF und dekodiert keine Pixel. Genau hier greift auch die

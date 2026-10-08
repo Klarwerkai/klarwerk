@@ -187,16 +187,24 @@ describe("R-1398 · Dockerfile-Stufe `abhaengigkeiten` (ausgeführt)", () => {
     return { code: r.status, aus: `${r.stdout}${r.stderr}`, datei };
   }
 
-  /** Die heute bewerteten Meldungen in npm-Form (synthetisch, wie in vor-auslieferung.test.ts). */
-  function bewerteterStand(zusatz: Record<string, unknown> = {}): string {
+  /**
+   * Die heute bewerteten Meldungen in npm-Form (synthetisch, wie in vor-auslieferung.test.ts).
+   * Ohne `mitAusstehenden` fehlen die Meldungen mit ausstehender kompatibler Behebung — A1 prüft
+   * den Durchlass, A4 genau diese Sperre.
+   */
+  function bewerteterStand(zusatz: Record<string, unknown> = {}, mitAusstehenden = false): string {
     const register = JSON.parse(readFileSync(join(WURZEL, REGISTER_DATEI), "utf8")) as {
       bestand: string;
       kennung: string;
       paket: string;
       ort: string;
+      behebung_ausstehend?: string;
     }[];
     const vulnerabilities: Record<string, { name: string; nodes: string[]; via: unknown[] }> = {};
-    for (const b of register.filter((e) => e.bestand === "wurzel")) {
+    const gemeldet = register.filter(
+      (e) => e.bestand === "wurzel" && (mitAusstehenden || e.behebung_ausstehend === undefined),
+    );
+    for (const b of gemeldet) {
       const eintrag = vulnerabilities[b.paket] ?? { name: b.paket, nodes: [b.ort], via: [] };
       eintrag.via.push({
         name: b.paket,
@@ -236,5 +244,11 @@ describe("R-1398 · Dockerfile-Stufe `abhaengigkeiten` (ausgeführt)", () => {
     const r = stufeAusfuehren('{"error":{"code":"ENOTFOUND","summary":"registry"}}');
     expect(r.code, r.aus).toBe(2);
     expect(r.aus).toContain("NICHT durchgeführt");
+  });
+
+  it("A4 · exponiert mit ausstehender kompatibler Behebung → Exit 1, der Bau bricht ab", () => {
+    const r = stufeAusfuehren(bewerteterStand({}, true));
+    expect(r.code, r.aus).toBe(1);
+    expect(r.aus).toContain("✖ exponiert, kompatible Behebung ausstehend: GHSA-wq5f-xc86-pv6w");
   });
 });

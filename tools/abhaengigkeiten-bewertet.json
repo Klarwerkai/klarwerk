@@ -258,10 +258,11 @@
     "paket": "sharp",
     "ort": "node_modules/sharp",
     "version": "0.35.4",
-    "urteil": "nicht exponiert",
-    "begruendung": "Bedingung: SVG-Dekodierung ueber librsvg. Bis 08.10.2026 erreichbar (DOCX-Bildquelle -> bildverkleinerung.ts -> sharp, Formaterkennung am Inhalt). Seitdem sperrt istVektorMarkup() SVG/SVGZ vor jedem sharp-Aufruf; das Bild bleibt unveraendert mit Hinweis, wie bei EMF. Ohne diesen Riegel waere die Zeile exponiert. Behebung laut Advisory ab 0.35.5, steht in keiner Lockdatei; bei der naechsten von npm erzeugten Lockdatei mitnehmen.",
-    "beleg": "Waechter exposition-20261008.test.ts, S1-S3; Funktionserhaltung tests/produktionsabhaengigkeiten/bildimport-bleibt-heil.test.ts",
-    "bewertet_am": "2026-10-08"
+    "urteil": "exponiert",
+    "begruendung": "Bedingung: SVG-Dekodierung ueber librsvg. Erreichbar: eine SVG-Bildquelle aus einer hochgeladenen .docx laeuft ueber bildverkleinerung.ts -> sharp (Formaterkennung am Inhalt) -> librsvg und wird zu WebP gerastert. Diese Rasterung ist der einzige Weg, auf dem das Bild sichtbar bleibt, und ist deshalb erhalten (eine Sperre davor nahm die Funktion weg, Ben nacharbeit-5). Eine sichere Verarbeitung ohne librsvg gibt es im Produkt nicht.",
+    "beleg": "Waechter exposition-20261008.test.ts, S1-S2 (SVG wird gerastert und ueberlebt den Sanitizer; sharp liest es als svg)",
+    "bewertet_am": "2026-10-08",
+    "behebung_ausstehend": "sharp >= 0.35.5 (betroffen <0.35.5 laut Auditbericht; innerhalb der Bindung ^0.35.4, kein Hauptwechsel). Umsetzbar nur mit einer von npm erzeugten Lockdatei (npm install --package-lock-only sharp@<geprueft>), die 0.35.5 samt @img/sharp-*-Plattformpaketen und Pruefsummen bindet. In keiner Lockdatei des Repositorys vorhanden; in diesem Arbeitsweg darf keine Installation gestartet werden. Danach: bildimport-bleibt-heil und exposition-20261008 S1-S2 als Funktionsbeleg."
   },
   {
     "bestand": "wurzel",
@@ -302,9 +303,9 @@
     "paket": "react-router",
     "ort": "node_modules/react-router",
     "version": "6.30.4",
-    "urteil": "exponiert",
-    "begruendung": "Open Redirect per Backslash in <Link>/useNavigate. Geprueft: kein Navigationsziel wird aus URL-Parametern gesetzt; die stichprobenhaft verfolgten Linkziele aus Datenfeldern (revalidationCta, Klara-Hilfebestand) sind feste Routen. Lueckenlos nachgewiesen ist das nicht, deshalb vorsichtig exponiert. Behebung erst ab 7.18.0, also Hauptwechsel; eigene Entscheidung, nicht nebenbei gehoben.",
-    "beleg": "Waechter exposition-20261008.test.ts, R2",
+    "urteil": "nicht exponiert",
+    "begruendung": "Bedingung: ein Navigationsziel fuer <Link>/useNavigate, das mit // oder /\\ beginnt. Vollstaendig erhoben am 08.10.2026: 155 Navigationsstellen in 69 Dateien unter apps/web/src (navigate, <Navigate>, to=, location.assign). Jedes Ziel ist eine Konstante, ein Eintrag fester Konfigurationslisten oder eine Vorlage mit festem Anfang (/wissen/, /spaces/, /duplikate/, adminHref, koDetailPath, captureGapHref usw.), auch Meldungsziele (notificationTarget) und Schnellwahl. Nur zwei Ziele uebernahmen einen frueher gelesenen location.pathname: Mobile.tsx backTo (History-State aus KontoMenue) und KlaraVorschau herkunftZiel. Beide laufen seit diesem Stand durch internerPfad() (apps/web/src/lib/internerPfad.ts), das //, Backslash und Steuerzeichen abweist. Behebung erst ab 7.18.0 (Hauptwechsel).",
+    "beleg": "Waechter exposition-20261008.test.ts, R2-R4",
     "bewertet_am": "2026-10-08"
   },
   {
@@ -313,9 +314,9 @@
     "paket": "react-router-dom",
     "ort": "node_modules/react-router-dom",
     "version": "6.30.4",
-    "urteil": "exponiert",
-    "begruendung": "Open Redirect bis XSS (betroffen >=6.30.2 <=6.30.5), dieselbe Bedingung und dieselbe Einschraenkung wie GHSA-wrjc-x8rr-h8h6. Ob ein 6.30.x-Stand ueber 6.30.5 veroeffentlicht ist, war ohne Registry-Zugang nicht pruefbar; keine ungepruefte Zielversion festgelegt. Bei der naechsten von npm erzeugten Lockdatei pruefen.",
-    "beleg": "Waechter exposition-20261008.test.ts, R2",
+    "urteil": "nicht exponiert",
+    "begruendung": "Open Redirect bis XSS (betroffen >=6.30.2 <=6.30.5); Bedingung wie GHSA-wrjc-x8rr-h8h6: ein fremdgesteuertes Navigationsziel, das mit // oder /\\ beginnt. Die vollstaendige Erhebung der 155 Navigationsstellen (siehe GHSA-wrjc) findet keines mehr: Code-Ziele haben einen festen Anfang, die beiden location.pathname-Ziele laufen durch internerPfad(). Kompatible Behebung: ob ein 6.30.x-Stand ueber 6.30.5 existiert, war in diesem Arbeitsweg ohne Registry nicht pruefbar und ist in keiner Lockdatei des Repositorys. Die Pruefung gibt seit diesem Stand npms eigene Auskunft (fixAvailable) je Meldung aus; der naechste echte Auditlauf belegt sie. Bei fehlender Exposition verlangt der Auftrag keine Hebung.",
+    "beleg": "Waechter exposition-20261008.test.ts, R2-R4",
     "bewertet_am": "2026-10-08"
   }
 ]

@@ -12,7 +12,12 @@
 //   · @xmldom/xmldom (Web, 10 Meldungen): 0.8.13 → 0.8.15 in apps/web/package-lock.json. Der
 //     Eintrag ist der von npm erzeugte aus package-lock.json (dort 0.8.15; der echte Audit meldet
 //     ihn nicht). M2 hält fest, dass mammoth genau diese Fassung lädt.
-//   · sharp/librsvg (GHSA-wq5f-xc86-pv6w): SVG/SVGZ erreicht sharp nicht mehr (S1–S3).
+//   · React Router (GHSA-wrjc, GHSA-jjmj): die zwei Navigationsziele aus `location.pathname`
+//     laufen durch `internerPfad()` (R3/R4); alle übrigen 153 Stellen haben feste Ziele.
+//
+// Exponiert mit ausstehender kompatibler Behebung (sperrt die Auslieferung):
+//   · sharp/librsvg (GHSA-wq5f-xc86-pv6w): der SVG→WebP-Import ist erhalten (S1) und erreicht
+//     damit librsvg (S2). Behebung sharp ≥ 0.35.5 braucht eine von npm erzeugte Lockdatei.
 //
 // GRENZE, für alle Fälle gleich: die Advisorytexte selbst waren ohne Netzzugang nicht lesbar;
 // bewertet ist an Titel und betroffenem Bereich aus dem Auditbericht. Die Bibliotheksquellen
@@ -24,11 +29,10 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import {
-  bildVerkleinerung,
-  istVektorMarkup,
-} from "../../services/app/src/import/bildverkleinerung";
+import { internerPfad } from "../../apps/web/src/lib/internerPfad";
+import { BILD_MAX_KANTE, bildVerkleinerung } from "../../services/app/src/import/bildverkleinerung";
 import { normalizeFragekontext } from "../../services/knowledge-object/src/geltung";
+import { sanitizeHtml } from "../../services/structure/src/sanitize";
 
 const WURZEL = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -176,38 +180,34 @@ describe("nodemailer 6.10.1 — was smtp.ts tatsächlich übergibt", () => {
   });
 });
 
-describe("sharp 0.35.4 — SVG erreicht librsvg nicht mehr (GHSA-wq5f-xc86-pv6w)", () => {
-  const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="30"><rect/></svg>';
-  const text = (s: string) => new Uint8Array(Buffer.from(s, "utf8"));
+describe("sharp 0.35.4 — SVG-Import bleibt erhalten, librsvg wird erreicht (GHSA-wq5f)", () => {
+  // Der Fall, in dem die Rasterung bisher griff: grösser als die Zielkante, und die Quelle ist
+  // grösser als ihre WebP-Ableitung. Kleinere SVGs blieben schon vorher unverändert
+  // (`schon-klein-genug` bzw. `ableitung-nicht-kleiner`) und fielen dann im Sanitizer weg.
+  const breite = BILD_MAX_KANTE * 2;
+  const fuellung = `<!-- ${"Beschreibung ".repeat(20_000)} -->`;
+  const SVG =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${breite}" height="${BILD_MAX_KANTE}">` +
+    `<rect width="${breite}" height="${BILD_MAX_KANTE}" fill="#2a6f97"/>${fuellung}</svg>`;
+  const src = `data:image/svg+xml;base64,${Buffer.from(SVG).toString("base64")}`;
 
-  it("S1 · istVektorMarkup erkennt SVG/XML/SVGZ und lässt die Rasterformate durch", () => {
-    expect(istVektorMarkup(text(SVG))).toBe(true);
-    expect(istVektorMarkup(text(`\uFEFF \n\t<?xml version="1.0"?>${SVG}`))).toBe(true);
-    expect(istVektorMarkup(new Uint8Array([0x1f, 0x8b, 0x08, 0x00]))).toBe(true);
-    expect(istVektorMarkup(new Uint8Array([0xff, 0xfe, 0x3c, 0x00]))).toBe(true);
-    const raster: ReadonlyArray<readonly [string, readonly number[]]> = [
-      ["PNG", [0x89, 0x50, 0x4e, 0x47]],
-      ["JPEG", [0xff, 0xd8, 0xff, 0xe0]],
-      ["GIF", [0x47, 0x49, 0x46, 0x38]],
-      ["WebP", [0x52, 0x49, 0x46, 0x46]],
-      ["TIFF", [0x49, 0x49, 0x2a, 0x00]],
-      ["BMP", [0x42, 0x4d, 0x00, 0x00]],
-      ["HEIF", [0x00, 0x00, 0x00, 0x18]],
-    ];
-    for (const [name, kopf] of raster) {
-      expect(istVektorMarkup(new Uint8Array(kopf)), name).toBe(false);
-    }
-  });
-
-  it("S2 · ein SVG im Importweg bleibt unverändert und gilt als nicht dekodierbar", async () => {
-    const src = `data:image/svg+xml;base64,${Buffer.from(SVG).toString("base64")}`;
+  it("S1 · ein SVG aus dem Importweg wird zu WebP gerastert und überlebt den Sanitizer", async () => {
     const weg = bildVerkleinerung();
-    expect(await weg.mapImage(src)).toBe(src);
-    expect(weg.bericht.verkleinert).toBe(0);
-    expect(weg.bericht.ausfaelle).toEqual([{ bildNummer: 1, grund: "nicht-dekodierbar" }]);
+    const ausgang = await weg.mapImage(src);
+    expect(ausgang.startsWith("data:image/webp;base64,"), ausgang.slice(0, 40)).toBe(true);
+    expect(weg.bericht.verkleinert).toBe(1);
+    expect(weg.bericht.ausfaelle).toEqual([]);
+    const kopf = await sharp(Buffer.from(ausgang.split(",")[1] ?? "", "base64")).metadata();
+    expect(kopf.format).toBe("webp");
+    expect(Math.max(kopf.width ?? 0, kopf.height ?? 0)).toBe(BILD_MAX_KANTE);
+    // Das sanitisierte Ergebnis trägt das Bild weiter …
+    const sauber = sanitizeHtml(`<p><img src="${ausgang}" alt="Plan"></p>`);
+    expect(sauber).toContain('src="data:image/webp;base64,');
+    // … während die SVG-Quelle selbst entfernt würde: die Rasterung ist der Weg zur Anzeige.
+    expect(sanitizeHtml(`<p><img src="${src}" alt="Plan"></p>`)).not.toContain("image/svg");
   });
 
-  it("S3 · Gegenprobe: sharp selbst hätte dieses SVG dekodiert — der Riegel ist die Ursache", async () => {
+  it("S2 · Bedingung der Meldung: sharp liest diese Quelle als SVG, also über librsvg", async () => {
     const kopf = await sharp(Buffer.from(SVG)).metadata();
     expect(kopf.format).toBe("svg");
   });
@@ -274,12 +274,51 @@ describe("react-router 6.30.4 — SSR und Navigationsziele", () => {
     expect(fundorte(WEB, ssr)).toEqual([]);
   });
 
-  it("R2 · kein Navigationsziel wird direkt aus einem URL-Parameter gesetzt (Teilnachweis)", () => {
-    // Die geprüfte Teilbedingung der beiden als „exponiert" geführten Open-Redirect-Meldungen —
-    // sie schliesst sie NICHT aus (Ziele aus Datenfeldern sind nur stichprobenhaft verfolgt).
-    // Wird hier etwas gefunden, ist die Exposition nicht mehr theoretisch.
+  it("R2 · kein Navigationsziel wird direkt aus einem URL-Parameter gesetzt", () => {
     const quelle = String.raw`(params|parameter|searchParams)\.get`;
     const ziel = new RegExp(String.raw`navigate\([^)]*${quelle}|to=\{[^}]*${quelle}`);
     expect(fundorte(WEB, ziel)).toEqual([]);
+  });
+
+  it("R3 · internerPfad lässt nur eindeutig interne Pfade durch", () => {
+    for (const gut of ["/start", "/wissen/ko-1?edit=1", "/bibliothek?q=a%2Fb#x"]) {
+      expect(internerPfad(gut, "/ersatz"), gut).toBe(gut);
+    }
+    const boese = [
+      "//evil.example",
+      "/\\evil.example",
+      "\\\\evil.example",
+      "/\t/evil.example",
+      "/\n/evil.example",
+      "https://evil.example",
+      "javascript:alert(1)",
+      "start",
+      "",
+      undefined,
+      null,
+      42,
+    ];
+    for (const b of boese) {
+      expect(internerPfad(b, "/ersatz"), String(b)).toBe("/ersatz");
+    }
+  });
+
+  it("R4 · die zwei Ziele aus location.pathname laufen durch internerPfad — und nur sie lesen ihn", () => {
+    // Vollständige Erhebung (08.10.2026, 155 Navigationsstellen): alle übrigen Ziele sind
+    // Konstanten, feste Konfigurationslisten oder Vorlagen mit festem Anfang. Liest eine weitere Stelle
+    // `location.state`, ist die Erhebung neu zu machen.
+    const leser = WEB.filter((d) =>
+      lies(d)
+        .split("\n")
+        .some((z) => !/^\s*(\/\/|\*|\{\/\*)/.test(z) && /location\.state\b/.test(z)),
+    );
+    expect(leser).toEqual(["apps/web/src/pages/Mobile.tsx"]);
+    const mobil = lies("apps/web/src/pages/Mobile.tsx");
+    expect(mobil).toMatch(/const vorherigeRoute = \(location\.state as/);
+    expect(mobil).toContain("const backTo = internerPfad(vorherigeRoute, HOME_ROUTE);");
+    expect(mobil.match(/vorherigeRoute/g) ?? []).toHaveLength(2);
+    const vorschau = lies("apps/web/src/components/klara-vorschau/KlaraVorschau.tsx");
+    const herkunft = block(vorschau, "function herkunftZiel(");
+    expect(herkunft).toMatch(/internerPfad\(h\.pfad, HOME_ROUTE\)/);
   });
 });

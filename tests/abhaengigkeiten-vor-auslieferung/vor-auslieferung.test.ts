@@ -277,6 +277,51 @@ describe("R-1398 · die Prüfung vor der Auslieferung", () => {
     expect(code).toBe(0);
     expect(text).toContain("ⓘ nicht mehr gemeldet: GHSA-c96f-x56v-gq3h find-my-way");
   });
+
+  it("P10 · exponiert mit ausstehender kompatibler Behebung sperrt (sharp, GHSA-wq5f)", () => {
+    const stand = {
+      ...verbleibenderStand(),
+      sharp: eintrag("sharp", "node_modules/sharp", [
+        { ghsa: "GHSA-wq5f-xc86-pv6w", schwere: "high", bereich: "<0.35.5" },
+      ]),
+    };
+    const { code, text } = pruefeStand(bericht(stand));
+    expect(code).toBe(1);
+    const zeile = "✖ exponiert, kompatible Behebung ausstehend: GHSA-wq5f-xc86-pv6w sharp@";
+    expect(text).toContain(zeile);
+    expect(text).toContain("sharp >= 0.35.5");
+  });
+
+  it("P11 · behebung_ausstehend ist nur bei „exponiert“ erlaubt", () => {
+    const kaputt = register().map((b, i) =>
+      i === 0 ? { ...b, urteil: "nicht exponiert", behebung_ausstehend: "x" } : b,
+    );
+    const { code, text } = pruefeStand(bericht(verbleibenderStand()), LEER, { register: kaputt });
+    expect(code).toBe(1);
+    expect(text).toContain("behebung_ausstehend nur mit Inhalt");
+  });
+
+  it("P12 · npms Auskunft zur Behebbarkeit (fixAvailable) steht an jeder Meldung", () => {
+    const mitFix = (fixAvailable: unknown) =>
+      liesAuditBericht(
+        bericht({
+          jose: {
+            ...eintrag("jose", "node_modules/jose", [
+              { ghsa: "GHSA-aaaa-bbbb-cccc", schwere: "low", bereich: "*" },
+            ]),
+            fixAvailable,
+          },
+        }),
+      );
+    const varianten = [true, false, { name: "jose", version: "6.0.0", isSemVerMajor: true }];
+    const fixe = varianten.map((f) => {
+      const b = mitFix(f);
+      return b.art === "gelesen" ? b.meldungen[0]?.fix : b.grund;
+    });
+    expect(fixe).toEqual(["kompatibel", "keine", "jose@6.0.0 (Hauptwechsel)"]);
+    const { text } = pruefeStand(bericht(verbleibenderStand()));
+    expect(text).toContain("npm-Behebung: keine");
+  });
 });
 
 describe("R-1398 · der Starter, wie der Ship-Weg ihn ruft", () => {
