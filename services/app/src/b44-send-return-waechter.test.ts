@@ -1,7 +1,12 @@
-import { readFileSync, readdirSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import {
+  REPO_WURZEL,
+  ohneKommentare,
+  produktCodeDateien,
+} from "../../../tests/support/onsendGrundmenge";
 
 // ================================================================================================
 // B44 — DER SENDE-/RUECKGABEWEG: WAS DIE AUSSAGE „SEMANTISCH VERWUNDBAR: 0" WIRKLICH TRAEGT
@@ -30,57 +35,37 @@ import { describe, expect, it } from "vitest";
 //
 // WAS DIESER WAECHTER DESHALB PRUEFT — und was ausdruecklich NICHT:
 // Der Schutz selbst ist bereits bewacht und wird hier NICHT ein zweites Mal geprueft:
-// `sync-onsend-hooks.test.ts` nagelt jede `.addHook("onSend", …)` auf den Callback-Stil,
+// `sync-onsend-hooks.test.ts` nagelt jede onSend-Registrierung im Quellbaum auf den Callback-Stil,
 // `tests/app/mega71-onsend-synchron.test.ts` misst dieselbe Zusage am echten Draht.
 // Dieser Waechter deckt die vier Kanten, an denen dieser Schutz UNBEMERKT ins Leere laufen kann,
 // ohne dass eine der beiden Dateien rot wird — plus die Kante, an der der Schutz selbst entkernt
 // wuerde. Er bewertet die syntaktische Menge der Sendestellen NICHT und fuehrt keine Zahl.
 const APP_SRC = dirname(fileURLToPath(import.meta.url));
-const SERVICES = resolve(APP_SRC, "..", "..");
 const SCHUTZ = join(APP_SRC, "sync-onsend-hooks.test.ts");
 // Die Route, die die handler-lokale zweite Schicht fuer sich selbst zur Zusage erklaert
 // (`routes/confluence-import-routes.ts:291-297`, dort woertlich: „JEDER Sende-Pfad endet mit
 // `return reply`"). Eine Zusage ohne Waechter ist ein Kommentar.
 const WPE_ROUTE = join(APP_SRC, "routes", "confluence-import-routes.ts");
 
-// Kommentare raus, Zeilennummern ERHALTEN (Technik aus `sync-onsend-hooks.test.ts:33-37`): eine
-// blosse Erwaehnung im Fliesstext ist keine Registrierung, Fundstellen bleiben zitierfaehig.
-function ohneKommentare(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
-    .replace(/(^|\s)\/\/.*$/gm, (m) => m.replace(/[^\n]/g, " "));
-}
-
-function produktDateien(dir: string): string[] {
-  const out: string[] = [];
-  for (const eintrag of readdirSync(dir, { withFileTypes: true })) {
-    if (eintrag.name === "node_modules") {
-      continue;
-    }
-    const pfad = join(dir, eintrag.name);
-    if (eintrag.isDirectory()) {
-      out.push(...produktDateien(pfad));
-    } else if (eintrag.name.endsWith(".ts") && !eintrag.name.endsWith(".test.ts")) {
-      out.push(pfad);
-    }
-  }
-  return out;
-}
-
+// GRUNDMENGE: dieselbe wie die der Schutzdatei, aus tests/support/onsendGrundmenge.ts — der ganze
+// Quellbaum, alle JS/TS-Endungen, ohne Testbäume. Bis zum Auftrag gesamt-sendehook-sammler erhob
+// dieser Waechter nur `.ts` unter services/; eine `.mts`-Datei mit indirektem Hooknamen lag damit
+// ausserhalb seiner Sicht (ben zum Kandidaten 8e554855). Kommentare raus, Zeilennummern ERHALTEN:
+// eine blosse Erwaehnung im Fliesstext ist keine Registrierung, Fundstellen bleiben zitierfaehig.
 interface Fund {
   fundort: string;
   zitat: string;
 }
 
-/** Alle Treffer eines Musters im gesamten Serverbaum, als `<pfad>:<zeile>` samt Zitat. */
+/** Alle Treffer eines Musters in der gemeinsamen Grundmenge, als `<pfad>:<zeile>` samt Zitat. */
 function erhebe(muster: RegExp): Fund[] {
   const funde: Fund[] = [];
-  for (const datei of produktDateien(SERVICES)) {
+  for (const datei of produktCodeDateien()) {
     const src = ohneKommentare(readFileSync(datei, "utf8"));
     for (const m of src.matchAll(muster)) {
       const index = m.index ?? 0;
       funde.push({
-        fundort: `${relative(SERVICES, datei)}:${src.slice(0, index).split("\n").length}`,
+        fundort: `${relative(REPO_WURZEL, datei)}:${src.slice(0, index).split("\n").length}`,
         zitat: (src.slice(index).split("\n", 1)[0] ?? "").trim(),
       });
     }
@@ -89,24 +74,28 @@ function erhebe(muster: RegExp): Fund[] {
 }
 
 // Die Form, die der Sammler der Schutzdatei sieht: erstes Argument als String-Literal.
-const ADDHOOK_LITERAL = /\.addHook\(\s*["']onSend["']\s*,/g;
+const ADDHOOK_LITERAL = /\.addHook\(\s*(["'`])onSend\1\s*,/g;
 // Blindstelle 1 — Fastify erlaubt Hooks auch als ROUTENOPTION (`app.get(url, { onSend: … }, h)`).
-// Diese Bauart ist im Produkt real in Gebrauch (`routes/capture-routes.ts:164`,
-// `routes/slides-routes.ts:272`, `routes/ask-routes.ts:242` — teils `async`), also kein
-// konstruierter Fall: ein onSend-Hook in genau dieser Form waere heute unsichtbar.
-const ROUTENOPTION = /(?:^|[\s{,(])["']?onSend["']?\s*:/g;
-// Blindstelle 2 — ein Hookname, der kein String-Literal ist (`app.addHook(HOOK, …)`), faellt aus
-// der Erhebung der Schutzdatei heraus, statt sie rot zu machen.
-const ADDHOOK_INDIREKT = /\.addHook\(\s*(?!["'])[A-Za-z_$[]/g;
+// Richtigstellung (Auftrag gesamt-sendehook-sammler): hier stand, die Bauart sei im Produkt real in
+// Gebrauch (`routes/capture-routes.ts:164`, `routes/slides-routes.ts:272`,
+// `routes/ask-routes.ts:242`). Weder im Stand dieses Waechters (2e5eedb9) noch heute steht in
+// diesen Dateien ein `onSend` — und B44-1 waere sonst nie gruen gewesen. Die Kante ist
+// praeventiv. Seitdem erhebt auch der Sammler der Schutzdatei Routenoptionen; B44-1 bleibt die
+// strengere Regel: im Quellbaum gar keine.
+const ROUTENOPTION = /(?:^|[\s{,(])\[?\s*["'`]?onSend["'`]?\s*\]?\s*:/g;
+// Blindstelle 2 — ein Hookname, der kein schlichtes Literal ist (`app.addHook(HOOK, …)`,
+// Template mit Platzhalter, `app["addHook"]`), faellt aus einer Literal-Erhebung heraus, statt sie
+// rot zu machen. Erhoben wird deshalb JEDES `addHook`, dem kein schlichtes Literal folgt.
+const ADDHOOK_INDIREKT = /\baddHook\b(?!\(\s*(["'`])\w+\1\s*,)/g;
 
 describe("B44 · der Sende-/Rueckgabeweg: der Schutz der semantischen Null bleibt erreichbar", () => {
   it("B44-1 · kein onSend-Hook als Routenoption — sonst greift der Synchronitaetsvertrag daran vorbei", () => {
     const funde = erhebe(ROUTENOPTION).map((f) => `${f.fundort}  ${f.zitat}`);
     expect(
       funde,
-      "onSend als Routenoption sieht der Sammler in sync-onsend-hooks.test.ts nicht — " +
-        'er erhebt ausschliesslich `.addHook("onSend", …)`. Ein async-Hook in dieser Form ' +
-        "oeffnet das Doppel-Send-Fenster fuer die Routen, an denen er haengt.",
+      "onSend als Routenoption ist im Quellbaum keine entschiedene Bauform — die Drahtmessung " +
+        "(tests/app/mega71-onsend-synchron.test.ts) kennt nur die app-globalen Hooks. Ein " +
+        "async-Hook in dieser Form oeffnet das Doppel-Send-Fenster fuer seine Routen.",
     ).toEqual([]);
   });
 
@@ -122,14 +111,14 @@ describe("B44 · der Sende-/Rueckgabeweg: der Schutz der semantischen Null bleib
   it("B44-3 · jede onSend-Registrierung liegt im Geltungsbereich des Vertrags (services/app/src)", () => {
     const funde = erhebe(ADDHOOK_LITERAL);
     // Ein Waechter, der nichts findet, prueft nichts — dieselbe fail-closed-Regel wie in der
-    // Schutzdatei (`sync-onsend-hooks.test.ts:96-98`).
+    // Schutzdatei (`sync-onsend-hooks.test.ts:145-147`).
     expect(funde.length, "keine onSend-Registrierung erhoben").toBeGreaterThan(0);
-    const ausserhalb = funde.filter((f) => !f.fundort.startsWith("app/src/"));
+    const ausserhalb = funde.filter((f) => !f.fundort.startsWith("services/app/src/"));
     expect(
       ausserhalb.map((f) => f.fundort),
-      "Der Sammler der Schutzdatei durchsucht NUR sein eigenes Verzeichnis (services/app/src). " +
-        "Eine Registrierung ausserhalb waere ungeprueft — und ein async-Hook dort wirkt auf " +
-        "dieselbe App, sobald der Baustein eingehaengt wird.",
+      "Der Sammler der Schutzdatei prueft die Form ueberall, aber die Verdrahtungs-Pins und die " +
+        "Drahtmessung kennen nur services/app/src. Ein Hook ausserhalb wirkt auf dieselbe App, " +
+        "sobald der Baustein eingehaengt wird — neue Lage: erst entscheiden, dann eintragen.",
     ).toEqual([]);
   });
 
@@ -142,7 +131,7 @@ describe("B44 · der Sende-/Rueckgabeweg: der Schutz der semantischen Null bleib
       .split("\n")
       .map((zeile, i) => ({ nr: src.slice(0, start).split("\n").length + i, text: zeile.trim() }))
       .filter((z) => z.text === "return;")
-      .map((z) => `${relative(SERVICES, WPE_ROUTE)}:${z.nr}`);
+      .map((z) => `${relative(REPO_WURZEL, WPE_ROUTE)}:${z.nr}`);
     expect(
       blankeRueckgaben,
       "Diese Datei erklaert `return reply` in :291-297 zur handler-lokalen Absicherung gegen " +

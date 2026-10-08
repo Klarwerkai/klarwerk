@@ -40,6 +40,9 @@ const conflict = (p: Partial<Conflict>): Conflict =>
     secondOpinion: null,
     decidedBy: null,
     decision: null,
+    // Aufnahme gesamt-konfliktklassifikation (R-0252, Nacharbeit 5): ohne Arbeitsart ist der
+    // nächste Schritt „einordnen". Diese Fälle messen den Pfad danach und tragen deshalb eine.
+    arbeitsart: "sache",
     createdAt: "2026-01-01",
     ...p,
   }) as Conflict;

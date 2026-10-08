@@ -43,8 +43,10 @@ export { confirmedSourceAnchor } from "./src/source-anchor";
 export type { AnchorCandidateAttachment } from "./src/source-anchor";
 // P-WIKI-STELLENBEZUG: die Form einer Stelle im Text (Route) und ihre Prüfung (Dienst).
 export {
+  STELLE_SEITE_MAX,
   STELLE_TEXT_MAX,
   leseStelle,
+  stelleAmAnhang,
   stelleImInhalt,
   stellenbloeckeAusHtml,
 } from "./src/stellen-anker";
@@ -359,6 +361,20 @@ export type {
 } from "./src/dokumentakte";
 // AUFNAHME 20260922 · Prüfbasis-Aktualität: die EINE Regel, wann ein Prüfnachweis überholt ist.
 export { gleichePruefbasis, pruefbasisVon } from "./src/pruefbasis";
+// R-1632 / R-1633 (gesamt-standortwissen): die EINE Geltungsregel für Speichern, Fragen und Erkennung.
+export {
+  GELTUNG_TEXT_MAX,
+  GELTUNGS_EBENEN,
+  geltungFuerFrage,
+  geltungsKollision,
+  geltungsText,
+  normalizeFragekontext,
+  normalizeGeltung,
+  type Fragekontext,
+  type GeltungsEbene,
+  type GeltungsPassung,
+  type KoGeltung,
+} from "./src/geltung";
 // SCRUM-421: einstellbare Upload-Grenzen (persistiert).
 export {
   type UploadLimits,
@@ -434,6 +450,8 @@ export type {
   KoComment,
   // P-WIKI-STELLENBEZUG: der Anker einer Rückfrage im Text.
   KoCommentStelle,
+  // PLAN-SPRACHANMERKUNG: die Position einer Notiz in einer Zeichnung.
+  KoStellenPunkt,
   KoAttachment,
   // R-0163: die Quellidentität eines übernommenen Anhangs.
   KoAnhangsquelle,
@@ -444,6 +462,8 @@ export type {
   // AUFTRAG-mega21 Block A: der Vorgangs-Datensatz (Eigentümer, Inhaltsabdruck, Zustand).
   KoCreateOperation,
   KoCreateOperationState,
+  // R-1107: der Verweis eines aufgegangenen Artikels auf den verbleibenden.
+  KoMergedInto,
   KoSource,
   KoSourceKind,
   KoSourceRestrictions,

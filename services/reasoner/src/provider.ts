@@ -2094,10 +2094,19 @@ export function rankCandidates(
       //    `keywordScore` und gewinnt schon an Zeile eins (Gegenprobe im genannten Test).
       //  · Kein Gate, kein Deckel, keine Schwelle und keine Sichtbarkeitsregel ändert sich. Die
       //    Menge, die hier ankommt, ist dieselbe wie vorher; nur ihre Reihenfolge ist begründet.
+      //
+      // R-1633 (Schicht- und Rollen-Filter beim Fragen) — „gewichtet höher … FALLS RELEVANT".
+      // Der Geltungsrang (eigene Schicht vor eigenem Werk vor Konzern/unbestimmt vor anderswo) steht
+      // HINTER den beiden Relevanzschlüsseln und VOR dem Status-/Trust-Bonus: eine Quelle der
+      // eigenen Schicht überholt nie eine, die die Frage besser trifft — unter gleich relevanten
+      // aber steht sie vorn und behält beim Deckel `topK` ihren Platz. Nichts wird entfernt; eine
+      // Quelle aus der Nachtschicht bleibt Kandidat. Ohne Fragekontext fehlt das Feld überall, die
+      // Zeile ist dann 0 und die Ordnung die bisherige.
       .sort(
         (a, b) =>
           b.keywordScore - a.keywordScore ||
           b.kerntreffer - a.kerntreffer ||
+          (b.ref.geltungsrang ?? 0) - (a.ref.geltungsrang ?? 0) ||
           b.rankScore - a.rankScore,
       )
       .slice(0, limit)

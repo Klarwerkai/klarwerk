@@ -11,6 +11,7 @@ import { Link, useLocation } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useReasonerStatus } from "../api/hooks";
 import { aiSperrHinweisKey } from "../lib/aiAvailability";
+import { kiBremsSatz } from "../lib/kiBremse";
 import {
   type ResolvedKlaraEntry,
   allFaqEntries,
@@ -525,8 +526,12 @@ export function KlaraAssistant(): JSX.Element {
                     {t("klara.noResults")}
                   </p>
                 ) : aiAsk.isError ? (
-                  <p className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text">
-                    {t("state.error")}
+                  // R-0842: bei gebremster KI-Anfrage der Satz des Servers mit Wartezeit.
+                  <p
+                    data-testid="klara-ai-fehler"
+                    className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text"
+                  >
+                    {kiBremsSatz(aiAsk.error) ?? t("state.error")}
                   </p>
                 ) : aiAsk.data ? (
                   <div className="rounded-card border border-ai/30 bg-ai-surface-2 px-3 py-2.5">
