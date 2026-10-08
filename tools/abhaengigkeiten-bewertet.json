@@ -257,12 +257,11 @@
     "kennung": "GHSA-wq5f-xc86-pv6w",
     "paket": "sharp",
     "ort": "node_modules/sharp",
-    "version": "0.35.4",
-    "urteil": "exponiert",
-    "begruendung": "Bedingung: SVG-Dekodierung ueber librsvg. Erreichbar: eine SVG-Bildquelle aus einer hochgeladenen .docx laeuft ueber bildverkleinerung.ts -> sharp (Formaterkennung am Inhalt) -> librsvg und wird zu WebP gerastert. Diese Rasterung ist der einzige Weg, auf dem das Bild sichtbar bleibt, und ist deshalb erhalten (eine Sperre davor nahm die Funktion weg, Ben nacharbeit-5). Eine sichere Verarbeitung ohne librsvg gibt es im Produkt nicht.",
-    "beleg": "Waechter exposition-20261008.test.ts, S1-S2 (SVG wird gerastert und ueberlebt den Sanitizer; sharp liest es als svg)",
-    "bewertet_am": "2026-10-08",
-    "behebung_ausstehend": "sharp >= 0.35.5 (betroffen <0.35.5 laut Auditbericht; innerhalb der Bindung ^0.35.4, kein Hauptwechsel). Umsetzbar nur mit einer von npm erzeugten Lockdatei (npm install --package-lock-only sharp@<geprueft>), die 0.35.5 samt @img/sharp-*-Plattformpaketen und Pruefsummen bindet. In keiner Lockdatei des Repositorys vorhanden; in diesem Arbeitsweg darf keine Installation gestartet werden. Danach: bildimport-bleibt-heil und exposition-20261008 S1-S2 als Funktionsbeleg."
+    "version": "0.35.5",
+    "urteil": "nicht exponiert",
+    "begruendung": "Behoben durch Hebung: gebunden ist 0.35.5, laut Advisory die erste behobene Fassung (vulnerable_version_range < 0.35.5, first_patched_version 0.35.5, bringt librsvg 2.63.2). Innerhalb ^0.35.4, kein Hauptwechsel. Die Lockdatei hat npm erzeugt (npm update sharp --package-lock-only, Exit 0) und sie ist nach Inhaltsabgleich uebernommen (nur sharp, 26 @img/sharp-*-Pakete und die Lock-Projektversion geaendert). Der Aufrufpfad bleibt bestehen: SVG aus einer .docx laeuft ueber bildverkleinerung.ts -> sharp -> librsvg und wird zu WebP gerastert. Mit der behobenen Fassung ist die Bedingung der Meldung nicht mehr erfuellt. Bis 0.35.4 war die Zeile exponiert.",
+    "beleg": "HILFE/4cb759a298e06b734475e799 (advisory.json, NPM-LOCKDATEI.json, LOCKDATEI-DIFF.json); Funktionsbeleg exposition-20261008.test.ts S1-S2, bildimport-bleibt-heil.test.ts",
+    "bewertet_am": "2026-10-08"
   },
   {
     "bestand": "wurzel",

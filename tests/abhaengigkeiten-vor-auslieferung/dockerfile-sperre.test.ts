@@ -156,8 +156,11 @@ describe("R-1398 · Dockerfile-Stufe `abhaengigkeiten` (Aufbau)", () => {
 describe("R-1398 · Dockerfile-Stufe `abhaengigkeiten` (ausgeführt)", () => {
   let lauf = 0;
 
-  /** Baut das Arbeitsverzeichnis der Stufe nach und führt ihren node-Befehl darin aus. */
-  function stufeAusfuehren(wurzelBericht: string) {
+  /**
+   * Baut das Arbeitsverzeichnis der Stufe nach und führt ihren node-Befehl darin aus.
+   * `register` ersetzt das kopierte Register — nur für synthetische Sperrfälle (A4).
+   */
+  function stufeAusfuehren(wurzelBericht: string, register?: unknown) {
     lauf += 1;
     const arbeit = join(arbeitsordner, `pruef-${lauf}`);
     for (const k of kopien()) {
@@ -166,6 +169,9 @@ describe("R-1398 · Dockerfile-Stufe `abhaengigkeiten` (ausgeführt)", () => {
         mkdirSync(dirname(ziel), { recursive: true });
         cpSync(join(WURZEL, q), ziel);
       }
+    }
+    if (register !== undefined) {
+      writeFileSync(join(arbeit, REGISTER_DATEI), JSON.stringify(register));
     }
     const berichtWurzel = join(arbeitsordner, `bericht-wurzel-${lauf}.json`);
     const berichtWeb = join(arbeitsordner, `bericht-web-${lauf}.json`);
@@ -247,8 +253,20 @@ describe("R-1398 · Dockerfile-Stufe `abhaengigkeiten` (ausgeführt)", () => {
   });
 
   it("A4 · exponiert mit ausstehender kompatibler Behebung → Exit 1, der Bau bricht ab", () => {
-    const r = stufeAusfuehren(bewerteterStand({}, true));
+    // SYNTHETISCH: Seit 08.10.2026 ist sharp auf 0.35.5 gehoben, das echte Register hat keinen
+    // ausstehenden Eintrag mehr. Der Sperrzustand wird deshalb an einer Registerkopie hergestellt,
+    // in der der sharp-Eintrag (an der echten gebundenen Version) wieder ausstehend ist.
+    const echt = JSON.parse(readFileSync(join(WURZEL, REGISTER_DATEI), "utf8")) as {
+      kennung: string;
+    }[];
+    const register = echt.map((e) =>
+      e.kennung === "GHSA-wq5f-xc86-pv6w"
+        ? { ...e, urteil: "exponiert", behebung_ausstehend: "synthetische Gegenprobe A4" }
+        : e,
+    );
+    const r = stufeAusfuehren(bewerteterStand({}, true), register);
     expect(r.code, r.aus).toBe(1);
     expect(r.aus).toContain("✖ exponiert, kompatible Behebung ausstehend: GHSA-wq5f-xc86-pv6w");
+    expect(r.aus).toContain("synthetische Gegenprobe A4");
   });
 });

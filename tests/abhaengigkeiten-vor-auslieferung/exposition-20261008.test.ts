@@ -15,9 +15,9 @@
 //   · React Router (GHSA-wrjc, GHSA-jjmj): die zwei Navigationsziele aus `location.pathname`
 //     laufen durch `internerPfad()` (R3/R4); alle übrigen 153 Stellen haben feste Ziele.
 //
-// Exponiert mit ausstehender kompatibler Behebung (sperrt die Auslieferung):
-//   · sharp/librsvg (GHSA-wq5f-xc86-pv6w): der SVG→WebP-Import ist erhalten (S1) und erreicht
-//     damit librsvg (S2). Behebung sharp ≥ 0.35.5 braucht eine von npm erzeugte Lockdatei.
+//   · sharp/librsvg (GHSA-wq5f-xc86-pv6w): gehoben auf 0.35.5 (erste behobene Fassung; Lockdatei
+//     von npm erzeugt, übernommen am 08.10.2026). Der SVG→WebP-Import ist erhalten (S1) und
+//     erreicht librsvg (S2) — jetzt in der behobenen Fassung.
 //
 // GRENZE, für alle Fälle gleich: die Advisorytexte selbst waren ohne Netzzugang nicht lesbar;
 // bewertet ist an Titel und betroffenem Bereich aus dem Auditbericht. Die Bibliotheksquellen
@@ -180,7 +180,7 @@ describe("nodemailer 6.10.1 — was smtp.ts tatsächlich übergibt", () => {
   });
 });
 
-describe("sharp 0.35.4 — SVG-Import bleibt erhalten, librsvg wird erreicht (GHSA-wq5f)", () => {
+describe("sharp 0.35.5 — SVG-Import bleibt erhalten, librsvg wird erreicht (GHSA-wq5f)", () => {
   // Der Fall, in dem die Rasterung bisher griff: grösser als die Zielkante, und die Quelle ist
   // grösser als ihre WebP-Ableitung. Kleinere SVGs blieben schon vorher unverändert
   // (`schon-klein-genug` bzw. `ableitung-nicht-kleiner`) und fielen dann im Sanitizer weg.

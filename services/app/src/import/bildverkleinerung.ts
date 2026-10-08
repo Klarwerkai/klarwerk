@@ -450,9 +450,8 @@ export function bildausfaelleVermerken(html: string, ausfaelle: readonly Bildaus
  * durch sharp und damit durch librsvg — die Rasterung zu WebP ist der einzige Weg, auf dem ein
  * SVG-Bild aus einer `.docx` sichtbar bleibt (der Sanitizer lässt `image/svg+xml` nicht durch).
  * Eine Sperre an dieser Stelle (Kandidat 8721fb0c) nahm diese Funktion weg und ist zurückgenommen.
- * Die Behebung ist die Hebung auf sharp ≥ 0.35.5; bis dahin führt
- * `tools/abhaengigkeiten-bewertet.json` die Meldung als exponiert mit ausstehender Behebung, und die
- * Abhängigkeitsprüfung vor der Auslieferung sperrt.
+ * Behoben ist die Meldung durch die Hebung auf sharp 0.35.5 (erste behobene Fassung, librsvg
+ * 2.63.2; Bewertung in `tools/abhaengigkeiten-bewertet.json`).
  */
 async function ableiten(quelle: Buffer): Promise<Buffer | Uebersprungsgrund> {
   try {

@@ -31,7 +31,13 @@ gebundenen** Stand?*
 | `fastify` | `node_modules/fastify` | 5.12.1 | nicht exponiert |
 | `find-my-way` | `node_modules/find-my-way` | 9.6.0 | nicht exponiert |
 | `nodemailer` | `node_modules/nodemailer` | 6.10.1 | exponiert |
-| `sharp` | `node_modules/sharp` | 0.35.4 | nicht exponiert |
+| `sharp` | `node_modules/sharp` | 0.35.5 | nicht exponiert |
+
+> **Nachtrag 08.10.2026 (R-1398, GHSA-wq5f-xc86-pv6w):** Die `sharp`-Zeile steht jetzt auf
+> **0.35.5**. Grund ist die librsvg-Meldung aus dem echten Audit, die erste behobene Fassung laut
+> Advisory. Die Lockdatei ist die von npm erzeugte (`npm update sharp --package-lock-only`, Exit 0),
+> übernommen nach Inhaltsabgleich; `package.json` bleibt `^0.35.4`. Einzelheiten in Abschnitt 6.
+> Der Text dieses Berichts zu `sharp` darunter ist die Messung vom 17.09.2026 und bleibt stehen.
 
 „Unentschieden" bleibt ein erlaubtes Urteil dieses Berichts; in Runde 3 steht es an keiner Zeile
 mehr, weil die beiden vormals unentschiedenen Pakete (`fast-uri`, `brace-expansion`) **gehoben**
@@ -543,12 +549,14 @@ Version, in `tools/abhaengigkeiten-bewertet.json`. Jede Bewertung ruht auf einem
   früher gelesenen `location.pathname` (Rückweg der Handyfläche, Herkunftssprung der
   Klara-Vorschau). Beide laufen jetzt durch `internerPfad()` (`apps/web/src/lib/internerPfad.ts`).
 
-**Exponiert, kompatible Behebung ausstehend — sperrt die Auslieferung:** `sharp` 0.35.4
-(GHSA-wq5f-xc86-pv6w, librsvg). Ein SVG aus einer `.docx` wird über sharp → librsvg zu WebP
-gerastert; nur so bleibt es nach dem Sanitizer sichtbar. Eine Sperre davor (Stand 08.10.) nahm diese
-Funktion weg und ist zurückgenommen. Die Behebung ist sharp ≥ 0.35.5 innerhalb `^0.35.4`; sie
-braucht eine von npm erzeugte Lockdatei samt `@img/sharp-*`-Plattformpaketen. Die liegt im
-Repository nicht vor und ist in diesem Arbeitsweg nicht erzeugbar.
+- `sharp` (GHSA-wq5f-xc86-pv6w, librsvg, betroffen `< 0.35.5`): von 0.35.4 auf **0.35.5** gehoben,
+  die erste behobene Fassung laut Advisory (sie bringt librsvg 2.63.2). Innerhalb `^0.35.4`, also
+  kein Hauptwechsel; `package.json` ist bytegleich geblieben. Die Lockdatei hat npm erzeugt
+  (`npm update sharp --package-lock-only --ignore-scripts`, npm 11.13.0, Exit 0). Übernommen ist
+  sie nach Inhaltsabgleich: Geändert sind nur `sharp`, 26 `@img/sharp-*`-Pakete (0.35.5,
+  libvips 1.3.4) und die Projektversion der Lockdatei. Der SVG→WebP-Import bleibt erhalten; SVG
+  läuft weiter über librsvg, jetzt in der behobenen Fassung. Eine frühere Sperre davor
+  (Stand 08.10.) nahm diese Funktion weg und ist zurückgenommen.
 
 **Exponiert, bewusst offen:** vier weitere `nodemailer`-Meldungen am Adressparser (Behebung nur mit
 Hauptwechsel, dieselbe offene Entscheidung wie in Abschnitt 1).

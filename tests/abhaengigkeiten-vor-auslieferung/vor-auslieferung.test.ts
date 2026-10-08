@@ -285,11 +285,20 @@ describe("R-1398 · die Prüfung vor der Auslieferung", () => {
         { ghsa: "GHSA-wq5f-xc86-pv6w", schwere: "high", bereich: "<0.35.5" },
       ]),
     };
-    const { code, text } = pruefeStand(bericht(stand));
+    // SYNTHETISCH: seit 08.10.2026 ist sharp gehoben und das echte Register ohne ausstehenden
+    // Eintrag. Der Sperrzustand wird an einer Registerkopie hergestellt (echte gebundene Version).
+    const ausstehend = register().map((b) =>
+      b.kennung === "GHSA-wq5f-xc86-pv6w"
+        ? { ...b, urteil: "exponiert", behebung_ausstehend: "synthetische Gegenprobe P10" }
+        : b,
+    );
+    const { code, text } = pruefeStand(bericht(stand), LEER, { register: ausstehend });
     expect(code).toBe(1);
     const zeile = "✖ exponiert, kompatible Behebung ausstehend: GHSA-wq5f-xc86-pv6w sharp@";
     expect(text).toContain(zeile);
-    expect(text).toContain("sharp >= 0.35.5");
+    expect(text).toContain("synthetische Gegenprobe P10");
+    // Gegenstück am echten Register: dieselbe Meldung an der gebundenen Fassung sperrt nicht mehr.
+    expect(pruefeStand(bericht(stand)).code).toBe(0);
   });
 
   it("P11 · behebung_ausstehend ist nur bei „exponiert“ erlaubt", () => {
