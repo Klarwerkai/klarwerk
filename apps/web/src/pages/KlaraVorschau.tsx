@@ -30,7 +30,7 @@ function Kennzeichen(): JSX.Element {
   return (
     <span
       data-testid="klara-vorschau-kennzeichen"
-      className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-trust-warn-text"
+      className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase tracking-wider text-trust-warn-text"
     >
       {t("klaravorschau.vorschauseite.kennzeichen")}
     </span>
@@ -117,7 +117,7 @@ function Artikel({ id }: { id: string }): JSX.Element {
               {geaendert ? (
                 <span
                   data-testid="klara-absatz-geaendert"
-                  className="mt-1 inline-block rounded-pill bg-ai-surface-1 px-2 py-0.5 text-[10.5px] font-semibold text-ai"
+                  className="mt-1 inline-block rounded-pill bg-ai-surface-1 px-2 py-0.5 text-klein font-semibold text-ai"
                 >
                   {t("klaravorschau.vorschauseite.geaendert")}
                 </span>

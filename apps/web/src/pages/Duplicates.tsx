@@ -310,7 +310,7 @@ export function Duplicates(): JSX.Element {
     const beleg = (ko: KnowledgeObject | null): JSX.Element | undefined =>
       ko ? (
         <div data-text="meta">
-          <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-muted-2">
+          <div className="mb-1 font-mono text-klein uppercase tracking-wider text-muted-2">
             {t("dublettenvergleich.beleg")}
           </div>
           <SourceEvidence

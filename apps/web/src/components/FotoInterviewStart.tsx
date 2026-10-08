@@ -165,7 +165,7 @@ export function FotoInterviewStart({
         <div className="space-y-2">
           {auswertung === "ki" ? (
             <p className="flex items-center gap-2 text-[12px] text-muted">
-              <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
+              <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-klein font-semibold uppercase text-ai">
                 {t("fotowissen.befundKi")}
               </span>
               {t("fotowissen.befund")}

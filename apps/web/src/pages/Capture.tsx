@@ -5951,7 +5951,7 @@ export function CaptureArbeitsraum({
                         </span>
                       ) : null}
                       {ivBefund ? (
-                        <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
+                        <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted">
                           {t("fotowissen.laeuft")}
                         </span>
                       ) : null}
