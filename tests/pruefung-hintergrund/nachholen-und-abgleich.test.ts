@@ -3,11 +3,12 @@
 // Echter Prüf-Worker, echter Runner, echter Wissensobjekt-Dienst; nur der Modellanbieter ist eine
 // steuerbare Attrappe (Ausfall an/aus, Ausfall einzelner Vergleiche). Gemessen wird der Prüfvermerk
 // am Objekt und der Protokolleintrag — dort, wo Oberfläche und Prüfer ihn lesen.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createAiCheckRunner, createAiCheckWorker } from "../../services/app/src/ai-check-worker";
 import { buildServices } from "../../services/app/src/build-app";
 import {
   HINTERGRUNDLAUF_AUDIT,
+  HINTERGRUNDLAUF_VERBRAUCH_AUDIT,
   createHintergrundpruefung,
   hintergrundArt,
 } from "../../services/app/src/hintergrundpruefung";
@@ -18,7 +19,9 @@ import { GOOD_CONFLICT, GOOD_DUPLICATE } from "../review26-teilpruefung-ursache/
 
 const TAG_MS = 24 * 60 * 60_000;
 
-async function buehne(budget: { tagesbudget?: number; laufbudget?: number } = {}) {
+type Budget = { tagesbudget?: number; laufbudget?: number; maxJeObjekt?: number };
+
+async function buehne(budget: Budget = {}) {
   const services = buildServices();
   const modell = {
     aufrufe: 0,
@@ -46,14 +49,24 @@ async function buehne(budget: { tagesbudget?: number; laufbudget?: number } = {}
     log: () => undefined,
   });
   const uhr = { jetzt: Date.now() };
-  const lauf = createHintergrundpruefung({
-    ko: services.ko,
-    worker,
-    modellAktiv: () => services.reasoner.status().active,
-    audit: services.audit,
-    now: () => uhr.jetzt,
-    ...budget,
-  });
+  // Wie build-app.ts: eigener Worker, derselbe Runner plus Zählhaken. `neuerLauf` = Prozessneustart
+  // (frischer Speicher, dasselbe Protokoll).
+  const neuerLauf = (b: Budget = budget) =>
+    createHintergrundpruefung({
+      ko: services.ko,
+      hauptWorker: worker,
+      baueWorker: (vorVergleich) =>
+        createAiCheckWorker({
+          ko: services.ko,
+          run: createAiCheckRunner({ ...services, vorVergleich }),
+          log: () => undefined,
+        }),
+      modellAktiv: () => services.reasoner.status().active,
+      audit: services.audit,
+      now: () => uhr.jetzt,
+      ...b,
+    });
+  const lauf = neuerLauf();
   const lege = (titel: string, aussage: string) =>
     services.ko.create({
       title: titel,
@@ -73,7 +86,19 @@ async function buehne(budget: { tagesbudget?: number; laufbudget?: number } = {}
   };
   const vermerk = async (id: string) => (await services.ko.get(id))?.aiCheck;
   const protokoll = () => services.audit.list({ action: HINTERGRUNDLAUF_AUDIT });
-  return { services, modell, uhr, lauf, lege, reicheEin, vermerk, protokoll };
+  const verbrauchsbelege = () => services.audit.list({ action: HINTERGRUNDLAUF_VERBRAUCH_AUDIT });
+  return {
+    services,
+    modell,
+    uhr,
+    lauf,
+    neuerLauf,
+    lege,
+    reicheEin,
+    vermerk,
+    protokoll,
+    verbrauchsbelege,
+  };
 }
 
 const AUSFALL = () => new Error("ECONNREFUSED");
@@ -203,16 +228,33 @@ describe("R-1111 · laufender Abgleich: später entstandene Nachbarn, Tagesbudge
     expect((await b.protokoll())[0]?.payload).toMatchObject({ abgeglichen: 1 });
   });
 
-  it("das Tagesbudget deckelt die Modellvergleiche; der Rest folgt am nächsten Tag", async () => {
-    const b = await buehne({ tagesbudget: 1 });
+  // Bens Befunde 1–3: tatsächlicher Verbrauch je Weg, Obergrenze, Neustart.
+  // Bühne: jedes Subjekt hat drei Nachbarn → mindestens drei Konfliktvergleiche je Objekt. Mit
+  // Tagesbudget 10 und Reservierung 8 passt genau ein Objekt; das zweite beginnt nicht.
+  it("das Tagesbudget deckelt die tatsächlichen Vergleiche beider Wege, auch über einen Neustart", async () => {
+    const b = await buehne({ tagesbudget: 10, maxJeObjekt: 8 });
     await b.lege("Kandidat", "Pumpenleistung im Betrieb prüfen");
     await b.reicheEin("Erstes", "Das Ventil muss vor der Wartung geschlossen werden");
     await b.reicheEin("Zweites", "Der Filter wird monatlich gewechselt");
     await b.lege("Später", "Das Ventil bleibt während der Wartung offen");
+    const aufrufeVorher = b.modell.aufrufe;
 
     const erster = await b.lauf();
+
     expect(erster).toMatchObject({ abgeglichen: 1, offen: 1, abbruch: "budget" });
-    expect(erster?.vergleicheHeute).toBeGreaterThanOrEqual(1);
+    // Gezählt wird, was wirklich beim Modell ankam — beide Wege, kein Minimum.
+    expect(erster?.vergleiche).toBe(b.modell.aufrufe - aufrufeVorher);
+    expect(erster?.vergleicheKonflikt).toBeGreaterThanOrEqual(3);
+    expect(erster?.vergleicheDublette).toBeGreaterThanOrEqual(1);
+    expect(erster?.vergleiche).toBe(
+      (erster?.vergleicheKonflikt ?? 0) + (erster?.vergleicheDublette ?? 0),
+    );
+    expect(erster?.vergleicheHeute).toBe(erster?.vergleiche);
+    expect(erster?.vergleicheHeute).toBeLessThanOrEqual(10);
+    // Der Verbrauch ist dauerhaft belegt.
+    const belege = await b.verbrauchsbelege();
+    expect(belege).toHaveLength(1);
+    expect(belege[0]?.payload).toMatchObject({ vergleiche: erster?.vergleiche });
 
     // Derselbe Tag: nichts mehr, und kein weiterer Protokolleintrag.
     const aufrufe = b.modell.aufrufe;
@@ -220,9 +262,56 @@ describe("R-1111 · laufender Abgleich: später entstandene Nachbarn, Tagesbudge
     expect(b.modell.aufrufe).toBe(aufrufe);
     expect(await b.protokoll()).toHaveLength(1);
 
+    // Neustart am selben Tag: der Verbrauch wird aus den Belegen wiederhergestellt, kein neues Budget.
+    const nachNeustart = b.neuerLauf();
+    expect(await nachNeustart()).toMatchObject({
+      abgeglichen: 0,
+      abbruch: "budget",
+      vergleicheHeute: erster?.vergleiche,
+    });
+    expect(b.modell.aufrufe).toBe(aufrufe);
+
     b.uhr.jetzt += TAG_MS;
-    expect(await b.lauf()).toMatchObject({ abgeglichen: 1, offen: 0 });
+    expect(await nachNeustart()).toMatchObject({ abgeglichen: 1, offen: 0 });
     expect(await b.protokoll()).toHaveLength(2);
+  });
+
+  it("das Restbudget wird vor jedem einzelnen Vergleich durchgesetzt; der Rest bleibt liegen", async () => {
+    // Reservierung absichtlich kleiner als der Bedarf des Objekts: der Haken muss stoppen.
+    const b = await buehne({ tagesbudget: 1, maxJeObjekt: 1 });
+    await b.lege("Kandidat eins", "Pumpenleistung im Betrieb prüfen");
+    await b.lege("Kandidat zwei", "Pumpendruck im Betrieb messen");
+    b.modell.fehler = AUSFALL;
+    const id = await b.reicheEin("Subjekt", "Das Ventil muss vor der Wartung geschlossen werden");
+    b.modell.fehler = () => undefined;
+    const aufrufeVorher = b.modell.aufrufe;
+
+    const bericht = await b.lauf();
+
+    expect(b.modell.aufrufe - aufrufeVorher).toBe(1);
+    expect(bericht).toMatchObject({ vergleiche: 1, vergleicheHeute: 1, fehlgeschlagen: 1 });
+    // Ehrlich teilgeprüft, nicht abgeschlossen — und damit für einen späteren Lauf erhalten.
+    expect((await b.vermerk(id))?.status).toBe("failed");
+    expect(await b.lauf()).toMatchObject({ abbruch: "budget", offen: 1 });
+    expect(b.modell.aufrufe - aufrufeVorher).toBe(1);
+  });
+
+  it("ohne lesbare Verbrauchsbelege läuft nichts (fail-closed)", async () => {
+    const b = await buehne();
+    await b.lege("Kandidat", "Pumpenleistung im Betrieb prüfen");
+    b.modell.fehler = AUSFALL;
+    await b.reicheEin("Subjekt", "Das Ventil muss vor der Wartung geschlossen werden");
+    b.modell.fehler = () => undefined;
+    const aufrufe = b.modell.aufrufe;
+    const lesen = vi
+      .spyOn(b.services.audit, "list")
+      .mockRejectedValueOnce(new Error("Protokoll nicht lesbar"));
+    try {
+      expect(await b.neuerLauf()()).toMatchObject({ abbruch: "verbrauch-unbelegt" });
+      expect(b.modell.aufrufe).toBe(aufrufe);
+    } finally {
+      lesen.mockRestore();
+    }
   });
 });
 

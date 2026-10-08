@@ -20,31 +20,51 @@
 //    zuerst, innerhalb des Tagesbudgets. Entschiedene Paare (Fehlalarm, getrennt, verknüpft) mit
 //    unveränderten Fassungen legt die Erkennung dabei nicht neu an (conflicts: hasOpenPair).
 //
-// BUDGET: gezählt werden Modellvergleiche laut Abdeckungsprotokoll (`coverage.attempted`) — die Zahl,
-// die Kosten erzeugt. Geprüft wird VOR jedem Objekt, je Lauf und je Kalendertag (UTC); ein einzelner
-// Objektlauf ist durch den Kandidatendeckel der Erkennung begrenzt. Der Rest wartet auf den nächsten Takt.
+// BUDGET (bens Befunde zu R-1111):
+//  · GEZÄHLT wird jeder einzelne Modellvergleich, getrennt nach Konflikt- und Duplikatweg — über den
+//    Haken `vorVergleich` des Runners, der VOR jedem Urteil gerufen wird. `coverage.attempted` ist
+//    dafür ungeeignet: es ist die konservative MINDESTabdeckung beider Wege (mergeCoverage), keine
+//    Verbrauchszahl. Ein Vergleich zählt, sobald er freigegeben ist — auch wenn er scheitert.
+//  · DURCHGESETZT wird das Restbudget in zwei Stufen: vor jedem Objekt wird sein Höchstverbrauch
+//    (beide Wege je Kandidatendeckel) reserviert — reicht der Rest nicht, beginnt das Objekt nicht und
+//    bleibt für einen späteren Lauf liegen. Innerhalb des Objekts verweigert der Haken jeden Vergleich
+//    jenseits der Reservierung (ModelCapacityError → der Lauf endet ehrlich teilgeprüft). Das Budget
+//    wird damit nie überschritten.
+//  · DAUERHAFT: jeder Objektlauf mit Verbrauch schreibt einen Beleg `pruefung.hintergrundlauf.verbrauch`
+//    (Tag, Zähler je Weg) ins append-only Protokoll. Beim ersten Lauf eines Tages — auch nach einem
+//    Neustart — wird der Tagesverbrauch aus diesen Belegen wiederhergestellt. Ist das Protokoll nicht
+//    lesbar oder ein Beleg nicht schreibbar, läuft nichts weiter (fail-closed: unbelegter Verbrauch
+//    gewährt kein neues Budget).
+//
+// EIGENER WORKER: der Lauf arbeitet über eine eigene Worker-Instanz mit demselben Runner plus Haken.
+// So zählen Einreichungen der Nutzer (Haupt-Worker) nicht gegen das Hintergrundbudget. Vor jedem
+// Objekt wartet der Lauf, bis der Haupt-Worker leer ist — Einreichungen haben Vorrang, und beide
+// fragen das Modell nicht gleichzeitig an (bis auf eine Einreichung, die genau während eines
+// Hintergrund-Objekts eintrifft).
 //
 // PROTOKOLL: jeder Lauf, der etwas getan hat (ohne Modell: einmal je Tag), schreibt EINEN Eintrag
 // `pruefung.hintergrundlauf` — nur Zähler, keine Inhalte, keine Kennungen. Einzelne Funde stehen wie
 // bisher als `conflict.auto-created` / `overlap.auto-created` im Protokoll.
 //
-// GRENZEN: Ein-Prozess-Betrieb (K0-6) — der Tageszähler lebt im Speicher und beginnt nach einem
-// Neustart neu. Ob ein Anbieter erreichbar ist, zeigt erst der Versuch: scheitert ein Lauf an einer
+// GRENZEN: Ob ein Anbieter erreichbar ist, zeigt erst der Versuch: scheitert ein Lauf an einer
 // Erreichbarkeitsursache, endet dieser Takt, der nächste versucht es erneut. Unberührt bleiben Objekte
 // ohne Prüfvermerk (Import ohne angeforderte Prüfung, R-0145), Objekte in Schutzdaten-Quarantäne
 // (R-0658), vertraulich gesperrte Läufe (`confidential` — dort hilft nur eine andere Modellwahl) und
 // im Abgleich die Vorführdaten (K0-3).
-import type { AuditInput } from "../../audit";
+import type { AuditEntry, AuditFilter, AuditInput } from "../../audit";
 import { type KnowledgeObject, inSchutzdatenQuarantaene } from "../../knowledge-object";
+import { ModelCapacityError } from "../../reasoner";
 import {
   type AiCheckFailureReason,
   type AiCheckWorker,
   shouldReEnqueueAiCheck,
 } from "./ai-check-worker";
+import { DETECTION_CANDIDATE_CAP } from "./detection-cap";
 // Der Zeitgeber (`starteHintergrundpruefung`) wohnt in hintergrundpruefung-start.ts: dieses Modul
 // lädt build-app.ts, und der Zeitgeber gehört nur in den Prozessstart (server.ts).
 
 export const HINTERGRUNDLAUF_AUDIT = "pruefung.hintergrundlauf";
+export const HINTERGRUNDLAUF_VERBRAUCH_AUDIT = "pruefung.hintergrundlauf.verbrauch";
 
 // Vorgaben aus dem Fachkonzept (docs/qm/BERATER_KONZEPT_KONFLIKTERKENNUNG_2026-07-04.md §3.3):
 // stündlich, 50 Modellvergleiche je Lauf, 500 je Tag. Bewusst Konstanten, keine Umgebungswerte —
@@ -52,6 +72,8 @@ export const HINTERGRUNDLAUF_AUDIT = "pruefung.hintergrundlauf";
 export const HINTERGRUNDLAUF_INTERVAL_MS = 60 * 60_000;
 export const HINTERGRUNDLAUF_LAUFBUDGET = 50;
 export const HINTERGRUNDLAUF_TAGESBUDGET = 500;
+// Höchstverbrauch EINES Objektlaufs: beide Wege (Konflikt, Duplikat) je Kandidatendeckel.
+export const HINTERGRUNDLAUF_MAX_JE_OBJEKT = 2 * DETECTION_CANDIDATE_CAP;
 
 // Ursachen, die auf einen nicht nutzbaren Modellweg zeigen: ein weiterer Versuch im selben Takt
 // scheiterte ebenso. Andere Fehlschläge (unverständliche Antwort, Sammelfehler) betreffen das eine
@@ -65,17 +87,24 @@ const NICHT_ERREICHBAR: ReadonlySet<string> = new Set<AiCheckFailureReason>([
   "timeout",
 ]);
 
+export type Vergleichsweg = "konflikt" | "dublette";
+
 export interface HintergrundlaufBericht {
   nachgeholt: number;
   abgeglichen: number;
   fehlgeschlagen: number;
   /** Objekte, die nach diesem Lauf weiter anstehen. */
   offen: number;
+  /** Tatsächliche Modellvergleiche dieses Laufs, gesamt und je Weg. */
   vergleiche: number;
+  vergleicheKonflikt: number;
+  vergleicheDublette: number;
   vergleicheHeute: number;
   tagesbudget: number;
-  abbruch?: "kein-modell" | "modell-nicht-erreichbar" | "budget";
+  abbruch?: "kein-modell" | "modell-nicht-erreichbar" | "budget" | "verbrauch-unbelegt";
 }
+
+type PruefWorker = Pick<AiCheckWorker, "enqueue" | "has" | "idle">;
 
 export interface HintergrundpruefungDeps {
   ko: {
@@ -83,12 +112,19 @@ export interface HintergrundpruefungDeps {
     get(id: string): Promise<KnowledgeObject | undefined>;
     markAiCheckPending(id: string): Promise<boolean>;
   };
-  worker: Pick<AiCheckWorker, "enqueue" | "has" | "idle">;
+  /** Der Worker der Einreichungen: Vorrang und Doppelauftrags-Schutz. */
+  hauptWorker: Pick<AiCheckWorker, "has" | "idle">;
+  /** Baut den eigenen Worker; `vorVergleich` geht an den Runner (AiCheckRunnerDeps.vorVergleich). */
+  baueWorker: (vorVergleich: (weg: Vergleichsweg) => void) => PruefWorker;
   modellAktiv: () => boolean;
-  audit?: { record(input: AuditInput): Promise<unknown> };
+  audit: {
+    record(input: AuditInput): Promise<unknown>;
+    list(filter?: AuditFilter): Promise<AuditEntry[]>;
+  };
   now?: () => number;
   laufbudget?: number;
   tagesbudget?: number;
+  maxJeObjekt?: number;
 }
 
 type Art = "nachholen" | "abgleich";
@@ -115,20 +151,45 @@ export function hintergrundArt(ko: KnowledgeObject, nowMs: number): Art | null {
   return vermerk.ueberholt && !ko.demoSeed ? "abgleich" : null;
 }
 
+/** Tagesverbrauch aus den Verbrauchsbelegen des Protokolls (Tag im Beleg, nicht die Schreibzeit). */
+export function verbrauchAusBelegen(belege: readonly AuditEntry[], tag: string): number {
+  let summe = 0;
+  for (const beleg of belege) {
+    const vergleiche = beleg.payload.vergleiche;
+    if (beleg.payload.tag === tag && typeof vergleiche === "number" && vergleiche > 0) {
+      summe += vergleiche;
+    }
+  }
+  return summe;
+}
+
 export function createHintergrundpruefung(
   deps: HintergrundpruefungDeps,
 ): () => Promise<HintergrundlaufBericht | null> {
   const now = deps.now ?? (() => Date.now());
   const laufbudget = deps.laufbudget ?? HINTERGRUNDLAUF_LAUFBUDGET;
   const tagesbudget = deps.tagesbudget ?? HINTERGRUNDLAUF_TAGESBUDGET;
+  const maxJeObjekt = deps.maxJeObjekt ?? HINTERGRUNDLAUF_MAX_JE_OBJEKT;
+  // `tag` ist erst gesetzt, wenn der Verbrauch dieses Tages aus den Belegen wiederhergestellt ist.
   let tag = "";
   let heute = 0;
   let keinModellGemeldet = "";
   let laeuft = false;
 
+  // Freigabe je Objekt: außerhalb eines Objektlaufs 0 — auch ein verspäteter Vergleich eines
+  // abgelaufenen Jobs bekommt dann keinen Platz.
+  let freigegeben = 0;
+  const verbraucht: Record<Vergleichsweg, number> = { konflikt: 0, dublette: 0 };
+  const worker = deps.baueWorker((weg) => {
+    if (verbraucht.konflikt + verbraucht.dublette >= freigegeben) {
+      throw new ModelCapacityError("Budget der Hintergrundprüfung erschöpft");
+    }
+    verbraucht[weg] += 1;
+  });
+
   const protokolliere = async (bericht: HintergrundlaufBericht): Promise<void> => {
     await deps.audit
-      ?.record({
+      .record({
         actor: "system",
         action: HINTERGRUNDLAUF_AUDIT,
         target: "bestand",
@@ -140,25 +201,38 @@ export function createHintergrundpruefung(
   const lauf = async (): Promise<HintergrundlaufBericht> => {
     const nowMs = now();
     const heuteTag = new Date(nowMs).toISOString().slice(0, 10);
-    if (heuteTag !== tag) {
-      tag = heuteTag;
-      heute = 0;
-    }
-    const arbeit = (await deps.ko.list())
-      .map((ko) => ({ ko, art: hintergrundArt(ko, nowMs) }))
-      .filter((e): e is { ko: KnowledgeObject; art: Art } => e.art !== null)
-      .filter((e) => !deps.worker.has(e.ko.id))
-      // Nachholen vor Abgleich, innerhalb jeweils der älteste Vermerk zuerst.
-      .sort((a, b) => rang(a.art) - rang(b.art) || zeitpunkt(a.ko) - zeitpunkt(b.ko));
     const bericht: HintergrundlaufBericht = {
       nachgeholt: 0,
       abgeglichen: 0,
       fehlgeschlagen: 0,
-      offen: arbeit.length,
+      offen: 0,
       vergleiche: 0,
+      vergleicheKonflikt: 0,
+      vergleicheDublette: 0,
       vergleicheHeute: heute,
       tagesbudget,
     };
+    if (heuteTag !== tag) {
+      try {
+        heute = verbrauchAusBelegen(
+          await deps.audit.list({ action: HINTERGRUNDLAUF_VERBRAUCH_AUDIT }),
+          heuteTag,
+        );
+        tag = heuteTag;
+      } catch {
+        // Unbelegter Verbrauch gewährt kein Budget: ohne lesbare Belege läuft nichts.
+        bericht.abbruch = "verbrauch-unbelegt";
+        return bericht;
+      }
+      bericht.vergleicheHeute = heute;
+    }
+    const arbeit = (await deps.ko.list())
+      .map((ko) => ({ ko, art: hintergrundArt(ko, nowMs) }))
+      .filter((e): e is { ko: KnowledgeObject; art: Art } => e.art !== null)
+      .filter((e) => !deps.hauptWorker.has(e.ko.id) && !worker.has(e.ko.id))
+      // Nachholen vor Abgleich, innerhalb jeweils der älteste Vermerk zuerst.
+      .sort((a, b) => rang(a.art) - rang(b.art) || zeitpunkt(a.ko) - zeitpunkt(b.ko));
+    bericht.offen = arbeit.length;
     if (arbeit.length === 0) {
       return bericht;
     }
@@ -172,29 +246,70 @@ export function createHintergrundpruefung(
       return bericht;
     }
     for (const { ko, art } of arbeit) {
-      if (heute >= tagesbudget || bericht.vergleiche >= laufbudget) {
+      // Reservierung: beginnt nur, wenn der Höchstverbrauch des Objekts in beide Budgets passt.
+      const rest = Math.min(tagesbudget - heute, laufbudget - bericht.vergleiche);
+      if (rest < maxJeObjekt) {
         bericht.abbruch = "budget";
         break;
+      }
+      // Einreichungen haben Vorrang.
+      await deps.hauptWorker.idle();
+      if (deps.hauptWorker.has(ko.id)) {
+        continue; // inzwischen von einer Einreichung erfasst — bleibt dort
       }
       if (!(await deps.ko.markAiCheckPending(ko.id))) {
         bericht.offen -= 1; // gelöscht oder verschwunden — nichts mehr nachzuholen
         continue;
       }
       const vermerkt = await deps.ko.get(ko.id);
-      deps.worker.enqueue(ko.id, vermerkt?.aiCheck?.koVersion);
-      await deps.worker.idle();
-      const nachher = (await deps.ko.get(ko.id))?.aiCheck;
-      const verbraucht = nachher?.coverage?.attempted ?? 0;
-      bericht.vergleiche += verbraucht;
-      heute += verbraucht;
+      verbraucht.konflikt = 0;
+      verbraucht.dublette = 0;
+      freigegeben = maxJeObjekt;
+      try {
+        worker.enqueue(ko.id, vermerkt?.aiCheck?.koVersion);
+        await worker.idle();
+      } finally {
+        freigegeben = 0;
+      }
+      const objekt = verbraucht.konflikt + verbraucht.dublette;
+      bericht.vergleicheKonflikt += verbraucht.konflikt;
+      bericht.vergleicheDublette += verbraucht.dublette;
+      bericht.vergleiche += objekt;
+      heute += objekt;
       bericht.offen -= 1;
+      if (objekt > 0) {
+        try {
+          await deps.audit.record({
+            actor: "system",
+            action: HINTERGRUNDLAUF_VERBRAUCH_AUDIT,
+            target: "bestand",
+            payload: {
+              tag,
+              vergleiche: objekt,
+              konflikt: verbraucht.konflikt,
+              dublette: verbraucht.dublette,
+            },
+          });
+        } catch {
+          // Der Verbrauch ist im Speicher gezählt, aber nicht belegt — ein Neustart sähe ihn nicht.
+          // Deshalb endet der Lauf hier statt weiter unbelegt zu verbrauchen.
+          bericht.abbruch = "verbrauch-unbelegt";
+        }
+      }
+      const nachher = (await deps.ko.get(ko.id))?.aiCheck;
       if (nachher?.status === "done") {
         bericht[art === "nachholen" ? "nachgeholt" : "abgeglichen"] += 1;
-        continue;
+      } else {
+        bericht.fehlgeschlagen += 1;
+        if (
+          !bericht.abbruch &&
+          nachher?.fallbackReason &&
+          NICHT_ERREICHBAR.has(nachher.fallbackReason)
+        ) {
+          bericht.abbruch = "modell-nicht-erreichbar";
+        }
       }
-      bericht.fehlgeschlagen += 1;
-      if (nachher?.fallbackReason && NICHT_ERREICHBAR.has(nachher.fallbackReason)) {
-        bericht.abbruch = "modell-nicht-erreichbar";
+      if (bericht.abbruch) {
         break;
       }
     }

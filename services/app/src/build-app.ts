@@ -3162,10 +3162,25 @@ export function buildApp(
       }),
     });
   services.aiCheckWorker = aiCheckWorker;
+  // AUFNAHME 20260922 · gesamt-pruefung-hintergrund: eigener Worker mit DEMSELBEN Runner plus
+  // Zählhaken — so zählt nur der Hintergrundlauf gegen sein Budget (hintergrundpruefung.ts).
   opts.hintergrundpruefung?.(
     createHintergrundpruefung({
       ko: services.ko,
-      worker: aiCheckWorker,
+      hauptWorker: aiCheckWorker,
+      baueWorker: (vorVergleich) =>
+        createAiCheckWorker({
+          ko: services.ko,
+          run: createAiCheckRunner({
+            ko: services.ko,
+            conflicts: services.conflicts,
+            overlaps: services.overlaps,
+            overlapSettings: services.overlapSettings,
+            reasoner: services.reasoner,
+            semanticPrefilter,
+            vorVergleich,
+          }),
+        }),
       modellAktiv: () => services.reasoner.status().active,
       audit: services.audit,
     }),
