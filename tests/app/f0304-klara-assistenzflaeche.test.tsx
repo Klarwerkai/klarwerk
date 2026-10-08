@@ -65,6 +65,7 @@ import i18n from "../../apps/web/src/i18n";
 // JOB 3830 liest die QUELLEN, gegen die der abgefangene Anfragekoerper gehalten wird — nur lesend,
 // keine Zusicherung ueber den Inhalt dieser Module selbst.
 import { FAQ_CONTENT } from "../../apps/web/src/lib/faqContent";
+import { bibliothekAuszuege } from "../../apps/web/src/lib/klaraBibliothek";
 import {
   type ResolvedKlaraEntry,
   allFaqEntries,
@@ -524,9 +525,14 @@ function letzterAnfragekoerper(): Anfragekoerper {
 }
 
 /** Der aufgeloeste Bestand, genau wie `KlaraAssistant.tsx:266-272` ihn baut — die Quelle zum Vergleich. */
+// Aufnahme gesamt-hilfen, Nacharbeit 7 (R-0943, Ben): die KI-Grundlage nimmt seither auch Auszüge
+// der Hilfebibliothek (je Artikelteil einer, `lib/klaraBibliothek.ts`). Sie gehören zum Bestand,
+// gegen den A3 jeden übertragenen Schnipsel hält — die Zusicherung bleibt dieselbe: jeder hat eine
+// Quelle und kommt zeichengleich an. FAQ-Antworten verdrängt kein Auszug (`klaraGrundlage`).
 const aufgeloesterBestand = (): ResolvedKlaraEntry[] => [
   ...resolveKlaraEntries(allKlaraEntries(), (key) => i18n.t(key)),
   ...allFaqEntries("de"),
+  ...bibliothekAuszuege("de", (key) => i18n.t(key)),
 ];
 
 const DUPLIKAT_ID = "faq:faq.konflikte.6";

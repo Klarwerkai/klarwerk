@@ -2351,6 +2351,9 @@ export function Ask(): JSX.Element {
                         {stepsWorthShowing(result.steps, answerSources) ? (
                           <div className="mt-4">
                             <SectionLabel>{t("ask.steps")}</SectionLabel>
+                            {/* R-0888 (gesamt-hilfen, Nacharbeit 13): Abschnittserklärung in der
+                                Seitenhilfe, solange der Abschnitt steht. */}
+                            <HelpTip title={t("ask.steps")} body={t("shelp.ask.steps")} />
                             <ul className="space-y-2">
                               {stepsBeyondSources(result.steps, answerSources).map((s) => (
                                 <li
