@@ -146,6 +146,10 @@ export type KandidatArt =
   | "aria-modal-attribut"
   | "aria-modal-eigenschaft"
   | "aria-modal-zeichenkette"
+  // Register A17b (R-1390, „abweichend benannte Bauformen"): die DOM-Reflexion `el.ariaModal`,
+  // `{ ariaModal: … }`. Sie trägt die Zeichenfolge `aria-modal` nicht und lief bis hierher an
+  // Syntaxbaum UND Wortzähler vorbei.
+  | "aria-modal-reflexion"
   | "dialog-jsx"
   | "dialog-createElement"
   | "role-dialog"
@@ -178,6 +182,47 @@ export interface DateiErhebung {
    * `dialogRef.current.showModal()` ebenso wie `const d = dialogRef.current; d.showModal()`.
    */
   nativeRefs: Set<string>;
+  /**
+   * Register A17b: Zeichenketten `"dialog"` / `"alertdialog"`, die KEINER erkannten Bauform
+   * angehören — etwa `const Huelle = "dialog"; <Huelle />` oder eine Rolle, die über eine Variable
+   * oder ein anderes Modul ankommt. Jede ist eine Bauform, die dieser Sammler nicht beurteilen
+   * kann, und wird rot mit Datei und Zeile (`modalAbgleich`) — nicht still als Prosa verbucht.
+   */
+  unbekannteBauformen: string[];
+}
+
+/** Die Rollen- bzw. Elementnamen, die eine Fläche als Dialog ausweisen. */
+export function istDialogName(text: string): boolean {
+  return text === "dialog" || text === "alertdialog";
+}
+
+function istZeichenkettenLiteral(n: ts.Node): n is ts.StringLiteralLike {
+  return ts.isStringLiteral(n) || n.kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral;
+}
+
+/**
+ * Alle `"dialog"`/`"alertdialog"`-Literale in einem Ausdruck — auch in Bedingungen und
+ * Rückfallketten (`offen ? "dialog" : undefined`, `rolle ?? "dialog"`). Register A17b: die Rolle
+ * steht nicht immer als nacktes Literal am Attribut.
+ */
+export function dialogLiterale(ausdruck: ts.Node): ts.StringLiteralLike[] {
+  const gefunden: ts.StringLiteralLike[] = [];
+  const gehe = (k: ts.Node): void => {
+    if (istZeichenkettenLiteral(k) && istDialogName(k.text)) {
+      gefunden.push(k);
+    }
+    ts.forEachChild(k, gehe);
+  };
+  gehe(ausdruck);
+  return gefunden;
+}
+
+/** Der Name einer Eigenschaft, gleich ob als Bezeichner oder als Zeichenkette geschrieben. */
+function eigenschaftsName(name: ts.PropertyName): string | undefined {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name)) {
+    return name.text;
+  }
+  return undefined;
 }
 
 export function istExportiert(n: ts.Declaration): boolean {
@@ -213,6 +258,7 @@ export function erhebeDatei(quelle: Quelle): DateiErhebung {
   const kandidaten: Kandidat[] = [];
   const prosaSpannen: Array<readonly [number, number]> = [];
   const exportierte: string[] = [];
+  const unbekannteBauformen: string[] = [];
   let nutztGrenze = false;
   // Text-Tokens, die bereits als Kandidat erfasst sind, dürfen nicht zusätzlich Prosa werden —
   // sonst wäre jede Erwähnung doppelt erklärt und der Zähler wertlos.
@@ -220,6 +266,14 @@ export function erhebeDatei(quelle: Quelle): DateiErhebung {
 
   const melde = (n: ts.Node, art: KandidatArt, ref?: string): void => {
     kandidaten.push({ datei: quelle.datei, zeile: zeileVon(sf, n), art, ...(ref ? { ref } : {}) });
+  };
+
+  // Jedes Dialog-Literal im Rollenwert wird Kandidat — und damit nicht unbekannte Bauform.
+  const meldeRolle = (ausdruck: ts.Node): void => {
+    for (const literal of dialogLiterale(ausdruck)) {
+      melde(literal, "role-dialog");
+      kandidatTokens.add(literal);
+    }
   };
 
   // AUFTRAG-mega76 BLOCK E — die Kette `<dialog ref={R}>` … `R.current.showModal()` nachziehen.
@@ -311,33 +365,55 @@ export function erhebeDatei(quelle: Quelle): DateiErhebung {
     ) {
       aliasse.set(node.name.text, node.initializer.expression.text);
     }
-    // `createElement("dialog", …)` — React wie DOM.
+    // `createElement("dialog", …)` — React wie DOM, auch als Template ohne Ersetzung (A17b).
     if (ts.isCallExpression(node) && aufrufName(node) === "createElement") {
       const erstes = node.arguments[0];
-      if (erstes && ts.isStringLiteral(erstes) && erstes.text === "dialog") {
+      if (erstes && istZeichenkettenLiteral(erstes) && erstes.text === "dialog") {
         melde(erstes, "dialog-createElement");
         kandidatTokens.add(erstes);
       }
     }
-    // `role="dialog"` / `role="alertdialog"` als JSX-Attribut oder Objekt-Eigenschaft.
-    if (
-      ts.isJsxAttribute(node) &&
-      node.name.getText(sf) === "role" &&
-      node.initializer &&
-      ts.isStringLiteral(node.initializer) &&
-      (node.initializer.text === "dialog" || node.initializer.text === "alertdialog")
-    ) {
-      melde(node.initializer, "role-dialog");
-      kandidatTokens.add(node.initializer);
+    // `role="dialog"` / `role="alertdialog"` — als JSX-Attribut, als Objekt-Eigenschaft, über
+    // `setAttribute("role", …)` oder `el.role = …`. Register A17b: auch im Ausdruck
+    // (`role={offen ? "dialog" : undefined}`), nicht nur als nacktes Literal (`meldeRolle`).
+    if (ts.isJsxAttribute(node) && node.name.getText(sf) === "role" && node.initializer) {
+      meldeRolle(node.initializer);
+    }
+    if (ts.isPropertyAssignment(node) && node.name.getText(sf).replace(/["']/g, "") === "role") {
+      meldeRolle(node.initializer);
+    }
+    if (ts.isCallExpression(node) && aufrufName(node) === "setAttribute") {
+      const [attribut, wert] = node.arguments;
+      if (attribut && wert && istZeichenkettenLiteral(attribut) && attribut.text === "role") {
+        meldeRolle(wert);
+      }
     }
     if (
-      ts.isPropertyAssignment(node) &&
-      node.name.getText(sf).replace(/["']/g, "") === "role" &&
-      ts.isStringLiteral(node.initializer) &&
-      (node.initializer.text === "dialog" || node.initializer.text === "alertdialog")
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isPropertyAccessExpression(node.left) &&
+      node.left.name.text === "role"
     ) {
-      melde(node.initializer, "role-dialog");
-      kandidatTokens.add(node.initializer);
+      meldeRolle(node.right);
+    }
+    // `ariaModal` — die DOM-Reflexion von `aria-modal`, abweichend benannt (A17b). Punktzugriff,
+    // Objekt-Eigenschaft (auch Kurzform), JSX-Attribut und Index-Zugriff `el["ariaModal"]`.
+    if (ts.isPropertyAccessExpression(node) && node.name.text === "ariaModal") {
+      melde(node.name, "aria-modal-reflexion");
+    }
+    if (ts.isPropertyAssignment(node) && eigenschaftsName(node.name) === "ariaModal") {
+      melde(node.name, "aria-modal-reflexion");
+      kandidatTokens.add(node.name);
+    }
+    if (ts.isShorthandPropertyAssignment(node) && node.name.text === "ariaModal") {
+      melde(node.name, "aria-modal-reflexion");
+    }
+    if (ts.isJsxAttribute(node) && node.name.getText(sf) === "ariaModal") {
+      melde(node.name, "aria-modal-reflexion");
+    }
+    if (istZeichenkettenLiteral(node) && node.text === "ariaModal" && !kandidatTokens.has(node)) {
+      melde(node, "aria-modal-reflexion");
+      kandidatTokens.add(node);
     }
     // `showModal` — Punktzugriff oder Index-Zugriff.
     if (ts.isPropertyAccessExpression(node) && node.name.text === "showModal") {
@@ -354,6 +430,16 @@ export function erhebeDatei(quelle: Quelle): DateiErhebung {
     ) {
       melde(node.argumentExpression, "showModal-nutzung");
       kandidatTokens.add(node.argumentExpression);
+    }
+
+    // Register A17b: ein `"dialog"`/`"alertdialog"`, das keine der Bauformen oben als Kandidat
+    // genommen hat, ist eine UNBEKANNTE Bauform — ein abweichend benannter Träger
+    // (`const Huelle = "dialog"; <Huelle />`) oder eine Rolle aus einer Variablen. Die Besuchs-
+    // reihenfolge ist Vorordnung: die erkennenden Elternknoten haben ihr Literal hier bereits belegt.
+    if (istZeichenkettenLiteral(node) && istDialogName(node.text) && !kandidatTokens.has(node)) {
+      unbekannteBauformen.push(
+        `${quelle.datei}:${zeileVon(sf, node)} — Zeichenkette „${node.text}“ außerhalb jeder erkannten Bauform (weder <dialog>, createElement noch role): ein abweichend benannter Dialog, den dieser Sammler nicht beurteilen kann`,
+      );
     }
 
     // Alles Text-Artige, das kein Kandidat wurde, ist belegte Prosa.
@@ -373,7 +459,15 @@ export function erhebeDatei(quelle: Quelle): DateiErhebung {
       k.ref = aliasse.get(k.ref) ?? k.ref;
     }
   }
-  return { quelle, kandidaten, prosaSpannen, nutztGrenze, exportierte, nativeRefs };
+  return {
+    quelle,
+    kandidaten,
+    prosaSpannen,
+    nutztGrenze,
+    exportierte,
+    nativeRefs,
+    unbekannteBauformen,
+  };
 }
 
 // --- Der unabhängige Zähler: Wort-Erwähnungen gegen die Erklärung des Syntaxbaums abrechnen. ---
@@ -422,6 +516,9 @@ export function modalAbgleich(e: DateiErhebung): string[] {
     ),
     ...unabgerechnet(e, /showModal/g, anzahl(["showModal-nutzung"])),
     ...unabgerechnet(e, /<dialog\b/g, anzahl(["dialog-jsx"])),
+    // Register A17b: die abweichend benannte Reflexion und Dialog-Literale ohne erkannte Bauform.
+    ...unabgerechnet(e, /\bariaModal\b/g, anzahl(["aria-modal-reflexion"])),
+    ...e.unbekannteBauformen,
   ];
 }
 
@@ -528,21 +625,46 @@ export function beurteile(erhebungen: DateiErhebung[]): {
 // Der Test in `tests/app/mega47-modale-flaechen-sammler.test.tsx` misst DIESELBEN Funktionen —
 // es gibt eine Erhebung und zwei Aufrufer.
 
-export function pruefeModalgrenze(wurzel: string = WURZEL): { rot: string[]; gelesen: number } {
+export function pruefeModalgrenze(wurzel: string = WURZEL): {
+  rot: string[];
+  gelesen: number;
+  kandidaten: number;
+} {
   const dateien = quelldateien(WEB_SRC, wurzel);
-  const erhebungen = dateien.map((d) => ladeQuelle(d));
-  const erhoben = erhebungen.map((q) => erhebeDatei(q));
+  // Register A17b: gelesen wird unter DERSELBEN Wurzel, unter der gesucht wurde. Bis hierher las
+  // `ladeQuelle` immer unter `WURZEL` — mit einer anderen Wurzel hätte das Tor Dateien als gelesen
+  // gezählt, die es nie gelesen hat (bens Frage aus sammel70).
+  const erhoben = dateien.map((d) =>
+    erhebeDatei(quelleAus(posix(d), readFileSync(join(wurzel, d), "utf8"))),
+  );
 
   // Was der Parser nicht lesen konnte, wird rot — nicht still uebergangen.
   // (`leseFehler` haengt an der Quelle, nicht an der Erhebung — s. `interface Quelle`.)
   const leseFehler = erhoben.flatMap((e) => e.quelle.leseFehler);
-  const { rot } = beurteile(erhoben);
-  return { rot: [...leseFehler, ...rot], gelesen: erhoben.length };
+  // Register A17b: der unabhängige Zähler und die unbekannten Bauformen gehören INS TOR. Bis
+  // hierher liefen sie nur im Test (`UNABGERECHNET` in mega47) — das Tor meldete eine Bauform, die
+  // es nicht lesen konnte, also gar nicht.
+  const unbekannt = erhoben.flatMap(modalAbgleich);
+  const { rot, beurteilt } = beurteile(erhoben);
+  // Eine Erhebung, die leer läuft, ist ein Fehler und kein Erfolg. Die gemessenen Untergrenzen
+  // gegen ein SCHRUMPFEN stehen in `tests/app/mega47-modale-flaechen-sammler.test.tsx`
+  // („die Grundmenge ist an KEINER Stelle still geschrumpft") und laufen im selben Tor danach.
+  const leer =
+    erhoben.length === 0 || beurteilt.length === 0
+      ? [
+          `${WEB_SRC} — Erhebung leer (${erhoben.length} Dateien, ${beurteilt.length} Kandidaten): nichts gemessen ist kein Befund`,
+        ]
+      : [];
+  return {
+    rot: [...leer, ...leseFehler, ...unbekannt, ...rot],
+    gelesen: erhoben.length,
+    kandidaten: beurteilt.length,
+  };
 }
 
 // Direktaufruf (tools/modalgrenze.sh) — beim Import aus dem Test passiert hier nichts.
 if (process.argv[1]?.endsWith("modalgrenze.ts")) {
-  const { rot, gelesen } = pruefeModalgrenze();
+  const { rot, gelesen, kandidaten } = pruefeModalgrenze();
   if (rot.length > 0) {
     console.error(`✖ Modalgrenze verletzt (${rot.length} Fund(e), ${gelesen} Dateien gelesen):`);
     for (const zeile of rot) {
@@ -550,5 +672,7 @@ if (process.argv[1]?.endsWith("modalgrenze.ts")) {
     }
     process.exit(1);
   }
-  console.log(`✓ Modalgrenze: ${gelesen} Dateien gelesen, kein Fund ohne Grenze`);
+  console.log(
+    `✓ Modalgrenze: ${gelesen} Dateien gelesen, ${kandidaten} Kandidaten beurteilt, keine unbekannte Bauform, kein Fund ohne Grenze`,
+  );
 }
