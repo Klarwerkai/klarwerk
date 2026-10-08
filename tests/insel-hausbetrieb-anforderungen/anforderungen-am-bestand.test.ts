@@ -132,8 +132,13 @@ describe("Insel-Hausbetrieb: Konkretisierung am Bestand", () => {
   });
 
   it("K5 · W4: das lokale Modell ist im Code verdrahtet, wie das Dokument sagt", () => {
-    expect(lies("services/reasoner/src/model-client.ts")).toContain("createLocalClientFromEnv");
-    expect(lies("services/app/src/build-app.ts")).toContain("createLocalClientFromEnv");
+    // Die Kette: build-app.ts ruft die gedeckelte Hülle, die Hülle baut den lokalen Client.
+    const modellClient = lies("services/reasoner/src/model-client.ts");
+    expect(modellClient).toMatch(
+      /export function createCappedLocalClientFromEnv\([\s\S]*?createLocalClientFromEnv\(env\)/,
+    );
+    expect(lies("services/app/src/build-app.ts")).toContain("createCappedLocalClientFromEnv()");
+    expect(TEXT).toContain("createCappedLocalClientFromEnv");
   });
 
   it("K1 · B4 wird abgegrenzt und nicht neu bestellt", () => {

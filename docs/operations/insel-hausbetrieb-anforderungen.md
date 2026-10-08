@@ -248,8 +248,9 @@ Der Austausch braucht **keinen eigenen Schreibweg**. Er wird an die vorhandenen 
   überholt (B4-Bestand), für Signierung, Lizenzierung, Hardwareübersicht und Insel-Überwachung nicht.
 - **W4 · Lokale Modelllaufzeit.** `docs/operations/local-hardware-readiness.md` §2 sagt „Keine lokale
   Runtime verdrahtet". Der Code verdrahtet ein lokales Modell als zweites Backend
-  (`createLocalClientFromEnv` in `services/reasoner/src/model-client.ts`, genutzt in
-  `services/app/src/build-app.ts`). Die Readiness-Notiz ist an dieser Stelle veraltet.
+  (`createLocalClientFromEnv` in `services/reasoner/src/model-client.ts`, dort umhüllt von
+  `createCappedLocalClientFromEnv`, und diese Hülle ruft `services/app/src/build-app.ts` auf). Die
+  Readiness-Notiz ist an dieser Stelle veraltet.
 - **W5 · „Ohne Unterbrechung" gegen Umschaltweg.** Siehe N2.
 - **W6 · Zeitliche Einstufung.** R-0849 trägt als frühere Begründung „das ist ein zweites Unternehmen
   und darf nicht parallel zum ersten Cloud-Piloten laufen" (Status damals `SPAETER`). Dieser Auftrag
