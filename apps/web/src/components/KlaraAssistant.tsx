@@ -348,7 +348,8 @@ export function KlaraAssistant(): JSX.Element {
         onClick={() => setOpen((v) => !v)}
         className="fixed bottom-5 right-5 z-40 grid h-11 w-11 place-items-center rounded-full border border-hairline bg-ink text-page shadow-popover transition-opacity hover:opacity-85"
       >
-        <HelpCircle size={20} />
+        {/* WCAG 1.1.1: der Name steht am Knopf; das Symbol ist Schmuck. */}
+        <HelpCircle size={20} aria-hidden="true" />
       </button>
       {open ? (
         <section
@@ -369,7 +370,7 @@ export function KlaraAssistant(): JSX.Element {
               onClick={() => setOpen(false)}
               className="grid h-7 w-7 place-items-center rounded-btn text-muted-2 hover:bg-hairline-soft hover:text-text"
             >
-              <X size={15} />
+              <X size={15} aria-hidden="true" />
             </button>
           </div>
           <div className="space-y-4 overflow-y-auto p-4">

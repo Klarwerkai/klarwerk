@@ -38,7 +38,14 @@
 // „inaktive Komponenten" aus) und unsichtbarer Text. Was der Browser nicht eindeutig rechnen kann
 // (Hintergrundbild, durchscheinende Vorfahren, nicht lesbares Farbformat), wird GEZÄHLT und im
 // Bericht ausgewiesen, nicht stillschweigend als bestanden gewertet.
-import { type Browser, type Page, type TestInfo, expect, test } from "@playwright/test";
+import {
+  type Browser,
+  type CDPSession,
+  type Page,
+  type TestInfo,
+  expect,
+  test,
+} from "@playwright/test";
 import { ensureLoggedIn, workspaceMarker } from "./support/auth";
 
 test.skip(
@@ -198,9 +205,48 @@ function kontrastImBrowser(): Kontrastbericht {
 // ------------------------------------------------------------------------------------------------
 // Die übrigen Messungen je Fläche.
 // ------------------------------------------------------------------------------------------------
+/**
+ * Benennt einen Befund so, dass er ohne zweiten Lauf zu finden ist: Element, nächster Anker
+ * (data-testid, aria-label oder id eines Vorfahren) und der Anfang seines Markups. Eine blosse
+ * Knotennummer (nacharbeit-3) war nicht auffindbar.
+ */
+async function beschreibe(cdp: CDPSession, backendNodeId: number | undefined): Promise<string> {
+  if (backendNodeId === undefined) {
+    return "(ohne DOM-Knoten)";
+  }
+  try {
+    const { object } = await cdp.send("DOM.resolveNode", { backendNodeId });
+    if (!object.objectId) {
+      return `(backendDOMNodeId ${backendNodeId})`;
+    }
+    const antwort = await cdp.send("Runtime.callFunctionOn", {
+      objectId: object.objectId,
+      returnByValue: true,
+      functionDeclaration: `function () {
+        const anker = this.closest ? this.closest("[data-testid], [aria-label], [id]") : null;
+        const wo = anker
+          ? anker.tagName.toLowerCase() + "[" + (anker.getAttribute("data-testid")
+              ? "data-testid=" + anker.getAttribute("data-testid")
+              : anker.getAttribute("aria-label")
+                ? "aria-label=" + anker.getAttribute("aria-label")
+                : "id=" + anker.id) + "]"
+          : "ohne Anker";
+        const markup = (this.outerHTML || "").replace(/\\s+/g, " ").slice(0, 120);
+        return "<" + this.tagName.toLowerCase() + "> in " + wo + " · " + markup;
+      }`,
+    });
+    const text = antwort.result.value;
+    return typeof text === "string" ? text : `(backendDOMNodeId ${backendNodeId})`;
+  } catch {
+    return `(backendDOMNodeId ${backendNodeId})`;
+  }
+}
+
 async function namenImAxBaum(page: Page): Promise<string[]> {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Accessibility.enable");
+  // Für `beschreibe()`: DOM.resolveNode braucht die eingeschaltete DOM-Domäne.
+  await cdp.send("DOM.enable");
   const { nodes } = await cdp.send("Accessibility.getFullAXTree");
   const ohneNamen: string[] = [];
   for (const knoten of nodes) {
@@ -213,7 +259,7 @@ async function namenImAxBaum(page: Page): Promise<string[]> {
     }
     const name = typeof knoten.name?.value === "string" ? knoten.name.value.trim() : "";
     if (!name) {
-      ohneNamen.push(`${rolle} (backendDOMNodeId ${knoten.backendDOMNodeId ?? "?"})`);
+      ohneNamen.push(`${rolle} ${await beschreibe(cdp, knoten.backendDOMNodeId)}`);
     }
   }
   await cdp.detach();
