@@ -249,19 +249,22 @@ const umriss = (): string => {
  * neue Umriss hier hinein — und in die Rückgabe des ändernden Jobs, mit Begründung. Wer ihn ohne
  * diese Frage überschreibt, hebt den Wächter auf.
  *
- * NACHGEFÜHRT, ABSICHTLICH (Aufnahme gesamt-konfliktklassifikation, R-0252): „Das System sagt
- * vorab, welche Art von Arbeit vor einem liegt." Dafür steht im AUTOMATISCHEN wie im manuellen Fall
- * GENAU EINE neue Zeile zwischen Kopfzeile und Kartenpaar: `p#konflikt-arbeitsart`. Sonst ist der
- * Umriss Zeichen für Zeichen der am Basisstand `883db64` gemessene — der Wahrheitskonflikt ist ein
- * Sachkonflikt und behält sein Band unverändert. Die Frage dieses Pins bleibt also beantwortbar:
- * eine Zeile kam dazu, keine ging weg, nichts wurde vertauscht, die Beschreibung steht nirgends.
+ * NACHGEFÜHRT, ABSICHTLICH (Aufnahme gesamt-konfliktklassifikation). Drei Stellen, sonst ist der
+ * Umriss Zeichen für Zeichen der am Basisstand `883db64` gemessene:
+ *   · R-0252: zwischen Kopfzeile und Kartenpaar steht `p#konflikt-arbeitsart`. Diese Vorlage trägt
+ *     keine Arbeitsart — der Satz sagt deshalb „nicht bestimmt" und rät nichts aus der Konfliktart.
+ *   · R-0215: der Befund ist ein OFFENER Wahrheitskonflikt, also noch nicht eskaliert. Das Band
+ *     beginnt deshalb mit `pruefen-knopf-eskalieren`; die übrigen Knöpfe stehen unverändert da
+ *     (gesperrt — `disabled` erscheint im Umriss nicht).
+ *   · R-0215: darunter `p#konflikt-eskalation-zuerst`, der Grund der Sperre.
+ * Keine Zeile ging weg, nichts wurde vertauscht, die Beschreibung steht nirgends.
  */
 const AUTOMATIK_UMRISS_BASIS = `div#pruefen-flaeche
   div
     div "Beitrag A"
     span#pruefen-pille-lauf "1 von 1"
     span#pruefen-pille-art "Wahrheit"
-  p#konflikt-arbeitsart "Sachkonflikt: durch Belege entscheidbar — welche Aussage zutrifft, zeigen Quellen und Nachweise. Eingeordnet nach der Art „Wahrheit“."
+  p#konflikt-arbeitsart "Art der Arbeit nicht bestimmt: dieser Befund ist weder als Regel-, Sach- noch als Versionskonflikt eingeordnet. Alle Entscheidungswege stehen offen."
   div#pruefen-paar
     div#pruefen-paar-karte-a
       div
@@ -354,11 +357,13 @@ const AUTOMATIK_UMRISS_BASIS = `div#pruefen-flaeche
               div "Wirkung der Entscheidung"
               div "Die Entscheidung wird dokumentiert und protokolliert. Vertrauen/Status der Objekte werden NICHT automatisch geändert (kein stilles Überschreiben). Betroffene Objekte ggf. manuell re-validieren."
   div#pruefen-aktionsband
+    button#pruefen-knopf-eskalieren "Eskalieren"
     button#pruefen-knopf-links-gilt "Links gilt"
     button#pruefen-knopf-rechts-gilt "Rechts gilt"
     button#pruefen-knopf-beide-gelten "Beide gelten, je nach Kontext"
     button#pruefen-knopf-kein-widerspruch "Kein Widerspruch"
-    button#pruefen-knopf-zweitmeinung "Zweitmeinung"`;
+    button#pruefen-knopf-zweitmeinung "Zweitmeinung"
+  p#konflikt-eskalation-zuerst "Ein Wahrheitskonflikt wird zuerst an einen Menschen eskaliert. Danach stehen Zweitmeinung und Entscheidung offen."`;
 
 beforeEach(async () => {
   daten.konflikte = [];

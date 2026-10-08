@@ -18,6 +18,8 @@ import {
   type ConflictInput,
   type ConflictResolutionReason,
   type ConflictType,
+  type KonfliktVorrang,
+  type VorrangWahl,
 } from "./types";
 import {
   type CurrentVersionLookup,
@@ -63,6 +65,34 @@ function entscheidungsBeleg(
   resolutionReason: ConflictResolutionReason,
 ): Record<string, unknown> {
   return { koIds: [conflict.koA, conflict.koB], resolutionReason };
+}
+
+/**
+ * R-0263: die Wahl des Menschen gegen GENAU diesen Konflikt prüfen und als Beziehung ablegen.
+ * `gilt` muss eine der beiden Seiten sein — ein Vorrang über einen dritten Punkt oder ein ganzes
+ * Dokument ist nicht ausdrückbar. Eine Präzisierung ohne Geltungsbereich wäre ein Überstimmen unter
+ * falschem Namen und wird abgewiesen.
+ */
+function vorrangAus(conflict: Conflict, wahl: VorrangWahl): KonfliktVorrang {
+  if (wahl.gilt !== conflict.koA && wahl.gilt !== conflict.koB) {
+    throw new ConflictError(
+      "VALIDATION",
+      "Vorrang kann nur einer der beiden beteiligten Aussagen gegeben werden.",
+    );
+  }
+  const geltungsbereich = (wahl.geltungsbereich ?? "").trim();
+  if (wahl.art === "schraenkt_ein" && geltungsbereich.length === 0) {
+    throw new ConflictError(
+      "VALIDATION",
+      "Eine Präzisierung braucht den Geltungsbereich, in dem die speziellere Aussage gilt.",
+    );
+  }
+  return {
+    art: wahl.art,
+    vorrangKo: wahl.gilt,
+    nachrangKo: wahl.gilt === conflict.koA ? conflict.koB : conflict.koA,
+    geltungsbereich: wahl.art === "schraenkt_ein" ? geltungsbereich : null,
+  };
 }
 
 export class ConflictService {
@@ -148,6 +178,8 @@ export class ConflictService {
       decidedBy: null,
       decision: null,
       origin: "auto",
+      // R-0252: die Einordnung der Erkennung (version bei „ueberholt", sonst das Modellurteil).
+      ...(input.arbeitsart !== undefined ? { arbeitsart: input.arbeitsart } : {}),
       detector,
       // D-AISTATE PAKET 4 (bens V5): geprüfte Versionen additiv mitschreiben (nur wenn vorhanden).
       ...(input.koAVersion !== undefined ? { koAVersion: input.koAVersion } : {}),
@@ -213,23 +245,43 @@ export class ConflictService {
     return saved;
   }
 
-  // FR-CON-03: Zweitmeinung als Zwischenschritt.
+  // FR-CON-03: Zweitmeinung als Zwischenschritt — beim Wahrheitskonflikt erst NACH der Eskalation.
   async secondOpinion(id: string, opinion: string, actor = "system"): Promise<Conflict> {
     const conflict = await this.requireOpen(id);
+    this.requireEscalatedIfTruth(conflict);
     const saved = await this.save({ ...conflict, status: "zweitmeinung", secondOpinion: opinion });
     await this.audit?.record({ actor, action: "conflict.second-opinion", target: id });
     return saved;
   }
 
-  // FR-CON-03: Controller-Entscheidung schließt den Wahrheitskonflikt ab.
-  async resolve(id: string, decidedBy: string, decision: string): Promise<Conflict> {
+  // FR-CON-03: Controller-Entscheidung schließt den Konflikt ab.
+  //
+  // R-0215 / R-1714 (Nacharbeit 2, Ben): der Eskalationspfad des Wahrheitskonflikts ist VERBINDLICH.
+  // Ein offener Wahrheitskonflikt wird nicht entschieden, bevor er an einen Menschen eskaliert ist
+  // (Eskalation → ggf. Zweitmeinung → Entscheidung). Die übrigen vier Arten lösen keine Eskalation
+  // aus und werden unverändert direkt entschieden.
+  //
+  // R-0263: `vorrang` legt fest, welcher der ZWEI beteiligten Punkte gilt bzw. einschränkt. Er wirkt
+  // nur zwischen diesen beiden — kein Objekt, kein Dokument, keine Quelle wird verändert.
+  async resolve(
+    id: string,
+    decidedBy: string,
+    decision: string,
+    vorrang?: VorrangWahl,
+  ): Promise<Conflict> {
     const conflict = await this.requireOpen(id);
+    this.requireEscalatedIfTruth(conflict);
+    const abgelegt = vorrang ? vorrangAus(conflict, vorrang) : undefined;
+    // Ein früherer Vorrang (erneut eskalierter Befund) gilt nicht weiter, wenn die neue Entscheidung
+    // keinen festlegt — „Beide gelten" heisst: kein Vorrang.
+    const { vorrang: _frueher, ...ohneVorrang } = conflict;
     const saved = await this.save({
-      ...conflict,
+      ...ohneVorrang,
       status: "geloest",
       decidedBy,
       decision,
       resolutionReason: "decided",
+      ...(abgelegt ? { vorrang: abgelegt } : {}),
     });
     await this.audit?.record({
       actor: decidedBy,
@@ -451,6 +503,8 @@ export class ConflictService {
           koA: subject.refId,
           koB: cand.refId,
           type: decision.type,
+          // R-0252: unabhängig von `type` eingeordnet (detect.ts `arbeitsartAusUrteil`).
+          ...(decision.arbeitsart ? { arbeitsart: decision.arbeitsart } : {}),
           description: autoDescription(verdict),
           ...(subject.version !== undefined ? { koAVersion: subject.version } : {}),
           ...(cand.version !== undefined ? { koBVersion: cand.version } : {}),
@@ -637,6 +691,16 @@ export class ConflictService {
     return (await this.repo.all()).filter((c) => c.koA === koId || c.koB === koId).map((c) => c.id);
   }
 
+  // R-0263: die festgelegten Vorrang-Beziehungen, an denen dieser Punkt beteiligt ist — aus den
+  // ENTSCHIEDENEN Konflikten, ohne Versionsfilter (eine Entscheidung bleibt Teil der Geschichte).
+  // Die Sichtbarkeit beider Seiten prüft die Route (`GET /api/conflicts/vorrang/:koId`).
+  async vorrangFuerKo(koId: string): Promise<Conflict[]> {
+    return (await this.repo.all()).filter(
+      (c) =>
+        c.status === "geloest" && c.vorrang !== undefined && (c.koA === koId || c.koB === koId),
+    );
+  }
+
   // FR-CON-04: Zähler für das Sidebar-Badge.
   async badgeCount(): Promise<number> {
     return (await this.unresolved()).length;
@@ -726,5 +790,16 @@ export class ConflictService {
       throw new ConflictError("ALREADY_RESOLVED", "Konflikt ist bereits gelöst.");
     }
     return conflict;
+  }
+
+  // R-0215 / R-1714: der eine Riegel des verbindlichen Eskalationspfads. Nur „truth" ist betroffen;
+  // „offen" heisst beim Wahrheitskonflikt: noch nicht an einen Menschen eskaliert.
+  private requireEscalatedIfTruth(conflict: Conflict): void {
+    if (conflict.type === "truth" && conflict.status === "offen") {
+      throw new ConflictError(
+        "CONFLICT",
+        "Ein Wahrheitskonflikt wird zuerst an einen Menschen eskaliert; erst danach wird entschieden.",
+      );
+    }
   }
 }

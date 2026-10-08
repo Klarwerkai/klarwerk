@@ -117,13 +117,17 @@ const KO = (id: string, titel: string, aussage: string) => ({
 
 const KOS = [KO("ko-a", "Design Guide", "A gilt."), KO("ko-b", "Nasszonen", "B gilt.")];
 
+// Aufnahme gesamt-konfliktklassifikation (R-0215): ein Wahrheitskonflikt wird verbindlich ERST
+// eskaliert, dann entschieden — bis dahin sind die Entscheidungsknöpfe gesperrt. Diese Fälle messen
+// die Wege der Entscheidung selbst und fahren deshalb einen bereits eskalierten Befund; die Sperre
+// des offenen belegt `tests/konfliktklassifikation/konfliktseite-arbeitsart-mounted.test.tsx`.
 const KONFLIKT = {
   id: "c-1",
   koA: "ko-a",
   koB: "ko-b",
   type: "truth",
   description: "Widerspruch",
-  status: "offen",
+  status: "eskaliert",
   secondOpinion: null,
   decidedBy: null,
   decision: null,

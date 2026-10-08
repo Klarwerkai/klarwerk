@@ -3,7 +3,7 @@
 // Diese Datei entscheidet NUR aus Texten + einem bereits vorliegenden Modellurteil, ob und welcher
 // Konflikt entsteht. Der Modellaufruf (Reasoner „Konfliktprüfung") und die Verdrahtung an KO-
 // Ereignisse leben außerhalb (App-Composition-Root, injizierter judge-Callback).
-import type { ConflictType, Kollision } from "./types";
+import type { ConflictType, ConflictWorkKind, Kollision } from "./types";
 
 // K0-2: Erkennungs-Gegenstand ist der Kerntext eines Beitrags (nicht das volle bodyHtml).
 export interface DetectSubject {
@@ -41,6 +41,10 @@ export interface ConflictVerdict {
   zitat_a: string; // wörtliches Zitat aus A
   zitat_b: string; // wörtliches Zitat aus B
   kollision?: Kollision; // SCRUM-492: optionale strukturierte Gegenüberstellung (Board-Kacheln)
+  // R-0252 (Nacharbeit 2): bei „widerspruch" ordnet die Prüfung die nötige Arbeit ein — „regel"
+  // (zwei interne Festlegungen, keine Quelle entscheidet) oder „sache" (durch Belege entscheidbar).
+  // Optional: fehlt sie, bleibt die Arbeitsart unbestimmt — sie wird NICHT aus der Relation geraten.
+  arbeit?: "regel" | "sache";
 }
 
 // K0-2: Kerntext aus title + statement + conditions + measures (trägt die prüfbare Aussage).
@@ -284,6 +288,24 @@ export interface DetectDecision {
   create: boolean;
   type: ConflictType | null;
   reason: DetectOutcomeReason;
+  // R-0252: die Arbeitsart des anzulegenden Konflikts — unabhängig von `type` bestimmt.
+  arbeitsart?: ConflictWorkKind;
+}
+
+/**
+ * R-0252 (Nacharbeit 2): die Arbeitsart aus dem URTEIL, nicht aus der Konfliktart. „ueberholt" ist
+ * per Definition dieselbe Sache in zwei Ständen. Bei „widerspruch" zählt allein die Einordnung der
+ * Prüfung (`arbeit`); ohne sie bleibt die Arbeitsart offen.
+ */
+export function arbeitsartAusUrteil(verdict: ConflictVerdict): ConflictWorkKind | undefined {
+  if (verdict.relation === "ueberholt") {
+    return "version";
+  }
+  const arbeit = verdict.arbeit;
+  if (verdict.relation === "widerspruch" && (arbeit === "regel" || arbeit === "sache")) {
+    return arbeit;
+  }
+  return undefined;
 }
 
 // Startwert der Anlege-Schwelle (4.2): Präzision vor Vollständigkeit.
@@ -311,7 +333,8 @@ export function decideFromVerdict(
   if (!quotesVerbatim(verdict, coreA, coreB)) {
     return { create: false, type: null, reason: "hallucination" };
   }
-  return { create: true, type, reason: "created" };
+  const arbeitsart = arbeitsartAusUrteil(verdict);
+  return { create: true, type, reason: "created", ...(arbeitsart ? { arbeitsart } : {}) };
 }
 
 // Ehrliche, als solche markierte Beschreibung eines automatisch erkannten Konflikts (aus

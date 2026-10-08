@@ -41,6 +41,7 @@ import { auditActionLabel } from "../../lib/auditAction";
 import { objectRawHref } from "../../lib/bodyFileLink";
 import { CONFIDENTIALITY_LEVELS, confidentialityOf } from "../../lib/confidentiality";
 import { conflictImpact, conflictLimitedUsability } from "../../lib/conflictImpact";
+import { vorrangAmPunkt } from "../../lib/conflictView";
 import { isDemoKnowledge } from "../../lib/demoKnowledge";
 import { deriveStatus } from "../../lib/displayStatus";
 import { groupEvidenceByVersion } from "../../lib/evidenceByVersion";
@@ -300,8 +301,8 @@ const CONFLICT_TYPES: readonly ConflictType[] = [
   "role",
 ];
 
-// R-0252: die wählbaren Arbeitsarten. Die leere Wahl („aus der Art ableiten") schickt kein Feld —
-// die Konfliktseite leitet dann ab und sagt das dazu.
+// R-0252: die wählbaren Arbeitsarten. Die leere Wahl („Nicht einordnen") schickt kein Feld — die
+// Konfliktseite sagt dann „nicht bestimmt" und rät nichts aus der Konfliktart.
 const CONFLICT_WORK_KINDS: readonly ConflictWorkKind[] = ["regel", "sache", "version"];
 
 const textareaCls =
@@ -1013,6 +1014,27 @@ export function MehrAbschnitte({
     setOffene((vorher) => mengeMitSchluessel(vorher, schluessel, offen));
   };
 
+  // ---- Aufnahme gesamt-konfliktklassifikation · R-0263: der Vorrang AM PUNKT --------------------
+  // Was eine Konfliktentscheidung zwischen diesem und einem anderen Punkt festgelegt hat — überstimmt,
+  // hat Vorrang, ist eingeschränkt oder präzisiert, samt Geltungsbereich. Gelesen wird erst, wenn der
+  // Abschnitt „Konflikt" offen ist; Paar-Tor und Redaktion stehen am Server
+  // (`GET /api/conflicts/vorrang/:id`). Dieser Punkt selbst, seine Quellen und seine Herkunft bleiben
+  // unverändert — die Zeilen sind ein Vermerk, keine Änderung.
+  const vorrang = useQuery({
+    queryKey: ["conflicts", "vorrang", id],
+    queryFn: () => endpoints.conflicts.vorrang(id),
+    enabled: offene.has("konflikt"),
+    retry: false,
+  });
+  const titelVon = (koId: string): string =>
+    (koList.data ?? []).find((k) => k.id === koId)?.title ?? t("konfliktarbeit.amPunkt.andere");
+  const vorrangZeilen = (vorrang.data ?? []).map((v) => {
+    const satz = vorrangAmPunkt(v, id);
+    const title = titelVon(satz.gegenueber);
+    const bereich = v.geltungsbereich ?? t("konfliktarbeit.amPunkt.bereichZurueck");
+    return { id: v.konfliktId, text: t(satz.schluessel, { title, bereich }) };
+  });
+
   // ---- JOB 3475 · UX-28: die offenen FASSUNGEN — dieselbe Haltung, ein Stockwerk tiefer ---------
   //
   // Der Zustand wohnt hier und NICHT in der Karte: eine Karte, die ihr `offen` selbst hielte, fiele
@@ -1244,6 +1266,16 @@ export function MehrAbschnitte({
         {/* mega29 C1: die Deckung des KI-Laufs schränkt jede Konfliktaussage ein — sie steht
             deshalb hier, direkt bei ihr. */}
         <AiCheckCoverageNotes coverage={ko.aiCheck?.coverage} />
+        {vorrangZeilen.length > 0 ? (
+          <div data-testid="bib-vorrang" className="mt-2 space-y-1 text-[12.5px] text-muted">
+            <span className="block font-medium">{t("konfliktarbeit.amPunkt.titel")}</span>
+            <ul className="space-y-1">
+              {vorrangZeilen.map((z) => (
+                <li key={z.id}>{z.text}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {canReview ? (
           <div className="mt-2 space-y-2">
             <div className="space-y-1.5">
@@ -1284,7 +1316,7 @@ export function MehrAbschnitte({
                 }
                 className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
               >
-                <option value="">{t("konfliktarbeit.feld.automatisch")}</option>
+                <option value="">{t("konfliktarbeit.feld.offen")}</option>
                 {CONFLICT_WORK_KINDS.map((wk) => (
                   <option key={wk} value={wk}>
                     {t(`konfliktarbeit.name.${wk}`)}

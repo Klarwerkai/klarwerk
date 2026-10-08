@@ -508,6 +508,9 @@ export interface ConflictJudgeResult {
   zitat_b: string;
   // SCRUM-492: optionale Kollisions-Anreicherung (Kacheln im Board). Fehlt sie, bleibt alles wie bisher.
   kollision?: Kollision;
+  // R-0252 (Aufnahme gesamt-konfliktklassifikation): nur bei „widerspruch" — welche Arbeit vorliegt:
+  // „regel" (zwei interne Festlegungen) oder „sache" (durch Belege entscheidbar). Fehlt = offen.
+  arbeit?: "regel" | "sache";
 }
 
 // WP-SHIP8-CLOSE (bens F1): schmaler Ergebnis-Vertrag der Judge-Flächen — der AUSGANG wird

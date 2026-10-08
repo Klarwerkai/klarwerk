@@ -82,14 +82,7 @@ describe("SCRUM-252: nächste Handlung pro Konflikt", () => {
   });
 
   it("Nicht-Wahrheitskonflikt ist nicht eskalierbar: offen → Zweitmeinung, dann entscheiden", () => {
-    // R-0252 (Aufnahme gesamt-konfliktklassifikation): ein Kontextkonflikt ist ein REGELkonflikt —
-    // keine Quelle entscheidet ihn, das Band bietet dort keine Zweitmeinung an. Der nächste Schritt
-    // ist deshalb das Entscheiden. Bis zu R-0252 stand hier „secondOpinion". Der Sachkonflikt
-    // (Erfahrung) behält den alten Weg; nicht eskalierbar bleiben beide.
-    expect(conflictNextStep(conflict({ type: "context", status: "offen" }))).toBe("resolve");
-    expect(conflictNextStep(conflict({ type: "experience", status: "offen" }))).toBe(
-      "secondOpinion",
-    );
+    expect(conflictNextStep(conflict({ type: "context", status: "offen" }))).toBe("secondOpinion");
     expect(conflictNextStep(conflict({ type: "experience", status: "eskaliert" }))).toBe(
       "secondOpinion",
     );

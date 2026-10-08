@@ -1733,6 +1733,17 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // Aufnahme gesamt-konfliktklassifikation · R-0263: der festgelegte Vorrang am einzelnen Punkt.
+  // Ein Lesetor wie die Konfliktliste; ein unbekannter Punkt bekommt eine leere Liste.
+  {
+    gruppe: "conflictRoutes",
+    methode: "GET",
+    pfad: "/api/conflicts/vorrang/gibt-es-nicht",
+    route: "/api/conflicts/vorrang/:id",
+    belegstelle: "services/app/src/routes/conflicts-routes.ts:254",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
   {
     gruppe: "externalRoutes",
     methode: "GET",

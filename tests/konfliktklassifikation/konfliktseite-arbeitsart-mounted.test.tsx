@@ -1,18 +1,22 @@
 // @vitest-environment jsdom
 // ================================================================================================
-// AUFNAHME 20260922 · GESAMT-KONFLIKTKLASSIFIKATION · R-0252 — AN DER ECHTEN KONFLIKTSEITE.
+// AUFNAHME 20260922 · GESAMT-KONFLIKTKLASSIFIKATION — AN DER ECHTEN KONFLIKTSEITE.
 // ================================================================================================
 //
-// „Das System sagt vorab, welche Art von Arbeit vor einem liegt … Die angebotenen Knöpfe
-// unterscheiden sich je Typ." Gemessen wird beides an der gemounteten Seite `Conflicts`:
-//   · der Satz `konflikt-arbeitsart` steht VOR dem Kartenpaar und sagt, ob gewählt oder abgeleitet,
-//   · das Aktionsband trägt je Arbeitsart genau die zugesagten Knöpfe — in der gezeichneten Folge.
+// Gemessen an der gemounteten Seite `Conflicts`:
+//   · R-0252 — der Satz `konflikt-arbeitsart` steht VOR dem Kartenpaar und sagt, welche Arbeit
+//     vorliegt und woher die Einordnung stammt (gewählt / von der Prüfung erkannt) — oder dass sie
+//     nicht bestimmt ist. Das Band trägt je Arbeitsart genau die zugesagten Knöpfe.
+//   · R-0215 — ein OFFENER Wahrheitskonflikt: „Eskalieren" vorn, Entscheidungen und Zweitmeinung
+//     sichtbar gesperrt, der Grund darunter. Ein offener Kontextkonflikt wird nicht gesperrt.
+//   · R-0263 — nach „Links gilt" wird gewählt, ob die Seite überstimmt oder nur präzisiert; die
+//     Präzisierung verlangt den Geltungsbereich und schickt ihn mit.
 //
-// Gerüst und Mock-Bauform wörtlich wie `tests/conflict-description/beschreibung-sichtbar.test.tsx`
-// (dieselbe echte Seite, kein Playwright-Import — sonst zöge die Datei in die Browsergruppe).
+// Gerüst und Mock-Bauform wie `tests/conflict-description/beschreibung-sichtbar.test.tsx` (dieselbe
+// echte Seite, kein Playwright-Import — sonst zöge die Datei in die Browsergruppe).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const daten = vi.hoisted(() => ({ konflikte: [] as unknown[] }));
+const daten = vi.hoisted(() => ({ konflikte: [] as unknown[], rufe: [] as unknown[][] }));
 
 vi.mock("../../apps/web/src/api/auth", () => ({
   authApi: {
@@ -26,11 +30,23 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
   const ok = <T,>(v: () => T) => vi.fn(async () => v());
   return {
     endpoints: {
-      conflicts: { list: ok(() => daten.konflikte) },
+      conflicts: {
+        list: ok(() => daten.konflikte),
+        escalate: vi.fn(async (id: string) => {
+          daten.rufe.push(["escalate", id]);
+          return {};
+        }),
+      },
       duplicates: { list: ok(() => []), settings: ok(() => ({ minConfidence: 0.5 })) },
       validation: { board: ok(() => []), overview: ok(() => []) },
       lifecycle: { pending: ok(() => []) },
-      ko: { list: ok(() => KOS) },
+      ko: {
+        list: ok(() => KOS),
+        act: vi.fn(async (id: string, body: unknown) => {
+          daten.rufe.push(["act", id, body]);
+          return {};
+        }),
+      },
       gaps: { list: ok(() => []), summary: ok(() => ({ total: 0, byPriority: {} })) },
       directory: { list: ok(() => []) },
       analytics: { busfactor: ok(() => []), expertise: ok(() => []) },
@@ -91,10 +107,11 @@ const manuell = (type: string, extra: Record<string, unknown> = {}) => ({
 });
 
 /** Automatisch erkannt — dann gehört „Kein Widerspruch" ins Band. */
-const automatisch = (type: string) =>
+const automatisch = (type: string, extra: Record<string, unknown> = {}) =>
   manuell(type, {
     origin: "auto",
     detector: { trigger: "background", method: "model", confidence: 0.9, rationale: "Grund." },
+    ...extra,
   });
 
 let container: HTMLDivElement;
@@ -145,6 +162,9 @@ const t = (key: string, vars?: Record<string, unknown>): string =>
 const marke = (kennung: string): HTMLElement | null =>
   container.querySelector<HTMLElement>(`[data-testid="${kennung}"]`);
 
+const knopf = (kennung: string): HTMLButtonElement | null =>
+  container.querySelector<HTMLButtonElement>(`[data-testid="pruefen-knopf-${kennung}"]`);
+
 /** Die Beschriftungen des Aktionsbands in der gezeichneten Folge (wie KF1b im Nachbartest). */
 const band = (): string[] =>
   [...(marke("pruefen-aktionsband")?.querySelectorAll("button") ?? [])].map((b) =>
@@ -153,8 +173,33 @@ const band = (): string[] =>
 
 const satz = (): string => (marke("konflikt-arbeitsart")?.textContent ?? "").trim();
 
+async function klick(el: HTMLElement | null): Promise<void> {
+  expect(el, "das Bedienelement fehlt").not.toBeNull();
+  await act(async () => {
+    el?.click();
+    await flush();
+  });
+}
+
+/** Ein React-gebundenes Textfeld so füllen, wie ein Mensch tippt (nativer Setter + input-Ereignis). */
+async function tippe(el: HTMLElement | null, wert: string): Promise<void> {
+  expect(el, "das Eingabefeld fehlt").not.toBeNull();
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  await act(async () => {
+    setter?.call(el, wert);
+    el?.dispatchEvent(new Event("input", { bubbles: true }));
+    await flush();
+  });
+}
+
+const bestaetigen = (): HTMLButtonElement | undefined =>
+  [...container.querySelectorAll("button")].find(
+    (b) => (b.textContent ?? "").trim() === t("con.resolveConfirm"),
+  );
+
 beforeEach(async () => {
   daten.konflikte = [];
+  daten.rufe = [];
   await i18n.changeLanguage("de");
 });
 
@@ -177,12 +222,10 @@ describe("R-0252 · die Konfliktseite sagt vorab, welche Arbeit vorliegt", () =>
     expect((p as Node).compareDocumentPosition(paar as Node) & 4).toBe(4);
   });
 
-  it("Sachkonflikt (Wahrheit, abgeleitet): Satz und das bisherige Band, unverändert", async () => {
-    daten.konflikte = [automatisch("truth")];
+  it("ohne Einordnung: „nicht bestimmt“ — und das volle Band, kein Weg wird verschwiegen", async () => {
+    daten.konflikte = [automatisch("truth", { status: "eskaliert" })];
     await mount();
-    expect(satz()).toBe(
-      `${t("konfliktarbeit.satz.sache")} ${t("konfliktarbeit.abgeleitet", { art: t("con.type.truth") })}`,
-    );
+    expect(satz()).toBe(t("konfliktarbeit.satz.offen"));
     expect(band()).toEqual([
       t("con.side.left"),
       t("con.side.right"),
@@ -192,51 +235,151 @@ describe("R-0252 · die Konfliktseite sagt vorab, welche Arbeit vorliegt", () =>
     ]);
   });
 
-  it("Regelkonflikt (Kontext, abgeleitet): keine Zweitmeinung im Band", async () => {
-    daten.konflikte = [automatisch("context")];
+  it("von der Prüfung als Regelkonflikt erkannt (Art „truth“): Regel-Satz, keine Zweitmeinung", async () => {
+    daten.konflikte = [automatisch("truth", { status: "eskaliert", arbeitsart: "regel" })];
     await mount();
-    expect(satz()).toBe(
-      `${t("konfliktarbeit.satz.regel")} ${t("konfliktarbeit.abgeleitet", { art: t("con.type.context") })}`,
-    );
+    expect(satz()).toBe(`${t("konfliktarbeit.satz.regel")} ${t("konfliktarbeit.erkannt")}`);
     expect(band()).toEqual([
       t("con.side.left"),
       t("con.side.right"),
       t("con.side.both"),
       t("con.side.none"),
     ]);
-  });
-
-  it("Versionskonflikt (Zeit, abgeleitet): welcher Stand gilt — ohne „beide gelten“ und Zweitmeinung", async () => {
-    daten.konflikte = [automatisch("temporal")];
-    await mount();
-    expect(satz()).toBe(
-      `${t("konfliktarbeit.satz.version")} ${t("konfliktarbeit.abgeleitet", { art: t("con.type.temporal") })}`,
-    );
-    expect(band()).toEqual([
-      t("konfliktarbeit.knopf.standLinks"),
-      t("konfliktarbeit.knopf.standRechts"),
-      t("con.side.none"),
-    ]);
-    expect(marke("pruefen-knopf-beide-gelten")).toBeNull();
-    expect(marke("pruefen-knopf-zweitmeinung")).toBeNull();
-  });
-
-  it("bei der Anlage gewählt: die Wahl gilt und der Satz sagt „gewählt“ statt „abgeleitet“", async () => {
-    daten.konflikte = [manuell("truth", { arbeitsart: "regel" })];
-    await mount();
-    expect(satz()).toBe(`${t("konfliktarbeit.satz.regel")} ${t("konfliktarbeit.gewaehlt")}`);
-    // Manuell → kein „Kein Widerspruch"; Regel → keine Zweitmeinung.
-    expect(band()).toEqual([t("con.side.left"), t("con.side.right"), t("con.side.both")]);
-    // Die Art bleibt sichtbar „Wahrheit" — die Arbeitsart ersetzt die Konfliktart nicht.
+    // Die Konfliktart bleibt sichtbar „Wahrheit“ — die Arbeitsart ersetzt sie nicht.
     expect(marke("pruefen-pille-art")?.textContent).toBe(t("con.type.truth"));
   });
 
+  it("bei der Anlage als Versionskonflikt gewählt: welcher Stand gilt — ohne „beide gelten“", async () => {
+    daten.konflikte = [manuell("temporal", { arbeitsart: "version" })];
+    await mount();
+    expect(satz()).toBe(`${t("konfliktarbeit.satz.version")} ${t("konfliktarbeit.gewaehlt")}`);
+    expect(band()).toEqual([
+      t("konfliktarbeit.knopf.standLinks"),
+      t("konfliktarbeit.knopf.standRechts"),
+    ]);
+    expect(knopf("beide-gelten")).toBeNull();
+    expect(knopf("zweitmeinung")).toBeNull();
+  });
+
   it("EN: derselbe Satz in der Oberflächensprache", async () => {
-    daten.konflikte = [automatisch("temporal")];
+    daten.konflikte = [manuell("temporal", { arbeitsart: "version" })];
     await i18n.changeLanguage("en");
     await mount();
     expect(satz()).toBe(
-      "Version conflict: the same thing in two states — the question is which state applies. Classified from the type “Time”.",
+      "Version conflict: the same thing in two states — the question is which state applies. Classified this way when it was reported.",
     );
+  });
+});
+
+describe("R-0215 · der Eskalationspfad des Wahrheitskonflikts ist verbindlich", () => {
+  it("offener Wahrheitskonflikt: Eskalieren vorn, Entscheidung und Zweitmeinung gesperrt, Grund darunter", async () => {
+    daten.konflikte = [automatisch("truth")];
+    await mount();
+    expect(band()[0]).toBe(t("con.escalate"));
+    for (const kennung of ["links-gilt", "rechts-gilt", "beide-gelten", "zweitmeinung"]) {
+      expect(knopf(kennung)?.disabled, kennung).toBe(true);
+    }
+    // „Kein Widerspruch" entscheidet keine Wahrheit — er bleibt bedienbar.
+    expect(knopf("kein-widerspruch")?.disabled).toBe(false);
+    expect(marke("konflikt-eskalation-zuerst")?.textContent).toBe(
+      t("konfliktarbeit.eskalation.zuerst"),
+    );
+
+    // Ein Klick auf die gesperrte Entscheidung öffnet nichts und schreibt nichts.
+    await klick(knopf("links-gilt"));
+    expect(marke("pruefen-aufloesung")).toBeNull();
+    expect(daten.rufe).toEqual([]);
+
+    // „Eskalieren" ruft den echten Weg.
+    await klick(knopf("eskalieren"));
+    expect(daten.rufe).toEqual([["escalate", "c-truth"]]);
+  });
+
+  it("eskalierter Wahrheitskonflikt: kein Eskalieren-Knopf mehr, die Entscheidungen sind frei", async () => {
+    daten.konflikte = [automatisch("truth", { status: "eskaliert" })];
+    await mount();
+    expect(knopf("eskalieren")).toBeNull();
+    expect(knopf("links-gilt")?.disabled).toBe(false);
+    expect(marke("konflikt-eskalation-zuerst")).toBeNull();
+  });
+
+  it("offener Kontextkonflikt: keine Eskalation, keine Sperre", async () => {
+    daten.konflikte = [automatisch("context")];
+    await mount();
+    expect(knopf("eskalieren")).toBeNull();
+    expect(knopf("links-gilt")?.disabled).toBe(false);
+    expect(knopf("zweitmeinung")?.disabled).toBe(false);
+    expect(marke("konflikt-eskalation-zuerst")).toBeNull();
+  });
+});
+
+describe("R-0263 · Vorrang und Geltungsbereich bei der Entscheidung", () => {
+  it("„Links gilt“ überstimmt: der Vorrang der linken Seite reist mit — ohne Geltungsbereich", async () => {
+    daten.konflikte = [automatisch("context")];
+    await mount();
+    await klick(knopf("links-gilt"));
+    expect(marke("konflikt-vorrang")).not.toBeNull();
+    expect(marke("konflikt-geltungsbereich")).toBeNull();
+    await klick(bestaetigen() ?? null);
+    expect(daten.rufe).toEqual([
+      [
+        "act",
+        "ko-a",
+        {
+          action: "resolve-conflict",
+          conflictId: "c-context",
+          decision: t("con.prefill.side", { title: "Beitrag A" }),
+          vorrang: { art: "ueberstimmt", gilt: "ko-a" },
+        },
+      ],
+    ]);
+  });
+
+  it("Präzisierung: erst mit Geltungsbereich bestätigbar, dann reist er mit", async () => {
+    daten.konflikte = [automatisch("context")];
+    await mount();
+    await klick(knopf("rechts-gilt"));
+    await klick(marke("konflikt-vorrang-praezisiert"));
+    expect(marke("konflikt-geltungsbereich")).not.toBeNull();
+    expect(bestaetigen()?.disabled, "ohne Geltungsbereich bestätigbar").toBe(true);
+
+    await tippe(marke("konflikt-geltungsbereich"), "Bolzen X an Anlage 3");
+    expect(bestaetigen()?.disabled).toBe(false);
+    await klick(bestaetigen() ?? null);
+    expect(daten.rufe).toEqual([
+      [
+        "act",
+        "ko-a",
+        {
+          action: "resolve-conflict",
+          conflictId: "c-context",
+          decision: t("con.prefill.side", { title: "Beitrag B" }),
+          vorrang: { art: "schraenkt_ein", gilt: "ko-b", geltungsbereich: "Bolzen X an Anlage 3" },
+        },
+      ],
+    ]);
+  });
+
+  it("„Beide gelten“ legt keinen Vorrang fest; der Versionskonflikt kennt keine Präzisierung", async () => {
+    daten.konflikte = [automatisch("context")];
+    await mount();
+    await klick(knopf("beide-gelten"));
+    expect(marke("konflikt-vorrang")).toBeNull();
+    await klick(bestaetigen() ?? null);
+    const [ruf] = daten.rufe;
+    expect(ruf?.[2]).not.toHaveProperty("vorrang");
+  });
+
+  it("Versionskonflikt: „Linker Stand gilt“ überstimmt ohne Wahl der Präzisierung", async () => {
+    daten.konflikte = [manuell("temporal", { arbeitsart: "version" })];
+    await mount();
+    await klick(knopf("links-gilt"));
+    expect(marke("konflikt-vorrang")).toBeNull();
+    await klick(bestaetigen() ?? null);
+    const [ruf] = daten.rufe;
+    expect((ruf?.[2] as { vorrang?: unknown }).vorrang).toEqual({
+      art: "ueberstimmt",
+      gilt: "ko-a",
+    });
   });
 });

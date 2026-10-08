@@ -7,6 +7,7 @@ import {
   type OverlapService,
   type OverlapSettingsRepo,
   isConflictWorkKind,
+  isVorrangWahl,
 } from "../../../conflicts";
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE_STAGE,
@@ -608,6 +609,8 @@ interface PutBody {
   fortsetzungFuerFassung?: unknown;
   conflictId?: string;
   decision?: string;
+  /** R-0263: die Vorrang-Wahl an `resolve-conflict`. `unknown`, geprüft an der `case`. */
+  vorrang?: unknown;
   newAuthor?: string;
   text?: string;
   /**
@@ -3585,7 +3588,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!body.conflictId || !body.decision) {
               return badRequest("conflictId/decision fehlt.");
             }
-            reply.code(200).send(await conflicts.resolve(body.conflictId, user.id, body.decision));
+            // R-0263: optional — welcher der beiden Punkte gilt bzw. einschränkt. Hier nur die Form;
+            // ob `gilt` zum Konflikt gehört und der Geltungsbereich steht, prüft der Dienst.
+            const roh = body.vorrang;
+            const vorrang = isVorrangWahl(roh) ? roh : undefined;
+            if (roh !== undefined && vorrang === undefined) {
+              return badRequest(
+                "vorrang muss { art: ueberstimmt|schraenkt_ein, gilt, geltungsbereich? } sein.",
+              );
+            }
+            const konfliktId = body.conflictId;
+            const text = body.decision;
+            reply.code(200).send(await conflicts.resolve(konfliktId, user.id, text, vorrang));
             return;
           }
           case "transfer-author": {

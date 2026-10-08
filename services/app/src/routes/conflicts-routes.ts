@@ -239,6 +239,44 @@ export function conflictRoutes(
       reply.code(200).send(sichten);
     });
 
+    // R-0263 (Aufnahme gesamt-konfliktklassifikation) — DER VORRANG AM EINZELNEN PUNKT.
+    //
+    // Je entschiedenem Konflikt mit festgelegtem Vorrang, an dem DIESER Punkt beteiligt ist: welche
+    // Seite gilt bzw. einschränkt, welche überstimmt bzw. eingeschränkt wird, und — bei einer
+    // Präzisierung — der Geltungsbereich. Damit sieht man am Punkt selbst, dass und wodurch er
+    // überstimmt oder eingeschränkt ist; seine Quellen und seine Dokumentherkunft bleiben dabei
+    // unverändert stehen (die Entscheidung schreibt nie am Objekt).
+    //
+    // Dieselben zwei Stufen wie `GET /api/conflicts`: erst das Paar (`paarSichtbar` — eine Beziehung
+    // zu einem unsichtbaren Punkt ist schon eine Auskunft über ihn), dann der Inhalt
+    // (`feldFreigabe` — der Geltungsbereich ist Menschentext wie `description` und wird bei
+    // Redaktion geleert). Ein unsichtbarer oder unbekannter Punkt bekommt eine leere Liste.
+    app.get<{ Params: { id: string } }>("/api/conflicts/vorrang/:id", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      const sichten = [];
+      // `:id` ist die Kennung des WISSENSOBJEKTS, nicht eines Konflikts.
+      for (const c of await conflicts.vorrangFuerKo(request.params.id)) {
+        if (!c.vorrang || !(await paarSichtbar(user, c.koA, c.koB, kos))) {
+          continue;
+        }
+        const freigabe = await feldFreigabe(user, c.koA, c.koB, kos);
+        const offen = freigabe.a && freigabe.b;
+        sichten.push({
+          konfliktId: c.id,
+          art: c.vorrang.art,
+          vorrangKo: c.vorrang.vorrangKo,
+          nachrangKo: c.vorrang.nachrangKo,
+          geltungsbereich: offen ? c.vorrang.geltungsbereich : null,
+          entschiedenVon: c.decidedBy,
+          ...(offen ? {} : { redacted: true }),
+        });
+      }
+      reply.code(200).send(sichten);
+    });
+
     app.get<{ Params: { id: string } }>("/api/conflicts/:id", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {

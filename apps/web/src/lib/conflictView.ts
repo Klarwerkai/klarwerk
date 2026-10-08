@@ -1,7 +1,7 @@
 // Reine, DOM-freie Logik fürs Conflict Board (SCRUM-127 / SCRUM-128).
 // Keine Backend-Änderung, keine KO-Mutation: nur Auflösung von IDs zu echten KOs
 // und die fachliche Definition der (Nicht-)Wirkung einer Konfliktauflösung.
-import type { Conflict, ConflictWorkKind, KnowledgeObject } from "../api/types";
+import type { Conflict, ConflictWorkKind, KnowledgeObject, KonfliktVorrang } from "../api/types";
 
 export interface ConflictKoPair {
   a: KnowledgeObject | null;
@@ -91,39 +91,32 @@ export function resolutionEffect(conflict: Pick<Conflict, "type">): ResolutionEf
 //             (die Entscheidung verlangt ohnehin `conflict.resolve`). Keine Zweitmeinung im Band.
 //   sache   — durch Belege entscheidbar. Das bisherige Band, unverändert.
 //   version — dieselbe Sache in zwei Ständen. „Welcher Stand gilt", kein „beide gelten", keine
-//             Zweitmeinung.
+//             Zweitmeinung, keine Präzisierung.
 //
-// DIE ACHSE IST EINE ZWEITE, NICHT DIE FÜNF ARTEN NOCHMAL (Registernotiz zu R-0252). Ausdrücklich
-// gewählt wird sie nur bei der manuellen Anlage. Fehlt sie, wird sie aus der Art ABGELEITET — und
-// die Fläche sagt das dazu, statt eine Ableitung als Feststellung auszugeben:
-//   truth      → sache   (Wahrheit: was stimmt, zeigen Belege)
-//   experience → sache   (Erfahrungen lassen sich an Beobachtungen und Nachweisen messen)
-//   temporal   → version (die Erkennung legt „überholt" als Zeitkonflikt an: zwei Stände)
-//   context    → regel   (wo welche Festlegung gilt, legt eine befugte Person fest)
-//   role       → regel   (Festlegungen verschiedener Rollen — dieselbe Frage)
-// GRENZE, benannt: ein automatisch erkannter Widerspruch zweier interner Festlegungen ist „truth"
-// und erscheint deshalb als Sachkonflikt. Eine Umordnung nach der Anlage gibt es nicht.
+// UNABHÄNGIG VON DEN FÜNF ARTEN (Ben, Nacharbeit 2). Bis hierher wurde die Arbeitsart aus `type`
+// abgeleitet — und ein automatisch erkannter Widerspruch zweier interner Festlegungen erschien damit
+// als Sachkonflikt mit Zweitmeinung. Diese Ableitung ist GESTRICHEN. Die Arbeitsart kommt nur noch
+// vom Datensatz selbst:
+//   · „gewaehlt" — ein Mensch hat sie bei der manuellen Anlage gewählt,
+//   · „erkannt"  — die Konfliktprüfung hat sie eingeordnet (detect.ts `arbeitsartAusUrteil`).
+// Fehlt sie, ist sie NICHT BESTIMMT: die Fläche sagt das, und das Band bietet alle Wege an, statt
+// einen zu verschweigen, den eine geratene Art ausgeschlossen hätte.
 export interface ConflictWorkKindInfo {
-  kind: ConflictWorkKind;
-  /** true = bei der Anlage gewählt; false = aus der Art abgeleitet. */
-  ausdruecklich: boolean;
+  kind: ConflictWorkKind | null;
+  /** Woher die Einordnung stammt — `null`, wenn es keine gibt. */
+  herkunft: "gewaehlt" | "erkannt" | null;
 }
 
-const ABGELEITETE_ARBEITSART: Readonly<Record<Conflict["type"], ConflictWorkKind>> = {
-  truth: "sache",
-  experience: "sache",
-  temporal: "version",
-  context: "regel",
-  role: "regel",
-};
-
 export function conflictWorkKind(
-  conflict: Pick<Conflict, "type" | "arbeitsart">,
+  conflict: Pick<Conflict, "arbeitsart" | "origin">,
 ): ConflictWorkKindInfo {
-  if (conflict.arbeitsart) {
-    return { kind: conflict.arbeitsart, ausdruecklich: true };
+  if (!conflict.arbeitsart) {
+    return { kind: null, herkunft: null };
   }
-  return { kind: ABGELEITETE_ARBEITSART[conflict.type] ?? "sache", ausdruecklich: false };
+  return {
+    kind: conflict.arbeitsart,
+    herkunft: conflict.origin === "auto" ? "erkannt" : "gewaehlt",
+  };
 }
 
 /** Das Band je Arbeitsart: Beschriftung der zwei Seitenknöpfe und welche Zusatzwege es gibt. */
@@ -131,15 +124,18 @@ export interface ConflictWorkActions {
   linksKey: string;
   rechtsKey: string;
   beideGelten: boolean;
+  /** R-0263: ob „gilt" als Präzisierung (schränkt nur ein, mit Geltungsbereich) wählbar ist. */
+  praezisierung: boolean;
   zweitmeinung: boolean;
 }
 
-export function conflictWorkActions(kind: ConflictWorkKind): ConflictWorkActions {
+export function conflictWorkActions(kind: ConflictWorkKind | null): ConflictWorkActions {
   if (kind === "version") {
     return {
       linksKey: "konfliktarbeit.knopf.standLinks",
       rechtsKey: "konfliktarbeit.knopf.standRechts",
       beideGelten: false,
+      praezisierung: false,
       zweitmeinung: false,
     };
   }
@@ -147,7 +143,50 @@ export function conflictWorkActions(kind: ConflictWorkKind): ConflictWorkActions
     linksKey: "con.side.left",
     rechtsKey: "con.side.right",
     beideGelten: true,
-    zweitmeinung: kind === "sache",
+    praezisierung: true,
+    // Regel: keine Zweitmeinung — keine Quelle entscheidet. Sache und „nicht bestimmt": wie bisher.
+    zweitmeinung: kind !== "regel",
+  };
+}
+
+/**
+ * R-0215 / R-1714 (Nacharbeit 2): solange ein Wahrheitskonflikt OFFEN ist, ist er noch nicht an
+ * einen Menschen eskaliert — Entscheidung und Zweitmeinung sind dann gesperrt (der Dienst weist sie
+ * mit 409 ab, `services/conflicts/src/service.ts` `requireEscalatedIfTruth`). Die anderen vier Arten
+ * werden nie gesperrt.
+ */
+export function eskalationAusstehend(conflict: Pick<Conflict, "type" | "status">): boolean {
+  return conflict.type === "truth" && conflict.status === "offen";
+}
+
+/**
+ * R-0263: der Satz, den ein Punkt über einen festgelegten Vorrang trägt — aus SEINER Sicht. Gibt den
+ * i18n-Schlüssel und die Kennung des Gegenübers zurück; Titel und Geltungsbereich setzt der Aufrufer
+ * ein. Vier Fälle, je nach Art und Seite:
+ *   überstimmt   · dieser Punkt gilt         → „Hat Vorrang vor …"
+ *   überstimmt   · dieser Punkt unterliegt   → „Überstimmt durch … — bleibt mit Quellen erhalten"
+ *   schränkt ein · dieser Punkt ist spezieller → „Präzisiert … für den Geltungsbereich …"
+ *   schränkt ein · dieser Punkt ist allgemeiner → „Eingeschränkt durch … — außerhalb gilt er weiter"
+ */
+export function vorrangAmPunkt(
+  v: Pick<KonfliktVorrang, "art" | "vorrangKo" | "nachrangKo">,
+  koId: string,
+): { schluessel: string; gegenueber: string } {
+  const istVorrang = v.vorrangKo === koId;
+  const gegenueber = istVorrang ? v.nachrangKo : v.vorrangKo;
+  if (v.art === "schraenkt_ein") {
+    return {
+      schluessel: istVorrang
+        ? "konfliktarbeit.amPunkt.praezisiert"
+        : "konfliktarbeit.amPunkt.eingeschraenktVon",
+      gegenueber,
+    };
+  }
+  return {
+    schluessel: istVorrang
+      ? "konfliktarbeit.amPunkt.hatVorrang"
+      : "konfliktarbeit.amPunkt.ueberstimmtVon",
+    gegenueber,
   };
 }
 
@@ -155,19 +194,19 @@ export function conflictWorkActions(kind: ConflictWorkKind): ConflictWorkActions
 // Verweist nur auf bestehende echte Aktionen (escalate/secondOpinion/resolve) — keine neue Logik,
 // keine automatische Lösung. Spiegelt die Aktionsverfügbarkeit der Konfliktseite wider:
 //  - gelöst                       → keine offene Handlung (done)
-//  - Wahrheitskonflikt, offen     → an einen Menschen eskalieren (R-0215: nur er, und er zwingend)
-//  - Sachkonflikt (auch Wahrheit, eskaliert): offen/eskaliert → Zweitmeinung, Zweitm. → entscheiden
+//  - Wahrheitskonflikt, offen     → an einen Menschen eskalieren (R-0215: verbindlich)
 //  - R-0252: Regel- und Versionskonflikt → entscheiden; eine Zweitmeinung bietet das Band dort
 //    nicht an (keine Quelle entscheidet eine Festlegung; bei zwei Ständen wird der geltende gewählt).
+//  - sonst (Sache oder nicht bestimmt): Zweitmeinung, nach der Zweitmeinung entscheiden.
 export type ConflictNextStep = "escalate" | "secondOpinion" | "resolve" | "done";
 
 export function conflictNextStep(
-  conflict: Pick<Conflict, "type" | "status" | "arbeitsart">,
+  conflict: Pick<Conflict, "type" | "status" | "arbeitsart" | "origin">,
 ): ConflictNextStep {
   if (conflict.status === "geloest") {
     return "done";
   }
-  if (conflict.type === "truth" && conflict.status === "offen") {
+  if (eskalationAusstehend(conflict)) {
     return "escalate";
   }
   if (!conflictWorkActions(conflictWorkKind(conflict).kind).zweitmeinung) {

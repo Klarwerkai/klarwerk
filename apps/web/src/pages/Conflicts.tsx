@@ -18,6 +18,15 @@
 // das Band richtet sich danach (`lib/conflictView.ts`, `conflictWorkActions`): der Sachkonflikt
 // behält genau die Knöpfe oben; der Regelkonflikt bietet keine Zweitmeinung an; der
 // Versionskonflikt fragt „Linker/Rechter Stand gilt", ohne „Beide gelten" und ohne Zweitmeinung.
+// Ohne Einordnung („nicht bestimmt") bleibt das volle Band.
+//
+// R-0215 / R-1714: ein OFFENER Wahrheitskonflikt ist noch nicht eskaliert. Dann steht „Eskalieren"
+// vorn im Band, Entscheidungen und Zweitmeinung sind sichtbar gesperrt (der Dienst lehnt sie mit
+// 409 ab), und ein Satz darunter sagt warum. „Kein Widerspruch" bleibt offen — er entscheidet
+// keine Wahrheit, er verneint den Befund.
+//
+// R-0263: nach „Links/Rechts gilt" wählt der Mensch, ob die Seite überstimmt oder nur präzisiert
+// (dann mit Geltungsbereich). Der Vorrang gilt nur zwischen diesen zwei Punkten.
 //
 // NICHTS GEHT VERLOREN (Auftrag §11): Eskalieren, Eskalationspfad, Vergleichsseite und Details
 // liegen im „···" jeder Karte; Herkunft, Sicherheit, Begründung, Zitate, Bedingungen, Maßnahmen,
@@ -36,7 +45,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos } from "../api/hooks";
-import type { Conflict, ConflictStatus, KnowledgeObject } from "../api/types";
+import type { Conflict, ConflictStatus, KnowledgeObject, VorrangArt } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
 import { SourceEvidence } from "../components/ko/SourceEvidence";
@@ -80,6 +89,7 @@ import {
   conflictNextStep,
   conflictWorkActions,
   conflictWorkKind,
+  eskalationAusstehend,
   resolutionEffect,
 } from "../lib/conflictView";
 import { leseFall } from "../lib/fallAbsprung";
@@ -117,6 +127,11 @@ export function Conflicts(): JSX.Element {
   const qc = useQueryClient();
   const [decision, setDecision] = useState("");
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+  // R-0263: welche Seite gilt (null = „Beide gelten", kein Vorrang), ob sie überstimmt oder nur
+  // präzisiert, und — beim Präzisieren — der Geltungsbereich.
+  const [gewaehlteSeite, setGewaehlteSeite] = useState<"a" | "b" | null>(null);
+  const [vorrangArt, setVorrangArt] = useState<VorrangArt>("ueberstimmt");
+  const [geltungsbereich, setGeltungsbereich] = useState("");
   const [opinionId, setOpinionId] = useState<string | null>(null);
   const [opinion, setOpinion] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -149,16 +164,32 @@ export function Conflicts(): JSX.Element {
   });
 
   const resolve = useMutation({
-    mutationFn: (c: { id: string; koA: string }) =>
+    mutationFn: (c: { id: string; koA: string; koB: string }) =>
       endpoints.ko.act(c.koA, {
         action: "resolve-conflict",
         conflictId: c.id,
         decision: decision.trim(),
+        // R-0263: der Vorrang wirkt nur zwischen GENAU diesen zwei Punkten. „Beide gelten" legt
+        // keinen fest und schickt deshalb nichts.
+        ...(gewaehlteSeite
+          ? {
+              vorrang: {
+                art: vorrangArt,
+                gilt: gewaehlteSeite === "a" ? c.koA : c.koB,
+                ...(vorrangArt === "schraenkt_ein"
+                  ? { geltungsbereich: geltungsbereich.trim() }
+                  : {}),
+              },
+            }
+          : {}),
       }),
     onSuccess: () => {
       invalidate();
       setResolvingId(null);
       setDecision("");
+      setGewaehlteSeite(null);
+      setVorrangArt("ueberstimmt");
+      setGeltungsbereich("");
       setErr(null);
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
@@ -324,16 +355,21 @@ export function Conflicts(): JSX.Element {
     const beschreibung = redigiert || origin.isAuto ? "" : (c.description ?? "").trim();
 
     // R-0252: die Art der Arbeit steht VOR den Karten — EIN Satz, flach, ohne Aufklappen. Er sagt
-    // dazu, ob die Einordnung bei der Anlage gewählt oder aus der Art abgeleitet wurde. Das Band
+    // dazu, ob die Einordnung bei der Anlage gewählt oder von der Prüfung erkannt wurde. Das Band
     // darunter richtet sich nach ihr (`conflictWorkActions`). Die Arbeitsart ist eine Einordnung,
     // kein Inhalt: sie bleibt auch bei Redaktion stehen (Redaktion leert Text und Zitate).
     const arbeit = conflictWorkKind(c);
     const band = conflictWorkActions(arbeit.kind);
-    const arbeitSatz = `${t(`konfliktarbeit.satz.${arbeit.kind}`)} ${
-      arbeit.ausdruecklich
-        ? t("konfliktarbeit.gewaehlt")
-        : t("konfliktarbeit.abgeleitet", { art: t(`con.type.${c.type}`) })
-    }`;
+    // Nacharbeit 2: ohne Einordnung sagt der Satz „nicht bestimmt" — er rät keine Art aus `type`.
+    const arbeitSatz =
+      arbeit.kind === null
+        ? t("konfliktarbeit.satz.offen")
+        : `${t(`konfliktarbeit.satz.${arbeit.kind}`)} ${t(
+            arbeit.herkunft === "erkannt" ? "konfliktarbeit.erkannt" : "konfliktarbeit.gewaehlt",
+          )}`;
+    // R-0215 / R-1714: solange der Wahrheitskonflikt nicht eskaliert ist, sind Entscheidung und
+    // Zweitmeinung gesperrt — sichtbar, mit Grund, und „Eskalieren" steht vorn im Band.
+    const gesperrt = eskalationAusstehend(c);
 
     const mehr = (seite: "a" | "b"): JSX.Element => {
       const ko = seite === "a" ? pair.a : pair.b;
@@ -485,12 +521,17 @@ export function Conflicts(): JSX.Element {
       );
     };
 
-    /** „Links gilt" / „Rechts gilt" / „Beide gelten": derselbe dokumentierende Weg, andere Vorbelegung. */
-    const oeffneAufloesung = (vorbelegung: string): void => {
+    /** „Links gilt" / „Rechts gilt" / „Beide gelten": derselbe dokumentierende Weg, andere Vorbelegung.
+     *  R-0263: `gilt` merkt sich die gewählte Seite — „Beide gelten" (null) legt keinen Vorrang fest. */
+    const oeffneAufloesung = (vorbelegung: string, gilt: "a" | "b" | null): void => {
       setErr(null);
       setDecision(vorbelegung);
+      setGewaehlteSeite(gilt);
+      setVorrangArt("ueberstimmt");
+      setGeltungsbereich("");
       setResolvingId(c.id);
     };
+    const praezisiert = gewaehlteSeite !== null && vorrangArt === "schraenkt_ein";
 
     return (
       <>
@@ -574,11 +615,22 @@ export function Conflicts(): JSX.Element {
 
         {offen ? (
           <PruefenAktionsband>
+            {gesperrt ? (
+              <PruefenKnopf
+                ton="primaer"
+                kennung="eskalieren"
+                disabled={escalate.isPending}
+                onClick={() => escalate.mutate(c.id)}
+              >
+                {t("con.escalate")}
+              </PruefenKnopf>
+            ) : null}
             <PruefenKnopf
               ton="primaer"
               kennung="links-gilt"
+              disabled={gesperrt}
               onClick={() =>
-                oeffneAufloesung(t("con.prefill.side", { title: pair.a?.title ?? "" }))
+                oeffneAufloesung(t("con.prefill.side", { title: pair.a?.title ?? "" }), "a")
               }
             >
               {t(band.linksKey)}
@@ -586,8 +638,9 @@ export function Conflicts(): JSX.Element {
             <PruefenKnopf
               ton="primaer"
               kennung="rechts-gilt"
+              disabled={gesperrt}
               onClick={() =>
-                oeffneAufloesung(t("con.prefill.side", { title: pair.b?.title ?? "" }))
+                oeffneAufloesung(t("con.prefill.side", { title: pair.b?.title ?? "" }), "b")
               }
             >
               {t(band.rechtsKey)}
@@ -595,7 +648,8 @@ export function Conflicts(): JSX.Element {
             {band.beideGelten ? (
               <PruefenKnopf
                 kennung="beide-gelten"
-                onClick={() => oeffneAufloesung(t("con.prefill.both"))}
+                disabled={gesperrt}
+                onClick={() => oeffneAufloesung(t("con.prefill.both"), null)}
               >
                 {t("con.side.both")}
               </PruefenKnopf>
@@ -612,6 +666,7 @@ export function Conflicts(): JSX.Element {
             {band.zweitmeinung ? (
               <PruefenBandLink
                 kennung="zweitmeinung"
+                disabled={gesperrt}
                 onClick={() => {
                   setErr(null);
                   setOpinion("");
@@ -623,6 +678,11 @@ export function Conflicts(): JSX.Element {
             ) : null}
           </PruefenAktionsband>
         ) : null}
+        {offen && gesperrt ? (
+          <p data-testid="konflikt-eskalation-zuerst" className="text-[12.5px] text-muted">
+            {t("konfliktarbeit.eskalation.zuerst")}
+          </p>
+        ) : null}
 
         {/* Die Begründung ist vorbelegt und EDITIERBAR — die Entscheidung bleibt beim Menschen. */}
         {resolvingId === c.id ? (
@@ -631,6 +691,46 @@ export function Conflicts(): JSX.Element {
               {t("con.resolveEffect")}
               {wirkung.revalidationRecommended ? <span> {t("con.resolveRevalidate")}</span> : null}
             </div>
+            {/* R-0263: gilt die gewählte Seite überall, oder präzisiert sie die andere nur in einem
+                Geltungsbereich? Beim Versionskonflikt gibt es nur das Überstimmen. */}
+            {gewaehlteSeite !== null && band.praezisierung ? (
+              <fieldset data-testid="konflikt-vorrang" className="space-y-1 text-[13px]">
+                <legend className="font-medium text-muted">
+                  {t("konfliktarbeit.vorrang.frage")}
+                </legend>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name={`vorrang-${c.id}`}
+                    checked={vorrangArt === "ueberstimmt"}
+                    onChange={() => setVorrangArt("ueberstimmt")}
+                  />
+                  {t("konfliktarbeit.vorrang.ueberstimmt")}
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name={`vorrang-${c.id}`}
+                    data-testid="konflikt-vorrang-praezisiert"
+                    checked={vorrangArt === "schraenkt_ein"}
+                    onChange={() => setVorrangArt("schraenkt_ein")}
+                  />
+                  {t("konfliktarbeit.vorrang.schraenktEin")}
+                </label>
+                {praezisiert ? (
+                  <input
+                    type="text"
+                    data-testid="konflikt-geltungsbereich"
+                    value={geltungsbereich}
+                    onChange={(e) => setGeltungsbereich(e.target.value)}
+                    aria-label={t("konfliktarbeit.vorrang.geltungsbereich")}
+                    placeholder={t("konfliktarbeit.vorrang.geltungsbereichHinweis")}
+                    className="h-10 w-full rounded-input border border-hairline bg-surface px-2.5 text-sm"
+                  />
+                ) : null}
+                <p className="text-[12px] text-muted">{t("konfliktarbeit.vorrang.wirkung")}</p>
+              </fieldset>
+            ) : null}
             <textarea
               value={decision}
               onChange={(e) => setDecision(e.target.value)}
@@ -641,8 +741,12 @@ export function Conflicts(): JSX.Element {
             />
             <Button
               variant="primary"
-              disabled={resolve.isPending || decision.trim().length === 0}
-              onClick={() => resolve.mutate({ id: c.id, koA: c.koA })}
+              disabled={
+                resolve.isPending ||
+                decision.trim().length === 0 ||
+                (praezisiert && geltungsbereich.trim().length === 0)
+              }
+              onClick={() => resolve.mutate({ id: c.id, koA: c.koA, koB: c.koB })}
             >
               {t("con.resolveConfirm")}
             </Button>
