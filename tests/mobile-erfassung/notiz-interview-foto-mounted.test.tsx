@@ -17,6 +17,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const box = vi.hoisted(() => ({
   reset: (): void => {},
   alle: async (): Promise<Record<string, unknown>[]> => [],
+  seed: async (_payload: Record<string, unknown>): Promise<string> => "",
+}));
+
+/**
+ * BEN (Nacharbeit 2): die Bildumwandlung lässt sich VERZÖGERN. Dann hängt sie, bis der Fall sie
+ * selbst auflöst — genau die Reihenfolge „Foto gewählt → gespeichert/gewechselt → Umwandlung fertig".
+ */
+const thumb = vi.hoisted(() => ({
+  verzoegert: false,
+  aufloesen: null as null | ((dataUrl: string) => void),
 }));
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -29,7 +39,14 @@ vi.mock("../../apps/web/src/api/auth", () => ({
 
 vi.mock("../../apps/web/src/lib/files", async (original) => ({
   ...(await original<typeof import("../../apps/web/src/lib/files")>()),
-  fileToThumbDataUrl: vi.fn(async () => "data:image/jpeg;base64,QUJD"),
+  fileToThumbDataUrl: vi.fn(
+    (): Promise<string> =>
+      thumb.verzoegert
+        ? new Promise<string>((r) => {
+            thumb.aufloesen = r;
+          })
+        : Promise.resolve("data:image/jpeg;base64,QUJD"),
+  ),
 }));
 
 vi.mock("../../apps/web/src/api/endpoints", async () => {
@@ -41,6 +58,7 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
     svc = new CaptureService({ repo: new InMemoryDraftRepo() });
   };
   box.alle = async () => (await svc.listDrafts()).map((d) => d.payload as unknown as P);
+  box.seed = async (payload: P) => (await svc.createDraft(payload, "u1")).id;
   const ok = <T,>(v: T) => vi.fn(async () => v);
   return {
     endpoints: {
@@ -215,7 +233,21 @@ function gefuellteKnoepfe(): HTMLButtonElement[] {
 beforeEach(async () => {
   await i18n.changeLanguage("de");
   box.reset();
+  thumb.verzoegert = false;
+  thumb.aufloesen = null;
 });
+
+/** Die hängende Umwandlung jetzt fertigstellen — mit einem eigenen, erkennbaren Bild. */
+async function umwandlungFertig(dataUrl: string): Promise<void> {
+  const aufloesen = thumb.aufloesen;
+  if (!aufloesen) {
+    throw new Error("keine laufende Bildumwandlung");
+  }
+  await act(async () => {
+    aufloesen(dataUrl);
+    await flush();
+  });
+}
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -353,5 +385,85 @@ describe("FR-CAP-04 · Foto aus Kamera oder Mediathek, entfernbar", () => {
     expect(editor.innerHTML).toContain("data:image/jpeg;base64,QUJD");
     expect(editor.textContent).toContain("Pumpe leckt");
     abbauen();
+  });
+});
+
+// ================================================================================================
+// BEN, Nacharbeit 2 — DIE UMWANDLUNG LÄUFT NOCH, WÄHREND GESPEICHERT ODER GEWECHSELT WIRD.
+// ================================================================================================
+//
+// Befund (Mobile.tsx:427/434 am Kandidaten 877d2071): die Umwandlung ergänzte nach dem Warten den
+// DANN aktuellen Formularzustand; der Speicherweg wartete nicht auf sie. Jeder Fall hier lässt die
+// Umwandlung hängen und löst sie erst NACH der kritischen Handlung auf.
+describe("FR-CAP-04 · laufende Fotoumwandlung und Speicherweg", () => {
+  const BILD_P4 = "data:image/jpeg;base64,UDQ=";
+
+  it("Knopf: gesperrt, solange das Foto umgewandelt wird — danach geht das Foto mit", async () => {
+    thumb.verzoegert = true;
+    await mount("mobile");
+    await tippe(el<HTMLTextAreaElement>('[data-testid="mob-statement"]'), "Leck an P4");
+    await waehleDatei(el('[data-testid="mob-foto-kamera"]'), "P4.jpg");
+
+    // Die Umwandlung hängt: gesperrt, mit Begründung, und noch nichts gespeichert.
+    expect(el('[data-testid="mob-foto-in-arbeit"]')).toBeTruthy();
+    expect(el<HTMLButtonElement>('[data-testid="mob-primaer"]').disabled).toBe(true);
+    await click(el<HTMLButtonElement>('[data-testid="mob-primaer"]'));
+    expect(await box.alle()).toHaveLength(0);
+
+    await umwandlungFertig(BILD_P4);
+    expect(container.querySelector('[data-testid="mob-foto-in-arbeit"]')).toBeNull();
+    await click(el<HTMLButtonElement>('[data-testid="mob-primaer"]'));
+
+    const entwuerfe = await box.alle();
+    expect(entwuerfe).toHaveLength(1);
+    expect(entwuerfe[0]?.statement).toBe("Leck an P4");
+    expect(String(entwuerfe[0]?.bodyHtml)).toContain(BILD_P4);
+    // Das Formular ist danach leer — kein Foto bleibt für den nächsten Entwurf liegen.
+    expect(el('[data-testid="mob-fotos"]').querySelectorAll("img")).toHaveLength(0);
+    abbauen();
+  });
+
+  it("Dialogspeichern: der Weggeh-Wächter wartet die Umwandlung ab und speichert das Foto mit", async () => {
+    thumb.verzoegert = true;
+    await mount("mobile");
+    await tippe(el<HTMLTextAreaElement>('[data-testid="mob-statement"]'), "Leck an P4");
+    await waehleDatei(el('[data-testid="mob-foto-mediathek"]'), "P4.jpg");
+
+    await click(knopf(i18n.t("topbar.toDesktop")));
+    await click(knopf(i18n.t("nav.guard.save")));
+    // Solange die Umwandlung hängt: nichts geschrieben, nicht gewechselt.
+    expect(await box.alle()).toHaveLength(0);
+    expect(container.textContent).not.toContain("START-SEITE");
+
+    await umwandlungFertig(BILD_P4);
+    await act(flush);
+
+    const entwuerfe = await box.alle();
+    expect(entwuerfe).toHaveLength(1);
+    expect(entwuerfe[0]?.statement).toBe("Leck an P4");
+    expect(String(entwuerfe[0]?.bodyHtml)).toContain(BILD_P4);
+    expect(container.textContent).toContain("START-SEITE");
+    abbauen();
+  });
+
+  it("Formularwechsel: ein verspätetes Foto gerät NICHT in den fortgesetzten anderen Entwurf", async () => {
+    const id = await box.seed({ title: "Anderer Entwurf", statement: "Alte Aussage" });
+    thumb.verzoegert = true;
+    await mount("mobile");
+    await waehleDatei(el('[data-testid="mob-foto-kamera"]'), "P4.jpg");
+
+    await click(el<HTMLButtonElement>(`button[title="${i18n.t("mob.resume")}"]`));
+    await umwandlungFertig(BILD_P4);
+    expect(container.innerHTML).not.toContain(BILD_P4);
+
+    await click(knopf(i18n.t("mob.update")));
+    abbauen();
+
+    const entwuerfe = await box.alle();
+    // Kein zusätzlicher Entwurf, und der fortgesetzte trägt kein fremdes Foto.
+    expect(entwuerfe).toHaveLength(1);
+    expect(entwuerfe[0]).toMatchObject({ title: "Anderer Entwurf", statement: "Alte Aussage" });
+    expect(entwuerfe[0]?.bodyHtml).toBeUndefined();
+    expect(id).toBeTruthy();
   });
 });

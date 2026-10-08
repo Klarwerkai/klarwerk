@@ -4679,6 +4679,7 @@ const en: typeof de = {
   "mob.foto.entfernen": "Remove photo",
   "mob.foto.fehler": "The photo could not be read.",
   "mob.foto.max": "At most {{max}} photos per draft.",
+  "mob.foto.inArbeit": "Preparing photo … you can save in a moment.",
   "mob.editing": "Resuming a draft.",
   "mob.formTitle": "Core statement",
   "mob.formStatement": "What happened / what applies?",

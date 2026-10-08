@@ -6034,6 +6034,7 @@ const de = {
   "mob.foto.entfernen": "Foto entfernen",
   "mob.foto.fehler": "Das Foto konnte nicht gelesen werden.",
   "mob.foto.max": "Höchstens {{max}} Fotos je Entwurf.",
+  "mob.foto.inArbeit": "Foto wird vorbereitet … gespeichert werden kann gleich.",
   "mob.editing": "Entwurf wird fortgesetzt.",
   "mob.formTitle": "Kernaussage",
   "mob.formStatement": "Was ist passiert / was gilt?",

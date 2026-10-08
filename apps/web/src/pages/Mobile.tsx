@@ -333,7 +333,20 @@ export function Mobile(): JSX.Element {
   const [ivSchritt, setIvSchritt] = useState(0);
   const kameraRef = useRef<HTMLInputElement>(null);
   const mediathekRef = useRef<HTMLInputElement>(null);
+  // FR-CAP-04 (BEN, Nacharbeit 2): WELCHEM Formular gehört eine laufende Fotoumwandlung? Jede
+  // Ablösung des Formulars (Zurücksetzen nach dem Speichern, Fortsetzen eines anderen Entwurfs)
+  // zählt diese Generation hoch. Ein Foto, dessen Umwandlung unter einer älteren Generation begann,
+  // wird verworfen — es gehört zu einem Formular, das es nicht mehr gibt, und darf in keinen
+  // anderen Entwurf geraten.
+  const formGenRef = useRef(0);
+  /** Die laufenden Umwandlungen. Jeder Speicherweg wartet sie ab, bevor er die Nutzlast baut. */
+  const fotoLaeufeRef = useRef(new Set<Promise<void>>());
+  const [fotosInArbeit, setFotosInArbeit] = useState(0);
+  const formAbloesen = (): void => {
+    formGenRef.current += 1;
+  };
   const resetForm = (): void => {
+    formAbloesen();
     setForm({ ...EMPTY_DRAFT_FORM });
     setBaseline({ ...EMPTY_DRAFT_FORM });
     setEditingId(null);
@@ -405,6 +418,15 @@ export function Mobile(): JSX.Element {
   // als feste Blöcke im Text.
   const fotosMoeglich = !editingId;
   const fotos = form.fotos ?? [];
+  //
+  // BEN (Nacharbeit 2): die Umwandlung ist asynchron. Bis hierher ergänzte sie nach dem Warten
+  // einfach den DANN aktuellen Formularzustand — wer währenddessen speicherte, speicherte ohne das
+  // Foto, und das Foto landete danach im leeren oder schon in einem anderen Entwurf. Jetzt gilt:
+  //   · die Umwandlung gehört der Generation, unter der sie begann (`formGenRef`); ist das Formular
+  //     inzwischen abgelöst, wird ihr Ergebnis verworfen;
+  //   · jeder Speicherweg (Knopf UND Weggeh-Wächter) wartet laufende Umwandlungen ab
+  //     (`fotosAbwarten`) und baut die Nutzlast erst danach;
+  //   · solange eine läuft, ist der Knopf gesperrt und die Fläche sagt, warum.
   const fotosHinzufuegen = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const dateien = Array.from(e.target.files ?? []).filter((d) => d.type.startsWith("image/"));
     // Dasselbe Foto noch einmal wählen soll wieder ein Ereignis auslösen.
@@ -413,21 +435,55 @@ export function Mobile(): JSX.Element {
     if (dateien.length > frei) {
       push("error", t("mob.foto.max", { max: MOBIL_FOTOS_MAX }));
     }
-    const neu: DraftFormFoto[] = [];
-    for (const datei of dateien.slice(0, Math.max(0, frei))) {
-      try {
-        neu.push({
-          id: crypto.randomUUID(),
-          name: datei.name,
-          dataUrl: await fileToThumbDataUrl(datei),
-        });
-      } catch {
-        push("error", t("mob.foto.fehler"));
+    const auswahl = dateien.slice(0, Math.max(0, frei));
+    if (auswahl.length === 0) {
+      return;
+    }
+    const generation = formGenRef.current;
+    const lauf = (async (): Promise<void> => {
+      const neu: DraftFormFoto[] = [];
+      for (const datei of auswahl) {
+        try {
+          neu.push({
+            id: crypto.randomUUID(),
+            name: datei.name,
+            dataUrl: await fileToThumbDataUrl(datei),
+          });
+        } catch {
+          push("error", t("mob.foto.fehler"));
+        }
       }
+      if (neu.length === 0 || formGenRef.current !== generation) {
+        return;
+      }
+      // Der Ref wird SOFORT nachgeführt: ein Speicherweg, der gerade auf diesen Lauf wartet, liest
+      // danach `formRef.current` — vor dem nächsten Rendern.
+      const naechst: DraftFormState = {
+        ...formRef.current,
+        fotos: [...(formRef.current.fotos ?? []), ...neu].slice(0, MOBIL_FOTOS_MAX),
+      };
+      formRef.current = naechst;
+      setForm(naechst);
+    })();
+    fotoLaeufeRef.current.add(lauf);
+    setFotosInArbeit((n) => n + 1);
+    try {
+      await lauf;
+    } finally {
+      fotoLaeufeRef.current.delete(lauf);
+      setFotosInArbeit((n) => n - 1);
     }
-    if (neu.length > 0) {
-      setForm((f) => ({ ...f, fotos: [...(f.fotos ?? []), ...neu].slice(0, MOBIL_FOTOS_MAX) }));
+  };
+  /**
+   * Wartet alle laufenden Fotoumwandlungen ab und gibt das Formular MIT ihren Fotos zurück — oder
+   * `null`, wenn das Formular währenddessen abgelöst wurde (dann wird nichts gespeichert).
+   */
+  const fotosAbwarten = async (): Promise<DraftFormState | null> => {
+    const generation = formGenRef.current;
+    while (fotoLaeufeRef.current.size > 0) {
+      await Promise.all([...fotoLaeufeRef.current]);
     }
+    return formGenRef.current === generation ? formRef.current : null;
   };
   const fotoEntfernen = (id: string): void => {
     setForm((f) => ({ ...f, fotos: (f.fotos ?? []).filter((x) => x.id !== id) }));
@@ -647,9 +703,15 @@ export function Mobile(): JSX.Element {
         ? { art: "fehler" }
         : konflikt.lage;
 
-  const onSave = (): void => {
+  const onSave = async (): Promise<void> => {
     if (schreibenGesperrt) {
       push("error", t("mob.stand.erstAufloesen"));
+      return;
+    }
+    // FR-CAP-04 (BEN, Nacharbeit 2): laufende Fotoumwandlungen gehören zu DIESEM Speichern. Ohne
+    // laufende Umwandlung bleibt der Weg zeitgleich wie bisher (kein zusätzliches Warten).
+    const f = fotoLaeufeRef.current.size > 0 ? await fotosAbwarten() : form;
+    if (!f) {
       return;
     }
     wiederholtRef.current = false;
@@ -658,7 +720,7 @@ export function Mobile(): JSX.Element {
       // als ungebundener Rest da, den niemand mehr senden darf. Steht das Konto nicht fest, wird
       // NICHT angenommen; der getippte Text bleibt im Feld stehen (kein `resetForm`), und der
       // Mensch erfährt den Grund. Nichts wird still weggeworfen.
-      if (!queue.enqueue(neuerVorgang(form))) {
+      if (!queue.enqueue(neuerVorgang(f))) {
         push("error", t("mob.konto.speichernWartet"));
         return;
       }
@@ -667,7 +729,7 @@ export function Mobile(): JSX.Element {
       resetForm();
       return;
     }
-    save.mutate(form);
+    save.mutate(f);
   };
 
   // WP-SAMMEL20-FIX bleibt erhalten: der bestehende NavGuard schützt ungespeicherte Eingaben und
@@ -694,6 +756,12 @@ export function Mobile(): JSX.Element {
         if (schreibenGesperrt) {
           throw new NavGuardSaveError(t("mob.stand.erstAufloesen"));
         }
+        // FR-CAP-04 (BEN, Nacharbeit 2): dasselbe Abwarten wie am Knopf. Wurde das Formular
+        // währenddessen abgelöst, wird nichts geschrieben und nicht gewechselt.
+        const f = fotoLaeufeRef.current.size > 0 ? await fotosAbwarten() : form;
+        if (!f) {
+          throw new NavGuardSaveError(t("mob.foto.inArbeit"));
+        }
         wiederholtRef.current = false;
         if (!queue.online) {
           // Vor dem anschließenden Seitenwechsel muss auch der Persistenzeffekt der Queue laufen.
@@ -703,7 +771,7 @@ export function Mobile(): JSX.Element {
           // dem Seitenwechsel weg. Der Grund reist im `NavGuardSaveError` mit (JOB 3572 R2).
           let angenommen = false;
           flushSync(() => {
-            angenommen = queue.enqueue(neuerVorgang(form));
+            angenommen = queue.enqueue(neuerVorgang(f));
           });
           if (!angenommen) {
             throw new NavGuardSaveError(t("mob.konto.speichernWartet"));
@@ -714,7 +782,7 @@ export function Mobile(): JSX.Element {
           return;
         }
         try {
-          await sendeEntwurf(form);
+          await sendeEntwurf(f);
         } catch (e) {
           await speicherfehler(e);
           // JOB 4193 R6: fehlt die Voraussetzung, steht jetzt der Vergleich auf der Fläche. Der
@@ -796,6 +864,9 @@ export function Mobile(): JSX.Element {
         ...draftToForm({ payload: op.payload }),
         ...(op.seenUpdatedAt ? { gesehenerStand: op.seenUpdatedAt } : {}),
       };
+      // BEN (Nacharbeit 2): ein anderer Entwurf übernimmt das Formular — eine noch laufende
+      // Fotoumwandlung des neuen Erfassens darf nicht in ihn geraten.
+      formAbloesen();
       setForm(offline);
       setBaseline(offline);
       setEditingId(id);
@@ -812,6 +883,7 @@ export function Mobile(): JSX.Element {
     const d = serverEntwuerfe.find((x) => x.id === id);
     if (d) {
       const resumed = draftToForm(d);
+      formAbloesen();
       setForm(resumed);
       setBaseline(resumed);
       setEditingId(id);
@@ -1141,6 +1213,13 @@ export function Mobile(): JSX.Element {
                       eine Zahl zu behaupten — und ohne bestätigte Sitzung steht sie gar nicht da
                       (JOB 4333 R2: nichts, was vom Server kam). */}
                   {serverInhalteGesperrt ? null : <UploadLimitsHint />}
+                  {/* BEN (Nacharbeit 2): solange ein Foto umgewandelt wird, ist Speichern gesperrt
+                      — und die Fläche sagt, warum. */}
+                  {fotosInArbeit > 0 ? (
+                    <p data-testid="mob-foto-in-arbeit" className="text-[11.5px] text-muted">
+                      {t("mob.foto.inArbeit")}
+                    </p>
+                  ) : null}
                   {fotos.length > 0 ? (
                     <ul className="grid grid-cols-4 gap-1.5">
                       {fotos.map((foto) => (
@@ -1174,9 +1253,20 @@ export function Mobile(): JSX.Element {
                 <button
                   type="button"
                   data-testid="mob-primaer"
-                  disabled={save.isPending || !isDraftFormFillable(form) || schreibenGesperrt}
-                  title={schreibenGesperrt ? t("mob.stand.erstAufloesen") : undefined}
-                  onClick={onSave}
+                  disabled={
+                    save.isPending ||
+                    !isDraftFormFillable(form) ||
+                    schreibenGesperrt ||
+                    fotosInArbeit > 0
+                  }
+                  title={
+                    schreibenGesperrt
+                      ? t("mob.stand.erstAufloesen")
+                      : fotosInArbeit > 0
+                        ? t("mob.foto.inArbeit")
+                        : undefined
+                  }
+                  onClick={() => void onSave()}
                   className="flex flex-1 items-center justify-center gap-1.5 rounded-btn bg-ink py-2.5 text-[13px] font-semibold text-white disabled:opacity-50"
                 >
                   <Check size={15} />

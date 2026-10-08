@@ -4669,6 +4669,7 @@ const nl: typeof de = {
   "mob.foto.entfernen": "Foto verwijderen",
   "mob.foto.fehler": "De foto kon niet worden gelezen.",
   "mob.foto.max": "Maximaal {{max}} foto's per concept.",
+  "mob.foto.inArbeit": "Foto wordt voorbereid … opslaan kan zo meteen.",
   "mob.editing": "Concept wordt voortgezet.",
   "mob.formTitle": "Kernuitspraak",
   "mob.formStatement": "Wat is er gebeurd / wat geldt?",
