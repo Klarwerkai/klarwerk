@@ -389,8 +389,14 @@ class Laufbuch {
   // Ben R2 B3/B5: jeder Versuch mit eigenem Modell, Verbrauch und Span.
   readonly versuchsliste: ModelRunVersuch[] = [];
 
-  async versuch<T>(provider: ReasonerProvider, aufruf: () => Promise<T>): Promise<T> {
-    const spur: ModellAufrufSpur = { gerufen: false };
+  async versuch<T>(
+    provider: ReasonerProvider,
+    aufruf: () => Promise<T>,
+    // gesamt-ki-freigaberegeln (Ben Nacharbeit 3): die Prüfungen des Reasoners für den Chokepoint —
+    // Vertraulichkeitsfreigabe und zentrale Freigabe, beide FRISCH unmittelbar vor der Übertragung.
+    pruefungen: Pick<ModellAufrufSpur, "vertraulichFreigegeben" | "vorUebertragung"> = {},
+  ): Promise<T> {
+    const spur: ModellAufrufSpur = { gerufen: false, ...pruefungen };
     const beginn = Date.now();
     this.versuche += 1;
     this.provider = provider.name;
@@ -867,6 +873,70 @@ export class Reasoner {
       return false;
     }
     return !confidential || freigabe.vertraulicheInhalte === true;
+  }
+
+  /**
+   * Auftrag gesamt-ki-freigaberegeln (Ben Nacharbeit 2): DIESELBE Entscheidung für die Wege ausserhalb
+   * des Reasoners — Word-Dokumenttext, Wissenscheck, Transkription. Sie fragen hier und legen die Regel
+   * nicht ein zweites Mal aus. `true` heisst: beide zentralen Adminfreigaben stehen. Zustimmung je
+   * Dokument und Anbieterbindung prüfen die Wege weiterhin selbst; diese Auskunft ersetzt sie nicht.
+   */
+  vertraulicheAusleitungFreigegeben(): boolean {
+    return this.oeffentlicheKiErlaubt(true);
+  }
+
+  /**
+   * Der Merker für den Chokepoint (`ModellAufrufSpur.vertraulichFreigegeben`): nur für einen externen
+   * Anbieter, nur bei vertraulichem Text, nur mit beiden Freigaben und nur, wenn die Anfrage diesen
+   * Anbieter überhaupt zulässt (Klara-Bindung).
+   */
+  private vertraulichFuerVersuch(provider: ReasonerProvider, confidential: boolean): boolean {
+    const extern = this.anbieterVon(provider);
+    return (
+      confidential &&
+      extern !== undefined &&
+      anbieterZugelassen(extern) &&
+      this.oeffentlicheKiErlaubt(true)
+    );
+  }
+
+  /**
+   * Ben Nacharbeit 3: der Spur-Anteil für den Chokepoint — eine PRÜFUNG, die dort beim Eintritt und
+   * unmittelbar vor der Übertragung frisch läuft (`vertraulichFuerVersuch` mit dem dann gültigen
+   * Stand der Freigabe und der Anfragebindung). Nur für vertraulichen Text an einen externen Anbieter.
+   */
+  private vertraulichePruefungFuer(
+    provider: ReasonerProvider,
+    confidential: boolean,
+  ): Pick<ModellAufrufSpur, "vertraulichFreigegeben"> {
+    return confidential && this.anbieterVon(provider) !== undefined
+      ? { vertraulichFreigegeben: () => this.vertraulichFuerVersuch(provider, confidential) }
+      : {};
+  }
+
+  /**
+   * Ben Nacharbeit 3: unmittelbar vor der Übertragung an einen EXTERNEN Anbieter — gilt die zentrale
+   * Adminfreigabe noch (Grundfreigabe, bei vertraulichem Text zusätzlich die zweite)? Wurde sie
+   * während des Wartens zurückgenommen, wirft diese Prüfung, und nichts geht hinaus. Lokale und
+   * deterministische Glieder sind nicht betroffen.
+   */
+  /** Beide Prüfungen für einen Laufbuch-Versuch (Urteile, Anreicherung, Auswahl). */
+  private pruefungenFuer(
+    provider: ReasonerProvider,
+    confidential: boolean,
+  ): Pick<ModellAufrufSpur, "vertraulichFreigegeben" | "vorUebertragung"> {
+    return {
+      ...this.vertraulichePruefungFuer(provider, confidential),
+      vorUebertragung: () => this.pruefeFreigabeVorUebertragung(provider, confidential),
+    };
+  }
+
+  private pruefeFreigabeVorUebertragung(provider: ReasonerProvider, confidential: boolean): void {
+    if (this.anbieterVon(provider) !== undefined && !this.oeffentlicheKiErlaubt(confidential)) {
+      throw new Error(
+        "Die zentrale Freigabe für öffentliche KI gilt nicht mehr — es wird nichts übertragen.",
+      );
+    }
   }
 
   private chainForChoice(
@@ -1515,8 +1585,13 @@ export class Reasoner {
       // am Chokepoint — eine Zustimmung, die seit dem Kettenbau beendet wurde, lässt nichts hinaus.
       const extern = this.anbieterVon(provider);
       const kiSperre = task === "answer";
+      // gesamt-ki-freigaberegeln (Ben Nacharbeit 3): die zentrale Adminfreigabe wird für einen
+      // externen Anbieter NICHT nur beim Kettenbau, sondern unmittelbar vor der Übertragung FRISCH
+      // gefragt (`pruefeFreigabeVorUebertragung`), und die Vertraulichkeitsfreigabe reist als
+      // PRÜFUNG an den Chokepoint, nicht als gespeicherter Wert.
       const spur: ModellAufrufSpur = {
         gerufen: false,
+        ...this.vertraulichePruefungFuer(provider, confidential),
         ...(kiSperre || extern !== undefined
           ? {
               vorUebertragung: () => {
@@ -1528,6 +1603,7 @@ export class Reasoner {
                     `Die Zustimmung für dieses Dokument trägt keine Übertragung an ${extern} mehr.`,
                   );
                 }
+                this.pruefeFreigabeVorUebertragung(provider, confidential);
               },
             }
           : {}),
@@ -1952,6 +2028,7 @@ export class Reasoner {
     tasks: ReasonerTaskMap;
     billable: ReasonerTaskMap;
     kiAbgeschaltet: boolean;
+    extern: "blockiert" | "frei" | "frei_vertraulich";
   } {
     const active = this.usingAnyModel();
     return {
@@ -1964,6 +2041,14 @@ export class Reasoner {
       // D5: nur ein Boolean — die Fragefläche unterscheidet damit „vom Administrator abgeschaltet"
       // von „kein Modell nutzbar" (Störung), ohne einen Anbieter- oder Modellnamen zu erfahren.
       kiAbgeschaltet: this.kiAbschaltung().abgeschaltet,
+      // Auftrag gesamt-ki-freigaberegeln (R-0606, Ben Nacharbeit 2): der WIRKSAME Stand der zentralen
+      // Adminfreigabe für die Kopfzeile („Extern: Blockiert"). Aus derselben Entscheidungsstelle wie
+      // jeder Lauf (`oeffentlicheKiErlaubt`) — keine zweite Auslegung, kein Anbietername.
+      extern: this.oeffentlicheKiErlaubt(true)
+        ? "frei_vertraulich"
+        : this.oeffentlicheKiErlaubt(false)
+          ? "frei"
+          : "blockiert",
     };
   }
 
@@ -2427,11 +2512,13 @@ export class Reasoner {
     locale: ReasonerLocale = "de",
     // SCRUM-502 Schicht 2: vertraulicher Draft → Cloud aus der Kette.
     confidential = false,
+    // R-1624: optionaler, vom Menschen bestätigter Bildbefund → Foto-Fragenfolge.
+    imageContext?: string,
   ): Promise<InterviewResult> {
     const result = await this.runTask(
       "interview",
       locale,
-      (p) => p.interview(answers, locale, confidential),
+      (p) => p.interview(answers, locale, confidential, imageContext),
       confidential,
     );
     // mega61 Block F: Interviewfragen sind erzeugter Text — gekennzeichnet.
@@ -2560,7 +2647,8 @@ export class Reasoner {
     }
     // JOB 3036 R2 / JOB 3074: die Spur GENAU DIESES Laufs. Sie entscheidet, ob `model` und
     // `verbrauch` in den Datensatz dürfen — nur ein wirklich erfolgter Aufruf trägt sie ein.
-    const spur: ModellAufrufSpur = { gerufen: false };
+    // Ben Nacharbeit 3: dieselben Prüfungen unmittelbar vor der Übertragung wie in `runTask`.
+    const spur: ModellAufrufSpur = { gerufen: false, ...this.pruefungenFuer(model, confidential) };
     const versuchBeginn = Date.now();
     let ergebnis: ImportCriteriaResult;
     try {
@@ -2640,7 +2728,12 @@ export class Reasoner {
       }
       const anreichern = provider.enrichPublic.bind(provider);
       try {
-        const result = await lb.versuch(provider, () => anreichern(query, locale));
+        // Ben Nacharbeit 3: auch hier die zentrale Freigabe unmittelbar vor der Übertragung.
+        const result = await lb.versuch(
+          provider,
+          () => anreichern(query, locale),
+          this.pruefungenFuer(provider, false),
+        );
         if (result.text.trim().length > 0) {
           await this.protokolliereLaufbuch("enrich", locale, startedAt, lb, {
             status: "success",
@@ -2748,8 +2841,10 @@ export class Reasoner {
       const urteilen = provider.judgeConflict.bind(provider);
       try {
         // aistate-fix3 (bens V1): das ECHTE Paar-Bit reist bis zum ModelClient.complete-Wächter.
-        const result = await lb.versuch(provider, () =>
-          urteilen(coreA, coreB, locale, confidential),
+        const result = await lb.versuch(
+          provider,
+          () => urteilen(coreA, coreB, locale, confidential),
+          this.pruefungenFuer(provider, confidential),
         );
         if (result) {
           await this.protokolliereLaufbuch("conflict", locale, startedAt, lb, {
@@ -2833,8 +2928,10 @@ export class Reasoner {
       const urteilen = provider.judgeDuplicate.bind(provider);
       try {
         // aistate-fix3 (bens V1): das ECHTE Paar-Bit reist bis zum ModelClient.complete-Wächter.
-        const result = await lb.versuch(provider, () =>
-          urteilen(coreA, coreB, locale, confidential),
+        const result = await lb.versuch(
+          provider,
+          () => urteilen(coreA, coreB, locale, confidential),
+          this.pruefungenFuer(provider, confidential),
         );
         if (result) {
           await this.protokolliereLaufbuch("duplicate", locale, startedAt, lb, {

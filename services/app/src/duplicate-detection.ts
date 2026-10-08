@@ -17,7 +17,7 @@ import type { EmbeddingProvider, EmbeddingStore } from "../../embedding";
 import { type KnowledgeObject, type KoService, isConfidential } from "../../knowledge-object";
 import type { Reasoner } from "../../reasoner";
 import { comparisonFailureReason } from "./conflict-detection";
-import { DETECTION_CANDIDATE_CAP } from "./detection-cap";
+import { type PruefUmfang, vergleichsDeckel } from "./detection-cap";
 
 // K0-2: Erkennungs-Gegenstand ist der Kerntext (title+statement+conditions+measures), nicht bodyHtml.
 // D-AISTATE PAKET 1 (bens V1): Vertraulichkeits-MARKE (Boolean) + Inhaltsversion (PAKET 4/V5) reisen mit.
@@ -70,6 +70,8 @@ export async function detectDuplicatesForKo(
   deps: DuplicateDetectionDeps,
   // ben-Review #6: optionaler Log-Haken (best-effort bleibt) — analog detectConflictsForKo.
   log?: (msg: string, err: unknown) => void,
+  // AUFNAHME 20260922 · R-1124: `vollstaendig` nur auf ausdrückliche Wahl (s. detection-cap.ts).
+  umfang: PruefUmfang = "gedeckelt",
 ): Promise<DetectionCoverage> {
   const coverage = emptyCoverage();
   try {
@@ -77,7 +79,10 @@ export async function detectDuplicatesForKo(
     // Demo-Beiträge bleiben außen vor (K0-3). Ein VERTRAULICHES Subjekt überspringt die Erkennung
     // NICHT mehr (bens V1): die (lokale, egress-freie) deterministische Deckungsprüfung läuft IMMER,
     // auch für vertrauliche Subjekte und gemischte Paare.
-    if (!subject || subject.demoSeed) {
+    // R-1107: ein AUFGEGANGENER Artikel (`mergedInto`) ist weder Subjekt noch Kandidat. Sein Inhalt
+    // lebt im Führungsartikel weiter; ein neuer Befund „Führungsartikel ⇄ aufgegangener" wäre genau
+    // das Paar, das gerade bewusst zusammengeführt wurde.
+    if (!subject || subject.demoSeed || subject.mergedInto) {
       return coverage; // gar kein Lauf — ehrlich „nichts stand zur Wahl", nicht „gedeckelt"
     }
     const subjectSubject = toDetectSubject(subject);
@@ -90,7 +95,7 @@ export async function detectDuplicatesForKo(
     // R-0194: derselbe Pool speist die Ähnlichkeitsprüfsumme in detectForSubject — Demo-Seed und
     // das Objekt selbst bleiben ihr damit ebenso fern wie dem Trigramm-Rang.
     const pool = (await deps.ko.list())
-      .filter((k) => k.id !== koId && !k.demoSeed)
+      .filter((k) => k.id !== koId && !k.demoSeed && !k.mergedInto)
       .map(toDetectSubject);
     if (pool.length === 0) {
       // R-0194 (bens Befund zu K3): auch ohne Vergleichspartner ist das eine Anlage bzw. Änderung —
@@ -113,7 +118,9 @@ export async function detectDuplicatesForKo(
         // vollen Bestand vor. Jetzt gilt derselbe Deckel wie im Konfliktweg (EIN Wert, s.
         // detection-cap.ts), und die Kandidatenwahl davor ist deterministisch nach dem lexikalischen
         // Deckungsmaß sortiert (selectOverlapCandidates), nicht nach Datenbank-Zeilenreihenfolge.
-        cap: DETECTION_CANDIDATE_CAP,
+        // R-1124: im gewählten Vollabgleich ohne Deckel. Einen fachlichen Vorfilter hat dieser
+        // Weg nicht (selectOverlapCandidates) — ohne Deckel ist das der ganze Pool.
+        cap: vergleichsDeckel(umfang),
         // bens V5: Stale-Schreibschutz — vor dem Persistieren beide gebundenen Versionen prüfen.
         isCurrent: async (id, version) => (await deps.ko.get(id))?.version === version,
         coverage,
@@ -133,7 +140,8 @@ export async function detectDuplicatesForKo(
 // Repo-Idiom (seed.ts): schmaler, immer sichtbarer Log für best-effort-Betrieb (Fastify läuft ohne
 // eigenen Logger). Bewusst kein Werfen.
 function defaultLog(msg: string, err: unknown): void {
-  console.warn(`[dup-prefilter] ${msg}`, err);
+  // R-0623: nur die Fehlerklasse — Meldung und Stack können Inhalte tragen.
+  console.warn(`[dup-prefilter] ${msg}: ${err instanceof Error ? err.name : "unknown"}`);
 }
 
 // Weg 3 (B6): bettet ein frisch angelegtes KO ein und legt es im Vektor-Store ab, damit KÜNFTIGE

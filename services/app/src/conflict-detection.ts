@@ -9,14 +9,19 @@ import {
   type DetectionCoverage,
   emptyCoverage,
 } from "../../conflicts";
-import { type KnowledgeObject, type KoService, isConfidential } from "../../knowledge-object";
+import {
+  type KnowledgeObject,
+  type KoService,
+  geltungsKollision,
+  isConfidential,
+} from "../../knowledge-object";
 import type {
   ConflictJudgeOutcome,
   DuplicateJudgeOutcome,
   ModelFailureInfo,
   Reasoner,
 } from "../../reasoner";
-import { DETECTION_CANDIDATE_CAP } from "./detection-cap";
+import { type PruefUmfang, vergleichsDeckel } from "./detection-cap";
 
 // RT-001 (bens Sammel-Review 3): die STRUKTURIERTE, anbieterneutrale Reasoner-Fehlerklasse
 // (ModelFailureInfo: {failureClass, status?}) → ehrliche, nutzerverständliche Ursache. Das ist der
@@ -79,6 +84,8 @@ function toDetectSubject(ko: KnowledgeObject): DetectSubject {
     asset: ko.asset,
     confidential: isConfidential(ko.confidentiality),
     ...(ko.version !== undefined ? { version: ko.version } : {}),
+    // R-1632 / R-1633: die Geltung reist mit; ausgelegt wird sie über `geltungsKollision` unten.
+    ...(ko.geltung ? { geltung: ko.geltung } : {}),
   };
 }
 
@@ -103,6 +110,8 @@ export async function detectConflictsForKo(
   // ben-Review #6: optionaler Log-Haken. Der Fehler bleibt geschluckt (best-effort), wird aber sichtbar,
   // wenn ein Aufrufer (z. B. der Import-Accept-Pfad) einen Logger reicht. Ohne → altes stilles Verhalten.
   log?: (msg: string, err: unknown) => void,
+  // AUFNAHME 20260922 · R-1124: `vollstaendig` nur auf ausdrückliche Wahl (s. detection-cap.ts).
+  umfang: PruefUmfang = "gedeckelt",
 ): Promise<DetectionCoverage> {
   const coverage = emptyCoverage();
   try {
@@ -135,10 +144,14 @@ export async function detectConflictsForKo(
         // vorgelegt". Diese Entscheidung ist ZURÜCKGENOMMEN. Der Deckel ist derselbe wie im
         // Duplikatweg (EIN Wert, s. detection-cap.ts) — und er ist NICHT still: coverage trägt
         // geprüfte/verfügbare Menge bis in die Anzeige.
-        cap: DETECTION_CANDIDATE_CAP,
+        // R-1124: im gewählten Vollabgleich weder Deckel noch fachlicher Vorfilter.
+        cap: vergleichsDeckel(umfang),
+        vollabgleich: umfang === "vollstaendig",
         // bens V5: Stale-Schreibschutz — vor dem Persistieren beide gebundenen Versionen prüfen.
         isCurrent: async (id, version) => (await deps.ko.get(id))?.version === version,
         coverage,
+        // R-1632 / R-1633: Widerspruch bei verschiedener Geltung → Kontext-/Rollenkonflikt.
+        geltungsKollision,
       },
     );
   } catch (err) {

@@ -3,7 +3,7 @@
 // Diese Datei entscheidet NUR aus Texten + einem bereits vorliegenden Modellurteil, ob und welcher
 // Konflikt entsteht. Der Modellaufruf (Reasoner „Konfliktprüfung") und die Verdrahtung an KO-
 // Ereignisse leben außerhalb (App-Composition-Root, injizierter judge-Callback).
-import type { ConflictType, Kollision } from "./types";
+import type { ConflictType, ConflictWorkKind, KlaraVorschlag, Kollision } from "./types";
 
 // K0-2: Erkennungs-Gegenstand ist der Kerntext eines Beitrags (nicht das volle bodyHtml).
 export interface DetectSubject {
@@ -23,7 +23,29 @@ export interface DetectSubject {
   // D-AISTATE PAKET 4 (bens V5): Inhaltsversion des Beitrags zum Prüfzeitpunkt. Befunde werden an
   // BEIDE beteiligten Versionen gebunden (additiv); ein Aufrufer kann darüber Stale-Läufe verwerfen.
   version?: number;
+  // R-1632 / R-1633: die Geltung des Beitrags (Konzern/Werk/Schicht, Rolle), strukturgleich zu
+  // `KoGeltung` in knowledge-object — hier nur durchgereicht. Ausgewertet wird sie ausschliesslich
+  // über die injizierte Regel `geltungsKollision` (detectForSubject); dieses Modul legt sie nicht aus.
+  geltung?: DetectGeltung;
 }
+
+/** R-1632 / R-1633: strukturgleich zu `KoGeltung` (knowledge-object) — bewusst eigenständig. */
+export interface DetectGeltung {
+  ebene: "konzern" | "werk" | "schicht";
+  werk?: string;
+  schicht?: string;
+  rolle?: string;
+}
+
+/**
+ * R-1632 / R-1633: die Regel, die aus zwei Geltungen die Konfliktart eines erkannten Widerspruchs
+ * macht — oder `null` (dann bleibt es beim Wahrheitskonflikt). Die App-Wurzel reicht sie aus
+ * knowledge-object herein (`geltungsKollision`); `vermerk` wird an die Beschreibung gehängt.
+ */
+export type GeltungsKollisionsRegel = (
+  a: DetectGeltung | undefined,
+  b: DetectGeltung | undefined,
+) => { art: "context" | "role"; vermerk: string } | null;
 
 // kon-v1 Modellurteil (striktes JSON aus der Reasoner-Aufgabe „Konfliktprüfung").
 export type ConflictRelation =
@@ -41,6 +63,41 @@ export interface ConflictVerdict {
   zitat_a: string; // wörtliches Zitat aus A
   zitat_b: string; // wörtliches Zitat aus B
   kollision?: Kollision; // SCRUM-492: optionale strukturierte Gegenüberstellung (Board-Kacheln)
+  // R-0252 (Nacharbeit 2): bei „widerspruch" ordnet die Prüfung die nötige Arbeit ein — „regel"
+  // (zwei interne Festlegungen, keine Quelle entscheidet) oder „sache" (durch Belege entscheidbar).
+  // Optional: fehlt sie, bleibt die Arbeitsart unbestimmt — sie wird NICHT aus der Relation geraten.
+  arbeit?: "regel" | "sache";
+  // R-0263: Klaras Vorschlag Widerspruch/Präzisierung — Seiten als „a"/„b" (s. `vorschlagAusUrteil`).
+  vorschlag?: {
+    art: "widerspruch" | "praezisierung";
+    spezieller?: "a" | "b";
+    geltungsbereich?: string;
+  };
+}
+
+/**
+ * R-0263: Klaras Vorschlag aus dem Urteil auf die zwei Punkte abbilden — „a" ist der geprüfte
+ * Beitrag, „b" der Kandidat. Nur ein vollständiger Präzisierungsvorschlag (Seite UND Bereich) wird
+ * übernommen; alles andere bleibt ein schlichter Widerspruchsvorschlag oder gar keiner.
+ */
+export function vorschlagAusUrteil(
+  verdict: ConflictVerdict,
+  koA: string,
+  koB: string,
+): KlaraVorschlag | undefined {
+  const v = verdict.vorschlag;
+  if (verdict.relation !== "widerspruch" || !v) {
+    return undefined;
+  }
+  const bereich = (v.geltungsbereich ?? "").trim();
+  if (v.art === "praezisierung" && (v.spezieller === "a" || v.spezieller === "b") && bereich) {
+    return {
+      art: "praezisierung",
+      spezieller: v.spezieller === "a" ? koA : koB,
+      geltungsbereich: bereich,
+    };
+  }
+  return v.art === "widerspruch" ? { art: "widerspruch" } : undefined;
 }
 
 // K0-2: Kerntext aus title + statement + conditions + measures (trägt die prüfbare Aussage).
@@ -110,10 +167,15 @@ interface CandidateScore {
 // sie war es nicht: bei gleichem Score entschied die Reihenfolge, in der die Datenquelle die Zeilen
 // lieferte (sort ist stabil, also blieb Pool-Ordnung stehen). Der refId-Stichentscheid macht die
 // Ordnung TOTAL — zwei Läufe über denselben Bestand legen dieselbe Menge vor.
+//
+// AUFNAHME 20260922 · R-1124 (wahlweiser Vollabgleich): `nurNachbarn = false` hebt den fachlichen
+// Vorfilter auf — jedes Objekt außer dem Subjekt wird nach demselben Score und Stichentscheid gereiht.
+// Ohne Deckel (`cap = ∞`) ist das der ganze Bestand. Der Standard bleibt der gefilterte Weg.
 export function selectCandidates(
   subject: DetectSubject,
   pool: readonly DetectSubject[],
   cap = 8,
+  nurNachbarn = true,
 ): DetectSubject[] {
   const tagSet = new Set(subject.tags.map((t) => t.toLowerCase()));
   const subjectText = `${subject.title} ${subject.statement}`;
@@ -127,7 +189,7 @@ export function selectCandidates(
     const tagOverlap = c.tags.some((t) => tagSet.has(t.toLowerCase()));
     const textSim = trigramSimilarity(subjectText, `${c.title} ${c.statement}`);
     const neighbor = sameCategory || sameAsset || tagOverlap || textSim >= 0.3;
-    if (!neighbor) {
+    if (!neighbor && nurNachbarn) {
       continue;
     }
     const score =
@@ -284,6 +346,24 @@ export interface DetectDecision {
   create: boolean;
   type: ConflictType | null;
   reason: DetectOutcomeReason;
+  // R-0252: die Arbeitsart des anzulegenden Konflikts — unabhängig von `type` bestimmt.
+  arbeitsart?: ConflictWorkKind;
+}
+
+/**
+ * R-0252 (Nacharbeit 2): die Arbeitsart aus dem URTEIL, nicht aus der Konfliktart. „ueberholt" ist
+ * per Definition dieselbe Sache in zwei Ständen. Bei „widerspruch" zählt allein die Einordnung der
+ * Prüfung (`arbeit`); ohne sie bleibt die Arbeitsart offen.
+ */
+export function arbeitsartAusUrteil(verdict: ConflictVerdict): ConflictWorkKind | undefined {
+  if (verdict.relation === "ueberholt") {
+    return "version";
+  }
+  const arbeit = verdict.arbeit;
+  if (verdict.relation === "widerspruch" && (arbeit === "regel" || arbeit === "sache")) {
+    return arbeit;
+  }
+  return undefined;
 }
 
 // Startwert der Anlege-Schwelle (4.2): Präzision vor Vollständigkeit.
@@ -311,7 +391,8 @@ export function decideFromVerdict(
   if (!quotesVerbatim(verdict, coreA, coreB)) {
     return { create: false, type: null, reason: "hallucination" };
   }
-  return { create: true, type, reason: "created" };
+  const arbeitsart = arbeitsartAusUrteil(verdict);
+  return { create: true, type, reason: "created", ...(arbeitsart ? { arbeitsart } : {}) };
 }
 
 // Ehrliche, als solche markierte Beschreibung eines automatisch erkannten Konflikts (aus

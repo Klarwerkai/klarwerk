@@ -34,6 +34,7 @@ import {
   type UserRepo,
   authRoutes,
   createOidcProviderFromEnv,
+  sprache,
 } from "../../auth";
 import {
   CaptureError,
@@ -44,14 +45,17 @@ import {
   validateDraftPayloadShape,
 } from "../../capture";
 import {
+  type ConflictMemoryRepo,
   type ConflictRepo,
   ConflictService,
+  InMemoryConflictMemoryRepo,
   InMemoryConflictRepo,
   InMemoryOverlapRepo,
   InMemoryOverlapSettingsRepo,
   type OverlapRepo,
   OverlapService,
   type OverlapSettingsRepo,
+  PgConflictMemoryRepo,
   PgConflictRepo,
   PgOverlapRepo,
   PgOverlapSettingsRepo,
@@ -172,6 +176,7 @@ import { LmsExportService, OutputService, leseLmsEmpfaenger } from "../../output
 import { canChangeRole } from "../../rbac";
 import {
   type AssistPresetRepo,
+  Ausgangspruefung,
   InMemoryAssistPresetRepo,
   // W1 S4: Ablage der Klara-Sitzungen/Zustimmungen — dieselbe Modulgrenze wie die übrige
   // Reasoner-Persistenz (Cross-Modul-Import nur über die öffentliche index.ts).
@@ -187,8 +192,10 @@ import {
   Reasoner,
   type ReasonerPolicyRepo,
   anbieterZugelassen,
+  ausgangspruefungAusEnv,
   createCappedCloudClientFromEnv,
   createCappedLocalClientFromEnv,
+  setzeAusgangspruefung,
 } from "../../reasoner";
 import {
   type AssignmentRepo,
@@ -220,6 +227,7 @@ import {
 } from "./addon-auth-throttle";
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import { type AiCheckWorker, createAiCheckRunner, createAiCheckWorker } from "./ai-check-worker";
+import { Anfragebremse, bremsSatz } from "./anfragebremse";
 import {
   type BearbeitungsRepo,
   InMemoryBearbeitungsRepo,
@@ -241,6 +249,7 @@ import {
   PgConfluenceImportSchalterRepo,
 } from "./confluence-import-schalter";
 import { registerHerkunftspruefung } from "./csrf";
+import { ladeDienstSchluessel, matchDienstRoute } from "./dienst-schluessel";
 import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
@@ -257,6 +266,13 @@ import {
   tokenFromRequest,
 } from "./http";
 import { impactReport } from "./impact";
+// R-0466: das Interaktionsgedächtnis — haltbar im Postgres-Betrieb, im Speicher ohne Datenbank.
+import {
+  GedaechtnisDienst,
+  type GedaechtnisRepo,
+  InMemoryGedaechtnisRepo,
+  PgGedaechtnisRepo,
+} from "./interaktionsgedaechtnis";
 // Kenntnisnahme einer gültigen Fassung — haltbar im Postgres-Betrieb, im Speicher ohne Datenbank.
 import {
   InMemoryKenntnisnahmeRepo,
@@ -264,12 +280,21 @@ import {
   type KenntnisnahmeRepo,
   PgKenntnisnahmeRepo,
 } from "./kenntnisnahme";
+import { kiGrenzeAusEnv, registriereKiAnfragebremse } from "./ki-anfragebremse";
 // WP-D11: PPTX-Folien → PNG (Route + injizierbarer Konverter).
 import {
   InMemoryLesevariantenRepo,
   type LesevariantenRepo,
   PgLesevariantenRepo,
 } from "./lesevarianten";
+// PMO-FEA-0003: die freiwilligen Fotos der Live-Wand — im Postgres-Betrieb haltbar
+// (`PgLiveWallFotoRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
+import {
+  InMemoryLiveWallFotoRepo,
+  type LiveWallFotoRepo,
+  PgLiveWallFotoRepo,
+} from "./livewall-fotos";
+import { gelisteteMeldung, nurGelisteteLogfelder } from "./log-positivliste";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
@@ -284,6 +309,7 @@ import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
 import { askRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
+import { ausgangspruefungRoutes } from "./routes/ausgangspruefung-routes";
 import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
 import { begriffeRoutes } from "./routes/begriffe-routes";
 import { brandingRoutes } from "./routes/branding-routes";
@@ -294,6 +320,7 @@ import { conflictRoutes } from "./routes/conflicts-routes";
 import { confluenceImportRoutes } from "./routes/confluence-import-routes";
 import { externalRoutes } from "./routes/external-routes";
 import { featuresRoutes } from "./routes/features-routes";
+import { gedaechtnisRoutes } from "./routes/gedaechtnis-routes";
 // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): das seit JOB 4154 fertige, aber an keiner App
 // angemeldete Routen-Plugin der Gesamtanweisung. Hier — und nur hier — bekommt es seinen Aufrufer.
 import { gesamtanweisungRoutes } from "./routes/gesamtanweisung-routes";
@@ -302,6 +329,8 @@ import { i18nRoutes } from "./routes/i18n-routes";
 import { impactRoutes } from "./routes/impact-routes";
 import { importAccessRoutes } from "./routes/import-access-routes";
 import { importRunRoutes } from "./routes/import-run-routes";
+// R-0170: der Jira-Import — Vorgänge und Epics eines Projekts, Projektrollen als Leserechte.
+import { jiraImportRoutes } from "./routes/jira-import-routes";
 import { kantenRoutes } from "./routes/kanten-routes";
 import { kenntnisnahmeRoutes } from "./routes/kenntnisnahme-routes";
 import { klaraAiRoutes } from "./routes/klara-ai-routes";
@@ -318,6 +347,7 @@ import { lifecycleRoutes } from "./routes/lifecycle-routes";
 import { livewallRoutes } from "./routes/livewall-routes";
 import { lmsExportRoutes } from "./routes/lms-export-routes";
 import { managementRoutes } from "./routes/management-routes";
+import { mcpRoutes } from "./routes/mcp-routes";
 import { mediaRoutes } from "./routes/media-routes";
 import { modelRunRoutes } from "./routes/model-runs-routes";
 import { notificationsRoutes } from "./routes/notifications-routes";
@@ -453,6 +483,20 @@ export interface AppServices {
    */
   spaces: SpacesRepo;
   /**
+   * PMO-FEA-0003: die freiwilligen Fotos der Live-Wand (`livewall-fotos.ts`). Aus demselben Grund
+   * wie `brandingSettings` NICHT in `AppRepos`; im Postgres-Betrieb haltbar (`PgLiveWallFotoRepo`,
+   * eingehängt in `buildPgServices`), sonst die In-Memory-Ablage. Geht sie beim Neustart des
+   * Dev-Betriebs verloren, verschwindet ein Foto — die sichere Richtung, kein ungefragtes Zeigen.
+   */
+  livewallFotos: LiveWallFotoRepo;
+  /**
+   * R-0466: das Interaktionsgedächtnis (`interaktionsgedaechtnis.ts`) — frühere Fragen, Antworten
+   * und Vorlieben je Konto. Aus demselben Grund wie `livewallFotos` NICHT in `AppRepos`; im
+   * Postgres-Betrieb haltbar (`PgGedaechtnisRepo`), sonst die In-Memory-Ablage. Geht sie beim
+   * Neustart des Dev-Betriebs verloren, ist das die Richtung des Löschens, nicht des Offenlegens.
+   */
+  gedaechtnis: GedaechtnisRepo;
+  /**
    * R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — über die Oberfläche umlegbar,
    * von jeder Confluence-Importroute je Anfrage durchgesetzt. Aus demselben Grund wie
    * `brandingSettings` NICHT in `AppRepos`; im Postgres-Betrieb haltbar (`buildPgServices`).
@@ -584,6 +628,8 @@ export interface AppRepos {
   ratings: RatingRepo;
   assignments: AssignmentRepo;
   conflictsRepo: ConflictRepo;
+  // Aufnahme 20260922 · Prüfung-Gedächtnis (R-1103/R-1105): gemerkte Textstände je Paar.
+  conflictMemory: ConflictMemoryRepo;
   // Berater-Konzept Duplikate 04.07. (Stufe D3b): Persistenz der Überschneidungs-Einträge.
   overlapRepo: OverlapRepo;
   // Pedi 04.07.: persistierte Anzeige-Schwelle der Duplikat-Erkennung (Admin-Einstellung).
@@ -940,6 +986,10 @@ export function assembleServices(
     begriffe?: BegriffeRepo;
     // produkt:20261007:spaces: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     spaces?: SpacesRepo;
+    // PMO-FEA-0003: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    livewallFotos?: LiveWallFotoRepo;
+    // R-0466: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    gedaechtnis?: GedaechtnisRepo;
     // R-0134 / R-1005: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     confluenceImportSchalter?: ConfluenceImportSchalterRepo;
     // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
@@ -1112,6 +1162,7 @@ export function assembleServices(
     repo: repos.conflictsRepo,
     audit,
     currentVersion: koVersion,
+    memory: repos.conflictMemory,
   });
   // JOB 3071: die papierkorbfähige Auskunft „hat der Autor seinen eigenen Beitrag zurückgezogen?".
   // Genau wie `koVersion` ein Funktions-Port und keine Modulkante: `services/conflicts` darf
@@ -1139,14 +1190,16 @@ export function assembleServices(
   //
   // Hier stand „künftig: || jiraEnabled || …". Der Satz beschrieb einen Plan und ist mit
   // SharePoint/OneDrive eingelöst; als Kommentar STEHEN ZU BLEIBEN hiesse, dass die Zeile weiter
-  // eine Zukunft ankündigt, die schon Gegenwart ist. Jira bleibt eine mögliche dritte Quelle —
-  // sie OR-t dann genauso ihren eigenen Schalter hinzu.
+  // eine Zukunft ankündigt, die schon Gegenwart ist.
+  //
+  // R-0170: Jira ist die dritte Quelle und OR-t seinen eigenen Schalter genauso hinzu.
   //
   // WARUM DAS ODER HIER NOTWENDIG IST UND NICHT NUR ORDENTLICH: Ohne es schriebe der Import-Kern
-  // für einen Betrieb, der NUR SharePoint angebunden hat, gar keinen Herkunfts-Anker
+  // für einen Betrieb, der NUR SharePoint (oder nur Jira) angebunden hat, gar keinen Herkunfts-Anker
   // (`acceptToKo`: `const externalId = this.externalUpsert ? item.externalId : undefined`). Das
-  // Wissensobjekt entstünde, verlöre aber lautlos seine Quelle.
-  const externalImportEnabled = schalterAn("confluenceImport") || schalterAn("sharepointImport");
+  // Wissensobjekt entstünde, verlöre aber lautlos seine Quelle — und mit ihr die Leserechte.
+  const externalImportEnabled =
+    schalterAn("confluenceImport") || schalterAn("sharepointImport") || schalterAn("jiraImport");
   // JOB 4155 (WG-LUECKEN): DER KANTENBESTAND ENTSTEHT JETZT HIER, EINE STUFE FRÜHER — und zwar
   // GENAU EINMAL. Er stand bis hierher erst im `return`-Objekt weiter unten (`kanten:` dort), und
   // damit konnte ihn der `LibraryService` nicht bekommen, der davor gebaut wird. Ihn dort ein
@@ -1248,6 +1301,10 @@ export function assembleServices(
     begriffe: opts.begriffe ?? new InMemoryBegriffeRepo(),
     // produkt:20261007:spaces — Postgres, wenn injiziert, sonst im Speicher.
     spaces: opts.spaces ?? new InMemorySpacesRepo(),
+    // PMO-FEA-0003: die Fotos der Live-Wand — Postgres, wenn injiziert, sonst im Speicher.
+    livewallFotos: opts.livewallFotos ?? new InMemoryLiveWallFotoRepo(),
+    // R-0466: das Interaktionsgedächtnis — Postgres, wenn injiziert, sonst im Speicher.
+    gedaechtnis: opts.gedaechtnis ?? new InMemoryGedaechtnisRepo(),
     // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
     confluenceImportSchalter:
       opts.confluenceImportSchalter ?? new InMemoryConfluenceImportSchalterRepo(),
@@ -1480,7 +1537,11 @@ export function assembleServices(
       // vertrauliche Medien per Konstruktion (rejectsConfidential), analog cappedCloud beim Reasoner.
       // SCRUM-502 R8: gecappter Cloud-Transkriber aus der Factory (Egress-Wächter zwingend; roher
       // Client + Credential modul-intern, hier nicht erreichbar). Ohne Schlüssel → undefined (inaktiv).
-      transcriber: createCappedTranscriberFromEnv(),
+      // gesamt-ki-freigaberegeln (Ben Nacharbeit 2): der Chokepoint fragt dieselbe zentrale Freigabe
+      // für Vertrauliches wie der Dienst — entschieden allein im Reasoner.
+      transcriber: createCappedTranscriberFromEnv(process.env, {
+        vertraulichFreigegeben: () => reasoner.vertraulicheAusleitungFreigegeben(),
+      }),
       // SCRUM-521 (WP2, nacht24): KO-Kontext für die Egress-Entscheidung — die Stufen ALLER KOs,
       // die das Objekt als Anhang tragen (restriktivste gewinnt im Service; ein „intern"
       // hochgeladenes Medium an einem vertraulichen KO bleibt vertraulich). Injizierte Auflösung,
@@ -1493,6 +1554,13 @@ export function assembleServices(
         (await ko.list({}))
           .filter((k) => (k.attachments ?? []).some((a) => a.objectId === objectId))
           .map((k) => k.confidentiality ?? "intern"),
+      // Auftrag gesamt-ki-freigaberegeln: die zentrale Adminfreigabe gilt auch für die
+      // Transkription. Durchgereicht wird die Lesart des Kerns, Zeichen für Zeichen wie für Klara
+      // (Policyquelle des `KlaraSessionService` unten) — frisch je Analyse, eine Rücknahme wirkt
+      // ohne Neustart. Entschieden wird weiter allein in `Reasoner.oeffentlicheKiErlaubt`.
+      zentralFreigegeben: () =>
+        reasoner.configStatus().taskConfig.kiFreigabe?.oeffentlicheKi === true,
+      vertraulichFreigegeben: () => reasoner.vertraulicheAusleitungFreigegeben(),
     }),
     // SCRUM-165: read-only ModelRun-Sicht über dasselbe Protokoll-Repo wie der Reasoner.
     modelRuns: new ModelRunService({
@@ -1535,6 +1603,7 @@ export function inMemoryRepos(): AppRepos {
     ratings: new InMemoryRatingRepo(),
     assignments: new InMemoryAssignmentRepo(),
     conflictsRepo: new InMemoryConflictRepo(),
+    conflictMemory: new InMemoryConflictMemoryRepo(),
     overlapRepo: new InMemoryOverlapRepo(),
     overlapSettings: new InMemoryOverlapSettingsRepo(),
     managementProfiles: new InMemoryManagementProfileRepo(),
@@ -1609,6 +1678,7 @@ export function buildPgServices(rohPool: Pool): AppServices {
       ratings: new PgRatingRepo(pool),
       assignments: new PgAssignmentRepo(pool),
       conflictsRepo: new PgConflictRepo(pool),
+      conflictMemory: new PgConflictMemoryRepo(pool),
       // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge persistent.
       overlapRepo: new PgOverlapRepo(pool),
       // Pedi 04.07.: Anzeige-Schwelle persistent.
@@ -1685,6 +1755,12 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261007:spaces: Spaces und ihre Fassungen liegen in derselben Datenbank wie der
       // Bestand und überleben Neuladen, Neustart und Deploy.
       spaces: new PgSpacesRepo(pool),
+      // PMO-FEA-0003: ein hinterlegtes Foto überlebt Neustart und Deploy; der Widerruf löscht die
+      // Zeile in derselben Datenbank (`LIVEWALL_FOTO_SCHEMA`, angelegt von `migrate()`).
+      livewallFotos: new PgLiveWallFotoRepo(pool),
+      // R-0466: Gedächtniseinträge überleben Neustart und Deploy bis zu ihrer Frist; Löschen und
+      // Fristablauf entfernen die Zeile in derselben Datenbank (`GEDAECHTNIS_SCHEMA`).
+      gedaechtnis: new PgGedaechtnisRepo(pool),
       // R-0134 / R-1005: der Betreiberschalter überlebt Neustart und Deploy — sonst stünde ein
       // ausgeschalteter Import nach dem nächsten Neustart still wieder auf „an".
       confluenceImportSchalter: new PgConfluenceImportSchalterRepo(pool),
@@ -1962,6 +2038,11 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "DraftStaleError",
   "ExternalSearchError",
   "FencingVeraltetError",
+  // R-0170: der EINE Fehlertyp des Jira-Moduls (`services/jira/src/rest-client.ts`). ENTSCHEIDUNG:
+  // der Name darf ins Protokoll — dieselbe Klasse Betriebsauskunft wie `SharePointRequestError`
+  // weiter unten: die Lage steckt im Feld `lage`, die Meldung ist ein fester Satz ohne Host,
+  // Adresse oder Zugangsmerkmal.
+  "JiraRequestError",
   "KlaraError",
   // JOB 4151: aus `services/knowledge-object/src/kanten-types.ts` — der Fachfehler der kuratierten
   // Beziehungen. ENTSCHEIDUNG: der Name darf ins Protokoll. Er trägt, wie jeder Nachbar hier,
@@ -2353,6 +2434,44 @@ function istTraceKennung(schluessel: string, inhalt: unknown): inhalt is string 
 }
 
 /**
+ * R-0623 — DIE ARGUMENTE EINES LOGAUFRUFS NACH DER POSITIVLISTE.
+ *
+ * Das erste Argument ist bei pino das Feldobjekt: es wird auf die gelisteten Felder reduziert
+ * (`nurGelisteteLogfelder`); ein nackter Fehler wird zu `{ err }`, damit er nur über den
+ * Erlaubnislisten-Serializer erscheint. Wiederholt der Meldungstext den Text des mitgegebenen
+ * Fehlers — oder fehlt er, sodass pino ihn aus dem Fehler nähme —, steht dort die Konstante
+ * `ERR_TEXT_UNTERDRUECKT`. Jeder andere Meldungstext steht nur, wenn er einer Vorlage der
+ * Meldungsliste entspricht (`gelisteteMeldung`), sonst `MELDUNG_NICHT_GELISTET`.
+ */
+export function ohneFreienFehlertext(argumente: readonly unknown[]): unknown[] {
+  const [erstes, meldung] = argumente;
+  // R-0623 (Ben, Nacharbeit 3/4): auch ein reiner Textaufruf läuft nicht unverändert durch.
+  // Weitere Argumente (Formatwerte für `%s` — im Bestand ungenutzt) fallen weg; ein Meldungstext
+  // steht nur nach der Positivliste der Meldungen (`log-positivliste.ts`, `MELDUNGEN`).
+  if (typeof erstes === "string") {
+    return [gelisteteMeldung(erstes)];
+  }
+  if (erstes === null || typeof erstes !== "object") {
+    return [];
+  }
+  const felder: Record<string, unknown> =
+    erstes instanceof Error ? { err: erstes } : nurGelisteteLogfelder(erstes, erlaubterTyp);
+  const fehler = felder.err;
+  const text = fehler instanceof Error ? fehler.message : "";
+  // Ein sehr kurzer Fehlertext zählt nur als wiederholt, wenn die Meldung GENAU er ist — sonst
+  // träfe ein Allerweltswort jede Meldung, die es zufällig enthält.
+  const wiederholt =
+    text !== "" &&
+    (meldung === undefined ||
+      meldung === text ||
+      (typeof meldung === "string" && text.length >= 8 && meldung.includes(text)));
+  if (wiederholt) {
+    return [felder, ERR_TEXT_UNTERDRUECKT];
+  }
+  return typeof meldung === "string" ? [felder, gelisteteMeldung(meldung)] : [felder];
+}
+
+/**
  * Die Logkonfiguration — eine geschlossene Erlaubnisliste in drei Serializern.
  *
  * ERLAUBNISLISTE, KEINE SPERRLISTE: Eine Sperrliste müsste bei jeder neuen Route neu bewiesen
@@ -2420,11 +2539,16 @@ export function baueLoggerOptionen(vorgabe?: {
     // ÜBERNOMMEN AUS EXTS PARALLELBAU (`app-logger.ts:184-192`): jeder Logaufruf läuft hier durch,
     // Meldungstext und Feldobjekt gleichermassen. Die einzige Stelle, an der ein selbstgebauter
     // Freitext noch abgefangen werden kann — die Serializer sehen ihn nie.
+    //
+    // R-0623 (Ben, Nacharbeit 1): das Feldobjekt läuft ZUERST durch die Positivliste
+    // (`log-positivliste.ts`) — nur gelistete Felder mit passendem Wert erreichen die Zeile; danach
+    // die Geheimnissenke wie bisher. Ein Meldungstext, der den Text des mitgegebenen Fehlers
+    // wiederholt (Fastifys Fehlerweg übergibt `error.message`), wird durch die Konstante ersetzt.
     hooks: {
       logMethod(this: unknown, argumente: unknown[], methode: (...a: unknown[]) => void): void {
         methode.apply(
           this,
-          argumente.map((argument) => senkeUeberWert(argument)),
+          ohneFreienFehlertext(argumente).map((argument) => senkeUeberWert(argument)),
         );
       },
     },
@@ -2579,7 +2703,18 @@ export function buildApp(
   // ben-Review SCRUM-490 (P2): (1) Origin fail-closed validieren — "*"/leer/malformed → gar kein CORS
   // (resolveAddonOrigin === null). (2) Scope über einen Delegator strikt auf die Add-on-Pfade begrenzen;
   // alle anderen Routen bekommen { origin: false } → keinerlei CORS-Header (nicht mehr app-weit).
-  if (addonApiEnabled()) {
+  //
+  // Aufnahme gesamt-integrations-api (R-0677/R-0688/R-0698/R-0704): derselbe Anmeldehook nimmt
+  // zusätzlich DIENST-SCHLÜSSEL an (`dienst-schluessel.ts`) — unabhängig vom Klara-Flag, sobald
+  // `KLARWERK_SERVICE_KEYS` mindestens einen gültigen Eintrag hat. Ein Dienst-Schlüssel erreicht
+  // nur die Routen seiner Rechte (`DIENST_ROUTEN`, sonst 403) und zählt gegen seine eigene Grenze
+  // (429 + Retry-After). CORS und das Add-in-Bündel bleiben allein am Klara-Flag.
+  const dienstLage = ladeDienstSchluessel();
+  for (const grund of dienstLage.fehler) {
+    console.warn(`[dienst-schluessel] Eintrag verworfen: ${grund}`);
+  }
+  const dienstBremse = new Anfragebremse();
+  if (addonApiEnabled() || dienstLage.schluessel.length > 0) {
     // SCRUM-490 D2: request-lokaler Auth-Kontext. Der Add-on-Key wird hier GENAU EINMAL pro Request
     // validiert und der Principal (Capabilities ask.validated + checktext.validated) am Request
     // getragen; Rate-Limiter, allowList und
@@ -2597,7 +2732,7 @@ export function buildApp(
     // ausgenommen (Session-Pfad ungedrosselt).
     const authAttemptThrottle = new AddonAuthAttemptThrottle(addonAuthThrottleConfigFromEnv());
     app.addHook("onRequest", async (request, reply) => {
-      const auth = resolveAddonAuth(request);
+      const auth = resolveAddonAuth(request, dienstLage);
       // SCRUM-490 R3/R4 (B2): Throttle für fehlgeschlagene Add-on-Auth-Versuche — VOR dem 401/Principal.
       //  Fix 3: ein UNGÜLTIGER Key zählt auf JEDER Route (kein 401/403-Gültigkeitsorakel, keine
       //         ungedrosselte Fremdroute); fehlende Auth zählt gegen die NORMALISIERTEN Add-on-Endpunkte
@@ -2639,8 +2774,39 @@ export function buildApp(
         }
       }
       if (auth.kind === "invalid") {
-        reply.code(401).send({ error: "UNAUTHENTICATED", message: "Ungültiger Add-in-Zugang." });
+        reply.code(401).send({
+          error: "UNAUTHENTICATED",
+          message: auth.dienst ? "Ungültiger Dienst-Schlüssel." : "Ungültiger Add-in-Zugang.",
+        });
         return reply;
+      }
+      if (auth.kind === "valid" && auth.principal.dienst) {
+        request.authContext = { authKind: "addon", principal: auth.principal };
+        const route = matchDienstRoute(request.method, request.routeOptions?.url, request.raw.url);
+        if (!route || !principalHasCapability(auth.principal, route.recht)) {
+          reply.code(403).send({
+            error: "FORBIDDEN",
+            message: "Dieser Dienst-Schlüssel hat kein Recht für diese Anfrage.",
+          });
+          return reply;
+        }
+        const urteil = dienstBremse.zaehle(
+          auth.principal.id,
+          auth.principal.dienst.grenze,
+          Date.now(),
+        );
+        if (!urteil.erlaubt) {
+          reply
+            .code(429)
+            .header("retry-after", String(urteil.wartenSek))
+            .send({
+              error: "RATE_LIMITED",
+              message: bremsSatz("dienst", sprache(request), urteil.wartenSek),
+              wartenSek: urteil.wartenSek,
+            });
+          return reply;
+        }
+        return;
       }
       if (auth.kind === "valid") {
         request.authContext = { authKind: "addon", principal: auth.principal };
@@ -2667,7 +2833,7 @@ export function buildApp(
     // Enge (nur addon-Principal, gekeyt auf den Actor; Session-Requests exempt) steckt in
     // addonRateLimit(). Flag AUS → hier gar nicht registriert → /api/ask exakt wie heute.
     app.register(rateLimit, { global: false });
-    const addonOrigin = resolveAddonOrigin();
+    const addonOrigin = addonApiEnabled() ? resolveAddonOrigin() : null;
     if (addonOrigin !== null) {
       app.register(
         cors,
@@ -2690,8 +2856,40 @@ export function buildApp(
     // SCRUM-490 H: das statische Klara-Add-in-Bundle unter /addin/* — NUR bei aktivem Flag. Traversal-
     // sicher (explizite Datei-Map), kein Directory-Listing, öffentlich lesbar (kein Key), berührt den
     // Add-on-Auth/Throttle-Pfad nicht und öffnet keinen neuen API-Weg. Flag AUS → nicht registriert → 404.
-    app.register(addinStaticRoutes());
+    if (addonApiEnabled()) {
+      app.register(addinStaticRoutes());
+    }
+  } else {
+    // Nacharbeit 2 (Bens Befund): auch OHNE Klara-Flag und ohne einen einzigen konfigurierten
+    // Dienst-Schlüssel bleibt der Anmeldehook für den Dienst-Schlüssel-Kopf wirksam. Wird der letzte
+    // Schlüssel entfernt, sendet ein angebundenes System ihn womöglich weiter — er ist dann ein
+    // ungültiger Anmeldeversuch (401, gedrosselt wie oben) und fällt NICHT auf eine mitgesendete
+    // Sitzung zurück. Ohne den Kopf bleibt jede Anfrage exakt wie vorher (kein authContext, kein
+    // CORS, keine Drossel).
+    const dienstFehlversuche = new AddonAuthAttemptThrottle(addonAuthThrottleConfigFromEnv());
+    app.addHook("onRequest", async (request, reply) => {
+      if (resolveAddonAuth(request, dienstLage).kind !== "invalid") {
+        return;
+      }
+      if (!dienstFehlversuche.registerFailure(request.ip, Date.now())) {
+        reply.code(429).header("retry-after", String(dienstFehlversuche.retryAfterSeconds())).send({
+          error: "RATE_LIMITED",
+          message: "Zu viele Zugangsversuche — bitte später erneut.",
+        });
+        return reply;
+      }
+      reply.code(401).send({ error: "UNAUTHENTICATED", message: "Ungültiger Dienst-Schlüssel." });
+      return reply;
+    });
   }
+
+  // Aufnahme gesamt-integrations-api (R-0842): die Bremse für modellgestützte Anfragen ANGEMELDETER
+  // Nutzer — nach dem Anmeldehook oben, damit Schlüsselzugänge schon erkannt sind und nicht doppelt
+  // zählen. `KLARWERK_KI_ANFRAGEN_MAX=aus` schaltet sie ab (s. ki-anfragebremse.ts).
+  registriereKiAnfragebremse(app, {
+    authenticate: (token) => services.auth.authenticate(token),
+    grenze: kiGrenzeAusEnv(),
+  });
 
   // JOB 1113 (JOB-947-B3): /health nennt jetzt zusätzlich VERSION und DEPLOY-COMMIT.
   //
@@ -2813,14 +3011,17 @@ export function buildApp(
         // „fehlt" sperren gleich (Pedi 10.09. 21:25: „Im Zweifel gilt: gesperrt"). Hier wird sie
         // nicht ENTSCHIEDEN, sondern DURCHGEREICHT — die Entscheidungsstelle bleibt im Kern, und
         // eine zweite Sperre gibt es auch nach diesem Auftrag nicht. Der zweite Schalter der
-        // Adminfreigabe (vertrauliche Inhalte) bleibt bewusst draussen: der Klara-Resolver erfährt
-        // die Einstufung eines Inhalts nirgends und könnte ihn nicht beantworten; die
-        // Vertraulichkeitsgrenze bleibt, wo sie heute gezogen wird.
+        // Adminfreigabe (vertrauliche Inhalte) geht NICHT an den Resolver — er erfährt die Einstufung
+        // eines Inhalts nirgends —, sondern als `vertraulichFreigegeben` an die Deckungsprüfung des
+        // markierten Dokumenttexts (gesamt-ki-freigaberegeln, Ben Nacharbeit 2).
         //
         // ES IST DIESELBE FRISCHE LESUNG wie alles andere hier oben (`configStatus()` je Zugriff):
         // eine Rücknahme der Freigabe wirkt ohne Neustart, und sie entwertet laufende Zustimmungen,
         // weil das Feld in `klaraPolicyVersion` eingeht.
         zentralFreigegeben: config.taskConfig.kiFreigabe?.oeffentlicheKi === true,
+        // gesamt-ki-freigaberegeln (Ben Nacharbeit 2): die zweite Adminfreigabe für den markierten
+        // Dokumenttext — die Entscheidung des Kerns, frisch je Zugriff, nicht nachgerechnet.
+        vertraulichFreigegeben: services.reasoner.vertraulicheAusleitungFreigegeben(),
         effectiveAnswerProvider: config.effectiveProvider.answer ?? "deterministic",
         cloudConfigured: gewaehlterAnbieter
           ? config.cloudProviders[gewaehlterAnbieter].configured
@@ -3064,6 +3265,10 @@ export function buildApp(
         // Lesemodell hereingereicht, das es aus der Policy-Naht holt (`lesemodell.ts:254`,
         // `policyNahtSchliessen` weiter unten). Hier reist nur der Bestand.
         kanten: new KantenLeseService({ repo: services.kanten, kos: services.ko }),
+        // R-0235 / R-0749: „Hat geholfen" direkt am angewendeten Wissensobjekt (`action: "helpful"`).
+        // Derselbe gekoppelte Kern wie das Antwortfeedback (Trust-Schritt + Audit, genau einmal je
+        // Person und Objekt) — ko-routes bekommt nur diese eine Funktion, nicht den Ask-Dienst.
+        hilfreich: (koId, actor) => services.ask.markKoHelpful(koId, actor),
         draftPromotion: {
           load: async (draftId, user) => {
             const draft = await services.capture.getDraft(draftId);
@@ -3312,6 +3517,13 @@ export function buildApp(
         audit: services.audit,
         kos: koSichtbarkeit,
         papierkorb: { get: (id: string) => services.ko.papierkorbFakten(id) },
+        // R-1107 (Aufnahme gesamt-dublettenvergleich): der Zusammenführen-Assistent — dieselben
+        // Dienste und derselbe Nachlauf einer neuen Fassung wie am Überarbeitungsweg (ko-routes.ts).
+        zusammenfuehrung: {
+          ko: services.ko,
+          conflicts: services.conflicts,
+          ...(aiCheckWorker ? { aiCheckWorker } : {}),
+        },
       },
       guards,
     ),
@@ -3338,6 +3550,9 @@ export function buildApp(
           new Set(
             (await services.spaces.aktuelle()).filter((s) => s.zugang === "alle").map((s) => s.id),
           ),
+        // R-1649: der abweichende Weg aus „nicht hilfreich" wird ein gewöhnlicher Entwurf —
+        // derselbe Anlageweg wie POST /api/drafts, kein zweiter.
+        alternativeAlsEntwurf: (entwurf, author) => services.capture.createDraft(entwurf, author),
       },
       guards,
     ),
@@ -3378,7 +3593,9 @@ export function buildApp(
   // registriert → Endpunkt existiert nicht → bit-identisch zum heutigen Verhalten. Deterministische
   // Stufe-1-Dry-Run-Prüfung (kein Modell, keine Persistenz; nur Validiertes gilt allein für den
   // Add-in-Pfad, der Session-Pfad prüft seit JOB 3020 auch Ungeprüftes — check-text-routes.ts).
-  if (addonApiEnabled()) {
+  // Aufnahme gesamt-integrations-api: ebenso, sobald Dienst-Schlüssel konfiguriert sind (Recht
+  // `checktext.validated`).
+  if (addonApiEnabled() || dienstLage.schluessel.length > 0) {
     app.register(
       checkTextRoutes(
         {
@@ -3392,6 +3609,14 @@ export function buildApp(
         },
         guards,
       ),
+    );
+  }
+  // Aufnahme gesamt-mcp (R-0713): der MCP-Zugang für fremde KI-Programme — nur, wenn Dienst-
+  // Schlüssel konfiguriert sind, und nur für einen Schlüssel mit `mcp.werkzeug` (Anmeldehook oben).
+  // Werkzeugaufrufe gehen intern mit demselben Schlüssel an die bestehende Route ihres Rechts.
+  if (dienstLage.schluessel.length > 0) {
+    app.register(
+      mcpRoutes({ weiterleiten: (anfrage) => app.inject(anfrage), version: buildVersion() }),
     );
   }
   // SCRUM-470 (S6): Erkennung nach Import-Accept — dasselbe Deps-Bündel wie der Promote-Pfad.
@@ -3447,9 +3672,34 @@ export function buildApp(
     ),
   );
   // Audit-P4 (SCRUM-398): Live-Wall — read-only „frisch gesichert / hat heute geholfen".
-  app.register(livewallRoutes({ ko: services.ko, audit: services.audit }, guards));
+  // PMO-FEA-0003: `konten` liefert Anzeigenamen — die Route nennt davon nur zustimmende Konten.
+  app.register(
+    livewallRoutes(
+      {
+        ko: services.ko,
+        audit: services.audit,
+        konten: () => services.auth.listUsers(),
+        fotos: services.livewallFotos,
+      },
+      guards,
+    ),
+  );
   // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — persönliche Zähler aus eigenen KOs + Audits.
   app.register(impactRoutes({ ko: services.ko, audit: services.audit }, guards));
+  // R-0466: das eigene Interaktionsgedächtnis. Die Herkunft „antwort" wird gegen DIESELBE
+  // Antwortablage geprüft, die auch die Erklärroute liest.
+  app.register(
+    gedaechtnisRoutes(
+      {
+        dienst: new GedaechtnisDienst({
+          repo: services.gedaechtnis,
+          antworten: services.answerSnapshots,
+        }),
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
   app.register(auditRoutes(services.audit, guards, [services.conflicts, services.overlaps]));
   // JOB 2692 D1: der KA4-Riegel gilt auch auf /api/reasoner und /describe — DIESELBE Instanz des
   // Ausführungstors wie bei askRoutes oben, kein zweiter Dienst. `capture` kommt aus `services`
@@ -3535,6 +3785,24 @@ export function buildApp(
   // Firmenwörterbuch: Pflege (`ko.validate`), Nachschlagen und der deterministische Abgleich
   // (`ko.read`). Nicht geschaltet: ohne Einträge liefert der Abgleich schlicht keine Hinweise.
   app.register(begriffeRoutes({ begriffe: services.begriffe, audit: services.audit }, guards));
+  // R-1646 · Ausgangsprüfung: nur mit `KLARWERK_AUSGANGSPRUEFUNG=an`. Dann hält der Chokepoint
+  // jeden Aufruf, der das Haus verlassen kann, bis ein Controller den anonymisierten Text freigibt.
+  // Als Person ersetzt werden die Namen der Konten dieser Installation — bei jedem Aufruf frisch
+  // gelesen, damit ein neues Konto sofort mitzählt. Ohne Schalter bleibt der globale Prüfer
+  // unberührt; die Route meldet dann `aktiv: false`.
+  const ausgangsEinstellung = ausgangspruefungAusEnv(process.env);
+  const ausgangspruefung = ausgangsEinstellung
+    ? new Ausgangspruefung({
+        ...ausgangsEinstellung,
+        namenQuelle: async () => (await services.auth.listUsers()).map((u) => u.name),
+      })
+    : null;
+  if (ausgangspruefung) {
+    setzeAusgangspruefung(ausgangspruefung);
+  }
+  app.register(
+    ausgangspruefungRoutes({ pruefung: ausgangspruefung, audit: services.audit }, guards),
+  );
   // produkt:20261007:spaces: Arbeitsräume, Inhalte je Space und Ansicht, Rechtevorschau, Wechsel.
   app.register(
     spacesRoutes(
@@ -3587,7 +3855,10 @@ export function buildApp(
   // Importweg, der Läufe schreibt — nicht nur hinter Confluence. Bis R-0145 hing er allein am
   // Confluence-Schalter: eine Instanz nur mit SharePoint gab eine `importId` heraus, hinter der eine
   // 404 stand. Sind alle Importwege aus, gibt es keine Läufe und damit auch keinen Leseweg.
-  if (schalterAn("confluenceImport") || schalterAn("sharepointImport")) {
+  // R-0170: der Jira-Import schreibt Läufe genauso und gehört deshalb in dieselbe Bedingung.
+  const importLaeufeLesbar =
+    schalterAn("confluenceImport") || schalterAn("sharepointImport") || schalterAn("jiraImport");
+  if (importLaeufeLesbar) {
     app.register(
       importRunRoutes({
         importRuns: services.importRuns,
@@ -3612,6 +3883,19 @@ export function buildApp(
         guards,
         // Der Übernahmelauf bekommt seine Identität VOR dem ersten Effekt (KW-S4-26 §133) — und
         // erst dadurch kann die Zugangs-Auskunft „zuletzt erfolgreich importiert" belegen.
+        importRuns: services.importRuns,
+      }),
+    );
+  }
+
+  // R-0170: der Jira-Import — Vorgänge und Epics eines Projekts als Kandidaten, die Projektrollen
+  // als Leserechte am Herkunftsanker. Hinter SEINEM eigenen Schalter; Schalter aus, Route existiert
+  // nicht. Dieselben Abhängigkeiten wie der SharePoint-Weg darüber.
+  if (schalterAn("jiraImport")) {
+    app.register(
+      jiraImportRoutes({
+        library: services.library,
+        guards,
         importRuns: services.importRuns,
       }),
     );
