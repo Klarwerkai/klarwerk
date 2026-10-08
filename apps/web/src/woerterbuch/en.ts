@@ -4142,6 +4142,8 @@ const en: typeof de = {
   "risk.priority.mittel": "medium",
   "risk.priority.niedrig": "low",
   "risk.close": "Close",
+  "risk.closeWithTitle": "Close with the knowledge object that answers this gap",
+  "risk.closeFailed": "Not closed — the knowledge object is missing or in the trash.",
   "risk.assign": "Expert …",
   "risk.delete": "Delete",
   "risk.gapNextLabel": "Next step",

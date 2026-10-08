@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import {
   AskError,
   type AskService,
+  GESPRAECHSFADEN_MAX_FRAGEN,
   answerEvidence,
   isGapPriority,
   redactGapForViewer,
@@ -67,6 +68,15 @@ const askBodySchema = {
     // Dokumenttext (Bens Befund B1, Runde 2: ältere Fenster melden nichts). Begründung an
     // `frageAusDokument`.
     questionSource: { type: "string" },
+    // R-0348 — DER GESPRÄCHSFADEN: die vorangegangenen Fragen derselben Fragestrecke, älteste
+    // zuerst, je Frage dasselbe Maß wie `question`. Mehr als `GESPRAECHSFADEN_MAX_FRAGEN` ist 400
+    // aus dem Schema. Wirksam NUR im Konsolenzweig (s. `fadenErlaubt` im Handler); Add-on- und
+    // Word-Wege lassen ihn liegen, ihre Egress-Verträge bleiben damit unverändert.
+    thread: {
+      type: "array",
+      maxItems: GESPRAECHSFADEN_MAX_FRAGEN,
+      items: { type: "string", maxLength: 8_000 },
+    },
   },
 } as const;
 
@@ -537,6 +547,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         selection?: string;
         selectionConfidentiality?: string;
         questionSource?: string;
+        thread?: string[];
       };
     }>(
       "/api/ask",
@@ -622,6 +633,10 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // hängt der Vertrag von `KA4-E1`.
         // R-0639: gesetzt ausschliesslich in den beiden Zweigen, deren KA4-Freigabe bestätigt ist.
         let ka4Bestaetigt = false;
+        // R-0348: der Gesprächsfaden der Konsole. Gesetzt ausschliesslich unmittelbar vor dem
+        // Konsolenzweig; ohne Faden bleibt `opts` dort wie bisher unangetastet.
+        const faden = (request.body.thread ?? []).filter((frage) => frage.trim().length > 0);
+        let fadenErlaubt = false;
         // R-0639, Befund B1: STAMMT DIE FRAGE SELBST AUS DEM DOKUMENT, verlässt sie die Enge nur mit
         // bestandener Dokumenttext-Prüfung — dieselbe Prüfung, dieselbe Vertraulichkeitsregel wie
         // für `selection`. Hält sie, läuft der Zweig in die unveränderte Enge (retrieval-only, kein
@@ -659,7 +674,11 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             ))
               ? { dokumenttextFreigegeben: true as const }
               : {};
-          const mitMarkierung = markierung ? { ...opts, ...markierung, ...dokumenttextFeld } : opts;
+          const mitAuswahl = markierung ? { ...opts, ...markierung, ...dokumenttextFeld } : opts;
+          const mitMarkierung =
+            fadenErlaubt && faden.length > 0
+              ? { ...mitAuswahl, gespraechsfaden: faden }
+              : mitAuswahl;
           const betrachter = request.askSessionUser;
           let grundlage: (ko: KnowledgeObject) => boolean;
           if (betrachter) {
@@ -816,6 +835,9 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // Filter") durch den jüngeren Auftrag. Was die Enge verschluckt, wird wie im Panel-Weg
         // (JOB 1591 W5) GEMELDET, nicht verwendet — gefiltert durch die Sichtbarkeit DIESES Nutzers.
         // Der ausdrücklich freigegebene Sonderweg (KA4-Einwilligung, oben) bleibt unverändert.
+        // R-0348: nur hier — getippte Fragen eines Sitzungsnutzers ohne Dokumentbezug — reist der
+        // Gesprächsfaden mit (Wirkung und Grenzen an `fadenfragen` im Fragedienst).
+        fadenErlaubt = true;
         await answer(user.id, {
           validatedOnly: true,
           ungeprueftSichtbarFuer: sichtbarkeitsfilterFuer(user),
@@ -873,7 +895,13 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
 
     app.put<{
       Params: { id: string };
-      Body: { expertId?: string; close?: boolean; action?: string; priority?: string };
+      Body: {
+        expertId?: string;
+        close?: boolean;
+        action?: string;
+        priority?: string;
+        koId?: unknown;
+      };
     }>("/api/gaps/:id", async (request, reply) => {
       const user = await guards.requirePermission("ko.assign", request, reply);
       if (!user) {
@@ -893,7 +921,16 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         }
         // Close akzeptiert sowohl { close:true } als auch { action:"close" } (FE-Kopplung).
         if (request.body.close === true || request.body.action === "close") {
-          reply.code(200).send(await ask.closeGap(request.params.id));
+          // R-0846 / L6: der Objektbezug. Hier wird nur die Form geprüft; ob das Objekt existiert
+          // und ob ohne mitgeschickten Bezug ein gültiger an der Lücke steht, entscheidet
+          // `AskService.closeGap` — fehlt beides, bleibt die Lücke offen (400).
+          const roh = request.body.koId;
+          if (roh !== undefined && (typeof roh !== "string" || roh.trim() === "")) {
+            reply.code(400).send({ error: "BAD_REQUEST", message: "koId muss eine Kennung sein." });
+            return;
+          }
+          const bezug = typeof roh === "string" ? roh.trim() : undefined;
+          reply.code(200).send(await ask.closeGap(request.params.id, bezug));
           return;
         }
         if (request.body.expertId) {

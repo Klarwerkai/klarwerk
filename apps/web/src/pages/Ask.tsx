@@ -83,6 +83,8 @@ import {
   startadresseMerken,
   wiederaufnahmeAus,
 } from "../lib/fragenArbeitsstand";
+// R-0348: Nachfragen im Gesprächsfaden statt Einzelschüssen.
+import { fadenFuerAnfrage, fadenNachAntwort } from "../lib/gespraechsfaden";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { formatKoTimestamp } from "../lib/koDates";
@@ -494,6 +496,10 @@ function MehrLueckenInfo({
 interface AskAnfrage {
   frage: string;
   generation: number;
+  // R-0348: die vorangegangenen Fragen, zu denen diese eine Nachfrage ist (ohne sie selbst).
+  faden: string[];
+  // Ben, Nacharbeit 2: die Fadengeneration beim Absenden — „Neues Thema" zählt sie hoch.
+  fadenGeneration: number;
 }
 
 export function Ask(): JSX.Element {
@@ -632,6 +638,21 @@ export function Ask(): JSX.Element {
   const [receipt, setReceipt] = useState(anfang?.antwort?.receipt ?? "");
   // SCRUM-264: zuletzt gestellte Frage festhalten → für die Anzeige des Rescue-Blocks.
   const [asked, setAsked] = useState(anfang?.antwort?.frage ?? "");
+  // R-0348: der Gesprächsfaden — die zuletzt beantworteten Fragen dieser Fragestrecke. Eine
+  // wiederaufgenommene Antwort beginnt ihn; „Neues Thema" und ein Kontowechsel leeren ihn.
+  const [faden, setFaden] = useState<string[]>(
+    anfang?.antwort?.frage ? [anfang.antwort.frage] : [],
+  );
+  // Die zuletzt gestellte Frage steht schon in der Fragezeile; aufgezählt werden die früheren.
+  const fadenFrueher = faden.filter((frage) => frage !== asked);
+  // Ben, Nacharbeit 2: „Neues Thema" während einer laufenden Nachfrage. Die später eintreffende
+  // Antwort darf ihre Frage nicht wieder in den geleerten Faden tragen — sie gehört zum alten
+  // Thema. Jede Anfrage trägt die Generation, unter der sie startete (wie `kontoGeneration`).
+  const fadenGeneration = useRef(0);
+  const neuesThema = (): void => {
+    fadenGeneration.current += 1;
+    setFaden([]);
+  };
   // FUNKE-FIX2 P0 (bens Erforderlich 4): die vom Server erzeugte Wissenslücke (mit ID) — der Capture-
   // Einstieg trägt die GAP-ID (kein Fragetext in der URL); Capture lädt den Text nach Berechtigung.
   const [gapId, setGapId] = useState<string | null>(anfang?.antwort?.gapId ?? null);
@@ -764,7 +785,10 @@ export function Ask(): JSX.Element {
   const kontoGeneration = useRef(0);
   const ask = useMutation({
     mutationFn: (anfrage: AskAnfrage) =>
-      endpoints.ask.ask(anfrage.frage, toReasonerLocale(i18n.language)),
+      // R-0348: ohne Faden genau der bisherige Aufruf.
+      anfrage.faden.length > 0
+        ? endpoints.ask.ask(anfrage.frage, toReasonerLocale(i18n.language), anfrage.faden)
+        : endpoints.ask.ask(anfrage.frage, toReasonerLocale(i18n.language)),
     // D5: eine schon offene Fläche kennt die Abschaltung noch nicht — der Server hat sie eben
     // gemeldet. Der Status wird neu gelesen, damit der Absendeknopf danach gesperrt ist und der
     // Hinweis dasteht, statt dass der Mensch dieselbe Absage ein zweites Mal abholt.
@@ -811,13 +835,18 @@ export function Ask(): JSX.Element {
       setVerschlossen([]);
     },
     // SCRUM-138: Backend liefert { result, gap, receipt } — Antwort + Answer-Receipt entpacken.
-    onSuccess: (r, { frage: question, generation }) => {
+    onSuccess: (r, { frage: question, generation, fadenGeneration: fadenStand }) => {
       // Ben R1, F1: die Antwort eines anderen (früheren) Kontos berührt nichts.
       if (generation !== kontoGeneration.current) {
         return;
       }
       // Der Beleg für „zu welcher Frage gehört das, was da steht" — s. `onMutate`.
       antwortFrage.current = question;
+      // R-0348: die angekommene Frage wird Teil des Fadens, an den die nächste Frage anknüpft.
+      // Nicht, wenn inzwischen ein neues Thema begonnen wurde (Ben, Nacharbeit 2).
+      if (fadenStand === fadenGeneration.current) {
+        setFaden((vorher) => fadenNachAntwort(vorher, question));
+      }
       setAntwortAm(new Date().toISOString());
       // JOB 2694 D1: eine Antwort ohne Text kommt hier als Lücke an — Begründung am Helfer oben.
       setResult(leereAntwortAlsLuecke(selectAnswer(r)));
@@ -929,6 +958,8 @@ export function Ask(): JSX.Element {
       setVerschlossen(antwort?.verschlossen ?? []);
       setGapId(antwort?.gapId ?? null);
       setAsked(antwort?.frage ?? "");
+      // R-0348: der Faden gehört zum Konto — er beginnt bei der übernommenen Antwort neu.
+      setFaden(antwort?.frage ? [antwort.frage] : []);
       setAntwortAm(antwort?.angezeigtAm ?? null);
       setThankedSources(new Set());
     }
@@ -1112,9 +1143,14 @@ export function Ask(): JSX.Element {
       // nach dem Absenden offen, stünden Beispieltexte und Hinweise zwischen Feld und Antwort. Sie
       // schliesst deshalb hier — nur bei einem ANGENOMMENEN Absenden, für Feld, Chip und Auto-Ask.
       setBeispiele(false);
-      ask.mutate({ frage: trimmed, generation: kontoGeneration.current });
+      ask.mutate({
+        frage: trimmed,
+        generation: kontoGeneration.current,
+        faden: fadenFuerAnfrage(faden, trimmed),
+        fadenGeneration: fadenGeneration.current,
+      });
     },
-    [answerAi.available, ask.isPending, ask.mutate],
+    [answerAi.available, ask.isPending, ask.mutate, faden],
   );
 
   // WP-UX-WOW-1 U2/U3: Beispiel-Chip → Frage setzen UND direkt senden (ein Klick → Antwort).
@@ -1453,6 +1489,36 @@ export function Ask(): JSX.Element {
           auslöst, wann ein leerer Versuch vermerkt wird und ob ein Modell nutzbar ist.
           Zielbild Z.48 (runder Sendeknopf, Spinner als Wartezustand), JOB 3038 (Mikrofon im Feld)
           und §5 (Beispiele im leeren Feld) stehen am Baustein. */}
+        {/* R-0348: der Gesprächsfaden steht ÜBER dem Feld — die nächste Frage knüpft sichtbar an
+            die vorigen an und fängt nicht bei null an. Ein Klick beginnt ein neues Thema. Die
+            Antwort bleibt quellengebunden (R-0345: kein offener Chatbot). */}
+        {faden.length > 0 ? (
+          <div
+            data-testid="ask-gespraechsfaden"
+            className="mb-2 flex flex-wrap items-start gap-x-3 gap-y-1 rounded-btn bg-page px-3 py-2 text-[12.5px] text-muted"
+          >
+            <div className="min-w-0 flex-1">
+              <p>{t("fragenseite.fadenTitel")}</p>
+              {fadenFrueher.length > 0 ? (
+                <ol className="mt-1 list-decimal pl-5 text-muted-2">
+                  {fadenFrueher.map((frage) => (
+                    <li key={frage} data-testid="ask-gespraechsfaden-frage" className="break-words">
+                      {frage}
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              data-testid="ask-gespraechsfaden-neu"
+              onClick={neuesThema}
+              className="shrink-0 text-[12.5px] font-semibold text-brand-text underline-offset-2 hover:underline"
+            >
+              {t("fragenseite.fadenNeu")}
+            </button>
+          </div>
+        ) : null}
         <FrageFeld
           wert={q}
           onWert={setQ}
