@@ -1284,7 +1284,12 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     tor: "ko.read (danach prüft der Dienst den Beleg aus dem echten Antwortvorgang)",
     erwartet: NUR_LESEN,
     ruesten: async (buehne, akteur) => {
-      await legeKoAn(buehne, "admin");
+      // Geantwortet wird nur aus geprüftem Wissen (R-0584) — dieselbe Vorbereitung wie die
+      // Nachbarzeilen „Hat geholfen" und „nicht hilfreich": Experte legt an, Admin gibt frei.
+      const ko = await legeKoAn(buehne, "experte");
+      await musterhaft(buehne.app, kopf(buehne, "admin"), "PUT", `/api/kos/${ko.id}`, {
+        action: "admin-validate",
+      });
       if (akteur === "anonym") {
         return {
           pfad: "/api/ask/report",

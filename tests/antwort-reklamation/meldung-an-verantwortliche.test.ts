@@ -77,6 +77,16 @@ async function setup() {
     },
   });
   expect(created.statusCode).toBe(201);
+  // Geantwortet wird nur aus geprüftem Wissen (R-0584, aus main): ohne Freigabe endete jede Frage in
+  // einer Wissenslücke, und es gäbe keine Antwort, die man melden könnte. Die Freigabe benennt
+  // keinen Eigentümer — die Zustellung bleibt beim Autor-Ersatz, bis M2/M4b einen benennen.
+  const freigabe = await app.inject({
+    method: "PUT",
+    url: `/api/kos/${created.json().id as string}`,
+    headers: admin.headers,
+    payload: { action: "admin-validate" },
+  });
+  expect(freigabe.statusCode).toBe(200);
   return {
     services,
     app,
