@@ -7,6 +7,18 @@
 > `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md` (Rohstand: `docs/boss-assistant/`).
 > Live-Version dort bestätigt: **v1.0.0-beta.1.4**.
 
+## 08.10.2026 — Aufnahme „Negativwissen-Hinweis“ (R-1629, Roadmap 2.3)
+
+- `POST /api/knowledge/check` weist ähnliche Einträge der Wissensart `negativwissen` gesondert aus
+  (`negativwissen[]`: Titel, gekürzte Begründung, Fundort; höchstens 3). Dieselbe Vorauswahl,
+  Sichtbarkeitsregel, Vertraulichkeitssperre und Schwelle wie `similar`, kein Modell. Das Feld fehlt
+  ohne Treffer. Vertrag am Ende von `services/app/src/knowledge-check.ts`.
+- Das Blatt zeigt den Hinweis offen über dem Vorschau-Chip (`components/erfassen/NegativwissenHinweis.tsx`,
+  Texte `apps/web/src/texte/negativwissen.ts`), auch wenn die Widerspruchsprüfung „pending“ bleibt.
+  Er blockiert nichts.
+- Prüfstand: `tests/negativwissen-hinweis/` (Auskunft + gemountetes Blatt, jsdom). Eine Messung im
+  echten Browser und eine fachliche Abnahme mit echtem Negativwissen-Bestand stehen aus.
+
 ## 01.10.2026 — Aufnahme „KI-Laufprotokoll“ (Runde 1 + Nacharbeit Runden 2 und 3)
 
 - Abgleich aller zugeordneten Anliegen (R-0612 … V9, MR-SELECT-1) mit Fassungen und Belegen:

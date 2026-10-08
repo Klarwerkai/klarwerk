@@ -790,10 +790,17 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
       push("success", t("adm.factoryDone"));
     },
     // SCRUM-450: Falsches Passwort → zurück zur Eingabe (Passwort leeren) mit klarer Meldung.
-    onError: () => {
+    // R-0537: nur `INVALID_PASSWORD` heißt „falsches Passwort"; jede andere Absage (etwa 403 „nur
+    // Desktop" oder eine abgelaufene Sitzung) nennt ihren eigenen Grund, statt fälschlich das
+    // Passwort zu beschuldigen.
+    onError: (e) => {
       setFactoryStep("armed");
       setFactoryPw("");
-      push("error", t("adm.factory.wrongPassword"));
+      if (e instanceof ApiError && e.code === "INVALID_PASSWORD") {
+        push("error", t("adm.factory.wrongPassword"));
+        return;
+      }
+      push("error", e instanceof ApiError ? e.message : t("state.error"));
     },
   });
 

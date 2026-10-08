@@ -534,8 +534,9 @@ export function einstellungenItem(): NavItem {
 }
 
 // WP-UX-WOW-1 U9: das Rollen-Gate separat prüfbar — der Routen-Guard unterscheidet damit ehrlich
-// „Rolle reicht nicht" (harte Umleitung, RB-2 unverändert) von „nur Stufe 2 ist aus" (erklärende
-// Karte statt stiller Umleitung). Die Navigation (canSee) blendet weiterhin beides aus.
+// „Rolle reicht nicht" (seit AUFTRAG-mega70 Block A die erklärende Karte `RoleNotice`, keine stille
+// Umleitung mehr) von „nur Stufe 2 ist aus" (erklärende Karte mit Einschaltweg). Die Navigation
+// (canSee) blendet weiterhin beides aus.
 export function roleAllows(item: NavItem, role: Role): boolean {
   return ROLE_RANK[role] >= ROLE_RANK[item.minRole];
 }
@@ -581,6 +582,18 @@ export const EXTRA_GUARDED_ITEMS: NavItem[] = [
   {
     id: "duplicateCompare",
     path: "/duplikate/:id/vergleich",
+    labelKey: "nav.duplicates",
+    icon: Plus,
+    minRole: "controller",
+    section: "7.7",
+    shot: "11",
+  },
+  // R-1107 (Aufnahme gesamt-dublettenvergleich): der Zusammenführen-Assistent. Dieselbe Schwelle
+  // wie Dubletten und Vergleich — Zusammenführen ist kuratorisch (`ko.validate` am Server). Ohne
+  // eigenen Menüpunkt: das Zahnrad findet über `istAktiverEintrag` den Elternpunkt `/duplikate`.
+  {
+    id: "duplicateMerge",
+    path: "/duplikate/:id/zusammenfuehren",
     labelKey: "nav.duplicates",
     icon: Plus,
     minRole: "controller",

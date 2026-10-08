@@ -49,6 +49,7 @@
 // Auffassungen davon, wer einen Entwurf sehen darf, waeren eine zu viel"). Eine eigene Kopie waere
 // die dritte.
 import type { FastifyPluginAsync } from "fastify";
+import { meldung, sprache } from "../../../auth";
 import type { CaptureService } from "../../../capture";
 import { type Guards, sendError } from "../http";
 import { canSeeDraft } from "./capture-routes";
@@ -94,12 +95,17 @@ export function naechsterSchrittEntwurfRoutes(
 
       try {
         const draft = await capture.getDraft(request.params.id);
+        // P-Q9: die Sätze aus dem Katalog, wie an den Entwurfsrouten (`capture-routes.ts`).
         if (!draft) {
-          reply.code(404).send({ error: "NOT_FOUND", message: "Entwurf nicht gefunden." });
+          reply
+            .code(404)
+            .send({ error: "NOT_FOUND", message: meldung("DRAFT_NOT_FOUND", sprache(request)) });
           return;
         }
         if (!canSeeDraft(user, draft)) {
-          reply.code(403).send({ error: "FORBIDDEN", message: "Entwurf nicht verfuegbar." });
+          reply
+            .code(403)
+            .send({ error: "FORBIDDEN", message: meldung("DRAFT_NOT_VISIBLE", sprache(request)) });
           return;
         }
 

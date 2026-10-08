@@ -6,7 +6,8 @@ import { migrateAuthTokensAtRest } from "../../auth";
 import { buildApp, buildPgServices, buildServices } from "./build-app";
 import { createPool, migrate } from "./db";
 import { buildDevPersistServices } from "./dev-persist";
-import { type FactoryReset, factoryResetUnavailable } from "./factory-reset";
+import { waehleWerksreset } from "./factory-reset";
+import { GedaechtnisDienst } from "./interaktionsgedaechtnis";
 import { resolveKlaraAufraeumIntervalMs, starteKlaraAufraeumen } from "./klara-aufraeumen";
 import { registerNoindexHook } from "./noindex-hook";
 import { registerSecurityHeaders } from "./security-headers";
@@ -81,24 +82,6 @@ function devPersistFile(): string | undefined {
   return join(dirname(fileURLToPath(import.meta.url)), "../../..", ".localdb/state.jsonl");
 }
 
-// Pedi 05.07. (Beta): Werksreset NUR im Desktop/Dev-Journal-Modus. Löscht das lokale Journal
-// (nächster Start = leere Instanz → Ersteinrichtung) und beendet danach den Prozess. In Produktion
-// (Postgres) oder reinem In-Memory-Betrieb bleibt der Reset bewusst unverfügbar.
-function makeFactoryReset(journal: string | undefined): FactoryReset {
-  if (!journal) {
-    return factoryResetUnavailable;
-  }
-  return {
-    available: true,
-    run: async () => {
-      // Journal leeren → beim Neustart greift needsSetup() (erster Anwender wird wieder Admin).
-      writeFileSync(journal, "", "utf8");
-      // Kurzer Aufschub, damit die HTTP-Antwort noch flusht, dann den Prozess beenden.
-      setTimeout(() => process.exit(0), 250);
-    },
-  };
-}
-
 async function start(): Promise<void> {
   // ==============================================================================================
   // JOB 3776 — DER STARTVERTRAG, ALS ERSTE ANWEISUNG DES EINSTIEGSPUNKTS.
@@ -150,8 +133,8 @@ async function start(): Promise<void> {
     : journal
       ? await buildDevPersistServices(journal)
       : buildServices();
-  // Werksreset nur im Desktop/Dev-Journal-Modus (nie mit DATABASE_URL).
-  const factoryReset = databaseUrl ? factoryResetUnavailable : makeFactoryReset(journal);
+  // Werksreset nur im Desktop/Dev-Journal-Modus (nie mit DATABASE_URL), s. factory-reset.ts.
+  const factoryReset = waehleWerksreset({ databaseUrl, journal });
   // R-0609 · Bens B13: der Aufräumlauf der Klara-Sitzungen (Nachtrag fehlender Endeinträge des
   // Prüfprotokolls, dann Löschen) — gestartet unten, nach `app.listen`, neben dem Papierkorb-Sweep.
   let klaraAufraeumLauf: (() => Promise<number>) | undefined;
@@ -255,6 +238,25 @@ async function start(): Promise<void> {
     });
     app.log.info(`Klara-Aufräumlauf aktiv — Intervall ${Math.round(klaraInterval / 60000)} min.`);
   }
+  // R-0466: die Aufbewahrungsfrist des Interaktionsgedächtnisses ist eine LÖSCHFRIST. Gelesen wird
+  // ein abgelaufener Eintrag ohnehin nicht mehr; dieser Lauf entfernt ihn beim Start und danach im
+  // Takt des Papierkorb-Sweeps endgültig aus der Ablage.
+  const gedaechtnis = new GedaechtnisDienst({ repo: services.gedaechtnis });
+  const gedaechtnisGeloescht = (anlass: string) => (n: number) => {
+    if (n > 0) {
+      app.log.info(`Gedächtnis aufgeräumt (${anlass}): ${n} abgelaufene Einträge gelöscht.`);
+    }
+  };
+  gedaechtnis
+    .raeumeAbgelaufeneAuf()
+    .then(gedaechtnisGeloescht("Start"))
+    .catch((error) => app.log.warn(`Gedächtnis-Aufräumlauf übersprungen: ${String(error)}`));
+  startTrashSweepScheduler({
+    intervalMs: sweepInterval,
+    runSweep: () => gedaechtnis.raeumeAbgelaufeneAuf(),
+    onSwept: gedaechtnisGeloescht("periodisch"),
+    onError: (error) => app.log.warn(`Gedächtnis-Aufräumlauf übersprungen: ${String(error)}`),
+  });
 }
 
 start().catch((error) => {

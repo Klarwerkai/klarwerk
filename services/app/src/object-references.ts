@@ -13,6 +13,9 @@
 // WAS SIE BEANTWORTET. Genau eine Frage: „Hängt an diesem Objekt noch irgendetwas?" Sie ENTSCHEIDET
 // NICHTS. Sie löscht nichts, sie markiert nichts, sie läuft von selbst nicht los. Der Waisen-Sweep
 // ist ausdrücklich nicht Teil dieses Blocks — erst der Datenvertrag, dann getrennt der Lauf.
+// R-0846 / L6: der getrennte Lauf steht in `datenintegritaet.ts` (`ermittleWaisen`). Er prüft eine
+// OBERMENGE der fünf Orte unten (jede Text-/JSON-Spalte des Bestands) und irrt damit in dieselbe
+// Richtung wie diese Datei.
 //
 // ============================================================================================
 // DIE VIER ORTE, AN DENEN EINE REFERENZ STEHEN KANN — und warum keiner fehlen darf
@@ -153,8 +156,8 @@ export async function findObjectReferences(
     // AUFTRAG-mega21 Block E: die ANKERDOKUMENTE des Entwurfs. Sie fehlten hier, obwohl die
     // Entwurfs-Ankerprüfung genau diese Kennungen als Referenzen behandelt
     // (`verifyDraftAnchors`, capture/src/service.ts) — und obwohl ein Entwurf ein Ankerdokument
-    // OHNE zugehörigen `pendingSources`-Eintrag tragen darf. Es gibt heute keinen Waisen-Sweep,
-    // der daraus einen Verlust machen könnte; genau deshalb ist der richtige Zeitpunkt JETZT. Ein
+    // OHNE zugehörigen `pendingSources`-Eintrag tragen darf. Damals gab es keinen Waisen-Sweep (seit
+    // R-0846 gibt es einen, s. Kopf), der daraus einen Verlust machen konnte. Ein
     // Referenzscan, der eine Referenzart nicht kennt, ist eine tickende Falle: er ist erst dann
     // gefährlich, wenn jemand ihm vertraut, und dann ist es zu spät, es zu bemerken.
     if ((draft.payload.anchorDocuments ?? []).some((doc) => doc.objectId === id)) {

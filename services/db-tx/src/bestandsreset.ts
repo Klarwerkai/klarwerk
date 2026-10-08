@@ -94,6 +94,8 @@ export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
   "ko_evidence",
   "ko_versions",
   "conflicts",
+  // Prüfung-Gedächtnis (R-1103/R-1105): aus dem Wissen abgeleitet, fällt mit ihm.
+  "conflict_pair_memory",
   "answer_snapshots",
   "answer_records",
   "gaps",

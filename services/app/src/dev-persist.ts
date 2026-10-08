@@ -89,6 +89,9 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // (der zweite Lauf findet nichts Offenes mehr). Beweis der Wirkung nach dem Wiederaufbau:
   // tests/aufraeumen-atomar/geschlossen-bleibt-geschlossen-im-dev-journal.test.ts.
   conflictsRepo: ["insert", "update", "closeOpenForKo"],
+  // Aufnahme 20260922 · Prüfung-Gedächtnis: `put` ersetzt je Paar (letzter Stand gewinnt) — das
+  // Replay ist deterministisch. Ohne den Eintrag ginge nach einem Neustart erneut alles an die KI.
+  conflictMemory: ["put"],
   // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge überleben den Neustart.
   overlapRepo: ["insert", "update", "closeOpenForKo"],
   // Pedi 04.07.: eingestellte Anzeige-Schwelle überlebt den Neustart (letzter Set gewinnt).

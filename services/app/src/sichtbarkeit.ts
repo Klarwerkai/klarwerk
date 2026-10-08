@@ -51,6 +51,29 @@ import type { SessionUser } from "./http";
 export interface SichtbarkeitsFakten {
   confidentiality?: Confidentiality | null | undefined;
   author?: string | null | undefined;
+  /** produkt:20261007:spaces — der führende Space; fehlt er, gilt allein Stufe + Autor. */
+  spaceId?: unknown;
+}
+
+// ================================================================================================
+// produkt:20261007:spaces — DER FÜHRENDE SPACE IST EINE ZWEITE, UNABHÄNGIGE BEDINGUNG (UND).
+// ================================================================================================
+//
+// Trägt ein Objekt eine `spaceId` (Zeichenkette), sieht es nur, wessen `spaceLesbar` diese Kennung
+// enthält. Die Bedingung tritt NEBEN die Stufenregel, nie an ihre Stelle: ein vertrauliches Objekt
+// in einem offenen Space bleibt vertraulich, ein internes Objekt in einem geschlossenen Space bleibt
+// geschlossen. Kein Rollen-Durchgriff (auch `ko.validate` öffnet keinen fremden Space) und keine
+// Autor-Ausnahme: der führende Space bestimmt die Rechte — wer ihn wechselt, sieht die Folge vorher
+// in der Rechtevorschau (`routes/spaces-routes.ts`).
+//
+// FAIL-CLOSED: fehlt `spaceLesbar` am Betrachter (ein Aufbau ohne Spaces) oder ist die Kennung
+// unbekannt, bleibt das Objekt verborgen. Ein Objekt ohne `spaceId` — der gesamte Bestand vor
+// diesem Auftrag — ist von dieser Bedingung nicht berührt.
+function spaceErlaubt(user: SessionUser, spaceId: unknown): boolean {
+  if (typeof spaceId !== "string") {
+    return true;
+  }
+  return user.spaceLesbar?.has(spaceId) === true;
 }
 
 /**
@@ -65,6 +88,9 @@ export interface SichtbarkeitsFakten {
  * danach nicht mehr öffnen — der Alltagsweg „ich schreibe etwas Sensibles auf" ginge zu.
  */
 export function darfSehen(user: SessionUser, ko: SichtbarkeitsFakten): boolean {
+  if (!spaceErlaubt(user, ko.spaceId)) {
+    return false;
+  }
   if (!isConfidential(ko.confidentiality)) {
     return true;
   }
@@ -178,11 +204,20 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
   // neu auslegte, wäre genau das Leck, das BASIC 379 §3.3 mit der Betrachterbindung schließt.
   const darfVertraulich = can(user.role, "ko.validate");
   const betrachter = user.id;
+  // produkt:20261007:spaces — die lesbaren Spaces reisen als DRITTER Parameter, aber nur, wenn der
+  // Betrachter sie trägt. Ohne sie bleibt die Parameterliste die bisherige, und das Prädikat lässt
+  // jedes Objekt mit führendem Space weg (dieselbe fail-closed-Richtung wie `spaceErlaubt`).
+  const spaces = user.spaceLesbar ? [...user.spaceLesbar] : undefined;
 
   return {
     sql(spaltenTraeger: string, abPlatzhalter: number): string {
       const rolle = `$${abPlatzhalter}`;
       const autor = `$${abPlatzhalter + 1}`;
+      // Zeichengleich `spaceErlaubt`: nur eine Zeichenkette in `spaceId` ist ein führender Space.
+      const ohneSpace = `jsonb_typeof(${spaltenTraeger}.data->'spaceId') IS DISTINCT FROM 'string'`;
+      const spaceBedingung = spaces
+        ? ` AND (${ohneSpace} OR ${spaltenTraeger}.data->>'spaceId' = ANY($${abPlatzhalter + 2}::text[]))`
+        : ` AND ${ohneSpace}`;
       // Zeile für Zeile dieselbe Regel wie `darfSehen`, plus der Papierkorb davor:
       //   · nicht getrasht,
       //   · 'intern'                                  ⇒ jeder mit `ko.read` (die Route prüft es),
@@ -196,10 +231,10 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
         ` OR ${rolle}::boolean` +
         ` OR (COALESCE(${spaltenTraeger}.author_key, '') <> ''` +
         ` AND jsonb_typeof(${spaltenTraeger}.data->'author') = 'string'` +
-        ` AND ${spaltenTraeger}.author_key = ${autor})))`
+        ` AND ${spaltenTraeger}.author_key = ${autor}))${spaceBedingung})`
       );
     },
-    params: [darfVertraulich, betrachter],
+    params: spaces ? [darfVertraulich, betrachter, spaces] : [darfVertraulich, betrachter],
     // KEIN Nachbau der Regel: derselbe `darfSehen`-Aufruf wie überall sonst, nur um den
     // Papierkorb ergänzt — der in der SQL-Form ebenfalls Teil des Prädikats ist.
     trifftZu(ko): boolean {
@@ -492,7 +527,14 @@ export interface KonfliktFelder {
   koA: string;
   koB: string;
   description: string;
-  detector?: { rationale?: string; quotes?: { a: string; b: string } } | undefined;
+  detector?:
+    | {
+        rationale?: string;
+        quotes?: { a: string; b: string };
+        // R-0263: Klaras vorgeschlagener Geltungsbereich ist Modelltext über den Inhalt.
+        vorschlag?: { geltungsbereich?: string } | undefined;
+      }
+    | undefined;
 }
 
 export type KonfliktSicht<T extends KonfliktFelder> = T & { redacted?: true };
@@ -514,10 +556,20 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
     return konflikt;
   }
   const detector = konflikt.detector;
+  // R-0263 (Aufnahme gesamt-konfliktklassifikation): Klaras vorgeschlagener Geltungsbereich ist
+  // Modelltext über den Inhalt beider Seiten — er geht den Weg von `rationale`. Art und Seite des
+  // Vorschlags bleiben stehen: sie sagen nicht mehr als die Existenz des Konflikts selbst.
+  const vorschlag = detector?.vorschlag;
+  const vorschlagSicht =
+    vorschlag?.geltungsbereich !== undefined
+      ? { vorschlag: { ...vorschlag, geltungsbereich: "" } }
+      : {};
   return {
     ...konflikt,
     description: "",
-    ...(detector ? { detector: { ...detector, rationale: "", quotes: { a: "", b: "" } } } : {}),
+    ...(detector
+      ? { detector: { ...detector, rationale: "", quotes: { a: "", b: "" }, ...vorschlagSicht } }
+      : {}),
     redacted: true,
   };
 }

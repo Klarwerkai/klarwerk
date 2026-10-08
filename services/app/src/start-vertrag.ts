@@ -85,6 +85,7 @@ import {
   type ConfluenceCredentialState,
   confluenceCredentialState,
 } from "../../confluence";
+import { JIRA_AUTH_VAR, JIRA_CREDENTIAL_VARS } from "../../jira";
 import { SHAREPOINT_CREDENTIAL_VARS } from "../../sharepoint";
 import { SCHALTER_REGISTRY, type SchalterName, schalterAn } from "./feature-flags";
 
@@ -166,6 +167,12 @@ const SCHALTER_ERKLAERUNG: Record<SchalterName, { wofuer: string; ohneIhn: strin
     wofuer: "Der SharePoint-/OneDrive-Import (Dateiauswahl und Übernahme).",
     ohneIhn:
       "Die SharePoint-Import-Routen sind nicht registriert; die Zugangs-Auskunft meldet „nicht eingeschaltet“. Vorgabe: aus.",
+  },
+  // R-0170. Eigener Schalter, nicht der von Confluence oder SharePoint.
+  jiraImport: {
+    wofuer: "Der Jira-Import (Vorgänge und Epics eines Projekts, Projektrollen als Leserechte).",
+    ohneIhn:
+      "Die Jira-Import-Routen sind nicht registriert; die Zugangs-Auskunft meldet „nicht eingeschaltet“. Vorgabe: aus.",
   },
   expertMatching: {
     wofuer: "Thema-zu-Personen-Zuordnung (Consultant-System).",
@@ -330,6 +337,60 @@ const SHAREPOINT_WERTE: readonly Startwert[] = SHAREPOINT_CREDENTIAL_VARS.map((n
   ohneIhn:
     "Kein SharePoint-Client. Der Import meldet den Zustand ehrlich (sharepointCredentialState) statt zu starten.",
 }));
+
+// ================================================================================================
+// R-0170 · DER JIRA-ZUGANG — AUS DEM MODUL, NICHT DANEBEN
+// ================================================================================================
+//
+// Dieselbe Regel wie bei Confluence und SharePoint: die Liste, WAS ein Jira-Zugang braucht, gehört
+// `services/jira` (`credential-state.ts`). Dieser Katalog erzeugt seine Einträge daraus.
+const JIRA_ERKLAERUNG: Record<
+  (typeof JIRA_CREDENTIAL_VARS)[number],
+  { geheim: boolean; wofuer: string }
+> = {
+  KLARWERK_JIRA_BASE_URL: {
+    geheim: false,
+    wofuer: "Basisadresse der Jira-Instanz. MUSS https sein, sonst kommt kein Client zustande.",
+  },
+  KLARWERK_JIRA_USER: {
+    geheim: false,
+    wofuer:
+      "Kennung (E-Mail) des Jira-Zugangs. Nur bei der Cloud-Anmeldung nötig; mit KLARWERK_JIRA_AUTH=pat wird sie nicht gelesen.",
+  },
+  KLARWERK_JIRA_TOKEN: {
+    geheim: true,
+    wofuer:
+      "API-Token des Jira-Zugangs (Cloud) bzw. persönliches Zugriffstoken (KLARWERK_JIRA_AUTH=pat). Das Konto braucht Leserecht auf das Projekt und das Recht, seine Projektrollen zu lesen.",
+  },
+  KLARWERK_JIRA_PROJECT: {
+    geheim: false,
+    wofuer: "Der Projektschlüssel, aus dem importiert wird (z. B. WART).",
+  },
+};
+
+const JIRA_WERTE: readonly Startwert[] = [
+  ...JIRA_CREDENTIAL_VARS.map((name) => ({
+    name,
+    bereich: "Jira-Import",
+    // Bewusst KEINE Pflicht — dieselbe Entscheidung wie bei Confluence und SharePoint (Pedi, 30.07.).
+    pflicht: { art: "nie" } as const,
+    geheim: JIRA_ERKLAERUNG[name].geheim,
+    wofuer: JIRA_ERKLAERUNG[name].wofuer,
+    ohneIhn:
+      "Kein Jira-Client. Der Import meldet den Zustand ehrlich (jiraCredentialState) statt zu starten.",
+  })),
+  // Der Anmeldeweg. Kein Geheimnis, keine Pflicht — ungesetzt gilt die Cloud-Anmeldung.
+  {
+    name: JIRA_AUTH_VAR,
+    bereich: "Jira-Import",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "cloud",
+    wofuer:
+      "Anmeldeart an Jira: „cloud“ (E-Mail + API-Token, Atlassian Cloud) oder „pat“ (persönliches Zugriffstoken, Jira Server/Data Center im eigenen Haus). Ein anderer Wert ergibt keinen Zugang.",
+    ohneIhn: "Es gilt die Cloud-Anmeldung mit E-Mail und API-Token.",
+  },
+];
 
 // ================================================================================================
 // DER KATALOG
@@ -611,6 +672,35 @@ const GRUNDWERTE: readonly Startwert[] = [
     geheim: false,
     wofuer: "Wartezeit auf einen freien Platz am Modelldeckel.",
     ohneIhn: "Es gilt die eingebaute Wartezeit.",
+  },
+  // R-1646 · Ausgangsprüfung (`services/reasoner/src/ausgangspruefung.ts`).
+  {
+    name: "KLARWERK_AUSGANGSPRUEFUNG",
+    bereich: "KI",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "aus; nur `an` schaltet ein",
+    wofuer:
+      "Hält jeden KI-Aufruf, der das Haus verlassen kann, an, bis ein Controller den anonymisierten Text unter /ausgangspruefung freigibt.",
+    ohneIhn: "Externe KI-Aufrufe gehen ohne Vorschau und ohne Anonymisierung hinaus.",
+  },
+  {
+    name: "KLARWERK_AUSGANGSPRUEFUNG_WARTEZEIT_MS",
+    bereich: "KI",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Wie lange ein ausgehender Aufruf auf die Freigabe wartet, bevor er nicht gesendet wird.",
+    ohneIhn: "Es gelten fünf Minuten.",
+  },
+  {
+    name: "KLARWERK_AUSGANGSPRUEFUNG_MAX_OFFEN",
+    bereich: "KI",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Höchstzahl gleichzeitig auf Freigabe wartender Aufrufe; darüber wird sofort abgelehnt.",
+    ohneIhn: "Es dürfen zwanzig Aufrufe gleichzeitig warten.",
   },
   {
     name: "KLARWERK_LOCAL_LLM_URL",
@@ -1104,6 +1194,7 @@ export const STARTVERTRAG: readonly Startwert[] = [
   ...GRUNDWERTE,
   ...CONFLUENCE_WERTE,
   ...SHAREPOINT_WERTE,
+  ...JIRA_WERTE,
   ...SCHALTER_WERTE,
 ];
 

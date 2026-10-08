@@ -102,12 +102,16 @@ async function setup() {
 
   // Beide validieren — damit der Wirkungs-Bericht (`validatedTotal`, `validatedByWeek`) überhaupt
   // etwas zu zählen hat.
+  //
+  // Beide Objekte tragen dieselbe Aussage und gelten dem Dublettentor (`validation-routes.ts`,
+  // `DUPLICATE_ACK_REQUIRED`) daher als offene Dublette. Die Validierung verlangt seitdem die
+  // ausdrückliche Bestätigung — sie ist hier Aufbau, kein Gegenstand dieses Tests.
   for (const id of [offen, geheim]) {
     const val = await app.inject({
       method: "PUT",
       url: `/api/kos/${id}`,
       headers: admin,
-      payload: { action: "admin-validate" },
+      payload: { action: "admin-validate", duplicateAcknowledged: true },
     });
     expect(val.statusCode, val.body).toBe(200);
   }

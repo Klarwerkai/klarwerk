@@ -193,10 +193,15 @@ describe("JOB 2964 · F-0688 · die Schluessel-API liefert nur validiertes Wisse
     );
   });
 
-  it("M3b · KALIBRIERUNG: dieselbe Frage im Sitzungsweg erreicht das unvalidierte Objekt sehr wohl", async () => {
+  it("M3b · KALIBRIERUNG: dieselbe Frage im Sitzungsweg trifft das unvalidierte Objekt — und meldet es", async () => {
     // Der Beleg, dass FRAGE_NUR_UNGEPRUEFT das Objekt ueberhaupt findet. Waere sie eine Frage, die
     // im Retrieval danebengreift, waeren M1/M2 Scheinbelege — gruen, weil nichts gesucht wird.
-    // Der Sitzungsweg unterliegt der Add-on-Enge nicht und dient hier als Referenz.
+    //
+    // R-0584 (Auftrag gesamt-datenschutz-voreinstellung): bis hierher diente der Sitzungsweg als
+    // Referenz, weil er OHNE Validiert-Enge antwortete. Seit dem Auftrag antwortet auch er nur aus
+    // geprueftem Wissen. Der Trefferbeleg kommt deshalb aus der betrachtergefilterten Meldung
+    // `ungeprueft` (JOB 1591 W5) — sie entsteht aus DERSELBEN Vorauswahl wie die Antwort. Dazu die
+    // neue Zusage: das unvalidierte Objekt traegt auch hier keine Antwort.
     const { app, headers, ungeprueftId } = await appMitBeidenSorten();
     const res = await app.inject({
       method: "POST",
@@ -205,11 +210,18 @@ describe("JOB 2964 · F-0688 · die Schluessel-API liefert nur validiertes Wisse
       payload: { question: FRAGE_NUR_UNGEPRUEFT },
     });
     expect(res.statusCode).toBe(200);
-    const quellen = (res.json().result?.sources ?? []) as string[];
+    const koerper = res.json() as {
+      result?: { sources?: string[] };
+      ungeprueft?: Array<{ id: string }>;
+    };
     expect(
-      quellen,
+      (koerper.ungeprueft ?? []).map((h) => h.id),
       "die Frage findet das unvalidierte Objekt gar nicht — dann pruefen M1/M2 nichts",
     ).toContain(ungeprueftId);
+    expect(koerper.result?.sources ?? []).not.toContain(ungeprueftId);
+    expect(res.body, "der unvalidierte Inhalt steht in der Sitzungsantwort").not.toContain(
+      "NOTSTART-4 angefahren",
+    );
   });
 
   // ==============================================================================================
