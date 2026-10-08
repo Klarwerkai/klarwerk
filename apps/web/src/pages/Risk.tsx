@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
@@ -100,6 +100,36 @@ export function Risk(): JSX.Element {
     onSuccess: gemeldet("risk.gapToast.prioritySaved"),
     onError: fehlgeschlagen("risk.gapToast.priorityFailed"),
   });
+  // R-0956 (Ben, Nacharbeit 7): die WAHL je Lücke bleibt stehen, bis der Server sie übernommen hat.
+  // Bis hierher hing die Priorität am alten Serverwert und Person/Objekt an einem festen `""` —
+  // ein Speicherfehler kostete die Auswahl. Ein Eintrag weicht erst, wenn ein neuer Serverstand sie
+  // bestätigt (Priorität gleich, Person zugewiesen, Lücke geschlossen) oder die Lücke fehlt; nach
+  // einem Fehler steht er weiter da und lässt sich mit „Erneut versuchen“ unverändert senden.
+  const [prioWahl, setPrioWahl] = useState<Record<string, GapPriority>>({});
+  const [personWahl, setPersonWahl] = useState<Record<string, string>>({});
+  const [objektWahl, setObjektWahl] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const liste = gaps.data;
+    if (!liste) {
+      return;
+    }
+    const lueckeVon = new Map(liste.map((g) => [g.id, g]));
+    const offenBis = <W,>(
+      alt: Record<string, W>,
+      bestaetigt: (g: (typeof liste)[number], wert: W) => boolean,
+    ): Record<string, W> => {
+      const neu = Object.fromEntries(
+        Object.entries(alt).filter(([id, wert]) => {
+          const g = lueckeVon.get(id);
+          return g !== undefined && !bestaetigt(g, wert);
+        }),
+      );
+      return Object.keys(neu).length === Object.keys(alt).length ? alt : neu;
+    };
+    setPrioWahl((alt) => offenBis(alt, (g, wert) => g.priority === wert));
+    setPersonWahl((alt) => offenBis(alt, (g, wert) => g.assignee === wert));
+    setObjektWahl((alt) => offenBis(alt, (g) => g.status !== "offen"));
+  }, [gaps.data]);
 
   const maxKo = Math.max(1, ...(bus.data ?? []).map((b) => b.koCount));
   // AUFTRAG-mega62 Block H: die Auflösung kommt aus dem EINEN Haken (lib/useAuthorName.ts). Die
@@ -489,14 +519,13 @@ export function Risk(): JSX.Element {
                           {t("risk.gapCapture")}
                         </Link>
                         <select
-                          value={g.priority}
+                          value={prioWahl[g.id] ?? g.priority}
                           disabled={setPriority.isPending}
-                          onChange={(e) =>
-                            setPriority.mutate({
-                              id: g.id,
-                              priority: e.target.value as GapPriority,
-                            })
-                          }
+                          onChange={(e) => {
+                            const priority = e.target.value as GapPriority;
+                            setPrioWahl((alt) => ({ ...alt, [g.id]: priority }));
+                            setPriority.mutate({ id: g.id, priority });
+                          }}
                           title={t("risk.priorityLabel")}
                           className="h-8 w-28 rounded-input border border-hairline bg-surface px-2 text-[12px] text-muted"
                         >
@@ -507,11 +536,13 @@ export function Risk(): JSX.Element {
                           ))}
                         </select>
                         <select
-                          value=""
+                          value={personWahl[g.id] ?? ""}
                           disabled={assign.isPending}
                           onChange={(e) => {
-                            if (e.target.value) {
-                              assign.mutate({ id: g.id, expertId: e.target.value });
+                            const expertId = e.target.value;
+                            if (expertId) {
+                              setPersonWahl((alt) => ({ ...alt, [g.id]: expertId }));
+                              assign.mutate({ id: g.id, expertId });
                             }
                           }}
                           className="h-8 w-36 rounded-input border border-hairline bg-surface px-2 text-[12px] text-muted"
@@ -524,12 +555,14 @@ export function Risk(): JSX.Element {
                           ))}
                         </select>
                         <select
-                          value=""
+                          value={objektWahl[g.id] ?? ""}
                           data-testid="luecke-schliessen"
                           disabled={close.isPending || (kos.data ?? []).length === 0}
                           onChange={(e) => {
-                            if (e.target.value) {
-                              close.mutate({ id: g.id, koId: e.target.value });
+                            const koId = e.target.value;
+                            if (koId) {
+                              setObjektWahl((alt) => ({ ...alt, [g.id]: koId }));
+                              close.mutate({ id: g.id, koId });
                             }
                           }}
                           title={t("risk.closeWithTitle")}
@@ -547,6 +580,50 @@ export function Risk(): JSX.Element {
                           <span role="alert" className="text-[11px] text-trust-crit-text">
                             {t("risk.closeFailed")}
                           </span>
+                        ) : null}
+                        {/* R-0956 (Ben, Nacharbeit 7): nach einem Speicherfehler steht die Wahl
+                            weiter im Feld, und derselbe Wert lässt sich erneut senden. */}
+                        {setPriority.isError && setPriority.variables?.id === g.id ? (
+                          <button
+                            type="button"
+                            data-testid="luecke-erneut-prioritaet"
+                            onClick={() => {
+                              if (setPriority.variables) {
+                                setPriority.mutate(setPriority.variables);
+                              }
+                            }}
+                            className="text-[11px] font-semibold text-trust-crit-text underline"
+                          >
+                            {t("loadstate.error.retry")}
+                          </button>
+                        ) : null}
+                        {assign.isError && assign.variables?.id === g.id ? (
+                          <button
+                            type="button"
+                            data-testid="luecke-erneut-person"
+                            onClick={() => {
+                              if (assign.variables) {
+                                assign.mutate(assign.variables);
+                              }
+                            }}
+                            className="text-[11px] font-semibold text-trust-crit-text underline"
+                          >
+                            {t("loadstate.error.retry")}
+                          </button>
+                        ) : null}
+                        {close.isError && close.variables?.id === g.id ? (
+                          <button
+                            type="button"
+                            data-testid="luecke-erneut-schliessen"
+                            onClick={() => {
+                              if (close.variables) {
+                                close.mutate(close.variables);
+                              }
+                            }}
+                            className="text-[11px] font-semibold text-trust-crit-text underline"
+                          >
+                            {t("loadstate.error.retry")}
+                          </button>
                         ) : null}
                       </>
                     ) : null}

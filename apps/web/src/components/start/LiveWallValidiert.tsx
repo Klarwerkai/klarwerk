@@ -9,6 +9,7 @@ import {
 import type { LiveWall } from "../../api/types";
 import { FOTO_TYPEN, fotoVorbereiten } from "../../lib/livewallFoto";
 import { LIVEWALL_TAKT_MS, personenAktuell, useJetzt } from "../../lib/livewallTakt";
+import { leerzustandsZeile } from "../EmptyStateCtas";
 import { RoleLink } from "../RoleLink";
 
 // ================================================================================================
@@ -65,9 +66,13 @@ export function ValidiertListe({
   const { t, i18n } = useTranslation();
   if (eintraege.length === 0) {
     return (
-      <p className={gross ? "text-[22px] text-muted" : "text-[12.5px] text-muted"}>
-        {t("start.livewall.validatedEmpty")}
-      </p>
+      <>
+        <p className={gross ? "text-[22px] text-muted" : "text-[12.5px] text-muted"}>
+          {t("start.livewall.validatedEmpty")}
+        </p>
+        {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+        {leerzustandsZeile(t, "start")}
+      </>
     );
   }
   const foto = gross ? "h-14 w-14" : "h-6 w-6";

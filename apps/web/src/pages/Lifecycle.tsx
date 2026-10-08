@@ -23,7 +23,7 @@ import { endpoints } from "../api/endpoints";
 import { useKos, useLearningPath, useLearningProgress, useLifecyclePending } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
 import { useToast } from "../app/ToastContext";
-import { EmptyStateCtas } from "../components/EmptyStateCtas";
+import { EmptyStateCtas, leerzustandsZeile } from "../components/EmptyStateCtas";
 import { PruefenKopf } from "../components/pruefen/PruefenKopf";
 import { PruefenMehr, PruefenMehrBlock, PruefenMehrZeile } from "../components/pruefen/PruefenMehr";
 import {
@@ -187,7 +187,10 @@ export function Lifecycle(): JSX.Element {
             </ol>
           </>
         ) : (
-          <p>{t("lcy.pathEmpty")}</p>
+          <>
+            <p>{t("lcy.pathEmpty")}</p>
+            {leerzustandsZeile(t, "lernpfad")}
+          </>
         )}
       </PruefenHilfeBlock>
       <PruefenMenueTrenner />

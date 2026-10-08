@@ -2,6 +2,7 @@ import { ChevronRight, FileText, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { LiveWall } from "../../api/types";
+import { leerzustandsZeile } from "../EmptyStateCtas";
 import { RoleLink } from "../RoleLink";
 import {
   FUER_DICH_ZEILEN,
@@ -227,11 +228,15 @@ export function FuerDichKarte({
             ist eine Aussage über JETZT und braucht einen frischen, ABGESCHLOSSENEN Abruf. Die WERTE
             oben hängen weiter an `bestand` — REGELN §7, sie werden nie geleert. */}
         {entwarnungErlaubt(kartenlage) && sichtbar.length === 0 ? (
-          <div className={ZEILE}>
-            <span data-h5-zeile="true" className="flex-1 text-[14px] text-text">
-              {t("task.none")}
-            </span>
-          </div>
+          <>
+            <div className={ZEILE}>
+              <span data-h5-zeile="true" className="flex-1 text-[14px] text-text">
+                {t("task.none")}
+              </span>
+            </div>
+            {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+            {leerzustandsZeile(t, "start")}
+          </>
         ) : null}
         <Datenlagezeile
           karte="fuerdich"
@@ -358,11 +363,14 @@ export function ZuletztKarte({
             Auskunft in der einen von beiden. ZWEI SÄTZE, EINE REGEL (JOB 3118): „nichts erfasst"
             ist genauso eine Verneinung wie „Nichts offen." und hängt an derselben Bedingung. */}
         {entwarnungErlaubt(kartenlage) && daten !== undefined && eintraege.length === 0 ? (
-          <div className={ZEILE}>
-            <span data-h5-zeile="true" className="flex-1 text-[14px] text-text">
-              {t("start.zuletzt.leer")}
-            </span>
-          </div>
+          <>
+            <div className={ZEILE}>
+              <span data-h5-zeile="true" className="flex-1 text-[14px] text-text">
+                {t("start.zuletzt.leer")}
+              </span>
+            </div>
+            {leerzustandsZeile(t, "start")}
+          </>
         ) : null}
         {/* KORREKTURPFLICHT 4 (Ben, JOB 3064 Runde 3): bis dahin sah ein GESCHEITERTER Abruf hier
             genau aus wie „lädt" und wie „nichts erfasst" — drei verschiedene Lagen, ein einziges

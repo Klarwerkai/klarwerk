@@ -253,6 +253,7 @@ const nl: typeof de = {
   "cmd.treffer_other": "{{count}} doelen",
   "cmd.audit": "Audit-log (in Analytics)",
   "toast.dismiss": "Sluiten",
+  "einblendung.erledigt": "Gereed.",
   "page.placeholder":
     "Dit scherm wordt in een latere taak gebouwd. App-shell, navigatie en rollogica staan er al.",
   "status.entwurf": "Concept",
@@ -4322,6 +4323,36 @@ const nl: typeof de = {
     "Deze bijdrage deelt nog geen betekenisvolle tag met een andere. Het kennisnetwerk toont welke thema's al verbonden zijn; nieuwe kennis met passende tags verbindt haar met buren.",
   "story.surface.risk.lead":
     "Nog geen risicogegevens — daarvoor is vastgelegde kennis per gebied nodig. Leg ervaringskennis vast of importeer die; daarna toont deze lijst waar die van één persoon afhangt.",
+  "story.surface.objekt.lead":
+    "Bij deze bijdrage staat hier nog niets. Aanvullingen zoals bronnen, bijlagen en opmerkingen maken haar betrouwbaarder — open haar om aan te vullen of vraag wat ontbreekt.",
+  "story.surface.entwuerfe.lead":
+    "Nog geen concepten. Een concept bewaart wat je vastlegt voordat het team het controleert — begin met een nieuwe bijdrage.",
+  "story.surface.verwaltung.lead":
+    "Hier is nog niets ingericht. Het beheer houdt Klarwerk actueel — items verschijnen zodra er iets wordt ingericht, geback-upt of verwijderd.",
+  "story.surface.auswertung.lead":
+    "Voor deze analyse is nog niets beschikbaar. Ze ontstaat uit gecontroleerde kennis — de volgende stap is bijdragen vastleggen en laten controleren.",
+  "story.surface.import.lead":
+    "Nog niets om over te nemen. Een import haalt bestaande kennis uit een bron in de cyclus — kies een bron of upload een bestand.",
+  "story.surface.anleitung.lead":
+    "Hier staat nog geen inhoud. Werkinstructies bundelen gecontroleerde kennis tot stappen — vul ze aan met bouwstenen uit de bibliotheek.",
+  "story.surface.spaces.lead":
+    "Deze ruimte is nog leeg. Ruimtes ordenen bijdragen naar verantwoordelijkheid — verplaats een bijdrage hierheen of leg een nieuwe vast.",
+  "story.surface.ausgang.lead":
+    "Er wacht niets op de uitgaande controle. Hier komt terecht wat Klarwerk naar buiten moet geven — zodra iemand een bijdrage ter vrijgave voorlegt.",
+  "story.surface.wissensnetz.lead":
+    "Nog geen verbindingen. Het kennisnetwerk toont hoe bijdragen via tags samenhangen — geef bij het vastleggen passende tags.",
+  "story.surface.meldungen.lead":
+    "Op dit moment niets te melden. Hier verschijnt wat je aandacht nodig heeft — conflicten, lacunes en geplande controles.",
+  "story.surface.horizont.lead":
+    "In de gekozen periode gaat niemand met unieke kennis met pensioen. Houd de pensioenhorizonten in het beheer actueel, zodat dit overzicht klopt.",
+  "story.surface.lernpfad.lead":
+    "Voor jouw rol is nog geen leerpad ingesteld. Het leidt door de belangrijkste gecontroleerde kennis — tot die tijd helpt de bibliotheek.",
+  "story.surface.hilfe.lead":
+    "Voor deze pagina is nog geen eigen paginahulp. De hulp legt Klarwerk stap voor stap uit — je bereikt haar via het hulphoofdstuk in het menu.",
+  "story.surface.gliederung.lead":
+    "Deze bijdrage heeft nog geen koppen. Koppen structureren kennis, zodat anderen die snel vinden — voeg ze toe in de editor.",
+  "story.surface.conflicts.lead":
+    "Conflicten lost het team op bij het controleren. Er staat er nu geen open — nieuwe verschijnen hier zodra twee bijdragen elkaar tegenspreken.",
   "adm.auditTitle": "Recente gebruikers-/auth-activiteiten (audit)",
   "adm.auditEmpty": "Geen gebruikers-auditvermeldingen.",
   "prof.kicker": "Account",

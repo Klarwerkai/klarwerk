@@ -9,9 +9,13 @@
 
 import { type KnowledgeOsPhase, phaseLabelKey } from "./taskAction";
 
-// Die Kernflächen mit echten leeren/ersten Zuständen (identisch zu EmptyStateContext). R-0956: die
-// Risikoseite kam dazu — ihre Bus-Faktor-Liste war der Leerzustand ohne Einordnung —, ebenso die
-// leere Schlagwort-Nachbarschaft eines Beitrags und das leere Audit-Protokoll.
+// Die Flächen mit echten leeren/ersten Zuständen. R-0956 („Jede leere Liste erklärt, warum es
+// KLARWERK gibt, wo man gerade im Wissenskreis steht und was der nächste sinnvolle Schritt ist"):
+// dazugekommen sind die Risikoseite, die Schlagwort-Nachbarschaft, das Audit-Protokoll, Lücken,
+// Lebenszyklus, Dubletten und (Nacharbeit 7) JEDE weitere Liste — die Teillisten eines Beitrags,
+// Entwürfe, Verwaltungs-, Import- und Auswertungslisten, Räume, Ausgangsprüfung, Wissensnetz,
+// Meldungen, Ruhestandshorizont, Lernpfad, Seitenhilfe und Konflikte. Die ersten zehn sind zugleich
+// `EmptyStateContext` (mit Schritt-Links); die übrigen nennen ihren nächsten Schritt im Satz.
 export type StorySurface =
   | "start"
   | "tasks"
@@ -22,7 +26,22 @@ export type StorySurface =
   | "audit"
   | "gaps"
   | "lifecycle"
-  | "duplicates";
+  | "duplicates"
+  | "objekt"
+  | "entwuerfe"
+  | "verwaltung"
+  | "auswertung"
+  | "import"
+  | "anleitung"
+  | "spaces"
+  | "ausgang"
+  | "wissensnetz"
+  | "meldungen"
+  | "horizont"
+  | "lernpfad"
+  | "hilfe"
+  | "conflicts"
+  | "gliederung";
 
 export const KNOWLEDGE_STORY_SURFACES: readonly StorySurface[] = [
   "start",
@@ -35,6 +54,21 @@ export const KNOWLEDGE_STORY_SURFACES: readonly StorySurface[] = [
   "gaps",
   "lifecycle",
   "duplicates",
+  "objekt",
+  "entwuerfe",
+  "verwaltung",
+  "auswertung",
+  "import",
+  "anleitung",
+  "spaces",
+  "ausgang",
+  "wissensnetz",
+  "meldungen",
+  "horizont",
+  "lernpfad",
+  "hilfe",
+  "conflicts",
+  "gliederung",
 ] as const;
 
 // Jede Fläche steht für eine reale Phase im Knowledge-OS-Kreis — dieselbe Sprache wie Start/MyTasks.
@@ -49,6 +83,21 @@ const SURFACE_PHASE: Record<StorySurface, KnowledgeOsPhase> = {
   gaps: "use", // eine Lücke entsteht beim Nutzen: eine Frage findet keine gesicherte Antwort.
   lifecycle: "maintain", // Fälliges wird erneut geprüft, damit es aktuell bleibt.
   duplicates: "validate", // Überschneidungen klärt das Team beim Prüfen.
+  objekt: "use", // die Teillisten eines Beitrags sieht, wer ihn liest.
+  entwuerfe: "capture", // ein Entwurf ist Erfassen vor der Prüfung.
+  verwaltung: "maintain", // Verwaltung hält den Bestand aktuell.
+  auswertung: "maintain", // Auswertungen entstehen aus dem geprüften Bestand.
+  import: "capture", // ein Import bringt vorhandenes Wissen in den Kreis.
+  anleitung: "use", // Anleitungen bündeln geprüftes Wissen zum Nutzen.
+  spaces: "use", // Räume ordnen den nutzbaren Bestand.
+  ausgang: "validate", // die Ausgangsprüfung ist eine Prüfung vor der Weitergabe.
+  wissensnetz: "use", // das Netz zeigt, wie der Bestand zusammenhängt.
+  meldungen: "maintain", // Meldungen rufen zum Aktuellhalten.
+  horizont: "maintain", // der Ruhestandsblick hält Wissen verfügbar.
+  lernpfad: "use", // ein Lernpfad führt durch nutzbares Wissen.
+  hilfe: "use", // die Hilfe erklärt das Nutzen.
+  conflicts: "validate", // Konflikte klärt das Team beim Prüfen.
+  gliederung: "capture", // Überschriften setzt, wer einen Beitrag schreibt.
 };
 
 export interface KnowledgeStory {

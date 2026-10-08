@@ -29,6 +29,7 @@ import type {
 } from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { SanitizedHtml } from "../components/SanitizedHtml";
 import { SourceLink } from "../components/ko/SourceEvidence";
@@ -377,7 +378,12 @@ function Assistent({
                 ))}
               </ul>
             ) : (
-              <p className="text-[12.5px] text-muted-2">{t("dublettenvergleich.quellen.keine")}</p>
+              <>
+                <p className="text-[12.5px] text-muted-2">
+                  {t("dublettenvergleich.quellen.keine")}
+                </p>
+                {leerzustandsZeile(t, "duplicates")}
+              </>
             )}
           </div>
           <fieldset>
@@ -410,7 +416,12 @@ function Assistent({
                 ))}
               </ul>
             ) : (
-              <p className="text-[12.5px] text-muted-2">{t("dublettenvergleich.quellen.keine")}</p>
+              <>
+                <p className="text-[12.5px] text-muted-2">
+                  {t("dublettenvergleich.quellen.keine")}
+                </p>
+                {leerzustandsZeile(t, "duplicates")}
+              </>
             )}
           </fieldset>
         </div>
@@ -616,7 +627,10 @@ function ListenWahl({
         {t(`dublettenvergleich.feld.${feld}`)}
       </legend>
       {positionen.length === 0 ? (
-        <p className="text-[12.5px] text-muted-2">{t("dublettenvergleich.keinePositionen")}</p>
+        <>
+          <p className="text-[12.5px] text-muted-2">{t("dublettenvergleich.keinePositionen")}</p>
+          {leerzustandsZeile(t, "duplicates")}
+        </>
       ) : (
         <ul className="space-y-1">
           {positionen.map((p) => (

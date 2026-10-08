@@ -225,6 +225,14 @@ async function waehleIn(feld: HTMLSelectElement | null | undefined, wert: string
 }
 
 const zeile = (): Element | null => container.querySelector('[data-testid="luecke-zeile"]');
+
+async function klickeIn(knopf: Element | null | undefined): Promise<void> {
+  expect(knopf, "Vorbedingung: „Erneut versuchen“ steht an der Zeile").not.toBeNull();
+  await act(async () => {
+    (knopf as HTMLElement | null | undefined)?.click();
+  });
+  await act(flush);
+}
 const prioritaetsfeld = (): HTMLSelectElement | null | undefined =>
   zeile()?.querySelector<HTMLSelectElement>(`select[title="${i18n.t("risk.priorityLabel")}"]`);
 const zuweisungsfeld = (): HTMLSelectElement | undefined =>
@@ -243,9 +251,14 @@ describe("R-0953 · die Lückenaktionen melden Erfolg und Fehler", () => {
     await waehleIn(prioritaetsfeld(), "hoch");
     expect(lage.priorisieren).toHaveBeenCalledWith("gap-1", "hoch");
     expect(einblendungen()).toContain(i18n.t("risk.gapToast.priorityFailed"));
-
-    await waehleIn(prioritaetsfeld(), "hoch");
+    // R-0956 (Ben, Nacharbeit 7): die Wahl bleibt nach dem Fehler stehen …
+    expect(prioritaetsfeld()?.value, "die gewählte Priorität bleibt").toBe("hoch");
+    // … und „Erneut versuchen“ sendet genau sie noch einmal.
+    await klickeIn(zeile()?.querySelector('[data-testid="luecke-erneut-prioritaet"]'));
+    expect(lage.priorisieren).toHaveBeenCalledTimes(2);
+    expect(lage.priorisieren).toHaveBeenLastCalledWith("gap-1", "hoch");
     expect(einblendungen()).toContain(i18n.t("risk.gapToast.prioritySaved"));
+    expect(zeile()?.querySelector('[data-testid="luecke-erneut-prioritaet"]')).toBeNull();
   });
 
   it("E2 · Zuweisen: Fehler als Einblendung, danach Erfolg als Einblendung", async () => {
@@ -256,9 +269,26 @@ describe("R-0953 · die Lückenaktionen melden Erfolg und Fehler", () => {
     await waehleIn(zuweisungsfeld(), "u-tom");
     expect(lage.zuweisen).toHaveBeenCalledWith("gap-1", "u-tom");
     expect(einblendungen()).toContain(i18n.t("risk.gapToast.assignFailed"));
-
-    await waehleIn(zuweisungsfeld(), "u-tom");
+    // R-0956 (Ben, Nacharbeit 7): die gewählte Person steht weiter im Feld …
+    expect(zuweisungsfeld()?.value, "die gewählte Person bleibt").toBe("u-tom");
+    // … und „Erneut versuchen“ sendet genau sie noch einmal.
+    await klickeIn(zeile()?.querySelector('[data-testid="luecke-erneut-person"]'));
+    expect(lage.zuweisen).toHaveBeenCalledTimes(2);
+    expect(lage.zuweisen).toHaveBeenLastCalledWith("gap-1", "u-tom");
     expect(einblendungen()).toContain(i18n.t("risk.gapToast.assigned"));
+  });
+
+  it("E5 · Schliessen: das gewählte Objekt bleibt nach dem Fehler stehen und lässt sich erneut senden", async () => {
+    lage.schliessen.mockImplementationOnce(async () => {
+      throw new Error("BAD_REQUEST");
+    });
+    await mount();
+    await waehle("ko-ventil");
+    expect(auswahl().value, "das gewählte Objekt bleibt").toBe("ko-ventil");
+    await klickeIn(zeile()?.querySelector('[data-testid="luecke-erneut-schliessen"]'));
+    expect(lage.schliessen).toHaveBeenCalledTimes(2);
+    expect(lage.schliessen).toHaveBeenLastCalledWith("gap-1", "ko-ventil");
+    expect(einblendungen()).toContain(i18n.t("risk.gapToast.closed"));
   });
 
   it("E3 · Löschen: Fehler als Einblendung, die Lücke bleibt; danach Erfolg als Einblendung", async () => {

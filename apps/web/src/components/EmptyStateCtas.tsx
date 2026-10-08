@@ -7,7 +7,7 @@ import {
   type EmptyStateContext,
   emptyStateActions,
 } from "../lib/emptyStateActions";
-import { knowledgeStory } from "../lib/knowledgeStory";
+import { type StorySurface, knowledgeStory } from "../lib/knowledgeStory";
 import { RoleLink } from "./RoleLink";
 
 // SCRUM-181: kompakte „nächste Schritte"-Links für leere Übersichten. Rein additiv, rollen-/
@@ -48,7 +48,7 @@ export function EmptyStateCtas({ context }: { context: EmptyStateContext }): JSX
  */
 export function leerzustandsRahmen(
   t: TFunction,
-  context: EmptyStateContext,
+  context: StorySurface,
   actions: readonly EmptyStateAction[],
   link: (a: EmptyStateAction) => ReactNode,
 ): JSX.Element {
@@ -63,11 +63,39 @@ export function leerzustandsRahmen(
         </span>
       </div>
       <p className="mt-1 text-center text-[12px] leading-relaxed text-muted">{t(story.leadKey)}</p>
-      <div className="mt-2 flex flex-wrap justify-center gap-2">{actions.map(link)}</div>
+      {/* Ohne Schritte (die Fläche trägt ihren nächsten Schritt schon selbst, z. B. die Bibliothek)
+          entfällt der Block — kein leerer Rahmen, kein doppelter Knopf. */}
+      {actions.length > 0 ? (
+        <div className="mt-2 flex flex-wrap justify-center gap-2">{actions.map(link)}</div>
+      ) : null}
       {/* Ehrlicher Dauerhinweis: Wissen ist erst nach der Prüfung gesichert. */}
       <p className="mt-2 text-center text-[11px] leading-relaxed text-muted-2">
         {t(story.honestKey)}
       </p>
     </div>
+  );
+}
+
+/**
+ * R-0956 (Ben, Nacharbeit 7): dieselbe Einordnung als EINE Zeile — für die Listen IN einer Fläche
+ * (Teillisten eines Beitrags, Verwaltungs-, Import-, Auswertungslisten …). Sie trägt alle drei
+ * Zusagen des Originals: warum es Klarwerk gibt (die geteilte Story), wo man im Wissenskreis steht
+ * (die Phase) und was der nächste sinnvolle Schritt ist (der flächeneigene Satz nennt ihn). Ohne
+ * Rollenzweig: der Schritt steht im Satz, nicht als rollengefilterter Knopf.
+ */
+export function leerzustandsZeile(t: TFunction, context: StorySurface): JSX.Element {
+  const story = knowledgeStory(context);
+  return (
+    <p
+      data-testid="leer-einordnung"
+      data-flaeche={context}
+      className="mt-1 text-[11.5px] leading-relaxed text-muted-2"
+    >
+      <span className="font-semibold text-muted">{t(story.titleKey)}</span>{" "}
+      <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase">
+        {t("task.phaseLabel")} {t(story.phaseLabelKey)}
+      </span>{" "}
+      {t(story.leadKey)}
+    </p>
   );
 }

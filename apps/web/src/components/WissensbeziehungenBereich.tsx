@@ -83,6 +83,7 @@ import type {
 import { auffrischungGescheitert } from "../lib/abfrageBestand";
 import { koDetailPath } from "../lib/graphNav";
 import { formatKoTimestamp } from "../lib/koDates";
+import { leerzustandsZeile } from "./EmptyStateCtas";
 import { AuffrischungHinweis } from "./bibliothek/AuffrischungHinweis";
 
 /** Die fünf Arten in der Reihenfolge des Vertrags — geschlossen, wie serverseitig. */
@@ -722,6 +723,7 @@ export function WissensbeziehungenBereich({ koId }: { koId: string }): JSX.Eleme
               {/* Die Ehrlichkeitsauflage: was der Leerfall NICHT heißt. Ohne diesen Satz liest
                   jemand „keine Beziehungen" als „nichts widerspricht sich". */}
               <p className="text-[11.5px] text-muted-2">{t("wb.leerHinweis")}</p>
+              {leerzustandsZeile(t, "objekt")}
             </div>
           ) : (
             <ul className="space-y-2.5" data-testid="wb-liste">

@@ -441,6 +441,7 @@ const de = {
   "cmd.treffer_other": "{{count}} Ziele",
   "cmd.audit": "Audit-Log (in Analytics)",
   "toast.dismiss": "Schließen",
+  "einblendung.erledigt": "Erledigt.",
   "page.placeholder":
     "Dieser Screen wird in einem späteren Task gebaut. App-Shell, Navigation und Rollenlogik stehen.",
   "status.entwurf": "Entwurf",
@@ -5553,6 +5554,36 @@ const de = {
     "Dieser Beitrag teilt noch kein aussagekräftiges Schlagwort mit einem anderen. Im Wissensnetz siehst du, welche Themen schon verbunden sind; neues Wissen mit passenden Schlagwörtern verknüpft ihn mit Nachbarn.",
   "story.surface.risk.lead":
     "Noch keine Risikodaten — dafür braucht es erfasstes Wissen je Bereich. Erfasse oder importiere Erfahrungswissen; danach zeigt diese Liste, wo es nur an einer Person hängt.",
+  "story.surface.objekt.lead":
+    "Zu diesem Beitrag liegt hier noch nichts vor. Ergänzungen wie Quellen, Anhänge und Kommentare machen ihn verlässlicher — öffne ihn zum Ergänzen oder frag nach, was fehlt.",
+  "story.surface.entwuerfe.lead":
+    "Noch keine Entwürfe. Ein Entwurf hält fest, was du erfasst, bevor das Team es prüft — beginne mit einem neuen Beitrag.",
+  "story.surface.verwaltung.lead":
+    "Hier ist noch nichts angelegt. Die Verwaltung hält Klarwerk aktuell — Einträge entstehen, sobald im Betrieb etwas eingerichtet, gesichert oder gelöscht wird.",
+  "story.surface.auswertung.lead":
+    "Für diese Auswertung liegt noch nichts vor. Sie entsteht aus geprüftem Wissen — der nächste Schritt ist, Beiträge zu erfassen und prüfen zu lassen.",
+  "story.surface.import.lead":
+    "Noch nichts zum Übernehmen. Ein Import holt vorhandenes Wissen aus einer Quelle in den Kreis — wähle eine Quelle oder lade eine Datei hoch.",
+  "story.surface.anleitung.lead":
+    "Hier steht noch kein Inhalt. Arbeitsanleitungen bündeln geprüftes Wissen zu Schritten — ergänze sie um Bausteine aus der Bibliothek.",
+  "story.surface.spaces.lead":
+    "Dieser Raum ist noch leer. Räume ordnen Beiträge nach Zuständigkeit — verschiebe einen Beitrag hierher oder erfasse einen neuen.",
+  "story.surface.ausgang.lead":
+    "Nichts wartet auf die Ausgangsprüfung. Hier landet, was Klarwerk nach außen geben soll — sobald jemand einen Beitrag zur Weitergabe vorlegt.",
+  "story.surface.wissensnetz.lead":
+    "Noch keine Verbindungen. Das Wissensnetz zeigt, wie Beiträge über Schlagwörter zusammenhängen — vergib beim Erfassen passende Schlagwörter.",
+  "story.surface.meldungen.lead":
+    "Gerade nichts zu melden. Hier erscheint, was deine Aufmerksamkeit braucht — Konflikte, Lücken und fällige Prüfungen.",
+  "story.surface.horizont.lead":
+    "Im gewählten Zeitraum geht niemand mit Einzelwissen in den Ruhestand. Halte die Ruhestandshorizonte in der Pflege aktuell, damit dieser Blick stimmt.",
+  "story.surface.lernpfad.lead":
+    "Für deine Rolle ist noch kein Lernpfad hinterlegt. Er führt durch das wichtigste geprüfte Wissen — bis dahin hilft die Bibliothek.",
+  "story.surface.hilfe.lead":
+    "Für diese Seite gibt es noch keine eigene Seitenhilfe. Die Hilfe erklärt Klarwerk Schritt für Schritt — sie ist über das Hilfe-Kapitel im Menü erreichbar.",
+  "story.surface.gliederung.lead":
+    "Dieser Beitrag hat noch keine Überschriften. Überschriften gliedern Wissen, damit andere es schnell finden — setze sie im Editor.",
+  "story.surface.conflicts.lead":
+    "Konflikte klärt das Team beim Prüfen. Gerade ist keiner offen — neue erscheinen hier, sobald sich zwei Beiträge widersprechen.",
   "adm.auditTitle": "Letzte Nutzer-/Auth-Aktivitäten (Audit)",
   "adm.auditEmpty": "Keine Nutzer-Audit-Einträge.",
   "prof.kicker": "Konto",

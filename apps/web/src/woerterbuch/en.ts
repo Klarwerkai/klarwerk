@@ -256,6 +256,7 @@ const en: typeof de = {
   "cmd.treffer_other": "{{count}} targets",
   "cmd.audit": "Audit log (in Analytics)",
   "toast.dismiss": "Dismiss",
+  "einblendung.erledigt": "Done.",
   "page.placeholder":
     "This screen will be built in a later task. App shell, navigation and role logic are in place.",
   "status.entwurf": "Draft",
@@ -4331,6 +4332,36 @@ const en: typeof de = {
     "This contribution doesn't share a meaningful tag with any other yet. The knowledge network shows which topics are already connected; new knowledge with matching tags links it to neighbours.",
   "story.surface.risk.lead":
     "No risk data yet — this needs captured knowledge per area. Capture or import experience knowledge; this list then shows where it depends on a single person.",
+  "story.surface.objekt.lead":
+    "Nothing is recorded here for this contribution yet. Additions such as sources, attachments and comments make it more reliable — open it to add to it, or ask what is missing.",
+  "story.surface.entwuerfe.lead":
+    "No drafts yet. A draft keeps what you capture before the team reviews it — start with a new contribution.",
+  "story.surface.verwaltung.lead":
+    "Nothing has been set up here yet. Administration keeps Klarwerk up to date — entries appear as soon as something is configured, backed up or deleted.",
+  "story.surface.auswertung.lead":
+    "There is nothing for this analysis yet. It is built from reviewed knowledge — the next step is to capture contributions and have them reviewed.",
+  "story.surface.import.lead":
+    "Nothing to take over yet. An import brings existing knowledge from a source into the cycle — choose a source or upload a file.",
+  "story.surface.anleitung.lead":
+    "There is no content here yet. Work instructions combine reviewed knowledge into steps — add building blocks from the library.",
+  "story.surface.spaces.lead":
+    "This space is still empty. Spaces organise contributions by responsibility — move a contribution here or capture a new one.",
+  "story.surface.ausgang.lead":
+    "Nothing is waiting for the outbound check. Whatever Klarwerk is meant to share externally lands here — as soon as someone submits a contribution for release.",
+  "story.surface.wissensnetz.lead":
+    "No connections yet. The knowledge network shows how contributions are linked by tags — add fitting tags when capturing.",
+  "story.surface.meldungen.lead":
+    "Nothing to report right now. Whatever needs your attention appears here — conflicts, gaps and due reviews.",
+  "story.surface.horizont.lead":
+    "No one with sole knowledge retires in the chosen period. Keep retirement horizons up to date in the maintenance area so this view stays accurate.",
+  "story.surface.lernpfad.lead":
+    "No learning path is set up for your role yet. It guides you through the most important reviewed knowledge — until then, the library helps.",
+  "story.surface.hilfe.lead":
+    "There is no page help for this page yet. The help explains Klarwerk step by step — you reach it through the help chapter in the menu.",
+  "story.surface.gliederung.lead":
+    "This contribution has no headings yet. Headings structure knowledge so others find it quickly — add them in the editor.",
+  "story.surface.conflicts.lead":
+    "The team resolves conflicts while reviewing. None is open right now — new ones appear here as soon as two contributions contradict each other.",
   "adm.auditTitle": "Recent user/auth activity (audit)",
   "adm.auditEmpty": "No user audit entries.",
   "prof.kicker": "Account",

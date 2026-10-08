@@ -7,6 +7,7 @@ import { useSession } from "../app/AuthContext";
 import { GuardedLink, useGuardedNavigate } from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
 import { CaptureDraftList } from "../components/CaptureDraftList";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 
 // ==================================================================================================
@@ -283,6 +284,7 @@ export function MeineEntwuerfe(): JSX.Element {
       {leer ? (
         <div data-testid="entwuerfe-leer" className="space-y-2">
           <p className="text-[12.5px] text-muted">{t("erfassen.entwuerfe.keine")}</p>
+          {leerzustandsZeile(t, "entwuerfe")}
           {/* Ein Leerzustand ohne Weg ist eine Sackgasse — derselbe Knopf, den die Bibliothek in
               ihrem Leerzustand zeigt (`lib.liste.erfassen`), und dasselbe Ziel. */}
           <GuardedLink
@@ -361,9 +363,13 @@ export function MeineEntwuerfe(): JSX.Element {
           {/* Der Bestand bleibt STEHEN, wenn nur die Auffrischung scheitert (REGELN §7): die
                 Fehlerzeile tritt NEBEN die Liste, nicht an ihre Stelle. */}
           {geloescht.length === 0 && !papierkorb.isLoading && !papierkorb.isError ? (
-            <p data-testid="entwuerfe-papierkorb-leer" className="text-[12.5px] text-muted">
-              {t("adm.trash.empty")}
-            </p>
+            <>
+              <p data-testid="entwuerfe-papierkorb-leer" className="text-[12.5px] text-muted">
+                {t("adm.trash.empty")}
+              </p>
+              {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+              {leerzustandsZeile(t, "entwuerfe")}
+            </>
           ) : null}
 
           <ul className="space-y-2">

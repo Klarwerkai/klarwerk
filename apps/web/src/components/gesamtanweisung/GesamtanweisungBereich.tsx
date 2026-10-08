@@ -71,6 +71,7 @@ import type { NameResolver } from "../../lib/koAuthor";
 import { formatKoTimestamp } from "../../lib/koDates";
 import { useAuthorName } from "../../lib/useAuthorName";
 import { useOnline } from "../../shell/Meldungen";
+import { leerzustandsZeile } from "../EmptyStateCtas";
 import { HelpTip } from "../HelpTip";
 import { FreigabeStatus } from "./EntscheidungsVorlage";
 import { GesamtanweisungSeite } from "./GesamtanweisungSeite";
@@ -389,6 +390,8 @@ function Bestandsliste({
         <p className={MELDUNG_HINWEIS} data-testid={`${LISTE_MARKE}-leer`}>
           {t("ga.liste.leer")}
         </p>
+        {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+        {leerzustandsZeile(t, "anleitung")}
       </section>
     );
   }

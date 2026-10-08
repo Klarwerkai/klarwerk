@@ -6,6 +6,7 @@ import { endpoints } from "../api/endpoints";
 import { useNotifications } from "../api/hooks";
 import { useGuardedNavigate } from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { useNetzOnline } from "../lib/netzzustand";
 import { notificationTarget } from "../lib/notificationTarget";
 import { MenueAufklapp } from "./Menue";
@@ -273,9 +274,14 @@ export function MeldungenListe({
         </button>
       ) : null}
       {items.length === 0 ? (
-        <p className="py-2 text-[13px] text-muted" data-testid="meldungen-leer">
-          {leer}
-        </p>
+        <>
+          <p className="py-2 text-[13px] text-muted" data-testid="meldungen-leer">
+            {leer}
+          </p>
+          {/* R-0956 (Nacharbeit 7): nur die WIRKLICH leere Liste wird eingeordnet — beim Laden
+              und bei einem Fehler sagt der Satz darüber, was los ist. */}
+          {laedt || fehler ? null : leerzustandsZeile(t, "meldungen")}
+        </>
       ) : (
         <ul className="space-y-0.5">
           {items.slice(0, 8).map((n) => {
