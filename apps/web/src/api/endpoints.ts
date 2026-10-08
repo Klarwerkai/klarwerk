@@ -852,8 +852,14 @@ export const endpoints = {
   },
   ask: {
     // FR-I18N-01: aktuelle UI-Sprache mitsenden (Default serverseitig "de").
-    ask: (question: string, locale?: ReasonerLocale) =>
-      api.post<AskResponse>("/ask", { question, ...(locale ? { locale } : {}) }),
+    // R-0348: `thread` = die vorangegangenen Fragen der Fragestrecke (lib/gespraechsfaden.ts).
+    // Ohne Faden bleibt der Körper wie bisher.
+    ask: (question: string, locale?: ReasonerLocale, thread?: readonly string[]) =>
+      api.post<AskResponse>("/ask", {
+        question,
+        ...(locale ? { locale } : {}),
+        ...(thread && thread.length > 0 ? { thread } : {}),
+      }),
     // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang
     // zurück — ohne gültigen, dieses KO belegenden Receipt antwortet der Server 403.
     helpful: (koId: string, receipt: string) => api.post<void>("/ask/helpful", { koId, receipt }),
