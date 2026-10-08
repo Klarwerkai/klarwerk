@@ -120,13 +120,16 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   modelRuns: ["append"],
   // Audit-P3 (SCRUM-397): Gelesen-Status überlebt den Neustart (Dev-Journal).
   notificationSeen: ["markSeen"],
+  // R-0679: Geräteabos für Push überleben den Neustart (args tragen das fertige Abo inkl. Zeit).
+  pushAbos: ["speichern", "entfernen"],
   // SCRUM-386: kundeneigene KI-Assist-Presets überleben den Neustart (Replace-Semantik,
   // args tragen die komplette Liste inkl. fertiger ids → Replay exakt).
   assistPresets: ["replaceAll"],
   // SCRUM-525 P.5 (WP6): die KI-Zuordnung (Policy) überlebt den Neustart (letzter Set gewinnt).
   reasonerPolicy: ["set"],
   // SCRUM-395: Standard-Prüferanzahl überlebt den Neustart (letzter Set gewinnt).
-  validationSettings: ["setDefaultNeeded"],
+  // R-1655: das persönliche Opt-out aus der automatischen Prüferzuweisung ebenso.
+  validationSettings: ["setDefaultNeeded", "setRoutingOptOut"],
   // SCRUM-414: Regler „externe Wissensabfrage" überlebt den Neustart (letzter Set gewinnt).
   externalKnowledge: ["setStage"],
   // SCRUM-421: Upload-Grenzen überleben den Neustart (letzter Set gewinnt).

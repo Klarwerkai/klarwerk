@@ -132,6 +132,12 @@ export const useValidationOverview = () =>
     queryKey: ["validation", "overview"],
     queryFn: () => endpoints.validation.overview(),
   });
+// R-1655: Prüfdauer je Zuweisungsweg. LAZY wie die Übersicht darüber.
+export const usePruefdauer = () =>
+  useQuery({
+    queryKey: ["validation", "pruefdauer"],
+    queryFn: () => endpoints.validation.pruefdauer(),
+  });
 // R-0265: Prüfer-Vorschlag zum Thema des Formulars. Ohne Kategorie und Schlagwort gibt es kein
 // Thema — dann wird gar nicht gefragt.
 export const useReviewerSuggestions = (category: string, tags: readonly string[]) => {

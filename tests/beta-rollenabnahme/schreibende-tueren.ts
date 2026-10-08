@@ -1926,4 +1926,101 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
       };
     },
   },
+
+  // --- R-0679 / R-1655 · Persönliche Einstellungen zur Prüfzuweisung ---------------------------
+  // Jede Tür wirkt nur auf das EIGENE Konto. Nachgelesen wird je Rolle an der Ablage: die Wirkung
+  // trifft genau den Besitzer, und der Unangemeldete (gemessen gegen den Viewer) ändert nichts.
+  {
+    gruppe: "validationRoutes",
+    methode: "PUT",
+    route: "/api/me/pruefrouting",
+    belegstelle: "services/app/src/routes/validation-routes.ts:339",
+    erfolg: [200],
+    tor: "requireUser — nur das eigene Opt-out",
+    erwartet: ANGEMELDET,
+    ruesten: async (buehne, akteur) => {
+      const besitzer: Rolle = akteur === "anonym" ? "viewer" : akteur;
+      return {
+        pfad: "/api/me/pruefrouting",
+        payload: { optOut: true },
+        bestand: () => routingOptOutStand(buehne),
+        wirkung: {
+          beschreibung: `${besitzer} ist danach von der automatischen Zuweisung abgemeldet`,
+          eingetreten: (stand) => eigeneZahl(stand, besitzer) === 1,
+        },
+      };
+    },
+  },
+  {
+    gruppe: "pushRoutes",
+    methode: "POST",
+    route: "/api/push/abo",
+    belegstelle: "services/app/src/routes/push-routes.ts:54",
+    erfolg: [200],
+    tor: "requireUser — nur ein Gerät des eigenen Kontos",
+    erwartet: ANGEMELDET,
+    ruesten: async (buehne, akteur) => {
+      const besitzer: Rolle = akteur === "anonym" ? "viewer" : akteur;
+      return {
+        pfad: "/api/push/abo",
+        payload: {
+          endpoint: `https://fcm.googleapis.com/fcm/send/abnahme-${besitzer}`,
+          keys: { p256dh: "abnahme-p256dh", auth: "abnahme-auth" },
+        },
+        bestand: () => pushAboStand(buehne),
+        wirkung: {
+          beschreibung: `${besitzer} hat danach genau ein Geräteabo`,
+          eingetreten: (stand) => eigeneZahl(stand, besitzer) === 1,
+        },
+      };
+    },
+  },
+  {
+    gruppe: "pushRoutes",
+    methode: "POST",
+    route: "/api/push/abo/entfernen",
+    belegstelle: "services/app/src/routes/push-routes.ts:74",
+    erfolg: [200],
+    tor: "requireUser — nur ein Gerät des eigenen Kontos",
+    erwartet: ANGEMELDET,
+    ruesten: async (buehne, akteur) => {
+      const besitzer: Rolle = akteur === "anonym" ? "viewer" : akteur;
+      const endpoint = `https://fcm.googleapis.com/fcm/send/abnahme-${besitzer}`;
+      await buehne.services.pushAbos.speichern({
+        userId: buehne.konto[besitzer].id,
+        endpoint,
+        p256dh: "abnahme-p256dh",
+        auth: "abnahme-auth",
+        angelegtAm: new Date().toISOString(),
+      });
+      return {
+        pfad: "/api/push/abo/entfernen",
+        payload: { endpoint },
+        bestand: () => pushAboStand(buehne),
+        wirkung: {
+          beschreibung: `das Geräteabo von ${besitzer} ist danach entfernt`,
+          eingetreten: (stand) => eigeneZahl(stand, besitzer) === 0,
+        },
+      };
+    },
+  },
 ];
+
+/** R-1655: je Rolle 1, wenn abgemeldet, sonst 0 — gelesen an der Ablage, nicht am Draht. */
+async function routingOptOutStand(buehne: Buehne): Promise<Record<Rolle, number>> {
+  const stand = {} as Record<Rolle, number>;
+  for (const rolle of ROLLEN) {
+    const abgemeldet = await buehne.services.validation.routingOptOutVon(buehne.konto[rolle].id);
+    stand[rolle] = abgemeldet ? 1 : 0;
+  }
+  return stand;
+}
+
+/** R-0679: Zahl der Geräteabos je Rolle, gelesen an der Ablage. */
+async function pushAboStand(buehne: Buehne): Promise<Record<Rolle, number>> {
+  const stand = {} as Record<Rolle, number>;
+  for (const rolle of ROLLEN) {
+    stand[rolle] = (await buehne.services.pushAbos.fuer(buehne.konto[rolle].id)).length;
+  }
+  return stand;
+}

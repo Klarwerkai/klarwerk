@@ -1,3 +1,4 @@
+import type { PushAboJson } from "../lib/geraetePush";
 import type { ReasonerLocale } from "../lib/reasonerLocale";
 // WP-RETEST7 R8: Timeout-Konstante der Folien-Konvertierung (eine Quelle, lib/slideImages).
 import { SLIDES_CONVERT_TIMEOUT_MS } from "../lib/slideImages";
@@ -96,6 +97,7 @@ import type {
   OutputSource,
   OverlapEntry,
   OverlapSettings,
+  PruefdauerAuswertung,
   PublicUser,
   ReasonerConfigStatus,
   ReasonerProbeResult,
@@ -703,6 +705,12 @@ export const endpoints = {
         `/validation/reviewer-suggestions${query ? `?${query}` : ""}`,
       );
     },
+    // R-1655: Prüfdauer je Zuweisungsweg (Messgrundlage des Routings).
+    pruefdauer: () => api.get<PruefdauerAuswertung>("/validation/pruefdauer"),
+    // R-1655: eigenes Opt-out aus der automatischen Zuweisung.
+    routingOptOut: () => api.get<{ optOut: boolean | null }>("/me/pruefrouting"),
+    setRoutingOptOut: (optOut: boolean) =>
+      api.put<{ optOut: boolean }>("/me/pruefrouting", { optOut }),
     // SCRUM-395: Standard-Prüferanzahl (lesen: alle Leseberechtigten; setzen: Admin).
     settings: () => api.get<ValidationSettings>("/validation/settings"),
     saveSettings: (defaultNeededValidations: number) =>
@@ -1020,6 +1028,13 @@ export const endpoints = {
     markSeen: (ids: string[]) => api.post<{ unseenCount: number }>("/notifications/seen", { ids }),
   },
   directory: { list: () => api.get<{ id: string; name: string }[]>("/directory") },
+  // R-0679 / FR-VAL-07: Geräte-Push — Einrichtung lesen, eigenes Gerät an- und abmelden.
+  push: {
+    config: () => api.get<{ verfuegbar: boolean; publicKey: string | null }>("/push/config"),
+    anmelden: (abo: PushAboJson) => api.post<{ angemeldet: boolean }>("/push/abo", abo),
+    abmelden: (endpoint: string) =>
+      api.post<{ angemeldet: boolean }>("/push/abo/entfernen", { endpoint }),
+  },
   // Audit-P4 (SCRUM-398): Live-Wall (read-only Aggregation).
   livewall: {
     get: () => api.get<LiveWall>("/livewall"),

@@ -314,6 +314,47 @@ export function validationRoutes(
       },
     );
 
+    // R-1655: die Messgrundlage „Validierungszeiten sinken messbar" — je Zuweisungsweg erledigte
+    // und offene Zuweisungen samt Median der Prüfdauer, nur über den SICHTBAREN Bestand.
+    app.get("/api/validation/pruefdauer", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      reply
+        .code(200)
+        .send(await validation.pruefdauerAuswertung({ sichtbar: sichtbarkeitsfilterFuer(user) }));
+    });
+
+    // R-1655: das persönliche Opt-out aus der automatischen Zuweisung — nur das EIGENE Konto.
+    // `optOut: null` = in dieser Umgebung wird die Einstellung nicht geführt.
+    app.get("/api/me/pruefrouting", async (request, reply) => {
+      const user = await guards.requireUser(request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send({ optOut: await validation.routingOptOutVon(user.id) });
+    });
+
+    app.put<{ Body: { optOut?: unknown } }>("/api/me/pruefrouting", async (request, reply) => {
+      const user = await guards.requireUser(request, reply);
+      if (!user) {
+        return;
+      }
+      const optOut = request.body?.optOut;
+      if (typeof optOut !== "boolean") {
+        reply
+          .code(400)
+          .send({ error: "BAD_REQUEST", message: "optOut muss true oder false sein." });
+        return;
+      }
+      try {
+        reply.code(200).send({ optOut: await validation.setzeRoutingOptOut(user.id, optOut) });
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
+
     // SCRUM-395: Standard-Prüferanzahl. Lesen dürfen alle Leseberechtigten (die
     // Erfassen-Seite zeigt den Standard an); ändern darf nur die Nutzerverwaltung.
     app.get("/api/validation/settings", async (request, reply) => {

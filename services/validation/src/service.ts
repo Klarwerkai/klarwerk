@@ -16,7 +16,7 @@ import {
   normalizeDefaultNeeded,
 } from "./settings";
 import { TRUST_MAX, type ValidationOutcome, computeOutcome } from "./trust";
-import type { Assignment, Rating } from "./types";
+import type { Assignment, Rating, ZuweisungsQuelle } from "./types";
 import { ValidationError, type Verdict } from "./types";
 
 export type BoardFilter = Omit<KoFilter, "status">;
@@ -25,6 +25,46 @@ export type BoardFilter = Omit<KoFilter, "status">;
 // Version 1 (häufigster Fall: nie revidiert; auf revidierten KOs sind sie damit stale — fail-safe).
 function ratingVersion(r: { koVersion?: number }): number {
   return r.koVersion ?? 1;
+}
+
+// R-1655: Messgrundlage je Zuweisungsweg (s. `pruefdauerAuswertung`).
+export interface PruefdauerJeWeg {
+  erledigt: number;
+  offen: number;
+  /** `null` = keine erledigte Zuweisung mit messbarer Dauer — kein erfundener Wert. */
+  medianStunden: number | null;
+}
+export type PruefdauerAuswertung = Record<ZuweisungsQuelle, PruefdauerJeWeg>;
+
+function stundenZwischen(von: string | undefined, bis: string | undefined): number | null {
+  if (!von || !bis) {
+    return null;
+  }
+  const dauer = (Date.parse(bis) - Date.parse(von)) / 3_600_000;
+  return Number.isFinite(dauer) && dauer >= 0 ? dauer : null;
+}
+
+/**
+ * R-1655: die Prüfdauer jeder Bewertung — von der Zuweisung an diese Person bis zur Bewertung;
+ * ohne Zuweisung (frei aus dem Board geprüft) ab der Anlage des Objekts. Eine Dauer, die sich
+ * nicht bestimmen lässt, fällt weg, statt als 0 zu zählen.
+ */
+function pruefdauern(
+  bestand: readonly KnowledgeObject[],
+  bewertungen: readonly Rating[],
+  zuweisungen: readonly Assignment[],
+): { koId: string; userId: string; stunden: number }[] {
+  const angelegt = new Map(bestand.map((ko) => [ko.id, ko.createdAt]));
+  const zugewiesen = new Map(zuweisungen.map((a) => [`${a.koId}:${a.userId}`, a.zugewiesenAm]));
+  const aus: { koId: string; userId: string; stunden: number }[] = [];
+  for (const r of bewertungen) {
+    const start = zugewiesen.get(`${r.koId}:${r.userId}`) ?? angelegt.get(r.koId);
+    const stunden = stundenZwischen(start, r.createdAt);
+    if (stunden !== null) {
+      aus.push({ koId: r.koId, userId: r.userId, stunden });
+    }
+  }
+  return aus;
 }
 
 export interface AssignmentSummary {
@@ -308,8 +348,12 @@ export class ValidationService {
         tx,
       );
       // FR-VAL-05: Bewertung erledigt eine offene Zuweisung des Nutzers.
+      // R-1655: der Erledigungszeitpunkt ist die Bewertung selbst — daraus entsteht die Prüfdauer.
       if (zuweisung && zuweisung.status === "open") {
-        await this.assignments.update({ ...zuweisung, status: "done" }, tx);
+        await this.assignments.update(
+          { ...zuweisung, status: "done", erledigtAm: bewertung.createdAt },
+          tx,
+        );
         rueckwaerts.push(() => this.assignments.update(zuweisung));
       }
       // SCRUM-124: Gelb/Rot (warn/down) gibt das Objekt zur Nacharbeit an den Autor zurück.
@@ -715,6 +759,8 @@ export class ValidationService {
           userId,
           status: "open",
           benachrichtigung: "ausstehend",
+          zugewiesenAm: new Date(this.now()).toISOString(),
+          quelle: "einreichen",
         });
         neu.push(userId);
       }
@@ -772,8 +818,15 @@ export class ValidationService {
     if (!ko) {
       throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
+    const zugewiesenAm = new Date(this.now()).toISOString();
     for (const userId of userIds) {
-      await this.assignments.create({ koId, userId, status: "open" });
+      await this.assignments.create({
+        koId,
+        userId,
+        status: "open",
+        zugewiesenAm,
+        quelle: "manuell",
+      });
     }
     await this.audit?.record({
       actor,
@@ -841,8 +894,161 @@ export class ValidationService {
     anzahl?: number;
   }): Promise<PrueferVorschlag[]> {
     const bestand = (await this.koService.list({})).filter(opts.sichtbar);
-    const bewertungen = await this.ratings.listByKos(bestand.map((ko) => ko.id));
-    return prueferVorschlag({ ...opts, bestand, bewertungen });
+    const ids = bestand.map((ko) => ko.id);
+    const [bewertungen, zuweisungen] = await Promise.all([
+      this.ratings.listByKos(ids),
+      this.assignments.listByKos(ids),
+    ]);
+    const latenzen = pruefdauern(bestand, bewertungen, zuweisungen);
+    return prueferVorschlag({ ...opts, bestand, bewertungen, latenzen });
+  }
+
+  // ==============================================================================================
+  // R-1655 — VALIDIERUNGS-LATENZ-OPTIMIERUNG: NEUE OBJEKTE AN DIE WAHRSCHEINLICHSTEN PRÜFER.
+  // ==============================================================================================
+  //
+  // „KLARWERK lernt, welche Personen welche Themen typischerweise schnell validieren — und routet
+  // neue Wissensobjekte direkt an die wahrscheinlichsten Validierer (mit Opt-Out-Möglichkeit)."
+  //
+  // WER GEROUTET WIRD: nur Personen, die das Signal `schnell` tragen — also zu diesem Thema
+  // tatsächlich schon geprüft haben und dabei im Median höchstens `SCHNELL_STUFEN`-Grenze lagen.
+  // Ohne gelernte Prüfdauer wird niemand geroutet; ein frischer Bestand routet also nichts.
+  // Reihenfolge und Anzahl folgen dem Vorschlag; höchstens so viele, wie das Objekt Prüfungen
+  // braucht.
+  //
+  // WER NIE GEROUTET WIRD: der Autor, wer sich abgemeldet hat (`routingOptOuts`), wer nicht in
+  // `kandidaten` steht (der Aufrufer reicht nur Personen herein, die bewerten dürfen), und alle
+  // bei einem Objekt in einem Space — ob die Person den Space sehen darf, weiß dieses Modul nicht,
+  // also routet es dort gar nicht (fail-closed).
+  //
+  // WANN: nur, wenn das Objekt noch GAR KEINE Zuweisung hat. Wer beim Einreichen selbst Prüfer
+  // benennt, wird nicht übersteuert; eine Wiederholung desselben Einreichvorgangs routet nicht
+  // ein zweites Mal.
+  async automatischZuweisen(opts: {
+    koId: string;
+    actor: string;
+    kandidaten: readonly string[];
+    sichtbar: (ko: KnowledgeObject) => boolean;
+  }): Promise<string[]> {
+    const ko = await this.koService.get(opts.koId);
+    if (!ko || ko.spaceId) {
+      return [];
+    }
+    if ((await this.assignments.listByKos([ko.id])).length > 0) {
+      return [];
+    }
+    const optOuts = (await this.settings?.routingOptOuts()) ?? [];
+    const vorschlaege = await this.prueferVorschlagFuer({
+      ziel: { id: ko.id, category: ko.category, tags: ko.tags },
+      ausgeschlossen: [opts.actor, ko.author, ...optOuts],
+      kandidaten: opts.kandidaten,
+      nachbarn: new Set(),
+      sichtbar: opts.sichtbar,
+    });
+    const gewaehlt = vorschlaege
+      .filter((v) => v.gruende.includes("schnell"))
+      .slice(0, ko.neededValidations)
+      .map((v) => v.userId);
+    if (gewaehlt.length === 0) {
+      return [];
+    }
+    const zugewiesenAm = new Date(this.now()).toISOString();
+    for (const userId of gewaehlt) {
+      await this.assignments.create({
+        koId: ko.id,
+        userId,
+        status: "open",
+        zugewiesenAm,
+        quelle: "automatisch",
+      });
+    }
+    await this.audit?.record({
+      actor: opts.actor,
+      action: "ko.auto-assigned",
+      target: ko.id,
+      payload: { userIds: gewaehlt },
+    });
+    await this.koService.recordOwnershipRole(ko.id, "reviewers", gewaehlt, opts.actor);
+    return gewaehlt;
+  }
+
+  // R-1655: das persönliche Opt-out aus der automatischen Zuweisung. Ohne Einstellungsablage
+  // (reine Testaufbauten) gibt es kein Routing-Opt-out — dann routet `automatischZuweisen` auch
+  // niemanden ab, und die Route meldet die fehlende Ablage ehrlich.
+  async routingOptOutVon(userId: string): Promise<boolean | null> {
+    if (!this.settings) {
+      return null;
+    }
+    return (await this.settings.routingOptOuts()).includes(userId);
+  }
+
+  async setzeRoutingOptOut(userId: string, optOut: boolean): Promise<boolean> {
+    if (!this.settings) {
+      throw new ValidationError(
+        "INVALID_DEFAULT",
+        "Die Abmeldung von der automatischen Zuweisung wird in dieser Umgebung nicht gespeichert.",
+      );
+    }
+    await this.settings.setRoutingOptOut(userId, optOut);
+    await this.audit?.record({
+      actor: userId,
+      action: "validation.routingOptOut.set",
+      target: userId,
+      payload: { optOut },
+    });
+    return optOut;
+  }
+
+  /**
+   * R-1655 — „Validierungszeiten sinken messbar." Die Messgrundlage: je Zuweisungsweg die Zahl
+   * der erledigten Zuweisungen mit messbarer Dauer und deren Median in Stunden, dazu die offenen.
+   * Gezählt werden nur Zuweisungen auf SICHTBARE Objekte (dieselbe Regel wie `overview`). Ob das
+   * Routing die Zeiten wirklich senkt, zeigt erst der Vergleich `automatisch` gegen die übrigen
+   * Wege im Betrieb — diese Methode liefert die Zahlen dafür, keine Behauptung.
+   */
+  async pruefdauerAuswertung(opts: {
+    sichtbar: (ko: KnowledgeObject) => boolean;
+  }): Promise<PruefdauerAuswertung> {
+    const auswertung: PruefdauerAuswertung = {
+      automatisch: { erledigt: 0, offen: 0, medianStunden: null },
+      manuell: { erledigt: 0, offen: 0, medianStunden: null },
+      einreichen: { erledigt: 0, offen: 0, medianStunden: null },
+    };
+    const dauern: Record<ZuweisungsQuelle, number[]> = {
+      automatisch: [],
+      manuell: [],
+      einreichen: [],
+    };
+    for (const a of await this.assignments.all()) {
+      if (!a.quelle) {
+        continue;
+      }
+      const ko = await this.koService.get(a.koId);
+      if (!ko || !opts.sichtbar(ko)) {
+        continue;
+      }
+      if (a.status === "open") {
+        auswertung[a.quelle].offen += 1;
+        continue;
+      }
+      const stunden = stundenZwischen(a.zugewiesenAm, a.erledigtAm);
+      if (stunden !== null) {
+        auswertung[a.quelle].erledigt += 1;
+        dauern[a.quelle].push(stunden);
+      }
+    }
+    for (const quelle of Object.keys(dauern) as ZuweisungsQuelle[]) {
+      const werte = dauern[quelle].sort((x, y) => x - y);
+      if (werte.length > 0) {
+        const mitte = Math.floor(werte.length / 2);
+        const m =
+          werte.length % 2 === 1
+            ? (werte[mitte] ?? 0)
+            : ((werte[mitte - 1] ?? 0) + (werte[mitte] ?? 0)) / 2;
+        auswertung[quelle].medianStunden = Math.round(m * 10) / 10;
+      }
+    }
+    return auswertung;
   }
 
   // FR-VAL-06: Übersicht offen/erledigt pro Person.

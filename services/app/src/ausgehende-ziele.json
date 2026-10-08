@@ -88,6 +88,14 @@
       "freigabe": "Nur wenn SMTP_HOST gesetzt ist"
     },
     {
+      "kennung": "geraete-push",
+      "zweck": "Benachrichtigung ueber eine Pruefzuweisung als Geraete-Push (ohne Nutzlast)",
+      "dateien": ["services/notifications/src/push.ts"],
+      "hosts": [],
+      "umgebung": ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"],
+      "freigabe": "Nur wenn alle drei VAPID-Werte gesetzt sind (createPushFromEnv), und nur an die Push-Dienste der Browserhersteller (PUSH_DIENSTE: fcm.googleapis.com, updates.push.services.mozilla.com, web.push.apple.com, Unterdomaenen von push.apple.com und notify.windows.com) per https; jeder andere Abo-Endpunkt wird abgewiesen (pushEndpunktErlaubt)"
+    },
+    {
       "kennung": "word-addin-officejs",
       "zweck": "Browser: das Word-Aufgabenfenster laedt Office.js von Microsoft",
       "dateien": ["services/app/addin-static/taskpane.html"],

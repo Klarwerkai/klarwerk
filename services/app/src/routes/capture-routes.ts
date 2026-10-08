@@ -810,6 +810,10 @@ export interface CaptureRoutesDeps {
   // SCRUM-395: Prüfer-Vorschlag beim Promote (Zuweisung + Benachrichtigung wie im Board).
   validation: ValidationService;
   notifyAssignment?: AssignmentNotifier;
+  // R-1655: ohne benannte Prüfer an die schnellsten Prüfer des Themas routen (schluckt eigene
+  // Fehler; routet nur ein Objekt, das noch gar keine Zuweisung hat — also auch bei Wiederholung
+  // desselben Vorgangs höchstens einmal).
+  routeNeuesObjekt?: (koId: string, user: SessionUser) => Promise<void>;
   // Weg 3 (Feature-Flag): semantischer Vorfilter der Duplikat-Erkennung. Nur gesetzt, wenn aktiviert.
   semanticPrefilter?: SemanticPrefilter | undefined;
   // WP-SUBMIT-ASYNC (Pedis R3): die frühere synchrone Erkennung (conflicts/overlaps/reasoner-Deps)
@@ -935,7 +939,15 @@ function antwortBeiVeraltetemStand(reply: FastifyReply, error: unknown): boolean
 }
 
 export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyPluginAsync {
-  const { capture, ko, validation, notifyAssignment, semanticPrefilter, aiCheckWorker } = deps;
+  const {
+    capture,
+    ko,
+    validation,
+    notifyAssignment,
+    routeNeuesObjekt,
+    semanticPrefilter,
+    aiCheckWorker,
+  } = deps;
   // R-0169 (Nacharbeit 5): die interne Dokumentakte des Word-Wegs (optional, s. Deps).
   const dokumente = deps.dokumente;
   // JOB 2671 D2: EINE Entscheidung, beim Aufbau getroffen — nicht bei jeder Anfrage neu.
@@ -1847,6 +1859,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
               await notifyAssignment?.(koId, [prueferin]);
               await validation.benachrichtigungErledigt(koId, prueferin);
             }
+          } else {
+            // R-1655: niemand benannt → an die schnellsten Prüfer des Themas routen.
+            await routeNeuesObjekt?.(koId, user);
           }
           // WP-SUBMIT-ASYNC (Pedis R3, 21.07.): wie beim direkten Einreichen — kein synchroner
           // detect*-Lauf mehr vor der Antwort; nur der Prüf-Job wird vermerkt und der Worker

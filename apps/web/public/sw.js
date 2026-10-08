@@ -72,3 +72,42 @@ self.addEventListener("fetch", (event) => {
     }),
   );
 });
+
+/* R-0679 / FR-VAL-07: Geräte-Push bei einer Prüfzuweisung.
+ * Der Server schickt KEINE Nutzlast (services/notifications/src/push.ts) — der Push-Dienst des
+ * Browserherstellers erfährt nur, dass etwas anliegt. Der Hinweis hier ist deshalb ein fester Satz
+ * ohne Titel oder Namen; ein Antippen öffnet die eigene Prüfliste („Mir zugewiesen"), wo die
+ * angemeldete Anwendung zeigt, was genau anliegt. */
+const PUSH_TEXTE = {
+  de: { title: "KLARWERK", body: "Dir wurde eine Prüfung zugewiesen." },
+  en: { title: "KLARWERK", body: "A review has been assigned to you." },
+  nl: { title: "KLARWERK", body: "Er is een beoordeling aan je toegewezen." },
+};
+const PUSH_ZIEL = "/validierung?mine=1";
+
+self.addEventListener("push", (event) => {
+  const sprache = (self.navigator.language || "de").slice(0, 2).toLowerCase();
+  const text = PUSH_TEXTE[sprache] || PUSH_TEXTE.de;
+  event.waitUntil(
+    self.registration.showNotification(text.title, {
+      body: text.body,
+      icon: "/icon-192.png",
+      tag: "klarwerk-pruefzuweisung",
+      data: { ziel: PUSH_ZIEL },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const ziel = new URL(PUSH_ZIEL, self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((fenster) => {
+      const offen = fenster.find((f) => new URL(f.url).origin === self.location.origin);
+      if (offen) {
+        return offen.focus().then(() => offen.navigate(ziel));
+      }
+      return self.clients.openWindow(ziel);
+    }),
+  );
+});

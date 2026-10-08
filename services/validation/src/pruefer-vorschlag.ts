@@ -17,6 +17,13 @@
 //                     noch nicht gespeichertes Objekt hat keine Beziehungen; dann trägt dieses
 //                     Signal schlicht nichts bei.
 //
+// R-1655 — DAS VIERTE SIGNAL, `schnell`: „KLARWERK lernt, welche Personen welche Themen typischerweise
+// schnell validieren." Je Person zählt der MEDIAN ihrer Prüfdauern zu Objekten DIESES Themas (von
+// der Zuweisung — ohne Zuweisung von der Anlage des Objekts — bis zur Bewertung). Gestuft nach
+// `SCHNELL_STUFEN`: wer typischerweise binnen eines Tages prüft, bekommt am meisten. Eine einzelne
+// langsame Prüfung kippt den Median nicht. Wer zum Thema nie geprüft hat, hat keine Dauer und
+// bekommt hier nichts — gelernt wird nur aus tatsächlichen Prüfungen.
+//
 // JE SIGNAL ZÄHLEN HÖCHSTENS `DECKEL_JE_SIGNAL` Objekte. Sonst überstimmt eine Person mit fünfzig
 // Beiträgen in einer Kategorie jede andere Herleitung, und der Vorschlag wäre nur noch eine
 // Rangliste der Fleißigsten.
@@ -25,9 +32,35 @@
 // reicht ausschließlich den SICHTBAREN Bestand herein (Kompositionswurzel, `sichtbarkeit.ts`) —
 // sonst verriete schon der Grund „hat zu diesem Thema geprüft" ein vertrauliches Objekt.
 
-export type VorschlagsGrund = "autorschaft" | "pruefungen" | "netznaehe";
+export type VorschlagsGrund = "autorschaft" | "pruefungen" | "netznaehe" | "schnell";
 
-export const VORSCHLAG_GEWICHTE: Readonly<Record<VorschlagsGrund, number>> = {
+/** Median-Prüfdauer in Stunden → Punkte. Erste passende Stufe gilt; darüber hinaus 0. */
+export interface SchnellStufe {
+  readonly bisStunden: number;
+  readonly punkte: number;
+}
+export const SCHNELL_STUFEN: readonly SchnellStufe[] = [
+  { bisStunden: 24, punkte: 3 },
+  { bisStunden: 72, punkte: 2 },
+  { bisStunden: 168, punkte: 1 },
+];
+
+function schnellPunkte(medianStunden: number): number {
+  return SCHNELL_STUFEN.find((s) => medianStunden <= s.bisStunden)?.punkte ?? 0;
+}
+
+function median(werte: readonly number[]): number {
+  const sortiert = [...werte].sort((a, b) => a - b);
+  const mitte = Math.floor(sortiert.length / 2);
+  return sortiert.length % 2 === 1
+    ? (sortiert[mitte] ?? 0)
+    : ((sortiert[mitte - 1] ?? 0) + (sortiert[mitte] ?? 0)) / 2;
+}
+
+/** Die drei gezählten Signale; `schnell` wird gestuft (`SCHNELL_STUFEN`), nicht gezählt. */
+type ZaehlGrund = Exclude<VorschlagsGrund, "schnell">;
+
+export const VORSCHLAG_GEWICHTE: Readonly<Record<ZaehlGrund, number>> = {
   autorschaft: 2,
   pruefungen: 2,
   netznaehe: 3,
@@ -61,14 +94,22 @@ export interface VorschlagsEingabe {
   readonly bewertungen: readonly { readonly koId: string; readonly userId: string }[];
   /** Objekte, die mit dem Ziel über eine aktive Beziehung direkt verbunden sind. */
   readonly nachbarn: ReadonlySet<string>;
+  /** R-1655: Prüfdauern (Stunden) je Bewertung; gezählt werden nur die zu Objekten des Themas. */
+  readonly latenzen?: readonly {
+    readonly koId: string;
+    readonly userId: string;
+    readonly stunden: number;
+  }[];
   readonly anzahl?: number;
 }
 
 export interface PrueferVorschlag {
   readonly userId: string;
   readonly punkte: number;
-  /** In fester Reihenfolge `autorschaft`, `pruefungen`, `netznaehe`; nur die tragenden. */
+  /** In fester Reihenfolge `autorschaft`, `pruefungen`, `netznaehe`, `schnell`; nur die tragenden. */
   readonly gruende: readonly VorschlagsGrund[];
+  /** R-1655: Median der Prüfdauer zum Thema in Stunden — nur, wenn die Person dazu geprüft hat. */
+  readonly medianStunden?: number;
 }
 
 function normiert(wert: string | null | undefined): string {
@@ -122,8 +163,8 @@ export function prueferVorschlag(eingabe: VorschlagsEingabe): PrueferVorschlag[]
 
   // Je Person und Signal die Menge der tragenden Objekte — eine Menge, damit dieselbe Person auf
   // demselben Objekt nicht doppelt zählt.
-  const treffer = new Map<string, Record<VorschlagsGrund, Set<string>>>();
-  const vermerke = (userId: string, grund: VorschlagsGrund, koId: string): void => {
+  const treffer = new Map<string, Record<ZaehlGrund, Set<string>>>();
+  const vermerke = (userId: string, grund: ZaehlGrund, koId: string): void => {
     if (!kandidaten.has(userId)) {
       return;
     }
@@ -151,20 +192,42 @@ export function prueferVorschlag(eingabe: VorschlagsEingabe): PrueferVorschlag[]
     }
   }
 
-  const reihenfolge: readonly VorschlagsGrund[] = ["autorschaft", "pruefungen", "netznaehe"];
+  // R-1655: Prüfdauern je Person, nur zu Objekten des Themas.
+  const dauern = new Map<string, number[]>();
+  for (const l of eingabe.latenzen ?? []) {
+    if (themaIds.has(l.koId) && kandidaten.has(l.userId) && Number.isFinite(l.stunden)) {
+      const bisher = dauern.get(l.userId) ?? [];
+      bisher.push(Math.max(0, l.stunden));
+      dauern.set(l.userId, bisher);
+    }
+  }
+
+  const reihenfolge: readonly ZaehlGrund[] = ["autorschaft", "pruefungen", "netznaehe"];
   const vorschlaege: PrueferVorschlag[] = [];
-  for (const [userId, signale] of treffer) {
+  for (const userId of new Set([...treffer.keys(), ...dauern.keys()])) {
+    const signale = treffer.get(userId);
     let punkte = 0;
     const gruende: VorschlagsGrund[] = [];
     for (const grund of reihenfolge) {
-      const zahl = Math.min(signale[grund].size, DECKEL_JE_SIGNAL);
+      const zahl = Math.min(signale?.[grund].size ?? 0, DECKEL_JE_SIGNAL);
       if (zahl > 0) {
         punkte += zahl * VORSCHLAG_GEWICHTE[grund];
         gruende.push(grund);
       }
     }
+    const eigeneDauern = dauern.get(userId);
+    const medianStunden = eigeneDauern ? median(eigeneDauern) : undefined;
+    const tempo = medianStunden === undefined ? 0 : schnellPunkte(medianStunden);
+    if (tempo > 0) {
+      punkte += tempo;
+      gruende.push("schnell");
+    }
     if (punkte > 0) {
-      vorschlaege.push({ userId, punkte, gruende });
+      vorschlaege.push(
+        medianStunden === undefined
+          ? { userId, punkte, gruende }
+          : { userId, punkte, gruende, medianStunden: Math.round(medianStunden * 10) / 10 },
+      );
     }
   }
   // Deterministisch: höchste Punktzahl zuerst, bei Gleichstand nach Kennung.

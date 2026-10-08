@@ -12,10 +12,11 @@ import {
   useImpact,
   useKos,
   useLifecyclePending,
+  usePruefdauer,
   useValidationOverview,
 } from "../api/hooks";
 import type { AuditFilter } from "../api/types";
-import { AuftraegeJePerson } from "../components/AuftraegeJePerson";
+import { AuftraegeJePerson, PruefdauerJeWeg } from "../components/AuftraegeJePerson";
 import { HelpTip } from "../components/HelpTip";
 import { LoadErrorState, StaleMarker } from "../components/LoadState";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
@@ -73,6 +74,7 @@ export function Analytics(): JSX.Element {
   const kos = useKos();
   const overview = useValidationOverview();
   const directory = useDirectory();
+  const pruefdauer = usePruefdauer();
   const impact = useImpact();
   const gaps = useGaps();
   const conflicts = useConflicts();
@@ -333,6 +335,8 @@ export function Analytics(): JSX.Element {
               {overview.data ? (
                 <AuftraegeJePerson summaries={overview.data} personen={directory.data ?? []} />
               ) : null}
+              {/* R-1655: Prüfdauer je Zuweisungsweg — die Messgrundlage des Routings. */}
+              {pruefdauer.data ? <PruefdauerJeWeg auswertung={pruefdauer.data} /> : null}
 
               <Card>
                 <SectionLabel>{t("ana.byType")}</SectionLabel>

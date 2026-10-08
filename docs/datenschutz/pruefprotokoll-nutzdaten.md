@@ -64,6 +64,8 @@ wiederholt.
 | `ko.rated` | `verdict`, `koVersion` | Z |
 | `ko.returned-to-owner`, `ko.returned-to-author` | `verdict`, `author`, `responsible`, `responsibleKind`, `koVersion` | Z, K |
 | `ko.assigned` | `userIds` | K |
+| `ko.auto-assigned` | `userIds` (nach Prüfgeschwindigkeit geroutet, R-1655) | K |
+| `validation.routingOptOut.set` | `optOut` (eigene Abmeldung von der automatischen Zuweisung) | Z |
 | `ko.revalidated` | `pendingCleared`, `version` | Z |
 | `ko.create-followup-failed` | `step`, `reason` (nur Fehlerklasse) | Z |
 | `validation.defaultNeeded.set` | `value` | Z |

@@ -279,6 +279,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // zwei `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "GEDAECHTNIS_SCHEMA", risiko: "ADDITIV" },
+  // R-0679 / FR-VAL-07: die Geräteabos für Push. ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT
+  // EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel,
+  // keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "PUSH_ABO_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

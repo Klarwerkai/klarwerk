@@ -11,6 +11,9 @@ export type {
   // (`Map<string, KoPruefstand>`) — der Listen-Lesepfad greift ausschliesslich hierueber zu, keine
   // Kante in `src/**`. Beide Methoden reisen mit der oben exportierten Dienstklasse.
   KoPruefstand,
+  // R-1655: Messgrundlage der Prüfdauer je Zuweisungsweg.
+  PruefdauerAuswertung,
+  PruefdauerJeWeg,
 } from "./src/service";
 export { computeOutcome, TRUST_WEIGHTS, TRUST_MAX } from "./src/trust";
 export type { ValidationOutcome } from "./src/trust";
@@ -51,7 +54,14 @@ export {
   VORSCHLAG_GEWICHTE,
   DECKEL_JE_SIGNAL,
   VORSCHLAG_STANDARD_ANZAHL,
+  SCHNELL_STUFEN,
 } from "./src/pruefer-vorschlag";
-export type { PrueferVorschlag, VorschlagsGrund } from "./src/pruefer-vorschlag";
+export type { PrueferVorschlag, SchnellStufe, VorschlagsGrund } from "./src/pruefer-vorschlag";
 export { ValidationError } from "./src/types";
-export type { Verdict, Rating, Assignment, ValidationErrorCode } from "./src/types";
+export type {
+  Verdict,
+  Rating,
+  Assignment,
+  ValidationErrorCode,
+  ZuweisungsQuelle,
+} from "./src/types";

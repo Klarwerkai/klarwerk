@@ -732,12 +732,23 @@ export interface AssignmentSummary {
 
 // R-0265: ein Prüfer-Vorschlag (services/validation/src/pruefer-vorschlag.ts). Nur die tragenden
 // Gründe, in fester Reihenfolge; die Punktzahl ordnet, sie wird nicht angezeigt.
-export type ReviewerSuggestionReason = "autorschaft" | "pruefungen" | "netznaehe";
+export type ReviewerSuggestionReason = "autorschaft" | "pruefungen" | "netznaehe" | "schnell";
 export interface ReviewerSuggestion {
   userId: string;
   punkte: number;
   gruende: ReviewerSuggestionReason[];
+  /** R-1655: Median der Prüfdauer zum Thema in Stunden, nur wenn die Person dazu geprüft hat. */
+  medianStunden?: number;
 }
+
+// R-1655: Messgrundlage je Zuweisungsweg (`GET /api/validation/pruefdauer`).
+export interface PruefdauerJeWeg {
+  erledigt: number;
+  offen: number;
+  medianStunden: number | null;
+}
+export type ZuweisungsWeg = "automatisch" | "manuell" | "einreichen";
+export type PruefdauerAuswertung = Record<ZuweisungsWeg, PruefdauerJeWeg>;
 
 // SCRUM-395: Validierungs-Einstellungen (Standard-Prüferanzahl für neue Einreichungen).
 export interface ValidationSettings {

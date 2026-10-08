@@ -118,12 +118,12 @@ describe("R-0265 · GET /api/validation/reviewer-suggestions", () => {
     const res = await vorschlag(app, erik, "?category=hydraulik");
     expect(res.statusCode).toBe(200);
     const v = res.json() as { userId: string; gruende: string[] }[];
-    expect(v.map((s) => [s.userId, s.gruende])).toEqual(
-      [
-        [ids.ada, ["autorschaft"]],
-        [ids.fiona, ["pruefungen"]],
-      ].sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
-    );
+    // R-1655: Fionas Bewertung kam unmittelbar nach der Anlage — Prüfdauer ~0 h, also zusätzlich
+    // `schnell`, und damit vor Ada.
+    expect(v.map((s) => [s.userId, s.gruende])).toEqual([
+      [ids.fiona, ["pruefungen", "schnell"]],
+      [ids.ada, ["autorschaft"]],
+    ]);
     expect(v.some((s) => s.userId === ids.erik)).toBe(false);
     await app.close();
   });

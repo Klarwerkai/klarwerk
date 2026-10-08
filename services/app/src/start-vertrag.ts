@@ -873,6 +873,35 @@ const GRUNDWERTE: readonly Startwert[] = [
     wofuer: "TLS von der ersten Verbindung an (statt STARTTLS).",
     ohneIhn: "Es gilt false — die Verbindung beginnt unverschluesselt und wechselt per STARTTLS.",
   },
+  // ------------------------------------------------------------------------------ Geräte-Push
+  // R-0679 / FR-VAL-07: Push-Anstoß bei einer Prüfzuweisung. Alle drei oder keiner.
+  {
+    name: "VAPID_PUBLIC_KEY",
+    bereich: "E-Mail",
+    pflicht: { art: "nie" },
+    // Fachlich öffentlich (der Browser bekommt ihn über GET /api/push/config). Als geheim geführt,
+    // weil er als Paar mit dem privaten Schlüssel erzeugt und verwaltet wird — und kein `_KEY`
+    // als harmlos durchrutschen soll (D4).
+    geheim: true,
+    wofuer: "Öffentlicher VAPID-Schlüssel (base64url) für Geräte-Push.",
+    ohneIhn: "Kein Geräte-Push; Zuweisungen erreichen Zugewiesene nur per E-Mail.",
+  },
+  {
+    name: "VAPID_PRIVATE_KEY",
+    bereich: "E-Mail",
+    pflicht: { art: "nie" },
+    geheim: true,
+    wofuer: "Privater VAPID-Schlüssel (base64url), signiert jeden Push-Anstoß.",
+    ohneIhn: "Kein Geräte-Push; Zuweisungen erreichen Zugewiesene nur per E-Mail.",
+  },
+  {
+    name: "VAPID_SUBJECT",
+    bereich: "E-Mail",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer: "Kontakt des Betreibers für die Push-Dienste (mailto: oder https:).",
+    ohneIhn: "Kein Geräte-Push; Zuweisungen erreichen Zugewiesene nur per E-Mail.",
+  },
   // ------------------------------------------------------------------------------------------ SSO
   ...(
     [

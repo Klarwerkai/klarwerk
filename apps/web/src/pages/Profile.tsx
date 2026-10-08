@@ -11,6 +11,7 @@ import { useMyImpact } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
 // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — Zahlen nur über eigene Beiträge.
 import { MyImpactNumbers } from "../components/FunkeCards";
+import { AutoZuweisungZeile, GeraetePushZeile } from "../components/PruefBenachrichtigung";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { EinstellungenSeite } from "../components/einstellungen/Seite";
@@ -189,6 +190,9 @@ export function Profile(): JSX.Element {
             onOeffnen={() => setDetail("wirkung")}
             testId="zeile-wirkung"
           />
+          {/* R-0679: Push auf diesem Gerät; R-1655: Abmeldung von der automatischen Zuweisung. */}
+          <GeraetePushZeile />
+          <AutoZuweisungZeile />
           <Zeile
             label={t("prof.kicker")}
             wert={t("action.logout")}

@@ -213,6 +213,12 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `GET` | `/api/validation/overview` | `ko.read` | — | 200 Übersicht | — |
 | `GET` | `/api/validation/settings` | `ko.read` | — | 200 `{ defaultNeededValidations }` | — |
 | `PUT` | `/api/validation/settings` | `users.manage` | Rumpf `{ defaultNeededValidations }` | 200 `{ defaultNeededValidations }` | Dienstfehler |
+| `GET` | `/api/validation/pruefdauer` | `ko.read`, sichtbar | — | 200 je Weg (`automatisch`, `manuell`, `einreichen`) `{ erledigt, offen, medianStunden }` | — |
+| `GET` | `/api/me/pruefrouting` | `requireUser` | — | 200 `{ optOut }` — eigenes Konto; `null` ohne Einstellungsablage | — |
+| `PUT` | `/api/me/pruefrouting` | `requireUser` | Rumpf `{ optOut: boolean }` | 200 `{ optOut }` — eigenes Opt-out aus der automatischen Zuweisung | 400 `BAD_REQUEST`, Dienstfehler |
+| `GET` | `/api/push/config` | `requireUser` | — | 200 `{ verfuegbar, publicKey }` | — |
+| `POST` | `/api/push/abo` | `requireUser` | Rumpf `PushSubscription.toJSON()` (`endpoint`, `keys.p256dh`, `keys.auth`) | 200 `{ angemeldet: true }` — Gerät des eigenen Kontos | 400 `BAD_REQUEST` (unvollständig oder kein bekannter Push-Dienst) |
+| `POST` | `/api/push/abo/entfernen` | `requireUser` | Rumpf `{ endpoint }` | 200 `{ angemeldet: false }` | 400 `BAD_REQUEST` |
 | `GET` | `/api/validation/reviewer-suggestions` | `ko.create`, sichtbar | Abfrage `category`, `tags` (kommagetrennt), `koId` | 200 Prüfer-Vorschläge `{ userId, punkte, gruende }[]` aus dem sichtbaren Bestand | 404 `NOT_FOUND`, 503 `SUGGESTIONS_UNAVAILABLE` |
 | `GET` | `/api/conflicts` | `ko.read` | — | 200 offene Konflikte, sichtbarkeitsgefiltert | — |
 | `GET` | `/api/conflicts/:id` | `ko.read`, sichtbar | — | 200 Konflikt | 404 `NOT_FOUND` |

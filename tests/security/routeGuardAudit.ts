@@ -351,6 +351,18 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.create",
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
+  // R-1655: Prüfdauer je Zuweisungsweg — nur über den sichtbaren Bestand.
+  "GET /api/validation/pruefdauer": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  // R-1655: eigenes Opt-out aus der automatischen Zuweisung — nur das eigene Konto.
+  "GET /api/me/pruefrouting": { protection: "auth" },
+  "PUT /api/me/pruefrouting": { protection: "auth" },
+  // R-0679: Geräte-Push — Einrichtung lesen, eigenes Gerät an- und abmelden.
+  "GET /api/push/config": { protection: "auth" },
+  "POST /api/push/abo": { protection: "auth" },
+  "POST /api/push/abo/entfernen": { protection: "auth" },
   "PUT /api/validation/settings": { protection: "users.manage" },
   // SCRUM-414: Regler „externe Wissensabfrage" — lesen alle Leseberechtigten, setzen nur Admin.
   "GET /api/external/policy": { protection: "ko.read" },

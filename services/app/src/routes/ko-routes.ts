@@ -90,6 +90,9 @@ export interface KoRoutesDeps {
   // Berater-Konzept 04.07. (Stufe 3): Reasoner für die automatische Widerspruchs-Erkennung beim Einreichen.
   reasoner: Reasoner;
   notifyAssignment?: AssignmentNotifier; // FR-VAL-07
+  // R-1655: neue Objekte ohne benannte Prüfer an die schnellsten Prüfer ihres Themas routen.
+  // Schluckt eigene Fehler (das Objekt ist dann angelegt und bleibt offen für alle Prüfer).
+  routeNeuesObjekt?: (koId: string, user: SessionUser) => Promise<void>;
   // SCRUM-421: einstellbare Upload-Grenzen (persistiert) + Audit für Änderungen.
   uploadLimits: UploadLimitsRepo;
   // AUFTRAG-mega14 Block E (SCRUM-421): der Object-Store, um beim Anhängen die ECHTE, GESPEICHERTE
@@ -881,6 +884,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     overlaps,
     lifecycle,
     notifyAssignment,
+    routeNeuesObjekt,
     uploadLimits,
     objects,
     externalPolicy,
@@ -1571,6 +1575,9 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           if (reviewers.length > 0) {
             await validation.assign(created.id, reviewers, user.id);
             await notifyAssignment?.(created.id, reviewers);
+          } else {
+            // R-1655: niemand benannt → an die schnellsten Prüfer des Themas routen.
+            await routeNeuesObjekt?.(created.id, user);
           }
           // WP-SUBMIT-ASYNC (Pedis Architektur-Entscheid R3, 21.07.): die KI-Prüfung blockiert
           // das Einreichen NICHT mehr (Messung: 1:28 min). Statt der früheren synchronen
@@ -2047,6 +2054,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           await followUp("notify-assignment", async () => {
             await notifyAssignment?.(created.id, reviewers);
           });
+        } else {
+          // R-1655: niemand benannt → an die schnellsten Prüfer des Themas routen. Kein eigener
+          // `followUp`-Schritt: das Routing schluckt seine Fehler selbst und ist keine Zusage.
+          await routeNeuesObjekt?.(created.id, user);
         }
         // WP-SUBMIT-ASYNC: derselbe Prüf-Job-Vermerk wie auf den beiden anderen Einreich-Wegen.
         let submitted = created;
