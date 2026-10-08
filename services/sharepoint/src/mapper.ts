@@ -40,10 +40,19 @@
 // grösser/kleiner. Ein DriveItem hat keine Revisionsnummer an sich (die `/versions`-Liste wäre ein
 // weiterer Abruf und ein weiterer Vertrag). Was es hat, ist `lastModifiedDateTime`.
 //
-// Der Quellstand ist deshalb dieser Zeitpunkt IN SEKUNDEN seit 1970 — abgeleitet, nicht erfunden:
-// er wächst genau dann, wenn die Datei in SharePoint geändert wurde, und er ist eine positive
-// sichere Ganzzahl (`normalizeSourceVersion` verlangt genau das). Liefert die Quelle den Zeitpunkt
-// nicht oder ist er unlesbar, FEHLT das Feld — kein Platzhalter, keine geratene 1.
+// Der Quellstand ist deshalb dieser Zeitpunkt IN MINUTEN seit 1970 — abgeleitet, nicht erfunden:
+// er wächst, wenn die Datei in SharePoint geändert wurde, und er ist eine positive sichere Ganzzahl
+// (`normalizeSourceVersion` verlangt genau das). Liefert die Quelle den Zeitpunkt nicht oder ist er
+// unlesbar, FEHLT das Feld — kein Platzhalter, keine geratene 1.
+//
+// R-0144 — WARUM MINUTEN UND NICHT SEKUNDEN. Die Fassung ist zugleich die Revisionsidentität der
+// unveränderlichen Quellrevision (`ExternalSourceRecord`), und die trägt höchstens
+// `MAX_SOURCE_VERSION = 999_999_999` (`library-analytics/src/repo.ts`, in PostgreSQL neun Ziffern).
+// Sekunden seit 1970 liegen seit 2001 darüber (heute rund 1,79 Mrd.): jede SharePoint-Datei wurde
+// beim Einreihen als ungültige Fassung abgewiesen, und eine Quellrevision liess sich nie schreiben.
+// Minuten liegen heute bei rund 29,8 Mio. und erreichen die Grenze erst in etwa 1.900 Jahren.
+// GRENZE, BENANNT: zwei Änderungen derselben Datei innerhalb EINER Minute tragen denselben Stand;
+// die zweite gilt dann als unverändert, bis die Datei in einer späteren Minute geändert wird.
 
 import type { ImportItem } from "../../library-analytics";
 import { kernaussageAusKlartext } from "../../structure";
@@ -98,8 +107,11 @@ export function istDatei(item: GraphDriveItem): boolean {
   return item.file !== undefined && item.folder === undefined;
 }
 
+/** Die Einheit des Quellstands: eine Minute (Begründung im Kopf). */
+const SHAREPOINT_QUELLSTAND_MS = 60_000;
+
 /**
- * Der Quellstand einer Datei — Sekunden seit 1970, oder `undefined`.
+ * Der Quellstand einer Datei — Minuten seit 1970 (s. Kopf), oder `undefined`.
  *
  * `undefined` ist eine AUSSAGE („diese Datei nennt keinen Änderungszeitpunkt") und darf nie durch
  * eine Ersatzzahl gefüllt werden: eine erfundene Version erzeugte beim nächsten Lauf ein falsches
@@ -111,10 +123,11 @@ export function sharepointQuellstand(item: GraphDriveItem): number | undefined {
     return undefined;
   }
   const ms = Date.parse(roh);
-  if (!Number.isFinite(ms) || ms <= 0) {
+  if (!Number.isFinite(ms)) {
     return undefined;
   }
-  return Math.floor(ms / 1000);
+  const minuten = Math.floor(ms / SHAREPOINT_QUELLSTAND_MS);
+  return minuten > 0 ? minuten : undefined;
 }
 
 /**

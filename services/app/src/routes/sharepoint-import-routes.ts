@@ -866,7 +866,17 @@ async function fuehreUebernahmeAus(
           bereitsInQueue += 1;
           continue;
         }
-        const angelegt = await deps.library.createImportCandidates([item], userId);
+        // R-0144 / R-0701: an die Kennung dieser Übernahme gebunden, Ordnung = Position der Kennung
+        // im Auftrag — derselbe Weg wie Confluence `/apply` (`laufbindung.ts`). Damit hält der Lauf
+        // je Datei die Quellrevision fest, und die Entscheidung schreibt ihre Elementreferenz, die
+        // `GET /api/admin/import/runs/:importId/result` liest. Tragfähig erst, seit der Quellstand in
+        // Minuten zählt (`services/sharepoint/src/mapper.ts`, Kopf).
+        const angelegt = await deps.library.createImportCandidates(
+          [item],
+          userId,
+          undefined,
+          lauf !== null ? { lauf: { importId: lauf, ordinal: ids.indexOf(id) } } : {},
+        );
         if (angelegt.length > 0) {
           eingereiht += 1;
           // JOB 4125: Stand dieser Übernahme gegen den Stand des Vorgangs, der zu DERSELBEN

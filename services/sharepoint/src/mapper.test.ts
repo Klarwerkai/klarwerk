@@ -27,7 +27,8 @@ describe("JOB 4086: der SharePoint-Mapper", () => {
     expect(item?.sourceScope).toBe("b!bibliothek");
     expect(item?.category).toBe("b!bibliothek");
     expect(item?.url).toBe(DATEI.webUrl);
-    expect(item?.sourceVersion).toBe(Math.floor(Date.parse("2026-09-10T08:30:00Z") / 1000));
+    // R-0144: Minuten seit 1970 — passend zur Revisionsidentität (`MAX_SOURCE_VERSION`).
+    expect(item?.sourceVersion).toBe(Math.floor(Date.parse("2026-09-10T08:30:00Z") / 60_000));
     expect(item?.updatedAt).toBe("2026-09-10T08:30:00Z");
     expect(item?.author).toBe("R. Schuster");
     expect(item?.textCodec).toBe("decoded");
@@ -77,5 +78,19 @@ describe("JOB 4086: der SharePoint-Mapper", () => {
     expect(neu).toBeGreaterThan(alt);
     // Und er ist eine positive sichere Ganzzahl — genau das verlangt `normalizeSourceVersion`.
     expect(Number.isSafeInteger(neu) && neu > 0).toBe(true);
+  });
+
+  it("R-0144 · der Quellstand trägt die Revisionsidentität — auch für heutige und künftige Dateien", () => {
+    // Die Quellrevision erlaubt höchstens 999_999_999 (`MAX_SOURCE_VERSION` in
+    // `library-analytics/src/repo.ts`, nicht über die öffentliche index.ts ausgeleitet; PG neun
+    // Ziffern). Sekunden seit 1970 lagen darüber; jede Datei wurde beim Einreihen abgewiesen.
+    const MAX_SOURCE_VERSION = 999_999_999;
+    for (const zeitpunkt of ["2026-09-10T08:30:00Z", "2099-12-31T23:59:59Z"]) {
+      const stand =
+        mapDriveItemToImportItem({ ...DATEI, lastModifiedDateTime: zeitpunkt }, OPTS)
+          ?.sourceVersion ?? 0;
+      expect(stand, zeitpunkt).toBeGreaterThan(0);
+      expect(stand, zeitpunkt).toBeLessThanOrEqual(MAX_SOURCE_VERSION);
+    }
   });
 });

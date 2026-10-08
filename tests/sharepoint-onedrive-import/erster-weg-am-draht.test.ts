@@ -42,7 +42,8 @@ const ADMIN = {
 
 /** Der Quellstand der Datei: `lastModifiedDateTime` in Sekunden seit 1970 (s. mapper.ts). */
 const GEAENDERT_AM = "2026-09-10T08:30:00Z";
-const QUELLSTAND = Math.floor(Date.parse(GEAENDERT_AM) / 1000);
+// R-0144: der Mapper zählt den Quellstand in MINUTEN seit 1970 (`sharepointQuellstand`).
+const QUELLSTAND = Math.floor(Date.parse(GEAENDERT_AM) / 60_000);
 const DATEI_ID = "01WARTUNG7XYZ";
 const DATEI_URL =
   "https://contoso.sharepoint.test/sites/technik/Freigegeben/Wartungsanweisung.docx";
