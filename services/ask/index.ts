@@ -69,4 +69,10 @@ export type {
   AnswerGrade,
 } from "./src/answer-evidence";
 export { redactGapForViewer, summarizeGaps } from "./src/gap-visibility";
+// R-1663 / R-2178: begründete Ansprechpartner-Vorschläge zu einer Wissenslücke.
+export type {
+  AnsprechpartnerAuskunft,
+  AnsprechpartnerSpuren,
+  AnsprechpartnerVorschlag,
+} from "./src/ansprechpartner";
 export type { GapView, GapViewerContext, GapSummary } from "./src/gap-visibility";
