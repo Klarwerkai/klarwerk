@@ -1063,6 +1063,13 @@ async function pruefeFlaeche(page: Page, wo: string, testInfo: TestInfo): Promis
     // Ein unbestimmter Fall ist nicht „bestanden" — er wird einzeln benannt und muss bearbeitet
     // werden (ben nacharbeit-7).
     befunde.push(...kontrast.unbestimmtListe.map((u) => `1.4.3 [${thema}]: unbestimmt: ${u}`));
+    // Feldgrenzen im RUHEZUSTAND: ein Feld mit `autoFocus` (E-Mail der Anmeldemaske, nacharbeit-9)
+    // stünde sonst im Fokuszustand da — dessen Kennzeichnung misst 2.4.7/1.4.11 im Tab-Weg eigens.
+    // `TextInput` trägt `transition-colors`: erst nach Ende des Übergangs steht die Ruhefarbe da.
+    await page.evaluate(async () => {
+      (document.activeElement as HTMLElement | null)?.blur();
+      await (window as unknown as { __kwA11y: Helfer }).__kwA11y.warteAufUebergaenge();
+    });
     const grenzen = await page.evaluate(grenzenImBrowser);
     befunde.push(...grenzen.befunde.map((g) => `1.4.11 [${thema}]: ${g}`));
     const weg = await tastaturweg(page);

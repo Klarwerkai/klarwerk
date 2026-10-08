@@ -105,6 +105,11 @@ sind:
 | 1.1.1 / 4.1.2 | Dutzende namenlose Lucide-Symbole (/hilfe, /import, /extern, Wissensdetail) | Zentral: `lib/schmuckSymbole.ts`, gebunden in `main.tsx`. Namenlose Lucide-Symbole ohne Rolle werden für Hilfstechnik verborgen. Gegenprobe: `tests/barrierefreiheit/schmuck-symbole.test.tsx`. |
 | 2.4.7 | Modernes Thema: der Karten-Schatten (`.rounded-card.border-hairline`) verdrängte den Fokusring (Vorlagen auf /output, Arbeitsweise-Link auf /hilfe) | Fokus-Zustand derselben Karten trägt Ring und Schatten (`styles/modern.css`); ebenso `.kw-cta-primary` |
 
+Messkorrektur (nacharbeit-9): Feldgrenzen werden im **Ruhezustand** gemessen. Das E-Mail-Feld der
+Anmeldemaske trägt `autoFocus` und stand bei der Messung im Fokus. Dann gilt
+`focus:border-ink/30` aus `TextInput`, und der Ring der Fokusregel trägt die Kennzeichnung. Dieser
+Zustand wird im Tab-Weg eigens nach 2.4.7/1.4.11 gemessen.
+
 Messkorrektur (kein Abschwächen): Eine Feldhülle wird jetzt über die **Zeilenhöhe** erkannt statt
 über die Breite. Die Fragezeile trägt ihren Rand an der `<form>` neben Knöpfen, die alte
 Breitengrenze ließ diesen Rand ungesehen.
