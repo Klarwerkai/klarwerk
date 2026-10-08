@@ -1248,6 +1248,36 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     expect(rot).toHaveLength(4);
   });
 
+  it("Nacharbeit 17: Getter und Methoden in gespreizten Props werden auf Modalmarker geprüft", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Getter.tsx": [
+          "export function F({ frei }: { frei: string }): JSX.Element {",
+          "  return (",
+          "    <div>",
+          "      <div {...{ get role() { return 'dia' + 'log'; } }} />",
+          "      <div {...{ get role() { const r = holeRolle(); return r; } }} />",
+          "      <div {...{ get ariaModal() { return true; } }} />",
+          "      <div {...{ get [frei]() { return 'x'; } }} />",
+          "      <div {...{ get title() { return 'Hallo'; }, onClick() {} }} />",
+          "    </div>",
+          "  );",
+          "}",
+        ],
+      }),
+    );
+    const an = (stelle: string): string[] => rot.filter((z) => z.includes(stelle));
+    // bens Fall wörtlich: der Getter liefert beim Spread role="dialog".
+    expect(an("components/Getter.tsx:4 — role-dialog")).toHaveLength(1);
+    // Ein Rumpf, der nicht genau `return <Ausdruck>;` ist, ist nicht bestimmbar — rot.
+    expect(an("components/Getter.tsx:5")[0]).toContain("setzt role mit einem Wert");
+    expect(an("components/Getter.tsx:6 — aria-modal-reflexion")).toHaveLength(1);
+    expect(an("components/Getter.tsx:7")[0]).toContain("Name ist statisch nicht bestimmbar");
+    expect(an("components/Getter.tsx:8"), "title und onClick sind keine Modalmarker").toEqual([]);
+    expect(rot).toHaveLength(4);
+  });
+
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
     const { rot } = pruefeModalgrenze(
       legeBaum({

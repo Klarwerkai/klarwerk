@@ -1004,6 +1004,39 @@ function schluesselUrteil(
   return "unbestimmt";
 }
 
+/**
+ * Nacharbeit 17 (ben): die Markerurteile für den Namen eines Objektmitglieds — Bezeichner,
+ * Zeichenkette oder berechnet. Je Eintrag von `SCHLUESSEL_MARKER` ein Urteil.
+ */
+function mitgliedsMarker(
+  name: ts.PropertyName,
+  deklarationen: Deklarationen,
+  umfeld: Modulumfeld | undefined,
+): Schluesselurteil[] {
+  if (ts.isComputedPropertyName(name)) {
+    return SCHLUESSEL_MARKER.map((m) =>
+      schluesselUrteil(name.expression, deklarationen, umfeld, m),
+    );
+  }
+  const text =
+    ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)
+      ? name.text
+      : undefined;
+  return SCHLUESSEL_MARKER.map((m): Schluesselurteil => {
+    if (text === undefined) {
+      return "unbestimmt";
+    }
+    return text === m ? "trifft" : "trifft-nicht";
+  });
+}
+
+/** Der Wert eines Getters, wenn sein Rumpf genau `return <Ausdruck>;` ist — sonst unbestimmt. */
+function getterWert(getter: ts.GetAccessorDeclaration): ts.Expression | undefined {
+  const anweisungen = getter.body?.statements;
+  const einzige = anweisungen?.length === 1 ? anweisungen[0] : undefined;
+  return einzige !== undefined && ts.isReturnStatement(einzige) ? einzige.expression : undefined;
+}
+
 /** Der deklarierte Typ eines Schlüsselwerts: Parameter, destrukturiertes Feld oder Variable. */
 function schluesselTyp(d: ts.Node, deklarationen: Deklarationen): ts.TypeNode | undefined {
   if (ts.isParameter(d) || ts.isVariableDeclaration(d)) {
@@ -1338,6 +1371,21 @@ export function propsRolle(
       }
       if (ts.isShorthandPropertyAssignment(eig) && eig.name.text === "role") {
         teile.push({ ...keineRolle(), bild: statischeWerte(eig.name, deklarationen) });
+      }
+      // Nacharbeit 17: Getter und Methoden — der Getterwert ist die Rolle, sonst unbestimmt.
+      if (ts.isGetAccessorDeclaration(eig) || ts.isMethodDeclaration(eig)) {
+        const urteile = mitgliedsMarker(eig.name, deklarationen, umfeld);
+        const wert = ts.isGetAccessorDeclaration(eig) ? getterWert(eig) : undefined;
+        if (urteile[0] === "trifft") {
+          teile.push(
+            wert
+              ? { ...keineRolle(), bild: statischeWerte(wert, deklarationen) }
+              : nichtAufloesbar(eig.name),
+          );
+        }
+        if (urteile.includes("unbestimmt")) {
+          teile.push(nichtAufloesbar(eig.name));
+        }
       }
     }
     return vereineRollen(teile);
@@ -1997,6 +2045,41 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
     }
     if (ts.isShorthandPropertyAssignment(node) && node.name.text === "role") {
       meldeRolle(node.name, istPropsObjekt(node.parent));
+    }
+    // Nacharbeit 17 (ben): Getter und Methoden in Objektliteralen. Beim Spread wird ein Getter
+    // AUSGEWERTET — `{ get role() { return 'dia' + 'log'; } }` setzt role="dialog". Der Wert wird
+    // gelesen, wenn der Rumpf genau `return <Ausdruck>;` ist; sonst ist er in Props unbestimmt.
+    if (
+      (ts.isGetAccessorDeclaration(node) || ts.isMethodDeclaration(node)) &&
+      ts.isObjectLiteralExpression(node.parent)
+    ) {
+      const name = node.name;
+      const [rolle, ariaModal, reflexion] = mitgliedsMarker(name, deklarationen, umfeld);
+      const props = istPropsObjekt(node.parent);
+      const wert = ts.isGetAccessorDeclaration(node) ? getterWert(node) : undefined;
+      const stelle = `${quelle.datei}:${zeileVon(sf, name)} — ${ts.isGetAccessorDeclaration(node) ? "Getter" : "Methode"} „${name.getText(sf).slice(0, 60)}“ in Props`;
+      if (rolle === "trifft" && wert !== undefined) {
+        meldeRolle(wert, props);
+      } else if (rolle === "trifft" && props) {
+        unbekannteBauformen.push(
+          `${stelle} setzt role mit einem Wert, den dieser Sammler nicht bestimmen kann`,
+        );
+      }
+      // Ein Zeichenkettenname (`get "aria-modal"()`) ist schon über die Literalregeln erfasst.
+      const literal =
+        ts.isStringLiteral(name) ||
+        (ts.isComputedPropertyName(name) && istZeichenkettenLiteral(name.expression));
+      if (ariaModal === "trifft" && !literal) {
+        melde(name, "aria-modal-eigenschaft");
+      }
+      if (reflexion === "trifft" && !literal) {
+        melde(name, "aria-modal-reflexion");
+      }
+      if ([rolle, ariaModal, reflexion].includes("unbestimmt") && props) {
+        unbekannteBauformen.push(
+          `${stelle}: der Name ist statisch nicht bestimmbar, ob er role oder aria-modal setzt, kann dieser Sammler nicht beurteilen`,
+        );
+      }
     }
     // Nacharbeit 4 (ben): der SPREAD ist selbst Ausgangspunkt. `<div {...props} />` mit
     // `props: { role: "dialog" }` hat kein Objektliteral, an dem der Besucher oben ansetzen könnte —
