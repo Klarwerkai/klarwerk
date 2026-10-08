@@ -868,6 +868,13 @@ export class ConflictService {
     return (await this.repo.all()).filter((c) => c.koA === koId || c.koB === koId).map((c) => c.id);
   }
 
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 15): die Gegenrichtung für das Protokoll —
+  // je Konflikt NUR seine beiden Objektkennungen. Ein Altbeleg, der nur die Konflikt-Id trägt,
+  // wird damit seinen Objekten zugeordnet und nach deren Leserecht ausgegeben (audit-routes.ts).
+  async koZuordnungen(): Promise<{ id: string; koIds: string[] }[]> {
+    return (await this.repo.all()).map((c) => ({ id: c.id, koIds: [c.koA, c.koB] }));
+  }
+
   // R-0263: die festgelegten Vorrang-Beziehungen, an denen dieser Punkt beteiligt ist — aus den
   // ENTSCHIEDENEN Konflikten, ohne Versionsfilter (eine Entscheidung bleibt Teil der Geschichte).
   // Die Sichtbarkeit beider Seiten prüft die Route (`GET /api/conflicts/vorrang/:koId`).

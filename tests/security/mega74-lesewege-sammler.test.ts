@@ -399,16 +399,20 @@ const REGISTER: Record<string, Eintrag> = {
   },
   // --- Kuratorentore: nur Rollen, die Vertrauliches ohnehin sehen dürfen ---------------------
   "GET /api/kos/trash": { urteil: "KURATORENTOR", recht: "users.manage", grund: "Papierkorb." },
-  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 14): Einträge, die ein für den Leser
-  // unsichtbares Objekt nennen, gehen nicht hinaus; der Export ist dann eine Leseransicht.
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 14/15): wer einen Space nicht lesen darf,
+  // bekommt Liste, Prüfbericht und Export als Leseransicht — ohne Einträge zu verborgenen Objekten
+  // und Befunden (auch endgültig gelöschten), ohne Kettenfelder und globale Zählwerte.
   "GET /api/audit": {
     urteil: "PRAEDIKAT",
-    grund: "Protokoll; je Eintrag darfSehen über verborgeneObjekte (Ziel und Nutzlast).",
+    grund: "Protokoll; je Eintrag darfSehen über leselage (Ziel, eventId, Nutzlast).",
   },
-  "GET /api/audit/verify": { urteil: "KURATORENTOR", recht: "ko.validate", grund: "Protokoll." },
+  "GET /api/audit/verify": {
+    urteil: "PRAEDIKAT",
+    grund: "Eingeschränkter Leser: Bericht nur über die eigene Ansicht.",
+  },
   "GET /api/audit/export": {
     urteil: "PRAEDIKAT",
-    grund: "Volle Kette nur ohne Ausblendung; sonst Leseransicht ohne Kettenfelder.",
+    grund: "Volle Kette nur uneingeschränkt; sonst Leseransicht ohne Kettenfelder.",
   },
   "GET /api/audit/ko/:koId/findings": {
     urteil: "KURATORENTOR",

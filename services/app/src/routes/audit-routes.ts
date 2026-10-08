@@ -1,5 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
-import type { AuditEntry, AuditFilter, AuditService } from "../../../audit";
+import {
+  type AuditEntry,
+  type AuditFilter,
+  type AuditService,
+  type ChainInspection,
+  hashEntryFuerVersion,
+} from "../../../audit";
 import type { Guards, SessionUser } from "../http";
 import { LESEVARIANTEN_LADE_AKTION, LESEVARIANTEN_LADE_PROTOKOLLFELDER } from "../lesevarianten";
 import { type SichtbarkeitsFakten, darfSehen } from "../sichtbarkeit";
@@ -10,51 +16,147 @@ export interface BefundKennungen {
 }
 
 /**
- * Die Sichtbarkeitsfakten des ganzen Bestands, Papierkorb eingeschlossen — Kennung, führender
- * Space, Stufe, Autor (`KoService.sichtbarkeitsfaktenAller`). Das Protokoll nennt Objekte auch
- * nach dem Löschen; entschieden wird mit derselben Regel wie überall (`darfSehen`).
+ * Was das Protokoll braucht, um je Leser zu entscheiden (aufnahme:20260922:gesamt-leserechte):
+ * die Sichtbarkeitsfakten des Bestands samt Papierkorb, die Kennungen aller Spaces und je Befund
+ * (Konflikt, Überschneidung) seine Objekte. Nur Kennungen und Fakten, kein Inhalt.
  */
 export interface AuditLeseQuelle {
   sichtbarkeitsfaktenAller(): Promise<readonly ({ id: string } & SichtbarkeitsFakten)[]>;
+  spaceKennungen(): Promise<readonly string[]>;
+  befundZuordnungen(): Promise<readonly { id: string; koIds: readonly string[] }[]>;
 }
 
 // ================================================================================================
-// aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 13/14) — DAS PROTOKOLL NACH LESERECHT.
+// aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 13–15) — DAS PROTOKOLL NACH LESERECHT.
 // ================================================================================================
 //
-// `ko.validate` ersetzt kein Space-Leserecht. Das Protokoll nennt Objekte als Ziel (`ko.created`,
-// `ko.space-changed` …) und in der Nutzlast (`koIds`, Titel …). Ein Eintrag, der IRGENDWO die
-// Kennung eines Objekts trägt, das der Leser nicht sehen darf, wird ihm deshalb nicht ausgegeben —
-// in der Liste, im Export und in den Befund-Kennungen eines Objekts. Ein unsichtbares Objekt ist
-// damit hier, was es überall ist: unbekannt.
+// WER IST EINGESCHRÄNKT. Jeder Leser dieser Routen hat `ko.validate` und sieht damit auch
+// Vertrauliches; was ihm `darfSehen` vorenthält, liegt allein an Spaces. Eingeschränkt ist deshalb,
+// wer mindestens einen bekannten Space nicht lesen darf (Space-Bestand und jeder Space, den die
+// Kette je genannt hat). Das hängt nur an Spaces und Mitgliedschaft — nicht daran, ob es gerade
+// verborgene Vorgänge gibt. Ein uneingeschränkter Leser bekommt das Protokoll unverändert: Liste,
+// Prüfbericht und die nachrechenbare Kette (R-0613).
 //
-// Alteinträge `lesevarianten.load` mit Bestandsbilanz zählen auch Objekte, die sie nicht nennen;
-// sie gehen nur an einen Leser, der den ganzen Bestand sehen darf.
-//
-// DER EXPORT (R-0613) ist eine nachrechenbare Kette — Einträge, Kopf, Prüfbericht. Eine Kette mit
-// Lücken oder geänderter Nutzlast wäre das nicht mehr. Deshalb ZWEI Formen, technisch getrennt:
-//   · `klarwerk-audit-export` — die unveränderte Kette, NUR wenn diesem Leser nichts ausgeblendet
-//     wird. Sie bleibt mit `verifyChain` außerhalb prüfbar.
-//   · `klarwerk-audit-ansicht` — sonst: die für ihn sichtbaren Einträge OHNE Kettenfelder (`hash`,
-//     `prevHash`, `hashVersion`), ohne Kopf und ohne Prüfbericht; sie gibt sich nicht als Kette aus.
-//     Ihr Abruf wird als `audit.view-exported` protokolliert, nicht als Kettenexport.
-// Ohne Lesequelle ist nichts entscheidbar: dann gilt fail-closed jeder Eintrag als verborgen.
+// WAS EIN EINGESCHRÄNKTER LESER BEKOMMT — eine Leseransicht, die nichts von verborgenen Vorgängen
+// abhängen lässt:
+//   · Kein Eintrag, der ein verborgenes Objekt oder einen verborgenen Befund nennt (Ziel, `eventId`,
+//     Nutzlast, auch eingebettet), keine historische Ladebilanz.
+//   · Verborgen ist ein Objekt, das er nicht sehen darf — für den Bestand samt Papierkorb nach den
+//     aktuellen Fakten, für ENDGÜLTIG GELÖSCHTE Objekte nach der Kette selbst: der Space eines
+//     Objekts ändert sich nur über `ko.space-changed` (`KoService.setzeSpace`), der letzte solche
+//     Eintrag nennt ihn also auch nach der Löschung. Die Stufe gilt dabei als unbekannt und streng.
+//   · Ein Befund ist verborgen, wenn eines seiner Objekte verborgen ist; seine Objekte kommen aus dem
+//     Befundbestand oder aus `koIds` der Kette. Ist ein Befund NICHT zuzuordnen, gilt er als
+//     verborgen (fail-closed) — ebenso ein Objekt, das ein Befund nennt, das aber nirgends bekannt ist.
+//   · Statt der Kettennummer trägt jeder Eintrag seine laufende Nummer IN DER ANSICHT (keine
+//     Lücken); `hash`, `prevHash`, `hashVersion` fehlen. Exportbelege (`audit.exported`,
+//     `audit.view-exported`) erscheinen ohne ihre Zählwerte und Kettenköpfe.
+//   · Der Prüfbericht prüft die Einträge der Ansicht je für sich (eigener Hash) und nennt nur ihre
+//     Zahl; die Verkettung ist in einer Ansicht nicht prüfbar und wird nicht behauptet.
+//   · Der Export ist `klarwerk-audit-ansicht`, ausdrücklich keine Kette.
+// Ohne Lesequelle ist nichts entscheidbar: dann gilt jeder Leser als eingeschränkt und jeder
+// Eintrag als verborgen.
 
-/** Die Kennungen aller Objekte, die dieser Leser NICHT sehen darf — oder `null` (nicht entscheidbar). */
-async function verborgeneObjekte(
+interface Leselage {
+  eingeschraenkt: boolean;
+  /** Kennungen verborgener Objekte und Befunde. */
+  verborgen: ReadonlySet<string>;
+  /** Ohne Lesequelle: alles verborgen. */
+  alles: boolean;
+}
+
+const UNEINGESCHRAENKT: Leselage = { eingeschraenkt: false, verborgen: new Set(), alles: false };
+
+function istBefundAktion(action: string): boolean {
+  return action.startsWith("conflict.") || action.startsWith("overlap.");
+}
+
+function texte(wert: unknown): string[] {
+  return Array.isArray(wert) ? wert.filter((w): w is string => typeof w === "string") : [];
+}
+
+async function leselage(
   user: SessionUser,
   quelle: AuditLeseQuelle | undefined,
-): Promise<ReadonlySet<string> | null> {
+  kette: readonly AuditEntry[],
+): Promise<Leselage> {
   if (!quelle) {
-    return null;
+    return { eingeschraenkt: true, verborgen: new Set(), alles: true };
   }
-  const verborgen = new Set<string>();
-  for (const fakten of await quelle.sichtbarkeitsfaktenAller()) {
-    if (!darfSehen(user, fakten)) {
-      verborgen.add(fakten.id);
+  // Die Geschichte jedes Objekts aus der Kette: letzter Space, Autor, letzte Stufe.
+  const ausKette = new Map<string, { spaceId?: string; author?: string; stufe?: string }>();
+  const spaces = new Set<string>(await quelle.spaceKennungen());
+  const befundKos = new Map<string, Set<string>>();
+  for (const e of kette) {
+    if (e.action.startsWith("ko.")) {
+      const g = ausKette.get(e.target) ?? {};
+      if (e.action === "ko.created" && !g.author) {
+        g.author = e.actor;
+      }
+      if (e.action === "ko.space-changed") {
+        const nachher = e.payload.nachher;
+        g.spaceId = typeof nachher === "string" ? nachher : undefined;
+        for (const s of [e.payload.vorher, nachher]) {
+          if (typeof s === "string") {
+            spaces.add(s);
+          }
+        }
+      }
+      if (e.action === "ko.confidentiality" && typeof e.payload.level === "string") {
+        g.stufe = e.payload.level;
+      }
+      ausKette.set(e.target, g);
+    }
+    if (istBefundAktion(e.action)) {
+      const kos = befundKos.get(e.target) ?? new Set<string>();
+      for (const id of texte(e.payload.koIds)) {
+        kos.add(id);
+      }
+      befundKos.set(e.target, kos);
     }
   }
-  return verborgen;
+  const lesbar = user.spaceLesbar;
+  const eingeschraenkt = [...spaces].some((s) => lesbar?.has(s) !== true);
+  if (!eingeschraenkt) {
+    return UNEINGESCHRAENKT;
+  }
+  const verborgen = new Set<string>();
+  const aktuell = new Map((await quelle.sichtbarkeitsfaktenAller()).map((f) => [f.id, f]));
+  for (const [id, fakten] of aktuell) {
+    if (!darfSehen(user, fakten)) {
+      verborgen.add(id);
+    }
+  }
+  for (const [id, g] of ausKette) {
+    if (aktuell.has(id)) {
+      continue;
+    }
+    // Endgültig gelöscht: die Kette weiß, wo es zuletzt lag. Die Stufe gilt als streng, wo sie
+    // nicht belegt ist — für Leser mit `ko.validate` ändert das nichts, für alle anderen schließt es.
+    const fakten: SichtbarkeitsFakten = {
+      ...(g.spaceId ? { spaceId: g.spaceId } : {}),
+      confidentiality: (g.stufe ?? "streng_vertraulich") as SichtbarkeitsFakten["confidentiality"],
+      author: g.author ?? null,
+    };
+    if (!darfSehen(user, fakten)) {
+      verborgen.add(id);
+    }
+  }
+  const bekannt = (koId: string): boolean => aktuell.has(koId) || ausKette.has(koId);
+  for (const { id, koIds } of await quelle.befundZuordnungen()) {
+    const kos = befundKos.get(id) ?? new Set<string>();
+    for (const k of koIds) {
+      kos.add(k);
+    }
+    befundKos.set(id, kos);
+  }
+  for (const [befund, kos] of befundKos) {
+    const zuzuordnen = kos.size > 0 && [...kos].every(bekannt);
+    if (!zuzuordnen || [...kos].some((k) => verborgen.has(k))) {
+      verborgen.add(befund);
+    }
+  }
+  return { eingeschraenkt: true, verborgen, alles: false };
 }
 
 // Eine Kennung kann auch EINGEBETTET stehen — `eventId` „ko.created:<id>", ein Pfad „/kos/<id>".
@@ -82,19 +184,65 @@ function istAlteLadebilanz(e: AuditEntry): boolean {
   );
 }
 
-/** Darf dieser Eintrag an einen Leser mit dieser Menge verborgener Objekte hinaus? */
-function lesbar(e: AuditEntry, verborgen: ReadonlySet<string> | null): boolean {
-  if (verborgen === null) {
+function lesbar(e: AuditEntry, lage: Leselage): boolean {
+  if (lage.alles) {
     return false;
   }
-  if (verborgen.size > 0 && istAlteLadebilanz(e)) {
+  if (!lage.eingeschraenkt) {
+    return true;
+  }
+  if (istAlteLadebilanz(e)) {
     return false;
   }
-  return ![e.target, e.eventId, e.payload].some((teil) => nenntEine(teil, verborgen));
+  return ![e.target, e.eventId, e.payload].some((teil) => nenntEine(teil, lage.verborgen));
+}
+
+/** Ein Eintrag der Leseransicht: laufende Nummer statt Kettennummer, ohne Kettenfelder. */
+type Ansichtseintrag = Omit<AuditEntry, "hash" | "prevHash" | "hashVersion">;
+
+const EXPORTBELEGE = new Set(["audit.exported", "audit.view-exported"]);
+
+function leseansicht(kette: readonly AuditEntry[], lage: Leselage): Ansichtseintrag[] {
+  return kette
+    .filter((e) => lesbar(e, lage))
+    .map(({ hash: _h, prevHash: _p, hashVersion: _v, ...rest }, i) => ({
+      ...rest,
+      seq: i + 1,
+      ...(EXPORTBELEGE.has(rest.action) ? { payload: {} } : {}),
+    }));
+}
+
+function filterTrifft(e: { actor: string; action: string; target: string }, f: AuditFilter) {
+  return (
+    (!f.actor || e.actor === f.actor) &&
+    (!f.action || e.action === f.action) &&
+    (!f.target || e.target === f.target)
+  );
+}
+
+/** Prüfbericht der Ansicht: jeder Eintrag gegen seinen eigenen Hash; keine Verkettung behauptet. */
+function ansichtsbericht(kette: readonly AuditEntry[], lage: Leselage) {
+  const sichtbar = kette.filter((e) => lesbar(e, lage));
+  const abweichend = sichtbar.filter((e) => {
+    const { hash, ...material } = e;
+    return hashEntryFuerVersion(material) !== hash;
+  }).length;
+  const bericht: ChainInspection & { ansicht: "leserecht"; kette: false } = {
+    ok: abweichend === 0,
+    count: sichtbar.length,
+    linkageBreaks: 0,
+    payloadDeviations: abweichend,
+    serialisationDeviations: 0,
+    unresolvedDeviations: 0,
+    uncheckedDeviations: 0,
+    ansicht: "leserecht",
+    kette: false,
+  };
+  return bericht;
 }
 
 // Audit-Log (§2.4 / FR-AUD). Governance-Einsicht: Controller/Admin (ko.validate-Recht).
-// `quelle`: der Bestand, gegen den die Lesepolicy je Eintrag entschieden wird (s. o.).
+// `quelle`: Fakten, gegen die die Lesepolicy je Leser entschieden wird (s. o.).
 export function auditRoutes(
   audit: AuditService,
   guards: Guards,
@@ -107,26 +255,38 @@ export function auditRoutes(
       if (!user) {
         return;
       }
-      const verborgen = await verborgeneObjekte(user, quelle);
-      const eintraege = await audit.list(request.query);
-      reply.code(200).send(eintraege.filter((e) => lesbar(e, verborgen)));
+      const kette = await audit.list({});
+      const lage = await leselage(user, quelle, kette);
+      if (!lage.eingeschraenkt) {
+        reply.code(200).send(await audit.list(request.query));
+        return;
+      }
+      const filter = request.query ?? {};
+      reply.code(200).send(leseansicht(kette, lage).filter((e) => filterTrifft(e, filter)));
     });
 
     // SCRUM-439: aktive Integritätsprüfung der Audit-Kette (verify statt nur Aussage). Governance-
     // Einsicht wie /api/audit (ko.validate). Antwort: { ok, count } — Grundlage des Admin-Knopfs.
+    // Für einen eingeschränkten Leser der Bericht SEINER Ansicht (s. Kopf dieser Datei).
     app.get("/api/audit/verify", async (request, reply) => {
       const user = await guards.requirePermission("ko.validate", request, reply);
       if (!user) {
         return;
       }
-      reply.code(200).send(await audit.verifyReport());
+      const kette = await audit.list({});
+      const lage = await leselage(user, quelle, kette);
+      if (!lage.eingeschraenkt) {
+        reply.code(200).send(await audit.verifyReport());
+        return;
+      }
+      reply.code(200).send(ansichtsbericht(kette, lage));
     });
 
     // R-0766 (Aufnahme gesamt-auditprotokoll, Lauf 2): die Kennungen der Konflikte und
     // Überschneidungen eines Objekts — offen und abgeschlossen. Die Kette am Objekt (`koAuditEvents`)
     // ordnet damit auch Altbelege zu, die das Objekt nicht selbst nennen. Nur Kennungen, die im
     // Protokoll ohnehin als Ziel stehen; deshalb dieselbe Tür wie `/api/audit`.
-    // Ein Objekt, das der Leser nicht sehen darf, hat für ihn keine Befunde — wie ein unbekanntes.
+    // Ein verborgenes Objekt hat keine Befunde, ein verborgener Befund erscheint nicht.
     app.get<{ Params: { koId: string } }>(
       "/api/audit/ko/:koId/findings",
       async (request, reply) => {
@@ -134,15 +294,17 @@ export function auditRoutes(
         if (!user) {
           return;
         }
-        const verborgen = await verborgeneObjekte(user, quelle);
-        if (verborgen === null || verborgen.has(request.params.koId)) {
+        const lage = await leselage(user, quelle, await audit.list({}));
+        if (lage.alles || lage.verborgen.has(request.params.koId)) {
           reply.code(200).send({ ids: [] });
           return;
         }
         const ids = new Set<string>();
         for (const befund of befunde) {
           for (const id of await befund.idsForKo(request.params.koId)) {
-            ids.add(id);
+            if (!lage.verborgen.has(id)) {
+              ids.add(id);
+            }
           }
         }
         reply.code(200).send({ ids: [...ids] });
@@ -151,8 +313,8 @@ export function auditRoutes(
 
     // R-0613: die Kette als Datei — Einträge, Prüfbericht und Kopf (letzte Sequenz + Hash) für die
     // Ablage außerhalb der Datenbank. Dieselbe Einsichtsstufe wie `/api/audit`. Der Abruf selbst wird
-    // als `audit.exported` angehängt. Wem Einträge ausgeblendet werden, bekommt die Leseransicht
-    // (s. Kopf dieser Datei), nie eine umgeschriebene Kette.
+    // als `audit.exported` angehängt. Ein eingeschränkter Leser bekommt die Leseransicht (s. Kopf),
+    // nie eine umgeschriebene Kette.
     //
     // FR-AUD-02: unter `/api/audit` gibt es ausschließlich GET-Wege. Ein POST/PUT/PATCH/
     // DELETE ist nirgends registriert — `tests/audit-gesamt/append-only-http.test.ts` misst das.
@@ -161,31 +323,22 @@ export function auditRoutes(
       if (!user) {
         return;
       }
-      const verborgen = await verborgeneObjekte(user, quelle);
-      let eintraege = await audit.list({});
-      if (eintraege.every((e) => lesbar(e, verborgen))) {
+      const vorher = await audit.list({});
+      const lage = await leselage(user, quelle, vorher);
+      if (!lage.eingeschraenkt) {
         const kette = await audit.exportChain(user.id);
-        // Zwischen Prüfung und Export kann ein Eintrag hinzugekommen sein — noch einmal prüfen.
-        if (kette.entries.every((e) => lesbar(e, verborgen))) {
-          const stempel = kette.exportedAt.replace(/[:.]/g, "-");
-          const name = `klarwerk-audit-${stempel}.json`;
-          reply
-            .header("content-disposition", `attachment; filename="${name}"`)
-            .code(200)
-            .send(kette);
-          return;
-        }
-        eintraege = kette.entries;
+        const name = `klarwerk-audit-${kette.exportedAt.replace(/[:.]/g, "-")}.json`;
+        reply.header("content-disposition", `attachment; filename="${name}"`).code(200).send(kette);
+        return;
       }
-      const sichtbar = eintraege
-        .filter((e) => lesbar(e, verborgen))
-        .map(({ hash: _hash, prevHash: _prev, hashVersion: _version, ...rest }) => rest);
+      // Die Ansicht entsteht aus der Kette VOR ihrem eigenen Beleg — wie beim Kettenexport.
+      const eintraege = leseansicht(vorher, lage);
       const exportedAt = new Date().toISOString();
       await audit.record({
         actor: user.id,
         action: "audit.view-exported",
         target: "audit",
-        payload: { count: sichtbar.length },
+        payload: {},
       });
       const name = `klarwerk-audit-ansicht-${exportedAt.replace(/[:.]/g, "-")}.json`;
       reply.header("content-disposition", `attachment; filename="${name}"`).code(200).send({
@@ -194,9 +347,9 @@ export function auditRoutes(
         exportedAt,
         kette: false,
         hinweis:
-          "Leseransicht nach Leserecht: Einträge zu nicht sichtbaren Objekten fehlen; ohne Kettenfelder, nicht als Kette prüfbar.",
-        count: sichtbar.length,
-        entries: sichtbar,
+          "Leseansicht nach Leserecht: Einträge zu nicht sichtbaren Objekten fehlen; laufende Nummern der Ansicht, ohne Kettenfelder, nicht als Kette prüfbar.",
+        count: eintraege.length,
+        entries: eintraege,
       });
     });
   };

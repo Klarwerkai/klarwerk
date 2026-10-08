@@ -18,6 +18,7 @@
 //     verrät den Unterschied.
 //   · Die Zuordnung selbst bleibt bestandsweit: auch dieser Lauf legt die Variante des geschützten
 //     Objekts an — der Mitglieds-Admin liest sie danach.
+import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { type AppServices, buildApp, buildServices } from "../../services/app/src/build-app";
 import { lokalisierungsPaket } from "../../services/app/src/lesevarianten";
@@ -145,11 +146,9 @@ async function buehne(opts: { mitGeschuetztem: boolean }) {
     LIEFERUNG.offen.confluence_id as string,
     "Offenes Onboarding",
   );
-  if (!opts.mitGeschuetztem) {
-    return { app, services, k, offenId, geschuetztId: null };
-  }
-
-  // Der Space — Lea zuständig, Erik schreibt, Carla und Mia lesen; Ada ist kein Mitglied.
+  // Der Space — Lea zuständig, Erik schreibt, Carla und Mia lesen; Ada ist kein Mitglied. Er steht
+  // in BEIDEN Aufbauten (Nacharbeit 15): verglichen wird ein Bestand mit und ohne die geschützten
+  // VORGÄNGE, nicht mit und ohne Space.
   const space = await app.inject({
     method: "POST",
     url: "/api/spaces",
@@ -169,6 +168,9 @@ async function buehne(opts: { mitGeschuetztem: boolean }) {
   });
   expect(space.statusCode, space.body).toBe(201);
   const spaceId = (space.json() as { id: string }).id;
+  if (!opts.mitGeschuetztem) {
+    return { app, services, k, ids, offenId, geschuetztId: null };
+  }
 
   const geschuetztId = await objektMitAnker(
     services,
@@ -221,7 +223,7 @@ async function buehne(opts: { mitGeschuetztem: boolean }) {
     quellabgleich: "unbestaetigt",
     updatedAt: "2026-01-01T00:00:00.000Z",
   });
-  return { app, services, k, offenId, geschuetztId };
+  return { app, services, k, ids, offenId, geschuetztId };
 }
 
 const laden = (app: App, kopf: Kopf) =>
@@ -399,5 +401,158 @@ describe("Auditliste, Export und Befunde nach der Lesepolicy des Lesers", () => 
     expect(pruefung.json().ok).toBe(true);
     expect(verifyChain(await mit.services.audit.list())).toBe(true);
     await mit.app.close();
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// Ben, Nacharbeit 15 — GELÖSCHTE OBJEKTE, INDIREKTE BEFUNDE, METADATEN.
+// ------------------------------------------------------------------------------------------------
+
+/** Ersetzt Kennungen (in Reihenfolge des Auftretens) und Zeitstempel durch Platzhalter. */
+function normalisiert(roh: string): unknown {
+  const nummer = new Map<string, string>();
+  const ohneKennung = roh.replace(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+    (id) => {
+      const vorhanden = nummer.get(id);
+      if (vorhanden) {
+        return vorhanden;
+      }
+      const neu = `<id-${nummer.size + 1}>`;
+      nummer.set(id, neu);
+      return neu;
+    },
+  );
+  return JSON.parse(
+    ohneKennung.replace(/\d{4}-\d{2}-\d{2}T\d{2}[:-]\d{2}[:-]\d{2}[.-]\d{3}Z/g, "<zeit>"),
+  );
+}
+
+describe("Protokoll nach Endlöschung und für indirekte Befundbezüge", () => {
+  it("Endlöschung gibt die verborgenen Einträge NICHT frei; das Mitglied sieht die Löschung", async () => {
+    const mit = await buehne({ mitGeschuetztem: true });
+    const geschuetztId = mit.geschuetztId as string;
+    // Vorher: verborgen — die Ausgangslage, sonst bewiese das Danach nichts.
+    expect((await auditAbruf(mit.app, mit.k.ada, geschuetztId)).listeRoh).not.toContain(
+      geschuetztId,
+    );
+    // Der vorgesehene Löschweg: Papierkorb, dann endgültig (purgeKo, `ko.purged`).
+    await mit.services.ko.delete(geschuetztId, mit.ids.erik);
+    await mit.services.ko.purgeTrashed(geschuetztId, mit.ids.erik);
+    const fakten = await mit.services.ko.sichtbarkeitsfaktenAller();
+    expect(
+      fakten.some((f) => f.id === geschuetztId),
+      "das Objekt ist wirklich weg",
+    ).toBe(false);
+
+    const ada = await auditAbruf(mit.app, mit.k.ada, geschuetztId);
+    expect(ada.listeRoh).not.toContain(geschuetztId);
+    expect(ada.dateiRoh).not.toContain(geschuetztId);
+    expect(ada.befunde).toEqual({ ids: [] });
+    expect(ada.listeRoh).not.toContain("Geschütztes Onboarding");
+
+    // GEGENPROBE: das Mitglied liest die Löschung und die früheren Einträge weiter.
+    const mia = await auditAbruf(mit.app, mit.k.mia, geschuetztId);
+    expect(mia.liste.some((e) => e.action === "ko.purged" && e.target === geschuetztId)).toBe(true);
+    expect(mia.liste.some((e) => e.action === "ko.created" && e.target === geschuetztId)).toBe(
+      true,
+    );
+    expect(mia.datei.format).toBe("klarwerk-audit-export");
+    expect(verifyChain(mia.datei.entries as AuditEntry[])).toBe(true);
+    await mit.app.close();
+  });
+
+  it("Befundbelege ohne Objektkennung: zugeordnet über den Befund, nicht zuzuordnen ⇒ verborgen", async () => {
+    const mit = await buehne({ mitGeschuetztem: true });
+    const geschuetztId = mit.geschuetztId as string;
+    const fassungA = (await mit.services.ko.get(geschuetztId))?.version as number;
+    const fassungB = (await mit.services.ko.get(mit.offenId))?.version as number;
+    await mit.services.conflicts.createAuto(
+      {
+        koA: geschuetztId,
+        koB: mit.offenId,
+        type: "truth",
+        description: "Nacharbeit 15: Konflikt zwischen geschütztem und offenem Objekt",
+        koAVersion: fassungA,
+        koBVersion: fassungB,
+      },
+      { trigger: "background", method: "deterministic" },
+    );
+    const [konfliktId] = await mit.services.conflicts.idsForKo(geschuetztId);
+    expect(konfliktId, "Vorbedingung: der Konflikt besteht").toBeTruthy();
+    // Altbelege in der Form vor R-0766: nur die Befund-Kennung, keine `koIds`.
+    await mit.services.audit.record({
+      actor: "alt",
+      action: "conflict.resolved",
+      target: konfliktId as string,
+    });
+    const unbekannt = randomUUID();
+    await mit.services.audit.record({
+      actor: "alt",
+      action: "overlap.kept-separate",
+      target: unbekannt,
+    });
+
+    const ada = await auditAbruf(mit.app, mit.k.ada, mit.offenId);
+    expect(ada.listeRoh).not.toContain(konfliktId as string);
+    expect(ada.dateiRoh).not.toContain(konfliktId as string);
+    expect(ada.listeRoh, "nicht zuzuordnen ⇒ verborgen").not.toContain(unbekannt);
+    expect(ada.dateiRoh).not.toContain(unbekannt);
+    // Befunde des SICHTBAREN Objekts: der Konflikt mit dem geschützten erscheint nicht.
+    expect(ada.befunde.ids).not.toContain(konfliktId);
+
+    // GEGENPROBE: das Mitglied (liest jeden Space) sieht beide Belege und den Befund.
+    const mia = await auditAbruf(mit.app, mit.k.mia, mit.offenId);
+    expect(mia.liste.some((e) => e.target === konfliktId && e.actor === "alt")).toBe(true);
+    expect(mia.liste.some((e) => e.target === unbekannt)).toBe(true);
+    expect(mia.befunde.ids).toContain(konfliktId);
+    await mit.app.close();
+  });
+});
+
+describe("Metadaten: vollständige Antworten mit und ohne geschützte Vorgänge", () => {
+  async function ablauf(mitGeschuetztem: boolean) {
+    const b = await buehne({ mitGeschuetztem });
+    // Ein berechtigter Vollexport VORAB — sein Beleg (`audit.exported`) trägt Zähler und Kopf der
+    // ganzen Kette und liegt danach in der Historie, die Ada liest.
+    const voll = await b.app.inject({ method: "GET", url: "/api/audit/export", headers: b.k.mia });
+    expect(voll.statusCode).toBe(200);
+    expect((voll.json() as { format: string }).format).toBe("klarwerk-audit-export");
+    const ada = {
+      liste: await b.app.inject({ method: "GET", url: "/api/audit", headers: b.k.ada }),
+      pruefung: await b.app.inject({ method: "GET", url: "/api/audit/verify", headers: b.k.ada }),
+      datei: await b.app.inject({ method: "GET", url: "/api/audit/export", headers: b.k.ada }),
+    };
+    const mia = await b.app.inject({ method: "GET", url: "/api/audit/verify", headers: b.k.mia });
+    await b.app.close();
+    return { ada, mia: mia.json() as { ok: boolean; count: number }, b };
+  }
+
+  it("Ada liest Liste, Prüfbericht und Export Feld für Feld wie ohne die geschützten Vorgänge", async () => {
+    const mit = await ablauf(true);
+    const ohne = await ablauf(false);
+    for (const [weg, a, o] of [
+      ["Liste", mit.ada.liste, ohne.ada.liste],
+      ["Prüfbericht", mit.ada.pruefung, ohne.ada.pruefung],
+      ["Export", mit.ada.datei, ohne.ada.datei],
+    ] as const) {
+      expect(a.statusCode, weg).toBe(200);
+      expect(normalisiert(a.body), weg).toEqual(normalisiert(o.body));
+      expect(a.body, weg).not.toContain(mit.b.geschuetztId as string);
+    }
+    // Keine Kettenfelder, keine globalen Zählwerte in der Ansicht.
+    const liste = mit.ada.liste.json() as Record<string, unknown>[];
+    for (const e of liste) {
+      expect("hash" in e || "prevHash" in e || "hashVersion" in e).toBe(false);
+    }
+    expect(liste.map((e) => e.seq)).toEqual(liste.map((_, i) => i + 1));
+    const exportBeleg = liste.find((e) => e.action === "audit.exported");
+    expect(exportBeleg?.payload).toEqual({});
+
+    // GEGENPROBE: die berechtigte Kettenprüfung bleibt — über die GANZE Kette, also mit den
+    // geschützten Vorgängen mehr Einträge als ohne.
+    expect(mit.mia.ok).toBe(true);
+    expect(ohne.mia.ok).toBe(true);
+    expect(mit.mia.count).toBeGreaterThan(ohne.mia.count);
   });
 });

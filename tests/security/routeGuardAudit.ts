@@ -681,11 +681,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/admin/sim-corpus": { protection: "users.manage" },
   // Klara Stufe 2: KI-gestuetzte Hilfe-Antwort — jeder angemeldete Leser (viewer inkl.).
   "POST /api/help/explain": { protection: "ko.read" },
-  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 14): Liste, Export und Befund-Kennungen nur
-  // zu Objekten, die der Leser sehen darf (`verborgeneObjekte` → darfSehen).
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 14/15): Liste, Prüfbericht, Export und
+  // Befund-Kennungen nach dem Leserecht des Lesers (`leselage` → darfSehen).
   "GET /api/audit": { protection: "ko.validate", zeilenrecht: ["darfSehen"] },
   // SCRUM-439: aktive Integritätsprüfung der Audit-Kette — Governance-Einsicht wie /api/audit.
-  "GET /api/audit/verify": { protection: "ko.validate" },
+  "GET /api/audit/verify": { protection: "ko.validate", zeilenrecht: ["darfSehen"] },
   // Aufnahme gesamt-auditprotokoll (R-0613): Export der Kette samt Kopf — dieselbe Einsicht.
   "GET /api/audit/export": { protection: "ko.validate", zeilenrecht: ["darfSehen"] },
   // Lauf 2 (R-0766): Befund-Kennungen eines Objekts für dessen Kette — dieselbe Einsicht.

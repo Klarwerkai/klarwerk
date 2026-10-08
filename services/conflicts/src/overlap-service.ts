@@ -1110,6 +1110,12 @@ export class OverlapService {
     return (await this.repo.all()).filter((e) => e.koA === koId || e.koB === koId).map((e) => e.id);
   }
 
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 15): wie `ConflictService.koZuordnungen` — je
+  // Überschneidung nur ihre beiden Objektkennungen, für die Leserechtszuordnung des Protokolls.
+  async koZuordnungen(): Promise<{ id: string; koIds: string[] }[]> {
+    return (await this.repo.all()).map((e) => ({ id: e.id, koIds: [e.koA, e.koB] }));
+  }
+
   async badgeCount(): Promise<number> {
     return (await this.unresolved()).length;
   }
