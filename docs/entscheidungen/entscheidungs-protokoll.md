@@ -57,6 +57,13 @@ Am Basisstand per Quelleninspektion festgestellt:
   geändert noch erneut geprüft. Der Antwortexport schreibt **keinen** Auditeintrag; das verlangt der
   Wortlaut nicht.
 - Die mobile Fläche hat keinen Antwortexport; sie ist nicht Teil dieser Lieferung.
+- **Fremder Basisfehler (nicht von R-1643 verursacht, nicht hier behoben)**:
+  `tests/ask-c02/konflikt.test.ts` K1/lang, K3 und K4 waren am Kandidaten `4f132f8b` rot, alle mit der langen
+  Frage aus JOB 3365. Das Modell wurde dabei nie gefragt. Quelleninspektion: Das Tor R-0473 (K8,
+  `decktAlleFragebegriffe`, `services/ask/src/service.ts` vor `waehleKandidaten`) bindet auch die
+  Rahmenwörter der langen Frage („English", „cite", „stored" …), die keine Quelle trägt, und filtert so
+  beide Quellen vor dem Reasoner heraus. K1/kurz im selben Lauf ist grün. Die Abstimmung zwischen
+  R-0473 und JOB 3365 ist eine offene Produktentscheidung außerhalb dieses Auftrags.
 
 ## Quellenwidersprüche und offene Grenzen
 
