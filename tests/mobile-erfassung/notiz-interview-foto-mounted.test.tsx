@@ -237,6 +237,13 @@ beforeEach(async () => {
   thumb.aufloesen = null;
 });
 
+/** Ein echtes, abbrechbares `beforeunload` am Fenster — wie in tests/app/mobile-unload-guard-mounted. */
+function beforeUnloadBlocked(): boolean {
+  const e = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(e);
+  return e.defaultPrevented;
+}
+
 /** Die hängende Umwandlung jetzt fertigstellen — mit einem eigenen, erkennbaren Bild. */
 async function umwandlungFertig(dataUrl: string): Promise<void> {
   const aufloesen = thumb.aufloesen;
@@ -441,6 +448,33 @@ describe("FR-CAP-04 · laufende Fotoumwandlung und Speicherweg", () => {
     const entwuerfe = await box.alle();
     expect(entwuerfe).toHaveLength(1);
     expect(entwuerfe[0]?.statement).toBe("Leck an P4");
+    expect(String(entwuerfe[0]?.bodyHtml)).toContain(BILD_P4);
+    expect(container.textContent).toContain("START-SEITE");
+    abbauen();
+  });
+
+  // BEN, Nacharbeit 3: der Fall OHNE Texteingabe. Vorher trug das Formular das Foto erst nach der
+  // Umwandlung — `isDirty` blieb false, der Dialog kam nicht, und Neuladen warnte nicht.
+  it("alleinige Fotoauswahl: Neuladen warnt, der Dialog kommt, und sein Speichern wartet das Foto ab", async () => {
+    thumb.verzoegert = true;
+    await mount("mobile");
+    expect(beforeUnloadBlocked()).toBe(false);
+    await waehleDatei(el('[data-testid="mob-foto-kamera"]'), "P4.jpg");
+
+    // Nur die laufende Auswahl, kein Text: beforeunload hält trotzdem an.
+    expect(beforeUnloadBlocked()).toBe(true);
+
+    await click(knopf(i18n.t("topbar.toDesktop")));
+    // Der Dialog steht — ohne ihn gäbe es den Knopf nicht.
+    await click(knopf(i18n.t("nav.guard.save")));
+    expect(await box.alle()).toHaveLength(0);
+    expect(container.textContent).not.toContain("START-SEITE");
+
+    await umwandlungFertig(BILD_P4);
+    await act(flush);
+
+    const entwuerfe = await box.alle();
+    expect(entwuerfe).toHaveLength(1);
     expect(String(entwuerfe[0]?.bodyHtml)).toContain(BILD_P4);
     expect(container.textContent).toContain("START-SEITE");
     abbauen();

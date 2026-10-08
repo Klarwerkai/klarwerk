@@ -341,10 +341,19 @@ export function Mobile(): JSX.Element {
   const formGenRef = useRef(0);
   /** Die laufenden Umwandlungen. Jeder Speicherweg wartet sie ab, bevor er die Nutzlast baut. */
   const fotoLaeufeRef = useRef(new Set<Promise<void>>());
-  const [fotosInArbeit, setFotosInArbeit] = useState(0);
+  /** Je laufender Umwandlung die Formular-Generation, unter der sie begann. */
+  const [fotoLaufGenerationen, setFotoLaufGenerationen] = useState<readonly number[]>([]);
+  const fotosInArbeit = fotoLaufGenerationen.length;
   const formAbloesen = (): void => {
     formGenRef.current += 1;
   };
+  // BEN (Nacharbeit 3): eine Fotoauswahl, deren Umwandlung noch läuft, IST ungesicherte Eingabe —
+  // auch wenn das Formular das Foto noch nicht trägt. Ohne sie fragte der Weggeh-Wächter bei einer
+  // alleinigen Fotoauswahl nicht nach, und auch Neuladen warnte nicht: das Foto ging verloren.
+  // Gezählt wird nur, was zum AKTUELLEN Formular gehört; ein abgelöster Lauf wird ohnehin verworfen.
+  // Ein Prädikat für beide Wächter (Navigation und beforeunload) — keine zweite Autorität.
+  const fotoAuswahlLaeuft = fotoLaufGenerationen.includes(formGenRef.current);
+  const ungesichert = isDirty || fotoAuswahlLaeuft;
   const resetForm = (): void => {
     formAbloesen();
     setForm({ ...EMPTY_DRAFT_FORM });
@@ -466,12 +475,15 @@ export function Mobile(): JSX.Element {
       setForm(naechst);
     })();
     fotoLaeufeRef.current.add(lauf);
-    setFotosInArbeit((n) => n + 1);
+    setFotoLaufGenerationen((g) => [...g, generation]);
     try {
       await lauf;
     } finally {
       fotoLaeufeRef.current.delete(lauf);
-      setFotosInArbeit((n) => n - 1);
+      setFotoLaufGenerationen((g) => {
+        const i = g.indexOf(generation);
+        return i < 0 ? g : [...g.slice(0, i), ...g.slice(i + 1)];
+      });
     }
   };
   /**
@@ -746,7 +758,9 @@ export function Mobile(): JSX.Element {
   // gewechselt, und die Rückfrage steht auf der Seite, die man gerade behalten hat.
   useEffect(() => {
     setGuard({
-      isDirty: () => isDirty,
+      // BEN (Nacharbeit 3): `ungesichert` statt `isDirty` — eine laufende Fotoauswahl öffnet den
+      // Dialog, und dessen Speichern wartet sie unten ab.
+      isDirty: () => ungesichert,
       save: async () => {
         // JOB 4193 R5 (BEN Korrekturpflicht 2): auch der Weggeh-Wächter schreibt nicht an einer
         // ungelösten Rückfrage vorbei. Der GRUND reist in der Hülle mit (`NavGuardSaveError`,
@@ -761,6 +775,11 @@ export function Mobile(): JSX.Element {
         const f = fotoLaeufeRef.current.size > 0 ? await fotosAbwarten() : form;
         if (!f) {
           throw new NavGuardSaveError(t("mob.foto.inArbeit"));
+        }
+        // Ist die einzige Eingabe eine Fotoauswahl, deren Umwandlung gescheitert ist (die Fläche
+        // hat das gemeldet), gibt es beim NEUEN Erfassen nichts zu sichern — kein leerer Entwurf.
+        if (!editingId && !isDraftFormFillable(f)) {
+          return;
         }
         wiederholtRef.current = false;
         if (!queue.online) {
@@ -806,8 +825,9 @@ export function Mobile(): JSX.Element {
   // Vorrichtung wie in Erfassen (`Capture.tsx:1790`) und Vordertür (`CaptureFrontDoor.tsx:591`),
   // keine zweite Autorität: `useUnloadGuard` hängt genau einen `beforeunload`-Handler ans Fenster
   // und nimmt ihn wieder ab. Dasselbe Dirty-Prädikat wie der In-App-Wächter — beide können nicht
-  // auseinanderlaufen.
-  useUnloadGuard(isDirty);
+  // auseinanderlaufen. BEN (Nacharbeit 3): dasselbe `ungesichert` wie oben, samt laufender
+  // Fotoauswahl.
+  useUnloadGuard(ungesichert);
 
   // SCRUM-87 / FR-MOB-03: Inline-Bestätigung statt nativem Dialog.
   const [confirm, setConfirm] = useState<ConfirmState>(NO_CONFIRM);
