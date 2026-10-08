@@ -49,6 +49,7 @@
 // Auffassungen davon, wer einen Entwurf sehen darf, waeren eine zu viel"). Eine eigene Kopie waere
 // die dritte.
 import type { FastifyPluginAsync } from "fastify";
+import { meldung, sprache } from "../../../auth";
 import type { CaptureService } from "../../../capture";
 import { type Guards, sendError } from "../http";
 import { canSeeDraft } from "./capture-routes";
@@ -97,8 +98,11 @@ export function naechsterSchrittEntwurfRoutes(
         // aufnahme:20260922:gesamt-leserechte (R-0239, Entscheidung J24 vom 13.08.: „404"): ein
         // Entwurf, den dieser Mensch nicht sehen darf, gibt es für ihn nicht — dieselbe Antwort wie
         // für eine unbekannte Kennung. Vorher verriet 403 FORBIDDEN, dass der Entwurf existiert.
+        // P-Q9: der Satz kommt aus dem Katalog, wie an den Entwurfsrouten (`capture-routes.ts`).
         if (!draft || !canSeeDraft(user, draft)) {
-          reply.code(404).send({ error: "NOT_FOUND", message: "Entwurf nicht gefunden." });
+          reply
+            .code(404)
+            .send({ error: "NOT_FOUND", message: meldung("DRAFT_NOT_FOUND", sprache(request)) });
           return;
         }
 

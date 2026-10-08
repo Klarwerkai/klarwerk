@@ -722,8 +722,9 @@ const AUS_DEM_RECHTETOR = ["PERMISSION_MISSING"];
  * JOB 3956 · Die drei Schlüssel, die WEDER aus `services/auth/src` NOCH aus dem Rechtetor kommen:
  *
  *   `DRAFT_NOT_FOUND`                        `services/app/src/routes/capture-routes.ts`
- *                                            (`requireVisibleDraft` und der Fortsetzen-Zweig;
- *                                            `DRAFT_NOT_VISIBLE` ist seit gesamt-leserechte weg)
+ *                                            (`requireVisibleDraft` und der Fortsetzen-Zweig),
+ *                                            dazu der Dokumentweg in `ko-routes.ts` (P-Q9);
+ *                                            `DRAFT_NOT_VISIBLE` ist seit gesamt-leserechte weg
  *   `PERMISSION_DENIED`                      `services/rbac/src/guard.ts`
  *
  * Dieselbe Lage und dieselbe benannte Prüflücke wie bei `AUS_DEM_RECHTETOR`: H2 und H3 tasten
@@ -1500,9 +1501,13 @@ const GEMESSEN_VON = {
   // beide Fälle halten den Satz doppelt: wörtlich (ein schiefes Katalogfeld fällt auf) UND gegen
   // `MELDUNGEN.<SCHLUESSEL>.<sprache>` (ein zweites Literal im Code oder ein verstellter Schlüssel
   // fällt auf). Der deutsche Fall (E3/F3) zählt hier nicht mit — H4 fragt nach EN und NL.
+  // Aufnahme gesamt-fehlermeldungen (P-Q9): I1–I4 halten dieselben zwei Sätze am Dokumentweg
+  // (`POST /api/kos/from-document` mit `draftId`, `ko-routes.ts`), der sie bis dahin als Literal sandte.
   DRAFT_NOT_FOUND: [
     "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · E1 EN · unbekannte Entwurfskennung: 404 NOT_FOUND mit englischem Satz",
     "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · E2 NL · unbekannte Entwurfskennung: 404 NOT_FOUND mit niederländischem Satz",
+    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · I1 EN · Dokumentweg mit unbekanntem Entwurf: 404 NOT_FOUND mit englischem Satz",
+    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · I2 NL · Dokumentweg mit unbekanntem Entwurf: 404 NOT_FOUND mit niederländischem Satz",
   ],
   // JOB 4249 · der Satz des ANLEGEWEGS. Er entsteht, wenn das Konto zwischen dem Zusammenstellen
   // der Nutzlast und dem Absenden gewechselt hat (`expectedOwner`, die Voraussetzung des Aufrufs).

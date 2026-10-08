@@ -550,6 +550,10 @@ describe("K6 · Einreichen und Löschen eines Pool-Entwurfs bleiben beim Autor",
       },
     });
     expect(res.statusCode).toBe(403);
+    // aufnahme:20260922:gesamt-leserechte: der Pool-Entwurf IST für Otto sichtbar — es fehlt das
+    // Einreichrecht, also der Rechtesatz wie an `requireVisibleDraft` (`nurAutor`), nicht
+    // „gibt es nicht".
+    expect(res.json()).toEqual({ error: "FORBIDDEN", message: MELDUNGEN.PERMISSION_DENIED.de });
     const kos = await b.app.inject({ method: "GET", url: "/api/kos", headers: b.anna.kopf });
     expect((kos.json() as unknown[]).length).toBe(0);
     expect(await listenIds(b, b.otto.kopf)).toEqual([b.poolId]);
