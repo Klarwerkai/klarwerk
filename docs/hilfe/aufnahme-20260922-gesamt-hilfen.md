@@ -8,6 +8,9 @@ Nacharbeit 6 am Kandidaten `33aad029`: Klara lädt die Bibliotheksartikel erst b
 (`lib/klaraBibliothek.ts`), weil sie statisch eingebunden den Eintritt über den Deckel aus R-0801
 hoben (gemessen 1403861 B gegen 1360000 B); im Diktieren-Artikel (EN) ersetzt „goes“ das Wort
 „flows“ (Wortwahlregel).
+Nacharbeit 14 am Kandidaten `f8441b15`: Der Eintritt stand 3567 B über dem Deckel aus R-0801. Klara
+lädt die Elementbeispiele (`lib/klaraBeispiele.ts`, R-0941) jetzt wie die Bibliothek erst beim
+Öffnen nach.
 Nacharbeit 13 am Kandidaten `df501851` (Befunde Bens): Die Erklärungen stehen an der Stelle. Die
 Wissensobjekt-Handlungen und „Noch gültig“ melden ihre Erklärung an, ebenso alle gezeichneten
 Register-Abschnitte. Die Löschhilfe nennt den Papierkorb, und Klara führt jedes Prüf-Thema an seine

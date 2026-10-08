@@ -112,10 +112,15 @@ afterEach(async () => {
   await i18n.changeLanguage("de");
 });
 
-/** Wartet, bis das Panel die Bibliothek nachgeladen hat (`lib/klaraBibliothek.ts`, Deckel R-0801). */
+/**
+ * Wartet, bis das Panel nachgeladen hat, was es erst beim Öffnen holt (Deckel R-0801): die
+ * Bibliothek (`lib/klaraBibliothek.ts`) und seit Nacharbeit 14 auch die Beispiele
+ * (`lib/klaraBeispiele.ts`).
+ */
 async function bibliothekGeladen(): Promise<void> {
   await act(async () => {
     await import("../../apps/web/src/lib/klaraBibliothek");
+    await import("../../apps/web/src/lib/klaraBeispiele");
     await new Promise((fertig) => setTimeout(fertig, 0));
   });
 }
@@ -187,6 +192,7 @@ describe("R-0941 · das konkrete Beispiel in Klaras Elementerklärung", () => {
       const flaeche = await klaraMounten(sprache);
       await fokussieren(knopf);
       const panel = await oeffnen(flaeche);
+      await bibliothekGeladen();
       const zeile = panel.querySelector('[data-testid="klara-beispiel-feld"]');
       expect(zeile, "das aktive Element zeigt kein Beispiel").not.toBeNull();
       expect(zeile?.textContent).toContain(i18n.t("klarabeispiel.titel"));
@@ -198,6 +204,7 @@ describe("R-0941 · das konkrete Beispiel in Klaras Elementerklärung", () => {
     const knopf = seitenelement("cap:tagsField");
     const flaeche = await klaraMounten("de");
     const panel = await oeffnen(flaeche);
+    await bibliothekGeladen();
     const zeigen = [...panel.querySelectorAll("button")].find(
       (b) => (b.textContent ?? "").trim() === i18n.t("klara.inspect"),
     );
@@ -275,6 +282,7 @@ describe("R-0941 · das konkrete Beispiel in Klaras Elementerklärung", () => {
     const flaeche = await klaraMounten("de");
     await fokussieren(knopf);
     const panel = await oeffnen(flaeche);
+    await bibliothekGeladen();
     const block = panel.querySelector('[data-testid="klara-beispiel-feld"]')?.parentElement;
     const vorlesen = [...(block?.querySelectorAll("button") ?? [])].find(
       (b) => (b.textContent ?? "").trim() === i18n.t("klara.speak"),

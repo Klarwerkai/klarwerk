@@ -12,7 +12,6 @@ import { endpoints } from "../api/endpoints";
 import { useReasonerStatus } from "../api/hooks";
 import { aiSperrHinweisKey } from "../lib/aiAvailability";
 import { kiBremsSatz } from "../lib/kiBremse";
-import { klaraBeispiel } from "../lib/klaraBeispiele";
 import {
   type ResolvedKlaraEntry,
   allFaqEntries,
@@ -42,13 +41,14 @@ import { KlaraSpaceKontext } from "./KlaraSpaceKontext";
 // Seitentutorial liest mit denselben Hilfen vor.
 
 // Ein Hilfe-Ergebnis im Panel — Titel, Text, Absprung zur Route des Themas.
+// R-0941: auch ein über die Beschriftung gefundenes Element zeigt sein Beispiel, falls es eines hat
+// — das Panel reicht es herein, weil die Beispiele nachgeladen werden (siehe `beispiel` unten).
 function KlaraResult({
   entry,
+  beispiel,
   onNavigate,
-}: { entry: ResolvedKlaraEntry; onNavigate: () => void }): JSX.Element {
-  const { t, i18n } = useTranslation();
-  // R-0941: auch ein über die Beschriftung gefundenes Element zeigt sein Beispiel, falls es eines hat.
-  const beispiel = klaraBeispiel(entry.id, i18n.language);
+}: { entry: ResolvedKlaraEntry; beispiel: string | null; onNavigate: () => void }): JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className="rounded-card border border-hairline bg-page px-3 py-2.5">
       <div className="text-[12.5px] font-semibold text-text">{entry.title}</div>
@@ -307,21 +307,27 @@ export function KlaraAssistant(): JSX.Element {
   // (Nacharbeit 7): in die KI-Grundlage gehen sie als Auszüge je Artikelteil (`klaraGrundlage`).
   // Nachgeladen beim ersten Öffnen (`lib/klaraBibliothek.ts`): statisch eingebunden hoben die
   // Artikel den ersten geladenen Brocken über den Deckel aus R-0801.
+  // Nacharbeit 14 (gesamt-hilfen): aus demselben Grund kommen die Elementbeispiele (R-0941,
+  // `lib/klaraBeispiele.ts`, 49 Beispiele in drei Sprachen) mit — gemessen stand der Eintritt mit
+  // ihnen 3567 B über dem Deckel. Sie werden nur im offenen Panel gezeigt, also erst dort gebraucht.
   const [bibliothek, setBibliothek] = useState<{
     artikel: ResolvedKlaraEntry[];
     auszuege: ResolvedKlaraEntry[];
-  }>({ artikel: [], auszuege: [] });
+    beispiel: (entryId: string, lng: string) => string | null;
+  }>({ artikel: [], auszuege: [], beispiel: () => null });
   useEffect(() => {
     if (!open) {
       return;
     }
     let aktuell = true;
-    void import("../lib/klaraBibliothek").then((modul) => {
+    const laden = Promise.all([import("../lib/klaraBibliothek"), import("../lib/klaraBeispiele")]);
+    void laden.then(([modul, beispiele]) => {
       if (aktuell) {
         const uebersetzen = (key: string): string => t(key);
         setBibliothek({
           artikel: modul.allBibliothekEntries(i18n.language, uebersetzen),
           auszuege: modul.bibliothekAuszuege(i18n.language, uebersetzen),
+          beispiel: beispiele.klaraBeispiel,
         });
       }
     });
@@ -350,6 +356,7 @@ export function KlaraAssistant(): JSX.Element {
   const inspectedEntry = inspected?.entryId ? klaraEntryById(inspected.entryId) : null;
   // R-0941: das konkrete Beispiel zur Elementerklärung (`lib/klaraBeispiele.ts`) — es steht unter
   // dem Text und wird mit vorgelesen. Ohne Beispiel bleibt die Erklärung, wie sie war.
+  const klaraBeispiel = bibliothek.beispiel;
   const fieldBeispiel = fieldEntry ? klaraBeispiel(fieldEntry.id, i18n.language) : null;
   const inspectedBeispiel = inspectedEntry ? klaraBeispiel(inspectedEntry.id, i18n.language) : null;
   const mitBeispiel = (body: string, beispiel: string | null): string =>
@@ -561,7 +568,12 @@ export function KlaraAssistant(): JSX.Element {
                 ) : inspectedHits.length > 0 ? (
                   <div className="space-y-2">
                     {inspectedHits.slice(0, 3).map((entry) => (
-                      <KlaraResult key={entry.id} entry={entry} onNavigate={() => setOpen(false)} />
+                      <KlaraResult
+                        key={entry.id}
+                        entry={entry}
+                        beispiel={klaraBeispiel(entry.id, i18n.language)}
+                        onNavigate={() => setOpen(false)}
+                      />
                     ))}
                   </div>
                 ) : (
@@ -752,7 +764,12 @@ export function KlaraAssistant(): JSX.Element {
                     {t("klara.resultsFor", { q: query.trim() })}
                   </div>
                   {results.slice(0, 6).map((entry) => (
-                    <KlaraResult key={entry.id} entry={entry} onNavigate={() => setOpen(false)} />
+                    <KlaraResult
+                      key={entry.id}
+                      entry={entry}
+                      beispiel={klaraBeispiel(entry.id, i18n.language)}
+                      onNavigate={() => setOpen(false)}
+                    />
                   ))}
                 </div>
               ) : (
