@@ -743,6 +743,17 @@ const REGISTER: Record<string, Eintrag> = {
     grund: "Nacharbeit 3 — Pflege eines Ruhestandshorizonts, nur mit users.manage.",
   },
   "GET /api/ai-check/coverage-summary": { urteil: "PRAEDIKAT", grund: "Block D — vier Zähler." },
+  // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): Antworten nur mit Kennungen und Zählwerten;
+  // jede Aussage des Laufs geht vorher durch `darfSehen` (lokale Helfer, über ihren Rumpf erhoben).
+  "POST /api/paarpflichten/laeufe": { urteil: "PRAEDIKAT", grund: "G2 — 404 statt Auskunft." },
+  "GET /api/paarpflichten/laeufe/:laufId": {
+    urteil: "PRAEDIKAT",
+    grund: "G2 — 404 statt Auskunft.",
+  },
+  "POST /api/paarpflichten/laeufe/:laufId/fortsetzen": {
+    urteil: "PRAEDIKAT",
+    grund: "G2 — 404 statt Auskunft.",
+  },
   "GET /api/validation/overview": { urteil: "PRAEDIKAT", grund: "Block D — Personenzeilen." },
   "GET /api/validation/settings": { urteil: "KEIN_KO_INHALT", grund: "Einstellungen." },
   "GET /api/duplicates/settings": { urteil: "KEIN_KO_INHALT", grund: "Schwellenwert." },

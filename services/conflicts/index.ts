@@ -21,6 +21,8 @@ export {
   type PaarpflichtBilanz,
   type PaarpflichtErgebnis,
   type PaarpflichtKontext,
+  type PaarpflichtLauf,
+  type PaarpflichtPlanung,
   type PaarpflichtPruefer,
   type PaarpflichtRepo,
   type PaarpflichtSchritt,
@@ -32,7 +34,9 @@ export {
   PaarpflichtService,
   PgPaarpflichtRepo,
   ergebnisAusKonfliktUrteil,
+  gleicheLaufbindung,
   paarpflichtBilanz,
+  paarpflichtLaufkopf,
   paarpflichtenPlanen,
 } from "./src/paarpflichten";
 export { ConflictError } from "./src/types";

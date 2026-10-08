@@ -667,6 +667,37 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): die gewählten Prüfläufe über alle Aussagepaare.
+  // Gemessen wird das Tor, nicht der Fachvorgang: die leere Auswahl antwortet hinter dem Tor 400,
+  // ein unbekannter Lauf 404 — beides legt nichts an und stößt nichts an.
+  {
+    gruppe: "paarpflichtenRoutes",
+    methode: "POST",
+    pfad: "/api/paarpflichten/laeufe",
+    belegstelle: "services/app/src/routes/paarpflichten-routes.ts:80",
+    tor: "ko.validate",
+    payload: {},
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "paarpflichtenRoutes",
+    methode: "GET",
+    pfad: "/api/paarpflichten/laeufe/gibt-es-nicht",
+    route: "/api/paarpflichten/laeufe/:laufId",
+    belegstelle: "services/app/src/routes/paarpflichten-routes.ts:117",
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "paarpflichtenRoutes",
+    methode: "POST",
+    pfad: "/api/paarpflichten/laeufe/gibt-es-nicht/fortsetzen",
+    route: "/api/paarpflichten/laeufe/:laufId/fortsetzen",
+    belegstelle: "services/app/src/routes/paarpflichten-routes.ts:139",
+    tor: "ko.validate",
+    payload: {},
+    erwartet: AB_CONTROLLER,
+  },
   {
     gruppe: "askRoutes",
     methode: "GET",

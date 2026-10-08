@@ -10,11 +10,16 @@
 //
 //   planen      — n Aussagen ergeben genau n·(n−1)/2 Pflichten. Kein Kandidatenlimit, keine
 //                 Vorauswahl: ein Limit gibt es nur beim Abarbeiten, und dort bleibt der Rest offen.
+//                 Der Laufkopf bindet Aussagemenge, Stände und Kontext. Bindung prüfen und Pflichten
+//                 anlegen ist EIN atomarer Schritt: ein abgewiesener Aufruf schreibt nichts
+//                 (Nacharbeit 1, bens Befund zu cfc43d4a).
 //   abarbeiten  — beansprucht je Schritt EINE Pflicht mit Frist (Token), fragt den Prüfer und
 //                 schließt nur mit passendem Token ab (Compare-and-Set). Ein Absturz hinterlässt
 //                 höchstens eine beanspruchte Pflicht; nach Ablauf der Frist nimmt ein neuer Lauf sie
 //                 wieder auf. Ein verspäteter Abschluss mit altem Token schreibt nichts (kein
-//                 Doppelurteil).
+//                 Doppelurteil). Gewählt wird die am seltensten vorgelegte Pflicht (`vorlagen`,
+//                 gespeichert): eine Pflicht ohne Modell verdrängt über Aufrufe und Neustarts hinweg
+//                 keine noch nie vorgelegte.
 //   bilanz      — geurteilt, unbestimmt, fehler und die offene Restmenge getrennt gezählt.
 //
 // ZUSTÄNDE einer Pflicht:
@@ -29,6 +34,7 @@
 // Prüffassung — kein Text, keine Modellbegründung. Freigaben und Rechte berührt dieses Modul nicht.
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
+import { pgQueryable, withPgTx } from "../../db-tx";
 import { CONFLICT_MIN_CONFIDENCE, type ConflictVerdict, relationToType } from "./detect";
 import { memoryKey } from "./pair-memory";
 
@@ -63,6 +69,8 @@ export interface Paarpflicht {
   kontext: PaarpflichtKontext;
   zustand: PaarpflichtZustand;
   fehlversuche: number;
+  // Wie oft die Pflicht einem Prüfer vorgelegt (beansprucht) wurde — Grundlage der fairen Auswahl.
+  vorlagen: number;
   beansprucht?: { token: string; bis: string };
   urteil?: { ergebnis: string; modell: string; sicherheit?: number; at: string };
   hinweis?: { art: "fehler" | "kein_modell"; grund: string; at: string };
@@ -157,12 +165,63 @@ export function paarpflichtenPlanen(
         kontext: { ...kontext },
         zustand: "offen",
         fehlversuche: 0,
+        vorlagen: 0,
         angelegt: jetzt,
         aktualisiert: jetzt,
       });
     }
   }
   return pflichten;
+}
+
+// Der Laufkopf: woran ein Lauf gebunden ist. Ein erneutes Planen muss GENAU diese Aussagemenge mit
+// diesen Ständen und diesem Kontext nennen — sonst ist es ein anderer Lauf.
+export interface PaarpflichtLauf {
+  laufId: string;
+  // Nach Kennung sortiert, Quellen sortiert.
+  aussagen: PaarpflichtAussage[];
+  kontext: PaarpflichtKontext;
+  angelegt: string;
+}
+
+export function paarpflichtLaufkopf(
+  laufId: string,
+  aussagen: readonly PaarpflichtAussage[],
+  kontext: PaarpflichtKontext,
+  jetzt: string,
+): PaarpflichtLauf {
+  return {
+    laufId,
+    aussagen: [...aussagen]
+      .sort((p, q) => (p.refId < q.refId ? -1 : 1))
+      .map((a) => ({ ...a, quellen: [...a.quellen].sort() })),
+    kontext: { ...kontext },
+    angelegt: jetzt,
+  };
+}
+
+/** Gleiche Bindung: dieselbe Aussagemenge mit denselben Ständen und derselbe Kontext. */
+export function gleicheLaufbindung(x: PaarpflichtLauf, y: PaarpflichtLauf): boolean {
+  return (
+    x.laufId === y.laufId &&
+    x.kontext.bestand === y.kontext.bestand &&
+    x.kontext.pruefFassung === y.kontext.pruefFassung &&
+    x.aussagen.length === y.aussagen.length &&
+    x.aussagen.every((a, i) => {
+      const b = y.aussagen[i];
+      return b !== undefined && gleicheAussage(a, b);
+    })
+  );
+}
+
+function gleicheAussage(x: PaarpflichtAussage, y: PaarpflichtAussage): boolean {
+  return (
+    x.refId === y.refId &&
+    x.version === y.version &&
+    x.quelle === y.quelle &&
+    x.kontext === y.kontext &&
+    x.quellen.join("\n") === y.quellen.join("\n")
+  );
 }
 
 export function paarpflichtBilanz(pflichten: readonly Paarpflicht[]): PaarpflichtBilanz {
@@ -226,15 +285,39 @@ export interface PaarpflichtBeanspruchung {
   ausser: readonly string[];
 }
 
+export type PaarpflichtPlanung =
+  | { gebunden: true; gesamt: number; neu: number }
+  // Der Lauf existiert mit anderer Bindung — es wurde NICHTS geschrieben.
+  | { gebunden: false };
+
 export interface PaarpflichtRepo {
-  // Einfügen, wenn noch nicht vorhanden (je id); vorhandene Pflichten bleiben unberührt.
-  anlegen(pflichten: readonly Paarpflicht[]): Promise<number>;
+  // ATOMAR: Laufkopf anlegen oder gegen den vorhandenen prüfen und nur bei gleicher Bindung die
+  // fehlenden Pflichten einfügen. Bei abweichender Bindung bleibt die Ablage unverändert.
+  planen(lauf: PaarpflichtLauf, pflichten: readonly Paarpflicht[]): Promise<PaarpflichtPlanung>;
+  laufkopf(laufId: string): Promise<PaarpflichtLauf | null>;
   liste(laufId: string): Promise<Paarpflicht[]>;
+  // Läufe mit beanspruchbarer oder beanspruchter Arbeit — für die Wiederaufnahme nach dem Start.
+  offeneLaeufe(maxFehlversuche: number): Promise<string[]>;
   // Atomar EINE beanspruchbare Pflicht übernehmen: offen, Fehler unter der Versuchsgrenze oder
-  // in_arbeit mit abgelaufener Frist. Kein Kandidat → null.
+  // in_arbeit mit abgelaufener Frist — die am seltensten vorgelegte zuerst, dann nach Paarschlüssel.
+  // Kein Kandidat → null.
   beanspruchen(laufId: string, b: PaarpflichtBeanspruchung): Promise<Paarpflicht | null>;
   // Nur, wenn die Pflicht noch in_arbeit mit DIESEM Token ist.
   abschliessen(id: string, token: string, neu: Paarpflicht): Promise<boolean>;
+}
+
+function offenOderWiederholbar(p: Paarpflicht, maxFehlversuche: number): boolean {
+  return (
+    p.zustand === "offen" ||
+    p.zustand === "in_arbeit" ||
+    (p.zustand === "fehler" && p.fehlversuche < maxFehlversuche)
+  );
+}
+
+// Faire Reihenfolge: seltener vorgelegt zuerst; Altbestand ohne Zähler gilt als nie vorgelegt.
+function vorReihenfolge(p: Paarpflicht, q: Paarpflicht): number {
+  const v = (p.vorlagen ?? 0) - (q.vorlagen ?? 0);
+  return v !== 0 ? v : p.pairKey < q.pairKey ? -1 : 1;
 }
 
 function beanspruchbar(p: Paarpflicht, b: PaarpflichtBeanspruchung): boolean {
@@ -256,8 +339,17 @@ function beanspruchbar(p: Paarpflicht, b: PaarpflichtBeanspruchung): boolean {
 
 export class InMemoryPaarpflichtRepo implements PaarpflichtRepo {
   private readonly pflichten = new Map<string, Paarpflicht>();
+  private readonly laeufe = new Map<string, PaarpflichtLauf>();
 
-  anlegen(pflichten: readonly Paarpflicht[]): Promise<number> {
+  // Prüfen und Schreiben ohne Unterbrechung — dieselbe Atomarität wie die Transaktion in Postgres.
+  planen(lauf: PaarpflichtLauf, pflichten: readonly Paarpflicht[]): Promise<PaarpflichtPlanung> {
+    const vorhanden = this.laeufe.get(lauf.laufId);
+    if (vorhanden && !gleicheLaufbindung(vorhanden, lauf)) {
+      return Promise.resolve({ gebunden: false });
+    }
+    if (!vorhanden) {
+      this.laeufe.set(lauf.laufId, structuredClone(lauf));
+    }
     let neu = 0;
     for (const p of pflichten) {
       if (!this.pflichten.has(p.id)) {
@@ -265,22 +357,40 @@ export class InMemoryPaarpflichtRepo implements PaarpflichtRepo {
         neu += 1;
       }
     }
-    return Promise.resolve(neu);
+    return Promise.resolve({ gebunden: true, gesamt: this.lauf(lauf.laufId).length, neu });
+  }
+
+  laufkopf(laufId: string): Promise<PaarpflichtLauf | null> {
+    const lauf = this.laeufe.get(laufId);
+    return Promise.resolve(lauf ? structuredClone(lauf) : null);
   }
 
   liste(laufId: string): Promise<Paarpflicht[]> {
     return Promise.resolve(this.lauf(laufId).map((p) => structuredClone(p)));
   }
 
+  offeneLaeufe(maxFehlversuche: number): Promise<string[]> {
+    const ids = new Set<string>();
+    for (const p of this.pflichten.values()) {
+      if (offenOderWiederholbar(p, maxFehlversuche)) {
+        ids.add(p.laufId);
+      }
+    }
+    return Promise.resolve([...ids].sort());
+  }
+
   // Lesen und Setzen ohne Unterbrechung — zwei gleichzeitige Läufe greifen nie dieselbe Pflicht.
   beanspruchen(laufId: string, b: PaarpflichtBeanspruchung): Promise<Paarpflicht | null> {
-    const kandidat = this.lauf(laufId).find((p) => beanspruchbar(p, b));
+    const kandidat = this.lauf(laufId)
+      .filter((p) => beanspruchbar(p, b))
+      .sort(vorReihenfolge)[0];
     if (!kandidat) {
       return Promise.resolve(null);
     }
     const neu: Paarpflicht = {
       ...structuredClone(kandidat),
       zustand: "in_arbeit",
+      vorlagen: (kandidat.vorlagen ?? 0) + 1,
       beansprucht: { token: b.token, bis: b.bis },
       aktualisiert: b.jetzt,
     };
@@ -308,26 +418,70 @@ interface PflichtRow {
   data: Paarpflicht;
 }
 
-// Tabelle `conflict_pair_obligations` — angelegt in CONFLICTS_SCHEMA (repo-pg.ts), dieselbe Stufe.
+interface LaufRow {
+  data: PaarpflichtLauf;
+}
+
+// Tabellen `conflict_pair_obligation_runs` (Laufkopf) und `conflict_pair_obligations` — angelegt
+// in CONFLICTS_SCHEMA (repo-pg.ts), dieselbe Stufe.
 export class PgPaarpflichtRepo implements PaarpflichtRepo {
   constructor(private readonly pool: Pool) {}
 
-  async anlegen(pflichten: readonly Paarpflicht[]): Promise<number> {
-    if (pflichten.length === 0) {
-      return 0;
-    }
-    const res = await this.pool.query(
-      "INSERT INTO conflict_pair_obligations(id,lauf_id,pair_key,data) " +
-        "SELECT * FROM unnest($1::text[],$2::text[],$3::text[],$4::jsonb[]) " +
-        "ON CONFLICT (id) DO NOTHING",
-      [
-        pflichten.map((p) => p.id),
-        pflichten.map((p) => p.laufId),
-        pflichten.map((p) => p.pairKey),
-        pflichten.map((p) => JSON.stringify(p)),
-      ],
+  // EINE Transaktion: Kopf anlegen (oder vorhandenen sperren), Bindung prüfen, Pflichten einfügen.
+  // Zwei gleichzeitige Planungen desselben Laufs reihen sich am Kopf (Primärschlüssel bzw.
+  // FOR UPDATE); die zweite sieht die committete Bindung der ersten.
+  planen(lauf: PaarpflichtLauf, pflichten: readonly Paarpflicht[]): Promise<PaarpflichtPlanung> {
+    return withPgTx<PaarpflichtPlanung>(this.pool, async (tx) => {
+      const q = pgQueryable(tx);
+      await q.query(
+        "INSERT INTO conflict_pair_obligation_runs(lauf_id,data) VALUES($1,$2::jsonb) " +
+          "ON CONFLICT (lauf_id) DO NOTHING",
+        [lauf.laufId, JSON.stringify(lauf)],
+      );
+      const kopf = await q.query<LaufRow>(
+        "SELECT data FROM conflict_pair_obligation_runs WHERE lauf_id = $1 FOR UPDATE",
+        [lauf.laufId],
+      );
+      const vorhanden = kopf.rows[0]?.data;
+      if (!vorhanden || !gleicheLaufbindung(vorhanden, lauf)) {
+        return { gebunden: false };
+      }
+      const eingefuegt = await q.query(
+        "INSERT INTO conflict_pair_obligations(id,lauf_id,pair_key,data) " +
+          "SELECT * FROM unnest($1::text[],$2::text[],$3::text[],$4::jsonb[]) " +
+          "ON CONFLICT (id) DO NOTHING",
+        [
+          pflichten.map((p) => p.id),
+          pflichten.map((p) => p.laufId),
+          pflichten.map((p) => p.pairKey),
+          pflichten.map((p) => JSON.stringify(p)),
+        ],
+      );
+      const gesamt = await q.query<{ n: number }>(
+        "SELECT count(*)::int AS n FROM conflict_pair_obligations WHERE lauf_id = $1",
+        [lauf.laufId],
+      );
+      return { gebunden: true, gesamt: gesamt.rows[0]?.n ?? 0, neu: eingefuegt.rowCount ?? 0 };
+    });
+  }
+
+  async laufkopf(laufId: string): Promise<PaarpflichtLauf | null> {
+    const res = await this.pool.query<LaufRow>(
+      "SELECT data FROM conflict_pair_obligation_runs WHERE lauf_id = $1",
+      [laufId],
     );
-    return res.rowCount ?? 0;
+    return res.rows[0]?.data ?? null;
+  }
+
+  async offeneLaeufe(maxFehlversuche: number): Promise<string[]> {
+    const res = await this.pool.query<{ lauf_id: string }>(
+      `SELECT DISTINCT lauf_id FROM conflict_pair_obligations
+        WHERE data->>'zustand' IN ('offen', 'in_arbeit')
+           OR (data->>'zustand' = 'fehler' AND (data->>'fehlversuche')::int < $1)
+        ORDER BY lauf_id`,
+      [maxFehlversuche],
+    );
+    return res.rows.map((row) => row.lauf_id);
   }
 
   async liste(laufId: string): Promise<Paarpflicht[]> {
@@ -344,6 +498,7 @@ export class PgPaarpflichtRepo implements PaarpflichtRepo {
     const res = await this.pool.query<PflichtRow>(
       `UPDATE conflict_pair_obligations SET data = data || jsonb_build_object(
          'zustand', 'in_arbeit',
+         'vorlagen', COALESCE((data->>'vorlagen')::int, 0) + 1,
          'beansprucht', jsonb_build_object('token', $2::text, 'bis', $4::text),
          'aktualisiert', $3::text)
        WHERE id = (
@@ -353,7 +508,7 @@ export class PgPaarpflichtRepo implements PaarpflichtRepo {
            OR (data->>'zustand' = 'fehler' AND (data->>'fehlversuche')::int < $5)
            OR (data->>'zustand' = 'in_arbeit'
                AND (data->'beansprucht'->>'bis')::timestamptz < $3::text::timestamptz))
-         ORDER BY pair_key
+         ORDER BY COALESCE((data->>'vorlagen')::int, 0), pair_key
          LIMIT 1
          FOR UPDATE SKIP LOCKED)
        RETURNING data`,
@@ -384,16 +539,6 @@ export interface PaarpflichtServiceDeps {
 export const PAARPFLICHT_FRIST_MS = 5 * 60_000;
 export const PAARPFLICHT_MAX_FEHLVERSUCHE = 3;
 
-function gleicheAussage(x: PaarpflichtAussage, y: PaarpflichtAussage): boolean {
-  return (
-    x.refId === y.refId &&
-    x.version === y.version &&
-    x.quelle === y.quelle &&
-    x.kontext === y.kontext &&
-    x.quellen.join("\n") === y.quellen.join("\n")
-  );
-}
-
 export class PaarpflichtService {
   private readonly repo: PaarpflichtRepo;
   private readonly jetzt: () => Date;
@@ -410,33 +555,36 @@ export class PaarpflichtService {
   }
 
   /**
-   * Legt die Pflichten eines Laufs an (wiederholbar). Ein Lauf ist an seine Stände gebunden: trägt
-   * eine schon gespeicherte Pflicht andere Stände oder anderen Kontext, ist das ein neuer Lauf.
+   * Legt die Pflichten eines Laufs an (wiederholbar). Ein Lauf ist an Aussagemenge, Stände und
+   * Kontext gebunden; ein Aufruf mit anderer Bindung wirft und hinterlässt nichts in der Ablage.
    */
   async planen(
     laufId: string,
     aussagen: readonly PaarpflichtAussage[],
     kontext: PaarpflichtKontext,
   ): Promise<{ gesamt: number; neu: number }> {
-    const geplant = paarpflichtenPlanen(laufId, aussagen, kontext, this.jetzt().toISOString());
-    const neu = await this.repo.anlegen(geplant);
-    const gespeichert = new Map((await this.repo.liste(laufId)).map((p) => [p.id, p]));
-    for (const p of geplant) {
-      const vorhanden = gespeichert.get(p.id);
-      if (
-        !vorhanden ||
-        !gleicheAussage(vorhanden.a, p.a) ||
-        !gleicheAussage(vorhanden.b, p.b) ||
-        vorhanden.kontext.bestand !== kontext.bestand ||
-        vorhanden.kontext.pruefFassung !== kontext.pruefFassung
-      ) {
-        throw new PaarpflichtFehler(
-          "LAUF_STAND_ABWEICHUNG",
-          `Lauf ${laufId} ist an andere Stände gebunden (${p.pairKey}).`,
-        );
-      }
+    const jetzt = this.jetzt().toISOString();
+    const geplant = paarpflichtenPlanen(laufId, aussagen, kontext, jetzt);
+    const ergebnis = await this.repo.planen(
+      paarpflichtLaufkopf(laufId, aussagen, kontext, jetzt),
+      geplant,
+    );
+    if (!ergebnis.gebunden) {
+      throw new PaarpflichtFehler(
+        "LAUF_STAND_ABWEICHUNG",
+        `Lauf ${laufId} ist an eine andere Aussagemenge oder andere Stände gebunden.`,
+      );
     }
-    return { gesamt: gespeichert.size, neu };
+    return { gesamt: ergebnis.gesamt, neu: ergebnis.neu };
+  }
+
+  laufkopf(laufId: string): Promise<PaarpflichtLauf | null> {
+    return this.repo.laufkopf(laufId);
+  }
+
+  /** Läufe, an denen noch etwas zu tun ist — die Wiederaufnahme nach einem Start. */
+  offeneLaeufe(): Promise<string[]> {
+    return this.repo.offeneLaeufe(this.maxFehlversuche);
   }
 
   /**
@@ -460,7 +608,8 @@ export class PaarpflichtService {
         jetzt: start.toISOString(),
         bis: new Date(start.getTime() + this.fristMs).toISOString(),
         maxFehlversuche: this.maxFehlversuche,
-        ausser: gesehen,
+        // Kopie: das Argument ist Teil des Journals und darf sich danach nicht mehr ändern.
+        ausser: [...gesehen],
       });
       if (!pflicht) {
         break;
@@ -505,6 +654,7 @@ export class PaarpflichtService {
       kontext: p.kontext,
       zustand: p.zustand,
       fehlversuche: p.fehlversuche,
+      vorlagen: p.vorlagen ?? 0,
       angelegt: p.angelegt,
       aktualisiert: at,
     };

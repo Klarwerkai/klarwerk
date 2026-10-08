@@ -10,7 +10,8 @@ import type { Conflict } from "./types";
 // Aufnahme 20260922 · Prüfung-Gedächtnis (R-1103/R-1105): `conflict_pair_memory` hält je Paar den
 // zuletzt beurteilten Textstand (nur Hash + Kennungen, s. pair-memory.ts). Rein additiv.
 // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): `conflict_pair_obligations` hält je Lauf jede
-// ungeordnete Aussage-Paarpflicht samt Ständen und Zustand (s. paarpflichten.ts). Rein additiv.
+// ungeordnete Aussage-Paarpflicht samt Ständen und Zustand, `conflict_pair_obligation_runs` den
+// Laufkopf mit seiner Bindung (s. paarpflichten.ts). Rein additiv.
 export const CONFLICTS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS conflicts (
   id text PRIMARY KEY,
@@ -20,6 +21,10 @@ CREATE INDEX IF NOT EXISTS conflicts_koa_idx ON conflicts ((data->>'koA'));
 CREATE INDEX IF NOT EXISTS conflicts_kob_idx ON conflicts ((data->>'koB'));
 CREATE TABLE IF NOT EXISTS conflict_pair_memory (
   pair_key text PRIMARY KEY,
+  data jsonb NOT NULL
+);
+CREATE TABLE IF NOT EXISTS conflict_pair_obligation_runs (
+  lauf_id text PRIMARY KEY,
   data jsonb NOT NULL
 );
 CREATE TABLE IF NOT EXISTS conflict_pair_obligations (

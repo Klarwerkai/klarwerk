@@ -157,6 +157,34 @@ describe("K2 · fünf Aussagen ergeben genau zehn ungeordnete Paarpflichten", ()
     });
     expect(schritt.bilanz.abgeschlossen).toBe(false);
   });
+
+  // Nacharbeit 1 (bens Befund zu cfc43d4a): bei limit 3 und „kein Modell" für die ersten drei Paare
+  // wurden bisher bei jedem Aufruf dieselben drei gewählt; die übrigen sieben erreichten den Prüfer nie.
+  it("begrenzte Wiederaufnahme ist fair: Pflichten ohne Modell verdrängen keine unbearbeiteten — auch über einen Neustart", async () => {
+    const ablage = new InMemoryPaarpflichtRepo();
+    const ohneModell = new Set(["ab", "ac", "ad"]);
+    const fn = vi.fn<PaarpflichtPruefer>(async (a, b) => {
+      return ohneModell.has(paarVon(a, b)) ? KEIN_MODELL : URTEIL;
+    });
+    const erster = new PaarpflichtService({ repo: ablage });
+    await erster.planen("lauf-1", FUENF, KONTEXT);
+    const s1 = await erster.abarbeiten("lauf-1", fn, { limit: 3 });
+    expect(gefragtePaare(fn)).toEqual(["ab", "ac", "ad"]);
+    expect(s1).toMatchObject({ ohneModell: 3, geurteilt: 0 });
+
+    // Neuer Dienst, dieselbe Ablage: die Auswahl richtet sich nach dem gespeicherten Zähler.
+    const zweiter = new PaarpflichtService({ repo: ablage });
+    const s2 = await zweiter.abarbeiten("lauf-1", fn, { limit: 3 });
+    expect(gefragtePaare(fn).slice(3)).toEqual(["ae", "bc", "bd"]);
+    expect(s2.geurteilt).toBe(3);
+    await zweiter.abarbeiten("lauf-1", fn, { limit: 3 });
+    const s4 = await zweiter.abarbeiten("lauf-1", fn, { limit: 3 });
+    // Erst wenn jedes Paar einmal vorlag, kommen die ohne Modell wieder an die Reihe.
+    expect(gefragtePaare(fn).slice(6)).toEqual(["be", "cd", "ce", "de", "ab", "ac"]);
+    expect(new Set(gefragtePaare(fn)).size).toBe(10);
+    expect(s4.bilanz).toMatchObject({ geurteilt: 7, ohneModell: 3, rest: 3 });
+    expect(s4.bilanz.abgeschlossen).toBe(false);
+  });
 });
 
 describe("K1 · Quellrevision, Aussageversion und Kontext je Pflicht", () => {
@@ -186,6 +214,43 @@ describe("K1 · Quellrevision, Aussageversion und Kontext je Pflicht", () => {
       code: "LAUF_STAND_ABWEICHUNG",
     });
     expect((await service.liste("lauf-1")).every((p) => p.a.version === 1)).toBe(true);
+  });
+
+  // Nacharbeit 1 (bens Befund zu cfc43d4a): planen schrieb neue Paare VOR der Bindungsprüfung; ein
+  // abgewiesener Aufruf mit a,b,c hinterließ ac und bc in einem gemischten, bearbeitbaren Lauf.
+  it("eine abgewiesene Planung hinterlässt nichts — weder neue Paare noch geänderte Stände", async () => {
+    const service = new PaarpflichtService({ repo: new InMemoryPaarpflichtRepo() });
+    await service.planen("lauf-1", [aussage("a"), aussage("b")], KONTEXT);
+    const vorher = await service.liste("lauf-1");
+    const mitC = [aussage("a"), aussage("b"), aussage("c")];
+    const anders = { ...KONTEXT, bestand: "anders" };
+
+    await expect(service.planen("lauf-1", mitC, anders)).rejects.toMatchObject({
+      code: "LAUF_STAND_ABWEICHUNG",
+    });
+    // Auch eine andere Aussagemenge bei gleichem Kontext ist ein anderer Lauf.
+    await expect(service.planen("lauf-1", mitC, KONTEXT)).rejects.toMatchObject({
+      code: "LAUF_STAND_ABWEICHUNG",
+    });
+
+    expect(await service.liste("lauf-1")).toEqual(vorher);
+    const kopf = await service.laufkopf("lauf-1");
+    expect(kopf?.aussagen.map((a) => a.refId)).toEqual(["a", "b"]);
+    const schritt = await service.abarbeiten("lauf-1", pruefer());
+    expect(schritt.bilanz).toMatchObject({ gesamt: 1, geurteilt: 1, rest: 0 });
+  });
+
+  it("gleichzeitige Planungen desselben Laufs mit verschiedener Bindung: genau eine gewinnt, ungemischt", async () => {
+    const service = new PaarpflichtService({ repo: new InMemoryPaarpflichtRepo() });
+    const ergebnisse = await Promise.allSettled([
+      service.planen("lauf-1", FUENF, KONTEXT),
+      service.planen("lauf-1", FUENF.slice(0, 3), { ...KONTEXT, bestand: "anders" }),
+    ]);
+    expect(ergebnisse.map((e) => e.status).sort()).toEqual(["fulfilled", "rejected"]);
+    const pflichten = await service.liste("lauf-1");
+    const bestaende = new Set(pflichten.map((p) => p.kontext.bestand));
+    expect(bestaende.size).toBe(1);
+    expect(pflichten).toHaveLength(bestaende.has("anders") ? 3 : 10);
   });
 
   it("App-Root: die Stände kommen aus der vorhandenen Prüfbasis echter Wissensobjekte, ohne Text", async () => {
@@ -219,9 +284,12 @@ describe("K1 · Quellrevision, Aussageversion und Kontext je Pflicht", () => {
   it("Ablage: die Tabelle wird migriert, im Drill geprüft und im Reset gelöscht", () => {
     expect(CONFLICTS_SCHEMA).toContain("CREATE TABLE IF NOT EXISTS conflict_pair_obligations");
     expect(CONFLICTS_SCHEMA).toContain("UNIQUE (lauf_id, pair_key)");
-    expect(tabellenAusSchemas(schemas)).toContain("conflict_pair_obligations");
-    expect(pflichttabellenAusDrill()).toContain("conflict_pair_obligations");
-    expect(BESTANDSRESET_LOESCHGRAPH).toContain("conflict_pair_obligations");
+    for (const tabelle of ["conflict_pair_obligations", "conflict_pair_obligation_runs"]) {
+      expect(CONFLICTS_SCHEMA).toContain(`CREATE TABLE IF NOT EXISTS ${tabelle} (`);
+      expect(tabellenAusSchemas(schemas)).toContain(tabelle);
+      expect(pflichttabellenAusDrill()).toContain(tabelle);
+      expect(BESTANDSRESET_LOESCHGRAPH).toContain(tabelle);
+    }
   });
 });
 

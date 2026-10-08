@@ -10,6 +10,10 @@
 import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { buildApp, buildPgServices } from "../../services/app/src/build-app";
+import { migrate } from "../../services/app/src/db";
+import { PAARPFLICHT_PRUEFFASSUNG } from "../../services/app/src/paarpflicht-ausfuehrung";
+import { paarpflichtAussagenLaden } from "../../services/app/src/paarpflicht-aussagen";
 import {
   type Paarpflicht,
   type PaarpflichtAussage,
@@ -21,6 +25,7 @@ import {
 } from "../../services/conflicts";
 import { CONFLICTS_SCHEMA } from "../../services/conflicts/src/repo-pg";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
+import type { ConflictJudgeOutcome } from "../../services/reasoner";
 
 const KONTEXT: PaarpflichtKontext = { bestand: "b".repeat(32), pruefFassung: "konflikt-v3" };
 const URTEIL: PaarpflichtErgebnis = {
@@ -127,6 +132,7 @@ describe("Paarpflichten gegen echtes Postgres", () => {
     }
     const pool = neuerPool();
     await pool.query("DROP TABLE IF EXISTS conflict_pair_obligations CASCADE");
+    await pool.query("DROP TABLE IF EXISTS conflict_pair_obligation_runs CASCADE");
     await pool.query(CONFLICTS_SCHEMA);
     return pool;
   }
@@ -258,5 +264,119 @@ describe("Paarpflichten gegen echtes Postgres", () => {
     });
     const offen = (await neuGelesen.liste("lauf-1")).filter((p) => p.zustand === "offen");
     expect(offen.every((p) => p.urteil === undefined && p.beansprucht === undefined)).toBe(true);
+  });
+
+  // Nacharbeit 1 (bens Befund zu cfc43d4a): Bindung prüfen und anlegen in EINER Transaktion.
+  it("K1: eine abgewiesene Planung schreibt nichts; gleichzeitige Planungen ergeben keinen gemischten Lauf", async (ctx) => {
+    const pool = await frischerPool(ctx);
+    const service = new PaarpflichtService({ repo: new PgPaarpflichtRepo(pool) });
+    await service.planen("lauf-1", [aussage("a"), aussage("b")], KONTEXT);
+    const mitC = [aussage("a"), aussage("b"), aussage("c")];
+    const anders = { ...KONTEXT, bestand: "anders" };
+    await expect(service.planen("lauf-1", mitC, anders)).rejects.toMatchObject({
+      code: "LAUF_STAND_ABWEICHUNG",
+    });
+    const zeilen = await pool.query<{ pair_key: string }>(
+      "SELECT pair_key FROM conflict_pair_obligations WHERE lauf_id = 'lauf-1'",
+    );
+    expect(zeilen.rows.map((z) => z.pair_key)).toEqual(["ko:a|ko:b"]);
+
+    const zweiterPool = neuerPool();
+    const zweiter = new PaarpflichtService({ repo: new PgPaarpflichtRepo(zweiterPool) });
+    const ergebnisse = await Promise.allSettled([
+      service.planen("lauf-2", FUENF, KONTEXT),
+      zweiter.planen("lauf-2", FUENF.slice(0, 3), anders),
+    ]);
+    expect(ergebnisse.map((e) => e.status).sort()).toEqual(["fulfilled", "rejected"]);
+    const pflichten = await service.liste("lauf-2");
+    const bestaende = new Set(pflichten.map((p) => p.kontext.bestand));
+    expect(bestaende.size).toBe(1);
+    expect(pflichten).toHaveLength(bestaende.has("anders") ? 3 : 10);
+  });
+
+  it("K3/K4: begrenzte Wiederaufnahme über einen neuen Pool ist fair — ohne Modell verdrängt nichts", async (ctx) => {
+    const erster = await frischerPool(ctx);
+    const ohneModell = new Set(["ab", "ac", "ad"]);
+    const fn = vi.fn<PaarpflichtPruefer>(async (a, b) => {
+      return ohneModell.has(paarVon(a, b)) ? { art: "kein_modell", grund: "no-model" } : URTEIL;
+    });
+    const vorher = new PaarpflichtService({ repo: new PgPaarpflichtRepo(erster) });
+    await vorher.planen("lauf-1", FUENF, KONTEXT);
+    await vorher.abarbeiten("lauf-1", fn, { limit: 3 });
+    await erster.end();
+
+    const nachher = new PaarpflichtService({ repo: new PgPaarpflichtRepo(neuerPool()) });
+    for (let i = 0; i < 3; i += 1) {
+      await nachher.abarbeiten("lauf-1", fn, { limit: 3 });
+    }
+    const gefragt = fn.mock.calls.map(([a, b]) => paarVon(a, b));
+    expect(gefragt.slice(0, 6)).toEqual(["ab", "ac", "ad", "ae", "bc", "bd"]);
+    expect(gefragt.slice(6)).toEqual(["be", "cd", "ce", "de", "ab", "ac"]);
+    expect(await nachher.bilanz("lauf-1")).toMatchObject({ geurteilt: 7, ohneModell: 3, rest: 3 });
+  });
+
+  // Nacharbeit 1 (bens Befund zu cfc43d4a): der integrierte Produktweg. Zwei vollständig eigene
+  // Anwendungen (eigener Pool, eigene Dienste, eigene Ausführung) über derselben Datenbank — im
+  // selben Node-Prozess, also ein Instanzwechsel und KEIN echter Prozessneustart. Die erste bleibt
+  // im fünften Modellaufruf hängen; die zweite nimmt den gespeicherten Lauf beim Bau der App auf.
+  it("K3: Lauf über die Produktwurzel, Abbruch im Modellaufruf, neue Instanz nimmt ihn beim Start wieder auf", async (ctx) => {
+    const erster = await frischerPool(ctx);
+    await migrate(erster);
+    const KEIN_KONFLIKT: ConflictJudgeOutcome = {
+      verdict: {
+        relation: "kein_konflikt",
+        older: null,
+        confidence: 0.9,
+        begruendung: "Verschiedene Geltung.",
+        zitat_a: "",
+        zitat_b: "",
+      },
+    };
+
+    const s1 = buildPgServices(erster);
+    // Kurze Frist nur hier: sonst wartete die zweite Instanz fünf Minuten auf die hängende Pflicht.
+    const ablage = new PgPaarpflichtRepo(erster);
+    s1.paarpflichten = new PaarpflichtService({ repo: ablage, fristMs: 50 });
+    let aufrufe = 0;
+    const haengt = new Promise<never>(() => {});
+    vi.spyOn(s1.reasoner, "judgeConflictOutcome").mockImplementation(async () => {
+      aufrufe += 1;
+      return aufrufe <= 4 ? KEIN_KONFLIKT : haengt;
+    });
+    buildApp(s1);
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      const ko = await s1.ko.create({
+        title: `Regel ${i}`,
+        statement: `Aussage Nummer ${i} gilt im Betrieb.`,
+        type: "best_practice",
+        category: "Betrieb",
+        author: "u1",
+      });
+      ids.push(ko.id);
+    }
+    const { aussagen, kontext } = await paarpflichtAussagenLaden(
+      s1.ko,
+      ids,
+      PAARPFLICHT_PRUEFFASSUNG,
+    );
+    await s1.paarpflichten.planen("lauf-pg", aussagen, kontext);
+    s1.paarpflichtAusfuehrung?.anstossen("lauf-pg");
+    await vi.waitFor(() => expect(aufrufe).toBe(5), { timeout: 10_000 });
+    const zwischen = new PaarpflichtService({ repo: new PgPaarpflichtRepo(erster) });
+    expect(await zwischen.bilanz("lauf-pg")).toMatchObject({ geurteilt: 4, inArbeit: 1, rest: 6 });
+    await new Promise((fertig) => setTimeout(fertig, 100));
+
+    const s2 = buildPgServices(neuerPool());
+    const judge = vi.spyOn(s2.reasoner, "judgeConflictOutcome").mockResolvedValue(KEIN_KONFLIKT);
+    buildApp(s2);
+    await s2.paarpflichtAusfuehrung?.leerlauf();
+
+    expect(judge).toHaveBeenCalledTimes(6);
+    const bilanz = await s2.paarpflichten.bilanz("lauf-pg");
+    expect(bilanz).toMatchObject({ gesamt: 10, geurteilt: 10, rest: 0, abgeschlossen: true });
+    const pflichten = await s2.paarpflichten.liste("lauf-pg");
+    expect(pflichten.filter((p) => p.urteil)).toHaveLength(10);
+    expect(pflichten.filter((p) => p.vorlagen === 2).map((p) => paarVon(p.a, p.b))).toEqual(["bc"]);
   });
 });
