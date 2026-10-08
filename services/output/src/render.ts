@@ -28,7 +28,12 @@ export function toSource(ko: KnowledgeObject): OutputSource {
   };
 }
 
-export function toProvenance(ko: KnowledgeObject): OutputProvenance {
+/** Kennung → angezeigter Autorentext. Ohne Auflösung bleibt die Kennung (Bestandsverhalten). */
+export type AutorText = (id: string) => string;
+
+const KENNUNG: AutorText = (id) => id;
+
+export function toProvenance(ko: KnowledgeObject, namen?: AutorText): OutputProvenance {
   return {
     koId: ko.id,
     title: ko.title,
@@ -37,6 +42,10 @@ export function toProvenance(ko: KnowledgeObject): OutputProvenance {
     version: ko.version,
     author: ko.author,
     originalAuthor: ko.originalAuthor,
+    // R-0298 / FR-LIF-04: der sichtbare Name — die Kennungen darüber bleiben für die Rückverfolgung.
+    ...(namen
+      ? { authorName: namen(ko.author), originalAuthorName: namen(ko.originalAuthor) }
+      : {}),
     category: ko.category,
     type: ko.type,
     // Gültigkeit ehrlich abgeleitet: kein Ablaufdatum im Modell (FR-EXT-07 = Konzept).
@@ -45,8 +54,16 @@ export function toProvenance(ko: KnowledgeObject): OutputProvenance {
   };
 }
 
-function authorLine(ko: KnowledgeObject): string {
-  return ko.author === ko.originalAuthor ? ko.author : `${ko.author} (urspr. ${ko.originalAuthor})`;
+// Ob der Originalautor abweicht, entscheiden die KENNUNGEN, nicht die Texte: zwei verschiedene
+// Konten mit demselben Anzeigenamen sind trotzdem eine Übergabe.
+function autorZeile(author: string, originalAuthor: string, namen: AutorText): string {
+  return author === originalAuthor
+    ? namen(author)
+    : `${namen(author)} (urspr. ${namen(originalAuthor)})`;
+}
+
+function authorLine(ko: KnowledgeObject, namen: AutorText): string {
+  return autorZeile(ko.author, ko.originalAuthor, namen);
 }
 
 // --- Renderer je Typ. Liefern den Dokument-Körper (ohne Herkunftsblock). ---
@@ -108,7 +125,7 @@ function renderTraining(kos: readonly KnowledgeObject[]): string {
   return blocks.join("\n\n");
 }
 
-function renderManagementSummary(kos: readonly KnowledgeObject[]): string {
+function renderManagementSummary(kos: readonly KnowledgeObject[], namen: AutorText): string {
   const avgTrust =
     kos.length > 0 ? Math.round(kos.reduce((s, k) => s + k.trust, 0) / kos.length) : 0;
   const lines = [
@@ -117,7 +134,7 @@ function renderManagementSummary(kos: readonly KnowledgeObject[]): string {
     "**Kernpunkte:**",
     ...kos.map(
       (ko) =>
-        `- ${ko.title} — ${ko.statement} _(${ko.category}, Trust ${ko.trust}, ${authorLine(ko)})_`,
+        `- ${ko.title} — ${ko.statement} _(${ko.category}, Trust ${ko.trust}, ${authorLine(ko, namen)})_`,
     ),
   ];
   const uncertain = kos.filter((k) => k.trust < UNCERTAIN_TRUST_BELOW);
@@ -131,16 +148,21 @@ function renderManagementSummary(kos: readonly KnowledgeObject[]): string {
   return lines.join("\n");
 }
 
-const RENDERERS: Record<OutputKind, (kos: readonly KnowledgeObject[]) => string> = {
-  instruction: renderInstruction,
-  checklist: renderChecklist,
-  troubleshooting: renderTroubleshooting,
-  training: renderTraining,
-  management_summary: renderManagementSummary,
-};
+const RENDERERS: Record<OutputKind, (kos: readonly KnowledgeObject[], namen: AutorText) => string> =
+  {
+    instruction: renderInstruction,
+    checklist: renderChecklist,
+    troubleshooting: renderTroubleshooting,
+    training: renderTraining,
+    management_summary: renderManagementSummary,
+  };
 
-export function renderBody(kind: OutputKind, kos: readonly KnowledgeObject[]): string {
-  return RENDERERS[kind](kos);
+export function renderBody(
+  kind: OutputKind,
+  kos: readonly KnowledgeObject[],
+  namen: AutorText = KENNUNG,
+): string {
+  return RENDERERS[kind](kos, namen);
 }
 
 // AUFTRAG-mega29 C3 (bens M28-3): der Herkunftsblock nennt Status, Trust und Version — und schwieg
@@ -154,6 +176,18 @@ export function renderBody(kind: OutputKind, kos: readonly KnowledgeObject[]): s
 export const OUTPUT_NO_CHECK_NOTE =
   "Hinweis: Dieses Dokument trifft keine Aussage darüber, ob das enthaltene Wissen auf Konflikte oder Duplikate geprüft wurde.";
 
+// R-0298 / FR-LIF-04: der aufgelöste Name, wo es ihn gibt — sonst wie bisher die Kennung.
+function provenanzAutor(p: OutputProvenance): string {
+  const texte = new Map<string, string>();
+  if (p.authorName !== undefined) {
+    texte.set(p.author, p.authorName);
+  }
+  if (p.originalAuthorName !== undefined) {
+    texte.set(p.originalAuthor, p.originalAuthorName);
+  }
+  return autorZeile(p.author, p.originalAuthor, (id) => texte.get(id) ?? id);
+}
+
 // Herkunftsblock (FE-OUT-03): je Quelle KO-ID, Status, Trust, Version, Autor, Gültigkeit.
 export function renderProvenance(provs: readonly OutputProvenance[]): string {
   const lines = ["## Herkunft & Nachweis", ""];
@@ -161,7 +195,7 @@ export function renderProvenance(provs: readonly OutputProvenance[]): string {
     const flag = p.uncertain ? " · ⚠︎ niedriger Trust" : "";
     lines.push(
       `- **${p.title}** (\`${p.koId}\`) — ${p.type} · ${p.category} · Status ${p.status} · ` +
-        `Trust ${p.trust} · ${p.validity} · Autor: ${p.author === p.originalAuthor ? p.author : `${p.author} (urspr. ${p.originalAuthor})`}${flag}`,
+        `Trust ${p.trust} · ${p.validity} · Autor: ${provenanzAutor(p)}${flag}`,
     );
   }
   lines.push("", OUTPUT_NO_CHECK_NOTE);

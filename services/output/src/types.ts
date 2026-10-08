@@ -39,11 +39,22 @@ export interface OutputProvenance {
   version: number;
   author: string;
   originalAuthor: string;
+  // Aufnahme gesamt-wissen-herkunft (R-0298 / FR-LIF-04): die angezeigten Autorentexte. Nur gesetzt,
+  // wenn der Dienst eine Namensauflösung bekommen hat; die Kennungen darüber bleiben unverändert.
+  authorName?: string;
+  originalAuthorName?: string;
   category: string;
   type: string;
   validity: string; // abgeleitet: "validiert · v{version} · Stand {createdAt}" — kein Ablaufdatum
   uncertain: boolean; // Trust < UNCERTAIN_TRUST_BELOW
 }
+
+/**
+ * Aufnahme gesamt-wissen-herkunft: Kennung → angezeigter Autorentext (Name, „Gelöschtes Konto",
+ * „Unbekannte Person" oder „nicht abrufbar"). Die Kompositionswurzel liefert sie; dieser Dienst
+ * kennt den Kontodienst nicht. Fehlt eine Kennung in der Antwort, bleibt es bei der Kennung.
+ */
+export type AutorenNamen = (ids: readonly string[]) => Promise<ReadonlyMap<string, string>>;
 
 export interface OutputDocument {
   kind: OutputKind;

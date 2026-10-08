@@ -8,8 +8,8 @@ kein Test.*
 Die Auftragsquelle führt die meisten Punkte nur mit Altquellen („Historische Aussage, heutige
 Erfüllung nicht erneut geprüft“). Dieses Dokument ordnet jeden Punkt dem heutigen Bestand zu.
 „Belegt durch“ nennt Verhaltenstests; ob sie auf diesem Stand grün sind, sagt erst ihr Lauf, nicht
-dieses Dokument. „Nicht nachgemessen“ heißt: in diesem Auftrag weder gebaut noch am Code geprüft —
-der heutige Erfüllungsstand bleibt ungeklärt.
+dieses Dokument. Seit Nacharbeit 1 ist jeder Punkt am heutigen Code abgeglichen; wo ein Teil fehlt,
+steht die konkrete Restarbeit oder die offene Entscheidung dabei.
 
 ## In diesem Auftrag geliefert: „gelöscht“ als eigener Zustand der Autorenzeile (K3)
 
@@ -34,6 +34,36 @@ Person war. Jetzt:
 Belegt durch: `tests/wissen-herkunft/geloeschtes-konto-in-der-autorenzeile.test.ts` (neu),
 `tests/ko/mega62-autor-verzeichnis.test.ts` (Bestand).
 
+## Nacharbeit 1 geliefert: sichtbarer Autorenname im Ausgabedokument (R-0298, FR-LIF-04)
+
+Bens Befund: Output Factory und Bibliotheksexport schrieben die **Kontokennung** in die
+Autorenzeile. Jetzt:
+
+- **Kompositionswurzel** (`services/app/src/autorennamen.ts`): `autorenNamenAus(auth)` löst
+  Kennungen mit derselben Leseregel wie `GET /api/directory` auf — Anzeigename, „Gelöschtes Konto
+  (ref)“, „Unbekannte Person (ref)“; fällt das Verzeichnis aus, „Autorenname nicht abrufbar“. Den
+  Namen eines gelöschten Kontos gibt diese Stelle nie heraus. `build-app.ts` baut den Kontodienst
+  dafür eine Stufe früher (dieselbe Instanz, die als `auth` zurückgegeben wird).
+- **Output Factory** (`services/output`): Herkunftsblock und Management-Summary zeigen
+  „Autor: Name (urspr. Name)“; der Datensatz behält `author`/`originalAuthor` als Kennung und trägt
+  zusätzlich `authorName`/`originalAuthorName`. Ob eine Übergabe vorliegt, entscheiden die
+  Kennungen, nicht die Texte.
+- **Bibliotheksexport** (`services/library-analytics`): Markdown und HTML zeigen den Namen; der
+  MediaWiki-Export hatte gar keine Autorenzeile und trägt jetzt dieselbe.
+- Ohne verdrahtete Auflösung (Dienst direkt gebaut) bleibt es bei den Kennungen wie bisher.
+
+Belegt durch: `tests/wissen-herkunft/autorenname-im-ausgabedokument.test.ts` (neu),
+`services/output/src/service.test.ts`, `services/library-analytics/src/service.test.ts`,
+`tests/library/ai-check-coverage-reach.test.ts` (Bestand).
+
+**Abgegrenzt, nicht geändert:** der SCORM-Export für Lernplattformen (`services/output/src/scorm.ts`,
+eigener Auftrag `produkt:wettbewerb:20261003:lernplattform`). Seine „Herkunft je Einheit“ nennt
+Objektkennung, Fassung und Stand, aber **keinen Autor** (`scorm.ts:368-369`). Das ist eine konkrete
+technische Restarbeit am Umfang von R-0298 (mehrsprachiger Herkunftstext im SCORM-Paket); sie steht
+in den Zielpfaden jenes Auftrags und wurde hier nicht doppelt gebaut. Die KA6-Zuruf-Antwort
+(`services/output/src/zuruf.ts`) liefert nur einen Herkunftsdatensatz mit Kennungen, kein
+Dokument mit Autorenzeile; ob ihre Fläche Namen auflöst, wurde hier nicht nachgemessen.
+
 ## Zuordnung je Originalpunkt
 
 | Punkt | Heute | Belegt durch |
@@ -45,18 +75,19 @@ Belegt durch: `tests/wissen-herkunft/geloeschtes-konto-in-der-autorenzeile.test.
 | R-0164, R-0178 — Wissen aus extern freigegebenem Dokument ohne Neuprüfung / als externe Referenz | **Offen — Richtungsentscheidung.** Die Quelle selbst nennt „ob das überhaupt so gewollt ist“ als offen (W2, vom Boss zurückgestellt). Nicht gebaut. | — |
 | R-0204 — Evidenz je Quelle und Anhang mit Fassung, Herkunft, Zeitpunkt | **Vorhanden vor diesem Auftrag.** `EvidenceRecord` mit `koVersion`, `createdBy`, `createdAt`. | `tests/demo-erster-nutzerweg/promote-traegt-die-herkunft.test.ts` |
 | R-0222 — System- und Nutzereigentum am Antwortbeleg | **Vorhanden vor diesem Auftrag** (JOB 541 D3, `owner` am Antwortbeleg; Systemantwort bleibt Systemeigentum). | `services/ask/src/snapshot-ko-version-und-ref.test.ts` |
-| R-0218, R-0714 — Platzhalter in der Herkunftskette nicht scharf / inaktiv | **Nicht nachgemessen.** Quelle: „Einbau und Wirkung nicht belegt“. | — |
-| R-0225 — Validierungsreferenz am Wissensobjekt | **Nicht nachgemessen.** Quelle: „Einbau nicht belegt“. | — |
-| R-0228 — Verifizierungsmarke mit Prüfer und Zeitpunkt | **Nicht nachgemessen.** Quelle stuft auf „Codepfad“ zurück. | — |
+| R-0218 (OFFEN G10) — der Platzhalter in `provenance-routes.ts` darf nicht scharf gehen, bevor der Zugriffsschutz (G1) steht | **Erfüllt.** Die Voraussetzung steht: `GET /api/kos/:id/provenance` prüft das Zentrum (`darfSehen`, 404 bei fehlender Sichtbarkeit) und jede Konfliktgegenseite fail-closed (`provenance-routes.ts:110`, `:130`); die Route ist damit gleich streng wie `GET /api/kos/:id`. Die Prüfliste führt das Zeilenrecht gemessen (`routeGuardAudit.ts:288`). Keine Restarbeit. | `tests/security/job1170-herkunft-zentrum-vertraulich.test.ts`, `tests/security/g10-herkunft-zentrum-vertraulich.test.ts` |
+| R-0714 — vorbereiteter Herkunftsweg bleibt inaktiv, bis seine Voraussetzung steht | **Erfüllt als Zustand.** Die Route ist nur registriert, wenn der Betriebsschalter `herkunft` an ist (Vorgabe AUS, `provenance-routes.ts:79-81`); die Oberfläche ruft sie nirgends auf (Leserregister Art „ohneFlaeche“). Die Herkunftskette am Objekt kommt unabhängig davon aus dem Prüfprotokoll (`lib/koLineage.ts`). **Offene Entscheidung (Betrieb/Pedi):** ob und wann der Schalter angeschaltet und eine eigene Fläche dafür gebaut wird — die Quellen enthalten dazu keine Entscheidung. | `tests/app/mega46-schalter-auskunft.test.ts`, `tests/funktionsschalter/schalter-leser.test.ts` |
+| R-0225 — Validierungsreferenz am Wissensobjekt | **Erfüllt.** `KnowledgeObject.validationDecisionRef { auditSeq, auditHash }` (`knowledge-object/src/types.ts:650`) wird nur aus dem Rückgabewert des Entscheidungsbelegs geschrieben — atomar mit Zustand und Beleg (`service.ts:6310`) und beim nachträglichen Setzen (`service.ts:6397`). Der Antwortbeleg übernimmt den Verweis; geprüft wird er über `pruefeValidationDecisionRef` (eine Revision macht ihn folgerichtig `WRONG_SUBJECT`). Altbestand ohne Feld ist ehrlich `MISSING`, kein Backfill (Pedis Entscheidung). | `services/ask/src/snapshot-ko-version-und-ref.test.ts` (Lauf Nacharbeit 1: bestanden), `services/validation/src/validation-ref-67.test.ts`, `tests/app/w3c-ko-validierungsreferenz-traeger-134.test.ts` |
+| R-0228 — Verifizierungsmarke mit Prüfer und Zeitpunkt | **Teilweise erfüllt.** Vorhanden: der Zustand der maschinellen Prüfung samt Abdeckung ist sichtbar (`AiCheckBadge`, `AiCheckCoverageNotes` in `MehrAbschnitte.tsx:1453`); wer validiert hat, steht am Datensatz (`ownership.validators`), wann, im verwiesenen Prüfprotokolleintrag (`validationDecisionRef`); beide Ereignisse erscheinen in der Herkunftskette des Objekts (`koAuditEvents`). **Konkrete technische Restarbeit:** eine kompakte Marke „geprüft von … am …, maschinelle Prüfung vollständig/teilweise“ direkt am Wissensobjekt gibt es nicht — heute muss der Leser dafür die Kette öffnen. Keine Produktentscheidung offen. | `tests/library/ai-check-coverage-reach.test.ts`, `tests/ko/ko-lineage.test.ts` |
 | R-0241 — Quell-Autor in der Validierung sichtbar | **Vorhanden vor diesem Auftrag** (Prüfkarte zeigt den Quell-Autor über `originalAuthor`). | `tests/app/ko-author-paths.test.ts` (FIX 4) |
 | R-0268 — Herkunftssätze im Editor geschützt | **Historisch erledigt belegt** (27.08.). | — |
-| R-0298, SOLL:FR-LIF-04, R-2130 — Herkunftszeile / Autor überall sichtbar | **Vorhanden vor diesem Auftrag** an Bibliothek, Detail, Aufgaben, Fragen, Risiko, Validierung über `useAuthorName`; in diesem Auftrag um „gelöscht“ ergänzt. Ausgabedokumente nennen Autor/Originalautor als **Kennung**, nicht als Namen (`services/output/src/render.ts`) — die Quelle führt Ausgabedokumente als eigene Zeile (Stufe 2), hier nicht geändert. | `tests/ko/mega62-autor-verzeichnis.test.ts`, `services/output/src/service.test.ts` |
-| R-0532, R-1837 (G15) — Urheberschaft an Bildern über den Anhangseintrag | **Nicht nachgemessen.** Benannte Restgröße der Quelle („Verfasser einer Fassung ist kein angemeldeter Nutzer“) bleibt eine eigene Scheibe. | — |
+| R-0298, SOLL:FR-LIF-04, R-2130 — Herkunftszeile / Autor überall sichtbar, auch an jedem Ausgabedokument | **Teilweise erfüllt, in Nacharbeit 1 weitgehend vervollständigt.** Oberfläche: Bibliothek, Detail, Aufgaben, Fragen, Risiko, Validierung über `useAuthorName` (Bestand), um „gelöscht“ ergänzt. Bis Nacharbeit 1 nannten Ausgabedokumente nur die **Kennung**; jetzt Namen in Output Factory und Bibliotheksexport (Markdown, MediaWiki, HTML), s. Abschnitt oben. **Rest:** SCORM-Export ohne Autor — abgegrenzt zum Auftrag `produkt:wettbewerb:20261003:lernplattform`. Fachbereich, Version, Status und Gültigkeit stehen im Herkunftsblock der Output Factory bereits. | `tests/wissen-herkunft/autorenname-im-ausgabedokument.test.ts`, `tests/ko/mega62-autor-verzeichnis.test.ts`, `services/output/src/service.test.ts` |
+| R-0532, R-1837 (OFFEN G15) — Urheberschaft an Bildern über den Anhangseintrag | **Erfüllt.** Beide Regeln stehen in `services/app/src/sichtbarkeit.ts:909-941`: (a) ein Anhangseintrag mit serverseitigem Verfasser schlägt den Verfasser der Fassung; (b) eine Fließtext-Fundstelle zählt nur, wenn sie gegenüber der Vorgängerfassung neu eingebracht wurde. Die benannte Restgröße („`fassung.author` ist kein angemeldeter Nutzer“, Import-Re-Sync) ist mit mega82 Block A / OFFEN G21 geschlossen: der Import handelt als angemeldeter Importeur, der Quellautor reist nur als `originalAuthor`. Keine Restarbeit bekannt. | `tests/security/mega80-verfasser-buergt-nicht-fuer-geerbtes.test.ts`, `tests/security/mega82-importeur-handelt.test.ts` |
 | R-0737, R-1744 — Herkunftskette / Lineage-Sicht je Wissen | **Vorhanden vor diesem Auftrag** (`lib/koLineage.ts`, Abschnitt in `MehrAbschnitte.tsx`). Quellenwiderspruch: Frontend-Checkliste FE-ANA-05 „Stufe 2, Haken leer“ gegen Gesamtkonzept „gebaut“. | `tests/ko/ko-lineage.test.ts` |
 | R-0874, R-1946 (A22) — Autorenname mit ehrlichen Zuständen | **Historisch erledigt belegt** (Ship 9); in diesem Auftrag um „gelöscht“ ergänzt (s. oben). | s. oben |
 | R-0879 — Herkunfts-Kennzeichen am Wissensstück | **Historisch erledigt belegt** (K1.2, Commit `423cc34`). | `apps/web/src/pages/Library.origin-chip.test.tsx` |
 | R-1093 — Verwalter-Sonderweg „als wahr kennzeichnen“ | **Codepfad vorhanden** (`ko.admin-validated`); hier nicht erneut geprüft. | — |
-| R-1355 — Herkunftsangaben nur aus einer zentralen Stelle | **Nicht nachgemessen.** Quelle: „gebaut, wartet auf Einbau“ (JOB 1451) — im Bestand keine Prüfregel mit dieser Kennung gefunden. | — |
+| R-1355 — Herkunftsangaben nur aus einer zentralen Stelle (automatische Codeprüfung) | **Nicht erfüllt — konkrete technische Restarbeit.** Am Bestand gesucht: weder die Kennung JOB 1451 noch eine Prüfregel, die das Erzeugen von Herkunftsangaben auf eine Stelle festlegt, ist vorhanden (der „gebaute“ Stand der Quelle wurde nie eingebaut). Heute entstehen Herkunftsangaben an mehreren Stellen: `KoService.create`/`addSource`, `CaptureService.toKoInput` (promote), Bibliotheksimport (`acceptToKo`, `importJson`). Restarbeit: festlegen, welche Felder als „Herkunftsangabe“ gelten (`originalAuthor`, `sources[]`, `origin`), sie auf einen Erzeuger ziehen und eine Codeprüfung dagegen setzen. Der Auftragstext von JOB 1451 liegt den Quellen nicht bei — fehlender Beleg. | — |
 | R-2205, package:herkunft — Herkunft und Vertrauenswerte am Wissen | Sammelpunkt; Teile s. R-0204, R-0222, R-0737. | — |
 | P-IMPORT-NACHWEIS-FREIGABE — Import → Nachweis → Freigabe | **Erledigt laut Quelle** (JOB 4013/4077/4095, `1.0.0-beta.1.530`); kein Rest. | `tests/quelle-dateiname-am-nachweis/datei-an-der-pruefkarte.test.tsx`, `tests/bibliothek-quellennachweis/nachweis-im-bibliotheksabschnitt.test.tsx` |
 | P-PROMOTE-HERKUNFT — promote trägt die Herkunft | **Erledigt laut Quelle** (JOB 3934/4137, `1.0.0-beta.1.534`). | `tests/demo-erster-nutzerweg/promote-traegt-die-herkunft.test.ts` |
@@ -68,6 +99,11 @@ Belegt durch: `tests/wissen-herkunft/geloeschtes-konto-in-der-autorenzeile.test.
 - R-0114 / R-0573: beide verweisen auf dieselbe offene W10-Entscheidung; keine jüngere Entscheidung
   in den Quellen.
 - R-0164 / R-0178: eine Quelle „offene Richtungsfrage“, die andere „vom Boss zurückgestellt“.
-- Für R-0218, R-0225, R-0228, R-0532, R-0714, R-1355 liegt nur „BEN GRÜN, Einbau nicht belegt“ oder
-  „Codepfad“ vor; in diesem Auftrag nicht nachgemessen.
+- R-0225 und R-0532: die Quellen sagen „Einbau nicht belegt“; der heutige Code trägt beide
+  (Abgleich Nacharbeit 1, s. Tabelle). Die Quellenaussage ist damit überholt.
+- R-1355: die Quelle sagt „gebaut, wartet auf Einbau“; im Bestand ist nichts davon vorhanden, und
+  der Auftragstext von JOB 1451 fehlt in den Quellen.
+- R-0298: die Quelle verweist für Ausgabedokumente auf eine eigene Zeile „Stufe 2“; einen
+  bestehenden Auftrag dazu gibt es außer dem Lernplattform-Auftrag (SCORM) nicht — deshalb in
+  Nacharbeit 1 hier vervollständigt.
 - Ein Lieferbeleg mit Fassung für diesen Auftrag entsteht erst mit der Veröffentlichung (K6).

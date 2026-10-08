@@ -10,6 +10,7 @@ import {
   toSource,
 } from "./render";
 import {
+  type AutorenNamen,
   type GenerateOutputInput,
   OUTPUT_KINDS,
   type OutputDocument,
@@ -20,15 +21,21 @@ import {
 export interface OutputServiceDeps {
   koService: KoService;
   now?: () => number;
+  // Aufnahme gesamt-wissen-herkunft (R-0298 / FR-LIF-04): löst Autorenkennungen zu sichtbaren
+  // Namen auf (Leseregel des Verzeichnisses, s. services/app/src/autorennamen.ts). Ohne Angabe
+  // bleibt es bei den Kennungen — so wie vor diesem Auftrag.
+  autorenNamen?: AutorenNamen;
 }
 
 export class OutputService {
   private readonly koService: KoService;
   private readonly now: () => number;
+  private readonly autorenNamen: AutorenNamen | undefined;
 
   constructor(deps: OutputServiceDeps) {
     this.koService = deps.koService;
     this.now = deps.now ?? (() => Date.now());
+    this.autorenNamen = deps.autorenNamen;
   }
 
   // Nur validierte KOs sind als Output-Quelle zulässig (Anti-Fake-Guard).
@@ -70,7 +77,8 @@ export class OutputService {
 
     const audienceRole = input.audienceRole ?? null;
     const generatedAt = new Date(this.now()).toISOString();
-    const provenance = selected.map(toProvenance);
+    const namen = await this.namenFuer(selected);
+    const provenance = selected.map((ko) => toProvenance(ko, namen));
     const title = KIND_TITLE[input.kind];
 
     const header = [
@@ -88,11 +96,22 @@ export class OutputService {
       "",
       OUTPUT_NO_CHECK_NOTE,
       "",
-      renderBody(input.kind, selected),
+      renderBody(input.kind, selected, namen),
       "",
       renderProvenance(provenance),
     ].join("\n");
 
     return { kind: input.kind, title, audienceRole, generatedAt, markdown, provenance };
+  }
+
+  // Eine Auflösung je Dokument über alle Autoren- und Originalautorenkennungen der Quellen.
+  private async namenFuer(
+    kos: readonly KnowledgeObject[],
+  ): Promise<((id: string) => string) | undefined> {
+    if (!this.autorenNamen) {
+      return undefined;
+    }
+    const texte = await this.autorenNamen(kos.flatMap((ko) => [ko.author, ko.originalAuthor]));
+    return (id) => texte.get(id) ?? id;
   }
 }

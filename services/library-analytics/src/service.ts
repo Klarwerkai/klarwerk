@@ -621,6 +621,10 @@ function anhangsquelle(provider: string | undefined, anhang: ImportAnhang): KoAn
 export interface LibraryServiceDeps {
   koService: KoService;
   audit?: AuditService;
+  // Aufnahme gesamt-wissen-herkunft (R-0298 / FR-LIF-04): Kennung → sichtbarer Autorentext für die
+  // Herkunftszeile der Text-Exporte (Leseregel des Verzeichnisses, services/app/src/autorennamen.ts).
+  // Ohne Angabe bleibt es bei den Kennungen — so wie vor diesem Auftrag.
+  autorenNamen?: (ids: readonly string[]) => Promise<ReadonlyMap<string, string>>;
   // R-0163: legt die Anhänge eines übernommenen Eintrags am Wissensobjekt an. Ohne Port werden
   // keine Anhänge übernommen — und das wird je Annahme auditiert, nicht verschwiegen.
   anhaenge?: AnhangsUebernahme;
@@ -932,10 +936,13 @@ export class LibraryService {
   private readonly externalSources: ExternalSourceRepo | undefined;
   // R-0169 (Nacharbeit 5): die interne Dokumentakte; `undefined` = nicht verdrahtet (s. Deps).
   private readonly dokumente: DokumentaktenService | undefined;
+  // R-0298: s. `LibraryServiceDeps.autorenNamen`; `undefined` = Kennungen wie bisher.
+  private readonly autorenNamen: LibraryServiceDeps["autorenNamen"];
 
   constructor(deps: LibraryServiceDeps) {
     this.koService = deps.koService;
     this.audit = deps.audit;
+    this.autorenNamen = deps.autorenNamen;
     this.anhaenge = deps.anhaenge;
     this.candidates = deps.candidates ?? new InMemoryCandidateRepo();
     this.genId = deps.genId ?? (() => randomUUID());
@@ -3751,15 +3758,34 @@ export class LibraryService {
     return items;
   }
 
+  // R-0298 / FR-LIF-04: EINE Auflösung je Export über alle Autoren- und Originalautorenkennungen.
+  // Ohne verdrahtete Auflösung bleibt die Kennung (Bestandsverhalten).
+  private async autorTexte(items: readonly KnowledgeObject[]): Promise<(id: string) => string> {
+    if (!this.autorenNamen || items.length === 0) {
+      return (id) => id;
+    }
+    const texte = await this.autorenNamen(items.flatMap((ko) => [ko.author, ko.originalAuthor]));
+    return (id) => texte.get(id) ?? id;
+  }
+
   async exportMediaWiki(opts?: ExportOptionen): Promise<string> {
     const items = await this.exportJson(opts);
+    const name = await this.autorTexte(items);
+    // Aufnahme gesamt-wissen-herkunft (R-0298): auch der Wiki-Export trägt je Objekt die
+    // Autorenzeile — bis hierher war er der einzige Textexport ganz ohne Herkunft.
+    const autor = (ko: KnowledgeObject): string =>
+      ko.author === ko.originalAuthor
+        ? name(ko.author)
+        : `${name(ko.author)} (urspr. ${name(ko.originalAuthor)})`;
     // AUFTRAG-mega31 BLOCK B (bens ROT-3): der Warnsatz steht VOR dem ersten Inhalt. Er stand in
     // allen vier Ausgabewegen hinter dem gesamten Dokument — bei einem langen Export liest ihn
     // dort niemand, und die Vorgabe „wo ein Leser ihn sieht" war damit nicht erfüllt. Die
     // Wiederholung am Ende bleibt (sie kostet nichts und trifft den, der von hinten liest).
     return [
       `''${EXPORT_NO_CHECK_NOTE}''`,
-      items.map((ko) => `== ${ko.title} ==\n${ko.statement}`).join("\n\n"),
+      items
+        .map((ko) => `== ${ko.title} ==\n${ko.statement}\n\n''Autor: ${autor(ko)}''`)
+        .join("\n\n"),
       `''${EXPORT_NO_CHECK_NOTE}''`,
     ].join("\n\n");
   }
@@ -3767,6 +3793,7 @@ export class LibraryService {
   // FR-LIB-02: echtes Text-Markdown (Überschrift, Listen, Herkunfts-Fußzeile).
   async exportMarkdown(opts?: ExportOptionen): Promise<string> {
     const items = await this.exportJson(opts);
+    const name = await this.autorTexte(items);
     // mega31 B: Exportkopf mit dem Warnsatz, VOR dem ersten Wissensobjekt (s. exportMediaWiki).
     const body = items
       .map((ko) => {
@@ -3779,8 +3806,8 @@ export class LibraryService {
         }
         const author =
           ko.author === ko.originalAuthor
-            ? ko.author
-            : `${ko.author} (urspr. ${ko.originalAuthor})`;
+            ? name(ko.author)
+            : `${name(ko.author)} (urspr. ${name(ko.originalAuthor)})`;
         lines.push(
           "",
           `_${ko.type} · ${ko.category} · Trust ${ko.trust} · ${ko.status} · Autor: ${author}_`,
@@ -3794,6 +3821,7 @@ export class LibraryService {
   // FR-LIB-02: druckfertiges HTML — der Browser erzeugt daraus per „Als PDF sichern" das PDF.
   async exportHtml(opts?: ExportOptionen): Promise<string> {
     const items = await this.exportJson(opts);
+    const name = await this.autorTexte(items);
     const esc = (s: string): string =>
       s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const li = (xs: readonly string[]): string => xs.map((x) => `<li>${esc(x)}</li>`).join("");
@@ -3807,8 +3835,8 @@ export class LibraryService {
           : "";
         const author =
           ko.author === ko.originalAuthor
-            ? esc(ko.author)
-            : `${esc(ko.author)} (urspr. ${esc(ko.originalAuthor)})`;
+            ? esc(name(ko.author))
+            : `${esc(name(ko.author))} (urspr. ${esc(name(ko.originalAuthor))})`;
         return `<article><h2>${esc(ko.title)}</h2><p class="meta">${esc(ko.type)} · ${esc(ko.category)} · Trust ${ko.trust} · ${esc(ko.status)}</p><p>${esc(ko.statement)}</p>${conditions}${measures}<p class="src">Autor: ${author}</p></article>`;
       })
       .join("\n");

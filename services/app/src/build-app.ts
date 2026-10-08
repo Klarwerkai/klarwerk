@@ -228,6 +228,7 @@ import {
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import { type AiCheckWorker, createAiCheckRunner, createAiCheckWorker } from "./ai-check-worker";
 import { Anfragebremse, bremsSatz } from "./anfragebremse";
+import { autorenNamenAus } from "./autorennamen";
 import {
   type BearbeitungsRepo,
   InMemoryBearbeitungsRepo,
@@ -1216,9 +1217,27 @@ export function assembleServices(
   const objects = new ObjectStore({ repo: repos.objects });
   // R-0169 (Nacharbeit 5): EINE Dokumentakte für Word-Weg und Bibliotheksimport.
   const dokumente = new DokumentaktenService({ repo: repos.dokumente });
+  // Aufnahme gesamt-wissen-herkunft (R-0298): der Kontodienst entsteht eine Stufe früher, weil
+  // Bibliotheksexport und Output Factory die Autorennamen über ihn auflösen — DIESELBE Instanz, die
+  // unten als `auth` zurückgegeben wird, kein zweiter Kontobestand.
+  const auth = new AuthService({
+    users: repos.users,
+    sessions: repos.sessions,
+    resetTokens: repos.resetTokens,
+    audit,
+    // SCRUM-443: FR-RBAC-03 serverseitig durchsetzen (kein Selbst-Entzug der Admin-Rolle).
+    canChangeRole,
+    // AUFTRAG-mega62 Block B: dieselbe echte DB-Transaktion wie KoService/AskService — der
+    // Konto-Vermerk der Hinweis-Kenntnisnahme und sein Prüfprotokoll-Eintrag committen bzw.
+    // rollbacken gemeinsam. Nur mit echtem Pg-Pool gesetzt; ohne ihn trägt die Schreibreihenfolge
+    // (Protokoll zuerst) die verbleibende Zusage, s. AuthService.acknowledgeNotice.
+    ...(opts.withTx ? { withTx: opts.withTx } : {}),
+  });
+  const autorenNamen = autorenNamenAus(auth);
   const library = new LibraryService({
     koService: ko,
     dokumente,
+    autorenNamen,
     audit,
     candidates: repos.candidates,
     externalUpsert: externalImportEnabled,
@@ -1326,19 +1345,8 @@ export function assembleServices(
     // R-0169 (Nacharbeit 5): DIESELBE Instanz, die oben in den `LibraryService` gereicht wurde.
     dokumente,
     ko,
-    auth: new AuthService({
-      users: repos.users,
-      sessions: repos.sessions,
-      resetTokens: repos.resetTokens,
-      audit,
-      // SCRUM-443: FR-RBAC-03 serverseitig durchsetzen (kein Selbst-Entzug der Admin-Rolle).
-      canChangeRole,
-      // AUFTRAG-mega62 Block B: dieselbe echte DB-Transaktion wie KoService/AskService — der
-      // Konto-Vermerk der Hinweis-Kenntnisnahme und sein Prüfprotokoll-Eintrag committen bzw.
-      // rollbacken gemeinsam. Nur mit echtem Pg-Pool gesetzt; ohne ihn trägt die Schreibreihenfolge
-      // (Protokoll zuerst) die verbleibende Zusage, s. AuthService.acknowledgeNotice.
-      ...(opts.withTx ? { withTx: opts.withTx } : {}),
-    }),
+    // Aufnahme gesamt-wissen-herkunft: oben gebaut (s. `autorenNamen`), hier unverändert gereicht.
+    auth,
     // AUFTRAG-mega20 Block D: die Ankerprüfung des Entwurfs bekommt ihre Auflösung HIER — capture
     // kennt den Objektspeicher nicht (Modulgrenze), die Composition-Root kennt beide. Dieselbe
     // Bewegung wie bei `koConfidentiality` für die Medien-Analyse.
@@ -1441,7 +1449,8 @@ export function assembleServices(
     // JOB 3363: dieselbe Kandidaten-Ablage, die `library` oben bekommen hat — kein zweiter Bestand.
     candidates: repos.candidates,
     // SCRUM-117: Output Factory — stateless, nur validierte KOs als Quelle.
-    output: new OutputService({ koService: ko }),
+    // Aufnahme gesamt-wissen-herkunft (R-0298): sichtbare Autorennamen im Ausgabedokument.
+    output: new OutputService({ koService: ko, autorenNamen }),
     // produkt:wettbewerb:20261003:lernplattform: dieselbe Inhaltsquelle wie die Output Factory; die
     // Bilder liest er aus DEMSELBEN Objektspeicher. Die zugelassenen Lernplattformen legt allein
     // der Betreiber fest (`KLARWERK_LMS_EMPFAENGER`); ohne Eintrag ist kein Export möglich.
