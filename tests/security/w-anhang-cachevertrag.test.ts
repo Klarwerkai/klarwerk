@@ -274,6 +274,60 @@ describe("P3–P6 · keine Nichtauslieferung erbt eine positive Cachezusage", ()
     });
     expect(erlaubt.statusCode, erlaubt.body).toBe(200);
     expect(vary(erlaubt)).toBe(VARY_AUTH);
+    // R-0550/R-1967: der Erfolgsfall trägt `data` — dieselben Bytes wie `/raw`. Vertraulich heisst
+    // auch hier: gar nicht erst speicherbar.
+    expect(erlaubt.json().data, "die Metadatenantwort trägt die Bytes").toBe(PNG_DATA_URL);
+    expect(cc(erlaubt)).toBe(CACHE_NICHT_SPEICHERBAR);
+  });
+
+  it("P6b · unvertraulicher Erfolgsfall der Metadatenroute: Rückfrage vor jeder Wiederverwendung", async () => {
+    const { app, viewer, autor } = await setup("p6b");
+    const { objectId } = await koMitAnhang(app, autor, false);
+
+    const meta = await app.inject({
+      method: "GET",
+      url: `/api/objects/${objectId}`,
+      headers: viewer,
+    });
+    expect(meta.statusCode, meta.body).toBe(200);
+    // Vorher stand hier KEIN Cache-Control — die Wiederverwendung entschied die Browserheuristik.
+    expect(cc(meta)).toBe(CACHE_UNVERTRAULICH);
+    expect(cc(meta)).not.toContain("max-age");
+    expect(vary(meta)).toBe(VARY_AUTH);
+    expect(meta.headers.etag).toBeUndefined();
+    expect(meta.headers["last-modified"]).toBeUndefined();
+  });
+});
+
+describe("S-B-meta · Hochstufung entzieht auch an der Metadatenroute sofort", () => {
+  it("vorher 200 mit Rückfragepflicht, nachher 404 no-store, kein 304", async () => {
+    const { app, autor, viewer } = await setup("sbm");
+    const { koId, objectId } = await koMitAnhang(app, autor, false);
+
+    const vorher = await app.inject({
+      method: "GET",
+      url: `/api/objects/${objectId}`,
+      headers: viewer,
+    });
+    expect(vorher.statusCode, vorher.body).toBe(200);
+    expect(cc(vorher)).toBe(CACHE_UNVERTRAULICH);
+
+    const hoch = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${koId}`,
+      headers: autor,
+      payload: { action: "confidentiality", level: "vertraulich" },
+    });
+    expect(hoch.statusCode, hoch.body).toBe(200);
+
+    const nachher = await app.inject({
+      method: "GET",
+      url: `/api/objects/${objectId}`,
+      headers: { ...viewer, "if-none-match": '"irgendein-wert"' },
+    });
+    expect(nachher.statusCode).toBe(404);
+    expect(cc(nachher)).toBe(CACHE_NICHT_SPEICHERBAR);
+    expect(nachher.body).not.toContain("base64");
   });
 });
 
