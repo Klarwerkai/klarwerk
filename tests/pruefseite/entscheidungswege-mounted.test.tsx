@@ -241,13 +241,36 @@ afterEach(async () => {
 // K · KONFLIKTE
 // ================================================================================================
 describe("JOB 3061 · H2 · Konflikte: die vier Knöpfe und ihre Serverwege", () => {
-  it("K1 · „Kein Widerspruch“ ruft `conflicts.dismiss` — und ausdrücklich NICHT `escalate`", async () => {
+  // Aufnahme 20260922 · R-1105: „Kein Widerspruch" schließt MIT Begründung. Der Knopf öffnet das
+  // Feld; erst die Bestätigung mit nicht leerem Text ruft `conflicts.dismiss` — samt Begründung.
+  it("K1 · „Kein Widerspruch“ ruft `conflicts.dismiss` — mit Begründung, und ausdrücklich NICHT `escalate`", async () => {
     await mount(Conflicts, "/konflikte");
     daten.rufe = [];
 
     await klick(knopf("kein-widerspruch"));
+    expect(wege(), "ohne Begründung geschlossen").not.toContain("conflicts.dismiss");
+    const feld = container.querySelector(
+      '[data-testid="pruefen-fehlalarm"] textarea',
+    ) as HTMLTextAreaElement | null;
+    expect(feld, "das Begründungsfeld ist nicht aufgeklappt").not.toBeNull();
+    const bestaetigen = container.querySelector(
+      '[data-testid="pruefen-fehlalarm"] button',
+    ) as HTMLButtonElement | null;
+    expect(bestaetigen?.disabled, "Fehlalarm ohne Begründung möglich").toBe(true);
+
+    await act(async () => {
+      // React hört auf `input`; der native Setter umgeht den Wert-Tracker.
+      const proto = HTMLTextAreaElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set as (v: string) => void;
+      setter.call(feld, "Anderer Standort.");
+      feld?.dispatchEvent(new Event("input", { bubbles: true }));
+      await flush();
+    });
+    await klick(bestaetigen as HTMLElement);
 
     expect(wege()).toContain("conflicts.dismiss");
+    const ruf = daten.rufe.find((r) => r.weg === "conflicts.dismiss");
+    expect(ruf?.args).toEqual(["c-1", "Anderer Standort."]);
     expect(
       wege(),
       "Kein-Widerspruch eskaliert — der Knopf zeigt auf den falschen Weg",
