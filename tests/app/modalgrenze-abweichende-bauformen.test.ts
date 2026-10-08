@@ -139,7 +139,9 @@ describe("Register A17b · abweichend benannte Bauformen werden Kandidat statt s
     expect(modalAbgleich(e)).toEqual([]);
   });
 
-  it("ein Dialog-Name über eine Variable ist eine UNBEKANNTE Bauform — rot mit Datei und Zeile", () => {
+  // Nacharbeit (ben): bis hierher wurden diese beiden Formen nur als „unbekannt“ am Literal gemeldet.
+  // Jetzt wird der Wert über seine Verwendung verfolgt — sie sind erkannte Kandidaten mit Urteil.
+  it("ein Dialog-Name über eine Konstante wird bis zur Verwendung verfolgt — Tag, Rolle, createElement", () => {
     const datei = "apps/web/src/components/A17bHuelle.tsx";
     const tag = synth(datei, [
       'const Huelle = "dialog";',
@@ -147,11 +149,9 @@ describe("Register A17b · abweichend benannte Bauformen werden Kandidat statt s
       "  return <Huelle open />;",
       "}",
     ]);
-    expect(tag.kandidaten, "kein Marker, den eine Bauform erklärt").toEqual([]);
-    const rot = modalAbgleich(tag);
-    expect(rot).toHaveLength(1);
-    expect(rot[0]).toContain(`${datei}:1`);
-    expect(rot[0]).toContain("„dialog“");
+    expect(tag.kandidaten).toEqual([{ datei, zeile: 3, art: "dialog-jsx" }]);
+    expect(modalAbgleich(tag), "zugeflossen ⇒ keine unbekannte Bauform").toEqual([]);
+    expect(beurteile([tag]).rot[0]).toContain(`${datei}:3`);
 
     const rolle = synth("apps/web/src/components/A17bRolleVariable.tsx", [
       'const rolle = "alertdialog";',
@@ -159,18 +159,174 @@ describe("Register A17b · abweichend benannte Bauformen werden Kandidat statt s
       "  return <div role={rolle} />;",
       "}",
     ]);
-    expect(modalAbgleich(rolle)).toHaveLength(1);
-    expect(modalAbgleich(rolle)[0]).toContain("A17bRolleVariable.tsx:1");
+    expect(rolle.kandidaten.map((k) => `${k.zeile}:${k.art}`)).toEqual(["3:role-dialog"]);
+    expect(modalAbgleich(rolle)).toEqual([]);
 
-    // Negativ-Zwillinge: ein anderer Name, und das Wort nur als Teil eines Satzes.
+    const erzeugt = synth("apps/web/src/lib/a17bCreateKonstante.ts", [
+      'import { createElement } from "react";',
+      'const tag = "dialog";',
+      "export const D = createElement(tag, null);",
+    ]);
+    expect(erzeugt.kandidaten.map((k) => `${k.zeile}:${k.art}`)).toEqual([
+      "3:dialog-createElement",
+    ]);
+    expect(modalAbgleich(erzeugt)).toEqual([]);
+
+    // Negativ-Zwillinge: ein anderer Name, das Wort nur als Teil eines Satzes, und ein Bauteil.
     const anders = synth("apps/web/src/components/A17bAnders.tsx", [
+      'import { FacetFilter } from "./FacetFilter";',
       'const Huelle = "section";',
       'export const HINWEIS = "Der dialog öffnet sich";',
+      "const Anders = FacetFilter;",
       "export function Fenster(): JSX.Element {",
-      "  return <Huelle />;",
+      "  return <Huelle><Anders /></Huelle>;",
       "}",
     ]);
+    expect(anders.kandidaten).toEqual([]);
     expect(modalAbgleich(anders)).toEqual([]);
+  });
+
+  it("ein Dialog-Literal, das in KEINE Bauform fliesst, bleibt eine unbekannte Bauform — rot", () => {
+    const datei = "apps/web/src/lib/a17bLose.ts";
+    const lose = synth(datei, ['export const ART = "dialog";']);
+    expect(lose.kandidaten).toEqual([]);
+    const rot = modalAbgleich(lose);
+    expect(rot).toHaveLength(1);
+    expect(rot[0]).toContain(`${datei}:1`);
+    expect(rot[0]).toContain("„dialog“");
+  });
+
+  it("bens Befund 2: Typdeklarationen und Vergleiche bauen nichts und sperren das Tor nicht", () => {
+    const rein = synth("apps/web/src/lib/a17bTypen.ts", [
+      'export type Rolle = "dialog" | "button";',
+      "export interface Fenster { art: 'alertdialog' | 'region'; }",
+      "export function istDialog(rolle: Rolle): boolean {",
+      '  if (rolle === "dialog") { return true; }',
+      "  switch (rolle) {",
+      '    case "dialog":',
+      "      return true;",
+      "    default:",
+      '      return "alertdialog" !== rolle;',
+      "  }",
+      "}",
+    ]);
+    expect(rein.kandidaten).toEqual([]);
+    expect(modalAbgleich(rein), "Typ und Vergleich sind kein Bau").toEqual([]);
+
+    // Gegenprobe: derselbe Typ, aber als ROLLE verwendet — das ist ein Bau und wird Kandidat.
+    const verwendet = synth("apps/web/src/components/A17bTypVerwendet.tsx", [
+      'type Rolle = "dialog" | "button";',
+      "export function Fenster({ rolle }: { rolle: Rolle }): JSX.Element {",
+      "  return <div role={rolle} />;",
+      "}",
+    ]);
+    expect(verwendet.kandidaten.map((k) => `${k.zeile}:${k.art}`)).toEqual(["3:role-dialog"]);
+    expect(modalAbgleich(verwendet)).toEqual([]);
+  });
+});
+
+describe("Register A17b · Nacharbeit (ben Befund 1): Rollenwerte werden am Syntaxbaum ausgewertet", () => {
+  it("eine konstante Zusammensetzung ('dia' + 'log') ist ein Kandidat, ohne Grenze rot", () => {
+    const datei = "apps/web/src/components/A17bVerkettet.tsx";
+    const e = synth(datei, [
+      "export function Fenster(): JSX.Element {",
+      "  return <div role={'dia' + 'log'} />;",
+      "}",
+    ]);
+    expect(e.kandidaten).toEqual([{ datei, zeile: 2, art: "role-dialog" }]);
+    expect(beurteile([e]).rot[0]).toContain(`${datei}:2`);
+
+    const template = synth("apps/web/src/components/A17bTemplateKonstante.tsx", [
+      'const VORSILBE = "alert";',
+      "export function Fenster(): JSX.Element {",
+      // Quelltext: <div role={`${VORSILBE}dia${'log'}`} /> — hier zerlegt, damit die Testdatei
+      // selbst keinen Platzhalter in einer gewöhnlichen Zeichenkette trägt.
+      ["  return <div role={`$", "{VORSILBE}dia$", "{'log'}`} />;"].join(""),
+      "}",
+    ]);
+    expect(arten(template)).toEqual(["role-dialog"]);
+
+    const ueberKonstanten = synth("apps/web/src/lib/a17bKonstanten.ts", [
+      'const A = "dia";',
+      "const B = A + 'log';",
+      "export function markiere(el: HTMLElement): void {",
+      "  el.setAttribute('role', B);",
+      "}",
+    ]);
+    expect(ueberKonstanten.kandidaten.map((k) => `${k.zeile}:${k.art}`)).toEqual(["4:role-dialog"]);
+
+    // Negativ-Zwilling: dieselbe Zusammensetzung, anderes Ergebnis.
+    const ohne = synth("apps/web/src/components/A17bVerkettetOhne.tsx", [
+      "export function Fenster(): JSX.Element {",
+      "  return <div role={'reg' + 'ion'} />;",
+      "}",
+    ]);
+    expect(ohne.kandidaten).toEqual([]);
+    expect(modalAbgleich(ohne)).toEqual([]);
+  });
+
+  it("ein statisch NICHT bestimmbarer Rollenwert ist rot mit Datei und Zeile, statt ohne Ergebnis", () => {
+    const datei = "apps/web/src/components/A17bRolleOffen.tsx";
+    const e = synth(datei, [
+      'import { ROLLE } from "../lib/rollen";',
+      "export function Fenster(props: { rolle: string }): JSX.Element {",
+      "  return <div role={props.rolle}><span role={ROLLE} /><i role={'dia' + props.rolle} /></div>;",
+      "}",
+    ]);
+    expect(e.kandidaten).toEqual([]);
+    const rot = modalAbgleich(e);
+    expect(rot, "drei Rollenwerte, keiner bestimmbar").toHaveLength(3);
+    for (const zeile of rot) {
+      expect(zeile).toContain(`${datei}:3`);
+      expect(zeile).toContain("statisch nicht bestimmbar");
+    }
+
+    const dom = synth("apps/web/src/lib/a17bRolleDomOffen.ts", [
+      "export function markiere(el: HTMLElement, rolle: string): void {",
+      "  el.setAttribute('role', rolle);",
+      "}",
+    ]);
+    expect(modalAbgleich(dom)[0]).toContain("a17bRolleDomOffen.ts:2");
+
+    const spread = synth("apps/web/src/components/A17bSpreadOffen.tsx", [
+      'import { rolleVonAussen } from "../lib/rollen";',
+      "export const F = <div {...{ role: rolleVonAussen }} />;",
+    ]);
+    expect(modalAbgleich(spread)[0]).toContain("A17bSpreadOffen.tsx:2");
+  });
+
+  it("GEGENPROBE: die Bauformen des Bestands bleiben ohne Befund (Parameter-Vorgabe mit Literal-Union, Bedingung)", () => {
+    // Die Form aus `apps/web/src/shell/Menue.tsx`: destrukturierter Parameter, Vorgabe und
+    // Literal-Union im Typ — vollständig bestimmbar, kein Dialog.
+    const menue = synth("apps/web/src/shell/A17bMenue.tsx", [
+      "export function MenueZeile({",
+      '  rolle = "menuitem",',
+      "}: {",
+      '  rolle?: "menuitem" | "menuitemcheckbox" | "menuitemradio";',
+      "}): JSX.Element {",
+      '  return <button type="button" role={rolle} />;',
+      "}",
+    ]);
+    expect(menue.kandidaten).toEqual([]);
+    expect(modalAbgleich(menue)).toEqual([]);
+
+    // Die Form aus `apps/web/src/pages/AblaufUebernahme.tsx`: die Bedingung selbst bleibt offen,
+    // beide Zweige sind bestimmt.
+    const bedingt = synth("apps/web/src/pages/A17bAblauf.tsx", [
+      "export function Meldung({ meldung }: { meldung: { art: string } }): JSX.Element {",
+      '  return <div role={meldung.art === "fehler" ? "alert" : "status"} />;',
+      "}",
+    ]);
+    expect(modalAbgleich(bedingt)).toEqual([]);
+
+    // Ausserhalb eines Props-Objekts ist `role` die Benutzerrolle — kein Befund.
+    const benutzer = synth("apps/web/src/api/a17bBenutzer.ts", [
+      "export function setze(u: { role: string }, neu: string): { role: string } {",
+      "  u.role = neu;",
+      "  return { role: neu };",
+      "}",
+    ]);
+    expect(modalAbgleich(benutzer)).toEqual([]);
   });
 });
 
@@ -214,16 +370,50 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     const { rot } = pruefeModalgrenze(
       legeBaum({
         ...ABGEGRENZT,
-        "apps/web/src/components/Huelle.tsx": [
-          'const Huelle = "dialog";',
-          "export function Leer(): JSX.Element {",
-          "  return <Huelle />;",
+        "apps/web/src/lib/art.ts": ['export const ART = "dialog";'],
+      }),
+    );
+    expect(rot).toHaveLength(1);
+    expect(rot[0]).toContain("apps/web/src/lib/art.ts:1");
+  });
+
+  it("bens Fall: role={'dia' + 'log'} in einem sonst grünen Baum macht das TOR rot", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Verkettet.tsx": [
+          "export function Verkettet(): JSX.Element {",
+          "  return <div role={'dia' + 'log'} />;",
           "}",
         ],
       }),
     );
     expect(rot).toHaveLength(1);
-    expect(rot[0]).toContain("apps/web/src/components/Huelle.tsx:1");
+    expect(rot[0]).toContain("apps/web/src/components/Verkettet.tsx:2 — role-dialog");
+    expect(rot[0]).toContain("ohne die Modalgrenze der Shell");
+  });
+
+  it("ein nicht bestimmbarer Rollenwert macht das TOR rot; eine Typdeklaration nicht", () => {
+    const offen = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Offen.tsx": [
+          "export function Offen(props: { rolle: string }): JSX.Element {",
+          "  return <div role={props.rolle} />;",
+          "}",
+        ],
+      }),
+    );
+    expect(offen.rot).toHaveLength(1);
+    expect(offen.rot[0]).toContain("apps/web/src/components/Offen.tsx:2");
+
+    const typ = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/lib/rolle.ts": ['export type Rolle = "dialog" | "button";'],
+      }),
+    );
+    expect(typ.rot).toEqual([]);
   });
 
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {

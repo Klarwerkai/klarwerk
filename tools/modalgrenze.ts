@@ -183,10 +183,11 @@ export interface DateiErhebung {
    */
   nativeRefs: Set<string>;
   /**
-   * Register A17b: Zeichenketten `"dialog"` / `"alertdialog"`, die KEINER erkannten Bauform
-   * angehören — etwa `const Huelle = "dialog"; <Huelle />` oder eine Rolle, die über eine Variable
-   * oder ein anderes Modul ankommt. Jede ist eine Bauform, die dieser Sammler nicht beurteilen
-   * kann, und wird rot mit Datei und Zeile (`modalAbgleich`) — nicht still als Prosa verbucht.
+   * Register A17b: was dieser Sammler NICHT beurteilen kann, mit Datei und Zeile — rot über
+   * `modalAbgleich`, nicht still als Prosa verbucht. Zwei Arten:
+   *  · ein `"dialog"`/`"alertdialog"`, das nach dem ganzen Lauf in keine Bauform geflossen ist
+   *    (Typdeklarationen und Vergleiche ausgenommen, `istReinerDialogText`);
+   *  · ein Rollenwert, der sich statisch nicht bestimmen lässt (`role={props.rolle}`).
    */
   unbekannteBauformen: string[];
 }
@@ -200,21 +201,345 @@ function istZeichenkettenLiteral(n: ts.Node): n is ts.StringLiteralLike {
   return ts.isStringLiteral(n) || n.kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral;
 }
 
-/**
- * Alle `"dialog"`/`"alertdialog"`-Literale in einem Ausdruck — auch in Bedingungen und
- * Rückfallketten (`offen ? "dialog" : undefined`, `rolle ?? "dialog"`). Register A17b: die Rolle
- * steht nicht immer als nacktes Literal am Attribut.
- */
-export function dialogLiterale(ausdruck: ts.Node): ts.StringLiteralLike[] {
-  const gefunden: ts.StringLiteralLike[] = [];
-  const gehe = (k: ts.Node): void => {
-    if (istZeichenkettenLiteral(k) && istDialogName(k.text)) {
-      gefunden.push(k);
+// ------------------------------------------------------------------------------------------------
+// Register A17b, Nacharbeit (ben): DIE STATISCHE WERTAUSWERTUNG.
+// ------------------------------------------------------------------------------------------------
+//
+// Bis hierher galt eine Rolle nur dann als Dialog, wenn das VOLLSTÄNDIGE Literal im Ausdruck stand.
+// `role={"dia" + "log"}` fiel damit still durch — statisch bestimmbar, aber nie bestimmt. Jetzt wird
+// der Wert am Syntaxbaum AUSGEWERTET: Verkettung, Template, Bedingung, Rückfallketten, Hüllen
+// (`as`, `satisfies`, `!`), Konstanten, Parameter-Vorgaben und Literal-Union-Typen der Datei.
+// Was danach nicht feststeht, landet in `offen` — und ist damit eine Aussage, kein stilles Nichts.
+
+/** Ein statisch ermittelter Zeichenkettenwert und der Knoten, aus dem er stammt. */
+export interface StatischerWert {
+  text: string;
+  knoten: ts.Node;
+}
+
+/** Die möglichen Werte eines Ausdrucks — und die Stellen, an denen er nicht bestimmbar war. */
+export interface Wertbild {
+  werte: StatischerWert[];
+  offen: ts.Node[];
+}
+
+/** Name → Deklarationen dieser Datei (Variablen, Bindungen, Parameter, Typen). */
+export type Deklarationen = Map<string, ts.Node[]>;
+
+const MAX_KOMBINATIONEN = 64;
+const MAX_TIEFE = 12;
+
+export function sammleDeklarationen(sf: ts.SourceFile): Deklarationen {
+  const index: Deklarationen = new Map();
+  const merke = (name: ts.Node | undefined, decl: ts.Node): void => {
+    if (name && ts.isIdentifier(name)) {
+      index.set(name.text, [...(index.get(name.text) ?? []), decl]);
     }
-    ts.forEachChild(k, gehe);
   };
-  gehe(ausdruck);
-  return gefunden;
+  const gehe = (n: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(n) ||
+      ts.isBindingElement(n) ||
+      ts.isParameter(n) ||
+      ts.isTypeAliasDeclaration(n) ||
+      ts.isInterfaceDeclaration(n)
+    ) {
+      merke(n.name, n);
+    }
+    ts.forEachChild(n, gehe);
+  };
+  gehe(sf);
+  return index;
+}
+
+/** Der Sichtbarkeitsraum einer Deklaration: Block, Datei, Funktion oder Schleifenkopf. */
+function sichtraum(decl: ts.Node): ts.Node | undefined {
+  let k = decl.parent;
+  while (
+    k &&
+    !(
+      ts.isBlock(k) ||
+      ts.isSourceFile(k) ||
+      ts.isModuleBlock(k) ||
+      ts.isFunctionLike(k) ||
+      ts.isForStatement(k) ||
+      ts.isForOfStatement(k) ||
+      ts.isForInStatement(k) ||
+      ts.isCaseBlock(k)
+    )
+  ) {
+    k = k.parent;
+  }
+  return k;
+}
+
+/** Die vom Verwendungsort aus sichtbaren Deklarationen — die innerste Ebene gewinnt. */
+function sichtbareDeklarationen(deklarationen: Deklarationen, id: ts.Identifier): ts.Node[] {
+  const sichtbar: Array<{ decl: ts.Node; raum: ts.Node }> = [];
+  for (const decl of deklarationen.get(id.text) ?? []) {
+    const raum = sichtraum(decl);
+    if (raum !== undefined && raum.pos <= id.pos && id.end <= raum.end) {
+      sichtbar.push({ decl, raum });
+    }
+  }
+  const innerste = Math.max(-1, ...sichtbar.map(({ raum }) => raum.pos));
+  return sichtbar.filter(({ raum }) => raum.pos === innerste).map(({ decl }) => decl);
+}
+
+function vereine(bilder: Wertbild[]): Wertbild {
+  return { werte: bilder.flatMap((b) => b.werte), offen: bilder.flatMap((b) => b.offen) };
+}
+
+function verkette(knoten: ts.Node, links: Wertbild, rechts: Wertbild): Wertbild {
+  if (
+    links.offen.length > 0 ||
+    rechts.offen.length > 0 ||
+    links.werte.length === 0 ||
+    rechts.werte.length === 0 ||
+    links.werte.length * rechts.werte.length > MAX_KOMBINATIONEN
+  ) {
+    return { werte: [], offen: [knoten] };
+  }
+  return {
+    werte: links.werte.flatMap((l) => rechts.werte.map((r) => ({ text: l.text + r.text, knoten }))),
+    offen: [],
+  };
+}
+
+/**
+ * Alle möglichen Zeichenkettenwerte eines Ausdrucks, statisch am Syntaxbaum ermittelt. Ein
+ * nicht-zeichenkettiger Wert (`undefined`, `null`, Zahl, Wahrheitswert) trägt nichts bei; alles,
+ * was sich nicht bestimmen lässt (Prop-Zugriff, Aufruf, Import, `let`), steht in `offen`.
+ */
+export function statischeWerte(ausdruck: ts.Node, deklarationen: Deklarationen): Wertbild {
+  const leer = (): Wertbild => ({ werte: [], offen: [] });
+  const unbestimmt = (n: ts.Node): Wertbild => ({ werte: [], offen: [n] });
+  const besucht = new Set<ts.Node>();
+
+  const typNamen = (name: string): ts.Node[] => {
+    const alle = deklarationen.get(name) ?? [];
+    return alle.filter((d) => ts.isTypeAliasDeclaration(d) || ts.isInterfaceDeclaration(d));
+  };
+
+  const mitgliedsTyp = (typ: ts.TypeNode, name: string, tiefe: number): ts.TypeNode | undefined => {
+    if (tiefe > MAX_TIEFE) {
+      return undefined;
+    }
+    if (ts.isParenthesizedTypeNode(typ)) {
+      return mitgliedsTyp(typ.type, name, tiefe + 1);
+    }
+    if (ts.isIntersectionTypeNode(typ)) {
+      for (const t of typ.types) {
+        const gefunden = mitgliedsTyp(t, name, tiefe + 1);
+        if (gefunden) {
+          return gefunden;
+        }
+      }
+      return undefined;
+    }
+    const mitglieder = (liste: ts.NodeArray<ts.TypeElement>): ts.TypeNode | undefined => {
+      for (const m of liste) {
+        if (ts.isPropertySignature(m) && eigenschaftsName(m.name) === name) {
+          return m.type;
+        }
+      }
+      return undefined;
+    };
+    if (ts.isTypeLiteralNode(typ)) {
+      return mitglieder(typ.members);
+    }
+    if (ts.isTypeReferenceNode(typ) && ts.isIdentifier(typ.typeName)) {
+      for (const d of typNamen(typ.typeName.text)) {
+        let gefunden: ts.TypeNode | undefined;
+        if (ts.isInterfaceDeclaration(d)) {
+          gefunden = mitglieder(d.members);
+        } else if (ts.isTypeAliasDeclaration(d)) {
+          gefunden = mitgliedsTyp(d.type, name, tiefe + 1);
+        }
+        if (gefunden) {
+          return gefunden;
+        }
+      }
+    }
+    return undefined;
+  };
+
+  const typWerte = (typ: ts.TypeNode, tiefe: number): Wertbild => {
+    if (tiefe > MAX_TIEFE) {
+      return unbestimmt(typ);
+    }
+    if (ts.isLiteralTypeNode(typ)) {
+      return istZeichenkettenLiteral(typ.literal)
+        ? { werte: [{ text: typ.literal.text, knoten: typ.literal }], offen: [] }
+        : leer();
+    }
+    if (ts.isUnionTypeNode(typ)) {
+      return vereine(typ.types.map((t) => typWerte(t, tiefe + 1)));
+    }
+    if (ts.isParenthesizedTypeNode(typ)) {
+      return typWerte(typ.type, tiefe + 1);
+    }
+    if (
+      typ.kind === ts.SyntaxKind.UndefinedKeyword ||
+      typ.kind === ts.SyntaxKind.NullKeyword ||
+      typ.kind === ts.SyntaxKind.BooleanKeyword ||
+      typ.kind === ts.SyntaxKind.NumberKeyword
+    ) {
+      return leer();
+    }
+    if (ts.isTypeReferenceNode(typ) && ts.isIdentifier(typ.typeName)) {
+      const alias = typNamen(typ.typeName.text).find(ts.isTypeAliasDeclaration);
+      if (alias) {
+        return typWerte(alias.type, tiefe + 1);
+      }
+    }
+    return unbestimmt(typ);
+  };
+
+  const bindungsTyp = (b: ts.BindingElement): ts.TypeNode | undefined => {
+    const name = b.propertyName ?? b.name;
+    const muster = b.parent;
+    const halter = muster.parent;
+    if (
+      !ts.isObjectBindingPattern(muster) ||
+      !(ts.isIdentifier(name) || ts.isStringLiteral(name)) ||
+      !(ts.isParameter(halter) || ts.isVariableDeclaration(halter)) ||
+      !halter.type
+    ) {
+      return undefined;
+    }
+    return mitgliedsTyp(halter.type, name.text, 0);
+  };
+
+  // `besucht` ist der aktuelle Auflösungspfad, kein Gedächtnis: `a + a` wertet `a` zweimal aus,
+  // nur ein Kreis (`const a = b; const b = a`) bricht ab.
+  const deklarationsWerte = (d: ts.Node, tiefe: number): Wertbild => {
+    if (besucht.has(d)) {
+      return unbestimmt(d);
+    }
+    besucht.add(d);
+    try {
+      return deklarationsWerteOhneKreis(d, tiefe);
+    } finally {
+      besucht.delete(d);
+    }
+  };
+
+  function deklarationsWerteOhneKreis(d: ts.Node, tiefe: number): Wertbild {
+    if (ts.isVariableDeclaration(d)) {
+      const konstant = (ts.getCombinedNodeFlags(d) & ts.NodeFlags.Const) !== 0;
+      return konstant && d.initializer ? werte(d.initializer, tiefe + 1) : unbestimmt(d);
+    }
+    if (ts.isBindingElement(d)) {
+      const typ = bindungsTyp(d);
+      return vereine([
+        d.initializer ? werte(d.initializer, tiefe + 1) : leer(),
+        typ ? typWerte(typ, tiefe + 1) : unbestimmt(d),
+      ]);
+    }
+    if (ts.isParameter(d) && d.type) {
+      return vereine([
+        d.initializer ? werte(d.initializer, tiefe + 1) : leer(),
+        typWerte(d.type, tiefe + 1),
+      ]);
+    }
+    return unbestimmt(d);
+  }
+
+  function werte(n: ts.Node, tiefe: number): Wertbild {
+    if (tiefe > MAX_TIEFE) {
+      return unbestimmt(n);
+    }
+    if (istZeichenkettenLiteral(n)) {
+      return { werte: [{ text: n.text, knoten: n }], offen: [] };
+    }
+    if (
+      ts.isParenthesizedExpression(n) ||
+      ts.isAsExpression(n) ||
+      ts.isSatisfiesExpression(n) ||
+      ts.isNonNullExpression(n) ||
+      ts.isTypeAssertionExpression(n)
+    ) {
+      return werte(n.expression, tiefe + 1);
+    }
+    if (ts.isJsxExpression(n)) {
+      return n.expression ? werte(n.expression, tiefe + 1) : leer();
+    }
+    if (ts.isConditionalExpression(n)) {
+      return vereine([werte(n.whenTrue, tiefe + 1), werte(n.whenFalse, tiefe + 1)]);
+    }
+    if (ts.isBinaryExpression(n)) {
+      const op = n.operatorToken.kind;
+      if (op === ts.SyntaxKind.PlusToken) {
+        return verkette(n, werte(n.left, tiefe + 1), werte(n.right, tiefe + 1));
+      }
+      if (op === ts.SyntaxKind.QuestionQuestionToken || op === ts.SyntaxKind.BarBarToken) {
+        return vereine([werte(n.left, tiefe + 1), werte(n.right, tiefe + 1)]);
+      }
+      if (op === ts.SyntaxKind.AmpersandAmpersandToken) {
+        return werte(n.right, tiefe + 1);
+      }
+    }
+    if (ts.isTemplateExpression(n)) {
+      let bild: Wertbild = { werte: [{ text: n.head.text, knoten: n }], offen: [] };
+      for (const span of n.templateSpans) {
+        bild = verkette(n, bild, werte(span.expression, tiefe + 1));
+        bild = verkette(n, bild, { werte: [{ text: span.literal.text, knoten: n }], offen: [] });
+      }
+      return bild;
+    }
+    if (
+      n.kind === ts.SyntaxKind.NullKeyword ||
+      n.kind === ts.SyntaxKind.TrueKeyword ||
+      n.kind === ts.SyntaxKind.FalseKeyword ||
+      ts.isNumericLiteral(n)
+    ) {
+      return leer();
+    }
+    if (ts.isIdentifier(n)) {
+      if (n.text === "undefined") {
+        return leer();
+      }
+      const decls = sichtbareDeklarationen(deklarationen, n);
+      if (decls.length === 0) {
+        return unbestimmt(n);
+      }
+      const bild = vereine(decls.map((d) => deklarationsWerte(d, tiefe + 1)));
+      // Die Unbestimmtheit wird am VERWENDUNGSORT gemeldet, nicht tief in der Deklaration.
+      return { werte: bild.werte, offen: bild.offen.length > 0 ? [n] : [] };
+    }
+    return unbestimmt(n);
+  }
+
+  return werte(ausdruck, 0);
+}
+
+/**
+ * Ist dieses Dialog-Literal nachweislich KEIN Bau? Eine Typdeklaration (`type R = "dialog" | …`)
+ * baut keine Fläche, ein Vergleich (`rolle === "dialog"`, `case "dialog":`) liest nur. Alles
+ * andere, das keiner erkannten Bauform zugeflossen ist, bleibt eine unbekannte Bauform.
+ */
+export function istReinerDialogText(literal: ts.Node): boolean {
+  const p = literal.parent;
+  if (!p) {
+    return false;
+  }
+  if (ts.isLiteralTypeNode(p)) {
+    return true;
+  }
+  if (ts.isCaseClause(p) && p.expression === literal) {
+    return true;
+  }
+  if (ts.isBinaryExpression(p)) {
+    const op = p.operatorToken.kind;
+    return (
+      op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+      op === ts.SyntaxKind.ExclamationEqualsEqualsToken ||
+      op === ts.SyntaxKind.EqualsEqualsToken ||
+      op === ts.SyntaxKind.ExclamationEqualsToken
+    );
+  }
+  return false;
 }
 
 /** Der Name einer Eigenschaft, gleich ob als Bezeichner oder als Zeichenkette geschrieben. */
@@ -268,12 +593,60 @@ export function erhebeDatei(quelle: Quelle): DateiErhebung {
     kandidaten.push({ datei: quelle.datei, zeile: zeileVon(sf, n), art, ...(ref ? { ref } : {}) });
   };
 
-  // Jedes Dialog-Literal im Rollenwert wird Kandidat — und damit nicht unbekannte Bauform.
-  const meldeRolle = (ausdruck: ts.Node): void => {
-    for (const literal of dialogLiterale(ausdruck)) {
-      melde(literal, "role-dialog");
-      kandidatTokens.add(literal);
+  const deklarationen = sammleDeklarationen(sf);
+  // Alle Dialog-Literale der Datei; ob sie einer Bauform zugeflossen sind, steht erst NACH dem
+  // ganzen Lauf fest (die Konstante kann vor ihrer Verwendung stehen).
+  const dialogLiteralKnoten: ts.StringLiteralLike[] = [];
+
+  // Ein Wert, der im Ausdruck selbst steht, wird an seiner Stelle gemeldet; einer aus einer
+  // Deklaration am Verwendungsort.
+  const stelle = (w: StatischerWert, ausdruck: ts.Node): ts.Node =>
+    w.knoten.getStart(sf) >= ausdruck.getStart(sf) && w.knoten.end <= ausdruck.end
+      ? w.knoten
+      : ausdruck;
+
+  // Register A17b (Nacharbeit): der Rollenwert wird AUSGEWERTET, nicht nach Literalen durchsucht.
+  // `meldeOffen` steht dort, wo `role` zweifelsfrei die ARIA-Rolle ist (JSX-Attribut,
+  // `setAttribute`, Props-Objekt an JSX-Spread oder `createElement`). Ein nicht bestimmbarer Wert
+  // ist dort eine unbekannte Bauform — rot mit Datei und Zeile, statt ohne Ergebnis abgerechnet.
+  const meldeRolle = (ausdruck: ts.Node, meldeOffen: boolean): void => {
+    const bild = statischeWerte(ausdruck, deklarationen);
+    for (const w of bild.werte) {
+      if (istDialogName(w.text)) {
+        melde(stelle(w, ausdruck), "role-dialog");
+        kandidatTokens.add(w.knoten);
+      }
     }
+    if (meldeOffen && bild.offen.length > 0) {
+      unbekannteBauformen.push(
+        `${quelle.datei}:${zeileVon(sf, ausdruck)} — Rollenwert „${ausdruck.getText(sf).replace(/\s+/g, " ").slice(0, 60)}“ ist statisch nicht bestimmbar: ob hier ein Dialog entsteht, kann dieser Sammler nicht beurteilen`,
+      );
+    }
+  };
+
+  // Ist dieses Objekt das Props-Objekt einer Bauform (JSX-Spread oder `createElement`)? Nur dort
+  // ist `role` sicher die ARIA-Rolle — sonst ist es in diesem Produkt meist die Benutzerrolle.
+  const istPropsObjekt = (objekt: ts.Node): boolean => {
+    let k: ts.Node = objekt;
+    while (
+      k.parent &&
+      (ts.isParenthesizedExpression(k.parent) ||
+        ts.isConditionalExpression(k.parent) ||
+        ts.isAsExpression(k.parent) ||
+        ts.isSatisfiesExpression(k.parent) ||
+        (ts.isBinaryExpression(k.parent) &&
+          k.parent.operatorToken.kind !== ts.SyntaxKind.EqualsToken))
+    ) {
+      k = k.parent;
+    }
+    const p = k.parent;
+    return (
+      p !== undefined &&
+      (ts.isJsxSpreadAttribute(p) ||
+        (ts.isCallExpression(p) &&
+          aufrufName(p) === "createElement" &&
+          p.arguments.some((a) => a === k)))
+    );
   };
 
   // AUFTRAG-mega76 BLOCK E — die Kette `<dialog ref={R}>` … `R.current.showModal()` nachziehen.
@@ -292,6 +665,18 @@ export function erhebeDatei(quelle: Quelle): DateiErhebung {
       return refBezeichner(n.expression);
     }
     return undefined;
+  };
+
+  // `ref={…}` eines JSX-Elements — das Bindeglied zur nativen Ausnahme (mega76 BLOCK E).
+  const refVon = (node: ts.JsxOpeningElement | ts.JsxSelfClosingElement): string | undefined => {
+    const refAttr = node.attributes.properties.find(
+      (a): a is ts.JsxAttribute => ts.isJsxAttribute(a) && a.name.getText(sf) === "ref",
+    );
+    const refAusdruck =
+      refAttr?.initializer && ts.isJsxExpression(refAttr.initializer)
+        ? refAttr.initializer.expression
+        : undefined;
+    return refAusdruck ? refBezeichner(refAusdruck) : undefined;
   };
 
   const besuch = (node: ts.Node): void => {
@@ -345,14 +730,22 @@ export function erhebeDatei(quelle: Quelle): DateiErhebung {
       (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
       node.tagName.getText(sf) === "dialog"
     ) {
-      const refAttr = node.attributes.properties.find(
-        (a): a is ts.JsxAttribute => ts.isJsxAttribute(a) && a.name.getText(sf) === "ref",
-      );
-      const refAusdruck =
-        refAttr?.initializer && ts.isJsxExpression(refAttr.initializer)
-          ? refAttr.initializer.expression
-          : undefined;
-      melde(node.tagName, "dialog-jsx", refAusdruck ? refBezeichner(refAusdruck) : undefined);
+      melde(node.tagName, "dialog-jsx", refVon(node));
+    }
+    // Register A17b (Nacharbeit): ein abweichend benannter Tag, dessen Wert statisch „dialog“ ist —
+    // `const Huelle = "dialog"; <Huelle />`. JSX liest einen grossgeschriebenen Bezeichner als
+    // Wert; nur dann wird er ausgewertet. Ein Bauteil (Funktion, Import) bleibt kein Kandidat.
+    if (
+      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+      ts.isIdentifier(node.tagName) &&
+      /^[A-Z]/.test(node.tagName.text)
+    ) {
+      for (const w of statischeWerte(node.tagName, deklarationen).werte) {
+        if (w.text === "dialog") {
+          melde(node.tagName, "dialog-jsx", refVon(node));
+          kandidatTokens.add(w.knoten);
+        }
+      }
     }
     // `const d = dialogRef.current` — die Zwischenvariable, über die der Aufruf meist läuft.
     if (
@@ -365,36 +758,47 @@ export function erhebeDatei(quelle: Quelle): DateiErhebung {
     ) {
       aliasse.set(node.name.text, node.initializer.expression.text);
     }
-    // `createElement("dialog", …)` — React wie DOM, auch als Template ohne Ersetzung (A17b).
+    // `createElement("dialog", …)` — React wie DOM, auch als Template ohne Ersetzung (A17b) und
+    // über einen statisch bestimmbaren Wert (`createElement(tag, …)` mit `const tag = "dialog"`).
+    // Ein nicht bestimmbares erstes Argument ist hier der Normalfall (ein Bauteil) und kein Befund.
     if (ts.isCallExpression(node) && aufrufName(node) === "createElement") {
       const erstes = node.arguments[0];
-      if (erstes && istZeichenkettenLiteral(erstes) && erstes.text === "dialog") {
-        melde(erstes, "dialog-createElement");
-        kandidatTokens.add(erstes);
+      if (erstes) {
+        for (const w of statischeWerte(erstes, deklarationen).werte) {
+          if (w.text === "dialog") {
+            melde(stelle(w, erstes), "dialog-createElement");
+            kandidatTokens.add(w.knoten);
+          }
+        }
       }
     }
     // `role="dialog"` / `role="alertdialog"` — als JSX-Attribut, als Objekt-Eigenschaft, über
-    // `setAttribute("role", …)` oder `el.role = …`. Register A17b: auch im Ausdruck
-    // (`role={offen ? "dialog" : undefined}`), nicht nur als nacktes Literal (`meldeRolle`).
+    // `setAttribute("role", …)` oder `el.role = …`. Register A17b: der Wert wird ausgewertet
+    // (`role={"dia" + "log"}`, `role={offen ? "dialog" : undefined}`, `role={rolle}`), s. `meldeRolle`.
     if (ts.isJsxAttribute(node) && node.name.getText(sf) === "role" && node.initializer) {
-      meldeRolle(node.initializer);
+      meldeRolle(node.initializer, true);
     }
     if (ts.isPropertyAssignment(node) && node.name.getText(sf).replace(/["']/g, "") === "role") {
-      meldeRolle(node.initializer);
+      meldeRolle(node.initializer, istPropsObjekt(node.parent));
+    }
+    if (ts.isShorthandPropertyAssignment(node) && node.name.text === "role") {
+      meldeRolle(node.name, istPropsObjekt(node.parent));
     }
     if (ts.isCallExpression(node) && aufrufName(node) === "setAttribute") {
       const [attribut, wert] = node.arguments;
       if (attribut && wert && istZeichenkettenLiteral(attribut) && attribut.text === "role") {
-        meldeRolle(wert);
+        meldeRolle(wert, true);
       }
     }
+    // `x.role = …` meldet nur bestimmte Dialogwerte: in diesem Produkt ist `role` an Objekten
+    // meist die BENUTZERrolle — ein unbestimmter Wert dort ist kein Hinweis auf einen Dialog.
     if (
       ts.isBinaryExpression(node) &&
       node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
       ts.isPropertyAccessExpression(node.left) &&
       node.left.name.text === "role"
     ) {
-      meldeRolle(node.right);
+      meldeRolle(node.right, false);
     }
     // `ariaModal` — die DOM-Reflexion von `aria-modal`, abweichend benannt (A17b). Punktzugriff,
     // Objekt-Eigenschaft (auch Kurzform), JSX-Attribut und Index-Zugriff `el["ariaModal"]`.
@@ -432,14 +836,8 @@ export function erhebeDatei(quelle: Quelle): DateiErhebung {
       kandidatTokens.add(node.argumentExpression);
     }
 
-    // Register A17b: ein `"dialog"`/`"alertdialog"`, das keine der Bauformen oben als Kandidat
-    // genommen hat, ist eine UNBEKANNTE Bauform — ein abweichend benannter Träger
-    // (`const Huelle = "dialog"; <Huelle />`) oder eine Rolle aus einer Variablen. Die Besuchs-
-    // reihenfolge ist Vorordnung: die erkennenden Elternknoten haben ihr Literal hier bereits belegt.
-    if (istZeichenkettenLiteral(node) && istDialogName(node.text) && !kandidatTokens.has(node)) {
-      unbekannteBauformen.push(
-        `${quelle.datei}:${zeileVon(sf, node)} — Zeichenkette „${node.text}“ außerhalb jeder erkannten Bauform (weder <dialog>, createElement noch role): ein abweichend benannter Dialog, den dieser Sammler nicht beurteilen kann`,
-      );
+    if (istZeichenkettenLiteral(node) && istDialogName(node.text)) {
+      dialogLiteralKnoten.push(node);
     }
 
     // Alles Text-Artige, das kein Kandidat wurde, ist belegte Prosa.
@@ -450,6 +848,19 @@ export function erhebeDatei(quelle: Quelle): DateiErhebung {
     ts.forEachChild(node, besuch);
   };
   besuch(sf);
+
+  // Register A17b: ein `"dialog"`/`"alertdialog"`, das NACH dem ganzen Lauf keiner Bauform
+  // zugeflossen ist (Tag, `createElement`, Rolle — auch über Konstanten), ist eine UNBEKANNTE
+  // Bauform. Ausgenommen ist nur, was nachweislich nichts baut: Typdeklarationen und Vergleiche
+  // (`istReinerDialogText`, Nacharbeit nach bens Befund zur Typdeklaration).
+  for (const literal of dialogLiteralKnoten) {
+    if (kandidatTokens.has(literal) || istReinerDialogText(literal)) {
+      continue;
+    }
+    unbekannteBauformen.push(
+      `${quelle.datei}:${zeileVon(sf, literal)} — Zeichenkette „${literal.text}“ fliesst in keine erkannte Bauform (weder <dialog>, createElement noch role): ein abweichend benannter Dialog, den dieser Sammler nicht beurteilen kann`,
+    );
+  }
 
   // Die Aliasse sind erst nach dem vollständigen Lauf bekannt (`const d = …` kann NACH dem
   // `<dialog>` stehen). Deshalb werden beide Seiten hier abschliessend aufgelöst.
