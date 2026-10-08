@@ -127,3 +127,79 @@ describe("OutputService (SCRUM-117 / FE-OUT)", () => {
     expect(doc.markdown).toContain("niedriger Trust");
   });
 });
+
+// aufnahme:20260922:gesamt-dokumenterzeugung — R-0337 / R-1739: Pflichtangaben je Quelle aus den
+// Feldern des Wissensobjekts; Fehlendes ist als Unsicherheit ausgewiesen, nicht ergänzt. R-0732: FAQ.
+describe("OutputService · Pflichtangaben je Quelle und FAQ", () => {
+  it("übernimmt Geltung, Verantwortung, Validierer und Fassungsdatum aus dem Objekt", async () => {
+    const { output } = await setup([
+      ko({
+        id: "G1",
+        title: "Ventil drucklos",
+        version: 3,
+        trust: 90,
+        geltung: { ebene: "werk", werk: "Werk Nord", rolle: "Instandhaltung" },
+        ownership: { owner: "meister-1", reviewers: [], validators: ["pruefer-1"] },
+        history: [
+          { version: 1, at: "2026-08-01T08:00:00.000Z", author: "anna", note: "erstellt" },
+          { version: 3, at: "2026-09-30T08:00:00.000Z", author: "anna", note: "überarbeitet" },
+        ],
+      }),
+    ]);
+    const doc = await output.generate({
+      kind: "instruction",
+      koIds: ["G1"],
+      audienceRole: "Schicht",
+    });
+    expect(doc.provenance[0]).toMatchObject({
+      geltungsbereich: "Werks-Praxis (Werk Nord), Rolle Instandhaltung",
+      verantwortlich: "meister-1",
+      validiertVon: ["pruefer-1"],
+      fassungVom: "2026-09-30T08:00:00.000Z",
+      letztePruefungAm: null,
+      unsicherheiten: ["pruefdatum_fehlt"],
+    });
+    expect(doc.markdown).toContain(
+      "  Gültigkeitsbereich: Werks-Praxis (Werk Nord), Rolle Instandhaltung · Verantwortung: meister-1 · Fassung vom: 2026-09-30 · Letzte Prüfung: nicht festgehalten (validiert von pruefer-1)",
+    );
+    expect(doc.markdown).toContain(
+      "  Offene Unsicherheiten: Datum der letzten Prüfung nicht festgehalten",
+    );
+  });
+
+  it("fehlende Angaben werden benannt, nicht abgeleitet — Verantwortung fällt NICHT auf den Autor", async () => {
+    const { output } = await setup([ko({ id: "L1", title: "Lückenhaft", trust: 30, version: 2 })]);
+    const doc = await output.generate({ kind: "instruction", koIds: ["L1"] });
+    const p = doc.provenance[0];
+    expect(p?.geltungsbereich).toBeNull();
+    expect(p?.verantwortlich).toBeNull();
+    expect(p?.fassungVom).toBeNull();
+    expect(p?.unsicherheiten).toEqual([
+      "niedriger_trust",
+      "geltung_fehlt",
+      "verantwortung_fehlt",
+      "pruefdatum_fehlt",
+    ]);
+    expect(doc.markdown).toContain(
+      "  Gültigkeitsbereich: nicht angegeben · Verantwortung: nicht benannt · Fassung vom: nicht festgehalten · Letzte Prüfung: nicht festgehalten",
+    );
+  });
+
+  it("FAQ: je Quelle Frage und Antwort aus Titel, Aussage, Bedingungen und Maßnahmen", async () => {
+    const { output } = await setup([
+      ko({
+        id: "F1",
+        title: "Wie wird das Ventil entlastet?",
+        statement: "Vor jeder Wartung drucklos schalten.",
+        conditions: ["Wartung am Druckventil"],
+        measures: ["Absperrhahn schließen", "Manometer prüfen"],
+      }),
+    ]);
+    const doc = await output.generate({ kind: "faq", koIds: ["F1"] });
+    expect(doc.title).toBe("FAQ");
+    expect(doc.markdown).toContain("### Wie wird das Ventil entlastet?");
+    expect(doc.markdown).toContain("**Gilt, wenn:** Wartung am Druckventil");
+    expect(doc.markdown).toContain("1. Absperrhahn schließen");
+    expect(doc.markdown).toContain("## Herkunft & Nachweis");
+  });
+});

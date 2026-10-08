@@ -68,6 +68,13 @@ function grundbestand(): Map<string, KnowledgeObject> {
       measures: ["Absperrhahn schließen.", "Druck am Manometer prüfen (0 bar)."],
       version: 3,
       trust: 92,
+      // Nacharbeit 4 (R-0337/R-1739): die Herkunftsangaben stehen hier wirklich am Objekt.
+      geltung: { ebene: "werk", werk: "Werk Nord", rolle: "Instandhaltung" },
+      ownership: { owner: "meister-1", reviewers: [], validators: ["pruefer-1"] },
+      history: [
+        { version: 1, at: "2026-08-01T08:00:00.000Z", author: "u-carla", note: "erstellt" },
+        { version: 3, at: "2026-09-30T08:00:00.000Z", author: "u-carla", note: "überarbeitet" },
+      ],
     }),
     wissen({ id: "ko-offen", title: "Entwurf Dichtungstausch", status: "offen" as never }),
     wissen({ id: "ko-geheim", title: "Rezeptur Dichtmasse", confidentiality: "vertraulich" }),
@@ -133,6 +140,8 @@ interface Anfrage {
 }
 
 const anfragen: Anfrage[] = [];
+/** Was die ECHTE Output Factory zuletzt erzeugt hat — der Sollwert für „vollständig übernommen". */
+let letzteErzeugung: { markdown: string; title: string } | null = null;
 const g = globalThis as unknown as Record<string, unknown>;
 const echtesFetch = g.fetch;
 
@@ -155,7 +164,11 @@ async function serverAntwort(url: string, init?: { method?: string; body?: strin
             headers: { "content-type": "application/json" },
           })
         : await app.inject({ method: "GET", url });
-    return antwort(res.statusCode, res.body ? JSON.parse(res.body) : null);
+    const koerper = res.body ? JSON.parse(res.body) : null;
+    if (url === "/api/output/generate" && res.statusCode === 200) {
+      letzteErzeugung = koerper as { markdown: string; title: string };
+    }
+    return antwort(res.statusCode, koerper);
   }
   if (url.startsWith("/api/kos/")) {
     vorKoAbruf?.();
@@ -178,7 +191,16 @@ let ausgewaehlt: Absatz | null = null;
 let wordApi13 = true;
 
 /** Was Word im Web für eine eingebaute Vorlage meldet — lokalisiert, wie im Rückweg gemessen. */
-const GEMELDETER_STIL: Record<string, string> = { Heading2: "Überschrift 2", Normal: "Standard" };
+const GEMELDETER_STIL: Record<string, string> = {
+  Heading1: "Überschrift 1",
+  Heading2: "Überschrift 2",
+  Heading3: "Überschrift 3",
+  Normal: "Standard",
+};
+
+/** Die Herkunftszeile des Bausteins `ko-ventil` — mit den Angaben, die am Objekt stehen. */
+const HERKUNFT_VENTIL =
+  "Baustein aus Klarwerk: „Ventil drucklos schalten“ · Fassung 3 · Prüfstand validiert · Vertrauenswert 92 · Kennung ko-ventil · Geltung: Werks-Praxis (Werk Nord), Rolle Instandhaltung · Verantwortung: meister-1 · Fassung vom 2026-09-30 · Letzte Prüfung: nicht festgehalten (validiert von pruefer-1) · Offene Unsicherheiten: Datum der letzten Prüfung nicht festgehalten";
 
 function absatzObjekt(a: Absatz) {
   return {
@@ -329,6 +351,7 @@ beforeEach(() => {
   gefragteRechte.length = 0;
   vorKoAbruf = null;
   anfragen.length = 0;
+  letzteErzeugung = null;
   dokument = [{ text: "Anleitung Ventilwartung", stil: "Überschrift 1" }];
   cursor = 0;
   ausgewaehlt = null;
@@ -638,10 +661,7 @@ describe("B · ein vorhandener Baustein mit Herkunft und Fassung", () => {
       { text: "Gilt, wenn: Wartung am Druckventil", stil: "Standard" },
       { text: "1. Absperrhahn schließen.", stil: "Standard" },
       { text: "2. Druck am Manometer prüfen (0 bar).", stil: "Standard" },
-      {
-        text: "Baustein aus Klarwerk: „Ventil drucklos schalten“ · Fassung 3 · Prüfstand validiert · Vertrauenswert 92 · Kennung ko-ventil",
-        stil: "Standard",
-      },
+      { text: HERKUNFT_VENTIL, stil: "Standard" },
     ]);
     expect(text("anleitung-stand")).toBe(
       "Eingefügt: „Ventil drucklos schalten“, Fassung 3 – mit Herkunftszeile.",
@@ -661,12 +681,24 @@ describe("B · ein vorhandener Baustein mit Herkunft und Fassung", () => {
     );
   });
 
-  it("B3: niedriger Vertrauenswert steht in der Herkunftszeile", async () => {
+  it("B3: niedriger Vertrauenswert und jede fehlende Pflichtangabe stehen ausdrücklich in der Herkunftszeile", async () => {
     panelStarten();
     await bausteinWaehlen("ko-wackelig");
     await klick("anleitung-baustein-btn");
+    // Nacharbeit 4 (R-0337/R-1739): nichts ergänzt — Fehlendes heißt „nicht angegeben/benannt/
+    // festgehalten" und steht zusätzlich als offene Unsicherheit da.
     expect(texte().at(-1)).toBe(
-      "Baustein aus Klarwerk: „Prüfintervall Filter“ · Fassung 2 · Prüfstand validiert · Vertrauenswert 40 · Kennung ko-wackelig · niedriger Vertrauenswert",
+      "Baustein aus Klarwerk: „Prüfintervall Filter“ · Fassung 2 · Prüfstand validiert · Vertrauenswert 40 · Kennung ko-wackelig · Geltung: nicht angegeben · Verantwortung: nicht benannt · Fassung vom nicht festgehalten · Letzte Prüfung: nicht festgehalten · Offene Unsicherheiten: niedriger Vertrauenswert; Gültigkeitsbereich nicht angegeben; Verantwortung nicht benannt; Datum der letzten Prüfung nicht festgehalten",
+    );
+  });
+
+  it("B3b: die Herkunftszeile in Englisch — dieselben Angaben in der Sprache des Fensters", async () => {
+    panelStarten();
+    (g.setLang as (c: string) => void)("en");
+    await bausteinWaehlen("ko-ventil");
+    await klick("anleitung-baustein-btn");
+    expect(texte().at(-1)).toBe(
+      "Building block from Klarwerk: “Ventil drucklos schalten” · version 3 · review status validiert · trust 92 · ID ko-ventil · scope: Werks-Praxis (Werk Nord), Rolle Instandhaltung · responsible: meister-1 · version of 2026-09-30 · last review: not recorded (validated by pruefer-1) · open uncertainties: date of last review not recorded",
     );
   });
 
@@ -730,6 +762,150 @@ describe("B · ein vorhandener Baustein mit Herkunft und Fassung", () => {
     await klick("anleitung-baustein-btn");
     expect(text("anleitung-stand")).toBe("Bitte zuerst einen Baustein wählen.");
     expect(anfragen).toEqual([]);
+  });
+});
+
+// ================================================================================================
+// D — DOKUMENT ERZEUGEN (Nacharbeit 4: R-0288, R-0414, R-0732, R-1738, SOLL:FR-EXT-03)
+// ================================================================================================
+//
+// Quellenwahl, Dokumentart, Zielrolle → die ECHTE Output Factory (`outputRoutes` + `OutputService`)
+// erzeugt das Dokument, und ihr VOLLSTÄNDIGES Ergebnis kommt hinter den Cursor. Sollwert ist das
+// Markdown, das der Dienst in genau diesem Lauf geliefert hat — nicht eine Abschrift im Test.
+
+async function quellenLaden(): Promise<void> {
+  el<HTMLButtonElement>("anleitung-quellen-btn").click();
+  await bis(() => document.querySelectorAll("#anleitung-quellen input").length > 0);
+}
+
+function quelleAnhaken(id: string): void {
+  const haken = document.querySelector<HTMLInputElement>(`#anleitung-quellen input[value="${id}"]`);
+  if (!haken) {
+    throw new Error(`Quelle ${id} steht nicht zur Wahl`);
+  }
+  haken.click();
+}
+
+/** Die Absätze, die das Panel nach dem Absatz am Cursor (Index 0) eingefügt hat. */
+function eingefuegt(): Absatz[] {
+  return dokument.slice(1);
+}
+
+describe("D · ein Dokument aus geprüftem Wissen erzeugen und vollständig in Word übernehmen", () => {
+  it("D1: die Wahl zeigt alle Dokumentarten und nur geprüfte, nicht vertrauliche Quellen", async () => {
+    panelStarten();
+    const arten = [...el<HTMLSelectElement>("anleitung-art").options].map((o) => [
+      o.value,
+      o.textContent,
+    ]);
+    expect(arten).toEqual([
+      ["instruction", "Arbeitsanweisung / Verfahrensanweisung"],
+      ["checklist", "Checkliste"],
+      ["troubleshooting", "Störungsleitfaden"],
+      ["training", "Schulungsunterlage"],
+      ["faq", "FAQ"],
+      ["management_summary", "Zusammenfassung für die Führung"],
+    ]);
+    // Ohne Bedienung kein Abruf.
+    expect(anfragen).toEqual([]);
+    await quellenLaden();
+    const quellen = [...document.querySelectorAll<HTMLInputElement>("#anleitung-quellen input")];
+    expect(quellen.map((q) => q.value)).toEqual(["ko-ventil", "ko-wackelig"]);
+    expect(quellen.every((q) => q.checked === false)).toBe(true);
+  });
+
+  it("D2: Checkliste für eine Zielrolle aus zwei Quellen — das ganze Ergebnis kommt nach Word", async () => {
+    panelStarten();
+    await quellenLaden();
+    el<HTMLSelectElement>("anleitung-art").value = "checklist";
+    el<HTMLInputElement>("anleitung-zielrolle").value = "Schichtleitung";
+    quelleAnhaken("ko-ventil");
+    quelleAnhaken("ko-wackelig");
+    await klick("anleitung-erzeugen-btn");
+
+    const anfrage = anfragen.find((a) => a.url === "/api/output/generate");
+    expect(anfrage?.body).toEqual({
+      kind: "checklist",
+      koIds: ["ko-ventil", "ko-wackelig"],
+      audienceRole: "Schichtleitung",
+    });
+    expect(gefragteRechte).toEqual(["ko.read", "ko.read"]);
+    expect(text("anleitung-stand")).toBe(
+      "Eingefügt: „Checkliste“ (Schichtleitung) aus 2 Quelle(n) – mit Herkunftsnachweis.",
+    );
+    // VOLLSTÄNDIG: jede nichtleere Zeile des erzeugten Markdowns ist genau ein Absatz, in Reihenfolge.
+    const markdown = letzteErzeugung?.markdown ?? "";
+    const sollZeilen = markdown.split("\n").filter((z) => /\S/.test(z));
+    expect(sollZeilen.length).toBeGreaterThan(8);
+    expect(eingefuegt()).toHaveLength(sollZeilen.length);
+    // Titel und Zielrolle stehen am Kopf, der Titel als Überschrift 1.
+    expect(eingefuegt()[0]).toEqual({ text: "Checkliste", stil: "Überschrift 1" });
+    expect(eingefuegt()[1]?.text).toMatch(
+      /^Adressat: Schichtleitung · erzeugt am .* · 2 validierte Quelle\(n\)$/,
+    );
+    // Der Rumpf: abhakbare Punkte aus den Maßnahmen.
+    expect(texte()).toContain("☐ Absperrhahn schließen.");
+    expect(texte()).toContain("☐ Druck am Manometer prüfen (0 bar).");
+    // Der Herkunftsnachweis je Quelle mit allen Pflichtangaben — und der Prüfhinweis.
+    const kopf = dokument.findIndex((a) => a.text === "Herkunft & Nachweis");
+    expect(dokument[kopf]?.stil).toBe("Überschrift 2");
+    expect(texte()).toContain(
+      "Gültigkeitsbereich: Werks-Praxis (Werk Nord), Rolle Instandhaltung · Verantwortung: meister-1 · Fassung vom: 2026-09-30 · Letzte Prüfung: nicht festgehalten (validiert von pruefer-1)",
+    );
+    expect(texte()).toContain(
+      "Offene Unsicherheiten: niedriger Trust; Gültigkeitsbereich nicht angegeben; Verantwortung nicht benannt; Datum der letzten Prüfung nicht festgehalten",
+    );
+    const hinweise = texte().filter((t) => t.startsWith("Hinweis: Dieses Dokument trifft keine"));
+    expect(hinweise).toHaveLength(2);
+    // Kein Markdown-Rest im Dokument.
+    expect(texte().some((t) => /\*\*|`|^#/.test(t))).toBe(false);
+  });
+
+  it("D3: FAQ — die Fragen werden Überschriften der Stufe 3, die Antworten Absätze", async () => {
+    panelStarten();
+    await quellenLaden();
+    el<HTMLSelectElement>("anleitung-art").value = "faq";
+    quelleAnhaken("ko-ventil");
+    await klick("anleitung-erzeugen-btn");
+    expect(eingefuegt()[0]).toEqual({ text: "FAQ", stil: "Überschrift 1" });
+    expect(dokument.find((a) => a.text === "Ventil drucklos schalten")?.stil).toBe("Überschrift 3");
+    expect(texte()).toContain("Gilt, wenn: Wartung am Druckventil");
+    expect(texte()).toContain("1. Absperrhahn schließen.");
+    expect(text("anleitung-stand")).toBe(
+      "Eingefügt: „FAQ“ (keine Zielrolle) aus 1 Quelle(n) – mit Herkunftsnachweis.",
+    );
+  });
+
+  it("D4: ohne gewählte Quelle wird nichts erzeugt", async () => {
+    panelStarten();
+    await quellenLaden();
+    await klick("anleitung-erzeugen-btn");
+    expect(text("anleitung-stand")).toBe("Bitte mindestens eine Quelle wählen.");
+    expect(anfragen.map((a) => a.url)).not.toContain("/api/output/generate");
+    expect(eingefuegt()).toEqual([]);
+  });
+
+  it("D5: wird eine Quelle vor dem Erzeugen vertraulich, lehnt die Factory ab — nichts kommt ins Dokument", async () => {
+    panelStarten();
+    await quellenLaden();
+    quelleAnhaken("ko-ventil");
+    quelleAnhaken("ko-wackelig");
+    aendern("ko-wackelig", { confidentiality: "vertraulich" });
+    await klick("anleitung-erzeugen-btn");
+    expect(eingefuegt()).toEqual([]);
+    expect(text("anleitung-stand")).toBe(
+      "Nur geprüftes, nicht vertrauliches Wissen kann als Quelle dienen – nichts eingefügt.",
+    );
+  });
+
+  it("D6: ohne Recht keine Quellen und kein Dokument — der Server entscheidet", async () => {
+    berechtigt = false;
+    panelStarten();
+    el<HTMLButtonElement>("anleitung-quellen-btn").click();
+    await bis(() => text("anleitung-stand") !== "");
+    expect(text("anleitung-stand")).toBe("Dafür fehlt das Recht.");
+    expect(document.querySelectorAll("#anleitung-quellen input")).toHaveLength(0);
+    expect(eingefuegt()).toEqual([]);
   });
 });
 
@@ -857,9 +1033,9 @@ describe("R · zurück nach Klarwerk über den bestehenden Rückweg", () => {
     ).toBe(true);
     expect([...stellen].sort((a, b) => a - b)).toEqual(stellen);
     // Der Quellenbezug reist als lesbare Zeile mit: Titel, Fassung, Prüfstand, Kennung.
-    expect(herkunft).toBe(
-      "Baustein aus Klarwerk: „Ventil drucklos schalten“ · Fassung 3 · Prüfstand validiert · Vertrauenswert 92 · Kennung ko-ventil",
-    );
+    // Nacharbeit 4: einschliesslich Geltung, Verantwortung, Fassungsdatum, letzter Prüfung und
+    // offener Unsicherheit — die ganze Zeile kommt im Wissensobjekt an.
+    expect(herkunft).toBe(HERKUNFT_VENTIL);
     // Keine Überschrift ging verloren, kein Verlustsatz.
     expect(fenster.text("#rw-status")).toBe(fenster.t("rwFertigFrei", { n: "3" }));
   });

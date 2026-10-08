@@ -1,10 +1,11 @@
 // Reine, DOM-freie Renderer je Output-Typ + Herkunftsblock (FE-OUT-01/02/03).
 // Eingabe sind ausschließlich bereits validierte KnowledgeObjects (Guard im Service).
-import type { KnowledgeObject } from "../../knowledge-object";
+import { type KnowledgeObject, geltungsText, ownershipOf } from "../../knowledge-object";
 import {
   type OutputKind,
   type OutputProvenance,
   type OutputSource,
+  type OutputUnsicherheit,
   UNCERTAIN_TRUST_BELOW,
 } from "./types";
 
@@ -14,7 +15,28 @@ export const KIND_TITLE: Record<OutputKind, string> = {
   troubleshooting: "Störungshilfe",
   training: "Schulungsunterlage",
   management_summary: "Management-Summary",
+  faq: "FAQ",
 };
+
+/** Die Unsicherheiten im Wortlaut des Markdown-Herkunftsblocks. */
+export const UNSICHERHEIT_TEXT: Record<OutputUnsicherheit, string> = {
+  niedriger_trust: "niedriger Trust",
+  geltung_fehlt: "Gültigkeitsbereich nicht angegeben",
+  verantwortung_fehlt: "Verantwortung nicht benannt",
+  pruefdatum_fehlt: "Datum der letzten Prüfung nicht festgehalten",
+};
+
+/** Datum der AKTUELLEN Fassung — aus der History, bei v1 ohne Eintrag aus `createdAt`; sonst null. */
+function fassungVom(ko: KnowledgeObject): string | null {
+  const eintraege = Array.isArray(ko.history) ? ko.history : [];
+  for (let i = eintraege.length - 1; i >= 0; i -= 1) {
+    const e = eintraege[i];
+    if (e && e.version === ko.version && typeof e.at === "string") {
+      return e.at;
+    }
+  }
+  return ko.version === 1 && typeof ko.createdAt === "string" ? ko.createdAt : null;
+}
 
 export function toSource(ko: KnowledgeObject): OutputSource {
   return {
@@ -29,7 +51,29 @@ export function toSource(ko: KnowledgeObject): OutputSource {
 }
 
 export function toProvenance(ko: KnowledgeObject): OutputProvenance {
+  // R-0337 / R-1739: nur, was am Objekt steht. Fehlt etwas, bleibt es null und wird als
+  // Unsicherheit ausgewiesen — kein Rückfall (Verantwortung ≠ Autor, Geltung ≠ „überall").
+  const eigentum = ownershipOf(ko);
+  const geltungsbereich = ko.geltung ? geltungsText(ko.geltung) : null;
+  const verantwortlich = eigentum?.owner ?? null;
+  const unsicherheiten: OutputUnsicherheit[] = [];
+  if (ko.trust < UNCERTAIN_TRUST_BELOW) {
+    unsicherheiten.push("niedriger_trust");
+  }
+  if (geltungsbereich === null) {
+    unsicherheiten.push("geltung_fehlt");
+  }
+  if (verantwortlich === null) {
+    unsicherheiten.push("verantwortung_fehlt");
+  }
+  unsicherheiten.push("pruefdatum_fehlt");
   return {
+    geltungsbereich,
+    verantwortlich,
+    validiertVon: eigentum ? [...eigentum.validators] : [],
+    fassungVom: fassungVom(ko),
+    letztePruefungAm: null,
+    unsicherheiten,
     koId: ko.id,
     title: ko.title,
     status: ko.status,
@@ -131,12 +175,29 @@ function renderManagementSummary(kos: readonly KnowledgeObject[]): string {
   return lines.join("\n");
 }
 
+// R-0732 / SOLL:FR-EXT-03: je Quelle eine Frage (der Titel) und ihre Antwort (Aussage, Bedingungen,
+// Maßnahmen) — nichts hinzugefügt, was nicht im Wissensobjekt steht.
+function renderFaq(kos: readonly KnowledgeObject[]): string {
+  const blocks = kos.map((ko) => {
+    const lines = [`### ${ko.title}`, "", ko.statement];
+    if (ko.conditions.length > 0) {
+      lines.push("", `**Gilt, wenn:** ${ko.conditions.join("; ")}`);
+    }
+    if (ko.measures.length > 0) {
+      lines.push("", ...ko.measures.map((m, k) => `${k + 1}. ${m}`));
+    }
+    return lines.join("\n");
+  });
+  return blocks.join("\n\n");
+}
+
 const RENDERERS: Record<OutputKind, (kos: readonly KnowledgeObject[]) => string> = {
   instruction: renderInstruction,
   checklist: renderChecklist,
   troubleshooting: renderTroubleshooting,
   training: renderTraining,
   management_summary: renderManagementSummary,
+  faq: renderFaq,
 };
 
 export function renderBody(kind: OutputKind, kos: readonly KnowledgeObject[]): string {
@@ -163,6 +224,17 @@ export function renderProvenance(provs: readonly OutputProvenance[]): string {
       `- **${p.title}** (\`${p.koId}\`) — ${p.type} · ${p.category} · Status ${p.status} · ` +
         `Trust ${p.trust} · ${p.validity} · Autor: ${p.author === p.originalAuthor ? p.author : `${p.author} (urspr. ${p.originalAuthor})`}${flag}`,
     );
+    // R-0337 / R-1739: die übrigen Pflichtangaben je Quelle; Fehlendes steht als „nicht …" da.
+    const validiert =
+      p.validiertVon.length > 0 ? ` (validiert von ${p.validiertVon.join(", ")})` : "";
+    lines.push(
+      `  Gültigkeitsbereich: ${p.geltungsbereich ?? "nicht angegeben"} · ` +
+        `Verantwortung: ${p.verantwortlich ?? "nicht benannt"} · ` +
+        `Fassung vom: ${p.fassungVom ? p.fassungVom.slice(0, 10) : "nicht festgehalten"} · ` +
+        `Letzte Prüfung: ${p.letztePruefungAm ? p.letztePruefungAm.slice(0, 10) : "nicht festgehalten"}${validiert}`,
+    );
+    const unsicher = p.unsicherheiten.map((u) => UNSICHERHEIT_TEXT[u]).join("; ");
+    lines.push(`  Offene Unsicherheiten: ${unsicher || "keine"}`);
   }
   lines.push("", OUTPUT_NO_CHECK_NOTE);
   return lines.join("\n");

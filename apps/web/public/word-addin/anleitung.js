@@ -26,6 +26,14 @@
 //     serverseitig ab (NOT_VALIDATED / CONFIDENTIAL) und liefert die Herkunft. Der Inhalt selbst
 //     kommt aus `GET /api/kos/:id`; weicht dessen Fassung von der Herkunft ab, wird nichts
 //     eingefügt. Recht: `ko.read` an allen drei Routen — der Server entscheidet, wer berechtigt ist.
+//     Die Herkunftszeile trägt seit Nacharbeit 4 auch Gültigkeitsbereich, Verantwortung,
+//     Fassungsdatum, letzte Prüfung und die offenen Unsicherheiten (R-0337/R-1739) — aus der
+//     Herkunft der Factory, Fehlendes ausdrücklich als „nicht angegeben/benannt/festgehalten".
+//   · DOKUMENT ERZEUGEN (`anleitungDokumentErzeugen`, Nacharbeit 4, R-0288/R-0414/R-0732): Dokumentart
+//     (Arbeits-/Verfahrensanweisung, Checkliste, Störungsleitfaden, Schulungsunterlage, FAQ,
+//     Zusammenfassung für die Führung), Zielrolle und mehrere geprüfte Quellen wählen; die Output
+//     Factory erzeugt das Dokument, und sein VOLLSTÄNDIGES Ergebnis — Titel, Adressat, Prüfhinweis,
+//     Rumpf, Herkunftsblock — kommt als Word-Absätze hinter den Cursor (Überschriften als Vorlage).
 //
 // RÜCKWEG: Überschriften stehen als Word-Formatvorlage im Dokument; der Rückweg liest sie seit
 // Nacharbeit 9 aus Word (`rwStrukturLesen`) und gibt sie als <hN> zurück. Herkunftszeilen sind
@@ -41,8 +49,9 @@
 // sich an `bestandZeichnen` und `setLang`. Fehlen sie, bleibt der Block verborgen.
 //
 // DATENFLUSS (ausgewiesen): Gelesen werden die Absatztexte und Formatvorlagen des offenen Dokuments
-// — sie verlassen Word NICHT; die Prüfung läuft hier im Fenster. Zum Server gehen nur die Kennung
-// des gewählten Bausteins (Output Factory, Wissensobjekt) an dieselbe Klarwerk-Instanz. Kein Modell,
+// — sie verlassen Word NICHT; die Prüfung läuft hier im Fenster. Zum Server gehen nur Kennungen der
+// gewählten Quellen, die Dokumentart und die eingetippte Zielrolle (Output Factory, Wissensobjekt)
+// an dieselbe Klarwerk-Instanz. Kein Modell,
 // kein externer Dienst. Geschrieben wird ins Dokument nur auf Klick, und nur hinter den Cursor.
 // ================================================================================================
 "use strict";
@@ -60,7 +69,32 @@
         bausteinKeine: "Kein geprüftes Wissen verfügbar.",
         bausteinBedingung: "Gilt, wenn: {liste}",
         herkunft: "Baustein aus Klarwerk: „{titel}“ · Fassung {version} · Prüfstand {status} · Vertrauenswert {trust} · Kennung {id}",
-        herkunftUnsicher: " · niedriger Vertrauenswert",
+        herkunftPflicht: " · Geltung: {geltung} · Verantwortung: {verantwortung} · Fassung vom {fassung} · Letzte Prüfung: {pruefung}",
+        herkunftUnsicherheiten: " · Offene Unsicherheiten: {liste}",
+        validiertVon: " (validiert von {liste})",
+        nichtAngegeben: "nicht angegeben",
+        nichtBenannt: "nicht benannt",
+        nichtFestgehalten: "nicht festgehalten",
+        u_niedriger_trust: "niedriger Vertrauenswert",
+        u_geltung_fehlt: "Gültigkeitsbereich nicht angegeben",
+        u_verantwortung_fehlt: "Verantwortung nicht benannt",
+        u_pruefdatum_fehlt: "Datum der letzten Prüfung nicht festgehalten",
+        erzeugenTitel: "Dokument aus geprüftem Wissen erzeugen",
+        art: "Dokumentart",
+        art_instruction: "Arbeitsanweisung / Verfahrensanweisung",
+        art_checklist: "Checkliste",
+        art_troubleshooting: "Störungsleitfaden",
+        art_training: "Schulungsunterlage",
+        art_faq: "FAQ",
+        art_management_summary: "Zusammenfassung für die Führung",
+        zielrolle: "Zielrolle (z. B. Schichtleitung)",
+        quellenWaehlen: "Quellen wählen",
+        erzeugen: "Dokument erzeugen und einfügen",
+        erzeugenGrenze: "Erzeugt wird nur aus den gewählten geprüften, nicht vertraulichen Wissensobjekten – mit Titel, Zielrolle und Herkunftsnachweis je Quelle. Eingefügt wird das vollständige Ergebnis hinter dem Cursor.",
+        keineQuellen: "Bitte mindestens eine Quelle wählen.",
+        nurGeprueftQuelle: "Nur geprüftes, nicht vertrauliches Wissen kann als Quelle dienen – nichts eingefügt.",
+        ohneRolle: "keine Zielrolle",
+        dokumentEingefuegt: "Eingefügt: „{titel}“ ({rolle}) aus {n} Quelle(n) – mit Herkunftsnachweis.",
         abschnitt_zweck: "Zweck",
         abschnitt_voraussetzungen: "Voraussetzungen",
         abschnitt_schritte: "Arbeitsschritte",
@@ -108,7 +142,32 @@
         bausteinKeine: "No reviewed knowledge available.",
         bausteinBedingung: "Applies when: {liste}",
         herkunft: "Building block from Klarwerk: “{titel}” · version {version} · review status {status} · trust {trust} · ID {id}",
-        herkunftUnsicher: " · low trust",
+        herkunftPflicht: " · scope: {geltung} · responsible: {verantwortung} · version of {fassung} · last review: {pruefung}",
+        herkunftUnsicherheiten: " · open uncertainties: {liste}",
+        validiertVon: " (validated by {liste})",
+        nichtAngegeben: "not specified",
+        nichtBenannt: "not named",
+        nichtFestgehalten: "not recorded",
+        u_niedriger_trust: "low trust",
+        u_geltung_fehlt: "scope not specified",
+        u_verantwortung_fehlt: "responsibility not named",
+        u_pruefdatum_fehlt: "date of last review not recorded",
+        erzeugenTitel: "Create a document from reviewed knowledge",
+        art: "Document type",
+        art_instruction: "Work instruction / procedure",
+        art_checklist: "Checklist",
+        art_troubleshooting: "Troubleshooting guide",
+        art_training: "Training material",
+        art_faq: "FAQ",
+        art_management_summary: "Management summary",
+        zielrolle: "Target role (e.g. shift lead)",
+        quellenWaehlen: "Choose sources",
+        erzeugen: "Create and insert document",
+        erzeugenGrenze: "Only the chosen reviewed, non-confidential knowledge objects are used – with title, target role and source record per source. The complete result is inserted after the cursor.",
+        keineQuellen: "Please choose at least one source.",
+        nurGeprueftQuelle: "Only reviewed, non-confidential knowledge can be used as a source – nothing inserted.",
+        ohneRolle: "no target role",
+        dokumentEingefuegt: "Inserted: “{titel}” ({rolle}) from {n} source(s) – with source record.",
         abschnitt_zweck: "Purpose",
         abschnitt_voraussetzungen: "Prerequisites",
         abschnitt_schritte: "Steps",
@@ -156,7 +215,32 @@
         bausteinKeine: "Geen gecontroleerde kennis beschikbaar.",
         bausteinBedingung: "Geldt als: {liste}",
         herkunft: "Bouwsteen uit Klarwerk: ‘{titel}’ · versie {version} · controlestatus {status} · betrouwbaarheid {trust} · kenmerk {id}",
-        herkunftUnsicher: " · lage betrouwbaarheid",
+        herkunftPflicht: " · geldigheid: {geltung} · verantwoordelijk: {verantwortung} · versie van {fassung} · laatste controle: {pruefung}",
+        herkunftUnsicherheiten: " · open onzekerheden: {liste}",
+        validiertVon: " (gevalideerd door {liste})",
+        nichtAngegeben: "niet opgegeven",
+        nichtBenannt: "niet benoemd",
+        nichtFestgehalten: "niet vastgelegd",
+        u_niedriger_trust: "lage betrouwbaarheid",
+        u_geltung_fehlt: "geldigheid niet opgegeven",
+        u_verantwortung_fehlt: "verantwoordelijkheid niet benoemd",
+        u_pruefdatum_fehlt: "datum van laatste controle niet vastgelegd",
+        erzeugenTitel: "Document maken uit gecontroleerde kennis",
+        art: "Documentsoort",
+        art_instruction: "Werkinstructie / procedure",
+        art_checklist: "Checklist",
+        art_troubleshooting: "Storingsgids",
+        art_training: "Trainingsmateriaal",
+        art_faq: "FAQ",
+        art_management_summary: "Samenvatting voor het management",
+        zielrolle: "Doelrol (bijv. ploegleider)",
+        quellenWaehlen: "Bronnen kiezen",
+        erzeugen: "Document maken en invoegen",
+        erzeugenGrenze: "Alleen de gekozen gecontroleerde, niet-vertrouwelijke kennisobjecten worden gebruikt – met titel, doelrol en herkomst per bron. Het volledige resultaat wordt na de cursor ingevoegd.",
+        keineQuellen: "Kies minstens één bron.",
+        nurGeprueftQuelle: "Alleen gecontroleerde, niet-vertrouwelijke kennis kan als bron dienen – niets ingevoegd.",
+        ohneRolle: "geen doelrol",
+        dokumentEingefuegt: "Ingevoegd: ‘{titel}’ ({rolle}) uit {n} bron(nen) – met herkomst.",
         abschnitt_zweck: "Doel",
         abschnitt_voraussetzungen: "Voorwaarden",
         abschnitt_schritte: "Werkstappen",
@@ -210,6 +294,9 @@
     var ANLEITUNG_HINWEIS_RE = /^\[[\s\S]*\]$/;
     // Fehlermeldungen der Output Factory, die „kein geprüftes, teilbares Wissen" bedeuten.
     var ANLEITUNG_NICHT_GEPRUEFT = ["NOT_VALIDATED", "CONFIDENTIAL", "UNKNOWN_KO"];
+    // Die Dokumentarten der Output Factory (`OUTPUT_KINDS`, services/output/src/types.ts), in der
+    // Reihenfolge von R-0732. Verfahrensanweisung = derselbe Renderer wie die Arbeitsanweisung (SOP).
+    var ANLEITUNG_ARTEN = ["instruction", "checklist", "troubleshooting", "training", "faq", "management_summary"];
 
     var anleitungLage = "ruhe";     // ruhe | laden
     var anleitungMeldung = "";
@@ -219,6 +306,7 @@
     var anleitungQuellen = null;    // null: noch nicht geladen
     var anleitungQuellenLaedt = false;
     var anleitungQuellenSitzung = null;
+    var anleitungGewaehlt = {};     // Kennung → true: die Quellen des Erzeugungswegs (Häkchen)
 
     function anleitungT(schluessel, werte) {
       var tabelle = ANLEITUNG_TEXTE[typeof lang === "string" && ANLEITUNG_TEXTE[lang] ? lang : "de"];
@@ -304,6 +392,28 @@
       bausteinZeile.appendChild(knopf("anleitung-baustein-btn"));
       block.appendChild(bausteinZeile);
       block.appendChild(absatz("anleitung-baustein-grenze", "muted"));
+      // DER ERZEUGUNGSWEG (R-0288 / R-0414 / R-0732): Dokumentart, Zielrolle, Quellenwahl — das
+      // vollständige Ergebnis der Output Factory kommt nach Word.
+      var erzeugen = anleitungKnoten("div", "");
+      erzeugen.id = "anleitung-erzeugen";
+      erzeugen.appendChild(absatz("anleitung-erzeugen-titel", ""));
+      var erzeugenZeile = zeile("anleitung-erzeugen-zeile");
+      var art = anleitungKnoten("select", "");
+      art.id = "anleitung-art";
+      erzeugenZeile.appendChild(art);
+      var rolle = anleitungKnoten("input", "");
+      rolle.id = "anleitung-zielrolle";
+      rolle.type = "text";
+      rolle.maxLength = 80;
+      erzeugenZeile.appendChild(rolle);
+      erzeugenZeile.appendChild(knopf("anleitung-quellen-btn"));
+      erzeugen.appendChild(erzeugenZeile);
+      var quellenListe = anleitungKnoten("ul", "");
+      quellenListe.id = "anleitung-quellen";
+      erzeugen.appendChild(quellenListe);
+      erzeugen.appendChild(knopf("anleitung-erzeugen-btn"));
+      erzeugen.appendChild(absatz("anleitung-erzeugen-grenze", "muted"));
+      block.appendChild(erzeugen);
       var stand = absatz("anleitung-stand", "muted");
       stand.setAttribute("aria-live", "polite");
       block.appendChild(stand);
@@ -341,6 +451,54 @@
       auswahl.setAttribute("aria-label", anleitungT("bausteinWahl"));
     }
 
+    /** Dokumentart, Zielrolle und die Quellen mit Häkchen — die gewählten bleiben beim Neuzeichnen. */
+    function anleitungErzeugenZeichnen(beschaeftigt) {
+      var art = document.getElementById("anleitung-art");
+      var gewaehlteArt = art.value || ANLEITUNG_ARTEN[0];
+      while (art.firstChild) { art.removeChild(art.firstChild); }
+      for (var a = 0; a < ANLEITUNG_ARTEN.length; a += 1) {
+        var o = anleitungKnoten("option", "", anleitungT("art_" + ANLEITUNG_ARTEN[a]));
+        o.value = ANLEITUNG_ARTEN[a];
+        art.appendChild(o);
+      }
+      art.value = gewaehlteArt;
+      art.setAttribute("aria-label", anleitungT("art"));
+      var rolle = document.getElementById("anleitung-zielrolle");
+      rolle.placeholder = anleitungT("zielrolle");
+      rolle.setAttribute("aria-label", anleitungT("zielrolle"));
+      document.getElementById("anleitung-erzeugen-titel").textContent = anleitungT("erzeugenTitel");
+      document.getElementById("anleitung-erzeugen-grenze").textContent = anleitungT("erzeugenGrenze");
+      var quellenKnopf = document.getElementById("anleitung-quellen-btn");
+      var erzeugenKnopf = document.getElementById("anleitung-erzeugen-btn");
+      quellenKnopf.textContent = anleitungT("quellenWaehlen");
+      erzeugenKnopf.textContent = anleitungT("erzeugen");
+      quellenKnopf.disabled = beschaeftigt;
+      erzeugenKnopf.disabled = beschaeftigt;
+      var liste = document.getElementById("anleitung-quellen");
+      while (liste.firstChild) { liste.removeChild(liste.firstChild); }
+      var quellen = anleitungQuellen || [];
+      var bekannt = {};
+      for (var i = 0; i < quellen.length; i += 1) {
+        var q = quellen[i];
+        bekannt[q.id] = true;
+        var li = anleitungKnoten("li", "anleitung-quelle");
+        var label = anleitungKnoten("label", "");
+        var haken = anleitungKnoten("input", "");
+        haken.type = "checkbox";
+        haken.value = q.id;
+        haken.checked = anleitungGewaehlt[q.id] === true;
+        haken.addEventListener("change", function () { anleitungGewaehlt[this.value] = this.checked; });
+        label.appendChild(haken);
+        label.appendChild(document.createTextNode(" " + anleitungT("bausteinOption", { titel: q.title, version: q.version })));
+        li.appendChild(label);
+        liste.appendChild(li);
+      }
+      // Eine Wahl, die es in der Liste nicht mehr gibt, reist nicht still mit.
+      for (var id in anleitungGewaehlt) {
+        if (Object.prototype.hasOwnProperty.call(anleitungGewaehlt, id) && !bekannt[id]) { delete anleitungGewaehlt[id]; }
+      }
+    }
+
     function anleitungZeichnen() {
       var block = document.getElementById("anleitung-block");
       if (!block) { return; }
@@ -361,6 +519,7 @@
       document.getElementById("anleitung-erklaerung").textContent = anleitungT("erklaerung");
       document.getElementById("anleitung-baustein-grenze").textContent = anleitungT("bausteinGrenze");
       anleitungAuswahlZeichnen(document.getElementById("anleitung-baustein"));
+      anleitungErzeugenZeichnen(beschaeftigt);
       var stand = document.getElementById("anleitung-stand");
       stand.textContent = beschaeftigt ? anleitungT("laeuft") : anleitungMeldung;
       stand.className = !beschaeftigt && anleitungWarn ? "warn" : "muted";
@@ -554,7 +713,9 @@
           for (var i = 0; i < zeilen.length; i += 1) {
             letzter = letzter.insertParagraph(zeilen[i].text, "After");
             // Ausdrücklich setzen: ein neuer Absatz hinter einer Überschrift erbte sonst deren Vorlage.
-            if (stile) { letzter.styleBuiltIn = zeilen[i].ueberschrift ? "Heading2" : "Normal"; }
+            // `ueberschrift`: true = Stufe 2 (Vorlage), eine Zahl 1–3 = diese Stufe (erzeugtes Dokument).
+            var stufe = zeilen[i].ueberschrift === true ? 2 : typeof zeilen[i].ueberschrift === "number" ? zeilen[i].ueberschrift : 0;
+            if (stile) { letzter.styleBuiltIn = stufe > 0 ? "Heading" + stufe : "Normal"; }
           }
           return context.sync();
         });
@@ -698,16 +859,137 @@
       for (var i = 0; i < massnahmen.length; i += 1) {
         zeilen.push({ text: (i + 1) + ". " + massnahmen[i], ueberschrift: false });
       }
-      var zeile = anleitungT("herkunft", {
-        titel: herkunft.title,
-        version: herkunft.version,
-        status: herkunft.status,
-        trust: herkunft.trust,
-        id: herkunft.koId
-      });
-      if (herkunft.uncertain === true) { zeile += anleitungT("herkunftUnsicher"); }
-      zeilen.push({ text: zeile, ueberschrift: false });
+      zeilen.push({ text: anleitungHerkunftZeile(herkunft), ueberschrift: false });
       return zeilen;
+    }
+
+    /**
+     * R-0337 / R-1739: die Herkunftszeile eines Bausteins — Titel, Fassung, Prüfstand, Vertrauenswert,
+     * Kennung, Gültigkeitsbereich, Verantwortung, Fassungsdatum, letzte Prüfung und die offenen
+     * Unsicherheiten, alles aus der Herkunft der Output Factory (`toProvenance`). Was dort fehlt,
+     * steht als „nicht angegeben/benannt/festgehalten" da — nichts wird ergänzt.
+     */
+    function anleitungHerkunftZeile(h) {
+      var zeile = anleitungT("herkunft", {
+        titel: h.title,
+        version: h.version,
+        status: h.status,
+        trust: h.trust,
+        id: h.koId
+      });
+      var validiert = Array.isArray(h.validiertVon) && h.validiertVon.length > 0
+        ? anleitungT("validiertVon", { liste: h.validiertVon.join(", ") })
+        : "";
+      zeile += anleitungT("herkunftPflicht", {
+        geltung: h.geltungsbereich ? h.geltungsbereich : anleitungT("nichtAngegeben"),
+        verantwortung: h.verantwortlich ? h.verantwortlich : anleitungT("nichtBenannt"),
+        fassung: h.fassungVom ? String(h.fassungVom).slice(0, 10) : anleitungT("nichtFestgehalten"),
+        pruefung: (h.letztePruefungAm ? String(h.letztePruefungAm).slice(0, 10) : anleitungT("nichtFestgehalten")) + validiert
+      });
+      var offen = Array.isArray(h.unsicherheiten) ? h.unsicherheiten : [];
+      if (offen.length > 0) {
+        var texte = [];
+        for (var i = 0; i < offen.length; i += 1) { texte.push(anleitungT("u_" + offen[i])); }
+        zeile += anleitungT("herkunftUnsicherheiten", { liste: texte.join("; ") });
+      }
+      return zeile;
+    }
+
+    /** Inline-Auszeichnung des Factory-Markdowns zu Klartext (Fett, Code, ganzzeilig kursiv). */
+    function anleitungMarkdownText(text) {
+      return String(text)
+        .replace(/\*\*([^*]+)\*\*/g, "$1")
+        .replace(/`([^`]+)`/g, "$1")
+        .replace(/^_(.+)_$/, "$1")
+        .replace(/^\s+|\s+$/g, "");
+    }
+
+    /**
+     * Das VOLLSTÄNDIGE Ergebnis der Output Factory als Word-Absätze: jede nichtleere Zeile wird ein
+     * Absatz, `#`–`###` werden Überschriften der Stufe 1–3, Listen bleiben als „•"/„☐"/„1." lesbar.
+     * Der Herkunftsblock und der Prüfhinweis gehören zum Ergebnis und kommen mit.
+     */
+    function anleitungMarkdownZeilen(markdown) {
+      var roh = String(markdown || "").split("\n");
+      var zeilen = [];
+      for (var i = 0; i < roh.length; i += 1) {
+        var z = roh[i];
+        if (!/\S/.test(z)) { continue; }
+        var kopf = /^(#{1,6})\s+(.*)$/.exec(z);
+        if (kopf) {
+          zeilen.push({ text: anleitungMarkdownText(kopf[2]), ueberschrift: Math.min(kopf[1].length, 3) });
+          continue;
+        }
+        var haken = /^\s*- \[ \] (.*)$/.exec(z);
+        if (haken) {
+          zeilen.push({ text: "☐ " + anleitungMarkdownText(haken[1]), ueberschrift: false });
+          continue;
+        }
+        var punkt = /^\s*- (.*)$/.exec(z);
+        zeilen.push({ text: punkt ? "• " + anleitungMarkdownText(punkt[1]) : anleitungMarkdownText(z), ueberschrift: false });
+      }
+      return zeilen;
+    }
+
+    /**
+     * R-0288 / R-0414 / R-0732: aus den gewählten geprüften Quellen erzeugt die Output Factory das
+     * Dokument der gewählten Art mit Titel und Zielrolle; das GANZE Ergebnis kommt hinter den Cursor.
+     * Welche Quelle zulässig ist, entscheidet der Server (nur validiert, nichts Vertrauliches).
+     */
+    function anleitungDokumentErzeugen() {
+      if (anleitungLage === "laden") { return; }
+      var ids = [];
+      var quellen = anleitungQuellen || [];
+      for (var i = 0; i < quellen.length; i += 1) {
+        if (anleitungGewaehlt[quellen[i].id] === true) { ids.push(quellen[i].id); }
+      }
+      if (ids.length === 0) {
+        anleitungMelden(anleitungT("keineQuellen"), true);
+        anleitungZeichnen();
+        return;
+      }
+      var art = document.getElementById("anleitung-art").value || ANLEITUNG_ARTEN[0];
+      var rolle = anleitungNorm(document.getElementById("anleitung-zielrolle").value);
+      anleitungLauf += 1;
+      var lauf = anleitungLauf;
+      anleitungLage = "laden";
+      anleitungZeichnen();
+      var ende = function (schluessel, werte, warn) {
+        if (lauf !== anleitungLauf) { return; }
+        anleitungLage = "ruhe";
+        anleitungMelden(anleitungT(schluessel, werte), warn);
+        anleitungZeichnen();
+      };
+      fetch("/api/output/generate", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ kind: art, koIds: ids, audienceRole: rolle || null })
+      }).then(function (res) {
+        if (!res || !res.ok) {
+          return anleitungFehlerAus(res).then(function (s) {
+            ende(s === "nurGeprueft" ? "nurGeprueftQuelle" : s, null, true);
+            return null;
+          });
+        }
+        return res.json().then(function (dokument) {
+          if (!dokument || typeof dokument.markdown !== "string" || !Array.isArray(dokument.provenance) ||
+              dokument.provenance.length !== ids.length) {
+            ende("fehler", null, true);
+            return null;
+          }
+          anleitungEinfuegen(anleitungMarkdownZeilen(dokument.markdown), function (ok) {
+            if (!ok) { ende("keinWord", null, true); return; }
+            anleitungErgebnis = null;
+            ende("dokumentEingefuegt", {
+              titel: dokument.title,
+              rolle: dokument.audienceRole ? dokument.audienceRole : anleitungT("ohneRolle"),
+              n: ids.length
+            }, false);
+          });
+          return null;
+        });
+      }).catch(function () { ende("fehler", null, true); });
     }
 
     function anleitungBausteinEinfuegen() {
@@ -776,6 +1058,8 @@
       document.getElementById("anleitung-baustein-btn").addEventListener("click", anleitungBausteinEinfuegen);
       document.getElementById("anleitung-baustein").addEventListener("focus", anleitungQuellenLaden);
       document.getElementById("anleitung-baustein").addEventListener("mousedown", anleitungQuellenLaden);
+      document.getElementById("anleitung-quellen-btn").addEventListener("click", anleitungQuellenLaden);
+      document.getElementById("anleitung-erzeugen-btn").addEventListener("click", anleitungDokumentErzeugen);
       // Jede Lage, in der das Fenster den Bestandsblock neu zeichnet (Sitzung, Office-Erkennung,
       // Flächenwechsel), gilt auch für diesen Block — derselbe Anschluss wie KW-BEGRIFFE.
       if (typeof bestandZeichnen === "function") {

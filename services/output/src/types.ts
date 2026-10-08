@@ -6,7 +6,10 @@ export type OutputKind =
   | "checklist"
   | "troubleshooting"
   | "training"
-  | "management_summary";
+  | "management_summary"
+  // aufnahme:20260922:gesamt-dokumenterzeugung (R-0732, SOLL:FR-EXT-03): die FAQ war als
+  // Dokumentart beauftragt, im Dienst aber nicht vorhanden.
+  | "faq";
 
 export const OUTPUT_KINDS: readonly OutputKind[] = [
   "instruction",
@@ -14,7 +17,22 @@ export const OUTPUT_KINDS: readonly OutputKind[] = [
   "troubleshooting",
   "training",
   "management_summary",
+  "faq",
 ];
+
+/**
+ * R-0337 / R-1739: was an einer Quelle NICHT vollständig belegt ist. Codes statt Sätzen, damit jede
+ * Oberfläche (Markdown hier, Word-Panel in drei Sprachen) denselben Befund in ihrer Sprache sagt.
+ */
+export type OutputUnsicherheit =
+  /** Trust unter UNCERTAIN_TRUST_BELOW. */
+  | "niedriger_trust"
+  /** `geltung` fehlt am Objekt — der Gültigkeitsbereich ist unbekannt, nicht „überall". */
+  | "geltung_fehlt"
+  /** `ownership.owner` fehlt — Verantwortung nicht benannt (kein Rückfall auf den Autor). */
+  | "verantwortung_fehlt"
+  /** Das Wissensobjekt führt kein Datum der letzten fachlichen Prüfung. */
+  | "pruefdatum_fehlt";
 
 // Trust unter diesem Wert wird je Quelle als Unsicherheit markiert (FE-OUT-03).
 export const UNCERTAIN_TRUST_BELOW = 60;
@@ -43,6 +61,25 @@ export interface OutputProvenance {
   type: string;
   validity: string; // abgeleitet: "validiert · v{version} · Stand {createdAt}" — kein Ablaufdatum
   uncertain: boolean; // Trust < UNCERTAIN_TRUST_BELOW
+  // ---- R-0337 / R-1739 (aufnahme:20260922:gesamt-dokumenterzeugung): die Pflichtangaben je Quelle,
+  // aus den Feldern des Wissensobjekts übernommen. `null` heißt: am Objekt NICHT festgehalten —
+  // es wird nichts abgeleitet oder geraten; `unsicherheiten` nennt jede solche Lücke.
+  /** Gültigkeitsbereich aus `geltung` (Konzern/Werk/Schicht, ggf. Rolle) — null: nicht angegeben. */
+  geltungsbereich: string | null;
+  /** Verantwortung aus `ownership.owner` — null: nicht benannt (bewusst kein Rückfall auf `author`). */
+  verantwortlich: string | null;
+  /** Wer die Validierung getragen hat (`ownership.validators`) — leer: nicht festgehalten. */
+  validiertVon: string[];
+  /** Datum der aktuellen Fassung (History-Eintrag dieser Version; v1 ohne Eintrag: `createdAt`). */
+  fassungVom: string | null;
+  /**
+   * Datum der letzten fachlichen Prüfung. Das Wissensobjekt führt es nicht als Feld (die
+   * Entscheidung liegt nur im Audit, `validationDecisionRef`) — deshalb null und als Unsicherheit
+   * `pruefdatum_fehlt` ausgewiesen, statt ein Datum anzunehmen.
+   */
+  letztePruefungAm: string | null;
+  /** Jede offene Unsicherheit dieser Quelle — leer heißt: alle Pflichtangaben belegt. */
+  unsicherheiten: OutputUnsicherheit[];
 }
 
 export interface OutputDocument {

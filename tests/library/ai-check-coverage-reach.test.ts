@@ -408,6 +408,14 @@ describe("mega29 C3 · menschliche Ausgaben sagen, worüber sie KEINE Aussage tr
         type: "best_practice",
         validity: "validiert · v1",
         uncertain: false,
+        // aufnahme:20260922:gesamt-dokumenterzeugung (R-0337): der Typ trägt seither die übrigen
+        // Pflichtangaben je Quelle; dieser Fall misst sie nicht, er braucht nur ein gültiges Objekt.
+        geltungsbereich: null,
+        verantwortlich: null,
+        validiertVon: [],
+        fassungVom: null,
+        letztePruefungAm: null,
+        unsicherheiten: ["geltung_fehlt", "verantwortung_fehlt", "pruefdatum_fehlt"],
       },
     ]);
     expect(rendered).toContain(OUTPUT_NO_CHECK_NOTE);
