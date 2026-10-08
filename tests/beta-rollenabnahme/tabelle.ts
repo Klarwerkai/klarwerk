@@ -676,6 +676,17 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // R-1663 / R-2178: hinter demselben Schalter wie `GET /api/analytics/expertise` (an dieser Bühne
+  // gesetzt). Eine erfundene Kennung ergibt nach dem Tor die fachliche 404 — die Tür ist registriert.
+  {
+    gruppe: "askRoutes",
+    methode: "GET",
+    pfad: "/api/gaps/gibt-es-nicht/ansprechpartner",
+    route: "/api/gaps/:id/ansprechpartner",
+    belegstelle: "services/app/src/routes/ask-routes.ts:867",
+    tor: "ko.assign",
+    erwartet: AB_CONTROLLER,
+  },
   {
     gruppe: "auditRoutes",
     methode: "GET",
