@@ -47,7 +47,16 @@ import {
   toggleFacetValue,
 } from "../../lib/facets";
 import { LIBRARY_RESULT_LIMIT, windowList } from "../../lib/libraryDisplay";
-import { EXPORT_FORMATS, exportFilename, exportUrl } from "../../lib/libraryExport";
+import {
+  EXPORT_AUSWAHL_MAX,
+  EXPORT_FORMATS,
+  EXPORT_UMFANG_ARTEN,
+  type ExportUmfangArt,
+  exportFilename,
+  exportMoeglich,
+  exportUmfang,
+  exportUrl,
+} from "../../lib/libraryExport";
 import {
   LIBRARY_FACET_LABEL_KEYS,
   LIBRARY_GROUP_KEYS,
@@ -435,6 +444,8 @@ export function BibliothekFlaeche({
   // R-1006: Mehrfachauswahl von Zeilen — ein eigener Modus neben der EINEN geöffneten Zeile.
   const [auswahlModus, setAuswahlModus] = useState(false);
   const [markiert, setMarkiert] = useState<ReadonlySet<string>>(() => new Set());
+  // N-0082: der gewählte Exportumfang (Gesamtbestand, Treffer, Markierte) — s. `umfang` unten.
+  const [exportArt, setExportArt] = useState<ExportUmfangArt>("bestand");
   const { user } = useSession();
   const nameOf = useAuthorName();
   // JOB 3088 · Q1b: die Detailabfrage des gelesenen Eintrags wohnt in `BibliothekLesen`, nicht hier.
@@ -1657,6 +1668,39 @@ export function BibliothekFlaeche({
     setAuswahlModus((an) => !an);
   };
 
+  // N-0082 / R-0681 (aufnahme:20260922:gesamt-wissen-export): der Exportumfang ist eine Wahl, und
+  // er steht VOR dem Download da. „Treffer" nur, wenn die Treffermenge feststeht (dieselbe
+  // Bedingung wie die Trefferzahl der Liste); „Markierte" nur mit Markierung. Fällt eine Wahl weg,
+  // gilt wieder der Gesamtbestand — nie eine unsichtbare Restauswahl.
+  const trefferFest = frisch && !keimBrauchtBestand && !bestandsErstfehler;
+  const exportArten = EXPORT_UMFANG_ARTEN.filter(
+    (art) =>
+      art === "bestand" ||
+      (art === "treffer" && trefferFest) ||
+      (art === "markiert" && auswahlModus && markiertTreffer.size > 0),
+  );
+  const exportArtWirksam = exportArten.includes(exportArt) ? exportArt : "bestand";
+  const umfang = exportUmfang(
+    exportArtWirksam,
+    exportArtWirksam === "markiert"
+      ? sorted.filter((item) => markiertTreffer.has(item.ko.id)).map((item) => item.ko)
+      : exportArtWirksam === "treffer"
+        ? sorted.map((item) => item.ko)
+        : [],
+  );
+  const umfangSatz =
+    umfang.art === "bestand"
+      ? t("wissenexport.umfang.bestandSatz")
+      : umfang.zuViele
+        ? t("wissenexport.umfang.zuViele", { anzahl: umfang.validiert, max: EXPORT_AUSWAHL_MAX })
+        : umfang.validiert === 0
+          ? t("wissenexport.umfang.keine", { gewaehlt: umfang.gewaehlt })
+          : t("wissenexport.umfang.auswahlSatz", {
+              validiert: umfang.validiert,
+              gewaehlt: umfang.gewaehlt,
+              ausgelassen: umfang.ausgelassen,
+            });
+
   // ================================================================================================
   // JOB 3063 R3/R6 · JOB 3121 — DER SATZ „STAND VON <ZEIT> · AUFFRISCHUNG FEHLGESCHLAGEN".
   // ================================================================================================
@@ -2130,18 +2174,45 @@ export function BibliothekFlaeche({
                     </MenuePunkt>
                     <MenueTrenner />
                     <MenueUntermenue beschriftung={t("lib.export")}>
-                      {EXPORT_FORMATS.map((fmt) => (
-                        <MenueZeile key={fmt}>
-                          <a
-                            href={exportUrl(fmt)}
-                            download={exportFilename(fmt)}
-                            data-testid={`bib-export-${fmt}`}
-                            className="block w-full"
-                          >
-                            {t(`lib.format.${fmt}`)}
-                          </a>
-                        </MenueZeile>
+                      {/* N-0082: erst der Umfang, dann das Format — der Satz darunter sagt vor
+                          dem Download, welche Menge die Datei enthält. */}
+                      {exportArten.map((art) => (
+                        <MenuePunkt
+                          key={art}
+                          testId={`bib-export-umfang-${art}`}
+                          haken={exportArtWirksam === art}
+                          onClick={() => setExportArt(art)}
+                        >
+                          {art === "bestand"
+                            ? t("wissenexport.umfang.bestand")
+                            : t(`wissenexport.umfang.${art}`, {
+                                anzahl: art === "markiert" ? markiertTreffer.size : sorted.length,
+                              })}
+                        </MenuePunkt>
                       ))}
+                      <MenueZeile>
+                        <span
+                          data-testid="bib-export-umfang-satz"
+                          className="block text-[12px] leading-snug text-muted whitespace-normal [overflow-wrap:anywhere]"
+                        >
+                          {umfangSatz}
+                        </span>
+                      </MenueZeile>
+                      <MenueTrenner />
+                      {exportMoeglich(umfang)
+                        ? EXPORT_FORMATS.map((fmt) => (
+                            <MenueZeile key={fmt}>
+                              <a
+                                href={exportUrl(fmt, umfang.ids)}
+                                download={exportFilename(fmt)}
+                                data-testid={`bib-export-${fmt}`}
+                                className="block w-full"
+                              >
+                                {t(`lib.format.${fmt}`)}
+                              </a>
+                            </MenueZeile>
+                          ))
+                        : null}
                     </MenueUntermenue>
                     <MenueZeile>
                       {/* /import verlangt admin UND Stufe 2 — die gesperrte Fassung bleibt ein Wort,
