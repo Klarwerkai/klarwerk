@@ -102,6 +102,7 @@ import { type Zeichnungspunkt, bildQuelle, punktProzent } from "../../lib/zeichn
 import { AiCheckCoverageNotes } from "../AiCheckCoverageHint";
 import { ConflictTargetPicker } from "../ConflictTargetPicker";
 import { ExternalUrlText } from "../ExternalUrlText";
+import { GeltungFeld } from "../Geltung";
 import { KnowledgeNeighborhood } from "../KnowledgeNeighborhood";
 import { RoleLink } from "../RoleLink";
 import { SanitizedHtml } from "../SanitizedHtml";
@@ -1991,6 +1992,16 @@ export function MehrAbschnitte({
             </Button>
           </div>
         ) : null}
+        {/* R-1632 / R-1633: wo dieser Punkt gilt — Konzern-Standard, Werks-Praxis oder
+            Schicht-spezifisch. Am Ende des Abschnitts, damit Vertraulichkeit und Übergabe ihren
+            Platz behalten. Der Schlüssel setzt das Formular nach dem Speichern auf den Serverstand. */}
+        <GeltungFeld
+          key={JSON.stringify(ko.geltung ?? null)}
+          geltung={ko.geltung}
+          darfAendern={canEdit}
+          wartet={act.isPending}
+          onSpeichern={(geltung) => act.mutate({ action: "geltung", geltung })}
+        />
       </Abschnitt>
 
       {/* 6 — Kopplung und Anlagen */}
