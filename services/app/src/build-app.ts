@@ -281,6 +281,14 @@ import {
   PgKenntnisnahmeRepo,
 } from "./kenntnisnahme";
 import { kiGrenzeAusEnv, registriereKiAnfragebremse } from "./ki-anfragebremse";
+// produkt:20261008:klara-basis: die persönlichen Klara-Gespräche — haltbar im Postgres-Betrieb, im
+// Speicher ohne Datenbank.
+import {
+  InMemoryKlaraGespraechRepo,
+  KlaraGespraechDienst,
+  type KlaraGespraechRepo,
+  PgKlaraGespraechRepo,
+} from "./klara-gespraech";
 // WP-D11: PPTX-Folien → PNG (Route + injizierbarer Konverter).
 import {
   InMemoryLesevariantenRepo,
@@ -336,6 +344,8 @@ import { kenntnisnahmeRoutes } from "./routes/kenntnisnahme-routes";
 import { klaraAiRoutes } from "./routes/klara-ai-routes";
 // W3-C (JOB 541 D3): die kanonische Antwort-Erklaerroute und ihr Lesedienst.
 import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-routes";
+// produkt:20261008:klara-basis: die eigenen, serverseitig gespeicherten Klara-Gespräche.
+import { klaraGespraechRoutes } from "./routes/klara-gespraech-routes";
 // JOB 3110 (M2b): der Memo-Weg des Word-Panels. Die Route ist seit JOB 3091 gebaut und gemessen;
 // hier — und nur hier — bekommt sie ihren Aufrufer.
 import { type ZurufModell, klaraZurufRoutes } from "./routes/klara-session-routes";
@@ -496,6 +506,12 @@ export interface AppServices {
    * Neustart des Dev-Betriebs verloren, ist das die Richtung des Löschens, nicht des Offenlegens.
    */
   gedaechtnis: GedaechtnisRepo;
+  /**
+   * produkt:20261008:klara-basis: die persönlichen Klara-Gespräche (`klara-gespraech.ts`) je Konto.
+   * Aus demselben Grund wie `gedaechtnis` NICHT in `AppRepos`; im Postgres-Betrieb haltbar
+   * (`PgKlaraGespraechRepo`), sonst die In-Memory-Ablage.
+   */
+  klaraGespraeche: KlaraGespraechRepo;
   /**
    * R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — über die Oberfläche umlegbar,
    * von jeder Confluence-Importroute je Anfrage durchgesetzt. Aus demselben Grund wie
@@ -990,6 +1006,8 @@ export function assembleServices(
     livewallFotos?: LiveWallFotoRepo;
     // R-0466: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     gedaechtnis?: GedaechtnisRepo;
+    // produkt:20261008:klara-basis: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    klaraGespraeche?: KlaraGespraechRepo;
     // R-0134 / R-1005: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     confluenceImportSchalter?: ConfluenceImportSchalterRepo;
     // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
@@ -1305,6 +1323,8 @@ export function assembleServices(
     livewallFotos: opts.livewallFotos ?? new InMemoryLiveWallFotoRepo(),
     // R-0466: das Interaktionsgedächtnis — Postgres, wenn injiziert, sonst im Speicher.
     gedaechtnis: opts.gedaechtnis ?? new InMemoryGedaechtnisRepo(),
+    // produkt:20261008:klara-basis: die Klara-Gespräche — Postgres, wenn injiziert, sonst im Speicher.
+    klaraGespraeche: opts.klaraGespraeche ?? new InMemoryKlaraGespraechRepo(),
     // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
     confluenceImportSchalter:
       opts.confluenceImportSchalter ?? new InMemoryConfluenceImportSchalterRepo(),
@@ -1761,6 +1781,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // R-0466: Gedächtniseinträge überleben Neustart und Deploy bis zu ihrer Frist; Löschen und
       // Fristablauf entfernen die Zeile in derselben Datenbank (`GEDAECHTNIS_SCHEMA`).
       gedaechtnis: new PgGedaechtnisRepo(pool),
+      // produkt:20261008:klara-basis: ein Klara-Gespräch überlebt Neuladen, erneute Anmeldung,
+      // Neustart und Deploy (`KLARA_GESPRAECH_SCHEMA`, angelegt von `migrate()`).
+      klaraGespraeche: new PgKlaraGespraechRepo(pool),
       // R-0134 / R-1005: der Betreiberschalter überlebt Neustart und Deploy — sonst stünde ein
       // ausgeschalteter Import nach dem nächsten Neustart still wieder auf „an".
       confluenceImportSchalter: new PgConfluenceImportSchalterRepo(pool),
@@ -3693,6 +3716,20 @@ export function buildApp(
       {
         dienst: new GedaechtnisDienst({
           repo: services.gedaechtnis,
+          antworten: services.answerSnapshots,
+        }),
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
+  // produkt:20261008:klara-basis: die eigenen Klara-Gespräche. Eine Antwort aus dem Frageweg wird
+  // gegen DIESELBE Antwortablage geprüft wie die Herkunft im Gedächtnis.
+  app.register(
+    klaraGespraechRoutes(
+      {
+        dienst: new KlaraGespraechDienst({
+          repo: services.klaraGespraeche,
           antworten: services.answerSnapshots,
         }),
         audit: services.audit,

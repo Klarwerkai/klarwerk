@@ -653,6 +653,15 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/me/gedaechtnis": { protection: "auth" },
   "DELETE /api/me/gedaechtnis/:id": { protection: "auth" },
   "DELETE /api/me/gedaechtnis": { protection: "auth" },
+  // produkt:20261008:klara-basis: die eigenen Klara-Gespräche — jeweils nur das EIGENE Konto
+  // (user.id aus der Sitzung), fremd und unbekannt 404. Wie das Gedächtnis: kein zusätzliches Recht.
+  "GET /api/me/klara/gespraech": { protection: "auth" },
+  "POST /api/me/klara/gespraeche": { protection: "auth" },
+  "GET /api/me/klara/gespraeche/:id": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/nachrichten": { protection: "auth" },
+  "PUT /api/me/klara/gespraeche/:id/schritt": { protection: "auth" },
+  "PUT /api/me/klara/gespraeche/:id/einwilligung": { protection: "auth" },
+  "DELETE /api/me/klara/gespraeche/:id": { protection: "auth" },
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler — jeder angemeldete Nutzer,
   // AUSSCHLIESSLICH über die eigene Identität (user.id) abgeleitet, nur Zahlen.
   "GET /api/me/impact": { protection: "auth" },

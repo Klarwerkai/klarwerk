@@ -344,6 +344,7 @@ PFLICHTTABELLEN=(
   spaces_fassungen
   livewall_fotos
   interaktions_gedaechtnis
+  klara_gespraeche
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do
