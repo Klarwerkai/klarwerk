@@ -3001,7 +3001,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             const stelle = leseStelle(body.stelle);
             if (stelle === "unlesbar") {
               return badRequest(
-                "stelle muss Fassung (koVersion), Art (absatz, tabelle, bild), Abschnitt und Textstelle tragen.",
+                "stelle muss Fassung (koVersion), Art (absatz, tabelle, bild, anhang), Abschnitt und Textstelle tragen; eine Position (punkt, x und y je 0..1) gibt es nur bei Bild oder Anhang, eine Seite (ganzzahlig ab 1) nur bei einem Anhang.",
               );
             }
             reply.code(200).send(

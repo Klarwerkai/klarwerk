@@ -232,12 +232,17 @@ export interface KoDiskussionsbeitrag extends KoComment {
 /** P-WIKI-STELLENBEZUG — Spiegel von `KoCommentStelle` (`services/knowledge-object/src/types.ts`). */
 export interface KoDiskussionsStelle {
   koVersion: number;
-  art: "absatz" | "tabelle" | "bild";
+  /** `anhang`: eine hochgeladene Zeichnung (PDF, CAD, Bild); `text` ist dann ihre `objectId`. */
+  art: "absatz" | "tabelle" | "bild" | "anhang";
   abschnitt: string;
   /** Gekürzt — nur Anzeige. Die Identität trägt `fingerabdruck`. */
   text: string;
   /** SHA-256 über Art, vollständigen Abschnitt und vollständigen Inhalt (`lib/stellenabdruck`). */
   fingerabdruck: string;
+  /** PLAN-SPRACHANMERKUNG: Seite eines mehrseitigen Anhangs (PDF), ab 1. Nur bei `anhang`. */
+  seite?: number;
+  /** PLAN-SPRACHANMERKUNG: Position in einer Zeichnung (nur `bild`), relativ, je 0..1. */
+  punkt?: { x: number; y: number };
 }
 
 // PUT /api/kos/:id — ein Mutations-Endpunkt, per {action} verzweigt.

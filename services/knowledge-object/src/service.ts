@@ -104,7 +104,7 @@ import { confirmedSourceAnchor } from "./source-anchor";
 // SCRUM-527 (WP2): Quell-URL-Allowlist an der Persistenzgrenze (nur absolute http/https).
 import { safeSourceUrl, sanitizeSources } from "./source-url";
 // P-WIKI-STELLENBEZUG: der Anker einer Rückfrage im Text — Prüfung und Vergleich.
-import { gleicheStelle, stelleImInhalt } from "./stellen-anker";
+import { gleicheStelle, stelleAmAnhang, stelleImInhalt } from "./stellen-anker";
 import {
   type AiCheckBasis,
   type AiCheckCoverage,
@@ -3483,7 +3483,16 @@ export class KoService {
             `Die Stelle wurde in Fassung v${stelle.koVersion} gewählt; der Eintrag steht inzwischen auf v${ko.version}. Der Beitrag wurde nicht angefügt — bitte die Stelle in der aktuellen Fassung neu wählen.`,
           );
         }
-        if (!stelleImInhalt(ko.bodyHtml, stelle)) {
+        // PLAN-SPRACHANMERKUNG: eine Stelle an einer hochgeladenen Zeichnung (PDF, CAD, Bild) hängt
+        // an der Anhangsliste dieser Fassung, nicht am Text.
+        if (stelle.art === "anhang") {
+          if (!stelleAmAnhang(ko.attachments, stelle)) {
+            throw new KoError(
+              "INVALID",
+              "Die gewählte Zeichnung ist in dieser Fassung kein eindeutiger Anhang des Eintrags.",
+            );
+          }
+        } else if (!stelleImInhalt(ko.bodyHtml, stelle)) {
           throw new KoError(
             "INVALID",
             "Die gewählte Stelle bestimmt in dieser Fassung keinen eindeutigen Block (Art, Abschnitt und Inhalt müssen zusammen passen).",
