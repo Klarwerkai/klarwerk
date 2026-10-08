@@ -211,7 +211,11 @@ export function ImportStepperBar(): JSX.Element {
               ) : (
                 <span className="shrink-0 font-mono text-[10.5px]">{i + 1}</span>
               )}
-              <span className="min-w-0 truncate">{t(IMPORT_STEP_TEXT[step].title)}</span>
+              {/* WCAG 1.4.12 (Audit nacharbeit-10): umbrechen statt abschneiden — die Leiste
+                  bricht ohnehin um (flex-wrap), der Schrittname darf es auch. */}
+              <span className="min-w-0 [overflow-wrap:anywhere]">
+                {t(IMPORT_STEP_TEXT[step].title)}
+              </span>
               {status === "done" ? <span className="sr-only">{t("imp.step.done")}</span> : null}
             </li>
           );

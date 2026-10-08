@@ -305,6 +305,28 @@ function installiereHelfer(): void {
       }
     }
   };
+  // Belegter Zugang zum vollen Inhalt (ben nacharbeit-10): Eine Kürzung mit „…" (`text-overflow:
+  // ellipsis`, `line-clamp`) ist KEIN Freibrief — sie belegt nicht, dass der Rest lesbar bleibt.
+  // Ausgenommen ist eine Kürzung nur, wenn derselbe volle Text zur selben Zeit an anderer Stelle
+  // der Seite vollständig sichtbar steht (z. B. Titel in der Liste gekürzt, im Detailbereich ganz).
+  // Ein `title` genügt nicht: ihn erreicht weder die Tastatur noch ein Touch-Gerät.
+  const vollAnDererStelle = (e: Element, voll: string): boolean => {
+    for (const anderes of document.querySelectorAll("body *")) {
+      if (anderes === e || anderes.contains(e) || e.contains(anderes) || !sichtbar(anderes)) {
+        continue;
+      }
+      const eigen = [...anderes.childNodes]
+        .filter((k) => k.nodeType === Node.TEXT_NODE)
+        .map((k) => k.textContent ?? "")
+        .join("")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (eigen.includes(voll) && !(schneidend(anderes) && ueberlauf(anderes))) {
+        return true;
+      }
+    }
+    return false;
+  };
   const neuGeclippt = (): { befunde: string[]; gekuerzt: number } => {
     const befunde: string[] = [];
     let gekuerzt = 0;
@@ -313,13 +335,20 @@ function installiereHelfer(): void {
         continue;
       }
       const s = getComputedStyle(e);
-      const gewollt =
+      const auslassung =
         s.textOverflow === "ellipsis" ||
         (s.getPropertyValue("-webkit-line-clamp") || "none") !== "none";
-      if (gewollt) {
-        gekuerzt += 1;
-      } else {
-        befunde.push(`${beschreibe(e)} schneidet Text ab`);
+      const voll = (e.textContent ?? "").replace(/\s+/g, " ").trim();
+      const zitat = `„${voll.slice(0, 80)}${voll.length > 80 ? "…" : ""}“`;
+      if (!auslassung) {
+        befunde.push(`${beschreibe(e)} schneidet Text ab: ${zitat}`);
+        continue;
+      }
+      gekuerzt += 1;
+      if (!vollAnDererStelle(e, voll)) {
+        befunde.push(
+          `${beschreibe(e)} kürzt Text mit Auslassung, voller Inhalt nirgends sonst sichtbar: ${zitat}`,
+        );
       }
     }
     return { befunde, gekuerzt };
@@ -1160,6 +1189,7 @@ const KALIBRIERUNG = `
   #feld-klar { border: 1px solid #767676; background: #fff; }
   #feld-flaeche { border: none; background: #666666; color: #fff; }
   .verlauf { background-image: linear-gradient(#000, #333); color: #fff; }
+  .kuerzung { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style></head>
 <body>
   <p class="grau">Grau auf Weiß, ~2,8:1</p>
@@ -1187,7 +1217,15 @@ const KALIBRIERUNG = `
   <button data-testid="s-blass" aria-label="Symbol blass"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#cccccc" stroke-width="2"><path d="M2 2L14 14"/></svg></button>
   <button data-testid="s-klar" aria-label="Symbol klar"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#333333" stroke-width="2"><path d="M2 2L14 14"/></svg></button>
   <p class="verlauf" data-testid="f-verlauf">Text auf Verlauf</p>
+  <div class="kuerzung" data-testid="f-auslassung">Ein Satz, der mit Textabstand gekürzt wird</div>
+  <div class="kuerzung" data-testid="f-auslassung-belegt">Voller Text steht auch darunter</div>
+  <p>Voller Text steht auch darunter</p>
   <script>
+    // Die beiden Kürzungsfälle passen VOR dem Textabstand genau hinein (Breite = Textbreite + 4 px)
+    // und werden erst durch ihn gekürzt — die „neu" gekürzte Lage, um die es geht.
+    for (const el of document.querySelectorAll(".kuerzung")) {
+      el.style.width = el.scrollWidth + 4 + "px";
+    }
     const knopf = document.getElementById("f-tip");
     const tip = document.getElementById("tip");
     const zeige = () => { tip.hidden = false; };
@@ -1215,6 +1253,13 @@ test("KALIBRIERUNG · jede Messart schlägt an einer fehlerhaften Fixture an —
   hat(/1\.4\.11 \[\w+\]: Fokuskennzeichnung an button „f-schwach“/, "der blasse Ring");
   hat(/1\.4\.3 \[\w+\]: Platzhalter „Blass“/, "der blasse Platzhalter wird nicht erkannt");
   hat(/1\.4\.12: .*data-testid=f-eng/, "das Abschneiden bei Textabstand wird nicht erkannt");
+  // nacharbeit-10: eine NEU entstehende Kürzung mit „…" ist ein Befund (mit Element und Inhalt) —
+  // es sei denn, der volle Text steht zur selben Zeit an anderer Stelle sichtbar.
+  hat(
+    /1\.4\.12: .*data-testid=f-auslassung\].*kürzt Text mit Auslassung.*„Ein Satz, der mit Textabstand gekürzt wird“/,
+    "die neue Kürzung mit Auslassung wird nicht als Befund gemeldet",
+  );
+  expect(text).not.toMatch(/data-testid=f-auslassung-belegt\].*kürzt/);
   hat(/1\.4\.13.*f-tip.*Escape/, "der stehende Hinweis wird nicht erkannt");
   hat(/1\.4\.10: /, "der waagerechte Überlauf bei 320 px wird nicht erkannt");
   // 1.4.11 Feldgrenzen und Symbole (nacharbeit-7): blasser Rand ohne Füllung und blasses Symbol
