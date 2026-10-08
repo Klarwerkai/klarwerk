@@ -223,6 +223,9 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
       return { action, commentId: "beitrag-mega80" };
     case "revalidate":
       return { action };
+    // R-0235 / R-0749: „Hat geholfen" am Objekt — trägt nichts ausser der Aktion.
+    case "helpful":
+      return { action };
     default:
       throw new Error(`Keine Nutzlast hinterlegt für Aktion "${action}" — Test unvollständig.`);
   }
