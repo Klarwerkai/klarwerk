@@ -190,6 +190,27 @@ export interface DateiErhebung {
    *  · ein Rollenwert, der sich statisch nicht bestimmen lässt (`role={props.rolle}`).
    */
   unbekannteBauformen: string[];
+  /**
+   * Nacharbeit 7: Funktionen dieser Datei, die eine NICHT auflösbare Rolle aus ihrem Parameter an
+   * ein DOM-Element weiterreichen (`function Button({ ...props }: ButtonHTMLAttributes<…>)` →
+   * `<button {...props} />`). Ihre Rolle setzen die Aufrufer; das Tor prüft deren Spreads.
+   */
+  weiterreicher: string[];
+  /** Nacharbeit 7: Spreads in Komponenten, deren Rolle nicht in dieser Datei feststeht. */
+  komponentenStellen: Komponentenstelle[];
+}
+
+/** Ein Spread in eine Komponente — ob er zählt, entscheidet das Tor über alle Dateien. */
+export interface Komponentenstelle {
+  datei: string;
+  zeile: number;
+  text: string;
+  /** Die Komponente im Bestand; `undefined`, wenn nicht lesbar (Paket, Wert) — dann zählt sie. */
+  ziel: { modul: string; name: string } | undefined;
+  /** Die Herkunft der Props ist nicht auflösbar. */
+  abbruch: boolean;
+  /** Funktionen dieser Datei, deren Parameter-Rolle hier weiterläuft; `undefined` = namenlos. */
+  funktionen: Array<string | undefined>;
 }
 
 /** Die Rollen- bzw. Elementnamen, die eine Fläche als Dialog ausweisen. */
@@ -492,40 +513,303 @@ function bindungsTypIn(
 /**
  * Nacharbeit 4/5 (ben): die Rolle eines GESPREIZTEN Props-Ausdrucks, am Verwendungsort bestimmt.
  *
- * Drei Ausgänge, und sie werden auseinandergehalten:
- *  · `bild.werte`   — die Rolle steht fest (lokaler Typ `role: "dialog"`);
- *  · `bild.offen`   — eine Rolle ist da, ihr Wert nicht (`role?: string`);
- *  · `abbrueche`    — die lokale Kette reisst ab (Aufruf, Feldzugriff, `let`, Import): ob eine
- *                     Rolle da ist, kann diese Datei nicht sagen.
- * Alles leer heisst: nachweislich keine Rolle — oder ein Typ, der nicht in dieser Datei steht
- * (`InputHTMLAttributes`); ihn liest dieser Sammler ohne Typprüfung nicht.
+ * Die Ausgänge werden auseinandergehalten:
+ *  · `bild.werte`    — die Rolle steht fest (Typ `role: "dialog"`);
+ *  · `bild.offen`    — eine Rolle ist da, ihr Wert nicht (`role?: string`);
+ *  · `abbrueche`     — nicht auflösbar: die Kette reisst ab (Aufruf ohne Rückgabetyp, `let`,
+ *                      Feldzugriff) oder der Typ ist nicht lesbar (Paketimport wie
+ *                      `ButtonHTMLAttributes`, `any`, Generika);
+ *  · `vonAufrufern`  — nicht auflösbar, aber aus dem PARAMETER einer Funktion: die Rolle setzt,
+ *                      wer die Funktion aufruft. Das Tor prüft diese Aufrufstellen
+ *                      (`weitergereichteBefunde`, Nacharbeit 7).
+ * Alles leer heisst: nachweislich keine Rolle. Ein nicht aufgelöster Typ ergibt das NICHT mehr
+ * (Nacharbeit 7, ben: „eine fehlgeschlagene Auflösung darf nicht keineRolle() ergeben“).
  */
 export interface PropsRolle {
   bild: Wertbild;
   abbrueche: ts.Node[];
+  vonAufrufern: Aufruferquelle[];
+}
+
+/** Ein Parameter, dessen Rolle erst an den Aufrufstellen seiner Funktion feststeht. */
+export interface Aufruferquelle {
+  /** Name der Funktion (Deklaration, `const F = …`, auch in `memo(…)`); `undefined` = namenlos. */
+  funktion: string | undefined;
+  knoten: ts.Node;
 }
 
 function keineRolle(): PropsRolle {
-  return { bild: { werte: [], offen: [] }, abbrueche: [] };
+  return { bild: { werte: [], offen: [] }, abbrueche: [], vonAufrufern: [] };
+}
+
+function nichtAufloesbar(knoten: ts.Node): PropsRolle {
+  return { ...keineRolle(), abbrueche: [knoten] };
 }
 
 function vereineRollen(teile: PropsRolle[]): PropsRolle {
   return {
     bild: vereine(teile.map((t) => t.bild)),
     abbrueche: teile.flatMap((t) => t.abbrueche),
+    vonAufrufern: teile.flatMap((t) => t.vonAufrufern),
   };
-}
-
-/** Die Rolle aus einem LOKAL deklarierten Objekttyp; fehlt der Eintrag, ist es keine Rolle. */
-function rolleAusTyp(deklarationen: Deklarationen, typ: ts.TypeNode | undefined): PropsRolle {
-  const rolle = typ ? mitgliedsTypIn(deklarationen, typ, "role", 0) : undefined;
-  return rolle ? { bild: typWerteIn(deklarationen, rolle, 0), abbrueche: [] } : keineRolle();
 }
 
 /** Woher eine Datei ihre Importe liest: ihr eigener Pfad und der Modulleser. */
 export interface Modulumfeld {
   datei: string;
   leser: Modulleser;
+}
+
+/** Wo ein Typ steht: die Deklarationen seines Moduls und — für Importe — sein Modulumfeld. */
+interface Typumfeld {
+  deklarationen: Deklarationen;
+  modul: Modulumfeld | undefined;
+}
+
+type Importziel = { art: "paket" } | { art: "modul"; quelle: Quelle; datei: string; name: string };
+
+/**
+ * Wohin ein Bezeichner importiert wird. `undefined`: kein Import dieses Namens. `paket`: ein
+ * Paketimport, ein Standardimport oder ein Modul, das der Leser nicht kennt — nicht lesbar.
+ */
+function importZiel(name: ts.Identifier, modul: Modulumfeld | undefined): Importziel | undefined {
+  for (const anweisung of name.getSourceFile().statements) {
+    if (!ts.isImportDeclaration(anweisung) || !ts.isStringLiteral(anweisung.moduleSpecifier)) {
+      continue;
+    }
+    const klausel = anweisung.importClause;
+    if (klausel?.name?.text === name.text) {
+      return { art: "paket" };
+    }
+    const bindungen = klausel?.namedBindings;
+    if (bindungen === undefined || !ts.isNamedImports(bindungen)) {
+      continue;
+    }
+    const element = bindungen.elements.find((e) => e.name.text === name.text);
+    if (element === undefined) {
+      continue;
+    }
+    const exportName = (element.propertyName ?? element.name).text;
+    for (const kandidat of modulKandidaten(modul?.datei ?? "", anweisung.moduleSpecifier.text)) {
+      const quelle = modul?.leser(kandidat);
+      if (quelle) {
+        return { art: "modul", quelle, datei: kandidat, name: exportName };
+      }
+    }
+    return { art: "paket" };
+  }
+  return undefined;
+}
+
+/** Die exportierten Typdeklarationen `name` eines Moduls (Interfaces dürfen mehrfach stehen). */
+function exportierteTypen(quelle: Quelle, name: string): ts.Node[] {
+  return quelle.ast.statements.filter(
+    (s) =>
+      (ts.isInterfaceDeclaration(s) || ts.isTypeAliasDeclaration(s)) &&
+      s.name.text === name &&
+      istExportiert(s),
+  );
+}
+
+function umfeldVon(quelle: Quelle, datei: string, leser: Modulleser): Typumfeld {
+  return { deklarationen: sammleDeklarationen(quelle.ast), modul: { datei, leser } };
+}
+
+/**
+ * Nacharbeit 7 (ben): die Rolle in einem Props-TYP, dreiwertig — gefunden (`bild`), nachweislich
+ * fehlend (alles leer) oder nicht auflösbar (`abbrueche`). Aufgelöst werden Objekttypen, Unionen und
+ * Schnittmengen von Objekttypen, Interfaces mit `extends`, lokale und relativ importierte
+ * Typverweise, `Partial`/`Required`/`Readonly`/`NonNullable`/`Omit`/`Pick` sowie Mapped Types über
+ * Schlüsselmuster (`data-${string}`). Alles andere ist nicht auflösbar — nie „keine Rolle“.
+ */
+function rolleImTyp(typ: ts.TypeNode, u: Typumfeld, tiefe: number): PropsRolle {
+  if (tiefe > MAX_TIEFE) {
+    return nichtAufloesbar(typ);
+  }
+  if (ts.isParenthesizedTypeNode(typ)) {
+    return rolleImTyp(typ.type, u, tiefe + 1);
+  }
+  if (ts.isUnionTypeNode(typ) || ts.isIntersectionTypeNode(typ)) {
+    return vereineRollen(typ.types.map((t) => rolleImTyp(t, u, tiefe + 1)));
+  }
+  if (ts.isTypeLiteralNode(typ)) {
+    return rolleInMitgliedern(typ.members, u);
+  }
+  if (ts.isMappedTypeNode(typ)) {
+    return rolleImMappedType(typ, u);
+  }
+  if (ts.isTypeReferenceNode(typ)) {
+    return rolleImVerweis(typ.typeName, typ.typeArguments ?? [], typ, u, tiefe);
+  }
+  if (
+    ts.isLiteralTypeNode(typ) ||
+    ts.isFunctionTypeNode(typ) ||
+    typ.kind === ts.SyntaxKind.UndefinedKeyword ||
+    typ.kind === ts.SyntaxKind.NullKeyword ||
+    typ.kind === ts.SyntaxKind.NeverKeyword ||
+    typ.kind === ts.SyntaxKind.VoidKeyword ||
+    typ.kind === ts.SyntaxKind.BooleanKeyword ||
+    typ.kind === ts.SyntaxKind.NumberKeyword ||
+    typ.kind === ts.SyntaxKind.StringKeyword
+  ) {
+    // Werte ohne Objektgestalt tragen kein `role`.
+    return keineRolle();
+  }
+  return nichtAufloesbar(typ);
+}
+
+/** `role` unter den Mitgliedern eines Objekttyps — auch über eine Zeichenketten-Indexsignatur. */
+function rolleInMitgliedern(mitglieder: ts.NodeArray<ts.TypeElement>, u: Typumfeld): PropsRolle {
+  const teile: PropsRolle[] = [];
+  for (const m of mitglieder) {
+    const istRolle = ts.isPropertySignature(m) && eigenschaftsName(m.name) === "role";
+    const istIndex =
+      ts.isIndexSignatureDeclaration(m) &&
+      m.parameters.some((p) => p.type?.kind !== ts.SyntaxKind.NumberKeyword);
+    if (istRolle || istIndex) {
+      const wertTyp = (m as ts.PropertySignature | ts.IndexSignatureDeclaration).type;
+      teile.push(
+        wertTyp
+          ? { ...keineRolle(), bild: typWerteIn(u.deklarationen, wertTyp, 0) }
+          : nichtAufloesbar(m),
+      );
+    }
+  }
+  return vereineRollen(teile);
+}
+
+/** `{ [K in C]?: T }` — `role` gehört dazu, wenn das Schlüsselmuster es zulässt. */
+function rolleImMappedType(typ: ts.MappedTypeNode, u: Typumfeld): PropsRolle {
+  const schluessel = typ.typeParameter.constraint;
+  const wert = (): PropsRolle => {
+    if (typ.type === undefined) {
+      return nichtAufloesbar(typ);
+    }
+    return { ...keineRolle(), bild: typWerteIn(u.deklarationen, typ.type, 0) };
+  };
+  if (schluessel && ts.isTemplateLiteralTypeNode(schluessel)) {
+    // `data-${string}`: jeder Schlüssel beginnt mit `data-` — `role` nachweislich nicht.
+    return "role".startsWith(schluessel.head.text) ? nichtAufloesbar(typ) : keineRolle();
+  }
+  if (schluessel) {
+    const namen = typWerteIn(u.deklarationen, schluessel, 0);
+    if (namen.offen.length === 0) {
+      return namen.werte.some((w) => w.text === "role") ? wert() : keineRolle();
+    }
+  }
+  return nichtAufloesbar(typ);
+}
+
+/** Ein Typverweis `Name<…>` — lokal, relativ importiert oder ein eingebauter Hilfstyp. */
+function rolleImVerweis(
+  name: ts.Node,
+  argumente: readonly ts.TypeNode[],
+  knoten: ts.Node,
+  u: Typumfeld,
+  tiefe: number,
+): PropsRolle {
+  if (!ts.isIdentifier(name)) {
+    // `React.HTMLAttributes<…>` — ein Namensraum ist nicht lesbar.
+    return nichtAufloesbar(knoten);
+  }
+  const lokal = typNamen(u.deklarationen, name.text);
+  if (lokal.length > 0) {
+    return vereineRollen(lokal.map((d) => rolleInDeklaration(d, u, tiefe + 1)));
+  }
+  const ziel = importZiel(name, u.modul);
+  if (ziel !== undefined) {
+    if (ziel.art === "paket" || u.modul === undefined) {
+      return nichtAufloesbar(knoten);
+    }
+    const decls = exportierteTypen(ziel.quelle, ziel.name);
+    if (decls.length === 0) {
+      return nichtAufloesbar(knoten);
+    }
+    const zielUmfeld = umfeldVon(ziel.quelle, ziel.datei, u.modul.leser);
+    return vereineRollen(decls.map((d) => rolleInDeklaration(d, zielUmfeld, tiefe + 1)));
+  }
+  const [basis, schluessel] = argumente;
+  const hilfstyp = ["Partial", "Required", "Readonly", "NonNullable"].includes(name.text);
+  if (hilfstyp && basis) {
+    return rolleImTyp(basis, u, tiefe + 1);
+  }
+  if ((name.text === "Omit" || name.text === "Pick") && basis && schluessel) {
+    const namen = typWerteIn(u.deklarationen, schluessel, 0);
+    if (namen.offen.length > 0) {
+      return nichtAufloesbar(knoten);
+    }
+    const mitRolle = namen.werte.some((w) => w.text === "role");
+    // Omit ohne `role` und Pick mit `role` behalten die Rolle der Basis; sonst ist sie weg.
+    return (name.text === "Omit") !== mitRolle ? rolleImTyp(basis, u, tiefe + 1) : keineRolle();
+  }
+  return nichtAufloesbar(knoten);
+}
+
+/** Interface (eigene Mitglieder, sonst `extends`) oder Typalias. */
+function rolleInDeklaration(d: ts.Node, u: Typumfeld, tiefe: number): PropsRolle {
+  if (ts.isTypeAliasDeclaration(d)) {
+    return rolleImTyp(d.type, u, tiefe);
+  }
+  if (!ts.isInterfaceDeclaration(d)) {
+    return nichtAufloesbar(d);
+  }
+  const eigene = rolleInMitgliedern(d.members, u);
+  if (eigene.bild.werte.length + eigene.bild.offen.length + eigene.abbrueche.length > 0) {
+    return eigene;
+  }
+  const geerbt = (d.heritageClauses ?? []).flatMap((h) =>
+    h.types.map((t) => rolleImVerweis(t.expression, t.typeArguments ?? [], t, u, tiefe + 1)),
+  );
+  return vereineRollen(geerbt);
+}
+
+/** Die Rolle eines Props-Typs an einer Deklaration; ohne Typangabe ist sie nicht auflösbar. */
+function rolleAusTyp(u: Typumfeld, typ: ts.TypeNode | undefined, ersatz: ts.Node): PropsRolle {
+  return typ ? rolleImTyp(typ, u, 0) : nichtAufloesbar(ersatz);
+}
+
+/** Ist die Deklaration eine Funktion — direkt oder als `const F = memo((…) => …)`? */
+function istFunktion(d: ts.Node): boolean {
+  if (ts.isFunctionDeclaration(d)) {
+    return true;
+  }
+  if (!ts.isVariableDeclaration(d) || d.initializer === undefined) {
+    return false;
+  }
+  let init: ts.Node = d.initializer;
+  while (ts.isCallExpression(init) && init.arguments[0] !== undefined) {
+    init = init.arguments[0];
+  }
+  return ts.isArrowFunction(init) || ts.isFunctionExpression(init);
+}
+
+/** Der Name der Funktion, zu der ein Parameter gehört — auch durch `memo(…)`/`forwardRef(…)`. */
+function funktionsName(funktion: ts.Node): string | undefined {
+  if (ts.isFunctionDeclaration(funktion)) {
+    return funktion.name?.text;
+  }
+  if (ts.isArrowFunction(funktion) || ts.isFunctionExpression(funktion)) {
+    let p: ts.Node = funktion.parent;
+    while (ts.isCallExpression(p)) {
+      p = p.parent;
+    }
+    if (ts.isVariableDeclaration(p) && ts.isIdentifier(p.name)) {
+      return p.name.text;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Was am Parameter nicht auflösbar ist, entscheidet sich an den Aufrufstellen: aus `abbrueche`
+ * wird `vonAufrufern` mit dem Namen der Funktion. Was aufgelöst ist, bleibt, wie es ist.
+ */
+function ausDemParameter(r: PropsRolle, parameter: ts.ParameterDeclaration): PropsRolle {
+  if (r.abbrueche.length === 0) {
+    return r;
+  }
+  const quelle: Aufruferquelle = { funktion: funktionsName(parameter.parent), knoten: parameter };
+  return { bild: r.bild, abbrueche: [], vonAufrufern: [...r.vonAufrufern, quelle] };
 }
 
 /**
@@ -537,47 +821,22 @@ function rolleAusAufruf(
   deklarationen: Deklarationen,
   umfeld: Modulumfeld | undefined,
 ): PropsRolle {
-  const abbruch: PropsRolle = { bild: { werte: [], offen: [] }, abbrueche: [aufruf] };
   const name = aufruf.expression;
   if (!ts.isIdentifier(name)) {
-    return abbruch;
+    return nichtAufloesbar(aufruf);
   }
   const lokal = sichtbareDeklarationen(deklarationen, name);
   if (lokal.length > 0) {
-    return vereineRollen(
-      lokal.map((d) => {
-        const typ = rueckgabeTyp(d);
-        return typ ? rolleAusTyp(deklarationen, typ) : abbruch;
-      }),
-    );
+    const u: Typumfeld = { deklarationen, modul: umfeld };
+    return vereineRollen(lokal.map((d) => rolleAusTyp(u, rueckgabeTyp(d), aufruf)));
   }
-  if (umfeld === undefined) {
-    return abbruch;
+  const ziel = importZiel(name, umfeld);
+  if (ziel === undefined || ziel.art === "paket" || umfeld === undefined) {
+    return nichtAufloesbar(aufruf);
   }
-  for (const anweisung of name.getSourceFile().statements) {
-    if (!ts.isImportDeclaration(anweisung) || !ts.isStringLiteral(anweisung.moduleSpecifier)) {
-      continue;
-    }
-    const bindungen = anweisung.importClause?.namedBindings;
-    if (bindungen === undefined || !ts.isNamedImports(bindungen)) {
-      continue;
-    }
-    const element = bindungen.elements.find((e) => e.name.text === name.text);
-    if (element === undefined) {
-      continue;
-    }
-    const exportName = (element.propertyName ?? element.name).text;
-    for (const kandidat of modulKandidaten(umfeld.datei, anweisung.moduleSpecifier.text)) {
-      const ziel = umfeld.leser(kandidat);
-      const funktion = ziel ? exportierteFunktion(ziel, exportName) : undefined;
-      const typ = funktion ? rueckgabeTyp(funktion) : undefined;
-      if (ziel && typ) {
-        return rolleAusTyp(sammleDeklarationen(ziel.ast), typ);
-      }
-    }
-    return abbruch;
-  }
-  return abbruch;
+  const funktion = exportierteFunktion(ziel.quelle, ziel.name);
+  const typ = funktion ? rueckgabeTyp(funktion) : undefined;
+  return rolleAusTyp(umfeldVon(ziel.quelle, ziel.datei, umfeld.leser), typ, aufruf);
 }
 
 export function propsRolle(
@@ -587,7 +846,7 @@ export function propsRolle(
   tiefe = 0,
   pfad: Set<ts.Node> = new Set(),
 ): PropsRolle {
-  const abbruch = (n: ts.Node): PropsRolle => ({ bild: { werte: [], offen: [] }, abbrueche: [n] });
+  const abbruch = nichtAufloesbar;
   const weiter = (n: ts.Node): PropsRolle => propsRolle(n, deklarationen, umfeld, tiefe + 1, pfad);
   if (tiefe > MAX_TIEFE) {
     return abbruch(ausdruck);
@@ -639,7 +898,7 @@ export function propsRolle(
       }
       pfad.add(d);
       try {
-        return deklarationsRolle(deklarationen, d, weiter);
+        return deklarationsRolle({ deklarationen, modul: umfeld }, d, weiter);
       } finally {
         pfad.delete(d);
       }
@@ -649,12 +908,12 @@ export function propsRolle(
 
 /** Die Rolle, die eine Deklaration als Props-Wert trägt — über ihren Typ oder ihre Herkunft. */
 function deklarationsRolle(
-  deklarationen: Deklarationen,
+  u: Typumfeld,
   d: ts.Node,
   weiter: (n: ts.Node) => PropsRolle,
 ): PropsRolle {
   if (ts.isParameter(d) && ts.isIdentifier(d.name)) {
-    return rolleAusTyp(deklarationen, d.type);
+    return ausDemParameter(rolleAusTyp(u, d.type, d), d);
   }
   if (ts.isVariableDeclaration(d)) {
     // Nacharbeit 5 (ben): die Kette läuft über den Initialisierer weiter (`const q = props`).
@@ -663,17 +922,17 @@ function deklarationsRolle(
     if (konstant && d.initializer) {
       const herkunft = weiter(d.initializer);
       if (herkunft.abbrueche.length > 0 && d.type) {
-        return rolleAusTyp(deklarationen, d.type);
+        return rolleAusTyp(u, d.type, d);
       }
       return herkunft;
     }
-    return d.type ? rolleAusTyp(deklarationen, d.type) : { ...keineRolle(), abbrueche: [d] };
+    return rolleAusTyp(u, d.type, d);
   }
   if (ts.isBindingElement(d) && d.dotDotDotToken !== undefined) {
     // `{ a, ...rest }: Props` — `rest` trägt `role`, sofern es nicht daneben herausgelöst wurde.
     const muster = d.parent;
     if (!ts.isObjectBindingPattern(muster)) {
-      return keineRolle();
+      return nichtAufloesbar(d);
     }
     const herausgeloest = muster.elements.some((e) => {
       const name = e.propertyName ?? e.name;
@@ -684,30 +943,26 @@ function deklarationsRolle(
       return keineRolle();
     }
     if (ts.isParameter(halter)) {
-      return rolleAusTyp(deklarationen, halter.type);
+      return ausDemParameter(rolleAusTyp(u, halter.type, halter), halter);
     }
     if (ts.isVariableDeclaration(halter)) {
       // `const { a, ...rest } = props` — ohne Typangabe trägt der Rest die Rolle der Quelle.
       if (halter.type) {
-        return rolleAusTyp(deklarationen, halter.type);
+        return rolleAusTyp(u, halter.type, halter);
       }
-      return halter.initializer ? weiter(halter.initializer) : { ...keineRolle(), abbrueche: [d] };
+      return halter.initializer ? weiter(halter.initializer) : nichtAufloesbar(d);
     }
-    return { ...keineRolle(), abbrueche: [d] };
+    return nichtAufloesbar(d);
   }
   if (ts.isBindingElement(d)) {
-    const typ = bindungsTypIn(deklarationen, d);
-    if (typ) {
-      return rolleAusTyp(deklarationen, typ);
-    }
-    // Ein Feld einer Bindung ohne lesbaren Typ: der Wert kommt von woanders — Kette reisst ab,
-    // ausser es ist ein Parameterfeld (dort gilt wie beim Parameter: Typ nicht in dieser Datei).
-    if (ts.isVariableDeclaration(d.parent.parent)) {
-      return { ...keineRolle(), abbrueche: [d] };
-    }
-    return keineRolle();
+    // Ein einzelnes Feld als Props-Objekt (`({ p }: { p: P })`). Sein Typ wird nur lokal gelesen;
+    // ohne ihn ist das Feld nicht auflösbar — als Parameterfeld entscheidet der Aufrufer.
+    const typ = bindungsTypIn(u.deklarationen, d);
+    const r = rolleAusTyp(u, typ, d);
+    const halter = d.parent.parent;
+    return ts.isParameter(halter) ? ausDemParameter(r, halter) : r;
   }
-  return { ...keineRolle(), abbrueche: [d] };
+  return nichtAufloesbar(d);
 }
 
 /**
@@ -985,14 +1240,59 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
     }
   };
 
+  const weiterreicher = new Set<string>();
+  const komponentenStellen: Komponentenstelle[] = [];
+
+  // Wohin ein Spread in eine Komponente geht: eine Funktion des Bestands — oder nichts Lesbares
+  // (Paket, Wert, Re-Export); dann zählt die Stelle im Tor wie eine an einem DOM-Element.
+  const komponentenZiel = (tag: ts.Node): Komponentenstelle["ziel"] => {
+    if (!ts.isIdentifier(tag)) {
+      return undefined;
+    }
+    const lokal = sichtbareDeklarationen(deklarationen, tag);
+    if (lokal.length > 0) {
+      return lokal.every(istFunktion) ? { modul: quelle.datei, name: tag.text } : undefined;
+    }
+    const ziel = importZiel(tag, umfeld);
+    if (ziel?.art !== "modul") {
+      return undefined;
+    }
+    const funktion = exportierteFunktion(ziel.quelle, ziel.name);
+    return funktion && istFunktion(funktion) ? { modul: ziel.datei, name: ziel.name } : undefined;
+  };
+
   // Die Rolle gespreizter Props: ein Dialogwert wird Kandidat am Spread, eine vorhandene, aber
   // unbestimmbare Rolle (`role?: string`) eine unbekannte Bauform — rot mit Datei und Zeile.
   // Nacharbeit 5: reisst die lokale Herkunft ab, ist das an einem DOM-Element ebenfalls rot — dort
   // wird `role` unmittelbar zum Attribut. Bei einem Bauteil beurteilt dessen eigene Datei, was es
   // mit den Props baut (dort ist der Spread wieder ein Ausgangspunkt).
-  const meldePropsRolle = (ausdruck: ts.Node, aufDomElement: boolean): void => {
-    const { bild, abbrueche } = propsRolle(ausdruck, deklarationen, umfeld);
+  //
+  // Nacharbeit 7: eine nicht auflösbare Rolle aus dem PARAMETER einer benannten Funktion ist am
+  // DOM-Element kein Befund dieser Stelle — die Funktion wird als `weiterreicher` vermerkt, und das
+  // Tor prüft ihre Aufrufstellen. Spreads in Komponenten werden als `komponentenStellen` vermerkt.
+  const meldePropsRolle = (ausdruck: ts.Node, tag: ts.Node, aufDomElement: boolean): void => {
+    const { bild, abbrueche, vonAufrufern } = propsRolle(ausdruck, deklarationen, umfeld);
     const text = ausdruck.getText(sf).replace(/\s+/g, " ").slice(0, 60);
+    const zeile = zeileVon(sf, ausdruck);
+    if (!aufDomElement && (abbrueche.length > 0 || vonAufrufern.length > 0)) {
+      komponentenStellen.push({
+        datei: quelle.datei,
+        zeile,
+        text,
+        ziel: komponentenZiel(tag),
+        abbruch: abbrueche.length > 0,
+        funktionen: vonAufrufern.map((q) => q.funktion),
+      });
+    }
+    for (const q of aufDomElement ? vonAufrufern : []) {
+      if (q.funktion !== undefined) {
+        weiterreicher.add(q.funktion);
+      } else {
+        unbekannteBauformen.push(
+          `${quelle.datei}:${zeile} — gespreizte Props „${text}“ an einem DOM-Element: ihre Rolle kommt aus dem Parameter einer namenlosen Funktion, deren Aufrufer dieser Sammler nicht findet`,
+        );
+      }
+    }
     for (const w of bild.werte) {
       if (istDialogName(w.text)) {
         melde(ausdruck, "role-dialog");
@@ -1006,7 +1306,7 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
     }
     if (aufDomElement && abbrueche.length > 0) {
       unbekannteBauformen.push(
-        `${quelle.datei}:${zeileVon(sf, ausdruck)} — gespreizte Props „${text}“ an einem DOM-Element: ihre Herkunft ist lokal nicht auflösbar, ob sie eine Rolle tragen, kann dieser Sammler nicht beurteilen`,
+        `${quelle.datei}:${zeile} — gespreizte Props „${text}“ an einem DOM-Element: ihre Herkunft oder ihr Typ ist nicht auflösbar, ob sie eine Rolle tragen, kann dieser Sammler nicht beurteilen`,
       );
     }
   };
@@ -1201,7 +1501,7 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
     if (ts.isJsxSpreadAttribute(node)) {
       const element = node.parent.parent;
       const aufDom = ts.isIdentifier(element.tagName) && /^[a-z]/.test(element.tagName.text);
-      meldePropsRolle(node.expression, aufDom);
+      meldePropsRolle(node.expression, element.tagName, aufDom);
     }
     if (ts.isCallExpression(node) && aufrufName(node) === "createElement") {
       const [tag, props] = node.arguments;
@@ -1209,7 +1509,7 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
         // Ein bestimmter Zeichenkettenwert als Tag ist ein DOM-Element (`createElement("div", …)`).
         const tagWerte = statischeWerte(tag, deklarationen);
         const aufDom = tagWerte.werte.length > 0 && tagWerte.offen.length === 0;
-        meldePropsRolle(props, aufDom);
+        meldePropsRolle(props, tag, aufDom);
       }
     }
     if (ts.isCallExpression(node) && aufrufName(node) === "setAttribute") {
@@ -1306,6 +1606,8 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
     exportierte,
     nativeRefs,
     unbekannteBauformen,
+    weiterreicher: [...weiterreicher],
+    komponentenStellen,
   };
 }
 
@@ -1464,6 +1766,50 @@ export function beurteile(erhebungen: DateiErhebung[]): {
 // Der Test in `tests/app/mega47-modale-flaechen-sammler.test.tsx` misst DIESELBEN Funktionen —
 // es gibt eine Erhebung und zwei Aufrufer.
 
+/**
+ * Nacharbeit 7: die Aufrufstellen der Weiterreicher, über ALLE Dateien. Eine Komponente reicht
+ * weiter, wenn ihre nicht auflösbare Parameter-Rolle ein DOM-Element erreicht — direkt oder über
+ * eine weitere weiterreichende Komponente (Fixpunkt). Ein Spread in eine solche Komponente oder in
+ * eine nicht lesbare (Paket) zählt wie ein Spread an einem DOM-Element: ist seine Herkunft nicht
+ * auflösbar oder stammt er aus einer namenlosen Funktion, ist er rot mit Datei und Zeile.
+ */
+export function weitergereichteBefunde(erhoben: DateiErhebung[]): string[] {
+  const schluessel = (modul: string, name: string): string => `${modul}#${name}`;
+  const weiter = new Set(
+    erhoben.flatMap((e) => e.weiterreicher.map((n) => schluessel(e.quelle.datei, n))),
+  );
+  const stellen = erhoben.flatMap((e) => e.komponentenStellen);
+  const zaehlt = (s: Komponentenstelle): boolean =>
+    s.ziel === undefined || weiter.has(schluessel(s.ziel.modul, s.ziel.name));
+  let gewachsen = true;
+  while (gewachsen) {
+    gewachsen = false;
+    for (const s of stellen.filter(zaehlt)) {
+      for (const f of s.funktionen) {
+        if (f !== undefined && !weiter.has(schluessel(s.datei, f))) {
+          weiter.add(schluessel(s.datei, f));
+          gewachsen = true;
+        }
+      }
+    }
+  }
+  const befunde: string[] = [];
+  for (const s of stellen.filter(zaehlt)) {
+    const wohin = s.ziel ? `<${s.ziel.name}> (${s.ziel.modul})` : "eine nicht lesbare Komponente";
+    if (s.abbruch) {
+      befunde.push(
+        `${s.datei}:${s.zeile} — gespreizte Props „${s.text}“ in ${wohin}, die Props bis zu einem DOM-Element weiterreicht: ihre Herkunft oder ihr Typ ist nicht auflösbar, ob sie eine Rolle tragen, kann dieser Sammler nicht beurteilen`,
+      );
+    }
+    if (s.funktionen.includes(undefined)) {
+      befunde.push(
+        `${s.datei}:${s.zeile} — gespreizte Props „${s.text}“ in ${wohin}: ihre Rolle kommt aus dem Parameter einer namenlosen Funktion, deren Aufrufer dieser Sammler nicht findet`,
+      );
+    }
+  }
+  return befunde;
+}
+
 export function pruefeModalgrenze(wurzel: string = WURZEL): {
   rot: string[];
   gelesen: number;
@@ -1487,7 +1833,7 @@ export function pruefeModalgrenze(wurzel: string = WURZEL): {
   // Register A17b: der unabhängige Zähler und die unbekannten Bauformen gehören INS TOR. Bis
   // hierher liefen sie nur im Test (`UNABGERECHNET` in mega47) — das Tor meldete eine Bauform, die
   // es nicht lesen konnte, also gar nicht.
-  const unbekannt = erhoben.flatMap(modalAbgleich);
+  const unbekannt = [...erhoben.flatMap(modalAbgleich), ...weitergereichteBefunde(erhoben)];
   const { rot, beurteilt } = beurteile(erhoben);
   // Eine Erhebung, die leer läuft, ist ein Fehler und kein Erfolg. Die gemessenen Untergrenzen
   // gegen ein SCHRUMPFEN stehen in `tests/app/mega47-modale-flaechen-sammler.test.tsx`

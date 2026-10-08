@@ -520,7 +520,7 @@ describe("Register A17b · Nacharbeit (ben Befund 1): Rollenwerte werden am Synt
     expect(rot, "Aufruf, let und Aufruf direkt — drei abgerissene Ketten").toHaveLength(3);
     for (const zeile of rot) {
       expect(zeile).toContain(`${datei}:5`);
-      expect(zeile).toContain("lokal nicht auflösbar");
+      expect(zeile).toContain("ihr Typ ist nicht auflösbar");
     }
 
     // An einem BAUTEIL beurteilt dessen eigene Datei den Spread — hier kein Befund.
@@ -545,6 +545,69 @@ describe("Register A17b · Nacharbeit (ben Befund 1): Rollenwerte werden am Synt
     ]);
     expect(e.kandidaten).toEqual([{ datei, zeile: 4, art: "role-dialog" }]);
     expect(modalAbgleich(e), "anker(): nachweislich keine Rolle").toEqual([]);
+  });
+
+  it("Nacharbeit 7: Unionen, Vererbung und Hilfstypen werden aufgelöst statt übergangen", () => {
+    // bens Fall wörtlich: eine Union von Objekttypen.
+    const datei = "apps/web/src/components/A17bUnion.tsx";
+    const union = synth(datei, [
+      "type P = { role: 'dialog' } | { role: 'region' };",
+      "export function F(p: P): JSX.Element {",
+      "  return <div {...p} />;",
+      "}",
+    ]);
+    expect(union.kandidaten).toEqual([{ datei, zeile: 3, art: "role-dialog" }]);
+    expect(modalAbgleich(union)).toEqual([]);
+
+    const geerbt = synth("apps/web/src/components/A17bErbe.tsx", [
+      "interface Basis { role: 'alertdialog'; }",
+      "interface P extends Basis { id: string; }",
+      "export function F(p: P): JSX.Element {",
+      "  return <div {...p} />;",
+      "}",
+    ]);
+    expect(geerbt.kandidaten.map((k) => `${k.zeile}:${k.art}`)).toEqual(["4:role-dialog"]);
+
+    const hilfstypen = synth("apps/web/src/components/A17bHilfstypen.tsx", [
+      "interface Basis { id: string; role: 'dialog'; }",
+      "export function Ohne(p: Omit<Basis, 'role'>): JSX.Element {",
+      "  return <div {...p} />;",
+      "}",
+      "export function Mit(p: Partial<Pick<Basis, 'role' | 'id'>>): JSX.Element {",
+      "  return <div {...p} />;",
+      "}",
+      "type Anker = { [K in `data-${string}`]?: string };",
+      "export function Daten(p: Anker): JSX.Element {",
+      "  return <div {...p} />;",
+      "}",
+    ]);
+    expect(hilfstypen.kandidaten.map((k) => `${k.zeile}:${k.art}`)).toEqual(["6:role-dialog"]);
+    expect(modalAbgleich(hilfstypen), "Omit und data-*: nachweislich keine Rolle").toEqual([]);
+    expect(hilfstypen.weiterreicher).toEqual([]);
+  });
+
+  it("Nacharbeit 7: ein nicht auflösbarer Typ ergibt nie „keine Rolle“", () => {
+    const datei = "apps/web/src/components/A17bUnaufloesbar.tsx";
+    const e = synth(datei, [
+      'import type { ButtonHTMLAttributes } from "react";',
+      'import { mach } from "./mach";',
+      "type Fremd = ButtonHTMLAttributes<HTMLButtonElement>;",
+      "export function Knopf(p: Fremd): JSX.Element {",
+      "  return <button {...p} />;",
+      "}",
+      "export function Liste({ teile }: { teile: Fremd[] }): JSX.Element {",
+      "  const q: Fremd = mach();",
+      "  return <ul {...q}>{teile.map((t: Fremd) => <li {...t} />)}</ul>;",
+      "}",
+    ]);
+    // Parameter einer benannten Funktion: die Rolle setzen die Aufrufer — das Tor prüft sie dort.
+    expect(e.weiterreicher).toEqual(["Knopf"]);
+    // Typangabe ohne lesbaren Typ und Parameter einer namenlosen Funktion: rot am DOM-Element.
+    const rot = modalAbgleich(e);
+    expect(rot, "<ul {...q}> und <li {...t}>").toHaveLength(2);
+    expect(rot.every((z) => z.includes(`${datei}:9`))).toBe(true);
+    expect(rot.some((z) => z.includes("ihr Typ ist nicht auflösbar"))).toBe(true);
+    expect(rot.some((z) => z.includes("namenlosen Funktion"))).toBe(true);
   });
 
   it("GEGENPROBE: die Bauformen des Bestands bleiben ohne Befund (Parameter-Vorgabe mit Literal-Union, Bedingung)", () => {
@@ -775,6 +838,56 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     expect(rot.filter(imDialog)).toHaveLength(1);
     expect(rot.filter(imOffen)).toHaveLength(1);
     expect(rot).toHaveLength(2);
+  });
+
+  it("Nacharbeit 7: das Tor prüft die Aufrufstellen weiterreichender Komponenten über Dateien", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Knopf.tsx": [
+          'import type { ButtonHTMLAttributes } from "react";',
+          "export function Knopf(props: ButtonHTMLAttributes<HTMLButtonElement>): JSX.Element {",
+          "  return <button {...props} />;",
+          "}",
+        ],
+        "apps/web/src/components/Stumm.tsx": [
+          "export function Stumm(p: { id: string }): JSX.Element {",
+          "  return <span>{p.id}</span>;",
+          "}",
+        ],
+        "apps/web/src/components/Nutzer.tsx": [
+          'import { Knopf } from "./Knopf";',
+          'import { Stumm } from "./Stumm";',
+          'import { mach } from "./mach";',
+          "export function Nutzer(): JSX.Element {",
+          "  return (",
+          "    <div>",
+          '      <Knopf role="dialog" />',
+          "      <Knopf {...mach()} />",
+          "      <Stumm {...mach()} />",
+          "    </div>",
+          "  );",
+          "}",
+        ],
+        "apps/web/src/lib/typen.ts": ['export interface Basis { role: "dialog"; }'],
+        "apps/web/src/components/Rel.tsx": [
+          'import type { Basis } from "../lib/typen";',
+          "export function Rel(p: Basis): JSX.Element {",
+          "  return <div {...p} />;",
+          "}",
+        ],
+      }),
+    );
+    const enthaelt = (teil: string): number => rot.filter((z) => z.includes(teil)).length;
+    // Knopf reicht weiter: die Rolle der Aufrufer zählt — `role="dialog"` und der offene Spread.
+    expect(enthaelt("components/Nutzer.tsx:7 — role-dialog")).toBe(1);
+    expect(enthaelt("components/Nutzer.tsx:8 — gespreizte Props")).toBe(1);
+    // Stumm reicht nichts weiter: derselbe offene Spread ist dort kein Befund.
+    expect(enthaelt("components/Nutzer.tsx:9")).toBe(0);
+    // Der relativ importierte Typ wird im Zielmodul gelesen.
+    expect(enthaelt("components/Rel.tsx:3 — role-dialog")).toBe(1);
+    expect(enthaelt("Knopf.tsx:"), "Knopf selbst ist kein Befund").toBe(0);
+    expect(rot).toHaveLength(3);
   });
 
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
