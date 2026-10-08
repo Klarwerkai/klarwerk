@@ -240,6 +240,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | --- | --- | --- | --- | --- | --- |
 | `POST` | `/api/ask` | `ko.read` oder Add-in-Fähigkeit | Rumpf `{ question, locale?, mode?, selection?, selectionConfidentiality?, questionSource? }` | 200 Antwort mit Belegen | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN`; 503 `KI_ABGESCHALTET` |
 | `POST` | `/api/ask/helpful` | `ko.read` | Rumpf `{ koId, receipt? }` | 204 | Dienstfehler |
+| `POST` | `/api/ask/not-helpful` | `ko.read`; mit `alternative` zusätzlich `ko.create` | Rumpf `{ koId, receipt?, alternative?, entwurfTitel? }` | 200 `{ vermerkt, entwurfId }` (Audit `answer.not_helpful`, genau einmal je Person und Objekt; `alternative` wird ein Entwurf) | 403 `FORBIDDEN`; 404 `NOT_FOUND`; 400 Schema |
 | `GET` | `/api/gaps` | `ko.read` | — | 200 Wissenslücken | — |
 | `GET` | `/api/gaps/summary` | `ko.read` | — | 200 Zusammenfassung | — |
 | `PUT` | `/api/gaps/:id` | `ko.assign` | Rumpf `{ expertId? \| close? \| priority? }` | 200 Lücke | 400 `BAD_REQUEST` |
