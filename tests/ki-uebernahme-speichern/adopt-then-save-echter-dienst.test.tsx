@@ -52,7 +52,11 @@ let token = "";
 let vorherigerFetch: typeof globalThis.fetch;
 
 /** Was das Modell vorschlägt — gesetzt je Fall. */
-const modell: { assistText: string; strukturTitel: string; strukturWissensart?: string } = {
+const modell: {
+  assistText: string;
+  strukturTitel: string;
+  strukturWissensart?: string | undefined;
+} = {
   assistText: "",
   strukturTitel: "",
 };
