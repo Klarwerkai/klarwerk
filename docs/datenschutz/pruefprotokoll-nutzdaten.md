@@ -82,6 +82,7 @@ wiederholt.
 | `overlap.superseded`, Schließen/Trennen/Verknüpfen | `koIds`, `resolutionReason` bzw. `koId` | K, Z |
 | **`overlap.in-progress`** | **`note`**, `koIds` | **F** — siehe Befund 1 |
 | `overlap.settings.set` | `minConfidence` | Z |
+| `pruefung.hintergrundlauf` (`services/app/src/hintergrundpruefung.ts`) | `nachgeholt`, `abgeglichen`, `fehlgeschlagen`, `offen`, `vergleiche`, `vergleicheHeute`, `tagesbudget`, ggf. `abbruch` — nur Zähler, Ziel `bestand` | Z |
 
 Die Begründung und die Zitate eines automatisch erkannten Konflikts (`rationale`, `quotes`) stehen
 am Konflikt, **nicht** im Protokoll.

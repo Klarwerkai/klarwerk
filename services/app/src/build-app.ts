@@ -255,6 +255,7 @@ import { schalterAn } from "./feature-flags";
 // (`PgBegriffeRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
 import { type BegriffeRepo, InMemoryBegriffeRepo, PgBegriffeRepo } from "./firmenwoerterbuch";
 import { kiLaeufeAuskunft } from "./health-ki-laeufe";
+import { type HintergrundlaufBericht, createHintergrundpruefung } from "./hintergrundpruefung";
 import {
   type SessionUser,
   isInternalOnlyError,
@@ -2506,6 +2507,9 @@ export function buildApp(
     factoryReset?: FactoryReset;
     log?: { senke?: LogSenke; stufe?: string };
     klaraAufraeumen?: (lauf: () => Promise<number>) => void;
+    // AUFNAHME 20260922 · gesamt-pruefung-hintergrund: der Nachhol- und Abgleichlauf über DEN
+    // Prüf-Worker dieser App (hintergrundpruefung.ts); `server.ts` startet ihn, Tests nicht.
+    hintergrundpruefung?: (lauf: () => Promise<HintergrundlaufBericht | null>) => void;
   } = {},
 ): FastifyInstance {
   // SCRUM-490 R3 (B2, Fix 4): trustProxy gezielt aus env (KLARWERK_TRUST_PROXY) — request.ip = echte
@@ -3143,6 +3147,14 @@ export function buildApp(
       }),
     });
   services.aiCheckWorker = aiCheckWorker;
+  opts.hintergrundpruefung?.(
+    createHintergrundpruefung({
+      ko: services.ko,
+      worker: aiCheckWorker,
+      modellAktiv: () => services.reasoner.status().active,
+      audit: services.audit,
+    }),
+  );
   app.register(
     koRoutes(
       {

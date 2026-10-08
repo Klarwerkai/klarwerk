@@ -333,7 +333,13 @@ export class ConflictService {
     if (ranked.length === 0) {
       return [];
     }
-    const open = (await this.repo.all()).filter((c) => c.status !== "geloest");
+    // AUFNAHME 20260922 · Hintergrundabgleich (R-1111): ein GELÖSTER Konflikt (entschieden oder als
+    // Fehlalarm verworfen) blockt das Paar ebenfalls — aber NUR für genau die Fassungen, die er
+    // trägt. Ein Wiederholungslauf über unveränderte Inhalte legt ihn damit nicht erneut an.
+    // Gelöste Einträge ohne Fassungspaar (Altbestand) blocken nicht.
+    const open = (await this.repo.all()).filter(
+      (c) => c.status !== "geloest" || (c.koAVersion !== undefined && c.koBVersion !== undefined),
+    );
     // D-AISTATE PAKET 4 (bens V5): Paar-Dedupe nur für die AKTUELLE Versionskombination. Ein Befund zu
     // einer inzwischen revidierten Fassung (stale) blockt den neuen Lauf NICHT. Altbestand ohne
     // Versionsfelder (oder ein versionsloser Lauf) blockt konservativ wie bisher.
@@ -347,7 +353,7 @@ export class ConflictService {
           return true; // Altbestand-Eintrag → wie bisher blocken
         }
         if (aVer === undefined || bVer === undefined) {
-          return true; // versionsloser Lauf → konservativ blocken
+          return c.status !== "geloest"; // versionsloser Lauf → konservativ blocken (nur offen)
         }
         const verFor = (koId: string): number | undefined =>
           c.koA === koId ? c.koAVersion : c.koBVersion;
