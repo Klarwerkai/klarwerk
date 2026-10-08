@@ -351,3 +351,35 @@ describe("JOB 1110 D1 · Konten-Tab: erst der Bestand, dann das Formular", () =>
     );
   });
 });
+
+// AUFNAHME gesamt-rollen-navigation · R-0533: „Drei Konten trugen Verwalterrechte, ohne dass das
+// irgendwo kenntlich war. Wer solche Rechte hat, soll sichtbar sein." Die Kontenliste nennt an JEDER
+// Zeile die Rolle als Wert — ein Verwalterkonto steht dort als „Administrator", ohne dass man die
+// Detailkarte öffnen muss. Gegenprobe: das Expertenkonto daneben trägt den Namen NICHT.
+describe("R-0533 · Verwalterkonten sind in der Kontenliste als solche erkennbar", () => {
+  it("die Zeile eines Verwalterkontos nennt „Administrator“, die eines Expertenkontos nicht", async () => {
+    usersData.rows = [
+      ...BESTAND,
+      {
+        id: "v3",
+        name: "Vera Verwalterin",
+        email: "vera@bestand.de",
+        role: "admin",
+        approved: true,
+      },
+    ];
+    await mount();
+    const zeileVon = (name: string): HTMLButtonElement => {
+      const b = [...container.querySelectorAll("button")].find(
+        (el) => text(el.querySelector("span") ?? el) === name,
+      );
+      if (!(b instanceof HTMLButtonElement)) {
+        throw new Error(`Kontenzeile „${name}" nicht gefunden`);
+      }
+      return b;
+    };
+    expect(text(zeileVon("Vera Verwalterin"))).toContain(i18n.t("role.name.admin"));
+    expect(text(zeileVon("Anna Bestand"))).toContain(i18n.t("role.name.experte"));
+    expect(text(zeileVon("Anna Bestand"))).not.toContain(i18n.t("role.name.admin"));
+  });
+});
