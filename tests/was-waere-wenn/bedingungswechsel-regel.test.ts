@@ -27,6 +27,11 @@
 //       ergeben nie `beide`; positive Geltungsaussagen schon.
 //   W13 Vorbehalt bei nur einer genannten Bedingung → `ungeklaert`: Unsicherheit, nur Titel oder
 //       Schlagwort, kein positiver Beleg. Belegte einseitige Geltung bleibt gebunden.
+//
+// Nacharbeit 3 (Ben: „Für 6082-T6 liegen keine Erfahrungswerte vor" landete unter „Schon für
+// 6082-T6 festgehalten"):
+//   W14 „für/bei X …" allein ist kein Beleg. Fehlendes oder verneintes Wissen → `ungeklaert`; nur
+//       eine erkannte Anweisung behält ihre Verneinung als Teil der Handlung.
 import { describe, expect, it } from "vitest";
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
 import {
@@ -332,6 +337,35 @@ describe("R-1628 · Nacharbeit 1 — Fund ist nicht Geltung", () => {
     expect(lage({ conditions: ["6082-T6"] })).toBe("nur_neu");
     expect(lage({ statement: "Für 6082-T6 geeignet." })).toBe("nur_neu");
     expect(lage({ statement: "Für 5083-H111 auf 80 Grad vorwärmen." })).toBe("nur_bisher");
+  });
+
+  it("W14 · „für/bei X …“ allein ist keine Geltung; fehlendes Wissen ist ungeklärt", () => {
+    // Bens Fall.
+    const ben = ko({ statement: "Für 6082-T6 liegen keine Erfahrungswerte vor." });
+    expect(lage({ statement: ben.statement })).toBe("ungeklaert");
+    expect(fundstelle(ben, "6082-T6")).toEqual({
+      fundort: "aussage",
+      text: "Für 6082-T6 liegen keine Erfahrungswerte vor.",
+      bewertung: "vorbehalt",
+    });
+    for (const statement of [
+      // Verneintes Wissen in anderen Formen — auch als Infinitiv eines Zustandsverbs.
+      "Für 6082-T6 keine Erfahrungswerte vorliegen.",
+      "Bei 6082-T6 gibt es noch keine Versuche.",
+      "Für 6082-T6 fehlen Erfahrungen.",
+      "Erfahrungswerte für 6082-T6 unbekannt.",
+      "Bei 5083-H111 wurden keine Versuche gemacht.",
+      // Eingeleitet, aber keine erkannte Anweisung und kein Geltungsprädikat.
+      "Bei 6082-T6 ebenso.",
+      "Für 5083-H111 die Erfahrungswerte.",
+    ]) {
+      expect(lage({ statement }), statement).toBe("ungeklaert");
+    }
+    // Erkannte Anweisungen und Geltungsaussagen bleiben belegt — auch mit verneinter Handlung.
+    expect(lage({ statement: "Bei 6082-T6 nicht überhitzen." })).toBe("nur_neu");
+    expect(lage({ statement: "Bei 6082-T6 die Kanten entgraten." })).toBe("nur_neu");
+    expect(lage({ statement: "Für 6082-T6 geeignet." })).toBe("nur_neu");
+    expect(lage({ statement: "Für 5083-H111 keine Druckluft verwenden." })).toBe("nur_bisher");
   });
 
   it("W11 · die Frage für die KI trägt den Wechsel wörtlich", () => {

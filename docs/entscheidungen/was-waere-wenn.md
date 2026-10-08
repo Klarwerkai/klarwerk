@@ -1,8 +1,8 @@
 # Geltung vorhandenen Wissens bei geänderten Bedingungen — Bestand und Lieferung
 
 *Aufnahme 20260922 · `aufnahme:20260922:gesamt-was-waere-wenn` (Revision 1). Basisstand `fadddf37`
-(`1.0.0-beta.1.770`); erster Kandidat `16211282`, danach Nacharbeit 1 (Kandidat `9682296a`) und
-Nacharbeit 2 nach Bens Befunden. Das
+(`1.0.0-beta.1.770`); erster Kandidat `16211282`, danach Nacharbeit 1 (Kandidat `9682296a`),
+Nacharbeit 2 (Kandidat `d7e4f5be`) und Nacharbeit 3 nach Bens Befunden. Das
 Verhalten prüfen die Tests unter `tests/was-waere-wenn/`; dieses Dokument selbst liest kein Test.
 „Belegt durch“ nennt Verhaltenstests — ob sie auf diesem Stand grün sind, sagt erst ihr Lauf.*
 
@@ -36,7 +36,7 @@ Durchspielens mit der KI.
 | „Wenn ich statt 5083-H111 jetzt 6082-T6 verwende“ | Fragen-Seite, zugeklappt unter „Ich frage für“: **„Was wäre, wenn sich eine Bedingung ändert?“** mit „Statt (bisher)“, „jetzt (neu)“, optional „Nur zum Thema“; Vorschläge aus den Bedingungen des Bestands. | `bedingungswechsel-flaeche.test.tsx` (B1–B3), `bedingungswechsel-regel.test.ts` (W6) |
 | „mit der KI durchspielen“ | Knopf **„Mit Klara durchspielen“**: stellt die Frage der Quelle mit den eingegebenen Bedingungen (und dem Thema) über **denselben** Submit wie Fragefeld und Beispielchips (`askExample` → `submitAsk`). Es gelten Quellenpflicht, Lückenweg, Fragekontext, Gesprächsfaden und KI-Sperre wie bei jeder Frage; bei gesperrter KI ist der Knopf aus und nennt den Grund. Die Einordnung darüber bleibt stehen. | `bedingungswechsel-flaeche.test.tsx` (B4, B5), `bedingungswechsel-regel.test.ts` (W11) |
 | „welche bestehenden Erfahrungswerte gelten dann noch, welche nicht?“ | Je sichtbares Wissensobjekt eine Lage nach `apps/web/src/lib/bedingungswechsel.ts`: **an die bisherige gebunden**, **für die neue ausdrücklich ausgeschlossen**, **genannt, aber nicht eindeutig**, **für beide ausdrücklich festgehalten**, **schon für die neue festgehalten**, **nennt keine** (ohne Thema nur gezählt). Jeder Eintrag verweist auf das Objekt und zeigt die maßgebliche Fundstelle mit Bewertung („ausgeschlossen“, „nur erwähnt, nicht ausdrücklich“). | `bedingungswechsel-regel.test.ts` (W1–W5, W7–W10), `bedingungswechsel-flaeche.test.tsx` (B2–B3) |
-| „markiert, welche … materialspezifisch sind und welche übertragbar sind“ | Geltung nur aus **positivem Beleg**: (a) reine Bedingungsangabe („Werkstoff 5083-H111“), (b) vollständig gedeutete Geltungsaussage („gilt/geeignet/bewährt für X und Y“, „X und Y sind geeignet“), (c) als Bedingung eingeleitete Anweisung („bei X …“). „Materialspezifisch“ = die bisherige gilt, die neue ist nicht genannt. „Übertragbar belegt“ **nur** mit (a) oder (b) für beide gemeinsam. Ein Ausschluss („nicht für Y“, „außer bei Y“, „Y ist ungeeignet“, „für Y nicht“) führt zu „ausgeschlossen“. Alles ohne positiven Beleg oder mit Vorbehalt — auch bei nur einer genannten Bedingung (Unsicherheit, Abwertung, Gegensatz, „nur“, „statt“, nur Titel/Schlagwort, unbekannte Formulierung) — zu „nicht eindeutig“. | `bedingungswechsel-regel.test.ts` (W7–W10, W12–W13), `bedingungswechsel-flaeche.test.tsx` (B2) |
+| „markiert, welche … materialspezifisch sind und welche übertragbar sind“ | Geltung nur aus **positivem Beleg**: (a) reine Bedingungsangabe („Werkstoff 5083-H111“), (b) vollständig gedeutete Geltungsaussage („gilt/geeignet/bewährt für X und Y“, „X und Y sind geeignet“, „für X geeignet“), (c) **erkannte** Anweisung, die die Bedingung einleitet („bei X die Kanten entgraten“ — Satzteil endet mit kleingeschriebenem Infinitiv, kein Zustands-/Existenzverb). „Für/bei X …“ allein ist kein Beleg; fehlendes Wissen („liegen keine Erfahrungswerte vor“, „unbekannt“, „fehlen“) ist ein Vorbehalt. „Materialspezifisch“ = die bisherige gilt, die neue ist nicht genannt. „Übertragbar belegt“ **nur** mit (a) oder (b) für beide gemeinsam. Ein Ausschluss („nicht für Y“, „außer bei Y“, „Y ist ungeeignet“, „für Y nicht“) führt zu „ausgeschlossen“. Alles ohne positiven Beleg oder mit Vorbehalt — auch bei nur einer genannten Bedingung (Unsicherheit, Abwertung, Gegensatz, „nur“, „statt“, nur Titel/Schlagwort, unbekannte Formulierung) — zu „nicht eindeutig“. | `bedingungswechsel-regel.test.ts` (W7–W10, W12–W14), `bedingungswechsel-flaeche.test.tsx` (B2) |
 
 ## Nacharbeit 1 (Ben, Kandidat `16211282`)
 
@@ -67,6 +67,19 @@ Durchspielens mit der KI.
 W8 bewertet „Bei 5083-H111 nicht überhitzen“ jetzt mit `gilt` statt `vorbehalt`: die Bedingung
 ist eingeleitet (c), „nicht“ verneint die Handlung. Die Lage „an 5083-H111 gebunden“ bleibt.
 
+## Nacharbeit 3 (Ben, Kandidat `d7e4f5be`)
+
+*„Eine vorangestellte Präposition genügt weiterhin als positiver Geltungsbeleg“* — „Für 6082-T6
+liegen keine Erfahrungswerte vor“ stand unter „Schon für 6082-T6 festgehalten“, weil „für X“ allein
+als Form (c) zählte und jede Verneinung danach als verneinte Handlung galt. Behoben: (c) verlangt
+eine **erkannte Anweisung** — der Satzteil nach der Bedingung endet mit einem kleingeschriebenen
+Infinitiv, der kein Zustands-, Existenz- oder Hilfsverb ist („vorliegen“, „fehlen“, „gelten“,
+„geben“ …); großgeschriebene Wörter auf -en sind Substantive. Nur dann bleibt eine Verneinung nach
+der Bedingung Teil der Handlung („bei X nicht überhitzen“, „für X keine Druckluft verwenden“);
+sonst ist sie ein Vorbehalt. „Für X geeignet“ ist jetzt eine vollständig gedeutete Geltungsaussage
+(b). Wörter für fehlendes Wissen („unbekannt“, „fehlen“, „fehlt“, „ungeklärt“ und Entsprechungen in
+EN/NL) zählen als Vorbehalt. Gegenfälle W14, auf der Fläche B2.
+
 ## Empfehlungen (keine Entscheidungen)
 
 - **ES-092 (Steuerung, 2026-09-05): „verwerfen“** — spekulative KI-Antworten widersprächen dem
@@ -92,10 +105,14 @@ ist eingeleitet (c), „nicht“ verneint die Handlung. Die Lage „an 5083-H111
 
 - Die Bewertung arbeitet mit Wortlisten und Satzformen in Deutsch, Englisch und Niederländisch.
   Ein unbekanntes Wort macht eine Nennung nie zu „gilt“ und nie zu „übertragbar belegt“: beides
-  entsteht nur aus den positiven Formen (a)–(c). Verbleibende Grenze: eine als Bedingung
-  eingeleitete Anweisung (c) mit einer Abwertung, die keine Liste kennt („für X kaum brauchbar“),
-  erscheint als an X gebunden bzw. schon für X festgehalten. Die Fundstelle steht deshalb immer
-  dabei.
+  entsteht nur aus den positiven Formen (a)–(c), und „für/bei X …“ ohne erkannte Anweisung ist
+  keine davon. Verbleibende Grenze: eine erkannte Anweisung (c), die inhaltlich von X abrät, ohne
+  ein Listenwort zu benutzen („bei X lieber auf das Schweißen verzichten“), erscheint als an X
+  gebunden bzw. schon für X festgehalten — nie als „übertragbar belegt“. Die Fundstelle steht
+  deshalb immer dabei.
+- Die Anweisungserkennung beruht auf der deutschen/niederländischen Infinitivstellung am
+  Satzteilende. Englische Imperative („For X, deburr the edges“) werden nicht als Anweisung
+  erkannt und erscheinen als „nicht eindeutig“.
 - Die Satzformen sind bewusst eng: übertragbare Aussagen in anderer Formulierung („bei X und Y die
   Kanten entgraten“) erscheinen als „nicht eindeutig“, nicht als „übertragbar belegt“.
 - Schreibweisen werden nicht gleichgesetzt („5083 H111“ ≠ „5083-H111“); Groß-/Kleinschreibung und

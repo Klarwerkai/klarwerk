@@ -18,17 +18,22 @@
 //                        bekannten Ausschlussworts genügt nicht). Ein positiver Beleg ist eins von:
 //                        (a) eine reine Bedingungsangabe („Werkstoff 5083-H111", „X oder Y");
 //                        (b) eine vollständig gedeutete Geltungsaussage — der ganze Satzteil ist
-//                            „gilt/geeignet/bewährt … für|bei X (und Y)" oder „X (und Y) ist/sind
-//                            geeignet/bewährt …", höchstens mit „ebenso/gleichermaßen/auch";
-//                        (c) eine Anweisung, die die Bedingung als Bedingung einleitet: „bei X …",
-//                            „für X …", „mit X …".
+//                            „gilt/geeignet/bewährt … für|bei X (und Y)", „X (und Y) ist/sind
+//                            geeignet/bewährt …" oder „für X geeignet", höchstens mit
+//                            „ebenso/gleichermaßen/auch";
+//                        (c) eine ERKANNTE Anweisung, die die Bedingung einleitet: „bei X die
+//                            Kanten entgraten", „für X auf 80 Grad vorwärmen" — der Satzteil endet
+//                            mit einem kleingeschriebenen Infinitiv, der kein Zustands-/Existenzverb
+//                            ist. „Für X …" ALLEIN ist kein Beleg (Ben, Nacharbeit 3: „Für 6082-T6
+//                            liegen keine Erfahrungswerte vor").
 //                        Und in keinem Fall ein Vorbehalt im Satzteil (unten);
 //   · `vorbehalt`      — genannt, aber nicht tragfähig: im Titel oder Schlagwort; ohne positiven
 //                        Beleg („X und Y sind untauglich", „X neigt zu Rissen"); oder mit
 //                        Gegensatz, Einschränkung („nur", „statt", „anders"), Unsicherheit
-//                        („vielleicht", „vermutlich"), Abwertung („untauglich", „ungünstig") oder
-//                        Verneinung. Eine Verneinung NACH einer eingeleiteten Bedingung („bei X
-//                        nicht überhitzen") verneint die Handlung, nicht die Geltung.
+//                        („vielleicht", „vermutlich"), Abwertung („untauglich", „ungünstig"),
+//                        fehlendes Wissen („unbekannt", „fehlen") oder Verneinung. Nur in einer
+//                        erkannten Anweisung (c) verneint eine Verneinung NACH der Bedingung die
+//                        Handlung („bei X nicht überhitzen"), nicht die Geltung.
 //
 // Daraus die Lage je Objekt:
 //
@@ -48,9 +53,10 @@
 //
 // Die Wortlisten sind Deutsch, Englisch und Niederländisch — die Sprachen der Oberfläche. Ein
 // unbekanntes Wort kann eine Nennung nie zu `gilt` machen; `gilt` entsteht nur aus den positiven
-// Formen oben. Die verbleibende Grenze: eine Anweisung (c) mit einer Abwertung, die keine Liste
-// kennt („für X kaum brauchbar"), wird als an X gebunden (`nur_bisher`/`nur_neu`) gezeigt — nie
-// als `beide`. Die Fundstelle steht deshalb immer dabei.
+// Formen oben. Die verbleibende Grenze: eine erkannte Anweisung (c) erscheint als an X gebunden
+// (`nur_bisher`/`nur_neu`), auch wenn ihr Inhalt von X abrät, ohne ein Listenwort zu benutzen
+// („bei X lieber auf das Schweißen verzichten") — nie als `beide`. Die Fundstelle steht deshalb
+// immer dabei.
 //
 // Diese Einordnung braucht keine KI. Das Durchspielen MIT der KI (Wortlaut: „Der Nutzer kann mit
 // der KI durchspielen") geht über den bestehenden, quellengebundenen Frageweg — siehe
@@ -178,6 +184,11 @@ const EINSCHRAENKUNG = woerter([
   "möglicherweise",
   "ungeprüft",
   "unklar",
+  "unbekannt",
+  "fehlen",
+  "fehlt",
+  "fehlend\\p{L}*",
+  "ungeklärt",
   "untauglich",
   "unbrauchbar",
   "ungeeignet",
@@ -200,6 +211,9 @@ const EINSCHRAENKUNG = woerter([
   "possibly",
   "probably",
   "unclear",
+  "unknown",
+  "missing",
+  "lacking",
   "untested",
   "unsuitable",
   "unfit",
@@ -217,6 +231,9 @@ const EINSCHRAENKUNG = woerter([
   "mogelijk",
   "waarschijnlijk",
   "onduidelijk",
+  "onbekend",
+  "ontbreken",
+  "ontbreekt",
   "ongeschikt",
   "slecht",
   "kritiek",
@@ -267,12 +284,58 @@ const GELTUNG_HINTEN = new RegExp(
   `^${ARTIKEL}${GATTUNG}${KETTE}(?:\\s+(?:ist|sind|is|are|zijn|hat\\s+sich|haben\\s+sich|has\\s+been|have\\s+been|wird|werden))?(?:\\s+(?:gleichermaßen|ebenso|auch|gut|sehr|equally|also|well|ook|goed))?\\s+${POSITIV}${FUELLE}$`,
   "u",
 );
+// „Für X (ist) geeignet", „Bei X und Y bewährt" — Präposition vorn, positives Prädikat am Ende.
+const GELTUNG_PRAEP = new RegExp(
+  `^${PRAEP}\\s+${ARTIKEL}${GATTUNG}${KETTE}(?:\\s+(?:ist|sind|is|are|zijn))?(?:\\s+(?:gleichermaßen|ebenso|auch|gut|sehr|equally|also|well|ook|goed))?\\s+${POSITIV}${FUELLE}$`,
+  "u",
+);
 
-// (c) Die Bedingung ist als Bedingung eingeleitet: „bei X", „für den Werkstoff X", „mit X und Y".
+// (c) Die Bedingung ist als Bedingung eingeleitet („bei X", „für den Werkstoff X", „mit X und Y")
+// UND der Satzteil ist eine erkannte Anweisung (`istAnweisung`). Die Einleitung allein ist kein
+// Beleg — Ben, Nacharbeit 3: „Für 6082-T6 liegen keine Erfahrungswerte vor" ist keine Geltung.
 const EINGELEITET = new RegExp(
   `(?<![\\p{L}\\p{N}])${PRAEP}\\s+${ARTIKEL}${GATTUNG}(?:[\\p{L}\\p{N}][\\p{L}\\p{N}-]*\\s+${VERBINDER}\\s+)*$`,
   "u",
 );
+
+// Eine Anweisung endet mit einem KLEINgeschriebenen Infinitiv („die Kanten entgraten", „auf 80 Grad
+// vorwärmen", „nicht überhitzen"; niederländisch „de randen ontbramen"). Großgeschriebene Wörter auf
+// -en sind Substantive („fehlen Erfahrungen"). Ausgenommen sind Zustands-, Existenz- und Hilfsverben:
+// „keine Erfahrungswerte vorliegen" verneint das Wissen, nicht eine Handlung.
+const INFINITIV_AM_ENDE = /(?<![\p{L}\p{N}])(\p{Ll}\p{L}*(?:en|ern|eln))\s*$/u;
+const KEINE_ANWEISUNG = woerter([
+  "\\p{L}*liegen",
+  "fehlen",
+  "bestehen",
+  "existieren",
+  "\\p{L}*geben",
+  "gelten",
+  "sein",
+  "haben",
+  "werden",
+  "können",
+  "müssen",
+  "sollen",
+  "dürfen",
+  "wissen",
+  "kennen",
+  "zeigen",
+  "ergeben",
+  "ontbreken",
+  "bestaan",
+  "gelden",
+  "hebben",
+  "worden",
+  "kunnen",
+  "moeten",
+  "zijn",
+]);
+
+/** Ist der Satzteil nach der Bedingung eine Anweisung? Originalschreibung wegen der Großschreibung. */
+function istAnweisung(nachOriginal: string): boolean {
+  const verb = INFINITIV_AM_ENDE.exec(nachOriginal)?.[1];
+  return verb !== undefined && !KEINE_ANWEISUNG.test(verb.toLocaleLowerCase("de"));
+}
 
 /** Eine Nennung des Begriffs — mit ihrem Satzteil, damit zwei Nennungen vergleichbar sind. */
 interface Nennung {
@@ -373,21 +436,27 @@ function nennungen(
       const vor = heu.slice(von, i);
       const nach = heu.slice(i + b.length, bis);
       const gelesen = mitPlatzhalter(heu.slice(von, bis), gesucht);
-      const eingeleitet = EINGELEITET.test(vor);
+      // Gleiche Stellen wie `heu`, aber in Originalschreibung — für die Erkennung der Anweisung.
+      const nachOriginal = normal(roh).slice(i + b.length, bis);
+      const anweisung = EINGELEITET.test(vor) && istAnweisung(nachOriginal);
       const vollGedeutet =
         (fundort === "bedingung" && REINE_BEDINGUNG.test(gelesen)) ||
         ((fundort === "bedingung" || fundort === "aussage") &&
-          (GELTUNG_VORN.test(gelesen) || GELTUNG_HINTEN.test(gelesen)));
+          (GELTUNG_VORN.test(gelesen) ||
+            GELTUNG_HINTEN.test(gelesen) ||
+            GELTUNG_PRAEP.test(gelesen)));
+      // Eine Verneinung nach der Bedingung ist nur in einer ERKANNTEN Anweisung Teil der Handlung
+      // („bei X nicht überhitzen"); sonst verneint sie Wissen oder Geltung → Vorbehalt.
       const vorbehalt =
         EINSCHRAENKUNG.test(`${vor} ${nach}`) ||
         VERNEINUNG.test(vor) ||
-        (VERNEINUNG.test(nach) && !eingeleitet);
+        (VERNEINUNG.test(nach) && !anweisung);
       let bewertung: Bewertung;
       if (AUSSCHLUSS_VOR.test(vor) || AUSSCHLUSS_NACH.test(nach)) {
         bewertung = "ausgeschlossen";
       } else if (fundort === "titel" || fundort === "schlagwort" || vorbehalt) {
         bewertung = "vorbehalt";
-      } else if (vollGedeutet || eingeleitet) {
+      } else if (vollGedeutet || anweisung) {
         bewertung = "gilt";
       } else {
         // Kein positiver Beleg — das bloße Fehlen eines Ausschlussworts ist keine Geltung.
