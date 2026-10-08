@@ -127,8 +127,9 @@ function ansichten(sprache: Sprache): readonly Ansicht[] {
       pfad: `/bibliothek?q=${q(de ? "Schweißnaht" : "Weld seam")}`,
       warteAuf: '[data-testid="bib-suche"]',
       klicks: ['[data-testid="bib-mehr"]', '[data-bib-abschnitt="schnappschuesse"] > summary'],
-      zeigen: '[data-bib-abschnitt="schnappschuesse"]',
-      beweis: [t.koSchweissV1.title, t.koSchweissV2.title, t.koSchweiss.title],
+      // V2 zuerst: ausgerichtet wird mittig auf den ersten Nachweis, und die mittlere Fassung
+      // liegt in der Liste zwischen den beiden anderen — gleich, wie die Liste sortiert ist.
+      beweis: [t.koSchweissV2.title, t.koSchweissV1.title, t.koSchweiss.title],
     },
     { kennung: "erfassen", pfad: "/erfassen", warteAuf: '[data-testid="blatt-titel"]', beweis: [] },
     {
@@ -160,35 +161,39 @@ function ansichten(sprache: Sprache): readonly Ansicht[] {
 }
 
 /**
- * In der Seite: steht jeder Text IM BILD? Gesucht wird je Text das tiefste Element, das ihn ganz
- * enthält; es muss vollständig im Fenster liegen und an seiner Stelle zuoberst sein
- * (`elementFromPoint`) — ein Banner oder eine Karte darüber zählt als verdeckt.
+ * In der Seite: steht jeder Text IM BILD?
+ *
+ * ERST AUSRICHTEN, DANN PRÜFEN — BEI JEDEM BLICK. Die Lesefläche lädt nach (Kenntnisnahme-Karte,
+ * Fassungsliste) und verschiebt dabei ihren Inhalt; ein einmaliges `scrollIntoView` vor dem Laden
+ * zeigte danach daneben. Ausgerichtet wird an `selektor` (oberer Rand) oder am ersten Nachweistext
+ * (mittig), und zwar vor jeder Prüfung neu.
+ *
+ * SICHTBAR HEISST: je Text das tiefste Element, das ihn ganz enthält, liegt vollständig im Fenster,
+ * und an seiner OBEREN LINKEN und UNTEREN RECHTEN Ecke liegt es zuoberst (`elementFromPoint`).
+ * Ein Banner oder eine Karte darüber zählt damit als verdeckt, ein vom scrollenden Lesebereich
+ * abgeschnittener Text als nicht im Bild — die Fenstergrenze allein sieht diesen Schnitt nicht.
  */
-const IM_BILD = `(liste) => liste.every((text) => {
-  const enthaelt = (el) => (el.textContent || '').includes(text);
-  const tiefste = [...document.querySelectorAll('body *')].filter(
-    (el) => enthaelt(el) && ![...el.children].some(enthaelt),
+const IM_BILD = `({ texte, selektor }) => {
+  const enthaelt = (text) => (el) => (el.textContent || '').includes(text);
+  const tiefste = (text) => [...document.querySelectorAll('body *')].filter(
+    (el) => enthaelt(text)(el) && ![...el.children].some(enthaelt(text)),
   );
-  return tiefste.some((el) => {
+  const anker = selektor
+    ? document.querySelector(selektor)
+    : texte.length > 0
+      ? tiefste(texte[0]).find((el) => el.getBoundingClientRect().height > 0) || null
+      : null;
+  if (anker) anker.scrollIntoView({ block: selektor ? 'start' : 'center' });
+  const oben = (el, x, y) => {
+    const treffer = document.elementFromPoint(x, y);
+    return treffer !== null && (treffer === el || el.contains(treffer) || treffer.contains(el));
+  };
+  return texte.every((text) => tiefste(text).some((el) => {
     const r = el.getBoundingClientRect();
-    if (r.width === 0 || r.height === 0) return false;
+    if (r.width < 4 || r.height < 4) return false;
     if (r.top < 0 || r.left < 0 || r.bottom > innerHeight || r.right > innerWidth) return false;
-    const oben = document.elementFromPoint(r.left + Math.min(r.width / 2, 24), r.top + r.height / 2);
-    return oben !== null && (oben === el || el.contains(oben) || oben.contains(el));
-  });
-})`;
-
-/** In der Seite: den Ausschnitt an einen Selektor (oben) oder an einen Text (mittig) rücken. */
-const ZEIGEN = `([selektor, text]) => {
-  let ziel = selektor ? document.querySelector(selektor) : null;
-  if (!ziel && text) {
-    const enthaelt = (el) => (el.textContent || '').includes(text);
-    ziel = [...document.querySelectorAll('body *')].find(
-      (el) => enthaelt(el) && ![...el.children].some(enthaelt),
-    ) || null;
-  }
-  if (ziel) ziel.scrollIntoView({ block: selektor ? 'start' : 'center' });
-  return ziel !== null;
+    return oben(el, r.left + 2, r.top + 2) && oben(el, r.right - 2, r.bottom - 2);
+  }));
 }`;
 
 /** Der Nutzungshinweis wird regulär bestätigt (`legal/NoticeBanner.tsx`, Knopf `notice-ack`). */
@@ -275,11 +280,8 @@ for (const sprache of ["de", "en"] as const) {
         for (const selektor of ansicht.klicks ?? []) {
           await seite.locator(selektor).click();
         }
-        const ziel = [ansicht.zeigen ?? null, ansicht.beweis[0] ?? null];
-        if (ziel[0] !== null || ziel[1] !== null) {
-          await seite.waitForFunction(fn(ZEIGEN), ziel, { timeout: 30_000 });
-        }
-        await seite.waitForFunction(fn(IM_BILD), ansicht.beweis, { timeout: 30_000 });
+        const imBild = { texte: ansicht.beweis, selektor: ansicht.zeigen ?? null };
+        await seite.waitForFunction(fn(IM_BILD), imBild, { timeout: 30_000 });
         const datei = join(ZIEL, bildname(ansicht.kennung, sprache));
         await seite.screenshot({ path: datei });
         const bytes = readFileSync(datei);
