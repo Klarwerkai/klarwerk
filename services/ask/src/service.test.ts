@@ -89,6 +89,19 @@ describe("AskService", () => {
     expect(audit).toHaveLength(1);
   });
 
+  // RECHERCHE:pmo-fea-0002: nach einer Autor-Übergabe (FR-LIF-02) trägt der Beleg BEIDE — den
+  // Autor zum Zeitpunkt des Danks und den ursprünglichen Autor, der sonst nichts mehr erführe.
+  it("pmo-fea-0002: der Beleg nennt nach Übergabe auch den ursprünglichen Autor", async () => {
+    const ko = (await ctx.koService.list())[0];
+    if (!ko) {
+      throw new Error("KO fehlt.");
+    }
+    await ctx.koService.setAuthor(ko.id, "bob", "admin");
+    await ctx.ask.markHelpful(await receiptFor("viewer-1"), ko.id, "viewer-1");
+    const [eintrag] = await ctx.audit.list({ action: "answer.helpful" });
+    expect(eintrag?.payload).toMatchObject({ koAuthor: "bob", koOriginalAuthor: "anna" });
+  });
+
   // FUNKE-FIX P0 (bens ROT-1): eine unbelegte/fremd gewählte KO-ID ist NICHT mehr wirksam →
   // FORBIDDEN, kein Trust, kein Audit. Weder ein leerer Beleg, noch ein gültiger Beleg für ein
   // NICHT ausgeliefertes KO, noch der Beleg EINES ANDEREN Nutzers autorisiert das „Danke".
