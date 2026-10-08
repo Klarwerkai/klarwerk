@@ -209,7 +209,7 @@ export default {
     "fachwort.herkunft.markeOhneBeleg": "geen bewijs",
     "fachwort.herkunft.zaehler":
       "Bronnen {{sources}} · Bijlagen {{attachments}} · Bewijs {{evidence}}",
-    "fachwort.belegFrische.titel": "Actualiteit van bewijs (QM)",
+    "fachwort.belegFrische.titel": "Actualiteit van bewijs (KM)",
     "fachwort.belegFrische.untertitel":
       "Kennisobjecten waarvan de huidige versie geen bewijs heeft.",
     "fachwort.belegFrische.leer": "Geen kennisobjecten met verouderd of ontbrekend bewijs.",

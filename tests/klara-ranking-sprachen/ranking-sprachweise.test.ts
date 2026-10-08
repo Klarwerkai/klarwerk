@@ -560,7 +560,11 @@ type Kurzwortbefund = { readonly kandidaten: number; readonly gefunden: number }
 const KURZWORT: ReadonlyMap<string, Kurzwortbefund> = new Map<string, Kurzwortbefund>([
   ["de", { kandidaten: 26, gefunden: 26 }],
   ["en", { kandidaten: 31, gefunden: 31 }],
-  ["nl", { kandidaten: 30, gefunden: 30 }],
+  // Aufnahme gesamt-sprache-begriffe (R-0975, Ben Nacharbeit 13): die NL-Abschnittstitel nannten
+  // Qualitätsmanagement zweierlei — „KM" (kwaliteitsmanagement) und einmal „QM". Seit der
+  // Vereinheitlichung auf „KM" (`texte/fachwort.ts`) fehlt dem NL-Korpus genau das Kurzwort „qm".
+  // 30 → 29 kommt vom TEXT; die Schwellenprüfungen dieses Falls sind unverändert.
+  ["nl", { kandidaten: 29, gefunden: 29 }],
 ]);
 
 // ------------------------------------------------------------------------------------------------
@@ -595,7 +599,9 @@ const EINBUCHSTABIG: ReadonlyMap<string, { readonly belegt: number; readonly sat
       },
     ],
     ["en", { belegt: 26, satz: "26 Buchstaben im englischen Korpus, ebenfalls alle stumm." }],
-    ["nl", { belegt: 31, satz: "31 Buchstaben im niederländischen Korpus, ebenfalls alle stumm." }],
+    // gesamt-sprache-begriffe (Ben, Nacharbeit 13): mit „qm" verlässt das einzige „q" den NL-Korpus
+    // (Vereinheitlichung auf „KM", siehe KURZWORT) — 31 → 30 kommt vom TEXT, nicht von der Schwelle.
+    ["nl", { belegt: 30, satz: "30 Buchstaben im niederländischen Korpus, ebenfalls alle stumm." }],
   ]);
 
 // ================================================================================================
