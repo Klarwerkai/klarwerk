@@ -98,6 +98,30 @@ describe("B1/B2 · die Fassung steht im Beleg oder gar nicht", () => {
     ]);
   });
 
+  it("ko.merged-into → eigeneVersion, nicht die Fassung des Zielartikels; ohne Angabe keine", () => {
+    seq = 0;
+    const versionen = [fassung(1, 0, "ada"), fassung(2, 10, "ada")];
+    const audit = [
+      beleg(0, "ada", "ko.created"),
+      beleg(10, "ada", "ko.revised", { version: 2 }),
+      // Der abgefragte Eintrag steht bei V2 und geht in einen Zielartikel auf, der bei V7 steht.
+      beleg(20, "hedi", "ko.merged-into", {
+        koId: "ko-ziel",
+        version: 7,
+        overlapId: "ov-1",
+        eigeneVersion: 2,
+      }),
+      beleg(25, "ina", "ko.merged-into", { koId: "ko-ziel", version: 8, overlapId: "ov-2" }),
+    ];
+    const a = auskunft(audit, versionen, 30);
+    expect(belegeVon(a, "hedi").map((b) => [b.art, b.fassung])).toEqual([
+      ["sonstige_bearbeitung", 2],
+    ]);
+    expect(belegeVon(a, "ina").map((b) => [b.art, b.fassung])).toEqual([
+      ["sonstige_bearbeitung", null],
+    ]);
+  });
+
   it("eine unbeantwortete Frage ist kein Kontakt", () => {
     seq = 0;
     const a = auskunft(

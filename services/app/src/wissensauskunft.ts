@@ -161,6 +161,9 @@ const zahl = (wert: unknown): number | null =>
  *                                       hält) nicht verknüpft. Die Fassung zum Zeitpunkt wäre
  *                                       geraten — während einer laufenden Antwort kann schon die
  *                                       nächste gespeichert sein.
+ *   · `ko.merged-into`                  `eigeneVersion` — `version` ist dort die Fassung des
+ *                                       ZIELartikels (`KoService`, Aufgehen in einem anderen
+ *                                       Eintrag), nicht die des abgefragten.
  *   · übrige                            `koVersion`, sonst `version`, sonst keine.
  * Ohne ausdrückliche Angabe gibt es `null`; die Fassung wird nie aus dem Zeitpunkt abgeleitet.
  */
@@ -178,6 +181,8 @@ function fassungAus(e: AuditEntry): number | null {
       return zahl(e.payload.koVersion);
     case "ask.query":
       return null;
+    case "ko.merged-into":
+      return zahl(e.payload.eigeneVersion);
     default:
       return zahl(e.payload.koVersion) ?? zahl(e.payload.version);
   }
