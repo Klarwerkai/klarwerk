@@ -10,8 +10,8 @@
 //
 // DIESER LAUF IST DIE REPRODUKTION UND ZUGLEICH DER NACHWEIS:
 //   · echter Server (`listen`, echte HTTP-Anfragen), echte Route, echte Kompositionswurzel
-//     (`buildPgServices` + `migrate`) gegen eine isolierte PostgreSQL (`pg-pruefplatz.ts`:
-//     `KLARWERK_PG_TEST_URL`, sonst Testcontainer, sonst rot — kein Skip);
+//     (`buildPgServices` + `migrate`) gegen eine eigene PostgreSQL aus Testcontainers
+//     (`pg-pruefplatz.ts` ohne `KLARWERK_PG_TEST_URL`; ohne Container-Laufzeit rot — kein Skip);
 //   · ANLAGEN Anlagen unmittelbar nacheinander, OHNE auf den Leerlauf der KI-Prüfung zu warten;
 //     dass sie wirklich lief, während die nächste Anlage kam, wird gemessen (Warteschlange > 0);
 //   · scheitert eine Anlage, nennt die Fehlermeldung des Tests den technischen Code (SQLSTATE) und
@@ -73,7 +73,12 @@ describe("arbeit:kos-anlage-500-pg · schnelle Anlagen unter PostgreSQL während
   let kopf: Record<string, string> = {};
 
   beforeAll(async () => {
-    pg = await oeffneIsoliertePg("kosanlage");
+    // Nacharbeit 2 (Ben): K2 verlangt ausdrücklich einen TESTCONTAINERS-Lauf. Der erste Lauf nahm
+    // über `KLARWERK_PG_TEST_URL` die Prüfplatz-Datenbank (HISTORIE/nacharbeit-1, ergänzender Beleg).
+    // Deshalb hier eine Umgebung OHNE diese Adresse: `oeffneIsoliertePg` startet dann einen eigenen
+    // Container `postgres:16-alpine` — und ohne Container-Laufzeit wirft es (kein Rückfall auf eine
+    // andere Datenbank, kein Skip).
+    pg = await oeffneIsoliertePg("kosanlage", { env: {} });
     // Derselbe Vorrat wie im Betrieb (`createPool` → `vorratsKonfiguration`).
     pool = createPool(pg.url);
     await migrate(pool);
@@ -102,6 +107,10 @@ describe("arbeit:kos-anlage-500-pg · schnelle Anlagen unter PostgreSQL während
     await app?.close().catch(() => undefined);
     await pool?.end().catch(() => undefined);
     await pg?.abraeumen();
+  });
+
+  it("die Datenbank dieses Laufs ist ein eigener Testcontainer", () => {
+    expect(pg?.herkunft).toMatch(/^Testcontainer postgres:16-alpine/);
   });
 
   it(`${ANLAGEN} Anlagen unmittelbar nacheinander über die echte Route: alle 201, keine 500`, async () => {
@@ -134,7 +143,7 @@ describe("arbeit:kos-anlage-500-pg · schnelle Anlagen unter PostgreSQL während
         stapel: z.stapel,
       })),
     };
-    process.stderr.write(`${PREFIX} · Bilanz ${JSON.stringify(bilanz)}\n`);
+    process.stderr.write(`${PREFIX} · ${pg?.herkunft} · Bilanz ${JSON.stringify(bilanz)}\n`);
 
     // Der Lauf prüft nur dann etwas, wenn die KI-Prüfung wirklich lief, während die nächste Anlage
     // kam — sonst wäre ein grünes Ergebnis die Messung eines anderen Falls.
