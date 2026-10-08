@@ -210,6 +210,7 @@ const ANLEITUNGEN = [
   "docs/Berater/FE-001_PRUEFPAKET_ARBEITSANLEITUNGEN_2026-09-26.md",
 ] as const;
 const DOKU_ZITAT = /[„"“]([^„"“”\n]{2,60})[“”"]/g;
+const PLATZHALTER_IM_DOKUMENT = "(?:\\d+|\\p{Lu}|…)";
 
 /** Alle deutschen Schlüssel, deren Wert genau dieses Zitat ist (Satzpunkt am Ende und
  *  Platzhalter wie „Stand {{nummer}}" ↔ „Stand N" eingeschlossen). */
@@ -228,7 +229,10 @@ function beschriftungenFuer(zitat: string, de: Katalog): string[] {
     if ((teile.join("").match(/\p{L}/gu) ?? []).length < 3) {
       return [];
     }
-    return new RegExp(`^${teile.map(alsMuster).join("\\S+")}$`).test(zitat) ? [key] : [];
+    // Ein Platzhalter steht im Dokument für eine Zahl („Fassung 1"), einen Großbuchstaben („Stand
+    // N") oder „…" — nie für ein Wort: sonst wäre „{{n}} ausgewählt" auch „Übernehmen ausgewählt".
+    const muster = `^${teile.map(alsMuster).join(PLATZHALTER_IM_DOKUMENT)}$`;
+    return new RegExp(muster, "u").test(zitat) ? [key] : [];
   });
 }
 
@@ -504,6 +508,11 @@ describe("R-1176 · Teil D — Anleitung und Prüfkarten zitieren nur echte Besc
     ]);
     // Platzhalter und Satzpunkt: „Stand 3" ist eine Beschriftung, „Bewertung erfasst" auch.
     expect(beschriftungenFuer("Stand 3", de).length).toBeGreaterThan(0);
+    expect(beschriftungenFuer("Stand N", de).length).toBeGreaterThan(0);
+    // Gemessener Fehlfall (Nacharbeit 6): „{{n}} ausgewählt" (pruefboard.stapel.anzahl) darf kein
+    // Wort schlucken — eine Zahl davor ist die Beschriftung, ein Wort nicht.
+    expect(beschriftungenFuer("3 ausgewählt", de)).toContain("pruefboard.stapel.anzahl");
+    expect(beschriftungenFuer("Übernehmen ausgewählt", de)).toEqual([]);
     expect(beschriftungenFuer("Bewertung erfasst", de)).toContain("val.decisionSaved");
   });
 });
