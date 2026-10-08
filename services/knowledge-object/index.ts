@@ -404,6 +404,12 @@ export {
 // die Kompositionswurzel an beiden Lesewegen, `haltbarkeitAbgelaufen` der Fragepfad (R-0248).
 // `fristHinweiseFuer` und `aeltesteVorlageFuer` liest die persönliche Zustellung in der Glocke
 // (R-0248 / R-0266, services/app/src/frische-meldungen.ts).
+// Nacharbeit 5 (R-1636/R-0248): die Postgres-Ablage des festgehaltenen Lernverlaufs — die
+// Kompositionswurzel reicht sie dem KoService herein (Tabelle in `KO_VERSIONS_SCHEMA`).
+export {
+  PgHalbwertszeitVerlauf,
+  type HalbwertszeitVerlaufRepo,
+} from "./src/halbwertszeit-verlauf";
 export {
   aeltesteVorlageFuer,
   discloseFrische,

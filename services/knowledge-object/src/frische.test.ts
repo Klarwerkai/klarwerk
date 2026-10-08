@@ -7,12 +7,24 @@ import {
   HALBWERTSZEIT_GRENZEN_TAGE,
   HALBWERTSZEIT_TAGE,
   aeltesteVorlageFuer,
+  beobachtungenAus,
   discloseFrische,
   frischeVon,
   fristHinweiseFuer,
+  halbwertszeitenAusVerlauf,
   haltbarkeitAbgelaufen,
-  lerneHalbwertszeiten,
 } from "./frische";
+
+/**
+ * Lernstand über eine feste Objektmenge — jede Beobachtung gilt als zum Ende ihres Stands erfasst
+ * (der Betrieb erfasst sie beim Lernen, `KoService.gelernteHalbwertszeiten`).
+ */
+function lerneHalbwertszeiten(kos: readonly KnowledgeObject[]) {
+  const mitKennung = kos.map((k, i) => ({ ...k, id: `objekt-${i}` }));
+  return halbwertszeitenAusVerlauf(
+    beobachtungenAus(mitKennung).map((b) => ({ ...b, erfasst: b.ende })),
+  );
+}
 import type { KnowledgeObject } from "./types";
 
 const TAG = 24 * 60 * 60 * 1000;

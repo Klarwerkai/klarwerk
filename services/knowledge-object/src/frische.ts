@@ -23,7 +23,7 @@
 // Halbwertszeiten pro Kategorie". Die Bewährungs-Historie ist die Fassungsfolge der Objekte: jede
 // Überarbeitung und jede Bestätigung „Noch gültig" erzeugt eine Fassung. Der Abstand zweier
 // aufeinanderfolgender Fassungen ist eine Beobachtung, wie lange ein Stand in dieser Kategorie
-// trug. `lerneHalbwertszeiten` nimmt je Kategorie den Median dieser Abstände, sobald genug
+// trug. Der Lernstand (`GelernteHalbwertszeiten`) nimmt je Kategorie den Median dieser Abstände, sobald genug
 // Beobachtungen vorliegen. Bis dahin gilt die AUSGANGSVORGABE je Wissensart
 // (`HALBWERTSZEIT_TAGE`) — ausgewiesen als `halbwertszeitHerkunft: "vorgabe"`. Die Frist eines
 // Objekts nutzt den Lernstand ZUM BEGINN seines laufenden Stands (s. `GelernteHalbwertszeiten`):
@@ -96,10 +96,31 @@ export interface GelernteHalbwertszeit {
   beobachtungen: number;
 }
 
-/** R-1636: eine Beobachtung — wie lange ein Stand trug, und wann er endete (ms). */
+/** R-1636: eine Beobachtung — wie lange ein Stand trug, und ab wann sie dem Lernen bekannt war (ms). */
 interface Beobachtung {
-  ende: number;
+  erfasst: number;
   tage: number;
+}
+
+/**
+ * R-1636 / R-0248 (Nacharbeit 5, Bens Befund) — EIN FESTGEHALTENER EINTRAG DES LERNVERLAUFS.
+ *
+ * Der Lernstand eines vergangenen Zeitpunkts darf NICHT aus dem heutigen Bestand rekonstruiert
+ * werden: legt jemand das lernende Objekt in den Papierkorb, löscht es endgültig oder ordnet es
+ * einer anderen Kategorie zu, verschwände seine Beobachtung — und ein längst abgelaufenes Objekt
+ * fiele auf die längere Vorgabe zurück. Deshalb wird jede Beobachtung beim ersten Lernen DAUERHAFT
+ * festgehalten (`HalbwertszeitVerlaufRepo`, nur ergänzend) — mit der Kategorie, die sie damals
+ * trug, und dem Zeitpunkt `erfasst`, ab dem sie Fristen bestimmen durfte.
+ */
+export interface HalbwertszeitEintrag {
+  koId: string;
+  /** Zeitpunkt der späteren Fassung (ISO) — zusammen mit `koId` der Schlüssel. */
+  ende: string;
+  /** Normalisierte Kategorie zum Zeitpunkt der Erfassung (`kategorieSchluessel`). */
+  kategorie: string;
+  tage: number;
+  /** Ab wann die Beobachtung dem Lernen bekannt war (ISO). */
+  erfasst: string;
 }
 
 /**
@@ -110,12 +131,16 @@ interface Beobachtung {
  * unverändertes, bereits abgelaufenes Objekt wieder „gesichert" — ohne dass sein Verantwortlicher
  * etwas bestätigt hätte. Genau das schliesst R-0248 aus.
  *
- * DIE REGEL: jede Beobachtung trägt den Zeitpunkt, an dem sie entstand (das Ende des gemessenen
- * Stands). Die Frist eines Objekts rechnet mit dem Lernstand ZUM BEGINN SEINES LAUFENDEN STANDS —
- * also zur letzten Fassung bzw. zur letzten Fristbestätigung des Verantwortlichen (`zum`). Was
- * danach anderswo gelernt wird, ändert diese Frist nicht mehr; es wirkt erst, wenn das Objekt
- * selbst neu bestätigt wird. Die Fassungsfolge ist unveränderlich (append-only), der Lernstand zu
- * einem vergangenen Zeitpunkt ist damit festgehalten, ohne einen zweiten Speicherort.
+ * DIE REGEL: jede Beobachtung trägt den Zeitpunkt, ab dem sie dem Lernen bekannt war (`erfasst`).
+ * Die Frist eines Objekts rechnet mit dem Lernstand ZUM BEGINN SEINES LAUFENDEN STANDS — also zur
+ * letzten Fassung bzw. zur letzten Fristbestätigung des Verantwortlichen (`zum`). Was danach
+ * anderswo gelernt wird, ändert diese Frist nicht mehr; es wirkt erst, wenn das Objekt selbst neu
+ * bestätigt wird.
+ *
+ * Nacharbeit 5: im Betrieb stammen die Beobachtungen aus dem FESTGEHALTENEN Lernverlauf
+ * (`halbwertszeitenAusVerlauf`, Ablage `HalbwertszeitVerlaufRepo`), nicht aus dem heutigen
+ * Bestand. Papierkorb, endgültiges Löschen oder Umkategorisieren anderer Objekte nimmt einem
+ * vergangenen Lernstand damit nichts weg und fügt ihm nichts hinzu.
  *
  * `get`/`has` beantworten den Lernstand JETZT — für die Auskunft „was wird gerade gelernt".
  */
@@ -125,7 +150,7 @@ export class GelernteHalbwertszeiten {
   /** Der Lernstand der Kategorie zum Zeitpunkt `zeitpunkt` (ms) — oder `undefined` (Vorgabe). */
   zum(schluessel: string, zeitpunkt: number): GelernteHalbwertszeit | undefined {
     const liste = (this.verlauf.get(schluessel) ?? [])
-      .filter((b) => b.ende <= zeitpunkt)
+      .filter((b) => b.erfasst <= zeitpunkt)
       .map((b) => b.tage);
     if (liste.length < HALBWERTSZEIT_MINDESTBEOBACHTUNGEN) {
       return undefined;
@@ -227,21 +252,19 @@ export function kategorieSchluessel(kategorie: string | undefined): string {
 }
 
 /**
- * R-1636: lernt je Kategorie die typische Halbwertszeit aus der Bewährungs-Historie.
+ * R-1636: die Beobachtungen, die der HEUTIGE Bestand trägt — noch ohne Erfassungszeitpunkt.
  *
  * Beobachtung = Abstand zweier aufeinanderfolgender Fassungen desselben Objekts (in Tagen, ab
- * `HALBWERTSZEIT_MINDESTABSTAND_TAGE`), datiert auf die spätere der beiden Fassungen.
- * Ergebnis je Kategorie = Median der Beobachtungen, begrenzt auf `HALBWERTSZEIT_GRENZEN_TAGE` —
- * aber NUR, wenn mindestens `HALBWERTSZEIT_MINDESTBEOBACHTUNGEN` vorliegen; sonst gilt die
- * Vorgabe der Wissensart. Gelöschte Objekte zählen nicht; Objekte ohne Kategorie auch nicht.
+ * `HALBWERTSZEIT_MINDESTABSTAND_TAGE`), geschlüsselt über Objekt und spätere Fassung (`ende`).
+ * Gelöschte Objekte liefern keine NEUEN Beobachtungen; Objekte ohne Kategorie auch nicht.
  */
-export function lerneHalbwertszeiten(
-  kos: readonly Pick<KnowledgeObject, "category" | "history" | "deletedAt">[],
-): GelernteHalbwertszeiten {
-  const abstaende = new Map<string, Beobachtung[]>();
+export function beobachtungenAus(
+  kos: readonly Pick<KnowledgeObject, "id" | "category" | "history" | "deletedAt">[],
+): Omit<HalbwertszeitEintrag, "erfasst">[] {
+  const aus: Omit<HalbwertszeitEintrag, "erfasst">[] = [];
   for (const ko of kos) {
-    const schluessel = kategorieSchluessel(ko.category);
-    if (ko.deletedAt || schluessel === "") {
+    const kategorie = kategorieSchluessel(ko.category);
+    if (ko.deletedAt || kategorie === "") {
       continue;
     }
     const zeiten = (ko.history ?? [])
@@ -254,13 +277,32 @@ export function lerneHalbwertszeiten(
       // Fassungen am selben Tag (Tippfehler, Freigabe direkt nach Anlage) sagen nichts darüber,
       // wie lange ein Stand trägt — erst ein Abstand ab einem Tag ist eine Beobachtung.
       if (tage >= HALBWERTSZEIT_MINDESTABSTAND_TAGE) {
-        const liste = abstaende.get(schluessel) ?? [];
-        liste.push({ ende, tage });
-        abstaende.set(schluessel, liste);
+        aus.push({ koId: ko.id, ende: new Date(ende).toISOString(), kategorie, tage });
       }
     }
   }
-  return new GelernteHalbwertszeiten(abstaende);
+  return aus;
+}
+
+/**
+ * R-1636 / R-0248: der Lernstand aus dem FESTGEHALTENEN Verlauf — so rechnet der Betrieb
+ * (`KoService.gelernteHalbwertszeiten`). Jede Beobachtung zählt in ihrer erfassten Kategorie und
+ * erst ab ihrem Erfassungszeitpunkt.
+ */
+export function halbwertszeitenAusVerlauf(
+  eintraege: readonly HalbwertszeitEintrag[],
+): GelernteHalbwertszeiten {
+  const verlauf = new Map<string, Beobachtung[]>();
+  for (const e of eintraege) {
+    const erfasst = Date.parse(e.erfasst);
+    if (!Number.isFinite(erfasst) || e.kategorie === "") {
+      continue;
+    }
+    const liste = verlauf.get(e.kategorie) ?? [];
+    liste.push({ erfasst, tage: e.tage });
+    verlauf.set(e.kategorie, liste);
+  }
+  return new GelernteHalbwertszeiten(verlauf);
 }
 
 interface Halbwertszeit {

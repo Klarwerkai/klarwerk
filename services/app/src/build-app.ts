@@ -91,6 +91,7 @@ import {
   // dieser fehlende Modulexport war der Grund, warum das seit JOB 4154 fertige Routen-Plugin an
   // keiner App angemeldet werden konnte (`routes/gesamtanweisung-routes.ts`, Kopf).
   GesamtanweisungDienst,
+  type HalbwertszeitVerlaufRepo,
   InMemoryDokumentaktenRepo,
   InMemoryEvidenceRepo,
   InMemoryKoRepo,
@@ -111,6 +112,7 @@ import {
   PgAnweisungRepo,
   PgDokumentaktenRepo,
   PgEvidenceRepo,
+  PgHalbwertszeitVerlauf,
   PgKantenRepo,
   PgKoRepo,
   PgKoSearchProjectionRepo,
@@ -619,6 +621,9 @@ export interface AppRepos {
   auditRepo: AuditRepo;
   koRepo: KoRepo;
   koVersions: KoVersionRepo;
+  // aufnahme:20260922:gesamt-wissen-frische (R-1636/R-0248): der festgehaltene Lernverlauf der
+  // Halbwertszeiten. Optional: fehlt er, hält der KoService ihn im Speicher.
+  halbwertszeitVerlauf?: HalbwertszeitVerlaufRepo;
   evidence: EvidenceRepo;
   users: UserRepo;
   sessions: SessionRepo;
@@ -1020,6 +1025,7 @@ export function assembleServices(
     repo: repos.koRepo,
     audit,
     versions: repos.koVersions,
+    ...(repos.halbwertszeitVerlauf ? { halbwertszeitVerlauf: repos.halbwertszeitVerlauf } : {}),
     evidence: repos.evidence,
     // SCRUM-395: Standard-Prüferanzahl aus der Admin-Einstellung — als injizierte
     // Funktion (keine Modulgrenzen-Verletzung); null → Modul-Default 3.
@@ -1674,6 +1680,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       auditRepo: new PgAuditRepo(pool),
       koRepo: new PgKoRepo(pool),
       koVersions: new PgKoVersionRepo(pool),
+      // R-1636/R-0248: der Lernverlauf überlebt Neustarts — sonst begänne er nach jedem Start neu.
+      halbwertszeitVerlauf: new PgHalbwertszeitVerlauf(pool),
       evidence: new PgEvidenceRepo(pool),
       users: new PgUserRepo(pool),
       sessions: new PgSessionRepo(pool),

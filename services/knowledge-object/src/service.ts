@@ -47,8 +47,16 @@ import {
   composeEffectiveSearchDocument,
 } from "./effective-search-document";
 // R-1632 / R-1633: die Geltungsregel (Konzern/Werk/Schicht) — eine Fassung, Begründung dort.
-import { type GelernteHalbwertszeiten, lerneHalbwertszeiten } from "./frische";
+import {
+  type GelernteHalbwertszeiten,
+  beobachtungenAus,
+  halbwertszeitenAusVerlauf,
+} from "./frische";
 import { normalizeGeltung } from "./geltung";
+import {
+  type HalbwertszeitVerlaufRepo,
+  InMemoryHalbwertszeitVerlauf,
+} from "./halbwertszeit-verlauf";
 import {
   type KoMetadataProjection,
   metadataTextsEqual,
@@ -321,6 +329,9 @@ interface ErstanlageMeldung {
 export interface KoServiceDeps {
   repo: KoRepo;
   audit?: AuditService;
+  // aufnahme:20260922:gesamt-wissen-frische (R-1636/R-0248): der festgehaltene Lernverlauf der
+  // Halbwertszeiten. Fehlt er, hält der Dienst ihn im Speicher (Tests, Aufbau ohne Datenbank).
+  halbwertszeitVerlauf?: HalbwertszeitVerlaufRepo;
   // SCRUM-159: optionales Versions-Repo. Ist es gesetzt, werden bei create/revise
   // vollständige, unveränderliche Snapshots geschrieben (Knowledge-OS-Foundation).
   versions?: KoVersionRepo;
@@ -759,6 +770,8 @@ const HALBWERTSZEIT_LERNEN_TTL_MS = 10 * 60 * 1000;
 export class KoService {
   // R-1636: zuletzt gelernte Halbwertszeiten samt Ablauf (s. `gelernteHalbwertszeiten`).
   private halbwertszeitSpeicher: { bis: number; tabelle: GelernteHalbwertszeiten } | undefined;
+  // R-1636 / R-0248 (Nacharbeit 5): der festgehaltene Lernverlauf (s. `gelernteHalbwertszeiten`).
+  private readonly halbwertszeitVerlauf: HalbwertszeitVerlaufRepo;
   private readonly repo: KoRepo;
   private readonly audit: AuditService | undefined;
   private readonly versions: KoVersionRepo | undefined;
@@ -788,6 +801,7 @@ export class KoService {
   private readonly koWriteLocks = new Map<string, Promise<unknown>>();
 
   constructor(deps: KoServiceDeps) {
+    this.halbwertszeitVerlauf = deps.halbwertszeitVerlauf ?? new InMemoryHalbwertszeitVerlauf();
     this.repo = deps.repo;
     this.audit = deps.audit;
     this.versions = deps.versions;
@@ -6188,12 +6202,33 @@ export class KoService {
   // Bestand gerechnet (nicht über die Sicht eines Lesers — sonst hinge die Frist eines Objekts an
   // der Rolle des Betrachters) und für `HALBWERTSZEIT_LERNEN_TTL_MS` zwischengespeichert: der
   // Bestand ändert seine Fassungsfolge nicht im Sekundentakt, und die Leserouten fragen oft.
+  //
+  // Nacharbeit 5 (R-0248, Bens Befund): der Lernstand kommt aus dem FESTGEHALTENEN Verlauf. Neue
+  // Beobachtungen des heutigen Bestands werden zuerst dauerhaft ergänzt (mit Kategorie und
+  // Erfassungszeitpunkt), und erst danach zählen sie. Eine Beobachtung, die nicht festgehalten
+  // werden konnte, zählt nicht — sonst hinge eine Frist an einem Stand, der nach dem nächsten
+  // Löschen eines anderen Objekts nicht mehr rekonstruierbar wäre.
   async gelernteHalbwertszeiten(): Promise<GelernteHalbwertszeiten> {
     const jetzt = this.now();
     if (this.halbwertszeitSpeicher && this.halbwertszeitSpeicher.bis > jetzt) {
       return this.halbwertszeitSpeicher.tabelle;
     }
-    const tabelle = lerneHalbwertszeiten(await this.repo.list({}));
+    const bekannt = await this.halbwertszeitVerlauf.alle();
+    const vorhanden = new Set(bekannt.map((e) => `${e.koId}\u0000${e.ende}`));
+    const erfasst = new Date(jetzt).toISOString();
+    const neu = beobachtungenAus(await this.repo.list({}))
+      .filter((b) => !vorhanden.has(`${b.koId}\u0000${b.ende}`))
+      .map((b) => ({ ...b, erfasst }));
+    let verlauf = bekannt;
+    if (neu.length > 0) {
+      try {
+        await this.halbwertszeitVerlauf.ergaenze(neu);
+        verlauf = [...bekannt, ...neu];
+      } catch {
+        // Nicht festgehalten → nicht verwendet; beim nächsten Lernen wird es erneut versucht.
+      }
+    }
+    const tabelle = halbwertszeitenAusVerlauf(verlauf);
     this.halbwertszeitSpeicher = { bis: jetzt + HALBWERTSZEIT_LERNEN_TTL_MS, tabelle };
     return tabelle;
   }
