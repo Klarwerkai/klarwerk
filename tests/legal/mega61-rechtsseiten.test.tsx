@@ -125,7 +125,7 @@ function artVon(dateiname: string): ts.ScriptKind {
 // dynamisch, alle drei liegen auf fremder Fläche, und bei allen dreien wäre ein statisch
 // geschriebener Pfad sachlich falsch, nicht bloß unbequem:
 //
-//   · `write-fence-race.test.ts:71` lädt ein Modul, das FEHLEN DARF, und meldet sonst den Grund.
+//   · (entfallen, R-1349) der Prüfstand der Schreibsperre lud ein Modul, das FEHLEN DURFTE.
 //   · `job642-testpfade-cwd-unabhaengig.test.ts:104` hängt einen Frischezähler an den Pfad, um den
 //     Modul-Cache zu umgehen — das ist der Zweck genau dieses Tests.
 //   · `wissensraum-ort-vertrag.ts:90` lädt ein Artefakt über `pathToFileURL(absolut).href`, das
@@ -140,8 +140,12 @@ function artVon(dateiname: string): ts.ScriptKind {
 // abgeschnittenen Textsuche statt mit der Erhebung selbst. Die dritte Stelle lag außerhalb der
 // ersten 25 Treffer. Jetzt ist die Liste GEMESSEN: dieselbe Erhebung über alle 865 Dateien, und
 // sie meldet genau diese drei.
+//
+// R-1349 (Aufnahme gesamt-aufruferwaechter, Nacharbeit 6): die erste der drei Stellen ist mit ihrer
+// Datei entfallen. Der Prüfstand maß die Schreibsperre `services/db-tx/src/write-fence.ts`, die kein
+// Dienst band; Sperre und Prüfstand sind entfernt. Es bleiben zwei, und `verwaist` unten hält fest,
+// dass die Liste mitschrumpft.
 const BEKANNT_UNAUFLOESBAR = new Set<string>([
-  "tests/app/write-fence-race.test.ts:71",
   "tests/app/job642-testpfade-cwd-unabhaengig.test.ts:104",
   "tests/library/support/wissensraum-ort-vertrag.ts:90",
 ]);

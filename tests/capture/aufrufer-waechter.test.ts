@@ -64,7 +64,8 @@
 //
 // Er behob den Altbestand anfangs NICHT (Auftrag §4) — er fror ihn ein und sperrte den Neuzugang.
 // R-1349 (Nacharbeit 4): der Altbestand ist inzwischen Fall für Fall abgebaut; geduldet ist nur noch,
-// was einen geprüften Grund trägt (Register `BEWUSST`, `BEWUSST_WEB`, `OFFENE_ENTSCHEIDUNG`).
+// was einen geprüften Grund trägt (Register `BEWUSST`, `BEWUSST_WEB`) oder als UNERLEDIGTER Rest
+// mit belegter Sperre bzw. gesondertem Auftrag abgegrenzt ist (`OFFENER_REST`, Nacharbeit 6).
 //
 // GRENZE, ausdrücklich benannt: Die Zuordnung läuft über den NAMEN, nicht über die aufgelöste
 // Modulkante. Zwei gleichnamige Exporte in verschiedenen Paketen decken sich dadurch gegenseitig.
@@ -643,11 +644,13 @@ function loeseModul(
 // Bis hierher standen diese Exporte als eingefrorener Altbestand oder als Ausnahme mit Grund im
 // Register — der Wächter konnte den Aufruf nicht sehen und musste ihn glauben. Jetzt misst er ihn,
 // je Name und bei jedem Lauf, und eine bloße Erwähnung deckt nichts:
-//   spiegel   — der Leser DEFINIERT den Namen (`function|var|const|let NAME`) und nennt ihn auf
-//               mindestens einer weiteren Codezeile (kein Kommentar). Eine Definition allein ist
-//               ein Spiegel, den niemand ruft — genau der halbe Einbau, um den es geht.
-//   quelltext — der Leser nennt den Pfad des Moduls UND den Namen als Zeichenkette auf einer
-//               Codezeile. Ohne den Pfad wäre jede gleichnamige Zeichenkette ein Treffer.
+//   spiegel   — der Leser DEKLARIERT den Namen und VERWEIST ausserhalb der Deklaration auf das
+//               Symbol (Syntaxbaum, kein Texttreffer). Eine Definition allein ist ein Spiegel, den
+//               niemand ruft — genau der halbe Einbau, um den es geht; eine Zeichenkette oder ein
+//               Kommentar mit dem Namen ist kein Verweis.
+//   quelltext — der Leser LIEST das Modul (`readFileSync` mit dessen Pfad), gibt das Gelesene an
+//               eine eigene Auswertung, und die wendet den Exportnamen auf genau diesen Text an.
+//               Pfad und Name als lose Zeichenketten decken nichts.
 interface FremdLeser {
   /** Das TypeScript-Modul, dessen Exporte gelesen werden (relativ zur Wurzel). */
   readonly modul: string;
@@ -677,29 +680,189 @@ const FREMDLESER: readonly FremdLeser[] = [
   },
 ];
 
-const KOMMENTAR = /^\s*(\/\/|\*|\/\*|<!--)/;
+// Nacharbeit 6 (BEN): bis hierher massen beide Arten ZEILEN — im Spiegel genügte nach der
+// Definition eine weitere Zeile wie `console.log("name")`, im Quelltextleser genügten zwei ungenutzte
+// Zeichenketten mit Modulpfad und Name. Beides ist eine Nennung, keine Verwendung. Jetzt wird der
+// Leser als JavaScript geparst und am Syntaxbaum gemessen; Zeichenketten und Kommentare sind dort
+// keine Bezeichner und decken nichts.
+
+function jsBaum(pfad: string): ts.SourceFile {
+  return ts.createSourceFile(
+    pfad,
+    readFileSync(pfad, "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  );
+}
+
+function besucheAlle(wurzel: ts.Node, tu: (n: ts.Node) => void): void {
+  const geh = (n: ts.Node): void => {
+    tu(n);
+    ts.forEachChild(n, geh);
+  };
+  geh(wurzel);
+}
+
+/** Ein Bezeichner, der auf ein Symbol VERWEIST — kein Eigenschafts-, Schlüssel- oder Parametername. */
+function istVerweis(id: ts.Identifier): boolean {
+  const p = id.parent;
+  if (ts.isPropertyAccessExpression(p) && p.name === id) {
+    return false;
+  }
+  if (
+    (ts.isPropertyAssignment(p) ||
+      ts.isMethodDeclaration(p) ||
+      ts.isPropertyDeclaration(p) ||
+      ts.isGetAccessorDeclaration(p) ||
+      ts.isSetAccessorDeclaration(p) ||
+      ts.isParameter(p)) &&
+    p.name === id
+  ) {
+    return false;
+  }
+  return !(ts.isBindingElement(p) && p.propertyName === id);
+}
+
+/**
+ * Art `spiegel`: der Leser DEKLARIERT den Namen (Funktion, Klasse, Variable) und VERWEIST ausserhalb
+ * dieser Deklaration auf das Symbol. Ein Selbstaufruf im eigenen Rumpf ist kein Aufrufer.
+ */
+function spiegelVerwendet(sf: ts.SourceFile, name: string): boolean {
+  const deklarationen: ts.Node[] = [];
+  const verweise: ts.Identifier[] = [];
+  besucheAlle(sf, (n) => {
+    if (
+      (ts.isFunctionDeclaration(n) || ts.isClassDeclaration(n) || ts.isVariableDeclaration(n)) &&
+      n.name !== undefined &&
+      ts.isIdentifier(n.name) &&
+      n.name.text === name
+    ) {
+      deklarationen.push(n);
+    } else if (ts.isIdentifier(n) && n.text === name && istVerweis(n)) {
+      verweise.push(n);
+    }
+  });
+  const innerhalb = (v: ts.Node): boolean =>
+    deklarationen.some((d) => v.getStart() >= d.getStart() && v.getEnd() <= d.getEnd());
+  return deklarationen.length > 0 && verweise.some((v) => !innerhalb(v));
+}
+
+/**
+ * Art `quelltext`: die Kette muss im Leser stehen, nicht nur ihre Wörter —
+ *   1. LESEN:      `readFileSync(…)` mit dem Modulpfad (direkt oder über eine Variable);
+ *   2. AUSWERTEN:  das Gelesene geht als Argument an eine Funktion DIESES Lesers;
+ *   3. AUSWÄHLEN:  dort wird der Exportname auf genau diesen Parameter angewandt
+ *                  (`text.indexOf(…NAME…)`, direkt oder über eine Schleife über die Namensliste).
+ */
+function quelltextAusgewertet(sf: ts.SourceFile, modul: string, name: string): boolean {
+  const funktionen = new Map<string, ts.FunctionDeclaration>();
+  const belegung = new Map<string, ts.Expression[]>();
+  besucheAlle(sf, (n) => {
+    if (ts.isFunctionDeclaration(n) && n.name) {
+      funktionen.set(n.name.text, n);
+    }
+    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer) {
+      belegung.set(n.name.text, [...(belegung.get(n.name.text) ?? []), n.initializer]);
+    }
+  });
+  const enthaelt = (n: ts.Node, treffer: (k: ts.Node) => boolean): boolean => {
+    let ja = false;
+    besucheAlle(n, (k) => {
+      ja = ja || treffer(k);
+    });
+    return ja;
+  };
+  const traegtPfad = (e: ts.Node): boolean =>
+    enthaelt(e, (k) => ts.isStringLiteralLike(k) && k.text === modul) ||
+    (ts.isIdentifier(e) && (belegung.get(e.text) ?? []).some((b) => traegtPfad(b)));
+  const istLesen = (e: ts.Node): boolean => {
+    if (ts.isIdentifier(e)) {
+      return (belegung.get(e.text) ?? []).some((b) => istLesen(b));
+    }
+    if (!ts.isCallExpression(e)) {
+      return false;
+    }
+    const ziel = ts.isPropertyAccessExpression(e.expression) ? e.expression.name : e.expression;
+    const erstes = e.arguments[0];
+    return (
+      ts.isIdentifier(ziel) &&
+      ziel.text === "readFileSync" &&
+      erstes !== undefined &&
+      traegtPfad(erstes)
+    );
+  };
+  const wort = new RegExp(`(^|\\W)${name.replace(/[$]/g, "\\$&")}($|\\W)`);
+  const nenntNamen = (k: ts.Node): boolean => ts.isStringLiteralLike(k) && wort.test(k.text);
+  const waehltAus = (g: ts.FunctionDeclaration, parameter: string): boolean => {
+    if (!g.body) {
+      return false;
+    }
+    // Schleifenvariablen, die über eine Namensliste mit genau diesem Namen laufen.
+    const schleife = new Set<string>();
+    besucheAlle(g.body, (n) => {
+      if (
+        ts.isForOfStatement(n) &&
+        ts.isArrayLiteralExpression(n.expression) &&
+        n.expression.elements.some((el) => ts.isStringLiteralLike(el) && el.text === name) &&
+        ts.isVariableDeclarationList(n.initializer)
+      ) {
+        for (const d of n.initializer.declarations) {
+          if (ts.isIdentifier(d.name)) {
+            schleife.add(d.name.text);
+          }
+        }
+      }
+    });
+    return enthaelt(
+      g.body,
+      (n) =>
+        ts.isCallExpression(n) &&
+        ts.isPropertyAccessExpression(n.expression) &&
+        ts.isIdentifier(n.expression.expression) &&
+        n.expression.expression.text === parameter &&
+        n.arguments.some((a) =>
+          enthaelt(
+            a,
+            (k) => nenntNamen(k) || (ts.isIdentifier(k) && istVerweis(k) && schleife.has(k.text)),
+          ),
+        ),
+    );
+  };
+  return enthaelt(sf, (n) => {
+    if (!ts.isCallExpression(n) || !ts.isIdentifier(n.expression)) {
+      return false;
+    }
+    const g = funktionen.get(n.expression.text);
+    if (!g) {
+      return false;
+    }
+    return n.arguments.some((a, i) => {
+      const p = g.parameters[i]?.name;
+      return istLesen(a) && p !== undefined && ts.isIdentifier(p) && waehltAus(g, p.text);
+    });
+  });
+}
 
 /** Liest eine Nicht-TypeScript-Datei des Produkts WIRKLICH diesen Export? (siehe Kopf oben) */
-function fremdGelesen(f: Fund, wurzel: string, fremdleser: readonly FremdLeser[]): boolean {
-  const flucht = f.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function fremdGelesen(
+  f: Fund,
+  wurzel: string,
+  fremdleser: readonly FremdLeser[],
+  baeume: Map<string, ts.SourceFile> = new Map(),
+): boolean {
   for (const eintrag of fremdleser.filter((e) => e.modul === f.datei)) {
     for (const datei of eintrag.leser) {
       const pfad = join(wurzel, datei);
       if (!existsSync(pfad)) {
         continue;
       }
-      const text = readFileSync(pfad, "utf8");
-      const code = text.split("\n").filter((z) => !KOMMENTAR.test(z));
-      if (eintrag.art === "spiegel") {
-        const definition = new RegExp(`\\b(function|var|const|let)\\s+${flucht}\\b`);
-        const nennung = new RegExp(`\\b${flucht}\\b`);
-        const def = code.findIndex((z) => definition.test(z));
-        if (def >= 0 && code.some((z, i) => i !== def && nennung.test(z))) {
-          return true;
-        }
-      } else if (
-        code.some((z) => z.includes(eintrag.modul)) &&
-        code.some((z) => z.includes(`"${f.name}"`))
+      const sf = baeume.get(pfad) ?? jsBaum(pfad);
+      baeume.set(pfad, sf);
+      if (
+        eintrag.art === "spiegel"
+          ? spiegelVerwendet(sf, f.name)
+          : quelltextAusgewertet(sf, eintrag.modul, f.name)
       ) {
         return true;
       }
@@ -859,10 +1022,11 @@ function erhebe(
     return false;
   };
 
+  const leserbaeume = new Map<string, ts.SourceFile>();
   const ohneAufrufer = exporte
     .filter((f) => !fremdGenutzt(f))
     .filter((f) => !(nutzung.get(f.datei)?.has(f.name) ?? false))
-    .filter((f) => !fremdGelesen(f, wurzel, fremdleser))
+    .filter((f) => !fremdGelesen(f, wurzel, fremdleser, leserbaeume))
     .sort((a, b) => a.datei.localeCompare(b.datei) || a.name.localeCompare(b.name));
   return { ohneAufrufer, exporte: exporte.length, gelesen: dateien.length, fremdGenutzt };
 }
@@ -973,27 +1137,43 @@ const BEWUSST: readonly Ausnahme[] = [
 ];
 
 // ------------------------------------------------------------------------------------------------
-// REGISTER 2 · OFFENE PRODUKTENTSCHEIDUNGEN (R-1349, Nacharbeit 4) — kein Altbestand mehr
+// REGISTER 2 · UNERLEDIGTER REST VON R-1349 — abgegrenzt, nicht abgeschlossen
 // ------------------------------------------------------------------------------------------------
 // HIER STAND DER ALTBESTAND, eingefroren am 27.08.2026 (am Kandidaten b7be5168 nach BENs Zählung
 // 174 eingefrorene Altfälle über Server und Web). R-1349 verlangt: „Jeder Fall soll entweder
-// angeschlossen oder begründet entfernt werden." Jeder Eintrag ist einzeln abgeglichen und angeschlossen, entfernt, als Prüfzeug nach
-// `tests/` gezogen oder als gemessene Fremdlesekante (`FREMDLESER`) belegt worden. Die Aufstellung
-// je Fall steht in `docs/qm/aufnahme-20260922-gesamt-aufruferwaechter.md`. Ein eingefrorenes
-// Register gibt es damit nicht mehr.
+// angeschlossen oder begründet entfernt werden." Jeder Eintrag ist einzeln abgeglichen und
+// angeschlossen, entfernt, als Prüfzeug nach `tests/` gezogen oder als gemessene Fremdlesekante
+// (`FREMDLESER`) belegt worden. Die Aufstellung je Fall steht in
+// `docs/qm/aufnahme-20260922-gesamt-aufruferwaechter.md`. Ein eingefrorenes Register gibt es nicht.
 //
-// GEBLIEBEN SIND DIE FÄLLE, DIE WEDER DIESER AUFTRAG NOCH EIN ENTWICKLER ENTSCHEIDEN DARF: der
-// Baustein ist gebaut und geprüft, sein Anschluss (oder Abbau) ist eine ausstehende Produkt- bzw.
-// Betriebsentscheidung. Ihn anzuschliessen hiesse, sie still zu treffen; ihn zu entfernen hiesse,
-// fertige Arbeit wegzuwerfen, über die noch jemand entscheiden soll. Jeder Eintrag nennt deshalb
-// GRUND und WER ENTSCHEIDET — und A3 verlangt die Streichung, sobald der Baustein einen Aufrufer
-// hat oder entfernt ist.
-interface OffeneEntscheidung extends Ausnahme {
+// WAS HIER STEHT, IST NICHT ERLEDIGT (Nacharbeit 6, BEN): R-1349 ist für diese Bausteine NICHT
+// erfüllt — sie haben weiterhin keinen Aufrufer. Ein Eintrag mit Entscheider allein wäre keine
+// Abgrenzung. Hier steht deshalb nur, was eine ausdrückliche SPERRE trägt oder einem belegten
+// GESONDERTEN AUFTRAG gehört, und jeder Eintrag nennt diesen Beleg. Ohne eine solche Einschränkung
+// wurde abgeschlossen: in Nacharbeit 6 sind `PgWriteFence`, `fenceKey` und `netzQualitaet`
+// entfernt worden (Kommentare an den früheren Stellen). A3 verlangt die Streichung, sobald ein
+// Baustein einen Aufrufer hat oder entfernt ist, und prüft, dass jede genannte Belegdatei existiert.
+interface OffenerRest extends Ausnahme {
+  /** Warum dieser Auftrag den Fall nicht abschliesst. */
+  readonly abgrenzung: "sperre" | "gesonderter-auftrag";
+  /** Die Sperre bzw. der Auftrag, mit Fundstelle — keine bloße Zuständigkeit. */
+  readonly beleg: string;
+  /** Die Datei im Baum, in der die Sperre steht (wenn sie im Baum steht). */
+  readonly belegdatei?: string;
   /** Wer die ausstehende Entscheidung trifft — eine Rolle oder ein benannter Auftrag. */
   readonly entscheidet: string;
 }
 
-const OFFENE_ENTSCHEIDUNG: readonly OffeneEntscheidung[] = [
+const AUFTRAG_BESTANDSRESET =
+  "Auftrag aufnahme:20260922:gesamt-bestandsreset — R-0774: offene Owner-Punkte OV-1 bis OV-5 " +
+  "(Sperrrichtung, Löschgraph, Auditwahrheit bei Absturz, Zielpfade, zweiter Server); " +
+  "R-1911: E9 OFFEN";
+const SPERRE_WISSENSRAUM =
+  "PLAN PRO 378 §9 führt B-1, B-2, B-3 und B-6 als offene Sperren („ohne Produktsprache bleiben " +
+  "P-1/P-2 unbenennbar“), zitiert im Kopf von tests/library/wissensraum381-bauteile.test.tsx; " +
+  "der Server liefert kein `home`";
+
+const OFFENER_REST: readonly OffenerRest[] = [
   {
     schluessel: "services/app/src/reindex-queue.ts::createReindexQueue",
     grund:
@@ -1001,75 +1181,83 @@ const OFFENE_ENTSCHEIDUNG: readonly OffeneEntscheidung[] = [
       "Ihr Kopf haelt fest, dass die Anschlusswahl zwischen Service-Hook und Routenanschluss und " +
       "die Herkunft der Kennungen „weiterhin nicht freigegeben“ sind; das Modul wird deshalb " +
       "nirgends registriert.",
+    abgrenzung: "sperre",
+    beleg:
+      "BEN zu JOB 1163 (Kopf von reindex-queue.ts, Zeilen 16-18): die Wahl zwischen Service-Hook " +
+      "und Routenanschluss ist „weiterhin nicht freigegeben“; build-app.ts bleibt unberührt",
+    belegdatei: "services/app/src/reindex-queue.ts",
     entscheidet: "Produktverantwortung (Freigabe der Anschlusswahl, Pruefung durch BEN)",
   },
   {
     schluessel: "services/audit/src/repo.ts::pruefeValidationDecisionRef",
     grund:
       "Prueft eine Validierungs-Entscheidungsreferenz (Hash vor Action und Subject, Kette als " +
-      "Pflichtparameter). Ein Leseweg, der die Kette dafuer laedt, ist nicht beschlossen; die " +
-      "Implementierung lag ausserhalb des Schreibbereichs von Auftrag 67 (`repo.ts`, Kommentar dort).",
-    entscheidet: "Produktverantwortung (Leseweg der Antwortbelege mit Kettenpruefung)",
+      "Pflichtparameter). Der Anschlussort steht fest: `AnswerExplanationService` " +
+      "(services/app/src/services/answer-explanation.ts) liefert `evidenceValidationRefStates` heute " +
+      "nicht. Den Leseweg zu bauen ist die Auflösungserklärung des Antwortbelegs selbst.",
+    abgrenzung: "gesonderter-auftrag",
+    beleg:
+      "Auftrag aufnahme:20260922:gesamt-antwortbeleg („Antwortbelege dauerhaft speichern und ihre " +
+      "Auflösung erklären“), R-0308: je Wissenseinheit eine Prüfreferenz auf den Eintrag im Prüfbuch",
+    entscheidet: "Auftrag gesamt-antwortbeleg (Leseweg der Antwortbelege mit Kettenpruefung)",
   },
-  {
-    schluessel: "services/db-tx/src/write-fence.ts::PgWriteFence",
-    grund:
-      "Die gemeinsame Postgres-Schreibsperre aus JOB 1060 D7 ist gebaut und geprueft, aber an " +
-      "keinen Dienst gebunden; die Tabelle ist bewusst nicht migrierbar (`write-fence.test.ts`). " +
-      "Der Anschluss aendert das Schreibverhalten aller beteiligten Dienste unter Last.",
-    entscheidet: "Betriebs-/Architekturentscheidung zum Einbau der Schreibsperre (JOB 1060)",
-  },
-  {
-    schluessel: "services/db-tx/src/write-fence.ts::fenceKey",
-    grund:
-      "Der gemeinsame Sperrschluessel von `PgWriteFence`; er hat denselben offenen Anschluss wie die " +
-      "Sperre selbst und wird mit ihr zusammen eingebaut oder abgebaut.",
-    entscheidet: "Betriebs-/Architekturentscheidung zum Einbau der Schreibsperre (JOB 1060)",
-  },
+  // R-1349 (Nacharbeit 6): `services/db-tx/src/write-fence.ts` (`PgWriteFence`, `fenceKey`) stand hier
+  // als „Betriebs-/Architekturentscheidung“. Eine Sperre oder ein gesonderter Auftrag dazu ist nicht
+  // belegt; die Sperre war nie scharf (keine Tabelle, kein Dienst). Sie ist samt ihren zwei
+  // Prüfständen entfernt (Grund am Kopf von `services/db-tx/index.ts`).
   {
     schluessel: "services/db-tx/src/bestandsreset.ts::fuehreBestandsresetAus",
     grund:
       "Der aufrufbare Postgres-Bestandsreset aus JOB 596 D8 (drei Transaktionen, Auditautomat). Sein " +
       "Loeschgraph ist dort ausdruecklich „Vorschlag, nicht Entscheidung“ (Rueckgabe D8, V-1); ohne " +
       "diese Entscheidung bekommt der Reset keinen Betreiber- oder Adminweg.",
-    entscheidet: "Produktverantwortung (Loeschgraph V-1 und Betreiberweg des Resets)",
+    abgrenzung: "gesonderter-auftrag",
+    beleg: AUFTRAG_BESTANDSRESET,
+    entscheidet: "Owner (OV-1 bis OV-5) im Auftrag gesamt-bestandsreset",
   },
   {
     schluessel: "services/db-tx/src/bestandsreset-audit.ts::bestandsresetBefund",
     grund:
       "Teil des Bestandsresets (Auswertung des Laufzustands); offen mit derselben Entscheidung wie " +
       "`fuehreBestandsresetAus`.",
-    entscheidet: "Produktverantwortung (Loeschgraph V-1 und Betreiberweg des Resets)",
+    abgrenzung: "gesonderter-auftrag",
+    beleg: AUFTRAG_BESTANDSRESET,
+    entscheidet: "Owner (OV-1 bis OV-5) im Auftrag gesamt-bestandsreset",
   },
   {
     schluessel: "services/db-tx/src/bestandsreset-audit.ts::SQL_SCHEMA_BESTANDSRESET",
     grund:
       "Das Schema der Reset-Laufakte; es kommt erst mit dem Betreiberweg des Resets in die " +
       "Migrationsliste. Offen mit derselben Entscheidung wie `fuehreBestandsresetAus`.",
-    entscheidet: "Produktverantwortung (Loeschgraph V-1 und Betreiberweg des Resets)",
+    abgrenzung: "gesonderter-auftrag",
+    beleg: AUFTRAG_BESTANDSRESET,
+    entscheidet: "Owner (OV-1 bis OV-5) im Auftrag gesamt-bestandsreset",
   },
   {
     schluessel: "services/db-tx/src/reset-lock.ts::SQL_SPERRE_WIRD_GEHALTEN",
     grund:
       "Die beobachtende Sperrabfrage des Reset-Auditautomaten (`pg_locks`); offen mit derselben " +
       "Entscheidung wie `fuehreBestandsresetAus`.",
-    entscheidet: "Produktverantwortung (Loeschgraph V-1 und Betreiberweg des Resets)",
+    abgrenzung: "gesonderter-auftrag",
+    beleg: AUFTRAG_BESTANDSRESET,
+    entscheidet: "Owner (OV-1 bis OV-5) im Auftrag gesamt-bestandsreset",
   },
-  {
-    schluessel: "services/knowledge-object/src/kanten-service.ts::netzQualitaet",
-    grund:
-      "Kennzahlen des kuratierten Wissensnetzes (vernetzt, verwaist, Kanten), gebaut auf dem " +
-      "vorhandenen Lesedienst. Ob und wo diese Qualitaetsauskunft gezeigt wird, ist nicht entschieden; " +
-      "ein Bündelweg fuer die Kosten gehoert in `KantenRepo` (Kommentar dort).",
-    entscheidet: "Produktverantwortung (Anzeige der Netzqualitaet)",
-  },
+  // R-1349 (Nacharbeit 6): `kanten-service.ts::netzQualitaet` stand hier, weil „ob und wo“ die Zahl
+  // gezeigt werde, offen sei. Das ist entschieden: der Qualitätsblick ist ohne neuen Server-Weg
+  // geliefert (`apps/web/src/lib/netzQualitaet.ts`, R-0744). Die Funktion ist entfernt.
   {
     schluessel: "apps/web/src/components/confluence-import/ImportResultView.tsx::ImportResultView",
     grund:
       "Die W2-Resultatflaeche des Confluence-Imports ist gebaut und gemountet geprueft; ihre " +
       "Sichtbarkeit ist eine eigene Tranche. `tests/app/w2a-import-run-routes-148.test.ts` (Block 5) " +
       "verlangt ausdruecklich, dass sie bis dahin keinen Aufrufer in der Oberflaeche hat.",
-    entscheidet: "Produktverantwortung (Freigabe der W2-Resultattranche, KW-S4-26)",
+    abgrenzung: "gesonderter-auftrag",
+    beleg:
+      "Auftrag aufnahme:20260922:gesamt-confluence-import, R-0142 (Original und abgeleitete " +
+      "Wissenseinheiten auf einer Fläche, hinter Rechte- und Funktionsschalter); bis dahin sperrt " +
+      "w2a-import-run-routes-148 „ImportResultView hat weiterhin keinen Aufrufer in der Oberfläche“",
+    belegdatei: "tests/app/w2a-import-run-routes-148.test.ts",
+    entscheidet: "Auftrag gesamt-confluence-import (Freigabe der W2-Resultattranche, KW-S4-26)",
   },
   {
     schluessel: "apps/web/src/components/LibraryScopeBar.tsx::LibraryScopeBar",
@@ -1077,6 +1265,9 @@ const OFFENE_ENTSCHEIDUNG: readonly OffeneEntscheidung[] = [
       "Wissensraeume (PRO 381): der Server liefert heute kein `home`, und das Wort fuer den Ort ist " +
       "eine offene Ownerentscheidung (PLAN PRO 378). Das Bauteil ist geprueft " +
       "(`tests/library/wissensraum381-bauteile.test.tsx`) und wartet auf diese Entscheidung.",
+    abgrenzung: "sperre",
+    beleg: SPERRE_WISSENSRAUM,
+    belegdatei: "tests/library/wissensraum381-bauteile.test.tsx",
     entscheidet: "Owner (PLAN PRO 378, Wissensraeume)",
   },
   {
@@ -1084,6 +1275,9 @@ const OFFENE_ENTSCHEIDUNG: readonly OffeneEntscheidung[] = [
     grund:
       "Wie `LibraryScopeBar`: die Heimatzeile eines Objekts braucht ein `home` vom Server und die " +
       "Ownerentscheidung PLAN PRO 378; geprueft in `tests/library/wissensraum381-bauteile.test.tsx`.",
+    abgrenzung: "sperre",
+    beleg: SPERRE_WISSENSRAUM,
+    belegdatei: "tests/library/wissensraum381-bauteile.test.tsx",
     entscheidet: "Owner (PLAN PRO 378, Wissensraeume)",
   },
   {
@@ -1091,6 +1285,9 @@ const OFFENE_ENTSCHEIDUNG: readonly OffeneEntscheidung[] = [
     grund:
       "Wissensraeume (R-0991 Nr. 45, Fall C): der Server liefert kein `home`, das Wort fuer den Ort " +
       "ist eine offene Ownerentscheidung (PLAN PRO 378).",
+    abgrenzung: "sperre",
+    beleg: SPERRE_WISSENSRAUM,
+    belegdatei: "tests/library/wissensraum381-bauteile.test.tsx",
     entscheidet: "Owner (PLAN PRO 378, Wissensraeume)",
   },
   {
@@ -1098,6 +1295,9 @@ const OFFENE_ENTSCHEIDUNG: readonly OffeneEntscheidung[] = [
     grund:
       "Wissensraum in der Adresse (R-0991 Nr. 46, Fall C); offen mit derselben Ownerentscheidung " +
       "wie `koHomePath`.",
+    abgrenzung: "sperre",
+    beleg: SPERRE_WISSENSRAUM,
+    belegdatei: "tests/library/wissensraum381-bauteile.test.tsx",
     entscheidet: "Owner (PLAN PRO 378, Wissensraeume)",
   },
   {
@@ -1105,6 +1305,9 @@ const OFFENE_ENTSCHEIDUNG: readonly OffeneEntscheidung[] = [
     grund:
       "Wissensraum aus der Adresse lesen (R-0991 Nr. 47, Fall C); offen mit derselben " +
       "Ownerentscheidung wie `koHomePath`.",
+    abgrenzung: "sperre",
+    beleg: SPERRE_WISSENSRAUM,
+    belegdatei: "tests/library/wissensraum381-bauteile.test.tsx",
     entscheidet: "Owner (PLAN PRO 378, Wissensraeume)",
   },
 ];
@@ -1328,8 +1531,8 @@ const BEWUSST_WEB: readonly Ausnahme[] = [
 // Eingefroren am 27.08.2026 mit 117 Einträgen (JOB 2611 D1), zuletzt 120 mit den 26 Namen aus
 // `lib/wordAddin.ts`. Diese misst der Wächter seit Nacharbeit 4 selbst (`FREMDLESER`, Art `spiegel`).
 // Jeder übrige Eintrag ist einzeln abgeglichen: angeschlossen, entfernt, als Prüfzeug in den Test
-// gezogen oder — wo eine Produktentscheidung aussteht — in `OFFENE_ENTSCHEIDUNG` mit Grund und
-// Entscheider überführt; zwei Prüfnähte stehen begründet in `BEWUSST_WEB`. Die Aufstellung je Fall
+// gezogen oder — wo eine belegte Sperre oder ein gesonderter Auftrag den Abschluss ausschliesst — als
+// unerledigter Rest in `OFFENER_REST` geführt; zwei Prüfnähte stehen begründet in `BEWUSST_WEB`. Die Aufstellung je Fall
 // steht in `docs/qm/aufnahme-20260922-gesamt-aufruferwaechter.md`.
 //
 // Frühere Erledigungen aus der Zeit des eingefrorenen Registers, unverändert zur Herkunft: JOB 3337
@@ -1343,7 +1546,7 @@ const BEWUSST_WEB: readonly Ausnahme[] = [
 const GEDULDET = new Set<string>([
   ...BEWUSST.map((a) => a.schluessel),
   ...NEUZUGANG_GEMELDET.map((a) => a.schluessel),
-  ...OFFENE_ENTSCHEIDUNG.map((a) => a.schluessel),
+  ...OFFENER_REST.map((a) => a.schluessel),
   ...BEWUSST_WEB.map((a) => a.schluessel),
 ]);
 
@@ -1373,8 +1576,9 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
       "  · Verdrahte den Export dort, wo er wirken soll — das ist der Regelfall.",
       "  · Ist er bewusst ohne Aufrufer (Testhilfe, Betriebsbefehl), traegst du ihn mit GRUND",
       "    in `BEWUSST` in dieser Datei ein.",
-      "  · Wartet sein Anschluss auf eine benannte Produktentscheidung, gehoert er mit GRUND und",
-      "    ENTSCHEIDER in `OFFENE_ENTSCHEIDUNG` — nie als stiller Altbestand (R-1349).",
+      "  · Sperrt eine belegte Sperre oder ein gesonderter Auftrag seinen Anschluss, gehoert er mit",
+      "    GRUND, BELEG und ENTSCHEIDER in `OFFENER_REST` — als unerledigter Rest, nie als stiller",
+      "    Altbestand (R-1349).",
       "  · Ist er ueberholt, entferne ihn (R-1349: „angeschlossen oder begruendet entfernt“).",
     ].join("\n");
 
@@ -1453,7 +1657,7 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
       [
         "Diese Registereintraege treffen nicht mehr zu — der Export hat inzwischen einen Aufrufer",
         "oder es gibt ihn nicht mehr. Bitte aus `BEWUSST`, `BEWUSST_WEB` beziehungsweise",
-        "`OFFENE_ENTSCHEIDUNG` streichen:",
+        "`OFFENER_REST` streichen:",
         ...erledigt.map((s) => `  ${s}`),
       ].join("\n"),
     ).toEqual([]);
@@ -1461,20 +1665,29 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
     // Und jede benannte Ausnahme traegt wirklich einen Grund — in JEDEM Register, nicht nur im
     // ersten. Ein Register ohne diese Zeile waere die Hintertuer, durch die unbegruendete Eintraege
     // hereinkommen.
-    for (const a of [...BEWUSST, ...NEUZUGANG_GEMELDET, ...OFFENE_ENTSCHEIDUNG, ...BEWUSST_WEB]) {
+    for (const a of [...BEWUSST, ...NEUZUGANG_GEMELDET, ...OFFENER_REST, ...BEWUSST_WEB]) {
       expect(a.grund.length, `Ausnahme ${a.schluessel} ohne Begruendung`).toBeGreaterThan(40);
     }
-    // R-1349 (Nacharbeit 4): eine offene Entscheidung ohne Entscheider waere wieder stiller
-    // Altbestand. Jeder Eintrag nennt, wer entscheidet.
-    for (const a of OFFENE_ENTSCHEIDUNG) {
-      expect(
-        a.entscheidet.trim().length,
-        `Offene Entscheidung ${a.schluessel} ohne Entscheider`,
-      ).toBeGreaterThan(5);
+    // R-1349 (Nacharbeit 4 und 6): ein Rest ohne Entscheider wäre wieder stiller Altbestand, und ein
+    // Rest ohne belegte Sperre bzw. gesonderten Auftrag wäre keine Abgrenzung (BEN, Nacharbeit 6).
+    // Jeder Eintrag nennt beides; eine genannte Belegdatei muss es im Baum geben.
+    for (const a of OFFENER_REST) {
+      const wer = `Rest ${a.schluessel}`;
+      expect(a.entscheidet.trim().length, `${wer} ohne Entscheider`).toBeGreaterThan(5);
+      expect(a.beleg.trim().length, `${wer} ohne Beleg`).toBeGreaterThan(40);
+      if (a.abgrenzung === "gesonderter-auftrag") {
+        expect(a.beleg, `${wer}: der Auftrag ist nicht benannt`).toMatch(
+          /aufnahme:\d{8}:[a-z0-9-]+/,
+        );
+      }
+      if (a.belegdatei !== undefined) {
+        const da = existsSync(join(WURZEL, a.belegdatei));
+        expect(da, `Belegdatei ${a.belegdatei} fehlt`).toBe(true);
+      }
     }
     // Kein Schlüssel steht in zwei Registern — sonst trüge er zwei Begründungen, von denen eine
     // falsch ist.
-    const alle = [...BEWUSST, ...NEUZUGANG_GEMELDET, ...OFFENE_ENTSCHEIDUNG, ...BEWUSST_WEB].map(
+    const alle = [...BEWUSST, ...NEUZUGANG_GEMELDET, ...OFFENER_REST, ...BEWUSST_WEB].map(
       (a) => a.schluessel,
     );
     expect(alle.length, "ein Schlüssel steht in mehr als einem Register").toBe(new Set(alle).size);
@@ -1768,9 +1981,11 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
   // R-1349 (Nacharbeit 4) — A8 · DIE FREMDLESEKANTE IST GEMESSEN, NICHT GEGLAUBT
   // ----------------------------------------------------------------------------------------------
   // `FREMDLESER` ersetzt Ausnahmen durch eine Messung. Diese Messung muss in beide Richtungen
-  // tragen: ein wirklich gerufener Spiegel deckt, eine blosse Definition, ein Kommentar oder eine
-  // pfadlose Zeichenkette decken NICHT. Gefahren wird sie an einem eigenen Baum mit eigener
-  // Leserliste — dieselbe Bauart wie A4.
+  // tragen: ein wirklich gerufener Spiegel und eine wirklich auswertende Lesekette decken; eine
+  // blosse Definition, ein Kommentar, eine Zeichenkette, ein Eigenschaftsname, ein Selbstaufruf, lose
+  // Pfad- und Namenszeichenketten oder ein Lesen ohne Anwendung des Namens decken NICHT (die letzten
+  // vier seit Nacharbeit 6, BEN). Gefahren wird sie an einem eigenen Baum mit eigener Leserliste —
+  // dieselbe Bauart wie A4.
   it("A8 · FREMDLESER: gerufener Spiegel und benannter Quelltextleser decken, Nennungen nicht", () => {
     const baum = mkdtempSync(join(tmpdir(), "kw1349-fremdleser-"));
     try {
@@ -1780,27 +1995,65 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
       mkdirSync(join(baum, "werkzeug"), { recursive: true });
       const schreib = (rel: string, text: string): void =>
         writeFileSync(join(baum, rel), text, "utf8");
+      // Nacharbeit 6 (BEN): `nurGenannt` steht nach seiner Definition auf einer weiteren Codezeile —
+      // aber nur als Zeichenkette; `nurEigenschaft` nur als Eigenschaftsname; `nurSelbst` ruft nur
+      // sich selbst. Keiner davon ist ein Verweis.
       schreib(
         "services/probe/src/spiegelquelle.ts",
         "export function gerufen(): number {\n  return 1;\n}\n" +
           "export function nurDefiniert(): number {\n  return 2;\n}\n" +
-          "export function nurKommentiert(): number {\n  return 3;\n}\n",
+          "export function nurKommentiert(): number {\n  return 3;\n}\n" +
+          "export function nurGenannt(): number {\n  return 4;\n}\n" +
+          "export function nurEigenschaft(): number {\n  return 5;\n}\n" +
+          "export function nurSelbst(n: number): number {\n  return n;\n}\n",
       );
       schreib(
         "public/spiegel.js",
         "function gerufen() { return 1; }\nfunction nurDefiniert() { return 2; }\n" +
-          "function nurKommentiert() { return 3; }\n// nurKommentiert();\nconsole.log(gerufen());\n",
+          "function nurKommentiert() { return 3; }\n// nurKommentiert();\n" +
+          'function nurGenannt() { return 4; }\nconsole.log("nurGenannt");\n' +
+          "function nurEigenschaft() { return 5; }\nvar o = { nurEigenschaft: 1 };\n" +
+          "o.nurEigenschaft();\n" +
+          "function nurSelbst(n) { return n > 0 ? nurSelbst(n - 1) : 0; }\n" +
+          "console.log(gerufen());\n",
       );
       schreib(
         "services/probe/src/listen.ts",
         'export const LISTE_A = ["a"];\nexport const LISTE_B = ["b"];\n',
       );
+      // Die echte Kette: lesen → an die eigene Auswertung geben → den Namen auf den Text anwenden.
       schreib(
         "werkzeug/leser.mjs",
-        'const quelle = "services/probe/src/listen.ts";\nconst name = "LISTE_A";\n',
+        'import { readFileSync } from "node:fs";\n' +
+          "function auswerten(quelltext) {\n" +
+          '  for (const liste of ["LISTE_A"]) {\n' +
+          '    if (quelltext.indexOf("export const " + liste) === -1) {\n' +
+          "      throw new Error(liste);\n" +
+          "    }\n" +
+          "  }\n" +
+          "}\n" +
+          'const quelle = "services/probe/src/listen.ts";\n' +
+          'auswerten(readFileSync(quelle, "utf8"));\n',
       );
       schreib("services/probe/src/pfadlos.ts", 'export const LISTE_C = ["c"];\n');
       schreib("werkzeug/pfadlos.mjs", 'const name = "LISTE_C";\n');
+      // BENs Fall wörtlich: Modulpfad und Exportname als zwei ungenutzte Zeichenketten.
+      schreib("services/probe/src/lose.ts", 'export const LISTE_D = ["d"];\n');
+      schreib(
+        "werkzeug/lose.mjs",
+        'const quelle = "services/probe/src/lose.ts";\nconst name = "LISTE_D";\n',
+      );
+      // Gelesen, aber der Name wird NICHT auf das Gelesene angewandt.
+      schreib("services/probe/src/blind.ts", 'export const LISTE_E = ["e"];\n');
+      schreib(
+        "werkzeug/blind.mjs",
+        'import { readFileSync } from "node:fs";\n' +
+          "function zaehle(text) {\n" +
+          '  console.log("LISTE_E");\n' +
+          "  return text.length;\n" +
+          "}\n" +
+          'zaehle(readFileSync("services/probe/src/blind.ts", "utf8"));\n',
+      );
       const leser: readonly FremdLeser[] = [
         {
           modul: "services/probe/src/spiegelquelle.ts",
@@ -1820,6 +2073,18 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
           art: "quelltext",
           grund: "Probe",
         },
+        {
+          modul: "services/probe/src/lose.ts",
+          leser: ["werkzeug/lose.mjs"],
+          art: "quelltext",
+          grund: "Probe",
+        },
+        {
+          modul: "services/probe/src/blind.ts",
+          leser: ["werkzeug/blind.mjs"],
+          art: "quelltext",
+          grund: "Probe",
+        },
       ];
       const gefangen = erhebe(baum, ["services"], ["services"], [], leser).ohneAufrufer.map(
         (f) => f.name,
@@ -1827,9 +2092,14 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
       expect(gefangen, "ein gerufener Spiegel deckt seinen Export").not.toContain("gerufen");
       expect(gefangen, "eine Definition allein ist kein Aufruf").toContain("nurDefiniert");
       expect(gefangen, "ein Kommentar ist kein Aufruf").toContain("nurKommentiert");
-      expect(gefangen, "Pfad UND Name im Quelltextleser decken").not.toContain("LISTE_A");
-      expect(gefangen, "nicht genannt ist nicht gelesen").toContain("LISTE_B");
+      expect(gefangen, "eine Zeichenkette mit dem Namen ist kein Verweis").toContain("nurGenannt");
+      expect(gefangen, "ein Eigenschaftsname ist kein Verweis").toContain("nurEigenschaft");
+      expect(gefangen, "ein Selbstaufruf ist kein Aufrufer").toContain("nurSelbst");
+      expect(gefangen, "lesen, auswerten, Namen anwenden deckt").not.toContain("LISTE_A");
+      expect(gefangen, "nicht ausgewählt ist nicht gelesen").toContain("LISTE_B");
       expect(gefangen, "ohne den Modulpfad deckt eine Zeichenkette nichts").toContain("LISTE_C");
+      expect(gefangen, "Pfad und Name als lose Zeichenketten decken nichts").toContain("LISTE_D");
+      expect(gefangen, "gelesen, aber der Name nicht angewandt deckt nichts").toContain("LISTE_E");
       // Und ohne Leserliste deckt gar nichts — die Kante kommt aus der Liste, nicht aus dem Baum.
       const ohneListe = erhebe(baum, ["services"], ["services"], [], []).ohneAufrufer.map(
         (f) => f.name,

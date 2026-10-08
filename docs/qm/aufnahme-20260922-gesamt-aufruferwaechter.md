@@ -2,8 +2,8 @@
 
 Auftrag `aufnahme:20260922:gesamt-aufruferwaechter`, Revision 1.
 
-- **Stand dieses Dokuments:** Arbeitsbaum nach Nacharbeit 4. Grundlage ist der Kandidat `b7be5168`
-  (**1.0.0-beta.1.775**), am 08.10.2026 abgeglichen.
+- **Stand dieses Dokuments:** Arbeitsbaum nach Nacharbeit 6, am Kandidaten `75adf52f`. Die
+  Fallaufstellung wurde am Kandidaten `b7be5168` (**1.0.0-beta.1.775**) am 08.10.2026 erhoben.
 - **Erster Abgleich:** 07.10.2026 gegen **1.0.0-beta.1.730** (Basis `863a0974`). Die Zahlen aus
   diesem Abgleich sind unten als **historisch** gekennzeichnet.
 
@@ -17,8 +17,8 @@ entsteht erst mit ihrer Veröffentlichung und steht hier deshalb noch nicht.
 | Anliegen | Geliefert (Commit · Fassung) | Beleg heute | Stand |
 |---|---|---|---|
 | **R-1192** Aufrufer-Wächter: gebauter Code ohne Aufrufer fällt auf | JOB 2605 D3 `fd44fb52` · JOB 2609 D1 `af733b53` · JOB 2611 D1 `081f60f5` (alle 27.08.2026, ab .30) · dynamischer Import JOB 3030 D11 `7b37c385` | `tests/capture/aufrufer-waechter.test.ts` A1–A7 | historisch erledigt, Wächter läuft im regulären Unit-Lauf |
-| **R-1306** Ein Werkzeug findet Bausteine, die niemand aufruft (K1) | wie R-1192: derselbe Wächter; in diesem Auftrag geschärft (siehe „Wächter“) | A1 (Fang), A2 (Kalibrierung), A4/A5 (Gegenprobe), A7 (Methodenname), **A8** (Fremdlesekante), **A9** (Vorgabewert in der Destrukturierung) | erfüllt; zwei Messlücken in diesem Auftrag geschlossen |
-| **R-1349** Jeder Fall wird angeschlossen oder begründet entfernt (K2) | dieser Auftrag, Nacharbeit 1–4 (siehe „R-1349 je Fall“) | A1 und A3 des Wächters, `tests/k3-bedarfsabgleich/bedarfsabgleich.test.ts` T3/T4/T6/T7 sowie die nachgezogenen Prüfstände | **jeder Fall einzeln abgeschlossen.** Kein eingefrorener Eintrag mehr. 15 Fälle warten mit Grund und Entscheider auf eine Produktentscheidung, 18 Prüfnähte stehen mit Grund. |
+| **R-1306** Ein Werkzeug findet Bausteine, die niemand aufruft (K1) | wie R-1192: derselbe Wächter; in diesem Auftrag geschärft (siehe „Wächter“) | A1 (Fang), A2 (Kalibrierung), A4/A5 (Gegenprobe), A7 (Methodenname), **A8** (Fremdlesekante am Syntaxbaum, seit Nacharbeit 6), **A9** (Vorgabewert in der Destrukturierung) | erfüllt; drei Messlücken in diesem Auftrag geschlossen |
+| **R-1349** Jeder Fall wird angeschlossen oder begründet entfernt (K2) | dieser Auftrag, Nacharbeit 1–6 (siehe „R-1349 je Fall“) | A1 und A3 des Wächters, `tests/k3-bedarfsabgleich/bedarfsabgleich.test.ts` T3/T4/T6/T7 sowie die nachgezogenen Prüfstände | **teilweise erfüllt.** 164 der 176 Fälle sind abgeschlossen. **12 Fälle sind unerledigter Rest** (`OFFENER_REST`): Sie haben weiterhin keinen Aufrufer. Jeder ist durch eine belegte Sperre oder einen gesonderten Auftrag vom Abschluss in diesem Auftrag ausgenommen. Kein eingefrorener Eintrag mehr. |
 | **UX-16b-R** Klammerzugriff auf die Word-Vorschau-Fläche muss rot werden (K3) | JOB 3264 D1 `966874cb` · ship `72b2fd17` **1.0.0-beta.1.221** (09.09.2026) | `tests/klara-webhilfe-schmal/word-weg-naechster-schritt.test.tsx` F12 (Fixtures `kalibrierung/punkt.tsx`, `kalibrierung/klammer.tsx`), F12b–F12f | erfüllt im Bestand, in diesem Auftrag nicht neu gebaut |
 
 ## Zahlen: historisch und heute
@@ -29,13 +29,16 @@ Alle Zahlen dieses Abschnitts zählen Einträge im Wächter `tests/capture/aufru
 |---|---|---|---|---|
 | *historisch:* Abgleich 07.10.2026 (Dokument bis Nacharbeit 3) | „175“ bzw. „174“ | „22“ | „197“ | frühere Fassung dieses Dokuments — **widersprüchlich**, siehe unten |
 | Kandidat `b7be5168` (gemessen mit `git grep` am Commit) | **171** (`ALTBESTAND` 57, `ALTBESTAND_WEB` 114) | **24** (`BEWUSST` 9, `DURCH_VERSCHAERFUNG_SICHTBAR` 3, `ERSETZT_*` 2, `BEWUSST_WEB` 10) | **195** | Zählung am Commit |
-| **heute** (nach Nacharbeit 4) | **0** — die Register `ALTBESTAND`, `ALTBESTAND_WEB`, `DURCH_VERSCHAERFUNG_SICHTBAR` und `ERSETZT_*` sind abgebaut | **33**: `BEWUSST` 9, `BEWUSST_WEB` 9, `OFFENE_ENTSCHEIDUNG` 15 (jeder mit Entscheider), `NEUZUGANG_GEMELDET` 0 | **33** | Register im Arbeitsbaum |
+| *historisch:* nach Nacharbeit 4 | **0** | **33**: `BEWUSST` 9, `BEWUSST_WEB` 9, `OFFENE_ENTSCHEIDUNG` 15, `NEUZUGANG_GEMELDET` 0 | **33** | Register am Kandidaten `75adf52f` |
+| **heute** (nach Nacharbeit 6) | **0** — die Register `ALTBESTAND`, `ALTBESTAND_WEB`, `DURCH_VERSCHAERFUNG_SICHTBAR` und `ERSETZT_*` sind abgebaut | **30**: `BEWUSST` 9, `BEWUSST_WEB` 9, `OFFENER_REST` 12 (unerledigt, je mit Sperre oder gesondertem Auftrag), `NEUZUGANG_GEMELDET` 0 | **30** | Register im Arbeitsbaum |
 
 Dazu kommen **31 gemessene Fremdlesekanten** (`FREMDLESER`), keine Ausnahmen:
 
-- 29 Exporte aus `lib/wordAddin.ts`, die der Spiegel `public/word-addin/taskpane.js` definiert und ruft;
-- 2 Listen aus `services/app/src/migrationsbeleg.ts`, die `scripts/insel/schema-vertrag.mjs` aus dem
-  Quelltext liest.
+- 29 Exporte aus `lib/wordAddin.ts`, die der Spiegel `public/word-addin/taskpane.js` deklariert und
+  außerhalb der Deklaration verwendet;
+- 2 Listen aus `services/app/src/migrationsbeleg.ts`: `scripts/insel/schema-vertrag.mjs` liest das
+  Modul (`stufenAusBaum`), gibt den Text an `stufenAusQuelle` und wendet dort beide Listennamen auf
+  ihn an.
 
 BEN nannte „174 Altfälle bleiben eingefroren“. Das sind die 171 eingefrorenen Einträge plus die 3 aus
 `DURCH_VERSCHAERFUNG_SICHTBAR`, die ausdrücklich als „NICHT behoben“ geführt waren.
@@ -54,11 +57,11 @@ Ausgangsmenge sind die **176 Einträge** am Kandidaten ohne Einzelabschluss:
 
 | Ausgang | Anzahl | Bedeutung |
 |---|---|---|
-| entfernt | 99 | überholt; der Weg, den das Produkt wirklich nimmt, ist benannt |
+| entfernt | 102 | überholt; der Weg, den das Produkt wirklich nimmt, ist benannt (3 davon in Nacharbeit 6) |
 | angeschlossen | 17 | der Produktweg ruft jetzt genau diesen Baustein statt einer Abschrift daneben |
 | in den Test gezogen | 13 | Prüfzeug; aus dem Produkt nach `tests/` verlegt |
-| gemessene Fremdlesekante | 28 | Word-Spiegel bzw. Schema-Vertrag; der Wächter misst den Aufruf je Name |
-| offene Produktentscheidung | 15 | mit Grund und Entscheider in `OFFENE_ENTSCHEIDUNG` |
+| gemessene Fremdlesekante | 28 | Word-Spiegel bzw. Schema-Vertrag; der Wächter misst die Verwendung je Name |
+| **unerledigter Rest** | **12** | **nicht** angeschlossen und **nicht** entfernt; abgegrenzt durch belegte Sperre (6) oder gesonderten Auftrag (6), siehe unten |
 | begründet behalten | 3 | Prüfnähte am Produktmodul (`BEWUSST`/`BEWUSST_WEB`) |
 | Fehlalarm des Wächters | 1 | Wächter berichtigt (A9) |
 | **zusammen** | **176** | |
@@ -112,7 +115,11 @@ Aus den Registern mit Einzelbegründung kommen zwei weitere Ausgänge hinzu:
   - `reasoner/provider.ts::keywordSelect`. Das war ein zweiter Auswahlweg, den kein Provider rief.
     14 Prüfstände messen dieselbe Menge jetzt am Produktweg `rankCandidates`, über
     `tests/support/auswahlweg.ts`.
-- **Offen (9)** und **begründet behalten (1, `InMemoryKantenRepo`):** siehe die Tabellen unten.
+- **Entfernt in Nacharbeit 6 (3):** `db-tx/src/write-fence.ts::PgWriteFence`, `fenceKey`
+  (samt `write-fence.test.ts` und `tests/app/write-fence-race.test.ts`) und
+  `kanten-service.ts::netzQualitaet` (samt dem Prüfstand `h3-551-netzqualitaet`). Gründe siehe
+  „Unerledigter Rest“.
+- **Unerledigter Rest (6)** und **begründet behalten (1, `InMemoryKantenRepo`):** siehe unten.
 
 ### Web (`ALTBESTAND_WEB`, 114)
 
@@ -126,7 +133,7 @@ Aus den Registern mit Einzelbegründung kommen zwei weitere Ausgänge hinzu:
     - `reviewerMinimum.ts::isNeededValidationsValid`: KI-Verwaltung statt der Literale 1 und 5.
   - In den Test gezogen: `stripAnswerMarkdown` (nach `tests/support/antwort-klartext.ts`),
     `EXAMPLE_PACKAGES_ALL_KEYS` und `KNOWLEDGE_STORY_SURFACES`.
-  - Offen: die drei `librarySpace.ts`-Exporte.
+  - Unerledigter Rest: die drei `librarySpace.ts`-Exporte.
   - Entfernt: alle übrigen. Für jeden gilt der Alternativweg aus R-0991 weiter (T4). Die Ausnahme
     sind die zwei Fälle, deren Belegdatei selbst entfernt ist (Nr. 33, Nr. 57; siehe unten).
 - **Übrige Web-Einträge (35):**
@@ -135,7 +142,7 @@ Aus den Registern mit Einzelbegründung kommen zwei weitere Ausgänge hinzu:
     - `facets.ts::combinableFacetCounts`: `buildFacetGroups` zählt damit statt mit einer zweiten
       Schleife.
     - `libraryExport.ts::exportFormatMeta`: die Bibliothek liest den Formatschlüssel.
-  - Offen (3): `ImportResultView`, `LibraryScopeBar`, `KoHomeLine`.
+  - Unerledigter Rest (3): `ImportResultView`, `LibraryScopeBar`, `KoHomeLine`.
   - Begründet behalten (2): `ImageDescribeValueProvider` und `RICH_TEXT_ALLOWED_TAGS`.
   - Fehlalarm (1): `facetRail.ts::FACET_SEARCH_THRESHOLD`. Der Export wird als Vorgabewert einer
     Destrukturierung gelesen, das Bindungsmuster übersprang der Wächter bisher. Er ist berichtigt,
@@ -176,17 +183,48 @@ Aus den Registern mit Einzelbegründung kommen zwei weitere Ausgänge hinzu:
 Die Wörterbuchschlüssel aller entfernten Bausteine bleiben stehen. Der Textbestand ist Wert für Wert
 festgeschrieben (`tests/i18n-textmodule/bestand-unveraendert.test.ts`).
 
-### Offene Produktentscheidungen (`OFFENE_ENTSCHEIDUNG`, 15)
+### Unerledigter Rest (`OFFENER_REST`, 12) und die drei Abschlüsse aus Nacharbeit 6
 
-| Baustein | warum nicht angeschlossen | entscheidet |
-|---|---|---|
-| `reindex-queue.ts::createReindexQueue` | Anschlusswahl (Service-Hook oder Route) und Herkunft der Kennungen „weiterhin nicht freigegeben“ | Produktverantwortung, Prüfung BEN |
-| `audit/repo.ts::pruefeValidationDecisionRef` | Leseweg mit Kettenprüfung nicht beschlossen (Auftrag 67) | Produktverantwortung |
-| `write-fence.ts::PgWriteFence`, `fenceKey` | gemeinsame Schreibsperre (JOB 1060 D7) an keinen Dienst gebunden; Einbau ändert das Schreibverhalten unter Last | Betriebs-/Architekturentscheidung |
-| `bestandsreset.ts::fuehreBestandsresetAus`, `bestandsreset-audit.ts::bestandsresetBefund`, `SQL_SCHEMA_BESTANDSRESET`, `reset-lock.ts::SQL_SPERRE_WIRD_GEHALTEN` | Löschgraph laut Rückgabe JOB 596 D8 „Vorschlag, nicht Entscheidung“ (V-1); kein Betreiberweg | Produktverantwortung |
-| `kanten-service.ts::netzQualitaet` | ob und wo die Netzqualität gezeigt wird | Produktverantwortung |
-| `ImportResultView` | Sichtbarkeit der W2-Resultatfläche ist eine eigene Tranche (KW-S4-26); W2-A/148 Block 5 verlangt bis dahin keinen Aufrufer | Produktverantwortung |
-| `LibraryScopeBar`, `KoHomeLine`, `librarySpace.ts::koHomePath`, `serializeSpace`, `spaceFromParams` | Server liefert kein `home`; das Wort für den Ort ist offen (PLAN PRO 378) | Owner |
+Nacharbeit 4 führte 15 Fälle als „offene Produktentscheidung“ und nannte R-1349 trotzdem
+„abgeschlossen“. Das war falsch (BEN, Nacharbeit 6): Diese Bausteine haben weiterhin keinen
+Aufrufer, R-1349 ist für sie **nicht erfüllt**. Jeder der 15 Fälle ist deshalb noch einmal einzeln
+gegen die Quellen abgeglichen worden.
+
+- **Ohne Sperre und ohne gesonderten Auftrag ⇒ abgeschlossen (3, entfernt):**
+  - `kanten-service.ts::netzQualitaet` (JOB 1553, H3/SCRUM-551). Der Grund „ob und wo die Zahl
+    gezeigt wird, ist offen“ trägt nicht mehr: Der Qualitätsblick des Wissensnetzes ist geliefert,
+    und zwar ausdrücklich **ohne neuen Server-Weg**. Er steht in `apps/web/src/lib/netzQualitaet.ts`
+    an `/graph` (R-0744, Auftrag `aufnahme:20260922:gesamt-wissensnetz`; dort
+    `docs/knowledge-os/wissensnetz-themenkarte-bestandsaufnahme-2026-10-03.md`, „Es gibt keinen neuen
+    Server-Weg“).
+    - Entfernt sind die Funktion, ihre zwei Typen, die Fassadenexporte in
+      `services/knowledge-object/index.ts` und der Prüfstand `tests/ko/h3-551-netzqualitaet.test.ts`.
+  - `db-tx/src/write-fence.ts::PgWriteFence` und `fenceKey` (JOB 1060 D7). In den zugänglichen
+    Quellen ist weder eine Sperre noch ein Auftrag für den Einbau belegt; der frühere Grund war eine
+    Schnittgrenze („`db.ts` nicht in der D7-Lease“).
+    - Die Sperre war nie scharf: Die Tabelle stand nur als Kommentar-DDL, kein Dienst band sie, und
+      die Fassade `services/db-tx/index.ts` führte sie nicht.
+    - Das Rennen beantwortet das Produkt heute über das versionsbedingte Einfügen
+      (`services/conflicts/src/repo-pg.ts`, `insertIfVersionsCurrent`) und den fail-closed Leseweg.
+      Die volle Schreib-Serialisierung ist dort als eigene Scheibe „Job-Queue“ vorgemerkt.
+    - Entfernt sind das Modul, `services/db-tx/src/write-fence.test.ts` und
+      `tests/app/write-fence-race.test.ts`. Die dynamische Ladestelle dieses Prüfstands ist aus
+      `tests/legal/mega61-rechtsseiten.test.tsx` (`BEKANNT_UNAUFLOESBAR`) gestrichen; der
+      `verwaist`-Fall dort verlangt genau das.
+- **Mit belegter Sperre oder gesondertem Auftrag ⇒ unerledigter Rest (12):**
+
+| Baustein | Abgrenzung | Beleg | Anschluss entscheidet |
+|---|---|---|---|
+| `reindex-queue.ts::createReindexQueue` | Sperre | BEN zu JOB 1163 (Kopf von `services/app/src/reindex-queue.ts`, Z. 16–18): Die Wahl zwischen Service-Hook und Routenanschluss ist „weiterhin nicht freigegeben“; `build-app.ts` bleibt unberührt | Produktverantwortung (Freigabe), Prüfung BEN |
+| `audit/repo.ts::pruefeValidationDecisionRef` | gesonderter Auftrag | `aufnahme:20260922:gesamt-antwortbeleg` („Antwortbelege dauerhaft speichern und ihre Auflösung erklären“), R-0308. Der Anschlussort ist `AnswerExplanationService` (`services/app/src/services/answer-explanation.ts`); er liefert `evidenceValidationRefStates` heute nicht | Auftrag gesamt-antwortbeleg |
+| `bestandsreset.ts::fuehreBestandsresetAus`, `bestandsreset-audit.ts::bestandsresetBefund`, `SQL_SCHEMA_BESTANDSRESET`, `reset-lock.ts::SQL_SPERRE_WIRD_GEHALTEN` | gesonderter Auftrag | `aufnahme:20260922:gesamt-bestandsreset`: R-0774 mit offenen Owner-Punkten OV-1 bis OV-5 (Sperrrichtung, Löschgraph, Auditwahrheit bei Absturz, Zielpfade, zweiter Server); R-1911 Entscheidung E9 „OFFEN“ | Owner (OV-1 bis OV-5) |
+| `ImportResultView` | gesonderter Auftrag, dazu Sperre | `aufnahme:20260922:gesamt-confluence-import`, R-0142 (Original und abgeleitete Wissenseinheiten auf einer Fläche, hinter Rechte- und Funktionsschalter). Bis dahin verlangt `tests/app/w2a-import-run-routes-148.test.ts`: „ImportResultView hat weiterhin keinen Aufrufer in der Oberfläche“ | Auftrag gesamt-confluence-import (KW-S4-26) |
+| `LibraryScopeBar`, `KoHomeLine`, `librarySpace.ts::koHomePath`, `serializeSpace`, `spaceFromParams` | Sperre | PLAN PRO 378 §9 führt B-1, B-2, B-3 und B-6 als **offene Sperren** („ohne Produktsprache bleiben P-1/P-2 unbenennbar“; zitiert im Kopf von `tests/library/wissensraum381-bauteile.test.tsx`). Der Server liefert kein `home` | Owner (PLAN PRO 378) |
+
+Der Wächter führt diese 12 in `OFFENER_REST` mit Art der Abgrenzung, Beleg und Entscheider. A3
+verlangt alle drei. Bei einem gesonderten Auftrag muss dessen Kennung genannt sein; eine genannte
+Belegdatei muss im Baum stehen. Sobald ein Baustein einen Aufrufer hat oder entfernt ist, verlangt A3
+die Streichung.
 
 ### Begründet behalten (Prüfnähte, keine halbe Funktion)
 
@@ -208,15 +246,29 @@ Jeder Eintrag nennt seinen Grund im Register, A3 prüft ihn.
 ## Der Wächter selbst (K1)
 
 - **`FREMDLESER`:** Leser außerhalb von TypeScript werden gemessen statt geduldet.
-  - Art `spiegel`: Der Leser definiert den Namen und nennt ihn auf einer weiteren Codezeile.
-  - Art `quelltext`: Der Leser nennt Modulpfad und Name auf einer Codezeile.
-  - Kalibrierung A8: Ein gerufener Spiegel deckt. Eine bloße Definition, ein Kommentar oder eine
-    pfadlose Zeichenkette decken nicht. Ohne Leserliste deckt nichts.
+  - Seit Nacharbeit 6 (BEN) wird am **Syntaxbaum** des Lesers gemessen, nicht an Textzeilen. Vorher
+    genügten eine Zeile `console.log("name")` bzw. zwei ungenutzte Zeichenketten.
+  - Art `spiegel`: Der Leser deklariert den Namen (Funktion, Klasse, Variable) und verweist
+    außerhalb dieser Deklaration auf das Symbol. Zeichenketten, Kommentare, Eigenschafts- und
+    Parameternamen sind keine Verweise; ein Selbstaufruf im eigenen Rumpf ist kein Aufrufer.
+  - Art `quelltext`: Die Kette muss im Leser stehen.
+    1. `readFileSync` mit dem Modulpfad, direkt oder über eine Variable;
+    2. das Gelesene geht als Argument an eine Funktion desselben Lesers;
+    3. dort wird der Exportname auf genau diesen Parameter angewandt (direkt oder über eine
+       Schleife über die Namensliste).
+  - Kalibrierung A8 mit Positiv- und Negativfällen:
+    - Es decken ein gerufener Spiegel und eine echte Lesekette.
+    - Nicht decken: eine bloße Definition, ein Kommentar, eine Zeichenkette (`nurGenannt`), ein
+      Eigenschaftsname (`nurEigenschaft`), ein Selbstaufruf (`nurSelbst`), eine pfadlose
+      Zeichenkette, BENs Fall mit Pfad und Name als losen Zeichenketten (`LISTE_D`) und ein Lesen
+      ohne Anwendung des Namens (`LISTE_E`).
+    - Ohne Leserliste deckt nichts.
 - **Destrukturierung:** Ein Vorgabewert (`{ x = WERT } = o`) zählt als Leseoperation; Eigenschafts-
   und Bindungsnamen zählen nicht. Kalibrierung A9.
 - **A3 erweitert:**
   - Grund-Pflicht in jedem Register;
-  - Entscheider-Pflicht in `OFFENE_ENTSCHEIDUNG`;
+  - in `OFFENER_REST`: Entscheider, Beleg, Auftragskennung beim gesonderten Auftrag und eine
+    vorhandene Belegdatei;
   - kein Schlüssel in zwei Registern;
   - jeder Fremdleser mit Grund und vorhandener Leserdatei.
 
@@ -255,8 +307,16 @@ jetzt an der Stelle, die das Produkt wirklich benutzt. Keiner ist abgeschwächt.
   um den R-1349-Ausgang ergänzt.
 - **Die Folgeaufträge aus den Rückgaben zu JOB 3015, 3061, 3062 und 3063** (Abbau ersetzter
   Bausteine) sind mit diesem Auftrag erledigt. Ein eigener Auftrag dazu lag in den Quellen nicht vor.
-- **Die 15 offenen Produktentscheidungen** gehören nicht diesem Auftrag. Er führt sie nur sichtbar
-  mit Entscheider; sie werden weder angeschlossen noch entfernt.
+- **Der unerledigte Rest (12)** ist **nicht** erledigt. Er ist je Fall abgegrenzt:
+  - Gesonderte Aufträge: `gesamt-bestandsreset` (4), `gesamt-antwortbeleg` (1),
+    `gesamt-confluence-import` (1, dazu die Sperre in `w2a-import-run-routes-148`).
+  - Ausdrückliche Sperren: BEN zu JOB 1163 (1) und PLAN PRO 378 §9 (5).
+  - Dieser Auftrag schließt sie weder an noch entfernt er sie. Er erfindet auch keine Freigabe dafür.
+- **Grenze der Quellenprüfung:** Die Auftragsliste in `QUELLEN.json` reicht nur von
+  `gesamt-abhaengigkeiten-sicherheit` bis `deploy-health-commit`. Spätere Aufträge (alphabetisch nach
+  „d“) konnten nicht nachgesehen werden. `gesamt-wissensnetz` ist über sein Dokument im Baum belegt,
+  nicht über `QUELLEN.json`. Die Zuordnung von R-0308 zu `gesamt-antwortbeleg` beruht auf der Lage
+  in derselben Quelle, unmittelbar nach der Auftragskennung.
 
 ## Quellenwidersprüche und fehlende Belege
 
@@ -325,4 +385,10 @@ jetzt an der Stelle, die das Produkt wirklich benutzt. Keiner ist abgeschwächt.
       Datei nur einen Kommentar.
     - Der eigene Teil des Auftrags (`guard.ts` aus `DATEIEN`, Ausnahmezahl 5) ist grün.
     - Ausnahmen nachzutragen hieße, den Wächter für fremden Code zu lockern; das unterbleibt.
-- **Fehlender Beleg:** Der Lieferbeleg (Fassung) entsteht erst mit der Veröffentlichung.
+- **Prüfbeleg am Kandidaten `75adf52f`** (Archiv `HISTORIE/nacharbeit-6/PRUEFUNG`): Build, Format
+  und Wächter/Bedarfsabgleich (16 von 16) grün. Dieser Stand ist mit Nacharbeit 6 überholt, weil
+  sich Wächter und Register geändert haben.
+- **Fehlender Beleg:**
+  - Die Prüfläufe zu Nacharbeit 6 (neue Fremdlesermessung, A8, `OFFENER_REST`, drei Abbauten)
+    stehen aus. Dieser Arbeitsgang hat keine Tests gestartet.
+  - Der Lieferbeleg (Fassung) entsteht erst mit der Veröffentlichung.

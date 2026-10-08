@@ -234,7 +234,6 @@ export {
   // Wissensnetz-Anschluss (`services/library-analytics`) braucht sie, um denselben beurteilten
   // Stand auszuweisen wie die Detailauskunft; eine zweite Ableitung dort wäre die zweite Wahrheit.
   fassungszeitVon,
-  netzQualitaet,
   // JOB 4151 (R6): die Antwortform der SCHREIBWEGE. Sie geht mit heraus, weil die Route sie
   // braucht — ohne sie gäbe der Schreibweg das Aggregat zurück, und die Anzeige (JOB 4153) liest
   // von dieser Antwort `gegenstueck.id`. Zwei Formen für dieselbe Kante am Draht wären die zweite
@@ -257,8 +256,6 @@ export type {
   KanteSetzenEingabe,
   KuratierteKanteAnsicht,
   KuratierteKanten,
-  NetzQualitaet,
-  QualitaetKoBestand,
 } from "./src/kanten-service";
 export {
   KANTEN_ARTEN,
