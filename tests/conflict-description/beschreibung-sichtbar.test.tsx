@@ -248,12 +248,26 @@ const umriss = (): string => {
  * soll: Ist die Konfliktfläche im AUTOMATISCHEN Fall absichtlich anders geworden? Dann gehört der
  * neue Umriss hier hinein — und in die Rückgabe des ändernden Jobs, mit Begründung. Wer ihn ohne
  * diese Frage überschreibt, hebt den Wächter auf.
+ *
+ * NACHGEFÜHRT, ABSICHTLICH (Aufnahme gesamt-konfliktklassifikation). Drei Stellen, sonst ist der
+ * Umriss Zeichen für Zeichen der am Basisstand `883db64` gemessene:
+ *   · R-0252: zwischen Kopfzeile und Kartenpaar steht `p#konflikt-arbeitsart`. Diese Vorlage trägt
+ *     keine Arbeitsart — der Satz sagt deshalb „nicht bestimmt" und rät nichts aus der Konfliktart.
+ *   · R-0215: der Befund ist ein OFFENER Wahrheitskonflikt, also noch nicht eskaliert. Das Band
+ *     beginnt deshalb mit `pruefen-knopf-eskalieren`; die übrigen Knöpfe stehen unverändert da
+ *     (gesperrt — `disabled` erscheint im Umriss nicht).
+ *   · R-0215: darunter `p#konflikt-eskalation-zuerst`, der Grund der Sperre.
+ *   · R-0252 (Nacharbeit 5): die Vorlage ist nicht eingeordnet — hinter „Eskalieren" stehen die drei
+ *     Einordnungsknöpfe, und `p#konflikt-einordnung-zuerst` nennt den Grund, warum die Entscheidungen
+ *     bis dahin gesperrt sind. Der Arbeitsart-Satz sagt „noch nicht eingeordnet".
+ * Keine Zeile ging weg, nichts wurde vertauscht, die Beschreibung steht nirgends.
  */
 const AUTOMATIK_UMRISS_BASIS = `div#pruefen-flaeche
   div
     div "Beitrag A"
     span#pruefen-pille-lauf "1 von 1"
     span#pruefen-pille-art "Wahrheit"
+  p#konflikt-arbeitsart "Noch nicht eingeordnet: ob ein Regel-, Sach- oder Versionskonflikt vorliegt, legt eine befugte Person fest, bevor entschieden wird."
   div#pruefen-paar
     div#pruefen-paar-karte-a
       div
@@ -346,11 +360,17 @@ const AUTOMATIK_UMRISS_BASIS = `div#pruefen-flaeche
               div "Wirkung der Entscheidung"
               div "Die Entscheidung wird dokumentiert und protokolliert. Vertrauen/Status der Objekte werden NICHT automatisch geändert (kein stilles Überschreiben). Betroffene Objekte ggf. manuell re-validieren."
   div#pruefen-aktionsband
+    button#pruefen-knopf-eskalieren "Eskalieren"
+    button#pruefen-knopf-einordnen-regel "Als Regelkonflikt einordnen"
+    button#pruefen-knopf-einordnen-sache "Als Sachkonflikt einordnen"
+    button#pruefen-knopf-einordnen-version "Als Versionskonflikt einordnen"
     button#pruefen-knopf-links-gilt "Links gilt"
     button#pruefen-knopf-rechts-gilt "Rechts gilt"
     button#pruefen-knopf-beide-gelten "Beide gelten, je nach Kontext"
     button#pruefen-knopf-kein-widerspruch "Kein Widerspruch"
-    button#pruefen-knopf-zweitmeinung "Zweitmeinung"`;
+    button#pruefen-knopf-zweitmeinung "Zweitmeinung"
+  p#konflikt-eskalation-zuerst "Ein Wahrheitskonflikt wird zuerst an einen Menschen eskaliert. Danach stehen Zweitmeinung und Entscheidung offen."
+  p#konflikt-einordnung-zuerst "Erst einordnen: je nach Art der Arbeit stehen andere Entscheidungen offen."`;
 
 beforeEach(async () => {
   daten.konflikte = [];

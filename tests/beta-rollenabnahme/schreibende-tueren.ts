@@ -41,7 +41,7 @@
 // `soll`. Und: was hier nicht steht, steht mit eigenem Grund und `art: "zurueckgestellt"` in
 // `NICHT_ABGENOMMEN`; eine stille Auslassung gibt es nicht (E2 verbietet sie).
 import type { FastifyInstance } from "fastify";
-import { AKTEURE, type Akteur, type Buehne, PASSWORT, type Rolle } from "./buehne";
+import { AKTEURE, type Akteur, type Buehne, PASSWORT, ROLLEN, type Rolle } from "./buehne";
 import {
   AB_CONTROLLER,
   AB_EXPERTE,
@@ -820,6 +820,38 @@ async function ladeDemodaten(buehne: Buehne): Promise<void> {
  */
 const BEISPIELPAKET = "qualitaet";
 
+// R-0466: die Werkzeuge der drei Gedächtniszeilen.
+const GEDAECHTNIS_VORLIEBE = { art: "vorliebe", inhalt: "Antworten bitte mit Quellenangabe." };
+
+/** Die Zahl der nicht abgelaufenen Gedächtniseinträge je Rolle — direkt an der Ablage gelesen. */
+async function gedaechtnisStand(buehne: Buehne): Promise<Record<Rolle, number>> {
+  const jetzt = new Date().toISOString();
+  const stand = {} as Record<Rolle, number>;
+  for (const rolle of ROLLEN) {
+    const eigene = await buehne.services.gedaechtnis.eigene(buehne.konto[rolle].id, jetzt);
+    stand[rolle] = eigene.length;
+  }
+  return stand;
+}
+
+function eigeneZahl(stand: unknown, rolle: Rolle): number | undefined {
+  return (stand as Partial<Record<Rolle, number>>)[rolle];
+}
+
+async function merkeVorliebe(buehne: Buehne, rolle: Rolle): Promise<string> {
+  const antwort = await fahre(
+    buehne.app,
+    kopf(buehne, rolle),
+    "POST",
+    "/api/me/gedaechtnis",
+    GEDAECHTNIS_VORLIEBE,
+  );
+  if (antwort.statusCode !== 201) {
+    throw new Error(`Gedächtniseintrag für ${rolle} nicht angelegt: ${antwort.body}`);
+  }
+  return (antwort.json() as { eintrag: { id: string } }).eintrag.id;
+}
+
 // ------------------------------------------------------------------------------------------------
 // DIE TABELLE DER SCHREIBENDEN TÜREN. Reihenfolge nach Nutzerweg: zuerst, was den BESTAND ändert.
 // ------------------------------------------------------------------------------------------------
@@ -1172,7 +1204,13 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     tor: "ko.read (danach prüft der Dienst den Beleg aus dem echten Antwortvorgang)",
     erwartet: NUR_LESEN,
     ruesten: async (buehne, akteur) => {
-      await legeKoAn(buehne, "admin");
+      // Geantwortet wird nur aus geprüftem Wissen (R-0584); ohne Modell bleibt ein bloß angelegtes
+      // Objekt ungeprüft (KI-Prüfung `no-model`), und die Frage endete in einer Wissenslücke —
+      // gemessen im Prüflauf zu R-1649, Nacharbeit 3. Deshalb: Experte legt an, Admin gibt frei.
+      const ko = await legeKoAn(buehne, "experte");
+      await musterhaft(buehne.app, kopf(buehne, "admin"), "PUT", `/api/kos/${ko.id}`, {
+        action: "admin-validate",
+      });
       if (akteur === "anonym") {
         // Ohne Sitzung gibt es keinen Beleg — und es braucht auch keinen: `requirePermission`
         // entscheidet vor jeder Belegprüfung. Die Nutzlast bleibt trotzdem formgerecht, damit die
@@ -1196,6 +1234,43 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
         );
       }
       return { pfad: "/api/ask/helpful", payload: { koId: quelle, receipt: antwort.receipt } };
+    },
+  },
+  // R-1649: dieselbe Vorbereitung wie „Hat geholfen" — ein echter Beleg je Akteur. Gemessen wird das
+  // Tor `ko.read` mit dem reinen Vermerk; der Entwurfszweig (`alternative`, zusätzlich `ko.create`)
+  // steht in `tests/sprachfeedback/nicht-hilfreich-route.test.ts`.
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    route: "/api/ask/not-helpful",
+    belegstelle: "services/app/src/routes/ask-routes.ts:962",
+    erfolg: [200],
+    tor: "ko.read (danach prüft der Dienst den Beleg aus dem echten Antwortvorgang)",
+    erwartet: NUR_LESEN,
+    ruesten: async (buehne, akteur) => {
+      // Geantwortet wird nur aus geprüftem Wissen (R-0584); ohne Modell bleibt ein angelegtes
+      // Objekt ungeprüft. Deshalb: Experte legt an, Admin gibt frei (Nacharbeit 2).
+      const ko = await legeKoAn(buehne, "experte");
+      await musterhaft(buehne.app, kopf(buehne, "admin"), "PUT", `/api/kos/${ko.id}`, {
+        action: "admin-validate",
+      });
+      if (akteur === "anonym") {
+        return {
+          pfad: "/api/ask/not-helpful",
+          payload: { koId: "ohne-sitzung-gibt-es-keinen-beleg", receipt: "" },
+        };
+      }
+      const gefragt = await musterhaft(buehne.app, kopf(buehne, akteur), "POST", "/api/ask", {
+        question: PASSENDE_FRAGE,
+      });
+      const antwort = gefragt.json() as { receipt?: string; result?: { sources?: string[] } };
+      const quelle = antwort.result?.sources?.[0];
+      if (typeof antwort.receipt !== "string" || typeof quelle !== "string") {
+        throw new Error(
+          `Vorbereitung fehlgeschlagen: POST /api/ask lieferte keinen Beleg mit Quelle — ${gefragt.body.slice(0, 300)}`,
+        );
+      }
+      return { pfad: "/api/ask/not-helpful", payload: { koId: quelle, receipt: antwort.receipt } };
     },
   },
   {
@@ -1551,6 +1626,10 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     erwartet: AB_CONTROLLER,
     ruesten: async (buehne) => {
       const widerspruch = await legeWiderspruchspaarAn(buehne);
+      // Aufnahme gesamt-konfliktklassifikation (R-0215): beim Wahrheitskonflikt folgt die
+      // Zweitmeinung verbindlich auf die Eskalation — der Dienst lehnt sie vorher mit 409 ab. Die
+      // Eskalation gehört deshalb zum Rüsten; gemessen wird weiter allein das Tor dieser Tür.
+      await buehne.services.conflicts.escalate(widerspruch.id, "system");
       return {
         pfad: `/api/conflicts/${widerspruch.id}/second-opinion`,
         // Der Meinungstext ist Pflicht: `secondOpinion` schreibt ihn an den Datensatz
@@ -1824,5 +1903,74 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
         eingetreten: (anzahl) => typeof anzahl === "number" && anzahl > 0,
       },
     }),
+  },
+
+  // --- R-0466 · Das eigene Interaktionsgedächtnis ----------------------------------------------
+  // Jede angemeldete Rolle führt ihr EIGENES Gedächtnis. Der Bestand wird je Rolle an der Ablage
+  // nachgelesen: so zeigt jede Zeile auch, dass der Vorgang KEIN fremdes Gedächtnis berührt. Für
+  // den Unangemeldeten wird der Eintrag beim Viewer angelegt — er darf ihn nicht löschen können.
+  {
+    gruppe: "gedaechtnisRoutes",
+    methode: "POST",
+    route: "/api/me/gedaechtnis",
+    belegstelle: "services/app/src/routes/gedaechtnis-routes.ts:98",
+    erfolg: [201],
+    tor: "requireUser — nur das eigene Konto (user.id aus der Sitzung)",
+    erwartet: ANGEMELDET,
+    ruesten: async (buehne, akteur) => {
+      const besitzer: Rolle = akteur === "anonym" ? "viewer" : akteur;
+      return {
+        pfad: "/api/me/gedaechtnis",
+        payload: { ...GEDAECHTNIS_VORLIEBE },
+        bestand: () => gedaechtnisStand(buehne),
+        wirkung: {
+          beschreibung: `das Gedächtnis von ${besitzer} trägt danach genau einen Eintrag`,
+          eingetreten: (stand) => eigeneZahl(stand, besitzer) === 1,
+        },
+      };
+    },
+  },
+  {
+    gruppe: "gedaechtnisRoutes",
+    methode: "DELETE",
+    route: "/api/me/gedaechtnis/:id",
+    belegstelle: "services/app/src/routes/gedaechtnis-routes.ts:126",
+    erfolg: [200],
+    tor: "requireUser — nur ein eigener Eintrag (fremd und unbekannt: 404)",
+    erwartet: ANGEMELDET,
+    ruesten: async (buehne, akteur) => {
+      const besitzer: Rolle = akteur === "anonym" ? "viewer" : akteur;
+      const id = await merkeVorliebe(buehne, besitzer);
+      return {
+        pfad: `/api/me/gedaechtnis/${id}`,
+        bestand: () => gedaechtnisStand(buehne),
+        wirkung: {
+          beschreibung: `der Eintrag von ${besitzer} ist danach gelöscht`,
+          eingetreten: (stand) => eigeneZahl(stand, besitzer) === 0,
+        },
+      };
+    },
+  },
+  {
+    gruppe: "gedaechtnisRoutes",
+    methode: "DELETE",
+    route: "/api/me/gedaechtnis",
+    belegstelle: "services/app/src/routes/gedaechtnis-routes.ts:147",
+    erfolg: [200],
+    tor: "requireUser — nur das eigene Gedächtnis",
+    erwartet: ANGEMELDET,
+    ruesten: async (buehne, akteur) => {
+      const besitzer: Rolle = akteur === "anonym" ? "viewer" : akteur;
+      await merkeVorliebe(buehne, besitzer);
+      await merkeVorliebe(buehne, besitzer);
+      return {
+        pfad: "/api/me/gedaechtnis",
+        bestand: () => gedaechtnisStand(buehne),
+        wirkung: {
+          beschreibung: `das Gedächtnis von ${besitzer} ist danach leer`,
+          eingetreten: (stand) => eigeneZahl(stand, besitzer) === 0,
+        },
+      };
+    },
   },
 ];
