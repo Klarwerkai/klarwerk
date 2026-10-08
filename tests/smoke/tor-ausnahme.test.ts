@@ -62,6 +62,15 @@ const ERLAUBTE_AUSNAHMEN = [
     file: "ui-smoke.spec.ts",
     title: "Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",
   },
+  // AUFTRAG gesamt-dokumenterzeugung, Nacharbeit 10 — DIE DRITTE AUSNAHME, mit Grund: Bens offener
+  // Beleg verlangt eine TATSÄCHLICHE Modellantwort samt wirksamer Einwilligung. Das hermetische Tor
+  // hat kein Modell (s. `smoke-umgebung.spec.ts`); der Fall kann dort im Prinzip nicht laufen —
+  // dieselbe Lage wie die beiden Einträge darüber. Er läuft im vollen Smoke (`npm run smoke:ui`).
+  {
+    file: "anleitung-recherche-ki-modell.spec.ts",
+    title:
+      "Anleitung: Recherche und KI-Entwurf mit Einwilligung, echter Modellantwort und Herkunft @modell",
+  },
 ] as const;
 
 /** Das npm-Skript, dessen Aufrufzeile das Tor in `tools/check` fährt. */
