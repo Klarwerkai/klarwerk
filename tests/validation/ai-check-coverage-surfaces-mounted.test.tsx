@@ -256,6 +256,15 @@ describe("mega29 C2 · das LEERE Board sagt, was sein leeres Ergebnis nicht hei�
     expect(pageText()).toContain("begrenzte Kandidatenmenge");
   });
 
+  // R-0956 (Bestandsabgleich, Nacharbeit 4): unter der Brettfläche ordnet das leere Duplikat-Board
+  // in den Wissenskreis ein und nennt den nächsten Schritt.
+  it("Duplikat-Board leer: Einordnung (Phase „Validieren“) und Weg zur Validierung", async () => {
+    await mount(createElement(Duplicates));
+    expect(pageText()).toContain(i18n.t("story.surface.duplicates.lead"));
+    expect(pageText()).toContain(i18n.t("cycle.validate.label"));
+    expect(container.querySelector('a[href="/validierung"]')).not.toBeNull();
+  });
+
   it("KALIBRIERUNG: ein durchweg vollständig geprüfter Bestand bekommt KEINEN Warnsatz", async () => {
     data.summary = { total: 12, incomplete: 0, unchecked: 0 };
     await mount(createElement(Conflicts));

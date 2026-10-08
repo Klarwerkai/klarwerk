@@ -42,6 +42,21 @@ describe("SCRUM-181: emptyStateActions", () => {
     expect(experte).toEqual(["empty.cta.wissensnetz", "empty.cta.capture"]);
   });
 
+  // R-0956 (Nacharbeit 4): das leere Audit-Protokoll füllt sich durch Erfassen und Prüfen.
+  it("audit (admin) bietet Erfassen und Validierung", () => {
+    const a = emptyStateActions("audit", "admin", false).map((x) => x.labelKey);
+    expect(a).toEqual(["empty.cta.capture", "empty.cta.validation"]);
+  });
+
+  // R-0956 (Bestandsabgleich, Nacharbeit 4): Lücken, Lebenszyklus, Dubletten.
+  it("gaps/lifecycle/duplicates (controller) nennen ihre nächsten Schritte", () => {
+    const keys = (k: "gaps" | "lifecycle" | "duplicates") =>
+      emptyStateActions(k, "controller", false).map((x) => x.labelKey);
+    expect(keys("gaps")).toEqual(["empty.cta.ask", "empty.cta.capture"]);
+    expect(keys("lifecycle")).toEqual(["empty.cta.tasks", "empty.cta.library"]);
+    expect(keys("duplicates")).toEqual(["empty.cta.validation", "empty.cta.library"]);
+  });
+
   it("liefert echte Navigationspfade (kein Fremd-Link)", () => {
     for (const action of emptyStateActions("tasks", "admin", true)) {
       expect(action.to.startsWith("/")).toBe(true);

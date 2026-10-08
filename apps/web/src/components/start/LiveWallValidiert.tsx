@@ -205,6 +205,19 @@ function WandZustimmung(): JSX.Element | null {
           {t("start.livewall.photoError")}
         </p>
       ) : null}
+      {/* R-0953 (Bestandsabgleich, Nacharbeit 4): Umschalten der Namenszustimmung und Widerruf des
+          Fotos scheiterten bis hierher still — das Kästchen sprang zurück, das Foto blieb. Bei
+          einer Zustimmung muss der Mensch wissen, dass sein Widerruf NICHT wirkte. */}
+      {setzen.isError ? (
+        <p role="alert" className="text-[12px] text-trust-warn-text">
+          {t("start.livewall.consentError")}
+        </p>
+      ) : null}
+      {fotoLoeschen.isError ? (
+        <p role="alert" className="text-[12px] text-trust-warn-text">
+          {t("start.livewall.photoRevokeError")}
+        </p>
+      ) : null}
     </div>
   );
 }

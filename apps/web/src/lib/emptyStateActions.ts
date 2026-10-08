@@ -9,7 +9,11 @@ export type EmptyStateContext =
   | "validation"
   | "library"
   | "risk"
-  | "neighborhood";
+  | "neighborhood"
+  | "audit"
+  | "gaps"
+  | "lifecycle"
+  | "duplicates";
 
 export interface EmptyStateAction {
   to: string; // Navigationspfad aus der Nav-Quelle (kein Fremd-Link)
@@ -48,6 +52,27 @@ const CANDIDATES: Record<EmptyStateContext, { navId: string; labelKey: string }[
   neighborhood: [
     { navId: "wissensnetz", labelKey: "empty.cta.wissensnetz" },
     { navId: "erfassen", labelKey: "empty.cta.capture" },
+  ],
+  // R-0956 (Ben, Nacharbeit 4): das leere Audit-Protokoll. Es füllt sich, sobald im Wissenskreis
+  // erfasst oder geprüft wird — genau das sind die nächsten Schritte.
+  audit: [
+    { navId: "erfassen", labelKey: "empty.cta.capture" },
+    { navId: "validierung", labelKey: "empty.cta.validation" },
+  ],
+  // R-0956 (Bestandsabgleich, Nacharbeit 4) — die übrigen Hauptlisten des Wissenskreises:
+  // offene Lücken entstehen aus Fragen ohne gesicherte Antwort; fällige Re-Validierungen und
+  // offene Überschneidungen aus dem, was erfasst und geprüft wird.
+  gaps: [
+    { navId: "fragen", labelKey: "empty.cta.ask" },
+    { navId: "erfassen", labelKey: "empty.cta.capture" },
+  ],
+  lifecycle: [
+    { navId: "aufgaben", labelKey: "empty.cta.tasks" },
+    { navId: "bibliothek", labelKey: "empty.cta.library" },
+  ],
+  duplicates: [
+    { navId: "validierung", labelKey: "empty.cta.validation" },
+    { navId: "bibliothek", labelKey: "empty.cta.library" },
   ],
 };
 

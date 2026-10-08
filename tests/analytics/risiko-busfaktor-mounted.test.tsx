@@ -254,6 +254,19 @@ describe("Risiko-Cockpit · Bus-Faktor je Gebiet an der echten Seite", () => {
     expect(erfassen?.getAttribute("href")?.startsWith("/")).toBe(true);
   });
 
+  // R-0956 (Bestandsabgleich, Nacharbeit 4): die leere Lückenliste (hier liefert `gaps.list`
+  // nichts) ordnet ebenfalls ein und führt zum Fragen.
+  it("B6 · leere Lückenliste: Leersatz, Einordnung und der Weg zum Fragen", async () => {
+    await mount();
+    const text = container.textContent ?? "";
+    expect(text).toContain(i18n.t("risk.gapsEmpty"));
+    expect(text).toContain(i18n.t("story.surface.gaps.lead"));
+    const fragen = [...container.querySelectorAll("a")].find(
+      (a) => a.textContent === i18n.t("empty.cta.ask"),
+    );
+    expect(fragen?.getAttribute("href")).toBe("/fragen");
+  });
+
   it("B5b · Gegenprobe: mit Daten keine Leer-Einordnung der Risikoliste", async () => {
     await mount();
     expect(container.textContent ?? "").not.toContain(i18n.t("story.surface.risk.lead"));

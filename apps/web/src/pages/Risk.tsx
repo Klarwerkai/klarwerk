@@ -15,6 +15,7 @@ import {
 } from "../api/hooks";
 import type { GapPriority } from "../api/types";
 import { useRole } from "../app/RoleContext";
+import { useToast } from "../app/ToastContext";
 import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
 import { BereichsprofilPflege } from "../components/BereichsprofilPflege";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
@@ -65,26 +66,39 @@ export function Risk(): JSX.Element {
   const { role } = useRole();
   const expertise = useExpertise(canSeeExpertise(role));
   const qc = useQueryClient();
+  const { push } = useToast();
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["gaps"] });
+  // R-0953 (Bestandsabgleich, Nacharbeit 4): Zuweisen, Priorisieren und Löschen einer Lücke
+  // scheiterten bis hierher STILL — die Auswahl sprang zurück, und niemand erfuhr, warum. Alle vier
+  // Lückenaktionen melden Erfolg und Fehler jetzt über den Benachrichtigungs-Bus.
+  const gemeldet = (erfolgKey: string) => () => {
+    push("success", t(erfolgKey));
+    invalidate();
+  };
+  const fehlgeschlagen = (fehlerKey: string) => () => push("error", t(fehlerKey));
   // R-0846 / L6: eine Lücke schliesst nur mit dem Wissensobjekt, das sie beantwortet. Der Server
   // prüft den Bezug; scheitert er, bleibt die Lücke offen und die Zeile sagt es.
   const close = useMutation({
     mutationFn: ({ id, koId }: { id: string; koId: string }) => endpoints.gaps.close(id, koId),
-    onSuccess: invalidate,
+    onSuccess: gemeldet("risk.gapToast.closed"),
+    onError: fehlgeschlagen("risk.closeFailed"),
   });
   const assign = useMutation({
     mutationFn: ({ id, expertId }: { id: string; expertId: string }) =>
       endpoints.gaps.assign(id, expertId),
-    onSuccess: invalidate,
+    onSuccess: gemeldet("risk.gapToast.assigned"),
+    onError: fehlgeschlagen("risk.gapToast.assignFailed"),
   });
   const remove = useMutation({
     mutationFn: (id: string) => endpoints.gaps.remove(id),
-    onSuccess: invalidate,
+    onSuccess: gemeldet("risk.gapToast.removed"),
+    onError: fehlgeschlagen("risk.gapToast.removeFailed"),
   });
   const setPriority = useMutation({
     mutationFn: ({ id, priority }: { id: string; priority: GapPriority }) =>
       endpoints.gaps.setPriority(id, priority),
-    onSuccess: invalidate,
+    onSuccess: gemeldet("risk.gapToast.prioritySaved"),
+    onError: fehlgeschlagen("risk.gapToast.priorityFailed"),
   });
 
   const maxKo = Math.max(1, ...(bus.data ?? []).map((b) => b.koCount));
@@ -173,7 +187,13 @@ export function Risk(): JSX.Element {
           <SectionLabel>{t("risk.cockpit")}</SectionLabel>
           <HelpTip title={t("risk.cockpit")} body={t("risk.help.cockpit")} />
         </div>
-        <QueryState query={kos} emptyText={t("risk.cockpitEmpty")}>
+        {/* R-0956 (Bestandsabgleich, Nacharbeit 4): auch das leere Cockpit ordnet ein — derselbe
+            Grund und derselbe nächste Schritt wie die leere Bus-Faktor-Liste darunter. */}
+        <QueryState
+          query={kos}
+          emptyText={t("risk.cockpitEmpty")}
+          emptyExtra={<EmptyStateCtas context="risk" />}
+        >
           {(items) => {
             const rows = domainRisk(items, bus.data ?? [], pending.data ?? null);
             const werk = plantValidatedRatio(items);
@@ -181,6 +201,7 @@ export function Risk(): JSX.Element {
               return (
                 <Card className="border-dashed text-center text-sm text-muted">
                   {t("risk.cockpitEmpty")}
+                  <EmptyStateCtas context="risk" />
                 </Card>
               );
             }
@@ -393,7 +414,11 @@ export function Risk(): JSX.Element {
         {/* SCRUM-283: ehrlich + datensparsam — gespeicherte Fragen sind offene Lücken (keine Antwort/
             kein validiertes Wissen); beim Erfassen keine sensiblen Details, geprüfte Erfahrung ergänzen. */}
         <p className="mb-2 text-[12px] text-muted-2">{t(gapPrivacyNoticeKey())}</p>
-        <QueryState query={gaps} emptyText={t("risk.gapsEmpty")}>
+        <QueryState
+          query={gaps}
+          emptyText={t("risk.gapsEmpty")}
+          emptyExtra={<EmptyStateCtas context="gaps" />}
+        >
           {(items) => (
             <Card className="p-0">
               <div className="divide-y divide-hairline">

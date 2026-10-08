@@ -3070,6 +3070,10 @@ const nl: typeof de = {
   "start.livewall.photoRevoke": "Foto verwijderen",
   "start.livewall.photoError":
     "De foto kon niet worden opgeslagen. Kies een PNG-, JPEG- of WebP-afbeelding.",
+  "start.livewall.consentError":
+    "De naamtoestemming is niet opgeslagen — de getoonde stand blijft gelden. Schakel opnieuw om.",
+  "start.livewall.photoRevokeError":
+    "De foto is niet verwijderd — hij blijft gedeeld. Trek de toestemming opnieuw in.",
   "start.livewall.photoAlt": "Foto van de auteur",
   "start.livewall.photoOwnAlt": "Mijn foto voor de wand",
   "start.livewall.beamerOpen": "Als beamerweergave openen",
@@ -4140,6 +4144,13 @@ const nl: typeof de = {
   "risk.close": "Sluiten",
   "risk.closeWithTitle": "Sluiten met het kennisobject dat dit hiaat beantwoordt",
   "risk.closeFailed": "Niet gesloten — het kennisobject ontbreekt of staat in de prullenbak.",
+  "risk.gapToast.closed": "Lacune gesloten.",
+  "risk.gapToast.assigned": "Lacune toegewezen.",
+  "risk.gapToast.assignFailed": "Niet toegewezen — kies opnieuw.",
+  "risk.gapToast.removed": "Lacune verwijderd.",
+  "risk.gapToast.removeFailed": "Niet verwijderd — de lacune blijft bestaan. Probeer het opnieuw.",
+  "risk.gapToast.prioritySaved": "Prioriteit opgeslagen.",
+  "risk.gapToast.priorityFailed": "Prioriteit niet opgeslagen — kies opnieuw.",
   "risk.assign": "Expert …",
   "risk.delete": "Verwijderen",
   "risk.gapNextLabel": "Volgende stap",
@@ -4161,6 +4172,9 @@ const nl: typeof de = {
   "lcy.assetPlaceholder": "Installatie-/procesreferentie (bijv. Pers-P2)",
   "lcy.assetTrigger": "Hervalidatie starten",
   "lcy.assetMarked": "{{n}} object(en) voor „{{asset}}“ ter controle gemarkeerd.",
+  "lcy.toast.revalidateFailed": "Niet bevestigd — het item blijft openstaan. Probeer het opnieuw.",
+  "lcy.toast.stepDone": "Leerstap als afgerond opgeslagen.",
+  "lcy.toast.stepFailed": "Leerstap niet opgeslagen — vink opnieuw aan.",
   "lcy.pendingTitle": "Voor hervalidatie",
   "lcy.revalAsset": "Installatieverwijzing",
   "lcy.revalNextLabel": "Volgende stap",
@@ -4279,6 +4293,7 @@ const nl: typeof de = {
   "empty.cta.validation": "Naar de validatie",
   "empty.cta.tasks": "Naar mijn taken",
   "empty.cta.wissensnetz": "Naar het kennisnetwerk",
+  "empty.cta.ask": "Een vraag stellen",
   "story.rescue.title": "Klarwerk borgt ervaringskennis voordat ze verloren gaat.",
   "story.honest":
     "Niets wordt automatisch gevalideerd — kennis geldt pas na de controle in het team als geborgd.",
@@ -4290,6 +4305,14 @@ const nl: typeof de = {
     "Nog geen kennis om op te zoeken. Leg de eerste bijdrage vast — na de controle is die hier met bronvermelding bruikbaar.",
   "story.surface.validation.lead":
     "Niets te controleren. Vastgelegde kennis verschijnt hier voor teamcontrole, voordat ze als geborgd geldt en gebruikt kan worden.",
+  "story.surface.gaps.lead":
+    "Een lacune ontstaat wanneer een vraag geen geborgd antwoord vindt. Er staat er nu geen open — wie vraagt, brengt nieuwe aan het licht; wie vastlegt, sluit ze.",
+  "story.surface.lifecycle.lead":
+    "Bijdragen worden hier opnieuw te controleren wanneer hun controletermijn afloopt of een gemelde installatiewijziging ze raakt. Er staat nu niets open — een installatiewijziging kan hieronder worden gemeld.",
+  "story.surface.duplicates.lead":
+    "Een overlapping ontstaat wanneer twee bijdragen hetzelfde zeggen. Er staat er nu geen open — nieuwe verschijnen hier zodra vastgelegde kennis wordt gecontroleerd.",
+  "story.surface.audit.lead":
+    "Nog geen vastgelegde acties. Het logboek houdt bij wie in de kenniscyclus vastlegt, controleert en wijzigt — het vult zich met de eerste vastgelegde of gecontroleerde bijdrage.",
   "story.surface.neighborhood.lead":
     "Deze bijdrage deelt nog geen betekenisvolle tag met een andere. Het kennisnetwerk toont welke thema's al verbonden zijn; nieuwe kennis met passende tags verbindt haar met buren.",
   "story.surface.risk.lead":

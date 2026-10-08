@@ -4042,6 +4042,10 @@ const de = {
   "start.livewall.photoRevoke": "Foto entfernen",
   "start.livewall.photoError":
     "Das Foto konnte nicht übernommen werden. Bitte ein PNG-, JPEG- oder WebP-Bild wählen.",
+  "start.livewall.consentError":
+    "Die Namenszustimmung wurde nicht gespeichert — es gilt weiter der angezeigte Stand. Bitte erneut umschalten.",
+  "start.livewall.photoRevokeError":
+    "Das Foto wurde nicht entfernt — es ist weiter freigegeben. Bitte erneut widerrufen.",
   "start.livewall.photoAlt": "Foto der Autorin oder des Autors",
   "start.livewall.photoOwnAlt": "Mein Foto für die Wand",
   "start.livewall.beamerOpen": "Als Beamer-Ansicht öffnen",
@@ -5349,6 +5353,14 @@ const de = {
   "risk.close": "Schließen",
   "risk.closeWithTitle": "Mit dem Wissensobjekt schließen, das diese Lücke beantwortet",
   "risk.closeFailed": "Nicht geschlossen — das Wissensobjekt fehlt oder liegt im Papierkorb.",
+  "risk.gapToast.closed": "Lücke geschlossen.",
+  "risk.gapToast.assigned": "Lücke zugewiesen.",
+  "risk.gapToast.assignFailed": "Nicht zugewiesen — bitte erneut auswählen.",
+  "risk.gapToast.removed": "Lücke gelöscht.",
+  "risk.gapToast.removeFailed":
+    "Nicht gelöscht — die Lücke bleibt bestehen. Bitte erneut versuchen.",
+  "risk.gapToast.prioritySaved": "Priorität gespeichert.",
+  "risk.gapToast.priorityFailed": "Priorität nicht gespeichert — bitte erneut auswählen.",
   "risk.assign": "Experte …",
   "risk.delete": "Löschen",
   "risk.gapNextLabel": "Nächster Schritt",
@@ -5370,6 +5382,10 @@ const de = {
   "lcy.assetPlaceholder": "Anlagen-/Prozess-Referenz (z. B. Presse-P2)",
   "lcy.assetTrigger": "Revalidierung auslösen",
   "lcy.assetMarked": "{{n}} Objekt(e) für „{{asset}}“ zur Prüfung markiert.",
+  "lcy.toast.revalidateFailed":
+    "Nicht bestätigt — der Eintrag bleibt fällig. Bitte erneut versuchen.",
+  "lcy.toast.stepDone": "Lernschritt als erledigt gespeichert.",
+  "lcy.toast.stepFailed": "Lernschritt nicht gespeichert — bitte erneut abhaken.",
   "lcy.pendingTitle": "Zur Re-Validierung",
   "lcy.revalAsset": "Anlagenbezug",
   "lcy.revalNextLabel": "Nächster Schritt",
@@ -5506,6 +5522,7 @@ const de = {
   "empty.cta.validation": "Zur Validierung",
   "empty.cta.tasks": "Zu meinen Aufgaben",
   "empty.cta.wissensnetz": "Zum Wissensnetz",
+  "empty.cta.ask": "Eine Frage stellen",
   "story.rescue.title": "Klarwerk sichert Erfahrungswissen, bevor es verloren geht.",
   "story.honest":
     "Nichts wird automatisch validiert — Wissen gilt erst nach der Prüfung im Team als gesichert.",
@@ -5517,6 +5534,14 @@ const de = {
     "Noch kein Wissen zum Nachschlagen. Erfasse den ersten Beitrag — nach der Prüfung wird er hier quellengebunden nutzbar.",
   "story.surface.validation.lead":
     "Nichts zu prüfen. Erfasstes Wissen erscheint hier zur Team-Prüfung, bevor es als gesichert gilt und genutzt werden kann.",
+  "story.surface.gaps.lead":
+    "Eine Lücke entsteht, wenn eine Frage keine gesicherte Antwort findet. Gerade ist keine offen — wer fragt, deckt neue auf; wer erfasst, schließt sie.",
+  "story.surface.lifecycle.lead":
+    "Beiträge werden hier fällig, wenn ihre Prüffrist abläuft oder eine gemeldete Anlagenänderung sie betrifft. Gerade ist nichts fällig — eine Anlagenänderung lässt sich darunter melden.",
+  "story.surface.duplicates.lead":
+    "Eine Überschneidung entsteht, wenn zwei Beiträge dasselbe sagen. Gerade ist keine offen — neue erscheinen hier, sobald Erfasstes geprüft wird.",
+  "story.surface.audit.lead":
+    "Noch keine protokollierten Aktionen. Das Protokoll hält fest, wer im Wissenskreis erfasst, prüft und ändert — es füllt sich mit dem ersten erfassten oder geprüften Beitrag.",
   "story.surface.neighborhood.lead":
     "Dieser Beitrag teilt noch kein aussagekräftiges Schlagwort mit einem anderen. Im Wissensnetz siehst du, welche Themen schon verbunden sind; neues Wissen mit passenden Schlagwörtern verknüpft ihn mit Nachbarn.",
   "story.surface.risk.lead":

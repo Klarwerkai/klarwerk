@@ -3080,6 +3080,10 @@ const en: typeof de = {
   "start.livewall.photoRevoke": "Remove photo",
   "start.livewall.photoError":
     "The photo could not be saved. Please choose a PNG, JPEG or WebP image.",
+  "start.livewall.consentError":
+    "The name consent was not saved — the state shown still applies. Please toggle again.",
+  "start.livewall.photoRevokeError":
+    "The photo was not removed — it is still shared. Please revoke again.",
   "start.livewall.photoAlt": "Photo of the author",
   "start.livewall.photoOwnAlt": "My photo for the wall",
   "start.livewall.beamerOpen": "Open as projector view",
@@ -4152,6 +4156,13 @@ const en: typeof de = {
   "risk.close": "Close",
   "risk.closeWithTitle": "Close with the knowledge object that answers this gap",
   "risk.closeFailed": "Not closed — the knowledge object is missing or in the trash.",
+  "risk.gapToast.closed": "Gap closed.",
+  "risk.gapToast.assigned": "Gap assigned.",
+  "risk.gapToast.assignFailed": "Not assigned — please select again.",
+  "risk.gapToast.removed": "Gap deleted.",
+  "risk.gapToast.removeFailed": "Not deleted — the gap remains. Please try again.",
+  "risk.gapToast.prioritySaved": "Priority saved.",
+  "risk.gapToast.priorityFailed": "Priority not saved — please select again.",
   "risk.assign": "Expert …",
   "risk.delete": "Delete",
   "risk.gapNextLabel": "Next step",
@@ -4172,6 +4183,9 @@ const en: typeof de = {
   "lcy.assetPlaceholder": "Asset/process reference (e.g. press-P2)",
   "lcy.assetTrigger": "Trigger revalidation",
   "lcy.assetMarked": "{{n}} object(s) flagged for review for „{{asset}}“.",
+  "lcy.toast.revalidateFailed": "Not confirmed — the entry stays due. Please try again.",
+  "lcy.toast.stepDone": "Learning step saved as done.",
+  "lcy.toast.stepFailed": "Learning step not saved — please tick it again.",
   "lcy.pendingTitle": "Pending re-validation",
   "lcy.revalAsset": "Asset",
   "lcy.revalNextLabel": "Next step",
@@ -4288,6 +4302,7 @@ const en: typeof de = {
   "empty.cta.validation": "Go to validation",
   "empty.cta.tasks": "Go to my tasks",
   "empty.cta.wissensnetz": "Go to the knowledge network",
+  "empty.cta.ask": "Ask a question",
   "story.rescue.title": "Klarwerk secures hands-on experience before it's lost.",
   "story.honest":
     "Nothing is validated automatically — knowledge only counts as secured after the team reviews it.",
@@ -4299,6 +4314,14 @@ const en: typeof de = {
     "No knowledge to look up yet. Capture the first contribution — after review it becomes usable here, source-bound.",
   "story.surface.validation.lead":
     "Nothing to review. Captured knowledge appears here for team review before it counts as secured and can be used.",
+  "story.surface.gaps.lead":
+    "A gap appears when a question finds no secured answer. None is open right now — asking uncovers new ones; capturing closes them.",
+  "story.surface.lifecycle.lead":
+    "Contributions become due here when their review period ends or a reported asset change affects them. Nothing is due right now — an asset change can be reported below.",
+  "story.surface.duplicates.lead":
+    "An overlap appears when two contributions say the same thing. None is open right now — new ones show up here as soon as captured knowledge is reviewed.",
+  "story.surface.audit.lead":
+    "No recorded actions yet. The log keeps track of who captures, reviews and changes in the knowledge cycle — it fills with the first captured or reviewed contribution.",
   "story.surface.neighborhood.lead":
     "This contribution doesn't share a meaningful tag with any other yet. The knowledge network shows which topics are already connected; new knowledge with matching tags links it to neighbours.",
   "story.surface.risk.lead":

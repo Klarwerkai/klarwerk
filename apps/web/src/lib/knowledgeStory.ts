@@ -11,8 +11,18 @@ import { type KnowledgeOsPhase, phaseLabelKey } from "./taskAction";
 
 // Die Kernflächen mit echten leeren/ersten Zuständen (identisch zu EmptyStateContext). R-0956: die
 // Risikoseite kam dazu — ihre Bus-Faktor-Liste war der Leerzustand ohne Einordnung —, ebenso die
-// leere Schlagwort-Nachbarschaft eines Beitrags.
-export type StorySurface = "start" | "tasks" | "library" | "validation" | "risk" | "neighborhood";
+// leere Schlagwort-Nachbarschaft eines Beitrags und das leere Audit-Protokoll.
+export type StorySurface =
+  | "start"
+  | "tasks"
+  | "library"
+  | "validation"
+  | "risk"
+  | "neighborhood"
+  | "audit"
+  | "gaps"
+  | "lifecycle"
+  | "duplicates";
 
 export const KNOWLEDGE_STORY_SURFACES: readonly StorySurface[] = [
   "start",
@@ -21,6 +31,10 @@ export const KNOWLEDGE_STORY_SURFACES: readonly StorySurface[] = [
   "validation",
   "risk",
   "neighborhood",
+  "audit",
+  "gaps",
+  "lifecycle",
+  "duplicates",
 ] as const;
 
 // Jede Fläche steht für eine reale Phase im Knowledge-OS-Kreis — dieselbe Sprache wie Start/MyTasks.
@@ -31,6 +45,10 @@ const SURFACE_PHASE: Record<StorySurface, KnowledgeOsPhase> = {
   validation: "validate", // Team-Prüfung, bevor Wissen als gesichert gilt.
   risk: "capture", // ohne erfasstes Wissen je Bereich gibt es kein Risikobild.
   neighborhood: "use", // wer einen Beitrag liest, nutzt gesichertes Wissen.
+  audit: "maintain", // das Protokoll macht nachvollziehbar, was im Kreis geschah.
+  gaps: "use", // eine Lücke entsteht beim Nutzen: eine Frage findet keine gesicherte Antwort.
+  lifecycle: "maintain", // Fälliges wird erneut geprüft, damit es aktuell bleibt.
+  duplicates: "validate", // Überschneidungen klärt das Team beim Prüfen.
 };
 
 export interface KnowledgeStory {

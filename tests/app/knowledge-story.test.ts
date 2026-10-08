@@ -20,6 +20,10 @@ describe("SCRUM-377: knowledgeStory — Flächen → Kreis-Phase", () => {
       validation: "validate",
       risk: "capture",
       neighborhood: "use",
+      audit: "maintain",
+      gaps: "use",
+      lifecycle: "maintain",
+      duplicates: "validate",
     };
     for (const surface of KNOWLEDGE_STORY_SURFACES) {
       const story = knowledgeStory(surface);
@@ -41,11 +45,15 @@ describe("SCRUM-377: knowledgeStory — Flächen → Kreis-Phase", () => {
     expect(leads.size).toBe(KNOWLEDGE_STORY_SURFACES.length);
   });
 
-  // R-0956: die Risikoseite (leere Bus-Faktor-Liste) ist als fünfte, die leere
-  // Schlagwort-Nachbarschaft als sechste Fläche dazugekommen.
-  it("deckt genau die sechs Kernflächen ab", () => {
+  // R-0956: dazugekommen sind die Risikoseite (Cockpit/Bus-Faktor), die Schlagwort-Nachbarschaft,
+  // das Audit-Protokoll und (Bestandsabgleich, Nacharbeit 4) Lücken, Lebenszyklus und Dubletten.
+  it("deckt genau die zehn Kernflächen ab", () => {
     expect([...KNOWLEDGE_STORY_SURFACES].sort()).toEqual([
+      "audit",
+      "duplicates",
+      "gaps",
       "library",
+      "lifecycle",
       "neighborhood",
       "risk",
       "start",
