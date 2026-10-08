@@ -197,7 +197,8 @@ describe("A2/A3 · die damals geltende Fassung und wer bis dahin belegt damit zu
       aussage: "Leitung 7 wird vor Inbetriebnahme mit 1,5-fachem Betriebsdruck geprüft.",
     });
     expect(belegeVon(a, admin.id)).toContainEqual({ art: "angelegt", am: um(0), fassung: 1 });
-    expect(belegeVon(a, erik.id)).toEqual([{ art: "kommentiert", am: um(10), fassung: 1 }]);
+    // `ko.commented` nennt keine Fassung — sie wird nicht aus dem Zeitpunkt geraten.
+    expect(belegeVon(a, erik.id)).toEqual([{ art: "kommentiert", am: um(10), fassung: null }]);
     // Was danach geschah, steht nicht drin.
     nichtsDanach(a);
     expect(a.personen.map((p) => p.id).sort()).toEqual([admin.id, erik.id].sort());
@@ -208,7 +209,7 @@ describe("A2/A3 · die damals geltende Fassung und wer bis dahin belegt damit zu
     const a = await auskunft(clara.token, um(25));
     expect(a.fassung).toMatchObject({ version: 2, seit: um(20), von: { id: erik.id } });
     expect(a.fassung?.aussage).toBe("Fassung 2: Prüfdruck 1,5-fach, Haltezeit 30 Minuten.");
-    expect(belegeVon(a, erik.id)).toContainEqual({ art: "kommentiert", am: um(10), fassung: 1 });
+    expect(belegeVon(a, erik.id)).toContainEqual({ art: "kommentiert", am: um(10), fassung: null });
     expect(belegeVon(a, erik.id)).toContainEqual({ art: "ueberarbeitet", am: um(20), fassung: 2 });
     nichtsDanach(a);
   });

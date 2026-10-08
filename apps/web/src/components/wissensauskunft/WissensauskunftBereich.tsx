@@ -90,12 +90,14 @@ function Antwort({ auskunft }: { auskunft: Wissensauskunft }): JSX.Element {
                       key={`${b.art}:${b.am}:${b.seq ?? ""}`}
                       data-testid="wissensauskunft-beleg"
                       data-art={b.art}
+                      data-zurueckgenommen={b.zurueckgenommen ? "ja" : undefined}
                     >
                       {t(`wissensauskunft.art.${b.art}`)}
                       {b.fassung === null
                         ? ""
                         : ` · ${t("wissensauskunft.beleg.fassung", { fassung: b.fassung })}`}
                       {` · ${datum(b.am)}`}
+                      {b.zurueckgenommen ? ` · ${t("wissensauskunft.beleg.zurueckgenommen")}` : ""}
                     </li>
                   ))}
                 </ul>

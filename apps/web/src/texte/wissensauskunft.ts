@@ -28,6 +28,7 @@ export default {
     "wissensauskunft.keinePersonen":
       "Bis zu diesem Zeitpunkt ist keine Person mit einem Beleg verzeichnet.",
     "wissensauskunft.beleg.fassung": "V{{fassung}}",
+    "wissensauskunft.beleg.zurueckgenommen": "zurückgenommen, nicht wirksam geblieben",
     "wissensauskunft.art.angelegt": "angelegt",
     "wissensauskunft.art.ueberarbeitet": "überarbeitet",
     "wissensauskunft.art.vorgeschlagen": "Änderung vorgeschlagen",
@@ -46,7 +47,7 @@ export default {
     "wissensauskunft.grenze.pruefstatus":
       "Der Prüfstatus wird nicht je Zeitpunkt gespeichert; belegt sind Freigaben und Prüfungen.",
     "wissensauskunft.grenze.antwortquellen":
-      "Aus Antworten ist nur die jeweils erste Quelle protokolliert.",
+      "Aus Antworten ist nur die jeweils erste Quelle protokolliert, ohne ihre Fassung.",
     "wissensauskunft.fehler.zeitpunkt_ungueltig": "Bitte einen gültigen Zeitpunkt wählen.",
     "wissensauskunft.fehler.zeitpunkt_zukunft": "Der Zeitpunkt darf nicht in der Zukunft liegen.",
     "wissensauskunft.fehler.allgemein": "Die Auskunft konnte nicht abgerufen werden.",
@@ -69,6 +70,7 @@ export default {
     "wissensauskunft.personen": "Recorded up to this point in time",
     "wissensauskunft.keinePersonen": "No person with a record is listed up to this point in time.",
     "wissensauskunft.beleg.fassung": "V{{fassung}}",
+    "wissensauskunft.beleg.zurueckgenommen": "rolled back, did not take effect",
     "wissensauskunft.art.angelegt": "created",
     "wissensauskunft.art.ueberarbeitet": "revised",
     "wissensauskunft.art.vorgeschlagen": "proposed a change",
@@ -86,7 +88,7 @@ export default {
     "wissensauskunft.grenze.pruefstatus":
       "The review status is not stored per point in time; approvals and reviews are recorded.",
     "wissensauskunft.grenze.antwortquellen":
-      "For answers, only the first source of each answer is logged.",
+      "For answers, only the first source of each answer is logged, without its version.",
     "wissensauskunft.fehler.zeitpunkt_ungueltig": "Please choose a valid point in time.",
     "wissensauskunft.fehler.zeitpunkt_zukunft": "The point in time must not be in the future.",
     "wissensauskunft.fehler.allgemein": "The report could not be loaded.",
@@ -109,6 +111,7 @@ export default {
     "wissensauskunft.personen": "Vastgelegd tot dit tijdstip",
     "wissensauskunft.keinePersonen": "Tot dit tijdstip staat geen persoon met een bewijs vermeld.",
     "wissensauskunft.beleg.fassung": "V{{fassung}}",
+    "wissensauskunft.beleg.zurueckgenommen": "teruggedraaid, niet van kracht gebleven",
     "wissensauskunft.art.angelegt": "aangemaakt",
     "wissensauskunft.art.ueberarbeitet": "bewerkt",
     "wissensauskunft.art.vorgeschlagen": "wijziging voorgesteld",
@@ -126,7 +129,7 @@ export default {
     "wissensauskunft.grenze.pruefstatus":
       "De controlestatus wordt niet per tijdstip opgeslagen; vrijgaven en controles zijn vastgelegd.",
     "wissensauskunft.grenze.antwortquellen":
-      "Bij antwoorden is alleen de eerste bron van elk antwoord vastgelegd.",
+      "Bij antwoorden is alleen de eerste bron van elk antwoord vastgelegd, zonder versie.",
     "wissensauskunft.fehler.zeitpunkt_ungueltig": "Kies een geldig tijdstip.",
     "wissensauskunft.fehler.zeitpunkt_zukunft": "Het tijdstip mag niet in de toekomst liggen.",
     "wissensauskunft.fehler.allgemein": "Het overzicht kon niet worden opgevraagd.",

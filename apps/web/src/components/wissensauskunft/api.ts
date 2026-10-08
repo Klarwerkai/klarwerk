@@ -32,6 +32,7 @@ export interface Kenntnisbeleg {
   am: string;
   fassung: number | null;
   seq: number | null;
+  zurueckgenommen: boolean;
 }
 
 export interface Wissensauskunft {

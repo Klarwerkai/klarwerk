@@ -44,10 +44,19 @@ export interface Kenntnisbeleg {
   art: Belegart;
   /** ISO-Zeitpunkt des Belegs. */
   am: string;
-  /** Die Fassung, auf die sich der Beleg bezieht — `null`, wenn sie nicht bestimmbar ist. */
+  /**
+   * Die Fassung, auf die sich der Beleg bezieht — NUR aus einer ausdrücklichen Angabe des Belegs
+   * selbst (`fassungAus`). `null`: der Beleg nennt keine; sie wird nicht aus dem Zeitpunkt geraten.
+   */
   fassung: number | null;
   /** Die Audit-Sequenz des Belegs — `null` bei Belegen aus der Kenntnisnahme. */
   seq: number | null;
+  /**
+   * Bis zum Zeitpunkt durch `ko.change-rolled-back` ausdrücklich zurückgenommen: der Vorgang ist
+   * belegt versucht worden, aber nicht wirksam geblieben. Er zählt weder als Freigabe noch als
+   * Papierkorbwechsel.
+   */
+  zurueckgenommen: boolean;
 }
 
 export interface Person {
@@ -138,6 +147,63 @@ function belegartAus(e: AuditEntry): Belegart | null {
   return e.action.startsWith("ko.") ? "sonstige_bearbeitung" : null;
 }
 
+const zahl = (wert: unknown): number | null =>
+  typeof wert === "number" && Number.isInteger(wert) && wert > 0 ? wert : null;
+
+/**
+ * Die Fassung eines Audit-Belegs — je Ereignisart aus dem Feld, das der Schreibweg dafür setzt:
+ *   · `ko.created`                      Fassung 1 — die Anlage IST die erste Fassung,
+ *   · `ko.revised`, `ko.document-appended`   `version` (die neu geschriebene Fassung),
+ *   · `ko.proposed`                     `baseVersion` (die Fassung, auf der der Vorschlag beruht),
+ *   · `ko.rated`, `ko.admin-validated`  `koVersion` (die geprüfte Fassung),
+ *   · `ask.query`                       KEINE: der Beleg nennt nur die erste Quelle, nicht deren
+ *                                       Fassung, und ist mit dem Antwortbeleg (der die Fassung
+ *                                       hält) nicht verknüpft. Die Fassung zum Zeitpunkt wäre
+ *                                       geraten — während einer laufenden Antwort kann schon die
+ *                                       nächste gespeichert sein.
+ *   · übrige                            `koVersion`, sonst `version`, sonst keine.
+ * Ohne ausdrückliche Angabe gibt es `null`; die Fassung wird nie aus dem Zeitpunkt abgeleitet.
+ */
+function fassungAus(e: AuditEntry): number | null {
+  switch (e.action) {
+    case "ko.created":
+      return 1;
+    case "ko.revised":
+    case "ko.document-appended":
+      return zahl(e.payload.version);
+    case "ko.proposed":
+      return zahl(e.payload.baseVersion);
+    case "ko.rated":
+    case "ko.admin-validated":
+      return zahl(e.payload.koVersion);
+    case "ask.query":
+      return null;
+    default:
+      return zahl(e.payload.koVersion) ?? zahl(e.payload.version);
+  }
+}
+
+/**
+ * Die Sequenzen, die bis zum Zeitpunkt ausdrücklich zurückgenommen wurden. Im Schreibweg ohne
+ * Transaktion bleibt ein schon angehängter Beleg stehen, wenn die Änderung danach scheitert; die
+ * Kette ist append-only, deshalb folgt `ko.change-rolled-back` mit `rolledBackSeqs`
+ * (`KoService.belegeRuecknahme`). Eine Rücknahme NACH dem Zeitpunkt ist dort noch nicht geschehen.
+ */
+function zurueckgenommeneSeqs(bisher: readonly AuditEntry[]): Set<number> {
+  const seqs = new Set<number>();
+  for (const e of bisher) {
+    if (e.action !== "ko.change-rolled-back" || !Array.isArray(e.payload.rolledBackSeqs)) {
+      continue;
+    }
+    for (const seq of e.payload.rolledBackSeqs) {
+      if (typeof seq === "number") {
+        seqs.add(seq);
+      }
+    }
+  }
+  return seqs;
+}
+
 /** Die zum Zeitpunkt `t` geltende Fassung: die jüngste, die bis dahin gespeichert war. */
 function fassungZu(
   versionen: readonly KoVersionSnapshot[],
@@ -158,6 +224,8 @@ export function wissensauskunft(eingabe: WissensauskunftEingabe): Wissensauskunf
   const bis = (iso: string): boolean => Date.parse(iso) <= zeitpunkt;
   const person = (id: string): Person => ({ id, name: namen.get(id) ?? "" });
   const bisher = audit.filter((e) => bis(e.at)).sort((a, b) => a.seq - b.seq);
+  const zurueck = zurueckgenommeneSeqs(bisher);
+  const wirksam = bisher.filter((e) => !zurueck.has(e.seq));
 
   const stand = fassungZu(versionen, zeitpunkt);
   const fassung = stand
@@ -171,7 +239,7 @@ export function wissensauskunft(eingabe: WissensauskunftEingabe): Wissensauskunf
     : null;
 
   let imPapierkorb = false;
-  for (const e of bisher) {
+  for (const e of wirksam) {
     if (e.action === "ko.deleted") {
       imPapierkorb = true;
     } else if (e.action === "ko.restored") {
@@ -179,9 +247,11 @@ export function wissensauskunft(eingabe: WissensauskunftEingabe): Wissensauskunf
     }
   }
 
+  // Eine zurückgenommene Freigabe ist keine: sie zählt hier nicht und erscheint bei der Person
+  // ausdrücklich als zurückgenommen.
   const giltFassung = (e: AuditEntry): boolean =>
-    fassung !== null && e.payload.koVersion === fassung.version;
-  const freigabeBeleg = bisher
+    fassung !== null && fassungAus(e) === fassung.version;
+  const freigabeBeleg = wirksam
     .filter((e) => e.action === "ko.admin-validated" && giltFassung(e))
     .at(-1);
 
@@ -196,11 +266,13 @@ export function wissensauskunft(eingabe: WissensauskunftEingabe): Wissensauskunf
     if (!art) {
       continue;
     }
-    // Nennt der Beleg seine Fassung nicht, gilt die, die zu seinem Zeitpunkt aktuell war.
-    const genannt = e.payload.koVersion;
-    const damals = fassungZu(versionen, Date.parse(e.at))?.version ?? null;
-    const version = typeof genannt === "number" ? genannt : damals;
-    hinzu(e.actor, { art, am: e.at, fassung: version, seq: e.seq });
+    hinzu(e.actor, {
+      art,
+      am: e.at,
+      fassung: fassungAus(e),
+      seq: e.seq,
+      zurueckgenommen: zurueck.has(e.seq),
+    });
   }
   for (const { anforderung, empfaenger } of kenntnisnahmen) {
     if (!bis(anforderung.angefordertAm)) {
@@ -211,6 +283,7 @@ export function wissensauskunft(eingabe: WissensauskunftEingabe): Wissensauskunf
       am: anforderung.angefordertAm,
       fassung: anforderung.fassung,
       seq: null,
+      zurueckgenommen: false,
     });
     for (const e of empfaenger) {
       // Eine Bestätigung nach dem Zeitpunkt zählt dort noch nicht: dann war nur angefordert.
@@ -220,6 +293,7 @@ export function wissensauskunft(eingabe: WissensauskunftEingabe): Wissensauskunf
         am: bestaetigtAm ?? anforderung.angefordertAm,
         fassung: anforderung.fassung,
         seq: null,
+        zurueckgenommen: false,
       });
     }
   }
@@ -234,7 +308,7 @@ export function wissensauskunft(eingabe: WissensauskunftEingabe): Wissensauskunf
   return {
     koId: ko.id,
     zeitpunkt: new Date(zeitpunkt).toISOString(),
-    vorhanden: fassung !== null || bisher.some((e) => e.action === "ko.created"),
+    vorhanden: fassung !== null || wirksam.some((e) => e.action === "ko.created"),
     imPapierkorb,
     fassung,
     freigabe: freigabeBeleg ? { am: freigabeBeleg.at, von: person(freigabeBeleg.actor) } : null,
