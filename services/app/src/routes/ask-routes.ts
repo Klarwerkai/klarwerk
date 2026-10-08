@@ -1017,9 +1017,14 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             // dieser Lesevorgänge wird erneut geprüft (s. dort), und nach dem letzten Warten noch
             // einmal, bevor irgendetwas davon hinausgeht.
             pruefen();
+            // Ben nacharbeit-13: der Schluss der Kette ist der QUELLENGEBUNDENE Text — ohne die
+            // Wörterbucherklärungen, die allein im abgegrenzten Abschnitt `woerterbuch` stehen.
+            const schlussGrundlage = out.antwortZuschnitt
+              ? { ...out.result, answer: out.antwortZuschnitt.quellengebundenerText }
+              : out.result;
             ({ evidence, belastbarkeit } = await evidenceFor(
               deps,
-              out.result,
+              schlussGrundlage,
               request.log,
               pruefen,
               sicht,

@@ -2078,6 +2078,8 @@ export interface AskAntwortZuschnitt {
         herkunft: BegriffHerkunft[];
       }
   )[];
+  // Ben nacharbeit-13: die Antwort ohne Wörterbucherklärungen — der Schluss der Kette.
+  quellengebundenerText: string;
 }
 
 // Ben nacharbeit-11: Herkunft einer Begriffserklärung aus dem Firmenwörterbuch (Spiegel von

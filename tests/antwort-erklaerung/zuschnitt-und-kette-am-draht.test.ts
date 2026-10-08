@@ -59,6 +59,7 @@ interface Antwort {
     fachsprache: string;
     reihenfolge: string[];
     ergaenzungen: { art: string; quelleId: string | null; eintraege: string[] }[];
+    quellengebundenerText: string;
   };
 }
 
@@ -173,6 +174,8 @@ describe("R-0346 · Rolle und Anlass wirken auf die Antwort selbst", () => {
         { art: "voraussetzungen", quelleId: ko, eintraege: ["Anlage abgeschaltet"] },
         { art: "massnahmen", quelleId: ko, eintraege: ["Druck am Manometer M2 ablesen"] },
       ],
+      // Ohne Wörterbuchergänzung ist der quellengebundene Teil die ganze Antwort.
+      quellengebundenerText: a.result.answer,
     });
     // Der Schluss der Kette trägt genau die ausgelieferte Antwort.
     expect(a.result.belastbarkeit.argumentation.at(-1)).toMatchObject({
@@ -256,7 +259,16 @@ describe("R-0346 · Rolle und Anlass wirken auf die Antwort selbst", () => {
     expect(b.woerterbuch).toEqual([
       { benennung: SELTENES_WORT, herkunft, vertrauenswert: null, belastbarkeit: "nicht_bewertet" },
     ]);
+    // Ben nacharbeit-13: der Schluss trägt nur, was die Quellen belegen — die Wörterbucherklärung
+    // wird den Wissensquellen nicht zugeschrieben („gestützt auf“), weder als Stufe noch im Text.
     expect(JSON.stringify(b.argumentation)).not.toContain("begriff-haube");
+    expect(JSON.stringify(b.argumentation)).not.toContain("Abdeckung über dem Querstromventil");
+    expect(a.antwortZuschnitt?.quellengebundenerText).toBe(SYNTHESE);
+    expect(b.argumentation.at(-1)).toMatchObject({
+      art: "schluss",
+      aussage: SYNTHESE,
+      gestuetztAuf: a.result.citedSources,
+    });
   });
 
   it("ohne angehängten Begriff steht kein Wörterbuchabschnitt an der Belastbarkeit", async () => {

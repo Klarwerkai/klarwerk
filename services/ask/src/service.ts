@@ -569,6 +569,12 @@ export interface AskAntwortZuschnitt {
   fachsprache: ZuschnittDerAntwort["fachsprache"];
   reihenfolge: KnowledgeType[];
   ergaenzungen: ZuschnittErgaenzung[];
+  /**
+   * Ben nacharbeit-13: die Antwort OHNE Wörterbucherklärungen — der Teil, den die tragenden Quellen
+   * belegen. Die Argumentationskette führt GENAU diesen Text als Schluss; Wörterbuchdefinitionen
+   * werden so nie den Wissensquellen zugeschrieben.
+   */
+  quellengebundenerText: string;
 }
 
 /**
@@ -1236,6 +1242,7 @@ export class AskService {
         fachsprache: zuschnitt.fachsprache,
         reihenfolge: [...zuschnitt.reihenfolge],
         ergaenzungen: zugeschnitten.ergaenzungen,
+        quellengebundenerText: zugeschnitten.quellengebunden,
       };
     }
     const result = { ...resultCore, answer: zugeschnittenerText, captionSources };

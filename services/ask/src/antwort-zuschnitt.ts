@@ -68,7 +68,14 @@ export type ZuschnittErgaenzung =
     };
 
 export interface ZugeschnitteneAntwort {
+  /** Die ausgelieferte Antwort samt aller Ergänzungen. */
   text: string;
+  /**
+   * Ben nacharbeit-13: derselbe Text OHNE die Wörterbucherklärungen — nur, was die tragenden
+   * Quellen belegen. Er ist die inhaltliche Schlussfolgerung der Argumentationskette; die
+   * Wörterbuchergänzung steht allein im abgegrenzten Abschnitt der Belastbarkeit.
+   */
+  quellengebunden: string;
   ergaenzungen: ZuschnittErgaenzung[];
 }
 
@@ -192,10 +199,10 @@ export function schneideAntwortZu(
     }
   }
   if (ergaenzungen.length === 0) {
-    return { text: antwort, ergaenzungen };
+    return { text: antwort, quellengebunden: antwort, ergaenzungen };
   }
   const titel = new Map(tragende.map((ko): [string, string] => [ko.id, ko.title]));
-  const abschnitte = ergaenzungen.map((e) => {
+  const abschnitt = (e: ZuschnittErgaenzung): string => {
     const name = BESCHRIFTUNG[locale][e.art];
     if (e.art === "begriffe") {
       const zeilen = e.eintraege.map((x, i) => {
@@ -206,6 +213,16 @@ export function schneideAntwortZu(
     }
     const kopf = `${name} (${titel.get(e.quelleId) ?? e.quelleId}):`;
     return `${kopf}\n${e.eintraege.map((x) => `- ${x}`).join("\n")}`;
-  });
-  return { text: `${antwort.trimEnd()}\n\n${abschnitte.join("\n\n")}`, ergaenzungen };
+  };
+  const mitAbschnitten = (liste: readonly ZuschnittErgaenzung[]): string => {
+    if (liste.length === 0) {
+      return antwort;
+    }
+    return `${antwort.trimEnd()}\n\n${liste.map(abschnitt).join("\n\n")}`;
+  };
+  return {
+    text: mitAbschnitten(ergaenzungen),
+    quellengebunden: mitAbschnitten(ergaenzungen.filter((e) => e.art !== "begriffe")),
+    ergaenzungen,
+  };
 }

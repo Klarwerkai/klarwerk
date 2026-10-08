@@ -322,6 +322,8 @@ describe("R-0346 · der Zuschnitt verändert die Antwort, quellengebunden", () =
     expect(z.text).toContain("Voraussetzungen (Druckprüfung):\n- Anlage drucklos");
     expect(z.text).toContain("Maßnahmen (Druckprüfung):\n- Dichtung tauschen");
     expect(z.text).not.toContain("Begriffe:");
+    // Voraussetzungen und Maßnahmen stammen aus der tragenden Quelle — sie gehören zum Schluss.
+    expect(z.quellengebunden).toBe(z.text);
   });
 
   it("Lesende: kurz und allgemein — nur Wörterbuchbegriffe, die in der Antwort vorkommen", () => {
@@ -351,6 +353,8 @@ describe("R-0346 · der Zuschnitt verändert die Antwort, quellengebunden", () =
     );
     expect(z.text).not.toContain("Dichtung tauschen");
     expect(z.text).not.toContain("Turbine");
+    // Ben nacharbeit-13: der quellengebundene Teil enthält KEINE Wörterbucherklärung.
+    expect(z.quellengebunden).toBe(antwort);
   });
 
   it("fehlende Herkunftsangaben des Eintrags werden nicht erfunden", () => {
@@ -392,6 +396,6 @@ describe("R-0346 · der Zuschnitt verändert die Antwort, quellengebunden", () =
 
   it("nichts zu ergänzen → die Antwort bleibt Zeichen für Zeichen dieselbe", () => {
     const z = schneideAntwortZu(antwort, [ko("a")], antwortZuschnitt("admin", "frage"), [], "de");
-    expect(z).toEqual({ text: antwort, ergaenzungen: [] });
+    expect(z).toEqual({ text: antwort, quellengebunden: antwort, ergaenzungen: [] });
   });
 });
