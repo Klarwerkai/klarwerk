@@ -19,7 +19,7 @@ N-0012 und `package:navigation`.
 | R-1023 / R-1813 Name „Meine Aufgaben“ | Menüpunkt, Hilfe, Seitenhilfe: geliefert (vorher, R-0962). **Verweis aus der leeren Prüfliste: geliefert in diesem Lauf** | R-0962 (`docs/aufnahme/20260922-gesamt-aufgabenansicht.md`); dieser Lauf | `tests/aufgaben-ansicht/gegenstand-statt-besitzer.test.tsx`, `tests/gesamt-navigation/aufgaben-verweis.test.ts` |
 | R-1813 U3-Browserweg | **nachgeführt in diesem Lauf** (der Smoke suchte den alten Weg „Zahnrad → Weitere Bereiche → Meine Aufgaben“) | dieser Lauf (nur Test) | `tests-smoke/gesamt-navigation-u3-browser.spec.ts` (Nacharbeit 1: aus `erstnutzer-u2-u3-browser.spec.ts` herausgelöst) |
 | R-1023 Navigation selbsterklärend | geliefert (vorher): vier Obergruppen, „Arbeitsbereiche“ statt Zahnrad, „Seite finden ⌘K“, Seitenhilfe je Menüpunkt | JOB 3337, FE-002, JOB 3028 | `tests/fe002-kopfband/kopfband-fe002.test.tsx`, `tests/bedienbarkeit/u3-menuepunkt-erklaert-sich.test.tsx` |
-| R-1023 Teilstück (b) „zu viele Informationen auf einer Seite“ | **offen** (siehe unten) | — | — |
+| R-1023 Teilstück (b) „zu viele Informationen auf einer Seite“ | **Messung gebaut (Nacharbeit 5), Entlastung der zwei gemessenen Flächen steht aus** (siehe unten) | Nacharbeit 5 (nur Test) | `tests/gesamt-navigation/flaechenlast-chromium.test.ts` (F2 erwartbar rot bis zur Entlastung) |
 | R-1045 „es geht unten weiter“ | **geliefert in diesem Lauf** | dieser Lauf | `tests/gesamt-navigation/weiter-unten-mounted.test.tsx`, `tablet-chromium.test.ts` T2, T4, T5 |
 | R-1045 Entwicklerschalter nehmen keine Höhe | vorhanden seit JOB 3060 (Rollenvorschau steht in der scrollenden Liste, ohne Vorschau gar nicht); **gemessen in diesem Lauf** | JOB 3060 | `tablet-chromium.test.ts` T3 |
 | package:navigation, kein Punkt verschwindet schmal | geliefert (vorher) | JOB 3503, JOB 3605 | `tests/navigation-schmal/kein-sonderpunkt-schmal.test.tsx`, T1 |
@@ -71,13 +71,28 @@ umgezogen und trägt den heutigen Titel, die Mengen bleiben gleich.
 
 ## Offen (mit Grund)
 
-- **R-1023 Teilstück (b), überladene Flächen:** Die Quelle verlangt, mechanisch zu messen, welche
-  Flächen die meisten gleichzeitig sichtbaren Bedienelemente tragen, und dann die zwei schlimmsten
-  zusammenzufassen, mit Beleg vorher und nachher. Kandidaten sind die Wissensobjekt-Detailseite
-  (SCRUM-513) und die Konflikt-/Duplikatdarstellung (SCRUM-486). Teile davon liegen schon vor (die
-  Detailseite legt Quellen, Versionen, Historie, Kommentare und Widersprüche hinter „Mehr“), aber
-  eine Messung vorher/nachher gibt es nicht. Dieser Lauf hat sie nicht gebaut. Sie berührt Flächen
-  mit eigenen Aufträgen und braucht eine Gestaltungsentscheidung.
+- **R-1023 Teilstück (b), überladene Flächen — in Arbeit, nicht verschoben (Nacharbeit 5):** Die
+  Quelle verlangt eine Reihenfolge: zuerst mechanisch messen, welche Flächen die meisten
+  gleichzeitig sichtbaren Bedienelemente und Zustandsangaben tragen. Danach werden die zwei
+  schlimmsten zusammengefasst oder aufklappbar gemacht, ohne etwas zu löschen, mit Beleg vorher und
+  nachher. Ben hat zu Recht festgestellt, dass dafür keine externe Voraussetzung fehlt.
+  - **Messwerkzeug:** Seit Nacharbeit 5 gibt es `tests/gesamt-navigation/flaechenlast-chromium.test.ts`.
+    Er misst 22 Flächen am gebauten Produkt mit Demobestand (Admin, Deutsch, 1280 × 800). Das sind
+    alle Navigationsflächen sowie Wissensobjekt lesen und bearbeiten, Konfliktvergleich und
+    Doppelungsvergleich. Die Rangliste vorher/nachher steht im Lauf.
+  - **Fall F2:** Er prüft die Anforderung selbst, nämlich dass die zwei Flächen mit der höchsten Last
+    entlastet sind.
+  - **Warum noch keine Entlastung gebaut ist:** Die Messung lässt sich in dieser Arbeitsumgebung
+    nicht ausführen; Tests startet nur der Prüfadapter. Ohne Messung hätte ich zwei Flächen raten
+    müssen, und die Quelle verlangt ausdrücklich, zuerst zu messen.
+  - **Erwartung für den ersten Lauf:** F2 wird rot und nennt dabei die zwei gemessenen Flächen. Die
+    Rangliste dieses Laufs ist zugleich der Beleg „vorher“.
+  - **Danach:** Die Entlastung dieser zwei Flächen folgt auf dieser Grundlage. Sie bekommt
+    Entlastungsschalter (`data-entlastung-schalter`), und derselbe Test misst aufgeklappt (vorher)
+    gegen eingeklappt (nachher).
+  - **Schon vorhanden:** Die Detailseite legt Quellen, Versionen, Historie, Kommentare und
+    Widersprüche hinter „Mehr“. Die Messung zählt den heutigen Stand, also einschließlich dieser
+    Entlastung.
 - **Selbsterklärend für Erstnutzer (R-1813):** Ob die Bedienung ohne Schulung gelingt, kann nur ein
   Nachtest mit Menschen belegen (SCRUM-474). Kein Test ersetzt das. Die Klärung mit Pedi zum
   Umfang vor dem 12.08. ist historisch und durch die späteren Lieferungen überholt.
