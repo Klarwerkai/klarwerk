@@ -2729,7 +2729,9 @@ export function RichTextEditor({
 
       {mode === "edit" && selectedImage ? (
         <div className="flex flex-wrap items-center gap-1 border-b border-hairline bg-ai-surface-1 px-2 py-1.5">
-          <span className="mr-1 text-[11.5px] font-semibold text-muted">Bildgröße</span>
+          <span className="mr-1 text-[11.5px] font-semibold text-muted">
+            {t("beschriftung.editor.bildgroesse")}
+          </span>
           {IMAGE_SCALE_OPTIONS.map((opt) => (
             <button
               key={opt.value}

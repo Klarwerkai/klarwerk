@@ -121,10 +121,12 @@ describe("JOB 3116 · R5 — die gemountete Pruefliste nennt Zustand und Kennung
       m.karte("Wiederimport Anlage 3"),
       "Der Wiederimport auf einen aktiven Anker sagt, dass er zurueckfliesst — und wohin.",
     ).toEqual(["Zur Prüfung vorgemerkt", `vorhanden, Kennung ${aktiveKennung} wiederverwendet`]);
+    // R-0908: das Abzeichen sagt seit der Aufnahme gesamt-sprache-begriffe „Wissensobjekt
+    // angelegt" statt „KO erzeugt" (`fachwort.fund.angelegt`); die Aussage ist dieselbe.
     expect(
       m.karte("Erstimport Anlage 3"),
       "GEGENRICHTUNG: der Kandidat, der wirklich ein Objekt erzeugt hat, traegt weiterhin sein Abzeichen.",
-    ).toEqual(["Angenommen", "KO erzeugt"]);
+    ).toEqual(["Angenommen", "Wissensobjekt angelegt"]);
     expect(m.text, "Kein roher i18n-Schluessel an der Flaeche.").not.toContain("ext.finding.");
   });
 

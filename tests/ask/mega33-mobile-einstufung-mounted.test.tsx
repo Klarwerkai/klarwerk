@@ -173,7 +173,7 @@ async function mountMobileAndAsk(): Promise<string> {
 
   // Frage stellen.
   const input = container.querySelector<HTMLInputElement>(
-    `input[placeholder="${i18n.t("ask.placeholder")}"]`,
+    `input[placeholder="${i18n.t("beispielfragen.platzhalter")}"]`,
   );
   expect(input, "Frage-Eingabe nicht gefunden").toBeTruthy();
   await act(async () => {

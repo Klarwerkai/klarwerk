@@ -95,6 +95,17 @@ function pruefeForm(pfad: string, roh: unknown): string[] {
       fehler.push(`${pfad}: ${sprache} fehlt oder ist kein Objekt aus Zeichenketten.`);
     }
   }
+  // R-1169 / R-0983: eine Sprache AUSSERHALB von de/en/nl (etwa `fr: {…}`) fiel bis hierher still
+  // durch — der Sammler liest nur die drei Blöcke, der vierte wurde nie ausgeliefert und nie
+  // gemeldet. Jetzt ist jeder unbekannte Eintrag der Modulform ein Befund.
+  const bekannt = new Set<string>(["praefix", "legacySchluessel", ...SPRACHEN]);
+  for (const feld of Object.keys(roh as object).sort()) {
+    if (!bekannt.has(feld)) {
+      fehler.push(
+        `${pfad}: unbekannter Eintrag "${feld}" — ein Textmodul kennt nur ${SPRACHEN.join(", ")}; eine weitere Sprache wäre still ignoriert worden.`,
+      );
+    }
+  }
   return fehler;
 }
 

@@ -104,8 +104,10 @@ describe("Wissens-Priorisierung · die Fläche der neun Faktoren", () => {
     const erste = container.querySelector('[data-testid="prio-zeile"]');
     expect(erste?.querySelector('[data-testid="prio-score"]')?.textContent).toBe("88");
     const flags = [...(erste?.querySelectorAll('[data-testid="prio-flag"]') ?? [])];
+    // R-0908: „Bus-Faktor 1" steht als Markierung jetzt in Anwendersprache („nur eine Person"),
+    // der Filter darüber erklärt den Begriff (`texte/fachwort.ts`).
     expect(flags.map((e) => e.textContent)).toEqual([
-      i18n.t("mgmt.prio.flag.busFactorOne"),
+      i18n.t("fachwort.einzelperson.markierung"),
       i18n.t("mgmt.prio.flag.stale"),
       i18n.t("mgmt.prio.flag.highProtection"),
     ]);

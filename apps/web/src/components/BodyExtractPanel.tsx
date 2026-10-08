@@ -369,7 +369,7 @@ export function BodyExtractPanel({
                   keine Cloud-KI (nur lokal/deterministisch). */}
               <div className="mt-3 flex items-center gap-1.5">
                 <span className="text-[12.5px] font-medium text-muted">{t("conf.field")}</span>
-                <HelpTip title={t("conf.field")} body={t("conf.help")} />
+                <HelpTip title={t("conf.field")} body={t("fachwort.vertraulichkeit.hilfe")} />
                 <select
                   value={docConfidentiality}
                   onChange={(e) => setDocConfidentiality(e.target.value as Confidentiality)}

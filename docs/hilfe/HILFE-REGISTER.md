@@ -1,7 +1,7 @@
 # KLARWERK Hilfe-Register — Überschriften-Abdeckung + Voll-Inventur der Hilfe-Texte
 
 > **Zweck (Pedi 05.07.):** Jede Überschrift (wo möglich) hat eine Erklärung — und dieses Register dokumentiert, WAS wo erklärt wird, damit bei App-Änderungen die Erklärungen nachgezogen werden.
-> **Pflege-Regel:** Dieses Dokument ist AUS DEM CODE GENERIERT (Quellen: alle `pages/*.tsx` + `i18n.ts`). Es wird nicht von Hand editiert — nach jedem UI-Batch, der Überschriften oder Hilfen ändert, generiert Paul es neu und liefert es mit. Stand: 05.07.2026. Zeile `adm.trash.help` am 17.09.2026 aus `i18n.ts` nachgeführt (JOB 4327; kein Generator im Repo). Zeile `entwurfspool.saveDraftHelp.body` am 06.10.2026 aus `texte/entwurfspool.ts` nachgeführt (Aufnahme entwurf-in-gemeinsamen-pool-geben).
+> **Pflege-Regel:** Dieses Dokument ist AUS DEM CODE GENERIERT (Quellen: alle `pages/*.tsx` + `i18n.ts`). Es wird nicht von Hand editiert — nach jedem UI-Batch, der Überschriften oder Hilfen ändert, generiert Paul es neu und liefert es mit. Stand: 05.07.2026. Zeile `adm.trash.help` am 17.09.2026 aus `i18n.ts` nachgeführt (JOB 4327; kein Generator im Repo). Zeile `entwurfspool.saveDraftHelp.body` am 06.10.2026 aus `texte/entwurfspool.ts` nachgeführt (Aufnahme entwurf-in-gemeinsamen-pool-geben). Die sieben Stufe-2-Überschriften und die Vertraulichkeitshilfe am 08.10.2026 aus `texte/fachwort.ts` nachgeführt (Aufnahme gesamt-sprache-begriffe, R-0908: ohne „Reasoner", „Evidence", „Knowledge-OS", „Output Factory").
 > **Doppelnutzen:** Teil 2 ist zugleich die vollständige Inventur für den Berater (Lieferung 2: Audit aller Kurzhilfen).
 
 ## Teil 1 · Überschriften-Abdeckung (SectionLabel je Seite)
@@ -82,13 +82,13 @@
 | Stufe2 | `mgmt.recommendations` | Hero Assist — Empfehlungen | ❌ |
 | Stufe2 | `mgmt.priorities` | Wissens-Priorisierung (9 Faktoren) | ❌ |
 | Stufe2 | `mgmt.pilot` | Pilot-Bericht 30/60/90 | ❌ |
-| Stufe2 | `mrun.title` | Reasoner-Läufe (zuletzt) | ❌ |
-| Stufe2 | `rcfg.title` | Reasoner-Konfiguration | ❌ |
-| Stufe2 | `evx.title` | Evidence-Index (QM) | ❌ |
-| Stufe2 | `prov.title` | Provenance-Index (QM) | ❌ |
-| Stufe2 | `readiness.title` | Knowledge-OS Readiness | ❌ |
-| Stufe2 | `kos.hintsTitle` | Knowledge-OS QM-Hinweise | ❌ |
-| Stufe2 | `evFresh.title` | Evidence-Aktualität (QM) | ❌ |
+| Stufe2 | `fachwort.kiLaeufe.titel` | KI-Läufe (zuletzt) | ❌ |
+| Stufe2 | `fachwort.kiEinstellung.titel` | KI-Einstellung | ❌ |
+| Stufe2 | `fachwort.belegIndex.titel` | Belegverzeichnis (QM) | ❌ |
+| Stufe2 | `fachwort.herkunft.titel` | Herkunftsverzeichnis (QM) | ❌ |
+| Stufe2 | `fachwort.bereitschaft.titel` | Startklarheit des Wissenssystems | ❌ |
+| Stufe2 | `fachwort.qm.titel` | Hinweise zur Wissensqualität (QM) | ❌ |
+| Stufe2 | `fachwort.belegFrische.titel` | Aktualität der Belege (QM) | ❌ |
 
 ## Teil 2 · Voll-Inventur aller Hilfe-Texte (255 Einträge, DE)
 
@@ -176,7 +176,7 @@
 | `chelp.tellUpload.title` | Erfassen (captureHelp) | Datei anhängen beim Erzählen |
 | `chelp.wizardSteps.body` | Erfassen (captureHelp) | Erfassen läuft in drei Schritten: ERZÄHLEN (Rohwissen loswerden), WISSENSSEITE (prüfen und verfeinern, mit KI-Hilfe), EINREICHEN (in die Peer-Prüfung geben). Fertige Schritte kannst du anklicken und zurückgehen — dabei geht nichts verloren. Erst „Prüfen & einreichen“ macht aus deinem Entwurf ein Wissensobjekt für die Kollegen. |
 | `chelp.wizardSteps.title` | Erfassen (captureHelp) | Die drei Schritte |
-| `conf.help` | Capture | Wie vertraulich ist dieses Wissen? Öffentlich-intern ist der Standard (keine Einschränkung). Vertraulich und Streng vertraulich markieren sensibles Wissen: solche Objekte werden nie in externe Kontexte gegeben (Output Factory/Export). Die Stufe ist ab dem Erfassen setzbar und später jederzeit änderbar — jede Änderung wird im Audit-Log festgehalten. Hinweis: Diese Kennzeichnung schränkt (noch) nicht ein, WER das Objekt sieht. |
+| `fachwort.vertraulichkeit.hilfe` | Capture | Wie vertraulich ist dieses Wissen? Öffentlich-intern ist der Standard (keine Einschränkung). Vertraulich und Streng vertraulich markieren sensibles Wissen: solche Objekte werden nie in externe Kontexte gegeben (Auswertungen/Export). Die Stufe ist ab dem Erfassen setzbar und später jederzeit änderbar — jede Änderung wird im Audit-Log festgehalten. Hinweis: Diese Kennzeichnung schränkt (noch) nicht ein, WER das Objekt sieht. |
 | `editor.template.applyHelp` | BodyTemplateChooser | Fügt die gezeigte Startstruktur in die Wissensseite ein: Ist die Seite leer, wird sie eingesetzt; steht schon etwas drin, wird sie UNTEN angehängt — nichts wird ersetzt oder gespeichert. Die Platzhalter („… ergänzen“) ersetzt du danach durch dein Wissen. |
 | `enrich.help` | PublicAiEnrichPanel | Hole zusätzliche Hintergrund-Infos von der Public KI — entweder aus dem Modellwissen oder aus einer belegten Web-Suche. Ergebnisse sind extern und ungeprüft; sie werden nur auf deinen Klick in den Entwurf übernommen und nie automatisch validiert. |
 | `help.ask.body` | Hilfeseite | Antworten stammen nur aus validiertem Wissen, mit Quellen und Vertrauen. Ohne Grundlage entsteht eine Wissenslücke. |
