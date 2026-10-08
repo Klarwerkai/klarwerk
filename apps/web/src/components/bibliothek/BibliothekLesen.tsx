@@ -2126,13 +2126,15 @@ export function BibliothekLesen({
     });
     const frist = window.setTimeout(() => aufhoeren(), 5_000);
     const eingriffe = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
-    function aufhoeren(): void {
+    // Eine Pfeilfunktion, keine `function`-Deklaration: nur sie behält die Null-Prüfung von `roll`
+    // oben (eine gehobene Deklaration gilt TypeScript als vor der Prüfung entstanden).
+    const aufhoeren = (): void => {
       beobachter.disconnect();
       window.clearTimeout(frist);
       for (const e of eingriffe) {
         roll.removeEventListener(e, aufhoeren);
       }
-    }
+    };
     for (const e of eingriffe) {
       roll.addEventListener(e, aufhoeren, { passive: true });
     }
