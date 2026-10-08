@@ -1530,7 +1530,11 @@ export function assembleServices(
       // vertrauliche Medien per Konstruktion (rejectsConfidential), analog cappedCloud beim Reasoner.
       // SCRUM-502 R8: gecappter Cloud-Transkriber aus der Factory (Egress-Wächter zwingend; roher
       // Client + Credential modul-intern, hier nicht erreichbar). Ohne Schlüssel → undefined (inaktiv).
-      transcriber: createCappedTranscriberFromEnv(),
+      // gesamt-ki-freigaberegeln (Ben Nacharbeit 2): der Chokepoint fragt dieselbe zentrale Freigabe
+      // für Vertrauliches wie der Dienst — entschieden allein im Reasoner.
+      transcriber: createCappedTranscriberFromEnv(process.env, {
+        vertraulichFreigegeben: () => reasoner.vertraulicheAusleitungFreigegeben(),
+      }),
       // SCRUM-521 (WP2, nacht24): KO-Kontext für die Egress-Entscheidung — die Stufen ALLER KOs,
       // die das Objekt als Anhang tragen (restriktivste gewinnt im Service; ein „intern"
       // hochgeladenes Medium an einem vertraulichen KO bleibt vertraulich). Injizierte Auflösung,
@@ -1543,6 +1547,13 @@ export function assembleServices(
         (await ko.list({}))
           .filter((k) => (k.attachments ?? []).some((a) => a.objectId === objectId))
           .map((k) => k.confidentiality ?? "intern"),
+      // Auftrag gesamt-ki-freigaberegeln: die zentrale Adminfreigabe gilt auch für die
+      // Transkription. Durchgereicht wird die Lesart des Kerns, Zeichen für Zeichen wie für Klara
+      // (Policyquelle des `KlaraSessionService` unten) — frisch je Analyse, eine Rücknahme wirkt
+      // ohne Neustart. Entschieden wird weiter allein in `Reasoner.oeffentlicheKiErlaubt`.
+      zentralFreigegeben: () =>
+        reasoner.configStatus().taskConfig.kiFreigabe?.oeffentlicheKi === true,
+      vertraulichFreigegeben: () => reasoner.vertraulicheAusleitungFreigegeben(),
     }),
     // SCRUM-165: read-only ModelRun-Sicht über dasselbe Protokoll-Repo wie der Reasoner.
     modelRuns: new ModelRunService({
@@ -2951,14 +2962,17 @@ export function buildApp(
         // „fehlt" sperren gleich (Pedi 10.09. 21:25: „Im Zweifel gilt: gesperrt"). Hier wird sie
         // nicht ENTSCHIEDEN, sondern DURCHGEREICHT — die Entscheidungsstelle bleibt im Kern, und
         // eine zweite Sperre gibt es auch nach diesem Auftrag nicht. Der zweite Schalter der
-        // Adminfreigabe (vertrauliche Inhalte) bleibt bewusst draussen: der Klara-Resolver erfährt
-        // die Einstufung eines Inhalts nirgends und könnte ihn nicht beantworten; die
-        // Vertraulichkeitsgrenze bleibt, wo sie heute gezogen wird.
+        // Adminfreigabe (vertrauliche Inhalte) geht NICHT an den Resolver — er erfährt die Einstufung
+        // eines Inhalts nirgends —, sondern als `vertraulichFreigegeben` an die Deckungsprüfung des
+        // markierten Dokumenttexts (gesamt-ki-freigaberegeln, Ben Nacharbeit 2).
         //
         // ES IST DIESELBE FRISCHE LESUNG wie alles andere hier oben (`configStatus()` je Zugriff):
         // eine Rücknahme der Freigabe wirkt ohne Neustart, und sie entwertet laufende Zustimmungen,
         // weil das Feld in `klaraPolicyVersion` eingeht.
         zentralFreigegeben: config.taskConfig.kiFreigabe?.oeffentlicheKi === true,
+        // gesamt-ki-freigaberegeln (Ben Nacharbeit 2): die zweite Adminfreigabe für den markierten
+        // Dokumenttext — die Entscheidung des Kerns, frisch je Zugriff, nicht nachgerechnet.
+        vertraulichFreigegeben: services.reasoner.vertraulicheAusleitungFreigegeben(),
         effectiveAnswerProvider: config.effectiveProvider.answer ?? "deterministic",
         cloudConfigured: gewaehlterAnbieter
           ? config.cloudProviders[gewaehlterAnbieter].configured
