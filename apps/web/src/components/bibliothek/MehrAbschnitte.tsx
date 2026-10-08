@@ -104,6 +104,7 @@ import { AiCheckCoverageNotes } from "../AiCheckCoverageHint";
 import { ConflictTargetPicker } from "../ConflictTargetPicker";
 import { ExternalUrlText } from "../ExternalUrlText";
 import { GeltungFeld } from "../Geltung";
+import { HelpTip } from "../HelpTip";
 import { KnowledgeNeighborhood } from "../KnowledgeNeighborhood";
 import { RoleLink } from "../RoleLink";
 import { SanitizedHtml } from "../SanitizedHtml";
@@ -1489,6 +1490,18 @@ export function MehrAbschnitte({
         ) : null}
         {canReview ? (
           <div className="mt-2 space-y-2">
+            {/* R-0888 / R-1017 (gesamt-hilfen, Nacharbeit 13): die vorhandenen Erklärungen dieser
+                Handlung (`lib/reviewHelp.ts`) stehen in der Seitenhilfe, solange die Handlung
+                da ist — der beschlossene Weg (`HelpTip`, Pedi 04.09.), kein „?" im Sichtfeld. */}
+            <HelpTip
+              title={t("vhelp.reportConflict.title")}
+              body={t("vhelp.reportConflict.body")}
+            />
+            {/* Nacharbeit 15: die berichtigte Fassung nennt auch die Pflichtwahl „Art der Arbeit“. */}
+            <HelpTip
+              title={t("vhelp.conflictForm.title")}
+              body={t("abschnittshilfe.conflictForm.body")}
+            />
             <div className="space-y-1.5">
               <span className="block text-[12.5px] font-medium text-muted">
                 {t("ko.conflictTarget")}
@@ -1574,6 +1587,7 @@ export function MehrAbschnitte({
         offen={offene.has("quellen")}
         aufWechsel={(o) => abschnittUmschalten("quellen", o)}
       >
+        <HelpTip title={t("vhelp.sourcesLevel2.title")} body={t("vhelp.sourcesLevel2.body")} />
         {(ko.sources ?? []).length === 0 ? (
           <p className="text-[12.5px] text-muted">{t("ko.sourcesEmpty")}</p>
         ) : (
@@ -1731,6 +1745,8 @@ export function MehrAbschnitte({
         <ImportErgebnis ko={ko} />
         {canEdit ? (
           <div className="mt-3 space-y-2 border-t border-hairline pt-3">
+            <HelpTip title={t("vhelp.sourceFields.title")} body={t("vhelp.sourceFields.body")} />
+            <HelpTip title={t("vhelp.sourceAdd.title")} body={t("vhelp.sourceAdd.body")} />
             <TextInput
               value={sourceForm.label}
               onChange={(e) => setSourceForm((s) => ({ ...s, label: e.target.value }))}
@@ -1829,6 +1845,7 @@ export function MehrAbschnitte({
       >
         {canEdit && canSearchExternal(extStage) ? (
           <div className="space-y-2">
+            <HelpTip title={t("vhelp.sourceSearch.title")} body={t("vhelp.sourceSearch.body")} />
             {extAttachAllowed ? null : (
               <p
                 data-testid="ext-attach-blocked"
@@ -1906,6 +1923,7 @@ export function MehrAbschnitte({
         aufWechsel={(o) => abschnittUmschalten("beitrag", o)}
       >
         <div className="space-y-2">
+          <HelpTip title={t("vhelp.contribution.title")} body={t("vhelp.contribution.body")} />
           <textarea
             value={source.contribution}
             onChange={(e) => setSource((s) => ({ ...s, contribution: e.target.value }))}
@@ -1994,6 +2012,7 @@ export function MehrAbschnitte({
         ) : null}
         {canTransfer ? (
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hairline pt-3">
+            <HelpTip title={t("vhelp.transfer.title")} body={t("vhelp.transfer.body")} />
             <select
               aria-label={t("ko.transferTitle")}
               value={newAuthor}
@@ -2258,6 +2277,7 @@ export function MehrAbschnitte({
             </>
           );
         })()}
+        <HelpTip title={t("vhelp.validity.title")} body={t("vhelp.validity.body")} />
         <dl className="mb-3 space-y-1.5 text-[12.5px]">
           <div className="flex items-center justify-between gap-2">
             <dt className="text-muted">{t("ko.ovTrust")}</dt>

@@ -57,6 +57,7 @@ import { useNetzOnline } from "../../lib/netzzustand";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { draftProvenance } from "../../lib/reasonerProvenance";
 import { canRevalidate } from "../../lib/revalidation";
+import { reviewHelp } from "../../lib/reviewHelp";
 import {
   isReviewReworkContext,
   reworkNextSteps,
@@ -84,6 +85,7 @@ import { BodyImageGallery } from "../BodyImageGallery";
 import { BodyTemplateChooser } from "../BodyTemplateChooser";
 import { EditorAttachmentContext } from "../EditorAttachmentContext";
 import { EditorContentQuality } from "../EditorContentQuality";
+import { HelpTip } from "../HelpTip";
 import { KnowledgeInputStudio } from "../KnowledgeInputStudio";
 import { KoRevisionSummary } from "../KoRevisionSummary";
 import { LesevarianteHinweis } from "../LesevarianteHinweis";
@@ -2481,6 +2483,17 @@ export function BibliothekLesen({
             >
               {() => t("lib.ask")}
             </RoleLink>
+            {/* R-0888 / R-1017 (gesamt-hilfen, Nacharbeit 13): die Erklärungen der Menüpunkte
+                „Hat geholfen" und „Löschen" stehen in der Seitenhilfe, solange die Handlung da ist
+                — angemeldet HIER, weil das Menü erst beim Öffnen gezeichnet wird. Die Löschhilfe
+                kommt über `reviewHelp`, also mit dem berichtigten Text (Papierkorb, 30 Tage). */}
+            <HelpTip title={t("vhelp.helpful.title")} body={t("vhelp.helpful.body")} />
+            {darfLoeschen ? (
+              <HelpTip
+                title={t(reviewHelp("deleteKo").titleKey)}
+                body={t(reviewHelp("deleteKo").bodyKey)}
+              />
+            ) : null}
             <Menue
               beschriftung="…"
               ariaLabel={t("lib.menue.weitere")}
