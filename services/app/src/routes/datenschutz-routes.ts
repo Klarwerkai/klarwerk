@@ -22,6 +22,7 @@
 //
 // PRÜFPROTOKOLL OHNE FREITEXT: belegt werden Antrag, Entscheidung und erteilte Auskunft mit
 // Kennungen und Frist — nie Begründung, Ablehnungsgrund oder Inhalt der Auskunft.
+import { randomUUID } from "node:crypto";
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import type { AuditService } from "../../../audit";
 import { AuthError, type PublicUser } from "../../../auth";
@@ -36,6 +37,7 @@ import {
   type Loeschantrag,
   LoeschantragFehler,
   type LoeschantragRepo,
+  UEBERNAHME_GUELTIG_MS,
   istUeberfaellig,
   neuerLoeschantrag,
 } from "../loeschantraege";
@@ -225,7 +227,12 @@ export function datenschutzRoutes(
       reply.code(200).send({ antraege: antraege.map((a) => verwaltungssicht(a, konten, t)) });
     });
 
-    // Erledigen = das Konto über den VORHANDENEN Löschweg löschen, danach den Antrag abschliessen.
+    // Erledigen = den Antrag ATOMAR übernehmen, DANN das Konto über den vorhandenen Löschweg
+    // löschen, dann aus der Übernahme abschliessen (Nacharbeit 4, BEN). Wer die Übernahme nicht
+    // gewinnt — weil zurückgezogen, abgelehnt oder von einer zweiten Erledigung übernommen —, löscht
+    // nichts. Scheitert das Löschen, wird die Übernahme freigegeben: der Antrag ist wieder offen und
+    // erneut bearbeitbar. Bricht der Vorgang ganz ab, wird die Übernahme nach
+    // `UEBERNAHME_GUELTIG_MS` wieder übernehmbar.
     app.post<{ Params: { id: string }; Body: unknown }>(
       "/api/datenschutz/loeschantraege/:id/erledigen",
       async (request, reply) => {
@@ -234,12 +241,25 @@ export function datenschutzRoutes(
           return;
         }
         try {
-          const antrag = await dienste.loeschantraege.finde(request.params.id);
+          const t = jetzt();
+          const uebernahme = {
+            token: randomUUID(),
+            am: new Date(t).toISOString(),
+            von: admin.id,
+          };
+          const antrag = await dienste.loeschantraege.uebernehmen(
+            request.params.id,
+            uebernahme,
+            new Date(t - UEBERNAHME_GUELTIG_MS).toISOString(),
+          );
           if (!antrag) {
-            throw new LoeschantragFehler("NICHT_GEFUNDEN", "Löschantrag nicht gefunden.");
-          }
-          if (antrag.status !== "offen") {
-            throw new LoeschantragFehler("NICHT_OFFEN", "Der Löschantrag ist nicht mehr offen.");
+            if (!(await dienste.loeschantraege.finde(request.params.id))) {
+              throw new LoeschantragFehler("NICHT_GEFUNDEN", "Löschantrag nicht gefunden.");
+            }
+            throw new LoeschantragFehler(
+              "NICHT_OFFEN",
+              "Der Löschantrag ist nicht mehr offen oder wird gerade bearbeitet.",
+            );
           }
           let grund: string | null = null;
           try {
@@ -247,14 +267,17 @@ export function datenschutzRoutes(
           } catch (e) {
             if (e instanceof AuthError && e.code === "NOT_FOUND") {
               grund = "Konto war bereits gelöscht.";
-            } else if (e instanceof AuthError && e.code === "FORBIDDEN") {
-              reply.code(409).send({
-                error: "LETZTER_ADMIN",
-                message:
-                  "Das letzte unbefristete Verwalterkonto kann nicht gelöscht werden. Bitte zuerst ein weiteres Verwalterkonto einrichten oder den Antrag mit Grund ablehnen.",
-              });
-              return;
             } else {
+              // Nichts gelöscht: die Übernahme zurückgeben, damit der Antrag offen bleibt.
+              await dienste.loeschantraege.freigeben(antrag.id, uebernahme.token);
+              if (e instanceof AuthError && e.code === "FORBIDDEN") {
+                reply.code(409).send({
+                  error: "LETZTER_ADMIN",
+                  message:
+                    "Das letzte unbefristete Verwalterkonto kann nicht gelöscht werden. Bitte zuerst ein weiteres Verwalterkonto einrichten oder den Antrag mit Grund ablehnen.",
+                });
+                return;
+              }
               throw e;
             }
           }
@@ -265,9 +288,15 @@ export function datenschutzRoutes(
             entschiedenAm: new Date(jetzt()).toISOString(),
             entscheidungsgrund: grund,
           };
-          // Das Konto ist gelöscht; schliesst ein zweiter Verwalter im selben Moment ab, bleibt
-          // sein Endstand stehen — gelöscht ist das Konto in beiden Fällen.
-          await dienste.loeschantraege.abschliessen(neu);
+          // Nur wer die Übernahme noch hält, schliesst ab. Hat eine zweite Erledigung eine
+          // abgelaufene Übernahme an sich gezogen, gilt deren Abschluss; sie findet das Konto
+          // gelöscht vor und vermerkt das. Hier wird dann NICHTS behauptet.
+          if (!(await dienste.loeschantraege.abschliessen(neu, "in_bearbeitung"))) {
+            throw new LoeschantragFehler(
+              "NICHT_OFFEN",
+              "Das Konto ist gelöscht, der Antrag wurde aber inzwischen von einer anderen Bearbeitung übernommen; sie schliesst ihn ab.",
+            );
+          }
           await dienste.audit.record({
             actor: admin.id,
             action: "loeschantrag.erledigt",

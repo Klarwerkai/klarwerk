@@ -25,7 +25,35 @@
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 
-export type LoeschantragStatus = "offen" | "erledigt" | "abgelehnt" | "zurueckgezogen";
+// `in_bearbeitung` (Nacharbeit 4, BEN): das Erledigen hat den Antrag ATOMAR übernommen und löscht
+// gerade das Konto. In diesem Stand kann ihn niemand zurückziehen oder ablehnen — so kann keine
+// zweite Entscheidung zwischen „Antrag gelesen" und „Konto gelöscht" gewinnen. Er zählt wie
+// `offen` als aktiver Antrag (ein aktiver je Konto) und als Verwalteraufgabe.
+export type LoeschantragStatus =
+  | "offen"
+  | "in_bearbeitung"
+  | "erledigt"
+  | "abgelehnt"
+  | "zurueckgezogen";
+
+/** Die Übernahme eines Antrags durch eine Erledigung — Marke, Zeitpunkt, Verwalter. */
+export interface LoeschantragUebernahme {
+  token: string;
+  am: string;
+  von: string;
+}
+
+/**
+ * Wie lange eine Übernahme gilt. Bricht eine Erledigung zwischen Übernahme und Abschluss ab (Absturz,
+ * Verbindungsverlust), ist der Antrag danach wieder übernehmbar — er bleibt nicht für immer hängen.
+ * Ein technischer Wert, keine Frist gegenüber der Person: die Monatsfrist läuft unverändert weiter.
+ */
+export const UEBERNAHME_GUELTIG_MS = 5 * 60 * 1000;
+
+/** Ein noch nicht entschiedener Antrag: offen oder gerade in Bearbeitung. */
+export function istAktiv(antrag: Pick<Loeschantrag, "status">): boolean {
+  return antrag.status === "offen" || antrag.status === "in_bearbeitung";
+}
 
 export interface Loeschantrag {
   id: string;
@@ -42,6 +70,8 @@ export interface Loeschantrag {
   entschiedenAm: string | null;
   /** Pflicht beim Ablehnen; beim Erledigen optional (etwa „Konto war bereits gelöscht"). */
   entscheidungsgrund: string | null;
+  /** Gesetzt, solange bzw. nachdem eine Erledigung den Antrag übernommen hat. */
+  uebernahme?: LoeschantragUebernahme;
 }
 
 export const LOESCHANTRAG_GRENZEN = { begruendung: 2000, grund: 2000 } as const;
@@ -58,9 +88,9 @@ export function loeschantragFrist(gestelltAm: Date): Date {
   return frist;
 }
 
-/** Ein offener Antrag ist überfällig, sobald seine Frist verstrichen ist. */
+/** Ein noch nicht entschiedener Antrag ist überfällig, sobald seine Frist verstrichen ist. */
 export function istUeberfaellig(antrag: Loeschantrag, jetzt: number): boolean {
-  return antrag.status === "offen" && Date.parse(antrag.fristBis) < jetzt;
+  return istAktiv(antrag) && Date.parse(antrag.fristBis) < jetzt;
 }
 
 export type LoeschantragFehlerCode =
@@ -124,7 +154,7 @@ export async function offeneLoeschantragMeldungen(
 ): Promise<LoeschantragMeldung[]> {
   const [antraege, konten] = await Promise.all([repo.alle(), listUsers()]);
   return antraege
-    .filter((a) => a.status === "offen")
+    .filter((a) => istAktiv(a))
     .sort((a, b) => a.fristBis.localeCompare(b.fristBis))
     .map((a) => ({
       antragId: a.id,
@@ -141,17 +171,45 @@ export async function offeneLoeschantragMeldungen(
  * `lege` legt einen NEUEN offenen Antrag an und liefert `false`, wenn für dieses Konto bereits ein
  * offener Antrag besteht — Prüfen und Setzen sind unteilbar (Speicher: ohne `await` dazwischen;
  * PostgreSQL: partieller Unique-Index). `abschliessen` setzt den Endstand nur, wenn der Antrag noch
- * offen ist, und liefert sonst `false` — zwei Verwalter, die gleichzeitig entscheiden, schreiben
- * nicht übereinander.
+ * im erwarteten Stand ist, und liefert sonst `false` — zwei Verwalter, die gleichzeitig entscheiden,
+ * schreiben nicht übereinander.
+ *
+ * DIE ERLEDIGUNG ÜBERNIMMT ZUERST (Nacharbeit 4): `uebernehmen` setzt `offen` → `in_bearbeitung`
+ * unteilbar und liefert den übernommenen Antrag — oder `undefined`, wenn ihn schon jemand anderes
+ * entschieden oder übernommen hat. Erst danach wird das Konto gelöscht. Aus `in_bearbeitung` führt
+ * nur `abschliessen(…, "in_bearbeitung")` MIT derselben Marke weiter, oder `freigeben` (Fehler beim
+ * Löschen) zurück nach `offen`. Eine abgelaufene Übernahme (`abgelaufenVor`) darf neu übernommen
+ * werden.
  */
 export interface LoeschantragRepo {
   lege(antrag: Loeschantrag): Promise<boolean>;
-  abschliessen(antrag: Loeschantrag): Promise<boolean>;
+  abschliessen(antrag: Loeschantrag, erwartet?: "offen" | "in_bearbeitung"): Promise<boolean>;
+  uebernehmen(
+    id: string,
+    uebernahme: LoeschantragUebernahme,
+    abgelaufenVor: string,
+  ): Promise<Loeschantrag | undefined>;
+  freigeben(id: string, token: string): Promise<boolean>;
   finde(id: string): Promise<Loeschantrag | undefined>;
   /** Alle Anträge, jüngste zuerst. */
   alle(): Promise<Loeschantrag[]>;
   /** Alle Anträge eines Kontos, jüngste zuerst. */
   vonNutzer(nutzerId: string): Promise<Loeschantrag[]>;
+}
+
+/** Derselbe Antrag wieder offen, ohne Übernahme — die Rücknahme einer gescheiterten Erledigung. */
+function ohneUebernahme(a: Loeschantrag): Loeschantrag {
+  return {
+    id: a.id,
+    nutzerId: a.nutzerId,
+    gestelltAm: a.gestelltAm,
+    fristBis: a.fristBis,
+    begruendung: a.begruendung,
+    status: "offen",
+    entschiedenVon: a.entschiedenVon,
+    entschiedenAm: a.entschiedenAm,
+    entscheidungsgrund: a.entscheidungsgrund,
+  };
 }
 
 function nachZeitAbsteigend(a: Loeschantrag, b: Loeschantrag): number {
@@ -182,7 +240,7 @@ export class InMemoryLoeschantragRepo implements LoeschantragRepo {
   async lege(antrag: Loeschantrag): Promise<boolean> {
     this.schreibbar();
     for (const z of this.zeilen.values()) {
-      if (z.nutzerId === antrag.nutzerId && z.status === "offen") {
+      if (z.nutzerId === antrag.nutzerId && istAktiv(z)) {
         return false;
       }
     }
@@ -190,13 +248,49 @@ export class InMemoryLoeschantragRepo implements LoeschantragRepo {
     return true;
   }
 
-  async abschliessen(antrag: Loeschantrag): Promise<boolean> {
+  async abschliessen(
+    antrag: Loeschantrag,
+    erwartet: "offen" | "in_bearbeitung" = "offen",
+  ): Promise<boolean> {
     this.schreibbar();
     const bisher = this.zeilen.get(antrag.id);
-    if (!bisher || bisher.status !== "offen") {
+    if (!bisher || bisher.status !== erwartet) {
+      return false;
+    }
+    // Aus der Bearbeitung schliesst nur, wer die Übernahme hält.
+    if (erwartet === "in_bearbeitung" && bisher.uebernahme?.token !== antrag.uebernahme?.token) {
       return false;
     }
     this.zeilen.set(antrag.id, structuredClone(antrag));
+    return true;
+  }
+
+  async uebernehmen(
+    id: string,
+    uebernahme: LoeschantragUebernahme,
+    abgelaufenVor: string,
+  ): Promise<Loeschantrag | undefined> {
+    this.schreibbar();
+    const bisher = this.zeilen.get(id);
+    const frei =
+      bisher !== undefined &&
+      (bisher.status === "offen" ||
+        (bisher.status === "in_bearbeitung" && (bisher.uebernahme?.am ?? "") < abgelaufenVor));
+    if (!bisher || !frei) {
+      return undefined;
+    }
+    const neu: Loeschantrag = { ...bisher, status: "in_bearbeitung", uebernahme };
+    this.zeilen.set(id, structuredClone(neu));
+    return structuredClone(neu);
+  }
+
+  async freigeben(id: string, token: string): Promise<boolean> {
+    this.schreibbar();
+    const bisher = this.zeilen.get(id);
+    if (!bisher || bisher.status !== "in_bearbeitung" || bisher.uebernahme?.token !== token) {
+      return false;
+    }
+    this.zeilen.set(id, ohneUebernahme(bisher));
     return true;
   }
 
@@ -231,6 +325,8 @@ CREATE TABLE IF NOT EXISTS loeschantraege (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS loeschantraege_ein_offener_je_nutzer
   ON loeschantraege(nutzer_id) WHERE status = 'offen';
+CREATE UNIQUE INDEX IF NOT EXISTS loeschantraege_ein_aktiver_je_nutzer
+  ON loeschantraege(nutzer_id) WHERE status IN ('offen', 'in_bearbeitung');
 CREATE INDEX IF NOT EXISTS idx_loeschantraege_gestellt ON loeschantraege(gestellt_am);
 `;
 
@@ -251,11 +347,45 @@ export class PgLoeschantragRepo implements LoeschantragRepo {
     return (res.rowCount ?? 0) === 1;
   }
 
-  async abschliessen(antrag: Loeschantrag): Promise<boolean> {
+  async abschliessen(
+    antrag: Loeschantrag,
+    erwartet: "offen" | "in_bearbeitung" = "offen",
+  ): Promise<boolean> {
+    // Aus der Bearbeitung schliesst nur, wer die Übernahme hält (dieselbe Marke).
     const res = await this.pool.query(
       `UPDATE loeschantraege SET status = $2, data = $3
-        WHERE id = $1 AND status = 'offen'`,
-      [antrag.id, antrag.status, JSON.stringify(antrag)],
+        WHERE id = $1 AND status = $4
+          AND ($4 = 'offen' OR data->'uebernahme'->>'token' = $5)`,
+      [antrag.id, antrag.status, JSON.stringify(antrag), erwartet, antrag.uebernahme?.token ?? ""],
+    );
+    return (res.rowCount ?? 0) === 1;
+  }
+
+  async uebernehmen(
+    id: string,
+    uebernahme: LoeschantragUebernahme,
+    abgelaufenVor: string,
+  ): Promise<Loeschantrag | undefined> {
+    const res = await this.pool.query<AntragsZeile>(
+      `UPDATE loeschantraege
+          SET status = 'in_bearbeitung',
+              data = data || jsonb_build_object('status', 'in_bearbeitung', 'uebernahme', $2::jsonb)
+        WHERE id = $1
+          AND (status = 'offen'
+               OR (status = 'in_bearbeitung' AND data->'uebernahme'->>'am' < $3))
+        RETURNING data`,
+      [id, JSON.stringify(uebernahme), abgelaufenVor],
+    );
+    return res.rows[0]?.data;
+  }
+
+  async freigeben(id: string, token: string): Promise<boolean> {
+    const res = await this.pool.query(
+      `UPDATE loeschantraege
+          SET status = 'offen',
+              data = (data - 'uebernahme') || jsonb_build_object('status', 'offen')
+        WHERE id = $1 AND status = 'in_bearbeitung' AND data->'uebernahme'->>'token' = $2`,
+      [id, token],
     );
     return (res.rowCount ?? 0) === 1;
   }

@@ -295,11 +295,7 @@ export const DATENINVENTAR: readonly Datenart[] = [
     taetigkeit: "ki",
     loeschung: "Kein Löschweg.",
     frist: BETREIBERFRIST,
-    selbstauskunft: {
-      enthalten: false,
-      grund:
-        "Heute ohne Leseweg je Person (die Ablage kennt nur die jüngsten Läufe und Zeitfenster); die Läufe enthalten neben der Kennung keine Inhalte. Auskunft auf Anfrage durch den Betreiber aus der Datenbank.",
-    },
+    selbstauskunft: { enthalten: true },
     befund:
       "KI-Läufe speichern keine Inhalte: weder Prompt noch Antwort noch Wissensinhalt — wohl aber die Kennung der anfragenden Person.",
   },
@@ -315,11 +311,7 @@ export const DATENINVENTAR: readonly Datenart[] = [
     loeschung:
       "Abgelaufene Sitzungen löscht ein periodischer Aufräumlauf (`klara-aufraeumen.ts`, Aufbewahrung 30 Tage).",
     frist: "30 Tage nach Ablauf (KLARA_SESSION_AUFBEWAHRUNG_MS).",
-    selbstauskunft: {
-      enthalten: false,
-      grund:
-        "Heute ohne Leseweg je Person; Auskunft auf Anfrage durch den Betreiber aus der Datenbank.",
-    },
+    selbstauskunft: { enthalten: true },
   },
   {
     id: "lernpfade",

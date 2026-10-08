@@ -41,6 +41,9 @@ const BEREICHE = [
   "anhaenge",
   "lernpfade",
   "loeschantraege",
+  "kiLaeufe",
+  "klaraSitzungen",
+  "klaraZustimmungen",
   "protokoll",
 ] as const;
 
@@ -233,8 +236,12 @@ export function LoeschantragDetail({ onZurueck }: { onZurueck: () => void }): JS
       </p>
       <Abfragehuelle abfrage={antraege}>
         {({ antraege: liste }) => {
-          const offen = liste.find((a) => a.status === "offen");
-          const frueher = liste.filter((a) => a.status !== "offen");
+          // `in_bearbeitung`: die Verwaltung löscht gerade — der Antrag ist noch aktiv, aber nicht
+          // mehr zurückziehbar.
+          const aktiv = (a: Loeschantrag): boolean =>
+            a.status === "offen" || a.status === "in_bearbeitung";
+          const offen = liste.find(aktiv);
+          const frueher = liste.filter((a) => !aktiv(a));
           return (
             <>
               {offen ? (
@@ -253,13 +260,17 @@ export function LoeschantragDetail({ onZurueck }: { onZurueck: () => void }): JS
                       {t("datenschutz.antrag.ueberfaellig")}
                     </p>
                   ) : null}
-                  <Button
-                    disabled={zurueckziehen.isPending}
-                    onClick={() => zurueckziehen.mutate(offen.id)}
-                    data-testid="loeschantrag-zurueckziehen"
-                  >
-                    {t("datenschutz.antrag.zurueckziehen")}
-                  </Button>
+                  {offen.status === "offen" ? (
+                    <Button
+                      disabled={zurueckziehen.isPending}
+                      onClick={() => zurueckziehen.mutate(offen.id)}
+                      data-testid="loeschantrag-zurueckziehen"
+                    >
+                      {t("datenschutz.antrag.zurueckziehen")}
+                    </Button>
+                  ) : (
+                    <p className="text-muted">{t("datenschutz.status.in_bearbeitung")}</p>
+                  )}
                 </div>
               ) : (
                 <form

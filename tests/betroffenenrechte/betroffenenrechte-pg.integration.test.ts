@@ -23,6 +23,8 @@ import {
 } from "../../services/app/src/loeschantraege";
 import { PgAnswerSnapshotRepo } from "../../services/ask";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
+import { PgModelRunRepo } from "../../services/model-runs";
+import { PgKlaraSessionRepo } from "../../services/reasoner";
 
 describe("Betroffenenrechte gegen echtes PostgreSQL", () => {
   let container: StartedTestContainer | undefined;
@@ -168,5 +170,94 @@ describe("Betroffenenrechte gegen echtes PostgreSQL", () => {
     const gefunden = await new PgAnswerSnapshotRepo(neuerPool()).listRecordsByOwner(nutzer);
     expect(gefunden.map((r) => r.answerId)).toEqual(eigene.map((r) => r.answerId));
     expect(await repo.listRecordsByOwner("")).toEqual([]);
+  });
+
+  // Nacharbeit 4 (BEN): die Erledigung übernimmt den Antrag atomar — in der Datenbank selbst.
+  it("P4 · gleichzeitige Übernahmen: genau eine gewinnt; Zurückziehen scheitert; Freigabe nur mit Marke", async () => {
+    const nutzer = `pg-nutzer-${randomUUID()}`;
+    const repoA = new PgLoeschantragRepo(neuerPool());
+    const repoB = new PgLoeschantragRepo(neuerPool());
+    const antrag = neuerLoeschantrag(nutzer, null, new Date("2026-10-06T08:00:00.000Z"));
+    expect(await repoA.lege(antrag)).toBe(true);
+    const a = { token: `a-${randomUUID()}`, am: "2026-10-06T09:00:00.000Z", von: "admin-a" };
+    const b = { token: `b-${randomUUID()}`, am: "2026-10-06T09:00:00.000Z", von: "admin-b" };
+    const vor = "2026-10-06T08:55:00.000Z";
+    const ergebnisse = await Promise.all([
+      repoA.uebernehmen(antrag.id, a, vor),
+      repoB.uebernehmen(antrag.id, b, vor),
+    ]);
+    const gewinner = ergebnisse.filter((e) => e !== undefined);
+    expect(gewinner).toHaveLength(1);
+    const marke = gewinner[0]?.uebernahme;
+    expect(marke?.token === a.token || marke?.token === b.token).toBe(true);
+    expect((await repoA.finde(antrag.id))?.status).toBe("in_bearbeitung");
+
+    // Zurückziehen (erwartet „offen") greift nicht, solange die Erledigung hält.
+    const zurueck = { ...antrag, status: "zurueckgezogen" as const, entschiedenVon: nutzer };
+    expect(await repoB.abschliessen(zurueck)).toBe(false);
+    // Während der Bearbeitung kein zweiter Antrag desselben Kontos.
+    expect(await repoB.lege(neuerLoeschantrag(nutzer, null, new Date()))).toBe(false);
+    // Freigabe nur mit der gewinnenden Marke.
+    const fremd = marke?.token === a.token ? b.token : a.token;
+    expect(await repoA.freigeben(antrag.id, fremd)).toBe(false);
+    expect(await repoA.freigeben(antrag.id, marke?.token ?? "")).toBe(true);
+    expect((await repoA.finde(antrag.id))?.status).toBe("offen");
+    expect((await repoA.finde(antrag.id))?.uebernahme).toBeUndefined();
+
+    // Erneut übernommen, mit der eigenen Marke abgeschlossen; eine fremde Marke schliesst nicht ab.
+    const c = { token: `c-${randomUUID()}`, am: "2026-10-06T09:10:00.000Z", von: "admin-a" };
+    const uebernommen = await repoA.uebernehmen(antrag.id, c, vor);
+    expect(uebernommen?.status).toBe("in_bearbeitung");
+    const erledigt = { ...(uebernommen ?? antrag), status: "erledigt" as const };
+    expect(await repoB.abschliessen({ ...erledigt, uebernahme: a }, "in_bearbeitung")).toBe(false);
+    expect(await repoB.abschliessen(erledigt, "in_bearbeitung")).toBe(true);
+    expect((await repoA.finde(antrag.id))?.status).toBe("erledigt");
+  });
+
+  it("P5 · KI-Läufe und Klara-Sitzungen einer Person sind über ihre Kennung lesbar", async () => {
+    const nutzer = `pg-nutzer-${randomUUID()}`;
+    const andere = `pg-nutzer-${randomUUID()}`;
+    const laeufe = new PgModelRunRepo(neuerPool());
+    for (const [id, actor] of [
+      [`lauf-${randomUUID()}`, nutzer],
+      [`lauf-${randomUUID()}`, andere],
+    ] as const) {
+      await laeufe.append({
+        id,
+        task: "answer",
+        provider: "deterministic",
+        demo: true,
+        fallback: false,
+        startedAt: "2026-10-06T08:01:00.000Z",
+        finishedAt: "2026-10-06T08:01:01.000Z",
+        status: "success",
+        actor,
+      });
+    }
+    const eigeneLaeufe = await laeufe.vonAkteur(nutzer);
+    expect(eigeneLaeufe.map((l) => l.actor)).toEqual([nutzer]);
+
+    const klara = new PgKlaraSessionRepo(neuerPool());
+    const sessionId = `sitzung-${randomUUID()}`;
+    await klara.insertSession({
+      sessionId,
+      tenantId: "instanz",
+      actorId: nutzer,
+      addinInstanceId: "addin-pg",
+      documentContextId: "dok-pg",
+      createdAt: "2026-10-06T08:02:00.000Z",
+      lastActivityAt: "2026-10-06T08:02:00.000Z",
+      expiresAt: "2026-10-06T10:02:00.000Z",
+      policyVersion: "p1",
+      configurationVersion: "c1",
+      consentState: "none",
+      closedAt: null,
+      resolutionId: "res-pg",
+      revision: 0,
+    });
+    const sitzungen = await klara.sitzungenVon(nutzer);
+    expect(sitzungen.map((s) => s.sessionId)).toEqual([sessionId]);
+    expect(await klara.sitzungenVon(andere)).toEqual([]);
+    expect(await klara.consentsVon(nutzer)).toEqual([]);
   });
 });

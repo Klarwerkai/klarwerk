@@ -11,7 +11,7 @@ mit der Veröffentlichung; bis dahin gilt hier: **gebaut und im Prüflauf, nicht
 | --- | --- | --- | --- |
 | R-0583 Datenklassifikation aller Datenflächen | Dateninventar im Code (`services/app/src/dateninventar.ts`): jede migrierte Tabelle in genau einer Datenart, dazu Sicherungen, Server-Protokolle, Endgerät; je Datenart Inhalt, Personenbezug, Ablage, Löschweg, Frist, Auskunftsstand, Befund | `tests/betroffenenrechte/dateninventar.test.ts` (I1–I3, I5) | Fristen je Datenart (Betreiber, Ownerfrage 1 in `loeschung-aufbewahrung.md`); Folgenabschätzung selbst |
 | R-0661 Löschantrag durch den Nutzer selbst | Profil → „Konto löschen lassen": Antrag mit optionaler Begründung, Frist ein Monat; Aufgabe in Glocke und Datenschutzkarte der Verwaltung, überfällig nach Fristablauf; Erledigen über den vorhandenen Löschweg (`user.delete`), Ablehnen nur mit Grund, Zurückziehen durch den Antragsteller | `tests/betroffenenrechte/auskunft-und-loeschantrag.test.ts` (L1–L4), `…/flaechen.test.tsx` (F2, F3), `…/betroffenenrechte-pg.integration.test.ts` (P1, P2) | Verweisumschreibung bei Kontolöschung (R-0642, gesonderter Auftrag) |
-| R-0663 Selbstauskunft und Datenmitnahme „Meine Daten" | Profil → „Meine Daten": Zählung je Bereich und Download als JSON — Konto (ohne Passwort-Hash), eigene Objekte, Bearbeitungen, Kommentare, Entwürfe, Fragen, Antworten, Bewertungen, Zuweisungen, Kenntnisnahmen, Uploads (Metadaten), Lernpfade, Bereichsverantwortung/Ruhestandshorizont, Löschanträge, Protokollzeilen; dazu die Liste dessen, was nicht enthalten ist, mit Grund | `…/auskunft-und-loeschantrag.test.ts` (A1–A3), `…/flaechen.test.tsx` (F1), `…/betroffenenrechte-pg.integration.test.ts` (P3) | Klara-Sitzungen ohne Leseweg je Person (in der Auskunft als „nicht enthalten" benannt) |
+| R-0663 Selbstauskunft und Datenmitnahme „Meine Daten" | Profil → „Meine Daten": Zählung je Bereich und Download als JSON — Konto (ohne Passwort-Hash), eigene Objekte, Bearbeitungen, Kommentare, Entwürfe, Fragen, Antworten, Bewertungen, Zuweisungen, Kenntnisnahmen, Uploads (Metadaten), Lernpfade, Bereichsverantwortung/Ruhestandshorizont, Löschanträge, Protokollzeilen; dazu die Liste dessen, was nicht enthalten ist, mit Grund | `…/auskunft-und-loeschantrag.test.ts` (A1–A3), `…/flaechen.test.tsx` (F1), `…/betroffenenrechte-pg.integration.test.ts` (P3) | — (Nacharbeit 4: KI-Läufe der Person sowie Klara-Sitzungen und Zustimmungen stehen jetzt in Selbst- und Verwaltungsauskunft; Lesewege `ModelRunRepo.vonAkteur`, `KlaraSessionRepo.sitzungenVon`/`consentsVon`) |
 | R-0667 Verarbeitungsverzeichnis aus dem System | Verwaltung → Sicherheit und Nachweise → Datenschutz → Verarbeitungsverzeichnis (JSON/Markdown), erzeugt aus Inventar und Betriebslage (effektive Modellanbieter, Recherche, Mailversand) | `…/dateninventar.test.ts` (I4), `…/auskunft-und-loeschantrag.test.ts` (A3) | Rechtsgrundlage, Verantwortlicher/DSB, Fristen: „vom Betreiber einzutragen" |
 | R-1645 Wissens-DSGVO-Funktion | Auskunft durch die Verwaltung für jedes Konto, auch nach Löschung (Beiträge mit der alten Kennung), mit Übergabe-Stand (verantwortete Objekte, Autorschaft, offene Prüfungen, zugewiesene Fragen) | `…/auskunft-und-loeschantrag.test.ts` (A2, A3, L3) | — |
 | R-2063 / SOLL:NFR-PRV-04 Betroffenenrechte umsetzbar | Auskunft (Art. 15), Datenmitnahme (Art. 20), Löschantrag (Art. 17/12) und Verzeichnis (Art. 30) im Produkt | alle oben | Löschung im Audit (bewusst nicht), Verweisumschreibung (R-0642), rechtliche Bewertung |
@@ -22,6 +22,14 @@ mit der Veröffentlichung; bis dahin gilt hier: **gebaut und im Prüflauf, nicht
   Fragen und Protokollzeilen tragen die Kennung weiter. Das Umschreiben auf „ehemalige Person" ist
   R-0642 und hängt an Ownerfrage 2 (`loeschung-aufbewahrung.md`); dieser Auftrag nimmt es nicht vorweg.
   Die Oberfläche sagt das dem Antragsteller und der Verwaltung wörtlich.
+- **Erledigen übernimmt zuerst** (Nacharbeit 4): der Antrag geht unteilbar von `offen` nach
+  `in_bearbeitung` (mit Übernahmemarke), erst dann wird das Konto gelöscht, dann mit derselben Marke
+  `erledigt`. Zurückziehen, Ablehnen und eine zweite Erledigung scheitern in dieser Zeit mit 409.
+  Scheitert das Löschen, wird die Übernahme freigegeben (wieder `offen`); bricht der Vorgang ganz ab,
+  ist sie nach 5 Minuten (`UEBERNAHME_GUELTIG_MS`, technischer Wert) wieder übernehmbar — die
+  nächste Erledigung findet das Konto dann ggf. bereits gelöscht und vermerkt das.
+- **Protokollzeilen über den eigenen Antrag:** Entscheidungen der Verwaltung (`loeschantrag.erledigt`,
+  `loeschantrag.abgelehnt`) erscheinen in der Auskunft des Antragstellers über `payload.nutzerId`.
 - **Frist:** ein Kalendermonat ab Antrag (Art. 12 Abs. 3 Satz 1). Die Quellen nennen keine Frist;
   die Verlängerung nach Satz 2 ist nicht abgebildet.
 - **Letzter Admin:** sein Antrag lässt sich nicht durch Löschen erledigen (vorhandener Schutz,
@@ -67,8 +75,8 @@ mit der Veröffentlichung; bis dahin gilt hier: **gebaut und im Prüflauf, nicht
 7. **„KI-Läufe ohne Personenbezug"** (alte Klassifikation §1 und die erste Fassung dieses Inventars)
    ist widerlegt (Prüflauf Nacharbeit 1): `ModelRunRecord` trägt seit dem Laufkontext die Kennung
    der anfragenden Person (`actor`). Richtig bleibt nur der Befund aus R-0583 — **keine Inhalte**.
-   Inventar und §1 sind korrigiert; in der Selbstauskunft fehlen die KI-Läufe weiterhin (kein
-   Leseweg je Person in der Ablage) und stehen dort als „nicht enthalten" mit Grund.
+   Inventar und §1 sind korrigiert. Seit Nacharbeit 4 stehen die KI-Läufe der Person auch in der
+   Auskunft (neuer Leseweg `vonAkteur`), ebenso Klara-Sitzungen und Zustimmungen.
 
 ## Fehlende Belege (benannt, nicht ersetzt)
 

@@ -22,7 +22,9 @@ import type { PublicUser } from "../../auth";
 import type { Draft } from "../../capture";
 import type { KnowledgeObject } from "../../knowledge-object";
 import type { CategoryProfile, RetirementEntry } from "../../management";
+import type { ModelRunRecord } from "../../model-runs";
 import type { ObjectRef } from "../../object-store";
+import type { KlaraConsent, KlaraSession } from "../../reasoner";
 import type { Assignment, Rating } from "../../validation";
 import { DATENINVENTAR, type Datenart } from "./dateninventar";
 import type { Kenntnisnahmeeintrag } from "./kenntnisnahme";
@@ -53,7 +55,27 @@ export interface SelbstauskunftQuellen {
     listCategoryProfiles(): Promise<CategoryProfile[]>;
   };
   loeschantraege: LoeschantragRepo;
+  /** KI-Laufprotokoll: die Läufe, die die Person angefragt hat (`actor`). */
+  modelRuns: { vonAkteur?(actor: string): Promise<ModelRunRecord[]> };
+  /** Klara-Sitzungen und Zustimmungen; die Lesewege sind optional (schmale Attrappen). */
+  klara: {
+    sitzungenVon?(actorId: string): Promise<readonly KlaraSession[]>;
+    consentsVon?(actorId: string): Promise<readonly KlaraConsent[]>;
+  };
 }
+
+/**
+ * Aktionen des Prüfprotokolls, deren betroffene Person NICHT in `actor`/`target` steht, sondern in
+ * `payload.nutzerId`: die Entscheidungen über einen Löschantrag (Ziel ist die Antragskennung,
+ * handelnd ist die Verwaltung). Bewusst eine geschlossene Liste — ein beliebiges `nutzerId` in
+ * einer fremden Nutzlast wird nicht als Betroffenheit gedeutet.
+ */
+const BETROFFEN_UEBER_NUTZLAST: ReadonlySet<string> = new Set([
+  "loeschantrag.gestellt",
+  "loeschantrag.zurueckgezogen",
+  "loeschantrag.erledigt",
+  "loeschantrag.abgelehnt",
+]);
 
 /** Ein Objekttitel — oder `null`, wenn der Betrachter das Objekt heute nicht sehen darf. */
 type Titel = string | null;
@@ -130,6 +152,13 @@ export interface Selbstauskunft {
     zugewieseneOffeneFragen: number;
   };
   loeschantraege: Loeschantrag[];
+  /** KI-Läufe, die die Person angefragt hat — Metadaten, keine Inhalte (es gibt keine). `null`: nicht abrufbar. */
+  kiLaeufe: ModelRunRecord[] | null;
+  /** `null` je Teil: die Ablage kann ihn nicht je Person auflisten — „nicht abrufbar". */
+  klara: {
+    sitzungen: KlaraSession[] | null;
+    zustimmungen: KlaraConsent[] | null;
+  };
   protokoll: Array<{
     seq: number;
     am: string;
@@ -276,8 +305,19 @@ export async function erstelleSelbstauskunft(
       anzahl: typeof g.askCount === "number" ? g.askCount : null,
     }));
 
+  const [kiLaeufe, klaraSitzungen, klaraZustimmungen] = await Promise.all([
+    quellen.modelRuns.vonAkteur ? quellen.modelRuns.vonAkteur(nutzerId) : null,
+    quellen.klara.sitzungenVon ? quellen.klara.sitzungenVon(nutzerId) : null,
+    quellen.klara.consentsVon ? quellen.klara.consentsVon(nutzerId) : null,
+  ]);
+
+  // Betroffen ist die Person, wenn sie handelt, Ziel ist — oder bei den Löschantragsentscheidungen
+  // in `payload.nutzerId` steht (dort ist das Ziel die Antragskennung und die Verwaltung handelt).
+  const betrifft = (e: AuditEntry): boolean =>
+    e.target === nutzerId ||
+    (BETROFFEN_UEBER_NUTZLAST.has(e.action) && e.payload.nutzerId === nutzerId);
   const protokoll: Selbstauskunft["protokoll"] = protokollRoh
-    .filter((e) => e.actor === nutzerId || e.target === nutzerId)
+    .filter((e) => e.actor === nutzerId || betrifft(e))
     .map((e) => ({
       seq: e.seq,
       am: e.at,
@@ -348,6 +388,11 @@ export async function erstelleSelbstauskunft(
       ).length,
     },
     loeschantraege: await quellen.loeschantraege.vonNutzer(nutzerId),
+    kiLaeufe,
+    klara: {
+      sitzungen: klaraSitzungen === null ? null : [...klaraSitzungen],
+      zustimmungen: klaraZustimmungen === null ? null : [...klaraZustimmungen],
+    },
     protokoll,
     nichtEnthalten: nichtEnthalteneDatenarten(),
     zaehlung: {},
@@ -365,6 +410,9 @@ export async function erstelleSelbstauskunft(
     anhaenge: auskunft.anhaenge.length,
     lernpfade: auskunft.lernpfade.length,
     loeschantraege: auskunft.loeschantraege.length,
+    kiLaeufe: auskunft.kiLaeufe?.length ?? -1,
+    klaraSitzungen: auskunft.klara.sitzungen?.length ?? -1,
+    klaraZustimmungen: auskunft.klara.zustimmungen?.length ?? -1,
     protokoll: auskunft.protokoll.length,
   };
   return auskunft;

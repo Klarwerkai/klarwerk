@@ -79,7 +79,16 @@ describe("I2 · jede Datenart ist vollständig beschrieben", () => {
 
   it("die sechs Bereiche aus R-0663 stehen in der Selbstauskunft", () => {
     // Konto, eigene Objekte (mit Kommentaren), Fragen, Antworten, Protokollzeilen.
-    for (const id of ["konten", "wissensobjekte", "wissensluecken", "antwortbelege", "protokoll"]) {
+    // Nacharbeit 4 (BEN): dazu die KI-Läufe und die Klara-Sitzungen samt Zustimmungen.
+    for (const id of [
+      "konten",
+      "wissensobjekte",
+      "wissensluecken",
+      "antwortbelege",
+      "protokoll",
+      "modelllaeufe",
+      "klara",
+    ]) {
       const d = DATENINVENTAR.find((x) => x.id === id);
       expect(d?.selbstauskunft.enthalten, `${id} fehlt in der Selbstauskunft`).toBe(true);
     }
@@ -120,8 +129,8 @@ describe("I3 · die ehrlichen Befunde", () => {
     expect(d?.personenbezugGrund).toMatch(/actor/);
     expect(d?.befund).toMatch(/keine Inhalte/);
     expect(d?.ablage.tabellen).toEqual(["model_runs"]);
-    // Nicht in der Selbstauskunft — dann nur mit ausgeschriebenem Grund.
-    expect(d?.selbstauskunft.enthalten).toBe(false);
+    // Nacharbeit 4 (BEN): personenbezogen heisst hier auch „in der Auskunft" — nicht ausgeschlossen.
+    expect(d?.selbstauskunft.enthalten).toBe(true);
   });
 
   it("Wissenslücken: der Fragetext wird gespeichert und steht als Befund im Inventar", () => {

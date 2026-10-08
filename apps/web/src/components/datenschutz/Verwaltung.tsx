@@ -78,10 +78,14 @@ function AntragZeile({ antrag }: { antrag: LoeschantragVerwaltung }): JSX.Elemen
         <span className="ml-auto text-muted-2">
           {antrag.status === "offen"
             ? t("datenschutz.verwaltung.frist", { datum: datum(antrag.fristBis) })
-            : t("datenschutz.verwaltung.entscheidung", {
-                status: t(`datenschutz.status.${antrag.status}`),
-                datum: datum(antrag.entschiedenAm),
-              })}
+            : antrag.status === "in_bearbeitung"
+              ? `${t("datenschutz.status.in_bearbeitung")} · ${t("datenschutz.verwaltung.frist", {
+                  datum: datum(antrag.fristBis),
+                })}`
+              : t("datenschutz.verwaltung.entscheidung", {
+                  status: t(`datenschutz.status.${antrag.status}`),
+                  datum: datum(antrag.entschiedenAm),
+                })}
         </span>
         {antrag.ueberfaellig ? (
           <span className="rounded-btn bg-trust-crit-bg px-1.5 py-0.5 text-[11px] font-semibold text-trust-crit-text">

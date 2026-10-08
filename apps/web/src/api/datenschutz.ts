@@ -5,7 +5,12 @@
 // gemeinsam. Die Auskunft wird als Ganzes durchgereicht — die Fläche zählt nur und lädt herunter.
 import { ApiError, api } from "./client";
 
-export type LoeschantragStatus = "offen" | "erledigt" | "abgelehnt" | "zurueckgezogen";
+export type LoeschantragStatus =
+  | "offen"
+  | "in_bearbeitung"
+  | "erledigt"
+  | "abgelehnt"
+  | "zurueckgezogen";
 
 export interface Loeschantrag {
   id: string;

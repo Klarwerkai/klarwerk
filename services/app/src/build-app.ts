@@ -3798,6 +3798,8 @@ export function buildApp(
           lifecycle: services.lifecycle,
           management: services.management,
           loeschantraege: services.loeschantraege,
+          modelRuns: services.modelRuns,
+          klara: services.klaraSessions,
         },
         loeschantraege: services.loeschantraege,
         auth: services.auth,

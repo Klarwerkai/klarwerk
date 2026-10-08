@@ -36,6 +36,7 @@ const START = Date.parse("2026-10-06T08:00:00.000Z");
 const TAG = 24 * 3_600_000;
 
 let jetzt = START;
+let repos: ReturnType<typeof inMemoryRepos>;
 let services: AppServices;
 let app: App;
 let admin = { id: "", token: "" };
@@ -95,6 +96,11 @@ interface Auskunft {
   protokoll: Array<{ seq: number; aktion: string; ziel: string; bezug: string }>;
   uebergabe: { autorVon: number; verantwortlichFuer: number };
   loeschantraege: Array<{ id: string; status: string }>;
+  kiLaeufe: Array<{ id: string; actor?: string; task: string }> | null;
+  klara: {
+    sitzungen: Array<{ sessionId: string; actorId: string }> | null;
+    zustimmungen: Array<{ consentId: string; actorId: string; status: string }> | null;
+  };
   nichtEnthalten: Array<{ datenart: string; grund: string }>;
   zaehlung: Record<string, number>;
 }
@@ -113,7 +119,8 @@ interface Antrag {
 
 beforeEach(async () => {
   jetzt = START;
-  services = assembleServices(inMemoryRepos(), { datenschutzUhr: () => jetzt });
+  repos = inMemoryRepos();
+  services = assembleServices(repos, { datenschutzUhr: () => jetzt });
   app = buildApp(services);
   await app.inject({
     method: "POST",
@@ -184,8 +191,12 @@ describe("A1 · „Meine Daten“ — was das System über die Person gespeicher
 
     // Übergabe-Stand und das, was nicht in der Datei steht.
     expect(a.uebergabe.autorVon).toBeGreaterThanOrEqual(1);
-    const klara = a.nichtEnthalten.find((n) => n.datenart === "klara");
-    expect(klara?.grund.length ?? 0).toBeGreaterThan(10);
+    // Was nicht in der Datei steht, steht mit Grund da (Beispiel: Befunde zu Objektpaaren).
+    const befunde = a.nichtEnthalten.find((n) => n.datenart === "befunde");
+    expect(befunde?.grund.length ?? 0).toBeGreaterThan(10);
+    // Nacharbeit 4: KI-Läufe und Klara sind kein „nicht enthalten" mehr.
+    expect(a.nichtEnthalten.map((n) => n.datenart)).not.toContain("modelllaeufe");
+    expect(a.nichtEnthalten.map((n) => n.datenart)).not.toContain("klara");
     expect(a.zaehlung.kommentare).toBe(1);
     expect(a.zaehlung.antworten).toBe(a.antworten?.length);
   });
@@ -464,5 +475,265 @@ describe("L4 · Ablehnen, Zurückziehen, letzter Admin", () => {
       antraege: Antrag[];
     };
     expect(liste.antraege.find((x) => x.id === antrag.id)?.status).toBe("offen");
+  });
+});
+
+// ================================================================================================
+// NACHARBEIT 4 (BEN) — DIE DREI BEFUNDE, JE MIT GEGENPROBE.
+// ================================================================================================
+
+/** Ein KI-Lauf mit Laufkontext — so, wie ihn das Protokoll ablegt (nur Metadaten). */
+function kiLauf(id: string, actor: string) {
+  return {
+    id,
+    task: "answer" as const,
+    provider: "deterministic",
+    demo: true,
+    fallback: false,
+    startedAt: "2026-10-06T08:01:00.000Z",
+    finishedAt: "2026-10-06T08:01:01.000Z",
+    status: "success" as const,
+    actor,
+  };
+}
+
+/** Eine Klara-Sitzung samt erteilter Zustimmung für `actorId`. */
+async function klaraSitzung(sessionId: string, actorId: string): Promise<void> {
+  await services.klaraSessions.insertSession({
+    sessionId,
+    tenantId: "instanz",
+    actorId,
+    addinInstanceId: `addin-${sessionId}`,
+    documentContextId: `dok-${sessionId}`,
+    createdAt: "2026-10-06T08:02:00.000Z",
+    lastActivityAt: "2026-10-06T08:02:00.000Z",
+    expiresAt: "2026-10-06T10:02:00.000Z",
+    policyVersion: "p1",
+    configurationVersion: "c1",
+    consentState: "none",
+    closedAt: null,
+    resolutionId: `res-${sessionId}`,
+    revision: 0,
+  });
+  const erteilt = await services.klaraSessions.grantConsent(sessionId, 0, {
+    consentId: `zus-${sessionId}`,
+    sessionId,
+    tenantId: "instanz",
+    actorId,
+    documentContextId: `dok-${sessionId}`,
+    consentScope: "question",
+    allowedPayloadClasses: ["question"],
+    providerClass: "external",
+    providerBindingId: "bindung",
+    modelReference: "modell",
+    providerReference: "anbieter",
+    addinInstanceId: `addin-${sessionId}`,
+    policyVersion: "p1",
+    configurationVersion: "c1",
+    grantedAt: "2026-10-06T08:03:00.000Z",
+    expiresAt: "2026-10-06T10:02:00.000Z",
+    revokedAt: null,
+    status: "granted",
+    resolutionId: `res-${sessionId}`,
+  });
+  expect(erteilt).toBe(true);
+}
+
+describe("N4-1 · KI-Läufe und Klara-Sitzungen stehen in Selbst- und Verwaltungsauskunft", () => {
+  it("die eigenen Läufe, Sitzungen und Zustimmungen — fremde nicht", async () => {
+    await repos.modelRuns.append(kiLauf("lauf-erik", erik.id));
+    await repos.modelRuns.append(kiLauf("lauf-vera", vera.id));
+    await klaraSitzung("sitzung-erik", erik.id);
+    await klaraSitzung("sitzung-vera", vera.id);
+
+    const selbst = (await auf(erik.token, "GET", "/api/me/daten")).json() as Auskunft;
+    expect(selbst.kiLaeufe?.map((l) => l.id)).toEqual(["lauf-erik"]);
+    expect(selbst.klara.sitzungen?.map((s) => s.sessionId)).toEqual(["sitzung-erik"]);
+    expect(selbst.klara.zustimmungen?.map((z) => [z.consentId, z.status])).toEqual([
+      ["zus-sitzung-erik", "granted"],
+    ]);
+    expect(selbst.zaehlung.kiLaeufe).toBe(1);
+    expect(selbst.zaehlung.klaraSitzungen).toBe(1);
+    expect(selbst.zaehlung.klaraZustimmungen).toBe(1);
+
+    // Dieselben Daten in der Auskunft der Verwaltung über Erik.
+    const verwaltung = (
+      await auf(admin.token, "GET", `/api/datenschutz/auskunft/${erik.id}`)
+    ).json() as Auskunft;
+    expect(verwaltung.kiLaeufe?.map((l) => l.id)).toEqual(["lauf-erik"]);
+    expect(verwaltung.klara.sitzungen?.map((s) => s.sessionId)).toEqual(["sitzung-erik"]);
+    expect(verwaltung.klara.zustimmungen?.map((z) => z.consentId)).toEqual(["zus-sitzung-erik"]);
+  });
+});
+
+describe("N4-2 · Entscheidungen über den eigenen Löschantrag stehen in den Protokollzeilen", () => {
+  it("die Ablehnung durch die Verwaltung erscheint beim Antragsteller als „betroffen“", async () => {
+    const antrag = (await auf(erik.token, "POST", "/api/me/loeschantrag", {})).json() as Antrag;
+    const abgelehnt = await auf(
+      admin.token,
+      "POST",
+      `/api/datenschutz/loeschantraege/${antrag.id}/ablehnen`,
+      { grund: "Aufbewahrungspflicht bis Jahresende." },
+    );
+    expect(abgelehnt.statusCode).toBe(200);
+    const a = (await auf(erik.token, "GET", "/api/me/daten")).json() as Auskunft;
+    const zeilen = a.protokoll.filter((p) => p.ziel === antrag.id);
+    expect(zeilen.map((p) => [p.aktion, p.bezug])).toEqual([
+      ["loeschantrag.gestellt", "handelnd"],
+      ["loeschantrag.abgelehnt", "betroffen"],
+    ]);
+    // Vera ist nicht betroffen — die Entscheidung über Eriks Antrag steht nicht in ihrer Auskunft.
+    const v = (await auf(vera.token, "GET", "/api/me/daten")).json() as Auskunft;
+    expect(v.protokoll.some((p) => p.ziel === antrag.id)).toBe(false);
+  });
+
+  it("die Erledigung erscheint in der Auskunft über die gelöschte Kennung", async () => {
+    const antrag = (await auf(erik.token, "POST", "/api/me/loeschantrag", {})).json() as Antrag;
+    expect(
+      (await auf(admin.token, "POST", `/api/datenschutz/loeschantraege/${antrag.id}/erledigen`, {}))
+        .statusCode,
+    ).toBe(200);
+    const a = (
+      await auf(admin.token, "GET", `/api/datenschutz/auskunft/${erik.id}`)
+    ).json() as Auskunft;
+    expect(
+      a.protokoll.some((p) => p.aktion === "loeschantrag.erledigt" && p.bezug === "betroffen"),
+    ).toBe(true);
+  });
+});
+
+describe("N4-3 · konkurrierende Entscheidungen: nur die gewinnende Erledigung löscht", () => {
+  /** Hält `deleteUser` an, bis der Test es freigibt — das Fenster zwischen Übernahme und Löschen. */
+  function loeschenAnhalten(): { freigeben: () => void } {
+    const original = services.auth.deleteUser.bind(services.auth);
+    let freigeben: () => void = () => undefined;
+    const sperre = new Promise<void>((r) => {
+      freigeben = r;
+    });
+    services.auth.deleteUser = async (id: string, actor: string) => {
+      await sperre;
+      return original(id, actor);
+    };
+    return { freigeben: () => freigeben() };
+  }
+
+  async function warteAufStatus(id: string, status: string): Promise<void> {
+    for (let i = 0; i < 200; i++) {
+      if ((await services.loeschantraege.finde(id))?.status === status) {
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 1));
+    }
+    throw new Error(`Antrag ${id} erreicht ${status} nicht`);
+  }
+
+  it("während der Erledigung scheitern Zurückziehen und Ablehnen; Konto, Antrag und Protokoll passen zusammen", async () => {
+    const antrag = (await auf(erik.token, "POST", "/api/me/loeschantrag", {})).json() as Antrag;
+    const halt = loeschenAnhalten();
+    const erledigung = auf(
+      admin.token,
+      "POST",
+      `/api/datenschutz/loeschantraege/${antrag.id}/erledigen`,
+      {},
+    );
+    await warteAufStatus(antrag.id, "in_bearbeitung");
+
+    const zurueck = await auf(
+      erik.token,
+      "POST",
+      `/api/me/loeschantrag/${antrag.id}/zurueckziehen`,
+    );
+    expect(zurueck.statusCode).toBe(409);
+    const ablehnung = await auf(
+      admin.token,
+      "POST",
+      `/api/datenschutz/loeschantraege/${antrag.id}/ablehnen`,
+      { grund: "zu spät" },
+    );
+    expect(ablehnung.statusCode).toBe(409);
+    // Eine zweite Erledigung gewinnt die Übernahme nicht.
+    const zweite = await auf(
+      admin.token,
+      "POST",
+      `/api/datenschutz/loeschantraege/${antrag.id}/erledigen`,
+      {},
+    );
+    expect(zweite.statusCode).toBe(409);
+
+    halt.freigeben();
+    expect((await erledigung).statusCode).toBe(200);
+    expect((await services.loeschantraege.finde(antrag.id))?.status).toBe("erledigt");
+    expect((await services.auth.listUsers()).some((u) => u.id === erik.id)).toBe(false);
+    expect((await services.audit.list({ action: "loeschantrag.erledigt" })).length).toBe(1);
+    expect((await services.audit.list({ action: "loeschantrag.zurueckgezogen" })).length).toBe(0);
+    expect((await services.audit.list({ action: "loeschantrag.abgelehnt" })).length).toBe(0);
+    expect((await services.audit.list({ action: "user.delete", target: erik.id })).length).toBe(1);
+  });
+
+  it("wer zuerst zurückzieht, gewinnt — die Erledigung löscht dann nichts", async () => {
+    const antrag = (await auf(erik.token, "POST", "/api/me/loeschantrag", {})).json() as Antrag;
+    expect(
+      (await auf(erik.token, "POST", `/api/me/loeschantrag/${antrag.id}/zurueckziehen`)).statusCode,
+    ).toBe(200);
+    const spaet = await auf(
+      admin.token,
+      "POST",
+      `/api/datenschutz/loeschantraege/${antrag.id}/erledigen`,
+      {},
+    );
+    expect(spaet.statusCode).toBe(409);
+    expect((await services.auth.listUsers()).some((u) => u.id === erik.id)).toBe(true);
+    expect((await services.loeschantraege.finde(antrag.id))?.status).toBe("zurueckgezogen");
+  });
+
+  it("scheitert das Löschen, ist der Antrag wieder offen und erneut erledigbar", async () => {
+    const antrag = (await auf(erik.token, "POST", "/api/me/loeschantrag", {})).json() as Antrag;
+    const original = services.auth.deleteUser.bind(services.auth);
+    services.auth.deleteUser = async () => {
+      throw new Error("Datenbank vorübergehend nicht erreichbar");
+    };
+    const fehlgeschlagen = await auf(
+      admin.token,
+      "POST",
+      `/api/datenschutz/loeschantraege/${antrag.id}/erledigen`,
+      {},
+    );
+    expect(fehlgeschlagen.statusCode).toBe(500);
+    expect((await services.loeschantraege.finde(antrag.id))?.status).toBe("offen");
+    expect((await services.audit.list({ action: "loeschantrag.erledigt" })).length).toBe(0);
+
+    services.auth.deleteUser = original;
+    const erneut = await auf(
+      admin.token,
+      "POST",
+      `/api/datenschutz/loeschantraege/${antrag.id}/erledigen`,
+      {},
+    );
+    expect(erneut.statusCode).toBe(200);
+    expect((await services.auth.listUsers()).some((u) => u.id === erik.id)).toBe(false);
+  });
+
+  it("eine liegengebliebene Übernahme wird nach Ablauf wieder übernehmbar — nur mit eigener Marke abschliessbar", async () => {
+    const ablage = new InMemoryLoeschantragRepo();
+    const antrag = neuerLoeschantrag("u-x", null, new Date(START));
+    expect(await ablage.lege(antrag)).toBe(true);
+    const erste = { token: "t1", am: "2026-10-06T08:00:00.000Z", von: "admin" };
+    expect(await ablage.uebernehmen(antrag.id, erste, "2026-10-06T07:55:00.000Z")).toBeDefined();
+    // Nicht abgelaufen: keine zweite Übernahme.
+    const zweite = { token: "t2", am: "2026-10-06T08:01:00.000Z", von: "admin" };
+    expect(await ablage.uebernehmen(antrag.id, zweite, "2026-10-06T07:56:00.000Z")).toBeUndefined();
+    // Abgelaufen: die zweite übernimmt; die erste kann nicht mehr abschliessen.
+    const uebernommen = await ablage.uebernehmen(antrag.id, zweite, "2026-10-06T08:05:00.000Z");
+    expect(uebernommen?.uebernahme?.token).toBe("t2");
+    const mitAlterMarke = { ...antrag, status: "erledigt" as const, uebernahme: erste };
+    expect(await ablage.abschliessen(mitAlterMarke, "in_bearbeitung")).toBe(false);
+    expect(await ablage.freigeben(antrag.id, "t1")).toBe(false);
+    const mitNeuerMarke = { ...antrag, status: "erledigt" as const, uebernahme: zweite };
+    expect(await ablage.abschliessen(mitNeuerMarke, "in_bearbeitung")).toBe(true);
+    // Während der Bearbeitung kann für dasselbe Konto kein zweiter Antrag entstehen.
+    const andere = neuerLoeschantrag("u-y", null, new Date(START));
+    await ablage.lege(andere);
+    await ablage.uebernehmen(andere.id, erste, "2026-10-06T07:00:00.000Z");
+    expect(await ablage.lege(neuerLoeschantrag("u-y", null, new Date(START)))).toBe(false);
   });
 });
