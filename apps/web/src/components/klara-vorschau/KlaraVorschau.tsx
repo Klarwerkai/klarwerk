@@ -876,6 +876,11 @@ export function KlaraVorschau(): JSX.Element {
     const bezug = objektbezugAus(kontextRef.current);
     const sprache = toReasonerLocale(i18n.language);
     void echtFragen(frage, bezug, sprache, t).then((stand) => {
+      if (stand === "veraltet") {
+        // Kontowechsel während der Frage: nichts mehr ansagen, nichts mehr zeigen.
+        aendere((alt) => ({ ...alt, status: "ruhe" }));
+        return;
+      }
       aendere((alt) => ({ ...alt, status: "antwort" }));
       setAnsage(t(`klaragespraech.ansage.${stand}`));
     });

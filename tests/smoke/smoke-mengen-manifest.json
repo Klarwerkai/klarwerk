@@ -1,10 +1,10 @@
 {
-  "version": 15,
+  "version": 16,
   "erhoben_am": "2026-10-08",
-  "nachgefuehrt_von": "produkt:20261008:klara-basis (Version 15): drei Faelle mehr je Projekt chromium, firefox und webkit, alle in klara-basis-browser.spec.ts — echte Frage mit Kennzeichnung nach Server, Seitenwechsel, Neuladen, neue Anmeldung und fremde Person; schmal mit Tastatur und Vollbild; Stopp, gescheiterte Speicherung und abgelaufene Anmeldung. NICHT gemessen, aus den Testtiteln nachgetragen. Version 14 davor: produkt:20261007:klara-vorschau (Integration mit main, Version 13): drei Faelle mehr je Projekt chromium, firefox und webkit, alle in klara-vorschau-browser.spec.ts — Avatar aus dem Bau, Bedienbeleg der beweglichen Klara (Desktop) und schmal mit reduzierter Bewegung, Touch-Zeiger und Bildschirmtastatur. NICHT gemessen, aus den Testtiteln nachgetragen. Version 13 davor: produkt:20261007:speichern-erholung, Nacharbeit 1: ein weiterer Fall je Projekt chromium, firefox und webkit (K2/K3 Nacharbeit: Weiterschreiben waehrend des Wartens). Version 12 davor: drei Faelle mehr je Projekt chromium, firefox und webkit, alle in speichern-erholung-browser.spec.ts — Speicherzustand ohne Netz, Seitenwechsel ohne Netz, Nulltreffer mit Filterruecksetzen. NICHT gemessen, sondern aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt). Vorgefundene, fremde Drift unveraendert gelassen: firmenwoerterbuch-browser.spec.ts und bildschirmablauf-browser.spec.ts stehen nicht im Manifest. Vorher: gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3), drei Faelle in erstnutzer-u2-u3-browser.spec.ts.",
+  "nachgefuehrt_von": "produkt:20261008:klara-basis, Nacharbeit 3 (Version 16): ein Fall mehr je Projekt chromium, firefox und webkit in klara-basis-browser.spec.ts — tatsächliche Modellantwort in der beweglichen Klara, übersprungen ohne eingerichtetes Modell. NICHT gemessen, aus dem Testtitel nachgetragen. Version 15 davor: produkt:20261008:klara-basis (Version 15): drei Faelle mehr je Projekt chromium, firefox und webkit, alle in klara-basis-browser.spec.ts — echte Frage mit Kennzeichnung nach Server, Seitenwechsel, Neuladen, neue Anmeldung und fremde Person; schmal mit Tastatur und Vollbild; Stopp, gescheiterte Speicherung und abgelaufene Anmeldung. NICHT gemessen, aus den Testtiteln nachgetragen. Version 14 davor: produkt:20261007:klara-vorschau (Integration mit main, Version 13): drei Faelle mehr je Projekt chromium, firefox und webkit, alle in klara-vorschau-browser.spec.ts — Avatar aus dem Bau, Bedienbeleg der beweglichen Klara (Desktop) und schmal mit reduzierter Bewegung, Touch-Zeiger und Bildschirmtastatur. NICHT gemessen, aus den Testtiteln nachgetragen. Version 13 davor: produkt:20261007:speichern-erholung, Nacharbeit 1: ein weiterer Fall je Projekt chromium, firefox und webkit (K2/K3 Nacharbeit: Weiterschreiben waehrend des Wartens). Version 12 davor: drei Faelle mehr je Projekt chromium, firefox und webkit, alle in speichern-erholung-browser.spec.ts — Speicherzustand ohne Netz, Seitenwechsel ohne Netz, Nulltreffer mit Filterruecksetzen. NICHT gemessen, sondern aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt). Vorgefundene, fremde Drift unveraendert gelassen: firmenwoerterbuch-browser.spec.ts und bildschirmablauf-browser.spec.ts stehen nicht im Manifest. Vorher: gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3), drei Faelle in erstnutzer-u2-u3-browser.spec.ts.",
   "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
   "zweck": "Sollmanifest der Smoke-Mengen je Projekt. Drift (Hinzufuegen, Entfernen, Umbenennen) macht die Mengenpruefung rot.",
-  "gesamt_fallinstanzen": 231,
+  "gesamt_fallinstanzen": 234,
   "projekte": {
     "setup-zustand": {
       "soll": 1,
@@ -19,7 +19,7 @@
       ]
     },
     "chromium": {
-      "soll": 71,
+      "soll": 72,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -42,6 +42,7 @@
         "klara-basis-browser.spec.ts › Klara 01 · Stopp, fehlgeschlagene Speicherung und abgelaufene Anmeldung zeigen den tatsächlichen Zustand",
         "klara-basis-browser.spec.ts › Klara 01 · echte Frage, Kennzeichnung nach Server, Seitenwechsel, Neuladen, neue Anmeldung, fremde Person",
         "klara-basis-browser.spec.ts › Klara 01 · schmal mit Tastatur, Seitenwechsel und Vollbild: Figur und Gespräch bleiben bedienbar",
+        "klara-basis-browser.spec.ts › Klara 01 · tatsächliche Modellantwort in der beweglichen Klara (nur mit eingerichtetem Modell)",
         "klara-vorschau-browser.spec.ts › Klara-Vorschau · Avatar lädt aus dem Bau über eine relative Adresse",
         "klara-vorschau-browser.spec.ts › Klara-Vorschau · Bedienbeleg Desktop: verschieben → Artikel → Markierung → Fragen → Tutorial → Notiz → verkleinern",
         "klara-vorschau-browser.spec.ts › Klara-Vorschau · schmal 390 px mit reduzierter Bewegung und Touch-Zeiger",
@@ -95,7 +96,7 @@
       ]
     },
     "firefox": {
-      "soll": 71,
+      "soll": 72,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -118,6 +119,7 @@
         "klara-basis-browser.spec.ts › Klara 01 · Stopp, fehlgeschlagene Speicherung und abgelaufene Anmeldung zeigen den tatsächlichen Zustand",
         "klara-basis-browser.spec.ts › Klara 01 · echte Frage, Kennzeichnung nach Server, Seitenwechsel, Neuladen, neue Anmeldung, fremde Person",
         "klara-basis-browser.spec.ts › Klara 01 · schmal mit Tastatur, Seitenwechsel und Vollbild: Figur und Gespräch bleiben bedienbar",
+        "klara-basis-browser.spec.ts › Klara 01 · tatsächliche Modellantwort in der beweglichen Klara (nur mit eingerichtetem Modell)",
         "klara-vorschau-browser.spec.ts › Klara-Vorschau · Avatar lädt aus dem Bau über eine relative Adresse",
         "klara-vorschau-browser.spec.ts › Klara-Vorschau · Bedienbeleg Desktop: verschieben → Artikel → Markierung → Fragen → Tutorial → Notiz → verkleinern",
         "klara-vorschau-browser.spec.ts › Klara-Vorschau · schmal 390 px mit reduzierter Bewegung und Touch-Zeiger",
@@ -171,7 +173,7 @@
       ]
     },
     "webkit": {
-      "soll": 71,
+      "soll": 72,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -194,6 +196,7 @@
         "klara-basis-browser.spec.ts › Klara 01 · Stopp, fehlgeschlagene Speicherung und abgelaufene Anmeldung zeigen den tatsächlichen Zustand",
         "klara-basis-browser.spec.ts › Klara 01 · echte Frage, Kennzeichnung nach Server, Seitenwechsel, Neuladen, neue Anmeldung, fremde Person",
         "klara-basis-browser.spec.ts › Klara 01 · schmal mit Tastatur, Seitenwechsel und Vollbild: Figur und Gespräch bleiben bedienbar",
+        "klara-basis-browser.spec.ts › Klara 01 · tatsächliche Modellantwort in der beweglichen Klara (nur mit eingerichtetem Modell)",
         "klara-vorschau-browser.spec.ts › Klara-Vorschau · Avatar lädt aus dem Bau über eine relative Adresse",
         "klara-vorschau-browser.spec.ts › Klara-Vorschau · Bedienbeleg Desktop: verschieben → Artikel → Markierung → Fragen → Tutorial → Notiz → verkleinern",
         "klara-vorschau-browser.spec.ts › Klara-Vorschau · schmal 390 px mit reduzierter Bewegung und Touch-Zeiger",

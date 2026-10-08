@@ -369,3 +369,108 @@ test("Klara 01 · Stopp, fehlgeschlagene Speicherung und abgelaufene Anmeldung z
   await beleg(p, info, "Anmeldung abgelaufen, nichts als gespeichert ausgegeben");
   await kontext.close();
 });
+
+// ================================================================================================
+// K1 · TATSÄCHLICHE MODELLANTWORT (Bens Befund, nacharbeit-3).
+// ================================================================================================
+//
+// Kein Adapter, keine Attrappe: die Instanz, gegen die dieser Lauf geht, beantwortet die Frage mit
+// IHREM eingerichteten Modell. Gemessen werden die drei Dinge, die Ben verlangt: erfolgreiche
+// Generierung (Serverantwort `answered`, `demo: false`, `aiGenerated.mode = "model"`), der angezeigte
+// Antworttext in der beweglichen Klara und die Kennzeichnung „KI-Antwort".
+//
+// MELDET DIE INSTANZ KEIN NUTZBARES MODELL (das hermetische Tor: kein Anbieter, kein Schlüssel), wird
+// der Fall mit Grund ÜBERSPRUNGEN und der Status als Anhang abgelegt — er gilt dann ausdrücklich als
+// NICHT belegt, nicht als bestanden. Ein Modell aufzusetzen oder vorzutäuschen ist nicht Sache dieses
+// Tests.
+test("Klara 01 · tatsächliche Modellantwort in der beweglichen Klara (nur mit eingerichtetem Modell)", async ({
+  page,
+  browser,
+}, info) => {
+  test.setTimeout(180_000);
+  await ensureLoggedIn(page);
+  const statusAntwort = await page.request.get("/api/reasoner/status");
+  const status = (await statusAntwort.json()) as {
+    active?: boolean;
+    reachable?: string;
+    kiAbgeschaltet?: boolean;
+    tasks?: { answer?: boolean };
+  };
+  await info.attach("Modellstatus der Instanz", {
+    body: JSON.stringify(status),
+    contentType: "application/json",
+  });
+  const modellNutzbar =
+    status.active === true &&
+    status.tasks?.answer === true &&
+    status.kiAbgeschaltet !== true &&
+    status.reachable !== "unreachable";
+  test.skip(
+    !modellNutzbar,
+    "Diese Instanz meldet kein nutzbares Modell für „answer“ — K1 (tatsächliche Modellantwort) bleibt hier OFFEN, nicht bestanden.",
+  );
+
+  // Ein geprüfter Eintrag, dessen Aussage die Frage vollständig deckt (Tor 1, R-0473).
+  const m = marke();
+  const angelegt = await page.request.post("/api/kos", {
+    data: {
+      title: `Ventil ${m} entlüften`,
+      statement: `Das Ventil ${m} wird vor dem Start zehn Sekunden lang entlüftet.`,
+      type: "best_practice",
+      category: "Betrieb",
+      confidentiality: "intern",
+      neededValidations: 1,
+    },
+  });
+  expect(angelegt.status(), await angelegt.text()).toBe(201);
+  const ko = (await angelegt.json()) as { id: string };
+  const frei = await page.request.put(`/api/kos/${ko.id}`, { data: { action: "admin-validate" } });
+  expect(frei.status(), await frei.text()).toBe(200);
+
+  const email = await eigenesKonto(page, "modell");
+  const { kontext, seite: p } = await neuerKontext(browser, email, { width: 1280, height: 800 });
+  await p.goto("/klara-vorschau");
+  await oeffnen(p);
+  await p.getByTestId("klara-einwilligung-erteilen").click();
+  await expect(p.getByTestId("klara-einwilligung-erteilt")).toBeVisible();
+
+  const frageweg = p.waitForResponse(
+    (r) => new URL(r.url()).pathname === "/api/ask" && r.request().method() === "POST",
+  );
+  await p.getByTestId("klara-eingabe").fill(`Wie wird das Ventil ${m} vor dem Start entlüftet?`);
+  await p.getByTestId("klara-eingabe").press("Enter");
+  const antwort = await frageweg;
+  expect(antwort.status(), await antwort.text()).toBe(200);
+  const koerper = (await antwort.json()) as {
+    result: {
+      answered: boolean;
+      answer: string | null;
+      demo: boolean;
+      aiGenerated?: { mode?: string };
+    };
+  };
+  await info.attach("Antwort des Fragewegs", {
+    body: JSON.stringify(koerper.result),
+    contentType: "application/json",
+  });
+  // Erfolgreiche Generierung durch das Modell der Instanz.
+  expect(koerper.result.answered, "der Frageweg hat nicht geantwortet").toBe(true);
+  expect(koerper.result.demo, "die Antwort entstand ohne Modell").toBe(false);
+  expect(koerper.result.aiGenerated?.mode).toBe("model");
+
+  // Angezeigt in der beweglichen Klara, gekennzeichnet als „KI-Antwort“.
+  const klara = letzteKlara(p);
+  await expect(klara).toHaveAttribute("data-gespeichert", "ja", { timeout: 30_000 });
+  await expect(klara).toHaveAttribute("data-modus", "ki");
+  await expect(klara.getByTestId("klara-echt-kennzeichen")).toHaveText("KI-Antwort");
+  const ausschnitt = (koerper.result.answer ?? "")
+    .replace(/\[\d+\]/g, "")
+    .replace(/[*_`#>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 30);
+  expect(ausschnitt.length, "die Modellantwort ist leer").toBeGreaterThan(0);
+  await expect(klara).toContainText(ausschnitt);
+  await beleg(p, info, "tatsächliche Modellantwort in Klara");
+  await kontext.close();
+});

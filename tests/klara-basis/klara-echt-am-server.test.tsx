@@ -8,9 +8,10 @@
 // echter Frageweg `POST /api/ask` (Rechte, Sichtbarkeit, Freigaben, Abschaltung), echte Ablage der
 // Gespräche (`/api/me/klara/...`). An der Stelle des Modells antwortet der KONTROLLIERTE ADAPTER der
 // Kette über den lokalen Modellweg — er gibt den Wortlaut der ihm vorgelegten Quelle zurück. Damit ist
-// belegt, dass eine vom Modellweg formulierte Antwort (`demo: false`) als „KI-Antwort" erscheint und
-// eine ohne Modell entstandene nie so heisst; über die SEMANTISCHE Güte eines echten Anbieters sagt
-// dieser Lauf nichts.
+// die ANSCHLUSSKETTE belegt: eine über den Modellweg gelaufene Antwort (`demo: false`) erscheint als
+// „KI-Antwort", eine ohne Modell entstandene heisst nie so. Eine TATSÄCHLICHE Modellantwort ist das
+// NICHT (Bens Befund, nacharbeit-3) — die misst `tests-smoke/klara-basis-browser.spec.ts`, Fall
+// „tatsächliche Modellantwort", auf einer Instanz mit eingerichtetem Modell.
 //
 // „Neuladen" ist hier: Klara abbauen, den Gesprächsspeicher des Browsers vergessen (`vergiss`, das
 // ist genau der Speicher, den ein Neuladen leert) und neu montieren. „Erneute Anmeldung" ist eine
@@ -667,5 +668,107 @@ describe("E8 · Demo und echter Betrieb sind unterscheidbar; Klaras Hilfe ist Te
     expect(q(document, "klara-betrieb")?.dataset.betrieb).toBe("echt");
     expect(nachrichten().map((n) => n.dataset.modus)).toEqual(["hilfe", "hilfetext"]);
     expect(q(document, "klara-gespraech")?.textContent).not.toContain("Demo-Antwort");
+  });
+});
+
+function askAufrufe(): number {
+  return draht.aufrufe.filter((x) => x.url === "/api/ask").length;
+}
+
+describe("E9 · K2 — Kontowechsel, während eine Speicherung noch läuft (Bens Befund, nacharbeit-3)", () => {
+  it("die verspätete Antwort des alten Kontos ändert nichts im neuen und löst keine Frage mehr aus", async () => {
+    const { a, leser } = await vorrichtung();
+    await montiere("/klara-vorschau");
+    await gespraechOeffnen();
+    await einwilligen();
+    const altesGespraech = await serverGespraech(a, leser);
+
+    // Die Ablage der Frage geht sofort an den echten Server (mit der Sitzung des alten Kontos);
+    // nur ihre ANTWORT kommt erst zurück, wenn der Test sie freigibt — eine verzögerte Speicherung.
+    let freigeben: () => void = () => {};
+    const gehalten = new Promise<void>((r) => {
+      freigeben = r;
+    });
+    let angehalten = false;
+    const weiter = globalThis.fetch;
+    const verzoegert = (async (eingabe: unknown, init?: RequestInit) => {
+      const antwort = await weiter(eingabe as RequestInfo, init);
+      const istAblage = init?.method === "POST" && /\/nachrichten$/.test(String(eingabe));
+      if (istAblage && !angehalten) {
+        angehalten = true;
+        await gehalten;
+      }
+      return antwort;
+    }) as typeof globalThis.fetch;
+    globalThis.fetch = verzoegert;
+    window.fetch = verzoegert;
+
+    await fragen("Frage des alten Kontos");
+    await bis(() => angehalten, 120);
+    expect(angehalten, "die Ablage der Frage wurde nicht angehalten").toBe(true);
+    const askVorher = askAufrufe();
+
+    // Kontowechsel: ein anderes Konto meldet sich an, Klara vergisst und liest dessen Gespräch.
+    const fremd = await neuesKonto(a.app, "klara-basis-wechsel", a.admin);
+    draht.setzeCookie(`kw_session=${fremd.token}`);
+    await neuLaden("/klara-vorschau");
+    await bis(() => Boolean(q(document, "klara-echt-leer")), 120);
+    expect(q(document, "klara-echt-leer")).not.toBeNull();
+
+    // Jetzt kommt die verspätete Antwort des alten Kontos an.
+    freigeben();
+    await warte(500);
+
+    expect(nachrichten(), "Inhalt des alten Kontos im neuen sichtbar").toHaveLength(0);
+    expect(q(document, "klara-gespraech")?.textContent).not.toContain("Frage des alten Kontos");
+    expect(q(document, "klara-gespraech-beginn"), "Gesprächskopf des alten Kontos").toBeNull();
+    expect(q(document, "klara-echt-leer")).not.toBeNull();
+    expect(askAufrufe(), "die alte Frage ging nach dem Wechsel an den Frageweg").toBe(askVorher);
+    expect(await serverGespraech(a, fremd)).toBeNull();
+    const alt = await serverGespraech(a, leser);
+    expect(alt?.id).toBe(altesGespraech?.id);
+    expect(alt?.nachrichten.map((n) => n.modus)).toEqual(["frage"]);
+  });
+});
+
+describe("E10 · K4/K5 — Einwilligung in einem anderen Tab widerrufen (Bens Befund, nacharbeit-3)", () => {
+  it("die Frage geht NICHT an den Frageweg; Klara zeigt den Widerruf und bittet erneut um Einwilligung", async () => {
+    const { a, leser } = await vorrichtung();
+    await montiere("/klara-vorschau");
+    await gespraechOeffnen();
+    await einwilligen();
+    const g = await serverGespraech(a, leser);
+    // Der andere Tab: derselbe Mensch widerruft am Server — dieser Tab weiss davon noch nichts.
+    const widerruf = await a.app.inject({
+      method: "PUT",
+      url: `/api/me/klara/gespraeche/${g?.id}/einwilligung`,
+      headers: leser.kopf,
+      payload: { erteilt: false },
+    });
+    expect(widerruf.statusCode, widerruf.body).toBe(200);
+    // Ausgangslage: dieser Tab hält die Zustimmung noch für gültig.
+    expect(q(document, "klara-einwilligung-erteilt")).not.toBeNull();
+    const askVorher = askAufrufe();
+
+    await fragen("Frage nach dem Widerruf");
+    const n = await bisAntwort();
+    expect(askAufrufe(), "die Frage ging trotz Widerruf an den Frageweg").toBe(askVorher);
+    expect(draht.lage.generierungen).toBe(0);
+    expect(n.dataset.modus).toBe("fehler");
+    expect(n.textContent).toContain("Ohne Einwilligung schickt Klara keine Frage los");
+    expect(n.dataset.gespeichert).toBe("ja");
+    const frage = nachrichten().find((x) => x.dataset.von === "du");
+    expect(frage?.dataset.gespeichert).toBe("nein");
+    await bis(() => Boolean(q(document, "klara-einwilligung")), 120);
+    expect(q(document, "klara-einwilligung")).not.toBeNull();
+    expect(q(document, "klara-einwilligung-erteilt")).toBeNull();
+    // Mit Text in der Eingabe bleibt Senden gesperrt, bis erneut eingewilligt ist.
+    await tippe(q<HTMLInputElement>(document, "klara-eingabe") as HTMLInputElement, "Noch eine");
+    expect(q<HTMLButtonElement>(document, "klara-senden")?.disabled).toBe(true);
+
+    const amServer = await serverGespraech(a, leser);
+    expect(amServer?.einwilligungAm).toBeNull();
+    expect(amServer?.nachrichten.map((m) => m.modus)).toEqual(["fehler"]);
+    expect(amServer?.letzterSchritt?.stand).toBe("fehlgeschlagen");
   });
 });
