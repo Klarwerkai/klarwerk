@@ -11,11 +11,17 @@
 // `mapDriveItemToImportItem` (SharePoint-Mapper) → `createImportCandidates` (Prüf-Warteschlange) →
 // `reviewImportCandidate(…, "accept")` (Annahme durch den Menschen) → zurückgelesenes Objekt.
 //
-// WARUM NICHT ÜBER `tests/sharepoint-onedrive-import/erster-weg-am-draht.test.ts`: dieser Fall
-// scheiterte im Prüflauf des Kandidaten 3cbcbf71 schon VOR jeder Herkunftsprüfung an der
-// Übernahmebilanz (`imported` 0 statt 1, Zeile 158). Der Weg dorthin ist von diesem Auftrag nicht
-// verändert; der Befund ist in der Rückgabe getrennt benannt. Die Kennzeichnung soll an einer
-// Stelle gemessen werden, deren Ergebnis von ihm nicht abhängt.
+// OFFENER BEFUND AM WEG (Prüflauf Kandidat c298002e, nicht von diesem Auftrag verursacht): beide
+// Fälle scheitern in `createImportCandidates` → `pruefeAnkerEintrag` mit „Ungültige sourceVersion".
+// Der SharePoint-Mapper schreibt den Quellstand als Sekunden seit 1970 (`sharepointQuellstand`,
+// JOB 4086, 15.09.; hier 1789029000, zehn Stellen). Seit f29237ad (04.10., „Importiertes Wissen mit
+// dauerhafter Herkunft …") ist eine Quellfassung auf `MAX_SOURCE_VERSION` = 999 999 999 begrenzt
+// (repo.ts, `pruefeAnkerEintrag`, `quellrevisionFestschreiben`, PG-CHECK `^[0-9]{1,9}$`). Jeder
+// SharePoint-Import mit Änderungszeitpunkt nach 2001-09-09 wird damit abgewiesen — dieselbe Ursache
+// macht `tests/sharepoint-onedrive-import/erster-weg-am-draht.test.ts` rot (`imported` 0 statt 1).
+// Welche Seite sich ändert (Einheit des SharePoint-Quellstands mit Folgen für Bestand und Re-Sync,
+// oder Breite der Revisionsidentität samt Schema), ist eine offene Entscheidung; dieser Test
+// bleibt unverändert die Gegenprobe und wird grün, sobald sie umgesetzt ist.
 //
 // Die Gegenprobe zu Confluence steht in `services/library-analytics/src/service.test.ts`
 // („SCRUM-470: Accept einer pageId legt KO mit Herkunfts-Anker an").
