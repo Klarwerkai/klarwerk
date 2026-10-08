@@ -13,16 +13,23 @@
 #   N2  Konfiguration: App-Umgebung trägt KLARWERK_TLS_CERT_FILE/KEY_FILE; Labels des Dienstes
 #       stehen auf scheme=https und serversTransport=klarwerk-intern@file; die Transportdatei
 #       des Proxys trägt rootCAs und kein insecureSkipVerify.
-#   N3  Klartext abgewiesen: aus dem Proxy-Container scheitert http://<app-ip>:<port>/health.
+#   N3  Klartext abgewiesen — als PROTOKOLLABLEHNUNG, nicht als irgendein Fehler:
+#       N3a (Socket, im Docker-Netz): TCP-Verbindung zu <app-ip>:<port> kommt zustande, eine
+#           HTTP-Anfrage im Klartext bekommt KEINE HTTP-Antwort, die Gegenstelle baut ab.
+#       N3b (aus coolify-proxy): wget ist vorhanden, die Verbindung kommt zustande und wird beim
+#           Lesen der Antwort abgebrochen. Verweigerte Verbindung, Zeitüberschreitung, unbekannte
+#           Adresse oder fehlendes Werkzeug heissen „ungeklärt", nie „abgewiesen".
 #   N4  TLS mit Prüfung: im Docker-Netz liefert https://<app-ip>:<port>/health mit Servername
 #       klarwerk-app und der internen CA als Anker 200 und <commit>.
-#   N5  Gegenprobe Prüfung: dieselbe Verbindung OHNE den internen Anker wird abgelehnt — die
-#       Prüfung in N4 ist also wirksam, nicht nur vorhanden.
-#   N6  Tatsächlicher Proxyweg: https://app.klarwerk.ai/health liefert 200 und <commit>. Da die
-#       Anwendung Klartext abweist (N3) und der Proxy ohne insecureSkipVerify prüft (N2), kommt diese
-#       Antwort nur über den geprüften TLS-Upstream.
-# Der Beleg geht als JSON auf die Standardausgabe und nach /data/klarwerk/tls-nachweis/.
-# Exitcode 0 nur, wenn N1 bis N6 bestanden sind.
+#   N5  Gegenprobe Prüfung: dieselbe Verbindung OHNE den internen Anker scheitert mit einem
+#       ZERTIFIKATSPRÜFFEHLER (Liste unten). Jeder andere Fehler — oder ein gescheitertes N4 — heisst
+#       „ungeklärt".
+#   N6  Tatsächlicher Proxyweg: https://app.klarwerk.ai/health antwortet mit Status 200, und das
+#       JSON trägt genau <commit>. Da die Anwendung Klartext abweist (N3) und der Proxy ohne
+#       insecureSkipVerify prüft (N2), kommt diese Antwort nur über den geprüften TLS-Upstream.
+# Jede Probe steht mit ihrem Grund im Beleg. Der Beleg geht als JSON auf die Standardausgabe und nach
+# /data/klarwerk/tls-nachweis/. Exitcode 0 nur, wenn N1 bis N6 bestanden sind; „ungeklärt" ist
+# nicht bestanden.
 set -euo pipefail
 
 ERWARTET="${1:-}"
@@ -36,7 +43,7 @@ DIENST="https-1-${APP_UUID}"
 PROXY="coolify-proxy"
 NETZ="coolify"
 OEFFENTLICH="https://app.klarwerk.ai/health"
-BELEGE="/data/klarwerk/tls-nachweis"
+BELEGE="${KLARWERK_TLS_NACHWEIS_DIR:-/data/klarwerk/tls-nachweis}"
 
 APP="$(docker ps --filter "name=^${APP_UUID}-" --format '{{.Names}}' | head -n 1)"
 [ -n "$APP" ] || { echo "ABBRUCH: kein laufender App-Container ${APP_UUID}-*" >&2; exit 1; }
@@ -50,11 +57,11 @@ PROXY_WURZEL="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/traef
 TRANSPORTDATEI="${PROXY_WURZEL}/dynamic/klarwerk-intern.yml"
 
 ok() { if "$@"; then echo true; else echo false; fi; }
+# Freitext für den JSON-Beleg: ohne Anführungszeichen, Rückstriche und Zeilenumbrüche, gekürzt.
+textfeld() { tr -d '"\\' | tr '\n\r\t' '   ' | cut -c1-300; }
 
 # N1 — Kandidatenbezug
 N1_IMAGE="$(ok grep -q "$ERWARTET" <<<"$IMAGE")"
-OEFF_BODY="$(curl -sS --max-time 10 "$OEFFENTLICH" || true)"
-N6="$(ok grep -q "\"commit\":\"${ERWARTET}\"" <<<"$OEFF_BODY")"
 
 # N2 — Konfiguration
 if [[ " $ENV_NAMEN " == *" KLARWERK_TLS_CERT_FILE "* && " $ENV_NAMEN " == *" KLARWERK_TLS_KEY_FILE "* ]]; then
@@ -65,17 +72,86 @@ fi
 N2_LABELS="$( [ "$SCHEMA" = "https" ] && [ "$TRANSPORT" = "klarwerk-intern@file" ] && echo true || echo false )"
 N2_DATEI="$( [ -s "$TRANSPORTDATEI" ] && grep -q 'rootCAs' "$TRANSPORTDATEI" && ! grep -qi 'insecureSkipVerify' "$TRANSPORTDATEI" && echo true || echo false )"
 
-# N3 — Klartext aus dem Proxy-Container muss scheitern
-if docker exec "$PROXY" wget -q -T 10 -O - "http://${IP}:${PORT}/health" >/dev/null 2>&1; then
-  N3=false
+# N3b — Klartext aus dem Proxy-Container: nur eine abgebrochene Antwort zählt als Ablehnung.
+N3B_EXIT=""
+N3B_MELDUNG=""
+if ! docker exec "$PROXY" sh -c 'command -v wget' >/dev/null 2>&1; then
+  N3B="ungeklaert"
+  N3B_MELDUNG="wget im Proxy-Container nicht vorhanden"
 else
-  N3=true
+  set +e
+  N3B_MELDUNG="$(docker exec "$PROXY" wget -q -T 10 -O /dev/null "http://${IP}:${PORT}/health" 2>&1)"
+  N3B_EXIT=$?
+  set -e
+  N3B_MELDUNG="$(textfeld <<<"$N3B_MELDUNG")"
+  if [ "$N3B_EXIT" = "0" ]; then
+    N3B="klartext_angenommen"
+  elif grep -qiE 'refused|timed out|timeout|bad address|unreachable|no route|not found|no such' <<<"$N3B_MELDUNG"; then
+    N3B="ungeklaert"
+  elif grep -qiE 'error getting response|reset by peer|unexpected eof|short read' <<<"$N3B_MELDUNG"; then
+    N3B="abgewiesen"
+  else
+    N3B="ungeklaert"
+  fi
 fi
 
-# N4/N5 — TLS im Docker-Netz, mit und ohne internen Anker (Node im App-Container, eigene IP)
+# N3a/N4/N5 — Socket- und TLS-Proben im Docker-Netz (Node im App-Container, eigene Container-IP).
+# Der Block zwischen den JS-Marken wird von tests/security/tls-betriebsskripte.test.ts wörtlich
+# gegen einen echten Server ausgeführt — Änderungen hier ändern die Gegenprobe mit.
 read -r -d '' PROBE <<'JS' || true
 const https = require("node:https");
+const net = require("node:net");
 const fs = require("node:fs");
+// Fehlercodes, die eine abgelehnte ZERTIFIKATSPRÜFUNG bedeuten — und nur diese zählen für N5.
+const PRUEFFEHLER = new Set([
+  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+  "UNABLE_TO_GET_ISSUER_CERT",
+  "UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
+  "SELF_SIGNED_CERT_IN_CHAIN",
+  "DEPTH_ZERO_SELF_SIGNED_CERT",
+  "CERT_UNTRUSTED",
+  "CERT_SIGNATURE_FAILURE",
+]);
+function klartext() {
+  return new Promise((fertig) => {
+    const s = net.connect({ host: process.env.ZIEL_IP, port: Number(process.env.ZIEL_PORT) });
+    let verbunden = false;
+    let daten = Buffer.alloc(0);
+    let gemeldet = false;
+    const ende = (r) => {
+      if (gemeldet) return;
+      gemeldet = true;
+      s.destroy();
+      fertig({ ...r, erste_bytes: daten.subarray(0, 16).toString("hex") });
+    };
+    const http = () => daten.toString("latin1").startsWith("HTTP/");
+    s.setTimeout(5000);
+    s.on("connect", () => {
+      verbunden = true;
+      s.write("GET /health HTTP/1.1\r\nHost: klarwerk-app\r\nConnection: close\r\n\r\n");
+    });
+    s.on("data", (d) => {
+      daten = Buffer.concat([daten, d]);
+      if (http()) ende({ ergebnis: "klartext_angenommen", grund: "HTTP-Antwort im Klartext" });
+    });
+    s.on("timeout", () =>
+      ende({ ergebnis: "ungeklaert", grund: verbunden ? "weder Antwort noch Abbau" : "keine Verbindung" }),
+    );
+    s.on("error", (e) => {
+      const code = e.code || e.message;
+      if (!verbunden) return ende({ ergebnis: "ungeklaert", grund: `keine Verbindung: ${code}` });
+      ende(http() ? { ergebnis: "klartext_angenommen", grund: code } : { ergebnis: "abgewiesen", grund: code });
+    });
+    s.on("close", () => {
+      if (!verbunden) return ende({ ergebnis: "ungeklaert", grund: "geschlossen vor der Verbindung" });
+      ende(
+        http()
+          ? { ergebnis: "klartext_angenommen", grund: "HTTP-Antwort im Klartext" }
+          : { ergebnis: "abgewiesen", grund: "Verbindung ohne HTTP-Antwort abgebaut" },
+      );
+    });
+  });
+}
 function probe(mitAnker) {
   return new Promise((fertig) => {
     const optionen = {
@@ -101,15 +177,44 @@ function probe(mitAnker) {
     anfrage.on("error", (e) => fertig({ verbunden: false, fehler: e.code || e.message }));
   });
 }
-Promise.all([probe(true), probe(false)]).then(([mit, ohne]) => {
+Promise.all([klartext(), probe(true), probe(false)]).then(([n3a, mit, ohne]) => {
   const n4 = mit.verbunden && mit.status === 200 && mit.commit === process.env.ERWARTET;
-  const n5 = !ohne.verbunden;
-  console.log(JSON.stringify({ n4, n5, mit, ohne }));
+  let n5 = "ungeklaert";
+  let n5_grund = "N4 nicht bestanden — ohne funktionierenden geprüften Weg sagt die Ablehnung nichts";
+  if (n4 && ohne.verbunden) {
+    n5 = "angenommen_ohne_anker";
+    n5_grund = "Verbindung ohne internen Anker kam zustande";
+  } else if (n4 && PRUEFFEHLER.has(ohne.fehler)) {
+    n5 = "zertifikat_abgelehnt";
+    n5_grund = ohne.fehler;
+  } else if (n4) {
+    n5_grund = `kein Zertifikatsprüffehler: ${ohne.fehler}`;
+  }
+  console.log(JSON.stringify({ n3a, n4, n5, n5_grund, mit, ohne }));
 });
 JS
 TLS_PROBE="$(docker exec -e ZIEL_IP="$IP" -e ZIEL_PORT="$PORT" -e ERWARTET="$ERWARTET" "$APP" node -e "$PROBE" 2>&1 || true)"
+N3A="$(grep -q '"n3a":{"ergebnis":"abgewiesen"' <<<"$TLS_PROBE" && echo abgewiesen || echo nicht_abgewiesen_oder_ungeklaert)"
+N3="$( [ "$N3A" = abgewiesen ] && [ "$N3B" = abgewiesen ] && echo true || echo false )"
 N4="$(ok grep -q '"n4":true' <<<"$TLS_PROBE")"
-N5="$(ok grep -q '"n5":true' <<<"$TLS_PROBE")"
+N5="$(ok grep -q '"n5":"zertifikat_abgelehnt"' <<<"$TLS_PROBE")"
+
+# N6 — öffentlicher Weg: Status 200 UND das JSON trägt genau den Commit (ausgewertet von Node).
+OEFF_DATEI="$(mktemp)"
+set +e
+N6_STATUS="$(curl -sS --max-time 10 -o "$OEFF_DATEI" -w '%{http_code}' "$OEFFENTLICH" 2>/dev/null)"
+set -e
+N6_COMMIT="$(docker exec -i -e ERWARTET="$ERWARTET" "$APP" node -e '
+let t = "";
+process.stdin.on("data", (d) => { t += d; });
+process.stdin.on("end", () => {
+  try { console.log(JSON.parse(t).commit === process.env.ERWARTET ? "true" : "false"); }
+  catch { console.log("false"); }
+});' <"$OEFF_DATEI" 2>/dev/null || echo false)"
+rm -f "$OEFF_DATEI"
+[ "$N6_COMMIT" = "true" ] || N6_COMMIT=false
+[[ "$N6_STATUS" =~ ^[0-9]{3}$ ]] || N6_STATUS="000"
+N6="$( [ "$N6_STATUS" = "200" ] && [ "$N6_COMMIT" = "true" ] && echo true || echo false )"
 # Nur eine JSON-Zeile der Probe geht in den Beleg; eine Fehlermeldung steht dort als null (N4/N5 false).
 if [[ "$TLS_PROBE" == \{* ]]; then
   PROBE_JSON="$TLS_PROBE"
@@ -137,11 +242,13 @@ BELEG="$(cat <<EOF
   "n2_umgebung_tls": ${N2_ENV},
   "n2_labels": { "scheme": "${SCHEMA}", "serversTransport": "${TRANSPORT}", "ok": ${N2_LABELS} },
   "n2_transportdatei_mit_ca_ohne_skip": ${N2_DATEI},
-  "n3_klartext_vom_proxy_abgewiesen": ${N3},
-  "n4_n5_tls_probe": ${PROBE_JSON},
+  "n3a_socket": "${N3A}",
+  "n3b_proxy": { "ergebnis": "${N3B}", "exit": "${N3B_EXIT}", "meldung": "${N3B_MELDUNG}" },
+  "n3_klartext_als_protokoll_abgewiesen": ${N3},
+  "n3a_n4_n5_probe": ${PROBE_JSON},
   "n4_tls_mit_pruefung": ${N4},
-  "n5_ohne_anker_abgelehnt": ${N5},
-  "n6_oeffentlicher_weg_commit": ${N6},
+  "n5_ohne_anker_zertifikat_abgelehnt": ${N5},
+  "n6_oeffentlich": { "status": "${N6_STATUS}", "commit_passt": ${N6_COMMIT}, "ok": ${N6} },
   "bestanden": ${BESTANDEN}
 }
 EOF

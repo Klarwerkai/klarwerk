@@ -91,16 +91,25 @@ bash <repo>/scripts/betrieb/tls-intern-nachweis.sh <40-stelliger-commit-des-kand
 ```
 
 Misst an der laufenden Installation, ohne etwas zu ändern, und schreibt den Beleg nach
-`/data/klarwerk/tls-nachweis/`. Bestanden nur, wenn alle sechs Proben gelten:
+`/data/klarwerk/tls-nachweis/`. Bestanden nur, wenn alle sechs Proben gelten. Jede Probe kennt drei
+Ausgänge — bestanden, durchgefallen, **ungeklärt** —, und ungeklärt ist nicht bestanden: ein
+fehlendes Werkzeug, eine verweigerte Verbindung oder eine Zeitüberschreitung gilt nie als
+Sicherheitsablehnung.
 
 | Probe | Erwartung |
 | --- | --- |
 | N1 | Image-Tag des App-Containers trägt den Commit |
 | N2 | App-Umgebung mit Zertifikat und Schlüssel; Labels `scheme=https`, `serversTransport=klarwerk-intern@file`; Transportdatei mit `rootCAs`, ohne `insecureSkipVerify` |
-| N3 | aus `coolify-proxy`: `http://<app-ip>:3000/health` scheitert |
+| N3a | im Netz `coolify`: TCP zu `<app-ip>:3000` kommt zustande, eine Klartext-HTTP-Anfrage bekommt keine HTTP-Antwort, die Verbindung wird abgebaut |
+| N3b | aus `coolify-proxy`: `wget` vorhanden, `http://<app-ip>:3000/health` wird beim Lesen der Antwort abgebrochen (nicht verweigert, nicht zeitüberschritten) |
 | N4 | im Netz `coolify`: `https://<app-ip>:3000/health` mit Servername `klarwerk-app` und interner CA → 200 und der Commit |
-| N5 | dieselbe Verbindung ohne den internen Anker wird abgelehnt (die Prüfung wirkt) |
-| N6 | `https://app.klarwerk.ai/health` → 200 und der Commit — über den Proxy, dessen Upstream nur noch geprüftes TLS annimmt |
+| N5 | dieselbe Verbindung ohne den internen Anker scheitert mit einem Zertifikatsprüffehler (z. B. `UNABLE_TO_VERIFY_LEAF_SIGNATURE`); nur gewertet, wenn N4 bestanden ist |
+| N6 | `https://app.klarwerk.ai/health` → Status 200 und das JSON trägt genau den Commit — über den Proxy, dessen Upstream nur noch geprüftes TLS annimmt |
+
+Die Unterscheidung ist gegengeprüft in `tests/security/tls-betriebsskripte.test.ts`: der Node-Block
+des Skripts läuft dort wörtlich gegen eine TLS-, eine Klartext-Anwendung und einen geschlossenen
+Port; das ganze Skript läuft gegen Ersatzprogramme für `docker` und `curl` (fehlendes `wget`,
+verweigerte Verbindung, Zeitüberschreitung, Status 502, falscher Commit).
 
 Erst nach bestandenem Nachweis `KLARWERK_TLS_PFLICHT=1` in Coolify setzen und erneut ausrollen;
 ab dann kann ein Neustart nicht mehr still in den Klartext fallen.

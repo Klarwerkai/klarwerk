@@ -3,10 +3,21 @@
 // geprüft, was ohne Server prüfbar ist: Syntax, Aufrufregel des Nachweises, keine abgeschaltete
 // Zertifikatsprüfung, und dass Skripte und Anleitung dieselben Installationswerte nennen.
 // Die Messung der Installation selbst ersetzt das nicht.
-import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+//
+// NACHARBEIT 8 (Ben): N3 wertete jeden Fehler als abgewiesenen Klartext, N5 jeden Verbindungsfehler
+// als Zertifikatsablehnung, N6 ignorierte den HTTP-Status. Die beiden unteren Blöcke prüfen das am
+// Verhalten: der eingebettete Node-Block des Nachweises läuft WÖRTLICH gegen echte Server, und das
+// ganze Skript läuft gegen Ersatzprogramme für `docker` und `curl`, die Werkzeug- und
+// Erreichbarkeitsfehler nachstellen. Keiner dieser Fälle darf als bestanden durchgehen.
+import { spawn, spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import type { FastifyInstance } from "fastify";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { testzertifikat } from "./tls-testzertifikat";
 
 const WURZEL = join(__dirname, "..", "..");
 const EINRICHTEN = join(WURZEL, "scripts/betrieb/tls-intern-einrichten.sh");
@@ -57,4 +68,297 @@ describe("R-2057 · Betriebsskripte für TLS bis zur Anwendung", () => {
     expect(nachweis).toContain(`[ "$TRANSPORT" = "${transport}" ]`);
     expect(ANLEITUNG).not.toMatch(/<dienst>|<pfad-im-proxy>|<app-ip>:3000\/health\s+#/);
   });
+});
+
+// ------------------------------------------------------------------------------------------------
+// Der Node-Block des Nachweises (N3a/N4/N5), wörtlich aus dem Skript, gegen echte Server.
+// ------------------------------------------------------------------------------------------------
+const SKRIPT = lies(NACHWEIS);
+const MARKE = "<<'JS' || true\n";
+const PROBE = SKRIPT.slice(
+  SKRIPT.indexOf(MARKE) + MARKE.length,
+  SKRIPT.indexOf("\nJS\n", SKRIPT.indexOf(MARKE)),
+);
+
+interface ProbeErgebnis {
+  n3a: { ergebnis: string; grund: string };
+  n4: boolean;
+  n5: string;
+  n5_grund: string;
+  mit: { verbunden: boolean; commit?: unknown };
+  ohne: { verbunden: boolean; fehler?: string };
+}
+
+// Asynchron: die Server laufen in DIESEM Prozess, ein spawnSync hielte sie an.
+function probeLauf(port: number, erwartet: string, ca: string): Promise<ProbeErgebnis> {
+  return new Promise((fertig, fehler) => {
+    const kind = spawn(process.execPath, ["-e", PROBE], {
+      env: {
+        ...process.env,
+        ZIEL_IP: "127.0.0.1",
+        ZIEL_PORT: String(port),
+        ERWARTET: erwartet,
+        KLARWERK_TLS_CA_FILE: ca,
+      },
+    });
+    let aus = "";
+    let err = "";
+    kind.stdout.on("data", (d) => {
+      aus += String(d);
+    });
+    kind.stderr.on("data", (d) => {
+      err += String(d);
+    });
+    kind.on("error", fehler);
+    kind.on("close", () => {
+      try {
+        fertig(JSON.parse(aus) as ProbeErgebnis);
+      } catch {
+        fehler(new Error(`Probe ohne JSON: ${aus} ${err}`));
+      }
+    });
+  });
+}
+
+function freierGeschlossenerPort(): Promise<number> {
+  return new Promise((fertig) => {
+    const s = createServer();
+    s.listen(0, "127.0.0.1", () => {
+      const a = s.address();
+      const port = typeof a === "object" && a ? a.port : 0;
+      s.close(() => fertig(port));
+    });
+  });
+}
+
+describe("R-2057 · der Node-Block des Nachweises unterscheidet Ablehnung von Fehler", () => {
+  const ordner = mkdtempSync(join(tmpdir(), "klarwerk-tls-probe-"));
+  const z = testzertifikat("klarwerk-app");
+  const ca = join(ordner, "ca.pem");
+  writeFileSync(ca, z.cert);
+  let tlsApp: FastifyInstance | undefined;
+  let klarApp: FastifyInstance | undefined;
+  let tlsPort = 0;
+  let klarPort = 0;
+
+  const portVon = (app: FastifyInstance): number => {
+    const a = app.server.address();
+    return typeof a === "object" && a ? a.port : 0;
+  };
+
+  beforeAll(async () => {
+    const t = buildApp(buildServices(), {
+      tls: { cert: Buffer.from(z.cert), key: Buffer.from(z.key) },
+    });
+    tlsApp = t;
+    await t.listen({ port: 0, host: "127.0.0.1" });
+    tlsPort = portVon(t);
+    const k = buildApp(buildServices());
+    klarApp = k;
+    await k.listen({ port: 0, host: "127.0.0.1" });
+    klarPort = portVon(k);
+  });
+
+  afterAll(async () => {
+    await tlsApp?.close();
+    await klarApp?.close();
+    rmSync(ordner, { recursive: true, force: true });
+  });
+
+  it("TLS-App mit richtigem Commit: N3a abgewiesen, N4 bestanden, N5 als Zertifikatsablehnung", async () => {
+    // Erst den Commit erfahren — derselbe Lauf ist die Gegenprobe „falscher Commit".
+    const falsch = await probeLauf(tlsPort, "falscher-commit", ca);
+    expect(falsch.n4).toBe(false);
+    expect(falsch.n5, "N5 darf ohne bestandenes N4 nicht bestehen").toBe("ungeklaert");
+    expect(typeof falsch.mit.commit).toBe("string");
+
+    const r = await probeLauf(tlsPort, String(falsch.mit.commit), ca);
+    expect(r.n3a.ergebnis, r.n3a.grund).toBe("abgewiesen");
+    expect(r.n4).toBe(true);
+    expect(r.n5, r.n5_grund).toBe("zertifikat_abgelehnt");
+  });
+
+  it("Gegenprobe Klartext-App: N3a meldet angenommenen Klartext, N4 scheitert, N5 bleibt ungeklärt", async () => {
+    const r = await probeLauf(klarPort, "egal", ca);
+    expect(r.n3a.ergebnis).toBe("klartext_angenommen");
+    expect(r.n4).toBe(false);
+    expect(r.n5).toBe("ungeklaert");
+  });
+
+  it("Gegenprobe geschlossener Port: nichts gilt als Ablehnung", async () => {
+    const r = await probeLauf(await freierGeschlossenerPort(), "egal", ca);
+    expect(r.n3a.ergebnis, r.n3a.grund).toBe("ungeklaert");
+    expect(r.n4).toBe(false);
+    expect(r.n5).toBe("ungeklaert");
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// Das ganze Skript gegen Ersatzprogramme für `docker` und `curl` (N3b und N6 und das Gesamturteil).
+// ------------------------------------------------------------------------------------------------
+const SHA = "1b07f3e26cbf7752565b5c75de390ebf9ffae264";
+
+const ERSATZ_DOCKER = `#!/usr/bin/env bash
+case "$1" in
+  ps) echo "b3rgijsv5jtuhreh9ypyjase-123" ;;
+  inspect)
+    case "$3" in
+      *NetworkSettings*) echo "10.0.1.10" ;;
+      *server.port*) echo "3000" ;;
+      *Config.Image*) echo "b3rgijsv5jtuhreh9ypyjase:$FAKE_SHA" ;;
+      *server.scheme*) echo "https" ;;
+      *serversTransport*) echo "klarwerk-intern@file" ;;
+      *Config.Env*) printf 'KLARWERK_TLS_CERT_FILE=/a\\nKLARWERK_TLS_KEY_FILE=/b\\n' ;;
+      *Mounts*) echo "$FAKE_PROXY_WURZEL" ;;
+    esac ;;
+  exec)
+    shift
+    if [ "$1" = "coolify-proxy" ] && [ "$2" = "sh" ]; then exit "\${FAKE_WGET_FEHLT:-0}"; fi
+    if [ "$1" = "coolify-proxy" ] && [ "$2" = "wget" ]; then
+      printf '%s\\n' "$FAKE_WGET_MELDUNG" >&2
+      exit "$FAKE_WGET_EXIT"
+    fi
+    if [ "$1" = "-i" ]; then export "$3"; exec "$FAKE_NODE" -e "$7"; fi
+    printf '%s\\n' "$FAKE_PROBE" ;;
+  *) exit 1 ;;
+esac
+`;
+
+const ERSATZ_CURL = `#!/usr/bin/env bash
+ziel=""
+while [ $# -gt 0 ]; do
+  case "$1" in -o) ziel="$2"; shift 2 ;; *) shift ;; esac
+done
+printf '%s' "$FAKE_CURL_BODY" >"$ziel"
+printf '%s' "$FAKE_CURL_STATUS"
+exit "\${FAKE_CURL_EXIT:-0}"
+`;
+
+const GUTE_PROBE = JSON.stringify({
+  n3a: { ergebnis: "abgewiesen", grund: "ECONNRESET", erste_bytes: "" },
+  n4: true,
+  n5: "zertifikat_abgelehnt",
+  n5_grund: "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+  mit: { verbunden: true, status: 200, commit: SHA },
+  ohne: { verbunden: false, fehler: "UNABLE_TO_VERIFY_LEAF_SIGNATURE" },
+});
+
+const GUT: Record<string, string> = {
+  FAKE_WGET_EXIT: "1",
+  FAKE_WGET_MELDUNG: "wget: error getting response: Connection reset by peer",
+  FAKE_PROBE: GUTE_PROBE,
+  FAKE_CURL_STATUS: "200",
+  FAKE_CURL_BODY: JSON.stringify({ status: "ok", commit: SHA }),
+};
+
+describe("R-2057 · das Gesamturteil des Nachweises besteht nur bei echten Ablehnungen", () => {
+  const ordner = mkdtempSync(join(tmpdir(), "klarwerk-tls-nachweis-"));
+  const bin = join(ordner, "bin");
+  const proxy = join(ordner, "proxy");
+  mkdirSync(bin);
+  mkdirSync(join(proxy, "dynamic"), { recursive: true });
+  writeFileSync(join(bin, "docker"), ERSATZ_DOCKER, { mode: 0o755 });
+  writeFileSync(join(bin, "curl"), ERSATZ_CURL, { mode: 0o755 });
+  writeFileSync(
+    join(proxy, "dynamic", "klarwerk-intern.yml"),
+    "http:\n  serversTransports:\n    klarwerk-intern:\n      rootCAs:\n        - /traefik/klarwerk-intern/ca.pem\n",
+  );
+
+  afterAll(() => rmSync(ordner, { recursive: true, force: true }));
+
+  function nachweis(abweichung: Record<string, string>) {
+    const lauf = spawnSync("bash", [NACHWEIS, SHA], {
+      encoding: "utf8",
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH ?? ""}`,
+        FAKE_SHA: SHA,
+        FAKE_PROXY_WURZEL: proxy,
+        FAKE_NODE: process.execPath,
+        KLARWERK_TLS_NACHWEIS_DIR: join(ordner, "belege"),
+        ...GUT,
+        ...abweichung,
+      },
+    });
+    let beleg: Record<string, unknown> = {};
+    try {
+      beleg = JSON.parse(lauf.stdout) as Record<string, unknown>;
+    } catch {
+      throw new Error(`Beleg ist kein JSON: ${lauf.stdout} ${lauf.stderr}`);
+    }
+    return { status: lauf.status, beleg };
+  }
+
+  it("Kalibrierung: alle Proben echt bestanden → Exit 0, bestanden", () => {
+    const { status, beleg } = nachweis({});
+    expect(beleg.bestanden).toBe(true);
+    expect(status).toBe(0);
+    expect(beleg.n3b_proxy).toMatchObject({ ergebnis: "abgewiesen" });
+    expect(beleg.n6_oeffentlich).toMatchObject({ status: "200", commit_passt: true, ok: true });
+  });
+
+  const faelle: [string, Record<string, string>, (b: Record<string, unknown>) => void][] = [
+    [
+      "wget fehlt im Proxy",
+      { FAKE_WGET_FEHLT: "1" },
+      (b) => expect(b.n3b_proxy).toMatchObject({ ergebnis: "ungeklaert" }),
+    ],
+    [
+      "Verbindung verweigert",
+      { FAKE_WGET_MELDUNG: "wget: can't connect to remote host: Connection refused" },
+      (b) => expect(b.n3b_proxy).toMatchObject({ ergebnis: "ungeklaert" }),
+    ],
+    [
+      "Zeitüberschreitung",
+      { FAKE_WGET_MELDUNG: "wget: download timed out" },
+      (b) => expect(b.n3b_proxy).toMatchObject({ ergebnis: "ungeklaert" }),
+    ],
+    [
+      "Klartext angenommen",
+      { FAKE_WGET_EXIT: "0", FAKE_WGET_MELDUNG: "" },
+      (b) => expect(b.n3b_proxy).toMatchObject({ ergebnis: "klartext_angenommen" }),
+    ],
+    [
+      "N3a ungeklärt",
+      {
+        FAKE_PROBE: GUTE_PROBE.replace(
+          '"ergebnis":"abgewiesen","grund":"ECONNRESET"',
+          '"ergebnis":"ungeklaert","grund":"keine Verbindung"',
+        ),
+      },
+      (b) => expect(b.n3a_socket).toBe("nicht_abgewiesen_oder_ungeklaert"),
+    ],
+    [
+      "N5 Zeitüberschreitung statt Zertifikatsablehnung",
+      {
+        FAKE_PROBE: GUTE_PROBE.replace('"n5":"zertifikat_abgelehnt"', '"n5":"ungeklaert"'),
+      },
+      (b) => expect(b.n5_ohne_anker_zertifikat_abgelehnt).toBe(false),
+    ],
+    [
+      "öffentlich 502 mit passendem Commit im Körper",
+      { FAKE_CURL_STATUS: "502" },
+      (b) => expect(b.n6_oeffentlich).toMatchObject({ status: "502", ok: false }),
+    ],
+    [
+      "öffentlich 200 mit anderem Commit",
+      { FAKE_CURL_BODY: JSON.stringify({ status: "ok", commit: "f".repeat(40) }) },
+      (b) => expect(b.n6_oeffentlich).toMatchObject({ commit_passt: false, ok: false }),
+    ],
+    [
+      "öffentlich nicht erreichbar",
+      { FAKE_CURL_STATUS: "000", FAKE_CURL_BODY: "", FAKE_CURL_EXIT: "7" },
+      (b) => expect(b.n6_oeffentlich).toMatchObject({ status: "000", ok: false }),
+    ],
+  ];
+
+  for (const [name, abweichung, pruefe] of faelle) {
+    it(`Gegenprobe ${name} → nicht bestanden, Exit ≠ 0`, () => {
+      const { status, beleg } = nachweis(abweichung);
+      pruefe(beleg);
+      expect(beleg.bestanden).toBe(false);
+      expect(status).not.toBe(0);
+    });
+  }
 });
