@@ -59,12 +59,21 @@ async function bestand() {
     });
     expect(res.statusCode, res.body).toBe(201);
     const id = res.json().id as string;
-    await app.inject({
+    // Nacharbeit 2 (Befund F1): die Schichtvarianten derselben Aussage sind absichtlich fast
+    // gleich — die Dublettenerkennung legt dazu eine offene Dublette an, und `rate up` ohne
+    // Bestätigung endet dann mit 409 (R-0247), das Objekt bleibt unvalidiert und fällt im
+    // Konsolenweg (`validatedOnly`) heraus. Bestätigt wird wie durch einen Menschen über den
+    // vorgesehenen Weg; ohne offene Dublette ist das Kennzeichen wirkungslos. Die Bewertung muss
+    // durchgehen — sonst prüfte die Gegenprobe still nur eine einzige Quelle.
+    const bewertet = await app.inject({
       method: "PUT",
       url: `/api/kos/${id}`,
       headers,
-      payload: { action: "rate", verdict: "up" },
+      payload: { action: "rate", verdict: "up", duplicateAcknowledged: true },
     });
+    expect(bewertet.statusCode, bewertet.body).toBe(200);
+    const gelesen = await app.inject({ method: "GET", url: `/api/kos/${id}`, headers });
+    expect(gelesen.json().status, `${title}: nicht validiert`).toBe("validiert");
     if (g !== undefined) {
       const gesetzt = await geltung(id, g);
       expect(gesetzt.statusCode, gesetzt.body).toBe(200);
