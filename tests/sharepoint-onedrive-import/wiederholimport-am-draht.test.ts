@@ -56,8 +56,9 @@ const DATEI_URL =
 /** Der erste Stand der Quelldatei. */
 const STAND_ERST = "2026-09-10T08:30:00Z";
 /** Derselbe Weg, den der Mapper geht — hier zur ERWARTUNG, nicht als zweite Umrechnung im Produkt. */
-// R-0144: der Mapper zählt den Quellstand in MINUTEN seit 1970 (`sharepointQuellstand`).
-const quellstand = (iso: string): number => Math.floor(Date.parse(iso) / 60_000);
+// R-0144: der Mapper zählt den Quellstand in Sekunden seit 2025-01-01 (`sharepointQuellstand`).
+const quellstand = (iso: string): number =>
+  Math.max(1, Math.floor((Date.parse(iso) - Date.UTC(2025, 0, 1)) / 1000));
 
 /**
  * Der stellbare Zustand der Quelle. `beforeEach` setzt ihn zurück; nur W2 hebt ihn an — und zwar

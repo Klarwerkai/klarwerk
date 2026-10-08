@@ -27,8 +27,10 @@ describe("JOB 4086: der SharePoint-Mapper", () => {
     expect(item?.sourceScope).toBe("b!bibliothek");
     expect(item?.category).toBe("b!bibliothek");
     expect(item?.url).toBe(DATEI.webUrl);
-    // R-0144: Minuten seit 1970 — passend zur Revisionsidentität (`MAX_SOURCE_VERSION`).
-    expect(item?.sourceVersion).toBe(Math.floor(Date.parse("2026-09-10T08:30:00Z") / 60_000));
+    // R-0144: Sekunden seit 2025-01-01 — passend zur Revisionsidentität (`MAX_SOURCE_VERSION`).
+    expect(item?.sourceVersion).toBe(
+      Math.floor((Date.parse("2026-09-10T08:30:00Z") - Date.UTC(2025, 0, 1)) / 1000),
+    );
     expect(item?.updatedAt).toBe("2026-09-10T08:30:00Z");
     expect(item?.author).toBe("R. Schuster");
     expect(item?.textCodec).toBe("decoded");
@@ -80,17 +82,36 @@ describe("JOB 4086: der SharePoint-Mapper", () => {
     expect(Number.isSafeInteger(neu) && neu > 0).toBe(true);
   });
 
-  it("R-0144 · der Quellstand trägt die Revisionsidentität — auch für heutige und künftige Dateien", () => {
-    // Die Quellrevision erlaubt höchstens 999_999_999 (`MAX_SOURCE_VERSION` in
-    // `library-analytics/src/repo.ts`, nicht über die öffentliche index.ts ausgeleitet; PG neun
-    // Ziffern). Sekunden seit 1970 lagen darüber; jede Datei wurde beim Einreihen abgewiesen.
-    const MAX_SOURCE_VERSION = 999_999_999;
-    for (const zeitpunkt of ["2026-09-10T08:30:00Z", "2099-12-31T23:59:59Z"]) {
-      const stand =
-        mapDriveItemToImportItem({ ...DATEI, lastModifiedDateTime: zeitpunkt }, OPTS)
-          ?.sourceVersion ?? 0;
-      expect(stand, zeitpunkt).toBeGreaterThan(0);
+  // Die Quellrevision erlaubt höchstens 999_999_999 (`MAX_SOURCE_VERSION` in
+  // `library-analytics/src/repo.ts`, nicht über die öffentliche index.ts ausgeleitet; PG neun
+  // Ziffern). Sekunden seit 1970 lagen darüber; jede Datei wurde beim Einreihen abgewiesen.
+  const MAX_SOURCE_VERSION = 999_999_999;
+  const standVon = (zeitpunkt: string): number | undefined =>
+    mapDriveItemToImportItem({ ...DATEI, lastModifiedDateTime: zeitpunkt }, OPTS)?.sourceVersion;
+
+  it("R-0144 · der Quellstand trägt die Revisionsidentität — von heute bis zur benannten Grenze", () => {
+    for (const zeitpunkt of ["2026-09-10T08:30:00Z", "2056-09-05T01:46:39Z"]) {
+      const stand = standVon(zeitpunkt) ?? 0;
+      expect(stand, zeitpunkt).toBeGreaterThan(1);
       expect(stand, zeitpunkt).toBeLessThanOrEqual(MAX_SOURCE_VERSION);
     }
+    // Die erste Sekunde jenseits der Grenze wird NICHT gekappt — der Kern weist sie ehrlich ab.
+    expect(standVon("2056-09-05T01:46:40Z")).toBe(MAX_SOURCE_VERSION + 1);
+  });
+
+  it("R-0144 · Bens Befund (Nacharbeit 4): zwei Fassungen in DERSELBEN Minute sind zwei Stände", () => {
+    const frueh = standVon("2026-09-12T09:15:01Z") ?? 0;
+    const spaet = standVon("2026-09-12T09:15:59Z") ?? 0;
+    // Mit der Minutenzählung waren beide gleich; jetzt liegen sie 58 Stände auseinander.
+    expect({ unterschied: spaet - frueh, geordnet: spaet > frueh }).toEqual({
+      unterschied: 58,
+      geordnet: true,
+    });
+  });
+
+  it("R-0144 · ein Zeitpunkt vor der Epoche ist die kleinste Fassung 1 — positiv, nie negativ", () => {
+    expect(standVon("2019-03-04T05:06:07Z")).toBe(1);
+    expect(standVon("2025-01-01T00:00:00Z")).toBe(1);
+    expect(standVon("2025-01-01T00:00:02Z")).toBe(2);
   });
 });

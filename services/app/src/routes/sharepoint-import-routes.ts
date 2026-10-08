@@ -870,7 +870,7 @@ async function fuehreUebernahmeAus(
         // im Auftrag — derselbe Weg wie Confluence `/apply` (`laufbindung.ts`). Damit hält der Lauf
         // je Datei die Quellrevision fest, und die Entscheidung schreibt ihre Elementreferenz, die
         // `GET /api/admin/import/runs/:importId/result` liest. Tragfähig erst, seit der Quellstand in
-        // Minuten zählt (`services/sharepoint/src/mapper.ts`, Kopf).
+        // die Revisionsidentität passt (`services/sharepoint/src/mapper.ts`, Kopf).
         const angelegt = await deps.library.createImportCandidates(
           [item],
           userId,
