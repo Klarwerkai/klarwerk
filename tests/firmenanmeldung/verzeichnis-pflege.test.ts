@@ -22,6 +22,9 @@
 //       bleibt.
 //   V11 der Abgleich am Dienst: nur offene Verzeichnis-Zuweisungen werden entzogen — Hand-Zuweisungen
 //       und erledigte Prüfungen bleiben, ein zweiter Lauf ändert nichts.
+//   V12 fällt beim Eintritt der Mailversand aus: 201, alle Objekte zugewiesen, eine wiederholte
+//       Anlage bleibt 409, und die Wiederholung holt die Benachrichtigung ohne Anstoß nach.
+//   V13 Absturz zwischen Kontoanlage und Abgleich: der nächste Start der Instanz holt ihn nach.
 import Fastify from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
@@ -509,15 +512,105 @@ describe("R-0571 · Prüfzuständigkeit aus dem Verzeichnis", () => {
     });
     expect(await assignments.find(ko.id, "hugo")).toMatchObject({ status: "done" });
   });
+
+  it("V12 fällt der Mailversand beim Eintritt aus, bleibt die Anlage gültig und der Abgleich holt nach", async () => {
+    const { app, services, erika, koAnlegen, verschieben } = await appBuehne({
+      verzeichnisAbgleichWiederholungMs: 20,
+    });
+    try {
+      const erstes = await koAnlegen();
+      const zweites = await koAnlegen();
+      for (const koId of [erstes, zweites]) {
+        const wechsel = await verschieben(koId, "space-qm", erika);
+        expect(wechsel.statusCode, wechsel.body).toBe(200);
+      }
+      // Der Mailserver fällt beim ersten Versand aus.
+      const senden = vi.spyOn(services.mailer, "send");
+      senden.mockRejectedValueOnce(new Error("SMTP nicht erreichbar"));
+      const anlage = {
+        method: "POST" as const,
+        url: "/scim/v2/Users",
+        headers: SCIM,
+        payload: JSON.stringify({
+          userName: "paula@firma.test",
+          displayName: "Paula Prüferin",
+          roles: [{ value: "QM-Pruefung" }],
+        }),
+      };
+      const eintritt = await app.inject(anlage);
+      // Die Anlage ist gespeichert — die Antwort sagt das, statt das Verzeichnis in eine
+      // Wiederholung zu schicken, die nur noch 409 bekäme.
+      expect(eintritt.statusCode, eintritt.body).toBe(201);
+      const paulaId = String(eintritt.json().id);
+      // Beide Objekte sind zugewiesen: der Fehler am einen hat das andere nicht aufgehalten.
+      const offen = (await services.validation.openAssignmentsFor(paulaId)).map((a) => a.koId);
+      expect(offen.sort()).toEqual([erstes, zweites].sort());
+
+      // Eine wiederholte Anlage bleibt 409 — ein bestehendes Konto ist keine „dieselbe Anlage".
+      expect((await app.inject(anlage)).statusCode).toBe(409);
+
+      // Ohne weiteren Anstoß von außen holt die Wiederholung die ausgefallene Benachrichtigung nach.
+      await vi.waitFor(async () => {
+        for (const koId of [erstes, zweites]) {
+          const ausstehend = await services.validation.nochZuBenachrichtigen(koId, [paulaId], {
+            altbestandBenachrichtigt: false,
+          });
+          expect(ausstehend, koId).toEqual([]);
+        }
+      });
+      // Ein gescheiterter Versand, zwei zugestellte — niemand doppelt benachrichtigt.
+      const anPaula = senden.mock.calls.filter(([mail]) => mail.to === "paula@firma.test");
+      expect(anPaula).toHaveLength(3);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("V13 bricht die Instanz zwischen Kontoanlage und Abgleich ab, holt der nächste Start ihn nach", async () => {
+    appUmgebung();
+    const services = buildServices();
+    // Der Stand vor dem Absturz: ein Objekt im zugeordneten Space, das Konto aus dem Verzeichnis
+    // gespeichert — der Abgleich ist nie gelaufen.
+    const ko = await services.ko.create({
+      title: "Messschieber vor jeder Schicht prüfen",
+      statement: "Der Messschieber wird vor jeder Schicht gegen das Endmaß geprüft.",
+      type: "best_practice",
+      category: "Prüfmittel",
+      author: "erika",
+    });
+    await services.ko.setLeadingSpace(ko.id, "space-qm", "erika", null);
+    const paula = await services.auth.verzeichnisAnlegen({
+      email: "paula@firma.test",
+      name: "Paula Prüferin",
+      aktiv: true,
+      gruppen: ["QM-Pruefung"],
+    });
+    expect(await services.validation.openAssignmentsFor(paula.id)).toEqual([]);
+
+    const app = buildApp(services);
+    try {
+      await app.ready();
+      await vi.waitFor(async () => {
+        const offen = await services.validation.openAssignmentsFor(paula.id);
+        expect(offen.map((a) => a.koId)).toEqual([ko.id]);
+      });
+    } finally {
+      await app.close();
+    }
+  });
 });
 
-/** Die echte Kompositionswurzel mit Verzeichnis, Zuordnung `QM-Pruefung → space-qm` und Autorin. */
-async function appBuehne() {
+function appUmgebung(): void {
   vi.stubEnv("KLARWERK_SCIM_TOKEN", SCHLUESSEL);
   vi.stubEnv("KLARWERK_PRUEFZUSTAENDIGKEIT", "QM-Pruefung=space-qm");
   vi.stubEnv("OIDC_GROUP_CONTROLLER", "klara-pruefer");
+}
+
+/** Die echte Kompositionswurzel mit Verzeichnis, Zuordnung `QM-Pruefung → space-qm` und Autorin. */
+async function appBuehne(opts: Parameters<typeof buildApp>[1] = {}) {
+  appUmgebung();
   const services = buildServices();
-  const app = buildApp(services);
+  const app = buildApp(services, opts);
   await app.inject({ method: "POST", url: "/api/auth/register", payload: ADMIN });
   const adminLogin = await app.inject({ method: "POST", url: "/api/auth/login", payload: ADMIN });
   const admin = { authorization: `Bearer ${adminLogin.json().token}` };

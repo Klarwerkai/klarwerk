@@ -2577,6 +2577,8 @@ export function buildApp(
     factoryReset?: FactoryReset;
     log?: { senke?: LogSenke; stufe?: string };
     klaraAufraeumen?: (lauf: () => Promise<number>) => void;
+    /** R-0571: Wartezeit bis zur Wiederholung eines unvollständigen Verzeichnisabgleichs. */
+    verzeichnisAbgleichWiederholungMs?: number;
   } = {},
 ): FastifyInstance {
   // SCRUM-490 R3 (B2, Fix 4): trustProxy gezielt aus env (KLARWERK_TRUST_PROXY) — request.ip = echte
@@ -3104,11 +3106,15 @@ export function buildApp(
   // Gleicht die aus dem Verzeichnis abgeleiteten Zuweisungen EINES Objekts mit dem heutigen Stand
   // ab (Space des Objekts × Gruppen der Konten) und benachrichtigt neu Zuständige. Ein validiertes
   // oder gelöschtes Objekt ist kein Prüfanlass mehr und bleibt unberührt.
+  //
+  // Eine gescheiterte Benachrichtigung (Mailserver weg) bricht den Abgleich NICHT ab: die Zuweisung
+  // steht schon, ihr Benachrichtigungsstand bleibt dauerhaft „ausstehend" (`Assignment`), und jeder
+  // spätere Lauf holt genau sie nach. `unvollstaendig` sagt dem Aufrufer, dass es noch etwas gibt.
   const zustaendigkeitAbgleichen = async (
     koId: string,
     akteur: string,
     jeSpace = new Map<string, Promise<string[]>>(),
-  ): Promise<string[] | undefined> => {
+  ): Promise<{ soll: string[]; unvollstaendig: boolean } | undefined> => {
     const ko = await services.ko.get(koId);
     if (!ko || ko.deletedAt || ko.status === "validiert") {
       return undefined;
@@ -3122,15 +3128,25 @@ export function buildApp(
     const offen = await services.validation.nochZuBenachrichtigen(koId, soll, {
       altbestandBenachrichtigt: true,
     });
+    let unvollstaendig = false;
     for (const prueferin of offen) {
-      await notifyAssignment(koId, [prueferin]);
-      await services.validation.benachrichtigungErledigt(koId, prueferin);
+      try {
+        await notifyAssignment(koId, [prueferin]);
+        await services.validation.benachrichtigungErledigt(koId, prueferin);
+      } catch (fehler) {
+        unvollstaendig = true;
+        app.log.warn(
+          { err: fehler, event: "pruefzustaendigkeit-benachrichtigung", koId },
+          "Benachrichtigung über eine Prüfzuweisung gescheitert — wird nachgeholt",
+        );
+      }
     }
-    return soll;
+    return { soll, unvollstaendig };
   };
   // Nach jeder Verzeichnisänderung (Eintritt, Austritt, Gruppenwechsel): ALLE betroffenen Objekte —
   // die in zugeordneten Spaces und die, an denen noch eine offene Verzeichnis-Zuweisung hängt.
-  const alleZustaendigkeitenAbgleichen = async (): Promise<void> => {
+  // Jedes Objekt für sich: scheitert eines, laufen die übrigen weiter. `true` = vollständig.
+  const alleZustaendigkeitenAbgleichen = async (): Promise<boolean> => {
     const spaces = new Set([...pruefzustaendigkeit.values()].flat());
     const ids = new Set(await services.validation.koMitVerzeichnisZuweisung());
     for (const ko of await services.ko.list()) {
@@ -3140,10 +3156,90 @@ export function buildApp(
     }
     // Die Zuständigen je Space einmal je Lauf lesen, nicht einmal je Objekt.
     const jeSpace = new Map<string, Promise<string[]>>();
+    let vollstaendig = true;
     for (const koId of ids) {
-      await zustaendigkeitAbgleichen(koId, "system", jeSpace);
+      try {
+        const ergebnis = await zustaendigkeitAbgleichen(koId, "system", jeSpace);
+        if (ergebnis?.unvollstaendig) {
+          vollstaendig = false;
+        }
+      } catch (fehler) {
+        vollstaendig = false;
+        app.log.warn(
+          { err: fehler, event: "pruefzustaendigkeit-abgleich", koId },
+          "Verzeichnisabgleich eines Wissensobjekts gescheitert — wird wiederholt",
+        );
+      }
     }
+    return vollstaendig;
   };
+  // ==============================================================================================
+  // R-0571 · DER ABGLEICH IST WIEDERAUFNEHMBAR (Ben, nacharbeit-8).
+  // ==============================================================================================
+  //
+  // Die Kontoanlage aus dem Verzeichnis ist gespeichert, BEVOR der Abgleich läuft. Hinge der Abgleich
+  // an der Antwort, endete ein Mailfehler in einem SCIM-Fehler, das Verzeichnis wiederholte die
+  // Anlage, bekäme 409 — und der Abgleich liefe nie wieder. Deshalb:
+  //   · Der Abgleich wirft nie in die SCIM-Antwort; die Antwort sagt, was gespeichert ist.
+  //   · Sein Arbeitsauftrag ist kein eigener Merker, sondern der dauerhafte Stand selbst: Gruppen der
+  //     Konten, Spaces der Objekte, Zuweisungen samt „Benachrichtigung ausstehend". Jeder Lauf leitet
+  //     daraus neu ab, was fehlt — idempotent, auch nach einem Absturz mitten im Lauf.
+  //   · Angestoßen wird er nach jeder Verzeichnisänderung, beim Start der Instanz (holt nach, was ein
+  //     Absturz zwischen Kontoanlage und Abgleich liegen liess) und — war ein Lauf unvollständig —
+  //     erneut nach `verzeichnisAbgleichWiederholungMs`, bis einer vollständig ist.
+  //   · Läufe reihen sich hintereinander ein; zwei gleichzeitige Verzeichnisaufrufe benachrichtigen
+  //     dieselbe Person nicht doppelt.
+  // Die 409 auf eine wiederholte Anlage bleibt: ein bestehendes Konto wird nie stillschweigend als
+  // „dieselbe Anlage noch einmal" übernommen.
+  const abgleichWartezeitMs = opts.verzeichnisAbgleichWiederholungMs ?? 60_000;
+  let abgleichKette: Promise<void> = Promise.resolve();
+  let abgleichWiederholung: ReturnType<typeof setTimeout> | undefined;
+  let abgleichBeendet = false;
+  const abgleichWiederholen = (): void => {
+    if (abgleichWiederholung || abgleichBeendet) {
+      return;
+    }
+    abgleichWiederholung = setTimeout(() => {
+      abgleichWiederholung = undefined;
+      void abgleichAnstossen();
+    }, abgleichWartezeitMs);
+    abgleichWiederholung.unref?.();
+  };
+  const abgleichAnstossen = (): Promise<void> => {
+    const lauf = abgleichKette.then(async () => {
+      if (abgleichBeendet) {
+        return;
+      }
+      let vollstaendig = false;
+      try {
+        vollstaendig = await alleZustaendigkeitenAbgleichen();
+      } catch (fehler) {
+        app.log.warn(
+          { err: fehler, event: "pruefzustaendigkeit-abgleich" },
+          "Verzeichnisabgleich gescheitert — wird wiederholt",
+        );
+      }
+      if (vollstaendig) {
+        clearTimeout(abgleichWiederholung);
+        abgleichWiederholung = undefined;
+      } else {
+        abgleichWiederholen();
+      }
+    });
+    abgleichKette = lauf;
+    return lauf;
+  };
+  if (pruefzustaendigkeit.size > 0) {
+    app.addHook("onReady", async () => {
+      // Nicht abwarten: der Start hängt nicht am Mailserver.
+      void abgleichAnstossen();
+    });
+    app.addHook("onClose", async () => {
+      abgleichBeendet = true;
+      clearTimeout(abgleichWiederholung);
+      await abgleichKette;
+    });
+  }
   // R-0556 / R-0571: die Pflege aus dem Unternehmensverzeichnis (SCIM). Ohne gültigen
   // Verzeichnisschlüssel gibt es die Routen nicht — der Startbericht sagt, warum.
   const verzeichnisSchluessel = scimSchluessel();
@@ -3157,7 +3253,7 @@ export function buildApp(
           controllerGroup: process.env.OIDC_GROUP_CONTROLLER,
           expertGroup: process.env.OIDC_GROUP_EXPERTE,
         },
-        ...(pruefzustaendigkeit.size > 0 ? { nachAenderung: alleZustaendigkeitenAbgleichen } : {}),
+        ...(pruefzustaendigkeit.size > 0 ? { nachAenderung: abgleichAnstossen } : {}),
       }),
     );
   }
@@ -3903,7 +3999,19 @@ export function buildApp(
         // neue werden zugewiesen und benachrichtigt, die des alten Space verlieren die offene
         // Verzeichnis-Zuweisung.
         ...(pruefzustaendigkeit.size > 0
-          ? { pruefzustaendigkeit: { abgleichen: zustaendigkeitAbgleichen } }
+          ? {
+              pruefzustaendigkeit: {
+                // Unvollständig (Benachrichtigung nicht verschickt): die Zuweisung steht, die
+                // Benachrichtigung holt der wiederholte Gesamtabgleich nach.
+                abgleichen: async (koId: string, akteur: string) => {
+                  const ergebnis = await zustaendigkeitAbgleichen(koId, akteur);
+                  if (ergebnis?.unvollstaendig) {
+                    abgleichWiederholen();
+                  }
+                  return ergebnis?.soll;
+                },
+              },
+            }
           : {}),
       },
       guards,

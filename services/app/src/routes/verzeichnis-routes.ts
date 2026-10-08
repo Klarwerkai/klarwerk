@@ -80,8 +80,9 @@ export interface VerzeichnisRoutesDeps {
   /**
    * R-0571: nach jeder geschriebenen Änderung (Eintritt, Austritt, Gruppenwechsel) — gleicht die
    * aus dem Verzeichnis abgeleiteten Prüfzuweisungen BESTEHENDER Objekte mit dem neuen Stand ab.
-   * Scheitert er, antwortet die Route mit einem Fehler; das Verzeichnis wiederholt den (idempotenten)
-   * Aufruf, und der Abgleich läuft erneut.
+   * Die Änderung ist zu diesem Zeitpunkt schon gespeichert; ein Fehler im Abgleich ändert deshalb
+   * NICHT die Antwort (sonst wiederholte das Verzeichnis eine Anlage, die mit 409 endet, und der
+   * Abgleich liefe nie wieder). Die Wiederaufnahme liegt beim Abgleich selbst (`build-app.ts`).
    */
   nachAenderung?: () => Promise<void>;
 }
@@ -364,6 +365,18 @@ export function verzeichnisRoutes(deps: VerzeichnisRoutesDeps): FastifyPluginAsy
     }
   };
 
+  // Nach dem Speichern: der Abgleich darf die Antwort nicht mehr kippen (s. `nachAenderung`).
+  const nachAenderung = async (request: FastifyRequest): Promise<void> => {
+    try {
+      await deps.nachAenderung?.();
+    } catch (fehler) {
+      request.log.warn(
+        { err: fehler, event: "verzeichnis-abgleich" },
+        "Abgleich nach einer Verzeichnisänderung gescheitert — die Änderung selbst ist gespeichert",
+      );
+    }
+  };
+
   const vorhanden = async (id: string): Promise<PublicUser> => {
     const konto = await deps.auth.kontoLesen(id);
     if (!konto) {
@@ -471,7 +484,7 @@ export function verzeichnisRoutes(deps: VerzeichnisRoutesDeps): FastifyPluginAsy
           rolle: rolleAus(eingabe.gruppen),
           gruppen: eingabe.gruppen,
         });
-        await deps.nachAenderung?.();
+        await nachAenderung(request);
         return { status: 201, rumpf: alsScim(konto) };
       });
     });
@@ -492,7 +505,7 @@ export function verzeichnisRoutes(deps: VerzeichnisRoutesDeps): FastifyPluginAsy
           gruppen,
           rolle: rolleAus(gruppen),
         });
-        await deps.nachAenderung?.();
+        await nachAenderung(request);
         return { status: 200, rumpf: alsScim(konto) };
       });
     });
@@ -512,7 +525,7 @@ export function verzeichnisRoutes(deps: VerzeichnisRoutesDeps): FastifyPluginAsy
           ...aenderung,
           rolle: rolleAus(aenderung.gruppen),
         });
-        await deps.nachAenderung?.();
+        await nachAenderung(request);
         return { status: 200, rumpf: alsScim(konto) };
       });
     });
@@ -526,7 +539,7 @@ export function verzeichnisRoutes(deps: VerzeichnisRoutesDeps): FastifyPluginAsy
       await antworte(reply, async () => {
         await vorhanden(request.params.id);
         await deps.auth.verzeichnisAendern(request.params.id, { aktiv: false });
-        await deps.nachAenderung?.();
+        await nachAenderung(request);
         return { status: 204 };
       });
     });

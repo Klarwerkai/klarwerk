@@ -292,7 +292,10 @@ Gruppen kommen über App-Rollen (SCIM-Attribut `roles`) und werden mit denselben
 Mitglieder einer Verzeichnisgruppe zu Prüfenden für die Objekte in diesem Space. Das gilt auch für
 Objekte, die schon dort liegen: Nach jeder Änderung aus dem Verzeichnis (Eintritt, Austritt,
 Gruppenwechsel) und bei jedem Space-Wechsel gleicht Klara die daraus abgeleiteten offenen
-Zuweisungen ab. Von Hand vergebene Zuweisungen und erledigte Prüfungen bleiben bestehen.
+Zuweisungen ab. Von Hand vergebene Zuweisungen und erledigte Prüfungen bleiben bestehen. Scheitert
+dabei etwas (etwa der Mailversand), bleibt die Änderung aus dem Verzeichnis trotzdem gültig. Klara
+wiederholt den Abgleich nach einer Minute und beim nächsten Start, bis alle Benachrichtigungen
+zugestellt sind.
 
 ## 3. Der Start
 
