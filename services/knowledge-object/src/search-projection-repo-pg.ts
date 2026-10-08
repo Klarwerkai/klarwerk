@@ -367,6 +367,13 @@ const K_LEBT = `(NOT (k.data ? 'deletedAt') OR ${sqlDeletedAtLeer("k")})`;
 // Zugeständnis, das der Rest des Moduls für Altbestand macht).
 const AKTIVE_VERSION = `k.id = p.ko_id AND COALESCE((k.data->>'version')::int, 1) = p.ko_version AND ${K_LEBT}`;
 
+// R-0483 (Aufnahme gesamt-suchindex-aktualitaet): „nicht in einem Führungsartikel aufgegangen" — der
+// SQL-Spiegel von `!ko.mergedInto` im Speicheradapter. Ein aufgegangener Artikel ist durch die neue
+// Fassung des Führungsartikels ERSETZT (R-1107, `KoService.markMergedInto`); er bleibt lesbar, ist
+// aber kein Suchtreffer und kein Klara-Kandidat mehr — verdrängt, nicht ergänzt. Ein JSON-`null`
+// gilt wie ein fehlendes Feld.
+const K_NICHT_AUFGEGANGEN = `COALESCE(jsonb_typeof(k.data->'mergedInto'), 'null') = 'null'`;
+
 // ================================================================================================
 // JOB 2689 D1 (Befund R2-37) — EIN PROZENTZEICHEN HOLT DEN GANZEN BESTAND.
 // ================================================================================================
@@ -682,7 +689,7 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
       params.push(...trim.params);
     }
     const rumpf = `FROM ko_search_projections p
-        JOIN kos k ON ${AKTIVE_VERSION}
+        JOIN kos k ON ${AKTIVE_VERSION} AND ${K_NICHT_AUFGEGANGEN}
         LEFT JOIN ko_metadata_projections md ON md.ko_id = p.ko_id
        WHERE ${fassungsBedingung} AND (${orsSearch.join(" OR ")})${trimBedingung}`;
     // Die AUSGABEORDNUNG — unverändert seit G27 und die einzige Aussage darüber, in welcher

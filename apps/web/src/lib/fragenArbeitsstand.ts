@@ -39,6 +39,11 @@ export interface GespeicherteAntwort {
   gapId: string | null;
   /** Zeitpunkt der Antwort (ISO) — die Fläche nennt ihn, damit niemand sie für frisch hält. */
   angezeigtAm: string;
+  /**
+   * R-0338: die Fassung jeder herangezogenen Quelle, als die Antwort ankam — Grundlage des
+   * Auffrischen-Vertrags (`antwortFrische`). Fehlt bei Einträgen von vor diesem Feld.
+   */
+  quellenStand?: QuellenStand;
 }
 
 export interface FragenArbeitsstand {
@@ -105,6 +110,7 @@ function antwortAus(roh: unknown): GespeicherteAntwort | null {
   ) {
     return null;
   }
+  const quellenStand = quellenStandLesen(roh.quellenStand);
   return {
     frage,
     result: result as unknown as AnswerResult,
@@ -112,7 +118,94 @@ function antwortAus(roh: unknown): GespeicherteAntwort | null {
     verschlossen: verschlossen as VerschlossenHinweis[],
     gapId,
     angezeigtAm,
+    ...(quellenStand ? { quellenStand } : {}),
   };
+}
+
+// Ein beschädigter Quellenstand ist KEIN Grund, die Antwort zu verwerfen — er ist dann bloss
+// unbekannt, und die Antwort gilt als ungeprüft (wie ein Eintrag von vor diesem Feld).
+function quellenStandLesen(roh: unknown): QuellenStand | undefined {
+  if (!istObjekt(roh)) {
+    return undefined;
+  }
+  const eintraege = Object.entries(roh);
+  return eintraege.every(([, v]) => typeof v === "number" && Number.isInteger(v))
+    ? (Object.fromEntries(eintraege) as QuellenStand)
+    : undefined;
+}
+
+// ================================================================================================
+// R-0338 (Aufnahme gesamt-suchindex-aktualitaet) — DER AUFFRISCHEN-VERTRAG DER FRAGENSEITE.
+// ================================================================================================
+//
+// Ändert sich Wissen, zeigt Klara nicht weiter den alten Stand. WANN NEU GELADEN WIRD:
+//   1 Jede gestellte Frage — auch dieselbe noch einmal — holt die Antwort neu vom Server. Der liest
+//     die Suchprojektion, die im selben Schreibvorgang wie jede Überarbeitung entsteht; eine
+//     ersetzte, zurückgezogene oder aufgegangene Fassung ist dort kein Kandidat.
+//   2 Eine STEHENDE Antwort (wiederaufgenommen oder eben angekommen) wird nie von selbst neu
+//     erzeugt — es geht ohne Absenden keine Modellanfrage hinaus (Ergänzung 1). Sie wird aber gegen
+//     den Bestand geprüft, sooft der neu geladen ist (Öffnen der Seite, Fensterfokus, Auffrischung
+//     nach einer Änderung): hat sich eine ihrer Quellen seither geändert, ist sie ÜBERHOLT und wird
+//     nicht mehr gezeigt. Die Fläche sagt das und bietet „Neu fragen" an.
+//   3 Ohne bekannten Quellenstand (Altbestand) oder ohne geladenen Bestand ist die Antwort
+//     UNGEPRÜFT: sie bleibt mit ihrem Zeitpunkt stehen, wie bisher — keine Behauptung ohne Grundlage.
+
+/** Die Fassung jeder herangezogenen Quelle zum Zeitpunkt der Antwort. */
+export type QuellenStand = Record<string, number>;
+
+export type AntwortFrische = "aktuell" | "ueberholt" | "ungeprueft";
+
+/** Was die Regel vom Bestand braucht — genau die Felder, die eine Änderung verraten. */
+export interface QuellenBestandEintrag {
+  id: string;
+  version: number;
+  mergedInto?: unknown;
+}
+
+/**
+ * Den Quellenstand einer eben angekommenen Antwort festhalten. `undefined`, wenn der Bestand
+ * nicht geladen ist oder eine Quelle darin fehlt — dann gibt es keinen Stand, für den die Fläche
+ * bürgen könnte, und die Antwort gilt als ungeprüft.
+ */
+export function quellenStandAus(
+  quellen: readonly string[],
+  bestand: readonly QuellenBestandEintrag[] | undefined,
+): QuellenStand | undefined {
+  if (!bestand) {
+    return undefined;
+  }
+  const nachId = new Map(bestand.map((ko) => [ko.id, ko]));
+  const stand: QuellenStand = {};
+  for (const id of quellen) {
+    const ko = nachId.get(id);
+    if (!ko) {
+      return undefined;
+    }
+    stand[id] = ko.version;
+  }
+  return stand;
+}
+
+/**
+ * Regel 2/3 des Vertrags. ÜBERHOLT ist eine Antwort, sobald eine ihrer Quellen im frisch geladenen
+ * Bestand fehlt (Papierkorb, endgelöscht, nicht mehr sichtbar — etwa nach einer Heraufstufung),
+ * eine andere Fassung trägt oder in einem anderen Artikel aufgegangen ist.
+ */
+export function antwortFrische(
+  stand: QuellenStand | undefined,
+  bestand: readonly QuellenBestandEintrag[] | undefined,
+): AntwortFrische {
+  if (!stand || !bestand) {
+    return "ungeprueft";
+  }
+  const nachId = new Map(bestand.map((ko) => [ko.id, ko]));
+  for (const [id, fassung] of Object.entries(stand)) {
+    const ko = nachId.get(id);
+    if (!ko || ko.version !== fassung || ko.mergedInto) {
+      return "ueberholt";
+    }
+  }
+  return "aktuell";
 }
 
 /**

@@ -75,10 +75,13 @@ import { anzeigestatusAus } from "../lib/displayStatus";
 import { conflictKnowledge, effectiveAnswer } from "../lib/effectiveAnswer";
 // Pedi 28.09.2026 · Ergänzung 1: Entwurf und zuletzt angezeigte Antwort bleiben dem Konto erhalten.
 import {
+  type QuellenStand,
+  antwortFrische,
   arbeitsstandLesen,
   arbeitsstandSchreiben,
   belegNochGueltig,
   fragenSpeicher,
+  quellenStandAus,
   startadresseMarke,
   startadresseMerken,
   wiederaufnahmeAus,
@@ -548,6 +551,11 @@ export function Ask(): JSX.Element {
   );
   // Der Zeitpunkt der stehenden Antwort — gespeichert mit ihr, genannt im Hinweis.
   const [antwortAm, setAntwortAm] = useState<string | null>(anfang?.antwort?.angezeigtAm ?? null);
+  // R-0338: die Fassungen der Quellen der stehenden Antwort — s. den Auffrischen-Vertrag in
+  // `lib/fragenArbeitsstand.ts`.
+  const [quellenStand, setQuellenStand] = useState<QuellenStand | undefined>(
+    anfang?.antwort?.quellenStand,
+  );
   // R-0474 (Ben, Runde 1, B1): der Router montiert `/fragen` bei einem Wechsel NUR der Adresszeile
   // nicht neu — der Anfangswert oben sah eine zweite Übergabe (`/fragen?q=Alt` → Palette/Hilfe →
   // `/fragen?q=Neu`) also nie, im Feld blieb die alte Frage stehen. Jede NAVIGATION mit `?q=`
@@ -849,7 +857,11 @@ export function Ask(): JSX.Element {
       }
       setAntwortAm(new Date().toISOString());
       // JOB 2694 D1: eine Antwort ohne Text kommt hier als Lücke an — Begründung am Helfer oben.
-      setResult(leereAntwortAlsLuecke(selectAnswer(r)));
+      const angekommen = leereAntwortAlsLuecke(selectAnswer(r));
+      setResult(angekommen);
+      // R-0338: die Fassung ihrer Quellen, wie der Bestand sie gerade kennt — die Grundlage, auf
+      // der eine spätere Änderung die Antwort als überholt erkennt (s. `antwortFrische`).
+      setQuellenStand(quellenStandAus(angekommen.sources, kos.data));
       setReceipt(r.receipt);
       // JOB 2626 D1: abwesend heißt „nicht gefragt oder nichts zu melden" — beides fällt ehrlich
       // auf die leere Liste und damit auf die generische Leermeldung zurück.
@@ -905,11 +917,23 @@ export function Ask(): JSX.Element {
               verschlossen,
               gapId,
               angezeigtAm: antwortAm ?? new Date().toISOString(),
+              ...(quellenStand ? { quellenStand } : {}),
             }
           : null,
       startadressen: gemerkteStartadressen,
     });
-  }, [konto, standFuer, q, result, receipt, verschlossen, gapId, antwortAm, gemerkteStartadressen]);
+  }, [
+    konto,
+    standFuer,
+    q,
+    result,
+    receipt,
+    verschlossen,
+    gapId,
+    antwortAm,
+    quellenStand,
+    gemerkteStartadressen,
+  ]);
 
   // Ergänzung 1 · DIE KENNUNG KOMMT ODER WECHSELT bei stehender Fläche.
   //   · WECHSEL (vorher ein anderes Konto): der Stand des neuen Kontos ersetzt den alten
@@ -961,6 +985,7 @@ export function Ask(): JSX.Element {
       // R-0348: der Faden gehört zum Konto — er beginnt bei der übernommenen Antwort neu.
       setFaden(antwort?.frage ? [antwort.frage] : []);
       setAntwortAm(antwort?.angezeigtAm ?? null);
+      setQuellenStand(antwort?.quellenStand);
       setThankedSources(new Set());
     }
     setStartfrageGilt(startfrageBleibt);
@@ -1032,7 +1057,14 @@ export function Ask(): JSX.Element {
   const pruefungGestoert =
     Boolean(result) &&
     (conflictKnown.state === "failed" || kos.isError || (pruefungWiederholt && !pruefungBelegt));
-  const karteSichtbar = Boolean(result) && Boolean(contract) && !pruefungGestoert;
+  // R-0338 — DER AUFFRISCHEN-VERTRAG (Regeln an `antwortFrische`, lib/fragenArbeitsstand.ts): hat
+  // sich eine Quelle der stehenden Antwort seither geändert, steht sie nicht mehr da. Geprüft wird
+  // gegen denselben Bestand, aus dem die Quellenzeilen ihre Titel lesen; er lädt beim Öffnen und
+  // bei Fensterfokus neu. Neu erzeugt wird nichts von selbst — „Neu fragen" stellt die Frage.
+  const antwortUeberholt =
+    Boolean(result) && antwortFrische(quellenStand, kos.data) === "ueberholt";
+  const karteSichtbar =
+    Boolean(result) && Boolean(contract) && !pruefungGestoert && !antwortUeberholt;
   // Ben R2, F10: welche Sperrgründe liegen in der Torlage WIRKLICH vor — in fester Reihenfolge —,
   // und welcher Prüfweg passt dazu (nur Freigabe und Stufe entstehen in der Prüfung).
   const verschlossenGruende = (["freigabe", "stufe", "volltext"] as const).filter((grund) =>
@@ -1427,13 +1459,15 @@ export function Ask(): JSX.Element {
       {/* Ergänzung 1 (Pedi 28.09.2026): beim Wiederkommen steht OBEN, was aufgenommen wurde und wo
           es weitergeht — ein Satz, keine Karte, damit das Fragefeld ohne Bildlauf sichtbar bleibt.
           Die Antwort wird ausdrücklich als NICHT neu erzeugt benannt, mit ihrem Zeitpunkt. */}
-      {wiederaufnahme ? (
+      {/* R-0338: ist die aufgenommene Antwort überholt, steht sie nicht „darunter" — der Satz nennt
+          dann nur den Entwurf, und ohne Entwurf entfällt er (der Überholt-Hinweis sagt den Rest). */}
+      {wiederaufnahme && (wiederaufnahme.entwurf || !antwortUeberholt) ? (
         <div
           data-testid="ask-wiederaufnahme"
           className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-btn bg-page px-3 py-2 text-[12.5px] text-muted"
         >
           <p className="min-w-0 flex-1">
-            {wiederaufnahme.entwurf && wiederaufnahme.antwortAm
+            {wiederaufnahme.entwurf && wiederaufnahme.antwortAm && !antwortUeberholt
               ? // R-0286: die Antwort steht jetzt UNTER dem Feld — der alte Satz sagte „darüber".
                 t("fragenseite.wiederaufnahmeBeides", {
                   zeit: formatKoTimestamp(wiederaufnahme.antwortAm, i18n.language),
@@ -1778,6 +1812,31 @@ export function Ask(): JSX.Element {
               <ArrowRight size={14} />
             </Button>
           </div>
+        ) : null}
+        {/* R-0338: eine überholte Antwort wird nicht gezeigt — ein Satz und genau eine Aktion. */}
+        {antwortUeberholt && !pruefungGestoert ? (
+          // `<output>` statt `role="status"` (a11y/useSemanticElements) — wie die übrigen Live-Sätze
+          // dieser Seite; Inhalt deshalb als Fließinhalt (`span` statt `p`).
+          <output
+            data-testid="ask-antwort-ueberholt"
+            className="mt-5 block rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-5"
+          >
+            <span className="block text-[13px] text-trust-warn-text">
+              {t("fragenseite.antwortUeberholt", {
+                zeit: antwortAm ? formatKoTimestamp(antwortAm, i18n.language) : "",
+              })}
+            </span>
+            <Button
+              className="mt-3"
+              variant="ghost"
+              data-testid="ask-neu-fragen"
+              disabled={!answerAi.available || ask.isPending}
+              onClick={() => submitAsk(asked)}
+            >
+              {t("fragenseite.neuFragen")}
+              <ArrowRight size={14} />
+            </Button>
+          </output>
         ) : null}
         {/* Eine ANDERE Frage räumt die alte Antwort ab (`onMutate`) — sie gehört zu einer anderen
             Frage, und stehenzubleiben hieße, sie als Antwort auf die neue auszugeben. DIESELBE

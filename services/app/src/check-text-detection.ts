@@ -381,6 +381,10 @@ function istPoolKandidat(k: KnowledgeObject, subjectRefId: string, deps: CheckTe
   return (
     (deps.includeUnvalidated === true || k.status === "validiert") &&
     !k.demoSeed &&
+    // R-0483: ein aufgegangener Artikel ist durch die neue Fassung seines Führungsartikels ersetzt.
+    // Ein Vektortreffer aus dem Speicher (der den alten Stand noch halten kann) führt ihn nicht
+    // zurück in den Pool — die Regel läuft auf dem LEBENDEN Objekt, nicht auf dem Vektor.
+    !k.mergedInto &&
     k.id !== subjectRefId &&
     !isConfidential(k.confidentiality)
   );

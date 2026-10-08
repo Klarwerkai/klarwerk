@@ -250,7 +250,11 @@ import {
 } from "./confluence-import-schalter";
 import { registerHerkunftspruefung } from "./csrf";
 import { ladeDienstSchluessel, matchDienstRoute } from "./dienst-schluessel";
-import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplicate-detection";
+import {
+  type SemanticPrefilter,
+  reindexKoForDuplicatePrefilter,
+  removeKoFromDuplicatePrefilter,
+} from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
 import { schalterAn } from "./feature-flags";
@@ -303,6 +307,7 @@ import {
   PgQuellabgleichRepo,
   type QuellabgleichRepo,
 } from "./quellabgleich-ablage";
+import { createReindexQueue } from "./reindex-queue";
 import { addinStaticRoutes } from "./routes/addin-static-routes";
 import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
@@ -3149,6 +3154,31 @@ export function buildApp(
   services.ko.setPurgeCleanup(async (koId) => {
     await removeKoFromDuplicatePrefilter(koId, semanticPrefilter);
   });
+  // ==============================================================================================
+  // R-0195 / R-0470 / R-0483 (Aufnahme gesamt-suchindex-aktualitaet) — DIE REINDEX-WARTESCHLANGE.
+  // ==============================================================================================
+  //
+  // Jede gespeicherte Objektänderung reiht EINEN Eintrag ein (`setAenderungsNachlauf`); die
+  // serielle Schlange aus JOB 1163 arbeitet ihn ausserhalb des Aufrufs ab — die Antwortzeit leidet
+  // nicht. Der Eintrag liest das Objekt frisch und bettet neu ein oder entfernt den Vektor
+  // (heraufgestuft, Papierkorb, aufgegangen). Ohne Vorfilter (Flag aus) gibt es keinen
+  // Vektorspeicher und damit nichts nachzuführen: dann wird auch nichts verdrahtet.
+  //
+  // Die Suchprojektion von Bibliothek und Klara steht NICHT in dieser Schlange: sie entsteht im
+  // selben Schreibvorgang wie die neue Fassung und ist damit sofort auffindbar.
+  if (semanticPrefilter) {
+    const zuletzt = new Map<string, string>();
+    const reindexQueue = createReindexQueue({
+      reindex: (koId) =>
+        reindexKoForDuplicatePrefilter(koId, { ko: services.ko, semanticPrefilter, zuletzt }),
+      // Nur die Fehlerklasse, nie der Fehlertext — er könnte Inhalt tragen (wie reindex-queue.ts).
+      onError: (koId, fehler) => {
+        const klasse = fehler instanceof Error ? fehler.name : typeof fehler;
+        console.warn(`[dup-prefilter] Neuindizierung für KO ${koId} fehlgeschlagen (${klasse})`);
+      },
+    });
+    services.ko.setAenderungsNachlauf((koId) => reindexQueue.enqueue(koId));
+  }
   // WP-SUBMIT-ASYNC (Pedis R3): der Prüf-Worker kapselt die früher synchron im Submit-Pfad
   // laufende Erkennung (detectConflicts/detectDuplicates) — Concurrency 1, In-Process, PII-freies
   // Log. Ein von Tests vorab gesetzter services.aiCheckWorker (Spy) hat Vorrang.

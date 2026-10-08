@@ -175,6 +175,65 @@ export async function indexKoForDuplicatePrefilter(
   }
 }
 
+// ================================================================================================
+// R-0195 / R-0470 / R-0483 (Aufnahme gesamt-suchindex-aktualitaet) — DER VEKTOR FOLGT DEM OBJEKT.
+// ================================================================================================
+//
+// Bis hierher entstand ein Vektor genau einmal, beim Einreichen, und verschwand nur bei der
+// Endlöschung. Eine Überarbeitung liess den alten Stand im Speicher stehen; ein heraufgestuftes,
+// zurückgezogenes oder aufgegangenes Objekt blieb als Nachbar auffindbar.
+//
+// Diese Funktion ist der EINE Eintrag, den die Reindex-Warteschlange (reindex-queue.ts) je
+// Änderung abarbeitet. Sie liest das Objekt FRISCH (nicht den Stand des Aufrufers) und entscheidet:
+//   · kein lebendes Objekt mehr (Papierkorb, endgelöscht), aufgegangen (`mergedInto`), vertraulich
+//     oder Demo  →  der Vektor wird ENTFERNT (verdrängt, nicht ergänzt; vertraulich verlässt den
+//     Index, sobald die Stufe steigt);
+//   · sonst  →  der Kerntext wird neu eingebettet — aber nur, wenn er sich seit der letzten Ablage
+//     geändert hat (`zuletzt`), damit eine Bewertung oder ein Kommentar keinen Embedder-Aufruf kostet.
+// Fehler wirft sie weiter: die Warteschlange isoliert und meldet sie (`onError` ist dort Pflicht).
+function vektorBleibtFuer(ko: KnowledgeObject | undefined): ko is KnowledgeObject {
+  return (
+    ko !== undefined &&
+    !ko.deletedAt &&
+    !ko.mergedInto &&
+    !ko.demoSeed &&
+    !isConfidential(ko.confidentiality)
+  );
+}
+
+export async function reindexKoForDuplicatePrefilter(
+  koId: string,
+  deps: {
+    ko: Pick<KoService, "get">;
+    semanticPrefilter: SemanticPrefilter;
+    // Kerntext je Kennung bei der letzten Ablage durch DIESEN Weg — gehört dem Aufrufer, damit er
+    // die Lebensdauer bestimmt (eine Warteschlange, eine Merkliste).
+    zuletzt: Map<string, string>;
+  },
+): Promise<void> {
+  const { semanticPrefilter, zuletzt } = deps;
+  const ko = await deps.ko.get(koId);
+  if (!vektorBleibtFuer(ko)) {
+    zuletzt.delete(koId);
+    await semanticPrefilter.store.delete(koId);
+    return;
+  }
+  const text = coreText(toDetectSubject(ko));
+  if (zuletzt.get(koId) === text) {
+    return;
+  }
+  const { vectors, embeddingVersion } = await semanticPrefilter.embedder.embed([text]);
+  const vector = vectors[0];
+  if (!vector) {
+    // Kein Vektor für den neuen Stand: der alte darf nicht als „aktuell" stehen bleiben.
+    zuletzt.delete(koId);
+    await semanticPrefilter.store.delete(koId);
+    return;
+  }
+  await semanticPrefilter.store.upsert(koId, vector, embeddingVersion);
+  zuletzt.set(koId, text);
+}
+
 // GDPR Art. 17 (Kaskadenlöschung, gdpr-compliance-runbook.md §3): Wird ein KO HART gelöscht (endgültig
 // aus dem Bestand entfernt, nicht Papierkorb), muss ein evtl. abgelegter Embedding-Vektor mitgelöscht
 // werden — sonst bliebe ein personenbezogen ableitbares Artefakt zurück. Strikt best-effort: ohne

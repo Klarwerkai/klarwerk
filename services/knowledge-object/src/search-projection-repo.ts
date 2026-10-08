@@ -775,6 +775,9 @@ export class InMemoryKoSearchProjectionRepo implements KoSearchProjectionRepo {
       return Boolean(
         ko &&
           !ko.deletedAt &&
+          // R-0483: ein in einem Führungsartikel aufgegangener Artikel ist durch dessen neue Fassung
+          // ERSETZT — verdrängt, nicht ergänzt (SQL-Spiegel `K_NICHT_AUFGEGANGEN` im Pg-Adapter).
+          !ko.mergedInto &&
           ko.version === projection.koVersion &&
           projection.projectionVersion === aktiveFassung &&
           (generation === null ||
