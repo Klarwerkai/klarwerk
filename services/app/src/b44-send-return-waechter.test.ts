@@ -30,7 +30,7 @@ import { describe, expect, it } from "vitest";
 //
 // WAS DIESER WAECHTER DESHALB PRUEFT — und was ausdruecklich NICHT:
 // Der Schutz selbst ist bereits bewacht und wird hier NICHT ein zweites Mal geprueft:
-// `sync-onsend-hooks.test.ts` nagelt jede `.addHook("onSend", …)` auf den Callback-Stil,
+// `sync-onsend-hooks.test.ts` nagelt jede onSend-Registrierung im Quellbaum auf den Callback-Stil,
 // `tests/app/mega71-onsend-synchron.test.ts` misst dieselbe Zusage am echten Draht.
 // Dieser Waechter deckt die vier Kanten, an denen dieser Schutz UNBEMERKT ins Leere laufen kann,
 // ohne dass eine der beiden Dateien rot wird — plus die Kante, an der der Schutz selbst entkernt
@@ -43,7 +43,7 @@ const SCHUTZ = join(APP_SRC, "sync-onsend-hooks.test.ts");
 // `return reply`"). Eine Zusage ohne Waechter ist ein Kommentar.
 const WPE_ROUTE = join(APP_SRC, "routes", "confluence-import-routes.ts");
 
-// Kommentare raus, Zeilennummern ERHALTEN (Technik aus `sync-onsend-hooks.test.ts:33-37`): eine
+// Kommentare raus, Zeilennummern ERHALTEN (Technik aus `sync-onsend-hooks.test.ts:60-64`): eine
 // blosse Erwaehnung im Fliesstext ist keine Registrierung, Fundstellen bleiben zitierfaehig.
 function ohneKommentare(src: string): string {
   return src
@@ -91,9 +91,11 @@ function erhebe(muster: RegExp): Fund[] {
 // Die Form, die der Sammler der Schutzdatei sieht: erstes Argument als String-Literal.
 const ADDHOOK_LITERAL = /\.addHook\(\s*["']onSend["']\s*,/g;
 // Blindstelle 1 — Fastify erlaubt Hooks auch als ROUTENOPTION (`app.get(url, { onSend: … }, h)`).
-// Diese Bauart ist im Produkt real in Gebrauch (`routes/capture-routes.ts:164`,
-// `routes/slides-routes.ts:272`, `routes/ask-routes.ts:242` — teils `async`), also kein
-// konstruierter Fall: ein onSend-Hook in genau dieser Form waere heute unsichtbar.
+// Richtigstellung (Auftrag gesamt-sendehook-sammler): hier stand, die Bauart sei im Produkt real in
+// Gebrauch (`routes/capture-routes.ts:164`, `routes/slides-routes.ts:272`,
+// `routes/ask-routes.ts:242`). Weder im Stand dieses Waechters (2e5eedb9) noch heute steht in diesen Dateien ein `onSend` — und
+// B44-1 waere sonst nie gruen gewesen. Die Kante ist praeventiv. Seitdem erhebt auch der Sammler
+// der Schutzdatei Routenoptionen; B44-1 bleibt die strengere Regel: im Serverbaum gar keine.
 const ROUTENOPTION = /(?:^|[\s{,(])["']?onSend["']?\s*:/g;
 // Blindstelle 2 — ein Hookname, der kein String-Literal ist (`app.addHook(HOOK, …)`), faellt aus
 // der Erhebung der Schutzdatei heraus, statt sie rot zu machen.
@@ -104,9 +106,9 @@ describe("B44 · der Sende-/Rueckgabeweg: der Schutz der semantischen Null bleib
     const funde = erhebe(ROUTENOPTION).map((f) => `${f.fundort}  ${f.zitat}`);
     expect(
       funde,
-      "onSend als Routenoption sieht der Sammler in sync-onsend-hooks.test.ts nicht — " +
-        'er erhebt ausschliesslich `.addHook("onSend", …)`. Ein async-Hook in dieser Form ' +
-        "oeffnet das Doppel-Send-Fenster fuer die Routen, an denen er haengt.",
+      "onSend als Routenoption ist im Serverbaum keine entschiedene Bauform — die Drahtmessung " +
+        "(tests/app/mega71-onsend-synchron.test.ts) kennt nur die app-globalen Hooks. Ein " +
+        "async-Hook in dieser Form oeffnet das Doppel-Send-Fenster fuer seine Routen.",
     ).toEqual([]);
   });
 
@@ -122,14 +124,14 @@ describe("B44 · der Sende-/Rueckgabeweg: der Schutz der semantischen Null bleib
   it("B44-3 · jede onSend-Registrierung liegt im Geltungsbereich des Vertrags (services/app/src)", () => {
     const funde = erhebe(ADDHOOK_LITERAL);
     // Ein Waechter, der nichts findet, prueft nichts — dieselbe fail-closed-Regel wie in der
-    // Schutzdatei (`sync-onsend-hooks.test.ts:96-98`).
+    // Schutzdatei (`sync-onsend-hooks.test.ts:155-157`).
     expect(funde.length, "keine onSend-Registrierung erhoben").toBeGreaterThan(0);
     const ausserhalb = funde.filter((f) => !f.fundort.startsWith("app/src/"));
     expect(
       ausserhalb.map((f) => f.fundort),
-      "Der Sammler der Schutzdatei durchsucht NUR sein eigenes Verzeichnis (services/app/src). " +
-        "Eine Registrierung ausserhalb waere ungeprueft — und ein async-Hook dort wirkt auf " +
-        "dieselbe App, sobald der Baustein eingehaengt wird.",
+      "Der Sammler der Schutzdatei prueft die Form ueberall, aber die Verdrahtungs-Pins und die " +
+        "Drahtmessung kennen nur services/app/src. Ein Hook ausserhalb wirkt auf dieselbe App, " +
+        "sobald der Baustein eingehaengt wird — neue Lage: erst entscheiden, dann eintragen.",
     ).toEqual([]);
   });
 
