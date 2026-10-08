@@ -18,8 +18,7 @@
 //      Antwort IST dort die Aussage der einen tragenden Quelle (provider.ts `answer`).
 // Ein Absatz ohne beides hat `quellen: []` — unbelegt. Die Fläche gibt ihn NICHT aus.
 //
-// Das Feld fehlt, wenn es nichts zuzuordnen gibt (keine beantwortete Frage oder keine tragende
-// Quelle, also Zuordnung unbekannt). Der Antworttext in
+// Das Feld fehlt nur, wenn es nichts zuzuordnen gibt (keine beantwortete Frage). Der Antworttext in
 // `result.answer` bleibt unverändert: die Zuordnung ist eine zusätzliche Aussage, keine Umschrift.
 
 export interface AbsatzBeleg {
@@ -69,12 +68,9 @@ export function absatzBelege(result: AbsatzQuelle): AbsatzBeleg[] | undefined {
     return undefined;
   }
   const tragend = new Set((result.citedSources ?? []).filter((id) => result.sources.includes(id)));
-  // Ohne jede tragende Quelle ist die Zuordnung UNBEKANNT (R-0325: „benennt ehrlich, wenn sich das
-  // nicht zuordnen ließ") — das ist keine Aussage „jeder Absatz unbelegt". Dann fehlt das Feld, und
-  // die Flächen zeigen wie bisher „Zuordnung unbekannt", statt die Antwort zur Lücke zu machen.
-  if (tragend.size === 0) {
-    return undefined;
-  }
+  // Ben zu 8e6c9d73: auch OHNE jede tragende Quelle (Zuordnung unbekannt) steht das Feld da — jeder
+  // Absatz dann mit `quellen: []`. „Zuordnung unbekannt" macht einen unbelegten Absatz nicht
+  // ausgabefähig; die Flächen halten ihn zurück und NENNEN die unbekannte Zuordnung an der Lücke.
   const aussagen = (result.steps ?? [])
     .filter(
       (s): s is { sourceId: string; snippet: string } =>

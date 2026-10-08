@@ -73,10 +73,16 @@ describe("R-0310 · absatzBelege — je Absatz die Quellen, die ihn belegen", ()
     ).toEqual(["A", "B", "C\nnoch C"]);
   });
 
-  it("Z5 · ohne tragende Quelle (Zuordnung unbekannt, R-0325) gibt es kein Feld — nicht „alles unbelegt“", () => {
+  // Ben zu 8e6c9d73: die Erwartung „kein Feld" aus Nacharbeit 13 war falsch — sie schaltete die
+  // Absatzfilterung gerade bei fehlender Zuordnung ab.
+  it("Z5 · ohne tragende Quelle (Zuordnung unbekannt) steht das Feld trotzdem da — jeder Absatz unbelegt, auch mit Marke", () => {
     const ohne = { answered: true, answer: "A [1].\n\nB.", sources: ["ka"], steps: [] };
-    expect(absatzBelege(ohne)).toBeUndefined();
-    expect(absatzBelege({ ...ohne, citedSources: [] })).toBeUndefined();
-    expect(absatzBelege({ ...ohne, citedSources: ["ko-gibt-es-nicht"] })).toBeUndefined();
+    const unbelegt = [
+      { text: "A [1].", quellen: [] },
+      { text: "B.", quellen: [] },
+    ];
+    expect(absatzBelege(ohne)).toEqual(unbelegt);
+    expect(absatzBelege({ ...ohne, citedSources: [] })).toEqual(unbelegt);
+    expect(absatzBelege({ ...ohne, citedSources: ["ko-gibt-es-nicht"] })).toEqual(unbelegt);
   });
 });

@@ -737,6 +737,41 @@ describe("Aufnahme 20260922 · R-0310 — Absatz-Beleg-Zuordnung im Panel (gemou
     ]);
   });
 
+  // Ben zu 8e6c9d73: auch ohne JEDE tragende Quelle (Zuordnung unbekannt) wird kein unbelegter
+  // Absatz ausgegeben; die Lücke sagt ausdrücklich, dass sich nichts zuordnen ließ.
+  it("P5 · Zuordnung unbekannt: Lücke statt Text, und der Satz zur unbekannten Zuordnung steht; mit tragender Quelle nicht", async () => {
+    starten({
+      ask: {
+        result: antwort({ answer: "Ein Satz ohne Beleg [1].", citedSources: [] }),
+        gap: null,
+        receipt: "r",
+        absaetze: [{ text: "Ein Satz ohne Beleg [1].", quellen: [] }],
+      },
+    });
+    await ruhe();
+    await fragen();
+    expect(sichtbar(el("ask-gap-block"))).toBe(true);
+    expect(el<HTMLTextAreaElement>("ask-answer-edit").value).toBe("");
+    expect(sichtbar(el("ask-gap-zuordnung"))).toBe(true);
+    expect((el("ask-gap-zuordnung").textContent ?? "").trim()).toBe(
+      "Der Server konnte keiner Quelle zuordnen, worauf die Antwort steht.",
+    );
+    panelAbraeumen();
+    // Gegenprobe: eine tragende Quelle steht fest, belegt aber keinen Absatz → Lücke OHNE den Satz.
+    starten({
+      ask: {
+        result: antwort({ answer: "Ein Satz ohne Beleg." }),
+        gap: null,
+        receipt: "r",
+        absaetze: [{ text: "Ein Satz ohne Beleg.", quellen: [] }],
+      },
+    });
+    await ruhe();
+    await fragen();
+    expect(sichtbar(el("ask-gap-block"))).toBe(true);
+    expect(sichtbar(el("ask-gap-zuordnung"))).toBe(false);
+  });
+
   // Ben zu 6cc581b4: liegt das Ende einer langen Antwort ausserhalb der kompakten Ansicht, darf das
   // NICHT die Marken früherer, sichtbarer Absätze mitnehmen. jsdom hat kein Layout — die Lage wird
   // hier gesetzt: Feld 60 px hoch, Zeilenhöhe 20 px; das erste Absatzende steht bei `erstesEnde`,

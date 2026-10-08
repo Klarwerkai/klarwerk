@@ -491,6 +491,8 @@ export interface AskEvidence {
 
 export interface AskOutcome {
   kind: AskOutcomeKind;
+  // R-0310/R-0325: an der Lücke — kein Absatz belegt UND keine tragende Quelle (Zuordnung unbekannt).
+  zuordnungUnbekannt?: true;
   answer?: string;
   sources?: string[]; // KO-Ids aus AnswerResult.sources — Titel/Trust laedt das Panel je KO nach
   trust?: number;
@@ -945,7 +947,13 @@ export function performAsk(
         }
         // AUFTRAG-mega77 BLOCK A: die Wissensluecke ist wieder eine reine Wissensluecke. Der
         // Antwortkoerper wird an dieser Stelle NICHT mehr nach einer Bestandszahl durchsucht.
-        return { kind: "gap" };
+        // R-0310/R-0325: nichts belegt UND keine tragende Quelle → die Lücke nennt die unbekannte
+        // Zuordnung, statt den unbelegten Text doch auszugeben.
+        const unbekannt =
+          absaetze !== undefined &&
+          absaetze.length === 0 &&
+          !(cited ?? []).some((id) => sources.includes(id));
+        return unbekannt ? { kind: "gap", zuordnungUnbekannt: true } : { kind: "gap" };
       });
     })
     .catch((err): AskOutcome => {

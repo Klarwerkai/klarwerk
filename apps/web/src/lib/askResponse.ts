@@ -15,7 +15,8 @@ import type { AbsatzBeleg, AnswerResult, AskResponse, Gap } from "../api/types";
 //   · Bei mehreren Absätzen trägt jeder die Marke `[n]` seiner Quellen (n = Stelle in `sources`,
 //     dieselbe Nummer wie der Chip), sofern sie nicht schon im Absatz steht. Ein einzelner Absatz
 //     bleibt wörtlich — seine Marken setzt die Fläche wie bisher an das Textende.
-//   · Ist kein Absatz belegt, gibt es keine Antwort: die Wissenslücke.
+//   · Ist kein Absatz belegt, gibt es keine Antwort: die Wissenslücke. Fehlt jede tragende Quelle
+//     (Zuordnung unbekannt, R-0325), sagt die Lücke das ausdrücklich (`zuordnungUnbekannt`).
 // Ohne das Feld (älterer Server, Lücke) bleibt die Antwort unverändert.
 const MARKE = /\[([0-9\s,]+)\]/g;
 
@@ -39,7 +40,15 @@ function belegteAntwort(result: AnswerResult, absaetze: AbsatzBeleg[] | undefine
     .map((a) => ({ text: a.text.trim(), quellen: a.quellen.filter((id) => tragend.has(id)) }))
     .filter((a) => a.text !== "" && a.quellen.length > 0);
   if (belegt.length === 0) {
-    return { ...result, answered: false, answer: null, knowledgeClass: "unbekannt" };
+    // Ben zu 8e6c9d73: auch bei UNBEKANNTER Zuordnung (keine tragende Quelle) wird nichts
+    // Unbelegtes ausgegeben — die Lücke nennt den Grund ausdrücklich (`zuordnungUnbekannt`).
+    return {
+      ...result,
+      answered: false,
+      answer: null,
+      knowledgeClass: "unbekannt",
+      ...(tragend.size === 0 ? { zuordnungUnbekannt: true as const } : {}),
+    };
   }
   const text =
     belegt.length === 1

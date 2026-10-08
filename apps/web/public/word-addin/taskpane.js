@@ -735,7 +735,9 @@
               });
             }
             // AUFTRAG-mega77 A: eine reine Wissensluecke; JOB 3092 S6: mit der gemeldeten Liste.
-            return { kind: "gap", ungeprueft: ungeprueft };
+            // R-0310/R-0325: nichts belegt UND keine tragende Quelle → die Luecke nennt die unbekannte Zuordnung.
+            var unbekannt = !!absaetze && absaetze.length === 0 && !(cited || []).some(function (x) { return sources.indexOf(x) !== -1; });
+            return unbekannt ? { kind: "gap", ungeprueft: ungeprueft, zuordnungUnbekannt: true } : { kind: "gap", ungeprueft: ungeprueft };
           });
         })
         .catch(function (err) {
@@ -6297,6 +6299,7 @@
         // JOB 3092 S6 (W5): KEINE Zahl aus der Vorauswahl — aber die betrachtergefilterte Liste,
         // die der Server seit JOB 1591 ausdruecklich meldet, als EIN Satz mit Titel(n).
         renderAskUngeprueft();
+        document.getElementById("ask-gap-zuordnung").className = outcome.zuordnungUnbekannt ? "" : "hidden";
         if (truncated) { showAskStatus("warn", truncatedNote.replace(/^\s+/, "")); } else { hideAskStatus(); }
         return;
       }

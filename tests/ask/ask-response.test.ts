@@ -109,6 +109,26 @@ describe("R-0310 · selectAnswer gibt nur belegte Absätze aus", () => {
     expect(a.answered).toBe(false);
     expect(a.answer).toBeNull();
     expect(a.knowledgeClass).toBe("unbekannt");
+    // Tragende Quellen stehen fest — die Zuordnung ist bekannt, nur belegt sie nichts.
+    expect(a.zuordnungUnbekannt).toBeUndefined();
+  });
+
+  it("S3b · Zuordnung unbekannt (keine tragende Quelle): ebenfalls keine Antwort — und der Grund wird benannt", () => {
+    for (const citedSources of [[], ["ko-gibt-es-nicht"], undefined]) {
+      const { citedSources: _weg, ...ohne } = mehrere;
+      const a = selectAnswer({
+        result: citedSources === undefined ? ohne : { ...ohne, citedSources },
+        gap: null,
+        receipt: RECEIPT,
+        absaetze: [
+          { text: "A gilt [1].", quellen: [] },
+          { text: "B gilt.", quellen: [] },
+        ],
+      });
+      expect(a.answered, String(citedSources)).toBe(false);
+      expect(a.answer).toBeNull();
+      expect(a.zuordnungUnbekannt).toBe(true);
+    }
   });
 
   it("S4 · ohne das Feld (älterer Server) und bei einer Lücke bleibt alles unverändert", () => {

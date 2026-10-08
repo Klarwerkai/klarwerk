@@ -255,6 +255,9 @@ const GUIDE_TONE: Record<KnowledgeGuidanceTone, string> = {
 // Parser).
 // `knowledgeClass` wird mit auf „unbekannt" gesetzt, damit kein späterer Leser dieses Zustands
 // eine Klasse für eine Antwort findet, die es nicht gibt.
+// R-0310: „Unter der Antwort … höchstens drei Quellen, weitere als Chip '+N'."
+const QUELLEN_CHIPS_SICHTBAR = 3;
+
 function leereAntwortAlsLuecke(result: AnswerResult): AnswerResult {
   if (!result.answered) {
     return result;
@@ -1359,6 +1362,23 @@ export function Ask(): JSX.Element {
       pruefstandHinweis: t("ask.pruefstand.hint", { stand: standWort }),
     };
   });
+  // Aufnahme 20260922 · R-0310/R-0325 (Ben zu 8e6c9d73) — DIE QUELLENREIHE UNTER DER ANTWORT.
+  // Sie nennt nur, worauf die Antwort steht: bei tragfähiger Zuordnung die tragenden Quellen (und
+  // jede, deren Marke sichtbar im Text steht — Marke und Chip fallen nie auseinander, JOB 3267 Q7).
+  // Ist die Zuordnung unbekannt, gibt es keine solche Teilmenge; dann bleiben alle mit dem
+  // Kennzeichen „unbekannt" stehen (R-0325: ehrlich benennen). Höchstens drei unmittelbar, weitere
+  // über „+N" (dieselbe Bauform wie das Word-Panel). Die ausführliche Auskunft über ALLE
+  // herangezogenen Quellen bleibt getrennt in der Quellenliste unter „Mehr" (`QuellenListe`).
+  const chipQuellen = zuordnungTragfaehig
+    ? quellenAuskunft.filter((s) => s.carrying || gerenderteMarken.has(s.nummer))
+    : quellenAuskunft;
+  const [alleChips, setAlleChips] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Absichts-Abhängigkeit — je Antwort wieder kurz.
+  useEffect(() => {
+    setAlleChips(false);
+  }, [result]);
+  const sichtbareChips = alleChips ? chipQuellen : chipQuellen.slice(0, QUELLEN_CHIPS_SICHTBAR);
+  const weitereChips = chipQuellen.length - sichtbareChips.length;
   // Aufnahme 20260922 · antwort-quellenanzeige (R-0326): der Weg aus der Antwort an die Belegstelle.
   // Eine TRAGENDE Quelle führt auf `/wissen/:id?stelle=…&fassung=…` (lib/belegstelle.ts) — Passage
   // ist, was der Server als Beleg dieser Quelle zitiert (`steps[].snippet`, sonst ihre Aussage),
@@ -2107,12 +2127,12 @@ export function Ask(): JSX.Element {
                     Quelle UNBEKANNT (das Wissensobjekt liegt der Fläche nicht vor), steht KEIN
                     Punkt — „unbekannt" ist etwas anderes als „in Ordnung", und die volle Auskunft
                     dazu steht im Info-Blatt unter „Mehr". */}
-                  {quellenAuskunft.length > 0 ? (
+                  {chipQuellen.length > 0 ? (
                     <div
                       data-testid="ask-quellen-chips"
                       className="flex flex-wrap gap-2 border-t border-hairline pt-3.5"
                     >
-                      {quellenAuskunft.map((s) => {
+                      {sichtbareChips.map((s) => {
                         const punkt = chipPunkt(s);
                         return (
                           <Link
@@ -2139,6 +2159,17 @@ export function Ask(): JSX.Element {
                           </Link>
                         );
                       })}
+                      {weitereChips > 0 ? (
+                        <button
+                          type="button"
+                          data-testid="ask-quellen-chip-mehr"
+                          aria-label={t("ask.quellen.weitere", { count: weitereChips })}
+                          onClick={() => setAlleChips(true)}
+                          className={QUELLEN_CHIP_KLASSE}
+                        >
+                          +{weitereChips}
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                   {/* R-1633 — „Sichtbar im UI": wofür gewichtet wurde und wie jede herangezogene
@@ -2502,6 +2533,13 @@ export function Ask(): JSX.Element {
               </div>
             ) : (
               <Card className="mt-3 border-dashed" data-testid="ask-gap">
+                {/* R-0310/R-0325 (Ben zu 8e6c9d73): die Antwort ist zurückgehalten, weil sich keine
+                  tragende Quelle zuordnen ließ — das wird gesagt, der unbelegte Text nicht gezeigt. */}
+                {result.zuordnungUnbekannt ? (
+                  <p data-testid="ask-zuordnung-unbekannt" className="mb-3 text-sm text-muted">
+                    {t("ask.zuordnungUnbekannt")}
+                  </p>
+                ) : null}
                 {verschlossen.length > 0 ? (
                   <>
                     <div className="mb-3" data-testid="ask-verschlossen">

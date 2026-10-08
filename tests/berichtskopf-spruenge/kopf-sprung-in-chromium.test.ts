@@ -33,6 +33,10 @@ const LANGER_TEXT = Array.from(
     `<h2>Abschnitt ${i + 1}</h2><p>Reinigung, Prüfung und Freigabe im Abschnitt ${i + 1}. Offene, ablaufende Profile sind zu bevorzugen, damit Flüssigkeit nicht stehen bleibt.</p>`,
 ).join("");
 
+/** N-0037: die externe Originalquelle des Berichts (die Adresse wird nie geladen, s. B5). */
+const EXTERN_TITEL = "DIN EN 1672-2 Hygieneanforderungen";
+const EXTERN_URL = "https://normen.example.org/din-en-1672-2.pdf";
+
 /** Playwright kann mehr, als die schlanke Schnittstelle der Vorrichtung nennt. */
 interface Tastatur {
   press(taste: string): Promise<void>;
@@ -115,7 +119,30 @@ describe("JOB 3108 · UX-03 — Quellen und Anhänge sind vom Kopf aus erreichba
       stand = await h4Stand("/wissen/:frei", "pedi@job3108.test", async (z) => {
         // Über den ECHTEN Dienst, nicht über einen Sonderweg: derselbe Aufruf, den die Route
         // `PUT /api/kos/:id` mit `action: "revise"` fährt (`ko-routes.ts:1754`).
-        await z.services.ko.revise(z.freiId, { bodyHtml: LANGER_TEXT }, z.autorId);
+        // Aufnahme 20260922 · N-0037 (Ben zu 8e6c9d73): der Bericht trägt zusätzlich eine EXTERNE
+        // Originalquelle — die Gegenprüfung vom 06.09. hatte einen leeren Quellenbereich und konnte
+        // genau dieses Verhalten nicht prüfen. Die bestehende Dokumentquelle bleibt erhalten.
+        const vorher = (await z.services.ko.get(z.freiId)) as unknown as { sources: unknown[] };
+        await z.services.ko.revise(
+          z.freiId,
+          {
+            bodyHtml: LANGER_TEXT,
+            sources: [
+              ...(vorher.sources as never[]),
+              {
+                id: "n0037-extern-1",
+                label: EXTERN_TITEL,
+                url: EXTERN_URL,
+                excerpt: null,
+                kind: "external",
+                peerValidated: false,
+                author: z.autorId,
+                at: new Date().toISOString(),
+              } as never,
+            ],
+          },
+          z.autorId,
+        );
       });
       await stand.seite.waitForFunction(
         fn(`() => !!document.querySelector('[data-testid="bib-sprung-quellen"]')`),
@@ -219,6 +246,71 @@ describe("JOB 3108 · UX-03 — Quellen und Anhänge sind vom Kopf aus erreichba
     const lage = m.quellenLage as Lage;
     expect(lage.top).toBeLessThan(m.fenster);
     expect(lage.bottom).toBeGreaterThan(0);
+  }, 90_000);
+
+  // ==============================================================================================
+  // Aufnahme 20260922 · N-0037 — DAS VERHALTEN DER EXTERNEN ORIGINALQUELLE (Ben zu 8e6c9d73).
+  // ==============================================================================================
+  // Die Gegenprüfung vom 06.09. (QUELLEN.json, N-0037): „Quellenbereich aktuell leer, daher keine
+  // externe Originalquelle geprüft." Gemessen wird hier genau dieser Rest am langen Bericht: vom
+  // Kopfsprung aus steht die externe Quelle mit Titel und vollständiger Adresse im Bild, ihr Link
+  // führt auf GENAU die gespeicherte Adresse, öffnet in einem NEUEN Tab und gibt keine Herkunft
+  // weiter. Der echte Zeigerklick erreicht den Link; sein Öffnen wird abgefangen — die fremde
+  // Adresse wird in diesem Lauf NIE geladen (kein Netz, keine fremde Seite).
+  it("B5 · N-0037: vom Kopfsprung aus ist die externe Originalquelle erreichbar und öffnet ihre Adresse in einem neuen Tab", async () => {
+    expect(fehler).toBeNull();
+    await frisch();
+    const s = (stand as H4Stand).seite;
+    const sprungText = (await messen()).sprungText;
+    console.info(`N-0037 B5 · Sprungzeile: ${sprungText}`);
+    await s.click('[data-testid="bib-sprung-quellen"]');
+    const LINK = `[data-bib-abschnitt="quellen"] a[href="${EXTERN_URL}"]`;
+    await s.waitForFunction(fn("(sel) => !!document.querySelector(sel)"), LINK, {
+      timeout: 20_000,
+    });
+    const link = await s.evaluate<{
+      text: string;
+      target: string | null;
+      rel: string | null;
+      zeile: string;
+      imBild: boolean;
+    }>(
+      fn(`(sel) => {
+        const a = document.querySelector(sel);
+        const r = a.getBoundingClientRect();
+        const zeile = a.closest('li');
+        return {
+          text: (a.textContent || '').trim(),
+          target: a.getAttribute('target'),
+          rel: a.getAttribute('rel'),
+          zeile: zeile ? zeile.innerText.replace(/\\s+/g, ' ').trim() : '',
+          imBild: r.bottom > 0 && r.top < window.innerHeight,
+        };
+      }`),
+      LINK,
+    );
+    console.info(`N-0037 B5 · ${JSON.stringify(link)}`);
+    expect(link.zeile).toContain(EXTERN_TITEL);
+    expect(link.text).toBe(EXTERN_URL);
+    expect(link.target).toBe("_blank");
+    expect(link.rel ?? "").toMatch(/noreferrer|noopener/);
+    // Der echte Klick: erreicht er den Link, und mit welchem Ziel? Das Öffnen wird abgefangen.
+    await s.evaluate(
+      fn(`() => {
+        window.__n0037 = null;
+        document.addEventListener('click', (e) => {
+          const a = e.target && e.target.closest ? e.target.closest('a') : null;
+          if (!a) return;
+          e.preventDefault();
+          window.__n0037 = { href: a.href, target: a.getAttribute('target') };
+        }, { capture: true, once: true });
+      }`),
+    );
+    await s.click(LINK);
+    const geklickt = await s.evaluate<{ href: string; target: string | null } | null>(
+      fn("() => window.__n0037"),
+    );
+    expect(geklickt).toEqual({ href: EXTERN_URL, target: "_blank" });
   }, 90_000);
 
   it("B4 · Chromium meldete keinen Seitenfehler", () => {

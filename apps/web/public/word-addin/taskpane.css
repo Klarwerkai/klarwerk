@@ -616,8 +616,8 @@
     #ask-herkunft p { margin: 0; }
     #ask-ungeprueft { margin: 0; font-size: 12.5px; line-height: 1.4; color: var(--text); }
     #ask-ungeprueft.hidden { display: none; }
-    #ask-gap-ungeprueft { margin: 0 16px; font-size: 13px; line-height: 1.4; text-align: center; color: var(--text); }
-    #ask-gap-ungeprueft.hidden { display: none; }
+    #ask-gap-ungeprueft, #ask-gap-zuordnung { margin: 0 16px; font-size: 13px; line-height: 1.4; text-align: center; color: var(--text); }
+    #ask-gap-ungeprueft.hidden, #ask-gap-zuordnung.hidden { display: none; }
     /* JOB 3366: der Fragment-Satz. Dieselben Masse wie der Ungeprueft-Satz daneben — er ist eine
        Auskunft zur Antwort, keine Fehlerkarte, und traegt deshalb die Warnfarbe der Statuszeilen. */
     #ask-fragment { margin: 0; font-size: 12.5px; line-height: 1.4; color: var(--warn-text); }

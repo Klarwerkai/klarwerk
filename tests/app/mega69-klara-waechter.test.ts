@@ -2832,6 +2832,14 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Kandidat 966d179e GEMESSEN („Received", HISTORIE/nacharbeit-14/PRUEFUNG/
     // r0310-panel-absatzmarken.log) und unverändert übernommen; die Panel-Dateien sind seit dieser
     // Messung unberührt.
+    // NACHARBEIT 15 (Ben zu 8e6c9d73, R-0310/R-0325) — DER PIN MUSS WANDERN. `taskpane.js`: ist
+    // kein Absatz belegt UND steht keine tragende Quelle fest, trägt die Lücke `zuordnungUnbekannt`,
+    // und `#ask-gap-zuordnung` (vorhandener Schlüssel `askCaveatUnattributed`) wird sichtbar.
+    // `taskpane.html`: dieses Element als Geschwister von `#ask-gap-ungeprueft` (auf derselben Zeile,
+    // Schranke < 500); `taskpane.css`: dieselbe Regel wie `#ask-gap-ungeprueft`. Auslieferungsfolgen:
+    // kein Abrufziel, keine Nutzlast-, CSP-, Rechte- oder Manifeständerung, kein neuer
+    // Wörterbuchschlüssel, kein Sideload. Der Wert unten ist ein PLATZHALTER; der Prüflauf meldet
+    // den Ist-Wert als „Received", er wird danach gemessen übernommen.
     const PIN = "f045e108236f1fcf3a6e748c295244447430a5105e92bb5ef51a691e929cbd24";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(

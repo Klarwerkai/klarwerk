@@ -2215,6 +2215,10 @@ const en: typeof de = {
     "The sources listed first carried the answer; the rest were consulted but not used.",
   "ask.attribution.unknown":
     "Which of these sources carried the answer could not be determined — the AI returned no usable source references. The list therefore shows all consulted sources without a marker, and “This helped” is not available here.",
+  // R-0310/R-0325: the answer is withheld because no paragraph could be attributed to a source.
+  "ask.quellen.weitere": "Show {{count}} more sources",
+  "ask.zuordnungUnbekannt":
+    "No answer is shown: it could not be attributed to any source. A paragraph without a source is not output.",
   // JOB 3267 Q1 — three states, three words, plus a fourth for the review status (see the German
   // entry for the finding this fixes).
   "ask.attribution.carrying.badge": "used",

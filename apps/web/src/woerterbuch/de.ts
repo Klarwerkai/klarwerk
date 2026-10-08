@@ -2842,6 +2842,12 @@ const de = {
     "Die zuerst genannten Quellen haben die Antwort getragen; die übrigen wurden herangezogen, aber nicht verwendet.",
   "ask.attribution.unknown":
     "Welche dieser Quellen die Antwort getragen hat, ließ sich nicht zuordnen — die KI hat keine verwertbaren Quellenverweise geliefert. Die Liste zeigt deshalb alle herangezogenen Quellen ohne Kennzeichen, und ein „Hat geholfen“ ist hier nicht möglich.",
+  // R-0310/R-0325 (Ben zu 8e6c9d73): die Antwort ist zurückgehalten, weil sich kein Absatz einer
+  // Quelle zuordnen ließ. Zuordnung unbekannt macht einen unbelegten Absatz nicht ausgabefähig.
+  // R-0310: der Chip „+N" unter der Antwort — sein zugänglicher Name.
+  "ask.quellen.weitere": "{{count}} weitere Quellen anzeigen",
+  "ask.zuordnungUnbekannt":
+    "Keine Antwort angezeigt: Sie ließ sich keiner Quelle zuordnen. Ein Absatz ohne Beleg wird nicht ausgegeben.",
   // JOB 3267 Q1 — DREI ZUSTÄNDE, DREI WÖRTER, UND EIN VIERTES FÜR DEN PRÜFSTAND.
   // Bis hierher gab es zwei Wörter („trägt"/„angesehen") für eine Frage, die drei Antworten hat;
   // der dritte Zustand („wir wissen es nicht") stand nur als Satz ÜBER der Liste und fehlte an der

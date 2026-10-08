@@ -684,6 +684,25 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
             absaetze: [{ text: "Ohne Beleg.", quellen: [] }],
           }),
       ],
+      // R-0310/R-0325 (Ben zu 8e6c9d73): keine tragende Quelle — Lücke MIT `zuordnungUnbekannt`.
+      [
+        "gap-zuordnung-unbekannt",
+        async () =>
+          fakeRes(200, {
+            ...ANSWERED_BODY,
+            result: { ...ANSWERED_BODY.result, citedSources: [] },
+            absaetze: [{ text: "Ohne Beleg.", quellen: [] }],
+          }),
+      ],
+      [
+        "gap-zuordnung-fremd",
+        async () =>
+          fakeRes(200, {
+            ...ANSWERED_BODY,
+            result: { ...ANSWERED_BODY.result, citedSources: ["ko-gibt-es-nicht"] },
+            absaetze: [{ text: "Ohne Beleg.", quellen: [] }],
+          }),
+      ],
       ["gap", async () => fakeRes(200, GAP_BODY)],
       ["auth", async () => fakeRes(401, {})],
       // AUFTRAG-JOB507-D4: der neue 403- und der neue 429-Ausgang laufen durch DENSELBEN Vergleich.
@@ -721,6 +740,25 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
       const fromInline = await inline.performAsk("Frage", "de", fetchFn, timeout);
       const fromModule = await performAsk("Frage", "de", fetchFn, timeout);
       expect(fromInline, `flow:${label}`).toEqual(fromModule);
+    }
+    // R-0310/R-0325 (Ben zu 8e6c9d73): ohne tragende Quelle keine Ausgabe, aber die benannte
+    // unbekannte Zuordnung; mit tragender Quelle (ko-2) ohne belegten Absatz die schlichte Lücke.
+    const ablauf = (name: string) => flows.find(([l]) => l === name)?.[1];
+    for (const name of ["gap-zuordnung-unbekannt", "gap-zuordnung-fremd"]) {
+      const fetchFn = ablauf(name);
+      expect(fetchFn, name).toBeDefined();
+      if (fetchFn) {
+        expect(await inline.performAsk("Frage", "de", fetchFn, WORD_ADDIN_ASK_TIMEOUT_MS)).toEqual({
+          kind: "gap",
+          zuordnungUnbekannt: true,
+        });
+      }
+    }
+    const belegtNichts = ablauf("answered-absaetze-unbelegt");
+    if (belegtNichts) {
+      const r = await inline.performAsk("Frage", "de", belegtNichts, WORD_ADDIN_ASK_TIMEOUT_MS);
+      expect(r.kind).toBe("gap");
+      expect(r.zuordnungUnbekannt).toBeUndefined();
     }
     // Gating + Zeilenbau + Titel-Konvention verhaltensgleich.
     const outcomes: (AskOutcome | null)[] = [
