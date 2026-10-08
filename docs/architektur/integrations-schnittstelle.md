@@ -1,6 +1,7 @@
-# KLARWERK — Integrationsschnittstelle mit Dienst-Schlüsseln (Vertrag 1.1.0)
+# KLARWERK — Integrationsschnittstelle mit Dienst-Schlüsseln (Vertrag 1.2.0)
 
-> Aufnahme `gesamt-integrations-api` (R-0677, R-0688, R-0696, R-0698, R-0704, R-0712, R-0842).
+> Aufnahme `gesamt-integrations-api` (R-0677, R-0688, R-0696, R-0698, R-0704, R-0712, R-0842);
+> Fassung 1.2.0: Aufnahme `gesamt-mcp` (R-0713) — MCP-Zugang `/mcp`, §6.
 > Quelle der Wahrheit ist der Code: `services/app/src/integrations-vertrag.ts` (Tabelle),
 > `services/app/src/dienst-schluessel.ts` (Schlüssel, Rechte, Routen). Die maschinenlesbare
 > Beschreibung `docs/generated/integrations-openapi.json` (OpenAPI 3.1) wird aus derselben Tabelle
@@ -46,6 +47,7 @@ Die Konfiguration steht in der Umgebungsvariable `KLARWERK_SERVICE_KEYS` als JSO
   | `export.validated` | `GET /api/library/export` | Wissen ausleiten (nur validiert, nicht vertraulich) |
   | `import.kandidaten` | `POST /api/library/import/candidates` | Wissen einliefern — nur als Kandidat in die Prüfwarteschlange |
   | `status.read` | `GET /health`, `GET /api/reasoner/status` | Betriebszustand abfragen |
+  | `mcp.werkzeug` | `POST /mcp`, `GET /mcp` | MCP-Zugang für fremde KI-Programme (§6); das Fragewerkzeug braucht zusätzlich `ask.validated` |
 
 - **Grenze je Schlüssel**: `max` Aufrufe je `fensterSek` (Standard 60 je 60 s). Darüber `429`.
 - **Wechseln ohne Ausfall**: die Prüfsumme des neuen Schlüssels neben die alte in die Liste
@@ -98,6 +100,15 @@ Kurzbezeichnung und in `code` die Rahmenkennung.
 | | 415 | `Unsupported Media Type` | Rumpf ist nicht `application/json`. |
 | `GET /health` | 200 | — | Instanz antwortet (`status = "ok"`, Version, Deploy-Stand). |
 | `GET /api/reasoner/status` | 200 | — | Abstrakter KI-Zustand, ohne Anbieter- oder Modellnamen. |
+| `POST /mcp` | 200 | — | JSON-RPC-Antwort: Ergebnis oder JSON-RPC-Fehler (`-32600`, `-32601`, `-32602`). Ein Werkzeugfehler steht als `result.isError = true` im Ergebnis. |
+| | 202 | — | Benachrichtigung oder Antwort des Clients angenommen; kein Antwortkörper. |
+| | 400 | `Bad Request` | Rumpf ist kein JSON oder leer. |
+| | 413 | `Payload Too Large` | Rumpf größer als 128 KiB. |
+| | 415 | `Unsupported Media Type` | Rumpf ist nicht `application/json`. |
+| `GET /mcp` | 405 | `METHOD_NOT_ALLOWED` | Kein Ereignisstrom; Nachrichten nur per `POST` (`Allow: POST`). |
+
+Am MCP-Zugang bedeutet `401` zusätzlich: Anfrage ohne Dienst-Schlüssel (eine Sitzung genügt nicht);
+`403` zusätzlich: Anfrage mit `Origin`-Kopf (Browseraufruf).
 
 ## 4. Zugriffsbremse für angemeldete Nutzer (R-0842)
 
@@ -125,3 +136,56 @@ beliebig oft hintereinander auslösen. Gezählt wird je Konto über diese Routen
   über eine eigene HTTP-Route ausgeliefert.
 - Eine produktive Drittanbindung ist damit **nicht** belegt — sie braucht ein konkretes Zielsystem,
   einen ausgestellten Schlüssel und eine Abnahme im Betrieb.
+
+## 6. MCP-Zugang: Klara als Werkzeug in fremden KI-Programmen (R-0713)
+
+Klara steht unter **`/mcp`** als MCP-Server bereit (Model Context Protocol, Transport „Streamable
+HTTP", zustandslos: eine JSON-RPC-2.0-Nachricht je `POST`, Antwort als `application/json`, kein
+Ereignisstrom, keine Sitzungskennung). Unterstützte Protokollfassungen: `2025-06-18`, `2025-03-26`,
+`2024-11-05`. Code: `services/app/src/routes/mcp-routes.ts`.
+
+**Auflage der Quelle: kein externer Kanal vor Berechtigungsvertrag.** Der MCP-Zugang öffnet deshalb
+nichts Eigenes, sondern hängt vollständig an diesem Vertrag:
+
+- Anmeldung nur mit Dienst-Schlüssel (`x-klarwerk-service-key`). Ohne Schlüssel `401`, auch mit
+  gültiger Sitzung; Anfragen mit `Origin` (Browser) `403`.
+- Eigenes Recht `mcp.werkzeug`. Ein Schlüssel, der schon fragen darf, wird nicht stillschweigend
+  zum KI-Werkzeug.
+- Werkzeug **`klara_fragen`** (Eingabe `question`, optional `locale` = `de`/`en`/`nl`) erscheint in
+  `tools/list` nur, wenn der Schlüssel zusätzlich `ask.validated` trägt; sonst ist es ein
+  unbekanntes Werkzeug (`-32602`).
+- Die Frage läuft unverändert über `POST /api/ask` mit demselben Schlüssel: nur validiertes, nicht
+  vertrauliches Wissen, ohne Modellaufruf, nur Inhalt ohne Space oder aus offenen Spaces; die
+  Abschaltung der Fragefunktion gilt auch hier.
+- Das Ergebnis nennt die Antwort, je Wissensobjekt **Kennung und Fundstelle als Beleg** und die
+  Einstufung (`verified`/`unverified`, ggf. mit Vorbehalt), zusätzlich maschinenlesbar in
+  `structuredContent` (`beantwortet`, `antwort`, `belege`, `einstufung`, `wissensklasse`,
+  `vertrauen`). Ohne validiertes Wissen: eine Wissenslücke (`beantwortet: false`), keine erfundene
+  Antwort.
+
+Beispiel-Eintrag für einen Schlüssel, der nur als MCP-Fragewerkzeug dienen soll:
+
+```json
+{ "id": "ki-werkzeug", "sha256": ["<64 Hexzeichen>"], "rechte": ["mcp.werkzeug", "ask.validated"] }
+```
+
+Anbindung (Beispiele; Adresse und Schlüssel je Installation):
+
+- **Cursor** (`.cursor/mcp.json`) bzw. **VS Code / GitHub Copilot** (`.vscode/mcp.json`, dort
+  `"servers"` und `"type": "http"`):
+  `{ "mcpServers": { "klarwerk": { "url": "https://<instanz>/mcp", "headers": { "x-klarwerk-service-key": "<schlüssel>" } } } }`
+- **Claude Code**: `claude mcp add --transport http klarwerk https://<instanz>/mcp --header "x-klarwerk-service-key: <schlüssel>"`
+
+Grenzen (ehrlich):
+
+- Ein Werkzeugaufruf zählt **zweimal** gegen die Grenze des Schlüssels (MCP-Hülle und die
+  weitergeleitete Frage); `initialize`, `tools/list` und Benachrichtigungen je einmal.
+- Anmeldung nur per eigenem Kopf. KI-Programme, die für entfernte MCP-Server ausschließlich OAuth
+  anbieten (z. B. die Connectoren in ChatGPT und in der Claude-Web-/Desktop-Oberfläche), können sich
+  heute **nicht** anmelden; dafür fehlt ein OAuth-Autorisierungsweg.
+- Angeboten wird nur das Fragewerkzeug; Textprüfung, Export und Einlieferung sind über MCP nicht
+  erreichbar.
+- Eine echte Anmeldung aus einem dieser Programme gegen eine laufende Instanz ist damit **nicht**
+  belegt — sie braucht eine erreichbare Instanz, einen ausgestellten Schlüssel und eine Abnahme im
+  Betrieb. Ablauf, fehlende Mittel und die Zuordnung jeder Rechtezusage zu Code und Gegenprobe:
+  `docs/abnahme/mcp-fremdclient-abnahme.md`.
