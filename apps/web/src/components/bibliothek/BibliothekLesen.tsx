@@ -101,8 +101,9 @@ import { WissensbeziehungenBereich } from "../WissensbeziehungenBereich";
 import { type D44Eintrag, d44LeisteZeigen, d44SichtbareEintraege } from "../d44Struktur";
 import { ListEditor, TagEditor } from "../editors";
 import { KenntnisnahmeBereich } from "../kenntnisnahme/KenntnisnahmeBereich";
+import { KoReadDetails } from "../ko/KoRead";
 import { KNOWLEDGE_TYPES } from "../trust";
-import { Button, Field, TextInput, cx } from "../ui";
+import { Button, Field, SectionLabel, TextInput, cx } from "../ui";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { Bearbeitungshinweis, useEigeneBearbeitung } from "./Bearbeitungshinweis";
 import { MehrAbschnitte, type Sprungziel } from "./MehrAbschnitte";
@@ -3575,17 +3576,42 @@ export function BibliothekLesen({
               ) : (
                 <p>{ko.statement}</p>
               )}
-              {ko.conditions.length > 0 || ko.measures.length > 0 ? (
-                <>
-                  {ko.conditions.map((c) => (
-                    <p key={`c-${c}`}>{c}</p>
-                  ))}
-                  {ko.measures.map((m) => (
-                    <p key={`m-${m}`}>{m}</p>
-                  ))}
-                </>
-              ) : null}
             </div>
+
+            {/* WISSENSDETAIL (R-0998/R-1697) — DIE FELDER DES WISSENSOBJEKTS, BENANNT.
+                Bis hierher standen Bedingungen und Maßnahmen als namenlose Absätze IM Fließtext,
+                die Tags gar nicht, und die Kernaussage fiel weg, sobald ein Fließtext da war. Jetzt
+                steht hier jedes Feld unter seinem Namen — aus dem vorhandenen Baustein
+                `KoReadDetails` (Bedingungen · Maßnahmen · Tags), nicht nachgebaut. Die Aussage steht
+                nur, wenn der Fließtext sie nicht schon IST (ohne Body trägt `bib-text` sie oben);
+                ein leeres Feld zeichnet nichts. `data-bib-text`: das ist Inhalt, kein Erklärtext. */}
+            {(() => {
+              const aussage = (gelesen ? gelesen.statement : ko.statement).trim();
+              const textSteht = gelesen ? Boolean(gelesen.bodyHtml) : Boolean(ko.bodyHtml);
+              const aussageZeigen = textSteht && aussage.length > 0;
+              const anlage = (ko.asset ?? "").trim();
+              const felder = ko.conditions.length + ko.measures.length + ko.tags.length;
+              if (!aussageZeigen && anlage.length === 0 && felder === 0) {
+                return null;
+              }
+              return (
+                <div data-testid="bib-felder" data-bib-text="felder" className="space-y-4">
+                  {aussageZeigen ? (
+                    <div data-testid="bib-feld-aussage">
+                      <SectionLabel>{t("ko.statement")}</SectionLabel>
+                      <p className="text-[14.5px] leading-relaxed text-text">{aussage}</p>
+                    </div>
+                  ) : null}
+                  {anlage.length > 0 ? (
+                    <div data-testid="bib-feld-anlage">
+                      <SectionLabel>{t("capture.fAsset")}</SectionLabel>
+                      <p className="text-[13.5px] text-text">{anlage}</p>
+                    </div>
+                  ) : null}
+                  {felder > 0 ? <KoReadDetails ko={ko} /> : null}
+                </div>
+              );
+            })()}
 
             {/* Chips: Quellen und Bilder. Die Zahl steht vorn, wie in der Vorlage („1 · Titel"). */}
             <div
