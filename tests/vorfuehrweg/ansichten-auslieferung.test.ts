@@ -23,7 +23,7 @@ const SEITE = join(OEFFENTLICH, "demonstration", "vorfuehrweg.html");
 const ORDNER = join(OEFFENTLICH, "demonstration", "vorfuehrweg-ansichten");
 const PRAEFIX = "/demonstration/vorfuehrweg-ansichten/";
 
-/** Die gesicherten Aufnahmen (Kandidat 775fd23c, Gruppe `vorfuehrweg-ansichten`). */
+/** Die gesicherten Aufnahmen (Gruppe `vorfuehrweg-ansichten`; Herkunft je Datei im Beleg). */
 const AUFNAHMEN: Record<string, { bytes: number; sha256: string }> = {
   "bibliothek-en.png": {
     bytes: 110789,
@@ -73,21 +73,23 @@ const AUFNAHMEN: Record<string, { bytes: number; sha256: string }> = {
     bytes: 98397,
     sha256: "35c93d4d75123be9a40820dcdf8568175c4331dce8e2b9e13eb349cbf3cefff2",
   },
+  // Neu aufgenommen an Kandidat 0f9590de (Nutzungshinweis bestätigt, Karls Erfahrung bzw. der
+  // geöffnete Fassungsverlauf V1/V2/V3 vollständig im Bild); die übrigen 16 stammen aus 775fd23c.
   "lagerfall-en.png": {
-    bytes: 113326,
-    sha256: "da22911c24f8fe1a76a6c815be52d6bf98694608a9e4e1ff7815e36e812f63e7",
+    bytes: 107606,
+    sha256: "6a662afbca3a26fcc0cab22af28ff13290cfa81d2b26f25fcb24dbd92b966563",
   },
   "lagerfall.png": {
-    bytes: 110236,
-    sha256: "d48cafaa5b855950290848e853841d90ebe233f3f4bd9a4c85f378787ea1f113",
+    bytes: 103786,
+    sha256: "aa1baaacb2f05e420f405363a083bfd0d5889879677a1d10b05b4a59433f1955",
   },
   "schweissnaht-en.png": {
-    bytes: 111699,
-    sha256: "a94408c235be2566ff43915543d505db9d3b9151101c5030dcaf5beddcde7ac4",
+    bytes: 94812,
+    sha256: "dd12e7df577d93ca2f78c4f366c1c9fc3776c762123a603b58ce7798141e5835",
   },
   "schweissnaht.png": {
-    bytes: 116168,
-    sha256: "f3c9ec34ec31b9cffe8622109f5a26a2f1efb3ee753aa01b2a236479f33405d8",
+    bytes: 99946,
+    sha256: "f4a214d6e0f945256502613aab061b30b6ed3899639f6fc563815e274e9ef9fd",
   },
   "start-en.png": {
     bytes: 81623,

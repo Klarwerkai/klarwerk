@@ -6,19 +6,26 @@ Die 20 Bilder unter `apps/web/public/demonstration/vorfuehrweg-ansichten/` sind 
 die der Vorführweg (`apps/web/public/demonstration/vorfuehrweg.html`) je Station verlinkt: Deutsch
 `<station>.png`, Englisch `<station>-en.png`.
 
-**Herkunft:** aufgenommen von `tests/vorfuehrweg/ansichten-chromium.test.ts` an der gebauten Fassung
-von Kandidat `775fd23c497eef62d535da1ee82565944860c1a9` (Prüfauftrag
-`auftrag-703b41de15245d33aab2-775fd23c497e`), in echtem Chromium, mit über `POST /api/admin/demo-seed`
-geladenen Demodaten in der jeweiligen Sprache. Jede Aufnahme entstand erst, nachdem das Demo-Ergebnis
-der Station sichtbar war. Gesichert als Prüfartefakte (Gruppe `vorfuehrweg-ansichten`,
-`BILDBELEGE.json`) und unverändert unter ihrem Ursprungsnamen übernommen.
+**Herkunft:** aufgenommen von `tests/vorfuehrweg/ansichten-chromium.test.ts` an der gebauten Fassung,
+in echtem Chromium, mit über `POST /api/admin/demo-seed` geladenen Demodaten in der jeweiligen Sprache.
+Gesichert als Prüfartefakte (Gruppe `vorfuehrweg-ansichten`, `BILDBELEGE.json`) und unverändert unter
+ihrem Ursprungsnamen übernommen. Zwei Aufnahmeläufe:
+
+- **16 Bilder** aus Kandidat `775fd23c497eef62d535da1ee82565944860c1a9` (Prüfauftrag
+  `auftrag-703b41de15245d33aab2-775fd23c497e`). Damals verlangte die Aufnahme den Nachweistext nur im
+  Dokument; einige dieser Bilder zeigen unten noch den Nutzungshinweis.
+- **lagerfall, lagerfall-en, schweissnaht, schweissnaht-en** aus Kandidat
+  `0f9590dee87762d829fd7c0aaac6bd933aef50b7` (Prüfauftrag `auftrag-703b41de15245d33aab2-0f9590dee877`,
+  bildbeleg-012 bis -015). Der Nutzungshinweis ist regulär bestätigt; die Aufnahme verlangte, dass
+  Karls Erfahrung bzw. die Titel der Fassungen V1, V2 und V3 vollständig und unverdeckt im Bild stehen.
 
 **Abgleich:** `tests/vorfuehrweg/ansichten-auslieferung.test.ts` verlangt je Datei genau die
 unten stehende Größe und SHA-256 und ruft jede verlinkte Datei über den echten statischen
 Auslieferungsweg ab.
 
 **Grenzen:** Die Bilder zeigen den Stand ihrer Aufnahmefassung. Ohne freigeschaltetes Modell zeigt
-`fragen` die vorbefüllte, gesperrte Frage; `lagerfall` zeigt Karls Eintrag in der Bibliothek.
+`fragen` die vorbefüllte, gesperrte Frage; `lagerfall` zeigt Karls Eintrag in der Bibliothek;
+`schweissnaht` zeigt den geöffneten Fassungsverlauf unter „Mehr“.
 
 | Datei | Bytes | SHA-256 |
 |---|---:|---|
@@ -34,10 +41,10 @@ Auslieferungsweg ab.
 | importwege.png | 87908 | 5f95a7933ec2857aab5552ee09396f227570832d1e797a4e1b04b54f2a3d663f |
 | konflikte-en.png | 95039 | b9abf0f551962054c718eaa85449b66d8856d7f6fd8c3df53f7e48cc3295e6ff |
 | konflikte.png | 98397 | 35c93d4d75123be9a40820dcdf8568175c4331dce8e2b9e13eb349cbf3cefff2 |
-| lagerfall-en.png | 113326 | da22911c24f8fe1a76a6c815be52d6bf98694608a9e4e1ff7815e36e812f63e7 |
-| lagerfall.png | 110236 | d48cafaa5b855950290848e853841d90ebe233f3f4bd9a4c85f378787ea1f113 |
-| schweissnaht-en.png | 111699 | a94408c235be2566ff43915543d505db9d3b9151101c5030dcaf5beddcde7ac4 |
-| schweissnaht.png | 116168 | f3c9ec34ec31b9cffe8622109f5a26a2f1efb3ee753aa01b2a236479f33405d8 |
+| lagerfall-en.png | 107606 | 6a662afbca3a26fcc0cab22af28ff13290cfa81d2b26f25fcb24dbd92b966563 |
+| lagerfall.png | 103786 | aa1baaacb2f05e420f405363a083bfd0d5889879677a1d10b05b4a59433f1955 |
+| schweissnaht-en.png | 94812 | dd12e7df577d93ca2f78c4f366c1c9fc3776c762123a603b58ce7798141e5835 |
+| schweissnaht.png | 99946 | f4a214d6e0f945256502613aab061b30b6ed3899639f6fc563815e274e9ef9fd |
 | start-en.png | 81623 | 0e9c26d36fad864d8f56700bbabe907449684cce98afc34470b5e7aa29badb46 |
 | start.png | 82000 | df8c9ccddb11ccc10ff20ec66edfba8d09c08df78c668f5a78a4c755bc2285cd |
 | validierung-en.png | 107906 | 353166a17defe2f298c4c32bcb7cdcb96217eb1f178ff1fe9b3de963551e5246 |
