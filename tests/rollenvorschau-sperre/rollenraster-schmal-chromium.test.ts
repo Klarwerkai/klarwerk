@@ -51,7 +51,15 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ROLES } from "../../apps/web/src/app/navigation";
 import i18n from "../../apps/web/src/i18n";
 import { ADMIN_SECTIONS } from "../../apps/web/src/lib/adminSections";
-import { type Seite, type Stand, fn, schattenLagen, starte, wechsle } from "../design/h6-chromium";
+import {
+  type Seite,
+  type Stand,
+  fn,
+  schattenLagen,
+  setzeSprache,
+  starte,
+  wechsle,
+} from "../design/h6-chromium";
 import { schliesseChromium } from "../tor-bereitschaft/chromium-abbau";
 
 /** Die vollen Rollennamen (`role.name.*`, de) in der Reihenfolge von `ROLES`. */
@@ -363,6 +371,37 @@ const LAGE = `() => {
 const WARTE_EINSTELLUNGEN = `() => document.querySelector('[data-einst="seite"]') !== null
   && document.querySelector('[data-testid="sperrkarte-vorschau"]') === null`;
 
+/** Wo Hinweis und Rückweg-Knopf auf der Fläche liegen — für die schmalen Fälle (UX-12b/12c). */
+interface Sicht {
+  viewport: number;
+  viewportHoehe: number;
+  dokumentScrollWidth: number;
+  sprache: string;
+  hinweis: Kasten | null;
+  hinweisClient: number;
+  hinweisScroll: number;
+  knopf: Kasten | null;
+  knopfClient: number;
+  knopfScroll: number;
+}
+const SICHT = `() => {
+  const kasten = (r) => ({ x: r.x, y: r.y, breite: r.width, hoehe: r.height, rechts: r.right, unten: r.bottom });
+  const hinweis = document.querySelector('[data-testid="sperrkarte-vorschau"]');
+  const knopf = hinweis ? hinweis.querySelector('button') : null;
+  return {
+    viewport: window.innerWidth,
+    viewportHoehe: window.innerHeight,
+    dokumentScrollWidth: document.documentElement.scrollWidth,
+    sprache: document.documentElement.lang,
+    hinweis: hinweis ? kasten(hinweis.getBoundingClientRect()) : null,
+    hinweisClient: hinweis ? hinweis.clientWidth : 0,
+    hinweisScroll: hinweis ? hinweis.scrollWidth : 0,
+    knopf: knopf ? kasten(knopf.getBoundingClientRect()) : null,
+    knopfClient: knopf ? knopf.clientWidth : 0,
+    knopfScroll: knopf ? knopf.scrollWidth : 0,
+  };
+}`;
+
 let stand: Stand;
 const messungen = new Map<number, Messung>();
 
@@ -667,6 +706,168 @@ describe("JOB 3124 UX-12 · das Rollenraster bei 320 und 390 px, in Chromium gem
       );
       expect(danach.hinweisText).toBeNull();
     }, 120_000);
+  });
+
+  // ==============================================================================================
+  // UX-12b/UX-12c (Auftrag gesamt-rollen-vorschau) — DIE SPERRKARTE SCHMAL, DEUTSCH UND ENGLISCH.
+  // ==============================================================================================
+  // T1–T3 gehen den Rückweg bei 1280 px und nur auf Deutsch; die Einstellungshülle misst
+  // `tests/einstellungen-schmal/ux12b-einstellungen-schmal-chromium.test.ts` in beiden Sprachen,
+  // betritt aber die Vorschau nicht. Offen war damit der Weg, den UX-12b/12c beschreiben: bei
+  // 320 und 390 px, je Sprache, die Vorschau über das Raster starten, den Rückweg auf der Sperrkarte
+  // sehen, per Tab/Shift+Tab mit sichtbarem Fokus erreichen, per Enter zurückkehren — und nach einem
+  // echten Reload ist die Vorschau beendet, die Sprache aber geblieben. Jeder Fall setzt am Ende
+  // Deutsch zurück und prüft, dass die Rückkehr wirklich ankam.
+  describe("UX-12b/12c · die Sperrkarte bei 320 und 390 px, DE und EN", () => {
+    const ADMIN_ANKER = '[data-einst="seite"]';
+
+    async function inSprache(
+      sprache: "de" | "en",
+      breite: number,
+      pruefung: () => Promise<void>,
+    ): Promise<void> {
+      const seite = seiteRoh();
+      try {
+        await seite.setViewportSize({ width: breite, height: 740 });
+        const lage = await setzeSprache(stand, sprache, "/admin", ADMIN_ANKER);
+        expect(lage.lang, `die Sprache ${sprache} kam nicht an`).toBe(sprache);
+        await pruefung();
+      } finally {
+        const zurueck = await setzeSprache(stand, "de", "/admin", ADMIN_ANKER);
+        expect(zurueck.lang, "die Rückkehr nach Deutsch kam nicht an").toBe("de");
+      }
+    }
+
+    /** Die Vorschau über den echten Rasterknopf starten — in der eingestellten Sprache und Breite. */
+    async function starteVorschau(sprache: "de" | "en"): Promise<string> {
+      const rolle = i18n.t("role.name.viewer", { lng: sprache });
+      const reiter = i18n.t(ADMIN_SECTIONS[0].labelKey, { lng: sprache });
+      const r = await seiteRoh().evaluate<{ fehler: string | null }>(fn(VORSCHAU_STARTEN), [
+        reiter,
+        rolle,
+      ]);
+      expect(
+        r.fehler,
+        `Vorschau als „${rolle}" (${sprache}) liess sich nicht einschalten`,
+      ).toBeNull();
+      return rolle;
+    }
+
+    for (const sprache of ["de", "en"] as const) {
+      for (const breite of [320, 390] as const) {
+        it(`N1 · ${breite} px ${sprache}: Sperrkarte nennt Vorschau und Adminrolle, Rückweg sichtbar, Tab/Shift+Tab mit Fokusring, Enter kehrt zurück`, async () => {
+          await inSprache(sprache, breite, async () => {
+            const rolle = await starteVorschau(sprache);
+            const lage = await seiteRoh().evaluate<Lage>(fn(LAGE));
+            expect(lage.gateTitel).toBe(i18n.t("role.gate.title", { lng: sprache }));
+            expect(lage.hinweisText).toContain(
+              i18n.t("role.previewNote", { lng: sprache, role: rolle }),
+            );
+            expect(lage.knopfText).toBe(i18n.t("role.backToAdmin", { lng: sprache }));
+            expect(lage.echteKnoepfe, "der Rückweg ist kein echtes <button>").toBe(1);
+            expect(lage.rasterDa, "auf der Sperrkarte steht ein Rollenraster").toBe(false);
+
+            // Sichtbar heisst: ganz in der Fensterbreite, nichts läuft aus Hinweis oder Knopf.
+            const sicht = await seiteRoh().evaluate<Sicht>(fn(SICHT));
+            expect(sicht.viewport).toBe(breite);
+            expect(sicht.sprache).toBe(sprache);
+            expect(sicht.hinweis, "kein Vorschauhinweis auf der Fläche").not.toBeNull();
+            expect(sicht.knopf, "kein Rückweg-Knopf auf der Fläche").not.toBeNull();
+            const knopf = sicht.knopf as Kasten;
+            const hinweis = sicht.hinweis as Kasten;
+            expect(knopf.breite).toBeGreaterThan(0);
+            expect(knopf.x, "der Rückweg ragt links aus dem Fenster").toBeGreaterThanOrEqual(0);
+            expect(knopf.rechts, "der Rückweg ragt rechts aus dem Fenster").toBeLessThanOrEqual(
+              breite,
+            );
+            expect(hinweis.x).toBeGreaterThanOrEqual(0);
+            expect(hinweis.rechts).toBeLessThanOrEqual(breite);
+            expect(sicht.knopfScroll, "der Knopftext läuft aus dem Knopf").toBeLessThanOrEqual(
+              sicht.knopfClient,
+            );
+            expect(sicht.hinweisScroll, "der Hinweis läuft waagerecht über").toBeLessThanOrEqual(
+              sicht.hinweisClient,
+            );
+            expect(
+              sicht.dokumentScrollWidth,
+              `die Sperrseite läuft bei ${breite} px waagerecht über`,
+            ).toBeLessThanOrEqual(breite);
+
+            // Tab erreicht den Knopf mit sichtbarem Ring; er steht dann ganz im Fenster.
+            const ohneFokus = await seiteRoh().evaluate<string>(fn(RING_OHNE_FOKUS));
+            const { schritte, fokus } = await tabBisRueckweg();
+            expect(schritte, "Tab erreicht den Rückweg nicht").toBeGreaterThan(0);
+            expect(fokus?.text).toBe(i18n.t("role.backToAdmin", { lng: sprache }));
+            expect(schattenLagen(fokus?.boxShadow ?? "").length).toBeGreaterThan(
+              schattenLagen(ohneFokus).length,
+            );
+            const imFokus = await seiteRoh().evaluate<Sicht>(fn(SICHT));
+            const k = imFokus.knopf as Kasten;
+            expect(
+              k.y >= 0 && k.unten <= imFokus.viewportHoehe,
+              "der fokussierte Rückweg steht nicht im sichtbaren Fenster",
+            ).toBe(true);
+
+            // Shift+Tab verlässt den Knopf rückwärts, Tab bringt ihn wieder — die Reihenfolge trägt
+            // in beide Richtungen.
+            await seiteRoh().keyboard.press("Shift+Tab");
+            const rueckwaerts = await seiteRoh().evaluate<Fokus>(fn(FOKUS));
+            expect(rueckwaerts.imHinweis, "Shift+Tab blieb im Rückweg stehen").toBe(false);
+            await seiteRoh().keyboard.press("Tab");
+            const wieder = await seiteRoh().evaluate<Fokus>(fn(FOKUS));
+            expect(
+              wieder.imHinweis && wieder.tag === "button",
+              "Tab nach Shift+Tab fand den Rückweg nicht",
+            ).toBe(true);
+            expect(schattenLagen(wieder.boxShadow).length).toBeGreaterThan(
+              schattenLagen(ohneFokus).length,
+            );
+            // eslint-disable-next-line no-console -- der Beleg der Rückgabe
+            console.log(
+              `UX-12c · N1 ${breite}/${sprache}: „${lage.hinweisText}" · Knopf ${Math.round(knopf.x)}–${Math.round(knopf.rechts)} px · ${schritte} Tab · Shift+Tab auf <${rueckwaerts.tag}> „${rueckwaerts.text}"`,
+            );
+
+            await seiteRoh().keyboard.press("Enter");
+            await seiteRoh().waitForFunction(fn(WARTE_EINSTELLUNGEN), undefined, {
+              timeout: 10_000,
+            });
+            const danach = await seiteRoh().evaluate<Lage>(fn(LAGE));
+            expect(danach.einstellungenDa, "nach Enter kam die Adminansicht nicht zurück").toBe(
+              true,
+            );
+            expect(danach.hinweisText).toBeNull();
+          });
+        }, 180_000);
+      }
+
+      it(`N2 · 390 px ${sprache}: ein echter Reload beendet die Vorschau und behält die Sprache`, async () => {
+        await inSprache(sprache, 390, async () => {
+          await starteVorschau(sprache);
+          const seite = seiteRoh() as ReturnType<typeof seiteRoh> & {
+            reload(opts: { waitUntil: string; timeout: number }): Promise<unknown>;
+          };
+          await seite.evaluate(
+            fn('() => { document.documentElement.dataset.ux12cVorReload = "ja"; }'),
+          );
+          await seite.reload({ waitUntil: "load", timeout: 60_000 });
+          await seite.waitForFunction(fn(WARTE_EINSTELLUNGEN), undefined, { timeout: 30_000 });
+          expect(
+            await seite.evaluate(
+              fn("() => document.documentElement.dataset.ux12cVorReload ?? null"),
+            ),
+            "Reload hat das Dokument nicht ersetzt",
+          ).toBeNull();
+          expect(
+            await seite.evaluate(fn('() => performance.getEntriesByType("navigation")[0].type')),
+          ).toBe("reload");
+          const lage = await seite.evaluate<Lage>(fn(LAGE));
+          expect(lage.einstellungenDa, "nach dem Reload steht nicht die Adminansicht").toBe(true);
+          expect(lage.hinweisText, "nach dem Reload läuft die Vorschau noch").toBeNull();
+          const sicht = await seite.evaluate<Sicht>(fn(SICHT));
+          expect(sicht.sprache, "der Reload hat die Sprache verloren").toBe(sprache);
+        });
+      }, 180_000);
+    }
   });
 
   // JOB 3152: CSS/Layout kommt nach der Detailkarte an; dieselbe Messfunktion muss warten.
