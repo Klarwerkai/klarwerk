@@ -506,6 +506,14 @@ const REGISTER: Record<string, Eintrag> = {
     grund: "ask/gap-visibility redactGapForViewer (ask-routes.ts:258).",
   },
   "GET /api/gaps/summary": { urteil: "KEIN_KO_INHALT", grund: "Zähler, keine Fragetexte." },
+  // R-1663 / R-2178: gibt Titel der Objekte aus, auf denen die Spuren einer Person liegen — also
+  // KO-Inhalt. Die Grundmenge läuft durch `sichtbarkeitsfilterFuer` (und `dropConfidential`) im
+  // AskService, bevor gezählt wird; dazu Schalter `expertMatching` und `ko.assign`.
+  "GET /api/gaps/:id/ansprechpartner": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "R-2178 — sichtbarkeitsfilterFuer über der Objektgrundlage, Titel nur sichtbarer Objekte.",
+  },
   // --- Entwürfe: eigener Bestand, nach Eigentümer begrenzt -----------------------------------
   // Pool-Auftrag (R-2099): dazu kommen Entwürfe, die ihr Autor BEWUSST in den gemeinsamen Pool
   // gegeben hat — Entwürfe, keine Wissensobjekte; entschieden von derselben einen Regel
