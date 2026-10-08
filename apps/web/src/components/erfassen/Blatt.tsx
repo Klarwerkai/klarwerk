@@ -24,6 +24,13 @@ import {
 import { useToast } from "../../app/ToastContext";
 import { useLiveKnowledgeCheck } from "../../hooks/useLiveKnowledgeCheck";
 import {
+  type AuswahlModus,
+  type TextAuswahl,
+  auswahlImFeld,
+  auswahlNochGueltig,
+  auswahlUebernehmen,
+} from "../../lib/auswahlAssist";
+import {
   applyBodyAssist,
   applySpellingAssistPreservingHtml,
   applyStructureProposal,
@@ -554,9 +561,17 @@ export function Blatt({
   const [structureAccepted, setStructureAccepted] = useState(false);
   const [structureKeptRichBody, setStructureKeptRichBody] = useState(false);
   const [structureTitleAdopted, setStructureTitleAdopted] = useState(false);
+  // R-0300: `auswahl` ist die Markierung, auf die sich der Vorschlag bezieht — `null` heisst
+  // „ganzer Text" (der bisherige Weg, unverändert).
   const [assistProposal, setAssistProposal] = useState<
-    (AssistResult & { action: AssistRequest }) | null
+    (AssistResult & { action: AssistRequest; auswahl: TextAuswahl | null }) | null
   >(null);
+  // R-0300: die zuletzt im Schreibfeld markierte Stelle. Ein Ref, kein Zustand: sie wird bei jeder
+  // Auswahländerung gelesen und erst beim Auslösen einer KI-Aktion gebraucht — ein Rendern je
+  // Mausbewegung wäre reiner Aufwand.
+  const markierungRef = useRef<TextAuswahl | null>(null);
+  // Die Markierung DER laufenden Anfrage — gesetzt in `onMutate`, gelesen in `mutationFn`.
+  const anfrageAuswahlRef = useRef<TextAuswahl | null>(null);
   const [assistErr, setAssistErr] = useState<string | null>(null);
   const [assistAccepted, setAssistAccepted] = useState(false);
 
@@ -727,6 +742,28 @@ export function Blatt({
     });
     return () => beobachter.disconnect();
   }, [ansicht]);
+
+  // R-0300 — DIE MARKIERUNG IM SCHREIBFELD MERKEN, solange sie dort steht. Wandert die Auswahl
+  // AUS dem Feld (Klick in das KI-Menü), bleibt die gemerkte Stelle stehen: genau sie soll die
+  // Aktion bearbeiten. Wird IM Feld nur noch ein Cursor gesetzt, gilt wieder der ganze Text.
+  // Das Bildbeschreibungsformular hat ein eigenes Textfeld (`#caption-form-text`) — es zählt nicht.
+  useEffect(() => {
+    const lesen = (): void => {
+      const feld = editorHuelleRef.current?.querySelector<HTMLElement>(
+        '[role="textbox"]:not(#caption-form-text)',
+      );
+      const auswahl = document.getSelection();
+      if (!feld || !auswahl || auswahl.rangeCount === 0) {
+        return;
+      }
+      if (!feld.contains(auswahl.getRangeAt(0).startContainer)) {
+        return;
+      }
+      markierungRef.current = auswahlImFeld(feld, auswahl);
+    };
+    document.addEventListener("selectionchange", lesen);
+    return () => document.removeEventListener("selectionchange", lesen);
+  }, []);
 
   // Die stille Live-Reaktion (§5): sie hört auf den Klartext des Blattes, nicht auf ein zweites Feld.
   const liveText = useMemo(() => bodyTextForAssist(bodyHtml), [bodyHtml]);
@@ -1197,7 +1234,8 @@ export function Blatt({
   const assist = useMutation({
     mutationFn: (action: AssistRequest) =>
       endpoints.reasoner.assist(
-        assistInput,
+        // R-0300: die markierte Stelle, wenn es eine gibt — sonst wie bisher der ganze Text.
+        anfrageAuswahlRef.current?.text ?? assistInput,
         locale,
         typeof action === "string" ? t(assistActionInstructionKey(action)) : action.instruction,
         // JOB 3353 A: dieselbe fehlende Kennung wie bei `structure` eine Ebene höher — und dies
@@ -1215,9 +1253,16 @@ export function Blatt({
       setStructureProposal(null);
       setStructureErr(null);
       setStructureAccepted(false);
+      // Eine Markierung zählt nur, wenn der Rumpf sie noch trägt (Entwurfswechsel, Weiterschreiben
+      // ohne Cursor im Feld); sonst gilt der ganze Text.
+      const markierung = markierungRef.current;
+      const auswahl =
+        markierung !== null && auswahlNochGueltig(bodyHtml, markierung) ? markierung : null;
+      anfrageAuswahlRef.current = auswahl;
+      return { auswahl };
     },
-    onSuccess: (proposal, action) => {
-      setAssistProposal({ ...proposal, action });
+    onSuccess: (proposal, action, kontext) => {
+      setAssistProposal({ ...proposal, action, auswahl: kontext?.auswahl ?? null });
       setAssistErr(null);
     },
     onError: (e: unknown) => {
@@ -1618,11 +1663,32 @@ export function Blatt({
     setStructureAccepted(true);
   };
 
-  const acceptAssistProposal = (): void => {
+  const acceptAssistProposal = (modus: AuswahlModus = "ersetzen"): void => {
     if (!assistProposal) {
       return;
     }
-    if (assistProposal.action === "spelling") {
+    if (assistProposal.auswahl !== null) {
+      // R-0300: nur die markierte Stelle wird ersetzt bzw. hinter ihr eingefügt; alles andere —
+      // Text wie Formatierung — bleibt, wie es ist.
+      const rechtschreibung = assistProposal.action === "spelling";
+      const neu = auswahlUebernehmen(bodyHtml, assistProposal.auswahl, assistProposal.text, {
+        modus,
+        rechtschreibung,
+      });
+      if (neu === null) {
+        // Zwei Gründe, zwei Sätze: die Stelle hat sich geändert — oder (Rechtschreibung) die
+        // Wörter des Vorschlags lassen sich nicht sicher auf die Formatierung verteilen.
+        let grund = rechtschreibung ? "fd.errSpelling" : "fd.errAssist";
+        if (!auswahlNochGueltig(bodyHtml, assistProposal.auswahl)) {
+          grund = "schreibhilfe.auswahlVeraltet";
+        }
+        setAssistErr(t(grund));
+        setAssistAccepted(false);
+        return;
+      }
+      setBodyHtml(neu);
+      markierungRef.current = null;
+    } else if (assistProposal.action === "spelling") {
       const result = applySpellingAssistPreservingHtml(bodyHtml, assistProposal.text);
       if (!result.applied) {
         setAssistErr(t("fd.errSpelling"));
@@ -3462,6 +3528,16 @@ export function Blatt({
                       : assistProposal.action.instruction,
                 })}
               </p>
+              {/* R-0300: Bezieht sich der Vorschlag auf eine Markierung, steht sie hier — wer
+                  übernimmt, soll sehen, WELCHE Stelle ersetzt wird. */}
+              {assistProposal.auswahl !== null ? (
+                <p
+                  data-testid="blatt-ki-auswahl"
+                  className="mt-1.5 line-clamp-2 whitespace-pre-wrap text-[12px] leading-relaxed text-muted"
+                >
+                  {t("schreibhilfe.auswahlBezug", { text: assistProposal.auswahl.text })}
+                </p>
+              ) : null}
               <p className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[13px] leading-relaxed text-text">
                 {assistProposal.text}
               </p>
@@ -3470,11 +3546,21 @@ export function Blatt({
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
-                  onClick={acceptAssistProposal}
+                  onClick={() => acceptAssistProposal("ersetzen")}
                   className="rounded-[8px] border border-hairline bg-page px-2.5 py-1 text-[13px] font-semibold text-text"
                 >
                   {t("fd.accept")}
                 </button>
+                {assistProposal.auswahl !== null ? (
+                  <button
+                    type="button"
+                    data-testid="blatt-ki-einfuegen"
+                    onClick={() => acceptAssistProposal("einfuegen")}
+                    className="rounded-[8px] border border-hairline bg-page px-2.5 py-1 text-[13px] font-semibold text-text"
+                  >
+                    {t("schreibhilfe.einfuegen")}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={discardAssistProposal}
