@@ -58,6 +58,8 @@ wiederholt.
 | `ko.domain-changed` | `vorher`, `nachher` (Fachgebiet, ≤ 120 Zeichen) | M |
 | `ko.geltung-changed` | `vorher`, `nachher` (Geltung: Ebene, Werk, Schicht, Rolle — je ≤ 80 Zeichen; nachgetragen mit `gesamt-standortwissen`) | M |
 | `ko.freshness-confirmed` | `version`, `verantwortlich` (ob der Verantwortliche bestätigt hat; nachgetragen mit `gesamt-wissen-frische`) | Z |
+| `ko.oeffentlich-changed` | `vorher`, `nachher` (Schutzbedarf „öffentlich"; `gesamt-wissen-frische`) | Z |
+| `lifecycle.revalidation-requested` | `grund` (anlage/nachbar/bibliothek), ggf. `assetRef` (Anlagenkennung) und `ausgeloestVon` (auslösendes Objekt); Ziel ist das markierte Objekt (`gesamt-wissen-frische`, R-1635) | Z, M |
 | `ko.conflict-review` | `previousStatus`, `previousTrust`, `trust`, `reason` | Z |
 | `ko.author-transferred` | `author` | K |
 | `ko.source-removed-in-origin`, `ko.source-restored-in-origin` | `provider`, `externalId`, `at`/`removedAt` | M, K |

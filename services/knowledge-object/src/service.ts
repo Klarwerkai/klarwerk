@@ -47,6 +47,7 @@ import {
   composeEffectiveSearchDocument,
 } from "./effective-search-document";
 // R-1632 / R-1633: die Geltungsregel (Konzern/Werk/Schicht) — eine Fassung, Begründung dort.
+import { type GelernteHalbwertszeiten, lerneHalbwertszeiten } from "./frische";
 import { normalizeGeltung } from "./geltung";
 import {
   type KoMetadataProjection,
@@ -752,7 +753,12 @@ function belegSchluessel(record: Omit<EvidenceRecord, "id">): string {
  */
 const HASH_PRUEFBLOCK = 100;
 
+/** R-1636: so lange gilt eine gelernte Halbwertszeitentabelle, bevor sie neu gerechnet wird. */
+const HALBWERTSZEIT_LERNEN_TTL_MS = 10 * 60 * 1000;
+
 export class KoService {
+  // R-1636: zuletzt gelernte Halbwertszeiten samt Ablauf (s. `gelernteHalbwertszeiten`).
+  private halbwertszeitSpeicher: { bis: number; tabelle: GelernteHalbwertszeiten } | undefined;
   private readonly repo: KoRepo;
   private readonly audit: AuditService | undefined;
   private readonly versions: KoVersionRepo | undefined;
@@ -3276,7 +3282,14 @@ export class KoService {
           "Das Herabstufen der Vertraulichkeit erfordert eine Prüfer-/Admin-Rolle.",
         );
       }
-      const updated: KnowledgeObject = { ...ko, confidentiality: level };
+      // aufnahme:20260922:gesamt-wissen-frische (R-0652): „öffentlich" verfeinert nur „intern" —
+      // eine Höherstufung nimmt die Marke mit weg, damit sie bei einer späteren Rückstufung nicht
+      // ungeprüft wiederauflebt.
+      const { oeffentlich: _marke, ...ohneMarke } = ko;
+      const updated: KnowledgeObject =
+        level === "intern"
+          ? { ...ko, confidentiality: level }
+          : { ...ohneMarke, confidentiality: level };
       return {
         updated,
         value: updated,
@@ -6133,6 +6146,56 @@ export class KoService {
         },
       };
     });
+  }
+
+  // aufnahme:20260922:gesamt-wissen-frische (R-0652 / FR-EXT-06): den Schutzbedarf „öffentlich"
+  // setzen oder zurücknehmen. Nur an internen Objekten — an einem vertraulichen wäre die Marke ein
+  // Widerspruch (400 `INVALID`). Keine neue Fassung, kein Statuswechsel; das Recht prüft die Route
+  // (`ko.validate`, dieselbe Schwelle wie eine Herabstufung der Vertraulichkeit).
+  async setOeffentlich(id: string, oeffentlich: boolean, actor: string): Promise<KnowledgeObject> {
+    return this.mutateKo(id, (ko) => {
+      if (oeffentlich && normalizeConfidentiality(ko.confidentiality) !== "intern") {
+        throw new KoError(
+          "INVALID",
+          "Nur ein internes Wissensobjekt kann als öffentlich eingestuft werden.",
+        );
+      }
+      const vorher = ko.oeffentlich === true;
+      if (vorher === oeffentlich) {
+        return { updated: ko, value: ko };
+      }
+      const { oeffentlich: _alt, ...ohne } = ko;
+      const updated: KnowledgeObject = oeffentlich ? { ...ohne, oeffentlich: true } : ohne;
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.oeffentlich-changed",
+              target: id,
+              payload: { vorher, nachher: oeffentlich },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
+  // R-1636: die aus der Bewährungs-Historie gelernten Halbwertszeiten je Kategorie. Über den GANZEN
+  // Bestand gerechnet (nicht über die Sicht eines Lesers — sonst hinge die Frist eines Objekts an
+  // der Rolle des Betrachters) und für `HALBWERTSZEIT_LERNEN_TTL_MS` zwischengespeichert: der
+  // Bestand ändert seine Fassungsfolge nicht im Sekundentakt, und die Leserouten fragen oft.
+  async gelernteHalbwertszeiten(): Promise<GelernteHalbwertszeiten> {
+    const jetzt = this.now();
+    if (this.halbwertszeitSpeicher && this.halbwertszeitSpeicher.bis > jetzt) {
+      return this.halbwertszeitSpeicher.tabelle;
+    }
+    const tabelle = lerneHalbwertszeiten(await this.repo.list({}));
+    this.halbwertszeitSpeicher = { bis: jetzt + HALBWERTSZEIT_LERNEN_TTL_MS, tabelle };
+    return tabelle;
   }
 
   // R-1632 / R-1633: die Geltung (Konzern/Werk/Schicht, optional Rolle) setzen, ändern oder mit

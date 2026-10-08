@@ -461,6 +461,8 @@ type KoAktion =
   | "request-revalidation"
   | "neighbors-changed"
   | "confirm-fresh"
+  // R-0652 / FR-EXT-06: Schutzbedarf „öffentlich" setzen oder zurücknehmen (am Objekt).
+  | "schutz-oeffentlich"
   // R-0235 / R-0749: „Hat geholfen" am angewendeten Objekt — Bewährung, ausdrücklich keine
   // Prüfstimme. Arbeitet AM Objekt unter `:id` und passiert deshalb das Tor.
   | "helpful";
@@ -529,6 +531,7 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   "request-revalidation": "tor",
   "neighbors-changed": "tor",
   "confirm-fresh": "tor",
+  "schutz-oeffentlich": "tor",
   // R-0235 / R-0749: nur wer das Objekt sehen darf, kann melden, dass es geholfen hat.
   helpful: "tor",
 };
@@ -1333,13 +1336,15 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       // ueber den Umweg der Kosten (gepinnt in L6).
       const eingaengeFuer = await anzeigestatusEingaengeJeEintrag(user, sichtbare);
       const jetzt = Date.now();
+      // R-1636: die aus der Bewährungs-Historie gelernten Halbwertszeiten — über den Bestand.
+      const gelernt = await ko.gelernteHalbwertszeiten();
       reply.code(200).send(
         sichtbare.map((item) => {
           const eingaenge = eingaengeFuer(item);
           return {
             ...item,
             ...discloseDisplayStatus(item, eingaenge),
-            ...discloseFrische(item, jetzt, eingaenge),
+            ...discloseFrische(item, jetzt, eingaenge, gelernt),
           };
         }),
       );
@@ -1427,7 +1432,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         ...item,
         ...discloseConfidentiality(item.confidentiality),
         ...discloseDisplayStatus(item, eingaenge),
-        ...discloseFrische(item, Date.now(), eingaenge),
+        ...discloseFrische(item, Date.now(), eingaenge, await ko.gelernteHalbwertszeiten()),
         ...(einordnung
           ? {
               category: einordnung.category,
@@ -3673,7 +3678,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!user) {
               return;
             }
-            await lifecycle.requestRevalidation(id);
+            await lifecycle.requestRevalidation(id, user.id);
             reply.code(204).send();
             return;
           }
@@ -3685,7 +3690,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!user) {
               return;
             }
-            const markiert = await lifecycle.neighborsChanged(id);
+            const markiert = await lifecycle.neighborsChanged(id, user.id);
             reply.code(200).send({ markiert: markiert.length });
             return;
           }
@@ -3697,6 +3702,21 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return;
             }
             reply.code(200).send(await ko.bestaetigeFrische(id, user.id));
+            return;
+          }
+          // R-0652 / FR-EXT-06: Schutzbedarf „öffentlich" — die Verfeinerung von „intern". Dieselbe
+          // Schwelle wie eine Herabstufung der Vertraulichkeit (`ko.validate`): wer etwas als frei
+          // verwendbar einstuft, senkt den Schutz.
+          case "schutz-oeffentlich": {
+            const user = await guards.requirePermission("ko.validate", request, reply);
+            if (!user) {
+              return;
+            }
+            const wert = (body as unknown as { oeffentlich?: unknown }).oeffentlich;
+            if (typeof wert !== "boolean") {
+              return badRequest("oeffentlich muss true oder false sein.");
+            }
+            reply.code(200).send(await ko.setOeffentlich(id, wert, user.id));
             return;
           }
           // R-0235 / R-0749: „Hat geholfen" am Objekt selbst. Recht wie beim Antwortfeedback

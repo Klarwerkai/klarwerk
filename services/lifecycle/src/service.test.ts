@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryKoRepo, KoService } from "../../knowledge-object";
 import { InMemoryLifecycleRepo } from "./repo";
-import { LifecycleService } from "./service";
+import { LifecycleService, REVALIDIERUNG_ANGEFORDERT } from "./service";
 
 async function setup() {
   const koService = new KoService({ repo: new InMemoryKoRepo() });
@@ -70,6 +70,56 @@ describe("LifecycleService", () => {
     expect(await ctx.lifecycle.pendingRevalidation()).toEqual([ctx.ko.id]);
     await ctx.lifecycle.confirmStillValid(ctx.ko.id, "controller");
     expect(await ctx.lifecycle.pendingRevalidation()).toEqual([]);
+  });
+
+  it("R-1635: jede Markierung hinterlässt je Objekt einen Beleg mit Grund und Auslöser", async () => {
+    const belege: { actor: string; action: string; target: string; payload: unknown }[] = [];
+    const lifecycle = new LifecycleService({
+      koService: ctx.koService,
+      repo: new InMemoryLifecycleRepo(),
+      audit: {
+        record: async (eintrag) => {
+          belege.push(eintrag);
+          return eintrag;
+        },
+      },
+    });
+    const nachbar = await ctx.koService.create({
+      title: "Druck prüfen",
+      statement: "Vor dem Anfahren den Druck prüfen.",
+      type: "technik",
+      category: "Anlage 1",
+      author: "bert",
+    });
+    await lifecycle.couple("anlage-1", ctx.ko.id);
+    await lifecycle.couple("anlage-1", nachbar.id);
+
+    await lifecycle.assetChanged("anlage-1", "carla");
+    expect(belege.map((b) => [b.action, b.target, b.actor])).toEqual([
+      [REVALIDIERUNG_ANGEFORDERT, ctx.ko.id, "carla"],
+      [REVALIDIERUNG_ANGEFORDERT, nachbar.id, "carla"],
+    ]);
+    expect(belege[0]?.payload).toEqual({ grund: "anlage", assetRef: "anlage-1" });
+
+    belege.length = 0;
+    await lifecycle.neighborsChanged(ctx.ko.id, "dora");
+    expect(belege.map((b) => b.target).sort()).toEqual([ctx.ko.id, nachbar.id].sort());
+    expect(belege[0]?.payload).toEqual({
+      grund: "nachbar",
+      ausgeloestVon: ctx.ko.id,
+      assetRef: "anlage-1",
+    });
+
+    belege.length = 0;
+    await lifecycle.requestRevalidation(nachbar.id, "emil");
+    expect(belege).toEqual([
+      {
+        actor: "emil",
+        action: REVALIDIERUNG_ANGEFORDERT,
+        target: nachbar.id,
+        payload: { grund: "bibliothek" },
+      },
+    ]);
   });
 
   it("Audit B1: couplingsForKo liefert die gekoppelten Anlagen eines KOs (Rück-Richtung)", async () => {

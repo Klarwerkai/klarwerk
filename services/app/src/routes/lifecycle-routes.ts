@@ -68,7 +68,7 @@ export function lifecycleRoutes(
         if (!user) {
           return;
         }
-        reply.code(200).send(await lifecycle.assetChanged(request.body.assetRef));
+        reply.code(200).send(await lifecycle.assetChanged(request.body.assetRef, user.id));
       },
     );
 

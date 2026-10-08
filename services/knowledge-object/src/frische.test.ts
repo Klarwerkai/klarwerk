@@ -3,7 +3,16 @@
 // einer Funktion grün, die immer „frisch" sagt.
 import { describe, expect, it } from "vitest";
 import type { Erhoben } from "./display-status";
-import { HALBWERTSZEIT_TAGE, discloseFrische, frischeVon, haltbarkeitAbgelaufen } from "./frische";
+import {
+  HALBWERTSZEIT_GRENZEN_TAGE,
+  HALBWERTSZEIT_TAGE,
+  aeltesteVorlageFuer,
+  discloseFrische,
+  frischeVon,
+  fristHinweiseFuer,
+  haltbarkeitAbgelaufen,
+  lerneHalbwertszeiten,
+} from "./frische";
 import type { KnowledgeObject } from "./types";
 
 const TAG = 24 * 60 * 60 * 1000;
@@ -182,5 +191,122 @@ describe("Schutzbedarf, Betriebsmodell, Dokumente, aktueller Stand (R-0207 / R-0
 
   it("discloseFrische liefert genau ein Feld `frische`", () => {
     expect(Object.keys(discloseFrische(ko(), START, erhoben))).toEqual(["frische"]);
+  });
+});
+
+// ================================================================================================
+// Nacharbeit 2 (Bens Befunde zu R-0652, R-1636, R-0248, R-0266).
+// ================================================================================================
+
+/** Ein Objekt mit Fassungen im Abstand von `abstand` Tagen (erste Fassung bei START). */
+function mitFassungen(id: string, kategorie: string, abstaende: number[]): KnowledgeObject {
+  let t = START;
+  const history = [{ version: 1, at: new Date(t).toISOString(), author: "anna", note: "erstellt" }];
+  abstaende.forEach((tage, i) => {
+    t += tage * TAG;
+    history.push({
+      version: i + 2,
+      at: new Date(t).toISOString(),
+      author: "anna",
+      note: "überarbeitet",
+    });
+  });
+  return ko({ id, category: kategorie, history, version: history.length });
+}
+
+describe("R-0652 · Schutzbedarf „öffentlich“", () => {
+  it("öffentlich ist eine eigene Stufe der Schutzsicht mit eigener Empfehlung", () => {
+    const offen = frischeVon(ko({ oeffentlich: true }), START, erhoben);
+    expect(offen.schutz).toBe("oeffentlich");
+    expect(offen.betriebsmodell).toBe("oeffentliche_ki");
+    expect(offen.inDokumente).toBe(true);
+    // Die vier Stufen der Quelle sind alle darstellbar und unterscheidbar.
+    const stufen = [
+      frischeVon(ko({ oeffentlich: true }), START, erhoben).schutz,
+      frischeVon(ko(), START, erhoben).schutz,
+      frischeVon(ko({ confidentiality: "vertraulich" }), START, erhoben).schutz,
+      frischeVon(ko({ confidentiality: "streng_vertraulich" }), START, erhoben).schutz,
+    ];
+    expect(stufen).toEqual(["oeffentlich", "intern", "vertraulich", "streng_vertraulich"]);
+  });
+
+  it("GEGENPROBE: an einem vertraulichen Objekt gewinnt die strengere Stufe", () => {
+    const widerspruch = frischeVon(
+      ko({ oeffentlich: true, confidentiality: "vertraulich" }),
+      START,
+      erhoben,
+    );
+    expect(widerspruch.schutz).toBe("vertraulich");
+    expect(widerspruch.betriebsmodell).toBe("lokales_modell");
+  });
+});
+
+describe("R-1636 · aus der Bewährungs-Historie gelernte Halbwertszeit je Kategorie", () => {
+  it("der Median der Fassungsabstände einer Kategorie wird ihre Halbwertszeit", () => {
+    const tabelle = lerneHalbwertszeiten([
+      mitFassungen("a", "Hydraulik", [40, 60]),
+      mitFassungen("b", " hydraulik ", [50]),
+      mitFassungen("c", "Elektrik", [300]),
+    ]);
+    // Hydraulik: Abstände 40, 60, 50 → Median 50, drei Beobachtungen (Schreibweise egal).
+    expect(tabelle.get("hydraulik")).toEqual({ tage: 50, beobachtungen: 3 });
+    // Elektrik: nur eine Beobachtung — zu wenig, keine gelernte Zeit.
+    expect(tabelle.has("elektrik")).toBe(false);
+  });
+
+  it("die gelernte Zeit steuert Stufe und Frist; ohne Lernstand gilt ausgewiesen die Vorgabe", () => {
+    const gelernt = lerneHalbwertszeiten([mitFassungen("a", "Anlage 1", [40, 40, 40])]);
+    const jetzt = START + 60 * TAG;
+    const mit = frischeVon(ko(), jetzt, erhoben, gelernt);
+    expect(mit.halbwertszeitHerkunft).toBe("gelernt");
+    expect(mit.halbwertszeitTage).toBe(40);
+    expect(mit.halbwertszeitBeobachtungen).toBe(3);
+    expect(mit.stufe).toBe("faellig");
+    expect(mit.gesichert).toBe(false);
+    expect(haltbarkeitAbgelaufen(ko(), jetzt, gelernt)).toBe(true);
+    // GEGENPROBE: dasselbe Objekt ohne Lernstand — Vorgabe der Wissensart (365 Tage), noch frisch.
+    const ohne = frischeVon(ko(), jetzt, erhoben);
+    expect(ohne.halbwertszeitHerkunft).toBe("vorgabe");
+    expect(ohne.halbwertszeitTage).toBe(H);
+    expect(ohne.halbwertszeitBeobachtungen).toBe(0);
+    expect(ohne.stufe).toBe("frisch");
+    expect(haltbarkeitAbgelaufen(ko(), jetzt)).toBe(false);
+  });
+
+  it("eine gelernte Zeit bleibt in ihren Grenzen", () => {
+    const kurz = lerneHalbwertszeiten([mitFassungen("a", "Takt", [1, 2, 3])]);
+    expect(kurz.get("takt")?.tage).toBe(HALBWERTSZEIT_GRENZEN_TAGE.min);
+  });
+});
+
+describe("R-0248 / R-0266 · was der verantwortlichen Person vorgelegt wird", () => {
+  it("Fristhinweis im Erinnerungsfenster und nach Ablauf — vorher und für Fremde nicht", () => {
+    const eigen = ko({ id: "eigen", title: "Eigenes" });
+    const fremd = ko({ id: "fremd", title: "Fremdes", author: "bert", originalAuthor: "bert" });
+    expect(fristHinweiseFuer([eigen, fremd], "anna", START + (H - 30) * TAG)).toEqual([]);
+    const knapp = fristHinweiseFuer([eigen, fremd], "anna", START + (H - 5) * TAG);
+    expect(knapp.map((h) => [h.koId, h.abgelaufen])).toEqual([["eigen", false]]);
+    const danach = fristHinweiseFuer([eigen, fremd], "anna", START + (H + 5) * TAG);
+    expect(danach.map((h) => [h.koId, h.abgelaufen])).toEqual([["eigen", true]]);
+    // Ungeprüftes Wissen hat keine Frist, an die erinnert würde.
+    expect(fristHinweiseFuer([ko({ status: "offen" })], "anna", START + (H - 5) * TAG)).toEqual([]);
+  });
+
+  it("Vorlage: die ältesten geprüften Beiträge der Person, ältester zuerst, gedeckelt", () => {
+    const kos = [
+      mitFassungen("neu", "A", [100]),
+      mitFassungen("alt", "A", []),
+      ko({ id: "fremd", author: "bert", originalAuthor: "bert" }),
+      ko({ id: "offen", status: "offen" }),
+      mitFassungen("mitte", "A", [50]),
+    ];
+    const jetzt = START + 120 * TAG;
+    expect(aeltesteVorlageFuer(kos, "anna", jetzt, 5).map((v) => v.koId)).toEqual([
+      "alt",
+      "mitte",
+      "neu",
+    ]);
+    expect(aeltesteVorlageFuer(kos, "anna", jetzt, 1).map((v) => v.koId)).toEqual(["alt"]);
+    expect(aeltesteVorlageFuer(kos, "carla", jetzt, 5)).toEqual([]);
   });
 });

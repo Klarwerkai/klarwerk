@@ -448,7 +448,9 @@ export type KoAction =
     }
   | { action: "revalidate" }
   // aufnahme:20260922:gesamt-wissen-frische (R-0206): „Stimmt weiterhin" — Frische-Signal, keine Prüfung.
-  | { action: "confirm-fresh" };
+  | { action: "confirm-fresh" }
+  // R-0652 / FR-EXT-06: Schutzbedarf „öffentlich" setzen oder zurücknehmen (nur an internen Objekten).
+  | { action: "schutz-oeffentlich"; oeffentlich: boolean };
 
 /**
  * AUFTRAG-mega18 Block A-1 — Nutzlast der Verbund-Operation.

@@ -3,11 +3,12 @@
 // ================================================================================================
 //
 // Eine reine Ableitung, kein Zustand und kein Schreibweg. Sie beantwortet an EINER Stelle die
-// Fragen der Originalpunkte R-0207, R-0236, R-0248, R-0652, R-1636 und FR-EXT-06:
+// Fragen der Originalpunkte R-0207, R-0236, R-0248, R-0266, R-0652, R-1636 und FR-EXT-06:
 //   · wie frisch ist es (frisch, altert, fällig, veraltet),
 //   · bis wann gilt es als gesichert (Haltbarkeit) und wer muss es bestätigen (Verantwortlicher),
 //   · ist es der aktuelle Stand, darf es in erzeugte Dokumente, was wäre der nächste Schritt,
-//   · wie schutzbedürftig ist es und in welchem Betriebsmodell darf es verarbeitet werden.
+//   · wie schutzbedürftig ist es und in welchem Betriebsmodell darf es verarbeitet werden,
+//   · welche geprüften Beiträge einer Person am längsten nicht bestätigt wurden (Vorlage).
 //
 // WORAUS GERECHNET WIRD — nur aus Feldern, die das Objekt ohnehin trägt:
 //   · die letzte Fassung (`history[].at`, sonst `createdAt`) — jede Bestätigung „Noch gültig"
@@ -18,10 +19,18 @@
 //     Nur sie (oder eine neue Fassung) verlängert die Haltbarkeit — R-0248: „bis der
 //     Verantwortliche es bestätigt".
 //
-// HALBWERTSZEIT JE WISSENSART (R-1636). Die Originalquelle begründet sie mit „Vorschriften ändern
-// sich, Bauchgefühl ändert sich kaum" — das sind die fünf Wissensarten des Pflichtenhefts (§3.5),
-// nicht das frei benannte Feld `category`. Die Werte sind feste Vorgaben; das LERNEN aus der
-// Bewährungs-Historie, das die Quelle als Ausbau nennt, ist hier ausdrücklich nicht gebaut.
+// HALBWERTSZEIT (R-1636, Roadmap 4.2): „KLARWERK lernt aus der Bewährungs-Historie typische
+// Halbwertszeiten pro Kategorie". Die Bewährungs-Historie ist die Fassungsfolge der Objekte: jede
+// Überarbeitung und jede Bestätigung „Noch gültig" erzeugt eine Fassung. Der Abstand zweier
+// aufeinanderfolgender Fassungen ist eine Beobachtung, wie lange ein Stand in dieser Kategorie
+// trug. `lerneHalbwertszeiten` nimmt je Kategorie den Median dieser Abstände, sobald genug
+// Beobachtungen vorliegen. Bis dahin gilt die AUSGANGSVORGABE je Wissensart
+// (`HALBWERTSZEIT_TAGE`) — ausgewiesen als `halbwertszeitHerkunft: "vorgabe"`.
+//
+// SCHUTZBEDARF (R-0652 / FR-EXT-06): „öffentlich … streng vertraulich". Die Zugriffs- und
+// Egress-Stufe `confidentiality` bleibt unverändert dreistufig; „öffentlich" ist eine VERFEINERUNG
+// von „intern" (`oeffentlich: true`, nur an internen Objekten wirksam). Damit ändert sich keine
+// Sichtbarkeits- oder Egressregel, und die Schutzsicht kann alle vier Stufen zeigen.
 //
 // FEHLT EINE GRUNDLAGE, WIRD NICHTS GERATEN: ohne lesbares Datum gilt das Objekt als fällig und
 // nicht gesichert; ein nicht erhobener Merker oder Konfliktstand steht als Grund in `ungeprueft`
@@ -34,15 +43,19 @@ export type FrischeStufe = "frisch" | "altert" | "faellig" | "veraltet";
 
 const STUFEN_RANG: readonly FrischeStufe[] = ["frisch", "altert", "faellig", "veraltet"];
 
+/** R-0652: die Schutzsicht — „öffentlich" ist die Verfeinerung von „intern" (s. Kopf). */
+export type Schutzstufe = "oeffentlich" | Confidentiality;
+
 /**
  * R-0652 / FR-EXT-06: die Empfehlung, in welchem Betriebsmodell das Objekt verarbeitet werden darf.
- *   · `freigegebene_ki` — intern: auch ein öffentlicher KI-Anbieter, sofern der Admin ihn freigegeben hat;
- *   · `lokales_modell`  — vertraulich: nur ein im Haus betriebenes Modell;
- *   · `ohne_ki`         — streng vertraulich oder Stufe unbekannt: keine Modellverarbeitung.
+ *   · `oeffentliche_ki`  — öffentlich: jede vom Admin freigegebene KI, ohne Vertraulichkeitsvorbehalt;
+ *   · `freigegebene_ki`  — intern: ein freigegebener KI-Anbieter, Inhalte bleiben intern;
+ *   · `lokales_modell`   — vertraulich: nur ein im Haus betriebenes Modell;
+ *   · `ohne_ki`          — streng vertraulich oder Stufe unbekannt: keine Modellverarbeitung.
  * Eine EMPFEHLUNG, kein Tor — die harten Egress-Grenzen bleiben `dropConfidential` und die
  * Cloud-Sperre der Klara-Wege.
  */
-export type Betriebsmodell = "freigegebene_ki" | "lokales_modell" | "ohne_ki";
+export type Betriebsmodell = "oeffentliche_ki" | "freigegebene_ki" | "lokales_modell" | "ohne_ki";
 
 export type FrischeSchritt =
   | "konflikt_klaeren"
@@ -51,7 +64,10 @@ export type FrischeSchritt =
   | "bald_bestaetigen"
   | "keiner";
 
-/** R-1636: Halbwertszeit in Tagen je Wissensart — die Haltbarkeit eines bestätigten Stands. */
+/**
+ * R-1636: die AUSGANGSVORGABE der Halbwertszeit in Tagen je Wissensart. Sie gilt, solange für die
+ * Kategorie eines Objekts noch keine Halbwertszeit aus der Bewährungs-Historie gelernt ist.
+ */
 export const HALBWERTSZEIT_TAGE: Readonly<Record<KnowledgeType, number>> = {
   technik: 180,
   best_practice: 365,
@@ -60,14 +76,34 @@ export const HALBWERTSZEIT_TAGE: Readonly<Record<KnowledgeType, number>> = {
   bauchgefuehl: 1095,
 };
 
+/** R-1636: so viele Fassungsabstände braucht eine Kategorie, bevor ihre Halbwertszeit gilt. */
+export const HALBWERTSZEIT_MINDESTBEOBACHTUNGEN = 3;
+/** R-1636: kürzere Fassungsabstände (in Tagen) zählen nicht als Beobachtung. */
+export const HALBWERTSZEIT_MINDESTABSTAND_TAGE = 1;
+/** R-1636: Grenzen einer gelernten Halbwertszeit in Tagen (ein Ausreisser kippt sie nicht ins Absurde). */
+export const HALBWERTSZEIT_GRENZEN_TAGE = { min: 30, max: 1825 } as const;
+
 /** R-0248: so viele Tage vor Fristende wird der Verantwortliche erinnert (höchstens die halbe Frist). */
 export const ERINNERUNG_VORLAUF_TAGE = 14;
 
 const TAG_MS = 24 * 60 * 60 * 1000;
 
+/** R-1636: eine gelernte Halbwertszeit samt der Zahl, aus der sie stammt. */
+export interface GelernteHalbwertszeit {
+  tage: number;
+  beobachtungen: number;
+}
+
+/** Schlüssel: die normalisierte Kategorie (`kategorieSchluessel`). */
+export type GelernteHalbwertszeiten = ReadonlyMap<string, GelernteHalbwertszeit>;
+
 export interface FrischeAuskunft {
   stufe: FrischeStufe;
   halbwertszeitTage: number;
+  /** R-1636: aus der Bewährungs-Historie der Kategorie gelernt — oder die Vorgabe der Wissensart. */
+  halbwertszeitHerkunft: "gelernt" | "vorgabe";
+  /** Zahl der Fassungsabstände, aus denen gelernt wurde (0 bei der Vorgabe). */
+  halbwertszeitBeobachtungen: number;
   /** Bezug der Frische: letzte Fassung oder jüngeres Frische-Signal (ISO), `null` ohne lesbares Datum. */
   bezugAm: string | null;
   letztesSignal: KoFrischeSignal | null;
@@ -83,7 +119,7 @@ export interface FrischeAuskunft {
   /** R-0236: validiert, frisch oder alternd, keine erneute Prüfung angefordert. */
   aktuellerStand: boolean;
   /** R-0652: die gültige Schutzstufe — `null`, wenn der Bestand keine gültige trägt. */
-  schutz: Confidentiality | null;
+  schutz: Schutzstufe | null;
   betriebsmodell: Betriebsmodell;
   /** R-0207: darf in erzeugte Dokumente (validiert, aktuell, ohne Konflikt, nicht vertraulich). */
   inDokumente: boolean;
@@ -100,12 +136,14 @@ export interface FrischeEingaenge {
 type FrischeKo = Pick<
   KnowledgeObject,
   | "type"
+  | "category"
   | "status"
   | "createdAt"
   | "history"
   | "author"
   | "ownership"
   | "confidentiality"
+  | "oeffentlich"
   | "frischeSignal"
   | "fristBestaetigung"
 >;
@@ -124,19 +162,89 @@ function iso(ms: number): string | null {
   return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 
-function letzteFassungMs(ko: FrischeKo): number {
+function letzteFassungMs(ko: Pick<KnowledgeObject, "createdAt" | "history">): number {
   return spaetester(zeit(ko.createdAt), ...(ko.history ?? []).map((h) => zeit(h.at)));
 }
 
-/** R-1636: die Halbwertszeit des Objekts — unbekannte Art fällt auf ein Jahr. */
-export function halbwertszeitTage(ko: Pick<KnowledgeObject, "type">): number {
-  return HALBWERTSZEIT_TAGE[ko.type] ?? 365;
+/** R-1636: Kategorien werden ohne Rand und ohne Gross-/Kleinschreibung zusammengefasst. */
+export function kategorieSchluessel(kategorie: string | undefined): string {
+  return (kategorie ?? "").trim().toLocaleLowerCase("de");
+}
+
+/**
+ * R-1636: lernt je Kategorie die typische Halbwertszeit aus der Bewährungs-Historie.
+ *
+ * Beobachtung = Abstand zweier aufeinanderfolgender Fassungen desselben Objekts (in Tagen, > 0).
+ * Ergebnis je Kategorie = Median der Beobachtungen, begrenzt auf `HALBWERTSZEIT_GRENZEN_TAGE` —
+ * aber NUR, wenn mindestens `HALBWERTSZEIT_MINDESTBEOBACHTUNGEN` vorliegen. Eine Kategorie ohne
+ * genug Beobachtungen fehlt in der Tabelle; für sie gilt die Vorgabe der Wissensart.
+ * Gelöschte Objekte zählen nicht; Objekte ohne Kategorie auch nicht.
+ */
+export function lerneHalbwertszeiten(
+  kos: readonly Pick<KnowledgeObject, "category" | "history" | "deletedAt">[],
+): GelernteHalbwertszeiten {
+  const abstaende = new Map<string, number[]>();
+  for (const ko of kos) {
+    const schluessel = kategorieSchluessel(ko.category);
+    if (ko.deletedAt || schluessel === "") {
+      continue;
+    }
+    const zeiten = (ko.history ?? [])
+      .map((h) => zeit(h.at))
+      .filter((ms) => Number.isFinite(ms))
+      .sort((a, b) => a - b);
+    for (let i = 1; i < zeiten.length; i++) {
+      const tage = ((zeiten[i] ?? 0) - (zeiten[i - 1] ?? 0)) / TAG_MS;
+      // Fassungen am selben Tag (Tippfehler, Freigabe direkt nach Anlage) sagen nichts darüber,
+      // wie lange ein Stand trägt — erst ein Abstand ab einem Tag ist eine Beobachtung.
+      if (tage >= HALBWERTSZEIT_MINDESTABSTAND_TAGE) {
+        const liste = abstaende.get(schluessel) ?? [];
+        liste.push(tage);
+        abstaende.set(schluessel, liste);
+      }
+    }
+  }
+  const tabelle = new Map<string, GelernteHalbwertszeit>();
+  for (const [schluessel, liste] of abstaende) {
+    if (liste.length < HALBWERTSZEIT_MINDESTBEOBACHTUNGEN) {
+      continue;
+    }
+    const sortiert = [...liste].sort((a, b) => a - b);
+    const mitte = Math.floor(sortiert.length / 2);
+    const median =
+      sortiert.length % 2 === 1
+        ? (sortiert[mitte] ?? 0)
+        : ((sortiert[mitte - 1] ?? 0) + (sortiert[mitte] ?? 0)) / 2;
+    const tage = Math.round(
+      Math.min(HALBWERTSZEIT_GRENZEN_TAGE.max, Math.max(HALBWERTSZEIT_GRENZEN_TAGE.min, median)),
+    );
+    tabelle.set(schluessel, { tage, beobachtungen: liste.length });
+  }
+  return tabelle;
+}
+
+interface Halbwertszeit {
+  tage: number;
+  herkunft: "gelernt" | "vorgabe";
+  beobachtungen: number;
+}
+
+/** R-1636: die Halbwertszeit des Objekts — gelernt für seine Kategorie, sonst die Vorgabe. */
+function halbwertszeitVon(
+  ko: Pick<KnowledgeObject, "type" | "category">,
+  gelernt: GelernteHalbwertszeiten | undefined,
+): Halbwertszeit {
+  const aus = gelernt?.get(kategorieSchluessel(ko.category));
+  if (aus) {
+    return { tage: aus.tage, herkunft: "gelernt", beobachtungen: aus.beobachtungen };
+  }
+  return { tage: HALBWERTSZEIT_TAGE[ko.type] ?? 365, herkunft: "vorgabe", beobachtungen: 0 };
 }
 
 /** Ende der Haltbarkeit in ms — `NaN` ohne lesbares Datum. */
-function haltbarBisMs(ko: FrischeKo): number {
+function haltbarBisMs(ko: FrischeKo, tage: number): number {
   const bezug = spaetester(letzteFassungMs(ko), zeit(ko.fristBestaetigung?.at));
-  return bezug + halbwertszeitTage(ko) * TAG_MS;
+  return bezug + tage * TAG_MS;
 }
 
 /**
@@ -144,8 +252,12 @@ function haltbarBisMs(ko: FrischeKo): number {
  * validiertes Objekt nach Fristende in Antworten nicht mehr als gesichert gilt. Ohne lesbares
  * Datum ist die Frist nicht belegt — und damit abgelaufen (fail-closed).
  */
-export function haltbarkeitAbgelaufen(ko: FrischeKo, jetztMs: number): boolean {
-  const bis = haltbarBisMs(ko);
+export function haltbarkeitAbgelaufen(
+  ko: FrischeKo,
+  jetztMs: number,
+  gelernt?: GelernteHalbwertszeiten,
+): boolean {
+  const bis = haltbarBisMs(ko, halbwertszeitVon(ko, gelernt).tage);
   return !Number.isFinite(bis) || jetztMs >= bis;
 }
 
@@ -153,7 +265,10 @@ function hoehere(a: FrischeStufe, b: FrischeStufe): FrischeStufe {
   return STUFEN_RANG.indexOf(a) >= STUFEN_RANG.indexOf(b) ? a : b;
 }
 
-function betriebsmodellFuer(schutz: Confidentiality | null): Betriebsmodell {
+function betriebsmodellFuer(schutz: Schutzstufe | null): Betriebsmodell {
+  if (schutz === "oeffentlich") {
+    return "oeffentliche_ki";
+  }
   if (schutz === "intern") {
     return "freigegebene_ki";
   }
@@ -163,26 +278,37 @@ function betriebsmodellFuer(schutz: Confidentiality | null): Betriebsmodell {
   return "ohne_ki";
 }
 
-/** Fehlt das Feld (Altbestand), gilt „intern"; ein ungültiger Wert ist unbekannt (`null`). */
-function schutzVon(wert: unknown): Confidentiality | null {
-  if (wert === undefined || wert === null) {
-    return "intern";
-  }
-  return wert === "intern" || wert === "vertraulich" || wert === "streng_vertraulich" ? wert : null;
+/**
+ * Fehlt das Feld (Altbestand), gilt „intern"; ein ungültiger Wert ist unbekannt (`null`).
+ * „öffentlich" gilt NUR an einem internen Objekt — an einem vertraulichen wäre die Marke ein
+ * Widerspruch, und dann gewinnt die strengere Stufe.
+ */
+function schutzVon(
+  ko: Pick<KnowledgeObject, "confidentiality" | "oeffentlich">,
+): Schutzstufe | null {
+  const wert: unknown = ko.confidentiality;
+  const stufe: Confidentiality | null =
+    wert === undefined || wert === null
+      ? "intern"
+      : wert === "intern" || wert === "vertraulich" || wert === "streng_vertraulich"
+        ? wert
+        : null;
+  return stufe === "intern" && ko.oeffentlich === true ? "oeffentlich" : stufe;
 }
 
 export function frischeVon(
   ko: FrischeKo,
   jetztMs: number,
   eingaenge: FrischeEingaenge,
+  gelernt?: GelernteHalbwertszeiten,
 ): FrischeAuskunft {
-  const halbwertszeit = halbwertszeitTage(ko);
+  const halbwertszeit = halbwertszeitVon(ko, gelernt);
   const signal = ko.frischeSignal ?? null;
   const bezug = spaetester(letzteFassungMs(ko), zeit(signal?.at));
-  const bis = haltbarBisMs(ko);
-  const vorlauf = Math.min(ERINNERUNG_VORLAUF_TAGE, halbwertszeit / 2) * TAG_MS;
+  const bis = haltbarBisMs(ko, halbwertszeit.tage);
+  const vorlauf = Math.min(ERINNERUNG_VORLAUF_TAGE, halbwertszeit.tage / 2) * TAG_MS;
   const erinnerungAb = bis - vorlauf;
-  const abgelaufen = haltbarkeitAbgelaufen(ko, jetztMs);
+  const abgelaufen = !Number.isFinite(bis) || jetztMs >= bis;
 
   const ungeprueft: FrischeAuskunft["ungeprueft"] = {};
   if ("ungeprueft" in eingaenge.revalidierung) {
@@ -201,7 +327,7 @@ export function frischeVon(
     stufe = "faellig";
   } else {
     const alter = jetztMs - bezug;
-    const h = halbwertszeit * TAG_MS;
+    const h = halbwertszeit.tage * TAG_MS;
     stufe =
       alter < h / 2 ? "frisch" : alter < h ? "altert" : alter < 2 * h ? "faellig" : "veraltet";
   }
@@ -211,7 +337,7 @@ export function frischeVon(
 
   const validiert = ko.status === "validiert";
   const aktuell = stufe === "frisch" || stufe === "altert";
-  const schutz = schutzVon(ko.confidentiality);
+  const schutz = schutzVon(ko);
   const erinnern = Number.isFinite(bis) && jetztMs >= erinnerungAb && jetztMs < bis;
 
   let naechsterSchritt: FrischeSchritt;
@@ -229,7 +355,9 @@ export function frischeVon(
 
   return {
     stufe,
-    halbwertszeitTage: halbwertszeit,
+    halbwertszeitTage: halbwertszeit.tage,
+    halbwertszeitHerkunft: halbwertszeit.herkunft,
+    halbwertszeitBeobachtungen: halbwertszeit.beobachtungen,
     bezugAm: iso(bezug),
     letztesSignal: signal,
     haltbarBis: iso(bis),
@@ -241,7 +369,12 @@ export function frischeVon(
     aktuellerStand: validiert && aktuell && keineAnforderung,
     schutz,
     betriebsmodell: betriebsmodellFuer(schutz),
-    inDokumente: validiert && aktuell && keineAnforderung && ohneKonflikt && schutz === "intern",
+    inDokumente:
+      validiert &&
+      aktuell &&
+      keineAnforderung &&
+      ohneKonflikt &&
+      (schutz === "intern" || schutz === "oeffentlich"),
     naechsterSchritt,
     ungeprueft,
   };
@@ -252,6 +385,89 @@ export function discloseFrische(
   ko: FrischeKo,
   jetztMs: number,
   eingaenge: FrischeEingaenge,
+  gelernt?: GelernteHalbwertszeiten,
 ): { frische: FrischeAuskunft } {
-  return { frische: frischeVon(ko, jetztMs, eingaenge) };
+  return { frische: frischeVon(ko, jetztMs, eingaenge, gelernt) };
+}
+
+// ================================================================================================
+// R-0248 / R-0266 — WAS DER VERANTWORTLICHEN PERSON VORGELEGT WIRD.
+// ================================================================================================
+//
+// Für die persönliche Zustellung (Glocke, `services/app/src/frische-meldungen.ts`). Merker- und
+// Konfliktlage werden hier NICHT erhoben — die Fristen hängen nur an Datum und Halbwertszeit.
+const NICHT_ERHOBEN: FrischeEingaenge = {
+  revalidierung: { ungeprueft: "Für die persönliche Vorlage nicht erhoben." },
+  konflikt: { ungeprueft: "Für die persönliche Vorlage nicht erhoben." },
+};
+
+export interface FristHinweis {
+  koId: string;
+  title: string;
+  /** Ab wann die Erinnerung ansteht (ISO). */
+  erinnerungAb: string;
+  haltbarBis: string;
+  /** Die Frist ist bereits abgelaufen. */
+  abgelaufen: boolean;
+}
+
+/**
+ * R-0248: die geprüften Objekte, für die `person` verantwortlich ist und deren Frist im
+ * Erinnerungsfenster liegt oder schon abgelaufen ist — ohne lesbares Datum gibt es keinen Termin
+ * und damit auch keine Erinnerung (das Objekt steht dann ohnehin als fällig im Reiter „Erneut").
+ */
+export function fristHinweiseFuer(
+  kos: readonly (FrischeKo & Pick<KnowledgeObject, "id" | "title">)[],
+  person: string,
+  jetztMs: number,
+  gelernt?: GelernteHalbwertszeiten,
+): FristHinweis[] {
+  const aus: FristHinweis[] = [];
+  for (const ko of kos) {
+    if (ko.status !== "validiert" || responsibleOf(ko) !== person) {
+      continue;
+    }
+    const auskunft = frischeVon(ko, jetztMs, NICHT_ERHOBEN, gelernt);
+    if (!auskunft.haltbarBis || !auskunft.erinnerungAb) {
+      continue;
+    }
+    const abgelaufen = jetztMs >= Date.parse(auskunft.haltbarBis);
+    if (auskunft.erinnern || abgelaufen) {
+      aus.push({
+        koId: ko.id,
+        title: ko.title,
+        erinnerungAb: auskunft.erinnerungAb,
+        haltbarBis: auskunft.haltbarBis,
+        abgelaufen,
+      });
+    }
+  }
+  return aus;
+}
+
+/**
+ * R-0266: die ältesten geprüften Beiträge, für die `person` verantwortlich ist — ältester Bezug
+ * zuerst, höchstens `anzahl`. Dieselbe Regel wie die Liste im Reiter „Erneut"
+ * (`apps/web/src/lib/frische.ts`, `aeltesteVorlage`), dort aus der Server-Frische gelesen.
+ */
+export function aeltesteVorlageFuer(
+  kos: readonly (FrischeKo & Pick<KnowledgeObject, "id" | "title">)[],
+  person: string,
+  jetztMs: number,
+  anzahl: number,
+  gelernt?: GelernteHalbwertszeiten,
+): { koId: string; title: string; bezugAm: string | null }[] {
+  return kos
+    .filter((ko) => ko.status === "validiert" && responsibleOf(ko) === person)
+    .map((ko) => ({
+      koId: ko.id,
+      title: ko.title,
+      bezugAm: frischeVon(ko, jetztMs, NICHT_ERHOBEN, gelernt).bezugAm,
+    }))
+    .sort((a, b) => {
+      const za = a.bezugAm ? Date.parse(a.bezugAm) : Number.NEGATIVE_INFINITY;
+      const zb = b.bezugAm ? Date.parse(b.bezugAm) : Number.NEGATIVE_INFINITY;
+      return za === zb ? 0 : za < zb ? -1 : 1;
+    })
+    .slice(0, anzahl);
 }

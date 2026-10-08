@@ -305,6 +305,7 @@ export function MeldungenListe({
                           ? "bg-ai"
                           : n.kind === "assignment" ||
                               n.kind === "kenntnisnahme" ||
+                              n.kind === "frische" ||
                               n.kind === "return"
                             ? "bg-ai"
                             : n.kind === "impact"
@@ -355,6 +356,22 @@ export function MeldungenListe({
                             : "kenntnisnahme.meldung",
                       )}
                       {n.fassung ? ` (V${n.fassung})` : ""}:{" "}
+                    </span>
+                  ) : null}
+                  {/* aufnahme:20260922:gesamt-wissen-frische: Frist, Wochenvorlage oder
+                      Prüfanforderung — der Titel ist das eigene Wissensobjekt. */}
+                  {n.kind === "frische" ? (
+                    <span className="font-semibold text-ai">
+                      {t(
+                        n.frischeArt === "vorlage"
+                          ? "frische.meldungVorlage"
+                          : n.frischeArt === "anlage"
+                            ? "frische.meldungAnlage"
+                            : n.ueberfaellig
+                              ? "frische.meldungFristAbgelaufen"
+                              : "frische.meldungFrist",
+                      )}
+                      :{" "}
                     </span>
                   ) : null}
                   {/* Pedi 04.07.: Duplikat-Fund klar als solcher gekennzeichnet. */}

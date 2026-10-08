@@ -232,6 +232,9 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
     case "neighbors-changed":
     case "confirm-fresh":
       return { action };
+    // R-0652: Schutzbedarf „öffentlich" — die Mindestnutzlast ist der Wahrheitswert.
+    case "schutz-oeffentlich":
+      return { action, oeffentlich: true };
     // R-0235 / R-0749: „Hat geholfen" am Objekt — trägt nichts ausser der Aktion.
     case "helpful":
       return { action };

@@ -115,7 +115,9 @@ export function Lifecycle(): JSX.Element {
   const faellig =
     query.data === undefined ? undefined : faelligeKennungen(query.data, kos.data ?? []);
   const ids = faellig ?? [];
-  // R-0266: die ältesten geprüften Beiträge in der Verantwortung der angemeldeten Person.
+  // R-0266: die ältesten geprüften Beiträge in der Verantwortung der angemeldeten Person. Dieselbe
+  // Auswahlregel stellt der Server jede Woche als persönliche Vorlage in die Glocke
+  // (`aeltesteVorlageFuer`, services/app/src/frische-meldungen.ts) — hier steht sie zum Abarbeiten.
   const vorlage = user ? aeltesteVorlage(kos.data ?? [], user.id) : [];
   // bens Korrekturpflicht 2 (Runde 4): Die Fälligkeitsliste liefert nur IDs — Titel, Anlage und
   // Status stehen im Objektabruf (`revalidationView`). Ohne dessen Antwort stand hier die rohe UUID

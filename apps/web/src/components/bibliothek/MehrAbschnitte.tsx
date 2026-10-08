@@ -1997,6 +1997,22 @@ export function MehrAbschnitte({
             </select>
           </label>
         ) : null}
+        {/* R-0652 / FR-EXT-06: Schutzbedarf „öffentlich" — nur an internen Objekten und nur für
+            Prüfer/Admin (dieselbe Schwelle wie eine Herabstufung, Server: `ko.validate`). */}
+        {canReview && confidentialityOf(ko.confidentiality) === "intern" ? (
+          <label className="mt-2 flex items-center gap-2 text-[12px] text-muted">
+            <input
+              type="checkbox"
+              data-testid="frische-oeffentlich"
+              checked={ko.oeffentlich === true}
+              disabled={act.isPending}
+              onChange={(e) =>
+                act.mutate({ action: "schutz-oeffentlich", oeffentlich: e.target.checked })
+              }
+            />
+            <span>{t("frische.oeffentlichFeld")}</span>
+          </label>
+        ) : null}
         {canTransfer ? (
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hairline pt-3">
             <select
@@ -2292,6 +2308,20 @@ export function MehrAbschnitte({
                 <dt className="text-muted">{t("frische.stufeLabel")}</dt>
                 <dd data-testid="frische-stufe" className="font-mono text-text">
                   {t(`frische.stufe.${ko.frische.stufe}`)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.halbwertszeitLabel")}</dt>
+                <dd data-testid="frische-halbwertszeit" className="text-right font-mono text-text">
+                  {t(
+                    ko.frische.halbwertszeitHerkunft === "gelernt"
+                      ? "frische.halbwertszeitGelernt"
+                      : "frische.halbwertszeitVorgabe",
+                    {
+                      tage: ko.frische.halbwertszeitTage,
+                      anzahl: ko.frische.halbwertszeitBeobachtungen,
+                    },
+                  )}
                 </dd>
               </div>
               <div className="flex items-center justify-between gap-2">

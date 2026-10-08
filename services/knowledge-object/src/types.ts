@@ -600,6 +600,12 @@ export interface KnowledgeObject {
   assignments: string[];
   // SCRUM-415: Vertraulichkeitsstufe (fehlt = „intern"). Vertrauliche KOs gehen nie in externe Kontexte.
   confidentiality?: Confidentiality;
+  // aufnahme:20260922:gesamt-wissen-frische (R-0652 / FR-EXT-06): Schutzbedarf „öffentlich" — eine
+  // VERFEINERUNG von „intern", keine vierte Zugriffsstufe: Sichtbarkeit und Egress richten sich
+  // weiter allein nach `confidentiality`. Wirksam nur, solange das Objekt intern ist; eine
+  // Höherstufung entfernt die Marke (`KoService.setConfidentiality`). Gesetzt nur über
+  // `KoService.setOeffentlich`. Optional, keine Migration; fehlt es, ist das Objekt nicht öffentlich.
+  oeffentlich?: true;
   // ============================================================================================
   // JOB 679 / D2 (K1.2, Weg A) — WO DAS WISSEN HERKOMMT, UND WARUM ES HIER STEHT.
   // ============================================================================================
