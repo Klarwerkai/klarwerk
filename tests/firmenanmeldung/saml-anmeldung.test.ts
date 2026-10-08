@@ -318,7 +318,9 @@ async function samlStart(app: App, query = "") {
   return {
     start,
     anfrage,
-    anfrageId: /ID="([^"]+)"/.exec(anfrage)?.[1] ?? "",
+    // `\x22` statt eines wörtlichen Anführungszeichens: der Abtaster des Katalogwächters kennt keine
+    // Regex-Literale und hielte es für einen Zeichenkettenanfang (katalogschluessel-herkunft :127).
+    anfrageId: /ID=\x22([^\x22]+)\x22/.exec(anfrage)?.[1] ?? "",
     nachweis: nachweis ?? "",
   };
 }
