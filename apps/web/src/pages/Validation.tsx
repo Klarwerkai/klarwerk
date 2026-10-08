@@ -124,8 +124,11 @@ import {
 import {
   REVIEW_DECISIONS,
   type ReviewVerdict,
+  type Stimmenlage,
   reviewNextSteps,
   reviewOutcome,
+  stimmenlageAus,
+  zustimmungsquittung,
 } from "../lib/reviewDecision";
 import {
   DECISION_IMPACTS,
@@ -467,6 +470,8 @@ export function Validation(): JSX.Element {
     id: string;
     title: string;
     verdict: ReviewVerdict;
+    /** STATUS-FREIGABE: die Stimmenlage aus der Serverantwort einer Zustimmung, sonst fehlt sie. */
+    stimmen?: Stimmenlage | null;
   } | null>(null);
   const [quittungOffen, setQuittungOffen] = useState(false);
   const [entschiedenAm, setEntschiedenAm] = useState<number | null>(null);
@@ -482,7 +487,12 @@ export function Validation(): JSX.Element {
 
   const invalidate = (): void => void qc.invalidateQueries({ queryKey: ["validation"] });
 
-  const nachEntscheidung = (vars: { id: string; title: string; verdict: ReviewVerdict }): void => {
+  const nachEntscheidung = (vars: {
+    id: string;
+    title: string;
+    verdict: ReviewVerdict;
+    stimmen?: Stimmenlage | null;
+  }): void => {
     invalidate();
     // Arbeitswege am selben Artikel: ab wann eine Board-Antwort NACH dieser Entscheidung kam — nur
     // sie trägt das tatsächliche Ergebnis (Zeile „Entschieden", `entschiedenStand`).
@@ -492,6 +502,20 @@ export function Validation(): JSX.Element {
     // Auftrag §5.3: „Erfolg = nächster Eintrag wird aktiv". Der entschiedene Eintrag verlässt das
     // Board mit der nächsten Antwort; bis dahin führt die Wahl schon weiter.
     setAktivId(naechsteId(vars.id));
+  };
+
+  // STATUS-FREIGABE: der Satz zu einer Entscheidung — für die Quittung UND die Zeile „zuletzt".
+  // Eine Zustimmung nennt ihre Stimme und was noch fehlt (`zustimmungsquittung`); Rückfrage und
+  // Ablehnung behalten ihren bisherigen Satz.
+  const entscheidungsSatz = (d: {
+    verdict: ReviewVerdict;
+    stimmen?: Stimmenlage | null;
+  }): { art: string; text: string } => {
+    if (d.verdict !== "up") {
+      return { art: d.verdict, text: t(reviewOutcome(d.verdict).statusKey) };
+    }
+    const q = zustimmungsquittung(d.stimmen ?? null);
+    return { art: q.art, text: t(q.schluessel, q.werte) };
   };
 
   // Die offene Stufenfrage: für welchen Eintrag, und auf welchem Weg sie gestellt wurde. `null`
@@ -572,21 +596,33 @@ export function Validation(): JSX.Element {
       }
       try {
         if (weg === "rate") {
-          await endpoints.ko.act(id, { action: "rate", verdict: "up", ...bestaetigung });
-          return;
+          // STATUS-FREIGABE: die Antwort trägt die Stimmenlage NACH dieser Stimme — sie wird gelesen,
+          // nicht verworfen (Quittung: Stimme, Erforderliches, noch Fehlendes).
+          const antwort: unknown = await endpoints.ko.act(id, {
+            action: "rate",
+            verdict: "up",
+            ...bestaetigung,
+          });
+          return antwort;
         }
         await endpoints.ko.act(id, { action: "admin-validate", ...bestaetigung });
+        return undefined;
       } catch (e) {
         // Schritt 2 gescheitert: `stufe` ist genau dann gespeichert, wenn Schritt 1 überhaupt lief.
         throw new FreigabeFehler("freigabe", stufe, e);
       }
     },
-    onSuccess: (_data, vars) => {
+    onSuccess: (antwort, vars) => {
       setStufenfrage(null);
       setDublettenFrage(null);
       setDubletteBestaetigt(null);
       if (vars.weg === "rate") {
-        nachEntscheidung({ id: vars.id, title: vars.title, verdict: "up" });
+        // Die erforderliche Zahl stammt aus derselben Prüfzeile wie die Stimmenpunkte.
+        const zeile = Array.isArray(query.data)
+          ? query.data.find((z) => z.id === vars.id)
+          : undefined;
+        const stimmen = stimmenlageAus(antwort, zeile?.neededValidations);
+        nachEntscheidung({ id: vars.id, title: vars.title, verdict: "up", stimmen });
         return;
       }
       // Der Administratorweg räumt auf wie bisher — derselbe Wortlaut, dieselben vier Schlüssel.
@@ -2171,7 +2207,7 @@ export function Validation(): JSX.Element {
       return n > 1 ? `${titel} · ${t("pruefboard.konfliktAnzahl", { n })}` : titel;
     };
     const punkte = Array.from({ length: Math.max(sig.needed, 1) }, (_, i) => i);
-    const quittung = quittungOffen && lastDecision ? reviewOutcome(lastDecision.verdict) : null;
+    const quittung = quittungOffen && lastDecision ? entscheidungsSatz(lastDecision) : null;
     // Die OFFENEN Zuweisungen (die Board-Route reicht nur offene durch, ValidationService
     // `withOpenAssignments`) — „zugewiesen" allein sagte nicht, an wen.
     const zugewiesen = k.assignments ?? [];
@@ -2602,7 +2638,7 @@ export function Validation(): JSX.Element {
             {lastDecision ? (
               <PruefenMehrBlock beschriftung={t("pruefen.lastDecision")}>
                 <span data-testid="pruefen-zuletzt">
-                  {t(reviewOutcome(lastDecision.verdict).statusKey)} — {lastDecision.title}
+                  {entscheidungsSatz(lastDecision).text} — {lastDecision.title}
                 </span>
                 <span className="mt-1 flex flex-wrap gap-2">
                   {reviewNextSteps(lastDecision).map((s) => (
@@ -2824,9 +2860,10 @@ export function Validation(): JSX.Element {
             <p
               data-testid="pruefen-quittung"
               data-text="text"
+              data-stimmenlage={quittung.art}
               className="w-full basis-full text-[12px] font-semibold text-trust-pos-text"
             >
-              {t("val.decisionSaved")} — {t(quittung.statusKey)}
+              {t("val.decisionSaved")} — {quittung.text}
             </p>
           ) : null}
           {/* JOB 3112 · V3: die Stufenfrage des FUSSBAND-Weges — dieselbe Stelle und dieselbe

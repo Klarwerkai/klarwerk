@@ -5,6 +5,7 @@ import { useLocation } from "react-router-dom";
 import { useGuardedNavigate } from "../app/NavGuardContext";
 import { DemoKennzeichen } from "../auth/BrandPanel";
 import { ArbeitsbereicheMenue } from "./ArbeitsbereicheMenue";
+import { ExternStatus } from "./ExternStatus";
 import { KopfbandPunkte } from "./KopfbandPunkte";
 import { Logo } from "./Logo";
 import { MeldungenUndKonto } from "./MeldungenMenue";
@@ -298,6 +299,10 @@ export function Kopfband({
     // Geschwister von `<main>` und liegt nie ÜBER dem Inhalt.
     <>
       <DemoKennzeichen form="band" />
+      {/* Auftrag gesamt-ki-freigaberegeln (R-0606): der wirksame Stand der zentralen Adminfreigabe
+          für öffentliche KI — dieselbe Bauform wie die Demo-Kennzeichnung (eigene Zeile, NULL Breite
+          in der vermessenen Kopfbandzeile). Ohne Serverauskunft rendert sie nichts. */}
+      <ExternStatus />
       <header
         ref={bandRef}
         data-testid="kopfband"

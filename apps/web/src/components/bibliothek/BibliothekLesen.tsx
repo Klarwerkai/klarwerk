@@ -24,7 +24,12 @@ import {
   commitDocumentAppend,
   newAppendOperationId,
 } from "../../lib/appendToArticle";
-import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../../lib/bodyAiAssist";
+import {
+  applyBodyAssist,
+  applyBodyAssistBlock,
+  bodyTextForAssist,
+  spellingAssistHtmlOrNull,
+} from "../../lib/bodyAiAssist";
 import { appendExtractSections, normalizeExtractLocale } from "../../lib/bodyExtract";
 import {
   bodyFileLinksFromHtml,
@@ -41,6 +46,11 @@ import { EDITOR_BLOCKS } from "../../lib/editorBlocks";
 import { eigeneKollisionDetail } from "../../lib/eigeneKollision";
 import { formatKoTimestamp } from "../../lib/koDates";
 import { type KoRevisionItemId, koRevisionSummary } from "../../lib/koRevisionSummary";
+import {
+  lesekontextLesen,
+  lesekontextVergessen,
+  lesespalteRollbereich,
+} from "../../lib/lesekontext";
 import { sprachcode, useFrischeLesevariante } from "../../lib/lesevariante";
 import type { MatchField } from "../../lib/librarySearch";
 import { useNetzOnline } from "../../lib/netzzustand";
@@ -48,11 +58,19 @@ import { fragenMitBezug, meldeGelesenenStand } from "../../lib/objektbezug";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { draftProvenance } from "../../lib/reasonerProvenance";
 import { canRevalidate } from "../../lib/revalidation";
+import { reviewHelp } from "../../lib/reviewHelp";
 import {
   isReviewReworkContext,
   reworkNextSteps,
   reworkValidationHref,
 } from "../../lib/reviewReworkContext";
+import {
+  type SpeicherAntwort,
+  einreichSchluessel,
+  speicherAntwortAus,
+  speicherFolgeSatz,
+  vorschlagFolgeSatz,
+} from "../../lib/statusFreigabe";
 import { useAuthorName } from "../../lib/useAuthorName";
 import { isStaleKoDeleteError } from "../../lib/validationDelete";
 import {
@@ -68,6 +86,7 @@ import { BodyImageGallery } from "../BodyImageGallery";
 import { BodyTemplateChooser } from "../BodyTemplateChooser";
 import { EditorAttachmentContext } from "../EditorAttachmentContext";
 import { EditorContentQuality } from "../EditorContentQuality";
+import { HelpTip } from "../HelpTip";
 import { KnowledgeInputStudio } from "../KnowledgeInputStudio";
 import { KoRevisionSummary } from "../KoRevisionSummary";
 import { LesevarianteHinweis } from "../LesevarianteHinweis";
@@ -406,7 +425,8 @@ const RW_FREIGABE_ROLLEN = ["admin"];
  */
 type EinreichLage =
   | { art: "pflicht"; text: string }
-  | { art: "eingereicht" }
+  // STATUS-FREIGABE: der Status, den die Antwort des Einreichens trägt — `null` = nicht gemeldet.
+  | { art: "eingereicht"; status: string | null }
   | { art: "stale"; version: number | null }
   | { art: "fehler"; text: string };
 
@@ -973,7 +993,11 @@ export function BibliothekLesen({
   const [studioOpen, setStudioOpen] = useState(false);
   const [studioApplied, setStudioApplied] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [mehrOffen, setMehrOffen] = useState(false);
+  // N-0020: kehrt der Mensch per Browser-Zurück aus dem Herkunftsgraphen zurück, steht hier, wo er
+  // gelesen hat (`lib/lesekontext.ts`). Gelesen EINMAL beim Aufbau — die Adresse kann danach ersetzt
+  // werden, der Kontext gehört zu diesem Öffnen. Ohne Merker bleibt alles wie bisher: „Mehr" zu.
+  const [gemerkt] = useState(() => lesekontextLesen(koId));
+  const [mehrOffen, setMehrOffen] = useState(gemerkt !== null);
   // JOB 3108 · UX-03: wohin die Sprungzeile am Kopf führt. `nonce`, damit derselbe Abschnitt
   // zweimal hintereinander anspringbar bleibt (zwischendurch von Hand zugeklappt).
   const [sprungZiel, setSprungZiel] = useState<Sprungziel | null>(null);
@@ -1096,6 +1120,16 @@ export function BibliothekLesen({
   const act = useMutation({
     mutationFn: (body: KoAction) => endpoints.ko.act(koId, body),
     onSuccess: invalidate,
+    onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
+  });
+  // R-0235 / R-0749: „Hat geholfen" am Objekt selbst — Bewährung, keine Prüfstimme. Der Server
+  // zählt je Person und Objekt genau einmal; ein zweiter Klick ist ein ehrlicher No-op.
+  const hilfreich = useMutation({
+    mutationFn: () => endpoints.ko.helpful(koId),
+    onSuccess: () => {
+      invalidate();
+      push("success", t("ask.thanked"));
+    },
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
   const detailReview = useMutation({
@@ -1332,6 +1366,16 @@ export function BibliothekLesen({
       const buchen = (): void => {
         teilstandRef.current = buch.text === null ? null : buch;
       };
+      // STATUS-FREIGABE (produkt:20261007): der Stand, den die LETZTE eigene Serverantwort trägt —
+      // daraus sagt die Erfolgsmeldung, ob die gespeicherte Fassung freigegeben ist oder nicht.
+      // Keine zweite Abfrage: ein fremder Schreibvorgang gehört nicht in die eigene Quittung.
+      const antwort: { stand: SpeicherAntwort | null } = { stand: null };
+      const merkeStand = (geschrieben: unknown): void => {
+        const stand = speicherAntwortAus(geschrieben);
+        if (stand) {
+          antwort.stand = stand;
+        }
+      };
       // ==========================================================================================
       // JOB 4251 · DIE BEDINGUNG DES NÄCHSTEN EINORDNUNGSAUFRUFS — GENAU DIESELBE REGEL WIE BEIM
       // TEXT (`eigeneFassung`), NUR AM ANDEREN GEGENSTAND.
@@ -1401,6 +1445,7 @@ export function BibliothekLesen({
        * Aufruf nicht auf den Stand vom Öffnen zurückfallen — er geht gar nicht hinaus (K14).
        */
       const quittieren = (geschrieben: { metadataRevision?: number } | undefined): void => {
+        merkeStand(geschrieben);
         eigenerAufrufDiesesLaufs = true;
         const stand =
           typeof geschrieben?.metadataRevision === "number" ? geschrieben.metadataRevision : null;
@@ -1481,6 +1526,7 @@ export function BibliothekLesen({
             ...(typeof eigeneFassung === "number" ? { expectedVersion: eigeneFassung } : {}),
           });
           buch.text = marken.text;
+          merkeStand(geschrieben);
           // Die Fassung kommt aus der ANTWORT des Schreibvorgangs, nicht aus einer zweiten Abfrage.
           buch.fassung = typeof geschrieben?.version === "number" ? geschrieben.version : null;
         }
@@ -1561,13 +1607,14 @@ export function BibliothekLesen({
       }
       // Alles angekommen: es gibt nichts mehr nachzuholen.
       teilstandRef.current = null;
+      return antwort.stand;
     },
     // Solange nichts zurück ist, wird nichts behauptet (§9 „laden"): die Auskunft des VORIGEN
     // Versuchs gehört nicht über einen laufenden neuen.
     onMutate: () => {
       setSpeicherLage(null);
     },
-    onSuccess: () => {
+    onSuccess: (antwortStand) => {
       invalidate();
       bearbeitenBeenden();
       setErr(null);
@@ -1575,7 +1622,13 @@ export function BibliothekLesen({
       // etwas angekommen ist. Der Satz kommt über die vorhandene Toast-Fläche, dieselbe, die das
       // Löschen und das Anhängen schon benutzen; eine zweite Mechanik daneben wäre eine stille
       // Ablösung.
-      push("success", t("ko.revise.saved"));
+      //
+      // STATUS-FREIGABE: dahinter steht, ob die gespeicherte Fassung freigegeben IST — abgelesen aus
+      // der eigenen Serverantwort. Eine Änderung an einem offenen Eintrag ist gespeichert, nicht
+      // freigegeben; trägt die Antwort keinen Stand, wird darüber nichts behauptet.
+      const folge = speicherFolgeSatz(antwortStand ?? null);
+      const gespeichert = t("ko.revise.saved");
+      push("success", folge ? `${gespeichert} ${t(folge.schluessel, folge.werte)}` : gespeichert);
       if (reviewReworkContext) {
         setReworkSavedFor(koId);
       }
@@ -1809,14 +1862,20 @@ export function BibliothekLesen({
           origin: "klarwerk_web",
         },
       }),
-    onSuccess: () => {
+    onSuccess: (antwort) => {
       // DAS FORMULAR BLEIBT OFFEN UND BEHÄLT DEN TEXT. Eingereicht ist nicht übernommen: der Mensch
       // soll sehen, was er geschickt hat, und der Eintrag darunter trägt weiter den alten Stand.
       // `invalidate()` holt das Objekt samt der jetzt eingereichten Fassung nach.
+      //
+      // STATUS-FREIGABE (Ben, nacharbeit-2): WELCHER alte Stand das ist, sagt die Antwort — der
+      // freiwillige Prüfweg steht auch an OFFENEN Einträgen offen, und dort ist nichts freigegeben.
       invalidate();
       setErr(null);
       setSperreGemeldet(false);
-      setEinreichLage({ art: "eingereicht" });
+      setEinreichLage({
+        art: "eingereicht",
+        status: speicherAntwortAus(antwort)?.status ?? null,
+      });
     },
     // ==============================================================================================
     // DIE GRENZE DES 409 — HIER STEHT KEINE ZAHL, DIE WIR NICHT HABEN.
@@ -1890,10 +1949,14 @@ export function BibliothekLesen({
         expectedVersion: v.expectedVersion,
         ...(v.note && v.note.trim().length > 0 ? { note: v.note.trim() } : {}),
       }),
-    onSuccess: () => {
+    onSuccess: (antwort, v) => {
       invalidate();
       setAblehnung(null);
       setErr(null);
+      // STATUS-FREIGABE: die Entscheidung sagt, was jetzt gilt — „freigegeben" nur, wenn die
+      // Serverantwort es trägt; abgelehnt heisst: der Eintrag bleibt, wie er war.
+      const folge = vorschlagFolgeSatz(v.decision, speicherAntwortAus(antwort));
+      push("success", t(folge.schluessel, folge.werte));
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
@@ -2092,6 +2155,57 @@ export function BibliothekLesen({
       meldeGelesenenStand({ koId: gelesenId, fassung: gelesenFassung });
     }
   }, [gelesenId, gelesenFassung]);
+
+  // ================================================================================================
+  // N-0020 · DIE LESEPOSITION KOMMT ZURÜCK, SOBALD DER BERICHT DA IST.
+  // ================================================================================================
+  // „Mehr" und die gemerkten Abschnitte stehen schon beim Aufbau offen (oben, `gemerkt`); hier
+  // folgt der Rollstand. Der Bericht wächst nach dem ersten Zeichnen weiter (Abschnitte laden ihre
+  // eigenen Daten nach) — ein zu früh gesetzter Rollstand würde an der noch kurzen Spalte gekappt.
+  // Deshalb wird nachgesetzt, solange die Spalte wächst, höchstens fünf Sekunden lang, und nie
+  // gegen den Menschen: rollt, wischt oder tippt er selbst, endet das Nachsetzen sofort.
+  const leseWurzel = useRef<HTMLDivElement | null>(null);
+  const berichtDa = query.data !== undefined;
+  useEffect(() => {
+    if (gemerkt === null || !berichtDa) {
+      return;
+    }
+    lesekontextVergessen();
+    const roll = lesespalteRollbereich(leseWurzel.current);
+    const inhalt = leseWurzel.current;
+    if (roll === null || inhalt === null) {
+      return;
+    }
+    const ziel = gemerkt.rollTop;
+    const setzen = (): boolean => {
+      roll.scrollTop = ziel;
+      return Math.abs(roll.scrollTop - ziel) <= 1;
+    };
+    if (setzen() || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const beobachter = new ResizeObserver(() => {
+      if (setzen()) {
+        aufhoeren();
+      }
+    });
+    const frist = window.setTimeout(() => aufhoeren(), 5_000);
+    const eingriffe = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
+    // Eine Pfeilfunktion, keine `function`-Deklaration: nur sie behält die Null-Prüfung von `roll`
+    // oben (eine gehobene Deklaration gilt TypeScript als vor der Prüfung entstanden).
+    const aufhoeren = (): void => {
+      beobachter.disconnect();
+      window.clearTimeout(frist);
+      for (const e of eingriffe) {
+        roll.removeEventListener(e, aufhoeren);
+      }
+    };
+    for (const e of eingriffe) {
+      roll.addEventListener(e, aufhoeren, { passive: true });
+    }
+    beobachter.observe(inhalt);
+    return aufhoeren;
+  }, [gemerkt, berichtDa]);
 
   // JOB 3034 R2 · KONFLIKTRUNDE 2 (nachgezogen): scheitert die Auffrischung eines schon geholten
   // Eintrags, bleiben Eintrag und Stufenkennzeichen stehen — der Fehler wird als Hinweis über der
@@ -2314,7 +2428,13 @@ export function BibliothekLesen({
 
   return (
     <ImageDescribeProvider provenance={draftProvenance(ko.confidentiality, koId)}>
-      <div data-testid="bib-lesen" className="flex w-[720px] max-w-full flex-col gap-[18px] py-9">
+      <div
+        ref={leseWurzel}
+        data-testid="bib-lesen"
+        // STATUS-FREIGABE: die Objektgrenze für Klaras Zeige-Modus; der Status ist die Pille unten.
+        data-objekt="wissen"
+        className="flex w-[720px] max-w-full flex-col gap-[18px] py-9"
+      >
         {/* JOB 3034 R2 · KONFLIKTRUNDE 2: derselbe Hinweis wie auf jeder anderen Fläche, aus
           derselben Quelle — seit JOB 3063 R6 auch in DERSELBEN Bauform (`AuffrischungHinweis`),
           nicht mehr als abgeschriebener Zwilling. Er schweigt, wenn die Liste es schon sagt. */}
@@ -2328,6 +2448,7 @@ export function BibliothekLesen({
             // der Server für diese Antwort nicht erhoben hat. Rein maschinenlesbar: kein neuer Satz,
             // kein neuer Übersetzungsschlüssel, kein Erklärtext auf der Lesefläche (H4).
             {...anzeigestatusAnker(zustand)}
+            data-objektstatus="wissen"
             className={cx(
               "rounded-[999px] px-2.5 py-[3px] text-[11px] font-bold uppercase tracking-[0.3px]",
               PILLEN_TON[ton],
@@ -2358,6 +2479,17 @@ export function BibliothekLesen({
             >
               {() => t("lib.ask")}
             </RoleLink>
+            {/* R-0888 / R-1017 (gesamt-hilfen, Nacharbeit 13): die Erklärungen der Menüpunkte
+                „Hat geholfen" und „Löschen" stehen in der Seitenhilfe, solange die Handlung da ist
+                — angemeldet HIER, weil das Menü erst beim Öffnen gezeichnet wird. Die Löschhilfe
+                kommt über `reviewHelp`, also mit dem berichtigten Text (Papierkorb, 30 Tage). */}
+            <HelpTip title={t("vhelp.helpful.title")} body={t("vhelp.helpful.body")} />
+            {darfLoeschen ? (
+              <HelpTip
+                title={t(reviewHelp("deleteKo").titleKey)}
+                body={t(reviewHelp("deleteKo").bodyKey)}
+              />
+            ) : null}
             <Menue
               beschriftung="…"
               ariaLabel={t("lib.menue.weitere")}
@@ -2426,6 +2558,16 @@ export function BibliothekLesen({
                       {t("lib.revalidate")}
                     </MenuePunkt>
                   ) : null}
+                  <MenuePunkt
+                    testId="bib-menue-hilfreich"
+                    disabled={hilfreich.isPending || hilfreich.isSuccess}
+                    onClick={() => {
+                      hilfreich.mutate();
+                      schliessen();
+                    }}
+                  >
+                    {hilfreich.isSuccess ? t("ask.thanked") : t("ask.helpful")}
+                  </MenuePunkt>
                   {darfLoeschen ? (
                     <>
                       <MenueTrenner />
@@ -2746,6 +2888,7 @@ export function BibliothekLesen({
                 applyFn={(mode, _original, suggestion) =>
                   applyBodyAssist(mode, edit.bodyHtml, suggestion)
                 }
+                applySpelling={(suggestion) => spellingAssistHtmlOrNull(edit.bodyHtml, suggestion)}
                 onApply={(bodyHtml) => setEdit({ ...edit, bodyHtml })}
                 hintKey="capture.ai.bodyHint"
                 extraApplyActions={EDITOR_BLOCKS.map((block) => ({
@@ -3029,7 +3172,7 @@ export function BibliothekLesen({
                 )}
               >
                 {einreichLage.art === "eingereicht"
-                  ? t("ko.propose.done")
+                  ? t(einreichSchluessel(einreichLage.status))
                   : einreichLage.art === "stale"
                     ? einreichLage.version === null
                       ? t("ko.propose.stale")
@@ -3528,7 +3671,11 @@ export function BibliothekLesen({
               </button>
               {mehrOffen ? (
                 <div className="border-t border-hairline-soft">
-                  <MehrAbschnitte ko={ko} sprungZiel={sprungZiel ?? undefined} />
+                  <MehrAbschnitte
+                    ko={ko}
+                    sprungZiel={sprungZiel ?? undefined}
+                    anfangsOffen={gemerkt?.abschnitte}
+                  />
                 </div>
               ) : null}
             </div>

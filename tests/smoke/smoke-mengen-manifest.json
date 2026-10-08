@@ -1,10 +1,10 @@
 {
-  "version": 12,
-  "erhoben_am": "2026-10-01",
-  "nachgefuehrt_von": "produkt:20261007:arbeitswege-objekt (2026-10-07, von Hand aus der Spec-Datei nachgezogen, kein --list-Lauf): vier Faelle mehr im Projekt chromium-zustand, alle in arbeitswege-objekt-browser.spec.ts — die Datei legt Bestand an und steht deshalb in ZUSTAND_SPEC (playwright.smoke.config.ts), also nicht in chromium, firefox und webkit. Sonst nichts geaendert. Vorher: gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3): drei Faelle mehr je Projekt chromium, firefox und webkit, alle in erstnutzer-u2-u3-browser.spec.ts.",
+  "version": 15,
+  "erhoben_am": "2026-10-08",
+  "nachgefuehrt_von": "produkt:20261007:arbeitswege-objekt (Integration mit main, Version 15): vier Faelle mehr im Projekt chromium-zustand, alle in arbeitswege-objekt-browser.spec.ts — die Datei legt Bestand an und steht deshalb in ZUSTAND_SPEC (playwright.smoke.config.ts), also nicht in chromium, firefox und webkit. NICHT gemessen, aus den Testtiteln nachgetragen; 222 (main) + 4 = 226. Version 14 davor: produkt:20261007:klara-vorschau (Integration mit main, Version 13): drei Faelle mehr je Projekt chromium, firefox und webkit, alle in klara-vorschau-browser.spec.ts — Avatar aus dem Bau, Bedienbeleg der beweglichen Klara (Desktop) und schmal mit reduzierter Bewegung, Touch-Zeiger und Bildschirmtastatur. NICHT gemessen, aus den Testtiteln nachgetragen. Version 13 davor: produkt:20261007:speichern-erholung, Nacharbeit 1: ein weiterer Fall je Projekt chromium, firefox und webkit (K2/K3 Nacharbeit: Weiterschreiben waehrend des Wartens). Version 12 davor: drei Faelle mehr je Projekt chromium, firefox und webkit, alle in speichern-erholung-browser.spec.ts — Speicherzustand ohne Netz, Seitenwechsel ohne Netz, Nulltreffer mit Filterruecksetzen. NICHT gemessen, sondern aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt). Vorgefundene, fremde Drift unveraendert gelassen: firmenwoerterbuch-browser.spec.ts und bildschirmablauf-browser.spec.ts stehen nicht im Manifest. Vorher: gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3), drei Faelle in erstnutzer-u2-u3-browser.spec.ts.",
   "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
   "zweck": "Sollmanifest der Smoke-Mengen je Projekt. Drift (Hinzufuegen, Entfernen, Umbenennen) macht die Mengenpruefung rot.",
-  "gesamt_fallinstanzen": 205,
+  "gesamt_fallinstanzen": 226,
   "projekte": {
     "setup-zustand": {
       "soll": 1,
@@ -19,7 +19,7 @@
       ]
     },
     "chromium": {
-      "soll": 61,
+      "soll": 68,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -39,6 +39,9 @@
         "fe003-tutorial-fragen.spec.ts › FE-003 · reduzierte Bewegung: die Beispielfrage steht sofort vollständig da",
         "huelle-tabelle-browser.spec.ts › huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, Speichern und Wiederöffnen",
         "huelle2-reihenfolge-browser.spec.ts › huelle2: steht die Struktur VOR dem direkten Bild, bleibt die Beschreibung beim richtigen Bild",
+        "klara-vorschau-browser.spec.ts › Klara-Vorschau · Avatar lädt aus dem Bau über eine relative Adresse",
+        "klara-vorschau-browser.spec.ts › Klara-Vorschau · Bedienbeleg Desktop: verschieben → Artikel → Markierung → Fragen → Tutorial → Notiz → verkleinern",
+        "klara-vorschau-browser.spec.ts › Klara-Vorschau · schmal 390 px mit reduzierter Bewegung und Touch-Zeiger",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser überlebt die MAUS-Auswahl den Klick auf Fett",
         "mega87-caption-formatierung-browser.spec.ts › mega87: ohne Markierung sagt der echte Browser den Grund, statt stumm zu bleiben",
@@ -58,6 +61,10 @@
         "nutzungshinweis-buehne.spec.ts › Diagnose: offener Nutzungshinweis lässt den Kopfband-Klick navigieren",
         "nutzungshinweis-buehne.spec.ts › Diagnose: serverseitig bestätigter Nutzungshinweis bleibt nach Neuladen erledigt",
         "smoke-umgebung.spec.ts › Umgebung des Smoke-Servers ist die zugesagte",
+        "speichern-erholung-browser.spec.ts › K1/K2/K3/K6: ohne Netz gesichert — wartet sichtbar, nach der Rückkehr gespeichert, nach dem Neuladen genau dieser Stand",
+        "speichern-erholung-browser.spec.ts › K2/K3 Nacharbeit: während des Wartens weitergeschrieben — gesendet und bestätigt ist derselbe Stand, nach dem Neuladen steht er da",
+        "speichern-erholung-browser.spec.ts › K4: Seitenwechsel ohne Netz — Speichern nennt den Grund, Bleiben behält, Verwerfen schreibt nichts",
+        "speichern-erholung-browser.spec.ts › K5: Nulltreffer zeigt die aktiven Filter und setzt sie direkt zurück — der Suchtext bleibt",
         "ui-smoke.spec.ts › Alle Kernrouten rendern (keine weiße Seite)",
         "ui-smoke.spec.ts › Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",
         "ui-smoke.spec.ts › Fragen ohne Modell: der Weg ist gesperrt und sagt warum",
@@ -85,7 +92,7 @@
       ]
     },
     "firefox": {
-      "soll": 61,
+      "soll": 68,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -105,6 +112,9 @@
         "fe003-tutorial-fragen.spec.ts › FE-003 · reduzierte Bewegung: die Beispielfrage steht sofort vollständig da",
         "huelle-tabelle-browser.spec.ts › huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, Speichern und Wiederöffnen",
         "huelle2-reihenfolge-browser.spec.ts › huelle2: steht die Struktur VOR dem direkten Bild, bleibt die Beschreibung beim richtigen Bild",
+        "klara-vorschau-browser.spec.ts › Klara-Vorschau · Avatar lädt aus dem Bau über eine relative Adresse",
+        "klara-vorschau-browser.spec.ts › Klara-Vorschau · Bedienbeleg Desktop: verschieben → Artikel → Markierung → Fragen → Tutorial → Notiz → verkleinern",
+        "klara-vorschau-browser.spec.ts › Klara-Vorschau · schmal 390 px mit reduzierter Bewegung und Touch-Zeiger",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser überlebt die MAUS-Auswahl den Klick auf Fett",
         "mega87-caption-formatierung-browser.spec.ts › mega87: ohne Markierung sagt der echte Browser den Grund, statt stumm zu bleiben",
@@ -124,6 +134,10 @@
         "nutzungshinweis-buehne.spec.ts › Diagnose: offener Nutzungshinweis lässt den Kopfband-Klick navigieren",
         "nutzungshinweis-buehne.spec.ts › Diagnose: serverseitig bestätigter Nutzungshinweis bleibt nach Neuladen erledigt",
         "smoke-umgebung.spec.ts › Umgebung des Smoke-Servers ist die zugesagte",
+        "speichern-erholung-browser.spec.ts › K1/K2/K3/K6: ohne Netz gesichert — wartet sichtbar, nach der Rückkehr gespeichert, nach dem Neuladen genau dieser Stand",
+        "speichern-erholung-browser.spec.ts › K2/K3 Nacharbeit: während des Wartens weitergeschrieben — gesendet und bestätigt ist derselbe Stand, nach dem Neuladen steht er da",
+        "speichern-erholung-browser.spec.ts › K4: Seitenwechsel ohne Netz — Speichern nennt den Grund, Bleiben behält, Verwerfen schreibt nichts",
+        "speichern-erholung-browser.spec.ts › K5: Nulltreffer zeigt die aktiven Filter und setzt sie direkt zurück — der Suchtext bleibt",
         "ui-smoke.spec.ts › Alle Kernrouten rendern (keine weiße Seite)",
         "ui-smoke.spec.ts › Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",
         "ui-smoke.spec.ts › Fragen ohne Modell: der Weg ist gesperrt und sagt warum",
@@ -151,7 +165,7 @@
       ]
     },
     "webkit": {
-      "soll": 61,
+      "soll": 68,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -171,6 +185,9 @@
         "fe003-tutorial-fragen.spec.ts › FE-003 · reduzierte Bewegung: die Beispielfrage steht sofort vollständig da",
         "huelle-tabelle-browser.spec.ts › huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, Speichern und Wiederöffnen",
         "huelle2-reihenfolge-browser.spec.ts › huelle2: steht die Struktur VOR dem direkten Bild, bleibt die Beschreibung beim richtigen Bild",
+        "klara-vorschau-browser.spec.ts › Klara-Vorschau · Avatar lädt aus dem Bau über eine relative Adresse",
+        "klara-vorschau-browser.spec.ts › Klara-Vorschau · Bedienbeleg Desktop: verschieben → Artikel → Markierung → Fragen → Tutorial → Notiz → verkleinern",
+        "klara-vorschau-browser.spec.ts › Klara-Vorschau · schmal 390 px mit reduzierter Bewegung und Touch-Zeiger",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser überlebt die MAUS-Auswahl den Klick auf Fett",
         "mega87-caption-formatierung-browser.spec.ts › mega87: ohne Markierung sagt der echte Browser den Grund, statt stumm zu bleiben",
@@ -190,6 +207,10 @@
         "nutzungshinweis-buehne.spec.ts › Diagnose: offener Nutzungshinweis lässt den Kopfband-Klick navigieren",
         "nutzungshinweis-buehne.spec.ts › Diagnose: serverseitig bestätigter Nutzungshinweis bleibt nach Neuladen erledigt",
         "smoke-umgebung.spec.ts › Umgebung des Smoke-Servers ist die zugesagte",
+        "speichern-erholung-browser.spec.ts › K1/K2/K3/K6: ohne Netz gesichert — wartet sichtbar, nach der Rückkehr gespeichert, nach dem Neuladen genau dieser Stand",
+        "speichern-erholung-browser.spec.ts › K2/K3 Nacharbeit: während des Wartens weitergeschrieben — gesendet und bestätigt ist derselbe Stand, nach dem Neuladen steht er da",
+        "speichern-erholung-browser.spec.ts › K4: Seitenwechsel ohne Netz — Speichern nennt den Grund, Bleiben behält, Verwerfen schreibt nichts",
+        "speichern-erholung-browser.spec.ts › K5: Nulltreffer zeigt die aktiven Filter und setzt sie direkt zurück — der Suchtext bleibt",
         "ui-smoke.spec.ts › Alle Kernrouten rendern (keine weiße Seite)",
         "ui-smoke.spec.ts › Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",
         "ui-smoke.spec.ts › Fragen ohne Modell: der Weg ist gesperrt und sagt warum",

@@ -24,6 +24,7 @@
 import { useTranslation } from "react-i18next";
 import type { AnweisungStand } from "../../api/types";
 import { formatKoTimestamp } from "../../lib/koDates";
+import { useAuthorName } from "../../lib/useAuthorName";
 import {
   CHIP,
   HINWEIS,
@@ -54,6 +55,9 @@ export function FreigabeStatus({
   rechte: Freigaberechte;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
+  // STATUS-FREIGABE: die entscheidende Person über DENSELBEN Verzeichnisweg wie „Erstellt von" —
+  // eine unbekannte Kennung wird als unbekannt benannt, nie durch einen anderen Namen ersetzt.
+  const nameVon = useAuthorName();
   const anzeige = freigabeanzeige(eingabe, rechte);
   const zeit = anzeige.pruefung?.am ? formatKoTimestamp(anzeige.pruefung.am, i18n.language) : null;
   return (
@@ -61,6 +65,8 @@ export function FreigabeStatus({
       data-testid={`${marke}-freigabe`}
       data-stand={eingabe.stand}
       data-version={eingabe.version}
+      // STATUS-FREIGABE: Klara liest beim Zeigen GENAU diesen gezeichneten Block.
+      data-objektstatus="anleitung"
       className="space-y-1"
     >
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -76,10 +82,15 @@ export function FreigabeStatus({
         {t(anzeige.bedeutung)}
       </p>
       {anzeige.pruefung ? (
-        <p data-testid={`${marke}-pruefung`} className={HINWEIS}>
+        <p
+          data-testid={`${marke}-pruefung`}
+          data-festgehalten={anzeige.pruefung.von ? "ja" : "nein"}
+          className={HINWEIS}
+        >
           {t(anzeige.pruefung.schluessel, {
-            nummer: eingabe.version,
+            nummer: anzeige.pruefung.nummer ?? eingabe.version,
             zeit: zeit ?? t("fe001.zeitUnbekannt"),
+            ...(anzeige.pruefung.von ? { name: nameVon(anzeige.pruefung.von) } : {}),
           })}
         </p>
       ) : null}
