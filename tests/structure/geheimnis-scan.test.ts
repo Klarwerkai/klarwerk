@@ -156,6 +156,41 @@ describe("R-1420 · der Bestand, den der Scan liest", () => {
   });
 });
 
+// Nacharbeit 1 (Bens Befund): Dateien über 5 MB wurden nur benannt, nicht gelesen — ein Schlüssel
+// am Ende einer grossen JSON-Datei kam neben einer sauberen Datei mit Exit 0 durch. Die Attrappe
+// steht deshalb HINTER sechs MB Text, und gemessen wird an Funktion UND Starter.
+function grosserBestand(wert: string): string {
+  const fuellung = '{"zeile":"unauffaelliger Text ohne Geheimnis"},\n'.repeat(130_000);
+  expect(Buffer.byteLength(fuellung), "die Vorrichtung muss über 5 MB liegen").toBeGreaterThan(
+    5 * 1024 * 1024,
+  );
+  return bestand({
+    "sauber.ts": "export const a = 1;\n",
+    "gross.json": `[\n${fuellung}{"schluessel":"${wert}"}\n]\n`,
+  });
+}
+
+describe("R-1420 · grosse Textdateien werden vollständig gelesen", () => {
+  it("findet die Attrappe hinter über 5 MB Text", () => {
+    const wert = ATTRAPPEN["aws-zugangsschluessel"] ?? "";
+    const { funde, gelesen } = pruefeBestand(grosserBestand(wert));
+
+    expect(gelesen).toBe(2);
+    expect(funde.map((f) => `${f.datei}:${f.zeile}:${f.regel}`)).toEqual([
+      "gross.json:130002:aws-zugangsschluessel",
+    ]);
+  });
+
+  it("der Starter sperrt mit Code 1 — kein Gruen neben der sauberen Datei", () => {
+    const wert = ATTRAPPEN["aws-zugangsschluessel"] ?? "";
+    const r = fahreStarter(grosserBestand(wert));
+
+    expect(r.code, r.aus).toBe(1);
+    expect(r.aus).toContain("gross.json:130002");
+    expect(r.aus, "der Wert landet nie im Protokoll").not.toContain(wert);
+  });
+});
+
 describe("R-1420 · der Starter, so wie das Tor ihn ruft", () => {
   it("Fund → Code 1, mit Ort, ohne den Wert", () => {
     const wert = ATTRAPPEN["anthropic-schluessel"] ?? "";

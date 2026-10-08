@@ -36,8 +36,9 @@ import { basename, join, sep } from "node:path";
 /** Eine bewusste Attrappe (Testfall, Beispiel) wird mit dieser Marke IN DERSELBEN ZEILE erlaubt. */
 export const ERLAUBT_MARKE = "geheimnis-scan: erlaubt";
 
-/** Grösser wird nicht gelesen — aber benannt, nicht still übergangen. */
-export const GROESSE_GRENZE = 5 * 1024 * 1024;
+// KEINE GRÖSSENGRENZE (Nacharbeit 1, Bens Befund): bis hierher wurden Dateien über 5 MB nur
+// benannt und nicht gelesen — ein Schlüssel in einer grossen JSON-Datei kam damit bei Exit 0
+// durch. Jede Textdatei wird jetzt vollständig gelesen, gleich wie gross.
 
 export interface InhaltsRegel {
   kennung: string;
@@ -228,15 +229,12 @@ export function kandidatenDateien(wurzel: string): {
 export interface Ergebnis {
   funde: Fund[];
   gelesen: number;
-  /** Zu gross zum Lesen — benannt, damit es niemand für geprüft hält. */
-  zuGross: string[];
   quelle: "git" | "verzeichnis";
 }
 
 export function pruefeBestand(wurzel: string = process.cwd()): Ergebnis {
   const { dateien, quelle } = kandidatenDateien(wurzel);
   const funde: Fund[] = [];
-  const zuGross: string[] = [];
   let gelesen = 0;
   for (const datei of dateien) {
     funde.push(...pruefeDateiname(datei));
@@ -248,10 +246,6 @@ export function pruefeBestand(wurzel: string = process.cwd()): Ergebnis {
     try {
       const art = lstatSync(pfad);
       if (!art.isFile()) {
-        continue;
-      }
-      if (art.size > GROESSE_GRENZE) {
-        zuGross.push(datei);
         continue;
       }
       inhalt = readFileSync(pfad);
@@ -268,7 +262,7 @@ export function pruefeBestand(wurzel: string = process.cwd()): Ergebnis {
     gelesen += 1;
     funde.push(...pruefeText(datei, inhalt.toString("utf8")));
   }
-  return { funde, gelesen, zuGross, quelle };
+  return { funde, gelesen, quelle };
 }
 
 // ================================================================================================
@@ -279,10 +273,7 @@ export function pruefeBestand(wurzel: string = process.cwd()): Ergebnis {
 // ein Scan über null Dateien ist kein grüner Scan). Optionales Argument $1 = Wurzel (nur Test).
 if (process.argv[1]?.endsWith("geheimnis-scan.ts")) {
   const wurzel = process.argv[2] ?? process.cwd();
-  const { funde, gelesen, zuGross, quelle } = pruefeBestand(wurzel);
-  for (const datei of zuGross) {
-    console.log(`  ⓘ nicht gelesen (über ${GROESSE_GRENZE / 1024 / 1024} MB): ${datei}`);
-  }
+  const { funde, gelesen, quelle } = pruefeBestand(wurzel);
   if (gelesen === 0) {
     console.error(`✖ Geheimnis-Scan: keine Datei gelesen (${quelle}) — nichts geprüft`);
     process.exit(2);
