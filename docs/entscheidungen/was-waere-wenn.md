@@ -2,7 +2,8 @@
 
 *Aufnahme 20260922 · `aufnahme:20260922:gesamt-was-waere-wenn` (Revision 1). Basisstand `fadddf37`
 (`1.0.0-beta.1.770`); erster Kandidat `16211282`, danach Nacharbeit 1 (Kandidat `9682296a`),
-Nacharbeit 2 (Kandidat `d7e4f5be`) und Nacharbeit 3 nach Bens Befunden. Das
+Nacharbeit 2 (Kandidat `d7e4f5be`), Nacharbeit 3 (Kandidat `2f33dafb`) und Nacharbeit 4 nach
+Bens Befunden. Das
 Verhalten prüfen die Tests unter `tests/was-waere-wenn/`; dieses Dokument selbst liest kein Test.
 „Belegt durch“ nennt Verhaltenstests — ob sie auf diesem Stand grün sind, sagt erst ihr Lauf.*
 
@@ -36,7 +37,7 @@ Durchspielens mit der KI.
 | „Wenn ich statt 5083-H111 jetzt 6082-T6 verwende“ | Fragen-Seite, zugeklappt unter „Ich frage für“: **„Was wäre, wenn sich eine Bedingung ändert?“** mit „Statt (bisher)“, „jetzt (neu)“, optional „Nur zum Thema“; Vorschläge aus den Bedingungen des Bestands. | `bedingungswechsel-flaeche.test.tsx` (B1–B3), `bedingungswechsel-regel.test.ts` (W6) |
 | „mit der KI durchspielen“ | Knopf **„Mit Klara durchspielen“**: stellt die Frage der Quelle mit den eingegebenen Bedingungen (und dem Thema) über **denselben** Submit wie Fragefeld und Beispielchips (`askExample` → `submitAsk`). Es gelten Quellenpflicht, Lückenweg, Fragekontext, Gesprächsfaden und KI-Sperre wie bei jeder Frage; bei gesperrter KI ist der Knopf aus und nennt den Grund. Die Einordnung darüber bleibt stehen. | `bedingungswechsel-flaeche.test.tsx` (B4, B5), `bedingungswechsel-regel.test.ts` (W11) |
 | „welche bestehenden Erfahrungswerte gelten dann noch, welche nicht?“ | Je sichtbares Wissensobjekt eine Lage nach `apps/web/src/lib/bedingungswechsel.ts`: **an die bisherige gebunden**, **für die neue ausdrücklich ausgeschlossen**, **genannt, aber nicht eindeutig**, **für beide ausdrücklich festgehalten**, **schon für die neue festgehalten**, **nennt keine** (ohne Thema nur gezählt). Jeder Eintrag verweist auf das Objekt und zeigt die maßgebliche Fundstelle mit Bewertung („ausgeschlossen“, „nur erwähnt, nicht ausdrücklich“). | `bedingungswechsel-regel.test.ts` (W1–W5, W7–W10), `bedingungswechsel-flaeche.test.tsx` (B2–B3) |
-| „markiert, welche … materialspezifisch sind und welche übertragbar sind“ | Geltung nur aus **positivem Beleg**: (a) reine Bedingungsangabe („Werkstoff 5083-H111“), (b) vollständig gedeutete Geltungsaussage („gilt/geeignet/bewährt für X und Y“, „X und Y sind geeignet“, „für X geeignet“), (c) **erkannte** Anweisung, die die Bedingung einleitet („bei X die Kanten entgraten“ — Satzteil endet mit kleingeschriebenem Infinitiv, kein Zustands-/Existenzverb). „Für/bei X …“ allein ist kein Beleg; fehlendes Wissen („liegen keine Erfahrungswerte vor“, „unbekannt“, „fehlen“) ist ein Vorbehalt. „Materialspezifisch“ = die bisherige gilt, die neue ist nicht genannt. „Übertragbar belegt“ **nur** mit (a) oder (b) für beide gemeinsam. Ein Ausschluss („nicht für Y“, „außer bei Y“, „Y ist ungeeignet“, „für Y nicht“) führt zu „ausgeschlossen“. Alles ohne positiven Beleg oder mit Vorbehalt — auch bei nur einer genannten Bedingung (Unsicherheit, Abwertung, Gegensatz, „nur“, „statt“, nur Titel/Schlagwort, unbekannte Formulierung) — zu „nicht eindeutig“. | `bedingungswechsel-regel.test.ts` (W7–W10, W12–W14), `bedingungswechsel-flaeche.test.tsx` (B2) |
+| „markiert, welche … materialspezifisch sind und welche übertragbar sind“ | Geltung nur aus **positivem Beleg**: (a) reine Bedingungsangabe („Werkstoff 5083-H111“), (b) vollständig gedeutete Geltungsaussage mit Ergebnis („gilt/geeignet/bewährt für X und Y“, „X und Y sind geeignet“, „für X geeignet“, „erfolgreich getestet“ — eine bloße oder laufende Prüfung wie „werden getestet“ zählt nicht), (c) **erkannte** Anweisung, die die Bedingung einleitet („bei X die Kanten entgraten“ — Satzteil endet mit kleingeschriebenem Infinitiv, kein Zustands-/Existenzverb). „Für/bei X …“ allein ist kein Beleg; fehlendes Wissen („liegen keine Erfahrungswerte vor“, „unbekannt“, „fehlen“) ist ein Vorbehalt. „Materialspezifisch“ = die bisherige gilt, die neue ist nicht genannt. „Übertragbar belegt“ **nur** mit (a) oder (b) für beide gemeinsam. Ein Ausschluss („nicht für Y“, „außer bei Y“, „Y ist ungeeignet“, „für Y nicht“) führt zu „ausgeschlossen“. Alles ohne positiven Beleg oder mit Vorbehalt — auch bei nur einer genannten Bedingung (Unsicherheit, Abwertung, Gegensatz, „nur“, „statt“, nur Titel/Schlagwort, unbekannte Formulierung) — zu „nicht eindeutig“. | `bedingungswechsel-regel.test.ts` (W7–W10, W12–W15), `bedingungswechsel-flaeche.test.tsx` (B2) |
 
 ## Nacharbeit 1 (Ben, Kandidat `16211282`)
 
@@ -79,6 +80,18 @@ der Bedingung Teil der Handlung („bei X nicht überhitzen“, „für X keine 
 sonst ist sie ein Vorbehalt. „Für X geeignet“ ist jetzt eine vollständig gedeutete Geltungsaussage
 (b). Wörter für fehlendes Wissen („unbekannt“, „fehlen“, „fehlt“, „ungeklärt“ und Entsprechungen in
 EN/NL) zählen als Vorbehalt. Gegenfälle W14, auf der Fläche B2.
+
+## Nacharbeit 4 (Ben, Kandidat `2f33dafb`)
+
+*„Eine laufende Prüfung wird als belegte Übertragbarkeit gewertet“* — „5083-H111 und 6082-T6
+werden getestet“ und „Getestet für 5083-H111 und 6082-T6“ standen unter „übertragbar belegt“, weil
+„getestet/tested/getest“ als positive Prädikate zählten und „wird/werden“ als Kopula erlaubt war.
+Behoben: die positiven Prädikate halten nur noch ein Ergebnis fest (geeignet, bewährt, freigegeben,
+zugelassen, anwendbar, empfohlen und Entsprechungen); Prüfwörter („getestet“, „erprobt“, „tested“,
+„getest“, „beproefd“) zählen nur mit ausdrücklichem Erfolg („erfolgreich getestet“, „successfully
+tested“, „met succes getest“). Das laufende Passiv „wird/werden“ ist keine Kopula mehr, die
+abgeschlossene Form „wurde/wurden/was/were“ schon. Gegenfälle W15 (auch einseitig), auf der Fläche
+B2.
 
 ## Empfehlungen (keine Entscheidungen)
 

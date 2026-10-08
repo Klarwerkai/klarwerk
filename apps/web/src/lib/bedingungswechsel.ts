@@ -20,7 +20,9 @@
 //                        (b) eine vollständig gedeutete Geltungsaussage — der ganze Satzteil ist
 //                            „gilt/geeignet/bewährt … für|bei X (und Y)", „X (und Y) ist/sind
 //                            geeignet/bewährt …" oder „für X geeignet", höchstens mit
-//                            „ebenso/gleichermaßen/auch";
+//                            „ebenso/gleichermaßen/auch". Das Prädikat hält ein ERGEBNIS fest; eine
+//                            bloße oder laufende Prüfung („werden getestet", „erprobt bei") zählt
+//                            nicht, nur „erfolgreich getestet/erprobt" (Ben, Nacharbeit 4);
 //                        (c) eine ERKANNTE Anweisung, die die Bedingung einleitet: „bei X die
 //                            Kanten entgraten", „für X auf 80 Grad vorwärmen" — der Satzteil endet
 //                            mit einem kleingeschriebenen Infinitiv, der kein Zustands-/Existenzverb
@@ -263,8 +265,15 @@ const KETTE = `${P}(?:\\s+${VERBINDER}\\s+${P})*`;
 const ARTIKEL = "(?:(?:den|die|das|dem|der|the|de|het)\\s+)?";
 const GATTUNG =
   "(?:(?:werkstoff\\p{L}*|material\\p{L}*|legierung\\p{L}*|alloy\\p{L}*|materiaal|legering\\p{L}*)\\s+)?";
-const POSITIV =
-  "(?:geeignet|bewährt|erprobt|getestet|freigegeben|zugelassen|anwendbar|empfohlen|suitable|proven|tested|approved|recommended|geschikt|beproefd|getest|goedgekeurd|aanbevolen|toepasbaar)";
+// Positive Prädikate halten ein ERGEBNIS fest. Eine Prüftätigkeit allein („getestet", „erprobt",
+// „tested", „getest", „beproefd") ist keins — Ben, Nacharbeit 4: „5083-H111 und 6082-T6 werden
+// getestet" ist keine belegte Übertragbarkeit. Sie zählt nur mit ausdrücklichem Erfolg
+// („erfolgreich getestet", „successfully tested", „met succes getest").
+const ERFOLGREICH_GEPRUEFT =
+  "(?:erfolgreich|successfully|succesvol|met\\s+succes)\\s+(?:erprobt|getestet|geprüft|tested|trialled|beproefd|getest)";
+const ERGEBNISWOERTER =
+  "geeignet|bewährt|freigegeben|zugelassen|anwendbar|empfohlen|suitable|proven|approved|recommended|geschikt|goedgekeurd|aanbevolen|toepasbaar";
+const POSITIV = `(?:${ERGEBNISWOERTER}|${ERFOLGREICH_GEPRUEFT})`;
 const FUELLE =
   "(?:\\s+(?:gleichermaßen|gleichermassen|ebenso|auch|beide|beiden|jeweils|both|equally|also|too|ook|evenzeer|allebei))*";
 const PRAEP = "(?:für|bei|mit|unter|for|with|to|at|voor|bij|met)";
@@ -281,7 +290,7 @@ const GELTUNG_VORN = new RegExp(
   "u",
 );
 const GELTUNG_HINTEN = new RegExp(
-  `^${ARTIKEL}${GATTUNG}${KETTE}(?:\\s+(?:ist|sind|is|are|zijn|hat\\s+sich|haben\\s+sich|has\\s+been|have\\s+been|wird|werden))?(?:\\s+(?:gleichermaßen|ebenso|auch|gut|sehr|equally|also|well|ook|goed))?\\s+${POSITIV}${FUELLE}$`,
+  `^${ARTIKEL}${GATTUNG}${KETTE}(?:\\s+(?:ist|sind|is|are|zijn|hat\\s+sich|haben\\s+sich|has\\s+been|have\\s+been|wurde|wurden|was|were))?(?:\\s+(?:gleichermaßen|ebenso|auch|gut|sehr|equally|also|well|ook|goed))?\\s+${POSITIV}${FUELLE}$`,
   "u",
 );
 // „Für X (ist) geeignet", „Bei X und Y bewährt" — Präposition vorn, positives Prädikat am Ende.

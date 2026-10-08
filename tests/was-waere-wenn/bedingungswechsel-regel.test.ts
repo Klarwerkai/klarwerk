@@ -32,6 +32,10 @@
 // 6082-T6 festgehalten"):
 //   W14 „für/bei X …" allein ist kein Beleg. Fehlendes oder verneintes Wissen → `ungeklaert`; nur
 //       eine erkannte Anweisung behält ihre Verneinung als Teil der Handlung.
+//
+// Nacharbeit 4 (Ben: „5083-H111 und 6082-T6 werden getestet" landete unter „übertragbar belegt"):
+//   W15 Eine bloße oder laufende Prüfung ist kein Ergebnis → `ungeklaert`; nur ein ausdrücklich
+//       erfolgreiches Prüfergebnis trägt Geltung und Übertragbarkeit.
 import { describe, expect, it } from "vitest";
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
 import {
@@ -366,6 +370,44 @@ describe("R-1628 · Nacharbeit 1 — Fund ist nicht Geltung", () => {
     expect(lage({ statement: "Bei 6082-T6 die Kanten entgraten." })).toBe("nur_neu");
     expect(lage({ statement: "Für 6082-T6 geeignet." })).toBe("nur_neu");
     expect(lage({ statement: "Für 5083-H111 keine Druckluft verwenden." })).toBe("nur_bisher");
+  });
+
+  it("W15 · eine bloße oder laufende Prüfung belegt keine Übertragbarkeit", () => {
+    // Bens Fälle.
+    const ben = ko({ id: "ben4", statement: "5083-H111 und 6082-T6 werden getestet." });
+    const r = vergleicheBedingungen([ben], WECHSEL);
+    expect(r.ok).toBe(true);
+    if (!r.ok) {
+      return;
+    }
+    expect(r.vergleich.gruppen.beide).toEqual([]);
+    expect(r.vergleich.gruppen.ungeklaert.map((e) => e.id)).toEqual(["ben4"]);
+    expect(r.vergleich.gruppen.ungeklaert[0]?.neu?.bewertung).toBe("vorbehalt");
+
+    for (const statement of [
+      "Getestet für 5083-H111 und 6082-T6.",
+      "5083-H111 und 6082-T6 werden erprobt.",
+      "Erprobt bei 5083-H111 und 6082-T6.",
+      "5083-H111 und 6082-T6 sind getestet.",
+      "5083-H111 and 6082-T6 are being tested.",
+      "Tested for 5083-H111 and 6082-T6.",
+    ]) {
+      expect(lage({ statement }), statement).toBe("ungeklaert");
+    }
+    // Einseitig: eine Prüfung ist auch keine Geltung für nur eine Bedingung.
+    expect(lage({ statement: "Für 6082-T6 getestet." })).toBe("ungeklaert");
+    expect(lage({ statement: "Wird für 6082-T6 getestet." })).toBe("ungeklaert");
+    expect(lage({ statement: "6082-T6 wird erprobt." })).toBe("ungeklaert");
+
+    // Ein ausdrücklich erfolgreiches Prüfergebnis trägt weiterhin.
+    for (const statement of [
+      "5083-H111 und 6082-T6 wurden erfolgreich getestet.",
+      "Erfolgreich erprobt bei 5083-H111 und 6082-T6.",
+      "5083-H111 and 6082-T6 were successfully tested.",
+    ]) {
+      expect(lage({ statement }), statement).toBe("beide");
+    }
+    expect(lage({ statement: "Für 6082-T6 erfolgreich getestet." })).toBe("nur_neu");
   });
 
   it("W11 · die Frage für die KI trägt den Wechsel wörtlich", () => {

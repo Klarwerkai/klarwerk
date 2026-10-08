@@ -20,6 +20,8 @@
 //   nicht unter „übertragbar belegt" bzw. „schon für 6082-T6 festgehalten".
 //   Nacharbeit 3: ebenso „Für 6082-T6 liegen keine Erfahrungswerte vor" — nur `ko-neu` (eine
 //   erkannte Anweisung) steht unter „schon für 6082-T6 festgehalten".
+//   Nacharbeit 4: „5083-H111 und 6082-T6 werden getestet" steht unter „nicht eindeutig", nicht
+//   unter „übertragbar belegt" — dort bleibt allein `ko-beide`.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../apps/web/src/app/RoleContext", () => ({
@@ -64,6 +66,8 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
           ko("ko-vielleicht", "Eignung unklar", "Vielleicht für 6082-T6 geeignet.", []),
           // Bens Gegenfall (Nacharbeit 3): ausdrücklich fehlendes Wissen nach „für X".
           ko("ko-leer", "Lage", "Für 6082-T6 liegen keine Erfahrungswerte vor.", []),
+          // Bens Gegenfall (Nacharbeit 4): eine laufende Prüfung ist kein Ergebnis.
+          ko("ko-test", "Prüfstand", "5083-H111 und 6082-T6 werden getestet.", []),
         ]),
       },
       conflicts: { list: vi.fn(async () => []) },
@@ -258,10 +262,12 @@ describe("R-1628 · Was wäre, wenn … auf der Fragen-Seite", () => {
     expect(eintraege(c, "nur_neu")).toEqual(["ko-neu"]);
     // Nacharbeit 3: „Für 6082-T6 liegen keine Erfahrungswerte vor" ist fehlendes Wissen, nicht
     // „schon für 6082-T6 festgehalten".
-    expect(eintraege(c, "ungeklaert")).toEqual(["ko-vielleicht", "ko-leer", "ko-untauglich"]);
+    // Nacharbeit 4: „werden getestet" ist keine belegte Übertragbarkeit.
+    const ungeklaert = ["ko-vielleicht", "ko-leer", "ko-test", "ko-untauglich"];
+    expect(eintraege(c, "ungeklaert")).toEqual(ungeklaert);
     const funde = gruppe(c, "ungeklaert")?.querySelectorAll<HTMLElement>(FUND_NEU) ?? [];
     const bewertungen = Array.from(funde, (f) => f.getAttribute("data-bewertung"));
-    expect(bewertungen).toEqual(["vorbehalt", "vorbehalt", "vorbehalt"]);
+    expect(bewertungen).toEqual(["vorbehalt", "vorbehalt", "vorbehalt", "vorbehalt"]);
     expect(gruppe(c, "ungeklaert")?.textContent).toContain(
       i18n.t("bedingungswechsel.bewertung.vorbehalt"),
     );
