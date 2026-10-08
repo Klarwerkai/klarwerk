@@ -12,7 +12,7 @@
 //
 // NEU hier:
 //  G1 · Das Handbuch (docs/operations/secrets-management.md) führt JEDES Geheimnis des Startvertrags
-//       mit Ebene und Wechselfrist — und keines, das es nicht gibt. Sonst läuft das Inventar still
+//       mit Art und echter Wechselfrist — und keines, das es nicht gibt. Sonst läuft das Inventar still
 //       auseinander, sobald eine Variable dazukommt.
 //  G3 · Kein echtes Schlüsselmaterial im Produktbaum (NFR-SEC-05: „kein Secret im Repo/Build").
 //  G4/G5 · Der Weg ins Client-Bundle ist für Geheimnisse zu (FR-RSN-06).
@@ -24,6 +24,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { STARTVERTRAG } from "../../services/app/src/start-vertrag";
+import { ANSWER_RECEIPT_TTL_MS } from "../../services/ask/src/receipt";
 
 const REPO = join(__dirname, "..", "..");
 const HANDBUCH = readFileSync(join(REPO, "docs", "operations", "secrets-management.md"), "utf8");
@@ -126,8 +127,8 @@ function abschnitt(text: string, von: string, bis: string): string {
   return start < 0 ? "" : text.slice(start, ende < 0 ? undefined : ende);
 }
 
-/** Zeilen der Tabelle „Ebene | Geheimnis | Variable | Ohne Wert | Regulärer Wechsel | Folge“. */
-function inventarZeilen(): { ebene: string; variable: string; wechsel: string; folge: string }[] {
+/** Zeilen der Tabelle „Art | Geheimnis | Variable | Ohne Wert | Regulärer Wechsel | Folge“. */
+function inventarZeilen(): { art: string; variable: string; wechsel: string; folge: string }[] {
   return abschnitt(HANDBUCH, "## 1. ", "## 1a. ")
     .split("\n")
     .filter((z) => z.startsWith("|"))
@@ -139,7 +140,7 @@ function inventarZeilen(): { ebene: string; variable: string; wechsel: string; f
     )
     .filter((zellen) => zellen.length === 6 && /^[0-4]$/.test(zellen[0] ?? ""))
     .map((zellen) => ({
-      ebene: zellen[0] ?? "",
+      art: zellen[0] ?? "",
       // Die erste Variable der Zelle ist das Geheimnis; Klammerzusätze nennen Begleitwerte.
       variable: /`([A-Z][A-Z0-9_]*)`/.exec(zellen[2] ?? "")?.[1] ?? "",
       wechsel: zellen[4] ?? "",
@@ -165,12 +166,20 @@ describe("Geheimnisse nur in der Betriebsumgebung", () => {
     expect(schluesselArten("beginnt mit sk-ant-…")).toEqual([]);
   });
 
-  it("G1 · das Handbuch führt jedes Geheimnis des Startvertrags mit Ebene und Wechselfrist", () => {
+  it("G1 · das Handbuch führt jedes Geheimnis des Startvertrags mit Art und Wechselfrist", () => {
     const zeilen = inventarZeilen();
     const imHandbuch = new Map(zeilen.map((z) => [z.variable, z]));
     expect(GEHEIM.filter((name) => !imHandbuch.has(name))).toEqual([]);
-    // Keine Zeile ohne Frist oder ohne gesagte Folge — ein Inventar ohne Wechsel ist keine Ordnung.
-    expect(zeilen.filter((z) => z.wechsel.length < 5 || z.folge.length < 5)).toEqual([]);
+    // R-0858: JEDES Geheimnis wird regelmäßig gewechselt. Verlangt ist eine echte Frist — ein
+    // reiner Anlass („nur bei Verdacht“) oder ein beliebiger Text genügt nicht.
+    const FRIST = /(?:≤|spätestens)\s*\d+\s*Monate|\bjährlich\b/;
+    expect(zeilen.filter((z) => !FRIST.test(z.wechsel)).map((z) => z.variable)).toEqual([]);
+    expect(zeilen.filter((z) => /^nur bei\b/i.test(z.wechsel)).map((z) => z.variable)).toEqual([]);
+    expect(zeilen.filter((z) => z.folge.length < 5).map((z) => z.variable)).toEqual([]);
+    // Belegsignatur: Die Folge des Wechsels nennt die Gültigkeit, die der Code wirklich hat.
+    const minuten = ANSWER_RECEIPT_TTL_MS / 60_000;
+    const beleg = imHandbuch.get("KLARWERK_ASK_RECEIPT_SECRET");
+    expect(beleg?.folge).toContain(`${minuten} Minuten`);
     // Und keine Zeile für ein Geheimnis, das der Code gar nicht liest.
     const imVertrag = new Set(GEHEIM);
     expect(zeilen.map((z) => z.variable).filter((name) => !imVertrag.has(name))).toEqual([]);
@@ -179,7 +188,15 @@ describe("Geheimnisse nur in der Betriebsumgebung", () => {
   it("G2 · das Handbuch hält Grundentscheidung, Erhebung und Notfallwechsel fest", () => {
     expect(HANDBUCH).toContain("Kein Feld der Oberfläche nimmt je ein Geheimnis entgegen");
     expect(HANDBUCH).toContain("## 1a. Erhebungsprotokoll");
-    expect(abschnitt(HANDBUCH, "## 7. ", "## 7a. ")).toContain("**Notfallwechsel**");
+    const wechsel = abschnitt(HANDBUCH, "## 7. ", "## 7a. ");
+    expect(wechsel).toContain("**Notfallwechsel**");
+    // Der Notfallumfang folgt den tatsächlichen Zugriffswegen, nicht einer behaupteten Rangfolge;
+    // die weitergehende Rotation ist als Betriebsregel gekennzeichnet.
+    const ordnung = abschnitt(HANDBUCH, "## 1. ", "## 1a. ");
+    expect(ordnung).toContain("**Tatsächliche Zugriffswege.**");
+    expect(ordnung).toContain("**Vorsorgliche Betriebsregel");
+    expect(wechsel).toContain("Zugriffswege");
+    expect(HANDBUCH).not.toMatch(/alle Werte der tieferen Ebenen|kann die Werte der\s+tieferen/);
     expect(HANDBUCH).toContain("## 7a. Eigene Schlüssel der Kunden");
   });
 

@@ -42,39 +42,58 @@ Grundentscheidung oben gilt für jede Server-Installation unverändert.
 
 ## 1. Secret-Inventar, Ordnung und Wechsel
 
-**Ordnung (Ebenen).** Eine höhere Ebene schützt alle darunter: Wer sie hat, kann die Werte der
-tieferen Ebenen lesen oder ersetzen. Daraus folgt die Wechselregel im Notfall (§7): **Ist eine Ebene
-kompromittiert, werden ihre Werte UND alle Werte der tieferen Ebenen gewechselt.**
+**Ordnung nach Arten.** Die Arten gliedern das Material nach Herkunft und Zuständigkeit. Sie sind
+**keine** Rangfolge: Ein Schlüssel einer Art gewährt für sich keinen Zugriff auf Schlüssel einer
+anderen Art (ein KI-Anbieterschlüssel öffnet weder ein Confluence-Token noch die Belegsignatur).
 
-| Ebene | Art | Was dazu gehört |
+| Art | Bezeichnung | Was dazu gehört |
 | --- | --- | --- |
-| **0** | Wurzelzugang zur Betriebsplattform | Coolify-/Hetzner-Konto, Server-SSH — liest und setzt jede Service-Env |
+| **0** | Betriebszugang | Coolify-/Hetzner-Konto, Server-SSH, Shell im laufenden Container |
 | **1** | Datenhaltung | Datenbank-Zugang |
 | **2** | Ausgehende Anbieter-Zugänge | KI-Modelle, Transkription, Postausgang, Single Sign-on |
 | **3** | Quellsystem-Zugänge (Import, lesend) | Confluence, SharePoint/OneDrive |
 | **4** | Produkteigene Geheimnisse | Add-in-Schlüssel, Signatur der Antwortbelege |
 
+**Tatsächliche Zugriffswege.** Was ein kompromittierter Zugang wirklich erreicht — daraus bestimmt
+sich der Pflichtumfang eines Notfallwechsels (§7):
+
+| Kompromittiert | Erreicht tatsächlich | Pflichtumfang des Notfallwechsels |
+| --- | --- | --- |
+| Betriebszugang (Coolify-/Hetzner-Konto, SSH, Container-Shell) | **jede** Service-Env dieser Instanz im Klartext, damit auch die Datenbank | den Betriebszugang selbst und **alle** Variablen der Inventartabelle dieser Instanz; Sitzungen invalidieren |
+| `DATABASE_URL` | Inhalt der Datenbank: Konten (Kennwort-Hashes), serverseitige Sitzungen, Bestand, Audit. **Keine** anderen Zugangsdaten — nach §0 liegt kein Token in der Datenbank | Datenbank-Kennwort; Sitzungen invalidieren; Konten prüfen |
+| ein Anbieterschlüssel (KI, Transkription, SMTP, OIDC-Client) | nur das eigene Anbieterkonto (Kosten, Versand bzw. Anmeldung als dieser Client) | nur dieser Schlüssel; beim OIDC-Client zusätzlich Sitzungen invalidieren |
+| ein Quellsystem-Token | lesend den freigegebenen Space bzw. die Bibliothek im Quellsystem | nur dieses Token; Zugriffe im Quellsystem prüfen |
+| `KLARWERK_ADDON_API_KEY` | die Add-in-Schnittstelle von Klarwerk mit den Rechten des Add-ins — keine anderen Geheimnisse | nur dieser Schlüssel, im Add-in nachziehen |
+| `KLARWERK_ASK_RECEIPT_SECRET` | Fälschen von Antwortbelegen dieser Instanz | nur dieses Geheimnis |
+| Repository, Build, Client-Bundle | **kein** Geheimnis (§1a, Test G3–G6) | — (Fund prüfen; enthält er doch einen Wert, gilt die Zeile dieses Werts) |
+
+**Vorsorgliche Betriebsregel (über den Pflichtumfang hinaus).** Ist unklar, welche Werte ein Leck
+enthält — etwa ein Protokoll, ein Chat oder ein Bildschirmfoto, das während einer Sitzung mit
+Betriebszugang entstand —, oder verlässt eine Person mit Betriebszugang das Team, werden **alle**
+Variablen der Inventartabelle gewechselt. Das ist eine bewusste Betriebsregel, keine technische
+Abhängigkeit zwischen den Schlüsseln.
+
 **Inventar der Umgebungsvariablen.** Jede Variable, die der Startvertrag
 (`services/app/src/start-vertrag.ts`) als `geheim: true` führt, steht hier — der Test oben bricht,
 sobald eine fehlt. Ablageort für alle: **Service-Env in Coolify** (Produktion) bzw. `.env.local` (lokal).
 
-| Ebene | Geheimnis | Variable | Ohne Wert | Regulärer Wechsel | Folge des Wechsels |
+| Art | Geheimnis | Variable | Ohne Wert | Regulärer Wechsel | Folge des Wechsels |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Datenbank-Zugang | `DATABASE_URL` | Produktion startet nicht (In-Memory nur mit ausdrücklicher Ausnahme) | jährlich und bei Personal-/Infrastrukturwechsel | Neustart; Kennwort zuerst in Postgres ändern, dann Env setzen |
 | 2 | KI-Schlüssel Anthropic | `ANTHROPIC_API_KEY` | deterministischer Ersatzmodus | ≤ 12 Monate bzw. Anbieter-Policy | Neustart; alten Schlüssel beim Anbieter widerrufen |
 | 2 | KI-Schlüssel OpenAI | `OPENAI_API_KEY` | OpenAI-Weg inaktiv | ≤ 12 Monate bzw. Anbieter-Policy | Neustart; alten Schlüssel beim Anbieter widerrufen |
-| 2 | Schlüssel des lokalen Modells | `KLARWERK_LOCAL_LLM_KEY` | lokaler Weg ohne Schlüssel | mit dem Schlüssel des lokalen Modellservers | Neustart; Wert am Modellserver und hier gleichzeitig ändern |
+| 2 | Schlüssel des lokalen Modells | `KLARWERK_LOCAL_LLM_KEY` | lokaler Weg ohne Schlüssel | ≤ 12 Monate, gemeinsam mit dem lokalen Modellserver | Neustart; Wert am Modellserver und hier gleichzeitig ändern |
 | 2 | Transkriptionsdienst | `MEDIA_TRANSCRIBE_API_KEY` | keine Transkription | ≤ 12 Monate bzw. Anbieter-Policy | Neustart; alten Schlüssel beim Anbieter widerrufen |
 | 2 | Postausgang | `SMTP_PASS` (+ `SMTP_USER`) | kein authentifizierter Versand | ≤ 12 Monate bzw. Anbieter-Policy | Neustart; Testmail über den Kennwort-zurücksetzen-Weg |
 | 2 | Single Sign-on | `OIDC_CLIENT_SECRET` | Client gilt als öffentlich (nur PKCE) | ≤ 12 Monate bzw. Ablauf beim IdP | Neustart; neues Secret beim IdP vor dem Widerruf des alten anlegen |
 | 3 | Confluence-Token | `KLARWERK_CONFLUENCE_TOKEN` | kein Confluence-Client, Zustand „nicht gesetzt“ | ≤ 12 Monate bzw. Ablauf bei Atlassian | Neustart; Zustandsanzeige muss „gesetzt“ zeigen |
 | 3 | SharePoint-/OneDrive-Token | `KLARWERK_SHAREPOINT_TOKEN` | kein SharePoint-Client, Zustand „nicht gesetzt“ | mit Ablauf bei Microsoft, spätestens 12 Monate | Neustart; Zustandsanzeige muss „gesetzt“ zeigen |
 | 4 | Add-in-Schlüssel | `KLARWERK_ADDON_API_KEY` | Add-in-Pfad ist zu | ≤ 12 Monate und bei jedem Wechsel des Add-in-Verteilwegs | Neustart; das Add-in braucht denselben neuen Schlüssel |
-| 4 | Signatur der Antwortbelege | `KLARWERK_ASK_RECEIPT_SECRET` | signiert mit einem prozesslokalen Zufallswert (`services/ask/src/service.ts`); nach einem Neustart nicht mehr bestätigbar | nur bei Verdacht oder Personenwechsel | Ein Beleg trägt kein Schlüsselkennzeichen: vorher ausgestellte Belege lassen sich mit dem neuen Wert nicht mehr bestätigen |
+| 4 | Signatur der Antwortbelege | `KLARWERK_ASK_RECEIPT_SECRET` | signiert mit einem prozesslokalen Zufallswert (`services/ask/src/service.ts`); nach einem Neustart nicht mehr bestätigbar | ≤ 12 Monate, zusätzlich Notfallwechsel (§7) | Neustart. Ein Beleg trägt kein Schlüsselkennzeichen und ist nur 30 Minuten gültig (`ANSWER_RECEIPT_TTL_MS`, `services/ask/src/receipt.ts`): Belege aus den letzten 30 Minuten vor dem Wechsel werden nicht mehr bestätigt, ältere waren ohnehin abgelaufen. Den regulären Wechsel deshalb in eine nutzungsarme Zeit legen; ein Parallelbetrieb mit altem Wert ist nicht nötig |
 
 **Schlüsselmaterial außerhalb der Umgebungsvariablen:**
 
-| Ebene | Geheimnis | Wo es liegt | Wechsel |
+| Art | Geheimnis | Wo es liegt | Wechsel |
 | --- | --- | --- | --- |
 | 0 | Plattform-Zugang (Coolify, Hetzner, SSH) | beim Betreiber, mit Zwei-Faktor | bei Personenwechsel sofort |
 | Proxy | Pre-Launch-Gate | Basic-Auth-Hash am Reverse-Proxy (Traefik/Coolify) | bei Personen- oder Phasenwechsel |
@@ -157,7 +176,7 @@ deckt dabei auch das gebaute Client-Bundle `apps/web/dist`, wenn es vorliegt.
 
 **Regulärer Wechsel** — Fristen je Geheimnis in der Inventartabelle (§1). Ablauf für jede
 Umgebungsvariable:
-1. Neuen Wert beim Anbieter erzeugen (bzw. bei Ebene 4 selbst: `openssl rand -hex 32`); den alten
+1. Neuen Wert beim Anbieter erzeugen (bzw. bei Art 4 selbst: `openssl rand -hex 32`); den alten
    noch **nicht** widerrufen.
 2. Neuen Wert in Coolify als Service-Env setzen, Service **neu starten** — ein laufender Prozess
    behält sonst den alten Wert.
@@ -167,8 +186,10 @@ Umgebungsvariable:
 5. Datum des Wechsels im Betriebsprotokoll festhalten (nur Name und Datum, nie Wert oder Präfix).
 
 **Notfallwechsel** (bei Leak/Verdacht/Offboarding mit Zugriff) — sofort, Reihenfolge umgekehrt:
-1. Betroffenes Secret beim Anbieter **widerrufen** und **neu** erzeugen. Ist eine Ebene 0 oder 1
-   betroffen, gilt das auch für alle tieferen Ebenen (§1, Ordnung).
+1. Umfang bestimmen: der kompromittierte Zugang plus alles, was er laut **„Tatsächliche
+   Zugriffswege“** (§1) erreicht — bei Betriebszugang also alle Variablen der Instanz, bei einem
+   einzelnen Anbieterschlüssel nur dieser. Ist der Inhalt des Lecks unklar, gilt die vorsorgliche
+   Betriebsregel (§1). Jedes Secret im Umfang beim Anbieter **widerrufen** und **neu** erzeugen.
 2. Neuen Wert im Secret-Store/Coolify setzen, Service neu starten.
 3. Bei kompromittiertem Auth: **Sessions invalidieren** (Tokens sind serverseitig → Session-Store leeren/Nutzer neu anmelden), betroffene Konten prüfen/sperren.
 4. **Audit-Log prüfen** (Analytics-Audit / `GET /api/audit`, append-only Hash-Kette) auf auffällige Aktionen.
