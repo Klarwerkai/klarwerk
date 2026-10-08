@@ -2221,8 +2221,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // laut Diff 1139536b..15102c19d genau DREI Komponenten mit: `LueckenAnsprechpartner`,
     // `Vorschlagsliste`, `Vorschlag` — keine entfernt. 519 + 3 = 522 deckt sich mit der Messung.
     // `anbieter` 1 und `traeger` 2 sind unverändert — beide Seiten der Meldung nennen 1 und 2.
+    //
+    // NACHARBEIT 11 · GEMESSEN 524. Am Kandidaten 54b5f032 meldete der Sammler wörtlich „gemessen:
+    // 524 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 672 Quelldateien … expected
+    // { komponenten: 524, … } to deeply equal { komponenten: 522, … }"
+    // (HISTORIE/nacharbeit-11/PRUEFUNG/nacharbeit-10-komponentensammler.log). Erneut kam ein
+    // Hauptstand dazu (13bf9f2bd); laut Diff 15102c19d..13bf9f2bd bringt er genau ZWEI Komponenten
+    // mit — `VerantwortungUebergabe`, `Arbeitsflaeche` — und entfernt keine. 522 + 2 = 524 deckt
+    // sich mit der Messung. Dieser Auftrag hat seit Nacharbeit 2 kein Bauteil hinzugefügt.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 522,
+      komponenten: 524,
       anbieter: 1,
       traeger: 2,
     });
