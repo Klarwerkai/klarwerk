@@ -115,6 +115,21 @@ export function stapelRahmen(stack: unknown): string[] {
   return rahmen;
 }
 
+/**
+ * Ist das eine Liste von Rahmen GENAU in der Form, die `stapelRahmen` ausgibt (`pfad:zeile:spalte`,
+ * kein Leerzeichen, keine Klammer)? Nur dann darf die Senke (`senkeUeberWert`, build-app.ts) unter dem
+ * Feld `stapel` ihre Token-Regel aussetzen — ein Repo-Pfad wie
+ * `services/knowledge-object/src/search-projection-repo-pg.ts` hat mehr als 24 Zeichen aus dem
+ * Base64-Alphabet und würde sonst zu `[redacted]`, der Stapel wäre wertlos.
+ */
+const STAPEL_RAHMEN_FORM = /^(?:node:|[A-Za-z]:)?[^\s():]{1,200}:\d{1,6}:\d{1,6}$/;
+export function istStapelRahmenListe(wert: unknown): wert is string[] {
+  return (
+    Array.isArray(wert) &&
+    wert.every((rahmen) => typeof rahmen === "string" && STAPEL_RAHMEN_FORM.test(rahmen))
+  );
+}
+
 const KA4: Logregel = {
   felder: { nutzlast: "wert", entscheidung: "wert", grund: "wert" },
 };

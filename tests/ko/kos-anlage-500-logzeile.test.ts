@@ -21,6 +21,7 @@ import {
   ERR_UNBEKANNT,
   buildApp,
   buildServices,
+  senkeUeberWert,
 } from "../../services/app/src/build-app";
 
 const MELDUNG = "Unerwarteter Fehler ohne Domänencode (HTTP 500 INTERNAL).";
@@ -194,6 +195,26 @@ describe("arbeit:kos-anlage-500-pg · K1 · unerwarteter Fehler an POST /api/kos
     expect(neu.filter((z) => z.msg === MELDUNG)).toHaveLength(0);
     expect(neu.filter((z) => z.level >= 50)).toHaveLength(0);
     await app.close();
+  });
+
+  // Nacharbeit 1: die Senke schwärzte jeden Rahmen mit langem Repo-Pfad (`[redacted].test.ts:87:24`).
+  // Die Ausnahme dafür gilt NUR unter `stapel` und NUR für Rahmen in der Form von `stapelRahmen`.
+  it("Gegenprobe Senke: Rahmen unter `stapel` bleiben lesbar — sonst greift die Token-Regel weiter", () => {
+    const rahmen = "services/knowledge-object/src/search-projection-repo-pg.ts:470:7";
+    const token = "QWxhZGRpbjpvcGVuIHNlc2FtZWFiY2RlZmdoaWprbG1u";
+    expect(senkeUeberWert({ stapel: [rahmen] }, {})).toEqual({ stapel: [rahmen] });
+    // Derselbe Rahmen unter einem anderen Feldnamen: weiterhin geschwärzt.
+    const anderesFeld = senkeUeberWert({ herkunftsliste: [rahmen] }, {});
+    expect(JSON.stringify(anderesFeld)).toContain("[redacted]");
+    // Freier Text unter `stapel` (keine Rahmenform): weiterhin geschwärzt, auch neben echten Rahmen.
+    const gemischt = senkeUeberWert({ stapel: [rahmen, `Bearer ${token}`] }, {});
+    expect(JSON.stringify(gemischt)).not.toContain(token);
+    // Werte secret-benannter Env-Variablen werden auch unter `stapel` entfernt.
+    const geheim = "geheimnis-im-pfad-1234";
+    const mitGeheimnis = `services/${geheim}/x.ts:1:2`;
+    const env = { KLARWERK_TEST_SECRET: geheim };
+    const ohneGeheimnis = senkeUeberWert({ stapel: [mitGeheimnis] }, env);
+    expect(JSON.stringify(ohneGeheimnis)).not.toContain(geheim);
   });
 
   it("Gegenprobe: eine gelungene Anlage schreibt keine Auffangzeile", async () => {

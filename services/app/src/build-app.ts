@@ -294,7 +294,12 @@ import {
   type LiveWallFotoRepo,
   PgLiveWallFotoRepo,
 } from "./livewall-fotos";
-import { gelisteteMeldung, nurGelisteteLogfelder, stapelRahmen } from "./log-positivliste";
+import {
+  gelisteteMeldung,
+  istStapelRahmenListe,
+  nurGelisteteLogfelder,
+  stapelRahmen,
+} from "./log-positivliste";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
@@ -2433,12 +2438,25 @@ export function senkeUeberWert(
   for (const [schluessel, inhalt] of Object.entries(wert)) {
     // Ben R3 B8: die Trace-Ausnahme setzt NUR die Token-Regel aus — der Wert einer
     // secret-benannten Env-Variablen wird auch unter einem Trace-Feldnamen entfernt.
-    ergebnis[schluessel] = istTraceKennung(schluessel, inhalt)
-      ? entferneGeheimeEnvWerte(inhalt, env)
-      : senkeUeberWert(inhalt, env, tiefe + 1);
+    // arbeit:kos-anlage-500-pg: dieselbe Bauform für die Stapelrahmen des Auffangzweigs (`sendError`,
+    // http.ts) — NUR unter `stapel` und NUR in der strengen Rahmenform (`istStapelRahmenListe`).
+    if (istTraceKennung(schluessel, inhalt)) {
+      ergebnis[schluessel] = entferneGeheimeEnvWerte(inhalt, env);
+    } else if (schluessel === STAPEL_FELD && istStapelRahmenListe(inhalt)) {
+      ergebnis[schluessel] = inhalt.map((rahmen) => entferneGeheimeEnvWerte(rahmen, env));
+    } else {
+      ergebnis[schluessel] = senkeUeberWert(inhalt, env, tiefe + 1);
+    }
   }
   return ergebnis;
 }
+
+// Regel 4 von `sanitizeLogText` liest jeden Pfad ab 24 Zeichen aus dem Base64-Alphabet als Token —
+// `services/knowledge-object/src/search-projection-repo-pg.ts:…` wurde damit zu `[redacted].ts:…`,
+// und die Stapelzeile des Auffangzweigs nannte keinen Ort mehr (Prüfung nacharbeit-1, K1). Die
+// Ausnahme ist so eng wie die Trace-Ausnahme darunter: nur dieser eine Feldname, nur Listen in der
+// Form, die `stapelRahmen` erzeugt; Werte secret-benannter Env-Variablen werden auch hier entfernt.
+const STAPEL_FELD = "stapel";
 
 // Aufnahme gesamt-ki-laufprotokoll (Ben R2 B5, Tracing): Regel 4 von `sanitizeLogText` liest jedes
 // Wort ab 24 Zeichen als Token — eine W3C-Trace-Kennung (32 Hexzeichen) wurde damit zu `[redacted]`,
