@@ -3184,6 +3184,7 @@ const en: typeof de = {
   "con.openKo": "Open object",
   "con.compareOpen": "Compare both",
   "con.readonlyCompare": "Read-only comparison",
+  "con.caseList": "All open conflicts ({{count}})",
   "con.detectedOn": "Detected on {{date}}",
   "con.evidenceSideLabel": "Evidence for this side",
   "con.evidenceBalance.neither":

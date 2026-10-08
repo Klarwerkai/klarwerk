@@ -3174,6 +3174,7 @@ const nl: typeof de = {
   "con.openKo": "Object openen",
   "con.compareOpen": "Beide naast elkaar zetten",
   "con.readonlyCompare": "Alleen-lezen vergelijking",
+  "con.caseList": "Alle openstaande conflicten ({{count}})",
   "con.detectedOn": "Herkend op {{date}}",
   "con.evidenceSideLabel": "Bewijs van deze kant",
   "con.evidenceBalance.neither":
