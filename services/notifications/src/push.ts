@@ -162,7 +162,9 @@ export function vapidJwt(config: PushConfig, audience: string, jetztSek: number)
 
 export type PushFetch = (
   url: string,
-  init: { method: string; headers: Record<string, string>; body: Uint8Array },
+  // Leerer Rumpf als leere Zeichenkette: kein Inhalt, `Content-Length: 0`, und als `BodyInit`
+  // unter jeder TypeScript-Fassung zulässig (ein `Uint8Array<ArrayBufferLike>` ist es nicht).
+  init: { method: string; headers: Record<string, string>; body: string },
 ) => Promise<{ status: number }>;
 
 export function vapidPushSender(
@@ -185,7 +187,7 @@ export function vapidPushSender(
           TTL: "86400",
           Urgency: "normal",
         },
-        body: new Uint8Array(0),
+        body: "",
       });
       if (antwort.status === 404 || antwort.status === 410) {
         return "abgelaufen";
