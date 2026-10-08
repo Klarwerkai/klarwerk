@@ -202,7 +202,7 @@ import {
 } from "../lib/docx";
 // AUFTRAG-mega7 Block A: eindeutige Leerwert-Semantik für den Body (Löschmarker beim Aktualisieren).
 import { draftBodyPatch } from "../lib/draftBody";
-import { draftTitle } from "../lib/draftForm";
+import { adoptProposedKnowledgeType, draftTitle } from "../lib/draftForm";
 // AUFTRAG-mega6 Block D: sichtbare Eingabegrenzen aus DERSELBEN Quelle wie die Servernormalisierung.
 import { DRAFT_LIMITS } from "../lib/draftLimits";
 import { studioSaveConfidence } from "../lib/editorApplySafety";
@@ -1322,6 +1322,10 @@ export function CaptureArbeitsraum({
     onSuccess: (r) => {
       setDraft(r);
       setTags((prev) => (prev.length > 0 ? prev : r.tags));
+      // FR-STR-01: vorgeschlagene Wissensart nur in eine unberührte Auswahl (Regel am Helfer).
+      setType((prev) =>
+        adoptProposedKnowledgeType(prev, CAPTURE_FIELD_DEFAULTS.type, r.knowledgeType),
+      );
       setErr(null);
       // SCRUM-384: direkt zur Wissensseite — Artikel-Vorschlag einmalig erzeugen
       // (leerer Body ⇒ setzen; vorhandener Inhalt wird NIE still überschrieben).
