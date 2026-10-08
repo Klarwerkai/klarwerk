@@ -166,6 +166,17 @@ export interface KoAttachment {
 // „offen" noch „keine Kategorie vorhanden"; kein Platzhalter, kein Standardwert.
 export interface KnowledgeCheckResult {
   status: "done" | "pending" | "failed";
+  // AUFNAHME 20260922 · NEGATIVWISSEN-HINWEIS (R-1629): ähnliche Einträge der Wissensart
+  // „negativwissen" (Vertrag bei `negativwissenAuskunft` in services/app/src/knowledge-check.ts).
+  // Der Server lässt das Feld ohne Treffer weg — fehlt es, gibt es nichts anzuzeigen.
+  negativwissen?: {
+    id: string;
+    title: string;
+    statement: string;
+    score: number;
+    koStatus: KoStatus | null;
+    koCategory: string | null;
+  }[];
   similar: {
     id: string;
     title: string;
