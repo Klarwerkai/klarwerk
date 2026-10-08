@@ -81,9 +81,26 @@ function eigenschaftsname(knoten: ts.ObjectLiteralElementLike): string | undefin
   return undefined;
 }
 
-/** Ist dieses Objektliteral als `KoProposal` getypt (`const x: KoProposal = { … }`)? */
+/**
+ * Gehört dieses Objektliteral zu einem als `KoProposal` getypten Literal (`const x: KoProposal = {…}`)?
+ *
+ * Nacharbeit 4: das Feld steht dort nicht direkt, sondern bedingt eingestreut —
+ * `...(input.origin ? { origin: input.origin } : {})`. Das innere Literal hängt an einem
+ * Bedingungsausdruck, nicht an der Deklaration. Gesucht wird deshalb über genau diese Hüllen nach
+ * oben (Klammer, Bedingung, Ausbreitung, umschließendes Literal) — über nichts anderes: ein Aufruf
+ * oder eine Zuweisung dazwischen beendet die Suche, und das Feld zählt dann als Herkunftsangabe.
+ */
 function istVorschlag(literal: ts.ObjectLiteralExpression): boolean {
-  const eltern = literal.parent;
+  let knoten: ts.Node = literal;
+  while (
+    ts.isParenthesizedExpression(knoten.parent) ||
+    ts.isConditionalExpression(knoten.parent) ||
+    ts.isSpreadAssignment(knoten.parent) ||
+    ts.isObjectLiteralExpression(knoten.parent)
+  ) {
+    knoten = knoten.parent;
+  }
+  const eltern = knoten.parent;
   return (
     ts.isVariableDeclaration(eltern) &&
     eltern.type !== undefined &&
@@ -228,6 +245,16 @@ describe("R-1355 · Kalibrierung — jede Regel findet ihren eingeschleusten Ver
     expect(pruefeQuelle("x.ts", verstoss, true).map((f) => f.regel)).toEqual(["Z1"]);
     const vorschlag = "const p: KoProposal = { id: 'p', origin: input.origin };";
     expect(pruefeQuelle("x.ts", vorschlag, true)).toEqual([]);
+    // Nacharbeit 4: dieselbe Ausnahme in der Schreibweise des Bestands (service.ts, addProposal).
+    const eingestreut =
+      "const p: KoProposal = { id: 'p', ...(input.origin ? { origin: input.origin } : {}) };";
+    expect(pruefeQuelle("x.ts", eingestreut, true)).toEqual([]);
+    // Dieselbe Schreibweise an einem NICHT als KoProposal getypten Literal bleibt ein Verstoß.
+    const ungetypt = "const k = { id: 'k', ...(input.origin ? { origin: input.origin } : {}) };";
+    expect(pruefeQuelle("x.ts", ungetypt, true).map((f) => f.regel)).toEqual(["Z1"]);
+    // Ein Aufruf dazwischen beendet die Suche — das Feld zählt dann als Herkunftsangabe.
+    const ueberAufruf = "const p: KoProposal = { id: 'p', ...baue({ origin: input.origin }) };";
+    expect(pruefeQuelle("x.ts", ueberAufruf, true).map((f) => f.regel)).toEqual(["Z1"]);
     // Außerhalb des Moduls ist `origin` kein Objektfeld des Wissensobjekts (z. B. CORS, Konflikt).
     expect(pruefeQuelle("x.ts", verstoss, false)).toEqual([]);
   });
