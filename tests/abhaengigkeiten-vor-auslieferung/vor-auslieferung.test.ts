@@ -149,12 +149,30 @@ describe("R-1398 · das Register der bewerteten Meldungen", () => {
     expect(abweichend).toEqual([]);
   });
 
-  it("R3 · jedes Urteil des Registers stimmt mit dem Expositionsbericht (README) überein", () => {
+  it("R3 · die Bewertungen vom 17.09. stimmen mit dem Expositionsbericht (README) überein", () => {
+    // Die Tabelle in README.md Abschnitt 1 urteilt JE PAKET über die Meldungen vom 17.09.2026.
+    // Die Messung vom 08.10.2026 ist je ADVISORY bewertet (README Abschnitt 6) und hat für
+    // dieselben Pakete weitere Meldungen gebracht — sie gehört deshalb nicht in diesen Abgleich.
     const tabelle = berichtstabelle(readFileSync(EXPOSITIONSBERICHT, "utf8"));
-    for (const b of register().filter((e) => e.bestand === "wurzel")) {
+    const alt = register().filter((e) => e.bestand === "wurzel" && e.bewertet_am === "2026-09-17");
+    expect(alt).toHaveLength(5);
+    for (const b of alt) {
       const zeile = tabelle.find((z) => z.ort === b.ort);
       expect(zeile, `${b.ort} fehlt in der Expositionstabelle`).toBeDefined();
       expect(zeile?.urteil, `${b.kennung} ${b.ort}`).toBe(b.urteil);
+    }
+  });
+
+  it("R4 · ein in der Tabelle exponiertes Paket hat auch im Register eine exponierte Meldung", () => {
+    const tabelle = berichtstabelle(readFileSync(EXPOSITIONSBERICHT, "utf8"));
+    for (const zeile of tabelle.filter((z) => z.urteil === "exponiert")) {
+      const eintraege = register().filter((e) => e.bestand === "wurzel" && e.ort === zeile.ort);
+      if (eintraege.length > 0) {
+        expect(
+          eintraege.map((e) => e.urteil),
+          zeile.ort,
+        ).toContain("exponiert");
+      }
     }
   });
 });

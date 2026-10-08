@@ -522,6 +522,37 @@ dort mit der Tabelle in Abschnitt 1 übereinstimmen und die Versionen mit der Lo
 `tests/abhaengigkeiten-vor-auslieferung/vor-auslieferung.test.ts` fest. Die Einordnung in diesem
 Bericht bleibt unverändert die Messung vom 17.09.2026 mit dem Nachtrag vom 06.10.2026.
 
+## 6. Nachtrag 08.10.2026 — der erste echte Auditlauf beider Bestände
+
+Der erste echte `npm audit --omit=dev` beider Bestände (Integrationslauf vom 08.10.2026, Bericht
+`echter-audit.json`) meldete 34 bis dahin unbewertete Advisories: 20 im Laufzeitbestand
+(`fastify` ×5, `nodemailer` ×13, `sharp`, `sprintf-js`) und 14 im Webbestand (`@xmldom/xmldom`
+×10, `react-router` ×2, `react-router-dom`, `sprintf-js`). Die Tabelle in Abschnitt 1 bleibt die
+Einordnung je Paket vom 17.09.; die neuen Meldungen sind je Advisory bewertet, mit gebundener
+Version, in `tools/abhaengigkeiten-bewertet.json`. Jede Bewertung ruht auf einem Fall in
+`tests/abhaengigkeiten-vor-auslieferung/exposition-20261008.test.ts`.
+
+**Behoben:**
+- `@xmldom/xmldom` im Webbestand von 0.8.13 auf 0.8.15 gehoben, innerhalb `^0.8.6` von `mammoth`.
+  Der Eintrag ist der von npm erzeugte aus `package-lock.json`, wo 0.8.15 schon gebunden war und der
+  echte Audit nichts meldete. Er liegt ausserhalb aller zehn Bereiche (≤ 0.8.14). Wichtig, weil
+  `docx.ts` mammoth aus `apps/web` lädt, auch serverseitig im Weg `POST /api/drafts/from-docx`.
+- `sharp` (GHSA-wq5f-xc86-pv6w, librsvg): der Aufrufpfad ist geschlossen. `istVektorMarkup()` in
+  `bildverkleinerung.ts` lässt SVG/SVGZ nicht mehr bis zu sharp; das Bild bleibt unverändert mit
+  Hinweis, wie bei EMF. Die Versionsbehebung (laut Advisory ab 0.35.5) steht in keiner Lockdatei.
+
+**Exponiert, bewusst offen:** vier weitere `nodemailer`-Meldungen am Adressparser (Behebung nur mit
+Hauptwechsel, dieselbe offene Entscheidung wie in Abschnitt 1) und die beiden Open-Redirect-
+Meldungen von React Router. Für diese ist kein Navigationsziel aus URL-Parametern gefunden; die
+Ziele aus Datenfeldern sind aber nur stichprobenhaft verfolgt. Die Behebung von GHSA-wrjc liegt
+erst bei 7.18.0; ob ein 6.30.x-Stand über 6.30.5 existiert, war ohne Registry-Zugang nicht prüfbar.
+
+**Nicht exponiert**, mit der Bedingung im Register: die fünf `fastify`-Meldungen. Bei GHSA-hwr6 ist
+die Bedingung vorhanden (`additionalProperties: false` in `fragekontext`), die Folge aber
+wirkungslos, weil `normalizeFragekontext` nur drei Felder übernimmt. Ferner neun
+`nodemailer`-Meldungen an Optionen, die Klarwerk nicht setzt, beide `sprintf-js`-Meldungen (zur
+Laufzeit gemessen: nicht in mammoths Modulgraph) und die SSR-Meldung von React Router.
+
 ## Nicht gemessen
 
 - **Echter SMTP-Versand.** Kein Server, keine Verbindung, kein Empfänger, keine echte Adresse. Fall
