@@ -1110,6 +1110,43 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     expect(rot).toHaveLength(3);
   });
 
+  it("Nacharbeit 13: verschachtelte Namensräume (export * as ns) werden Glied für Glied verfolgt", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Weiter.tsx": [
+          "export function Weiter(p: any): JSX.Element { return <div {...p} />; }",
+        ],
+        "apps/web/src/components/ns.ts": ['export * as ns from "./Weiter";'],
+        // bens Fall wörtlich: der Zugriff über den Unter-Namensraum und M als Wert.
+        "apps/web/src/components/Kette.tsx": [
+          'import * as M from "./ns";',
+          "export const a = M.ns.Weiter(JSON.parse('{}'));",
+          "export const b = [M];",
+          "export const c = [M.ns];",
+        ],
+        // Derselbe Unter-Namensraum, benannt importiert.
+        "apps/web/src/components/Benannt.tsx": [
+          'import { ns } from "./ns";',
+          "export const d = ns.Weiter(JSON.parse('{}'));",
+        ],
+        // Ein Unter-Namensraum aus einem nicht lesbaren Paket ist nicht frei, sondern rot.
+        "apps/web/src/components/paket.ts": ['export * as fremd from "fremdes-paket";'],
+        "apps/web/src/components/Fremd.tsx": [
+          'import * as P from "./paket";',
+          "export const e = P.fremd.Irgendwas(1);",
+        ],
+      }),
+    );
+    const an = (stelle: string): string[] => rot.filter((z) => z.includes(stelle));
+    expect(an("components/Kette.tsx:2")[0]).toContain("in <Weiter>");
+    expect(an("components/Kette.tsx:3")[0]).toContain("enthält den Weiterreicher ns.Weiter");
+    expect(an("components/Kette.tsx:4")[0]).toContain("der Namensraum M.ns enthält");
+    expect(an("components/Benannt.tsx:2")[0]).toContain("in <Weiter>");
+    expect(an("components/Fremd.tsx:2")[0]).toContain("im Namensraum nicht auflösbar");
+    expect(rot).toHaveLength(5);
+  });
+
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
     const { rot } = pruefeModalgrenze(
       legeBaum({

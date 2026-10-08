@@ -844,6 +844,94 @@ function exportierteNamen(
   return { namen, vollstaendig };
 }
 
+/** Ein Unter-Namensraum: das Modul dahinter, `unlesbar` (Paket, fehlt) oder kein Namensraum. */
+type Unterraum = Exportort | "unlesbar" | undefined;
+
+/**
+ * Nacharbeit 13 (ben): ist `name` in `modul` ein exportierter NAMENSRAUM? `export * as ns from`,
+ * `export { ns } from` (rekursiv), `import * as X …; export { X as ns }`, ein benannt importierter
+ * Namensraum und `export * from` (rekursiv). `undefined`: kein Namensraum unter diesem Namen.
+ */
+function namensraumUnter(
+  modul: Exportort,
+  name: string,
+  leser: Modulleser,
+  tiefe: number,
+): Unterraum {
+  if (tiefe > MAX_TIEFE) {
+    return "unlesbar";
+  }
+  for (const s of modul.quelle.ast.statements) {
+    if (!ts.isExportDeclaration(s)) {
+      continue;
+    }
+    const spez =
+      s.moduleSpecifier && ts.isStringLiteral(s.moduleSpecifier)
+        ? s.moduleSpecifier.text
+        : undefined;
+    const klausel = s.exportClause;
+    if (klausel !== undefined && ts.isNamespaceExport(klausel)) {
+      if (klausel.name.text !== name) {
+        continue;
+      }
+      const ziel = spez !== undefined ? leseModul(modul.datei, spez, leser) : undefined;
+      return ziel ?? "unlesbar";
+    }
+    if (klausel !== undefined && ts.isNamedExports(klausel)) {
+      const element = klausel.elements.find((e) => e.name.text === name);
+      if (element === undefined) {
+        continue;
+      }
+      const lokal = (element.propertyName ?? element.name).text;
+      if (spez === undefined) {
+        return importierterNamensraum(modul, lokal, leser, tiefe + 1);
+      }
+      const ziel = leseModul(modul.datei, spez, leser);
+      return ziel ? namensraumUnter(ziel, lokal, leser, tiefe + 1) : "unlesbar";
+    }
+    if (klausel === undefined && spez !== undefined) {
+      const ziel = leseModul(modul.datei, spez, leser);
+      const unter = ziel ? namensraumUnter(ziel, name, leser, tiefe + 1) : undefined;
+      if (unter !== undefined) {
+        return unter;
+      }
+    }
+  }
+  return undefined;
+}
+
+/** Ist der lokale Name `lokal` in `modul` ein importierter Namensraum (direkt oder benannt)? */
+function importierterNamensraum(
+  modul: Exportort,
+  lokal: string,
+  leser: Modulleser,
+  tiefe: number,
+): Unterraum {
+  for (const s of modul.quelle.ast.statements) {
+    if (!ts.isImportDeclaration(s) || !ts.isStringLiteral(s.moduleSpecifier)) {
+      continue;
+    }
+    const bindungen = s.importClause?.namedBindings;
+    if (
+      bindungen !== undefined &&
+      ts.isNamespaceImport(bindungen) &&
+      bindungen.name.text === lokal
+    ) {
+      return leseModul(modul.datei, s.moduleSpecifier.text, leser) ?? "unlesbar";
+    }
+    if (bindungen !== undefined && ts.isNamedImports(bindungen)) {
+      const element = bindungen.elements.find((e) => e.name.text === lokal);
+      if (element === undefined) {
+        continue;
+      }
+      const ziel = leseModul(modul.datei, s.moduleSpecifier.text, leser);
+      const exportName = (element.propertyName ?? element.name).text;
+      return ziel ? namensraumUnter(ziel, exportName, leser, tiefe + 1) : undefined;
+    }
+  }
+  return undefined;
+}
+
 /** Die exportierten Typdeklarationen `name` eines Moduls (Interfaces dürfen mehrfach stehen). */
 function exportierteTypen(quelle: Quelle, name: string): ts.Node[] {
   return quelle.ast.statements.filter(
@@ -2117,18 +2205,26 @@ function weiterreicherVerwendungen(
     const deklarationen = sammleDeklarationen(sf);
     const umfeld: Modulumfeld = { datei: quelle.datei, leser };
     // Das Modul hinter einem Namensraumimport — nur, wenn der Name hier nicht überdeckt ist.
+    // Nacharbeit 13: auch ein BENANNT importierter Namensraum (`import { ns } from "./index"` mit
+    // `export * as ns` dort) — je Name einmal aufgelöst.
+    const benannteNamensraeume = new Map<string, Exportort | undefined>();
     const namensraumModul = (id: ts.Identifier): Exportort | undefined => {
-      const spezifizierer = namensraeume.get(id.text);
-      if (spezifizierer === undefined || sichtbareDeklarationen(deklarationen, id).length > 0) {
+      if (!lokaleNamen.has(id.text) && !namensraeume.has(id.text)) {
         return undefined;
       }
-      for (const kandidat of modulKandidaten(quelle.datei, spezifizierer)) {
-        const modul = leser(kandidat);
-        if (modul) {
-          return { quelle: modul, datei: kandidat, name: "" };
-        }
+      if (sichtbareDeklarationen(deklarationen, id).length > 0) {
+        return undefined;
       }
-      return undefined;
+      const spezifizierer = namensraeume.get(id.text);
+      if (spezifizierer !== undefined) {
+        return leseModul(quelle.datei, spezifizierer, leser);
+      }
+      if (!benannteNamensraeume.has(id.text)) {
+        const hier: Exportort = { quelle, datei: quelle.datei, name: "" };
+        const unter = importierterNamensraum(hier, id.text, leser, 0);
+        benannteNamensraeume.set(id.text, unter === "unlesbar" ? undefined : unter);
+      }
+      return benannteNamensraeume.get(id.text);
     };
     // Der Weiterreicher hinter `M.name` — über Re-Exporte bis zur Deklaration.
     const ausNamensraum = (modul: Exportort, name: string): string | undefined => {
@@ -2195,39 +2291,93 @@ function weiterreicherVerwendungen(
     };
     // `M.Weiter` / `M["Weiter"]` wird wie ein Bezeichner geprüft. Der Namensraum selbst als Wert
     // (`[M]`, `f(M)`, `M[k]`) gibt jeden enthaltenen Weiterreicher aus der Hand — nicht zuordenbar.
-    const pruefeNamensraum = (m: ts.Identifier, modul: Exportort): void => {
-      const p = m.parent;
-      if (ts.isPropertyAccessExpression(p) && p.expression === m) {
-        const ziel = ausNamensraum(modul, p.name.text);
-        if (ziel !== undefined) {
-          pruefeVerwendung(p, ziel);
-        }
-        return;
+    // Nacharbeit 12/13 (ben): die Weiterreicher eines Namensraums, rekursiv über die tatsächlich
+    // exportierten Namen (Aliasse, `export *`) UND über Unter-Namensräume (`export * as ns`).
+    // `vollstaendig: false`, sobald ein Teil nicht lesbar ist — das ist nicht „frei“.
+    const enthaltene = (
+      modul: Exportort,
+      besucht: Set<string>,
+      praefix: string,
+    ): { gefunden: string[]; vollstaendig: boolean } => {
+      if (besucht.has(modul.datei)) {
+        return { gefunden: [], vollstaendig: true };
       }
-      if (
-        ts.isElementAccessExpression(p) &&
-        p.expression === m &&
-        istZeichenkettenLiteral(p.argumentExpression)
-      ) {
-        const ziel = ausNamensraum(modul, p.argumentExpression.text);
-        if (ziel !== undefined) {
-          pruefeVerwendung(p, ziel);
-        }
-        return;
-      }
-      // Nacharbeit 12 (ben): die TATSÄCHLICH exportierten Namen, rekursiv über Aliasse und
-      // `export *` — ein Alias wie `W` aus `export { Weiter as W }` hinter `export *` zählt mit.
+      besucht.add(modul.datei);
       const exportiert = exportierteNamen(modul, leser);
-      const enthalten = [...exportiert.namen].filter((n) => ausNamensraum(modul, n) !== undefined);
-      const stelle = `${quelle.datei}:${zeileVon(sf, m)} — der Namensraum ${m.text}`;
-      if (enthalten.length > 0) {
+      let vollstaendig = exportiert.vollstaendig;
+      const gefunden: string[] = [];
+      for (const n of exportiert.namen) {
+        if (ausNamensraum(modul, n) !== undefined) {
+          gefunden.push(`${praefix}${n}`);
+          continue;
+        }
+        const unter = namensraumUnter(modul, n, leser, 0);
+        if (unter === "unlesbar") {
+          vollstaendig = false;
+        } else if (unter !== undefined) {
+          const tiefer = enthaltene(unter, besucht, `${praefix}${n}.`);
+          gefunden.push(...tiefer.gefunden);
+          vollstaendig = vollstaendig && tiefer.vollstaendig;
+        }
+      }
+      return { gefunden, vollstaendig };
+    };
+    // Nacharbeit 13 (ben): eine Zugriffskette `M.ns.Weiter` wird Glied für Glied verfolgt. Ein
+    // Glied ist ein Weiterreicher (→ wie ein Bezeichner geprüft), ein Unter-Namensraum (→ weiter),
+    // nicht lesbar (→ rot) oder nichts davon. Endet die Kette vorher, ist der erreichte Namensraum
+    // (`M`, `M.ns`, `M[k]`) als WERT verwendet und wird rekursiv abgerechnet.
+    const pruefeNamensraum = (m: ts.Identifier, start: Exportort): void => {
+      let modul = start;
+      let knoten: ts.Expression = m;
+      for (let glied = 0; glied <= MAX_TIEFE; glied++) {
+        const p = knoten.parent;
+        let name: string | undefined;
+        if (ts.isPropertyAccessExpression(p) && p.expression === knoten) {
+          name = p.name.text;
+        } else if (
+          ts.isElementAccessExpression(p) &&
+          p.expression === knoten &&
+          istZeichenkettenLiteral(p.argumentExpression)
+        ) {
+          name = p.argumentExpression.text;
+        }
+        if (name === undefined) {
+          break;
+        }
+        const zugriff = p as ts.Expression;
+        const ziel = ausNamensraum(modul, name);
+        if (ziel !== undefined) {
+          pruefeVerwendung(zugriff, ziel);
+          return;
+        }
+        const unter = namensraumUnter(modul, name, leser, 0);
+        if (unter !== undefined && unter !== "unlesbar") {
+          modul = unter;
+          knoten = zugriff;
+          continue;
+        }
+        // Weder Weiterreicher noch Unter-Namensraum: nur dann frei, wenn das Glied nachweislich
+        // eine Deklaration ist. Ein nicht lesbarer Namensraum oder ein Name, den eine nicht
+        // abschliessende Exportliste verbirgt, ist nicht auflösbar — rot.
+        const deklariert = folgeReexport({ ...modul, name }, leser, 0) !== undefined;
+        const verborgen = !deklariert && !exportierteNamen(modul, leser).vollstaendig;
+        if ((unter === "unlesbar" || verborgen) && weiter.size > 0) {
+          ergebnis.befunde.push(
+            `${quelle.datei}:${zeileVon(sf, zugriff)} — „${zugriff.getText(sf)}“ ist im Namensraum nicht auflösbar: ob dahinter ein Weiterreicher steht, kann dieser Sammler nicht beurteilen`,
+          );
+        }
+        return;
+      }
+      const inhalt = enthaltene(modul, new Set(), "");
+      const stelle = `${quelle.datei}:${zeileVon(sf, knoten)} — der Namensraum ${knoten.getText(sf)}`;
+      if (inhalt.gefunden.length > 0) {
         ergebnis.befunde.push(
-          `${stelle} enthält den Weiterreicher ${enthalten.join(", ")} und wird hier als Wert verwendet: dessen Aufrufer und deren Rollen kann dieser Sammler nicht finden`,
+          `${stelle} enthält den Weiterreicher ${inhalt.gefunden.join(", ")} und wird hier als Wert verwendet: dessen Aufrufer und deren Rollen kann dieser Sammler nicht finden`,
         );
-      } else if (!exportiert.vollstaendig && weiter.size > 0) {
+      } else if (!inhalt.vollstaendig && weiter.size > 0) {
         // Nicht abschliessend erhoben ist nicht nachweislich frei von Weiterreichern.
         ergebnis.befunde.push(
-          `${stelle} wird hier als Wert verwendet, seine Exporte sind nicht vollständig auflösbar (export * aus einem nicht lesbaren Modul): ob er einen Weiterreicher enthält, kann dieser Sammler nicht beurteilen`,
+          `${stelle} wird hier als Wert verwendet, seine Exporte sind nicht vollständig auflösbar (Modul oder Unter-Namensraum nicht lesbar): ob er einen Weiterreicher enthält, kann dieser Sammler nicht beurteilen`,
         );
       }
     };
