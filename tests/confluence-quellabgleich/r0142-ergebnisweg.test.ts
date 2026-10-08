@@ -115,6 +115,10 @@ async function aufbau() {
     payload: { email: "a@r0142.test", password: "secret123" },
   });
   const headers = { authorization: `Bearer ${login.json().token}` };
+  // R-0585 (Auftrag gesamt-datenschutz-voreinstellung): den Fragetext einer Lücke sehen nur der
+  // Fragende und der Zuständige — kein Rollenrecht mehr. Wer im Test fragt und danach das Ergebnis
+  // liest, muss deshalb DASSELBE Konto sein.
+  const adminId = login.json().user.id as string;
 
   const lauf = async (): Promise<string> => {
     const start = await app.inject({
@@ -149,7 +153,7 @@ async function aufbau() {
   };
   const offene = async () =>
     (await services.library.listImportCandidates()).filter((k) => k.status === "neu");
-  return { app, services, headers, bereich, lauf, ergebnis, offene };
+  return { app, services, headers, adminId, bereich, lauf, ergebnis, offene };
 }
 
 describe("R-0142 · der Ergebnisweg des Confluence-Imports", () => {
@@ -351,13 +355,22 @@ describe("R-0142 · der Ergebnisweg des Confluence-Imports", () => {
     const t = await aufbau();
     try {
       // Die Fragen werden gestellt, BEVOR es Wissen dazu gibt — der echte Antwortweg legt Lücken an.
-      const passend = await t.services.ask.ask("Wie wird die Wartung ausgeschaltet?", "admin");
-      const fremd = await t.services.ask.ask("Welche Kantine hat montags geöffnet?", "admin");
-      const geschlossen = await t.services.ask.ask("Wartung ausschalten Fassung?", "admin");
+      const passend = await t.services.ask.ask("Wie wird die Wartung ausgeschaltet?", t.adminId);
+      const fremd = await t.services.ask.ask("Welche Kantine hat montags geöffnet?", t.adminId);
+      const geschlossen = await t.services.ask.ask("Wartung ausschalten Fassung?", t.adminId);
       expect(passend.gap?.id, "der Antwortweg muss eine Lücke anlegen").toBeTruthy();
       expect(fremd.gap?.id).toBeTruthy();
       expect(geschlossen.gap?.id).toBeTruthy();
-      await t.services.ask.closeGap(geschlossen.gap?.id ?? "");
+      // R-0846 / L6: eine Lücke schliesst nur mit dem Wissensobjekt, das sie beantwortet. Dafür
+      // steht hier ein eigenes Objekt, damit der Import unten unberührt bleibt.
+      const antwort = await t.services.ko.create({
+        title: "Abschlussvermerk Wartungsfrage",
+        statement: "Die Frage ist anderweitig beantwortet.",
+        type: "best_practice",
+        category: "Vermerk",
+        author: "admin",
+      });
+      await t.services.ask.closeGap(geschlossen.gap?.id ?? "", antwort.id);
 
       t.bereich.set("P-1", seite("P-1", 1));
       const importId = await t.lauf();
