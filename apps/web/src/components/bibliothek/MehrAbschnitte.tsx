@@ -100,6 +100,7 @@ import {
 } from "../../lib/zeichnungsanhang";
 import { type Zeichnungspunkt, bildQuelle, punktProzent } from "../../lib/zeichnungspunkt";
 import { AiCheckCoverageNotes } from "../AiCheckCoverageHint";
+import { AnlagenFeld } from "../Anlagen";
 import { ConflictTargetPicker } from "../ConflictTargetPicker";
 import { ExternalUrlText } from "../ExternalUrlText";
 import { FachgebietFeld } from "../Fachgebiet";
@@ -1956,6 +1957,12 @@ export function MehrAbschnitte({
             {t(`wissensmetadaten.aussageart.${ko.aussageart}`)}
           </p>
         ) : null}
+        {/* R-1690: der beim Erfassen gesetzte Re-Validierungstermin. */}
+        <p data-testid="ko-revalidierung" className="mt-1 text-[12px] text-muted">
+          {ko.revalidierungAm
+            ? `${t("wissensmetadaten.revalidierung.feld")}: ${ko.revalidierungAm}`
+            : t("wissensmetadaten.revalidierung.keine")}
+        </p>
         {canEdit ? (
           <label className="mt-3 flex items-center gap-2 text-[12px] text-muted">
             <span>{t("conf.field")}</span>
@@ -2030,18 +2037,20 @@ export function MehrAbschnitte({
         offen={offene.has("kopplung")}
         aufWechsel={(o) => abschnittUmschalten("kopplung", o)}
       >
-        {/* R-0082 (JOB 593, Option A): WELCHE Anlage zu diesem Wissensobjekt gehört, sagt allein
-            das Feld am Objekt (`asset`). Es steht deshalb zuerst und mit eigenem Namen; die
-            Lebenszyklus-Kopplungen darunter sind nur die Liste für Änderungsmeldungen
-            („Stimmt das noch?") und keine zweite Quelle für die Zuordnung. */}
-        <div data-testid="ko-anlage-kanonisch" className="mb-2.5 text-[12.5px]">
-          <span className="font-semibold text-text">
-            {t("wissensmetadaten.anlage.kanonisch")}:{" "}
-          </span>
-          <span className="text-muted">
-            {ko.asset?.trim() || t("wissensmetadaten.anlage.keine")}
-          </span>
-        </div>
+        {/* R-0082 (JOB 593, Option A): WELCHE Anlagen zu diesem Wissensobjekt gehören, sagt allein
+            die Liste am Objekt (`assets`, Altbestand `asset`). Sie steht deshalb zuerst und ist
+            hier änderbar (Korrekturweg `revise`); die Lebenszyklus-Kopplungen darunter sind nur
+            die Liste für Änderungsmeldungen („Stimmt das noch?") und keine zweite Quelle. Der
+            Schlüssel setzt das Feld nach dem Speichern auf den Serverstand. */}
+        <AnlagenFeld
+          key={JSON.stringify(ko.assets ?? ko.asset ?? null)}
+          ko={ko}
+          darfAendern={canEdit}
+          wartet={act.isPending}
+          onSpeichern={(assets) =>
+            act.mutate({ action: "revise", changes: { assets }, expectedVersion: ko.version })
+          }
+        />
         <p className="mb-1 text-[11.5px] text-muted-2">{t("wissensmetadaten.anlage.kopplungen")}</p>
         {couplings.data && couplings.data.length > 0 ? (
           <div className="flex flex-wrap gap-1.5">

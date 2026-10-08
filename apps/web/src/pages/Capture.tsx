@@ -92,6 +92,7 @@ import {
   aiCheckCoverageVars,
   aiCheckPollAgain,
 } from "../lib/aiCheckStatusCard";
+import { anlagenAlsEingabe, anlagenNutzlast, anlagenVon } from "../lib/anlagen";
 // AUFTRAG-mega19 Block B: `commitDocumentAppend`/`newAppendOperationId` sind hier nicht mehr nötig.
 // Das frische Erfassen reicht die Herkunft nicht mehr nach — Inhalt, Anker und Belegstellen
 // entstehen in EINEM serverseitigen Vorgang (endpoints.ko.createFromDocument). Die Verbund-Operation
@@ -740,6 +741,8 @@ export function CaptureArbeitsraum({
   const [domain, setDomain] = useState("");
   // R-0086: Tatsache oder Handlungsanweisung; "" = nicht angegeben (kein Vorgabewert).
   const [aussageart, setAussageart] = useState<KoAussageart | "">("");
+  // R-1690: Re-Validierungstermin (`JJJJ-MM-TT` aus dem Datumsfeld); "" = keiner.
+  const [revalidierungAm, setRevalidierungAm] = useState("");
   const [asset, setAsset] = useState("");
   // SCRUM-415: Vertraulichkeitsstufe ab Erfassen (Standard „intern"). Vertrauliche KOs gehen nie in
   // externe Kontexte (Output/Export).
@@ -2052,7 +2055,10 @@ export function CaptureArbeitsraum({
         tags: tags.filter((x) => x.trim()),
         conditions: draft.conditions.filter((x) => x.trim()),
         measures: draft.measures.filter((x) => x.trim()),
-        asset: asset.trim() ? asset.trim() : null,
+        // R-0082: die Anlagenliste (kanonisch) und ihre erste Anlage als `asset`.
+        ...anlagenNutzlast(asset),
+        // R-1690: ein geleerter Termin reist als Leerwert mit (Aktualisieren, wie `domain`).
+        revalidierungAm,
         // AUFTRAG-mega7 Block A (bens Ship-Blocker): dieser PUT AKTUALISIERT einen bestehenden
         // Entwurf (draftId), also reist ein bewusst geleerter Body als ausdrücklicher Leerwert mit.
         // Ohne ihn holte der partielle Merge den alten Body zurück — und der Promote direkt danach
@@ -2085,7 +2091,8 @@ export function CaptureArbeitsraum({
         category: category.trim() || "Allgemein",
         ...(domain.trim() ? { domain: domain.trim() } : {}),
         ...(aussageart ? { aussageart } : {}),
-        asset: asset.trim() ? asset.trim() : null,
+        ...anlagenNutzlast(asset),
+        ...(revalidierungAm ? { revalidierungAm } : {}),
         ...(bodyHtml.trim() ? { bodyHtml } : {}),
         ...(n ? { neededValidations: n } : {}),
         // JOB 3082 (Q3 a): gewählt ⇒ mitschicken (auch „intern"), nicht gewählt ⇒ weglassen.
@@ -2350,6 +2357,7 @@ export function CaptureArbeitsraum({
       setCategory("");
       setDomain("");
       setAussageart("");
+      setRevalidierungAm("");
       setAsset("");
       setNeededValidations("");
       // JOB 3082 (Q3 a): die gewählte Stufe gehörte zu DIESEM Wissensobjekt. Bliebe sie stehen,
@@ -2464,8 +2472,9 @@ export function CaptureArbeitsraum({
         tags: tags.filter((x) => x.trim()),
         conditions: draft?.conditions.filter((x) => x.trim()) ?? [],
         measures: draft?.measures.filter((x) => x.trim()) ?? [],
-        asset: asset.trim() ? asset.trim() : null,
+        ...anlagenNutzlast(asset),
         ...(category.trim() ? { category: category.trim() } : {}),
+        ...(revalidierungAm || isDraftUpdate ? { revalidierungAm } : {}),
         // R-0034: beim Aktualisieren geht ein geleertes Fachgebiet als Leerwert mit, beim Anlegen
         // bleibt das leere Feld weg (dieselbe Semantik wie `draftBodyPatch`).
         ...(domain.trim() || isDraftUpdate ? { domain: domain.trim() } : {}),
@@ -2546,6 +2555,7 @@ export function CaptureArbeitsraum({
       setCategory("");
       setDomain("");
       setAussageart("");
+      setRevalidierungAm("");
       setAsset("");
       setNeededValidations("");
       setConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
@@ -2676,7 +2686,9 @@ export function CaptureArbeitsraum({
     // R-0086: nur eine bekannte Aussageart zählt als Angabe — alles andere ist „nicht angegeben".
     setAussageart(KO_AUSSAGEARTEN.find((art) => art === p.aussageart) ?? "");
     setTags(p.tags ?? []);
-    setAsset(p.asset ?? "");
+    // R-0082: die Anlagenliste des Entwurfs; Altentwürfe tragen nur `asset`.
+    setAsset(anlagenAlsEingabe(anlagenVon(p)));
+    setRevalidierungAm(p.revalidierungAm ?? "");
     setNeededValidations(p.neededValidations ? String(p.neededValidations) : "");
     setBodyHtml(p.bodyHtml ?? "");
     // SCRUM-415: Vertraulichkeitsstufe aus dem Entwurf wiederherstellen.
@@ -2897,6 +2909,7 @@ export function CaptureArbeitsraum({
     setCategory("");
     setDomain("");
     setAussageart("");
+    setRevalidierungAm("");
     setAsset("");
     setConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
     // JOB 3082 (Q3 a): der Leerzustand hat KEINE gewählte Stufe — das ist der frische Ausgangswert
@@ -3092,6 +3105,8 @@ export function CaptureArbeitsraum({
     type !== CAPTURE_FIELD_DEFAULTS.type ||
     // R-0086: jede getroffene Aussageart weicht vom frischen Ausgangswert „nicht angegeben" ab.
     aussageart !== "" ||
+    // R-1690: ein gesetzter Re-Validierungstermin ist eine Abweichung vom frischen Formular.
+    revalidierungAm !== "" ||
     // JOB 3082 (Q3 a): der frische Ausgangswert der Vertraulichkeit ist „nicht gewählt" — deshalb
     // ist JEDE getroffene Wahl eine Abweichung davon, auch die auf „intern". Vorher wurde gegen
     // den geglätteten Formularwert verglichen, und der stand von Anfang an auf „intern": wer
@@ -3150,6 +3165,7 @@ export function CaptureArbeitsraum({
         category,
         domain,
         aussageart,
+        revalidierungAm,
         asset,
         tags,
         neededValidations,
@@ -3179,6 +3195,7 @@ export function CaptureArbeitsraum({
       category,
       domain,
       aussageart,
+      revalidierungAm,
       asset,
       tags,
       neededValidations,
@@ -6610,7 +6627,22 @@ export function CaptureArbeitsraum({
                         </span>
                       }
                     >
-                      <TextInput value={asset} onChange={(e) => setAsset(e.target.value)} />
+                      {/* R-0082: mehrere Anlagen in einem Feld, getrennt durch Semikolon. */}
+                      <TextInput
+                        value={asset}
+                        placeholder={t("wissensmetadaten.anlage.mehrere")}
+                        onChange={(e) => setAsset(e.target.value)}
+                        data-testid="capture-anlagen"
+                      />
+                    </Field>
+                    {/* R-1690: Re-Validierungstermin bei der Erstellung — leer = keiner. */}
+                    <Field label={t("wissensmetadaten.revalidierung.feld")}>
+                      <TextInput
+                        type="date"
+                        value={revalidierungAm}
+                        onChange={(e) => setRevalidierungAm(e.target.value)}
+                        data-testid="capture-revalidierung"
+                      />
                     </Field>
                     {vertraulichkeitsWahl()}
                     <div data-help="cap:tagsField">

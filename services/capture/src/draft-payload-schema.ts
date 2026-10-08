@@ -50,9 +50,10 @@ const TEXTFELDER = [
   "category",
   "domain",
   "aussageart",
+  "revalidierungAm",
   "origin",
 ] as const;
-const LISTENFELDER = ["tags", "conditions", "measures", "reviewerIds"] as const;
+const LISTENFELDER = ["tags", "conditions", "measures", "reviewerIds", "assets"] as const;
 
 function istEinfachesObjekt(wert: unknown): wert is Record<string, unknown> {
   return typeof wert === "object" && wert !== null && !Array.isArray(wert);

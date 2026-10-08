@@ -16,7 +16,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
 
-function ko(id: string, title: string, asset: string | null, domain?: string): KnowledgeObject {
+function ko(
+  id: string,
+  title: string,
+  asset: string | null,
+  domain?: string,
+  assets?: string[],
+): KnowledgeObject {
   return {
     id,
     title,
@@ -24,6 +30,7 @@ function ko(id: string, title: string, asset: string | null, domain?: string): K
     type: "best_practice",
     category: "Anlage A",
     ...(domain ? { domain } : {}),
+    ...(assets ? { assets } : {}),
     tags: ["Wartung"],
     status: "validiert",
     author: "u2",
@@ -42,7 +49,8 @@ function ko(id: string, title: string, asset: string | null, domain?: string): K
 }
 
 const KOS = [
-  ko("k1", "Pumpe entlüften", "DP-4", "Verfahrenstechnik"),
+  // R-0082: k1 hängt an ZWEI Anlagen (kanonische Liste), die übrigen tragen Altbestand-Einzelwerte.
+  ko("k1", "Pumpe entlüften", "DP-4", "Verfahrenstechnik", ["DP-4", "FB-2"]),
   ko("k2", "Membran prüfen", "DP-4"),
   ko("k3", "Förderband spannen", "FB-2", "Verfahrenstechnik"),
   ko("k4", "Allgemeiner Hinweis", null),
@@ -84,6 +92,7 @@ import {
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
+import { AnlagenFeld } from "../../apps/web/src/components/Anlagen";
 import { FachgebietFeld } from "../../apps/web/src/components/Fachgebiet";
 import { BibliothekFlaeche } from "../../apps/web/src/components/bibliothek/BibliothekFlaeche";
 import { KNOWLEDGE_TYPES, KnowledgeTypeTag } from "../../apps/web/src/components/trust";
@@ -149,9 +158,96 @@ describe("R-0477 · vom Gerät zum Wissen — die Anlage als Facette der Bibliot
     expect(listenZaehler(container)).toBe(2);
   });
 
-  it("A2 · die Adresse trägt die Anlagenauswahl", () => {
+  it("A2 · die Adresse trägt die Anlagenauswahl — ein Objekt mit zwei Anlagen steht unter beiden", () => {
     mountBibliothek("/bibliothek?asset=FB-2");
-    expect(sortiert()).toEqual(["k3"]);
+    expect(sortiert()).toEqual(["k1", "k3"]);
+  });
+
+  it("M1 · die Anlagen-Matrix aus dem Menü zeigt die Zuordnung n:m über die sichtbaren Treffer", () => {
+    mountBibliothek();
+    const menue = menueOeffnen(container, "bib-liste-menue");
+    const punkt = menue.querySelector<HTMLButtonElement>('[data-testid="bib-anlagen-matrix"]');
+    if (!punkt) {
+      throw new Error("Menüpunkt „Anlagen-Matrix“ fehlt");
+    }
+    act(() => punkt.click());
+    const matrix = document.querySelector('[data-testid="anlagen-matrix"]');
+    if (!matrix) {
+      throw new Error("Anlagen-Matrix wurde nicht geöffnet");
+    }
+    const spalten = [...matrix.querySelectorAll('[data-testid="anlagen-matrix-spalte"]')].map(
+      (s) => s.textContent,
+    );
+    expect(spalten).toEqual(["DP-4", "FB-2"]);
+    const zeilen = [...matrix.querySelectorAll('[data-testid="anlagen-matrix-zeile"]')];
+    // Ohne Anlage (k4) keine Zeile.
+    expect(zeilen.map((z) => z.getAttribute("data-ko-id")).sort()).toEqual(["k1", "k2", "k3"]);
+    const trefferJeZeile = (id: string): number => {
+      const zeile = zeilen.find((z) => z.getAttribute("data-ko-id") === id);
+      return zeile?.querySelectorAll('[data-testid="anlagen-matrix-treffer"]').length ?? 0;
+    };
+    expect(trefferJeZeile("k1"), "k1 hängt an zwei Anlagen").toBe(2);
+    expect(trefferJeZeile("k2")).toBe(1);
+    const anzahl = [...matrix.querySelectorAll('[data-testid="anlagen-matrix-anzahl"]')].map(
+      (z) => z.textContent,
+    );
+    expect(anzahl, "DP-4 an zwei Objekten, FB-2 an zwei Objekten").toEqual(["2", "2"]);
+  });
+
+  it("M2 · die Matrix folgt der Eingrenzung — ausgefilterte Objekte erscheinen nicht", () => {
+    mountBibliothek("/bibliothek?asset=FB-2");
+    const menue = menueOeffnen(container, "bib-liste-menue");
+    act(() => {
+      menue.querySelector<HTMLButtonElement>('[data-testid="bib-anlagen-matrix"]')?.click();
+    });
+    const zeilen = [...document.querySelectorAll('[data-testid="anlagen-matrix-zeile"]')];
+    expect(zeilen.map((z) => z.getAttribute("data-ko-id")).sort()).toEqual(["k1", "k3"]);
+  });
+});
+
+describe("R-0082 · die Anlagenliste am Objekt ändern", () => {
+  it("L1 · zeigt die Liste, gibt erst nach Änderung frei und reicht die bereinigte Liste weiter", () => {
+    const gespeichert: string[][] = [];
+    render(
+      createElement(AnlagenFeld, {
+        ko: { asset: "DP-4", assets: ["DP-4", "FB-2"] },
+        darfAendern: true,
+        wartet: false,
+        onSpeichern: (anlagen: string[]) => gespeichert.push(anlagen),
+      }),
+    );
+    const liste = [...container.querySelectorAll('[data-testid="ko-anlagen-liste"] li')].map(
+      (li) => li.textContent,
+    );
+    expect(liste).toEqual(["DP-4", "FB-2"]);
+    const knopf = container.querySelector<HTMLButtonElement>(
+      '[data-testid="ko-anlagen-speichern"]',
+    );
+    const feld = container.querySelector<HTMLInputElement>('[data-testid="ko-anlagen-eingabe"]');
+    if (!knopf || !feld) {
+      throw new Error("Anlagenfeld nicht gerendert");
+    }
+    expect(knopf.disabled).toBe(true);
+    tippe(feld, " DP-4 ; PR-7;DP-4 ");
+    expect(knopf.disabled).toBe(false);
+    act(() => knopf.click());
+    expect(gespeichert).toEqual([["DP-4", "PR-7"]]);
+  });
+
+  it("L2 · Altbestand mit nur `asset` zeigt seine Einzelzuordnung", () => {
+    render(
+      createElement(AnlagenFeld, {
+        ko: { asset: "DP-4" },
+        darfAendern: false,
+        wartet: false,
+        onSpeichern: () => {},
+      }),
+    );
+    const liste = [...container.querySelectorAll('[data-testid="ko-anlagen-liste"] li')].map(
+      (li) => li.textContent,
+    );
+    expect(liste).toEqual(["DP-4"]);
+    expect(container.querySelector('[data-testid="ko-anlagen-eingabe"]')).toBeNull();
   });
 });
 

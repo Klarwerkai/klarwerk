@@ -97,7 +97,9 @@ import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../../lib/useDebo
 import { usePersistentEnum } from "../../lib/usePersistentValue";
 import { useReadiness } from "../../lib/useReadiness";
 import { TABLET_LESE_QUERY, useMediaQuery } from "../../shell/useMediaQuery";
+import { AnlagenMatrix } from "../Anlagen";
 import { DemoBanner } from "../DemoBanner";
+import { Modal } from "../Modal";
 import { RoleLink } from "../RoleLink";
 import { cx } from "../ui";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
@@ -437,6 +439,8 @@ export function BibliothekFlaeche({
   const [ansicht, setAnsicht] = usePersistentEnum(BIB_ANSICHT_STORAGE_KEY, BIB_ANSICHTEN, "liste");
   // R-1006: Mehrfachauswahl von Zeilen — ein eigener Modus neben der EINEN geöffneten Zeile.
   const [auswahlModus, setAuswahlModus] = useState(false);
+  // R-0477: die Anlagen×Wissensobjekt-Matrix über den aktuellen (sichtbaren, gefilterten) Treffern.
+  const [matrixOffen, setMatrixOffen] = useState(false);
   const [markiert, setMarkiert] = useState<ReadonlySet<string>>(() => new Set());
   const { user } = useSession();
   const nameOf = useAuthorName();
@@ -1731,6 +1735,24 @@ export function BibliothekFlaeche({
           />
         ))}
       </div>
+      {/* R-0477 / R-0082: die Anlagen×Wissensobjekt-Matrix. Gespeist aus `sorted` — genau den
+          Treffern, die der Server diesem Menschen herausgegeben hat, nach Suche, Facetten und
+          Bereich; die Matrix fragt nichts nach und zeigt deshalb nichts, was die Liste nicht
+          zeigt. Ein Klick auf ein Objekt öffnet es wie eine Zeile der Liste. */}
+      <Modal
+        open={matrixOffen}
+        onClose={() => setMatrixOffen(false)}
+        title={t("wissensmetadaten.matrix.titel")}
+        wide
+      >
+        <AnlagenMatrix
+          kos={sorted.map((i) => i.ko)}
+          onOeffnen={(id) => {
+            setMatrixOffen(false);
+            waehle(id);
+          }}
+        />
+      </Modal>
       {zeigeListe ? (
         <BibliothekListe
           lage={listenLage}
@@ -2130,6 +2152,16 @@ export function BibliothekFlaeche({
                       }}
                     >
                       {t("lib.auswahl.modus")}
+                    </MenuePunkt>
+                    {/* R-0477: vom Gerät zum Wissen — die Zuordnung als Matrix. */}
+                    <MenuePunkt
+                      testId="bib-anlagen-matrix"
+                      onClick={() => {
+                        setMatrixOffen(true);
+                        schliessen();
+                      }}
+                    >
+                      {t("wissensmetadaten.matrix.oeffnen")}
                     </MenuePunkt>
                     <MenueTrenner />
                     <MenueUntermenue beschriftung={t("lib.export")}>

@@ -1339,6 +1339,10 @@ export class CaptureService {
       // (Admin-Standard-Prüferanzahl, sonst Modul-Default). Explizite Werte bleiben.
       ...(p.neededValidations !== undefined ? { neededValidations: p.neededValidations } : {}),
       asset: p.asset ?? null,
+      // R-0082: die Anlagenliste des Entwurfs reist mit und hat Vorrang vor `asset`.
+      ...(p.assets !== undefined ? { assets: p.assets } : {}),
+      // R-1690: der Re-Validierungstermin reist mit; leer = keiner (geprüft in `KoService.create`).
+      ...(p.revalidierungAm ? { revalidierungAm: p.revalidierungAm } : {}),
       bodyHtml: p.bodyHtml ?? null, // KW-STR: Body in den KO übernehmen (wird dort sanitisiert)
       // SCRUM-509 R2: die Vertraulichkeitsstufe des Entwurfs ans KO durchreichen (kein Verlust beim
       // Promote). ko.create prüft/lehnt ungültige Werte ab — keine stille Intern-Normalisierung.

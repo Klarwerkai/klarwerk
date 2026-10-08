@@ -630,7 +630,12 @@ export interface KnowledgeObject {
   // PRÜFSTATUS-ANZEIGE (N-0054): Spiegel von `services/knowledge-object/src/types.ts` — der Verweis
   // auf die Validierungsentscheidung. Steht er da, hat ein Mensch fachlich entschieden.
   validationDecisionRef?: { auditSeq: number; auditHash: string };
+  // R-0082: ab zwei Anlagen trägt `assets` die Liste und `asset` spiegelt die erste; eine einzelne
+  // Anlage (und Altbestand) steht nur in `asset`. Gelesen wird beides über `anlagenVon`.
   asset: string | null;
+  assets?: string[];
+  // R-1690: Re-Validierungstermin `JJJJ-MM-TT`, beim Erfassen gesetzt; fehlt = keiner.
+  revalidierungAm?: string;
   createdAt: string;
   history: HistoryEntry[];
   comments?: KoComment[];
@@ -1056,6 +1061,10 @@ export interface DraftPayload {
   // bewusst `string` wie im Server-Vertrag (services/capture/src/types.ts): geprüft wird erst beim
   // Einreichen (`KoService.create`); `Capture.tsx` übernimmt beim Laden nur eine bekannte Art.
   aussageart?: string;
+  // R-0082: Anlagenliste des Entwurfs (Spiegel von services/capture/src/types.ts).
+  assets?: string[];
+  // R-1690: Re-Validierungstermin `JJJJ-MM-TT`; leer = keiner.
+  revalidierungAm?: string;
   tags?: string[];
   conditions?: string[];
   measures?: string[];

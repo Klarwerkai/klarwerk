@@ -442,7 +442,7 @@ export type {
   ConfidentialityProvenance,
 } from "./src/confidentiality";
 // JOB 593 / R-0082: die EINE Normalform der Anlagenkennung — auch für die Lebenszyklus-Kopplung.
-export { normalizeAsset } from "./src/asset";
+export { anlagenFelder, anlagenVon, normalizeAsset, normalizeAssets } from "./src/asset";
 // R-0658: Schutzdaten vor der Suche — Erkennung und die eine Lesestelle der Quarantäne.
 export { erkenneSchutzdaten, inSchutzdatenQuarantaene } from "./src/schutzdaten";
 export type { SchutzdatenArt, SchutzdatenQuarantaene } from "./src/types";

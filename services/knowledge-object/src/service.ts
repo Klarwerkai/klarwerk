@@ -17,7 +17,7 @@ import {
 // JOB 593 / Ownerentscheidung Option A: die EINE Normalform der kanonischen Anlagenkennung.
 // Sie steht in einer eigenen Datei und nicht hier, weil BEIDE Schreibränder — Anlegen und
 // Überarbeiten — sie anwenden müssen. Zwei Kopien wären zwei Wahrheiten.
-import { normalizeAsset } from "./asset";
+import { anlagenFelder, anlagenVon, normalizeAsset, normalizeAssets } from "./asset";
 // JOB 3076 (Q1): `isConfidential` steht hier NICHT mehr — der Speicherzweig (`buildCreatedKo`) war
 // seine einzige Verwendung in dieser Datei und benutzte es als Speicherbedingung. Die Funktion selbst
 // bleibt unverändert und wird von den Egress-Stellen weiter gezogen (confidentiality.ts:40-42).
@@ -437,6 +437,11 @@ export interface CreateKoInput {
   confidence?: number;
   neededValidations?: number;
   asset?: string | null;
+  // R-0082: mehrere Anlagen. Ist die Liste da, gilt SIE (auch leer = keine Anlage); sonst wird die
+  // Einzelangabe `asset` zur Liste. Gespeichert wird über `anlagenFelder` (asset.ts).
+  assets?: string[] | null;
+  // R-1690: Re-Validierungstermin `JJJJ-MM-TT`; fehlend/`null`/leer = keiner, Ungültiges → INVALID.
+  revalidierungAm?: string | null;
   bodyHtml?: string | null; // KW-STR: WYSIWYG-Body, serverseitig sanitisiert
   demoSeed?: boolean; // Demodaten-Merker (nur der Seed setzt das; nie über die öffentliche Route)
   // SCRUM-415: optionale Vertraulichkeitsstufe ab Erfassen (Standard „intern").
@@ -505,7 +510,12 @@ export interface ReviseKoInput {
   // wie beim Anlegen. Feld ist `null` → Kennung bewusst entfernt. Deshalb wird unten auf
   // `!== undefined` geprüft und nicht mit `??` gearbeitet: bei `??` wäre „entfernen" nicht
   // ausdrückbar. Dieselbe Bauform wie `bodyHtml` daneben.
+  //
+  // R-0082: seit es mehrere Anlagen gibt, setzt `asset` die ERSTE Anlage (die übrigen bleiben);
+  // `null` entfernt die erste. Die ganze Liste ersetzt `assets` (leer = alle entfernt) — trägt die
+  // Änderung beides, gilt `assets`.
   asset?: string | null;
+  assets?: string[] | null;
 }
 
 // ==============================================================================================
@@ -643,6 +653,22 @@ export interface DocumentAppendCommit {
 function normalizeDomain(domain: string | null | undefined): string | undefined {
   const wert = typeof domain === "string" ? domain.replace(/\s+/g, " ").trim() : "";
   return wert.length > 0 ? wert : undefined;
+}
+
+// R-1690: der Re-Validierungstermin ist ein KALENDERTAG `JJJJ-MM-TT`, den es wirklich gibt.
+// Fehlend, `null` oder leer = kein Termin. Alles andere (andere Form, 2026-02-30) wird
+// abgewiesen statt still verworfen oder umgedeutet.
+function normalizeRevalidierungAm(wert: string | null | undefined): string | undefined {
+  if (wert === undefined || wert === null || wert.trim() === "") {
+    return undefined;
+  }
+  const tag = wert.trim();
+  const passt = /^(\d{4})-(\d{2})-(\d{2})$/.exec(tag);
+  const datum = passt ? new Date(`${tag}T00:00:00.000Z`) : null;
+  if (!datum || Number.isNaN(datum.getTime()) || datum.toISOString().slice(0, 10) !== tag) {
+    throw new KoError("INVALID", "Re-Validierungstermin muss ein Kalendertag JJJJ-MM-TT sein.");
+  }
+  return tag;
 }
 
 // KW-STR / NFR-SEC-04: bodyHtml IMMER serverseitig sanitisieren; statement aus dem
@@ -2233,6 +2259,12 @@ export class KoService {
     if (aussageart !== undefined && !KO_AUSSAGEARTEN.includes(aussageart)) {
       throw new KoError("INVALID", "Unbekannte Aussageart (tatsache oder handlungsanweisung).");
     }
+    const revalidierungAm = normalizeRevalidierungAm(input.revalidierungAm);
+    // R-0082: die kanonische Anlagenliste — die Liste, wenn eine kommt, sonst die Einzelangabe.
+    const anlagen =
+      input.assets !== undefined && input.assets !== null
+        ? normalizeAssets(input.assets)
+        : anlagenVon({ asset: input.asset ?? null });
     const at = new Date(this.now()).toISOString();
     const bodyHtml = cleanBody(input.bodyHtml);
     // statement bleibt führend; falls leer, aus dem HTML-Body ableiten.
@@ -2275,7 +2307,9 @@ export class KoService {
       // Vorher legte der Dienst sie roh ab; getrimmt hat allein der Browser. Jeder browserfreie
       // Weg (Word-Add-in, Import, Seed, API) erzeugte damit eine zweite Schreibweise derselben
       // Anlage — und `sameAsset` (conflicts/detect.ts:126) vergleicht zeichengenau.
-      asset: normalizeAsset(input.asset),
+      // R-0082: `assets` (kanonisch) und `asset` (Spiegel der ersten) entstehen zusammen.
+      ...anlagenFelder(anlagen),
+      ...(revalidierungAm ? { revalidierungAm } : {}),
       // JOB 3076 (Q1) — DIE STUFE NUR SPEICHERN, WENN SIE JEMAND MITBRINGT. ABLÖSUNG VON SCRUM-415.
       //
       // BIS HIERHER GALT (SCRUM-415): „nur speichern, wenn tatsächlich vertraulich" — die Bedingung
@@ -4800,6 +4834,7 @@ export class KoService {
         "measures",
         "bodyHtml",
         "asset",
+        "assets",
         "sources",
       ] as const
     ).filter((feld) => changes[feld] !== undefined);
@@ -5122,8 +5157,20 @@ export class KoService {
     const nextStatement =
       changes.statement ??
       (changes.bodyHtml !== undefined && nextBody ? htmlToPlainText(nextBody) : ko.statement);
+    // R-0082: die Anlagenliste nach dieser Fassung. `assets` ersetzt die ganze Liste; `asset`
+    // (Einzelweg, JOB 593 D9) setzt oder entfernt nur die ERSTE Anlage und lässt die übrigen
+    // stehen; ohne beides bleibt die Liste — durch die Normalform geführt (Altbestand heilt).
+    const bisherigeAnlagen = anlagenVon(ko);
+    const neueErste = normalizeAsset(changes.asset);
+    const anlagenNachher =
+      changes.assets !== undefined
+        ? normalizeAssets(changes.assets ?? [])
+        : changes.asset !== undefined
+          ? [...(neueErste === null ? [] : [neueErste]), ...bisherigeAnlagen.slice(1)]
+          : bisherigeAnlagen;
+    const { assets: _bisherigeListe, ...koOhneAnlagenliste } = ko;
     const fassung: KnowledgeObject = {
-      ...ko,
+      ...koOhneAnlagenliste,
       title: changes.title ?? ko.title,
       statement: nextStatement,
       bodyHtml: nextBody,
@@ -5196,7 +5243,10 @@ export class KoService {
       // von `append` nie ersetzt (repo.ts:468). Der einzige Fall, in dem überhaupt Zeichen
       // verschwinden, ist eine Kennung aus reinem Leerraum — sie konnte nie eine Information
       // tragen.
-      asset: normalizeAsset(changes.asset !== undefined ? changes.asset : ko.asset),
+      //
+      // R-0082: seit der Anlagenliste entstehen `asset` und `assets` hier gemeinsam aus der Liste
+      // nach dieser Fassung (s. `anlagenNachher` oben) — dieselbe Normalform, dieselbe Stelle.
+      ...anlagenFelder(anlagenNachher),
     };
     // R-0658: dieselbe Schutzdatenprüfung wie beim Anlegen, an der neuen Fassung — eine
     // Überarbeitung mit Schutzdaten setzt die Quarantäne, eine ohne hebt sie auf.

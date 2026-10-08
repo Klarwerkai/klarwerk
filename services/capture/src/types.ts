@@ -19,6 +19,10 @@ export interface DraftPayload {
   measures?: string[];
   neededValidations?: number;
   asset?: string | null;
+  // R-0082: die Anlagenliste des Entwurfs; ist sie da, gilt sie beim Einreichen (s. CreateKoInput).
+  assets?: string[];
+  // R-1690: Re-Validierungstermin `JJJJ-MM-TT`; geprüft beim Einreichen (`KoService.create`).
+  revalidierungAm?: string;
   bodyHtml?: string | null; // KW-STR: WYSIWYG-Body übersteht Entwurf/Resume/Promote
   // SCRUM-509 R2: die im Erfassen gewählte Vertraulichkeit übersteht Entwurf/Resume/Promote —
   // sonst ginge die Stufe beim Promote verloren (fail-open). toKoInput reicht sie ans KO durch.

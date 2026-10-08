@@ -24,10 +24,11 @@
 // überhaupt nichts annimmt.
 import { describe, expect, it } from "vitest";
 import type { KnowledgeObject as WebKo } from "../../apps/web/src/api/types";
+import { anlagenMatrix } from "../../apps/web/src/lib/anlagen";
 import { libraryFilterValues } from "../../apps/web/src/lib/libraryFacets";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { validateDraftPayloadShape } from "../../services/capture/src/draft-payload-schema";
-import { KNOWLEDGE_TYPES, KO_AUSSAGEARTEN } from "../../services/knowledge-object";
+import { KNOWLEDGE_TYPES, KO_AUSSAGEARTEN, anlagenVon } from "../../services/knowledge-object";
 
 type App = ReturnType<typeof buildApp>;
 type Auth = { authorization: string };
@@ -347,6 +348,122 @@ describe("Kanonischer Anlagenbezug und Absicherung gegen Fehlkopplung (R-0082, R
   });
 });
 
+// Ein Objekt ohne `assets`-Schlüssel — so liegt Altbestand von vor der Anlagenliste vor.
+function ohneAnlagenliste(ko: WebKo): WebKo {
+  const { assets: _liste, ...rest } = ko;
+  return rest;
+}
+
+async function revidiere(app: App, wer: Auth, id: string, changes: Record<string, unknown>) {
+  const res = await app.inject({
+    method: "PUT",
+    url: `/api/kos/${id}`,
+    headers: wer,
+    payload: { action: "revise", changes },
+  });
+  expect(res.statusCode, res.body).toBe(200);
+  return lies(app, wer, id);
+}
+
+describe("Mehrere Anlagen kanonisch am Wissensobjekt (R-0082)", () => {
+  it("ein Objekt trägt mehrere Anlagen, eine Anlage hängt an mehreren Objekten", async () => {
+    const { app, autor } = await setup("wm11");
+    const a = await legeAn(app, autor, { assets: [" DP-4 ", "FB-2", "DP-4", "  "] });
+    const b = await legeAn(app, autor, { assets: ["DP-4"] });
+    const koA = await lies(app, autor, a);
+    // Normalform, ohne Doppelte und Leere, in Erfassungsreihenfolge; `asset` spiegelt die erste.
+    expect(koA.assets).toEqual(["DP-4", "FB-2"]);
+    expect(koA.asset).toBe("DP-4");
+    const koB = await lies(app, autor, b);
+    // Eine einzige Anlage wird wie bisher nur in `asset` gespeichert.
+    expect(koB.asset).toBe("DP-4");
+    expect("assets" in koB).toBe(false);
+    // n:m — DP-4 hängt an beiden, A hängt an zwei Anlagen.
+    expect(anlagenVon(koA)).toEqual(["DP-4", "FB-2"]);
+    expect(anlagenVon(koB)).toEqual(["DP-4"]);
+  });
+
+  it("die Einzelangabe behält ihre Gestalt; Altbestand liest sich aus `asset`", async () => {
+    const { app, autor } = await setup("wm12");
+    const ko = await lies(app, autor, await legeAn(app, autor, { asset: "DP-4" }));
+    expect(ko.asset).toBe("DP-4");
+    expect("assets" in ko).toBe(false);
+    expect(anlagenVon(ko)).toEqual(["DP-4"]);
+    // Altbestand ohne `assets` (vor dieser Regel gespeichert): die Einzelzuordnung gilt weiter.
+    expect(anlagenVon({ asset: "DP-4" })).toEqual(["DP-4"]);
+    expect(anlagenVon({ asset: null })).toEqual([]);
+  });
+
+  it("Ändern: die Liste ersetzen, die erste Anlage setzen, alle entfernen", async () => {
+    const { app, autor } = await setup("wm13");
+    const id = await legeAn(app, autor, { assets: ["DP-4", "FB-2"] });
+
+    const ersetzt = await revidiere(app, autor, id, { assets: ["FB-2", "PR-7"] });
+    expect(ersetzt.assets).toEqual(["FB-2", "PR-7"]);
+    expect(ersetzt.asset).toBe("FB-2");
+
+    // Der Einzelweg (JOB 593 D9) setzt nur die erste Anlage; die übrigen bleiben.
+    const erste = await revidiere(app, autor, id, { asset: "DP-9" });
+    expect(erste.assets).toEqual(["DP-9", "PR-7"]);
+    expect(erste.asset).toBe("DP-9");
+
+    // Gegenprobe: eine Änderung ohne Anlagenangabe lässt die Liste stehen.
+    const ohne = await revidiere(app, autor, id, { title: "Neuer Titel" });
+    expect(ohne.assets).toEqual(["DP-9", "PR-7"]);
+
+    const leer = await revidiere(app, autor, id, { assets: [] });
+    expect(leer.asset).toBeNull();
+    expect("assets" in leer).toBe(false);
+  });
+});
+
+describe("Re-Validierungstermin bei der Erstellung (R-1690)", () => {
+  it("über Entwurf und Einreichen am Objekt gespeichert, samt mehrerer Anlagen", async () => {
+    const { app, autor } = await setup("wm14");
+    const entwurf = await app.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers: autor,
+      payload: { ...GRUNDLAGE, assets: ["DP-4", "FB-2"], revalidierungAm: "2027-03-31" },
+    });
+    expect(entwurf.statusCode, entwurf.body).toBe(201);
+    const eingereicht = await app.inject({
+      method: "POST",
+      url: `/api/drafts/${entwurf.json().id}/promote`,
+      headers: autor,
+    });
+    expect(eingereicht.statusCode, eingereicht.body).toBe(201);
+    const ko = await lies(app, autor, eingereicht.json().id as string);
+    expect(ko.revalidierungAm).toBe("2027-03-31");
+    expect(ko.assets).toEqual(["DP-4", "FB-2"]);
+    expect(ko.asset).toBe("DP-4");
+  });
+
+  it("direkt angelegt: gültiger Tag gespeichert, ohne Angabe kein Feld, Ungültiges ein 400", async () => {
+    const { app, autor } = await setup("wm15");
+    const mit = await lies(app, autor, await legeAn(app, autor, { revalidierungAm: "2026-12-01" }));
+    expect(mit.revalidierungAm).toBe("2026-12-01");
+    const ohne = await lies(app, autor, await legeAn(app, autor));
+    expect("revalidierungAm" in ohne).toBe(false);
+    for (const falsch of ["2026-02-30", "01.12.2026", "morgen"]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/kos",
+        headers: autor,
+        payload: { ...GRUNDLAGE, revalidierungAm: falsch },
+      });
+      expect(res.statusCode, `revalidierungAm ${falsch}: ${res.body}`).toBe(400);
+    }
+  });
+
+  it("Termin und Anlagenliste, die keine passende Gestalt haben, weist der Entwurf ab", () => {
+    expect(validateDraftPayloadShape({ revalidierungAm: 20270331 }).ok).toBe(false);
+    expect(validateDraftPayloadShape({ assets: "DP-4" }).ok).toBe(false);
+    const passend = validateDraftPayloadShape({ assets: ["DP-4"], revalidierungAm: "2027-03-31" });
+    expect(passend.ok).toBe(true);
+  });
+});
+
 describe("Bibliotheksachsen aus den Feldern am Objekt (R-0034, R-0042, R-0477)", () => {
   const JETZT = Date.parse("2026-10-08T00:00:00.000Z");
   const basis = {
@@ -385,6 +502,26 @@ describe("Bibliotheksachsen aus den Feldern am Objekt (R-0034, R-0042, R-0477)",
     const ohne = libraryFilterValues({ ...ohneFachgebiet, asset: null }, JETZT);
     expect(ohne.asset).toEqual([]);
     expect(ohne.domain).toEqual([]);
+  });
+
+  it("ein Objekt mit mehreren Anlagen steht in der Facette unter jeder davon", () => {
+    const mehrere = { ...basis, asset: "DP-4", assets: ["DP-4", "FB-2"] };
+    expect(libraryFilterValues(mehrere, JETZT).asset).toEqual(["DP-4", "FB-2"]);
+  });
+
+  it("die Matrix ordnet Anlagen und Objekte n:m zu — nur aus den übergebenen Objekten", () => {
+    const kos = [
+      { ...basis, id: "k1", title: "Pumpe", assets: ["DP-4", "FB-2"] },
+      { ...basis, id: "k2", title: "Membran", assets: ["DP-4"] },
+      { ...basis, id: "k3", title: "Ohne Anlage", asset: null, assets: [] },
+      // Altbestand: nur `asset`, keine Liste.
+      { ...ohneAnlagenliste(basis), id: "k4", title: "Alt", asset: "PR-7" },
+    ];
+    const matrix = anlagenMatrix(kos, (ko) => ko);
+    expect(matrix.anlagen).toEqual(["DP-4", "FB-2", "PR-7"]);
+    expect(matrix.zeilen.map((z) => z.eintrag.id)).toEqual(["k1", "k2", "k4"]);
+    expect(matrix.anzahlJeAnlage.get("DP-4")).toBe(2);
+    expect([...(matrix.zeilen[0]?.anlagen ?? [])]).toEqual(["DP-4", "FB-2"]);
   });
 
   it("es gibt genau die fünf Wissensarten des Originals", () => {

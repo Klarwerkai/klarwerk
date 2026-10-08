@@ -673,7 +673,24 @@ export interface KnowledgeObject {
   // Ein stiller `owner = author`-Default beim Anlegen ist ausdrücklich verworfen: er wäre genau die
   // Gleichsetzung von Erzeuger und Verantwortlichem, die Pedis Entscheidung zurückgewiesen hat.
   ownership?: KnowledgeOwnership;
+  // ============================================================================================
+  // R-0082 / R-0477 (aufnahme:20260922:gesamt-wissen-metadaten) — MEHRERE ANLAGEN, EINE QUELLE.
+  // ============================================================================================
+  //
+  // Die Anlagen dieses Objekts stehen allein HIER am Objekt, nicht in den Lebenszyklus-Kopplungen;
+  // eine Kennung kann an mehreren Objekten hängen und ein Objekt an mehreren Kennungen. Gelesen
+  // wird ausschliesslich über `anlagenVon` (asset.ts), geschrieben über `anlagenFelder`:
+  //   · keine oder EINE Anlage → nur `asset`, genau wie vor dieser Regel (Altbestand unverändert);
+  //   · ZWEI und mehr → `assets` trägt die Liste (Normalform, ohne Doppelte, Erfassungsreihenfolge)
+  //     und `asset` spiegelt deren erste für die Leser, die eine einzelne Anlage erwarten
+  //     (Konflikterkennung `sameAsset`, Word-Add-in, Export). Der Spiegel ist keine zweite Quelle:
+  //     er entsteht nur zusammen mit der Liste.
   asset: string | null;
+  assets?: string[];
+  // R-1690 / FE-CAP-08: der beim Erfassen gesetzte Re-Validierungstermin (Kalendertag
+  // `JJJJ-MM-TT`) — bis wann der Inhalt erneut geprüft werden soll. Optional, keine Migration;
+  // fehlt er, ist kein Termin angegeben und es wird keiner abgeleitet.
+  revalidierungAm?: string;
   createdAt: string;
   history: HistoryEntry[];
   comments: KoComment[];
