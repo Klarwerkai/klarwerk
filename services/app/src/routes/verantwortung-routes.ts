@@ -57,17 +57,19 @@ import {
   ZuteilungsFehler,
   beurteile,
   kannVerantworten,
-  mitNeuemOwner,
   pruefePerson,
   pruefeZuteilungen,
   zugangsstand,
   zulaessigeZiele,
 } from "../verantwortung";
+import type { NachfolgeRepo } from "../verantwortung-nachfolge";
 
 export interface VerantwortungDienste {
   ko: KoService;
   auth: AuthService;
   spaces: SpacesRepo;
+  /** Nacharbeit 4: die Nachfolge für neue Beiträge eines befristeten Kontos. */
+  nachfolge: NachfolgeRepo;
   audit?: AuditService;
   /** Uhr für Zugangsstand und Deaktivierung — in Tests stellbar. */
   jetzt?: () => number;
@@ -214,17 +216,23 @@ export function verantwortungRoutes(
         ergebnis.abgelehnt.push({ ...zeile, grund: urteil.grund, text });
       } else if (urteil.art === "erledigt") {
         ergebnis.bereitsErledigt.push(zeile);
-      } else if (!schreiben || !ko) {
+      } else if (!schreiben) {
         bereit.push(zeile);
       } else {
         try {
-          const wert = mitNeuemOwner(ko, an);
-          // Ein Beitrag im Papierkorb geht über den Papierkorbweg — sonst bliebe er nach der
-          // Wiederherstellung bei der bisherigen Person.
-          await (ko.deletedAt
-            ? dienste.ko.setOwnershipImPapierkorb(koId, wert, user.id)
-            : dienste.ko.setOwnership(koId, wert, user.id));
-          ergebnis.uebertragen.push(zeile);
+          // Nacharbeit 4 (Ben): das Urteil oben galt dem vorab geladenen Stand. Geschrieben wird
+          // nur, wenn die Verantwortung UNTER der Objektsperre noch bei `von` liegt; dann wird
+          // allein `owner` des aktuellen Aggregats ersetzt (zwischenzeitliche Mitwirkung bleibt).
+          // Hat eine überlappende Übergabe gewonnen, bleibt die Zeile offen.
+          const stand = await dienste.ko.uebertrageVerantwortung(koId, von, an, user.id);
+          if (stand === "uebertragen") {
+            ergebnis.uebertragen.push(zeile);
+          } else if (stand === "erledigt") {
+            ergebnis.bereitsErledigt.push(zeile);
+          } else {
+            const grund = "NICHT_MEHR_BEI_PERSON";
+            ergebnis.abgelehnt.push({ ...zeile, grund, text: ABLEHNUNGSTEXT[grund] });
+          }
         } catch (e) {
           log.error({ err: e, koId }, "Verantwortungsübergabe: Beitrag nicht gespeichert");
           const text = SCHREIBFEHLER_TEXT;
@@ -316,8 +324,13 @@ export function verantwortungRoutes(
           };
         })
         .sort((a, b) => (a.titel ?? "￿").localeCompare(b.titel ?? "￿"));
+      const nachfolge = await dienste.nachfolge.lies(von);
       reply.code(200).send({
         person: person(von, konten, zeit),
+        // Nacharbeit 4: wer neue Beiträge eines befristeten Kontos verantwortet (sonst `null`).
+        nachfolgeBeiBefristung: nachfolge
+          ? { id: nachfolge.nachfolger, name: name(nachfolge.nachfolger, konten) }
+          : null,
         anzahl: beitraege.length,
         nichtEinsehbar: beitraege.filter((b) => !b.sichtbar).length,
         beitraege,
@@ -474,17 +487,31 @@ export function verantwortungRoutes(
  */
 export function kontoendeSperre(
   app: FastifyInstance,
-  dienste: Pick<VerantwortungDienste, "ko" | "auth">,
+  dienste: Pick<VerantwortungDienste, "ko" | "auth" | "nachfolge"> & { jetzt?: () => number },
 ): void {
+  const jetzt = dienste.jetzt ?? (() => Date.now());
   const LOESCHWEGE = new Set(["/api/users/:id", "/api/auth/users/:id"]);
+  // Die Kontowege, nach denen ein Konto befristet UND mit Bearbeitungsrecht dastehen kann.
+  const KONTOWEGE = new Set([
+    "PUT /api/users/:id",
+    "POST /api/users",
+    "POST /api/auth/users/:id/approve",
+  ]);
+  // Was der Vorlauf (preHandler) für den Nachlauf (onSend) derselben Anfrage festgestellt hat.
+  const vorlauf = new WeakMap<object, { handelnder: string; nachfolge: string | undefined }>();
+
   app.addHook("preHandler", async (request, reply) => {
     const pfad = request.routeOptions.url ?? "";
     const loeschen = request.method === "DELETE" && LOESCHWEGE.has(pfad);
-    const rumpf = (request.body ?? {}) as { accessExpiresAt?: unknown };
+    const kontoweg = KONTOWEGE.has(`${request.method} ${pfad}`);
+    const rumpf = (request.body ?? {}) as {
+      accessExpiresAt?: unknown;
+      verantwortungNachfolge?: unknown;
+    };
     const ende = rumpf.accessExpiresAt;
     const befristen =
       request.method === "PUT" && pfad === "/api/users/:id" && typeof ende === "string";
-    if (!loeschen && !befristen) {
+    if (!loeschen && !kontoweg) {
       return;
     }
     const token = tokenFromRequest(request);
@@ -493,7 +520,33 @@ export function kontoendeSperre(
       return;
     }
     const id = (request.params as { id?: unknown }).id;
-    if (typeof id !== "string") {
+    if (kontoweg) {
+      // Nacharbeit 4 (Ben K5): eine ausdrücklich benannte Nachfolge muss heute zulässig sein —
+      // aktiv, unbefristet, mit Bearbeitungsrecht und nicht das Konto selbst. Sonst wird nichts
+      // geändert.
+      const gewuenscht = rumpf.verantwortungNachfolge;
+      if (gewuenscht !== undefined) {
+        const konten = await dienste.auth.listUsers();
+        const ziel = konten.find((k) => k.id === gewuenscht);
+        if (
+          typeof gewuenscht !== "string" ||
+          gewuenscht === id ||
+          !kannVerantworten(ziel, jetzt())
+        ) {
+          reply.code(400).send({
+            error: "NACHFOLGE_UNZULAESSIG",
+            message:
+              "Die Nachfolge für neue Beiträge muss ein aktives, unbefristetes Konto mit Bearbeitungsrecht sein. Es wurde nichts geändert.",
+          });
+          return reply;
+        }
+      }
+      vorlauf.set(request, {
+        handelnder: handelnder.id,
+        nachfolge: typeof gewuenscht === "string" ? gewuenscht : undefined,
+      });
+    }
+    if (typeof id !== "string" || (!loeschen && !befristen)) {
       return;
     }
     const bestand = await dienste.ko.listEinschliesslichPapierkorb();
@@ -509,5 +562,52 @@ export function kontoendeSperre(
       });
       return reply;
     }
+  });
+
+  // Nacharbeit 4 (Ben K5): nach einer GELUNGENEN Kontoänderung den Stand der Nachfolge angleichen.
+  // Ist das Konto danach befristet und darf Wissen anlegen, braucht es eine Nachfolge: die
+  // ausdrücklich benannte, sonst die bisherige (wenn noch zulässig), sonst die handelnde
+  // Kontoverwaltung. Ist es nicht (mehr) befristet, entfällt sie. Gelesen wird der Stand aus der
+  // Antwort der Route selbst — er ist das, was tatsächlich gespeichert wurde.
+  app.addHook("onSend", async (request, reply, payload) => {
+    const v = vorlauf.get(request);
+    if (!v || reply.statusCode < 200 || reply.statusCode >= 300 || typeof payload !== "string") {
+      return payload;
+    }
+    let konto: PublicUser | undefined;
+    try {
+      const gelesen = JSON.parse(payload) as Partial<PublicUser> | null;
+      konto = gelesen && typeof gelesen.id === "string" ? (gelesen as PublicUser) : undefined;
+    } catch {
+      konto = undefined;
+    }
+    if (!konto) {
+      return payload;
+    }
+    const zeit = jetzt();
+    if (zugangsstand(konto, zeit) !== "befristet" || !can(konto.role, "ko.create")) {
+      await dienste.nachfolge.entferne(konto.id);
+      return payload;
+    }
+    const kontoId = konto.id;
+    const konten = await dienste.auth.listUsers();
+    const zulaessig = (kandidat: string | undefined): kandidat is string =>
+      kandidat !== undefined &&
+      kandidat !== kontoId &&
+      kannVerantworten(
+        konten.find((k) => k.id === kandidat),
+        zeit,
+      );
+    const bisher = (await dienste.nachfolge.lies(kontoId))?.nachfolger;
+    const nachfolger = [v.nachfolge, bisher, v.handelnder].find(zulaessig);
+    if (nachfolger !== undefined && nachfolger !== bisher) {
+      await dienste.nachfolge.setze({
+        konto: kontoId,
+        nachfolger,
+        gesetztVon: v.handelnder,
+        gesetztAm: new Date(zeit).toISOString(),
+      });
+    }
+    return payload;
   });
 }

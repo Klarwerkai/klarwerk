@@ -23,11 +23,12 @@
 // Wissen zu erstellen (`ko.create`: Experte, Controller, Admin). Ein Betrachter kann keine
 // Nacharbeit leisten und wäre ein Verantwortlicher, der nichts ändern darf.
 import type { PublicUser } from "../../auth";
-import { type KnowledgeObject, ownershipOf, responsibleOf } from "../../knowledge-object";
+import { type KnowledgeObject, responsibleOf } from "../../knowledge-object";
 import { can } from "../../rbac";
 import type { SessionUser } from "./http";
 import { darfSehen } from "./sichtbarkeit";
 import { type SpaceFassung, lesbareSpaces } from "./spaces";
+import type { NachfolgeRepo } from "./verantwortung-nachfolge";
 
 /** Wie viele Beiträge EIN Aufruf höchstens bewegt — ein Personalwechsel, kein Massenimport. */
 export const UEBERGABE_HOECHSTZAHL = 1_000;
@@ -206,16 +207,42 @@ export function beurteile(
   return { art: "bereit" };
 }
 
+/** Ein befristetes Konto mit Bearbeitungsrecht hat keine (zulässige) Nachfolge — es entsteht nichts. */
+export class NachfolgeFehlt extends Error {
+  readonly code = "NACHFOLGE_FEHLT";
+  constructor() {
+    super(
+      "Dieser Zugang ist befristet, und für neue Beiträge ist keine aktive Nachfolge benannt. Es wurde nichts angelegt — die Kontoverwaltung muss die Befristung mit einer Nachfolge speichern.",
+    );
+    this.name = "NachfolgeFehlt";
+  }
+}
+
 /**
- * Die neue Verantwortungsangabe: derselbe Bestand, nur ein anderer `owner`. Prüfende und
- * Validierende (Mitwirkung) bleiben in ihrer Reihenfolge stehen.
+ * Nacharbeit 4 (Ben K5): wer die Hauptverantwortung für einen NEUEN Beitrag dieses Autors trägt.
+ *
+ * `undefined` heisst: der Autor selbst (unbefristet aktiv, oder kein Konto — Import/Seed). Ist der
+ * Autor befristet und darf Wissen anlegen, trägt die benannte Nachfolge die Verantwortung ab der
+ * Anlage — über das Kontoende hinaus. Fehlt sie oder ist sie nicht (mehr) zulässig, entsteht der
+ * Beitrag nicht, statt nach dem Fristablauf ohne aktive Verantwortung dazustehen.
  */
-export function mitNeuemOwner(ko: KnowledgeObject, an: string) {
-  const bisher = ownershipOf(ko);
-  return {
-    owner: an,
-    reviewers: bisher?.reviewers ?? [],
-    validators: bisher?.validators ?? [],
+export function verantwortungBeiAnlage(
+  konto: (id: string) => Promise<PublicUser | undefined>,
+  nachfolge: NachfolgeRepo,
+  jetzt: () => number,
+): (author: string) => Promise<string | undefined> {
+  return async (author) => {
+    const zeit = jetzt();
+    const autor = await konto(author);
+    if (!autor || zugangsstand(autor, zeit) !== "befristet" || !can(autor.role, "ko.create")) {
+      return undefined;
+    }
+    const eintrag = await nachfolge.lies(author);
+    const ziel = eintrag ? await konto(eintrag.nachfolger) : undefined;
+    if (!ziel || ziel.id === author || !kannVerantworten(ziel, zeit)) {
+      throw new NachfolgeFehlt();
+    }
+    return ziel.id;
   };
 }
 

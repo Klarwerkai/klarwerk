@@ -371,13 +371,14 @@ describe("K1/K4/K6 · Übergabe", () => {
 describe("K3 · Teilweises Scheitern und Wiederaufnahme", () => {
   it("ein gescheiterter Beitrag steht als offen da; dieselbe Zuteilung holt genau ihn nach", async () => {
     const b = await buehne();
-    const original = b.services.ko.setOwnership.bind(b.services.ko);
-    const spion = vi.spyOn(b.services.ko, "setOwnership");
-    spion.mockImplementation(async (id, wert, actor) => {
+    // Nacharbeit 4: der Schreibweg der Übergabe ist `uebertrageVerantwortung` (vergleichend, gesperrt).
+    const original = b.services.ko.uebertrageVerantwortung.bind(b.services.ko);
+    const spion = vi.spyOn(b.services.ko, "uebertrageVerantwortung");
+    spion.mockImplementation(async (id, erwartet, nachfolger, actor) => {
       if (id === b.ko.a3) {
         throw new Error("Ablage nicht erreichbar (Testfall)");
       }
-      return original(id, wert, actor);
+      return original(id, erwartet, nachfolger, actor);
     });
     const plan = aufteilung(b).filter((z) => z.koId !== b.ko.v1);
     const eingabe = { von: b.ids.paula, zuteilung: plan };
@@ -800,5 +801,214 @@ describe("Nacharbeit 2 · K5 — wiederherstellbarer Bestand im Papierkorb", () 
     const zurueck = await b.services.ko.get(b.ko.a4);
     expect(zurueck?.ownership?.owner).toBe(b.ids.otto);
     expect(zurueck?.author, "die Autorschaft bleibt").toBe(b.ids.paula);
+  });
+});
+
+// ================================================================================================
+// NACHARBEIT 4 — Bens zwei Befunde, je eine Gegenprobe am Draht.
+// ================================================================================================
+
+describe("Nacharbeit 4 · K3/K4 — überlappende Übergaben und zwischenzeitliche Mitwirkung", () => {
+  it("eine Übergabe, deren Vorabstand überholt ist, überschreibt die gewonnene nicht und meldet die Zeile offen", async () => {
+    const b = await buehne();
+    // Genau zwischen dem Laden des Bestands und dem Schreiben gewinnt eine andere Übergabe (A1 → Otto).
+    const original = b.services.ko.listEinschliesslichPapierkorb.bind(b.services.ko);
+    vi.spyOn(b.services.ko, "listEinschliesslichPapierkorb").mockImplementationOnce(async () => {
+      const veraltet = await original();
+      const gewonnen = await b.services.ko.uebertrageVerantwortung(
+        b.ko.a1,
+        b.ids.paula,
+        b.ids.otto,
+        b.ids.ada,
+      );
+      expect(gewonnen).toBe("uebertragen");
+      return veraltet;
+    });
+    const res = await post(b, "/api/verantwortung/uebergabe", {
+      von: b.ids.paula,
+      zuteilung: [{ koId: b.ko.a1, an: b.ids.nora }],
+    });
+    expect(res.statusCode, res.body).toBe(207);
+    const e = res.json() as Ergebnis;
+    expect(e.uebertragen).toEqual([]);
+    expect(e.abgelehnt.map((z) => [z.koId, z.grund])).toEqual([[b.ko.a1, "NICHT_MEHR_BEI_PERSON"]]);
+    expect(await verantwortlich(b, b.ko.a1), "die gewonnene Übergabe bleibt").toBe(b.ids.otto);
+    const belege = (await b.services.audit.list()).filter(
+      (x) => x.action === "ko.ownership" && x.target === b.ko.a1,
+    );
+    expect(belege).toHaveLength(1);
+  });
+
+  it("zwei gleichzeitige Übergaben desselben Beitrags: genau eine meldet Erfolg, und sie gilt", async () => {
+    const b = await buehne();
+    const [an1, an2] = await Promise.all([
+      post(b, "/api/verantwortung/uebergabe", {
+        von: b.ids.paula,
+        zuteilung: [{ koId: b.ko.a2, an: b.ids.nora }],
+      }),
+      post(b, "/api/verantwortung/uebergabe", {
+        von: b.ids.paula,
+        zuteilung: [{ koId: b.ko.a2, an: b.ids.otto }],
+      }),
+    ]);
+    const ergebnisse = [an1.json() as Ergebnis, an2.json() as Ergebnis];
+    const gewinner = ergebnisse.flatMap((e) => e.uebertragen);
+    expect(gewinner).toHaveLength(1);
+    expect(ergebnisse.flatMap((e) => e.abgelehnt).map((z) => z.grund)).toEqual([
+      "NICHT_MEHR_BEI_PERSON",
+    ]);
+    expect(await verantwortlich(b, b.ko.a2)).toBe(gewinner[0]?.an);
+  });
+
+  it("zwischenzeitlich ergänzte Prüfende bleiben erhalten — ersetzt wird nur der Owner", async () => {
+    const b = await buehne();
+    const original = b.services.ko.listEinschliesslichPapierkorb.bind(b.services.ko);
+    vi.spyOn(b.services.ko, "listEinschliesslichPapierkorb").mockImplementationOnce(async () => {
+      const veraltet = await original();
+      // Nach dem Laden, vor dem Schreiben: Otto wird Prüfer von A1.
+      await b.services.ko.recordOwnershipRole(b.ko.a1, "reviewers", [b.ids.otto], b.ids.ada);
+      return veraltet;
+    });
+    const res = await post(b, "/api/verantwortung/uebergabe", {
+      von: b.ids.paula,
+      zuteilung: [{ koId: b.ko.a1, an: b.ids.nora }],
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const a1 = await b.services.ko.get(b.ko.a1);
+    expect(a1?.ownership?.owner).toBe(b.ids.nora);
+    expect(a1?.ownership?.reviewers).toContain(b.ids.otto);
+    expect(a1?.ownership?.validators).toContain(b.ids.ada);
+  });
+});
+
+describe("Nacharbeit 4 · K5 — Beiträge, die nach gesetzter Befristung entstehen", () => {
+  async function kontoMit(b: Buehne, name: string, email: string): Promise<string> {
+    const res = await b.app.inject({
+      method: "POST",
+      url: "/api/users",
+      headers: b.k.admin,
+      payload: { name, email, password: KENNWORT, role: "experte" },
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    return res.json().id as string;
+  }
+
+  function anlegenAls(b: Buehne, kopf: Kopf, titel: string) {
+    return b.app.inject({
+      method: "POST",
+      url: "/api/kos",
+      headers: kopf,
+      payload: {
+        confidentiality: "intern",
+        title: titel,
+        statement: `${titel}: monatlich.`,
+        type: "best_practice",
+        category: "Prüfmittel",
+      },
+    });
+  }
+
+  function befristen(b: Buehne, konto: string, payload: Record<string, unknown>) {
+    return b.app.inject({
+      method: "PUT",
+      url: `/api/users/${konto}`,
+      headers: b.k.admin,
+      payload,
+    });
+  }
+
+  it("befristen, Beitrag erstellen, Frist ablaufen lassen — der Beitrag behält eine aktive Hauptverantwortung", async () => {
+    const b = await buehne();
+    const bea = await kontoMit(b, "Bea Befristet", "bea@uebergabe.test");
+    const beaKopf = await anmelden(b.app, "bea@uebergabe.test");
+
+    const gesetzt = await befristen(b, bea, { accessExpiresAt: KUENFTIG });
+    expect(gesetzt.statusCode, gesetzt.body).toBe(200);
+    const stand = await b.app.inject({
+      method: "GET",
+      url: `/api/verantwortung/person/${bea}`,
+      headers: b.k.admin,
+    });
+    const nachfolge = stand.json().nachfolgeBeiBefristung as { id: string } | null;
+    expect(nachfolge?.id, "ohne Angabe: die befristende Verwaltung").toBe(b.ids.ada);
+
+    // Das Bearbeitungsrecht bleibt: Bea legt weiter an — die Verantwortung trägt die Nachfolge.
+    const neu = await anlegenAls(b, beaKopf, "Beas Messanweisung");
+    expect(neu.statusCode, neu.body).toBe(201);
+    const koId = neu.json().id as string;
+    const ko = await b.services.ko.get(koId);
+    expect(ko?.author, "die Autorschaft bleibt bei Bea").toBe(bea);
+    expect(ko?.ownership?.owner).toBe(b.ids.ada);
+    const lesen = await b.app.inject({ method: "GET", url: `/api/kos/${koId}`, headers: beaKopf });
+    expect(lesen.statusCode).toBe(200);
+
+    // Die Frist läuft ab (Dienstweg = der tatsächliche Ablauf, ohne Kontoroute).
+    await b.services.auth.setAccessExpiry(bea, "2026-01-02T00:00:00.000Z", b.ids.ada);
+    const anmeldung = await b.app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "bea@uebergabe.test", password: KENNWORT },
+    });
+    expect(anmeldung.statusCode).toBe(403);
+    expect(await verantwortlich(b, koId)).toBe(b.ids.ada);
+    const ungeklaert = await b.app.inject({
+      method: "GET",
+      url: "/api/verantwortung/ungeklaert",
+      headers: b.k.admin,
+    });
+    const offen = (ungeklaert.json().personen as { id: string }[]).map((p) => p.id);
+    expect(offen).not.toContain(bea);
+    expect(offen).not.toContain(b.ids.ada);
+  });
+
+  it("eine ausdrücklich benannte Nachfolge gilt; eine unzulässige wird abgewiesen; ohne Befristung entfällt sie", async () => {
+    const b = await buehne();
+    const cleo = await kontoMit(b, "Cleo Befristet", "cleo@uebergabe.test");
+    const cleoKopf = await anmelden(b.app, "cleo@uebergabe.test");
+
+    const unzulaessig = await befristen(b, cleo, {
+      accessExpiresAt: KUENFTIG,
+      verantwortungNachfolge: b.ids.vera,
+    });
+    expect(unzulaessig.statusCode, unzulaessig.body).toBe(400);
+    expect(unzulaessig.json().error).toBe("NACHFOLGE_UNZULAESSIG");
+    const liste = await b.app.inject({ method: "GET", url: "/api/users", headers: b.k.admin });
+    const vorher = (liste.json() as { id: string; accessExpiresAt?: string }[]).find(
+      (k) => k.id === cleo,
+    );
+    expect(vorher?.accessExpiresAt, "es wurde nichts befristet").toBeUndefined();
+
+    const mitOtto = await befristen(b, cleo, {
+      accessExpiresAt: KUENFTIG,
+      verantwortungNachfolge: b.ids.otto,
+    });
+    expect(mitOtto.statusCode, mitOtto.body).toBe(200);
+    const k1 = await anlegenAls(b, cleoKopf, "Cleos Prüfplan");
+    expect(k1.statusCode, k1.body).toBe(201);
+    expect((await b.services.ko.get(k1.json().id as string))?.ownership?.owner).toBe(b.ids.otto);
+
+    const unbefristet = await befristen(b, cleo, { accessExpiresAt: null });
+    expect(unbefristet.statusCode, unbefristet.body).toBe(200);
+    const k2 = await anlegenAls(b, cleoKopf, "Cleos zweiter Prüfplan");
+    expect(k2.statusCode, k2.body).toBe(201);
+    const ohne = await b.services.ko.get(k2.json().id as string);
+    expect(ohne?.ownership?.owner, "unbefristet trägt Cleo selbst").toBeUndefined();
+    expect(await verantwortlich(b, k2.json().id as string)).toBe(cleo);
+  });
+
+  it("ein befristetes Konto ohne benannte Nachfolge (Altbestand) legt nichts an, das ohne Verantwortung bliebe", async () => {
+    const b = await buehne();
+    // Befristet am Kontoweg vorbei — so, wie es ein Bestand von vor dieser Nacharbeit wäre.
+    await b.services.auth.setAccessExpiry(b.ids.nora, KUENFTIG, b.ids.ada);
+    const res = await anlegenAls(b, b.k.nora, "Noras neue Anweisung");
+    expect(res.statusCode, res.body).toBe(400);
+    expect(res.json().error).toBe("NACHFOLGE_FEHLT");
+    // Die Kontoverwaltung speichert die Befristung erneut — jetzt mit Nachfolge — und es geht.
+    const erneut = await befristen(b, b.ids.nora, { accessExpiresAt: KUENFTIG });
+    expect(erneut.statusCode, erneut.body).toBe(200);
+    const danach = await anlegenAls(b, b.k.nora, "Noras neue Anweisung");
+    expect(danach.statusCode, danach.body).toBe(201);
+    const neu = await b.services.ko.get(danach.json().id as string);
+    expect(neu?.ownership?.owner).toBe(b.ids.ada);
   });
 });

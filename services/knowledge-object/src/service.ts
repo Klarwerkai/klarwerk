@@ -54,7 +54,13 @@ import {
 import type { KoMetadataProjectionResult } from "./metadata-projection-repo";
 // JOB 557: das kanonische Eigentümer-Aggregat. Regeln, Rückfallentscheidung und Grenzen stehen in
 // ownership.ts — hier wird nur angewendet, nichts nachgebaut.
-import { normalizeOwnership, ownershipOf, sameOwnership, withRole } from "./ownership";
+import {
+  normalizeOwnership,
+  ownershipOf,
+  responsibleOf,
+  sameOwnership,
+  withRole,
+} from "./ownership";
 // AUFNAHME 20260922: die Basisbindung des Prüfnachweises (Regel und Begründung dort).
 import {
   bestandsStempelVon,
@@ -332,6 +338,11 @@ export interface KoServiceDeps {
   // Überschneidungen, Embedding-Vektor) nicht verwaisen. Als injizierte Funktion — KEIN Import über die
   // Modulgrenze; die App (Composition-Root) verdrahtet conflicts/overlaps/Embedding-Cleanup dahinter.
   onPurge?: (koId: string, actor: string) => Promise<void>;
+  // produkt:20261007:ownership-uebergabe (Nacharbeit 4): wer die Hauptverantwortung für ein NEUES
+  // Objekt dieses Autors trägt, wenn es nicht der Autor selbst sein kann (befristeter Zugang).
+  // `undefined` = kein Eingriff (Rückfall auf den Autor wie bisher). Wirft der Lieferant, entsteht
+  // kein Objekt. Als injizierte Funktion — KEIN Import über die Modulgrenze.
+  verantwortungBeiAnlage?: (author: string) => Promise<string | undefined>;
   // SCRUM-523 P.3 (WP-A2): optionale echte DB-Transaktion für purgeKo (repo.delete + audit.record).
   withTx?: WithTx;
   // Auftrag gesamt-dubletten-rueckzug (Runde 2, Bens BEN-R3-1): die Klammer des Rücknahme-Wegs
@@ -765,6 +776,9 @@ export class KoService {
   private readonly onError: (context: string, error: unknown) => void;
   // R-0098: s. KoServiceDeps.bildObjektDaten.
   private readonly bildObjektDaten: BildObjektDaten | undefined;
+  private readonly verantwortungBeiAnlage:
+    | ((author: string) => Promise<string | undefined>)
+    | undefined;
   // SCRUM-509 R2 / 507 R2: EIN per-KO Schreib-Lock serialisiert die zueinander wettlaufenden KO-
   // Mutationen (Vertraulichkeit setzen, Validierungsstatus setzen, Revision). So gibt es kein Inter-
   // leave zwischen Lesen und Schreiben (kein TOCTOU, kein Lost-Update, keine fälschlich gültige
@@ -798,6 +812,7 @@ export class KoService {
         console.error(`[kos] ${context}:`, error);
       });
     this.bildObjektDaten = deps.bildObjektDaten;
+    this.verantwortungBeiAnlage = deps.verantwortungBeiAnlage;
   }
 
   // R-0098 (inhaltskennung-zweitbegriff): die Inhaltskennungen der Bilder eines Rumpfes — das
@@ -2219,6 +2234,21 @@ export class KoService {
     if (needed < 1 || needed > 5) {
       throw new KoError("INVALID_NEEDED", "Nötige Validierungen müssen zwischen 1 und 5 liegen.");
     }
+    // produkt:20261007:ownership-uebergabe (Nacharbeit 4): nennt der Aufrufer keinen Eigentümer und
+    // kann der Autor selbst die Verantwortung nicht über sein Kontoende hinaus tragen (befristeter
+    // Zugang), trägt sie ab der Anlage die benannte Nachfolge. Prüfende/Validierende einer
+    // mitgebrachten Angabe bleiben; die Autorschaft bleibt beim Autor.
+    let ownership = normalizeOwnership(input.ownership);
+    if (!ownership?.owner && this.verantwortungBeiAnlage) {
+      const nachfolge = await this.verantwortungBeiAnlage(input.author);
+      if (nachfolge) {
+        ownership = normalizeOwnership({
+          owner: nachfolge,
+          reviewers: ownership?.reviewers ?? [],
+          validators: ownership?.validators ?? [],
+        });
+      }
+    }
     const at = new Date(this.now()).toISOString();
     const bodyHtml = cleanBody(input.bodyHtml);
     // statement bleibt führend; falls leer, aus dem HTML-Body ableiten.
@@ -2309,9 +2339,7 @@ export class KoService {
       // Bauform wie `confidentiality` und `origin` daneben. KEIN stiller Default auf den Autor: ein
       // Objekt ohne benannte Verantwortung bleibt ein Objekt ohne benannte Verantwortung, und genau
       // das liest `responsibleOf` als Rückfall statt als Eigentum.
-      ...(normalizeOwnership(input.ownership)
-        ? { ownership: normalizeOwnership(input.ownership) as KnowledgeOwnership }
-        : {}),
+      ...(ownership ? { ownership } : {}),
       // AUFTRAG-mega20 Block A: DB-unique erzwungen (kos_create_operation_uq) — der Insert eines
       // zweiten KO desselben Erzeugungs-Vorgangs scheitert am Index/Guard und wird adoptiert.
       ...(extras?.createOperationId ? { createOperationId: extras.createOperationId } : {}),
@@ -3340,37 +3368,45 @@ export class KoService {
   }
 
   // ==============================================================================================
-  // produkt:20261007:ownership-uebergabe — DERSELBE EIGENTUMSGEBER, AUCH IM PAPIERKORB.
+  // produkt:20261007:ownership-uebergabe — DIE ÜBERGABE EINES BEITRAGS, VERGLEICHEND UND GESPERRT.
   // ==============================================================================================
   //
-  // `restore` übernimmt die Verantwortung unverändert. Läge sie bei einer Person, die das Haus
-  // verlassen hat, käme der Beitrag ohne aktive Hauptverantwortung zurück. Die Übergabe muss deshalb
-  // auch wiederherstellbaren Bestand erreichen — `setOwnership` geht über `require` und kennt den
-  // Papierkorb bewusst nicht. Dieser Weg ändert AUSSCHLIESSLICH `ownership`: Papierkorbvermerk,
-  // Fassung und Historie bleiben, wie sie sind. Ein Objekt, das NICHT (mehr) im Papierkorb liegt,
-  // geht über den regulären `setOwnership`. Dieselbe Normalform, derselbe Beleg `ko.ownership`.
-  async setOwnershipImPapierkorb(
+  // Nacharbeit 4 (Ben): die Übergabe urteilt über einen vorab geladenen Bestand, geschrieben wird
+  // aber erst später. Dieser Weg entscheidet deshalb UNTER der Objektsperre am AKTUELLEN Stand:
+  //   · liegt die Verantwortung schon beim Nachfolger → `erledigt` (nichts geschrieben),
+  //   · liegt sie nicht mehr bei der erwarteten Person → `konflikt` (nichts geschrieben) — zwei
+  //     überlappende Übergaben desselben Beitrags können so nicht beide Erfolg melden,
+  //   · sonst wird AUSSCHLIESSLICH `owner` des aktuellen Aggregats ersetzt; Prüfende und
+  //     Validierende kommen aus DIESEM Stand, zwischenzeitlich ergänzte bleiben also erhalten.
+  // Der Schreibvorgang selbst vergleicht zusätzlich die `rowVersion` (Ablage, Compare-and-Set).
+  //
+  // Der Weg erreicht auch Beiträge im Papierkorb: `restore` übernimmt die Verantwortung unverändert,
+  // also muss auch wiederherstellbarer Bestand übergeben werden. Papierkorbvermerk, Fassung und
+  // Historie bleiben, wie sie sind. Derselbe Beleg `ko.ownership` wie `setOwnership`.
+  async uebertrageVerantwortung(
     id: string,
-    value: unknown,
+    erwartet: string,
+    nachfolger: string,
     actor: string,
-  ): Promise<KnowledgeObject> {
-    const vorab = await this.repo.findById(id);
-    if (!vorab?.deletedAt) {
-      return this.setOwnership(id, value, actor);
-    }
-    const next = normalizeOwnership(value);
-    if (!next) {
-      throw new KoError(
-        "INVALID_OWNERSHIP",
-        "Ungültige Eigentümerangabe — erwartet werden owner, reviewers oder validators.",
-      );
-    }
+  ): Promise<"uebertragen" | "erledigt" | "konflikt"> {
     return this.withKoLock(id, async () => {
       const ko = await this.repo.findById(id);
       if (!ko) {
         throw new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
       }
+      const jetzt = responsibleOf(ko);
+      if (jetzt === nachfolger) {
+        return "erledigt";
+      }
+      if (jetzt !== erwartet) {
+        return "konflikt";
+      }
       const previous = ownershipOf(ko);
+      const next: KnowledgeOwnership = {
+        owner: nachfolger,
+        reviewers: previous?.reviewers ?? [],
+        validators: previous?.validators ?? [],
+      };
       const updated: KnowledgeObject = { ...ko, ownership: next };
       await this.schreibeMitBeleg(
         (tx) => this.repo.update(updated, tx),
@@ -3381,11 +3417,11 @@ export class KoService {
               action: "ko.ownership",
               target: id,
               payload: {
-                owner: next.owner ?? null,
+                owner: nachfolger,
                 reviewers: next.reviewers,
                 validators: next.validators,
                 previousOwner: previous?.owner ?? null,
-                imPapierkorb: Boolean(ko.deletedAt),
+                ...(ko.deletedAt ? { imPapierkorb: true } : {}),
               },
             },
             tx,
@@ -3393,7 +3429,7 @@ export class KoService {
         },
         () => this.rollbackKo(ko),
       );
-      return updated;
+      return "uebertragen";
     });
   }
 
