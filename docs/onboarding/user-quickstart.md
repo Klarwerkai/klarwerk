@@ -12,6 +12,15 @@ Klarwerk ist **kein Chatbot**, sondern ein **Knowledge OS**: Erfahrungswissen wi
 
 > **The AI may change. Your knowledge never does.**
 
+### Das Bild dahinter: ein Lehrling, der nachfragt
+
+Beim Erfassen fragt Klarwerk nach wie ein Lehrling — du antwortest, statt zu dokumentieren. Was du erklärst, bleibt im Haus, auch wenn du mal nicht da bist.
+
+Wofür das Bild steht und wofür nicht:
+
+- **Gedeckt:** Der Interviewweg beim Erfassen stellt dir Rückfragen. In den Bestand kommt nur, was du selbst einreichst, und erst die Prüfung im Team macht es zu gesichertem Wissen.
+- **Nicht gedeckt:** Korrekturen fließen nicht in ein Modell zurück. Was mit der Zeit wächst, ist der geprüfte Bestand, den ihr gemeinsam pflegt — nicht die Software selbst.
+
 ---
 
 ## In 5 Minuten starten
