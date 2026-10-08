@@ -191,6 +191,9 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
     // R-1631 (gesamt-anlagenzugang): Bauteile/Materialien/Geltungskontext — dieselbe Torregel.
     case "anlagenkontext":
       return { action, anlagenkontext: { bauteile: ["BT-4711"] } };
+    // R-1632 / R-1633: die Geltung — dieselbe Torregel wie `domain`.
+    case "geltung":
+      return { action, geltung: { ebene: "werk", werk: "Werk Nord" } };
     case "confidentiality":
       return { action, level: "intern" };
     // JOB 557: die Verantwortung am Objekt benennen. Eine fachlich gültige Mindestnutzlast —
@@ -225,6 +228,9 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
     case "comment-reopen":
       return { action, commentId: "beitrag-mega80" };
     case "revalidate":
+      return { action };
+    // R-0235 / R-0749: „Hat geholfen" am Objekt — trägt nichts ausser der Aktion.
+    case "helpful":
       return { action };
     default:
       throw new Error(`Keine Nutzlast hinterlegt für Aktion "${action}" — Test unvollständig.`);
