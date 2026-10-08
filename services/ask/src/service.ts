@@ -1,13 +1,17 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import {
+  type Fragekontext,
+  type GeltungsPassung,
   type KnowledgeObject,
+  type KoGeltung,
   type KoService,
   SUCH_ZUORDNUNGEN,
   type SuchZuordnung,
   type WithTx,
   dropConfidential,
   expandSearchTerms,
+  geltungFuerFrage,
   isConfidential,
   normalizeSearchTerms,
 } from "../../knowledge-object";
@@ -153,6 +157,41 @@ function erweiterteSuchterme(frageterme: readonly string[], selection?: string):
 }
 
 // ================================================================================================
+// R-0348 — GESPRÄCHSFADEN STATT EINZELFRAGEN, INNERHALB DER AUFGABENGEBUNDENEN FRAGESTRECKE.
+// ================================================================================================
+//
+// WAS HIER GESCHIEHT: Eine Nachfrage („Und bei Teilzeit?") bringt die vorangegangenen Fragen
+// derselben Fragestrecke mit. Aus beiden entsteht die FRAGE IM ZUSAMMENHANG — sie geht an die
+// Kandidatenwahl (Tor 1 und Tor 2) und an den Antwortweg, damit die Nachfrage nicht bei null
+// anfängt. Vorher war jede Frage ein Einzelschuss: eine Nachfrage mit einem Inhaltswort erreichte
+// `MIN_ANSWER_SUBSTANCE` nie und endete als Wissenslücke.
+//
+// WAS AUSDRÜCKLICH BLEIBT (R-0345, kein offener Chatbot):
+//   · Die Antwort bleibt quellengebunden; der Faden schafft keine Grundlage, er findet sie nur.
+//   · GEBUNDEN wird weiter NUR die getippte Frage (`decktAlleFragebegriffe(question, …)`): jede
+//     Quelle muss alle Begriffe der Nachfrage tragen. Ein früheres Thema kann deshalb keine Quelle
+//     zur Antwort machen, die zur neuen Frage nichts sagt.
+//   · `frageterme` bleibt das Getippte — jede Aussage ÜBER die Antwort (Fundstelle, Etikett)
+//     rechnet weiter darauf (s. die Trennung an `erweiterteSuchterme`).
+//   · Die Fadenterme hängen in der Vorauswahl HINTER den Termen der Frage, der Markierung und
+//     den deklarierten Entsprechungen; unter dem Deckel `ASK_PREFILTER_MAX_TERMS` verdrängen sie
+//     keinen davon. Die Lastgrenze je Frage bleibt die alte.
+// Ohne Faden ist die Frage im Zusammenhang Zeichen für Zeichen die Frage, und der Ablauf ist der
+// bisherige.
+export const GESPRAECHSFADEN_MAX_FRAGEN = 3;
+const FADEN_TRENNER = " → ";
+
+// Begrenzt wird wie auf der Fragen-Seite: die ERSTE Frage ist der Themenanker und bleibt, dazu die
+// jüngsten Nachfragen (Ben, Nacharbeit 2 — sonst fiel das Thema nach drei Nachfragen heraus).
+function fadenfragen(faden?: readonly string[]): string[] {
+  const fragen = (faden ?? []).map((frage) => frage.trim()).filter((frage) => frage.length > 0);
+  if (fragen.length <= GESPRAECHSFADEN_MAX_FRAGEN) {
+    return fragen;
+  }
+  return [...fragen.slice(0, 1), ...fragen.slice(-(GESPRAECHSFADEN_MAX_FRAGEN - 1))];
+}
+
+// ================================================================================================
 // JOB 3021 (N2) — DIE DEKLARIERTE WORTZUORDNUNG GILT AUCH, WENN KLARA ANTWORTET.
 // ================================================================================================
 //
@@ -214,6 +253,9 @@ function erweiterteSuchterme(frageterme: readonly string[], selection?: string):
 // `reasoner/src/types.ts`). Er ist ein eigener Wert NEBEN der Frage. `question` wird nirgends
 // umgeschrieben oder angereichert: Antworttext, Modellprompt, Wissenslücke, `sources`,
 // `citedSources` und das Prüfprotokoll rechnen unverändert auf dem, wonach wirklich gesucht wurde.
+// R-0348 ist die eine benannte Ausnahme, und sie ist keine Ableitung: eine Nachfrage reist mit den
+// vorher GETIPPTEN Fragen ihrer Fragestrecke als Frage im Zusammenhang (`fadenfragen`). Gebunden
+// bleibt dabei allein die neue Frage; ohne Faden gilt der Satz oben wörtlich.
 //
 // WARUM PAARE UND NICHT DIE GEWEITETE FRAGE — das ist der ganze Unterschied zu der Bauform, die
 // JOB 3039 gemessen und zurückgebaut hat (Zahlen in `tests/suche-zuordnung/…`):
@@ -499,6 +541,17 @@ export interface AskResult {
   // bleibt fuer ihn die ehrliche Auskunft. Die Sperrlogik selbst ist unberuehrt
   // (E-VERTRAULICHKEIT-OHNE-STUFE-20260828: erklaeren ja, sperren oder entsperren nein).
   verschlossen?: VerschlossenHinweis[];
+  // R-1633 — WOFÜR GEWICHTET WURDE, SICHTBAR. Nur wenn der Fragende einen Fragekontext angegeben
+  // hat (Werk/Schicht/Rolle); sonst fehlt das Feld vollständig. Je herangezogener Quelle
+  // (`result.sources`, also nach Sichtbarkeits-, Vertraulichkeits- und Freigabefilter) ihre Geltung
+  // und wie sie zum Kontext passt — dieselbe Rechnung, die die Rangfolge bestimmt hat.
+  geltung?: AskGeltungsauskunft;
+}
+
+/** R-1633: der Fragekontext und je Quelle ihre Geltung und Passung (Regel: `geltungFuerFrage`). */
+export interface AskGeltungsauskunft {
+  fragekontext: Fragekontext;
+  quellen: { id: string; passung: GeltungsPassung; geltung?: KoGeltung }[];
 }
 
 /**
@@ -818,6 +871,26 @@ export class AskService {
        * `Reasoner.answer`. Kein Rumpffeld: gesetzt wird es ausschliesslich von der Route.
        */
       dokumenttextFreigegeben?: boolean;
+      /**
+       * Auftrag gesamt-ki-freigaberegeln (Ben Nacharbeit 2): der hinausgehende Dokumenttext (Markierung
+       * oder Frage) ist als VERTRAULICH markiert und nur durch die zweite zentrale Adminfreigabe
+       * gedeckt. Dann läuft die Antwort als vertraulich in den Reasoner — der Kern und der Chokepoint
+       * entscheiden dieselbe Freigabe noch einmal. Gesetzt ausschliesslich von der Route.
+       */
+      dokumenttextVertraulich?: boolean;
+      /**
+       * R-0348: die vorangegangenen Fragen derselben Fragestrecke, älteste zuerst (höchstens
+       * `GESPRAECHSFADEN_MAX_FRAGEN` zählen). Wirkung und Grenzen an `fadenfragen`. Gesetzt nur
+       * von der Route, und nur im Konsolenzweig.
+       */
+      gespraechsfaden?: readonly string[];
+      /**
+       * R-1633: wofür gefragt wird (Werk/Schicht/Rolle), bereits geprüft (`normalizeFragekontext`).
+       * Wirkung: je Kandidat ein `geltungsrang`, der unter GLEICH relevanten Quellen ordnet
+       * (Regel an `rankCandidates`), und die Auskunft `geltung` an der Antwort. Gesetzt nur von
+       * der Route, und nur im Konsolenzweig — wie der Gesprächsfaden.
+       */
+      fragekontext?: Fragekontext;
     },
     // produkt:20261007:spaces — WAS DER FRAGENDE ÜBERHAUPT SEHEN DARF, als fertige Entscheidung der
     // Route (`sichtbarkeitsfilterFuer`, samt führendem Space). Bewusst ein EIGENER Parameter und
@@ -874,7 +947,12 @@ export class AskService {
     const frageterme = queryTokens(question);
     const eingabeterme = erweiterteSuchterme(frageterme, opts?.selection);
     const relevanz = zugeordneteSuchterme(eingabeterme);
-    const suchterme = [...eingabeterme, ...relevanz.flatMap((paar) => [...paar.ergaenzt])];
+    const vorFaden = [...eingabeterme, ...relevanz.flatMap((paar) => [...paar.ergaenzt])];
+    // R-0348: der Gesprächsfaden — Begründung und Grenzen an `fadenfragen`.
+    const faden = fadenfragen(opts?.gespraechsfaden);
+    const frageImZusammenhang =
+      faden.length > 0 ? [...faden, question].join(FADEN_TRENNER) : question;
+    const suchterme = faden.length > 0 ? erweiterteSuchterme(vorFaden, faden.join(" ")) : vorFaden;
     // D5: bis hierher wurde nur die Frage selbst zerlegt — ab der nächsten Zeile wird Bestand gelesen.
     this.pruefeKiSperre("vorauswahl", kiBeginn);
     const vorauswahl = await this.prefilterCandidates(suchterme, kiBeginn);
@@ -914,6 +992,8 @@ export class AskService {
             .map((ko) => ({ id: ko.id, title: ko.title, status: ko.status })),
         }
       : {};
+    // R-1633: der Fragekontext (Werk/Schicht/Rolle) — ohne ihn ist der Ablauf der bisherige.
+    const fragekontext = opts?.fragekontext;
     // D5: die Suchprojektion trägt den Dokumenttext — ein weiterer inhaltlesender Schritt.
     this.pruefeKiSperre("suchprojektion", kiBeginn);
     const refs: KnowledgeRef[] = await Promise.all(
@@ -938,6 +1018,10 @@ export class AskService {
           // Kontextpfad mit (captionTexts-Suchfeld — kein bodyHtml-Vollload, kein neuer Scanner).
           ...(ko.captionTexts?.length ? { captionTexts: ko.captionTexts } : {}),
           ...(projektion?.bodyText.trim() ? { bodyText: projektion.bodyText } : {}),
+          // R-1633: nur mit Fragekontext — dann ordnet der Rang an BEIDEN Toren (dieselben Refs).
+          ...(fragekontext
+            ? { geltungsrang: geltungFuerFrage(ko.geltung, fragekontext).rang }
+            : {}),
         };
       }),
     );
@@ -978,7 +1062,8 @@ export class AskService {
         relevanz,
       ),
     );
-    const candidates = waehleKandidaten(question, vollstaendig, DEFAULT_TOP_K, relevanz);
+    // R-0348: gebunden hat oben die getippte Frage; gewählt und beantwortet wird im Zusammenhang.
+    const candidates = waehleKandidaten(frageImZusammenhang, vollstaendig, DEFAULT_TOP_K, relevanz);
     // SCRUM-490 R2 (B1): Add-on-Pfad → RETRIEVAL-ONLY (kein Modell-/Embedder-Egress des Dokumenttexts).
     // Sonst der übliche Reasoner-Weg (Session-Pfad unverändert).
     // AUFTRAG-mega61 BLOCK G — DAS ZWEITE NETZ, AUS DEM KONTEXT ABGELEITET.
@@ -993,7 +1078,9 @@ export class AskService {
     //     die Cloud fällt aus der Providerkette UND `ConfidentialEgressError` schlägt an.
     // Auf `prefilteredRaw` abzuleiten wäre falsch: dann würde eine Frage, die zufällig ein
     // vertrauliches Objekt streift, ihre Antwort verlieren, obwohl das Objekt längst entfernt ist.
-    const kontextVertraulich = prefiltered.some((ko) => isConfidential(ko.confidentiality));
+    const kontextVertraulich =
+      prefiltered.some((ko) => isConfidential(ko.confidentiality)) ||
+      opts?.dokumenttextVertraulich === true;
     // F-0295 / R-0639: der markierte Dokumenttext — nur mit bestandener eigener Deckungsprüfung.
     const dokumenttext =
       opts?.dokumenttextFreigegeben === true && opts.selection?.trim()
@@ -1006,9 +1093,9 @@ export class AskService {
       opts?.retrievalOnly
         ? // JOB 3049: TOR 2, Weg des Add-ins — derselbe Relevanztext wie an Tor 1. Ohne ihn hier
           // wäre genau der Klara-Weg der eine, der die Zusage nicht einlöst.
-          this.reasoner.answerRetrievalOnly(question, candidates, locale, relevanz)
+          this.reasoner.answerRetrievalOnly(frageImZusammenhang, candidates, locale, relevanz)
         : this.reasoner.answer(
-            question,
+            frageImZusammenhang,
             candidates,
             locale,
             kontextVertraulich,
@@ -1067,6 +1154,24 @@ export class AskService {
       );
     });
     const result = { ...resultCore, captionSources };
+    // R-1633 — „Sichtbar im UI": je herangezogener Quelle Geltung und Passung, aus denselben
+    // Objekten (`prefiltered`) und derselben Regel, die den Rang gesetzt hat. Ohne Kontext fehlt
+    // das Feld; eine Quelle ohne Objekt in `prefiltered` gilt als ohne Geltungsangabe.
+    const geltungFeld: { geltung?: AskGeltungsauskunft } = fragekontext
+      ? {
+          geltung: {
+            fragekontext,
+            quellen: result.sources.map((id) => {
+              const g = prefiltered.find((ko) => ko.id === id)?.geltung;
+              return {
+                id,
+                passung: geltungFuerFrage(g, fragekontext).passung,
+                ...(g ? { geltung: g } : {}),
+              };
+            }),
+          },
+        }
+      : {};
     // JOB 2626 D1 — DIE TORLAGE, wenn es keine Antwort gab (Vertrag und Grenzen am Feld
     // `AskResult.verschlossen`). Gerechnet wird auf `dropConfidential(prefilteredRaw)` — derselbe
     // Schnitt wie bei `ungeprueft` eine Seite weiter oben: NIE ueber Vertrauliches, NUR was der
@@ -1152,19 +1257,45 @@ export class AskService {
       // liefert das oben emittierte metadata-only ask.query-Audit (trägt Actor + answered=false, keinen
       // Text). Ohne die Option bleibt der Pfad byte-identisch: Gap anlegen.
       if (opts?.gapPolicy === "count_only") {
-        return { result, answerId, gap: null, receipt, ...ungeprueftFeld, ...verschlossenFeld };
+        return {
+          result,
+          answerId,
+          gap: null,
+          receipt,
+          ...ungeprueftFeld,
+          ...verschlossenFeld,
+          ...geltungFeld,
+        };
       }
       // GAP-SPRACHHERKUNFT: `locale` steuert schon die Antwortsprache des Reasoners und liegt hier
       // ohnehin vor — es ging bisher nur verloren. Mitgegeben, damit die Oberfläche einen
       // fremdsprachigen Lückentitel erklären kann, statt ihn wie einen Fehler aussehen zu lassen.
       // D5: nach Beleg und Protokoll — vor der Lückensuche, die den Lückenbestand liest.
       this.pruefeKiSperre("ergebnis", kiBeginn);
-      const gap = await this.createGap(question, actorId, opts?.demoSeed, locale, () =>
+      // R-0348: eine Lücke „Und bei Teilzeit?" wäre für den Experten unlesbar — sie trägt deshalb
+      // die Frage im Zusammenhang (ohne Faden ist das die Frage selbst).
+      const gap = await this.createGap(frageImZusammenhang, actorId, opts?.demoSeed, locale, () =>
         this.pruefeKiSperre("ergebnis", kiBeginn),
       );
-      return { result, answerId, gap, receipt, ...ungeprueftFeld, ...verschlossenFeld };
+      return {
+        result,
+        answerId,
+        gap,
+        receipt,
+        ...ungeprueftFeld,
+        ...verschlossenFeld,
+        ...geltungFeld,
+      };
     }
-    return { result, answerId, gap: null, receipt, ...ungeprueftFeld, ...verschlossenFeld };
+    return {
+      result,
+      answerId,
+      gap: null,
+      receipt,
+      ...ungeprueftFeld,
+      ...verschlossenFeld,
+      ...geltungFeld,
+    };
   }
 
   /**
@@ -1363,9 +1494,88 @@ export class AskService {
     }
     // Serialisiert gegen die Single-Writer-Audit-Kette (s. serializeHelpful); der gekoppelte Schreib-
     // block committet Event-Beleg UND Trust-Schritt gemeinsam oder gar nicht.
+    // RECHERCHE:pmo-fea-0002: `koOriginalAuthor` hält den Urheber zum Zeitpunkt des Danks fest.
+    // Nach einer Autor-Übergabe (FR-LIF-02, `setAuthor`) zeigt `author` auf die neue Person; ohne
+    // dieses Feld erführe der ursprüngliche Autor nichts mehr von der Wirkung seines Wissens.
     await this.serializeHelpful(() =>
-      this.recordHelpful(koId, actor, { koTitle: ko.title, koAuthor: ko.author }),
+      this.recordHelpful(koId, actor, {
+        koTitle: ko.title,
+        koAuthor: ko.author,
+        koOriginalAuthor: ko.originalAuthor || ko.author,
+      }),
     );
+  }
+
+  // R-0235 / R-0749: „Hat geholfen" für ein ANGEWENDETES Wissensobjekt, ohne vorausgehende Antwort.
+  // Der Antwortbeleg entfällt hier, weil der Gegenstand nicht eine Antwort, sondern genau dieses
+  // Objekt ist: die Person meldet es selbst, am Objekt (PUT /api/kos/:id, `action: "helpful"`). Die
+  // Berechtigung (`ko.read` + Sichtbarkeitstor) entscheidet die Route VOR diesem Aufruf. R-0313 bleibt
+  // gewahrt: das Antwortfeedback (`markHelpful`) wirkt weiterhin nur auf tragende Quellen; dieser Weg
+  // wirkt nur auf das eine Objekt, das gemeldet wird, nie auf Nachbarn.
+  // Derselbe gekoppelte Kern wie `markHelpful` — und derselbe Idempotenzschlüssel (actor+koId): wer
+  // ein Objekt schon über eine Antwort gedankt hat, bewirkt hier nichts mehr und umgekehrt. Ein
+  // Trust-Schritt je Person und Objekt, gleich über welchen Weg. Keine Prüfstimme: weder Status noch
+  // Validierungen werden berührt.
+  async markKoHelpful(koId: string, actor: string): Promise<void> {
+    const ko = await this.koService.get(koId);
+    if (!ko || ko.deletedAt) {
+      throw new AskError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    await this.serializeHelpful(() =>
+      this.recordHelpful(koId, actor, {
+        koTitle: ko.title,
+        koAuthor: ko.author,
+        koOriginalAuthor: ko.originalAuthor || ko.author,
+        via: "wissensobjekt",
+      }),
+    );
+  }
+
+  // R-1649 (ROADMAP 7.3): „Das war nicht hilfreich, ich habe es so gemacht …" — die NEGATIV-
+  // BEWÄHRUNG zu genau der tragenden Quelle einer Antwort, an die sich ein abweichender Weg als
+  // Wissensentwurf anschliessen kann. Dieselbe Bindung wie `markHelpful`: ohne gültigen Answer-Receipt,
+  // der GENAU dieses KO diesem Nutzer als Quelle belegt, wird nichts geschrieben (403) — auch kein
+  // Entwurf. Erst danach läuft `entwurf` (vom Aufrufer, die Route kennt den Erfassungsdienst), und
+  // seine Kennung reist in den Audit-Beleg: so ist der neue Entwurf mit dem misslungenen Vorschlag
+  // verbunden.
+  // Bewusst KEIN Trust-Abzug und keine Prüfstimme: die Rückmeldung wird registriert, nicht als Urteil
+  // über die Gültigkeit vollzogen. Genau ein Beleg je Person und Objekt (recordOnce); eine spätere
+  // zweite Meldung derselben Person legt ihren Entwurf trotzdem an — neues Wissen geht nicht verloren
+  // —, schreibt aber keinen zweiten Beleg (`vermerkt: false`).
+  async markNotHelpful(
+    receipt: string,
+    koId: string,
+    actor: string,
+    entwurf?: () => Promise<string>,
+  ): Promise<{ vermerkt: boolean; entwurfId: string | null }> {
+    const bound = verifyAnswerReceipt(this.receiptSecret, receipt, this.now());
+    if (!bound || bound.userId !== actor || !bound.sources.includes(koId)) {
+      throw new AskError("FORBIDDEN", "Kein gültiger Antwort-Beleg für dieses Wissensobjekt.");
+    }
+    const ko = await this.koService.get(koId);
+    if (!ko || ko.deletedAt) {
+      throw new AskError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    const entwurfId = entwurf ? await entwurf() : null;
+    const audit = this.audit;
+    if (!audit) {
+      // Degenerationsfall ohne Audit (Dev/Tests): es gibt keinen Ort, an dem der Vermerk stünde.
+      return { vermerkt: false, entwurfId };
+    }
+    const vermerkt = await this.serializeHelpful(() =>
+      audit.recordOnce(`answer.not_helpful:${actor}:${koId}`, {
+        actor,
+        action: "answer.not_helpful",
+        target: koId,
+        payload: {
+          koTitle: ko.title,
+          koAuthor: ko.author,
+          koOriginalAuthor: ko.originalAuthor || ko.author,
+          ...(entwurfId ? { entwurfId } : {}),
+        },
+      }),
+    );
+    return { vermerkt, entwurfId };
   }
 
   // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): der gekoppelte Kern des „Danke". recordOnce (Event-CAS) und
@@ -1376,7 +1586,8 @@ export class AskService {
   private async recordHelpful(
     koId: string,
     actor: string,
-    payload: { koTitle: string; koAuthor: string },
+    // `via` nur beim Objektweg (markKoHelpful); das Antwortfeedback trägt es nicht.
+    payload: { koTitle: string; koAuthor: string; koOriginalAuthor: string; via?: "wissensobjekt" },
   ): Promise<void> {
     const audit = this.audit;
     // SCRUM-359/PI-K2: Trust-Deckel zentral (TRUST_MAX=99) — auch der „Hat geholfen"-Bump darf nie auf
@@ -1423,9 +1634,27 @@ export class AskService {
     return this.save({ ...gap, assignee: expertId });
   }
 
-  async closeGap(id: string): Promise<Gap> {
+  // R-0846 / L6: eine Lücke schliesst NUR mit Objektbezug — dem Wissensobjekt, das sie beantwortet.
+  // Der Bezug kommt aus dem Aufruf oder, fehlt er dort, aus einem schon an der Lücke stehenden Bezug.
+  // In beiden Fällen muss das Objekt jetzt existieren und darf nicht im Papierkorb liegen
+  // (`koService.get`). Sonst wird NICHTS geschrieben: die Lücke bleibt offen, der Aufrufer bekommt
+  // BAD_REQUEST. Eine geschlossene Lücke ohne Bezug kann auf diesem Weg nicht mehr entstehen.
+  async closeGap(id: string, koId?: string): Promise<Gap> {
     const gap = await this.require(id);
-    return this.save({ ...gap, status: "geschlossen" });
+    const bezug = koId?.trim() || gap.koId?.trim();
+    if (!bezug) {
+      throw new AskError(
+        "BAD_REQUEST",
+        "Eine Wissenslücke wird mit dem Wissensobjekt geschlossen, das sie beantwortet (koId).",
+      );
+    }
+    if (!(await this.koService.get(bezug))) {
+      throw new AskError(
+        "BAD_REQUEST",
+        "Das Wissensobjekt existiert nicht oder liegt im Papierkorb — die Lücke bleibt offen.",
+      );
+    }
+    return this.save({ ...gap, status: "geschlossen", koId: bezug });
   }
 
   // SCRUM-115 / FE-RISK-02: Priorität einer Wissenslücke setzen.

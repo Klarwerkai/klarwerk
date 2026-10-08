@@ -51,7 +51,6 @@ import {
   type ImportRunRepo,
   importProviderKey,
 } from "../../../library-analytics";
-import { can } from "../../../rbac";
 import type { Guards } from "../http";
 import {
   type ImportRunSourceSync,
@@ -236,7 +235,8 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
       return { ...nichts, unavailableReason: kiAus ? "KI_ABGESCHALTET" : "LUECKENBEZUG_FEHLER" };
     }
     const { bezug, geprueft, offen } = erhoben;
-    const betrachter = { viewerId: user.id, maySeeDetail: can(user.role, "ko.validate") };
+    // R-0585: Fragetext nur für Fragende und Zuständige — kein Rollenrecht (gap-visibility.ts).
+    const betrachter = { viewerId: user.id };
     return {
       paar: (koId) =>
         sichtbar.has(koId)

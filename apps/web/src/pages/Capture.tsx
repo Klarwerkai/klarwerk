@@ -96,7 +96,12 @@ import {
 // (und mit ihr der dreiwertige Ausgang) bleibt der Weg für ein BESTEHENDES Wissensobjekt: KO-Detail
 // und „An Artikel anfügen" — s. lib/appendToArticle.ts.
 import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
-import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
+import {
+  applyBodyAssist,
+  applyBodyAssistBlock,
+  bodyTextForAssist,
+  spellingAssistHtmlOrNull,
+} from "../lib/bodyAiAssist";
 import { appendExtractSections, normalizeExtractLocale } from "../lib/bodyExtract";
 import { fileLinkHtml } from "../lib/bodyFileLink";
 import { ADVANCED_FIELDS_KEYS, advancedFieldsSummary } from "../lib/captureAdvancedFields";
@@ -197,7 +202,7 @@ import {
 } from "../lib/docx";
 // AUFTRAG-mega7 Block A: eindeutige Leerwert-Semantik für den Body (Löschmarker beim Aktualisieren).
 import { draftBodyPatch } from "../lib/draftBody";
-import { draftTitle } from "../lib/draftForm";
+import { adoptProposedKnowledgeType, draftTitle } from "../lib/draftForm";
 // AUFTRAG-mega6 Block D: sichtbare Eingabegrenzen aus DERSELBEN Quelle wie die Servernormalisierung.
 import { DRAFT_LIMITS } from "../lib/draftLimits";
 import { studioSaveConfidence } from "../lib/editorApplySafety";
@@ -724,6 +729,9 @@ export function CaptureArbeitsraum({
 
   // Metadaten (vorab erfassbar, FR-CAP-08)
   const [type, setType] = useState<KnowledgeType>(CAPTURE_FIELD_DEFAULTS.type);
+  // FR-STR-01: ist die Wissensart ENTSCHIEDEN (vom Menschen gewählt oder aus einem Entwurf
+  // geladen)? Dann überschreibt kein KI-Vorschlag sie — auch nicht, wenn sie dem Standard gleicht.
+  const typeEntschiedenRef = useRef(false);
   const [category, setCategory] = useState("");
   const [asset, setAsset] = useState("");
   // SCRUM-415: Vertraulichkeitsstufe ab Erfassen (Standard „intern"). Vertrauliche KOs gehen nie in
@@ -1317,6 +1325,9 @@ export function CaptureArbeitsraum({
     onSuccess: (r) => {
       setDraft(r);
       setTags((prev) => (prev.length > 0 ? prev : r.tags));
+      // FR-STR-01: vorgeschlagene Wissensart nur in eine noch nicht entschiedene Auswahl.
+      const typeEntschieden = typeEntschiedenRef.current;
+      setType((prev) => adoptProposedKnowledgeType(prev, typeEntschieden, r.knowledgeType));
       setErr(null);
       // SCRUM-384: direkt zur Wissensseite — Artikel-Vorschlag einmalig erzeugen
       // (leerer Body ⇒ setzen; vorhandener Inhalt wird NIE still überschrieben).
@@ -2637,6 +2648,8 @@ export function CaptureArbeitsraum({
     }
     // gemeinsame Metadaten (erweiterte Felder)
     setType(p.type ?? "best_practice");
+    // FR-STR-01: eine gespeicherte Wissensart ist entschieden; fehlt sie, darf die KI vorbelegen.
+    typeEntschiedenRef.current = p.type !== undefined && p.type !== null;
     setCategory(p.category ?? "");
     setTags(p.tags ?? []);
     setAsset(p.asset ?? "");
@@ -2856,6 +2869,7 @@ export function CaptureArbeitsraum({
     setBodyHtml("");
     setStudioApplied(false);
     setType(CAPTURE_FIELD_DEFAULTS.type);
+    typeEntschiedenRef.current = false;
     setCategory("");
     setAsset("");
     setConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
@@ -6485,7 +6499,10 @@ export function CaptureArbeitsraum({
                     >
                       <select
                         value={type}
-                        onChange={(e) => setType(e.target.value as KnowledgeType)}
+                        onChange={(e) => {
+                          typeEntschiedenRef.current = true;
+                          setType(e.target.value as KnowledgeType);
+                        }}
                         className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
                       >
                         {KNOWLEDGE_TYPES.map((k) => (
@@ -7205,6 +7222,9 @@ export function CaptureArbeitsraum({
                         applyFn={(mode, _original, suggestion) =>
                           applyBodyAssist(mode, bodyHtml, suggestion)
                         }
+                        applySpelling={(suggestion) =>
+                          spellingAssistHtmlOrNull(bodyHtml, suggestion)
+                        }
                         onApply={setBodyHtml}
                         hintKey="capture.ai.bodyHint"
                         extraApplyActions={EDITOR_BLOCKS.map((block) => ({
@@ -7430,6 +7450,9 @@ export function CaptureArbeitsraum({
                         runAssist={runAssist}
                         applyFn={(mode, _original, suggestion) =>
                           applyBodyAssist(mode, bodyHtml, suggestion)
+                        }
+                        applySpelling={(suggestion) =>
+                          spellingAssistHtmlOrNull(bodyHtml, suggestion)
                         }
                         onApply={setBodyHtml}
                         hintKey="capture.ai.bodyHint"
