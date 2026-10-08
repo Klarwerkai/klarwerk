@@ -153,6 +153,18 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     reason: "Beendet die Sitzung; löscht nur das Cookie.",
   },
   "GET /api/auth/me": { protection: "auth" },
+  // R-0562: der zweite Anmeldeschritt ist BEWUSST öffentlich — es gibt noch keine Sitzung, der
+  // Nachweis sind Anmeldeanfrage (nur nach richtigem Passwort, 5 min, einmalig, höchstens fünf
+  // Versuche) UND Code vom zweiten Gerät. Einrichten/Abschalten nur für das EIGENE Konto.
+  "POST /api/auth/login/second-factor": {
+    protection: "public",
+    reason:
+      "Zweiter Anmeldeschritt: Anmeldeanfrage aus dem Passwortschritt + TOTP-Code; je IP gedrosselt.",
+  },
+  "GET /api/auth/second-factor": { protection: "auth" },
+  "POST /api/auth/second-factor/setup": { protection: "auth" },
+  "POST /api/auth/second-factor/confirm": { protection: "auth" },
+  "POST /api/auth/second-factor/disable": { protection: "auth" },
   // AUFTRAG-mega61 Block C: die Kenntnisnahme des Hinweises. Beide auf das EIGENE Konto und nur
   // darauf — der Nutzer kommt aus der Sitzung, nicht aus dem Pfad; es gibt keinen Weg, eine fremde
   // Quittung zu lesen oder zu setzen. Kein zusätzliches Recht nötig: Auch eine Betrachterin muss
@@ -207,6 +219,7 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/users": { protection: "admin" },
   "PUT /api/users/:id": { protection: "admin" },
   "DELETE /api/users/:id": { protection: "admin" },
+  "DELETE /api/users/:id/second-factor": { protection: "admin" },
 
   // --- Composition-Root inline (services/app/src/build-app.ts) ---
   "GET /health": { protection: "public", reason: "Health-Probe; liefert nur { status: ok }." },

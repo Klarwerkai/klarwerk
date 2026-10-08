@@ -30,13 +30,30 @@ export interface NoticeAck {
   due: boolean;
 }
 
+// R-0562: Antwort des Passwortschritts. Hat das Konto einen eigenen zweiten Faktor, kommt statt der
+// Sitzung eine kurzlebige Anmeldeanfrage zurück, die mit dem Code eingelöst wird.
+export type LoginAntwort =
+  | { user: SessionUser }
+  | { secondFactorRequired: true; challenge: string; expiresInMs: number };
+
 export const authApi = {
   status: (): Promise<AuthStatus> => api.get<AuthStatus>("/auth/status"),
   notice: (): Promise<NoticeAck> => api.get<NoticeAck>("/auth/notice"),
   acknowledgeNotice: (): Promise<NoticeAck> => api.post<NoticeAck>("/auth/notice"),
   me: (): Promise<SessionUser> => api.get<SessionUser>("/auth/me"),
-  login: (email: string, password: string): Promise<{ user: SessionUser }> =>
-    api.post<{ user: SessionUser }>("/auth/login", { email, password }),
+  login: (email: string, password: string): Promise<LoginAntwort> =>
+    api.post<LoginAntwort>("/auth/login", { email, password }),
+  // R-0562: zweiter Anmeldeschritt und die Verwaltung des eigenen zweiten Faktors.
+  loginSecondFactor: (challenge: string, code: string): Promise<{ user: SessionUser }> =>
+    api.post<{ user: SessionUser }>("/auth/login/second-factor", { challenge, code }),
+  secondFactorStatus: (): Promise<{ active: boolean }> =>
+    api.get<{ active: boolean }>("/auth/second-factor"),
+  secondFactorSetup: (password: string): Promise<{ secret: string; otpauthUri: string }> =>
+    api.post<{ secret: string; otpauthUri: string }>("/auth/second-factor/setup", { password }),
+  secondFactorConfirm: (code: string): Promise<{ active: true }> =>
+    api.post<{ active: true }>("/auth/second-factor/confirm", { code }),
+  secondFactorDisable: (password: string, code: string): Promise<{ active: false }> =>
+    api.post<{ active: false }>("/auth/second-factor/disable", { password, code }),
   logout: (): Promise<void> => api.post<void>("/auth/logout"),
   // FR-AUTH-07: SSO-Start liegt als GET-Redirect auf dem Server (Full-Page-Navigation).
   ssoStartUrl: "/api/auth/oidc/start",
