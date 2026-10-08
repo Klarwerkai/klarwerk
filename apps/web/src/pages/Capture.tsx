@@ -729,6 +729,9 @@ export function CaptureArbeitsraum({
 
   // Metadaten (vorab erfassbar, FR-CAP-08)
   const [type, setType] = useState<KnowledgeType>(CAPTURE_FIELD_DEFAULTS.type);
+  // FR-STR-01: ist die Wissensart ENTSCHIEDEN (vom Menschen gewählt oder aus einem Entwurf
+  // geladen)? Dann überschreibt kein KI-Vorschlag sie — auch nicht, wenn sie dem Standard gleicht.
+  const typeEntschiedenRef = useRef(false);
   const [category, setCategory] = useState("");
   const [asset, setAsset] = useState("");
   // SCRUM-415: Vertraulichkeitsstufe ab Erfassen (Standard „intern"). Vertrauliche KOs gehen nie in
@@ -1322,10 +1325,9 @@ export function CaptureArbeitsraum({
     onSuccess: (r) => {
       setDraft(r);
       setTags((prev) => (prev.length > 0 ? prev : r.tags));
-      // FR-STR-01: vorgeschlagene Wissensart nur in eine unberührte Auswahl (Regel am Helfer).
-      setType((prev) =>
-        adoptProposedKnowledgeType(prev, CAPTURE_FIELD_DEFAULTS.type, r.knowledgeType),
-      );
+      // FR-STR-01: vorgeschlagene Wissensart nur in eine noch nicht entschiedene Auswahl.
+      const typeEntschieden = typeEntschiedenRef.current;
+      setType((prev) => adoptProposedKnowledgeType(prev, typeEntschieden, r.knowledgeType));
       setErr(null);
       // SCRUM-384: direkt zur Wissensseite — Artikel-Vorschlag einmalig erzeugen
       // (leerer Body ⇒ setzen; vorhandener Inhalt wird NIE still überschrieben).
@@ -2646,6 +2648,8 @@ export function CaptureArbeitsraum({
     }
     // gemeinsame Metadaten (erweiterte Felder)
     setType(p.type ?? "best_practice");
+    // FR-STR-01: eine gespeicherte Wissensart ist entschieden; fehlt sie, darf die KI vorbelegen.
+    typeEntschiedenRef.current = p.type !== undefined && p.type !== null;
     setCategory(p.category ?? "");
     setTags(p.tags ?? []);
     setAsset(p.asset ?? "");
@@ -2865,6 +2869,7 @@ export function CaptureArbeitsraum({
     setBodyHtml("");
     setStudioApplied(false);
     setType(CAPTURE_FIELD_DEFAULTS.type);
+    typeEntschiedenRef.current = false;
     setCategory("");
     setAsset("");
     setConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
@@ -6494,7 +6499,10 @@ export function CaptureArbeitsraum({
                     >
                       <select
                         value={type}
-                        onChange={(e) => setType(e.target.value as KnowledgeType)}
+                        onChange={(e) => {
+                          typeEntschiedenRef.current = true;
+                          setType(e.target.value as KnowledgeType);
+                        }}
                         className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
                       >
                         {KNOWLEDGE_TYPES.map((k) => (

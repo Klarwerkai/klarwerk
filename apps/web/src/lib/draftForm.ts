@@ -205,17 +205,18 @@ export const KNOWLEDGE_TYPES_DRAFT: readonly KnowledgeType[] = [
   "negativwissen",
 ];
 
-// FR-STR-01 (R-0315): die vom Strukturierungsvorschlag gelieferte Wissensart vorbelegen — nach
-// derselben Regel wie die Schlagworte (`setTags(prev => prev.length > 0 ? prev : r.tags)`): nur ein
-// unberührter Ausgangswert wird ersetzt, eine bereits geänderte Wahl des Menschen nie. Liefert der
-// Vorschlag keine (oder eine unbekannte) Wissensart, bleibt der aktuelle Wert. Die Auswahl bleibt
-// danach im Formular frei änderbar — der Mensch korrigiert und speichert.
+// FR-STR-01 (R-0315): die vom Strukturierungsvorschlag gelieferte Wissensart vorbelegen. Geschützt
+// ist jede ENTSCHIEDENE Wissensart — vom Menschen gewählt (auch wenn er bewusst den Standardwert
+// zurückstellt) oder aus einem gespeicherten Entwurf geladen. Der Standardwert allein ist KEINE
+// Freigabe (Bens Befund Nacharbeit 2): ob entschieden wurde, muss der Aufrufer ausdrücklich
+// mitführen. Liefert der Vorschlag keine (oder eine unbekannte) Wissensart, bleibt der aktuelle Wert.
+// Die Auswahl bleibt danach frei änderbar — der Mensch korrigiert und speichert.
 export function adoptProposedKnowledgeType(
   current: KnowledgeType,
-  untouchedDefault: KnowledgeType,
+  decided: boolean,
   proposed: KnowledgeType | undefined,
 ): KnowledgeType {
-  if (current !== untouchedDefault) {
+  if (decided) {
     return current;
   }
   return proposed && KNOWLEDGE_TYPES_DRAFT.includes(proposed) ? proposed : current;
