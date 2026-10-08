@@ -1,0 +1,869 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "KLARWERK Integrationsschnittstelle",
+    "version": "1.2.0",
+    "description": "Anmeldung mit Dienst-Schlüssel im Kopf x-klarwerk-service-key. Jeder Schlüssel hat eigene Rechte und eine eigene Anfragegrenze. Antworten aus Wissen stammen ausschließlich aus validiertem Wissen. Zustandstabelle: docs/architektur/integrations-schnittstelle.md."
+  },
+  "paths": {
+    "/api/ask": {
+      "post": {
+        "summary": "Frage stellen. Antwort ausschließlich aus validiertem, nicht vertraulichem Wissen, ohne Modellaufruf; sonst eine ehrliche Wissenslücke.",
+        "x-klarwerk-recht": "ask.validated",
+        "security": [{ "dienstSchluessel": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Frage" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Beantwortet (result.answered = true, mit Quellen) ODER Wissenslücke (result.answered = false). Beides ist ein Erfolg.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Antwort" } } }
+          },
+          "400": {
+            "description": "Bad Request: Rumpf verletzt das Schema oder ist kein JSON (code: FST_ERR_VALIDATION bzw. FST_ERR_CTP_…).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Fehler" },
+                    { "properties": { "error": { "const": "Bad Request" } } }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/NichtAngemeldet" },
+          "403": { "$ref": "#/components/responses/RechtFehlt" },
+          "413": {
+            "description": "Payload Too Large: Rumpf größer als 128 KiB (code: FST_ERR_CTP_BODY_TOO_LARGE).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Fehler" },
+                    { "properties": { "error": { "const": "Payload Too Large" } } }
+                  ]
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type: Rumpf ist nicht application/json (code: FST_ERR_CTP_INVALID_MEDIA_TYPE).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Fehler" },
+                    { "properties": { "error": { "const": "Unsupported Media Type" } } }
+                  ]
+                }
+              }
+            }
+          },
+          "429": { "$ref": "#/components/responses/Gebremst" },
+          "500": { "$ref": "#/components/responses/Intern" },
+          "503": {
+            "description": "KI_ABGESCHALTET: Der Administrator hat die Fragefunktion der Instanz abgeschaltet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Fehler" },
+                    { "properties": { "error": { "const": "KI_ABGESCHALTET" } } }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/check-text": {
+      "post": {
+        "summary": "Text gegen validiertes Wissen prüfen (Dubletten, Überschneidungen, Widersprüche) — deterministisch, ohne Modell, nichts wird gespeichert.",
+        "x-klarwerk-recht": "checktext.validated",
+        "security": [{ "dienstSchluessel": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/Textpruefung" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Prüfergebnis (auch: keine Funde).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Pruefergebnis" } }
+            }
+          },
+          "400": {
+            "description": "Bad Request: text fehlt oder liegt außerhalb von 40–8.000 Zeichen.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Fehler" },
+                    { "properties": { "error": { "const": "Bad Request" } } }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/NichtAngemeldet" },
+          "403": { "$ref": "#/components/responses/RechtFehlt" },
+          "413": {
+            "description": "Payload Too Large: Rumpf größer als 128 KiB (code: FST_ERR_CTP_BODY_TOO_LARGE).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Fehler" },
+                    { "properties": { "error": { "const": "Payload Too Large" } } }
+                  ]
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type: Rumpf ist nicht application/json (code: FST_ERR_CTP_INVALID_MEDIA_TYPE).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Fehler" },
+                    { "properties": { "error": { "const": "Unsupported Media Type" } } }
+                  ]
+                }
+              }
+            }
+          },
+          "429": { "$ref": "#/components/responses/Gebremst" },
+          "500": { "$ref": "#/components/responses/Intern" }
+        }
+      }
+    },
+    "/api/library/export": {
+      "get": {
+        "summary": "Wissen ausleiten: validierte, nicht vertrauliche Wissensobjekte; format = json (Standard), markdown, mediawiki oder html. Jeder Export wird protokolliert (Akteur dienst:<id>).",
+        "x-klarwerk-recht": "export.validated",
+        "security": [{ "dienstSchluessel": [] }],
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["json", "markdown", "mediawiki", "html"] }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Export im angefragten Format.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Wissensobjekt" }
+                }
+              },
+              "text/markdown": { "schema": { "type": "string" } },
+              "text/plain": { "schema": { "type": "string" } },
+              "text/html": { "schema": { "type": "string" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/NichtAngemeldet" },
+          "403": { "$ref": "#/components/responses/RechtFehlt" },
+          "429": { "$ref": "#/components/responses/Gebremst" },
+          "500": { "$ref": "#/components/responses/Intern" }
+        }
+      }
+    },
+    "/api/library/import/candidates": {
+      "post": {
+        "summary": "Wissen einliefern: die Einträge werden als Kandidaten in die Prüfwarteschlange gestellt. Ein Wissensobjekt entsteht erst, wenn ein berechtigter Mensch annimmt.",
+        "x-klarwerk-recht": "import.kandidaten",
+        "security": [{ "dienstSchluessel": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/Einlieferung" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Eingereiht; die Antwort nennt die Kandidaten samt Dublettenbefund.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Kandidatenliste" } }
+            }
+          },
+          "400": {
+            "description": "BAD_REQUEST: Ein Eintrag ist unbrauchbar: unbekannte Wissensart (type) oder ungültige sourceVersion. Es wird nichts eingereiht. | DOKUMENT_UNBEKANNT: Ein Eintrag nennt eine Dokumentkennung, die diese Instanz nicht vergeben hat. Es wird nichts eingereiht. | Bad Request: Rumpf ist kein JSON (code: FST_ERR_CTP_…).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Fehler" },
+                    {
+                      "properties": {
+                        "error": { "enum": ["BAD_REQUEST", "DOKUMENT_UNBEKANNT", "Bad Request"] }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/NichtAngemeldet" },
+          "403": { "$ref": "#/components/responses/RechtFehlt" },
+          "413": {
+            "description": "Payload Too Large: Rumpf größer als 1 MiB (code: FST_ERR_CTP_BODY_TOO_LARGE).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Fehler" },
+                    { "properties": { "error": { "const": "Payload Too Large" } } }
+                  ]
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type: Rumpf ist nicht application/json (code: FST_ERR_CTP_INVALID_MEDIA_TYPE).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Fehler" },
+                    { "properties": { "error": { "const": "Unsupported Media Type" } } }
+                  ]
+                }
+              }
+            }
+          },
+          "429": { "$ref": "#/components/responses/Gebremst" },
+          "500": { "$ref": "#/components/responses/Intern" }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Betriebszustand: status, Version und Deploy-Stand der Instanz.",
+        "x-klarwerk-recht": "status.read",
+        "security": [{ "dienstSchluessel": [] }],
+        "responses": {
+          "200": {
+            "description": "Instanz antwortet (status = ok).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Betriebszustand" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/NichtAngemeldet" },
+          "403": { "$ref": "#/components/responses/RechtFehlt" },
+          "429": { "$ref": "#/components/responses/Gebremst" },
+          "500": { "$ref": "#/components/responses/Intern" }
+        }
+      }
+    },
+    "/api/reasoner/status": {
+      "get": {
+        "summary": "Abstrakter KI-Zustand (aktiv/Modus), ohne Anbieter- oder Modellnamen.",
+        "x-klarwerk-recht": "status.read",
+        "security": [{ "dienstSchluessel": [] }],
+        "responses": {
+          "200": {
+            "description": "Aktueller KI-Zustand.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/KiZustand" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/NichtAngemeldet" },
+          "403": { "$ref": "#/components/responses/RechtFehlt" },
+          "429": { "$ref": "#/components/responses/Gebremst" },
+          "500": { "$ref": "#/components/responses/Intern" }
+        }
+      }
+    },
+    "/mcp": {
+      "post": {
+        "summary": "MCP-Zugang für fremde KI-Programme (Model Context Protocol, Streamable HTTP, zustandslos): eine JSON-RPC-2.0-Nachricht je Anfrage. Werkzeug klara_fragen nur mit zusätzlichem Recht ask.validated; es fragt über POST /api/ask mit demselben Schlüssel und liefert nur validiertes Wissen mit Beleg. Kein Browseraufruf (Anfrage mit Origin: 403).",
+        "x-klarwerk-recht": "mcp.werkzeug",
+        "security": [{ "dienstSchluessel": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/McpNachricht" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "JSON-RPC-Antwort: Ergebnis (initialize, ping, tools/list, tools/call) oder JSON-RPC-Fehler (-32600, -32601, -32602). Ein Werkzeugfehler steht als result.isError = true im Ergebnis.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/McpAntwort" } }
+            }
+          },
+          "202": {
+            "description": "Benachrichtigung oder Antwort des Clients angenommen; kein Antwortkörper."
+          },
+          "400": {
+            "description": "Bad Request: Rumpf ist kein JSON oder leer (code: FST_ERR_CTP_…).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Fehler" },
+                    { "properties": { "error": { "const": "Bad Request" } } }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/NichtAngemeldet" },
+          "403": { "$ref": "#/components/responses/RechtFehlt" },
+          "413": {
+            "description": "Payload Too Large: Rumpf größer als 128 KiB (code: FST_ERR_CTP_BODY_TOO_LARGE).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Fehler" },
+                    { "properties": { "error": { "const": "Payload Too Large" } } }
+                  ]
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type: Rumpf ist nicht application/json (code: FST_ERR_CTP_INVALID_MEDIA_TYPE).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Fehler" },
+                    { "properties": { "error": { "const": "Unsupported Media Type" } } }
+                  ]
+                }
+              }
+            }
+          },
+          "429": { "$ref": "#/components/responses/Gebremst" },
+          "500": { "$ref": "#/components/responses/Intern" }
+        }
+      },
+      "get": {
+        "summary": "Ereignisstrom des MCP-Zugangs — nicht angeboten (zustandsloser Server).",
+        "x-klarwerk-recht": "mcp.werkzeug",
+        "security": [{ "dienstSchluessel": [] }],
+        "responses": {
+          "401": { "$ref": "#/components/responses/NichtAngemeldet" },
+          "403": { "$ref": "#/components/responses/RechtFehlt" },
+          "405": {
+            "description": "METHOD_NOT_ALLOWED: Kein Ereignisstrom; Nachrichten nur per POST.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/Fehler" },
+                    { "properties": { "error": { "const": "METHOD_NOT_ALLOWED" } } }
+                  ]
+                }
+              }
+            }
+          },
+          "429": { "$ref": "#/components/responses/Gebremst" },
+          "500": { "$ref": "#/components/responses/Intern" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "dienstSchluessel": { "type": "apiKey", "in": "header", "name": "x-klarwerk-service-key" }
+    },
+    "responses": {
+      "NichtAngemeldet": {
+        "description": "UNAUTHENTICATED: Kein gültiger Dienst-Schlüssel: falsch, gesperrt oder nicht (mehr) konfiguriert. Es gibt keinen Rückfall auf eine Sitzung.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                { "$ref": "#/components/schemas/Fehler" },
+                { "properties": { "error": { "const": "UNAUTHENTICATED" } } }
+              ]
+            }
+          }
+        }
+      },
+      "RechtFehlt": {
+        "description": "FORBIDDEN: Der Schlüssel ist gültig, trägt aber das Recht dieser Route nicht.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                { "$ref": "#/components/schemas/Fehler" },
+                { "properties": { "error": { "const": "FORBIDDEN" } } }
+              ]
+            }
+          }
+        }
+      },
+      "Gebremst": {
+        "description": "RATE_LIMITED: Grenze des Schlüssels erreicht, oder zu viele Fehlversuche von dieser Adresse. Retry-After nennt die Wartezeit in Sekunden; beim Schlüssel steht sie zusätzlich als wartenSek im Körper.",
+        "headers": { "Retry-After": { "schema": { "type": "integer", "minimum": 1 } } },
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                { "$ref": "#/components/schemas/Fehler" },
+                { "properties": { "error": { "const": "RATE_LIMITED" } } }
+              ]
+            }
+          }
+        }
+      },
+      "Intern": {
+        "description": "INTERNAL: Interner Fehler; Einzelheiten bleiben im Serverprotokoll. Die Anfrage darf wiederholt werden.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                { "$ref": "#/components/schemas/Fehler" },
+                { "properties": { "error": { "const": "INTERNAL" } } }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Fehler": {
+        "type": "object",
+        "required": ["error", "message"],
+        "properties": {
+          "error": { "type": "string" },
+          "message": { "type": "string" },
+          "code": { "type": "string" },
+          "wartenSek": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "Wissensart": {
+        "type": "string",
+        "enum": ["bauchgefuehl", "best_practice", "lernkurve", "technik", "negativwissen"]
+      },
+      "Vertraulichkeit": { "type": "string", "enum": ["intern", "vertraulich", "streng_vertraulich"] },
+      "Wissensklasse": {
+        "type": "string",
+        "enum": ["gesichert", "ungeprueft", "meinung", "extern", "annahme", "unbekannt"]
+      },
+      "Frage": {
+        "type": "object",
+        "required": ["question"],
+        "properties": {
+          "question": { "type": "string", "maxLength": 8000 },
+          "locale": { "type": "string", "enum": ["de", "en", "nl"] }
+        }
+      },
+      "Antwort": {
+        "type": "object",
+        "required": ["result", "answerId", "gap", "receipt"],
+        "properties": {
+          "result": {
+            "type": "object",
+            "required": [
+              "answered",
+              "answer",
+              "knowledgeClass",
+              "trust",
+              "sources",
+              "citedSources",
+              "steps",
+              "demo",
+              "captionSources",
+              "evidence"
+            ],
+            "properties": {
+              "answered": { "type": "boolean" },
+              "answer": { "type": ["string", "null"] },
+              "knowledgeClass": { "$ref": "#/components/schemas/Wissensklasse" },
+              "trust": { "type": "number", "minimum": 0, "maximum": 100 },
+              "sources": { "type": "array", "items": { "type": "string" } },
+              "citedSources": { "type": "array", "items": { "type": "string" } },
+              "captionSources": { "type": "array", "items": { "type": "string" } },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["description", "sourceId", "snippet"],
+                  "properties": {
+                    "description": { "type": "string" },
+                    "sourceId": { "type": ["string", "null"] },
+                    "snippet": { "type": ["string", "null"] }
+                  }
+                }
+              },
+              "demo": { "type": "boolean" },
+              "evidence": { "$ref": "#/components/schemas/Evidenz" }
+            },
+            "oneOf": [
+              {
+                "title": "Beantwortet",
+                "properties": {
+                  "answered": { "const": true },
+                  "evidence": { "properties": { "grade": { "enum": ["verified", "unverified"] } } }
+                }
+              },
+              {
+                "title": "Wissenslücke",
+                "properties": {
+                  "answered": { "const": false },
+                  "evidence": { "properties": { "grade": { "const": "gap" } } }
+                }
+              }
+            ]
+          },
+          "answerId": { "type": ["string", "null"] },
+          "gap": { "type": ["object", "null"] },
+          "receipt": { "type": "string" }
+        }
+      },
+      "Evidenz": {
+        "type": "object",
+        "required": [
+          "grade",
+          "knowledgeClass",
+          "rawKnowledgeClass",
+          "checkCaveat",
+          "sourcesConflicted",
+          "conflictsUnproven"
+        ],
+        "properties": {
+          "grade": { "type": "string", "enum": ["verified", "unverified", "gap"] },
+          "knowledgeClass": { "$ref": "#/components/schemas/Wissensklasse" },
+          "rawKnowledgeClass": { "$ref": "#/components/schemas/Wissensklasse" },
+          "checkCaveat": {
+            "type": ["object", "null"],
+            "required": ["reason", "unproven", "total"],
+            "properties": {
+              "reason": {
+                "type": "string",
+                "enum": ["unknown", "unchecked", "noCoverage", "incomplete", "unattributed"]
+              },
+              "unproven": { "type": "integer", "minimum": 0 },
+              "total": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "sourcesConflicted": { "type": "boolean" },
+          "conflictsUnproven": { "type": "boolean" }
+        }
+      },
+      "Textpruefung": {
+        "type": "object",
+        "required": ["text"],
+        "properties": {
+          "text": { "type": "string", "minLength": 40, "maxLength": 8000 },
+          "title": { "type": "string" },
+          "locale": { "type": "string", "enum": ["de", "en"] }
+        }
+      },
+      "Fundort": {
+        "type": "object",
+        "required": ["kategorie", "bereich", "bibliothekPfad"],
+        "properties": {
+          "kategorie": { "type": ["string", "null"] },
+          "bereich": { "type": ["string", "null"] },
+          "bibliothekPfad": { "type": "string" }
+        }
+      },
+      "Pruefergebnis": {
+        "type": "object",
+        "required": [
+          "duplicates",
+          "conflicts",
+          "konfliktpruefung",
+          "answer",
+          "note",
+          "persisted",
+          "sourceHits",
+          "sourceHitsTruncated",
+          "quellenfund"
+        ],
+        "properties": {
+          "duplicates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "koId",
+                "koTitle",
+                "relation",
+                "confidence",
+                "method",
+                "pruefstand",
+                "fundort"
+              ],
+              "properties": {
+                "koId": { "type": "string" },
+                "koTitle": { "type": "string" },
+                "relation": {
+                  "type": "string",
+                  "enum": ["identisch", "a_enthaelt_b", "b_enthaelt_a", "teilweise", "verwandt"]
+                },
+                "confidence": { "type": ["number", "null"] },
+                "method": { "type": "string", "enum": ["model", "deterministic"] },
+                "rationale": { "type": ["string", "null"] },
+                "pruefstand": { "type": ["string", "null"], "enum": ["validiert", "eingereicht", null] },
+                "version": { "type": ["integer", "null"] },
+                "fundort": { "$ref": "#/components/schemas/Fundort" }
+              }
+            }
+          },
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["koId", "koTitle", "type", "confidence", "method", "pruefstand", "fundort"],
+              "properties": {
+                "koId": { "type": "string" },
+                "koTitle": { "type": "string" },
+                "type": {
+                  "type": "string",
+                  "enum": ["truth", "experience", "context", "temporal", "role"]
+                },
+                "confidence": { "type": ["number", "null"] },
+                "method": { "type": "string", "enum": ["model"] },
+                "rationale": { "type": ["string", "null"] },
+                "pruefstand": { "type": ["string", "null"], "enum": ["validiert", "eingereicht", null] },
+                "fundort": { "$ref": "#/components/schemas/Fundort" }
+              }
+            }
+          },
+          "konfliktpruefung": {
+            "type": "object",
+            "required": ["gelaufen", "grund", "kandidaten", "ausgefallen", "verworfen"],
+            "properties": {
+              "gelaufen": { "type": "boolean" },
+              "grund": {
+                "type": ["string", "null"],
+                "enum": [
+                  "nicht_angefordert",
+                  "vertraulich",
+                  "kein_konfliktdienst",
+                  "kein_modell",
+                  "modellfehler",
+                  "urteil_verworfen",
+                  null
+                ]
+              },
+              "kandidaten": { "type": "integer", "minimum": 0 },
+              "ausgefallen": { "type": "integer", "minimum": 0 },
+              "verworfen": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "answer": { "type": "null" },
+          "note": { "type": ["string", "null"] },
+          "persisted": { "const": false },
+          "sourceHits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "refId",
+                "koTitle",
+                "coverage",
+                "gedeckteZeichen",
+                "passageZeichen",
+                "fundstelle"
+              ],
+              "properties": {
+                "refId": { "type": "string" },
+                "koTitle": { "type": "string" },
+                "coverage": { "type": "string", "enum": ["full", "partial"] },
+                "gedeckteZeichen": { "type": "integer", "minimum": 0 },
+                "passageZeichen": { "type": "integer", "minimum": 0 },
+                "fundstelle": { "type": "string" },
+                "fundort": { "$ref": "#/components/schemas/Fundort" }
+              }
+            }
+          },
+          "sourceHitsTruncated": { "type": "boolean" },
+          "quellenfund": {
+            "type": "object",
+            "required": ["gelaufen", "grund", "geprueft"],
+            "properties": {
+              "gelaufen": { "type": "boolean" },
+              "grund": {
+                "type": ["string", "null"],
+                "enum": ["passage_zu_kurz", "suche_nicht_verfuegbar", null]
+              },
+              "geprueft": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      },
+      "Wissensobjekt": {
+        "type": "object",
+        "required": ["id", "title", "statement", "type", "category", "status", "version"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "statement": { "type": "string" },
+          "type": { "$ref": "#/components/schemas/Wissensart" },
+          "category": { "type": "string" },
+          "status": { "type": "string", "enum": ["validiert"] },
+          "version": { "type": "integer", "minimum": 1 },
+          "confidentiality": { "type": "string", "enum": ["intern"] },
+          "conditions": { "type": "array", "items": { "type": "string" } },
+          "measures": { "type": "array", "items": { "type": "string" } },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "trust": { "type": "number" }
+        }
+      },
+      "Einlieferung": {
+        "type": "object",
+        "required": ["items"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["title", "statement", "type", "category"],
+              "properties": {
+                "title": { "type": "string" },
+                "statement": { "type": "string" },
+                "type": { "$ref": "#/components/schemas/Wissensart" },
+                "category": { "type": "string" },
+                "tags": { "type": "array", "items": { "type": "string" } },
+                "confidentiality": { "$ref": "#/components/schemas/Vertraulichkeit" },
+                "externalId": { "type": "string" },
+                "sourceScope": { "type": "string" },
+                "sourceVersion": { "type": "integer", "minimum": 0 }
+              }
+            }
+          }
+        }
+      },
+      "Kandidatenliste": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["id", "item", "status", "duplicate", "note", "koId", "createdAt"],
+          "properties": {
+            "id": { "type": "string" },
+            "item": { "type": "object" },
+            "status": {
+              "type": "string",
+              "enum": ["neu", "in_bearbeitung", "angenommen", "abgelehnt", "info-angefragt"]
+            },
+            "duplicate": { "type": "boolean" },
+            "note": { "type": ["string", "null"] },
+            "koId": { "type": ["string", "null"] },
+            "createdAt": { "type": "string", "format": "date-time" },
+            "dublettenbefund": {
+              "type": "object",
+              "required": ["ergebnis"],
+              "properties": {
+                "ergebnis": {
+                  "type": "string",
+                  "enum": [
+                    "keine",
+                    "identisch",
+                    "aehnlich",
+                    "pruefung_nicht_moeglich",
+                    "nicht_gestellt",
+                    "im_papierkorb",
+                    "wiederverwendet"
+                  ]
+                },
+                "aehnlichkeit": { "type": "number" },
+                "treffer": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": ["art", "koId"],
+                      "properties": {
+                        "art": { "const": "wissensobjekt" },
+                        "koId": { "type": "string" }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["art", "kandidatId"],
+                      "properties": {
+                        "art": { "const": "kandidat" },
+                        "kandidatId": { "type": "string" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "KiZustand": {
+        "type": "object",
+        "required": ["active", "mode", "reachable", "tasks", "billable", "kiAbgeschaltet"],
+        "properties": {
+          "active": { "type": "boolean" },
+          "mode": { "type": "string", "enum": ["cloud", "local", "deterministic"] },
+          "reachable": { "type": "string", "enum": ["none", "unverified", "active", "unreachable"] },
+          "tasks": { "type": "object", "additionalProperties": { "type": "boolean" } },
+          "billable": { "type": "object", "additionalProperties": { "type": "boolean" } },
+          "kiAbgeschaltet": { "type": "boolean" }
+        }
+      },
+      "Betriebszustand": {
+        "type": "object",
+        "required": ["status", "version", "commit", "ai", "aiRuns"],
+        "properties": {
+          "status": { "const": "ok" },
+          "version": { "type": "string" },
+          "commit": { "type": "string" },
+          "ai": { "$ref": "#/components/schemas/KiZustand" },
+          "aiRuns": {
+            "type": "object",
+            "required": ["available", "recent"],
+            "properties": {
+              "available": { "type": "boolean" },
+              "recent": { "type": "array", "items": { "type": "object" } }
+            }
+          }
+        }
+      },
+      "McpNachricht": {
+        "type": "object",
+        "required": ["jsonrpc"],
+        "properties": {
+          "jsonrpc": { "const": "2.0" },
+          "id": { "type": ["string", "integer"] },
+          "method": {
+            "type": "string",
+            "description": "initialize, ping, tools/list, tools/call; Benachrichtigungen ohne id."
+          },
+          "params": { "type": "object" }
+        }
+      },
+      "McpAntwort": {
+        "type": "object",
+        "required": ["jsonrpc", "id"],
+        "properties": {
+          "jsonrpc": { "const": "2.0" },
+          "id": { "type": ["string", "integer", "null"] },
+          "result": { "type": "object" },
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "integer", "enum": [-32600, -32601, -32602] },
+              "message": { "type": "string" }
+            }
+          }
+        },
+        "oneOf": [
+          { "title": "Ergebnis", "required": ["result"] },
+          { "title": "JSON-RPC-Fehler", "required": ["error"] }
+        ]
+      }
+    }
+  }
+}
