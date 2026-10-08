@@ -410,8 +410,10 @@ describe("mega29 C3 · menschliche Ausgaben sagen, worüber sie KEINE Aussage tr
         uncertain: false,
         // aufnahme:20260922:gesamt-dokumenterzeugung (R-0337): der Typ trägt seither die übrigen
         // Pflichtangaben je Quelle; dieser Fall misst sie nicht, er braucht nur ein gültiges Objekt.
+        marke: "Q1",
         geltungsbereich: null,
         verantwortlich: null,
+        verantwortlicheRolle: null,
         validiertVon: [],
         fassungVom: null,
         letztePruefungAm: null,

@@ -51,8 +51,12 @@
 // DATENFLUSS (ausgewiesen): Gelesen werden die Absatztexte und Formatvorlagen des offenen Dokuments
 // — sie verlassen Word NICHT; die Prüfung läuft hier im Fenster. Zum Server gehen nur Kennungen der
 // gewählten Quellen, die Dokumentart und die eingetippte Zielrolle (Output Factory, Wissensobjekt)
-// an dieselbe Klarwerk-Instanz. Kein Modell,
-// kein externer Dienst. Geschrieben wird ins Dokument nur auf Klick, und nur hinter den Cursor.
+// an dieselbe Klarwerk-Instanz. Seit Nacharbeit 5 zusätzlich: das GETIPPTE Vorhaben samt früherer
+// Fragen an den Fragenweg (`/api/ask`, wie eine Konsolenfrage — kein Dokumenttext), und nur auf
+// ausdrücklichen Klick „Mit Klara ausformulieren" der Auftrag an den Zuruf-Weg (KA6) — der geht
+// nur mit gültiger Einwilligung hinaus und kann ein Modell nutzen; sein Ergebnis ist als
+// KI-Entwurf gekennzeichnet. Alle übrigen Wege nutzen weder ein Modell noch einen externen Dienst.
+// Geschrieben wird ins Dokument nur auf Klick, und nur an der Cursorposition (Absatz wird geteilt).
 // ================================================================================================
 "use strict";
 
@@ -69,7 +73,38 @@
         bausteinKeine: "Kein geprüftes Wissen verfügbar.",
         bausteinBedingung: "Gilt, wenn: {liste}",
         herkunft: "Baustein aus Klarwerk: „{titel}“ · Fassung {version} · Prüfstand {status} · Vertrauenswert {trust} · Kennung {id}",
-        herkunftPflicht: " · Geltung: {geltung} · Verantwortung: {verantwortung} · Fassung vom {fassung} · Letzte Prüfung: {pruefung}",
+        herkunftPflicht: " · Geltung: {geltung} · Verantwortliche Rolle: {rolle} · Verantwortung: {verantwortung} · Fassung vom {fassung} · Letzte Prüfung: {pruefung}",
+        nichtBelegt: "nicht belegt",
+        u_rolle_fehlt: "verantwortliche Rolle nicht benannt",
+        u_pruefnachweis_fremde_fassung: "Prüfnachweis gilt einer früheren Fassung",
+        u_pruefnachweis_ungueltig: "Prüfnachweis hält der Auditprüfung nicht stand",
+        art_betriebsmitteilung: "Betriebsmitteilung",
+        fadenTitel: "Was haben Sie vor?",
+        vorhabenPlatzhalter: "z. B. „Ich muss eine Betriebsmitteilung zu Urlaubstagen schreiben – was haben wir dazu?“",
+        recherche: "Was haben wir dazu?",
+        fadenSie: "Sie: {text}",
+        fadenAntwort: "Klara: {text}",
+        fadenPunkte: "Klara: {n} Fundstelle(n) im Haus",
+        fadenPunkt: "„{titel}“ · Fassung {version} · Stand {stand} · Reifegrad: {reife} · Vertrauenswert {trust}",
+        reifeGeprueft: "geprüft",
+        reifeUngeprueft: "nicht geprüft ({status}) – kommt nicht in den Entwurf",
+        fadenFehltAlles: "Was fehlt: Dazu gibt es im Haus kein geprüftes Wissen.",
+        fadenFehltTeil: "Was fehlt: {n} Fundstelle(n) sind nicht geprüft und bleiben draußen.",
+        fadenFehltNichts: "Was fehlt: nichts Erkennbares – alle Fundstellen sind geprüft.",
+        fadenLeer: "Bitte zuerst beschreiben, was Sie vorhaben.",
+        fadenKeineQuellen: "Im Gesprächsfaden steht noch kein geprüfter Punkt.",
+        entwurf: "Entwurf aus diesen Punkten erzeugen",
+        kiEntwurf: "Mit Klara ausformulieren (KI-Entwurf)",
+        kiKennzeichnung: "KI-Entwurf – formuliert von {wer}. Nicht geprüft: vor Verwendung lesen, kürzen und verantworten.",
+        kiAnbieterUnbekannt: "einem Modell (Anbieter vom Server nicht genannt)",
+        kiHerkunft: "Quelle: „{titel}“ · Fassung {version} · Prüfstand {stufe} · Kennung {id}",
+        kiAuftrag: "Formuliere eine {textsorte} zu: {vorhaben}. {form}",
+        kiForm_betriebsmitteilung: "Form: Betreff, Anrede an die Belegschaft, sachlich-freundlicher Ton in Sie-Form, Anlass, geltende Punkte, was zu tun ist, Ansprechpartner, Gruß. Verwende nur Aussagen aus den angegebenen Quellen.",
+        kiForm_allgemein: "Verwende nur Aussagen aus den angegebenen Quellen.",
+        kiNichtMoeglich: "Mit KI gerade nicht möglich: {grund}",
+        kiNichtVerfuegbar: "Der KI-Weg ist in diesem Fenster nicht verfügbar – nichts gesendet.",
+        kiUnbrauchbar: "Der Server hat keinen KI-Entwurf mit Herkunft geliefert – nichts eingefügt.",
+        kiEingefuegt: "KI-Entwurf eingefügt – oben gekennzeichnet, mit Herkunft je Quelle.",
         herkunftUnsicherheiten: " · Offene Unsicherheiten: {liste}",
         validiertVon: " (validiert von {liste})",
         nichtAngegeben: "nicht angegeben",
@@ -78,7 +113,7 @@
         u_niedriger_trust: "niedriger Vertrauenswert",
         u_geltung_fehlt: "Gültigkeitsbereich nicht angegeben",
         u_verantwortung_fehlt: "Verantwortung nicht benannt",
-        u_pruefdatum_fehlt: "Datum der letzten Prüfung nicht festgehalten",
+        u_pruefdatum_fehlt: "kein Prüfnachweis – Datum der letzten Prüfung nicht belegt",
         erzeugenTitel: "Dokument aus geprüftem Wissen erzeugen",
         art: "Dokumentart",
         art_instruction: "Arbeitsanweisung / Verfahrensanweisung",
@@ -142,7 +177,38 @@
         bausteinKeine: "No reviewed knowledge available.",
         bausteinBedingung: "Applies when: {liste}",
         herkunft: "Building block from Klarwerk: “{titel}” · version {version} · review status {status} · trust {trust} · ID {id}",
-        herkunftPflicht: " · scope: {geltung} · responsible: {verantwortung} · version of {fassung} · last review: {pruefung}",
+        herkunftPflicht: " · scope: {geltung} · responsible role: {rolle} · responsible: {verantwortung} · version of {fassung} · last review: {pruefung}",
+        nichtBelegt: "not evidenced",
+        u_rolle_fehlt: "responsible role not named",
+        u_pruefnachweis_fremde_fassung: "review record refers to an earlier version",
+        u_pruefnachweis_ungueltig: "review record fails the audit check",
+        art_betriebsmitteilung: "Staff notice",
+        fadenTitel: "What are you planning?",
+        vorhabenPlatzhalter: "e.g. “I need to write a staff notice about holidays – what do we have on this?”",
+        recherche: "What do we have on this?",
+        fadenSie: "You: {text}",
+        fadenAntwort: "Klara: {text}",
+        fadenPunkte: "Klara: {n} finding(s) in-house",
+        fadenPunkt: "“{titel}” · version {version} · as of {stand} · maturity: {reife} · trust {trust}",
+        reifeGeprueft: "reviewed",
+        reifeUngeprueft: "not reviewed ({status}) – stays out of the draft",
+        fadenFehltAlles: "What is missing: there is no reviewed knowledge on this in-house.",
+        fadenFehltTeil: "What is missing: {n} finding(s) are not reviewed and stay out.",
+        fadenFehltNichts: "What is missing: nothing apparent – all findings are reviewed.",
+        fadenLeer: "Please describe what you are planning first.",
+        fadenKeineQuellen: "The conversation does not contain a reviewed point yet.",
+        entwurf: "Create a draft from these points",
+        kiEntwurf: "Let Klara phrase it (AI draft)",
+        kiKennzeichnung: "AI draft – phrased by {wer}. Not reviewed: read, shorten and take responsibility before use.",
+        kiAnbieterUnbekannt: "a model (provider not named by the server)",
+        kiHerkunft: "Source: “{titel}” · version {version} · review status {stufe} · ID {id}",
+        kiAuftrag: "Draft a {textsorte} on: {vorhaben}. {form}",
+        kiForm_betriebsmitteilung: "Form: subject, greeting to the staff, factual and friendly formal tone, occasion, applicable points, what to do, contact, closing. Use only statements from the given sources.",
+        kiForm_allgemein: "Use only statements from the given sources.",
+        kiNichtMoeglich: "AI not possible right now: {grund}",
+        kiNichtVerfuegbar: "The AI path is not available in this pane – nothing sent.",
+        kiUnbrauchbar: "The server did not return an AI draft with sources – nothing inserted.",
+        kiEingefuegt: "AI draft inserted – marked at the top, with source per point.",
         herkunftUnsicherheiten: " · open uncertainties: {liste}",
         validiertVon: " (validated by {liste})",
         nichtAngegeben: "not specified",
@@ -151,7 +217,7 @@
         u_niedriger_trust: "low trust",
         u_geltung_fehlt: "scope not specified",
         u_verantwortung_fehlt: "responsibility not named",
-        u_pruefdatum_fehlt: "date of last review not recorded",
+        u_pruefdatum_fehlt: "no review record – date of last review not evidenced",
         erzeugenTitel: "Create a document from reviewed knowledge",
         art: "Document type",
         art_instruction: "Work instruction / procedure",
@@ -215,7 +281,38 @@
         bausteinKeine: "Geen gecontroleerde kennis beschikbaar.",
         bausteinBedingung: "Geldt als: {liste}",
         herkunft: "Bouwsteen uit Klarwerk: ‘{titel}’ · versie {version} · controlestatus {status} · betrouwbaarheid {trust} · kenmerk {id}",
-        herkunftPflicht: " · geldigheid: {geltung} · verantwoordelijk: {verantwortung} · versie van {fassung} · laatste controle: {pruefung}",
+        herkunftPflicht: " · geldigheid: {geltung} · verantwoordelijke rol: {rolle} · verantwoordelijk: {verantwortung} · versie van {fassung} · laatste controle: {pruefung}",
+        nichtBelegt: "niet aangetoond",
+        u_rolle_fehlt: "verantwoordelijke rol niet benoemd",
+        u_pruefnachweis_fremde_fassung: "controlebewijs betreft een eerdere versie",
+        u_pruefnachweis_ungueltig: "controlebewijs doorstaat de auditcontrole niet",
+        art_betriebsmitteilung: "Personeelsmededeling",
+        fadenTitel: "Wat bent u van plan?",
+        vorhabenPlatzhalter: "bijv. „Ik moet een personeelsmededeling over vakantiedagen schrijven – wat hebben we daarover?“",
+        recherche: "Wat hebben we daarover?",
+        fadenSie: "U: {text}",
+        fadenAntwort: "Klara: {text}",
+        fadenPunkte: "Klara: {n} vindplaats(en) in huis",
+        fadenPunkt: "‘{titel}’ · versie {version} · stand {stand} · rijpheid: {reife} · betrouwbaarheid {trust}",
+        reifeGeprueft: "gecontroleerd",
+        reifeUngeprueft: "niet gecontroleerd ({status}) – blijft buiten het concept",
+        fadenFehltAlles: "Wat ontbreekt: hierover is in huis geen gecontroleerde kennis.",
+        fadenFehltTeil: "Wat ontbreekt: {n} vindplaats(en) zijn niet gecontroleerd en blijven buiten.",
+        fadenFehltNichts: "Wat ontbreekt: niets zichtbaars – alle vindplaatsen zijn gecontroleerd.",
+        fadenLeer: "Beschrijf eerst wat u van plan bent.",
+        fadenKeineQuellen: "Het gesprek bevat nog geen gecontroleerd punt.",
+        entwurf: "Concept maken uit deze punten",
+        kiEntwurf: "Laat Klara het formuleren (AI-concept)",
+        kiKennzeichnung: "AI-concept – geformuleerd door {wer}. Niet gecontroleerd: lezen, inkorten en verantwoorden vóór gebruik.",
+        kiAnbieterUnbekannt: "een model (aanbieder niet genoemd door de server)",
+        kiHerkunft: "Bron: ‘{titel}’ · versie {version} · controlestatus {stufe} · kenmerk {id}",
+        kiAuftrag: "Formuleer een {textsorte} over: {vorhaben}. {form}",
+        kiForm_betriebsmitteilung: "Vorm: onderwerp, aanhef aan het personeel, zakelijk-vriendelijke toon met u, aanleiding, geldende punten, wat te doen, contactpersoon, groet. Gebruik alleen uitspraken uit de opgegeven bronnen.",
+        kiForm_allgemein: "Gebruik alleen uitspraken uit de opgegeven bronnen.",
+        kiNichtMoeglich: "AI nu niet mogelijk: {grund}",
+        kiNichtVerfuegbar: "De AI-weg is in dit venster niet beschikbaar – niets verzonden.",
+        kiUnbrauchbar: "De server leverde geen AI-concept met herkomst – niets ingevoegd.",
+        kiEingefuegt: "AI-concept ingevoegd – bovenaan gemarkeerd, met herkomst per bron.",
         herkunftUnsicherheiten: " · open onzekerheden: {liste}",
         validiertVon: " (gevalideerd door {liste})",
         nichtAngegeben: "niet opgegeven",
@@ -224,7 +321,7 @@
         u_niedriger_trust: "lage betrouwbaarheid",
         u_geltung_fehlt: "geldigheid niet opgegeven",
         u_verantwortung_fehlt: "verantwoordelijkheid niet benoemd",
-        u_pruefdatum_fehlt: "datum van laatste controle niet vastgelegd",
+        u_pruefdatum_fehlt: "geen controlebewijs – datum van laatste controle niet aangetoond",
         erzeugenTitel: "Document maken uit gecontroleerde kennis",
         art: "Documentsoort",
         art_instruction: "Werkinstructie / procedure",
@@ -296,7 +393,11 @@
     var ANLEITUNG_NICHT_GEPRUEFT = ["NOT_VALIDATED", "CONFIDENTIAL", "UNKNOWN_KO"];
     // Die Dokumentarten der Output Factory (`OUTPUT_KINDS`, services/output/src/types.ts), in der
     // Reihenfolge von R-0732. Verfahrensanweisung = derselbe Renderer wie die Arbeitsanweisung (SOP).
-    var ANLEITUNG_ARTEN = ["instruction", "checklist", "troubleshooting", "training", "faq", "management_summary"];
+    var ANLEITUNG_ARTEN = ["instruction", "checklist", "troubleshooting", "training", "faq", "management_summary", "betriebsmitteilung"];
+    // Die Schrift, die der Text HINTER dem Cursor beim Teilen des Absatzes behält (Word.Font, 1.1).
+    var ANLEITUNG_SCHRIFT = ["bold", "italic", "underline", "strikeThrough", "color", "highlightColor", "name", "size"];
+    // Wie viele frühere Fragen `/api/ask` als Gesprächsfaden annimmt (GESPRAECHSFADEN_MAX_FRAGEN).
+    var ANLEITUNG_FADEN_MAX = 3;
 
     var anleitungLage = "ruhe";     // ruhe | laden
     var anleitungMeldung = "";
@@ -307,6 +408,8 @@
     var anleitungQuellenLaedt = false;
     var anleitungQuellenSitzung = null;
     var anleitungGewaehlt = {};     // Kennung → true: die Quellen des Erzeugungswegs (Häkchen)
+    var anleitungFaden = [];        // [{ frage, antwort, punkte: [{ id, title, version, stand, status, trust, geprueft }] }]
+    var anleitungFadenSitzung = null;
 
     function anleitungT(schluessel, werte) {
       var tabelle = ANLEITUNG_TEXTE[typeof lang === "string" && ANLEITUNG_TEXTE[lang] ? lang : "de"];
@@ -392,6 +495,27 @@
       bausteinZeile.appendChild(knopf("anleitung-baustein-btn"));
       block.appendChild(bausteinZeile);
       block.appendChild(absatz("anleitung-baustein-grenze", "muted"));
+      // DER GESPRÄCHSFADEN (R-0349 / R-0426): Vorhaben → Recherche → Entwurf.
+      var faden = anleitungKnoten("div", "");
+      faden.id = "anleitung-faden-block";
+      faden.appendChild(absatz("anleitung-faden-titel", ""));
+      var vorhaben = anleitungKnoten("textarea", "");
+      vorhaben.id = "anleitung-vorhaben";
+      vorhaben.rows = 2;
+      vorhaben.maxLength = 2000;
+      faden.appendChild(vorhaben);
+      var fadenKopf = zeile("anleitung-faden-kopf");
+      fadenKopf.appendChild(knopf("anleitung-recherche-btn"));
+      faden.appendChild(fadenKopf);
+      var fadenListe = anleitungKnoten("ul", "");
+      fadenListe.id = "anleitung-faden";
+      fadenListe.setAttribute("aria-live", "polite");
+      faden.appendChild(fadenListe);
+      var fadenFuss = zeile("anleitung-faden-fuss");
+      fadenFuss.appendChild(knopf("anleitung-entwurf-btn"));
+      fadenFuss.appendChild(knopf("anleitung-ki-btn"));
+      faden.appendChild(fadenFuss);
+      block.appendChild(faden);
       // DER ERZEUGUNGSWEG (R-0288 / R-0414 / R-0732): Dokumentart, Zielrolle, Quellenwahl — das
       // vollständige Ergebnis der Output Factory kommt nach Word.
       var erzeugen = anleitungKnoten("div", "");
@@ -520,6 +644,7 @@
       document.getElementById("anleitung-baustein-grenze").textContent = anleitungT("bausteinGrenze");
       anleitungAuswahlZeichnen(document.getElementById("anleitung-baustein"));
       anleitungErzeugenZeichnen(beschaeftigt);
+      anleitungFadenZeichnen(beschaeftigt);
       var stand = document.getElementById("anleitung-stand");
       stand.textContent = beschaeftigt ? anleitungT("laeuft") : anleitungMeldung;
       stand.className = !beschaeftigt && anleitungWarn ? "warn" : "muted";
@@ -696,20 +821,26 @@
     }
 
     /**
-     * Setzt die Zeilen `[{ text, ueberschrift }]` HINTER den Absatz, in dem Cursor oder Markierung
-     * enden — derselbe Weg wie das Einfügen eines Bildes (`insertParagraph(…, After)`). Nichts wird
-     * ersetzt. `done(true|false)`.
+     * Setzt die Zeilen `[{ text, ueberschrift }]` AN DIE CURSORPOSITION (R-0414/R-0426, Nacharbeit 5).
+     *
+     * Steht der Cursor (bzw. das Ende der Markierung) am Absatzende, kommen die Zeilen als eigene
+     * Absätze direkt dahinter — derselbe Weg wie das Einfügen eines Bildes. Steht er MITTEN im
+     * Absatz, wird der Absatz dort geteilt: der Text vor dem Cursor bleibt stehen, die Zeilen folgen,
+     * und der Text hinter dem Cursor steht danach als eigener Absatz — mit der Formatvorlage des
+     * Absatzes und der Schrift, die Word für ihn meldet (gemischte Werte meldet Word als `null`;
+     * die bleiben ungesetzt). Nichts wird überschrieben. Das Teilen braucht `Range.getRange`/
+     * `expandTo` (WordApi 1.3); meldet der Host 1.3 nicht, bleibt es beim Einfügen hinter dem Absatz.
+     * `done(true|false)`.
      */
     function anleitungEinfuegen(zeilen, done) {
       if (!anleitungOffice()) { done(false); return; }
       var stile = anleitungStileMoeglich();
       Word.run(function (context) {
-        var absaetze = context.document.getSelection().paragraphs;
+        var auswahl = context.document.getSelection();
+        var absaetze = auswahl.paragraphs;
         absaetze.load("items");
-        return context.sync().then(function () {
-          var items = absaetze.items || [];
-          if (items.length === 0) { throw new Error("keine Einfuegestelle"); }
-          var letzter = items[items.length - 1];
+        var setzen = function (nach) {
+          var letzter = nach;
           for (var i = 0; i < zeilen.length; i += 1) {
             letzter = letzter.insertParagraph(zeilen[i].text, "After");
             // Ausdrücklich setzen: ein neuer Absatz hinter einer Überschrift erbte sonst deren Vorlage.
@@ -717,7 +848,41 @@
             var stufe = zeilen[i].ueberschrift === true ? 2 : typeof zeilen[i].ueberschrift === "number" ? zeilen[i].ueberschrift : 0;
             if (stile) { letzter.styleBuiltIn = stufe > 0 ? "Heading" + stufe : "Normal"; }
           }
-          return context.sync();
+          return letzter;
+        };
+        return context.sync().then(function () {
+          var items = absaetze.items || [];
+          if (items.length === 0) { throw new Error("keine Einfuegestelle"); }
+          var absatz = items[items.length - 1];
+          if (!stile) {
+            setzen(absatz);
+            return context.sync();
+          }
+          // Der Text vom Cursor bis zum Absatzende — er muss HINTER die eingefügten Zeilen.
+          var rest = auswahl.getRange("End").expandTo(absatz.getRange("End"));
+          rest.load("text");
+          rest.font.load(ANLEITUNG_SCHRIFT.join(","));
+          absatz.load("style");
+          return context.sync().then(function () {
+            var restText = String(rest.text || "").replace(/[\r\n]+$/, "");
+            if (restText.length === 0) {
+              setzen(absatz);
+              return context.sync();
+            }
+            var schrift = {};
+            for (var s = 0; s < ANLEITUNG_SCHRIFT.length; s += 1) {
+              var wert = rest.font[ANLEITUNG_SCHRIFT[s]];
+              if (wert !== null && wert !== undefined) { schrift[ANLEITUNG_SCHRIFT[s]] = wert; }
+            }
+            var stil = absatz.style;
+            rest.delete();
+            var nachher = setzen(absatz).insertParagraph(restText, "After");
+            if (stil) { nachher.style = stil; }
+            for (var name in schrift) {
+              if (Object.prototype.hasOwnProperty.call(schrift, name)) { nachher.font[name] = schrift[name]; }
+            }
+            return context.sync();
+          });
         });
       }).then(function () { done(true); }, function () { done(false); });
     }
@@ -882,9 +1047,10 @@
         : "";
       zeile += anleitungT("herkunftPflicht", {
         geltung: h.geltungsbereich ? h.geltungsbereich : anleitungT("nichtAngegeben"),
+        rolle: h.verantwortlicheRolle ? h.verantwortlicheRolle : anleitungT("nichtBenannt"),
         verantwortung: h.verantwortlich ? h.verantwortlich : anleitungT("nichtBenannt"),
         fassung: h.fassungVom ? String(h.fassungVom).slice(0, 10) : anleitungT("nichtFestgehalten"),
-        pruefung: (h.letztePruefungAm ? String(h.letztePruefungAm).slice(0, 10) : anleitungT("nichtFestgehalten")) + validiert
+        pruefung: (h.letztePruefungAm ? String(h.letztePruefungAm).slice(0, 10) : anleitungT("nichtBelegt")) + validiert
       });
       var offen = Array.isArray(h.unsicherheiten) ? h.unsicherheiten : [];
       if (offen.length > 0) {
@@ -948,23 +1114,37 @@
         anleitungZeichnen();
         return;
       }
-      var art = document.getElementById("anleitung-art").value || ANLEITUNG_ARTEN[0];
-      var rolle = anleitungNorm(document.getElementById("anleitung-zielrolle").value);
+      anleitungErzeugenMit(ids, null);
+    }
+
+    /** Laufklammer: Lage „laden", und eine `ende`-Funktion, die nur für DIESEN Lauf meldet. */
+    function anleitungLaufStarten() {
       anleitungLauf += 1;
       var lauf = anleitungLauf;
       anleitungLage = "laden";
       anleitungZeichnen();
-      var ende = function (schluessel, werte, warn) {
+      return function (schluessel, werte, warn) {
         if (lauf !== anleitungLauf) { return; }
         anleitungLage = "ruhe";
         anleitungMelden(anleitungT(schluessel, werte), warn);
         anleitungZeichnen();
       };
+    }
+
+    /**
+     * Erzeugt mit der Output Factory ein Dokument der gewählten Art aus `ids` und fügt sein
+     * vollständiges Ergebnis an der Cursorposition ein. `anlass` (das Vorhaben aus dem
+     * Gesprächsfaden) wird Betreff/Anlass einer Betriebsmitteilung.
+     */
+    function anleitungErzeugenMit(ids, anlass) {
+      var art = document.getElementById("anleitung-art").value || ANLEITUNG_ARTEN[0];
+      var rolle = anleitungNorm(document.getElementById("anleitung-zielrolle").value);
+      var ende = anleitungLaufStarten();
       fetch("/api/output/generate", {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ kind: art, koIds: ids, audienceRole: rolle || null })
+        body: JSON.stringify({ kind: art, koIds: ids, audienceRole: rolle || null, anlass: anlass || null })
       }).then(function (res) {
         if (!res || !res.ok) {
           return anleitungFehlerAus(res).then(function (s) {
@@ -1051,6 +1231,252 @@
       }).catch(function () { ende("fehler", null, true); });
     }
 
+    // ==========================================================================================
+    // R-0349 / R-0426 (Nacharbeit 5) — DER GESPRÄCHSFADEN: VORHABEN → RECHERCHE → ENTWURF.
+    // ==========================================================================================
+    //
+    // Der Mensch sagt in Alltagssprache, was er vorhat. Klara recherchiert über den BESTEHENDEN
+    // Fragenweg (`POST /api/ask`, Konsolenzweig mit Gesprächsfaden `thread`, R-0348 — nur die
+    // getippten Fragen reisen, kein Dokumenttext), legt die Fundstellen mit Fassung, Stand und
+    // Reifegrad vor und sagt, was fehlt. Nachfragen tragen die früheren Fragen mit. Auf Zuruf
+    // entsteht daraus der Entwurf:
+    //   · „Entwurf aus diesen Punkten" — die Output Factory, regelbasiert, ohne Modell; das Vorhaben
+    //     wird Betreff/Anlass (Betriebsmitteilung), jede Passage trägt ihre Quellenmarke;
+    //   · „Mit Klara ausformulieren (KI-Entwurf)" — der BESTEHENDE Zuruf-Weg (KA6,
+    //     `POST /api/klara/sessions/{id}/zuruf`) über die Sitzungsfunktionen des Fensters
+    //     (`ka6Lage`, `klaraS4AbrufDieserSitzung`); ohne Einwilligung geht nichts hinaus, und der
+    //     eingefügte Text ist oben als KI-Entwurf gekennzeichnet, mit Herkunft je Quelle.
+    // Nur GEPRÜFTE Fundstellen gehen in einen Entwurf; die übrigen stehen als „was fehlt" da.
+
+    /** Stand einer Fundstelle: der jüngste History-Eintrag, sonst `createdAt`. */
+    function anleitungStandVon(ko) {
+      var stand = null;
+      var eintraege = ko && Array.isArray(ko.history) ? ko.history : [];
+      for (var i = 0; i < eintraege.length; i += 1) {
+        if (eintraege[i] && typeof eintraege[i].at === "string") { stand = eintraege[i].at; }
+      }
+      if (!stand && ko && typeof ko.createdAt === "string") { stand = ko.createdAt; }
+      return stand ? String(stand).slice(0, 10) : anleitungT("nichtFestgehalten");
+    }
+
+    /** Die geprüften Kennungen aller Fundstellen des Fadens, ohne Doppelte, in Fundreihenfolge. */
+    function anleitungFadenIds() {
+      var ids = [];
+      for (var i = 0; i < anleitungFaden.length; i += 1) {
+        var punkte = anleitungFaden[i].punkte;
+        for (var j = 0; j < punkte.length; j += 1) {
+          if (punkte[j].geprueft && ids.indexOf(punkte[j].id) === -1) { ids.push(punkte[j].id); }
+        }
+      }
+      return ids;
+    }
+
+    function anleitungFadenZeichnen(beschaeftigt) {
+      document.getElementById("anleitung-faden-titel").textContent = anleitungT("fadenTitel");
+      var feld = document.getElementById("anleitung-vorhaben");
+      feld.placeholder = anleitungT("vorhabenPlatzhalter");
+      feld.setAttribute("aria-label", anleitungT("fadenTitel"));
+      var knoepfe = [["anleitung-recherche-btn", "recherche"], ["anleitung-entwurf-btn", "entwurf"], ["anleitung-ki-btn", "kiEntwurf"]];
+      for (var k = 0; k < knoepfe.length; k += 1) {
+        var knopf = document.getElementById(knoepfe[k][0]);
+        knopf.textContent = anleitungT(knoepfe[k][1]);
+        knopf.disabled = beschaeftigt;
+      }
+      if (anleitungFadenSitzung !== anleitungSitzung()) { anleitungFaden = []; }
+      var liste = document.getElementById("anleitung-faden");
+      while (liste.firstChild) { liste.removeChild(liste.firstChild); }
+      for (var i = 0; i < anleitungFaden.length; i += 1) {
+        var e = anleitungFaden[i];
+        liste.appendChild(anleitungKnoten("li", "anleitung-faden-sie", anleitungT("fadenSie", { text: e.frage })));
+        if (e.antwort) {
+          liste.appendChild(anleitungKnoten("li", "anleitung-faden-klara", anleitungT("fadenAntwort", { text: e.antwort })));
+        }
+        liste.appendChild(anleitungKnoten("li", "anleitung-faden-klara", anleitungT("fadenPunkte", { n: e.punkte.length })));
+        var ungeprueft = 0;
+        for (var j = 0; j < e.punkte.length; j += 1) {
+          var p = e.punkte[j];
+          if (!p.geprueft) { ungeprueft += 1; }
+          var li = anleitungKnoten("li", "anleitung-faden-punkt", anleitungT("fadenPunkt", {
+            titel: p.title,
+            version: p.version,
+            stand: p.stand,
+            reife: p.geprueft ? anleitungT("reifeGeprueft") : anleitungT("reifeUngeprueft", { status: p.status }),
+            trust: p.trust
+          }));
+          li.setAttribute("data-id", p.id);
+          li.setAttribute("data-geprueft", p.geprueft ? "ja" : "nein");
+          liste.appendChild(li);
+        }
+        var fehlt = e.punkte.length - ungeprueft === 0
+          ? anleitungT("fadenFehltAlles")
+          : ungeprueft > 0 ? anleitungT("fadenFehltTeil", { n: ungeprueft }) : anleitungT("fadenFehltNichts");
+        liste.appendChild(anleitungKnoten("li", "anleitung-faden-fehlt", fehlt));
+      }
+    }
+
+    function anleitungRecherche() {
+      if (anleitungLage === "laden") { return; }
+      var feld = document.getElementById("anleitung-vorhaben");
+      var frage = anleitungNorm(feld.value);
+      if (!frage) {
+        anleitungMelden(anleitungT("fadenLeer"), true);
+        anleitungZeichnen();
+        return;
+      }
+      var vorher = [];
+      for (var i = 0; i < anleitungFaden.length; i += 1) { vorher.push(anleitungFaden[i].frage); }
+      vorher = vorher.slice(-ANLEITUNG_FADEN_MAX);
+      var sitzung = anleitungSitzung();
+      var ende = anleitungLaufStarten();
+      fetch("/api/ask", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          question: frage,
+          questionSource: "manual",
+          thread: vorher,
+          locale: typeof lang === "string" ? lang : "de"
+        })
+      }).then(function (res) {
+        if (!res || !res.ok) {
+          return anleitungFehlerAus(res).then(function (s) { ende(s === "nurGeprueft" ? "fehler" : s, null, true); return null; });
+        }
+        return res.json().then(function (koerper) {
+          var r = koerper && koerper.result ? koerper.result : koerper || {};
+          var roh = Array.isArray(r.sources) ? r.sources : [];
+          var ids = [];
+          for (var s = 0; s < roh.length; s += 1) {
+            if (typeof roh[s] === "string" && ids.indexOf(roh[s]) === -1) { ids.push(roh[s]); }
+          }
+          return Promise.all(ids.map(function (id) {
+            return fetch("/api/kos/" + encodeURIComponent(id), { credentials: "include" }).then(function (a) {
+              return a && a.ok ? a.json() : null;
+            }, function () { return null; });
+          })).then(function (kos) {
+            if (sitzung !== anleitungSitzung()) { ende("", null, false); return; }
+            var punkte = [];
+            for (var k = 0; k < kos.length; k += 1) {
+              var ko = kos[k];
+              if (!ko || typeof ko.id !== "string") { continue; }
+              var vertraulich = ko.confidentiality === "vertraulich" || ko.confidentiality === "streng_vertraulich";
+              punkte.push({
+                id: ko.id,
+                title: String(ko.title || ko.id),
+                version: typeof ko.version === "number" ? ko.version : "?",
+                stand: anleitungStandVon(ko),
+                status: String(ko.status || "?"),
+                trust: typeof ko.trust === "number" ? ko.trust : "?",
+                geprueft: ko.status === "validiert" && !vertraulich
+              });
+            }
+            anleitungFaden.push({
+              frage: frage,
+              antwort: r.answered === true && typeof r.answer === "string" ? r.answer : null,
+              punkte: punkte
+            });
+            anleitungFadenSitzung = sitzung;
+            feld.value = "";
+            ende("", null, false);
+          });
+        });
+      }).catch(function () { ende("fehler", null, true); });
+    }
+
+    /** „Entwurf aus diesen Punkten" — die Output Factory mit den geprüften Fundstellen des Fadens. */
+    function anleitungFadenEntwurf() {
+      if (anleitungLage === "laden") { return; }
+      var ids = anleitungFadenIds();
+      if (ids.length === 0) {
+        anleitungMelden(anleitungT("fadenKeineQuellen"), true);
+        anleitungZeichnen();
+        return;
+      }
+      anleitungErzeugenMit(ids, anleitungFaden[0].frage);
+    }
+
+    /** Der KI-Entwurf als Word-Absätze: Kennzeichnung zuerst, dann Text, dann Herkunft je Quelle. */
+    function anleitungKiZeilen(body) {
+      if (!body || typeof body.entwurf !== "string" || !/\S/.test(body.entwurf)) { return null; }
+      if (!Array.isArray(body.herkunft) || body.herkunft.length === 0) { return null; }
+      var wer = typeof body.anbieter === "string" && body.anbieter
+        ? body.anbieter + (typeof body.modell === "string" && body.modell ? " (" + body.modell + ")" : "")
+        : anleitungT("kiAnbieterUnbekannt");
+      var zeilen = [{ text: anleitungT("kiKennzeichnung", { wer: wer }), ueberschrift: false }];
+      var teile = body.entwurf.split(/\r?\n/);
+      for (var i = 0; i < teile.length; i += 1) {
+        var z = anleitungNorm(teile[i]);
+        if (z) { zeilen.push({ text: z, ueberschrift: false }); }
+      }
+      for (var j = 0; j < body.herkunft.length; j += 1) {
+        var h = body.herkunft[j];
+        if (!h || typeof h.koId !== "string" || typeof h.titel !== "string") { return null; }
+        zeilen.push({
+          text: anleitungT("kiHerkunft", {
+            titel: h.titel,
+            version: typeof h.version === "number" ? h.version : "?",
+            stufe: typeof h.stufe === "string" ? h.stufe : "?",
+            id: h.koId
+          }),
+          ueberschrift: false
+        });
+      }
+      return zeilen;
+    }
+
+    /** „Mit Klara ausformulieren" — der bestehende Zuruf-Weg (KA6), nur mit Einwilligung. */
+    function anleitungKiEntwurf() {
+      if (anleitungLage === "laden") { return; }
+      var ids = anleitungFadenIds();
+      if (ids.length === 0) {
+        anleitungMelden(anleitungT("fadenKeineQuellen"), true);
+        anleitungZeichnen();
+        return;
+      }
+      if (typeof ka6Lage !== "function" || typeof klaraS4AbrufDieserSitzung !== "function") {
+        anleitungMelden(anleitungT("kiNichtVerfuegbar"), true);
+        anleitungZeichnen();
+        return;
+      }
+      var lage = ka6Lage();
+      var sitzungId = typeof klaraS4SessionId === "undefined" ? null : klaraS4SessionId;
+      if (!lage || lage.erlaubt !== true || !sitzungId) {
+        var grund = typeof ka6GrundText === "function" ? ka6GrundText(lage ? lage.grundKey : null) : "";
+        anleitungMelden(anleitungT("kiNichtMoeglich", { grund: grund }), true);
+        anleitungZeichnen();
+        return;
+      }
+      var art = document.getElementById("anleitung-art").value || ANLEITUNG_ARTEN[0];
+      var auftrag = anleitungT("kiAuftrag", {
+        textsorte: anleitungT("art_" + art),
+        vorhaben: anleitungFaden[0].frage,
+        form: anleitungT(art === "betriebsmitteilung" ? "kiForm_betriebsmitteilung" : "kiForm_allgemein")
+      });
+      var ende = anleitungLaufStarten();
+      klaraS4AbrufDieserSitzung(
+        "/api/klara/sessions/" + encodeURIComponent(sitzungId) + "/zuruf",
+        "POST",
+        { art: "erstellen", text: auftrag, koIds: ids }
+      ).then(function (body) {
+        var zeilen = anleitungKiZeilen(body);
+        if (!zeilen) { ende("kiUnbrauchbar", null, true); return; }
+        anleitungEinfuegen(zeilen, function (ok) {
+          if (!ok) { ende("keinWord", null, true); return; }
+          anleitungErgebnis = null;
+          ende("kiEingefuegt", null, false);
+        });
+      }, function (err) {
+        var treffer = /^HTTP (\d{3})$/.exec(err && err.message ? err.message : "");
+        var status = treffer ? Number(treffer[1]) : 0;
+        if (status === 403) {
+          var nein = typeof ka6GrundText === "function" ? ka6GrundText("s4ReasonExternalConsentMissing") : "";
+          ende("kiNichtMoeglich", { grund: nein }, true);
+        } else {
+          ende(status === 401 ? "anmeldung" : "fehler", null, true);
+        }
+      });
+    }
+
     function anleitungAnschliessen() {
       if (!anleitungBlockBauen()) { return; }
       document.getElementById("anleitung-vorlage-btn").addEventListener("click", anleitungVorlageEinfuegen);
@@ -1060,6 +1486,9 @@
       document.getElementById("anleitung-baustein").addEventListener("mousedown", anleitungQuellenLaden);
       document.getElementById("anleitung-quellen-btn").addEventListener("click", anleitungQuellenLaden);
       document.getElementById("anleitung-erzeugen-btn").addEventListener("click", anleitungDokumentErzeugen);
+      document.getElementById("anleitung-recherche-btn").addEventListener("click", anleitungRecherche);
+      document.getElementById("anleitung-entwurf-btn").addEventListener("click", anleitungFadenEntwurf);
+      document.getElementById("anleitung-ki-btn").addEventListener("click", anleitungKiEntwurf);
       // Jede Lage, in der das Fenster den Bestandsblock neu zeichnet (Sitzung, Office-Erkennung,
       // Flächenwechsel), gilt auch für diesen Block — derselbe Anschluss wie KW-BEGRIFFE.
       if (typeof bestandZeichnen === "function") {

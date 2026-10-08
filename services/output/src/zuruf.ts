@@ -308,7 +308,7 @@ export class ZurufService {
       vorschlag,
       aiGenerated: true,
       herkunft: quellen.length > 0 ? "bestand" : "frei",
-      provenance: quellen.map(toProvenance),
+      provenance: quellen.map((ko, i) => toProvenance(ko, { marke: `Q${i + 1}` })),
       generatedAt: new Date(this.now()).toISOString(),
       anbieter: freigabe.anbieter,
       modell: freigabe.modell,

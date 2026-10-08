@@ -126,6 +126,13 @@ export type Confidentiality = "intern" | "vertraulich" | "streng_vertraulich";
 export interface KnowledgeOwnership {
   /** Wer die Verantwortung trägt. Fehlt er, gibt es keinen — kein stiller Rückfall auf `author`. */
   owner?: string;
+  /**
+   * aufnahme:20260922:gesamt-dokumenterzeugung (R-0337/R-1739): die VERANTWORTLICHE ROLLE — welche
+   * Funktion die Verantwortung trägt (z. B. „Instandhaltungsleitung"), getrennt von der Person in
+   * `owner`. Gesetzt über denselben Weg wie `owner` (`setOwnership`). Fehlt sie, ist sie nicht
+   * benannt; sie wird nicht aus Person, Autor oder Geltungsrolle abgeleitet.
+   */
+  ownerRole?: string;
   /** Wer tatsächlich zur Prüfung zugewiesen wurde (dedupliziert, in Zuweisungsreihenfolge). */
   reviewers: string[];
   /** Wer die abgeschlossene Validierung getragen hat (dedupliziert, in Entscheidungsreihenfolge). */

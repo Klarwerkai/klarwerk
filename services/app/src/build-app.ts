@@ -1442,7 +1442,9 @@ export function assembleServices(
     // JOB 3363: dieselbe Kandidaten-Ablage, die `library` oben bekommen hat — kein zweiter Bestand.
     candidates: repos.candidates,
     // SCRUM-117: Output Factory — stateless, nur validierte KOs als Quelle.
-    output: new OutputService({ koService: ko }),
+    // gesamt-dokumenterzeugung (R-0337): dieselbe Auditablage, damit das Prüfdatum je Quelle aus
+    // dem Validierungsnachweis belegt werden kann.
+    output: new OutputService({ koService: ko, audit: repos.auditRepo }),
     // produkt:wettbewerb:20261003:lernplattform: dieselbe Inhaltsquelle wie die Output Factory; die
     // Bilder liest er aus DEMSELBEN Objektspeicher. Die zugelassenen Lernplattformen legt allein
     // der Betreiber fest (`KLARWERK_LMS_EMPFAENGER`); ohne Eintrag ist kein Export möglich.

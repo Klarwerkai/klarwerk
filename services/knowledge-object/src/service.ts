@@ -3313,7 +3313,7 @@ export class KoService {
     if (!next) {
       throw new KoError(
         "INVALID_OWNERSHIP",
-        "Ungültige Eigentümerangabe — erwartet werden owner, reviewers oder validators.",
+        "Ungültige Eigentümerangabe — erwartet werden owner, ownerRole, reviewers oder validators.",
       );
     }
     return this.mutateKo(id, (ko) => {
@@ -3332,9 +3332,11 @@ export class KoService {
               // Verantwortung ERSTMALS benannt oder einer Person WEGGENOMMEN wurde.
               payload: {
                 owner: next.owner ?? null,
+                ownerRole: next.ownerRole ?? null,
                 reviewers: next.reviewers,
                 validators: next.validators,
                 previousOwner: previous?.owner ?? null,
+                previousOwnerRole: previous?.ownerRole ?? null,
               },
             },
             tx,

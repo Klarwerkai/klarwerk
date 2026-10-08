@@ -33,6 +33,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Guards } from "../../services/app/src/http";
 import { outputRoutes } from "../../services/app/src/routes/output-routes";
+import { type AuditEntry, AuditService, InMemoryAuditRepo } from "../../services/audit";
 import type { KnowledgeObject, KoService } from "../../services/knowledge-object";
 import { OutputService } from "../../services/output";
 import { type KlaraPanel, createKlaraPanel, reply } from "../app/klara-panel-fixture";
@@ -58,6 +59,10 @@ function wissen(teil: Partial<KnowledgeObject> & { id: string; title: string }):
   } as unknown as KnowledgeObject;
 }
 
+/** Die echte Freigabeentscheidung für `ko-ventil` v3 in einer echten Auditkette (beforeAll). */
+let freigabe: AuditEntry | null = null;
+const auditRepo = new InMemoryAuditRepo();
+
 function grundbestand(): Map<string, KnowledgeObject> {
   const liste = [
     wissen({
@@ -68,9 +73,18 @@ function grundbestand(): Map<string, KnowledgeObject> {
       measures: ["Absperrhahn schließen.", "Druck am Manometer prüfen (0 bar)."],
       version: 3,
       trust: 92,
-      // Nacharbeit 4 (R-0337/R-1739): die Herkunftsangaben stehen hier wirklich am Objekt.
+      // Nacharbeit 4/5 (R-0337/R-1739): die Herkunftsangaben stehen hier wirklich am Objekt — die
+      // verantwortliche Rolle im Eigentümer-Aggregat, das Prüfdatum im echten Auditnachweis.
       geltung: { ebene: "werk", werk: "Werk Nord", rolle: "Instandhaltung" },
-      ownership: { owner: "meister-1", reviewers: [], validators: ["pruefer-1"] },
+      ownership: {
+        owner: "meister-1",
+        ownerRole: "Instandhaltungsleitung",
+        reviewers: [],
+        validators: ["pruefer-1"],
+      },
+      ...(freigabe
+        ? { validationDecisionRef: { auditSeq: freigabe.seq, auditHash: freigabe.hash } }
+        : {}),
       history: [
         { version: 1, at: "2026-08-01T08:00:00.000Z", author: "u-carla", note: "erstellt" },
         { version: 3, at: "2026-09-30T08:00:00.000Z", author: "u-carla", note: "überarbeitet" },
@@ -122,8 +136,18 @@ beforeAll(async () => {
       return { id: "u-erik", role: "editor" };
     },
   } as unknown as Guards;
+  const audit = new AuditService({
+    repo: auditRepo,
+    now: () => Date.parse("2026-10-01T09:00:00Z"),
+  });
+  freigabe = await audit.record({
+    actor: "pruefer-1",
+    action: "ko.admin-validated",
+    target: "ko-ventil",
+    payload: { koVersion: 3 },
+  });
   app = Fastify();
-  await app.register(outputRoutes(new OutputService({ koService }), guards));
+  await app.register(outputRoutes(new OutputService({ koService, audit: auditRepo }), guards));
   await app.ready();
 });
 
@@ -142,6 +166,12 @@ interface Anfrage {
 const anfragen: Anfrage[] = [];
 /** Was die ECHTE Output Factory zuletzt erzeugt hat — der Sollwert für „vollständig übernommen". */
 let letzteErzeugung: { markdown: string; title: string } | null = null;
+/** Die Antwort des Fragenwegs für den Gesprächsfaden (Teil F). */
+let askAntwort: { answered: boolean; answer: string | null; sources: string[] } = {
+  answered: false,
+  answer: null,
+  sources: [],
+};
 const g = globalThis as unknown as Record<string, unknown>;
 const echtesFetch = g.fetch;
 
@@ -170,6 +200,11 @@ async function serverAntwort(url: string, init?: { method?: string; body?: strin
     }
     return antwort(res.statusCode, koerper);
   }
+  if (url === "/api/ask") {
+    // Der Fragenweg ist hier eine feste Antwort in der Form der Route (`{ result: { answered,
+    // answer, sources } }`); gemessen wird, was das Panel SENDET und was es daraus macht.
+    return antwort(200, { result: askAntwort });
+  }
   if (url.startsWith("/api/kos/")) {
     vorKoAbruf?.();
     const ko = bestand.get(decodeURIComponent(url.slice("/api/kos/".length)));
@@ -183,10 +218,14 @@ async function serverAntwort(url: string, init?: { method?: string; body?: strin
 interface Absatz {
   text: string;
   stil: string;
+  /** Die Schrift des Absatzes, wie Word sie meldet (nur, was ein Fall braucht). */
+  schrift?: Record<string, unknown>;
 }
 
 let dokument: Absatz[] = [];
 let cursor = 0;
+/** Wo im Absatz `cursor` der Cursor steht; null = am Absatzende (Nacharbeit 5, Befund 3). */
+let cursorVersatz: number | null = null;
 let ausgewaehlt: Absatz | null = null;
 let wordApi13 = true;
 
@@ -198,9 +237,12 @@ const GEMELDETER_STIL: Record<string, string> = {
   Normal: "Standard",
 };
 
-/** Die Herkunftszeile des Bausteins `ko-ventil` — mit den Angaben, die am Objekt stehen. */
+/**
+ * Die Herkunftszeile des Bausteins `ko-ventil` — mit den Angaben, die am Objekt stehen, und dem
+ * Prüfdatum aus dem echten Auditnachweis (Nacharbeit 5). Nichts fehlt, also keine Unsicherheit.
+ */
 const HERKUNFT_VENTIL =
-  "Baustein aus Klarwerk: „Ventil drucklos schalten“ · Fassung 3 · Prüfstand validiert · Vertrauenswert 92 · Kennung ko-ventil · Geltung: Werks-Praxis (Werk Nord), Rolle Instandhaltung · Verantwortung: meister-1 · Fassung vom 2026-09-30 · Letzte Prüfung: nicht festgehalten (validiert von pruefer-1) · Offene Unsicherheiten: Datum der letzten Prüfung nicht festgehalten";
+  "Baustein aus Klarwerk: „Ventil drucklos schalten“ · Fassung 3 · Prüfstand validiert · Vertrauenswert 92 · Kennung ko-ventil · Geltung: Werks-Praxis (Werk Nord), Rolle Instandhaltung · Verantwortliche Rolle: Instandhaltungsleitung · Verantwortung: meister-1 · Fassung vom 2026-09-30 · Letzte Prüfung: 2026-10-01 (validiert von pruefer-1)";
 
 function absatzObjekt(a: Absatz) {
   return {
@@ -210,6 +252,17 @@ function absatzObjekt(a: Absatz) {
     get style() {
       return a.stil;
     },
+    set style(wert: string) {
+      a.stil = wert;
+    },
+    get font() {
+      a.schrift ??= {};
+      return a.schrift;
+    },
+    getRange(_ort: string) {
+      return { absatz: a };
+    },
+    load() {},
     set styleBuiltIn(wert: string) {
       a.stil = GEMELDETER_STIL[wert] ?? wert;
     },
@@ -240,7 +293,30 @@ function wordAttrappe() {
           },
           getSelection() {
             const hier = dokument[cursor];
-            return { paragraphs: { items: hier ? [absatzObjekt(hier)] : [], load() {} } };
+            return {
+              paragraphs: { items: hier ? [absatzObjekt(hier)] : [], load() {} },
+              // `getRange("End").expandTo(absatz.getRange("End"))`: der Text vom Cursor bis zum
+              // Absatzende. `delete()` nimmt genau ihn aus dem Absatz; der Rest davor bleibt.
+              getRange(_ort: string) {
+                return {
+                  expandTo(_bis: unknown) {
+                    const ab = (): number => cursorVersatz ?? (hier ? hier.text.length : 0);
+                    return {
+                      get text() {
+                        return hier ? hier.text.slice(ab()) : "";
+                      },
+                      font: { load() {}, ...(hier?.schrift ?? {}) },
+                      load() {},
+                      delete() {
+                        if (hier) {
+                          hier.text = hier.text.slice(0, ab());
+                        }
+                      },
+                    };
+                  },
+                };
+              },
+            };
           },
         },
         sync: () => Promise.resolve(),
@@ -352,8 +428,10 @@ beforeEach(() => {
   vorKoAbruf = null;
   anfragen.length = 0;
   letzteErzeugung = null;
+  askAntwort = { answered: false, answer: null, sources: [] };
   dokument = [{ text: "Anleitung Ventilwartung", stil: "Überschrift 1" }];
   cursor = 0;
+  cursorVersatz = null;
   ausgewaehlt = null;
   wordApi13 = true;
 });
@@ -371,6 +449,10 @@ afterEach(() => {
     "checkSession",
     "Word",
     "Office",
+    "ka6Lage",
+    "ka6GrundText",
+    "klaraS4SessionId",
+    "klaraS4AbrufDieserSitzung",
   ]) {
     Reflect.deleteProperty(g, name);
   }
@@ -688,7 +770,7 @@ describe("B · ein vorhandener Baustein mit Herkunft und Fassung", () => {
     // Nacharbeit 4 (R-0337/R-1739): nichts ergänzt — Fehlendes heißt „nicht angegeben/benannt/
     // festgehalten" und steht zusätzlich als offene Unsicherheit da.
     expect(texte().at(-1)).toBe(
-      "Baustein aus Klarwerk: „Prüfintervall Filter“ · Fassung 2 · Prüfstand validiert · Vertrauenswert 40 · Kennung ko-wackelig · Geltung: nicht angegeben · Verantwortung: nicht benannt · Fassung vom nicht festgehalten · Letzte Prüfung: nicht festgehalten · Offene Unsicherheiten: niedriger Vertrauenswert; Gültigkeitsbereich nicht angegeben; Verantwortung nicht benannt; Datum der letzten Prüfung nicht festgehalten",
+      "Baustein aus Klarwerk: „Prüfintervall Filter“ · Fassung 2 · Prüfstand validiert · Vertrauenswert 40 · Kennung ko-wackelig · Geltung: nicht angegeben · Verantwortliche Rolle: nicht benannt · Verantwortung: nicht benannt · Fassung vom nicht festgehalten · Letzte Prüfung: nicht belegt · Offene Unsicherheiten: niedriger Vertrauenswert; Gültigkeitsbereich nicht angegeben; Verantwortung nicht benannt; verantwortliche Rolle nicht benannt; kein Prüfnachweis – Datum der letzten Prüfung nicht belegt",
     );
   });
 
@@ -698,7 +780,7 @@ describe("B · ein vorhandener Baustein mit Herkunft und Fassung", () => {
     await bausteinWaehlen("ko-ventil");
     await klick("anleitung-baustein-btn");
     expect(texte().at(-1)).toBe(
-      "Building block from Klarwerk: “Ventil drucklos schalten” · version 3 · review status validiert · trust 92 · ID ko-ventil · scope: Werks-Praxis (Werk Nord), Rolle Instandhaltung · responsible: meister-1 · version of 2026-09-30 · last review: not recorded (validated by pruefer-1) · open uncertainties: date of last review not recorded",
+      "Building block from Klarwerk: “Ventil drucklos schalten” · version 3 · review status validiert · trust 92 · ID ko-ventil · scope: Werks-Praxis (Werk Nord), Rolle Instandhaltung · responsible role: Instandhaltungsleitung · responsible: meister-1 · version of 2026-09-30 · last review: 2026-10-01 (validated by pruefer-1)",
     );
   });
 
@@ -805,6 +887,7 @@ describe("D · ein Dokument aus geprüftem Wissen erzeugen und vollständig in W
       ["training", "Schulungsunterlage"],
       ["faq", "FAQ"],
       ["management_summary", "Zusammenfassung für die Führung"],
+      ["betriebsmitteilung", "Betriebsmitteilung"],
     ]);
     // Ohne Bedienung kein Abruf.
     expect(anfragen).toEqual([]);
@@ -828,6 +911,7 @@ describe("D · ein Dokument aus geprüftem Wissen erzeugen und vollständig in W
       kind: "checklist",
       koIds: ["ko-ventil", "ko-wackelig"],
       audienceRole: "Schichtleitung",
+      anlass: null,
     });
     expect(gefragteRechte).toEqual(["ko.read", "ko.read"]);
     expect(text("anleitung-stand")).toBe(
@@ -850,11 +934,18 @@ describe("D · ein Dokument aus geprüftem Wissen erzeugen und vollständig in W
     const kopf = dokument.findIndex((a) => a.text === "Herkunft & Nachweis");
     expect(dokument[kopf]?.stil).toBe("Überschrift 2");
     expect(texte()).toContain(
-      "Gültigkeitsbereich: Werks-Praxis (Werk Nord), Rolle Instandhaltung · Verantwortung: meister-1 · Fassung vom: 2026-09-30 · Letzte Prüfung: nicht festgehalten (validiert von pruefer-1)",
+      "Gültigkeitsbereich: Werks-Praxis (Werk Nord), Rolle Instandhaltung · Verantwortliche Rolle: Instandhaltungsleitung · Verantwortung: meister-1 · Fassung vom: 2026-09-30 · Letzte Prüfung: 2026-10-01 (validiert von pruefer-1)",
     );
     expect(texte()).toContain(
-      "Offene Unsicherheiten: niedriger Trust; Gültigkeitsbereich nicht angegeben; Verantwortung nicht benannt; Datum der letzten Prüfung nicht festgehalten",
+      "Offene Unsicherheiten: niedriger Trust; Gültigkeitsbereich nicht angegeben; Verantwortung nicht benannt; verantwortliche Rolle nicht benannt; kein Prüfnachweis — Datum der letzten Prüfung nicht belegt",
     );
+    // Nacharbeit 5 (R-0349/R-0414): jede tragende Passage trägt ihre Quellenmarke, und dieselbe
+    // Marke beginnt den Nachweis dieser Quelle — beides kommt als Klartext in Word an.
+    expect(texte()).toContain("Ventil drucklos schalten [Q1: ko-ventil · v3]");
+    expect(texte()).toContain("Prüfintervall Filter [Q2: ko-wackelig · v2]");
+    const nachweise = texte().filter((t) => t.startsWith("• [Q"));
+    expect(nachweise[0]).toMatch(/^• \[Q1\] Ventil drucklos schalten \(ko-ventil, Fassung 3\) — /);
+    expect(nachweise[1]).toMatch(/^• \[Q2\] Prüfintervall Filter \(ko-wackelig, Fassung 2\) — /);
     const hinweise = texte().filter((t) => t.startsWith("Hinweis: Dieses Dokument trifft keine"));
     expect(hinweise).toHaveLength(2);
     // Kein Markdown-Rest im Dokument.
@@ -868,7 +959,8 @@ describe("D · ein Dokument aus geprüftem Wissen erzeugen und vollständig in W
     quelleAnhaken("ko-ventil");
     await klick("anleitung-erzeugen-btn");
     expect(eingefuegt()[0]).toEqual({ text: "FAQ", stil: "Überschrift 1" });
-    expect(dokument.find((a) => a.text === "Ventil drucklos schalten")?.stil).toBe("Überschrift 3");
+    const frage = dokument.find((a) => a.text === "Ventil drucklos schalten [Q1: ko-ventil · v3]");
+    expect(frage?.stil).toBe("Überschrift 3");
     expect(texte()).toContain("Gilt, wenn: Wartung am Druckventil");
     expect(texte()).toContain("1. Absperrhahn schließen.");
     expect(text("anleitung-stand")).toBe(
@@ -905,6 +997,266 @@ describe("D · ein Dokument aus geprüftem Wissen erzeugen und vollständig in W
     await bis(() => text("anleitung-stand") !== "");
     expect(text("anleitung-stand")).toBe("Dafür fehlt das Recht.");
     expect(document.querySelectorAll("#anleitung-quellen input")).toHaveLength(0);
+    expect(eingefuegt()).toEqual([]);
+  });
+});
+
+// ================================================================================================
+// C — AN DER CURSORPOSITION (Nacharbeit 5, Befund 3: R-0414 / R-0426)
+// ================================================================================================
+//
+// Steht der Cursor mitten im Absatz, wird dort geteilt: der Text davor bleibt, das Eingefügte
+// folgt, der Text dahinter steht danach — mit Formatvorlage und Schrift seines Absatzes.
+
+describe("C · Einfügen an der tatsächlichen Cursorposition", () => {
+  it("C1: Baustein mitten im Absatz — vorher | Baustein | nachher, nichts verloren", async () => {
+    dokument = [
+      {
+        text: "Vor der Wartung prüfen. Danach dokumentieren.",
+        stil: "Standard",
+        schrift: { bold: true },
+      },
+    ];
+    cursor = 0;
+    cursorVersatz = "Vor der Wartung prüfen. ".length;
+    panelStarten();
+    await bausteinWaehlen("ko-ventil");
+    await klick("anleitung-baustein-btn");
+    expect(dokument.map((a) => a.text)).toEqual([
+      "Vor der Wartung prüfen. ",
+      "Vor jeder Wartung das Druckventil drucklos schalten.",
+      "Gilt, wenn: Wartung am Druckventil",
+      "1. Absperrhahn schließen.",
+      "2. Druck am Manometer prüfen (0 bar).",
+      HERKUNFT_VENTIL,
+      "Danach dokumentieren.",
+    ]);
+    // Der Text hinter dem Cursor behält Formatvorlage und Schrift seines Absatzes.
+    expect(dokument.at(-1)).toEqual({
+      text: "Danach dokumentieren.",
+      stil: "Standard",
+      schrift: { bold: true },
+    });
+  });
+
+  it("C2: ein erzeugtes Dokument mitten im Absatz — derselbe Schnitt", async () => {
+    dokument = [{ text: "Einleitung. Schluss.", stil: "Standard" }];
+    cursorVersatz = "Einleitung. ".length;
+    panelStarten();
+    await quellenLaden();
+    el<HTMLSelectElement>("anleitung-art").value = "faq";
+    quelleAnhaken("ko-ventil");
+    await klick("anleitung-erzeugen-btn");
+    expect(dokument[0]?.text).toBe("Einleitung. ");
+    expect(dokument[1]).toEqual({ text: "FAQ", stil: "Überschrift 1" });
+    expect(dokument.at(-1)?.text).toBe("Schluss.");
+    expect(dokument.at(-1)?.stil).toBe("Standard");
+  });
+
+  it("C3: Cursor am Absatzende — kein leerer Restabsatz", async () => {
+    dokument = [{ text: "Nur dieser Satz.", stil: "Standard" }];
+    cursorVersatz = null;
+    panelStarten();
+    await bausteinWaehlen("ko-wackelig");
+    await klick("anleitung-baustein-btn");
+    expect(dokument[0]?.text).toBe("Nur dieser Satz.");
+    expect(dokument.filter((a) => a.text === "")).toEqual([]);
+  });
+});
+
+// ================================================================================================
+// F — DER GESPRÄCHSFADEN: VORHABEN → RECHERCHE → ENTWURF (Nacharbeit 5, Befund 4: R-0349, R-0350,
+// R-0426) — samt KI-Entwurf über den bestehenden Zuruf-Weg (KA6), gekennzeichnet.
+// ================================================================================================
+
+const VORHABEN =
+  "Ich muss eine Betriebsmitteilung zur Ventilwartung schreiben – was haben wir dazu?";
+
+async function vorhabenFragen(text: string): Promise<void> {
+  el<HTMLTextAreaElement>("anleitung-vorhaben").value = text;
+  await klick("anleitung-recherche-btn");
+}
+
+function fadenZeilen(): { klasse: string; text: string; geprueft: string | null }[] {
+  return [...document.querySelectorAll("#anleitung-faden li")].map((li) => ({
+    klasse: li.className,
+    text: li.textContent ?? "",
+    geprueft: li.getAttribute("data-geprueft"),
+  }));
+}
+
+describe("F · Gesprächsfaden: Recherche im Haus, was fehlt, Entwurf auf Zuruf", () => {
+  it("F1: das Vorhaben in Alltagssprache → Fundstellen mit Fassung, Stand, Reifegrad — und was fehlt", async () => {
+    askAntwort = {
+      answered: true,
+      answer: "Vor jeder Wartung das Druckventil drucklos schalten.",
+      sources: ["ko-ventil", "ko-offen"],
+    };
+    panelStarten();
+    await vorhabenFragen(VORHABEN);
+    const ask = anfragen.find((a) => a.url === "/api/ask");
+    expect(ask?.body).toEqual({
+      question: VORHABEN,
+      questionSource: "manual",
+      thread: [],
+      locale: "de",
+    });
+    expect(fadenZeilen()).toEqual([
+      { klasse: "anleitung-faden-sie", text: `Sie: ${VORHABEN}`, geprueft: null },
+      {
+        klasse: "anleitung-faden-klara",
+        text: "Klara: Vor jeder Wartung das Druckventil drucklos schalten.",
+        geprueft: null,
+      },
+      { klasse: "anleitung-faden-klara", text: "Klara: 2 Fundstelle(n) im Haus", geprueft: null },
+      {
+        klasse: "anleitung-faden-punkt",
+        text: "„Ventil drucklos schalten“ · Fassung 3 · Stand 2026-09-30 · Reifegrad: geprüft · Vertrauenswert 92",
+        geprueft: "ja",
+      },
+      {
+        klasse: "anleitung-faden-punkt",
+        text: "„Entwurf Dichtungstausch“ · Fassung 1 · Stand 2026-09-30 · Reifegrad: nicht geprüft (offen) – kommt nicht in den Entwurf · Vertrauenswert 90",
+        geprueft: "nein",
+      },
+      {
+        klasse: "anleitung-faden-fehlt",
+        text: "Was fehlt: 1 Fundstelle(n) sind nicht geprüft und bleiben draußen.",
+        geprueft: null,
+      },
+    ]);
+    // Die Nachfrage trägt den Faden mit: die frühere Frage reist als `thread`.
+    askAntwort = { answered: false, answer: null, sources: [] };
+    await vorhabenFragen("Und gilt das auch für die Schicht am Wochenende?");
+    const nachfrage = anfragen.filter((a) => a.url === "/api/ask")[1];
+    expect(nachfrage?.body).toMatchObject({ thread: [VORHABEN] });
+    expect(fadenZeilen().at(-1)?.text).toBe(
+      "Was fehlt: Dazu gibt es im Haus kein geprüftes Wissen.",
+    );
+  });
+
+  it("F2: „Entwurf aus diesen Punkten“ → Betriebsmitteilung in der Form der Gattung, mit Quellenmarke, ohne KI", async () => {
+    askAntwort = { answered: true, answer: null, sources: ["ko-ventil", "ko-offen"] };
+    panelStarten();
+    await vorhabenFragen(VORHABEN);
+    el<HTMLSelectElement>("anleitung-art").value = "betriebsmitteilung";
+    await klick("anleitung-entwurf-btn");
+    const erzeugt = anfragen.find((a) => a.url === "/api/output/generate");
+    // Nur die GEPRÜFTE Fundstelle geht in den Entwurf; das Vorhaben wird Betreff/Anlass.
+    expect(erzeugt?.body).toEqual({
+      kind: "betriebsmitteilung",
+      koIds: ["ko-ventil"],
+      audienceRole: null,
+      anlass: VORHABEN,
+    });
+    expect(eingefuegt()[0]).toEqual({ text: "Betriebsmitteilung", stil: "Überschrift 1" });
+    expect(eingefuegt()[1]?.text).toMatch(
+      /^Entwurf · an: alle Mitarbeitenden · aus 1 geprüften Quelle\(n\) zusammengestellt, ohne KI · /,
+    );
+    const reihenfolge = [
+      `Betreff: ${VORHABEN}`,
+      "Liebe Kolleginnen und Kollegen,",
+      `wir möchten Sie über Folgendes informieren: ${VORHABEN} Für Sie gilt:`,
+      "Ventil drucklos schalten [Q1: ko-ventil · v3]",
+      "Bitte beachten Sie:",
+      "Bei Rückfragen wenden Sie sich bitte an: Instandhaltungsleitung.",
+      "Mit freundlichen Grüßen",
+      "[Name, Funktion]",
+    ].map((t) => texte().indexOf(t));
+    expect(
+      reihenfolge.every((i) => i >= 0),
+      JSON.stringify(texte()),
+    ).toBe(true);
+    expect([...reihenfolge].sort((a, b) => a - b)).toEqual(reihenfolge);
+    // Keine KI-Kennzeichnung, weil kein Modell beteiligt war — die Kopfzeile sagt „ohne KI".
+    expect(texte().some((t) => t.startsWith("KI-Entwurf"))).toBe(false);
+  });
+
+  it("F3: ohne geprüfte Fundstelle entsteht kein Entwurf", async () => {
+    askAntwort = { answered: false, answer: null, sources: ["ko-offen"] };
+    panelStarten();
+    await vorhabenFragen(VORHABEN);
+    expect(fadenZeilen().at(-1)?.text).toBe(
+      "Was fehlt: Dazu gibt es im Haus kein geprüftes Wissen.",
+    );
+    await klick("anleitung-entwurf-btn");
+    expect(text("anleitung-stand")).toBe("Im Gesprächsfaden steht noch kein geprüfter Punkt.");
+    expect(anfragen.map((a) => a.url)).not.toContain("/api/output/generate");
+    expect(eingefuegt()).toEqual([]);
+  });
+
+  it("F4: KI-Entwurf über den bestehenden Zuruf-Weg — oben gekennzeichnet, mit Herkunft je Quelle", async () => {
+    askAntwort = { answered: true, answer: null, sources: ["ko-ventil"] };
+    const zurufe: { pfad: string; methode: string; koerper: Record<string, unknown> }[] = [];
+    panelStarten();
+    g.ka6Lage = () => ({ erlaubt: true, grundKey: null });
+    g.klaraS4SessionId = "sitzung-1";
+    g.klaraS4AbrufDieserSitzung = (
+      pfad: string,
+      methode: string,
+      koerper: Record<string, unknown>,
+    ) => {
+      zurufe.push({ pfad, methode, koerper });
+      return Promise.resolve({
+        entwurf:
+          "Liebe Kolleginnen und Kollegen,\n\nvor jeder Wartung bitte das Ventil drucklos schalten.",
+        herkunft: [
+          { koId: "ko-ventil", titel: "Ventil drucklos schalten", stufe: "validiert", version: 3 },
+        ],
+        anbieter: "Hausmodell",
+        modell: "m-1",
+      });
+    };
+    await vorhabenFragen(VORHABEN);
+    el<HTMLSelectElement>("anleitung-art").value = "betriebsmitteilung";
+    await klick("anleitung-ki-btn");
+    expect(zurufe).toHaveLength(1);
+    expect(zurufe[0]?.pfad).toBe("/api/klara/sessions/sitzung-1/zuruf");
+    expect(zurufe[0]?.methode).toBe("POST");
+    expect(zurufe[0]?.koerper.art).toBe("erstellen");
+    expect(zurufe[0]?.koerper.koIds).toEqual(["ko-ventil"]);
+    const auftrag = String(zurufe[0]?.koerper.text);
+    expect(auftrag).toContain(`Formuliere eine Betriebsmitteilung zu: ${VORHABEN}.`);
+    expect(auftrag).toContain("Anrede an die Belegschaft");
+    expect(eingefuegt().map((a) => a.text)).toEqual([
+      "KI-Entwurf – formuliert von Hausmodell (m-1). Nicht geprüft: vor Verwendung lesen, kürzen und verantworten.",
+      "Liebe Kolleginnen und Kollegen,",
+      "vor jeder Wartung bitte das Ventil drucklos schalten.",
+      "Quelle: „Ventil drucklos schalten“ · Fassung 3 · Prüfstand validiert · Kennung ko-ventil",
+    ]);
+    expect(text("anleitung-stand")).toBe(
+      "KI-Entwurf eingefügt – oben gekennzeichnet, mit Herkunft je Quelle.",
+    );
+  });
+
+  it("F5: ohne Einwilligung geht nichts hinaus — der Grund kommt vom Zustimmungsweg des Fensters", async () => {
+    askAntwort = { answered: true, answer: null, sources: ["ko-ventil"] };
+    let gerufen = 0;
+    panelStarten();
+    g.ka6Lage = () => ({ erlaubt: false, grundKey: "s4ReasonExternalConsentMissing" });
+    g.ka6GrundText = () => "Für dieses Dokument fehlt die Zustimmung.";
+    g.klaraS4SessionId = "sitzung-1";
+    g.klaraS4AbrufDieserSitzung = () => {
+      gerufen += 1;
+      return Promise.resolve({});
+    };
+    await vorhabenFragen(VORHABEN);
+    await klick("anleitung-ki-btn");
+    expect(gerufen).toBe(0);
+    expect(eingefuegt()).toEqual([]);
+    expect(text("anleitung-stand")).toBe(
+      "Mit KI gerade nicht möglich: Für dieses Dokument fehlt die Zustimmung.",
+    );
+  });
+
+  it("F6: fehlt der Zuruf-Weg im Fenster, wird nichts gesendet", async () => {
+    askAntwort = { answered: true, answer: null, sources: ["ko-ventil"] };
+    panelStarten();
+    await vorhabenFragen(VORHABEN);
+    await klick("anleitung-ki-btn");
+    expect(text("anleitung-stand")).toBe(
+      "Der KI-Weg ist in diesem Fenster nicht verfügbar – nichts gesendet.",
+    );
     expect(eingefuegt()).toEqual([]);
   });
 });
