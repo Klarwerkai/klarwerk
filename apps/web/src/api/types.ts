@@ -1502,6 +1502,9 @@ export interface ImpactReport {
   // R-0723/R-0750: Fragen je Woche (Wochenstart Montag). Optional: ein älterer Server liefert sie
   // nicht — dann gibt es keinen Wochenverlauf der Quote, und die Fläche sagt das.
   askByWeek?: Record<string, { asked: number; answeredWithoutGap: number }>;
+  // R-0750: validierte Objekte ohne belegten Prüfzeitpunkt — in keiner Woche gezählt. Optional wie
+  // `askByWeek` (älterer Server).
+  validatedUnknownWeek?: number;
 }
 
 export interface PublicUser {

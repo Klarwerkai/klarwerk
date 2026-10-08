@@ -13,9 +13,10 @@ import {
   useLifecyclePending,
   useValidationOverview,
 } from "../api/hooks";
-import type { AssignmentSummary, AuditFilter } from "../api/types";
+import type { AuditFilter } from "../api/types";
 import { HelpTip } from "../components/HelpTip";
 import { LoadErrorState, StaleMarker } from "../components/LoadState";
+import { PersonenZeilen } from "../components/PruefaufgabenJePerson";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import {
   assignmentRows,
@@ -35,7 +36,6 @@ import { isDemoKnowledge } from "../lib/demoKnowledge";
 import { executiveKpis } from "../lib/executiveKpis";
 import { type HealthBand, knowledgeHealth } from "../lib/knowledgeHealth";
 import { isGroupError, isGroupLoading, isGroupStale } from "../lib/loadingState";
-import { useAuthorName } from "../lib/useAuthorName";
 
 const BAND_TONE: Record<HealthBand, string> = {
   gut: "bg-trust-pos-bg text-trust-pos-text",
@@ -65,26 +65,6 @@ function ExecKpi({
       <div className="font-mono text-micro uppercase tracking-wider text-muted-2">{label}</div>
       <div className="mt-1 text-2xl font-semibold text-ink">{loading ? "—" : value}</div>
       <div className="mt-0.5 text-[11px] leading-snug text-muted-2">{hint}</div>
-    </div>
-  );
-}
-
-// FR-VAL-06 / FR-ANA-01: offen/erledigt je Person. Eigene Komponente, damit das Personenverzeichnis
-// nur gefragt wird, wenn es überhaupt eine Zeile aufzulösen gibt. Namen kommen über den einen Weg
-// `useAuthorName` (lädt/nicht abrufbar/unbekannt ehrlich unterschieden, nie eine rohe Kennung).
-function AssignmentsPerPerson({ rows }: { rows: readonly AssignmentSummary[] }): JSX.Element {
-  const { t } = useTranslation();
-  const nameOf = useAuthorName();
-  return (
-    <div className="space-y-1.5" data-testid="analytics-personen">
-      {rows.map((r) => (
-        <div key={r.userId} className="flex items-center gap-3 text-[12.5px]">
-          <span className="min-w-0 flex-1 truncate text-text">{nameOf(r.userId)}</span>
-          <span className="font-mono text-[11px] text-muted-2">
-            {t("kennzahlen.personen.zeile", { open: r.open, done: r.done })}
-          </span>
-        </div>
-      ))}
     </div>
   );
 }
@@ -462,7 +442,7 @@ export function Analytics(): JSX.Element {
                 {rows.length === 0 ? (
                   <p className="text-[12.5px] text-muted">{t("kennzahlen.personen.leer")}</p>
                 ) : (
-                  <AssignmentsPerPerson rows={rows} />
+                  <PersonenZeilen rows={rows} />
                 )}
               </Card>
             );
@@ -483,6 +463,7 @@ export function Analytics(): JSX.Element {
             const weeks = weeklyValidated(bericht.validatedByWeek);
             const maxWeek = Math.max(1, ...weeks.map((w) => w.count));
             const rates = weeklyAnswerRate(bericht.askByWeek);
+            const ohnePruefzeitpunkt = bericht.validatedUnknownWeek ?? 0;
             return (
               <div className="space-y-4">
                 <Card data-testid="analytics-quote-woche">
@@ -512,12 +493,20 @@ export function Analytics(): JSX.Element {
                     </div>
                   )}
                 </Card>
-                {weeks.length > 0 ? (
-                  <Card>
+                {weeks.length > 0 || ohnePruefzeitpunkt > 0 ? (
+                  <Card data-testid="analytics-validiert-woche">
                     <SectionLabel>{t("ana.weekly")}</SectionLabel>
                     <p className="mb-2 text-[11px] leading-snug text-muted-2">
                       {t("kennzahlen.wochen.validiertHinweis")}
                     </p>
+                    {ohnePruefzeitpunkt > 0 ? (
+                      <p
+                        data-testid="analytics-ohne-pruefzeitpunkt"
+                        className="mb-2 text-[11px] leading-snug text-muted-2"
+                      >
+                        {t("kennzahlen.wochen.ohnePruefzeitpunkt", { n: ohnePruefzeitpunkt })}
+                      </p>
+                    ) : null}
                     <div className="space-y-2">
                       {weeks.map((w) => (
                         <div key={w.week} className="flex items-center gap-3">

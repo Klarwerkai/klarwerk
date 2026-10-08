@@ -126,8 +126,13 @@ export const useKoEvidence = (id: string) =>
   });
 export const useValidationBoard = (f?: KoFilter) =>
   useQuery({ queryKey: ["validation", "board", f], queryFn: () => endpoints.validation.board(f) });
+// FR-VAL-06: LAZY wie `useConflicts` — die Übersicht hängt jetzt auch in der Management-Sicht, und
+// eine Fläche, deren Endpunktgrenze sie nicht kennt, darf daran nicht schon beim Rendern reißen.
 export const useValidationOverview = () =>
-  useQuery({ queryKey: ["validation", "overview"], queryFn: endpoints.validation.overview });
+  useQuery({
+    queryKey: ["validation", "overview"],
+    queryFn: () => endpoints.validation.overview(),
+  });
 // AUFTRAG-mega29 C2: die Abdeckungs-Zusammenfassung für die LEEREN Konflikt-/Duplikat-Boards.
 export const useAiCheckCoverageSummary = () =>
   useQuery({

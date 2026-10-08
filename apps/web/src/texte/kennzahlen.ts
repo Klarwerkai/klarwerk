@@ -26,9 +26,11 @@ export default {
     "kennzahlen.demo.hinweis":
       "{{demo}} von {{total}} gezählten Objekten sind Demodaten. Diese Zahlen enthalten Beispielbestand und sind insoweit keine Messwerte dieser Installation.",
     "kennzahlen.help.wirkung":
-      "Der Wochenverlauf zeigt, ob der Nutzen wächst: wie viele heute validierte Objekte je Woche erfasst wurden und welcher Anteil der Fragen je Woche ohne Wissenslücke beantwortet wurde.",
+      "Der Wochenverlauf zeigt, ob der Nutzen wächst: wie viele Objekte je Woche validiert wurden und welcher Anteil der Fragen je Woche ohne Wissenslücke beantwortet wurde.",
     "kennzahlen.wochen.validiertHinweis":
-      "Gezählt nach der Woche, in der das heute validierte Objekt erfasst wurde — einen eigenen Prüfzeitpunkt hält das System nicht fest.",
+      "Gezählt nach der Woche, in der das Objekt validiert wurde — nicht nach seiner Erfassung.",
+    "kennzahlen.wochen.ohnePruefzeitpunkt":
+      "{{n}} validierte Objekte ohne belegten Prüfzeitpunkt (vor der Erfassung des Zeitpunkts geprüft) — in keiner Woche gezählt.",
     "kennzahlen.wochen.quote": "Antwortquote je Woche",
     "kennzahlen.wochen.quoteZeile": "{{rate}} · {{answered}} von {{asked}}",
     "kennzahlen.wochen.keineFragen": "Noch kein Wochenverlauf der Antwortquote vorhanden.",
@@ -36,6 +38,8 @@ export default {
     "kennzahlen.personen.titel": "Prüfaufgaben je Person",
     "kennzahlen.personen.zeile": "{{open}} offen · {{done}} erledigt",
     "kennzahlen.personen.leer": "Noch keine Prüfaufgaben zugewiesen.",
+    "kennzahlen.personen.laedt": "Prüfaufgaben werden geladen …",
+    "kennzahlen.personen.nichtAbrufbar": "Die Prüfaufgaben sind gerade nicht abrufbar.",
     "kennzahlen.kapital.index":
       "Berechneter Index aus den Anteilen und Gewichten darunter — eine Schätzung, kein Messwert.",
   },
@@ -49,9 +53,11 @@ export default {
     "kennzahlen.demo.hinweis":
       "{{demo}} of {{total}} counted objects are demo data. These figures include sample holdings and to that extent are not measurements of this installation.",
     "kennzahlen.help.wirkung":
-      "The weekly course shows whether the benefit grows: how many of today's validated objects were captured per week, and what share of questions per week was answered without a knowledge gap.",
+      "The weekly course shows whether the benefit grows: how many objects were validated per week, and what share of questions per week was answered without a knowledge gap.",
     "kennzahlen.wochen.validiertHinweis":
-      "Counted by the week in which today's validated object was captured — the system does not record a separate review date.",
+      "Counted by the week in which the object was validated — not by when it was captured.",
+    "kennzahlen.wochen.ohnePruefzeitpunkt":
+      "{{n}} validated objects without a recorded review date (reviewed before the date was captured) — not counted in any week.",
     "kennzahlen.wochen.quote": "Answer rate per week",
     "kennzahlen.wochen.quoteZeile": "{{rate}} · {{answered}} of {{asked}}",
     "kennzahlen.wochen.keineFragen": "No weekly course of the answer rate yet.",
@@ -59,6 +65,8 @@ export default {
     "kennzahlen.personen.titel": "Review tasks per person",
     "kennzahlen.personen.zeile": "{{open}} open · {{done}} done",
     "kennzahlen.personen.leer": "No review tasks assigned yet.",
+    "kennzahlen.personen.laedt": "Loading review tasks …",
+    "kennzahlen.personen.nichtAbrufbar": "The review tasks cannot be retrieved right now.",
     "kennzahlen.kapital.index":
       "Calculated index from the shares and weights below — an estimate, not a measurement.",
   },
@@ -72,9 +80,11 @@ export default {
     "kennzahlen.demo.hinweis":
       "{{demo}} van {{total}} getelde objecten zijn demogegevens. Deze cijfers bevatten voorbeeldbestand en zijn in zoverre geen metingen van deze installatie.",
     "kennzahlen.help.wirkung":
-      "Het verloop per week laat zien of het nut groeit: hoeveel van de nu gevalideerde objecten per week zijn vastgelegd en welk deel van de vragen per week zonder kennislacune is beantwoord.",
+      "Het verloop per week laat zien of het nut groeit: hoeveel objecten per week zijn gevalideerd en welk deel van de vragen per week zonder kennislacune is beantwoord.",
     "kennzahlen.wochen.validiertHinweis":
-      "Geteld naar de week waarin het nu gevalideerde object is vastgelegd — een apart controlemoment legt het systeem niet vast.",
+      "Geteld naar de week waarin het object is gevalideerd — niet naar het moment van vastleggen.",
+    "kennzahlen.wochen.ohnePruefzeitpunkt":
+      "{{n}} gevalideerde objecten zonder vastgelegd controlemoment (gecontroleerd voordat het moment werd vastgelegd) — in geen enkele week geteld.",
     "kennzahlen.wochen.quote": "Antwoordpercentage per week",
     "kennzahlen.wochen.quoteZeile": "{{rate}} · {{answered}} van {{asked}}",
     "kennzahlen.wochen.keineFragen": "Nog geen verloop per week van het antwoordpercentage.",
@@ -82,6 +92,8 @@ export default {
     "kennzahlen.personen.titel": "Controletaken per persoon",
     "kennzahlen.personen.zeile": "{{open}} open · {{done}} afgerond",
     "kennzahlen.personen.leer": "Nog geen controletaken toegewezen.",
+    "kennzahlen.personen.laedt": "Controletaken worden geladen …",
+    "kennzahlen.personen.nichtAbrufbar": "De controletaken zijn op dit moment niet op te halen.",
     "kennzahlen.kapital.index":
       "Berekende index uit de aandelen en gewichten hieronder — een schatting, geen meting.",
   },

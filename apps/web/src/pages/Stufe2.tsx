@@ -66,6 +66,8 @@ import { KlaraPathTeaser } from "../components/KlaraPathTeaser";
 import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
 // JOB 3363: dieselbe Kennzeichnung wie auf `/wissen/:id` und in der Bibliothek — ein Baustein.
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
+// FR-VAL-06: dieselbe Zuweisungsübersicht je Person wie in der Auswertung.
+import { PruefaufgabenJePerson } from "../components/PruefaufgabenJePerson";
 // JOB 3288: derselbe Allowlist-Renderweg wie die Bibliothek — kein zweiter HTML-Sink.
 import { SanitizedHtml } from "../components/SanitizedHtml";
 import { ScormUebergabe } from "../components/ScormUebergabe";
@@ -1491,6 +1493,13 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
           <MgmtKpi label={t("mgmt.kpiConflicts")} value={o.openConflicts} />
           <MgmtKpi label={t("mgmt.kpiTrust")} value={o.avgTrust} />
         </div>
+      </Card>
+
+      {/* FR-VAL-06: Zuweisungs-Status in der Management-Sicht — offen/erledigt je Person. Ohne
+          eigenen Sprunganker: die Sprungmarken bilden die konsolidierten Alt-App-Sektionen ab. */}
+      <Card data-testid="kapital-pruefaufgaben">
+        <SectionLabel>{t("kennzahlen.personen.titel")}</SectionLabel>
+        <PruefaufgabenJePerson testid="kapital-personen" />
       </Card>
 
       {/* FE-MGMT-03: Knowledge Capital Score */}

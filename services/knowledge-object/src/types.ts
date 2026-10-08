@@ -652,6 +652,12 @@ export interface KnowledgeObject {
   // Demodaten-Merker (Pedi 02.07.): vom Seed gesetzt, überlebt Bearbeitungen/Versionen —
   // damit Demo-Bestand sichtbar bleibt und komplett entfernt werden kann.
   demoSeed?: boolean;
+  // R-0750/R-1741 (Aufnahme gesamt-kennzahlen): WANN die geltende Fassung validiert wurde — der
+  // Prüfzeitpunkt, getrennt vom Erfassungszeitpunkt `createdAt`. Gesetzt beim Übergang nach
+  // „validiert" (und bei jeder Freigabe einer neuen Fassung), entfernt beim Rückfall auf „offen"
+  // (`pruefzeitpunkt.ts`). Altbestand, der schon vor diesem Feld validiert war, hat es nicht: sein
+  // Prüfzeitpunkt ist UNBEKANNT und wird nicht aus `createdAt` geraten.
+  validatedAt?: string;
   // WP-SHIP8-CLOSE-3/4 (bens ROT-1, 1A/1B/1C): STABILER Idempotenzanker des Import-Accepts — die
   // Id des Review-KANDIDATEN, aus dem dieses KO entstand. Bewusst der Kandidat (stabil über alle
   // Claim-Vorgänge/Retries hinweg), NICHT die je Claim wechselnde opId: nur so erzwingt der

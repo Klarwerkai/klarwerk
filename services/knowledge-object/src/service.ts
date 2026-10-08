@@ -63,6 +63,8 @@ import {
   mitPruefstand,
   pruefbasisVon,
 } from "./pruefbasis";
+// R-0750/R-1741: Prüfzeitpunkt der geltenden Fassung, an jedem Statuswechsel.
+import { mitPruefzeitpunkt } from "./pruefzeitpunkt";
 import type {
   EvidenceRepo,
   KoCandidateQuery,
@@ -5176,7 +5178,12 @@ export class KoService {
     };
     // R-0658: dieselbe Schutzdatenprüfung wie beim Anlegen, an der neuen Fassung — eine
     // Überarbeitung mit Schutzdaten setzt die Quarantäne, eine ohne hebt sie auf.
-    const geprueft = mitSchutzdatenBefund(fassung, at);
+    // R-0750: eine Freigabe in derselben Bewegung ist die Prüfung DIESER Fassung (Zeitpunkt jetzt);
+    // ohne Freigabe ist die Fassung offen und trägt keinen Prüfzeitpunkt mehr.
+    const geprueft = mitSchutzdatenBefund(
+      mitPruefzeitpunkt(ko, fassung, at, wirkendeFreigabe !== undefined),
+      at,
+    );
     if (!wirkendeFreigabe) {
       return geprueft;
     }
@@ -5678,6 +5685,8 @@ export class KoService {
         // beim Anlegen und Überarbeiten, VOR Commit und Projektion. Ein übernommener Text mit
         // Schutzdaten setzt die Quarantäne, einer ohne hebt eine bestehende auf.
         committed = mitSchutzdatenBefund(committed, at);
+        // R-0750: die übernommene Fassung ist offen — ihr gilt kein Prüfzeitpunkt der Vorfassung.
+        committed = mitPruefzeitpunkt(before, committed, at);
       }
 
       // ---- DER COMMIT: GENAU EIN SCHREIBVORGANG ---------------------------------------------
@@ -6138,7 +6147,11 @@ export class KoService {
     }
     const previousTrust = ko.trust;
     const trust = Math.max(0, ko.trust - TRUTH_CONFLICT_TRUST_PENALTY);
-    const updated: KnowledgeObject = { ...ko, status: "offen", trust };
+    const updated: KnowledgeObject = mitPruefzeitpunkt(
+      ko,
+      { ...ko, status: "offen", trust },
+      new Date(this.now()).toISOString(),
+    );
     await this.schreibeMitBeleg(
       (tx) => this.repo.update(updated, tx),
       async (tx) => {
@@ -6177,7 +6190,11 @@ export class KoService {
       if (opts.expectedVersion !== undefined && ko.version !== opts.expectedVersion) {
         return ko; // Version hat sich geändert (Revise) → Bewertung galt der Vorversion, nicht schreiben.
       }
-      const updated = { ...ko, trust: state.trust, status: state.status };
+      const updated = mitPruefzeitpunkt(
+        ko,
+        { ...ko, trust: state.trust, status: state.status },
+        new Date(this.now()).toISOString(),
+      );
       await this.repo.update(updated);
       return updated;
     });
@@ -6252,7 +6269,13 @@ export class KoService {
           return { ko, geschrieben: false, ref };
         }
         const state = await zustand(ko);
-        const updated: KnowledgeObject = { ...ko, trust: state.trust, status: state.status };
+        // R-0750: der Übergang nach „validiert" bekommt HIER, unter demselben Lock, seinen
+        // Prüfzeitpunkt; ein Rückfall auf „offen" nimmt ihn weg.
+        const updated: KnowledgeObject = mitPruefzeitpunkt(
+          ko,
+          { ...ko, trust: state.trust, status: state.status },
+          new Date(this.now()).toISOString(),
+        );
         const schritte = async (tx?: TxContext) => {
           await this.repo.update(updated, tx);
           const ref = await beleg(tx);

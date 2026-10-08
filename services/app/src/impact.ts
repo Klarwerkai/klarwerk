@@ -5,9 +5,12 @@ import type { Sichtbarkeitsfilter } from "./sichtbarkeit";
 // FR-ANA-02: Wirkungs-Dashboard — zwei Kernmetriken über Zeit.
 export interface ImpactReport {
   validatedTotal: number;
-  // Schlüssel = Wochenstart (Montag, YYYY-MM-DD) der ERFASSUNG des heute validierten Objekts. Einen
-  // eigenen Validierungszeitpunkt führt das KO nicht (das Audit `ko.rated` trägt kein Ergebnis).
+  // R-0750/R-1741: Schlüssel = Wochenstart (Montag, YYYY-MM-DD) des PRÜFZEITPUNKTS `validatedAt` —
+  // die Woche, in der das Objekt validiert wurde, nicht die seiner Erfassung.
   validatedByWeek: Record<string, number>;
+  // Heute validierte Objekte OHNE belegten Prüfzeitpunkt (Altbestand vor dem Feld, Seed-Daten).
+  // Sie zählen in `validatedTotal`, aber in keine Woche — zeitlich unbekannt, nicht geraten.
+  validatedUnknownWeek: number;
   askTotal: number;
   answeredWithoutGap: number;
   answerRate: number; // Anteil beantworteter Fragen ohne Wissenslücke (0..1)
@@ -39,8 +42,14 @@ export async function impactReport(
   const kos = (await ko.list({})).filter(opts.sichtbar);
   const validated = kos.filter((entry) => entry.status === "validiert");
   const validatedByWeek: Record<string, number> = {};
+  let validatedUnknownWeek = 0;
   for (const entry of validated) {
-    const key = weekKey(entry.createdAt);
+    const geprueft = entry.validatedAt ? Date.parse(entry.validatedAt) : Number.NaN;
+    if (Number.isNaN(geprueft)) {
+      validatedUnknownWeek += 1;
+      continue;
+    }
+    const key = weekKey(new Date(geprueft).toISOString());
     validatedByWeek[key] = (validatedByWeek[key] ?? 0) + 1;
   }
 
@@ -61,6 +70,7 @@ export async function impactReport(
   return {
     validatedTotal: validated.length,
     validatedByWeek,
+    validatedUnknownWeek,
     askTotal,
     answeredWithoutGap,
     answerRate: askTotal > 0 ? answeredWithoutGap / askTotal : 0,
