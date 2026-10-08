@@ -3763,6 +3763,7 @@ const de = {
   "ko.attachmentOriginalUnavailable": "Original nicht verfügbar",
   // JOB 3061 · H2 — die gemeinsame Prüffläche (vier Reiter, vier Menüorte).
   "pruefen.title": "Prüfen",
+  "pruefen.handeltAls": "Du prüfst als {{role}}",
   "pruefen.tab.offen": "Offen",
   "pruefen.tab.konflikte": "Konflikte",
   "pruefen.tab.duplikate": "Duplikate",
@@ -10463,6 +10464,7 @@ const en: typeof de = {
   "ko.attachmentPreviewUnavailable": "No preview available",
   "ko.attachmentOriginalUnavailable": "Original unavailable",
   "pruefen.title": "Review",
+  "pruefen.handeltAls": "You are reviewing as {{role}}",
   "pruefen.tab.offen": "Open",
   "pruefen.tab.konflikte": "Conflicts",
   "pruefen.tab.duplikate": "Duplicates",
@@ -16289,6 +16291,7 @@ const nl: typeof de = {
   "ko.attachmentPreviewUnavailable": "Geen voorbeeld beschikbaar",
   "ko.attachmentOriginalUnavailable": "Origineel niet beschikbaar",
   "pruefen.title": "Controleren",
+  "pruefen.handeltAls": "Je controleert als {{role}}",
   "pruefen.tab.offen": "Open",
   "pruefen.tab.konflikte": "Conflicten",
   "pruefen.tab.duplikate": "Duplicaten",
