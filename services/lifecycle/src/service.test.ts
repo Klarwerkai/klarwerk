@@ -34,6 +34,44 @@ describe("LifecycleService", () => {
     expect(await ctx.lifecycle.pendingRevalidation()).not.toContain(ctx.ko.id);
   });
 
+  it("R-0203: die Meldung über ein Objekt markiert alle Objekte an seinen Anlagen", async () => {
+    const nachbar = await ctx.koService.create({
+      title: "Druck prüfen",
+      statement: "Vor dem Anfahren den Druck prüfen.",
+      type: "technik",
+      category: "Anlage 1",
+      author: "bert",
+    });
+    const fremd = await ctx.koService.create({
+      title: "Band spannen",
+      statement: "Förderband nach Schichtwechsel spannen.",
+      type: "technik",
+      category: "Anlage 2",
+      author: "bert",
+    });
+    await ctx.lifecycle.couple("anlage-1", ctx.ko.id);
+    await ctx.lifecycle.couple("anlage-1", nachbar.id);
+    await ctx.lifecycle.couple("anlage-2", fremd.id);
+
+    const markiert = await ctx.lifecycle.neighborsChanged(ctx.ko.id);
+    expect(markiert.sort()).toEqual([ctx.ko.id, nachbar.id].sort());
+    const faellig = await ctx.lifecycle.pendingRevalidation();
+    expect(faellig).toContain(nachbar.id);
+    expect(faellig).not.toContain(fremd.id);
+  });
+
+  it("R-0203 GEGENPROBE: ohne Kopplung wird nichts markiert", async () => {
+    expect(await ctx.lifecycle.neighborsChanged(ctx.ko.id)).toEqual([]);
+    expect(await ctx.lifecycle.pendingRevalidation()).toEqual([]);
+  });
+
+  it("R-1732: erneute Prüfung gezielt anstossen; „Noch gültig“ räumt den Merker", async () => {
+    await ctx.lifecycle.requestRevalidation(ctx.ko.id);
+    expect(await ctx.lifecycle.pendingRevalidation()).toEqual([ctx.ko.id]);
+    await ctx.lifecycle.confirmStillValid(ctx.ko.id, "controller");
+    expect(await ctx.lifecycle.pendingRevalidation()).toEqual([]);
+  });
+
   it("Audit B1: couplingsForKo liefert die gekoppelten Anlagen eines KOs (Rück-Richtung)", async () => {
     expect(await ctx.lifecycle.couplingsForKo(ctx.ko.id)).toEqual([]);
     await ctx.lifecycle.couple("anlage-1", ctx.ko.id);

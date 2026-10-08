@@ -400,6 +400,9 @@ export {
   type Eingangsbefund,
   type Erhoben,
 } from "./src/display-status";
+// aufnahme:20260922:gesamt-wissen-frische: die EINE Frische-/Schutzableitung. `discloseFrische` liest
+// die Kompositionswurzel an beiden Lesewegen, `haltbarkeitAbgelaufen` der Fragepfad (R-0248).
+export { discloseFrische, haltbarkeitAbgelaufen } from "./src/frische";
 // JOB 557 (Pedi 13.08.2026): das kanonische Eigentümer-Aggregat. OHNE diesen Export bliebe es
 // unerreichbar — und damit genau die unverdrahtete Empfangsstelle, die D5 gerügt hat. Der
 // Validierungsdienst liest `responsibleOf`/`responsibleKindOf` über DIESE Fassade; eine Kante in

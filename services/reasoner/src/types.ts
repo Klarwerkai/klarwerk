@@ -52,6 +52,11 @@ export interface KnowledgeRef {
   // Feld überall, rechnet `rankCandidates` Zeichen für Zeichen wie bisher. Der Reasoner kennt die
   // Geltung selbst nicht — er bekommt nur diese Zahl (Regel: knowledge-object `geltungFuerFrage`).
   geltungsrang?: number;
+  // aufnahme:20260922:gesamt-wissen-frische (R-0248): die Haltbarkeit dieser Quelle ist abgelaufen —
+  // sie gilt in Antworten nicht mehr als gesichert, bis der Verantwortliche sie bestätigt. Gesetzt
+  // NUR vom Fragedienst (Regel: knowledge-object `haltbarkeitAbgelaufen`); fehlt das Feld, gilt
+  // allein der Status wie bisher.
+  haltbarkeitAbgelaufen?: true;
 }
 
 // ================================================================================================

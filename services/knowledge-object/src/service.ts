@@ -56,7 +56,13 @@ import {
 import type { KoMetadataProjectionResult } from "./metadata-projection-repo";
 // JOB 557: das kanonische Eigentümer-Aggregat. Regeln, Rückfallentscheidung und Grenzen stehen in
 // ownership.ts — hier wird nur angewendet, nichts nachgebaut.
-import { normalizeOwnership, ownershipOf, sameOwnership, withRole } from "./ownership";
+import {
+  normalizeOwnership,
+  ownershipOf,
+  responsibleOf,
+  sameOwnership,
+  withRole,
+} from "./ownership";
 // AUFNAHME 20260922: die Basisbindung des Prüfnachweises (Regel und Begründung dort).
 import {
   bestandsStempelVon,
@@ -6086,6 +6092,44 @@ export class KoService {
             target: id,
             payload: { vorher, nachher },
           });
+        },
+      };
+    });
+  }
+
+  // aufnahme:20260922:gesamt-wissen-frische (R-0206 / R-1746): „Stimmt weiterhin" nach dem Anwenden —
+  // ein Frische-Signal, KEINE neue Prüfung. Bauform wie `setDomain`: per KO serialisiert, Beleg im
+  // Audit, keine neue Inhaltsversion, kein Statuswechsel. Nur geprüftes Wissen kann so bestätigt
+  // werden. Bestätigt der Verantwortliche (`responsibleOf`), verlängert das zugleich die Haltbarkeit
+  // (`fristBestaetigung`, R-0248); jede andere Person frischt nur das Signal auf.
+  async bestaetigeFrische(id: string, actor: string): Promise<KnowledgeObject> {
+    return this.mutateKo(id, (ko) => {
+      if (ko.status !== "validiert") {
+        throw new KoError(
+          "INVALID",
+          "Nur geprüftes Wissen kann als weiterhin gültig bestätigt werden.",
+        );
+      }
+      const signal = { at: new Date(this.now()).toISOString(), by: actor };
+      const verantwortlich = responsibleOf(ko) === actor;
+      const updated: KnowledgeObject = {
+        ...ko,
+        frischeSignal: signal,
+        ...(verantwortlich ? { fristBestaetigung: signal } : {}),
+      };
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.freshness-confirmed",
+              target: id,
+              payload: { version: ko.version, verantwortlich },
+            },
+            tx,
+          );
         },
       };
     });

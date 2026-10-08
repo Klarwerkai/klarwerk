@@ -557,6 +557,37 @@ export function MehrAbschnitte({
     onError: fehlerToast,
   });
 
+  // ---- aufnahme:20260922:gesamt-wissen-frische -------------------------------------------------
+  // R-0203: Anlagenänderung über DIESES Objekt an alle Nachbarn an denselben Anlagen melden.
+  const nachbarn = useMutation({
+    mutationFn: () => endpoints.ko.neighborsChanged(id),
+    onSuccess: (antwort) => {
+      invalidate();
+      void qc.invalidateQueries({ queryKey: ["lifecycle"] });
+      push("success", t("frische.nachbarnGemeldet", { count: antwort.markiert }));
+    },
+    onError: fehlerToast,
+  });
+  // R-1732 / R-0206: erneute Prüfung aus der Bibliothek anstossen.
+  const erneutPruefen = useMutation({
+    mutationFn: () => endpoints.ko.requestRevalidation(id),
+    onSuccess: () => {
+      invalidate();
+      void qc.invalidateQueries({ queryKey: ["lifecycle"] });
+      push("success", t("frische.erneutPruefenGespeichert"));
+    },
+    onError: fehlerToast,
+  });
+  // R-0206 / R-1746: „Stimmt weiterhin" nach dem Anwenden — ein Frische-Signal, keine Prüfung.
+  const stimmtWeiterhin = useMutation({
+    mutationFn: () => endpoints.ko.act(id, { action: "confirm-fresh" }),
+    onSuccess: () => {
+      invalidate();
+      push("success", t("frische.stimmtWeiterhinGespeichert"));
+    },
+    onError: fehlerToast,
+  });
+
   // ================================================================================================
   // JOB 4146 · DIE DISKUSSION — FRAGE, ANTWORT, KLÄRUNGSSTAND.
   // ================================================================================================
@@ -2044,6 +2075,21 @@ export function MehrAbschnitte({
             </Button>
           </div>
         ) : null}
+        {/* R-0203: der Auslöser über benachbarte Wissensobjekte — dasselbe Recht wie die
+            Anlagenänderung im Reiter „Erneut" (`ko.validate`: Controller und Admin). */}
+        {canReview && couplings.data && couplings.data.length > 0 ? (
+          <div className="mt-2.5 border-t border-hairline pt-2.5">
+            <Button
+              variant="ghost"
+              data-testid="frische-nachbarn"
+              disabled={nachbarn.isPending}
+              onClick={() => nachbarn.mutate()}
+            >
+              {t("frische.nachbarnMelden")}
+            </Button>
+            <p className="mt-1 text-[11.5px] text-muted-2">{t("frische.nachbarnMeldenHinweis")}</p>
+          </div>
+        ) : null}
       </Abschnitt>
 
       {/* 7 — Herkunftskette */}
@@ -2237,28 +2283,135 @@ export function MehrAbschnitte({
             <dt className="text-muted">{t("lib.facet.maturity")}</dt>
             <dd className="font-mono text-text">{t(useReadiness(usability).labelKey)}</dd>
           </div>
-          <div className="flex items-center justify-between gap-2">
-            <dt className="text-muted">{t("ext.validity.freshness")}</dt>
-            <dd className="font-mono text-text">
-              {t(`ext.freshness.${gueltigkeit.freshnessStatus}`)}
-            </dd>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <dt className="text-muted">{t("ext.validity.outputEligible")}</dt>
-            <dd
-              className={cx(
-                "font-mono",
-                gueltigkeit.outputEligible ? "text-trust-pos-text" : "text-muted-2",
-              )}
-            >
-              {t(gueltigkeit.outputEligible ? "ext.outputEligible.yes" : "ext.outputEligible.no")}
-            </dd>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <dt className="text-muted">{t("ext.protection.ip")}</dt>
-            <dd className="font-mono text-muted-2">{t("ext.protection.notRated")}</dd>
-          </div>
+          {/* aufnahme:20260922:gesamt-wissen-frische (R-0207 / R-0652 / FR-EXT-06): zwei Sichten
+              je Objekt — Aktualität und Schutzbedarf — mit Empfehlung, vom Server abgeleitet.
+              Liefert der Lesepfad `frische` nicht, bleibt die bisherige Ableitung stehen. */}
+          {ko.frische ? (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.stufeLabel")}</dt>
+                <dd data-testid="frische-stufe" className="font-mono text-text">
+                  {t(`frische.stufe.${ko.frische.stufe}`)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.haltbarBis")}</dt>
+                <dd className="font-mono text-text">
+                  {ko.frische.haltbarBis
+                    ? new Date(ko.frische.haltbarBis).toLocaleDateString()
+                    : t("frische.haltbarUnbekannt")}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.verantwortlich")}</dt>
+                <dd className="text-right text-text">
+                  {nameOf(ko.frische.verantwortlich)}
+                  {ko.frische.verantwortlichArt === "author-fallback" ? (
+                    <span className="block text-[11px] text-muted-2">
+                      {t("frische.verantwortlichErsatz")}
+                    </span>
+                  ) : null}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.inDokumente")}</dt>
+                <dd
+                  className={cx(
+                    "font-mono",
+                    ko.frische.inDokumente ? "text-trust-pos-text" : "text-muted-2",
+                  )}
+                >
+                  {t(ko.frische.inDokumente ? "frische.ja" : "frische.nein")}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.schutzLabel")}</dt>
+                <dd className="font-mono text-text">
+                  {t(`frische.schutz.${ko.frische.schutz ?? "unbekannt"}`)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.betriebsmodellLabel")}</dt>
+                <dd className="font-mono text-text">
+                  {t(`frische.betriebsmodell.${ko.frische.betriebsmodell}`)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.naechsterLabel")}</dt>
+                <dd data-testid="frische-naechster" className="text-right text-text">
+                  {t(`frische.naechster.${ko.frische.naechsterSchritt}`)}
+                </dd>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("ext.validity.freshness")}</dt>
+                <dd className="font-mono text-text">
+                  {t(`ext.freshness.${gueltigkeit.freshnessStatus}`)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("ext.validity.outputEligible")}</dt>
+                <dd
+                  className={cx(
+                    "font-mono",
+                    gueltigkeit.outputEligible ? "text-trust-pos-text" : "text-muted-2",
+                  )}
+                >
+                  {t(
+                    gueltigkeit.outputEligible ? "ext.outputEligible.yes" : "ext.outputEligible.no",
+                  )}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("ext.protection.ip")}</dt>
+                <dd className="font-mono text-muted-2">{t("ext.protection.notRated")}</dd>
+              </div>
+            </>
+          )}
         </dl>
+        {ko.frische && ko.status === "validiert" && !ko.frische.gesichert ? (
+          <p
+            data-testid="frische-nicht-gesichert"
+            className="mb-2 text-[12px] leading-relaxed text-trust-warn-text"
+          >
+            {t("frische.nichtGesichert")}
+          </p>
+        ) : null}
+        {ko.frische?.letztesSignal ? (
+          <p className="mb-2 text-[11.5px] text-muted-2">
+            {t("frische.letztesSignal", {
+              name: nameOf(ko.frische.letztesSignal.by),
+              datum: new Date(ko.frische.letztesSignal.at).toLocaleDateString(),
+            })}
+          </p>
+        ) : null}
+        {/* R-0206 / R-1746: „Stimmt weiterhin" für jeden Leser geprüften Wissens; R-1732: die
+            erneute Prüfung aus der Bibliothek für alle, die erfassen dürfen (`ko.create`). */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {ko.status === "validiert" ? (
+            <Button
+              variant="ghost"
+              data-testid="frische-stimmt-weiterhin"
+              title={t("frische.stimmtWeiterhinHinweis")}
+              disabled={stimmtWeiterhin.isPending}
+              onClick={() => stimmtWeiterhin.mutate()}
+            >
+              {t("frische.stimmtWeiterhin")}
+            </Button>
+          ) : null}
+          {canEdit ? (
+            <Button
+              variant="ghost"
+              data-testid="frische-erneut-pruefen"
+              disabled={erneutPruefen.isPending}
+              onClick={() => erneutPruefen.mutate()}
+            >
+              {t("frische.erneutPruefen")}
+            </Button>
+          ) : null}
+        </div>
         {/* SCRUM-168/175/170: Konsistenz, Frische und Gruppierung nach Fassung — nur bei
             erfolgreich geladenem Bestand, auch bei gescheiterter Auffrischung.
             Ein offline pausierter Erstabruf ist noch kein Bestand. */}

@@ -12,6 +12,7 @@ import {
   dropConfidential,
   expandSearchTerms,
   geltungFuerFrage,
+  haltbarkeitAbgelaufen,
   isConfidential,
   normalizeSearchTerms,
 } from "../../knowledge-object";
@@ -994,6 +995,8 @@ export class AskService {
       : {};
     // R-1633: der Fragekontext (Werk/Schicht/Rolle) — ohne ihn ist der Ablauf der bisherige.
     const fragekontext = opts?.fragekontext;
+    // aufnahme:20260922:gesamt-wissen-frische (R-0248): EIN Zeitpunkt für alle Quellen dieser Frage.
+    const jetzt = this.now();
     // D5: die Suchprojektion trägt den Dokumenttext — ein weiterer inhaltlesender Schritt.
     this.pruefeKiSperre("suchprojektion", kiBeginn);
     const refs: KnowledgeRef[] = await Promise.all(
@@ -1021,6 +1024,11 @@ export class AskService {
           // R-1633: nur mit Fragekontext — dann ordnet der Rang an BEIDEN Toren (dieselben Refs).
           ...(fragekontext
             ? { geltungsrang: geltungFuerFrage(ko.geltung, fragekontext).rang }
+            : {}),
+          // R-0248: nach Fristende nicht mehr „gesichert" (answerStanding), bis der Verantwortliche
+          // bestätigt. Nur an validierten Quellen gesetzt — ungeprüfte sind ohnehin nicht gesichert.
+          ...(ko.status === "validiert" && haltbarkeitAbgelaufen(ko, jetzt)
+            ? { haltbarkeitAbgelaufen: true as const }
             : {}),
         };
       }),

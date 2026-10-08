@@ -51,6 +51,28 @@ export class LifecycleService implements RevalidierungMerkerLeser {
     return koIds;
   }
 
+  // aufnahme:20260922:gesamt-wissen-frische (R-0203) — DER AUSLÖSER ÜBER BENACHBARTE WISSENSOBJEKTE.
+  //
+  // Wer an EINEM Wissensobjekt merkt, dass sich seine Anlage geändert hat, meldet das dort einmal:
+  // jede an das Objekt gekoppelte Anlage gilt als geändert, und alle Objekte an diesen Anlagen —
+  // das Objekt selbst und seine Nachbarn — werden mit „Stimmt das noch?" markiert. Derselbe Merker
+  // wie `assetChanged`, kein zweiter Weg. Ohne Kopplung wird nichts markiert (leere Liste).
+  async neighborsChanged(koId: string): Promise<string[]> {
+    const markiert = new Set<string>();
+    for (const assetRef of await this.repo.couplingsForKo(koId)) {
+      for (const betroffen of await this.assetChanged(assetRef)) {
+        markiert.add(betroffen);
+      }
+    }
+    return [...markiert];
+  }
+
+  // R-0206 / R-1732 / R-1745: eine erneute Prüfung GEZIELT für ein Objekt anstoßen — aus der
+  // Bibliothek heraus, ohne Anlagenänderung. Derselbe Merker; die Bestätigung räumt ihn wie gewohnt.
+  async requestRevalidation(koId: string): Promise<void> {
+    await this.repo.markPending(koId);
+  }
+
   // SCRUM-420 (Pedi 03.07.): Selbstheilung — Marker, deren KO nicht mehr existiert (z. B.
   // nach Löschen/Demodaten-Purge), werden beim Lesen ehrlich ENTFERNT statt als Geister-
   // Karten (nackte UUID, „nicht im Bestand") im Arbeitsbereich zu erscheinen. Wirkt für

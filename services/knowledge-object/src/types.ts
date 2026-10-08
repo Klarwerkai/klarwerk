@@ -492,6 +492,12 @@ export interface KoAppendOp {
   sourceIds: string[];
 }
 
+/** R-0206 / R-0248: wer wann bestätigt hat, dass das Wissen weiterhin stimmt (s. `frische.ts`). */
+export interface KoFrischeSignal {
+  at: string;
+  by: string;
+}
+
 /** R-0658: welche Art Schutzdaten erkannt wurde — nie der Wert selbst. */
 export type SchutzdatenArt = "personalnummer" | "kontodaten";
 
@@ -662,6 +668,17 @@ export interface KnowledgeObject {
   // Ein stiller `owner = author`-Default beim Anlegen ist ausdrücklich verworfen: er wäre genau die
   // Gleichsetzung von Erzeuger und Verantwortlichem, die Pedis Entscheidung zurückgewiesen hat.
   ownership?: KnowledgeOwnership;
+  // ============================================================================================
+  // aufnahme:20260922:gesamt-wissen-frische (R-0206 / R-0248) — „STIMMT WEITERHIN", OHNE NEUE PRÜFUNG.
+  // ============================================================================================
+  //
+  // `frischeSignal`: wer das Wissen zuletzt angewendet und bestätigt hat, dass es weiterhin stimmt.
+  // `fristBestaetigung`: dasselbe, wenn es der Verantwortliche (`responsibleOf`) war — nur das
+  // verlängert die Haltbarkeit. Gesetzt ausschliesslich über `KoService.bestaetigeFrische`; keine
+  // neue Fassung, kein Statuswechsel. Optional, keine Migration; fehlt es, gab es kein Signal.
+  // Regel und Ableitung in `frische.ts`.
+  frischeSignal?: KoFrischeSignal;
+  fristBestaetigung?: KoFrischeSignal;
   asset: string | null;
   createdAt: string;
   history: HistoryEntry[];

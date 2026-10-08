@@ -57,6 +57,7 @@ wiederholt.
 | `ko.category-changed`, `ko.tags-changed` | `grund`, `vorher`/`nachher` (Kategorie, Schlagworte), `metadataRevision`, `metadataChanged`, `category` | M |
 | `ko.domain-changed` | `vorher`, `nachher` (Fachgebiet, ≤ 120 Zeichen) | M |
 | `ko.geltung-changed` | `vorher`, `nachher` (Geltung: Ebene, Werk, Schicht, Rolle — je ≤ 80 Zeichen; nachgetragen mit `gesamt-standortwissen`) | M |
+| `ko.freshness-confirmed` | `version`, `verantwortlich` (ob der Verantwortliche bestätigt hat; nachgetragen mit `gesamt-wissen-frische`) | Z |
 | `ko.conflict-review` | `previousStatus`, `previousTrust`, `trust`, `reason` | Z |
 | `ko.author-transferred` | `author` | K |
 | `ko.source-removed-in-origin`, `ko.source-restored-in-origin` | `provider`, `externalId`, `at`/`removedAt` | M, K |
