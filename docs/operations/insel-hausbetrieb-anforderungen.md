@@ -44,8 +44,8 @@ macOS-Prüfplatz vollständig grün gelaufen ist, belegen die Auftragsquellen **
   Pakets. Seit dem Auftrag `aufnahme:20260922:gesamt-kundenbetrieb` schreibt der Bauer neben das ZIP
   eine SHA-256-Prüfsumme (`<version>.zip.sha256`, `scripts/insel/paket-pruefsumme.mjs`); sie belegt
   Unversehrtheit gegenüber dem Bauer, nicht Herkunft, und der Updateweg prüft sie **nicht**. Weitere
-  Prüfsummen gibt es für die **Sicherungen** (`state.jsonl`, Dump-Sidecar). Ein beliebiges, richtig
-  aufgebautes ZIP wird eingespielt.
+  Prüfsummen gibt es für die **Sicherungen** (`state.jsonl`, Dump-Sidecar).
+  Ein beliebiges, richtig aufgebautes ZIP wird eingespielt.
 - **Keine Lizenzierung.** Im Produkt gibt es keine Lizenzdatei, keine Aktivierung, keine Drittlizenzliste
   im Paket.
 - **Kein Datenträgeraustausch.** Es gibt kein Bündelformat, keinen Signaturschritt und keinen eigenen
