@@ -33,6 +33,7 @@ import { RoleLink } from "../components/RoleLink";
 // und Plaketten, Warte- und KI-aus-Zustand. Sie standen bis dahin inline hier.
 import { AntwortPlatzhalter, KiNichtVerfuegbar } from "../components/fragen/Antwortbausteine";
 import { FrageFeld } from "../components/fragen/FrageFeld";
+import { NichtHilfreichKarte } from "../components/fragen/NichtHilfreichKarte";
 import { EVIDENCE_TONE, QuellenListe } from "../components/fragen/QuellenListe";
 import {
   QUELLEN_CHIP_KLASSE,
@@ -94,6 +95,7 @@ import { fadenFuerAnfrage, fadenNachAntwort } from "../lib/gespraechsfaden";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { formatKoTimestamp } from "../lib/koDates";
+import { erkenneNichtHilfreich } from "../lib/nichtHilfreich";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { istIosGeraet } from "../lib/speechSupport";
@@ -510,6 +512,15 @@ interface AskAnfrage {
   kontext?: Fragekontext;
 }
 
+// R-1649: die erkannte, noch nicht bestätigte Rückmeldung und ihr Ergebnis (s. `Ask`).
+interface NichtHilfreichOffen {
+  koId: string;
+  alternative: string;
+}
+interface NichtHilfreichErledigt {
+  entwurfId: string | null;
+}
+
 export function Ask(): JSX.Element {
   const { t, i18n } = useTranslation();
   // SCRUM-272: optionale Startfrage aus der URL (/fragen?q=…) — nur vorbefüllen, kein Auto-Ask.
@@ -908,6 +919,35 @@ export function Ask(): JSX.Element {
   // Ben R1, F8: eine WIEDERAUFGENOMMENE Antwort trägt ihren alten Beleg. Ist er abgelaufen, bietet
   // die Fläche die Rückmeldung nicht mehr an, sondern sagt, warum — und wie es wieder geht.
   const belegGueltig = belegNochGueltig(receipt, antwortAm, Date.now());
+  // R-1649: „Das war nicht hilfreich, ich habe es so gemacht …" ins Fragefeld gesprochen — erkannt
+  // beim Absenden (`lib/nichtHilfreich.ts`), gespeichert erst nach der Bestätigung in der Karte.
+  // Ziel ist dieselbe tragende Quelle wie beim „Hat geholfen", mit demselben Beleg.
+  const [nichtHilfreich, setNichtHilfreich] = useState<NichtHilfreichOffen | null>(null);
+  const [nichtHilfreichErledigt, setNichtHilfreichErledigt] =
+    useState<NichtHilfreichErledigt | null>(null);
+  const quelleTitel = (koId: string): string =>
+    (kos.data ?? []).find((ko) => ko.id === koId)?.title ?? koId;
+  const nichtHilfreichMelden = useMutation({
+    mutationFn: ({ koId, alternative }: { koId: string; alternative: string | null }) =>
+      endpoints.ask.notHelpful({
+        koId,
+        receipt,
+        ...(alternative
+          ? {
+              alternative,
+              entwurfTitel: t("sprachfeedback.entwurfTitel", {
+                titel: quelleTitel(koId),
+              }),
+            }
+          : {}),
+      }),
+    onSuccess: (r) => {
+      setNichtHilfreich(null);
+      setNichtHilfreichErledigt({ entwurfId: r.entwurfId });
+      setQ("");
+    },
+    onError: rueckmeldungAbgelehnt,
+  });
 
   // Ergänzung 1 · SCHREIBEN: jede Änderung an Entwurf oder stehender Antwort geht in den Stand
   // DIESES Kontos. Eine neue Frage räumt die alte Antwort in `onMutate` ab — damit ist auch der
@@ -1173,6 +1213,9 @@ export function Ask(): JSX.Element {
       // nach dem Absenden offen, stünden Beispieltexte und Hinweise zwischen Feld und Antwort. Sie
       // schliesst deshalb hier — nur bei einem ANGENOMMENEN Absenden, für Feld, Chip und Auto-Ask.
       setBeispiele(false);
+      // R-1649: eine neue Frage beendet eine offene oder erledigte „nicht hilfreich"-Rückmeldung.
+      setNichtHilfreich(null);
+      setNichtHilfreichErledigt(null);
       const kontext = fragekontextZumSenden(fragekontext);
       ask.mutate({
         frage: trimmed,
@@ -1564,6 +1607,23 @@ export function Ask(): JSX.Element {
             // AUFTRAG-mega38 BLOCK J2: der Fehlversuch wird HIER vermerkt — der Knopf ist bei leerer
             // Frage gesperrt, per Eingabetaste kommt man aber sehr wohl bis hierher.
             setEmptyAttempted(q.trim().length === 0);
+            // R-1649: steht eine belegte Antwort mit tragender Quelle da und sagt der Text „nicht
+            // hilfreich", wird nicht gefragt, sondern die Bestätigung gezeigt. Ohne gültigen Beleg
+            // bleibt es eine gewöhnliche Frage — eine Rückmeldung ginge dann ohnehin ins 403.
+            // Das Diktat HÄNGT AN: nach einer Antwort steht deren Frage noch im Feld, und der
+            // gesprochene Satz folgt dahinter. Gelesen wird deshalb nur, was neu dazukam.
+            const tragend = result?.answered ? (result.citedSources ?? [])[0] : undefined;
+            const frageVorher = antwortFrage.current;
+            const gesagt =
+              frageVorher && q.trimStart().startsWith(frageVorher)
+                ? q.trimStart().slice(frageVorher.length)
+                : q;
+            const erkannt = tragend && belegGueltig ? erkenneNichtHilfreich(gesagt) : null;
+            if (tragend && erkannt) {
+              setNichtHilfreichErledigt(null);
+              setNichtHilfreich({ koId: tragend, alternative: erkannt.alternative });
+              return;
+            }
             submitAsk(q);
           }}
           // E2E-018 / AUFTRAG-mega39 BLOCK G: „ungültig" erst NACH dem Fehlversuch — im Takt mit der
@@ -1590,6 +1650,42 @@ export function Ask(): JSX.Element {
         >
           {answerAi.available && emptyAttempted && q.trim().length === 0 ? t("ask.emptyHint") : ""}
         </output>
+        {nichtHilfreich ? (
+          <NichtHilfreichKarte
+            key={`${nichtHilfreich.koId}:${nichtHilfreich.alternative}`}
+            quelleTitel={quelleTitel(nichtHilfreich.koId)}
+            alternative={nichtHilfreich.alternative}
+            laeuft={nichtHilfreichMelden.isPending}
+            onBestaetigen={(alternative) =>
+              nichtHilfreichMelden.mutate({ koId: nichtHilfreich.koId, alternative })
+            }
+            onAlsFrage={() => {
+              setNichtHilfreich(null);
+              submitAsk(q);
+            }}
+            onVerwerfen={() => setNichtHilfreich(null)}
+          />
+        ) : null}
+        {nichtHilfreichErledigt ? (
+          <output
+            data-testid="ask-nicht-hilfreich-erledigt"
+            className="mt-3 block text-[13px] text-muted"
+          >
+            {nichtHilfreichErledigt.entwurfId
+              ? t("sprachfeedback.erledigtMitEntwurf")
+              : t("sprachfeedback.erledigt")}{" "}
+            {nichtHilfreichErledigt.entwurfId ? (
+              <RoleLink
+                to={`/erfassen?draft=${encodeURIComponent(nichtHilfreichErledigt.entwurfId)}`}
+                testId="ask-nicht-hilfreich-entwurf"
+                className="inline-flex items-center gap-1 font-semibold text-brand-text"
+                hoverClassName="hover:underline"
+              >
+                {() => t("sprachfeedback.entwurfOeffnen")}
+              </RoleLink>
+            ) : null}
+          </output>
+        ) : null}
         <span className="block [&:not(:empty)]:mt-3">
           {/* ====================================================================================
             JOB 4224 · D5, LIEFERUNG 5 — DIE LAGE ZU NENNEN IST NICHT DASSELBE WIE EINEN WEG ZU
