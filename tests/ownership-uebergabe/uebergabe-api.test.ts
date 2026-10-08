@@ -591,3 +591,214 @@ describe("K4/K5 · Bestand ohne aktive Verantwortung und Vertretung", () => {
     expect(ohne).toEqual([]);
   });
 });
+
+// ================================================================================================
+// NACHARBEIT 2 — Bens vier Befunde, je eine Gegenprobe am Draht.
+// ================================================================================================
+
+const KUENFTIG = "2099-12-31T23:59:59.000Z";
+
+async function bestandVon(b: Buehne, person: string) {
+  const res = await b.app.inject({
+    method: "GET",
+    url: `/api/verantwortung/person/${person}`,
+    headers: b.k.admin,
+  });
+  expect(res.statusCode, res.body).toBe(200);
+  return res.json() as {
+    person: { zugang: string };
+    anzahl: number;
+    beitraege: { koId: string; imPapierkorb: boolean; zulaessig: string[] }[];
+    ziele: { id: string }[];
+  };
+}
+
+describe("Nacharbeit 2 · K5 — die Befristung ist ein Kontoende und braucht eine Übergabe", () => {
+  it("eine Befristung über die Kontobearbeitung wird bei offenem Bestand abgewiesen, danach nicht", async () => {
+    const b = await buehne();
+    const befristen = () =>
+      b.app.inject({
+        method: "PUT",
+        url: `/api/users/${b.ids.paula}`,
+        headers: b.k.admin,
+        payload: { accessExpiresAt: KUENFTIG },
+      });
+    const abgewiesen = await befristen();
+    expect(abgewiesen.statusCode, abgewiesen.body).toBe(409);
+    expect(abgewiesen.json()).toMatchObject({ error: "BESTAND_OFFEN", verbleibt: 5 });
+    const liste = await b.app.inject({ method: "GET", url: "/api/users", headers: b.k.admin });
+    const paula = (liste.json() as { id: string; accessExpiresAt?: string }[]).find(
+      (k) => k.id === b.ids.paula,
+    );
+    expect(paula?.accessExpiresAt, "es wurde nichts befristet").toBeUndefined();
+    // Andere Kontoänderungen bleiben frei: die Rolle lässt sich weiter ändern.
+    const rolle = await b.app.inject({
+      method: "PUT",
+      url: `/api/users/${b.ids.paula}`,
+      headers: b.k.admin,
+      payload: { role: "experte" },
+    });
+    expect(rolle.statusCode, rolle.body).toBe(200);
+
+    const uebergabe = await post(b, "/api/verantwortung/uebergabe", {
+      von: b.ids.paula,
+      zuteilung: aufteilung(b),
+    });
+    expect(uebergabe.statusCode, uebergabe.body).toBe(200);
+    const gesetzt = await befristen();
+    expect(gesetzt.statusCode, gesetzt.body).toBe(200);
+    expect(gesetzt.json().accessExpiresAt).toBe(KUENFTIG);
+  });
+
+  it("ein befristetes Konto ist kein Nachfolger, und sein eigener Bestand gilt schon vor dem Ablauf als ungeklärt", async () => {
+    const b = await buehne();
+    // Nora schreibt einen Beitrag und wird danach befristet — am Hook vorbei über den Dienst, so wie
+    // es ein Bestand von VOR dieser Nacharbeit wäre.
+    const n1 = await b.app.inject({
+      method: "POST",
+      url: "/api/kos",
+      headers: b.k.nora,
+      payload: {
+        confidentiality: "intern",
+        title: "Noras Prüfanweisung",
+        statement: "Noras Prüfanweisung: täglich.",
+        type: "best_practice",
+        category: "Prüfmittel",
+      },
+    });
+    expect(n1.statusCode, n1.body).toBe(201);
+    await b.services.auth.setAccessExpiry(b.ids.nora, KUENFTIG, b.ids.ada);
+
+    const bestand = await bestandVon(b, b.ids.paula);
+    expect(bestand.ziele.map((z) => z.id)).not.toContain(b.ids.nora);
+    for (const zeile of bestand.beitraege) {
+      expect(zeile.zulaessig).not.toContain(b.ids.nora);
+    }
+    const v = await post(b, "/api/verantwortung/vorschau", {
+      von: b.ids.paula,
+      zuteilung: [{ koId: b.ko.a1, an: b.ids.nora }],
+    });
+    expect((v.json() as Vorschau).abgelehnt.map((z) => z.grund)).toEqual(["ZIEL_BEFRISTET"]);
+
+    const ungeklaert = await b.app.inject({
+      method: "GET",
+      url: "/api/verantwortung/ungeklaert",
+      headers: b.k.admin,
+    });
+    expect(ungeklaert.json().personen).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: b.ids.nora, zugang: "befristet", anzahl: 1 }),
+      ]),
+    );
+  });
+});
+
+describe("Nacharbeit 2 · K2 — Nachfolger je Beitrag und Paket", () => {
+  it("der Bestand nennt je Beitrag die zulässigen Nachfolger; wer einen Beitrag nicht sehen darf, fehlt dort", async () => {
+    const b = await buehne();
+    const bestand = await bestandVon(b, b.ids.paula);
+    const zulaessig = (koId: string) =>
+      bestand.beitraege.find((z) => z.koId === koId)?.zulaessig ?? [];
+    // Der vertrauliche Beitrag: Otto (controller) ja, Nora (experte, nicht Autorin) nein.
+    expect(zulaessig(b.ko.v1)).toContain(b.ids.otto);
+    expect(zulaessig(b.ko.v1)).not.toContain(b.ids.nora);
+    // Ein interner Beitrag: beide.
+    expect(zulaessig(b.ko.a1)).toEqual(expect.arrayContaining([b.ids.nora, b.ids.otto]));
+    // Nie die Person selbst, nie ein Viewer, nie ein abgelaufenes Konto.
+    for (const zeile of bestand.beitraege) {
+      expect(zeile.zulaessig).not.toContain(b.ids.paula);
+      expect(zeile.zulaessig).not.toContain(b.ids.vera);
+      expect(zeile.zulaessig).not.toContain(b.ids.gerd);
+    }
+  });
+});
+
+describe("Nacharbeit 2 · K3/K4 — ein inzwischen inaktiver Nachfolger ist bei Wiederholung nicht erledigt", () => {
+  it("Wiederholung nach Ablauf des Nachfolgers meldet unvollständig; der Beitrag wird als ungeklärt neu zugeteilt", async () => {
+    const b = await buehne();
+    const plan = { von: b.ids.paula, zuteilung: [{ koId: b.ko.a2, an: b.ids.nora }] };
+    const erster = await post(b, "/api/verantwortung/uebergabe", plan);
+    expect(erster.statusCode, erster.body).toBe(200);
+    // Noras Zugang läuft ab (Dienstweg = tatsächlicher Fristablauf, am Hook vorbei).
+    await b.services.auth.setAccessExpiry(b.ids.nora, "2026-01-02T00:00:00.000Z", b.ids.ada);
+
+    const wiederholung = await post(b, "/api/verantwortung/uebergabe", plan);
+    expect(wiederholung.statusCode, wiederholung.body).toBe(207);
+    const e = wiederholung.json() as Ergebnis;
+    expect(e.vollstaendig).toBe(false);
+    expect(e.bereitsErledigt).toEqual([]);
+    expect(e.abgelehnt.map((z) => [z.koId, z.grund])).toEqual([[b.ko.a2, "ZIEL_NICHT_AKTIV"]]);
+    // Nichts geschrieben: genau ein Beleg für A2.
+    const belege = (await b.services.audit.list()).filter(
+      (x) => x.action === "ko.ownership" && x.target === b.ko.a2,
+    );
+    expect(belege).toHaveLength(1);
+
+    const ungeklaert = await b.app.inject({
+      method: "GET",
+      url: "/api/verantwortung/ungeklaert",
+      headers: b.k.admin,
+    });
+    expect(ungeklaert.json().personen).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: b.ids.nora, zugang: "abgelaufen", anzahl: 1 }),
+      ]),
+    );
+    const neu = await post(b, "/api/verantwortung/uebergabe", {
+      von: b.ids.nora,
+      zuteilung: [{ koId: b.ko.a2, an: b.ids.otto }],
+    });
+    expect(neu.statusCode, neu.body).toBe(200);
+    expect(await verantwortlich(b, b.ko.a2)).toBe(b.ids.otto);
+  });
+});
+
+describe("Nacharbeit 2 · K5 — wiederherstellbarer Bestand im Papierkorb", () => {
+  it("Papierkorb zählt zum Bestand, sperrt das Löschen und wird mit übergeben; nach Wiederherstellung trägt der Nachfolger", async () => {
+    const b = await buehne();
+    await b.services.ko.delete(b.ko.a4, b.ids.ada);
+    expect(await b.services.ko.get(b.ko.a4), "A4 liegt im Papierkorb").toBeUndefined();
+
+    const bestand = await bestandVon(b, b.ids.paula);
+    expect(bestand.anzahl).toBe(5);
+    expect(bestand.beitraege.find((z) => z.koId === b.ko.a4)?.imPapierkorb).toBe(true);
+
+    // Alle LEBENDEN Beiträge übergeben — es bleibt nur der Papierkorb.
+    const lebend = aufteilung(b).filter((z) => z.koId !== b.ko.a4);
+    const teil = await post(b, "/api/verantwortung/uebergabe", {
+      von: b.ids.paula,
+      zuteilung: lebend,
+    });
+    expect(teil.statusCode, teil.body).toBe(200);
+    expect((teil.json() as Ergebnis).verbleibt).toBe(1);
+    const loeschen = await b.app.inject({
+      method: "DELETE",
+      url: `/api/users/${b.ids.paula}`,
+      headers: b.k.admin,
+    });
+    expect(loeschen.statusCode, loeschen.body).toBe(409);
+    expect(loeschen.json()).toMatchObject({ error: "BESTAND_OFFEN", verbleibt: 1 });
+
+    const rest = await post(b, "/api/verantwortung/uebergabe", {
+      von: b.ids.paula,
+      zuteilung: [{ koId: b.ko.a4, an: b.ids.otto }],
+    });
+    expect(rest.statusCode, rest.body).toBe(200);
+    const beleg = (await b.services.audit.list()).find(
+      (x) => x.action === "ko.ownership" && x.target === b.ko.a4,
+    );
+    expect(beleg?.payload).toMatchObject({ owner: b.ids.otto, imPapierkorb: true });
+
+    const jetzt = await b.app.inject({
+      method: "DELETE",
+      url: `/api/users/${b.ids.paula}`,
+      headers: b.k.admin,
+    });
+    expect(jetzt.statusCode, jetzt.body).toBe(204);
+
+    await b.services.ko.restore(b.ko.a4, b.ids.ada);
+    const zurueck = await b.services.ko.get(b.ko.a4);
+    expect(zurueck?.ownership?.owner).toBe(b.ids.otto);
+    expect(zurueck?.author, "die Autorschaft bleibt").toBe(b.ids.paula);
+  });
+});

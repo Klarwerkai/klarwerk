@@ -172,13 +172,26 @@ function Arbeitsflaeche({
   const nameVon = (id: string): string =>
     b.ziele.find((z) => z.id === id)?.name ?? t("uebergabe.unbekannt");
   const unzugeteilt = b.beitraege.filter((z) => !plan.has(z.koId)).map((z) => z.koId);
+  // Nacharbeit 2 (Ben K2): wählbar ist nur, wer für JEDEN Beitrag des Pakets zulässig ist — das
+  // Paket sind die angehakten Beiträge, ohne Auswahl alle noch nicht zugeteilten. Die Zulässigkeit
+  // je Beitrag urteilt der Server (`zulaessig`); er prüft bei Vorschau und Ausführung erneut.
+  const zulaessigFuer = (ids: readonly string[]) =>
+    b.ziele.filter((k) =>
+      ids.every((id) => b.beitraege.find((z) => z.koId === id)?.zulaessig.includes(k.id) ?? false),
+    );
+  const paket = auswahl.size > 0 ? [...auswahl] : unzugeteilt;
+  const angeboten = zulaessigFuer(paket);
+  // Eine Wahl, die für das jetzige Paket nicht (mehr) zulässig ist, gilt nicht.
+  const gewaehlt = angeboten.some((k) => k.id === ziel) ? ziel : "";
+  const restZulaessig =
+    gewaehlt !== "" && zulaessigFuer(unzugeteilt).some((k) => k.id === gewaehlt);
   const zuteilen = (ids: readonly string[]): void => {
-    if (!ziel || ids.length === 0) {
+    if (!gewaehlt || ids.length === 0) {
       return;
     }
     const naechster = new Map(plan);
     for (const id of ids) {
-      naechster.set(id, ziel);
+      naechster.set(id, gewaehlt);
     }
     planSetzen(naechster);
     setAuswahl(new Set());
@@ -222,6 +235,7 @@ function Arbeitsflaeche({
             const unbekannt = t("uebergabe.unbekannt");
             const angaben = [
               z.status,
+              z.imPapierkorb ? t("uebergabe.papierkorb") : null,
               z.spaceName,
               t("uebergabe.autor", { name: z.autor.name ?? unbekannt }),
               t("uebergabe.ursprung", { name: z.ursprungsautor.name ?? unbekannt }),
@@ -280,16 +294,20 @@ function Arbeitsflaeche({
         <div className="flex flex-wrap items-center gap-2">
           {b.ziele.length === 0 ? (
             <p className="text-[12px] text-muted-2">{t("uebergabe.keinZiel")}</p>
+          ) : angeboten.length === 0 ? (
+            <p className="text-[12px] text-muted-2" data-testid="verantwortung-kein-gemeinsames">
+              {t("uebergabe.keinGemeinsamesZiel")}
+            </p>
           ) : (
             <select
               data-testid="verantwortung-ziel"
               aria-label={t("uebergabe.ziel")}
-              value={ziel}
+              value={gewaehlt}
               onChange={(e) => setZiel(e.target.value)}
               className="h-9 rounded-input border border-hairline bg-surface px-2 text-[13px]"
             >
               <option value="">{t("uebergabe.zielWaehlen")}</option>
-              {b.ziele.map((k) => (
+              {angeboten.map((k) => (
                 <option key={k.id} value={k.id}>
                   {k.name}
                 </option>
@@ -299,7 +317,7 @@ function Arbeitsflaeche({
           <Button
             variant="ghost"
             data-testid="verantwortung-zuteilen"
-            disabled={!ziel || auswahl.size === 0}
+            disabled={!gewaehlt || auswahl.size === 0}
             onClick={() => zuteilen([...auswahl])}
           >
             {t("uebergabe.auswahlZuteilen", { anzahl: auswahl.size })}
@@ -307,7 +325,7 @@ function Arbeitsflaeche({
           <Button
             variant="ghost"
             data-testid="verantwortung-rest"
-            disabled={!ziel || unzugeteilt.length === 0}
+            disabled={!restZulaessig || unzugeteilt.length === 0}
             onClick={() => zuteilen(unzugeteilt)}
           >
             {t("uebergabe.restZuteilen")}

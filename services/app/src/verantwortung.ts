@@ -34,24 +34,32 @@ export const UEBERGABE_HOECHSTZAHL = 1_000;
 
 /**
  * Der Zugangsstand eines Kontos, so wie die Anmeldung ihn auslegt:
- *   · `aktiv`      — freigegeben und nicht abgelaufen,
+ *   · `aktiv`      — freigegeben, ohne Ende,
+ *   · `befristet`  — freigegeben, der Zugang endet aber zu einem festgesetzten Zeitpunkt,
  *   · `abgelaufen` — Befristung erreicht; das ist auch die DEAKTIVIERUNG dieses Auftrags
  *                    (Zugang sofort beenden, „Befristung beenden" öffnet ihn wieder),
  *   · `gesperrt`   — nicht (mehr) freigegeben,
  *   · `geloescht`  — die Kennung nennt kein Konto mehr.
+ *
+ * WARUM `befristet` NICHT `aktiv` IST (Nacharbeit 2, Ben K5): ein befristeter Zugang endet ohne
+ * weiteres Zutun. Trüge ein solches Konto Hauptverantwortung, läge der Beitrag nach dem Fristablauf
+ * bei einer inaktiven Person. Deshalb ist es kein zulässiger Nachfolger, eigener Bestand eines
+ * befristeten Kontos gilt schon VOR dem Ablauf als zu klären (`…/ungeklaert`), und eine Befristung
+ * lässt sich nur setzen, wenn das Konto keinen Bestand mehr trägt (`kontoendeSperre`).
  */
-export type Zugangsstand = "aktiv" | "abgelaufen" | "gesperrt" | "geloescht";
+export type Zugangsstand = "aktiv" | "befristet" | "abgelaufen" | "gesperrt" | "geloescht";
 
 /**
- * Ist dieser Ablaufwert erreicht? Ein unlesbarer Wert sperrt niemanden aus — dieselbe Nachsicht wie
- * `AuthService.zugangAbgelaufen`. Schreibend lässt `setAccessExpiry` ohnehin nur lesbare Werte herein.
+ * Der Ablaufzeitpunkt — oder `undefined`, wenn der Zugang nie endet. Ein unlesbarer Wert sperrt
+ * niemanden aus — dieselbe Nachsicht wie `AuthService.zugangAbgelaufen`. Schreibend lässt
+ * `setAccessExpiry` ohnehin nur lesbare Werte herein.
  */
-function abgelaufen(wert: string | undefined, jetzt: number): boolean {
+function ablauf(wert: string | undefined): number | undefined {
   if (wert === undefined) {
-    return false;
+    return undefined;
   }
   const zeitpunkt = Date.parse(wert);
-  return !Number.isNaN(zeitpunkt) && zeitpunkt <= jetzt;
+  return Number.isNaN(zeitpunkt) ? undefined : zeitpunkt;
 }
 
 export function zugangsstand(konto: PublicUser | undefined, jetzt: number): Zugangsstand {
@@ -61,7 +69,11 @@ export function zugangsstand(konto: PublicUser | undefined, jetzt: number): Zuga
   if (!konto.approved) {
     return "gesperrt";
   }
-  return abgelaufen(konto.accessExpiresAt, jetzt) ? "abgelaufen" : "aktiv";
+  const ende = ablauf(konto.accessExpiresAt);
+  if (ende === undefined) {
+    return "aktiv";
+  }
+  return ende <= jetzt ? "abgelaufen" : "befristet";
 }
 
 /** Die Sicht eines beliebigen Kontos — so, wie `makeGuards` sie für dessen Anfrage bilden würde. */
@@ -88,6 +100,7 @@ export type Ablehnung =
   | "ZIEL_IST_PERSON"
   | "ZIEL_UNBEKANNT"
   | "ZIEL_NICHT_AKTIV"
+  | "ZIEL_BEFRISTET"
   | "ZIEL_OHNE_SCHREIBRECHT"
   | "ZIEL_SIEHT_BEITRAG_NICHT";
 
@@ -98,6 +111,8 @@ export const ABLEHNUNGSTEXT: Record<Ablehnung, string> = {
   ZIEL_IST_PERSON: "Nachfolger und bisherige Person sind dasselbe Konto.",
   ZIEL_UNBEKANNT: "Das gewählte Konto gibt es nicht.",
   ZIEL_NICHT_AKTIV: "Das gewählte Konto ist nicht aktiv (gesperrt oder abgelaufen).",
+  ZIEL_BEFRISTET:
+    "Der Zugang des gewählten Kontos ist befristet und endet von selbst — es kann keine Hauptverantwortung übernehmen.",
   ZIEL_OHNE_SCHREIBRECHT:
     "Das gewählte Konto darf kein Wissen bearbeiten und kann keine Verantwortung tragen.",
   ZIEL_SIEHT_BEITRAG_NICHT:
@@ -110,10 +125,58 @@ export type Urteil =
   | { art: "abgelehnt"; grund: Ablehnung };
 
 /**
+ * Darf dieses Konto die Hauptverantwortung für DIESEN Beitrag tragen? `null` heisst ja, sonst der
+ * Grund. Dieselbe Frage stellen Bestand (Auswahlliste je Beitrag), Vorschau und Ausführung.
+ */
+export function zielGrund(
+  ko: KnowledgeObject,
+  ziel: PublicUser | undefined,
+  spaces: readonly SpaceFassung[],
+  jetzt: number,
+): Ablehnung | null {
+  if (!ziel) {
+    return "ZIEL_UNBEKANNT";
+  }
+  const zugang = zugangsstand(ziel, jetzt);
+  if (zugang === "befristet") {
+    return "ZIEL_BEFRISTET";
+  }
+  if (zugang !== "aktiv") {
+    return "ZIEL_NICHT_AKTIV";
+  }
+  if (!can(ziel.role, "ko.create")) {
+    return "ZIEL_OHNE_SCHREIBRECHT";
+  }
+  if (!darfSehen(sitzungVon(ziel, spaces), ko)) {
+    return "ZIEL_SIEHT_BEITRAG_NICHT";
+  }
+  return null;
+}
+
+/** Die Konten, die für diesen Beitrag als Nachfolger zulässig sind — ohne die bisherige Person. */
+export function zulaessigeZiele(
+  ko: KnowledgeObject,
+  von: string,
+  konten: readonly PublicUser[],
+  spaces: readonly SpaceFassung[],
+  jetzt: number,
+): string[] {
+  return konten
+    .filter((k) => k.id !== von && zielGrund(ko, k, spaces, jetzt) === null)
+    .map((k) => k.id);
+}
+
+/**
  * Das Urteil über EINE Zuteilung — für Vorschau und Ausführung dasselbe, jeweils neu gefällt.
  *
- * `erledigt` heisst: der Nachfolger IST schon verantwortlich. So wird eine Wiederholung nach einem
- * Teilfehler nie doppelt geschrieben und nie als Fehler gemeldet.
+ * `erledigt` heisst: der Nachfolger IST schon verantwortlich UND darf es heute noch sein. So wird
+ * eine Wiederholung nach einem Teilfehler nie doppelt geschrieben und nie als Fehler gemeldet.
+ *
+ * Nacharbeit 2 (Ben): die Zielprüfung steht VOR „erledigt". Ist ein schon eingetragener Nachfolger
+ * inzwischen abgelaufen, gesperrt, befristet oder ohne Leserecht, ist die Zeile nicht erledigt,
+ * sondern abgelehnt — die Übergabe meldet sich unvollständig, und der Beitrag erscheint als
+ * ungeklärter Bestand dieses Nachfolgers, der neu zugeteilt werden muss. Geschrieben wird dabei
+ * nichts, also auch nichts doppelt.
  */
 export function beurteile(
   ko: KnowledgeObject | undefined,
@@ -129,24 +192,16 @@ export function beurteile(
   if (zielId === von) {
     return { art: "abgelehnt", grund: "ZIEL_IST_PERSON" };
   }
+  const grund = zielGrund(ko, ziel, spaces, jetzt);
+  if (grund !== null) {
+    return { art: "abgelehnt", grund };
+  }
   const verantwortlich = responsibleOf(ko);
   if (verantwortlich === zielId) {
     return { art: "erledigt" };
   }
   if (verantwortlich !== von) {
     return { art: "abgelehnt", grund: "NICHT_MEHR_BEI_PERSON" };
-  }
-  if (!ziel) {
-    return { art: "abgelehnt", grund: "ZIEL_UNBEKANNT" };
-  }
-  if (zugangsstand(ziel, jetzt) !== "aktiv") {
-    return { art: "abgelehnt", grund: "ZIEL_NICHT_AKTIV" };
-  }
-  if (!can(ziel.role, "ko.create")) {
-    return { art: "abgelehnt", grund: "ZIEL_OHNE_SCHREIBRECHT" };
-  }
-  if (!darfSehen(sitzungVon(ziel, spaces), ko)) {
-    return { art: "abgelehnt", grund: "ZIEL_SIEHT_BEITRAG_NICHT" };
   }
   return { art: "bereit" };
 }

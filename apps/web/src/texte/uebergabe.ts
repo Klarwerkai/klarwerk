@@ -20,6 +20,10 @@ export default {
     "uebergabe.nichtEinsehbar":
       "Davon darfst du {{anzahl}} nicht lesen — sie erscheinen nur mit Space und Status.",
     "uebergabe.zugang.aktiv": "Zugang aktiv",
+    "uebergabe.zugang.befristet": "Zugang befristet — endet von selbst",
+    "uebergabe.keinGemeinsamesZiel":
+      "Für diese Beiträge gibt es keinen gemeinsam zulässigen Nachfolger. Bitte kleinere Pakete bilden.",
+    "uebergabe.papierkorb": "im Papierkorb",
     "uebergabe.zugang.abgelaufen": "Zugang beendet",
     "uebergabe.zugang.gesperrt": "Konto nicht freigegeben",
     "uebergabe.zugang.geloescht": "Konto gelöscht",
@@ -79,6 +83,10 @@ export default {
     "uebergabe.nichtEinsehbar":
       "You may not read {{anzahl}} of them — they appear only with space and status.",
     "uebergabe.zugang.aktiv": "Access active",
+    "uebergabe.zugang.befristet": "Access time-limited — ends by itself",
+    "uebergabe.keinGemeinsamesZiel":
+      "There is no successor permitted for all of these contributions. Please form smaller packages.",
+    "uebergabe.papierkorb": "in the recycle bin",
     "uebergabe.zugang.abgelaufen": "Access ended",
     "uebergabe.zugang.gesperrt": "Account not approved",
     "uebergabe.zugang.geloescht": "Account deleted",
@@ -138,6 +146,10 @@ export default {
     "uebergabe.nichtEinsehbar":
       "{{anzahl}} daarvan mag je niet lezen — die verschijnen alleen met space en status.",
     "uebergabe.zugang.aktiv": "Toegang actief",
+    "uebergabe.zugang.befristet": "Toegang tijdelijk — eindigt vanzelf",
+    "uebergabe.keinGemeinsamesZiel":
+      "Er is geen opvolger die voor al deze bijdragen is toegestaan. Vorm kleinere pakketten.",
+    "uebergabe.papierkorb": "in de prullenbak",
     "uebergabe.zugang.abgelaufen": "Toegang beëindigd",
     "uebergabe.zugang.gesperrt": "Account niet vrijgegeven",
     "uebergabe.zugang.geloescht": "Account verwijderd",

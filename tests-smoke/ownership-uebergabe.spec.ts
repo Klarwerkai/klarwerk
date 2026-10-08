@@ -51,10 +51,11 @@ async function beitragFuer(
   request: APIRequestContext,
   titel: string,
   owner: string,
+  stufe = "intern",
 ): Promise<{ id: string; version: number; author: string }> {
   const angelegt = await request.post("/api/kos", {
     data: {
-      confidentiality: "intern",
+      confidentiality: stufe,
       title: titel,
       statement: `${titel} wird vor jeder Schicht geprüft.`,
       type: "best_practice",
@@ -262,5 +263,40 @@ test.describe("Hauptverantwortung übergeben · der Weg in der echten App", () =
     await expect(ergebnis).toHaveAttribute("data-vollstaendig", "ja", { timeout: 15_000 });
     await expect(ergebnis).toContainText("1 Beiträge übertragen");
     expect((await verantwortlich(page.request, k2.id)).ownership?.owner).toBe(nora);
+  });
+
+  // Nacharbeit 2 (Ben K2): die Auswahlliste bietet für ein Paket nur an, wer JEDEN seiner Beiträge
+  // übernehmen darf — hier fehlt Nora, sobald ein vertraulicher Beitrag im Paket ist.
+  test("K2: die Nachfolgerauswahl gilt für das angehakte Paket", async ({ page }) => {
+    await ensureLoggedIn(page);
+    const m = marke();
+    const noraName = `Nora ${m}`;
+    const ottoName = `Otto ${m}`;
+    const paulaMail = `paula-${m}@uebergabe.test`;
+    const paula = await kontoAnlegen(page.request, `Paula ${m}`, paulaMail, "experte");
+    await kontoAnlegen(page.request, noraName, `nora-${m}@uebergabe.test`, "experte");
+    await kontoAnlegen(page.request, ottoName, `otto-${m}@uebergabe.test`, "controller");
+    const intern = await beitragFuer(page.request, `Messuhr ${m}`, paula);
+    const geheim = await beitragFuer(page.request, `Prüflabor ${m}`, paula, "vertraulich");
+
+    await karteOeffnen(page, paula);
+    const zeile = (id: string) =>
+      page
+        .locator(`[data-testid="verantwortung-zeile"][data-ko="${id}"]`)
+        .getByTestId("verantwortung-auswahl");
+    const zielwahl = page.getByTestId("verantwortung-ziel");
+
+    await zeile(geheim.id).check();
+    await expect(zielwahl).toContainText(ottoName);
+    await expect(zielwahl).not.toContainText(noraName);
+
+    await zeile(geheim.id).uncheck();
+    await zeile(intern.id).check();
+    await expect(zielwahl).toContainText(noraName);
+    await expect(zielwahl).toContainText(ottoName);
+    await test.info().attach("auswahl-je-paket", {
+      body: await page.getByTestId("verantwortung-flaeche").screenshot(),
+      contentType: "image/png",
+    });
   });
 });

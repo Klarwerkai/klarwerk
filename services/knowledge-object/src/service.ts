@@ -3340,6 +3340,73 @@ export class KoService {
   }
 
   // ==============================================================================================
+  // produkt:20261007:ownership-uebergabe — DERSELBE EIGENTUMSGEBER, AUCH IM PAPIERKORB.
+  // ==============================================================================================
+  //
+  // `restore` übernimmt die Verantwortung unverändert. Läge sie bei einer Person, die das Haus
+  // verlassen hat, käme der Beitrag ohne aktive Hauptverantwortung zurück. Die Übergabe muss deshalb
+  // auch wiederherstellbaren Bestand erreichen — `setOwnership` geht über `require` und kennt den
+  // Papierkorb bewusst nicht. Dieser Weg ändert AUSSCHLIESSLICH `ownership`: Papierkorbvermerk,
+  // Fassung und Historie bleiben, wie sie sind. Ein Objekt, das NICHT (mehr) im Papierkorb liegt,
+  // geht über den regulären `setOwnership`. Dieselbe Normalform, derselbe Beleg `ko.ownership`.
+  async setOwnershipImPapierkorb(
+    id: string,
+    value: unknown,
+    actor: string,
+  ): Promise<KnowledgeObject> {
+    const vorab = await this.repo.findById(id);
+    if (!vorab?.deletedAt) {
+      return this.setOwnership(id, value, actor);
+    }
+    const next = normalizeOwnership(value);
+    if (!next) {
+      throw new KoError(
+        "INVALID_OWNERSHIP",
+        "Ungültige Eigentümerangabe — erwartet werden owner, reviewers oder validators.",
+      );
+    }
+    return this.withKoLock(id, async () => {
+      const ko = await this.repo.findById(id);
+      if (!ko) {
+        throw new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+      }
+      const previous = ownershipOf(ko);
+      const updated: KnowledgeObject = { ...ko, ownership: next };
+      await this.schreibeMitBeleg(
+        (tx) => this.repo.update(updated, tx),
+        async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.ownership",
+              target: id,
+              payload: {
+                owner: next.owner ?? null,
+                reviewers: next.reviewers,
+                validators: next.validators,
+                previousOwner: previous?.owner ?? null,
+                imPapierkorb: Boolean(ko.deletedAt),
+              },
+            },
+            tx,
+          );
+        },
+        () => this.rollbackKo(ko),
+      );
+      return updated;
+    });
+  }
+
+  /**
+   * produkt:20261007:ownership-uebergabe — der GANZE Bestand einschliesslich wiederherstellbarer
+   * Objekte im Papierkorb. Nur für die Frage „wer trägt die Verantwortung für was" — ein
+   * Leseweg für Inhalte ist das nicht (dort gilt weiterhin `list`/`get`).
+   */
+  async listEinschliesslichPapierkorb(): Promise<KnowledgeObject[]> {
+    return this.lesefassungen(await this.repo.list({}));
+  }
+
+  // ==============================================================================================
   // JOB 557 — DIE FORTSCHREIBUNG AUS TATSÄCHLICHEN EREIGNISSEN.
   // ==============================================================================================
   //

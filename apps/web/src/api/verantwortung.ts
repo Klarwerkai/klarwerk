@@ -5,7 +5,7 @@
 import type { Role } from "../app/navigation";
 import { api } from "./client";
 
-export type Zugangsstand = "aktiv" | "abgelaufen" | "gesperrt" | "geloescht";
+export type Zugangsstand = "aktiv" | "befristet" | "abgelaufen" | "gesperrt" | "geloescht";
 
 export interface VerantwortungPerson {
   id: string;
@@ -32,6 +32,10 @@ export interface Bestandszeile {
   autor: { id: string; name: string | null };
   ursprungsautor: { id: string; name: string | null };
   mitwirkende: number;
+  /** Wiederherstellbar im Papierkorb — gehört trotzdem zum zu übergebenden Bestand. */
+  imPapierkorb: boolean;
+  /** Die Konten, die GENAU DIESEN Beitrag übernehmen dürfen (vom Server geurteilt). */
+  zulaessig: string[];
 }
 
 export interface Bestand {

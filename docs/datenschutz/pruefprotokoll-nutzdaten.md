@@ -47,7 +47,7 @@ wiederholt.
 | `ko.create-rollback-failed` | `at`, `failedStep`, `rollbackFailure` (nur Fehlerklasse/-code), `marked`, `koRemoved`, `searchProjection*` | Z, M |
 | `ko.change-rolled-back` | Nutzlast des zurückgenommenen Schritts + `rolledBackSeqs` | wie Ursprung, K |
 | `ko.confidentiality` | `level`, `previous`, `downgrade` | Z |
-| `ko.ownership` | `owner`, `reviewers`, `validators`, `previousOwner` | K (Nutzer-Ids) |
+| `ko.ownership` | `owner`, `reviewers`, `validators`, `previousOwner`; bei Übergabe im Papierkorb zusätzlich `imPapierkorb` | K (Nutzer-Ids), Z |
 | `ko.ownership-role` | `role`, `added` | K |
 | `ko.purged` | `reason` (geschlossene Menge) + Zusatz des Aufrufers | Z |
 | `ko.restored`, `ko.deleted` | `trash` / leer + Beitrag | Z |

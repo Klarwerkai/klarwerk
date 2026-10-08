@@ -24,8 +24,13 @@
 // (`user.access-expiry-set`), Sperre beim nächsten Aufruf — und den Weg zurück („Befristung
 // beenden" in der Kontokarte). Ein zweiter Sperrbegriff neben Freigabe und Befristung entsteht nicht.
 //
-// UND LÖSCHEN: `kontoendeSperre` (unten) hält `DELETE /api/users/:id` und `DELETE /api/auth/users/:id`
-// an, solange das Konto noch Hauptverantwortung trägt — sonst entstünden Beiträge ohne Verantwortung.
+// UND LÖSCHEN UND BEFRISTEN: `kontoendeSperre` (unten) hält `DELETE /api/users/:id`,
+// `DELETE /api/auth/users/:id` und das Setzen einer Befristung über `PUT /api/users/:id` an, solange
+// das Konto noch Hauptverantwortung trägt — sonst entstünden Beiträge ohne Verantwortung, beim
+// Befristen eben erst mit dem Fristablauf (Nacharbeit 2, Ben K5).
+//
+// DER BESTAND schliesst wiederherstellbare Beiträge im Papierkorb ein (Nacharbeit 2, Ben K5):
+// `restore` übernimmt die Verantwortung unverändert, also muss auch sie übergeben sein.
 //
 // SICHTBARKEIT: Titel stehen nur bei Beiträgen, die der Handelnde nach `darfSehen` lesen darf. Bei
 // den übrigen (etwa in einem geschlossenen Space) sieht die Kontoverwaltung Kennung, Space und
@@ -56,6 +61,7 @@ import {
   pruefePerson,
   pruefeZuteilungen,
   zugangsstand,
+  zulaessigeZiele,
 } from "../verantwortung";
 
 export interface VerantwortungDienste {
@@ -133,7 +139,7 @@ export function verantwortungRoutes(
     const [konten, spaces, bestand] = await Promise.all([
       dienste.auth.listUsers(),
       dienste.spaces.aktuelle(),
-      dienste.ko.list({}),
+      dienste.ko.listEinschliesslichPapierkorb(),
     ]);
     return { konten, spaces, bestand, zeit: jetzt() };
   }
@@ -212,7 +218,12 @@ export function verantwortungRoutes(
         bereit.push(zeile);
       } else {
         try {
-          await dienste.ko.setOwnership(koId, mitNeuemOwner(ko, an), user.id);
+          const wert = mitNeuemOwner(ko, an);
+          // Ein Beitrag im Papierkorb geht über den Papierkorbweg — sonst bliebe er nach der
+          // Wiederherstellung bei der bisherigen Person.
+          await (ko.deletedAt
+            ? dienste.ko.setOwnershipImPapierkorb(koId, wert, user.id)
+            : dienste.ko.setOwnership(koId, wert, user.id));
           ergebnis.uebertragen.push(zeile);
         } catch (e) {
           log.error({ err: e, koId }, "Verantwortungsübergabe: Beitrag nicht gespeichert");
@@ -296,6 +307,12 @@ export function verantwortungRoutes(
             autor: { id: ko.author, name: name(ko.author, konten) },
             ursprungsautor: { id: ko.originalAuthor, name: name(ko.originalAuthor, konten) },
             mitwirkende: (own?.reviewers.length ?? 0) + (own?.validators.length ?? 0),
+            imPapierkorb: Boolean(ko.deletedAt),
+            // Nacharbeit 2 (Ben K2): die Nachfolger, die GENAU DIESEN Beitrag übernehmen dürfen
+            // (aktiv, unbefristet, Bearbeitungsrecht, Leserecht am Beitrag). Die Oberfläche bietet
+            // für ein Paket nur an, wer für jeden seiner Beiträge hier steht; die Ausführung prüft
+            // trotzdem jede Zeile neu.
+            zulaessig: zulaessigeZiele(ko, von, konten, spaces, zeit),
           };
         })
         .sort((a, b) => (a.titel ?? "￿").localeCompare(b.titel ?? "￿"));
@@ -404,7 +421,7 @@ export function verantwortungRoutes(
         const uebergabe = mitZuteilung
           ? await fuehreAus(user, von, pruefeZuteilungen(b.zuteilung), true, request.log)
           : null;
-        const verbleibt = bestandVon(von, await dienste.ko.list({})).length;
+        const verbleibt = bestandVon(von, await dienste.ko.listEinschliesslichPapierkorb()).length;
         if (verbleibt > 0) {
           reply.code(409).send({
             error: "BESTAND_OFFEN",
@@ -415,8 +432,9 @@ export function verantwortungRoutes(
           return;
         }
         // Schon ohne Zugang (abgelaufen/gesperrt): nichts zu beenden — eine Wiederholung ist kein
-        // Fehler und schreibt keinen zweiten Vermerk.
-        if (zugangsstand(konto, jetzt()) !== "aktiv") {
+        // Fehler und schreibt keinen zweiten Vermerk. Ein BEFRISTETES Konto endet hier sofort.
+        const zugang = zugangsstand(konto, jetzt());
+        if (zugang === "abgelaufen" || zugang === "gesperrt") {
           reply.code(200).send({
             konto: person(von, [konto], jetzt()),
             bereitsInaktiv: true,
@@ -442,12 +460,17 @@ export function verantwortungRoutes(
 }
 
 /**
- * Hält das LÖSCHEN eines Kontos an, solange es noch Hauptverantwortung trägt.
+ * Hält jedes KONTOENDE an, solange das Konto noch Hauptverantwortung trägt:
+ *   · das Löschen (`DELETE /api/users/:id`, `DELETE /api/auth/users/:id`) und
+ *   · das Setzen einer Befristung (`PUT /api/users/:id` mit `accessExpiresAt` als Zeitpunkt) — sie
+ *     beendet den Zugang mit dem Fristablauf von selbst (Nacharbeit 2, Ben K5). Das NEHMEN einer
+ *     Befristung (`null`) und jede andere Kontoänderung bleiben frei.
+ * Gezählt wird der ganze Bestand einschliesslich des wiederherstellbaren Papierkorbs.
  *
  * Als Hook an der Wurzel und nicht in den Kontorouten selbst: die Routen in `services/auth` kennen
- * keine Wissensobjekte (Modulgrenze), und dieselbe Frage gilt für beide Löschwege. Er greift nur für
- * eine angemeldete Kontoverwaltung — jeder andere bekommt unverändert die Absage der Route, ohne
- * dass hier etwas über den Bestand verraten wird.
+ * keine Wissensobjekte (Modulgrenze). Er greift nur für eine angemeldete Kontoverwaltung — jeder
+ * andere bekommt unverändert die Absage der Route, ohne dass hier etwas über den Bestand verraten
+ * wird.
  */
 export function kontoendeSperre(
   app: FastifyInstance,
@@ -455,7 +478,13 @@ export function kontoendeSperre(
 ): void {
   const LOESCHWEGE = new Set(["/api/users/:id", "/api/auth/users/:id"]);
   app.addHook("preHandler", async (request, reply) => {
-    if (request.method !== "DELETE" || !LOESCHWEGE.has(request.routeOptions.url ?? "")) {
+    const pfad = request.routeOptions.url ?? "";
+    const loeschen = request.method === "DELETE" && LOESCHWEGE.has(pfad);
+    const rumpf = (request.body ?? {}) as { accessExpiresAt?: unknown };
+    const ende = rumpf.accessExpiresAt;
+    const befristen =
+      request.method === "PUT" && pfad === "/api/users/:id" && typeof ende === "string";
+    if (!loeschen && !befristen) {
       return;
     }
     const token = tokenFromRequest(request);
@@ -467,12 +496,15 @@ export function kontoendeSperre(
     if (typeof id !== "string") {
       return;
     }
-    const verbleibt = (await dienste.ko.list({})).filter((ko) => responsibleOf(ko) === id).length;
+    const bestand = await dienste.ko.listEinschliesslichPapierkorb();
+    const verbleibt = bestand.filter((ko) => responsibleOf(ko) === id).length;
     if (verbleibt > 0) {
-      // `return reply` beendet die Anfrage hier — der Löschhandler läuft danach nicht mehr.
+      // `return reply` beendet die Anfrage hier — der Handler der Route läuft danach nicht mehr.
       reply.code(409).send({
         error: "BESTAND_OFFEN",
-        message: `Das Konto ist noch für ${verbleibt} Beiträge hauptverantwortlich. Bitte zuerst übergeben.`,
+        message: befristen
+          ? `Das Konto ist noch für ${verbleibt} Beiträge hauptverantwortlich. Eine Befristung beendet den Zugang von selbst — bitte zuerst übergeben. Es wurde nichts geändert.`
+          : `Das Konto ist noch für ${verbleibt} Beiträge hauptverantwortlich. Bitte zuerst übergeben.`,
         verbleibt,
       });
       return reply;
