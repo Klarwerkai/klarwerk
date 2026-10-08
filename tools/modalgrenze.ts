@@ -948,24 +948,29 @@ function importierterNamensraum(
 }
 
 /**
- * Nacharbeit 15 (ben): kann ein berechneter Schlüssel `[k]` die Eigenschaft `role` sein?
- * `rolle`: er ist es (auch nur möglicherweise, als einer von mehreren Werten). `keine-rolle`:
- * nachweislich nicht — bestimmter Wert, importierte Konstante oder ein Typ, der `role` ausschliesst
- * (`data-${string}`, Literal-Union ohne `role`). `unbestimmt`: alles andere — nie rollenfrei.
+ * Nacharbeit 15/16 (ben): kann ein berechneter Schlüssel `[k]` den Modalmarker `marker` treffen —
+ * `role`, `aria-modal` oder die Reflexion `ariaModal`? `trifft`: er ist es (auch nur
+ * möglicherweise, als einer von mehreren Werten). `trifft-nicht`: nachweislich nicht — bestimmter
+ * Wert, importierte Konstante oder ein Typ, der den Marker ausschliesst (`data-${string}`,
+ * Literal-Union ohne ihn). `unbestimmt`: alles andere — nie markerfrei.
  */
-type Schluesselurteil = "rolle" | "keine-rolle" | "unbestimmt";
+type Schluesselurteil = "trifft" | "trifft-nicht" | "unbestimmt";
+
+/** Die Modalmarker, die ein berechneter Props-Schlüssel setzen kann (Nacharbeit 16). */
+export const SCHLUESSEL_MARKER = ["role", "aria-modal", "ariaModal"] as const;
 
 function schluesselUrteil(
   ausdruck: ts.Expression,
   deklarationen: Deklarationen,
   umfeld: Modulumfeld | undefined,
+  marker: string,
 ): Schluesselurteil {
   const werte = statischeWerte(ausdruck, deklarationen);
-  if (werte.werte.some((w) => w.text === "role")) {
-    return "rolle";
+  if (werte.werte.some((w) => w.text === marker)) {
+    return "trifft";
   }
   if (werte.offen.length === 0) {
-    return "keine-rolle";
+    return "trifft-nicht";
   }
   if (!ts.isIdentifier(ausdruck)) {
     return "unbestimmt";
@@ -973,9 +978,9 @@ function schluesselUrteil(
   const lokal = sichtbareDeklarationen(deklarationen, ausdruck);
   if (lokal.length > 0) {
     const ausgeschlossen = lokal.every((d) =>
-      typSchliesstRolleAus(schluesselTyp(d, deklarationen), deklarationen, 0),
+      typSchliesstAus(schluesselTyp(d, deklarationen), deklarationen, marker, 0),
     );
-    return ausgeschlossen ? "keine-rolle" : "unbestimmt";
+    return ausgeschlossen ? "trifft-nicht" : "unbestimmt";
   }
   // Eine importierte Konstante (`D44_EDITOR_MARKE`) wird im Zielmodul ausgewertet.
   const ziel = importZiel(ausdruck, umfeld);
@@ -989,10 +994,10 @@ function schluesselUrteil(
     for (const d of s.declarationList.declarations) {
       if (ts.isIdentifier(d.name) && d.name.text === ziel.name && d.initializer) {
         const zielWerte = statischeWerte(d.initializer, sammleDeklarationen(ziel.quelle.ast));
-        if (zielWerte.werte.some((w) => w.text === "role")) {
-          return "rolle";
+        if (zielWerte.werte.some((w) => w.text === marker)) {
+          return "trifft";
         }
-        return zielWerte.offen.length === 0 ? "keine-rolle" : "unbestimmt";
+        return zielWerte.offen.length === 0 ? "trifft-nicht" : "unbestimmt";
       }
     }
   }
@@ -1010,34 +1015,35 @@ function schluesselTyp(d: ts.Node, deklarationen: Deklarationen): ts.TypeNode | 
   return undefined;
 }
 
-/** Schliesst dieser Typ den Wert `role` nachweislich aus? Ohne Typ: nein. */
-function typSchliesstRolleAus(
+/** Schliesst dieser Typ den Wert `marker` nachweislich aus? Ohne Typ: nein. */
+function typSchliesstAus(
   typ: ts.TypeNode | undefined,
   deklarationen: Deklarationen,
+  marker: string,
   tiefe: number,
 ): boolean {
   if (typ === undefined || tiefe > MAX_TIEFE) {
     return false;
   }
   if (ts.isParenthesizedTypeNode(typ)) {
-    return typSchliesstRolleAus(typ.type, deklarationen, tiefe + 1);
+    return typSchliesstAus(typ.type, deklarationen, marker, tiefe + 1);
   }
   if (ts.isUnionTypeNode(typ)) {
-    return typ.types.every((t) => typSchliesstRolleAus(t, deklarationen, tiefe + 1));
+    return typ.types.every((t) => typSchliesstAus(t, deklarationen, marker, tiefe + 1));
   }
   if (ts.isTemplateLiteralTypeNode(typ)) {
-    // `data-${string}`: jeder Wert beginnt mit `data-` — `role` nachweislich nicht.
-    return !"role".startsWith(typ.head.text);
+    // `data-${string}`: jeder Wert beginnt mit `data-` — kein Modalmarker tut das.
+    return !marker.startsWith(typ.head.text);
   }
   if (ts.isLiteralTypeNode(typ)) {
-    return istZeichenkettenLiteral(typ.literal) ? typ.literal.text !== "role" : true;
+    return istZeichenkettenLiteral(typ.literal) ? typ.literal.text !== marker : true;
   }
   if (typ.kind === ts.SyntaxKind.UndefinedKeyword || typ.kind === ts.SyntaxKind.NullKeyword) {
     return true;
   }
   if (ts.isTypeReferenceNode(typ) && ts.isIdentifier(typ.typeName)) {
     const alias = typNamen(deklarationen, typ.typeName.text).find(ts.isTypeAliasDeclaration);
-    return alias ? typSchliesstRolleAus(alias.type, deklarationen, tiefe + 1) : false;
+    return alias ? typSchliesstAus(alias.type, deklarationen, marker, tiefe + 1) : false;
   }
   return false;
 }
@@ -1316,13 +1322,18 @@ export function propsRolle(
       if (ts.isPropertyAssignment(eig) && eigenschaftsName(eig.name) === "role") {
         teile.push({ ...keineRolle(), bild: statischeWerte(eig.initializer, deklarationen) });
       }
-      // Nacharbeit 15: berechnete Schlüssel auch im direkten Aufruf.
+      // Nacharbeit 15/16: berechnete Schlüssel auch im direkten Aufruf — auf JEDEN Modalmarker.
+      // Ein bestimmter `aria-modal`-Schlüssel ist dort schon Kandidat (Eigenschaftsbesucher).
       if (ts.isPropertyAssignment(eig) && ts.isComputedPropertyName(eig.name)) {
-        const urteil = schluesselUrteil(eig.name.expression, deklarationen, umfeld);
-        if (urteil === "rolle") {
+        const name = eig.name;
+        const urteile = SCHLUESSEL_MARKER.map((m) =>
+          schluesselUrteil(name.expression, deklarationen, umfeld, m),
+        );
+        if (urteile[0] === "trifft") {
           teile.push({ ...keineRolle(), bild: statischeWerte(eig.initializer, deklarationen) });
-        } else if (urteil === "unbestimmt") {
-          teile.push(nichtAufloesbar(eig.name));
+        }
+        if (urteile.includes("unbestimmt")) {
+          teile.push(nichtAufloesbar(name));
         }
       }
       if (ts.isShorthandPropertyAssignment(eig) && eig.name.text === "role") {
@@ -1960,13 +1971,27 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
     // Nacharbeit 15 (ben): ein BERECHNETER Schlüssel (`{ ['ro' + 'le']: … }`, `{ [k]: … }`) wird
     // ausgewertet. Ist er `role`, gilt der Wert als Rolle; ist er nicht bestimmbar und nicht
     // nachweislich rollenfrei, ist das in einem Props-Objekt eine unbekannte Bauform.
+    // Nacharbeit 16 (ben): geprüft wird auf ALLE Modalmarker — `role`, `aria-modal` und die
+    // Reflexion `ariaModal`. `{ ['aria-' + 'modal']: true }` ist die Spread-Bauform von aria-modal.
     if (ts.isPropertyAssignment(node) && ts.isComputedPropertyName(node.name)) {
-      const urteil = schluesselUrteil(node.name.expression, deklarationen, umfeld);
-      if (urteil === "rolle") {
+      const name = node.name;
+      const [rolle, ariaModal, reflexion] = SCHLUESSEL_MARKER.map((m) =>
+        schluesselUrteil(name.expression, deklarationen, umfeld, m),
+      );
+      if (rolle === "trifft") {
         meldeRolle(node.initializer, istPropsObjekt(node.parent));
-      } else if (urteil === "unbestimmt" && istPropsObjekt(node.parent)) {
+      }
+      // Ein reines Literal (`["aria-modal"]`) erfassen schon die Zeichenkettenregeln oben.
+      const literal = istZeichenkettenLiteral(name.expression);
+      if (ariaModal === "trifft" && !literal) {
+        melde(name, "aria-modal-eigenschaft");
+      }
+      if (reflexion === "trifft" && !literal) {
+        melde(name, "aria-modal-reflexion");
+      }
+      if ([rolle, ariaModal, reflexion].includes("unbestimmt") && istPropsObjekt(node.parent)) {
         unbekannteBauformen.push(
-          `${quelle.datei}:${zeileVon(sf, node.name)} — berechneter Schlüssel „${node.name.getText(sf).slice(0, 60)}“ in Props ist statisch nicht bestimmbar: ob er eine Rolle setzt, kann dieser Sammler nicht beurteilen`,
+          `${quelle.datei}:${zeileVon(sf, name)} — berechneter Schlüssel „${name.getText(sf).slice(0, 60)}“ in Props ist statisch nicht bestimmbar: ob er role oder aria-modal setzt, kann dieser Sammler nicht beurteilen`,
         );
       }
     }

@@ -1216,6 +1216,38 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     expect(rot).toHaveLength(2);
   });
 
+  it("Nacharbeit 16: berechnete Schlüssel werden auf aria-modal und ariaModal geprüft", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Markiert.tsx": [
+          "type Marke = `data-${string}`;",
+          "export function F({ k, frei }: { k: Marke; frei: string }): JSX.Element {",
+          "  const p = { ['aria-' + 'modal']: true };",
+          "  return (",
+          "    <div>",
+          "      <div {...{ ['aria-' + 'modal']: 'true' }} />",
+          "      <div {...p} />",
+          "      <div {...{ ['aria' + 'Modal']: true }} />",
+          "      <div {...{ [k]: true }} />",
+          "      <div {...{ [frei]: true }} />",
+          "    </div>",
+          "  );",
+          "}",
+        ],
+      }),
+    );
+    const an = (stelle: string): string[] => rot.filter((z) => z.includes(stelle));
+    // bens Fall wörtlich: der zusammengesetzte Schlüssel ist aria-modal — ein Kandidat ohne Grenze.
+    expect(an("components/Markiert.tsx:6 — aria-modal-eigenschaft")).toHaveLength(1);
+    // Dasselbe hinter einer Zwischenvariable — am Objekt erfasst.
+    expect(an("components/Markiert.tsx:3 — aria-modal-eigenschaft")).toHaveLength(1);
+    expect(an("components/Markiert.tsx:8 — aria-modal-reflexion")).toHaveLength(1);
+    expect(an("components/Markiert.tsx:9"), "data-${string} trifft keinen Modalmarker").toEqual([]);
+    expect(an("components/Markiert.tsx:10")[0]).toContain("ob er role oder aria-modal setzt");
+    expect(rot).toHaveLength(4);
+  });
+
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
     const { rot } = pruefeModalgrenze(
       legeBaum({
