@@ -1,12 +1,14 @@
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import type { AuditService } from "../../../audit";
 import { meldung, sprache } from "../../../auth";
-import type {
-  ConflictInput,
-  ConflictService,
-  ConflictType,
-  OverlapService,
-  OverlapSettingsRepo,
+import {
+  type ConflictInput,
+  type ConflictService,
+  type ConflictType,
+  type OverlapService,
+  type OverlapSettingsRepo,
+  isConflictWorkKind,
+  isVorrangWahl,
 } from "../../../conflicts";
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE_STAGE,
@@ -431,6 +433,8 @@ type KoAktion =
   | "tags"
   // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet am Objekt setzen, ändern oder entfernen.
   | "domain"
+  // R-1632 / R-1633: die Geltung (Konzern/Werk/Schicht, optional Rolle) setzen oder entfernen.
+  | "geltung"
   | "confidentiality"
   // JOB 557: die Verantwortung am Objekt benennen (Recht `ko.validate`, s. den Zweig unten).
   | "ownership"
@@ -494,6 +498,8 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   tags: "tor",
   // R-0431 (K2): arbeitet AM Objekt unter `:id` — es passiert das Sichtbarkeitstor wie `category`.
   domain: "tor",
+  // R-1632 / R-1633: arbeitet AM Objekt unter `:id` — es passiert das Sichtbarkeitstor wie `domain`.
+  geltung: "tor",
   confidentiality: "tor",
   // JOB 557: die Aktion arbeitet AM Objekt unter `:id` — sie passiert das Sichtbarkeitstor.
   ownership: "tor",
@@ -593,6 +599,8 @@ interface PutBody {
   tags?: string[];
   /** R-0431 (K2): das Fachgebiet (`action: "domain"`). `unknown`, gelesen an der `case`. */
   domain?: unknown;
+  /** R-1632 / R-1633: die Geltung (`action: "geltung"`); `null` entfernt sie. Geprüft im Dienst. */
+  geltung?: unknown;
   conflict?: ConflictInput;
   /**
    * R-0238 — DIE WIDERSPRECHENDE ABLEHNUNG. Nur an `rate` mit `verdict: "down"`: das Objekt, dem
@@ -608,6 +616,8 @@ interface PutBody {
   fortsetzungFuerFassung?: unknown;
   conflictId?: string;
   decision?: string;
+  /** R-0263: die Vorrang-Wahl an `resolve-conflict`. `unknown`, geprüft an der `case`. */
+  vorrang?: unknown;
   newAuthor?: string;
   text?: string;
   /**
@@ -2991,7 +3001,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             const stelle = leseStelle(body.stelle);
             if (stelle === "unlesbar") {
               return badRequest(
-                "stelle muss Fassung (koVersion), Art (absatz, tabelle, bild), Abschnitt und Textstelle tragen.",
+                "stelle muss Fassung (koVersion), Art (absatz, tabelle, bild, anhang), Abschnitt und Textstelle tragen; eine Position (punkt, x und y je 0..1) gibt es nur bei Bild oder Anhang, eine Seite (ganzzahlig ab 1) nur bei einem Anhang.",
               );
             }
             reply.code(200).send(
@@ -3495,6 +3505,20 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             reply.code(200).send(await ko.setDomain(id, body.domain, user.id));
             return;
           }
+          case "geltung": {
+            // R-1632 / R-1633: dasselbe Recht wie das Fachgebiet (`ko.create`). Das Feld muss im
+            // Rumpf stehen — `null` entfernt die Angabe, ein fehlendes Feld ist kein Entfernen.
+            // Form und Vererbungsregel prüft der Dienst (`normalizeGeltung`, ungültig → 400).
+            const user = await guards.requirePermission("ko.create", request, reply);
+            if (!user) {
+              return;
+            }
+            if (!("geltung" in body)) {
+              return badRequest("geltung fehlt.");
+            }
+            reply.code(200).send(await ko.setGeltung(id, body.geltung, user.id));
+            return;
+          }
           case "tags": {
             const user = await guards.requirePermission("ko.create", request, reply);
             if (!user) {
@@ -3569,6 +3593,14 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!body.conflict) {
               return badRequest("conflict fehlt.");
             }
+            // R-0252: die Arbeitsart ist optional; steht sie da, muss sie eine der drei sein. Ein
+            // unbekannter Wert würde sonst als Auskunft „Art der Arbeit" am Konflikt stehen.
+            if (
+              body.conflict.arbeitsart !== undefined &&
+              !isConflictWorkKind(body.conflict.arbeitsart)
+            ) {
+              return badRequest("conflict.arbeitsart muss eines von regel, sache, version sein.");
+            }
             reply.code(201).send(await konfliktAnlegen(body.conflict, user.id));
             return;
           }
@@ -3580,7 +3612,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!body.conflictId || !body.decision) {
               return badRequest("conflictId/decision fehlt.");
             }
-            reply.code(200).send(await conflicts.resolve(body.conflictId, user.id, body.decision));
+            // R-0263: optional — welcher der beiden Punkte gilt bzw. einschränkt. Hier nur die Form;
+            // ob `gilt` zum Konflikt gehört und der Geltungsbereich steht, prüft der Dienst.
+            const roh = body.vorrang;
+            const vorrang = isVorrangWahl(roh) ? roh : undefined;
+            if (roh !== undefined && vorrang === undefined) {
+              return badRequest(
+                "vorrang muss { art: ueberstimmt|schraenkt_ein, gilt, geltungsbereich? } sein.",
+              );
+            }
+            const konfliktId = body.conflictId;
+            const text = body.decision;
+            reply.code(200).send(await conflicts.resolve(konfliktId, user.id, text, vorrang));
             return;
           }
           case "transfer-author": {

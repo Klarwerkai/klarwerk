@@ -28,6 +28,8 @@ export default {
     "audit.action.conflict_participant_removed",
     "audit.action.conflict_auto_resolved",
     "audit.action.conflict_superseded",
+    // Aufnahme gesamt-konfliktklassifikation (R-0252): die Einordnung als Regel/Sache/Version.
+    "audit.action.conflict_classified",
     "audit.action.overlap_auto_created",
     "audit.action.overlap_in_progress",
     "audit.action.overlap_dismissed",
@@ -62,6 +64,7 @@ export default {
     "audit.action.conflict_participant_removed": "Konfliktbeteiligtes Objekt entfernt",
     "audit.action.conflict_auto_resolved": "Konflikt automatisch geschlossen",
     "audit.action.conflict_superseded": "Konflikt durch neue Fassung überholt",
+    "audit.action.conflict_classified": "Konflikt eingeordnet (Art der Arbeit)",
     // R-0766 (Runde 3): Überschneidungsbelege und die Rücknahme einer Änderung.
     "audit.action.overlap_auto_created": "Überschneidung erkannt",
     "audit.action.overlap_in_progress": "Überschneidung in Bearbeitung",
@@ -116,6 +119,7 @@ export default {
     "audit.action.conflict_participant_removed": "Object involved in conflict removed",
     "audit.action.conflict_auto_resolved": "Conflict closed automatically",
     "audit.action.conflict_superseded": "Conflict superseded by a new version",
+    "audit.action.conflict_classified": "Conflict classified (kind of work)",
     "audit.action.overlap_auto_created": "Overlap detected",
     "audit.action.overlap_in_progress": "Overlap in progress",
     "audit.action.overlap_dismissed": "Overlap closed as false alarm",
@@ -161,6 +165,7 @@ export default {
     "audit.action.conflict_participant_removed": "Bij conflict betrokken object verwijderd",
     "audit.action.conflict_auto_resolved": "Conflict automatisch gesloten",
     "audit.action.conflict_superseded": "Conflict achterhaald door nieuwe versie",
+    "audit.action.conflict_classified": "Conflict ingedeeld (soort werk)",
     "audit.action.overlap_auto_created": "Overlap herkend",
     "audit.action.overlap_in_progress": "Overlap in behandeling",
     "audit.action.overlap_dismissed": "Overlap als vals alarm gesloten",

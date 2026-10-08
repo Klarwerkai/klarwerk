@@ -180,6 +180,14 @@ describe("SCRUM-357: Conflict → Trust/Usability/Review-Integrität (HTTP + FE-
     // 6) Konflikt lösen → fällt aus der unresolved-Liste → der Konflikt-Impact ist weg. SCRUM-358:
     //    das KO bleibt bewusst review-pflichtig (offen) und wird über die normale Bewertung wieder
     //    validiert (kein Fake-Validate, kein Dauer-Block).
+    //    R-0215 (Aufnahme gesamt-konfliktklassifikation): der Wahrheitskonflikt wird verbindlich
+    //    zuerst eskaliert, danach entschieden.
+    const escalated = await app.inject({
+      method: "POST",
+      url: `/api/conflicts/${conflictId}/escalate`,
+      headers: admin,
+    });
+    expect(escalated.statusCode).toBe(200);
     const resolved = await app.inject({
       method: "PUT",
       url: `/api/kos/${koA.id}`,

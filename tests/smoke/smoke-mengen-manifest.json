@@ -1,10 +1,9 @@
 {
-  "version": 14,
-  "erhoben_am": "2026-10-01",
-  "nachgefuehrt_von": "aufnahme:20260922:gesamt-navigation, Nacharbeit 1: U3 je Projekt chromium, firefox und webkit von erstnutzer-u2-u3-browser.spec.ts nach gesamt-navigation-u3-browser.spec.ts umgezogen und auf den heutigen Titel umbenannt (Weg Arbeitsbereiche → Offene Aufgaben); Mengen unveraendert. NICHT gemessen, aus den Testtiteln nachgetragen. Version 13 davor: produkt:20261007:speichern-erholung, Nacharbeit 1: ein weiterer Fall je Projekt chromium, firefox und webkit (K2/K3 Nacharbeit: Weiterschreiben waehrend des Wartens). Version 12 davor: drei Faelle mehr je Projekt chromium, firefox und webkit, alle in speichern-erholung-browser.spec.ts — Speicherzustand ohne Netz, Seitenwechsel ohne Netz, Nulltreffer mit Filterruecksetzen. NICHT gemessen, sondern aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt). Vorgefundene, fremde Drift unveraendert gelassen: firmenwoerterbuch-browser.spec.ts und bildschirmablauf-browser.spec.ts stehen nicht im Manifest. Vorher: gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3), drei Faelle in erstnutzer-u2-u3-browser.spec.ts.",
-  "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
+  "version": 15,
+  "erhoben_am": "2026-10-08",
+  "nachgefuehrt_von": "aufnahme:20260922:gesamt-navigation, Nacharbeit 2 (Integration mit main, Version 15): U3 je Projekt chromium, firefox und webkit von erstnutzer-u2-u3-browser.spec.ts nach gesamt-navigation-u3-browser.spec.ts umgezogen und auf den heutigen Titel umbenannt (Weg Arbeitsbereiche → Offene Aufgaben); Mengen dadurch unveraendert. NICHT gemessen, aus den Testtiteln nachgetragen. Version 14 davor (main): produkt:20261007:klara-vorschau (Integration mit main, Version 13): drei Faelle mehr je Projekt chromium, firefox und webkit, alle in klara-vorschau-browser.spec.ts — Avatar aus dem Bau, Bedienbeleg der beweglichen Klara (Desktop) und schmal mit reduzierter Bewegung, Touch-Zeiger und Bildschirmtastatur. NICHT gemessen, aus den Testtiteln nachgetragen. Version 13 davor: produkt:20261007:speichern-erholung, Nacharbeit 1: ein weiterer Fall je Projekt chromium, firefox und webkit (K2/K3 Nacharbeit: Weiterschreiben waehrend des Wartens). Version 12 davor: drei Faelle mehr je Projekt chromium, firefox und webkit, alle in speichern-erholung-browser.spec.ts — Speicherzustand ohne Netz, Seitenwechsel ohne Netz, Nulltreffer mit Filterruecksetzen. NICHT gemessen, sondern aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt). Vorgefundene, fremde Drift unveraendert gelassen: firmenwoerterbuch-browser.spec.ts und bildschirmablauf-browser.spec.ts stehen nicht im Manifest. Vorher: gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3), drei Faelle in erstnutzer-u2-u3-browser.spec.ts.",  "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
   "zweck": "Sollmanifest der Smoke-Mengen je Projekt. Drift (Hinzufuegen, Entfernen, Umbenennen) macht die Mengenpruefung rot.",
-  "gesamt_fallinstanzen": 213,
+  "gesamt_fallinstanzen": 222,
   "projekte": {
     "setup-zustand": {
       "soll": 1,
@@ -19,7 +18,7 @@
       ]
     },
     "chromium": {
-      "soll": 65,
+      "soll": 68,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -39,6 +38,9 @@
         "gesamt-navigation-u3-browser.spec.ts › U3 · „Offene Aufgaben“ ist über „Arbeitsbereiche“ erreichbar, und die Seitenhilfe sagt, was gemeint ist",
         "huelle-tabelle-browser.spec.ts › huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, Speichern und Wiederöffnen",
         "huelle2-reihenfolge-browser.spec.ts › huelle2: steht die Struktur VOR dem direkten Bild, bleibt die Beschreibung beim richtigen Bild",
+        "klara-vorschau-browser.spec.ts › Klara-Vorschau · Avatar lädt aus dem Bau über eine relative Adresse",
+        "klara-vorschau-browser.spec.ts › Klara-Vorschau · Bedienbeleg Desktop: verschieben → Artikel → Markierung → Fragen → Tutorial → Notiz → verkleinern",
+        "klara-vorschau-browser.spec.ts › Klara-Vorschau · schmal 390 px mit reduzierter Bewegung und Touch-Zeiger",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser überlebt die MAUS-Auswahl den Klick auf Fett",
         "mega87-caption-formatierung-browser.spec.ts › mega87: ohne Markierung sagt der echte Browser den Grund, statt stumm zu bleiben",
@@ -89,7 +91,7 @@
       ]
     },
     "firefox": {
-      "soll": 65,
+      "soll": 68,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -109,6 +111,9 @@
         "gesamt-navigation-u3-browser.spec.ts › U3 · „Offene Aufgaben“ ist über „Arbeitsbereiche“ erreichbar, und die Seitenhilfe sagt, was gemeint ist",
         "huelle-tabelle-browser.spec.ts › huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, Speichern und Wiederöffnen",
         "huelle2-reihenfolge-browser.spec.ts › huelle2: steht die Struktur VOR dem direkten Bild, bleibt die Beschreibung beim richtigen Bild",
+        "klara-vorschau-browser.spec.ts › Klara-Vorschau · Avatar lädt aus dem Bau über eine relative Adresse",
+        "klara-vorschau-browser.spec.ts › Klara-Vorschau · Bedienbeleg Desktop: verschieben → Artikel → Markierung → Fragen → Tutorial → Notiz → verkleinern",
+        "klara-vorschau-browser.spec.ts › Klara-Vorschau · schmal 390 px mit reduzierter Bewegung und Touch-Zeiger",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser überlebt die MAUS-Auswahl den Klick auf Fett",
         "mega87-caption-formatierung-browser.spec.ts › mega87: ohne Markierung sagt der echte Browser den Grund, statt stumm zu bleiben",
@@ -159,7 +164,7 @@
       ]
     },
     "webkit": {
-      "soll": 65,
+      "soll": 68,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -179,6 +184,9 @@
         "gesamt-navigation-u3-browser.spec.ts › U3 · „Offene Aufgaben“ ist über „Arbeitsbereiche“ erreichbar, und die Seitenhilfe sagt, was gemeint ist",
         "huelle-tabelle-browser.spec.ts › huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, Speichern und Wiederöffnen",
         "huelle2-reihenfolge-browser.spec.ts › huelle2: steht die Struktur VOR dem direkten Bild, bleibt die Beschreibung beim richtigen Bild",
+        "klara-vorschau-browser.spec.ts › Klara-Vorschau · Avatar lädt aus dem Bau über eine relative Adresse",
+        "klara-vorschau-browser.spec.ts › Klara-Vorschau · Bedienbeleg Desktop: verschieben → Artikel → Markierung → Fragen → Tutorial → Notiz → verkleinern",
+        "klara-vorschau-browser.spec.ts › Klara-Vorschau · schmal 390 px mit reduzierter Bewegung und Touch-Zeiger",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser überlebt die MAUS-Auswahl den Klick auf Fett",
         "mega87-caption-formatierung-browser.spec.ts › mega87: ohne Markierung sagt der echte Browser den Grund, statt stumm zu bleiben",
