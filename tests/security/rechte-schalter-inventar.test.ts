@@ -94,6 +94,8 @@ const SCHLUESSELRECHTE: Record<string, { klaraSchluessel: boolean; routen: reado
   "export.validated": { klaraSchluessel: false, routen: ["GET /api/library/export"] },
   "import.kandidaten": { klaraSchluessel: false, routen: ["POST /api/library/import/candidates"] },
   "status.read": { klaraSchluessel: false, routen: ["GET /health", "GET /api/reasoner/status"] },
+  // R-0713 (integrierter Hauptstand): der MCP-Zugang für fremde KI-Programme (mcp-routes.ts).
+  "mcp.werkzeug": { klaraSchluessel: false, routen: ["GET /mcp", "POST /mcp"] },
 };
 
 /** Teil 3a — das Schalter-Registry: Fachname → Variable, Vorgabe, Auskunft vor der Anmeldung. */

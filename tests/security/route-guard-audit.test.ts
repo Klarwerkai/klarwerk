@@ -10,6 +10,7 @@ import {
   routeKey,
   routeSourceFiles,
   scanAllRoutes,
+  scanRouteFile,
   schutzartVon,
 } from "./routeGuardAudit";
 import {
@@ -201,6 +202,28 @@ describe("R-1165 · die Erhebung über alle Schnittstellen des Servers", () => {
     ]);
     expect(ROUTE_GUARD_MATRIX["GET /api/erfundene-tuer"]).toBeUndefined();
     expect(schutzartVon(neu.registrierungen[0]?.aufruf ?? "")).toBe("public");
+  });
+
+  it("KALIBRIERUNG — der Block-Scanner nimmt die URL aus dem ersten Argument, nicht aus dem Rumpf", () => {
+    // Nacharbeit 1: die Bauform aus mcp-routes.ts. Vorher wurde daraus eine öffentliche
+    // `POST /api/ask` (das erste `"/…"` im Block), die in scanAllRoutes() die echte überschrieb.
+    const quelle = [
+      'const PFAD = "/mcp";',
+      "const zugang = (request, reply) => {",
+      "  const auth = request.authContext;",
+      '  if (auth?.authKind !== "addon" || !auth.principal.dienst) { reply.code(401).send(); return null; }',
+      "  return auth;",
+      "};",
+      "app.post(PFAD, async (request, reply) => {",
+      "  if (!zugang(request, reply)) { return; }",
+      '  await weiterleiten({ method: "POST", url: "/api/ask" });',
+      "});",
+      'app.get("/api/offen", async (_request, reply) => { reply.send({ ok: true }); });',
+    ].join("\n");
+    const routen = scanRouteFile(quelle, "probe-routes.ts").map(
+      (r) => `${routeKey(r.method, r.url)} ${r.protection}`,
+    );
+    expect(routen).toEqual(["POST /mcp dienst-schluessel", "GET /api/offen public"]);
   });
 
   it("KALIBRIERUNG — Konstantenpfad wird gelesen, unauflösbarer Pfad und `.route` sind rot mit Zeile", () => {

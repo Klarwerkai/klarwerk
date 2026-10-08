@@ -672,6 +672,22 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/i18n/:locale/:key": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
   "GET /addin": { urteil: "KEIN_KO_INHALT", grund: "statisches Add-in-Bundle." },
   "GET /addin/*": { urteil: "KEIN_KO_INHALT", grund: "statisches Add-in-Bundle." },
+  // R-0713 (mcp-routes.ts), beurteilt mit R-1175 Nacharbeit 1: der MCP-Zugang. `GET` antwortet
+  // nur 405; `POST` gibt KO-Inhalt aus — aber ausschließlich das, was `POST /api/ask` demselben
+  // Dienst-Schlüssel liefert (interne Weiterleitung, `dienste.weiterleiten`). Gefiltert wird dort,
+  // nicht hier: der Dienst-Schlüssel-Zweig der Fragefunktion gibt nur validiertes, nicht
+  // vertrauliches Wissen aus Inhalt ohne Space oder offenen Spaces heraus (Kopf von mcp-routes.ts).
+  "GET /mcp": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "R-0713 — antwortet nur 405, kein Ereignisstrom.",
+  },
+  "POST /mcp": {
+    urteil: "DIENST_FILTERT",
+    grund:
+      "R-0713 — Werkzeugaufrufe gehen mit demselben Dienst-Schlüssel an POST /api/ask " +
+      "(mcp-routes.ts, `weiterleiten`); dessen Schlüsselzweig gibt nur validiertes, nicht " +
+      "vertrauliches Wissen heraus. Die Hülle selbst liest keinen Bestand.",
+  },
   // R-1175 (R1/R2): die gestempelte Seite des Klara-Aufgabenfensters (web-static.ts, JOB 1077).
   // Liest eine Datei aus dem Build und ersetzt nur den Fassungsplatzhalter.
   "GET /word-addin/taskpane.html": {
@@ -880,6 +896,9 @@ const REGISTER: Record<string, Eintrag> = {
     "POST /api/duplicates/:id/keep-separate": "ko.validate.",
     "POST /api/duplicates/:id/link-related": "ko.validate.",
     "POST /api/duplicates/:id/status": "ko.validate.",
+    // R-1107 (overlap-routes.ts): Zusammenführen — ko.validate; `fuehreZusammen` verlangt vor jedem
+    // Schreibschritt Einsicht in beide Seiten. Seit dem Dublettenvergleich ohne Urteil hier.
+    "POST /api/duplicates/:id/merge": "ko.validate; Einsicht in beide Seiten prüft fuehreZusammen.",
     "PUT /api/duplicates/settings": "users.manage.",
     "PUT /api/gaps/:id": "ko.assign.",
     "DELETE /api/gaps/:id": "ko.validate.",

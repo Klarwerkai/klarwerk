@@ -8,6 +8,8 @@
 
 import { readFileSync } from "node:fs";
 import { readdirSync } from "node:fs";
+import ts from "typescript";
+import { pfadVon, zeichenkettenKonstanten } from "./schnittstellenErhebung";
 
 // Schutzarten:
 //  - "public"             : bewusst ohne Auth (Begründung in REASONS Pflicht).
@@ -16,6 +18,11 @@ import { readdirSync } from "node:fs";
 //  - <Permission>         : serverseitige Rechteprüfung (requirePermission).
 //  - "action-dispatched"  : ein Endpunkt mit mehreren Aktionen, jede mit eigener Rechteprüfung
 //                           (z. B. PUT /api/kos/:id) — nie öffentlich.
+//  - "dienst-schluessel"  : nur ein Dienst-Schlüssel kommt durch (kein Menschenkonto): der Handler
+//                           weist alles ab, was nicht `authKind === "addon"` mit `principal.dienst`
+//                           ist; das Recht je Route steht in `DIENST_ROUTEN` (dienst-schluessel.ts).
+//                           R-1165: eingeführt für `/mcp` (R-0713) — vorher las der Scanner diese
+//                           Route als „öffentlich" bzw. gar nicht.
 export type Protection =
   | "public"
   | "auth"
@@ -28,7 +35,8 @@ export type Protection =
   | "ko.relate"
   | "conflict.resolve"
   | "users.manage"
-  | "action-dispatched";
+  | "action-dispatched"
+  | "dienst-schluessel";
 
 export const KNOWN_PERMISSIONS: readonly Protection[] = [
   "ko.read",
@@ -54,7 +62,23 @@ const ROUTE_RE = /app\.(get|post|put|delete|patch)\b/g;
 // Die Schutzart eines Quelltextstücks — dieselbe Regel für den Block-Scanner unten und für die
 // selbst erhobenen Registrierungen aus `schnittstellenErhebung.ts` (R-1165). Herausgezogen, nicht
 // verändert: zwei Fassungen dieser Regel wären zwei Urteile über dieselbe Route.
-export function schutzartVon(block: string): Protection {
+//
+// `helferRuempfe`: die Rümpfe der dateilokalen Helfer, die der Block aufruft. Sie zählen NUR für die
+// Dienst-Schlüssel-Tür und NUR, wenn der Block selbst sonst öffentlich wäre — die übrigen Regeln
+// bleiben Zeichen für Zeichen am Block, damit keine bestehende Zeile ihre Schutzart wechselt.
+export function schutzartVon(block: string, helferRuempfe: readonly string[] = []): Protection {
+  const protection = schutzartAmBlock(block);
+  if (protection !== "public") {
+    return protection;
+  }
+  const mitHelfern = [block, ...helferRuempfe].join("\n");
+  if (/authKind\s*!==\s*"addon"/.test(mitHelfern) && /\.principal\.dienst\b/.test(mitHelfern)) {
+    return "dienst-schluessel";
+  }
+  return protection;
+}
+
+function schutzartAmBlock(block: string): Protection {
   const perms = [...block.matchAll(/requirePermission\("([a-z.]+)"/g)].map((x) => x[1] ?? "");
   let protection: Protection;
   if (perms.length === 1) {
@@ -85,7 +109,46 @@ export function schutzartVon(block: string): Protection {
 // Prüfung fällt, hält die selbst erhobene Grundmenge (`erhebeSchnittstellen`) in
 // route-guard-audit.test.ts fest: sie liest den ganzen Server und meldet jede Lücke mit Datei und
 // Zeile.
+//
+// R-1165 (Nacharbeit 1): DIE URL KOMMT AUS DEM ERSTEN ARGUMENT, nicht aus dem ersten `"/…"` im
+// Block. Gemessen am integrierten Hauptstand: `mcp-routes.ts` registriert `app.post(MCP_PFAD, …)`;
+// der Scanner nahm das erste Literal im Block — `"/api/ask"` aus der internen Weiterleitung — und
+// führte damit eine zweite, öffentliche `POST /api/ask`, die in `scanAllRoutes()` die echte
+// überschrieb. Jetzt: Literal oder Konstante derselben Datei im ersten Argument; was nicht in die
+// alte Zeichenklasse passt (`/addin/*`), bleibt wie bisher draußen — das deckt die selbst erhobene
+// Grundmenge. Lokale Helfer, die ein Block aufruft, liest die Schutzart für die Dienst-Schlüssel-Tür
+// mit (`zugang` in mcp-routes.ts).
 export function scanRouteFile(text: string, file: string): ScannedRoute[] {
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+  const konstanten = zeichenkettenKonstanten(sf);
+  const urlAn = new Map<number, string>();
+  const helfer = new Map<string, string>();
+  const besuche = (n: ts.Node): void => {
+    if (
+      ts.isCallExpression(n) &&
+      ts.isPropertyAccessExpression(n.expression) &&
+      ts.isIdentifier(n.expression.expression) &&
+      n.expression.expression.text === "app"
+    ) {
+      const url = pfadVon(n.arguments[0], konstanten);
+      if (url !== undefined) {
+        urlAn.set(n.getStart(sf), url);
+      }
+    }
+    if (ts.isFunctionDeclaration(n) && n.name && n.body) {
+      helfer.set(n.name.text, n.body.getText(sf));
+    }
+    if (
+      ts.isVariableDeclaration(n) &&
+      ts.isIdentifier(n.name) &&
+      n.initializer &&
+      (ts.isArrowFunction(n.initializer) || ts.isFunctionExpression(n.initializer))
+    ) {
+      helfer.set(n.name.text, n.initializer.body.getText(sf));
+    }
+    ts.forEachChild(n, besuche);
+  };
+  besuche(sf);
   const marks: { method: string; idx: number }[] = [];
   let m: RegExpExecArray | null;
   // Frischer Regex-Zustand je Aufruf (g-Flag teilt lastIndex).
@@ -102,12 +165,14 @@ export function scanRouteFile(text: string, file: string): ScannedRoute[] {
     }
     const end = marks[i + 1]?.idx ?? text.length;
     const block = text.slice(mark.idx, end);
-    const urlMatch = block.match(/"(\/[A-Za-z0-9/:_.-]+)"/);
-    const url = urlMatch?.[1] ?? "(unknown)";
-    if (!url.startsWith("/")) {
+    const url = urlAn.get(mark.idx) ?? "(unknown)";
+    if (!/^\/[A-Za-z0-9/:_.-]+$/.test(url)) {
       continue;
     }
-    out.push({ method: mark.method, url, protection: schutzartVon(block), file });
+    const aufgerufen = [...helfer.entries()]
+      .filter(([name]) => new RegExp(`(^|[^\\w$.])${name.replace(/\$/g, "\\$")}\\(`).test(block))
+      .map(([, rumpf]) => rumpf);
+    out.push({ method: mark.method, url, protection: schutzartVon(block, aufgerufen), file });
   }
   return out;
 }
@@ -228,6 +293,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "public",
     reason: "KI-Verfügbarkeitsflag (FR-RSN-05); keine Nutzer-/Wissensdaten.",
   },
+  // R-0713 (mcp-routes.ts), eingetragen mit R-1165 Nacharbeit 1: der MCP-Zugang für fremde
+  // KI-Programme. Nur ein Dienst-Schlüssel kommt durch (Handler: `authKind === "addon"` mit
+  // `principal.dienst`, sonst 401; ein Browseraufruf 403); das Recht `mcp.werkzeug` erzwingt der
+  // Anmeldehook über `DIENST_ROUTEN`. Registriert nur, wenn Dienst-Schlüssel konfiguriert sind.
+  "GET /mcp": { protection: "dienst-schluessel" },
+  "POST /mcp": { protection: "dienst-schluessel" },
   "GET /api/ai-status": {
     protection: "public",
     reason: "KI-Verfügbarkeitsflag (§2.1); keine Nutzerdaten.",
@@ -547,9 +618,14 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     zeilenrecht: ["sichtbareFuer", "darfSehen"],
   },
   "GET /api/library/export": { protection: "ko.read" },
-  "POST /api/library/import": { protection: "ko.create" },
-  "POST /api/library/import/candidates": { protection: "ko.create" },
-  "GET /api/library/import/candidates": { protection: "ko.read" },
+  // R-1165 (Nacharbeit 1): die drei Kandidatenwege antworten über den lokalen Helfer
+  // `kandidatenDtosFuer` (library-routes.ts, „NACHARBEIT 3 (bens F3): Trefferkennungen nur für
+  // sichtbare Ziele"), dessen Rumpf `darfSehen` ruft — gemessen von g10-herkunft-zentrum-
+  // vertraulich.test.ts. Ohne den Eintrag waren sie hier von Routen ohne Zeilenrecht nicht zu
+  // unterscheiden. (Der Satz unter JOB 3363 „KEIN Zeilenrecht daneben" gilt für die Lesevariante.)
+  "POST /api/library/import": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  "POST /api/library/import/candidates": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  "GET /api/library/import/candidates": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "PUT /api/library/import/candidates/:id": { protection: "ko.validate" },
   // JOB 3363: die Leseübersetzung eines noch NICHT angenommenen Kandidaten (Prüfkarte, Stufe 2).
   // DASSELBE Recht wie die Warteschlange eine Zeile darüber und KEIN Zeilenrecht daneben — genau
