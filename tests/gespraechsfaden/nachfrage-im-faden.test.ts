@@ -129,9 +129,126 @@ describe("R-0348 · Nachfragen im Gesprächsfaden", () => {
     expect(res.json().result.sources).not.toContain(gleitzeit);
   });
 
+  it("F8 · R-0278 (Nacharbeit 12): der Anker bindet weiter — die Gleitzeitquelle trägt „Teilzeit“, aber nicht das Thema", async () => {
+    // Dieselbe Lage wie F3, aber ausdrücklich an der BINDUNG gemessen: die Gleitzeitquelle führt
+    // den Nachfragebegriff, nicht jedoch die Begriffe des Ankers — sie darf nicht einmal Quelle sein.
+    const { fragen, gleitzeit } = await fadenBestand();
+    const res = await fragen({ question: NACHFRAGE, thread: [ERSTFRAGE] });
+    expect(res.json().result.sources).not.toContain(gleitzeit);
+    expect(res.json().result.citedSources ?? []).not.toContain(gleitzeit);
+  });
+
   it("F6 · mehr als drei Fadenfragen sind 400 aus dem Schema", async () => {
     const { fragen } = await fadenBestand();
     const res = await fragen({ question: NACHFRAGE, thread: ["a", "b", "c", "d"] });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+// ================================================================================================
+// R-0278 · Nacharbeit 12 (ben) — DIE NACHFRAGE ERBT DIE SACHLICHE EINSCHRÄNKUNG DES ANKERS.
+// ================================================================================================
+//
+// Bens Befund: Nach „Welche maximale Temperatur gilt am Ventil F3?" konnte „Und bei Dauerbetrieb?"
+// von einer freigegebenen Quelle zu Ventil F4 getragen werden — „Dauerbetrieb" war der einzige
+// gebundene Begriff, F3 musste nirgends vorkommen. Gemessen wird über die echte Route
+// (Konsolenzweig, Sitzung, validierte Objekte, deterministischer Reasoner), mit gleichartigen
+// Quellen, die sich NUR in der Objektkennung unterscheiden.
+const ANKER_F3 = "Welche maximale Temperatur gilt am Ventil F3?";
+const NACHFRAGE_DAUER = "Und bei Dauerbetrieb?";
+const QUELLE_F3 = {
+  title: "Ventil F3 Dauerbetrieb",
+  statement: "Die maximale Temperatur am Ventil F3 bei Dauerbetrieb beträgt 85 Grad.",
+};
+const QUELLE_F4 = {
+  title: "Ventil F4 Dauerbetrieb",
+  statement: "Die maximale Temperatur am Ventil F4 bei Dauerbetrieb beträgt 95 Grad.",
+};
+
+async function ventilBestand(quellen: ReadonlyArray<{ title: string; statement: string }>) {
+  const app = buildApp(buildServices());
+  await app.inject({
+    method: "POST",
+    url: "/api/auth/register",
+    payload: { name: "Admin", email: "v@x.de", password: "secret123" },
+  });
+  const login = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: { email: "v@x.de", password: "secret123" },
+  });
+  const headers = { authorization: `Bearer ${login.json().token}` };
+  const ids: string[] = [];
+  for (const quelle of quellen) {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/kos",
+      headers,
+      payload: {
+        confidentiality: "intern",
+        ...quelle,
+        type: "best_practice",
+        category: "Anlage",
+        neededValidations: 1,
+      },
+    });
+    const id = res.json().id as string;
+    const bewertet = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${id}`,
+      headers,
+      payload: { action: "rate", verdict: "up" },
+    });
+    expect(bewertet.statusCode, bewertet.body).toBe(200);
+    ids.push(id);
+  }
+  const fragen = (payload: Record<string, unknown>) =>
+    app.inject({ method: "POST", url: "/api/ask", headers, payload });
+  return { fragen, ids };
+}
+
+describe("R-0278 · Nacharbeit 12 · der Anker bindet die Nachfrage an seinen Gegenstand", () => {
+  it("A1 · passende und fremde Quelle: nur die Quelle zu Ventil F3 trägt die Nachfrage", async () => {
+    const { fragen, ids } = await ventilBestand([QUELLE_F3, QUELLE_F4]);
+    const [f3, f4] = ids;
+    const res = await fragen({ question: NACHFRAGE_DAUER, thread: [ANKER_F3] });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.result.answered).toBe(true);
+    expect(body.result.sources).toEqual([f3]);
+    expect(body.result.sources).not.toContain(f4);
+  });
+
+  it("A2 · NUR die fremde Quelle (F4): keine Antwort, keine Quelle — eine ehrliche Lücke", async () => {
+    const { fragen, ids } = await ventilBestand([QUELLE_F4]);
+    const [f4] = ids;
+    const res = await fragen({ question: NACHFRAGE_DAUER, thread: [ANKER_F3] });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.result.answered).toBe(false);
+    expect(body.result.sources).not.toContain(f4);
+    expect(body.gap).not.toBeNull();
+  });
+
+  it("A3 · keine passende Quelle im Bestand: Lücke, nichts wird erfunden", async () => {
+    const { fragen } = await ventilBestand([]);
+    const res = await fragen({ question: NACHFRAGE_DAUER, thread: [ANKER_F3] });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().result.answered).toBe(false);
+    expect(res.json().result.sources).toEqual([]);
+  });
+
+  it("A4 · KALIBRIERUNG: mit einem Anker zu Ventil F4 trägt dieselbe Nachfrage die F4-Quelle", async () => {
+    // Ohne diesen Fall wäre A2 auch dann grün, wenn die F4-Quelle über diesen Weg nie tragen könnte.
+    // Derselbe Bestand, dieselbe Nachfrage — der EINZIGE Unterschied zu A2 ist die Kennung im Anker.
+    const { fragen, ids } = await ventilBestand([QUELLE_F4]);
+    const [f4] = ids;
+    const res = await fragen({
+      question: NACHFRAGE_DAUER,
+      thread: [ANKER_F3.replace("F3", "F4")],
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().result.answered).toBe(true);
+    expect(res.json().result.sources).toEqual([f4]);
   });
 });
