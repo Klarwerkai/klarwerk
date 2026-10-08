@@ -1415,8 +1415,40 @@ export class AskService {
     }
     // Serialisiert gegen die Single-Writer-Audit-Kette (s. serializeHelpful); der gekoppelte Schreib-
     // block committet Event-Beleg UND Trust-Schritt gemeinsam oder gar nicht.
+    // RECHERCHE:pmo-fea-0002: `koOriginalAuthor` hält den Urheber zum Zeitpunkt des Danks fest.
+    // Nach einer Autor-Übergabe (FR-LIF-02, `setAuthor`) zeigt `author` auf die neue Person; ohne
+    // dieses Feld erführe der ursprüngliche Autor nichts mehr von der Wirkung seines Wissens.
     await this.serializeHelpful(() =>
-      this.recordHelpful(koId, actor, { koTitle: ko.title, koAuthor: ko.author }),
+      this.recordHelpful(koId, actor, {
+        koTitle: ko.title,
+        koAuthor: ko.author,
+        koOriginalAuthor: ko.originalAuthor || ko.author,
+      }),
+    );
+  }
+
+  // R-0235 / R-0749: „Hat geholfen" für ein ANGEWENDETES Wissensobjekt, ohne vorausgehende Antwort.
+  // Der Antwortbeleg entfällt hier, weil der Gegenstand nicht eine Antwort, sondern genau dieses
+  // Objekt ist: die Person meldet es selbst, am Objekt (PUT /api/kos/:id, `action: "helpful"`). Die
+  // Berechtigung (`ko.read` + Sichtbarkeitstor) entscheidet die Route VOR diesem Aufruf. R-0313 bleibt
+  // gewahrt: das Antwortfeedback (`markHelpful`) wirkt weiterhin nur auf tragende Quellen; dieser Weg
+  // wirkt nur auf das eine Objekt, das gemeldet wird, nie auf Nachbarn.
+  // Derselbe gekoppelte Kern wie `markHelpful` — und derselbe Idempotenzschlüssel (actor+koId): wer
+  // ein Objekt schon über eine Antwort gedankt hat, bewirkt hier nichts mehr und umgekehrt. Ein
+  // Trust-Schritt je Person und Objekt, gleich über welchen Weg. Keine Prüfstimme: weder Status noch
+  // Validierungen werden berührt.
+  async markKoHelpful(koId: string, actor: string): Promise<void> {
+    const ko = await this.koService.get(koId);
+    if (!ko || ko.deletedAt) {
+      throw new AskError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    await this.serializeHelpful(() =>
+      this.recordHelpful(koId, actor, {
+        koTitle: ko.title,
+        koAuthor: ko.author,
+        koOriginalAuthor: ko.originalAuthor || ko.author,
+        via: "wissensobjekt",
+      }),
     );
   }
 
@@ -1428,7 +1460,8 @@ export class AskService {
   private async recordHelpful(
     koId: string,
     actor: string,
-    payload: { koTitle: string; koAuthor: string },
+    // `via` nur beim Objektweg (markKoHelpful); das Antwortfeedback trägt es nicht.
+    payload: { koTitle: string; koAuthor: string; koOriginalAuthor: string; via?: "wissensobjekt" },
   ): Promise<void> {
     const audit = this.audit;
     // SCRUM-359/PI-K2: Trust-Deckel zentral (TRUST_MAX=99) — auch der „Hat geholfen"-Bump darf nie auf
