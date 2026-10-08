@@ -7,6 +7,7 @@ import { buildApp, buildPgServices, buildServices } from "./build-app";
 import { createPool, migrate } from "./db";
 import { buildDevPersistServices } from "./dev-persist";
 import { type FactoryReset, factoryResetUnavailable } from "./factory-reset";
+import { GedaechtnisDienst } from "./interaktionsgedaechtnis";
 import { resolveKlaraAufraeumIntervalMs, starteKlaraAufraeumen } from "./klara-aufraeumen";
 import { registerNoindexHook } from "./noindex-hook";
 import { registerSecurityHeaders } from "./security-headers";
@@ -255,6 +256,25 @@ async function start(): Promise<void> {
     });
     app.log.info(`Klara-Aufräumlauf aktiv — Intervall ${Math.round(klaraInterval / 60000)} min.`);
   }
+  // R-0466: die Aufbewahrungsfrist des Interaktionsgedächtnisses ist eine LÖSCHFRIST. Gelesen wird
+  // ein abgelaufener Eintrag ohnehin nicht mehr; dieser Lauf entfernt ihn beim Start und danach im
+  // Takt des Papierkorb-Sweeps endgültig aus der Ablage.
+  const gedaechtnis = new GedaechtnisDienst({ repo: services.gedaechtnis });
+  const gedaechtnisGeloescht = (anlass: string) => (n: number) => {
+    if (n > 0) {
+      app.log.info(`Gedächtnis aufgeräumt (${anlass}): ${n} abgelaufene Einträge gelöscht.`);
+    }
+  };
+  gedaechtnis
+    .raeumeAbgelaufeneAuf()
+    .then(gedaechtnisGeloescht("Start"))
+    .catch((error) => app.log.warn(`Gedächtnis-Aufräumlauf übersprungen: ${String(error)}`));
+  startTrashSweepScheduler({
+    intervalMs: sweepInterval,
+    runSweep: () => gedaechtnis.raeumeAbgelaufeneAuf(),
+    onSwept: gedaechtnisGeloescht("periodisch"),
+    onError: (error) => app.log.warn(`Gedächtnis-Aufräumlauf übersprungen: ${String(error)}`),
+  });
 }
 
 start().catch((error) => {

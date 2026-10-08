@@ -212,6 +212,8 @@ const ALTER_ONLY_STUFEN = [
   "KO_CREATE_OPERATION_SCHEMA",
   "KO_IMPORT_ANCHOR_SCHEMA",
   "KO_SICHTBARKEIT_SCHEMA",
+  // R-0846 / L6: die Fremdschlüssel-Stufe — reines ALTER TABLE in einem DO-Block.
+  "KO_FREMDSCHLUESSEL_SCHEMA",
 ] as const;
 
 describe("JOB 727 D2: die Strukturinventur hat keine CREATE-TABLE-Filterlücke", () => {
@@ -225,7 +227,7 @@ describe("JOB 727 D2: die Strukturinventur hat keine CREATE-TABLE-Filterlücke",
     }
   });
 
-  it("die fünf ALTER-only-Stufen tragen wirklich kein CREATE TABLE — sonst prüfte der Fall nichts", () => {
+  it("die ALTER-only-Stufen tragen wirklich kein CREATE TABLE — sonst prüfte der Fall nichts", () => {
     // Die Gegenkontrolle zum Fall darüber: wären sie CREATE-TABLE-Stufen, hätte der alte Filter
     // sie ohnehin gesehen und der Nachweis wäre leer.
     for (const name of ALTER_ONLY_STUFEN) {

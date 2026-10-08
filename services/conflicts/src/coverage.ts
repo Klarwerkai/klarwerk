@@ -42,6 +42,9 @@ export interface DetectionCoverage {
   // Davon übersprungen, weil zu dem Paar bereits ein OFFENER Befund steht: kein neuer Vergleich
   // nötig, der Befund liegt ja vor. AUFTRAG-mega29 B2: diese Ränge verbrauchen KEINEN Deckelplatz
   // mehr — der Deckel begrenzt, was geprüft wird, nicht was übersprungen wird.
+  // Aufnahme 20260922 · Prüfung-Gedächtnis (R-1103/R-1105): im Konfliktweg zählen hier auch Paare,
+  // deren UNVERÄNDERTER Textstand schon beurteilt ist (kein Befund, Fehlalarm, entschieden) — auch
+  // sie sind in einem früheren Lauf angesehen. Der Feldname bleibt (Drahtform des Prüfnachweises).
   alreadyOpen: number;
   // Davon dem Vergleich TATSÄCHLICH vorgelegt. Genau diese Zahl deckelt DETECTION_CANDIDATE_CAP.
   attempted: number;

@@ -69,6 +69,8 @@ describe("ConflictService", () => {
 
   it("FR-CON-03: gelöster Konflikt kann nicht erneut verändert werden", async () => {
     const c = await service.create(input());
+    // R-0215 (Nacharbeit 2): der Wahrheitskonflikt wird vor der Entscheidung eskaliert.
+    await service.escalate(c.id);
     await service.resolve(c.id, "controller-1", "Entschieden.");
     await expect(service.secondOpinion(c.id, "x")).rejects.toMatchObject({
       code: "ALREADY_RESOLVED",
@@ -80,6 +82,7 @@ describe("ConflictService", () => {
     await service.create(input({ koA: "ko3" }));
     expect(await service.badgeCount()).toBe(2);
 
+    await service.escalate(a.id); // R-0215: verbindlicher Pfad des Wahrheitskonflikts
     await service.resolve(a.id, "c1", "ok");
     const open = await service.unresolved();
     expect(open).toHaveLength(1);
@@ -118,6 +121,7 @@ describe("ConflictService", () => {
     // (`apps/web/src/i18n.ts:5043-5044`). Hälfte (i) dieses Falls belegt genau diesen Satz.
     const c = await service.create(input());
     const weiterOffen = await service.create(input({ koA: "ko3" }));
+    await service.escalate(c.id); // R-0215: verbindlicher Pfad des Wahrheitskonflikts
     await service.resolve(c.id, "controller-1", "Quelle B gilt.");
 
     const abgelegt = await service.get(c.id);
@@ -144,6 +148,7 @@ describe("ConflictService", () => {
 
   it("JOB 3887 D4: ein abgelegter Vermerk wird nicht überschrieben", async () => {
     const c = await service.create(input());
+    await service.escalate(c.id); // R-0215: verbindlicher Pfad des Wahrheitskonflikts
     await service.resolve(c.id, "controller-1", "Quelle B gilt.");
 
     // Beide Hälften in EINEM Lauf messbar (`expect.soft`): der Wurf UND der unveränderte Vermerk.

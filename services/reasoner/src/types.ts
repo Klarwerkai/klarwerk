@@ -46,6 +46,12 @@ export interface KnowledgeRef {
   // Fehler wie die 500 aus `wordAddin.ts:925`, nur mit einer größeren Ziffer. Die Menge gehört zum
   // Aufrufer, wo sie messbar ist; fehlt das Feld, matcht der Altbestand wie bisher.
   bodyText?: string;
+  // R-1633 (Schicht- und Rollen-Filter beim Fragen): wie gut die Geltung dieser Quelle zum
+  // Fragekontext passt (3 eigene Schicht · 2 eigenes Werk · 1 Konzern/unbestimmt · 0 anderswo).
+  // Gesetzt NUR vom Fragedienst, und nur wenn der Fragende einen Kontext angegeben hat; fehlt das
+  // Feld überall, rechnet `rankCandidates` Zeichen für Zeichen wie bisher. Der Reasoner kennt die
+  // Geltung selbst nicht — er bekommt nur diese Zahl (Regel: knowledge-object `geltungFuerFrage`).
+  geltungsrang?: number;
 }
 
 // ================================================================================================
@@ -174,6 +180,24 @@ export interface AnswerResult {
   abgeschnitten?: AbbruchBefund;
 }
 
+// FR-STR-01 (R-0315): die Wissensart des Strukturierungsvorschlags. Dieselben fünf Werte wie
+// `KnowledgeType` im Modul knowledge-object — hier gespiegelt, weil der Reasoner knowledge-object
+// nicht direkt kennt (siehe KnowledgeRef). Gleichlauf ist in provider-model.test.ts gepinnt.
+export type StructureKnowledgeType =
+  | "bauchgefuehl"
+  | "best_practice"
+  | "lernkurve"
+  | "technik"
+  | "negativwissen";
+
+export const STRUCTURE_KNOWLEDGE_TYPES: readonly StructureKnowledgeType[] = [
+  "bauchgefuehl",
+  "best_practice",
+  "lernkurve",
+  "technik",
+  "negativwissen",
+];
+
 export interface StructureResult {
   title: string;
   statement: string;
@@ -181,6 +205,9 @@ export interface StructureResult {
   measures: string[];
   tags: string[];
   confidence: number;
+  // FR-STR-01: die vom Modell vorgeschlagene Wissensart. Fehlt, wenn das Modell keinen der fünf
+  // gültigen Werte liefert oder der deterministische Fallback lief — dort wird nie geraten (G-2).
+  knowledgeType?: StructureKnowledgeType;
   demo: boolean;
   // WP-D8 (Pedis Live-ROT B): WARUM lief der deterministische Fallback? demo:true allein verschluckte
   // drei verschiedene Ursachen — die UI konnte nur ein erklärungsloses FALLBACK-Badge zeigen.
@@ -508,6 +535,21 @@ export interface ConflictJudgeResult {
   zitat_b: string;
   // SCRUM-492: optionale Kollisions-Anreicherung (Kacheln im Board). Fehlt sie, bleibt alles wie bisher.
   kollision?: Kollision;
+  // R-0252 (Aufnahme gesamt-konfliktklassifikation): nur bei „widerspruch" — welche Arbeit vorliegt:
+  // „regel" (zwei interne Festlegungen) oder „sache" (durch Belege entscheidbar). Fehlt = offen.
+  arbeit?: "regel" | "sache";
+  // R-0263: nur bei „widerspruch" — Klaras VORSCHLAG, ob B die Aussage A wirklich bestreitet
+  // („widerspruch") oder sie nur für einen engeren Geltungsbereich genauer festlegt
+  // („praezisierung", dann mit der spezielleren Seite und dem Geltungsbereich). Ein Vorschlag, keine
+  // Entscheidung: entschieden wird auf der Konfliktseite von einer befugten Person.
+  vorschlag?: KlaraVorschlagUrteil;
+}
+
+/** R-0263: Klaras Vorschlag im Urteil — Seiten als „a"/„b" (der Erkennungskern bildet sie auf Kennungen ab). */
+export interface KlaraVorschlagUrteil {
+  art: "widerspruch" | "praezisierung";
+  spezieller?: "a" | "b";
+  geltungsbereich?: string;
 }
 
 // WP-SHIP8-CLOSE (bens F1): schmaler Ergebnis-Vertrag der Judge-Flächen — der AUSGANG wird

@@ -9,6 +9,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
+import { useReasonerStatus } from "../api/hooks";
+import { aiSperrHinweisKey } from "../lib/aiAvailability";
+import { kiBremsSatz } from "../lib/kiBremse";
 import {
   type ResolvedKlaraEntry,
   allFaqEntries,
@@ -66,6 +69,16 @@ export function KlaraAssistant(): JSX.Element {
   // PAKET 1 (D-AISTATE, Pedi 23.07.): die KI-Antwort (Reasoner-Task „answer") ohne nutzbares Modell
   // HART ausgrauen — Klaras Registry-Suche (ohne KI) bleibt davon unberührt bedienbar.
   const answerAi = useAiAvailable("answer");
+  // R-1040: WARUM der Knopf gesperrt ist — „vom Administrator abgeschaltet" ist etwas anderes als
+  // „kein Modell aktiv". Die EINE Regel steht in `lib/aiAvailability.ts` (`aiSperrHinweisKey`);
+  // gelesen wird derselbe öffentliche Status wie in `useAiAvailable`, mit derselben Unbekannt-Regel
+  // (JOB 3220: nur ohne erfolgreiche Daten ist der Status unbekannt).
+  const reasonerStatus = useReasonerStatus();
+  const answerSperrHinweis = aiSperrHinweisKey(
+    reasonerStatus.data,
+    "answer",
+    reasonerStatus.isError && !reasonerStatus.data,
+  );
   const [fieldId, setFieldId] = useState<string | null>(null);
   const [selectionNote, setSelectionNote] = useState(false);
   // Zeige-Modus (Pedi 05.07.): beliebiges Element anklicken → erklären, ohne die Aktion auszulösen.
@@ -498,7 +511,7 @@ export function KlaraAssistant(): JSX.Element {
                   type="button"
                   // PAKET 1 (D-AISTATE): hart ausgrauen, wenn kein Modell für „answer" nutzbar ist.
                   disabled={query.trim().length < 3 || aiAsk.isPending || !answerAi.available}
-                  title={!answerAi.available ? t("ai.unavailable.hint") : undefined}
+                  title={!answerAi.available ? t(answerSperrHinweis) : undefined}
                   onClick={askAi}
                   className="inline-flex h-8 items-center gap-1.5 rounded-btn border border-ai bg-ai-surface-2 px-2.5 text-[12px] font-semibold text-ai hover:bg-ai-surface-1 disabled:opacity-50"
                 >
@@ -506,15 +519,19 @@ export function KlaraAssistant(): JSX.Element {
                 </button>
                 <AiModelInfo task="answer" />
               </div>
-              <AiUnavailableHint show={!answerAi.available} />
+              <AiUnavailableHint show={!answerAi.available} hinweisKey={answerSperrHinweis} />
               {askedFor && !aiAsk.isPending ? (
                 aiNoGrounding ? (
                   <p className="rounded-card border border-dashed border-hairline px-3 py-2.5 text-[12px] leading-relaxed text-muted">
                     {t("klara.noResults")}
                   </p>
                 ) : aiAsk.isError ? (
-                  <p className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text">
-                    {t("state.error")}
+                  // R-0842: bei gebremster KI-Anfrage der Satz des Servers mit Wartezeit.
+                  <p
+                    data-testid="klara-ai-fehler"
+                    className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text"
+                  >
+                    {kiBremsSatz(aiAsk.error) ?? t("state.error")}
                   </p>
                 ) : aiAsk.data ? (
                   <div className="rounded-card border border-ai/30 bg-ai-surface-2 px-3 py-2.5">
