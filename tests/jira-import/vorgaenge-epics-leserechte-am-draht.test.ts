@@ -60,6 +60,8 @@ const echtesFetch = globalThis.fetch;
 const fremdeAufrufe: string[] = [];
 const jiraAufrufe: string[] = [];
 let rollenGesperrt = false;
+/** Was `GET /issue/WART-12` gerade liefert — die Gegenprobe zu Nacharbeit 2 ändert es. */
+let storyJetzt: typeof STORY = STORY;
 
 function antwort(body: unknown, status = 200): Response {
   return {
@@ -75,7 +77,7 @@ function jira(url: URL): Response {
     return antwort({ issues: [EPIC, STORY], isLast: true });
   }
   if (url.pathname === "/rest/api/2/issue/WART-12") {
-    return antwort(STORY);
+    return antwort(storyJetzt);
   }
   if (url.pathname === "/rest/api/2/project/WART/role") {
     return rollenGesperrt
@@ -138,6 +140,8 @@ interface Kandidat {
     sourceRestrictions?: { users: string[]; groups: string[] };
   };
 }
+
+type KandidatMitStand = Kandidat & { status: string; item: { sourceVersion?: number } };
 
 interface KoQuelle {
   provider?: string | null;
@@ -283,6 +287,84 @@ describe("R-0170 · Jira-Projekt → Kandidaten → Wissensobjekte mit Leserecht
       expect(jiraKandidaten, "ohne Leserechte entsteht kein Kandidat").toEqual([]);
     } finally {
       rollenGesperrt = false;
+      await app.close();
+    }
+  });
+
+  // NACHARBEIT 2 (Bens Befund): der Quellstand zählt Minuten. Eine Änderung in DERSELBEN Minute nach
+  // einer Übernahme darf trotzdem nicht als „schon da" verschluckt werden — und eine unveränderte
+  // Wiederholung danach darf nichts neu einreihen.
+  it("Änderung in derselben Minute nach einer Übernahme wird übernommen; Wiederholung nicht", async () => {
+    const { app, headers } = await appMitAdmin();
+    const uebernimm = async () => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/admin/import/jira/apply",
+        headers,
+        payload: { keys: ["WART-12"] },
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      return res.json() as { imported: number; alreadyQueued: number };
+    };
+    const kandidaten = async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/library/import/candidates",
+        headers,
+      });
+      const alle = res.json() as KandidatMitStand[];
+      return alle.filter((k) => k.item.externalId === "WART-12");
+    };
+    try {
+      // --- Übernahme 1 um 10:00:05, angenommen ---------------------------------------------------
+      storyJetzt = {
+        ...STORY,
+        fields: { ...STORY.fields, updated: "2026-09-02T10:00:05.000+0200" },
+      };
+      expect(await uebernimm()).toMatchObject({ imported: 1, alreadyQueued: 0 });
+      const erste = (await kandidaten())[0];
+      const ersterStand = erste?.item.sourceVersion ?? 0;
+      expect(ersterStand).toBeGreaterThan(0);
+      const angenommen = await app.inject({
+        method: "PUT",
+        url: `/api/library/import/candidates/${erste?.id}`,
+        headers,
+        payload: { action: "accept" },
+      });
+      expect(angenommen.statusCode, angenommen.body).toBe(200);
+      const koId = (angenommen.json() as { koId?: string }).koId;
+
+      // --- Änderung um 10:00:45 — dieselbe Minute, anderer Inhalt -------------------------------
+      storyJetzt = {
+        ...STORY,
+        fields: {
+          ...STORY.fields,
+          description: "Alle 400 Betriebsstunden tauschen. Neuer Intervall laut Hersteller.",
+          updated: "2026-09-02T10:00:45.000+0200",
+        },
+      };
+      expect(await uebernimm()).toMatchObject({ imported: 1, alreadyQueued: 0 });
+      const offen = (await kandidaten()).filter((k) => k.status === "neu");
+      expect(offen).toHaveLength(1);
+      // Ein strikt höherer Stand, weit unter der Fassungsgrenze des Import-Kerns (999_999_999).
+      expect(offen[0]?.item.sourceVersion).toBe(ersterStand + 1);
+      const zweite = await app.inject({
+        method: "PUT",
+        url: `/api/library/import/candidates/${offen[0]?.id}`,
+        headers,
+        payload: { action: "accept" },
+      });
+      expect(zweite.statusCode, zweite.body).toBe(200);
+      // Der Re-Sync trägt den neuen Inhalt in DASSELBE Wissensobjekt.
+      expect((zweite.json() as { koId?: string }).koId).toBe(koId);
+      const ko = await app.inject({ method: "GET", url: `/api/kos/${koId}`, headers });
+      expect((ko.json() as { statement: string }).statement).toContain("400 Betriebsstunden");
+
+      // --- unveränderte Wiederholung: nichts Neues ----------------------------------------------
+      expect(await uebernimm()).toMatchObject({ imported: 0, alreadyQueued: 1 });
+      expect((await kandidaten()).filter((k) => k.status === "neu")).toEqual([]);
+    } finally {
+      storyJetzt = STORY;
       await app.close();
     }
   });

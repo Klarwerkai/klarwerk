@@ -332,14 +332,14 @@ async function fuehreUebernahmeAus(
     // Der Stand der Warteschlange, VOR dem ersten eigenen Schreibeffekt gelesen.
     const bekannt = await bekannteStaende(deps.library, log);
     importId = await legeLaufAn(deps.importRuns, sourceScope, beauftragt, log);
-    const einreihen: Einreihen = async (ref, item) => {
+    const einreihen: Einreihen = async (ref, roh) => {
       try {
-        const stand = item.sourceVersion ?? 1;
         const schon =
-          item.externalId === undefined
+          roh.externalId === undefined
             ? undefined
-            : bekannt.get(importProviderKey(item.provider))?.get(item.externalId);
-        if (schon !== undefined && stand <= schon) {
+            : bekannt.get(importProviderKey(roh.provider))?.get(roh.externalId);
+        const item = schon === undefined ? roh : naechsterStand(roh, schon);
+        if (item === null) {
           bereitsDa += 1;
           return;
         }
@@ -412,17 +412,70 @@ async function fuehreUebernahmeAus(
   }
 }
 
+/** Der höchste bekannte Stand einer Quelle — und die Inhaltsabdrücke, die unter ihm stehen. */
+interface BekannterStand {
+  readonly stand: number;
+  readonly abdruecke: Set<string>;
+}
+
+/**
+ * Der Inhaltsabdruck eines Vorgangs: genau die Angaben, die die Übernahme ins Wissensobjekt und an
+ * seinen Herkunftsanker trägt (Titel, Kernaussage, Volltext, Einstufung, Tags, Pfad, Leserechte).
+ * Die Ingest-Grenze (`saeubereQuellangaben`) reicht alle diese Felder unverändert durch — derselbe
+ * Vorgang ergibt deshalb am frischen Abruf und am gespeicherten Kandidaten denselben Abdruck.
+ */
+function jiraInhaltsabdruck(item: ImportItem): string {
+  return JSON.stringify([
+    item.title,
+    item.statement,
+    item.bodyHtml ?? null,
+    item.confidentiality ?? null,
+    item.tags ?? [],
+    item.sourcePath ?? [],
+    item.sourceRestrictions ?? null,
+  ]);
+}
+
+/**
+ * NACHARBEIT 2 (Bens Befund) — DER STAND, UNTER DEM EIN VORGANG EINGEREIHT WIRD, oder `null`
+ * für „schon da".
+ *
+ * Der Quellstand des Mappers zählt Minuten (`services/jira/src/mapper.ts`, wegen der Fassungsgrenze
+ * des Import-Kerns). Zwei Änderungen in DERSELBEN Minute ergäben denselben Stand, und eine
+ * zwischenzeitlich übernommene Fassung verschluckte die zweite Änderung. Deshalb entscheidet hier
+ * nicht der Stand allein, sondern Stand UND Inhalt:
+ *
+ *   · Stand höher als alles Bekannte          → eingereiht wie geliefert.
+ *   · Stand nicht höher, Inhalt bekannt       → `null`: unverändert, schon da.
+ *   · Stand nicht höher, Inhalt NEU           → eingereiht unter `bekannt + 1`. Der Stand bleibt
+ *     ganzzahlig, wächst streng und liegt weit unter der Fassungsgrenze; der Re-Sync des
+ *     Import-Kerns sieht ihn als neuere Fassung.
+ *
+ * Auch eine geänderte Rollenbesetzung (Leserechte) ändert `updated` in Jira nicht — über den
+ * Abdruck wird sie trotzdem als neuer Stand übernommen.
+ */
+function naechsterStand(item: ImportItem, bekannt: BekannterStand): ImportItem | null {
+  const stand = item.sourceVersion ?? 1;
+  if (stand > bekannt.stand) {
+    return item;
+  }
+  if (bekannt.abdruecke.has(jiraInhaltsabdruck(item))) {
+    return null;
+  }
+  return { ...item, sourceVersion: bekannt.stand + 1 };
+}
+
 /**
  * Der höchste Quellstand je (Anbieter, Quellkennung), der bereits OFFEN wartet oder ANGENOMMEN zu
- * einem Wissensobjekt geworden ist — aus EINER Lesung der Warteschlange (dieselbe Regel wie beim
- * SharePoint-Weg, `leseStaende`). Ein unveränderter Vorgang wird damit nicht noch einmal eingereiht.
- * Scheitert die Lesung, ist die Karte leer: im Zweifel wird eingereiht und ein Mensch entscheidet.
+ * einem Wissensobjekt geworden ist — samt den Inhaltsabdrücken unter diesem Stand — aus EINER
+ * Lesung der Warteschlange (dieselbe Regel wie beim SharePoint-Weg, `leseStaende`). Scheitert die
+ * Lesung, ist die Karte leer: im Zweifel wird eingereiht und ein Mensch entscheidet.
  */
 async function bekannteStaende(
   library: LibraryService,
   log: FastifyBaseLogger,
-): Promise<ReadonlyMap<string, ReadonlyMap<string, number>>> {
-  const karte = new Map<string, Map<string, number>>();
+): Promise<ReadonlyMap<string, ReadonlyMap<string, BekannterStand>>> {
+  const karte = new Map<string, Map<string, BekannterStand>>();
   try {
     for (const kandidat of await library.listImportCandidates()) {
       const externalId = kandidat.item.externalId;
@@ -434,9 +487,13 @@ async function bekannteStaende(
       }
       const anbieter = importProviderKey(kandidat.item.provider);
       const stand = kandidat.item.sourceVersion ?? 1;
-      const jeAnbieter = karte.get(anbieter) ?? new Map<string, number>();
-      if (stand > (jeAnbieter.get(externalId) ?? 0)) {
-        jeAnbieter.set(externalId, stand);
+      const abdruck = jiraInhaltsabdruck(kandidat.item);
+      const jeAnbieter = karte.get(anbieter) ?? new Map<string, BekannterStand>();
+      const bisher = jeAnbieter.get(externalId);
+      if (bisher === undefined || stand > bisher.stand) {
+        jeAnbieter.set(externalId, { stand, abdruecke: new Set([abdruck]) });
+      } else if (stand === bisher.stand) {
+        bisher.abdruecke.add(abdruck);
       }
       karte.set(anbieter, jeAnbieter);
     }

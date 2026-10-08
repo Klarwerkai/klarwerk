@@ -50,9 +50,12 @@
 // (`library-analytics/src/repo.ts`, geprüft in `pruefeAnkerEintrag`) — die Grenze schützt die
 // `::int`-Spalte. Sekunden seit 1970 liegen 2026 bei rund 1,79 Milliarden; JEDER Vorgang wurde damit
 // als `LibraryError` abgewiesen, und kein Kandidat entstand. Minuten liegen 2026 bei rund 29,8
-// Millionen und bleiben bis ins Jahr ~3870 unter der Grenze. DIE GRENZE DIESER WAHL, ausdrücklich:
-// zwei Änderungen desselben Vorgangs in DERSELBEN Minute ergeben denselben Quellstand — wurde
-// dazwischen übernommen, gilt die zweite Änderung erst mit der nächsten späteren Änderung als neuer.
+// Millionen und bleiben bis ins Jahr ~3870 unter der Grenze.
+//
+// ZWEI ÄNDERUNGEN IN DERSELBEN MINUTE (Nacharbeit 2, Bens Befund): sie ergeben hier denselben
+// Quellstand. Unterschieden werden sie im Übernahmeweg (`services/app/src/routes/jira-import-
+// routes.ts`, `naechsterStand`): ist der Stand nicht höher als der bekannte, der INHALT aber neu,
+// wird der Vorgang unter `bekannt + 1` eingereiht; nur ein unveränderter Inhalt gilt als „schon da".
 
 import type { Confidentiality, KoSourceRestrictions } from "../../knowledge-object";
 import type { ImportItem } from "../../library-analytics";
