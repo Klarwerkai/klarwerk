@@ -527,13 +527,12 @@ function kuerzeAufWortgrenze(text: string, deckel: number): string {
 // und erreichte das Modell nie. Die 500er-Grenze aus G27 kehrte so als 600er-Grenze je Tabelle
 // zurück, obwohl Suche, Relevanztor und Zitatprüfung den ganzen Text sahen.
 //
-// WAS SICH ÄNDERT, und nur das: das Fenster beginnt an dem TREFFERWORT, ab dem es die meisten
-// VERSCHIEDENEN Frage-Token deckt, und läuft von dort vorwärts — in Zeilen und Sätzen steht der
-// Wert HINTER seiner Bezeichnung („Nachspannventil … maximal 185 bar"). Rückwärts wächst es nur,
-// wenn vorn Platz bleibt, weil der Satz endet. Deckt der Satzanfang gleich viel, gewinnt er: dann
-// ist das Ergebnis der alte Schnitt. Das Fenster ist ein zusammenhängender Ausschnitt EINES
-// Segments — `istAusschnitt` deckt ihn unverändert, die Segmentregel D4 wird nicht gelockert. Es
-// enthält nur ganze Wörter, wörtlich aus dem Satz, und bleibt unter demselben Deckel.
+// WAS SICH ÄNDERT, und nur das: gesucht wird die Stelle, an der die meisten VERSCHIEDENEN
+// Frage-Token beieinanderstehen (der Kern), und das Fenster legt sich MITTIG um sie — der Wert kann
+// hinter seiner Bezeichnung stehen („Nachspannventil … maximal 185 bar") oder davor („185 bar
+// maximal zulässiger Haltedruck Nachspannventil"). Das Fenster ist ein zusammenhängender
+// Ausschnitt EINES Segments — `istAusschnitt` deckt ihn unverändert, die Segmentregel D4 wird nicht
+// gelockert. Es enthält nur ganze Wörter, wörtlich aus dem Satz, und bleibt unter demselben Deckel.
 interface FensterWort {
   von: number;
   bis: number;
@@ -579,11 +578,34 @@ function fensterUmTreffer(satz: string, frageWoerter: ReadonlySet<string>, decke
       }
     }
   }
-  if (besterStart <= 0) {
+  if (besterStart < 0) {
     return kuerzeAufWortgrenze(satz, deckel);
   }
-  let erstes = besterStart;
-  let letztes = besterStart;
+  // Der KERN: vom ersten Trefferwort des besten Fensters bis zu dem Wort, mit dem es die beste
+  // Zahl verschiedener Frage-Token erreicht. Er passt in den Deckel, weil das beste Fenster ihn
+  // schon enthielt.
+  let kernAnfang = besterStart;
+  while (wort(kernAnfang).treffer.length === 0) {
+    kernAnfang += 1;
+  }
+  const gesehen = new Set<string>();
+  let kernEnde = kernAnfang;
+  for (let i = kernAnfang; gesehen.size < besteZahl; i += 1) {
+    for (const w of wort(i).treffer) {
+      gesehen.add(w);
+    }
+    kernEnde = i;
+  }
+  // Ben, Nacharbeit 2: der Rest des Deckels verteilt sich HÄLFTIG vor und hinter den Kern. Ein
+  // Wert steht in Tabellen ebenso VOR seiner Bezeichnung („185 bar maximal zulässiger Haltedruck
+  // Nachspannventil") wie dahinter; eine reine Vorwärtserweiterung verlöre ihn, sobald genug
+  // Tabelle folgt. Was eine Seite nicht braucht (Satzanfang oder -ende erreicht), bekommt die andere.
+  let erstes = kernAnfang;
+  let letztes = kernEnde;
+  const vorlauf = Math.floor((deckel - (wort(kernEnde).bis - wort(kernAnfang).von)) / 2);
+  while (erstes > 0 && wort(kernAnfang).von - wort(erstes - 1).von <= vorlauf) {
+    erstes -= 1;
+  }
   while (letztes + 1 < woerter.length && wort(letztes + 1).bis - wort(erstes).von <= deckel) {
     letztes += 1;
   }

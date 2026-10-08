@@ -171,6 +171,58 @@ describe("Auszug · der überlange Satz wird um den Treffer geschnitten", () => 
   });
 });
 
+// Ben, Nacharbeit 2: der Wert steht VOR seiner Bezeichnung, und hinter ihr folgt mehr Tabelle, als
+// der Quelldeckel fasst. Ein Fenster, das am ersten Fragebegriff beginnt und vorwärts wächst,
+// verliert genau „185 bar maximal zulässiger" — Wert und Bedingung.
+describe("Auszug · der Wert VOR seiner Bezeichnung bleibt erhalten", () => {
+  const VORANGESTELLT = "185 bar maximal zulässiger Haltedruck Nachspannventil";
+  const andere = ZEILEN.filter(([bauteil]) => bauteil !== "Nachspannventil");
+  const zeilen = [
+    ...andere.slice(0, 8),
+    ["185 bar", "maximal zulässiger Haltedruck", "Nachspannventil"] as const,
+    ...andere,
+  ];
+  const html = [
+    "<p>Dieses Handbuch beschreibt die Prüfwerte der Presse HP-400.</p>",
+    "<table><tr><th>Grenzwert</th><th>Prüfschritt</th><th>Bauteil</th></tr>",
+    ...zeilen.map(([a, b, c]) => `<tr><td>${a}</td><td>${b}</td><td>${c}</td></tr>`),
+    "</table><p>Abweichungen sind sofort der Instandhaltung zu melden.</p>",
+  ].join("");
+  const body = visibleTextFromBodyHtml(html).replace(/\s+/g, " ").trim();
+  const satz = saetze(body).find((s) => s.includes(VORANGESTELLT)) ?? "";
+  const ref = {
+    id: "hp400-vorangestellt",
+    title: TITEL,
+    statement: AUSSAGE,
+    status: "validiert" as const,
+    trust: 60,
+    bodyText: body,
+  };
+
+  it("B0 · KALIBRIERUNG: hinter dem ersten Fragebegriff folgt mehr Tabelle, als der Deckel fasst", () => {
+    expect(satz.length).toBeGreaterThan(AUSZUG_MAX_ZEICHEN_JE_QUELLE);
+    const abBegriff = satz.slice(satz.indexOf("Haltedruck Nachspannventil"));
+    expect(abBegriff.length).toBeGreaterThan(AUSZUG_MAX_ZEICHEN_JE_QUELLE);
+    // Ein reines Vorwärtsfenster ab dem Begriff enthielte den Wert nicht.
+    expect(abBegriff.slice(0, AUSZUG_MAX_ZEICHEN_JE_QUELLE)).not.toContain("185 bar");
+  });
+
+  it("B1 · der Auszug trägt Wert, Bedingung und Bezeichnung und bleibt unter dem Quelldeckel", () => {
+    const auszug = dokumentAuszug(FRAGE, ref);
+    expect(auszug).toHaveLength(1);
+    const text = auszug[0] as string;
+    expect(text).toContain(VORANGESTELLT);
+    expect(text.length).toBeLessThanOrEqual(AUSZUG_MAX_ZEICHEN_JE_QUELLE);
+    expect(satz).toContain(text);
+  });
+
+  it("B2 · das Zitat der vorangestellten Zeile ist gedeckt, eine erfundene Zahl nicht", () => {
+    expect(pruefeDeckung(`${VORANGESTELLT} [1]`, [ref]).gedeckt).toBe(true);
+    const erfunden = VORANGESTELLT.replace("185", "250");
+    expect(pruefeDeckung(`${erfunden} [1]`, [ref]).gedeckt).toBe(false);
+  });
+});
+
 describe("Nutzerweg · Import-Körper → Suche → Relevanztor → Auszug → belegte Antwort", () => {
   it("V1 · bei 60 stärkeren Konkurrenten trägt der Prompt den Grenzwert und die Antwort die Quelle", async () => {
     const koService = new KoService({ repo: new InMemoryKoRepo() });
