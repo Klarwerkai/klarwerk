@@ -52,7 +52,14 @@ let token = "";
 let vorherigerFetch: typeof globalThis.fetch;
 
 /** Was das Modell vorschlägt — gesetzt je Fall. */
-const modell = { assistText: "", strukturTitel: "" };
+const modell: {
+  assistText: string;
+  strukturTitel: string;
+  strukturWissensart?: string | undefined;
+} = {
+  assistText: "",
+  strukturTitel: "",
+};
 /** Jeder Schreibaufruf, der den SERVER erreicht hat (Methode + Pfad). */
 let schreibaufrufe: { methode: string; url: string }[] = [];
 /** Hält das Anlegen am Server fest, bis der Test es freigibt (Doppelklickfall). */
@@ -93,6 +100,7 @@ function modellAntwort(url: string, methode: string, rumpf: string | undefined) 
         measures: [],
         tags: [],
         confidence: 70,
+        ...(modell.strukturWissensart ? { knowledgeType: modell.strukturWissensart } : {}),
         demo: false,
       });
     }
@@ -104,6 +112,7 @@ beforeEach(async () => {
   await i18n.changeLanguage("de");
   modell.assistText = "";
   modell.strukturTitel = "";
+  modell.strukturWissensart = undefined;
   schreibaufrufe = [];
   postBarriere = null;
   vorherigerFetch = globalThis.fetch;
@@ -231,9 +240,10 @@ function seiteSchliessen(): void {
 }
 
 /** Serverstand über die öffentliche Route — derselbe Weg, den Codex lesend gegangen ist. */
-async function serverEntwurf(
-  id: string,
-): Promise<{ updatedAt?: string; payload: { title?: string; bodyHtml?: string | null } }> {
+async function serverEntwurf(id: string): Promise<{
+  updatedAt?: string;
+  payload: { title?: string; bodyHtml?: string | null; type?: string };
+}> {
   const res = await app.inject({
     method: "GET",
     url: `/api/drafts/${id}`,
@@ -387,6 +397,74 @@ describe("KI-UEBERNAHME-SPEICHERN · Beleg am echten Server und am Wiederöffnen
     seiteSchliessen();
     await seiteOeffnen(`/erfassen?draft=${id}`);
     expect(titelfeld().value).toContain("Ventil vor der Wartung");
+  }, 30000);
+
+  // FR-STR-01 / R-0315 (Bens Befund Nacharbeit 2): im Ordnen-Hauptweg ging die vorgeschlagene
+  // Wissensart bei „Übernehmen" verloren. Jetzt steht sie in der Vorschlagskarte, der Mensch
+  // korrigiert sie dort, und genau seine Wahl erreicht den gespeicherten Entwurf am echten Server.
+  it("S4 — Ordnen: vorgeschlagene Wissensart korrigieren, übernehmen, sichern → der Server trägt die Wahl", async () => {
+    modell.strukturTitel = "Ventil vor der Wartung entlasten";
+    modell.strukturWissensart = "negativwissen";
+    await seiteOeffnen("/erfassen");
+    await schreibeInsBlatt("<p>ventil entlasten vor wartung</p>");
+
+    await kiWeg(i18n.t("erfassen.ki.struktur"));
+    const auswahl = container.querySelector<HTMLSelectElement>(
+      '[data-testid="blatt-ki-vorschlag-wissensart"] select',
+    );
+    if (!auswahl) {
+      throw new Error("Die Wissensart-Auswahl fehlt in der Vorschlagskarte.");
+    }
+    expect(auswahl.value, "der KI-Vorschlag steht vorbelegt").toBe("negativwissen");
+    await act(async () => {
+      auswahl.value = "technik";
+      auswahl.dispatchEvent(new Event("change", { bubbles: true }));
+      await flush();
+    });
+    await klick(knopfMit(i18n.t("fd.accept")));
+    await klick(sichernKnopf());
+
+    expect(schreibaufrufe.map((a) => a.methode)).toEqual(["POST"]);
+    const id = await einzigeEntwurfsId();
+    const gespeichert = await serverEntwurf(id);
+    expect(gespeichert.payload.type, "die menschliche Korrektur gilt").toBe("technik");
+  }, 30000);
+
+  it("S5 — Ordnen über einem Entwurf mit gespeicherter Wissensart: der Vorschlag ersetzt sie nicht", async () => {
+    const angelegt = await app.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        title: "ventil entlasten",
+        statement: "ventil entlasten vor wartung",
+        bodyHtml: "<p>ventil entlasten vor wartung</p>",
+        type: "lernkurve",
+        category: "Allgemein",
+        origin: "frontdoor",
+      },
+    });
+    expect(angelegt.statusCode, angelegt.body.slice(0, 300)).toBe(201);
+    const id = (JSON.parse(angelegt.body) as { id: string }).id;
+    schreibaufrufe = [];
+
+    modell.strukturTitel = "Ventil vor der Wartung entlasten";
+    modell.strukturWissensart = "negativwissen";
+    await seiteOeffnen(`/erfassen?draft=${id}`);
+    await kiWeg(i18n.t("erfassen.ki.struktur"));
+    const karte = container.querySelector('[data-testid="blatt-ki-vorschlag-wissensart"]');
+    expect(karte?.querySelector("select")?.value, "die geladene Entscheidung geht vor").toBe(
+      "lernkurve",
+    );
+    const kiNennung = karte?.querySelector('[data-testid="blatt-ki-vorschlag-wissensart-ki"]');
+    expect(kiNennung?.textContent ?? "", "der KI-Vorschlag wird nur genannt").toContain(
+      i18n.t("ktype.negativwissen"),
+    );
+    await klick(knopfMit(i18n.t("fd.accept")));
+    await klick(sichernKnopf());
+
+    expect(schreibaufrufe.map((a) => a.methode)).toEqual(["PUT"]);
+    expect((await serverEntwurf(id)).payload.type).toBe("lernkurve");
   }, 30000);
 
   it("G1 — Doppelklick während des laufenden Anlegens: der Server bekommt genau EINEN Schreibaufruf", async () => {
