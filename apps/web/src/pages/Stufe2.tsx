@@ -372,7 +372,7 @@ export function Output(): JSX.Element {
               disabled={preview.items.length === 0 || generate.isPending}
               onClick={() => generate.mutate()}
             >
-              <FileText size={15} />
+              <FileText size={15} strokeWidth={1.8} />
               {t("out.generate")}
             </Button>
           </div>

@@ -2232,7 +2232,12 @@ export function Validation(): JSX.Element {
                     data-testid="pruefen-chip"
                     className="inline-flex items-center gap-[6px] rounded-[8px] border border-hairline bg-page px-[10px] py-[5px]"
                   >
-                    <FileText size={13} aria-hidden="true" className="text-muted" />
+                    <FileText
+                      size={13}
+                      strokeWidth={1.8}
+                      aria-hidden="true"
+                      className="text-muted"
+                    />
                     <span className="text-[12px] font-semibold text-text">{q.label}</span>
                     {zeit ? (
                       <span data-testid="pruefen-quelle-zeit" className="text-[12px] text-muted">

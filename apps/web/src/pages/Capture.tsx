@@ -5784,7 +5784,7 @@ export function CaptureArbeitsraum({
                     speechSupported ? (
                       <div className="mb-2 flex items-center gap-1">
                         <Button variant={listening ? "primary" : "ghost"} onClick={toggleDictation}>
-                          <Mic size={15} />
+                          <Mic size={15} strokeWidth={1.8} />
                           {listening ? t("capture.diktatStop") : t("capture.diktatStart")}
                         </Button>
                       </div>
@@ -5805,7 +5805,7 @@ export function CaptureArbeitsraum({
                     Text) fließt sofort in den Freitext, Bilder/Videos werden Anhang (PMO-FEA-0006-Anschluss). */}
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
-                      <FileText size={14} />
+                      <FileText size={14} strokeWidth={1.8} />
                       {t(CAPTURE_WIZARD_TEXT.upload)}
                       <input
                         type="file"
@@ -5977,7 +5977,7 @@ export function CaptureArbeitsraum({
                           onClick={toggleIvDictation}
                           disabled={interview.isPending || !ivResult}
                         >
-                          <Mic size={15} />
+                          <Mic size={15} strokeWidth={1.8} />
                           {ivListening ? t("capture.diktatStop") : t("capture.diktatStart")}
                         </Button>
                       ) : (
@@ -6082,7 +6082,7 @@ export function CaptureArbeitsraum({
                     </Button>
                     {fileName ? (
                       <span className="inline-flex items-center gap-1.5 text-[12.5px] text-text">
-                        <FileText size={13} className="text-muted-2" />
+                        <FileText size={13} strokeWidth={1.8} className="text-muted-2" />
                         {fileName}
                       </span>
                     ) : null}
@@ -6588,7 +6588,7 @@ export function CaptureArbeitsraum({
                   {/* Dokumente */}
                   <div className="rounded-card border border-dashed border-hairline p-3">
                     <div className="mb-2 flex items-center gap-1.5 font-mono text-klein uppercase tracking-wider text-muted-2">
-                      <FileText size={13} />
+                      <FileText size={13} strokeWidth={1.8} />
                       {t("capture.documents")}
                     </div>
                     <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
@@ -6614,7 +6614,7 @@ export function CaptureArbeitsraum({
                             key={d.id}
                             className="flex items-center gap-2 text-[12.5px] text-text"
                           >
-                            <FileText size={12} className="text-muted-2" />
+                            <FileText size={12} strokeWidth={1.8} className="text-muted-2" />
                             <span className="truncate">{d.name}</span>
                             {d.mime.startsWith("video/") || d.mime.startsWith("audio/") ? (
                               <button

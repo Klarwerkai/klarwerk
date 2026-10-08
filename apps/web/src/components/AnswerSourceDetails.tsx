@@ -147,7 +147,7 @@ export function AnswerSourceDetails({
                     title={t("answerSource.originalFile")}
                     className={BELEG_LINK}
                   >
-                    <FileText size={11} aria-hidden="true" />
+                    <FileText size={11} strokeWidth={1.8} aria-hidden="true" />
                     {q.datei.name}
                   </a>
                 ) : null}
@@ -191,7 +191,7 @@ export function AnswerSourceDetails({
                   title={t("answerSource.originalFile")}
                   className={BELEG_LINK}
                 >
-                  <FileText size={11} aria-hidden="true" />
+                  <FileText size={11} strokeWidth={1.8} aria-hidden="true" />
                   {d.name}
                 </a>
               </li>

@@ -335,7 +335,7 @@ export function BodyExtractPanel({
             <UploadLimitsHint className="basis-full text-[11px] text-muted-2" />
             {fileName ? (
               <span className="inline-flex items-center gap-1.5 text-[12.5px] text-text">
-                <FileText size={13} className="text-muted-2" />
+                <FileText size={13} strokeWidth={1.8} className="text-muted-2" />
                 {fileName}
                 <button
                   type="button"

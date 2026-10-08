@@ -1592,7 +1592,7 @@ export function Mobile(): JSX.Element {
             ) : (
               <>
                 <div className="flex items-center gap-2 rounded-input border border-hairline bg-page px-3">
-                  <Search size={15} className="text-muted-2" />
+                  <Search size={15} strokeWidth={1.8} className="text-muted-2" />
                   <input
                     value={sq}
                     onChange={(e) => setSq(e.target.value)}

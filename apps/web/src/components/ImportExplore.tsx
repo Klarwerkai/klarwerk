@@ -780,7 +780,7 @@ export function ImportExplore(): JSX.Element {
               {explore.isPending ? (
                 <Loader2 size={15} className="animate-spin" />
               ) : (
-                <Search size={15} />
+                <Search size={15} strokeWidth={1.8} />
               )}
               {explore.isPending
                 ? t("imp.explore.exploring")

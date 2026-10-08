@@ -13,6 +13,11 @@
 //   test-results/bildnachweis/b3-werksreset-rueckfrage.png        — Werksreset Stufe 2 (K2)
 //   test-results/bildnachweis/b4-ui-kit-1.png, -2.png, …          — Bausteinkatalog, in Bildschirm-
 //                                                                   höhen durchlaufen (K5/K7/K4)
+//   test-results/bildnachweis/b5-entwuerfe-fortsetzen.png         — /entwuerfe, Zeile mit Fortsetzen
+//                                                                   (Öffnen-Symbol) und Löschen (K33)
+//   test-results/bildnachweis/b6-mobil-entwurf.png, -rueckfrage.png, -quittung.png
+//                                                                 — /mobile (390 px): Entwurfszeile,
+//                                                                   Rückfrage „Löschen?“, Quittung (K33)
 //
 // Startbefehl (wie jede Datei der Browsergruppe, nach `./tools/build`):
 //   npx vitest run --config vitest.browser.config.ts tests/design-bildnachweis/bildnachweis-chromium.test.ts
@@ -366,6 +371,132 @@ describe("R-1399 · Sichtnachweis: Exportumfang, Kenntnisnahme, Werksreset-Rück
       "Katalogabschnitt in keinem Bild vollständig sichtbar",
     ).toEqual([]);
     console.info(`R-1399 · B4 · ${bilder.length} Bilder: ${bilder.join(", ")}`);
+    expect((stand as H4Stand).seitenfehler).toEqual([]);
+  }, 120_000);
+
+  // ----------------------------------------------------------------------------------------------
+  // Ben, Nacharbeit 9: die Aktionsflächen aus K33 (gleiche Aktion, gleiches Wort, gleiches Symbol)
+  // brauchen ihren eigenen Sichtnachweis — Fortsetzen-Symbol der Entwurfsliste (B5) und die mobile
+  // Entwurfsbedienung mit Löschen, Rückfrage und Rückmeldung (B6). Der Entwurf wird über die echte
+  // Route angelegt (`POST /api/drafts`, dieselbe Nutzlast wie `entwurf-laden-zeitgrenze`).
+  // ----------------------------------------------------------------------------------------------
+  const ENTWURF_TITEL = "Bildnachweis Schmierplan Linie 2";
+
+  it("B5 · Entwurfsliste /entwuerfe: Fortsetzen mit Öffnen-Symbol, Löschen mit Papierkorb", async () => {
+    expect(fehler).toBeNull();
+    const s = (stand as H4Stand).seite;
+    const angelegt = await s.evaluate<{ status: number }>(
+      fn(`async (titel) => {
+        const res = await fetch("/api/drafts", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            title: titel,
+            statement: "Vor jedem Anlauf die Schmierstellen prüfen.",
+            category: "Instandhaltung",
+            confidentiality: "intern",
+            origin: "frontdoor",
+          }),
+        });
+        return { status: res.status };
+      }`),
+      ENTWURF_TITEL,
+    );
+    expect(angelegt.status).toBe(201);
+    await s.setViewportSize({ width: 1620, height: 900 });
+    await s.goto(`${ORIGIN}/entwuerfe`, { waitUntil: "load", timeout: 60_000 });
+    await warte('[data-testid="entwurfsliste-fortsetzen"]');
+    const m = await s.evaluate<{ fortsetzen: string; loeschen: string; wort: string }>(
+      fn(`() => {
+        const f = document.querySelector('[data-testid="entwurfsliste-fortsetzen"]');
+        const l = document.querySelector('[data-testid="entwurfsliste-loeschen"]');
+        f.closest('li').scrollIntoView({ block: 'center' });
+        const klasse = (b) => {
+          const svg = b ? b.querySelector('svg') : null;
+          return svg ? svg.getAttribute('class') || '' : '';
+        };
+        return { fortsetzen: klasse(f), loeschen: klasse(l), wort: (f.innerText || '').trim() };
+      }`),
+    );
+    console.info(`R-1399 · B5 · ${JSON.stringify(m)}`);
+    expect(m.fortsetzen).toContain("folder-open");
+    expect(m.fortsetzen).not.toContain("rotate");
+    expect(m.loeschen).toContain("trash");
+    expect(m.wort).toBe("Fortsetzen");
+    await ausschnitt('[data-testid="entwurfsliste-eintrag"]', "b5-entwuerfe-fortsetzen");
+  }, 90_000);
+
+  it("B6 · Mobil: Fortsetzen/Löschen-Symbole, Rückfrage „Löschen?“, Quittung „Entwurf gelöscht.“", async () => {
+    expect(fehler).toBeNull();
+    const s = (stand as H4Stand).seite;
+    await s.setViewportSize({ width: 390, height: 844 });
+    await s.goto(`${ORIGIN}/mobile`, { waitUntil: "load", timeout: 60_000 });
+    await warte('[data-testid="mobil-entwurf-fortsetzen"]');
+    const zeile = `() => document.querySelector('[data-testid="mobil-entwurf-fortsetzen"]')`;
+    const symbol = (testId: string): string =>
+      `(() => { const b = document.querySelector('[data-testid="${testId}"]'); const svg = b && b.querySelector('svg'); return svg ? svg.getAttribute('class') || '' : ''; })()`;
+    const ruhe = await s.evaluate<{ fortsetzen: string; loeschen: string; name: string }>(
+      fn(`() => {
+        const f = (${zeile})();
+        f.closest('li').scrollIntoView({ block: 'center' });
+        return {
+          fortsetzen: ${symbol("mobil-entwurf-fortsetzen")},
+          loeschen: ${symbol("mobil-entwurf-loeschen")},
+          name: document.querySelector('[data-testid="mobil-entwurf-loeschen"]').getAttribute('aria-label'),
+        };
+      }`),
+    );
+    console.info(`R-1399 · B6 Ruhe · ${JSON.stringify(ruhe)}`);
+    expect(ruhe.fortsetzen).toContain("folder-open");
+    expect(ruhe.loeschen).toContain("trash");
+    expect(ruhe.name).toBe("Löschen");
+    const zeilenRechteck = await s.evaluate<Rechteck>(
+      fn(`() => {
+        const r = (${zeile})().closest('li').getBoundingClientRect();
+        return { x: 0, y: Math.max(0, r.top - 12), width: 390, height: r.height + 24 };
+      }`),
+    );
+    await s.screenshot({ path: bild("b6-mobil-entwurf"), clip: zeilenRechteck });
+
+    await s.click('[data-testid="mobil-entwurf-loeschen"]');
+    await warte('[data-testid="mobil-entwurf-loeschen-ja"]');
+    const frage = await s.evaluate<{ text: string; ja: string; nein: string; jaName: string }>(
+      fn(`() => {
+        const ja = document.querySelector('[data-testid="mobil-entwurf-loeschen-ja"]');
+        return {
+          text: (ja.closest('li').innerText || '').replace(/\\s+/g, ' ').trim(),
+          ja: ${symbol("mobil-entwurf-loeschen-ja")},
+          nein: document.querySelector('[data-testid="mobil-entwurf-loeschen-nein"]').getAttribute('aria-label'),
+          jaName: ja.getAttribute('aria-label'),
+        };
+      }`),
+    );
+    console.info(`R-1399 · B6 Rückfrage · ${JSON.stringify(frage)}`);
+    expect(frage.text).toContain("Löschen? Der Entwurf wandert in den Papierkorb");
+    expect(frage.text).not.toContain("Verwerfen");
+    expect(frage.ja).toContain("trash");
+    expect(frage.jaName).toBe("Löschen");
+    expect(frage.nein).toBe("Behalten");
+    const frageRechteck = await s.evaluate<Rechteck>(
+      fn(`() => {
+        const r = document.querySelector('[data-testid="mobil-entwurf-loeschen-ja"]').closest('li').getBoundingClientRect();
+        return { x: 0, y: Math.max(0, r.top - 12), width: 390, height: r.height + 24 };
+      }`),
+    );
+    await s.screenshot({ path: bild("b6-mobil-rueckfrage"), clip: frageRechteck });
+
+    await s.click('[data-testid="mobil-entwurf-loeschen-ja"]');
+    await s.waitForFunction(
+      fn(`() => (document.body.innerText || '').includes('Entwurf gelöscht.')`),
+      undefined,
+      { timeout: 30_000 },
+    );
+    const quittung = await s.evaluate<boolean>(
+      fn(`() => !(document.body.innerText || '').includes('Entwurf verworfen')`),
+    );
+    expect(quittung, "die alte Quittung „Entwurf verworfen“ steht noch da").toBe(true);
+    await s.screenshot({ path: bild("b6-mobil-quittung") });
+    console.info(`R-1399 · Bilder ${bild("b6-mobil-entwurf")}, -rueckfrage, -quittung`);
     expect((stand as H4Stand).seitenfehler).toEqual([]);
   }, 120_000);
 });

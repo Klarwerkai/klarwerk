@@ -36,7 +36,7 @@ export function BodyTemplateChooser({
   return (
     <div className="mb-2 rounded-card border border-hairline bg-surface p-2.5">
       <div className="flex items-center gap-1.5">
-        <FileText size={13} className="text-muted" />
+        <FileText size={13} strokeWidth={1.8} className="text-muted" />
         <span className="text-[11.5px] font-semibold text-ink">{t("editor.template.title")}</span>
       </div>
       <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{t("editor.template.hint")}</p>

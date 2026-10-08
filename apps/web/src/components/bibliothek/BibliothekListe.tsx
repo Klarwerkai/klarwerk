@@ -303,7 +303,7 @@ export function BibliothekListe({
             data-testid="bib-suchfeld"
             className="flex min-w-0 flex-1 items-center gap-2 rounded-btn border border-hairline bg-page px-3 py-2"
           >
-            <Search size={15} aria-hidden className="shrink-0 text-muted" />
+            <Search size={15} strokeWidth={1.8} aria-hidden className="shrink-0 text-muted" />
             <label htmlFor="bib-suche" className="sr-only">
               {t("lib.searchLabel")}
             </label>
