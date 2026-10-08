@@ -30,6 +30,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { TutorialBereich } from "./TutorialBereich";
+import { type TutorialFernLage, TutorialMeldungCtx } from "./fernsteuerung";
 import { tutorialFuerPfad } from "./rahmen";
 import type { TutorialDefinition } from "./typen";
 
@@ -39,8 +40,12 @@ interface TutorialLage {
   bereichId: string;
   knopfRef: MutableRefObject<HTMLButtonElement | null>;
   umschalten: () => void;
+  /** KLARA-VORSCHAU: öffnet das Tutorial der Seite (ohne Umschalten). */
+  oeffnen: () => void;
   /** `mitFokus`: der Fokus kehrt zum Knopf „Tutorial“ zurück (Ausgangspunkt). */
   schliessen: (mitFokus: boolean) => void;
+  /** KLARA-VORSCHAU: die gemeldete Lage des offenen Bereichs (`fernsteuerung.ts`). */
+  fernLage: TutorialFernLage | null;
 }
 
 const LEER: TutorialLage = {
@@ -49,7 +54,9 @@ const LEER: TutorialLage = {
   bereichId: "",
   knopfRef: { current: null },
   umschalten: () => {},
+  oeffnen: () => {},
   schliessen: () => {},
+  fernLage: null,
 };
 
 const TutorialCtx = createContext<TutorialLage>(LEER);
@@ -58,6 +65,7 @@ export function TutorialProvider({ children }: { children: ReactNode }): JSX.Ele
   const { pathname } = useLocation();
   const definition = tutorialFuerPfad(pathname);
   const [offen, setOffen] = useState(false);
+  const [fernLage, setFernLage] = useState<TutorialFernLage | null>(null);
   const knopfRef = useRef<HTMLButtonElement | null>(null);
   const bereichId = useId();
   // Ein Tutorial gehört zu genau einer Seite: wer die Seite verlässt, verlässt das Tutorial.
@@ -66,6 +74,7 @@ export function TutorialProvider({ children }: { children: ReactNode }): JSX.Ele
     setOffen(false);
   }, [pathname]);
   const umschalten = useCallback(() => setOffen((v) => !v), []);
+  const oeffnen = useCallback(() => setOffen(true), []);
   const schliessen = useCallback((mitFokus: boolean) => {
     // Der Knopf steht ausserhalb des Bereichs und bleibt stehen — der Fokus kann sofort dorthin,
     // bevor der Bereich (und mit ihm der Schliessen-Knopf) verschwindet.
@@ -75,10 +84,37 @@ export function TutorialProvider({ children }: { children: ReactNode }): JSX.Ele
     setOffen(false);
   }, []);
   const wert = useMemo<TutorialLage>(
-    () => ({ definition, offen, bereichId, knopfRef, umschalten, schliessen }),
-    [definition, offen, bereichId, umschalten, schliessen],
+    () => ({
+      definition,
+      offen,
+      bereichId,
+      knopfRef,
+      umschalten,
+      oeffnen,
+      schliessen,
+      fernLage: offen ? fernLage : null,
+    }),
+    [definition, offen, bereichId, umschalten, oeffnen, schliessen, fernLage],
   );
-  return <TutorialCtx.Provider value={wert}>{children}</TutorialCtx.Provider>;
+  return (
+    <TutorialCtx.Provider value={wert}>
+      <TutorialMeldungCtx.Provider value={setFernLage}>{children}</TutorialMeldungCtx.Provider>
+    </TutorialCtx.Provider>
+  );
+}
+
+/**
+ * KLARA-VORSCHAU: was Klara vom Tutorial der aktuellen Seite braucht — ob es eins gibt, ob es offen
+ * ist, wie es steht, und wie man es öffnet. Ausserhalb eines `TutorialProvider` ist alles leer.
+ */
+export function useTutorialFuerKlara(): {
+  vorhanden: boolean;
+  offen: boolean;
+  oeffnen: () => void;
+  lage: TutorialFernLage | null;
+} {
+  const { definition, offen, oeffnen, fernLage } = useContext(TutorialCtx);
+  return { vorhanden: definition !== null, offen, oeffnen, lage: fernLage };
 }
 
 /** Die Leiste unter dem Kopfband mit dem Knopf „Tutorial“ — nur auf Seiten mit Tutorial. */
