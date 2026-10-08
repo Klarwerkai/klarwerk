@@ -89,7 +89,10 @@ export const DOWNLOAD = "https://download.sharepoint.test/vorautorisiert/";
 export const AUFGELOEST = "93.184.216.34";
 
 export const GEAENDERT_AM = "2026-09-12T09:15:00Z";
-export const QUELLSTAND = Math.floor(Date.parse(GEAENDERT_AM) / 1000);
+// R-0144: der Mapper zählt den Quellstand in Sekunden seit 2025-01-01 (`sharepointQuellstand`).
+const standAus = (iso: string): number =>
+  Math.max(1, Math.floor((Date.parse(iso) - Date.UTC(2025, 0, 1)) / 1000));
+export const QUELLSTAND = standAus(GEAENDERT_AM);
 /**
  * JOB 4360 · DIE ZWEITE FASSUNG DERSELBEN DATEI — jemand hat sie in SharePoint überarbeitet.
  *
@@ -100,7 +103,7 @@ export const QUELLSTAND = Math.floor(Date.parse(GEAENDERT_AM) / 1000);
  * nichts.
  */
 export const GEAENDERT_AM_NEU = "2026-09-19T14:20:00Z";
-export const QUELLSTAND_NEU = Math.floor(Date.parse(GEAENDERT_AM_NEU) / 1000);
+export const QUELLSTAND_NEU = standAus(GEAENDERT_AM_NEU);
 /** Der Text, der am Ende am zurückgelesenen Wissensobjekt stehen MUSS. */
 export const TEXT = "ZEILE EINS AUS DER DATEI\nZEILE ZWEI AUS DER DATEI";
 
