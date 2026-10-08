@@ -33,6 +33,12 @@ export default {
       "Mit diesem Bezug ist der Eintrag mindestens vertraulich und geht nicht in externe Kontexte.",
     "negativwissen.stufeGesperrt": "nicht wählbar bei diesem Bezug",
     "negativwissen.anzeigeTitel": "Lerneffekt",
+    "negativwissen.grenze.zeichen": "Zu lang: {{ist}} Zeichen, höchstens {{max}}. Bitte kürzen.",
+    "negativwissen.grenze.warnsignal":
+      "Ein Warnsignal hat {{ist}} Zeichen, höchstens {{max}} je Zeile. Bitte kürzen.",
+    "negativwissen.grenze.anzahl": "{{ist}} Warnsignale, höchstens {{max}}. Bitte zusammenfassen.",
+    "negativwissen.grenze.gesperrt":
+      "Sichern und Einreichen sind gesperrt, bis die markierten Angaben in die Grenzen passen. Deine Eingaben bleiben erhalten — es wird nichts abgeschnitten.",
   },
   en: {
     "negativwissen.einstieg": "Document a lesson learned",
@@ -57,6 +63,13 @@ export default {
       "With this reference the entry is at least confidential and never goes into external contexts.",
     "negativwissen.stufeGesperrt": "not available with this reference",
     "negativwissen.anzeigeTitel": "Lesson learned",
+    "negativwissen.grenze.zeichen":
+      "Too long: {{ist}} characters, at most {{max}}. Please shorten.",
+    "negativwissen.grenze.warnsignal":
+      "A warning sign has {{ist}} characters, at most {{max}} per line. Please shorten.",
+    "negativwissen.grenze.anzahl": "{{ist}} warning signs, at most {{max}}. Please combine them.",
+    "negativwissen.grenze.gesperrt":
+      "Saving and submitting are blocked until the marked entries fit the limits. Your input is kept — nothing is cut off.",
   },
   nl: {
     "negativwissen.einstieg": "Leereffect vastleggen",
@@ -81,5 +94,12 @@ export default {
       "Met deze betrokkenheid is de invoer minstens vertrouwelijk en gaat hij nooit naar externe contexten.",
     "negativwissen.stufeGesperrt": "niet kiesbaar bij deze betrokkenheid",
     "negativwissen.anzeigeTitel": "Leereffect",
+    "negativwissen.grenze.zeichen": "Te lang: {{ist}} tekens, hoogstens {{max}}. Graag inkorten.",
+    "negativwissen.grenze.warnsignal":
+      "Een waarschuwingssignaal heeft {{ist}} tekens, hoogstens {{max}} per regel. Graag inkorten.",
+    "negativwissen.grenze.anzahl":
+      "{{ist}} waarschuwingssignalen, hoogstens {{max}}. Graag samenvoegen.",
+    "negativwissen.grenze.gesperrt":
+      "Opslaan en indienen zijn geblokkeerd tot de gemarkeerde gegevens binnen de grenzen passen. Je invoer blijft behouden — er wordt niets afgekapt.",
   },
 } satisfies Textmodul;

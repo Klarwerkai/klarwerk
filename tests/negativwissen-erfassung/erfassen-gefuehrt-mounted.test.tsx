@@ -14,6 +14,8 @@
 //      Wissensart, Angaben und Stufe.
 //   M2 (R-2179 / K2) Sichern → neu laden → fortsetzen: die Angaben kehren in die Felder zurück und
 //      reisen beim Einreichen ins Wissensobjekt.
+//   M3 (K1/K2, BEN Nacharbeit 2) Eine Überschreitung steht vor dem Speichern am Feld; Sichern und
+//      Einreichen gehen nicht hinaus, die Eingabe bleibt vollständig; an der Grenze geht alles durch.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
@@ -293,6 +295,18 @@ async function einreichen(): Promise<void> {
   await klick(knopf);
 }
 
+/** Der Klick auf den echten Einreichen-Knopf, ohne vorauszusetzen, dass er offen ist. */
+async function einreichenVersuchen(): Promise<void> {
+  const kandidaten = [...container.querySelectorAll("button")].filter((b) =>
+    (b.textContent ?? "").replace(/\s+/g, " ").includes(i18n.t("capture.submit")),
+  );
+  const knopf = kandidaten[kandidaten.length - 1];
+  if (!(knopf instanceof HTMLButtonElement)) {
+    throw new Error(`Einreichen-Knopf nicht gefunden. Sichtbar: ${seitentext().slice(-900)}`);
+  }
+  await klick(knopf);
+}
+
 function vertraulichkeitsFeld(): HTMLSelectElement {
   return element<HTMLSelectElement>("capture-vertraulichkeit");
 }
@@ -346,6 +360,41 @@ describe("Lerneffekt geführt und vertraulich im Erfassen-Arbeitsraum", () => {
       earlyWarningSigns: ["Druckabfall am Morgen", "Eis an der Leitung"],
       bezug: ["personen"],
     });
+  });
+
+  // BEN, Nacharbeit 2: eine Überschreitung wird VOR dem Speichern gezeigt, nichts geht hinaus, und
+  // die Eingabe bleibt vollständig stehen — kein stilles Abschneiden.
+  it("M3 — zu lange Vermeidungsregel: Hinweis am Feld, weder Sichern noch Einreichen, Eingabe bleibt", async () => {
+    await mount();
+    await lerneffektErfassen();
+    const zuLang = "R".repeat(2001);
+    await setzen(element<HTMLTextAreaElement>("negativwissen-avoidanceRule"), zuLang);
+
+    expect(element("negativwissen-avoidanceRule-grenze").textContent).toContain("2001");
+    expect(element("negativwissen-avoidanceRule").getAttribute("aria-invalid")).toBe("true");
+    expect(element("negativwissen-grenze-gesperrt").textContent).toContain(
+      i18n.t("negativwissen.grenze.gesperrt"),
+    );
+
+    await bisZumEntwurf();
+    const vorher = bruecke.requests.length;
+    await klick(knopfMitText(i18n.t("capture.saveDraft")));
+    await einreichenVersuchen();
+    const hinaus = bruecke.requests
+      .slice(vorher)
+      .filter((r) => r.method !== "GET" && /\/api\/(kos|drafts)/.test(r.url));
+    expect(hinaus, JSON.stringify(hinaus.map((r) => r.url))).toEqual([]);
+    expect(await bestand()).toHaveLength(0);
+    expect(element<HTMLTextAreaElement>("negativwissen-avoidanceRule").value).toBe(zuLang);
+    expect(seitentext()).toContain(i18n.t("negativwissen.grenze.gesperrt"));
+
+    // Gekürzt auf die Grenze geht derselbe Fall vollständig durch.
+    const passt = "R".repeat(2000);
+    await setzen(element<HTMLTextAreaElement>("negativwissen-avoidanceRule"), passt);
+    await einreichen();
+    const kos = await bestand();
+    expect(kos, `kein Objekt. Sichtbar: ${seitentext().slice(-600)}`).toHaveLength(1);
+    expect(kos[0]?.negativwissen?.avoidanceRule).toBe(passt);
   });
 
   it("M2 — sichern, neu laden, fortsetzen: die Angaben kehren zurück und reisen ins Wissensobjekt", async () => {

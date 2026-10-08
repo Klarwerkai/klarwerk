@@ -420,7 +420,8 @@ export type {
 } from "./src/confidentiality";
 // R-1664/R-2179/R-2180: die Normalform der geführten Negativwissen-Angaben. Aufrufer ist die
 // Persistenzgrenze des Entwurfs (services/capture) — dieselbe Form, keine zweite Auslegung.
-export { normalizeNegativwissen } from "./src/negativwissen";
+// BEN, Nacharbeit 2: dazu die Grenzprüfung — der Entwurfsrand weist Überschreitungen ab, statt zu kürzen.
+export { negativwissenGrenzfehler, normalizeNegativwissen } from "./src/negativwissen";
 export type { NegativwissenAngaben } from "./src/negativwissen";
 // R-0658: Schutzdaten vor der Suche — Erkennung und die eine Lesestelle der Quarantäne.
 export { erkenneSchutzdaten, inSchutzdatenQuarantaene } from "./src/schutzdaten";

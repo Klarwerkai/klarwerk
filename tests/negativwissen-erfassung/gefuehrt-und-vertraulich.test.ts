@@ -15,6 +15,9 @@
 //   N5 (R-2180 / K3)               Auch Administratoren können einen solchen Fall nicht unter
 //                                  „vertraulich" setzen (403); Anheben bleibt erlaubt.
 //   N6 (K1/K2, Gegenfall)          Bei jeder anderen Wissensart werden die Angaben verworfen.
+//   N7/N8 (K1/K2, BEN Nacharbeit 2) An den Obergrenzen kein stiller Verlust: genau an der Grenze
+//                                  vollständig gespeichert, darüber 400 — am Wissensobjekt und am
+//                                  Entwurf, der seinen gespeicherten Stand behält.
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 
@@ -192,6 +195,79 @@ describe("Negativwissen geführt und vertraulich erfassen", () => {
     });
     expect(anheben.statusCode, anheben.body).toBe(200);
     expect((anheben.json() as Ko).confidentiality).toBe("streng_vertraulich");
+  });
+
+  // BEN, Nacharbeit 2: kein stiller Inhaltsverlust an den Obergrenzen.
+  it("N7 — genau an den Grenzen wird VOLLSTÄNDIG gespeichert; darüber 400 und kein Objekt", async () => {
+    const { app, headers } = await setup();
+    const anlegen = (negativwissen: Record<string, unknown>) =>
+      app.inject({
+        method: "POST",
+        url: "/api/kos",
+        headers,
+        payload: { ...FALL, confidentiality: "vertraulich", negativwissen },
+      });
+    const regel = "R".repeat(2000);
+    const signal = "S".repeat(300);
+    const zwanzig = Array.from({ length: 20 }, (_, i) => `Warnsignal ${i + 1}`);
+
+    const passt = await anlegen({
+      avoidanceRule: regel,
+      earlyWarningSigns: [...zwanzig.slice(0, 19), signal],
+    });
+    expect(passt.statusCode, passt.body).toBe(201);
+    const gespeichert = (passt.json() as Ko).negativwissen as {
+      avoidanceRule: string;
+      earlyWarningSigns: string[];
+    };
+    expect(gespeichert.avoidanceRule).toBe(regel);
+    expect(gespeichert.earlyWarningSigns).toHaveLength(20);
+    expect(gespeichert.earlyWarningSigns[19]).toBe(signal);
+
+    for (const zuViel of [
+      { avoidanceRule: `${regel}x` },
+      { incidentTrigger: "A".repeat(2001) },
+      { earlyWarningSigns: [...zwanzig, "Warnsignal 21"] },
+      { earlyWarningSigns: [`${signal}x`] },
+    ]) {
+      const res = await anlegen(zuViel);
+      expect(res.statusCode, JSON.stringify(Object.keys(zuViel))).toBe(400);
+      expect((res.json() as { error: string; message: string }).message).toMatch(/höchstens/);
+    }
+    const liste = await app.inject({ method: "GET", url: "/api/kos", headers });
+    expect((liste.json() as Ko[]).length, "eine Überschreitung hat ein Objekt angelegt").toBe(1);
+  });
+
+  it("N8 — der Entwurf weist Überschreitungen ab und behält seinen gespeicherten Stand", async () => {
+    const { app, headers } = await setup();
+    const zuLang = { ...ANGABEN, avoidanceRule: "R".repeat(2001) };
+    const neu = await app.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers,
+      payload: { ...FALL, negativwissen: zuLang },
+    });
+    expect(neu.statusCode, neu.body).toBe(400);
+
+    const angelegt = await app.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers,
+      payload: { ...FALL, negativwissen: ANGABEN },
+    });
+    expect(angelegt.statusCode, angelegt.body).toBeLessThan(300);
+    const draftId = (angelegt.json() as { id: string }).id;
+    const fortgesetzt = await app.inject({
+      method: "PUT",
+      url: `/api/drafts/${draftId}`,
+      headers,
+      payload: { negativwissen: zuLang },
+    });
+    expect(fortgesetzt.statusCode, fortgesetzt.body).toBe(400);
+    const geladen = await app.inject({ method: "GET", url: `/api/drafts/${draftId}`, headers });
+    const payload = (geladen.json() as { payload: { negativwissen?: Record<string, unknown> } })
+      .payload;
+    expect(payload.negativwissen?.avoidanceRule).toBe(ANGABEN.avoidanceRule);
   });
 
   it("N6 — bei einer anderen Wissensart werden die Angaben verworfen und die Stufe bleibt", async () => {

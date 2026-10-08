@@ -54,6 +54,7 @@ import {
 import type { KoMetadataProjectionResult } from "./metadata-projection-repo";
 // R-1664/R-2179/R-2180: die geführten Negativwissen-Angaben und ihre Mindeststufe (Regel dort).
 import {
+  negativwissenGrenzfehler,
   normalizeNegativwissen,
   stufeFuerNegativwissen,
   unterschreitetNegativwissenStufe,
@@ -2240,6 +2241,13 @@ export class KoService {
     // R-1664/R-2179: die geführten Angaben gehören allein zur Wissensart `negativwissen`.
     // R-2180: ein Fall mit Personen-, Kunden-, Produktions- oder Qualitätsbezug liegt nie unter
     // „vertraulich" — die Stufe wird angehoben, nie gesenkt (Regel in negativwissen.ts).
+    // BEN, Nacharbeit 2: eine Überschreitung wird abgewiesen (400 mit Grund), nie still gekürzt.
+    // Der allgemeine Eingabecode `INVALID` — dieselbe Wahl und Begründung wie bei JOB 4213 (types.ts).
+    const grenzfehler =
+      input.type === "negativwissen" ? negativwissenGrenzfehler(input.negativwissen) : undefined;
+    if (grenzfehler !== undefined) {
+      throw new KoError("INVALID", grenzfehler);
+    }
     const negativwissen =
       input.type === "negativwissen" ? normalizeNegativwissen(input.negativwissen) : undefined;
     const stufe = stufeFuerNegativwissen(

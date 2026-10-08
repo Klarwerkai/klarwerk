@@ -256,6 +256,7 @@ import {
   type NegativwissenForm,
   angabenZuForm,
   formZuAngaben,
+  negativwissenUeberschreitungen,
   stufeNachBezug,
   stufeWaehlbar,
 } from "../lib/negativwissen";
@@ -766,6 +767,10 @@ export function CaptureArbeitsraum({
   const [negativForm, setNegativForm] = useState<NegativwissenForm>(LEERE_NEGATIVWISSEN_FORM);
   const negativAngaben = type === "negativwissen" ? formZuAngaben(negativForm) : undefined;
   const negativBezug = type === "negativwissen" ? negativForm.bezug : [];
+  // BEN, Nacharbeit 2: überschreitet der Lerneffekt eine Obergrenze, gehen weder Sichern noch
+  // Einreichen hinaus (`speicherTor`, `requestSubmit`); der Block nennt die Stelle am Feld.
+  const negativUeberschritten =
+    type === "negativwissen" && negativwissenUeberschreitungen(negativForm).length > 0;
   // R-2180: ein angegebener Bezug hebt die gewählte Stufe auf mindestens „vertraulich" an — sichtbar
   // in der Auswahl, und der Server wendet dieselbe Regel beim Anlegen noch einmal an.
   const hebeStufeFuerBezugAn = (bezug: NegativwissenForm["bezug"]): void => {
@@ -3536,8 +3541,13 @@ export function CaptureArbeitsraum({
     if (entwurfLaedt) {
       return { erlaubt: false, grund: t("state.loading") };
     }
+    // BEN, Nacharbeit 2 (R-1664/R-2179): ein Lerneffekt über seinen Obergrenzen. Der Server würde
+    // ihn abweisen; hier geht er gar nicht erst hinaus, und die Eingabe bleibt vollständig stehen.
+    if (negativUeberschritten) {
+      return { erlaubt: false, grund: t("negativwissen.grenze.gesperrt") };
+    }
     return { erlaubt: true, grund: null };
-  }, [resumeAnchorsMissing, entwurfLaedt, t]);
+  }, [resumeAnchorsMissing, entwurfLaedt, negativUeberschritten, t]);
 
   // Bug (Pedi 04.07./05.07.): In-App-Seitenwechsel (Menü, Command-Palette) fängt jetzt der Navigations-
   // Wächter ab — Nachfrage „Bleiben · Verwerfen · Entwurf speichern", bevor Inhalt verloren geht.
@@ -4883,6 +4893,13 @@ export function CaptureArbeitsraum({
       setVertraulichkeitMarkiert(true);
       // Den Fokus setzt der Effekt unten — das eben aufgeklappte Feld steht in DIESEM Zug noch
       // nicht im Dokument.
+      return;
+    }
+    // BEN, Nacharbeit 2 (R-1664/R-2179): ein Lerneffekt über seinen Obergrenzen geht nicht hinaus.
+    // Der Block zeigt die Stelle am Feld; hier steht derselbe Satz als Meldung, damit der Klick
+    // nicht wortlos ausbleibt. Nichts wird geleert oder gekürzt.
+    if (negativUeberschritten) {
+      setErr(t("negativwissen.grenze.gesperrt"));
       return;
     }
     const schritt = beispielEinreichSchritt({

@@ -30,6 +30,22 @@ export const NEGATIVWISSEN_FRAGEN: readonly { feld: NegativwissenTextfeld; key: 
   { feld: "avoidanceRule", key: "negativwissen.q.avoidanceRule" },
 ];
 
+/**
+ * BEN, Nacharbeit 2 — die Obergrenzen eines Falls. GEGENSTÜCK: `NEGATIVWISSEN_LIMITS` in
+ * `services/knowledge-object/src/negativwissen.ts` (der Server weist Überschreitungen ab, er kürzt
+ * nicht). Werte stehen hier selbst, weil apps/web nichts aus services/ importiert (s.
+ * `lib/draftLimits.ts`); `tests/negativwissen-erfassung/grenzen.test.ts` vergleicht beide.
+ */
+export const NEGATIVWISSEN_LIMITS = { text: 2000, warnsignale: 20, warnsignal: 300 } as const;
+
+/** Eine Überschreitung, wie die Fläche sie nennt: welches Feld, was gezählt wurde, Ist und Grenze. */
+export interface NegativwissenUeberschreitung {
+  feld: NegativwissenTextfeld | "warnsignale";
+  art: "zeichen" | "anzahl";
+  ist: number;
+  max: number;
+}
+
 /** Formularzustand: Warnsignale als ein Text, eines je Zeile — so tippt man sie. */
 export interface NegativwissenForm {
   incidentTrigger: string;
@@ -51,11 +67,52 @@ export const LEERE_NEGATIVWISSEN_FORM: NegativwissenForm = {
   bezug: [],
 };
 
+/** Die Warnsignale des Formulars in der Normalform des Servers: je Zeile, getrimmt, ohne Doppelte. */
+function warnsignaleVon(form: NegativwissenForm): string[] {
+  const zeilen = form.warnsignale.split("\n").map((z) => z.trim());
+  return [...new Set(zeilen.filter((z) => z.length > 0))];
+}
+
+/**
+ * BEN, Nacharbeit 2 — was am Formular die Obergrenzen überschreitet, in derselben Zählung wie der
+ * Server (`negativwissenGrenzfehler`). Leer = alles passt. Die Fläche zeigt jede Überschreitung am
+ * Feld an, und Sichern/Einreichen gehen nicht hinaus, solange die Liste nicht leer ist.
+ */
+export function negativwissenUeberschreitungen(
+  form: NegativwissenForm,
+): NegativwissenUeberschreitung[] {
+  const liste: NegativwissenUeberschreitung[] = [];
+  for (const { feld } of NEGATIVWISSEN_FRAGEN) {
+    const ist = form[feld].trim().length;
+    if (ist > NEGATIVWISSEN_LIMITS.text) {
+      liste.push({ feld, art: "zeichen", ist, max: NEGATIVWISSEN_LIMITS.text });
+    }
+  }
+  const warnsignale = warnsignaleVon(form);
+  if (warnsignale.length > NEGATIVWISSEN_LIMITS.warnsignale) {
+    liste.push({
+      feld: "warnsignale",
+      art: "anzahl",
+      ist: warnsignale.length,
+      max: NEGATIVWISSEN_LIMITS.warnsignale,
+    });
+  }
+  const laengstes = Math.max(0, ...warnsignale.map((w) => w.length));
+  if (laengstes > NEGATIVWISSEN_LIMITS.warnsignal) {
+    liste.push({
+      feld: "warnsignale",
+      art: "zeichen",
+      ist: laengstes,
+      max: NEGATIVWISSEN_LIMITS.warnsignal,
+    });
+  }
+  return liste;
+}
+
 /** Formular → Angaben (getrimmt, ohne Leerwerte). `undefined`, wenn nichts angegeben ist. */
 export function formZuAngaben(form: NegativwissenForm): NegativwissenAngaben | undefined {
-  const zeilen = form.warnsignale.split("\n").map((z) => z.trim());
   const angaben: NegativwissenAngaben = {
-    earlyWarningSigns: [...new Set(zeilen.filter((z) => z.length > 0))],
+    earlyWarningSigns: warnsignaleVon(form),
     bezug: NEGATIVWISSEN_BEZUEGE.filter((b) => form.bezug.includes(b)),
   };
   for (const { feld } of NEGATIVWISSEN_FRAGEN) {
