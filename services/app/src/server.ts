@@ -18,6 +18,12 @@ import { startfehlerZeile } from "./startfehler-zeile";
 import { assertPersistentStore, normalizeEnv } from "./storage-guard";
 import { resolveTrashSweepIntervalMs, startTrashSweepScheduler } from "./trash-sweep-scheduler";
 import { registerWebStatic } from "./web-static";
+import {
+  WissensereignisMelder,
+  ladeWebhookZiele,
+  resolveWebhookTaktMs,
+  starteWissensereignisMelder,
+} from "./wissensereignisse";
 
 // Kanonische Domain (klarwerk.ai). app.<domain> wird dauerhaft hierher umgeleitet.
 const CANONICAL_HOST = process.env.CANONICAL_HOST ?? "klarwerk.ai";
@@ -260,6 +266,34 @@ async function start(): Promise<void> {
     onSwept: gedaechtnisGeloescht("periodisch"),
     onError: (error) => app.log.warn({ err: error }, "Gedächtnis-Aufräumlauf übersprungen"),
   });
+  // R-0710: Wissensereignisse an Fremdwerkzeuge (`wissensereignisse.ts`). Ohne gültiges Ziel in
+  // KLARWERK_WEBHOOKS läuft nichts — kein Takt, kein Protokolleintrag.
+  const webhooks = ladeWebhookZiele(process.env);
+  for (const fehler of webhooks.fehler) {
+    app.log.warn(`Webhook-Ziel verworfen: ${fehler}`);
+  }
+  if (webhooks.ziele.length > 0) {
+    const melderTakt = resolveWebhookTaktMs(process.env.KLARWERK_WEBHOOKS_TAKT_SEK);
+    const melder = new WissensereignisMelder({
+      quellen: {
+        wissensobjekte: () => services.ko.list({}),
+        revalidierungFaellig: () => services.lifecycle.pendingRevalidation(),
+        offeneWidersprueche: () => services.conflicts.unresolved(),
+        wissensobjekt: (id) => services.ko.get(id),
+      },
+      audit: services.audit,
+      ziele: webhooks.ziele,
+      log: { warn: (t) => app.log.warn(t) },
+    });
+    starteWissensereignisMelder({
+      melder,
+      intervalMs: melderTakt,
+      onError: (error) => app.log.warn(`Wissensereignis-Abgleich übersprungen: ${String(error)}`),
+    });
+    app.log.info(
+      `Wissensereignis-Meldungen aktiv — ${webhooks.ziele.length} Ziel(e), Takt ${melderTakt / 1000} s.`,
+    );
+  }
 }
 
 start().catch((error) => {
