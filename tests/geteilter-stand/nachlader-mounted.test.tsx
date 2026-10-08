@@ -79,8 +79,9 @@ import { Kopfband } from "../../apps/web/src/shell/Kopfband";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-let container: HTMLDivElement;
-let root: ReturnType<typeof createRoot>;
+// Nur die Fälle, die wirklich montieren, setzen beides; die reinen Regel-Fälle bleiben ohne Baum.
+let container: HTMLDivElement | undefined;
+let root: ReturnType<typeof createRoot> | undefined;
 
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 25; i++) {
@@ -115,15 +116,17 @@ function Probe(): null {
 }
 
 async function mount(inhalt: ReturnType<typeof createElement>): Promise<void> {
-  container = document.createElement("div");
-  document.body.appendChild(container);
-  root = createRoot(container);
+  const neu = document.createElement("div");
+  document.body.appendChild(neu);
+  const wurzel = createRoot(neu);
+  container = neu;
+  root = wurzel;
   // Wie in `main.tsx`: dieselbe Frist als `staleTime`.
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: ZAEHLER_FRISCHE_MS } },
   });
   await act(async () => {
-    root.render(
+    wurzel.render(
       createElement(
         QueryClientProvider,
         { client: qc },
@@ -156,8 +159,8 @@ async function mount(inhalt: ReturnType<typeof createElement>): Promise<void> {
   await act(flush);
 }
 
-const kopfbandZaehler = (): Element | null =>
-  container.querySelector('header a[data-kopfband-punkt="validierung"] .kw-kopfband-zaehler');
+const kopfbandZaehler = (): Element | null | undefined =>
+  container?.querySelector('header a[data-kopfband-punkt="validierung"] .kw-kopfband-zaehler');
 
 beforeEach(async () => {
   vi.useFakeTimers();
@@ -167,10 +170,15 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await act(async () => {
-    root.unmount();
-  });
-  container.remove();
+  const montiert = root;
+  if (montiert) {
+    await act(async () => {
+      montiert.unmount();
+    });
+  }
+  container?.remove();
+  root = undefined;
+  container = undefined;
   Reflect.deleteProperty(document, "visibilityState");
   onlineManager.setOnline(true);
   vi.clearAllMocks();
