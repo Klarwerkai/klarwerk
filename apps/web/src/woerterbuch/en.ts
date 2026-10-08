@@ -2858,6 +2858,7 @@ const en: typeof de = {
   "ko.attachmentPreviewUnavailable": "No preview available",
   "ko.attachmentOriginalUnavailable": "Original unavailable",
   "pruefen.title": "Review",
+  "pruefen.handeltAls": "You are reviewing as {{role}}",
   "pruefen.tab.offen": "Open",
   "pruefen.tab.konflikte": "Conflicts",
   "pruefen.tab.duplikate": "Duplicates",

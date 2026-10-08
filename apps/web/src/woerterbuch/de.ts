@@ -3765,6 +3765,7 @@ const de = {
   "ko.attachmentOriginalUnavailable": "Original nicht verfügbar",
   // JOB 3061 · H2 — die gemeinsame Prüffläche (vier Reiter, vier Menüorte).
   "pruefen.title": "Prüfen",
+  "pruefen.handeltAls": "Du prüfst als {{role}}",
   "pruefen.tab.offen": "Offen",
   "pruefen.tab.konflikte": "Konflikte",
   "pruefen.tab.duplikate": "Duplikate",
