@@ -361,6 +361,20 @@ export type {
 } from "./src/dokumentakte";
 // AUFNAHME 20260922 · Prüfbasis-Aktualität: die EINE Regel, wann ein Prüfnachweis überholt ist.
 export { gleichePruefbasis, pruefbasisVon } from "./src/pruefbasis";
+// R-1632 / R-1633 (gesamt-standortwissen): die EINE Geltungsregel für Speichern, Fragen und Erkennung.
+export {
+  GELTUNG_TEXT_MAX,
+  GELTUNGS_EBENEN,
+  geltungFuerFrage,
+  geltungsKollision,
+  geltungsText,
+  normalizeFragekontext,
+  normalizeGeltung,
+  type Fragekontext,
+  type GeltungsEbene,
+  type GeltungsPassung,
+  type KoGeltung,
+} from "./src/geltung";
 // SCRUM-421: einstellbare Upload-Grenzen (persistiert).
 export {
   type UploadLimits,
