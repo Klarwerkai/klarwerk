@@ -71,11 +71,44 @@
 //       für den Fall OHNE Schutzabhängigkeit — mega76-schutz-erzwungen.test.ts.
 //   · Routen ausserhalb `services/app` (etwa `services/auth/src/routes.ts`) sind nicht Gegenstand:
 //       sie geben keine Wissensobjekte aus. Das ist ein Urteil, keine Messung.
+//       → ÜBERHOLT durch R-1175 (s. unten).
+//
+// ================================================================================================
+// R-1175 (aufnahme:20260922:gesamt-rechte-inventar) — DIE GRUNDMENGE KOMMT AUS DEM SERVER.
+// ================================================================================================
+//
+// Die Originalanforderung: „Ein Prüfwerkzeug erhebt selbst alle Wege … Was es nicht lesen kann,
+// meldet es rot mit Datei und Zeile. Es folgt ausdrücklich keiner handgepflegten Dateiliste."
+// Gemessen am Stand 41ba0b7f hielt der Sammler das an drei Stellen nicht:
+//
+//   (R1) DIE DATEIMENGE war eine Verzeichniswahl (`routes/**` plus `build-app.ts`) und die
+//        Ausnahme `services/auth` ein Urteil. `services/app/src/web-static.ts:89` registriert eine
+//        Route und lag ausserhalb. → Die Dateien kommen jetzt ZUSÄTZLICH aus `routenquellen()`
+//        (schnittstellenErhebung.ts): jede Produktdatei unter `services/**`, in der etwas wie eine
+//        Registrierung steht. Die 23 Anmelde- und Kontowege sind damit Funde mit eigenem Urteil.
+//   (R2) EIN KONSTANTENPFAD war kein Fund — und der Textlauf schlug nicht an, weil er ein Literal
+//        verlangt (`routes/naechster-schritt-entwurf.ts:88`, `web-static.ts:89`). → Eine Konstante
+//        derselben Datei wird aufgelöst; was an `app.<methode>(…)` hängt und sich nicht auflösen
+//        lässt, ist ROT mit Datei und Zeile. Die Zeile oben „der Zähler in (2) schlägt dann aber
+//        an" stimmte für `app.get(BASIS + "/x")` gerade NICHT: der Textlauf verlangt `("/`.
+//   (R3) DER ZÄHLER meldete `datei:1` und nur einen Überschuss in der Summe. → Jede Stelle, die
+//        der Textlauf sieht und der Syntaxbaum nicht, steht einzeln mit ihrer Zeile da.
+//
+// Die übrigen benannten Grenzen oben (Dominanz syntaktisch, Leseurteile sind Leseurteile, Prüfung
+// der Registrierung und nicht der Antwort) gelten unverändert; die der Erhebung selbst stehen im
+// Kopf von schnittstellenErhebung.ts.
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+import { REPO_WURZEL } from "../support/repoPfad";
+import {
+  pfadVon,
+  routenquellen,
+  textlaufLuecken,
+  zeichenkettenKonstanten,
+} from "./schnittstellenErhebung";
 
 const ROUTES_DIR = "services/app/src/routes";
 const KOMPOSITIONSWURZEL = "services/app/src/build-app.ts";
@@ -626,6 +659,41 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/i18n/:locale/:key": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
   "GET /addin": { urteil: "KEIN_KO_INHALT", grund: "statisches Add-in-Bundle." },
   "GET /addin/*": { urteil: "KEIN_KO_INHALT", grund: "statisches Add-in-Bundle." },
+  // R-1175 (R1/R2): die gestempelte Seite des Klara-Aufgabenfensters (web-static.ts, JOB 1077).
+  // Liest eine Datei aus dem Build und ersetzt nur den Fassungsplatzhalter.
+  "GET /word-addin/taskpane.html": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "statische Seite aus dem Build mit Fassungsstempel (web-static.ts), kein Bestand.",
+  },
+  // --- R-1175 (R1): Anmeldung und Konten (services/auth/src/routes.ts) ------------------------
+  // Bis hierher „nicht Gegenstand" per Urteil im Kopf; jetzt Funde der Erhebung und deshalb je
+  // ein Urteil. Keiner dieser Wege liest den Bestand: Antworten tragen Sitzung, Konto (ohne
+  // Kennwort-Hash), Anzeigenamen (`/api/directory`: nur id + Name) oder Einrichtungsstatus.
+  ...ohneKoInhalt({
+    "POST /api/auth/register": "legt ein Konto an; Antwort ist das Konto.",
+    "POST /api/auth/login": "Anmeldung; Antwort ist Sitzung und Konto.",
+    "POST /api/auth/logout": "beendet die Sitzung.",
+    "GET /api/auth/me": "das eigene Konto.",
+    "GET /api/auth/notice": "eigene Kenntnisnahme des Pflichthinweises.",
+    "POST /api/auth/notice": "setzt die eigene Kenntnisnahme.",
+    "POST /api/auth/password": "ändert das eigene Kennwort.",
+    "POST /api/auth/office-handover": "erzeugt einen Übergabecode der eigenen Sitzung.",
+    "POST /api/auth/office-handover/redeem": "löst einen Übergabecode ein, Antwort: Sitzung.",
+    "POST /api/auth/forgot": "Rücksetzanforderung; immer 204.",
+    "POST /api/auth/reset": "Rücksetzen per Einmal-Token.",
+    "GET /api/auth/oidc/start": "SSO-Start.",
+    "POST /api/auth/oidc": "SSO-Rückruf; Antwort ist Sitzung und Konto.",
+    "POST /api/auth/users/:id/approve": "Freigabe eines Kontos (Admin).",
+    "POST /api/auth/users/:id/reset": "Kennwort eines Kontos setzen (Admin).",
+    "DELETE /api/auth/users/:id": "Konto löschen (Admin).",
+    "GET /api/auth/status": "Einrichtungs- und SSO-Status, keine Nutzerdaten.",
+    "POST /api/auth/setup": "Ersteinrichtung des ersten Admins.",
+    "GET /api/users": "Kontenliste ohne Kennwort-Hashes (Admin).",
+    "GET /api/directory": "Verzeichnis aus id und Anzeigename.",
+    "POST /api/users": "legt ein Konto an (Admin).",
+    "PUT /api/users/:id": "ändert ein Konto (Admin).",
+    "DELETE /api/users/:id": "löscht ein Konto (Admin).",
+  }),
   // --- W1 S4: Klara-Status, Sitzung und Zustimmung (klara-ai-routes.ts) ----------------------
   //
   // ZWEI KLASSEN, EIN URTEIL. Beide geben nachweislich keinen KO-Inhalt aus — aber aus
@@ -934,6 +1002,14 @@ function schreibwege(paare: Record<string, string>): Record<string, Eintrag> {
   return out;
 }
 
+function ohneKoInhalt(paare: Record<string, string>): Record<string, Eintrag> {
+  const out: Record<string, Eintrag> = {};
+  for (const [schluessel, grund] of Object.entries(paare)) {
+    out[schluessel] = { urteil: "KEIN_KO_INHALT", grund };
+  }
+  return out;
+}
+
 // Die gemessene Untergrenze. Sie darf STEIGEN (neue Routen), aber nie unbemerkt fallen: eine
 // geschrumpfte Erhebung heißt, dass der Sammler etwas nicht mehr findet.
 const MINDESTZAHL_ROUTEN = 121;
@@ -968,10 +1044,10 @@ function dateien(verzeichnis: string = ROUTES_DIR): string[] {
   return liste;
 }
 
-// Kommentare entfernen, damit der unabhängige Zähler nicht auf Prosa anschlägt.
-function ohneKommentare(text: string): string {
-  return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-}
+// R-1175 (R3): `ohneKommentare` stand hier und ENTFERNTE die Kommentare — danach stimmte keine
+// Position mehr, und der Zähler konnte nur `datei:1` melden. Der Textlauf schwärzt sie jetzt
+// längentreu (`kommentareGeschwaerzt` in schnittstellenErhebung.ts) und meldet jede Stelle mit
+// ihrer Zeile.
 
 // ================================================================================================
 // AUFTRAG-mega76 BLOCK C, Grenze 2 — EINE DEFEKTE DATEI MUSS ALS UNLESBAR GELTEN.
@@ -1161,18 +1237,30 @@ function erhebeDatei(datei: string, text: string): Dateierhebung {
     };
     sammleHelfer(sf);
 
-    let imBaum = 0;
+    // R-1175 (R2): Konstanten derselben Datei, damit `app.get(PFAD, …)` ein Fund ist.
+    const konstanten = zeichenkettenKonstanten(sf);
+    // R-1175 (R3): die Methodennamen, die der Syntaxbaum beurteilt hat — der Textlauf unten
+    // meldet jede Stelle, die NICHT darunter ist, mit ihrer Zeile.
+    const gelesen = new Set<number>();
     const besuche = (n: ts.Node): void => {
       if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)) {
         const methode = n.expression.name.text;
-        const arg0 = n.arguments[0];
+        const pfad = pfadVon(n.arguments[0], konstanten);
+        const empfaenger = n.expression.expression;
+        if (METHODEN.has(methode)) {
+          gelesen.add(n.expression.name.getStart(sf));
+        }
         if (
           METHODEN.has(methode) &&
-          arg0 &&
-          ts.isStringLiteral(arg0) &&
-          arg0.text.startsWith("/")
+          !pfad?.startsWith("/") &&
+          ts.isIdentifier(empfaenger) &&
+          empfaenger.text === "app"
         ) {
-          imBaum += 1;
+          unlesbar.push(
+            `${datei}:${sf.getLineAndCharacterOfPosition(n.getStart()).line + 1} — app.${methode}(…) mit einem Pfad, den der Sammler nicht auflösen kann (weder Literal noch Konstante dieser Datei). Ein Leseweg ohne Urteil wäre unsichtbar.`,
+          );
+        }
+        if (METHODEN.has(methode) && pfad?.startsWith("/")) {
           let praedikatImAufruf = false;
           const rechte = new Set<string>();
           const besucht = new Set<string>();
@@ -1199,7 +1287,7 @@ function erhebeDatei(datei: string, text: string): Dateierhebung {
           };
           scan(n);
           funde.push({
-            schluessel: `${methode.toUpperCase()} ${arg0.text}`,
+            schluessel: `${methode.toUpperCase()} ${pfad}`,
             datei,
             zeile: sf.getLineAndCharacterOfPosition(n.getStart()).line + 1,
             praedikatImAufruf,
@@ -1219,39 +1307,29 @@ function erhebeDatei(datei: string, text: string): Dateierhebung {
     // Die Gegenrichtung (Text sieht weniger) ist KEIN Fehler: der Textlauf ist bewusst grob und
     // verpasst etwa mehrzeilige Typparameter. Er ist ein Sicherheitsnetz unter dem Syntaxbaum,
     // nicht sein Gegenbeweis — und das steht hier, damit niemand die Zahlen für gleichwertig hält.
-    const generisch =
-      /\.(get|post|put|delete|patch|all|head|options)\s*(<[\s\S]{0,400}?>)?\s*\(\s*["'`]\//g;
-    const imText = (ohneKommentare(text).match(generisch) ?? []).length;
-    if (imText > imBaum) {
-      zaehlerAbweichung.push(
-        `${datei}:1 — Textlauf sieht ${imText} Registrierungen, der Syntaxbaum nur ${imBaum}. Der Sammler konnte eine Bauform nicht lesen (z. B. zusammengesetzter Pfad).`,
-      );
-    }
-    // Zweite Bauform, die der Sammler NICHT liest: `app.route({ method, url })`. Sie kommt heute
-    // nirgends vor — und soll nicht still einziehen können.
-    if (/\.route\s*\(/.test(ohneKommentare(text))) {
-      zaehlerAbweichung.push(
-        `${datei}:1 — `.concat(
-          "`app.route({…})` gefunden. Diese Bauform erhebt der Sammler nicht; die Route wäre ",
-          "unsichtbar. Entweder auf app.<methode>('/…') umstellen oder den Sammler erweitern.",
-        ),
-      );
-    }
+    //
+    // R-1175 (R3): nicht mehr als SUMME je Datei (`datei:1`, „Text sieht n, Baum m"), sondern JE
+    // STELLE mit Zeile — und neben `("/…` auch jedes `app.<methode>(`, gleich welchen Pfades, und
+    // jedes `.route(`. Dieselbe Regel wie im Routen-Audit (schnittstellenErhebung.ts).
+    zaehlerAbweichung.push(...textlaufLuecken(sf, datei, gelesen));
   }
   return { funde, unlesbar, zaehlerAbweichung };
 }
 
 const ERHEBUNG = (() => {
+  // R-1175 (R1): die alte Verzeichniswahl BLEIBT (sie ist die gemessene Untergrenze), und dazu
+  // kommt jede Produktdatei unter `services/**`, die WIE eine Routendatei aussieht.
+  const alle = [...new Set([...dateien(), ...routenquellen()])];
   const funde: Fund[] = [];
   const unlesbar: string[] = [];
   const zaehlerAbweichung: string[] = [];
-  for (const datei of dateien()) {
-    const teil = erhebeDatei(datei, readFileSync(datei, "utf8"));
+  for (const datei of alle) {
+    const teil = erhebeDatei(datei, readFileSync(join(REPO_WURZEL, datei), "utf8"));
     funde.push(...teil.funde);
     unlesbar.push(...teil.unlesbar);
     zaehlerAbweichung.push(...teil.zaehlerAbweichung);
   }
-  return { funde, unlesbar, zaehlerAbweichung, dateizahl: dateien().length };
+  return { funde, unlesbar, zaehlerAbweichung, dateizahl: alle.length };
 })();
 
 describe("mega74 E · der Sammler über alle Lesewege", () => {

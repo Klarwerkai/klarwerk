@@ -51,8 +51,40 @@ export interface ScannedRoute {
 
 const ROUTE_RE = /app\.(get|post|put|delete|patch)\b/g;
 
+// Die Schutzart eines Quelltextstücks — dieselbe Regel für den Block-Scanner unten und für die
+// selbst erhobenen Registrierungen aus `schnittstellenErhebung.ts` (R-1165). Herausgezogen, nicht
+// verändert: zwei Fassungen dieser Regel wären zwei Urteile über dieselbe Route.
+export function schutzartVon(block: string): Protection {
+  const perms = [...block.matchAll(/requirePermission\("([a-z.]+)"/g)].map((x) => x[1] ?? "");
+  let protection: Protection;
+  if (perms.length === 1) {
+    protection = perms[0] as Protection;
+  } else if (perms.length > 1) {
+    protection = "action-dispatched";
+  } else if (/requireAdmin\(/.test(block)) {
+    protection = "admin";
+  } else if (/requireUser\(/.test(block)) {
+    protection = "auth";
+  } else if (/resolveAskUser\(/.test(block)) {
+    // Add-on-API (KLARWERK_ADDON_API): resolveAskUser erzwingt in BEIDEN Zweigen ko.read — Flag AN +
+    // gültiger Add-in-Key liefert einen synthetischen viewer (RBAC viewer = EXAKT ko.read), sonst
+    // unverändert der Session-Guard requirePermission("ko.read"). Also niemals öffentlich.
+    protection = "ko.read";
+  } else {
+    protection = "public";
+  }
+  return protection;
+}
+
 // Scannt eine einzelne Quelldatei: findet jede Routen-Registrierung, ihre URL und die im
 // Handler-Block verwendete Schutzart. Block = von einer app.<method>(-Stelle bis zur nächsten.
+//
+// R-1165: Dieser Scanner bleibt die Grundlage von `scanAllRoutes()` — und damit der Laufzeitproben,
+// die jede gefundene öffentliche Route gegen `buildApp` anklopfen (tests/demo-zugang-gaeste/). Er
+// überspringt eine URL, die er nicht liest, weiterhin STILL. Dass dadurch keine Route aus der
+// Prüfung fällt, hält die selbst erhobene Grundmenge (`erhebeSchnittstellen`) in
+// route-guard-audit.test.ts fest: sie liest den ganzen Server und meldet jede Lücke mit Datei und
+// Zeile.
 export function scanRouteFile(text: string, file: string): ScannedRoute[] {
   const marks: { method: string; idx: number }[] = [];
   let m: RegExpExecArray | null;
@@ -75,25 +107,7 @@ export function scanRouteFile(text: string, file: string): ScannedRoute[] {
     if (!url.startsWith("/")) {
       continue;
     }
-    const perms = [...block.matchAll(/requirePermission\("([a-z.]+)"/g)].map((x) => x[1] ?? "");
-    let protection: Protection;
-    if (perms.length === 1) {
-      protection = perms[0] as Protection;
-    } else if (perms.length > 1) {
-      protection = "action-dispatched";
-    } else if (/requireAdmin\(/.test(block)) {
-      protection = "admin";
-    } else if (/requireUser\(/.test(block)) {
-      protection = "auth";
-    } else if (/resolveAskUser\(/.test(block)) {
-      // Add-on-API (KLARWERK_ADDON_API): resolveAskUser erzwingt in BEIDEN Zweigen ko.read — Flag AN +
-      // gültiger Add-in-Key liefert einen synthetischen viewer (RBAC viewer = EXAKT ko.read), sonst
-      // unverändert der Session-Guard requirePermission("ko.read"). Also niemals öffentlich.
-      protection = "ko.read";
-    } else {
-      protection = "public";
-    }
-    out.push({ method: mark.method, url, protection, file });
+    out.push({ method: mark.method, url, protection: schutzartVon(block), file });
   }
   return out;
 }
@@ -220,12 +234,29 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   },
   // SCRUM-490 H: statisches Add-in-Bundle (nur bei KLARWERK_ADDON_API). Bewusst öffentlich lesbar (kein
   // Key nötig); explizite Datei-Map (traversal-sicher), kein Directory-Listing, keine Nutzer-/Wissensdaten.
-  // Der Wildcard-Handler GET /addin/* ist ebenfalls „public", wird vom URL-Scanner (kein `*` in der
-  // Zeichenklasse) aber nicht als eigene Zeile erfasst — er ist stattdessen im dedizierten Serving-Test
-  // (addin-static-routes.test.ts: Traversal/Content-Types/Flag/Listing) abgedeckt.
   "GET /addin": {
     protection: "public",
     reason: "Add-in-Basis/Bundle-Serving (nur bei KLARWERK_ADDON_API); öffentlich, keine Daten.",
+  },
+  // R-1165: der Wildcard-Handler daneben. Bis hierher stand hier, er werde „vom URL-Scanner (kein `*`
+  // in der Zeichenklasse) nicht als eigene Zeile erfasst" — die Route war damit in der Prüfliste
+  // nicht vorhanden. `scanAllRoutes()` überspringt sie weiterhin (sein Ergebnis speist die
+  // Laufzeitproben in tests/demo-zugang-gaeste/), die selbst erhobene Grundmenge
+  // (`erhebeSchnittstellen`) liest sie aus dem ersten Argument und verlangt diese Zeile.
+  "GET /addin/*": {
+    protection: "public",
+    reason:
+      "Add-in-Bundle je Datei (nur bei KLARWERK_ADDON_API) aus einer festen Datei-Map; kein " +
+      "Listing, keine Nutzer-/Wissensdaten (addin-static-routes.test.ts).",
+  },
+  // R-1165: die gestempelte Seite des Klara-Aufgabenfensters (web-static.ts, JOB 1077). Registriert
+  // NUR mit gebauter Oberfläche (`server.ts` → `registerWebStatic`), nicht in `buildApp` — und mit
+  // Konstantenpfad, deshalb sah sie bis hierher keiner der beiden Routen-Wächter.
+  "GET /word-addin/taskpane.html": {
+    protection: "public",
+    reason:
+      "Statische Seite des Word-Aufgabenfensters aus dem Build, nur mit Fassungsstempel; keine " +
+      "Nutzer-/Wissensdaten. Das Manifest zeigt vor jeder Anmeldung auf diese Adresse.",
   },
   // SCRUM-510 WP2: Admin-Trigger Confluence-Space-Import (Source-Datei immer gescannt; Route nur bei
   // KLARWERK_CONFLUENCE_IMPORT registriert). Echte Admin-Auth via requirePermission("users.manage").
