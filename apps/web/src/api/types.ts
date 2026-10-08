@@ -1052,8 +1052,10 @@ export interface DraftPayload {
   category?: string;
   // R-0034 / FR-CAP-08: das Fachgebiet beim Erfassen (Spiegel von services/capture/src/types.ts).
   domain?: string;
-  // R-0086: Tatsache oder Handlungsanweisung beim Erfassen; leer = nicht angegeben.
-  aussageart?: KoAussageart | "";
+  // R-0086: Tatsache oder Handlungsanweisung beim Erfassen; leer = nicht angegeben. Am Entwurf
+  // bewusst `string` wie im Server-Vertrag (services/capture/src/types.ts): geprüft wird erst beim
+  // Einreichen (`KoService.create`); `Capture.tsx` übernimmt beim Laden nur eine bekannte Art.
+  aussageart?: string;
   tags?: string[];
   conditions?: string[];
   measures?: string[];
