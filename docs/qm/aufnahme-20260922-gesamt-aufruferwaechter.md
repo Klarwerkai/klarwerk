@@ -57,6 +57,10 @@ Exporte aus fremden Aufträgen, die mit dem Hauptstand hereingekommen sind.
   oder eine Prüfung zur Laufzeit wäre eine offene Produktentscheidung.
 - Der Prüfwert `klara-vorschau/avatar.ts::KLARA_AVATAR_SHA256` steht mit Grund in `BEWUSST_WEB`.
 
+**Nacharbeit 3 (Kandidat `5edcd437`):** A3 meldete `lib/draftForm.ts::KNOWLEDGE_TYPES_DRAFT` als
+Leiche. Mit dem Hauptstand liest `components/erfassen/Blatt.tsx` die Liste, deshalb ist der Eintrag
+aus `ALTBESTAND_WEB` gestrichen. Der eingefrorene Altbestand umfasst jetzt 174 Einträge.
+
 Die Wörterbuchschlüssel dieser Bausteine bleiben stehen. Der Textbestand ist Wert für Wert
 festgeschrieben (`tests/i18n-textmodule/bestand-unveraendert.test.ts`).
 

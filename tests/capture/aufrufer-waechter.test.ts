@@ -1270,7 +1270,9 @@ const ALTBESTAND_WEB: readonly string[] = [
   "apps/web/src/lib/demoKnowledge.ts::demoKnowledgeBadge",
   "apps/web/src/lib/demoKnowledge.ts::filterByDemoKnowledge",
   "apps/web/src/lib/demoPilotPath.ts::demoPilotPath",
-  "apps/web/src/lib/draftForm.ts::KNOWLEDGE_TYPES_DRAFT",
+  // R-1349 (Nacharbeit 3) gestrichen: `draftForm.ts::KNOWLEDGE_TYPES_DRAFT` hat mit dem Hauptstand
+  // einen Produktaufrufer bekommen — `components/erfassen/Blatt.tsx` liest daraus die wählbaren
+  // Wissensarten und prüft einen geladenen Entwurf dagegen. A3 hat die Streichung verlangt.
   "apps/web/src/lib/draftForm.ts::isPromotable",
   "apps/web/src/lib/draftListView.ts::isDraftSortKey",
   "apps/web/src/lib/duplicateCompare.ts::DUPLICATE_COMPARE_SAFETY",
