@@ -54,6 +54,7 @@ import {
 import {
   ANTWORT_DATEI_TYP,
   type AntwortDateiformat,
+  PdfZeichenNichtDarstellbar,
   antwortDateiname,
   buildAnswerDatei,
 } from "../lib/antwortDateien";
@@ -1386,7 +1387,18 @@ export function Ask(): JSX.Element {
     if (!eingabe) {
       return;
     }
-    const bytes = buildAnswerDatei(eingabe, format);
+    let bytes: Uint8Array;
+    try {
+      bytes = buildAnswerDatei(eingabe, format);
+    } catch (fehler) {
+      // Ben Nacharbeit 4: lieber KEINE PDF-Datei als eine mit verändertem Inhalt. Die Meldung
+      // nennt die Zeichen und den verlustfreien Weg (Word, Markdown).
+      if (fehler instanceof PdfZeichenNichtDarstellbar) {
+        push("error", t("ask.export.pdfZeichen", { zeichen: fehler.zeichen.join(" ") }));
+        return;
+      }
+      throw fehler;
+    }
     const inhalt = new Blob([bytes.buffer as ArrayBuffer], { type: ANTWORT_DATEI_TYP[format] });
     herunterladen(inhalt, antwortDateiname(eingabe.generatedAt, format));
   };

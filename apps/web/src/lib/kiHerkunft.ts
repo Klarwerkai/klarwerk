@@ -5,11 +5,12 @@
 // HERKUNFT IST DREIWERTIG, nicht ja/nein (R-0625, Ben Nacharbeit 2):
 //   · "ki"         — die Servermarke ist da und gültig (`istKiKennzeichnung`, G24). Belegt.
 //   · "ohne-ki"    — der Server hat den modellfreien Rückfall ausdrücklich gemeldet (`demo: true`)
-//                    und keine Marke gesetzt. Belegt — und nur dieser Fall darf eine
+//                    und GAR KEINE Marke mitgeschickt. Belegt — und nur dieser Fall darf eine
 //                    Kennzeichnung AUSSCHALTEN.
-//   · "unbekannt"  — weder noch: keine oder eine kaputte Marke bei `demo !== true` (alter Server,
-//                    abgeschnittener Körper). Unbekannt bleibt unbekannt: nichts wird als „keine KI"
-//                    behauptet, und nichts als „von KI erzeugt".
+//   · "unbekannt"  — alles andere: keine Marke bei `demo !== true` (alter Server, abgeschnittener
+//                    Körper) oder eine ungültige Marke — auch neben `demo: true`, denn dann
+//                    widersprechen sich die Angaben. Unbekannt bleibt unbekannt: nichts wird als
+//                    „keine KI" behauptet, und nichts als „von KI erzeugt".
 //
 // STUFE (R-1695, Grundsatz G-3 „kein KI=Wahrheit") — genau drei Werte, für jede Ergebnisfläche:
 //   · "entwurf"    — von einem Modell erzeugt: „Reasoner-Entwurf, nicht validiert" (R-1020).
@@ -26,7 +27,11 @@ export function kiHerkunftAus(ergebnis: { aiGenerated?: unknown; demo?: unknown 
   if (istKiKennzeichnung(ergebnis.aiGenerated)) {
     return "ki";
   }
-  if (ergebnis.demo === true) {
+  // Ben Nacharbeit 4: „ohne-ki" NUR bei der eindeutigen Rückfallkonstellation — `demo: true` UND
+  // gar keine Marke. Steht daneben irgendeine Marke, die die Prüfung nicht anerkennt (z. B.
+  // `{ aiGenerated: true, demo: true }`), widersprechen sich die Angaben: das bleibt unbekannt,
+  // schaltet keine Exportkennzeichnung ab und kann nie „validiert" ergeben.
+  if (ergebnis.demo === true && ergebnis.aiGenerated === undefined) {
     return "ohne-ki";
   }
   return "unbekannt";

@@ -2193,6 +2193,8 @@ const nl: typeof de = {
   "ask.export.docx": "Als Word (.docx)",
   "ask.export.pptx": "Als PowerPoint (.pptx)",
   "ask.export.pdfDatei": "Als PDF-bestand",
+  "ask.export.pdfZeichen":
+    "Het PDF-bestand kan deze tekens niet ongewijzigd weergeven: {{zeichen}}. Er is niets gedownload — Word of Markdown geven de tekst zonder verlies door.",
   "ask.export.copied": "Antwoord incl. bronnen gekopieerd.",
   "ask.export.answer": "Antwoord",
   "ask.export.footer":
@@ -4326,6 +4328,8 @@ const nl: typeof de = {
   "klara.aiBusy": "De AI leest de passende help-vermeldingen …",
   "klara.aiAnswerTitle": "AI-antwoord uit de help",
   "klara.aiDisclaimer": "AI-gegenereerd — niet voor 100 % gecontroleerd",
+  "klara.helpAnswerTitle": "Antwoord uit de help",
+  "klara.ohneModell": "Regelgebaseerd, zonder AI-model",
   "klara.aiGoto": "Naar onderdeel: {{target}}",
   "klara.aiSources": "Grondslag",
   "klara.aiEmpty":

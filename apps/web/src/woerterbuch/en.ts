@@ -2201,6 +2201,8 @@ const en: typeof de = {
   "ask.export.docx": "As Word (.docx)",
   "ask.export.pptx": "As PowerPoint (.pptx)",
   "ask.export.pdfDatei": "As PDF file",
+  "ask.export.pdfZeichen":
+    "The PDF file cannot show these characters unchanged: {{zeichen}}. Nothing was downloaded — Word or Markdown pass the text on without loss.",
   "ask.export.copied": "Answer incl. sources copied.",
   "ask.export.answer": "Answer",
   "ask.export.footer":
@@ -4336,6 +4338,8 @@ const en: typeof de = {
   "klara.aiBusy": "The AI is reading the matching help entries …",
   "klara.aiAnswerTitle": "AI answer from the help",
   "klara.aiDisclaimer": "AI-generated — not fully verified",
+  "klara.helpAnswerTitle": "Answer from the help",
+  "klara.ohneModell": "Rule-based, no AI model",
   "klara.aiGoto": "Open area: {{target}}",
   "klara.aiSources": "Based on",
   "klara.aiEmpty":

@@ -101,6 +101,9 @@ export function KlaraAssistant(): JSX.Element {
       locale?: ReasonerLocale;
     }) => endpoints.help.explain(body),
   });
+  // R-0604 (Ben Nacharbeit 4): nur ein ausdrückliches `demo: false` belegt, dass ein Modell die
+  // Hilfeantwort geschrieben hat. Erst dann darf die Fläche „KI-Antwort" und „KI-generiert" sagen.
+  const hilfeVomModell = aiAsk.data?.demo === false;
 
   // Vorlesen (Pedi 05.07., Muster SCRUM-403): Browser-Sprachausgabe, nur auf Klick, kein Auto-Play.
   const ttsSupported = typeof window !== "undefined" && "speechSynthesis" in window;
@@ -535,17 +538,37 @@ export function KlaraAssistant(): JSX.Element {
                     // R-1020 / R-1695: hat ein Modell geantwortet (`demo: false`), ist die Antwort
                     // ein Reasoner-Entwurf — gestrichelt, mit Beschriftung. Der regelbasierte
                     // Rückfall ist eine Empfehlung. Validiert ist eine Hilfeantwort nie.
-                    className={`rounded-card px-3 py-2.5 ${aiAsk.data.demo ? "border border-ai/30 bg-ai-surface-2" : REASONER_ENTWURF_FLAECHE}`}
+                    className={`rounded-card px-3 py-2.5 ${hilfeVomModell ? REASONER_ENTWURF_FLAECHE : "border border-ai/30 bg-ai-surface-2"}`}
                   >
                     <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                      <span className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
-                        {t("klara.aiAnswerTitle")}
+                      {/* R-0604 (Ben Nacharbeit 4): Titel und Erzeugungsbehauptung hängen an der
+                        BELEGTEN Modellbeteiligung (`demo === false`). Beim regelbasierten Rückfall
+                        (`demo === true`) steht die zutreffende Herkunft; ist sie nicht belegt, wird
+                        keine von beiden behauptet. */}
+                      <span
+                        data-testid="klara-ai-herkunft"
+                        className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai"
+                      >
+                        {t(hilfeVomModell ? "klara.aiAnswerTitle" : "klara.helpAnswerTitle")}
                       </span>
-                      <ErgebnisStufeMarke stufe={ergebnisStufeFuerVorschlag(!aiAsk.data.demo)} />
-                      {/* Pedi 05.07.: jede KI-Antwort klar gekennzeichnet — generiert, nicht voll geprüft. */}
-                      <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-warn-text">
-                        {t("klara.aiDisclaimer")}
-                      </span>
+                      <ErgebnisStufeMarke stufe={ergebnisStufeFuerVorschlag(hilfeVomModell)} />
+                      {/* Pedi 05.07.: jede KI-Antwort klar gekennzeichnet — generiert, nicht voll
+                        geprüft. Seit Nacharbeit 4 nur dort, wo wirklich ein Modell generiert hat. */}
+                      {hilfeVomModell ? (
+                        <span
+                          data-testid="klara-ai-disclaimer"
+                          className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-warn-text"
+                        >
+                          {t("klara.aiDisclaimer")}
+                        </span>
+                      ) : aiAsk.data.demo === true ? (
+                        <span
+                          data-testid="klara-ohne-modell"
+                          className="rounded-pill border border-hairline bg-surface px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted"
+                        >
+                          {t("klara.ohneModell")}
+                        </span>
+                      ) : null}
                       {/* JOB 2660 D2 — DIE EINSTUFUNG DIESER ANTWORT, SICHTBAR.
                         Pedis Frage lautete: „Sehe ich in der Hilfe, dass mein eigener Text nicht
                         geprüft ist?" Bis hierher war sie mit NEIN zu beantworten. Der Server
@@ -616,7 +639,11 @@ export function KlaraAssistant(): JSX.Element {
                             <span aria-hidden="true">→</span>
                           </Link>
                         ) : null}
-                        {speakButton("ai", t("klara.aiAnswerTitle"), aiAsk.data.answer)}
+                        {speakButton(
+                          "ai",
+                          t(hilfeVomModell ? "klara.aiAnswerTitle" : "klara.helpAnswerTitle"),
+                          aiAsk.data.answer,
+                        )}
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                           <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
                             {t("klara.aiSources")}:

@@ -28,11 +28,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-type Lage = "modell" | "rueckfall" | "ohneMarke" | "kaputteMarke";
+// Ben Nacharbeit 4: `kaputteMarkeRueckfall` = ungültige Marke UND `demo: true` — widersprüchliche
+// Angaben, die bis dahin als „ohne-ki" galten und die Exportkennzeichnung abschalteten.
+type Lage = "modell" | "rueckfall" | "ohneMarke" | "kaputteMarke" | "kaputteMarkeRueckfall";
 
 const bestand = vi.hoisted(() => ({
   kos: [] as unknown[],
-  lage: "modell" as "modell" | "rueckfall" | "ohneMarke" | "kaputteMarke",
+  lage: "modell" as Lage,
+  // Nacharbeit 4: ein abweichender Antworttext (PDF-Inhaltserhaltung); `null` = der Standardtext.
+  antwort: null as string | null,
 }));
 
 vi.mock("../../apps/web/src/app/RoleContext", () => ({
@@ -63,19 +67,19 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
                   at: "2026-10-08T00:00:00.000Z",
                 },
               }
-            : bestand.lage === "kaputteMarke"
+            : bestand.lage === "kaputteMarke" || bestand.lage === "kaputteMarkeRueckfall"
               ? { aiGenerated: true }
               : {};
         return {
           result: {
             answered: true,
-            answer: "Ventil V4 wird jährlich geprüft.",
+            answer: bestand.antwort ?? "Ventil V4 wird jährlich geprüft.",
             knowledgeClass: "gesichert",
             trust: 90,
             sources: ["k1"],
             citedSources: ["k1"],
             steps: [],
-            demo: bestand.lage === "rueckfall",
+            demo: bestand.lage === "rueckfall" || bestand.lage === "kaputteMarkeRueckfall",
             captionSources: [],
             ...marke,
           },
@@ -201,6 +205,17 @@ async function herunterladen(
   f: Flaeche,
   punkt: string,
 ): Promise<{ name: string; typ: string; bytes: Uint8Array }> {
+  const { gefangen, namen } = await menuepunktBedienen(f, punkt);
+  expect(gefangen.length, `„${punkt}“ hat keine Datei erzeugt`).toBe(1);
+  const blob = gefangen[0] as Blob;
+  return { name: namen[0] ?? "", typ: blob.type, bytes: await bytesAus(blob) };
+}
+
+/** Bedient „…" → Menüpunkt und gibt zurück, was dabei heruntergeladen wurde (auch: nichts). */
+async function menuepunktBedienen(
+  f: Flaeche,
+  punkt: string,
+): Promise<{ gefangen: Blob[]; namen: string[] }> {
   const gefangen: Blob[] = [];
   const namen: string[] = [];
   const echtesCreate = URL.createObjectURL;
@@ -236,9 +251,7 @@ async function herunterladen(
     URL.revokeObjectURL = echtesRevoke;
     HTMLAnchorElement.prototype.click = echterKlick;
   }
-  expect(gefangen.length, `„${punkt}“ hat keine Datei erzeugt`).toBe(1);
-  const blob = gefangen[0] as Blob;
-  return { name: namen[0] ?? "", typ: blob.type, bytes: await bytesAus(blob) };
+  return { gefangen, namen };
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -353,6 +366,7 @@ function pdfInfo(bytes: Uint8Array): { info: string; subject: string | null; tex
 afterEach(() => {
   vi.clearAllMocks();
   document.body.innerHTML = "";
+  bestand.antwort = null;
 });
 
 const KENNZEICHNUNG_ERWARTET: Readonly<Record<Lage, boolean>> = {
@@ -360,8 +374,16 @@ const KENNZEICHNUNG_ERWARTET: Readonly<Record<Lage, boolean>> = {
   rueckfall: false,
   ohneMarke: true,
   kaputteMarke: true,
+  // Ben Nacharbeit 4: widersprüchliche Angaben sind unbekannt — die Kennzeichnung bleibt.
+  kaputteMarkeRueckfall: true,
 };
-const LAGEN = ["modell", "rueckfall", "ohneMarke", "kaputteMarke"] as const;
+const LAGEN: readonly Lage[] = [
+  "modell",
+  "rueckfall",
+  "ohneMarke",
+  "kaputteMarke",
+  "kaputteMarkeRueckfall",
+];
 
 describe("R-0625 · die Herkunft ist dreiwertig — nur belegt modellfrei schaltet aus", () => {
   it("die Ableitung", () => {
@@ -371,6 +393,17 @@ describe("R-0625 · die Herkunft ist dreiwertig — nur belegt modellfrei schalt
     expect(kiHerkunftAus({ demo: false })).toBe("unbekannt");
     expect(kiHerkunftAus({ aiGenerated: true, demo: false })).toBe("unbekannt");
     expect(kiHerkunftAus({})).toBe("unbekannt");
+  });
+
+  it("Ben Nacharbeit 4 · eine ungültige Marke neben `demo: true` ist widersprüchlich → unbekannt", () => {
+    for (const kaputt of [true, null, {}, "ja", 1, { aiGenerated: true, task: "answer" }]) {
+      expect(kiHerkunftAus({ aiGenerated: kaputt, demo: true }), JSON.stringify(kaputt)).toBe(
+        "unbekannt",
+      );
+    }
+    // … und kann dadurch nie „validiert" werden, auch nicht bei gesicherter Einstufung.
+    const herkunft = kiHerkunftAus({ aiGenerated: true, demo: true });
+    expect(ergebnisStufeFuerAntwort(herkunft, true)).toBe("empfehlung");
   });
 
   for (const lage of LAGEN) {
@@ -464,6 +497,8 @@ describe("R-1020 / R-1695 · die Antwortkarte trägt ihre Stufe — gemessen am 
     rueckfall: "validiert",
     ohneMarke: "empfehlung",
     kaputteMarke: "empfehlung",
+    // Gleiche gesicherte Fixture wie `rueckfall` — aber widersprüchliche Herkunft: nie „validiert".
+    kaputteMarkeRueckfall: "empfehlung",
   };
   for (const lage of LAGEN) {
     it(`Stufe · ${lage}`, async () => {
@@ -566,7 +601,12 @@ describe("R-1020 / R-1695 · die Antwortkarte trägt ihre Stufe — gemessen am 
       ["apps/web/src/components/RichTextEditor.tsx", ['<ErgebnisStufeMarke stufe="entwurf"']],
       [
         "apps/web/src/components/KlaraAssistant.tsx",
-        ["stufe={ergebnisStufeFuerVorschlag(!aiAsk.data.demo)}"],
+        // Nacharbeit 4: gebunden an die BELEGTE Modellbeteiligung (`demo === false`); die
+        // Wirkung misst tests/web/r0604-klara-herkunft.test.tsx am gerenderten Panel.
+        [
+          "const hilfeVomModell = aiAsk.data?.demo === false;",
+          "ergebnisStufeFuerVorschlag(hilfeVomModell)",
+        ],
       ],
       ["apps/web/src/components/PublicAiEnrichPanel.tsx", ['<ErgebnisStufeMarke stufe="entwurf"']],
       ["apps/web/src/pages/Mobile.tsx", ["<ErgebnisStufeMarke stufe={stufe}"]],
@@ -578,5 +618,85 @@ describe("R-1020 / R-1695 · die Antwortkarte trägt ihre Stufe — gemessen am 
         expect(quelle, `${datei}: ${m}`).toContain(m);
       }
     }
+  });
+});
+
+// ================================================================================================
+// Ben Nacharbeit 4 — DER PDF-EXPORT VERÄNDERT KEINEN INHALT.
+// ================================================================================================
+// Bis dahin wurde jedes Zeichen ausserhalb einer kleinen WinAnsi-Tabelle zu „?" („Δp" → „?p").
+// Gemessen wird am ECHTEN Exportaufruf der Fragenseite: die heruntergeladene Datei wird gelesen,
+// ihr sichtbarer Text aus den Textbefehlen zurückgewonnen — WinAnsi über eine eigene Tabelle dieses
+// Tests, die Symbol-Schrift über die /ToUnicode-Tabelle DER DATEI — und mit dem Original verglichen.
+// Zusätzlich die Bytes nach der veröffentlichten Adobe-Symbol-Kodierung (Δ = 0x44 „D", ≤ = 0xA3).
+
+// WinAnsi-Sonderplätze, die im Prüftext vorkommen — eigene Tabelle dieses Tests.
+const WIN_ANSI_ZURUECK = new Map<number, string>([
+  [0x80, "€"],
+  [0x84, "„"],
+  [0x85, "…"],
+  [0x93, "“"],
+  [0x94, "”"],
+  [0x96, "–"],
+  [0x97, "—"],
+]);
+
+/** Die sichtbaren Zeilen einer PDF-Datei, zurückgewonnen aus `BT … ET` und den Schriftwechseln. */
+function pdfZeilen(roh: string): string[] {
+  const symbol = new Map<number, string>();
+  for (const m of roh.matchAll(/<([0-9A-F]{2})> <([0-9A-F]{4})>/g)) {
+    const ziel = String.fromCharCode(Number.parseInt(m[2] ?? "", 16));
+    symbol.set(Number.parseInt(m[1] ?? "", 16), ziel);
+  }
+  const zeilen: string[] = [];
+  for (const block of roh.matchAll(/BT 50 \d+ Td ([^\n]*?) ET/g)) {
+    let zeile = "";
+    const stuecke = (block[1] ?? "").matchAll(/\/(F\d) \d+ Tf \(((?:\\.|[^\\)])*)\) Tj/g);
+    for (const s of stuecke) {
+      const bytes = (s[2] ?? "").replace(/\\(.)/g, "$1");
+      for (const b of bytes) {
+        const code = b.charCodeAt(0);
+        const zeichen = s[1] === "F4" ? symbol.get(code) : WIN_ANSI_ZURUECK.get(code);
+        zeile += zeichen ?? (s[1] === "F4" ? "�" : b);
+      }
+    }
+    zeilen.push(zeile);
+  }
+  return zeilen;
+}
+
+describe("Ben Nacharbeit 4 · die PDF-Datei gibt den Antworttext unverändert wieder", () => {
+  const TECHNIK = "Druckdifferenz Δp ≤ 5 bar, α = 30°, μ ≈ 0,3 — Ω → ∑ „Prüfung“ 12 €";
+
+  it("Griechisch und Mathematik kommen unverändert in der Datei an — über die Menü-Handlung", async () => {
+    bestand.antwort = TECHNIK;
+    const f = await montiereIn("modell");
+    const datei = await herunterladen(f, "pdf");
+    const roh = Array.from(datei.bytes, (b) => String.fromCharCode(b)).join("");
+    expect(roh, "kein Fragezeichen-Ersatz im Textstrom").not.toMatch(/\(\?p/);
+    expect(pdfZeilen(roh), "der Antworttext ist in der Datei verändert").toContain(TECHNIK);
+    // Die Bytes nach der veröffentlichten Symbol-Kodierung — nicht nach der Tabelle des Erzeugers.
+    expect(roh).toContain("/F4 10 Tf (D) Tj");
+    expect(roh).toMatch(/\/F4 10 Tf \([^)]*£/);
+    expect(roh).toContain("/BaseFont /Symbol /ToUnicode");
+    // Die Kennzeichnung in den Eigenschaften bleibt daneben unverändert.
+    expect(pdfInfo(datei.bytes).info).toContain("/AIGenerated true");
+    f.unmount();
+  });
+
+  it("nicht darstellbare Zeichen: KEINE Datei mit verändertem Inhalt, sondern eine Meldung", async () => {
+    bestand.antwort = "Давление 5 бар — Druck 5 bar";
+    const f = await montiereIn("modell");
+    const { gefangen } = await menuepunktBedienen(f, "pdf");
+    expect(gefangen.length, "es wurde trotzdem eine PDF-Datei erzeugt").toBe(0);
+    // Die Meldung nennt GENAU die nicht darstellbaren Zeichen, sortiert und je einmal.
+    const meldung = i18n.t("ask.export.pdfZeichen", { zeichen: "Д а б в е и л н р" });
+    expect(document.body.textContent ?? "", "keine Meldung an die Nutzerin").toContain(meldung);
+    // Die verlustfreien Wege bleiben: Word trägt denselben Text unverändert.
+    const word = await herunterladen(f, "docx");
+    expect(officeEigenschaften(word.bytes, "word/document.xml").hauptText).toContain(
+      "Давление 5 бар — Druck 5 bar",
+    );
+    f.unmount();
   });
 });

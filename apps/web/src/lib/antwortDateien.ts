@@ -533,38 +533,277 @@ export function buildAnswerPptx(input: AnswerExportInput): Uint8Array {
 }
 
 // ------------------------------------------------------------------------------------------------
-// .pdf — Text in Helvetica (WinAnsi), Seitenumbruch, Kennzeichnung im /Info-Verzeichnis.
+// .pdf — Text in Helvetica (WinAnsi) und Symbol, Seitenumbruch, Kennzeichnung im /Info-Verzeichnis.
 // ------------------------------------------------------------------------------------------------
-const WIN_ANSI: Readonly<Record<string, number>> = {
-  "€": 0x80,
-  "‚": 0x82,
-  "„": 0x84,
-  "…": 0x85,
-  "‘": 0x91,
-  "’": 0x92,
-  "“": 0x93,
-  "”": 0x94,
-  "•": 0x95,
-  "–": 0x96,
-  "—": 0x97,
-};
+//
+// BEN NACHARBEIT 4 — KEIN STILLER INHALTSVERLUST. Bis hierher wurde jedes Zeichen ausserhalb einer
+// kleinen WinAnsi-Tabelle zu „?" — „Δp" kam als „?p" in der Datei an. Jetzt gilt:
+//   · WinAnsi vollständig (Latin-1 plus die Sonderplätze 0x80–0x9F).
+//   · Griechisch und mathematische Zeichen über die eingebaute PDF-Schrift „Symbol" — mit eigener
+//     /ToUnicode-Tabelle, damit Kopieren und Suchen den Originaltext liefern.
+//   · Was keine der beiden Schriften darstellen kann, wird NICHT ersetzt: der Erzeuger bricht mit
+//     `PdfZeichenNichtDarstellbar` ab und nennt die Zeichen. Eine Datei mit verändertem Inhalt
+//     entsteht nicht.
+// BENANNTE GRENZE: eine eingebettete Unicode-Schrift (z. B. für Kyrillisch, CJK, Arabisch) braucht
+// eine Schriftdatei; im Repository gibt es keine, und dieser Auftrag installiert nichts.
+// Codepunkt → WinAnsi-Byte für die Sonderplätze 0x80–0x9F (der Rest ist Latin-1 = Codepunkt).
+const WIN_ANSI: ReadonlyMap<number, number> = new Map([
+  [0x20ac, 0x80],
+  [0x201a, 0x82],
+  [0x192, 0x83],
+  [0x201e, 0x84],
+  [0x2026, 0x85],
+  [0x2020, 0x86],
+  [0x2021, 0x87],
+  [0x2c6, 0x88],
+  [0x2030, 0x89],
+  [0x160, 0x8a],
+  [0x2039, 0x8b],
+  [0x152, 0x8c],
+  [0x17d, 0x8e],
+  [0x2018, 0x91],
+  [0x2019, 0x92],
+  [0x201c, 0x93],
+  [0x201d, 0x94],
+  [0x2022, 0x95],
+  [0x2013, 0x96],
+  [0x2014, 0x97],
+  [0x2dc, 0x98],
+  [0x2122, 0x99],
+  [0x161, 0x9a],
+  [0x203a, 0x9b],
+  [0x153, 0x9c],
+  [0x17e, 0x9e],
+  [0x178, 0x9f],
+]);
 
-/** Ein Zeichen in WinAnsi; was dort nicht vorkommt, wird „?" — nie stillschweigend weggelassen. */
-function winAnsi(zeichen: string): string {
-  const sonder = WIN_ANSI[zeichen];
-  if (sonder !== undefined) {
-    return String.fromCharCode(sonder);
+/** Adobe-Symbol-Kodierung für Zeichen, die WinAnsi nicht hat (Griechisch, Mathematik, Pfeile). */
+export const PDF_SYMBOL: ReadonlyMap<number, number> = new Map([
+  // Griechisch, gross
+  [0x391, 0x41],
+  [0x392, 0x42],
+  [0x3a7, 0x43],
+  [0x394, 0x44],
+  [0x395, 0x45],
+  [0x3a6, 0x46],
+  [0x393, 0x47],
+  [0x397, 0x48],
+  [0x399, 0x49],
+  [0x3d1, 0x4a],
+  [0x39a, 0x4b],
+  [0x39b, 0x4c],
+  [0x39c, 0x4d],
+  [0x39d, 0x4e],
+  [0x39f, 0x4f],
+  [0x3a0, 0x50],
+  [0x398, 0x51],
+  [0x3a1, 0x52],
+  [0x3a3, 0x53],
+  [0x3a4, 0x54],
+  [0x3a5, 0x55],
+  [0x3c2, 0x56],
+  [0x3a9, 0x57],
+  [0x39e, 0x58],
+  [0x3a8, 0x59],
+  [0x396, 0x5a],
+  // Griechisch, klein
+  [0x3b1, 0x61],
+  [0x3b2, 0x62],
+  [0x3c7, 0x63],
+  [0x3b4, 0x64],
+  [0x3b5, 0x65],
+  [0x3c6, 0x66],
+  [0x3b3, 0x67],
+  [0x3b7, 0x68],
+  [0x3b9, 0x69],
+  [0x3d5, 0x6a],
+  [0x3ba, 0x6b],
+  [0x3bb, 0x6c],
+  [0x3bc, 0x6d],
+  [0x3bd, 0x6e],
+  [0x3bf, 0x6f],
+  [0x3c0, 0x70],
+  [0x3b8, 0x71],
+  [0x3c1, 0x72],
+  [0x3c3, 0x73],
+  [0x3c4, 0x74],
+  [0x3c5, 0x75],
+  [0x3d6, 0x76],
+  [0x3c9, 0x77],
+  [0x3be, 0x78],
+  [0x3c8, 0x79],
+  [0x3b6, 0x7a],
+  [0x3d2, 0xa1],
+  // Mathematik, Pfeile, Zeichen
+  [0x2200, 0x22],
+  [0x2203, 0x24],
+  [0x220b, 0x27],
+  [0x2212, 0x2d],
+  [0x2245, 0x40],
+  [0x2234, 0x5c],
+  [0x22a5, 0x5e],
+  [0x223c, 0x7e],
+  [0x2032, 0xa2],
+  [0x2264, 0xa3],
+  [0x2044, 0xa4],
+  [0x221e, 0xa5],
+  [0x2663, 0xa7],
+  [0x2666, 0xa8],
+  [0x2665, 0xa9],
+  [0x2660, 0xaa],
+  [0x2194, 0xab],
+  [0x2190, 0xac],
+  [0x2191, 0xad],
+  [0x2192, 0xae],
+  [0x2193, 0xaf],
+  [0x2033, 0xb2],
+  [0x2265, 0xb3],
+  [0x221d, 0xb5],
+  [0x2202, 0xb6],
+  [0x2260, 0xb9],
+  [0x2261, 0xba],
+  [0x2248, 0xbb],
+  [0x21b5, 0xbf],
+  [0x2135, 0xc0],
+  [0x2111, 0xc1],
+  [0x211c, 0xc2],
+  [0x2118, 0xc3],
+  [0x2297, 0xc4],
+  [0x2295, 0xc5],
+  [0x2205, 0xc6],
+  [0x2229, 0xc7],
+  [0x222a, 0xc8],
+  [0x2283, 0xc9],
+  [0x2287, 0xca],
+  [0x2284, 0xcb],
+  [0x2282, 0xcc],
+  [0x2286, 0xcd],
+  [0x2208, 0xce],
+  [0x2209, 0xcf],
+  [0x2220, 0xd0],
+  [0x2207, 0xd1],
+  [0x220f, 0xd5],
+  [0x221a, 0xd6],
+  [0x22c5, 0xd7],
+  [0x2227, 0xd9],
+  [0x2228, 0xda],
+  [0x21d4, 0xdb],
+  [0x21d0, 0xdc],
+  [0x21d1, 0xdd],
+  [0x21d2, 0xde],
+  [0x21d3, 0xdf],
+  [0x25ca, 0xe0],
+  [0x2329, 0xe1],
+  [0x2211, 0xe5],
+  [0x232a, 0xf1],
+  [0x222b, 0xf2],
+]);
+
+/** Die PDF-Datei kann diese Zeichen nicht unverändert darstellen — es entsteht keine Datei. */
+export class PdfZeichenNichtDarstellbar extends Error {
+  readonly zeichen: readonly string[];
+
+  constructor(zeichen: readonly string[]) {
+    super(`PDF: nicht darstellbare Zeichen ${zeichen.join(" ")}`);
+    this.name = "PdfZeichenNichtDarstellbar";
+    this.zeichen = zeichen;
   }
-  const code = zeichen.codePointAt(0) ?? 0x3f;
-  if ((code >= 0x20 && code < 0x7f) || (code >= 0xa0 && code <= 0xff)) {
-    return String.fromCharCode(code);
-  }
-  return "?";
 }
 
-function pdfLiteral(text: string): string {
-  const roh = Array.from(text).map(winAnsi).join("");
+type PdfSchriftArt = "text" | "symbol";
+
+/** Ein Zeichen → Schrift und Byte; `null`, wenn keine eingebaute Schrift es darstellen kann. */
+function pdfGlyphe(zeichen: string): { art: PdfSchriftArt; code: number } | null {
+  const code = zeichen.codePointAt(0) ?? 0;
+  const sonder = WIN_ANSI.get(code);
+  if (sonder !== undefined) {
+    return { art: "text", code: sonder };
+  }
+  if ((code >= 0x20 && code < 0x7f) || (code >= 0xa0 && code <= 0xff)) {
+    return { art: "text", code };
+  }
+  // Kanonisch gleichwertige Schreibweisen (z. B. das Ohm-Zeichen U+2126 → Ω) sind derselbe Text.
+  const kanonisch = zeichen.normalize("NFC").codePointAt(0) ?? 0;
+  const symbol = PDF_SYMBOL.get(code) ?? PDF_SYMBOL.get(kanonisch);
+  return symbol === undefined ? null : { art: "symbol", code: symbol };
+}
+
+function pdfZeichenkette(bytes: readonly number[]): string {
+  const roh = bytes.map((b) => String.fromCharCode(b)).join("");
   return `(${roh.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)")})`;
+}
+
+/** Eine Zeile als Folge von Schriftwechseln und Textstücken — Tj rückt selbst weiter. */
+function pdfZeile(zeile: string, schrift: string, groesse: number): string {
+  const stuecke: string[] = [];
+  let art: PdfSchriftArt | null = null;
+  let bytes: number[] = [];
+  const abschliessen = (): void => {
+    if (art !== null && bytes.length > 0) {
+      const font = art === "symbol" ? "F4" : schrift;
+      stuecke.push(`/${font} ${groesse} Tf ${pdfZeichenkette(bytes)} Tj`);
+    }
+    bytes = [];
+  };
+  for (const zeichen of Array.from(zeile)) {
+    const glyphe = pdfGlyphe(zeichen);
+    if (glyphe === null) {
+      // Wird vorab von `pdfFehlendeZeichen` ausgeschlossen — hier nur zur Sicherheit.
+      throw new PdfZeichenNichtDarstellbar([zeichen]);
+    }
+    if (glyphe.art !== art) {
+      abschliessen();
+      art = glyphe.art;
+    }
+    bytes.push(glyphe.code);
+  }
+  abschliessen();
+  return stuecke.join(" ");
+}
+
+/** Alle Zeichen der Datei, die keine eingebaute Schrift darstellen kann — sortiert, je einmal. */
+export function pdfFehlendeZeichen(input: AnswerExportInput): string[] {
+  const fehlend = new Set<string>();
+  for (const absatz of antwortAbsaetze(input)) {
+    for (const wort of absatz.text.split(/\s+/)) {
+      for (const zeichen of Array.from(wort)) {
+        if (pdfGlyphe(zeichen) === null) {
+          fehlend.add(zeichen);
+        }
+      }
+    }
+  }
+  return [...fehlend].sort();
+}
+
+/** Die /ToUnicode-Tabelle der Symbol-Schrift: Byte → Originalzeichen (Kopieren, Suchen). */
+function symbolToUnicode(): string {
+  const eintraege = [...PDF_SYMBOL].map(([zeichen, code]) => {
+    const quelle = code.toString(16).toUpperCase().padStart(2, "0");
+    const ziel = zeichen.toString(16).toUpperCase().padStart(4, "0");
+    return `<${quelle}> <${ziel}>`;
+  });
+  const bloecke: string[] = [];
+  for (let i = 0; i < eintraege.length; i += 100) {
+    const teil = eintraege.slice(i, i + 100);
+    bloecke.push(`${teil.length} beginbfchar\n${teil.join("\n")}\nendbfchar`);
+  }
+  return [
+    "/CIDInit /ProcSet findresource begin",
+    "12 dict begin",
+    "begincmap",
+    "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def",
+    "/CMapName /KLARWERK-Symbol-UCS def",
+    "/CMapType 2 def",
+    "1 begincodespacerange",
+    "<00> <FF>",
+    "endcodespacerange",
+    ...bloecke,
+    "endcmap",
+    "CMapName currentdict /CMap defineresource pop",
+    "end",
+    "end",
+  ].join("\n");
 }
 
 /** Unicode-Text für das /Info-Verzeichnis: UTF-16BE mit Byte-Order-Mark, als Hex-Zeichenkette. */
@@ -627,7 +866,7 @@ function pdfSeiten(input: AnswerExportInput): string[][] {
         y = 792;
       }
       y -= abstand;
-      const befehl = `BT /${s.font} ${s.groesse} Tf 50 ${y} Td ${pdfLiteral(zeile)} Tj ET`;
+      const befehl = `BT 50 ${y} Td ${pdfZeile(zeile, s.font, s.groesse)} ET`;
       seiten[seiten.length - 1]?.push(befehl);
     }
     y -= 6;
@@ -658,6 +897,12 @@ function pdfInfo(input: AnswerExportInput, ki: KiEigenschaften | null): string {
 }
 
 export function buildAnswerPdf(input: AnswerExportInput): Uint8Array {
+  // Erst prüfen, dann erzeugen: enthält die Antwort ein Zeichen, das keine eingebaute Schrift
+  // darstellen kann, entsteht KEINE Datei — statt einer, deren Inhalt verändert wäre.
+  const fehlend = pdfFehlendeZeichen(input);
+  if (fehlend.length > 0) {
+    throw new PdfZeichenNichtDarstellbar(fehlend);
+  }
   const ki = kiEigenschaften(input);
   const seiten = pdfSeiten(input);
   const objekte = new Map<number, string>();
@@ -665,10 +910,14 @@ export function buildAnswerPdf(input: AnswerExportInput): Uint8Array {
   objekte.set(4, pdfSchriftObjekt("Helvetica-Bold"));
   objekte.set(5, pdfSchriftObjekt("Helvetica-Oblique"));
   objekte.set(6, pdfInfo(input, ki));
-  const ressourcen = "/Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >>";
+  // Die Symbol-Schrift trägt ihre eigene Kodierung; /ToUnicode macht Kopieren und Suchen treu.
+  objekte.set(7, "<< /Type /Font /Subtype /Type1 /BaseFont /Symbol /ToUnicode 8 0 R >>");
+  const cmap = symbolToUnicode();
+  objekte.set(8, `<< /Length ${cmap.length} >>\nstream\n${cmap}\nendstream`);
+  const ressourcen = "/Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 7 0 R >> >>";
   const kinder: string[] = [];
   for (const [i, befehle] of seiten.entries()) {
-    const seite = 7 + i * 2;
+    const seite = 9 + i * 2;
     const inhalt = seite + 1;
     const strom = befehle.join("\n");
     const rahmen = "/Type /Page /Parent 2 0 R /MediaBox [0 0 595 842]";
@@ -678,7 +927,7 @@ export function buildAnswerPdf(input: AnswerExportInput): Uint8Array {
   }
   objekte.set(1, "<< /Type /Catalog /Pages 2 0 R >>");
   objekte.set(2, `<< /Type /Pages /Kids [${kinder.join(" ")}] /Count ${kinder.length} >>`);
-  const anzahl = 7 + seiten.length * 2;
+  const anzahl = 9 + seiten.length * 2;
   let pdf = "%PDF-1.4\n%âãÏÓ\n";
   const versaetze: number[] = [];
   for (let n = 1; n < anzahl; n++) {

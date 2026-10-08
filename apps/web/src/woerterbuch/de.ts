@@ -2824,6 +2824,8 @@ const de = {
   "ask.export.docx": "Als Word (.docx)",
   "ask.export.pptx": "Als PowerPoint (.pptx)",
   "ask.export.pdfDatei": "Als PDF-Datei",
+  "ask.export.pdfZeichen":
+    "Die PDF-Datei kann diese Zeichen nicht unverändert darstellen: {{zeichen}}. Es wurde nichts heruntergeladen — Word oder Markdown geben den Text verlustfrei weiter.",
   "ask.export.copied": "Antwort inkl. Quellen kopiert.",
   "ask.export.answer": "Antwort",
   "ask.export.footer":
@@ -5554,6 +5556,10 @@ const de = {
   "klara.aiBusy": "Die KI liest die passenden Hilfe-Einträge …",
   "klara.aiAnswerTitle": "KI-Antwort aus der Hilfe",
   "klara.aiDisclaimer": "KI-generiert — nicht zu 100 % geprüft",
+  // R-0604 (Aufnahme gesamt-ki-kennzeichnung): die Herkunft der Hilfeantwort beim regelbasierten
+  // Rückfall — dort hat kein Modell geschrieben, „KI-Antwort" und „KI-generiert" wären falsch.
+  "klara.helpAnswerTitle": "Antwort aus der Hilfe",
+  "klara.ohneModell": "Regelbasiert, ohne KI-Modell",
   "klara.aiGoto": "Zum Bereich: {{target}}",
   "klara.aiSources": "Grundlage",
   "klara.aiEmpty":
