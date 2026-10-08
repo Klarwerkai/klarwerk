@@ -586,6 +586,24 @@ describe("Register A17b · Nacharbeit (ben Befund 1): Rollenwerte werden am Synt
     expect(hilfstypen.weiterreicher).toEqual([]);
   });
 
+  it("Nacharbeit 9: Mapped Types mit Schlüsselumbenennung (`as`) zählen die neuen Schlüssel", () => {
+    const e = synth("apps/web/src/components/A17bUmbenannt.tsx", [
+      "type Umbenannt = { [K in 'x' as 'role']: 'dialog' };",
+      "type Weg = { [K in 'role' as 'x']: 'dialog' };",
+      "type Gross = { [K in 'a' | 'b' as Uppercase<K>]: string };",
+      "export function A(p: Umbenannt): JSX.Element { return <div {...p} />; }",
+      "export function B(p: Weg): JSX.Element { return <div {...p} />; }",
+      "export function C(p: Gross): JSX.Element { return <div {...p} />; }",
+    ]);
+    // bens Fall wörtlich: aus 'x' wird 'role' — die Dialogrolle ist da.
+    expect(e.kandidaten.map((k) => `${k.zeile}:${k.art}`)).toEqual(["4:role-dialog"]);
+    // aus 'role' wird 'x' — nachweislich keine Rolle; `Uppercase<K>` ist nicht auswertbar.
+    expect(modalAbgleich(e)).toEqual([]);
+    expect(e.weiterreicher, "nicht ausgewertete Umbenennung ist nicht „keine Rolle“").toEqual([
+      "C",
+    ]);
+  });
+
   it("Nacharbeit 7: ein nicht auflösbarer Typ ergibt nie „keine Rolle“", () => {
     const datei = "apps/web/src/components/A17bUnaufloesbar.tsx";
     const e = synth(datei, [
@@ -937,6 +955,40 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
       "export * bis Knopf.tsx",
     ).toHaveLength(1);
     expect(rot).toHaveLength(1);
+  });
+
+  it("Nacharbeit 9: direkte Aufrufe und Wertverwendungen eines Weiterreichers werden abgerechnet", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        // bens Fall wörtlich: F reicht weiter und wird nur direkt aufgerufen.
+        "apps/web/src/components/Ben.tsx": [
+          "function F(p: any): JSX.Element {",
+          "  return <div {...p} />;",
+          "}",
+          "export const element = F(JSON.parse('{}'));",
+        ],
+        "apps/web/src/components/Weiter.tsx": [
+          "export function Weiter(p: any): JSX.Element { return <div {...p} />; }",
+        ],
+        "apps/web/src/components/Aufrufe.tsx": [
+          'import { memo } from "react";',
+          'import { Weiter } from "./Weiter";',
+          "export const a = Weiter(JSON.parse('{}'));",
+          "export const b = Weiter({ id: 'x' });",
+          "export const c = Weiter({ role: holeRolle() });",
+          "export const d = memo(Weiter);",
+        ],
+      }),
+    );
+    const an = (stelle: string): string[] => rot.filter((z) => z.includes(stelle));
+    expect(an("components/Ben.tsx:4"), "direkter Aufruf, Herkunft offen").toHaveLength(1);
+    expect(an("components/Aufrufe.tsx:3")[0]).toContain("in <Weiter>");
+    expect(an("components/Aufrufe.tsx:4"), "{ id } trägt nachweislich keine Rolle").toEqual([]);
+    expect(an("components/Aufrufe.tsx:5")[0]).toContain("im direkten Aufruf Weiter(…)");
+    expect(an("components/Aufrufe.tsx:6")[0]).toContain("als Wert verwendet");
+    expect(an("components/Weiter.tsx:"), "der Weiterreicher selbst ist kein Befund").toEqual([]);
+    expect(rot).toHaveLength(4);
   });
 
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {

@@ -760,16 +760,20 @@ function rolleImMappedType(typ: ts.MappedTypeNode, u: Typumfeld): PropsRolle {
     }
     return { ...keineRolle(), bild: typWerteIn(u.deklarationen, typ.type, 0) };
   };
-  if (schluessel && ts.isTemplateLiteralTypeNode(schluessel)) {
+  // Nacharbeit 9 (ben): `{ [K in 'x' as 'role']: … }` — mit Umbenennung (`as …`) zählen die
+  // NEUEN Schlüssel, nicht die ursprünglichen. Ohne sie die Schlüssel der Bedingung.
+  const ausschlaggebend = typ.nameType ?? schluessel;
+  if (ausschlaggebend && ts.isTemplateLiteralTypeNode(ausschlaggebend)) {
     // `data-${string}`: jeder Schlüssel beginnt mit `data-` — `role` nachweislich nicht.
-    return "role".startsWith(schluessel.head.text) ? nichtAufloesbar(typ) : keineRolle();
+    return "role".startsWith(ausschlaggebend.head.text) ? nichtAufloesbar(typ) : keineRolle();
   }
-  if (schluessel) {
-    const namen = typWerteIn(u.deklarationen, schluessel, 0);
+  if (ausschlaggebend) {
+    const namen = typWerteIn(u.deklarationen, ausschlaggebend, 0);
     if (namen.offen.length === 0) {
       return namen.werte.some((w) => w.text === "role") ? wert() : keineRolle();
     }
   }
+  // Nicht ausgewertet (etwa eine Umbenennung über `K`) ist nicht ausgeschlossen: nicht auflösbar.
   return nichtAufloesbar(typ);
 }
 
@@ -1840,6 +1844,164 @@ export function beurteile(erhebungen: DateiErhebung[]): {
 // Der Test in `tests/app/mega47-modale-flaechen-sammler.test.tsx` misst DIESELBEN Funktionen —
 // es gibt eine Erhebung und zwei Aufrufer.
 
+/** Nacharbeit 9: was ausserhalb von JSX/`createElement` mit einem Weiterreicher geschieht. */
+interface Direktverwendungen {
+  /** Direkte Aufrufe `F(props)` — ausgewertet wie `createElement(F, props)`. */
+  stellen: Komponentenstelle[];
+  /** Fertige Befunde: Wertverwendungen, Dialog- und unbestimmte Rollen direkter Aufrufe. */
+  befunde: string[];
+}
+
+/** Ist dieser Bezeichner nur ein Name (Deklaration, Import/Export, Eigenschaft, Typ) — kein Wert? */
+function istNurName(id: ts.Identifier): boolean {
+  const p = id.parent;
+  if (
+    ts.isImportSpecifier(p) ||
+    ts.isImportClause(p) ||
+    ts.isExportSpecifier(p) ||
+    ts.isNamespaceImport(p) ||
+    ts.isJsxAttribute(p) ||
+    (ts.isQualifiedName(p) && p.right === id) ||
+    (ts.isPropertyAccessExpression(p) && p.name === id) ||
+    (ts.isBindingElement(p) && p.propertyName === id)
+  ) {
+    return true;
+  }
+  if (
+    (ts.isFunctionDeclaration(p) ||
+      ts.isVariableDeclaration(p) ||
+      ts.isParameter(p) ||
+      ts.isBindingElement(p) ||
+      ts.isPropertyAssignment(p) ||
+      ts.isPropertySignature(p) ||
+      ts.isPropertyDeclaration(p) ||
+      ts.isMethodDeclaration(p)) &&
+    p.name === id
+  ) {
+    return true;
+  }
+  // `typeof F` und andere Typpositionen verwenden den Wert nicht zur Laufzeit.
+  for (let k: ts.Node = p; !ts.isSourceFile(k); k = k.parent) {
+    if (ts.isTypeQueryNode(k) || ts.isTypeReferenceNode(k)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Nacharbeit 9 (ben): JEDE Verwendung eines Weiterreichers wird abgerechnet, nicht nur JSX und
+ * `createElement`. Ein direkter Aufruf `F(props)` wird wie `createElement(F, props)` ausgewertet;
+ * jede andere Verwendung als Wert (`memo(F)`, `{ F }`, `as={F}`, Rückgabe, Zuweisung) macht die
+ * Aufrufer unauffindbar und ist rot mit Datei und Zeile — statt den ursprünglichen Befund am
+ * DOM-Element ersatzlos zu unterdrücken.
+ */
+function weiterreicherVerwendungen(
+  erhoben: DateiErhebung[],
+  weiter: Set<string>,
+  leser: Modulleser,
+): Direktverwendungen {
+  const namen = new Set([...weiter].map((k) => k.slice(k.lastIndexOf("#") + 1)));
+  const ergebnis: Direktverwendungen = { stellen: [], befunde: [] };
+  for (const e of erhoben) {
+    const quelle = e.quelle;
+    if (![...namen].some((n) => quelle.text.includes(n))) {
+      continue;
+    }
+    const sf = quelle.ast;
+    const deklarationen = sammleDeklarationen(sf);
+    const umfeld: Modulumfeld = { datei: quelle.datei, leser };
+    const zielVon = (id: ts.Identifier): string | undefined => {
+      const lokal = sichtbareDeklarationen(deklarationen, id);
+      if (lokal.length > 0) {
+        return lokal.some(istFunktion) ? `${quelle.datei}#${id.text}` : undefined;
+      }
+      const ziel = importZiel(id, umfeld);
+      return ziel?.art === "modul" ? `${ziel.datei}#${ziel.name}` : undefined;
+    };
+    const pruefeVerwendung = (id: ts.Identifier, ziel: string): void => {
+      const p = id.parent;
+      const zeile = zeileVon(sf, id);
+      const name = id.text;
+      const trenner = ziel.lastIndexOf("#");
+      const istTag =
+        (ts.isJsxOpeningElement(p) || ts.isJsxSelfClosingElement(p) || ts.isJsxClosingElement(p)) &&
+        p.tagName === id;
+      const istCreateElement =
+        ts.isCallExpression(p) && aufrufName(p) === "createElement" && p.arguments[0] === id;
+      if (istTag || istCreateElement) {
+        return;
+      }
+      if (ts.isCallExpression(p) && p.expression === id) {
+        const props = p.arguments[0];
+        if (props === undefined) {
+          return;
+        }
+        const r = propsRolle(props, deklarationen, umfeld);
+        const eigene = eigeneRollenwerte(props, deklarationen);
+        const text = props.getText(sf).replace(/\s+/g, " ").slice(0, 60);
+        if (r.bild.werte.some((w) => istDialogName(w.text)) && !e.nutztGrenze) {
+          ergebnis.befunde.push(
+            `${quelle.datei}:${zeile} — role-dialog über den direkten Aufruf ${name}(…): mögliche modale Fläche ohne die Modalgrenze der Shell`,
+          );
+        }
+        if (r.bild.offen.length > 0 || eigene.offen.length > 0) {
+          ergebnis.befunde.push(
+            `${quelle.datei}:${zeile} — Props „${text}“ im direkten Aufruf ${name}(…) tragen eine Rolle, deren Wert statisch nicht bestimmbar ist: ob hier ein Dialog entsteht, kann dieser Sammler nicht beurteilen`,
+          );
+        }
+        ergebnis.stellen.push({
+          datei: quelle.datei,
+          zeile,
+          text,
+          ziel: { modul: ziel.slice(0, trenner), name: ziel.slice(trenner + 1) },
+          abbruch: r.abbrueche.length > 0,
+          funktionen: r.vonAufrufern.map((q) => q.funktion),
+        });
+        return;
+      }
+      ergebnis.befunde.push(
+        `${quelle.datei}:${zeile} — ${name} reicht Props bis zu einem DOM-Element weiter, wird hier aber als Wert verwendet: seine Aufrufer und deren Rollen kann dieser Sammler nicht finden`,
+      );
+    };
+    const gehe = (n: ts.Node): void => {
+      if (ts.isIdentifier(n) && namen.has(n.text) && !istNurName(n)) {
+        const ziel = zielVon(n);
+        if (ziel !== undefined && weiter.has(ziel)) {
+          pruefeVerwendung(n, ziel);
+        }
+      }
+      ts.forEachChild(n, gehe);
+    };
+    gehe(sf);
+  }
+  return ergebnis;
+}
+
+/**
+ * Die eigenen `role`-Einträge eines Objektliterals (`F({ role: x })`). Im JSX-Spread und an
+ * `createElement` erhebt sie der Eigenschaftsbesucher; bei einem direkten Aufruf nur hier.
+ */
+function eigeneRollenwerte(ausdruck: ts.Node, deklarationen: Deklarationen): Wertbild {
+  let k: ts.Node = ausdruck;
+  while (ts.isParenthesizedExpression(k) || ts.isAsExpression(k) || ts.isSatisfiesExpression(k)) {
+    k = k.expression;
+  }
+  if (!ts.isObjectLiteralExpression(k)) {
+    return { werte: [], offen: [] };
+  }
+  const bilder: Wertbild[] = [];
+  for (const eig of k.properties) {
+    if (ts.isPropertyAssignment(eig) && eigenschaftsName(eig.name) === "role") {
+      bilder.push(statischeWerte(eig.initializer, deklarationen));
+    }
+    if (ts.isShorthandPropertyAssignment(eig) && eig.name.text === "role") {
+      bilder.push(statischeWerte(eig.name, deklarationen));
+    }
+  }
+  return vereine(bilder);
+}
+
 /**
  * Nacharbeit 7: die Aufrufstellen der Weiterreicher, über ALLE Dateien. Eine Komponente reicht
  * weiter, wenn ihre nicht auflösbare Parameter-Rolle ein DOM-Element erreicht — direkt oder über
@@ -1847,28 +2009,43 @@ export function beurteile(erhebungen: DateiErhebung[]): {
  * eine nicht lesbare (Paket) zählt wie ein Spread an einem DOM-Element: ist seine Herkunft nicht
  * auflösbar oder stammt er aus einer namenlosen Funktion, ist er rot mit Datei und Zeile.
  */
-export function weitergereichteBefunde(erhoben: DateiErhebung[]): string[] {
+export function weitergereichteBefunde(
+  erhoben: DateiErhebung[],
+  leser: Modulleser = bestandsLeser,
+): string[] {
   const schluessel = (modul: string, name: string): string => `${modul}#${name}`;
   const weiter = new Set(
     erhoben.flatMap((e) => e.weiterreicher.map((n) => schluessel(e.quelle.datei, n))),
   );
-  const stellen = erhoben.flatMap((e) => e.komponentenStellen);
+  const jsxStellen = erhoben.flatMap((e) => e.komponentenStellen);
   const zaehlt = (s: Komponentenstelle): boolean =>
     s.ziel === undefined || weiter.has(schluessel(s.ziel.modul, s.ziel.name));
-  let gewachsen = true;
-  while (gewachsen) {
-    gewachsen = false;
-    for (const s of stellen.filter(zaehlt)) {
-      for (const f of s.funktionen) {
-        if (f !== undefined && !weiter.has(schluessel(s.datei, f))) {
-          weiter.add(schluessel(s.datei, f));
-          gewachsen = true;
+  const erweitere = (stellen: Komponentenstelle[]): void => {
+    let gewachsen = true;
+    while (gewachsen) {
+      gewachsen = false;
+      for (const s of stellen.filter(zaehlt)) {
+        for (const f of s.funktionen) {
+          if (f !== undefined && !weiter.has(schluessel(s.datei, f))) {
+            weiter.add(schluessel(s.datei, f));
+            gewachsen = true;
+          }
         }
       }
     }
+  };
+  // Nacharbeit 9 (ben): auch direkte Aufrufe und Wertverwendungen der Weiterreicher zählen. Neue
+  // Weiterreicher aus direkten Aufrufen erweitern die Menge — deshalb im Wechsel bis zur Ruhe.
+  let direkt: Direktverwendungen = { stellen: [], befunde: [] };
+  let groesse = -1;
+  while (groesse !== weiter.size) {
+    groesse = weiter.size;
+    erweitere([...jsxStellen, ...direkt.stellen]);
+    direkt = weiterreicherVerwendungen(erhoben, weiter, leser);
+    erweitere([...jsxStellen, ...direkt.stellen]);
   }
-  const befunde: string[] = [];
-  for (const s of stellen.filter(zaehlt)) {
+  const befunde: string[] = [...direkt.befunde];
+  for (const s of [...jsxStellen, ...direkt.stellen].filter(zaehlt)) {
     const wohin = s.ziel ? `<${s.ziel.name}> (${s.ziel.modul})` : "eine nicht lesbare Komponente";
     if (s.abbruch) {
       befunde.push(
@@ -1907,7 +2084,7 @@ export function pruefeModalgrenze(wurzel: string = WURZEL): {
   // Register A17b: der unabhängige Zähler und die unbekannten Bauformen gehören INS TOR. Bis
   // hierher liefen sie nur im Test (`UNABGERECHNET` in mega47) — das Tor meldete eine Bauform, die
   // es nicht lesen konnte, also gar nicht.
-  const unbekannt = [...erhoben.flatMap(modalAbgleich), ...weitergereichteBefunde(erhoben)];
+  const unbekannt = [...erhoben.flatMap(modalAbgleich), ...weitergereichteBefunde(erhoben, leser)];
   const { rot, beurteilt } = beurteile(erhoben);
   // Eine Erhebung, die leer läuft, ist ein Fehler und kein Erfolg. Die gemessenen Untergrenzen
   // gegen ein SCHRUMPFEN stehen in `tests/app/mega47-modale-flaechen-sammler.test.tsx`
