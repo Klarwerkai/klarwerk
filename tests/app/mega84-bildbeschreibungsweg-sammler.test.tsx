@@ -2122,10 +2122,19 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Es rendert ein einziges `<span>` mit einem Katalogsatz, zeigt KEIN Bild, bietet KEINE
     // Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt kein `documentTitle`-Prop — nur
     // Grundmenge. In `RichTextEditor.tsx` (schon Träger) wird lediglich ein vorhandenes Bauteil
-    // zusätzlich eingesetzt. ANDERS ALS DIE EINTRÄGE DARÜBER: diese +1 ist GERECHNET, nicht
-    // gemessen — in diesem Auftrag startet die Hand keine Tests; die Messung liefert der Prüflauf.
+    // zusätzlich eingesetzt.
+    //
+    // NACHARBEIT 1 · GEMESSEN 488. Die oben gerechnete 452 war falsch, weil sie den erneut
+    // eingemischten Hauptstand nicht kannte. Am Kandidaten 7b7d9a0e meldete der Sammler wörtlich
+    // „gemessen: 488 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 608 Quelldateien …
+    // expected { komponenten: 488, … } to deeply equal { komponenten: 452, … }"
+    // (HISTORIE/nacharbeit-1/PRUEFUNG/betroffene-bestandswaechter.log). Davon ist GENAU EIN Bauteil
+    // aus diesem Auftrag (`AiSurfaceNotice`); die 36 über 452 kamen mit dem Hauptstand (Grundmenge
+    // 559 → 608, keine Quelldatei aus diesem Auftrag — der Hauptstand selbst führt hier noch 451).
+    // Welche es sind, ist ohne Lauf am Hauptstand nicht namentlich bestimmt. `anbieter` 1 und
+    // `traeger` 2 sind unverändert — beide Seiten der Meldung nennen 1 und 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 452,
+      komponenten: 488,
       anbieter: 1,
       traeger: 2,
     });
