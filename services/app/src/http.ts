@@ -2,6 +2,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { type AuthService, type Role, meldung, sprache } from "../../auth";
 import { type Permission, can } from "../../rbac";
 import { dienstSitzungsnutzer } from "./dienst-schluessel";
+import { stapelRahmen } from "./log-positivliste";
 
 // Gemeinsamer HTTP-Baustein der App: Auth-Guard, RBAC-Guard und einheitliches
 // Fehler-Mapping für alle modulübergreifenden Routen (FR-RBAC-04: serverseitig).
@@ -170,6 +171,27 @@ export function isInternalOnlyError(error: unknown): boolean {
   return INTERNAL_ONLY_CODES.has(String((error as { code: unknown }).code));
 }
 
+// arbeit:kos-anlage-500-pg — DER TECHNISCHE CODE DES AUFFANGZWEIGS, AUS EINER GESCHLOSSENEN FORM.
+//
+// Was hier ankommt, trägt keinen Domänencode: ein PostgreSQL-Fehler (SQLSTATE, fünf Zeichen aus
+// Ziffern und Großbuchstaben, z. B. `40P01`, `55P03`, `23505`), ein formloser `Error` oder etwas
+// ganz anderes. Ins Protokoll geht der Code nur in der SQLSTATE-Form — fünf Zeichen tragen keinen
+// Kundeninhalt; jeder andere Code wird `UNBEKANNT`, ein fehlender `OHNE_CODE`. Dieselben zwei
+// Ersatzwerte wie `ERR_UNBEKANNT`/`ERR_OHNE_CODE` des Fehler-Serializers (build-app.ts); als
+// Literal, weil build-app.ts dieses Modul einbindet und nicht umgekehrt.
+const SQLSTATE = /^[0-9A-Z]{5}$/;
+function technischerCode(error: unknown): string {
+  const roh =
+    error && typeof error === "object" && "code" in error
+      ? (error as { code: unknown }).code
+      : undefined;
+  if (roh === undefined || roh === null || roh === "") {
+    return "OHNE_CODE";
+  }
+  const code = String(roh);
+  return SQLSTATE.test(code) ? code : "UNBEKANNT";
+}
+
 /**
  * JOB 3568: `sendError` braucht die Anfrage, um den Sprachkopf zu lesen — und holt sie sich über
  * `reply.request` statt über einen zweiten Parameter. Der Grund ist gemessen und nicht gewählt:
@@ -211,6 +233,27 @@ export function sendError(reply: FastifyReply, error: unknown): void {
       return;
     }
   }
+  // arbeit:kos-anlage-500-pg — DER AUFFANGZWEIG WAR SPURLOS. Ein 500 aus `POST /api/kos` unter
+  // PostgreSQL (Prüfauftrag pa-1790659426-c146cfc5) liess sich im Betrieb nicht nachlesen: nur der
+  // Maskierungszweig oben schrieb eine Zeile. Jetzt genau EINE Zeile je Vorfall, request-gebunden
+  // (`reply.log` → `reqId`), mit dem technischen Code als eigenem Feld und den Stapelrahmen
+  // (`datei:zeile:spalte`). Die rohe Meldung bleibt draussen — auch aus dem Protokoll: der
+  // Fehler-Serializer ersetzt `message`/`stack` (build-app.ts). Trägt der Wert keinen Stapel (ein
+  // geworfenes Objekt), steht der Stapel dieser Stelle da: dann nennt er wenigstens die Route.
+  // `err` nur für Objekte: der Fehler-Serializer liest Felder daraus, und ein geworfenes `null`
+  // darf die Antwort nicht im Logger scheitern lassen.
+  const stapel =
+    error instanceof Error && typeof error.stack === "string"
+      ? stapelRahmen(error.stack)
+      : stapelRahmen(new Error().stack);
+  reply.log.error(
+    {
+      ...(error !== null && typeof error === "object" ? { err: error } : {}),
+      code: technischerCode(error),
+      stapel,
+    },
+    "Unerwarteter Fehler ohne Domänencode (HTTP 500 INTERNAL).",
+  );
   // Derselbe Aufruf mit derselben Anfrage wie im Maskierungszweig oben — nicht ein zweiter Text,
   // der auseinanderlaufen könnte. Genau das prüft R4 je Sprache bytegleich nach.
   reply.code(INTERNAL_ERROR_STATUS).send(internalErrorBody(reply.request));

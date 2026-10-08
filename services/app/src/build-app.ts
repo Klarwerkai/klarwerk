@@ -294,7 +294,7 @@ import {
   type LiveWallFotoRepo,
   PgLiveWallFotoRepo,
 } from "./livewall-fotos";
-import { gelisteteMeldung, nurGelisteteLogfelder } from "./log-positivliste";
+import { gelisteteMeldung, nurGelisteteLogfelder, stapelRahmen } from "./log-positivliste";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
@@ -2373,23 +2373,12 @@ export function pfadOhneAbfrage(url: string): string {
  * FAIL-CLOSED: Nur ein Rahmen, der dem strengen Muster entspricht, wird übernommen; alles andere
  * ergibt `unbekannt`. Ein Stack aus dynamisch erzeugtem Code kann beliebigen Text als „Dateinamen"
  * tragen. Die erste Stackzeile ist die MELDUNG selbst und wird nie betrachtet.
+ *
+ * Das Muster steht seit arbeit:kos-anlage-500-pg in `stapelRahmen` (log-positivliste.ts), weil der
+ * Auffangzweig von `sendError` dieselben Rahmen als ganze Folge protokolliert — ein Muster, zwei Leser.
  */
 export function herkunftAusStack(stack: unknown): string {
-  if (typeof stack !== "string") {
-    return "unbekannt";
-  }
-  for (const zeile of stack.split("\n").slice(1)) {
-    const treffer =
-      /(?:^|[( ])((?:\/|[A-Za-z]:\\|node:)[^():\s]{1,200}):(\d{1,6}):(\d{1,6})\)?$/.exec(
-        zeile.trimEnd(),
-      );
-    if (!treffer?.[1]) {
-      continue;
-    }
-    const kurz = treffer[1].replace(/^.*?\/(services|apps|tools|tests|node_modules)\//, "$1/");
-    return `${kurz}:${treffer[2]}:${treffer[3]}`;
-  }
-  return "unbekannt";
+  return stapelRahmen(stack)[0] ?? "unbekannt";
 }
 
 /** Tiefer wird nicht abgestiegen — ein zyklisches Objekt darf den Logger nicht festfahren. */
