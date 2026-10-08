@@ -191,6 +191,10 @@ const INVENTAR: readonly string[] = [
   // unverändert. NICHT GEMESSEN, sondern aus den Achsen abgeleitet: in dieser Lieferung wurde kein
   // Testlauf gestartet; der Prüflauf ist der Beleg.
   "tests/arbeitswege-objekt/assistentin-fragen-objektbezug-mounted.test.tsx",
+  // Nacharbeit 3 desselben Auftrags: die Prüfflächen-Probe montiert `KlaraAssistant` jetzt neben
+  // der Seite (Klara nennt den gezeigten bzw. verlangten Beitrag) — Achse `komponente`, „klara"
+  // nicht im Pfad, K5 unverändert. Aus den Achsen abgeleitet, kein eigener Testlauf.
+  "tests/arbeitswege-objekt/pruefen-objektbezug-mounted.test.tsx",
   // JOB 3502 ADMIN-KI-FREIGABE VERBRAUCHER: Klara und der Word-Weg folgen der zentralen
   // Adminfreigabe. Beide Pfade tragen „klara" im PFAD (das Verzeichnis war im Auftrag §4
   // abschliessend vorgegeben) und kommen deshalb ueber die NAMENSachse herein — sie zaehlen in K5.

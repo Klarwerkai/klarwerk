@@ -12,8 +12,9 @@
 //   K2 · nach einer Rückfrage stehen der entschiedene Beitrag, sein Stand laut Server und der
 //        Weg dorthin da; die Auswahl wechselt sichtbar und in der Adresse auf den nächsten.
 //   K4 · „Zurücksetzen" im Filter-Menü nimmt die Filter zurück, nicht den Suchtext.
-//   K5 · die Adresse trägt Kennung und Fassung; ein „Neuladen" derselben Adresse zeigt denselben
-//        Beitrag.
+//   K5 · die Adresse trägt Kennung und Fassung des GEZEIGTEN Beitrags (auch bei automatischer
+//        Erstwahl); Klara nennt denselben; ein „Neuladen" derselben Adresse zeigt denselben
+//        Beitrag; ein Wechsel von `ko` bei montierter Seite (A → B, Zurück, Vorwärts) wählt mit.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../apps/web/src/api/endpoints", async () =>
@@ -35,10 +36,16 @@ import {
 } from "../../apps/web/node_modules/@tanstack/react-query";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
-import { MemoryRouter, useLocation } from "../../apps/web/node_modules/react-router-dom";
+import {
+  MemoryRouter,
+  type NavigateFunction,
+  useLocation,
+  useNavigate,
+} from "../../apps/web/node_modules/react-router-dom";
 import { endpoints } from "../../apps/web/src/api/endpoints";
 import type { ValidationBoardKo } from "../../apps/web/src/api/types";
 import { ModalBoundaryProvider } from "../../apps/web/src/app/ModalBoundaryContext";
+import { KlaraAssistant } from "../../apps/web/src/components/KlaraAssistant";
 import i18n from "../../apps/web/src/i18n";
 import { Validation } from "../../apps/web/src/pages/Validation";
 import { KARTE, flush, kartenTitel, zeilen } from "../pruefen-listennavigation/kulisse";
@@ -55,6 +62,13 @@ const EIGEN = "k6";
 function Adresse(): JSX.Element {
   const ort = useLocation();
   return createElement("output", { "data-testid": "test-adresse" }, `${ort.pathname}${ort.search}`);
+}
+
+/** Der Router-Griff der Montage: navigieren, ohne die Prüffläche abzubauen (Nacharbeit 3). */
+let navigiere: NavigateFunction | null = null;
+function Steuer(): null {
+  navigiere = useNavigate();
+  return null;
 }
 
 interface Montage {
@@ -87,10 +101,13 @@ async function montiere(startadresse: string, bestand: ValidationBoardKo[]): Pro
           MemoryRouter,
           { initialEntries: [startadresse] },
           createElement(Adresse),
+          createElement(Steuer),
           createElement(ModalBoundaryProvider, {
             hostRef: { current: container },
             children: createElement(Validation),
           }),
+          // Klara steht wie in der Hülle NEBEN der Seite und liest denselben Ort.
+          createElement(KlaraAssistant),
         ),
       ),
     );
@@ -118,6 +135,28 @@ const EINTRAG = '[data-testid="pruefen-warteschlange-eintrag"]';
 function eintraegeText(): string[] {
   const knoepfe = (montage as Montage).container.querySelectorAll(EINTRAG);
   return [...knoepfe].map((e) => e.textContent?.trim() ?? "");
+}
+/** Was Klara gerade als Beitrag nennt: Kennung und Fassung, oder `null` ohne Bezug. */
+async function klaraBezug(): Promise<{ ko: string | null; fassung: string | null } | null> {
+  const m = montage as Montage;
+  if (!m.container.querySelector("section[data-klara='1']")) {
+    await klick(m.container.querySelector("button[data-klara='1']"));
+  }
+  const block = m.container.querySelector('[data-testid="klara-objektbezug"]');
+  return block
+    ? { ko: block.getAttribute("data-ko"), fassung: block.getAttribute("data-fassung") }
+    : null;
+}
+async function geheZu(ziel: string | number): Promise<void> {
+  await act(async () => {
+    if (typeof ziel === "number") {
+      navigiere?.(ziel);
+    } else {
+      navigiere?.(ziel);
+    }
+  });
+  await flush();
+  await flush();
 }
 /** Die Board-Antwort NACH einer Rückfrage am eigenen Beitrag: er bleibt, mit einer Gegenstimme. */
 function mitRueckfrage(k: ValidationBoardKo): ValidationBoardKo {
@@ -163,11 +202,15 @@ afterEach(() => {
 });
 
 describe("K1 · Einreichen → Prüfung desselben Beitrags, unabhängig von der Reihenfolge", () => {
-  it("Gegenprobe: ohne Bezug führt der erste Eintrag — ein fremder Beitrag", async () => {
+  it("Gegenprobe: ohne Bezug führt der erste Eintrag — und Adresse wie Klara nennen GENAU ihn", async () => {
     montage = await montiere("/validierung?origin=non-demo", zeilen(TITEL));
     expect(titel()).toBe("A Pumpe");
-    // Ein blosser Besuch schreibt keinen Bezug in die Adresse.
-    expect(abfrage().get("ko")).toBeNull();
+    // Nacharbeit 3 (bens Befund): auch die automatische Erstwahl ist der gemeinsame Bezug — die
+    // Adresse trägt den gezeigten Beitrag samt Fassung, Klara nennt denselben.
+    expect(abfrage().get("ko")).toBe("k1");
+    expect(abfrage().get("fassung")).toBe("1");
+    expect(abfrage().get("origin")).toBe("non-demo");
+    expect(await klaraBezug()).toEqual({ ko: "k1", fassung: "1" });
   });
 
   it("mit `ko=<eigener Beitrag>` steht rechts der eigene Beitrag und links ist er gewählt", async () => {
@@ -199,6 +242,43 @@ describe("K1 · Einreichen → Prüfung desselben Beitrags, unabhängig von der 
     expect(hinweis?.querySelector("a")?.getAttribute("href")).toBe("/wissen/gibt-es-hier-nicht");
     // Die Adresse behält den angeforderten Beitrag — er wird nicht mit dem fremden überschrieben.
     expect(abfrage().get("ko")).toBe("gibt-es-hier-nicht");
+    // Nacharbeit 3: KEINE fremde Prüfkarte an seiner Stelle, kein fremder Eintrag als gewählt —
+    // und Klara nennt den verlangten Beitrag, den auch die Zeile nennt.
+    expect((montage as Montage).container.querySelectorAll(KARTE)).toHaveLength(0);
+    expect(element(`${EINTRAG}[aria-current="true"]`)).toBeNull();
+    expect(eintraegeText()).toHaveLength(TITEL.length);
+    expect((await klaraBezug())?.ko).toBe("gibt-es-hier-nicht");
+
+    // Ein Klick auf einen Eintrag beendet die Lage: Karte, Adresse und Klara folgen ihm.
+    await klick(element(EINTRAG));
+    expect(titel()).toBe("A Pumpe");
+    expect(element('[data-testid="pruefen-objekt-fehlt"]')).toBeNull();
+    expect(abfrage().get("ko")).toBe("k1");
+    expect((await klaraBezug())?.ko).toBe("k1");
+  });
+
+  it("Navigation bei montierter Seite: ko A → B wählt B, Zurück wählt wieder A (K5)", async () => {
+    montage = await montiere("/validierung?ko=k2", zeilen(TITEL));
+    expect(titel()).toBe("B Ventil");
+    expect(abfrage().get("ko")).toBe("k2");
+
+    // Dieselbe Montage, neue Adresse — wie ein Link aus Klara, Fragen oder dem Einreichen.
+    await geheZu("/validierung?ko=k5");
+    expect(titel()).toBe("E Dichtung");
+    expect(element(`${EINTRAG}[aria-current="true"]`)?.textContent?.trim()).toBe("E Dichtung");
+    // Die Adresse wird NICHT auf die alte Wahl zurückgeschrieben.
+    expect(abfrage().get("ko")).toBe("k5");
+    expect(abfrage().get("fassung")).toBe("1");
+    expect((await klaraBezug())?.ko).toBe("k5");
+
+    await geheZu(-1);
+    expect(titel()).toBe("B Ventil");
+    expect(abfrage().get("ko")).toBe("k2");
+    expect((await klaraBezug())?.ko).toBe("k2");
+
+    await geheZu(1);
+    expect(titel()).toBe("E Dichtung");
+    expect(abfrage().get("ko")).toBe("k5");
   });
 
   it("kommt der Beitrag mit dem nächsten Abruf, wird er von selbst gewählt", async () => {

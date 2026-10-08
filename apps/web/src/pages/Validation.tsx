@@ -366,9 +366,26 @@ export function Validation(): JSX.Element {
   //
   // ARBEITSWEGE AM SELBEN ARTIKEL: nennt die Adresse einen Beitrag (`ko=<id>`, z. B. direkt nach
   // dem Einreichen), ist ER die Wahl — nicht der erste Eintrag einer anders sortierten Liste.
-  const [aktivId, setAktivId] = useState<string | null>(
-    () => leseObjektbezug(params)?.koId ?? null,
-  );
+  //
+  // DIE ADRESSE IST DIE QUELLE, AUCH BEI MONTIERTER SEITE (Nacharbeit 3, bens Befund): eine
+  // Navigation, die `ko` von A auf B ändert (Link, Zurück, Vorwärts), bestimmt die Auswahl NOCH IM
+  // SELBEN Zeichenlauf — React-Muster „Zustand aus geänderter Eingabe ableiten". Erst danach läuft
+  // der Effekt, der die Adresse aus der Auswahl schreibt; er findet dort also schon B vor und
+  // schreibt nicht mehr A zurück. Ein Wegfall von `ko` ändert die Auswahl nicht.
+  //
+  // `angefordertOffen`: die Kennung, die die Adresse verlangt hat und die die Liste noch NICHT
+  // gezeigt hat. Solange sie fehlt, steht rechts KEINE fremde Karte (s. `aktiv` weiter unten).
+  const adressKo = leseObjektbezug(params)?.koId ?? null;
+  const [aktivId, setAktivId] = useState<string | null>(adressKo);
+  const [angefordertOffen, setAngefordertOffen] = useState<string | null>(adressKo);
+  const [gesehenerAdressKo, setGesehenerAdressKo] = useState<string | null>(adressKo);
+  if (adressKo !== gesehenerAdressKo) {
+    setGesehenerAdressKo(adressKo);
+    if (adressKo !== null) {
+      setAktivId(adressKo);
+      setAngefordertOffen(adressKo);
+    }
+  }
   const pruefbereichRef = useRef<HTMLDivElement>(null);
   // JOB 3504: die Warteschlange selbst — Anker für den Radlauf und für „die Auswahl bleibt sichtbar".
   const warteschlangeRef = useRef<HTMLUListElement>(null);
@@ -981,26 +998,31 @@ export function Validation(): JSX.Element {
     return visible[i + 1]?.id ?? visible[i - 1]?.id ?? null;
   }
 
-  const aktiv = visible.find((k) => k.id === aktivId) ?? visible[0] ?? null;
-
-  // ARBEITSWEGE AM SELBEN ARTIKEL — DIE ADRESSE NENNT DEN GEZEIGTEN BEITRAG.
+  // ARBEITSWEGE AM SELBEN ARTIKEL — DIE ADRESSE NENNT DEN GEZEIGTEN BEITRAG, IMMER.
   //
-  // `angefordertFehlt`: die Adresse nennt einen Beitrag, der in DIESER Ansicht nicht steht (noch
-  // nicht nachgeladen, weggefiltert oder schon entschieden). Dann zeigt die Karte zwar weiter den
-  // ersten sichtbaren — aber nie still: eine Zeile darüber sagt es, und die Adresse behält den
-  // angeforderten Beitrag, damit er nach dem nächsten Abruf von selbst gewählt wird.
+  // `angefordertFehlt`: die Adresse hat einen Beitrag verlangt, den die Liste (noch) nicht zeigt
+  // (nicht nachgeladen, weggefiltert, schon entschieden). Dann steht rechts KEINE Karte — keine
+  // fremde an seiner Stelle (Nacharbeit 3, bens Befund) —, eine Zeile sagt es, und die Adresse
+  // behält den verlangten Beitrag: Klara und „Fragen" nennen damit genau das, was die Seite meint.
+  // Kommt er mit dem nächsten Abruf, wird er von selbst gezeigt. Ein Klick auf einen anderen
+  // Eintrag beendet die Lage, weil `aktivId` dann nicht mehr die verlangte Kennung ist.
   //
-  // Geschrieben wird die Adresse erst, wenn eine Wahl besteht (aus der Adresse, per Klick/Taste
-  // oder nach einer Entscheidung). Ein blosser Besuch von `/validierung` bleibt `/validierung`.
-  const adressBezug = leseObjektbezug(params);
+  // Sonst gilt die alte Regel: ohne Wahl (oder wenn ein schon gezeigter Eintrag aus der Liste
+  // fällt) führt der erste sichtbare. Und die Adresse trägt DEN GEZEIGTEN Beitrag samt Fassung
+  // auch dann, wenn ihn niemand ausdrücklich gewählt hat — Klara liest ihn von dort.
+  const gewaehlt = visible.find((k) => k.id === aktivId) ?? null;
   const angefordertFehlt =
-    adressBezug !== null &&
-    aktivId === adressBezug.koId &&
-    !visible.some((k) => k.id === adressBezug.koId);
-  const sollBezug: Objektbezug | null =
-    aktiv && aktivId !== null && !angefordertFehlt
-      ? { koId: aktiv.id, fassung: typeof aktiv.version === "number" ? aktiv.version : null }
-      : null;
+    angefordertOffen !== null && aktivId === angefordertOffen && gewaehlt === null;
+  if (angefordertOffen !== null && gewaehlt !== null && gewaehlt.id === angefordertOffen) {
+    // Gefunden: ab jetzt eine gewöhnliche Wahl (fällt sie später heraus, führt der erste).
+    setAngefordertOffen(null);
+  }
+  const aktiv = gewaehlt ?? (angefordertFehlt ? null : (visible[0] ?? null));
+
+  const adressBezug = leseObjektbezug(params);
+  const sollBezug: Objektbezug | null = aktiv
+    ? { koId: aktiv.id, fassung: typeof aktiv.version === "number" ? aktiv.version : null }
+    : null;
   useEffect(() => {
     if (sollBezug === null || gleicherBezug(adressBezug, sollBezug)) {
       return;
@@ -1662,18 +1684,24 @@ export function Validation(): JSX.Element {
       {/* ARBEITSWEGE AM SELBEN ARTIKEL: die angeforderte Prüfung steht hier gerade nicht — offen
           gesagt, statt still einen fremden Beitrag zu zeigen. Solange die Liste nachlädt, heißt
           das „wird gesucht"; danach nennt die Zeile den Weg zum Beitrag selbst. */}
-      {angefordertFehlt && adressBezug && lage.lage !== "erstfehler" ? (
+      {angefordertFehlt && angefordertOffen !== null && lage.lage !== "erstfehler" ? (
         // `<output>` statt `<p role="status">`: dasselbe Statusverhalten über das semantische
         // Element (Biome a11y/useSemanticElements). `block`, weil `<output>` inline ist.
         <output
           data-testid="pruefen-objekt-fehlt"
-          data-ko={adressBezug.koId}
+          data-ko={angefordertOffen}
           className="mb-2 block text-[12.5px] text-trust-warn-text"
         >
           {query.isFetching || lage.lage === "laedt"
             ? t("arbeitsweg.pruefen.sucht")
             : t("arbeitsweg.pruefen.fehlt")}{" "}
-          <Link className="font-semibold underline" to={leserHref(adressBezug)}>
+          <Link
+            className="font-semibold underline"
+            to={leserHref({
+              koId: angefordertOffen,
+              fassung: adressBezug?.koId === angefordertOffen ? adressBezug.fassung : null,
+            })}
+          >
             {t("arbeitsweg.pruefen.lesen")}
           </Link>
         </output>
