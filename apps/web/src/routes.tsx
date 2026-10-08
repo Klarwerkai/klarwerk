@@ -95,6 +95,11 @@ const Conflicts = lazy(() => import("./pages/Conflicts").then((m) => ({ default:
 const DuplicateCompare = lazy(() =>
   import("./pages/DuplicateCompare").then((m) => ({ default: m.DuplicateCompare })),
 );
+// R-1107 (Aufnahme gesamt-dublettenvergleich): der Zusammenführen-Assistent — nachgeladen wie jede
+// andere Seite (Regel oben, JOB 3503).
+const DuplicateMerge = lazy(() =>
+  import("./pages/DuplicateMerge").then((m) => ({ default: m.DuplicateMerge })),
+);
 const Duplicates = lazy(() =>
   import("./pages/Duplicates").then((m) => ({ default: m.Duplicates })),
 );
@@ -200,6 +205,7 @@ const PAGES: Record<string, ComponentType> = {
   konflikte: Conflicts,
   duplikate: Duplicates,
   duplicateCompare: DuplicateComparePage,
+  duplicateMerge: DuplicateMerge,
   conflictCompare: ConflictComparePage,
   risiko: Risk,
   lebenszyklus: Lifecycle,
