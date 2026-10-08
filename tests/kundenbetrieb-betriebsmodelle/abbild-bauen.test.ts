@@ -69,6 +69,8 @@ function platz(name: string): { bin: string; ziel: string; log: string } {
     'case "$1" in',
     `  rev-parse) echo ${COMMIT} ;;`,
     '  status) [ -n "$STUB_SCHMUTZIG" ] && echo " M datei.ts" ;;',
+    // `git show <commit>:package.json` — die Version DES COMMITS; ohne Vorgabe dieselbe wie im Baum.
+    `  show) printf '{"version":"%s"}\\n' "\${STUB_COMMIT_VERSION:-${VERSION}}" ;;`,
     "  archive) INHALT_STUB=quelle",
     ...nachO,
     "  ;;",
@@ -154,6 +156,32 @@ describe("R-1487 · Containerbau mit Quellfassung und Prüfsumme, ohne Veröffen
     const aus = JSON.parse(lauf.stdout) as Nachweis;
     expect(aus.arbeitsbaumSauber).toBe(false);
     expect(lauf.stderr).toContain("NICHT im Abbild");
+  });
+
+  it("C6 · abweichende package.json im Arbeitsbaum: Version kommt aus dem Commit", async () => {
+    // Ben, Kandidat fda81e3d: der Baukontext kam aus dem Commit, die Version aus dem Arbeitsbaum.
+    // Hier nennt der Commit eine andere Version als die package.json daneben (schmutziger Baum).
+    const p = platz("versionsabweichung");
+    const imCommit = "9.9.9-im-commit";
+    const env = umgebung(p.bin, { STUB_SCHMUTZIG: "1", STUB_COMMIT_VERSION: imCommit });
+    const lauf = await fahreNode([BAUER, "--ziel", p.ziel], env);
+    expect(lauf.code, lauf.stderr).toBe(0);
+    expect(imCommit).not.toBe(VERSION);
+    const aus = JSON.parse(lauf.stdout) as Nachweis & { arbeitsbaumVersion: string | null };
+    const name = `klarwerk-${imCommit}-${COMMIT.slice(0, 12)}`;
+    expect(aus.version).toBe(imCommit);
+    expect(aus.abbild).toBe(`klarwerk:${imCommit}-${COMMIT.slice(0, 12)}`);
+    expect(aus.arbeitsbaumVersion).toBe(VERSION);
+    expect(existsSync(join(p.ziel, `${name}.json`))).toBe(true);
+    expect(existsSync(join(p.ziel, `${name}.tar.sha256`))).toBe(true);
+    const zeilen = aufrufe(p.log);
+    expect(zeilen).toContain(`git show ${COMMIT}:package.json`);
+    const bau = zeilen.find((z) => z.startsWith("docker build")) ?? "";
+    expect(bau).toContain(`--label org.opencontainers.image.version=${imCommit}`);
+    expect(bau).not.toContain(`org.opencontainers.image.version=${VERSION}`);
+    expect(lauf.stderr).toContain(
+      `package.json im Arbeitsbaum nennt ${VERSION}, der Commit ${imCommit}`,
+    );
   });
 
   it("C5 · unbekanntes Argument: Exit 2, nichts gebaut", async () => {

@@ -32,11 +32,13 @@ interface Kanal {
   auseinandergelaufen: boolean;
   laufendeFassungen: string[];
   nichtAufStand: string[];
+  identitaetUngeklaert: string[];
 }
 interface Bericht {
   gueltig: boolean;
   fehler?: string[];
   anlagen: Anlage[];
+  zusammenfassung: { gleich: number; identitaetUngeklaert: number };
   kanaele: Kanal[];
 }
 
@@ -180,14 +182,29 @@ describe("R-0781/R-0861 · Inventar, Kanal und Soll/Ist-Abgleich", () => {
     expect(anlage(bericht, "a").ergebnis).toBe("abweichend");
   });
 
-  it("A5 · Fassung ohne Identitätsfeld: gleich, Identität nicht gemeldet", async () => {
-    const a = await instanz("1.0.0-beta.1.760", { instanz: undefined });
+  it("A5 · ohne Identität nicht bestanden, auch bei passender Fassung", async () => {
+    // Ben, Kandidat fda81e3d: hier stand Exit 0 — R-0851 verlangt aber eine nachweisbare Identität.
+    const ohne = await instanz("1.0.0-beta.1.760", { instanz: undefined });
+    const unbekannt = await instanz("1.0.0-beta.1.760", { instanz: "unbekannt" });
     const { code, bericht } = await abgleich({
       kanaele: { stabil: { version: "1.0.0-beta.1.760" } },
-      instanzen: [eintrag("a", "cloud", a, "stabil")],
+      instanzen: [
+        eintrag("a", "cloud", ohne, "stabil"),
+        eintrag("b", "cloud", unbekannt, "stabil"),
+      ],
     });
-    expect(code).toBe(0);
-    expect(anlage(bericht, "a").identitaet).toBe("nicht_gemeldet");
+    expect(code).toBe(1);
+    for (const kennung of ["a", "b"]) {
+      expect(anlage(bericht, kennung).identitaet).toBe("nicht_gemeldet");
+      expect(anlage(bericht, kennung).ergebnis).toBe("identitaet_ungeklaert");
+    }
+    expect(bericht.zusammenfassung.gleich).toBe(0);
+    expect(bericht.zusammenfassung.identitaetUngeklaert).toBe(2);
+    // Sichtbar, aber keine Drift: die Fassung stimmt.
+    const stabil = bericht.kanaele.find((k) => k.kanal === "stabil");
+    expect(stabil?.auseinandergelaufen).toBe(false);
+    expect(stabil?.nichtAufStand).toEqual([]);
+    expect(stabil?.identitaetUngeklaert).toEqual(["a", "b"]);
   });
 
   it("A6 · nicht erreichbar zählt nicht als gleich", async () => {

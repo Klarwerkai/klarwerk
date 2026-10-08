@@ -8,7 +8,8 @@
 // Bau durch Coolify oder `docker compose … --build` — und hinterher wusste niemand, aus welchem Stand.
 // Dieser Bauer leitet alles selbst her und schreibt es zusammen auf:
 //
-//   1. QUELLFASSUNG  `git rev-parse HEAD` des Repositorys, `version` aus `package.json`.
+//   1. QUELLFASSUNG  `git rev-parse HEAD` des Repositorys, `version` aus `package.json` DIESES Commits
+//                    (`git show <commit>:package.json`), nicht aus dem Arbeitsbaum.
 //   2. BAUKONTEXT    `git archive` GENAU dieses Commits in ein Wegwerfverzeichnis — nicht der
 //                    Arbeitsbaum. Nicht eingecheckte Änderungen können so nicht ins Abbild geraten;
 //                    das Abbild IST der Commit. Ein schmutziger Arbeitsbaum wird gemeldet.
@@ -54,7 +55,19 @@ try {
   const commit = lauf("git", ["rev-parse", "HEAD"]).trim();
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error(`kein voller Commit: „${commit}"`);
   const schmutzig = lauf("git", ["status", "--porcelain"]).trim().length > 0;
-  const version = JSON.parse(readFileSync(join(repo, "package.json"), "utf8")).version;
+  // Die Version kommt aus DEMSELBEN Commit wie der Baukontext (`git show <commit>:package.json`),
+  // nie aus dem Arbeitsbaum: eine nicht eingecheckte Versionsänderung stünde sonst in Abbildname,
+  // OCI-Etikett und Nachweis, während das Abbild die Fassung des Commits enthält.
+  const version = JSON.parse(lauf("git", ["show", `${commit}:package.json`])).version;
+  if (typeof version !== "string" || !version.trim()) {
+    throw new Error(`package.json im Commit ${commit} nennt keine Version`);
+  }
+  let arbeitsbaumVersion = null;
+  try {
+    arbeitsbaumVersion = JSON.parse(readFileSync(join(repo, "package.json"), "utf8")).version;
+  } catch {
+    arbeitsbaumVersion = null;
+  }
   const name = `klarwerk:${version}-${commit.slice(0, 12)}`;
   const datei = `klarwerk-${version}-${commit.slice(0, 12)}`;
 
@@ -100,6 +113,8 @@ try {
     version,
     commit,
     arbeitsbaumSauber: !schmutzig,
+    versionQuelle: "package.json im Commit",
+    arbeitsbaumVersion,
     baukontext: "git archive des Commits",
     archiv: basename(archiv),
     sha256: pruefsumme.sha256,
@@ -112,6 +127,11 @@ try {
   if (schmutzig) {
     process.stderr.write(
       "Hinweis: der Arbeitsbaum hat nicht eingecheckte Änderungen. Sie sind NICHT im Abbild — gebaut wurde genau der Commit.\n",
+    );
+  }
+  if (arbeitsbaumVersion !== null && arbeitsbaumVersion !== version) {
+    process.stderr.write(
+      `Hinweis: package.json im Arbeitsbaum nennt ${arbeitsbaumVersion}, der Commit ${version}. Abbild und Nachweis tragen ${version} — die Fassung, die wirklich gebaut wurde.\n`,
     );
   }
   process.stdout.write(

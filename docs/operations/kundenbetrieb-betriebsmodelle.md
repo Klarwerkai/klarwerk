@@ -190,13 +190,17 @@ nicht fest. Ohne diese Festlegung wird hier kein Profilinhalt erfunden.
     `scripts/betrieb/instanzen.beispiel.json`. Kennung und Adresse sind eindeutig (eine Firma je Instanz).
   - *Abgleich:* `node scripts/betrieb/instanzabgleich.mjs <inventar.json> [--json]` fragt jede Instanz an
     `/health` und meldet je Anlage erwartete und laufende Fassung, Kanal, Identität
-    (`bestaetigt`/`abweichend`/`nicht_gemeldet`) und Ergebnis (`gleich`/`abweichend`/`nicht_erreichbar`);
-    je Kanal, ob er **auseinandergelaufen** ist und welche Anlagen nicht auf Stand sind (R-0781). Exit 0
-    alles gleich, 1 Abweichung, 2 Inventar ungültig. Es liest nur und braucht kein Geheimnis.
+    (`bestaetigt`/`abweichend`/`nicht_gemeldet`) und Ergebnis (`gleich`/`abweichend`/
+    `nicht_erreichbar`/`identitaet_ungeklaert`); je Kanal, ob er **auseinandergelaufen** ist, welche
+    Anlagen nicht auf Stand sind (R-0781) und bei welchen die Identität ungeklärt ist. `gleich` heißt:
+    Fassung **und** Identität bestätigt. Exit 0 nur, wenn jede Anlage `gleich` ist; 1 bei Abweichung,
+    keiner Auskunft oder ungeklärter Identität; 2 Inventar ungültig. Es liest nur und braucht kein
+    Geheimnis.
     Gegenprobe: `tests/kundenbetrieb-betriebsmodelle/instanzabgleich.test.ts`.
   - *Grenze:* Das Inventar führt der Betreiber; welche Kanäle es gibt und welche Fassung sie erwarten,
     ist seine Festlegung, nicht die des Werkzeugs. Ein regelmäßiger Lauf mit Alarmkanal ist nicht
-    eingerichtet. Instanzen vor dieser Fassung melden `instanz` noch nicht (`nicht_gemeldet`).
+    eingerichtet. Instanzen vor dieser Fassung melden `instanz` noch nicht (`nicht_gemeldet`) und
+    bestehen den Abgleich deshalb erst nach dem Update (`identitaet_ungeklaert`, Exit 1).
 - **Auslieferungsartefakt mit Prüfsumme.**
   - *Inselpaket:* `scripts/insel/build-current-release.mjs` leitet den Namen aus App-Version, Commit
     und Bauzeit her und schreibt **neu** neben `<version>.zip` die Datei `<version>.zip.sha256` im
@@ -205,7 +209,8 @@ nicht fest. Ohne diese Festlegung wird hier kein Profilinhalt erfunden.
     Empfänger: `shasum -a 256 -c <version>.zip.sha256` im Paketordner. Grenze: belegt Unversehrtheit,
     nicht Herkunft; der Updateweg prüft die Datei nicht.
   - *Container-Abbild (R-1487):* `node scripts/deploy/abbild-bauen.mjs [--ziel <ordner>]` leitet
-    Commit (`git rev-parse HEAD`) und Version (`package.json`) selbst her, baut **genau diesen Commit**
+    Commit (`git rev-parse HEAD`) und Version (`package.json` **desselben Commits**, nicht des
+    Arbeitsbaums; eine abweichende Arbeitsbaumversion wird gemeldet) selbst her, baut **genau diesen Commit**
     aus `git archive` in einem Wegwerfkontext (nicht eingecheckte Änderungen gelangen nicht hinein und
     werden gemeldet), mit `SOURCE_COMMIT` (→ `/health.commit`) und den OCI-Etiketten `revision`/`version`.
     Danach schreibt er das Archiv (`docker save`), dessen `.sha256` und eine Nachweisdatei
@@ -278,7 +283,7 @@ Spalten: Punkt · Stand · Ergebnis · Rest.
 | R-0829 eigene Instanz für Pilotkunden | Weg vorhanden | eine Firma je Instanz (§2.3), Weg aus B2 | Installationsprotokoll beim Pilotkunden, Zugang zur Wissensquelle und Großkunden-Vorlaufvertrag nicht belegt |
 | R-0843 Bedienkarte und Blaupause Hausbetrieb | geliefert | `hausbetrieb-bedienkarte.md` und `hausbetrieb-einrichtung-blaupause.md` aus den vorhandenen Bausteinen, mit Voraussetzungen und Grenzen (§7) | Aufsetzen durch einen Kunden ohne Beistand nicht belegt; Node/Modell im Material: Entscheidung offen (H1) |
 | R-0844 Hausbetrieb mit lokalem Modell | Referenzaufbau | lokaler Modellweg mit bestätigter Adresse (§2.2) | installierbares Produkt offen (`insel-hausbetrieb-anforderungen.md`) |
-| R-0851 Instanzmanifest | geliefert | `/health` meldet `version`, `commit` und `instanz`; der Instanzabgleich gleicht Soll und Ist samt Identität ab (§7) | Identität nur für Fassungen ab diesem Auftrag; ohne gesetzten Kanal-Commit wird nur die Version verglichen |
+| R-0851 Instanzmanifest | geliefert | `/health` meldet `version`, `commit` und `instanz`; der Instanzabgleich gleicht Soll und Ist samt Identität ab; ungeklärte Identität besteht nicht (§7) | Identität erst ab dieser Fassung gemeldet, ältere Anlagen bleiben bis zum Update `identitaet_ungeklaert`; ohne gesetzten Kanal-Commit wird nur die Version verglichen |
 | R-0852 Standard-/Premiumprofile | nicht gebaut | eine Trennungsstufe vorhanden (§5) | Profilinhalt: Entscheidung offen |
 | R-0861 Versionsinventar und Kanäle | geliefert | Inventar mit Kanälen und erwarteter Fassung, Abgleich zeigt je Anlage Kanal, erwartete und laufende Fassung (§7) | Kanäle und ihre Sollfassung legt der Betreiber fest |
 | R-0869 eindeutiger Port | erledigt | 3001 für Container, Server, Compose und Leitfäden; letzter Rest in `server-hardening-readiness.md` korrigiert; Inselpaket 3002 ausdrücklich benannt (§3) | — |

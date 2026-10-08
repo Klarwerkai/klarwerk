@@ -14,14 +14,16 @@
 //   · `instanz` — die Adresse, unter der sich die Instanz selbst kennt (`instanzAdresse()` in
 //     `services/app/src/build-app.ts`) — gegen die Adresse im Inventar. So fällt auf, wenn unter
 //     einer Adresse eine andere Anlage antwortet. Meldet eine ältere Fassung das Feld noch nicht,
-//     steht die Identität als `nicht_gemeldet` da und gilt nicht als bestätigt.
+//     steht die Identität als `nicht_gemeldet` da; die Anlage ist dann `identitaet_ungeklaert`,
+//     nicht `gleich`, und der Abgleich endet mit Exit 1.
 // Und je Kanal (R-0781): fahren Anlagen desselben Kanals unterschiedliche Fassungen, ist der Kanal
 // AUSEINANDERGELAUFEN — die Anlagen auf einem anderen Stand als erwartet sind benannt.
 //
 // Es wird nur gelesen. Nichts wird an einer Instanz geändert, kein Geheimnis wird gebraucht.
 //
 // Aufruf: node scripts/betrieb/instanzabgleich.mjs <inventar.json> [--json]
-// Exit 0 alle Anlagen gleich · 1 mindestens eine Abweichung oder nicht erreichbar · 2 Inventar ungültig
+// Exit 0 alle Anlagen gleich (Fassung UND Identität bestätigt) · 1 mindestens eine Abweichung, nicht
+// erreichbar oder Identität ungeklärt · 2 Inventar ungültig
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
@@ -140,13 +142,12 @@ export async function gleicheInstanzAb(instanz, soll, { fetchImpl = fetch, zeitM
     identitaet = "abweichend";
     abweichungen.push(`instanz: erreicht unter ${origin}, meldet sich als ${laufend.instanz}`);
   }
-  return {
-    ...basis,
-    laufend,
-    identitaet,
-    ergebnis: abweichungen.length === 0 ? "gleich" : "abweichend",
-    abweichungen,
-  };
+  // R-0851 verlangt eine NACHWEISBARE Identität. Passt die Fassung, meldet die Instanz aber keine
+  // Identität, ist der Abgleich nicht bestanden: Ergebnis `identitaet_ungeklaert`, kein „gleich".
+  let ergebnis = "gleich";
+  if (abweichungen.length > 0) ergebnis = "abweichend";
+  else if (identitaet !== "bestaetigt") ergebnis = "identitaet_ungeklaert";
+  return { ...basis, laufend, identitaet, ergebnis, abweichungen };
 }
 
 /** Der ganze Abgleich: je Instanz das Ergebnis, je Kanal die Drift. */
@@ -169,7 +170,14 @@ export async function gleicheInventarAb(inventar, optionen = {}) {
       anlagen: imKanal.length,
       laufendeFassungen: fassungen,
       auseinandergelaufen: fassungen.length > 1,
-      nichtAufStand: imKanal.filter((a) => a.ergebnis !== "gleich").map((a) => a.kennung),
+      // Nicht auf Stand: abweichende Fassung oder keine Auskunft. Eine nur ungeklärte Identität ist
+      // keine Drift und steht gesondert unter `identitaetUngeklaert`.
+      nichtAufStand: imKanal
+        .filter((a) => a.ergebnis === "abweichend" || a.ergebnis === "nicht_erreichbar")
+        .map((a) => a.kennung),
+      identitaetUngeklaert: imKanal
+        .filter((a) => a.ergebnis === "identitaet_ungeklaert")
+        .map((a) => a.kennung),
     };
   });
   return {
@@ -180,6 +188,7 @@ export async function gleicheInventarAb(inventar, optionen = {}) {
       gleich: anlagen.filter((a) => a.ergebnis === "gleich").length,
       abweichend: anlagen.filter((a) => a.ergebnis === "abweichend").length,
       nichtErreichbar: anlagen.filter((a) => a.ergebnis === "nicht_erreichbar").length,
+      identitaetUngeklaert: anlagen.filter((a) => a.ergebnis === "identitaet_ungeklaert").length,
       auseinandergelaufeneKanaele: kanaele.filter((k) => k.auseinandergelaufen).map((k) => k.kanal),
     },
   };
@@ -206,7 +215,11 @@ export function alsText(bericht) {
   zeilen.push("");
   for (const k of bericht.kanaele) {
     const lage = k.auseinandergelaufen ? "AUSEINANDERGELAUFEN" : "einheitlich";
-    const rest = k.nichtAufStand.length ? `, nicht auf Stand: ${k.nichtAufStand.join(", ")}` : "";
+    const ungeklaert = k.identitaetUngeklaert.length
+      ? `, Identität ungeklärt: ${k.identitaetUngeklaert.join(", ")}`
+      : "";
+    const rest =
+      (k.nichtAufStand.length ? `, nicht auf Stand: ${k.nichtAufStand.join(", ")}` : "") + ungeklaert;
     zeilen.push(
       `Kanal ${k.kanal}: erwartet ${k.erwartet.version}, ${k.anlagen} Anlage(n), ${lage} [${k.laufendeFassungen.join(", ")}]${rest}`,
     );
@@ -214,7 +227,10 @@ export function alsText(bericht) {
   return `${zeilen.join("\n")}\n`;
 }
 
-/** Exitcode zum Bericht: 0 alles gleich, 1 Abweichung/nicht erreichbar, 2 Inventar ungültig. */
+/**
+ * Exitcode zum Bericht: 0 nur, wenn JEDE Anlage `gleich` ist (Fassung und Identität bestätigt);
+ * 1 bei Abweichung, nicht erreichbar oder ungeklärter Identität; 2 Inventar ungültig.
+ */
 export function exitcode(bericht) {
   if (!bericht.gueltig) return 2;
   return bericht.anlagen.every((a) => a.ergebnis === "gleich") ? 0 : 1;
