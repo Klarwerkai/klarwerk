@@ -1403,7 +1403,11 @@ describe("H · Präzisierung gelangt in beide Entwurfswege", () => {
     expect(body.anlass).toContain("Nachtschicht");
     expect(body.anlass).toContain("Filterpruefung");
     // Die erste Frage bleibt Teil des Auftrags — die zweite präzisiert sie, ersetzt sie nicht.
-    expect(body.anlass).toBe(`${zuerst} – ${danach}`);
+    // Nacharbeit 8: bereinigt — die Gesprächsmarke „Praezisierung:" gehört nicht in den Betreff.
+    expect(body.anlass).toBe(
+      `${zuerst} – Nur fuer die Nachtschicht; Filterpruefung ebenfalls aufnehmen.`,
+    );
+    expect(texte()).toContain(`Betreff: ${body.anlass}`);
   });
 
   it("H2: der KI-Weg erhält denselben Auftrag — mit dem Verlauf und den Quellen je Runde", async () => {
@@ -1444,6 +1448,122 @@ describe("H · Präzisierung gelangt in beide Entwurfswege", () => {
     expect(texte().find((t) => t.startsWith("[Q2] Quelle:"))).toBe(
       "[Q2] Quelle: „Prüfintervall Filter“ · Fassung 2 · Prüfstand validiert · Vertrauenswert nicht angegeben · Kennung ko-wackelig · Geltung: nicht angegeben · Verantwortliche Rolle: nicht benannt · Verantwortung: nicht benannt · Fassung vom nicht festgehalten · Letzte Prüfung: nicht belegt",
     );
+  });
+
+  // Nacharbeit 8 (Bens Befund zu anleitung.js:1279): eine ausdrücklich verworfene Quelle.
+  const verwerfen = "Nur Filterprüfung, Ventilwartung weglassen.";
+
+  async function verworfeneRunde(): Promise<void> {
+    askAntwort = { answered: true, answer: null, sources: ["ko-ventil"] };
+    await vorhabenFragen(zuerst);
+    askAntwort = { answered: true, answer: null, sources: ["ko-wackelig"] };
+    await vorhabenFragen(verwerfen);
+  }
+
+  it("H3: „Ventilwartung weglassen“ — die Ventilquelle bleibt draußen, Betreff und Einleitung aus dem bereinigten Anlass", async () => {
+    panelStarten();
+    await verworfeneRunde();
+    // Der Faden zeigt, was draußen bleibt und warum.
+    const punkt = (id: string) =>
+      document.querySelector(`#anleitung-faden li.anleitung-faden-punkt[data-id="${id}"]`);
+    const ventil = punkt("ko-ventil");
+    const filter = punkt("ko-wackelig");
+    expect(ventil?.getAttribute("data-im-entwurf")).toBe("nein");
+    expect(filter?.getAttribute("data-im-entwurf")).toBe("ja");
+    expect(
+      fadenZeilen()
+        .filter((z) => z.klasse === "anleitung-faden-verworfen")
+        .map((z) => z.text),
+    ).toEqual(["nicht im Entwurf – Runde 2: „Ventilwartung“ verworfen"]);
+    expect(el<HTMLInputElement>("anleitung-anlass").value).toBe("Nur Filterprüfung");
+    el<HTMLSelectElement>("anleitung-art").value = "betriebsmitteilung";
+    await klick("anleitung-entwurf-btn");
+    const body = anfragen.find((a) => a.url === "/api/output/generate")?.body;
+    expect(body).toEqual({
+      kind: "betriebsmitteilung",
+      koIds: ["ko-wackelig"],
+      audienceRole: null,
+      anlass: "Nur Filterprüfung",
+    });
+    expect(texte()).toContain("Betreff: Nur Filterprüfung");
+    expect(texte()).toContain(
+      "wir möchten Sie über Folgendes informieren: Nur Filterprüfung. Für Sie gilt:",
+    );
+    // Nichts von der verworfenen Quelle und nichts vom rohen Verlauf im eingefügten Entwurf.
+    expect(eingefuegt().filter((a) => /Ventil|ko-ventil|weglassen/.test(a.text))).toEqual([]);
+  });
+
+  it("H4: der KI-Weg erhält dieselbe Auswahl und denselben bereinigten Anlass", async () => {
+    const zurufe: Record<string, unknown>[] = [];
+    panelStarten();
+    g.ka6Lage = () => ({ erlaubt: true, grundKey: null });
+    g.klaraS4SessionId = "synthetische-sitzung";
+    g.klaraS4AbrufDieserSitzung = (
+      _pfad: string,
+      _methode: string,
+      body: Record<string, unknown>,
+    ) => {
+      zurufe.push(body);
+      return Promise.resolve({
+        entwurf: "Synthetischer Entwurf.",
+        passagen: [{ text: "Synthetischer Entwurf.", marken: ["Q1"] }],
+        herkunft: [
+          { koId: "ko-wackelig", titel: "Prüfintervall Filter", stufe: "validiert", version: 2 },
+        ],
+        anbieter: "Testattrappe",
+        modell: "kein-modellaufruf",
+      });
+    };
+    await verworfeneRunde();
+    await klick("anleitung-ki-btn");
+    expect(zurufe).toHaveLength(1);
+    expect(zurufe[0]?.koIds).toEqual(["ko-wackelig"]);
+    const auftrag = String(zurufe[0]?.text);
+    expect(auftrag).toContain("zu: Nur Filterprüfung.");
+    // Die Belege der ersten Runde sind ausdrücklich verworfen; die Filterquelle ist Q1 der zweiten.
+    expect(auftrag).toContain(
+      `1) „${zuerst}“ (Belege dieser Runde verworfen – nicht verwenden); 2) „${verwerfen}“ (Belege: Q1)`,
+    );
+    expect(eingefuegt().map((a) => a.text)).toContain(
+      "Synthetischer Entwurf. [Q1: ko-wackelig · v2]",
+    );
+  });
+
+  it("H5: der Mensch entscheidet zuletzt — ein Häkchen nimmt die verworfene Quelle wieder auf, ein anderes nimmt eine heraus", async () => {
+    panelStarten();
+    await verworfeneRunde();
+    const haken = (id: string) =>
+      el<HTMLUListElement>("anleitung-faden").querySelector<HTMLInputElement>(
+        `li[data-id="${id}"] input.anleitung-faden-wahl`,
+      );
+    expect(haken("ko-ventil")?.checked).toBe(false);
+    haken("ko-ventil")?.click();
+    haken("ko-wackelig")?.click();
+    expect(
+      fadenZeilen()
+        .filter((z) => z.klasse === "anleitung-faden-verworfen")
+        .map((z) => z.text),
+    ).toEqual(["nicht im Entwurf – von Ihnen abgewählt"]);
+    // Auch der Anlass ist änderbar — der geänderte Wortlaut wird Betreff.
+    el<HTMLInputElement>("anleitung-anlass").value = "Wartung am Ventil";
+    el<HTMLSelectElement>("anleitung-art").value = "betriebsmitteilung";
+    await klick("anleitung-entwurf-btn");
+    expect(anfragen.find((a) => a.url === "/api/output/generate")?.body).toMatchObject({
+      koIds: ["ko-ventil"],
+      anlass: "Wartung am Ventil",
+    });
+  });
+
+  it("H6: eine spätere Runde, die das Verworfene wieder nennt, hebt die Verwerfung auf", async () => {
+    panelStarten();
+    await verworfeneRunde();
+    askAntwort = { answered: true, answer: null, sources: [] };
+    await vorhabenFragen("Ventilwartung doch wieder aufnehmen.");
+    expect(fadenZeilen().filter((z) => z.klasse === "anleitung-faden-verworfen")).toEqual([]);
+    await klick("anleitung-entwurf-btn");
+    expect(anfragen.find((a) => a.url === "/api/output/generate")?.body).toMatchObject({
+      koIds: ["ko-ventil", "ko-wackelig"],
+    });
   });
 });
 

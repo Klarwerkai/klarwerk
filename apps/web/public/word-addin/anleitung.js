@@ -92,6 +92,10 @@
         fadenFehltTeil: "Was fehlt: {n} Fundstelle(n) sind nicht geprüft und bleiben draußen.",
         fadenFehltNichts: "Was fehlt: nichts Erkennbares – alle Fundstellen sind geprüft.",
         fadenLeer: "Bitte zuerst beschreiben, was Sie vorhaben.",
+        imEntwurf: "im Entwurf",
+        verworfenWeg: "nicht im Entwurf – Runde {n}: „{begriff}“ verworfen",
+        verworfenHand: "nicht im Entwurf – von Ihnen abgewählt",
+        anlass: "Betreff/Anlass des Entwurfs",
         fadenKeineQuellen: "Im Gesprächsfaden steht noch kein geprüfter Punkt.",
         entwurf: "Entwurf aus diesen Punkten erzeugen",
         kiEntwurf: "Mit Klara ausformulieren (KI-Entwurf)",
@@ -103,6 +107,7 @@
         kiVerlauf: "Gesprächsverlauf, spätere Angaben präzisieren frühere: {runden}. ",
         kiRunde: "{n}) „{frage}“ (Belege: {marken})",
         kiRundeOhne: "{n}) „{frage}“ (keine geprüften Belege)",
+        kiRundeVerworfen: "{n}) „{frage}“ (Belege dieser Runde verworfen – nicht verwenden)",
         kiForm_betriebsmitteilung: "Form: Betreff, Anrede an die Belegschaft, sachlich-freundlicher Ton in Sie-Form, Anlass, geltende Punkte, was zu tun ist, Ansprechpartner, Gruß. Verwende nur Aussagen aus den angegebenen Quellen.",
         kiForm_allgemein: "Verwende nur Aussagen aus den angegebenen Quellen.",
         kiNichtMoeglich: "Mit KI gerade nicht möglich: {grund}",
@@ -200,6 +205,10 @@
         fadenFehltTeil: "What is missing: {n} finding(s) are not reviewed and stay out.",
         fadenFehltNichts: "What is missing: nothing apparent – all findings are reviewed.",
         fadenLeer: "Please describe what you are planning first.",
+        imEntwurf: "in the draft",
+        verworfenWeg: "not in the draft – round {n}: “{begriff}” dropped",
+        verworfenHand: "not in the draft – deselected by you",
+        anlass: "Subject/occasion of the draft",
         fadenKeineQuellen: "The conversation does not contain a reviewed point yet.",
         entwurf: "Create a draft from these points",
         kiEntwurf: "Let Klara phrase it (AI draft)",
@@ -211,6 +220,7 @@
         kiVerlauf: "Conversation so far, later statements refine earlier ones: {runden}. ",
         kiRunde: "{n}) “{frage}” (sources: {marken})",
         kiRundeOhne: "{n}) “{frage}” (no reviewed sources)",
+        kiRundeVerworfen: "{n}) “{frage}” (sources of this round dropped – do not use)",
         kiForm_betriebsmitteilung: "Form: subject, greeting to the staff, factual and friendly formal tone, occasion, applicable points, what to do, contact, closing. Use only statements from the given sources.",
         kiForm_allgemein: "Use only statements from the given sources.",
         kiNichtMoeglich: "AI not possible right now: {grund}",
@@ -308,6 +318,10 @@
         fadenFehltTeil: "Wat ontbreekt: {n} vindplaats(en) zijn niet gecontroleerd en blijven buiten.",
         fadenFehltNichts: "Wat ontbreekt: niets zichtbaars – alle vindplaatsen zijn gecontroleerd.",
         fadenLeer: "Beschrijf eerst wat u van plan bent.",
+        imEntwurf: "in het concept",
+        verworfenWeg: "niet in het concept – ronde {n}: ‘{begriff}’ weggelaten",
+        verworfenHand: "niet in het concept – door u uitgezet",
+        anlass: "Onderwerp/aanleiding van het concept",
         fadenKeineQuellen: "Het gesprek bevat nog geen gecontroleerd punt.",
         entwurf: "Concept maken uit deze punten",
         kiEntwurf: "Laat Klara het formuleren (AI-concept)",
@@ -319,6 +333,7 @@
         kiVerlauf: "Gespreksverloop, latere uitspraken verfijnen eerdere: {runden}. ",
         kiRunde: "{n}) ‘{frage}’ (bronnen: {marken})",
         kiRundeOhne: "{n}) ‘{frage}’ (geen gecontroleerde bronnen)",
+        kiRundeVerworfen: "{n}) ‘{frage}’ (bronnen van deze ronde weggelaten – niet gebruiken)",
         kiForm_betriebsmitteilung: "Vorm: onderwerp, aanhef aan het personeel, zakelijk-vriendelijke toon met u, aanleiding, geldende punten, wat te doen, contactpersoon, groet. Gebruik alleen uitspraken uit de opgegeven bronnen.",
         kiForm_allgemein: "Gebruik alleen uitspraken uit de opgegeven bronnen.",
         kiNichtMoeglich: "AI nu niet mogelijk: {grund}",
@@ -420,6 +435,7 @@
     var anleitungGewaehlt = {};     // Kennung → true: die Quellen des Erzeugungswegs (Häkchen)
     var anleitungFaden = [];        // [{ frage, antwort, punkte: [{ id, title, version, stand, status, trust, geprueft }] }]
     var anleitungFadenSitzung = null;
+    var anleitungFadenHand = {};    // Kennung → true/false: die Wahl des Menschen schlägt die Ableitung
 
     function anleitungT(schluessel, werte) {
       var tabelle = ANLEITUNG_TEXTE[typeof lang === "string" && ANLEITUNG_TEXTE[lang] ? lang : "de"];
@@ -521,6 +537,12 @@
       fadenListe.id = "anleitung-faden";
       fadenListe.setAttribute("aria-live", "polite");
       faden.appendChild(fadenListe);
+      // Der bereinigte Anlass (Betreff/Einleitung) — vorbelegt, vom Menschen änderbar.
+      var anlass = anleitungKnoten("input", "");
+      anlass.id = "anleitung-anlass";
+      anlass.type = "text";
+      anlass.maxLength = 300;
+      faden.appendChild(anlass);
       var fadenFuss = zeile("anleitung-faden-fuss");
       fadenFuss.appendChild(knopf("anleitung-entwurf-btn"));
       fadenFuss.appendChild(knopf("anleitung-ki-btn"));
@@ -1275,16 +1297,140 @@
       return stand ? String(stand).slice(0, 10) : anleitungT("nichtFestgehalten");
     }
 
-    /** Die geprüften Kennungen aller Fundstellen des Fadens, ohne Doppelte, in Fundreihenfolge. */
-    function anleitungFadenIds() {
-      var ids = [];
-      for (var i = 0; i < anleitungFaden.length; i += 1) {
-        var punkte = anleitungFaden[i].punkte;
-        for (var j = 0; j < punkte.length; j += 1) {
-          if (punkte[j].geprueft && ids.indexOf(punkte[j].id) === -1) { ids.push(punkte[j].id); }
+    // ---- Der aktuelle Auftrag aus dem Faden (Nacharbeit 8) ----------------------------------------
+    // Ausdrücklich verworfen ist nur, was eine Runde mit einem Verwerfungswort sagt: „Ventilwartung
+    // weglassen", „ohne Ventilwartung", „leave out …", „… weglaten". Eine bloße Einschränkung („nur
+    // für die Nachtschicht") verwirft nichts. Erwähnt eine SPÄTERE Runde den Begriff wieder ohne
+    // Verwerfung, gilt er wieder. Jede Ableitung steht sichtbar im Faden und ist per Häkchen umkehrbar.
+
+    var ANLEITUNG_FUELLWOERTER = ["bitte", "aber", "auch", "doch", "mehr", "ganz", "eine", "einen", "einer",
+      "soll", "sollte", "kann", "muss", "wird", "jetzt", "dann", "wieder", "lieber", "komplett", "please",
+      "also", "more", "some", "should", "graag", "maar", "nog", "moet"];
+    var ANLEITUNG_WEG_DAVOR = /^(?:(?:bitte|und|aber|please|and|but|en|maar)\s+)*(?:ohne|without|zonder|omit|drop|remove|exclude|leave out|streiche|entferne)\s+(.+)$/;
+    var ANLEITUNG_WEG_DANACH = /^(.+?)\s+(?:bitte\s+)?(?:weglassen|wegzulassen|streichen|entfernen|herausnehmen|rausnehmen|auslassen|raus|nicht (?:mehr )?(?:aufnehmen|beruecksichtigen|erwaehnen)|weglaten|schrappen|verwijderen|niet (?:meer )?opnemen)$/;
+    var ANLEITUNG_META = /^\s*(?:präzisierung|praezisierung|ergänzung|ergaenzung|nachtrag|korrektur|refinement|clarification|aanvulling|verduidelijking)\s*:\s*/i;
+
+    function anleitungFalten(text) {
+      return String(text || "").toLowerCase()
+        .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss");
+    }
+
+    function anleitungWoerter(text) {
+      var roh = anleitungFalten(text).split(/[^a-z0-9]+/);
+      var woerter = [];
+      for (var i = 0; i < roh.length; i += 1) {
+        if (roh[i].length >= 4 && ANLEITUNG_FUELLWOERTER.indexOf(roh[i]) === -1) { woerter.push(roh[i]); }
+      }
+      return woerter;
+    }
+
+    function anleitungStamm(wort) {
+      return wort.length >= 7 ? wort.slice(0, wort.length - 2) : wort;
+    }
+
+    /** Ein Begriff trifft ein Wort, wenn eines mit dem Stamm des anderen BEGINNT („ventil" ↔ „ventilwartung"). */
+    function anleitungTrifft(begriffWoerter, woerter) {
+      for (var i = 0; i < begriffWoerter.length; i += 1) {
+        for (var j = 0; j < woerter.length; j += 1) {
+          if (begriffWoerter[i].indexOf(anleitungStamm(woerter[j])) === 0
+            || woerter[j].indexOf(anleitungStamm(begriffWoerter[i])) === 0) { return true; }
         }
       }
-      return ids;
+      return false;
+    }
+
+    /** Die Teilsätze einer Runde mit ihrem Trennzeichen — so bleibt der Wortlaut beim Zusammensetzen. */
+    function anleitungTeilsaetze(frage) {
+      return String(frage).replace(ANLEITUNG_META, "").match(/[^.;,!?]+[.;,!?]*\s*/g) || [];
+    }
+
+    /** Der verworfene Begriff eines Teilsatzes oder null. */
+    function anleitungVerworfenIn(teilsatz) {
+      var gefaltet = anleitungFalten(anleitungNorm(teilsatz)).replace(/[.;,!?]+$/, "").trim();
+      var treffer = ANLEITUNG_WEG_DAVOR.exec(gefaltet) || ANLEITUNG_WEG_DANACH.exec(gefaltet);
+      if (!treffer || anleitungWoerter(treffer[1]).length === 0) { return null; }
+      // Der Begriff im Wortlaut des Menschen: die Wörter des Teilsatzes, die ihn tragen.
+      var woerter = anleitungWoerter(treffer[1]);
+      var anzeige = [];
+      var original = anleitungNorm(teilsatz).replace(/[.;,!?]+$/, "").split(" ");
+      for (var i = 0; i < original.length; i += 1) {
+        var w = anleitungWoerter(original[i]);
+        if (w.length > 0 && woerter.indexOf(w[0]) >= 0) { anzeige.push(original[i]); }
+      }
+      return { woerter: woerter, text: anzeige.join(" ") || treffer[1] };
+    }
+
+    /**
+     * Der aktuelle Auftrag: welche geprüften Fundstellen weiterhin gewählt sind, warum die anderen
+     * draußen bleiben, und der bereinigte Anlass (ohne Verwerfungen und ohne das Verworfene) für
+     * Betreff und Einleitung.
+     */
+    function anleitungFadenAuswahl() {
+      // 1. Die geltenden Verwerfungen in Rundenfolge — eine spätere Erwähnung hebt sie auf.
+      var verworfen = [];
+      var i, j, k;
+      for (i = 0; i < anleitungFaden.length; i += 1) {
+        var saetze = anleitungTeilsaetze(anleitungFaden[i].frage);
+        var neu = [];
+        for (j = 0; j < saetze.length; j += 1) {
+          var weg = anleitungVerworfenIn(saetze[j]);
+          if (weg) { weg.runde = i + 1; neu.push(weg); continue; }
+          var woerter = anleitungWoerter(saetze[j]);
+          for (k = verworfen.length - 1; k >= 0; k -= 1) {
+            if (anleitungTrifftGenau(verworfen[k].woerter, woerter)) { verworfen.splice(k, 1); }
+          }
+        }
+        verworfen = verworfen.concat(neu);
+      }
+      // 2. Die Fundstellen: geprüft, nicht verworfen — oder vom Menschen ausdrücklich gewählt.
+      var ids = [];
+      var gruende = {};
+      for (i = 0; i < anleitungFaden.length; i += 1) {
+        var punkte = anleitungFaden[i].punkte;
+        for (j = 0; j < punkte.length; j += 1) {
+          var p = punkte[j];
+          if (!p.geprueft || ids.indexOf(p.id) >= 0 || gruende[p.id]) { continue; }
+          var grund = null;
+          for (k = 0; k < verworfen.length && !grund; k += 1) {
+            if (anleitungTrifft(verworfen[k].woerter, anleitungWoerter(p.title))) {
+              grund = anleitungT("verworfenWeg", { n: verworfen[k].runde, begriff: verworfen[k].text });
+            }
+          }
+          if (anleitungFadenHand[p.id] === true) { grund = null; }
+          if (anleitungFadenHand[p.id] === false) { grund = anleitungT("verworfenHand"); }
+          if (grund) { gruende[p.id] = grund; } else { ids.push(p.id); }
+        }
+      }
+      // 3. Der bereinigte Anlass: Verwerfungen und Teilsätze über Verworfenes fallen heraus.
+      var teile = [];
+      for (i = 0; i < anleitungFaden.length; i += 1) {
+        var behalten = "";
+        var saetzeRunde = anleitungTeilsaetze(anleitungFaden[i].frage);
+        for (j = 0; j < saetzeRunde.length; j += 1) {
+          if (anleitungVerworfenIn(saetzeRunde[j])) { continue; }
+          var ueber = false;
+          for (k = 0; k < verworfen.length && !ueber; k += 1) {
+            ueber = anleitungTrifftGenau(verworfen[k].woerter, anleitungWoerter(saetzeRunde[j]));
+          }
+          if (!ueber) { behalten += saetzeRunde[j]; }
+        }
+        behalten = anleitungNorm(behalten).replace(/[\s,;:–-]+$/, "");
+        if (behalten) { teile.push(behalten); }
+      }
+      return { ids: ids, gruende: gruende, anlass: teile.join(" – ") };
+    }
+
+    /** Strenger als `anleitungTrifft`: gleiche Wörter oder gleiche Stämme — „wartung" trifft nicht „ventilwartung". */
+    function anleitungTrifftGenau(begriffWoerter, woerter) {
+      for (var i = 0; i < begriffWoerter.length; i += 1) {
+        for (var j = 0; j < woerter.length; j += 1) {
+          var a = begriffWoerter[i];
+          var b = woerter[j];
+          if (a === b || (a.length >= 6 && b.length >= 6
+            && (a.indexOf(anleitungStamm(b)) === 0 || b.indexOf(anleitungStamm(a)) === 0))) { return true; }
+        }
+      }
+      return false;
     }
 
     function anleitungFadenZeichnen(beschaeftigt) {
@@ -1298,7 +1444,16 @@
         knopf.textContent = anleitungT(knoepfe[k][1]);
         knopf.disabled = beschaeftigt;
       }
-      if (anleitungFadenSitzung !== anleitungSitzung()) { anleitungFaden = []; }
+      var anlassFeld = document.getElementById("anleitung-anlass");
+      anlassFeld.placeholder = anleitungT("anlass");
+      anlassFeld.setAttribute("aria-label", anleitungT("anlass"));
+      if (anleitungFadenSitzung !== anleitungSitzung()) {
+        anleitungFaden = [];
+        anleitungFadenHand = {};
+        anlassFeld.value = "";
+      }
+      anlassFeld.hidden = anleitungFaden.length === 0;
+      var auswahl = anleitungFadenAuswahl();
       var liste = document.getElementById("anleitung-faden");
       while (liste.firstChild) { liste.removeChild(liste.firstChild); }
       for (var i = 0; i < anleitungFaden.length; i += 1) {
@@ -1321,7 +1476,28 @@
           }));
           li.setAttribute("data-id", p.id);
           li.setAttribute("data-geprueft", p.geprueft ? "ja" : "nein");
+          if (p.geprueft) {
+            // Nacharbeit 8: ob die Fundstelle in den Entwurf geht — sichtbar und umkehrbar.
+            var drin = !auswahl.gruende[p.id];
+            li.setAttribute("data-im-entwurf", drin ? "ja" : "nein");
+            var haken = anleitungKnoten("input", "anleitung-faden-wahl");
+            haken.type = "checkbox";
+            haken.value = p.id;
+            haken.checked = drin;
+            haken.title = anleitungT("imEntwurf");
+            haken.setAttribute("aria-label", anleitungT("imEntwurf") + ": " + p.title);
+            haken.addEventListener("change", function () {
+              anleitungFadenHand[this.value] = this.checked;
+              anleitungZeichnen();
+            });
+            li.insertBefore(haken, li.firstChild);
+          }
           liste.appendChild(li);
+          if (p.geprueft && auswahl.gruende[p.id]) {
+            var weg = anleitungKnoten("li", "anleitung-faden-verworfen", auswahl.gruende[p.id]);
+            weg.setAttribute("data-id", p.id);
+            liste.appendChild(weg);
+          }
         }
         var fehlt = e.punkte.length - ungeprueft === 0
           ? anleitungT("fadenFehltAlles")
@@ -1393,6 +1569,8 @@
             });
             anleitungFadenSitzung = sitzung;
             feld.value = "";
+            // Nach jeder Runde neu vorbelegt: der bereinigte Anlass des aktuellen Auftrags.
+            document.getElementById("anleitung-anlass").value = anleitungFadenAuswahl().anlass;
             ende("", null, false);
           });
         });
@@ -1402,13 +1580,13 @@
     /** „Entwurf aus diesen Punkten" — die Output Factory mit den geprüften Fundstellen des Fadens. */
     function anleitungFadenEntwurf() {
       if (anleitungLage === "laden") { return; }
-      var ids = anleitungFadenIds();
+      var ids = anleitungFadenAuswahl().ids;
       if (ids.length === 0) {
         anleitungMelden(anleitungT("fadenKeineQuellen"), true);
         anleitungZeichnen();
         return;
       }
-      // Nacharbeit 7: der durch ALLE Runden präzisierte Auftrag, nicht nur die erste Frage.
+      // Nacharbeit 8: nur die weiterhin gewählten Quellen und der bereinigte Anlass.
       anleitungErzeugenMit(ids, anleitungVorhaben());
     }
 
@@ -1469,20 +1647,19 @@
     }
 
     /**
-     * Das Vorhaben aus dem GANZEN Gesprächsfaden (Nacharbeit 7): jede Runde präzisiert die vorige —
-     * „nur für die Nachtschicht" gehört zum Auftrag wie die erste Frage. Die Runden werden in ihrer
-     * Reihenfolge verbunden; ein Rückbezug („und gilt das auch …") bleibt so mit seinem Bezug lesbar.
+     * Der Anlass für Betreff und Einleitung: das Feld unter dem Faden, vorbelegt mit dem bereinigten
+     * Anlass aus allen Runden (Nacharbeit 7: Präzisierungen bleiben; Nacharbeit 8: Verwerfungen und
+     * das Verworfene fallen heraus) — der Mensch kann ihn vor dem Entwurf formen.
      */
     function anleitungVorhaben() {
-      var fragen = [];
-      for (var i = 0; i < anleitungFaden.length; i += 1) { fragen.push(anleitungFaden[i].frage); }
-      return fragen.join(" – ");
+      return anleitungNorm(document.getElementById("anleitung-anlass").value) || anleitungFadenAuswahl().anlass;
     }
 
     /**
      * Der Gesprächsverlauf für den KI-Auftrag: je Runde die Frage und die Marken der geprüften
      * Fundstellen DIESER Runde — so ist jede Quelle dem Gesprächsstand zugeordnet, in dem sie kam.
-     * Die Marken folgen der Reihenfolge von `anleitungFadenIds` (= `koIds` des Zurufs = Q1, Q2 …).
+     * Die Marken folgen `anleitungFadenAuswahl().ids` (= `koIds` des Zurufs = Q1, Q2 …); eine
+     * verworfene Fundstelle hat keine Marke.
      * Bei nur einer Runde gibt es keinen Verlauf zu nennen.
      */
     function anleitungVerlauf(ids) {
@@ -1490,15 +1667,17 @@
       var runden = [];
       for (var i = 0; i < anleitungFaden.length; i += 1) {
         var marken = [];
+        var verworfen = false;
         var punkte = anleitungFaden[i].punkte;
         for (var j = 0; j < punkte.length; j += 1) {
           var stelle = punkte[j].geprueft ? ids.indexOf(punkte[j].id) : -1;
           var marke = stelle >= 0 ? "Q" + (stelle + 1) : null;
           if (marke && marken.indexOf(marke) === -1) { marken.push(marke); }
+          if (punkte[j].geprueft && stelle < 0) { verworfen = true; }
         }
         runden.push(marken.length > 0
           ? anleitungT("kiRunde", { n: i + 1, frage: anleitungFaden[i].frage, marken: marken.join(", ") })
-          : anleitungT("kiRundeOhne", { n: i + 1, frage: anleitungFaden[i].frage }));
+          : anleitungT(verworfen ? "kiRundeVerworfen" : "kiRundeOhne", { n: i + 1, frage: anleitungFaden[i].frage }));
       }
       return anleitungT("kiVerlauf", { runden: runden.join("; ") });
     }
@@ -1506,7 +1685,7 @@
     /** „Mit Klara ausformulieren" — der bestehende Zuruf-Weg (KA6), nur mit Einwilligung. */
     function anleitungKiEntwurf() {
       if (anleitungLage === "laden") { return; }
-      var ids = anleitungFadenIds();
+      var ids = anleitungFadenAuswahl().ids;
       if (ids.length === 0) {
         anleitungMelden(anleitungT("fadenKeineQuellen"), true);
         anleitungZeichnen();
