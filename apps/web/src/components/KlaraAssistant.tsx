@@ -27,6 +27,7 @@ import { knowledgeClassMeta } from "../lib/knowledgeClass";
 // JOB 3980: EINE Quelle für die Abbildung UI-Sprache → Reasoner-Sprache. Die Zuordnung von Hand,
 // die hier bis heute in `askAi()` stand, ist abgelöst (s. dort).
 import { type ReasonerLocale, toReasonerLocale } from "../lib/reasonerLocale";
+import { type Objektstatus, objektstatusAus } from "../lib/statusFreigabe";
 import { useAiAvailable } from "../lib/useAiAvailable";
 import { cleanForSpeech, pickVoice } from "../lib/vorlesen";
 import { AiModelInfo } from "./AiModelInfo";
@@ -81,9 +82,12 @@ export function KlaraAssistant(): JSX.Element {
   const [selectionNote, setSelectionNote] = useState(false);
   // Zeige-Modus (Pedi 05.07.): beliebiges Element anklicken → erklären, ohne die Aktion auszulösen.
   const [inspecting, setInspecting] = useState(false);
-  const [inspected, setInspected] = useState<{ label: string; entryId: string | null } | null>(
-    null,
-  );
+  const [inspected, setInspected] = useState<{
+    label: string;
+    entryId: string | null;
+    /** STATUS-FREIGABE: der gezeichnete Status des Objekts, auf das gezeigt wurde — sonst `null`. */
+    objektstatus: Objektstatus | null;
+  } | null>(null);
   // Klara Stufe 2 (Pedi 05.07.): „Mit KI-Unterstützung suchen" — die Frage + die best-passenden
   // Hilfe-Schnipsel gehen an den Reasoner-Task answer; Antwort NUR daraus, sonst ehrliche Lücke.
   const [askedFor, setAskedFor] = useState<string | null>(null);
@@ -231,7 +235,9 @@ export function KlaraAssistant(): JSX.Element {
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 60);
-      setInspected({ label, entryId });
+      // STATUS-FREIGABE: liegt das Element in einem Objekt, übernimmt Klara dessen GEZEICHNETEN
+      // Status wörtlich (`objektstatusAus`) — keine eigene Statusableitung neben der Fläche.
+      setInspected({ label, entryId, objektstatus: objektstatusAus(target) });
       setInspecting(false);
       setOpen(true);
     };
@@ -409,6 +415,31 @@ export function KlaraAssistant(): JSX.Element {
                 <div className="mb-1 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
                   {t("klara.inspectFor", { label: inspected.label || "…" })}
                 </div>
+                {inspected.objektstatus ? (
+                  <div
+                    data-testid="klara-objektstatus"
+                    data-objekt={inspected.objektstatus.art}
+                    className="mb-2 rounded-card border border-hairline bg-page px-3 py-2.5"
+                  >
+                    <div className="text-[12.5px] font-semibold text-text">
+                      {t("statusfreigabe.klara.titel")}
+                    </div>
+                    <p
+                      data-testid="klara-objektstatus-text"
+                      className="mt-0.5 text-[12px] leading-relaxed text-text"
+                    >
+                      {inspected.objektstatus.text}
+                    </p>
+                    <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted-2">
+                      {t("statusfreigabe.klara.hinweis")}
+                    </p>
+                    {speakButton(
+                      "objektstatus",
+                      t("statusfreigabe.klara.titel"),
+                      inspected.objektstatus.text,
+                    )}
+                  </div>
+                ) : null}
                 {inspectedEntry ? (
                   <div>
                     <div className="text-[12.5px] font-semibold text-text">
