@@ -1630,6 +1630,7 @@ function reichtWertDurch(huelle: ts.Node, kind: ts.Node): boolean {
   if (
     ts.isParenthesizedExpression(huelle) ||
     ts.isAsExpression(huelle) ||
+    ts.isTypeAssertionExpression(huelle) ||
     ts.isSatisfiesExpression(huelle) ||
     ts.isNonNullExpression(huelle)
   ) {
@@ -2002,7 +2003,8 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
     wert: ts.Expression,
     operator: ts.SyntaxKind,
   ): void => {
-    const props = ts.isIdentifier(ziel.expression) && imPropsFluss(ziel.expression);
+    // Nacharbeit 25: auch durch Hüllen hindurch — `(p).role = …`, `(p as T).role = …`.
+    const props = quellBezeichner(ziel.expression).some((q) => imPropsFluss(q));
     const schluessel = ts.isPropertyAccessExpression(ziel) ? ziel.name : ziel.argumentExpression;
     // Punktzugriff: der Name steht fest. Indexzugriff: der Schlüssel wird ausgewertet.
     const punktName = ts.isPropertyAccessExpression(ziel) ? ziel.name.text : undefined;
@@ -2048,10 +2050,13 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
       aufruf.expression.expression.text === "Object" &&
       aufruf.expression.name.text === "assign";
     aufruf.arguments.forEach((argument, index) => {
-      if (!ts.isIdentifier(argument) || !imPropsFluss(argument)) {
+      // Nacharbeit 25 (ben): Hüllen um das Argument (`(p)`, `p as T`, `<T>p`, `p!`, `c ? p : q`)
+      // reichen das Objekt durch — geprüft wird, was sie tragen, wie beim bloßen Bezeichner.
+      const props = quellBezeichner(argument).find((q) => imPropsFluss(q));
+      if (props === undefined) {
         return;
       }
-      const stelle = `${quelle.datei}:${zeileVon(sf, argument)} — Props-Objekt „${argument.text}“`;
+      const stelle = `${quelle.datei}:${zeileVon(sf, argument)} — Props-Objekt „${props.text}“`;
       if (zuweisung && index === 0) {
         for (const q of aufruf.arguments.slice(1)) {
           const r = propsRolle(q, deklarationen, umfeld, true);

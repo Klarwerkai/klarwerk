@@ -1518,6 +1518,41 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     expect(rot).toHaveLength(2);
   });
 
+  it("Nacharbeit 25: Hüllen um ein Props-Argument oder einen Schreibzugriff ändern nichts", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/lib/huellen.ts": [
+          'import { createElement } from "react";',
+          "function aendere(x: {}): void { arguments[0].role = holeRolle(); }",
+          "function liest(x: { id?: string }): string | undefined { return x.id; }",
+          "export function f(): unknown {",
+          "  const p: { role?: string } = {};",
+          "  aendere((p));",
+          "  aendere(p as {});",
+          "  aendere(<{}>p);",
+          "  aendere(p!);",
+          "  liest((p));",
+          "  (p).role = holeRolle();",
+          '  return createElement("div", p);',
+          "}",
+        ],
+      }),
+    );
+    const an = (stelle: string): string[] => rot.filter((z) => z.includes(stelle));
+    // bens Fall wörtlich: Klammern um das Argument — und dasselbe mit as, <T> und !.
+    for (const zeile of [6, 7, 8, 9]) {
+      expect(an(`lib/huellen.ts:${zeile}`)[0], `Zeile ${zeile}`).toContain(
+        "kann dort verändert werden",
+      );
+    }
+    // Ein nachweislich lesender Empfänger bleibt auch mit Klammern still.
+    expect(an("lib/huellen.ts:10"), "liest() liest nur").toEqual([]);
+    // Der Schreibzugriff durch Klammern trifft dieselben Props.
+    expect(an("lib/huellen.ts:11")[0]).toContain("statisch nicht bestimmbar");
+    expect(rot).toHaveLength(5);
+  });
+
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
     const { rot } = pruefeModalgrenze(
       legeBaum({
