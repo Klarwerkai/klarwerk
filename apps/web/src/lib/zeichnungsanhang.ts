@@ -115,6 +115,14 @@ interface Kreisbogen {
 }
 type DxfElement = Strecke | Kreisbogen;
 
+/**
+ * Linie oder Polylinie? Eine AUSDRÜCKLICHE Typprüfung: der Vergleich `art === "linie" || …` allein
+ * verengte den Typ im Build nicht (TS2339 auf `x`/`r` im Kreiszweig, Prüflauf nacharbeit-4).
+ */
+function istStrecke(e: DxfElement): e is Strecke {
+  return e.art === "linie" || e.art === "zug";
+}
+
 export interface DxfBild {
   src: string;
   /** Gezeichnete Elemente. */
@@ -214,7 +222,7 @@ function dxfElemente(text: string): { elemente: DxfElement[]; ausgelassen: numbe
     }
   }
   const gueltig = elemente.filter((e) =>
-    e.art === "linie" || e.art === "zug"
+    istStrecke(e)
       ? e.punkte.length >= 2 && e.punkte.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y))
       : [e.x, e.y, e.r, e.von, e.bis].every(Number.isFinite) && e.r > 0,
   );
@@ -243,7 +251,7 @@ export function dxfAlsBild(text: string): DxfBild | null {
     maxY = Math.max(maxY, y);
   };
   for (const e of elemente) {
-    if (e.art === "linie" || e.art === "zug") {
+    if (istStrecke(e)) {
       for (const [x, y] of e.punkte) {
         nimm(x, y);
       }
@@ -260,7 +268,7 @@ export function dxfAlsBild(text: string): DxfBild | null {
   const px = (x: number): string => fmt(x - minX + rand);
   const py = (y: number): string => fmt(maxY - y + rand);
   const pfade = elemente.map((e) => {
-    if (e.art === "linie" || e.art === "zug") {
+    if (istStrecke(e)) {
       const d = e.punkte.map(([x, y], k) => `${k === 0 ? "M" : "L"}${px(x)} ${py(y)}`).join(" ");
       return `<path d="${d}${e.geschlossen ? " Z" : ""}"/>`;
     }
