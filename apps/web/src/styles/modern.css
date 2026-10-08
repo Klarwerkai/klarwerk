@@ -162,8 +162,11 @@
 [data-theme="modern"] .kw-kopfband .kw-kopfband-suche input {
   color: rgb(var(--kw-shell-fg));
 }
+/* WCAG 1.4.3 (Audit nacharbeit-6): `shell-muted-2` (#7E879A) maß als Platzhalter auf `night-2`
+   4,43:1, knapp unter AA. Der Platzhalter ist Text, die Lupe daneben nicht; sie behält das Grau des
+   Mockups. `shell-muted` (#B9C1D2) misst auf `night-2` ≈ 8,9:1. */
 [data-theme="modern"] .kw-kopfband .kw-kopfband-suche input::placeholder {
-  color: rgb(var(--kw-shell-muted-2));
+  color: rgb(var(--kw-shell-muted));
 }
 [data-theme="modern"] .kw-kopfband .kw-kopfband-suche button {
   color: rgb(var(--kw-shell-muted-2));
