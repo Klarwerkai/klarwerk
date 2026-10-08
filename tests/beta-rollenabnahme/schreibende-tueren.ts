@@ -499,6 +499,44 @@ async function legeDublettenpaarAn(buehne: Buehne): Promise<{ id: string }> {
 }
 
 /**
+ * R-1107 / R-0565 (Aufnahme gesamt-dublettenvergleich): dasselbe Paar, aber von der EXPERTIN
+ * eingereicht — dazu die gesehenen Fassungen beider Seiten, die das Zusammenführen verlangt.
+ *
+ * WARUM NICHT `legeDublettenpaarAn`: dort reicht der Admin beide Beiträge ein. Am Zusammenführen
+ * gilt hinter dem Tor die Autorregel (kein Autor einer Seite führt zusammen) — der Admin bekäme 403,
+ * und die Zeile mässe die Autorregel statt seines Rechts. Die Autorregel selbst misst
+ * `tests/dublettenvergleich/zusammenfuehren-route.test.ts`.
+ */
+type GeseheneFassung = { id: string; version: number };
+
+async function legeFremdesDublettenpaarAn(
+  buehne: Buehne,
+): Promise<{ id: string; koA: GeseheneFassung; koB: GeseheneFassung }> {
+  await musterhaft(buehne.app, kopf(buehne, "experte"), "POST", "/api/kos", { ...KO_INHALT });
+  await musterhaft(buehne.app, kopf(buehne, "experte"), "POST", "/api/kos", { ...DUBLETTE });
+  const worker = buehne.services.aiCheckWorker;
+  if (!worker) {
+    throw new Error(
+      "Vorbereitung fehlgeschlagen: die Bühne hat keinen Prüf-Worker — ohne ihn läuft die Überschneidungserkennung nie.",
+    );
+  }
+  await worker.idle();
+  const paar = (await buehne.services.overlaps.unresolved())[0];
+  if (!paar) {
+    throw new Error(
+      "Vorbereitung fehlgeschlagen: zwei gleichlautende Beiträge der Expertin haben kein offenes Dublettenpaar erzeugt.",
+    );
+  }
+  const fassung = async (id: string): Promise<GeseheneFassung> => {
+    const ko = (
+      await musterhaft(buehne.app, kopf(buehne, "admin"), "GET", `/api/kos/${id}`)
+    ).json() as { version: number };
+    return { id, version: ko.version };
+  };
+  return { id: paar.id, koA: await fassung(paar.koA), koB: await fassung(paar.koB) };
+}
+
+/**
  * Der Bearbeitungsstand des Paares, am Draht nachgelesen — nicht der, den die Antwort behauptet.
  *
  * RUNDE 2 (Prüflücke 6 des Prüfers): NICHT NUR `status`. Die drei Abschlusswege dieser Gruppe
@@ -1624,6 +1662,38 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
         pfad: `/api/duplicates/${paar.id}/status`,
         payload: { status: "in_bearbeitung", note: "Übernommen (Rollenabnahme)." },
         bestand: () => dublettenStand(buehne, paar.id),
+      };
+    },
+  },
+  {
+    gruppe: "overlapRoutes",
+    methode: "POST",
+    route: "/api/duplicates/:id/merge",
+    belegstelle: "services/app/src/routes/overlap-routes.ts:291",
+    // 200 und nichts sonst: hinter dem Tor stehen eigene Abweisungen — 403 für einen Autor einer
+    // Seite, 409 für eine seit der Vorschau geänderte Fassung, 400 ohne ausdrückliche Freigabe.
+    erfolg: [200],
+    tor: "ko.validate (dahinter: kein Autor einer Seite, beide Inhalte lesbar, gleicher Space)",
+    erwartet: AB_CONTROLLER,
+    ruesten: async (buehne) => {
+      const paar = await legeFremdesDublettenpaarAn(buehne);
+      return {
+        pfad: `/api/duplicates/${paar.id}/merge`,
+        payload: {
+          fuehrend: paar.koA,
+          aufgehend: paar.koB,
+          titel: "fuehrend",
+          kernaussage: "fuehrend",
+          bedingungen: [],
+          massnahmen: [],
+          quellen: [],
+          bestaetigt: true,
+        },
+        bestand: () => dublettenStand(buehne, paar.id),
+        wirkung: {
+          beschreibung: "der Befund ist als „zusammengeführt“ geschlossen",
+          eingetreten: (stand) => stand === "geschlossen · merged",
+        },
       };
     },
   },
