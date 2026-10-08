@@ -35,6 +35,48 @@ function mengeJeArt(v: UebergabeVorschau): Record<UebergabeArt, number> {
   };
 }
 
+/** Ist in dieser Vorschau überhaupt etwas zu übergeben? */
+export function vorschauLeer(v: UebergabeVorschau): boolean {
+  const menge = mengeJeArt(v);
+  return ARTEN.every((art) => menge[art] === 0);
+}
+
+/**
+ * DIE EINE DARSTELLUNG DER VORSCHAU — hier in der Übergabekarte und im Weg „Konto entfernen mit
+ * Nachfolger" (`AdminKontenDetails.tsx`). Zwei Darstellungen derselben Menge wären zwei Aussagen.
+ */
+export function UebergabeVorschauInhalt({
+  vorschau,
+}: {
+  vorschau: UebergabeVorschau;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const menge = mengeJeArt(vorschau);
+  if (vorschauLeer(vorschau)) {
+    return <p className="text-[12.5px] text-muted">{t("verantwortung.uebergabe.leer")}</p>;
+  }
+  return (
+    <>
+      <ul className="space-y-0.5 text-[12.5px] text-text">
+        {ARTEN.map((art) => (
+          <li key={art} data-wissensuebergabe-art={art}>
+            {t(`verantwortung.uebergabe.art.${art}`)}: {menge[art]}
+          </li>
+        ))}
+      </ul>
+      {vorschau.wissensobjekte.length + vorschau.eigentum.length > 0 ? (
+        <ul className="max-h-40 list-disc overflow-auto pl-5 text-[12px] text-muted">
+          {[...vorschau.wissensobjekte, ...vorschau.eigentum]
+            .filter((k, i, alle) => alle.findIndex((x) => x.id === k.id) === i)
+            .map((k) => (
+              <li key={k.id}>{k.title}</li>
+            ))}
+        </ul>
+      ) : null}
+    </>
+  );
+}
+
 export function Wissensuebergabe({
   von,
   kandidaten,
@@ -74,9 +116,6 @@ export function Wissensuebergabe({
     onError: fail,
   });
 
-  const menge = vorschau ? mengeJeArt(vorschau) : null;
-  const leer = menge !== null && ARTEN.every((art) => menge[art] === 0);
-
   return (
     <div data-wissensuebergabe className="space-y-2 border-t border-hairline pt-4">
       <div className="text-[12.5px] font-medium text-muted">
@@ -112,36 +151,17 @@ export function Wissensuebergabe({
         {t("verantwortung.uebergabe.vorschau")}
       </Button>
 
-      {vorschau && menge ? (
+      {vorschau ? (
         <div data-wissensuebergabe-vorschau className="space-y-2 rounded-input bg-page p-2">
-          {leer ? (
-            <p className="text-[12.5px] text-muted">{t("verantwortung.uebergabe.leer")}</p>
-          ) : (
-            <>
-              <ul className="space-y-0.5 text-[12.5px] text-text">
-                {ARTEN.map((art) => (
-                  <li key={art} data-wissensuebergabe-art={art}>
-                    {t(`verantwortung.uebergabe.art.${art}`)}: {menge[art]}
-                  </li>
-                ))}
-              </ul>
-              {vorschau.wissensobjekte.length + vorschau.eigentum.length > 0 ? (
-                <ul className="max-h-40 list-disc overflow-auto pl-5 text-[12px] text-muted">
-                  {[...vorschau.wissensobjekte, ...vorschau.eigentum]
-                    .filter((k, i, alle) => alle.findIndex((x) => x.id === k.id) === i)
-                    .map((k) => (
-                      <li key={k.id}>{k.title}</li>
-                    ))}
-                </ul>
-              ) : null}
-              <Button
-                variant="primary"
-                disabled={ausfuehren.isPending}
-                onClick={() => ausfuehren.mutate()}
-              >
-                {t("verantwortung.uebergabe.ausfuehren")}
-              </Button>
-            </>
+          <UebergabeVorschauInhalt vorschau={vorschau} />
+          {vorschauLeer(vorschau) ? null : (
+            <Button
+              variant="primary"
+              disabled={ausfuehren.isPending}
+              onClick={() => ausfuehren.mutate()}
+            >
+              {t("verantwortung.uebergabe.ausfuehren")}
+            </Button>
           )}
         </div>
       ) : null}

@@ -475,16 +475,24 @@ export class ValidationService {
   //     Entscheidung, keine zusätzliche Evidenz — anders als der Admin-Deckel (TRUST_MAX).
   // Der Beleg heisst `ko.owner-validated`; die Rückgabe der Verantwortung
   // (`KoService.releaseOwnership`) bleibt ein eigener, davon getrennter Weg.
+  //
+  // BEN (Nacharbeit 3): Eigentum und Vertrauen werden NICHT aus dem Vorab-Lesen übernommen. Eine
+  // Eigentumsänderung (`setOwnership`, `releaseOwnership`, Wissensübergabe) erhöht die Inhaltsfassung
+  // nicht — der Compare-and-Set auf `version` sähe sie nicht. Deshalb prüft der `zustand`-Rückruf,
+  // der unter dem KO-Lock den FRISCH gelesenen Stand bekommt, den Eigentümer erneut und übernimmt
+  // dessen aktuelles Vertrauen. Die frühe Prüfung bleibt als schnelle Abweisung ohne Schreibversuch.
   async ownerValidate(koId: string, actorId: string): Promise<ValidationDecision> {
     const ko = await this.koService.get(koId);
     if (!ko) {
       throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
-    if (ownershipOf(ko)?.owner !== actorId) {
-      throw new ValidationError(
+    const nichtEigentuemer = (): ValidationError =>
+      new ValidationError(
         "NOT_OWNER",
         "Nur der benannte Eigentümer kann dieses Wissensobjekt als Eigentümer freigeben.",
       );
+    if (ownershipOf(ko)?.owner !== actorId) {
+      throw nichtEigentuemer();
     }
     const geleseneFassung = ko.version;
     const {
@@ -493,7 +501,12 @@ export class ValidationService {
       ref,
     } = await this.koService.setValidationStateMitBeleg(
       koId,
-      async () => ({ trust: ko.trust, status: "validiert" }),
+      async (frisch) => {
+        if (ownershipOf(frisch)?.owner !== actorId) {
+          throw nichtEigentuemer();
+        }
+        return { trust: frisch.trust, status: "validiert" };
+      },
       { expectedVersion: geleseneFassung, beiVersionswechsel: "nichts" },
       async (tx) =>
         refAus(
@@ -518,7 +531,13 @@ export class ValidationService {
       };
     }
     await this.koService.recordOwnershipRole(koId, "validators", [actorId], actorId);
-    return { ...votes, trust: ko.trust, status: "validiert", validationDecisionRef: ref };
+    // Die Antwort aus dem TATSÄCHLICH gespeicherten Stand — nicht aus dem Vorab-Lesen.
+    return {
+      ...votes,
+      trust: gespeichert.trust,
+      status: gespeichert.status,
+      validationDecisionRef: ref,
+    };
   }
 
   // SCRUM-124: dedupliziert eine offene Zuweisung an den VERANTWORTLICHEN + Audit-Event.
