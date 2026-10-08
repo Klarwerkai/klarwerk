@@ -15,6 +15,11 @@ export type KnowledgeType =
   | "technik"
   | "negativwissen";
 
+// R-0086: Tatsache oder Handlungsanweisung (Spiegel von services/knowledge-object/src/types.ts).
+export type KoAussageart = "tatsache" | "handlungsanweisung";
+
+export const KO_AUSSAGEARTEN: readonly KoAussageart[] = ["tatsache", "handlungsanweisung"];
+
 export type KoStatus = "offen" | "validiert";
 
 // SCRUM-415: Vertraulichkeitsstufe je Wissensobjekt. „intern" = Standard (keine Einschränkung);
@@ -545,6 +550,9 @@ export interface KnowledgeObject {
   // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet, unabhängig von der Kategorie (Spiegel von
   // services/knowledge-object/src/types.ts). Fehlt = kein Fachgebiet angegeben, nichts abgeleitet.
   domain?: string;
+  // R-0086: Tatsache oder Handlungsanweisung (Spiegel von services/knowledge-object/src/types.ts).
+  // Fehlt = nicht angegeben, nichts abgeleitet.
+  aussageart?: KoAussageart;
   // R-1632 / R-1633: wo dieser Punkt gilt (Spiegel von services/knowledge-object/src/geltung.ts).
   // Fehlt = keine Geltung angegeben, nichts abgeleitet.
   geltung?: KoGeltung;
@@ -1042,6 +1050,10 @@ export interface DraftPayload {
   statement?: string;
   type?: KnowledgeType;
   category?: string;
+  // R-0034 / FR-CAP-08: das Fachgebiet beim Erfassen (Spiegel von services/capture/src/types.ts).
+  domain?: string;
+  // R-0086: Tatsache oder Handlungsanweisung beim Erfassen; leer = nicht angegeben.
+  aussageart?: KoAussageart | "";
   tags?: string[];
   conditions?: string[];
   measures?: string[];

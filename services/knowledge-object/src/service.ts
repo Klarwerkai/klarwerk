@@ -112,12 +112,14 @@ import {
   type Confidentiality,
   type EvidenceRecord,
   KNOWLEDGE_TYPES,
+  KO_AUSSAGEARTEN,
   type KnowledgeObject,
   type KnowledgeOwnership,
   type KnowledgeType,
   type KoAnhangsquelle,
   type KoAppendOp,
   type KoAttachment,
+  type KoAussageart,
   type KoComment,
   // JOB 4146: der Klärungsstand eines Diskussionsfadens (geklärt, nicht freigegeben).
   type KoCommentResolution,
@@ -425,6 +427,9 @@ export interface CreateKoInput {
   // R-0431 (K2): das Fachgebiet, unabhängig von der Kategorie (Begründung am Modell, types.ts).
   // Leer oder fehlend = kein Fachgebiet angegeben; es wird nichts abgeleitet.
   domain?: string | null;
+  // R-0086: Tatsache oder Handlungsanweisung. Fehlend/`null` = nicht angegeben; ein anderer Wert
+  // wird abgewiesen (INVALID), nicht still verworfen.
+  aussageart?: KoAussageart | null;
   author: string;
   conditions?: string[];
   measures?: string[];
@@ -2223,6 +2228,11 @@ export class KoService {
     if (needed < 1 || needed > 5) {
       throw new KoError("INVALID_NEEDED", "Nötige Validierungen müssen zwischen 1 und 5 liegen.");
     }
+    // R-0086: nur die beiden bekannten Aussagearten; leer heißt „nicht angegeben".
+    const aussageart = input.aussageart ?? undefined;
+    if (aussageart !== undefined && !KO_AUSSAGEARTEN.includes(aussageart)) {
+      throw new KoError("INVALID", "Unbekannte Aussageart (tatsache oder handlungsanweisung).");
+    }
     const at = new Date(this.now()).toISOString();
     const bodyHtml = cleanBody(input.bodyHtml);
     // statement bleibt führend; falls leer, aus dem HTML-Body ableiten.
@@ -2250,6 +2260,7 @@ export class KoService {
       // R-0431 (K2): nur speichern, wenn jemand ein Fachgebiet mitbringt — kein Leerwert, keine
       // Ableitung aus der Kategorie.
       ...(domain ? { domain } : {}),
+      ...(aussageart ? { aussageart } : {}),
       tags: input.tags ?? [],
       confidence: input.confidence ?? 0,
       trust: 0,

@@ -248,6 +248,9 @@ const LIBRARY_FILTER_CONFIGS: readonly FacetGroupConfig[] = [
   // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet als eigene Achse. Über diese Liste reist es
   // auch in die Adresse (`LIBRARY_FACET_PARAM_KEYS`) und in gemerkte Sichten (`facetSel`).
   { key: "domain", labelKey: "lib.facet.domain" },
+  // R-0477 / R-0082: vom Gerät zum Wissen — die Anlage als Achse, gelesen allein aus dem
+  // kanonischen Feld am Objekt (`asset`), nicht aus den Lebenszyklus-Kopplungen.
+  { key: "asset", labelKey: "wissensmetadaten.anlage.facette" },
   { key: "tag", labelKey: "lib.facet.tag" },
   { key: "confidentiality", labelKey: "lib.facet.confidentiality" },
   { key: "author", labelKey: LIBRARY_FACET_LABEL_KEYS.author },

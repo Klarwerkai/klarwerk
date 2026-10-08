@@ -17,6 +17,13 @@ export const KNOWLEDGE_TYPES: readonly KnowledgeType[] = [
   "negativwissen",
 ];
 
+// R-0086 (aufnahme:20260922:gesamt-wissen-metadaten): ob die Aussage eine TATSACHE festhält oder eine
+// HANDLUNGSANWEISUNG gibt. Eine eigene Angabe neben der Wissensart — sie sagt nicht, woher das Wissen
+// kommt (Bauchgefühl … Negativwissen), sondern was der Leser damit tun soll.
+export type KoAussageart = "tatsache" | "handlungsanweisung";
+
+export const KO_AUSSAGEARTEN: readonly KoAussageart[] = ["tatsache", "handlungsanweisung"];
+
 export type KoStatus = "offen" | "validiert";
 
 // SCRUM-415: Vertraulichkeitsstufe je Wissensobjekt. „intern" = Öffentlich-intern (Standard, keine
@@ -556,6 +563,10 @@ export interface KnowledgeObject {
   // abgeleitet oder nachgetragen; der Altbestand erscheint in der Facette als „ohne Wert".
   // Gesetzt wird es beim Anlegen (`CreateKoInput.domain`) oder nachträglich über `setDomain`.
   domain?: string;
+  // R-0086: Tatsache oder Handlungsanweisung, gesetzt beim Erfassen (`CreateKoInput.aussageart`).
+  // Optional und ohne Migration (Voll-JSONB); FEHLT das Feld, ist es nicht angegeben — es wird
+  // weder aus Maßnahmen noch aus dem Text abgeleitet.
+  aussageart?: KoAussageart;
   // ============================================================================================
   // R-1632 / R-1633 (aufnahme:20260922:gesamt-standortwissen) — WO DIESER PUNKT GILT.
   // ============================================================================================

@@ -102,6 +102,7 @@ import { type Zeichnungspunkt, bildQuelle, punktProzent } from "../../lib/zeichn
 import { AiCheckCoverageNotes } from "../AiCheckCoverageHint";
 import { ConflictTargetPicker } from "../ConflictTargetPicker";
 import { ExternalUrlText } from "../ExternalUrlText";
+import { FachgebietFeld } from "../Fachgebiet";
 import { GeltungFeld } from "../Geltung";
 import { KnowledgeNeighborhood } from "../KnowledgeNeighborhood";
 import { RoleLink } from "../RoleLink";
@@ -1940,12 +1941,21 @@ export function MehrAbschnitte({
             </span>
           ) : null}
         </div>
+        {/* R-0034: die Herkunftszeile nennt das gespeicherte Fachgebiet — nicht die Kategorie
+            unter fremdem Namen. Fehlt es, steht hier keins. */}
         <ProvenanceLine
           author={nameOf(ko.author)}
           originalAuthor={nameOf(ko.originalAuthor)}
-          domain={ko.category}
+          domain={ko.domain}
           version={ko.version}
         />
+        {/* R-0086: Tatsache oder Handlungsanweisung — nur, wenn beim Erfassen angegeben. */}
+        {ko.aussageart ? (
+          <p data-testid="ko-aussageart" className="mt-1 text-[12px] text-muted">
+            {t("wissensmetadaten.aussageart.feld")}:{" "}
+            {t(`wissensmetadaten.aussageart.${ko.aussageart}`)}
+          </p>
+        ) : null}
         {canEdit ? (
           <label className="mt-3 flex items-center gap-2 text-[12px] text-muted">
             <span>{t("conf.field")}</span>
@@ -1995,6 +2005,15 @@ export function MehrAbschnitte({
         {/* R-1632 / R-1633: wo dieser Punkt gilt — Konzern-Standard, Werks-Praxis oder
             Schicht-spezifisch. Am Ende des Abschnitts, damit Vertraulichkeit und Übergabe ihren
             Platz behalten. Der Schlüssel setzt das Formular nach dem Speichern auf den Serverstand. */}
+        {/* R-0034 / R-0465: das Fachgebiet nachträglich setzen oder ändern; leer entfernt es. Der
+            Schlüssel setzt das Feld nach dem Speichern auf den Serverstand. */}
+        <FachgebietFeld
+          key={ko.domain ?? ""}
+          domain={ko.domain}
+          darfAendern={canEdit}
+          wartet={act.isPending}
+          onSpeichern={(domain) => act.mutate({ action: "domain", domain })}
+        />
         <GeltungFeld
           key={JSON.stringify(ko.geltung ?? null)}
           geltung={ko.geltung}
@@ -2011,6 +2030,19 @@ export function MehrAbschnitte({
         offen={offene.has("kopplung")}
         aufWechsel={(o) => abschnittUmschalten("kopplung", o)}
       >
+        {/* R-0082 (JOB 593, Option A): WELCHE Anlage zu diesem Wissensobjekt gehört, sagt allein
+            das Feld am Objekt (`asset`). Es steht deshalb zuerst und mit eigenem Namen; die
+            Lebenszyklus-Kopplungen darunter sind nur die Liste für Änderungsmeldungen
+            („Stimmt das noch?") und keine zweite Quelle für die Zuordnung. */}
+        <div data-testid="ko-anlage-kanonisch" className="mb-2.5 text-[12.5px]">
+          <span className="font-semibold text-text">
+            {t("wissensmetadaten.anlage.kanonisch")}:{" "}
+          </span>
+          <span className="text-muted">
+            {ko.asset?.trim() || t("wissensmetadaten.anlage.keine")}
+          </span>
+        </div>
+        <p className="mb-1 text-[11.5px] text-muted-2">{t("wissensmetadaten.anlage.kopplungen")}</p>
         {couplings.data && couplings.data.length > 0 ? (
           <div className="flex flex-wrap gap-1.5">
             {couplings.data.map((a) => (

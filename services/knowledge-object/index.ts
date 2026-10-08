@@ -340,7 +340,14 @@ export type {
   AnweisungRepo,
   AnweisungStandAufnahme,
 } from "./src/gesamtanweisung-types";
-export { KoError, KNOWLEDGE_TYPES, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from "./src/types";
+export {
+  KoError,
+  KNOWLEDGE_TYPES,
+  KO_AUSSAGEARTEN,
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENTS,
+} from "./src/types";
+export type { KoAussageart } from "./src/types";
 // R-0169 (herkunft-identitaet): die interne Dokumentakte — eigene Identität und unveränderliche
 // Fassungen für Importe ohne externe Quellenkennung (Word-Zusatz, JSON ohne externalId).
 export {
@@ -434,6 +441,8 @@ export type {
   ConfidentialityDisclosure,
   ConfidentialityProvenance,
 } from "./src/confidentiality";
+// JOB 593 / R-0082: die EINE Normalform der Anlagenkennung — auch für die Lebenszyklus-Kopplung.
+export { normalizeAsset } from "./src/asset";
 // R-0658: Schutzdaten vor der Suche — Erkennung und die eine Lesestelle der Quarantäne.
 export { erkenneSchutzdaten, inSchutzdatenQuarantaene } from "./src/schutzdaten";
 export type { SchutzdatenArt, SchutzdatenQuarantaene } from "./src/types";

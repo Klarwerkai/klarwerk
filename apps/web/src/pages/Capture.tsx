@@ -19,17 +19,19 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { type FollowUpsRecorded, endpoints } from "../api/endpoints";
 import { useDirectory, useDrafts, useGaps, useReasonerStatus } from "../api/hooks";
-import type {
-  AbbruchBefund,
-  Confidentiality,
-  Draft,
-  DraftPayload,
-  ExternalResult,
-  ExtractedPoint,
-  InterviewResult,
-  KnowledgeObject,
-  KnowledgeType,
-  StructureResult,
+import {
+  type AbbruchBefund,
+  type Confidentiality,
+  type Draft,
+  type DraftPayload,
+  type ExternalResult,
+  type ExtractedPoint,
+  type InterviewResult,
+  KO_AUSSAGEARTEN,
+  type KnowledgeObject,
+  type KnowledgeType,
+  type KoAussageart,
+  type StructureResult,
 } from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { ImageDescribeProvider } from "../app/ImageDescribeContext";
@@ -730,6 +732,11 @@ export function CaptureArbeitsraum({
   // Metadaten (vorab erfassbar, FR-CAP-08)
   const [type, setType] = useState<KnowledgeType>(CAPTURE_FIELD_DEFAULTS.type);
   const [category, setCategory] = useState("");
+  // R-0034 / R-0056 / FR-CAP-08: das Fachgebiet als eigene Angabe neben der Kategorie. Leer = keins;
+  // es wird nichts aus der Kategorie abgeleitet (KnowledgeObject.domain).
+  const [domain, setDomain] = useState("");
+  // R-0086: Tatsache oder Handlungsanweisung; "" = nicht angegeben (kein Vorgabewert).
+  const [aussageart, setAussageart] = useState<KoAussageart | "">("");
   const [asset, setAsset] = useState("");
   // SCRUM-415: Vertraulichkeitsstufe ab Erfassen (Standard „intern"). Vertrauliche KOs gehen nie in
   // externe Kontexte (Output/Export).
@@ -2032,6 +2039,10 @@ export function CaptureArbeitsraum({
         statement: draft.statement,
         type,
         category: category.trim() || "Allgemein",
+        // Beim AKTUALISIEREN eines Entwurfs reist ein geleertes Fachgebiet als Leerwert mit — sonst
+        // holte der partielle Merge das alte zurück (dieselbe Regel wie beim Body darunter).
+        domain: domain.trim(),
+        aussageart,
         tags: tags.filter((x) => x.trim()),
         conditions: draft.conditions.filter((x) => x.trim()),
         measures: draft.measures.filter((x) => x.trim()),
@@ -2066,6 +2077,8 @@ export function CaptureArbeitsraum({
         tags: tags.filter((x) => x.trim()),
         type,
         category: category.trim() || "Allgemein",
+        ...(domain.trim() ? { domain: domain.trim() } : {}),
+        ...(aussageart ? { aussageart } : {}),
         asset: asset.trim() ? asset.trim() : null,
         ...(bodyHtml.trim() ? { bodyHtml } : {}),
         ...(n ? { neededValidations: n } : {}),
@@ -2329,6 +2342,8 @@ export function CaptureArbeitsraum({
       setImages([]);
       setDocs([]);
       setCategory("");
+      setDomain("");
+      setAussageart("");
       setAsset("");
       setNeededValidations("");
       // JOB 3082 (Q3 a): die gewählte Stufe gehörte zu DIESEM Wissensobjekt. Bliebe sie stehen,
@@ -2445,6 +2460,10 @@ export function CaptureArbeitsraum({
         measures: draft?.measures.filter((x) => x.trim()) ?? [],
         asset: asset.trim() ? asset.trim() : null,
         ...(category.trim() ? { category: category.trim() } : {}),
+        // R-0034: beim Aktualisieren geht ein geleertes Fachgebiet als Leerwert mit, beim Anlegen
+        // bleibt das leere Feld weg (dieselbe Semantik wie `draftBodyPatch`).
+        ...(domain.trim() || isDraftUpdate ? { domain: domain.trim() } : {}),
+        ...(aussageart || isDraftUpdate ? { aussageart } : {}),
         // AUFTRAG-mega7 Block A: dieselbe Leerwert-Semantik wie unten für die fünf mega6-Felder —
         // beim AKTUALISIEREN geht ein bewusst geleerter Body als ausdrücklicher Leerwert mit,
         // beim ANLEGEN bleibt das Feld weg.
@@ -2519,6 +2538,8 @@ export function CaptureArbeitsraum({
       setImages([]);
       setDocs([]);
       setCategory("");
+      setDomain("");
+      setAussageart("");
       setAsset("");
       setNeededValidations("");
       setConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
@@ -2643,6 +2664,9 @@ export function CaptureArbeitsraum({
     // gemeinsame Metadaten (erweiterte Felder)
     setType(p.type ?? "best_practice");
     setCategory(p.category ?? "");
+    setDomain(p.domain ?? "");
+    // R-0086: nur eine bekannte Aussageart zählt als Angabe — alles andere ist „nicht angegeben".
+    setAussageart(KO_AUSSAGEARTEN.find((art) => art === p.aussageart) ?? "");
     setTags(p.tags ?? []);
     setAsset(p.asset ?? "");
     setNeededValidations(p.neededValidations ? String(p.neededValidations) : "");
@@ -2862,6 +2886,8 @@ export function CaptureArbeitsraum({
     setStudioApplied(false);
     setType(CAPTURE_FIELD_DEFAULTS.type);
     setCategory("");
+    setDomain("");
+    setAussageart("");
     setAsset("");
     setConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
     // JOB 3082 (Q3 a): der Leerzustand hat KEINE gewählte Stufe — das ist der frische Ausgangswert
@@ -3029,6 +3055,7 @@ export function CaptureArbeitsraum({
     ivAnswers.some((a) => a.trim().length > 0) ||
     // Erweiterte Felder, Metadaten und Anhänge zählen ebenfalls als „etwas eingetragen".
     category.trim().length > 0 ||
+    domain.trim().length > 0 ||
     asset.trim().length > 0 ||
     tags.length > 0 ||
     images.length > 0 ||
@@ -3054,6 +3081,8 @@ export function CaptureArbeitsraum({
   // deaktiviert und der Wert lebte ins nächste Wissensobjekt fort (bens Reproduktion).
   const hasUnsavedMeta =
     type !== CAPTURE_FIELD_DEFAULTS.type ||
+    // R-0086: jede getroffene Aussageart weicht vom frischen Ausgangswert „nicht angegeben" ab.
+    aussageart !== "" ||
     // JOB 3082 (Q3 a): der frische Ausgangswert der Vertraulichkeit ist „nicht gewählt" — deshalb
     // ist JEDE getroffene Wahl eine Abweichung davon, auch die auf „intern". Vorher wurde gegen
     // den geglätteten Formularwert verglichen, und der stand von Anfang an auf „intern": wer
@@ -3110,6 +3139,8 @@ export function CaptureArbeitsraum({
         massnahmen: draft?.measures ?? null,
         type,
         category,
+        domain,
+        aussageart,
         asset,
         tags,
         neededValidations,
@@ -3137,6 +3168,8 @@ export function CaptureArbeitsraum({
       draft,
       type,
       category,
+      domain,
+      aussageart,
       asset,
       tags,
       neededValidations,
@@ -6508,6 +6541,36 @@ export function CaptureArbeitsraum({
                       }
                     >
                       <TextInput value={category} onChange={(e) => setCategory(e.target.value)} />
+                    </Field>
+                    {/* R-0034 / R-0056 / FR-CAP-08: das Fachgebiet als eigene Angabe. Dieselbe
+                        Längengrenze wie die Aktion `domain` am Server (ko-routes.ts). */}
+                    <Field label={t("wissensmetadaten.fachgebiet.feld")}>
+                      <TextInput
+                        value={domain}
+                        maxLength={120}
+                        placeholder={t("wissensmetadaten.fachgebiet.platzhalter")}
+                        onChange={(e) => setDomain(e.target.value)}
+                        data-testid="capture-domain"
+                      />
+                    </Field>
+                    {/* R-0086: Tatsache oder Handlungsanweisung — ausdrücklich gewählt, kein
+                        Vorgabewert. */}
+                    <Field label={t("wissensmetadaten.aussageart.feld")}>
+                      <select
+                        value={aussageart}
+                        onChange={(e) =>
+                          setAussageart(KO_AUSSAGEARTEN.find((art) => art === e.target.value) ?? "")
+                        }
+                        data-testid="capture-aussageart"
+                        className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
+                      >
+                        <option value="">{t("wissensmetadaten.aussageart.ohne")}</option>
+                        {KO_AUSSAGEARTEN.map((art) => (
+                          <option key={art} value={art}>
+                            {t(`wissensmetadaten.aussageart.${art}`)}
+                          </option>
+                        ))}
+                      </select>
                     </Field>
                     <Field
                       label={

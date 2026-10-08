@@ -7,6 +7,13 @@ export interface DraftPayload {
   statement?: string;
   type?: KnowledgeType;
   category?: string;
+  // R-0034 / R-0056 / FR-CAP-08 (aufnahme:20260922:gesamt-wissen-metadaten): das Fachgebiet,
+  // erfasst neben der Kategorie. Es reist mit dem Entwurf bis ins KO (`toKoInput`); leer oder
+  // fehlend = kein Fachgebiet angegeben — es wird nichts abgeleitet (KnowledgeObject.domain).
+  domain?: string;
+  // R-0086: Tatsache oder Handlungsanweisung. Der Wert wird erst am Einreichen geprüft
+  // (`KoService.create`, INVALID); ein Leerwert heißt „nicht angegeben".
+  aussageart?: string;
   tags?: string[];
   conditions?: string[];
   measures?: string[];

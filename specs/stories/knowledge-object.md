@@ -36,8 +36,14 @@ Versioniertes Wissensobjekt mit klarem Datenmodell, fünf Wissensarten, Kategori
 ## Datenmodell (Auszug, Technischer Anhang §1)
 `kos(id, title, statement, conditions, measures, type, category, tags[], confidence, trust, status, version, original_author, needed_validations, asset_ref, created_at)` + `ko_history`. Wissensart als Enum.
 
+### Metadaten und Anlagenbezug (aufnahme:20260922:gesamt-wissen-metadaten)
+- Beim Erfassen setzbar und am KO gespeichert: Wissensart, Kategorie, **Fachgebiet** (`domain`, eigene Angabe neben der Kategorie), Schlagwörter, **Anlage** (`asset`), nötige Validierungen (1–5, Standard 3) und die **Art der Aussage** (`aussageart`: `tatsache` | `handlungsanweisung`, optional). Fachgebiet und Aussageart reisen auch über Entwurf → Einreichen ins KO.
+- Fachgebiet nachträglich änderbar (Leseansicht „Provenienz", `PUT /api/kos/:id {action:"domain"}`); Fachgebiet, Anlage und Wissensart sind Facetten der Bibliothek.
+- **Kanonischer Anlagenbezug (JOB 593, Option A):** welche Anlage zu einem KO gehört, sagt allein `KnowledgeObject.asset` (Normalform `normalizeAsset`). Die Lebenszyklus-Kopplungen (`/api/lifecycle/couple`) sind nur die Liste für Änderungsmeldungen; sie nehmen nur sichtbare, existierende KOs und eine nicht leere, normalisierte Kennung an. Eine Kennung kann an mehreren KOs hängen.
+- Grenze: `asset` trägt je KO genau **eine** Kennung; mehrere Anlagen je KO sind nur über die Kopplungsliste abbildbar, nicht über das kanonische Feld.
+
 ## Nicht-Ziele (v1)
-Import/Output-Felder (`source_type`, `validity_until` …) sind Konzept/Roadmap → Modul `extensions` (FR-EXT-07).
+Import/Output-Felder (`source_type`, `validity_until` …) sind Konzept/Roadmap → Modul `extensions` (FR-EXT-07); dokumentiert in `specs/reference/Funktionsbeschreibung.md` §18.4.
 
 ## Offene Fragen
 Konfliktfeld-Verknüpfung zu `conflicts` · Asset-Speicherung (Bilder/Dokumente) lokal vs. Objektspeicher.

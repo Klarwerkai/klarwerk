@@ -43,7 +43,15 @@ export type DraftPayloadShapeResult =
   | { ok: false; message: string };
 
 /** Die Felder, deren FALSCHER Typ in der Tiefe rechnet statt normalisiert zu werden. */
-const TEXTFELDER = ["title", "statement", "type", "category", "origin"] as const;
+const TEXTFELDER = [
+  "title",
+  "statement",
+  "type",
+  "category",
+  "domain",
+  "aussageart",
+  "origin",
+] as const;
 const LISTENFELDER = ["tags", "conditions", "measures", "reviewerIds"] as const;
 
 function istEinfachesObjekt(wert: unknown): wert is Record<string, unknown> {

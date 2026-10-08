@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   type CreateKoInput,
   type DokumentHerkunft,
+  type KoAussageart,
   type KoSource,
   createOperationFingerprint,
   isConfidentialityDowngrade,
@@ -1324,6 +1325,12 @@ export class CaptureService {
       statement: p.statement,
       type: p.type,
       category: p.category,
+      // R-0034 / FR-CAP-08: das beim Erfassen gesetzte Fachgebiet reist ins KO. Fehlt es, bleibt
+      // das Feld weg — `KoService.create` normalisiert und leitet nichts ab.
+      ...(p.domain !== undefined ? { domain: p.domain } : {}),
+      // R-0086: die Aussageart reist mit; ein Leerwert ist keine Angabe. Geprüft wird in
+      // `KoService.create` — ein unbekannter Wert bricht dort ab, statt still zu verschwinden.
+      ...(p.aussageart ? { aussageart: p.aussageart as KoAussageart } : {}),
       author: draft.originalAuthor,
       conditions: p.conditions ?? [],
       measures: p.measures ?? [],
