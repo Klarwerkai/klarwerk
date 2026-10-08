@@ -22,6 +22,11 @@ export default {
     "fassungsangabe.vergleichen": "Mit v{{von}} vergleichen",
     "fassungsangabe.vergleichenName":
       "v{{bis}} mit der vorherigen Fassung v{{von}} Feld für Feld vergleichen",
+    "fassungsangabe.kopfFassung": "Aktuelle Fassung v{{version}}",
+    "fassungsangabe.kopfGeaendert": "geändert {{zeit}}",
+    "fassungsangabe.editorTitel": "Gespeicherte Fassungen nebeneinander vergleichen",
+    "fassungsangabe.editorHinweis":
+      "Verglichen werden gespeicherte Fassungen. Deine noch nicht gespeicherten Änderungen stehen nur im Formular.",
   },
   en: {
     "fassungsangabe.ersteFassung": "First saved version",
@@ -29,6 +34,11 @@ export default {
     "fassungsangabe.vergleichen": "Compare with v{{von}}",
     "fassungsangabe.vergleichenName":
       "Compare v{{bis}} field by field with the previous version v{{von}}",
+    "fassungsangabe.kopfFassung": "Current version v{{version}}",
+    "fassungsangabe.kopfGeaendert": "changed {{zeit}}",
+    "fassungsangabe.editorTitel": "Compare saved versions side by side",
+    "fassungsangabe.editorHinweis":
+      "Only saved versions are compared. Your unsaved changes exist only in the form.",
   },
   nl: {
     "fassungsangabe.ersteFassung": "Eerste opgeslagen versie",
@@ -36,5 +46,10 @@ export default {
     "fassungsangabe.vergleichen": "Vergelijken met v{{von}}",
     "fassungsangabe.vergleichenName":
       "v{{bis}} veld voor veld vergelijken met de vorige versie v{{von}}",
+    "fassungsangabe.kopfFassung": "Huidige versie v{{version}}",
+    "fassungsangabe.kopfGeaendert": "gewijzigd {{zeit}}",
+    "fassungsangabe.editorTitel": "Opgeslagen versies naast elkaar vergelijken",
+    "fassungsangabe.editorHinweis":
+      "Alleen opgeslagen versies worden vergeleken. Je niet-opgeslagen wijzigingen staan alleen in het formulier.",
   },
 } satisfies Textmodul;

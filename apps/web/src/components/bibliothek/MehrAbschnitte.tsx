@@ -113,6 +113,7 @@ import { ConfidenceBar, KnowledgeTypeTag, ProvenanceLine } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
 import { AnhangZeichnung } from "./AnhangZeichnung";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
+import { FassungsGegenueberstellung } from "./Fassungsvergleich";
 import { ImportErgebnis } from "./ImportErgebnis";
 import { Zeichnung } from "./Zeichnung";
 
@@ -2593,48 +2594,9 @@ export function MehrAbschnitte({
                     ) : gegenueber.felder.length === 0 ? (
                       <p className="mt-2 text-[12.5px] text-muted">{t("ko.snapshotCompareNone")}</p>
                     ) : (
-                      <dl className="mt-2 grid gap-2">
-                        {gegenueber.felder.map((f) => {
-                          // Die Werte kommen als GESPEICHERTE Werte aus `koVersionDiff.ts`; Art und
-                          // Prüfstand sind dort Schlüssel. Eingesetzt werden sie über DIESELBEN
-                          // Kataloge, die die Karte oben schon benutzt — kein zweites Verzeichnis.
-                          const lesbar = (wert: string): JSX.Element =>
-                            wert.length === 0 ? (
-                              <span className="text-muted-2">{t("ko.snapshotFieldEmpty")}</span>
-                            ) : f.feld === "type" ? (
-                              <>{t(`ktype.${wert}`)}</>
-                            ) : f.feld === "status" ? (
-                              <>{t(`status.${wert}`)}</>
-                            ) : f.feld === "bodyHtml" ? (
-                              // DERSELBE EINE ZEICHENWEG wie am geöffneten Bericht (`:1962-1966`):
-                              // kein `dangerouslySetInnerHTML`, keine zweite Allowlist.
-                              <SanitizedHtml html={wert} className="prose-kw text-[12.5px]" />
-                            ) : (
-                              <>{wert}</>
-                            );
-                          return (
-                            <div key={f.feld} data-bib-fassung-vergleich-feld={f.feld}>
-                              <dt className="font-mono text-[10.5px] text-muted-2">
-                                {t(`ko.snapshotField.${f.feld}`)}
-                              </dt>
-                              <dd className="mt-0.5 grid gap-1 text-[12.5px] text-text">
-                                <div data-bib-vergleich-alt={f.feld}>
-                                  <span className="mr-1 font-mono text-[10.5px] text-muted-2">
-                                    {`v${gegenueber.von}`}
-                                  </span>
-                                  {lesbar(f.alt)}
-                                </div>
-                                <div data-bib-vergleich-neu={f.feld}>
-                                  <span className="mr-1 font-mono text-[10.5px] text-muted-2">
-                                    {`v${gegenueber.bis}`}
-                                  </span>
-                                  {lesbar(f.neu)}
-                                </div>
-                              </dd>
-                            </div>
-                          );
-                        })}
-                      </dl>
+                      // R-1055: dieselbe Gegenüberstellung wie im Editor, ältere Fassung links,
+                      // jüngere rechts (`Fassungsvergleich.tsx`). Die Marken bleiben dieselben.
+                      <FassungsGegenueberstellung gegenueber={gegenueber} />
                     )}
                   </div>
                 );
