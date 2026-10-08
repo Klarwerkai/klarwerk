@@ -433,6 +433,8 @@ type KoAktion =
   | "tags"
   // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet am Objekt setzen, ändern oder entfernen.
   | "domain"
+  // R-1632 / R-1633: die Geltung (Konzern/Werk/Schicht, optional Rolle) setzen oder entfernen.
+  | "geltung"
   | "confidentiality"
   // JOB 557: die Verantwortung am Objekt benennen (Recht `ko.validate`, s. den Zweig unten).
   | "ownership"
@@ -496,6 +498,8 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   tags: "tor",
   // R-0431 (K2): arbeitet AM Objekt unter `:id` — es passiert das Sichtbarkeitstor wie `category`.
   domain: "tor",
+  // R-1632 / R-1633: arbeitet AM Objekt unter `:id` — es passiert das Sichtbarkeitstor wie `domain`.
+  geltung: "tor",
   confidentiality: "tor",
   // JOB 557: die Aktion arbeitet AM Objekt unter `:id` — sie passiert das Sichtbarkeitstor.
   ownership: "tor",
@@ -595,6 +599,8 @@ interface PutBody {
   tags?: string[];
   /** R-0431 (K2): das Fachgebiet (`action: "domain"`). `unknown`, gelesen an der `case`. */
   domain?: unknown;
+  /** R-1632 / R-1633: die Geltung (`action: "geltung"`); `null` entfernt sie. Geprüft im Dienst. */
+  geltung?: unknown;
   conflict?: ConflictInput;
   /**
    * R-0238 — DIE WIDERSPRECHENDE ABLEHNUNG. Nur an `rate` mit `verdict: "down"`: das Objekt, dem
@@ -2995,7 +3001,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             const stelle = leseStelle(body.stelle);
             if (stelle === "unlesbar") {
               return badRequest(
-                "stelle muss Fassung (koVersion), Art (absatz, tabelle, bild), Abschnitt und Textstelle tragen.",
+                "stelle muss Fassung (koVersion), Art (absatz, tabelle, bild, anhang), Abschnitt und Textstelle tragen; eine Position (punkt, x und y je 0..1) gibt es nur bei Bild oder Anhang, eine Seite (ganzzahlig ab 1) nur bei einem Anhang.",
               );
             }
             reply.code(200).send(
@@ -3497,6 +3503,20 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return badRequest(`domain ist länger als ${DOMAIN_MAX_LENGTH} Zeichen.`);
             }
             reply.code(200).send(await ko.setDomain(id, body.domain, user.id));
+            return;
+          }
+          case "geltung": {
+            // R-1632 / R-1633: dasselbe Recht wie das Fachgebiet (`ko.create`). Das Feld muss im
+            // Rumpf stehen — `null` entfernt die Angabe, ein fehlendes Feld ist kein Entfernen.
+            // Form und Vererbungsregel prüft der Dienst (`normalizeGeltung`, ungültig → 400).
+            const user = await guards.requirePermission("ko.create", request, reply);
+            if (!user) {
+              return;
+            }
+            if (!("geltung" in body)) {
+              return badRequest("geltung fehlt.");
+            }
+            reply.code(200).send(await ko.setGeltung(id, body.geltung, user.id));
             return;
           }
           case "tags": {

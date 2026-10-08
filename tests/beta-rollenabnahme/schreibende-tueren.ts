@@ -1243,7 +1243,7 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     gruppe: "askRoutes",
     methode: "POST",
     route: "/api/ask/not-helpful",
-    belegstelle: "services/app/src/routes/ask-routes.ts:935",
+    belegstelle: "services/app/src/routes/ask-routes.ts:962",
     erfolg: [200],
     tor: "ko.read (danach prüft der Dienst den Beleg aus dem echten Antwortvorgang)",
     erwartet: NUR_LESEN,
