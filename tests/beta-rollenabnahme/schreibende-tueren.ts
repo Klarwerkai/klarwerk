@@ -41,7 +41,7 @@
 // `soll`. Und: was hier nicht steht, steht mit eigenem Grund und `art: "zurueckgestellt"` in
 // `NICHT_ABGENOMMEN`; eine stille Auslassung gibt es nicht (E2 verbietet sie).
 import type { FastifyInstance } from "fastify";
-import { AKTEURE, type Akteur, type Buehne, PASSWORT, type Rolle } from "./buehne";
+import { AKTEURE, type Akteur, type Buehne, PASSWORT, ROLLEN, type Rolle } from "./buehne";
 import {
   AB_CONTROLLER,
   AB_EXPERTE,
@@ -819,6 +819,38 @@ async function ladeDemodaten(buehne: Buehne): Promise<void> {
  * braucht; gemessen wird die Tür.
  */
 const BEISPIELPAKET = "qualitaet";
+
+// R-0466: die Werkzeuge der drei Gedächtniszeilen.
+const GEDAECHTNIS_VORLIEBE = { art: "vorliebe", inhalt: "Antworten bitte mit Quellenangabe." };
+
+/** Die Zahl der nicht abgelaufenen Gedächtniseinträge je Rolle — direkt an der Ablage gelesen. */
+async function gedaechtnisStand(buehne: Buehne): Promise<Record<Rolle, number>> {
+  const jetzt = new Date().toISOString();
+  const stand = {} as Record<Rolle, number>;
+  for (const rolle of ROLLEN) {
+    const eigene = await buehne.services.gedaechtnis.eigene(buehne.konto[rolle].id, jetzt);
+    stand[rolle] = eigene.length;
+  }
+  return stand;
+}
+
+function eigeneZahl(stand: unknown, rolle: Rolle): number | undefined {
+  return (stand as Partial<Record<Rolle, number>>)[rolle];
+}
+
+async function merkeVorliebe(buehne: Buehne, rolle: Rolle): Promise<string> {
+  const antwort = await fahre(
+    buehne.app,
+    kopf(buehne, rolle),
+    "POST",
+    "/api/me/gedaechtnis",
+    GEDAECHTNIS_VORLIEBE,
+  );
+  if (antwort.statusCode !== 201) {
+    throw new Error(`Gedächtniseintrag für ${rolle} nicht angelegt: ${antwort.body}`);
+  }
+  return (antwort.json() as { eintrag: { id: string } }).eintrag.id;
+}
 
 // ------------------------------------------------------------------------------------------------
 // DIE TABELLE DER SCHREIBENDEN TÜREN. Reihenfolge nach Nutzerweg: zuerst, was den BESTAND ändert.
@@ -1824,5 +1856,74 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
         eingetreten: (anzahl) => typeof anzahl === "number" && anzahl > 0,
       },
     }),
+  },
+
+  // --- R-0466 · Das eigene Interaktionsgedächtnis ----------------------------------------------
+  // Jede angemeldete Rolle führt ihr EIGENES Gedächtnis. Der Bestand wird je Rolle an der Ablage
+  // nachgelesen: so zeigt jede Zeile auch, dass der Vorgang KEIN fremdes Gedächtnis berührt. Für
+  // den Unangemeldeten wird der Eintrag beim Viewer angelegt — er darf ihn nicht löschen können.
+  {
+    gruppe: "gedaechtnisRoutes",
+    methode: "POST",
+    route: "/api/me/gedaechtnis",
+    belegstelle: "services/app/src/routes/gedaechtnis-routes.ts:98",
+    erfolg: [201],
+    tor: "requireUser — nur das eigene Konto (user.id aus der Sitzung)",
+    erwartet: ANGEMELDET,
+    ruesten: async (buehne, akteur) => {
+      const besitzer: Rolle = akteur === "anonym" ? "viewer" : akteur;
+      return {
+        pfad: "/api/me/gedaechtnis",
+        payload: { ...GEDAECHTNIS_VORLIEBE },
+        bestand: () => gedaechtnisStand(buehne),
+        wirkung: {
+          beschreibung: `das Gedächtnis von ${besitzer} trägt danach genau einen Eintrag`,
+          eingetreten: (stand) => eigeneZahl(stand, besitzer) === 1,
+        },
+      };
+    },
+  },
+  {
+    gruppe: "gedaechtnisRoutes",
+    methode: "DELETE",
+    route: "/api/me/gedaechtnis/:id",
+    belegstelle: "services/app/src/routes/gedaechtnis-routes.ts:126",
+    erfolg: [200],
+    tor: "requireUser — nur ein eigener Eintrag (fremd und unbekannt: 404)",
+    erwartet: ANGEMELDET,
+    ruesten: async (buehne, akteur) => {
+      const besitzer: Rolle = akteur === "anonym" ? "viewer" : akteur;
+      const id = await merkeVorliebe(buehne, besitzer);
+      return {
+        pfad: `/api/me/gedaechtnis/${id}`,
+        bestand: () => gedaechtnisStand(buehne),
+        wirkung: {
+          beschreibung: `der Eintrag von ${besitzer} ist danach gelöscht`,
+          eingetreten: (stand) => eigeneZahl(stand, besitzer) === 0,
+        },
+      };
+    },
+  },
+  {
+    gruppe: "gedaechtnisRoutes",
+    methode: "DELETE",
+    route: "/api/me/gedaechtnis",
+    belegstelle: "services/app/src/routes/gedaechtnis-routes.ts:147",
+    erfolg: [200],
+    tor: "requireUser — nur das eigene Gedächtnis",
+    erwartet: ANGEMELDET,
+    ruesten: async (buehne, akteur) => {
+      const besitzer: Rolle = akteur === "anonym" ? "viewer" : akteur;
+      await merkeVorliebe(buehne, besitzer);
+      await merkeVorliebe(buehne, besitzer);
+      return {
+        pfad: "/api/me/gedaechtnis",
+        bestand: () => gedaechtnisStand(buehne),
+        wirkung: {
+          beschreibung: `das Gedächtnis von ${besitzer} ist danach leer`,
+          eingetreten: (stand) => eigeneZahl(stand, besitzer) === 0,
+        },
+      };
+    },
   },
 ];
