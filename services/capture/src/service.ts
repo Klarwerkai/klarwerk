@@ -659,24 +659,47 @@ export class CaptureService {
   // R-1133 — DER TECHNISCHE INDEX DES ENTWURFS (Regel: `./entwurfs-index.ts`).
   // ==============================================================================================
   //
-  // ER DARF DEN EINGABEFLUSS NICHT BLOCKIEREN. Deshalb läuft `indexiere` erst NACH dem
-  // gelungenen Schreiben und wirft nie: scheitert die Ableitung oder die Ablage, ist der Entwurf
-  // trotzdem gespeichert, und der Index bleibt als „offen" in der Arbeitsliste stehen, bis der
-  // Abgleich (`gleicheEntwurfsIndexAb`) oder das nächste Speichern ihn nachzieht. Der Index ist
+  // ER DARF DEN EINGABEFLUSS NICHT BLOCKIEREN. `indexiere` wird NACH dem gelungenen Schreiben nur
+  // EINGEPLANT und nie abgewartet — weder vom Speicherweg noch unter der Entwurfssperre
+  // (`withDraftLock`). Ein langsamer oder hängender Indexschreibvorgang verzögert deshalb weder die
+  // Speicherantwort noch die nächste Änderung (BEN, Nacharbeit 4). Auch die Ableitung selbst (Hash
+  // über bis zu 200.000 Zeichen) läuft erst im eingeplanten Schritt. Scheitert sie oder die Ablage,
+  // ist der Entwurf trotzdem gespeichert, und der Index bleibt als „offen" in der Arbeitsliste, bis
+  // der Abgleich (`gleicheEntwurfsIndexAb`) oder das nächste Speichern ihn nachzieht. Der Index ist
   // keine Wahrheit; sein Fehlen kostet eine Beschleunigung, keinen Inhalt.
   //
   // ER FOLGT DEM GESPEICHERTEN STAND. Abgeleitet wird aus dem Datensatz, der gerade geschrieben
-  // wurde, und die Ablage nimmt ihn nur, wenn ihr gespeicherter Stand noch dieser ist. Ein
-  // langsamer Indexlauf eines älteren Stands kann so keinen neueren überschreiben.
-  private async indexiere(draft: Draft): Promise<void> {
+  // wurde, und die Ablage nimmt ihn nur, wenn ihr gespeicherter Stand noch dieser ist. Laufen
+  // mehrere eingeplante Indexschreibvorgänge in beliebiger Reihenfolge ein, gewinnt deshalb nur der
+  // des zuletzt gespeicherten Stands; ein verspäteter älterer kann ihn nicht überschreiben.
+  private readonly indexArbeit = new Set<Promise<void>>();
+
+  private indexiere(draft: Draft): void {
     if (!this.repo.setzeEntwurfsIndex) {
       return;
     }
-    try {
-      await this.repo.setzeEntwurfsIndex(draft.id, entwurfsIndexVon(draft));
-    } catch {
-      // Bewusst geschluckt (s. Kopf): der Entwurf ist gespeichert, der Index bleibt offen und wird
-      // nachgezogen. Ein Fehler hier darf das Speichern des Menschen nicht scheitern lassen.
+    const lauf: Promise<void> = Promise.resolve()
+      .then(() => this.repo.setzeEntwurfsIndex?.(draft.id, entwurfsIndexVon(draft)))
+      .then(
+        () => undefined,
+        // Bewusst geschluckt (s. Kopf): der Entwurf ist gespeichert, der Index bleibt offen und
+        // wird nachgezogen. Ein Fehler hier darf das Speichern des Menschen nicht berühren.
+        () => undefined,
+      )
+      .finally(() => {
+        this.indexArbeit.delete(lauf);
+      });
+    this.indexArbeit.add(lauf);
+  }
+
+  /**
+   * R-1133: wartet, bis alle eingeplanten Indexschreibvorgänge dieses Dienstes abgeschlossen sind —
+   * für das Herunterfahren (`onClose` in build-app.ts: der Pool schliesst erst danach) und für
+   * Gegenproben, die den Index lesen. Kein Speicherweg ruft sie.
+   */
+  async indexArbeitAbgeschlossen(): Promise<void> {
+    while (this.indexArbeit.size > 0) {
+      await Promise.all([...this.indexArbeit]);
     }
   }
 
@@ -731,7 +754,7 @@ export class CaptureService {
     if (!index || index.stand !== draft.updatedAt || index.fassung !== ENTWURFS_INDEX_FASSUNG) {
       // Der eigene Index ist offen: aus dem gespeicherten Stand ableiten und dabei nachziehen.
       index = entwurfsIndexVon(draft);
-      await this.indexiere(draft);
+      this.indexiere(draft);
     }
     const kennungen = this.repo.entwuerfeMitInhalt
       ? await this.repo.entwuerfeMitInhalt(index.inhaltsHash, id)
@@ -823,7 +846,7 @@ export class CaptureService {
     // eine Attrappe ohne Bestand könnte ohnehin nie eine Wiederholung finden.
     if (!vorgangsId || !this.repo.insertIfOperationAbsent) {
       await this.repo.insert(draft);
-      await this.indexiere(draft);
+      this.indexiere(draft);
       return { draft, angelegt: true };
     }
     const fingerprint = createOperationFingerprint({ weg: "draft-create", inhalt: payload });
@@ -833,7 +856,7 @@ export class CaptureService {
     };
     const ergebnis = await this.repo.insertIfOperationAbsent(mitVorgang);
     if (ergebnis.angelegt) {
-      await this.indexiere(ergebnis.draft);
+      this.indexiere(ergebnis.draft);
       return { draft: ergebnis.draft, angelegt: true };
     }
     // DER ABDRUCKVERGLEICH LÄUFT HIER, nicht in der Ablage und nicht in der Route — eine Stelle
@@ -1021,7 +1044,7 @@ export class CaptureService {
         );
       }
       // R-1133: der Inhalt ist derselbe, der Stand nicht — der Index wird an den neuen gebunden.
-      await this.indexiere(updated);
+      this.indexiere(updated);
       return updated;
     });
   }
@@ -1158,7 +1181,7 @@ export class CaptureService {
         if (await this.repo.updateWennStand(updated, draft.updatedAt)) {
           // R-1133: der Index folgt dem GESCHRIEBENEN Stand — erst nach gewonnenem Compare-and-Swap.
           // Ein abgewiesener Schreibversuch erzeugt keinen Index.
-          await this.indexiere(updated);
+          this.indexiere(updated);
           return updated;
         }
         const inzwischen = await this.repo.findById(id);
@@ -1259,7 +1282,7 @@ export class CaptureService {
     }
     // R-1133: im Papierkorb war der Index ausgeblendet, nicht verloren. Ein Altentwurf, der nie
     // einen trug, bekommt ihn hier; ein vorhandener gültiger wird nur bestätigt.
-    await this.indexiere(zurueck);
+    this.indexiere(zurueck);
     return zurueck;
   }
 

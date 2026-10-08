@@ -53,10 +53,13 @@ describe("R-1133 · der Entwurfsindex gegen echtes PostgreSQL", () => {
   }
 
   it("P1 · Anlegen indiziert, und ein neu aufgebauter Dienst liest denselben Index", async () => {
-    const draft = await dienst().createDraft(
+    const capture = dienst();
+    const draft = await capture.createDraft(
       { title: "Kessel K1 entlüften", statement: "Ventil oben öffnen.", tags: ["Heizung"] },
       "anna",
     );
+    // Die Indexarbeit läuft entkoppelt vom Speicherweg (BEN, Nacharbeit 4) — wer liest, wartet.
+    await capture.indexArbeitAbgeschlossen();
     const gespeichert = await zeile(draft.id);
     expect(gespeichert?.index_stand).toBe(draft.updatedAt);
     expect(gespeichert?.index_text).toContain("Kessel K1 entlüften");
@@ -71,6 +74,7 @@ describe("R-1133 · der Entwurfsindex gegen echtes PostgreSQL", () => {
     const capture = dienst();
     const draft = await capture.createDraft({ title: "Filter F2", statement: "Alt." }, "anna");
     const neu = await capture.continueDraft(draft.id, { statement: "Neu." }, "anna");
+    await capture.indexArbeitAbgeschlossen();
 
     const repo = new PgDraftRepo(pool);
     expect((await repo.entwurfsIndexVon(draft.id))?.stand).toBe(neu.updatedAt);
@@ -109,6 +113,7 @@ describe("R-1133 · der Entwurfsindex gegen echtes PostgreSQL", () => {
     const inhalt = { title: "Lager L7 schmieren", statement: "Alle 500 Stunden." };
     const eins = await capture.createDraft(inhalt, "bodo");
     const zwei = await capture.createDraft(inhalt, "bodo");
+    await capture.indexArbeitAbgeschlossen();
 
     const ids = async () =>
       (await capture.entwuerfeMitGleichemInhalt(eins.id, SICHTBAR)).entwuerfe.map((e) => e.id);
@@ -117,6 +122,7 @@ describe("R-1133 · der Entwurfsindex gegen echtes PostgreSQL", () => {
     await capture.deleteDraft(zwei.id, "bodo");
     expect(await ids()).toEqual([]);
     await capture.restoreDraft(zwei.id);
+    await capture.indexArbeitAbgeschlossen();
     expect(await ids()).toEqual([zwei.id]);
 
     await capture.deleteDraft(zwei.id, "bodo");
@@ -128,6 +134,7 @@ describe("R-1133 · der Entwurfsindex gegen echtes PostgreSQL", () => {
   it("P5 · die Duplikatsfrage läuft über drafts_index_hash_idx", async () => {
     const capture = dienst();
     const draft = await capture.createDraft({ title: "Planprobe", statement: "Hash." }, "anna");
+    await capture.indexArbeitAbgeschlossen();
     await pool.query("ANALYZE drafts");
     // Die Anweisung, die die Ablage WIRKLICH absetzt — aufgezeichnet, nicht abgeschrieben.
     const abgesetzt: { sql: string; params: unknown[] }[] = [];

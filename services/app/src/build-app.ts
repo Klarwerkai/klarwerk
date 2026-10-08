@@ -2595,6 +2595,13 @@ export function buildApp(
   // zweiter Weg, keine zweite Zustandsmaschine: `stelleSuchprojektionBereit` ist der EINE Einstieg
   // für App-Ready und `runSeed()`. Er wirft, wenn die Instanz nicht `V2_ACTIVE` erreicht — die App
   // wird dann nie ready und die Suche bleibt fail-closed.
+  // R-1133: eingeplante Indexschreibvorgänge der Entwürfe laufen ausserhalb des Speicherwegs
+  // (`CaptureService.indexiere`). Beim Schliessen werden sie abgewartet, damit der Aufrufer den Pool
+  // nicht mitten in einem Schreibvorgang beendet. Optional gerufen: Prüfattrappen ersetzen
+  // `capture` teils durch Doppel ohne diese Methode.
+  app.addHook("onClose", async () => {
+    await services.capture.indexArbeitAbgeschlossen?.();
+  });
   app.addHook("onReady", async () => {
     await stelleSuchprojektionBereit(services.ko);
     // R-1133 — DER ABGLEICH DES ENTWURFSINDEX, BEWUSST NICHT ABGEWARTET. Anders als die

@@ -15,6 +15,8 @@
 //   E7  Papierkorb, Wiederherstellen, endgültiges Löschen: keine verwaisten, keine falschen Treffer.
 //   E8  Einreichen: der Entwurfsindex geht, das offene Wissensobjekt trägt seinen eigenen Index
 //       (Suchprojektion) — als prüfbarer Eintrag, ohne automatische Validierung.
+//   E9  Ein zurückgehaltener Indexschreibvorgang hält weder die Anlage noch weitere Änderungen
+//       unter der Entwurfssperre auf (Dienst und HTTP); nach dem Öffnen gilt der letzte Stand.
 import { describe, expect, it } from "vitest";
 import {
   type AppServices,
@@ -44,10 +46,10 @@ async function login(app: App, email: string): Promise<Auth> {
   return { authorization: `Bearer ${res.json().token}` };
 }
 
-async function setup() {
+async function setup(ablage?: InMemoryDraftRepo) {
   const repos = inMemoryRepos();
-  const drafts = repos.drafts as InMemoryDraftRepo;
-  const services: AppServices = assembleServices(repos);
+  const drafts = ablage ?? (repos.drafts as InMemoryDraftRepo);
+  const services: AppServices = assembleServices({ ...repos, drafts });
   const app = buildApp(services);
   await app.inject({
     method: "POST",
@@ -70,6 +72,9 @@ async function setup() {
     app,
     services,
     drafts,
+    // Die Indexarbeit läuft entkoppelt vom Speicherweg (BEN, Nacharbeit 4). Wer den Index LIEST,
+    // wartet sie ausdrücklich ab — der Speicherweg tut das nie (E9).
+    fertig: () => services.capture.indexArbeitAbgeschlossen(),
     anna: await login(app, "anna@index.test"),
     bodo: await login(app, "bodo@index.test"),
   };
@@ -108,8 +113,9 @@ async function gleicherInhalt(app: App, auth: Auth, id: string) {
 
 describe("R-1133 · der technische Index des Entwurfs folgt dem gespeicherten Stand", () => {
   it("E1 · die Anlage indiziert alle Inhaltsfelder — und nur sichtbaren Text", async () => {
-    const { app, drafts, anna } = await setup();
+    const { app, drafts, anna, fertig } = await setup();
     const draft = await anlegen(app, anna);
+    await fertig();
 
     const index = await drafts.entwurfsIndexVon(draft.id);
     expect(index).toBeDefined();
@@ -137,8 +143,9 @@ describe("R-1133 · der technische Index des Entwurfs folgt dem gespeicherten St
   });
 
   it("E2 · Speichern zieht den Index auf den neuen Stand — alter Inhalt ist aus dem Index weg", async () => {
-    const { app, drafts, anna } = await setup();
+    const { app, drafts, anna, fertig } = await setup();
     const draft = await anlegen(app, anna);
+    await fertig();
     const vorher = (await drafts.entwurfsIndexVon(draft.id)) as EntwurfsIndex;
 
     const res = await app.inject({
@@ -149,6 +156,7 @@ describe("R-1133 · der technische Index des Entwurfs folgt dem gespeicherten St
     });
     expect(res.statusCode, res.body).toBe(200);
     const neu = res.json() as Draft;
+    await fertig();
 
     const nachher = (await drafts.entwurfsIndexVon(draft.id)) as EntwurfsIndex;
     expect(nachher.stand).toBe(neu.updatedAt);
@@ -159,7 +167,7 @@ describe("R-1133 · der technische Index des Entwurfs folgt dem gespeicherten St
   });
 
   it("E3 · ein abgewiesener Schreibversuch und eine verspätete Ableitung lassen den Index stehen", async () => {
-    const { app, drafts, anna } = await setup();
+    const { app, drafts, anna, fertig } = await setup();
     const draft = await anlegen(app, anna);
     const zweiter = await app.inject({
       method: "PUT",
@@ -168,6 +176,7 @@ describe("R-1133 · der technische Index des Entwurfs folgt dem gespeicherten St
       payload: { title: "Neuer Titel", expectedUpdatedAt: draft.updatedAt },
     });
     expect(zweiter.statusCode, zweiter.body).toBe(200);
+    await fertig();
     const aktuell = (await drafts.entwurfsIndexVon(draft.id)) as EntwurfsIndex;
 
     // Der zweite Tab mit dem ALTEN Stand: 409, nichts geschrieben — auch kein Index.
@@ -178,6 +187,7 @@ describe("R-1133 · der technische Index des Entwurfs folgt dem gespeicherten St
       payload: { title: "Veralteter Titel", expectedUpdatedAt: draft.updatedAt },
     });
     expect(veraltet.statusCode, veraltet.body).toBe(409);
+    await fertig();
     expect(await drafts.entwurfsIndexVon(draft.id)).toEqual(aktuell);
 
     // Eine verspätete Ableitung des ersten Stands kommt nicht durch.
@@ -210,6 +220,8 @@ describe("R-1133 · der technische Index des Entwurfs folgt dem gespeicherten St
       "anna",
     );
     expect(gespeichert.payload.statement).toBe("Dichtung prüfen.");
+    // Abgewartet, damit „kein Index" heisst: der Lauf ist GESCHEITERT — nicht nur noch nicht dran.
+    await capture.indexArbeitAbgeschlossen();
     expect(await ablage.entwurfsIndexVon(draft.id)).toBeUndefined();
     expect(await ablage.offeneEntwurfsIndizes(10)).toEqual([draft.id]);
 
@@ -240,11 +252,12 @@ describe("R-1133 · der technische Index des Entwurfs folgt dem gespeicherten St
   });
 
   it("E6 · die Duplikatsfrage nutzt den Index — und zeigt nur, was der Fragende sehen darf", async () => {
-    const { app, anna, bodo } = await setup();
+    const { app, anna, bodo, fertig } = await setup();
     const eins = await anlegen(app, anna);
     const zwei = await anlegen(app, anna);
     const anderer = await anlegen(app, anna, { ...INHALT, title: "Etwas anderes" });
     const fremd = await anlegen(app, bodo);
+    await fertig();
 
     const fuerAnna = await gleicherInhalt(app, anna, eins.id);
     expect(fuerAnna.status, fuerAnna.body).toBe(200);
@@ -261,9 +274,10 @@ describe("R-1133 · der technische Index des Entwurfs folgt dem gespeicherten St
   });
 
   it("E7 · Papierkorb blendet aus, Wiederherstellen bringt zurück, endgültiges Löschen nimmt den Index mit", async () => {
-    const { app, drafts, anna } = await setup();
+    const { app, drafts, anna, fertig } = await setup();
     const eins = await anlegen(app, anna);
     const zwei = await anlegen(app, anna);
+    await fertig();
 
     const loeschen = await app.inject({
       method: "DELETE",
@@ -280,6 +294,7 @@ describe("R-1133 · der technische Index des Entwurfs folgt dem gespeicherten St
       headers: anna,
     });
     expect(zurueck.statusCode, zurueck.body).toBe(200);
+    await fertig();
     expect((await gleicherInhalt(app, anna, eins.id)).json.entwuerfe.map((e) => e.id)).toEqual([
       zwei.id,
     ]);
@@ -297,9 +312,10 @@ describe("R-1133 · der technische Index des Entwurfs folgt dem gespeicherten St
   });
 
   it("E8 · Einreichen: Entwurfsindex weg, das offene Objekt trägt seine Suchprojektion — nicht validiert", async () => {
-    const { app, services, drafts, anna } = await setup();
+    const { app, services, drafts, anna, fertig } = await setup();
     const eins = await anlegen(app, anna);
     const zwei = await anlegen(app, anna);
+    await fertig();
 
     const promote = await app.inject({
       method: "POST",
@@ -307,6 +323,7 @@ describe("R-1133 · der technische Index des Entwurfs folgt dem gespeicherten St
       headers: anna,
     });
     expect(promote.statusCode, promote.body).toBe(201);
+    await fertig();
     const ko = promote.json() as { id: string; status: string; trust: number };
     expect(ko.status).toBe("offen");
     expect(ko.trust).toBe(0);
@@ -321,5 +338,72 @@ describe("R-1133 · der technische Index des Entwurfs folgt dem gespeicherten St
     expect(projektion?.titleText).toBe(INHALT.title);
     expect(projektion?.bodyText).toContain("Der Ölstand steht am Schauglas.");
     expect((await services.ko.get(ko.id))?.status).toBe("offen");
+  });
+
+  // BEN, Nacharbeit 4: „Mit einem gezielt zurückgehaltenen Indexschreibvorgang nachweisen, dass
+  // Speicherung und weitere Änderungen unabhängig davon abschließen." Das Tor hält JEDEN
+  // Indexschreibvorgang an, bis der Fall es öffnet — vorher darf keiner fertig sein.
+  it("E9 · ein zurückgehaltener Indexschreibvorgang hält weder Speichern noch weitere Änderungen auf", async () => {
+    class ZurueckhaltendeAblage extends InMemoryDraftRepo {
+      gehalten = 0;
+      private freigabe: () => void = () => undefined;
+      private readonly tor = new Promise<void>((weiter) => {
+        this.freigabe = weiter;
+      });
+      oeffne(): void {
+        this.freigabe();
+      }
+      override async setzeEntwurfsIndex(id: string, index: EntwurfsIndex): Promise<boolean> {
+        this.gehalten += 1;
+        await this.tor;
+        return super.setzeEntwurfsIndex(id, index);
+      }
+    }
+    const naechsteRunde = () => new Promise((weiter) => setTimeout(weiter, 0));
+
+    // (1) Der Dienst: Anlage und zwei Änderungen unter der Entwurfssperre schliessen ab.
+    const ablage = new ZurueckhaltendeAblage();
+    const capture = new CaptureService({ repo: ablage });
+    const erster = await capture.createDraft({ title: "Ventil V1", statement: "Erster." }, "anna");
+    const zweiter = await capture.continueDraft(erster.id, { statement: "Zweiter." }, "anna", {
+      expectedUpdatedAt: erster.updatedAt,
+    });
+    const dritter = await capture.continueDraft(erster.id, { statement: "Dritter." }, "anna", {
+      expectedUpdatedAt: zweiter.updatedAt,
+    });
+    expect((await capture.getDraft(erster.id))?.payload.statement).toBe("Dritter.");
+    await naechsteRunde();
+    // Alle drei Indexschreibvorgänge stehen am Tor — und keiner hat etwas geschrieben.
+    expect(ablage.gehalten).toBe(3);
+    expect(await ablage.entwurfsIndexVon(erster.id)).toBeUndefined();
+
+    ablage.oeffne();
+    await capture.indexArbeitAbgeschlossen();
+    // Standbindung erhalten: nur der Index des zuletzt gespeicherten Stands wird wirksam.
+    const index = await ablage.entwurfsIndexVon(erster.id);
+    expect(index?.stand).toBe(dritter.updatedAt);
+    expect(index?.text).toContain("Dritter.");
+    expect(await ablage.offeneEntwurfsIndizes(10)).toEqual([]);
+
+    // (2) Derselbe Nachweis am HTTP-Weg: 201 und 200, während das Tor geschlossen ist.
+    const httpAblage = new ZurueckhaltendeAblage();
+    const { app, anna, fertig } = await setup(httpAblage);
+    const angelegt = await anlegen(app, anna);
+    const geaendert = await app.inject({
+      method: "PUT",
+      url: `/api/drafts/${angelegt.id}`,
+      headers: anna,
+      payload: { title: "Geändert bei geschlossenem Tor", expectedUpdatedAt: angelegt.updatedAt },
+    });
+    expect(geaendert.statusCode, geaendert.body).toBe(200);
+    await naechsteRunde();
+    expect(httpAblage.gehalten).toBe(2);
+    expect(await httpAblage.entwurfsIndexVon(angelegt.id)).toBeUndefined();
+
+    httpAblage.oeffne();
+    await fertig();
+    expect((await httpAblage.entwurfsIndexVon(angelegt.id))?.stand).toBe(
+      (geaendert.json() as Draft).updatedAt,
+    );
   });
 });
