@@ -79,7 +79,10 @@ export async function detectDuplicatesForKo(
     // Demo-Beiträge bleiben außen vor (K0-3). Ein VERTRAULICHES Subjekt überspringt die Erkennung
     // NICHT mehr (bens V1): die (lokale, egress-freie) deterministische Deckungsprüfung läuft IMMER,
     // auch für vertrauliche Subjekte und gemischte Paare.
-    if (!subject || subject.demoSeed) {
+    // R-1107: ein AUFGEGANGENER Artikel (`mergedInto`) ist weder Subjekt noch Kandidat. Sein Inhalt
+    // lebt im Führungsartikel weiter; ein neuer Befund „Führungsartikel ⇄ aufgegangener" wäre genau
+    // das Paar, das gerade bewusst zusammengeführt wurde.
+    if (!subject || subject.demoSeed || subject.mergedInto) {
       return coverage; // gar kein Lauf — ehrlich „nichts stand zur Wahl", nicht „gedeckelt"
     }
     const subjectSubject = toDetectSubject(subject);
@@ -92,7 +95,7 @@ export async function detectDuplicatesForKo(
     // R-0194: derselbe Pool speist die Ähnlichkeitsprüfsumme in detectForSubject — Demo-Seed und
     // das Objekt selbst bleiben ihr damit ebenso fern wie dem Trigramm-Rang.
     const pool = (await deps.ko.list())
-      .filter((k) => k.id !== koId && !k.demoSeed)
+      .filter((k) => k.id !== koId && !k.demoSeed && !k.mergedInto)
       .map(toDetectSubject);
     if (pool.length === 0) {
       // R-0194 (bens Befund zu K3): auch ohne Vergleichspartner ist das eine Anlage bzw. Änderung —

@@ -273,7 +273,15 @@ export interface ArbeitZeile {
 /** Was eine Meldung beisteuert — strukturell wie `api/types.ts:Notification`. */
 export interface MeldungZeile {
   id: string;
-  kind: "conflict" | "duplicate" | "gap" | "assignment" | "impact" | "kenntnisnahme";
+  kind:
+    | "conflict"
+    | "escalation"
+    | "duplicate"
+    | "gap"
+    | "assignment"
+    | "return"
+    | "impact"
+    | "kenntnisnahme";
   title: string;
   seen?: boolean;
   redacted?: boolean;
@@ -295,8 +303,12 @@ const RANG: Record<ForYouSeverity, number> = { critical: 0, today: 1, later: 2 }
 // Arbeitsübersicht, damit eine Reihung über beide Quellen überhaupt bedeutet, was sie sagt.
 const MELDUNG_SEVERITY: Record<MeldungZeile["kind"], ForYouSeverity> = {
   conflict: "critical",
+  // R-0894: eine Eskalation wartet auf eine menschliche Entscheidung — kritisch wie ein Konflikt;
+  // eine Rückgabe ist eigene Arbeit von heute — wie eine Zuweisung.
+  escalation: "critical",
   duplicate: "today",
   assignment: "today",
+  return: "today",
   // Eine angeforderte Kenntnisnahme ist Arbeit von heute — wie eine Zuweisung.
   kenntnisnahme: "today",
   gap: "later",
@@ -308,6 +320,13 @@ export function meldungMetaKey(kind: MeldungZeile["kind"]): string {
   // Die Kenntnisnahme bringt ihre Texte im eigenen Textmodul mit (`texte/kenntnisnahme.ts`).
   if (kind === "kenntnisnahme") {
     return "kenntnisnahme.meldungArt";
+  }
+  // R-0894: die beiden neueren Arten tragen ihren Namen im Textmodul `texte/meldungsart.ts`.
+  if (kind === "escalation") {
+    return "meldungsart.eskalation.art";
+  }
+  if (kind === "return") {
+    return "meldungsart.rueckgabe.art";
   }
   return `start.fuerdich.art.${kind}`;
 }

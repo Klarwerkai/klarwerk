@@ -308,6 +308,7 @@ PFLICHTTABELLEN=(
   ratings
   assignments
   conflicts
+  conflict_pair_memory
   ko_overlaps
   overlap_settings
   lifecycle_couplings
@@ -340,6 +341,9 @@ PFLICHTTABELLEN=(
   begriffe_fassungen
   kenntnisnahme_anforderungen
   kenntnisnahme_empfaenger
+  spaces_fassungen
+  livewall_fotos
+  interaktions_gedaechtnis
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do
