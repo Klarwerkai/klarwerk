@@ -681,13 +681,15 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/admin/sim-corpus": { protection: "users.manage" },
   // Klara Stufe 2: KI-gestuetzte Hilfe-Antwort — jeder angemeldete Leser (viewer inkl.).
   "POST /api/help/explain": { protection: "ko.read" },
-  "GET /api/audit": { protection: "ko.validate" },
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 14): Liste, Export und Befund-Kennungen nur
+  // zu Objekten, die der Leser sehen darf (`verborgeneObjekte` → darfSehen).
+  "GET /api/audit": { protection: "ko.validate", zeilenrecht: ["darfSehen"] },
   // SCRUM-439: aktive Integritätsprüfung der Audit-Kette — Governance-Einsicht wie /api/audit.
   "GET /api/audit/verify": { protection: "ko.validate" },
   // Aufnahme gesamt-auditprotokoll (R-0613): Export der Kette samt Kopf — dieselbe Einsicht.
-  "GET /api/audit/export": { protection: "ko.validate" },
+  "GET /api/audit/export": { protection: "ko.validate", zeilenrecht: ["darfSehen"] },
   // Lauf 2 (R-0766): Befund-Kennungen eines Objekts für dessen Kette — dieselbe Einsicht.
-  "GET /api/audit/ko/:koId/findings": { protection: "ko.validate" },
+  "GET /api/audit/ko/:koId/findings": { protection: "ko.validate", zeilenrecht: ["darfSehen"] },
   // WP-D11: PPTX-Folien-Konvertierung — Import-Guard (ko.create) wie der Datei-/Draft-Pfad;
   // großes bodyLimit mit Auth VOR dem Body-Parsing (onRequest requireUser).
   "POST /api/capture/slides": { protection: "ko.create" },

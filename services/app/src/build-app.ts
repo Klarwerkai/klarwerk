@@ -3712,7 +3712,11 @@ export function buildApp(
       guards,
     ),
   );
-  app.register(auditRoutes(services.audit, guards, [services.conflicts, services.overlaps]));
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 14): das Protokoll nach dem Leserecht des
+  // Lesers — gegen die Sichtbarkeitsfakten des ganzen Bestands, Papierkorb eingeschlossen.
+  app.register(
+    auditRoutes(services.audit, guards, [services.conflicts, services.overlaps], services.ko),
+  );
   // JOB 2692 D1: der KA4-Riegel gilt auch auf /api/reasoner und /describe — DIESELBE Instanz des
   // Ausführungstors wie bei askRoutes oben, kein zweiter Dienst. `capture` kommt aus `services`
   // (Entwurfs-Backstop: die gespeicherte Stufe eines Entwurfs hebt, senkt nie).

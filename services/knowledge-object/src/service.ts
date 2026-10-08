@@ -4594,6 +4594,29 @@ export class KoService {
   // Papierkorb-Ansicht (Admin): nur Metadaten, jüngste Löschung zuerst.
   // SCRUM-523 P.3 (WP2): reine Leseansicht — löst KEINE Endlöschung mehr aus. Abgelaufene Einträge sind
   // an ihrem `expiresAt` (Vergangenheit) ehrlich erkennbar, bis ein expliziter runTrashSweep sie entfernt.
+  /**
+   * aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 14): die SICHTBARKEITSFAKTEN jedes
+   * Objekts — auch im Papierkorb — und sonst nichts: Kennung, führender Space, Stufe, Autor. Das
+   * Auditprotokoll nennt Objekte auch nach dem Löschen; ob ein Leser sie sehen darf, entscheidet
+   * die Route mit `darfSehen` gegen genau diese Fakten. Kein Titel, kein Inhalt, keine Lesefassung.
+   */
+  async sichtbarkeitsfaktenAller(): Promise<
+    {
+      id: string;
+      spaceId?: string;
+      confidentiality: KnowledgeObject["confidentiality"];
+      author: string;
+    }[]
+  > {
+    const all = await this.repo.list({});
+    return all.map((k) => ({
+      id: k.id,
+      ...(typeof k.spaceId === "string" ? { spaceId: k.spaceId } : {}),
+      confidentiality: k.confidentiality,
+      author: k.author,
+    }));
+  }
+
   async trashed(): Promise<TrashedKo[]> {
     const all = await this.repo.list({});
     return all

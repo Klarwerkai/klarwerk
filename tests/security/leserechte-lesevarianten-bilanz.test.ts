@@ -21,7 +21,7 @@
 import { describe, expect, it } from "vitest";
 import { type AppServices, buildApp, buildServices } from "../../services/app/src/build-app";
 import { lokalisierungsPaket } from "../../services/app/src/lesevarianten";
-import { type AuditEntry, verifyChain } from "../../services/audit";
+import { type AuditEntry, hashEntryFuerVersion, verifyChain } from "../../services/audit";
 import type { KoSource } from "../../services/knowledge-object";
 
 type App = ReturnType<typeof buildApp>;
@@ -279,122 +279,125 @@ describe("POST /api/admin/lesevarianten/laden — die Bilanz folgt der Lesepolic
 });
 
 // ------------------------------------------------------------------------------------------------
-// Ben, Nacharbeit 13 — DER NEBENWEG ÜBER DAS PROTOKOLL. `lesevarianten.load` hielt die
-// bestandsweite Bilanz fest, und `GET /api/audit` sowie `GET /api/audit/export` (`ko.validate`)
-// gaben sie ungefiltert aus. Jetzt trägt der Eintrag nur Paketangaben; ein Alteintrag mit Bilanz
-// wird für jeden Leser gleich ausgeblendet. Gemessen werden Liste UND Export, mit dem Admin ohne
-// Space-Mitgliedschaft und — als Vergleich — mit dem Mitglied.
+// Ben, Nacharbeit 13/14 — DER NEBENWEG ÜBER DAS PROTOKOLL. `GET /api/audit` und
+// `GET /api/audit/export` (`ko.validate`) gaben objektbezogene Einträge (`ko.created`,
+// `ko.space-changed`, die Ladebilanz …) ungefiltert aus. Gemessen wird jetzt das VOLLSTÄNDIGE
+// API-Ergebnis — Liste ohne Filter, Exportdatei, Befund-Kennungen —, nicht ein vorab gefilterter
+// Ausschnitt; dazu die berechtigte Einsicht des Mitglieds und die Prüfbarkeit der Datei, die
+// tatsächlich ausgeliefert wird.
 // ------------------------------------------------------------------------------------------------
-interface Eintrag {
-  action: string;
-  target: string;
-  payload: Record<string, unknown>;
+interface ExportDatei {
+  format: string;
+  head?: unknown;
+  inspection?: unknown;
+  entries: (Partial<AuditEntry> & { action: string })[];
 }
 
-async function protokoll(
-  app: App,
-  kopf: Kopf,
-): Promise<{ liste: Eintrag[]; export: Eintrag[]; alle: AuditEntry[] }> {
-  const liste = await app.inject({
-    method: "GET",
-    url: "/api/audit?action=lesevarianten.load",
-    headers: kopf,
-  });
+async function auditAbruf(app: App, kopf: Kopf, koId: string) {
+  const liste = await app.inject({ method: "GET", url: "/api/audit", headers: kopf });
   expect(liste.statusCode, liste.body).toBe(200);
   const datei = await app.inject({ method: "GET", url: "/api/audit/export", headers: kopf });
-  expect(datei.statusCode, datei.body).toBe(200);
-  const alle = (datei.json() as { entries: AuditEntry[] }).entries;
+  expect(datei.statusCode, datei.body.slice(0, 300)).toBe(200);
+  const befunde = await app.inject({
+    method: "GET",
+    url: `/api/audit/ko/${koId}/findings`,
+    headers: kopf,
+  });
+  expect(befunde.statusCode, befunde.body).toBe(200);
   return {
-    liste: (liste.json() as Eintrag[]).filter((e) => e.action === "lesevarianten.load"),
-    export: alle.filter((e) => e.action === "lesevarianten.load"),
-    alle,
+    listeRoh: liste.body,
+    liste: liste.json() as AuditEntry[],
+    dateiRoh: datei.body,
+    datei: datei.json() as ExportDatei,
+    befunde: befunde.json() as { ids: string[] },
   };
 }
 
-describe("lesevarianten.load im Protokoll — Liste und Export verraten nichts Unsichtbares", () => {
-  it("neuer Eintrag: nur Paketangaben, für Mitglied und Nichtmitglied gleich, wie ohne das Objekt", async () => {
-    const mit = await buehne({ mitGeschuetztem: true });
-    // Geladen hat das MITGLIED — der Lauf hat das geschützte Objekt also wirklich berührt.
-    const lauf = await laden(mit.app, mit.k.mia);
-    expect(lauf.statusCode, lauf.body).toBe(200);
-    // GEGENPROBE: die Ladeantwort des Mitglieds nennt die Kennung (der Weg trägt).
-    expect(lauf.json().textGeaendert).toContain(mit.geschuetztId);
+/** Die Form, die `ladeLesevarianten` bis Nacharbeit 13 schrieb — mit Kennung und Zählwerten. */
+const alteLadebilanz = (geschuetztId: string) => ({
+  actor: "alt",
+  action: "lesevarianten.load",
+  target: PAKET,
+  payload: {
+    records: 40,
+    zugeordnet: 2,
+    objekte: 2,
+    neu: 0,
+    aktualisiert: 2,
+    textGeaendert: [geschuetztId],
+    nichtZugeordnet: [],
+    quellabgleichBestaetigt: 0,
+    quellabgleichUnbestaetigt: 2,
+  },
+});
 
-    const ohne = await buehne({ mitGeschuetztem: false });
-    expect((await laden(ohne.app, ohne.k.mia)).statusCode).toBe(200);
-    const vergleich = await protokoll(ohne.app, ohne.k.ada);
-    expect(vergleich.liste.length).toBe(1);
-
-    for (const [wer, kopf] of [
-      ["Ada (ohne Mitgliedschaft)", mit.k.ada],
-      ["Mia (Mitglied)", mit.k.mia],
-    ] as const) {
-      const p = await protokoll(mit.app, kopf);
-      expect(p.liste.length, wer).toBe(1);
-      expect(p.export.length, wer).toBe(1);
-      for (const [weg, e] of [
-        ["Liste", p.liste[0] as Eintrag],
-        ["Export", p.export[0] as Eintrag],
-      ] as const) {
-        expect(JSON.stringify(e), `${wer} · ${weg}`).not.toContain(mit.geschuetztId as string);
-        expect(Object.keys(e.payload).sort(), `${wer} · ${weg}`).toEqual(["records", "sprachen"]);
-        // Feld für Feld wie in einem Bestand, in dem das geschützte Objekt nicht existiert.
-        expect(e.payload, `${wer} · ${weg}`).toEqual(vergleich.liste[0]?.payload);
-      }
-      // Die Kette bleibt AUSSERHALB nachrechenbar (R-0613): der Export wurde nicht umgeschrieben.
-      expect(verifyChain(p.alle), wer).toBe(true);
-    }
-    await mit.app.close();
-    await ohne.app.close();
-  });
-
-  it("Alteintrag mit bestandsweiter Bilanz: für jeden Leser gleich ausgeblendet, Kette bleibt prüfbar", async () => {
+describe("Auditliste, Export und Befunde nach der Lesepolicy des Lesers", () => {
+  it("Admin ohne Mitgliedschaft: keine Kennung im vollständigen Ergebnis; Export ist eine Leseransicht", async () => {
     const mit = await buehne({ mitGeschuetztem: true });
     const geschuetztId = mit.geschuetztId as string;
-    // Die Form, die `ladeLesevarianten` bis Nacharbeit 13 schrieb — mit Kennung und Zählwerten.
-    await mit.services.audit.record({
-      actor: "alt",
-      action: "lesevarianten.load",
-      target: PAKET,
-      payload: {
-        records: 40,
-        zugeordnet: 2,
-        objekte: 2,
-        neu: 0,
-        aktualisiert: 2,
-        textGeaendert: [geschuetztId],
-        nichtZugeordnet: [],
-        quellabgleichBestaetigt: 0,
-        quellabgleichUnbestaetigt: 2,
-      },
-    });
+    expect((await laden(mit.app, mit.k.mia)).statusCode).toBe(200);
+    await mit.services.audit.record(alteLadebilanz(geschuetztId));
+    // Vorbedingung: die Kette TRÄGT die Kennung — als Ziel (`ko.created`, Space-Wechsel …) und in
+    // der historischen Ladebilanz. Sonst bewiese das Fehlen unten nichts.
+    const gespeichert = await mit.services.audit.list();
+    expect(gespeichert.some((e) => e.target === geschuetztId)).toBe(true);
+    expect(JSON.stringify(gespeichert)).toContain(geschuetztId);
 
-    const gesehen: Eintrag[] = [];
-    for (const [wer, kopf] of [
-      ["Ada (ohne Mitgliedschaft)", mit.k.ada],
-      ["Mia (Mitglied)", mit.k.mia],
-    ] as const) {
-      const p = await protokoll(mit.app, kopf);
-      for (const [weg, e] of [
-        ["Liste", p.liste[0] as Eintrag],
-        ["Export", p.export[0] as Eintrag],
-      ] as const) {
-        expect(JSON.stringify(e), `${wer} · ${weg}`).not.toContain(geschuetztId);
-        expect(e.payload, `${wer} · ${weg}`).toEqual({ ansicht: "ausgeblendet", records: 40 });
-        gesehen.push(e);
-      }
+    const ada = await auditAbruf(mit.app, mit.k.ada, geschuetztId);
+    expect(ada.listeRoh).not.toContain(geschuetztId);
+    expect(ada.dateiRoh).not.toContain(geschuetztId);
+    expect(ada.befunde).toEqual({ ids: [] });
+    // Die historische Ladebilanz geht an Ada gar nicht hinaus — ihre Zählwerte umfassen Unsichtbares.
+    expect(ada.liste.some((e) => e.actor === "alt")).toBe(false);
+    // Ada bekommt KEINE umgeschriebene Kette, sondern eine als solche gekennzeichnete Ansicht.
+    expect(ada.datei.format).toBe("klarwerk-audit-ansicht");
+    expect(ada.datei.head).toBeUndefined();
+    expect(ada.datei.inspection).toBeUndefined();
+    for (const e of ada.datei.entries) {
+      expect(e.hash).toBeUndefined();
+      expect(e.prevHash).toBeUndefined();
     }
-    // Gleich für alle — die Ausblendung selbst ist keine Auskunft über die Mitgliedschaft.
-    expect(new Set(gesehen.map((e) => JSON.stringify(e.payload))).size).toBe(1);
+    // Was Ada sehen darf, bleibt: die Anlage des offenen Objekts steht in Liste und Ansicht.
+    expect(ada.liste.some((e) => e.target === mit.offenId)).toBe(true);
+    expect(ada.datei.entries.some((e) => e.target === mit.offenId)).toBe(true);
+    await mit.app.close();
+  });
 
-    // Die GESPEICHERTE Kette ist unverändert und prüfbar.
+  it("Mitglied: berechtigte Einsicht — volle Kette samt historischer Ladebilanz, außerhalb prüfbar", async () => {
+    const mit = await buehne({ mitGeschuetztem: true });
+    const geschuetztId = mit.geschuetztId as string;
+    expect((await laden(mit.app, mit.k.mia)).statusCode).toBe(200);
+    await mit.services.audit.record(alteLadebilanz(geschuetztId));
+
+    const mia = await auditAbruf(mit.app, mit.k.mia, geschuetztId);
+    expect(mia.liste.some((e) => e.target === geschuetztId)).toBe(true);
+    expect(mia.liste.some((e) => e.actor === "alt")).toBe(true);
+    expect(mia.datei.format).toBe("klarwerk-audit-export");
+    const eintraege = mia.datei.entries as AuditEntry[];
+    // Der historische Ladeeintrag steht UNVERÄNDERT in der ausgelieferten Datei …
+    const alt = eintraege.find((e) => e.actor === "alt");
+    expect(alt?.payload.textGeaendert).toEqual([geschuetztId]);
+    // … und genau DIESE Datei rechnet sich außerhalb nach: Kette und jeder Einzelhash.
+    expect(verifyChain(eintraege)).toBe(true);
+    for (const e of eintraege) {
+      const { hash, ...material } = e;
+      expect(hashEntryFuerVersion(material)).toBe(hash);
+    }
+    await mit.app.close();
+  });
+
+  it("die gespeicherte Kette bleibt unverändert prüfbar, auch nach dem Abruf der Leseransicht", async () => {
+    const mit = await buehne({ mitGeschuetztem: true });
+    await mit.services.audit.record(alteLadebilanz(mit.geschuetztId as string));
+    await auditAbruf(mit.app, mit.k.ada, mit.geschuetztId as string);
     const pruefung = await mit.app.inject({
       method: "GET",
       url: "/api/audit/verify",
-      headers: mit.k.ada,
+      headers: mit.k.mia,
     });
     expect(pruefung.statusCode, pruefung.body).toBe(200);
     expect(pruefung.json().ok).toBe(true);
+    expect(verifyChain(await mit.services.audit.list())).toBe(true);
     await mit.app.close();
   });
 });
