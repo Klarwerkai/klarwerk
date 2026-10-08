@@ -457,6 +457,13 @@ const REGISTER: Record<string, Eintrag> = {
     recht: "users.manage",
     grund: "Zugangszustand, Admin.",
   },
+  // R-0170: dieselbe Auskunft für Jira (`services/jira/src/credential-state.ts`) — Namen und
+  // ja/nein je Variable, nie ein Wert, kein Inhalt eines Wissensobjekts.
+  "GET /api/import/jira/zugang": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Zugangszustand, Admin.",
+  },
   "GET /api/reasoner/config": { urteil: "KURATORENTOR", recht: "users.manage", grund: "Admin." },
   "GET /api/library/import/candidates": {
     urteil: "KEIN_KO_INHALT",
@@ -833,6 +840,13 @@ const REGISTER: Record<string, Eintrag> = {
     // R-0145/R-0190: `folder-apply` ist derselbe Übernahmeweg für ein Los eines Ordners — er gibt
     // dieselben Quelldatei-Angaben aus wie `apply`, dazu die Kennungen des Loses.
     "POST /api/admin/import/sharepoint/folder-apply": "users.manage.",
+    // R-0170: die drei Türen des Jira-Imports, dieselbe Bauform wie SharePoint. `issues` liest nur
+    // (Vorgangsliste des Projekts); `apply` und `project-apply` stellen Kandidaten in die
+    // Prüf-Warteschlange. Keine gibt den Inhalt eines Wissensobjekts aus — sie geben Schlüssel,
+    // Titel, Adressen und Stände von QUELLVORGÄNGEN aus, dazu die Zahl der Leserechte.
+    "POST /api/admin/import/jira/issues": "users.manage.",
+    "POST /api/admin/import/jira/apply": "users.manage.",
+    "POST /api/admin/import/jira/project-apply": "users.manage.",
     "PUT /api/reasoner/config": "users.manage.",
     "PUT /api/reasoner/assist-presets": "users.manage.",
     "POST /api/reasoner/test": "users.manage.",

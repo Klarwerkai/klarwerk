@@ -313,6 +313,8 @@ import { i18nRoutes } from "./routes/i18n-routes";
 import { impactRoutes } from "./routes/impact-routes";
 import { importAccessRoutes } from "./routes/import-access-routes";
 import { importRunRoutes } from "./routes/import-run-routes";
+// R-0170: der Jira-Import — Vorgänge und Epics eines Projekts, Projektrollen als Leserechte.
+import { jiraImportRoutes } from "./routes/jira-import-routes";
 import { kantenRoutes } from "./routes/kanten-routes";
 import { kenntnisnahmeRoutes } from "./routes/kenntnisnahme-routes";
 import { klaraAiRoutes } from "./routes/klara-ai-routes";
@@ -1186,14 +1188,16 @@ export function assembleServices(
   //
   // Hier stand „künftig: || jiraEnabled || …". Der Satz beschrieb einen Plan und ist mit
   // SharePoint/OneDrive eingelöst; als Kommentar STEHEN ZU BLEIBEN hiesse, dass die Zeile weiter
-  // eine Zukunft ankündigt, die schon Gegenwart ist. Jira bleibt eine mögliche dritte Quelle —
-  // sie OR-t dann genauso ihren eigenen Schalter hinzu.
+  // eine Zukunft ankündigt, die schon Gegenwart ist.
+  //
+  // R-0170: Jira ist die dritte Quelle und OR-t seinen eigenen Schalter genauso hinzu.
   //
   // WARUM DAS ODER HIER NOTWENDIG IST UND NICHT NUR ORDENTLICH: Ohne es schriebe der Import-Kern
-  // für einen Betrieb, der NUR SharePoint angebunden hat, gar keinen Herkunfts-Anker
+  // für einen Betrieb, der NUR SharePoint (oder nur Jira) angebunden hat, gar keinen Herkunfts-Anker
   // (`acceptToKo`: `const externalId = this.externalUpsert ? item.externalId : undefined`). Das
-  // Wissensobjekt entstünde, verlöre aber lautlos seine Quelle.
-  const externalImportEnabled = schalterAn("confluenceImport") || schalterAn("sharepointImport");
+  // Wissensobjekt entstünde, verlöre aber lautlos seine Quelle — und mit ihr die Leserechte.
+  const externalImportEnabled =
+    schalterAn("confluenceImport") || schalterAn("sharepointImport") || schalterAn("jiraImport");
   // JOB 4155 (WG-LUECKEN): DER KANTENBESTAND ENTSTEHT JETZT HIER, EINE STUFE FRÜHER — und zwar
   // GENAU EINMAL. Er stand bis hierher erst im `return`-Objekt weiter unten (`kanten:` dort), und
   // damit konnte ihn der `LibraryService` nicht bekommen, der davor gebaut wird. Ihn dort ein
@@ -2018,6 +2022,11 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "DraftStaleError",
   "ExternalSearchError",
   "FencingVeraltetError",
+  // R-0170: der EINE Fehlertyp des Jira-Moduls (`services/jira/src/rest-client.ts`). ENTSCHEIDUNG:
+  // der Name darf ins Protokoll — dieselbe Klasse Betriebsauskunft wie `SharePointRequestError`
+  // weiter unten: die Lage steckt im Feld `lage`, die Meldung ist ein fester Satz ohne Host,
+  // Adresse oder Zugangsmerkmal.
+  "JiraRequestError",
   "KlaraError",
   // JOB 4151: aus `services/knowledge-object/src/kanten-types.ts` — der Fachfehler der kuratierten
   // Beziehungen. ENTSCHEIDUNG: der Name darf ins Protokoll. Er trägt, wie jeder Nachbar hier,
@@ -3704,7 +3713,10 @@ export function buildApp(
   // Importweg, der Läufe schreibt — nicht nur hinter Confluence. Bis R-0145 hing er allein am
   // Confluence-Schalter: eine Instanz nur mit SharePoint gab eine `importId` heraus, hinter der eine
   // 404 stand. Sind alle Importwege aus, gibt es keine Läufe und damit auch keinen Leseweg.
-  if (schalterAn("confluenceImport") || schalterAn("sharepointImport")) {
+  // R-0170: der Jira-Import schreibt Läufe genauso und gehört deshalb in dieselbe Bedingung.
+  const importLaeufeLesbar =
+    schalterAn("confluenceImport") || schalterAn("sharepointImport") || schalterAn("jiraImport");
+  if (importLaeufeLesbar) {
     app.register(
       importRunRoutes({
         importRuns: services.importRuns,
@@ -3729,6 +3741,19 @@ export function buildApp(
         guards,
         // Der Übernahmelauf bekommt seine Identität VOR dem ersten Effekt (KW-S4-26 §133) — und
         // erst dadurch kann die Zugangs-Auskunft „zuletzt erfolgreich importiert" belegen.
+        importRuns: services.importRuns,
+      }),
+    );
+  }
+
+  // R-0170: der Jira-Import — Vorgänge und Epics eines Projekts als Kandidaten, die Projektrollen
+  // als Leserechte am Herkunftsanker. Hinter SEINEM eigenen Schalter; Schalter aus, Route existiert
+  // nicht. Dieselben Abhängigkeiten wie der SharePoint-Weg darüber.
+  if (schalterAn("jiraImport")) {
+    app.register(
+      jiraImportRoutes({
+        library: services.library,
+        guards,
         importRuns: services.importRuns,
       }),
     );
