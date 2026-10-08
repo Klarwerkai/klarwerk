@@ -252,7 +252,8 @@ describe("Auswahl der Arbeit (rein)", () => {
     expect(hintergrundArt(gescheitert("unreachable"), jetzt)).toBe("nachholen");
     expect(hintergrundArt(gescheitert("model-error"), jetzt)).toBe("nachholen");
     expect(hintergrundArt(gescheitert("confidential"), jetzt)).toBeNull();
-    expect(hintergrundArt({ ...ko, aiCheck: undefined }, jetzt)).toBeNull();
+    const { aiCheck: _ohneVermerk, ...ohneVermerk } = ko;
+    expect(hintergrundArt(ohneVermerk, jetzt)).toBeNull();
     // Ein frischer pending-Vermerk gehört dem laufenden Worker — erst nach der Stale-Frist nachholen.
     const frisch: KnowledgeObject = {
       ...ko,
