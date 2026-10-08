@@ -522,6 +522,27 @@ describe("R-1020 / R-1695 · die Antwortkarte trägt ihre Stufe — gemessen am 
     ziel.remove();
   });
 
+  it("JOB 2660 · die Empfehlung nennt kein Validierungswort — auch nicht verneint", async () => {
+    // Nacharbeit 3: auf der Klara-Hilfe (Rückfall ohne Modell → Stufe „Empfehlung") stand
+    // „Empfehlung, nicht validiert" — und JOB 2660 schliesst das Wort auf einer Fläche ohne
+    // geprüfte Quelle aus. Hier wird der gerenderte Text der Marke in allen drei Sprachen gemessen.
+    for (const sprache of ["de", "en", "nl"]) {
+      await i18n.changeLanguage(sprache);
+      const ziel = document.createElement("div");
+      document.body.appendChild(ziel);
+      const root = createRoot(ziel);
+      await act(async () => {
+        root.render(createElement(ErgebnisStufeMarke, { stufe: "empfehlung" }));
+      });
+      expect(ziel.textContent ?? "", `${sprache}: Empfehlung`).not.toMatch(
+        /valid|gevalideerd|gesichert|verified|gecontroleerd/i,
+      );
+      act(() => root.unmount());
+      ziel.remove();
+    }
+    await i18n.changeLanguage("de");
+  });
+
   it("die Entwurfsoptik der Karte ist als CSS-Regel vorhanden (Quelltextprüfung)", () => {
     const css = lies("apps/web/src/index.css");
     const start = css.indexOf(".print-area[data-reasoner-entwurf]");

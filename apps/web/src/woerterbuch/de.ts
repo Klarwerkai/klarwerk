@@ -7162,8 +7162,10 @@ const de = {
     "Hier kann eine KI mitarbeiten — von ihr erzeugte Inhalte sind gekennzeichnet.",
   // R-1020 / R-1695 (Grundsatz G-3): die drei Stufen jedes Ergebnisses. Der Entwurf trägt den
   // Wortlaut der Quelle. `reasoner.draftLabel` bleibt als Bestandstext unverändert stehen.
+  // Die Empfehlung sagt „ungeprüft" statt „nicht validiert": JOB 2660 hält fest, dass auf einer
+  // Fläche ohne geprüfte Quelle das Wort „validiert" GAR NICHT steht — auch nicht verneint.
   "ergebnisStufe.entwurf": "Reasoner-Entwurf, nicht validiert",
-  "ergebnisStufe.empfehlung": "Empfehlung, nicht validiert",
+  "ergebnisStufe.empfehlung": "Empfehlung, ungeprüft",
   "ergebnisStufe.validiert": "Validiert",
 
   // ==============================================================================================

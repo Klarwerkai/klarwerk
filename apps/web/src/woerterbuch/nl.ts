@@ -5599,7 +5599,7 @@ const nl: typeof de = {
     "Door kunstmatige intelligentie gegenereerd — controleer dit vakinhoudelijk.",
   "ai.surfaceNotice": "Hier kan een AI meewerken — door haar gegenereerde inhoud wordt gemarkeerd.",
   "ergebnisStufe.entwurf": "Reasoner-concept, niet gevalideerd",
-  "ergebnisStufe.empfehlung": "Aanbeveling, niet gevalideerd",
+  "ergebnisStufe.empfehlung": "Aanbeveling, ongetoetst",
   "ergebnisStufe.validiert": "Gevalideerd",
   "ai.costHint": "Eén klik kan een echte, betaalde cloud-AI-aanvraag veroorzaken.",
   "ai.exportNotice":
