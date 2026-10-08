@@ -17,9 +17,9 @@ Legende: **geliefert** = im Code mit Test belegt · **dieser Lauf** = in diesem 
 | R-0144 Importlauf mit Zustand, Ergebnis, eigener Kennung | geliefert | Laufdomäne `ImportRun` mit neun kanonischen Zuständen, Zählern, `failureCode`/`failureReason` (`services/library-analytics/src/types.ts`, AUFTRAG-144; Ablage `repo.ts`/`repo-pg.ts`, Migration `IMPORT_RUN_SCHEMA`). Läufe entstehen auf allen vier Übernahmewegen: Confluence-Gesamtlauf, Confluence-Auswahl `/apply` (JOB 3288, `tests/import-volltext/selektivimport-hat-eine-lauf-kennung.test.ts`), SharePoint-Auswahl und SharePoint-Ordnerlos (JOB 4086, `sharepoint-import-routes.ts`). |
 | R-0144 Lauf lesbar und weiterverarbeitbar | geliefert | `GET /api/admin/import/runs/:importId` und `…/result` (`services/app/src/routes/import-run-routes.ts`, AUFTRAG 148; `tests/app/w2a-import-run-routes-148.test.ts`); der Kopf der Importseite liest daraus den letzten erfolgreichen Lauf (`import-access-service.ts`, `tests/import-volltext/kopf-zeigt-den-selektivimport.test.tsx`). |
 | R-0144 Abbruch samt Grund, wenn Zeit oder Datenvolumen nicht reichen | Gesamtlauf geliefert; **Übernahmewege dieser Lauf** | Gesamtlauf: `CONFLUENCE_TIMEOUT` / `CONFLUENCE_BUDGET` / `CONFLUENCE_RESPONSE_TOO_LARGE` am Lauf (R-0159, `tests/confluence-import-bedienung/folgeabruf-zeitlimit.test.tsx` Z1–Z3). **Dieser Lauf:** Confluence `/apply` und SharePoint-Übernahme schreiben den Grund jetzt ebenfalls an den gespeicherten Lauf (s. unten). |
-| R-0144 dauerhafter Datensatz zur externen Quelle | Confluence geliefert; **SharePoint dieser Lauf** | `ExternalSourceRecord` (unveränderliche Quellrevision, `types.ts` W2-A), geschrieben beim Einreihen im Namen eines Laufs (`laufbindung.ts`, `LibraryService.bindeAnLauf`) und bei der Annahme (`quellrevisionFestschreiben`); lesbar über `GET /api/admin/import/source-records/:id`. Confluence: `tests/confluence-quellabgleich/r0142-ergebnisweg.test.ts` E1. **Dieser Lauf:** SharePoint reiht mit Laufbindung ein. |
+| R-0144 dauerhafter Datensatz zur externen Quelle | Confluence geliefert; **SharePoint offen** | `ExternalSourceRecord` (unveränderliche Quellrevision, `types.ts` W2-A), geschrieben beim Einreihen im Namen eines Laufs (`laufbindung.ts`, `LibraryService.bindeAnLauf`) und bei der Annahme (`quellrevisionFestschreiben`); lesbar über `GET /api/admin/import/source-records/:id`. Confluence: `tests/confluence-quellabgleich/r0142-ergebnisweg.test.ts` E1. SharePoint: nicht lösbar ohne Entscheidung, s. Widerspruch 9. |
 | R-0144 Quelle und Fassung am Wissensobjekt | geliefert | Herkunftsanker `provider` + `externalId` + `sourceVersion` + `sourceRecordId` + `importRunId` (`buildSource`; R-0142 Lauf 5 R3 B11); `GET /api/admin/import/knowledge/:koId`, Anzeige `apps/web/src/components/bibliothek/ImportErgebnis.tsx`. SharePoint-Anker samt Fassung nach Neustart: `tests/sharepoint-inhalt/weg-am-draht-und-neustart.test.ts` W1. |
-| R-0701 ein Weg zum Ergebnis eines Importlaufs | geliefert, **dieser Lauf für SharePoint vervollständigt** | Ein Vertrag, gebaut an einer Stelle: `laufNachAussen` (Lauf), `quelleNachAussen` (Quellrevision), `elementNachAussen` (Element) in `import-run-routes.ts`. Die Ergebnisfrage beantwortet `GET /api/admin/import/runs/:importId/result` quellneutral. Bis zu diesem Lauf lieferte sie für SharePoint-Läufe nach der Annahme `items: []`; jetzt dieselbe Antwort wie für Confluence. |
+| R-0701 ein Weg zum Ergebnis eines Importlaufs | geliefert für den Vertrag; **SharePoint-Elemente offen** | Ein Vertrag, gebaut an einer Stelle: `laufNachAussen` (Lauf), `quelleNachAussen` (Quellrevision), `elementNachAussen` (Element) in `import-run-routes.ts`. Die Ergebnisfrage beantwortet `GET /api/admin/import/runs/:importId/result` quellneutral; für SharePoint-Läufe trägt die Antwort Zustand, Zähler und (seit diesem Lauf) den Volumengrund, aber `items: []` — s. Widerspruch 9. |
 | P-IMPORT-REST Lauf-ID des Selektivimports in der Oberfläche | geliefert (JOB 3357) | Bilanz der Übernahme nennt jede Lauf-Kennung vollständig, abschreibbar und mit Ausgang (`apps/web/src/components/ImportGroups.tsx`, `LaufKennungen`/`LaufAusgang`); `tests/import-lauf-kennung/*` (u. a. `bilanz-zeigt-die-laufkennung.test.tsx`, `zwei-aufrufe-zwei-kennungen.test.tsx`, `ohne-lauf-keine-kennung.test.tsx`). |
 | P-IMPORT-REST exakter Seitentitel als Freitext → 0 Treffer | geliefert (JOB 3356) | Die KI-Deutung bleibt unverändert sichtbar, daneben steht der deterministische Titelbefund `titleFallback` mit eigener Trefferzahl und übernehmbaren Kriterien (`confluence-import-routes.ts` `/select`; `tests/import-freitext-titel/titel-satz-findet-die-seite.test.ts`, `titel-filter-ist-deterministisch.test.ts`, Fläche `auswahl-sagt-was-die-ki-verstand.test.tsx`). |
 
@@ -38,16 +38,14 @@ Legende: **geliefert** = im Code mit Test belegt · **dieser Lauf** = in diesem 
    `services/app/src/routes/sharepoint-import-routes.ts`). `leer`/`unlesbar` sind keine Grenze von
    Zeit oder Volumen und bleiben ohne Code. Die HTTP-Ausgänge der Türen (JOB 4232: „kein neuer
    Fehlercode“) sind unverändert; der neue Code steht nur am Lauf.
-3. **SharePoint-Übernahme mit Laufbindung.** `createImportCandidates` bekommt jetzt den Lauf
-   (`importId` + Position der Kennung), genau wie Confluence `/apply`. Damit hält der Lauf je Datei
-   die Quellrevision fest, und die Annahme schreibt die Elementreferenz. Der Dublettenport bleibt
-   wie zuvor leer (Register `ALTFAELLE` in `tests/re-import-dubletten/port-aufrufer-waechter.test.ts`
-   unverändert zutreffend).
+*Nacharbeit 1 — zurückgenommen:* Eine Laufbindung der SharePoint-Übernahme (wie Confluence
+`/apply`) machte am Kandidaten `e915a112` jede SharePoint-Übernahme mit echten Fassungen rot
+(`LibraryError`, 25 Fälle in `tests/sharepoint-*`). Sie ist entfernt; der SharePoint-Aufruf von
+`createImportCandidates` ist wieder der Ausgangsstand. Grund und offene Entscheidung: Widerspruch 9.
 
 Test: `tests/import-laufprotokoll/abbruchgrund-am-lauf.test.ts` — C1–C3 (Confluence `/apply`:
 Grenzgrund, kein erfundener Grund, Kalibrierung ohne Störung), S1–S2 (SharePoint: Volumengrund,
-leer ist keine Grenze), S3 (SharePoint: Ergebnisroute nach Annahme mit Element `CREATED`, Objekt
-und lesbarer Quellrevision). Gemessen wird jeweils am gespeicherten Lauf über den echten Leseweg.
+leer ist keine Grenze). Gemessen wird jeweils am gespeicherten Lauf über den echten Leseweg.
 
 Die eingefrorenen Dateien des Laufvertrags (FREEZE-144: `library-analytics/index.ts`,
 `src/types.ts`, `src/repo.ts`, `src/repo-pg.ts`) sind **nicht** geändert.
@@ -94,9 +92,22 @@ Die eingefrorenen Dateien des Laufvertrags (FREEZE-144: `library-analytics/index
    erneute Livebeobachtung auf einer laufenden Instanz liegt **nicht** vor und wurde in diesem Lauf
    nicht gemacht. Den Commit `169be6c5` konnte dieser Lauf nicht nachsehen (keine
    Git-Befehle in dieser Sitzung).
-7. **PostgreSQL nicht lokal gemessen.** Die Laufbindung des SharePoint-Wegs schreibt in
-   `PgExternalSourceRepo` und `PgImportRunRepo` (beide unverändert). Der PG-Weg ist im Bestand durch
-   `services/library-analytics/src/repo-pg.integration.test.ts` belegt; für diesen Lauf ist kein
-   PG-Lauf bestellt.
+7. **PostgreSQL nicht gemessen.** Die Änderungen schreiben nur die vorhandenen Felder
+   `failureCode`/`failureReason` über `advance` (unverändert); für diesen Lauf ist kein PG-Lauf
+   bestellt.
 8. **Echte Quellsysteme.** Weder eine echte Confluence-Instanz noch ein echter Microsoft-365-Mandant
    wurde angesprochen; Grenzfälle sind über Adapterattrappen gemessen.
+9. **SharePoint-Fassung gegen Revisionsidentität (offene Entscheidung).** SharePoint führt als
+   `sourceVersion` den Änderungszeitpunkt in Unix-Sekunden (z. B. `1789029000`,
+   `tests/sharepoint-onedrive-import/wiederholimport-am-draht.test.ts` W2-REST). Die Quellrevision
+   erlaubt höchstens `MAX_SOURCE_VERSION = 999_999_999` (`library-analytics/src/repo.ts`, in PG als
+   `^[0-9]{1,9}$`; FREEZE-144). Ein `ExternalSourceRecord` und damit Elementreferenzen in
+   `/runs/:id/result` sind für SharePoint deshalb ohne Vertragsänderung nicht schreibbar; der
+   Versuch in diesem Auftrag brach die bestehende Übernahme. Zu entscheiden ist entweder eine andere
+   Fassungszählung im SharePoint-Mapper oder eine Erweiterung der Revisionsidentität (Freigabe nach
+   FREEZE-144). Diese Wahl trifft dieser Auftrag nicht.
+10. **Fremde Basisfehler im Wächter `services/app/src/build-app.test.ts`.** Am Kandidaten rot:
+   Fehlerklassen `HaengendeSitzungError`, `LmsExportError` und zwölf Codes (u. a.
+   `ATTACHMENTS_NOT_INCLUDED`, `SCHUTZDATEN`, `TOO_MANY_SOURCES`) aus `services/db-tx`,
+   `services/output` u. a. fehlen auf den Loglisten. Keiner stammt aus dieser Lieferung; der
+   Wächter ist unverändert und aus dieser Prüfauswahl herausgenommen.

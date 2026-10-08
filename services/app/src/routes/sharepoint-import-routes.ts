@@ -866,16 +866,7 @@ async function fuehreUebernahmeAus(
           bereitsInQueue += 1;
           continue;
         }
-        // R-0144 / R-0701: an die Kennung dieser Übernahme gebunden, Ordnung = Position der Kennung
-        // im Auftrag — derselbe Weg wie Confluence `/apply`. Erst damit hält der Lauf die
-        // Quellrevision fest und die Entscheidung schreibt ihre Elementreferenz, sodass dieselbe
-        // Ergebnisroute (`GET /api/admin/import/runs/:importId/result`) auch hier antwortet.
-        const angelegt = await deps.library.createImportCandidates(
-          [item],
-          userId,
-          undefined,
-          lauf !== null ? { lauf: { importId: lauf, ordinal: ids.indexOf(id) } } : {},
-        );
+        const angelegt = await deps.library.createImportCandidates([item], userId);
         if (angelegt.length > 0) {
           eingereiht += 1;
           // JOB 4125: Stand dieser Übernahme gegen den Stand des Vorgangs, der zu DERSELBEN
