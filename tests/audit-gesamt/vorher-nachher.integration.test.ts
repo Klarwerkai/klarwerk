@@ -265,7 +265,14 @@ describe("Vorher/Nachher auf PostgreSQL · dieselben Sollprüfungen ohne und mit
     for (const p of pools.splice(0)) {
       await p.end().catch(() => undefined);
     }
+    // `Pool.end()` ist fertig, sobald die Clients aus dem Pool genommen sind — nicht erst, wenn ihre
+    // Verbindungen geschlossen sind. Ein sofortiges `DROP … WITH (FORCE)` beendet die noch
+    // schließenden Sitzungen mit 57P01, und der Client meldet das als unbehandelten Fehler
+    // (Nacharbeit 18, aufnahme:20260922:gesamt-leserechte). Erst warten, dann löschen.
     for (const db of datenbanken.splice(0)) {
+      if (verwaltung) {
+        await warteBisOhneVerbindung(verwaltung, db);
+      }
       await verwaltung?.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`).catch(() => undefined);
     }
     await verwaltung?.end();
@@ -274,6 +281,20 @@ describe("Vorher/Nachher auf PostgreSQL · dieselben Sollprüfungen ohne und mit
       rmSync(o, { recursive: true, force: true });
     }
   });
+
+  /** Wartet (höchstens ~10 s, ohne Ausnahme), bis keine Sitzung mehr an `db` hängt. */
+  async function warteBisOhneVerbindung(admin: Pool, db: string): Promise<void> {
+    for (let versuch = 0; versuch < 100; versuch++) {
+      const { rows } = await admin.query<{ n: number }>(
+        "SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
+        [db],
+      );
+      if ((rows[0]?.n ?? 0) === 0) {
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
 
   function datenbankDa(ctx: { skip: () => void }): void {
     if (!verwaltung) {
