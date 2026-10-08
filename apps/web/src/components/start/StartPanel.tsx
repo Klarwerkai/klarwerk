@@ -517,7 +517,9 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
       <div>
         <h3 className="text-[14px] font-semibold text-ink">{t("start.stufe2.title")}</h3>
         <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
-          {t("start.stufe2.body", { features: stufe2Features, toggle: t("role.stage2") })}
+          {/* R-0923: der Satz nennt den heutigen Ort des Schalters (System), nicht die entfernte
+              Seitenleiste — `texte/zweitestufe.ts`. */}
+          {t("zweitestufe.start.body", { features: stufe2Features, toggle: t("role.stage2") })}
         </p>
       </div>
     );

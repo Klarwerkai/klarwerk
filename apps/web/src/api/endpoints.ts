@@ -745,7 +745,8 @@ export const endpoints = {
     summary: () => api.get<GapSummary>("/gaps/summary"),
     // Detail-Liste: der Server redigiert den Fragetext adressatengerecht (redacted-Marker).
     list: () => api.get<Gap[]>("/gaps"),
-    close: (id: string) => api.put<Gap>(`/gaps/${id}`, { close: true }),
+    // R-0846 / L6: geschlossen wird nur mit dem Wissensobjekt, das die Lücke beantwortet.
+    close: (id: string, koId: string) => api.put<Gap>(`/gaps/${id}`, { close: true, koId }),
     assign: (id: string, expertId: string) => api.put<Gap>(`/gaps/${id}`, { expertId }),
     // SCRUM-115 / FE-RISK-02: Priorität der Wissenslücke setzen.
     setPriority: (id: string, priority: GapPriority) => api.put<Gap>(`/gaps/${id}`, { priority }),
@@ -851,8 +852,14 @@ export const endpoints = {
   },
   ask: {
     // FR-I18N-01: aktuelle UI-Sprache mitsenden (Default serverseitig "de").
-    ask: (question: string, locale?: ReasonerLocale) =>
-      api.post<AskResponse>("/ask", { question, ...(locale ? { locale } : {}) }),
+    // R-0348: `thread` = die vorangegangenen Fragen der Fragestrecke (lib/gespraechsfaden.ts).
+    // Ohne Faden bleibt der Körper wie bisher.
+    ask: (question: string, locale?: ReasonerLocale, thread?: readonly string[]) =>
+      api.post<AskResponse>("/ask", {
+        question,
+        ...(locale ? { locale } : {}),
+        ...(thread && thread.length > 0 ? { thread } : {}),
+      }),
     // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang
     // zurück — ohne gültigen, dieses KO belegenden Receipt antwortet der Server 403.
     helpful: (koId: string, receipt: string) => api.post<void>("/ask/helpful", { koId, receipt }),

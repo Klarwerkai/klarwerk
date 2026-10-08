@@ -90,3 +90,32 @@ export function aiModelUsable(
 ): boolean {
   return status?.active === true && status.reachable !== "unreachable";
 }
+
+// ================================================================================================
+// R-1040 — EIN SATZ FÜR DEN GESPERRTEN KI-KNOPF, ÜBERALL DIESELBE REGEL.
+// ================================================================================================
+//
+// Ein gesperrter KI-Knopf hat drei mögliche Gründe, und sie lesen sich verschieden:
+//   · Der Administrator hat die KI ABGESCHALTET (`kiAbgeschaltet`, D5) — eine Entscheidung.
+//   · Der Status ist UNBEKANNT (Abfrage gescheitert, keine Daten, JOB 3220) — eine Störung der Auskunft.
+//   · Für die Aufgabe ist KEIN MODELL nutzbar — eine Störung oder fehlende Einrichtung.
+// `/fragen` (`Ask.tsx`) und das Fragen-Tutorial (`FragenDemo.tsx`) unterschieden das schon; das
+// Klara-Panel sagte in allen drei Lagen „kein Modell aktiv" — auch dann, wenn der Administrator die
+// KI bewusst abgeschaltet hatte. Diese Funktion ist die EINE Regel dafür.
+//
+// WARUM DIE ABSCHALTUNG NUR FÜR `answer` GILT: der Server meldet `kiAbgeschaltet` aus der
+// gespeicherten Adminwahl für genau diese Aufgabe (`services/reasoner/src/service.ts`,
+// `kiAbschaltung()`), und nur der Antwortweg sperrt am Chokepoint (`kiSperre = task === "answer"`).
+// Für eine andere Aufgabe hiesse „abgeschaltet" etwas, was der Server nicht gesagt hat.
+export type AiSperrHinweisKey = "d5kiaus.hinweis" | "ai.statusUnknown.hint" | "ai.unavailable.hint";
+
+export function aiSperrHinweisKey(
+  status: Pick<ReasonerStatus, "kiAbgeschaltet"> | undefined,
+  task: ReasonerTask,
+  statusUnknown: boolean,
+): AiSperrHinweisKey {
+  if (task === "answer" && status?.kiAbgeschaltet === true) {
+    return "d5kiaus.hinweis";
+  }
+  return statusUnknown ? "ai.statusUnknown.hint" : "ai.unavailable.hint";
+}

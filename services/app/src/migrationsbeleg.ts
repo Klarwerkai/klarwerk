@@ -181,6 +181,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   { stufe: "KO_METADATA_PROJECTION_SCHEMA", risiko: "ADDITIV" },
   { stufe: "KO_PROJECTION_CONTROL_SCHEMA", risiko: "ADDITIV" },
   { stufe: "KO_EVIDENCE_SCHEMA", risiko: "ADDITIV" },
+  // R-0846 / L6: zwei Fremdschlüssel (`NOT VALID`, hinter Existenzprüfung, `duplicate_object`
+  // abgefangen). ADDITIV, nachgezählt: kein RISIKOMARKER — `ON DELETE CASCADE` ist eine Regel für
+  // künftige Löschungen, kein `DELETE FROM`; der Altbestand wird weder geprüft noch geändert.
+  { stufe: "KO_FREMDSCHLUESSEL_SCHEMA", risiko: "ADDITIV" },
   // JOB 4151: die kuratierten Beziehungen (`ko_kanten`) und die Bindung ihrer Wiederholschlüssel
   // (`ko_kanten_beitrag`, BEN R3). ADDITIV, und zwar nachgezählt statt behauptet: von den sechs
   // RISIKOMARKERN oben trifft KEINER — die Stufe besteht aus ZWEI `CREATE TABLE IF NOT EXISTS`,

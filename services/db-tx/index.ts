@@ -2,6 +2,16 @@
 // Transaktions-Kernel für Chokepoints, die über Modulgrenzen hinweg atomar committen/rollbacken
 // müssen (z. B. knowledge-object.purgeKo: repo.delete + audit.record). Siehe src/tx.ts.
 export { type TxContext, type Queryable, poolQueryable, pgQueryable, withPgTx } from "./src/tx";
+// R-1437 / I10: der Vertrag für eng begrenzte, nur lesende, nichtinteraktive Prüfungen.
+export {
+  HaengendeSitzungError,
+  PRUEF_GRENZEN,
+  type PruefErgebnis,
+  type PruefGrenzen,
+  SQL_SITZUNGSLAGE,
+  begrenztePruefung,
+  klammerAnweisungen,
+} from "./src/begrenzte-pruefung";
 // WP-SHIP8-CLOSE-6 (bens GELB): harte Freigabesicherung für destruktive Pg-Integrationssuiten —
 // gemeinsam genutzt (knowledge-object- und audit-Suite), damit die Regel nirgends divergiert.
 export { guardedLocalPgTestUrl } from "./src/pg-test-guard";
@@ -10,6 +20,14 @@ export { guardedLocalPgTestUrl } from "./src/pg-test-guard";
 // nach einem Absturz sagen kann, ob der Bestand noch steht. Nur die Kompositionswurzel bindet sie
 // (s. services/app/src/build-app.ts) — kein Adapter kennt sie.
 export { gatedPool } from "./src/gated-pool";
+// R-0776 / R-0798: Zeitgrenzen des einen Vorrats und die saubere Rückgabe ausgeliehener Verbindungen.
+export {
+  type Ausleihe,
+  LEERLAUF_IN_TRANSAKTION_MS,
+  VORRAT_WARTEZEIT_MS,
+  leiheAus,
+  vorratsKonfiguration,
+} from "./src/vorrat";
 export {
   BestandsresetLaeuftError,
   SPERRSCHLUESSEL_BESTANDSRESET,

@@ -90,6 +90,9 @@ export {
   // an einem eigens benannten Pin (T-M-3, services/app/src/db.migrate.test.ts).
   KO_SICHTBARKEIT_SCHEMA,
   KO_VERSIONS_SCHEMA,
+  // R-0846 / L6: Fremdschlüssel von Fassungen und Belegen auf `kos` (nach KO_EVIDENCE_SCHEMA).
+  KO_FREMDSCHLUESSEL_SCHEMA,
+  KO_FREMDSCHLUESSEL,
   // AUFNAHME 20260922 (B2): der Papierkorb-Ausdruck für den SQL-Trim in services/app.
   sqlDeletedAtLeer,
 } from "./src/repo-pg";
