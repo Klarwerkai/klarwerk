@@ -43,8 +43,16 @@
 // ================================================================================================
 //
 // Ein Vorgang hat keine Revisionsnummer; er hat `updated`. Der Quellstand ist dieser Zeitpunkt IN
-// SEKUNDEN seit 1970 — dieselbe Ableitung wie bei SharePoint (`sharepointQuellstand`). Fehlt der
-// Zeitpunkt oder ist er unlesbar, FEHLT das Feld.
+// MINUTEN seit 1970. Fehlt der Zeitpunkt oder ist er unlesbar, FEHLT das Feld.
+//
+// WARUM MINUTEN UND NICHT SEKUNDEN (Nacharbeit 1, gemessener Befund): Der Import-Kern weist einen
+// Ankereintrag mit einer Fassung über `MAX_SOURCE_VERSION` = 999_999_999 ab
+// (`library-analytics/src/repo.ts`, geprüft in `pruefeAnkerEintrag`) — die Grenze schützt die
+// `::int`-Spalte. Sekunden seit 1970 liegen 2026 bei rund 1,79 Milliarden; JEDER Vorgang wurde damit
+// als `LibraryError` abgewiesen, und kein Kandidat entstand. Minuten liegen 2026 bei rund 29,8
+// Millionen und bleiben bis ins Jahr ~3870 unter der Grenze. DIE GRENZE DIESER WAHL, ausdrücklich:
+// zwei Änderungen desselben Vorgangs in DERSELBEN Minute ergeben denselben Quellstand — wurde
+// dazwischen übernommen, gilt die zweite Änderung erst mit der nächsten späteren Änderung als neuer.
 
 import type { Confidentiality, KoSourceRestrictions } from "../../knowledge-object";
 import type { ImportItem } from "../../library-analytics";
@@ -85,10 +93,10 @@ export function jiraZeitpunkt(roh: string | undefined): string | undefined {
   return Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : undefined;
 }
 
-/** Der Quellstand eines Vorgangs — Sekunden seit 1970, oder `undefined` (nie eine Ersatzzahl). */
+/** Der Quellstand eines Vorgangs — Minuten seit 1970, oder `undefined` (nie eine Ersatzzahl). */
 export function jiraQuellstand(issue: JiraIssue): number | undefined {
   const iso = jiraZeitpunkt(issue.fields?.updated);
-  return iso === undefined ? undefined : Math.floor(Date.parse(iso) / 1000);
+  return iso === undefined ? undefined : Math.floor(Date.parse(iso) / 60_000);
 }
 
 /**

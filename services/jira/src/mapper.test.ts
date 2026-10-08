@@ -47,7 +47,7 @@ describe("R-0170 · mapJiraIssueToImportItem", () => {
       tags: ["Story", "wartung", "abfuellung"],
       confidentiality: "intern",
       sourceRestrictions: { users: ["acc-1", "jdoe"], groups: ["wartung"] },
-      sourceVersion: Math.floor(Date.parse("2026-09-01T08:00:00.000Z") / 1000),
+      sourceVersion: Math.floor(Date.parse("2026-09-01T08:00:00.000Z") / 60_000),
       updatedAt: "2026-09-01T08:00:00.000Z",
       textCodec: "decoded",
     });
@@ -95,5 +95,21 @@ describe("R-0170 · mapJiraIssueToImportItem", () => {
     expect(jiraZeitpunkt("2026-09-01T10:00:00.000+0200")).toBe("2026-09-01T08:00:00.000Z");
     expect(jiraZeitpunkt("kein Datum")).toBeUndefined();
     expect(jiraQuellstand({ key: "WART-3", fields: { updated: "" } })).toBeUndefined();
+  });
+
+  it("der Quellstand passt in die Fassungsgrenze des Import-Kerns — sonst entstünde kein Kandidat", () => {
+    // Nacharbeit 1: `pruefeAnkerEintrag` (library-analytics) weist Fassungen über
+    // `MAX_SOURCE_VERSION` = 999_999_999 (`library-analytics/src/repo.ts`) ab. Sekunden seit 1970
+    // lagen darüber; Minuten liegen weit darunter — auch für einen Zeitpunkt in ferner Zukunft.
+    const grenze = 999_999_999;
+    for (const updated of ["2026-09-01T10:00:00.000+0200", "2999-12-31T23:59:59.000+0000"]) {
+      const stand = jiraQuellstand({ key: "WART-4", fields: { updated } });
+      expect(Number.isInteger(stand), updated).toBe(true);
+      expect(stand ?? Number.POSITIVE_INFINITY, updated).toBeLessThanOrEqual(grenze);
+    }
+    // Und er wächst weiterhin mit der Änderung — eine Minute später ist ein höherer Stand.
+    const frueher = jiraQuellstand({ key: "WART-5", fields: { updated: "2026-09-01T10:00:00Z" } });
+    const spaeter = jiraQuellstand({ key: "WART-5", fields: { updated: "2026-09-01T10:01:00Z" } });
+    expect((spaeter ?? 0) > (frueher ?? 0)).toBe(true);
   });
 });
