@@ -1911,6 +1911,22 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
     if (ts.isVariableDeclaration(p) && p.initializer === k && ts.isIdentifier(p.name)) {
       return verwendungen(p, p.name.text).some((v) => istPropsObjekt(v, tiefe + 1));
     }
+    // Nacharbeit 21 (ben): eine SPÄTERE Zuweisung `q = p` macht `q` ebenso zum Träger dieses
+    // Objekts wie `const q = p` — fliesst `q` in einen Spread, dann auch dieses Objekt.
+    if (
+      ts.isBinaryExpression(p) &&
+      p.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      p.right === k &&
+      ts.isIdentifier(p.left)
+    ) {
+      const ziel = p.left;
+      return sichtbareDeklarationen(deklarationen, ziel).some(
+        (d) =>
+          ts.isVariableDeclaration(d) &&
+          ts.isIdentifier(d.name) &&
+          verwendungen(d, d.name.text).some((v) => v !== ziel && istPropsObjekt(v, tiefe + 1)),
+      );
+    }
     return false;
   };
 

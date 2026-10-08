@@ -1380,6 +1380,37 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     expect(rot).toHaveLength(3);
   });
 
+  it("Nacharbeit 21: eine spätere Zuweisung q = p wirkt als Alias in beide Richtungen", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Zuweisung.tsx": [
+          "export function F(): JSX.Element {",
+          "  const p: { role?: string } = {};",
+          "  let q: {} = {};",
+          "  q = p;",
+          "  p.role = holeRolle();",
+          "  const o = { role: holeRolle() };",
+          "  let r: {} = {};",
+          "  r = o;",
+          "  const n = { role: holeRolle() };",
+          "  let z: {} = {};",
+          "  z = n;",
+          "  return <div {...q}><i {...r} /></div>;",
+          "}",
+        ],
+      }),
+    );
+    const an = (stelle: string): string[] => rot.filter((z) => z.includes(stelle));
+    // bens Fall wörtlich: geschrieben wird über p, gespreizt über q.
+    expect(an("components/Zuweisung.tsx:5")[0]).toContain("statisch nicht bestimmbar");
+    // Die Rolle steht im Objekt selbst, gespreizt wird es erst nach der Zuweisung r = o.
+    expect(an("components/Zuweisung.tsx:6")[0]).toContain("statisch nicht bestimmbar");
+    // z wird nirgends gespreizt — n bleibt ein gewöhnliches Objekt.
+    expect(an("components/Zuweisung.tsx:9"), "z fliesst in keinen Spread").toEqual([]);
+    expect(rot).toHaveLength(2);
+  });
+
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
     const { rot } = pruefeModalgrenze(
       legeBaum({
