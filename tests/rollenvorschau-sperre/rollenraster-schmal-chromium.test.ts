@@ -371,6 +371,104 @@ const LAGE = `() => {
 const WARTE_EINSTELLUNGEN = `() => document.querySelector('[data-einst="seite"]') !== null
   && document.querySelector('[data-testid="sperrkarte-vorschau"]') === null`;
 
+// ---- N-0028 (BEN Nacharbeit 1): von der Sperrkarte „Zurück zum Start" — die Vorschau läuft weiter,
+// und die Startseite muss das SELBST sagen, nicht erst das Zahnrad-Menü. ----------------------------
+/** Den Link „Zurück zum Start" der Sperrkarte drücken und warten, bis `/start` steht. */
+const ZUM_START = `(async ([zurueckText]) => {
+  const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim();
+  const warte = async (pruefung, ms = 10000) => {
+    const bis = Date.now() + ms;
+    while (Date.now() < bis) {
+      if (pruefung()) return true;
+      await new Promise((r) => requestAnimationFrame(r));
+    }
+    return pruefung();
+  };
+  const link = [...document.querySelectorAll('a[href]')].find((a) => norm(a.textContent) === zurueckText);
+  if (!link) return { fehler: 'kein Link „' + zurueckText + '" auf der Sperrkarte' };
+  link.click();
+  if (!(await warte(() => location.pathname === '/start'
+      && document.querySelector('[data-testid="sperrkarte-vorschau"]') === null)))
+    return { fehler: 'die Startseite kam nicht: ' + location.pathname };
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  return { fehler: null };
+})`;
+
+/** Der Seitenhinweis auf einer erlaubten Seite — bei geschlossenem Zahnrad-Menü gelesen. */
+interface SeitenLage {
+  pfad: string;
+  hinweisText: string | null;
+  knopfText: string | null;
+  echteKnoepfe: number;
+  /** Ist der Zahnrad-Hinweis im DOM? Dann wäre das Menü offen, und der Fall bewiese nichts. */
+  zahnradHinweisDa: boolean;
+  /** Liegt der Seitenhinweis im Inhalt (`<main>`), nicht im Kopfband? */
+  imMain: boolean;
+  sprache: string;
+  viewport: number;
+  dokumentScrollWidth: number;
+  knopf: Kasten | null;
+  knopfClient: number;
+  knopfScroll: number;
+  sichtbar: boolean;
+}
+const SEITEN_LAGE = `() => {
+  const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim();
+  const kasten = (r) => ({ x: r.x, y: r.y, breite: r.width, hoehe: r.height, rechts: r.right, unten: r.bottom });
+  const hinweis = document.querySelector('[data-testid="seite-vorschau"]');
+  const knopf = hinweis ? hinweis.querySelector('button') : null;
+  const main = document.querySelector('main');
+  const s = hinweis ? getComputedStyle(hinweis) : null;
+  return {
+    pfad: location.pathname,
+    hinweisText: hinweis ? norm(hinweis.textContent) : null,
+    knopfText: knopf ? norm(knopf.textContent) : null,
+    echteKnoepfe: hinweis ? hinweis.querySelectorAll('button').length : 0,
+    zahnradHinweisDa: document.querySelector('[data-testid="zahnrad-vorschau"]') !== null,
+    imMain: hinweis !== null && main !== null && main.contains(hinweis),
+    sprache: document.documentElement.lang,
+    viewport: window.innerWidth,
+    dokumentScrollWidth: document.documentElement.scrollWidth,
+    knopf: knopf ? kasten(knopf.getBoundingClientRect()) : null,
+    knopfClient: knopf ? knopf.clientWidth : 0,
+    knopfScroll: knopf ? knopf.scrollWidth : 0,
+    sichtbar: s !== null && s.display !== 'none' && s.visibility !== 'hidden'
+      && hinweis.getBoundingClientRect().height > 0,
+  };
+}`;
+
+/** Was den Fokus hat — bezogen auf den Seitenhinweis statt auf die Sperrkarte. */
+const FOKUS_SEITE = `() => {
+  const a = document.activeElement;
+  const hinweis = document.querySelector('[data-testid="seite-vorschau"]');
+  if (!a) return { tag: '', typ: '', text: '', imHinweis: false, boxShadow: '' };
+  return {
+    tag: a.tagName.toLowerCase(),
+    typ: String(a.getAttribute('type') || ''),
+    text: (a.textContent || '').replace(/\\s+/g, ' ').trim(),
+    imHinweis: hinweis !== null && hinweis.contains(a),
+    boxShadow: getComputedStyle(a).boxShadow,
+  };
+}`;
+
+/** Nach dem Rückweg: das Zahnrad öffnen und die Admin-Zeile „Einstellungen" suchen, dann schliessen. */
+const ADMIN_ZURUECK = `(async () => {
+  const warte = async (pruefung, ms = 8000) => {
+    const bis = Date.now() + ms;
+    while (Date.now() < bis) {
+      if (pruefung()) return true;
+      await new Promise((r) => requestAnimationFrame(r));
+    }
+    return pruefung();
+  };
+  const zahnrad = document.querySelector('[data-testid="kopfband-zahnrad"]');
+  if (!zahnrad) return { fehler: 'kein Zahnrad im Kopfband', admin: false };
+  zahnrad.click();
+  const admin = await warte(() => document.querySelector('[data-testid="zahnrad-einstellungen"]') !== null);
+  zahnrad.click();
+  return { fehler: null, admin };
+})`;
+
 /** Wo Hinweis und Rückweg-Knopf auf der Fläche liegen — für die schmalen Fälle (UX-12b/12c). */
 interface Sicht {
   viewport: number;
@@ -868,6 +966,102 @@ describe("JOB 3124 UX-12 · das Rollenraster bei 320 und 390 px, in Chromium gem
         });
       }, 180_000);
     }
+
+    // N-0028 (BEN Nacharbeit 1): Sperrkarte → „Zurück zum Start". Die Vorschau läuft weiter, und
+    // die Startseite trägt Hinweis und Rückweg selbst — bei GESCHLOSSENEM Zahnrad-Menü. Breit und
+    // schmal, weil `AppShell.tsx` zwei Bauformen hat und der Hinweis in beiden eingesetzt ist.
+    for (const [breite, sprache] of [
+      [1280, "de"],
+      [390, "de"],
+      [390, "en"],
+    ] as const) {
+      it(`N3 · ${breite} px ${sprache}: Sperrkarte → Start, die Startseite nennt die Vorschau und trägt den Rückweg, Tab/Shift+Tab und Enter`, async () => {
+        await inSprache(sprache, breite, async () => {
+          const rolle = await starteVorschau(sprache);
+          const weg = await seiteRoh().evaluate<{ fehler: string | null }>(fn(ZUM_START), [
+            i18n.t("stage2.gate.back", { lng: sprache }),
+          ]);
+          expect(weg.fehler, "von der Sperrkarte ging es nicht zur Startseite").toBeNull();
+
+          const lage = await seiteRoh().evaluate<SeitenLage>(fn(SEITEN_LAGE));
+          expect(lage.pfad).toBe("/start");
+          expect(lage.sprache).toBe(sprache);
+          expect(
+            lage.zahnradHinweisDa,
+            "das Zahnrad-Menü ist offen — der Fall bewiese nichts",
+          ).toBe(false);
+          expect(lage.hinweisText, "die Startseite sagt nicht, dass die Vorschau läuft").toContain(
+            i18n.t("role.previewNote", { lng: sprache, role: rolle }),
+          );
+          expect(lage.knopfText).toBe(i18n.t("role.backToAdmin", { lng: sprache }));
+          expect(lage.echteKnoepfe, "der Rückweg ist kein echtes <button>").toBe(1);
+          expect(lage.imMain, "der Hinweis steht nicht im Inhalt").toBe(true);
+          expect(lage.sichtbar, "der Hinweis ist im DOM, aber nicht sichtbar").toBe(true);
+          const knopf = lage.knopf as Kasten;
+          expect(knopf.x).toBeGreaterThanOrEqual(0);
+          expect(knopf.rechts, "der Rückweg ragt rechts aus dem Fenster").toBeLessThanOrEqual(
+            breite,
+          );
+          expect(lage.knopfScroll, "der Knopftext läuft aus dem Knopf").toBeLessThanOrEqual(
+            lage.knopfClient,
+          );
+          expect(lage.dokumentScrollWidth).toBeLessThanOrEqual(breite);
+
+          // Tastatur: Tab erreicht den Rückweg mit sichtbarem Ring, Shift+Tab verlässt ihn.
+          let fokus: Fokus | null = null;
+          let schritte = -1;
+          for (let i = 1; i <= 40; i++) {
+            await seiteRoh().keyboard.press("Tab");
+            const f = await seiteRoh().evaluate<Fokus>(fn(FOKUS_SEITE));
+            if (f.imHinweis && f.tag === "button") {
+              fokus = f;
+              schritte = i;
+              break;
+            }
+          }
+          expect(schritte, "Tab erreicht den Rückweg auf der Startseite nicht").toBeGreaterThan(0);
+          expect(fokus?.text).toBe(i18n.t("role.backToAdmin", { lng: sprache }));
+          expect(schattenLagen(fokus?.boxShadow ?? "").length).toBeGreaterThan(0);
+          await seiteRoh().keyboard.press("Shift+Tab");
+          const rueckwaerts = await seiteRoh().evaluate<Fokus>(fn(FOKUS_SEITE));
+          expect(rueckwaerts.imHinweis, "Shift+Tab blieb im Rückweg stehen").toBe(false);
+          await seiteRoh().keyboard.press("Tab");
+          const wieder = await seiteRoh().evaluate<Fokus>(fn(FOKUS_SEITE));
+          expect(wieder.imHinweis && wieder.tag === "button").toBe(true);
+          // eslint-disable-next-line no-console -- der Beleg der Rückgabe
+          console.log(
+            `N-0028 · N3 ${breite}/${sprache}: /start „${lage.hinweisText}" · ${schritte} Tab · Shift+Tab auf <${rueckwaerts.tag}> „${rueckwaerts.text}"`,
+          );
+
+          // Enter beendet die Vorschau auf der Startseite selbst: der Hinweis geht, die
+          // Admin-Zeile „Einstellungen" ist im Zahnrad-Menü zurück — ohne Reload.
+          await seiteRoh().keyboard.press("Enter");
+          await seiteRoh().waitForFunction(
+            fn(`() => document.querySelector('[data-testid="seite-vorschau"]') === null`),
+            undefined,
+            { timeout: 10_000 },
+          );
+          const danach = await seiteRoh().evaluate<SeitenLage>(fn(SEITEN_LAGE));
+          expect(danach.pfad).toBe("/start");
+          expect(danach.hinweisText).toBeNull();
+          const admin = await seiteRoh().evaluate<{ fehler: string | null; admin: boolean }>(
+            fn(ADMIN_ZURUECK),
+          );
+          expect(admin.fehler).toBeNull();
+          expect(admin.admin, "nach dem Rückweg fehlt die Admin-Zeile im Zahnrad").toBe(true);
+        });
+      }, 180_000);
+    }
+
+    // Gegenrichtung: ohne Vorschau steht auf der Startseite KEIN Seitenhinweis — er behauptet nichts.
+    it("N4 · 390 px de: ohne Vorschau trägt die Startseite keinen Vorschauhinweis", async () => {
+      await inSprache("de", 390, async () => {
+        await wechsle(stand, "/start", 'header[data-testid="kopfband"]');
+        const lage = await seiteRoh().evaluate<SeitenLage>(fn(SEITEN_LAGE));
+        expect(lage.pfad).toBe("/start");
+        expect(lage.hinweisText).toBeNull();
+      });
+    }, 120_000);
   });
 
   // JOB 3152: CSS/Layout kommt nach der Detailkarte an; dieselbe Messfunktion muss warten.
