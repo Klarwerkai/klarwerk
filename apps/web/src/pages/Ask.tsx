@@ -1066,8 +1066,13 @@ export function Ask(): JSX.Element {
     ask.error instanceof ApiError && ask.error.code === "KI_ABGESCHALTET";
   // R-0842: die KI-Bremse hat abgewiesen. Das ist kein Hängenbleiben — der Server nennt in seinem
   // Satz die Wartezeit, und genau dieser Satz steht da statt des allgemeinen Fehlertexts.
-  const gebremstAbgewiesen =
-    ask.error instanceof ApiError && ask.error.code === "KI_ANFRAGEN_GEBREMST";
+  // Der Satz wird hier aus dem verengten `ApiError` gelesen: der Fehlertyp der Mutation ist in
+  // dieser App `{}` (kein `message` ohne Verengung).
+  const gebremstSatz =
+    ask.error instanceof ApiError && ask.error.code === "KI_ANFRAGEN_GEBREMST"
+      ? ask.error.message
+      : null;
+  const gebremstAbgewiesen = gebremstSatz !== null;
 
   const resultRef = useRef<HTMLDivElement | null>(null);
   // ==============================================================================================
@@ -1731,7 +1736,7 @@ export function Ask(): JSX.Element {
                   {t("ask.gebremst.titel")}
                 </p>
                 <p className="mt-0.5 text-[12.5px] leading-relaxed text-trust-crit-text">
-                  {ask.error?.message}
+                  {gebremstSatz}
                 </p>
               </div>
             ) : (
