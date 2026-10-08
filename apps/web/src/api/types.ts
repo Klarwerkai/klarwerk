@@ -1118,6 +1118,10 @@ export interface DraftPayload {
     question?: string;
     done?: boolean;
     demo?: boolean;
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW: Fragebaum, Lücken-Thema, Abschlussbestätigung.
+    tree?: boolean;
+    topic?: string;
+    confirmed?: boolean;
   };
 }
 
@@ -2848,7 +2852,28 @@ export interface InterviewResult {
   done: boolean;
   draft: StructureResult;
   demo: boolean;
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW: nur im Fragebaum gesetzt — Spiegel von
+  // `services/reasoner/src/types.ts` (InterviewResult).
+  node?: InterviewNodeId | null;
+  sufficient?: boolean;
+  gaps?: { value: number; open: InterviewNodeId[] };
+  mirror?: { node: InterviewNodeId; text: string } | null;
+  depth?: { node: InterviewNodeId; text: string }[];
 }
+
+// AUFNAHME 20260922 · WISSEN-INTERVIEW: die Knoten des Fragebaums (Spiegel des Servers).
+export type InterviewNodeId =
+  | "kern"
+  | "bedingung"
+  | "massnahme"
+  | "schwelle"
+  | "ausnahme"
+  | "warum"
+  | "alternativen"
+  | "geltung"
+  | "risiko"
+  | "herkunft"
+  | "stichworte";
 
 // SCRUM-181: Rückgabe des admin-getriebenen Demo-Seeds (ehrlich: seeded vs. skipped).
 export interface DemoSeedResult {

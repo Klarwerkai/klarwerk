@@ -161,7 +161,12 @@ import {
   wholeDocumentDraftPayload,
   wholeDraftFitsWithObjectLink,
 } from "../lib/captureFromFile";
-import { gapContextDraft, readGapId, resolveGapQuestion } from "../lib/captureFromGap";
+import {
+  gapContextDraft,
+  normalizeGapContext,
+  readGapId,
+  resolveGapQuestion,
+} from "../lib/captureFromGap";
 import { CAPTURE_FRONT_DOOR_ROUTE } from "../lib/captureFrontDoor";
 import { captureReadiness } from "../lib/captureReadiness";
 import { type DraftOrigin, originForSave, resumeTargetForDraft } from "../lib/captureResume";
@@ -240,9 +245,13 @@ import {
 } from "../lib/files";
 import {
   CLEARED_DRAFT_INTERVIEW,
+  SKIPPED_ANSWER,
   appendAnswer,
+  interviewCanConfirm,
+  interviewDepthSections,
   interviewForDraft,
   interviewFromDraft,
+  interviewNodeKey,
   interviewSourceKey,
   isInterviewDone,
 } from "../lib/interviewFlow";
@@ -530,6 +539,11 @@ const BEISPIEL_TOR_TEXT = {
 export interface CaptureArbeitsraumProps {
   /** Die Ansicht, die das Blatt geöffnet hat. Ohne Angabe bleibt die Ruhelage `freitext`. */
   modus?: Mode | undefined;
+  /**
+   * AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): das Thema, zu dem das Blatt ein Lücken-Interview
+   * angeboten hat. Es wird erst mit „Interview starten" gesendet.
+   */
+  thema?: string | null | undefined;
   /** Der Arbeitsraum hat einen Entwurf gesichert — das Blatt übernimmt ihn (Auftrag §5.2). */
   onEntwurfInsBlatt?: ((entwurfId: string) => void) | undefined;
   /**
@@ -547,6 +561,7 @@ export interface CaptureArbeitsraumProps {
 
 export function CaptureArbeitsraum({
   modus,
+  thema,
   onEntwurfInsBlatt,
   onZurueckInsBlatt,
   // KEIN Vorgabewert `= {}` an dieser Stelle: mit ihm wird der Prop-Parameter OPTIONAL, und
@@ -598,6 +613,10 @@ export function CaptureArbeitsraum({
   const gapId = readGapId(params);
   const gaps = useGaps();
   const gapContext = resolveGapQuestion(gapId, gaps.data);
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): das Thema eines Lücken-Interviews — das vom Blatt
+  // angebotene oder die aufgelöste Frage einer offenen Wissenslücke. Gleich begrenzt wie der
+  // Lücken-Startkontext.
+  const interviewThema = normalizeGapContext(thema ?? gapContext ?? "") || null;
   // JOB 3414: die Entwurfskennung der ADRESSE — abgeleitet aus demselben `params` wie `gapId`
   // (kein zweites `useSearchParams()`, keine eigene Zerlegung von `location.search`). Es ist
   // derselbe Abfrageschlüssel, den das Blatt liest (Blatt.tsx: `searchParams.get("draft")`);
@@ -1068,6 +1087,13 @@ export function CaptureArbeitsraum({
   // („Interview starten"). Solange false, wird KEIN ModelRun/Fetch ausgelöst — der Tabwechsel allein
   // sendet nichts an das Modell.
   const [ivStarted, setIvStarted] = useState(false);
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW: jedes neu gestartete Interview läuft im Fragebaum
+  // (Restlückenwert, Spiegel, Abschluss nur durch den Menschen — R-0043/R-0113). `ivTopic` ist das
+  // feste Thema des Lücken-Interviews (R-0091). Ein fortgesetzter ALTER Entwurf ohne Baum-Kennung
+  // läuft in der bisherigen Fragenfolge weiter — seine Antworten gehören zu deren Reihenfolge.
+  const [ivTree, setIvTree] = useState(false);
+  const [ivTopic, setIvTopic] = useState<string | null>(null);
+  const [ivConfirmed, setIvConfirmed] = useState(false);
   // AUFTRAG-mega6 Block C (bens ROT 3, zweiter Teil): laufende Nummer des aktuell GÜLTIGEN
   // Interview-Turns. Jeder Start erhöht sie, jedes Räumen (Save-Erfolg, Verwerfen) ebenfalls. Die
   // Mutation trägt ihre Nummer als Variable mit und schreibt ihr Ergebnis nur zurück, wenn sie noch
@@ -1336,12 +1362,36 @@ export function CaptureArbeitsraum({
   // SCRUM-132: ein Interview-Turn — Antworten rein, nächste Frage + Draft raus.
   // AUFTRAG-mega6 Block C: der Turn reist mit seiner Laufnummer (`run`); veraltete Läufe werden im
   // Erfolgs- UND im Fehlerpfad verworfen, statt den inzwischen gültigen Zustand zu überschreiben.
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW: das Interviewergebnis in Entwurf und Wissensseite
+  // übernehmen. Im Fragebaum geschieht das NUR über die ausdrückliche Bestätigung (`ivConfirm`);
+  // gespeichert wird danach weiterhin erst mit dem Speichern des Menschen. Die vertiefenden
+  // Antworten (Schwelle, Ausnahmen, Warum …) stehen wörtlich als eigene Abschnitte darunter.
+  const applyInterviewDraft = (res: InterviewResult): void => {
+    setDraft(res.draft);
+    setTags((prev) => (prev.length > 0 ? prev : res.draft.tags));
+    // SCRUM-384: Interview fertig → gleiche Wissensseiten-Führung wie beim Freitext.
+    setBodyHtml((prev) =>
+      prev.trim()
+        ? prev
+        : applyDraftArticle(
+            prev,
+            {
+              ...res.draft,
+              sections: interviewDepthSections(res.depth, (node) => t(interviewNodeKey(node))),
+            },
+            normalizeDraftArticleLocale(i18n.language),
+          ),
+    );
+    setWizStep("refine");
+  };
+
   const interview = useMutation({
-    mutationFn: (v: { answers: string[]; run: number }) =>
+    mutationFn: (v: { answers: string[]; run: number; tree: boolean; topic: string | null }) =>
       endpoints.reasoner.interview(
         v.answers,
         locale,
         draftProvenance(confidentiality, undefined, draftId ?? undefined),
+        { tree: v.tree, topic: v.topic },
       ),
     onSuccess: (res, v) => {
       if (v.run !== ivRunRef.current) {
@@ -1349,16 +1399,9 @@ export function CaptureArbeitsraum({
       }
       setIvResult(res);
       setErr(null);
-      if (isInterviewDone(res)) {
-        setDraft(res.draft);
-        setTags((prev) => (prev.length > 0 ? prev : res.draft.tags));
-        // SCRUM-384: Interview fertig → gleiche Wissensseiten-Führung wie beim Freitext.
-        setBodyHtml((prev) =>
-          prev.trim()
-            ? prev
-            : applyDraftArticle(prev, res.draft, normalizeDraftArticleLocale(i18n.language)),
-        );
-        setWizStep("refine");
+      // Im Fragebaum schließt der Server nie selbst ab — er bietet den Abschluss nur an.
+      if (!v.tree && isInterviewDone(res)) {
+        applyInterviewDraft(res);
       }
     },
     onError: (e, v) => {
@@ -1372,9 +1415,14 @@ export function CaptureArbeitsraum({
   // AUFTRAG-mega6 Block C: EINZIGER Einstieg in einen Interview-Turn. Vergibt die neue Laufnummer
   // und macht damit jeden vorher gestarteten Turn ungültig — es gibt keinen zweiten Weg, der die
   // Mutation ohne gültige Nummer auslösen könnte.
-  const runInterview = (answers: string[]): void => {
+  // Baum und Thema reisen als Variablen mit: beim Start sind die eben gesetzten Zustände in diesem
+  // Bildaufbau noch nicht sichtbar.
+  const runInterview = (
+    answers: string[],
+    guide: { tree: boolean; topic: string | null } = { tree: ivTree, topic: ivTopic },
+  ): void => {
     ivRunRef.current += 1;
-    interview.mutate({ answers, run: ivRunRef.current });
+    interview.mutate({ answers, run: ivRunRef.current, ...guide });
   };
 
   // SCRUM-312: KI-Nachbearbeitung über die sichtbare AiAssistBox (Vorschau + bewusste Übernahme);
@@ -2433,6 +2481,9 @@ export function CaptureArbeitsraum({
         answers: ivAnswers,
         answer: ivAnswer,
         result: ivResult,
+        tree: ivTree,
+        topic: ivTopic,
+        confirmed: ivConfirmed,
       });
       // AUFTRAG-mega6 Block B: „wird aktualisiert" entscheidet, ob Leerwerte als Löschmarker mitgehen.
       const isDraftUpdate = Boolean(draftId);
@@ -2740,6 +2791,9 @@ export function CaptureArbeitsraum({
       setIvAnswer(iv.answer);
       setIvResult(iv.result);
       setIvStarted(iv.started);
+      setIvTree(iv.tree);
+      setIvTopic(iv.topic);
+      setIvConfirmed(iv.confirmed);
       // JOB 3414: der Fortschritt kommt IMMER zurück (nichts geht verloren) — die ANSICHT wechselt
       // nur dann von selbst ins Interview, wenn der Mensch keine ausdrücklich gewählt hat. Sonst
       // stünde er nach „Formular (Experten)" im Interview, und der Modus-Abgleich weiter unten
@@ -2847,6 +2901,9 @@ export function CaptureArbeitsraum({
     setIvAnswer("");
     setIvResult(null);
     setIvStarted(false);
+    setIvTree(false);
+    setIvTopic(null);
+    setIvConfirmed(false);
   };
 
   // E2E-003: „Verwerfen" muss das GESAMTE Erfassungsmodell auf Leerzustand bringen — nicht nur die
@@ -4763,13 +4820,93 @@ export function CaptureArbeitsraum({
 
   // E2E-008: bewusster Start des geführten Interviews — erst hier (nicht beim Tabwechsel) geht der
   // erste Turn an das Modell. Vorher wurde nichts gesendet und kein ModelRun ausgelöst.
+  //
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW: jeder Start läuft im Fragebaum. Kommt der Mensch mit
+  // einem Thema — aus dem Blatt-Angebot nach einer Vorschau ohne Treffer oder über eine offene
+  // Wissenslücke (`?gap=`) —, wird es das Lücken-Interview mit drei Fragen (R-0091).
   const startInterview = (): void => {
+    const topic = interviewThema;
     setIvAnswers([]);
     setIvAnswer("");
     setIvResult(null);
     setIvStarted(true);
-    runInterview([]);
+    setIvTree(true);
+    setIvTopic(topic);
+    setIvConfirmed(false);
+    runInterview([], { tree: true, topic });
   };
+
+  // R-0113: „Weiß ich nicht" — die Frage bleibt eine Lücke, das Interview geht weiter.
+  const ivSkip = (): void => {
+    const answers = [...ivAnswers, SKIPPED_ANSWER];
+    setIvAnswers(answers);
+    setIvAnswer("");
+    setIvResult(null);
+    runInterview(answers);
+  };
+
+  // R-0113 / R-0043: die ausdrückliche Abschlussbestätigung des Menschen. Erst hier entsteht der
+  // Entwurf auf dem Blatt; gespeichert wird er weiterhin erst über „Entwurf speichern".
+  const ivConfirm = (): void => {
+    if (!ivResult) {
+      return;
+    }
+    applyInterviewDraft(ivResult);
+    setIvConfirmed(true);
+  };
+
+  // Die Bausteine des Fragebaums, die im laufenden UND im durchlaufenen Interview stehen.
+  const ivBereit = ivResult !== null && !interview.isPending;
+  const ivThemaZeile = ivTopic ? (
+    <p data-testid="interview-thema" className="text-[13px] font-medium text-text">
+      {t("interview.thema", { thema: ivTopic })}
+    </p>
+  ) : null;
+  // R-0113: der Wert für die verbleibenden Lücken; die offenen Knoten stehen im Hinweis.
+  const ivLueckenwert =
+    ivBereit && ivResult?.gaps ? (
+      <span
+        data-testid="interview-luecken"
+        className="text-[12px] text-muted"
+        title={t("interview.lueckenListe", {
+          liste: ivResult.gaps.open.map((node) => t(interviewNodeKey(node))).join(", "),
+        })}
+      >
+        {t("interview.luecken", { wert: ivResult.gaps.value })}
+      </span>
+    ) : null;
+  // R-0043: Klara spiegelt das Verstandene — wörtlich die letzte Antwort, nichts hinzugedichtet.
+  const ivSpiegel =
+    ivBereit && ivResult?.mirror ? (
+      <p data-testid="interview-spiegel" className="text-[13px] text-muted">
+        {t("interview.spiegel", {
+          knoten: t(interviewNodeKey(ivResult.mirror.node)),
+          text: ivResult.mirror.text,
+        })}
+      </p>
+    ) : null;
+  // R-0113: der Abschluss wird ANGEBOTEN, nie von selbst vollzogen.
+  const ivAbschluss =
+    ivBereit && ivResult && interviewCanConfirm(ivTree, ivResult) ? (
+      <div
+        data-testid="interview-abschluss"
+        className="space-y-2 rounded-card border border-hairline bg-surface p-3"
+      >
+        <p className="text-[13px] text-text">
+          {isInterviewDone(ivResult)
+            ? t("interview.abschlussBaumDurch")
+            : t("interview.abschlussAngebot")}
+        </p>
+        {ivResult.sufficient ? null : (
+          <p className="text-[12px] text-trust-warn-text">
+            {t("interview.abschlussUnvollstaendig")}
+          </p>
+        )}
+        <Button variant="primary" onClick={ivConfirm}>
+          {t("interview.abschliessen")}
+        </Button>
+      </div>
+    ) : null;
 
   // SCRUM-132: Antwort senden → nächster reasoner-getriebener Turn.
   // AUFTRAG-mega6 Block C (bens ROT 3): mit dem Start des NÄCHSTEN Turns ist die bisherige Frage
@@ -5881,6 +6018,14 @@ export function CaptureArbeitsraum({
                   // E2E-008: bewusster Start VOR jedem Cloud-Lauf. Provider-/Region-/Kostenhinweis
                   // (AiModelInfo) steht am Knopf; erst der Klick löst den ersten ModelRun aus.
                   <div data-help="cap:interview" className="space-y-3">
+                    {interviewThema ? (
+                      <p
+                        data-testid="interview-thema"
+                        className="text-[13px] font-medium text-text"
+                      >
+                        {t("interview.thema", { thema: interviewThema })}
+                      </p>
+                    ) : null}
                     <p className="text-[13px] text-muted">{t("capture.ivStartLead")}</p>
                     <div className="flex flex-wrap items-center gap-2">
                       <Button variant="primary" onClick={startInterview}>
@@ -5889,13 +6034,22 @@ export function CaptureArbeitsraum({
                       <AiModelInfo task="interview" />
                     </div>
                   </div>
-                ) : ivResult && isInterviewDone(ivResult) ? (
+                ) : ivConfirmed || (!ivTree && ivResult && isInterviewDone(ivResult)) ? (
                   <p className="rounded-card border border-dashed border-hairline p-3 text-[13px] text-trust-pos-text">
                     {t("capture.ivDone")}
                   </p>
+                ) : ivTree && ivResult && isInterviewDone(ivResult) ? (
+                  // Der Fragebaum ist durch: keine Frage mehr, nur noch die Bestätigung (R-0113).
+                  <div data-help="cap:interview" className="space-y-3">
+                    {ivThemaZeile}
+                    {ivLueckenwert}
+                    {ivSpiegel}
+                    {ivAbschluss}
+                  </div>
                 ) : (
                   <div data-help="cap:interview" className="space-y-3">
-                    <div className="flex items-center gap-2">
+                    {ivThemaZeile}
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-[11px] uppercase tracking-wider text-muted-2">
                         {t("capture.ivTurn", { n: ivAnswers.length + 1 })}
                       </span>
@@ -5904,7 +6058,10 @@ export function CaptureArbeitsraum({
                           {t(interviewSourceKey(ivResult))}
                         </span>
                       ) : null}
+                      {ivLueckenwert}
                     </div>
+                    {ivSpiegel}
+                    {ivAbschluss}
                     {/* SCRUM-403 (Pedi 03.07.): Frage vorlesen + Antwort diktieren — Sprache in
                       beide Richtungen; Knöpfe nur, wenn der Browser es ehrlich kann. */}
                     {/* AUFTRAG-mega5 Block A: liegt (nach Fortsetzen eines Entwurfs ohne gesicherte
@@ -5974,6 +6131,23 @@ export function CaptureArbeitsraum({
                       >
                         {t("capture.ivSend")}
                       </Button>
+                      {/* R-0113: im Fragebaum darf eine Frage offen bleiben — sie zählt dann
+                        weiter als Lücke. Gesperrt, solange schon etwas getippt ist, damit kein
+                        Text verloren geht. */}
+                      {ivTree ? (
+                        <Button
+                          variant="ghost"
+                          disabled={
+                            interview.isPending ||
+                            ivAnswer.trim().length > 0 ||
+                            !ivResult ||
+                            ivAnswers.length >= DRAFT_LIMITS.interviewAnswers
+                          }
+                          onClick={ivSkip}
+                        >
+                          {t("interview.ueberspringen")}
+                        </Button>
+                      ) : null}
                       {/* Pedi 04.07.: (!)-Info — welche KI das geführte Interview steuert. */}
                       <AiModelInfo task="interview" />
                       {speechSupported ? (
@@ -7797,9 +7971,10 @@ export function CaptureArbeitsraum({
 export function Capture(): JSX.Element {
   return (
     <Blatt
-      arbeitsraum={({ modus, onEntwurfInsBlatt, onZurueckInsBlatt }) => (
+      arbeitsraum={({ modus, thema, onEntwurfInsBlatt, onZurueckInsBlatt }) => (
         <CaptureArbeitsraum
           modus={modus}
+          thema={thema}
           onEntwurfInsBlatt={onEntwurfInsBlatt}
           onZurueckInsBlatt={onZurueckInsBlatt}
         />

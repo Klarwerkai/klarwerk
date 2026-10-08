@@ -1,4 +1,5 @@
 import { FACHKOMPOSITA, type Fachkompositum } from "./fachkomposita";
+import { normalizeInterviewTopic, treeInterview } from "./interview-tree";
 import type {
   AnswerResult,
   AssistResult,
@@ -10,6 +11,7 @@ import type {
   ExtractResult,
   GroupCandidateInput,
   GroupCandidatesResult,
+  InterviewOptions,
   InterviewResult,
   KnowledgeClass,
   KnowledgeRef,
@@ -141,10 +143,13 @@ export interface ReasonerProvider {
     confidential?: boolean,
   ): Promise<AssistResult>;
   // SCRUM-132: nächste Interview-Frage + aus den Antworten verdichteter Entwurf.
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW: `options` schaltet Fragebaum und Lücken-Thema zu;
+  // ohne sie bleibt die bisherige Fragenfolge.
   interview(
     answers: readonly string[],
     locale?: ReasonerLocale,
     confidential?: boolean,
+    options?: InterviewOptions,
   ): Promise<InterviewResult>;
   // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag des
   // Experten). G-2: NUR was im Text steht — der deterministische Fallback liefert ehrlich
@@ -344,6 +349,20 @@ export function deterministicInterview(
     draft: condenseInterview(answers, demo),
     demo,
   };
+}
+
+// AUFNAHME 20260922 · WISSEN-INTERVIEW: die eine Weiche zwischen der bisherigen Fragenfolge und
+// dem Fragebaum (`interview-tree.ts`). Ein Thema schaltet immer den (kurzen) Baum zu.
+export function guidedInterview(
+  answers: readonly string[],
+  demo: boolean,
+  locale: ReasonerLocale = "de",
+  options: InterviewOptions = {},
+): InterviewResult {
+  if (options.tree || normalizeInterviewTopic(options.topic)) {
+    return treeInterview(answers, demo, locale, options);
+  }
+  return deterministicInterview(answers, demo, locale);
 }
 
 // SCRUM-282: Funktions-/Stoppwörter (DE/EN) aus dem Matching ausschließen. Sonst erscheinen
@@ -2049,8 +2068,10 @@ export class DeterministicProvider implements ReasonerProvider {
   async interview(
     answers: readonly string[],
     locale: ReasonerLocale = "de",
+    _confidential = false,
+    options: InterviewOptions = {},
   ): Promise<InterviewResult> {
-    return deterministicInterview(answers, true, locale);
+    return guidedInterview(answers, true, locale, options);
   }
 
   // PMO-FEA-0006: ohne Modell KEINE Extraktion — ehrliche Meldung statt Fake-Punkte (G-2).

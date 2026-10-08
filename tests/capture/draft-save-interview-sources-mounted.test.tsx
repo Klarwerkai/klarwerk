@@ -329,12 +329,15 @@ describe("Block A: Interviewfortschritt wird vollständig gesichert und wiederhe
 
     // bens Verlustpfad 1: der Save-Zweig lief bei NUR-ivStarted früher leer durch. Jetzt: echte Persistenz.
     expect(db.created).toHaveLength(1);
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW: ein neu gestartetes Interview läuft im Fragebaum und
+    // trägt das im Entwurf mit — sonst liefe es nach dem Fortsetzen in der alten Fragenfolge weiter.
     expect(db.created[0]?.interview).toEqual({
       started: true,
       answers: [],
       question: "Frage 1?",
       done: false,
       demo: false,
+      tree: true,
     });
 
     await resumeSavedDraft();
@@ -367,6 +370,7 @@ describe("Block A: Interviewfortschritt wird vollständig gesichert und wiederhe
       question: "Frage 2?",
       done: false,
       demo: false,
+      tree: true,
     });
 
     await resumeSavedDraft();

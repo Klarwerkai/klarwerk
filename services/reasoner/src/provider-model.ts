@@ -1,12 +1,13 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 // JOB 3276: die leere Modellantwort im assist-Pfad ist ein Fehler mit Grund — dieselbe typisierte
 // Klasse, die der HTTP-Chokepoint (model-client.ts) wirft, damit die Kette EINE Fehlerart kennt.
+import { normalizeInterviewTopic } from "./interview-tree";
 import { ModelEmptyResponseError, ReasonerMeldungFehler } from "./model-errors";
 import {
   DEFAULT_TOP_K,
   type ReasonerProvider,
   answerStanding,
-  deterministicInterview,
+  guidedInterview,
   // JOB 3298: DIESELBE Zerlegung, die das Relevanzmaß benutzt — der Auszug wird nach der GLEICHEN
   // Wortauffassung gewählt, nach der die Quelle überhaupt Kandidat wurde. Eine zweite Tokenisierung
   // wäre eine zweite Wahrheit darüber, was ein Wort der Frage ist.
@@ -28,6 +29,7 @@ import type {
   ExtractedPoint,
   GroupCandidateInput,
   GroupCandidatesResult,
+  InterviewOptions,
   InterviewResult,
   KlaraVorschlagUrteil,
   KnowledgeRef,
@@ -1661,6 +1663,8 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     priorAnswers: "Bisherige Antworten",
     guiding: "Leitfrage",
     none: "(noch keine)",
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0088): das Fachthema des Interviews.
+    topic: "Fachthema des Interviews",
     // JOB 3298: die Beschriftung des Dokumenttext-Auszugs im Grounding. Sie ist ein EIGENES Feld
     // und nicht an die Aussage angehängt — der Leser des Prompts (das Modell) soll sehen, dass hier
     // Quelltext steht, den es zitieren darf, und nicht eine zweite Kernaussage.
@@ -1675,6 +1679,7 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     priorAnswers: "Previous answers",
     guiding: "Guiding question",
     none: "(none yet)",
+    topic: "Subject of the interview",
     excerpt: "Document text (excerpt)",
     selection: "Selected passage in the document (context of the question, not a source)",
   },
@@ -1686,6 +1691,7 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     priorAnswers: "Eerdere antwoorden",
     guiding: "Leidende vraag",
     none: "(nog geen)",
+    topic: "Onderwerp van het interview",
     excerpt: "Documenttekst (fragment)",
     selection: "Gemarkeerde passage in het document (context van de vraag, geen bron)",
   },
@@ -2120,23 +2126,30 @@ export class ModelProvider implements ReasonerProvider {
 
   // SCRUM-132: Modell formuliert nur die nächste Frage; Abschluss + Draft-Verdichtung
   // bleiben deterministisch (kein Erfinden von Inhalt). demo=false, da Modell genutzt.
+  //
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0088): im Fragebaum bzw. Lücken-Interview steht das
+  // Fachthema mit im Prompt — das Modell richtet die Leitfrage darauf aus, statt allgemein zu fragen.
+  // Baum, Restlückenwert und Entwurf bleiben deterministisch; ersetzt wird nur der Fragetext.
   async interview(
     answers: readonly string[],
     locale: ReasonerLocale = "de",
     // SCRUM-502 Schicht 2: an den Chokepoint durchgereicht.
     confidential = false,
+    options: InterviewOptions = {},
   ): Promise<InterviewResult> {
-    const base = deterministicInterview(answers, false, locale);
+    const base = guidedInterview(answers, false, locale, options);
     if (base.done || base.question === null) {
       return base;
     }
     const client = this.requireClient();
     const labels = LABELS[locale];
     const prior = answers.map((a, i) => `A${i + 1}: ${a}`).join("\n");
+    const topic = normalizeInterviewTopic(options.topic);
+    const topicLine = topic ? `${labels.topic}: ${topic}\n\n` : "";
     const phrased = (
       await client.complete(
         interviewSystem(locale),
-        `${labels.priorAnswers}:\n${prior || labels.none}\n\n${labels.guiding}: ${base.question}`,
+        `${topicLine}${labels.priorAnswers}:\n${prior || labels.none}\n\n${labels.guiding}: ${base.question}`,
         confidential,
       )
     ).trim();

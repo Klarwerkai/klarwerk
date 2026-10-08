@@ -89,6 +89,11 @@ export interface DraftPayload {
     question?: string;
     done?: boolean;
     demo?: boolean;
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW: Fragebaum, Lücken-Thema und die ausdrückliche
+    // Abschlussbestätigung des Menschen (R-0113) reisen mit, damit ein Fortsetzen nichts davon verliert.
+    tree?: boolean;
+    topic?: string;
+    confirmed?: boolean;
   };
   /**
    * BILDSCHIRMABLÄUFE — die übernommenen Schritte samt Herkunft (Begründung: `./ablauf.ts`).

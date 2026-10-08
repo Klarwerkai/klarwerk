@@ -505,6 +505,9 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         task: "structure" | "ask" | "assist" | "interview" | "extract";
         text?: string;
         answers?: string[];
+        // AUFNAHME 20260922 · WISSEN-INTERVIEW: Fragebaum und Lücken-Thema für 'interview'.
+        tree?: unknown;
+        topic?: unknown;
         locale?: "de" | "en";
         // SCRUM-312: optionale Bearbeitungs-Anweisung für 'assist' (klarer/strukturieren/… oder frei).
         instruction?: string;
@@ -651,9 +654,16 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             log: request.log,
           },
         );
-        reply
-          .code(200)
-          .send(await reasoner.interview(request.body.answers ?? [], locale, confidential));
+        // AUFNAHME 20260922 · WISSEN-INTERVIEW: `tree` schaltet den Fragebaum mit Restlückenwert zu,
+        // `topic` das Lücken-Interview. Nur Typ-geprüfte Werte reisen weiter; das Thema begrenzt der
+        // Reasoner selbst (`normalizeInterviewTopic`).
+        const topic = typeof request.body.topic === "string" ? request.body.topic : undefined;
+        reply.code(200).send(
+          await reasoner.interview(request.body.answers ?? [], locale, confidential, {
+            tree: request.body.tree === true,
+            ...(topic ? { topic } : {}),
+          }),
+        );
         return;
       }
       if (task === "extract") {

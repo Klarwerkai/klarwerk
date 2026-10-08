@@ -960,15 +960,20 @@ export const endpoints = {
         ...provenanceFields(provenance),
       }),
     // SCRUM-132: reasoner-getriebenes Interview, stateless.
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW: `guide.tree` schaltet den Fragebaum mit Restlückenwert
+    // zu, `guide.topic` das Lücken-Interview (drei Fragen zu einem festen Thema).
     interview: (
       answers: string[],
       locale: ReasonerLocale | undefined,
       provenance: ReasonerProvenance,
+      guide?: { tree?: boolean; topic?: string | null },
     ) =>
       api.post<InterviewResult>("/reasoner", {
         task: "interview",
         answers,
         ...(locale ? { locale } : {}),
+        ...(guide?.tree ? { tree: true } : {}),
+        ...(guide?.topic?.trim() ? { topic: guide.topic.trim() } : {}),
         ...provenanceFields(provenance),
       }),
     // WP-BILD-1c/1f: KI-Bildbeschreibung als VORSCHLAG für die Bild-Fußnote (Vision). EIGENE
