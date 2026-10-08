@@ -61,7 +61,7 @@ async function anlegen(services: AppServices, titel: string): Promise<string> {
 function melderFuer(
   services: AppServices,
   ziele: readonly WebhookZiel[],
-  antwort: (a: ZustellAnfrage) => number | null = () => 204,
+  antwort: (a: ZustellAnfrage) => number | null | Promise<number | null> = () => 204,
 ) {
   const gesendet: ZustellAnfrage[] = [];
   const melder = new WissensereignisMelder({
@@ -69,12 +69,13 @@ function melderFuer(
       wissensobjekte: () => services.ko.list({}),
       revalidierungFaellig: () => services.lifecycle.pendingRevalidation(),
       offeneWidersprueche: () => services.conflicts.unresolved(),
+      wissensobjekt: (id) => services.ko.get(id),
     },
     audit: services.audit,
     ziele,
     zusteller: async (anfrage) => {
       gesendet.push(anfrage);
-      return { status: antwort(anfrage) };
+      return { status: await antwort(anfrage) };
     },
   });
   return { melder, gesendet };
@@ -360,6 +361,52 @@ describe("R-0710 · Wissensereignisse an Fremdwerkzeuge", () => {
     ).toHaveLength(1);
   });
 
+  const ZWEITES: WebhookZiel = { ...ALLE, id: "zweites", url: "https://zweites.example/hook" };
+
+  it("J3 · Rechteentzug WÄHREND der Zustellung an Ziel A: Ziel B im selben Takt bekommt nichts", async () => {
+    const services = await bestand();
+    let id = "";
+    const { melder, gesendet } = melderFuer(services, [ALLE, ZWEITES], async (anfrage) => {
+      if (anfrage.url === ALLE.url) {
+        // Während Ziel A noch auf seine Antwort wartet, wird das Objekt vertraulich.
+        await services.ko.setConfidentiality(id, "vertraulich", "anna");
+      }
+      return 204;
+    });
+    await melder.lauf();
+    id = await anlegen(services, "Grenzwerte Ofen");
+    await services.validation.adminValidate(id, "admin");
+
+    const lauf = await melder.lauf();
+
+    expect(lauf).toMatchObject({ erkannt: 1, zugestellt: 1, abgebrochen: 1, ausstehend: 0 });
+    expect(gesendet.map((g) => g.url)).toEqual([ALLE.url]);
+    const abbruch = await services.audit.list({ action: AKTION_ABGEBROCHEN, target: id });
+    expect(abbruch.map((e) => e.payload.ziel)).toEqual(["zweites"]);
+  });
+
+  it("J4 · Rechteentzug an einer Widerspruchsseite während der Zustellung an Ziel A", async () => {
+    const services = await bestand();
+    const a = await anlegen(services, "Haltezeit A");
+    const b = await anlegen(services, "Haltezeit B");
+    const { melder, gesendet } = melderFuer(services, [ALLE, ZWEITES], async (anfrage) => {
+      if (anfrage.url === ALLE.url) {
+        await services.ko.setConfidentiality(b, "vertraulich", "anna");
+      }
+      return 204;
+    });
+    await melder.lauf();
+    const konflikt = await services.conflicts.create(
+      { koA: a, koB: b, type: "truth", description: "Zeit weicht ab." },
+      "anna",
+    );
+
+    expect(await melder.lauf()).toMatchObject({ zugestellt: 1, abgebrochen: 1, ausstehend: 0 });
+    expect(gesendet.map((g) => g.url)).toEqual([ALLE.url]);
+    const abbruch = await services.audit.list({ action: AKTION_ABGEBROCHEN, target: konflikt.id });
+    expect(abbruch.map((e) => e.payload.ziel)).toEqual(["zweites"]);
+  });
+
   it("K1 · ein Neustart nach erfolglosem Versuch stellt zu, sobald das Ziel wieder erreichbar ist", async () => {
     const services = await bestand();
     const vorher = melderFuer(services, [ALLE], () => null);
@@ -389,6 +436,7 @@ describe("R-0710 · Wissensereignisse an Fremdwerkzeuge", () => {
         wissensobjekte: () => services.ko.list({}),
         revalidierungFaellig: () => services.lifecycle.pendingRevalidation(),
         offeneWidersprueche: () => services.conflicts.unresolved(),
+        wissensobjekt: (id) => services.ko.get(id),
       },
       audit: services.audit,
       ziele: [ALLE],
@@ -471,6 +519,7 @@ describe("R-0710 · Wissensereignisse an Fremdwerkzeuge", () => {
           wissensobjekte: () => services.ko.list({}),
           revalidierungFaellig: () => services.lifecycle.pendingRevalidation(),
           offeneWidersprueche: () => services.conflicts.unresolved(),
+          wissensobjekt: (id) => services.ko.get(id),
         },
         audit: services.audit,
         ziele: lage.ziele,

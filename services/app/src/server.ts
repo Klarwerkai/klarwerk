@@ -294,6 +294,7 @@ async function start(): Promise<void> {
         wissensobjekte: () => services.ko.list({}),
         revalidierungFaellig: () => services.lifecycle.pendingRevalidation(),
         offeneWidersprueche: () => services.conflicts.unresolved(),
+        wissensobjekt: (id) => services.ko.get(id),
       },
       audit: services.audit,
       ziele: webhooks.ziele,

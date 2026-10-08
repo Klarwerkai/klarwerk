@@ -250,7 +250,8 @@ Bei `widerspruch.offen` steht statt `wissensobjekt` das Feld
 - Erfolg ist jede `2xx`-Antwort. Sonst wird die Meldung in den nächsten Takten erneut versucht
   (höchstens 5 Versuche, dieselbe `kennung`). Der Empfänger muss doppelte Zustellungen anhand der
   `kennung` erkennen.
-- Vor jedem Versuch wird die Sichtbarkeit neu geprüft. Ist ein betroffenes Objekt inzwischen
+- Unmittelbar vor jedem einzelnen Versuch, auch innerhalb eines Takts, werden die betroffenen
+  Objekte frisch gelesen und ihre Sichtbarkeit geprüft. Ist ein betroffenes Objekt inzwischen
   vertraulich, einem Space zugeordnet oder gelöscht, wird die Meldung nicht mehr gesendet. Bei einem
   Widerspruch gilt das für beide Seiten. Der Abbruch wird protokolliert.
 

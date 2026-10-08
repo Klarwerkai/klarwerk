@@ -212,6 +212,13 @@ export interface WissensereignisQuellen {
   revalidierungFaellig(): Promise<readonly string[]>;
   /** Ungelöste Widersprüche (`ConflictService.unresolved`). */
   offeneWidersprueche(): Promise<readonly Conflict[]>;
+  /** Ein Wissensobjekt frisch gelesen (`KoService.get`) — unmittelbar vor jedem Zustellversuch. */
+  wissensobjekt(id: string): Promise<KnowledgeObject | undefined>;
+}
+
+/** Darf das Objekt JETZT gemeldet werden? Dieselbe Regel wie im Stand (`ladeStand`). */
+function meldbar(ko: KnowledgeObject | undefined): boolean {
+  return ko !== undefined && !ko.deletedAt && darfSehen(MELDE_BETRACHTER, ko);
 }
 
 /** Der Rumpf einer Meldung — nur Kennungen, kein Inhalt. */
@@ -248,7 +255,7 @@ export async function ladeStand(quellen: WissensereignisQuellen): Promise<Stand>
   ]);
   const sichtbar = new Map<string, KnowledgeObject>();
   for (const ko of kos) {
-    if (!ko.deletedAt && darfSehen(MELDE_BETRACHTER, ko)) {
+    if (meldbar(ko)) {
       sichtbar.set(ko.id, ko);
     }
   }
@@ -408,7 +415,7 @@ export class WissensereignisMelder {
     try {
       const stand = await ladeStand(this.deps.quellen);
       const erkannt = await this.erkenne(stand);
-      const ergebnis = await this.stelleZu(stand.sichtbar);
+      const ergebnis = await this.stelleZu();
       return { erkannt, ...ergebnis, ausstehend: this.warteschlange.length };
     } finally {
       this.laeuft = false;
@@ -534,9 +541,19 @@ export class WissensereignisMelder {
     return erkannt;
   }
 
-  private async stelleZu(
-    sichtbar: ReadonlyMap<string, KnowledgeObject>,
-  ): Promise<Omit<LaufErgebnis, "erkannt" | "ausstehend">> {
+  // Die Rechte gelten zum Zeitpunkt JEDES einzelnen Versands (BEN, Nacharbeit 2 und 3): Die
+  // betroffenen Objekte werden unmittelbar vor dem Versuch frisch gelesen — nicht aus dem Stand des
+  // Takts, der während vorangehender, womöglich langsamer Zustellungen veralten kann.
+  private async nochMeldbar(meldung: Meldung): Promise<boolean> {
+    for (const id of objekteDer(meldung)) {
+      if (!meldbar(await this.deps.quellen.wissensobjekt(id))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private async stelleZu(): Promise<Omit<LaufErgebnis, "erkannt" | "ausstehend">> {
     let zugestellt = 0;
     let gescheitert = 0;
     let abgebrochen = 0;
@@ -555,9 +572,7 @@ export class WissensereignisMelder {
         }
         continue;
       }
-      // Befund 1 (BEN): Die Rechte gelten zum Zeitpunkt des Versands, nicht der Erkennung.
-      const verborgen = objekteDer(eintrag.meldung).filter((id) => !sichtbar.has(id));
-      if (verborgen.length > 0) {
+      if (!(await this.nochMeldbar(eintrag.meldung))) {
         abgebrochen += 1;
         const payload = {
           ...protokollBasis,
