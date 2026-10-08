@@ -11338,7 +11338,7 @@ index ab4c9e490..e4bf858c0 100644
          }
          if (request.body.expertId) {
 diff --git b/services/app/src/routes/audit-routes.ts a/services/app/src/routes/audit-routes.ts
-index b1c5bb887..44ca0c287 100644
+index e73910d55..44ca0c287 100644
 --- b/services/app/src/routes/audit-routes.ts
 +++ a/services/app/src/routes/audit-routes.ts
 @@ -1,253 +1,17 @@
@@ -11430,7 +11430,7 @@ index b1c5bb887..44ca0c287 100644
 -    return { eingeschraenkt: true, verborgen: new Set(), alles: true };
 -  }
 -  // Die Geschichte jedes Objekts aus der Kette: letzter Space, Autor, letzte Stufe.
--  const ausKette = new Map<string, { spaceId?: string; author?: string; stufe?: string }>();
+-  const ausKette = new Map<string, { spaceId?: string | null; author?: string; stufe?: string }>();
 -  const spaces = new Set<string>(await quelle.spaceKennungen());
 -  const befundKos = new Map<string, Set<string>>();
 -  for (const e of kette) {
@@ -11441,7 +11441,7 @@ index b1c5bb887..44ca0c287 100644
 -      }
 -      if (e.action === "ko.space-changed") {
 -        const nachher = e.payload.nachher;
--        g.spaceId = typeof nachher === "string" ? nachher : undefined;
+-        g.spaceId = typeof nachher === "string" ? nachher : null;
 -        for (const s of [e.payload.vorher, nachher]) {
 -          if (typeof s === "string") {
 -            spaces.add(s);
@@ -11671,7 +11671,7 @@ index b1c5bb887..44ca0c287 100644
      //
      // FR-AUD-02: unter `/api/audit` gibt es ausschließlich GET-Wege. Ein POST/PUT/PATCH/
      // DELETE ist nirgends registriert — `tests/audit-gesamt/append-only-http.test.ts` misst das.
-@@ -323,40 +64,12 @@ export function auditRoutes(
+@@ -323,34 +64,12 @@ export function auditRoutes(
        if (!user) {
          return;
        }
@@ -11680,10 +11680,7 @@ index b1c5bb887..44ca0c287 100644
 -      if (!lage.eingeschraenkt) {
 -        const kette = await audit.exportChain(user.id);
 -        const name = `klarwerk-audit-${kette.exportedAt.replace(/[:.]/g, "-")}.json`;
--        reply
--          .header("content-disposition", `attachment; filename="${name}"`)
--          .code(200)
--          .send(kette);
+-        reply.header("content-disposition", `attachment; filename="${name}"`).code(200).send(kette);
 -        return;
 -      }
 -      // Die Ansicht entsteht aus der Kette VOR ihrem eigenen Beleg — wie beim Kettenexport.
@@ -11696,22 +11693,21 @@ index b1c5bb887..44ca0c287 100644
 -        payload: {},
 -      });
 -      const name = `klarwerk-audit-ansicht-${exportedAt.replace(/[:.]/g, "-")}.json`;
+-      reply.header("content-disposition", `attachment; filename="${name}"`).code(200).send({
+-        format: "klarwerk-audit-ansicht",
+-        formatVersion: 1,
+-        exportedAt,
+-        kette: false,
+-        hinweis:
+-          "Leseansicht nach Leserecht: Einträge zu nicht sichtbaren Objekten fehlen; laufende Nummern der Ansicht, ohne Kettenfelder, nicht als Kette prüfbar.",
+-        count: eintraege.length,
+-        entries: eintraege,
+-      });
 +      const datei = await audit.exportChain(user.id);
 +      const stempel = datei.exportedAt.replace(/[:.]/g, "-");
-       reply
--        .header("content-disposition", `attachment; filename="${name}"`)
++      reply
 +        .header("content-disposition", `attachment; filename="klarwerk-audit-${stempel}.json"`)
-         .code(200)
--        .send({
--          format: "klarwerk-audit-ansicht",
--          formatVersion: 1,
--          exportedAt,
--          kette: false,
--          hinweis:
--            "Leseansicht nach Leserecht: Einträge zu nicht sichtbaren Objekten fehlen; laufende Nummern der Ansicht, ohne Kettenfelder, nicht als Kette prüfbar.",
--          count: eintraege.length,
--          entries: eintraege,
--        });
++        .code(200)
 +        .send(datei);
      });
    };

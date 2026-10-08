@@ -20,8 +20,12 @@ git diff -R --binary --output=tests/audit-gesamt/vorher/behebung-rueckwaerts.pat
   <Hauptstand> -- services ':(exclude)services/**/*.test.ts'
 ```
 
-Zuletzt so erzeugt in aufnahme:20260922:gesamt-leserechte, Nacharbeit 15 (Leserecht im Auditprotokoll
+Zuletzt so erzeugt in aufnahme:20260922:gesamt-leserechte, Nacharbeit 16 (Leserecht im Auditprotokoll
 hat `audit-routes.ts` und die Registrierung in `build-app.ts` geändert); beide Patches neu.
+
+Achtung: die Kandidatbildung formatiert `services/` (Biome). Ein Patch, der aus einem noch
+unformatierten Arbeitsbaum erzeugt wurde, passt danach nicht mehr (Nacharbeit 15). Erst erzeugen,
+wenn die geänderten Dateien schon in Formatiererform stehen.
 
 `fassung-758e76c1.patch` (Nacharbeit 8) macht aus denselben verfolgten `services/` die Lauf-2-Fassung
 `758e76c1`, an der beleg:6818bd52 gemeldet wurde (gleichzeitige `GET /api/audit/export`). Sie ist von

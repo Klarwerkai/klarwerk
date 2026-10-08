@@ -84,7 +84,7 @@ async function leselage(
     return { eingeschraenkt: true, verborgen: new Set(), alles: true };
   }
   // Die Geschichte jedes Objekts aus der Kette: letzter Space, Autor, letzte Stufe.
-  const ausKette = new Map<string, { spaceId?: string; author?: string; stufe?: string }>();
+  const ausKette = new Map<string, { spaceId?: string | null; author?: string; stufe?: string }>();
   const spaces = new Set<string>(await quelle.spaceKennungen());
   const befundKos = new Map<string, Set<string>>();
   for (const e of kette) {
@@ -95,7 +95,7 @@ async function leselage(
       }
       if (e.action === "ko.space-changed") {
         const nachher = e.payload.nachher;
-        g.spaceId = typeof nachher === "string" ? nachher : undefined;
+        g.spaceId = typeof nachher === "string" ? nachher : null;
         for (const s of [e.payload.vorher, nachher]) {
           if (typeof s === "string") {
             spaces.add(s);
