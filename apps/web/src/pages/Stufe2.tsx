@@ -1473,6 +1473,16 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
       {/* FE-MGMT-01: operativer Snapshot */}
       <Card id={sectionAnchor("overview")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.overview")}</SectionLabel>
+        {/* R-0736/R-0755: steckt Demobestand in den Zahlen, sagt die Sicht es — für alle Abschnitte
+            darunter, die auf demselben Snapshot rechnen. Fehlt das Feld (älterer Server), schweigt sie. */}
+        {(o.demoKos ?? 0) > 0 ? (
+          <p
+            data-testid="kapital-demo-hinweis"
+            className="mt-2 rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2 text-[12px] leading-relaxed text-trust-warn-text"
+          >
+            {t("kennzahlen.demo.hinweis", { demo: o.demoKos, total: o.totalKos })}
+          </p>
+        ) : null}
         <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           <MgmtKpi label={t("mgmt.kpiTotal")} value={o.totalKos} />
           <MgmtKpi label={t("mgmt.kpiValidated")} value={o.validated} />
@@ -1492,6 +1502,10 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
           </span>
           <span className="text-sm text-muted">/ 100 · {t(`mgmt.band.${snap.capital.band}`)}</span>
         </div>
+        {/* R-0755: der Wert ist eine gewichtete Formel über die Anteile darunter, kein Messwert. */}
+        <p data-testid="kapital-index-hinweis" className="mt-1 text-[11px] text-muted-2">
+          {t("kennzahlen.kapital.index")}
+        </p>
         <div className="mt-3 space-y-1.5">
           {snap.capital.parts.map((p) => (
             <div key={p.key} className="flex items-center gap-2">

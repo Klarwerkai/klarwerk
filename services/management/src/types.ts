@@ -39,6 +39,9 @@ export interface Overview {
   avgTrust: number;
   healthScore: number;
   healthBand: Band;
+  // R-0736/R-0755: wie viele der gezählten Objekte den Demodaten-Merker tragen. Die Zahlen bleiben
+  // dieselben; die Fläche kann damit aber sagen, dass Beispielbestand darin steckt.
+  demoKos: number;
 }
 
 export interface ScorePart {

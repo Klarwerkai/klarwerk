@@ -377,6 +377,12 @@ describe("Restliche API end-to-end (§2.4/§2.5)", () => {
     expect(impact.json().askTotal).toBe(2);
     expect(impact.json().answeredWithoutGap).toBe(1);
     expect(impact.json().answerRate).toBeCloseTo(0.5);
+    // R-0723/R-0750: die Antwortquote im Wochenverlauf — beide Fragen fallen in die laufende Woche
+    // (Montag, UTC), und die Wochenzähler ergeben zusammen genau die Gesamtzahlen.
+    const montag = new Date();
+    montag.setUTCDate(montag.getUTCDate() - ((montag.getUTCDay() + 6) % 7));
+    const woche = montag.toISOString().slice(0, 10);
+    expect(impact.json().askByWeek).toEqual({ [woche]: { asked: 2, answeredWithoutGap: 1 } });
     await app.close();
   });
 });

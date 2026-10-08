@@ -13,24 +13,29 @@ import {
   useLifecyclePending,
   useValidationOverview,
 } from "../api/hooks";
-import type { AuditFilter } from "../api/types";
+import type { AssignmentSummary, AuditFilter } from "../api/types";
 import { HelpTip } from "../components/HelpTip";
 import { LoadErrorState, StaleMarker } from "../components/LoadState";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import {
+  assignmentRows,
   auditActions,
   auditActors,
   averageTrust,
+  categoryDistribution,
   filterAudit,
   formatRate,
   validationRate,
+  weeklyAnswerRate,
   weeklyValidated,
   workloadSummary,
 } from "../lib/analyticsMetrics";
 import { ANALYTICS_AUDIT_ANCHOR, hashToElementId } from "../lib/analyticsSections";
+import { isDemoKnowledge } from "../lib/demoKnowledge";
 import { executiveKpis } from "../lib/executiveKpis";
 import { type HealthBand, knowledgeHealth } from "../lib/knowledgeHealth";
 import { isGroupError, isGroupLoading, isGroupStale } from "../lib/loadingState";
+import { useAuthorName } from "../lib/useAuthorName";
 
 const BAND_TONE: Record<HealthBand, string> = {
   gut: "bg-trust-pos-bg text-trust-pos-text",
@@ -54,12 +59,32 @@ function ExecKpi({
   value,
   hint,
   loading = false,
-}: { label: string; value: number; hint: string; loading?: boolean }): JSX.Element {
+}: { label: string; value: number | string; hint: string; loading?: boolean }): JSX.Element {
   return (
     <div className="rounded-card bg-page p-4">
       <div className="font-mono text-micro uppercase tracking-wider text-muted-2">{label}</div>
       <div className="mt-1 text-2xl font-semibold text-ink">{loading ? "—" : value}</div>
       <div className="mt-0.5 text-[11px] leading-snug text-muted-2">{hint}</div>
+    </div>
+  );
+}
+
+// FR-VAL-06 / FR-ANA-01: offen/erledigt je Person. Eigene Komponente, damit das Personenverzeichnis
+// nur gefragt wird, wenn es überhaupt eine Zeile aufzulösen gibt. Namen kommen über den einen Weg
+// `useAuthorName` (lädt/nicht abrufbar/unbekannt ehrlich unterschieden, nie eine rohe Kennung).
+function AssignmentsPerPerson({ rows }: { rows: readonly AssignmentSummary[] }): JSX.Element {
+  const { t } = useTranslation();
+  const nameOf = useAuthorName();
+  return (
+    <div className="space-y-1.5" data-testid="analytics-personen">
+      {rows.map((r) => (
+        <div key={r.userId} className="flex items-center gap-3 text-[12.5px]">
+          <span className="min-w-0 flex-1 truncate text-text">{nameOf(r.userId)}</span>
+          <span className="font-mono text-[11px] text-muted-2">
+            {t("kennzahlen.personen.zeile", { open: r.open, done: r.done })}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -91,7 +116,9 @@ export function Analytics(): JSX.Element {
   // E2E-016: die vier Exec-Kennzahlen sind EINE zusammengehörige Gruppe — bis ALLE Quellen geladen
   // sind, wird die Gruppe atomar als „lädt" behandelt (kein Mischbild aus echter Zahl und 0). Seit
   // bens D9-Auflage über den gemeinsamen Ladezustand-Helfer (dasselbe Muster wie Start/Nav/Bereitschaft).
-  const execSources = [kos, gaps, busFactor];
+  // R-0723: drei der vier Kernzahlen oben kommen aus dem Wirkungsbericht — er gehört deshalb mit in
+  // die Gruppe.
+  const execSources = [kos, gaps, busFactor, impact];
   const execLoading = isGroupLoading(execSources);
   // AUFTRAG-mega3 Block B (bens D9): dritte Phase „error"/„stale" für die Exec-KPI-Gruppe.
   const execError = isGroupError(execSources);
@@ -100,7 +127,14 @@ export function Analytics(): JSX.Element {
     void kos.refetch();
     void gaps.refetch();
     void busFactor.refetch();
+    void impact.refetch();
   };
+  const im = impact.data;
+  const rateWeeks = weeklyAnswerRate(im?.askByWeek);
+  const latestRateWeek = rateWeeks[rateWeeks.length - 1];
+  // R-0736/R-0755: Demodaten zählen mit, aber nicht stillschweigend — der Anteil wird benannt.
+  const kosList = kos.data ?? [];
+  const demoCount = kosList.filter(isDemoKnowledge).length;
 
   // SCRUM-141: erklärbarer Knowledge-Health-Score aus echten Signalen.
   // AUFTRAG-mega32 F: die Abdeckungs-Zusammenfassung entscheidet, ob der Konfliktfaktor überhaupt
@@ -156,11 +190,14 @@ export function Analytics(): JSX.Element {
     <div className="mx-auto max-w-4xl space-y-7">
       <PageHeader kicker={t("ana.kicker")} title={t("nav.analytics")} pageKey="analytics" />
 
-      {/* SCRUM-431 (VIP/Investor): ruhiger Executive-Blick — vier Kern-Kennzahlen aus Live-Daten. */}
+      {/* SCRUM-431 (VIP/Investor): ruhiger Executive-Blick aus Live-Daten.
+          R-0723: oben die vier Kernzahlen für Entscheider — geprüftes Wissen, gestellte Fragen, ohne
+          Lücke beantwortete Fragen, Antwortquote (ihr Wochenverlauf steht unter „Wirkung"). Die
+          bisherigen Bestands-/Risikokacheln bleiben als zweite Zeile derselben Gruppe erhalten. */}
       <div>
         <div className="mb-2 flex items-center gap-1.5">
           <SectionLabel>{t("ana.exec.title")}</SectionLabel>
-          <HelpTip title={t("ana.exec.title")} body={t("ana.help.exec")} />
+          <HelpTip title={t("ana.exec.title")} body={t("kennzahlen.help.exec")} />
         </div>
         <Card>
           {execStale ? (
@@ -172,31 +209,71 @@ export function Analytics(): JSX.Element {
             // Block B: dauerhaft gescheitert → ehrlicher Fehlerzustand mit Wiederholen (kein „lädt", keine 0).
             <LoadErrorState onRetry={retryExec} />
           ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <ExecKpi
-                label={t("ana.exec.validated")}
-                value={exec.validated}
-                hint={t("ana.exec.validatedHint")}
-                loading={execLoading}
-              />
-              <ExecKpi
-                label={t("ana.exec.openReviews")}
-                value={exec.openReviews}
-                hint={t("ana.exec.openReviewsHint")}
-                loading={execLoading}
-              />
-              <ExecKpi
-                label={t("ana.exec.busFactor")}
-                value={exec.singleSourceCategories}
-                hint={t("ana.exec.busFactorHint")}
-                loading={execLoading}
-              />
-              <ExecKpi
-                label={t("ana.exec.rescued")}
-                value={exec.rescuedGaps}
-                hint={t("ana.exec.rescuedHint")}
-                loading={execLoading}
-              />
+            <div className="space-y-3">
+              {!execLoading && demoCount > 0 ? (
+                <p
+                  data-testid="analytics-demo-hinweis"
+                  className="rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2 text-[12px] leading-relaxed text-trust-warn-text"
+                >
+                  {t("kennzahlen.demo.hinweis", { demo: demoCount, total: kosList.length })}
+                </p>
+              ) : null}
+              <div
+                className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+                data-testid="analytics-kernzahlen"
+              >
+                <ExecKpi
+                  label={t("ana.exec.validated")}
+                  value={exec.validated}
+                  hint={t("ana.exec.validatedHint")}
+                  loading={execLoading}
+                />
+                <ExecKpi
+                  label={t("ana.impactAsk")}
+                  value={im?.askTotal ?? 0}
+                  hint={t("kennzahlen.exec.askedHint")}
+                  loading={execLoading}
+                />
+                <ExecKpi
+                  label={t("ana.impactAnswered")}
+                  value={im?.answeredWithoutGap ?? 0}
+                  hint={t("kennzahlen.exec.answeredHint")}
+                  loading={execLoading}
+                />
+                <ExecKpi
+                  label={t("ana.impactRate")}
+                  value={formatRate(im?.answerRate ?? 0)}
+                  hint={
+                    latestRateWeek
+                      ? t("kennzahlen.exec.rateHint", {
+                          rate: formatRate(latestRateWeek.rate),
+                          week: latestRateWeek.week,
+                        })
+                      : t("kennzahlen.exec.rateHintLeer")
+                  }
+                  loading={execLoading}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <ExecKpi
+                  label={t("ana.exec.openReviews")}
+                  value={exec.openReviews}
+                  hint={t("ana.exec.openReviewsHint")}
+                  loading={execLoading}
+                />
+                <ExecKpi
+                  label={t("ana.exec.busFactor")}
+                  value={exec.singleSourceCategories}
+                  hint={t("ana.exec.busFactorHint")}
+                  loading={execLoading}
+                />
+                <ExecKpi
+                  label={t("ana.exec.rescued")}
+                  value={exec.rescuedGaps}
+                  hint={t("ana.exec.rescuedHint")}
+                  loading={execLoading}
+                />
+              </div>
             </div>
           )}
         </Card>
@@ -306,6 +383,8 @@ export function Analytics(): JSX.Element {
       <QueryState query={analytics}>
         {(a) => {
           const maxType = Math.max(1, ...Object.values(a.byType));
+          const categories = categoryDistribution(a.byCategory);
+          const maxCategory = Math.max(1, ...categories.map((c) => c.count));
           return (
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -343,32 +422,102 @@ export function Analytics(): JSX.Element {
                   ))}
                 </div>
               </Card>
+
+              {/* FR-ANA-01 / R-0723: die Kategorie-Verteilung — bisher stand nur ihre Anzahl da. */}
+              {categories.length > 0 ? (
+                <Card data-testid="analytics-kategorien">
+                  <SectionLabel>{t("kennzahlen.byCategory")}</SectionLabel>
+                  <div className="space-y-2">
+                    {categories.map((c) => (
+                      <div key={c.category} className="flex items-center gap-3">
+                        <span className="w-32 truncate text-[13px] text-text">{c.category}</span>
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-page">
+                          <div
+                            className="h-full rounded-full bg-brand"
+                            style={{ width: `${(c.count / maxCategory) * 100}%` }}
+                          />
+                        </div>
+                        <span className="font-mono text-[11px] text-muted-2">{c.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              ) : null}
             </div>
           );
         }}
       </QueryState>
 
-      {/* SCRUM-140: Wirkungs-/Impact-Metriken aus GET /api/analytics/impact */}
+      {/* FR-VAL-06 / FR-ANA-01: Prüfaufgaben je Person (offen/erledigt) — dieselbe Quelle wie die
+          Summen „Offene Aufgaben"/„Erledigt" darüber, jetzt Zeile für Zeile. */}
+      <div>
+        <div className="mb-2">
+          <SectionLabel>{t("kennzahlen.personen.titel")}</SectionLabel>
+        </div>
+        <QueryState query={overview} emptyText={t("kennzahlen.personen.leer")}>
+          {(summaries) => {
+            const rows = assignmentRows(summaries);
+            return (
+              <Card>
+                {rows.length === 0 ? (
+                  <p className="text-[12.5px] text-muted">{t("kennzahlen.personen.leer")}</p>
+                ) : (
+                  <AssignmentsPerPerson rows={rows} />
+                )}
+              </Card>
+            );
+          }}
+        </QueryState>
+      </div>
+
+      {/* SCRUM-140: Wirkungs-/Impact-Metriken aus GET /api/analytics/impact.
+          R-0723/R-0750: die vier Zahlen stehen oben im Executive-Blick; hier steht ihr Verlauf
+          über die Zeit — validiertes Wissen je Woche und die Antwortquote je Woche. */}
       <div>
         <div className="mb-2 flex items-center gap-1.5">
           <SectionLabel>{t("ana.impact")}</SectionLabel>
-          <HelpTip title={t("ana.impact")} body={t("ana.help.impact")} />
+          <HelpTip title={t("ana.impact")} body={t("kennzahlen.help.wirkung")} />
         </div>
         <QueryState query={impact}>
-          {(im) => {
-            const weeks = weeklyValidated(im.validatedByWeek);
+          {(bericht) => {
+            const weeks = weeklyValidated(bericht.validatedByWeek);
             const maxWeek = Math.max(1, ...weeks.map((w) => w.count));
+            const rates = weeklyAnswerRate(bericht.askByWeek);
             return (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <Kpi label={t("ana.impactValidated")} value={im.validatedTotal} />
-                  <Kpi label={t("ana.impactAsk")} value={im.askTotal} />
-                  <Kpi label={t("ana.impactAnswered")} value={im.answeredWithoutGap} />
-                  <Kpi label={t("ana.impactRate")} value={formatRate(im.answerRate)} />
-                </div>
+                <Card data-testid="analytics-quote-woche">
+                  <SectionLabel>{t("kennzahlen.wochen.quote")}</SectionLabel>
+                  {rates.length === 0 ? (
+                    <p className="text-[12.5px] text-muted">{t("kennzahlen.wochen.keineFragen")}</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {rates.map((w) => (
+                        <div key={w.week} className="flex items-center gap-3">
+                          <span className="w-24 font-mono text-[11px] text-muted-2">{w.week}</span>
+                          <div className="h-2 flex-1 overflow-hidden rounded-full bg-page">
+                            <div
+                              className="h-full rounded-full bg-brand"
+                              style={{ width: `${w.rate * 100}%` }}
+                            />
+                          </div>
+                          <span className="font-mono text-[11px] text-muted-2">
+                            {t("kennzahlen.wochen.quoteZeile", {
+                              rate: formatRate(w.rate),
+                              answered: w.answered,
+                              asked: w.asked,
+                            })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
                 {weeks.length > 0 ? (
                   <Card>
                     <SectionLabel>{t("ana.weekly")}</SectionLabel>
+                    <p className="mb-2 text-[11px] leading-snug text-muted-2">
+                      {t("kennzahlen.wochen.validiertHinweis")}
+                    </p>
                     <div className="space-y-2">
                       {weeks.map((w) => (
                         <div key={w.week} className="flex items-center gap-3">

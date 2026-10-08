@@ -340,4 +340,18 @@ describe("SCRUM-120: computeSnapshot", () => {
     expect(snap.pilot).toHaveLength(3);
     expect(snap.valuationFacts.validatedKos).toBe(1);
   });
+
+  // R-0736/R-0755: Beispielbestand darf nicht wie gemessener Bestand aussehen. Gezählt wird der
+  // Feld-Merker; die übrigen Zahlen bleiben unverändert (der Demo-Anteil ist eine Auskunft, kein Filter).
+  it("zählt Demodaten-Objekte im Überblick, ohne die übrigen Zahlen zu verändern", () => {
+    const snap = computeSnapshot(
+      input({
+        kos: [ko({ id: "echt" }), ko({ id: "demo", demoSeed: true })],
+        busFactor: [bus("Anlage 1", false)],
+      }),
+    );
+    expect(snap.overview.demoKos).toBe(1);
+    expect(snap.overview.totalKos).toBe(2);
+    expect(computeSnapshot(input({ kos: [ko({ id: "echt" })] })).overview.demoKos).toBe(0);
+  });
 });

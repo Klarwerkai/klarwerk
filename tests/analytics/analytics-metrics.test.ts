@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { AuditEntry, KnowledgeObject } from "../../apps/web/src/api/types";
 import {
+  assignmentRows,
   auditActions,
   auditActors,
   averageTrust,
+  categoryDistribution,
   filterAudit,
   formatRate,
   validationRate,
+  weeklyAnswerRate,
   weeklyValidated,
   workloadSummary,
 } from "../../apps/web/src/lib/analyticsMetrics";
@@ -48,6 +51,64 @@ describe("SCRUM-140: Impact-Aufbereitung", () => {
       { week: "2026-06-08", count: 3 },
       { week: "2026-06-15", count: 2 },
     ]);
+  });
+
+  // R-0723/R-0750: die Antwortquote im Wochenverlauf.
+  it("weeklyAnswerRate rechnet die Quote je Woche, chronologisch, ohne leere Wochen", () => {
+    const out = weeklyAnswerRate(
+      {
+        "2026-06-15": { asked: 4, answeredWithoutGap: 3 },
+        "2026-06-01": { asked: 2, answeredWithoutGap: 0 },
+        "2026-06-08": { asked: 0, answeredWithoutGap: 0 },
+      },
+      8,
+    );
+    expect(out).toEqual([
+      { week: "2026-06-01", asked: 2, answered: 0, rate: 0 },
+      { week: "2026-06-15", asked: 4, answered: 3, rate: 0.75 },
+    ]);
+  });
+
+  it("weeklyAnswerRate: fehlende Wochenreihe (älterer Server) ergibt einen leeren Verlauf", () => {
+    expect(weeklyAnswerRate(undefined)).toEqual([]);
+  });
+
+  it("weeklyAnswerRate begrenzt auf die jüngsten Wochen", () => {
+    const out = weeklyAnswerRate(
+      {
+        "2026-06-01": { asked: 1, answeredWithoutGap: 1 },
+        "2026-06-08": { asked: 1, answeredWithoutGap: 1 },
+        "2026-06-15": { asked: 2, answeredWithoutGap: 1 },
+      },
+      2,
+    );
+    expect(out.map((w) => w.week)).toEqual(["2026-06-08", "2026-06-15"]);
+  });
+});
+
+describe("FR-ANA-01: Kategorie-Verteilung", () => {
+  it("categoryDistribution: größte zuerst, Gleichstand nach Name, leere Kategorien fallen weg", () => {
+    expect(categoryDistribution({ Technik: 2, Betrieb: 5, Anlage: 2, Leer: 0 })).toEqual([
+      { category: "Betrieb", count: 5 },
+      { category: "Anlage", count: 2 },
+      { category: "Technik", count: 2 },
+    ]);
+    expect(categoryDistribution({})).toEqual([]);
+  });
+});
+
+describe("FR-VAL-06 / FR-ANA-01: Prüfaufgaben je Person", () => {
+  it("assignmentRows: meiste offene zuerst, dann mehr Erledigtes, dann Kennung; 0/0 fällt weg", () => {
+    const rows = assignmentRows([
+      { userId: "u-c", open: 1, done: 0 },
+      { userId: "u-a", open: 3, done: 2 },
+      { userId: "u-leer", open: 0, done: 0 },
+      { userId: "u-b", open: 1, done: 4 },
+      { userId: "u-d", open: 1, done: 0 },
+    ]);
+    expect(rows.map((r) => r.userId)).toEqual(["u-a", "u-b", "u-c", "u-d"]);
+    // Die Summen über die Zeilen bleiben die der Gesamtkacheln — nichts geht verloren.
+    expect(workloadSummary(rows)).toEqual({ openTotal: 6, doneTotal: 6, experts: 4 });
   });
 });
 

@@ -66,6 +66,8 @@ export function overview(input: MetricsInput, capitalScore: number): Overview {
     avgTrust: avgTrustOf(input.kos),
     healthScore: capitalScore,
     healthBand: bandForScore(capitalScore),
+    // Der Feld-Merker des Seeds (Pedi 02.07.) überlebt Bearbeitungen; der Tag allein nicht.
+    demoKos: input.kos.filter((k) => k.demoSeed === true).length,
   };
 }
 

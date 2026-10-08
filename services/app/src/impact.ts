@@ -5,10 +5,15 @@ import type { Sichtbarkeitsfilter } from "./sichtbarkeit";
 // FR-ANA-02: Wirkungs-Dashboard — zwei Kernmetriken über Zeit.
 export interface ImpactReport {
   validatedTotal: number;
-  validatedByWeek: Record<string, number>; // Schlüssel = Wochenstart (Montag, YYYY-MM-DD)
+  // Schlüssel = Wochenstart (Montag, YYYY-MM-DD) der ERFASSUNG des heute validierten Objekts. Einen
+  // eigenen Validierungszeitpunkt führt das KO nicht (das Audit `ko.rated` trägt kein Ergebnis).
+  validatedByWeek: Record<string, number>;
   askTotal: number;
   answeredWithoutGap: number;
   answerRate: number; // Anteil beantworteter Fragen ohne Wissenslücke (0..1)
+  // R-0723/R-0750: die Antwortquote im Wochenverlauf. Schlüssel = Wochenstart des Audit-Zeitpunkts
+  // der Frage; die Quote je Woche rechnet der Leser aus beiden Zählern (keine gerundete Zahl hier).
+  askByWeek: Record<string, { asked: number; answeredWithoutGap: number }>;
 }
 
 // Wochenstart (Montag, UTC) als stabiler Gruppierungs-Schlüssel.
@@ -42,6 +47,16 @@ export async function impactReport(
   const asks = await audit.list({ action: "ask.query" });
   const askTotal = asks.length;
   const answeredWithoutGap = asks.filter((entry) => entry.payload.answered === true).length;
+  const askByWeek: ImpactReport["askByWeek"] = {};
+  for (const entry of asks) {
+    const key = weekKey(entry.at);
+    const bucket = askByWeek[key] ?? { asked: 0, answeredWithoutGap: 0 };
+    bucket.asked += 1;
+    if (entry.payload.answered === true) {
+      bucket.answeredWithoutGap += 1;
+    }
+    askByWeek[key] = bucket;
+  }
 
   return {
     validatedTotal: validated.length,
@@ -49,6 +64,7 @@ export async function impactReport(
     askTotal,
     answeredWithoutGap,
     answerRate: askTotal > 0 ? answeredWithoutGap / askTotal : 0,
+    askByWeek,
   };
 }
 
