@@ -12,10 +12,16 @@
 import { readFileSync } from "node:fs";
 import Fastify, { type FastifyInstance } from "fastify";
 import { describe, expect, it } from "vitest";
-import { ERR_TEXT_UNTERDRUECKT, baueLoggerOptionen } from "../../services/app/src/build-app";
+import {
+  ERR_TEXT_UNTERDRUECKT,
+  baueLoggerOptionen,
+  begrenzteMeldung,
+} from "../../services/app/src/build-app";
 import type { Guards } from "../../services/app/src/http";
+import { starteKlaraAufraeumen } from "../../services/app/src/klara-aufraeumen";
 import { LOGFELDER, inhaltsfreieFehlerkennung } from "../../services/app/src/log-positivliste";
 import { externalRoutes } from "../../services/app/src/routes/external-routes";
+import type { IntervalHandle } from "../../services/app/src/trash-sweep-scheduler";
 import { InMemoryExternalKnowledgePolicyRepo } from "../../services/external-search/src/policy";
 import { ExternalSearchService } from "../../services/external-search/src/service";
 import { createWikipediaProvider } from "../../services/external-search/src/wikipedia";
@@ -178,5 +184,54 @@ describe("R-0623 · Betriebslogfelder nur nach Positivliste", () => {
     }
     const server = readFileSync("services/app/src/server.ts", "utf8");
     expect(server).not.toMatch(/app\.log\.warn\(`[^`]*\$\{String\(error\)\}/);
+    // Nacharbeit 3: der rohe Datenbanktext des Policy-Ladefehlers steht nicht im Meldungstext.
+    expect(server).not.toMatch(/konnte NICHT geladen werden \(\$\{policy\.detail/);
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // Ben, Nacharbeit 3: „Der neue Logfilter lässt reine Textaufrufe unverändert passieren. Ein
+  // konkreter verbleibender Weg ist klara-aufraeumen.ts:46: String(error) gelangt über server.ts:254
+  // als Meldungstext in die zentrale Logausgabe."
+  // ----------------------------------------------------------------------------------------------
+  it("L8 · Klara-Aufräumlauf, verdrahtet wie in server.ts: der Fehlertext erreicht das Log nicht", async () => {
+    const { app, zeilen, roh } = mitLogger();
+    starteKlaraAufraeumen({
+      lauf: () => Promise.reject(new Error(`duplicate key: Key (email)=(${INHALT}@example.org)`)),
+      intervalMs: 60_000,
+      // Dieselbe Verdrahtung wie `server.ts` (`starteKlaraAufraeumen({ … log: … })`).
+      log: { info: (t) => app.log.info(t), warn: (felder, t) => app.log.warn(felder, t) },
+      setIntervalFn: () => 1 as unknown as IntervalHandle,
+      clearIntervalFn: () => undefined,
+    });
+    for (let takt = 0; takt < 5; takt += 1) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    await app.close();
+
+    expect(roh()).not.toContain(INHALT);
+    const zeile = zeilen().find((z) => z.msg === "Klara-Aufräumlauf (Start) übersprungen");
+    expect(zeile, "die Warnung des Aufräumlaufs fehlt").toBeDefined();
+    // Die Ursache bleibt nachvollziehbar — als Typ und Quelltextstelle, nicht als Text.
+    expect((zeile?.err as Zeile).type).toBe("Error");
+    expect((zeile?.err as Zeile).message).toBe(ERR_TEXT_UNTERDRUECKT);
+  });
+
+  it("L9 · reine Textaufrufe: eingebetteter Fehlertext, Folgezeilen und Formatwerte fallen weg", async () => {
+    const { app, zeilen, roh } = mitLogger();
+    app.log.warn(`Lauf übersprungen: ${String(new TypeError(`kaputt bei ${INHALT}`))}`);
+    app.log.warn(`Lauf übersprungen\n    at geheim (${INHALT}.ts:1:1)`);
+    app.log.info("Formatprobe %s", INHALT);
+    app.log.info("KLARWERK läuft auf :3000 — Datenhaltung: Postgres");
+    await app.close();
+
+    expect(roh()).not.toContain(INHALT);
+    const meldungen = zeilen().map((z) => z.msg);
+    expect(meldungen).toContain(`Lauf übersprungen: ${ERR_TEXT_UNTERDRUECKT}`);
+    expect(meldungen).toContain("Lauf übersprungen");
+    // Ein gewöhnlicher Betriebssatz bleibt unverändert.
+    expect(meldungen).toContain("KLARWERK läuft auf :3000 — Datenhaltung: Postgres");
+    expect(begrenzteMeldung("Bestandsabfrage gescheitert: wissensobjekte")).toBe(
+      "Bestandsabfrage gescheitert: wissensobjekte",
+    );
   });
 });

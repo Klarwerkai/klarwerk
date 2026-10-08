@@ -2443,9 +2443,15 @@ function istTraceKennung(schluessel: string, inhalt: unknown): inhalt is string 
  * `ERR_TEXT_UNTERDRUECKT`. Alle übrigen Argumente bleiben, wie sie sind.
  */
 export function ohneFreienFehlertext(argumente: readonly unknown[]): unknown[] {
-  const [erstes, meldung, ...rest] = argumente;
+  const [erstes, meldung] = argumente;
+  // R-0623 (Ben, Nacharbeit 3): auch ein reiner Textaufruf läuft nicht mehr unverändert durch.
+  // Weitere Argumente (Formatwerte für `%s` — im Bestand ungenutzt) fallen weg; ein Meldungstext
+  // wird begrenzt (`begrenzteMeldung`).
+  if (typeof erstes === "string") {
+    return [begrenzteMeldung(erstes)];
+  }
   if (erstes === null || typeof erstes !== "object") {
-    return [...argumente];
+    return [];
   }
   const felder: Record<string, unknown> =
     erstes instanceof Error ? { err: erstes } : nurGelisteteLogfelder(erstes, erlaubterTyp);
@@ -2459,9 +2465,30 @@ export function ohneFreienFehlertext(argumente: readonly unknown[]): unknown[] {
       meldung === text ||
       (typeof meldung === "string" && text.length >= 8 && meldung.includes(text)));
   if (wiederholt) {
-    return [felder, ERR_TEXT_UNTERDRUECKT, ...rest];
+    return [felder, ERR_TEXT_UNTERDRUECKT];
   }
-  return argumente.length > 1 ? [felder, meldung, ...rest] : [felder];
+  return typeof meldung === "string" ? [felder, begrenzteMeldung(meldung)] : [felder];
+}
+
+/**
+ * Wie `String(error)` einen Fehler in Text verwandelt: `Error: …`, `TypeError: …`,
+ * `ConfluenceRequestError: …`. Ab dieser Stelle steht in einer Meldung der freie Fehlertext.
+ */
+const EINGEBETTETER_FEHLERTEXT = /\b[A-Za-z]*Error: /;
+
+/**
+ * R-0623 — DER MELDUNGSTEXT EINER LOGZEILE, BEGRENZT.
+ *
+ * Meldungen sind im Quelltext gebaute Sätze; ihre Werte gehören in die gelisteten Felder. Zwei Wege,
+ * auf denen trotzdem freier Text hineinkam, werden hier geschlossen: ein eingebetteter Fehlertext
+ * (`… übersprungen: Error: duplicate key … (email)=(…)`) wird ab seinem Anfang durch
+ * `ERR_TEXT_UNTERDRUECKT` ersetzt, und nur die erste Zeile bleibt — ein Stack oder ein mehrzeiliger
+ * Fremdtext kommt nicht mit.
+ */
+export function begrenzteMeldung(meldung: string): string {
+  const ersteZeile = meldung.split(/[\r\n]/, 1)[0] ?? "";
+  const treffer = EINGEBETTETER_FEHLERTEXT.exec(ersteZeile);
+  return treffer ? `${ersteZeile.slice(0, treffer.index)}${ERR_TEXT_UNTERDRUECKT}` : ersteZeile;
 }
 
 /**

@@ -62,7 +62,12 @@ describe("Bens B13 · der Zeitgeber startet den Klara-Aufräumlauf", () => {
     const z = zeitgeber();
     starteKlaraAufraeumen({ lauf, intervalMs: 60_000, log, ...z });
     await vi.waitFor(() => expect(log.warn).toHaveBeenCalledTimes(1));
-    expect(String(log.warn.mock.calls[0]?.[0])).toContain("Protokoll nicht erreichbar");
+    // R-0623 (Ben, Nacharbeit 3): die Ursache ist gemeldet — STRUKTURIERT als `err`, damit sie nur
+    // über den Erlaubnislisten-Serializer ins Log geht; der Text ist ein fester Ereignissatz.
+    const [felder, text] = log.warn.mock.calls[0] ?? [];
+    expect((felder as { err?: unknown }).err).toBeInstanceOf(Error);
+    expect((felder as { err: Error }).err.message).toBe("Protokoll nicht erreichbar");
+    expect(String(text)).toBe("Klara-Aufräumlauf (Start) übersprungen");
     z.tick();
     await vi.waitFor(() => expect(log.info).toHaveBeenCalledTimes(1));
     expect(String(log.info.mock.calls[0]?.[0])).toContain("2 entfernt");

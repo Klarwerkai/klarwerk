@@ -179,8 +179,11 @@ async function start(): Promise<void> {
     // die Log-Meldung darf das nicht suggerieren. Bis zum Neustart bleibt fail-closed=deterministic aktiv;
     // ein Admin kann die Zuordnung in der Zwischenzeit über die API neu setzen (setTaskConfig ist nicht
     // ENV-gesperrt, s. ReasonerPolicyLockedError).
+    // R-0623 (Ben, Nacharbeit 3): `policy.detail` ist hier der rohe Text des Datenbankfehlers — er
+    // steht nicht im Log; die Lage nennt das Ereignis, der Text bleibt fest.
     app.log.error(
-      `KI-Zuordnung konnte NICHT geladen werden (${policy.detail ?? "unbekannt"}) — fail-closed auf global=${policy.config.global} (kein Cloud-Egress). Bitte DB prüfen und den Prozess NEU STARTEN, um die persistierte Wahl zu laden (keine automatische Wiederherstellung im laufenden Betrieb) — oder die Zuordnung in der Zwischenzeit unter KI-Verwaltung neu setzen.`,
+      { event: "ki_zuordnung_ladefehler" },
+      `KI-Zuordnung konnte NICHT geladen werden — fail-closed auf global=${policy.config.global} (kein Cloud-Egress). Bitte DB prüfen und den Prozess NEU STARTEN, um die persistierte Wahl zu laden (keine automatische Wiederherstellung im laufenden Betrieb) — oder die Zuordnung in der Zwischenzeit unter KI-Verwaltung neu setzen.`,
     );
   } else if (policy.source === "env") {
     app.log.info(
@@ -251,7 +254,7 @@ async function start(): Promise<void> {
     starteKlaraAufraeumen({
       lauf: klaraAufraeumLauf,
       intervalMs: klaraInterval,
-      log: { info: (t) => app.log.info(t), warn: (t) => app.log.warn(t) },
+      log: { info: (t) => app.log.info(t), warn: (felder, t) => app.log.warn(felder, t) },
     });
     app.log.info(`Klara-Aufräumlauf aktiv — Intervall ${Math.round(klaraInterval / 60000)} min.`);
   }
