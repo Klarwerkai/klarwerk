@@ -77,7 +77,8 @@ export interface Zeile {
    * vier Routen, die `buildApp` selbst anlegt, steht hier `DIREKT`.
    */
   gruppe: string;
-  methode: "GET" | "POST" | "PUT" | "DELETE";
+  // R-0556: PATCH für die Verzeichnispflege (SCIM ändert Konten per PatchOp).
+  methode: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   /** Die URL, die `app.inject` wirklich fährt — mit eingesetzter Kennung, wo die Route eine fordert. */
   pfad: string;
   /**
@@ -265,32 +266,6 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     art: "zurueckgestellt",
     grund:
       "Der SSO-Rückweg. Er prüft state, nonce und PKCE gegen kurzlebige Cookies aus `GET /api/auth/oidc/start`; ohne diesen Ablauf misst er keine Rechte, sondern die Ablaufprüfung.",
-  },
-  // R-0556: die vier schreibenden Türen der Verzeichnispflege. Über sie entscheidet kein
-  // Rollenrecht, sondern der Verzeichnisschlüssel — dieselbe Prüfung, die an den drei lesenden Türen
-  // für alle fünf Akteure als 401 gemessen ist (TABELLE, `verzeichnisRoutes`).
-  ...(
-    [
-      ["POST", "/scim/v2/Users"],
-      ["PUT", "/scim/v2/Users/:id"],
-      ["PATCH", "/scim/v2/Users/:id"],
-      ["DELETE", "/scim/v2/Users/:id"],
-    ] as const
-  ).map(
-    ([methode, pfad]): Nichtabnahme => ({
-      methode,
-      pfad,
-      art: "baulich",
-      grund:
-        "Verzeichnispflege (SCIM, R-0556): das Tor ist der Verzeichnisschlüssel, keine Rolle — eine Rollenzeile hätte nichts zu unterscheiden. Dieselbe Schlüsselprüfung (`requireVerzeichnisSchluessel`) ist an den lesenden SCIM-Türen für alle fünf Akteure als 401 gemessen; Anlegen, Ändern und Sperren mit Schlüssel misst `tests/firmenanmeldung/verzeichnis-pflege.test.ts`.",
-    }),
-  ),
-  {
-    methode: "POST",
-    pfad: "/api/auth/saml/acs",
-    art: "baulich",
-    grund:
-      "Der SAML-Rücksprung (R-0560). Über diese Tür entscheidet kein Rechtetor, sondern die Signaturprüfung einer vom Anbieter signierten Antwort auf eine einmalige Anfragekennung (`services/auth/src/saml.ts`); eine feste Nutzlast für fünf Akteure gibt es nicht. Ohne SAML-Konfiguration antwortet sie allen gleich 501 `SAML_DISABLED`; ihre Prüfungen misst `tests/firmenanmeldung/saml-anmeldung.test.ts`.",
   },
   {
     methode: "POST",
@@ -1712,19 +1687,24 @@ export const TABELLE: Zeile[] = [
     ),
   },
   // R-0556 / R-0571: die Verzeichnispflege (SCIM). Ihr Tor ist der Verzeichnisschlüssel, KEIN
-  // Rollenrecht — keine der fünf Sitzungen, auch nicht die des Admins, öffnet sie. Gemessen an den
-  // drei lesenden Türen; die schreibenden stehen mit Grund in `NICHT_ABGENOMMEN` und sind in
-  // `tests/firmenanmeldung/verzeichnis-pflege.test.ts` mit dem Schlüssel gefahren.
+  // Rollenrecht — keine der fünf Sitzungen, auch nicht die des Admins, öffnet sie. Gemessen an
+  // ALLEN sieben Türen, lesend wie schreibend: die Schlüsselprüfung steht vor jedem Lesen und
+  // Schreiben (`requireVerzeichnisSchluessel`), eine abgewiesene Messung ändert also nichts. Das
+  // Anlegen, Ändern und Sperren MIT Schlüssel fährt `tests/firmenanmeldung/verzeichnis-pflege.test.ts`.
   ...(
     [
-      ["/scim/v2/ServiceProviderConfig", undefined, 349],
-      ["/scim/v2/Users", undefined, 367],
-      ["/scim/v2/Users/gibt-es-nicht", "/scim/v2/Users/:id", 399],
+      ["GET", "/scim/v2/ServiceProviderConfig", undefined, 357],
+      ["GET", "/scim/v2/Users", undefined, 375],
+      ["GET", "/scim/v2/Users/gibt-es-nicht", "/scim/v2/Users/:id", 407],
+      ["POST", "/scim/v2/Users", undefined, 417],
+      ["PUT", "/scim/v2/Users/gibt-es-nicht", "/scim/v2/Users/:id", 437],
+      ["PATCH", "/scim/v2/Users/gibt-es-nicht", "/scim/v2/Users/:id", 457],
+      ["DELETE", "/scim/v2/Users/gibt-es-nicht", "/scim/v2/Users/:id", 478],
     ] as const
   ).map(
-    ([pfad, route, zeile]): Zeile => ({
+    ([methode, pfad, route, zeile]): Zeile => ({
       gruppe: "verzeichnisRoutes",
-      methode: "GET",
+      methode,
       pfad,
       ...(route ? { route } : {}),
       belegstelle: `services/app/src/routes/verzeichnis-routes.ts:${zeile}`,
@@ -1744,7 +1724,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "authRoutes",
     methode: "GET",
     pfad: "/api/auth/saml/start",
-    belegstelle: "services/auth/src/routes.ts:858",
+    belegstelle: "services/auth/src/routes.ts:862",
     tor: "keines — der Einstieg in den SAML-Ablauf",
     erwartet: OEFFENTLICH(
       "Die SAML-Anmeldung beginnt notwendig unangemeldet. Ohne SAML-Konfiguration antwortet die Route allen fünf Akteuren gleich mit 501 `SAML_DISABLED` — gemessen ist damit, dass an dieser Tür weder 401 noch 403 steht.",
@@ -1754,10 +1734,24 @@ export const TABELLE: Zeile[] = [
     gruppe: "authRoutes",
     methode: "GET",
     pfad: "/api/auth/saml/metadata",
-    belegstelle: "services/auth/src/routes.ts:871",
+    belegstelle: "services/auth/src/routes.ts:875",
     tor: "keines — die Metadaten für die Einrichtung beim Anbieter",
     erwartet: OEFFENTLICH(
       "Die Dienstanbieter-Metadaten trägt die IT beim Anbieter ein, bevor es irgendeine Anmeldung gibt. Sie nennen nur Kennung und Rücksprungadresse dieser Instanz; ohne SAML-Konfiguration antwortet die Route allen gleich mit 501 `SAML_DISABLED`.",
+    ),
+  },
+  // Der SAML-Rücksprung: der Anbieter schickt ihn als Seitennavigation, notwendig ohne Sitzung.
+  // Gemessen ist hier, dass keine Rolle ihn öffnet oder sperrt — ohne Konfiguration antwortet er
+  // allen fünf gleich 501 `SAML_DISABLED`. Die Signaturprüfung misst `saml-anmeldung.test.ts`.
+  {
+    gruppe: "authRoutes",
+    methode: "POST",
+    pfad: "/api/auth/saml/acs",
+    belegstelle: "services/auth/src/routes.ts:904",
+    tor: "keines — der Nachweis ist die signierte Antwort des Anbieters",
+    payload: { SAMLResponse: "keine-echte-saml-antwort" },
+    erwartet: OEFFENTLICH(
+      "Der Rücksprung des SAML-Anbieters kommt notwendig ohne Klarwerk-Sitzung (fremd ausgelöster Formular-POST). Ohne SAML-Konfiguration antwortet er allen fünf Akteuren gleich mit 501 `SAML_DISABLED`; die Prüfung der signierten Antwort selbst steht in `tests/firmenanmeldung/saml-anmeldung.test.ts`.",
     ),
   },
   // ----------------------------------------------------------------------------------------------

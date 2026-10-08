@@ -3004,10 +3004,10 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //                 `/api/auth/saml/start?ziel=word-addin` — dieselbe Herkunft, dieselbe EINE
     //                 Zielkennung wie beim OIDC-Weg; der SAML-Ruecksprung fuehrt hierher zurueck.
     //   · CSP, Recht, Manifest: unveraendert. · Sideload: keiner noetig.
-    // DER NEUE PIN-WERT FEHLT: in diesem Lauf stand keine Shell zur Verfuegung, die SHA-256 der
-    // Datei liess sich nicht berechnen. Der Fall wird deshalb rot und nennt den Ist-Wert; der Pin ist
-    // mit genau diesem Wert nachzutragen. Er wird NICHT abgeschwaecht.
-    const PIN = "f63ac6bc72ed1219f758c7a2d16d929f69d2faef9a1ca0f9c93478490f7c13d9";
+    // PIN BEWUSST AKTUALISIERT (f63ac6bc… -> 17aa296a…): der Wert ist der vom Prüflauf
+    // (Nacharbeit 4, Kandidat 925c95e2) an genau dieser Datei gemessene — die Datei ist seitdem
+    // unverändert.
+    const PIN = "17aa296aea1dff56a58f6b1f922e9c1b735737f3f5c80e9cf35399daf8a59476";
     const ist = createHash("sha256").update(readFileSync(ANMELDUNG)).digest("hex");
     expect(
       ist,

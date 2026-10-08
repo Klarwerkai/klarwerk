@@ -337,8 +337,16 @@ export function verzeichnisRoutes(deps: VerzeichnisRoutesDeps): FastifyPluginAsy
         "application/scim+json",
         { parseAs: "string" },
         (_request, rumpf, fertig) => {
+          // Ein Verzeichnis schickt `DELETE` (und manchmal `GET`) mit SCIM-Inhaltstyp, aber ohne
+          // Rumpf. Ein leerer Rumpf ist deshalb „kein Rumpf" und kein JSON-Fehler — sonst endete der
+          // Austritt mit 400, und das Konto bliebe offen.
+          const text = String(rumpf);
+          if (text.trim() === "") {
+            fertig(null, undefined);
+            return;
+          }
           try {
-            fertig(null, JSON.parse(String(rumpf)));
+            fertig(null, JSON.parse(text));
           } catch {
             fertig(Object.assign(new Error("Invalid JSON"), { statusCode: 400 }), undefined);
           }
