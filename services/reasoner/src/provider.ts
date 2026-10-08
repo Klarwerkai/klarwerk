@@ -143,12 +143,16 @@ export interface ReasonerProvider {
     confidential?: boolean,
   ): Promise<AssistResult>;
   // SCRUM-132: nächste Interview-Frage + aus den Antworten verdichteter Entwurf.
+  // R-1624 (Foto-zu-Wissen): optionaler Bildbefund — der vom Menschen bestätigte Text der
+  // vorhandenen Bildbeschreibung. Liegt er vor, gilt die Foto-Fragenfolge (Fehler · Ursache ·
+  // Lösung); das Bild selbst reist hier NICHT mit, nur dieser Klartext.
   // AUFNAHME 20260922 · WISSEN-INTERVIEW: `options` schaltet Fragebaum und Lücken-Thema zu;
-  // ohne sie bleibt die bisherige Fragenfolge.
+  // ohne sie (und ohne Bildbefund) bleibt die bisherige Fragenfolge.
   interview(
     answers: readonly string[],
     locale?: ReasonerLocale,
     confidential?: boolean,
+    imageContext?: string,
     options?: InterviewOptions,
   ): Promise<InterviewResult>;
   // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag des
@@ -300,6 +304,45 @@ export const INTERVIEW_QUESTIONS: Record<ReasonerLocale, readonly string[]> = {
   ],
 };
 
+// R-1624 (Foto-zu-Wissen mit Bildverstehen, Roadmap 1.2): die Foto-Fragenfolge. Wortlaut der
+// Quelle: „Welcher Fehler ist hier zu sehen? Welche Ursache vermutest du? Was wäre die Lösung?"
+// Dieselbe Position wie oben, damit `condenseInterview` unverändert abbildet: Fehler → Aussage,
+// Ursache → Bedingung, Lösung → Maßnahme, Stichworte → Tags.
+export const INTERVIEW_PHOTO_QUESTIONS: Record<ReasonerLocale, readonly string[]> = {
+  de: [
+    "Welcher Fehler ist hier zu sehen?",
+    "Welche Ursache vermutest du?",
+    "Was wäre die Lösung?",
+    "Welche Stichworte/Tags helfen beim Wiederfinden? (kommagetrennt)",
+  ],
+  en: [
+    "Which fault can be seen here?",
+    "What cause do you suspect?",
+    "What would be the solution?",
+    "Which keywords/tags help to find it again? (comma-separated)",
+  ],
+  nl: [
+    "Welke fout is hier te zien?",
+    "Welke oorzaak vermoed je?",
+    "Wat zou de oplossing zijn?",
+    "Welke trefwoorden/tags helpen bij het terugvinden? (komma-gescheiden)",
+  ],
+};
+
+// R-1624: harte Obergrenze des Bildbefunds im Interview. Derselbe Wert wie die Obergrenze der
+// Bildbeschreibung (`MAX_IMAGE_DESCRIPTION_LENGTH` in provider-model.ts) — der Befund IST diese
+// Beschreibung, ggf. vom Menschen korrigiert. Hier eigenständig, weil provider-model.ts von dieser
+// Datei importiert (umgekehrt wäre es ein Ring).
+export const MAX_INTERVIEW_IMAGE_CONTEXT_LENGTH = 300;
+
+/** Bildbefund deterministisch säubern und kappen; leer heißt: kein Foto-Interview. */
+export function normalizeInterviewImageContext(value: unknown): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim().slice(0, MAX_INTERVIEW_IMAGE_CONTEXT_LENGTH).trim();
+}
+
 // FR-I18N-01: sprachbewusstes Label für eine Beleg-/Quellenangabe (kein Quelleninhalt).
 export function sourceLabel(title: string, locale: ReasonerLocale = "de"): string {
   // mega52 D1: dreisprachig — das Quellen-Label erscheint in den Argumentationsschritten.
@@ -332,12 +375,14 @@ export function condenseInterview(answers: readonly string[], demo: boolean): St
 
 // SCRUM-132 / FR-I18N-01: deterministischer Interview-Turn — nächste Standardfrage (in der
 // gewählten Sprache) + Abschluss bei ausreichendem Inhalt (Kernaussage + Bedingung + Maßnahme).
+// R-1624: `photo` wählt die Foto-Fragenfolge; Abschlussregel und Verdichtung bleiben dieselben.
 export function deterministicInterview(
   answers: readonly string[],
   demo: boolean,
   locale: ReasonerLocale = "de",
+  photo = false,
 ): InterviewResult {
-  const questions = INTERVIEW_QUESTIONS[locale];
+  const questions = (photo ? INTERVIEW_PHOTO_QUESTIONS : INTERVIEW_QUESTIONS)[locale];
   const core = (answers[0]?.trim().length ?? 0) > 0;
   const hasCond = (answers[1]?.trim().length ?? 0) > 0;
   const hasMeas = (answers[2]?.trim().length ?? 0) > 0;
@@ -351,14 +396,20 @@ export function deterministicInterview(
   };
 }
 
-// AUFNAHME 20260922 · WISSEN-INTERVIEW: die eine Weiche zwischen der bisherigen Fragenfolge und
-// dem Fragebaum (`interview-tree.ts`). Ein Thema schaltet immer den (kurzen) Baum zu.
+// AUFNAHME 20260922 · WISSEN-INTERVIEW: die eine Weiche zwischen der bisherigen Fragenfolge, der
+// Foto-Fragenfolge (R-1624) und dem Fragebaum (`interview-tree.ts`). Ein bestätigter Bildbefund
+// behält seine eigene Fragenfolge (Fehler · Ursache · Lösung); sonst schaltet `tree` oder ein Thema
+// den Baum zu.
 export function guidedInterview(
   answers: readonly string[],
   demo: boolean,
   locale: ReasonerLocale = "de",
+  imageContext?: string,
   options: InterviewOptions = {},
 ): InterviewResult {
+  if (normalizeInterviewImageContext(imageContext).length > 0) {
+    return deterministicInterview(answers, demo, locale, true);
+  }
   if (options.tree || normalizeInterviewTopic(options.topic)) {
     return treeInterview(answers, demo, locale, options);
   }
@@ -2069,9 +2120,12 @@ export class DeterministicProvider implements ReasonerProvider {
     answers: readonly string[],
     locale: ReasonerLocale = "de",
     _confidential = false,
+    imageContext?: string,
     options: InterviewOptions = {},
   ): Promise<InterviewResult> {
-    return guidedInterview(answers, true, locale, options);
+    // R-1624: ohne Modell die feste Foto-Fragenfolge — ehrlich als Fallback markiert.
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW: ohne Bildbefund Fragebaum bzw. bisherige Folge.
+    return guidedInterview(answers, true, locale, imageContext, options);
   }
 
   // PMO-FEA-0006: ohne Modell KEINE Extraktion — ehrliche Meldung statt Fake-Punkte (G-2).

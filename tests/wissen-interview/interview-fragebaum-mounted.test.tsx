@@ -43,6 +43,8 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
             answers: string[],
             _locale: unknown,
             _herkunft: unknown,
+            // R-1624 (main): der Bildbefund steht an 4. Stelle; ohne Foto bleibt er leer.
+            _bildbefund: string | undefined,
             guide?: { tree?: boolean; topic?: string | null },
           ) =>
             treeInterview(answers, false, "de", {
@@ -203,7 +205,8 @@ describe("Lücken-Interview am echten Arbeitsraum", () => {
     await klick(knopf(i18n.t("capture.ivStart")));
     expect(interviewMock).toHaveBeenCalledTimes(1);
     expect(interviewMock.mock.calls[0]?.[0]).toEqual([]);
-    expect(interviewMock.mock.calls[0]?.[3]).toEqual({ tree: true, topic: THEMA });
+    expect(interviewMock.mock.calls[0]?.[3]).toBeUndefined();
+    expect(interviewMock.mock.calls[0]?.[4]).toEqual({ tree: true, topic: THEMA });
     expect(container.textContent).toContain(`Thema: „${THEMA}“`);
     expect(lueckenwert()).toBe(100);
     expect(teil("interview-abschluss")).toBeNull();
@@ -252,7 +255,7 @@ describe("Lücken-Interview am echten Arbeitsraum", () => {
     await mount(null);
     expect(teil("interview-thema")).toBeNull();
     await klick(knopf(i18n.t("capture.ivStart")));
-    expect(interviewMock.mock.calls[0]?.[3]).toEqual({ tree: true, topic: null });
+    expect(interviewMock.mock.calls[0]?.[4]).toEqual({ tree: true, topic: null });
 
     await antworte("Ventil X bei Überdruck schließen");
     await antworte("bei Überdruck");

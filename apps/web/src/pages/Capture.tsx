@@ -67,6 +67,8 @@ import { EditorGuidance } from "../components/EditorGuidance";
 import { ExternalUrlText } from "../components/ExternalUrlText";
 // WP-D10c: zugeklappt startender Dateiformate-Infokasten (button + aria-expanded).
 import { FileFormatInfo } from "../components/FileFormatInfo";
+// R-1624: Foto-zu-Wissen — Einstieg ins geführte Interview über ein Foto.
+import { FotoInterviewStart } from "../components/FotoInterviewStart";
 import { KnopfUnterschied } from "../components/KnopfUnterschied";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { Modal } from "../components/Modal";
@@ -207,7 +209,7 @@ import {
 } from "../lib/docx";
 // AUFTRAG-mega7 Block A: eindeutige Leerwert-Semantik für den Body (Löschmarker beim Aktualisieren).
 import { draftBodyPatch } from "../lib/draftBody";
-import { draftTitle } from "../lib/draftForm";
+import { adoptProposedKnowledgeType, draftTitle } from "../lib/draftForm";
 // AUFTRAG-mega6 Block D: sichtbare Eingabegrenzen aus DERSELBEN Quelle wie die Servernormalisierung.
 import { DRAFT_LIMITS } from "../lib/draftLimits";
 import { studioSaveConfidence } from "../lib/editorApplySafety";
@@ -243,6 +245,7 @@ import {
   readTextFile,
   runImageOcr,
 } from "../lib/files";
+import { type FotoAnker, applyFotoAnker, applyFotoArtikel } from "../lib/fotoInterview";
 import {
   CLEARED_DRAFT_INTERVIEW,
   SKIPPED_ANSWER,
@@ -748,6 +751,9 @@ export function CaptureArbeitsraum({
 
   // Metadaten (vorab erfassbar, FR-CAP-08)
   const [type, setType] = useState<KnowledgeType>(CAPTURE_FIELD_DEFAULTS.type);
+  // FR-STR-01: ist die Wissensart ENTSCHIEDEN (vom Menschen gewählt oder aus einem Entwurf
+  // geladen)? Dann überschreibt kein KI-Vorschlag sie — auch nicht, wenn sie dem Standard gleicht.
+  const typeEntschiedenRef = useRef(false);
   const [category, setCategory] = useState("");
   const [asset, setAsset] = useState("");
   // SCRUM-415: Vertraulichkeitsstufe ab Erfassen (Standard „intern"). Vertrauliche KOs gehen nie in
@@ -1100,6 +1106,11 @@ export function CaptureArbeitsraum({
   // die aktuelle ist — eine SPÄTE Antwort eines vor dem Speichern gestarteten Requests kann den
   // danach geltenden Zustand damit nicht wieder einschreiben.
   const ivRunRef = useRef(0);
+  // R-1624: der bestätigte Bildbefund des laufenden Foto-Interviews. null = normales Interview.
+  // Der Befund reist mit jedem Turn als Klartext mit und wird mit dem Interviewfortschritt
+  // gesichert und wiederhergestellt; das Foto selbst steht als Bild-Anker im Rumpf (beim Start
+  // eingefügt, mit dem Entwurf gesichert) und wird nicht erneut gesendet.
+  const [ivBefund, setIvBefund] = useState<string | null>(null);
 
   // PMO-FEA-0006: „Aus Datei" — Dokumenttext, optionaler Suchauftrag, KI-Punkteliste,
   // sichtbare Entwurfs-Warteschlange. Nichts wird automatisch gespeichert.
@@ -1348,6 +1359,9 @@ export function CaptureArbeitsraum({
     onSuccess: (r) => {
       setDraft(r);
       setTags((prev) => (prev.length > 0 ? prev : r.tags));
+      // FR-STR-01: vorgeschlagene Wissensart nur in eine noch nicht entschiedene Auswahl.
+      const typeEntschieden = typeEntschiedenRef.current;
+      setType((prev) => adoptProposedKnowledgeType(prev, typeEntschieden, r.knowledgeType));
       setErr(null);
       // SCRUM-384: direkt zur Wissensseite — Artikel-Vorschlag einmalig erzeugen
       // (leerer Body ⇒ setzen; vorhandener Inhalt wird NIE still überschrieben).
@@ -1366,31 +1380,44 @@ export function CaptureArbeitsraum({
   // übernehmen. Im Fragebaum geschieht das NUR über die ausdrückliche Bestätigung (`ivConfirm`);
   // gespeichert wird danach weiterhin erst mit dem Speichern des Menschen. Die vertiefenden
   // Antworten (Schwelle, Ausnahmen, Warum …) stehen wörtlich als eigene Abschnitte darunter.
-  const applyInterviewDraft = (res: InterviewResult): void => {
+  const applyInterviewDraft = (res: InterviewResult, imageContext?: string): void => {
     setDraft(res.draft);
     setTags((prev) => (prev.length > 0 ? prev : res.draft.tags));
-    // SCRUM-384: Interview fertig → gleiche Wissensseiten-Führung wie beim Freitext.
+    const articleLocale = normalizeDraftArticleLocale(i18n.language);
+    // R-1624: beim Foto-Interview steht der Bild-Anker schon im Rumpf — die Seite (Fehlerbild,
+    // Ursache, Lösung) wird darunter ANGEHÄNGT, nie überschrieben.
+    // SCRUM-384: sonst wie bisher — Interview fertig → gleiche Wissensseiten-Führung wie beim
+    // Freitext, nur in einen leeren Rumpf.
     setBodyHtml((prev) =>
-      prev.trim()
-        ? prev
-        : applyDraftArticle(
-            prev,
-            {
-              ...res.draft,
-              sections: interviewDepthSections(res.depth, (node) => t(interviewNodeKey(node))),
-            },
-            normalizeDraftArticleLocale(i18n.language),
-          ),
+      imageContext
+        ? applyFotoArtikel(prev, res.draft, articleLocale)
+        : prev.trim()
+          ? prev
+          : applyDraftArticle(
+              prev,
+              {
+                ...res.draft,
+                sections: interviewDepthSections(res.depth, (node) => t(interviewNodeKey(node))),
+              },
+              articleLocale,
+            ),
     );
     setWizStep("refine");
   };
 
   const interview = useMutation({
-    mutationFn: (v: { answers: string[]; run: number; tree: boolean; topic: string | null }) =>
+    mutationFn: (v: {
+      answers: string[];
+      run: number;
+      tree: boolean;
+      topic: string | null;
+      imageContext?: string;
+    }) =>
       endpoints.reasoner.interview(
         v.answers,
         locale,
         draftProvenance(confidentiality, undefined, draftId ?? undefined),
+        v.imageContext,
         { tree: v.tree, topic: v.topic },
       ),
     onSuccess: (res, v) => {
@@ -1399,9 +1426,10 @@ export function CaptureArbeitsraum({
       }
       setIvResult(res);
       setErr(null);
-      // Im Fragebaum schließt der Server nie selbst ab — er bietet den Abschluss nur an.
+      // Im Fragebaum schließt der Server nie selbst ab — er bietet den Abschluss nur an. Das
+      // Foto-Interview (R-1624) und ein fortgesetzter Altentwurf schließen wie bisher selbst ab.
       if (!v.tree && isInterviewDone(res)) {
-        applyInterviewDraft(res);
+        applyInterviewDraft(res, v.imageContext);
       }
     },
     onError: (e, v) => {
@@ -1415,14 +1443,25 @@ export function CaptureArbeitsraum({
   // AUFTRAG-mega6 Block C: EINZIGER Einstieg in einen Interview-Turn. Vergibt die neue Laufnummer
   // und macht damit jeden vorher gestarteten Turn ungültig — es gibt keinen zweiten Weg, der die
   // Mutation ohne gültige Nummer auslösen könnte.
-  // Baum und Thema reisen als Variablen mit: beim Start sind die eben gesetzten Zustände in diesem
-  // Bildaufbau noch nicht sichtbar.
+  // R-1624: `befund` ist der Bildbefund des laufenden Foto-Interviews; Baum und Thema (AUFNAHME
+  // 20260922 · WISSEN-INTERVIEW) gehören ebenso zum Lauf. Der Start reicht alle drei ausdrücklich
+  // herein, weil die eben gesetzten Zustände in diesem Render noch nicht gelten.
   const runInterview = (
     answers: string[],
-    guide: { tree: boolean; topic: string | null } = { tree: ivTree, topic: ivTopic },
+    guide: { tree: boolean; topic: string | null; befund: string | null } = {
+      tree: ivTree,
+      topic: ivTopic,
+      befund: ivBefund,
+    },
   ): void => {
     ivRunRef.current += 1;
-    interview.mutate({ answers, run: ivRunRef.current, ...guide });
+    interview.mutate({
+      answers,
+      run: ivRunRef.current,
+      tree: guide.tree,
+      topic: guide.topic,
+      ...(guide.befund ? { imageContext: guide.befund } : {}),
+    });
   };
 
   // SCRUM-312: KI-Nachbearbeitung über die sichtbare AiAssistBox (Vorschau + bewusste Übernahme);
@@ -2481,6 +2520,9 @@ export function CaptureArbeitsraum({
         answers: ivAnswers,
         answer: ivAnswer,
         result: ivResult,
+        // R-1624: der Foto-Kontext gehört zum Fortschritt — sonst liefe das Interview nach dem
+        // Wiederöffnen als normales weiter.
+        imageContext: ivBefund,
         tree: ivTree,
         topic: ivTopic,
         confirmed: ivConfirmed,
@@ -2693,6 +2735,8 @@ export function CaptureArbeitsraum({
     }
     // gemeinsame Metadaten (erweiterte Felder)
     setType(p.type ?? "best_practice");
+    // FR-STR-01: eine gespeicherte Wissensart ist entschieden; fehlt sie, darf die KI vorbelegen.
+    typeEntschiedenRef.current = p.type !== undefined && p.type !== null;
     setCategory(p.category ?? "");
     setTags(p.tags ?? []);
     setAsset(p.asset ?? "");
@@ -2791,6 +2835,9 @@ export function CaptureArbeitsraum({
       setIvAnswer(iv.answer);
       setIvResult(iv.result);
       setIvStarted(iv.started);
+      // R-1624: Foto-Interview bleibt Foto-Interview — weitere Turns tragen den Befund, und die
+      // Wissensseite wird beim Abschluss unter dem gesicherten Bild-Anker ergänzt.
+      setIvBefund(iv.imageContext);
       setIvTree(iv.tree);
       setIvTopic(iv.topic);
       setIvConfirmed(iv.confirmed);
@@ -2901,6 +2948,7 @@ export function CaptureArbeitsraum({
     setIvAnswer("");
     setIvResult(null);
     setIvStarted(false);
+    setIvBefund(null);
     setIvTree(false);
     setIvTopic(null);
     setIvConfirmed(false);
@@ -2918,6 +2966,7 @@ export function CaptureArbeitsraum({
     setBodyHtml("");
     setStudioApplied(false);
     setType(CAPTURE_FIELD_DEFAULTS.type);
+    typeEntschiedenRef.current = false;
     setCategory("");
     setAsset("");
     setConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
@@ -4820,20 +4869,29 @@ export function CaptureArbeitsraum({
 
   // E2E-008: bewusster Start des geführten Interviews — erst hier (nicht beim Tabwechsel) geht der
   // erste Turn an das Modell. Vorher wurde nichts gesendet und kein ModelRun ausgelöst.
+  // R-1624: mit Foto setzt der Start zuerst den Bild-Anker in den Rumpf (sichtbar im Blatt und mit
+  // dem Entwurf gesichert) und fragt danach mit der Foto-Fragenfolge.
   //
-  // AUFNAHME 20260922 · WISSEN-INTERVIEW: jeder Start läuft im Fragebaum. Kommt der Mensch mit
-  // einem Thema — aus dem Blatt-Angebot nach einer Vorschau ohne Treffer oder über eine offene
-  // Wissenslücke (`?gap=`) —, wird es das Lücken-Interview mit drei Fragen (R-0091).
-  const startInterview = (): void => {
-    const topic = interviewThema;
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW: jeder Start OHNE Foto läuft im Fragebaum. Kommt der
+  // Mensch mit einem Thema — aus dem Blatt-Angebot nach einer Vorschau ohne Treffer oder über eine
+  // offene Wissenslücke (`?gap=`) —, wird es das Lücken-Interview mit drei Fragen (R-0091). Das
+  // Foto-Interview behält seine eigene Fragenfolge und seinen Abschluss (kein Baum).
+  const startInterview = (foto: FotoAnker | null = null): void => {
+    const befund = foto ? foto.befund : null;
+    const tree = befund === null;
+    const topic = tree ? interviewThema : null;
     setIvAnswers([]);
     setIvAnswer("");
     setIvResult(null);
     setIvStarted(true);
-    setIvTree(true);
+    setIvBefund(befund);
+    setIvTree(tree);
     setIvTopic(topic);
     setIvConfirmed(false);
-    runInterview([], { tree: true, topic });
+    if (foto) {
+      setBodyHtml((prev) => applyFotoAnker(prev, foto));
+    }
+    runInterview([], { tree, topic, befund });
   };
 
   // R-0113: „Weiß ich nicht" — die Frage bleibt eine Lücke, das Interview geht weiter.
@@ -6028,11 +6086,14 @@ export function CaptureArbeitsraum({
                     ) : null}
                     <p className="text-[13px] text-muted">{t("capture.ivStartLead")}</p>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Button variant="primary" onClick={startInterview}>
+                      <Button variant="primary" onClick={() => startInterview()}>
                         {t("capture.ivStart")}
                       </Button>
                       <AiModelInfo task="interview" />
                     </div>
+                    {/* R-1624: derselbe bewusste Start, aber über ein Foto — erst „Bild
+                      auswerten" sendet das Bild, erst „Foto-Interview starten" die erste Frage. */}
+                    <FotoInterviewStart onStart={(foto) => startInterview(foto)} />
                   </div>
                 ) : ivConfirmed || (!ivTree && ivResult && isInterviewDone(ivResult)) ? (
                   <p className="rounded-card border border-dashed border-hairline p-3 text-[13px] text-trust-pos-text">
@@ -6058,8 +6119,16 @@ export function CaptureArbeitsraum({
                           {t(interviewSourceKey(ivResult))}
                         </span>
                       ) : null}
+                      {ivBefund ? (
+                        <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
+                          {t("fotowissen.laeuft")}
+                        </span>
+                      ) : null}
                       {ivLueckenwert}
                     </div>
+                    {/* R-1624: der Kontext, auf den sich die Rückfragen beziehen — sichtbar, nicht
+                      nur im Prompt. */}
+                    {ivBefund ? <p className="text-[12px] text-muted">{ivBefund}</p> : null}
                     {ivSpiegel}
                     {ivAbschluss}
                     {/* SCRUM-403 (Pedi 03.07.): Frage vorlesen + Antwort diktieren — Sprache in
@@ -6664,7 +6733,10 @@ export function CaptureArbeitsraum({
                     >
                       <select
                         value={type}
-                        onChange={(e) => setType(e.target.value as KnowledgeType)}
+                        onChange={(e) => {
+                          typeEntschiedenRef.current = true;
+                          setType(e.target.value as KnowledgeType);
+                        }}
                         className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
                       >
                         {KNOWLEDGE_TYPES.map((k) => (

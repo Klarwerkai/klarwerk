@@ -903,6 +903,14 @@ export const endpoints = {
     // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang
     // zurück — ohne gültigen, dieses KO belegenden Receipt antwortet der Server 403.
     helpful: (koId: string, receipt: string) => api.post<void>("/ask/helpful", { koId, receipt }),
+    // R-1649: „nicht hilfreich" an der tragenden Quelle — derselbe Receipt wie beim „Danke";
+    // ein mitgeschickter abweichender Weg wird serverseitig ein Entwurf (`entwurfId`).
+    notHelpful: (body: {
+      koId: string;
+      receipt: string;
+      alternative?: string;
+      entwurfTitel?: string;
+    }) => api.post<{ vermerkt: boolean; entwurfId: string | null }>("/ask/not-helpful", body),
   },
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler (nur eigene Beiträge, nur Zahlen).
   me: {
@@ -966,12 +974,15 @@ export const endpoints = {
       answers: string[],
       locale: ReasonerLocale | undefined,
       provenance: ReasonerProvenance,
+      // R-1624: bestätigter Bildbefund des Fotos (Klartext, kein Bild) → Foto-Fragenfolge.
+      imageContext?: string,
       guide?: { tree?: boolean; topic?: string | null },
     ) =>
       api.post<InterviewResult>("/reasoner", {
         task: "interview",
         answers,
         ...(locale ? { locale } : {}),
+        ...(imageContext?.trim() ? { imageContext: imageContext.trim() } : {}),
         ...(guide?.tree ? { tree: true } : {}),
         ...(guide?.topic?.trim() ? { topic: guide.topic.trim() } : {}),
         ...provenanceFields(provenance),

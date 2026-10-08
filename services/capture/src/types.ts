@@ -89,6 +89,9 @@ export interface DraftPayload {
     question?: string;
     done?: boolean;
     demo?: boolean;
+    // R-1624: der bestätigte Bildbefund eines Foto-Interviews (Klartext, kein Bild — das Foto steht
+    // als Bild-Anker im Rumpf). Fehlt er, war es ein normales Interview.
+    imageContext?: string;
     // AUFNAHME 20260922 · WISSEN-INTERVIEW: Fragebaum, Lücken-Thema und die ausdrückliche
     // Abschlussbestätigung des Menschen (R-0113) reisen mit, damit ein Fortsetzen nichts davon verliert.
     tree?: boolean;

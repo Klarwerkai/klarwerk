@@ -29,6 +29,9 @@ const AUSWAHLSTELLEN = [
   "components/KnowledgeInputStudio.tsx",
   "components/BodyExtractPanel.tsx",
   "components/RichTextEditor.tsx",
+  // Aufnahme 20260922 (mobile-erfassung, FR-CAP-04): `/mobile` hat jetzt die Fotoauswahl aus
+  // Kamera und Mediathek — damit ist es eine Auswahlstelle wie jede andere (s. Fall „MOBIL" unten).
+  "pages/Mobile.tsx",
 ];
 
 describe("SCRUM-421: die Upload-Grenzen sind an jeder Auswahlstelle sichtbar", () => {
@@ -73,14 +76,21 @@ describe("SCRUM-421: die Upload-Grenzen sind an jeder Auswahlstelle sichtbar", (
     expect(stripComments(read("components/RichTextEditor.tsx"))).toContain("<UploadLimitsHint");
   });
 
-  it("MOBIL hat gar keine Dateiauswahl — hier ist nichts anzuzeigen", () => {
-    // BEFUND, im Bericht vermerkt: `/mobile` besitzt weder Dateifeld noch Ablegefläche noch
-    // Kamera-Aufnahme. Der Auftrag verlangte den Hinweis „auch in Mobil"; die ehrliche Antwort ist,
-    // dass es dort keine Auswahlstelle gibt. Erscheint eine, wird dieser Test rot und der Hinweis
-    // muss mit.
+  it("MOBIL: die Fotoauswahl trägt den Hinweis — eine Ablegefläche gibt es dort weiterhin nicht", () => {
+    // BEFUND bis zur Aufnahme 20260922: `/mobile` besaß weder Dateifeld noch Ablegefläche noch
+    // Kamera-Aufnahme, und dieser Fall sagte voraus: „Erscheint eine, wird dieser Test rot und der
+    // Hinweis muss mit." Mit FR-CAP-04 ist sie erschienen (Kamera und Mediathek) — der Hinweis ist
+    // mitgekommen, und die Fläche steht oben in `AUSWAHLSTELLEN`. Dieselbe Lage wie die Bildauswahl
+    // des Editors: auch dort wird verkleinert in den Body eingebettet, und auch dort steht er.
     const mobile = stripComments(read("pages/Mobile.tsx"));
-    expect(mobile).not.toContain('type="file"');
+    expect(mobile).toContain('type="file"');
+    expect(mobile).toContain("<UploadLimitsHint");
     expect(mobile).not.toContain("dataTransfer");
+    // Die Kamera-Quelle wird am UNGEFILTERTEN Quelltext gemessen, und zwar als Attribut eines
+    // `<input>`: `stripComments` liest `accept="image/*"` als Beginn eines Blockkommentars und
+    // schluckt alles bis zum nächsten `*/` — das folgende `capture`-Attribut verschwände mit.
+    // `[^>]*` hält die Suche innerhalb des einen Tags (vor `onChange={(e) => …}` steht kein `>`).
+    expect(read("pages/Mobile.tsx")).toMatch(/<input[^>]*\bcapture="environment"/);
   });
 
   it("die Anzeige liest die Serverquelle — KEINE fest verdrahteten Zahlen", () => {

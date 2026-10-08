@@ -71,6 +71,8 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
             answers: string[],
             _locale: unknown,
             _herkunft: unknown,
+            // R-1624 (main): der Bildbefund steht an 4. Stelle; ohne Foto bleibt er leer.
+            _bildbefund: string | undefined,
             guide?: { tree?: boolean; topic?: string | null },
           ) =>
             treeInterview(answers, true, "de", {
@@ -243,7 +245,7 @@ describe("R-0091: Vorschau ohne Treffer → Klara bietet das Lücken-Interview a
 
     await klick(knopf(i18n.t("capture.ivStart")));
     expect(interviewMock).toHaveBeenCalledTimes(1);
-    expect(interviewMock.mock.calls[0]?.[3]).toEqual({ tree: true, topic: TEXT });
+    expect(interviewMock.mock.calls[0]?.[4]).toEqual({ tree: true, topic: TEXT });
     expect(container.textContent).toContain(`Thema: „${TEXT}“`);
   });
 

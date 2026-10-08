@@ -203,7 +203,7 @@ describe("R-0091: das Lücken-Interview — drei Fragen, ein Entwurf", () => {
   });
 
   it("ein Thema schaltet den kurzen Baum auch ohne tree-Option zu; überlange Themen werden begrenzt", () => {
-    const res = guidedInterview([], true, "de", { topic: `  ${"x".repeat(500)}  ` });
+    const res = guidedInterview([], true, "de", undefined, { topic: `  ${"x".repeat(500)}  ` });
     expect(res.node).toBe("kern");
     const zitiert = /„(x+)“/.exec(res.question ?? "")?.[1] ?? "";
     expect(zitiert.length).toBe(200);
@@ -213,10 +213,13 @@ describe("R-0091: das Lücken-Interview — drei Fragen, ein Entwurf", () => {
 describe("R-0088: mit Modell richtet sich die Frage am Fachthema aus", () => {
   it("das Thema steht im Prompt, die Modellfrage ersetzt nur den Fragetext; Baum und Wert bleiben", async () => {
     const { client, aufrufe } = aufzeichnenderClient();
-    const res = await new ModelProvider(client).interview(["Ventil X schließen"], "de", false, {
-      tree: true,
-      topic: "Überdruck an Linie 4",
-    });
+    const res = await new ModelProvider(client).interview(
+      ["Ventil X schließen"],
+      "de",
+      false,
+      undefined,
+      { tree: true, topic: "Überdruck an Linie 4" },
+    );
     expect(aufrufe).toHaveLength(1);
     expect(aufrufe[0]?.user).toContain("Fachthema des Interviews: Überdruck an Linie 4");
     expect(aufrufe[0]?.user).toContain("Leitfrage: Unter welchen Bedingungen");
@@ -228,7 +231,7 @@ describe("R-0088: mit Modell richtet sich die Frage am Fachthema aus", () => {
 
   it("ist der Baum durch, wird das Modell nicht befragt", async () => {
     const { client, aufrufe } = aufzeichnenderClient();
-    const res = await new ModelProvider(client).interview(["a", "b", "c"], "de", false, {
+    const res = await new ModelProvider(client).interview(["a", "b", "c"], "de", false, undefined, {
       topic: "Thema",
     });
     expect(res.done).toBe(true);
@@ -237,14 +240,77 @@ describe("R-0088: mit Modell richtet sich die Frage am Fachthema aus", () => {
 
   it("ohne Thema bleibt der Prompt beim bisherigen Wortlaut (keine Themenzeile)", async () => {
     const { client, aufrufe } = aufzeichnenderClient();
-    await new ModelProvider(client).interview(["a"], "de", false, BAUM);
+    await new ModelProvider(client).interview(["a"], "de", false, undefined, BAUM);
     expect(aufrufe[0]?.user.startsWith("Bisherige Antworten:")).toBe(true);
+  });
+});
+
+// INTEGRATION mit main (R-1624 Foto-zu-Wissen): beide Erweiterungen teilen sich `interview(...)`.
+// Der Bildbefund steht an 4., die Fragebaum-Optionen an 5. Stelle; ein Befund behält seine eigene
+// Foto-Fragenfolge und seinen Prompt-Block — der Baum mischt sich dort nicht ein.
+describe("Konfliktstelle: Foto-Interview und Fragebaum nebeneinander", () => {
+  const BEFUND = "Riss an der Schweißnaht links unten";
+
+  it("mit Bildbefund gilt die Foto-Fragenfolge, auch wenn tree/topic mitkommen", () => {
+    const res = guidedInterview([], true, "de", BEFUND, { tree: true, topic: "Thema" });
+    expect(res.question).toBe("Welcher Fehler ist hier zu sehen?");
+    expect(res).not.toHaveProperty("gaps");
+  });
+
+  it("Modellprompt: Bildbefund ja, Fachthema nein; ohne Befund umgekehrt", async () => {
+    const foto = aufzeichnenderClient();
+    await new ModelProvider(foto.client).interview([], "de", false, BEFUND, {
+      tree: true,
+      topic: "Thema X",
+    });
+    expect(foto.aufrufe[0]?.user).toContain(BEFUND);
+    expect(foto.aufrufe[0]?.user).not.toContain("Fachthema des Interviews");
+
+    const baum = aufzeichnenderClient();
+    const res = await new ModelProvider(baum.client).interview([], "de", false, undefined, {
+      tree: true,
+      topic: "Thema X",
+    });
+    expect(baum.aufrufe[0]?.user).toContain("Fachthema des Interviews: Thema X");
+    expect(res.node).toBe("kern");
+  });
+
+  it("die Route reicht Bildbefund UND Fragebaum-Option an die richtigen Stellen", async () => {
+    const services = buildServices();
+    (services as unknown as { reasoner: Reasoner }).reasoner = new Reasoner();
+    const app = buildApp(services);
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Admin", email: "admin@x.de", password: "secret123" },
+    });
+    const anmeldung = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "admin@x.de", password: "secret123" },
+    });
+    const headers = { authorization: `Bearer ${anmeldung.json().token}` };
+    const foto = await app.inject({
+      method: "POST",
+      url: "/api/reasoner",
+      headers,
+      payload: { task: "interview", answers: [], imageContext: BEFUND, tree: true },
+    });
+    expect(foto.json().question).toBe("Welcher Fehler ist hier zu sehen?");
+    const baum = await app.inject({
+      method: "POST",
+      url: "/api/reasoner",
+      headers,
+      payload: { task: "interview", answers: [], tree: true },
+    });
+    expect(baum.json().node).toBe("kern");
+    await app.close();
   });
 });
 
 describe("Durchreichung: Dienst und echte Route POST /api/reasoner", () => {
   it("der Reasoner-Dienst reicht die Option an den Provider durch", async () => {
-    const res = await new Reasoner().interview([], "de", false, BAUM);
+    const res = await new Reasoner().interview([], "de", false, undefined, BAUM);
     expect(res.node).toBe("kern");
     expect(res.gaps?.value).toBe(100);
   });
