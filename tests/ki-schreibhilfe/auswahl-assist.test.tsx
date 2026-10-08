@@ -12,6 +12,7 @@
 //   A2  Ersetzen trifft nur die Stelle; Fett davor und die Liste danach bleiben
 //   A3  hat sich der Text an der Stelle geändert: `null`, nichts wird geändert
 //   A4  Rechtschreibung mit nicht passender Wortzahl: `null` — die Stelle selbst ist gültig
+//   A5  ein `<br>` im Absatz geht als Zeilenumbruch an die KI (Ben, Nacharbeit 4)
 //
 // WARUM `.tsx` OHNE JSX: Der Fall braucht DOM-Typen (`document`, `Selection`, `Text`). Der
 // Root-Typcheck (`tsconfig.json`) ist Node-rein und schließt deshalb `tests/**/*.tsx` aus; diese
@@ -76,6 +77,51 @@ describe("R-0300 · lib/auswahlAssist", () => {
         rechtschreibung: false,
       }),
     ).toBeNull();
+  });
+
+  it("A5 · ein <br> im Absatz geht als Zeilenumbruch an die KI; Versätze und Übernahme bleiben stimmig", () => {
+    // Ben, Nacharbeit 4: „Ventil<br>prüfen" kam als „Ventilprüfen" bei der KI an.
+    const MIT_UMBRUCH = "<p>Ventil<br>prüfen</p><p>Danach bleibt.</p>";
+    const feld = document.createElement("div");
+    feld.innerHTML = MIT_UMBRUCH;
+    document.body.appendChild(feld);
+    const absatz = feld.querySelector("p");
+    const erstes = absatz?.firstChild as Text;
+    const letztes = absatz?.lastChild as Text;
+    const bereich = document.createRange();
+    bereich.setStart(erstes, 0);
+    bereich.setEnd(letztes, letztes.data.length);
+    const auswahl = document.getSelection();
+    auswahl?.removeAllRanges();
+    auswahl?.addRange(bereich);
+
+    const markiert = auswahlImFeld(feld, auswahl);
+    // Der Text zeigt den Umbruch; der Versatz zählt ihn nicht (6 + 6 Zeichen).
+    expect(markiert).toEqual({ start: 0, ende: 12, text: "Ventil\nprüfen" });
+    if (markiert === null) {
+      return;
+    }
+    expect(auswahlNochGueltig(MIT_UMBRUCH, markiert)).toBe(true);
+
+    // Rechtschreibung verteilt die Wörter auf die Stücke — der Umbruch bleibt stehen.
+    const korrigiert = auswahlUebernehmen(MIT_UMBRUCH, markiert, "Ventile prüfen", {
+      modus: "ersetzen",
+      rechtschreibung: true,
+    });
+    expect(korrigiert).toContain("<p>Ventile<br>prüfen</p>");
+    expect(korrigiert).toContain("<p>Danach bleibt.</p>");
+
+    // Ein anderer Vorschlag ersetzt die Stelle; seine eigenen Zeilen werden wieder zu <br>.
+    const ersetzt = auswahlUebernehmen(MIT_UMBRUCH, markiert, "Ventil sofort\nprüfen", {
+      modus: "ersetzen",
+      rechtschreibung: false,
+    });
+    expect(ersetzt).toContain("<p>Ventil sofort<br>prüfen</p>");
+    expect(ersetzt).toContain("<p>Danach bleibt.</p>");
+
+    // Ohne den Umbruch ist es nicht mehr dieselbe Stelle — nichts wird übernommen.
+    const ohneUmbruch = "<p>Ventilprüfen</p><p>Danach bleibt.</p>";
+    expect(auswahlNochGueltig(ohneUmbruch, markiert)).toBe(false);
   });
 
   it("A4 · Rechtschreibung mit anderer Wortzahl: blockiert, obwohl die Stelle gültig ist", () => {

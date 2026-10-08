@@ -3136,7 +3136,9 @@ export function Blatt({
                Titel ableiten". Ihre FUNKTION ist nicht verschwunden, sie ist UMGEZOGEN: das
                Titel-Menü des Blattes bietet denselben Vorschlag aus derselben Rangfolge an
                (`titelVorschlag`, oben). Das hier ist die zweite Hälfte desselben Umzugs — ohne sie
-               stünde die Karte doppelt da.
+               stünde die Karte doppelt da. R-0071 (Ben, Nacharbeit 4): verborgen bleibt NUR die
+               gerahmte Karte des Editors; die immer sichtbare Titelzeile mit Herkunft steht als
+               eigene, knappe Zeile des Blattes über dem Schreibfeld (`blatt-titelzeile`).
             2. DER ABLAGEHINWEIS „Bilder hierher ziehen oder einfügen" in der Fußzeile des Editors.
                Sein TEXT ist nicht gelöscht: er steht als eigener Eintrag im „?"-Menü, mit DEMSELBEN
                i18n-Schlüssel — der Ort, an den §5 alle Erklärtexte verweist.
@@ -3273,6 +3275,54 @@ export function Blatt({
               </div>
             ) : null}
           </div>
+
+          {/* ======================================================================================
+              R-0071 (Ben, Nacharbeit 4) — DIE TITELZEILE ÜBER DEM SCHREIBFELD, IMMER SICHTBAR.
+              ======================================================================================
+              „Über dem Schreibfeld steht dafür eine Titelzeile, die immer sichtbar bleibt und die
+              Herkunft des Vorschlags nennt. Lässt sich nichts ableiten, wird nichts erfunden; ein
+              selbst geschriebener Titel wird nie verdrängt." Dazu Pedi 27.08.: „die Titelzeile
+              immer sichtbar lassen, so ist es richtig" — kein hidden, keine Höhe 0.
+
+              JOB 3062 R6 hatte die Karte des Editors verborgen und den Vorschlag ins Titel-Menü
+              gelegt. Eine Entscheidung, die R-0071 für das Blatt aufhebt, ist nicht zugeordnet;
+              der Kommentar dort belegt keine. Deshalb steht die Zeile wieder hier — AUS DERSELBEN
+              QUELLE wie das Menü (`titelVorschlag`, die geprüfte Entscheidung des Editors), also
+              ohne zweite Rangfolge und ohne zweiten Wortlaut.
+
+              WARUM EIN KNOPF UND KEIN ABSATZ: Die Zeile IST die Übernahme — ein Klick setzt den
+              Vorschlag ins Titelfeld, sonst geschieht nichts (kein selbst geschriebener Titel wird
+              verdrängt). Ohne Vorschlag ist sie gesperrt und sagt in drei Wörtern, dass keiner da
+              ist — sie verschwindet nicht. */}
+          <button
+            type="button"
+            data-testid="blatt-titelzeile"
+            data-quelle={titelVorschlag?.quelle ?? "keine"}
+            disabled={titelVorschlag === null || !blattNimmtAn}
+            onClick={() => {
+              if (titelVorschlag) {
+                changeTitle(titelVorschlag.titel);
+              }
+            }}
+            className="-mt-2 flex w-full min-w-0 flex-wrap items-baseline gap-x-1.5 rounded-[8px] px-0 py-0.5 text-left text-[12.5px] leading-snug text-muted enabled:hover:text-text disabled:cursor-default"
+          >
+            {titelVorschlag ? (
+              <>
+                <span className="break-words font-semibold text-ai">
+                  {t("editor.titleSuggest.label")}: {titelVorschlag.titel}
+                </span>
+                <span data-testid="blatt-titelzeile-herkunft" className="text-muted-2">
+                  {t(
+                    titelVorschlag.quelle === "objekttext"
+                      ? "editor.titleSuggest.sourceText"
+                      : "editor.titleSuggest.sourceImage",
+                  )}
+                </span>
+              </>
+            ) : (
+              <span className="text-muted-2">{t("schreibhilfe.titelKeiner")}</span>
+            )}
+          </button>
 
           {/* §5.4: Fehlt der Inhalt beim Einreichversuch, bekommt das FELD den Rand — hier ohne
               Erklärsatz. Das war bis JOB 3114 auch beim Vertraulichkeits-Menü so; dort trägt die

@@ -98,16 +98,43 @@ function stueckeIm(wurzel: Node, start: number, ende: number): Stueck[] {
   return stuecke;
 }
 
-/** Der Text der Stücke — innerhalb eines Blocks angehängt, über Blockgrenzen mit Zeilenumbruch. */
+/**
+ * Steht zwischen zwei Textknoten ein `<br>`? Ben, Nacharbeit 4: `<p>Ventil<br>prüfen</p>` kam als
+ * „Ventilprüfen" bei der KI an — der Umbruch IM Absatz trägt keinen Text und fiel durch.
+ * Die Zeichenversätze bleiben davon unberührt: ein `<br>` zählt dort (wie in `Range.toString()`)
+ * null Zeichen; es wirkt nur auf den Text, der an die KI geht und gegen den geprüft wird.
+ */
+function umbruchZwischen(vorher: Node, nachher: Node, wurzel: Node): boolean {
+  const doc = wurzel.ownerDocument ?? document;
+  const gaenger = doc.createTreeWalker(wurzel, NodeFilter.SHOW_ELEMENT);
+  const folgt = (a: Node, b: Node): boolean =>
+    (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+  for (let n = gaenger.nextNode(); n !== null; n = gaenger.nextNode()) {
+    if (n.nodeName === "BR" && folgt(vorher, n) && folgt(n, nachher)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Der Text der Stücke — innerhalb eines Blocks angehängt, über Blockgrenzen und über ein `<br>`
+ * im selben Block mit Zeilenumbruch.
+ */
 function textDer(stuecke: readonly Stueck[], wurzel: Node): string {
   let text = "";
+  let vorher: Stueck | null = null;
   let vorherBlock: Node | null = null;
   for (const s of stuecke) {
     const block = blockVon(s.knoten, wurzel);
-    if (vorherBlock !== null && block !== vorherBlock) {
+    if (
+      vorher !== null &&
+      (block !== vorherBlock || umbruchZwischen(vorher.knoten, s.knoten, wurzel))
+    ) {
       text += "\n";
     }
     text += s.knoten.data.slice(s.von, s.bis);
+    vorher = s;
     vorherBlock = block;
   }
   return text;
