@@ -41,7 +41,7 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { Confidentiality } from "../../../knowledge-object";
 import { type Guards, type SessionUser, sendError } from "../http";
-import { darfSehen } from "../sichtbarkeit";
+import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
 // ================================================================================================
 // DER PORT
@@ -259,13 +259,15 @@ function kopfAus(body: Record<string, unknown>): AnweisungKopfEingabe {
  * Sie wird als DATUM übergeben, nicht als Flag: seit mega74/Variante A hängt die Sichtbarkeit auch
  * am Autor, und ein Boolescher Wert könnte „vertrauliches, aber eigenes Objekt" nicht ausdrücken
  * (`sichtbarkeit.ts:101-104`).
+ *
+ * R-1175 (aufnahme:20260922:gesamt-rechte-inventar), Nacharbeit 4: gebildet aus DERSELBEN Fabrik
+ * wie jeder andere Leseweg (`sichtbarkeitsfilterFuer`, der `darfSehen` anwendet). Bis hierher stand
+ * hier ein eigenes Literal `(fakten) => darfSehen(user, {…})`, das nur zurückgegeben und erst im
+ * Dienst aufgerufen wurde — für den Lesewege-Sammler ein nie ausgeführter Rumpf. Die Fakten reisen
+ * unverändert (Stufe und Autor), also ändert sich die Entscheidung nicht.
  */
 function sichtbarFuer(user: SessionUser): AnweisungSichtbar {
-  return (fakten) =>
-    darfSehen(user, {
-      confidentiality: fakten.confidentiality ?? null,
-      author: fakten.author ?? null,
-    });
+  return sichtbarkeitsfilterFuer(user);
 }
 
 // ================================================================================================

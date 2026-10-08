@@ -977,41 +977,54 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // (`GesamtanweisungDienst.auflisten` → `listeneintrag` → `lesestand`). Baustein-Titel,
   // Fassungskennungen und Rümpfe verlassen diesen Weg gar nicht: `AnweisungListeneintrag` hat
   // dafür kein Feld.
-  "GET /api/gesamtanweisungen": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
-  "GET /api/gesamtanweisungen/:id": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
-  "PUT /api/gesamtanweisungen/:id": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  //
+  // R-1175 (Nacharbeit 4): `sichtbarFuer` bildet die Entscheidung seither über die gemeinsame Fabrik
+  // `sichtbarkeitsfilterFuer` (die `darfSehen` anwendet) statt über ein eigenes Literal — das
+  // gemessene Prädikat dieser Routen heisst deshalb `sichtbarkeitsfilterFuer`.
+  "GET /api/gesamtanweisungen": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "GET /api/gesamtanweisungen/:id": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "PUT /api/gesamtanweisungen/:id": {
+    protection: "ko.create",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
   "POST /api/gesamtanweisungen/:id/bausteine": {
     protection: "ko.create",
-    zeilenrecht: ["darfSehen"],
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
   "PUT /api/gesamtanweisungen/:id/reihenfolge": {
     protection: "ko.create",
-    zeilenrecht: ["darfSehen"],
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
   "PUT /api/gesamtanweisungen/:id/bausteine/:bausteinId/voraussetzung": {
     protection: "ko.create",
-    zeilenrecht: ["darfSehen"],
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
   "GET /api/gesamtanweisungen/:id/staende": {
     protection: "ko.read",
-    zeilenrecht: ["darfSehen"],
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
   "GET /api/gesamtanweisungen/:id/vergleich": {
     protection: "ko.read",
-    zeilenrecht: ["darfSehen"],
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
   "POST /api/gesamtanweisungen/:id/vorlegen": {
     protection: "ko.create",
-    zeilenrecht: ["darfSehen"],
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
   "POST /api/gesamtanweisungen/:id/entscheiden": {
     protection: "ko.validate",
-    zeilenrecht: ["darfSehen"],
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
   // QUELLENÄNDERUNGEN (aufnahme:20260928): bewusste Übernahme einer neueren Fassung. Dieselbe Lage
   // wie die Aufnahme — darfSehen am Bestand UND an der neu gebundenen Fassung.
   "POST /api/gesamtanweisungen/:id/bausteine/:bausteinId/uebernehmen": {
     protection: "ko.create",
-    zeilenrecht: ["darfSehen"],
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
 };
