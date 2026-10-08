@@ -956,7 +956,8 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
         // Ohne vorgestellte Uhr ueberspraenge die Touch-Drossel (JOB 2688 D1) den Write, und die
         // Haltestelle wuerde nie erreicht (Bens B9). Wie in Race 4: A kommt nach der Mindestpause.
         a.vorspulen(KLARA_TOUCH_MINDESTABSTAND_MS);
-        const laufendA = a.dienst.getSession(sessionId, bindung);
+        // R-0777: der Touch liegt nur noch auf dem Aktivitaetsweg — dort laeuft dieses Rennen.
+        const laufendA = a.dienst.meldeAktivitaet(sessionId, bindung);
         await halt.erreicht;
 
         const nach = await b.dienst.rebindDocumentContext(sessionId, bindung, {
@@ -1055,7 +1056,8 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
         const halt = repoA.haltAn("touchSession");
         // Die Uhr von A steht spaeter: sein Touch WUERDE die Frist verlaengern, wenn er durchkaeme.
         a.vorspulen(60_000);
-        const laufendA = a.dienst.getSession(sessionId, bindung);
+        // R-0777: der Touch liegt nur noch auf dem Aktivitaetsweg — dort laeuft dieses Rennen.
+        const laufendA = a.dienst.meldeAktivitaet(sessionId, bindung);
         await halt.erreicht;
 
         await b.dienst.closeSession(sessionId, bindung);
@@ -1213,7 +1215,8 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
         const halt = repoA.haltAn("touchSession");
         // Bens B9: ohne vorgestellte Uhr ueberspringt die Touch-Drossel den Write (s. Race 1).
         a.vorspulen(KLARA_TOUCH_MINDESTABSTAND_MS);
-        const statusP = a.dienst.getSession(sessionId, bindung);
+        // R-0777: der Touch liegt nur noch auf dem Aktivitaetsweg — dort laeuft dieses Rennen.
+        const statusP = a.dienst.meldeAktivitaet(sessionId, bindung);
         await halt.erreicht;
 
         await b.dienst.revokeConsent(sessionId, bindung);
@@ -1243,7 +1246,8 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
         const halt = repoA.haltAn("touchSession");
         // Bens B9: ohne vorgestellte Uhr ueberspringt die Touch-Drossel den Write (s. Race 1).
         a.vorspulen(KLARA_TOUCH_MINDESTABSTAND_MS);
-        const statusP = a.dienst.getSession(sessionId, bindung);
+        // R-0777: der Touch liegt nur noch auf dem Aktivitaetsweg — dort laeuft dieses Rennen.
+        const statusP = a.dienst.meldeAktivitaet(sessionId, bindung);
         await halt.erreicht;
 
         await b.dienst.grantConsent(sessionId, bindung);
