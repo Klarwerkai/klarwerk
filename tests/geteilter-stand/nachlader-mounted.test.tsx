@@ -11,18 +11,30 @@
 // Dazu die Grenzen, die der Nachlader zusagt: keine Abrufe ohne bestätigte Sitzung, keine während
 // einer laufenden Änderung (die sofortige Rückmeldung wird nicht überholt), keine im verdeckten Tab
 // und offline, und NUR die geteilten Stände — eine Volltextabfrage wie `["gaps"]` bleibt unberührt.
+//
+// Nacharbeit 2 (Bens Befund): auch die geteilten LISTEN der Bibliothek — `useLibrarySearch` und
+// `useKos`, dieselben Haken wie `BibliothekFlaeche.tsx:551/573` — übernehmen eine anderswo geänderte
+// Liste ohne Fokuswechsel und ohne Neuladen. Lokale Bearbeitungen bleiben dabei erhalten: der Zustand
+// der Fläche ohnehin, und ein örtlich geschriebener Listenstand, solange seine Änderung läuft.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+type Eintrag = { id: string; title: string };
 
 const d = vi.hoisted(() => {
   const zustand = {
     board: [{ id: "a" }, { id: "b" }] as { id: string }[],
     me: { id: "u1", name: "Pia", email: "p@x.de", role: "admin" } as unknown,
+    suche: [{ id: "k1", title: "Ventil F3 prüfen" }] as { id: string; title: string }[],
+    bestand: [{ id: "k1", title: "Ventil F3 prüfen" }] as { id: string; title: string }[],
   };
   return {
     zustand,
     board: vi.fn(async () => zustand.board),
     notifications: vi.fn(async () => [] as unknown[]),
     gapsList: vi.fn(async () => [] as unknown[]),
+    suche: vi.fn(async () => zustand.suche),
+    kosList: vi.fn(async () => zustand.bestand),
+    koGet: vi.fn(async () => ({ id: "k1", title: "Ventil F3 prüfen" })),
   };
 });
 
@@ -51,6 +63,8 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
       config: vi.fn(async () => null),
     },
     external: { policy: vi.fn(async () => ({ stage: "blocked" })) },
+    library: { search: d.suche },
+    ko: { list: d.kosList, get: d.koGet },
   },
 }));
 
@@ -59,14 +73,23 @@ import {
   QueryClientProvider,
   onlineManager,
   useMutation,
+  useQueryClient,
 } from "../../apps/web/node_modules/@tanstack/react-query";
-import { Fragment, act, createElement } from "../../apps/web/node_modules/react";
+import { Fragment, act, createElement, useState } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
-import { useGaps, useNotifications, useValidationBoard } from "../../apps/web/src/api/hooks";
+import {
+  useGaps,
+  useKo,
+  useKos,
+  useLibrarySearch,
+  useNotifications,
+  useValidationBoard,
+} from "../../apps/web/src/api/hooks";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import {
   GETEILTER_STAND_TAKT_MS,
+  GETEILTE_LISTEN_TAKT_MS,
   GeteilterStandNachlader,
   nachladenFaellig,
 } from "../../apps/web/src/app/GeteilterStandNachlader";
@@ -113,6 +136,41 @@ function Probe(): null {
   });
   aenderung.starten = () => m.mutate();
   return null;
+}
+
+// Örtliche Eingriffe der Listenprobe — ein ungespeicherter Text der Fläche und ein örtlich
+// geschriebener Listenstand (die Bauform von `Validation.tsx` `removeDeletedKoFromCaches`).
+const liste = { notizSetzen: (_t: string) => {}, lokalSchreiben: () => {} };
+
+/** Die Bibliothek im Kleinen: dieselben Haken, die Liste als Text, daneben eine offene Eingabe. */
+function ListenProbe(): JSX.Element {
+  const qc = useQueryClient();
+  const suche = useLibrarySearch({ q: "" });
+  const bestand = useKos();
+  // Die Lesefläche — eine Detailabfrage, KEIN geteilter Listenstand.
+  useKo("k1");
+  const [notiz, setNotiz] = useState("");
+  const m = useMutation({
+    mutationFn: () =>
+      new Promise<void>((fertig) => {
+        aenderung.beenden = fertig;
+      }),
+  });
+  aenderung.starten = () => m.mutate();
+  liste.notizSetzen = setNotiz;
+  liste.lokalSchreiben = () => {
+    qc.setQueriesData<Eintrag[]>({ queryKey: ["library", "search"] }, (alt) =>
+      alt?.map((k) => (k.id === "k1" ? { ...k, title: "örtlich umbenannt" } : k)),
+    );
+  };
+  const titel = ((suche.data ?? []) as Eintrag[]).map((k) => k.title).join(" | ");
+  return createElement(
+    "div",
+    null,
+    createElement("p", { "data-testid": "suche" }, titel),
+    createElement("p", { "data-testid": "bestand" }, String(bestand.data?.length ?? "")),
+    createElement("p", { "data-testid": "notiz" }, notiz),
+  );
 }
 
 async function mount(inhalt: ReturnType<typeof createElement>): Promise<void> {
@@ -167,7 +225,12 @@ beforeEach(async () => {
   await i18n.changeLanguage("de");
   d.zustand.board = [{ id: "a" }, { id: "b" }];
   d.zustand.me = { id: "u1", name: "Pia", email: "p@x.de", role: "admin" };
+  d.zustand.suche = [{ id: "k1", title: "Ventil F3 prüfen" }];
+  d.zustand.bestand = [{ id: "k1", title: "Ventil F3 prüfen" }];
 });
+
+const text = (testid: string): string | null | undefined =>
+  container?.querySelector(`[data-testid="${testid}"]`)?.textContent;
 
 afterEach(async () => {
   const montiert = root;
@@ -274,5 +337,72 @@ describe("R-1029 / R-1674: geteilte Stände werden bei bestätigter Sitzung nach
     });
     await vergehen(3 * GETEILTER_STAND_TAKT_MS);
     expect(d.board.mock.calls.length).toBe(vorher);
+  });
+});
+
+describe("Nacharbeit 2 · geteilte Listen der Bibliothek werden bei bestätigter Sitzung nachgeladen", () => {
+  it("der Listentakt ist gesetzt und ruhiger als der Hüllentakt (große Antworten, NFR-PERF-01)", () => {
+    expect(GETEILTE_LISTEN_TAKT_MS).toBeGreaterThan(GETEILTER_STAND_TAKT_MS);
+  });
+
+  it("eine anderswo geänderte Liste erscheint ohne Fokuswechsel und ohne Neuladen", async () => {
+    await mount(createElement(ListenProbe));
+    expect(text("suche")).toBe("Ventil F3 prüfen");
+    expect(text("bestand")).toBe("1");
+    const detailAbrufe = d.koGet.mock.calls.length;
+    expect(detailAbrufe).toBeGreaterThan(0);
+
+    // Eine Kollegin legt anderswo einen Eintrag an. Hier wird weder fokussiert noch neu geladen.
+    d.zustand.suche = [
+      { id: "k1", title: "Ventil F3 prüfen" },
+      { id: "k2", title: "Pumpe P7 entlüften" },
+    ];
+    d.zustand.bestand = [...d.zustand.suche];
+
+    await vergehen(GETEILTE_LISTEN_TAKT_MS + 1_000);
+    expect(text("suche")).toBe("Ventil F3 prüfen | Pumpe P7 entlüften");
+    expect(text("bestand")).toBe("2");
+    // Die Lesefläche (Detailabfrage) ist kein geteilter Listenstand und bleibt unberührt.
+    expect(d.koGet.mock.calls.length).toBe(detailAbrufe);
+  });
+
+  it("lokale Bearbeitungen bleiben erhalten — der Abgleich folgt erst nach der Änderung", async () => {
+    await mount(createElement(ListenProbe));
+    // (1) Ungespeicherter Text der Fläche und ein örtlich geschriebener Listenstand mit laufender
+    //     Änderung.
+    await act(async () => {
+      liste.notizSetzen("noch nicht gespeichert");
+      aenderung.starten();
+      liste.lokalSchreiben();
+      await flush();
+    });
+    expect(text("suche")).toBe("örtlich umbenannt");
+    const vorher = d.suche.mock.calls.length;
+    d.zustand.suche = [{ id: "k1", title: "Serverstand" }];
+
+    // (2) Ein voller Listentakt vergeht — kein Abruf überholt die laufende Änderung.
+    await vergehen(GETEILTE_LISTEN_TAKT_MS + 1_000);
+    expect(d.suche.mock.calls.length, "kein Abruf während der Änderung").toBe(vorher);
+    expect(text("suche")).toBe("örtlich umbenannt");
+    expect(text("notiz")).toBe("noch nicht gespeichert");
+
+    // (3) Die Änderung ist durch — der nächste Takt gleicht mit dem Server ab, der Text der Fläche
+    //     bleibt unberührt.
+    await act(async () => {
+      aenderung.beenden();
+      await flush();
+    });
+    await vergehen(GETEILTE_LISTEN_TAKT_MS);
+    expect(d.suche.mock.calls.length).toBe(vorher + 1);
+    expect(text("suche")).toBe("Serverstand");
+    expect(text("notiz")).toBe("noch nicht gespeichert");
+  });
+
+  it("ohne bestätigte Sitzung bleibt auch die Liste ohne Nachlade-Abruf", async () => {
+    d.zustand.me = null;
+    await mount(createElement(ListenProbe));
+    const vorher = d.suche.mock.calls.length;
+    await vergehen(2 * GETEILTE_LISTEN_TAKT_MS);
+    expect(d.suche.mock.calls.length).toBe(vorher);
   });
 });
