@@ -210,7 +210,8 @@ describe("SCRUM-510 (WP2): Import-Migration + ON CONFLICT gegen echtes Postgres"
     );
     await expect(pool.query(IMPORT_CANDIDATES_SCHEMA)).resolves.toBeDefined();
     const row = await pool.query("SELECT source_version FROM import_candidates WHERE id='bad'");
-    expect(row.rows[0].source_version).toBe(1); // Fallback, kein Crash
+    // R-1653: die Spalte ist `bigint` — node-postgres liefert sie als Zeichenkette.
+    expect(Number(row.rows[0].source_version)).toBe(1); // Fallback, kein Crash
   });
 
   it("ATOMAR: zwei nebenläufige insertIfAbsent auf denselben Schlüssel → genau EIN Insert", async (ctx) => {
@@ -348,7 +349,7 @@ describe("SCRUM-510 (WP2): Import-Migration + ON CONFLICT gegen echtes Postgres"
     );
     await expect(repo.insert(bad)).resolves.toBeUndefined();
     const row = await pool.query("SELECT source_version FROM import_candidates WHERE id='v3-cand'");
-    expect(row.rows[0].source_version).toBe(1); // Fallback statt Cast-Fehler
+    expect(Number(row.rows[0].source_version)).toBe(1); // Fallback statt Cast-Fehler (bigint)
 
     // Der wiederaufgebaute Unique-Index wirkt weiterhin: derselbe externalId+source_version(=1
     // per Fallback) kollidiert über insertIfAbsent statt eine Dublette zu erzeugen.
@@ -367,7 +368,7 @@ describe("SCRUM-510 (WP2): Import-Migration + ON CONFLICT gegen echtes Postgres"
 
   // SCRUM-510 (WP-B2, Reviewer-Befund GELB): eine 20-stellige sourceVersion passiert `^[0-9]+$` (reine
   // Ziffernfolge), scheitert dann aber am `::int`-Cast (int4-Overflow) — genau die vom Reviewer gemeldete
-  // Lücke der (b)-Expression. Die gehärtete `^[0-9]{1,9}$` lässt so lange Ziffernfolgen den Regex-Guard
+  // Lücke der (b)-Expression. Die gehärtete `^[0-9]{1,15}$` (R-1653, vorher {1,9}) lässt so lange Ziffernfolgen den Regex-Guard
   // NICHT mehr passieren → Fallback 1 statt Crash (deckungsgleich mit dem Cast-sicheren Grundgedanken).
   it("(a) SCRUM-510 (WP-B2): 20-stellige sourceVersion crasht nicht mehr (Overflow-Guard) — source_version=1", async (ctx) => {
     const pool = requirePool(ctx);
@@ -384,7 +385,7 @@ describe("SCRUM-510 (WP2): Import-Migration + ON CONFLICT gegen echtes Postgres"
     const row = await pool.query(
       "SELECT source_version FROM import_candidates WHERE id='overflow'",
     );
-    expect(row.rows[0].source_version).toBe(1); // zu lang → Regex-Guard greift NICHT → Fallback, kein Crash
+    expect(Number(row.rows[0].source_version)).toBe(1); // zu lang → Regex-Guard greift NICHT → Fallback, kein Crash
   });
 
   // SCRUM-510 (WP-B2): die Live-Instanz läuft HEUTE mit genau der (b)-Expression aus COLUMNS_ONLY_DDL —
@@ -415,7 +416,8 @@ describe("SCRUM-510 (WP2): Import-Migration + ON CONFLICT gegen echtes Postgres"
       JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
       WHERE a.attrelid = 'import_candidates'::regclass AND a.attname = 'source_version'
     `);
-    expect(after.rows[0]?.legacy_expr).toContain("1,9"); // gehärtete Expression jetzt aktiv
+    // Gehärtete Expression jetzt aktiv — seit R-1653 mit fünfzehn statt neun Stellen.
+    expect(after.rows[0]?.legacy_expr).toContain("1,15");
 
     // Ein 20-stelliger Overflow-Insert crasht jetzt nicht mehr am ::int-Cast.
     const repo = new PgCandidateRepo(pool);
@@ -428,7 +430,7 @@ describe("SCRUM-510 (WP2): Import-Migration + ON CONFLICT gegen echtes Postgres"
     const row = await pool.query(
       "SELECT source_version FROM import_candidates WHERE id='overflow-upgraded'",
     );
-    expect(row.rows[0].source_version).toBe(1);
+    expect(Number(row.rows[0].source_version)).toBe(1);
 
     // (c) Idempotenz: ein zweiter Lauf gegen die bereits gehärtete Spalte erkennt weder COALESCE noch die
     // unbegrenzte Regex mehr (die gehärtete Expression enthält "[0-9]+$" NICHT als Teilzeichenkette) —

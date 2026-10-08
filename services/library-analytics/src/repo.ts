@@ -556,10 +556,18 @@ export function externalSourceRevisionKey(
 /**
  * Die Obergrenze der Quellversion. Sie ist KEINE Willkuer, sondern die Lehre aus der
  * `source_version`-Migration weiter oben in diesem Modul: eine Ziffernfolge ohne Laengengrenze
- * passiert jeden Regex-Guard und laeuft danach am `::int` ueber. Neun Stellen liegen sicher unter
- * `2^31-1`; die Pruefung sitzt hier an der Grenze, nicht erst in der Datenbank.
+ * passiert jeden Regex-Guard und laeuft danach am Cast ueber. Die Pruefung sitzt hier an der
+ * Grenze, nicht erst in der Datenbank.
+ *
+ * FUENFZEHN STELLEN (aufnahme:20260922:gesamt-externe-quellen-kennzeichnung, R-1653): der
+ * SharePoint-Mapper schreibt den Quellstand als Sekunden seit 1970 (`sharepointQuellstand`,
+ * zehn Stellen seit 2001-09-09). Die fruehere Grenze von neun Stellen wies damit JEDE aktuelle
+ * SharePoint-Datei ab. 15 Stellen liegen sicher unter `Number.MAX_SAFE_INTEGER` (die Zahl bleibt
+ * im JSON und in JavaScript exakt) und unter `2^63-1` (`bigint` in `import_candidates`); die
+ * Versionsregel im Schema (`^[0-9]{1,15}$`, repo-pg.ts) ist wortgleich. Jede bisher gueltige
+ * Fassung (0..999 999 999) bleibt gueltig und behaelt ihre numerische Reihenfolge.
  */
-export const MAX_SOURCE_VERSION = 999_999_999;
+export const MAX_SOURCE_VERSION = 999_999_999_999_999;
 
 /**
  * Fail-closed am Repo-Rand: eine Revision ohne vollstaendige, wohlgeformte Identitaet wird NICHT
