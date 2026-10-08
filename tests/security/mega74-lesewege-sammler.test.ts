@@ -804,6 +804,10 @@ const REGISTER: Record<string, Eintrag> = {
     "POST /api/duplicates/:id/keep-separate": "ko.validate.",
     "POST /api/duplicates/:id/link-related": "ko.validate.",
     "POST /api/duplicates/:id/status": "ko.validate.",
+    // aufnahme:20260922:gesamt-leserechte: bisher ohne Urteil (Route aus dem Dublettenauftrag).
+    // `ko.validate`; `fuehreZusammen` verlangt zusätzlich Einsicht in beide Inhalte und denselben
+    // Space (dubletten-zusammenfuehrung.ts), bevor geschrieben wird.
+    "POST /api/duplicates/:id/merge": "ko.validate; Einsicht in beide Seiten.",
     "PUT /api/duplicates/settings": "users.manage.",
     "PUT /api/gaps/:id": "ko.assign.",
     "DELETE /api/gaps/:id": "ko.validate.",

@@ -488,7 +488,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Klara-Endpunkte — die Route liest validierte, nicht vertrauliche KOs (dropConfidential im
   // Erzeuger) und erzeugt einen Vorschlag; ob sie das darf, entscheidet das Sitzungstor je
   // Sitzung und Dokument (pruefeExterneAusfuehrung), nicht RBAC. Sie schreibt nichts.
-  "POST /api/klara/sessions/:sessionId/zuruf": { protection: "ko.read" },
+  // aufnahme:20260922:gesamt-leserechte: der Bestandszugang des Erzeugers trägt zusätzlich die
+  // Lesepolicy des Betrachters (Stufe, Autor, führender Space).
+  "POST /api/klara/sessions/:sessionId/zuruf": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
 
   // --- Library / Import / Analytics / Graph (library-routes.ts) ---
   // JOB 3507: requireUser öffnet die Auskunft; fehlendes ko.read liefert 200 + leere Liste.
@@ -506,9 +511,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     zeilenrecht: ["sichtbareFuer", "darfSehen"],
   },
   "GET /api/library/export": { protection: "ko.read" },
-  "POST /api/library/import": { protection: "ko.create" },
-  "POST /api/library/import/candidates": { protection: "ko.create" },
-  "GET /api/library/import/candidates": { protection: "ko.read" },
+  // aufnahme:20260922:gesamt-leserechte: diese drei Wege fahren bereits `darfSehen` je Zeile
+  // (library-routes.ts); die Prüfliste nennt es jetzt mit.
+  "POST /api/library/import": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  "POST /api/library/import/candidates": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  "GET /api/library/import/candidates": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "PUT /api/library/import/candidates/:id": { protection: "ko.validate" },
   // JOB 3363: die Leseübersetzung eines noch NICHT angenommenen Kandidaten (Prüfkarte, Stufe 2).
   // DASSELBE Recht wie die Warteschlange eine Zeile darüber und KEIN Zeilenrecht daneben — genau
@@ -591,12 +598,22 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/learning-paths/:pathId/progress": { protection: "ko.read" },
 
   // --- Output (output-routes.ts) ---
-  "GET /api/output/sources": { protection: "ko.read" },
-  "POST /api/output/generate": { protection: "ko.read" },
+  // aufnahme:20260922:gesamt-leserechte: Quellenliste und Erzeugung tragen die Lesepolicy des
+  // Betrachters; nicht sichtbar antwortet wie eine unbekannte Kennung.
+  "GET /api/output/sources": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
+  "POST /api/output/generate": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
 
   // --- Lernplattform-Übergabe (lms-export-routes.ts) ---
-  "POST /api/output/scorm/pruefen": { protection: "ko.read" },
-  "POST /api/output/scorm/paket": { protection: "ko.read" },
+  // aufnahme:20260922:gesamt-leserechte: Objekte über `sichtbarkeitsfilterFuer`, Bilder über
+  // dieselbe Anhangsregel wie `GET /api/objects/:id` (`beurteileAnhang`).
+  "POST /api/output/scorm/pruefen": {
+    protection: "ko.read",
+    zeilenrecht: ["beurteileAnhang", "sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/output/scorm/paket": {
+    protection: "ko.read",
+    zeilenrecht: ["beurteileAnhang", "sichtbarkeitsfilterFuer"],
+  },
 
   // --- Management / Model-runs / External / Audit / Reasoner / Objects ---
   "GET /api/management/snapshot": {
