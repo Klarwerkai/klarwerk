@@ -12,6 +12,11 @@
 //   A2  Ersetzen trifft nur die Stelle; Fett davor und die Liste danach bleiben
 //   A3  hat sich der Text an der Stelle geändert: `null`, nichts wird geändert
 //   A4  Rechtschreibung mit nicht passender Wortzahl: `null` — die Stelle selbst ist gültig
+//
+// WARUM `.tsx` OHNE JSX: Der Fall braucht DOM-Typen (`document`, `Selection`, `Text`). Der
+// Root-Typcheck (`tsconfig.json`) ist Node-rein und schließt deshalb `tests/**/*.tsx` aus; diese
+// Dateien prüft `tsconfig.tests-tsx.json` mit DOM-lib. Als `.ts` zog die Datei
+// `lib/auswahlAssist.ts` in den Node-reinen Check (Prüflauf Nacharbeit 3, TS2304/TS2584).
 import { afterEach, describe, expect, it } from "vitest";
 import {
   type TextAuswahl,

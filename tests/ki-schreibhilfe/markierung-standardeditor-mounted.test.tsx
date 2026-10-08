@@ -18,7 +18,7 @@
 //   M3  Markierung über Fettschrift → „Rechtschreibung": korrigiert, Fett innerhalb bleibt,
 //       der Absatz davor ist unberührt.
 //   M4  Nach der Anfrage weitergeschrieben: der Vorschlag ist zurückgezogen, NICHTS wird
-//       übernommen (die Sperre der Übernahme selbst: `auswahl-assist.test.ts`).
+//       übernommen (die Sperre der Übernahme selbst: `auswahl-assist.test.tsx`).
 //   M5  Ohne Markierung: der bisherige Gesamttextweg — ganzer Text geht hin, ganzer Text wird ersetzt.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -295,7 +295,7 @@ describe("R-0300 · KI-Schreibhilfe auf der Markierung im Standardeditor", () =>
     // stehen und „Übernehmen“ melde dann die veraltete Stelle. Das Blatt tut mehr: jede Eingabe
     // im Schreibfeld verwirft den offenen Vorschlag (`changeBodyHtml` → `clearAssistState`). Ein
     // veralteter Vorschlag ist auf diesem Weg also gar nicht mehr anzunehmen. Die Sperre der
-    // Übernahme selbst prüft `auswahl-assist.test.ts` (A3) an der Funktion.
+    // Übernahme selbst prüft `auswahl-assist.test.tsx` (A3) an der Funktion.
     await mitEntwurf(RUMPF);
     box.antwort = "Der Kunde hat den Router erhalten.";
     const knoten = textknoten(editor(), SATZ);
