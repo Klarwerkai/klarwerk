@@ -1565,6 +1565,45 @@ describe("H · Präzisierung gelangt in beide Entwurfswege", () => {
       koIds: ["ko-ventil", "ko-wackelig"],
     });
   });
+
+  // Nacharbeit 9 (Bens Befund anleitung.js:1310): eine verneinte oder unklare Anweisung verwirft
+  // nichts — die gewünschte Quelle bleibt gewählt, die sichtbare Quellenwahl bleibt erhalten.
+  it.each([
+    "Ventilwartung nicht weglassen, Filterprüfung ergänzen.",
+    "Die Ventilwartung auf keinen Fall weglassen; Filterprüfung ergänzen.",
+    "Ventilwartung niemals streichen.",
+    "Ventilwartung weglassen?",
+    "Ohne Ventilwartung geht es nicht.",
+    "Don't drop the valve, add the filter check.",
+  ])("H7: „%s“ schließt keine Quelle aus", async (zweite) => {
+    panelStarten();
+    askAntwort = { answered: true, answer: null, sources: ["ko-ventil"] };
+    await vorhabenFragen(zuerst);
+    askAntwort = { answered: true, answer: null, sources: ["ko-wackelig"] };
+    await vorhabenFragen(zweite);
+    expect(fadenZeilen().filter((z) => z.klasse === "anleitung-faden-verworfen")).toEqual([]);
+    const haken = el<HTMLUListElement>("anleitung-faden").querySelector<HTMLInputElement>(
+      'li[data-id="ko-ventil"] input.anleitung-faden-wahl',
+    );
+    expect(haken?.checked).toBe(true);
+    await klick("anleitung-entwurf-btn");
+    expect(anfragen.find((a) => a.url === "/api/output/generate")?.body).toMatchObject({
+      koIds: ["ko-ventil", "ko-wackelig"],
+    });
+  });
+
+  it("H8: „doch nicht weglassen“ nach einer Verwerfung nimmt die Quelle wieder auf", async () => {
+    panelStarten();
+    await verworfeneRunde();
+    expect(fadenZeilen().filter((z) => z.klasse === "anleitung-faden-verworfen")).toHaveLength(1);
+    askAntwort = { answered: true, answer: null, sources: [] };
+    await vorhabenFragen("Ventilwartung doch nicht weglassen.");
+    expect(fadenZeilen().filter((z) => z.klasse === "anleitung-faden-verworfen")).toEqual([]);
+    await klick("anleitung-entwurf-btn");
+    expect(anfragen.find((a) => a.url === "/api/output/generate")?.body).toMatchObject({
+      koIds: ["ko-ventil", "ko-wackelig"],
+    });
+  });
 });
 
 // ================================================================================================

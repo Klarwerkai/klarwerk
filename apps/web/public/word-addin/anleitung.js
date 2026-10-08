@@ -1344,11 +1344,30 @@
       return String(frage).replace(ANLEITUNG_META, "").match(/[^.;,!?]+[.;,!?]*\s*/g) || [];
     }
 
-    /** Der verworfene Begriff eines Teilsatzes oder null. */
+    // Nacharbeit 9: Verneinungen im Begriffsteil („Ventilwartung NICHT weglassen", „auf keinen Fall
+    // weglassen", „don't drop …") kehren die Anweisung um oder machen sie unklar — dann wird nichts
+    // automatisch verworfen; die sichtbare Quellenwahl (Häkchen) bleibt beim Menschen.
+    var ANLEITUNG_VERNEINUNG = ["nicht", "nie", "niemals", "keinesfalls", "keineswegs", "kein", "keine", "keinen",
+      "keinem", "keiner", "keines", "not", "never", "dont", "don", "niet", "nooit", "geen"];
+
+    function anleitungVerneint(text) {
+      var roh = anleitungFalten(text).split(/[^a-z0-9]+/);
+      for (var i = 0; i < roh.length; i += 1) {
+        if (ANLEITUNG_VERNEINUNG.indexOf(roh[i]) >= 0) { return true; }
+      }
+      return false;
+    }
+
+    /**
+     * Der verworfene Begriff eines Teilsatzes oder null. Nur eine eindeutige Anweisung verwirft: keine
+     * Frage („Ventilwartung weglassen?") und keine Verneinung im Begriffsteil.
+     */
     function anleitungVerworfenIn(teilsatz) {
-      var gefaltet = anleitungFalten(anleitungNorm(teilsatz)).replace(/[.;,!?]+$/, "").trim();
+      var norm = anleitungNorm(teilsatz);
+      if (/\?/.test(norm)) { return null; }
+      var gefaltet = anleitungFalten(norm).replace(/[.;,!]+$/, "").trim();
       var treffer = ANLEITUNG_WEG_DAVOR.exec(gefaltet) || ANLEITUNG_WEG_DANACH.exec(gefaltet);
-      if (!treffer || anleitungWoerter(treffer[1]).length === 0) { return null; }
+      if (!treffer || anleitungVerneint(treffer[1]) || anleitungWoerter(treffer[1]).length === 0) { return null; }
       // Der Begriff im Wortlaut des Menschen: die Wörter des Teilsatzes, die ihn tragen.
       var woerter = anleitungWoerter(treffer[1]);
       var anzeige = [];
