@@ -75,6 +75,7 @@ import {
 } from "../../lib/koSource";
 import { diffForVersion, paarDiff } from "../../lib/koVersionDiff";
 import { koVersionRows, uebernahmeHerkunft } from "../../lib/koVersionSnapshots";
+import { lesekontextMerken } from "../../lib/lesekontext";
 import { useNetzOnline } from "../../lib/netzzustand";
 import { nochNichtFachlichGeprueft } from "../../lib/pruefeinordnung";
 import {
@@ -401,7 +402,13 @@ function diskussionsfaeden(beitraege: readonly KoDiskussionsbeitrag[]): Diskussi
 export function MehrAbschnitte({
   ko,
   sprungZiel,
-}: { ko: KnowledgeObject; sprungZiel?: Sprungziel | undefined }): JSX.Element {
+  anfangsOffen,
+}: {
+  ko: KnowledgeObject;
+  sprungZiel?: Sprungziel | undefined;
+  /** N-0020: die beim Verlassen offenen Abschnitte (`lib/lesekontext.ts`), sonst alle zu. */
+  anfangsOffen?: readonly string[] | undefined;
+}): JSX.Element {
   const { t, i18n } = useTranslation();
   const id = ko.id;
   const { role } = useRole();
@@ -1188,7 +1195,9 @@ export function MehrAbschnitte({
   const gueltigkeit = validityProtectionView(ko, pending.data ?? [], conflicts.data ?? []);
 
   // ---- JOB 3108 · UX-03: die EINE Menge der offenen Abschnitte, und der Sprung hinein -----------
-  const [offene, setOffene] = useState<ReadonlySet<string>>(() => new Set<string>());
+  const [offene, setOffene] = useState<ReadonlySet<string>>(
+    () => new Set<string>(anfangsOffen ?? []),
+  );
   const wurzel = useRef<HTMLDivElement | null>(null);
   /**
    * Der Sprung läuft in ZWEI Zügen: erst öffnen, dann hinführen. In EINEM Zug ginge es nicht — im
@@ -2166,9 +2175,13 @@ export function MehrAbschnitte({
             </ul>
           );
         })()}
-        {/* mega70 B3: `/graph` verlangt `admin` — die gesperrte Fassung verliert Link und Pfeil. */}
+        {/* mega70 B3: `/graph` verlangt `admin` — die gesperrte Fassung verliert Link und Pfeil.
+            N-0020: vor dem Wechsel merkt sich die Lesefläche, WO gelesen wurde (Rollstand und
+            offene Abschnitte); Browser-Zurück stellt es wieder her (`lib/lesekontext.ts`). */}
         <RoleLink
           to="/graph"
+          testId="bib-herkunft-graph"
+          onClick={() => lesekontextMerken(ko.id, wurzel.current, offene)}
           className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold text-ai"
           hoverClassName="hover:underline"
         >
