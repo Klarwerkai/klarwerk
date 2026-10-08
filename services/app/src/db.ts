@@ -51,6 +51,8 @@ import { CONFLUENCE_IMPORT_SCHALTER_SCHEMA } from "./confluence-import-schalter"
 // Firmenwörterbuch: die Fassungen des Begriffskatalogs. Im App-Wurzelverzeichnis wie die
 // Markenwahl: Editor und Word-Panel lesen ihn, kein Fachmodul besitzt ihn.
 import { BEGRIFFE_SCHEMA } from "./firmenwoerterbuch";
+// Instanztrennung: die eine Zeile, die diese Datenbank an genau eine Anlage bindet.
+import { INSTANZBINDUNG_SCHEMA } from "./instanzbindung";
 // Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen.
 import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
 // JOB 3326: die Lesevarianten (gekennzeichnete Leseübersetzungen). Sie wohnen im App-Root und nicht
@@ -254,6 +256,10 @@ export const schemas = [
   // NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare
   // Ordnung ist.
   LIVEWALL_FOTO_SCHEMA,
+  // Instanztrennung (R-0597/R-0790/R-0860): die eine Bindungszeile Datenbank → Anlage. Additiv und
+  // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed — die
+  // Zeile schreibt erst der Start (`bindeInstanz` in server.ts), nicht die Migration.
+  INSTANZBINDUNG_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).

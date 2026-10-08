@@ -7,6 +7,7 @@ import { buildApp, buildPgServices, buildServices } from "./build-app";
 import { createPool, migrate } from "./db";
 import { buildDevPersistServices } from "./dev-persist";
 import { type FactoryReset, factoryResetUnavailable } from "./factory-reset";
+import { bindeInstanz } from "./instanzbindung";
 import { resolveKlaraAufraeumIntervalMs, starteKlaraAufraeumen } from "./klara-aufraeumen";
 import { registerNoindexHook } from "./noindex-hook";
 import { registerSecurityHeaders } from "./security-headers";
@@ -25,6 +26,16 @@ const CANONICAL_HOST = process.env.CANONICAL_HOST ?? "klarwerk.ai";
 async function pgServices(databaseUrl: string) {
   const pool = createPool(databaseUrl);
   await migrate(pool);
+  // Instanztrennung (R-0597/R-0790/R-0860): diese Datenbank gehört genau einer Anlage. Startet eine
+  // andere Anlage (anderer Hostname in APP_BASE_URL) gegen sie, wirft `bindeInstanz` — VOR jeder
+  // weiteren Schreibstufe und bevor der Server eine Anfrage annimmt; der Abbruch läuft durch
+  // `start().catch(...)` als eine lesbare Zeile.
+  const bindung = await bindeInstanz(pool, normalizeEnv(process.env.APP_BASE_URL));
+  if (bindung.art === "gebunden") {
+    process.stderr.write(
+      `[KLARWERK] Instanzbindung: diese Datenbank ist jetzt an die Anlage „${bindung.anlage}“ gebunden.\n`,
+    );
+  }
   // WP-VIP2-GATE (bens P1, Token-at-Rest): Einmal-Migration des Klartext-Token-Bestands
   // (Format-Erkennung via sha256:-Praefix → idempotent, zweiter Lauf findet nichts mehr);
   // raeumt dabei abgelaufene Sessions/Reset-Tokens auf.

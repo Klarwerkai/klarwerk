@@ -226,6 +226,34 @@ Nach dem Start steht im Protokoll entweder
 oder je verworfenem Eintrag eine Warnung mit Grund. Einzelheiten und die Live-Abnahme:
 `docs/operations/word-web-hostabnahme.md`.
 
+### 2.7 Eine Firma je Instanz — die Datenbank gehört genau einer Anlage
+
+Jede Firma bekommt ihre **eigene** Instanz mit **eigener** Datenbank; auch Tochter- oder
+Schwestergesellschaften teilen sich keine. Mehrere Instanzen dürfen auf derselben Hardware laufen
+(getrennte VMs), aber nie gegen dieselbe Datenbank.
+
+Die Anwendung erzwingt das selbst: Beim ersten Start gegen eine Datenbank trägt sie den Hostnamen
+aus `APP_BASE_URL` in die Tabelle `instanz_bindung` ein. Startet danach eine Instanz mit einem
+**anderen** Hostnamen gegen dieselbe `DATABASE_URL`, bricht der Start ab, bevor eine einzige
+Anfrage angenommen wird:
+
+```
+Serverstart fehlgeschlagen: InstanzbindungError: Diese Datenbank gehört der Anlage „wissen.firma-a.de“, gestartet wurde „wissen.firma-b.de“ …
+```
+
+Schema und Port zählen nicht: `http://` statt `https://` oder ein anderer Port derselben Adresse
+ist dieselbe Anlage. Einen Schalter, der die Prüfung abschaltet, gibt es absichtlich nicht.
+
+**Bewusster Umzug derselben Firma auf eine neue Adresse:** Instanz stoppen, die Bindung
+ausdrücklich lösen und mit der neuen `APP_BASE_URL` starten — der nächste Start bindet neu:
+
+```
+docker compose -f docker-compose.prod.yml exec db psql -U klarwerk -d klarwerk_prod -c "DELETE FROM instanz_bindung;"
+```
+
+Dasselbe gilt nach dem Einspielen einer Sicherung unter einer anderen Adresse. Gehütet von
+`tests/instanztrennung/zwei-anlagen-eine-datenbank-pg.integration.test.ts`.
+
 ---
 
 ## 3. Der Start
@@ -395,6 +423,7 @@ Die Daten liegen im Docker-Volume `pgdata`. **Löschen Sie es nie** ohne Sicheru
 | Jeder Besucher landet auf einer fremden Website | Ihre Instanz läuft unter `app.<etwas>` und `CANONICAL_HOST` **ist auf `<etwas>` gesetzt** — die Umleitung entsteht durch das Setzen, nicht durch die Vorgabe (§2.2, Zeile 4 der Messtabelle). | Die Zeile `CANONICAL_HOST=` aus der `.env` **entfernen** (nicht leeren) und die Instanz neu starten. |
 | Im Protokoll steht `Datenhaltung: In-Memory` statt `Postgres` | Die Anwendung hat keine gültige `DATABASE_URL` bekommen. Alles, was Sie eingeben, ist beim nächsten Neustart weg. | Sofort stoppen, `POSTGRES_PASSWORD`/`DATABASE_URL` prüfen, neu starten. |
 | Der Start bricht mit `COOKIE_SECURE=false ist in Produktion nicht erlaubt` ab | Das Secure-Flag wurde abzuschalten versucht (§5). Auf **diesem** Weg kann das nicht aus der `.env` kommen — die Compose-Datei schreibt `true` fest (§2.4); es kommt dann aus einer geänderten Compose-Datei oder einem anderen Betriebsweg. | Den Wert wieder auf `true` stellen und TLS davorsetzen. |
+| Der Start bricht mit `InstanzbindungError: Diese Datenbank gehört der Anlage …` ab | Die Datenbank ist an eine andere Adresse gebunden — entweder teilt sich diese Instanz die Datenbank mit einer anderen Anlage, oder dieselbe Firma ist umgezogen (§2.7). | Andere Anlage: eigene Datenbank einrichten, **nie** die Bindung lösen. Bewusster Umzug: Bindung lösen wie in §2.7. |
 | Der Start bricht mit `KLARWERK-Start abgebrochen: … Pflichtwert(e)` ab | Der Startvertrag der Anwendung — er nennt **alle** fehlenden Namen auf einmal. | Alle genannten Werte nachtragen. |
 | Nach dem Start ist der Port nicht erreichbar | Die Instanz horcht auf 3001; ein Proxy oder eine Firewall trifft einen anderen Port. | Proxy auf 3001 richten; siehe `docs/operations/server-hardening-readiness.md`. |
 | Die Ersteinrichtung ist schon weg (409) | Jemand war schneller — oder Sie haben sie bereits durchgeführt. | Wenn Sie es nicht waren: Instanz sofort vom Netz nehmen, Datenbank verwerfen, neu aufsetzen und §4 einhalten. |
