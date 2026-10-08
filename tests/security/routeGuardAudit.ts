@@ -777,6 +777,13 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // R-0145/R-0190: die dritte Tür — einen ganzen Ordner in Losen übernehmen, ein Los je Aufruf.
   // Derselbe Übernahmeweg wie `apply`, also dieselbe Schranke.
   "POST /api/admin/import/sharepoint/folder-apply": { protection: "users.manage" },
+  // R-0170: der Jira-Import — Zugangsauskunft VOR dem Schalter, dazu die drei Türen hinter
+  // `KLARWERK_JIRA_IMPORT`. `issues` ist READ-ONLY (Vorgangsliste des Projekts); `apply` und
+  // `project-apply` stellen Vorgänge in die Review-Queue — nie ein Wissensobjekt.
+  "GET /api/import/jira/zugang": { protection: "users.manage" },
+  "POST /api/admin/import/jira/issues": { protection: "users.manage" },
+  "POST /api/admin/import/jira/apply": { protection: "users.manage" },
+  "POST /api/admin/import/jira/project-apply": { protection: "users.manage" },
 
   // --- Admin (admin-routes.ts) ---
   // AUFTRAG-mega14 Block H (SCRUM-437): LESENDER Demodaten-Stand für die Bereitschafts-Zeile.
