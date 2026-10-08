@@ -103,7 +103,7 @@ function alleZiele(): ReturnType<typeof direktzugangZiele> {
 }
 
 describe("JOB 3337 · A · der Bestand ist vollständig und adressierbar", () => {
-  it("A0 · KALIBRIERUNG: der Griff in den Quelltext greift die 18 Kennungen der Vorlage", () => {
+  it("A0 · KALIBRIERUNG: der Griff in den Quelltext greift die 19 Kennungen der Vorlage", () => {
     const kennungen = kennungenAusQuelltext();
     // Die Vorlage nannte 17. Weniger hieße: der Griff hat den Switch verfehlt (und alles Folgende
     // wäre über einer zu kleinen Menge trivial grün).
@@ -112,7 +112,10 @@ describe("JOB 3337 · A · der Bestand ist vollständig und adressierbar", () =>
     // Auskunft über das Sicherungsverzeichnis unter „System" (`lib/adminSections.ts`,
     // `pages/AdminBetriebDetails.tsx`). Sie ist damit auch im Direktzugang und über die Adresse
     // erreichbar; A1/A3 messen das gleich mit.
-    expect(kennungen, `gefunden: ${kennungen.join(" · ")}`).toHaveLength(18);
+    //
+    // R-1034 / FR-I18N-02: 18 → 19. Die neue Kennung ist `uebersetzungen` — die Pflege der
+    // Oberflächentexte unter „System" (`components/einstellungen/UebersetzungsPflege.tsx`).
+    expect(kennungen, `gefunden: ${kennungen.join(" · ")}`).toHaveLength(19);
     for (const pflicht of ["nutzer:", "rolle:", "ki", "demo", "werk", "papierkorb", "audit"]) {
       expect(kennungen).toContain(pflicht);
     }
@@ -148,7 +151,8 @@ describe("JOB 3337 · A · der Bestand ist vollständig und adressierbar", () =>
     const statisch = kennungenAusQuelltext().filter((k) => !k.endsWith(":"));
     const fehlend = statisch.filter((k) => !ziele.some((z) => z.path === adminHref(sekt(k), k)));
     // JOB 4025: 15 → 16 (die neue Kennung `sicherung`, siehe A0).
-    expect(statisch, "der Griff fand keine statische Kennung").toHaveLength(16);
+    // R-1034: 16 → 17 (die neue Kennung `uebersetzungen`, siehe A0).
+    expect(statisch, "der Griff fand keine statische Kennung").toHaveLength(17);
     expect(fehlend, `kein direktes Ziel: ${fehlend.join(" · ")}`).toEqual([]);
   });
 

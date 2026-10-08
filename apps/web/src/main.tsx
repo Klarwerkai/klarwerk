@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
+import { endpoints } from "./api/endpoints";
 import { SplashFlaeche } from "./components/Splash";
 import i18n, { sprachBereit } from "./i18n";
 import "./index.css";
@@ -11,6 +12,7 @@ import { initDesignTheme } from "./lib/designTheme";
 import { bindHtmlLang } from "./lib/htmlLang";
 import { ZAEHLER_FRISCHE_MS } from "./lib/loadingState";
 import { bindSpracheSpeichern } from "./lib/sprachwahl";
+import { bindTextpflege } from "./lib/textpflege";
 
 // AUFTRAG-mega40 B: gespeicherte Design-Wahl VOR dem ersten Render anwenden (kein Aufblitzen des
 // falschen Themes; gilt auch für Routen ohne Topbar wie /mobile). Standard bleibt Klassisch.
@@ -71,6 +73,10 @@ wurzel.render(<SplashFlaeche text={i18n.t("state.loading")} />);
 
 void sprachBereit.finally(() => {
   bindSpracheSpeichern(i18n);
+  // R-1034: die im Betrieb gepflegten Texte über die aktive Sprache legen — erst JETZT, wenn ihr
+  // Paket da ist (Begründung im Kopf von `lib/textpflege.ts`). Ein Ausfall lässt die mitgelieferten
+  // Texte stehen und hält den Start nicht auf.
+  bindTextpflege(i18n, (sprache) => endpoints.i18n.texte(sprache).then((a) => a.texte));
   wurzel.render(
     <StrictMode>
       <QueryClientProvider client={queryClient}>

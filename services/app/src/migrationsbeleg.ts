@@ -279,6 +279,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // zwei `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "GEDAECHTNIS_SCHEMA", risiko: "ADDITIV" },
+  // R-1034 / FR-I18N-02: die Übersetzungspflege. ADDITIV, nachgezählt: zwei `CREATE TABLE IF NOT
+  // EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist
+  // folgenlos.
+  { stufe: "UEBERSETZUNGEN_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

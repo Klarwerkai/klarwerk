@@ -84,8 +84,12 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 | `GET` | `/api/reasoner/status` | keines | — | 200 abstrakter KI-Status (`reasoner.publicStatus()`), ohne Anbieter- oder Modellnamen | — |
 | `GET` | `/api/ai-status` | keines | — | 200 `{ ai: publicStatus() }` | — |
 | `GET` | `/api/analytics/impact` | `ko.read` | — | 200 Wirkungsbericht (`impactReport`), sichtbarkeitsgefiltert | — |
-| `GET` | `/api/i18n/locales` | keines | — | 200 `{ locales }` | — |
-| `GET` | `/api/i18n/:locale/:key` | keines | — | 200 `{ value }` | — |
+| `GET` | `/api/i18n/locales` | keines | — | 200 `{ locales, sprachen: [{ kennung, name, grundsprache }] }` (mitgelieferte und angelegte Sprachen) | — |
+| `GET` | `/api/i18n/:locale` | keines | — | 200 `{ sprache, texte }` — die im Betrieb gepflegten Texte dieser Sprache | 400 `INVALID_LOCALE` |
+| `GET` | `/api/i18n/:locale/:key` | keines | — | 200 `{ value }` (gepflegter Text vor dem Serverkatalog) | — |
+| `PUT` | `/api/admin/i18n/:locale/:key` | `users.manage` | Rumpf `{ text }` (≤ 4000 Zeichen) | 200 `{ sprache, schluessel, text }`; Prüfprotokoll `i18n.text-set` | 400 `UNKNOWN_LOCALE`, `INVALID_KEY`, `INVALID_TEXT` |
+| `DELETE` | `/api/admin/i18n/:locale/:key` | `users.manage` | — | 200 `{ sprache, schluessel, entfernt }` — der mitgelieferte Text gilt wieder; Prüfprotokoll `i18n.text-reset` | 400 `INVALID_KEY` |
+| `PUT` | `/api/admin/i18n-sprachen/:locale` | `users.manage` | Rumpf `{ name }` | 200 `{ kennung, name }`; Prüfprotokoll `i18n.language-set` | 400 `INVALID_LOCALE` (auch für de/en/nl), `INVALID_NAME` |
 | `GET` | `/api/branding` | keines | — | 200 die Markenwahl der Instanz | — |
 | `PUT` | `/api/admin/branding` | `users.manage` | Rumpf `{ profil?, aktiv? }` | 200 neue Markenwahl | 400 `UNKNOWN_PROFILE` |
 | `GET` | `/api/features` | ohne Token keines, mit Token `requireUser` | — | 200 `{ features }` (vor der Anmeldung die verkürzte Fassung) | 401 bei ungültigem Token |

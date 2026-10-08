@@ -18,6 +18,7 @@
 - **Konflikte:** `GET /api/conflicts`, `GET /api/conflicts/:id`, `POST /api/conflicts/:id/escalate`; Anlegen/Lösen über KO-Dispatcher. → Conflict Board gedeckt.
 - **Fragen + Wissenslücken:** `POST /api/ask`, `POST /api/ask/helpful`, `GET /api/gaps`, `PUT /api/gaps/:id` (zuweisen/schließen), `DELETE /api/gaps/:id?confirm=true`. → Ask→Antwort/Lücke **und** Risiko/Lücken sind gedeckt (besser als im Brief angenommen).
 - **Bibliothek/Lebenszyklus/Analytics/Audit/i18n/Graph:** `GET /api/library/export`, `POST /api/library/import`, `GET /api/lifecycle/pending`, `GET /api/analytics`, `GET /api/analytics/busfactor`, `GET /api/audit`, `GET /api/i18n/locales`, `GET /api/learning-paths/:role`, `GET /api/graph`. → Bibliothek, Lebenszyklus, Analytics/Audit, Risiko-Bus-Faktor, Graph (Datenpfad vorhanden) gedeckt.
+- **Übersetzungspflege (R-1034 / FR-I18N-02):** `GET /api/i18n/locales`, `GET /api/i18n/:locale` (beim Start und bei jedem Sprachwechsel, `lib/textpflege.ts`), `PUT`/`DELETE /api/admin/i18n/:locale/:key` und `PUT /api/admin/i18n-sprachen/:locale` → Verwaltung › System › Übersetzungen (`components/einstellungen/UebersetzungsPflege.tsx`).
 
 ## Echte Abstimmpunkte (vor Bau der abhängigen Screens)
 
