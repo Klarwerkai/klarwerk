@@ -30,6 +30,7 @@ import {
 import type {
   Confidentiality,
   ConflictType,
+  ConflictWorkKind,
   ExternalResult,
   KnowledgeObject,
 } from "../../api/types";
@@ -40,6 +41,7 @@ import { auditActionLabel } from "../../lib/auditAction";
 import { objectRawHref } from "../../lib/bodyFileLink";
 import { CONFIDENTIALITY_LEVELS, confidentialityOf } from "../../lib/confidentiality";
 import { conflictImpact, conflictLimitedUsability } from "../../lib/conflictImpact";
+import { vorrangAmPunkt } from "../../lib/conflictView";
 import { isDemoKnowledge } from "../../lib/demoKnowledge";
 import { deriveStatus } from "../../lib/displayStatus";
 import { groupEvidenceByVersion } from "../../lib/evidenceByVersion";
@@ -309,6 +311,10 @@ const CONFLICT_TYPES: readonly ConflictType[] = [
   "temporal",
   "role",
 ];
+
+// R-0252: die wählbaren Arbeitsarten. Seit Nacharbeit 5 ist die Wahl PFLICHT: ohne sie bleibt
+// „Konflikt eröffnen" gesperrt — die Arbeitsart steht damit fest, bevor bearbeitet wird.
+const CONFLICT_WORK_KINDS: readonly ConflictWorkKind[] = ["regel", "sache", "version"];
 
 const textareaCls =
   "w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none focus:border-ink/30";
@@ -1126,7 +1132,12 @@ export function MehrAbschnitte({
   };
 
   // ---- Konflikt melden -------------------------------------------------------------------------
-  const [conflict, setConflict] = useState({ koB: "", type: "truth" as ConflictType, desc: "" });
+  const [conflict, setConflict] = useState({
+    koB: "",
+    type: "truth" as ConflictType,
+    arbeitsart: "" as ConflictWorkKind | "",
+    desc: "",
+  });
   const [pickOpen, setPickOpen] = useState(false);
   const conflictTitle = (koList.data ?? []).find((k) => k.id === conflict.koB)?.title ?? "";
   const report = useMutation({
@@ -1137,12 +1148,13 @@ export function MehrAbschnitte({
           koA: id,
           koB: conflict.koB,
           type: conflict.type,
+          ...(conflict.arbeitsart ? { arbeitsart: conflict.arbeitsart } : {}),
           description: conflict.desc,
         },
       }),
     onSuccess: () => {
       invalidate();
-      setConflict({ koB: "", type: "truth", desc: "" });
+      setConflict({ koB: "", type: "truth", arbeitsart: "", desc: "" });
     },
     onError: fehlerToast,
   });
@@ -1185,6 +1197,27 @@ export function MehrAbschnitte({
   const abschnittUmschalten = (schluessel: string, offen: boolean): void => {
     setOffene((vorher) => mengeMitSchluessel(vorher, schluessel, offen));
   };
+
+  // ---- Aufnahme gesamt-konfliktklassifikation · R-0263: der Vorrang AM PUNKT --------------------
+  // Was eine Konfliktentscheidung zwischen diesem und einem anderen Punkt festgelegt hat — überstimmt,
+  // hat Vorrang, ist eingeschränkt oder präzisiert, samt Geltungsbereich. Gelesen wird erst, wenn der
+  // Abschnitt „Konflikt" offen ist; Paar-Tor und Redaktion stehen am Server
+  // (`GET /api/conflicts/vorrang/:id`). Dieser Punkt selbst, seine Quellen und seine Herkunft bleiben
+  // unverändert — die Zeilen sind ein Vermerk, keine Änderung.
+  const vorrang = useQuery({
+    queryKey: ["conflicts", "vorrang", id],
+    queryFn: () => endpoints.conflicts.vorrang(id),
+    enabled: offene.has("konflikt"),
+    retry: false,
+  });
+  const titelVon = (koId: string): string =>
+    (koList.data ?? []).find((k) => k.id === koId)?.title ?? t("konfliktarbeit.amPunkt.andere");
+  const vorrangZeilen = (vorrang.data ?? []).map((v) => {
+    const satz = vorrangAmPunkt(v, id);
+    const title = titelVon(satz.gegenueber);
+    const bereich = v.geltungsbereich ?? t("konfliktarbeit.amPunkt.bereichZurueck");
+    return { id: v.konfliktId, text: t(satz.schluessel, { title, bereich }) };
+  });
 
   // ---- JOB 3475 · UX-28: die offenen FASSUNGEN — dieselbe Haltung, ein Stockwerk tiefer ---------
   //
@@ -1417,6 +1450,16 @@ export function MehrAbschnitte({
         {/* mega29 C1: die Deckung des KI-Laufs schränkt jede Konfliktaussage ein — sie steht
             deshalb hier, direkt bei ihr. */}
         <AiCheckCoverageNotes coverage={ko.aiCheck?.coverage} />
+        {vorrangZeilen.length > 0 ? (
+          <div data-testid="bib-vorrang" className="mt-2 space-y-1 text-[12.5px] text-muted">
+            <span className="block font-medium">{t("konfliktarbeit.amPunkt.titel")}</span>
+            <ul className="space-y-1">
+              {vorrangZeilen.map((z) => (
+                <li key={z.id}>{z.text}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {canReview ? (
           <div className="mt-2 space-y-2">
             <div className="space-y-1.5">
@@ -1449,6 +1492,26 @@ export function MehrAbschnitte({
                 ))}
               </select>
             </Field>
+            <Field label={t("konfliktarbeit.feld")}>
+              <select
+                value={conflict.arbeitsart}
+                onChange={(e) =>
+                  setConflict({ ...conflict, arbeitsart: e.target.value as ConflictWorkKind | "" })
+                }
+                className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
+              >
+                {/* R-0252 (Nacharbeit 5): Pflichtwahl — der Platzhalter ist nicht wählbar, und
+                    „Konflikt eröffnen" bleibt gesperrt, bis eine Arbeitsart gewählt ist. */}
+                <option value="" disabled>
+                  {t("konfliktarbeit.feld.offen")}
+                </option>
+                {CONFLICT_WORK_KINDS.map((wk) => (
+                  <option key={wk} value={wk}>
+                    {t(`konfliktarbeit.name.${wk}`)}
+                  </option>
+                ))}
+              </select>
+            </Field>
             <Field label={t("ko.conflictDesc")}>
               <textarea
                 value={conflict.desc}
@@ -1459,7 +1522,7 @@ export function MehrAbschnitte({
             </Field>
             <Button
               variant="primary"
-              disabled={report.isPending || !conflict.koB}
+              disabled={report.isPending || !conflict.koB || !conflict.arbeitsart}
               onClick={() => report.mutate()}
             >
               {t("ko.conflictSubmit")}
