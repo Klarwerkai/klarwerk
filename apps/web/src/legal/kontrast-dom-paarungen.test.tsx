@@ -10,7 +10,9 @@
 // (`text-brand-text` auf `--kw-night`, beide Tokens „gemessen", die Paarung nie).
 //
 // WAS DIESE DATEI DAGEGEN TUT: Sie montiert die ECHTEN Pflichtflächen — Hinweisbanner (beide
-// Zustände), Impressum, Datenschutzerklärung, Sperrfläche nach gescheiterter Abmeldung — und
+// Zustände), Impressum, Datenschutzerklärung, Sperrfläche nach gescheiterter Abmeldung und die
+// Rechtshinweise der ANMELDEMASKE (Hinweistext, Fußbereich, Ablehnungshinweis; ben nacharbeit-2,
+// `AuthScreens.tsx` rendert `NoticeText` und `LegalFooter` dort tatsächlich) — und
 // bestimmt für JEDEN sichtbaren Textknoten die Paarung, die dort wirklich gilt: die nächste
 // Textfarbe und die nächste Fläche in seiner Vorfahrenkette (ohne Klasse: `bg-page text-text` aus
 // dem `body` in index.css). Jede so gefundene Paarung wird in BEIDEN Themen mit der WCAG-Formel
@@ -24,21 +26,38 @@
 // GRENZEN, ausdrücklich:
 //   · jsdom rechnet kein CSS. Gesammelt wird die Klassenkette, nicht die gemalte Farbe; eine
 //     Überschreibung allein in modern.css (Komponentenregel) sähe dieser Sammler nicht.
-//   · Der Hinweistext ohne Knöpfe auf der Anmeldemaske und der Fußbereich in der dunklen
-//     Markenspalte (`tone="inverse"`, Deckkraftklassen) liegen ausserhalb dieser Flächen; für sie
-//     gilt weiter der Mengensammler in mega62.
+//   · Die Anmeldemaske wird ohne den Torwächter montiert (wie `mega61-rechtsseiten.test.tsx` A3).
+//     Über ihr liegt im Produkt kein weiterer Flächenträger — `App.tsx` gibt `AuthScreens` direkt
+//     zurück, also gilt der `body` (`bg-page`), und genau das setzt der Sammler ohne Klasse ein.
+//   · `LegalFooter tone="inverse"` (Deckkraftklassen) wird im Produkt nirgends verwendet; träte er
+//     auf, meldete ihn der Sammler als ungeklärte Klasse.
 //   · Großtext-Ausnahme (3:1) wird nicht in Anspruch genommen — jede Paarung muss 4,5:1 erreichen.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../api/endpoints", () => ({
-  endpoints: {
-    features: {
-      get: () => Promise.resolve({ features: { rechtsseiten: true, hinweisbanner: true } }),
-    },
-  },
-}));
+// Nur die Schalter-Auskunft wird bedient; jeder andere Endpunkt antwortet ehrlich mit einem Fehler
+// (dieselbe Bauart wie `mega61-rechtsseiten.test.tsx`) — die Anmeldemaske ruft mehr ab als der Banner.
+vi.mock("../api/endpoints", () => {
+  const nichtBedient: unknown = new Proxy(() => undefined, {
+    get: () => nichtBedient,
+    apply: () => Promise.reject(new Error("in diesem Fall nicht bedient")),
+  });
+  return {
+    endpoints: new Proxy(
+      {},
+      {
+        get: (_ziel, name) =>
+          name === "features"
+            ? {
+                get: () =>
+                  Promise.resolve({ features: { rechtsseiten: true, hinweisbanner: true } }),
+              }
+            : nichtBedient,
+      },
+    ),
+  };
+});
 vi.mock("../api/auth", () => ({
   authApi: {
     status: () => Promise.resolve({ needsSetup: false, oidcEnabled: false }),
@@ -55,7 +74,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 
-const { NoticeBanner } = await import("./NoticeBanner");
+const { NoticeBanner, DECLINE_MARKER } = await import("./NoticeBanner");
+const { AuthScreens } = await import("../auth/AuthScreens");
 const { LegalScreen } = await import("./LegalPages");
 const { SignOutBlocked } = await import("./SignOutBlocked");
 const { AuthProvider } = await import("../app/AuthContext");
@@ -257,6 +277,19 @@ async function sammleAllePflichtflaechen(): Promise<Map<string, Sammlung>> {
   je.set("Sperrfläche", sperre);
   abbauen();
 
+  // Die Anmeldemaske — dort beginnt die Datenerhebung, also stehen die Rechtshinweise auch dort.
+  // Gesammelt werden genau die Rechtshinweise (Hinweistext, Fußbereich, Ablehnungshinweis); ihre
+  // UMGEBENDE Fläche bestimmt der Sammler über die echte Vorfahrenkette der Maske. Der Merker aus
+  // der Ablehnung wird gesetzt, damit auch der Ablehnungshinweis wirklich steht.
+  sessionStorage.setItem(DECLINE_MARKER, "1");
+  await montieren(createElement(AuthScreens, { needsSetup: false }));
+  const anmeldung = neueSammlung();
+  for (const kennung of ["notice-text", "legal-footer", "auth-declined-hint"]) {
+    sammle(flaeche(kennung), anmeldung);
+  }
+  je.set("Anmeldemaske", anmeldung);
+  abbauen();
+
   return je;
 }
 
@@ -271,6 +304,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   vi.clearAllMocks();
 });
 
@@ -321,8 +355,39 @@ describe("R-0872 · jede Paarung auf einer Pflichtfläche erreicht AA — am DOM
       // Die Hauptaktion (`Button variant="primary"`): ihre Farben stehen in components/ui.tsx,
       // nicht in den Rechtsdateien — der Mengensammler in mega62 hat sie deshalb nie gesehen.
       "white|ink",
+      // Anmeldemaske: Hinweistext und Fußbereich stehen ohne eigene Fläche auf der Seitenfläche.
+      "text|page", // Titel des Hinweistexts
+      "muted|page", // Pflichtabsätze des Hinweistexts, Verweise im Fußbereich
+      "muted-2|page", // „Rechtliches" im Fußbereich
     ]) {
       expect(alle.has(paar), `Paarung ${paar} fehlt — gefunden: ${gefunden}`).toBe(true);
+    }
+  });
+
+  it("die Anmeldemaske ist wirklich erfasst — und eine falsche Kreuzkombination dort wird rot", async () => {
+    const je = await sammleAllePflichtflaechen();
+    const anmeldung = je.get("Anmeldemaske");
+    expect(anmeldung, "die Anmeldemaske fehlt in der Sammlung").toBeDefined();
+    expect([...(anmeldung?.paare.keys() ?? [])]).toEqual(
+      expect.arrayContaining(["text|page", "muted|page", "trust-warn-text|trust-warn-bg"]),
+    );
+
+    // GEGENPROBE AM ECHTEN BAUM DER MASKE: Dieselben Rechtshinweise, aber ihre umgebende Fläche
+    // wird auf die Nachtfarbe `ink` gesetzt. Jedes Token (`muted`, `text`, `ink`) ist für sich
+    // „bekannt" — der Mengensammler bliebe grün. Der Paarungssammler muss die Kreuzkombination
+    // finden, und die Rechnung muss sie in beiden Themen unter AA sehen.
+    await montieren(createElement(AuthScreens, { needsSetup: false }));
+    const huelle = flaeche("notice-text").parentElement;
+    expect(huelle, "die Hülle der Rechtshinweise fehlt").not.toBeNull();
+    huelle?.classList.add("bg-ink");
+    const falsch = neueSammlung();
+    sammle(flaeche("notice-text"), falsch);
+    sammle(flaeche("legal-footer"), falsch);
+    abbauen();
+    expect([...falsch.paare.keys()]).toEqual(expect.arrayContaining(["muted|ink", "text|ink"]));
+    for (const thema of ["klassisch", "modern"] as const) {
+      expect(kontrast(farbe("muted", thema), farbe("ink", thema))).toBeLessThan(AA);
+      expect(kontrast(farbe("text", thema), farbe("ink", thema))).toBeLessThan(AA);
     }
   });
 });

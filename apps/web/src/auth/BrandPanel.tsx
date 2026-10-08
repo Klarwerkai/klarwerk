@@ -217,7 +217,8 @@ export function BrandPanel(): JSX.Element {
         <p className="text-xl font-semibold leading-snug">{t("auth.tagline")}</p>
         <p className="mt-3 text-sm text-white/60">{t("auth.taglineSub")}</p>
       </div>
-      <div className="font-mono text-[11px] text-white/40">klarwerk.ai</div>
+      {/* WCAG 1.4.3: Weiß/40 auf Ink maß ~3,7:1 — Weiß/60 erreicht ~6,4:1 (Audit nacharbeit-2). */}
+      <div className="font-mono text-[11px] text-white/60">klarwerk.ai</div>
     </div>
   );
 }

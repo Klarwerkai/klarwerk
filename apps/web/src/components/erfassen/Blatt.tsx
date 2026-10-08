@@ -3280,7 +3280,7 @@ export function Blatt({
               }}
               placeholder={t("erfassen.platzhalter.titel")}
               aria-label={t("erfassen.platzhalter.titel")}
-              className="w-full bg-transparent text-[28px] font-[650] leading-tight tracking-[-0.3px] text-text outline-none placeholder:text-muted-2/60"
+              className="w-full bg-transparent text-[28px] font-[650] leading-tight tracking-[-0.3px] text-text outline-none placeholder:text-muted-2"
             />
             {/* N-0064: die vollständige Titelanzeige, nur bei echtem Überlauf (Messung oben). Für
                 Hilfstechnik verborgen — das Feld selbst trägt den ganzen Wert schon. */}
