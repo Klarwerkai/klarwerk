@@ -3,7 +3,7 @@
 // sieht und WELCHE Handlung jetzt empfohlen ist. Details (KO-Panels, Zitate, Eskalationspfad) klappen
 // dahinter auf (Progressive Disclosure). Eine Quelle für Komponente + Test (wie SCRUM-458).
 import type { Conflict, KnowledgeObject, OverlapEntry } from "../api/types";
-import { conflictKoPair, conflictNextStep } from "./conflictView";
+import { conflictKoPair, conflictNextStep, naechsterSchrittSchluessel } from "./conflictView";
 import { recommendationLabelKey } from "./duplicateBoard";
 
 // Neutraler „entfernt"-Hinweis statt Roh-UUID in der Nutzersicht (SCRUM-486 C).
@@ -28,7 +28,7 @@ export function conflictLead(conflict: Conflict, kos: readonly KnowledgeObject[]
   return {
     a: participant(pair.a),
     b: participant(pair.b),
-    recommendedStepKey: `con.next.${conflictNextStep(conflict)}`,
+    recommendedStepKey: naechsterSchrittSchluessel(conflictNextStep(conflict)),
   };
 }
 
