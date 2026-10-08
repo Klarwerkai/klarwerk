@@ -121,6 +121,12 @@ async function oeffnen(page: Page): Promise<Locator> {
 const nachrichten = (page: Page) => page.locator('[data-testid="klara-nachricht"]');
 const letzteKlara = (page: Page) =>
   page.locator('[data-testid="klara-nachricht"][data-von="klara"]').last();
+/**
+ * Die KENNZEICHNUNG „KI-Antwort“ an einer Nachricht. Hinweis- und Bedienhilfetexte nennen das Wort
+ * zu Recht (sie erklären, wann es steht) — gemessen wird das Kennzeichen, nicht jeder Text.
+ */
+const kiKennzeichen = (page: Page) =>
+  page.getByTestId("klara-echt-kennzeichen").filter({ hasText: /^KI-Antwort$/ });
 
 test("Klara 01 · echte Frage, Kennzeichnung nach Server, Seitenwechsel, Neuladen, neue Anmeldung, fremde Person", async ({
   page,
@@ -158,7 +164,7 @@ test("Klara 01 · echte Frage, Kennzeichnung nach Server, Seitenwechsel, Neulade
   const erwartet = koerper.result.answered && !koerper.result.demo ? "ki" : "ohne_ki";
   await expect(klara).toHaveAttribute("data-modus", erwartet);
   if (erwartet === "ohne_ki") {
-    await expect(gespraech).not.toContainText("KI-Antwort");
+    await expect(kiKennzeichen(p)).toHaveCount(0);
   }
   await expect(gespraech).not.toContainText("Demo-Antwort");
   await expect(p.getByTestId("klara-letzter-schritt")).toHaveAttribute("data-stand", "beantwortet");
@@ -291,7 +297,7 @@ test("Klara 01 · Stopp, fehlgeschlagene Speicherung und abgelaufene Anmeldung z
   const email = await eigenesKonto(page, "zustand");
   const { kontext, seite: p } = await neuerKontext(browser, email, { width: 1280, height: 800 });
   await p.goto("/klara-vorschau");
-  const gespraech = await oeffnen(p);
+  await oeffnen(p);
   await p.getByTestId("klara-einwilligung-erteilen").click();
   await expect(p.getByTestId("klara-einwilligung-erteilt")).toBeVisible();
 
@@ -359,7 +365,7 @@ test("Klara 01 · Stopp, fehlgeschlagene Speicherung und abgelaufene Anmeldung z
     "data-gespeichert",
     "nein",
   );
-  await expect(gespraech).not.toContainText("KI-Antwort");
+  await expect(kiKennzeichen(p)).toHaveCount(0);
   await beleg(p, info, "Anmeldung abgelaufen, nichts als gespeichert ausgegeben");
   await kontext.close();
 });

@@ -57,6 +57,7 @@ import {
   appAufbauen,
   drahtAufbauen,
   eintragMitOriginal,
+  fragen as kettenFrage,
   neuesKonto,
 } from "../klara-quellen-nutzerweg/kette";
 
@@ -119,11 +120,21 @@ function abbauen(): void {
   container = null;
 }
 
-async function vorrichtung(ohneModell = false): Promise<{ a: Aufbau; leser: Konto }> {
+/**
+ * `mitEintrag = false`: der Eintrag wird erst unmittelbar vor der Frage angelegt (E1/E2) — so liegt
+ * zwischen Anlage und Frage dieselbe kurze Spanne wie in den übrigen Kettenfällen, statt der ganzen
+ * Montage der Hülle.
+ */
+async function vorrichtung(
+  ohneModell = false,
+  mitEintrag = true,
+): Promise<{ a: Aufbau; leser: Konto }> {
   const a = await appAufbauen(ohneModell);
   aufbau = a;
   draht.setzeApp(a.app);
-  await eintragMitOriginal(a.app, a.admin);
+  if (mitEintrag) {
+    await eintragMitOriginal(a.app, a.admin);
+  }
   const leser = await neuesKonto(a.app, "klara-basis", a.admin);
   draht.setzeCookie(`kw_session=${leser.token}`);
   return { a, leser };
@@ -138,10 +149,13 @@ async function montiere(pfad: string): Promise<void> {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  // `data-testid` reicht React an das `<a>` durch, der Typ von `Link` führt es aber nicht (TS2769
+  // bei einem Literal im Aufruf). Als `object` gespreizt bleibt der Typ `{ to }`, das Attribut steht.
+  const testkennung: object = { "data-testid": "zu-fragen" };
   const seite = createElement(
     "div",
     { "data-testid": "seite" },
-    createElement(Link, { to: "/fragen", "data-testid": "zu-fragen" }, "Zu Fragen"),
+    createElement(Link, { to: "/fragen", ...testkennung }, "Zu Fragen"),
   );
   await act(async () => {
     r.render(
@@ -274,9 +288,35 @@ function frageweg(ersatz: (init: RequestInit | undefined) => Promise<Response>):
   window.fetch = neu;
 }
 
+/**
+ * KEINE Attrappe: reicht `POST /api/ask` unverändert an den echten Server durch und hält nur fest,
+ * was er Klara geantwortet hat — damit eine abweichende Kennzeichnung mit der Serverantwort im
+ * Fehlertext steht und „der Server hat nicht geantwortet" von „Klara kennzeichnet falsch" zu
+ * unterscheiden ist.
+ */
+function frageMitschneiden(): { letzte: string } {
+  const mitschnitt = { letzte: "(Klara hat /api/ask nicht aufgerufen)" };
+  const weiter = globalThis.fetch;
+  frageweg(async (init) => {
+    const echt = await weiter("/api/ask", init);
+    const rumpf = await echt.text();
+    mitschnitt.letzte = `${echt.status} ${rumpf.slice(0, 600)}`;
+    return new Response(rumpf, {
+      status: echt.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  });
+  return mitschnitt;
+}
+
+/** Alle Herkunftskennzeichen der sichtbaren Nachrichten — nicht Hinweis- oder Hilfetexte. */
+function kennzeichen(): string[] {
+  return alle(document, "klara-echt-kennzeichen").map((k) => k.textContent ?? "");
+}
+
 describe("E1 · K1/K2/K3 — echte KI-Antwort, gespeichert, nach Seitenwechsel, Neuladen und neuer Anmeldung", () => {
   it("die Antwort des Modellwegs heisst „KI-Antwort“ und das Gespräch bleibt der eigenen Person", async () => {
-    const { a, leser } = await vorrichtung();
+    const { a, leser } = await vorrichtung(false, false);
     await montiere("/klara-vorschau");
     await gespraechOeffnen();
 
@@ -290,15 +330,31 @@ describe("E1 · K1/K2/K3 — echte KI-Antwort, gespeichert, nach Seitenwechsel, 
     expect(draht.aufrufe.some((x) => x.url === "/api/ask")).toBe(false);
 
     await einwilligen();
+
+    // Der Eintrag entsteht erst jetzt — unmittelbar vor der Frage, wie in den übrigen Kettenfällen.
+    // KALIBRIERUNG im selben Augenblick: derselbe Server beantwortet DIESELBE Frage DERSELBEN Person
+    // über den Kettenweg mit dem Modell. Ist das rot, liegt der Fehler nicht bei Klara.
+    await eintragMitOriginal(a.app, a.admin);
+    const kalibrierung = await kettenFrage(a.app, leser);
+    expect(
+      kalibrierung.answered && kalibrierung.citedSources.length > 0,
+      `Kalibrierung: der Frageweg selbst antwortet nicht mit dem Modell — ${kalibrierung.roh}`,
+    ).toBe(true);
+    const generierungenVorher = draht.lage.generierungen;
+
+    const mitschnitt = frageMitschneiden();
     await klick(q(document, "klara-senden"));
     const antwort = await bisAntwort();
-    expect(antwort.dataset.modus).toBe("ki");
+    expect(antwort.dataset.modus, `Antwort des Servers an Klara: ${mitschnitt.letzte}`).toBe("ki");
     expect(antwort.dataset.gespeichert).toBe("ja");
     expect(antwort.textContent).toContain(BELEGSTELLE);
     expect(antwort.querySelector('[data-testid="klara-echt-kennzeichen"]')?.textContent).toBe(
       "KI-Antwort",
     );
-    expect(draht.lage.generierungen, "der Modellweg muss gerufen sein").toBeGreaterThan(0);
+    expect(
+      draht.lage.generierungen,
+      "Klaras Frage muss den Modellweg selbst gerufen haben",
+    ).toBeGreaterThan(generierungenVorher);
     expect(draht.lage.zuletzt ?? "").toContain(BELEGSTELLE);
     expect(q(document, "klara-gespraech")?.textContent).not.toContain("Demo-Antwort");
     expect(q(document, "klara-letzter-schritt")?.dataset.stand).toBe("beantwortet");
@@ -361,19 +417,29 @@ describe("E1 · K1/K2/K3 — echte KI-Antwort, gespeichert, nach Seitenwechsel, 
 
 describe("E2 · K1 — ohne Modell heisst eine Antwort nie „KI-Antwort“", () => {
   it("ohne Modell: Hinweis vorab, Antwort als „Ohne KI“ gekennzeichnet, kein Modellaufruf", async () => {
-    await vorrichtung(true);
+    const { a, leser } = await vorrichtung(true, false);
     await montiere("/klara-vorschau");
     await gespraechOeffnen();
     await bis(() => Boolean(q(document, "klara-ki-ohne-modell")), 120);
     expect(q(document, "klara-ki-ohne-modell")).not.toBeNull();
     await einwilligen();
+    await eintragMitOriginal(a.app, a.admin);
+    // KALIBRIERUNG: ohne Modell beantwortet der Frageweg dieselbe Frage wörtlich aus dem Eintrag.
+    const kalibrierung = await kettenFrage(a.app, leser);
+    expect(kalibrierung.answered, `Kalibrierung: ${kalibrierung.roh}`).toBe(true);
+    const mitschnitt = frageMitschneiden();
     await fragen(FRAGE);
     const antwort = await bisAntwort();
-    expect(antwort.dataset.modus).toBe("ohne_ki");
+    expect(antwort.dataset.modus, `Antwort des Servers an Klara: ${mitschnitt.letzte}`).toBe(
+      "ohne_ki",
+    );
+    expect(antwort.textContent).toContain(BELEGSTELLE);
     expect(antwort.querySelector('[data-testid="klara-echt-kennzeichen"]')?.textContent).toBe(
       "Ohne KI · wörtlich aus geprüftem Wissen",
     );
-    expect(q(document, "klara-gespraech")?.textContent).not.toContain("KI-Antwort");
+    // Gemessen wird die KENNZEICHNUNG jeder Nachricht. Hinweis- und Bedienhilfetexte nennen das
+    // Wort „KI-Antwort“ zu Recht (sie erklären, wann es steht) und sind keine Kennzeichnung.
+    expect(kennzeichen()).not.toContain("KI-Antwort");
     expect(draht.lage.generierungen).toBe(0);
   });
 });
