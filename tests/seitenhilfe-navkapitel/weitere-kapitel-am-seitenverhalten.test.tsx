@@ -524,7 +524,24 @@ const KONFLIKT_MANUELL: Record<string, unknown> = {
  * koennen sich in mehr als einem Punkt widersprechen. Der zweite Konflikt ist es, der nach der
  * ausgefuehrten Entscheidung in KF1c beweist, dass BEIDE Wissensobjekte noch gezeichnet werden.
  */
-const ZWEI_KONFLIKTE = [konfliktAuto("c-wahrheit", "truth"), konfliktAuto("c-kontext", "context")];
+/**
+ * Aufnahme gesamt-konfliktklassifikation (R-0215): ein Wahrheitskonflikt wird verbindlich ERST
+ * eskaliert, dann entschieden. Die Fälle, die eine Entscheidung ausführen oder das volle Band
+ * zählen, fahren deshalb einen bereits eskalierten Wahrheitskonflikt — der offene zeigt die
+ * Entscheidungen gesperrt hinter „Eskalieren" (belegt in `tests/konfliktklassifikation/`).
+ */
+const eskaliert = (k: Record<string, unknown>): Record<string, unknown> => ({
+  ...k,
+  status: "eskaliert",
+  // R-0252 (Nacharbeit 5): ohne Arbeitsart wird zuerst eingeordnet; diese Fälle fahren den Weg
+  // danach — als Sachkonflikt, dessen Band genau die drei Wahlen des Kapitels anbietet.
+  arbeitsart: "sache",
+});
+
+const ZWEI_KONFLIKTE = [
+  eskaliert(konfliktAuto("c-wahrheit", "truth")),
+  konfliktAuto("c-kontext", "context"),
+];
 
 const QUELLEN = [
   {
@@ -654,7 +671,7 @@ describe("JOB 3795 KF1 · /konflikte — was das Kapitel verspricht, tut die Sei
       `/konflikte: der Kapiteltext nennt die Beschriftung „${wert("con.side.none")}“ nicht`,
     ).toContain(wert("con.side.none").toLowerCase());
 
-    d.setze({ kos: KOS, konflikte: [konfliktAuto("c-wahrheit", "truth")] });
+    d.setze({ kos: KOS, konflikte: [eskaliert(konfliktAuto("c-wahrheit", "truth"))] });
     await montiere(Conflicts, "/konflikte");
 
     const band = marke("pruefen-aktionsband");
@@ -728,6 +745,8 @@ describe("JOB 3795 KF1 · /konflikte — was das Kapitel verspricht, tut die Sei
       action: "resolve-conflict",
       conflictId: "c-wahrheit",
       decision: i18n.t("con.prefill.side", { title: TITEL_A }),
+      // R-0263: „Links gilt" legt den Vorrang zwischen GENAU diesen zwei Punkten fest.
+      vorrang: { art: "ueberstimmt", gilt: "ko-a" },
     });
     const entschieden = d.lies().konflikte.find((c) => c.id === "c-wahrheit");
     expect(entschieden?.decision, "/konflikte: kein Vermerk am Konflikt").toBe(
@@ -788,7 +807,7 @@ describe("JOB 3795 KF1 · /konflikte — was das Kapitel verspricht, tut die Sei
   it("KF1e · NACHFUEHR-PIN: das entschiedene Paar verschwindet vom Brett — „gelöscht wird nichts“ sieht ein Mensch anders", async () => {
     // `GET /api/conflicts` liefert `unresolved()` (`conflicts-routes.ts:227`), der entschiedene
     // Befund faellt also aus der Liste. Der Datensatz bleibt; die Flaeche zeigt ihn nicht mehr.
-    d.setze({ kos: KOS, konflikte: [konfliktAuto("c-wahrheit", "truth")] });
+    d.setze({ kos: KOS, konflikte: [eskaliert(konfliktAuto("c-wahrheit", "truth"))] });
     await montiere(Conflicts, "/konflikte");
     expect(marke("pruefen-paar"), "/konflikte: vorher steht kein Paar da").not.toBeNull();
 

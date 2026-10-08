@@ -522,6 +522,11 @@ async function schliesseFolgeeintraege(
       continue;
     }
     try {
+      // R-0215/R-1714: der verbindliche Pfad gilt auch beim Aufräumen — ein offener
+      // Wahrheitskonflikt wird vor dem Schliessen eskaliert, sonst weist `resolve` ihn ab (409).
+      if (konflikt.type === "truth" && konflikt.status === "offen") {
+        await services.conflicts.escalate(konflikt.id, actor);
+      }
       await services.conflicts.resolve(konflikt.id, actor, grund);
       ergebnis.closedConflicts += 1;
     } catch (ursache) {

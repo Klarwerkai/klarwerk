@@ -197,6 +197,9 @@ async function befundIm(svc: ConflictService, zustand: Zustand): Promise<Conflic
   if (zustand === "eskaliert") {
     await svc.escalate(c.id, MENSCH);
   } else if (zustand === "zweitmeinung") {
+    // R-0215 (Aufnahme gesamt-konfliktklassifikation): die Zweitmeinung folgt beim
+    // Wahrheitskonflikt verbindlich auf die Eskalation.
+    await svc.escalate(c.id, MENSCH);
     await svc.secondOpinion(c.id, ZWEITMEINUNG_TEXT, MENSCH);
   } else if (zustand === "geloest") {
     await svc.escalate(c.id, MENSCH);

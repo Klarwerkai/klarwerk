@@ -226,7 +226,12 @@ const HANDLUNGEN: Handlung[] = [
   },
   {
     name: "Entscheidung MIT Begründung (resolve)",
-    lauf: (dienst, id) => dienst.resolve(id, ENTSCHEIDER, BEGRUENDUNG),
+    // R-0215 (Aufnahme gesamt-konfliktklassifikation): der Wahrheitskonflikt wird verbindlich erst
+    // eskaliert, dann entschieden — in beiden Ablagen derselbe Weg.
+    lauf: async (dienst, id) => {
+      await dienst.escalate(id, ENTSCHEIDER);
+      return dienst.resolve(id, ENTSCHEIDER, BEGRUENDUNG);
+    },
     erwartet: {
       status: "geloest",
       decidedBy: ENTSCHEIDER,

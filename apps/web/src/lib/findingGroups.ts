@@ -10,7 +10,7 @@
 // aus aistate-fix5: stale Befunde erreichen diese Lib nie).
 import type { Conflict, KnowledgeObject, OverlapEntry } from "../api/types";
 import { conflictOriginInfo } from "./conflictBoard";
-import { conflictNextStep } from "./conflictView";
+import { conflictNextStep, naechsterSchrittSchluessel } from "./conflictView";
 import { overlapDetectorInfo, recommendationLabelKey } from "./duplicateBoard";
 
 export type FindingKind = "konflikt" | "duplikat" | "ueberschneidung";
@@ -75,7 +75,7 @@ export function conflictFinding(conflict: Conflict): FindingView {
       ? { whyPercent: origin.confidencePercent }
       : {}),
     ...(origin.rationale ? { whyRationale: origin.rationale } : {}),
-    actionLabelKey: `con.next.${conflictNextStep(conflict)}`,
+    actionLabelKey: naechsterSchrittSchluessel(conflictNextStep(conflict)),
     open: conflict.status !== "geloest",
     createdAt: conflict.createdAt,
   };

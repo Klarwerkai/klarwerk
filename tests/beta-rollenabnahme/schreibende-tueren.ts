@@ -1583,6 +1583,10 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     erwartet: AB_CONTROLLER,
     ruesten: async (buehne) => {
       const widerspruch = await legeWiderspruchspaarAn(buehne);
+      // Aufnahme gesamt-konfliktklassifikation (R-0215): beim Wahrheitskonflikt folgt die
+      // Zweitmeinung verbindlich auf die Eskalation — der Dienst lehnt sie vorher mit 409 ab. Die
+      // Eskalation gehört deshalb zum Rüsten; gemessen wird weiter allein das Tor dieser Tür.
+      await buehne.services.conflicts.escalate(widerspruch.id, "system");
       return {
         pfad: `/api/conflicts/${widerspruch.id}/second-opinion`,
         // Der Meinungstext ist Pflicht: `secondOpinion` schreibt ihn an den Datensatz

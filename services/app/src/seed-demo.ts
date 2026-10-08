@@ -998,6 +998,11 @@ export async function purgeDemoSeed(
       // HIER STAND DER FEHLER: `.catch(() => undefined)` und danach unbedingtes `+= 1`. Der
       // Zähler wurde also gerade dann erhöht, wenn die Auflösung NICHT stattgefunden hatte.
       try {
+        // R-0215/R-1714: auch hier gilt der verbindliche Pfad — ein offener Wahrheitskonflikt wird
+        // vor dem Schliessen eskalieren, sonst weist `resolve` ihn ab (409).
+        if (c.type === "truth" && c.status === "offen") {
+          await conflicts.escalate(c.id, actor);
+        }
         await conflicts.resolve(c.id, actor, "Demodaten entfernt (beide Seiten verworfen)");
         removedConflicts += 1;
       } catch (ursache) {
