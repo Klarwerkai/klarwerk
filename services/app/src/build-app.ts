@@ -1834,6 +1834,29 @@ export function buildCommit(env: NodeJS.ProcessEnv = process.env): string {
   return COMMIT_RE.test(roh) ? roh : BUILD_UNBEKANNT;
 }
 
+/**
+ * R-0851 (aufnahme:20260922:gesamt-kundenbetrieb): die Identität dieser Instanz — die öffentliche
+ * Adresse, unter der sie sich selbst kennt (`APP_BASE_URL`, nur Schema, Host und Port).
+ *
+ * Jede Kundeninstanz MUSS diese Adresse setzen (`docker-compose.prod.yml`), und sie ist je Instanz
+ * eine andere. Der Instanzabgleich (`scripts/betrieb/instanzabgleich.mjs`) vergleicht sie mit der
+ * Adresse, unter der er die Instanz erreicht hat: antwortet dort eine Instanz, die sich anders kennt,
+ * ist das eine Abweichung und kein „gleich". Fehlt der Wert oder ist er keine http(s)-Adresse, steht
+ * hier ehrlich `unbekannt` — Pfad, Abfrage und Zugangsdaten der Adresse werden nie ausgegeben.
+ */
+export function instanzAdresse(env: NodeJS.ProcessEnv = process.env): string {
+  const roh = (env.APP_BASE_URL ?? "").trim();
+  if (!roh) return BUILD_UNBEKANNT;
+  try {
+    const adresse = new URL(roh);
+    return adresse.protocol === "http:" || adresse.protocol === "https:"
+      ? adresse.origin
+      : BUILD_UNBEKANNT;
+  } catch {
+    return BUILD_UNBEKANNT;
+  }
+}
+
 // Einmal gelesen, dann gemerkt: die Datei ändert sich zur Laufzeit nicht, und /health soll keine
 // Plattenzugriffe pro Anfrage machen.
 let versionGemerkt: string | null = null;
@@ -2829,6 +2852,7 @@ export function buildApp(
     status: "ok",
     version: buildVersion(),
     commit: buildCommit(),
+    instanz: instanzAdresse(),
     ai: services.reasoner.publicStatus(),
     aiRuns: await kiLaeufe(),
   }));

@@ -80,7 +80,7 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 
 | Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
 | --- | --- | --- | --- | --- | --- |
-| `GET` | `/health` | keines | — | 200 `{ status: "ok", version, commit, ai, aiRuns }` | — |
+| `GET` | `/health` | keines | — | 200 `{ status: "ok", version, commit, instanz, ai, aiRuns }` | — |
 | `GET` | `/api/reasoner/status` | keines | — | 200 abstrakter KI-Status (`reasoner.publicStatus()`), ohne Anbieter- oder Modellnamen | — |
 | `GET` | `/api/ai-status` | keines | — | 200 `{ ai: publicStatus() }` | — |
 | `GET` | `/api/analytics/impact` | `ko.read` | — | 200 Wirkungsbericht (`impactReport`), sichtbarkeitsgefiltert | — |
