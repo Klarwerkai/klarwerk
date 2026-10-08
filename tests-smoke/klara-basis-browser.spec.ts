@@ -385,23 +385,87 @@ test("Klara 01 · Stopp, fehlgeschlagene Speicherung und abgelaufene Anmeldung z
 // Modell ausschliesslich aus `KLARWERK_SHIP_SMOKE_API_KEY` kommt (`playwright.smoke.config.ts`). Dort
 // wird NICHT übersprungen: meldet die Instanz kein nutzbares Modell, ist der Fall ROT und der
 // Statusanhang nennt den Grund — fehlender Zugang ist dann sichtbar, nicht still.
+//
+// DIE ZENTRALE FREIGABE (Bens Befund, nacharbeit-6): eine frische Instanz steht auf „Extern:
+// Blockiert" (keine Freigabe in der Vorgabepolitik). Dann ist `tasks.answer` auch mit eingerichtetem
+// Cloud-Modell `false` — genau so gemessen im Modelllauf. Diese Freigabe ist eine Admin-Entscheidung
+// der Instanz, kein Teil von Klara, und Klara umgeht sie nicht. Der Fall erteilt sie deshalb
+// ausdrücklich über den vorhandenen Adminweg `PUT /api/reasoner/config` — NUR die Grundfreigabe
+// (`oeffentlicheKi: true`, `vertraulicheInhalte: false`), mit der gelesenen globalen und
+// aufgabenweisen Zuordnung — prüft Speicherung und Wirkung (`extern: "frei"`) und stellt danach den
+// vorigen Stand wieder her: alle Smoke-Dateien eines Laufs teilen sich EINEN Server. Die individuelle
+// Klara-Einwilligung bleibt davon unberührt und wird im Fall wie immer erteilt.
+interface Zuordnung {
+  global: string;
+  perTask: Record<string, string>;
+  kiFreigabe?: { oeffentlicheKi?: boolean; vertraulicheInhalte?: boolean };
+}
+
+async function zuordnungLesen(admin: Page): Promise<Zuordnung> {
+  const antwort = await admin.request.get("/api/reasoner/config");
+  expect(antwort.status(), await antwort.text()).toBe(200);
+  return ((await antwort.json()) as { taskConfig: Zuordnung }).taskConfig;
+}
+
+async function freigabeSetzen(
+  admin: Page,
+  basis: Zuordnung,
+  kiFreigabe: { oeffentlicheKi: boolean; vertraulicheInhalte: boolean },
+): Promise<Zuordnung> {
+  const antwort = await admin.request.put("/api/reasoner/config", {
+    data: { global: basis.global, perTask: basis.perTask, kiFreigabe },
+  });
+  expect(antwort.status(), await antwort.text()).toBe(200);
+  return zuordnungLesen(admin);
+}
+
 test("Klara 01 · tatsächliche Modellantwort in der beweglichen Klara @modell", async ({
   page,
   browser,
 }, info) => {
   test.setTimeout(180_000);
   await ensureLoggedIn(page);
+  const vorher = await zuordnungLesen(page);
+  await info.attach("Zuordnung vor dem Fall", {
+    body: JSON.stringify(vorher),
+    contentType: "application/json",
+  });
+  const gesetzt = await freigabeSetzen(page, vorher, {
+    oeffentlicheKi: true,
+    vertraulicheInhalte: false,
+  });
+  // Gespeichert: genau die Grundfreigabe, die Zuordnung unverändert.
+  expect(gesetzt.kiFreigabe?.oeffentlicheKi).toBe(true);
+  expect(gesetzt.kiFreigabe?.vertraulicheInhalte ?? false).toBe(false);
+  expect(gesetzt.global).toBe(vorher.global);
+  expect(gesetzt.perTask).toEqual(vorher.perTask);
+  try {
+    await frageMitModell(page, browser, info);
+  } finally {
+    // Den vorigen Stand der Instanz wiederherstellen — auch wenn der Fall rot war.
+    await freigabeSetzen(page, vorher, {
+      oeffentlicheKi: vorher.kiFreigabe?.oeffentlicheKi === true,
+      vertraulicheInhalte: vorher.kiFreigabe?.vertraulicheInhalte === true,
+    });
+  }
+});
+
+async function frageMitModell(page: Page, browser: Browser, info: TestInfo): Promise<void> {
   const statusAntwort = await page.request.get("/api/reasoner/status");
   const status = (await statusAntwort.json()) as {
     active?: boolean;
     reachable?: string;
     kiAbgeschaltet?: boolean;
+    extern?: string;
     tasks?: { answer?: boolean };
   };
   await info.attach("Modellstatus der Instanz", {
     body: JSON.stringify(status),
     contentType: "application/json",
   });
+  // Wirksam: der Server meldet die Grundfreigabe aus derselben Entscheidungsstelle, die jeden Lauf
+  // freigibt oder sperrt — und NICHT die Freigabe für Vertrauliches.
+  expect(status.extern, "die Grundfreigabe ist nicht wirksam").toBe("frei");
   const modellNutzbar =
     status.active === true &&
     status.tasks?.answer === true &&
@@ -475,4 +539,4 @@ test("Klara 01 · tatsächliche Modellantwort in der beweglichen Klara @modell",
   await expect(klara).toContainText(ausschnitt);
   await beleg(p, info, "tatsächliche Modellantwort in Klara");
   await kontext.close();
-});
+}
