@@ -164,7 +164,9 @@ const AUSDRUCK_HERKUNFT: { muster: RegExp; herkunft: string }[] = [
   { muster: /^step\.to$/, herkunft: "lib/knowledgeCycle.ts + lib/demoPilotPath.ts" },
   { muster: /^item\.to$/, herkunft: "lib/knowledgeGuidance.ts" },
   { muster: /^it\.to$/, herkunft: "lib/workCenter.ts · buildWorkOverview" },
-  { muster: /^focus\.to$/, herkunft: "lib/workCenter.ts · primaryWorkItem" },
+  // R-1349: hier stand `focus.to` aus `lib/workCenter.ts · primaryWorkItem`. Die hervorgehobene
+  // Einstiegszeile ist seit JOB 3064 H5 in „FÜR DICH" aufgegangen (`zeile.to` unten); der Baustein
+  // ist entfernt, und eine Erlaubnis für einen Ausdruck, den es nicht mehr gibt, deckt nichts.
   { muster: /^captureDemoHref\(\)$/, herkunft: "lib/demoPilotPath.ts · captureDemoHref" },
   // JOB 3015 D5: die Konsolen-Karte reicht das LITERAL ihrer Aufrufstelle (`to="/fragen"` usw.,
   // unten als Literal erhoben) unverändert an RoleLink durch — keine eigene Zieltabelle.

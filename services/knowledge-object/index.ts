@@ -1,8 +1,6 @@
 // Öffentliche API des Moduls knowledge-object.
 export {
   KoService,
-  // G27: Deckel des Altbestands-Backfills je Suchanfrage (die Suche wird nie zum Bestandslauf).
-  SEARCH_PROJECTION_BACKFILL_PER_QUERY,
   normalizeEvidenceLimit,
   DEFAULT_EVIDENCE_LIMIT,
   MAX_EVIDENCE_LIMIT,
@@ -108,8 +106,6 @@ export {
 export {
   SEARCH_PROJECTION_VERSION,
   SEARCH_PROJECTION_LANGUAGE,
-  SEARCH_PROJECTION_FIELDS,
-  SEARCH_PROJECTION_MATCH_FIELDS,
   MAX_SEARCH_TEXT_LENGTH,
   CLASSIFICATION_SOURCE,
   buildSearchProjection,
@@ -121,9 +117,8 @@ export {
   // der per dependency-cruiser erzwungenen Modulgrenze nicht erreichen und suchte deshalb nur nach
   // dem woertlich Getippten — dieselbe Frage, zwei Ergebnisse. Die Tabelle und die Grenzzusage
   // gehoeren mit heraus: wer erweitert, muss die belegten Paare LESEN koennen (der Fragepfad
-  // rechnet sie in seine Termform um) und seine Zusicherung pruefen koennen.
+  // rechnet sie in seine Termform um). R-1349: die Grenzkonstante ist entfernt (s. search-projection).
   SUCH_ZUORDNUNGEN,
-  S2_ERWEITERUNG_GRENZE,
   expandSearchTerms,
   type SuchZuordnung,
   visibleTextFromBodyHtml,
@@ -131,7 +126,6 @@ export {
   classificationAtVersion,
   classificationFromVersionSnapshot,
   reconstructedClassification,
-  isReconstructedClassification,
   resolveCapturedAt,
   serializeClassificationSnapshot,
   parseClassificationSnapshot,
@@ -154,7 +148,6 @@ export {
   PROJECTION_STATES,
   UNINITIALIZED_CONTROL_STATE,
   controlStateLifecycleGueltig,
-  freigegebeneProjektionsfassung,
   neuerProjektionsSpeicher,
   type InMemoryProjektionsSpeicher,
   type ProjectionAudit,
@@ -181,8 +174,6 @@ export {
 // G27 Welle 1 / S2 — die VERÄNDERLICHE Metadatenprojektion (Schlüssel `ko_id`, eigene
 // `metadata_revision`). Sie ist die zweite Hälfte des Suchvertrags, nicht sein Ersatz.
 export {
-  METADATA_PROJECTION_FIELDS,
-  METADATA_PROJECTION_MATCH_FIELDS,
   METADATA_REVISION_NONE,
   metadataTextsOf,
   metadataTextsEqual,
@@ -200,7 +191,6 @@ export {
 } from "./src/metadata-projection-repo-pg";
 // G27 Welle 1 — die Zusammensetzung beider Projektionsarten zu DER Sicht des Suchkonsumenten.
 export {
-  EFFECTIVE_SEARCH_DOCUMENT_FIELDS,
   composeEffectiveSearchDocument,
   matchEffectiveSearchDocument,
   type EffectiveSearchDocument,

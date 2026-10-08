@@ -25,11 +25,9 @@
 // keine Bequemlichkeit, sondern die Scopegrenze in Codeform: Wer die Reindexfunktion mitbringt,
 // entscheidet auch, woher die Kennungen kommen — und diese Entscheidung ist nicht freigegeben.
 
-/**
- * GENAU EIN Eintrag gleichzeitig. Als benannte Konstante und nicht als Zahl im Code, damit die
- * Zusage einen Namen hat — dieselbe Form wie `AI_CHECK_CONCURRENCY` beim Nachbarn.
- */
-export const REINDEX_CONCURRENCY = 1;
+// GENAU EIN Eintrag gleichzeitig — die Zusage steht als Wächterzeile in `pumpe` (s. dort).
+// R-1349: die Konstante `REINDEX_CONCURRENCY` (= 1) las niemand, auch dieses Modul nicht; sie ist
+// entfernt. Die Serialität misst `reindex-queue.test.ts` am Verhalten.
 
 export interface ReindexQueueDeps {
   /** Was mit EINEM Eintrag geschieht. Bringt der Aufrufer mit; die Schlange kennt den Inhalt nicht. */

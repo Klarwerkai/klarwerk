@@ -18,10 +18,9 @@ export function interviewSourceKey(result: Pick<InterviewResult, "demo">): strin
   return result.demo ? "capture.ivFallback" : "capture.ivModel";
 }
 
-// Anzahl bisher beantworteter Turns (für Fortschrittsanzeige).
-export function answeredTurns(answers: readonly string[]): number {
-  return answers.length;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `answeredTurns` (= `answers.length`). Das
+// Interview zeigt „Frage n" direkt aus der Antwortliste (`pages/Capture.tsx`, R-0991 Nr. 32); der
+// Zähler rief niemand und ist entfernt.
 
 // AUFTRAG-mega5 Block A (bens Verlustpfade 1+2): der Interviewfortschritt reist als reine
 // Textstruktur im Entwurf mit — gegebene Antworten, die gerade getippte (noch nicht gesendete)

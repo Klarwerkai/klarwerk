@@ -56,7 +56,7 @@ export {
   signAnswerReceipt,
   verifyAnswerReceipt,
 } from "./src/receipt";
-export { AskError, GAP_PRIORITIES, isGapPriority } from "./src/types";
+export { AskError, isGapPriority } from "./src/types";
 export type { Gap, GapPriority, AskErrorCode } from "./src/types";
 // AUFTRAG-mega34 B1: der kanonische, quellengebundene Evidenzzustand — die EINE Auslegung der
 // Antwort-Einstufung für alle Verbraucher, die sie nicht selbst bilden können (Word/Klara).

@@ -12,15 +12,32 @@
 //      und der Wirkungstest `ordner-ohne-seite-mounted.test.tsx`.
 // Jeder Beleg wird beim Lauf aus der genannten Datei gelesen; ändert sich der Code so, dass ein
 // Alternativweg verschwindet, wird diese Datei rot und der Fall muss neu eingestuft werden.
+//
+// R-1349 (Aufnahme gesamt-aufruferwaechter, Nacharbeit 4): R-0991 liess die B- und C-Fälle bewusst
+// stehen; R-1349 verlangt, jeden anzuschliessen oder begründet zu entfernen. T1, T2 und T5 bleiben
+// unverändert (die historische Einstufung und der Word-Spiegel). T3, T4 und T6 lesen jetzt den
+// Ausgang je Fall (`R1349_AUSGANG`): ein entfernter Export muss WEG sein (und sein Alternativweg aus
+// R-0991 weiter treffen), ein angeschlossener muss gerufen werden, ein offener muss im Wächter mit
+// Entscheider stehen. T7 verlangt für JEDEN B- und C-Fall genau einen Ausgang.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { BEDARFSABGLEICH, type Bedarf, HISTORISCH } from "./bedarfsabgleich";
+import { BEDARFSABGLEICH, type Bedarf, HISTORISCH, R1349_AUSGANG } from "./bedarfsabgleich";
 
 const WURZEL = process.cwd();
 const lies = (rel: string): string => readFileSync(join(WURZEL, rel), "utf8");
 const schluessel = (b: Bedarf): string => `${b.datei}::${b.name}`;
 const flucht = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const WAECHTER = "tests/capture/aufrufer-waechter.test.ts";
+
+/** Steht der Export heute (noch) im Modul? Eine entfernte Datei heisst: nein. */
+function exportVorhanden(b: Bedarf): boolean {
+  const pfad = `apps/web/src/lib/${b.datei}`;
+  if (!existsSync(join(WURZEL, pfad))) {
+    return false;
+  }
+  return new RegExp(`export (async )?(function|const) ${flucht(b.name)}\\b`).test(lies(pfad));
+}
 
 describe("R-0991 (K3) · Bedarfsabgleich der 82 Kandidaten", () => {
   it("T1 · bijektiv: genau die 82 historischen Kandidaten, jeder genau einmal, Nummern 1–82", () => {
@@ -53,26 +70,35 @@ describe("R-0991 (K3) · Bedarfsabgleich der 82 Kandidaten", () => {
     expect(neu).toEqual(["importSelectView.ts::ordnerOhneEigeneZeile"]);
   });
 
-  it("T3 · jeder Kandidat ist heute noch als Export vorhanden", () => {
-    const fehlt: string[] = [];
+  // R-1349: Bis hierher verlangte T3, dass JEDER Kandidat noch als Export vorhanden ist. Seit R-1349
+  // gilt je Ausgang: entfernt oder in den Test gezogen → der Export ist WEG; sonst ist er da.
+  it("T3 · jeder Kandidat steht so im Produkt, wie sein Ausgang es sagt", () => {
+    const falsch: string[] = [];
     for (const b of BEDARFSABGLEICH) {
-      const text = lies(`apps/web/src/lib/${b.datei}`);
-      const def = new RegExp(`export (async )?(function|const) ${flucht(b.name)}\\b`);
-      if (!def.test(text)) {
-        fehlt.push(schluessel(b));
+      const ausgang = R1349_AUSGANG[schluessel(b)]?.ausgang;
+      const sollWeg = ausgang === "entfernt" || ausgang === "in-den-test";
+      const da = exportVorhanden(b);
+      if (sollWeg && da) {
+        falsch.push(`${schluessel(b)}: als „${ausgang}" geführt, steht aber noch im Produkt`);
+      }
+      if (!sollWeg && !da) {
+        falsch.push(`${schluessel(b)}: Export nicht mehr vorhanden`);
       }
     }
-    expect(fehlt, `Export nicht mehr vorhanden: ${fehlt.join(" · ")}`).toEqual([]);
+    expect(falsch, falsch.join(" · ")).toEqual([]);
   });
 
   it("T4 · jeder Beleg trifft heute im genannten Produkt- bzw. Prüfcode", () => {
     const daneben: string[] = [];
     for (const b of BEDARFSABGLEICH) {
-      if (b.beleg === "word-spiegel") {
-        continue;
-      }
-      // Der Hauptbeleg und jedes weitere Glied seiner Kette müssen heute treffen.
-      for (const glied of [b.beleg, ...(b.kette ?? [])]) {
+      const r1349 = R1349_AUSGANG[schluessel(b)];
+      const glieder = [
+        ...(b.beleg === "word-spiegel" || r1349?.alterBelegEntfaellt ? [] : [b.beleg]),
+        ...(r1349?.alterBelegEntfaellt ? [] : (b.kette ?? [])),
+        ...(r1349?.nachweis ? [r1349.nachweis] : []),
+      ];
+      // Der Hauptbeleg, jedes weitere Glied seiner Kette und der R-1349-Nachweis müssen treffen.
+      for (const glied of glieder) {
         const pfad = glied.datei;
         if (!existsSync(join(WURZEL, pfad))) {
           daneben.push(`${schluessel(b)}: ${pfad} fehlt`);
@@ -116,19 +142,49 @@ describe("R-0991 (K3) · Bedarfsabgleich der 82 Kandidaten", () => {
     console.info(`R-0991 · Word-Spiegel je Name:\n${kette.join("\n")}`);
   });
 
-  it("T6 · Gleichlauf mit dem Aufrufer-Wächter: A ohne Ausnahme, B/C weiter im Altbestand", () => {
-    const waechter = lies("tests/capture/aufrufer-waechter.test.ts");
+  // R-1349: Bis hierher verlangte T6, dass jeder B- und C-Fall „weiter im Altbestand" des Wächters
+  // steht. Den eingefrorenen Altbestand gibt es nicht mehr. Der Gleichlauf heisst jetzt: nur ein
+  // OFFENER Fall steht im Wächter (mit Grund und Entscheider); ein Word-Fall ist über die gemessene
+  // Fremdlesekante gedeckt; jeder andere steht in keinem Register — er ist gerufen oder weg.
+  it("T6 · Gleichlauf mit dem Aufrufer-Wächter: nur offene Fälle stehen im Register", () => {
+    const waechter = lies(WAECHTER);
     const falsch: string[] = [];
+    expect(waechter, "die Fremdlesekante des Word-Spiegels fehlt im Wächter").toMatch(
+      /modul: "apps\/web\/src\/lib\/wordAddin\.ts",\s*leser: \["apps\/web\/public\/word-addin\/taskpane\.js"\],\s*art: "spiegel"/,
+    );
     for (const b of BEDARFSABGLEICH) {
       const eintrag = `"apps/web/src/lib/${b.datei}::${b.name}"`;
       const gefuehrt = waechter.includes(eintrag);
-      if (b.fall === "A" && gefuehrt) {
-        falsch.push(`${schluessel(b)}: angeschlossen, steht aber noch als Ausnahme im Wächter`);
+      const ausgang = R1349_AUSGANG[schluessel(b)]?.ausgang;
+      if (ausgang === "offen" && !gefuehrt) {
+        falsch.push(`${schluessel(b)}: offen, fehlt aber im Register des Wächters`);
       }
-      if (b.fall !== "A" && !gefuehrt) {
-        falsch.push(`${schluessel(b)}: ohne Produktaufrufer, fehlt aber im Altbestand`);
+      if (ausgang !== "offen" && gefuehrt) {
+        falsch.push(
+          `${schluessel(b)}: als „${ausgang ?? b.fall}" abgeschlossen, steht aber im Register`,
+        );
       }
     }
     expect(falsch, falsch.join("\n")).toEqual([]);
+  });
+
+  it("T7 · R-1349: jeder B- und C-Fall hat genau einen Ausgang, kein A-Fall braucht einen", () => {
+    const hatAusgang = (b: Bedarf): boolean => R1349_AUSGANG[schluessel(b)] !== undefined;
+    const ohne = BEDARFSABGLEICH.filter((b) => b.fall !== "A" && !hatAusgang(b)).map(schluessel);
+    expect(ohne, `ohne R-1349-Ausgang: ${ohne.join(" · ")}`).toEqual([]);
+    const mitA = BEDARFSABGLEICH.filter((b) => b.fall === "A" && hatAusgang(b)).map(schluessel);
+    expect(mitA).toEqual([]);
+    const fremd = Object.keys(R1349_AUSGANG).filter((k) => !HISTORISCH.includes(k));
+    expect(fremd, "Ausgang zu einem Namen, der kein Kandidat ist").toEqual([]);
+    // Die Zählung, die das Dokument nennt — als Messung, nicht als Behauptung.
+    const zahl = (a: string): number =>
+      Object.values(R1349_AUSGANG).filter((s) => s.ausgang === a).length;
+    expect({
+      entfernt: zahl("entfernt"),
+      angeschlossen: zahl("angeschlossen"),
+      "in-den-test": zahl("in-den-test"),
+      fremdleser: zahl("fremdleser"),
+      offen: zahl("offen"),
+    }).toEqual({ entfernt: 44, angeschlossen: 3, "in-den-test": 3, fremdleser: 25, offen: 3 });
   });
 });

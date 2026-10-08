@@ -284,10 +284,8 @@ export function readJournalLines(file: string): JournalLine[] {
   return lines;
 }
 
-/** Dieselbe Lesung ohne die Herkunftsangabe — der unveränderte Bestandsvertrag. */
-export function readJournal(file: string): JournalEntry[] {
-  return readJournalLines(file).map((l) => l.entry);
-}
+// R-1349: Die Projektion `readJournal` (ohne Zeilennummer) hatte keinen Produktaufrufer und ist
+// entfernt. Start und Bestätigung lesen über `readJournalLines`; die Tests bilden die Projektion lokal.
 
 // Journal in frische Repos zurückspielen — ausschließlich über die öffentlichen Interfaces.
 // Unbekannte Repo-/Methodennamen werden bewusst übersprungen (versionstolerant statt Crash).

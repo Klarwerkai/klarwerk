@@ -215,7 +215,7 @@ function fadenfragen(faden?: readonly string[]): string[] {
 //
 // DIE UMRECHNUNG GEHÖRT HIERHER UND NICHT IN DIE TABELLE. Ein zweiter, gebeugter Eintrag je Wort
 // wäre eine erfundene Setzung ohne Fundstelle (genau der Fehler, gegen den `s2-synonyme.test.ts`
-// Fall Z1 steht), und `expandSearchTerms` darf nichts ableiten (`S2_ERWEITERUNG_GRENZE.leitetAb`).
+// Fall Z1 steht), und `expandSearchTerms` darf nichts ableiten (S2-Grenze, `search-projection.ts`).
 // Hier dagegen ist nichts abzuleiten: die Grundform der DEKLARIERTEN Wörter entsteht durch genau
 // dieselbe Zerlegung, durch die auch die Frage läuft. Es wird keine Regel erfunden, sondern die
 // vorhandene auf beide Seiten desselben Vergleichs angewandt.
@@ -298,7 +298,7 @@ export function zugeordneteSuchterme(
   // `bekannt` wächst mit den Ergänzungen und entdoppelt sie über alle Paare hinweg; `getippt`
   // wächst NICHT. Das ist der Unterschied zwischen Entdopplung und Ableitung: ein ergänztes Wort
   // darf nie selbst wieder als getippt gelten und eine zweite Ergänzung auslösen (Kettenbildung),
-  // denn das wäre genau die Ableitung, die `S2_ERWEITERUNG_GRENZE.leitetAb` ausschließt.
+  // denn das wäre genau die Ableitung, die die S2-Grenze („nichts wird abgeleitet") ausschließt.
   const bekannt = new Set(getippt);
   const paare: ZuordnungsPaar[] = [];
   for (const zuordnung of zuordnungen) {

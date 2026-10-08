@@ -143,10 +143,11 @@ export const MELDUNGEN = {
     nl: "Ontbrekend recht: %s",
   },
   // JOB 3956: der Nachbar von PERMISSION_MISSING und ausdrücklich nicht dasselbe. Dort FEHLT ein
-  // bestimmtes Recht, und der Satz nennt es; hier sagt der RBAC-Wächter (`services/rbac/src/guard.ts`)
-  // nur, dass die Rolle nicht reicht — er kennt den Rechtenamen zwar, gibt ihn aber seit jeher nicht
-  // heraus. Der deutsche Wortlaut ist zeichengleich mit dem Literal, das bis JOB 3956 in `guard.ts`
-  // stand; gemessen in `tests/q9-entwurfsfehler/` (G3) und in `tests/q9-fremde-flaechen/`.
+  // bestimmtes Recht, und der Satz nennt es; hier fehlt das Recht an DIESER Handlung, ohne Namen.
+  // Der deutsche Wortlaut ist zeichengleich mit dem Literal, das bis JOB 3956 im damaligen
+  // RBAC-Wächter `services/rbac/src/guard.ts` stand. R-1349: der Wächter ist entfernt (kein
+  // Aufrufer); gesendet wird der Satz von `requireVisibleDraft(…, { nurAutor: true })` in
+  // `services/app/src/routes/capture-routes.ts`, gemessen in `tests/q9-entwurfsfehler/` (G1–G4).
   PERMISSION_DENIED: {
     de: "Keine Berechtigung.",
     en: "You do not have permission.",

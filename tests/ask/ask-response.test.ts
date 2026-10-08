@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AnswerResult, AskResponse, Gap } from "../../apps/web/src/api/types";
-import { selectAnswer, selectGap } from "../../apps/web/src/lib/askResponse";
+import { selectAnswer } from "../../apps/web/src/lib/askResponse";
 
 // SCRUM-138: Backend POST /api/ask liefert { result, gap, receipt }. Der Adapter muss
 // die Antwort sauber entpacken, damit die Ask-UI beantwortete Fragen anzeigt.
@@ -44,7 +44,8 @@ describe("SCRUM-138: Ask-Response-Adapter", () => {
     expect(a.trust).toBe(80);
     expect(a.sources).toEqual(["ko-1"]);
     expect(a.steps).toHaveLength(1);
-    expect(selectGap(response)).toBeNull();
+    // R-1349: `selectGap` ist entfernt — Ask liest das Feld unmittelbar, so wie hier.
+    expect(response.gap).toBeNull();
   });
 
   it("unbeantwortbare Frage → No-Basis-Daten + Lücke", () => {
@@ -52,6 +53,6 @@ describe("SCRUM-138: Ask-Response-Adapter", () => {
     const a = selectAnswer(response);
     expect(a.answered).toBe(false);
     expect(a.answer).toBeNull();
-    expect(selectGap(response)?.id).toBe("gap-1");
+    expect(response.gap?.id).toBe("gap-1");
   });
 });
