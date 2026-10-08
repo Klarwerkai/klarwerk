@@ -510,9 +510,56 @@ describe("Protokoll nach Endlöschung und für indirekte Befundbezüge", () => {
   });
 });
 
+describe("Bestandsbilanzen ohne Objektkennung (Ben, Nacharbeit 16)", () => {
+  it("import.cleanup zählt verborgene Objekte mit: eingeschränkt ausgeblendet, berechtigt sichtbar, Kette unverändert", async () => {
+    const mit = await buehne({ mitGeschuetztem: true });
+    // Die Form aus library-analytics (`import.cleanup`, Ziel „library", nur Zähler) — hier mit
+    // Zahlen, in denen das geschützte Objekt steckt, ohne dass es genannt wird.
+    await mit.services.audit.record({
+      actor: mit.ids.erik,
+      action: "import.cleanup",
+      target: "library",
+      payload: {
+        removedCandidates: 0,
+        trashedKos: 2,
+        skipped: 0,
+        newCandidates: 0,
+        claimedKos: 1,
+        auditPendingCandidates: 0,
+      },
+    });
+    const gespeichert = await mit.services.audit.list({ action: "import.cleanup" });
+    expect(gespeichert).toHaveLength(1);
+
+    const ada = await auditAbruf(mit.app, mit.k.ada, mit.offenId);
+    expect(ada.liste.some((e) => e.action === "import.cleanup")).toBe(false);
+    expect(ada.datei.entries.some((e) => e.action === "import.cleanup")).toBe(false);
+    expect(ada.listeRoh).not.toContain("trashedKos");
+    expect(ada.dateiRoh).not.toContain("claimedKos");
+
+    // GEGENPROBE: wer jeden Space lesen darf, liest die Bilanz unverändert — samt Kette.
+    const mia = await auditAbruf(mit.app, mit.k.mia, mit.offenId);
+    const bilanz = mia.liste.find((e) => e.action === "import.cleanup");
+    expect(bilanz?.payload).toEqual(gespeichert[0]?.payload);
+    expect(mia.datei.format).toBe("klarwerk-audit-export");
+    expect(verifyChain(mia.datei.entries as AuditEntry[])).toBe(true);
+    // Die gespeicherte Originalkette bleibt unverändert.
+    expect(verifyChain(await mit.services.audit.list())).toBe(true);
+    await mit.app.close();
+  });
+});
+
 describe("Metadaten: vollständige Antworten mit und ohne geschützte Vorgänge", () => {
   async function ablauf(mitGeschuetztem: boolean) {
     const b = await buehne({ mitGeschuetztem });
+    // Nacharbeit 16: eine Bestandsbilanz, deren Zähler das geschützte Objekt mitzählen — im
+    // Bestand ohne es ist die Zahl kleiner. Ada darf den Unterschied nicht sehen.
+    await b.services.audit.record({
+      actor: b.ids.erik,
+      action: "import.cleanup",
+      target: "library",
+      payload: { trashedKos: mitGeschuetztem ? 2 : 1, claimedKos: 0 },
+    });
     // Ein berechtigter Vollexport VORAB — sein Beleg (`audit.exported`) trägt Zähler und Kopf der
     // ganzen Kette und liegt danach in der Historie, die Ada liest.
     const voll = await b.app.inject({ method: "GET", url: "/api/audit/export", headers: b.k.mia });

@@ -54,6 +54,12 @@ export interface AuditLeseQuelle {
 //   · Der Prüfbericht prüft die Einträge der Ansicht je für sich (eigener Hash) und nennt nur ihre
 //     Zahl; die Verkettung ist in einer Ansicht nicht prüfbar und wird nicht behauptet.
 //   · Der Export ist `klarwerk-audit-ansicht`, ausdrücklich keine Kette.
+//   · BESTANDSBILANZEN (Nacharbeit 16, Ben): ein Eintrag, dessen Ziel KEIN bekanntes Objekt, kein
+//     Befund und kein Space ist und dessen Nutzlast Zahlen trägt, fasst einen Bestand zusammen
+//     (`import.cleanup` → „library" mit `trashedKos`/`claimedKos`, …). Seine Zahlen können
+//     verborgene Objekte mitzählen, ohne sie zu nennen; nachweisbar auf den Leser begrenzen lassen
+//     sie sich nicht. Er geht an einen eingeschränkten Leser nicht hinaus — auch historisch.
+//     Ausgenommen sind nur die Exportbelege, deren Zahlen ohnehin entfernt werden (s. o.).
 // Ohne Lesequelle ist nichts entscheidbar: dann gilt jeder Leser als eingeschränkt und jeder
 // Eintrag als verborgen.
 
@@ -61,11 +67,20 @@ interface Leselage {
   eingeschraenkt: boolean;
   /** Kennungen verborgener Objekte und Befunde. */
   verborgen: ReadonlySet<string>;
+  /** Kennungen aller bekannten Bezugsziele: Objekte (auch gelöschte), Befunde, Spaces. */
+  ziele: ReadonlySet<string>;
   /** Ohne Lesequelle: alles verborgen. */
   alles: boolean;
 }
 
-const UNEINGESCHRAENKT: Leselage = { eingeschraenkt: false, verborgen: new Set(), alles: false };
+const UNEINGESCHRAENKT: Leselage = {
+  eingeschraenkt: false,
+  verborgen: new Set(),
+  ziele: new Set(),
+  alles: false,
+};
+
+const EXPORTBELEGE = new Set(["audit.exported", "audit.view-exported"]);
 
 function istBefundAktion(action: string): boolean {
   return action.startsWith("conflict.") || action.startsWith("overlap.");
@@ -81,7 +96,7 @@ async function leselage(
   kette: readonly AuditEntry[],
 ): Promise<Leselage> {
   if (!quelle) {
-    return { eingeschraenkt: true, verborgen: new Set(), alles: true };
+    return { eingeschraenkt: true, verborgen: new Set(), ziele: new Set(), alles: true };
   }
   // Die Geschichte jedes Objekts aus der Kette: letzter Space, Autor, letzte Stufe.
   const ausKette = new Map<string, { spaceId?: string | null; author?: string; stufe?: string }>();
@@ -156,7 +171,31 @@ async function leselage(
       verborgen.add(befund);
     }
   }
-  return { eingeschraenkt: true, verborgen, alles: false };
+  const ziele = new Set<string>([
+    ...aktuell.keys(),
+    ...ausKette.keys(),
+    ...befundKos.keys(),
+    ...spaces,
+  ]);
+  return { eingeschraenkt: true, verborgen, ziele, alles: false };
+}
+
+function traegtZahl(wert: unknown): boolean {
+  if (typeof wert === "number") {
+    return true;
+  }
+  if (Array.isArray(wert)) {
+    return wert.some(traegtZahl);
+  }
+  if (wert !== null && typeof wert === "object") {
+    return Object.values(wert as Record<string, unknown>).some(traegtZahl);
+  }
+  return false;
+}
+
+/** Eine Zahlenbilanz über einen Bestand statt über ein bekanntes Bezugsziel (s. Kopf). */
+function istBestandsbilanz(e: AuditEntry, lage: Leselage): boolean {
+  return !EXPORTBELEGE.has(e.action) && !lage.ziele.has(e.target) && traegtZahl(e.payload);
 }
 
 // Eine Kennung kann auch EINGEBETTET stehen — `eventId` „ko.created:<id>", ein Pfad „/kos/<id>".
@@ -191,7 +230,7 @@ function lesbar(e: AuditEntry, lage: Leselage): boolean {
   if (!lage.eingeschraenkt) {
     return true;
   }
-  if (istAlteLadebilanz(e)) {
+  if (istAlteLadebilanz(e) || istBestandsbilanz(e, lage)) {
     return false;
   }
   return ![e.target, e.eventId, e.payload].some((teil) => nenntEine(teil, lage.verborgen));
@@ -199,8 +238,6 @@ function lesbar(e: AuditEntry, lage: Leselage): boolean {
 
 /** Ein Eintrag der Leseransicht: laufende Nummer statt Kettennummer, ohne Kettenfelder. */
 type Ansichtseintrag = Omit<AuditEntry, "hash" | "prevHash" | "hashVersion">;
-
-const EXPORTBELEGE = new Set(["audit.exported", "audit.view-exported"]);
 
 function leseansicht(kette: readonly AuditEntry[], lage: Leselage): Ansichtseintrag[] {
   return kette

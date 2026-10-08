@@ -1,6 +1,6 @@
 {
   "zweck": "Produktstand VOR der Behebung für tests/audit-gesamt/vorher-nachher.integration.test.ts",
-  "kandidat_beim_erzeugen": "c790ed7408ca985c9dd36251abfb93361fda7031 + Arbeitsstand aufnahme:20260922:gesamt-leserechte Nacharbeit 16 (nur services/app/src/routes/audit-routes.ts: Typkorrektur, bereits in Formatiererform), erzeugt aus dem Arbeitsbaum vor der Kandidatbildung",
+  "kandidat_beim_erzeugen": "8a7199698f62dbfe1f0d8d47cbac8843cd1a272a + Arbeitsstand aufnahme:20260922:gesamt-leserechte Nacharbeit 17 (nur services/app/src/routes/audit-routes.ts: Bestandsbilanzen in der Leseransicht, in Formatiererform geschrieben), erzeugt aus dem Arbeitsbaum vor der Kandidatbildung",
   "erzeugungshinweis": "Nacharbeit 15 hatte vor der Formatierung erzeugt; die Kandidatbildung formatierte audit-routes.ts (Aufrufketten zusammengezogen), der Patch passte nicht mehr. Patch nur vom formatierten Stand erzeugen.",
   "vorher_hauptstand": "6c576c7014302bc85b86af85c50794e0aefe7d64",
   "vorher_beschreibung": "integrierter Hauptstand ohne die Behebung dieses Auftrags (erster Elternteil des Integrations-Merges 46f89d12 ist die Arbeitssicherung, zweiter 6c576c70 der Hauptstand)",
@@ -12,7 +12,7 @@
     "zweck": "die Fassung, an der Ben beleg:6818bd52 meldete (gleichzeitige GET /api/audit/export)",
     "fassung": "758e76c118482f11a3f322403d71d188e3fda277",
     "fassung_beschreibung": "ship: 1.0.0-beta.1.622 (lauf:b3:aufnahme:20260922:gesamt-auditprotokoll:2 Runde 1); Elternteil 222abf959b57928d64196b8500e52513088e1ed0; von keinem Branch erreichbar, nur als Git-Objekt vorhanden",
-    "kandidat_beim_erzeugen": "c790ed7408ca985c9dd36251abfb93361fda7031 + Arbeitsstand Nacharbeit 16 (wie oben)",
+    "kandidat_beim_erzeugen": "8a7199698f62dbfe1f0d8d47cbac8843cd1a272a + Arbeitsstand Nacharbeit 17 (wie oben)",
     "patch": "fassung-758e76c1.patch",
     "umfang": "services/** ohne *.test.ts — 208 Dateien; Importverträglichkeit mit apps/web und Abhängigkeiten erst im regulären PG-Lauf prüfen",
     "befehl": "git diff -R --binary --output=tests/audit-gesamt/vorher/fassung-758e76c1.patch 758e76c118482f11a3f322403d71d188e3fda277 -- services ':(exclude)services/**/*.test.ts'"
