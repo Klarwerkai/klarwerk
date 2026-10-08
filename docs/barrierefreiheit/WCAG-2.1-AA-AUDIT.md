@@ -16,7 +16,10 @@ unterscheidet streng:
 
 Gemessene Flächen des maschinellen Audits (`tests-smoke/wcag21-aa-audit.spec.ts`): Anmeldemaske,
 `/start`, `/fragen`, `/bibliothek`, `/erfassen`, `/validierung`. Gemessen wird im echten Chromium am
-echten Server, in der Thema-Einstellung der Smoke-Instanz. Die Pflichtflächen (Hinweisbanner,
+echten Server, und zwar in **beiden** Themen: Kontrast, Fokus und Tastaturweg laufen je Fläche
+einmal klassisch und einmal modern (`data-theme="modern"`). Die übrigen Messungen laufen einmal.
+Jede Messart hat eine Kalibrierung an einer fehlerhaften Fixture, die rot werden muss. Die
+Pflichtflächen (Hinweisbanner,
 Impressum, Datenschutz, Sperrfläche, Rechtshinweise der Anmeldemaske) rechnet zusätzlich
 `apps/web/src/legal/kontrast-dom-paarungen.test.tsx` in **beiden** Themen.
 
@@ -33,17 +36,17 @@ Impressum, Datenschutz, Sperrfläche, Rechtshinweise der Anmeldemaske) rechnet z
 | 1.3.1 | A | Info und Beziehungen | T | Audit: Rollen/Namen im AX-Baum, Landmarken `header`/`nav`/`main`; Ansageregister `tests/app/a18-ansagen-ereignisse.test.tsx`. **Offen (H):** Überschriftenhierarchie und Tabellenstruktur inhaltlich. |
 | 1.3.2 | A | Bedeutungstragende Reihenfolge | H | Vorlesereihenfolge gegen Sichtreihenfolge je Fläche mit Screenreader prüfen. |
 | 1.3.3 | A | Sensorische Eigenschaften | H | Hilfetexte auf Formulierungen wie „rechts“, „orange“ prüfen. |
-| 1.3.4 | AA | Ausrichtung | H | Keine Ausrichtungssperre bekannt; Hoch-/Querformat auf Tablet nicht gemessen. |
+| 1.3.4 | AA | Ausrichtung | M | **Befund behoben:** das Web-App-Manifest sperrte die installierte App auf Hochformat (`"orientation": "portrait"`, `apps/web/public/manifest.webmanifest`). Weder ein Produktgrund noch eine Entscheidung im Bestand macht die Lage unerlässlich. Jetzt `"any"`. Vertrag: `tests/barrierefreiheit/ausrichtung-frei.test.ts` (Manifest frei, kein `screen.orientation.lock` im Quelltext). Reflow bei schmaler und breiter Lage: 1.4.10. |
 | 1.3.5 | AA | Eingabezweck bestimmen | Q | `autoComplete` an Name, E-Mail, Passwort (`auth/AuthScreens.tsx`, `auth/ResetScreen.tsx`). Weitere personenbezogene Felder nicht inventarisiert. |
 | 1.4.1 | A | Benutzung von Farbe | H | Belegt nur Einzelstellen (Hinweisbanner: Form und Text unterscheiden die Knöpfe). Status-/Reifefarben auf durchgehende Textbeschriftung prüfen. |
 | 1.4.2 | A | Audio-Steuerelement | N/A | Kein selbststartendes Audio. |
-| 1.4.3 | AA | Kontrast (Minimum) | M | Audit: jeder sichtbare Textknoten, gemalte Farbe gegen zusammengesetzten Hintergrund, 4,5:1 bzw. 3:1 (Großtext). Pflichtflächen in beiden Themen: `kontrast-dom-paarungen.test.tsx`, `tests/legal/mega62-kontrast-pflichtflaechen.test.ts`. **Behoben in dieser Runde:** `klarwerk.ai` in der Markenspalte (Weiß/40 auf Ink ≈ 3,7:1 → Weiß/60 ≈ 6,4:1, `BrandPanel.tsx`, `SsoCallback.tsx`); Titel-Platzhalter im Erfassungsblatt (`muted-2/60` ≈ 2,5:1 → `muted-2`, `erfassen/Blatt.tsx`). **Offen:** Platzhaltertext ist kein Textknoten und wird vom Audit nicht gemessen; Text über Hintergrundbildern und in durchscheinenden Ebenen wird gezählt, nicht gerechnet (Anhang je Fläche: `kontrastUnbestimmt`); Flächen außer den sechs gemessenen; das jeweils andere Thema auf den Kernflächen. |
-| 1.4.4 | AA | Textgröße ändern | H | 200 % Browserzoom nicht gemessen. |
+| 1.4.3 | AA | Kontrast (Minimum) | M | Audit: jeder sichtbare Textknoten, gemalte Farbe gegen zusammengesetzten Hintergrund, 4,5:1 bzw. 3:1 (Großtext). Pflichtflächen in beiden Themen: `kontrast-dom-paarungen.test.tsx`, `tests/legal/mega62-kontrast-pflichtflaechen.test.ts`. **Behoben in dieser Runde:** `klarwerk.ai` in der Markenspalte (Weiß/40 auf Ink ≈ 3,7:1 → Weiß/60 ≈ 6,4:1, `BrandPanel.tsx`, `SsoCallback.tsx`); Titel-Platzhalter im Erfassungsblatt (`muted-2/60` ≈ 2,5:1 → `muted-2`, `erfassen/Blatt.tsx`). **Seit nacharbeit-5 zusätzlich gemessen:** Platzhaltertext (über `::placeholder`, mit Kalibrierung) und das jeweils andere Thema auf allen sechs Kernflächen. **Offen (technisch):** Text über Hintergrundbildern und in durchscheinenden Ebenen wird gezählt, nicht gerechnet (Anhang je Fläche und Thema: `kontrastUnbestimmt`); Flächen außer den sechs gemessenen. |
+| 1.4.4 | AA | Textgröße ändern | M | Audit: Fenster 640 × 400 CSS-px (entspricht 200 % Zoom von 1280 × 800). Gemessen werden kein waagerechtes Scrollen und kein Text, der dabei neu abgeschnitten wird. Gewollte Kürzung mit Auslassungszeichen wird gezählt (`zoomGekuerzt`). Grenze: Viewport-Verkleinerung statt echtem Browser-Zoom. |
 | 1.4.5 | AA | Bilder von Text | H | Keine bekannten Textbilder außer Logo (ausgenommen); nicht inventarisiert. |
 | 1.4.10 | AA | Umbruch (Reflow) | M | Audit: 320 CSS-px, kein waagerechtes Scrollen der Seite. Bestand: TEST-A19 (390 px), Kopfband-Chromium-Tests 390–1440 px. |
-| 1.4.11 | AA | Nicht-Text-Kontrast | H | Fokusring (`ring-brand/60`), Feldränder, Symbole nicht gemessen. |
-| 1.4.12 | AA | Textabstand | H | Nicht gemessen. |
-| 1.4.13 | AA | Inhalt bei Hover oder Fokus | H | Menüs und Zeigehinweise auf Schließbarkeit (Escape) und Hover-Stabilität prüfen. |
+| 1.4.11 | AA | Nicht-Text-Kontrast | T | Audit: Die Fokuskennzeichnung jedes per Tab erreichten Elements hebt sich mit ≥ 3:1 von der Fläche ab, auf der sie steht (beide Themen). **Befund behoben:** Der globale Fokusring `ring-brand/60` maß auf der Seitenfläche ≈ 1,85:1. Jetzt `ring-brand-text` (≈ 5,3–5,9:1 auf hellen Flächen). Auf dem dunklen Kopfband trägt der helle Offset-Streifen den Kontrast (`index.css`, Vertrag `tests/app/focus-visible-global-contract.test.ts`). **Offen (technisch):** Ränder von Eingabefeldern und Symbole sind nicht gemessen. Messbar ist der Randkontrast, aber ob der Rand zur Erkennung des Feldes nötig ist (oder Beschriftung und Fläche genügen), ist eine Gestaltungsfrage, die vor einer Messregel zu entscheiden ist. |
+| 1.4.12 | AA | Textabstand | M | Audit: Zeilenhöhe 1,5, Buchstabenabstand 0,12 em, Wortabstand 0,16 em, Absatzabstand 2 em als Stil mit Vorrang. Danach darf kein Element mit `overflow: hidden/clip` Text abschneiden, der vorher vollständig stand. Gewollte Kürzung mit Auslassungszeichen wird gezählt (`textabstandGekuerzt`). |
+| 1.4.13 | AA | Inhalt bei Hover oder Fokus | M | Audit: Jedes per Tab erreichte Element wird fokussiert und überfahren. Erscheint ein `role="tooltip"`, muss er beim Überfahren stehen bleiben und mit Escape schließen. Gefundene Hinweise je Fläche: `hoverInhalte`. Native `title`-Hinweise steuert der Browser, sie sind nach WCAG ausgenommen. |
 | 2.1.1 | A | Tastatur | T | Audit: Tab-Weg je Fläche. Bestand: Chromium-Tastaturwege (`tests/entwurf-pool/pool-tastatur-chromium.test.ts`, `tests/entwuerfe-verwalten/abnahmefolge-tastatur-chromium.test.ts`, `tests/anhang-upload-tastatur/foto-anhaengen-tastatur.test.ts`, `tests/admin-navigation/bedienbarkeit.test.tsx`). **Offen (H):** Gleichwertigkeit jeder Mausfunktion (Ziehen, Graph). |
 | 2.1.2 | A | Keine Tastaturfalle | M | Audit: kein Element hält den Fokus über Tab und Escape. Bestand: Modalgrenze/`inert` (`tests-smoke/ui-smoke.spec.ts`, mega48). |
 | 2.1.4 | A | Tastaturkürzel | Q | Globales Kürzel nur mit Modifier (`CommandPalette.tsx`: `metaKey || ctrlKey`). Anzeige plattformgerecht (R-0987, `lib/tastenkuerzel.ts`). Weitere Einzeltasten-Kürzel nicht inventarisiert. |
@@ -56,7 +59,7 @@ Impressum, Datenschutz, Sperrfläche, Rechtshinweise der Anmeldemaske) rechnet z
 | 2.4.4 | A | Linkzweck (im Kontext) | T | Audit: jeder Link hat einen Namen. Zweck menschlich. |
 | 2.4.5 | AA | Mehrere Wege | Q | Kopfband-Navigation, „Arbeitsbereiche“, „Seite finden“ (Palette), Wissenssuche. |
 | 2.4.6 | AA | Überschriften und Beschriftungen | H | Beschreibungskraft menschlich. |
-| 2.4.7 | AA | Fokus sichtbar | M | Audit: jedes per Tab erreichte Element (30 Schritte je Fläche) trägt Umriss oder Ring. Globale Regel: `tests/app/focus-visible-global-contract.test.ts` (R-0980). |
+| 2.4.7 | AA | Fokus sichtbar | M | Audit (30 Tab-Schritte je Fläche und Thema): Jedes Element wird im Fokus und ohne Fokus gemessen. Als Kennzeichnung zählt nur ein Umriss, Schatten, Rand oder `focus-within`-Umriss, der im Fokus mit nicht durchsichtiger Farbe dasteht und ohne Fokus fehlt. Seit nacharbeit-5 schlagen durchsichtige Umrisse und Schatten sowie unveränderte Dekorationsschatten in der Kalibrierung an. Globale Regel: `tests/app/focus-visible-global-contract.test.ts` (R-0980). Grenze: Ein Ring, den ein Vorfahr mit `overflow: hidden` abschneidet, sieht die Stilmessung nicht. |
 | 2.5.1 | A | Zeigergesten | H | Graph/Ziehen auf Einzelzeiger-Alternative prüfen. |
 | 2.5.2 | A | Zeigeraktion abbrechen | H | Nicht gemessen. |
 | 2.5.3 | A | Beschriftung im Namen | T | Kopfband: sichtbares Wort = Name (`tests/fe002-kopfband/kopfband-fe002.test.tsx`). Übrige Flächen menschlich. |
@@ -75,18 +78,34 @@ Impressum, Datenschutz, Sperrfläche, Rechtshinweise der Anmeldemaske) rechnet z
 | 4.1.2 | A | Name, Rolle, Wert | M | Audit: jedes bedienbare Element im AX-Baum von Chromium hat einen Namen. |
 | 4.1.3 | AA | Statusmeldungen | M | `tests-smoke/a18-live-region-browser.spec.ts` (AX-Baum: Toast `status`/`polite`), JOB-2064-Verträge. |
 
-Bilanz: 10 M, 10 T, 3 Q, 20 H, 7 N/A (Summe 50).
+Bilanz: 14 M, 11 T, 3 Q, 15 H, 7 N/A (Summe 50).
 
-## Ausdrücklich menschliche oder externe Prüfungen
+## Vollständigkeit
 
-Diese Punkte lassen sich mit den vorhandenen Mitteln nicht entscheiden. Sie bleiben offen und
-werden nicht durch Tests ersetzt:
+Das Audit ist **nicht vollständig**. Vollständig ist es erst, wenn die beiden folgenden Listen
+abgearbeitet sind. Sie sind bewusst getrennt.
+
+### Technisch offen (maschinell lösbar, noch nicht gemessen)
+
+1. **1.4.11 Ränder von Eingabefeldern und Symbole:** Vor einer Messregel ist zu entscheiden,
+   ob der Rand das Feld erkennbar machen muss oder Beschriftung und Fläche genügen.
+2. **1.4.3 Text über Hintergrundbildern und in durchscheinenden Ebenen:** wird gezählt, nicht
+   gerechnet. Rechnen hieße, die gemalten Pixel auszuwerten.
+3. **Flächen außerhalb der sechs Kernflächen** (Einstellungen, Admin, Wissensdetail usw.): Sie
+   lassen sich mit demselben Smoke anhängen.
+
+### Ausdrücklich menschliche oder externe Prüfungen
+
+Diese Punkte lassen sich auch maschinell nicht entscheiden. Sie bleiben offen und werden nicht
+durch Tests ersetzt:
 
 1. **Tatsächliche Vorleseausgabe** (R-1090, A18) mit NVDA/JAWS (Windows) und VoiceOver (macOS/iOS)
    auf den sechs Kernflächen. Gemessen ist nur die Rechnung des Browsers (AX-Baum).
 2. **Industriebedingungen** (R-0891): Bedienung mit Handschuhen (Zielgrößen, Abstände) und
    Lesbarkeit bei wechselndem Licht. Dafür sind Gerät und Einsatzort nötig.
-3. Die mit **H** markierten Kriterien oben. Mit ihnen und Punkt 1 ist das Audit vollständig.
+3. Die inhaltliche Hälfte der **T**-Kriterien und die **H**-Kriterien oben. Dort geht es um
+   Bedeutung und Gestaltungsabsicht (Sinn von Alternativtexten und Überschriften,
+   Lesereihenfolge, Farbe als einziges Merkmal, Zeitgrenzen der Meldungen, Zeigergesten).
 4. Ein **unabhängiges Barrierefreiheitsaudit** durch eine prüfende Stelle, falls eine Ausschreibung
    es verlangt. Das Werkzeug `axe-core` ist im Repository nicht installiert. Die maschinellen
    Prüfungen hier stützen sich auf die Rechnung von Chromium (CDP, `getComputedStyle`).

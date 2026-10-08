@@ -61,9 +61,15 @@
 
      DIE FUSSNOTEN-REGEL WEITER UNTEN BLEIBT BEWUSST STEHEN. Sie ist spezifischer (Klasse +
      Attribut + Pseudoklasse) und gewinnt unabhängig von der Reihenfolge; ihre eigene Farbwahl ist
-     dort begründet (sie muss auf dem gestrichelten Rand sichtbar bleiben). */
+     dort begründet (sie muss auf dem gestrichelten Rand sichtbar bleiben).
+
+     WCAG 1.4.11 (Audit nacharbeit-5): der Ring muss sich mit ≥ 3:1 von seiner Umgebung abheben.
+     `ring-brand/60` maß auf der Seitenfläche ~1,85:1 (Marke zu 60 % über Hell), die volle Marke
+     auf Weiß ~2,8:1 — beides zu blass. Das Marken-TEXT-Token (`brand-text`, #9c5009) erreicht auf
+     Seite/Weiß ~5,3–5,9:1. Auf dunklem Grund (Kopfband) trägt der helle Offset-Streifen
+     (`ring-offset-page`) den Kontrast. Gemessen wird beides in tests-smoke/wcag21-aa-audit.spec.ts. */
   *:focus-visible {
-    @apply outline-none ring-2 ring-brand/60 ring-offset-2 ring-offset-page;
+    @apply outline-none ring-2 ring-brand-text ring-offset-2 ring-offset-page;
   }
 }
 
