@@ -78,11 +78,14 @@ describe("R-0923 · der Hinweis zeigt auf den heutigen Ort des Schalters", () =>
 
   it("der Ort, auf den die Sätze zeigen, existiert: das Häkchen steht unter System", () => {
     const admin = readFileSync(repoPfad("apps/web/src/pages/Admin.tsx"), "utf8");
-    const systemAb = admin.indexOf('section === "system"');
+    const systemMarke = 'section === "system"';
+    const systemAb = admin.indexOf(systemMarke);
     const zeile = admin.indexOf('testId="zeile-stufe2"');
     expect(systemAb, "Admin.tsx hat keinen Abschnitt System").toBeGreaterThan(-1);
     expect(zeile, "das Stufe-2-Häkchen fehlt in Admin.tsx").toBeGreaterThan(systemAb);
-    expect(admin.slice(systemAb, zeile)).not.toContain('section === "');
+    // Zwischen dem Beginn des Abschnitts System (ohne seine eigene Marke) und dem Häkchen beginnt
+    // kein weiterer Abschnitt — sonst stünde das Häkchen in einem anderen.
+    expect(admin.slice(systemAb + systemMarke.length, zeile)).not.toContain('section === "');
   });
 
   for (const sprache of SPRACHEN) {

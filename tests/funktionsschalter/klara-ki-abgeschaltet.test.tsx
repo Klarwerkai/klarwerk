@@ -67,9 +67,10 @@ const NUTZBAR = {
 let statusAntwort: { code: number; rumpf: unknown } = { code: 200, rumpf: NUTZBAR };
 let statusAbrufe = 0;
 let vorherigerFetch: typeof globalThis.fetch;
-let host: HTMLDivElement;
-let root: ReturnType<typeof createRoot>;
-let client: QueryClient;
+// Nur gesetzt, wenn ein Fall wirklich montiert — der reine Regelfall montiert nichts.
+let host: HTMLDivElement | null = null;
+let root: ReturnType<typeof createRoot> | null = null;
+let client: QueryClient | null = null;
 
 beforeEach(() => {
   statusAbrufe = 0;
@@ -95,9 +96,14 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  await act(async () => root.unmount());
-  client.clear();
-  host.remove();
+  if (root) {
+    await act(async () => root?.unmount());
+  }
+  client?.clear();
+  host?.remove();
+  root = null;
+  client = null;
+  host = null;
   globalThis.fetch = vorherigerFetch;
   await i18n.changeLanguage("de");
 });
@@ -112,15 +118,18 @@ async function durchatmen(): Promise<void> {
 
 /** Panel öffnen und eine Frage tippen — danach hängt die Sperre NUR noch am KI-Zustand. */
 async function panelMitFrage(): Promise<void> {
-  host = document.createElement("div");
-  document.body.append(host);
-  root = createRoot(host);
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const neuerHost = document.createElement("div");
+  document.body.append(neuerHost);
+  const neueWurzel = createRoot(neuerHost);
+  const neuerClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  host = neuerHost;
+  root = neueWurzel;
+  client = neuerClient;
   await act(async () => {
-    root.render(
+    neueWurzel.render(
       createElement(
         QueryClientProvider,
-        { client },
+        { client: neuerClient },
         createElement(
           MemoryRouter,
           {
@@ -133,12 +142,12 @@ async function panelMitFrage(): Promise<void> {
     );
   });
   await durchatmen();
-  const oeffnen = host.querySelector<HTMLButtonElement>(
+  const oeffnen = neuerHost.querySelector<HTMLButtonElement>(
     `button[aria-label="${i18n.t("klara.open")}"]`,
   );
   expect(oeffnen, "der Öffnen-Knopf des Klara-Panels fehlt").not.toBeNull();
   await act(async () => oeffnen?.click());
-  const eingabe = host.querySelector<HTMLInputElement>("input");
+  const eingabe = neuerHost.querySelector<HTMLInputElement>("input");
   expect(eingabe, "das Suchfeld des Panels fehlt").not.toBeNull();
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(eingabe, FRAGE);
@@ -148,8 +157,16 @@ async function panelMitFrage(): Promise<void> {
   expect(statusAbrufe, "der KI-Status wurde nie abgefragt").toBeGreaterThan(0);
 }
 
+/** Der Host des montierten Falls — ohne Montage ist jede Abfrage ein Fehler des Falls. */
+function montiert(): HTMLDivElement {
+  if (!host) {
+    throw new Error("kein Panel montiert");
+  }
+  return host;
+}
+
 function kiKnopf(): HTMLButtonElement {
-  const knopf = [...host.querySelectorAll<HTMLButtonElement>("button")].find(
+  const knopf = [...montiert().querySelectorAll<HTMLButtonElement>("button")].find(
     (b) => b.textContent === i18n.t("klara.aiSearch"),
   );
   expect(knopf, "der KI-Knopf des Panels fehlt").toBeDefined();
@@ -157,7 +174,7 @@ function kiKnopf(): HTMLButtonElement {
 }
 
 function hinweis(): HTMLElement | null {
-  return host.querySelector<HTMLElement>("[data-hinweis]");
+  return montiert().querySelector<HTMLElement>("[data-hinweis]");
 }
 
 describe("R-1040 · die Regel (rein)", () => {
@@ -190,7 +207,7 @@ describe("R-1040 · das Klara-Panel sagt dieselbe Lage wie /fragen", () => {
       expect(kiKnopf().disabled).toBe(true);
       expect(hinweis()?.textContent).toBe(satz);
       expect(kiKnopf().title).toBe(satz);
-      expect(host.textContent ?? "").not.toContain(i18n.t("ai.unavailable.hint"));
+      expect(montiert().textContent ?? "").not.toContain(i18n.t("ai.unavailable.hint"));
     });
   }
 
@@ -199,7 +216,7 @@ describe("R-1040 · das Klara-Panel sagt dieselbe Lage wie /fragen", () => {
     await panelMitFrage();
     expect(kiKnopf().disabled).toBe(true);
     expect(hinweis()?.textContent).toBe(i18n.t("ai.unavailable.hint"));
-    expect(host.textContent ?? "").not.toContain(d5kiaus.de["d5kiaus.hinweis"]);
+    expect(montiert().textContent ?? "").not.toContain(d5kiaus.de["d5kiaus.hinweis"]);
   });
 
   it("STATUS UNBEKANNT: sagt, dass der Zustand nicht feststeht — nicht „kein Modell aktiv“", async () => {
