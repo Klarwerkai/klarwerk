@@ -26,12 +26,14 @@ const d = vi.hoisted(() => {
     me: { id: "u1", name: "Pia", email: "p@x.de", role: "admin" } as unknown,
     suche: [{ id: "k1", title: "Ventil F3 prüfen" }] as { id: string; title: string }[],
     bestand: [{ id: "k1", title: "Ventil F3 prüfen" }] as { id: string; title: string }[],
+    luecken: [{ id: "g1" }, { id: "g2" }] as { id: string }[],
   };
   return {
     zustand,
     board: vi.fn(async () => zustand.board),
     notifications: vi.fn(async () => [] as unknown[]),
-    gapsList: vi.fn(async () => [] as unknown[]),
+    gapsList: vi.fn(async () => zustand.luecken),
+    dupSettings: vi.fn(async () => ({ schwelle: 0.8 })),
     suche: vi.fn(async () => zustand.suche),
     kosList: vi.fn(async () => zustand.bestand),
     koGet: vi.fn(async () => ({ id: "k1", title: "Ventil F3 prüfen" })),
@@ -73,6 +75,7 @@ import {
   QueryClientProvider,
   onlineManager,
   useMutation,
+  useQuery,
   useQueryClient,
 } from "../../apps/web/node_modules/@tanstack/react-query";
 import { Fragment, act, createElement, useState } from "../../apps/web/node_modules/react";
@@ -91,6 +94,7 @@ import {
   GETEILTER_STAND_TAKT_MS,
   GETEILTE_LISTEN_TAKT_MS,
   GeteilterStandNachlader,
+  keineEinstellung,
   nachladenFaellig,
 } from "../../apps/web/src/app/GeteilterStandNachlader";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
@@ -123,11 +127,14 @@ async function vergehen(ms: number): Promise<void> {
 // Eine laufende Änderung, deren Ende der Test bestimmt.
 const aenderung = { starten: () => {}, beenden: () => {} };
 
-function Probe(): null {
+function Probe(): JSX.Element {
   useValidationBoard();
   useNotifications();
-  // Volltext der Lücken — KEIN geteilter Stand der Hülle; der Nachlader darf ihn nicht anfassen.
-  useGaps();
+  // Die Lückenliste, wie Risiko- und Aufgabenfläche sie zeigen (`Risk.tsx`, `MyTasks.tsx`) — eine
+  // geteilte LISTE, nachgeladen im Listentakt (Nacharbeit 3, Bens Befund).
+  const luecken = useGaps();
+  // Ein Einstellungsformular unter demselben Präfix wie die Dubletten — darf NIE nachgeladen werden.
+  useQuery({ queryKey: ["duplicates", "settings"], queryFn: d.dupSettings });
   const m = useMutation({
     mutationFn: () =>
       new Promise<void>((fertig) => {
@@ -135,7 +142,11 @@ function Probe(): null {
       }),
   });
   aenderung.starten = () => m.mutate();
-  return null;
+  return createElement(
+    "p",
+    { "data-testid": "luecken" },
+    String((luecken.data as unknown[] | undefined)?.length ?? ""),
+  );
 }
 
 // Örtliche Eingriffe der Listenprobe — ein ungespeicherter Text der Fläche und ein örtlich
@@ -227,6 +238,7 @@ beforeEach(async () => {
   d.zustand.me = { id: "u1", name: "Pia", email: "p@x.de", role: "admin" };
   d.zustand.suche = [{ id: "k1", title: "Ventil F3 prüfen" }];
   d.zustand.bestand = [{ id: "k1", title: "Ventil F3 prüfen" }];
+  d.zustand.luecken = [{ id: "g1" }, { id: "g2" }];
 });
 
 const text = (testid: string): string | null | undefined =>
@@ -280,17 +292,34 @@ describe("R-1029 / R-1674: geteilte Stände werden bei bestätigter Sitzung nach
     expect(kopfbandZaehler()?.textContent).toBe("3");
   });
 
-  it("nur die geteilten Stände werden nachgefragt — die Volltextabfrage der Lücken nicht", async () => {
+  it("Hülle im Hüllentakt, Lückenliste im Listentakt — eine anderswo geschlossene Lücke verschwindet ohne Fokuswechsel", async () => {
     await mount(createElement(Probe));
+    expect(text("luecken")).toBe("2");
     const board = d.board.mock.calls.length;
     const meldungen = d.notifications.mock.calls.length;
     const luecken = d.gapsList.mock.calls.length;
+    const einstellungen = d.dupSettings.mock.calls.length;
     expect(luecken).toBeGreaterThan(0);
+
+    // Eine andere Person schließt Lücke g2. Hier wird weder fokussiert noch neu geladen.
+    d.zustand.luecken = [{ id: "g1" }];
 
     await vergehen(GETEILTER_STAND_TAKT_MS + 1_000);
     expect(d.board.mock.calls.length).toBe(board + 1);
     expect(d.notifications.mock.calls.length).toBe(meldungen + 1);
-    expect(d.gapsList.mock.calls.length, "Volltext bleibt unberührt").toBe(luecken);
+
+    await vergehen(GETEILTE_LISTEN_TAKT_MS);
+    expect(d.gapsList.mock.calls.length).toBeGreaterThan(luecken);
+    expect(text("luecken"), "die geschlossene Lücke ist von der offenen Fläche weg").toBe("1");
+    // Das Einstellungsformular unter `["duplicates"]` blieb in beiden Takten unberührt.
+    expect(d.dupSettings.mock.calls.length).toBe(einstellungen);
+  });
+
+  it("Einstellungsabfragen sind an jedem Präfix ausgenommen", () => {
+    expect(keineEinstellung(["duplicates", "settings"])).toBe(false);
+    expect(keineEinstellung(["validation", "settings"])).toBe(false);
+    expect(keineEinstellung(["duplicates"])).toBe(true);
+    expect(keineEinstellung(["gaps"])).toBe(true);
   });
 
   it("ohne bestätigte Sitzung geht kein einziger Nachlade-Abruf ab", async () => {
