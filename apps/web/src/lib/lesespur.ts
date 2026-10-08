@@ -50,15 +50,26 @@ export function naechsteLesespur(
   };
 }
 
-function speicher(): Storage | null {
+/**
+ * Der Ausschnitt des Sitzungsspeichers, den die Spur braucht. Bewusst ohne `window`/DOM-Typen: die
+ * reine Regel (`naechsteLesespur`) wird auch in der Node-Typprüfung mitgelesen, und dort gibt es
+ * kein `window` (Prüflauf 2a49eb34, TS2304).
+ */
+interface Sitzungsspeicher {
+  getItem(schluessel: string): string | null;
+  setItem(schluessel: string, wert: string): void;
+}
+
+function speicher(): Sitzungsspeicher | null {
   try {
-    return window.sessionStorage;
+    const wurzel = globalThis as unknown as { sessionStorage?: Sitzungsspeicher };
+    return wurzel.sessionStorage ?? null;
   } catch {
     return null;
   }
 }
 
-function lies(s: Storage): Lesespur | null {
+function lies(s: Sitzungsspeicher): Lesespur | null {
   try {
     const roh = JSON.parse(s.getItem(SCHLUESSEL) ?? "null") as Partial<Lesespur> | null;
     if (
