@@ -49,10 +49,23 @@ const HOEHE = 800;
 const KENNUNG = "R-1023b · Messung";
 
 /**
- * Die Flächen, die dieser Auftrag entlastet hat. Leer, solange nichts entlastet ist — F2 sagt dann
- * rot, WELCHE zwei es nach der Messung sein müssen.
+ * Die Flächen, die dieser Auftrag entlastet hat — gewählt NACH der Messung, nicht vorher.
+ *
+ * Lauf nacharbeit-6 (Kandidat 8c39989a, noch ohne Entlastung) ergab die Rangliste: Hilfe 525,
+ * Wissensobjekt bearbeiten 129, Risiken und Lücken 126, Themenkarte 113, Offene Aufgaben 81,
+ * Wissensobjekt lesen 79, Bibliothek 77, Prüfen 38, Erfassen 28, Konflikte 24, Konfliktvergleich 18 …
+ * Das ist der Beleg „vorher" vor jeder Produktänderung. Entlastet sind die zwei Spitzenreiter:
+ *   · Hilfe — Merkmalspillen der Kapitel hinter `hilfe-suchbegriffe-schalter` (`pages/Help.tsx`)
+ *   · Wissensobjekt bearbeiten — Trefferliste daneben hinter `bib-liste-beim-bearbeiten`
+ *     (`components/bibliothek/BibliothekFlaeche.tsx`)
+ * F2 misst weiter gegen die Rangliste des jeweiligen Laufs: rückt eine andere Fläche nach vorn,
+ * wird der Fall rot.
  */
-const ENTLASTET: readonly string[] = [];
+const ENTLASTET: readonly string[] = ["Hilfe", "Wissensobjekt bearbeiten"];
+
+/** Zwei textgleiche Beiträge — die deterministische Erkennung legt daraus eine Doppelung an. */
+const DOPPEL_TITEL = "R-1023b · Messbeitrag Doppelung";
+const DOPPEL_TEXT = "Nach dem Anfahren 10 Sekunden warten, dann die Pumpe entlüften.";
 
 interface Messung {
   fehler: string | null;
@@ -81,6 +94,9 @@ const ZAEHLEN = `() => {
   if (!main) { return { fehler: 'kein <main>', steuer: 0, zustand: 0, schalter: 0, steuerNamen: [], zustandNamen: [] }; }
   const sichtbar = (el) => {
     if (el.closest('[aria-hidden="true"], [hidden], [inert]')) { return false; }
+    // Inhalt eines ZUGEKLAPPTEN <details> blendet Chromium per content-visibility aus — er hat
+    // trotzdem ein Rechteck. checkVisibility() sagt die Wahrheit (Lauf nacharbeit-6 zählte ihn mit).
+    if (typeof el.checkVisibility === 'function' && !el.checkVisibility({ contentVisibilityAuto: true, opacityProperty: true, visibilityProperty: true })) { return false; }
     const r = el.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) { return false; }
     const s = getComputedStyle(el);
@@ -202,11 +218,42 @@ describe("R-1023 (b) · überladene Flächen messen und die zwei schlimmsten ent
       if (seed.statusCode >= 300) {
         throw new Error(`Demobestand: HTTP ${seed.statusCode} ${seed.body.slice(0, 200)}`);
       }
+      // Lauf nacharbeit-6: der Demobestand trägt KEINE Doppelung (F0 rot, der Doppelungsvergleich
+      // blieb ungemessen). Sie entsteht hier über die echte Route: zwei textgleiche Beiträge, die
+      // Erkennung läuft ohne Modell im Hintergrund — gewartet wird auf ihren Befund.
+      for (let i = 0; i < 2; i++) {
+        const neu = await app.inject({
+          method: "POST",
+          url: "/api/kos",
+          headers: { authorization: `Bearer ${token}` },
+          payload: {
+            confidentiality: "intern",
+            title: DOPPEL_TITEL,
+            statement: DOPPEL_TEXT,
+            type: "best_practice",
+            category: "Wartung",
+          },
+        });
+        if (neu.statusCode !== 201) {
+          throw new Error(`Messbeitrag: HTTP ${neu.statusCode} ${neu.body.slice(0, 200)}`);
+        }
+      }
+      for (let i = 0; i < 40; i++) {
+        const liste = await app.inject({
+          method: "GET",
+          url: "/api/duplicates",
+          headers: { authorization: `Bearer ${token}` },
+        });
+        if ((liste.json() as unknown[]).length > 0) {
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 250));
+      }
     });
     if (stand.fehler !== null) {
       return;
     }
-    const kos = await api<{ id: string }[]>("/api/kos");
+    const kos = await api<{ id: string; title: string }[]>("/api/kos");
     const konflikte = await api<{ id: string }[]>("/api/conflicts");
     const doppelungen = await api<{ id: string }[]>("/api/duplicates");
     bestand.kos = kos.length;
@@ -233,7 +280,9 @@ describe("R-1023 (b) · überladene Flächen messen und die zwei schlimmsten ent
       { name: "Hilfe", pfad: "/hilfe" },
       { name: "Profil", pfad: "/profil" },
     ];
-    const ko = kos[0]?.id;
+    // Ein Eintrag aus dem DEMOBESTAND — derselbe Fall wie im Lauf nacharbeit-6, nicht der kurze
+    // Messbeitrag der Doppelung; sonst verglichen sich zwei verschiedene Formulare.
+    const ko = kos.find((k) => k.title !== DOPPEL_TITEL)?.id;
     if (ko !== undefined) {
       flaechen.push({ name: "Wissensobjekt lesen", pfad: `/wissen/${ko}` });
       flaechen.push({ name: "Wissensobjekt bearbeiten", pfad: `/wissen/${ko}?edit=1` });

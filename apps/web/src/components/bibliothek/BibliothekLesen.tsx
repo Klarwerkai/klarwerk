@@ -934,6 +934,7 @@ export function BibliothekLesen({
   onGeloescht,
   hinweisSchonGesagt,
   lesevarianteSchonGesagt,
+  onBearbeiten,
 }: {
   koId: string;
   // Der Text aus dem Suchfeld — er belegt die Frage auf der Fragen-Seite vor (5a: die frühere Karte
@@ -961,6 +962,9 @@ export function BibliothekLesen({
   // Restschuld benannt: `pages/KnowledgeDetail.tsx` gehört nicht zu den Zielpfaden dieses Auftrags
   // (REGELN §3). Die Kennzeichnung ist an beiden Orten dieselbe (`LesevarianteHinweis`).
   lesevarianteSchonGesagt?: boolean | undefined;
+  // AUFNAHME 20260922 · GESAMT-NAVIGATION (R-1023 b): sagt der Fläche, ob gerade bearbeitet wird —
+  // sie klappt dann die Trefferliste daneben ein (`BibliothekFlaeche.tsx`, „Entlastung").
+  onBearbeiten?: ((aktiv: boolean) => void) | undefined;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const [params] = useSearchParams();
@@ -989,6 +993,13 @@ export function BibliothekLesen({
   const reviewReworkContext = isReviewReworkContext(params);
 
   const [edit, setEdit] = useState<EditState | null>(null);
+  // Gesamt-Navigation (R-1023 b): Beginn und Ende des Bearbeitens melden; beim Abbau (anderer
+  // Eintrag, Seitenwechsel) gilt „nicht mehr bearbeitet".
+  const bearbeitet = edit !== null;
+  useEffect(() => {
+    onBearbeiten?.(bearbeitet);
+  }, [bearbeitet, onBearbeiten]);
+  useEffect(() => () => onBearbeiten?.(false), [onBearbeiten]);
   const [studioOpen, setStudioOpen] = useState(false);
   const [studioApplied, setStudioApplied] = useState(false);
   const [err, setErr] = useState<string | null>(null);
