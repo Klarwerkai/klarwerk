@@ -1,9 +1,21 @@
 import { type UseQueryResult, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link2, Paperclip, X } from "lucide-react";
-import { type ChangeEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  type ReactNode,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../../api/client";
-import { type KoDiskussionsbeitrag, endpoints } from "../../api/endpoints";
+import {
+  type KoDiskussionsStelle,
+  type KoDiskussionsbeitrag,
+  endpoints,
+} from "../../api/endpoints";
 import {
   useAudit,
   useConflicts,
@@ -68,6 +80,12 @@ import {
   formatSourceComment,
   isSourceContributionValid,
 } from "../../lib/sourceContribution";
+import {
+  type Stellenblock,
+  stelleAus,
+  stelleZuordnen,
+  stellenbloecke,
+} from "../../lib/stellenbezug";
 import { trustExplainer } from "../../lib/trustExplainer";
 import { useAuthorName } from "../../lib/useAuthorName";
 import { useReadiness } from "../../lib/useReadiness";
@@ -288,6 +306,16 @@ const textareaCls =
 // wie der Rückweg an einer Fassungskarte weiter unten — kein zweiter Knopfstil für dieselbe Grösse.
 const diskussionsKnopfCls =
   "inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted transition-colors hover:text-text disabled:cursor-not-allowed disabled:opacity-50";
+
+/** P-WIKI-STELLENBEZUG: die Beschriftung je Art — als feste Schlüssel, nicht zusammengesetzt. */
+const STELLEN_ART_SCHLUESSEL: Record<KoDiskussionsStelle["art"], string> = {
+  absatz: "stellenbezug.art.absatz",
+  tabelle: "stellenbezug.art.tabelle",
+  bild: "stellenbezug.art.bild",
+};
+
+/** Wie viele Zeichen einer Stelle die Auswahl zeigt — die gespeicherte Stelle ist länger. */
+const STELLEN_AUSWAHL_ZEICHEN = 70;
 
 /** JOB 4146: ein Faden — der Wurzelbeitrag und alles, was daran hängt, in Schreibreihenfolge. */
 interface Diskussionsfaden {
@@ -550,6 +578,37 @@ export function MehrAbschnitte({
     { art: "beitrag" } | { art: "antwort"; bezug: string } | null
   >(null);
 
+  // ================================================================================================
+  // P-WIKI-STELLENBEZUG — DIE RÜCKFRAGE AN ABSATZ, TABELLE ODER BILD.
+  // ================================================================================================
+  //
+  // Die Stellen kommen aus dem Inhalt DIESER Fassung (`stellenbloecke`). Angeboten wird nur, was in
+  // ihr EINDEUTIG ist: zwei wortgleiche Absätze im selben Abschnitt wären schon beim Schreiben eine
+  // Zuordnung, die niemand nachprüfen kann.
+  //
+  // DIE WAHL IST AN DIE FASSUNG GEBUNDEN, in der sie getroffen wurde. Ändert sich der Eintrag
+  // darunter, verfällt sie sichtbar — und Senden ist gesperrt, bis neu gewählt ist. Sie still
+  // fallen zu lassen machte aus der Rückfrage an einen Absatz lautlos eine an das ganze Dokument;
+  // sie still auf die neue Fassung zu übertragen, hängte sie an einen Text, den niemand gewählt hat.
+  const stellen = useMemo(() => stellenbloecke(ko.bodyHtml), [ko.bodyHtml]);
+  const waehlbareStellen = useMemo(() => {
+    const anzahl = new Map<string, number>();
+    // Dieselbe Identität wie `stelleZuordnen`: Art, Abschnitt und Abdruck des vollständigen Inhalts.
+    const schluessel = (s: Stellenblock): string =>
+      `${s.art}\u0000${s.abschnitt}\u0000${s.fingerabdruck}`;
+    for (const s of stellen) {
+      anzahl.set(schluessel(s), (anzahl.get(schluessel(s)) ?? 0) + 1);
+    }
+    return stellen
+      .map((block, index) => ({ block, index }))
+      .filter(({ block }) => anzahl.get(schluessel(block)) === 1);
+  }, [stellen]);
+  const [stellenWahl, setStellenWahl] = useState<{ version: number; index: number } | null>(null);
+  const gewaehlterBlock =
+    stellenWahl && stellenWahl.version === ko.version ? stellen[stellenWahl.index] : undefined;
+  const gewaehlteStelle = gewaehlterBlock ? stelleAus(gewaehlterBlock, ko.version) : undefined;
+  const stelleVerfallen = stellenWahl !== null && gewaehlteStelle === undefined;
+
   const antwortEntwurf = (bezug: string): string => antwortEntwuerfe[bezug] ?? "";
 
   const beitragSetzen = (wert: string): void => {
@@ -604,12 +663,17 @@ export function MehrAbschnitte({
 
   // Die abgesendete Fassung reist als Veränderliche mit, damit `onSuccess` sie noch hat. Sie aus dem
   // Zustand zu lesen wäre genau der Fehler, um den es hier geht.
+  //
+  // P-WIKI-STELLENBEZUG: die gewählte Stelle reist mit. Ein 409 kann hier auch heissen, dass der
+  // Eintrag seit der Wahl eine neue Fassung bekommen hat — dann wird neu geladen, damit die Wahl
+  // sichtbar verfällt, statt beim nächsten Versuch denselben Konflikt zu holen.
   const comment = useMutation({
     mutationFn: (gesendet: string) =>
       endpoints.ko.act(id, {
         action: "comment",
         text: gesendet,
         clientKey: commentKey,
+        ...(gewaehlteStelle ? { stelle: gewaehlteStelle } : {}),
       }),
     onSuccess: (_daten, gesendet) => {
       invalidate();
@@ -621,11 +685,15 @@ export function MehrAbschnitte({
         return;
       }
       beitragSetzen("");
+      setStellenWahl(null);
       setCommentKey(crypto.randomUUID());
     },
     onError: (e) => {
       setDiskussionsFehler(diskussionsFehlerSatz(e));
       setLetzterFehlschlag({ art: "beitrag" });
+      if (gewaehlteStelle && e instanceof ApiError && e.status === 409) {
+        invalidate();
+      }
     },
   });
 
@@ -672,6 +740,10 @@ export function MehrAbschnitte({
       return;
     }
     if (letzterFehlschlag.art === "beitrag") {
+      // Eine verfallene Stelle wird nicht stillschweigend weggelassen (s. `stelleVerfallen`).
+      if (stelleVerfallen) {
+        return;
+      }
       comment.mutate(commentTextSpiegel.current.trim());
       return;
     }
@@ -717,6 +789,69 @@ export function MehrAbschnitte({
       : t("ko.diskussion.version", { version: b.koVersion });
   };
 
+  /**
+   * P-WIKI-STELLENBEZUG — die Stelle eines Beitrags, in drei Teilen:
+   *   · WO sie gewählt wurde (Art, Abschnitt, Fassung) und WAS dort stand — aus dem gespeicherten
+   *     Anker, also auch dann lesbar, wenn die heutige Fassung die Stelle nicht mehr enthält;
+   *   · WO sie heute steht — nur bei genau einem gleichen Treffer, sonst der Satz „nicht
+   *     eindeutig — Zuordnung prüfen" (`stelleZuordnen`, nie über Ähnlichkeit);
+   *   · der Weg zur ALTEN Fassung, wenn die Stelle aus einer früheren stammt.
+   */
+  const stellenbezug = (b: KoDiskussionsbeitrag): JSX.Element | null => {
+    const stelle = b.stelle;
+    if (!stelle) {
+      return null;
+    }
+    const zuordnung = stelleZuordnen(stelle, stellen, ko.version);
+    const zitat =
+      stelle.art === "bild"
+        ? zuordnung.lage === "unklar"
+          ? stelle.text
+          : zuordnung.block.anzeige
+        : stelle.text;
+    const fruehereFassung = stelle.koVersion < ko.version;
+    return (
+      <div data-bib-diskussion-stelle={b.id} className="mt-0.5 text-[11px] text-muted-2">
+        <div>
+          {t("stellenbezug.stelle", {
+            art: t(STELLEN_ART_SCHLUESSEL[stelle.art]),
+            abschnitt: stelle.abschnitt || t("stellenbezug.anfang"),
+            version: stelle.koVersion,
+          })}
+        </div>
+        <blockquote
+          data-bib-diskussion-stelle-zitat={b.id}
+          className="my-0.5 border-l-2 border-hairline pl-2 text-[12px] text-muted"
+        >
+          {zitat}
+        </blockquote>
+        <div
+          data-bib-diskussion-stelle-lage={zuordnung.lage}
+          className={cx(zuordnung.lage === "unklar" && "font-semibold text-trust-crit-text")}
+        >
+          {zuordnung.lage === "dieseFassung"
+            ? t("stellenbezug.hier")
+            : zuordnung.lage === "eindeutig"
+              ? t("stellenbezug.eindeutig", { aktuell: ko.version })
+              : t("stellenbezug.unklar")}
+        </div>
+        {fruehereFassung ? (
+          <button
+            type="button"
+            data-bib-diskussion-stelle-fassung={b.id}
+            onClick={() => {
+              fassungUmschalten(`${ko.id}:${stelle.koVersion}`, true);
+              zumAbschnittSpringen("schnappschuesse");
+            }}
+            className={cx(diskussionsKnopfCls, "mt-1")}
+          >
+            {t("stellenbezug.alteFassung", { version: stelle.koVersion })}
+          </button>
+        ) : null}
+      </div>
+    );
+  };
+
   /** Kopf, Fassungsbezug und Text eines Beitrags — für Wurzel und Antwort dieselbe Bauform. */
   const beitragsInhalt = (b: KoDiskussionsbeitrag): JSX.Element => (
     <>
@@ -726,6 +861,7 @@ export function MehrAbschnitte({
       <div data-bib-diskussion-version={b.id} className="text-[11px] text-muted-2">
         {versionsbezug(b)}
       </div>
+      {stellenbezug(b)}
       <div className="text-[13px] text-text">{b.text}</div>
     </>
   );
@@ -2640,6 +2776,60 @@ export function MehrAbschnitte({
           </ul>
         )}
         <div className="mt-3 space-y-2 border-t border-hairline pt-3">
+          {/* P-WIKI-STELLENBEZUG: die Stelle im Text, an die die neue Rückfrage gehört. Ohne Wahl
+              gilt der Beitrag dem ganzen Dokument — wie jeder Beitrag vor dieser Regel. */}
+          {waehlbareStellen.length > 0 || stelleVerfallen ? (
+            <label className="block text-[12px] text-muted">
+              {t("stellenbezug.waehlen")}
+              <select
+                data-bib-diskussion-stellenwahl=""
+                // Eine verfallene Wahl steht als eigener Wert da: so löst auch die Wahl „Ganzes
+                // Dokument" eine Änderung aus und hebt die Sperre ausdrücklich auf.
+                value={
+                  stelleVerfallen
+                    ? "verfallen"
+                    : gewaehlterBlock && stellenWahl
+                      ? String(stellenWahl.index)
+                      : ""
+                }
+                onChange={(e) =>
+                  setStellenWahl(
+                    e.target.value === "" || e.target.value === "verfallen"
+                      ? null
+                      : { version: ko.version, index: Number(e.target.value) },
+                  )
+                }
+                className="mt-1 h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[12.5px] text-text"
+              >
+                {stelleVerfallen ? (
+                  <option value="verfallen" disabled>
+                    …
+                  </option>
+                ) : null}
+                <option value="">{t("stellenbezug.keine")}</option>
+                {waehlbareStellen.map(({ block, index }) => (
+                  <option key={index} value={String(index)}>
+                    {`${t(STELLEN_ART_SCHLUESSEL[block.art])} · ${
+                      block.abschnitt || t("stellenbezug.anfang")
+                    } — ${
+                      block.anzeige.length > STELLEN_AUSWAHL_ZEICHEN
+                        ? `${block.anzeige.slice(0, STELLEN_AUSWAHL_ZEICHEN)} …`
+                        : block.anzeige
+                    }`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {stelleVerfallen ? (
+            <output
+              aria-live="polite"
+              data-bib-diskussion-stelle-verfallen=""
+              className="block text-[12.5px] text-trust-crit-text"
+            >
+              {t("stellenbezug.neuWaehlen")}
+            </output>
+          ) : null}
           <textarea
             value={commentText}
             onChange={(e) => beitragSetzen(e.target.value)}
@@ -2650,7 +2840,7 @@ export function MehrAbschnitte({
           <Button
             variant="primary"
             data-bib-diskussion-senden=""
-            disabled={comment.isPending || commentText.trim().length === 0}
+            disabled={comment.isPending || commentText.trim().length === 0 || stelleVerfallen}
             onClick={() => comment.mutate(commentText.trim())}
           >
             {t("ko.commentAdd")}
