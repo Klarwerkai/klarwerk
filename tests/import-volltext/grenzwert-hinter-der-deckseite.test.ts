@@ -219,3 +219,78 @@ describe("Nutzerweg · Import-Körper → Suche → Relevanztor → Auszug → b
     expect(antwort.gap).toBeNull();
   });
 });
+
+// Nacharbeit 1: Dieselbe Rechte- und Statusgegenprobe wie `tests/ask-volltext/vollkette-und-rechte`
+// R1–R3, aber mit einer Frage, die die Und-Verknüpfung (R-0473) erfüllt. Dort scheitern die Fälle
+// unverändert VOR dem Modellaufruf („How many …" bindet „many"), also bevor ein Auszug entsteht —
+// sie belegen damit nichts über den Dokumenttext. Hier steht der Auszug wirklich zur Wahl.
+describe("Rechte · Vertraulichkeit und Prüfstand gelten vor dem Auszug", () => {
+  async function aufbauen(opts: { vertraulich?: boolean; validiert: boolean }) {
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    await koService.activateSearchProjectionV2();
+    const ko = await koService.create({
+      title: TITEL,
+      statement: AUSSAGE,
+      type: "best_practice",
+      category: "Wartung",
+      author: "anna",
+      bodyHtml: handbuchHtml(),
+      ...(opts.vertraulich ? { confidentiality: "vertraulich" as const } : {}),
+    });
+    if (opts.validiert) {
+      await koService.setValidationState(ko.id, { trust: 60, status: "validiert" });
+    }
+    // Ein unbedenkliches, validiertes Objekt mit beiden Fragebegriffen und OHNE den Grenzwert:
+    // so findet in jedem Fall ein Modellaufruf statt, und „der Wert steht nicht im Prompt" ist eine
+    // Aussage über einen echten Prompt.
+    const harmlos = await koService.create({
+      title: "Nachspannventil Haltedruck Übersicht",
+      statement: "Der Haltedruck am Nachspannventil wird je Anlage im Handbuch festgelegt.",
+      type: "best_practice",
+      category: "Wartung",
+      author: "bea",
+    });
+    await koService.setValidationState(harmlos.id, { trust: 90, status: "validiert" });
+    const { client, prompts } = mitschreiber(`${ZIELZEILE} [1]`);
+    const reasoner = new Reasoner(new ModelProvider(client));
+    await erteileKiFreigabe(reasoner);
+    const ask = new AskService({
+      reasoner,
+      koService,
+      gaps: new InMemoryGapRepo(),
+      audit: new AuditService({ repo: new InMemoryAuditRepo() }),
+    });
+    return { ask, ko, harmlos, prompts };
+  }
+
+  it("R1 · ein VERTRAULICHES Objekt gibt seinen Grenzwert nicht an das Modell", async () => {
+    const { ask, ko, harmlos, prompts } = await aufbauen({ vertraulich: true, validiert: true });
+    const antwort = await ask.ask(FRAGE, "anna", "de");
+    expect(prompts()).toHaveLength(1);
+    const prompt = prompts()[0] ?? "";
+    expect(prompt).toContain(harmlos.title);
+    expect(prompt).not.toContain("185 bar");
+    expect(prompt).not.toContain(TITEL);
+    expect(prompt).not.toContain(ko.id);
+    expect(antwort.result.sources).not.toContain(ko.id);
+  });
+
+  it("R2 · `validatedOnly`: ein UNVALIDIERTES Objekt gibt seinen Grenzwert nicht an das Modell", async () => {
+    const { ask, ko, harmlos, prompts } = await aufbauen({ validiert: false });
+    const antwort = await ask.ask(FRAGE, "anna", "de", { validatedOnly: true });
+    expect(prompts()).toHaveLength(1);
+    const prompt = prompts()[0] ?? "";
+    expect(prompt).toContain(harmlos.title);
+    expect(prompt).not.toContain("185 bar");
+    expect(antwort.result.sources).not.toContain(ko.id);
+  });
+
+  it("R3 · KALIBRIERUNG: validiert und nicht vertraulich kommt der Grenzwert an", async () => {
+    // Ohne diesen Fall wären R1 und R2 auch dann grün, wenn der Auszug gar nicht mehr liefe.
+    const { ask, ko, prompts } = await aufbauen({ validiert: true });
+    const antwort = await ask.ask(FRAGE, "anna", "de", { validatedOnly: true });
+    expect(prompts()).toHaveLength(1);
+    expect(prompts()[0] ?? "").toContain("maximal 185 bar");
+    expect(antwort.result.sources).toContain(ko.id);
+  });
+});
