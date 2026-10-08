@@ -444,6 +444,8 @@ export type {
   // AUFTRAG-mega21 Block A: der Vorgangs-Datensatz (Eigentümer, Inhaltsabdruck, Zustand).
   KoCreateOperation,
   KoCreateOperationState,
+  // R-1107: der Verweis eines aufgegangenen Artikels auf den verbleibenden.
+  KoMergedInto,
   KoSource,
   KoSourceKind,
   KoSourceRestrictions,
