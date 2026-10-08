@@ -493,16 +493,29 @@ type Panelbefund = {
 // GEMESSEN, NICHT GESETZT: Arbeitsprüfung 212444b5d55f43d6b89ec20ca48b5085, L3c-Protokoll
 // „de: Korpus 212 (davon 77 FAQ) → 12 von 196 punktenden Einträgen gehen an die KI, davon 3 aus
 // der FAQ", „en: … 12 von 42 … davon 0", „nl: … 12 von 40 … davon 0".
+//
+// NACHGEFÜHRT VON AUFNAHME gesamt-hilfen, Nacharbeit 16 — gemessen, nicht gesetzt, dieselbe Bauart
+// wie JOB 4071 darüber. Prüflauf am Kandidaten aaeaa0cf, L3c-Protokoll wörtlich: „de: Korpus 217
+// (davon 77 FAQ) → 12 von 199 punktenden Einträgen gehen an die KI, davon 2 aus der FAQ", „en: …
+// 12 von 42 … davon 0", „nl: … 12 von 41 … davon 0". `ausFaq` in DEUTSCH fällt von 3 auf 2. Die
+// FAQ ist unverändert (77). Verschoben hat sich die REIHENFOLGE, weil Nacharbeit 13/15 Registry-Texte
+// berichtigt hat, die Ben als falsch belegt hatte: die Löschhilfe (`loeschhilfe.deleteKo.body`), die
+// Entwurfs-Erklärung und die Erklärung zum Konfliktformular (`abschnittshilfe.*`). Die neue
+// Konflikthilfe trifft mit „zur“ („zur Meldung“) ein Wort mehr der Prüffrage. Welcher Eintrag genau
+// den FAQ-Eintrag verdrängt, nennt das Protokoll nicht namentlich. Die Antwortgrundlage bleibt bei
+// zwölf Einträgen; was schrumpft, ist wieder nur der ANTEIL, den nur Deutsch bekommt. Der Pin
+// steht auf dem gemessenen Wert, NICHT gelöscht: die FAQ-Lücke der anderen Sprachen (L5) besteht
+// unverändert fort.
 const PANEL: ReadonlyMap<string, Panelbefund> = new Map<string, Panelbefund>([
   [
     "de",
     {
       treffer: 12,
-      ungeschnitten: 196,
-      ausFaq: 3,
+      ungeschnitten: 199,
+      ausFaq: 2,
       satz:
-        "Aus 212 Einträgen (135 Registry + 77 FAQ) punkten 196; die besten 12 gehen an die KI, " +
-        "3 davon aus der FAQ.",
+        "Aus 217 Einträgen (140 Registry + 77 FAQ) punkten 199; die besten 12 gehen an die KI, " +
+        "2 davon aus der FAQ.",
     },
   ],
   [
