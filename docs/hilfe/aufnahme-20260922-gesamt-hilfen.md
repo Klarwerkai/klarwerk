@@ -8,6 +8,9 @@ Nacharbeit 6 am Kandidaten `33aad029`: Klara lädt die Bibliotheksartikel erst b
 (`lib/klaraBibliothek.ts`), weil sie statisch eingebunden den Eintritt über den Deckel aus R-0801
 hoben (gemessen 1403861 B gegen 1360000 B); im Diktieren-Artikel (EN) ersetzt „goes“ das Wort
 „flows“ (Wortwahlregel).
+Nacharbeit 10 am Kandidaten `1a6d1d1a` (Befund Bens): Die vorhandenen Hilfen sind den heutigen
+Feldern und Abschnitten zugeordnet, eingeteilt in erledigt, bewusst ersetzt, fehlend und entfallen
+(Abschnitt „Zuordnung der Hilfen zu Feldern und Abschnitten“).
 Nacharbeit 7 am Kandidaten `4405cfb3` (Befunde Bens):
 - **R-0943:** Klaras KI-Grundlage nimmt jetzt auch Bibliotheksauszüge (je Artikelteil einer,
   `bibliothekAuszuege`). Höchstens drei kommen in die zwölf Schnipsel (`klaraGrundlage`). Sie füllen
@@ -48,7 +51,7 @@ vorhandenen bzw. neuen Testdateien, die der Prüflauf ausführt.
 | Anliegen | Stand | Geliefert (Commit · Ort) | Grenze / offen |
 |---|---|---|---|
 | **R-0443** Seite „So arbeitet Klarwerk" | geliefert in Nacharbeit 5 | Eigene Seite `/so-arbeitet-klarwerk` (`pages/Arbeitsweise.tsx`, Texte `texte/arbeitsweise.ts`, DE/EN/NL) für alle angemeldeten Rollen: Aufbau des Wissensnetzes (Knoten, Themen, gesetzte Fachbeziehungen, Stand) und Arbeitsweg (Erfassen → Prüfen → Nutzen → Aktuell halten → Lücken schließen) mit rollengerechtem Weg in jeden Bereich. Sie verwendet die gelieferte Vorführsicht `SoArbeitetKlarwerk` (`pages/Stufe2.tsx`, R-1983, `976142be`) mit den Daten von `/api/graph` wieder. Erreichbar über den Einstieg oben auf `/hilfe`. | Kein eigener Menüpunkt (Erklärseite wie `/einstieg/:thema`). Die Bauteil-Zählung in `tests/app/mega84-…` ist dafür um eins nachgeführt (gerechnet, nicht gemessen). |
-| **R-0888** ?-Hilfen an Feldern und Abschnitten | geliefert für die genannten Stellen | `HelpTip` (`components/HelpTip.tsx`), Erfassen `lib/captureHelp.ts` (23 Kurzhilfen), Prüfbereich `lib/reviewHelp.ts` (26 Kurzhilfen) (SCRUM-404/406/407); seit Nacharbeit 3 je mit konkretem Beispiel in Klara. | **Beleglücke, keine fehlende Funktion:** `docs/hilfe/HILFE-REGISTER.md` bilanziert mit Stand 05.07. 79 Überschriften, davon 49 ohne ?-Hilfe; der Generator liegt nicht im Repo. Heutige Quelltextzählung (08.10., Grep, kein Generator): 77 Vorkommen von `SectionLabel` in 29 Dateien und 53 Vorkommen von `HelpTip` in 27 Dateien. `SectionLabel` trägt keine Hilfe-Eigenschaft (`components/ui.tsx:138`); welche Überschrift eine ?-Hilfe neben sich hat, lässt sich aus dieser Zählung nicht ableiten. **Eine heutige Abdeckung auf Feld- und Überschriftenebene ist damit weiter nicht belegt.** |
+| **R-0888** ?-Hilfen an Feldern und Abschnitten | teilweise; Form bewusst ersetzt | Erfassen `lib/captureHelp.ts` (23), Prüfbereich `lib/reviewHelp.ts` (26) (SCRUM-404/406/407); seit Nacharbeit 3 je mit konkretem Beispiel in Klara. Das „?“ neben dem Feld ist seit Pedis Entscheidung vom 04.09. (JOB 3060, `components/HelpTip.tsx:5-10`) durch das „?“-Menü der Fläche bzw. die Seitenhilfe im Zahnrad ersetzt. Zuordnung je Feld und Abschnitt: Abschnitt „Zuordnung der Hilfen zu Feldern und Abschnitten“ (Nacharbeit 10). | **Tatsächlich fehlend** (Nacharbeit 10): die zwölf Erklärungen der Wissensobjekt-Seite stehen an keiner Fläche, nur in Klaras Suche; zwei davon passen nicht mehr zur Oberfläche. Von den 79 Überschriften des Hilfe-Registers haben 38 heute keine eigene Hilfe (25 davon auf Stufe-2-Flächen). |
 | **R-0890** Bibliothek nach festem Bauplan | geliefert (Nacharbeit 3 und 5) | `lib/hilfeBibliothek.ts`, fünf Teile nach dem Bauplan aus Lieferung 1 (`docs/qm/HILFE_LIEFERUNG-1_GLIEDERUNG-UND-FAQ_2026-07-04.md:14-20`), DE/EN/NL: 22 Bereichsartikel (unter jeder Kapitelkarte auf `/hilfe`) und **21 Funktionsartikel** (Nacharbeit 5; Nacharbeit 7: „Eine Antwort weitergeben“, Abschnitt „Funktionen ausführlich“, gegliedert nach den Teilen der Quelle) — darunter eigene Artikel für Diktieren, das geführte Interview und die Wissensarten. `GLIEDERUNG` ordnet jeden der 70 Punkte B0-1 … B10-4 einem Artikel zu; je Zuordnung muss ein Stichwort in allen drei Sprachen im Artikel stehen (`tests/hilfe-bibliothek/bibliothek-bauplan.test.tsx` G1–G4, Punkte aus dem Quelldokument gelesen). Alle Artikel sind durchsuchbar — auf `/hilfe` und in Klaras Suchfeld (S1–S3, `tests/hilfe-elementbeispiel/…` E5). | Vier Punkte ohne Artikel, je mit nachgemessener Art (seit Nacharbeit 7; B5-6 hat jetzt seinen Artikel): B2-9 (Prüfen als Experte — laut Rollenvertrag kein Prüfrecht), B10-1 (Glossar — keine solche Fläche), B10-3 (Missverständnisse — fester fünfter Teil jedes Artikels), B10-4 (Schnellwege „Ziel → Klickweg“ — keine solche Sammlung; die Schnellwahl ⌘K springt nur zu Seiten und Einträgen). Glossar und Schnellwege sind Sammlungen der Quelle, keine Funktionen der Anwendung; ob sie als eigene Hilfeinhalte gebaut werden sollen, ist eine offene Produktentscheidung. Zusammengefasste Funktionsartikel decken mehrere Punkte ab, wenn das Stichwort jedes Punkts darin steht. Die Wissensarten folgen der heutigen Auswahl (`ktype.*`: Intuition, Best Practice, Lernkurve, Technik, Negativwissen); die ältere Kurzhilfe `chelp.knowledgeType` nennt andere Arten — Abweichung im Bestand, nicht in diesem Auftrag geändert. Eine Fachsichtung durch Menschen steht aus. |
 | **R-0924** Fragenkatalog je Seite/Funktion mit Antworten | geliefert | Katalog: Lieferung 1 (C). Antworten: `lib/faqContent.ts` (77, DE, Klaras Wissensbasis). Auf `/hilfe`: Lesefassung `lib/hilfeFaq.ts`, 36 Fragen aus allen zwölf Bereichen, DE/EN/NL, Anwendersprache. | Nicht auf `/hilfe` übernommen sind 41 Fragen (Liste unten), weil ihre Antwort Rollenmechanik erklärt oder eine Fläche bzw. Beschriftung nennt, die am heutigen Quelltext nicht mehr so besteht oder hier nicht nachgeprüft wurde. Klara führt alle 77 auf Deutsch weiter. |
 | **R-0935** eingebaute Hilfe: Themenkarten, Suche, zwei Sprachen, Direktsprung, FAQ, Startführung | geliefert | Themenkarten mit Suche und „Bereich öffnen": `pages/Help.tsx`, `lib/helpTopics.ts` (Texte DE/EN/NL). Startführung: Einstiegsführung auf `/hilfe` (JOB 4022 `db9aa4d2`). FAQ-Sammlung in DE/EN/NL (Nacharbeit 3). Nacharbeit 5: die Suche durchsucht auch die Bibliotheksartikel (Feld `suchtext` in `filterHelpTopics`); ein Treffer im Artikel öffnet ihn. | Klara findet die Artikel im Suchfeld und im Zeige-Modus über die Beschriftung. Seit Nacharbeit 7 gehen höchstens drei Auszüge auch in die zwölf KI-Schnipsel, ohne eine FAQ-Antwort zu verdrängen (`klaraGrundlage`). Jeder Funktionsartikel auf `/hilfe` führt rollengeprüft in seinen Bereich. |
@@ -56,7 +59,7 @@ vorhandenen bzw. neuen Testdateien, die der Prüflauf ausführt.
 | **R-0942** Ausklappfläche statt sperrendes Fenster | geliefert in diesem Lauf | s. oben. Kleine Bildschirme: N-0033 (JOB 3144 `ee189360`, `w-[min(340px,calc(100vw-2.5rem))]`), Chromium-Matrix `tests/klara-webhilfe-schmal/klara-hilfe-chromium.test.ts`. | Den in der Quelle verlangten Gegentest „markerlose Tastatur-Fokusfalle" gibt es nicht. Die Fläche hat bewusst **keine** Fokusfalle: Tab verlässt sie, weil sie nicht sperrt. |
 | **R-0943** Assistent erklärt Seite, Felder, markierte Begriffe, ehrliche Lücke | geliefert | `KlaraAssistant.tsx`: Seite (`pageEntryFor`), Feld (`data-help`-Fokus), Markierung (`explainSelection`). Antworten aus Registry und FAQ, seit Nacharbeit 7 auch aus Auszügen der Hilfebibliothek (`klaraGrundlage`, FAQ-Antworten werden nicht verdrängt). Ohne Grundlage keine KI-Antwort (`aiNoGrounding`). Prüfung: `tests/app/f0304-klara-assistenzflaeche.test.tsx`. | — |
 | **R-0966** Kurzanleitung in fünf Minuten | geliefert (Dokument) | `docs/onboarding/user-quickstart.md`: Was ist Klarwerk, In 5 Minuten starten, Arbeitskreis & wer was darf, ehrliche Grenzen. | Ein Sichtungs- oder Abnahmebeleg fehlt weiterhin. |
-| **R-1017** Erklärung an der Stelle des Stockens | teilweise | ?-Hilfen am Element (R-0888), Seitenhilfe je Seite im Zahnrad (SEITENHILFE-LÜCKEN), Klara mit Feldkontext. | Die in OFFEN.md U4/mega92 Block E verlangte Erhebung „welche Flächen tragen eine Hilfe" liegt für Seiten vor (SEITENHILFE-LÜCKEN), für Felder nicht. |
+| **R-1017** Erklärung an der Stelle des Stockens | teilweise | ?-Hilfen am Element (R-0888), Seitenhilfe je Seite im Zahnrad (SEITENHILFE-LÜCKEN), Klara mit Feldkontext. | Die in OFFEN.md U4/mega92 Block E verlangte Erhebung „welche Flächen tragen eine Hilfe“ liegt seit Nacharbeit 10 auch für Felder und Abschnitte vor (Abschnitt „Zuordnung …“, Gegenprobe `tests/hilfe-zuordnung/hilfen-an-der-stelle.test.ts`). Offen sind die dort als „fehlend“ geführten Stellen. |
 | **R-1031** Synonymsuche | geliefert (Grundform) | `KLARA_SYNONYMS` und tolerante Suche: `lib/klaraRegistry.ts:241-330`. Wortzerlegung/Synonyme als eigener Auftrag („Wortzerlegung, Synonyme und fachliche Komposita", `dab4e20c`, 1.0.0-beta.1.659). | Die Quelle verweist auf eine Synonymtabelle Pedis („um deine Tabelle"). Ob diese Tabelle vorliegt und vollständig eingepflegt ist, ist **nicht belegt**. |
 | **R-1038** weiterführendes Assistenten-Konzept | Konzept geliefert in Nacharbeit 3 | `docs/klara/assistenten-konzept-fuehrung.md` | Nur Konzept; gebaut ist davon nichts. Offene Produktentscheidungen sind dort benannt und nicht getroffen. Eine Berater-Lieferung 4 liegt nicht vor und wird nicht behauptet. |
 | **R-1671** In-App-Hilfe zweisprachig, durchsuchbar (FE-FND-05) | geliefert | wie R-0935. Kapitel, FAQ und Bibliothek DE/EN/NL, ISO-Kapitel DE/EN. | — |
@@ -72,6 +75,83 @@ vorhandenen bzw. neuen Testdateien, die der Prüflauf ausführt.
 | **DOK1-R** | geliefert | JOB 3263 `d172cefc`: `tests/dok1-export-wahrheit/faq-export-rollenausnahme.test.ts` unterscheidet Lesen und Exportieren (`action` „read" bzw. „export"). Der `/hilfe`-Anschluss wird über `faq-anzeigeweg.test.tsx` am Klara-Weg belegt. | Auf `/hilfe` steht die Exportregel in Anwendersprache (`lib/hilfeFaq.ts`, `faq.bibliothek.6`, `faq.vertrauen.5`); ihre Rollen sind gegen `policy.ts` und `library-routes.ts` gehalten (`hilfe-faq-anwendersprache.test.ts` A4/A5). |
 | **TEST-A18** Verständlichkeit, Hilfe, Fehlerrückmeldungen | teilweise | Interne Begriffe von `/hilfe` entfernt (JOB 4022/4067/4071), Wächter `tests/hilfe-anwendersprache/wortwahl-waechter.test.ts`. | Außerhalb von `/hilfe` stehen in ?-Hilfen weiter „Peer-Prüfung"/„Peer-Bewertung" (`woerterbuch/de.ts` u. a. bei `:3792`, `:6548`, `:6554`). Ob das unter den Befund „Peers" fällt, ist **nicht entschieden**. Eine erneute Gesamtprüfung A18 liegt nicht vor. |
 | **SEITENHILFE-LÜCKEN** | geliefert | JOB 3741 `f32b14a4`, JOB 3980 `2cd83543`. `tests/seitenhilfe-luecken/*`. | — |
+
+## Zuordnung der Hilfen zu Feldern und Abschnitten (R-0888 / R-1017, Nacharbeit 10)
+
+Erhoben am Quelltext des Arbeitsbaums am 08.10.2026, ohne eigenen Prüflauf. Die Aussagen zu den
+dichten Flächen und zu den entfallenen Überschriften hält
+`tests/hilfe-zuordnung/hilfen-an-der-stelle.test.ts` (Z1–Z6) am Quelltext fest.
+
+**Die entschiedene Form.** Pedi hat am 04.09. die Sprechblase neben dem Feld abgelehnt: „Erklärung
+gehört hinter Zahnrad/Profil, nicht ins Sichtfeld“. Belegt ist das in `components/HelpTip.tsx:5-10`
+(JOB 3060) und im Wächter `tests/seitenhilfe-luecken/erster-weg-hat-seitenhilfe.test.tsx:21-23`;
+der Originalwortlaut selbst liegt nicht im Repo. Diese Entscheidung ist jünger als die Quelle zu
+R-0888 (03.07.). Das „?“ am Element ist deshalb **bewusst ersetzt**. Die Erklärung erreicht man
+heute an derselben Fläche auf drei Wegen:
+(a) im „?“-Menü der Fläche (Erfassen-Blatt, Prüfkopf);
+(b) in der Seitenhilfe im Zahnrad: Jeder `HelpTip` und jede Kartenhilfe (`Detailkarte` mit `hilfe`)
+meldet sich dort an;
+(c) über Klara, die beim Antippen eines Elements mit Anker (`data-help`) dessen Erklärung samt
+Beispiel zeigt.
+Erledigt heißt unten: Das Element oder der Abschnitt hat auf einem dieser Wege eine eigene
+Erklärung.
+
+### Die dichten Flächen je Element (R-0888: „Prüfbereich und Erfassen“)
+
+| Fläche | Hilfequelle | Weg an der Stelle | Stand |
+|---|---|---|---|
+| Erfassen (`/erfassen`, `/erfassen/vordertuer`, `/erfassen/neu` → `components/erfassen/Blatt.tsx`) | alle 23 `chelp.*` + 9 eigene Themen (Bilder, Vertraulichkeit, Kategorie, Validierungen, Prüfer, Kernaussage, Hilfen, Dateisuche, Dateisprache) + 5 KI-Werksaktionen = `BLATT_HILFE_THEMEN` | „?“-Werkzeug des Blattes (`Blatt.tsx:3007`, `blatt-hilfe-<id>`) und Seitenhilfe (`Blatt.tsx:2473`); „Entwurf speichern“/„Einreichen“ zusätzlich am Knopf (`KnopfUnterschied.tsx`); Klara-Anker `cap:tellRaw`, `cap:interview`, `cap:knowledgeType`, `cap:tagsField` im Arbeitsraum | erledigt (Form bewusst ersetzt) · Z1, Z4 |
+| Prüfbereich (`/validierung`) | 11 `vhelp.*`: originFilter, reviewFocus, filters, mineOnly, signals, approve, query, reject, feedbackForm, assign, markTrue | „?“-Menü im Prüfkopf (`Validation.tsx:1520`; SCRUM-406: „an EINEM Ort statt als sieben ?-Symbole“); Klara-Anker `rev:filters`, `rev:reviewFocus`, `rev:originFilter`, `rev:mineOnly` | erledigt (Form bewusst ersetzt) · Z2, Z4 |
+| Konflikte (`/konflikte`) | 3 `vhelp.*`: conflictEscalate, conflictSecondOpinion, conflictResolve | „?“-Menü im Prüfkopf (`Conflicts.tsx:214`) | erledigt · Z2 |
+| Wissensobjekt (`/wissen/:id` → `BibliothekLesen`, „Mehr“-Blatt `MehrAbschnitte`) | 12 `vhelp.*`: reportConflict, conflictForm, sourcesLevel2, sourceFields, sourceAdd, sourceSearch, contribution, helpful, validity, transfer, deleteKo, stillValid | nur die Seitenhilfe der Seite (`KnowledgeDetail.tsx:105`, `seitenhilfe.wissen`) und Klaras **Suche**; kein „?“-Menü, keine Kartenhilfe, kein Anker | **fehlend an der Stelle** · Z3 |
+
+Zu den zwölf Erklärungen der Wissensobjekt-Seite:
+- **Bedienelement vorhanden:**
+  - Konflikt melden (`ko.mehr.konflikt`)
+  - Quellen beschreiben und hinzufügen (`ko.sourceAdd`)
+  - extern suchen (`ext.search`)
+  - Beitrag melden (`ko.mehr.beitrag`)
+  - Autor übertragen (`ko.transferTitle`)
+  - Gültigkeit (`ext.validity.*`)
+  - „Hat geholfen“ (`ask.helpful`)
+  - Löschen (`ko.deleteButton`)
+- **Kein Bedienelement mehr:** „Noch gültig“ (`ko.stillValid`). Die Leseansicht bietet stattdessen
+  „Re-Validierung starten“ (`lib.revalidate`), eine andere Handlung (Z3).
+- **Text widerspricht der Oberfläche:** `vhelp.deleteKo` sagt „endgültig“. Gelöschte Beiträge liegen
+  aber 30 Tage im Papierkorb (`adm.trash.help`).
+- **Folge:** Beide Texte findet Klara heute in ihrer Suche. Bevor die Erklärungen an die Fläche
+  kommen, müssen diese beiden Texte geklärt werden. Das ist eine inhaltliche Entscheidung und wurde
+  hier nicht getroffen.
+
+### Die 79 Überschriften des Hilfe-Registers (Stand 05.07.) — heute
+
+Quelle: `docs/hilfe/HILFE-REGISTER.md` Teil 1. Für jeden Schlüssel wurde geprüft, ob eine Fläche ihn
+heute zeichnet und ob der Abschnitt auf einem der Wege (a)–(c) eine eigene Erklärung hat.
+
+| Seite | erledigt (eigene Hilfe) | fehlend (nur Seitensatz und Klara-Suche) | entfallen |
+|---|---|---|---|
+| Verwaltung (15) | alle 15. Seit dem 05.07. neu belegt: `adm.seedTitle` (Kartenhilfe, solange Demodaten ladbar), `adm.createTitle`, `adm.auditTitle` | — | — |
+| Analytics (6) | `ana.exec.title`, `health.title`, `ana.impact`, `ana.audit` | `ana.byType`, `ana.weekly` | — |
+| Fragen (2) | `ask.sources` (seit 05.07. `ask.help.sources`) | `ask.steps` | — |
+| Erfassen (5) | `capture.raw` (`chelp.tellRaw`), `capture.readyTitle` ×2 (`chelp.readiness`) | `capture.resumeTitle`, `ext.title` | — |
+| Externes Wissen (1) | — | `extpage.resultsTitle` | — |
+| Wissensobjekt (18) | — | `ko.statement`, `ko.conditions`, `ko.measures` (`KoRead.tsx`), `ko.sourcesTitle` (`MehrAbschnitte.tsx`; Erklärung `vhelp.sourcesLevel2` liegt vor, steht aber nicht dort) | 14: `ko.conflictTitle`, `ko.helpfulTitle`, `ko.sourceTitle`, `ko.provenance`, `ko.couple.title`, `ext.validity.title`, `ko.lineageTitle`, `ko.relatedTitle`, `ko.history`, `ko.evidenceTitle`, `ko.snapshotsTitle`, `ko.comments`, `ko.attachments`, `ext.title` (Umbau auf die Leseansicht, Z6) |
+| Lebenszyklus (3) | — | `lcy.assetTitle`, `lcy.pendingTitle`, `lcy.pathTitle` | — |
+| Risiko (4) | alle 4 | — | — |
+| Stufe 2 (25; Verwaltung + Schalter) | — | alle 25 Abschnitte (Output, Import, Management, QM). Die Seiten tragen nur ihre Seitenhilfe (`seitenhilfe.output/import/kapital/graph`) | — |
+| **Summe 79** | **27** | **38** (13 außerhalb von Stufe 2) | **14** |
+
+Grenzen dieser Erhebung:
+- **Am Quelltext, nicht live:** Die Spalte „erledigt“ beruht auf der Lesung des Quelltexts (Aufruf
+  von `HelpTip` bzw. Kartenhilfe am Abschnitt). Gemounted geprüft sind davon die Seiten aus
+  SEITENHILFE-LÜCKEN (JOB 3741/3980) und die Verwaltungskarten (`tests/seitenhilfe-admin/`).
+- **Seitenebene:** Jeder Menüpunkt hat einen Erklärsatz im Zahnrad
+  (`tests/seitenhilfe-navkapitel/jeder-menuepunkt-hat-einen-erklaersatz.test.ts`).
+- **„Fehlend“ heißt:** keine eigene Erklärung für diesen Abschnitt. Es heißt nicht, dass die Seite
+  ohne Hilfe ist.
+- **Nicht erhoben:** Überschriften und Felder, die nach dem 05.07. dazugekommen sind und in keinem
+  der beiden Kataloge stehen. Eine Vollerhebung bräuchte den Generator des Registers, und der liegt
+  nicht im Repo.
 
 ## Abgrenzung zu anderen Aufträgen
 
@@ -103,7 +183,10 @@ das es nicht gibt; `faq.meta.3` eine „Schnellwege-Sammlung“, die es auf `/hi
   R-1038 **keine** zwingende Voraussetzung; diese Inhalte sind in Nacharbeit 3 aus dem vorhandenen
   Bestand erarbeitet. Eine fachliche Sichtung der neuen Texte durch Menschen steht aus.
 - Pedis Synonymtabelle (R-1031) ist im Repo nicht auffindbar. Ihre Übernahme ist nicht belegt.
-- R-0888/R-1017: Die Abdeckung auf Feldebene ist nicht belegt (siehe Zählung oben).
+- R-0888/R-1017: Die Zuordnung je Feld und Abschnitt liegt seit Nacharbeit 10 vor (Abschnitt
+  „Zuordnung …“). Nicht erhoben sind Felder und Überschriften, die weder im Hilfe-Register vom 05.07.
+  noch in den beiden Hilfekatalogen stehen. Der Generator des Registers liegt nicht im Repo, eine
+  neue Vollerhebung aller Überschriften fehlt deshalb.
 - Ein Live-Abnahmebeleg für N-0033, N-0042, N-0086 nach Behebung fehlt; die Quelle meldet die
   Gegenprüfung als offen.
 - Der Lieferbeleg dieses Laufs (Fassung, Livestand) entsteht erst nach Veröffentlichung.
