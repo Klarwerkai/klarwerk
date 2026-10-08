@@ -312,7 +312,7 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     pfad: "/api/ask",
     art: "zurueckgestellt",
     grund:
-      "Die Frage an den Bestand. Sie hat zwei Zweige (Sitzung und Add-on-Schlüssel) mit unterschiedlichem Rechteweg; eine Zeile könnte nur einen messen und verschwiege den anderen. (Gefahren wird sie in JOB 4113 sehr wohl — als Vorbereitung der Zeilen zu `POST /api/ask/helpful` und `PUT|DELETE /api/gaps/:id`; abgenommen ist damit nicht sie, sondern was aus ihr entsteht.)",
+      "Die Frage an den Bestand. Sie hat zwei Zweige (Sitzung und Add-on-Schlüssel) mit unterschiedlichem Rechteweg; eine Zeile könnte nur einen messen und verschwiege den anderen. (Gefahren wird sie in JOB 4113 sehr wohl — als Vorbereitung der Zeilen zu `POST /api/ask/helpful` und `PUT|DELETE /api/gaps/:id`; abgenommen ist damit nicht sie, sondern was aus ihr entsteht.) aufnahme:20260922:gesamt-leserechte: der SITZUNGSzweig ist mit sechs Akteuren und echtem Bestand (internes Objekt als Quelle, vertrauliches nie, keine Torlage für Unbefugte) in `tests/security/leserechte-rollenmatrix.test.ts` gemessen; der Add-on-Zweig bleibt mit diesem Grund zurückgestellt.",
   },
   // JOB 4141: die sechs Urteils-Türen (`POST /api/conflicts/:id/dismiss|second-opinion`,
   // `POST /api/duplicates/:id/dismiss|keep-separate|link-related|status`) standen hier mit derselben
@@ -388,13 +388,10 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     grund:
       "Hakt einen Schritt eines Lernpfads ab. Setzt einen angelegten Pfad und eine gültige Schrittkennung voraus.",
   },
-  {
-    methode: "POST",
-    pfad: "/api/output/generate",
-    art: "zurueckgestellt",
-    grund:
-      "Erzeugt ein Ausgabedokument aus ausgewählten Quellen. Die Nutzlast ist die Quellenauswahl; der Vorgang ist ein Erzeugungslauf, kein Türtest.",
-  },
+  // aufnahme:20260922:gesamt-leserechte (R-0543, Ben Nacharbeit 5): `POST /api/output/generate`
+  // und `POST /api/media/analyze` stehen nicht mehr hier. Ihre Tür misst jetzt je eine Zeile in
+  // `TABELLE`; die Rollenmatrix mit echtem Bestand (Quellenauswahl, angehängtes Bild, vertrauliche
+  // Stufe, sechs Akteure) steht in `tests/security/leserechte-rollenmatrix.test.ts`.
   {
     methode: "POST",
     pfad: "/api/capture/slides",
@@ -408,13 +405,6 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     art: "zurueckgestellt",
     grund:
       "Legt einen Anhang an. Die anonyme Parserfläche dieser Route hat eine eigene Abnahme (`tests/security/objects-auth-vor-parsing.test.ts`), die mehr misst als eine Rollenzeile.",
-  },
-  {
-    methode: "POST",
-    pfad: "/api/media/analyze",
-    art: "zurueckgestellt",
-    grund:
-      "Lässt einen vorhandenen Anhang durch die Medienanalyse laufen. Braucht einen echten Anhang, sonst ist die Antwort eine Existenzauskunft.",
   },
   {
     methode: "POST",
@@ -1402,6 +1392,18 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // aufnahme:20260922:gesamt-leserechte (R-0543): die Tür der Medienanalyse. Erfundene Kennung —
+  // Berechtigte bekommen 404 „gibt es nicht", das Tor misst sich am 401 bzw. Durchlass. Die
+  // Matrix mit echtem Anhang und Vertraulichkeit: `tests/security/leserechte-rollenmatrix.test.ts`.
+  {
+    gruppe: "mediaRoutes",
+    methode: "POST",
+    pfad: "/api/media/analyze",
+    belegstelle: "services/app/src/routes/media-routes.ts:49",
+    tor: "ko.read, dann beurteileAnhang (erfundene Kennung, 404)",
+    payload: { objectId: "gibt-es-nicht" },
+    erwartet: NUR_LESEN,
+  },
   {
     gruppe: "modelRunRoutes",
     methode: "GET",
@@ -1442,6 +1444,19 @@ export const TABELLE: Zeile[] = [
     pfad: "/api/output/sources",
     belegstelle: "services/app/src/routes/output-routes.ts:14",
     tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  // aufnahme:20260922:gesamt-leserechte (R-0543): die Tür der Ausgabeerzeugung. Die leere
+  // Quellenauswahl endet für jede Rolle in `NO_SOURCES` (400), also HINTER dem Rechtetor; es wird
+  // nichts erzeugt. Die Matrix mit echter Quellenauswahl (intern/vertraulich, sechs Akteure):
+  // `tests/security/leserechte-rollenmatrix.test.ts`.
+  {
+    gruppe: "outputRoutes",
+    methode: "POST",
+    pfad: "/api/output/generate",
+    belegstelle: "services/app/src/routes/output-routes.ts:22",
+    tor: "ko.read, dann sichtbarkeitsfilterFuer (leere Auswahl, 400)",
+    payload: { kind: "instruction", koIds: [] },
     erwartet: NUR_LESEN,
   },
   // produkt:wettbewerb:20261003:lernplattform — die leere Nutzlast endet für jede Rolle in der
