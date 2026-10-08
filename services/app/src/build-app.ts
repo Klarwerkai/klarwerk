@@ -2597,6 +2597,17 @@ export function buildApp(
   // wird dann nie ready und die Suche bleibt fail-closed.
   app.addHook("onReady", async () => {
     await stelleSuchprojektionBereit(services.ko);
+    // R-1133 — DER ABGLEICH DES ENTWURFSINDEX, BEWUSST NICHT ABGEWARTET. Anders als die
+    // Suchprojektion oben ist dieser Index kein Bereitschaftsmerkmal: er ist ausdrücklich nicht die
+    // Wahrheit und darf den Eingabefluss nicht blockieren (R-1133). Ein Altbestand ohne Index macht
+    // die App also nicht unbereit; der Lauf zieht ihn im Hintergrund nach, jedes Speichern
+    // indiziert ohnehin selbst. Ein Fehler geht über den `err`-Serializer ins Protokoll — auch der
+    // einer Prüfattrappe ohne diese Methode: der Aufruf steht deshalb IN der Zusage, nicht davor.
+    void Promise.resolve()
+      .then(() => services.capture.gleicheEntwurfsIndexAb())
+      .catch((fehler: unknown) => {
+        app.log.warn({ err: fehler, event: "entwurfsindex_abgleich" }, "Entwurfsindex-Abgleich");
+      });
     // JOB 3655 — DER STARTBERICHT. Er ist BEWUSST erst hier angesiedelt und BEWUSST nicht
     // start-entscheidend: ein Bericht ist kein Betriebsmittel. Scheitert der Bestandsbefund, sagt
     // er „unbekannt" (nie „leer") und der Start geht weiter. Die start-entscheidende Prüfung ist

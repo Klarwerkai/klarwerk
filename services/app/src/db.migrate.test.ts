@@ -214,6 +214,8 @@ const ALTER_ONLY_STUFEN = [
   "KO_SICHTBARKEIT_SCHEMA",
   // R-0846 / L6: die Fremdschlüssel-Stufe — reines ALTER TABLE in einem DO-Block.
   "KO_FREMDSCHLUESSEL_SCHEMA",
+  // R-1133: die Indexspalten der Entwürfe — ADD COLUMN plus CREATE INDEX, kein CREATE TABLE.
+  "CAPTURE_INDEX_SCHEMA",
 ] as const;
 
 describe("JOB 727 D2: die Strukturinventur hat keine CREATE-TABLE-Filterlücke", () => {

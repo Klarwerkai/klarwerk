@@ -7,6 +7,8 @@ export { InMemoryDraftRepo, type DraftRepo } from "./src/repo";
 // wäre die Stufe gebaut und würde nie laufen — der Index entstünde nie, und die ganze Zusage hinge
 // an einer DDL, die niemand absetzt. Genau davor warnt `tests/capture/aufrufer-waechter.test.ts`.
 export { PgDraftRepo, CAPTURE_SCHEMA, CAPTURE_CREATE_OPERATION_SCHEMA } from "./src/repo-pg";
+// R-1133: die Indexspalten der Entwürfe — aus demselben Grund öffentlich wie die Stufe darüber.
+export { CAPTURE_INDEX_SCHEMA } from "./src/repo-pg";
 export { InterviewSession } from "./src/interview";
 export { CaptureError } from "./src/types";
 // AUFTRAG-mega22 Block D: die Gestaltprüfung der Entwurfsladung gehört zum öffentlichen
