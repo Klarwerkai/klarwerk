@@ -30,6 +30,24 @@ vi.mock("../../apps/web/src/api/auth", () => ({
   },
 }));
 
+// Die Rolle ist hier keine Prüffrage, sondern Voraussetzung: die Pflege ist eine Admin-Fläche.
+// Nacharbeit 9: über AuthProvider/RoleProvider kam die Admin-Rolle in jsdom nicht an (E1 fand den
+// Schalter nicht), während die Chromium-Messung desselben Kandidaten ihn auf `/risiko` zählte. Die
+// Rolle wird deshalb unmittelbar gesetzt — dieselbe Bauart wie in
+// `tests/aufgaben-ansicht/gegenstand-statt-besitzer.test.tsx`.
+vi.mock("../../apps/web/src/app/RoleContext", () => ({
+  RoleProvider: ({ children }: { children: unknown }) => children,
+  useRole: () => ({
+    role: "admin",
+    setRole: () => {},
+    stufe2: false,
+    setStufe2: () => {},
+    isSessionRole: true,
+    canPreview: true,
+    previewActive: false,
+  }),
+}));
+
 vi.mock("../../apps/web/src/api/endpoints", () => {
   const ok = <T,>(v: T) => vi.fn(async () => v);
   const ko = (id: string, status: string) => ({
@@ -133,6 +151,10 @@ async function mount(): Promise<void> {
     );
   });
   await act(flush);
+  // Erst messen, wenn die Pflege samt Bereichszeile wirklich steht (Profile und Bestand geladen).
+  for (let i = 0; i < 20 && zeile() === null; i++) {
+    await act(flush);
+  }
 }
 
 const q = <T extends Element>(sel: string): T | null => container.querySelector<T>(sel);
