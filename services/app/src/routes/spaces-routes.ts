@@ -10,6 +10,11 @@
 //     Detailabruf, Liste, Suche und Klara. Diese Datei filtert nie mit einer eigenen Auslegung.
 //   · Verschieben: Schreibrecht im Quell- und im Zielspace (ohne Quellspace: Autor, Verantwortliche
 //     oder `ko.validate`) — und nur mit der Grundlage einer Rechtevorschau, die noch stimmt.
+//   · Löschen (aufnahme:20260922:gesamt-wissensprojekte): wer bearbeiten darf, nach einer
+//     Löschvorschau und nur, wenn KEIN Artikel (auch keiner im Papierkorb) den Space noch als
+//     führenden Space trägt. Sonst bliebe an ihm eine Kennung ohne Space, und `darfSehen` verbärge
+//     ihn fail-closed vor allen — ein stiller Verlust. Die Artikel gehen vorher über den
+//     gewöhnlichen Spacewechsel mit Rechtevorschau hinaus; das Löschen selbst bewegt keinen.
 //
 // EIN UNSICHTBARER SPACE ODER ARTIKEL IST 404, NICHT 403: eine Absage, die seine Existenz bestätigt,
 // wäre schon eine Auskunft.
@@ -36,6 +41,7 @@ import {
   darfSpaceInhalteLesen,
   darfSpaceSehen,
   eigenesSpaceRecht,
+  istGeloescht,
   lesbareSpaces,
   pruefeSpaceEingabe,
 } from "../spaces";
@@ -84,9 +90,11 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
     return new Map((await konten()).map((u) => [u.id, u.name]));
   }
 
+  /** Die jüngste Fassung — `undefined`, wenn es den Space nicht gibt oder er gelöscht ist. */
   async function aktuellerSpace(id: string): Promise<SpaceFassung | undefined> {
     const fassungen = await dienste.spaces.fassungen(id);
-    return fassungen[fassungen.length - 1];
+    const letzte = fassungen[fassungen.length - 1];
+    return istGeloescht(letzte) ? undefined : letzte;
   }
 
   function spaceSicht(space: SpaceFassung, user: SessionUser, n: Map<string, string>) {
@@ -246,6 +254,68 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
     return typeof z === "string" && z.length > 0 ? z : undefined;
   }
 
+  interface Loeschvorschau {
+    space: { id: string; name: string; version: number };
+    /** Artikel mit diesem führenden Space, die der Betrachter sieht — mit Titel, zum Verschieben. */
+    artikel: { id: string; title: string; version: number }[];
+    /** Weitere Artikel mit diesem führenden Space, die der Betrachter nicht sieht — nur die Zahl. */
+    weitereVerborgen: number;
+    /** Artikel im Papierkorb mit diesem führenden Space — nur die Zahl. */
+    imPapierkorb: number;
+    /** Was mit dem Space verschwindet: seine gespeicherten Ansichten und Mitgliedschaften. */
+    ansichten: number;
+    mitglieder: number;
+    darfLoeschen: boolean;
+    grund: "SPACE_NICHT_LEER" | null;
+  }
+
+  /**
+   * Die Folgen einer Löschung — für die Vorschau UND unmittelbar vor dem Schreiben. Gezählt wird
+   * über den GESAMTEN Bestand samt Papierkorb, denn auch ein verborgener oder gelöschter Artikel
+   * verlöre seinen Space. Titel bekommt nur, wer den Artikel sehen darf.
+   */
+  async function loeschLage(space: SpaceFassung, user: SessionUser): Promise<Loeschvorschau> {
+    const fuehrend = (await dienste.ko.listEinschliesslichPapierkorb()).filter(
+      (k) => k.spaceId === space.id,
+    );
+    const aktiv = fuehrend.filter((k) => !k.deletedAt);
+    const sichtbar = aktiv.filter((k) => darfSehen(user, k));
+    const leer = fuehrend.length === 0;
+    return {
+      space: { id: space.id, name: space.name, version: space.version },
+      artikel: sichtbar
+        .map((k) => ({ id: k.id, title: k.title, version: k.version }))
+        .sort((a, b) => a.title.localeCompare(b.title)),
+      weitereVerborgen: aktiv.length - sichtbar.length,
+      imPapierkorb: fuehrend.length - aktiv.length,
+      ansichten: space.ansichten.length,
+      mitglieder: space.mitglieder.length,
+      darfLoeschen: leer,
+      grund: leer ? null : "SPACE_NICHT_LEER",
+    };
+  }
+
+  /** Space für Löschvorschau und Löschung: 404 wie überall, 403 ohne Bearbeitungsrecht. */
+  async function loeschbarerSpace(
+    id: string,
+    user: SessionUser,
+    reply: FastifyReply,
+  ): Promise<SpaceFassung | undefined> {
+    const aktuell = await aktuellerSpace(id);
+    if (!aktuell || !darfSpaceSehen(aktuell, user)) {
+      nichtGefunden(reply, "Space");
+      return undefined;
+    }
+    if (!darfSpaceBearbeiten(aktuell, user)) {
+      reply.code(403).send({
+        error: "FORBIDDEN",
+        message: "Nur die Spacezuständigen oder die Kontoverwaltung löschen diesen Space.",
+      });
+      return undefined;
+    }
+    return aktuell;
+  }
+
   return async (app) => {
     // Die Spaces, die dieser Mensch sehen darf — mit seinem Recht und der Zahl SEINER sichtbaren
     // Artikel darin (keine Gesamtzahl: die wäre eine Auskunft über Unsichtbares).
@@ -288,7 +358,7 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
       }
       const fassungen = await dienste.spaces.fassungen(request.params.id);
       const aktuell = fassungen[fassungen.length - 1];
-      if (!aktuell || !darfSpaceSehen(aktuell, user)) {
+      if (!aktuell || istGeloescht(aktuell) || !darfSpaceSehen(aktuell, user)) {
         nichtGefunden(reply, "Space");
         return;
       }
@@ -409,6 +479,110 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
           },
         });
         reply.code(200).send(spaceSicht(fassung, user, await namen()));
+      },
+    );
+
+    // Die Folgen einer Löschung — schreibt nichts.
+    app.post<{ Params: { id: string } }>(
+      "/api/spaces/:id/loeschung/vorschau",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const space = await loeschbarerSpace(request.params.id, user, reply);
+        if (!space) {
+          return;
+        }
+        reply.code(200).send(await loeschLage(space, user));
+      },
+    );
+
+    // Die Löschung selbst — eine weitere Fassung mit Löschvermerk. `version` nennt die Fassung, deren
+    // Vorschau bestätigt wurde. Trägt noch ein Artikel den Space, wird nichts geschrieben.
+    app.post<{ Params: { id: string }; Body: unknown }>(
+      "/api/spaces/:id/loeschung",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const aktuell = await loeschbarerSpace(request.params.id, user, reply);
+        if (!aktuell) {
+          return;
+        }
+        const gesehen = (request.body as { version?: unknown } | null)?.version;
+        if (typeof gesehen !== "number") {
+          reply.code(400).send({
+            error: "VERSION_FEHLT",
+            message: "Die zuletzt gesehene Version des Space fehlt.",
+          });
+          return;
+        }
+        const lage = await loeschLage(aktuell, user);
+        if (gesehen !== aktuell.version) {
+          reply.code(409).send({
+            error: "VERSION_VERALTET",
+            message: "Der Space wurde inzwischen geändert. Bitte die neue Vorschau prüfen.",
+            vorschau: lage,
+          });
+          return;
+        }
+        if (!lage.darfLoeschen) {
+          reply.code(409).send({
+            error: "SPACE_NICHT_LEER",
+            message:
+              "Der Space ist noch führender Space von Artikeln. Bitte sie zuerst verschieben.",
+            vorschau: lage,
+          });
+          return;
+        }
+        const am = jetzt().toISOString();
+        const vermerk: SpaceFassung = {
+          ...aktuell,
+          version: aktuell.version + 1,
+          geaendertVon: user.id,
+          geaendertAm: am,
+          geloeschtAm: am,
+        };
+        if (!(await dienste.spaces.lege(vermerk))) {
+          reply.code(409).send({
+            error: "VERSION_VERALTET",
+            message: "Der Space wurde inzwischen geändert. Bitte neu laden.",
+          });
+          return;
+        }
+        // Nachkontrolle gegen einen Spacewechsel, der zwischen Prüfung und Vermerk hineinlief: dann
+        // gilt der Space wieder (neue Fassung ohne Vermerk), und die Löschung wird abgelehnt. Das
+        // Gegenstück steht am Spacewechsel unten.
+        const nachher = await loeschLage(aktuell, user);
+        if (!nachher.darfLoeschen) {
+          await dienste.spaces.lege({
+            ...aktuell,
+            version: vermerk.version + 1,
+            geaendertVon: user.id,
+            geaendertAm: jetzt().toISOString(),
+          });
+          reply.code(409).send({
+            error: "SPACE_NICHT_LEER",
+            message:
+              "Der Space ist noch führender Space von Artikeln. Bitte sie zuerst verschieben.",
+            vorschau: { ...nachher, space: { ...nachher.space, version: vermerk.version + 1 } },
+          });
+          return;
+        }
+        await dienste.audit?.record({
+          actor: user.id,
+          action: "space.geloescht",
+          target: aktuell.id,
+          payload: {
+            vorherVersion: aktuell.version,
+            version: vermerk.version,
+            ansichten: aktuell.ansichten.length,
+            mitglieder: aktuell.mitglieder.length,
+          },
+        });
+        reply.code(200).send({ id: aktuell.id, version: vermerk.version, geloescht: true });
       },
     );
 
@@ -603,6 +777,16 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
           user.id,
           v.quelle?.id ?? null,
         );
+        // Wurde der Zielspace gelöscht, während dieser Wechsel lief, geht der Artikel in seinen
+        // bisherigen Space zurück — eine Kennung ohne Space verbärge ihn vor allen.
+        if (ziel && !(await dienste.spaces.aktuelle()).some((s) => s.id === ziel)) {
+          await dienste.ko.setLeadingSpace(ko.id, v.quelle?.id ?? null, user.id, ziel);
+          reply.code(409).send({
+            error: "VORSCHAU_VERALTET",
+            message: "Der Zielspace wurde inzwischen gelöscht.",
+          });
+          return;
+        }
         reply.code(200).send({
           koId: nachher.id,
           version: nachher.version,

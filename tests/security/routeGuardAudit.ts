@@ -779,6 +779,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/spaces/:id": { protection: "ko.read" },
   "POST /api/spaces/verschiebung/vorschau": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "POST /api/spaces/verschiebung": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  // aufnahme:20260922:gesamt-wissensprojekte: Löschen wie Bearbeiten (Zuständige/Kontoverwaltung,
+  // sonst 403); Titel betroffener Artikel nur, wenn `darfSehen` sie freigibt, sonst nur die Zahl.
+  "POST /api/spaces/:id/loeschung/vorschau": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "POST /api/spaces/:id/loeschung": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
 
   // --- Hauptverantwortung übergeben (verantwortung-routes.ts, produkt:20261007:ownership-uebergabe)
   // Kontoverwaltung wie die bestehende Autorenübergabe. Titel nur, wo `darfSehen` es erlaubt; die

@@ -58,6 +58,17 @@ export interface SpaceFassung extends SpaceEingabe {
   angelegtAm: string;
   geaendertVon: string;
   geaendertAm: string;
+  /**
+   * aufnahme:20260922:gesamt-wissensprojekte — gesetzt nur an der LETZTEN Fassung eines gelöschten
+   * Space (Löschvermerk). Die Fassungen davor bleiben unverändert stehen; `aktuelle()` führt einen
+   * so vermerkten Space nicht mehr.
+   */
+  geloeschtAm?: string;
+}
+
+/** Trägt diese Fassung den Löschvermerk? */
+export function istGeloescht(fassung: SpaceFassung | undefined): boolean {
+  return typeof fassung?.geloeschtAm === "string";
 }
 
 export const SPACE_GRENZEN = {
@@ -260,9 +271,12 @@ export function eigenesSpaceRecht(
 // ================================================================================================
 
 export interface SpacesRepo {
-  /** Je Space die jüngste Fassung. */
+  /** Je Space die jüngste Fassung — ohne gelöschte Spaces (Löschvermerk an der jüngsten Fassung). */
   aktuelle(): Promise<SpaceFassung[]>;
-  /** Alle Fassungen eines Space, aufsteigend nach Version — leer, wenn es ihn nicht gibt. */
+  /**
+   * Alle Fassungen eines Space, aufsteigend nach Version — leer, wenn es ihn nicht gibt. Bei einem
+   * gelöschten Space ist die letzte Fassung der Löschvermerk.
+   */
   fassungen(id: string): Promise<SpaceFassung[]>;
   /** Legt eine neue Fassung ab. `false`, wenn es diese Version schon gibt (paralleler Schreiber). */
   lege(fassung: SpaceFassung): Promise<boolean>;
@@ -275,7 +289,7 @@ export class InMemorySpacesRepo implements SpacesRepo {
     const raus: SpaceFassung[] = [];
     for (const liste of this.zeilen.values()) {
       const letzte = liste[liste.length - 1];
-      if (letzte) {
+      if (letzte && !istGeloescht(letzte)) {
         raus.push(structuredClone(letzte));
       }
     }
@@ -302,6 +316,8 @@ export class InMemorySpacesRepo implements SpacesRepo {
  * Die Tabelle der Fassungen. REIN ADDITIV UND WIEDERHOLBAR: `CREATE TABLE IF NOT EXISTS`, kein
  * DROP, kein DELETE, kein UPDATE, kein Fremdschlüssel, kein Seed. Der zusammengesetzte
  * Primärschlüssel ist die Nebenläufigkeitsregel (zweiter Schreiber derselben Version → 409).
+ * Auch das Löschen eines Space ist eine weitere Zeile (Löschvermerk `geloeschtAm` im JSON), kein
+ * DELETE — der Verlauf bleibt nachlesbar.
  */
 export const SPACES_SCHEMA = `
 CREATE TABLE IF NOT EXISTS spaces_fassungen (
@@ -322,10 +338,15 @@ export class PgSpacesRepo implements SpacesRepo {
   constructor(private readonly pool: Pool) {}
 
   async aktuelle(): Promise<SpaceFassung[]> {
+    // Erst die jüngste Fassung je Space, DANN der Löschvermerk — sonst träte eine ältere Fassung
+    // eines gelöschten Space wieder an seine Stelle.
     const res = await this.pool.query<FassungsZeile>(
-      `SELECT DISTINCT ON (space_id) data
-         FROM spaces_fassungen
-        ORDER BY space_id, version DESC`,
+      `SELECT data FROM (
+         SELECT DISTINCT ON (space_id) data
+           FROM spaces_fassungen
+          ORDER BY space_id, version DESC
+       ) AS juengste
+       WHERE NOT (data ? 'geloeschtAm')`,
     );
     return res.rows.map((z) => z.data);
   }

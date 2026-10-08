@@ -15,6 +15,9 @@ export function spaceFehlerSchluessel(fehler: unknown): string {
   if (fehler.code === "VERSION_VERALTET") {
     return "spaces.fehler.veraltet";
   }
+  if (fehler.code === "SPACE_NICHT_LEER") {
+    return "spaces.loeschen.nichtLeer";
+  }
   if (fehler.status === 403) {
     return "spaces.fehler.recht";
   }
@@ -120,6 +123,18 @@ export interface Rechtevorschau {
   grund: string | null;
 }
 
+/** Die Folgen einer Spacelöschung (`POST /api/spaces/:id/loeschung/vorschau`). */
+export interface Loeschvorschau {
+  space: { id: string; name: string; version: number };
+  artikel: { id: string; title: string; version: number }[];
+  weitereVerborgen: number;
+  imPapierkorb: number;
+  ansichten: number;
+  mitglieder: number;
+  darfLoeschen: boolean;
+  grund: "SPACE_NICHT_LEER" | null;
+}
+
 const pfad = (id: string): string => `/spaces/${encodeURIComponent(id)}`;
 
 export const spacesApi = {
@@ -138,6 +153,13 @@ export const spacesApi = {
   anlegen: (eingabe: SpaceEingabe) => api.post<SpaceSicht>("/spaces", eingabe),
   aendern: (id: string, version: number, eingabe: SpaceEingabe) =>
     api.put<SpaceSicht>(pfad(id), { ...eingabe, version }),
+  loeschVorschau: (id: string) => api.post<Loeschvorschau>(`${pfad(id)}/loeschung/vorschau`),
+  // Die Version kommt aus der angezeigten Vorschau — nie aus einem später geladenen Stand.
+  loeschen: (vorschau: Loeschvorschau) =>
+    api.post<{ id: string; version: number; geloescht: true }>(
+      `${pfad(vorschau.space.id)}/loeschung`,
+      { version: vorschau.space.version },
+    ),
   artikel: (id: string, ansicht?: string) =>
     api.get<{
       space: { id: string; name: string };

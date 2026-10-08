@@ -649,6 +649,16 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Spacewechsel nur an einem sichtbaren Artikel.",
   },
+  // aufnahme:20260922:gesamt-wissensprojekte: Titel betroffener Artikel nur über `darfSehen`;
+  // verborgene und Papierkorb-Artikel nur als Zahl.
+  "POST /api/spaces/:id/loeschung/vorschau": {
+    urteil: "PRAEDIKAT",
+    grund: "Löschfolgen: Titel nur sichtbarer Artikel, sonst Zahl.",
+  },
+  "POST /api/spaces/:id/loeschung": {
+    urteil: "PRAEDIKAT",
+    grund: "Löschung; bei Ablehnung dieselbe Vorschau wie oben.",
+  },
   // Hauptverantwortung übergeben (verantwortung-routes.ts): Titel nur über `darfSehen`; für nicht
   // einsehbare Beiträge Kennung, Status und Space, aber kein Inhalt.
   "GET /api/verantwortung/person/:id": {

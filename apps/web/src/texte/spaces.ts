@@ -89,6 +89,24 @@ export default {
     "spaces.vorschau.veraltet":
       "Die Rechtelage hat sich seit der Vorschau geändert. Bitte die neue Vorschau prüfen.",
     "spaces.vorschau.erfolg": "Der Space wurde gewechselt. Fassung und Historie sind unverändert.",
+    "spaces.loeschen.knopf": "Space löschen",
+    "spaces.loeschen.titel": "Space löschen — die Folgen vorab",
+    "spaces.loeschen.folgen":
+      "Mit dem Space verschwinden seine {{ansichten}} gespeicherten Ansichten und {{mitglieder}} Mitgliedschaften. Die Tags an den Artikeln bleiben.",
+    "spaces.loeschen.bleibt":
+      "Kein Artikel wird gelöscht oder verändert. Der Verlauf des Space bleibt im Protokoll nachvollziehbar.",
+    "spaces.loeschen.leer":
+      "Kein Artikel hat diesen Space als führenden Space. Die Löschung ändert an keinem Artikel etwas.",
+    "spaces.loeschen.nichtLeer":
+      "Löschen ist erst möglich, wenn kein Artikel mehr diesen Space als führenden Space hat.",
+    "spaces.loeschen.verborgen":
+      "Dazu {{anzahl}} weitere Artikel, die du nicht sehen darfst — ihre Autoren oder Verantwortlichen müssen sie verschieben.",
+    "spaces.loeschen.papierkorb":
+      "{{anzahl}} Artikel im Papierkorb gehören noch zu diesem Space — wiederherstellen und verschieben oder endgültig entfernen lassen.",
+    "spaces.loeschen.weg":
+      "Verschiebe jeden Artikel auf seiner Seite über „Space wechseln“; dort siehst du vorher, wer Zugang verliert oder erhält.",
+    "spaces.loeschen.bestaetigen": "Space endgültig löschen",
+    "spaces.loeschen.erfolg": "Der Space wurde gelöscht. Kein Artikel war betroffen.",
     "spaces.fehler.allgemein": "Das hat nicht geklappt. Bitte erneut versuchen.",
     "spaces.fehler.ungueltig": "Bitte Name, Zweck und Zuständigkeit vollständig angeben.",
     "spaces.fehler.veraltet": "Der Space wurde inzwischen geändert. Bitte neu laden.",
@@ -183,6 +201,24 @@ export default {
     "spaces.vorschau.veraltet":
       "Access has changed since the preview. Please review the new preview.",
     "spaces.vorschau.erfolg": "The space was changed. Version and history are unchanged.",
+    "spaces.loeschen.knopf": "Delete space",
+    "spaces.loeschen.titel": "Delete space — the consequences first",
+    "spaces.loeschen.folgen":
+      "Its {{ansichten}} saved views and {{mitglieder}} memberships disappear with the space. The tags on the articles stay.",
+    "spaces.loeschen.bleibt":
+      "No article is deleted or changed. The history of the space stays traceable in the log.",
+    "spaces.loeschen.leer":
+      "No article has this space as its leading space. Deleting it changes no article.",
+    "spaces.loeschen.nichtLeer":
+      "Deleting is only possible once no article has this space as its leading space.",
+    "spaces.loeschen.verborgen":
+      "Plus {{anzahl}} further articles you may not see — their authors or responsible people must move them.",
+    "spaces.loeschen.papierkorb":
+      "{{anzahl}} articles in the trash still belong to this space — restore and move them, or have them removed for good.",
+    "spaces.loeschen.weg":
+      "Move each article on its page via “Change space”; there you see beforehand who loses or gains access.",
+    "spaces.loeschen.bestaetigen": "Delete space for good",
+    "spaces.loeschen.erfolg": "The space was deleted. No article was affected.",
     "spaces.fehler.allgemein": "That did not work. Please try again.",
     "spaces.fehler.ungueltig": "Please provide name, purpose and owner.",
     "spaces.fehler.veraltet": "The space has changed in the meantime. Please reload.",
@@ -277,6 +313,24 @@ export default {
     "spaces.vorschau.veraltet":
       "De toegang is sinds de voorvertoning gewijzigd. Controleer de nieuwe voorvertoning.",
     "spaces.vorschau.erfolg": "De space is gewijzigd. Versie en historie zijn ongewijzigd.",
+    "spaces.loeschen.knopf": "Space verwijderen",
+    "spaces.loeschen.titel": "Space verwijderen — eerst de gevolgen",
+    "spaces.loeschen.folgen":
+      "Met de space verdwijnen zijn {{ansichten}} opgeslagen weergaven en {{mitglieder}} lidmaatschappen. De tags aan de artikelen blijven.",
+    "spaces.loeschen.bleibt":
+      "Geen artikel wordt verwijderd of gewijzigd. Het verloop van de space blijft in het logboek na te gaan.",
+    "spaces.loeschen.leer":
+      "Geen artikel heeft deze space als leidende space. Het verwijderen verandert aan geen enkel artikel iets.",
+    "spaces.loeschen.nichtLeer":
+      "Verwijderen kan pas als geen artikel deze space nog als leidende space heeft.",
+    "spaces.loeschen.verborgen":
+      "Daarnaast {{anzahl}} andere artikelen die je niet mag zien — hun auteurs of verantwoordelijken moeten ze verplaatsen.",
+    "spaces.loeschen.papierkorb":
+      "{{anzahl}} artikelen in de prullenbak horen nog bij deze space — herstellen en verplaatsen of definitief laten verwijderen.",
+    "spaces.loeschen.weg":
+      "Verplaats elk artikel op zijn pagina via „Space wijzigen”; daar zie je vooraf wie toegang verliest of krijgt.",
+    "spaces.loeschen.bestaetigen": "Space definitief verwijderen",
+    "spaces.loeschen.erfolg": "De space is verwijderd. Geen enkel artikel was betrokken.",
     "spaces.fehler.allgemein": "Dat is niet gelukt. Probeer het opnieuw.",
     "spaces.fehler.ungueltig": "Vul naam, doel en verantwoordelijke volledig in.",
     "spaces.fehler.veraltet": "De space is inmiddels gewijzigd. Laad opnieuw.",

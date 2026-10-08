@@ -8,9 +8,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   type ArtikelZeile,
+  type Loeschvorschau,
   type SpaceEingabe,
   type SpaceRecht,
   type SpaceSicht,
@@ -325,11 +326,113 @@ function Artikelliste({ artikel }: { artikel: ArtikelZeile[] }): JSX.Element {
   );
 }
 
+// aufnahme:20260922:gesamt-wissensprojekte — Löschen erst nach der Vorschau der Folgen. Trägt
+// noch ein Artikel den Space, bleibt der Knopf gesperrt und die Vorschau nennt, was vorher zu
+// verschieben ist (über die Spacezeile am Artikel, mit Rechtevorschau). Der Server prüft dasselbe.
+function SpaceLoeschen({ id, onAbbrechen }: { id: string; onAbbrechen: () => void }): JSX.Element {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const vorschau = useQuery({
+    queryKey: ["space", id, "loeschung"],
+    queryFn: () => spacesApi.loeschVorschau(id),
+    staleTime: 0,
+  });
+  const loeschen = useMutation({
+    mutationFn: (v: Loeschvorschau) => spacesApi.loeschen(v),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["spaces"] });
+      qc.removeQueries({ queryKey: ["space", id] });
+      navigate("/spaces?geloescht=1");
+    },
+    onError: async () => {
+      await vorschau.refetch();
+    },
+  });
+  const v = vorschau.data;
+  return (
+    <Card className="mb-4" data-testid="space-loeschen">
+      <SectionLabel>{t("spaces.loeschen.titel")}</SectionLabel>
+      {vorschau.isPending ? <p className="text-sm text-muted">{t("spaces.seite.laedt")}</p> : null}
+      {vorschau.isError ? (
+        <p role="alert" className="text-[12.5px] text-muted">
+          {t(spaceFehlerSchluessel(vorschau.error))}
+        </p>
+      ) : null}
+      {v ? (
+        <div className="space-y-2 text-[13px] text-text">
+          <p data-testid="space-loeschen-folgen">
+            {t("spaces.loeschen.folgen", { ansichten: v.ansichten, mitglieder: v.mitglieder })}
+          </p>
+          <p className="text-[12px] text-muted-2">{t("spaces.loeschen.bleibt")}</p>
+          {v.darfLoeschen ? (
+            <p data-testid="space-loeschen-leer">{t("spaces.loeschen.leer")}</p>
+          ) : (
+            <output data-testid="space-loeschen-gesperrt" className="block space-y-1">
+              <p className="font-semibold text-ink">{t("spaces.loeschen.nichtLeer")}</p>
+              {v.artikel.length > 0 ? (
+                <ul className="space-y-1">
+                  {v.artikel.map((a) => (
+                    <li key={a.id} data-testid="space-loeschen-artikel" data-ko={a.id}>
+                      <Link
+                        to={`/wissen/${encodeURIComponent(a.id)}`}
+                        className="text-brand-text hover:underline"
+                      >
+                        {a.title}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {v.weitereVerborgen > 0 ? (
+                <p data-testid="space-loeschen-verborgen">
+                  {t("spaces.loeschen.verborgen", { anzahl: v.weitereVerborgen })}
+                </p>
+              ) : null}
+              {v.imPapierkorb > 0 ? (
+                <p data-testid="space-loeschen-papierkorb">
+                  {t("spaces.loeschen.papierkorb", { anzahl: v.imPapierkorb })}
+                </p>
+              ) : null}
+              <p className="text-[12px] text-muted-2">{t("spaces.loeschen.weg")}</p>
+            </output>
+          )}
+        </div>
+      ) : null}
+      {loeschen.isError ? (
+        <p
+          role="alert"
+          data-testid="space-loeschen-fehler"
+          className="mt-2 text-[12.5px] text-trust-crit-text"
+        >
+          {t(spaceFehlerSchluessel(loeschen.error))}
+        </p>
+      ) : null}
+      <div className="mt-3 flex gap-2">
+        <Button
+          variant="primary"
+          data-testid="space-loeschen-bestaetigen"
+          disabled={!v?.darfLoeschen || loeschen.isPending}
+          onClick={() => {
+            if (v) {
+              loeschen.mutate(v);
+            }
+          }}
+        >
+          {t("spaces.loeschen.bestaetigen")}
+        </Button>
+        <Button onClick={onAbbrechen}>{t("spaces.formular.abbrechen")}</Button>
+      </div>
+    </Card>
+  );
+}
+
 function SpaceDetail({ id }: { id: string }): JSX.Element {
   const { t, i18n } = useTranslation();
   const [parameter, setParameter] = useSearchParams();
   const ansicht = parameter.get("ansicht") ?? undefined;
   const [bearbeiten, setBearbeiten] = useState(false);
+  const [loeschen, setLoeschen] = useState(false);
   const [verlauf, setVerlauf] = useState(false);
   const eintrag = useQuery({ queryKey: ["space", id], queryFn: () => spacesApi.eintrag(id) });
   const artikel = useQuery({
@@ -369,9 +472,15 @@ function SpaceDetail({ id }: { id: string }): JSX.Element {
                 {t("spaces.seite.bearbeiten")}
               </Button>
             ) : null}
+            {s.darfBearbeiten && !loeschen ? (
+              <Button data-testid="space-loeschen-knopf" onClick={() => setLoeschen(true)}>
+                {t("spaces.loeschen.knopf")}
+              </Button>
+            ) : null}
           </>
         }
       />
+      {loeschen ? <SpaceLoeschen id={s.id} onAbbrechen={() => setLoeschen(false)} /> : null}
       {bearbeiten ? (
         <Card className="mb-4" data-testid="space-pflege">
           <SectionLabel>{t("spaces.seite.bearbeiten")}</SectionLabel>
@@ -449,6 +558,7 @@ function SpaceDetail({ id }: { id: string }): JSX.Element {
 function SpaceUebersicht(): JSX.Element {
   const { t } = useTranslation();
   const [neu, setNeu] = useState(false);
+  const [parameter] = useSearchParams();
   const liste = useQuery({ queryKey: ["spaces"], queryFn: spacesApi.liste });
   return (
     <div>
@@ -465,6 +575,11 @@ function SpaceUebersicht(): JSX.Element {
         }
       />
       <p className="mb-4 text-[12px] text-muted-2">{t("spaces.seite.grenze")}</p>
+      {parameter.get("geloescht") ? (
+        <output data-testid="space-geloescht" className="mb-4 block text-[12.5px] text-text">
+          {t("spaces.loeschen.erfolg")}
+        </output>
+      ) : null}
       {neu ? (
         <Card className="mb-4" data-testid="space-pflege">
           <SectionLabel>{t("spaces.seite.neu")}</SectionLabel>
