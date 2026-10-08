@@ -2065,6 +2065,16 @@ export interface MgmtPriority {
   flags: MgmtPriorityFlag[];
 }
 
+// R-1657 (ROADMAP 9.3): Wissens-Sprint-Vorschläge je Bereich, wie der Server sie liefert
+// (services/management/src/metrics.ts → sprints).
+export type MgmtSprintReasonKey = "conflicts" | "revalidation" | "lowTrust" | "thinKnowledge";
+export interface MgmtSprint {
+  category: string;
+  reasons: { key: MgmtSprintReasonKey; count: number }[];
+  workItems: number;
+  days: number;
+}
+
 // R-0751 / R-1639 / R-2183 (Nacharbeit 3): gepflegte Bereichsprofile und Ruhestandshorizonte
 // (services/management/src/profiles.ts) und der daraus abgeleitete Bereichsblick (horizon.ts).
 export type AssessmentLevel = "niedrig" | "mittel" | "hoch";
@@ -2144,6 +2154,8 @@ export interface ManagementSnapshot {
   maturity: { stage: number; stageKey: string; progressPct: number };
   priorities: MgmtPriority[];
   recommendations: { key: string; severity: "hoch" | "mittel"; count: number }[];
+  // Optional: ein Server ohne R-1657 liefert das Feld nicht; die Fläche zeigt dann keine Sprints.
+  sprints?: MgmtSprint[];
   house: { category: string; koCount: number; validatedRatio: number; fragile: boolean }[];
   pilot: { days: number; created: number; validated: number }[];
 }

@@ -122,6 +122,22 @@ export interface Recommendation {
   count: number;
 }
 
+// R-1657 (ROADMAP 9.3): die Gründe, aus denen ein Bereich einen Wissens-Sprint braucht — offene
+// Konflikte, fällige Re-Validierung, geringes Vertrauen, dünner validierter Bestand.
+export type SprintReasonKey = "conflicts" | "revalidation" | "lowTrust" | "thinKnowledge";
+
+export interface SprintReason {
+  key: SprintReasonKey;
+  count: number;
+}
+
+export interface KnowledgeSprint {
+  category: string;
+  reasons: SprintReason[]; // mindestens einer, in der Reihenfolge von SprintReasonKey
+  workItems: number; // verschiedene Objekte mit Konflikt, Re-Validierung oder geringem Vertrauen
+  days: number; // 1–5, aus workItems abgeleitet
+}
+
 export interface HouseFloor {
   category: string;
   koCount: number;
@@ -144,6 +160,7 @@ export interface ManagementSnapshot {
   maturity: Maturity;
   priorities: CategoryPriority[];
   recommendations: Recommendation[];
+  sprints: KnowledgeSprint[];
   house: HouseFloor[];
   pilot: PilotWindow[];
 }

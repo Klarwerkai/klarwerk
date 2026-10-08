@@ -8,6 +8,7 @@ import type {
   CapitalScore,
   CategoryPriority,
   HouseFloor,
+  KnowledgeSprint,
   KnowledgeStatement,
   ManagementSnapshot,
   Maturity,
@@ -17,6 +18,7 @@ import type {
   PriorityFactorKey,
   PriorityFlag,
   Recommendation,
+  SprintReason,
   ValuationFacts,
 } from "./types";
 
@@ -283,6 +285,68 @@ export function recommendations(input: MetricsInput): Recommendation[] {
   return out;
 }
 
+// ================================================================================================
+// R-1657 (ROADMAP 9.3) — LÜCKENERKENNUNG: WISSENS-SPRINTS JE BEREICH.
+// ================================================================================================
+//
+// Quelle: „KLARWERK analysiert regelmäßig, in welchen Themenbereichen wenig Wissen, geringer Trust
+// oder hohe Konflikt-Dichte herrscht — und schlägt der Organisation Wissens-Sprints vor: ‚Bereich
+// Schweißtechnik: 4 offene Konflikte, 12 Objekte zur Re-Validierung. 2-Tage-Sprint vorschlagen?'"
+//
+// Die Analyse ist eine deterministische Regel über demselben sichtbaren Bestand wie der übrige
+// Snapshot — kein Modellaufruf, nichts verlässt das Haus. Je Kategorie zählt sie:
+//   conflicts      Objekte an einem offenen sichtbaren Konflikt (ohne Konflikt-Eingang: kein Grund)
+//   revalidation   Objekte auf der Revalidierungsliste
+//   lowTrust       Objekte mit Vertrauen unter TRUST_NIEDRIG
+//   thinKnowledge  weniger als WENIG_VALIDIERT validierte Objekte (count = Zahl der validierten)
+// Offene Lücken (unbeantwortete Fragen) tragen keine Kategorie und bleiben deshalb in der globalen
+// Empfehlung „closeGaps" — sie werden keinem Bereich zugeraten.
+//
+// Sprintlänge: verschiedene betroffene Objekte / OBJEKTE_PRO_TAG, aufgerundet, 1 bis 5 Tage.
+const TRUST_NIEDRIG = 50;
+const WENIG_VALIDIERT = 3;
+const OBJEKTE_PRO_TAG = 8;
+const SPRINT_MAX_TAGE = 5;
+
+export function sprints(input: MetricsInput): KnowledgeSprint[] {
+  const pendingSet = new Set(input.pendingRevalidation);
+  const konflikte = input.openConflictKoIds ? new Set(input.openConflictKoIds) : null;
+  const out: KnowledgeSprint[] = [];
+  for (const [category, list] of categories(input.kos)) {
+    const imKonflikt = konflikte ? list.filter((k) => konflikte.has(k.id)) : [];
+    const faellig = list.filter((k) => pendingSet.has(k.id));
+    const schwach = list.filter((k) => (k.trust ?? 0) < TRUST_NIEDRIG);
+    const validiert = list.filter((k) => k.status === "validiert").length;
+
+    const reasons: SprintReason[] = [];
+    if (imKonflikt.length > 0) {
+      reasons.push({ key: "conflicts", count: imKonflikt.length });
+    }
+    if (faellig.length > 0) {
+      reasons.push({ key: "revalidation", count: faellig.length });
+    }
+    if (schwach.length > 0) {
+      reasons.push({ key: "lowTrust", count: schwach.length });
+    }
+    if (validiert < WENIG_VALIDIERT) {
+      reasons.push({ key: "thinKnowledge", count: validiert });
+    }
+    if (reasons.length === 0) {
+      continue;
+    }
+    const workItems = new Set([...imKonflikt, ...faellig, ...schwach].map((k) => k.id)).size;
+    const days = Math.min(SPRINT_MAX_TAGE, Math.max(1, Math.ceil(workItems / OBJEKTE_PRO_TAG)));
+    out.push({ category, reasons, workItems, days });
+  }
+  out.sort(
+    (a, b) =>
+      b.workItems - a.workItems ||
+      b.reasons.length - a.reasons.length ||
+      a.category.localeCompare(b.category),
+  );
+  return out;
+}
+
 // FE-MGMT-08: Knowledge House — Domänen als Stockwerke (gesichert vs. fragil).
 export function house(input: MetricsInput): HouseFloor[] {
   const cats = categories(input.kos);
@@ -326,6 +390,7 @@ export function computeSnapshot(input: MetricsInput): Omit<ManagementSnapshot, "
     maturity: maturity(input, capital.score),
     priorities: priorities(input),
     recommendations: recommendations(input),
+    sprints: sprints(input),
     house: house(input),
     pilot: pilot(input),
   };
