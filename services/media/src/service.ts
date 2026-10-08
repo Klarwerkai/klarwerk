@@ -56,6 +56,20 @@ export interface MediaAnalysisDeps {
   // media von knowledge-object entkoppelt bleibt (Verdrahtung in build-app). Wirft die Auflösung,
   // behandelt analyze() das fail-safe als vertraulich (nie „im Zweifel egressen").
   koConfidentiality?: ((objectId: string) => Promise<readonly string[]>) | undefined;
+  /**
+   * Auftrag gesamt-ki-freigaberegeln · DAS ERGEBNIS DER ZENTRALEN ADMINFREIGABE FÜR ÖFFENTLICHE KI.
+   *
+   * Die Transkription ist ein Weg zu einer öffentlichen KI (Whisper bei OpenAI). Pedis Entscheidung
+   * (10.09. 21:25, wörtlich an `ReasonerKiFreigabe` in `services/reasoner/src/types.ts`): „Keine
+   * Freigabe, kein Egress … Im Zweifel gilt: gesperrt." Bis hierher fragte dieser Weg die Freigabe
+   * nie — ein nicht vertrauliches Medium ging auch ohne sie hinaus.
+   *
+   * Entschieden wird hier NICHT: die Wurzel (`build-app.ts`) reicht die Lesart des Kerns herein,
+   * frisch je Analyse, wie für Klara (`zentralFreigegeben` in `klara-session-service.ts`). Dieselbe
+   * Lesart gilt hier: nur `true` erlaubt; `false`, ein Wurf und ein fehlender Eintrag sperren gleich.
+   * Die Vertraulichkeitsregel oben bleibt unverändert davor.
+   */
+  zentralFreigegeben?: (() => boolean) | undefined;
 }
 
 // SCRUM-382: Analyse eines hochgeladenen Video-/Audio-Objekts. Bewusst schmal:
@@ -67,11 +81,23 @@ export class MediaAnalysisService {
   private readonly koConfidentiality:
     | ((objectId: string) => Promise<readonly string[]>)
     | undefined;
+  private readonly zentralFreigegeben: (() => boolean) | undefined;
 
   constructor(deps: MediaAnalysisDeps) {
     this.objects = deps.objects;
     this.transcriber = deps.transcriber;
     this.koConfidentiality = deps.koConfidentiality;
+    this.zentralFreigegeben = deps.zentralFreigegeben;
+  }
+
+  // Nur `true` zählt (s. `MediaAnalysisDeps.zentralFreigegeben`). Ein Wurf der Auskunft ist keine
+  // Erlaubnis.
+  private oeffentlicheKiFreigegeben(): boolean {
+    try {
+      return this.zentralFreigegeben?.() === true;
+    } catch {
+      return false;
+    }
   }
 
   engineInfo(): { active: boolean; engine: string | null } {
@@ -138,6 +164,20 @@ export class MediaAnalysisService {
         note:
           "Transkription nicht aktiv — es ist kein Dienst-Schlüssel hinterlegt. " +
           "Schlüssel in der KLARWERK-App hinterlegen oder den Inhalt manuell zusammenfassen.",
+      };
+    }
+    // Auftrag gesamt-ki-freigaberegeln: ohne die zentrale Adminfreigabe geht nichts an die
+    // öffentliche Transkriptions-KI. Gefragt NACH dem Inaktiv-Zustand, damit „kein Schlüssel" und
+    // „nicht freigegeben" unterscheidbar bleiben; der Anbieter bleibt benannt.
+    if (!this.oeffentlicheKiFreigegeben()) {
+      return {
+        objectId,
+        transcript: null,
+        engineActive: false,
+        engine: this.transcriber.name,
+        note:
+          "Die öffentliche KI ist vom Administrator nicht freigegeben — es wird nichts an den " +
+          "Transkriptionsdienst gesendet. Bitte den Inhalt manuell zusammenfassen.",
       };
     }
     const decoded = decodeDataUrl(stored.data);

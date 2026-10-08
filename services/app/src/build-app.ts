@@ -1515,6 +1515,12 @@ export function assembleServices(
         (await ko.list({}))
           .filter((k) => (k.attachments ?? []).some((a) => a.objectId === objectId))
           .map((k) => k.confidentiality ?? "intern"),
+      // Auftrag gesamt-ki-freigaberegeln: die zentrale Adminfreigabe gilt auch für die
+      // Transkription. Durchgereicht wird die Lesart des Kerns, Zeichen für Zeichen wie für Klara
+      // (Policyquelle des `KlaraSessionService` unten) — frisch je Analyse, eine Rücknahme wirkt
+      // ohne Neustart. Entschieden wird weiter allein in `Reasoner.oeffentlicheKiErlaubt`.
+      zentralFreigegeben: () =>
+        reasoner.configStatus().taskConfig.kiFreigabe?.oeffentlicheKi === true,
     }),
     // SCRUM-165: read-only ModelRun-Sicht über dasselbe Protokoll-Repo wie der Reasoner.
     modelRuns: new ModelRunService({
