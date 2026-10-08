@@ -180,6 +180,11 @@ describe("Antwort-Erklärung · Belastbarkeit an POST /api/ask", () => {
       `Gegenanweisung ${SELTENES_WORT}`,
       `Die ${SELTENES_WORT} bleibt waehrend der Wartung unter Druck.`,
     );
+    // Ein ERFAHRUNGSkonflikt, kein Wahrheitskonflikt: der Wahrheitskonflikt stuft beide Seiten auf
+    // „offen" zurück (ko-routes.ts `wahrheitsfolge`), und seit R-0584 (main) antwortet die Konsole nur
+    // aus validiertem Wissen — die Frage hätte dann gar keine tragende Quelle. Gemessen wird hier die
+    // Darstellung eines OFFENEN Konflikts an einer tragenden Quelle; die Art des Konflikts ist dafür
+    // gleichgültig, die Zusicherungen unten sind unverändert.
     const konflikt = await app.inject({
       method: "PUT",
       url: `/api/kos/${tragend}`,
@@ -189,7 +194,7 @@ describe("Antwort-Erklärung · Belastbarkeit an POST /api/ask", () => {
         conflict: {
           koA: tragend,
           koB: partner,
-          type: "truth",
+          type: "experience",
           description: `Widerspruch zur ${SELTENES_WORT}`,
         },
       },
@@ -305,8 +310,10 @@ describe("Antwort-Erklärung · Belastbarkeit an POST /api/ask", () => {
     const konsole = await fragen(app, admin, frage);
     expect(konsole.result.answered).toBe(false);
     expect(belastbarkeit(konsole).lage).toBe("wissensluecke");
+    // R-0584 (main, gesamt-datenschutz-voreinstellung): auch die Konsole antwortet nur aus
+    // validiertem Wissen — der Prüfrahmen nennt genau diesen Umfang, ohne wörtliche Enge.
     expect(konsole.pruefrahmen).toEqual({
-      umfang: "nicht_vertraulich",
+      umfang: "validiert",
       verglichen: 0,
       hoechstens: DEFAULT_TOP_K,
       nurWoertlich: false,

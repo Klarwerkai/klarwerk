@@ -2786,7 +2786,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // gemessenen Werte (3a0471fa… dieser Auftrag, dce012c0… main) beschreibt das zusammengefügte
     // Fenster. Der Wert unten ist der von main und damit ein PLATZHALTER bis zur Messung; ohne
     // zugelassenes Hash-Werkzeug ist er hier nicht berechenbar — der Prüflauf meldet ihn als „Received".
-    const PIN = "dce012c092e3445073b0629f1b8348a5f4b04457c1986e3c68657c7ad5860d64";
+    // NACHARBEIT 8 (Antwort-Erklärung): PIN BEWUSST AKTUALISIERT (dce012c0… -> 9464e051…). Im Prüflauf
+    // zu Kandidat 7e98d5c4 GEMESSEN („Received", HISTORIE/nacharbeit-8/PRUEFUNG/
+    // integration-word-fenster.log) und unverändert übernommen; die Panel-Dateien sind seit dieser
+    // Messung unberührt (`git diff 7e98d5c4 -- apps/web/public/word-addin/` leer).
+    const PIN = "9464e051538658e58d7ba79f3b8caae34769060320b8355c1024bc6c47c6425e";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,

@@ -186,8 +186,11 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * (R-1040, gesamt-funktionsschalter). Der Bezugspunkt MUSS wandern; der Wert unten beschreibt nur den
  * Stand vor der Integration. Ohne zugelassenes Hash-Werkzeug nicht berechenbar — E2 meldet ihn im
  * Prüflauf als „Received"; er wird danach gemessen übernommen.
+ * NACHARBEIT 8 (Antwort-Erklärung): GEMESSEN im Prüflauf zu Kandidat 7e98d5c4 (`8ad37a9c…`, „Received"
+ * von E2, HISTORIE/nacharbeit-8/PRUEFUNG/integration-word-fenster.log) und unverändert übernommen;
+ * die vier Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "469de4a65de681dbbad2e31b48bbb63ec07fa567";
+export const PANEL_VOR_SCHNITT_BLOB = "8ad37a9c5c6d29e8cc28730ce28052012afdce34";
 
 export interface PanelTeile {
   html: string;
