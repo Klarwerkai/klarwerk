@@ -2133,8 +2133,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // 559 → 608, keine Quelldatei aus diesem Auftrag — der Hauptstand selbst führt hier noch 451).
     // Welche es sind, ist ohne Lauf am Hauptstand nicht namentlich bestimmt. `anbieter` 1 und
     // `traeger` 2 sind unverändert — beide Seiten der Meldung nennen 1 und 2.
+    //
+    // NACHARBEIT 2 (Ben: R-1020 / R-1695): 488 → 489, GERECHNET, nicht gemessen — die Hand startet
+    // keine Tests. GENAU EIN Bauteil kommt dazu: `ErgebnisStufeMarke`
+    // (`components/trust/ErgebnisStufeMarke.tsx`), die Marke Entwurf/Empfehlung/validiert. Sie
+    // rendert ein `<span>` mit Katalogtext, zeigt KEIN Bild, bietet KEINE Bildbeschreibung an (kein
+    // `ANGEBOT_MUSTER`) und trägt kein `documentTitle`-Prop — nur Grundmenge. Die übrigen neuen
+    // Dateien (`lib/kiHerkunft.ts`, `lib/antwortDateien.ts`, `components/fragen/antwortMenue.ts`)
+    // bringen keine Komponente mit. Weicht die Messung ab, gilt der gemessene Wert samt Herkunft.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 488,
+      komponenten: 489,
       anbieter: 1,
       traeger: 2,
     });

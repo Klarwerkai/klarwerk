@@ -11,6 +11,7 @@ import { Link, useLocation } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useReasonerStatus } from "../api/hooks";
 import { aiSperrHinweisKey } from "../lib/aiAvailability";
+import { REASONER_ENTWURF_FLAECHE, ergebnisStufeFuerVorschlag } from "../lib/kiHerkunft";
 import {
   type ResolvedKlaraEntry,
   allFaqEntries,
@@ -35,6 +36,7 @@ import { AiUnavailableHint } from "./AiUnavailableHint";
 // WP-UX-WOW-1 U1: Antwort-Markdown sicher rendern (React-Subset, kein HTML-Sink).
 import { AnswerMarkdown } from "./AnswerMarkdown";
 import { KlaraSpaceKontext } from "./KlaraSpaceKontext";
+import { ErgebnisStufeMarke } from "./trust/ErgebnisStufeMarke";
 
 // Stimmwahl und Textbereinigung fürs Vorlesen stehen seit FE-003 in `lib/vorlesen.ts` — das
 // Seitentutorial liest mit denselben Hilfen vor.
@@ -529,11 +531,17 @@ export function KlaraAssistant(): JSX.Element {
                     {t("state.error")}
                   </p>
                 ) : aiAsk.data ? (
-                  <div className="rounded-card border border-ai/30 bg-ai-surface-2 px-3 py-2.5">
+                  <div
+                    // R-1020 / R-1695: hat ein Modell geantwortet (`demo: false`), ist die Antwort
+                    // ein Reasoner-Entwurf — gestrichelt, mit Beschriftung. Der regelbasierte
+                    // Rückfall ist eine Empfehlung. Validiert ist eine Hilfeantwort nie.
+                    className={`rounded-card px-3 py-2.5 ${aiAsk.data.demo ? "border border-ai/30 bg-ai-surface-2" : REASONER_ENTWURF_FLAECHE}`}
+                  >
                     <div className="mb-1 flex flex-wrap items-center gap-1.5">
                       <span className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
                         {t("klara.aiAnswerTitle")}
                       </span>
+                      <ErgebnisStufeMarke stufe={ergebnisStufeFuerVorschlag(!aiAsk.data.demo)} />
                       {/* Pedi 05.07.: jede KI-Antwort klar gekennzeichnet — generiert, nicht voll geprüft. */}
                       <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-warn-text">
                         {t("klara.aiDisclaimer")}

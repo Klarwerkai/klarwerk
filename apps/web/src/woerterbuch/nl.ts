@@ -2190,6 +2190,9 @@ const nl: typeof de = {
   "ask.export.copy": "Kopiëren",
   "ask.export.download": "Als Markdown",
   "ask.export.print": "Afdrukken / PDF",
+  "ask.export.docx": "Als Word (.docx)",
+  "ask.export.pptx": "Als PowerPoint (.pptx)",
+  "ask.export.pdfDatei": "Als PDF-bestand",
   "ask.export.copied": "Antwoord incl. bronnen gekopieerd.",
   "ask.export.answer": "Antwoord",
   "ask.export.footer":
@@ -5595,6 +5598,9 @@ const nl: typeof de = {
   "ai.generatedNotice":
     "Door kunstmatige intelligentie gegenereerd — controleer dit vakinhoudelijk.",
   "ai.surfaceNotice": "Hier kan een AI meewerken — door haar gegenereerde inhoud wordt gemarkeerd.",
+  "ergebnisStufe.entwurf": "Reasoner-concept, niet gevalideerd",
+  "ergebnisStufe.empfehlung": "Aanbeveling, niet gevalideerd",
+  "ergebnisStufe.validiert": "Gevalideerd",
   "ai.costHint": "Eén klik kan een echte, betaalde cloud-AI-aanvraag veroorzaken.",
   "ai.exportNotice":
     "Door kunstmatige intelligentie gegenereerd (KLARWERK, {{task}}, {{date}}). Inhoudelijk te controleren.",

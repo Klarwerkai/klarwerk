@@ -288,15 +288,20 @@ function exportEingabe(zusatz: Partial<AnswerExportInput>): AnswerExportInput {
   };
 }
 
-describe("B · R-0604 / R-0703 — die exportierte Datei sagt dasselbe wie die Karte", () => {
-  it("mit Marke: Kopfblock und Satz", () => {
-    const md = buildAnswerMarkdown(exportEingabe({ aiGenerated: true }));
+// Ben Nacharbeit 2: hier stand ein Boolean `aiGenerated`, und die Fragenseite machte aus
+// „unbekannt" ein `false` — die Kennzeichnung fiel genau dort weg, wo R-0625 sie verlangt. Die
+// Eingabe ist jetzt die DREIWERTIGE Herkunft. Die Wirkung über den ECHTEN Exportaufruf der Seite
+// (Menü → Download, alle vier Formate, vier Antwortlagen) belegt
+// tests/legal/r0703-ki-dateien-und-stufen.test.tsx; hier steht nur der Helfer.
+describe("B · R-0604 / R-0625 — der Markdown-Helfer folgt der dreiwertigen Herkunft", () => {
+  it("belegt KI: Kopfblock und Satz", () => {
+    const md = buildAnswerMarkdown(exportEingabe({ kiHerkunft: "ki" }));
     expect(md.split("\n").slice(0, 2)).toEqual(["---", "ai-generated: true"]);
     expect(md).toContain(`_${LABELS.aiNotice}_`);
   });
 
-  it("ohne Marke (`false`): weder Kopfblock noch Satz — die Datei behauptet keine KI", () => {
-    const md = buildAnswerMarkdown(exportEingabe({ aiGenerated: false }));
+  it("belegt modellfrei (`ohne-ki`): weder Kopfblock noch Satz — die Datei behauptet keine KI", () => {
+    const md = buildAnswerMarkdown(exportEingabe({ kiHerkunft: "ohne-ki" }));
     expect(md).not.toContain("ai-generated");
     expect(md).not.toContain(LABELS.aiNotice);
     // Die Antwort selbst ist vollständig da — nur die falsche Behauptung fehlt.
@@ -304,16 +309,14 @@ describe("B · R-0604 / R-0703 — die exportierte Datei sagt dasselbe wie die K
     expect(md).toContain("Jährlich.");
   });
 
-  it("R-0625 · ohne Angabe bleibt die Kennzeichnung stehen — unbekannt ist nicht „nein“", () => {
-    const md = buildAnswerMarkdown(exportEingabe({}));
-    expect(md).toContain("ai-generated: true");
-    expect(md).toContain(`_${LABELS.aiNotice}_`);
-  });
-
-  it("die Fragenseite reicht die GEPRÜFTE Marke an den Export (Quelltextprüfung)", () => {
-    const ask = lies("apps/web/src/pages/Ask.tsx");
-    expect(ask).toContain("aiGenerated: istKiKennzeichnung(result.aiGenerated),");
-    expect(ask).toContain("{istKiKennzeichnung(result.aiGenerated) ? (");
+  it("R-0625 · `unbekannt` und fehlende Angabe behalten die Kennzeichnung — nicht still „nein“", () => {
+    for (const md of [
+      buildAnswerMarkdown(exportEingabe({ kiHerkunft: "unbekannt" })),
+      buildAnswerMarkdown(exportEingabe({})),
+    ]) {
+      expect(md).toContain("ai-generated: true");
+      expect(md).toContain(`_${LABELS.aiNotice}_`);
+    }
   });
 });
 

@@ -92,6 +92,7 @@ import {
   imageWidthPercent,
   normalizeImageWidth,
 } from "../lib/imageResize";
+import { REASONER_ENTWURF_FLAECHE } from "../lib/kiHerkunft";
 // JOB 3095: die eine Quelle des Onlinezustands (JOB 3084) für den ehrlichen Offline-Satz der Bildsuche.
 import { useNetzOnline } from "../lib/netzzustand";
 import {
@@ -119,6 +120,7 @@ import { type D44BildEreignis, D44_BILD_EREIGNIS } from "./BodyImageGallery";
 import { Modal } from "./Modal";
 import { SanitizedHtml } from "./SanitizedHtml";
 import { UploadLimitsHint } from "./UploadLimitsHint";
+import { ErgebnisStufeMarke } from "./trust/ErgebnisStufeMarke";
 import { Button } from "./ui";
 
 export interface EditorImage {
@@ -3204,11 +3206,13 @@ export function RichTextEditor({
               {captionFormAi?.status === "suggestion" ? (
                 <div
                   data-testid="caption-form-suggestion"
-                  className="mt-2 rounded-card border border-ai/30 bg-surface p-2"
+                  // R-1020: ein Vorschlag entsteht nur aus einem Modelltext — also Entwurfsfläche.
+                  className={`mt-2 rounded-card p-2 ${REASONER_ENTWURF_FLAECHE}`}
                 >
                   <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
                     {t(CAPTION_AI_TEXT.panelTitle)} · {t(CAPTION_AI_TEXT.aiBadge)}
                   </p>
+                  <ErgebnisStufeMarke stufe="entwurf" className="mt-1" />
                   {captionFormAi.withContext ? (
                     <p className="mt-0.5 text-[10.5px] leading-snug text-muted">
                       {t(CAPTION_AI_TEXT.withContext)}

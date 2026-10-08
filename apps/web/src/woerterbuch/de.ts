@@ -2820,6 +2820,10 @@ const de = {
   "ask.export.copy": "Kopieren",
   "ask.export.download": "Als Markdown",
   "ask.export.print": "Drucken / PDF",
+  // R-0703: Dateien, die die KI-Kennzeichnung in ihren Eigenschaften tragen.
+  "ask.export.docx": "Als Word (.docx)",
+  "ask.export.pptx": "Als PowerPoint (.pptx)",
+  "ask.export.pdfDatei": "Als PDF-Datei",
   "ask.export.copied": "Antwort inkl. Quellen kopiert.",
   "ask.export.answer": "Antwort",
   "ask.export.footer":
@@ -7156,6 +7160,11 @@ const de = {
   // nur am Ergebnis, das ein Modell wirklich geschrieben hat.
   "ai.surfaceNotice":
     "Hier kann eine KI mitarbeiten — von ihr erzeugte Inhalte sind gekennzeichnet.",
+  // R-1020 / R-1695 (Grundsatz G-3): die drei Stufen jedes Ergebnisses. Der Entwurf trägt den
+  // Wortlaut der Quelle. `reasoner.draftLabel` bleibt als Bestandstext unverändert stehen.
+  "ergebnisStufe.entwurf": "Reasoner-Entwurf, nicht validiert",
+  "ergebnisStufe.empfehlung": "Empfehlung, nicht validiert",
+  "ergebnisStufe.validiert": "Validiert",
 
   // ==============================================================================================
   // AUFTRAG-mega62 BLOCK F — DER KOSTENHINWEIS AN JEDER AUSLÖSESTELLE.

@@ -234,6 +234,11 @@ const WIRKUNG: Record<string, (welt: { gedruckt: number; geladen: number }) => b
   "ask-menu-punkt-mehr": () => document.querySelector('[data-testid="ask-mehr"]') !== null,
   "ask-menu-punkt-print": (w) => w.gedruckt > 0,
   "ask-menu-punkt-download": (w) => w.geladen > 0,
+  // R-0703 (Aufnahme gesamt-ki-kennzeichnung): Word, PowerPoint und PDF-Datei laden jeweils
+  // eine Datei herunter — dieselbe Wirkungsprobe wie beim Markdown-Download.
+  "ask-menu-punkt-docx": (w) => w.geladen > 0,
+  "ask-menu-punkt-pptx": (w) => w.geladen > 0,
+  "ask-menu-punkt-pdf": (w) => w.geladen > 0,
 };
 
 async function menuepunkteWirken(f: Flaeche): Promise<string[]> {
