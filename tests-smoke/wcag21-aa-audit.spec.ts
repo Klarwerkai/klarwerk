@@ -1189,7 +1189,14 @@ const KALIBRIERUNG = `
   #feld-klar { border: 1px solid #767676; background: #fff; }
   #feld-flaeche { border: none; background: #666666; color: #fff; }
   .verlauf { background-image: linear-gradient(#000, #333); color: #fff; }
-  .kuerzung { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* inline-block: die Breite folgt dem Text. Ein Block wäre zeilenbreit, seine scrollWidth damit die
+     Zeile und nicht der Text — die Kürzung entstünde nie (Kalibrierung nacharbeit-11). */
+  .kuerzung {
+    display: inline-block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 </style></head>
 <body>
   <p class="grau">Grau auf Weiß, ~2,8:1</p>

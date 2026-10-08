@@ -83,8 +83,8 @@ function defaultIconFor(source: GallerySource): ReactNode {
 // („Bei 390 px verdeckt der Status teilweise den Quellnamen").
 //
 // DIE REGEL: unterhalb von `sm` steht das Badge in EIGENER Zeile unter dem Namen, und der Name darf
-// umbrechen statt zu kuerzen (`sm:truncate` statt `truncate`). Ab `sm` bleibt alles, wie es war —
-// dieselbe Reihe, dieselben Abstaende, dieselbe Kuerzung. Die Verschachtelung ist bewusst so
+// umbrechen statt zu kuerzen (damals `sm:truncate` statt `truncate`; seit Audit nacharbeit-11 bricht
+// der Name in jeder Breite um, WCAG 1.4.12). Ab `sm` bleibt die Reihe dieselbe — dieselben Abstaende. Die Verschachtelung ist bewusst so
 // gewaehlt, dass sie ab `sm` geometrisch identisch zur alten ist: aussen eine Reihe aus
 // [Icon+Name] und [Badge] mit `gap-2`, innen Icon und Name mit `gap-2`.
 //
@@ -109,8 +109,11 @@ function TileInhalt({ source, icon }: { source: GallerySource; icon: ReactNode }
           <span aria-hidden className="shrink-0 text-muted-2">
             {icon}
           </span>
-          {/* Schmal: umbrechen (der volle Name bleibt SICHTBAR). Ab `sm`: kuerzen wie bisher. */}
-          <span data-tile-name className="min-w-0 flex-1 break-words sm:truncate">
+          {/* Der Name bricht in JEDER Breite um, statt gekürzt zu werden: der volle Name bleibt
+              sichtbar. WCAG 1.4.12 (Audit nacharbeit-11): ab `sm` stand hier `truncate` — mit
+              größerem Textabstand endeten „PDF-Datei (.pdf)" und „OCR (Scan/Bild)" in „…", und der
+              volle Name stand nirgends sonst. Das Badge bleibt ab `sm` rechts in derselben Reihe. */}
+          <span data-tile-name className="min-w-0 flex-1 break-words">
             {t(source.labelKey)}
           </span>
         </span>
