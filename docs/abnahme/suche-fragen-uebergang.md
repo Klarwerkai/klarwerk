@@ -60,13 +60,24 @@ Grenzen, ausdrücklich benannt:
   Knopf „Fragen" weiter. Die Sichtung im Erstnutzerlauf vom 27.07.2026 bezieht sich auf die
   abgelöste Karte und ist kein Beleg für die heutige Fläche.
 - **Slice 2 (offen, nicht gebaut):** verdichtete Antwort inline in der Bibliothek, sichtbar getrennt
-  von der wörtlichen Trefferliste. Im Zwischenbericht
-  (`PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md`, §5) und im Interview
-  (`docs/boss-assistant/interviews/paul.md`, „Zurückgestellt (Boss)") als offene
-  Produktrichtungs-Entscheidung geführt, Design bei Boss/Pedi. Im Bestand liegt dazu keine
-  jüngere Entscheidung; die jüngere Entscheidung vom 04.09.2026 (Liste ohne Karte und Erklärtext)
-  spricht eher gegen einen zusätzlichen Antwortblock über der Liste. Ohne Entscheidung zu Ort,
-  Gestalt und Kennzeichnung „gefunden" / „von der KI verdichtet" bleibt Slice 2 offen.
+  von der wörtlichen Trefferliste. Der Zwischenbericht führt sie unter „Offene
+  Produktrichtungs-Entscheidungen (warten auf Boss)" (`PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md:72-75`);
+  das Originalkriterium (R-0429) übernimmt das wörtlich: „offene Produktrichtungs-Entscheidung,
+  Design bei Boss/Pedi - insoweit nicht erledigt". Im Bestand liegt dazu keine jüngere
+  Entscheidung; die jüngere Entscheidung vom 04.09.2026 (Liste ohne Karte und Erklärtext) spricht
+  eher gegen einen zusätzlichen Antwortblock über der Liste. Ohne Entscheidung zu Ort, Gestalt und
+  Kennzeichnung „gefunden" / „von der KI verdichtet" bleibt Slice 2 offen.
+- **Quellenwiderspruch im Interview Paul (06.07.2026, Selbstauskunft):**
+  `docs/boss-assistant/interviews/paul.md` sagt zu Slice 2 zweierlei.
+  - Boss-abhängig: Zeile 29 „Zurückgestellt (Boss): … Suche-Slice 2" und Zeile 53, unter „Offene
+    Boss-Entscheidungen", „Suche-Slice-2-Design".
+  - Nicht Boss-abhängig: Zeile 49 „Nächster nicht-Boss-abhängiger Kandidat: **Suche-Slice 2**
+    (Antwort inline in Bibliothek)".
+
+  Die Aussage aus Zeile 49 ist **keine Freigabe**. Sie ist eine unverifizierte Selbstauskunft;
+  das Interview widerspricht ihr selbst zweimal (Zeilen 29, 53), und Paul nennt dort Produktrichtung
+  ausdrücklich „außerhalb Mandat" (Zeile 17). Maßgeblich bleiben der Zwischenbericht und das
+  Originalkriterium. Beide führen das Design als offene Entscheidung bei Boss/Pedi.
 
 ## Fehlende Belege
 
