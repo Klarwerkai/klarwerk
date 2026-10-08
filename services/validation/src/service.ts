@@ -938,12 +938,17 @@ export class ValidationService {
       return [];
     }
     const optOuts = (await this.settings?.routingOptOuts()) ?? [];
+    // Ben Nacharbeit 5: OHNE die Anzeigegrenze des Vorschlags (5). Erst wird über ALLE Kandidaten
+    // nach `schnell` gefiltert, dann auf die benötigte Anzahl gekürzt — sonst verdrängen fünf
+    // höher bewertete Personen ohne Prüfdauer eine geeignete schnelle Person, und das Objekt
+    // bliebe ohne Zuweisung.
     const vorschlaege = await this.prueferVorschlagFuer({
       ziel: { id: ko.id, category: ko.category, tags: ko.tags },
       ausgeschlossen: [opts.actor, ko.author, ...optOuts],
       kandidaten: opts.kandidaten,
       nachbarn: new Set(),
       sichtbar: opts.sichtbar,
+      anzahl: opts.kandidaten.length,
     });
     const gewaehlt = vorschlaege
       .filter((v) => v.gruende.includes("schnell"))

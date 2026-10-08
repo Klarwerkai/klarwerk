@@ -352,6 +352,39 @@ describe("R-1655 · ValidationService: Routing, Opt-out, Messgrundlage", () => {
     ).toEqual(["anna"]);
   });
 
+  it("R4 · fünf höher bewertete Personen ohne Prüfdauer verdrängen die schnelle Person nicht", async () => {
+    const a = aufbau();
+    const langsam = ["lena", "lars", "lea", "leon", "luis"];
+    // Jede der fünf hat drei Themenobjekte verfasst: 3 × 2 = 6 Punkte, aber keine Prüfdauer.
+    for (const person of langsam) {
+      for (let i = 0; i < 3; i++) {
+        await a.koService.create(koInput({ title: `${person} ${i}`, author: person }));
+      }
+    }
+    // Die schnelle Person hat ein Themenobjekt binnen einer Stunde geprüft: 2 + 3 = 5 Punkte —
+    // im Vorschlag damit hinter allen fünf, also jenseits der Anzeigegrenze von fünf.
+    await gelernt(a, "flink", 1);
+    const kandidaten = [...langsam, "flink"];
+    const vorschlag = await a.service.prueferVorschlagFuer({
+      ziel: { category: "Hydraulik", tags: [] },
+      ausgeschlossen: ["autor"],
+      kandidaten,
+      nachbarn: new Set(),
+      sichtbar: alle,
+    });
+    expect(vorschlag.map((v) => v.userId)).not.toContain("flink");
+
+    const neu = await a.koService.create(koInput({ title: "neu", neededValidations: 1 }));
+    expect(
+      await a.service.automatischZuweisen({
+        koId: neu.id,
+        actor: "autor",
+        kandidaten,
+        sichtbar: alle,
+      }),
+    ).toEqual(["flink"]);
+  });
+
   it("M1 · Messgrundlage: Median der Prüfdauer je Weg, offene getrennt, ohne Messung `null`", async () => {
     const a = aufbau();
     await gelernt(a, "anna", 4); // manuell, 4 h
