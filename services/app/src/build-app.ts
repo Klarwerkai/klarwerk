@@ -45,14 +45,17 @@ import {
   validateDraftPayloadShape,
 } from "../../capture";
 import {
+  type ConflictMemoryRepo,
   type ConflictRepo,
   ConflictService,
+  InMemoryConflictMemoryRepo,
   InMemoryConflictRepo,
   InMemoryOverlapRepo,
   InMemoryOverlapSettingsRepo,
   type OverlapRepo,
   OverlapService,
   type OverlapSettingsRepo,
+  PgConflictMemoryRepo,
   PgConflictRepo,
   PgOverlapRepo,
   PgOverlapSettingsRepo,
@@ -624,6 +627,8 @@ export interface AppRepos {
   ratings: RatingRepo;
   assignments: AssignmentRepo;
   conflictsRepo: ConflictRepo;
+  // Aufnahme 20260922 · Prüfung-Gedächtnis (R-1103/R-1105): gemerkte Textstände je Paar.
+  conflictMemory: ConflictMemoryRepo;
   // Berater-Konzept Duplikate 04.07. (Stufe D3b): Persistenz der Überschneidungs-Einträge.
   overlapRepo: OverlapRepo;
   // Pedi 04.07.: persistierte Anzeige-Schwelle der Duplikat-Erkennung (Admin-Einstellung).
@@ -1156,6 +1161,7 @@ export function assembleServices(
     repo: repos.conflictsRepo,
     audit,
     currentVersion: koVersion,
+    memory: repos.conflictMemory,
   });
   // JOB 3071: die papierkorbfähige Auskunft „hat der Autor seinen eigenen Beitrag zurückgezogen?".
   // Genau wie `koVersion` ein Funktions-Port und keine Modulkante: `services/conflicts` darf
@@ -1596,6 +1602,7 @@ export function inMemoryRepos(): AppRepos {
     ratings: new InMemoryRatingRepo(),
     assignments: new InMemoryAssignmentRepo(),
     conflictsRepo: new InMemoryConflictRepo(),
+    conflictMemory: new InMemoryConflictMemoryRepo(),
     overlapRepo: new InMemoryOverlapRepo(),
     overlapSettings: new InMemoryOverlapSettingsRepo(),
     managementProfiles: new InMemoryManagementProfileRepo(),
@@ -1670,6 +1677,7 @@ export function buildPgServices(rohPool: Pool): AppServices {
       ratings: new PgRatingRepo(pool),
       assignments: new PgAssignmentRepo(pool),
       conflictsRepo: new PgConflictRepo(pool),
+      conflictMemory: new PgConflictMemoryRepo(pool),
       // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge persistent.
       overlapRepo: new PgOverlapRepo(pool),
       // Pedi 04.07.: Anzeige-Schwelle persistent.
