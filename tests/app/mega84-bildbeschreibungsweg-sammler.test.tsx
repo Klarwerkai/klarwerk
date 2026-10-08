@@ -2170,8 +2170,14 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // EHRLICH GESAGT: GERECHNET (515 + 1) — dieser Auftrag durfte keinen Testlauf selbst starten,
     // und ob 515 den Stand nach `produkt:20261007:ownership-uebergabe` schon trug, ist ungemessen.
     // Weicht der Prüflauf ab, gehört die gemessene Zahl hierher.
+    // Nacharbeit 2: GEMESSEN 523. Am Kandidaten a7616b41 meldete der Sammler wörtlich „gemessen:
+    // 523 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 670 Quelldateien … expected
+    // { komponenten: 523, … } to deeply equal { komponenten: 516, … }". Dieser Auftrag trägt genau
+    // EIN Bauteil (`VermaechtnisBuch`) bei; die übrigen 7 über 516 stammen aus dem Hauptstand seit
+    // der letzten Messung (darunter `VerantwortungUebergabe`/`Arbeitsflaeche` der Ownership-
+    // Übergabe) und sind ohne Git-Verlauf hier nicht vollständig namentlich bestimmt.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 516,
+      komponenten: 523,
       anbieter: 1,
       traeger: 2,
     });
