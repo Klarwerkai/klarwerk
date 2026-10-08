@@ -21,6 +21,7 @@
 import { describe, expect, it } from "vitest";
 import { type AppServices, buildApp, buildServices } from "../../services/app/src/build-app";
 import { lokalisierungsPaket } from "../../services/app/src/lesevarianten";
+import type { KoSource } from "../../services/knowledge-object";
 
 type App = ReturnType<typeof buildApp>;
 type Kopf = Record<string, string>;
@@ -56,16 +57,18 @@ async function anmelden(app: App, email: string): Promise<Kopf> {
   return { authorization: `Bearer ${res.json().token}` };
 }
 
-function quelleFuer(seitenId: string) {
+function quelleFuer(seitenId: string, autor: string): KoSource {
   return {
     id: `quelle-${seitenId}`,
     label: `Confluence-Seite ${seitenId}`,
     url: null,
     excerpt: null,
-    kind: "external" as const,
+    kind: "external",
     peerValidated: false,
     provider: "Confluence",
     externalId: seitenId,
+    author: autor,
+    at: "2026-01-01T00:00:00.000Z",
   };
 }
 
@@ -81,7 +84,7 @@ async function objektMitAnker(
     type: "best_practice",
     category: "Onboarding",
     author: autor,
-    sources: [quelleFuer(seitenId)],
+    sources: [quelleFuer(seitenId, autor)],
   });
   return ko.id;
 }
