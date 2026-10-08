@@ -139,6 +139,94 @@ describe("PLAN-SPRACHANMERKUNG · D4 — die hochgeladene Datei als Zeichnung", 
     expect(svg).not.toContain("alert");
   });
 
+  // NACHARBEIT 6 (BEN): Polylinien mit Krümmung (Gruppencode 42) wurden als Geraden gezeichnet.
+  it("L2b · gekrümmte Polylinie: Bogen statt Gerade, Bildgrenze schliesst die Wölbung ein", () => {
+    // Von (0|0) nach (100|0) mit Krümmung 1 = Halbkreis gegen den Uhrzeigersinn, also UNTER der
+    // Sehne (Mitte 50|0, Radius 50, tiefster Punkt y = −50).
+    const halbkreis = dxf([
+      [0, "SECTION"],
+      [2, "ENTITIES"],
+      [0, "LWPOLYLINE"],
+      [70, 0],
+      [10, 0],
+      [20, 0],
+      [42, 1],
+      [10, 100],
+      [20, 0],
+      [0, "ENDSEC"],
+    ]);
+    const bild = dxfAlsBild(halbkreis);
+    expect(bild?.elemente).toBe(1);
+    expect(bild?.ausgelassen).toBe(0);
+    const svg = svgAus(bild?.src ?? "");
+    // Höhe 50 + Rand: ohne die Wölbung wäre die Zeichnung flach (Höhe ≈ 0).
+    expect(svg).toContain('viewBox="0 0 104 54"');
+    expect(svg).toContain('<path d="M2 2 A50 50 0 0 0 102 2"/>');
+    expect(svg).not.toContain("L102 2");
+  });
+
+  it("L2c · geschlossener Zug aus zwei Halbkreisen: der Schlussbogen steht vor Z", () => {
+    const kreis = dxf([
+      [0, "SECTION"],
+      [2, "ENTITIES"],
+      [0, "LWPOLYLINE"],
+      [70, 1],
+      [10, 0],
+      [20, 0],
+      [42, 1],
+      [10, 100],
+      [20, 0],
+      [42, 1],
+      [0, "ENDSEC"],
+    ]);
+    const svg = svgAus(dxfAlsBild(kreis)?.src ?? "");
+    expect(svg).toContain('viewBox="0 0 104 104"');
+    expect(svg).toContain('<path d="M2 52 A50 50 0 0 0 102 52 A50 50 0 0 0 2 52 Z"/>');
+  });
+
+  it("L2d · Richtung und grosser Bogen; POLYLINE/VERTEX trägt die Krümmung ebenso", () => {
+    // Negative Krümmung = im Uhrzeigersinn → sweep 1; |b| > 1 → mehr als ein Halbkreis → gross 1.
+    const zug = dxf([
+      [0, "SECTION"],
+      [2, "ENTITIES"],
+      [0, "POLYLINE"],
+      [70, 0],
+      [0, "VERTEX"],
+      [10, 0],
+      [20, 0],
+      [42, -2],
+      [0, "VERTEX"],
+      [10, 100],
+      [20, 0],
+      [0, "SEQEND"],
+      [0, "ENDSEC"],
+    ]);
+    const svg = svgAus(dxfAlsBild(zug)?.src ?? "");
+    expect(svg).toMatch(/<path d="M[\d.]+ [\d.]+ A62\.5 62\.5 0 1 1 [\d.]+ [\d.]+"\/>/);
+  });
+
+  it("L2e · eine unlesbare Krümmung wird nicht still zur Geraden: der Zug zählt als ausgelassen", () => {
+    const kaputt = dxf([
+      [0, "SECTION"],
+      [2, "ENTITIES"],
+      [0, "LWPOLYLINE"],
+      [10, 0],
+      [20, 0],
+      [42, "abc"],
+      [10, 100],
+      [20, 0],
+      [0, "LINE"],
+      [10, 0],
+      [20, 0],
+      [11, 10],
+      [21, 10],
+      [0, "ENDSEC"],
+    ]);
+    const bild = dxfAlsBild(kaputt);
+    expect(bild?.elemente).toBe(1);
+    expect(bild?.ausgelassen).toBe(1);
+  });
+
   it("L3 · ohne Zeichenbares keine Zeichnung", () => {
     const nurText = dxf([
       [0, "SECTION"],

@@ -103,6 +103,13 @@ export function anhangStelle(
 interface Strecke {
   art: "linie" | "zug";
   punkte: [number, number][];
+  /**
+   * NACHARBEIT 6 (BEN) — die KRÜMMUNG je Eckpunkt (DXF-Gruppencode 42, „bulge"): sie gilt für das
+   * Segment VON diesem Punkt zum nächsten. 0 = gerade; sonst tan(¼ des eingeschlossenen Winkels),
+   * positiv = gegen den Uhrzeigersinn. Vorher wurde sie verworfen und jeder Bogen als Gerade
+   * gezeichnet — eine Notiz konnte so an einer Stelle landen, die es in der Zeichnung nicht gibt.
+   */
+  kruemmung: number[];
   geschlossen: boolean;
 }
 interface Kreisbogen {
@@ -121,6 +128,71 @@ type DxfElement = Strecke | Kreisbogen;
  */
 function istStrecke(e: DxfElement): e is Strecke {
   return e.art === "linie" || e.art === "zug";
+}
+
+/** Ein gekrümmtes Segment als Kreisbogen: Mitte, Radius, Startwinkel und Spanne (Bogenmass). */
+interface Segmentbogen {
+  cx: number;
+  cy: number;
+  r: number;
+  start: number;
+  /** Vorzeichenbehaftet: positiv = gegen den Uhrzeigersinn (wie in CAD). */
+  spanne: number;
+}
+
+/**
+ * Der Kreisbogen zwischen zwei Eckpunkten mit Krümmung `b` — `null` bei geradem Segment. Formeln
+ * der DXF-Referenz: Spanne = 4·atan(b), Radius = s·(1+b²)/(4|b|) bei Sehnenlänge s; die Mitte liegt
+ * auf der Mittelsenkrechten der Sehne, links der Laufrichtung im Abstand s·(1−b²)/(4b).
+ */
+function segmentBogen(
+  von: [number, number],
+  nach: [number, number],
+  b: number,
+): Segmentbogen | null {
+  const dx = nach[0] - von[0];
+  const dy = nach[1] - von[1];
+  const sehne = Math.hypot(dx, dy);
+  if (b === 0 || sehne === 0) {
+    return null;
+  }
+  const abstand = (sehne * (1 - b * b)) / (4 * b);
+  const cx = (von[0] + nach[0]) / 2 - (dy / sehne) * abstand;
+  const cy = (von[1] + nach[1]) / 2 + (dx / sehne) * abstand;
+  return {
+    cx,
+    cy,
+    r: (sehne * (1 + b * b)) / (4 * Math.abs(b)),
+    start: Math.atan2(von[1] - cy, von[0] - cx),
+    spanne: 4 * Math.atan(b),
+  };
+}
+
+interface Segment {
+  von: [number, number];
+  nach: [number, number];
+  bogen: Segmentbogen | null;
+}
+
+/** Die Segmente eines Zuges (bei geschlossenem Zug samt dem Schlusssegment zum ersten Punkt). */
+function segmente(e: Strecke): Segment[] {
+  const aus: Segment[] = [];
+  const n = e.punkte.length;
+  const anzahl = e.geschlossen && n >= 2 ? n : n - 1;
+  for (let k = 0; k < anzahl; k += 1) {
+    const von = e.punkte[k] as [number, number];
+    const nach = e.punkte[(k + 1) % n] as [number, number];
+    aus.push({ von, nach, bogen: segmentBogen(von, nach, e.kruemmung[k] ?? 0) });
+  }
+  return aus;
+}
+
+/** Liegt der Winkel `a` auf dem Bogen? (Richtung und Spanne wie in `Segmentbogen`.) */
+function aufBogen(bogen: Segmentbogen, a: number): boolean {
+  const voll = 2 * Math.PI;
+  const richtung = bogen.spanne >= 0 ? 1 : -1;
+  const delta = ((((a - bogen.start) * richtung) % voll) + voll) % voll;
+  return delta <= Math.abs(bogen.spanne) + 1e-12;
 }
 
 export interface DxfBild {
@@ -180,6 +252,9 @@ function dxfElemente(text: string): { elemente: DxfElement[]; ausgelassen: numbe
   for (const { typ, felder } of roh) {
     if (typ === "VERTEX" && offenerZug) {
       offenerZug.punkte.push([erstes(felder, 10), erstes(felder, 20)]);
+      // Fehlt Code 42, ist das Segment gerade; ein unlesbarer Wert bleibt NaN und macht den Zug
+      // unten ungültig, statt ihn still als Gerade zu zeichnen.
+      offenerZug.kruemmung.push(felder.some(([c]) => c === 42) ? erstes(felder, 42) : 0);
       continue;
     }
     if (typ === "SEQEND") {
@@ -196,18 +271,36 @@ function dxfElemente(text: string): { elemente: DxfElement[]; ausgelassen: numbe
           [erstes(felder, 10), erstes(felder, 20)],
           [erstes(felder, 11), erstes(felder, 21)],
         ],
+        kruemmung: [0, 0],
         geschlossen: false,
       });
     } else if (typ === "LWPOLYLINE") {
-      const xs = felder.filter(([c]) => c === 10).map(([, w]) => zahl(w));
-      const ys = felder.filter(([c]) => c === 20).map(([, w]) => zahl(w));
+      // In der Reihenfolge der Datei: 10 eröffnet einen Eckpunkt, 20 ist sein y, 42 seine Krümmung.
+      const punkte: [number, number][] = [];
+      const kruemmung: number[] = [];
+      for (const [c, w] of felder) {
+        if (c === 10) {
+          punkte.push([zahl(w), Number.NaN]);
+          kruemmung.push(0);
+        } else if (c === 20 && punkte.length > 0) {
+          (punkte[punkte.length - 1] as [number, number])[1] = zahl(w);
+        } else if (c === 42 && kruemmung.length > 0) {
+          kruemmung[kruemmung.length - 1] = zahl(w);
+        }
+      }
       elemente.push({
         art: "zug",
-        punkte: xs.map((x, k) => [x, ys[k] ?? Number.NaN] as [number, number]),
+        punkte,
+        kruemmung,
         geschlossen: (erstes(felder, 70) & 1) === 1,
       });
     } else if (typ === "POLYLINE") {
-      offenerZug = { art: "zug", punkte: [], geschlossen: (erstes(felder, 70) & 1) === 1 };
+      offenerZug = {
+        art: "zug",
+        punkte: [],
+        kruemmung: [],
+        geschlossen: (erstes(felder, 70) & 1) === 1,
+      };
     } else if (typ === "CIRCLE" || typ === "ARC") {
       elemente.push({
         art: typ === "CIRCLE" ? "kreis" : "bogen",
@@ -223,7 +316,9 @@ function dxfElemente(text: string): { elemente: DxfElement[]; ausgelassen: numbe
   }
   const gueltig = elemente.filter((e) =>
     istStrecke(e)
-      ? e.punkte.length >= 2 && e.punkte.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y))
+      ? e.punkte.length >= 2 &&
+        e.punkte.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y)) &&
+        e.kruemmung.every(Number.isFinite)
       : [e.x, e.y, e.r, e.von, e.bis].every(Number.isFinite) && e.r > 0,
   );
   return { elemente: gueltig, ausgelassen: ausgelassen + (elemente.length - gueltig.length) };
@@ -255,6 +350,16 @@ export function dxfAlsBild(text: string): DxfBild | null {
       for (const [x, y] of e.punkte) {
         nimm(x, y);
       }
+      // Ein gekrümmtes Segment reicht über seine Eckpunkte hinaus: dazu zählen die Achsenpunkte
+      // (0°, 90°, 180°, 270°) des Kreises, die auf dem Bogen liegen.
+      for (const { bogen } of segmente(e)) {
+        for (let k = 0; bogen && k < 4; k += 1) {
+          const a = (k * Math.PI) / 2;
+          if (aufBogen(bogen, a)) {
+            nimm(bogen.cx + bogen.r * Math.cos(a), bogen.cy + bogen.r * Math.sin(a));
+          }
+        }
+      }
     } else {
       nimm(e.x - e.r, e.y - e.r);
       nimm(e.x + e.r, e.y + e.r);
@@ -269,8 +374,25 @@ export function dxfAlsBild(text: string): DxfBild | null {
   const py = (y: number): string => fmt(maxY - y + rand);
   const pfade = elemente.map((e) => {
     if (istStrecke(e)) {
-      const d = e.punkte.map(([x, y], k) => `${k === 0 ? "M" : "L"}${px(x)} ${py(y)}`).join(" ");
-      return `<path d="${d}${e.geschlossen ? " Z" : ""}"/>`;
+      // Gerade Segmente als L, gekrümmte als Kreisbogen A — mit derselben Richtungsregel wie ARC
+      // (gegen den Uhrzeigersinn in CAD = `sweep-flag` 0 nach der Spiegelung). Ein gerades
+      // Schlusssegment zeichnet `Z`; ein gekrümmtes steht ausdrücklich davor.
+      const [erster] = e.punkte as [[number, number]];
+      const teile = [`M${px(erster[0])} ${py(erster[1])}`];
+      const alle = segmente(e);
+      for (let k = 0; k < alle.length; k += 1) {
+        const { nach, bogen } = alle[k] as Segment;
+        const schluss = e.geschlossen && k === e.punkte.length - 1;
+        if (bogen) {
+          const gross = Math.abs(bogen.spanne) > Math.PI ? 1 : 0;
+          const sweep = bogen.spanne > 0 ? 0 : 1;
+          const r = fmt(bogen.r);
+          teile.push(`A${r} ${r} 0 ${gross} ${sweep} ${px(nach[0])} ${py(nach[1])}`);
+        } else if (!schluss) {
+          teile.push(`L${px(nach[0])} ${py(nach[1])}`);
+        }
+      }
+      return `<path d="${teile.join(" ")}${e.geschlossen ? " Z" : ""}"/>`;
     }
     if (e.art === "kreis") {
       return `<circle cx="${px(e.x)}" cy="${py(e.y)}" r="${fmt(e.r)}"/>`;
