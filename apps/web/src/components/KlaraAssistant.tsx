@@ -14,7 +14,6 @@ import { aiSperrHinweisKey } from "../lib/aiAvailability";
 import { klaraBeispiel } from "../lib/klaraBeispiele";
 import {
   type ResolvedKlaraEntry,
-  allBibliothekEntries,
   allFaqEntries,
   allKlaraEntries,
   klaraEntryById,
@@ -305,10 +304,24 @@ export function KlaraAssistant(): JSX.Element {
   // R-0890 / R-0935: die Bibliotheksartikel sind in Klaras SICHTBARER Suche auffindbar (Suchfeld
   // und Zeige-Modus über die Beschriftung) — hinter den Registry- und FAQ-Treffern. In die
   // KI-Grundlage (`rankKlara` unten) gehen sie nicht; Begründung an `allBibliothekEntries`.
-  const auffindbar = useMemo(
-    () => [...resolved, ...allBibliothekEntries(i18n.language, (key) => t(key))],
-    [resolved, t, i18n.language],
-  );
+  // Nachgeladen beim ersten Öffnen (`lib/klaraBibliothek.ts`): statisch eingebunden hoben die
+  // Artikel den ersten geladenen Brocken über den Deckel aus R-0801.
+  const [bibliothek, setBibliothek] = useState<ResolvedKlaraEntry[]>([]);
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    let aktuell = true;
+    void import("../lib/klaraBibliothek").then(({ allBibliothekEntries }) => {
+      if (aktuell) {
+        setBibliothek(allBibliothekEntries(i18n.language, (key) => t(key)));
+      }
+    });
+    return () => {
+      aktuell = false;
+    };
+  }, [open, t, i18n.language]);
+  const auffindbar = useMemo(() => [...resolved, ...bibliothek], [resolved, bibliothek]);
 
   const page = pageEntryFor(location.pathname);
   const fieldEntry = fieldId ? klaraEntryById(fieldId) : null;

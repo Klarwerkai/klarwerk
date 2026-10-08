@@ -46,7 +46,8 @@ import {
   HILFE_BIBLIOTHEK,
   artikelText,
 } from "../../apps/web/src/lib/hilfeBibliothek";
-import { allBibliothekEntries, searchKlara } from "../../apps/web/src/lib/klaraRegistry";
+import { allBibliothekEntries } from "../../apps/web/src/lib/klaraBibliothek";
+import { searchKlara } from "../../apps/web/src/lib/klaraRegistry";
 import { Help } from "../../apps/web/src/pages/Help";
 import { SPRACHEN, funde } from "../hilfe-faq-sammlung/wortwahl";
 import { repoPfad } from "../support/repoPfad";
@@ -296,6 +297,14 @@ describe("R-0935 / R-1671 · Nacharbeit 5 — die Artikel sind auffindbar", () =
     expect(searchKlara(de, "Leimzeit").map((eintrag) => eintrag.id)).toContain("artikel:capture");
     const en = allBibliothekEntries("en", (key) => i18n.getFixedT("en")(key));
     expect(searchKlara(en, "speech recognition").map((e) => e.id)).toContain("artikel:diktieren");
+  });
+
+  it("S5 · Nacharbeit 6: die Registry im ersten Brocken bindet die Artikel nicht statisch ein", () => {
+    // Klaras Registry steht in der Hülle jeder Seite. Die Artikel dort statisch einzubinden hob den
+    // Eintritt über den Deckel aus R-0801 (gemessen 1403861 B gegen 1360000 B). Die Wirkung misst
+    // `tests/erstladezeit/eintritt-ohne-seiten.test.ts` am Bau; hier steht die Ursache fest.
+    const registry = readFileSync(repoPfad("apps/web/src/lib/klaraRegistry.ts"), "utf8");
+    expect(registry).not.toMatch(/from "\.\/(hilfeBibliothek|klaraBibliothek)"/);
   });
 
   it("S4 · ohne Suche stehen alle Funktionsartikel zugeklappt da, nach Teilen gegliedert", async () => {

@@ -189,8 +189,14 @@ describe("R-0941 · das konkrete Beispiel in Klaras Elementerklärung", () => {
   it("E5 · Nacharbeit 5: Klaras Suchfeld findet einen Bibliotheksartikel („Leimzeit“)", async () => {
     // R-0890 / R-0935: „Leimzeit“ steht ausschließlich im Bereichsartikel „Wissen erfassen“
     // (`lib/hilfeBibliothek.ts`) — gefunden wird es nur, wenn das Panel die Artikel durchsucht.
+    // Nacharbeit 6: das Panel lädt die Artikel beim Öffnen nach (`lib/klaraBibliothek.ts`, Deckel
+    // R-0801); der Test wartet, bis dieses Nachladen durch ist, bevor er tippt.
     const flaeche = await klaraMounten("de");
     const panel = await oeffnen(flaeche);
+    await act(async () => {
+      await import("../../apps/web/src/lib/klaraBibliothek");
+      await new Promise((fertig) => setTimeout(fertig, 0));
+    });
     const feld = panel.querySelector<HTMLInputElement>(
       `input[placeholder="${i18n.t("klara.searchPlaceholder")}"]`,
     );

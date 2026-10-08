@@ -862,7 +862,7 @@ export const FUNKTIONS_ARTIKEL: readonly FunktionsArtikel[] = [
       ),
       wie: T(
         "Du startest und stoppst das Diktat bewusst. Dein Browser wandelt die Sprache in Text um, der ins Feld fließt; danach korrigierst du ihn wie getippten Text.",
-        "You start and stop dictation deliberately. Your browser turns speech into text that flows into the field; afterwards you correct it like typed text.",
+        "You start and stop dictation deliberately. Your browser turns speech into text that goes into the field; afterwards you correct it like typed text.",
         "Je start en stopt het dicteren bewust. Je browser zet de spraak om in tekst die in het veld komt; daarna verbeter je die zoals getypte tekst.",
       ),
       warum: T(

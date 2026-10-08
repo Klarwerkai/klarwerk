@@ -4,6 +4,10 @@ Auftrag `aufnahme:20260922:gesamt-hilfen`, Revision 1, Lauf 1, Nacharbeit 3.
 Abgeglichen am 08.10.2026 gegen den Stand **1.0.0-beta.1.741** (Basis `6f9e961b`); Nacharbeit 3 am
 Kandidaten `28f3bc69` (1.0.0-beta.1.744), Nacharbeit 5 am Kandidaten `4905373d` (Befunde Bens:
 Artikel im Suchraum, Funktionsabdeckung gegen die Quellengliederung, eigene Erklärseite R-0443).
+Nacharbeit 6 am Kandidaten `33aad029`: Klara lädt die Bibliotheksartikel erst beim Öffnen nach
+(`lib/klaraBibliothek.ts`), weil sie statisch eingebunden den Eintritt über den Deckel aus R-0801
+hoben (gemessen 1403861 B gegen 1360000 B); im Diktieren-Artikel (EN) ersetzt „goes“ das Wort
+„flows“ (Wortwahlregel).
 
 Dies ist zuerst eine **Bestandsaufnahme**. Erledigte Teile werden nicht neu gebaut. Gebaut wurde nur,
 wo am Quelltext eine konkrete Lücke eines Originalkriteriums stand (Abschnitt „In diesem Lauf

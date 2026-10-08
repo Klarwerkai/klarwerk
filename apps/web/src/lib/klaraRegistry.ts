@@ -6,13 +6,6 @@
 import { CAPTURE_HELP_TOPICS } from "./captureHelp";
 import { FAQ_CONTENT } from "./faqContent";
 import { HELP_TOPICS } from "./helpTopics";
-import {
-  BIBLIOTHEK_TEILE,
-  type BibliothekTeil,
-  FUNKTIONS_ARTIKEL,
-  funktionsArtikel,
-  hilfeArtikel,
-} from "./hilfeBibliothek";
 import { REVIEW_HELP_TOPICS } from "./reviewHelp";
 
 export type KlaraKind = "page" | "field" | "topic" | "faq" | "artikel";
@@ -245,53 +238,9 @@ export function allFaqEntries(language: string): ResolvedKlaraEntry[] {
   }));
 }
 
-// R-0890 / R-0935 · Die Bibliotheksartikel (`lib/hilfeBibliothek.ts`) als fertige, bereits aufgelöste
-// Einträge für Klaras SICHTBARE Suche — in der Sprache der Oberfläche (DE/EN/NL). Titel ist der
-// Kapiteltitel, Text sind die fünf Teile mit ihren Überschriften, `route` das Ziel des Kapitels.
-//
-// BEWUSST NICHT in der KI-Grundlage (`rankKlara` im Panel): die zwölf Schnipsel dort sind gemessen
-// knapp belegt (`tests/app/f0304-klara-assistenzflaeche.test.tsx`, die Duplikat-Antwort hält sich
-// auf Platz 11 von 12). 22 lange Artikel würden kurze, geprüfte Antworten aus der Grundlage drängen.
-// Der Aufrufer reicht `t` herein — diese Datei bleibt i18n-frei testbar.
-export function allBibliothekEntries(
-  language: string,
-  t: (key: string) => string,
-): ResolvedKlaraEntry[] {
-  const ueberschrift = (teil: BibliothekTeil): string => t(`hilfebibliothek.teil.${teil}`);
-  const mitUeberschriften = (teile: Readonly<Record<BibliothekTeil, string>>): string =>
-    BIBLIOTHEK_TEILE.map((teil) => `${ueberschrift(teil)} ${teile[teil]}`).join(" ");
-  const bereiche = HELP_TOPICS.flatMap((topic) => {
-    const artikel = hilfeArtikel(topic.id, language);
-    if (!artikel) {
-      return [];
-    }
-    return [
-      {
-        id: `artikel:${topic.id}`,
-        kind: "artikel" as const,
-        titleKey: "",
-        bodyKey: "",
-        route: topic.to,
-        title: t(topic.titleKey),
-        body: mitUeberschriften(artikel),
-      },
-    ];
-  });
-  // Nacharbeit 5: auch die Funktionsartikel (Diktieren, Interview, Wissensarten …).
-  const funktionen = FUNKTIONS_ARTIKEL.map((artikel) => {
-    const { titel, teile } = funktionsArtikel(artikel, language);
-    return {
-      id: `artikel:${artikel.id}`,
-      kind: "artikel" as const,
-      titleKey: "",
-      bodyKey: "",
-      route: artikel.route,
-      title: titel,
-      body: mitUeberschriften(teile),
-    };
-  });
-  return [...bereiche, ...funktionen];
-}
+// Die Bibliotheksartikel (R-0890 / R-0935, Art „artikel“) stehen NICHT hier, sondern in
+// `lib/klaraBibliothek.ts`: diese Registry liegt im ersten geladenen Brocken, die Artikel werden
+// erst beim Öffnen des Panels nachgeladen (Deckel R-0801).
 
 // Kleine Synonym-Karte für die tolerante Suche: Alltagswort → Wortstamm aus den Hilfetexten.
 // Bewusst klein und wartbar; wächst mit echten Anwenderfragen (Hilfe-Lücken-Schleife).
