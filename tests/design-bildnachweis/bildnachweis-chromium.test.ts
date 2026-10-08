@@ -926,21 +926,23 @@ describe("R-1399 · Sichtnachweis: Lesetexte aus dem Hauptstand auf 11 px", () =
 
       // Nacharbeit 22 (Ben): im Bild verdeckten der Kenntnisnahmehinweis und das aus B10 noch
       // offene Klara-Gespräch die Zeile. Beide werden über ihre vorgesehenen Bedienelemente
-      // geschlossen („Verstanden — weiter“, Klaras „Schliessen“), dann kommt die Zeile in Sicht.
+      // geschlossen (Klaras „Schliessen“, „Verstanden — weiter“), dann kommt die Zeile in Sicht.
+      // Nacharbeit 23: ZUERST das Gespräch — es liegt über dem Knopf des Hinweises und fing den
+      // Klick ab (Klaras Eingabefeld, laut Aufrufprotokoll von Playwright).
       const da = (sel: string): Promise<boolean> =>
         s.evaluate<boolean>(fn("(sel) => !!document.querySelector(sel)"), sel);
-      if (await da('[data-testid="notice-ack"]')) {
-        await s.click('[data-testid="notice-ack"]');
-        await s.waitForFunction(
-          fn(`() => !document.querySelector('[data-testid="notice-banner"]')`),
-          undefined,
-          { timeout: 15_000 },
-        );
-      }
       if (await da('[data-testid="klara-gespraech"]')) {
         await s.click('[data-testid="klara-schliessen"]');
         await s.waitForFunction(
           fn(`() => !document.querySelector('[data-testid="klara-gespraech"]')`),
+          undefined,
+          { timeout: 15_000 },
+        );
+      }
+      if (await da('[data-testid="notice-ack"]')) {
+        await s.click('[data-testid="notice-ack"]');
+        await s.waitForFunction(
+          fn(`() => !document.querySelector('[data-testid="notice-banner"]')`),
           undefined,
           { timeout: 15_000 },
         );
