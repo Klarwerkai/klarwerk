@@ -1760,8 +1760,19 @@ function ohneHuelleAusdruck(n: ts.Expression): ts.Expression {
   return x;
 }
 
-/** Alle Werte, die dieser Bezeichner annehmen kann: Initialisierer plus jede Zuweisung im Block. */
-function wertDefinitionen(id: ts.Identifier): ts.Expression[] | undefined {
+/** Ist das eine Zuweisung (`=`, `??=`, `||=`, `+=` …)? */
+function istZuweisung(n: ts.Node): n is ts.BinaryExpression {
+  return (
+    ts.isBinaryExpression(n) &&
+    n.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+    n.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+  );
+}
+
+/** Der Block, in dem dieser Bezeichner als Variable deklariert ist, samt Deklaration. */
+function deklarationVon(
+  id: ts.Identifier,
+): { bereich: ts.Node; deklaration: ts.VariableDeclaration } | undefined {
   for (let p: ts.Node | undefined = id.parent; p; p = p.parent) {
     if (!(ts.isBlock(p) || ts.isSourceFile(p) || ts.isModuleBlock(p))) {
       continue;
@@ -1771,27 +1782,99 @@ function wertDefinitionen(id: ts.Identifier): ts.Expression[] | undefined {
         continue;
       }
       for (const d of anweisung.declarationList.declarations) {
-        if (!ts.isIdentifier(d.name) || d.name.text !== id.text) {
-          continue;
+        if (ts.isIdentifier(d.name) && d.name.text === id.text) {
+          return { bereich: p, deklaration: d };
         }
-        const werte: ts.Expression[] = d.initializer ? [d.initializer] : [];
-        const sammle = (n: ts.Node): void => {
-          if (
-            ts.isBinaryExpression(n) &&
-            n.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-            ts.isIdentifier(n.left) &&
-            n.left.text === id.text
-          ) {
-            werte.push(n.right);
-          }
-          ts.forEachChild(n, sammle);
-        };
-        sammle(p);
-        return werte.length > 0 ? werte : undefined;
       }
     }
   }
   return undefined;
+}
+
+/** Alle Werte, die dieser Bezeichner annehmen kann: Initialisierer plus jede Zuweisung im Block. */
+function wertDefinitionen(id: ts.Identifier): ts.Expression[] | undefined {
+  const fund = deklarationVon(id);
+  if (!fund) {
+    return undefined;
+  }
+  const werte: ts.Expression[] = fund.deklaration.initializer ? [fund.deklaration.initializer] : [];
+  const sammle = (n: ts.Node): void => {
+    // Nacharbeit 7: jede Zuweisungsart (auch `??=`, `||=`), nicht nur `=`.
+    if (istZuweisung(n) && ts.isIdentifier(n.left) && n.left.text === id.text) {
+      werte.push(n.right);
+    }
+    ts.forEachChild(n, sammle);
+  };
+  sammle(fund.bereich);
+  return werte.length > 0 ? werte : undefined;
+}
+
+// ================================================================================================
+// NACHARBEIT 7 (Befund ben, R-1175) — SCHREIBZUGRIFFE AUF DEN FILTER.
+// ================================================================================================
+//
+// Bis hierher sah die Übergabeprüfung nur das Objektliteral bzw. den Parameternamen. Sie hielt
+// `const deps = { sichtbar: sichtbarkeitsfilterFuer(user) }; deps.sichtbar = () => true;
+// dienst.liste(deps);` für geschützt — und im Dienst `sichtbar = () => true; return
+// kos.filter((k) => sichtbar(k));` ebenso. Jetzt werden Schreibzugriffe gesucht:
+//   · auf eine Filtereigenschaft vor der Übergabe (`obj.eig = …` zählt als weiterer Wert und muss
+//     selbst zentral sein; `obj[…] = …`, `delete obj.eig`, `Object.assign(obj, …)` und
+//     zusammengesetzte Zuweisungen sind nicht auflösbar und damit rot);
+//   · auf den Filterparameter eines Glieds (jede Zuweisung an ihn oder an seine Filtereigenschaft,
+//     `delete`, `Object.assign`) — ein Dienst ersetzt die übergebene Entscheidung nicht.
+
+interface Schreibzugriff {
+  knoten: ts.Node;
+  /** Bei schlichtem `obj.eig = wert`: der neue Wert. Sonst nicht auflösbar. */
+  wert?: ts.Expression;
+}
+
+/** Schreibzugriffe auf `objekt` (ohne Eigenschaft) bzw. auf `objekt.eigenschaft` in `bereich`. */
+function schreibzugriffe(bereich: ts.Node, objekt: string, eigenschaft?: string): Schreibzugriff[] {
+  const treffer: Schreibzugriff[] = [];
+  const istObjekt = (e: ts.Expression): boolean => {
+    const x = ohneHuelleAusdruck(e);
+    return ts.isIdentifier(x) && x.text === objekt;
+  };
+  const zielt = (ziel: ts.Expression): boolean => {
+    const x = ohneHuelleAusdruck(ziel);
+    if (eigenschaft === undefined) {
+      return istObjekt(x);
+    }
+    return (
+      (ts.isPropertyAccessExpression(x) &&
+        x.name.text === eigenschaft &&
+        istObjekt(x.expression)) ||
+      (ts.isElementAccessExpression(x) && istObjekt(x.expression))
+    );
+  };
+  const besuche = (n: ts.Node): void => {
+    if (istZuweisung(n) && zielt(n.left)) {
+      const x = ohneHuelleAusdruck(n.left);
+      const schlicht =
+        n.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        (eigenschaft === undefined || ts.isPropertyAccessExpression(x));
+      treffer.push(schlicht ? { knoten: n, wert: n.right } : { knoten: n });
+    }
+    if (ts.isDeleteExpression(n) && zielt(n.expression)) {
+      treffer.push({ knoten: n });
+    }
+    if (
+      eigenschaft !== undefined &&
+      ts.isCallExpression(n) &&
+      ts.isPropertyAccessExpression(n.expression) &&
+      n.expression.name.text === "assign" &&
+      ts.isIdentifier(n.expression.expression) &&
+      n.expression.expression.text === "Object" &&
+      n.arguments[0] !== undefined &&
+      istObjekt(n.arguments[0])
+    ) {
+      treffer.push({ knoten: n });
+    }
+    ts.forEachChild(n, besuche);
+  };
+  besuche(bereich);
+  return treffer;
 }
 
 /** Lässt sich dieser Ausdruck vollständig auf einen Aufruf der zentralen Entscheidung zurückführen? */
@@ -1839,10 +1922,18 @@ function eigenschaftIn(n: ts.Expression, name: string, tiefe = 0): Eigenschaftsl
       return unklar;
     }
     const lagen = werte.map((w) => eigenschaftIn(w, name, tiefe + 1));
+    // Nacharbeit 7: nachträgliche Schreibzugriffe auf `x.name` im Deklarationsblock. Ein schlichtes
+    // `x.name = wert` ist ein weiterer möglicher Wert; alles andere ist nicht auflösbar.
+    const bereich = deklarationVon(x)?.bereich;
+    const zugriffe = bereich ? schreibzugriffe(bereich, x.text, name) : [];
     return {
-      werte: lagen.flatMap((l) => l.werte),
+      werte: [
+        ...lagen.flatMap((l) => l.werte),
+        ...zugriffe.flatMap((z) => (z.wert ? [z.wert] : [])),
+      ],
+      // Eine nachträgliche Zuweisung macht die Eigenschaft nicht SICHER (sie kann bedingt sein).
       sicher: lagen.every((l) => l.sicher),
-      unklar: lagen.some((l) => l.unklar),
+      unklar: lagen.some((l) => l.unklar) || zugriffe.some((z) => z.wert === undefined),
     };
   }
   if (ts.isConditionalExpression(x)) {
@@ -1992,6 +2083,21 @@ function pruefeUebergabe(
     if (param === undefined) {
       return [
         `${stelle} — ${schluessel}: ${glied.funktion} hat an Stelle ${glied.filter.index} keinen benannten Parameter.`,
+      ];
+    }
+    // Nacharbeit 7: ein Glied darf die übergebene Entscheidung nicht ersetzen — keine Zuweisung an
+    // den Filterparameter und keine an seine Filtereigenschaft (im ganzen Rumpf, auch in Helfern).
+    const ersetzt = [
+      ...schreibzugriffe(f.rumpf, param),
+      ...(glied.filter.eigenschaft
+        ? schreibzugriffe(f.rumpf, param, glied.filter.eigenschaft)
+        : []),
+    ];
+    const ersterErsatz = ersetzt[0];
+    if (ersterErsatz) {
+      const was = glied.filter.eigenschaft ? `${param}.${glied.filter.eigenschaft}` : param;
+      return [
+        `${glied.datei}:${zeileVon(ersterErsatz.knoten)} — ${schluessel}: ${glied.funktion} schreibt auf den übergebenen Filter ${was} — die zentrale Entscheidung wäre ersetzbar.`,
       ];
     }
     const aufrufe = ausgefuehrteAufrufeIn(f.rumpf, benannteHelfer(sf));
@@ -2259,6 +2365,79 @@ describe("mega74 E · der Sammler über alle Lesewege", () => {
       "const sicht = sichtbarkeitsfilterFuer(user);\n  reply.send(await dienst.liste(sicht));",
     );
     expect(pruefeDienstweg("GET /probe", eintrag, konstante, () => dienst)).toEqual([]);
+  });
+
+  // NACHARBEIT 7 (Befund ben, R-1175): Schreibzugriffe auf den Filter — beide Fälle aus dem Befund.
+  it("KALIBRIERUNG (Nacharbeit 7) — eine nachträglich ersetzte Filtereigenschaft ist rot", () => {
+    const objektEintrag: Eintrag = {
+      ...probeEintrag(),
+      kette: [
+        {
+          datei: "probe/dienst.ts",
+          funktion: "liste",
+          filter: { index: 0, eigenschaft: "sichtbar" },
+        },
+      ],
+    };
+    const dienst = "class D { liste(deps) { return kos.filter((k) => deps.sichtbar(k)); } }";
+    const anfang = "const deps = { sichtbar: sichtbarkeitsfilterFuer(user) };\n  ";
+    const ende = "\n  reply.send(await dienst.liste(deps));";
+    // Bens Fall, wörtlich.
+    const bens = probeRoute(`${anfang}deps.sichtbar = () => true;${ende}`);
+    expect(pruefeDienstweg("GET /probe", objektEintrag, bens, () => dienst).join("\n")).toContain(
+      "liste(…) bekommt an der Filterstelle nicht die zentrale Entscheidung",
+    );
+    // Nicht auflösbare Schreibzugriffe: Index, delete, Object.assign, zusammengesetzte Zuweisung.
+    for (const schreiben of [
+      'deps["sichtbar"] = sichtbarkeitsfilterFuer(user);',
+      "delete deps.sichtbar;",
+      "Object.assign(deps, fremd());",
+      "deps.sichtbar ??= () => true;",
+    ]) {
+      const route = probeRoute(`${anfang}${schreiben}${ende}`);
+      const maengel = pruefeDienstweg("GET /probe", objektEintrag, route, () => dienst);
+      expect(maengel, schreiben).not.toEqual([]);
+    }
+    // GEGENPROBEN: ohne Schreibzugriff grün; eine erneute ZENTRALE Zuweisung bleibt grün.
+    const ohneSchreiben = probeRoute(`${anfang}${ende}`);
+    expect(pruefeDienstweg("GET /probe", objektEintrag, ohneSchreiben, () => dienst)).toEqual([]);
+    const zentralNeu = probeRoute(`${anfang}deps.sichtbar = sichtbarkeitsfilterFuer(user);${ende}`);
+    expect(pruefeDienstweg("GET /probe", objektEintrag, zentralNeu, () => dienst)).toEqual([]);
+  });
+
+  it("KALIBRIERUNG (Nacharbeit 7) — ein Dienstglied, das den Filter überschreibt, ist rot", () => {
+    const route = probeRoute("reply.send(await dienst.liste(sichtbarkeitsfilterFuer(user)));");
+    // Bens Fall, wörtlich: der Parameter wird im Dienst ersetzt und danach aufgerufen.
+    const ersetzt =
+      "class D { liste(sichtbar) {\n  sichtbar = () => true;\n  return kos.filter((k) => sichtbar(k)); } }";
+    expect(
+      pruefeDienstweg("GET /probe", probeEintrag(), route, () => ersetzt).join("\n"),
+    ).toContain(
+      "probe/dienst.ts:2 — GET /probe: liste schreibt auf den übergebenen Filter sichtbar",
+    );
+    // Dasselbe an einer Filtereigenschaft.
+    const objektEintrag: Eintrag = {
+      ...probeEintrag(),
+      kette: [
+        {
+          datei: "probe/dienst.ts",
+          funktion: "liste",
+          filter: { index: 0, eigenschaft: "sichtbar" },
+        },
+      ],
+    };
+    const objektRoute = probeRoute(
+      "reply.send(await dienst.liste({ sichtbar: sichtbarkeitsfilterFuer(user) }));",
+    );
+    const eigenschaftErsetzt =
+      "class D { liste(deps) { deps.sichtbar = () => true;\n" +
+      "  return kos.filter((k) => deps.sichtbar(k)); } }";
+    expect(
+      pruefeDienstweg("GET /probe", objektEintrag, objektRoute, () => eigenschaftErsetzt),
+    ).not.toEqual([]);
+    // GEGENPROBE: ohne Überschreiben grün.
+    const sauber = "class D { liste(sichtbar) { return kos.filter((k) => sichtbar(k)); } }";
+    expect(pruefeDienstweg("GET /probe", probeEintrag(), route, () => sauber)).toEqual([]);
   });
 
   it("KALIBRIERUNG (Nacharbeit 5) — Objektparameter und Weitergabe zwischen Gliedern", () => {
