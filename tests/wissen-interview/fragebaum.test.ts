@@ -639,6 +639,12 @@ describe("R-0088: Quellenrecherche an der echten Route POST /api/reasoner", () =
       payload: { email: "admin@x.de", password: "secret123" },
     });
     const headers = { authorization: `Bearer ${anmeldung.json().token}` };
+    // `source:"draft"` braucht einen AUFLÖSBAREN Anker (JOB 2692 D2) — ohne ihn gilt der Text als
+    // vertraulich, und die Route sucht zu Recht nicht. Also ein gespeicherter Entwurf, „intern".
+    const entwurf = await services.capture.createDraft(
+      { title: "Ventil X", statement: "Bei Überdruck schließen.", confidentiality: "intern" },
+      "autor-r0088",
+    );
     const turn = (payload: Record<string, unknown>) =>
       app.inject({
         method: "POST",
@@ -650,6 +656,7 @@ describe("R-0088: Quellenrecherche an der echten Route POST /api/reasoner", () =
           tree: true,
           source: "draft",
           confidentiality: "intern",
+          draftId: entwurf.id,
           ...payload,
         },
       });
@@ -674,6 +681,8 @@ describe("R-0088: Quellenrecherche an der echten Route POST /api/reasoner", () =
     const { services, app, interviewSpion, suchanfragen, turn } = await aufbau();
     await turn({});
     await turn({ recherchieren: true, confidentiality: "vertraulich" });
+    // Ungespeicherter Entwurf ohne Anker: fail-closed vertraulich — das Thema verlässt das Haus nicht.
+    await turn({ recherchieren: true, draftId: undefined });
     await turn({ recherchieren: true, research: ERWARTETE_RECHERCHE });
     await turn({ recherchieren: true, imageContext: "Riss an der Naht" });
     await (
