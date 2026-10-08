@@ -16,6 +16,7 @@ import type { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
 import { assembleServices, buildServices, inMemoryRepos } from "../../services/app/src/build-app";
 import { detectConflictsForKo } from "../../services/app/src/conflict-detection";
+import { schemas } from "../../services/app/src/db";
 import {
   type JournalEntry,
   journaledRepos,
@@ -34,7 +35,9 @@ import {
   singleRunBalances,
 } from "../../services/conflicts";
 import { CONFLICTS_SCHEMA } from "../../services/conflicts/src/repo-pg";
+import { BESTANDSRESET_LOESCHGRAPH } from "../../services/db-tx";
 import type { Reasoner } from "../../services/reasoner";
+import { pflichttabellenAusDrill, tabellenAusSchemas } from "../backup-drill/pflichtsatz";
 
 function subject(id: string, farbe: string, version?: number): DetectSubject {
   return {
@@ -286,6 +289,15 @@ describe("Verdrahtung · Kompositionswurzel, Dev-Journal und Postgres-Form", () 
       reasoner: zweit.reasoner,
     });
     expect(zweit.judgeConflictOutcome).not.toHaveBeenCalled();
+  });
+
+  // Die Gedächtnistabelle wird migriert, vom Restore-Drill geprüft und vom Bestandsreset gelöscht.
+  // Gezielt nur für diese Tabelle: der Gesamtabgleich (tests/backup-drill/tabellensatz.test.ts)
+  // ist an der Basis wegen zweier fremder Management-Tabellen rot und gehört nicht zu R-1103/R-1105.
+  it("Ablage: conflict_pair_memory wird migriert, im Drill geprüft und im Reset gelöscht", () => {
+    expect(tabellenAusSchemas(schemas)).toContain("conflict_pair_memory");
+    expect(pflichttabellenAusDrill()).toContain("conflict_pair_memory");
+    expect(BESTANDSRESET_LOESCHGRAPH).toContain("conflict_pair_memory");
   });
 
   it("Postgres: Tabelle in der Konflikt-Stufe, EIN Abruf je Lauf, Upsert je Paar", async () => {
