@@ -87,6 +87,28 @@ Impressum, Datenschutz, Sperrfläche, Rechtshinweise der Anmeldemaske) rechnet z
 
 Bilanz: 15 M, 10 T, 3 Q, 15 H, 7 N/A (Summe 50).
 
+## Befunde des ersten Laufs über alle Flächen (nacharbeit-8) und ihre Behebung
+
+Der erste Lauf über alle Navigationsflächen war rot. Die Kalibrierung war grün, die Befunde sind
+also echte Produktbefunde. Sie gingen auf wenige gemeinsame Ursachen zurück, die zentral behoben
+sind:
+
+| SC | Befund | Behebung |
+|---|---|---|
+| 1.4.11 | Eingabefelder, Auswahllisten, Textbereiche mit Haarlinie `border-hairline`: 1,24–1,26:1, auf fast allen Flächen | Eine Regel in `index.css` für Felder und ihre unmittelbare Hülle: Tinte-2 zu 80 % (≈ 3,3–4,0:1). Trenner und Kartenränder bleiben Haarlinie. |
+| 1.4.11 | Kopfband-Suche, modernes Thema: Fläche `night-2` auf `night` 1,13:1 | Innenrand `shell-muted-2` (≈ 5,0:1) in `styles/modern.css`, ohne Massänderung |
+| 1.4.11 | Titelzeile des Erfassungsblatts ohne Grenze | Als Dokument-Schreibfläche markiert (`data-kw-dokumentflaeche`), wie der Rumpf. Begründung am Feld in `erfassen/Blatt.tsx`. |
+| 1.4.11 | Ausklapp-Pfeil am Mehr-Knopf des Blatts `#9AA2B1`: 2,57:1 | Pfeil in der Farbe seines Knopfes (`erfassen/Menue.tsx`) |
+| 1.4.3 | Platzhalter ohne eigene Klasse in Tailwind-Grau `#9CA3AF`: 2,54:1 (/analytics, /hilfe) | Grundfarbe aller Platzhalter Tinte-2 (`index.css`, Base-Layer) |
+| 1.4.3 | Link `text-brand` auf /import: 2,78:1 bzw. 3,38:1 | `text-brand-text` (`ImportJsonUpload.tsx`) |
+| 1.4.3 | Kommende Import-Schritte mit `opacity-60/70` (bisher als unbestimmt gemeldet) | Abschwächung entfernt (`ImportStepper.tsx`). Der Audit rechnet Deckkraft seither, statt sie unbestimmt zu lassen. |
+| 1.1.1 / 4.1.2 | Dutzende namenlose Lucide-Symbole (/hilfe, /import, /extern, Wissensdetail) | Zentral: `lib/schmuckSymbole.ts`, gebunden in `main.tsx`. Namenlose Lucide-Symbole ohne Rolle werden für Hilfstechnik verborgen. Gegenprobe: `tests/barrierefreiheit/schmuck-symbole.test.tsx`. |
+| 2.4.7 | Modernes Thema: der Karten-Schatten (`.rounded-card.border-hairline`) verdrängte den Fokusring (Vorlagen auf /output, Arbeitsweise-Link auf /hilfe) | Fokus-Zustand derselben Karten trägt Ring und Schatten (`styles/modern.css`); ebenso `.kw-cta-primary` |
+
+Messkorrektur (kein Abschwächen): Eine Feldhülle wird jetzt über die **Zeilenhöhe** erkannt statt
+über die Breite. Die Fragezeile trägt ihren Rand an der `<form>` neben Knöpfen, die alte
+Breitengrenze ließ diesen Rand ungesehen.
+
 ## Vollständigkeit
 
 Der **technische** Auditumfang ist seit nacharbeit-7 geschlossen, soweit er sich an

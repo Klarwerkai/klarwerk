@@ -364,26 +364,35 @@ function kontrastImBrowser(): Kontrastbericht {
   };
   const fmt = (f: Rgba): string => `rgb(${f.slice(0, 3).map(Math.round).join(",")})`;
   const miss = (was: string, el: Element, farbe: string): void => {
-    // Durchscheinende Vorfahren ändern die gemalte Farbe auf eine Weise, die hier nicht gerechnet
-    // wird — nicht geraten, sondern einzeln als unbestimmt benannt.
+    // Durchscheinende Vorfahren (`opacity`) werden GERECHNET: die Gruppe mit der äußersten
+    // Deckkraftstufe wird als Ganzes über das gemalt, was hinter ihr liegt — Text und Fläche der
+    // Gruppe gleichermaßen (nacharbeit-8: der Import-Stepper stand sonst als „unbestimmt").
     let deckkraft = 1;
+    let gruppe: Element | null = null;
     for (let v: Element | null = el; v; v = v.parentElement) {
-      deckkraft *= Number(getComputedStyle(v).opacity);
+      const d = Number(getComputedStyle(v).opacity);
+      if (d < 1) {
+        deckkraft *= d;
+        gruppe = v;
+      }
     }
-    const grund = h.hintergrund(el);
+    const innen = h.hintergrund(el);
     const vorne = h.lies(farbe);
-    if (deckkraft < 1 || !grund || !vorne) {
+    const draussen = gruppe ? h.hintergrund(gruppe.parentElement ?? gruppe) : innen;
+    if (!innen || !vorne || !draussen) {
       bericht.unbestimmt += 1;
-      const warum = !grund
-        ? "Hintergrund nicht rechenbar (Bild/Verlauf)"
-        : !vorne
-          ? `Farbformat nicht lesbar (${farbe})`
-          : `durchscheinend (Deckkraft ${deckkraft.toFixed(2)})`;
+      const warum =
+        !innen || !draussen
+          ? "Hintergrund nicht rechenbar (Bild/Verlauf)"
+          : `Farbformat nicht lesbar (${farbe})`;
       bericht.unbestimmtListe.push(`${was} ${h.beschreibe(el)} — ${warum}`);
       return;
     }
+    const mitDeckkraft = (f: Rgba): Rgba =>
+      deckkraft < 1 ? h.ueber([f[0], f[1], f[2], deckkraft], draussen) : f;
+    const grund = mitDeckkraft(innen);
     const stil = getComputedStyle(el);
-    const text = vorne[3] < 1 ? h.ueber(vorne, grund) : vorne;
+    const text = mitDeckkraft(vorne[3] < 1 ? h.ueber(vorne, innen) : vorne);
     const groesse = Number.parseFloat(stil.fontSize);
     const fett = Number.parseInt(stil.fontWeight, 10) >= 700;
     const soll = groesse >= 24 || (groesse >= 18.66 && fett) ? 3 : 4.5;
@@ -489,7 +498,12 @@ function grenzenImBrowser(): Grenzbericht {
       "input, textarea, select, [role='combobox'], [role='searchbox'], [role='textbox']",
     ),
   ].filter((f) => {
-    if (f.isContentEditable || !h.sichtbar(f) || inaktiv(f)) {
+    // Dokument-Schreibflächen: der Rumpf (`contenteditable`) und ausdrücklich als Teil des
+    // Dokuments markierte Felder (`data-kw-dokumentflaeche`, z. B. die Titelzeile des Blatts).
+    if (f.isContentEditable || f.closest("[data-kw-dokumentflaeche]")) {
+      return false;
+    }
+    if (!h.sichtbar(f) || inaktiv(f)) {
       return false;
     }
     if (f instanceof HTMLInputElement) {
@@ -501,10 +515,12 @@ function grenzenImBrowser(): Grenzbericht {
     bericht.felder += 1;
     const r = feld.getBoundingClientRect();
     const kandidaten: Element[] = [feld];
+    // Eine Hülle ist die ZEILE, in der das Feld steht: kaum höher als das Feld selbst. Ihre Breite
+    // zählt nicht — eine Fragezeile trägt neben dem Feld Knöpfe, und ihr Rand IST die Feldgrenze
+    // (nacharbeit-8: `FrageFeld` — Rand an der <form>, die Breitengrenze ließ ihn ungesehen).
     let v = feld.parentElement;
     for (let i = 0; v && i < 2; i++, v = v.parentElement) {
-      const vr = v.getBoundingClientRect();
-      if (vr.width <= r.width + 120 && vr.height <= r.height + 40) {
+      if (v.getBoundingClientRect().height <= r.height + 40) {
         kandidaten.push(v);
       }
     }

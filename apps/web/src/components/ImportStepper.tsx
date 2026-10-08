@@ -180,7 +180,10 @@ export function useFilePickRequest(): number {
 const STEP_PILL_CLASS: Record<string, string> = {
   done: "border-trust-pos-fill/40 bg-trust-pos-bg text-trust-pos-text",
   active: "border-ink/30 bg-ink text-white",
-  upcoming: "border-hairline bg-page text-muted-2 opacity-70",
+  // WCAG 1.4.3 (Audit nacharbeit-8): bis hier zusätzlich `opacity-70` — Tinte-2 zu 70 % über der
+  // Seitenfläche liegt unter 4,5:1. „Kommend" trägt schon die flache Seitenfläche, die Haarlinie und
+  // Tinte-2 statt der gefüllten Pille; die Abschwächung darüber nahm der Schrift ihre Lesbarkeit.
+  upcoming: "border-hairline bg-page text-muted-2",
 };
 
 // Die Schritt-Leiste oben im Cockpit: aktueller Schritt hervorgehoben, Erledigtes mit Haken,
@@ -226,7 +229,10 @@ export function ImportStepHeading({ step }: { step: ImportStep }): JSX.Element {
   const status = importStepStatus(stage, step);
   const number = IMPORT_STEPS.indexOf(step) + 1;
   return (
-    <div className={`flex items-start gap-2 ${status === "upcoming" ? "opacity-60" : ""}`}>
+    // WCAG 1.4.3 (Audit nacharbeit-8): kein `opacity-60` mehr für kommende Schritte — die Schrift
+    // darin fiel damit unter 4,5:1. Kommend erkennt man an der flachen, umrandeten Nummer
+    // (statt der gefüllten des aktiven bzw. des Hakens des erledigten Schritts).
+    <div className="flex items-start gap-2">
       <span
         className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-pill font-mono text-[11px] font-semibold ${
           status === "active"

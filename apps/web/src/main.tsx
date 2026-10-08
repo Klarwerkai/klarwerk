@@ -10,6 +10,7 @@ import { initBrandTheme } from "./lib/brandTheme";
 import { initDesignTheme } from "./lib/designTheme";
 import { bindHtmlLang } from "./lib/htmlLang";
 import { ZAEHLER_FRISCHE_MS } from "./lib/loadingState";
+import { bindeSchmuckSymbole } from "./lib/schmuckSymbole";
 import { bindSpracheSpeichern } from "./lib/sprachwahl";
 
 // AUFTRAG-mega40 B: gespeicherte Design-Wahl VOR dem ersten Render anwenden (kein Aufblitzen des
@@ -52,6 +53,11 @@ const root = document.getElementById("root");
 if (!root) {
   throw new Error("Root-Element fehlt.");
 }
+
+// WCAG 1.1.1 / 4.1.2 (Audit nacharbeit-8): namenlose Lucide-Symbole sind Schmuck und werden für
+// Hilfstechnik verborgen — an der Wurzel, damit keine Verwendungsstelle es vergessen kann. Am
+// `body`, nicht an `#root`: Menüs und Dialoge hängen sich teils als Portal daneben.
+bindeSchmuckSymbole(document.body);
 
 // R-0801: die ANWENDUNG wartet, bis die Startsprache vollständig vorliegt. Für Deutsch ist das
 // sofort der Fall (das Wörterbuch liegt im Eintritt). Für eine gespeicherte Wahl en/nl oder einen
