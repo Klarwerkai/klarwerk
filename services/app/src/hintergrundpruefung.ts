@@ -30,11 +30,13 @@
 //    bleibt für einen späteren Lauf liegen. Innerhalb des Objekts verweigert der Haken jeden Vergleich
 //    jenseits der Reservierung (ModelCapacityError → der Lauf endet ehrlich teilgeprüft). Das Budget
 //    wird damit nie überschritten.
-//  · DAUERHAFT: jeder Objektlauf mit Verbrauch schreibt einen Beleg `pruefung.hintergrundlauf.verbrauch`
-//    (Tag, Zähler je Weg) ins append-only Protokoll. Beim ersten Lauf eines Tages — auch nach einem
-//    Neustart — wird der Tagesverbrauch aus diesen Belegen wiederhergestellt. Ist das Protokoll nicht
-//    lesbar oder ein Beleg nicht schreibbar, läuft nichts weiter (fail-closed: unbelegter Verbrauch
-//    gewährt kein neues Budget).
+//  · DAUERHAFT: VOR dem ersten Vergleich eines Objekts steht eine RESERVIERUNG des Höchstverbrauchs
+//    als Beleg `pruefung.hintergrundlauf.verbrauch` im append-only Protokoll; danach ersetzt eine
+//    ABRECHNUNG (gleiche Kennung, Zähler je Weg) sie durch den tatsächlichen Verbrauch. Beim ersten
+//    Lauf eines Tages — auch nach einem Neustart — wird der Tagesverbrauch daraus wiederhergestellt;
+//    eine Reservierung ohne Abrechnung (Schreibfehler, Prozessende dazwischen) zählt voll. Scheitert
+//    die Reservierung, startet kein Vergleich; ist das Protokoll nicht lesbar, läuft nichts
+//    (fail-closed: unbelegter Verbrauch gewährt kein neues Budget).
 //
 // EIGENER WORKER: der Lauf arbeitet über eine eigene Worker-Instanz mit demselben Runner plus Haken.
 // So zählen Einreichungen der Nutzer (Haupt-Worker) nicht gegen das Hintergrundbudget. Vor jedem
@@ -51,6 +53,7 @@
 // ohne Prüfvermerk (Import ohne angeforderte Prüfung, R-0145), Objekte in Schutzdaten-Quarantäne
 // (R-0658), vertraulich gesperrte Läufe (`confidential` — dort hilft nur eine andere Modellwahl) und
 // im Abgleich die Vorführdaten (K0-3).
+import { randomUUID } from "node:crypto";
 import type { AuditEntry, AuditFilter, AuditInput } from "../../audit";
 import { type KnowledgeObject, inSchutzdatenQuarantaene } from "../../knowledge-object";
 import { ModelCapacityError } from "../../reasoner";
@@ -151,16 +154,54 @@ export function hintergrundArt(ko: KnowledgeObject, nowMs: number): Art | null {
   return vermerk.ueberholt && !ko.demoSeed ? "abgleich" : null;
 }
 
-/** Tagesverbrauch aus den Verbrauchsbelegen des Protokolls (Tag im Beleg, nicht die Schreibzeit). */
+/**
+ * Tagesverbrauch aus den Verbrauchsbelegen des Protokolls (Tag im Beleg, nicht die Schreibzeit).
+ * Je Objektlauf gibt es eine RESERVIERUNG (vor dem ersten Vergleich geschrieben, Höchstverbrauch)
+ * und eine ABRECHNUNG (tatsächlicher Verbrauch) mit derselben Kennung. Eine Reservierung ohne
+ * Abrechnung — Schreibfehler oder Prozessende dazwischen — zählt in voller Höhe. Belege ohne
+ * Reservierungskennung zählen mit ihrem Wert.
+ */
 export function verbrauchAusBelegen(belege: readonly AuditEntry[], tag: string): number {
+  const reserviert = new Map<string, number>();
+  const abgerechnet = new Map<string, number>();
   let summe = 0;
   for (const beleg of belege) {
-    const vergleiche = beleg.payload.vergleiche;
-    if (beleg.payload.tag === tag && typeof vergleiche === "number" && vergleiche > 0) {
+    const { tag: belegTag, vergleiche, reservierung, art } = beleg.payload;
+    if (belegTag !== tag || typeof vergleiche !== "number" || vergleiche < 0) {
+      continue;
+    }
+    if (typeof reservierung !== "string") {
+      summe += vergleiche;
+    } else if (art === "reservierung") {
+      reserviert.set(reservierung, vergleiche);
+    } else {
+      abgerechnet.set(reservierung, vergleiche);
+    }
+  }
+  for (const [kennung, hoechstens] of reserviert) {
+    summe += abgerechnet.get(kennung) ?? hoechstens;
+  }
+  for (const [kennung, vergleiche] of abgerechnet) {
+    if (!reserviert.has(kennung)) {
       summe += vergleiche;
     }
   }
   return summe;
+}
+
+function verbrauchsbeleg(
+  tag: string,
+  art: "reservierung" | "abrechnung",
+  reservierung: string,
+  vergleiche: number,
+  zusatz: Record<string, number> = {},
+): AuditInput {
+  return {
+    actor: "system",
+    action: HINTERGRUNDLAUF_VERBRAUCH_AUDIT,
+    target: "bestand",
+    payload: { tag, art, reservierung, vergleiche, ...zusatz },
+  };
 }
 
 export function createHintergrundpruefung(
@@ -186,6 +227,25 @@ export function createHintergrundpruefung(
     }
     verbraucht[weg] += 1;
   });
+
+  // Abrechnung einer Reservierung mit dem tatsächlichen Verbrauch. false = nicht geschrieben.
+  const rechneAb = async (
+    reservierung: string,
+    konflikt: number,
+    dublette: number,
+  ): Promise<boolean> => {
+    try {
+      await deps.audit.record(
+        verbrauchsbeleg(tag, "abrechnung", reservierung, konflikt + dublette, {
+          konflikt,
+          dublette,
+        }),
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   const protokolliere = async (bericht: HintergrundlaufBericht): Promise<void> => {
     await deps.audit
@@ -257,8 +317,23 @@ export function createHintergrundpruefung(
       if (deps.hauptWorker.has(ko.id)) {
         continue; // inzwischen von einer Einreichung erfasst — bleibt dort
       }
+      // DAUERHAFTE RESERVIERUNG VOR JEDEM VERGLEICH (bens Befund, nacharbeit-4): erst wenn der
+      // Höchstverbrauch im Protokoll steht, wird irgendetwas freigegeben. Endet der Prozess danach,
+      // zählt die Reservierung beim Neustart voll (verbrauchAusBelegen). Scheitert sie, läuft nichts.
+      const reservierung = randomUUID();
+      try {
+        await deps.audit.record(verbrauchsbeleg(tag, "reservierung", reservierung, maxJeObjekt));
+      } catch {
+        bericht.abbruch = "verbrauch-unbelegt";
+        break;
+      }
+      // Ab hier gilt die Reservierung, bis eine Abrechnung sie ersetzt.
+      heute += maxJeObjekt;
       if (!(await deps.ko.markAiCheckPending(ko.id))) {
         bericht.offen -= 1; // gelöscht oder verschwunden — nichts mehr nachzuholen
+        if (await rechneAb(reservierung, 0, 0)) {
+          heute -= maxJeObjekt;
+        }
         continue;
       }
       const vermerkt = await deps.ko.get(ko.id);
@@ -275,26 +350,13 @@ export function createHintergrundpruefung(
       bericht.vergleicheKonflikt += verbraucht.konflikt;
       bericht.vergleicheDublette += verbraucht.dublette;
       bericht.vergleiche += objekt;
-      heute += objekt;
       bericht.offen -= 1;
-      if (objekt > 0) {
-        try {
-          await deps.audit.record({
-            actor: "system",
-            action: HINTERGRUNDLAUF_VERBRAUCH_AUDIT,
-            target: "bestand",
-            payload: {
-              tag,
-              vergleiche: objekt,
-              konflikt: verbraucht.konflikt,
-              dublette: verbraucht.dublette,
-            },
-          });
-        } catch {
-          // Der Verbrauch ist im Speicher gezählt, aber nicht belegt — ein Neustart sähe ihn nicht.
-          // Deshalb endet der Lauf hier statt weiter unbelegt zu verbrauchen.
-          bericht.abbruch = "verbrauch-unbelegt";
-        }
+      if (await rechneAb(reservierung, verbraucht.konflikt, verbraucht.dublette)) {
+        heute += objekt - maxJeObjekt;
+      } else {
+        // Die Reservierung bleibt unabgerechnet und zählt — hier wie nach einem Neustart — voll.
+        // Der Lauf endet, statt mit einem unsicheren Protokoll weiterzuarbeiten.
+        bericht.abbruch = "verbrauch-unbelegt";
       }
       const nachher = (await deps.ko.get(ko.id))?.aiCheck;
       if (nachher?.status === "done") {

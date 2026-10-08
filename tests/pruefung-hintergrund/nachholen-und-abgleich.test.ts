@@ -251,10 +251,14 @@ describe("R-1111 · laufender Abgleich: später entstandene Nachbarn, Tagesbudge
     );
     expect(erster?.vergleicheHeute).toBe(erster?.vergleiche);
     expect(erster?.vergleicheHeute).toBeLessThanOrEqual(10);
-    // Der Verbrauch ist dauerhaft belegt.
+    // Der Verbrauch ist dauerhaft belegt: zuerst die Reservierung, dann die Abrechnung.
     const belege = await b.verbrauchsbelege();
-    expect(belege).toHaveLength(1);
-    expect(belege[0]?.payload).toMatchObject({ vergleiche: erster?.vergleiche });
+    expect(belege.map((e) => e.payload.art)).toEqual(["reservierung", "abrechnung"]);
+    expect(belege[0]?.payload).toMatchObject({ vergleiche: 8 });
+    expect(belege[1]?.payload).toMatchObject({
+      vergleiche: erster?.vergleiche,
+      reservierung: belege[0]?.payload.reservierung,
+    });
 
     // Derselbe Tag: nichts mehr, und kein weiterer Protokolleintrag.
     const aufrufe = b.modell.aufrufe;
@@ -312,6 +316,90 @@ describe("R-1111 · laufender Abgleich: später entstandene Nachbarn, Tagesbudge
     } finally {
       lesen.mockRestore();
     }
+  });
+
+  // Bens Befund nacharbeit-4: Verbrauch wird VOR den Vergleichen dauerhaft reserviert.
+  const scheitertBei = (b: Awaited<ReturnType<typeof buehne>>, art: string) => {
+    const echt = b.services.audit.record.bind(b.services.audit);
+    return vi
+      .spyOn(b.services.audit, "record")
+      .mockImplementation((eingabe) =>
+        eingabe.action === HINTERGRUNDLAUF_VERBRAUCH_AUDIT && eingabe.payload?.art === art
+          ? Promise.reject(new Error("Protokoll nicht schreibbar"))
+          : echt(eingabe),
+      );
+  };
+
+  it("scheitert die Reservierung, startet kein Modellvergleich und das Objekt bleibt unberührt", async () => {
+    const b = await buehne();
+    await b.lege("Kandidat", "Pumpenleistung im Betrieb prüfen");
+    b.modell.fehler = AUSFALL;
+    const id = await b.reicheEin("Subjekt", "Das Ventil muss vor der Wartung geschlossen werden");
+    b.modell.fehler = () => undefined;
+    const vorher = await b.vermerk(id);
+    const aufrufe = b.modell.aufrufe;
+    const schreiben = scheitertBei(b, "reservierung");
+    try {
+      expect(await b.lauf()).toMatchObject({ abbruch: "verbrauch-unbelegt", vergleiche: 0 });
+      expect(b.modell.aufrufe).toBe(aufrufe);
+      expect(await b.vermerk(id)).toEqual(vorher);
+    } finally {
+      schreiben.mockRestore();
+    }
+  });
+
+  it("scheitert die Abrechnung, zählt die Reservierung voll — im Lauf und nach einem Neustart", async () => {
+    const b = await buehne({ tagesbudget: 100, maxJeObjekt: 8 });
+    await b.lege("Kandidat", "Pumpenleistung im Betrieb prüfen");
+    b.modell.fehler = AUSFALL;
+    await b.reicheEin("Erstes", "Das Ventil muss vor der Wartung geschlossen werden");
+    await b.reicheEin("Zweites", "Der Filter wird monatlich gewechselt");
+    b.modell.fehler = () => undefined;
+    const schreiben = scheitertBei(b, "abrechnung");
+    try {
+      const bericht = await b.lauf();
+      // Nur das erste Objekt lief; der Lauf endet, statt unbelegt weiterzuarbeiten.
+      expect(bericht).toMatchObject({
+        abbruch: "verbrauch-unbelegt",
+        offen: 1,
+        vergleicheHeute: 8,
+      });
+      expect(bericht?.vergleiche).toBeGreaterThan(0);
+      expect(bericht?.vergleiche).toBeLessThan(8);
+    } finally {
+      schreiben.mockRestore();
+    }
+    // Neustart: der unabgerechnete Höchstverbrauch steht weiter im Tagesbudget.
+    const nachNeustart = await b.neuerLauf({ tagesbudget: 100, maxJeObjekt: 8 })();
+    expect(nachNeustart?.vergleicheHeute).toBeGreaterThanOrEqual(8);
+  });
+
+  it("Prozessende zwischen Reservierung und Abrechnung: die Reservierung zählt beim Neustart voll", async () => {
+    const b = await buehne({ tagesbudget: 10, maxJeObjekt: 8 });
+    await b.lege("Kandidat", "Pumpenleistung im Betrieb prüfen");
+    b.modell.fehler = AUSFALL;
+    await b.reicheEin("Subjekt", "Das Ventil muss vor der Wartung geschlossen werden");
+    b.modell.fehler = () => undefined;
+    // Der Zustand, den ein abgebrochener Prozess hinterlässt: Reservierung ohne Abrechnung.
+    await b.services.audit.record({
+      actor: "system",
+      action: HINTERGRUNDLAUF_VERBRAUCH_AUDIT,
+      target: "bestand",
+      payload: {
+        tag: new Date(b.uhr.jetzt).toISOString().slice(0, 10),
+        art: "reservierung",
+        reservierung: "abgebrochen-1",
+        vergleiche: 8,
+      },
+    });
+    const aufrufe = b.modell.aufrufe;
+
+    expect(await b.neuerLauf()()).toMatchObject({
+      abbruch: "budget",
+      vergleicheHeute: 8,
+      offen: 1,
+    });
+    expect(b.modell.aufrufe).toBe(aufrufe);
   });
 });
 
