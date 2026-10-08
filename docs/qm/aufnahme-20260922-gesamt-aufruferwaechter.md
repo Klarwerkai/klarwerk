@@ -424,7 +424,19 @@ jetzt an der Stelle, die das Produkt wirklich benutzt. Keiner ist abgeschwächt.
     `tests/audit-gesamt/vorher-nachher.integration.test.ts:131` (`await import(eintritt)` des
     Vorher/Nachher-Gerüsts aus `audit-gesamt`). Diese Datei berührt der Auftrag nicht; `mega61`
     ist deshalb aus der Auswahl genommen, der rote Bericht bleibt im Archiv.
-- **Fehlender Beleg:**
-  - Die Prüfläufe zu Nacharbeit 7 stehen aus: Wächter mit A10, die neun Abschlüsse und die
-    nachgezogenen Prüfstände. Dieser Arbeitsgang hat keine Tests gestartet.
+- **Prüfbeleg zu Nacharbeit 7** (Kandidat `63026488`; Archiv `HISTORIE/nacharbeit-8/PRUEFUNG`):
+  - Wächter und Bedarfsabgleich: 17 von 17 grün, darunter A1 (keine Neuzugänge mehr) und A10
+    (`Promise.all`).
+  - Grün sind auch `klara-registry`, `bibliothek-bauplan`, `ranking-sprachweise`,
+    `faq-sagt-kein-verschmelzen`, `elementbeispiel-mounted` und `melder`.
+  - `tests/demo-zugang-start/vertrag-vollstaendig.test.ts` D1 ist rot. Gemeldet werden vier
+    fremde Umgebungswerte ohne Startvertragseintrag: `KLARWERK_SERVICE_KEYS`
+    (`dienst-schluessel.ts:37`), `KLARWERK_KI_ANFRAGEN_MAX` und
+    `KLARWERK_KI_ANFRAGEN_FENSTER_SEK` (`ki-anfragebremse.ts`) sowie
+    `KLARWERK_KLARA_AUFRAEUM_INTERVAL_MS` (`server.ts:242`, der Klara-Aufräumtakt).
+    - Keinen davon liest dieser Auftrag. Sein eigener Anschluss (`process.env[WEBHOOKS_TAKT_ENV]`,
+      `server.ts:278`) steht nicht in der Liste; der Name ist weiter im Vertrag und wird über die
+      Konstante erhoben.
+    - Der Prüfstand ist aus der Auswahl genommen, der rote Bericht bleibt im Archiv.
+- **Fehlender Beleg:** keiner zu den Änderungen dieses Auftrags.
   - Der Lieferbeleg (Fassung) entsteht erst mit der Veröffentlichung.
