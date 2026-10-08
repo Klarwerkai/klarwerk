@@ -2758,7 +2758,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // `styleBuiltIn` nur, wenn WordApi 1.3 gemeldet wird), kein Sideload. Ohne zugelassenes
     // Hash-Werkzeug ist der neue Wert hier nicht berechenbar — der Prüflauf meldet ihn als
     // „Received", er wird danach gemessen übernommen.
-    const PIN = "eefba3bdd389a30d41f4fbe37ad5bcdc336667559554212971ecbe7dff5f37d3";
+    // NACHARBEIT 1 (gesamt-dokumenterzeugung): PIN BEWUSST AKTUALISIERT (eefba3bd… -> cf784c5a…). Im
+    // Prüflauf zu Kandidat a757d6c3 GEMESSEN („Received", HISTORIE/nacharbeit-1/PRUEFUNG/
+    // panel-pins-messung.log) und unverändert übernommen; die Panel-Dateien sind seit dieser Messung
+    // unberührt.
+    const PIN = "cf784c5af1fcba27f141e1e3dd17c038283388f85206c2f9e19a243ee7a8d297";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,

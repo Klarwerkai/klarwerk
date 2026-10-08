@@ -144,12 +144,17 @@ async function serverAntwort(url: string, init?: { method?: string; body?: strin
   const method = init?.method ?? "GET";
   anfragen.push({ url, method, body: init?.body ? JSON.parse(init.body) : undefined });
   if (url.startsWith("/api/output/")) {
-    const res = await app.inject({
-      method: method as "GET" | "POST",
-      url,
-      payload: init?.body,
-      headers: init?.body ? { "content-type": "application/json" } : {},
-    });
+    // Zwei feste Aufrufformen statt eines zusammengesetzten Optionsobjekts: so wählt TypeScript die
+    // Promise-Überladung von `inject` (Nacharbeit 1, TS2345/TS2339).
+    const res =
+      init?.body !== undefined
+        ? await app.inject({
+            method: "POST",
+            url,
+            payload: init.body,
+            headers: { "content-type": "application/json" },
+          })
+        : await app.inject({ method: "GET", url });
     return antwort(res.statusCode, res.body ? JSON.parse(res.body) : null);
   }
   if (url.startsWith("/api/kos/")) {
@@ -597,8 +602,11 @@ describe("P · fehlende Pflichtangaben am Abschnitt, formal getrennt von fachlic
 
 async function bausteinWaehlen(id: string): Promise<void> {
   const auswahl = el<HTMLSelectElement>("anleitung-baustein");
+  // Nacharbeit 1: gewartet wird auf eine NEUE Meldung, nicht auf irgendeine — nach „Vorlage
+  // einfügen" steht dort schon deren Satz, und die Wahl fiel sonst vor dem Laden der Liste.
+  const vorher = text("anleitung-stand");
   auswahl.dispatchEvent(new Event("mousedown"));
-  await bis(() => auswahl.options.length > 1 || text("anleitung-stand") !== "");
+  await bis(() => auswahl.options.length > 1 || text("anleitung-stand") !== vorher);
   auswahl.value = id;
 }
 

@@ -179,8 +179,11 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * Der Bezugspunkt MUSS deshalb wandern; ohne zugelassenes Hash-Werkzeug ist er hier nicht
  * berechenbar. E2 meldet ihn im Prüflauf als „Received"; er wird danach gemessen übernommen. E3
  * bleibt die Gegenprobe.
+ * NACHARBEIT 1 (gesamt-dokumenterzeugung): GEMESSEN im Prüflauf zu Kandidat a757d6c3
+ * (`ca1f9d53…`, „Received" von E2, HISTORIE/nacharbeit-1/PRUEFUNG/panel-pins-messung.log) und
+ * unverändert übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "5d7ae0b8fccc34c05e5c070cea753189729ef841";
+export const PANEL_VOR_SCHNITT_BLOB = "ca1f9d532b6f821fbb645b0770f0a83b5a2a6713";
 
 export interface PanelTeile {
   html: string;
