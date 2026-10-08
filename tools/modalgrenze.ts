@@ -920,11 +920,13 @@ export function propsRolle(
   ausdruck: ts.Node,
   deklarationen: Deklarationen,
   umfeld?: Modulumfeld,
+  mitEigenen = false,
   tiefe = 0,
   pfad: Set<ts.Node> = new Set(),
 ): PropsRolle {
   const abbruch = nichtAufloesbar;
-  const weiter = (n: ts.Node): PropsRolle => propsRolle(n, deklarationen, umfeld, tiefe + 1, pfad);
+  const weiter = (n: ts.Node): PropsRolle =>
+    propsRolle(n, deklarationen, umfeld, mitEigenen, tiefe + 1, pfad);
   if (tiefe > MAX_TIEFE) {
     return abbruch(ausdruck);
   }
@@ -938,9 +940,18 @@ export function propsRolle(
     k = k.expression;
   }
   if (ts.isObjectLiteralExpression(k)) {
-    // Eigene `role`-Einträge erhebt der Eigenschaftsbesucher (`istPropsObjekt`); hier zählen nur
-    // die gespreizten Teile — `{ ...props, id }` trägt die Rolle von `props` weiter.
+    // Eigene `role`-Einträge erhebt am JSX-Spread der Eigenschaftsbesucher (`istPropsObjekt`); hier
+    // zählen dann nur die gespreizten Teile — `{ ...props, id }` trägt die Rolle von `props` weiter.
+    // `mitEigenen` (Nacharbeit 10, direkte Aufrufe): auch die eigenen Einträge, über die ganze Kette.
     const teile = k.properties.filter(ts.isSpreadAssignment).map((s) => weiter(s.expression));
+    for (const eig of mitEigenen ? k.properties : []) {
+      if (ts.isPropertyAssignment(eig) && eigenschaftsName(eig.name) === "role") {
+        teile.push({ ...keineRolle(), bild: statischeWerte(eig.initializer, deklarationen) });
+      }
+      if (ts.isShorthandPropertyAssignment(eig) && eig.name.text === "role") {
+        teile.push({ ...keineRolle(), bild: statischeWerte(eig.name, deklarationen) });
+      }
+    }
     return vereineRollen(teile);
   }
   if (ts.isConditionalExpression(k)) {
@@ -1905,10 +1916,19 @@ function weiterreicherVerwendungen(
   const ergebnis: Direktverwendungen = { stellen: [], befunde: [] };
   for (const e of erhoben) {
     const quelle = e.quelle;
-    if (![...namen].some((n) => quelle.text.includes(n))) {
-      continue;
-    }
     const sf = quelle.ast;
+    // Nacharbeit 10 (ben): ein Import-Alias (`import { Weiter as W }`, auch über eine Sammeldatei)
+    // trägt einen anderen Namen als die Deklaration. Gefiltert wird deshalb nach allen Namen, die
+    // eine Bindung tragen KÖNNEN; ob sie den Weiterreicher trägt, entscheidet die Auflösung.
+    const lokaleNamen = new Set(namen);
+    for (const s of sf.statements) {
+      const bindungen = ts.isImportDeclaration(s) ? s.importClause?.namedBindings : undefined;
+      if (bindungen !== undefined && ts.isNamedImports(bindungen)) {
+        for (const element of bindungen.elements) {
+          lokaleNamen.add(element.name.text);
+        }
+      }
+    }
     const deklarationen = sammleDeklarationen(sf);
     const umfeld: Modulumfeld = { datei: quelle.datei, leser };
     const zielVon = (id: ts.Identifier): string | undefined => {
@@ -1938,14 +1958,17 @@ function weiterreicherVerwendungen(
           return;
         }
         const r = propsRolle(props, deklarationen, umfeld);
-        const eigene = eigeneRollenwerte(props, deklarationen);
+        // Nacharbeit 10 (ben): die eigenen `role`-Einträge des übergebenen Werts — auch hinter
+        // einer Zwischenvariable oder einem Objekt-Spread (`const p = { role: x }; F(p)`). Am
+        // JSX-Spread erhebt sie der Eigenschaftsbesucher; einen direkten Aufruf kennt er nicht.
+        const mitEigenen = propsRolle(props, deklarationen, umfeld, true);
         const text = props.getText(sf).replace(/\s+/g, " ").slice(0, 60);
         if (r.bild.werte.some((w) => istDialogName(w.text)) && !e.nutztGrenze) {
           ergebnis.befunde.push(
             `${quelle.datei}:${zeile} — role-dialog über den direkten Aufruf ${name}(…): mögliche modale Fläche ohne die Modalgrenze der Shell`,
           );
         }
-        if (r.bild.offen.length > 0 || eigene.offen.length > 0) {
+        if (mitEigenen.bild.offen.length > 0) {
           ergebnis.befunde.push(
             `${quelle.datei}:${zeile} — Props „${text}“ im direkten Aufruf ${name}(…) tragen eine Rolle, deren Wert statisch nicht bestimmbar ist: ob hier ein Dialog entsteht, kann dieser Sammler nicht beurteilen`,
           );
@@ -1965,7 +1988,7 @@ function weiterreicherVerwendungen(
       );
     };
     const gehe = (n: ts.Node): void => {
-      if (ts.isIdentifier(n) && namen.has(n.text) && !istNurName(n)) {
+      if (ts.isIdentifier(n) && lokaleNamen.has(n.text) && !istNurName(n)) {
         const ziel = zielVon(n);
         if (ziel !== undefined && weiter.has(ziel)) {
           pruefeVerwendung(n, ziel);
@@ -1976,30 +1999,6 @@ function weiterreicherVerwendungen(
     gehe(sf);
   }
   return ergebnis;
-}
-
-/**
- * Die eigenen `role`-Einträge eines Objektliterals (`F({ role: x })`). Im JSX-Spread und an
- * `createElement` erhebt sie der Eigenschaftsbesucher; bei einem direkten Aufruf nur hier.
- */
-function eigeneRollenwerte(ausdruck: ts.Node, deklarationen: Deklarationen): Wertbild {
-  let k: ts.Node = ausdruck;
-  while (ts.isParenthesizedExpression(k) || ts.isAsExpression(k) || ts.isSatisfiesExpression(k)) {
-    k = k.expression;
-  }
-  if (!ts.isObjectLiteralExpression(k)) {
-    return { werte: [], offen: [] };
-  }
-  const bilder: Wertbild[] = [];
-  for (const eig of k.properties) {
-    if (ts.isPropertyAssignment(eig) && eigenschaftsName(eig.name) === "role") {
-      bilder.push(statischeWerte(eig.initializer, deklarationen));
-    }
-    if (ts.isShorthandPropertyAssignment(eig) && eig.name.text === "role") {
-      bilder.push(statischeWerte(eig.name, deklarationen));
-    }
-  }
-  return vereine(bilder);
 }
 
 /**

@@ -991,6 +991,39 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     expect(rot).toHaveLength(4);
   });
 
+  it("Nacharbeit 10: Import-Aliasse und eigene Rollen hinter Zwischenvariablen werden abgerechnet", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Weiter.tsx": [
+          "export function Weiter(p: any): JSX.Element { return <div {...p} />; }",
+        ],
+        "apps/web/src/components/index.ts": ['export { Weiter as Weitergabe } from "./Weiter";'],
+        "apps/web/src/components/Alias.tsx": [
+          'import { Weiter as W } from "./Weiter";',
+          'import { Weitergabe } from "./index";',
+          "export const a = W(JSON.parse('{}'));",
+          "export const b = Weitergabe(JSON.parse('{}'));",
+          "const p = { role: holeRolle() };",
+          "const q = { ...p, id: 'x' };",
+          "export const c = W(p);",
+          "export const d = W(q);",
+          "const r = { id: 'x' };",
+          "export const e = W(r);",
+        ],
+      }),
+    );
+    const an = (stelle: string): string[] => rot.filter((z) => z.includes(stelle));
+    // bens Fall 1 wörtlich: der Import-Alias W — und derselbe Weg über einen Re-Export-Alias.
+    expect(an("components/Alias.tsx:3")[0]).toContain("in <Weiter>");
+    expect(an("components/Alias.tsx:4")[0]).toContain("in <Weiter>");
+    // bens Fall 2 wörtlich: die unbestimmte Rolle hinter `p` — und hinter dem Spread in `q`.
+    expect(an("components/Alias.tsx:7")[0]).toContain("im direkten Aufruf W(…)");
+    expect(an("components/Alias.tsx:8")[0]).toContain("im direkten Aufruf W(…)");
+    expect(an("components/Alias.tsx:10"), "{ id } trägt nachweislich keine Rolle").toEqual([]);
+    expect(rot).toHaveLength(4);
+  });
+
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
     const { rot } = pruefeModalgrenze(
       legeBaum({
