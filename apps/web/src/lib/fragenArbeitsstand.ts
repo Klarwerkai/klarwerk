@@ -165,7 +165,10 @@ function quellenStandLesen(roh: unknown): QuellenStand | undefined {
 //         neuere Fassung trägt. Das ist KEINE Aussage darüber, was die Antwort gelesen hat, nur eine
 //         Untergrenze: was danach kam, kam nach der Antwort;
 //       · sonst nach ihrem Verlauf: eine Änderung NACH dem Zeitpunkt der Antwort — oder es lässt
-//         sich gar nicht sagen (kein lesbarer Zeitpunkt, eine spätere Fassung ohne Verlauf).
+//         sich gar nicht sagen (kein lesbarer Zeitpunkt, eine spätere Fassung ohne Verlauf);
+//       · eine Quelle, die die Fläche beim Eintreffen nicht kannte und die im Bestand fehlt, gilt
+//         nur bis zum nächsten erfolgreichen Laden des Bestands NACH der Antwort als unauffällig;
+//         fehlt sie dann noch, ist die Antwort überholt (Ben, Nacharbeit 5).
 //     Im Zweifel also „Neu fragen", nie still der alte Stand.
 //   5 Ohne geladenen Bestand ist die Antwort UNGEPRÜFT: sie bleibt mit ihrem Zeitpunkt stehen —
 //     der Bestand lädt mit der Seite, das ist ein Augenblick und kein Dauerzustand.
@@ -234,10 +237,14 @@ export interface StehendeAntwort {
   am: string | null;
 }
 
-/** Regeln 3–5 des Vertrags (oben). */
+/**
+ * Regeln 3–5 des Vertrags (oben). `bestandGeladenAm` ist der Zeitpunkt (ms), zu dem `bestand`
+ * zuletzt erfolgreich geladen wurde — er entscheidet über die eine Ausnahme in Regel 4.
+ */
 export function antwortFrische(
   antwort: StehendeAntwort,
   bestand: readonly QuellenBestandEintrag[] | undefined,
+  bestandGeladenAm?: number,
 ): AntwortFrische {
   if (!bestand) {
     return "ungeprueft";
@@ -262,9 +269,14 @@ export function antwortFrische(
     const ko = nachId.get(id);
     const gesehen = antwort.beobachtet?.[id];
     if (!ko) {
-      // Fehlte die Quelle der Fläche schon beim Eintreffen, belegt ihr Fehlen jetzt keine Änderung
-      // NACH der Antwort. Ohne Beobachtung (Altbestand) ist Fehlen dagegen der sichere Grund.
-      if (antwort.beobachtet && gesehen === undefined) {
+      // Fehlte die Quelle der Fläche schon beim Eintreffen, belegt ihr Fehlen nur so lange keine
+      // Änderung, wie der Bestand noch der von damals sein KANN. Ben, Nacharbeit 5: diese Ausnahme
+      // ist nicht dauerhaft — ist der Bestand NACH der Antwort erfolgreich neu geladen und fehlt
+      // die Quelle weiterhin, gibt es keinen Beleg mehr für ihre Aktualität: „Neu fragen".
+      // Ohne Beobachtung (Altbestand) ist Fehlen ohnehin der sichere Grund.
+      const nachDerAntwortGeladen =
+        bestandGeladenAm !== undefined && !Number.isNaN(am) && bestandGeladenAm > am;
+      if (antwort.beobachtet && gesehen === undefined && !nachDerAntwortGeladen) {
         continue;
       }
       return "ueberholt";

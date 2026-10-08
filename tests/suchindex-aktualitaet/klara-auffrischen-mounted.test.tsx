@@ -17,6 +17,8 @@
 //       da (Kalibrierung: ohne spätere Änderung steht sie, wie bisher, mit Zeitpunkt).
 //   K6  Antwort- und Browserfassung laufen auseinander: der Server las Fassung 2, der Browser
 //       kennt noch Fassung 1 — die Antwort ist die neuere und bleibt stehen.
+//   K7  (Ben, Nacharbeit 5) Ohne Serverstand und mit einer beim Eintreffen unbekannten Quelle: fehlt
+//       sie auch im danach frisch geladenen Bestand, steht „Neu fragen" statt der Antwort.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const lage = vi.hoisted(() => ({
@@ -332,5 +334,25 @@ describe("R-0338 · Klara zeigt nach Änderungen den neuen Stand", () => {
     const wieder = await oeffnen(neuerCache());
     expect(antwortkarte(wieder)).toBeNull();
     expect(ueberholt(wieder)).toBeTruthy();
+  });
+
+  it("K7 · ohne Serverstand, Quelle beim Eintreffen unbekannt: nach dem Auffrischen fehlt sie noch ⇒ keine alte Antwort", async () => {
+    // Ein Server ohne `quellenStand`, und die Quelle steht beim Eintreffen nicht im Bestand.
+    lage.serverFassung = null;
+    lage.vorhanden = false;
+    const erst = await oeffnen(neuerCache());
+    await fragen(erst, FRAGE);
+    // Kalibrierung: derselbe Bestand wie beim Eintreffen — das Fehlen belegt noch nichts.
+    expect(ueberholt(erst)).toBeNull();
+    erst.abbauen();
+
+    // Der Bestand wird NACH der Antwort frisch geladen, und die Quelle fehlt weiterhin.
+    await new Promise((r) => setTimeout(r, 5));
+    vi.mocked(endpoints.ask.ask).mockClear();
+    const wieder = await oeffnen(neuerCache());
+
+    expect(antwortkarte(wieder)).toBeNull();
+    expect(ueberholt(wieder)).toBeTruthy();
+    expect(endpoints.ask.ask).not.toHaveBeenCalled();
   });
 });

@@ -271,16 +271,31 @@ export async function reindexKoForDuplicatePrefilter(
  * (`indexKoForDuplicatePrefilter`), der den Vektor aus dem Objekt des Aufrufers baut. Jede Ablage
  * prüft danach das lebende Objekt; darf es keinen Vektor mehr tragen (inzwischen heraufgestuft,
  * zurückgezogen, aufgegangen), wird der eben geschriebene Vektor sofort wieder entfernt.
+ *
+ * BEN, NACHARBEIT 5 — AUCH DIE ERSTINDIZIERUNG KANN ÜBERHOLT SEIN. Der Einreicheweg bettet den Text
+ * des Objekts ein, das er beim Anlegen in der Hand hatte. Wird es überarbeitet, während diese erste
+ * Einbettung noch wartet, findet der Eintrag der Schlange noch keinen Vektor und endet (es wird
+ * nichts NEU aufgenommen) — danach schrieb die Erstindizierung den alten Text, und er blieb stehen.
+ * Jetzt vergleicht jede Ablage ihren Stand mit dem heutigen Kerntext; weicht er ab, wird das Objekt
+ * über `nachfuehren` (die Warteschlange) eingereiht. Weil jetzt ein Vektor steht, führt der Eintrag
+ * ihn auf den neuen Text nach. Für nie eingebettete Objekte ändert sich nichts: ohne Ablage kein
+ * Vergleich, keine Nachführung.
  */
 export function gesicherterVektorspeicher(
   store: EmbeddingStore,
   ko: Pick<KoService, "get">,
+  nachfuehren: (koId: string) => void = () => undefined,
 ): EmbeddingStore {
   return {
     async upsert(id, vector, embeddingVersion, stand) {
       await store.upsert(id, vector, embeddingVersion, stand);
-      if (!vektorBleibtFuer(await ko.get(id))) {
+      const jetzt = await ko.get(id);
+      if (!vektorBleibtFuer(jetzt)) {
         await store.delete(id);
+        return;
+      }
+      if (stand !== undefined && stand !== kerntextStand(jetzt)) {
+        nachfuehren(id);
       }
     },
     nearest: (query, embeddingVersion, topK, excludeId) =>
@@ -289,6 +304,37 @@ export function gesicherterVektorspeicher(
     standVon: (id) => store.standVon(id),
     staende: () => store.staende(),
   };
+}
+
+/**
+ * BEN, NACHARBEIT 5 — DER ENTZUG HÄNGT NICHT AM SCHALTER.
+ *
+ * Ist der Vorfilter aus, wird nichts eingebettet — aber der dauerhafte Speicher kann Vektoren aus
+ * einer Zeit tragen, in der er an war. Für sie gilt R-0470/R-0483 weiter: ein heraufgestuftes,
+ * zurückgezogenes, aufgegangenes oder gelöschtes Objekt verliert seinen Vektor. Diese Funktion ist
+ * der Abgleich beim Start für genau diesen Betriebszustand: sie ENTFERNT nur (kein Embedder, kein
+ * Modell, keine Schlange). Den sofortigen Entzug bei einer Änderung leistet der Nachlauf in
+ * build-app.ts. Rückgabe: die Zahl der entfernten Vektoren (keine Inhalte).
+ */
+export async function entzugNachStart(deps: {
+  ko: Pick<KoService, "list">;
+  store: EmbeddingStore;
+}): Promise<number> {
+  const abgelegt = await deps.store.staende();
+  if (abgelegt.size === 0) {
+    return 0;
+  }
+  const zulaessig = new Set(
+    (await deps.ko.list()).filter((ko) => vektorBleibtFuer(ko)).map((ko) => ko.id),
+  );
+  let entfernt = 0;
+  for (const id of abgelegt.keys()) {
+    if (!zulaessig.has(id)) {
+      await deps.store.delete(id);
+      entfernt += 1;
+    }
+  }
+  return entfernt;
 }
 
 /**

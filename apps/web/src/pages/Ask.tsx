@@ -1141,6 +1141,8 @@ export function Ask(): JSX.Element {
     antwortFrische(
       { quellen: result.sources, stand: quellenStand, beobachtet, am: antwortAm },
       kos.data,
+      // Ben, Nacharbeit 5: wann der Bestand zuletzt erfolgreich geladen wurde (0 = noch nie).
+      kos.dataUpdatedAt,
     ) === "ueberholt";
   const karteSichtbar =
     Boolean(result) && Boolean(contract) && !pruefungGestoert && !antwortUeberholt;

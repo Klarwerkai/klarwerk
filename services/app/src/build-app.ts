@@ -257,6 +257,7 @@ import { registerHerkunftspruefung } from "./csrf";
 import { ladeDienstSchluessel, matchDienstRoute } from "./dienst-schluessel";
 import {
   type SemanticPrefilter,
+  entzugNachStart,
   gesicherterVektorspeicher,
   nachfuehrungNachStart,
   reindexKoForDuplicatePrefilter,
@@ -1813,6 +1814,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
 function createSemanticPrefilterFromEnv(
   speicher: EmbeddingStore,
   ko: Pick<KoService, "get">,
+  // Ben, Nacharbeit 5: reiht ein Objekt ein, dessen eben abgelegter Text schon überholt ist.
+  nachfuehren: (koId: string) => void,
 ): SemanticPrefilter | undefined {
   const flag = process.env.KLARWERK_DUP_PREFILTER;
   if (flag !== "1" && flag !== "true") {
@@ -1828,7 +1831,7 @@ function createSemanticPrefilterFromEnv(
   // Cap nicht umgeht. Bei Normallast (und mit dem Stub) ein No-Op → Prefilter-Verhalten bit-gleich.
   return {
     embedder: cappedEmbeddingProvider(embedder),
-    store: gesicherterVektorspeicher(speicher, ko),
+    store: gesicherterVektorspeicher(speicher, ko, nachfuehren),
     topK,
   };
 }
@@ -3130,7 +3133,12 @@ export function buildApp(
   // undefined → heutiges „jeder gegen jeden". Erst KLARWERK_DUP_PREFILTER=1 schaltet ihn scharf.
   // R-0470: im Postgres-Betrieb der dauerhafte Vektorspeicher, sonst der In-Memory-Speicher.
   const vektorSpeicher = services.vektorSpeicher ?? new InMemoryEmbeddingStore();
-  const semanticPrefilter = createSemanticPrefilterFromEnv(vektorSpeicher, services.ko);
+  // Ben, Nacharbeit 5: die Schlange entsteht erst weiter unten; der Speicher reiht über diese späte
+  // Bindung ein, sobald sie steht (vorher ist sie ein No-op — dann gibt es auch keine Schlange).
+  let vektorNachfuehren: (koId: string) => void = () => undefined;
+  const semanticPrefilter = createSemanticPrefilterFromEnv(vektorSpeicher, services.ko, (koId) =>
+    vektorNachfuehren(koId),
+  );
   // ==============================================================================================
   // JOB 3066 — DAS AUFRÄUMEN DER BEFUNDE FÄHRT IN DER LÖSCHTRANSAKTION MIT.
   // ==============================================================================================
@@ -3264,22 +3272,31 @@ export function buildApp(
   //
   // Die Suchprojektion von Bibliothek und Klara steht NICHT in dieser Schlange: sie entsteht im
   // selben Schreibvorgang wie die neue Fassung und ist damit sofort auffindbar.
+  //
+  // BEN, NACHARBEIT 5 — DER ENTZUG HÄNGT NICHT AM SCHALTER. Ist der Vorfilter aus, trägt der
+  // dauerhafte Speicher womöglich noch Vektoren aus einer Zeit, in der er an war. Für sie gilt das
+  // Entfernen weiter: derselbe sofortige Entzug am Nachlauf und ein Abgleich beim Start, der NUR
+  // entfernt (`entzugNachStart`). Eingebettet wird dabei nichts, kein Modell wird gerufen.
+  // Nur die Fehlerklasse, nie der Fehlertext — er könnte Inhalt tragen (wie reindex-queue.ts).
+  const meldeVektorFehler = (was: string, koId: string, fehler: unknown): void => {
+    const klasse = fehler instanceof Error ? fehler.name : typeof fehler;
+    console.warn(`[dup-prefilter] ${was} für KO ${koId} fehlgeschlagen (${klasse})`);
+  };
+  const entziehe = (speicher: EmbeddingStore, koId: string, stand?: KnowledgeObject): void => {
+    if (stand && !vektorBleibtFuer(stand)) {
+      const entzug = speicher.delete(koId);
+      void entzug.catch((e: unknown) => meldeVektorFehler("Sofortiger Entzug", koId, e));
+    }
+  };
   if (semanticPrefilter) {
-    // Nur die Fehlerklasse, nie der Fehlertext — er könnte Inhalt tragen (wie reindex-queue.ts).
-    const meldeVektorFehler = (was: string, koId: string, fehler: unknown): void => {
-      const klasse = fehler instanceof Error ? fehler.name : typeof fehler;
-      console.warn(`[dup-prefilter] ${was} für KO ${koId} fehlgeschlagen (${klasse})`);
-    };
     const reindexQueue = createReindexQueue({
       reindex: (koId) =>
         reindexKoForDuplicatePrefilter(koId, { ko: services.ko, semanticPrefilter }),
       onError: (koId, fehler) => meldeVektorFehler("Neuindizierung", koId, fehler),
     });
+    vektorNachfuehren = (koId) => reindexQueue.enqueue(koId);
     services.ko.setAenderungsNachlauf((koId, stand) => {
-      if (stand && !vektorBleibtFuer(stand)) {
-        const entzug = semanticPrefilter.store.delete(koId);
-        void entzug.catch((e: unknown) => meldeVektorFehler("Sofortiger Entzug", koId, e));
-      }
+      entziehe(semanticPrefilter.store, koId, stand);
       reindexQueue.enqueue(koId);
     });
     app.addHook("onReady", async () => {
@@ -3289,6 +3306,13 @@ export function buildApp(
         enqueue: (koId) => reindexQueue.enqueue(koId),
       });
       void abgleich.catch((fehler: unknown) => meldeVektorFehler("Nachführung", "-", fehler));
+    });
+  } else if (services.vektorSpeicher) {
+    const speicher = services.vektorSpeicher;
+    services.ko.setAenderungsNachlauf((koId, stand) => entziehe(speicher, koId, stand));
+    app.addHook("onReady", async () => {
+      const abgleich = entzugNachStart({ ko: services.ko, store: speicher });
+      void abgleich.catch((fehler: unknown) => meldeVektorFehler("Entzug", "-", fehler));
     });
   }
   // WP-SUBMIT-ASYNC (Pedis R3): der Prüf-Worker kapselt die früher synchron im Submit-Pfad

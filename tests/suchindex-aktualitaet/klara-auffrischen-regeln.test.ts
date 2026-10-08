@@ -8,6 +8,7 @@
 //   F3  Mit Stand und älterem Browserbestand: der Browser ist veraltet, nicht die Antwort.
 //   F4  Ohne Stand (Altbestand): Verlauf nach der Antwort, Fehlen oder Unwissen ⇒ überholt.
 //   F5  Ohne Stand, aber mit Beobachtung beim Eintreffen: nur eine spätere Fassung macht überholt.
+//   F5b Eine nie beobachtete Quelle, die im NACH der Antwort geladenen Bestand fehlt ⇒ überholt.
 //   F6  Stand und Beobachtung reisen mit der gespeicherten Antwort; Beschädigtes verwirft sie nicht.
 import { describe, expect, it } from "vitest";
 import type { AnswerResult } from "../../apps/web/src/api/types";
@@ -97,12 +98,33 @@ describe("R-0338 · Auffrischen-Vertrag — Regeln", () => {
     const beobachtet = beobachtungAus(["ko-1", "ko-2"], [{ id: "ko-1", version: 2 }]);
     expect(beobachtet).toEqual({ "ko-1": 2 });
     const frisch = { quellen: ["ko-1", "ko-2"], stand: undefined, beobachtet, am: AM };
+    const vorDerAntwort = Date.parse(VORHER);
+    const nachDerAntwort = Date.parse(NACHHER);
     // ko-1 trägt Fassung 2 ohne Verlauf — beobachtet war 2: keine Änderung nach der Antwort.
-    // ko-2 kannte die Fläche nie; sein Fehlen belegt keine Änderung nach der Antwort.
-    expect(antwortFrische(frisch, [{ id: "ko-1", version: 2 }])).toBe("ungeprueft");
-    expect(antwortFrische(frisch, [{ id: "ko-1", version: 3 }])).toBe("ueberholt");
+    // ko-2 kannte die Fläche nie; solange der Bestand noch der von damals ist, belegt sein Fehlen
+    // keine Änderung nach der Antwort.
+    expect(antwortFrische(frisch, [{ id: "ko-1", version: 2 }], vorDerAntwort)).toBe("ungeprueft");
+    expect(antwortFrische(frisch, [{ id: "ko-1", version: 3 }], vorDerAntwort)).toBe("ueberholt");
     // Was beim Eintreffen da war und jetzt fehlt, ist entfernt worden.
-    expect(antwortFrische(frisch, [])).toBe("ueberholt");
+    expect(antwortFrische(frisch, [], vorDerAntwort)).toBe("ueberholt");
+  });
+
+  it("F5b · Ben, Nacharbeit 5: die nie beobachtete Quelle fehlt auch im NACH der Antwort geladenen Bestand ⇒ überholt", () => {
+    const frisch = {
+      quellen: ["ko-1", "ko-2"],
+      stand: undefined,
+      beobachtet: { "ko-1": 2 },
+      am: AM,
+    };
+    const bestand = [{ id: "ko-1", version: 2 }];
+    // Kalibrierung: Bestand von vor der Antwort — die Ausnahme gilt noch.
+    expect(antwortFrische(frisch, bestand, Date.parse(VORHER))).toBe("ungeprueft");
+    // Bestand NACH der Antwort aufgefrischt, ko-2 fehlt weiterhin: keine Ausnahme mehr.
+    expect(antwortFrische(frisch, bestand, Date.parse(NACHHER))).toBe("ueberholt");
+    // Dasselbe für eine gespeicherte LEERE Beobachtung (der Bestand war beim Eintreffen nicht da).
+    expect(antwortFrische({ ...frisch, beobachtet: {} }, bestand, Date.parse(NACHHER))).toBe(
+      "ueberholt",
+    );
   });
 
   it("F6 · Stand und Beobachtung reisen mit; Beschädigtes verwirft die Antwort nicht", () => {

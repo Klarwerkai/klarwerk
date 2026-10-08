@@ -14,12 +14,18 @@
 //   Q  über die Warteschlange: der Aufruf ist fertig, während die Neuindizierung noch aussteht;
 //   S  (Ben, Nacharbeit 3) Entfernen SOFORT bei Heraufstufung — bei blockierter Warteschlange am
 //      echten Produktweg (`buildApp`) und während einer laufenden Einbettung;
-//   W  (Ben, Nacharbeit 3) nach einem Neustart wird nachgeholt, was unterbrochen wurde.
+//   W  (Ben, Nacharbeit 3) nach einem Neustart wird nachgeholt, was unterbrochen wurde;
+//   A  (Ben, Nacharbeit 5) bei AUSGESCHALTETEM Vorfilter verlieren vorhandene Vektoren ihren Platz
+//      trotzdem — sofort bei der Änderung und beim Start, ohne dass etwas eingebettet wird;
+//   E  (Ben, Nacharbeit 5) eine Überarbeitung während der noch laufenden ERSTindizierung endet
+//      beim neuen Text, nicht beim alten.
 // Der Erhalt der Vektoren über einen Neustart selbst liegt im dauerhaften Speicher und ist gegen
 // echtes PostgreSQL in `vektorspeicher-pg.integration.test.ts` belegt.
 import { afterEach, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import {
+  entzugNachStart,
+  gesicherterVektorspeicher,
   indexKoForDuplicatePrefilter,
   nachfuehrungNachStart,
   reindexKoForDuplicatePrefilter,
@@ -478,5 +484,120 @@ describe("Vektor-Nachführung · W — nach einem Neustart wird nachgeholt (Ben,
     expect(await v.store.standVon(veraltet.id)).not.toBe(standVorher);
     // Ein zweiter Abgleich findet nichts mehr: alles passt.
     expect(await nachfuehrungNachStart({ ko, store: v.store, enqueue: () => undefined })).toBe(0);
+  });
+});
+
+describe("Vektor-Nachführung · A — Entzug bei AUSGESCHALTETEM Vorfilter (Ben, Nacharbeit 5)", () => {
+  const vorher = process.env.KLARWERK_DUP_PREFILTER;
+  afterEach(() => {
+    if (vorher === undefined) {
+      delete process.env.KLARWERK_DUP_PREFILTER;
+    } else {
+      process.env.KLARWERK_DUP_PREFILTER = vorher;
+    }
+  });
+
+  it("A1 · am echten Produktweg: Heraufstufen, Zurückziehen und Zusammenführen entfernen sofort — eingebettet wird nichts", async () => {
+    delete process.env.KLARWERK_DUP_PREFILTER;
+    // Der dauerhafte Speicher trägt noch Vektoren aus einer Zeit mit eingeschaltetem Vorfilter.
+    const speicher = new InMemoryEmbeddingStore();
+    const services = buildServices();
+    services.vektorSpeicher = speicher;
+    const app = buildApp(services);
+    await app.ready();
+    try {
+      const ko = services.ko;
+      const hoch = await ko.create({ ...EINGABE, title: "Wird vertraulich" });
+      const korb = await ko.create({ ...EINGABE, title: "Wird zurückgezogen" });
+      const auf = await ko.create({ ...EINGABE, title: "Geht auf" });
+      const bleibt = await ko.create({ ...EINGABE, title: "Bleibt" });
+      for (const k of [hoch, korb, auf, bleibt]) {
+        await ablegenMitAltemStand(speicher, k.id);
+      }
+
+      await ko.setConfidentiality(hoch.id, "vertraulich", "anna");
+      expect(await speicher.standVon(hoch.id)).toBeUndefined();
+      await ko.delete(korb.id, "anna");
+      expect(await speicher.standVon(korb.id)).toBeUndefined();
+      await ko.markMergedInto(
+        auf.id,
+        { koId: bleibt.id, version: bleibt.version, overlapId: "ov-a1" },
+        "kurator",
+        auf.version,
+      );
+      expect(await speicher.standVon(auf.id)).toBeUndefined();
+
+      // Kalibrierung und „kein Einbetten": der zulässige Vektor steht unverändert mit altem Stand.
+      await ko.revise(bleibt.id, { statement: "Geändert bei ausgeschaltetem Vorfilter." }, "anna");
+      await ruhe();
+      expect(await belegt(speicher)).toEqual([bleibt.id]);
+      expect(await speicher.standVon(bleibt.id)).toBe("alt");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("A2 · der Abgleich beim Start entfernt nur — Vektoren unzulässiger oder verschwundener Objekte", async () => {
+    const { ko } = await stapel();
+    const speicher = new InMemoryEmbeddingStore();
+    const bleibt = await ko.create({ ...EINGABE, title: "Bleibt" });
+    const hoch = await ko.create({ ...EINGABE, title: "Vor dem Start heraufgestuft" });
+    const korb = await ko.create({ ...EINGABE, title: "Vor dem Start zurückgezogen" });
+    for (const k of [bleibt, hoch, korb]) {
+      await ablegenMitAltemStand(speicher, k.id);
+    }
+    await ablegenMitAltemStand(speicher, "endgeloescht-1");
+    await ko.setConfidentiality(hoch.id, "vertraulich", "anna");
+    await ko.delete(korb.id, "anna");
+
+    const entfernt = await entzugNachStart({ ko, store: speicher });
+
+    expect(entfernt).toBe(3);
+    expect(await belegt(speicher)).toEqual([bleibt.id]);
+    // Nur entfernt, nichts neu eingebettet: der verbliebene Vektor trägt seinen alten Stand.
+    expect(await speicher.standVon(bleibt.id)).toBe("alt");
+  });
+});
+
+describe("Vektor-Nachführung · E — Überarbeitung während der Erstindizierung (Ben, Nacharbeit 5)", () => {
+  it("E1 · die laufende Erstindizierung schreibt den alten Text — danach steht trotzdem der neue", async () => {
+    const { ko } = await stapel();
+    const t = tor();
+    const v = vorfilter(t.warte);
+    // Späte Bindung wie in build-app.ts: der Speicher reiht ein, sobald die Schlange steht.
+    const nachfuehrung: { einreihen: (id: string) => void } = { einreihen: () => undefined };
+    // Der Speicher, wie build-app.ts ihn an alle Schreiber reicht — mit Nachführung über die Schlange.
+    const geschuetzt = {
+      ...v.semanticPrefilter,
+      store: gesicherterVektorspeicher(v.store, ko, (id) => nachfuehrung.einreihen(id)),
+    };
+    const schlange = createReindexQueue({
+      reindex: (id) => reindexKoForDuplicatePrefilter(id, { ko, semanticPrefilter: geschuetzt }),
+      onError: () => undefined,
+    });
+    nachfuehrung.einreihen = (id) => schlange.enqueue(id);
+    ko.setAenderungsNachlauf((id) => schlange.enqueue(id));
+    const a = await ko.create({ ...EINGABE });
+
+    // Die Erstindizierung des Einreichewegs bettet den Text beim Anlegen ein und wartet am Tor …
+    const erst = indexKoForDuplicatePrefilter(a, geschuetzt);
+    await ruhe();
+    // … währenddessen wird überarbeitet; der Eintrag der Schlange findet noch keinen Vektor.
+    await ko.revise(a.id, { title: "Turbine T4", statement: "Lager monatlich schmieren." }, "anna");
+    await ruhe();
+
+    t.oeffne();
+    await erst;
+    await ruhe();
+    await schlange.idle();
+
+    // Erst der alte, dann der neue Text — und abgelegt ist der Stand der heutigen Fassung.
+    expect(v.texte[0]).toContain("Kompressor K9");
+    expect(v.texte.at(-1)).toContain("Turbine T4");
+    const vergleich = vorfilter();
+    const heute = await ko.get(a.id);
+    expect(heute).toBeDefined();
+    await indexKoForDuplicatePrefilter(heute as KnowledgeObject, vergleich.semanticPrefilter);
+    expect(await v.store.standVon(a.id)).toBe(await vergleich.store.standVon(a.id));
   });
 });

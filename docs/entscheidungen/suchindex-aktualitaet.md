@@ -17,6 +17,21 @@ bis dahin ist sie hier ausdrücklich offen und wird nicht behauptet.*
 | Heraufstufung, Papierkorb, Zusammenführen (Nacharbeit 3) | **Neu:** der Nachlauf trägt den gespeicherten Stand; darf das Objekt keinen Vektor mehr tragen, löscht `build-app.ts` ihn SOFORT, vorbei an jedem Rückstau der Schlange. Eine laufende Einbettung prüft das Objekt vor und nach dem Schreiben erneut; der Einreicheweg schreibt über `gesicherterVektorspeicher` mit derselben Nachprüfung. | `KoService.setAenderungsNachlauf(koId, stand)`, `build-app.ts`, `duplicate-detection.ts` |
 | Klara, stehende Antwort | **Neu, der Auffrischen-Vertrag:** jede gestellte Frage holt neu; eine stehende oder wiederaufgenommene Antwort wird nie von selbst neu erzeugt, aber gegen den frisch geladenen Bestand geprüft. **Nacharbeit 3:** der Quellenstand kommt vom Server (`AskResult.quellenStand`, die gelesenen Fassungen); überholt bei fehlender, aufgegangener oder neuerer Quelle — ein älterer Browserbestand macht nicht überholt. Ohne belastbaren Stand (Altbestand) prüft die Fläche den Verlauf der Quelle seit der Antwort und im Zweifel gilt sie als überholt; statt der Antwort steht dann ein Satz mit „Neu fragen", ohne automatische Modellanfrage. | `services/ask/src/service.ts`, `lib/fragenArbeitsstand.ts` (`quellenStandAus`, `beobachtungAus`, `antwortFrische`), `pages/Ask.tsx`, `texte/fragenseite.ts` |
 
+**Nacharbeit 5 (Bens Befunde):**
+
+- *Entzug ohne Schalter.* Ist der Vorfilter aus, trägt der dauerhafte Speicher womöglich noch
+  Vektoren aus früherem Betrieb. Der sofortige Entzug am Änderungsnachlauf und ein Abgleich beim
+  Start (`entzugNachStart`, entfernt nur) gelten jetzt auch dann; eingebettet wird dabei nichts.
+- *Erstindizierung überholt.* Jede Ablage vergleicht ihren Stand mit dem heutigen Kerntext; weicht
+  er ab (Überarbeitung während der ersten Einbettung), reiht `gesicherterVektorspeicher` das Objekt
+  in die Schlange ein, und der Vektor wird auf den neuen Text nachgeführt. Nie eingebettete
+  Objekte bleiben ohne Vektor.
+- *Nie beobachtete Quelle.* Eine Quelle, die die Fläche beim Eintreffen der Antwort nicht kannte,
+  gilt nur bis zum nächsten erfolgreichen Laden des Bestands nach der Antwort als unauffällig;
+  fehlt sie dann noch, steht „Neu fragen".
+- Belege: `tests/suchindex-aktualitaet/vektor-nachfuehrung.test.ts` A1, A2, E1;
+  `…/klara-auffrischen-regeln.test.ts` F5b; `…/klara-auffrischen-mounted.test.tsx` K7.
+
 ## Die zugeordneten Anliegen
 
 | Anliegen | Stand vorher | Diese Lieferung | Beleg |
