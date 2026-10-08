@@ -3508,6 +3508,9 @@ export function buildApp(
           new Set(
             (await services.spaces.aktuelle()).filter((s) => s.zugang === "alle").map((s) => s.id),
           ),
+        // R-1649: der abweichende Weg aus „nicht hilfreich" wird ein gewöhnlicher Entwurf —
+        // derselbe Anlageweg wie POST /api/drafts, kein zweiter.
+        alternativeAlsEntwurf: (entwurf, author) => services.capture.createDraft(entwurf, author),
         personen: {
           erreichbarkeit: async (ids) => {
             const konten = await services.auth.listUsers();
