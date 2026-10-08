@@ -303,6 +303,13 @@ const RECHERCHE = JSON.stringify({
     // Ohne gültige Quelle — Modellwissen statt Recherche — fällt der Punkt weg.
     { knoten: "risiko", hinweis: "ohne Quelle — wird verworfen" },
     { knoten: "risiko", hinweis: "falsche Quellnummer — wird verworfen", quelle: 7 },
+    // Bens Befund nacharbeit-8: ein vom Modell SELBST gelieferter Quellenverweis ohne Nummer einer
+    // abgerufenen Quelle — eine nicht abgerufene Quelle darf nie als Grundlage erscheinen.
+    {
+      knoten: "geltung",
+      hinweis: "erfundene Quelle — wird verworfen",
+      source: { title: "Erfundene Quelle", url: "https://example.org" },
+    },
   ],
 });
 
@@ -365,6 +372,7 @@ describe("R-0088: quellengebundene Fachrecherche — für tiefere Rückfragen, n
     // … die Recherche reist sichtbar MIT IHRER QUELLE mit (ungültige Knoten und Punkte ohne
     // gültige Quelle verworfen) …
     expect(res.research).toEqual(ERWARTETE_RECHERCHE);
+    expect(JSON.stringify(res.research)).not.toContain("example.org");
     // … und steht NICHT im Entwurf: der besteht nur aus den Antworten des Menschen.
     expect(JSON.stringify(res.draft)).not.toContain("6 bar");
     expect(res.depth).toEqual([]);

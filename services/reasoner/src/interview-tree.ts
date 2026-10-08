@@ -273,38 +273,45 @@ export function normalizeInterviewSources(value: unknown): InterviewResearchSour
   return sources;
 }
 
-/**
- * Recherchepunkte prüfen und kappen. Jeder Punkt braucht eine Quelle: entweder als Nummer in die
- * abgerufenen `sources` (Modellantwort, „quelle": 1 …) oder als mitgereichtes Quellenobjekt (vom
- * Client zurückgereichte Recherche eines früheren Turns). Ohne gültige Quelle fällt er weg.
- */
-export function normalizeInterviewResearch(
+// BENS BEFUND (nacharbeit-8): hier lief beides durch EINE Funktion — und eine Modellantwort ohne
+// Quellnummer, aber mit eigenem `source`-Objekt (beliebige https-Adresse), wurde angenommen. Damit
+// konnte das Modell eine NICHT abgerufene Quelle als Grundlage ausgeben. Jetzt sind es zwei Wege:
+//   · `parseInterviewResearch` (NEUE Modellantwort): nur die Nummer einer tatsächlich abgerufenen
+//     Quelle zählt; ein mitgeliefertes Quellenobjekt wird nie gelesen.
+//   · `normalizeInterviewResearch` (vom Client ZURÜCKGEREICHTE Punkte eines früheren Turns): sie
+//     tragen ihr Quellenobjekt, das der Server selbst dorthin geschrieben hat.
+
+/** Gemeinsame Prüfung von Knoten und Hinweis; die Quelle bestimmt der jeweilige Weg. */
+function punktAus(
+  raw: unknown,
+  quelle: (entry: Record<string, unknown>) => InterviewResearchSource | null,
+): InterviewResearchPoint | null {
+  if (typeof raw !== "object" || raw === null) {
+    return null;
+  }
+  const entry = raw as Record<string, unknown>;
+  const node = entry.node ?? entry.knoten;
+  const hint = knapp(entry.hint ?? entry.hinweis, MAX_INTERVIEW_RESEARCH_HINT_LENGTH);
+  if (typeof node !== "string" || !RESEARCH_NODES.has(node as InterviewNodeId) || !hint) {
+    return null;
+  }
+  const source = quelle(entry);
+  return source ? { node: node as InterviewNodeId, hint, source } : null;
+}
+
+function punkteAus(
   value: unknown,
-  sources: readonly InterviewResearchSource[] = [],
+  quelle: (entry: Record<string, unknown>) => InterviewResearchSource | null,
 ): InterviewResearchPoint[] {
   if (!Array.isArray(value)) {
     return [];
   }
   const points: InterviewResearchPoint[] = [];
   for (const raw of value) {
-    if (typeof raw !== "object" || raw === null) {
-      continue;
+    const punkt = punktAus(raw, quelle);
+    if (punkt) {
+      points.push(punkt);
     }
-    const entry = raw as Record<string, unknown>;
-    const node = entry.node ?? entry.knoten;
-    const hint = knapp(entry.hint ?? entry.hinweis, MAX_INTERVIEW_RESEARCH_HINT_LENGTH);
-    if (typeof node !== "string" || !RESEARCH_NODES.has(node as InterviewNodeId) || !hint) {
-      continue;
-    }
-    const nummer = entry.quelle ?? entry.sourceIndex;
-    const source =
-      typeof nummer === "number" && Number.isInteger(nummer)
-        ? (sources[nummer - 1] ?? null)
-        : quelleAus(entry.source);
-    if (!source) {
-      continue;
-    }
-    points.push({ node: node as InterviewNodeId, hint, source });
     if (points.length >= MAX_INTERVIEW_RESEARCH_POINTS) {
       break;
     }
@@ -312,7 +319,19 @@ export function normalizeInterviewResearch(
   return points;
 }
 
-/** Die Modellantwort der Recherche lesen: das erste JSON-Objekt mit `punkte`; sonst nichts. */
+/**
+ * Vom Client ZURÜCKGEREICHTE Recherchepunkte eines früheren Turns prüfen und kappen. Jeder Punkt
+ * braucht sein Quellenobjekt (Titel, http(s)-Adresse); ohne gültige Quelle fällt er weg.
+ */
+export function normalizeInterviewResearch(value: unknown): InterviewResearchPoint[] {
+  return punkteAus(value, (entry) => quelleAus(entry.source));
+}
+
+/**
+ * Eine NEUE Modellantwort der Recherche lesen: das erste JSON-Objekt mit `punkte`. Ein Punkt gilt
+ * nur mit der Nummer einer der tatsächlich abgerufenen `sources` („quelle": 1 …) — ein vom Modell
+ * selbst geliefertes Quellenobjekt wird nicht gelesen.
+ */
 export function parseInterviewResearch(
   raw: string,
   sources: readonly InterviewResearchSource[],
@@ -324,7 +343,12 @@ export function parseInterviewResearch(
   }
   try {
     const parsed = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
-    return normalizeInterviewResearch(parsed.punkte ?? parsed.points, sources);
+    return punkteAus(parsed.punkte ?? parsed.points, (entry) => {
+      const nummer = entry.quelle ?? entry.sourceIndex;
+      return typeof nummer === "number" && Number.isInteger(nummer) && nummer >= 1
+        ? (sources[nummer - 1] ?? null)
+        : null;
+    });
   } catch {
     return [];
   }

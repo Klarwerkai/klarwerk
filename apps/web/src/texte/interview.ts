@@ -43,6 +43,9 @@ export default {
       "Klaras Recherche zum Thema (aus Quellen, KI-ausgewertet, ungeprüft):",
     "interview.recherche.quelle": "Quelle:",
     "interview.recherche.knopf": "Zum Thema in Quellen recherchieren",
+    "interview.recherche.sichernNoetig":
+      "Die Quellenrecherche braucht einen gesicherten Entwurf – ungesicherter Text gilt als vertraulich und wird nie extern gesucht.",
+    "interview.recherche.sichernUndRecherchieren": "Entwurf sichern und recherchieren",
     "interview.recherche.leer":
       "Dazu ließ sich nichts recherchieren – keine passenden Quellen, Suche gesperrt, vertraulicher Inhalt oder kein KI-Modell.",
     "interview.recherche.grenze":
@@ -79,6 +82,9 @@ export default {
       "Klara's research on the subject (from sources, AI-evaluated, unverified):",
     "interview.recherche.quelle": "Source:",
     "interview.recherche.knopf": "Research the subject in sources",
+    "interview.recherche.sichernNoetig":
+      "Source research needs a saved draft – unsaved text counts as confidential and is never searched externally.",
+    "interview.recherche.sichernUndRecherchieren": "Save draft and research",
     "interview.recherche.leer":
       "Nothing could be researched – no matching sources, search blocked, confidential content or no AI model.",
     "interview.recherche.grenze":
@@ -116,6 +122,9 @@ export default {
       "Klara's onderzoek naar het onderwerp (uit bronnen, door AI beoordeeld, niet geverifieerd):",
     "interview.recherche.quelle": "Bron:",
     "interview.recherche.knopf": "Het onderwerp in bronnen onderzoeken",
+    "interview.recherche.sichernNoetig":
+      "Bronnenonderzoek vereist een opgeslagen concept – niet-opgeslagen tekst geldt als vertrouwelijk en wordt nooit extern gezocht.",
+    "interview.recherche.sichernUndRecherchieren": "Concept opslaan en onderzoeken",
     "interview.recherche.leer":
       "Er kon niets worden onderzocht – geen passende bronnen, zoeken geblokkeerd, vertrouwelijke inhoud of geen AI-model.",
     "interview.recherche.grenze":

@@ -28,6 +28,7 @@ vi.mock("../../apps/web/src/api/auth", () => ({
 // Kernaussage; danach reicht der Client sie zurück. Jeder Punkt trägt seine Quelle.
 const box = vi.hoisted(() => ({
   recherche: [] as { node: string; hint: string; source: { title: string; url: string } }[],
+  erstellt: [] as Record<string, unknown>[],
 }));
 
 vi.mock("../../apps/web/src/api/endpoints", async () => {
@@ -40,7 +41,22 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
       uploadLimits: { get: ok({ maxAttachments: 10, maxAttachmentBytes: 20_000_000 }) },
       directory: { list: ok([]) },
       gaps: { list: ok([]) },
-      drafts: { list: ok([]) },
+      // Bens Befund nacharbeit-8: „Entwurf sichern und recherchieren" legt über den echten
+      // Speicherweg einen Entwurf an — hier gestellt, die Nutzlast wird mitgeschrieben.
+      drafts: {
+        list: ok([]),
+        create: vi.fn(async (payload: Record<string, unknown>) => {
+          box.erstellt.push(payload);
+          return {
+            id: `d${box.erstellt.length}`,
+            payload,
+            originalAuthor: "u1",
+            lastEditor: "u1",
+            createdAt: "2026-10-08T10:00:00.000Z",
+            updatedAt: "2026-10-08T10:00:00.000Z",
+          };
+        }),
+      },
       reasoner: {
         status: ok({ active: true, mode: "cloud", reachable: "active" }),
         config: ok(null),
@@ -210,6 +226,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   box.recherche = [];
+  box.erstellt.length = 0;
   act(() => root.unmount());
   container.remove();
   vi.clearAllMocks();
@@ -316,13 +333,31 @@ describe("Lücken-Interview am echten Arbeitsraum", () => {
     await antworte("Ventil X bei Überdruck schließen");
     // Ohne Wunsch keine Recherche — der Turn hat nicht gesucht.
     expect(teil("interview-recherche")).toBeNull();
+    // Bens Befund nacharbeit-8: ungesichert sucht der Server nie (kein Anker → vertraulich). Statt
+    // eines Knopfs, der nichts tun kann, steht die konkrete Voraussetzung samt Weg da.
+    expect(
+      [...container.querySelectorAll("button")].some((b) =>
+        (b.textContent ?? "").includes(i18n.t("interview.recherche.knopf")),
+      ),
+    ).toBe(false);
+    expect(teil("interview-recherche-sichern")?.textContent).toContain(
+      i18n.t("interview.recherche.sichernNoetig"),
+    );
     const vorher = interviewMock.mock.calls.length;
-    await klick(knopf(i18n.t("interview.recherche.knopf")));
-    // Derselbe Turn noch einmal, jetzt mit dem ausdrücklichen Wunsch.
+    await klick(knopf(i18n.t("interview.recherche.sichernUndRecherchieren")));
+    // Gesichert über den EINEN Speicherweg — mit dem Interviewfortschritt …
+    expect(box.erstellt).toHaveLength(1);
+    expect((box.erstellt[0]?.interview as { answers?: string[] })?.answers).toEqual([
+      "Ventil X bei Überdruck schließen",
+    ]);
+    // … und derselbe Turn noch einmal, jetzt mit dem Wunsch UND dem Anker des neuen Entwurfs.
     expect(interviewMock.mock.calls.length).toBe(vorher + 1);
     const wunsch = interviewMock.mock.calls[vorher];
     expect(wunsch?.[0]).toEqual(["Ventil X bei Überdruck schließen"]);
+    expect(wunsch?.[2]).toMatchObject({ source: "draft", draftId: "d1" });
     expect(wunsch?.[4]).toEqual({ tree: true, topic: null, research: [], recherchieren: true });
+    // Die Arbeit geht im Interview weiter — nichts geräumt, kein Wechsel weg.
+    expect(teil("interview-recherche-sichern")).toBeNull();
 
     const recherche = teil("interview-recherche");
     expect(recherche?.textContent).toContain(i18n.t("interview.recherche.titel"));
@@ -332,9 +367,11 @@ describe("Lücken-Interview am echten Arbeitsraum", () => {
     expect(recherche?.textContent).toContain(i18n.t("interview.recherche.grenze"));
 
     await antworte("bei Überdruck");
-    // Der nächste Turn reicht die Recherche zurück — der Server muss nicht erneut recherchieren.
+    // Der nächste Turn reicht die Recherche zurück — der Server muss nicht erneut recherchieren —
+    // und trägt weiter den Anker des gesicherten Entwurfs.
     const letzter = interviewMock.mock.calls[interviewMock.mock.calls.length - 1];
     expect(letzter?.[4]).toEqual({ tree: true, topic: null, research: [PUNKT] });
+    expect(letzter?.[2]).toMatchObject({ draftId: "d1" });
 
     await antworte("Handventil zu");
     await antworte("ab 7 bar");
@@ -344,13 +381,19 @@ describe("Lücken-Interview am echten Arbeitsraum", () => {
     expect(container.innerHTML).not.toContain(HINWEIS);
   });
 
-  it("gewünschte Recherche ohne Ergebnis wird gesagt, nicht verschwiegen", async () => {
+  it("gewünschte Recherche ohne Ergebnis wird gesagt; ein zweiter Versuch braucht kein neues Sichern", async () => {
     box.recherche = [];
     await mount(null);
     await klick(knopf(i18n.t("capture.ivStart")));
     await antworte("Ventil X bei Überdruck schließen");
-    await klick(knopf(i18n.t("interview.recherche.knopf")));
+    await klick(knopf(i18n.t("interview.recherche.sichernUndRecherchieren")));
     expect(teil("interview-recherche")).toBeNull();
     expect(teil("interview-recherche-leer")?.textContent).toBe(i18n.t("interview.recherche.leer"));
+    // Gesichert ist jetzt: der Recherche-Knopf steht direkt da, ohne zweites Anlegen.
+    await klick(knopf(i18n.t("interview.recherche.knopf")));
+    expect(box.erstellt).toHaveLength(1);
+    const letzter = interviewMock.mock.calls[interviewMock.mock.calls.length - 1];
+    expect(letzter?.[2]).toMatchObject({ draftId: "d1" });
+    expect(letzter?.[4]).toMatchObject({ recherchieren: true });
   });
 });

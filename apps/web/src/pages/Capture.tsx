@@ -1105,6 +1105,9 @@ export function CaptureArbeitsraum({
   // Bens Befund nacharbeit-6: die gewünschte Quellenrecherche ergab nichts (keine Quellen, Stufe
   // gesperrt, vertraulich oder ohne KI-Modell) — die Fläche sagt das, statt zu schweigen.
   const [ivRechercheLeer, setIvRechercheLeer] = useState(false);
+  // Bens Befund nacharbeit-8: dieses Sichern geschieht FÜR die Recherche — es bleibt im Interview
+  // (kein Wechsel ins Blatt, kein Räumen) und löst danach die Recherche mit der neuen Kennung aus.
+  const ivRechercheNachSichernRef = useRef(false);
   const [ivConfirmed, setIvConfirmed] = useState(false);
   // AUFTRAG-mega6 Block C (bens ROT 3, zweiter Teil): laufende Nummer des aktuell GÜLTIGEN
   // Interview-Turns. Jeder Start erhöht sie, jedes Räumen (Save-Erfolg, Verwerfen) ebenfalls. Die
@@ -1420,11 +1423,14 @@ export function CaptureArbeitsraum({
       research: InterviewResearchPoint[];
       recherchieren?: boolean;
       imageContext?: string;
+      // Bens Befund nacharbeit-8: die Kennung eines EBEN gesicherten Entwurfs — der Zustand
+      // `draftId` gilt in diesem Render noch nicht.
+      draftId?: string;
     }) =>
       endpoints.reasoner.interview(
         v.answers,
         locale,
-        draftProvenance(confidentiality, undefined, draftId ?? undefined),
+        draftProvenance(confidentiality, undefined, v.draftId ?? draftId ?? undefined),
         v.imageContext,
         {
           tree: v.tree,
@@ -1476,6 +1482,7 @@ export function CaptureArbeitsraum({
       befund: string | null;
       research: InterviewResearchPoint[];
       recherchieren?: boolean;
+      draftId?: string;
     } = {
       tree: ivTree,
       topic: ivTopic,
@@ -1491,6 +1498,7 @@ export function CaptureArbeitsraum({
       topic: guide.topic,
       research: guide.research,
       ...(guide.recherchieren ? { recherchieren: true } : {}),
+      ...(guide.draftId ? { draftId: guide.draftId } : {}),
       ...(guide.befund ? { imageContext: guide.befund } : {}),
     });
   };
@@ -2630,6 +2638,19 @@ export function CaptureArbeitsraum({
       void qc.invalidateQueries({ queryKey: ["drafts"] });
       setErr(null);
       const msg = draftId ? t("capture.draftUpdated") : t("capture.draftSaved");
+      // Bens Befund nacharbeit-8: „Entwurf sichern und recherchieren" — gesichert ist jetzt, die
+      // Arbeit geht HIER weiter. Kennung und gesehener Stand gelten ab sofort (das nächste Sichern
+      // aktualisiert genau diesen Entwurf), dann läuft die Recherche mit genau dieser Kennung.
+      if (ivRechercheNachSichernRef.current) {
+        ivRechercheNachSichernRef.current = false;
+        setDraftId(_d.id);
+        loadedUpdatedAtRef.current = _d.updatedAt ?? null;
+        setStaleConflict(false);
+        setNotice(msg);
+        push("success", msg);
+        ivRecherchieren(_d.id);
+        return;
+      }
       // Bugfix (Pedi 04.07.): nach dem Speichern ist die Eingabe leer/neu — der Entwurf liegt in
       // „Entwürfe fortsetzen"; Weiterarbeiten läuft bewusst über „Fortsetzen".
       setRaw("");
@@ -2708,6 +2729,9 @@ export function CaptureArbeitsraum({
       onEntwurfInsBlatt?.(_d.id);
     },
     onError: (e) => {
+      // Bens Befund nacharbeit-8: gescheitertes Sichern — keine Recherche, der nächste Speichervorgang
+      // ist wieder ein gewöhnlicher.
+      ivRechercheNachSichernRef.current = false;
       // R-0020: bei eindeutiger Ablehnung ist nichts entstanden — der nächste Versuch ist neu.
       if (createOperationIsSettled(e instanceof ApiError ? e.status : undefined)) {
         eintragVorgangRef.current = null;
@@ -4984,6 +5008,14 @@ export function CaptureArbeitsraum({
   // Bens Befund nacharbeit-6: recherchiert wird in QUELLEN, und zwar auf ausdrücklichen Wunsch —
   // der Knopf wiederholt den aktuellen Turn mit `recherchieren`, die Route ruft zum Thema Quellen
   // ab (Admin-Stufe, nie vertraulich), das Modell leitet daraus die Prüfpunkte ab.
+  //
+  // BENS BEFUND (nacharbeit-8): DIE RECHERCHE HÄNGT AM GESPEICHERTEN ENTWURF. Der Server sucht nur
+  // mit einem auflösbaren Anker (`draftId`, JOB 2692 D2) — ohne ihn gilt der Text fail-closed als
+  // vertraulich. Ein ungespeichertes Interview bekommt deshalb keinen Knopf, der nichts tun kann,
+  // sondern die konkrete Voraussetzung samt Weg: „Entwurf sichern und recherchieren" sichert über
+  // den EINEN Speicherweg (`saveDraft`), BLEIBT im Interview und recherchiert danach mit der neuen
+  // Kennung. Die Vertraulichkeitssperre bleibt: ein vertraulich eingestufter Entwurf wird auch
+  // gesichert nie extern gesucht (dann steht die Leer-Meldung).
   const ivRechercheMoeglich =
     ivTree &&
     ivResearch.length === 0 &&
@@ -4991,18 +5023,35 @@ export function CaptureArbeitsraum({
     ivResult !== null &&
     !isInterviewDone(ivResult) &&
     Boolean(ivTopic?.trim() || ivAnswers[0]?.trim());
-  const ivRecherchieren = (): void => {
+  const ivRecherchieren = (entwurfId: string | null = draftId): void => {
     runInterview(ivAnswers, {
       tree: ivTree,
       topic: ivTopic,
       befund: ivBefund,
       research: [],
       recherchieren: true,
+      ...(entwurfId ? { draftId: entwurfId } : {}),
     });
   };
-  const ivRechercheKnopf = ivRechercheMoeglich ? (
+  const ivSichernUndRecherchieren = (): void => {
+    // Dieselben Tore wie der Speichern-Knopf (`requestManualSave`): das Speicher-Tor gilt, und nicht
+    // sicherbare Inhalte verlangen erst die ausdrückliche Bestätigung — über den gewöhnlichen Weg.
+    if (!speicherTor.erlaubt) {
+      if (speicherTor.grund) {
+        setErr(speicherTor.grund);
+      }
+      return;
+    }
+    if (unsavableDirtyReasons.length > 0) {
+      setConfirmSaveLimit(true);
+      return;
+    }
+    ivRechercheNachSichernRef.current = true;
+    saveDraft.mutate();
+  };
+  const ivRechercheKnopf = !ivRechercheMoeglich ? null : draftId ? (
     <div className="flex flex-wrap items-center gap-2">
-      <Button variant="ghost" onClick={ivRecherchieren}>
+      <Button variant="ghost" onClick={() => ivRecherchieren()}>
         {t("interview.recherche.knopf")}
       </Button>
       {ivRechercheLeer ? (
@@ -5011,7 +5060,14 @@ export function CaptureArbeitsraum({
         </span>
       ) : null}
     </div>
-  ) : null;
+  ) : (
+    <div data-testid="interview-recherche-sichern" className="flex flex-wrap items-center gap-2">
+      <span className="text-[12px] text-muted">{t("interview.recherche.sichernNoetig")}</span>
+      <Button variant="ghost" disabled={saveDraft.isPending} onClick={ivSichernUndRecherchieren}>
+        {t("interview.recherche.sichernUndRecherchieren")}
+      </Button>
+    </div>
+  );
   const ivRecherche =
     ivTree && ivResearch.length > 0 ? (
       <div data-testid="interview-recherche" className="text-[12px] text-muted">
