@@ -41,17 +41,17 @@
 //  4. QUELLTEXT, KEIN VERHALTEN. Dass die gesperrte Fassung wirklich keine <a href> rendert,
 //     beweisen RoleLink.tsx (ein <Link> nur im erlaubten Zweig, gepinnt in mega51 A3) und der
 //     gemountete mega51-Fall.
-//  5. GEMISCHTE ALTERNATIVEN. Ein Ausdruck, der Templates UND einen anderen Zweig trägt
-//     (`c ? \`/a/${x}\` : ziel`), wird über seine Templates gelesen; der Nicht-Template-Zweig ist
-//     nicht erhoben. Heute gibt es keinen solchen Ausdruck auf den drei Flächen.
 //
 // AUFTRAG-mega72 (OFFEN.md B41) — DER SAMMLER SAGT NICHT BREITER ZU, ALS ER ERHEBT:
-//  A  Ein UNABHÄNGIGER Rohzähler zählt jedes `to=` im kommentarfreien Quelltext und wird exakt
-//     gegen die erfolgreich gelesenen Vorkommen kalibriert. Ein Attribut, das der Leser nicht
-//     fassen kann (z. B. verschachtelte Klammern), fällt nicht mehr still heraus, sondern steht
-//     rot mit Datei und Zeile. Ein Ausdruck mit mehreren Templates liefert ALLE seine Ziele, nicht
-//     nur das erste. Zwei synthetische Negativ-Kalibrierungen am Ende beweisen, dass beides rot
-//     wird: verschachtelte Klammern und zwei unterschiedlich geschützte Template-Ziele.
+//  A  Ein UNABHÄNGIGER Rohzähler zählt jedes `to`-Attribut im kommentarfreien Quelltext — in jeder
+//     Schreibweise (`to=`, `to = `, Zeilenumbruch um das `=`) — und wird exakt gegen die
+//     erfolgreich gelesenen Vorkommen kalibriert. Ein Attribut, das der Leser nicht fassen kann
+//     (z. B. verschachtelte Klammern), fällt nicht still heraus, sondern steht rot mit Datei und
+//     Zeile. Ein Ausdruck liefert nur dann Ziele, wenn er VOLLSTÄNDIG verstanden ist (`verstehe`):
+//     ein Ternär mit zwei Template-Zweigen liefert beide Ziele; ein Ternär mit einem unbekannten
+//     Zweig ist als GANZER Ausdruck unbekannt und rot. Die synthetischen Negativ-Kalibrierungen am
+//     Ende beweisen das: verschachtelte Klammern, zwei unterschiedlich geschützte Template-Ziele,
+//     Leerraum um das `=` und ein gemischter Template-/Unbekannt-Ternär.
 //  B  Die Zielmenge der Erfolgskarte wird über die produktive Rollenliste `ROLES` gelesen, nicht
 //     über einen hart codierten Zweier-Satz. `FLAECHEN` und `HERKUNFT` bleiben: sie sind oben
 //     als Geltungsbereich benannt und für erfasste Ausdrücke fail-closed (unbekannt = rot).
@@ -302,6 +302,81 @@ function erhebe(datei: (typeof FLAECHEN)[number]): Erhebung {
   };
 }
 
+// Die Stelle des ersten Ternär-`?` auf oberster Ebene und des zugehörigen `:` — außerhalb von
+// Strings, Templates und Klammern. `?.` und `??` sind kein Ternär. Ohne Ternär: null.
+function ternaerTeile(ausdruck: string): [string, string] | null {
+  let tiefe = 0;
+  let frage = -1;
+  let offen = 0;
+  for (let i = 0; i < ausdruck.length; i++) {
+    const c = ausdruck[i];
+    if (c === '"' || c === "'" || c === "`") {
+      // String/Template überspringen (mit Escapes); der Inhalt ist kein Operator.
+      let j = i + 1;
+      while (j < ausdruck.length && ausdruck[j] !== c) {
+        j += ausdruck[j] === "\\" ? 2 : 1;
+      }
+      i = j;
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{") {
+      tiefe++;
+    } else if (c === ")" || c === "]" || c === "}") {
+      tiefe--;
+    } else if (tiefe === 0 && c === "?") {
+      const naechstes = ausdruck[i + 1];
+      if (naechstes === "." || naechstes === "?" || ausdruck[i - 1] === "?") {
+        continue;
+      }
+      if (frage === -1) {
+        frage = i;
+      } else {
+        offen++;
+      }
+    } else if (tiefe === 0 && c === ":" && frage !== -1) {
+      if (offen === 0) {
+        return [ausdruck.slice(frage + 1, i).trim(), ausdruck.slice(i + 1).trim()];
+      }
+      offen--;
+    }
+  }
+  return null;
+}
+
+// AUFTRAG-mega72 A (Nacharbeit 1): die Ziele eines `to={…}`-Ausdrucks — oder null, wenn auch nur
+// ein Teil nicht verstanden ist. Verstanden sind GENAU diese Formen:
+//   · eine benannte Herkunft (HERKUNFT, ganzer Ausdruck),
+//   · ein String-Literal,
+//   · ein reines Template (Platzhalter liest loeseTemplate wie der Router ein `:id`),
+//   · `demoHref(<verstandener Ausdruck>, params)` — demoHref hängt nur Demo-Query an,
+//   · ein Ternär `c ? a : b`, dessen BEIDE Zweige verstanden sind (die Bedingung ist kein Ziel).
+// Alles andere — auch `c ? \`/wissen/x\` : unbekanntesZiel` — ist als GANZER Ausdruck unbekannt.
+function verstehe(datei: (typeof FLAECHEN)[number], ausdruck: string): string[] | null {
+  const a = ausdruck.trim();
+  const eintrag = HERKUNFT[datei].find((h) => h.muster.test(a));
+  if (eintrag) {
+    return eintrag.ziele();
+  }
+  const literal = a.match(/^"([^"]*)"$/) ?? a.match(/^'([^']*)'$/);
+  if (literal) {
+    return [literal[1] as string];
+  }
+  if (/^`[^`]*`$/.test(a)) {
+    return [loeseTemplate(a.slice(1, -1))];
+  }
+  const demo = a.match(/^demoHref\(([\s\S]+),\s*params\)$/);
+  if (demo) {
+    return verstehe(datei, demo[1] as string);
+  }
+  const teile = ternaerTeile(a);
+  if (teile) {
+    const dann = verstehe(datei, teile[0]);
+    const sonst = verstehe(datei, teile[1]);
+    return dann && sonst ? [...dann, ...sonst] : null;
+  }
+  return null;
+}
+
 // Die Quelle wird hereingereicht (nicht hier gelesen), damit die Negativ-Kalibrierungen unten
 // denselben Leser über synthetischen Quelltext laufen lassen können.
 function erhebeQuelle(
@@ -312,43 +387,39 @@ function erhebeQuelle(
   const src = ohneKommentare(roheQuelle);
   const out: Vorkommen[] = [];
   const gelesen = new Set<number>();
-  for (const m of src.matchAll(/\bto=(?:"([^"]*)"|\{((?:[^{}]|\$\{[^{}]*\})*)\})/g)) {
+  // JSX erlaubt Leerraum (auch Zeilenumbrüche) um das `=` und einfache wie doppelte Anführungszeichen
+  // — der Leser nimmt jede dieser Schreibweisen (Nacharbeit 1, bens Befund zu `to = {ziel}`).
+  const LESER = /(?<![.\w$])to\s*=\s*(?:"([^"]*)"|'([^']*)'|\{((?:[^{}]|\$\{[^{}]*\})*)\})/g;
+  for (const m of src.matchAll(LESER)) {
     const index = m.index ?? 0;
     gelesen.add(index);
     // Das tragende Tag: die letzte öffnende spitze Klammer vor dem Attribut.
     const davor = src.slice(0, index);
     const tagStart = davor.lastIndexOf("<");
     const tag = davor.slice(tagStart).match(/^<([A-Za-z][A-Za-z0-9]*)\b/)?.[1] ?? "?";
-    const literal = m[1] ?? null;
-    const ausdruck = m[2]?.trim() ?? null;
+    const literal = m[1] ?? m[2] ?? null;
+    const ausdruck = m[3]?.trim() ?? null;
     let ziele: string[] = [];
     let unbekannt: string | null = null;
-    // Ein Template im Ausdruck (auch eingebettet, z. B. `demoHref(`/wissen/${k.id}`, params)`) IST
-    // der Pfad — demoHref hängt nur Demo-Query an, loeseTemplate liest Platzhalter wie der Router
-    // ein `:id`. (Die Kalibrierung hat diese Regel erzwungen: ohne sie fiel Library:929 als
-    // „unbekannte Herkunft" auf.)
-    // AUFTRAG-mega72 A: ALLE Templates des Ausdrucks — `c ? \`/a\` : \`/b\`` hat zwei Ziele, und
-    // das zweite darf nicht still hinter dem ersten verschwinden.
-    const templates = [...(ausdruck ?? "").matchAll(/`(\/[^`]*)`/g)].map((t) => t[1] as string);
     if (literal !== null) {
       ziele = [literal];
-    } else if (templates.length > 0) {
-      ziele = templates.map(loeseTemplate);
-    } else if (ausdruck?.startsWith("`") && ausdruck.endsWith("`")) {
-      ziele = [loeseTemplate(ausdruck.slice(1, -1))];
     } else if (ausdruck !== null) {
-      const eintrag = HERKUNFT[datei].find((h) => h.muster.test(ausdruck));
-      if (eintrag) {
-        ziele = eintrag.ziele();
+      // AUFTRAG-mega72 A (Nacharbeit 1): nur ein VOLLSTÄNDIG verstandener Ausdruck liefert Ziele.
+      // Ein Zweig, den `verstehe` nicht auflösen kann, macht den GANZEN Ausdruck unbekannt — kein
+      // Template-Zweig darf einen unbekannten Nachbarzweig mit durchziehen.
+      const verstanden = verstehe(datei, ausdruck);
+      if (verstanden) {
+        ziele = verstanden;
       } else {
         unbekannt = ausdruck;
       }
     }
     out.push({ quelle: pfad, zeile: zeileVon(src, index), tag, roh: m[0], ziele, unbekannt });
   }
-  // AUFTRAG-mega72 A: der Rohzähler ist vom Leser UNABHÄNGIG — er kennt keine Klammerregel, nur
-  // das Attribut. Was er sieht und der Leser nicht, ist rot und wird mit Datei:Zeile zitiert.
-  const rohIndizes = [...src.matchAll(/\bto=/g)].map((m) => m.index ?? 0);
+  // AUFTRAG-mega72 A: der Rohzähler ist vom Leser UNABHÄNGIG — er kennt keine Klammer- und keine
+  // Wertregel, nur den Attributnamen samt `=` (mit beliebigem Leerraum; `===` und `=>` sind keine
+  // Zuweisung). Was er sieht und der Leser nicht, ist rot und wird mit Datei:Zeile zitiert.
+  const rohIndizes = [...src.matchAll(/(?<![.\w$])to\s*=(?![=>])/g)].map((m) => m.index ?? 0);
   const unlesbar = rohIndizes
     .filter((index) => !gelesen.has(index))
     .map((index) => `${pfad}:${zeileVon(src, index)}  ${restDerZeile(src, index)}`);
@@ -466,5 +537,52 @@ describe("mega72 A · Negativ-Kalibrierung: was der Sammler nicht fassen kann, w
       "synthetisch/zwei-templates.tsx:3  <Link to=…> → /validierung?ko=x (viewer)",
       "synthetisch/zwei-templates.tsx:3  <Link to=…> → /validierung?ko=x (experte)",
     ]);
+  });
+
+  // Nacharbeit 1 (bens Befund, Zeile 351): `to = {ziel}` ist gültiges JSX. Der alte Leser UND der
+  // alte Rohzähler verlangten unmittelbar `to=` — beide übersahen das Attribut, und die
+  // Kalibrierung blieb grün. Jetzt: die lesbare Schreibweise wird gelesen und geprüft, die
+  // unlesbare steht rot mit Datei:Zeile.
+  it("Leerraum um das `=`: gelesen und geprüft — oder, wenn unlesbar, rot mit Datei:Zeile", () => {
+    const quelle = [
+      "export function Synthetisch() {",
+      "  return (",
+      "    <>",
+      '      <Link to = "/validierung">Prüfen</Link>',
+      "      <Link",
+      "        to =",
+      '          {ziel({ rolle: "experte" })}',
+      "      >",
+      "        Weiter",
+      "      </Link>",
+      "    </>",
+      "  );",
+      "}",
+    ].join("\n");
+    const erhebung = erhebeQuelle("Library", "synthetisch/leerraum.tsx", quelle);
+    expect(erhebung.roh).toBe(2);
+    expect(erhebung.vorkommen).toHaveLength(1);
+    expect(erhebung.unlesbar).toEqual(["synthetisch/leerraum.tsx:6  to ="]);
+    expect(verstoesseVon(erhebung.vorkommen, rollenDerFlaeche("Library"))).toEqual([
+      "synthetisch/leerraum.tsx:4  <Link to=…> → /validierung (viewer)",
+      "synthetisch/leerraum.tsx:4  <Link to=…> → /validierung (experte)",
+    ]);
+  });
+
+  // Nacharbeit 1 (bens Befund, Zeile 335): ein Template-Zweig darf einen unbekannten Nachbarzweig
+  // nicht mit durchziehen. Der GANZE Ausdruck ist unbekannt — mit Datei und Zeile.
+  it("Ternär aus Template und unbekanntem Zweig: der ganze Ausdruck ist unbekannt", () => {
+    const quelle = [
+      "export function Synthetisch() {",
+      `  return <Link to={offen ? \`/wissen/${platzhalter("k.id")}\` : unbekanntesZiel}>Öffnen</Link>;`,
+      "}",
+    ].join("\n");
+    const erhebung = erhebeQuelle("Library", "synthetisch/gemischt.tsx", quelle);
+    expect(erhebung.unlesbar).toEqual([]);
+    expect(erhebung.vorkommen).toHaveLength(1);
+    const v = erhebung.vorkommen[0];
+    expect(v?.ziele).toEqual([]);
+    expect(v?.unbekannt).toBe(`offen ? \`/wissen/${platzhalter("k.id")}\` : unbekanntesZiel`);
+    expect(`${v?.quelle}:${v?.zeile}`).toBe("synthetisch/gemischt.tsx:2");
   });
 });
