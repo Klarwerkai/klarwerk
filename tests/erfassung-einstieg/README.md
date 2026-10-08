@@ -117,7 +117,7 @@ durch ein späteres Ben-Urteil ausgeräumt — solche Zeilen heißen nicht „er
 | R-1000 | Wortlaut der Vordertür; Hilfe zitiert keine nicht vorhandenen Knöpfe | **erfüllt** (dieser Lauf) | Vier Hilfetexte berichtigt; H1/H2 in `fehlersatz-und-hilfe.test.ts`. |
 | R-1002 | Zu lang ist nicht kaputt | **erfüllt** (Runden 1 und 2) | Rumpf: 413 → `einstieg.fehler.zuLang` (E2 gegen echten Server, F2). Titel: die stille Kürzung auf 90 Zeichen ist entfernt (BEN-2, T1). Weder Titel noch Aussage werden serverseitig gekürzt (Berichtigung gegenüber Runde 1: `normalizeDraftPayload` kürzt nur Quellen, Prüfer und Interview; Arbeitsraum-Felder mit Grenze tragen `maxLength` samt sichtbarer Rückmeldung, `Capture.tsx` „mega6 Block D"). |
 | R-1560 | Blatt mit Werkzeugmenüs — Kriterien Q3(b), Q3c, CAP-P1, Q3(a) §9, R0633, /health | **erfüllt in den messbaren Teilen, nicht vollständig abgenommen** | **Q3(b)** Alias `/erfassen/vordertuer` → Blatt (`CaptureFrontDoor.tsx:19-34`). **Q3c** Stufenpflicht an `POST /api/kos` (`tests/q3c-stufenpflicht/*`, `tests/q3c-stufenpflicht-dokumentweg`, grün). **CAP-P1** frühe Eingaben: gemountet DE `tests/cap-p1-fruehe-eingabe` (F1–F7, N1–N8), EN jetzt `q3a-zustandsmatrix-mounted.test.tsx` Z1-en. **Q3(a) §9** Zustandsmatrix: s. Abschnitt unten (Z0–Z4; „Cache"-Zeilen nicht anwendbar, begründet). **R0633-Matrix** `stufenwerte-am-entwurf.test.ts` (11/11). **/health-Commit** öffentlich: nicht prüfbar ohne laufende Instanz — fehlender Beleg. „Breiter H3-Bild-/Word-/Provenienz-, Diktat-/Datei-/Interview-/KI-Gesamtweg bleibt separat" laut Quelle — nicht Teil dieser Lieferung; ebenso ausdrücklich: „nicht als vollständig abgenommen kennzeichnen". Die Quelle hält außerdem fest: „Echte UI-Nachprüfung fehlt" — auch sie liegt nicht vor. |
-| R-1578 | DESIGN Web-App Erfassen (eine Fläche …) | **erfüllt** (JOB 3062) | s. oben. Bereich-Zeile: Auswahl aus den am Client geladenen Kategorien (`Blatt.tsx` ~645-654); der Kategorien-Serverweg aus K2b gilt für Klara in Word. |
+| R-1578 | DESIGN Web-App Erfassen (eine Fläche …) | **teilweise — gelieferter Teilstand, Abnahme offen** (nicht „erfüllt") | Quelle: `state` „gelieferter_teilstand", `lieferstatus` „TEILWEISE", `zustand` „im_code_nicht_abgenommen". **Geliefert, mit Fassung:** JOB 3062 R9 veröffentlicht als `1.0.0-beta.1.89`; der R9-Nachzug ist BEN GRÜN für die Seitenhilfe über beide Zugänge und die bestehenden Speicher-/Einreichprüfungen — das Urteil begrenzt sich ausdrücklich auf den Nachzug. Integrierter Nachzug JOB 3082 R3 veröffentlicht als `1.106` (`d798cacbcccfd69d931930d99214c39bec54deca`); BEN bestätigt dort die gespeicherte Stufe „intern" (gemeinsames Ergebnis mit R-1560, s. dort). Am Basisstand `1.0.0-beta.1.785`: das Blatt (s. „Die tragende jüngere Entscheidung"); Bereich-Zeile aus den am Client geladenen Kategorien (`Blatt.tsx` ~645-654), der Kategorien-Serverweg aus K2b gilt für Klara in Word. **Offen laut Quelle, diesem Punkt zugeordnet:** „Echte UI-Nachprüfung fehlt, Q3(b)/Q3c und breiter Blatt-/Word-Umfang bleiben offen"; aus der R9-Rückgabe: „historischer Basisdiff nicht vollständig erneut geprüft … Volltext der Hilfen (Test nur erste 40 Zeichen), Sprachwechsel und Abmeldung nach Navigation bleiben offen". Q3(b)/Q3c sind in den messbaren Teilen unter R-1560 belegt; der breite Blatt-/Word-Umfang ist laut Quelle separat. |
 | R-1683 | Erfassungsmodus Freitext | **erfüllt** | wie R-0039. |
 | R-1684 | Erfassungsmodus Strukturiertes Formular | **erfüllt** | „Datei ▾" → „Formular (Experten)". Maßgeblich ist das gebaute Formular (`entscheidung:c68b7dda-…`, s. R-0094). |
 | R-1810 | „BEAUFTRAGT" (OFFEN.md U4, mega90) | **abgegrenzt** | Sammelzeile für den Bedienbarkeitsauftrag mega90; die Quelle ordnet sie zugleich `gesamt-erstnutzerfuehrung`, `grossbestand-nutzerabnahme` und `gesamt-suchindex-aktualitaet` zu. Der Erfassungsanteil (SCRUM-536/537 geleerter Fließtext) ist im gesonderten Auftrag `erfassen-verwerfen` geliefert (`tests/erfassen-verwerfen-gesamtfehler/README.md`). Übrige Blöcke (mobiles Menü, Bibliotheksfilter, Ladezeit, erster Blick, Hilfe am Ort) liegen außerhalb der Erfassungsfläche und bei diesen Aufträgen. |
@@ -276,8 +276,9 @@ Pedis Antworten vom 01.10.2026. Neu gebaut wurde in Teil (e) nichts; geändert i
   `apps/web/src/version.ts`). Alle Code- und Testverweise der Tabelle sind an diesem Stand durch
   **Quelleninspektion** nachgesehen. „grün in Lauf 1/Runde 2" heißt: Prüflauf jenes Laufs, nicht
   dieses Auftrags.
-* **Ältere Lieferfassungen laut Quelle:** H3 (R-1578, R-0003, R-0030, R-0085, R-0099) JOB 3062 LIVE
-  ab `1.0.0-beta.1.106`; R-1560 JOB 3082 R3 veröffentlicht als `1.106` (`d798cacb`); P-UX-22/22b
+* **Ältere Lieferfassungen laut Quelle:** H3 (R-1578, R-0003, R-0030, R-0085, R-0099) JOB 3062 R9
+  veröffentlicht als `1.0.0-beta.1.89` (Nachzug BEN GRÜN, auf den Nachzug begrenzt); integrierter
+  Nachzug für R-1578 und R-1560 JOB 3082 R3 veröffentlicht als `1.106` (`d798cacb`); P-UX-22/22b
   JOB 3133 LIVE `1.0.0-beta.1.155` (`3d30f9ea`); K2b Teile 1–3 aus JOB 3057 LIVE `1.98` und den in
   der K2b-Zeile genannten Folgejobs.
 * **Fehlender Beleg (Fassung):** Mit welcher Ship-Fassung Lauf 1–3 des Elternauftrags und die
@@ -292,10 +293,10 @@ Pedis Antworten vom 01.10.2026. Neu gebaut wurde in Teil (e) nichts; geändert i
 
 | Ergebnis | Punkte |
 |---|---|
-| **erfüllt** (Code und Test am Basisstand; kein offener Ben-Befund und keine offene Abnahmeforderung der Quelle bekannt) | R-0003, R-0029 (als Erhebung), R-0030, R-0039, R-0080, R-0084, R-0093 (im Arbeitsraum), R-0099, R-0149, R-0922, R-0978, R-1000, R-1002, R-1578, R-1683, R-1684, P-UX-22, P-UX-22b |
+| **erfüllt** (Code und Test am Basisstand; kein offener Ben-Befund und keine offene Abnahmeforderung der Quelle bekannt) | R-0003, R-0029 (als Erhebung), R-0030, R-0039, R-0080, R-0084, R-0093 (im Arbeitsraum), R-0099, R-0149, R-0922, R-0978, R-1000, R-1002, R-1683, R-1684, P-UX-22, P-UX-22b |
 | **erfüllt mit benanntem Rest** | R-2094 (Rest = SOLL:FR-CAP-01) |
 | **geliefert, Abnahme offen** (nicht „erfüllt") | R-0063, R-0117, R-1920 (Tastatur/Live-Stand), R-0085 (fachliche Gesamtabnahme), N-0004, N-0014 (Gegenprüfung), N-0068 (kein Ben-Urteil zum Nachstand nach B4) |
-| **teilweise** | R-0064, R-0101, R-1560, SOLL:FR-CAP-01, priority:K2b (Teil 4) |
+| **teilweise** | R-0064, R-0101, R-1560, R-1578 (gelieferter Teilstand `1.0.0-beta.1.89` / `1.106`; echte UI-Nachprüfung, Q3(b)/Q3c-Rest, breiter Blatt-/Word-Umfang, Hilfen-Volltext, Sprachwechsel, Abmeldung nach Navigation offen), SOLL:FR-CAP-01, priority:K2b (Teil 4) |
 | **überholt — entschieden** (Kennung) | R-0061, R-0112, R-0929, R-0930 (`8fb4a8cc-…`); R-0094 (`c68b7dda-…`); R-0915 (`30ceaaee-…`) |
 | **überholt ohne eigene Kennung** | R-0031, R-0066 |
 | **Doppel** | R-0117, R-1920 (= R-0063), N-0014 (= N-0004), priority:UX-22 (= P-UX-22), priority:UX-22b (= P-UX-22b) |
@@ -331,5 +332,5 @@ Pedis Antworten vom 01.10.2026. Neu gebaut wurde in Teil (e) nichts; geändert i
   `grossbestand-nutzerabnahme`, `gesamt-suchindex-aktualitaet`); R-1560 „breiter H3-Bild-/Word-/
   Provenienz-, Diktat-/Datei-/Interview-/KI-Gesamtweg" (laut Quelle separat).
 * **Nicht ersetzbar durch diesen Auftrag:** Live-Sichtung an einer laufenden Instanz (R-0063-Gruppe,
-  N-0004/N-0014, N-0068, R-0085, R-1560 „echte UI-Nachprüfung", `/health`-Commit) und ein
+  N-0004/N-0014, N-0068, R-0085, R-1560 und R-1578 „echte UI-Nachprüfung", `/health`-Commit) und ein
   Ben-Urteil zum N-0068-Nachstand.
