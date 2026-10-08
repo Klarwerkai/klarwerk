@@ -43,7 +43,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
-import { routePathAllows } from "../../apps/web/src/app/navigation";
+import { GUARDED_ITEMS, routePathAllows } from "../../apps/web/src/app/navigation";
 import i18n from "../../apps/web/src/i18n";
 import { FAQ_CONTENT } from "../../apps/web/src/lib/faqContent";
 import { HELP_TOPICS } from "../../apps/web/src/lib/helpTopics";
@@ -193,10 +193,15 @@ describe("R-0890 · die Anwender-Wissensbibliothek nach festem Bauplan", () => {
   });
 });
 
-/** Die Pfade aller Routen der Anwendung, aus `routes.tsx` gelesen. */
+/**
+ * Die Pfade aller Routen der Anwendung. Nacharbeit 9 (Prüflauf e58ab422, „die Routen wurden nicht
+ * gelesen"): `routes.tsx` schreibt nur die Sonderrouten als `path="…"` aus; die Bereiche routet es
+ * über `GUARDED_ITEMS.map(…)` mit `path={item.path}`. Gelesen werden deshalb BEIDE Quellen.
+ */
 function routenpfade(): string[] {
   const routen = readFileSync(repoPfad("apps/web/src/routes.tsx"), "utf8");
-  return [...routen.matchAll(/path="([^"]*)"/g)].map((treffer) => treffer[1] ?? "");
+  const feste = [...routen.matchAll(/path="([^"]*)"/g)].map((treffer) => treffer[1] ?? "");
+  return [...GUARDED_ITEMS.map((item) => item.path), ...feste];
 }
 
 /** Hält die Art einer Auslassung am Bestand nach — `null`, wenn sie stimmt, sonst der Befund. */
@@ -457,6 +462,10 @@ describe("R-0890 · Nacharbeit 7 — „Eine Antwort weitergeben“ und nachgeme
     for (const auslassung of falsch) {
       expect(auslassungBefund(auslassung), JSON.stringify(auslassung)).not.toBeNull();
     }
+    // Nacharbeit 9: der Befund muss die echte Route nennen — sonst schlug nur die Kalibrierung an
+    // („die Routen wurden nicht gelesen"), und diese Gegenprobe war still gegenstandslos.
+    const hilfe: Auslassung = { art: "keine-flaeche", routenwoerter: ["hilfe"] };
+    expect(auslassungBefund(hilfe), "der Routenleser misst nichts").toContain("/hilfe");
     // Und die heute geführten Auslassungen stimmen — die Begründung allein trägt keine.
     const ohne = GLIEDERUNG.filter((punkt) => punkt.artikel === null).map((punkt) => punkt.id);
     expect(ohne).toEqual(["B2-9", "B10-1", "B10-3", "B10-4"]);

@@ -1734,7 +1734,7 @@ export const GLIEDERUNG: readonly GliederungsPunkt[] = [
   ohneArtikel(
     "B10-1",
     { art: "keine-flaeche", routenwoerter: ["glossar", "glossary", "woordenlijst"] },
-    "Glossar: eine solche Fläche gibt es nicht. Begriffe erklären die Artikel selbst und Klara (Begriff eintippen oder markieren).",
+    "Glossar der Klarwerk-Begriffe (A–Z, ein Name je Sache): eine solche Fläche gibt es nicht. Das Firmenwörterbuch unter `/begriffe` ist etwas anderes — der Katalog der firmeneigenen Fachbegriffe, kein Glossar der Anwendung. Klarwerk-Begriffe erklären die Artikel selbst und Klara (Begriff eintippen oder markieren).",
   ),
   punkt("B10-2", "grundprinzip", "erfundene Antwort", "invented answer", "verzonnen antwoord"),
   ohneArtikel(
