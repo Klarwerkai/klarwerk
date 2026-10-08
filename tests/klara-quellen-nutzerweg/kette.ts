@@ -373,7 +373,16 @@ export async function eintragMitOriginal(
 // postgres.log). Dieselbe Korrektur wie in `tests/design/h5-funktionsinventar.test.ts` (FRAGE,
 // Nacharbeit 13 dort): die Frage benutzt nur Begriffe, die der Eintrag wirklich trägt; was die
 // Fälle danach verlangen, ist unverändert.
-export const FRAGE = "Wie wird die Zylinderkopfdichtung XQ42 vor dem Wechsel entlastet?";
+// Nacharbeit 18 (Prüflauf zu cd0e1b4e) — WARUM NICHT „… entlastet?": D5 G1–G7 waren damit grün,
+// aber `tests/d5-ki-aus/abschaltung-am-frageweg.test.ts` zählt ihre Haltepunkte an GENAU DREI
+// getroffenen Begriffsabfragen (`AskService.prefilterCandidates`: je Begriff eine Abfrage, nur eine
+// mit Treffern liest danach `ko.anhangSchreibstand`; das vierte Auftreten ist dort die Route). Die
+// alte Frage traf mit „behandelt" nichts — drei Treffer; „entlastet" trifft — vier, und der Halt
+// „anhangSchreibstand, mal 4" lag plötzlich im Fragedienst. Jetzt bindet die Frage genau die drei
+// Begriffe der gemessenen Form (zylinderkopfdichtung, xq42, wechsel), alle in `BELEGSTELLE`;
+// „gilt" ist Fragegerüst (`FRAGEGERUEST`, provider.ts) und wird nicht gebunden, „was"/„für"/„vor"/
+// „dem"/„die" sind Stoppwörter. Damit trägt die Frage UND die Zählung bleibt die gemessene.
+export const FRAGE = "Was gilt für die Zylinderkopfdichtung XQ42 vor dem Wechsel?";
 
 export interface Antwortlage {
   status: number;
