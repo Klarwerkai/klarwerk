@@ -92,7 +92,7 @@ abgedeckt sein.)
 | GET | `/api/auth/status` | `{needsSetup}` — ist Ersteinrichtung nötig? |
 | GET | `/api/ai-status` | `{ai}` — ist der Reasoner (Modell) verfügbar? |
 | POST | `/api/auth/setup` | erstes Admin-Konto anlegen |
-| POST | `/api/auth/register` | Selbstregistrierung (gesperrt bis Freigabe) |
+| POST | `/api/auth/register` | Selbstregistrierung (gesperrt bis Freigabe) — historisch; im Auslieferungszustand 403 `REGISTRATION_DISABLED` („Registrierung nur per Einladung"). Konten legt der Admin über `POST /api/users` an. |
 | POST | `/api/auth/login` | Login → Sitzung |
 | GET | `/api/auth/me` | aktueller Nutzer |
 | POST | `/api/auth/logout` | Logout |
