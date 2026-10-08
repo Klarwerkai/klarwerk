@@ -785,7 +785,10 @@ describe("Aufnahme 20260922 · R-0310 — Absatz-Beleg-Zuordnung im Panel (gemou
       await ruhe();
       await fragen();
       const halter = el("ask-fussnoten");
-      const marke = (): HTMLElement | null => halter.querySelector<HTMLElement>(".absatzmarke");
+      // Je Aufruf frisch aus dem Dokument: nach `panelAbraeumen` ist der Halter des ersten Laufs
+      // abgehängt und trüge seine alte Klasse weiter (Prüflauf zu 966d179e, P4 Zeile 799).
+      const marke = (): HTMLElement | null =>
+        document.querySelector<HTMLElement>("#ask-fussnoten .absatzmarke");
       // Der Halter bleibt da; nur die Ziffer am (abgeschnittenen) Textende ist verborgen.
       expect(halter.className).toBe("ende-verborgen");
       expect(marke()?.className).toBe("absatzmarke");
