@@ -11,16 +11,24 @@
 //       Vertraulichkeitsregel gilt für den Kontext genauso wie für die Antworten.
 //   R3  ein Kontext, der keine Zeichenkette ist, wird nicht weitergereicht.
 //   P1  der Prompt nennt den Text ausdrücklich als Kontext (keine Antwort) und deckelt seine Länge.
-//   K1–K4  der Client schickt die erkannten Abschnitte des Rohtextes in ihrer AKTUELLEN Fassung —
-//          auch korrigiert, und erst nach dem Entfernen nicht mehr (Nacharbeit 3). Das Fortsetzen
-//          eines gespeicherten Entwurfs belegt der gemountete Test I4.
+//   K1–K3  der Client schickt die erkannten Abschnitte des Rohtextes in ihrer AKTUELLEN Fassung —
+//          auch korrigiert, und erst nach dem Entfernen nicht mehr (Nacharbeit 3).
+//   K4–K7  eindeutige Grenzen und gesicherte Abschnitte (Nacharbeit 4).
+//   E1–E3  der Entwurfsdienst sichert die Abschnitte als eigenes Feld (strukturierte Entwürfe).
+//          Das Fortsetzen belegen die gemounteten Tests I4 (unstrukturiert) und I5 (strukturiert).
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  gesicherteOhneRohtext,
   interviewKontext,
   ocrAbschnittKopf,
+  ocrAbschnittText,
   ocrAbschnitte,
+  ocrAbschnitteFuerEntwurf,
 } from "../../apps/web/src/lib/interviewKontext";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { InMemoryDraftRepo } from "../../services/capture/src/repo";
+import { CaptureService } from "../../services/capture/src/service";
+import type { DraftPayload } from "../../services/capture/src/types";
 import { InMemoryModelRunRepo } from "../../services/model-runs";
 import { DeterministicProvider, ModelProvider, Reasoner } from "../../services/reasoner";
 import { createCappedCloudClientFromEnv } from "../../services/reasoner/src/model-client";
@@ -192,11 +200,12 @@ describe("gesamt-ocr · FR-CAP-05 · Prompt und Client-Auswahl", () => {
     const raw = [
       "Mein eigener Text.",
       "",
-      `${ocrAbschnittKopf("aushang.png")}\n${ERKANNT}`,
+      ocrAbschnittText("aushang.png", ERKANNT),
+      "Danach getippt, nicht erkannt.",
       "",
       "[Handbuch.pdf]\nText aus einem Dokument, kein Bild.",
       "",
-      `${ocrAbschnittKopf("notiz.jpg")}\nZweiter erkannter Block.`,
+      ocrAbschnittText("notiz.jpg", "Zweiter erkannter Block."),
     ].join("\n");
     expect(interviewKontext(raw)).toBe(
       `[aushang.png]\n${ERKANNT}\n\n[notiz.jpg]\nZweiter erkannter Block.`,
@@ -205,19 +214,106 @@ describe("gesamt-ocr · FR-CAP-05 · Prompt und Client-Auswahl", () => {
     expect(interviewKontext("")).toBe("");
   });
 
-  it("K2 · Bens Befund: eine Korrektur im erkannten Block aktualisiert den Kontext", () => {
+  it("K2 · eine Korrektur im erkannten Block aktualisiert den Kontext", () => {
     const korrigiert = ERKANNT.replace("V3", "V8");
-    const raw = `Mein Text.\n\n${ocrAbschnittKopf("aushang.png")}\n${korrigiert}`;
+    const raw = `Mein Text.\n\n${ocrAbschnittText("aushang.png", korrigiert)}`;
     expect(interviewKontext(raw)).toBe(`[aushang.png]\n${korrigiert}`);
   });
 
   it("K3 · erst das Entfernen schließt aus: Kopf gelöscht oder Inhalt geleert", () => {
-    expect(interviewKontext(`Mein Text.\n\n${ERKANNT}`)).toBe("");
-    expect(interviewKontext(`Mein Text.\n\n${ocrAbschnittKopf("aushang.png")}\n   \n`)).toBe("");
+    const ohneKopf = `Mein Text.\n\n${ERKANNT}\n[/OCR]`;
+    expect(interviewKontext(ohneKopf)).toBe("");
+    expect(interviewKontext(`Mein Text.\n\n${ocrAbschnittText("aushang.png", "   ")}`)).toBe("");
   });
 
-  it("K4 · Abschnitte enden an der nächsten Kopfzeile; der Bildname bleibt erhalten", () => {
-    const raw = `${ocrAbschnittKopf("aushang.png")}\n${ERKANNT}\n\n[Transkript: band.mp3]\nGesprochen.`;
-    expect(ocrAbschnitte(raw)).toEqual([{ name: "aushang.png", text: ERKANNT }]);
+  it("K4 · Bens Befund (Nacharbeit 4): Klammern im Bildnamen — Schreiben und Lesen passen", () => {
+    for (const name of ["aushang[1].png", "[scan] seite 2.jpg", "a]b.png", "foto (2).heic"]) {
+      const raw = ocrAbschnittText(name, ERKANNT);
+      expect(ocrAbschnitte(raw), name).toEqual([{ name, text: ERKANNT }]);
+    }
+  });
+
+  it("K5 · Bens Befund (Nacharbeit 4): Klammerzeilen im erkannten Text schneiden nichts ab", () => {
+    const erkannt = [
+      "Aushang Halle 3",
+      "[Hinweis]",
+      "Nur mit Schutzbrille.",
+      "[/OCR]",
+      "[OCR: kein Kopf]",
+      "[Transkript: auch kein Kopf]",
+      "Letzte Zeile.",
+    ].join("\n");
+    const raw = `${ocrAbschnittText("aushang.png", erkannt)}\n\nDanach.`;
+    expect(ocrAbschnitte(raw)).toEqual([{ name: "aushang.png", text: erkannt }]);
+  });
+
+  it("K6 · Endzeile gelöscht: der Abschnitt reicht bis zum nächsten OCR-Kopf oder Textende", () => {
+    const raw = [
+      ocrAbschnittKopf("aushang.png"),
+      ERKANNT,
+      "[Hinweis]",
+      ocrAbschnittText("notiz.jpg", "Zweiter."),
+    ].join("\n");
+    expect(ocrAbschnitte(raw)).toEqual([
+      { name: "aushang.png", text: `${ERKANNT}\n[Hinweis]` },
+      { name: "notiz.jpg", text: "Zweiter." },
+    ]);
+  });
+
+  it("K7 · gesicherte Abschnitte (strukturierter Entwurf) sind Kontext; Doppeltes kommt nicht zweimal", () => {
+    const gesichert = [{ name: "aushang.png", text: ERKANNT }];
+    expect(interviewKontext("", gesichert)).toBe(`[aushang.png]\n${ERKANNT}`);
+    expect(ocrAbschnitteFuerEntwurf(gesichert, "")).toEqual(gesichert);
+    const rohtextMitDemselben = ocrAbschnittText("aushang.png", ERKANNT);
+    expect(gesicherteOhneRohtext(gesichert, rohtextMitDemselben)).toEqual([]);
+    expect(gesicherteOhneRohtext(gesichert, "Anderer Rohtext.")).toEqual(gesichert);
+  });
+});
+
+describe("gesamt-ocr · Nacharbeit 4 · der Entwurfsdienst sichert die erkannten Abschnitte", () => {
+  it("E1 · angelegt und gelesen: Abschnitte bleiben, Kaputtes und Leeres fällt weg", async () => {
+    const svc = new CaptureService({ repo: new InMemoryDraftRepo() });
+    const d = await svc.createDraft(
+      {
+        title: "T",
+        statement: "Verdichtete Aussage.",
+        ocrAbschnitte: [
+          { name: "aushang[1].png", text: ERKANNT },
+          { name: "leer.png", text: "   " },
+          "kaputt",
+          { name: 7, text: "Ohne gültigen Namen." },
+        ],
+      } as unknown as DraftPayload,
+      "anna",
+    );
+    expect(d.payload.ocrAbschnitte).toEqual([
+      { name: "aushang[1].png", text: ERKANNT },
+      { name: "", text: "Ohne gültigen Namen." },
+    ]);
+    const gelesen = await svc.listDrafts();
+    expect(gelesen[0]?.payload.ocrAbschnitte?.[0]?.text).toBe(ERKANNT);
+  });
+
+  it("E2 · beim Aktualisieren: weggelassen bleibt, leere Liste löscht", async () => {
+    const svc = new CaptureService({ repo: new InMemoryDraftRepo() });
+    const d = await svc.createDraft(
+      { title: "T", ocrAbschnitte: [{ name: "aushang.png", text: ERKANNT }] },
+      "anna",
+    );
+    const behalten = await svc.continueDraft(d.id, { title: "T2" }, "anna");
+    expect(behalten.payload.ocrAbschnitte).toEqual([{ name: "aushang.png", text: ERKANNT }]);
+    const geleert = await svc.continueDraft(d.id, { ocrAbschnitte: [] }, "anna");
+    expect(geleert.payload.ocrAbschnitte).toBeUndefined();
+  });
+
+  it("E3 · Deckel: höchstens 20 Abschnitte, je höchstens 20.000 Zeichen Text", async () => {
+    const svc = new CaptureService({ repo: new InMemoryDraftRepo() });
+    const viele = Array.from({ length: 25 }, (_, i) => ({
+      name: `b${i}.png`,
+      text: "x".repeat(25_000),
+    }));
+    const d = await svc.createDraft({ title: "T", ocrAbschnitte: viele }, "anna");
+    expect(d.payload.ocrAbschnitte).toHaveLength(20);
+    expect(d.payload.ocrAbschnitte?.[0]?.text).toHaveLength(20_000);
   });
 });

@@ -91,6 +91,13 @@ export interface DraftPayload {
     demo?: boolean;
   };
   /**
+   * Aufnahme `gesamt-ocr` (FR-CAP-05): die auf Klick im Bild erkannten Abschnitte (Bildname und
+   * aktueller Text). Sie sind Kontext des geführten Interviews und müssen auch dann zurückkommen,
+   * wenn der Entwurf nach dem Strukturieren nur die verdichtete Aussage statt des Rohtextes trägt.
+   * Reiner Text, keine Bilddaten. Leere Liste beim Aktualisieren = ausdrücklich geleert.
+   */
+  ocrAbschnitte?: { name: string; text: string }[];
+  /**
    * BILDSCHIRMABLÄUFE — die übernommenen Schritte samt Herkunft (Begründung: `./ablauf.ts`).
    * `null` leert ausdrücklich (Merge-Vertrag); ins Wissensobjekt reist nur der daraus erzeugte Rumpf.
    */

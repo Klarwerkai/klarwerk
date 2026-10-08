@@ -13,6 +13,9 @@
 // Bens Befunde (Nacharbeit 3): I3 — eine Korrektur im erkannten Block landet im Kontext; I4 —
 // gespeichert, neu geöffnet (frische Seite, ECHTER Entwurfsdienst im Speicher) und fortgesetzt,
 // trägt der Interview-Aufruf den erkannten Text weiterhin.
+// Bens Befunde (Nacharbeit 4): I5 — dasselbe NACH dem Strukturieren (der Entwurf trägt dann die
+// verdichtete Aussage, nicht den Rohtext); I6 — Klammern im Bildnamen und Klammerzeilen im
+// erkannten Text schneiden nichts ab.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OcrResult } from "../../apps/web/src/lib/ocr";
 
@@ -59,9 +62,22 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
         promote: vi.fn(async () => ({})),
       },
       reasoner: {
-        status: ok({ active: false, mode: "off", reachable: "off" }),
+        // Strukturieren muss möglich sein (I5) — Verfügbarkeit wie in mega21-capture-mounted.
+        status: ok({
+          active: true,
+          mode: "cloud",
+          reachable: "ok",
+          tasks: { structure: true, extract: true },
+        }),
         config: ok(null),
-        structure: vi.fn(async () => ({})),
+        structure: vi.fn(async () => ({
+          title: "Druckabfall an P2",
+          statement: "Bei Druckabfall Ventil prüfen.",
+          type: "best_practice",
+          tags: [],
+          conditions: [],
+          measures: [],
+        })),
         interview: steuerung.interview,
         extract: vi.fn(async () => ({ points: [], note: null })),
       },
@@ -89,6 +105,7 @@ import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 import { ADVANCED_FIELDS_KEYS } from "../../apps/web/src/lib/captureAdvancedFields";
+import { CAPTURE_WIZARD_TEXT } from "../../apps/web/src/lib/captureWizard";
 import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -202,7 +219,7 @@ afterEach(() => {
   container.remove();
 });
 
-async function haengeBildAn(): Promise<void> {
+async function haengeBildAn(bildname = "aushang.png"): Promise<void> {
   // Die Bilder stehen in den erweiterten Feldern (SCRUM-375: standardmäßig eingeklappt).
   const titel = i18n.t(ADVANCED_FIELDS_KEYS.title);
   const aufklapper = [...container.querySelectorAll("button[aria-expanded]")].find((b) =>
@@ -215,7 +232,7 @@ async function haengeBildAn(): Promise<void> {
   if (!input) {
     throw new Error("Kein Bild-Eingang auf der Erfassungsseite");
   }
-  const bild = new File([new Uint8Array(64)], "aushang.png", { type: "image/png" });
+  const bild = new File([new Uint8Array(64)], bildname, { type: "image/png" });
   Object.defineProperty(input, "files", { value: [bild], configurable: true });
   await act(async () => {
     input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -329,39 +346,79 @@ describe("gesamt-ocr · FR-CAP-05 · erkannter Bildtext als Kontext des geführt
 
   it("I4 · Bens Befund: gespeichert, neu geöffnet und fortgesetzt — der Kontext ist wieder da", async () => {
     await erkenneBild();
-    // Das Bild selbst reist nicht im Entwurf (lokaler Anhang) — vor dem Speichern entfernen, damit
-    // die Wache nicht über ein ungesichertes Bild spricht. Der erkannte TEXT steht im Rohtext.
-    const bildKachel = container.querySelector('img[alt="aushang.png"]')?.parentElement;
-    const wahl = `button[aria-label="${i18n.t("capture.listRemove")}"]`;
-    const bildEntfernen = bildKachel?.querySelector<HTMLButtonElement>(wahl);
-    if (bildEntfernen) {
-      await klicke(bildEntfernen);
-    }
-
-    // Speichern über die Navigationswache (der vorhandene Entwurfsweg).
-    const wegklick = container.querySelector<HTMLButtonElement>("[data-testid=navprobe]");
-    await klicke(wegklick as HTMLButtonElement);
-    const speichern = knopfMit(i18n.t("nav.guard.save"));
-    expect(speichern).not.toBeNull();
-    await klicke(speichern as HTMLButtonElement);
-    expect(nav.weiter).toBe(true);
-
-    // Eine FRISCHE Seite — kein Sitzungszustand überlebt; nur der gespeicherte Entwurf.
-    modus = undefined;
-    act(() => root.unmount());
-    container.remove();
-    await mount();
-    const aufklappen = knopfMit("Entwürfe anzeigen");
-    if (aufklappen) {
-      await klicke(aufklappen);
-    }
-    const fortsetzen = knopfMit(i18n.t("capture.resume"));
-    expect(fortsetzen).not.toBeNull();
-    await klicke(fortsetzen as HTMLButtonElement);
+    await entferneBild();
+    await speichereUeberWache();
+    await neuOeffnenUndFortsetzen();
     expect(rohtextFeld().value).toContain(ERKANNT);
 
     const kontext = await starteInterview();
     expect(kontext).toContain(ERKANNT);
     expect(kontext).toContain("aushang.png");
   });
+
+  it("I5 · Bens Befund (Nacharbeit 4): strukturiert gespeichert, fortgesetzt — der Kontext ist wieder da", async () => {
+    await erkenneBild();
+    await entferneBild();
+    // Strukturieren: danach trägt der Entwurf die VERDICHTETE Aussage statt des Rohtextes.
+    await klicke(knopfMit(i18n.t("capture.structure")) as HTMLButtonElement);
+    await speichereUeberWache();
+    await neuOeffnenUndFortsetzen();
+
+    // Fortgesetzt auf der Wissensseite; zurück zum Erzählen — der Rohtext kam NICHT zurück.
+    await klicke(knopfMit(i18n.t(CAPTURE_WIZARD_TEXT.back)) as HTMLButtonElement);
+    expect(rohtextFeld().value).not.toContain(ERKANNT);
+
+    // Trotzdem trägt das Interview den erkannten Text — aus dem gesicherten Entwurfsfeld.
+    const kontext = await starteInterview();
+    expect(kontext).toContain(ERKANNT);
+    expect(kontext).toContain("aushang.png");
+  });
+
+  it("I6 · Bens Befund (Nacharbeit 4): Klammern im Bildnamen und Klammerzeilen im Text gehen nicht verloren", async () => {
+    const erkannt = `${ERKANNT}\n[Hinweis]\nNur mit Schutzbrille.`;
+    steuerung.ocr.mockResolvedValue({ status: "success", text: erkannt });
+    await haengeBildAn("aushang[1].png");
+    await klicke(knopf(i18n.t("capture.ocr")));
+
+    const kontext = await starteInterview();
+    expect(kontext).toContain("[aushang[1].png]");
+    expect(kontext).toContain("[Hinweis]\nNur mit Schutzbrille.");
+  });
 });
+
+async function entferneBild(): Promise<void> {
+  // Das Bild selbst reist nicht im Entwurf (lokaler Anhang) — vor dem Speichern entfernen, damit
+  // die Wache nicht über ein ungesichertes Bild spricht. Der erkannte TEXT steht im Rohtext.
+  const bildKachel = container.querySelector('img[alt="aushang.png"]')?.parentElement;
+  const wahl = `button[aria-label="${i18n.t("capture.listRemove")}"]`;
+  const bildEntfernen = bildKachel?.querySelector<HTMLButtonElement>(wahl);
+  if (bildEntfernen) {
+    await klicke(bildEntfernen);
+  }
+}
+
+/** Speichern über die Navigationswache (der vorhandene Entwurfsweg). */
+async function speichereUeberWache(): Promise<void> {
+  const wegklick = container.querySelector<HTMLButtonElement>("[data-testid=navprobe]");
+  await klicke(wegklick as HTMLButtonElement);
+  const speichern = knopfMit(i18n.t("nav.guard.save"));
+  expect(speichern).not.toBeNull();
+  await klicke(speichern as HTMLButtonElement);
+  expect(nav.weiter).toBe(true);
+}
+
+/** Eine FRISCHE Seite — kein Sitzungszustand überlebt; nur der gespeicherte Entwurf. */
+async function neuOeffnenUndFortsetzen(): Promise<void> {
+  modus = undefined;
+  act(() => root.unmount());
+  container.remove();
+  await mount();
+  const aufklappen =
+    knopfMit(i18n.t("capture.resumeExpand", { count: 1 })) ?? knopfMit("Entwürfe anzeigen");
+  if (aufklappen) {
+    await klicke(aufklappen);
+  }
+  const fortsetzen = knopfMit(i18n.t("capture.resume"));
+  expect(fortsetzen).not.toBeNull();
+  await klicke(fortsetzen as HTMLButtonElement);
+}

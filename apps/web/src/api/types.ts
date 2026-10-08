@@ -1071,6 +1071,9 @@ export interface DraftPayload {
     done?: boolean;
     demo?: boolean;
   };
+  // Aufnahme `gesamt-ocr` (FR-CAP-05): die auf Klick erkannten Bildtext-Abschnitte als Kontext
+  // des Interviews — auch für strukturierte Entwürfe, die den Rohtext nicht mehr tragen.
+  ocrAbschnitte?: { name: string; text: string }[];
 }
 
 export interface Draft {

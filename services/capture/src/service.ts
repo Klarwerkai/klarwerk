@@ -426,6 +426,27 @@ function normalizeInterview(value: unknown): DraftPayload["interview"] {
   };
 }
 
+// Aufnahme `gesamt-ocr` (FR-CAP-05): Deckel für die gesicherten Bildtext-Abschnitte. Bewusst
+// großzügig (ein Entwurf trägt höchstens wenige Bilder), aber endlich — wie jede andere Struktur
+// des Entwurfs. Nur Bildname und Text, beide als Zeichenkette; Leeres wird nicht gespeichert.
+const MAX_OCR_ABSCHNITTE = 20;
+const MAX_OCR_NAME_LEN = 300;
+const MAX_OCR_TEXT_LEN = 20_000;
+
+function normalizeOcrAbschnitte(value: unknown): DraftPayload["ocrAbschnitte"] {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value
+    .filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null)
+    .map((e) => ({
+      name: cappedString(e.name, MAX_OCR_NAME_LEN) ?? "",
+      text: (cappedString(e.text, MAX_OCR_TEXT_LEN) ?? "").trim(),
+    }))
+    .filter((e) => e.text.length > 0)
+    .slice(0, MAX_OCR_ABSCHNITTE);
+}
+
 function normalizeDraftPayload(payload: DraftPayload): DraftPayload {
   const raw = payload as Record<string, unknown>;
   // Die neuen Strukturen werden per Destrukturierung AUS dem Payload gelöst und nur normalisiert
@@ -441,6 +462,8 @@ function normalizeDraftPayload(payload: DraftPayload): DraftPayload {
     sourceForm: _sourceForm,
     extQuery: _extQuery,
     interview: _interview,
+    // Aufnahme `gesamt-ocr`: die gesicherten Bildtext-Abschnitte laufen durch dieselbe Schleuse.
+    ocrAbschnitte: _ocrAbschnitte,
     extResults: _extResults,
     // BILDSCHIRMABLÄUFE: der Ablauf läuft durch dieselbe Schleuse (`./ablauf.ts`).
     ablauf: _ablauf,
@@ -471,6 +494,10 @@ function normalizeDraftPayload(payload: DraftPayload): DraftPayload {
   const interview = normalizeInterview(raw.interview);
   if (interview !== undefined) {
     next.interview = interview;
+  }
+  const ocrAbschnitte = normalizeOcrAbschnitte(raw.ocrAbschnitte);
+  if (ocrAbschnitte !== undefined && ocrAbschnitte.length > 0) {
+    next.ocrAbschnitte = ocrAbschnitte;
   }
   const ablauf = normalizeAblauf(raw.ablauf);
   if (ablauf !== undefined) {

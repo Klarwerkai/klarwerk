@@ -245,7 +245,13 @@ import {
   interviewSourceKey,
   isInterviewDone,
 } from "../lib/interviewFlow";
-import { interviewKontext, ocrAbschnittKopf } from "../lib/interviewKontext";
+import {
+  type OcrAbschnitt,
+  gesicherteOhneRohtext,
+  interviewKontext,
+  ocrAbschnittText,
+  ocrAbschnitteFuerEntwurf,
+} from "../lib/interviewKontext";
 import {
   EMPTY_SOURCE_FORM,
   type SourceFormInput,
@@ -1062,6 +1068,11 @@ export function CaptureArbeitsraum({
   // die aktuelle ist — eine SPÄTE Antwort eines vor dem Speichern gestarteten Requests kann den
   // danach geltenden Zustand damit nicht wieder einschreiben.
   const ivRunRef = useRef(0);
+  // Aufnahme `gesamt-ocr` (FR-CAP-05, Nacharbeit 4): erkannte Bildtext-Abschnitte eines fortgesetzten
+  // Entwurfs, die NICHT im Rohtext zurückkamen (strukturiert gespeichert ⇒ nur die verdichtete
+  // Aussage). Sie bleiben Interviewkontext und reisen beim nächsten Speichern wieder mit. Abschnitte
+  // im Rohtext sind weiterhin dort die Quelle (lib/interviewKontext.ts).
+  const [ocrGesichert, setOcrGesichert] = useState<readonly OcrAbschnitt[]>([]);
 
   // PMO-FEA-0006: „Aus Datei" — Dokumenttext, optionaler Suchauftrag, KI-Punkteliste,
   // sichtbare Entwurfs-Warteschlange. Nichts wird automatisch gespeichert.
@@ -1331,8 +1342,9 @@ export function CaptureArbeitsraum({
         locale,
         draftProvenance(confidentiality, undefined, draftId ?? undefined),
         // Aufnahme `gesamt-ocr` (FR-CAP-05): die auf Klick erkannten Abschnitte des Rohtextes, so wie
-        // sie JETZT dastehen — auch nach dem Fortsetzen eines Entwurfs (lib/interviewKontext.ts).
-        interviewKontext(raw),
+        // sie JETZT dastehen — auch nach dem Fortsetzen eines Entwurfs (lib/interviewKontext.ts),
+        // dazu die gesicherten Abschnitte eines strukturiert gespeicherten Entwurfs.
+        interviewKontext(raw, ocrGesichert),
       ),
     onSuccess: (res, v) => {
       if (v.run !== ivRunRef.current) {
@@ -2427,6 +2439,9 @@ export function CaptureArbeitsraum({
       });
       // AUFTRAG-mega6 Block B: „wird aktualisiert" entscheidet, ob Leerwerte als Löschmarker mitgehen.
       const isDraftUpdate = Boolean(draftId);
+      // Aufnahme `gesamt-ocr` (Nacharbeit 4): die erkannten Abschnitte reisen als eigenes Feld mit —
+      // auch wenn `statement` unten die verdichtete Aussage statt des Rohtextes trägt.
+      const ocrFuerEntwurf = ocrAbschnitteFuerEntwurf(ocrGesichert, raw);
       const payload: DraftPayload = {
         title: draft?.title || raw.split("\n")[0]?.slice(0, 80) || t("capture.draftFallbackTitle"),
         statement: draft?.statement || raw,
@@ -2475,6 +2490,11 @@ export function CaptureArbeitsraum({
         ...(isDraftUpdate || extQuery.trim() ? { extQuery } : {}),
         ...(isDraftUpdate || ivProgress
           ? { interview: ivProgress ?? CLEARED_DRAFT_INTERVIEW }
+          : {}),
+        // Dieselbe Leerwert-Semantik: beim Aktualisieren geht auch eine leere Liste als Löschmarker
+        // mit — wer die erkannten Abschnitte entfernt hat, bekommt sie beim Fortsetzen nicht zurück.
+        ...(isDraftUpdate || ocrFuerEntwurf.length > 0
+          ? { ocrAbschnitte: ocrFuerEntwurf.map(({ name, text }) => ({ name, text })) }
           : {}),
         // SCRUM-457: Herkunft mitspeichern → „Fortsetzen" öffnet genau hier wieder.
         origin: originForSave({ expert: isExpertMode(mode), wizStep: wizStepRaw }),
@@ -2702,6 +2722,11 @@ export function CaptureArbeitsraum({
       conditions: p.conditions ?? [],
       measures: p.measures ?? [],
     };
+    // Aufnahme `gesamt-ocr` (Nacharbeit 4): gesicherte Bildtext-Abschnitte zurückholen — nur die,
+    // die nicht ohnehin im (beim Erzähl-Einstieg wiederhergestellten) Rohtext stehen.
+    const erzaehlRohtext = p.statement ?? p.title ?? "";
+    const kuenftigerRohtext = target === "tell" ? erzaehlRohtext : raw;
+    setOcrGesichert(gesicherteOhneRohtext(p.ocrAbschnitte ?? [], kuenftigerRohtext));
     if (target === "tell") {
       // Erzähl-Einstieg → Rohtext-Feld, sofort editier- und speicherbar.
       setMode("freitext");
@@ -2848,6 +2873,8 @@ export function CaptureArbeitsraum({
   // beiden kanonischen Räum-Funktionen. Eine Quelle für den Leerzustand, geteilt von beiden Verwerfen-Wegen.
   const resetCaptureForm = (): void => {
     setRaw("");
+    // Aufnahme `gesamt-ocr`: mit dem Rohtext gehen auch die gesicherten Bildtext-Abschnitte.
+    setOcrGesichert([]);
     setDraft(null);
     setBodyHtml("");
     setStudioApplied(false);
@@ -4737,7 +4764,7 @@ export function CaptureArbeitsraum({
       const res = await runImageOcr(img.dataUrl);
       if (res.status === "success" && res.text.length > 0) {
         // Der Abschnittskopf ist zugleich die Zuordnung für den Interviewkontext (gesamt-ocr).
-        const abschnitt = `${ocrAbschnittKopf(img.name)}\n${res.text}`;
+        const abschnitt = ocrAbschnittText(img.name, res.text);
         setRaw((prev) => (prev ? `${prev}\n\n${abschnitt}` : abschnitt));
         setNotice(t("capture.ocrDone", { name: img.name }));
       } else if (res.status === "success") {
