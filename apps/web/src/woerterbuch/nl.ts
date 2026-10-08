@@ -4120,37 +4120,6 @@ const nl: typeof de = {
     "Afgeleid uit bestaande kennisobjecten (wie aan een onderwerp heeft bijgedragen). Volgorde alfabetisch, zonder beoordeling — als hulp bij wie je zou kunnen aanspreken.",
   "expertise.invite": "Je hebt ervaring met {{topic}} — kun je dat kort inschatten?",
   "expertise.thanks": "Bedankt, dat helpt het team.",
-  // R-1663 / R-2178: onderbouwde aanspreekpunten bij een kennishiaat.
-  "ansprechpartner.zeigen": "Aanspreekpunten voorstellen",
-  "ansprechpartner.verbergen": "Voorstellen verbergen",
-  "ansprechpartner.titel": "Passende aanspreekpunten op basis van bestaande kennissporen",
-  "ansprechpartner.hinweis":
-    "Geen beoordeling en geen rangorde van personen — alleen waar bestaande kennissporen naar iemand wijzen. Volgorde alfabetisch.",
-  "ansprechpartner.laden": "Kennissporen worden gelezen …",
-  "ansprechpartner.fehler": "De voorstellen konden niet worden geladen.",
-  "ansprechpartner.leer": "Bij deze vraag wijzen geen zichtbare kennissporen naar een persoon.",
-  "ansprechpartner.grundlage":
-    "Basis: passende zichtbare kennisobjecten {{objekte}} · vergelijkbare gesloten hiaten {{luecken}}",
-  "ansprechpartner.zuweisen": "Toewijzen",
-  "ansprechpartner.spur.originalautor_one":
-    "oorspronkelijke auteur van {{count}} passend kennisobject",
-  "ansprechpartner.spur.originalautor_other":
-    "oorspronkelijke auteur van {{count}} passende kennisobjecten",
-  "ansprechpartner.spur.erfasst_one": "heeft {{count}} passend kennisobject vastgelegd",
-  "ansprechpartner.spur.erfasst_other": "heeft {{count}} passende kennisobjecten vastgelegd",
-  "ansprechpartner.spur.validiert_one": "heeft {{count}} passend object gevalideerd",
-  "ansprechpartner.spur.validiert_other": "heeft {{count}} passende objecten gevalideerd",
-  "ansprechpartner.spur.pruefung_one":
-    "was voor {{count}} passend object als beoordelaar toegewezen",
-  "ansprechpartner.spur.pruefung_other":
-    "was voor {{count}} passende objecten als beoordelaar toegewezen",
-  "ansprechpartner.spur.verantwortlich_one": "is verantwoordelijk voor {{count}} passend object",
-  "ansprechpartner.spur.verantwortlich_other":
-    "is verantwoordelijk voor {{count}} passende objecten",
-  "ansprechpartner.spur.aehnlicheLuecken_one":
-    "was verantwoordelijk voor {{count}} vergelijkbaar, inmiddels gesloten kennishiaat",
-  "ansprechpartner.spur.aehnlicheLuecken_other":
-    "was verantwoordelijk voor {{count}} vergelijkbare, inmiddels gesloten kennishiaten",
   "risk.gaps": "Open kennishiaten",
   "risk.gapsEmpty": "Geen open hiaten.",
   "risk.gapStatus.offen": "open",

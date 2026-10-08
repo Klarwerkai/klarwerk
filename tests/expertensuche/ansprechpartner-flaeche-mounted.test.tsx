@@ -139,8 +139,12 @@ describe("Ansprechpartner an der Wissenslücke — begründet, ohne Rangfolge", 
   it("F3: alphabetisch nach Namen, nicht in der Reihenfolge des Servers", () => {
     mount();
     act(() => knopf("Ansprechpartner vorschlagen").click());
-    const zeilen = container.querySelectorAll('[data-testid="ansprechpartner-vorschlag"]');
-    const namen = Array.from(zeilen).map((li) => li.querySelector("div div")?.textContent);
+    // Der Name hat eine eigene Kennung: `li.querySelector("div div")` wertet den Selektor gegen das
+    // ganze Dokument aus und traf den umschliessenden Block samt Spuren (Prüflauf Nacharbeit 1).
+    const namen = Array.from(
+      container.querySelectorAll('[data-testid="ansprechpartner-name"]'),
+      (el) => el.textContent?.trim(),
+    );
     expect(namen).toEqual(["Anna Albers", "Zora Zander"]);
   });
 

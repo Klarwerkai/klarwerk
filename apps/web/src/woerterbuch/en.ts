@@ -4132,34 +4132,6 @@ const en: typeof de = {
     "Derived from existing knowledge objects (who contributed to a topic). Alphabetical order, no scoring — a hint on who you could reach out to.",
   "expertise.invite": "You have experience with {{topic}} — could you give a quick take?",
   "expertise.thanks": "Thanks, that helps the team.",
-  // R-1663 / R-2178: reasoned contact suggestions for a knowledge gap.
-  "ansprechpartner.zeigen": "Suggest contacts",
-  "ansprechpartner.verbergen": "Hide suggestions",
-  "ansprechpartner.titel": "Suitable contacts based on existing knowledge traces",
-  "ansprechpartner.hinweis":
-    "No rating and no ranking of people — only where existing knowledge traces point to someone. Alphabetical order.",
-  "ansprechpartner.laden": "Reading knowledge traces …",
-  "ansprechpartner.fehler": "The suggestions could not be loaded.",
-  "ansprechpartner.leer": "No visible knowledge traces point to a person for this question.",
-  "ansprechpartner.grundlage":
-    "Basis: matching visible knowledge objects {{objekte}} · similar closed gaps {{luecken}}",
-  "ansprechpartner.zuweisen": "Assign",
-  "ansprechpartner.spur.originalautor_one":
-    "original author of {{count}} matching knowledge object",
-  "ansprechpartner.spur.originalautor_other":
-    "original author of {{count}} matching knowledge objects",
-  "ansprechpartner.spur.erfasst_one": "captured {{count}} matching knowledge object",
-  "ansprechpartner.spur.erfasst_other": "captured {{count}} matching knowledge objects",
-  "ansprechpartner.spur.validiert_one": "validated {{count}} matching object",
-  "ansprechpartner.spur.validiert_other": "validated {{count}} matching objects",
-  "ansprechpartner.spur.pruefung_one": "was assigned to review {{count}} matching object",
-  "ansprechpartner.spur.pruefung_other": "was assigned to review {{count}} matching objects",
-  "ansprechpartner.spur.verantwortlich_one": "is responsible for {{count}} matching object",
-  "ansprechpartner.spur.verantwortlich_other": "is responsible for {{count}} matching objects",
-  "ansprechpartner.spur.aehnlicheLuecken_one":
-    "was in charge of {{count}} similar, since closed knowledge gap",
-  "ansprechpartner.spur.aehnlicheLuecken_other":
-    "was in charge of {{count}} similar, since closed knowledge gaps",
   "risk.gaps": "Open knowledge gaps",
   "risk.gapsEmpty": "No open gaps.",
   "risk.gapStatus.offen": "open",

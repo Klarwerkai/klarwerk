@@ -113,7 +113,9 @@ function Vorschlag({
   return (
     <li data-testid="ansprechpartner-vorschlag" className="flex items-start gap-3">
       <div className="min-w-0 flex-1">
-        <div className="text-[12.5px] font-medium text-text">{name}</div>
+        <div data-testid="ansprechpartner-name" className="text-[12.5px] font-medium text-text">
+          {name}
+        </div>
         <ul className="text-[11.5px] text-muted">
           {spurenZeilen(vorschlag.spuren).map((s) => (
             <li key={s.art} data-testid={`ansprechpartner-spur-${s.art}`}>
