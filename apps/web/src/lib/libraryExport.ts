@@ -1,6 +1,8 @@
 // Reine, DOM-freie Export-Format-Logik für die Bibliothek (SCRUM-135 / FE-LIB-03).
 // Backend: GET /api/library/export?format=markdown|mediawiki|html (Default JSON), optional
 // `ids=<a>,<b>` für eine Auswahl (aufnahme:20260922:gesamt-wissen-export, R-0681 / FR-LIB-02).
+import type { Confidentiality } from "../api/types";
+import { isConfidential } from "./confidentiality";
 
 export type ExportFormat = "json" | "markdown" | "mediawiki" | "html";
 
@@ -60,40 +62,59 @@ export const EXPORT_UMFANG_ARTEN: readonly ExportUmfangArt[] = ["bestand", "tref
 export interface ExportEintrag {
   id: string;
   status: string;
+  confidentiality?: Confidentiality | null;
+}
+
+// BEN-NACHARBEIT (N-0082): die Fläche zählte nur nach Status. Ein Experte sieht aber seine EIGENEN
+// vertraulichen Einträge (`services/app/src/sichtbarkeit.ts`) und kann sie markieren — der Export
+// liefert sie ihm nicht (`library-routes.ts`: `includeConfidential = can(role, "ko.validate")`).
+// Das Menü versprach dann „1 von 1" für eine leere Datei. Gezählt wird deshalb mit DERSELBEN
+// Regel wie der Server: validiert UND (Prüfrecht ODER nicht vertraulich). `isConfidential` ist
+// zeichengleich zu `services/knowledge-object/src/confidentiality.ts`.
+export function darfVertraulichExportieren(role: string | null | undefined): boolean {
+  // Spiegel von `ROLE_PERMISSIONS` (services/rbac/src/policy.ts): `ko.validate` haben genau
+  // controller und admin. Unbekannte Rolle oder keine Anmeldung: fail-safe ohne Vertrauliches.
+  return role === "controller" || role === "admin";
 }
 
 export type ExportUmfang =
   // Validierter Gesamtbestand — der Server bestimmt die Menge; keine Kennungen.
   | { art: "bestand"; ids: undefined }
-  // Eine Auswahl: `validiert` geht mit, `ausgelassen` sind die nicht validierten der Auswahl.
+  // Eine Auswahl: `ids`/`exportierbar` gehen mit; die übrigen sind nach Grund getrennt gezählt.
   | {
       art: "treffer" | "markiert";
       ids: string[];
       gewaehlt: number;
-      validiert: number;
-      ausgelassen: number;
+      exportierbar: number;
+      nichtValidiert: number;
+      vertraulichOhneRecht: number;
       zuViele: boolean;
     };
 
 export function exportUmfang(
   art: ExportUmfangArt,
   eintraege: readonly ExportEintrag[],
+  vertraulichErlaubt = false,
 ): ExportUmfang {
   if (art === "bestand") {
     return { art, ids: undefined };
   }
-  const ids = [...new Set(eintraege.filter((e) => e.status === "validiert").map((e) => e.id))];
+  const validiert = eintraege.filter((e) => e.status === "validiert");
+  const gesperrt = (e: ExportEintrag): boolean =>
+    !vertraulichErlaubt && isConfidential(e.confidentiality);
+  const ids = [...new Set(validiert.filter((e) => !gesperrt(e)).map((e) => e.id))];
   return {
     art,
     ids,
     gewaehlt: eintraege.length,
-    validiert: ids.length,
-    ausgelassen: eintraege.length - ids.length,
+    exportierbar: ids.length,
+    nichtValidiert: eintraege.length - validiert.length,
+    vertraulichOhneRecht: validiert.filter(gesperrt).length,
     zuViele: ids.length > EXPORT_AUSWAHL_MAX,
   };
 }
 
 /** Ob die Formatlinks für diesen Umfang angeboten werden (eine Auswahl braucht ≥1 und ≤ Deckel). */
 export function exportMoeglich(umfang: ExportUmfang): boolean {
-  return umfang.art === "bestand" || (umfang.validiert > 0 && !umfang.zuViele);
+  return umfang.art === "bestand" || (umfang.exportierbar > 0 && !umfang.zuViele);
 }

@@ -52,6 +52,7 @@ import {
   EXPORT_FORMATS,
   EXPORT_UMFANG_ARTEN,
   type ExportUmfangArt,
+  darfVertraulichExportieren,
   exportFilename,
   exportMoeglich,
   exportUmfang,
@@ -1687,18 +1688,28 @@ export function BibliothekFlaeche({
       : exportArtWirksam === "treffer"
         ? sorted.map((item) => item.ko)
         : [],
+    // BEN-NACHARBEIT: dieselbe Rolle, an der der Server `includeConfidential` bindet — die
+    // angemeldete, nicht eine angezeigte Rolle.
+    darfVertraulichExportieren(user?.role),
   );
+  const umfangGruende =
+    umfang.art === "bestand"
+      ? null
+      : {
+          gewaehlt: umfang.gewaehlt,
+          nichtValidiert: umfang.nichtValidiert,
+          vertraulich: umfang.vertraulichOhneRecht,
+        };
   const umfangSatz =
     umfang.art === "bestand"
       ? t("wissenexport.umfang.bestandSatz")
       : umfang.zuViele
-        ? t("wissenexport.umfang.zuViele", { anzahl: umfang.validiert, max: EXPORT_AUSWAHL_MAX })
-        : umfang.validiert === 0
-          ? t("wissenexport.umfang.keine", { gewaehlt: umfang.gewaehlt })
+        ? t("wissenexport.umfang.zuViele", { anzahl: umfang.exportierbar, max: EXPORT_AUSWAHL_MAX })
+        : umfang.exportierbar === 0
+          ? t("wissenexport.umfang.keine", umfangGruende ?? {})
           : t("wissenexport.umfang.auswahlSatz", {
-              validiert: umfang.validiert,
-              gewaehlt: umfang.gewaehlt,
-              ausgelassen: umfang.ausgelassen,
+              ...umfangGruende,
+              exportierbar: umfang.exportierbar,
             });
 
   // ================================================================================================

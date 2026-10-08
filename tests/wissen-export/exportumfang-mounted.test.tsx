@@ -19,7 +19,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
 
-function ko(id: string, title: string, status: "offen" | "validiert"): KnowledgeObject {
+// BEN-NACHARBEIT: die angemeldete Rolle ist steuerbar — dieselbe, an der der Server
+// `includeConfidential` bindet.
+const session = vi.hoisted(() => ({ role: "experte" }));
+
+function ko(
+  id: string,
+  title: string,
+  status: "offen" | "validiert",
+  extra: Record<string, unknown> = {},
+): KnowledgeObject {
   return {
     id,
     title,
@@ -40,13 +49,21 @@ function ko(id: string, title: string, status: "offen" | "validiert"): Knowledge
     measures: [],
     createdAt: "2026-08-20T00:00:00.000Z",
     history: [{ version: 1, author: "u2", at: "2026-08-20T00:00:00.000Z", note: "erstellt" }],
+    ...extra,
   } as unknown as KnowledgeObject;
 }
 
+// `vg` ist validiert, vertraulich und vom angemeldeten Nutzer selbst verfasst — der Experte SIEHT
+// ihn (Autorregel, services/app/src/sichtbarkeit.ts), der Export liefert ihn ihm nicht.
 const KOS: KnowledgeObject[] = [
   ko("v1", "A Ventil freigegeben", "validiert"),
   ko("v2", "B Ventil freigegeben", "validiert"),
   ko("o1", "C Ventil offen", "offen"),
+  ko("vg", "D Ventil vertraulich eigen", "validiert", {
+    author: "u1",
+    originalAuthor: "u1",
+    confidentiality: "vertraulich",
+  }),
 ];
 
 vi.mock("../../apps/web/src/api/hooks", () => {
@@ -73,9 +90,11 @@ vi.mock("../../apps/web/src/api/hooks", () => {
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
-  useSession: () => ({ user: { id: "u1", role: "experte" } }),
+  useSession: () => ({ user: { id: "u1", role: session.role } }),
 }));
-vi.mock("../../apps/web/src/app/RoleContext", () => ({ useRole: () => ({ role: "experte" }) }));
+vi.mock("../../apps/web/src/app/RoleContext", () => ({
+  useRole: () => ({ role: session.role }),
+}));
 vi.mock("../../apps/web/src/app/ToastContext", () => ({ useToast: () => ({ push: () => {} }) }));
 
 import {
@@ -89,6 +108,7 @@ import { BibliothekFlaeche } from "../../apps/web/src/components/bibliothek/Bibl
 import i18n from "../../apps/web/src/i18n";
 import {
   EXPORT_AUSWAHL_MAX,
+  darfVertraulichExportieren,
   exportMoeglich,
   exportUmfang,
   exportUrl,
@@ -142,6 +162,7 @@ const idsAus = (href: string | null): string[] => {
 
 beforeEach(async () => {
   await i18n.changeLanguage("de");
+  session.role = "experte";
   window.localStorage.clear();
 });
 afterEach(() => {
@@ -168,16 +189,18 @@ describe("N-0082 · der Exportumfang steht vor dem Download", () => {
     mount();
     klicke("bib-export-umfang-treffer");
     expect(element("bib-export-umfang-treffer")?.getAttribute("aria-checked")).toBe("true");
+    // Experte: der eigene vertrauliche `vg` ist sichtbar, geht aber nicht in die Datei.
     expect(idsAus(jsonLink())).toEqual(["v1", "v2"]);
     expect(element("bib-export-html")?.getAttribute("href")).toContain("format=html&ids=");
-    expect(satz()).toContain("2 von 3");
-    expect(satz()).toContain("nicht enthalten: 1");
+    expect(satz()).toContain("2 von 4");
+    expect(satz()).toContain("1 nicht validiert, 1 vertraulich ohne Prüfrecht");
   });
 
   it("U3 · Befundfall: nur ein offener Treffer ⇒ „nichts zu exportieren“, kein Formatlink", () => {
     mount("/bibliothek?zustand=offen");
     klicke("bib-export-umfang-treffer");
-    expect(satz()).toContain("Keiner der 1 gewählten Einträge ist validiert");
+    expect(satz()).toContain("Keiner der 1 gewählten Einträge geht in die Datei");
+    expect(satz()).toContain("Nicht validiert: 1");
     expect(element("bib-export-json")).toBeNull();
     // Der Gesamtbestand bleibt wählbar — und sagt wieder, was er ist.
     klicke("bib-export-umfang-bestand");
@@ -201,6 +224,40 @@ describe("N-0082 · der Exportumfang steht vor dem Download", () => {
     expect(satz()).toContain("1 von 1");
   });
 
+  // BEN-NACHARBEIT (N-0082): der Gegenfall, den das Menü zuvor falsch versprach („1 von 1" für
+  // eine Datei, die der Server leer ausliefert).
+  function markiere(id: string): void {
+    klicke("bib-auswahl-modus");
+    const box = container.querySelector<HTMLInputElement>(
+      `[data-testid="bib-zeile-markieren"][data-bib-id="${id}"]`,
+    );
+    if (!box) throw new Error(`Markierfeld für ${id} fehlt`);
+    act(() => {
+      box.click();
+    });
+    klicke("bib-export-umfang-markiert");
+  }
+
+  it("U6 · Experte, eigener validierter vertraulicher Eintrag markiert ⇒ nichts, kein Link", () => {
+    mount();
+    markiere("vg");
+    expect(satz()).toContain("Keiner der 1 gewählten Einträge geht in die Datei");
+    expect(satz()).toContain("vertraulich ohne Prüfrecht (Controller, Admin): 1");
+    expect(satz()).not.toContain("1 von 1");
+    for (const format of ["json", "markdown", "mediawiki", "html"]) {
+      expect(element(`bib-export-${format}`), format).toBeNull();
+    }
+  });
+
+  it("U7 · KALIBRIERUNG Controller: derselbe Eintrag geht mit (Prüfrecht wie am Server)", () => {
+    session.role = "controller";
+    mount();
+    markiere("vg");
+    expect(idsAus(jsonLink())).toEqual(["vg"]);
+    expect(satz()).toContain("1 von 1");
+    expect(satz()).toContain("0 vertraulich ohne Prüfrecht");
+  });
+
   it("U5 · EN: eigener Satz ohne deutschen Rest", async () => {
     await i18n.changeLanguage("en");
     mount();
@@ -214,6 +271,29 @@ describe("R-0681 · Auswahl als reine Logik", () => {
     expect(exportUrl("json", ["a", "b"])).toBe("/api/library/export?ids=a,b");
     expect(exportUrl("mediawiki", ["a"])).toBe("/api/library/export?format=mediawiki&ids=a");
     expect(exportUrl("json")).toBe("/api/library/export");
+  });
+
+  it("vertraulich zählt wie am Server: nur mit Prüfrecht exportierbar, Grund getrennt gezählt", () => {
+    const eintraege = [
+      { id: "a", status: "validiert", confidentiality: "vertraulich" as const },
+      { id: "b", status: "validiert", confidentiality: "streng_vertraulich" as const },
+      { id: "c", status: "validiert", confidentiality: "intern" as const },
+      { id: "d", status: "offen", confidentiality: "vertraulich" as const },
+    ];
+    const ohne = exportUmfang("markiert", eintraege, false);
+    expect(ohne.ids).toEqual(["c"]);
+    expect(ohne.art !== "bestand" && [ohne.nichtValidiert, ohne.vertraulichOhneRecht]).toEqual([
+      1, 2,
+    ]);
+    const mit = exportUmfang("markiert", eintraege, true);
+    expect(mit.ids).toEqual(["a", "b", "c"]);
+    expect(mit.art !== "bestand" && mit.vertraulichOhneRecht).toBe(0);
+    expect(exportMoeglich(exportUmfang("markiert", eintraege.slice(0, 2), false))).toBe(false);
+    expect(darfVertraulichExportieren("experte")).toBe(false);
+    expect(darfVertraulichExportieren("viewer")).toBe(false);
+    expect(darfVertraulichExportieren(undefined)).toBe(false);
+    expect(darfVertraulichExportieren("controller")).toBe(true);
+    expect(darfVertraulichExportieren("admin")).toBe(true);
   });
 
   it("über dem Deckel: kein Export der Auswahl, kein stilles Abschneiden", () => {
