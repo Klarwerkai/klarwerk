@@ -196,8 +196,11 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  *       zugelassenes Hash-Werkzeug (in dieser Bahn waren `git hash-object` und `shasum` gesperrt) ist
  *       er hier nicht berechenbar; E2 meldet ihn im Prüflauf als „Received", er wird danach gemessen
  *       übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 1 (dieser Auftrag): GEMESSEN im Prüflauf zu Kandidat 12b0b2d6 (`40d40053…`,
+ * „Received" von E2, HISTORIE/nacharbeit-1/PRUEFUNG/schnitt-wortvergleich-und-panelwaechter.log)
+ * und unverändert übernommen; die fünf Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "5d7ae0b8fccc34c05e5c070cea753189729ef841";
+export const PANEL_VOR_SCHNITT_BLOB = "40d40053434a44c9b5669c0bd306527a54f550dc";
 
 export interface PanelTeile {
   html: string;

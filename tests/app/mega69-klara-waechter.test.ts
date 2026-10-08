@@ -2780,7 +2780,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // bedienbar, nur ohne Word-Vergleich. Ohne zugelassenes Hash-Werkzeug (`git hash-object` und
     // `shasum` waren in dieser Bahn gesperrt) ist der neue Wert hier nicht berechenbar; der Prüflauf
     // meldet ihn als „Received", er wird danach gemessen übernommen.
-    const PIN = "dce012c092e3445073b0629f1b8348a5f4b04457c1986e3c68657c7ad5860d64";
+    // NACHARBEIT 1 (dieser Auftrag): PIN BEWUSST AKTUALISIERT (dce012c0… -> 8bd59ad6…). Im Prüflauf
+    // zu Kandidat 12b0b2d6 GEMESSEN („Received", HISTORIE/nacharbeit-1/PRUEFUNG/
+    // schnitt-wortvergleich-und-panelwaechter.log) und unverändert übernommen; die Panel-Dateien sind
+    // seit dieser Messung unberührt.
+    const PIN = "8bd59ad6d2a10cf495c34ce8ed8e4ae87bd96d9ff0159a2b9e05170e3a4e9085";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
