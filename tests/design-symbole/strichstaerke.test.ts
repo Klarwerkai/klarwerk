@@ -64,10 +64,12 @@ function aufrufe(symbole: readonly string[]): Aufruf[] {
 describe("R2 · Strichstärke je Symbolart nach der gültigen Vorlage", () => {
   it("S1 · Lupe, Mikrofon, Dokument und Zahnrad zeichnen überall mit 1,8", () => {
     const alle = aufrufe(["Search", "Mic", "FileText", "Settings"]);
-    // KALIBRIERUNG: die Erhebung findet die bekannten Stellen (Kopfband-Lupe, Start-Mikrofon …).
+    // KALIBRIERUNG: die Erhebung findet die bekannten Stellen (Kopfband-Lupe, Frage-Mikrofon …).
+    // Verankert an Datei und Symbol, nicht an der Zeile: die Zeilennummer verschiebt sich mit jeder
+    // Integration (Kopfband-Lupe 407 → 412 mit main, Nacharbeit 14), die Stelle bleibt dieselbe.
     expect(alle.length).toBeGreaterThan(25);
-    expect(alle.map((a) => a.ort)).toEqual(
-      expect.arrayContaining(["shell/Kopfband.tsx:407", "components/fragen/FrageFeld.tsx:117"]),
+    expect(alle.map((a) => `${a.ort.split(":")[0]} ${a.symbol}`)).toEqual(
+      expect.arrayContaining(["shell/Kopfband.tsx Search", "components/fragen/FrageFeld.tsx Mic"]),
     );
     const abweichend = alle.filter((a) => a.strich !== "1.8").map((a) => `${a.ort} ${a.symbol}`);
     expect(abweichend, "Symbol ohne den Vorlagenwert 1,8").toEqual([]);
