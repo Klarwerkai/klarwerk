@@ -1885,7 +1885,11 @@ describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () =>
   for (const [sprache, block] of KI_AUS_SPRACHEN) {
     it(`R-1040: 503 KI_ABGESCHALTET (${sprache}) — #ask-status nennt die Abschaltung, kein „Erneut versuchen“`, async () => {
       await ladeKa6Fenster(ka6Erlaubt());
-      vi.stubGlobal("fetch", (url: string) =>
+      // Nur `/api/ask` antwortet mit der Abschaltung; alles andere beantwortet DERSELBE Router wie
+      // beim Laden. Der Sprachwechsel ruft `checkSession()` (`/api/auth/me`) — ein leerer Körper
+      // dort hiesse „abgemeldet", und der Fall maesse die Anmeldung statt der Abschaltung.
+      const router = ka6Router(ka6Erlaubt());
+      vi.stubGlobal("fetch", (url: string, init?: { method?: string; body?: string }) =>
         url === "/api/ask"
           ? Promise.resolve(
               ka6Antwort(
@@ -1894,10 +1898,13 @@ describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () =>
                 503,
               ),
             )
-          : Promise.resolve(ka6Antwort({})),
+          : router(url, init),
       );
       ka6El(`lang-${sprache}`).click();
-      await ka6Leerlauf(5);
+      await ka6Leerlauf(20);
+      // Kalibrierung: der Sprachwechsel hat die Anmeldung nicht verloren (sonst prüfte der Fall
+      // die Anmeldesperre, nicht die Abschaltung).
+      expect(ka6El("ask-btn").disabled, "nach dem Sprachwechsel ist Fragen gesperrt").toBe(false);
       ka6El("ask-input").value = "Wie wird die Pumpe geschmiert?";
       ka6El("ask-btn").click();
       await ka6Leerlauf(20);
