@@ -12,7 +12,7 @@ import { useToast } from "../app/ToastContext";
 // DASSELBE zentrale Bauteil und DIESELBE Ableitung wie alle anderen Auslösestellen — bedingt an
 // `billable` der Aufgabe „answer", nicht mehr als unbedingter eigener Wortlaut.
 import { AiCostHint } from "../components/AiCostHint";
-import { AiGeneratedNotice } from "../components/AiGeneratedNotice";
+import { AiGeneratedNotice, AiSurfaceNotice } from "../components/AiGeneratedNotice";
 import { DemoBanner } from "../components/DemoBanner";
 import { HelpTip } from "../components/HelpTip";
 // AUFTRAG-mega71 BLOCK E (Befund aus mega70 Block E, jetzt frei): diese Fläche trug dieselbe
@@ -96,6 +96,8 @@ import { useAiBillable } from "../lib/useAiBillable";
 import { useAuthorName } from "../lib/useAuthorName";
 import { useKontoKennung } from "../lib/useKontoKennung";
 import { useReadiness } from "../lib/useReadiness";
+// R-0625 (G24): dieselbe Laufzeitprüfung wie das Word-Panel — nur die volle Servermarke zählt.
+import { istKiKennzeichnung } from "../lib/wordAddin";
 
 // Tone → Badge-Stil: seit FE-003 (Runde 2) `EVIDENCE_TONE` aus `components/fragen/QuellenListe.tsx`,
 // derselben Tabelle, die die Quellenzeilen tönt.
@@ -310,11 +312,9 @@ function MehrFlaechenInfo({
           </span>
         </span>
       </div>
-      {/* AUFTRAG-mega61 Block E: der KI-Kennzeichnungssatz VOR der ersten Frage. Der Satz an der
-          erzeugten Ausgabe selbst (Artikel 50) steht unverändert in der Antwortkarte. */}
-      <p className="mb-3">
-        <AiGeneratedNotice />
-      </p>
+      {/* AUFTRAG-mega61 Block E: hier stand der KI-Hinweis VOR der ersten Frage. Seit JOB 3064 (H5)
+          lag er damit hinter „…" → „Mehr" — genau hinter dem Aufklapp-Knopf, den R-0603
+          ausschliesst. Er steht jetzt dauerhaft über dem Fragefeld (`ask-ki-flaechensatz`). */}
       {/* JOB 3038 · „Ehrlichkeit vor Optik": statt eines toten Mikrofonknopfes der Satz, der den
           Zustand nennt. §6 des Auftrags nimmt ihn aus dem Sichtfeld — ohne Spracherkennung fehlt
           das Mikrofon einfach; WARUM es fehlt, steht hier. */}
@@ -1323,6 +1323,8 @@ export function Ask(): JSX.Element {
       steps: result.steps.map((s) => ({ description: s.description, snippet: s.snippet })),
       sources,
       generatedAt,
+      // R-0604: die Datei sagt dasselbe wie die Karte — Kennzeichnung nur mit gültiger Servermarke.
+      aiGenerated: istKiKennzeichnung(result.aiGenerated),
       labels: {
         answer: t("ask.export.answer"),
         evidence: t("ask.evidence"),
@@ -1515,6 +1517,12 @@ export function Ask(): JSX.Element {
             </button>
           </div>
         ) : null}
+        {/* R-0603: der KI-Hinweis DIESER Fläche — dauerhaft, ohne Griff, vor der ersten Frage.
+            Er behauptet keine Erzeugung (R-0604); die steht an der Antwort, gebunden an die
+            Servermarke. ÜBER dem Feld, weil zwischen Feld und Antwort nichts stehen darf (R-0286). */}
+        <p data-testid="ask-ki-flaechensatz" className="m-0 mb-2">
+          <AiSurfaceNotice />
+        </p>
         <FrageFeld
           wert={q}
           onWert={setQ}
@@ -1833,11 +1841,13 @@ export function Ask(): JSX.Element {
                   ) : null}
                   {/* mega62 Block E: der KI-Satz gehört IN die Druckfläche (sonst fehlt er im PDF).
                     D-047: er folgt UNMITTELBAR auf die Antwort statt ihr voranzugehen — Artikel 50
-                    verlangt die Kennzeichnung an der erzeugten Ausgabe, nicht vor ihr. Wortlaut,
-                    Bauteil und Druckfläche unverändert. */}
-                  <p className="m-0">
-                    <AiGeneratedNotice />
-                  </p>
+                    verlangt die Kennzeichnung an der erzeugten Ausgabe, nicht vor ihr. R-0604: nur
+                    mit gültiger Servermarke (G24-Prüfung), sonst kein Satz. */}
+                  {istKiKennzeichnung(result.aiGenerated) ? (
+                    <p className="m-0">
+                      <AiGeneratedNotice />
+                    </p>
+                  ) : null}
                   {/* ==========================================================================
                     R-0287 / R-0286 — DIE WARNUNG STEHT VOLLSTÄNDIG DIREKT HINTER DER ANTWORT.
                     ==========================================================================

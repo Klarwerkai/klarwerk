@@ -2115,8 +2115,17 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // die drei Komponenten über 448 kamen mit dem erneut eingemischten Hauptstand (Grundmenge
     // 549 → 559, davon 2 aus diesem Auftrag). Welche es sind, ist ohne Git-Verlauf an diesem
     // Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // Aufnahme gesamt-ki-kennzeichnung (R-0603/R-0604): 451 → 452. GENAU EIN Bauteil kommt dazu:
+    //     + `AiSurfaceNotice` (`components/AiGeneratedNotice.tsx`) — der dauerhafte Flächensatz
+    //       „hier kann eine KI mitarbeiten" an Auslösern und auf der Fragenseite.
+    // Es rendert ein einziges `<span>` mit einem Katalogsatz, zeigt KEIN Bild, bietet KEINE
+    // Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt kein `documentTitle`-Prop — nur
+    // Grundmenge. In `RichTextEditor.tsx` (schon Träger) wird lediglich ein vorhandenes Bauteil
+    // zusätzlich eingesetzt. ANDERS ALS DIE EINTRÄGE DARÜBER: diese +1 ist GERECHNET, nicht
+    // gemessen — in diesem Auftrag startet die Hand keine Tests; die Messung liefert der Prüflauf.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 451,
+      komponenten: 452,
       anbieter: 1,
       traeger: 2,
     });

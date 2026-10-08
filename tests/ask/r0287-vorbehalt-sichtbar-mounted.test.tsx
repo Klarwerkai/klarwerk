@@ -44,6 +44,13 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
           steps: [],
           demo: false,
           captionSources: [],
+          // R-0604: eine Modellantwort trägt die Servermarke — erst sie trägt den KI-Satz.
+          aiGenerated: {
+            aiGenerated: true,
+            task: "answer",
+            mode: "model",
+            at: "2026-10-08T00:00:00.000Z",
+          },
         },
         gap: null,
         receipt: "r",

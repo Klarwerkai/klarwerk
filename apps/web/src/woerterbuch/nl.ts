@@ -5592,6 +5592,7 @@ const nl: typeof de = {
 
   "ai.generatedNotice":
     "Door kunstmatige intelligentie gegenereerd — controleer dit vakinhoudelijk.",
+  "ai.surfaceNotice": "Hier kan een AI meewerken — door haar gegenereerde inhoud wordt gemarkeerd.",
   "ai.costHint": "Eén klik kan een echte, betaalde cloud-AI-aanvraag veroorzaken.",
   "ai.exportNotice":
     "Door kunstmatige intelligentie gegenereerd (KLARWERK, {{task}}, {{date}}). Inhoudelijk te controleren.",

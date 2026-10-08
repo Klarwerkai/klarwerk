@@ -19,7 +19,9 @@ import { AI_TASK_INFO_TEXT, aiTaskInfo, aiTaskInfoPublic } from "../lib/reasoner
 import { AiCostHint } from "./AiCostHint";
 // AUFTRAG-mega61 Block E: der dauerhaft sichtbare Satz. Er steht hier, damit JEDE Fläche, die
 // heute schon die Modellangabe trägt, ihn ohne weiteres Zutun mitbekommt.
-import { AiGeneratedNotice } from "./AiGeneratedNotice";
+// R-0603/R-0604: diese Fläche sitzt am AUSLÖSER, nie am Ergebnis — deshalb der Flächensatz und
+// nicht „von KI erzeugt": vor dem Klick ist nichts erzeugt.
+import { AiSurfaceNotice } from "./AiGeneratedNotice";
 
 // JOB 615 D7: die Fläche nennt eine Aufgabe — und zwar eine, die es gibt. Der geschlossene Typ
 // macht einen Tippfehler an JEDER der vielen Einbaustellen zum Compilerfehler.
@@ -35,7 +37,7 @@ export function AiModelInfo({ task }: { task: ReasonerTask }): JSX.Element {
     // keine Interaktion, sie schon. Beides bleibt beieinander: was arbeitet (aufklappbar) und dass
     // etwas arbeitet (immer da). Die Modellangabe selbst ist unverändert.
     <span className="inline-flex flex-wrap items-center gap-1.5">
-      <AiGeneratedNotice />
+      <AiSurfaceNotice />
       {/* AUFTRAG-mega67 Block G: diese Fläche KENNT ihre Aufgabe bereits (sie nennt sie ja) und
           hält den öffentlichen Status ohnehin schon — sie leitet den Kostenhinweis daraus ab und
           schweigt, wenn dieser Klick nichts kostet. */}

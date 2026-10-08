@@ -109,7 +109,7 @@ import {
 // weil nur diese Flaeche BEIDE Quellen kennt — den Rumpf im Editor und die Antwort vom Dienst.
 import { objekttextAusRumpf, titelNachRangfolge } from "../lib/titelRangfolge";
 import { AiCostHint } from "./AiCostHint";
-import { AiGeneratedNotice } from "./AiGeneratedNotice";
+import { AiGeneratedNotice, AiSurfaceNotice } from "./AiGeneratedNotice";
 import { AiUnavailableHint } from "./AiUnavailableHint";
 // D44 Teil 2, Weg (a): nur der Ereignisname und seine Nutzlast — keine Komponente, kein Zyklus
 // (`BodyImageGallery` importiert nichts aus dieser Datei, gemessen).
@@ -3192,9 +3192,11 @@ export function RichTextEditor({
               {!imageDescribe.available ? <AiUnavailableHint show={true} /> : null}
               {/* AUFTRAG-mega61 Block E: die Bildbeschreibung erzeugt Text, den es vorher nicht
                   gab — sie trägt den Hinweis dauerhaft, nicht erst am Ergebnis.
-                  AUFTRAG-mega62 Block F: der Kostenhinweis daneben, aus demselben Grund. */}
+                  AUFTRAG-mega62 Block F: der Kostenhinweis daneben, aus demselben Grund.
+                  R-0603/R-0604: am Auslöser der Flächensatz; „von KI erzeugt" steht am Vorschlag
+                  darunter — den gibt es nur aus einem Modelltext (`captionSuggestOutcome`). */}
               <p className="mt-1">
-                <AiGeneratedNotice /> <AiCostHint billable={imageDescribe.billable} />
+                <AiSurfaceNotice /> <AiCostHint billable={imageDescribe.billable} />
               </p>
 
               {/* 4. Der Vorschlag als EIGENER, sichtbar abgesetzter Block — als KI-Vorschlag
@@ -3215,6 +3217,7 @@ export function RichTextEditor({
                   <p className="mt-1 text-[12.5px] leading-relaxed text-text">
                     {captionFormAi.text}
                   </p>
+                  <AiGeneratedNotice className="mt-1 block" />
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button
                       type="button"

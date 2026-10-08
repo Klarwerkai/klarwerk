@@ -19,10 +19,27 @@
 // ist nicht bedienbar, also gehört er auch nicht in die Tabreihenfolge), und `text-muted` statt
 // `text-muted-2` — die Transparenzhinweise müssen nach Artikel 50 Absatz 5 ausdrücklich die
 // Barrierefreiheitsanforderungen erfüllen, und das schließt den Kontrast ein.
+//
+// ================================================================================================
+// R-0603 / R-0604 (G22, mega83 A) — ZWEI AUSSAGEN, ZWEI BAUTEILE.
+// ================================================================================================
+//
+// Bis hierher stand „Von künstlicher Intelligenz erzeugt" auch an Stellen, an denen noch gar
+// nichts erzeugt war (Auslöser, Fragenseite vor der ersten Frage) und an Ergebnissen, die kein
+// Modell geschrieben hatte (deterministischer Rückfall, regelbasierte Antwort aus geprüftem
+// Wissen). Das sind zwei verschiedene Aussagen:
+//   · `AiSurfaceNotice`  — DIESE FLÄCHE kann mit KI arbeiten. Dauerhaft, an jedem Auslöser und
+//                          auf jeder KI-Fläche (R-0603). Behauptet keine Erzeugung.
+//   · `AiGeneratedNotice` — DIESER TEXT wurde von KI erzeugt. Nur am Ergebnis, und nur dort, wo
+//                          das Signal es trägt: die serverseitige Marke (`istKiKennzeichnung`) oder
+//                          ein Ergebnis mit `demo: false` (R-0604). Im Zweifel steht er nicht.
+// Wortlaut von `ai.generatedNotice` unverändert; der Flächensatz ist ein eigener Schlüssel.
 import { useTranslation } from "react-i18next";
 
 /** Der i18n-Schlüssel, einmal. Sammler und Tests lesen ihn hier statt ihn abzuschreiben. */
 export const AI_GENERATED_NOTICE_KEY = "ai.generatedNotice";
+/** R-0603: der dauerhafte Flächensatz — behauptet keine Erzeugung. */
+export const AI_SURFACE_NOTICE_KEY = "ai.surfaceNotice";
 
 export function AiGeneratedNotice({ className }: { className?: string }): JSX.Element {
   const { t } = useTranslation();
@@ -32,6 +49,18 @@ export function AiGeneratedNotice({ className }: { className?: string }): JSX.El
       className={`text-[11.5px] leading-snug text-muted ${className ?? ""}`}
     >
       {t(AI_GENERATED_NOTICE_KEY)}
+    </span>
+  );
+}
+
+export function AiSurfaceNotice({ className }: { className?: string }): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <span
+      data-testid="ai-surface-notice"
+      className={`text-[11.5px] leading-snug text-muted ${className ?? ""}`}
+    >
+      {t(AI_SURFACE_NOTICE_KEY)}
     </span>
   );
 }

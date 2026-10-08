@@ -3410,8 +3410,10 @@ export function Blatt({
               {/* mega61 Block E: der dauerhaft sichtbare KI-Satz (Art. 50 Abs. 1 und 5 KI-VO). Er
                   stand an der Vordertür und gehört an JEDE Modellfläche — diese Karte IST die
                   Modellfläche des Blattes. Er steht IN der Karte, nicht auf dem ruhenden Blatt:
-                  sichtbar, sobald ein Vorschlag da ist, und ohne Erklärtext auf dem leeren Blatt. */}
-              <AiGeneratedNotice className="mt-1.5 block" />
+                  sichtbar, sobald ein Vorschlag da ist, und ohne Erklärtext auf dem leeren Blatt.
+                  R-0604: nur, wenn ein Modell ihn geschrieben hat — den regelbasierten Rückfall
+                  benennt die Rückfall-Plakette darüber, „von KI erzeugt" wäre dort falsch. */}
+              {structureProposal.demo ? null : <AiGeneratedNotice className="mt-1.5 block" />}
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
@@ -3455,8 +3457,9 @@ export function Blatt({
               <p className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[13px] leading-relaxed text-text">
                 {assistProposal.text}
               </p>
-              {/* mega61 Block E — wie oben: auch die KI-Hilfe ist eine Modellfläche. */}
-              <AiGeneratedNotice className="mt-1.5 block" />
+              {/* mega61 Block E — wie oben: auch die KI-Hilfe ist eine Modellfläche.
+                  R-0604: dieselbe Bindung an den Modellweg wie beim Strukturvorschlag. */}
+              {assistProposal.demo ? null : <AiGeneratedNotice className="mt-1.5 block" />}
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"

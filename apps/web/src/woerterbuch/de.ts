@@ -7149,6 +7149,11 @@ const de = {
   // Fläche anders formuliert wäre, wäre weder klar noch unterscheidbar — und ein zweiter Wortlaut
   // wäre eine zweite Wahrheit über dasselbe Produkt.
   "ai.generatedNotice": "Von künstlicher Intelligenz erzeugt — bitte fachlich prüfen.",
+  // R-0603 / R-0604: der DAUERHAFTE Satz an Auslösern und KI-Flächen. Er sagt, dass hier eine KI
+  // mitarbeiten kann — nicht, dass etwas erzeugt wurde. Das sagt `ai.generatedNotice`, und zwar
+  // nur am Ergebnis, das ein Modell wirklich geschrieben hat.
+  "ai.surfaceNotice":
+    "Hier kann eine KI mitarbeiten — von ihr erzeugte Inhalte sind gekennzeichnet.",
 
   // ==============================================================================================
   // AUFTRAG-mega62 BLOCK F — DER KOSTENHINWEIS AN JEDER AUSLÖSESTELLE.

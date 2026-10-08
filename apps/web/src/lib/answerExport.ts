@@ -79,6 +79,13 @@ export interface AnswerExportInput {
   sources: readonly AnswerExportSource[];
   generatedAt: string; // ISO-Zeitstempel
   labels: AnswerExportLabels;
+  /**
+   * R-0604 (G22): trägt die Antwort die serverseitige KI-Kennzeichnung? Nur ein ausdrückliches
+   * `false` nimmt Kopfblock und Satz heraus — dann hat kein Modell den Text geschrieben, und die
+   * Datei soll es nicht behaupten. Fehlt die Angabe, bleibt die Kennzeichnung stehen: Unbekannt
+   * wird nicht still zu „keine KI" (R-0625).
+   */
+  aiGenerated?: boolean;
 }
 
 function sourceLine(source: AnswerExportSource, trustLabel: string): string {
@@ -117,6 +124,9 @@ function sourceLine(source: AnswerExportSource, trustLabel: string): string {
 const FRONTMATTER_TRENNER = "---";
 
 function frontmatter(input: AnswerExportInput): string[] {
+  if (input.aiGenerated === false) {
+    return [];
+  }
   return [
     FRONTMATTER_TRENNER,
     "ai-generated: true",
@@ -133,8 +143,10 @@ export function buildAnswerMarkdown(input: AnswerExportInput): string {
   const lines: string[] = [...frontmatter(input)];
   lines.push(`# ${input.question.trim() || "—"}`);
   lines.push("");
-  lines.push(`_${L.aiNotice.trim()}_`);
-  lines.push("");
+  if (input.aiGenerated !== false) {
+    lines.push(`_${L.aiNotice.trim()}_`);
+    lines.push("");
+  }
   const meta = [
     input.statusLabel,
     `${L.evidence}: ${input.evidenceLabel}`,
