@@ -703,6 +703,9 @@ export const endpoints = {
   },
   conflicts: {
     list: () => api.get<Conflict[]>("/conflicts"),
+    // R-1662: die von einem Menschen gelösten Konflikte zu genau diesen Objekten (Lösungsweg).
+    geloest: (koIds: readonly string[]) =>
+      api.get<Conflict[]>(`/conflicts/geloest?ko=${koIds.map(encodeURIComponent).join(",")}`),
     get: (id: string) => api.get<Conflict>(`/conflicts/${id}`),
     escalate: (id: string) => api.post<Conflict>(`/conflicts/${id}/escalate`),
     secondOpinion: (id: string, opinion: string) =>

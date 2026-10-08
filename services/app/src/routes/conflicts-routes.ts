@@ -97,6 +97,10 @@ export function deckungAus(ko: { aiCheck?: AiCheck }): Deckung {
   };
 }
 
+/** R-1662: so viele Objekte nimmt `GET /api/conflicts/geloest` je Anfrage an (die Quellen EINER
+ *  Antwort); was darüber liegt, wird nicht gelesen. */
+const GELOEST_HOECHSTENS_OBJEKTE = 50;
+
 export interface EigeneKoQuelle {
   list: () => Promise<readonly EigenesKoFaktum[]>;
 }
@@ -235,6 +239,37 @@ export function conflictRoutes(
         sichten.push(
           redigiereKonflikt(konflikt, await feldFreigabe(user, konflikt.koA, konflikt.koB, kos)),
         );
+      }
+      reply.code(200).send(sichten);
+    });
+
+    // R-1662 (geführter Weg vom Problem zur Lösung, Prüfpunkt 5): die von einem Menschen gelösten
+    // Konflikte zu den Quellen EINER Antwort. Die Liste oben führt nur offene; gelöste gab es für
+    // Leser bisher nirgends. Dasselbe Routenrecht, dasselbe Paar-Tor und dieselbe Feldredaktion wie
+    // dort. Zusätzlich geht bei einer Redaktion auch die Entscheidung: sie ist Freitext über genau
+    // die beiden Objekte und kann den Inhalt des zurückgehaltenen wiedergeben.
+    app.get<{ Querystring: { ko?: string } }>("/api/conflicts/geloest", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      const koIds = [
+        ...new Set(
+          (request.query.ko ?? "")
+            .split(",")
+            .map((id) => id.trim())
+            .filter((id) => id.length > 0),
+        ),
+      ].slice(0, GELOEST_HOECHSTENS_OBJEKTE);
+      const geloest = await conflicts.geloesteFuer(koIds);
+      const sichtbar = await sichtbarePaare(user, geloest, kos);
+      const sichten = [];
+      for (const konflikt of sichtbar) {
+        const sicht = redigiereKonflikt(
+          konflikt,
+          await feldFreigabe(user, konflikt.koA, konflikt.koB, kos),
+        );
+        sichten.push(sicht.redacted ? { ...sicht, decision: "", secondOpinion: null } : sicht);
       }
       reply.code(200).send(sichten);
     });

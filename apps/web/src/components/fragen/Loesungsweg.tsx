@@ -12,7 +12,12 @@
 import { ArrowRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import type { Problemloesungsweg, WegQuelle } from "../../lib/problemloesungsweg";
+import type {
+  GeloesterKonfliktHinweis,
+  Problemloesungsweg,
+  WegBefund,
+  WegQuelle,
+} from "../../lib/problemloesungsweg";
 import { RoleLink } from "../RoleLink";
 
 // Jede Klassenbindung dieser Datei ist ein Literal: der Klassensammler
@@ -54,12 +59,31 @@ export function VermeidenWarnung({
   );
 }
 
+/** Laden und Fehler einer Prüfung — eigener Satz statt „keine": ein Netzfehler ist keine Auskunft. */
+function BefundStand({ befund }: { befund: WegBefund<unknown> }): JSX.Element | null {
+  const { t } = useTranslation();
+  if (befund.stand === "da") {
+    return null;
+  }
+  return (
+    <span data-stand={befund.stand} className="block text-[12px] text-muted-2">
+      {t(befund.stand === "laedt" ? "loesungsweg.stand.laedt" : "loesungsweg.stand.fehler")}
+    </span>
+  );
+}
+
 export function LoesungswegSchritte({
   weg,
+  konflikte,
+  revalidierung,
   wissenHref,
   nameVon,
 }: {
   weg: Problemloesungsweg;
+  /** R-1662 Prüfpunkt 5: gelöste Konflikte zu den Quellen (`lib/problemloesungsweg.ts`). */
+  konflikte: WegBefund<GeloesterKonfliktHinweis>;
+  /** R-1662 Prüfpunkt 6: Quellen mit offenem Revalidierungsfall. */
+  revalidierung: WegBefund<WegQuelle>;
   wissenHref: (id: string) => string;
   nameVon: (ref: string) => string;
 }): JSX.Element {
@@ -100,6 +124,92 @@ export function LoesungswegSchritte({
             ))}
           </li>
         ) : null}
+        <li data-testid="ask-loesungsweg-revalidierung">
+          <span className="block font-semibold">{t("loesungsweg.schritt.revalidierung")}</span>
+          <BefundStand befund={revalidierung} />
+          {revalidierung.stand === "da" && revalidierung.eintraege.length === 0 ? (
+            <span className="block text-[12px] text-muted-2">
+              {t("loesungsweg.revalidierung.keine")}
+            </span>
+          ) : null}
+          {revalidierung.stand === "da" && revalidierung.eintraege.length > 0 ? (
+            <>
+              <span className="block text-[12px] text-muted-2">
+                {t("loesungsweg.revalidierung.text")}
+              </span>
+              <ul className="mt-1 space-y-1">
+                {revalidierung.eintraege.map((q) => (
+                  <li key={q.id} data-testid="ask-loesungsweg-revalidierung-fall">
+                    <Link
+                      to={wissenHref(q.id)}
+                      className="mr-3 inline-flex items-center gap-1 font-medium text-brand-text hover:underline"
+                    >
+                      {q.label}
+                    </Link>
+                    {/* /lebenszyklus verlangt „controller": über `RoleLink` sieht, wer den Fall
+                        nicht öffnen darf, die Lage statt eines toten Links. */}
+                    <RoleLink
+                      to={`/lebenszyklus?fall=${encodeURIComponent(q.id)}`}
+                      testId="ask-loesungsweg-revalidierung-link"
+                      className="inline-flex items-center gap-1 text-[12px] font-semibold text-brand-text"
+                      hoverClassName="hover:underline"
+                    >
+                      {(erreichbar) => (
+                        <>
+                          {t("loesungsweg.revalidierung.fall")}
+                          {erreichbar ? <ArrowRight size={12} aria-hidden="true" /> : null}
+                        </>
+                      )}
+                    </RoleLink>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </li>
+        <li data-testid="ask-loesungsweg-konflikte">
+          <span className="block font-semibold">{t("loesungsweg.schritt.konflikte")}</span>
+          <BefundStand befund={konflikte} />
+          {konflikte.stand === "da" && konflikte.eintraege.length === 0 ? (
+            <span className="block text-[12px] text-muted-2">
+              {t("loesungsweg.konflikt.keine")}
+            </span>
+          ) : null}
+          {konflikte.stand === "da" && konflikte.eintraege.length > 0 ? (
+            <ul className="mt-1 space-y-2">
+              {konflikte.eintraege.map((k) => (
+                <li key={k.id} data-testid="ask-loesungsweg-konflikt">
+                  <Link
+                    to={wissenHref(k.quelle.id)}
+                    className="font-medium text-brand-text hover:underline"
+                  >
+                    {k.quelle.label}
+                  </Link>
+                  {" ↔ "}
+                  <Link
+                    to={wissenHref(k.gegen.id)}
+                    className="font-medium text-brand-text hover:underline"
+                  >
+                    {k.gegen.label}
+                  </Link>
+                  <span data-ausgang={k.ausgang} className="block text-[12px] text-muted-2">
+                    {t(`loesungsweg.konflikt.${k.ausgang}`)}
+                  </span>
+                  {k.entscheidung ? (
+                    <span className="block text-[12px] text-text">
+                      {t("loesungsweg.konflikt.entscheidung", { text: k.entscheidung })}
+                    </span>
+                  ) : null}
+                  {k.zurueckgehalten ? (
+                    <span className="block text-[12px] text-muted-2">
+                      {t("loesungsweg.konflikt.zurueckgehalten")}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </li>
         <li data-testid="ask-loesungsweg-personen">
           <span className="block font-semibold">{t("loesungsweg.schritt.personen")}</span>
           {weg.personen.length > 0 ? (

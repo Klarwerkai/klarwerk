@@ -12,6 +12,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const bestand = vi.hoisted(() => ({
   kos: [] as unknown[],
   antwort: null as unknown,
+  // Ben, Nacharbeit 2: gelöste Konflikte und Revalidierungsliste (Prüfpunkte 5 und 6).
+  geloest: [] as unknown[],
+  faellig: [] as string[],
+  faelligFehler: false,
 }));
 
 vi.mock("../../apps/web/src/app/RoleContext", () => ({
@@ -20,7 +24,18 @@ vi.mock("../../apps/web/src/app/RoleContext", () => ({
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
     ko: { list: vi.fn(async () => bestand.kos) },
-    conflicts: { list: vi.fn(async () => []) },
+    conflicts: {
+      list: vi.fn(async () => []),
+      geloest: vi.fn(async () => bestand.geloest),
+    },
+    lifecycle: {
+      pending: vi.fn(async () => {
+        if (bestand.faelligFehler) {
+          throw new Error("Revalidierungsliste nicht erreichbar");
+        }
+        return bestand.faellig;
+      }),
+    },
     directory: {
       list: vi.fn(async () => [
         { id: "u1", name: "Anna Ventil" },
@@ -164,6 +179,9 @@ const FEHLER = ko("k2", "Dichtung nicht nachziehen", "negativwissen", "u2", "u3"
 afterEach(() => {
   vi.clearAllMocks();
   document.body.innerHTML = "";
+  bestand.geloest = [];
+  bestand.faellig = [];
+  bestand.faelligFehler = false;
 });
 
 describe("R-1662 · Lösungsweg an der echten Fragen-Seite", () => {
@@ -243,6 +261,88 @@ describe("R-1662 · Lösungsweg an der echten Fragen-Seite", () => {
     expect(container.querySelector('[data-testid="ask-vermeiden"]')).toBeNull();
     const blatt = await blattOeffnen(container);
     expect(blatt.querySelector('[data-testid="ask-loesungsweg-vermeiden"]')).toBeNull();
+    unmount();
+  });
+
+  // Ben, Nacharbeit 2 — Prüfpunkte 5 und 6 des Addendums an der echten Seite.
+  it("gelöste Konflikte und fällige Revalidierung stehen mit ihren Quellen im Blatt", async () => {
+    await i18n.changeLanguage("de");
+    const ALT = ko("k9", "Druck nach 20 Minuten nachregeln", "technik", "u2", "u2");
+    bestand.kos = [LOESUNG, ALT];
+    bestand.antwort = antwort(["k1"], ["k1"]);
+    bestand.geloest = [
+      {
+        id: "c1",
+        koA: "k9",
+        koB: "k1",
+        type: "truth",
+        description: "Widerspruch zur Druckangabe.",
+        status: "geloest",
+        secondOpinion: null,
+        decidedBy: "u3",
+        decision: "Druckspeicher zuerst; Nachregeln nur bei Baureihe 3.",
+        resolutionReason: "decided",
+        createdAt: "2026-02-01T00:00:00.000Z",
+      },
+    ];
+    bestand.faellig = ["k1", "fremd"];
+    const { container, unmount } = await mountAsk();
+    const blatt = await blattOeffnen(container);
+    await act(flush);
+
+    const konflikte = [...blatt.querySelectorAll('[data-testid="ask-loesungsweg-konflikt"]')];
+    expect(konflikte, "der gelöste Konflikt der Quelle fehlt im Blatt").toHaveLength(1);
+    const k = konflikte[0] as HTMLElement;
+    expect(k.textContent).toContain("Druckspeicher prüfen");
+    expect(k.textContent).toContain("Druck nach 20 Minuten nachregeln");
+    expect(k.textContent).toContain(i18n.t("loesungsweg.konflikt.entschieden"));
+    expect(k.textContent).toContain("Druckspeicher zuerst; Nachregeln nur bei Baureihe 3.");
+    expect([...k.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual([
+      "/wissen/k1",
+      "/wissen/k9",
+    ]);
+
+    const faelle = [
+      ...blatt.querySelectorAll('[data-testid="ask-loesungsweg-revalidierung-fall"]'),
+    ];
+    expect(faelle, "nur die Quelle der Antwort, nicht der fremde Fall").toHaveLength(1);
+    expect(faelle[0]?.textContent).toContain("Druckspeicher prüfen");
+    expect(blatt.textContent).toContain(i18n.t("loesungsweg.revalidierung.text"));
+    // /lebenszyklus verlangt „controller": die Expertin sieht die Lage, keinen toten Link.
+    const fallLink = blatt.querySelector('[data-testid="ask-loesungsweg-revalidierung-link"]');
+    expect(fallLink?.getAttribute("data-role-no-reach")).toBe("true");
+    // Abgerufen wird mit genau den Quellen der Antwort.
+    const { endpoints } = await import("../../apps/web/src/api/endpoints");
+    expect(endpoints.conflicts.geloest).toHaveBeenCalledWith(["k1"]);
+    unmount();
+  });
+
+  it("nichts gefunden heisst „keine“ — ein Abruffehler heisst „nicht abrufbar“, nie „keine“", async () => {
+    await i18n.changeLanguage("de");
+    bestand.kos = [LOESUNG];
+    bestand.antwort = antwort(["k1"], ["k1"]);
+    bestand.faelligFehler = true;
+    const { container, unmount } = await mountAsk();
+    const blatt = await blattOeffnen(container);
+    await act(flush);
+
+    const konflikte = blatt.querySelector('[data-testid="ask-loesungsweg-konflikte"]');
+    expect(konflikte?.textContent).toContain(i18n.t("loesungsweg.konflikt.keine"));
+    const reval = blatt.querySelector('[data-testid="ask-loesungsweg-revalidierung"]');
+    expect(reval?.textContent).toContain(i18n.t("loesungsweg.stand.fehler"));
+    expect(reval?.textContent).not.toContain(i18n.t("loesungsweg.revalidierung.keine"));
+    unmount();
+  });
+
+  it("ohne geöffnetes Blatt wird weder nach Konflikten noch nach Revalidierung gefragt", async () => {
+    await i18n.changeLanguage("de");
+    bestand.kos = [LOESUNG];
+    bestand.antwort = antwort(["k1"], ["k1"]);
+    const { container, unmount } = await mountAsk();
+    expect(container.querySelector('[data-testid="ask-loesungsweg"]')).not.toBeNull();
+    const { endpoints } = await import("../../apps/web/src/api/endpoints");
+    expect(endpoints.conflicts.geloest).not.toHaveBeenCalled();
+    expect(endpoints.lifecycle.pending).not.toHaveBeenCalled();
     unmount();
   });
 

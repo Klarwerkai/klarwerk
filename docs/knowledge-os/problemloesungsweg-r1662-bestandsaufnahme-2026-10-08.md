@@ -32,6 +32,18 @@ Dateien: `apps/web/src/lib/problemloesungsweg.ts` (Ableitung, DOM-frei),
 Einbindung in `apps/web/src/pages/Ask.tsx`. Tests: `tests/loesungsweg/problemloesungsweg.test.ts`,
 `tests/loesungsweg/loesungsweg-mounted.test.tsx`.
 
+**Nacharbeit 2 (Befund Ben: Prüfpunkte 5 und 6 fehlten).** Das Blatt prüft jetzt auch gelöste
+Konflikte und offene Revalidierungsfälle der Quellen. Beide Abrufe laufen erst mit offenem Blatt.
+Scheitert einer, steht „nicht abrufbar“ und nie „keine“. Für gelöste Konflikte gab es keinen
+Leseweg (`GET /api/conflicts` führt nur offene). Neu ist deshalb `GET /api/conflicts/geloest?ko=…`:
+- `ConflictService.geloesteFuer` liefert nur von einem Menschen abgeschlossene Konflikte
+  (`decided`, `dismissed`). Systemische Abschlüsse wie `superseded` bleiben draußen.
+- Routenrecht `ko.read` und Paar-Tor `sichtbarePaare` wie bei der Liste. Bei Feldredaktion wird
+  zusätzlich die Entscheidung geleert.
+- Eingetragen in `tests/security/routeGuardAudit.ts`, `tests/security/mega74-lesewege-sammler.test.ts`,
+  `tests/beta-rollenabnahme/tabelle.ts` und `docs/architektur/http-api-referenz.md`.
+- Test: `tests/loesungsweg/geloeste-konflikte-route.test.ts`.
+
 ## Abgleich mit dem Originalwortlaut
 
 | Prüfpunkt des Addendums | Stand |
@@ -40,8 +52,8 @@ Einbindung in `apps/web/src/pages/Ask.tsx`. Tests: `tests/loesungsweg/problemloe
 | 2 ähnliche Fälle | nur als ähnliche Wissensobjekte über die Suche; eine eigene Einheit „Fall“ gibt es im Produkt nicht – **offen** |
 | 3 Negativwissen | **neu** (Warnung und Schritt) |
 | 4 bekannte Fehlerauslöser | kein eigenes Feld; nur, soweit sie im Negativwissen stehen – **offen** |
-| 5 offene oder gelöste Konflikte | offene Konflikte vorhanden (`conflict.impact`, `ask-conflict-caveat`); gelöste werden an der Antwort nicht genannt – **offen** |
-| 6 alte Revalidierungsfälle | an der Antwort nicht gezeigt – **offen** |
+| 5 offene oder gelöste Konflikte | offene Konflikte vorhanden (`conflict.impact`, `ask-conflict-caveat`). **Neu seit Nacharbeit 2:** gelöste Konflikte (von einem Menschen entschieden oder als Fehlalarm geschlossen) zu den Quellen der Antwort stehen im Blatt, mit beiden Objekten und der Entscheidung. Leseweg `GET /api/conflicts/geloest` (Paar-Tor, Feldredaktion inkl. Entscheidung) |
+| 6 alte Revalidierungsfälle | **Neu seit Nacharbeit 2:** Quellen der Antwort mit offenem Revalidierungsfall (`GET /api/lifecycle/pending`) stehen im Blatt mit Link zur Quelle und zum Fall (`/lebenszyklus?fall=…`, über `RoleLink`). Frühere, schon bestätigte Revalidierungen nennt die Fläche nicht: sie stehen nur im Prüfprotokoll (`ko.revalidated`) – **offen** |
 | 7 Quellen / Artikel / SOPs | vorhanden (Quellenchips, Quellenliste im Blatt „Mehr“) |
 | 8 passende Experten | **neu**: Autor und Originalautor. Prüfer ähnlicher Objekte fehlen, die Fläche erhält keine Prüferdaten – **offen** |
 | 9 Wissenslücke | vorhanden: automatisch angelegte Lücke (`services/ask/src/service.ts`, `createGap`), Lückenkarte „Keine belastbare Grundlage“, Weg zur Erfassung |

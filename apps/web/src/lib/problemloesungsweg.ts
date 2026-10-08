@@ -14,7 +14,17 @@
 //   · Die Rahmung hängt an der EINEN Einstufung (`AnswerGrade`): „validiert" sagt sie nur bei
 //     `verified` — sonst wäre sie die Sicherheitsbehauptung, die mega33 beseitigt hat.
 // Prüfer ähnlicher Objekte nennt sie NICHT: der Bestand liefert sie der Fläche nicht.
-import type { KnowledgeObject } from "../api/types";
+//
+// Ben, Nacharbeit 2 — Prüfpunkte 5 und 6 des Addendums („Gibt es offene oder gelöste Konflikte?",
+// „Gibt es alte Revalidierungsfälle?") werden jetzt wirklich geprüft, nicht nur benannt:
+//   · `geloesteKonflikte`: die von einem Menschen gelösten Konflikte, an denen eine Quelle der
+//     Antwort beteiligt ist (`GET /api/conflicts/geloest`, dort Paar-Tor und Feldredaktion).
+//     Offene Konflikte stehen weiter im Warnblock der Antwort (`conflict.impact`).
+//   · `revalidierungsfaelle`: die Quellen der Antwort, die in der Revalidierungsliste stehen
+//     (`GET /api/lifecycle/pending`) — ein offener Fall heisst, die Gültigkeit ist neu zu prüfen.
+// Beide sagen „nicht abrufbar", wenn der Abruf scheitert, und nie „keine": ein Netzfehler ist
+// keine Auskunft über den Bestand (dieselbe Regel wie `conflictKnowledge`).
+import type { Conflict, KnowledgeObject } from "../api/types";
 import type { AnswerGrade } from "./answerGrade";
 
 export interface WegQuelle {
@@ -83,4 +93,85 @@ export function problemloesungsweg(
     vermeiden,
     personen: [...personen.values()],
   };
+}
+
+/** Der Stand eines Abrufs, wie die Fläche ihn kennt — „fehler" ist keine leere Liste. */
+export type WegAbruf<T> = { stand: "laedt" } | { stand: "fehler" } | { stand: "da"; daten: T };
+
+/** Der Abrufstand aus einer react-query-Abfrage: Fehler vor Daten, keine Daten heisst „lädt". */
+export function wegAbrufAus<T>(abfrage: { data: T | undefined; isError: boolean }): WegAbruf<T> {
+  if (abfrage.isError) {
+    return { stand: "fehler" };
+  }
+  return abfrage.data === undefined ? { stand: "laedt" } : { stand: "da", daten: abfrage.data };
+}
+
+/** Ein Ergebnis der Prüfung: noch offen, nicht abrufbar, oder die gefundenen Einträge. */
+export type WegBefund<T> =
+  | { stand: "laedt" }
+  | { stand: "fehler" }
+  | { stand: "da"; eintraege: T[] };
+
+export interface GeloesterKonfliktHinweis {
+  id: string;
+  /** Die Quelle der Antwort, an der der Konflikt hing. */
+  quelle: WegQuelle;
+  /** Die Gegenseite: Titel aus dem Bestand, sonst ihre Kennung (nie erfunden). */
+  gegen: { id: string; label: string };
+  /** „fehlalarm" = als kein Widerspruch geschlossen; sonst von einem Menschen entschieden. */
+  ausgang: "entschieden" | "fehlalarm";
+  /** Der Entscheidungstext — `null`, wenn keiner vorliegt oder der Server ihn zurückhält. */
+  entscheidung: string | null;
+  zurueckgehalten: boolean;
+}
+
+export function geloesteKonflikte(
+  quellen: readonly WegQuelle[],
+  kosById: ReadonlyMap<string, Pick<KnowledgeObject, "title">>,
+  abruf: WegAbruf<readonly Conflict[]>,
+): WegBefund<GeloesterKonfliktHinweis> {
+  if (abruf.stand !== "da") {
+    return abruf;
+  }
+  // Ein Abruf, der keine Liste ist (Anmeldeumleitung, Zwischenspeicher), ist keine Auskunft.
+  if (!Array.isArray(abruf.daten)) {
+    return { stand: "fehler" };
+  }
+  const jeId = new Map(quellen.map((q) => [q.id, q]));
+  const eintraege: GeloesterKonfliktHinweis[] = [];
+  const gesehen = new Set<string>();
+  for (const q of quellen) {
+    for (const k of abruf.daten) {
+      if (k.status !== "geloest" || gesehen.has(k.id) || (k.koA !== q.id && k.koB !== q.id)) {
+        continue;
+      }
+      gesehen.add(k.id);
+      const gegenId = k.koA === q.id ? k.koB : k.koA;
+      const gegenLabel = jeId.get(gegenId)?.label ?? kosById.get(gegenId)?.title ?? gegenId;
+      const text = k.decision?.trim() ?? "";
+      eintraege.push({
+        id: k.id,
+        quelle: q,
+        gegen: { id: gegenId, label: gegenLabel },
+        ausgang: k.resolutionReason === "dismissed" ? "fehlalarm" : "entschieden",
+        entscheidung: k.redacted || text.length === 0 ? null : text,
+        zurueckgehalten: k.redacted === true,
+      });
+    }
+  }
+  return { stand: "da", eintraege };
+}
+
+export function revalidierungsfaelle(
+  quellen: readonly WegQuelle[],
+  abruf: WegAbruf<readonly string[]>,
+): WegBefund<WegQuelle> {
+  if (abruf.stand !== "da") {
+    return abruf;
+  }
+  if (!Array.isArray(abruf.daten)) {
+    return { stand: "fehler" };
+  }
+  const faellig = new Set(abruf.daten);
+  return { stand: "da", eintraege: quellen.filter((q) => faellig.has(q.id)) };
 }

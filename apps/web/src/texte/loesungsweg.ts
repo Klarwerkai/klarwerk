@@ -32,6 +32,20 @@ export default {
     "loesungsweg.vermeiden.titel": "Bekannte Fehler – was vermeiden",
     "loesungsweg.vermeiden.text":
       "Unter den Quellen ist Negativwissen: Dort steht, was in einem ähnlichen Fall nicht funktioniert hat.",
+    "loesungsweg.schritt.konflikte": "Gelöste Konflikte zu diesen Quellen",
+    "loesungsweg.konflikt.entschieden": "Von einem Menschen entschieden",
+    "loesungsweg.konflikt.fehlalarm": "Als Fehlalarm geschlossen – kein Widerspruch",
+    "loesungsweg.konflikt.entscheidung": "Entscheidung: {{text}}",
+    "loesungsweg.konflikt.zurueckgehalten":
+      "Die Entscheidung betrifft ein Objekt, dessen Inhalt du nicht sehen darfst.",
+    "loesungsweg.konflikt.keine": "Zu diesen Quellen gibt es keinen gelösten Konflikt.",
+    "loesungsweg.schritt.revalidierung": "Revalidierung fällig",
+    "loesungsweg.revalidierung.text":
+      "Diese Quellen sind zur erneuten Prüfung vorgemerkt – ihre Gültigkeit ist derzeit nicht bestätigt.",
+    "loesungsweg.revalidierung.fall": "Zum Revalidierungsfall",
+    "loesungsweg.revalidierung.keine": "Keine dieser Quellen ist zur Revalidierung vorgemerkt.",
+    "loesungsweg.stand.laedt": "Wird geprüft …",
+    "loesungsweg.stand.fehler": "Nicht abrufbar – darüber ist gerade nichts bekannt.",
   },
   en: {
     "loesungsweg.oeffnen": "Solution path",
@@ -52,6 +66,20 @@ export default {
     "loesungsweg.vermeiden.titel": "Known mistakes – what to avoid",
     "loesungsweg.vermeiden.text":
       "The sources include negative knowledge: it records what did not work in a similar case.",
+    "loesungsweg.schritt.konflikte": "Resolved conflicts on these sources",
+    "loesungsweg.konflikt.entschieden": "Decided by a person",
+    "loesungsweg.konflikt.fehlalarm": "Closed as a false alarm – no contradiction",
+    "loesungsweg.konflikt.entscheidung": "Decision: {{text}}",
+    "loesungsweg.konflikt.zurueckgehalten":
+      "The decision concerns an item whose content you are not allowed to see.",
+    "loesungsweg.konflikt.keine": "There is no resolved conflict on these sources.",
+    "loesungsweg.schritt.revalidierung": "Revalidation due",
+    "loesungsweg.revalidierung.text":
+      "These sources are marked for another review – their validity is not confirmed at the moment.",
+    "loesungsweg.revalidierung.fall": "Open the revalidation case",
+    "loesungsweg.revalidierung.keine": "None of these sources is marked for revalidation.",
+    "loesungsweg.stand.laedt": "Checking …",
+    "loesungsweg.stand.fehler": "Not available – nothing is known about this right now.",
   },
   nl: {
     "loesungsweg.oeffnen": "Oplossingsroute",
@@ -72,5 +100,19 @@ export default {
     "loesungsweg.vermeiden.titel": "Bekende fouten – wat te vermijden",
     "loesungsweg.vermeiden.text":
       "Onder de bronnen is negatieve kennis: daar staat wat in een vergelijkbaar geval niet heeft gewerkt.",
+    "loesungsweg.schritt.konflikte": "Opgeloste conflicten bij deze bronnen",
+    "loesungsweg.konflikt.entschieden": "Door een persoon beslist",
+    "loesungsweg.konflikt.fehlalarm": "Als vals alarm gesloten – geen tegenspraak",
+    "loesungsweg.konflikt.entscheidung": "Beslissing: {{text}}",
+    "loesungsweg.konflikt.zurueckgehalten":
+      "De beslissing betreft een object waarvan je de inhoud niet mag zien.",
+    "loesungsweg.konflikt.keine": "Bij deze bronnen is er geen opgelost conflict.",
+    "loesungsweg.schritt.revalidierung": "Hervalidatie nodig",
+    "loesungsweg.revalidierung.text":
+      "Deze bronnen zijn gemarkeerd voor een nieuwe controle – hun geldigheid is op dit moment niet bevestigd.",
+    "loesungsweg.revalidierung.fall": "Naar het hervalidatiegeval",
+    "loesungsweg.revalidierung.keine": "Geen van deze bronnen is gemarkeerd voor hervalidatie.",
+    "loesungsweg.stand.laedt": "Wordt gecontroleerd …",
+    "loesungsweg.stand.fehler": "Niet beschikbaar – hierover is op dit moment niets bekend.",
   },
 } satisfies Textmodul;

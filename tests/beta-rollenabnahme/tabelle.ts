@@ -840,6 +840,14 @@ export const TABELLE: Zeile[] = [
   },
   {
     gruppe: "conflictRoutes",
+    methode: "GET",
+    pfad: "/api/conflicts/geloest",
+    belegstelle: "services/app/src/routes/conflicts-routes.ts:251",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "conflictRoutes",
     methode: "POST",
     pfad: "/api/conflicts/gibt-es-nicht/escalate",
     route: "/api/conflicts/:id/escalate",

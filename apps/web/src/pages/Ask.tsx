@@ -5,7 +5,13 @@ import { useTranslation } from "react-i18next";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useConflicts, useKos, useReasonerStatus } from "../api/hooks";
+import {
+  useConflicts,
+  useGeloesteKonflikte,
+  useKos,
+  useLifecyclePendingWenn,
+  useReasonerStatus,
+} from "../api/hooks";
 import type { AnswerResult, VerschlossenHinweis } from "../api/types";
 import { useToast } from "../app/ToastContext";
 // AUFTRAG-mega69 B1 (bens sammel65-Auflage 1): der Kostenhinweis der Beispiel-Chips läuft über
@@ -89,7 +95,12 @@ import { fadenFuerAnfrage, fadenNachAntwort } from "../lib/gespraechsfaden";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { formatKoTimestamp } from "../lib/koDates";
-import { problemloesungsweg } from "../lib/problemloesungsweg";
+import {
+  geloesteKonflikte,
+  problemloesungsweg,
+  revalidierungsfaelle,
+  wegAbrufAus,
+} from "../lib/problemloesungsweg";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { istIosGeraet } from "../lib/speechSupport";
@@ -1241,6 +1252,15 @@ export function Ask(): JSX.Element {
     result?.answered && effective
       ? problemloesungsweg(effective.grade, answerSources, kosById)
       : null;
+  // R-1662 Prüfpunkte 5 und 6 (Ben, Nacharbeit 2): gelöste Konflikte und offene Revalidierungsfälle
+  // zu genau diesen Quellen. Geladen wird erst mit offenem Blatt — eine Antwort allein löst keinen
+  // zusätzlichen Abruf aus.
+  const wegGeprueft = loesungsweg && weg !== null;
+  const wegQuellenIds = weg ? answerSources.map((s) => s.id) : [];
+  const geloestAbruf = useGeloesteKonflikte(wegQuellenIds, wegGeprueft);
+  const faelligAbruf = useLifecyclePendingWenn(wegGeprueft);
+  const wegKonflikte = geloesteKonflikte(answerSources, kosById, wegAbrufAus(geloestAbruf));
+  const wegRevalidierung = revalidierungsfaelle(answerSources, wegAbrufAus(faelligAbruf));
   // ==============================================================================================
   // JOB 3267 Q1 — DIE GERENDERTEN FUSSNOTEN, AM DOM GEMESSEN.
   // ==============================================================================================
@@ -2392,6 +2412,8 @@ export function Ask(): JSX.Element {
                   >
                     <LoesungswegSchritte
                       weg={weg}
+                      konflikte={wegKonflikte}
+                      revalidierung={wegRevalidierung}
                       wissenHref={(id) => demoHref(`/wissen/${id}`, params)}
                       nameVon={authorNameOf}
                     />

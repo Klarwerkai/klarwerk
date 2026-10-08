@@ -298,6 +298,11 @@ const REGISTER: Record<string, Eintrag> = {
       "Deckungslage des eigenen Prüflaufs.",
   },
   "GET /api/conflicts": { urteil: "PRAEDIKAT", grund: "Block D — Paar-Tor, wörtliche Zitate." },
+  "GET /api/conflicts/geloest": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "R-1662 — Paar-Tor wie die Liste; bei Redaktion auch Entscheidung und Zweitmeinung leer.",
+  },
   "GET /api/conflicts/:id": { urteil: "PRAEDIKAT", grund: "Block D — Paar-Tor." },
   "GET /api/duplicates": { urteil: "PRAEDIKAT", grund: "Block D — Eigenanteile/Aspekte." },
   "GET /api/duplicates/:id": { urteil: "PRAEDIKAT", grund: "Block D — Paar-Tor." },

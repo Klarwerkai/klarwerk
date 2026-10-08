@@ -5,7 +5,13 @@
 // Originalautor der tragenden Quellen werden Ansprechpersonen, und die Rahmung sagt „validiert"
 // nur bei belegter Einstufung. Im Lückenfall gibt es keinen Lösungsweg.
 import { describe, expect, it } from "vitest";
-import { problemloesungsweg } from "../../apps/web/src/lib/problemloesungsweg";
+import type { Conflict } from "../../apps/web/src/api/types";
+import {
+  geloesteKonflikte,
+  problemloesungsweg,
+  revalidierungsfaelle,
+  wegAbrufAus,
+} from "../../apps/web/src/lib/problemloesungsweg";
 
 const kos = new Map([
   ["k1", { type: "best_practice" as const, author: "u1", originalAuthor: "u1" }],
@@ -65,5 +71,111 @@ describe("R-1662 · problemloesungsweg", () => {
     const weg = problemloesungsweg("unverified", [q("k2", true)], kos);
     expect(weg?.oeffnen).toBeNull();
     expect(weg?.vermeiden.map((s) => s.id)).toEqual(["k2"]);
+  });
+});
+
+// Ben, Nacharbeit 2 — Prüfpunkte 5 (gelöste Konflikte) und 6 (alte Revalidierungsfälle).
+const titel = new Map([
+  ["k1", { title: "Titel k1" }],
+  ["k9", { title: "Bestand k9" }],
+]);
+
+function konflikt(teil: Partial<Conflict> & Pick<Conflict, "id" | "koA" | "koB">): Conflict {
+  return {
+    type: "truth",
+    description: "",
+    status: "geloest",
+    secondOpinion: null,
+    decidedBy: "u9",
+    decision: "A gilt.",
+    resolutionReason: "decided",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    ...teil,
+  };
+}
+
+describe("R-1662 · geloesteKonflikte", () => {
+  it("ordnet einen gelösten Konflikt der Quelle zu und nennt Gegenseite und Entscheidung", () => {
+    const befund = geloesteKonflikte([q("k1", true)], titel, {
+      stand: "da",
+      daten: [konflikt({ id: "c1", koA: "k9", koB: "k1" })],
+    });
+    expect(befund).toEqual({
+      stand: "da",
+      eintraege: [
+        {
+          id: "c1",
+          quelle: q("k1", true),
+          gegen: { id: "k9", label: "Bestand k9" },
+          ausgang: "entschieden",
+          entscheidung: "A gilt.",
+          zurueckgehalten: false,
+        },
+      ],
+    });
+  });
+
+  it("Fehlalarm, Redaktion und unbekannte Gegenseite: nichts wird erfunden", () => {
+    const befund = geloesteKonflikte([q("k1", true)], titel, {
+      stand: "da",
+      daten: [
+        konflikt({ id: "c2", koA: "k1", koB: "unbekannt", resolutionReason: "dismissed" }),
+        konflikt({ id: "c3", koA: "k1", koB: "k9", decision: "", redacted: true }),
+      ],
+    });
+    expect(befund.stand === "da" && befund.eintraege).toEqual([
+      expect.objectContaining({
+        id: "c2",
+        ausgang: "fehlalarm",
+        gegen: { id: "unbekannt", label: "unbekannt" },
+      }),
+      expect.objectContaining({ id: "c3", entscheidung: null, zurueckgehalten: true }),
+    ]);
+  });
+
+  it("ein OFFENER Konflikt und ein Konflikt ohne Quellenbezug zählen nicht", () => {
+    const befund = geloesteKonflikte([q("k1", true)], titel, {
+      stand: "da",
+      daten: [
+        konflikt({ id: "c4", koA: "k1", koB: "k9", status: "offen" }),
+        konflikt({ id: "c5", koA: "x", koB: "y" }),
+      ],
+    });
+    expect(befund).toEqual({ stand: "da", eintraege: [] });
+  });
+
+  it("Laden und Fehler bleiben eigene Zustände — nie „keine gelösten Konflikte“", () => {
+    expect(geloesteKonflikte([q("k1", true)], titel, { stand: "laedt" })).toEqual({
+      stand: "laedt",
+    });
+    expect(geloesteKonflikte([q("k1", true)], titel, { stand: "fehler" })).toEqual({
+      stand: "fehler",
+    });
+    // Eine Antwort, die keine Liste ist, ist keine Auskunft.
+    const keineListe = { stand: "da", daten: {} as unknown as Conflict[] } as const;
+    expect(geloesteKonflikte([q("k1", true)], titel, keineListe)).toEqual({ stand: "fehler" });
+  });
+});
+
+describe("R-1662 · revalidierungsfaelle", () => {
+  it("nennt genau die Quellen der Antwort, die zur Revalidierung vorgemerkt sind", () => {
+    const quellen = [q("k1", true), q("k3", false)];
+    expect(revalidierungsfaelle(quellen, { stand: "da", daten: ["k3", "fremd"] })).toEqual({
+      stand: "da",
+      eintraege: [q("k3", false)],
+    });
+    expect(revalidierungsfaelle(quellen, { stand: "da", daten: [] })).toEqual({
+      stand: "da",
+      eintraege: [],
+    });
+  });
+
+  it("Laden und Fehler bleiben eigene Zustände", () => {
+    expect(revalidierungsfaelle([q("k1", true)], { stand: "fehler" })).toEqual({
+      stand: "fehler",
+    });
+    expect(wegAbrufAus({ data: undefined, isError: false })).toEqual({ stand: "laedt" });
+    expect(wegAbrufAus({ data: ["k1"], isError: true })).toEqual({ stand: "fehler" });
+    expect(wegAbrufAus({ data: ["k1"], isError: false })).toEqual({ stand: "da", daten: ["k1"] });
   });
 });
