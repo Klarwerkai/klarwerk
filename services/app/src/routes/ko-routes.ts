@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import type { AuditService } from "../../../audit";
+import { meldung, sprache } from "../../../auth";
 import type {
   ConflictInput,
   ConflictService,
@@ -1796,12 +1797,15 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (loaded.reason === "invalid") {
               return badRequest(loaded.message ?? "Entwurfsinhalt ungueltig.");
             }
+            // Aufnahme gesamt-fehlermeldungen (P-Q9): dieselben zwei Katalogsätze wie die
+            // Entwurfsrouten (`capture-routes.ts`, JOB 3956) — bis hierher sprach dieser Weg in
+            // einer EN/NL-Sitzung als einziger noch Deutsch. Status und Code bleiben unverändert.
             reply.code(loaded.reason === "not-found" ? 404 : 403).send({
               error: loaded.reason === "not-found" ? "NOT_FOUND" : "FORBIDDEN",
-              message:
-                loaded.reason === "not-found"
-                  ? "Entwurf nicht gefunden."
-                  : "Entwurf nicht verfuegbar.",
+              message: meldung(
+                loaded.reason === "not-found" ? "DRAFT_NOT_FOUND" : "DRAFT_NOT_VISIBLE",
+                sprache(request),
+              ),
             });
             return;
           }
