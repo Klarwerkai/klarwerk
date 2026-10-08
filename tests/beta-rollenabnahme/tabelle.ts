@@ -358,13 +358,9 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     grund:
       "Schliesst die eigene Sitzung; jeder Folgeaufruf ist danach ein Konflikt. Setzt eine offene, echte Sitzung voraus.",
   },
-  {
-    methode: "POST",
-    pfad: "/api/klara/sessions/:sessionId/execute",
-    art: "zurueckgestellt",
-    grund:
-      "R-0700: Klaras eigener Ausführungszugang. Ohne echte, gebundene Sitzung (Instanz- und Dokumentkopfzeile) antwortet er für jede Rolle gleich mit NOT_FOUND; der Prüfgegenstand ist die Sitzungsbindung, nicht die Rolle.",
-  },
+  // R-0700: `POST /api/klara/sessions/:sessionId/execute` steht NICHT hier, sondern gemessen in
+  // `TABELLE` (Gruppe `klaraAusfuehrungRoutes`): das Rechtetor (`ko.read`) entscheidet VOR der
+  // Sitzungsbindung, und genau diese Tür misst die Zeile.
 
   // --- Bibliothek, Import, Lebenszyklus, Ausgabe -------------------------------------------------
   {
@@ -1478,6 +1474,21 @@ export const TABELLE: Zeile[] = [
     pfad: "/api/ki-lage",
     belegstelle: "services/app/src/build-app.ts:2781",
     tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    // R-0700: Klaras eigener, sitzungsgebundener Ausführungszugang. Gemessen wird die TÜR: das
+    // Rechtetor (`ko.read`, ein Add-on-Schlüssel bekommt 403) entscheidet in `preValidation`, VOR
+    // jeder Sitzungsprüfung. Die Kennung ist erfunden und die Bindungskopfzeilen fehlen — der
+    // Berechtigte bekommt deshalb die fachliche 404 der Sitzungszuordnung (`erlaubt`: registriert,
+    // Tor durchgelassen); was die Bindung dahinter prüft, misst `ask-routes.test.ts`.
+    gruppe: "klaraAusfuehrungRoutes",
+    methode: "POST",
+    pfad: "/api/klara/sessions/abnahme-ohne-sitzung/execute",
+    route: "/api/klara/sessions/:sessionId/execute",
+    belegstelle: "services/app/src/routes/ask-routes.ts:984",
+    tor: "ko.read",
+    payload: { question: "Rollenabnahme", locale: "de" },
     erwartet: NUR_LESEN,
   },
   {

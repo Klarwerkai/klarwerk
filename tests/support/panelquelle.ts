@@ -180,8 +180,11 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * unberührt. Der Bezugspunkt MUSS deshalb wandern; ohne zugelassenes
  * Hash-Werkzeug ist er hier nicht berechenbar. E2 meldet ihn im Prüflauf als „Received"; er wird
  * danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 4 (ki-modus-wahrheit): GEMESSEN im Prüflauf zu Kandidat fdd18078 (`782fe303…`,
+ * „Received" von E2, HISTORIE/nacharbeit-4/PRUEFUNG/panel-auslieferung-pins-und-schranken.log) und
+ * unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "5d7ae0b8fccc34c05e5c070cea753189729ef841";
+export const PANEL_VOR_SCHNITT_BLOB = "782fe30332b9e32cf7ac0e1320d981c50b7f8486";
 
 export interface PanelTeile {
   html: string;

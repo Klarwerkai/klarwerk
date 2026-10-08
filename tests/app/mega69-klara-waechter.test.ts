@@ -2775,7 +2775,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Rechte- oder Manifeständerung, kein Sideload; `taskpane.js` 12498 Zeilen (B3).
     // Ohne zugelassenes Hash-Werkzeug ist der neue Wert hier nicht berechenbar — der Prüflauf
     // meldet den Ist-Wert als „Received", er wird danach gemessen übernommen.
-    const PIN = "dce012c092e3445073b0629f1b8348a5f4b04457c1986e3c68657c7ad5860d64";
+    // NACHARBEIT 4 (ki-modus-wahrheit): PIN BEWUSST AKTUALISIERT (dce012c0… -> 7f02c1c4…). Im
+    // Prüflauf zu Kandidat fdd18078 GEMESSEN („Received", HISTORIE/nacharbeit-4/PRUEFUNG/
+    // panel-auslieferung-pins-und-schranken.log) und unverändert übernommen; die Panel-Dateien sind
+    // seit dieser Messung unberührt.
+    const PIN = "7f02c1c4832831bd6d56c3e2aa78d23dbb3bff7aee3000f10aa55dfa1057c5b5";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,

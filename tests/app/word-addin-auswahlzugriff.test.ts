@@ -15,7 +15,6 @@
 // zu tun hat — die Prüfauswahl soll ihn nicht mitziehen).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WORD_ADDIN_ASK_TIMEOUT_MS } from "../../apps/web/src/lib/wordAddin";
-import { aufloesung, sicht } from "./k1-panel-lauf";
 import {
   type FakeWordAuswahl,
   type KlaraPanel,
@@ -28,6 +27,50 @@ const AUSWAHL_MARKIERUNG = "Ventil vor der Wartung drucklos schalten.";
 const AUSWAHL_FRAGE = "Was gilt vor der Wartung?";
 
 let auswahlPanel: KlaraPanel | null = null;
+
+// R-0700: eine gültige, erlaubte Sitzungsauflösung wie vom Server — dieselbe Bauform wie
+// `k1-panel-lauf.tsx` (`aufloesung`/`sicht`), hier ausgeschrieben, weil diese `.ts`-Datei vom
+// Root-tsc (ohne JSX) geprüft wird und keine `.tsx`-Bühne importieren darf.
+function aufloesung(): Record<string, unknown> {
+  return {
+    resolutionId: "res-1",
+    mode: "external",
+    provider: "srv-anbieter",
+    model: "srv-modell",
+    adminConfiguredMode: "external",
+    effectiveMode: "external",
+    deviation: false,
+    deviationReason: null,
+    externalConsentRequired: false,
+    externalConsentGranted: false,
+    executionAllowed: true,
+    blockedReason: null,
+    resolvedAt: new Date(Date.now() - 1000).toISOString(),
+    expiresAt: new Date(Date.now() + 300_000).toISOString(),
+    policyVersion: "p1",
+    configurationVersion: "c1",
+    effectivePayloadClasses: ["query_text"],
+    blockedPayloadClasses: [],
+  };
+}
+
+function sicht(): Record<string, unknown> {
+  return {
+    sessionId: "sess-1",
+    tenantId: "t1",
+    actorId: "a1",
+    addinInstanceId: "inst-1",
+    documentContextId: "doc-t-1",
+    createdAt: new Date(Date.now() - 5000).toISOString(),
+    lastActivityAt: new Date(Date.now() - 1000).toISOString(),
+    expiresAt: new Date(Date.now() + 900_000).toISOString(),
+    policyVersion: "p1",
+    configurationVersion: "c1",
+    consentState: "none",
+    closed: false,
+    resolution: aufloesung(),
+  };
+}
 
 function auswahlOeffnen(optionen: {
   wordAuswahl?: FakeWordAuswahl;

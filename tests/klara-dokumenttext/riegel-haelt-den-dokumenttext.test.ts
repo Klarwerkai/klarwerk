@@ -767,6 +767,23 @@ describe("R-0639 · R7 — Bens Befunde B1/B2 aus Runde 2", () => {
     await w.app.close();
   });
 
+  // R-0700 · Nacharbeit 4: R7b/R7f/R5d verlangen, dass der WORTLAUT der Markierung als Frage das
+  // Modell erreicht, sobald der Riegel offen ist. Diese Kalibrierung trennt die zwei möglichen
+  // Ursachen eines leeren Prompts: derselbe Wortlaut als GETIPPTE Frage braucht keine
+  // Dokumenttext-Prüfung. Erreicht er auch so das Modell nicht, trägt der Wortlaut die Suche nicht
+  // (Bestand) — dann misst R7b nicht den Riegel; erreicht er es, liegt der Unterschied am Riegelweg.
+  it("R7b-K · KALIBRIERUNG: der Markierungswortlaut als getippte Frage erreicht das Modell", async () => {
+    const w = await wegAufbauen();
+    await rumpfFrage(w, {
+      question: MARKIERUNG,
+      locale: "de",
+      mode: "retrieval-only",
+      questionSource: "manual",
+    });
+    expect(w.prompts.join("\n")).toContain(MARKER);
+    await w.app.close();
+  });
+
   it('R7c · B1-KALIBRIERUNG: dieselbe Lage mit `questionSource: "manual"` — das Modell WIRD gerufen', async () => {
     const w = await wegAufbauen();
     await rumpfFrage(w, {

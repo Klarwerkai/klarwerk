@@ -182,6 +182,26 @@ describe("KA5 · die Markierung schärft die Suche", () => {
     await a.app.close();
   });
 
+  // R-0700 · KALIBRIERUNG ZU R1 (Nacharbeit 4): dieselbe Frage OHNE Markierung über den
+  // UNVERÄNDERTEN allgemeinen Weg in der Enge (`/api/ask`, retrieval-only, ohne Bindung) — genau der
+  // Weg, auf dem R1 vor R-0700 seine „ohne"-Hälfte maß. Trägt B schon hier, ist R1s Voraussetzung im
+  // Bestand verloren und nicht durch den Umzug der Markierung auf Klaras Zugang; trägt hier ein
+  // Füller und im Klara-Zugang B, liegt der Unterschied am Zugang.
+  it("KA5-R1b · KALIBRIERUNG: ohne Markierung trägt am allgemeinen Weg ein Füller, nicht B", async () => {
+    const a = await aufbauen();
+    const ohne = await a.app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: { ...a.kopf, "content-type": "application/json" },
+      payload: { question: FRAGE, locale: "de", mode: "retrieval-only" },
+    });
+    expect(ohne.statusCode).toBe(200);
+    expect(ohne.json().result.answered).toBe(true);
+    expect(ohne.json().result.sources).not.toContain(a.b);
+    expect(a.fueller).toContain(ohne.json().result.sources[0]);
+    await a.app.close();
+  });
+
   it("KA5-R2 · GEGENMUTATION: ohne das Feld bleibt der Antwortkörper derselbe", async () => {
     // Der Vergleichsstand entsteht IM TEST und nicht aus einer abgeschriebenen Notiz: dieselbe App,
     // derselbe Bestand, dieselbe Frage — einmal ganz ohne Feld, einmal mit einem Feld, das nach dem
