@@ -47,7 +47,7 @@ wiederholt.
 | `ko.create-rollback-failed` | `at`, `failedStep`, `rollbackFailure` (nur Fehlerklasse/-code), `marked`, `koRemoved`, `searchProjection*` | Z, M |
 | `ko.change-rolled-back` | Nutzlast des zurückgenommenen Schritts + `rolledBackSeqs` | wie Ursprung, K |
 | `ko.confidentiality` | `level`, `previous`, `downgrade` | Z |
-| `ko.ownership` | `owner`, `reviewers`, `validators`, `previousOwner` | K (Nutzer-Ids) |
+| `ko.ownership` | `owner`, `reviewers`, `validators`, `previousOwner`; bei Übergabe im Papierkorb zusätzlich `imPapierkorb` | K (Nutzer-Ids), Z |
 | `ko.ownership-role` | `role`, `added` | K |
 | `ko.purged` | `reason` (geschlossene Menge) + Zusatz des Aufrufers | Z |
 | `ko.restored`, `ko.deleted` | `trash` / leer + Beitrag | Z |
@@ -59,6 +59,7 @@ wiederholt.
 | `ko.geltung-changed` | `vorher`, `nachher` (Geltung: Ebene, Werk, Schicht, Rolle — je ≤ 80 Zeichen; nachgetragen mit `gesamt-standortwissen`) | M |
 | `ko.conflict-review` | `previousStatus`, `previousTrust`, `trust`, `reason` | Z |
 | `ko.author-transferred` | `author` | K |
+| `verantwortung.uebergabe` (Ziel: bisherige Person; `services/app/src/routes/verantwortung-routes.ts`) | `uebertragen`, `bereitsErledigt`, `abgelehnt`, `fehlgeschlagen`, `verbleibt`, `nachfolger` (je `an` + `anzahl`) | Z, K — keine Titel; je Beitrag steht zusätzlich `ko.ownership` |
 | `ko.source-removed-in-origin`, `ko.source-restored-in-origin` | `provider`, `externalId`, `at`/`removedAt` | M, K |
 | `ko.source-attachments-synced` | `provider`, `externalId`, `added`, `removed` | M, K |
 | `ko.source-restriction-synced` | `provider`, `externalId`, `groups`/`users` (nur Anzahl) | M, Z |
