@@ -205,6 +205,9 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 12: GEMESSEN im Prüflauf zu Kandidat ff6019e3 (`9bee4487…`, „Received" von E2,
  * HISTORIE/nacharbeit-12/PRUEFUNG/panel-waechter-und-pins.log) und unverändert übernommen; die
  * vier Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 13 (Ben zu 6cc581b4): `taskpane.js`/`taskpane.css` geändert (Sichtbarkeit je
+ * Absatzmarke). Der Wert unten ist wieder ein PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet den
+ * Ist-Wert als „Received", er wird danach gemessen übernommen.
  */
 export const PANEL_VOR_SCHNITT_BLOB = "9bee448775f7af8d98873ec40a505441486f6952";
 

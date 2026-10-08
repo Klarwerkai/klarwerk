@@ -52,6 +52,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const bestand = vi.hoisted(() => ({
   ergebnis: null as null | Record<string, unknown>,
   kos: [] as Record<string, unknown>[],
+  // R-0310: die Absatz-Beleg-Zuordnung des Servers; `null` = Feld fehlt (bisherige Lagen).
+  absaetze: null as null | Array<{ text: string; quellen: string[] }>,
 }));
 
 vi.mock("../../apps/web/src/app/RoleContext", () => ({
@@ -75,6 +77,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
         result: { ...bestand.ergebnis, captionSources: [] },
         gap: null,
         receipt: "r",
+        ...(bestand.absaetze ? { absaetze: bestand.absaetze } : {}),
       })),
       helpful: vi.fn(),
     },
@@ -201,6 +204,7 @@ afterEach(async () => {
   for (const f of offen.splice(0)) {
     f.unmount();
   }
+  bestand.absaetze = null;
   await i18n.changeLanguage("de");
 });
 
@@ -580,5 +584,56 @@ describe("JOB 3267 Q7 · kein Widerspruch zwischen Antworttext und Quellenauskun
       f.unmount();
       offen.splice(offen.indexOf(f), 1);
     }
+  });
+});
+
+// ================================================================================================
+// AUFNAHME 20260922 · R-0310 (Ben zu 6cc581b4) — DIE FRAGENSEITE GIBT NUR BELEGTE ABSÄTZE AUS.
+// ================================================================================================
+//
+// Ben: „Ask.tsx:1979 verwendet result.answer unverändert." Gemessen wird an der montierten Seite
+// mit dem Antwortkörper des Servers samt `absaetze`: der unbelegte Absatz steht nirgends, jeder
+// belegte endet mit der Marke SEINER Quelle (dieselbe Nummer wie ihr Chip), und ohne belegten
+// Absatz steht die Wissenslücke statt einer Antwort.
+describe("Aufnahme 20260922 · R-0310 · Absatz-Belege auf der Fragenseite", () => {
+  const ERSTER = "Homeoffice ist an zwei Tagen je Woche moeglich [1].";
+  const UNBELEGT = "Viele Teams sind damit sehr zufrieden.";
+  const LETZTER = "Das Arbeitszeitkonto wird monatlich abgerechnet.";
+  const DREI = `${ERSTER}\n\n${UNBELEGT}\n\n${LETZTER}`;
+
+  it("R1 · der unbelegte Absatz wird nicht ausgegeben; jeder belegte Absatz endet mit der Marke seiner Quelle", async () => {
+    bestand.absaetze = [
+      { text: ERSTER, quellen: [HEIM] },
+      { text: UNBELEGT, quellen: [] },
+      { text: LETZTER, quellen: [RAND] },
+    ];
+    const { karte } = await lage(antwort([HEIM, RAND], DREI));
+    expect(karte.textContent ?? "").not.toContain("zufrieden");
+    const absaetze = [...karte.querySelectorAll(".ask-answer-body p")];
+    expect(absaetze).toHaveLength(2);
+    expect(wort(absaetze[0] ?? null)).toContain("Homeoffice ist an zwei Tagen je Woche moeglich");
+    expect(wort(absaetze[1] ?? null)).toContain("Das Arbeitszeitkonto wird monatlich abgerechnet.");
+    // Je Absatz genau die Marke SEINER Quelle — Quelle 2 trägt den letzten, wörtlich belegten.
+    expect(absaetze.map((p) => markenIn(p))).toEqual([[1], [2]]);
+    expect(verwendung(karte, 2)).toBe("verwendet");
+  });
+
+  it("R2 · eine nur herangezogene Quelle belegt keinen Absatz: ohne belegten Absatz gibt es keine Antwort, sondern die Wissenslücke", async () => {
+    bestand.absaetze = [
+      { text: UNBELEGT, quellen: [] },
+      { text: LETZTER, quellen: [RAND] },
+    ];
+    bestand.ergebnis = antwort([HEIM], `${UNBELEGT}\n\n${LETZTER}`);
+    const f = await mount("de");
+    await fragen(f);
+    expect(f.container.querySelector('[data-testid="ask-answer"]')).toBeNull();
+    expect(f.container.querySelector('[data-testid="ask-gap"]')).not.toBeNull();
+    expect(f.container.textContent ?? "").not.toContain("zufrieden");
+    expect(f.container.textContent ?? "").not.toContain("abgerechnet");
+  });
+
+  it("R3 · Gegenprobe: ohne das Feld (älterer Server) bleibt die Antwort, wie sie war", async () => {
+    const { karte } = await lage(antwort([HEIM], DREI));
+    expect(karte.textContent ?? "").toContain("zufrieden");
   });
 });

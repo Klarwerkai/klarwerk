@@ -15,7 +15,7 @@
 //   4. LEHRE JOB 3091 R3: ein GESCHEITERTER Quellenabruf ist keine festgestellte Quellenlosigkeit —
 //      die Zeile sagt dann „konnte nicht geladen werden" und behauptet weder Pruefstand noch Version.
 // RED-FIRST: vor dem Umbau existiert weder `#ask-herkunft` noch `#ask-ungeprueft`.
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type Antwort,
   type Lauf,
@@ -735,5 +735,86 @@ describe("Aufnahme 20260922 · R-0310 — Absatz-Beleg-Zuordnung im Panel (gemou
       ["1", null],
       ["2", null],
     ]);
+  });
+
+  // Ben zu 6cc581b4: liegt das Ende einer langen Antwort ausserhalb der kompakten Ansicht, darf das
+  // NICHT die Marken früherer, sichtbarer Absätze mitnehmen. jsdom hat kein Layout — die Lage wird
+  // hier gesetzt: Feld 60 px hoch, Zeilenhöhe 20 px; das erste Absatzende steht bei `erstesEnde`,
+  // das Textende bei 200 px (abgeschnitten).
+  it("P4 · Textende abgeschnitten: nur SEINE Ziffern verborgen, die Marke des sichtbaren ersten Absatzes bleibt; liegt auch sie draussen, ist sie verborgen", async () => {
+    let erstesEnde = 0;
+    const offsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+    const offsetTop = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetTop");
+    const stil = window.getComputedStyle.bind(window);
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.id === "ask-answer-edit" ? 60 : 0;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "offsetTop", {
+      configurable: true,
+      get(this: HTMLElement) {
+        if (!this.classList.contains("textende")) return 0;
+        const enden = [...(this.parentElement?.querySelectorAll(".textende") ?? [])];
+        return enden.indexOf(this) === enden.length - 1 ? 200 : erstesEnde;
+      },
+    });
+    const spion = vi.spyOn(window, "getComputedStyle").mockImplementation((e, p) => {
+      const echt = stil(e, p);
+      if ((e as HTMLElement).id !== "ask-answer-edit") return echt;
+      return new Proxy(echt, {
+        get(z, k) {
+          if (k === "lineHeight") return "20px";
+          const v: unknown = Reflect.get(z, k, z);
+          return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(z) : v;
+        },
+      });
+    });
+    try {
+      const mitAbsaetzen = {
+        result: antwort({ answer: DREI_ABSAETZE }),
+        gap: null,
+        receipt: "r",
+        absaetze: [
+          { text: "Offene Profile sind zu bevorzugen. [1]", quellen: ["ka"] },
+          { text: "Geschlossene Profile sind zu begruenden. [2]", quellen: ["kb"] },
+        ],
+      };
+      starten({ ask: mitAbsaetzen });
+      await ruhe();
+      await fragen();
+      const halter = el("ask-fussnoten");
+      const marke = (): HTMLElement | null => halter.querySelector<HTMLElement>(".absatzmarke");
+      // Der Halter bleibt da; nur die Ziffer am (abgeschnittenen) Textende ist verborgen.
+      expect(halter.className).toBe("ende-verborgen");
+      expect(marke()?.className).toBe("absatzmarke");
+      expect(marke()?.querySelector("sup")?.getAttribute("data-quelle")).toBe("ka");
+      // Gegenprobe: liegt auch das erste Absatzende ausserhalb, ist SEINE Marke verborgen.
+      panelAbraeumen();
+      erstesEnde = 100;
+      starten({ ask: mitAbsaetzen });
+      await ruhe();
+      await fragen();
+      expect(marke()?.className).toBe("absatzmarke hidden");
+      // Und passt alles ins Bild, ist nichts verborgen.
+      panelAbraeumen();
+      erstesEnde = 0;
+      Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+        configurable: true,
+        get(this: HTMLElement) {
+          return this.id === "ask-answer-edit" ? 400 : 0;
+        },
+      });
+      starten({ ask: mitAbsaetzen });
+      await ruhe();
+      await fragen();
+      expect(el("ask-fussnoten").className).toBe("");
+      expect(marke()?.className).toBe("absatzmarke");
+    } finally {
+      spion.mockRestore();
+      if (offsetHeight) Object.defineProperty(HTMLElement.prototype, "offsetHeight", offsetHeight);
+      if (offsetTop) Object.defineProperty(HTMLElement.prototype, "offsetTop", offsetTop);
+    }
   });
 });

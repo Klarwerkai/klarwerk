@@ -6119,18 +6119,20 @@
       var marken = askSpiegelFuellen(spiegel, feld.value, gruppen.length);
       var marke = marken[marken.length - 1];
       var zeilenhoehe = parseFloat(stil.lineHeight);
-      // Ohne Layout (jsdom) bleiben die Ziffern da, nur ohne Koordinaten; mit Layout stehen sie am
-      // Textende — oder sind verborgen, wenn das Ende in der kompakten Ansicht nicht im Bild ist.
-      var abgeschnitten = feld.offsetHeight > 0 && zeilenhoehe > 0
-        && marke.offsetTop + zeilenhoehe > feld.offsetHeight + 1;
-      halter.className = abgeschnitten ? "hidden" : "";
+      // Ohne Layout (jsdom) bleiben die Ziffern da, nur ohne Koordinaten; mit Layout steht jede Gruppe
+      // am Ende IHRES Absatzes und ist nur verborgen, wenn GENAU DIESES Ende in der kompakten Ansicht
+      // nicht im Bild ist (Ben zu 6cc581b4: nie der ganze Halter wegen des letzten Absatzes).
+      var ausserhalb = function (m) {
+        return feld.offsetHeight > 0 && zeilenhoehe > 0 && m.offsetTop + zeilenhoehe > feld.offsetHeight + 1;
+      };
+      halter.className = ausserhalb(marke) ? "ende-verborgen" : "";
       halter.style.left = marke.offsetLeft + "px";
       halter.style.top = marke.offsetTop + "px";
       halter.style.lineHeight = zeilenhoehe > 0 ? zeilenhoehe + "px" : "";
       // R-0310: die Absatzmarken stehen relativ zum Textende; fehlt ihr Absatz (bearbeitet), verborgen.
       for (var g = 0; g < gruppen.length; g += 1) {
         var am = marken.length - 1 > g ? marken[g] : null;
-        gruppen[g].className = am ? "absatzmarke" : "absatzmarke hidden";
+        gruppen[g].className = am && !ausserhalb(am) ? "absatzmarke" : "absatzmarke hidden";
         gruppen[g].style.left = (am ? am.offsetLeft - marke.offsetLeft : 0) + "px";
         gruppen[g].style.top = (am ? am.offsetTop - marke.offsetTop : 0) + "px";
       }

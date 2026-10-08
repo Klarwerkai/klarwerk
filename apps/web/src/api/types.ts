@@ -1903,6 +1903,14 @@ export interface AskResponse {
   // R-1633: nur wenn ein Fragekontext mitgeschickt wurde — wofür gewichtet wurde und je Quelle
   // ihre Geltung und Passung (Spiegel von `AskGeltungsauskunft`, services/ask/src/service.ts).
   geltung?: AskGeltungsauskunft;
+  // R-0310: je Absatz die tragenden Quellen, die ihn belegen (services/app/src/absatz-belege.ts);
+  // nur bei beantworteter Frage. Angewandt in `lib/askResponse.ts` (`selectAnswer`).
+  absaetze?: AbsatzBeleg[];
+}
+
+export interface AbsatzBeleg {
+  text: string;
+  quellen: string[];
 }
 
 // ================================================================================================

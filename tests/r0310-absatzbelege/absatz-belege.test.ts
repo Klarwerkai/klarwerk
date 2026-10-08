@@ -72,4 +72,11 @@ describe("R-0310 · absatzBelege — je Absatz die Quellen, die ihn belegen", ()
       })?.map((a) => a.text),
     ).toEqual(["A", "B", "C\nnoch C"]);
   });
+
+  it("Z5 · ohne tragende Quelle (Zuordnung unbekannt, R-0325) gibt es kein Feld — nicht „alles unbelegt“", () => {
+    const ohne = { answered: true, answer: "A [1].\n\nB.", sources: ["ka"], steps: [] };
+    expect(absatzBelege(ohne)).toBeUndefined();
+    expect(absatzBelege({ ...ohne, citedSources: [] })).toBeUndefined();
+    expect(absatzBelege({ ...ohne, citedSources: ["ko-gibt-es-nicht"] })).toBeUndefined();
+  });
 });

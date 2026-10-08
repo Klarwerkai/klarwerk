@@ -534,6 +534,8 @@
     /* R-0310: die Ziffern eines früheren Absatzes, relativ zum Textende an sein Absatzende gesetzt. */
     #ask-fussnoten .absatzmarke { position: absolute; white-space: nowrap; }
     #ask-fussnoten .absatzmarke.hidden { display: none; }
+    /* Nur das Textende ist abgeschnitten: dessen Ziffern verborgen, die Absatzmarken bleiben. */
+    #ask-fussnoten.ende-verborgen > .fussnote { display: none; }
     #ask-einschub { margin: 0; padding: 8px 10px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 12px; }
     #ask-einschub h3 { margin: 0 0 2px; font-size: 13px; color: var(--ink); overflow-wrap: anywhere; }
     #ask-einschub .einschub-stand, #ask-einschub-kein-original { margin: 0 0 6px; color: var(--muted); }

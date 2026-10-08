@@ -2821,6 +2821,13 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Kandidat ff6019e3 GEMESSEN („Received", HISTORIE/nacharbeit-12/PRUEFUNG/
     // panel-waechter-und-pins.log) und unverändert übernommen; die Panel-Dateien sind seit dieser
     // Messung unberührt.
+    // NACHARBEIT 13 (Ben zu 6cc581b4) — DER PIN MUSS WANDERN. `taskpane.js` `askFussnotenSetzen`:
+    // jede Absatzmarke ist nur verborgen, wenn IHR Absatzende ausserhalb der kompakten Ansicht
+    // liegt; ein abgeschnittenes Textende verbirgt nur seine eigenen Ziffern (`ende-verborgen`),
+    // nicht mehr den ganzen Halter. `taskpane.css`: Regel `.ende-verborgen > .fussnote`.
+    // Auslieferungsfolgen: kein Abrufziel, keine Nutzlast-, CSP-, Rechte- oder Manifeständerung,
+    // kein Wörterbuchschlüssel, kein Sideload. Der Wert unten ist ein PLATZHALTER; der Prüflauf
+    // meldet den Ist-Wert als „Received", er wird danach gemessen übernommen.
     const PIN = "7c842a839ffb4045620a4fffa665c9de168831725a4e30ed50d3bdaa8c34165d";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
