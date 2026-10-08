@@ -164,6 +164,13 @@ describe("R-1653 · SharePoint-Quellstand im Revisionsvertrag gegen echtes Postg
   });
 
   afterAll(async () => {
+    // Auf einer geteilten Testinstanz (KLARWERK_PG_TEST_URL) bleibt nichts von hier zurück: eine
+    // Folgesuite, die eine LEERE Datenbank voraussetzt (`db.migrate.schemas-61`), darf diese
+    // Tabellen nicht vorfinden.
+    if (available && pool) {
+      await pool.query("DROP TABLE IF EXISTS import_candidates");
+      await pool.query("DROP TABLE IF EXISTS external_source_records");
+    }
     await pool?.end();
     await container?.stop();
   });
