@@ -674,7 +674,21 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             ))
               ? { dokumenttextFreigegeben: true as const }
               : {};
-          const mitAuswahl = markierung ? { ...opts, ...markierung, ...dokumenttextFeld } : opts;
+          // gesamt-ki-freigaberegeln (Ben Nacharbeit 2): geht vertraulich markierter Dokumenttext
+          // hinaus — als Markierung oder als Frage selbst —, dann nur, weil die zweite zentrale
+          // Adminfreigabe ihn gedeckt hat. Die EINSTUFUNG reist dann mit bis in den Reasoner, damit der
+          // Kern und der Chokepoint dieselbe Freigabe noch einmal fragen. Sonst fehlt das Feld.
+          const vertraulichHinaus =
+            markierungVertraulich(request.body.selectionConfidentiality) &&
+            ("dokumenttextFreigegeben" in dokumenttextFeld || (ka4Bestaetigt && frageIstDokument));
+          const vertraulichFeld = vertraulichHinaus
+            ? { dokumenttextVertraulich: true as const }
+            : {};
+          const mitAuswahl = markierung
+            ? { ...opts, ...markierung, ...dokumenttextFeld, ...vertraulichFeld }
+            : vertraulichHinaus
+              ? { ...opts, ...vertraulichFeld }
+              : opts;
           const mitMarkierung =
             fadenErlaubt && faden.length > 0
               ? { ...mitAuswahl, gespraechsfaden: faden }

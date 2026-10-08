@@ -381,6 +381,13 @@ const de = {
   "topbar.plain.external":
     "Zeigt, ob Klarwerk beim Antworten auch im offenen Internet nachsehen darf. „Blockiert“ heißt: nein, es bleibt bei eurem eigenen Wissen.",
   // AUFTRAG-mega51 BLOCK G1: „KI-Modus" ist eine Einstellung; gemeint ist der ORT.
+  // Auftrag gesamt-ki-freigaberegeln (R-0606): der wirksame Stand der zentralen Adminfreigabe für
+  // öffentliche KI, sichtbar über der Kopfzeile (`shell/ExternStatus.tsx`).
+  "topbar.extern.blockiert": "Extern: Blockiert",
+  "topbar.extern.frei": "Extern: Freigegeben",
+  "topbar.extern.freiVertraulich": "Extern: Freigegeben, auch Vertrauliches",
+  "topbar.extern.hinweis":
+    "Ob Inhalte an eine öffentliche KI gehen dürfen, legt der Administrator fest. Vorgabe: blockiert.",
   "topbar.kiExternal": "KI rechnet in der Cloud",
   "topbar.kiInternal": "KI rechnet im eigenen Haus",
   "topbar.kiMixed": "KI rechnet in der Cloud und im eigenen Haus",

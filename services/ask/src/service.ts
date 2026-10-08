@@ -857,6 +857,13 @@ export class AskService {
        */
       dokumenttextFreigegeben?: boolean;
       /**
+       * Auftrag gesamt-ki-freigaberegeln (Ben Nacharbeit 2): der hinausgehende Dokumenttext (Markierung
+       * oder Frage) ist als VERTRAULICH markiert und nur durch die zweite zentrale Adminfreigabe
+       * gedeckt. Dann läuft die Antwort als vertraulich in den Reasoner — der Kern und der Chokepoint
+       * entscheiden dieselbe Freigabe noch einmal. Gesetzt ausschliesslich von der Route.
+       */
+      dokumenttextVertraulich?: boolean;
+      /**
        * R-0348: die vorangegangenen Fragen derselben Fragestrecke, älteste zuerst (höchstens
        * `GESPRAECHSFADEN_MAX_FRAGEN` zählen). Wirkung und Grenzen an `fadenfragen`. Gesetzt nur
        * von der Route, und nur im Konsolenzweig.
@@ -1043,7 +1050,9 @@ export class AskService {
     //     die Cloud fällt aus der Providerkette UND `ConfidentialEgressError` schlägt an.
     // Auf `prefilteredRaw` abzuleiten wäre falsch: dann würde eine Frage, die zufällig ein
     // vertrauliches Objekt streift, ihre Antwort verlieren, obwohl das Objekt längst entfernt ist.
-    const kontextVertraulich = prefiltered.some((ko) => isConfidential(ko.confidentiality));
+    const kontextVertraulich =
+      prefiltered.some((ko) => isConfidential(ko.confidentiality)) ||
+      opts?.dokumenttextVertraulich === true;
     // F-0295 / R-0639: der markierte Dokumenttext — nur mit bestandener eigener Deckungsprüfung.
     const dokumenttext =
       opts?.dokumenttextFreigegeben === true && opts.selection?.trim()
