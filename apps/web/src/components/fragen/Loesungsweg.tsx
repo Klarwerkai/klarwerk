@@ -15,8 +15,8 @@ import { Link } from "react-router-dom";
 import type { Problemloesungsweg, WegQuelle } from "../../lib/problemloesungsweg";
 import { RoleLink } from "../RoleLink";
 
-const SCHRITT_FORM = "inline-flex items-center gap-1 font-medium text-brand-text";
-const SCHRITT_LINK = `${SCHRITT_FORM} hover:underline`;
+// Jede Klassenbindung dieser Datei ist ein Literal: der Klassensammler
+// (`tests/app/mega47-modale-flaechen-sammler.test.tsx`, JOB 1181) liest sie vollständig.
 
 export function VermeidenWarnung({
   vermeiden,
@@ -76,7 +76,10 @@ export function LoesungswegSchritte({
         {weg.oeffnen ? (
           <li data-testid="ask-loesungsweg-quelle">
             <span className="block font-semibold">{t("loesungsweg.schritt.quelle")}</span>
-            <Link to={wissenHref(weg.oeffnen.id)} className={SCHRITT_LINK}>
+            <Link
+              to={wissenHref(weg.oeffnen.id)}
+              className="inline-flex items-center gap-1 font-medium text-brand-text hover:underline"
+            >
               {weg.oeffnen.label}
               <ArrowRight size={12} aria-hidden="true" className="shrink-0" />
             </Link>
@@ -86,7 +89,11 @@ export function LoesungswegSchritte({
           <li data-testid="ask-loesungsweg-vermeiden">
             <span className="block font-semibold">{t("loesungsweg.schritt.vermeiden")}</span>
             {weg.vermeiden.map((q) => (
-              <Link key={q.id} to={wissenHref(q.id)} className={`${SCHRITT_LINK} mr-3`}>
+              <Link
+                key={q.id}
+                to={wissenHref(q.id)}
+                className="mr-3 inline-flex items-center gap-1 font-medium text-brand-text hover:underline"
+              >
                 {q.label}
                 <ArrowRight size={12} aria-hidden="true" className="shrink-0" />
               </Link>
@@ -119,7 +126,7 @@ export function LoesungswegSchritte({
           <RoleLink
             to="/erfassen"
             testId="ask-loesungsweg-erfassen"
-            className={SCHRITT_FORM}
+            className="inline-flex items-center gap-1 font-medium text-brand-text"
             hoverClassName="hover:underline"
           >
             {(erreichbar) => (
