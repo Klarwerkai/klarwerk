@@ -382,9 +382,12 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "DIENST_FILTERT",
     grund: "app/src/check-text-detection.ts:121 — !isConfidential je Kandidat.",
   },
+  // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 8): `dropConfidential` allein liess
+  // interne Objekte aus gesperrten Spaces durch. Die Aufgabe `ask` übergibt jetzt die Lesepolicy
+  // des Fragenden als Grundlage — gemessen statt Leseurteil.
   "POST /api/reasoner": {
-    urteil: "DIENST_FILTERT",
-    grund: "task 'ask' läuft über denselben ask-Dienst (dropConfidential, s. o.).",
+    urteil: "PRAEDIKAT",
+    grund: "task 'ask': sichtbarkeitsfilterFuer(user) als Grundlage, dazu dropConfidential.",
   },
   "POST /api/reasoner/describe": {
     urteil: "EIGENER_BESTAND",

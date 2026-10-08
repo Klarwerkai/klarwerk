@@ -28,6 +28,7 @@ import {
   KLARA_AUFGABE_ANDERER_ANBIETER,
   type KlaraAufgabe,
 } from "../services/klara-session-service";
+import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 import {
   type Ka4Freigabepruefer,
   ka4Entscheidung,
@@ -589,14 +590,23 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         // wartende alte Frage übernahm so die neue Epoche. Jetzt die Eingangsepoche, und vor dem Dienst
         // geprüft; zwischen `kiSperreVorFrage` und dem Einstieg in `ask.ask` liegt kein `await`.
         const kiBeginn = kiEingang;
+        // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 8): die Grundlage ist, was DIESER
+        // Fragende sehen darf — dieselbe Regel wie `/api/ask` (ask-routes.ts, `grundlage`), samt
+        // führendem Space. Ohne sie nahm der Dienst die GESAMTE Vorauswahl, und ein internes,
+        // validiertes Objekt aus einem gesperrten Space konnte Antwortgrundlage und Quelle werden.
+        // Synchron vorbereitet: zwischen `kiSperreVorFrage` und `ask.ask` liegt weiter kein `await`.
+        const grundlage = sichtbarkeitsfilterFuer(user);
         try {
           ask.kiSperreVorFrage(kiBeginn);
           const antwort = gebundenOhneFreigabe
-            ? await ask.ask(text ?? "", user.id, locale, {
-                validatedOnly: true,
-                retrievalOnly: true,
-              })
-            : await ask.ask(text ?? "", user.id, locale);
+            ? await ask.ask(
+                text ?? "",
+                user.id,
+                locale,
+                { validatedOnly: true, retrievalOnly: true },
+                grundlage,
+              )
+            : await ask.ask(text ?? "", user.id, locale, undefined, grundlage);
           ask.kiSperreVorAuslieferung(kiBeginn);
           reply.code(200).send(antwort);
         } catch (fehler) {

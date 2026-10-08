@@ -687,7 +687,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/capture/slides": { protection: "ko.create" },
   // WP-RETEST7 R8: leichter Verfügbarkeits-Check vor dem großen Upload (gleicher Guard).
   "GET /api/capture/slides/availability": { protection: "ko.create" },
-  "POST /api/reasoner": { protection: "ko.read" },
+  // aufnahme:20260922:gesamt-leserechte: die Aufgabe `ask` trägt die Lesepolicy des Fragenden.
+  "POST /api/reasoner": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   // WP-BILD-1c/1f: KI-Bildbeschreibungs-Vorschlag — eigene Route mit großem bodyLimit; gleicher
   // Guard wie der Text-Dispatcher, zusätzlich Auth VOR dem Body-Parsing (onRequest requireUser).
   "POST /api/reasoner/describe": { protection: "ko.read" },

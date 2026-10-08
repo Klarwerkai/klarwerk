@@ -312,7 +312,7 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     pfad: "/api/ask",
     art: "zurueckgestellt",
     grund:
-      "Die Frage an den Bestand. Sie hat zwei Zweige (Sitzung und Add-on-Schlüssel) mit unterschiedlichem Rechteweg; eine Zeile könnte nur einen messen und verschwiege den anderen. (Gefahren wird sie in JOB 4113 sehr wohl — als Vorbereitung der Zeilen zu `POST /api/ask/helpful` und `PUT|DELETE /api/gaps/:id`; abgenommen ist damit nicht sie, sondern was aus ihr entsteht.) aufnahme:20260922:gesamt-leserechte: der SITZUNGSzweig ist mit sechs Akteuren und echtem Bestand (internes Objekt als Quelle, vertrauliches nie, keine Torlage für Unbefugte) in `tests/security/leserechte-rollenmatrix.test.ts` gemessen; der Add-on-Zweig bleibt mit diesem Grund zurückgestellt.",
+      "Die Frage an den Bestand. Sie hat zwei Zweige (Sitzung und Add-on-Schlüssel) mit unterschiedlichem Rechteweg; eine Zeile könnte nur einen messen und verschwiege den anderen. (Gefahren wird sie in JOB 4113 sehr wohl — als Vorbereitung der Zeilen zu `POST /api/ask/helpful` und `PUT|DELETE /api/gaps/:id`; abgenommen ist damit nicht sie, sondern was aus ihr entsteht.) aufnahme:20260922:gesamt-leserechte: der SITZUNGSzweig ist mit sechs Akteuren und echtem Bestand (internes Objekt als Quelle, vertrauliches nie, keine Torlage für Unbefugte) in `tests/security/leserechte-rollenmatrix.test.ts` gemessen; der Add-on-/Dienst-Zweig (keine Sitzungsrolle, sondern ein Schlüssel) ist in `tests/security/leserechte-reasoner-frageweg.test.ts` gemessen — nie Vertrauliches, nie ein Objekt aus einem Mitglieder-Space, mit Gegenprobe — und in `f0688-schluessel-api-nur-validiert` (nur Validiertes). Als Rollenzeile bleibt die Tür zurückgestellt, weil ihr zweiter Zweig gar keine Rolle trägt.",
   },
   // JOB 4141: die sechs Urteils-Türen (`POST /api/conflicts/:id/dismiss|second-opinion`,
   // `POST /api/duplicates/:id/dismiss|keep-separate|link-related|status`) standen hier mit derselben
@@ -420,7 +420,7 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     pfad: "/api/reasoner",
     art: "zurueckgestellt",
     grund:
-      "Der Text-Verteiler der KI-Unterstützung. Er ruft echte Modelle auf; eine Rollenzeile darüber löste bei jedem Lauf einen Modellaufruf aus.",
+      "Der Text-Verteiler der KI-Unterstützung. Er ruft echte Modelle auf; eine Rollenzeile darüber löste bei jedem Lauf einen Modellaufruf aus. aufnahme:20260922:gesamt-leserechte: die Aufgabe `ask` LIEST den Bestand — ihre Grundlage trägt seit Nacharbeit 8 die Lesepolicy des Fragenden (`sichtbarkeitsfilterFuer`), gemessen mit Space-Mitglied, Nichtmitglied, Admin ohne Mitgliedschaft und Rechteentzug in `tests/security/leserechte-reasoner-frageweg.test.ts`.",
   },
   {
     methode: "POST",
