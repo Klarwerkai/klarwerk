@@ -38,6 +38,15 @@ function herkunftsSchluessel(p: ReasonerProvenance | undefined): string {
       ].join("|");
 }
 
+/** Der Schlüssel EINER Frage: Herkunft, gespeicherter Stand und Text — Begründung eine Zeile höher. */
+function liveSchluessel(
+  text: string,
+  herkunft: ReasonerProvenance | undefined,
+  gespeicherterStand: number | undefined,
+): string {
+  return `${herkunftsSchluessel(herkunft)}\n${gespeicherterStand ?? ""}\n${text.trim()}`;
+}
+
 // JOB 3427: Der Editor braucht ZWEI Auskünfte aus derselben Antwort. Der Prüfstatus darf
 // weder hinter einem Treffer verschwinden noch dessen deterministischen Fundort verdrängen.
 // Die bestehende Trefferabbildung bleibt zuständig für Titel, Link und nulltreuen Fundort.
@@ -53,14 +62,15 @@ function herkunftsSchluessel(p: ReasonerProvenance | undefined): string {
 // geprüft") stehen, weil sich am Schlüssel nichts bewegte. Der Zähler ist genau das, was die Fläche
 // ehrlich weiß: WIE OFT der gespeicherte Stand dieses Blattes neu gesetzt wurde (Laden, Sichern) —
 // keine Behauptung über SEINEN INHALT, nur darüber, dass er nicht mehr derselbe ist.
-export function useLiveKnowledgeCheck(
+function useLiveCheckKern(
   text: string,
   herkunft?: ReasonerProvenance,
   gespeicherterStand?: number,
   debounceMs = 500,
+  beiAntwort?: (schluessel: string, antwort: KnowledgeCheckResult) => void,
 ): LiveCheckState {
   const clean = text.trim();
-  const schluessel = `${herkunftsSchluessel(herkunft)}\n${gespeicherterStand ?? ""}\n${clean}`;
+  const schluessel = liveSchluessel(text, herkunft, gespeicherterStand);
   const [state, setState] = useState<LiveCheckState & { schluessel: string }>({
     // Der Schlüssel des leeren Blattes ohne Herkunft und ohne Stand: nichts gefragt, nichts behauptet.
     schluessel: "\n\n",
@@ -90,6 +100,7 @@ export function useLiveKnowledgeCheck(
       try {
         const result = await endpoints.knowledge.check(clean, herkunft);
         if (cancelled) return;
+        beiAntwort?.(schluessel, result);
         const checkStatus = result.status;
         // Unvollständige Konflikturteile sind keine belegten Widersprüche. Ähnlichkeit ist
         // unabhängig davon belegt und bleibt erhalten; die Transportantwort bleibt unverändert.
@@ -121,4 +132,36 @@ export function useLiveKnowledgeCheck(
     return { checkStatus: status, verdict: { status }, pruefumfang: null };
   }
   return state;
+}
+
+// ================================================================================================
+// AUFNAHME 20260922 · NEGATIVWISSEN-HINWEIS (R-1629) — DERSELBE LAUF, EINE AUSKUNFT MEHR.
+// ================================================================================================
+//
+// Der Hinweis auf dokumentierte Fehlschläge kommt aus DERSELBEN Antwort wie Verdict und Prüfumfang
+// — kein zweiter Haken auf denselben Endpunkt (siehe JOB 3556 in
+// components/capture/intake/useLiveKnowledgeCheck.ts). Er steht NEBEN dem Verdict und nicht in
+// ihm: der Verdict zeigt einen Treffer, der Hinweis gilt unabhängig davon, ob Widerspruch,
+// Ähnlichkeit oder nichts davon vorne steht.
+//
+// Die Treffer gelten nur für genau die Frage, die sie beantwortet haben: wechselt Text, Herkunft
+// oder gespeicherter Stand, ist die Liste sofort leer, bis die neue Antwort da ist — dieselbe
+// Schlüsselregel wie oben, nicht eine zweite.
+export type LiveNegativwissen = NonNullable<KnowledgeCheckResult["negativwissen"]>;
+
+export function useLiveKnowledgeCheck(
+  text: string,
+  herkunft?: ReasonerProvenance,
+  gespeicherterStand?: number,
+  debounceMs = 500,
+): LiveCheckState & { negativwissen: LiveNegativwissen } {
+  const [negativ, setNegativ] = useState<{ schluessel: string; treffer: LiveNegativwissen }>({
+    schluessel: "",
+    treffer: [],
+  });
+  const zustand = useLiveCheckKern(text, herkunft, gespeicherterStand, debounceMs, (s, antwort) =>
+    setNegativ({ schluessel: s, treffer: antwort.negativwissen ?? [] }),
+  );
+  const aktuell = negativ.schluessel === liveSchluessel(text, herkunft, gespeicherterStand);
+  return { ...zustand, negativwissen: aktuell ? negativ.treffer : [] };
 }
