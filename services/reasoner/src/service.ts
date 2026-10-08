@@ -1988,6 +1988,28 @@ export class Reasoner {
     return this.providerReachability(this.kanteVon(cloud)) !== "unreachable";
   }
 
+  // ==============================================================================================
+  // R-0305/R-1099 (Ben, Nacharbeit 2) — KANN DIE ZWEITMEINUNG GELD KOSTEN?
+  // ==============================================================================================
+  //
+  // `taskBillable("answer")` kennt nur die Kette des Antwortwegs. Die Gegenüberstellung fragt
+  // zusätzlich das separat gewählte Zweitmodell (`answerMitZweitmeinung`). Ist das ein externer
+  // Anbieter, kann der Klick auch bei lokaler Erstantwort kostenpflichtig sein. Dieselbe Lesart wie
+  // `taskBillable`: eine MÖGLICHKEIT für den allgemeinen (nicht vertraulichen) Fall — eingerichtet,
+  // freigegeben (`oeffentlicheKiErlaubt`) und Kante nicht zuletzt unerreichbar. Nur ein Boolean,
+  // kein Anbietername (vip2-gate).
+  private zweitmeinungBillable(): boolean {
+    const wahl = this.taskConfig.zweitmeinung;
+    if (wahl === undefined || wahl === "local") {
+      return false;
+    }
+    const provider = this.cloudProvider(wahl);
+    if (!provider || !this.oeffentlicheKiErlaubt(false)) {
+      return false;
+    }
+    return this.providerReachability(this.kanteVon(provider)) !== "unreachable";
+  }
+
   // D-AISTATE PAKET 3 (bens V4, 23.07.): zusätzlich eine ABSTRAKTE per-Task-Nutzbarkeitskarte
   // `tasks: { [task]: boolean }` — NUR true/false je Aufgabe, KEIN Provider-/Modellname (die bleiben
   // der Admin-Sicht vorbehalten, vip2-gate). true = für die Aufgabe ist ein echtes Modell (cloud|local)
@@ -2001,6 +2023,7 @@ export class Reasoner {
     reachable: ReasonerReachability;
     tasks: ReasonerTaskMap;
     billable: ReasonerTaskMap;
+    zweitmeinungBillable: boolean;
     kiAbgeschaltet: boolean;
   } {
     const active = this.usingAnyModel();
@@ -2011,6 +2034,8 @@ export class Reasoner {
       tasks: aufgabenKarte((task) => this.taskModelUsable(task)),
       // AUFTRAG-mega67 BLOCK G: kostet ein Klick auf DIESE Aufgabe wirklich Geld? (s. taskBillable)
       billable: aufgabenKarte((task) => this.taskBillable(task)),
+      // R-0305/R-1099: kann das gewählte Zweitmodell einen Klick kostenpflichtig machen?
+      zweitmeinungBillable: this.zweitmeinungBillable(),
       // D5: nur ein Boolean — die Fragefläche unterscheidet damit „vom Administrator abgeschaltet"
       // von „kein Modell nutzbar" (Störung), ohne einen Anbieter- oder Modellnamen zu erfahren.
       kiAbgeschaltet: this.kiAbschaltung().abgeschaltet,

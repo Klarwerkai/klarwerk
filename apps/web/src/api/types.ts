@@ -2595,6 +2595,10 @@ export interface ReasonerStatus {
   // `tasks`/`reachable`, die auch bei einer Störung `false` werden — die Fläche sagt die beiden
   // Lagen verschieden. Fehlt es (alter Server), behauptet die Oberfläche keine Abschaltung.
   kiAbgeschaltet?: boolean;
+  // R-0305/R-1099 (Ben, Nacharbeit 2): das separat gewählte Zweitmodell KANN die Gegenüberstellung
+  // kostenpflichtig machen — auch bei lokaler Erstantwort. Dieselbe Lesart wie `billable`; fehlt es
+  // (alter Server), behauptet die Oberfläche dafür nichts.
+  zweitmeinungBillable?: boolean;
 }
 
 // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten, keine Secrets).

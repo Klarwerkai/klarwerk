@@ -145,6 +145,30 @@ describe("R-0305/R-1099 · Reasoner.answerMitZweitmeinung", () => {
     expect(laeufe.every((lauf) => lauf.status === "success")).toBe(true);
   });
 
+  it("Z9 · Ben (Nacharbeit 2): lokale Erstantwort + externes Zweitmodell kann kosten", async () => {
+    const { reasoner } = aufbau("A [1].", "B [1].");
+    // Ohne gewähltes Zweitmodell: nur der Antwortweg zählt, und der ist lokal.
+    await reasoner.setTaskConfig(mitKiFreigabe({ global: "local", perTask: {} }));
+    expect(reasoner.publicStatus().billable.answer).toBe(false);
+    expect(reasoner.publicStatus().zweitmeinungBillable).toBe(false);
+    // Externes Zweitmodell, freigegeben: der Antwortweg bleibt kostenlos, der Klick nicht.
+    await reasoner.setTaskConfig(
+      mitKiFreigabe({ global: "local", perTask: {}, zweitmeinung: "openai" }),
+    );
+    expect(reasoner.publicStatus().billable.answer).toBe(false);
+    expect(reasoner.publicStatus().zweitmeinungBillable).toBe(true);
+    // Lokales Zweitmodell kostet nichts.
+    await reasoner.setTaskConfig({ global: "local", perTask: {}, zweitmeinung: "local" });
+    expect(reasoner.publicStatus().zweitmeinungBillable).toBe(false);
+  });
+
+  it("Z10 · ohne Adminfreigabe geht nichts hinaus — also auch keine Kostenbehauptung", async () => {
+    const { reasoner } = aufbau("A [1].", "B [1].");
+    await reasoner.setTaskConfig({ global: "local", perTask: {}, zweitmeinung: "openai" });
+    expect(reasoner.getTaskConfig().kiFreigabe).toBeUndefined();
+    expect(reasoner.publicStatus().zweitmeinungBillable).toBe(false);
+  });
+
   it("Z8 · die Wahl: weglassen = unverändert, null = aus, Unbekanntes = Fehler, Neustart überlebt", async () => {
     const { reasoner, policy } = aufbau("A [1].", "B [1].");
     await reasoner.setTaskConfig({ global: "auto", perTask: {}, zweitmeinung: "local" });

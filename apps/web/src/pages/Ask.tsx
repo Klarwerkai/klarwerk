@@ -47,6 +47,8 @@ import { Seitenblatt } from "../components/start/Seitenblatt";
 import { useDiktat } from "../components/start/useDiktat";
 import { ConfidenceBar } from "../components/trust";
 import { Button, Card, SectionLabel } from "../components/ui";
+// R-0305/R-1099: der Kostenhinweis der Zweitmeinung kennt beide Modellwege.
+import { deriveZweitmeinungBillable } from "../lib/aiAvailability";
 import { answerExportFilename, buildAnswerMarkdown } from "../lib/answerExport";
 import {
   ANSWER_CONTRACT_TRUST_NOTE_KEY,
@@ -2333,7 +2335,7 @@ export function Ask(): JSX.Element {
                   key={asked}
                   frage={asked}
                   faden={fadenFuerAnfrage(faden, asked)}
-                  billable={answerBillable}
+                  billable={deriveZweitmeinungBillable(reasonerStatus.data)}
                   titelVon={(id) => (kos.data ?? []).find((k) => k.id === id)?.title}
                 />
               </div>

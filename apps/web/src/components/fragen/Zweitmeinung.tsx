@@ -91,8 +91,8 @@ export function Zweitmeinung({
   frage: string;
   /** Der Gesprächsfaden, mit dem sie gestellt wurde (R-0348) — leer ohne Faden. */
   faden: readonly string[];
-  /** Kostet der Antwortweg etwas (`billable` der Aufgabe „answer")? Die Gegenüberstellung stellt
-   *  die Frage dem Antwortweg erneut — mindestens das kostet sie. */
+  /** Kann der Klick etwas kosten? Er fragt den Antwortweg UND das gewählte Zweitmodell — die Seite
+   *  leitet das aus beiden ab (`deriveZweitmeinungBillable`, lib/aiAvailability.ts). */
   billable: boolean | undefined;
   /** Der Titel einer Quelle, soweit die Seite ihn kennt — sonst bleibt sie ungenannt. */
   titelVon: (id: string) => string | undefined;
