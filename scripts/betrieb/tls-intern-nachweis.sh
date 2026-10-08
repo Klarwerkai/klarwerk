@@ -10,9 +10,11 @@
 #
 # Gemessen wird an der laufenden Installation, nichts wird verändert:
 #   N1  Kandidatenbezug: Image-Tag des App-Containers und öffentliches /health nennen <commit>.
-#   N2  Konfiguration: App-Umgebung trägt KLARWERK_TLS_CERT_FILE/KEY_FILE; Labels des Dienstes
-#       stehen auf scheme=https und serversTransport=klarwerk-intern@file; die Transportdatei
-#       des Proxys trägt rootCAs und kein insecureSkipVerify.
+#   N2  Konfiguration: App-Umgebung trägt KLARWERK_TLS_CERT_FILE/KEY_FILE; JEDER Traefik-Dienst
+#       der App (jedes Label `…services.<dienst>.loadbalancer.server.port`) steht auf scheme=https
+#       und serversTransport=klarwerk-intern@file — darunter mindestens die beiden gemessenen
+#       HTTPS-Dienste https-0 (klarwerk.ai) und https-1 (app.klarwerk.ai); die Transportdatei des
+#       Proxys trägt rootCAs und kein insecureSkipVerify.
 #   N3  Klartext abgewiesen — als PROTOKOLLABLEHNUNG, nicht als irgendein Fehler:
 #       N3a (Socket, im Docker-Netz): TCP-Verbindung zu <app-ip>:<port> kommt zustande, eine
 #           HTTP-Anfrage im Klartext bekommt KEINE HTTP-Antwort, die Gegenstelle baut ab.
@@ -24,9 +26,10 @@
 #   N5  Gegenprobe Prüfung: dieselbe Verbindung OHNE den internen Anker scheitert mit einem
 #       ZERTIFIKATSPRÜFFEHLER (Liste unten). Jeder andere Fehler — oder ein gescheitertes N4 — heisst
 #       „ungeklärt".
-#   N6  Tatsächlicher Proxyweg: https://app.klarwerk.ai/health antwortet mit Status 200, und das
-#       JSON trägt genau <commit>. Da die Anwendung Klartext abweist (N3) und der Proxy ohne
-#       insecureSkipVerify prüft (N2), kommt diese Antwort nur über den geprüften TLS-Upstream.
+#   N6  Tatsächliche Proxywege: https://klarwerk.ai/health UND https://app.klarwerk.ai/health
+#       antworten je mit Status 200, und das JSON trägt genau <commit>. Da die Anwendung Klartext
+#       abweist (N3) und der Proxy ohne insecureSkipVerify prüft (N2), kommen diese Antworten nur
+#       über den geprüften TLS-Upstream. Scheitert einer der beiden Wege, scheitert der Nachweis.
 # Jede Probe steht mit ihrem Grund im Beleg. Der Beleg geht als JSON auf die Standardausgabe und nach
 # /data/klarwerk/tls-nachweis/. Exitcode 0 nur, wenn N1 bis N6 bestanden sind; „ungeklärt" ist
 # nicht bestanden.
@@ -39,26 +42,37 @@ ERWARTET="${1:-}"
 }
 
 APP_UUID="b3rgijsv5jtuhreh9ypyjase"
-DIENST="https-1-${APP_UUID}"
+# Die beiden gemessenen HTTPS-Dienste (Abgleich 08.10.2026): https-0 → klarwerk.ai,
+# https-1 → app.klarwerk.ai, beide auf denselben App-Port.
+PFLICHT_DIENSTE="https-0-${APP_UUID} https-1-${APP_UUID}"
+TRANSPORT_SOLL="klarwerk-intern@file"
 PROXY="coolify-proxy"
 NETZ="coolify"
-OEFFENTLICH="https://app.klarwerk.ai/health"
+OEFFENTLICH="https://klarwerk.ai/health https://app.klarwerk.ai/health"
 BELEGE="${KLARWERK_TLS_NACHWEIS_DIR:-/data/klarwerk/tls-nachweis}"
 
 APP="$(docker ps --filter "name=^${APP_UUID}-" --format '{{.Names}}' | head -n 1)"
 [ -n "$APP" ] || { echo "ABBRUCH: kein laufender App-Container ${APP_UUID}-*" >&2; exit 1; }
 IP="$(docker inspect -f "{{(index .NetworkSettings.Networks \"${NETZ}\").IPAddress}}" "$APP")"
-PORT="$(docker inspect -f "{{index .Config.Labels \"traefik.http.services.${DIENST}.loadbalancer.server.port\"}}" "$APP")"
+label() { docker inspect -f "{{index .Config.Labels \"traefik.http.services.$1.loadbalancer.$2\"}}" "$APP"; }
+PORT="$(label "https-1-${APP_UUID}" server.port)"
 IMAGE="$(docker inspect -f '{{.Config.Image}}' "$APP")"
-SCHEMA="$(docker inspect -f "{{index .Config.Labels \"traefik.http.services.${DIENST}.loadbalancer.server.scheme\"}}" "$APP")"
-TRANSPORT="$(docker inspect -f "{{index .Config.Labels \"traefik.http.services.${DIENST}.loadbalancer.serversTransport\"}}" "$APP")"
+DIENSTE="$(docker inspect -f '{{range $k, $v := .Config.Labels}}{{println $k}}{{end}}' "$APP" \
+  | sed -n 's/^traefik\.http\.services\.\([^.]*\)\.loadbalancer\.server\.port$/\1/p' | sort -u | tr '\n' ' ')"
 ENV_NAMEN="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$APP" | sed -n 's/^\(KLARWERK_TLS_[A-Z_]*\)=.*/\1/p' | sort | tr '\n' ' ')"
 PROXY_WURZEL="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/traefik"}}{{.Source}}{{end}}{{end}}' "$PROXY")"
 TRANSPORTDATEI="${PROXY_WURZEL}/dynamic/klarwerk-intern.yml"
 
 ok() { if "$@"; then echo true; else echo false; fi; }
 # Freitext für den JSON-Beleg: ohne Anführungszeichen, Rückstriche und Zeilenumbrüche, gekürzt.
-textfeld() { tr -d '"\\' | tr '\n\r\t' '   ' | cut -c1-300; }
+# `$(cat)` streicht abschließende Zeilenumbrüche, sonst würde aus "https\n" ein "https ".
+textfeld() {
+  local t
+  t="$(cat)"
+  t="${t//[\"\\]/}"
+  t="${t//[$'\n\r\t']/ }"
+  printf '%s' "${t:0:300}"
+}
 
 # N1 — Kandidatenbezug
 N1_IMAGE="$(ok grep -q "$ERWARTET" <<<"$IMAGE")"
@@ -69,7 +83,30 @@ if [[ " $ENV_NAMEN " == *" KLARWERK_TLS_CERT_FILE "* && " $ENV_NAMEN " == *" KLA
 else
   N2_ENV=false
 fi
-N2_LABELS="$( [ "$SCHEMA" = "https" ] && [ "$TRANSPORT" = "klarwerk-intern@file" ] && echo true || echo false )"
+# Jeder Dienst einzeln: ein fehlender Pflichtdienst oder ein einziger Dienst ohne geprüftes TLS
+# lässt N2 scheitern.
+N2_LABELS=true
+N2_DIENSTE_JSON=""
+[ -n "${DIENSTE// /}" ] || N2_LABELS=false
+for d in $PFLICHT_DIENSTE; do
+  if [[ " $DIENSTE " != *" $d "* ]]; then
+    N2_LABELS=false
+    N2_DIENSTE_JSON+="{\"dienst\":\"${d}\",\"fehlt\":true,\"ok\":false},"
+  fi
+done
+for d in $DIENSTE; do
+  d_schema="$(label "$d" server.scheme | textfeld)"
+  d_transport="$(label "$d" serversTransport | textfeld)"
+  d_port="$(label "$d" server.port | textfeld)"
+  d_ok=false
+  if [ "$d_schema" = "https" ] && [ "$d_transport" = "$TRANSPORT_SOLL" ] && [ "$d_port" = "$PORT" ]; then
+    d_ok=true
+  else
+    N2_LABELS=false
+  fi
+  N2_DIENSTE_JSON+="{\"dienst\":\"$(textfeld <<<"$d")\",\"scheme\":\"${d_schema}\",\"serversTransport\":\"${d_transport}\",\"port\":\"${d_port}\",\"ok\":${d_ok}},"
+done
+N2_DIENSTE_JSON="[${N2_DIENSTE_JSON%,}]"
 N2_DATEI="$( [ -s "$TRANSPORTDATEI" ] && grep -q 'rootCAs' "$TRANSPORTDATEI" && ! grep -qi 'insecureSkipVerify' "$TRANSPORTDATEI" && echo true || echo false )"
 
 # N3b — Klartext aus dem Proxy-Container: nur eine abgebrochene Antwort zählt als Ablehnung.
@@ -199,22 +236,34 @@ N3="$( [ "$N3A" = abgewiesen ] && [ "$N3B" = abgewiesen ] && echo true || echo f
 N4="$(ok grep -q '"n4":true' <<<"$TLS_PROBE")"
 N5="$(ok grep -q '"n5":"zertifikat_abgelehnt"' <<<"$TLS_PROBE")"
 
-# N6 — öffentlicher Weg: Status 200 UND das JSON trägt genau den Commit (ausgewertet von Node).
-OEFF_DATEI="$(mktemp)"
-set +e
-N6_STATUS="$(curl -sS --max-time 10 -o "$OEFF_DATEI" -w '%{http_code}' "$OEFFENTLICH" 2>/dev/null)"
-set -e
-N6_COMMIT="$(docker exec -i -e ERWARTET="$ERWARTET" "$APP" node -e '
+# N6 — jeder öffentliche Weg: Status 200 UND das JSON trägt genau den Commit (ausgewertet von Node).
+oeffentlich_pruefen() {
+  local url="$1" datei status commit ok=false
+  datei="$(mktemp)"
+  set +e
+  status="$(curl -sS --max-time 10 -o "$datei" -w '%{http_code}' "$url" 2>/dev/null)"
+  commit="$(docker exec -i -e ERWARTET="$ERWARTET" "$APP" node -e '
 let t = "";
 process.stdin.on("data", (d) => { t += d; });
 process.stdin.on("end", () => {
   try { console.log(JSON.parse(t).commit === process.env.ERWARTET ? "true" : "false"); }
   catch { console.log("false"); }
-});' <"$OEFF_DATEI" 2>/dev/null || echo false)"
-rm -f "$OEFF_DATEI"
-[ "$N6_COMMIT" = "true" ] || N6_COMMIT=false
-[[ "$N6_STATUS" =~ ^[0-9]{3}$ ]] || N6_STATUS="000"
-N6="$( [ "$N6_STATUS" = "200" ] && [ "$N6_COMMIT" = "true" ] && echo true || echo false )"
+});' <"$datei" 2>/dev/null)"
+  set -e
+  rm -f "$datei"
+  [ "$commit" = "true" ] || commit=false
+  [[ "$status" =~ ^[0-9]{3}$ ]] || status="000"
+  if [ "$status" = "200" ] && [ "$commit" = "true" ]; then ok=true; fi
+  printf '{"url":"%s","status":"%s","commit_passt":%s,"ok":%s}' "$url" "$status" "$commit" "$ok"
+}
+N6=true
+N6_JSON=""
+for url in $OEFFENTLICH; do
+  eintrag="$(oeffentlich_pruefen "$url")"
+  [[ "$eintrag" == *'"ok":true}' ]] || N6=false
+  N6_JSON+="${eintrag},"
+done
+N6_JSON="[${N6_JSON%,}]"
 # Nur eine JSON-Zeile der Probe geht in den Beleg; eine Fehlermeldung steht dort als null (N4/N5 false).
 if [[ "$TLS_PROBE" == \{* ]]; then
   PROBE_JSON="$TLS_PROBE"
@@ -240,7 +289,8 @@ BELEG="$(cat <<EOF
   "app_ziel": "${IP}:${PORT}",
   "n1_image_traegt_commit": ${N1_IMAGE},
   "n2_umgebung_tls": ${N2_ENV},
-  "n2_labels": { "scheme": "${SCHEMA}", "serversTransport": "${TRANSPORT}", "ok": ${N2_LABELS} },
+  "n2_dienste": ${N2_DIENSTE_JSON},
+  "n2_labels_ok": ${N2_LABELS},
   "n2_transportdatei_mit_ca_ohne_skip": ${N2_DATEI},
   "n3a_socket": "${N3A}",
   "n3b_proxy": { "ergebnis": "${N3B}", "exit": "${N3B_EXIT}", "meldung": "${N3B_MELDUNG}" },
@@ -248,7 +298,8 @@ BELEG="$(cat <<EOF
   "n3a_n4_n5_probe": ${PROBE_JSON},
   "n4_tls_mit_pruefung": ${N4},
   "n5_ohne_anker_zertifikat_abgelehnt": ${N5},
-  "n6_oeffentlich": { "status": "${N6_STATUS}", "commit_passt": ${N6_COMMIT}, "ok": ${N6} },
+  "n6_oeffentlich": ${N6_JSON},
+  "n6_ok": ${N6},
   "bestanden": ${BESTANDEN}
 }
 EOF

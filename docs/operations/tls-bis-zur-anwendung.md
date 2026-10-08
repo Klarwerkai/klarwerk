@@ -31,7 +31,7 @@ Werte aus dem Betriebsbefund vom 08.10.2026 — vor dem Lauf nicht zu ändern, d
 | Gegenstand | Wert |
 | --- | --- |
 | Coolify-Anwendung | `b3rgijsv5jtuhreh9ypyjase` |
-| Traefik-Dienst | `https-1-b3rgijsv5jtuhreh9ypyjase` (Port-Label `3000`) |
+| Traefik-Dienste | `https-0-b3rgijsv5jtuhreh9ypyjase` (`klarwerk.ai`) und `https-1-b3rgijsv5jtuhreh9ypyjase` (`app.klarwerk.ai`), beide Port-Label `3000` — derselbe App-Port |
 | Proxy-Container | `coolify-proxy` (traefik:v3.6), Dateikonfiguration aus `/traefik/dynamic` |
 | Docker-Netz | `coolify` |
 | Zertifikatsname | `klarwerk-app` (SAN zusätzlich `127.0.0.1` für den Selbsttest) |
@@ -75,12 +75,19 @@ wechseln damit gemeinsam. Getrennt ausgerollt spräche einer der beiden Klartext
   KLARWERK_TLS_SERVERNAME=klarwerk-app
   ```
 
-- Container Labels, zusätzlich zu den vorhandenen:
+- Container Labels, zusätzlich zu den vorhandenen — für **jeden** Traefik-Dienst der Anwendung.
+  Beide HTTPS-Dienste zeigen auf denselben App-Port, der danach nur noch TLS spricht; ein
+  ausgelassener Dienst spräche weiter Klartext gegen TLS und fiele aus:
 
   ```
+  traefik.http.services.https-0-b3rgijsv5jtuhreh9ypyjase.loadbalancer.server.scheme=https
+  traefik.http.services.https-0-b3rgijsv5jtuhreh9ypyjase.loadbalancer.serversTransport=klarwerk-intern@file
   traefik.http.services.https-1-b3rgijsv5jtuhreh9ypyjase.loadbalancer.server.scheme=https
   traefik.http.services.https-1-b3rgijsv5jtuhreh9ypyjase.loadbalancer.serversTransport=klarwerk-intern@file
   ```
+
+  Findet `tls-intern-einrichten.sh` am laufenden Container weitere Dienste mit Port-Label, gibt es
+  für sie dieselben zwei Zeilen aus; auch sie gehören dazu.
 
 Kein `insecureSkipVerify`. Der Container-Selbsttest prüft danach selbst über HTTPS gegen die CA.
 
@@ -99,12 +106,12 @@ Sicherheitsablehnung.
 | Probe | Erwartung |
 | --- | --- |
 | N1 | Image-Tag des App-Containers trägt den Commit |
-| N2 | App-Umgebung mit Zertifikat und Schlüssel; Labels `scheme=https`, `serversTransport=klarwerk-intern@file`; Transportdatei mit `rootCAs`, ohne `insecureSkipVerify` |
+| N2 | App-Umgebung mit Zertifikat und Schlüssel; **jeder** Dienst mit Port-Label trägt `scheme=https`, `serversTransport=klarwerk-intern@file` und den App-Port, `https-0` und `https-1` müssen darunter sein; Transportdatei mit `rootCAs`, ohne `insecureSkipVerify` |
 | N3a | im Netz `coolify`: TCP zu `<app-ip>:3000` kommt zustande, eine Klartext-HTTP-Anfrage bekommt keine HTTP-Antwort, die Verbindung wird abgebaut |
 | N3b | aus `coolify-proxy`: `wget` vorhanden, `http://<app-ip>:3000/health` wird beim Lesen der Antwort abgebrochen (nicht verweigert, nicht zeitüberschritten) |
 | N4 | im Netz `coolify`: `https://<app-ip>:3000/health` mit Servername `klarwerk-app` und interner CA → 200 und der Commit |
 | N5 | dieselbe Verbindung ohne den internen Anker scheitert mit einem Zertifikatsprüffehler (z. B. `UNABLE_TO_VERIFY_LEAF_SIGNATURE`); nur gewertet, wenn N4 bestanden ist |
-| N6 | `https://app.klarwerk.ai/health` → Status 200 und das JSON trägt genau den Commit — über den Proxy, dessen Upstream nur noch geprüftes TLS annimmt |
+| N6 | `https://klarwerk.ai/health` **und** `https://app.klarwerk.ai/health` → je Status 200 und das JSON trägt genau den Commit — über den Proxy, dessen Upstream nur noch geprüftes TLS annimmt; scheitert einer der beiden Wege, scheitert der Nachweis |
 
 Die Unterscheidung ist gegengeprüft in `tests/security/tls-betriebsskripte.test.ts`: der Node-Block
 des Skripts läuft dort wörtlich gegen eine TLS-, eine Klartext-Anwendung und einen geschlossenen

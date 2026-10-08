@@ -94,5 +94,25 @@ echo "  Umgebung: KLARWERK_TLS_CERT_FILE=/run/klarwerk-tls/app.pem"
 echo "            KLARWERK_TLS_KEY_FILE=/run/klarwerk-tls/app.key"
 echo "            KLARWERK_TLS_CA_FILE=/run/klarwerk-tls/ca.pem"
 echo "            KLARWERK_TLS_SERVERNAME=$SERVERNAME"
-echo "  Labels:   traefik.http.services.https-1-b3rgijsv5jtuhreh9ypyjase.loadbalancer.server.scheme=https"
-echo "            traefik.http.services.https-1-b3rgijsv5jtuhreh9ypyjase.loadbalancer.serversTransport=klarwerk-intern@file"
+echo "  Labels für JEDEN Traefik-Dienst der Anwendung — die beiden gemessenen HTTPS-Dienste"
+echo "  (https-0: klarwerk.ai, https-1: app.klarwerk.ai) teilen sich den App-Port, der danach nur"
+echo "  noch TLS spricht; ein ausgelassener Dienst fiele aus:"
+echo "    traefik.http.services.https-0-b3rgijsv5jtuhreh9ypyjase.loadbalancer.server.scheme=https"
+echo "    traefik.http.services.https-0-b3rgijsv5jtuhreh9ypyjase.loadbalancer.serversTransport=klarwerk-intern@file"
+echo "    traefik.http.services.https-1-b3rgijsv5jtuhreh9ypyjase.loadbalancer.server.scheme=https"
+echo "    traefik.http.services.https-1-b3rgijsv5jtuhreh9ypyjase.loadbalancer.serversTransport=klarwerk-intern@file"
+
+# Weitere Dienste mit Port-Label am laufenden App-Container: auch sie zeigen auf den App-Port.
+APP="$(docker ps --filter "name=^b3rgijsv5jtuhreh9ypyjase-" --format '{{.Names}}' | head -n 1)"
+if [ -z "$APP" ]; then
+  echo "  HINWEIS: kein laufender App-Container gefunden — weitere Dienste nicht abgeglichen."
+else
+  WEITERE="$(docker inspect -f '{{range $k, $v := .Config.Labels}}{{println $k}}{{end}}' "$APP" \
+    | sed -n 's/^traefik\.http\.services\.\([^.]*\)\.loadbalancer\.server\.port$/\1/p' | sort -u \
+    | grep -vx -e 'https-0-b3rgijsv5jtuhreh9ypyjase' -e 'https-1-b3rgijsv5jtuhreh9ypyjase' || true)"
+  for d in $WEITERE; do
+    echo "    traefik.http.services.${d}.loadbalancer.server.scheme=https"
+    echo "    traefik.http.services.${d}.loadbalancer.serversTransport=klarwerk-intern@file"
+  done
+fi
+echo "  Der Nachweis (tls-intern-nachweis.sh) verlangt das für jeden Dienst mit Port-Label."
