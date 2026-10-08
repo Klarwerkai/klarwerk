@@ -35,6 +35,7 @@ import {
   verzeichnisNamen,
 } from "../lib/auditEventDetail";
 import { type AuditVerifyTone, auditVerifyView } from "../lib/auditVerifyState";
+import { formatKoTimestamp } from "../lib/koDates";
 import { SECURITY_POINTS } from "../lib/securityStatements";
 import { type ReadinessTone, readinessRows } from "../lib/vipReadiness";
 
@@ -195,7 +196,7 @@ function TechnikAngaben({
  * „Konto nicht mehr vorhanden" nur aus einer erfolgreichen, frischen Antwort entstehen kann.
  */
 export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { push } = useToast();
   const audit = useAudit();
   const verzeichnisAbfrage = useDirectory();
@@ -395,7 +396,7 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
                           return (
                             <tr key={e.seq} data-audit-eintrag={e.seq} className="align-top">
                               <td className="whitespace-nowrap px-2 py-2 font-mono text-[11px] text-muted-2">
-                                {new Date(e.at).toLocaleString()}
+                                {formatKoTimestamp(e.at, i18n.language)}
                               </td>
                               <td
                                 data-audit-zeile="audit.detail.event"

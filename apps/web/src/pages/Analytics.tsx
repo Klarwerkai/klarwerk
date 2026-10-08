@@ -30,6 +30,7 @@ import {
 import { ANALYTICS_AUDIT_ANCHOR, hashToElementId } from "../lib/analyticsSections";
 import { executiveKpis } from "../lib/executiveKpis";
 import { type HealthBand, knowledgeHealth } from "../lib/knowledgeHealth";
+import { formatKoTimestamp } from "../lib/koDates";
 import { isGroupError, isGroupLoading, isGroupStale } from "../lib/loadingState";
 
 const BAND_TONE: Record<HealthBand, string> = {
@@ -65,7 +66,7 @@ function ExecKpi({
 }
 
 export function Analytics(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const analytics = useAnalytics();
   const audit = useAudit();
   const kos = useKos();
@@ -466,7 +467,7 @@ export function Analytics(): JSX.Element {
                           className="flex items-center gap-3 px-4 py-2 text-[12.5px]"
                         >
                           <span className="font-mono text-[11px] text-muted-2">
-                            {new Date(e.at).toLocaleString()}
+                            {formatKoTimestamp(e.at, i18n.language)}
                           </span>
                           <span className="font-semibold text-text">{e.action}</span>
                           <span className="truncate text-muted">{e.target}</span>

@@ -36,6 +36,7 @@ import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { abfragelage, useIstOnline, wertBefund } from "../components/einstellungen/zeilenWert";
 import { cx } from "../components/ui";
+import { formatKoTimestamp } from "../lib/koDates";
 
 /**
  * Der Abfrageschlüssel — DIESELBE Kennung, die auch die Zeile im Reiter „System" fährt
@@ -96,13 +97,13 @@ function altersText(t: Uebersetzer, eintrag: SicherungsEintrag, gelesenUtc: stri
   return t("adm.backup.age.days", { count: Math.floor(stunden / 24) });
 }
 
-/** Ein Zeitpunkt in der Sprache des Lesers; `null` bleibt eine Aussage, kein leeres Feld. */
-function zeitText(t: Uebersetzer, iso: string | null): string {
-  if (iso === null) {
-    return t("adm.backup.time.unknown");
-  }
-  const zeit = new Date(iso);
-  return Number.isNaN(zeit.getTime()) ? t("adm.backup.time.unknown") : zeit.toLocaleString();
+/**
+ * Ein Zeitpunkt in der Sprache des Lesers; `null` bleibt eine Aussage, kein leeres Feld.
+ * R-1010: dieselbe Zeitregel wie überall (`formatKoTimestamp`) statt `toLocaleString()` mit der
+ * Sprache des Browsers und Sekunden.
+ */
+function zeitText(t: Uebersetzer, sprache: string, iso: string | null): string {
+  return formatKoTimestamp(iso, sprache) ?? t("adm.backup.time.unknown");
 }
 
 // Drei flache Konstanten statt einer Kette im Attribut — dieselbe Bauform und dieselbe Begründung
@@ -136,7 +137,7 @@ function Eintragszeile({
   /** Nur eine frische, erfolgreiche Lesung darf ein Alter behaupten (Auftrag §9). */
   frisch: boolean;
 }): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const alter = frisch ? altersText(t, eintrag, gelesenUtc) : null;
   return (
     <li
@@ -144,7 +145,9 @@ function Eintragszeile({
       className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2.5"
     >
       <span className="min-w-0 break-all font-mono text-[12.5px] text-text">{eintrag.datei}</span>
-      <span className="text-[12px] text-muted-2">{zeitText(t, eintrag.zeitpunktUtc)}</span>
+      <span className="text-[12px] text-muted-2">
+        {zeitText(t, i18n.language, eintrag.zeitpunktUtc)}
+      </span>
       {/* JOB 4109 — DIE WIEVIELTE SICHERUNG DIESER SEKUNDE. Läuft der Cron zweimal in derselben
           Sekunde, heißt die zweite `klarwerk-<STAMP>_02.dump` (`backup.sh:413`); ohne diese Zeile
           stünden zwei Einträge mit identischem Zeitpunkt untereinander, ohne dass irgendetwas ihre
@@ -241,7 +244,7 @@ function Befund({
  * Läufe und Ausgabekanal sind eine eigene Sicherheitsentscheidung mit eigener Abnahme.
  */
 export function SicherungDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   // NUR die Erklärung der Karte liegt im „?"-Menü — der Ehrlichkeitssatz NICHT.
   //
   // Runde 1 hatte ihn an BEIDEN Orten: im Menü und sichtbar unten. Genau das war der Befund des
@@ -292,7 +295,7 @@ export function SicherungDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
                 {t("adm.backup.dir", { verzeichnis: daten.verzeichnis })}
               </p>
               <p data-testid="sicherung-gelesen">
-                {t("adm.backup.readAt", { zeit: zeitText(t, daten.gelesenUtc) })}
+                {t("adm.backup.readAt", { zeit: zeitText(t, i18n.language, daten.gelesenUtc) })}
               </p>
             </div>
           </div>

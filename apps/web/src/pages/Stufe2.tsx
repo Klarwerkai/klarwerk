@@ -128,6 +128,7 @@ import {
   estimateValuation,
   formatEur,
 } from "../lib/knowledgeValuation";
+import { formatKoTimestamp } from "../lib/koDates";
 import { koLabel } from "../lib/koLabel";
 // JOB 3363: die Leseübersetzung eines noch NICHT angenommenen Kandidaten — live über die echte
 // Kandidaten-Kennung aufgelöst, ohne KO-Kennung, ohne Schreibvorgang.
@@ -1751,7 +1752,7 @@ function WindowNote({
 // eine eigene) — und `isPaused` entfällt ersatzlos, denn ohne Netz ist es nur eine Folge desselben
 // Umstands.
 function ReasonerRunsCard(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const runs = useModelRuns(50);
   const online = useNetzOnline();
   const stoerung: "keine" | "offline" | "fehler" = !online
@@ -1955,7 +1956,7 @@ function ReasonerRunsCard(): JSX.Element {
                       </span>
                     ) : null}
                     <span className="font-mono text-[10px] text-muted-2">
-                      {new Date(r.startedAt).toLocaleString()}
+                      {formatKoTimestamp(r.startedAt, i18n.language)}
                     </span>
                   </li>
                 ))}

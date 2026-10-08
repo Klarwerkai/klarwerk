@@ -8,6 +8,7 @@ import { GuardedLink, useGuardedNavigate } from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
 import { CaptureDraftList } from "../components/CaptureDraftList";
 import { HelpTip } from "../components/HelpTip";
+import { formatKoTimestamp } from "../lib/koDates";
 
 // ==================================================================================================
 // JOB 3503 · ENTWUERFE-MENUEPUNKT — DIE EIGENE ÜBERSICHT DER ENTWÜRFE.
@@ -54,7 +55,7 @@ import { HelpTip } from "../components/HelpTip";
 // `blatt-entwuerfe-fehler`), und es sind dieselben zwei Textschlüssel — kein zweites Wort für
 // dieselbe Störung.
 export function MeineEntwuerfe(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { push } = useToast();
   const qc = useQueryClient();
   const navigate = useGuardedNavigate();
@@ -190,12 +191,9 @@ export function MeineEntwuerfe(): JSX.Element {
     },
   });
 
-  const zeitpunkt = (wert: string): string => {
-    const datum = new Date(wert);
-    return Number.isNaN(datum.getTime())
-      ? wert
-      : new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "short" }).format(datum);
-  };
+  // R-1010: dieselbe Zeitregel wie die Entwurfsliste daneben (`formatKoTimestamp`), in der Sprache
+  // der Oberfläche statt fest „de-DE"; ein unlesbarer Wert bleibt wie bisher als Rohwert stehen.
+  const zeitpunkt = (wert: string): string => formatKoTimestamp(wert, i18n.language) ?? wert;
 
   // Nie ein erfundener Name: ohne Eintrag im Verzeichnis steht die Kennung da, und ohne bekannten
   // Löschenden steht nur der Zeitpunkt — „unbekannt" ist etwas anderes als „leer".

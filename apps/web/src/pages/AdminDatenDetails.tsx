@@ -46,6 +46,7 @@ import {
   setzeBranding,
   uebernimmBranding,
 } from "../lib/brandTheme";
+import { formatKoTimestamp } from "../lib/koDates";
 import { PILOT_NEXT_STEPS } from "../lib/pilotNextSteps";
 
 /**
@@ -1037,7 +1038,7 @@ export function PapierkorbDetail({ onZurueck }: { onZurueck: () => void }): JSX.
 
 /** SCRUM-149: die kleine echte Audit-Sicht für Nutzer-/Auth-Aktionen. */
 export function AuditDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const audit = useAudit();
   return (
     <Detailkarte titel={t("adm.auditTitle")} onZurueck={onZurueck} testId="detail-audit">
@@ -1062,7 +1063,7 @@ export function AuditDetail({ onZurueck }: { onZurueck: () => void }): JSX.Eleme
               {userEntries.map((e) => (
                 <div key={e.seq} className="flex items-center gap-3 py-2 text-[12.5px]">
                   <span className="font-mono text-[11px] text-muted-2">
-                    {new Date(e.at).toLocaleString()}
+                    {formatKoTimestamp(e.at, i18n.language)}
                   </span>
                   <span className="font-semibold text-text">{e.action}</span>
                   <span className="ml-auto truncate font-mono text-[11px] text-muted-2">
