@@ -417,12 +417,15 @@ export type KoAction =
         clearBody?: true;
         baseVersion: number;
         origin?: string;
+        /** package:pruefablauf: die benannte Prüfperson; der Server prüft ihr Freigaberecht. */
+        pruefer?: string;
       };
     }
   | {
       action: "decide-proposal";
       proposalId: string;
-      decision: "uebernehmen" | "ablehnen";
+      /** `rueckfrage` entscheidet nichts: der Vorschlag bleibt offen, `note` ist die Frage. */
+      decision: "uebernehmen" | "ablehnen" | "rueckfrage";
       note?: string;
       expectedVersion?: number;
     }

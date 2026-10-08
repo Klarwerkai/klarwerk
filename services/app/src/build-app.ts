@@ -170,7 +170,7 @@ import {
 } from "../../object-store";
 import { LmsExportService, OutputService, leseLmsEmpfaenger } from "../../output";
 // SCRUM-443: echte Rollenwechsel-Regel (FR-RBAC-03) in den AuthService injizieren.
-import { canChangeRole } from "../../rbac";
+import { canChangeRole, canManageUsers } from "../../rbac";
 import {
   type AssistPresetRepo,
   Ausgangspruefung,
@@ -3221,6 +3221,13 @@ export function buildApp(
         // Derselbe gekoppelte Kern wie das Antwortfeedback (Trust-Schritt + Audit, genau einmal je
         // Person und Objekt) — ko-routes bekommt nur diese eine Funktion, nicht den Ask-Dienst.
         hilfreich: (koId, actor) => services.ask.markKoHelpful(koId, actor),
+        // Aufnahme gesamt-peer-validierung (package:pruefablauf): die benannte Prüfperson eines
+        // Vorschlags muss ihn auch entscheiden können — freigegebenes Konto mit `users.manage`,
+        // dieselbe Rechtefrage wie an `decide-proposal`.
+        freigabeberechtigt: async (userId) => {
+          const person = (await services.auth.listUsers()).find((u) => u.id === userId);
+          return Boolean(person?.approved) && canManageUsers(person?.role ?? "viewer");
+        },
         draftPromotion: {
           load: async (draftId, user) => {
             const draft = await services.capture.getDraft(draftId);

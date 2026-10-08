@@ -5288,8 +5288,17 @@ export class KoService {
       clearBody?: boolean;
       baseVersion: number;
       origin?: string;
+      /** package:pruefablauf: die benannte Prüfperson. Ihr Freigaberecht prüft die Route. */
+      pruefer?: string;
     },
   ): Promise<{ ko: KnowledgeObject; proposal: KoProposal }> {
+    if (input.pruefer !== undefined && input.pruefer === author) {
+      // Dieselbe Regel wie bei der Entscheidung: die eigene Änderung prüft niemand selbst.
+      throw new KoError(
+        "PROPOSAL_OWN",
+        "Die eigene Änderung prüft niemand selbst — bitte eine andere Person benennen.",
+      );
+    }
     const statement = input.statement.trim();
     if (statement.length === 0) {
       // Ein leerer Vorschlag ist kein Vorschlag — und als Übernahme wäre er eine Löschung.
@@ -5316,6 +5325,7 @@ export class KoService {
         ...(input.clearBody === true ? { clearBody: true } : {}),
         status: "offen",
         ...(input.origin ? { origin: input.origin } : {}),
+        ...(input.pruefer ? { pruefer: input.pruefer } : {}),
       };
       const updated: KnowledgeObject = { ...ko, proposals: [...(ko.proposals ?? []), proposal] };
       return {
@@ -5327,7 +5337,11 @@ export class KoService {
               actor: author,
               action: "ko.proposed",
               target: id,
-              payload: { proposalId: proposal.id, baseVersion: proposal.baseVersion },
+              payload: {
+                proposalId: proposal.id,
+                baseVersion: proposal.baseVersion,
+                ...(proposal.pruefer ? { pruefer: proposal.pruefer } : {}),
+              },
             },
             tx,
           );
@@ -5356,9 +5370,14 @@ export class KoService {
     id: string,
     proposalId: string,
     actor: string,
-    entscheidung: "uebernehmen" | "ablehnen",
+    entscheidung: "uebernehmen" | "ablehnen" | "rueckfrage",
     opts: { trust: number; expectedVersion?: number; note?: string },
   ): Promise<{ ko: KnowledgeObject; proposal: KoProposal }> {
+    const rueckfrageText = (opts.note ?? "").trim();
+    if (entscheidung === "rueckfrage" && rueckfrageText.length === 0) {
+      // Eine Rückfrage ohne Inhalt wäre nicht nachvollziehbar — niemand wüsste, was fehlt.
+      throw new KoError("INVALID_SOURCE", "Eine Rückfrage braucht einen Text.");
+    }
     return this.mutateKoTx(id, (ko) => {
       this.pruefeErwarteteVersion(ko, opts.expectedVersion);
       const offen = ko.proposals ?? [];
@@ -5382,6 +5401,43 @@ export class KoService {
         );
       }
       const entschiedenAm = new Date(this.now()).toISOString();
+      // ==========================================================================================
+      // Aufnahme gesamt-peer-validierung (package:pruefablauf, Ben Nacharbeit 3) — DIE RÜCKFRAGE.
+      // ==========================================================================================
+      //
+      // Die dritte Antwort neben Übernehmen und Ablehnen. Sie ENTSCHEIDET NICHTS: der Vorschlag
+      // bleibt `offen`, das Objekt behält Inhalt, Fassung und Prüfstand. Festgehalten wird, wer was
+      // wann gefragt hat — am Vorschlag (für Einreicher und Prüfer sichtbar) und im Protokoll.
+      // Dieselben Regeln wie die Entscheidung: nur an einem offenen Vorschlag, nicht am eigenen.
+      if (entscheidung === "rueckfrage") {
+        const befragt: KoProposal = {
+          ...vorschlag,
+          rueckfragen: [
+            ...(vorschlag.rueckfragen ?? []),
+            { von: actor, at: entschiedenAm, text: rueckfrageText },
+          ],
+        };
+        const updated: KnowledgeObject = {
+          ...ko,
+          proposals: offen.map((p) => (p.id === proposalId ? befragt : p)),
+        };
+        return {
+          updated,
+          value: { ko: updated, proposal: befragt },
+          // KEIN Snapshot: es ist keine neue Inhaltsfassung entstanden.
+          audit: async (tx) => {
+            await this.audit?.record(
+              {
+                actor,
+                action: "ko.proposal-queried",
+                target: id,
+                payload: { proposalId, baseVersion: vorschlag.baseVersion },
+              },
+              tx,
+            );
+          },
+        };
+      }
       if (entscheidung === "ablehnen") {
         const abgelehnt: KoProposal = {
           ...vorschlag,
@@ -6136,9 +6192,20 @@ export class KoService {
   // während eine laufende Bewertung noch rechnete — und die Bewertung schrieb danach „validiert, 99"
   // über einen eben angelegten Wahrheitskonflikt. Jetzt wartet er auf die Bewertung und findet dann
   // ihr „validiert"; die Bewertung liest den Konfliktbestand ihrerseits erst unter dem Lock.
+  //
+  // Ben, Nacharbeit 3 — DERSELBE KONFLIKT GEHT GENAU EINMAL EIN. Hatte die eben geschriebene
+  // Bewertung den Wahrheitskonflikt schon in ihre Formel aufgenommen, zog dieser Weg ihn danach ein
+  // zweites Mal pauschal ab (87 → 75, je nach Reihenfolge). `neuerWert` rechnet deshalb aus der
+  // gespeicherten Grundlage neu (`vertrauensGrundlage`, gesetzt von der Bewertungsklammer); die
+  // Validierung liefert die Funktion (`ValidationService.wahrheitskonfliktFolge`), denn die Formel
+  // gehört dorthin. Ohne `neuerWert` bleibt es beim bisherigen Abzug.
   async markTruthConflictReview(
     id: string,
     actor = "system",
+    neuerWert?: (ko: KnowledgeObject) => {
+      trust: number;
+      grundlage?: { ohneKonflikte: number; konflikte: string[] };
+    },
   ): Promise<KnowledgeObject | undefined> {
     return this.withKoLock(id, async () => {
       const ko = await this.repo.findById(id);
@@ -6146,8 +6213,17 @@ export class KoService {
         return ko;
       }
       const previousTrust = ko.trust;
-      const trust = Math.max(0, ko.trust - TRUTH_CONFLICT_TRUST_PENALTY);
-      const updated: KnowledgeObject = { ...ko, status: "offen", trust };
+      const neu = neuerWert
+        ? neuerWert(ko)
+        : { trust: Math.max(0, ko.trust - TRUTH_CONFLICT_TRUST_PENALTY) };
+      const trust = neu.trust;
+      const { vertrauensGrundlage: _bisher, ...ohneGrundlage } = ko;
+      const updated: KnowledgeObject = {
+        ...ohneGrundlage,
+        status: "offen",
+        trust,
+        ...(neu.grundlage ? { vertrauensGrundlage: { trust, ...neu.grundlage } } : {}),
+      };
       await this.schreibeMitBeleg(
         (tx) => this.repo.update(updated, tx),
         async (tx) => {
@@ -6227,7 +6303,13 @@ export class KoService {
   // und `ko.change-rolled-back` nennt sie danach ausdrücklich als zurückgenommen.
   async setValidationStateMitBeleg(
     id: string,
-    zustand: (ko: KnowledgeObject) => Promise<{ trust: number; status: KoStatus }>,
+    zustand: (ko: KnowledgeObject) => Promise<{
+      trust: number;
+      status: KoStatus;
+      // R-0256: die Grundlage dieses Werts (s. `KnowledgeObject.vertrauensGrundlage`). Fehlt sie,
+      // wird eine frühere entfernt — sie gälte sonst für einen Wert, den dieser Weg ersetzt.
+      grundlage?: { ohneKonflikte: number; konflikte: string[] };
+    }>,
     opts: { expectedVersion: number; beiVersionswechsel: "nichts" | "nurBeleg" },
     beleg: (tx?: TxContext) => Promise<{ auditSeq: number; auditHash: string } | null>,
     ruecknahme: () => Promise<void> = async () => undefined,
@@ -6262,7 +6344,15 @@ export class KoService {
           return { ko, geschrieben: false, ref };
         }
         const state = await zustand(ko);
-        const updated: KnowledgeObject = { ...ko, trust: state.trust, status: state.status };
+        const { vertrauensGrundlage: _bisher, ...ohneGrundlage } = ko;
+        const updated: KnowledgeObject = {
+          ...ohneGrundlage,
+          trust: state.trust,
+          status: state.status,
+          ...(state.grundlage
+            ? { vertrauensGrundlage: { trust: state.trust, ...state.grundlage } }
+            : {}),
+        };
         const schritte = async (tx?: TxContext) => {
           await this.repo.update(updated, tx);
           const ref = await beleg(tx);

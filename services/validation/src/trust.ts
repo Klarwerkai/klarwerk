@@ -217,3 +217,35 @@ export function computeOutcome(
   const status: ValidationOutcome["status"] = up >= needed && down === 0 ? "validiert" : "offen";
   return { up, warn, down, trust, status };
 }
+
+// ================================================================================================
+// Ben, Nacharbeit 3 — DER WAHRHEITSKONFLIKT GEHT GENAU EINMAL IN DIE FORMEL EIN.
+// ================================================================================================
+//
+// Die Folge eines neuen Wahrheitskonflikts (validiert → offen) rechnet den Wert aus DERSELBEN
+// Grundlage wie die Bewertung: Wert ohne Konflikte, dazu die schon eingerechneten Arten plus
+// `truth`, und davon wie immer nur die stärkste Wirkung. War `truth` schon eingerechnet, ändert sich
+// der Wert also nicht mehr — gleich, in welcher Reihenfolge Bewertung und Konfliktfolge liefen.
+//
+// OHNE GÜLTIGE GRUNDLAGE (Admin-Freigabe, Übernahme eines Vorschlags, „Hat geholfen", Altbestand):
+// der gespeicherte Wert ist kein Ergebnis der Stimmenformel. Er gilt dann selbst als Wert ohne
+// Konflikte, die Wahrheitswirkung geht einmal darauf ein (99 → 87 wie bisher), und die Grundlage
+// wird ab hier festgehalten.
+export function vertrauenNachWahrheitskonflikt(ko: {
+  trust: number;
+  vertrauensGrundlage?: { trust: number; ohneKonflikte: number; konflikte: readonly string[] };
+}): { trust: number; grundlage: { ohneKonflikte: number; konflikte: KonfliktArt[] } } {
+  const g = ko.vertrauensGrundlage;
+  if (g && g.trust === ko.trust) {
+    const bekannt = g.konflikte.filter((art): art is KonfliktArt => art in CONFLICT_TRUST_IMPACT);
+    const konflikte: KonfliktArt[] = bekannt.includes("truth") ? bekannt : [...bekannt, "truth"];
+    return {
+      trust: applyConflictImpact(g.ohneKonflikte, konflikte),
+      grundlage: { ohneKonflikte: g.ohneKonflikte, konflikte },
+    };
+  }
+  return {
+    trust: applyConflictImpact(ko.trust, ["truth"]),
+    grundlage: { ohneKonflikte: ko.trust, konflikte: ["truth"] },
+  };
+}

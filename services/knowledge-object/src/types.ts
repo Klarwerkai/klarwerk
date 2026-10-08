@@ -304,6 +304,24 @@ export interface KoProposal {
   resultVersion?: number;
   /** Begründung der Entscheidung — bei einer Ablehnung die Auskunft, warum. */
   note?: string;
+  /**
+   * Aufnahme gesamt-peer-validierung (package:pruefablauf, Ben Nacharbeit 3): die BENANNTE
+   * Prüfperson, der der Einreicher die Änderung gibt (Kennung). Beim Einreichen geprüft: nicht der
+   * Einreicher selbst, und mit Freigaberecht. Sie ist eine Zuordnung, kein exklusives Recht —
+   * entscheiden darf weiterhin jede freigabeberechtigte Person ausser dem Einreicher.
+   */
+  pruefer?: string;
+  /**
+   * Rückfragen an den Einreicher — mit wem, wann und welchem Inhalt. Eine Rückfrage entscheidet
+   * nichts: der Vorschlag bleibt `offen`, und der geprüfte Bestand bleibt unverändert.
+   */
+  rueckfragen?: KoProposalRueckfrage[];
+}
+
+export interface KoProposalRueckfrage {
+  von: string;
+  at: string;
+  text: string;
 }
 
 // FR-CAP-05: Anhang/Foto am Objekt. Pilot: client-seitig verkleinertes Thumbnail
@@ -614,6 +632,14 @@ export interface KnowledgeObject {
   // der schlechte Kompromiss, den die Entscheidung ausschließt. Nach einer Revision bleibt der
   // Verweis stehen und wird folgerichtig `WRONG_SUBJECT`.
   validationDecisionRef?: { auditSeq: number; auditHash: string };
+  // Aufnahme gesamt-peer-validierung (R-0256, Ben Nacharbeit 3): WORAUS der gespeicherte
+  // Vertrauenswert entstand. `trust` ist der Wert, für den diese Angabe gilt; `ohneKonflikte` der
+  // Wert der gemeinsamen Formel VOR der Konfliktwirkung; `konflikte` die Arten, die bereits
+  // eingerechnet sind. Die Wahrheitskonflikt-Folge rechnet damit aus derselben Grundlage neu, statt
+  // eine schon eingerechnete Strafe ein zweites Mal abzuziehen. Weicht `trust` vom gespeicherten
+  // `KnowledgeObject.trust` ab, hat ein anderer Weg den Wert seither gesetzt (Admin-Freigabe,
+  // Übernahme, „Hat geholfen") — dann gilt die Angabe nicht mehr. Additiv, JSON-persistiert.
+  vertrauensGrundlage?: { trust: number; ohneKonflikte: number; konflikte: string[] };
   // ============================================================================================
   // JOB 557 (Pedi 13.08.2026) — WEM DAS OBJEKT GEHÖRT, WER ES GEPRÜFT UND WER ES VALIDIERT HAT.
   // ============================================================================================

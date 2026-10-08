@@ -18,6 +18,7 @@ import {
   computeOutcome,
   prueferStufe,
   quellenArtVon,
+  vertrauenNachWahrheitskonflikt,
 } from "./trust";
 import type { Assignment, Rating } from "./types";
 import { ValidationError, type Verdict } from "./types";
@@ -269,6 +270,7 @@ export class ValidationService {
       vorherige: Rating | undefined;
       all: Rating[];
       outcome: ValidationOutcome;
+      grundlage: { ohneKonflikte: number; konflikte: KonfliktArt[] };
       zuweisung: Assignment | undefined;
     }
     let stand: Stimmenlage | undefined;
@@ -302,13 +304,20 @@ export class ValidationService {
         verdict: r.verdict,
         gewicht: PRUEFER_GEWICHT[prueferStufe(erfahrung.get(r.userId) ?? 0)],
       }));
+      const quellenArten = (aktuell.sources ?? []).map(quellenArtVon);
       stand = {
         vorherige,
         all,
         outcome: computeOutcome(stimmen, aktuell.neededValidations, {
           offeneKonflikte,
-          quellenArten: (aktuell.sources ?? []).map(quellenArtVon),
+          quellenArten,
         }),
+        // Ben, Nacharbeit 3: die Grundlage desselben Werts — ohne Konflikte und die eingerechneten
+        // Arten —, damit die Wahrheitskonflikt-Folge nicht ein zweites Mal abzieht.
+        grundlage: {
+          ohneKonflikte: computeOutcome(stimmen, aktuell.neededValidations, { quellenArten }).trust,
+          konflikte: [...new Set(offeneKonflikte)],
+        },
         zuweisung: await this.assignments.find(koId, userId),
       };
       return stand;
@@ -387,8 +396,8 @@ export class ValidationService {
       koId,
       async (aktuell) => {
         rueckwaerts.length = 0;
-        const { outcome } = await lese(aktuell);
-        return { trust: outcome.trust, status: outcome.status };
+        const { outcome, grundlage } = await lese(aktuell);
+        return { trust: outcome.trust, status: outcome.status, grundlage };
       },
       { expectedVersion: ratedVersion, beiVersionswechsel: "nurBeleg" },
       beleg,
@@ -494,6 +503,16 @@ export class ValidationService {
       status: "validiert",
       validationDecisionRef: referenz,
     };
+  }
+
+  /**
+   * Ben, Nacharbeit 3 — die Folge eines neuen Wahrheitskonflikts für EIN Objekt: validiert → offen,
+   * Vertrauenswert aus derselben Grundlage wie die Bewertung (`vertrauenNachWahrheitskonflikt`).
+   * Unter dem KO-Lock wie die Bewertungsklammer; ein schon eingerechneter Wahrheitskonflikt wird
+   * nicht ein zweites Mal abgezogen. Offene oder fehlende Objekte bleiben unberührt.
+   */
+  async wahrheitskonfliktFolge(koId: string, actor: string): Promise<KnowledgeObject | undefined> {
+    return this.koService.markTruthConflictReview(koId, actor, vertrauenNachWahrheitskonflikt);
   }
 
   // SCRUM-124: dedupliziert eine offene Zuweisung an den VERANTWORTLICHEN + Audit-Event.

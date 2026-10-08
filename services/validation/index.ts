@@ -27,6 +27,7 @@ export {
   QUELLEN_TRUST_WIRKUNG,
   quellenArtVon,
   quellenAufschlag,
+  vertrauenNachWahrheitskonflikt,
 } from "./src/trust";
 export type {
   ValidationOutcome,

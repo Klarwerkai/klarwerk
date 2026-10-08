@@ -221,18 +221,73 @@ describe("Ben Nacharbeit 1 · Wahrheitskonflikt während einer laufenden Bewertu
     const laufend = service.rate(ko.id, "p2", "up");
     await erreicht; // die Bewertung steht jetzt unter dem KO-Lock, noch nichts geschrieben
 
-    // So legt die Route einen Wahrheitskonflikt an: erst der Konflikt, dann seine Folge.
+    // So legt die Route einen Wahrheitskonflikt an: erst der Konflikt, dann seine Folge — über
+    // denselben Weg wie `ko-routes.ts` (`wahrheitsfolge`).
     konflikte.push("truth");
-    const folge = koService.markTruthConflictReview(ko.id, "controller");
+    const folge = service.wahrheitskonfliktFolge(ko.id, "controller");
 
     freigeben();
     await laufend;
     await folge;
 
     const danach = await koService.get(ko.id);
-    // Vorher: die Folge sah das Objekt sofort, setzte „offen, 87" — und die Bewertung schrieb
-    // danach mit ihrem alten, leeren Konfliktbestand „validiert, 99" darüber.
+    // Nacharbeit 1: die Folge sah das Objekt sofort, setzte „offen, 87" — und die Bewertung
+    // schrieb danach mit ihrem alten, leeren Konfliktbestand „validiert, 99" darüber.
+    // Nacharbeit 3: die Bewertung rechnete den Konflikt ein (87), die Folge zog ihn noch einmal ab
+    // (75). Für diese Stimmen- und Konfliktlage ist der Formelwert genau 87.
     expect(danach?.status).toBe("offen");
-    expect(danach?.trust).toBeLessThanOrEqual(TRUST_MAX - TRUTH_CONFLICT_TRUST_PENALTY);
+    expect(danach?.trust).toBe(TRUST_MAX - TRUTH_CONFLICT_TRUST_PENALTY);
+  });
+
+  it("dieselbe Lage nacheinander: Bewertung mit offenem Konflikt, dann seine Folge — 87, nicht 75", async () => {
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    const konflikte: KonfliktArt[] = ["truth"];
+    const service = new ValidationService({
+      koService,
+      ratings: new InMemoryRatingRepo(),
+      assignments: new InMemoryAssignmentRepo(),
+      offeneKonfliktArten: async () => [...konflikte],
+    });
+    const ko = await koService.create(eingabe({ neededValidations: 1 }));
+    const bewertet = await service.rate(ko.id, "p1", "up");
+    expect(bewertet.status).toBe("validiert");
+    expect(bewertet.trust).toBe(87);
+
+    await service.wahrheitskonfliktFolge(ko.id, "controller");
+    const danach = await koService.get(ko.id);
+    expect(danach?.status).toBe("offen");
+    expect(danach?.trust).toBe(87);
+  });
+
+  it("andere offene Konfliktart schon eingerechnet: die Folge nimmt die stärkste, nicht beide", async () => {
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    const service = new ValidationService({
+      koService,
+      ratings: new InMemoryRatingRepo(),
+      assignments: new InMemoryAssignmentRepo(),
+      offeneKonfliktArten: async () => ["role"],
+    });
+    const ko = await koService.create(eingabe({ neededValidations: 1 }));
+    expect((await service.rate(ko.id, "p1", "up")).trust).toBe(94);
+
+    await service.wahrheitskonfliktFolge(ko.id, "controller");
+    expect((await koService.get(ko.id))?.trust).toBe(87); // 99 mit {role, truth} → −12
+  });
+
+  it("GEGENPROBE ohne Formelgrundlage (Admin-Freigabe): einmal −12, wie bisher", async () => {
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    const service = new ValidationService({
+      koService,
+      ratings: new InMemoryRatingRepo(),
+      assignments: new InMemoryAssignmentRepo(),
+    });
+    const ko = await koService.create(eingabe());
+    await service.adminValidate(ko.id, "admin");
+    expect((await koService.get(ko.id))?.vertrauensGrundlage).toBeUndefined();
+
+    await service.wahrheitskonfliktFolge(ko.id, "controller");
+    const danach = await koService.get(ko.id);
+    expect(danach?.status).toBe("offen");
+    expect(danach?.trust).toBe(TRUST_MAX - TRUTH_CONFLICT_TRUST_PENALTY);
   });
 });

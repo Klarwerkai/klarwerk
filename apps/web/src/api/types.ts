@@ -82,6 +82,10 @@ export interface KoProposal {
   resultVersion?: number;
   /** Begründung der Entscheidung — bei einer Ablehnung die Auskunft, warum. */
   note?: string;
+  /** package:pruefablauf: die benannte Prüfperson (Kennung). */
+  pruefer?: string;
+  /** package:pruefablauf: Rückfragen an den Einreicher; der Vorschlag bleibt dabei offen. */
+  rueckfragen?: { von: string; at: string; text: string }[];
 }
 
 // SCRUM-129 / FR-KO-07: echte externe Quelle am Objekt (Stufe 2, nie peer-validiert).

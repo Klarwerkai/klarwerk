@@ -146,6 +146,11 @@ export interface KoRoutesDeps {
   // Composition-Root verdrahtet `AskService.markKoHelpful`. Fehlt sie, antwortet die Aktion ehrlich
   // mit 400 statt halb zu laufen.
   hilfreich?: ((koId: string, actor: string) => Promise<void>) | undefined;
+  // Aufnahme gesamt-peer-validierung (package:pruefablauf): darf diese Person einen Vorschlag
+  // entscheiden (freigegebenes Konto mit `users.manage`)? Die Composition-Root fragt das
+  // Nutzerverzeichnis. Fehlt die Verdrahtung, wird eine benannte Prüfperson abgewiesen (400),
+  // statt ungeprüft gespeichert.
+  freigabeberechtigt?: ((userId: string) => Promise<boolean>) | undefined;
 }
 
 /**
@@ -584,6 +589,8 @@ interface PutBody {
     clearBody?: unknown;
     baseVersion?: unknown;
     origin?: unknown;
+    /** package:pruefablauf: die Kennung der benannten Prüfperson (optional). */
+    pruefer?: unknown;
   };
   /** JOB 3667 R2: welcher Vorschlag entschieden wird (`action: "decide-proposal"`). */
   proposalId?: string;
@@ -974,8 +981,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     userId: string,
   ) {
     if (konflikt.type === "truth") {
-      await ko.markTruthConflictReview(konflikt.koA, userId);
-      await ko.markTruthConflictReview(konflikt.koB, userId);
+      // Ben, Nacharbeit 3: über die Validierung — sie rechnet aus derselben Grundlage wie die
+      // Bewertung, damit derselbe Konflikt genau einmal in den Vertrauenswert eingeht.
+      await validation.wahrheitskonfliktFolge(konflikt.koA, userId);
+      await validation.wahrheitskonfliktFolge(konflikt.koB, userId);
     }
   }
 
@@ -2885,6 +2894,23 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                 "proposal.baseVersion muss die Ganzzahl der Version sein, auf der der Vorschlag beruht.",
               );
             }
+            // package:pruefablauf: die benannte Prüfperson. Nur jemand, der den Vorschlag auch
+            // entscheiden darf — sonst wartete die Änderung bei einer Person, die nicht freigeben
+            // kann. Dass es nicht der Einreicher selbst ist, prüft der Dienst (`PROPOSAL_OWN`).
+            const pruefer = vorschlag.pruefer;
+            if (pruefer !== undefined) {
+              if (typeof pruefer !== "string" || pruefer.trim().length === 0) {
+                return badRequest("proposal.pruefer muss die Kennung einer Person sein.");
+              }
+              if (
+                pruefer.trim() !== user.id &&
+                !(await deps.freigabeberechtigt?.(pruefer.trim()))
+              ) {
+                return badRequest(
+                  "Die benannte Prüfperson kann diesen Vorschlag nicht entscheiden — bitte eine Person mit Freigaberecht wählen.",
+                );
+              }
+            }
             const angelegt = await ko.addProposal(id, user.id, {
               statement: vorschlag.statement,
               ...(typeof vorschlag.bodyHtml === "string" ? { bodyHtml: vorschlag.bodyHtml } : {}),
@@ -2893,6 +2919,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               ...(vorschlag.clearBody === true ? { clearBody: true } : {}),
               baseVersion: basis,
               ...(typeof vorschlag.origin === "string" ? { origin: vorschlag.origin } : {}),
+              ...(typeof pruefer === "string" ? { pruefer: pruefer.trim() } : {}),
             });
             reply.code(200).send(angelegt.ko);
             return;
@@ -2914,8 +2941,19 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return;
             }
             const entscheidung = body.decision;
-            if (entscheidung !== "uebernehmen" && entscheidung !== "ablehnen") {
-              return badRequest('decision muss "uebernehmen" oder "ablehnen" sein.');
+            if (
+              entscheidung !== "uebernehmen" &&
+              entscheidung !== "ablehnen" &&
+              entscheidung !== "rueckfrage"
+            ) {
+              return badRequest('decision muss "uebernehmen", "ablehnen" oder "rueckfrage" sein.');
+            }
+            // package:pruefablauf: eine Rückfrage ohne Inhalt ist keine nachvollziehbare Rückfrage.
+            if (
+              entscheidung === "rueckfrage" &&
+              (typeof body.note !== "string" || body.note.trim().length === 0)
+            ) {
+              return badRequest("Eine Rückfrage braucht einen Text (note).");
             }
             if (typeof body.proposalId !== "string" || body.proposalId.trim().length === 0) {
               return badRequest("proposalId fehlt.");
