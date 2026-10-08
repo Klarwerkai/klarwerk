@@ -2191,7 +2191,11 @@ export class ModelProvider implements ReasonerProvider {
     confidential = false,
   ): Promise<ExtractResult> {
     const client = this.requireClient();
-    const doc = documentText.trim().slice(0, MAX_EXTRACT_DOCUMENT_LENGTH);
+    const fullDoc = documentText.trim();
+    const doc = fullDoc.slice(0, MAX_EXTRACT_DOCUMENT_LENGTH);
+    // R-0157/R-1070: was über dem Deckel liegt, sieht das Modell nie. Das wird unten ehrlich
+    // gesagt, statt die Liste als Ergebnis des GANZEN Dokuments auszugeben.
+    const documentCut = fullDoc.length > doc.length;
     if (doc.length === 0) {
       return {
         points: [],
@@ -2221,10 +2225,13 @@ export class ModelProvider implements ReasonerProvider {
     // ein eigener Modellaufruf ist. Gehalten wird der ZULETZT gemeldete; die Aussage, die daraus an
     // der Fläche wird, lautet „mindestens ein Abschnitt riss am Limit ab" und ist damit gedeckt.
     let abbruch: ModellAbbruchBefund | null = null;
+    // R-0157: erreicht die Liste den Deckel, bleiben die übrigen Abschnitte ungelesen.
+    let chunksRead = 0;
     for (const chunk of chunks) {
       if (points.length >= MAX_EXTRACT_POINTS) {
         break;
       }
+      chunksRead += 1;
       const { wert: raw, abbruch: abschnittAbbruch } = await mitAbbruchBefund(() =>
         client.complete(system, chunk, confidential, EXTRACT_MAX_TOKENS),
       );
@@ -2264,6 +2271,15 @@ export class ModelProvider implements ReasonerProvider {
       );
     }
     const incomplete = anyIncomplete || hardFailure;
+    // R-0157/R-1070: nicht gelesene Teile (Dokumentdeckel oder Punktedeckel) werden benannt —
+    // weder „vollständig" noch „nichts gefunden" darf für Text gelten, den niemand ausgewertet hat.
+    const pointCapReached = chunksRead < chunks.length;
+    const unread = documentCut || pointCapReached;
+    const readLength = chunks.slice(0, chunksRead).join("").length;
+    const unreadNote =
+      locale === "en"
+        ? `Note: only the first ${readLength.toLocaleString("en")} of ${fullDoc.length.toLocaleString("en")} characters were analysed${pointCapReached ? ` (the list reached its limit of ${MAX_EXTRACT_POINTS} points)` : ""} — the rest of the document was not examined.`
+        : `Hinweis: Ausgewertet wurden nur die ersten ${readLength.toLocaleString("de")} von ${fullDoc.length.toLocaleString("de")} Zeichen${pointCapReached ? ` (die Liste hat ihre Grenze von ${MAX_EXTRACT_POINTS} Punkten erreicht)` : ""} — der Rest des Dokuments wurde nicht geprüft.`;
     return {
       points,
       note:
@@ -2272,10 +2288,18 @@ export class ModelProvider implements ReasonerProvider {
             ? locale === "en"
               ? "Note: part of the document could not be fully processed — this list may be incomplete. Every shown point still carries a verified source excerpt."
               : "Hinweis: Ein Teil des Dokuments konnte nicht vollständig verarbeitet werden — diese Liste ist möglicherweise unvollständig. Jeder angezeigte Punkt trägt weiterhin eine geprüfte Belegstelle."
-            : null
-          : locale === "en"
-            ? "No knowledge points with a verifiable source excerpt were found in this document."
-            : "In diesem Dokument wurden keine Wissenspunkte mit belegbarer Textstelle gefunden.",
+            : unread
+              ? unreadNote
+              : null
+          : unread
+            ? `${
+                locale === "en"
+                  ? "No knowledge points with a verifiable source excerpt were found in the analysed part."
+                  : "Im ausgewerteten Teil wurden keine Wissenspunkte mit belegbarer Textstelle gefunden."
+              } ${unreadNote}`
+            : locale === "en"
+              ? "No knowledge points with a verifiable source excerpt were found in this document."
+              : "In diesem Dokument wurden keine Wissenspunkte mit belegbarer Textstelle gefunden.",
       demo: false,
       // JOB 3366: die Meldung des ANBIETERS, getrennt von der abgeleiteten `note` darüber.
       ...abbruchFeld(abbruch),

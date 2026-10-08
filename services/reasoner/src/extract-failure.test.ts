@@ -3,6 +3,8 @@ import { anthropicClient } from "./model-client";
 import type { ModelClient } from "./provider-model";
 import {
   EXTRACT_MAX_TOKENS,
+  MAX_EXTRACT_DOCUMENT_LENGTH,
+  MAX_EXTRACT_POINTS,
   ModelProvider,
   chunkForExtract,
   excerptFoundInDocument,
@@ -20,6 +22,10 @@ import { erteileKiFreigabe, mitKiFreigabe } from "./testhelfer-ki-freigabe";
 // Diese Tests sichern beide Fixes; SCRUM-410 (Interview-Sprache) wird mitgeprüft.
 describe("SCRUM-411: Extract-Fehler ehrlich benennen + Antwort-Limit", () => {
   const DOC = "Protokoll: Dosierpumpe P2 alle 200 Betriebsstunden mit Fett Typ Z schmieren.";
+
+  function fakeEmpty(): ModelClient {
+    return { name: "fake:leer", complete: async () => '{"points": []}' };
+  }
 
   function failingClient(message: string): ModelClient {
     return {
@@ -205,6 +211,57 @@ describe("SCRUM-411: Extract-Fehler ehrlich benennen + Antwort-Limit", () => {
     const result = await reasoner.extract(longDoc, "de");
     expect(result.points).toHaveLength(1);
     expect(result.points[0]?.title).toBe("Wert X");
+  });
+
+  // R-0157/R-1070: Text über dem Dokumentdeckel sieht das Modell nie. Die Liste darf dann nicht als
+  // Ergebnis des ganzen Dokuments gelten, und „nichts gefunden" nicht für ungelesenen Text.
+  it("R-0157: Dokument über MAX_EXTRACT_DOCUMENT_LENGTH → Hinweis nennt den ungeprüften Rest", async () => {
+    const seen: string[] = [];
+    const client: ModelClient = {
+      name: "fake:ueberlang",
+      complete: async (_system, user) => {
+        seen.push(user);
+        return user.includes("ANFANG")
+          ? '{"points": [{"title": "Ventil schließen", "summary": "s", "sourceExcerpt": "ANFANG Ventil V1 schliessen"}]}'
+          : '{"points": []}';
+      },
+    };
+    const longDoc = `ANFANG Ventil V1 schliessen. ${"Hinweis zur Wartung. ".repeat(3200)}ENDE Filter tauschen.`;
+    expect(longDoc.length).toBeGreaterThan(MAX_EXTRACT_DOCUMENT_LENGTH);
+    const result = await new ModelProvider(client).extract(longDoc, "de");
+    expect(result.points.map((p) => p.title)).toEqual(["Ventil schließen"]);
+    expect(seen.some((u) => u.includes("ENDE"))).toBe(false);
+    expect(result.note).toContain("nicht geprüft");
+    expect(result.note).toContain("Zeichen");
+
+    const leer = await new ModelProvider(fakeEmpty()).extract(longDoc, "en");
+    expect(leer.points).toEqual([]);
+    expect(leer.note).toContain("analysed part");
+    expect(leer.note).toContain("not examined");
+    expect(leer.note).not.toContain("in this document");
+  });
+
+  it("R-0157: Punktedeckel erreicht → übrige Abschnitte ungelesen, Hinweis sagt es", async () => {
+    let calls = 0;
+    const client: ModelClient = {
+      name: "fake:voll",
+      complete: async () => {
+        calls += 1;
+        const points = Array.from({ length: MAX_EXTRACT_POINTS }, (_v, i) => ({
+          title: `Punkt ${calls}-${i}`,
+          summary: "s",
+          sourceExcerpt: "Hinweis zur Wartung",
+        }));
+        return JSON.stringify({ points });
+      },
+    };
+    const longDoc = "Hinweis zur Wartung. ".repeat(1200); // ~25.000 Zeichen → mehrere Abschnitte
+    expect(chunkForExtract(longDoc.trim()).length).toBeGreaterThan(1);
+    const result = await new ModelProvider(client).extract(longDoc, "de");
+    expect(result.points).toHaveLength(MAX_EXTRACT_POINTS);
+    expect(calls).toBe(1);
+    expect(result.note).toContain(`Grenze von ${MAX_EXTRACT_POINTS} Punkten`);
+    expect(result.note).toContain("nicht geprüft");
   });
 
   it("extract ruft das Modell mit dem großen Antwort-Limit auf (EXTRACT_MAX_TOKENS)", async () => {
