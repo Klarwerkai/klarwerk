@@ -130,6 +130,17 @@ describe("R-0473 · welche Fragebegriffe gebunden sind", () => {
     expect(
       undVerknuepfteFragebegriffe("Es geht um Ventil F3. Welche maximale Temperatur gilt?"),
     ).toEqual(expect.arrayContaining(queryTokens("Ventil F3 maximale Temperatur")));
+    // Nacharbeit 7 (ben): auch IN einem Anweisungssatz bleibt die Sache gebunden; nur das formale
+    // Anweisungswort fällt („Nenne") — und „Werte" fragt nach dem Wert (Fragegerüst).
+    const anweisungMitSache = "Nenne nur Werte für Ventil F3. Welche maximale Temperatur gilt?";
+    expect(undVerknuepfteFragebegriffe(anweisungMitSache)).toEqual(
+      queryTokens("Ventil F3 maximale Temperatur"),
+    );
+    // Nacharbeit 7 (ben): im Rahmen fällt nur das Bestandswort („Daten"), Kessel K7 bleibt.
+    const rahmenMitSache = "In den Kessel K7 Daten, welche maximale Temperatur gilt?";
+    expect(undVerknuepfteFragebegriffe(rahmenMitSache)).toEqual(
+      queryTokens("Kessel K7 maximale Temperatur"),
+    );
     // Ohne Fragesatz bleibt die ganze Eingabe gebunden (bens Fall, unverändert).
     expect(undVerknuepfteFragebegriffe("Ventil F3 Temperatur")).toEqual(
       queryTokens("Ventil F3 Temperatur"),
@@ -172,6 +183,30 @@ describe("R-0278-Nacharbeit 5 · Kontext- und Rahmensätze binden ihre Sache (be
     {
       name: "Im-Rahmen",
       frage: "Im Kessel K7, welche maximale Temperatur gilt?",
+      passend: {
+        title: "Kessel K7",
+        statement: "Die maximale Temperatur im Kessel K7 ist 120 Grad.",
+      },
+      fremd: {
+        title: "Kessel K8",
+        statement: "Die maximale Temperatur im Kessel K8 ist 140 Grad.",
+      },
+    },
+    // Nacharbeit 7 (ben): ein Anweisungssatz mit Sache — nur „Nenne" ist formal, F3 bleibt gebunden.
+    {
+      name: "Anweisungssatz mit Sache",
+      frage: "Nenne nur Werte für Ventil F3. Welche maximale Temperatur gilt?",
+      passend: {
+        title: "Ventil F3",
+        statement: "Die maximale Temperatur am Ventil F3 ist 80 Grad.",
+      },
+      fremd: { title: "Ventil F4", statement: "Die maximale Temperatur am Ventil F4 ist 95 Grad." },
+    },
+    // Nacharbeit 7 (ben): ein Rahmen, der auf ein Bestandswort endet, aber eine Sache trägt — nur
+    // „Daten" ist Bestand, Kessel K7 bleibt gebunden.
+    {
+      name: "Bestandswort-Rahmen mit Sache",
+      frage: "In den Kessel K7 Daten, welche maximale Temperatur gilt?",
       passend: {
         title: "Kessel K7",
         statement: "Die maximale Temperatur im Kessel K7 ist 120 Grad.",
