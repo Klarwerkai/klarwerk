@@ -530,7 +530,7 @@ export type SchutzdatenArt = "personalnummer" | "kontodaten";
 /** R-0228: Spiegel von `Verifizierung` in services/app/src/verifizierungsmarke.ts. */
 export interface KoVerifizierung {
   mensch:
-    | { stand: "keine" }
+    | { stand: "nicht_belegt" }
     | { stand: "nicht_auffindbar" }
     | { stand: "nicht_abrufbar" }
     | {

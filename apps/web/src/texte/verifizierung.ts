@@ -21,7 +21,7 @@ export default {
       "Die Prüfung galt Fassung v{{fassung}} — die heutige Fassung ist noch nicht geprüft.",
     "verifizierung.mensch.fassungUnbekannt":
       "Welche Fassung geprüft wurde, steht nicht im Prüfbeleg.",
-    "verifizierung.mensch.keine": "Noch nicht fachlich geprüft",
+    "verifizierung.mensch.nichtBelegt": "Fachliche Prüfung nicht belegt",
     "verifizierung.mensch.nichtAuffindbar":
       "Fachliche Prüfung: der Prüfbeleg, auf den dieser Eintrag verweist, ist nicht auffindbar.",
     "verifizierung.mensch.nichtAbrufbar": "Fachliche Prüfung: Prüfbeleg derzeit nicht abrufbar.",
@@ -45,7 +45,7 @@ export default {
       "The review applied to version v{{fassung}} — the current version has not been reviewed yet.",
     "verifizierung.mensch.fassungUnbekannt":
       "The review record does not state which version was reviewed.",
-    "verifizierung.mensch.keine": "Not yet reviewed",
+    "verifizierung.mensch.nichtBelegt": "Review not documented",
     "verifizierung.mensch.nichtAuffindbar":
       "Review: the review record this entry refers to cannot be found.",
     "verifizierung.mensch.nichtAbrufbar": "Review: review record currently unavailable.",
@@ -69,7 +69,7 @@ export default {
       "De controle gold versie v{{fassung}} — de huidige versie is nog niet gecontroleerd.",
     "verifizierung.mensch.fassungUnbekannt":
       "Welke versie is gecontroleerd, staat niet in het controlebewijs.",
-    "verifizierung.mensch.keine": "Nog niet inhoudelijk gecontroleerd",
+    "verifizierung.mensch.nichtBelegt": "Inhoudelijke controle niet vastgelegd",
     "verifizierung.mensch.nichtAuffindbar":
       "Inhoudelijke controle: het controlebewijs waarnaar dit item verwijst, is niet te vinden.",
     "verifizierung.mensch.nichtAbrufbar":

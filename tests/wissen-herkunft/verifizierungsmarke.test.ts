@@ -6,7 +6,9 @@
 // vollständig war." Geprüft wird der menschliche Teil der Marke an `GET /api/kos/:id`
 // (services/app/src/verifizierungsmarke.ts) — den maschinellen Teil leitet die Oberfläche ab
 // (verifizierungsmarke-anzeige.test.tsx):
-//   V1 · ohne Entscheidung: ehrlich „keine", keine erfundene Prüfung;
+//   V1 · ohne Entscheidungsverweis: „nicht belegt" — weder eine erfundene Prüfung noch die
+//        Behauptung „nie geprüft" (Nacharbeit 5: Altbestand trägt keinen Verweis, kein Backfill);
+//        vorhandene Validierende bleiben getrennt erhalten (V1b);
 //   V2 · nach einer Verwalterfreigabe: Prüfer, Zeitpunkt, Fassung, aktuell — aus GENAU dem
 //        verwiesenen Protokolleintrag;
 //   V3 · nach einer Revision: die Prüfung gilt der früheren Fassung (`aktuell: false`);
@@ -53,10 +55,10 @@ async function aufbau() {
 }
 
 describe("R-0228 · die Verifizierungsmarke am Detailabruf", () => {
-  it("V1 · ohne Entscheidung steht ehrlich „keine“ da — kein erfundener Prüfer", async () => {
+  it("V1 · ohne Entscheidungsverweis heißt es „nicht belegt“ — kein erfundener Prüfer", async () => {
     const { lesen } = await aufbau();
     const marke = (await lesen()).verifizierung;
-    expect(marke).toEqual({ mensch: { stand: "keine" }, validiertVon: [] });
+    expect(marke).toEqual({ mensch: { stand: "nicht_belegt" }, validiertVon: [] });
   });
 
   it("V2 · nach der Verwalterfreigabe: Prüfer, Zeitpunkt und Fassung aus dem verwiesenen Eintrag", async () => {
@@ -122,6 +124,30 @@ describe("R-0228 · V4 — ein nicht passender Verweis wird nie zu „belegt“"
       ownership: { reviewers: [], validators: ["u-pruefer"] },
     }) as unknown as KnowledgeObject;
   const audit = { list: async () => [eintrag] };
+
+  it("V1b · Altbestand: validiert, aber ohne Verweis — nicht belegt, Validierende bleiben, nichts nachgetragen", async () => {
+    let gelesen = false;
+    const protokoll = {
+      list: async () => {
+        gelesen = true;
+        return [eintrag];
+      },
+    };
+    const altbestand = {
+      id: "ko-1",
+      version: 3,
+      status: "validiert",
+      ownership: { reviewers: [], validators: ["u-pruefer"] },
+    } as unknown as KnowledgeObject;
+    expect(await verifizierungFuer(altbestand, protokoll)).toEqual({
+      mensch: { stand: "nicht_belegt" },
+      validiertVon: ["u-pruefer"],
+    });
+    // Ohne Verweis wird das Protokoll gar nicht befragt — keine Suche, keine Rekonstruktion,
+    // auch wenn dort zufällig eine passende Entscheidung stünde (KW-W3-19).
+    expect(gelesen).toBe(false);
+    expect("validationDecisionRef" in altbestand).toBe(false);
+  });
 
   it("passend: belegt, mit den Validierenden aus dem Eigentümer-Aggregat", async () => {
     expect(await verifizierungFuer(ko({ auditSeq: 7, auditHash: "h-7" }), audit)).toEqual({

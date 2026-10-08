@@ -31,8 +31,13 @@ import type { KnowledgeObject } from "../../knowledge-object";
 export type VerifizierungsArt = "bewertung" | "verwalter" | "rueckgabe";
 
 export type MenschlichePruefung =
-  /** Am Objekt steht kein Verweis auf eine Entscheidung — noch nie fachlich entschieden. */
-  | { stand: "keine" }
+  /**
+   * Am Objekt steht kein Verweis auf eine Entscheidung. Das heißt NICHT „nie geprüft“: Altbestand
+   * vor KW-W3-19 trägt den Verweis nicht, auch wenn er validiert wurde (kein Backfill, Pedis
+   * Entscheidung). Die Marke sagt deshalb nur, dass die Prüfung nicht BELEGT ist; die Validierenden
+   * aus `ownership.validators` bleiben davon getrennt erhalten. Nichts wird nachgetragen.
+   */
+  | { stand: "nicht_belegt" }
   /** Ein Verweis steht da, aber der verwiesene Eintrag passt nicht (fehlt, Hash, Art, Ziel). */
   | { stand: "nicht_auffindbar" }
   /** Das Protokoll ließ sich nicht lesen — keine Aussage über die Prüfung. */
@@ -72,7 +77,7 @@ export async function verifizierungFuer(
   const validiertVon = [...(ko.ownership?.validators ?? [])];
   const ref = ko.validationDecisionRef;
   if (!ref) {
-    return { mensch: { stand: "keine" }, validiertVon };
+    return { mensch: { stand: "nicht_belegt" }, validiertVon };
   }
   if (!audit) {
     return { mensch: { stand: "nicht_abrufbar" }, validiertVon };

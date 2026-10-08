@@ -20,7 +20,9 @@ import { formatKoTimestamp } from "../../lib/koDates";
 // Präsentational wie die übrigen Bauteile unter `trust/`: Namen kommen als aufgelöster
 // `NameResolver` herein (`useAuthorName`, dieselbe Leseregel wie jede Autorenzeile).
 //
-// FEHLT ETWAS, STEHT ES DA: kein Verweis → „noch nicht fachlich geprüft"; Verweis ohne passenden
+// FEHLT ETWAS, STEHT ES DA: kein Verweis → „Fachliche Prüfung nicht belegt" (Nacharbeit 5, Ben:
+// Altbestand trägt keinen Verweis, auch wenn er validiert ist — fehlender Beleg ist nicht
+// „nicht geprüft"; die Validierenden stehen getrennt daneben); Verweis ohne passenden
 // Beleg → „nicht auffindbar"; Protokoll nicht lesbar → „nicht abrufbar"; Feld fehlt in dieser
 // Antwort → „nicht geladen"; kein KI-Lauf → „keine erfasst"; Lauf ohne Abdeckungsprotokoll →
 // „Umfang nicht protokolliert". Nie wird aus einem Fehlen ein „geprüft".
@@ -67,7 +69,7 @@ export function Verifizierungsmarke({ ko, nameOf }: VerifizierungsmarkeProps): J
     zeilen.push({ schluessel: "belegt", text });
   } else {
     const SCHLUESSEL = {
-      keine: "verifizierung.mensch.keine",
+      nicht_belegt: "verifizierung.mensch.nichtBelegt",
       nicht_auffindbar: "verifizierung.mensch.nichtAuffindbar",
       nicht_abrufbar: "verifizierung.mensch.nichtAbrufbar",
     } as const;

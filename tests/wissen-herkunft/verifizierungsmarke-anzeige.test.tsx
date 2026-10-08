@@ -101,7 +101,7 @@ describe("R-0228 · Fehlendes wird ehrlich gekennzeichnet — nie „geprüft“
   it("jeder menschliche Zustand hat seinen eigenen Satz", async () => {
     await setLanguage("de");
     const faelle: [Marke["verifizierung"], string][] = [
-      [{ mensch: { stand: "keine" }, validiertVon: [] }, "Noch nicht fachlich geprüft"],
+      [{ mensch: { stand: "nicht_belegt" }, validiertVon: [] }, "Fachliche Prüfung nicht belegt"],
       [{ mensch: { stand: "nicht_auffindbar" }, validiertVon: [] }, "nicht auffindbar"],
       [{ mensch: { stand: "nicht_abrufbar" }, validiertVon: [] }, "derzeit nicht abrufbar"],
       [undefined, "Angaben nicht geladen"],
@@ -110,6 +110,34 @@ describe("R-0228 · Fehlendes wird ehrlich gekennzeichnet — nie „geprüft“
       const html = zeige(verifizierung ? { verifizierung } : {});
       expect(html, satz).toContain(satz);
       expect(html, satz).not.toContain("Fachlich geprüft von");
+      // Nacharbeit 5: kein Zustand ohne Beleg behauptet „nie geprüft".
+      expect(html, satz).not.toContain("Noch nicht fachlich geprüft");
+    }
+  });
+
+  it("Altbestand ohne Verweis, aber mit Validierenden: „nicht belegt“ UND die Validierenden — kein Widerspruch", async () => {
+    await setLanguage("de");
+    const html = zeige({
+      verifizierung: { mensch: { stand: "nicht_belegt" }, validiertVon: ["u-bo"] },
+    });
+    expect(html).toContain("Fachliche Prüfung nicht belegt");
+    expect(html).toContain("Validiert von: Bo Prüfer");
+    expect(html).not.toContain("Noch nicht fachlich geprüft");
+    expect(html).not.toContain("Fachlich geprüft von");
+  });
+
+  it("der neutrale Zustand spricht alle drei Sprachen", async () => {
+    const nichtBelegt: Marke["verifizierung"] = {
+      mensch: { stand: "nicht_belegt" },
+      validiertVon: [],
+    };
+    for (const [sprache, satz] of [
+      ["de", "Fachliche Prüfung nicht belegt"],
+      ["en", "Review not documented"],
+      ["nl", "Inhoudelijke controle niet vastgelegd"],
+    ] as const) {
+      await setLanguage(sprache);
+      expect(zeige({ verifizierung: nichtBelegt }), sprache).toContain(satz);
     }
   });
 
