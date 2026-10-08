@@ -4261,6 +4261,8 @@ const de = {
   "con.openKo": "Objekt öffnen",
   "con.compareOpen": "Beide gegenüberstellen",
   "con.readonlyCompare": "Read-only-Vergleich",
+  // Aufnahme gesamt-konfliktboard (FR-CON-04): Name des Menüs mit allen offenen Fällen.
+  "con.caseList": "Alle offenen Konflikte ({{count}})",
   "con.detectedOn": "Erkannt am {{date}}",
   "con.evidenceSideLabel": "Beleg dieser Seite",
   // ==============================================================================================
