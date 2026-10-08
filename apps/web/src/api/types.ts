@@ -166,6 +166,17 @@ export interface KoAttachment {
 // „offen" noch „keine Kategorie vorhanden"; kein Platzhalter, kein Standardwert.
 export interface KnowledgeCheckResult {
   status: "done" | "pending" | "failed";
+  // AUFNAHME 20260922 · NEGATIVWISSEN-HINWEIS (R-1629): ähnliche Einträge der Wissensart
+  // „negativwissen" (Vertrag bei `negativwissenAuskunft` in services/app/src/knowledge-check.ts).
+  // Der Server lässt das Feld ohne Treffer weg — fehlt es, gibt es nichts anzuzeigen.
+  negativwissen?: {
+    id: string;
+    title: string;
+    statement: string;
+    score: number;
+    koStatus: KoStatus | null;
+    koCategory: string | null;
+  }[];
   similar: {
     id: string;
     title: string;
@@ -534,6 +545,9 @@ export interface KnowledgeObject {
   // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet, unabhängig von der Kategorie (Spiegel von
   // services/knowledge-object/src/types.ts). Fehlt = kein Fachgebiet angegeben, nichts abgeleitet.
   domain?: string;
+  // R-1632 / R-1633: wo dieser Punkt gilt (Spiegel von services/knowledge-object/src/geltung.ts).
+  // Fehlt = keine Geltung angegeben, nichts abgeleitet.
+  geltung?: KoGeltung;
   tags: string[];
   confidence: number;
   trust: number;
@@ -781,6 +795,29 @@ export interface TrashedKo {
 
 export type ConflictType = "truth" | "experience" | "context" | "temporal" | "role";
 export type ConflictStatus = "offen" | "eskaliert" | "zweitmeinung" | "geloest";
+// R-0252: die Art der nötigen Arbeit (Regel/Sache/Version) — Spiegel von services/conflicts/src/types.ts.
+export type ConflictWorkKind = "regel" | "sache" | "version";
+// R-0263: Vorrang zwischen den zwei Punkten einer Entscheidung — Spiegel von services/conflicts.
+export type VorrangArt = "ueberstimmt" | "schraenkt_ein";
+export interface VorrangWahl {
+  art: VorrangArt;
+  /** Kennung der Seite, die gilt (bei `schraenkt_ein`: die speziellere). */
+  gilt: string;
+  geltungsbereich?: string;
+}
+export interface KonfliktVorrang {
+  art: VorrangArt;
+  vorrangKo: string;
+  nachrangKo: string;
+  geltungsbereich: string | null;
+}
+/** Eine Zeile von `GET /api/conflicts/vorrang/:id` — der Vorrang am einzelnen Punkt. */
+export interface VorrangAmPunkt extends KonfliktVorrang {
+  konfliktId: string;
+  entschiedenVon: string | null;
+  /** Gesetzt, wenn der Geltungsbereich für diesen Betrachter zurückgehalten ist. */
+  redacted?: boolean;
+}
 
 // Berater-Konzept 04.07. (Stufe 4): Herkunft + Erkennungs-Metadaten eines automatisch erkannten
 // Konflikts — macht den Fund am Board erklärbar (Sicherheit, Begründung, wörtliche Zitate).
@@ -808,6 +845,13 @@ export interface ConflictDetector {
   quotes?: { a: string; b: string };
   // SCRUM-492: optionale strukturierte Gegenüberstellung für die Kollisions-Kacheln.
   kollision?: Kollision;
+  // R-0263: Klaras Vorschlag Widerspruch/Präzisierung — Spiegel von services/conflicts (`spezieller`
+  // ist die Kennung des engeren Punkts). Ein Vorschlag, keine Entscheidung.
+  vorschlag?: {
+    art: "widerspruch" | "praezisierung";
+    spezieller?: string;
+    geltungsbereich?: string;
+  };
 }
 
 export interface Conflict {
@@ -815,6 +859,10 @@ export interface Conflict {
   koA: string;
   koB: string;
   type: ConflictType;
+  // R-0252: gewählt (manuell) oder von der Prüfung eingeordnet (auto). Fehlt = nicht bestimmt.
+  arbeitsart?: ConflictWorkKind;
+  // R-0263: an entschiedenen Konflikten der festgelegte Vorrang.
+  vorrang?: KonfliktVorrang;
   description: string;
   status: ConflictStatus;
   secondOpinion: string | null;
@@ -1861,6 +1909,35 @@ export interface AskResponse {
   // JOB 2626 D1: nur bei Nicht-Antwort UND nur auf Wegen mit Betrachterfilter vorhanden; ein
   // älterer Server sendet das Feld nicht — die Fläche fällt dann auf die generische Leermeldung.
   verschlossen?: VerschlossenHinweis[];
+  // R-1633: nur wenn ein Fragekontext mitgeschickt wurde — wofür gewichtet wurde und je Quelle
+  // ihre Geltung und Passung (Spiegel von `AskGeltungsauskunft`, services/ask/src/service.ts).
+  geltung?: AskGeltungsauskunft;
+}
+
+// ================================================================================================
+// R-1632 / R-1633 (gesamt-standortwissen) — Spiegel von services/knowledge-object/src/geltung.ts.
+// ================================================================================================
+export type GeltungsEbene = "konzern" | "werk" | "schicht";
+export interface KoGeltung {
+  ebene: GeltungsEbene;
+  werk?: string;
+  schicht?: string;
+  rolle?: string;
+}
+export interface Fragekontext {
+  werk?: string;
+  schicht?: string;
+  rolle?: string;
+}
+export type GeltungsPassung =
+  | "eigene_schicht"
+  | "eigenes_werk"
+  | "konzern"
+  | "unbestimmt"
+  | "andere";
+export interface AskGeltungsauskunft {
+  fragekontext: Fragekontext;
+  quellen: { id: string; passung: GeltungsPassung; geltung?: KoGeltung }[];
 }
 
 // FR-EXT-03 / FE-OUT: Output Factory (SCRUM-117/109).
@@ -2066,6 +2143,8 @@ export interface StructureResult {
   measures: string[];
   tags: string[];
   confidence: number;
+  // FR-STR-01: vom Modell vorgeschlagene Wissensart; fehlt beim Fallback oder ungültigem Modellwert.
+  knowledgeType?: KnowledgeType;
   demo: boolean;
   // WP-D8: ehrliche Fallback-Ursache (nur bei demo:true) — "no-model" = kein Modell konfiguriert/aktiv,
   // "model-error" = Modell versucht, aber gescheitert (HTTP/Quota/Netz/Parse). WP-D10 (Fix 3):

@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { type ConflictService, isCompleteRun } from "../../../conflicts";
+import { type ConflictService, isCompleteRun, isConflictWorkKind } from "../../../conflicts";
 import type { AiCheck } from "../../../knowledge-object";
 import {
   type BefundPaar,
@@ -246,8 +246,9 @@ export function conflictRoutes(
     // R-1662 (geführter Weg vom Problem zur Lösung, Prüfpunkt 5): die von einem Menschen gelösten
     // Konflikte zu den Quellen EINER Antwort. Die Liste oben führt nur offene; gelöste gab es für
     // Leser bisher nirgends. Dasselbe Routenrecht, dasselbe Paar-Tor und dieselbe Feldredaktion wie
-    // dort. Zusätzlich geht bei einer Redaktion auch die Entscheidung: sie ist Freitext über genau
-    // die beiden Objekte und kann den Inhalt des zurückgehaltenen wiedergeben.
+    // dort. Zusätzlich gehen bei einer Redaktion Entscheidung, Zweitmeinung und der Geltungsbereich
+    // des Vorrangs (R-0263): alle drei sind Freitext über genau die beiden Objekte und können den
+    // Inhalt des zurückgehaltenen wiedergeben — dieselbe Regel wie `/api/conflicts/vorrang/:id`.
     app.get<{ Querystring: { ko?: string } }>("/api/conflicts/geloest", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {
@@ -269,7 +270,54 @@ export function conflictRoutes(
           konflikt,
           await feldFreigabe(user, konflikt.koA, konflikt.koB, kos),
         );
-        sichten.push(sicht.redacted ? { ...sicht, decision: "", secondOpinion: null } : sicht);
+        if (!sicht.redacted) {
+          sichten.push(sicht);
+          continue;
+        }
+        sichten.push({
+          ...sicht,
+          decision: "",
+          secondOpinion: null,
+          ...(sicht.vorrang ? { vorrang: { ...sicht.vorrang, geltungsbereich: null } } : {}),
+        });
+      }
+      reply.code(200).send(sichten);
+    });
+
+    // R-0263 (Aufnahme gesamt-konfliktklassifikation) — DER VORRANG AM EINZELNEN PUNKT.
+    //
+    // Je entschiedenem Konflikt mit festgelegtem Vorrang, an dem DIESER Punkt beteiligt ist: welche
+    // Seite gilt bzw. einschränkt, welche überstimmt bzw. eingeschränkt wird, und — bei einer
+    // Präzisierung — der Geltungsbereich. Damit sieht man am Punkt selbst, dass und wodurch er
+    // überstimmt oder eingeschränkt ist; seine Quellen und seine Dokumentherkunft bleiben dabei
+    // unverändert stehen (die Entscheidung schreibt nie am Objekt).
+    //
+    // Dieselben zwei Stufen wie `GET /api/conflicts`: erst das Paar (`paarSichtbar` — eine Beziehung
+    // zu einem unsichtbaren Punkt ist schon eine Auskunft über ihn), dann der Inhalt
+    // (`feldFreigabe` — der Geltungsbereich ist Menschentext wie `description` und wird bei
+    // Redaktion geleert). Ein unsichtbarer oder unbekannter Punkt bekommt eine leere Liste.
+    app.get<{ Params: { id: string } }>("/api/conflicts/vorrang/:id", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      const sichten = [];
+      // `:id` ist die Kennung des WISSENSOBJEKTS, nicht eines Konflikts.
+      for (const c of await conflicts.vorrangFuerKo(request.params.id)) {
+        if (!c.vorrang || !(await paarSichtbar(user, c.koA, c.koB, kos))) {
+          continue;
+        }
+        const freigabe = await feldFreigabe(user, c.koA, c.koB, kos);
+        const offen = freigabe.a && freigabe.b;
+        sichten.push({
+          konfliktId: c.id,
+          art: c.vorrang.art,
+          vorrangKo: c.vorrang.vorrangKo,
+          nachrangKo: c.vorrang.nachrangKo,
+          geltungsbereich: offen ? c.vorrang.geltungsbereich : null,
+          entschiedenVon: c.decidedBy,
+          ...(offen ? {} : { redacted: true }),
+        });
       }
       reply.code(200).send(sichten);
     });
@@ -305,6 +353,46 @@ export function conflictRoutes(
         sendError(reply, error);
       }
     });
+
+    // R-0252 (Aufnahme gesamt-konfliktklassifikation, Nacharbeit 5): der Einordnungsweg. Eine
+    // befugte Person ordnet einen Konflikt als Regel-, Sach- oder Versionskonflikt ein — dasselbe
+    // Recht wie Eskalieren und Entscheiden. Die Form wird hier geprüft, der Rest im Dienst.
+    //
+    // Nacharbeit 6 (Ben): das Recht allein genügt nicht. `conflict.resolve` sagt nichts darüber, ob
+    // dieser Mensch das PAAR sehen darf (Stufe, Space). Deshalb dieselben zwei Stufen wie der
+    // Detailweg `GET /api/conflicts/:id` darüber: erst `paarSichtbar` — ein unsichtbarer Konflikt
+    // sieht aus wie ein fehlender (404) und wird NICHT verändert —, dann die Antwort durch
+    // `feldFreigabe` + `redigiereKonflikt`, damit Beschreibung, Belegzitate und Klaras
+    // vorgeschlagener Geltungsbereich nicht über diesen Weg hinausgehen, wo der Lesweg sie zurückhält.
+    app.post<{ Params: { id: string }; Body: { arbeitsart?: unknown } | null }>(
+      "/api/conflicts/:id/arbeitsart",
+      async (request, reply) => {
+        const user = await guards.requirePermission("conflict.resolve", request, reply);
+        if (!user) {
+          return;
+        }
+        const arbeitsart = request.body?.arbeitsart;
+        if (!isConflictWorkKind(arbeitsart)) {
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: "arbeitsart muss eines von regel, sache, version sein.",
+          });
+          return;
+        }
+        const vorher = await conflicts.get(request.params.id);
+        if (!vorher || !(await paarSichtbar(user, vorher.koA, vorher.koB, kos))) {
+          reply.code(404).send({ error: "NOT_FOUND", message: "Konflikt nicht gefunden." });
+          return;
+        }
+        try {
+          const eingeordnet = await conflicts.einordnen(vorher.id, arbeitsart, user.id);
+          const freigabe = await feldFreigabe(user, eingeordnet.koA, eingeordnet.koB, kos);
+          reply.code(200).send(redigiereKonflikt(eingeordnet, freigabe));
+        } catch (error) {
+          sendError(reply, error);
+        }
+      },
+    );
 
     // Berater-Konzept 04.07. (Stufe 4): „Fehlalarm — kein Widerspruch" schließt einen (meist
     // automatisch erkannten) Konflikt bewusst als falsch-positiv. Menschlicher Entscheider (⚑).

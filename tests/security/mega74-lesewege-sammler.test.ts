@@ -304,6 +304,19 @@ const REGISTER: Record<string, Eintrag> = {
       "R-1662 — Paar-Tor wie die Liste; bei Redaktion auch Entscheidung und Zweitmeinung leer.",
   },
   "GET /api/conflicts/:id": { urteil: "PRAEDIKAT", grund: "Block D — Paar-Tor." },
+  // R-0263 (Aufnahme gesamt-konfliktklassifikation): Vorrang am Punkt — Paar-Tor je Eintrag,
+  // der Geltungsbereich (Menschentext) zusätzlich hinter `feldFreigabe`.
+  "GET /api/conflicts/vorrang/:id": {
+    urteil: "PRAEDIKAT",
+    grund: "R-0263 — Paar-Tor je Eintrag, Geltungsbereich hinter feldFreigabe.",
+  },
+  // R-0252 (Nacharbeit 6): der Einordnungsweg ändert UND antwortet mit dem Konflikt — deshalb das
+  // Paar-Tor vor der Änderung (unsichtbar ⇒ 404, nichts geändert) und die Antwort durch
+  // feldFreigabe/redigiereKonflikt wie der Detailweg.
+  "POST /api/conflicts/:id/arbeitsart": {
+    urteil: "PRAEDIKAT",
+    grund: "R-0252 — Paar-Tor vor der Einordnung, Antwort redigiert wie GET /api/conflicts/:id.",
+  },
   "GET /api/duplicates": { urteil: "PRAEDIKAT", grund: "Block D — Eigenanteile/Aspekte." },
   "GET /api/duplicates/:id": { urteil: "PRAEDIKAT", grund: "Block D — Paar-Tor." },
   // AUFTRAG-mega76 BLOCK C: war `PRAEDIKAT_IM_MODUL` — das schwächere Urteil „irgendwo in
@@ -808,6 +821,8 @@ const REGISTER: Record<string, Eintrag> = {
     "PUT /api/gaps/:id": "ko.assign.",
     "DELETE /api/gaps/:id": "ko.validate.",
     "POST /api/ask/helpful": "Rückmeldung des Aufrufers.",
+    // R-1649: Antwort nur `{ vermerkt, entwurfId }` — der eigene Vermerk und der eigene Entwurf.
+    "POST /api/ask/not-helpful": "Rückmeldung des Aufrufers; optional eigener Entwurf.",
     "PUT /api/validation/settings": "users.manage.",
     "PUT /api/external/policy": "users.manage.",
     "POST /api/lifecycle/couple": "ko.create; Antwort ohne KO-Inhalt.",

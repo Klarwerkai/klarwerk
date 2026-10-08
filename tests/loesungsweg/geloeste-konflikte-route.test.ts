@@ -82,6 +82,9 @@ async function ko(app: App, autor: Auth, titel: string, vertraulich = false): Pr
   return id;
 }
 
+// Kontextkonflikt: seit R-0215 wird ein Wahrheitskonflikt erst nach der Eskalation entschieden
+// (`tests/konfliktklassifikation/klassifikation-und-eskalation.test.ts`); ein Kontextkonflikt geht
+// direkt. Für diese Route zählt nur, DASS ein Mensch entschieden hat.
 async function konflikt(app: App, kurator: Auth, koA: string, koB: string): Promise<Conflict> {
   const res = await app.inject({
     method: "PUT",
@@ -89,19 +92,30 @@ async function konflikt(app: App, kurator: Auth, koA: string, koB: string): Prom
     headers: kurator,
     payload: {
       action: "conflict",
-      conflict: { koA, koB, type: "truth", description: "Die Druckangaben widersprechen sich." },
+      conflict: { koA, koB, type: "context", description: "Die Druckangaben widersprechen sich." },
     },
   });
   expect(res.statusCode, res.body).toBe(201);
   return res.json() as Conflict;
 }
 
-async function entscheiden(app: App, kurator: Auth, k: Conflict, decision: string): Promise<void> {
+async function entscheiden(
+  app: App,
+  kurator: Auth,
+  k: Conflict,
+  decision: string,
+  vorrang?: unknown,
+): Promise<void> {
   const res = await app.inject({
     method: "PUT",
     url: `/api/kos/${k.koA}`,
     headers: kurator,
-    payload: { action: "resolve-conflict", conflictId: k.id, decision },
+    payload: {
+      action: "resolve-conflict",
+      conflictId: k.id,
+      decision,
+      ...(vorrang === undefined ? {} : { vorrang }),
+    },
   });
   expect(res.statusCode, res.body).toBe(200);
 }
@@ -181,6 +195,29 @@ describe("R-1662 · GET /api/conflicts/geloest", () => {
     expect(res.json()).toEqual([]);
     // Gegenprobe: der Autor beider Objekte sieht denselben Konflikt.
     expect((await geloest(app, autor, [offen])).map((c) => c.id)).toEqual([k.id]);
+  });
+
+  // Integration mit R-0263 (main fb69d51d): entschiedene Konflikte tragen jetzt `vorrang`. Bei
+  // sichtbarem Paar kommt er vollständig an; die Route leert seinen Geltungsbereich nur bei Redaktion.
+  it("G6 · ein festgelegter Vorrang kommt mit Geltungsbereich beim Betrachter an", async () => {
+    const { app, admin, autor, viewer } = await setup();
+    const allgemein = await ko(app, autor, "Druck allgemein");
+    const speziell = await ko(app, autor, "Druck Baureihe 3");
+    const k = await konflikt(app, admin, allgemein, speziell);
+    await entscheiden(app, admin, k, "Baureihe 3 ist der Sonderfall.", {
+      art: "schraenkt_ein",
+      gilt: speziell,
+      geltungsbereich: "Baureihe 3",
+    });
+
+    const [geliefert] = await geloest(app, viewer, [allgemein]);
+    expect(geliefert?.id).toBe(k.id);
+    expect(geliefert?.vorrang).toMatchObject({
+      art: "schraenkt_ein",
+      vorrangKo: speziell,
+      nachrangKo: allgemein,
+      geltungsbereich: "Baureihe 3",
+    });
   });
 
   it("G5 · ohne Objekte eine leere Liste, ohne Anmeldung 401", async () => {
