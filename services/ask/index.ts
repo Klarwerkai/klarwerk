@@ -69,4 +69,6 @@ export type {
   AnswerGrade,
 } from "./src/answer-evidence";
 export { redactGapForViewer, summarizeGaps } from "./src/gap-visibility";
+// R-1630 / R-2176: der Stichtag des Antwortvergleichs — die Route liest ihn mit derselben Regel.
+export { stichtagAus } from "./src/wissensstand-vergleich";
 export type { GapView, GapViewerContext, GapSummary } from "./src/gap-visibility";

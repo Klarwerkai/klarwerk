@@ -236,6 +236,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | --- | --- | --- | --- | --- | --- |
 | `POST` | `/api/ask` | `ko.read` oder Add-in-Fähigkeit | Rumpf `{ question, locale?, mode?, selection?, selectionConfidentiality?, questionSource? }` | 200 Antwort mit Belegen | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN`; 503 `KI_ABGESCHALTET` |
 | `POST` | `/api/ask/helpful` | `ko.read` | Rumpf `{ koId, receipt? }` | 204 | Dienstfehler |
+| `POST` | `/api/ask/vergleich` | `ko.read` (nur Sitzung, nicht Add-in oder Klara-Bindung) | Rumpf `{ question, locale?, stichtag? }` (`JJJJ-MM-TT`, ohne Angabe vor einem Jahr) | 200 Antwort heute, Antwort zum Stichtag, Quellen mit Änderungsgründen | 400 `BAD_REQUEST`; 401 `UNAUTHENTICATED`; 403 `FORBIDDEN`; 503 `KI_ABGESCHALTET` |
 | `GET` | `/api/gaps` | `ko.read` | — | 200 Wissenslücken | — |
 | `GET` | `/api/gaps/summary` | `ko.read` | — | 200 Zusammenfassung | — |
 | `PUT` | `/api/gaps/:id` | `ko.assign` | Rumpf `{ expertId? \| close? \| priority? }` | 200 Lücke | 400 `BAD_REQUEST` |

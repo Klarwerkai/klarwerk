@@ -426,6 +426,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // unterscheiden. Der Add-on-Zweig derselben Route fuehrt das Praedikat NICHT.
   "POST /api/ask": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   "POST /api/ask/helpful": { protection: "ko.read" },
+  // R-1630 / R-2176: der Antwortvergleich — dieselbe Grundlage wie die Konsolenfrage, gefiltert
+  // durch die Sichtbarkeit des Fragenden (heutige UND damalige Fassung).
+  "POST /api/ask/vergleich": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   // SCRUM-527: Live-Check (Ähnlichkeit/Widerspruch eines Entwurfstextes gegen den Bestand).
   // produkt:20261007:spaces: ähnliche Artikel/Widersprüche nur aus dem für den Prüfenden Sichtbaren.
   "POST /api/knowledge/check": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },

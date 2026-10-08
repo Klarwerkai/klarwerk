@@ -35,6 +35,7 @@ import {
   type Verwendung,
   chipPunkt,
 } from "../components/fragen/Quellenplaketten";
+import { WissensstandVergleichBereich } from "../components/fragen/WissensstandVergleich";
 import { useVorlesen } from "../components/fragen/useVorlesen";
 import { FRAGEN_ZIEL } from "../components/fragen/ziele";
 // WP-UX-WOW-1 U1 / JOB 3064 §5: sichere Markdown-Darstellung der Antwort (React-Elemente, kein
@@ -2258,6 +2259,13 @@ export function Ask(): JSX.Element {
                       {t("ask.rueckmeldungAbgelaufen")}
                     </p>
                   )}
+                  {/* R-1630 / R-2176: dieselbe Frage aus dem Wissensstand vor einem Jahr — auf
+                      Wunsch, zur Frage, zu der diese Antwort gehört (`asked`). */}
+                  <WissensstandVergleichBereich
+                    frage={asked}
+                    billable={answerBillable}
+                    wissenHref={(id) => demoHref(`/wissen/${id}`, params)}
+                  />
                 </div>
               </div>
             ) : (
