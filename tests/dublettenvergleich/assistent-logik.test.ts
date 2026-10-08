@@ -14,7 +14,9 @@ import type { KnowledgeObject, OverlapEntry } from "../../apps/web/src/api/types
 import {
   ASSISTENT_SCHRITTE,
   auftragAus,
+  fassungGeaendert,
   feldLage,
+  fliesstextLage,
   fuehrungsVorschlag,
   listenPositionen,
   startAuswahl,
@@ -171,6 +173,46 @@ describe("R-1107 / R-0201 · Auswahl, Vorschau, Auftrag", () => {
       bestaetigt: true,
       vermerk: "Vermerk",
     });
+  });
+});
+
+describe("Nacharbeit 2 (Ben, R-0201) · der Fliesstext reist sichtbar mit der Kernaussage", () => {
+  const MIT_RUMPF_A = { ...A, bodyHtml: "<p>Ventil V2 zuerst öffnen.</p>" };
+  const MIT_RUMPF_B = { ...B, bodyHtml: "<p>Erst Auffangschale, dann Ventil.</p>" };
+
+  it("die Vorschau zeigt den Fliesstext, der wirklich entsteht — je nach Kernaussagenwahl", () => {
+    const start = startAuswahl("a", MIT_RUMPF_A, MIT_RUMPF_B);
+    expect(vorschau(MIT_RUMPF_A, MIT_RUMPF_B, start).fliesstext).toBe(MIT_RUMPF_A.bodyHtml);
+    const gewechselt = { ...start, kernaussage: "aufgehend" as const };
+    const v = vorschau(MIT_RUMPF_A, MIT_RUMPF_B, gewechselt);
+    expect(v.fliesstext).toBe(MIT_RUMPF_B.bodyHtml);
+    expect(v.nichtUebernommen.fliesstextFuehrend).toBe(true);
+  });
+
+  it("ohne Fliesstext der Gegenseite wird der bisherige ersetzt — auch das steht in der Vorschau", () => {
+    const auswahl = { ...startAuswahl("a", MIT_RUMPF_A, B), kernaussage: "aufgehend" as const };
+    const v = vorschau(MIT_RUMPF_A, { ...B, bodyHtml: null }, auswahl);
+    expect(v.fliesstext).toBeNull();
+    expect(v.nichtUebernommen.fliesstextFuehrend).toBe(true);
+  });
+
+  it("fliesstextLage vergleicht den lesbaren Text, nicht das Markup", () => {
+    expect(fliesstextLage("<p>Ventil öffnen</p>", "<div>Ventil öffnen</div>")).toBe("gleich");
+    expect(fliesstextLage("<p>Ventil öffnen</p>", "<p>Ventil schließen</p>")).toBe("abweichend");
+    expect(fliesstextLage(null, "<p>x</p>")).toBe("nur_eine_seite");
+  });
+});
+
+describe("Nacharbeit 2 (Ben, R-0201) · die Freigabe gilt den gesehenen Fassungen", () => {
+  it("eine neue Fassung einer Seite wird erkannt", () => {
+    expect(fassungGeaendert({ a: A, b: B }, { a: A, b: B })).toBe(false);
+    expect(fassungGeaendert({ a: A, b: B }, { a: { ...A, version: 5 }, b: B })).toBe(true);
+    expect(fassungGeaendert({ a: A, b: B }, { a: A, b: { ...B, version: 3 } })).toBe(true);
+  });
+  it("der Auftrag trägt die Fassungen, aus denen er gebaut wurde", () => {
+    const auftrag = auftragAus(A, B, startAuswahl("a", A, B));
+    expect(auftrag.fuehrend.version).toBe(4);
+    expect(auftrag.aufgehend.version).toBe(2);
   });
 });
 

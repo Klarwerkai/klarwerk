@@ -22,6 +22,7 @@ import type {
   ZusammenfuehrungsSeite,
 } from "../api/types";
 import type { Role } from "../app/navigation";
+import { htmlToPlainText } from "./richText";
 
 export type PaarSeite = "a" | "b";
 
@@ -103,6 +104,19 @@ export function feldLage(fuehrend: string, aufgehend: string): FeldLage {
     return "nur_eine_seite";
   }
   return f === g ? "gleich" : "abweichend";
+}
+
+/**
+ * Nacharbeit 2 (Ben, R-0201): die Lage des FLIESSTEXTS. Er reist mit der Kernaussage — wer die
+ * Kernaussage einer Seite wählt, übernimmt auch deren Fliesstext (Serverregel `neueFassung`,
+ * `services/app/src/dubletten-zusammenfuehrung.ts`). Verglichen wird der lesbare Text, nicht das
+ * Markup: zwei gleichlautende Rümpfe mit anderer Auszeichnung „stimmen überein".
+ */
+export function fliesstextLage(
+  fuehrend: string | null | undefined,
+  aufgehend: string | null | undefined,
+): FeldLage {
+  return feldLage(htmlToPlainText(fuehrend ?? ""), htmlToPlainText(aufgehend ?? ""));
 }
 
 export type Positionsherkunft = "beide" | "fuehrend" | "aufgehend";
@@ -198,6 +212,12 @@ export function umschalten(
 export interface ZusammenfuehrungsVorschau {
   titel: string;
   kernaussage: string;
+  /**
+   * Der Fliesstext, der in der neuen Fassung TATSÄCHLICH steht — derselbe Wert, den der Server
+   * schreibt: bei Kernaussage „aufgehend" der Rumpf der Gegenseite (auch ein leerer), sonst der
+   * unveränderte Rumpf des Führungsartikels. `null` = kein Fliesstext.
+   */
+  fliesstext: string | null;
   bedingungen: string[];
   massnahmen: string[];
   /** Die Quellen der neuen Fassung: alle des Führungsartikels, dazu die mitgenommenen. */
@@ -205,7 +225,18 @@ export interface ZusammenfuehrungsVorschau {
   /** Die Fassungsnummer, die entsteht — eine gewöhnliche, ungeprüfte Überarbeitung. */
   neueFassung: number;
   /** Was NICHT übernommen wird. Es bleibt im aufgegangenen Artikel bzw. der Vorfassung lesbar. */
-  nichtUebernommen: { bedingungen: string[]; massnahmen: string[]; quellen: KoSource[] };
+  nichtUebernommen: {
+    bedingungen: string[];
+    massnahmen: string[];
+    quellen: KoSource[];
+    /** Der bisherige Fliesstext des Führungsartikels wird ersetzt (bleibt in der Vorfassung). */
+    fliesstextFuehrend: boolean;
+  };
+}
+
+/** Dieselbe Leerregel wie `cleanBody` am Server: nur ein leerer oder weisser Rumpf ist keiner. */
+function rumpf(html: string | null | undefined): string | null {
+  return html?.trim() ? html : null;
 }
 
 export function vorschau(
@@ -218,9 +249,12 @@ export function vorschau(
   const alleMassnahmen = listenPositionen(fuehrend.measures, aufgehend.measures);
   const mitnehmbar = mitnehmbareQuellen(fuehrend, aufgehend);
   const gewaehlteQuellen = mitnehmbar.filter((q) => auswahl.quellen.includes(q.id));
+  const kernVonAufgehend = auswahl.kernaussage === "aufgehend";
+  const fliesstext = rumpf((kernVonAufgehend ? aufgehend : fuehrend).bodyHtml);
   return {
     titel: (auswahl.titel === "aufgehend" ? aufgehend : fuehrend).title,
-    kernaussage: (auswahl.kernaussage === "aufgehend" ? aufgehend : fuehrend).statement,
+    kernaussage: (kernVonAufgehend ? aufgehend : fuehrend).statement,
+    fliesstext,
     bedingungen: alleBedingungen.map((p) => p.text).filter((t) => auswahl.bedingungen.includes(t)),
     massnahmen: alleMassnahmen.map((p) => p.text).filter((t) => auswahl.massnahmen.includes(t)),
     quellen: [...(fuehrend.sources ?? []), ...gewaehlteQuellen],
@@ -231,8 +265,24 @@ export function vorschau(
         .filter((t) => !auswahl.bedingungen.includes(t)),
       massnahmen: alleMassnahmen.map((p) => p.text).filter((t) => !auswahl.massnahmen.includes(t)),
       quellen: mitnehmbar.filter((q) => !auswahl.quellen.includes(q.id)),
+      fliesstextFuehrend:
+        kernVonAufgehend &&
+        rumpf(fuehrend.bodyHtml) !== null &&
+        fliesstextLage(fuehrend.bodyHtml, aufgehend.bodyHtml) !== "gleich",
     },
   };
+}
+
+/**
+ * Nacharbeit 2 (Ben, R-0201): ist eine der beiden Seiten seit Beginn des Assistenten in einer
+ * anderen Fassung angekommen? Dann gilt die gesehene Vorschau nicht mehr — die Freigabe wird
+ * zurückgenommen, bis der Mensch den neuen Stand übernommen und erneut geprüft hat.
+ */
+export function fassungGeaendert(
+  gesehen: { a: KnowledgeObject; b: KnowledgeObject },
+  aktuell: { a: KnowledgeObject; b: KnowledgeObject },
+): boolean {
+  return gesehen.a.version !== aktuell.a.version || gesehen.b.version !== aktuell.b.version;
 }
 
 /** Der Auftrag an `POST /api/duplicates/:id/merge` — erst nach Vorschau und Freigabe gebaut. */

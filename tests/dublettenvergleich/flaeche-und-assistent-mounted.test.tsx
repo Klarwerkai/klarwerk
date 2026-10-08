@@ -159,6 +159,7 @@ const PAAR = {
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
+let qc: QueryClient;
 
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 30; i++) {
@@ -170,7 +171,7 @@ async function mounte(pfad: string, inhalt: unknown): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(
       createElement(
@@ -373,6 +374,72 @@ describe("R-1107 / R-0201 · der Assistent: vier Schritte, Vorschau, ausdrückli
     await klick(marke("zusammenfuehren-zurueck"));
     await klick(marke("zusammenfuehren-weiter"));
     expect((marke("zusammenfuehren-freigeben") as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe("Nacharbeit 2 (Ben, R-0201) · Fliesstext sichtbar, Freigabe an die gesehene Fassung gebunden", () => {
+  it("A3 · der Fliesstext beider Seiten steht am Kernaussagenfeld; die Vorschau zeigt den entstehenden", async () => {
+    daten.kos = [
+      { ...KO_A, bodyHtml: "<p>Ventil V2 zuerst öffnen.</p>" },
+      { ...KO_B, bodyHtml: "<p>Erst Auffangschale, dann Ventil.</p>" },
+    ];
+    await mounteAssistent();
+    await klick(marke("zusammenfuehren-weiter"));
+    expect(text(marke("fliesstext-fuehrend"))).toContain("Ventil V2 zuerst öffnen.");
+    expect(text(marke("fliesstext-aufgehend"))).toContain("Erst Auffangschale, dann Ventil.");
+    // Die Kopplung steht ausdrücklich da, mit der Lage des Fliesstexts.
+    expect(text(marke("fliesstext-kopplung"))).toContain(
+      i18n.t("dublettenvergleich.lage.abweichend"),
+    );
+    await klick(
+      container.querySelector('[data-testid="feld-kernaussage"] input[value="aufgehend"]'),
+    );
+    await klick(marke("zusammenfuehren-weiter"));
+    await klick(marke("zusammenfuehren-weiter"));
+    expect(text(marke("vorschau-fliesstext"))).toContain("Erst Auffangschale, dann Ventil.");
+    expect(text(marke("vorschau-fliesstext"))).not.toContain("Ventil V2 zuerst öffnen.");
+    expect(marke("vorschau-fliesstext-ersetzt")).not.toBeNull();
+  });
+
+  it("A4 · trifft eine neue Fassung ein, fällt die Bestätigung, die Freigabe sperrt — bis neu geprüft ist", async () => {
+    await mounteAssistent();
+    for (let i = 0; i < 3; i++) {
+      await klick(marke("zusammenfuehren-weiter"));
+    }
+    await klick(marke("zusammenfuehren-bestaetigung"));
+    expect((marke("zusammenfuehren-freigeben") as HTMLButtonElement).disabled).toBe(false);
+
+    // Während der Assistent offen ist, kommt Seite a in einer neuen Fassung an.
+    daten.kos = [{ ...KO_A, version: 3, statement: "Inzwischen anders formuliert." }, KO_B];
+    await act(async () => {
+      await qc.invalidateQueries({ queryKey: ["kos"] });
+    });
+    for (let runde = 0; runde < 4; runde++) {
+      await act(flush);
+    }
+    expect(marke("zusammenfuehren-veraltet")).not.toBeNull();
+    const haken = marke("zusammenfuehren-bestaetigung") as HTMLInputElement;
+    expect(haken.checked).toBe(false);
+    expect(haken.disabled).toBe(true);
+    const freigeben = marke("zusammenfuehren-freigeben") as HTMLButtonElement;
+    expect(freigeben.disabled).toBe(true);
+    await klick(freigeben);
+    expect(daten.aufrufe, "die alte Bestätigung trug eine neue Fassung").toEqual([]);
+    // Die Vorschau zeigt weiter den gesehenen Stand, nicht still den neuen.
+    expect(text(marke("vorschau-kernaussage"))).toBe(KO_A.statement as string);
+
+    // Neuer Stand: von vorn, erneut bestätigen — erst dann geht die NEUE Fassung hinaus.
+    await klick(marke("zusammenfuehren-neuer-stand"));
+    expect(marke("schritt-fuehrung")).not.toBeNull();
+    expect(marke("zusammenfuehren-veraltet")).toBeNull();
+    for (let i = 0; i < 3; i++) {
+      await klick(marke("zusammenfuehren-weiter"));
+    }
+    expect(text(marke("vorschau-kernaussage"))).toBe("Inzwischen anders formuliert.");
+    await klick(marke("zusammenfuehren-bestaetigung"));
+    await klick(marke("zusammenfuehren-freigeben"));
+    expect(daten.aufrufe).toHaveLength(1);
+    expect(daten.aufrufe[0]?.auftrag.fuehrend).toEqual({ id: "ko-a", version: 3 });
   });
 });
 

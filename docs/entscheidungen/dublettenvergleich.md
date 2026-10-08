@@ -15,6 +15,23 @@ bis dahin ist sie hier ausdrücklich offen und wird nicht behauptet.*
 | `POST /api/duplicates/:id/merge` | Tor `ko.validate`; dahinter: kein Autor einer der beiden Seiten (auch nicht Controller/Admin), Inhalt beider Seiten lesbar (`feldFreigabe`), derselbe Space, unveränderte Fassungen, nur Werte beider Seiten, `bestaetigt: true`. Dann: (1) neue Fassung des Führungsartikels über `KoService.revise` — **ungeprüft** (Status „offen", Vertrauen 0), Beleg `ko.merge-received`; (2) `mergedInto` am anderen Artikel (`KoService.markMergedInto`), Beleg `ko.merged-into` — Text, Quellen, Anhänge, Kommentare und Historie bleiben; (3) Befund `geschlossen (merged)` mit Führungsartikel und Fassung, Beleg `overlap.merge-completed`; weitere offene Befunde des aufgegangenen Artikels schliessen als `superseded`; (4) Nachlauf wie bei jeder neuen Fassung (Revisions-Sweep, KI-Prüfung). | `services/app/src/dubletten-zusammenfuehrung.ts`, `routes/overlap-routes.ts`, `OverlapService.closeAsMerged`, `KoService.markMergedInto` |
 | Aufgegangener Artikel | Bleibt dauerhaft lesbar; über seiner Lesefläche steht „am … in „X" aufgegangen" mit Verweis auf den verbleibenden Artikel. Die Dublettenerkennung nimmt ihn weder als Subjekt noch als Kandidaten. | `components/AufgegangenHinweis.tsx` (in `KnowledgeDetail.tsx`), `duplicate-detection.ts` |
 
+**Nacharbeit 2 (Bens Befunde zu R-0201):**
+
+- *Fließtext sichtbar.* Die Wahl der Kernaussage übernimmt am Server auch den Fließtext dieser
+  Seite. Der Assistent zeigt deshalb am Kernaussagenfeld den Fließtext beider Seiten, seine Lage
+  und den ausdrücklichen Satz zur Kopplung; die Vorschau zeigt den Fließtext, der tatsächlich
+  entsteht (auch „leer"), und nennt unter „nicht übernommen", wenn der bisherige Fließtext des
+  Führungsartikels ersetzt wird (`lib/dublettenZusammenfuehrung.ts`: `vorschau().fliesstext`,
+  `fliesstextLage`; `DuplicateMerge.tsx`).
+- *Freigabe an die gesehenen Fassungen gebunden.* Der Assistent hält die beiden Objekte fest,
+  mit denen er begonnen hat; Vergleich, Vorschau und Auftrag lesen nur diesen Stand, der Auftrag
+  trägt also die gesehenen Fassungen (eine inzwischen geänderte Seite beantwortet der Server mit
+  409). Kommt eine neue Fassung an, fällt die Bestätigung, Haken und Freigabe sind gesperrt, und
+  ein Hinweis bietet „Neuen Stand übernehmen und neu prüfen" an — das beginnt wieder bei Schritt 1
+  (`fassungGeaendert`).
+- Belege: `tests/dublettenvergleich/assistent-logik.test.ts` (Nacharbeit-2-Blöcke),
+  `tests/dublettenvergleich/flaeche-und-assistent-mounted.test.tsx` (A3, A4).
+
 ## Die zugeordneten Anliegen — Stand vorher, diese Lieferung, Beleg
 
 | Anliegen | Stand vor dieser Lieferung | Diese Lieferung | Beleg |

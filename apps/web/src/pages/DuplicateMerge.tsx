@@ -15,7 +15,7 @@
 // Erreichbar über das „···"-Menü der Dublettenkarte (`Duplicates.tsx`). Wer Autor einer Seite ist,
 // sieht hier, warum er nicht zusammenführt (R-0565); entschieden wird das am Server (403).
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -30,6 +30,7 @@ import type {
 import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
 import { HelpTip } from "../components/HelpTip";
+import { SanitizedHtml } from "../components/SanitizedHtml";
 import { SourceLink } from "../components/ko/SourceEvidence";
 import { PruefenKopf } from "../components/pruefen/PruefenKopf";
 import { PruefenSatz } from "../components/pruefen/PruefenZustand";
@@ -39,7 +40,9 @@ import {
   type AssistentSchritt,
   type ZusammenfuehrungsAuswahl,
   auftragAus,
+  fassungGeaendert,
   feldLage,
+  fliesstextLage,
   fuehrungsVorschlag,
   listenPositionen,
   mitnehmbareQuellen,
@@ -170,8 +173,8 @@ export function DuplicateMerge(): JSX.Element {
 
 function Assistent({
   entry,
-  a,
-  b,
+  a: aktuellA,
+  b: aktuellB,
   onErledigt,
 }: {
   entry: OverlapEntry;
@@ -181,12 +184,29 @@ function Assistent({
 }): JSX.Element {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  // ==============================================================================================
+  // Nacharbeit 2 (Ben, R-0201) — DIE FREIGABE GILT DEN GESEHENEN FASSUNGEN.
+  // ==============================================================================================
+  //
+  // Der Assistent hält die beiden Objekte fest, mit denen er begonnen hat. Vergleich, Vorschau und
+  // Auftrag lesen AUSSCHLIESSLICH diesen Stand — der Auftrag trägt damit die gesehenen Fassungen,
+  // und eine inzwischen geänderte Seite beantwortet der Server mit 409 statt sie mitzunehmen.
+  // Kommt über `useKos` eine neue Fassung an, wird die Bestätigung zurückgenommen und die Freigabe
+  // gesperrt, bis der Mensch den neuen Stand übernimmt und von Schritt 1 an erneut prüft.
+  const [gesehen, setGesehen] = useState({ a: aktuellA, b: aktuellB });
+  const { a, b } = gesehen;
+  const veraltet = fassungGeaendert(gesehen, { a: aktuellA, b: aktuellB });
   const vorschlag = fuehrungsVorschlag(entry, a, b);
   const [schritt, setSchritt] = useState<AssistentSchritt>("fuehrung");
   const [auswahl, setAuswahl] = useState<ZusammenfuehrungsAuswahl>(() =>
     startAuswahl(vorschlag.seite, a, b),
   );
   const [bestaetigt, setBestaetigt] = useState(false);
+  useEffect(() => {
+    if (veraltet) {
+      setBestaetigt(false);
+    }
+  }, [veraltet]);
   const [vermerk, setVermerk] = useState("");
   const [fehler, setFehler] = useState<string | null>(null);
   const { fuehrend, aufgehend } = rollenVon(auswahl.fuehrung, a, b);
@@ -208,6 +228,12 @@ function Assistent({
     setBestaetigt(false);
     setFehler(null);
     setSchritt(ziel);
+  };
+  // Den neuen Stand übernehmen: Auswahl neu aufbauen (dieselbe Führungsseite) und von vorn prüfen.
+  const neuerStand = (): void => {
+    setGesehen({ a: aktuellA, b: aktuellB });
+    setAuswahl(startAuswahl(auswahl.fuehrung, aktuellA, aktuellB));
+    gehe("fuehrung");
   };
 
   return (
@@ -232,6 +258,24 @@ function Assistent({
           {t("dublettenvergleich.schritt.nummer", { nummer: index + 1 })}
         </p>
       </div>
+
+      {veraltet ? (
+        <div
+          role="alert"
+          data-testid="zusammenfuehren-veraltet"
+          className="flex flex-wrap items-center gap-3 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text"
+        >
+          <span>{t("dublettenvergleich.veraltet")}</span>
+          <button
+            type="button"
+            data-testid="zusammenfuehren-neuer-stand"
+            onClick={neuerStand}
+            className="font-semibold underline"
+          >
+            {t("dublettenvergleich.veraltetUebernehmen")}
+          </button>
+        </div>
+      ) : null}
 
       {schritt === "fuehrung" ? (
         <fieldset data-testid="schritt-fuehrung" className="space-y-2">
@@ -289,6 +333,10 @@ function Assistent({
             feld="kernaussage"
             fuehrendWert={fuehrend.statement}
             aufgehendWert={aufgehend.statement}
+            rumpf={{
+              fuehrend: fuehrend.bodyHtml ?? null,
+              aufgehend: aufgehend.bodyHtml ?? null,
+            }}
             wert={auswahl.kernaussage}
             onWahl={(kernaussage) => setAuswahl({ ...auswahl, kernaussage })}
           />
@@ -379,6 +427,7 @@ function Assistent({
           onVermerk={setVermerk}
           bestaetigt={bestaetigt}
           onBestaetigt={setBestaetigt}
+          gesperrt={veraltet}
         />
       ) : null}
 
@@ -416,7 +465,7 @@ function Assistent({
           <button
             type="button"
             data-testid="zusammenfuehren-freigeben"
-            disabled={!bestaetigt || freigabe.isPending}
+            disabled={!bestaetigt || veraltet || freigabe.isPending}
             onClick={() => {
               setFehler(null);
               freigabe.mutate();
@@ -446,17 +495,25 @@ function FeldWahl({
   feld,
   fuehrendWert,
   aufgehendWert,
+  rumpf,
   wert,
   onWahl,
 }: {
   feld: "titel" | "kernaussage";
   fuehrendWert: string;
   aufgehendWert: string;
+  /**
+   * Nacharbeit 2 (Ben, R-0201): der Fliesstext beider Seiten, wenn das Feld ihn mitführt. Die Wahl
+   * der Kernaussage übernimmt am Server auch den Fliesstext dieser Seite — deshalb steht er hier
+   * sichtbar an der Option, mit eigener Lage und dem ausdrücklichen Satz über die Kopplung.
+   */
+  rumpf?: { fuehrend: string | null; aufgehend: string | null };
   wert: ZusammenfuehrungsSeite;
   onWahl: (seite: ZusammenfuehrungsSeite) => void;
 }): JSX.Element {
   const { t } = useTranslation();
   const lage = feldLage(fuehrendWert, aufgehendWert);
+  const rumpfLage = rumpf ? fliesstextLage(rumpf.fuehrend, rumpf.aufgehend) : null;
   return (
     <fieldset data-testid={`feld-${feld}`}>
       <legend className="mb-1 flex items-center gap-2 text-[13px] font-semibold text-text">
@@ -500,11 +557,38 @@ function FeldWahl({
                 <span className="block whitespace-pre-wrap text-[13px] text-text">
                   {text.trim() ? text : t("dublettenvergleich.leer")}
                 </span>
+                {rumpf ? (
+                  <span
+                    data-testid={`fliesstext-${seite}`}
+                    className="mt-2 block border-t border-hairline pt-2"
+                  >
+                    <span className="block font-mono text-[10px] uppercase text-muted-2">
+                      {t("dublettenvergleich.feld.fliesstext")}
+                    </span>
+                    {rumpf[seite]?.trim() ? (
+                      <SanitizedHtml
+                        html={rumpf[seite] ?? ""}
+                        className="prose-kw text-[12.5px] text-text"
+                      />
+                    ) : (
+                      <span className="block text-[12.5px] text-muted-2">
+                        {t("dublettenvergleich.leer")}
+                      </span>
+                    )}
+                  </span>
+                ) : null}
               </span>
             </label>
           );
         })}
       </div>
+      {rumpf && rumpfLage ? (
+        <p data-testid="fliesstext-kopplung" className="mt-1 text-[12px] text-muted">
+          {t("dublettenvergleich.fliesstext.kopplung", {
+            lage: t(`dublettenvergleich.lage.${rumpfLage}`),
+          })}
+        </p>
+      ) : null}
     </fieldset>
   );
 }
@@ -568,6 +652,7 @@ function Vorschau({
   onVermerk,
   bestaetigt,
   onBestaetigt,
+  gesperrt,
 }: {
   a: KnowledgeObject;
   b: KnowledgeObject;
@@ -578,13 +663,16 @@ function Vorschau({
   onVermerk: (text: string) => void;
   bestaetigt: boolean;
   onBestaetigt: (ja: boolean) => void;
+  /** Eine Seite liegt inzwischen in neuerer Fassung vor — bestätigen geht erst nach Übernahme. */
+  gesperrt: boolean;
 }): JSX.Element {
   const { t } = useTranslation();
   const v = vorschau(a, b, auswahl);
   const weggelassen =
     v.nichtUebernommen.bedingungen.length +
     v.nichtUebernommen.massnahmen.length +
-    v.nichtUebernommen.quellen.length;
+    v.nichtUebernommen.quellen.length +
+    (v.nichtUebernommen.fliesstextFuehrend ? 1 : 0);
   return (
     <div data-testid="schritt-vorschau" className="space-y-4">
       <div className="rounded-[14px] border border-hairline bg-surface px-[22px] py-[18px]">
@@ -594,6 +682,18 @@ function Vorschau({
         <p data-testid="vorschau-kernaussage" className="mt-2 text-[14px] leading-[1.6] text-text">
           {v.kernaussage}
         </p>
+        {/* Nacharbeit 2 (Ben, R-0201): der Fliesstext, der TATSÄCHLICH in der neuen Fassung steht —
+            auch wenn er leer ist; dann sagt die Vorschau es, statt nichts zu zeigen. */}
+        <div data-testid="vorschau-fliesstext" className="mt-3">
+          <div className="text-[12px] font-semibold text-muted">
+            {t("dublettenvergleich.feld.fliesstext")}
+          </div>
+          {v.fliesstext ? (
+            <SanitizedHtml html={v.fliesstext} className="prose-kw text-[13px] text-text" />
+          ) : (
+            <p className="text-[13px] text-muted-2">{t("dublettenvergleich.leer")}</p>
+          )}
+        </div>
         {v.bedingungen.length > 0 ? (
           <div className="mt-3">
             <div className="text-[12px] font-semibold text-muted">
@@ -645,6 +745,11 @@ function Vorschau({
             {v.nichtUebernommen.quellen.map((q) => (
               <li key={`q-${q.id}`}>{q.label}</li>
             ))}
+            {v.nichtUebernommen.fliesstextFuehrend ? (
+              <li data-testid="vorschau-fliesstext-ersetzt">
+                {t("dublettenvergleich.fliesstext.ersetzt", { titel: fuehrendTitel })}
+              </li>
+            ) : null}
           </ul>
         </div>
       ) : null}
@@ -661,6 +766,7 @@ function Vorschau({
           type="checkbox"
           data-testid="zusammenfuehren-bestaetigung"
           checked={bestaetigt}
+          disabled={gesperrt}
           onChange={(ev) => onBestaetigt(ev.target.checked)}
           className="mt-1"
         />

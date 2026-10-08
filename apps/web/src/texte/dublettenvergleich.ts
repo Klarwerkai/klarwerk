@@ -57,6 +57,14 @@ export default {
     "dublettenvergleich.feld.kernaussage": "Kernaussage mit Fließtext",
     "dublettenvergleich.feld.bedingungen": "Bedingungen",
     "dublettenvergleich.feld.massnahmen": "Maßnahmen",
+    "dublettenvergleich.feld.fliesstext": "Fließtext",
+    "dublettenvergleich.fliesstext.kopplung":
+      "Der Fließtext reist mit der Kernaussage: wer die Kernaussage einer Seite wählt, übernimmt auch deren Fließtext. Fließtext: {{lage}}.",
+    "dublettenvergleich.fliesstext.ersetzt":
+      "Bisheriger Fließtext von „{{titel}}“ — er wird ersetzt und bleibt in der Vorfassung lesbar.",
+    "dublettenvergleich.veraltet":
+      "Eine Seite wurde inzwischen geändert. Die Vorschau zeigt den Stand, mit dem du begonnen hast; freigeben geht erst, wenn du den neuen Stand übernimmst und erneut prüfst.",
+    "dublettenvergleich.veraltetUebernehmen": "Neuen Stand übernehmen und neu prüfen",
     "dublettenvergleich.lage.gleich": "stimmt überein",
     "dublettenvergleich.lage.abweichend": "weicht ab",
     "dublettenvergleich.lage.nur_eine_seite": "unsicher — nur eine Seite",
@@ -139,6 +147,14 @@ export default {
     "dublettenvergleich.feld.kernaussage": "Core statement with body text",
     "dublettenvergleich.feld.bedingungen": "Conditions",
     "dublettenvergleich.feld.massnahmen": "Measures",
+    "dublettenvergleich.feld.fliesstext": "Body text",
+    "dublettenvergleich.fliesstext.kopplung":
+      "The body text travels with the core statement: choosing one side's core statement also takes over its body text. Body text: {{lage}}.",
+    "dublettenvergleich.fliesstext.ersetzt":
+      "Previous body text of “{{titel}}” — it is replaced and stays readable in the previous version.",
+    "dublettenvergleich.veraltet":
+      "One side has changed in the meantime. The preview shows the state you started with; approval is only possible once you take over the new state and review again.",
+    "dublettenvergleich.veraltetUebernehmen": "Take over new state and review again",
     "dublettenvergleich.lage.gleich": "matches",
     "dublettenvergleich.lage.abweichend": "differs",
     "dublettenvergleich.lage.nur_eine_seite": "uncertain — one side only",
@@ -220,6 +236,14 @@ export default {
     "dublettenvergleich.feld.kernaussage": "Kernuitspraak met lopende tekst",
     "dublettenvergleich.feld.bedingungen": "Voorwaarden",
     "dublettenvergleich.feld.massnahmen": "Maatregelen",
+    "dublettenvergleich.feld.fliesstext": "Lopende tekst",
+    "dublettenvergleich.fliesstext.kopplung":
+      "De lopende tekst reist mee met de kernuitspraak: wie de kernuitspraak van een kant kiest, neemt ook diens lopende tekst over. Lopende tekst: {{lage}}.",
+    "dublettenvergleich.fliesstext.ersetzt":
+      "Vorige lopende tekst van „{{titel}}” — die wordt vervangen en blijft leesbaar in de vorige versie.",
+    "dublettenvergleich.veraltet":
+      "Eén kant is intussen gewijzigd. Het voorbeeld toont de stand waarmee je begon; vrijgeven kan pas als je de nieuwe stand overneemt en opnieuw controleert.",
+    "dublettenvergleich.veraltetUebernehmen": "Nieuwe stand overnemen en opnieuw controleren",
     "dublettenvergleich.lage.gleich": "komt overeen",
     "dublettenvergleich.lage.abweichend": "wijkt af",
     "dublettenvergleich.lage.nur_eine_seite": "onzeker — slechts één kant",
