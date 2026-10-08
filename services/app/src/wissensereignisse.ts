@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import type { AuditService } from "../../audit";
+import type { AuditEntry, AuditService } from "../../audit";
 import type { Conflict } from "../../conflicts";
 import type { KnowledgeObject } from "../../knowledge-object";
 import type { SessionUser } from "./http";
@@ -38,6 +38,17 @@ import type { IntervalHandle } from "./trash-sweep-scheduler";
 //     `darfSehen` mit einem Betrachter ohne Spaces in der Rolle `viewer`). Wer mehr wissen will,
 //     holt es über die Schnittstelle mit eigenem Schlüssel und dessen Rechten.
 //   · Erkennung, Zustellung und endgültiges Scheitern stehen im Prüfprotokoll.
+//   · Vor JEDEM Zustellversuch wird die Sichtbarkeit neu geprüft. Wird ein Objekt zwischen zwei
+//     Versuchen vertraulich, einem Space zugeordnet oder gelöscht, geht die Meldung nicht mehr
+//     hinaus; der Abbruch steht im Protokoll.
+//
+// DAUERHAFT: Die Zustellvorgänge liegen in der Kette, nicht nur im Speicher. `erkannt` nennt die
+// Ziele, die das Ereignis bei der Erkennung abonniert hatten; jeder erfolglose Versuch steht als
+// `zustellversuch` da; der Abschluss (zugestellt, gescheitert, abgebrochen) ist je Ziel und Ereignis
+// über `recordOnce` eindeutig. Nach einem Neustart nimmt der Melder jeden Vorgang ohne Abschluss
+// wieder auf und zählt die Versuche weiter. Zugestellt wird damit mindestens einmal: Ein Neustart
+// zwischen erfolgreicher Antwort und Abschlusseintrag oder zwei gleichzeitig neu gestartete Instanzen
+// können eine Meldung doppelt senden — der Empfänger erkennt sie an derselben `kennung`.
 
 export const WISSENSEREIGNISSE = [
   "wissen.validiert",
@@ -54,6 +65,9 @@ export const AKTION_GRUNDSTAND = "wissensereignis.grundstand";
 export const AKTION_ERKANNT = "wissensereignis.erkannt";
 export const AKTION_ZUGESTELLT = "wissensereignis.zugestellt";
 export const AKTION_GESCHEITERT = "wissensereignis.zustellung-gescheitert";
+export const AKTION_ABGEBROCHEN = "wissensereignis.zustellung-abgebrochen";
+export const AKTION_VERSUCH = "wissensereignis.zustellversuch";
+const ABSCHLUSS_AKTIONEN = [AKTION_ZUGESTELLT, AKTION_GESCHEITERT, AKTION_ABGEBROCHEN] as const;
 
 export const SIGNATUR_HEADER = "x-klarwerk-signatur";
 export const EREIGNIS_HEADER = "x-klarwerk-ereignis";
@@ -218,8 +232,15 @@ export interface Befund {
   daten: Pick<Meldung, "wissensobjekt" | "widerspruch">;
 }
 
-/** Der gespeicherte Zustand als Menge meldbarer Befunde — reine Ableitung, kein Schreibweg. */
-export async function erhebeBefunde(quellen: WissensereignisQuellen): Promise<Befund[]> {
+/** Ein gelesener Stand: die meldbaren Objekte und die Zustände, aus denen Ereignisse folgen. */
+export interface Stand {
+  /** Objekte, die der Export-Betrachter heute sehen darf — Grundlage JEDER Meldung. */
+  sichtbar: ReadonlyMap<string, KnowledgeObject>;
+  faellig: readonly string[];
+  widersprueche: readonly Conflict[];
+}
+
+export async function ladeStand(quellen: WissensereignisQuellen): Promise<Stand> {
   const [kos, faellig, widersprueche] = await Promise.all([
     quellen.wissensobjekte(),
     quellen.revalidierungFaellig(),
@@ -231,6 +252,15 @@ export async function erhebeBefunde(quellen: WissensereignisQuellen): Promise<Be
       sichtbar.set(ko.id, ko);
     }
   }
+  return { sichtbar, faellig, widersprueche };
+}
+
+/** Der gespeicherte Zustand als Menge meldbarer Befunde — reine Ableitung, kein Schreibweg. */
+export async function erhebeBefunde(quellen: WissensereignisQuellen): Promise<Befund[]> {
+  return befundeAus(await ladeStand(quellen));
+}
+
+function befundeAus({ sichtbar, faellig, widersprueche }: Stand): Befund[] {
   const befunde: Befund[] = [];
   for (const ko of sichtbar.values()) {
     if (ko.status === "validiert") {
@@ -320,13 +350,33 @@ interface Ausstehend {
   ziel: WebhookZiel;
   meldung: Meldung;
   versuche: number;
+  /** Zugestellt oder gescheitert, aber der Abschlusseintrag ist noch nicht geschrieben. */
+  abschluss?: { action: string; payload: Record<string, unknown> };
 }
 
 export interface LaufErgebnis {
   erkannt: number;
   zugestellt: number;
   gescheitert: number;
+  abgebrochen: number;
   ausstehend: number;
+}
+
+/** Eindeutige Kennung des Abschlusses je Ziel und Ereignis (`recordOnce`). */
+export function abschlussKennung(zielId: string, kennung: string): string {
+  return `wissensereignis.abschluss:${zielId}:${kennung}`;
+}
+
+/** Alle Wissensobjekte, deren Kennung die Meldung trägt. */
+function objekteDer(meldung: Meldung): string[] {
+  if (meldung.wissensobjekt) {
+    return [meldung.wissensobjekt.id];
+  }
+  return meldung.widerspruch ? [...meldung.widerspruch.wissensobjekte] : [];
+}
+
+function zahl(wert: unknown): number {
+  return typeof wert === "number" && Number.isFinite(wert) ? wert : 0;
 }
 
 export class WissensereignisMelder {
@@ -346,13 +396,20 @@ export class WissensereignisMelder {
   /** Ein Takt: Zustand abgleichen, Neues festhalten, ausstehende Meldungen zustellen. */
   async lauf(): Promise<LaufErgebnis> {
     if (this.laeuft) {
-      return { erkannt: 0, zugestellt: 0, gescheitert: 0, ausstehend: this.warteschlange.length };
+      return {
+        erkannt: 0,
+        zugestellt: 0,
+        gescheitert: 0,
+        abgebrochen: 0,
+        ausstehend: this.warteschlange.length,
+      };
     }
     this.laeuft = true;
     try {
-      const erkannt = await this.erkenne();
-      const { zugestellt, gescheitert } = await this.stelleZu();
-      return { erkannt, zugestellt, gescheitert, ausstehend: this.warteschlange.length };
+      const stand = await ladeStand(this.deps.quellen);
+      const erkannt = await this.erkenne(stand);
+      const ergebnis = await this.stelleZu(stand.sichtbar);
+      return { erkannt, ...ergebnis, ausstehend: this.warteschlange.length };
     } finally {
       this.laeuft = false;
     }
@@ -360,13 +417,14 @@ export class WissensereignisMelder {
 
   // Bekannt ist, was im Grundstand steht oder schon als erkannt in der Kette liegt. Der Grundstand
   // wird nur einmal je Installation geschrieben; eine zweite Instanz übernimmt den der ersten.
-  private async ladeBekannt(): Promise<Set<string>> {
+  // Beim ersten Aufruf nimmt der Melder außerdem die Zustellvorgänge ohne Abschluss wieder auf.
+  private async ladeBekannt(stand: Stand): Promise<Set<string>> {
     if (this.bekannt) {
       return this.bekannt;
     }
     let grundstand = (await this.deps.audit.list({ action: AKTION_GRUNDSTAND }))[0];
     if (!grundstand) {
-      const kennungen = (await erhebeBefunde(this.deps.quellen)).map((b) => b.kennung);
+      const kennungen = befundeAus(stand).map((b) => b.kennung);
       await this.deps.audit.recordOnce(AKTION_GRUNDSTAND, {
         actor: MELDER_AKTEUR,
         action: AKTION_GRUNDSTAND,
@@ -384,27 +442,76 @@ export class WissensereignisMelder {
         }
       }
     }
-    for (const eintrag of await this.deps.audit.list({ action: AKTION_ERKANNT })) {
+    const erkannteEintraege = await this.deps.audit.list({ action: AKTION_ERKANNT });
+    for (const eintrag of erkannteEintraege) {
       if (eintrag.eventId) {
         bekannt.add(eintrag.eventId);
       }
     }
+    await this.nimmWiederAuf(erkannteEintraege);
     this.bekannt = bekannt;
     return bekannt;
   }
 
-  private async erkenne(): Promise<number> {
-    const bekannt = await this.ladeBekannt();
+  // Wiederaufnahme nach einem Neustart: jedes erkannte Ereignis je abonniertem und weiterhin
+  // eingetragenem Ziel, für das noch kein Abschluss in der Kette steht. Die Versuche zählen weiter.
+  private async nimmWiederAuf(erkannteEintraege: readonly AuditEntry[]): Promise<void> {
+    const abgeschlossen = new Set<string>();
+    for (const action of ABSCHLUSS_AKTIONEN) {
+      for (const e of await this.deps.audit.list({ action })) {
+        if (e.eventId) {
+          abgeschlossen.add(e.eventId);
+        }
+      }
+    }
+    const versuche = new Map<string, number>();
+    for (const e of await this.deps.audit.list({ action: AKTION_VERSUCH })) {
+      const schluessel = abschlussKennung(String(e.payload.ziel), String(e.payload.kennung));
+      versuche.set(schluessel, Math.max(versuche.get(schluessel) ?? 0, zahl(e.payload.versuch)));
+    }
+    for (const e of erkannteEintraege) {
+      const p = e.payload;
+      if (!e.eventId || !istEreignis(p.ereignis) || !Array.isArray(p.ziele)) {
+        continue;
+      }
+      // Dieselben Felder, die `erkenne` aus dem Befund in die Kette geschrieben hat.
+      const daten = p as Pick<Meldung, "wissensobjekt" | "widerspruch">;
+      const meldung: Meldung = {
+        format: "klarwerk-wissensereignis",
+        formatVersion: 1,
+        kennung: e.eventId,
+        ereignis: p.ereignis,
+        zeitpunkt: e.at,
+        ...(daten.wissensobjekt ? { wissensobjekt: daten.wissensobjekt } : {}),
+        ...(daten.widerspruch ? { widerspruch: daten.widerspruch } : {}),
+      };
+      for (const ziel of this.deps.ziele) {
+        const schluessel = abschlussKennung(ziel.id, e.eventId);
+        if (
+          p.ziele.includes(ziel.id) &&
+          ziel.ereignisse.includes(p.ereignis) &&
+          !abgeschlossen.has(schluessel) &&
+          !this.warteschlange.some((w) => w.ziel.id === ziel.id && w.meldung.kennung === e.eventId)
+        ) {
+          this.warteschlange.push({ ziel, meldung, versuche: versuche.get(schluessel) ?? 0 });
+        }
+      }
+    }
+  }
+
+  private async erkenne(stand: Stand): Promise<number> {
+    const bekannt = await this.ladeBekannt(stand);
     let erkannt = 0;
-    for (const befund of await erhebeBefunde(this.deps.quellen)) {
+    for (const befund of befundeAus(stand)) {
       if (bekannt.has(befund.kennung)) {
         continue;
       }
+      const ziele = this.deps.ziele.filter((z) => z.ereignisse.includes(befund.ereignis));
       const geschrieben = await this.deps.audit.recordOnce(befund.kennung, {
         actor: MELDER_AKTEUR,
         action: AKTION_ERKANNT,
         target: befund.ziel,
-        payload: { ereignis: befund.ereignis, ...befund.daten },
+        payload: { ereignis: befund.ereignis, ...befund.daten, ziele: ziele.map((z) => z.id) },
       });
       bekannt.add(befund.kennung);
       if (!geschrieben) {
@@ -420,20 +527,57 @@ export class WissensereignisMelder {
         zeitpunkt: new Date(this.now()).toISOString(),
         ...befund.daten,
       };
-      for (const ziel of this.deps.ziele) {
-        if (ziel.ereignisse.includes(befund.ereignis)) {
-          this.warteschlange.push({ ziel, meldung, versuche: 0 });
-        }
+      for (const ziel of ziele) {
+        this.warteschlange.push({ ziel, meldung, versuche: 0 });
       }
     }
     return erkannt;
   }
 
-  private async stelleZu(): Promise<{ zugestellt: number; gescheitert: number }> {
+  private async stelleZu(
+    sichtbar: ReadonlyMap<string, KnowledgeObject>,
+  ): Promise<Omit<LaufErgebnis, "erkannt" | "ausstehend">> {
     let zugestellt = 0;
     let gescheitert = 0;
+    let abgebrochen = 0;
     const offen: Ausstehend[] = [];
     for (const eintrag of this.warteschlange) {
+      const protokollBasis = {
+        ziel: eintrag.ziel.id,
+        ereignis: eintrag.meldung.ereignis,
+        kennung: eintrag.meldung.kennung,
+      };
+      // Ein bereits entschiedener Vorgang, dessen Abschlusseintrag noch fehlt: nur nachtragen.
+      if (eintrag.abschluss) {
+        const { action, payload } = eintrag.abschluss;
+        if (!(await this.schliesseAb(eintrag, action, payload))) {
+          offen.push(eintrag);
+        }
+        continue;
+      }
+      // Befund 1 (BEN): Die Rechte gelten zum Zeitpunkt des Versands, nicht der Erkennung.
+      const verborgen = objekteDer(eintrag.meldung).filter((id) => !sichtbar.has(id));
+      if (verborgen.length > 0) {
+        abgebrochen += 1;
+        const payload = {
+          ...protokollBasis,
+          versuche: eintrag.versuche,
+          grund: "nicht-mehr-meldbar",
+        };
+        if (!(await this.schliesseAb(eintrag, AKTION_ABGEBROCHEN, payload))) {
+          offen.push({ ...eintrag, abschluss: { action: AKTION_ABGEBROCHEN, payload } });
+        }
+        continue;
+      }
+      if (eintrag.versuche >= MAX_VERSUCHE) {
+        // Nach einem Neustart: alle Versuche verbraucht, aber kein Abschluss geschrieben.
+        gescheitert += 1;
+        const payload = { ...protokollBasis, versuche: eintrag.versuche, status: null };
+        if (!(await this.schliesseAb(eintrag, AKTION_GESCHEITERT, payload))) {
+          offen.push({ ...eintrag, abschluss: { action: AKTION_GESCHEITERT, payload } });
+        }
+        continue;
+      }
       const body = JSON.stringify(eintrag.meldung);
       const signatur = signiere(eintrag.ziel.geheimnis, Math.floor(this.now() / 1000), body);
       const { status } = await this.zusteller({
@@ -448,28 +592,61 @@ export class WissensereignisMelder {
         body,
       });
       eintrag.versuche += 1;
-      const protokoll = {
-        ziel: eintrag.ziel.id,
-        ereignis: eintrag.meldung.ereignis,
-        kennung: eintrag.meldung.kennung,
-        versuche: eintrag.versuche,
-        status,
-      };
+      const protokoll = { ...protokollBasis, versuche: eintrag.versuche, status };
       if (status !== null && status >= 200 && status < 300) {
         zugestellt += 1;
-        await this.protokolliere(AKTION_ZUGESTELLT, eintrag, protokoll);
-      } else if (eintrag.versuche >= MAX_VERSUCHE) {
+        if (!(await this.schliesseAb(eintrag, AKTION_ZUGESTELLT, protokoll))) {
+          offen.push({ ...eintrag, abschluss: { action: AKTION_ZUGESTELLT, payload: protokoll } });
+        }
+        continue;
+      }
+      // Der erfolglose Versuch steht dauerhaft in der Kette — ein Neustart zählt von hier weiter.
+      await this.protokolliere(AKTION_VERSUCH, eintrag, {
+        ziel: eintrag.ziel.id,
+        kennung: eintrag.meldung.kennung,
+        versuch: eintrag.versuche,
+        status,
+      });
+      if (eintrag.versuche >= MAX_VERSUCHE) {
         gescheitert += 1;
         this.deps.log?.warn(
           `Wissensereignis ${eintrag.meldung.kennung} an ${eintrag.ziel.id} nach ${eintrag.versuche} Versuchen nicht zugestellt (zuletzt ${status ?? "keine Antwort"}).`,
         );
-        await this.protokolliere(AKTION_GESCHEITERT, eintrag, protokoll);
+        if (!(await this.schliesseAb(eintrag, AKTION_GESCHEITERT, protokoll))) {
+          offen.push({ ...eintrag, abschluss: { action: AKTION_GESCHEITERT, payload: protokoll } });
+        }
       } else {
         offen.push(eintrag);
       }
     }
     this.warteschlange = offen;
-    return { zugestellt, gescheitert };
+    return { zugestellt, gescheitert, abgebrochen };
+  }
+
+  /** Schreibt den eindeutigen Abschluss; `false`, wenn die Kette ihn gerade nicht annimmt. */
+  private async schliesseAb(
+    eintrag: Ausstehend,
+    action: string,
+    payload: Record<string, unknown>,
+  ): Promise<boolean> {
+    const kennung = abschlussKennung(eintrag.ziel.id, eintrag.meldung.kennung);
+    try {
+      // `false` heißt: der Abschluss steht schon (andere Instanz) — auch dann ist der Vorgang zu.
+      await this.deps.audit.recordOnce(kennung, {
+        actor: MELDER_AKTEUR,
+        action,
+        target: this.zielVon(eintrag),
+        payload,
+      });
+      return true;
+    } catch (error) {
+      this.deps.log?.warn(`Prüfprotokoll für ${action}: ${String(error)}`);
+      return false;
+    }
+  }
+
+  private zielVon(eintrag: Ausstehend): string {
+    return eintrag.meldung.wissensobjekt?.id ?? eintrag.meldung.widerspruch?.id ?? "";
   }
 
   private async protokolliere(
@@ -477,9 +654,8 @@ export class WissensereignisMelder {
     eintrag: Ausstehend,
     payload: Record<string, unknown>,
   ): Promise<void> {
-    const ziel = eintrag.meldung.wissensobjekt?.id ?? eintrag.meldung.widerspruch?.id ?? "";
     await this.deps.audit
-      .record({ actor: MELDER_AKTEUR, action, target: ziel, payload })
+      .record({ actor: MELDER_AKTEUR, action, target: this.zielVon(eintrag), payload })
       .catch((error) => this.deps.log?.warn(`Prüfprotokoll für ${action}: ${String(error)}`));
   }
 }

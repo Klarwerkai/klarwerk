@@ -250,17 +250,30 @@ Bei `widerspruch.offen` steht statt `wissensobjekt` das Feld
 - Erfolg ist jede `2xx`-Antwort. Sonst wird die Meldung in den nächsten Takten erneut versucht
   (höchstens 5 Versuche, dieselbe `kennung`). Der Empfänger muss doppelte Zustellungen anhand der
   `kennung` erkennen.
+- Vor jedem Versuch wird die Sichtbarkeit neu geprüft. Ist ein betroffenes Objekt inzwischen
+  vertraulich, einem Space zugeordnet oder gelöscht, wird die Meldung nicht mehr gesendet. Bei einem
+  Widerspruch gilt das für beide Seiten. Der Abbruch wird protokolliert.
 
-**Prüfprotokoll.** `wissensereignis.grundstand` (einmal), `wissensereignis.erkannt` (je Ereignis,
-mit der `kennung` als eindeutiger Ereigniskennung der Kette), `wissensereignis.zugestellt` und
-`wissensereignis.zustellung-gescheitert` (je Ziel, mit Versuchen und letztem HTTP-Status).
+**Prüfprotokoll.**
+
+- `wissensereignis.grundstand`: einmal.
+- `wissensereignis.erkannt`: je Ereignis, mit der `kennung` als eindeutiger Ereigniskennung der
+  Kette und den bei der Erkennung abonnierten Zielen.
+- `wissensereignis.zustellversuch`: je erfolglosem Versuch.
+- Je Ziel genau ein Abschluss mit Versuchen und letztem Status: `wissensereignis.zugestellt`,
+  `wissensereignis.zustellung-gescheitert` oder `wissensereignis.zustellung-abgebrochen`.
+
+**Dauerhaft.** Zustellvorgänge ohne Abschluss nimmt der Melder nach einem Neustart aus dem
+Prüfprotokoll wieder auf und zählt dabei die Versuche weiter. Ein erst nach der Erkennung
+eingetragenes Ziel bekommt keine alten Vorgänge.
 
 **Grenzen.**
 
-- Die Erkennung ist über die Auditkette eindeutig, auch bei mehreren Instanzen und nach einem
-  Neustart. Die Warteschlange der Zustellversuche liegt dagegen im Speicher. Endet der Prozess
-  zwischen Erkennung und Zustellung, geht diese eine Meldung verloren. Sie steht dann als
-  `wissensereignis.erkannt` ohne `zugestellt` im Protokoll.
+- Zugestellt wird mindestens einmal. Doppelt gesendet werden kann eine Meldung in zwei Fällen:
+  bei einem Neustart zwischen erfolgreicher Antwort und Abschlusseintrag, oder wenn mehrere
+  Instanzen gleichzeitig neu starten und denselben offenen Vorgang aufnehmen. Wiederaufgenommen
+  wird nur beim Start eines Prozesses; eine weiterlaufende Instanz übernimmt die offenen Vorgänge
+  einer abgestürzten nicht.
 - Jeder Takt liest den Bestand der Wissensobjekte, die Revalidierungsmerker und die offenen
   Widersprüche einmal vollständig.
 - Ziele werden über die Umgebung verwaltet; eine Änderung braucht einen Neustart. Eine

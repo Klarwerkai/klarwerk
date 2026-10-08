@@ -13,9 +13,11 @@ import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { type AppServices, buildApp, buildServices } from "../../services/app/src/build-app";
 import {
+  AKTION_ABGEBROCHEN,
   AKTION_ERKANNT,
   AKTION_GESCHEITERT,
   AKTION_GRUNDSTAND,
+  AKTION_VERSUCH,
   AKTION_ZUGESTELLT,
   EREIGNIS_HEADER,
   KENNUNG_HEADER,
@@ -305,6 +307,127 @@ describe("R-0710 · Wissensereignisse an Fremdwerkzeuge", () => {
     expect(resolveWebhookTaktMs("abc")).toBe(60_000);
     expect(resolveWebhookTaktMs("1")).toBe(10_000);
     expect(resolveWebhookTaktMs("30")).toBe(30_000);
+  });
+
+  it("J1 · wird ein Objekt zwischen zwei Versuchen vertraulich, geht seine Kennung nicht mehr hinaus", async () => {
+    const services = await bestand();
+    let status: number | null = null;
+    const { melder, gesendet } = melderFuer(services, [ALLE], () => status);
+    await melder.lauf();
+    const id = await anlegen(services, "Einstellwerte Presse");
+    await services.validation.adminValidate(id, "admin");
+    expect(await melder.lauf()).toMatchObject({ erkannt: 1, zugestellt: 0, ausstehend: 1 });
+    expect(gesendet).toHaveLength(1);
+
+    await services.ko.setConfidentiality(id, "vertraulich", "anna");
+    status = 204;
+    const lauf = await melder.lauf();
+
+    expect(lauf).toMatchObject({ abgebrochen: 1, zugestellt: 0, ausstehend: 0 });
+    expect(gesendet).toHaveLength(1);
+    const abbruch = await services.audit.list({ action: AKTION_ABGEBROCHEN, target: id });
+    expect(abbruch[0]?.payload).toMatchObject({
+      ziel: "werkzeug",
+      kennung: `wissen.validiert:${id}:1`,
+      versuche: 1,
+      grund: "nicht-mehr-meldbar",
+    });
+    // Auch ein Neustart nimmt den abgebrochenen Vorgang nicht wieder auf.
+    const neustart = melderFuer(services, [ALLE]);
+    expect((await neustart.melder.lauf()).ausstehend).toBe(0);
+    expect(neustart.gesendet).toEqual([]);
+  });
+
+  it("J2 · wird eine Seite eines Widerspruchs vertraulich, gehen beide Kennungen nicht mehr hinaus", async () => {
+    const services = await bestand();
+    const a = await anlegen(services, "Drehmoment A");
+    const b = await anlegen(services, "Drehmoment B");
+    let status: number | null = 503;
+    const { melder, gesendet } = melderFuer(services, [ALLE], () => status);
+    await melder.lauf();
+    const konflikt = await services.conflicts.create(
+      { koA: a, koB: b, type: "truth", description: "Wert weicht ab." },
+      "anna",
+    );
+    expect(await melder.lauf()).toMatchObject({ erkannt: 1, ausstehend: 1 });
+
+    await services.ko.setConfidentiality(b, "vertraulich", "anna");
+    status = 204;
+    expect(await melder.lauf()).toMatchObject({ abgebrochen: 1, ausstehend: 0 });
+    expect(gesendet).toHaveLength(1);
+    expect(
+      await services.audit.list({ action: AKTION_ABGEBROCHEN, target: konflikt.id }),
+    ).toHaveLength(1);
+  });
+
+  it("K1 · ein Neustart nach erfolglosem Versuch stellt zu, sobald das Ziel wieder erreichbar ist", async () => {
+    const services = await bestand();
+    const vorher = melderFuer(services, [ALLE], () => null);
+    await vorher.melder.lauf();
+    const id = await anlegen(services, "Schmierplan");
+    await services.validation.adminValidate(id, "admin");
+    expect(await vorher.melder.lauf()).toMatchObject({ erkannt: 1, ausstehend: 1 });
+    const versuch = await services.audit.list({ action: AKTION_VERSUCH, target: id });
+    expect(versuch[0]?.payload).toMatchObject({ ziel: "werkzeug", versuch: 1, status: null });
+
+    const nachher = melderFuer(services, [ALLE], () => 204);
+    const lauf = await nachher.melder.lauf();
+
+    expect(lauf).toMatchObject({ erkannt: 0, zugestellt: 1, ausstehend: 0 });
+    expect(nachher.gesendet.map((g) => g.headers[KENNUNG_HEADER])).toEqual([
+      `wissen.validiert:${id}:1`,
+    ]);
+    const zugestellt = await services.audit.list({ action: AKTION_ZUGESTELLT, target: id });
+    expect(zugestellt[0]?.payload).toMatchObject({ versuche: 2, status: 204 });
+    expect((await nachher.melder.lauf()).zugestellt).toBe(0);
+  });
+
+  it("K2 · ein Neustart direkt nach der Erkennung verliert die Meldung nicht", async () => {
+    const services = await bestand();
+    const vorher = new WissensereignisMelder({
+      quellen: {
+        wissensobjekte: () => services.ko.list({}),
+        revalidierungFaellig: () => services.lifecycle.pendingRevalidation(),
+        offeneWidersprueche: () => services.conflicts.unresolved(),
+      },
+      audit: services.audit,
+      ziele: [ALLE],
+      // Der Prozess endet mitten im ersten Versuch — nichts ist zugestellt, kein Versuch gezählt.
+      zusteller: () => Promise.reject(new Error("Prozess beendet")),
+    });
+    await vorher.lauf();
+    const id = await anlegen(services, "Kettenspannung");
+    await services.validation.adminValidate(id, "admin");
+    await expect(vorher.lauf()).rejects.toThrow("Prozess beendet");
+    expect(await services.audit.list({ action: AKTION_ERKANNT, target: id })).toHaveLength(1);
+
+    const nachher = melderFuer(services, [ALLE]);
+    expect(await nachher.melder.lauf()).toMatchObject({ erkannt: 0, zugestellt: 1 });
+    expect(rumpf(nachher.gesendet[0]!)).toMatchObject({
+      kennung: `wissen.validiert:${id}:1`,
+      wissensobjekt: { id, version: 1 },
+    });
+  });
+
+  it("K3 · die Versuche zählen über den Neustart weiter; ein neues Ziel bekommt keine alten Vorgänge", async () => {
+    const services = await bestand();
+    const vorher = melderFuer(services, [ALLE], () => 500);
+    await vorher.melder.lauf();
+    const id = await anlegen(services, "Kühlmittel");
+    await services.validation.adminValidate(id, "admin");
+    for (let i = 1; i < MAX_VERSUCHE; i++) {
+      await vorher.melder.lauf();
+    }
+    expect(vorher.gesendet).toHaveLength(MAX_VERSUCHE - 1);
+
+    const neu: WebhookZiel = { ...ALLE, id: "neu", url: "https://neu.example/hook" };
+    const nachher = melderFuer(services, [ALLE, neu], () => 500);
+    const lauf = await nachher.melder.lauf();
+
+    expect(lauf).toMatchObject({ gescheitert: 1, ausstehend: 0 });
+    expect(nachher.gesendet.map((g) => g.url)).toEqual([ALLE.url]);
+    const gescheitert = await services.audit.list({ action: AKTION_GESCHEITERT, target: id });
+    expect(gescheitert[0]?.payload).toMatchObject({ ziel: "werkzeug", versuche: MAX_VERSUCHE });
   });
 
   describe("I · am echten Draht (fetch → HTTP-Empfänger auf 127.0.0.1)", () => {
