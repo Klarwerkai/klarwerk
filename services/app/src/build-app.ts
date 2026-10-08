@@ -3092,6 +3092,10 @@ export function buildApp(
         // Lesemodell hereingereicht, das es aus der Policy-Naht holt (`lesemodell.ts:254`,
         // `policyNahtSchliessen` weiter unten). Hier reist nur der Bestand.
         kanten: new KantenLeseService({ repo: services.kanten, kos: services.ko }),
+        // R-0235 / R-0749: „Hat geholfen" direkt am angewendeten Wissensobjekt (`action: "helpful"`).
+        // Derselbe gekoppelte Kern wie das Antwortfeedback (Trust-Schritt + Audit, genau einmal je
+        // Person und Objekt) — ko-routes bekommt nur diese eine Funktion, nicht den Ask-Dienst.
+        hilfreich: (koId, actor) => services.ask.markKoHelpful(koId, actor),
         draftPromotion: {
           load: async (draftId, user) => {
             const draft = await services.capture.getDraft(draftId);
