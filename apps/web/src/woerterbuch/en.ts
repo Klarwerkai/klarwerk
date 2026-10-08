@@ -4083,6 +4083,11 @@ const en: typeof de = {
   "risk.pflege.retirement": "Retirement horizon of {{name}}",
   "risk.pflege.noRetirement": "No retirement entered",
   "risk.pflege.retirementSaved": "Retirement horizon of {{name}} saved.",
+  "risk.pflege.retirementNotRefreshed":
+    "Saved. The display for {{name}} has not been refreshed yet — the selection shows the saved value.",
+  "risk.pflege.profileSaved": "Area profile “{{category}}” saved.",
+  "risk.pflege.profileError":
+    "Area profile “{{category}}” was not saved. Your entries stay — “Save” tries again.",
   "risk.pflege.retirementError":
     "Retirement horizon of {{name}} was not saved. Your selection stays — “Try again” saves it once more.",
   "risk.busLegendSingle": "red = single source (failure risk)",
@@ -4282,6 +4287,7 @@ const en: typeof de = {
   "empty.cta.library": "Go to library",
   "empty.cta.validation": "Go to validation",
   "empty.cta.tasks": "Go to my tasks",
+  "empty.cta.wissensnetz": "Go to the knowledge network",
   "story.rescue.title": "Klarwerk secures hands-on experience before it's lost.",
   "story.honest":
     "Nothing is validated automatically — knowledge only counts as secured after the team reviews it.",
@@ -4293,6 +4299,8 @@ const en: typeof de = {
     "No knowledge to look up yet. Capture the first contribution — after review it becomes usable here, source-bound.",
   "story.surface.validation.lead":
     "Nothing to review. Captured knowledge appears here for team review before it counts as secured and can be used.",
+  "story.surface.neighborhood.lead":
+    "This contribution doesn't share a meaningful tag with any other yet. The knowledge network shows which topics are already connected; new knowledge with matching tags links it to neighbours.",
   "story.surface.risk.lead":
     "No risk data yet — this needs captured knowledge per area. Capture or import experience knowledge; this list then shows where it depends on a single person.",
   "adm.auditTitle": "Recent user/auth activity (audit)",

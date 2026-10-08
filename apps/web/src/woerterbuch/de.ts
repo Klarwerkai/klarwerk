@@ -5273,6 +5273,11 @@ const de = {
   "risk.pflege.retirement": "Ruhestandshorizont von {{name}}",
   "risk.pflege.noRetirement": "Kein Ruhestand eingetragen",
   "risk.pflege.retirementSaved": "Ruhestandshorizont von {{name}} gespeichert.",
+  "risk.pflege.retirementNotRefreshed":
+    "Gespeichert. Die Anzeige für {{name}} ist noch nicht aufgefrischt — die Auswahl zeigt den gespeicherten Wert.",
+  "risk.pflege.profileSaved": "Bereichsprofil „{{category}}“ gespeichert.",
+  "risk.pflege.profileError":
+    "Bereichsprofil „{{category}}“ wurde nicht gespeichert. Deine Eingaben bleiben stehen — „Speichern“ versucht es erneut.",
   "risk.pflege.retirementError":
     "Ruhestandshorizont von {{name}} wurde nicht gespeichert. Deine Auswahl bleibt stehen — „Erneut versuchen“ speichert sie noch einmal.",
   "risk.busLegendSingle": "rot = Einzelquelle (Ausfallrisiko)",
@@ -5500,6 +5505,7 @@ const de = {
   "empty.cta.library": "Zur Bibliothek",
   "empty.cta.validation": "Zur Validierung",
   "empty.cta.tasks": "Zu meinen Aufgaben",
+  "empty.cta.wissensnetz": "Zum Wissensnetz",
   "story.rescue.title": "Klarwerk sichert Erfahrungswissen, bevor es verloren geht.",
   "story.honest":
     "Nichts wird automatisch validiert — Wissen gilt erst nach der Prüfung im Team als gesichert.",
@@ -5511,6 +5517,8 @@ const de = {
     "Noch kein Wissen zum Nachschlagen. Erfasse den ersten Beitrag — nach der Prüfung wird er hier quellengebunden nutzbar.",
   "story.surface.validation.lead":
     "Nichts zu prüfen. Erfasstes Wissen erscheint hier zur Team-Prüfung, bevor es als gesichert gilt und genutzt werden kann.",
+  "story.surface.neighborhood.lead":
+    "Dieser Beitrag teilt noch kein aussagekräftiges Schlagwort mit einem anderen. Im Wissensnetz siehst du, welche Themen schon verbunden sind; neues Wissen mit passenden Schlagwörtern verknüpft ihn mit Nachbarn.",
   "story.surface.risk.lead":
     "Noch keine Risikodaten — dafür braucht es erfasstes Wissen je Bereich. Erfasse oder importiere Erfahrungswissen; danach zeigt diese Liste, wo es nur an einer Person hängt.",
   "adm.auditTitle": "Letzte Nutzer-/Auth-Aktivitäten (Audit)",

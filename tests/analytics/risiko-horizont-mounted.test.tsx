@@ -20,6 +20,10 @@ const d = vi.hoisted(() => ({
   // R3 (Nacharbeit 5): die vollständige Antwort aus der ECHTEN Ableitung `riskHorizon`.
   antwort: null as unknown,
   setCategoryProfile: vi.fn(async (body: unknown) => body),
+  // Nacharbeit 3: der Server MERKT sich den Horizont — die Profilabfrage liefert ihn danach aus.
+  ruhestand: [] as { userId: string; horizonMonths: number }[],
+  // P4: ab hier scheitert jeder weitere Abruf der Profile (Auffrischung nach dem Speichern).
+  profileScheitern: false,
   setRetirement: vi.fn(async (_userId: string, _h: unknown) => ({ entry: null })),
 }));
 
@@ -31,7 +35,12 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
           ? d.antwort
           : { generatedAt: "2026-10-04T00:00:00.000Z", seesAll: d.seesAll, areas: d.areas },
       ),
-      profiles: vi.fn(async () => ({ categories: [], retirement: [] })),
+      profiles: vi.fn(async () => {
+        if (d.profileScheitern) {
+          throw new Error("Pruefstand: Auffrischung gestoert");
+        }
+        return { categories: [], retirement: d.ruhestand };
+      }),
       setCategoryProfile: d.setCategoryProfile,
       setRetirement: d.setRetirement,
     },
@@ -157,6 +166,15 @@ beforeEach(async () => {
   d.areas = [];
   d.seesAll = false;
   d.antwort = null;
+  d.ruhestand = [];
+  d.profileScheitern = false;
+  d.setRetirement.mockImplementation(async (userId: string, h: unknown) => {
+    d.ruhestand = d.ruhestand.filter((r) => r.userId !== userId);
+    if (typeof h === "number") {
+      d.ruhestand.push({ userId, horizonMonths: h });
+    }
+    return { entry: null };
+  });
 });
 
 afterEach(async () => {
@@ -323,6 +341,8 @@ describe("Pflege der Eingänge (Nacharbeit 3, nur Admin)", () => {
   const rosaZeile = (): Element | null =>
     container.querySelector('[data-testid="pflege-ruhestand"][data-person="u-rosa"]');
   const rosaAuswahl = (): HTMLSelectElement | null => rosaZeile()?.querySelector("select") ?? null;
+  const nichtAufgefrischt = (): Element | null | undefined =>
+    rosaZeile()?.querySelector('[data-testid="pflege-ruhestand-nicht-aufgefrischt"]');
 
   it("P2 · Erfolg: kurze Erfolgsmeldung, kein Fehlerblock", async () => {
     await mount(BereichsprofilPflege);
@@ -332,6 +352,41 @@ describe("Pflege der Eingänge (Nacharbeit 3, nur Admin)", () => {
       i18n.t("risk.pflege.retirementSaved", { name: "Rosa Beispiel" }),
     );
     expect(rosaZeile()?.querySelector('[data-testid="pflege-ruhestand-fehler"]')).toBeNull();
+    // Nacharbeit 3: nach Speichern UND erfolgreicher Auffrischung steht der neue Serverstand da —
+    // und kein Hinweis auf eine ausstehende Auffrischung.
+    expect(rosaAuswahl()?.value).toBe("24");
+    expect(nichtAufgefrischt()).toBeNull();
+  });
+
+  // Nacharbeit 3 (Ben): `invalidateQueries` löst auch auf, wenn die Auffrischung scheitert. Die
+  // Auswahl darf dann NICHT auf den alten Serverwert zurückspringen; Speichererfolg und
+  // gescheiterte Auffrischung stehen getrennt da.
+  it("P4 · Speichern gelingt, Auffrischung scheitert: Auswahl bleibt, Erfolg und „nicht aufgefrischt“ getrennt", async () => {
+    await mount(BereichsprofilPflege);
+    expect(rosaAuswahl()?.value, "Vorbedingung: kein Horizont gespeichert").toBe("");
+    d.profileScheitern = true;
+    await waehlen(rosaAuswahl(), "24");
+
+    expect(d.setRetirement).toHaveBeenCalledWith("u-rosa", 24);
+    expect(rosaAuswahl()?.value, "die gespeicherte Auswahl bleibt sichtbar").toBe("24");
+    expect(toastTexte()).toContain(
+      i18n.t("risk.pflege.retirementSaved", { name: "Rosa Beispiel" }),
+    );
+    expect(nichtAufgefrischt()?.textContent).toBe(
+      i18n.t("risk.pflege.retirementNotRefreshed", { name: "Rosa Beispiel" }),
+    );
+    // Getrennt davon: kein Speicherfehler an der Zeile; die Liste trägt die Abrufstörung.
+    expect(rosaZeile()?.querySelector('[data-testid="pflege-ruhestand-fehler"]')).toBeNull();
+    expect(container.textContent).toContain(i18n.t("loadstate.stale"));
+
+    // Gelingt die Auffrischung später, gilt der neue Serverstand, und der Hinweis verschwindet.
+    d.profileScheitern = false;
+    const wiederholen = [...container.querySelectorAll("button")].find(
+      (b) => b.textContent === i18n.t("loadstate.error.retry"),
+    );
+    await klicken(wiederholen);
+    expect(rosaAuswahl()?.value).toBe("24");
+    expect(nichtAufgefrischt()).toBeNull();
   });
 
   it("P3 · Fehler: Meldung im Bus und an der Zeile, Auswahl bleibt, „Erneut versuchen“ speichert denselben Wert", async () => {
@@ -358,5 +413,35 @@ describe("Pflege der Eingänge (Nacharbeit 3, nur Admin)", () => {
     expect(toastTexte()).toContain(
       i18n.t("risk.pflege.retirementSaved", { name: "Rosa Beispiel" }),
     );
+  });
+
+  // R-0953 (Ben, Nacharbeit 3): auch das Bereichsprofil meldet Erfolg und Fehler als Einblendung;
+  // bei einem Fehler bleiben die Eingaben stehen, und „Speichern“ sendet sie erneut.
+  it("P5 · Bereichsprofil: Fehler als Einblendung mit erhaltenen Eingaben, danach Erfolg als Einblendung", async () => {
+    d.setCategoryProfile.mockImplementationOnce(async () => {
+      throw new Error("Pruefstand: Profil gestoert");
+    });
+    await mount(BereichsprofilPflege);
+    const zeile = container.querySelector(
+      '[data-testid="pflege-bereich"][data-kategorie="Presse"]',
+    );
+    await waehlen(zeile?.querySelector('[data-testid="pflege-manager"]'), "u-mara");
+    await waehlen(zeile?.querySelector('[data-faktor="criticality"]'), "hoch");
+    await klicken(zeile?.querySelector('[data-testid="pflege-speichern"]'));
+
+    expect(toastTexte()).toContain(i18n.t("risk.pflege.profileError", { category: "Presse" }));
+    expect(zeile?.textContent).toContain(i18n.t("risk.pflege.error"));
+    const manager = zeile?.querySelector<HTMLSelectElement>('[data-testid="pflege-manager"]');
+    const kritik = zeile?.querySelector<HTMLSelectElement>('[data-faktor="criticality"]');
+    expect(manager?.value, "Eingabe bleibt").toBe("u-mara");
+    expect(kritik?.value, "Eingabe bleibt").toBe("hoch");
+
+    await klicken(zeile?.querySelector('[data-testid="pflege-speichern"]'));
+    expect(d.setCategoryProfile).toHaveBeenCalledTimes(2);
+    expect(d.setCategoryProfile).toHaveBeenLastCalledWith(
+      expect.objectContaining({ category: "Presse", managerId: "u-mara", criticality: "hoch" }),
+    );
+    expect(toastTexte()).toContain(i18n.t("risk.pflege.profileSaved", { category: "Presse" }));
+    expect(zeile?.textContent).not.toContain(i18n.t("risk.pflege.error"));
   });
 });

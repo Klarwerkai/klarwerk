@@ -10,8 +10,9 @@
 import { type KnowledgeOsPhase, phaseLabelKey } from "./taskAction";
 
 // Die Kernflächen mit echten leeren/ersten Zuständen (identisch zu EmptyStateContext). R-0956: die
-// Risikoseite kam dazu — ihre Bus-Faktor-Liste war der Leerzustand ohne Einordnung.
-export type StorySurface = "start" | "tasks" | "library" | "validation" | "risk";
+// Risikoseite kam dazu — ihre Bus-Faktor-Liste war der Leerzustand ohne Einordnung —, ebenso die
+// leere Schlagwort-Nachbarschaft eines Beitrags.
+export type StorySurface = "start" | "tasks" | "library" | "validation" | "risk" | "neighborhood";
 
 export const KNOWLEDGE_STORY_SURFACES: readonly StorySurface[] = [
   "start",
@@ -19,6 +20,7 @@ export const KNOWLEDGE_STORY_SURFACES: readonly StorySurface[] = [
   "library",
   "validation",
   "risk",
+  "neighborhood",
 ] as const;
 
 // Jede Fläche steht für eine reale Phase im Knowledge-OS-Kreis — dieselbe Sprache wie Start/MyTasks.
@@ -28,6 +30,7 @@ const SURFACE_PHASE: Record<StorySurface, KnowledgeOsPhase> = {
   library: "use", // gesichertes Wissen quellengebunden nutzen.
   validation: "validate", // Team-Prüfung, bevor Wissen als gesichert gilt.
   risk: "capture", // ohne erfasstes Wissen je Bereich gibt es kein Risikobild.
+  neighborhood: "use", // wer einen Beitrag liest, nutzt gesichertes Wissen.
 };
 
 export interface KnowledgeStory {

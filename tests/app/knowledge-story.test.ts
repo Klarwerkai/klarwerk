@@ -19,6 +19,7 @@ describe("SCRUM-377: knowledgeStory — Flächen → Kreis-Phase", () => {
       library: "use",
       validation: "validate",
       risk: "capture",
+      neighborhood: "use",
     };
     for (const surface of KNOWLEDGE_STORY_SURFACES) {
       const story = knowledgeStory(surface);
@@ -40,10 +41,12 @@ describe("SCRUM-377: knowledgeStory — Flächen → Kreis-Phase", () => {
     expect(leads.size).toBe(KNOWLEDGE_STORY_SURFACES.length);
   });
 
-  // R-0956: die Risikoseite (leere Bus-Faktor-Liste) ist als fünfte Fläche dazugekommen.
-  it("deckt genau die fünf Kernflächen ab", () => {
+  // R-0956: die Risikoseite (leere Bus-Faktor-Liste) ist als fünfte, die leere
+  // Schlagwort-Nachbarschaft als sechste Fläche dazugekommen.
+  it("deckt genau die sechs Kernflächen ab", () => {
     expect([...KNOWLEDGE_STORY_SURFACES].sort()).toEqual([
       "library",
+      "neighborhood",
       "risk",
       "start",
       "tasks",

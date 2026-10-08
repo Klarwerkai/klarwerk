@@ -3,7 +3,13 @@
 // Logik (ALL_ITEMS + canSee). So werden nie Aktionen angeboten, die die Rolle gar nicht sehen darf.
 import { ALL_ITEMS, type Role, canSee } from "../app/navigation";
 
-export type EmptyStateContext = "start" | "tasks" | "validation" | "library" | "risk";
+export type EmptyStateContext =
+  | "start"
+  | "tasks"
+  | "validation"
+  | "library"
+  | "risk"
+  | "neighborhood";
 
 export interface EmptyStateAction {
   to: string; // Navigationspfad aus der Nav-Quelle (kein Fremd-Link)
@@ -35,6 +41,13 @@ const CANDIDATES: Record<EmptyStateContext, { navId: string; labelKey: string }[
   risk: [
     { navId: "erfassen", labelKey: "empty.cta.capture" },
     { navId: "import", labelKey: "empty.cta.import" },
+  ],
+  // R-0956: die leere Schlagwort-Nachbarschaft eines Beitrags. Wer liest, steht beim Nutzen; das
+  // Wissensnetz zeigt, welche Themen schon verbunden sind, und neues Wissen mit passenden
+  // Schlagwörtern schafft die fehlenden Nachbarn.
+  neighborhood: [
+    { navId: "wissensnetz", labelKey: "empty.cta.wissensnetz" },
+    { navId: "erfassen", labelKey: "empty.cta.capture" },
   ],
 };
 

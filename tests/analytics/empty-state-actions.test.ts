@@ -34,6 +34,14 @@ describe("SCRUM-181: emptyStateActions", () => {
     expect(noS2).toEqual(["empty.cta.capture"]);
   });
 
+  // R-0956: die leere Nachbarschaft führt ins Wissensnetz; Erfassen nur, wer erfassen darf.
+  it("neighborhood: Wissensnetz für jeden Leser, Erfassen nur mit Erfassungsrecht", () => {
+    const viewer = emptyStateActions("neighborhood", "viewer", false).map((x) => x.labelKey);
+    const experte = emptyStateActions("neighborhood", "experte", false).map((x) => x.labelKey);
+    expect(viewer).toEqual(["empty.cta.wissensnetz"]);
+    expect(experte).toEqual(["empty.cta.wissensnetz", "empty.cta.capture"]);
+  });
+
   it("liefert echte Navigationspfade (kein Fremd-Link)", () => {
     for (const action of emptyStateActions("tasks", "admin", true)) {
       expect(action.to.startsWith("/")).toBe(true);

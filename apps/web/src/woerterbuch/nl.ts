@@ -4072,6 +4072,11 @@ const nl: typeof de = {
   "risk.pflege.retirement": "Pensioenhorizon van {{name}}",
   "risk.pflege.noRetirement": "Geen pensioen ingevoerd",
   "risk.pflege.retirementSaved": "Pensioenhorizon van {{name}} opgeslagen.",
+  "risk.pflege.retirementNotRefreshed":
+    "Opgeslagen. De weergave voor {{name}} is nog niet ververst — de keuze toont de opgeslagen waarde.",
+  "risk.pflege.profileSaved": "Gebiedsprofiel „{{category}}” opgeslagen.",
+  "risk.pflege.profileError":
+    "Gebiedsprofiel „{{category}}” is niet opgeslagen. Je invoer blijft staan — „Opslaan” probeert het opnieuw.",
   "risk.pflege.retirementError":
     "Pensioenhorizon van {{name}} is niet opgeslagen. Je keuze blijft staan — „Opnieuw proberen” slaat die nog een keer op.",
   "risk.busLegendSingle": "rood = enkele bron (uitvalrisico)",
@@ -4273,6 +4278,7 @@ const nl: typeof de = {
   "empty.cta.library": "Naar de bibliotheek",
   "empty.cta.validation": "Naar de validatie",
   "empty.cta.tasks": "Naar mijn taken",
+  "empty.cta.wissensnetz": "Naar het kennisnetwerk",
   "story.rescue.title": "Klarwerk borgt ervaringskennis voordat ze verloren gaat.",
   "story.honest":
     "Niets wordt automatisch gevalideerd — kennis geldt pas na de controle in het team als geborgd.",
@@ -4284,6 +4290,8 @@ const nl: typeof de = {
     "Nog geen kennis om op te zoeken. Leg de eerste bijdrage vast — na de controle is die hier met bronvermelding bruikbaar.",
   "story.surface.validation.lead":
     "Niets te controleren. Vastgelegde kennis verschijnt hier voor teamcontrole, voordat ze als geborgd geldt en gebruikt kan worden.",
+  "story.surface.neighborhood.lead":
+    "Deze bijdrage deelt nog geen betekenisvolle tag met een andere. Het kennisnetwerk toont welke thema's al verbonden zijn; nieuwe kennis met passende tags verbindt haar met buren.",
   "story.surface.risk.lead":
     "Nog geen risicogegevens — daarvoor is vastgelegde kennis per gebied nodig. Leg ervaringskennis vast of importeer die; daarna toont deze lijst waar die van één persoon afhangt.",
   "adm.auditTitle": "Recente gebruikers-/auth-activiteiten (audit)",
