@@ -308,6 +308,7 @@ PFLICHTTABELLEN=(
   ratings
   assignments
   conflicts
+  conflict_pair_memory
   ko_overlaps
   overlap_settings
   lifecycle_couplings
