@@ -191,6 +191,10 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 6: GEMESSEN im Prüflauf zu Kandidat 300b9834 (`baadfb41…`, „Received" von E2,
  * HISTORIE/nacharbeit-5/PRUEFUNG/panel-belegstelle-und-wissensnetz.log) und unverändert
  * übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ * INTEGRATION mit main (Kandidat d9fe11c3, Nacharbeit 8): `taskpane.js` trägt zusätzlich die
+ * Auswertung von `KI_ABGESCHALTET` (gesamt-funktionsschalter, R-1040; 12498 Zeilen). Der Wert unten
+ * beschreibt das zusammengeführte Dokument nicht mehr und ist ein PLATZHALTER bis zur Messung
+ * („Received" von E2).
  */
 export const PANEL_VOR_SCHNITT_BLOB = "baadfb41272c9930947d8f9401ad3fb59ebdf6bb";
 

@@ -209,6 +209,11 @@ const en: typeof de = {
     "Shows whether the AI is currently answering. “Unverified” only means no answer has come back since startup — it is not an error.",
   "topbar.plain.external":
     "Shows whether Klarwerk may also look things up on the open internet when answering. “Blocked” means: no, it stays with your own knowledge.",
+  "topbar.extern.blockiert": "External: Blocked",
+  "topbar.extern.frei": "External: Allowed",
+  "topbar.extern.freiVertraulich": "External: Allowed, including confidential content",
+  "topbar.extern.hinweis":
+    "The administrator decides whether content may go to a public AI. Default: blocked.",
   "topbar.kiExternal": "AI runs in the cloud",
   "topbar.kiInternal": "AI runs on your own systems",
   "topbar.kiMixed": "AI runs in the cloud and on your own systems",
@@ -2143,6 +2148,7 @@ const en: typeof de = {
   "ask.error.body":
     "The request got stuck on the way. This is NOT a statement about the knowledge — it does not mean there is no answer. Please try again.",
   "ask.error.retry": "Try again",
+  "ask.gebremst.titel": "Please wait a moment.",
   "ask.offline": "No connection.",
   "ask.wiederaufnahme.entwurf":
     "Pick up where you left off: your unsent draft is back in the question field.",
@@ -2852,6 +2858,7 @@ const en: typeof de = {
   "ko.attachmentPreviewUnavailable": "No preview available",
   "ko.attachmentOriginalUnavailable": "Original unavailable",
   "pruefen.title": "Review",
+  "pruefen.handeltAls": "You are reviewing as {{role}}",
   "pruefen.tab.offen": "Open",
   "pruefen.tab.konflikte": "Conflicts",
   "pruefen.tab.duplikate": "Duplicates",
@@ -4146,6 +4153,8 @@ const en: typeof de = {
   "risk.priority.mittel": "medium",
   "risk.priority.niedrig": "low",
   "risk.close": "Close",
+  "risk.closeWithTitle": "Close with the knowledge object that answers this gap",
+  "risk.closeFailed": "Not closed — the knowledge object is missing or in the trash.",
   "risk.assign": "Expert …",
   "risk.delete": "Delete",
   "risk.gapNextLabel": "Next step",

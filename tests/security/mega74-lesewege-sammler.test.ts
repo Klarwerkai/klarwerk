@@ -299,6 +299,19 @@ const REGISTER: Record<string, Eintrag> = {
   },
   "GET /api/conflicts": { urteil: "PRAEDIKAT", grund: "Block D — Paar-Tor, wörtliche Zitate." },
   "GET /api/conflicts/:id": { urteil: "PRAEDIKAT", grund: "Block D — Paar-Tor." },
+  // R-0263 (Aufnahme gesamt-konfliktklassifikation): Vorrang am Punkt — Paar-Tor je Eintrag,
+  // der Geltungsbereich (Menschentext) zusätzlich hinter `feldFreigabe`.
+  "GET /api/conflicts/vorrang/:id": {
+    urteil: "PRAEDIKAT",
+    grund: "R-0263 — Paar-Tor je Eintrag, Geltungsbereich hinter feldFreigabe.",
+  },
+  // R-0252 (Nacharbeit 6): der Einordnungsweg ändert UND antwortet mit dem Konflikt — deshalb das
+  // Paar-Tor vor der Änderung (unsichtbar ⇒ 404, nichts geändert) und die Antwort durch
+  // feldFreigabe/redigiereKonflikt wie der Detailweg.
+  "POST /api/conflicts/:id/arbeitsart": {
+    urteil: "PRAEDIKAT",
+    grund: "R-0252 — Paar-Tor vor der Einordnung, Antwort redigiert wie GET /api/conflicts/:id.",
+  },
   "GET /api/duplicates": { urteil: "PRAEDIKAT", grund: "Block D — Eigenanteile/Aspekte." },
   "GET /api/duplicates/:id": { urteil: "PRAEDIKAT", grund: "Block D — Paar-Tor." },
   // AUFTRAG-mega76 BLOCK C: war `PRAEDIKAT_IM_MODUL` — das schwächere Urteil „irgendwo in
@@ -457,6 +470,13 @@ const REGISTER: Record<string, Eintrag> = {
     recht: "users.manage",
     grund: "Zugangszustand, Admin.",
   },
+  // R-0170: dieselbe Auskunft für Jira (`services/jira/src/credential-state.ts`) — Namen und
+  // ja/nein je Variable, nie ein Wert, kein Inhalt eines Wissensobjekts.
+  "GET /api/import/jira/zugang": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Zugangszustand, Admin.",
+  },
   "GET /api/reasoner/config": { urteil: "KURATORENTOR", recht: "users.manage", grund: "Admin." },
   "GET /api/library/import/candidates": {
     urteil: "KEIN_KO_INHALT",
@@ -521,6 +541,22 @@ const REGISTER: Record<string, Eintrag> = {
   "DELETE /api/livewall/photo": {
     urteil: "EIGENER_BESTAND",
     grund: "löscht nur das eigene Foto (user.id), Antwort nur der Wahrheitswert.",
+  },
+  "GET /api/me/gedaechtnis": {
+    urteil: "EIGENER_BESTAND",
+    grund: "nur die eigenen Gedächtniseinträge (gedaechtnis-routes.ts, user.id); kein KO-Inhalt.",
+  },
+  "POST /api/me/gedaechtnis": {
+    urteil: "EIGENER_BESTAND",
+    grund: "legt nur einen eigenen Eintrag an; die Antwortkennung muss eine eigene sein.",
+  },
+  "DELETE /api/me/gedaechtnis/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund: "löscht nur einen eigenen Eintrag (user.id), fremd und unbekannt antworten 404.",
+  },
+  "DELETE /api/me/gedaechtnis": {
+    urteil: "EIGENER_BESTAND",
+    grund: "löscht nur das eigene Gedächtnis (user.id), Antwort nur die Zahl.",
   },
   // --- Kein Inhalt eines Wissensobjekts ------------------------------------------------------
   "GET /health": { urteil: "KEIN_KO_INHALT", grund: "Betriebszustand." },
@@ -811,6 +847,13 @@ const REGISTER: Record<string, Eintrag> = {
     // R-0145/R-0190: `folder-apply` ist derselbe Übernahmeweg für ein Los eines Ordners — er gibt
     // dieselben Quelldatei-Angaben aus wie `apply`, dazu die Kennungen des Loses.
     "POST /api/admin/import/sharepoint/folder-apply": "users.manage.",
+    // R-0170: die drei Türen des Jira-Imports, dieselbe Bauform wie SharePoint. `issues` liest nur
+    // (Vorgangsliste des Projekts); `apply` und `project-apply` stellen Kandidaten in die
+    // Prüf-Warteschlange. Keine gibt den Inhalt eines Wissensobjekts aus — sie geben Schlüssel,
+    // Titel, Adressen und Stände von QUELLVORGÄNGEN aus, dazu die Zahl der Leserechte.
+    "POST /api/admin/import/jira/issues": "users.manage.",
+    "POST /api/admin/import/jira/apply": "users.manage.",
+    "POST /api/admin/import/jira/project-apply": "users.manage.",
     "PUT /api/reasoner/config": "users.manage.",
     "PUT /api/reasoner/assist-presets": "users.manage.",
     "POST /api/reasoner/test": "users.manage.",

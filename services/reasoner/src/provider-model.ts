@@ -29,6 +29,7 @@ import type {
   GroupCandidateInput,
   GroupCandidatesResult,
   InterviewResult,
+  KlaraVorschlagUrteil,
   KnowledgeRef,
   Kollision,
   KollisionSeite,
@@ -514,6 +515,107 @@ function kuerzeAufWortgrenze(text: string, deckel: number): string {
   return (letzte > 0 ? roh.slice(0, letzte) : roh).trim();
 }
 
+// ------------------------------------------------------------------------------------------------
+// AUFNAHME 20260922 · gesamt-import-volltext (R-0452/R-1848) — DER ÜBERLANGE SATZ WIRD UM DEN
+// TREFFER GESCHNITTEN, NICHT AN SEINEM ANFANG.
+// ------------------------------------------------------------------------------------------------
+//
+// DER BEFUND (Quelleninspektion, nicht aus einem Vorfall): `bodyText` kollabiert JEDEN Leerraum
+// (`normalizeSearchFragment`, search-projection.ts), und jede Tag-Grenze ist dort nur ein
+// Leerzeichen. Eine Tabelle oder Liste ohne Satzzeichen — genau die Form, in der Grenzwerte und
+// Ablaufschritte stehen — ist für `saetze` deshalb EIN Satz. Ist er länger als der Quelldeckel,
+// schnitt `kuerzeAufWortgrenze` seinen ANFANG ab: die Zeile mit dem Grenzwert lag weiter hinten
+// und erreichte das Modell nie. Die 500er-Grenze aus G27 kehrte so als 600er-Grenze je Tabelle
+// zurück, obwohl Suche, Relevanztor und Zitatprüfung den ganzen Text sahen.
+//
+// WAS SICH ÄNDERT, und nur das: gesucht wird die Stelle, an der die meisten VERSCHIEDENEN
+// Frage-Token beieinanderstehen (der Kern), und das Fenster legt sich MITTIG um sie — der Wert kann
+// hinter seiner Bezeichnung stehen („Nachspannventil … maximal 185 bar") oder davor („185 bar
+// maximal zulässiger Haltedruck Nachspannventil"). Das Fenster ist ein zusammenhängender
+// Ausschnitt EINES Segments — `istAusschnitt` deckt ihn unverändert, die Segmentregel D4 wird nicht
+// gelockert. Es enthält nur ganze Wörter, wörtlich aus dem Satz, und bleibt unter demselben Deckel.
+interface FensterWort {
+  von: number;
+  bis: number;
+  treffer: string[];
+}
+
+function fensterUmTreffer(satz: string, frageWoerter: ReadonlySet<string>, deckel: number): string {
+  if (satz.length <= deckel) {
+    return satz;
+  }
+  const woerter: FensterWort[] = [...satz.matchAll(/\S+/g)].map((m) => ({
+    von: m.index ?? 0,
+    bis: (m.index ?? 0) + m[0].length,
+    treffer: queryTokens(m[0]).filter((w) => frageWoerter.has(w)),
+  }));
+  const wort = (i: number): FensterWort => woerter[i] as FensterWort;
+  // Gleitendes Fenster: `zaehler` zählt die Frage-Token der Wörter in [start, ende).
+  const zaehler = new Map<string, number>();
+  let besterStart = -1;
+  let besteZahl = 0;
+  let ende = 0;
+  for (let start = 0; start < woerter.length; start += 1) {
+    ende = Math.max(ende, start);
+    while (ende < woerter.length && wort(ende).bis - wort(start).von <= deckel) {
+      for (const w of wort(ende).treffer) {
+        zaehler.set(w, (zaehler.get(w) ?? 0) + 1);
+      }
+      ende += 1;
+    }
+    const zulaessig = start === 0 || wort(start).treffer.length > 0;
+    if (zulaessig && zaehler.size > besteZahl) {
+      besteZahl = zaehler.size;
+      besterStart = start;
+    }
+    if (ende > start) {
+      for (const w of wort(start).treffer) {
+        const rest = (zaehler.get(w) ?? 0) - 1;
+        if (rest > 0) {
+          zaehler.set(w, rest);
+        } else {
+          zaehler.delete(w);
+        }
+      }
+    }
+  }
+  if (besterStart < 0) {
+    return kuerzeAufWortgrenze(satz, deckel);
+  }
+  // Der KERN: vom ersten Trefferwort des besten Fensters bis zu dem Wort, mit dem es die beste
+  // Zahl verschiedener Frage-Token erreicht. Er passt in den Deckel, weil das beste Fenster ihn
+  // schon enthielt.
+  let kernAnfang = besterStart;
+  while (wort(kernAnfang).treffer.length === 0) {
+    kernAnfang += 1;
+  }
+  const gesehen = new Set<string>();
+  let kernEnde = kernAnfang;
+  for (let i = kernAnfang; gesehen.size < besteZahl; i += 1) {
+    for (const w of wort(i).treffer) {
+      gesehen.add(w);
+    }
+    kernEnde = i;
+  }
+  // Ben, Nacharbeit 2: der Rest des Deckels verteilt sich HÄLFTIG vor und hinter den Kern. Ein
+  // Wert steht in Tabellen ebenso VOR seiner Bezeichnung („185 bar maximal zulässiger Haltedruck
+  // Nachspannventil") wie dahinter; eine reine Vorwärtserweiterung verlöre ihn, sobald genug
+  // Tabelle folgt. Was eine Seite nicht braucht (Satzanfang oder -ende erreicht), bekommt die andere.
+  let erstes = kernAnfang;
+  let letztes = kernEnde;
+  const vorlauf = Math.floor((deckel - (wort(kernEnde).bis - wort(kernAnfang).von)) / 2);
+  while (erstes > 0 && wort(kernAnfang).von - wort(erstes - 1).von <= vorlauf) {
+    erstes -= 1;
+  }
+  while (letztes + 1 < woerter.length && wort(letztes + 1).bis - wort(erstes).von <= deckel) {
+    letztes += 1;
+  }
+  while (erstes > 0 && wort(letztes).bis - wort(erstes - 1).von <= deckel) {
+    erstes -= 1;
+  }
+  return satz.slice(wort(erstes).von, wort(letztes).bis);
+}
+
 /**
  * Der Auszug EINER Quelle: die Sätze ihres Dokumenttexts, die mit der Frage Inhaltstoken teilen.
  *
@@ -560,8 +662,9 @@ export function dokumentAuszug(
       continue;
     }
     if (genommen.length === 0) {
-      // Der bestbewertete Satz allein sprengt den Deckel: gekürzt ist er mehr wert als gar nichts.
-      const gekuerzt = kuerzeAufWortgrenze(satz, budget);
+      // Der bestbewertete Satz allein sprengt den Deckel: gekürzt ist er mehr wert als gar nichts —
+      // und zwar um die Frage-Token herum, nicht an seinem Anfang (`fensterUmTreffer`).
+      const gekuerzt = fensterUmTreffer(satz, frageWoerter, budget);
       if (gekuerzt.length > 0) {
         genommen.push({ satz: gekuerzt, stelle });
       }
@@ -1139,8 +1242,16 @@ function conflictSystem(locale: ReasonerLocale): string {
   // SCRUM-492: optionaler "kollision"-Block bei echten Widersprüchen (widerspruch/ueberholt) — je
   // Seite eine knappe Kernaussage + der konkret kollidierende "streitwert". Der Streitwert SOLL
   // wörtlich aus dem jeweiligen Zitat stammen, wo möglich (belegter Fall).
+  // R-0252 (Aufnahme gesamt-konfliktklassifikation): "arbeit" ordnet einen Widerspruch nach der
+  // nötigen Arbeit ein — unabhängig von der Konfliktart. Additiv; eine Antwort ohne das Feld
+  // parst wie bisher (dann bleibt die Arbeitsart offen).
   const contract =
-    '{"relation":"widerspruch|doppelung|ueberholt|kein_konflikt|unsicher","older":"a|b|null","confidence":0.0-1.0,"begruendung":"...","zitat_a":"...","zitat_b":"...","kollision":{"streitpunkt":"...","seite_a":{"kernaussage":"...","streitwert":"..."},"seite_b":{"kernaussage":"...","streitwert":"..."}}}';
+    '{"relation":"widerspruch|doppelung|ueberholt|kein_konflikt|unsicher","older":"a|b|null","confidence":0.0-1.0,"begruendung":"...","zitat_a":"...","zitat_b":"...","arbeit":"regel|sache|null","vorschlag":{"art":"widerspruch|praezisierung","spezieller":"a|b|null","geltungsbereich":"..."},"kollision":{"streitpunkt":"...","seite_a":{"kernaussage":"...","streitwert":"..."},"seite_b":{"kernaussage":"...","streitwert":"..."}}}';
+  const arbeitRule = taskInstruction(
+    locale,
+    '"arbeit" nur bei "widerspruch", sonst null: "regel", wenn A und B interne Festlegungen sind (Vorgaben, Regeln, Anweisungen des Hauses, die keine äußere Quelle entscheiden kann — nur eine befugte Person); "sache", wenn es um Tatsachen geht, die sich durch Belege entscheiden lassen.',
+    '"arbeit" only for "widerspruch", otherwise null: "regel" if A and B are internal determinations (in-house requirements, rules, instructions that no external source can decide — only an authorised person); "sache" if they concern facts that evidence can settle.',
+  );
   // Die WÖRTLICHEN Zitate (zitat_a/zitat_b/streitwert) sind Kopien aus den Quelltexten und bleiben
   // in deren Sprache — sie werden nachgelagert wörtlich geprüft (G-2). Die Ausgaberegel gilt der
   // `begruendung` und den Kernaussagen, die der Nutzer im Konfliktboard liest.
@@ -1154,7 +1265,14 @@ function conflictSystem(locale: ReasonerLocale): string {
     "Die wörtlichen Zitate bleiben unverändert in ihrer Originalsprache.",
     "The verbatim quotes stay unchanged in their original language.",
   );
-  return `${base} ${quoteRule} ${outputLanguageRule(locale)}`;
+  // R-0263 (Aufnahme gesamt-konfliktklassifikation): Klara SCHLÄGT den Unterschied Widerspruch /
+  // Präzisierung vor — entschieden wird auf der Konfliktseite von einer befugten Person.
+  const vorschlagRule = taskInstruction(
+    locale,
+    '"vorschlag" nur bei "widerspruch", sonst weglassen: "art":"praezisierung", wenn eine Aussage die andere nur für einen engeren Geltungsbereich genauer festlegt (z. B. "10 Nm für Bolzen X" gegenüber "alle Bolzen handfest"), dann "spezieller" = die engere Seite ("a" oder "b") und "geltungsbereich" = dieser engere Bereich in wenigen Worten; sonst "art":"widerspruch" mit "spezieller":null. Das ist ein Vorschlag, keine Entscheidung.',
+    '"vorschlag" only for "widerspruch", otherwise omit: "art":"praezisierung" if one statement only specifies the other more precisely for a narrower scope (e.g. "10 Nm for bolt X" versus "all bolts hand-tight"), then "spezieller" = the narrower side ("a" or "b") and "geltungsbereich" = that narrower scope in a few words; otherwise "art":"widerspruch" with "spezieller":null. This is a suggestion, not a decision.',
+  );
+  return `${base} ${arbeitRule} ${vorschlagRule} ${quoteRule} ${outputLanguageRule(locale)}`;
 }
 
 const CONFLICT_RELATIONS: readonly string[] = [
@@ -1211,6 +1329,27 @@ export function parseKollision(
   return { streitpunkt: k.streitpunkt, seiteA, seiteB };
 }
 
+// R-0263: Klaras Vorschlag defensiv lesen. Unbekannte Art → kein Vorschlag. Eine Präzisierung
+// braucht die speziellere Seite UND einen Geltungsbereich, sonst ist sie keine — dann bleibt
+// nichts übrig (nie ein halber Vorschlag, der wie ein vollständiger aussieht).
+function parseKlaraVorschlag(raw: unknown): KlaraVorschlagUrteil | undefined {
+  if (typeof raw !== "object" || raw === null) {
+    return undefined;
+  }
+  const v = raw as Record<string, unknown>;
+  if (v.art === "widerspruch") {
+    return { art: "widerspruch" };
+  }
+  if (v.art !== "praezisierung") {
+    return undefined;
+  }
+  const bereich = typeof v.geltungsbereich === "string" ? v.geltungsbereich.trim() : "";
+  if ((v.spezieller !== "a" && v.spezieller !== "b") || bereich.length === 0) {
+    return undefined;
+  }
+  return { art: "praezisierung", spezieller: v.spezieller, geltungsbereich: bereich };
+}
+
 // kon-v1: striktes, defensives Parsen des Modellurteils. Ungültiges JSON, unbekannte Relation,
 // fehlende/nicht-numerische confidence oder Nicht-String-Zitate → null (kein Konflikt aus kaputten
 // Antworten). confidence wird auf 0..1 geklemmt; older nur "a"/"b", sonst null.
@@ -1239,6 +1378,13 @@ export function parseConflictResponse(raw: string): ConflictJudgeResult | null {
   const older = o.older === "a" || o.older === "b" ? o.older : null;
   const begruendung = typeof o.begruendung === "string" ? o.begruendung : "";
   const kollision = parseKollision(o.kollision, o.zitat_a, o.zitat_b);
+  // R-0252: nur ein Widerspruch trägt eine Arbeitsart; ein unbekannter Wert wird verworfen, nicht
+  // umgedeutet — die Arbeitsart bleibt dann offen.
+  const arbeit =
+    relation === "widerspruch" && (o.arbeit === "regel" || o.arbeit === "sache")
+      ? o.arbeit
+      : undefined;
+  const vorschlag = relation === "widerspruch" ? parseKlaraVorschlag(o.vorschlag) : undefined;
   return {
     relation: relation as ConflictJudgeResult["relation"],
     older,
@@ -1247,6 +1393,8 @@ export function parseConflictResponse(raw: string): ConflictJudgeResult | null {
     zitat_a: o.zitat_a,
     zitat_b: o.zitat_b,
     ...(kollision ? { kollision } : {}),
+    ...(arbeit ? { arbeit } : {}),
+    ...(vorschlag ? { vorschlag } : {}),
   };
 }
 

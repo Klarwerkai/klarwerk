@@ -2782,7 +2782,28 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // 300b9834 GEMESSEN („Received", HISTORIE/nacharbeit-5/PRUEFUNG/
     // panel-belegstelle-und-wissensnetz.log) und unverändert übernommen; die Panel-Dateien sind seit
     // dieser Messung unberührt.
-    const PIN = "68c44d3c4eacb639f0f629d7fe6d291593e234dc8747edf9214a06b7242cf5e0";
+    // AUFNAHME gesamt-funktionsschalter (R-1040, Ben nacharbeit-2) — DER PIN MUSS WANDERN.
+    // `taskpane.js` wertet in `performAsk` die 503 `KI_ABGESCHALTET` aus (Ergebnisart
+    // `ki-abgeschaltet`) und nennt in `#ask-status` die administrative Abschaltung statt
+    // „Fragen fehlgeschlagen (HTTP 503)"; dort kein „Erneut versuchen". Ein neuer Wörterbuchschlüssel
+    // je Sprache (`askKiAbgeschaltet`, in der Zeile von `askFallbackConsentEnded`); netto eine Zeile
+    // (B3: 12493). Gemessen in `tests/app/word-addin-ask.test.ts` (R-1040, DE/EN/NL + Gegenprobe).
+    // Auslieferungsfolgen: kein neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder
+    // Manifeständerung, kein Sideload.
+    // NACHARBEIT 3 (gesamt-funktionsschalter): PIN BEWUSST AKTUALISIERT (eefba3bd… -> dce012c0…). Im
+    // Prüflauf zu Kandidat e9529cb7 GEMESSEN („Received", HISTORIE/nacharbeit-3/PRUEFUNG/
+    // word-addin-auslieferungswaechter.log) und unverändert übernommen; die vier Panel-Dateien sind
+    // seit dieser Messung unberührt (Nacharbeit 3 ändert nur Testdateien).
+    // INTEGRATION antwort-quellenanzeige × gesamt-funktionsschalter (Kandidat d9fe11c3, Nacharbeit 8):
+    // BEIDE Änderungen stehen jetzt in `taskpane.js` — die Quellenanzeige dieses Auftrags (tragende
+    // Quellen, Stand je Quelle, Einschub, Belegstelle, Wissensnetz-Sprung) UND die Auswertung von
+    // `KI_ABGESCHALTET` samt `askKiAbgeschaltet` (12498 Zeilen, B3 eingehalten). Keine der beiden
+    // Messungen (68c44d3c… hier, dce012c0… auf main) beschreibt das zusammengeführte Dokument. Der
+    // Wert unten ist der von main und damit ein PLATZHALTER bis zur Messung — DER PIN MUSS WANDERN;
+    // der Prüflauf meldet den Ist-Wert als „Received", er wird danach gemessen übernommen.
+    // Auslieferungsfolgen: die beider Aufträge zusammen — kein neues Abrufziel, keine Nutzlast-,
+    // CSP-, Rechte- oder Manifeständerung, kein Sideload.
+    const PIN = "dce012c092e3445073b0629f1b8348a5f4b04457c1986e3c68657c7ad5860d64";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
