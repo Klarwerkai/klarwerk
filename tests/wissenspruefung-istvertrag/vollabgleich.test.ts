@@ -178,11 +178,22 @@ describe("R-1124 · Runner", () => {
     expect(voll.coverage).toMatchObject({
       available: BESTAND,
       selected: BESTAND,
-      completed: BESTAND,
       skipped: 0,
       capped: false,
       aborted: false,
     });
+    const umfang = voll.coverage;
+    if (!umfang) {
+      throw new Error("Der Runner meldet keine Abdeckung");
+    }
+    // Seit dem Prüfgedächtnis des Hauptstands (R-1103, services/conflicts/src/pair-memory.ts)
+    // beurteilt der Vollabgleich die Paare, die der gedeckelte Lauf eben mit gleichem Textstand
+    // beurteilt hat, nicht noch einmal: sie zählen als angesehen (`alreadyOpen`), nicht als
+    // vorgelegt. Angesehen ist trotzdem JEDES Objekt — gemerkt oder jetzt verglichen.
+    expect(umfang.alreadyOpen).toBeGreaterThan(0);
+    expect(umfang.alreadyOpen + umfang.completed).toBe(BESTAND);
+    expect(umfang.attempted).toBe(umfang.completed);
+    expect(isCompleteRun({ ...umfang, skippedReasons: {} })).toBe(true);
   });
 });
 
