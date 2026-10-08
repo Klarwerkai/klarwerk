@@ -29,6 +29,7 @@
 //     gilt weiter der Mengensammler in mega62.
 //   · Großtext-Ausnahme (3:1) wird nicht in Anspruch genommen — jede Paarung muss 4,5:1 erreichen.
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api/endpoints", () => ({
@@ -65,10 +66,12 @@ const { default: i18n } = await import("../i18n");
 // ------------------------------------------------------------------------------------------------
 // Die Token-Datei und die WCAG-Rechnung — dieselbe Formel wie in mega62, aus derselben Datei.
 // ------------------------------------------------------------------------------------------------
-const THEMES = readFileSync(new URL("../styles/themes.css", import.meta.url), "utf8").replace(
-  /\/\*[\s\S]*?\*\//g,
-  "",
-);
+// Pfad über das Arbeitsverzeichnis (Werkswurzel) wie in `pages/Stufe2.kopf.test.tsx`: unter jsdom
+// ist `import.meta.url` kein `file:`-URL, `readFileSync(new URL(…))` lud die Datei deshalb nicht.
+const THEMES = readFileSync(
+  resolve(process.cwd(), "apps/web/src/styles/themes.css"),
+  "utf8",
+).replace(/\/\*[\s\S]*?\*\//g, "");
 const MODERN_START = THEMES.indexOf('[data-theme="modern"]');
 const KLASSISCH_BLOCK = THEMES.slice(0, MODERN_START);
 const MODERN_BLOCK = THEMES.slice(MODERN_START);

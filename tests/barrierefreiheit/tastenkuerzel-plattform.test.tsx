@@ -211,19 +211,20 @@ async function oeffnePerTaste(taste: { metaKey?: boolean; ctrlKey?: boolean }): 
   await flush();
 }
 
-beforeEach(async () => {
-  await i18n.changeLanguage("de");
-});
-
-afterEach(() => {
-  act(() => root.unmount());
-  container.remove();
-  // Die eigene Eigenschaft wieder entfernen — dann gilt wieder der Wert von jsdom.
-  Reflect.deleteProperty(window.navigator, "platform");
-  vi.clearAllMocks();
-});
-
 describe("R-0987 · P3 · am echten Kopfband und in der echten Palette", () => {
+  // Auf- und Abbau NUR hier: P1/P2 montieren nichts, ein Abbau dort hätte keinen Baum.
+  beforeEach(async () => {
+    await i18n.changeLanguage("de");
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    // Die eigene Eigenschaft wieder entfernen — dann gilt wieder der Wert von jsdom.
+    Reflect.deleteProperty(window.navigator, "platform");
+    vi.clearAllMocks();
+  });
+
   it("auf einem Mac: ⌘K am Knopf und im Platzhalter", async () => {
     setzePlattform("MacIntel");
     await montiere();
