@@ -209,6 +209,11 @@ const en: typeof de = {
     "Shows whether the AI is currently answering. “Unverified” only means no answer has come back since startup — it is not an error.",
   "topbar.plain.external":
     "Shows whether Klarwerk may also look things up on the open internet when answering. “Blocked” means: no, it stays with your own knowledge.",
+  "topbar.extern.blockiert": "External: Blocked",
+  "topbar.extern.frei": "External: Allowed",
+  "topbar.extern.freiVertraulich": "External: Allowed, including confidential content",
+  "topbar.extern.hinweis":
+    "The administrator decides whether content may go to a public AI. Default: blocked.",
   "topbar.kiExternal": "AI runs in the cloud",
   "topbar.kiInternal": "AI runs on your own systems",
   "topbar.kiMixed": "AI runs in the cloud and on your own systems",
@@ -2853,6 +2858,7 @@ const en: typeof de = {
   "ko.attachmentPreviewUnavailable": "No preview available",
   "ko.attachmentOriginalUnavailable": "Original unavailable",
   "pruefen.title": "Review",
+  "pruefen.handeltAls": "You are reviewing as {{role}}",
   "pruefen.tab.offen": "Open",
   "pruefen.tab.konflikte": "Conflicts",
   "pruefen.tab.duplikate": "Duplicates",

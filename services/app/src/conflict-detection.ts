@@ -9,7 +9,12 @@ import {
   type DetectionCoverage,
   emptyCoverage,
 } from "../../conflicts";
-import { type KnowledgeObject, type KoService, isConfidential } from "../../knowledge-object";
+import {
+  type KnowledgeObject,
+  type KoService,
+  geltungsKollision,
+  isConfidential,
+} from "../../knowledge-object";
 import type {
   ConflictJudgeOutcome,
   DuplicateJudgeOutcome,
@@ -79,6 +84,8 @@ function toDetectSubject(ko: KnowledgeObject): DetectSubject {
     asset: ko.asset,
     confidential: isConfidential(ko.confidentiality),
     ...(ko.version !== undefined ? { version: ko.version } : {}),
+    // R-1632 / R-1633: die Geltung reist mit; ausgelegt wird sie über `geltungsKollision` unten.
+    ...(ko.geltung ? { geltung: ko.geltung } : {}),
   };
 }
 
@@ -139,6 +146,8 @@ export async function detectConflictsForKo(
         // bens V5: Stale-Schreibschutz — vor dem Persistieren beide gebundenen Versionen prüfen.
         isCurrent: async (id, version) => (await deps.ko.get(id))?.version === version,
         coverage,
+        // R-1632 / R-1633: Widerspruch bei verschiedener Geltung → Kontext-/Rollenkonflikt.
+        geltungsKollision,
       },
     );
   } catch (err) {

@@ -96,7 +96,12 @@ import {
 // (und mit ihr der dreiwertige Ausgang) bleibt der Weg für ein BESTEHENDES Wissensobjekt: KO-Detail
 // und „An Artikel anfügen" — s. lib/appendToArticle.ts.
 import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
-import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
+import {
+  applyBodyAssist,
+  applyBodyAssistBlock,
+  bodyTextForAssist,
+  spellingAssistHtmlOrNull,
+} from "../lib/bodyAiAssist";
 import { appendExtractSections, normalizeExtractLocale } from "../lib/bodyExtract";
 import { fileLinkHtml } from "../lib/bodyFileLink";
 import { ADVANCED_FIELDS_KEYS, advancedFieldsSummary } from "../lib/captureAdvancedFields";
@@ -7205,6 +7210,9 @@ export function CaptureArbeitsraum({
                         applyFn={(mode, _original, suggestion) =>
                           applyBodyAssist(mode, bodyHtml, suggestion)
                         }
+                        applySpelling={(suggestion) =>
+                          spellingAssistHtmlOrNull(bodyHtml, suggestion)
+                        }
                         onApply={setBodyHtml}
                         hintKey="capture.ai.bodyHint"
                         extraApplyActions={EDITOR_BLOCKS.map((block) => ({
@@ -7430,6 +7438,9 @@ export function CaptureArbeitsraum({
                         runAssist={runAssist}
                         applyFn={(mode, _original, suggestion) =>
                           applyBodyAssist(mode, bodyHtml, suggestion)
+                        }
+                        applySpelling={(suggestion) =>
+                          spellingAssistHtmlOrNull(bodyHtml, suggestion)
                         }
                         onApply={setBodyHtml}
                         hintKey="capture.ai.bodyHint"

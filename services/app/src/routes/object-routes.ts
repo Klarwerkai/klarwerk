@@ -287,6 +287,9 @@ export function objectRoutes(
         return;
       }
       const obj = await store.read(request.params.id);
+      const urteil = obj
+        ? await urteile(user, request.params.id, obj.ref)
+        : { sichtbar: false, vertraulich: true };
       // mega74 C: dieselbe Form wie am Wissensobjekt — nicht sichtbar sieht aus wie nicht
       // vorhanden. Ein 403 würde die Existenz des Anhangs bestätigen.
       //
@@ -294,7 +297,7 @@ export function objectRoutes(
       // oder nur unsichtbar ist, darf sich weder am Status noch am Rumpf noch an einer Kopfzeile
       // unterscheiden — sonst wird die Kopfzeile zum Existenzorakel, das der 404 gerade verhindern
       // soll.
-      if (!obj || !(await urteile(user, request.params.id, obj.ref)).sichtbar) {
+      if (!obj || !urteil.sichtbar) {
         mitVary(reply)
           .header("Cache-Control", CACHE_KEINE_ANTWORT)
           .code(404)
@@ -303,7 +306,16 @@ export function objectRoutes(
       }
       // Die erfolgreiche Antwort hängt am Betrachter — dieselbe Adresse liefert je nach Anmeldung
       // Metadaten oder 404.
-      mitVary(reply).code(200).send(obj);
+      //
+      // R-0550/R-1967: und sie trägt `data`, also DIESELBEN Bytes wie `/raw`, nur als Daten-URL.
+      // Ohne eigene Kopfzeile entschied hier der Browser per Heuristik über die Wiederverwendung —
+      // der Entzug wirkte am Rohbyteweg sofort und an dieser Tür nur, wenn die Heuristik mitspielte.
+      // Deshalb derselbe Vertrag wie `/raw`, nach demselben Urteil: vertraulich nie speicherbar,
+      // sonst Rückfrage vor jeder Wiederverwendung.
+      mitVary(reply)
+        .header("Cache-Control", urteil.vertraulich ? CACHE_VERTRAULICH : CACHE_UNVERTRAULICH)
+        .code(200)
+        .send(obj);
     });
 
     // SCRUM-45/46/48 (KW-STR): rohe Bytes für <img src="/api/objects/:id/raw"> im Editor-Body.

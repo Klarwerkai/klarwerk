@@ -207,6 +207,11 @@ const nl: typeof de = {
     "Laat zien of de AI op dit moment antwoordt. „Ongeverifieerd“ betekent alleen: sinds de start is er nog geen antwoord teruggekomen — het is geen fout.",
   "topbar.plain.external":
     "Laat zien of Klarwerk bij het antwoorden ook op het open internet mag kijken. „Geblokkeerd“ betekent: nee, het blijft bij jullie eigen kennis.",
+  "topbar.extern.blockiert": "Extern: Geblokkeerd",
+  "topbar.extern.frei": "Extern: Vrijgegeven",
+  "topbar.extern.freiVertraulich": "Extern: Vrijgegeven, ook vertrouwelijke inhoud",
+  "topbar.extern.hinweis":
+    "De beheerder bepaalt of inhoud naar een openbare AI mag. Standaard: geblokkeerd.",
   "topbar.kiExternal": "AI rekent in de cloud",
   "topbar.kiInternal": "AI rekent in eigen huis",
   "topbar.kiMixed": "AI rekent in de cloud en in eigen huis",
@@ -2847,6 +2852,7 @@ const nl: typeof de = {
   "ko.attachmentPreviewUnavailable": "Geen voorbeeld beschikbaar",
   "ko.attachmentOriginalUnavailable": "Origineel niet beschikbaar",
   "pruefen.title": "Controleren",
+  "pruefen.handeltAls": "Je controleert als {{role}}",
   "pruefen.tab.offen": "Open",
   "pruefen.tab.konflikte": "Conflicten",
   "pruefen.tab.duplikate": "Duplicaten",

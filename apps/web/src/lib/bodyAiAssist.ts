@@ -233,6 +233,18 @@ export function applySpellingAssistPreservingHtml(
   return { html: sanitizeHtml(mapped), applied: true };
 }
 
+// R-0103: dieselbe formaterhaltende Rechtschreib-Uebernahme fuer jede Flaeche, die die AiAssistBox
+// am Rumpf traegt (alter Arbeitsraum, Studio, Bibliothek-Bearbeiten) — bisher galt sie nur im Blatt,
+// ueberall sonst ersetzte „Rechtschreibung → Ersetzen" Fett und Aufzaehlungen durch Klartext.
+// `null` heisst: das Wort-Mapping passt nicht; die Uebernahme wird blockiert statt zerstoert.
+export function spellingAssistHtmlOrNull(
+  currentHtml: string | null | undefined,
+  suggestionText: string | null | undefined,
+): string | null {
+  const result = applySpellingAssistPreservingHtml(currentHtml, suggestionText);
+  return result.applied ? result.html : null;
+}
+
 // SCRUM-316: Vorschlag bewusst als Body-Block ANHÄNGEN (Info/Hinweis/Warnung/Erfolg). Bestehender
 // Body bleibt unverändert; nur der neue Block wird ergänzt. Leerer Vorschlag = No-Op.
 export function applyBodyAssistBlock(

@@ -125,6 +125,10 @@ const GesamtanweisungBereich = lazy(() =>
   })),
 );
 const Help = lazy(() => import("./pages/Help").then((m) => ({ default: m.Help })));
+// KLARA-VORSCHAU (produkt:20261007:klara-vorschau): der dokumentierte Einstieg `/klara-vorschau`.
+const KlaraVorschauSeite = lazy(() =>
+  import("./pages/KlaraVorschau").then((m) => ({ default: m.KlaraVorschauSeite })),
+);
 const KnowledgeDetail = lazy(() =>
   import("./pages/KnowledgeDetail").then((m) => ({ default: m.KnowledgeDetail })),
 );
@@ -322,6 +326,25 @@ export function AppRoutes(): JSX.Element {
             aus jedem Begriffshinweis im Editor; ein eigener Menüpunkt ist bewusst nicht Teil
             dieser Lieferung. */}
         <Route path="/begriffe" element={<Firmenwoerterbuch />} />
+        {/* KLARA-VORSCHAU: Einstieg und fiktiver Artikel. Ohne `Guarded` und ohne Serverabruf —
+            die Seite zeigt nur Demodaten und schaltet Klara für die Sitzung ein
+            (docs/klara/klara-vorschau.md). Eigene Fehlergrenze: ein Fehler nimmt die Hülle nicht mit. */}
+        <Route
+          path="/klara-vorschau"
+          element={
+            <ErrorBoundary key="klara-vorschau">
+              <KlaraVorschauSeite />
+            </ErrorBoundary>
+          }
+        />
+        <Route
+          path="/klara-vorschau/artikel/:id"
+          element={
+            <ErrorBoundary key="klara-vorschau-artikel">
+              <KlaraVorschauSeite />
+            </ErrorBoundary>
+          }
+        />
         {/* R-0740: die Live-Wand als Beamer-Ansicht. Ohne `Guarded`, wie `/wissen/:id`: die Tür
             dahinter fordert ihr Recht am Server (`ko.read`, `services/app/src/routes/
             livewall-routes.ts`) und filtert nach den Sichtrechten der angemeldeten Person.
