@@ -40,10 +40,10 @@
 // Wirkungssatz `con.resolveEffect` steht unverändert daneben. Und markiert wird im Text nur, was
 // wörtlich belegt ist (siehe `components/pruefen/markierung.ts`).
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, HelpCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, HelpCircle, ListOrdered } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos } from "../api/hooks";
@@ -103,7 +103,7 @@ import {
   naechsterSchrittSchluessel,
   resolutionEffect,
 } from "../lib/conflictView";
-import { leseFall } from "../lib/fallAbsprung";
+import { fallHref, leseFall } from "../lib/fallAbsprung";
 import { conflictFinding, groupFindingsByBeitrag, resolveKo } from "../lib/findingGroups";
 import { clusterReihenfolge, konfliktCluster } from "../lib/konfliktCluster";
 import { REVIEW_HELP_TOPICS } from "../lib/reviewHelp";
@@ -158,6 +158,16 @@ export function Conflicts(): JSX.Element {
   // bis der Prüfer selbst blättert; ein unbekannter Fall fällt auf die gewohnte erste Stelle zurück.
   const [params] = useSearchParams();
   const [zielFall, setZielFall] = useState<string | null>(() => leseFall(params));
+  // Aufnahme gesamt-konfliktboard (FR-CON-04): die Fallliste unten verlinkt auf DIESELBE Fläche
+  // (`/konflikte?fall=<id>`). Ohne Neumontage liefe die Vorwahl oben nur beim ersten Anstrich —
+  // jeder neue Adressstand wählt deshalb seinen Fall erneut vor, auch derselbe Link ein zweites Mal.
+  // Abgeglichen im Rendern, kein Effekt und kein Zuhörer.
+  const ort = useLocation();
+  const [gelesenerOrt, setGelesenerOrt] = useState(ort.key);
+  if (ort.key !== gelesenerOrt) {
+    setGelesenerOrt(ort.key);
+    setZielFall(leseFall(params));
+  }
 
   const invalidate = (): void => {
     void qc.invalidateQueries({ queryKey: ["conflicts"] });
@@ -260,6 +270,51 @@ export function Conflicts(): JSX.Element {
       ? (items[Math.min(index, Math.max(items.length - 1, 0))] ?? null)
       : null;
 
+  // Die Überschrift eines Konflikts sagt, WORUM gestritten wird: der Streitpunkt, sonst der geprüfte
+  // Beitrag (koA), sonst die andere Seite. Nie eine erfundene Zusammenfassung, nie eine Roh-UUID.
+  // EINE Ableitung für die Paarzeile UND die Fallliste — dieselbe Zeile heißt an beiden Orten gleich.
+  const titelVon = (c: Conflict): string => {
+    const kollision = resolveCollision(c, kos.data ?? []);
+    return (
+      (kollision && hasStreitpunkt(kollision) ? kollision.streitpunkt.trim() : "") ||
+      resolveKo(c.koA, kos.data ?? [])?.title ||
+      conflictKoPair(c, kos.data ?? []).b?.title ||
+      t(`con.type.${c.type}`)
+    );
+  };
+
+  // ---- Die Fallliste: ALLE ungelösten Konflikte, je einer mit Link zur Klärung ----------------
+  // Aufnahme gesamt-konfliktboard (R-0950, R-1711, FR-CON-04): die Fläche zeigt bewusst EIN Paar mit
+  // „k von n" (Pedi 04.09., JOB 3061) — die Liste aller offenen Fälle steht deshalb im Menü neben
+  // dem Segment, geschlossen nur ein Symbol (Textmesser bleibt unberührt). Sie liest dieselben
+  // `items` wie Paarzeile und „k von n": jeder Status außer „gelöst", wie der Server ihn liefert
+  // (`services/conflicts/src/service.ts`, `unresolved()`), ohne Filter nach dem Objektstatus. Jede
+  // Zeile ist ein echter Link (`/konflikte?fall=<id>`); `key` am Menü schließt es nach dem Sprung.
+  const faelleMenue =
+    lage.lage === "bestand" && items.length > 0 ? (
+      <PruefenMenue
+        key={ort.key}
+        kennung="faelle"
+        beschriftung={t("con.caseList", { count: items.length })}
+        symbol={<ListOrdered size={16} aria-hidden="true" />}
+        breite="w-[22rem]"
+      >
+        {items.map((c) => (
+          <PruefenMenueLink key={c.id} to={fallHref("/konflikte", c.id)}>
+            <span
+              className={cx(
+                "min-w-0 flex-1 truncate",
+                c.id === aktiv?.id ? "font-semibold" : undefined,
+              )}
+            >
+              {titelVon(c)}
+            </span>
+            <span className="shrink-0 text-[11.5px] text-muted">{t(`con.status.${c.status}`)}</span>
+          </PruefenMenueLink>
+        ))}
+      </PruefenMenue>
+    ) : null;
+
   // ---- Das „?"-Menü: alles Erklärende dieser Fläche an EINEM Ort ------------------------------
   const hilfeMenue = (
     <PruefenMenue
@@ -297,7 +352,7 @@ export function Conflicts(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-[1040px]">
-      <PruefenKopf aktiv="konflikte" hilfe={hilfeMenue} />
+      <PruefenKopf aktiv="konflikte" filter={faelleMenue} hilfe={hilfeMenue} />
       <div data-testid="pruefen-flaeche" className="space-y-[22px]">
         {lage.auffrischungGescheitert ? <PruefenNichtFrisch /> : null}
         {err ? (
@@ -400,14 +455,8 @@ export function Conflicts(): JSX.Element {
     // SCRUM-486: die ehrliche Benennung von WAS und ERKENNUNGSWEG — dieselbe Ableitung, die die
     // Kopfzeile der alten Befundkarte trug. Sie ist nicht entfallen, sie steht jetzt im „Mehr".
     const befund = conflictFinding(c);
-    // Die Überschrift der Fläche sagt, WORUM gestritten wird: der Streitpunkt, sonst der geprüfte
-    // Beitrag (koA — derselbe, der bis hierher die Gruppenüberschrift trug). Nie eine erfundene
-    // Zusammenfassung, nie eine Roh-UUID.
-    const titel =
-      (collision && hasStreitpunkt(collision) ? collision.streitpunkt.trim() : "") ||
-      resolveKo(c.koA, kos.data ?? [])?.title ||
-      pair.b?.title ||
-      t(`con.type.${c.type}`);
+    // Die Überschrift der Fläche: dieselbe Ableitung wie in der Fallliste (`titelVon`, oben).
+    const titel = titelVon(c);
     // SCRUM-492: Steht der Streitwert WÖRTLICH im Beleg, sagt die Markierung das — dieselbe
     // Auskunft wie das frühere Häkchen an der Kollisionskachel, jetzt am markierten Text selbst.
     const belegHinweis = (seite: "a" | "b"): string | undefined =>
