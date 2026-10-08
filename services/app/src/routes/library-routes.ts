@@ -243,7 +243,8 @@ export function direktimportAntwort(
 // ben-Review #6: schmale, immer sichtbare Log-Linie für best-effort-Erkennung am Import-Accept-Pfad
 // (Fastify läuft ohne eigenen Logger) — analog defaultLog des dup-prefilters. Bewusst kein Werfen.
 function importDetectionLog(msg: string, err: unknown): void {
-  console.warn(`[import-accept-detection] ${msg}`, err);
+  // R-0623: nur die Fehlerklasse — Meldung und Stack können Inhalte tragen.
+  console.warn(`[import-accept-detection] ${msg}: ${err instanceof Error ? err.name : "unknown"}`);
 }
 
 // ================================================================================================
