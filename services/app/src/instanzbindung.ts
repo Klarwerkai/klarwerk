@@ -32,8 +32,17 @@ import type { Pool } from "pg";
 // Anlagen an einem Datenbestand.
 //
 // OHNE `APP_BASE_URL` (Entwicklung, Restore-Drill) gibt es keine Anlagenadresse, gegen die gebunden
-// werden könnte; dann wird weder gebunden noch verglichen. In Produktion ist `APP_BASE_URL` Pflicht
-// (`start-vertrag.ts`), dort greift die Bindung also immer.
+// werden könnte; dann wird weder gebunden noch verglichen — aber NUR außerhalb der Produktion. Im
+// Produktionsstart ist eine erfolgreiche Bindungsprüfung Pflicht (`pflicht: true`): fehlt die
+// Adresse, bricht der Start ab. Eine GESETZTE, aber unlesbare Adresse („kein-url", ohne Hostnamen)
+// bricht immer ab — sie ist eine Fehlkonfiguration, kein „ohne Adresse". Der Startvertrag prüft nur,
+// ob `APP_BASE_URL` gesetzt ist; ohne diese Regel liefe eine solche Anlage ungebunden gegen eine
+// fremd gebundene Datenbank (BEN, Nacharbeit 2).
+//
+// VOR DEN MIGRATIONEN. `server.ts` ruft `bindeInstanzVorMigration` VOR `migrate()`: angelegt wird
+// zuerst NUR die Bindungstabelle, dann wird gebunden bzw. verglichen. Eine fremde Anlage — womöglich
+// mit anderem Softwarestand — führt damit keine einzige Produktmigration an der Datenbank einer
+// anderen Kundenanlage aus.
 //
 // BEWUSSTER UMZUG. Zieht dieselbe Firma auf eine neue Adresse um, löscht der Betreiber die Zeile
 // ausdrücklich (`DELETE FROM instanz_bindung;`), der nächste Start bindet neu. Ein Umgebungswert,
@@ -100,20 +109,59 @@ export class InstanzbindungError extends Error {
   }
 }
 
+/** `APP_BASE_URL` fehlt im Produktionsstart oder ist gesetzt, aber keine Adresse mit Hostnamen. */
+export class InstanzadresseError extends Error {
+  constructor(readonly grund: "fehlt" | "unlesbar") {
+    super(
+      grund === "fehlt"
+        ? "Instanzbindung nicht prüfbar: APP_BASE_URL fehlt. Im Produktionsstart muss die Datenbank an die Adresse dieser Anlage gebunden sein (Eine Firma je Instanz) — APP_BASE_URL auf die öffentliche Adresse dieser Instanz setzen."
+        : "Instanzbindung nicht prüfbar: APP_BASE_URL ist gesetzt, aber keine lesbare Adresse mit Hostnamen (z. B. https://wissen.kunde.de). Ohne Anlagenadresse kann nicht geprüft werden, ob diese Datenbank einer anderen Anlage gehört — der Start bricht deshalb ab.",
+    );
+    this.name = "InstanzadresseError";
+  }
+}
+
+export interface Bindungsoptionen {
+  /** Produktionsstart: ohne Anlagenadresse kein Start (statt „ohne_adresse"). */
+  pflicht?: boolean;
+  jetzt?: () => Date;
+}
+
+/**
+ * Die Anlagenkennung für den Start — oder ein Abbruch. Gesetzt und unlesbar wirft IMMER; fehlend
+ * wirft nur bei `pflicht`. `undefined` heißt: außerhalb der Produktion ohne Adresse, nicht binden.
+ */
+function anlageFuerStart(appBaseUrl: string | undefined, pflicht: boolean): string | undefined {
+  if (!appBaseUrl?.trim()) {
+    if (pflicht) {
+      throw new InstanzadresseError("fehlt");
+    }
+    return undefined;
+  }
+  const anlage = anlageAusBasisadresse(appBaseUrl);
+  if (!anlage) {
+    throw new InstanzadresseError("unlesbar");
+  }
+  return anlage;
+}
+
 /**
  * Bindet die Datenbank beim ersten Start an diese Anlage und verweigert jeden Start einer anderen.
- * Wirft `InstanzbindungError` bei fremder Anlage. Gleichzeitige Erststarts sind sicher: der
- * Primärschlüssel lässt genau ein INSERT gewinnen, danach liest jeder denselben Wert.
+ * Wirft `InstanzbindungError` bei fremder Anlage und `InstanzadresseError` bei fehlender (nur mit
+ * `pflicht`) oder unlesbarer Adresse — beides, BEVOR eine Anweisung an die Datenbank geht.
+ * Gleichzeitige Erststarts sind sicher: der Primärschlüssel lässt genau ein INSERT gewinnen,
+ * danach liest jeder denselben Wert.
  */
 export async function bindeInstanz(
   pool: Pick<Pool, "query">,
   appBaseUrl: string | undefined,
-  jetzt: () => Date = () => new Date(),
+  optionen: Bindungsoptionen = {},
 ): Promise<Instanzbefund> {
-  const aktuell = anlageAusBasisadresse(appBaseUrl);
+  const aktuell = anlageFuerStart(appBaseUrl, optionen.pflicht ?? false);
   if (!aktuell) {
     return { art: "ohne_adresse" };
   }
+  const jetzt = optionen.jetzt ?? (() => new Date());
   const eingefuegt = await pool.query(
     `INSERT INTO instanz_bindung (einzig, anlage, gebunden_am) VALUES (true, $1, $2)
      ON CONFLICT (einzig) DO NOTHING`,
@@ -133,4 +181,22 @@ export async function bindeInstanz(
     throw new InstanzbindungError(befund.gebunden, befund.aktuell);
   }
   return befund;
+}
+
+/**
+ * Der Startweg (`server.ts`, VOR `migrate()`): Adresse prüfen, dann NUR die Bindungstabelle anlegen,
+ * dann binden bzw. vergleichen. Wirft, bevor irgendeine andere Schemastufe die Datenbank berührt.
+ * `INSTANZBINDUNG_SCHEMA` steht zusätzlich in `schemas` (db.ts) — dort ist die Stufe danach ein
+ * No-op, sie hält aber Migrationsbeleg und Restore-Drill vollständig.
+ */
+export async function bindeInstanzVorMigration(
+  pool: Pick<Pool, "query">,
+  appBaseUrl: string | undefined,
+  optionen: Bindungsoptionen = {},
+): Promise<Instanzbefund> {
+  if (!anlageFuerStart(appBaseUrl, optionen.pflicht ?? false)) {
+    return { art: "ohne_adresse" };
+  }
+  await pool.query(INSTANZBINDUNG_SCHEMA);
+  return bindeInstanz(pool, appBaseUrl, optionen);
 }

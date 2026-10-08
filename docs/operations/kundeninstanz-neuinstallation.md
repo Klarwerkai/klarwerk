@@ -244,6 +244,18 @@ Serverstart fehlgeschlagen: InstanzbindungError: Diese Datenbank gehört der Anl
 Schema und Port zählen nicht: `http://` statt `https://` oder ein anderer Port derselben Adresse
 ist dieselbe Anlage. Einen Schalter, der die Prüfung abschaltet, gibt es absichtlich nicht.
 
+Die Prüfung läuft **vor** allen übrigen Migrationen: eine fremde Anlage legt an der Datenbank einer
+anderen höchstens die Bindungstabelle an (falls sie fehlt) und ändert sonst nichts am Schema —
+auch nicht bei abweichendem Softwarestand. Ist `APP_BASE_URL` gesetzt, aber keine lesbare Adresse
+mit Hostnamen (Tippfehler, fehlendes `https://`), bricht der Start mit
+`InstanzadresseError: Instanzbindung nicht prüfbar …` ab, statt ungebunden zu laufen.
+
+**Selbstbedienung ist kein Mehrkundenweg.** Eine Selbstbedienungsbereitstellung neuer Firmen gibt es
+im Produkt heute nicht (die Selbstregistrierung `KLARWERK_SELF_REGISTRATION` legt nur Konten
+**innerhalb** dieser Instanz an). Kommt sie später, muss sie je Firma eine neue Instanz mit eigener
+Datenbank anlegen — die Bindung oben verhindert technisch, dass eine zweite Firma in eine
+vorhandene Datenbank gelegt wird.
+
 **Bewusster Umzug derselben Firma auf eine neue Adresse:** Instanz stoppen, die Bindung
 ausdrücklich lösen und mit der neuen `APP_BASE_URL` starten — der nächste Start bindet neu:
 

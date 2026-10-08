@@ -11,10 +11,12 @@ import type { Pool } from "pg";
 import { describe, expect, it } from "vitest";
 import {
   INSTANZBINDUNG_SCHEMA,
+  InstanzadresseError,
   InstanzbindungError,
   anlageAusBasisadresse,
   beurteileInstanzbindung,
   bindeInstanz,
+  bindeInstanzVorMigration,
 } from "../../services/app/src/instanzbindung";
 
 /** Nachbildung der einen Tabellenzeile; zählt die Anweisungen mit. */
@@ -24,6 +26,9 @@ function attrappe(vorhanden?: string) {
   const pool = {
     query: async (sql: string, werte?: unknown[]) => {
       anweisungen.push(sql.trim().split(/\s+/)[0] ?? "");
+      if (sql === INSTANZBINDUNG_SCHEMA) {
+        return { rowCount: null, rows: [] };
+      }
       if (/^\s*INSERT INTO instanz_bindung/.test(sql)) {
         if (zeile === undefined) {
           zeile = String(werte?.[0]);
@@ -51,7 +56,7 @@ describe("Instanztrennung · die Anlagenkennung", () => {
     expect(anlageAusBasisadresse("  http://127.0.0.1:3002  ")).toBe("127.0.0.1");
   });
 
-  it("fehlt oder ist unlesbar → keine Kennung (es wird dann nicht gebunden)", () => {
+  it("fehlt oder ist unlesbar → keine Kennung (den Start regelt „Fehlkonfiguration“)", () => {
     expect(anlageAusBasisadresse(undefined)).toBeUndefined();
     expect(anlageAusBasisadresse("   ")).toBeUndefined();
     expect(anlageAusBasisadresse("kein-url")).toBeUndefined();
@@ -126,5 +131,71 @@ describe("Instanztrennung · bindeInstanz", () => {
       /einzig boolean PRIMARY KEY DEFAULT true CHECK \(einzig\)/,
     );
     expect(INSTANZBINDUNG_SCHEMA).toMatch(/CREATE TABLE IF NOT EXISTS instanz_bindung/);
+  });
+});
+
+// BEN, Nacharbeit 2, Befund 1: eine gesetzte, aber unlesbare APP_BASE_URL lieferte „ohne_adresse"
+// und liess den Start ungebunden gegen eine fremd gebundene Datenbank laufen.
+describe("Instanztrennung · Fehlkonfiguration bricht ab, bevor die Datenbank gefragt wird", () => {
+  it("gesetzt, aber unlesbar → InstanzadresseError — auch außerhalb der Produktion", async () => {
+    for (const roh of ["kein-url", "file:///etc/klarwerk"]) {
+      const a = attrappe("wissen.firma-a.de");
+      const versuch = bindeInstanz(a.pool, roh);
+      await expect(versuch, roh).rejects.toBeInstanceOf(InstanzadresseError);
+      await expect(versuch, roh).rejects.toThrow(/keine lesbare Adresse/);
+      expect(a.anweisungen, roh).toEqual([]);
+    }
+  });
+
+  it("Produktion (pflicht) ohne APP_BASE_URL → InstanzadresseError statt „ohne_adresse“", async () => {
+    const a = attrappe("wissen.firma-a.de");
+    await expect(bindeInstanz(a.pool, undefined, { pflicht: true })).rejects.toThrow(
+      /APP_BASE_URL fehlt/,
+    );
+    expect(a.anweisungen).toEqual([]);
+  });
+
+  it("die Meldung wiederholt den gesetzten Rohwert nicht", async () => {
+    const roh = "kein-url-mit-geheimnis-4711";
+    const fehler = await bindeInstanz(attrappe().pool, roh).catch((e: unknown) => e);
+    expect(fehler).toBeInstanceOf(InstanzadresseError);
+    expect((fehler as Error).message).not.toContain("geheimnis-4711");
+  });
+});
+
+// BEN, Nacharbeit 2, Befund 2: die Bindung muss VOR den Produktmigrationen geprüft werden.
+describe("Instanztrennung · bindeInstanzVorMigration", () => {
+  it("legt zuerst NUR die Bindungstabelle an, dann bindet es", async () => {
+    const a = attrappe();
+    await expect(bindeInstanzVorMigration(a.pool, "https://wissen.firma-a.de")).resolves.toEqual({
+      art: "gebunden",
+      anlage: "wissen.firma-a.de",
+    });
+    expect(a.anweisungen).toEqual(["CREATE", "INSERT", "SELECT"]);
+  });
+
+  it("fremd gebunden → wirft nach genau diesen drei Anweisungen, nichts weiter", async () => {
+    const a = attrappe("wissen.firma-a.de");
+    await expect(
+      bindeInstanzVorMigration(a.pool, "https://wissen.firma-b.de", { pflicht: true }),
+    ).rejects.toBeInstanceOf(InstanzbindungError);
+    expect(a.anweisungen).toEqual(["CREATE", "INSERT", "SELECT"]);
+    expect(a.zeile()).toBe("wissen.firma-a.de");
+  });
+
+  it("unlesbare Adresse → keine einzige Anweisung, auch nicht das Anlegen der Tabelle", async () => {
+    const a = attrappe("wissen.firma-a.de");
+    await expect(
+      bindeInstanzVorMigration(a.pool, "kein-url", { pflicht: true }),
+    ).rejects.toBeInstanceOf(InstanzadresseError);
+    expect(a.anweisungen).toEqual([]);
+  });
+
+  it("außerhalb der Produktion ohne Adresse → keine Anweisung, kein Abbruch", async () => {
+    const a = attrappe();
+    await expect(bindeInstanzVorMigration(a.pool, undefined)).resolves.toEqual({
+      art: "ohne_adresse",
+    });
+    expect(a.anweisungen).toEqual([]);
   });
 });

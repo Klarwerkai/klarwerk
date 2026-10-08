@@ -29,6 +29,7 @@ import {
   type Instanzbefund,
   InstanzbindungError,
   bindeInstanz,
+  bindeInstanzVorMigration,
 } from "../../services/app/src/instanzbindung";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 
@@ -38,6 +39,8 @@ const ANLAGE_B = "https://wissen.firma-b.test";
 const DB_FUNKTION = "klarwerk_test_instanztrennung_p1";
 const DB_GLEICHZEITIG = "klarwerk_test_instanztrennung_p2";
 const DB_PROZESS = "klarwerk_test_instanztrennung_p3";
+const DB_STAND = "klarwerk_test_instanztrennung_p5";
+const DB_ADRESSE = "klarwerk_test_instanztrennung_p6";
 
 /** Dieselbe Verbindungszeichenkette mit anderem Datenbanknamen. */
 function mitDatenbank(url: string, name: string): string {
@@ -153,6 +156,42 @@ describe("Instanztrennung · zwei Anlagen an einer Datenbank", () => {
     return url;
   }
 
+  /**
+   * Eine Datenbank, an der Anlage A NUR die Bindungsstufe gefahren und sich gebunden hat — der
+   * abweichende Softwarestand in seiner schärfsten Form. Keine andere Schemastufe.
+   */
+  async function nurGebundeneDatenbank(name: string, anlage: string): Promise<string> {
+    const v = verwaltung as Pool;
+    await v.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+    await v.query(`CREATE DATABASE ${name}`);
+    const url = mitDatenbank(basisUrl, name);
+    await expect(bindeInstanzVorMigration(neuerPool(url), anlage)).resolves.toMatchObject({
+      art: "gebunden",
+    });
+    return url;
+  }
+
+  /** Tabellen, Spalten und Extensions im Schema `public` — der messbare Migrationsstand. */
+  async function schemaStand(
+    url: string,
+  ): Promise<{ tabellen: string[]; spalten: number; extensions: string[] }> {
+    const pool = neuerPool(url);
+    const tabellen = await pool.query<{ table_name: string }>(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY 1",
+    );
+    const spalten = await pool.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM information_schema.columns WHERE table_schema = 'public'",
+    );
+    const extensions = await pool.query<{ extname: string }>(
+      "SELECT extname FROM pg_extension WHERE extname <> 'plpgsql' ORDER BY 1",
+    );
+    return {
+      tabellen: tabellen.rows.map((z) => z.table_name),
+      spalten: spalten.rows[0]?.n ?? -1,
+      extensions: extensions.rows.map((z) => z.extname),
+    };
+  }
+
   async function bindungszeilen(url: string): Promise<string[]> {
     const res = await neuerPool(url).query<{ anlage: string }>(
       "SELECT anlage FROM instanz_bindung",
@@ -190,7 +229,7 @@ describe("Instanztrennung · zwei Anlagen an einer Datenbank", () => {
     for (const pool of pools) {
       await pool.end().catch(() => undefined);
     }
-    for (const db of [DB_FUNKTION, DB_GLEICHZEITIG, DB_PROZESS]) {
+    for (const db of [DB_FUNKTION, DB_GLEICHZEITIG, DB_PROZESS, DB_STAND, DB_ADRESSE]) {
       await verwaltung?.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`).catch(() => undefined);
     }
     await verwaltung?.end();
@@ -264,5 +303,43 @@ describe("Instanztrennung · zwei Anlagen an einer Datenbank", () => {
     const neu = await starteAnlage(url, ANLAGE_B);
     expect(neu.art, neu.ausgabe).toBe("bereit");
     expect(await bindungszeilen(url)).toEqual(["wissen.firma-b.test"]);
+  });
+
+  // BEN, Nacharbeit 2, Befund 2: die fremde Anlage führte bis dahin ALLE Migrationen aus, bevor ihre
+  // Bindung geprüft wurde. Nachgestellt ist der abweichende Softwarestand in seiner schärfsten Form:
+  // Anlage A hat an ihrer Datenbank NUR die Bindungsstufe gefahren — jede andere Stufe, die Anlage B
+  // kennt, wäre für A eine fremde Schemaänderung. Danach darf dort nichts außer der Bindung stehen.
+  it("P5 · fremde Anlage mit anderem Migrationsstand verändert das Schema der gebundenen Datenbank nicht", async () => {
+    const url = await nurGebundeneDatenbank(DB_STAND, ANLAGE_A);
+    const vorher = await schemaStand(url);
+    expect(vorher.tabellen).toEqual(["instanz_bindung"]);
+
+    const fremdB = await starteAnlage(url, ANLAGE_B);
+    expect(fremdB.art, `Anlage B kam an der Datenbank von A hoch:\n${fremdB.ausgabe}`).toBe(
+      "beendet",
+    );
+    expect(fremdB.code).toBe(1);
+    expect(fremdB.ausgabe).toContain("Serverstart fehlgeschlagen: InstanzbindungError");
+
+    // Die Gegenprobe des Befunds: keine Tabelle, keine Extension, keine Spalte dazugekommen.
+    expect(await schemaStand(url)).toEqual(vorher);
+    expect(await bindungszeilen(url)).toEqual(["wissen.firma-a.test"]);
+  });
+
+  // BEN, Nacharbeit 2, Befund 1: eine gesetzte, aber unlesbare APP_BASE_URL umging die Bindung.
+  it("P6 · Produktionsstart mit unlesbarer APP_BASE_URL bricht an einer fremd gebundenen Datenbank ab — ohne Migration", async () => {
+    const url = await nurGebundeneDatenbank(DB_ADRESSE, ANLAGE_A);
+    const vorher = await schemaStand(url);
+
+    const fehlkonfiguriert = await starteAnlage(url, "kein-url");
+    expect(
+      fehlkonfiguriert.art,
+      `Start mit unlesbarer Adresse kam hoch:\n${fehlkonfiguriert.ausgabe}`,
+    ).toBe("beendet");
+    expect(fehlkonfiguriert.code).toBe(1);
+    expect(fehlkonfiguriert.ausgabe).toContain("Serverstart fehlgeschlagen: InstanzadresseError");
+
+    expect(await schemaStand(url)).toEqual(vorher);
+    expect(await bindungszeilen(url)).toEqual(["wissen.firma-a.test"]);
   });
 });
