@@ -5336,6 +5336,8 @@ const de = {
   "risk.priority.mittel": "mittel",
   "risk.priority.niedrig": "niedrig",
   "risk.close": "Schließen",
+  "risk.closeWithTitle": "Mit dem Wissensobjekt schließen, das diese Lücke beantwortet",
+  "risk.closeFailed": "Nicht geschlossen — das Wissensobjekt fehlt oder liegt im Papierkorb.",
   "risk.assign": "Experte …",
   "risk.delete": "Löschen",
   "risk.gapNextLabel": "Nächster Schritt",
