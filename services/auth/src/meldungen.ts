@@ -163,15 +163,16 @@ export const MELDUNGEN = {
   // eine Wortlautänderung und ein zweiter Zweck; die deutsche Fassung bleibt deshalb zeichengleich
   // mit dem früheren Literal. EN und NL erben den fehlenden Umlaut NICHT — sie sind richtig
   // geschrieben.
+  //
+  // aufnahme:20260922:gesamt-leserechte (R-0239, Entscheidung J24 vom 13.08.2026: „404"): der
+  // zweite Satz (`DRAFT_NOT_VISIBLE`, „Entwurf nicht verfuegbar.") ist entfallen. Er war genau die
+  // Auskunft „gibt es, gehört jemand anderem" — und damit die Existenzauskunft über einen Entwurf,
+  // den der Fragende nicht sehen darf („403 verraet, dass der Entwurf existiert"). Ein nicht
+  // sichtbarer Entwurf antwortet seither zeichengleich wie ein unbekannter: dieser eine Satz.
   DRAFT_NOT_FOUND: {
     de: "Entwurf nicht gefunden.",
     en: "Draft not found.",
     nl: "Concept niet gevonden.",
-  },
-  DRAFT_NOT_VISIBLE: {
-    de: "Entwurf nicht verfuegbar.",
-    en: "This draft is not available to you.",
-    nl: "Dit concept is niet voor jou beschikbaar.",
   },
   // JOB 4249 · DER DRITTE SATZ DER ENTWURFSROUTEN, und er gehört zum ANLEGEN, nicht zum Lesen.
   // `POST /api/drafts` nimmt seit JOB 4249 die Voraussetzung `expectedOwner` entgegen — das Konto,

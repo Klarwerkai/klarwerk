@@ -721,8 +721,9 @@ const AUS_DEM_RECHTETOR = ["PERMISSION_MISSING"];
 /**
  * JOB 3956 · Die drei Schlüssel, die WEDER aus `services/auth/src` NOCH aus dem Rechtetor kommen:
  *
- *   `DRAFT_NOT_FOUND` / `DRAFT_NOT_VISIBLE`  `services/app/src/routes/capture-routes.ts`
- *                                            (`requireVisibleDraft` und der Fortsetzen-Zweig)
+ *   `DRAFT_NOT_FOUND`                        `services/app/src/routes/capture-routes.ts`
+ *                                            (`requireVisibleDraft` und der Fortsetzen-Zweig;
+ *                                            `DRAFT_NOT_VISIBLE` ist seit gesamt-leserechte weg)
  *   `PERMISSION_DENIED`                      `services/rbac/src/guard.ts`
  *
  * Dieselbe Lage und dieselbe benannte Prüflücke wie bei `AUS_DEM_RECHTETOR`: H2 und H3 tasten
@@ -742,7 +743,8 @@ const AUS_DEM_RECHTETOR = ["PERMISSION_MISSING"];
  */
 const AUS_DEN_ENTWURFSROUTEN = [
   "DRAFT_NOT_FOUND",
-  "DRAFT_NOT_VISIBLE",
+  // aufnahme:20260922:gesamt-leserechte: `DRAFT_NOT_VISIBLE` ist mit dem Satz aus dem Katalog
+  // gegangen — ein nicht sichtbarer Entwurf antwortet wie ein unbekannter (R-0239, J24 „404").
   "DRAFT_OWNER_MISMATCH",
   // Aufnahme entwurf-in-gemeinsamen-pool-geben: der Eingabefehler des Pool-Schalters
   // (`PUT /api/drafts/:id/pool`), dieselbe Datei. Am Draht gemessen in EN/NL (s. `GEMESSEN_VON`).
@@ -1492,17 +1494,15 @@ const GEMESSEN_VON = {
     "tests/gast-befristung/gast-in-einem-schritt.test.ts · G3b EN — derselbe Tippfehler auf Englisch: 400 mit dem englischen Satz",
     "tests/gast-befristung/gast-in-einem-schritt.test.ts · G3c NL — und auf Niederländisch: 400 mit dem niederländischen Satz",
   ],
-  // JOB 3956 · die zwei Sätze des Entwurfs-Ladewegs. Beide hängen an EINEM Fall je Sprache, und
+  // JOB 3956 · die Sätze des Entwurfs-Ladewegs (seit aufnahme:20260922:gesamt-leserechte nur noch
+  // einer: der nicht sichtbare Entwurf antwortet wie der unbekannte). Er hängt an EINEM Fall je
+  // Sprache, und
   // beide Fälle halten den Satz doppelt: wörtlich (ein schiefes Katalogfeld fällt auf) UND gegen
   // `MELDUNGEN.<SCHLUESSEL>.<sprache>` (ein zweites Literal im Code oder ein verstellter Schlüssel
   // fällt auf). Der deutsche Fall (E3/F3) zählt hier nicht mit — H4 fragt nach EN und NL.
   DRAFT_NOT_FOUND: [
     "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · E1 EN · unbekannte Entwurfskennung: 404 NOT_FOUND mit englischem Satz",
     "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · E2 NL · unbekannte Entwurfskennung: 404 NOT_FOUND mit niederländischem Satz",
-  ],
-  DRAFT_NOT_VISIBLE: [
-    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · F1 EN · fremder Entwurf: 403 FORBIDDEN mit englischem Satz",
-    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · F2 NL · fremder Entwurf: 403 FORBIDDEN mit niederländischem Satz",
   ],
   // JOB 4249 · der Satz des ANLEGEWEGS. Er entsteht, wenn das Konto zwischen dem Zusammenstellen
   // der Nutzlast und dem Absenden gewechselt hat (`expectedOwner`, die Voraussetzung des Aufrufs).

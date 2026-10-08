@@ -6,7 +6,8 @@
 //
 // ER BEWEIST: Der neue Endpunkt reicht die Ableitung aus JOB 1171 unveraendert und mit ihrer
 // Herkunft nach aussen, trennt „Entwurf gibt es nicht" (404) von „kein Schritt ableitbar" (204),
-// haelt die Sichtbarkeitsregel fremder Entwuerfe ein (403) und schreibt nichts.
+// haelt die Sichtbarkeitsregel fremder Entwuerfe ein (seit R-0239: 404 wie „gibt es nicht") und
+// schreibt nichts.
 //
 // ER BEWEIST NICHT, dass eine Karte erscheint. Der Endpunkt ist in `build-app.ts` NICHT
 // registriert — dieser Pfad liegt ausserhalb der Lease dieses Durchgangs (Auftrag §6: „Brauchst du
@@ -216,7 +217,9 @@ describe("JOB 1494 · KA8 1b — Zugang", () => {
   // Entscheidung Pedi `debbb8e8` (Aufnahme gesamt-entwurf-einreichen, Lauf :3): Entwürfe sind
   // privat. Bis dahin bekam die Verwaltung hier 200. Die zweite Seite der Regel ist jetzt Boris
   // selbst: sein eigener Entwurf kommt heraus.
-  it("fremder Entwurf ⇒ 403 fuer eine Expertin UND fuer die Verwaltung, 200 fuer den Autor", async () => {
+  // aufnahme:20260922:gesamt-leserechte (R-0239, J24 „404"): der fremde Entwurf antwortet seither
+  // wie ein nicht vorhandener — 404 NOT_FOUND statt 403, damit seine Existenz nicht erfragbar ist.
+  it("fremder Entwurf ⇒ 404 fuer eine Expertin UND fuer die Verwaltung, 200 fuer den Autor", async () => {
     // `canSeeDraft` stammt aus `capture-routes.ts` und ist hier NICHT nachgebaut. Beide Seiten der
     // Regel werden belegt, sonst pruefte der Fall nur die eine.
     const capture = dienstMitSpeicher([]);
@@ -236,9 +239,9 @@ describe("JOB 1494 · KA8 1b — Zugang", () => {
     });
 
     expect(`${alsAnna.statusCode}/${alsAdmin.statusCode}/${alsBoris.statusCode}`).toBe(
-      "403/403/200",
+      "404/404/200",
     );
-    expect(alsAnna.json().error).toBe("FORBIDDEN");
+    expect(alsAnna.json().error).toBe("NOT_FOUND");
   });
 });
 

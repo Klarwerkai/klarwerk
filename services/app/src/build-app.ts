@@ -353,7 +353,7 @@ import { AnswerExplanationService } from "./services/answer-explanation";
 // Policyentscheidung liegt im Reasoner-Modul, die Orchestrierung im Sitzungsdienst.
 import { ImportAccessService } from "./services/import-access-service";
 import { KlaraSessionService } from "./services/klara-session-service";
-import { type AnhangQuellen, sichtbarkeitsfilterFuer } from "./sichtbarkeit";
+import { type AnhangQuellen, entwurfSichtbarFuer, sichtbarkeitsfilterFuer } from "./sichtbarkeit";
 import { type SlideConverter, createSofficeSlideConverter } from "./slide-converter";
 // produkt:20261007:spaces — die versionierten Arbeitsräume; im Postgres-Betrieb haltbar.
 import { InMemorySpacesRepo, PgSpacesRepo, type SpacesRepo, lesbareSpaces } from "./spaces";
@@ -3105,7 +3105,12 @@ export function buildApp(
         draftPromotion: {
           load: async (draftId, user) => {
             const draft = await services.capture.getDraft(draftId);
-            if (!draft) {
+            // aufnahme:20260922:gesamt-leserechte (R-0239, J24 „404"): ein Entwurf, den dieser
+            // Mensch nicht SEHEN darf, gibt es für ihn nicht — dieselbe Antwort wie die
+            // Entwurfsrouten (`requireVisibleDraft`). 403 bleibt dem sichtbaren Pool-Entwurf, an dem
+            // nur das Recht zum Einreichen fehlt.
+            const betrachter = { id: user.id, role: user.role as SessionUser["role"] };
+            if (!draft || !entwurfSichtbarFuer(betrachter, draft)) {
               return { ok: false, reason: "not-found" as const };
             }
             // Pool-Auftrag (Pedi, entscheidung:297afc57): die Dokumentübernahme REICHT EIN — und
@@ -3142,7 +3147,9 @@ export function buildApp(
           // Formprüfung; deren Fehler wird als `invalid` durchgereicht statt als 500 verschluckt.
           applyAndLoad: async (draftId, payload, user, expectedUpdatedAt) => {
             const draft = await services.capture.getDraft(draftId);
-            if (!draft) {
+            // aufnahme:20260922:gesamt-leserechte: dieselbe 404-Regel wie in `load` oben.
+            const betrachter = { id: user.id, role: user.role as SessionUser["role"] };
+            if (!draft || !entwurfSichtbarFuer(betrachter, draft)) {
               return { ok: false, reason: "not-found" as const };
             }
             // Pool-Auftrag (297afc57): derselbe Einreichweg wie `load` — nur der Autor.
@@ -3453,7 +3460,6 @@ export function buildApp(
   );
   app.register(categoryRoutes(services.ko, guards));
   app.register(outputRoutes(services.output, guards));
-  app.register(lmsExportRoutes(services.lmsExport, services.audit, guards));
   // R-2183 (Nacharbeit 3): Ruhestandshorizonte nur an echten internen Konten.
   const kontoGibtEs = async (id: string) =>
     (await services.auth.listUsers()).some((u) => u.id === id);
@@ -3576,6 +3582,11 @@ export function buildApp(
   };
   app.register(objectRoutes(services.objects, guards, anhangQuellen));
   app.register(mediaRoutes(services.media, guards, services.objects, anhangQuellen));
+  // aufnahme:20260922:gesamt-leserechte: der SCORM-Export liest Bilder aus DEMSELBEN Speicher und
+  // bekommt deshalb dieselben Herkünfte für die Anhangsregel — keine zweite Aufzählung.
+  app.register(
+    lmsExportRoutes(services.lmsExport, services.audit, guards, services.objects, anhangQuellen),
+  );
   app.register(i18nRoutes(services.i18n));
   // AUFTRAG-mega46 Block F: die EINE Auskunft „welche Schalter stehen" — Ja/Nein je Schalter, sonst
   // nichts. Sie ist selbst NICHT geschaltet: Eine Auskunft, die man erst freischalten muss, könnte

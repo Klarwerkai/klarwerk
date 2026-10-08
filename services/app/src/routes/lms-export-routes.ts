@@ -1,7 +1,10 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { AuditService } from "../../../audit";
-import { type LmsExportService, leseScormEingabe } from "../../../output";
-import { type Guards, sendError } from "../http";
+import { isValidConfidentiality } from "../../../knowledge-object";
+import type { ObjectStore } from "../../../object-store";
+import { type LmsExportService, type ScormBetrachter, leseScormEingabe } from "../../../output";
+import { type Guards, type SessionUser, sendError } from "../http";
+import { type AnhangQuellen, beurteileAnhang, sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
 // produkt:wettbewerb:20261003:lernplattform — Übergabe an eine Lernplattform (SCORM 1.2).
 //
@@ -16,11 +19,47 @@ import { type Guards, sendError } from "../http";
 //
 // NACHWEIS: jeder ausgelieferte Export ist ein eigener Auditeintrag (append-only) mit Exportfassung,
 // Objektfassungen, Empfänger und Paket-Prüfsumme. Ein späterer Export ändert keinen früheren.
+//
+// aufnahme:20260922:gesamt-leserechte: beide Türen tragen die Lesepolicy DIESES Betrachters —
+// für Wissensobjekte `sichtbarkeitsfilterFuer`, für Bilder dieselbe Anhangsregel wie
+// `GET /api/objects/:id` (`beurteileAnhang` über dieselben Herkünfte). Ohne beides ging ins Paket,
+// was der Betrachter im Produkt selbst nicht öffnen darf.
 export function lmsExportRoutes(
   lmsExport: LmsExportService,
   audit: AuditService,
   guards: Guards,
+  objects: ObjectStore,
+  quellen: AnhangQuellen,
 ): FastifyPluginAsync {
+  // Wortgleich zur Torwache in object-routes.ts/media-routes.ts: derselbe Speicher, dieselbe Regel.
+  async function mediumSichtbar(user: SessionUser, objectId: string): Promise<boolean> {
+    // mega76 A: ein Aufrufer, den der Compiler nicht sieht, bekommt ein NEIN — nicht ein Ja.
+    if (typeof quellen?.kos !== "function") {
+      return false;
+    }
+    const ref = await objects.metadata(objectId);
+    if (!ref) {
+      return false;
+    }
+    const urteil = await beurteileAnhang(
+      user,
+      objectId,
+      {
+        confidentiality: isValidConfidentiality(ref.confidentiality) ? ref.confidentiality : null,
+        author: ref.lifecycle?.owner ?? null,
+      },
+      quellen,
+    );
+    return urteil.sichtbar;
+  }
+
+  function betrachterFuer(user: SessionUser): ScormBetrachter {
+    return {
+      ko: sichtbarkeitsfilterFuer(user),
+      medium: (objectId) => mediumSichtbar(user, objectId),
+    };
+  }
+
   return async (app) => {
     app.post("/api/output/scorm/pruefen", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
@@ -28,7 +67,8 @@ export function lmsExportRoutes(
         return;
       }
       try {
-        reply.code(200).send(await lmsExport.pruefe(leseScormEingabe(request.body)));
+        const eingabe = leseScormEingabe(request.body);
+        reply.code(200).send(await lmsExport.pruefe(eingabe, betrachterFuer(user)));
       } catch (error) {
         sendError(reply, error);
       }
@@ -41,7 +81,7 @@ export function lmsExportRoutes(
       }
       try {
         const eingabe = leseScormEingabe(request.body);
-        const ergebnis = await lmsExport.exportiere(eingabe);
+        const ergebnis = await lmsExport.exportiere(eingabe, betrachterFuer(user));
         if (!("daten" in ergebnis)) {
           reply.code(422).send({ error: "EXPORT_BLOCKED", pruefung: ergebnis.pruefung });
           return;

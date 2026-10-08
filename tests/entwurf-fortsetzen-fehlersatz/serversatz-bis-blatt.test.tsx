@@ -18,6 +18,8 @@
 //       `:117`  404 · `{ error: "NOT_FOUND",  message: "Entwurf nicht gefunden." }`
 //       `:121`  403 · `{ error: "FORBIDDEN",  message: "Entwurf nicht verfuegbar." }`
 //   beide aus `requireVisibleDraft` (`:109-125`), gerufen von `GET /api/drafts/:id` (`:1138-1143`).
+//   (Stand JOB 3921. Seit aufnahme:20260922:gesamt-leserechte, R-0239, gibt es nur noch die erste
+//   Zeile: der fremde Entwurf antwortet wie der unbekannte — s. `ERWARTET` unten.)
 //
 // DIE LÜCKE, DIE DIESE DATEI SCHLIESST — jede Stelle vor dem Schreiben geöffnet:
 //   1. `tests/capture/frontdoor-draft-deeplink-mounted.test.tsx:142-148` misst den angezeigten Satz
@@ -170,9 +172,15 @@ if (typeof (globalThis.crypto as { randomUUID?: unknown } | undefined)?.randomUU
 // ================================================================================================
 // Er steht hier, damit die rote Meldung bei einer Änderung an `capture-routes.ts` den Unterschied
 // NENNT statt nur „erwartet true". Jede andere Stelle dieser Datei arbeitet mit dem GEMESSENEN Wert.
+//
+// aufnahme:20260922:gesamt-leserechte (R-0239, Entscheidung J24 vom 13.08.2026: „404"): der fremde
+// Entwurf hatte bis hierher einen EIGENEN Satz (403, „Entwurf nicht verfuegbar.") — und verriet
+// damit, dass es ihn gibt. Seither antwortet er zeichengleich wie die unbekannte Kennung. Die
+// Zusage dieser Datei dreht sich an genau dieser einen Stelle um: aus „zwei Sätze" wird „derselbe
+// Satz"; Naht (Blatt == Server) und Wortlaut-Pin (Server == ERWARTET) bleiben, wie sie waren.
 const ERWARTET = {
   unbekannt: "Entwurf nicht gefunden.",
-  fremd: "Entwurf nicht verfuegbar.",
+  fremd: "Entwurf nicht gefunden.",
 } as const;
 
 const PASSWORT = "geheim12345";
@@ -488,24 +496,24 @@ describe("JOB 3921 A · was der Server auf eine unbekannte und auf eine fremde K
     ).toBe(`404 · NOT_FOUND · ${ERWARTET.unbekannt}`);
   });
 
-  it("A2 · fremde Kennung, zweite Expertin mit demselben Recht: 403 mit EIGENEM Wortlaut", async () => {
-    // `canSeeDraft` (`capture-routes.ts:41-43`) trennt nach EIGENTUM, nicht nach Recht: beide tragen
-    // `ko.create`, nur eine hat den Entwurf angelegt.
+  it("A2 · fremde Kennung, zweite Expertin mit demselben Recht: 404 wie die unbekannte Kennung", async () => {
+    // `canSeeDraft` trennt nach EIGENTUM, nicht nach Recht: beide tragen `ko.create`, nur eine hat
+    // den Entwurf angelegt. Seit R-0239 ist der fremde Entwurf für die zweite nicht vorhanden.
     const m = await messung();
     expect(
       `${m.fremd.status} · ${m.fremd.code} · ${m.fremd.message}`,
-      "Der Wortlaut steht in capture-routes.ts:121 — auch die ASCII-Schreibweise „verfuegbar“ ist Istwert und wird hier nur festgehalten, nicht bewertet.",
-    ).toBe(`403 · FORBIDDEN · ${ERWARTET.fremd}`);
+      "Der fremde Entwurf muss antworten wie die unbekannte Kennung (requireVisibleDraft) — jede Abweichung ist eine Existenzauskunft.",
+    ).toBe(`404 · NOT_FOUND · ${ERWARTET.fremd}`);
   });
 
-  it("A3 · es sind ZWEI Sätze und nicht einer doppelt — und keiner von beiden ist leer", async () => {
-    // Ohne diesen Fall wäre eine Route, die beide Lagen mit demselben Satz beantwortet, unbemerkt;
-    // und ein leerer Satz (§9: „erfolgreich leer" gibt es hier nicht, ein 404 ist ein FEHLER) wäre
-    // genau die stille Lüge, gegen die JOB 3851 gebaut wurde.
+  it("A3 · fremd und unbekannt sind DERSELBE Satz — und er ist nicht leer", async () => {
+    // Die umgedrehte Zusage (R-0239): ein zweiter Satz für den fremden Entwurf wäre wieder die
+    // Auskunft „gibt es, gehört jemand anderem". Ein leerer Satz (§9: „erfolgreich leer" gibt es
+    // hier nicht, ein 404 ist ein FEHLER) wäre die stille Lüge, gegen die JOB 3851 gebaut wurde.
     const m = await messung();
-    expect(m.unbekannt.message).not.toBe(m.fremd.message);
+    expect(m.fremd).toEqual(m.unbekannt);
+    expect(m.sprachen.fremd).toEqual(m.sprachen.unbekannt);
     expect(m.unbekannt.message.trim().length).toBeGreaterThan(0);
-    expect(m.fremd.message.trim().length).toBeGreaterThan(0);
   });
 });
 
@@ -583,15 +591,15 @@ describe("JOB 3921 C · das Blatt zeigt den Satz des Servers", () => {
     expect(satz.trim().length).toBeGreaterThan(0);
   });
 
-  it("C2 · fremde Kennung: derselbe Weg, der ANDERE Satz — der 403 kommt durch, nicht der 404", async () => {
+  it("C2 · fremde Kennung: derselbe Weg, derselbe Satz wie die unbekannte — nichts verrät den Entwurf", async () => {
     const m = await messung();
     const satz = await blattSatzFuer(m.tokenFremde, m.eigeneKennung);
     expect(satz).toBe(m.fremd.message);
-    expect(satz, "Der Satz auf dem Blatt hat sich geändert — s. capture-routes.ts:121.").toBe(
+    expect(satz, "Der Satz auf dem Blatt hat sich geändert — s. requireVisibleDraft.").toBe(
       ERWARTET.fremd,
     );
-    // Ohne diese Zeile wäre ein Blatt, das jeden Ladefehler mit demselben Satz beantwortet, grün.
-    expect(satz).not.toBe(m.unbekannt.message);
+    // R-0239: auch auf dem Blatt ist der fremde Entwurf vom nicht vorhandenen nicht zu unterscheiden.
+    expect(satz).toBe(m.unbekannt.message);
   });
 
   it("C3 · §9 laden: SOLANGE der Abruf läuft, steht keine Fehlermeldung da — erst danach", async () => {
@@ -669,19 +677,19 @@ describe("JOB 3921 C · das Blatt zeigt den Satz des Servers", () => {
 describe("JOB 3921 D · der Satz des Servers und der Satz auf dem Blatt sind DIESELBE Zeichenkette", () => {
   it("D1 · beide Enden gemessen, beide Lagen zugleich — und der Wortlaut dazu gepinnt", async () => {
     const m = await messung();
-    const aufDemBlatt404 = await blattSatzFuer(m.tokenEignerin, UNBEKANNT);
-    const aufDemBlatt403 = await blattSatzFuer(m.tokenFremde, m.eigeneKennung);
+    const aufDemBlattUnbekannt = await blattSatzFuer(m.tokenEignerin, UNBEKANNT);
+    const aufDemBlattFremd = await blattSatzFuer(m.tokenFremde, m.eigeneKennung);
 
     // ---- DIE NAHT: Messung gegen Messung. Rot, wenn die Fläche aufhört durchzureichen. ----------
     expect(
-      `404→ ${aufDemBlatt404} | 403→ ${aufDemBlatt403}`,
+      `unbekannt→ ${aufDemBlattUnbekannt} | fremd→ ${aufDemBlattFremd}`,
       "Die Fläche reicht den Serversatz nicht mehr durch — s. `ladeFehlerMeldung`, Blatt.tsx:219-224.",
-    ).toBe(`404→ ${m.unbekannt.message} | 403→ ${m.fremd.message}`);
+    ).toBe(`unbekannt→ ${m.unbekannt.message} | fremd→ ${m.fremd.message}`);
 
     // ---- DER WORTLAUT-PIN: rot, wenn der Server etwas anderes sagt — mit beiden Sätzen. ---------
     expect(
       `der Server sagt: „${m.unbekannt.message}“ / „${m.fremd.message}“`,
-      "capture-routes.ts:117 bzw. :121 hat den Satz geändert — das Blatt zeigt ihn seither ungeprüft.",
+      "requireVisibleDraft (capture-routes.ts) hat den Satz geändert — das Blatt zeigt ihn seither ungeprüft.",
     ).toBe(`der Server sagt: „${ERWARTET.unbekannt}“ / „${ERWARTET.fremd}“`);
   });
 });

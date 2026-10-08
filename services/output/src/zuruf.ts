@@ -217,7 +217,13 @@ export interface ZurufVorschlag {
 }
 
 export interface ZurufServiceDeps {
-  koService: KoService;
+  /**
+   * Nur `get` — aufnahme:20260922:gesamt-leserechte: die Route reicht je Anfrage einen Zugang
+   * herein, der nur liefert, was DIESER Betrachter sehen darf; ein verborgenes Objekt fällt hier
+   * wie eine unbekannte Kennung weg. So bleibt die Reihenfolge „Einwilligung vor jedem
+   * Bestandszugriff" unberührt.
+   */
+  koService: Pick<KoService, "get">;
   /** Fehlt er, gibt es keinen Weg nach draussen — der Dienst antwortet `NO_FORMULIERER`. */
   formulierer?: Formulierer;
   /**
@@ -230,7 +236,7 @@ export interface ZurufServiceDeps {
 }
 
 export class ZurufService {
-  private readonly koService: KoService;
+  private readonly koService: Pick<KoService, "get">;
   private readonly formulierer: Formulierer | undefined;
   private readonly einwilligungspruefer: Ka6Einwilligungspruefer | undefined;
   private readonly now: () => number;

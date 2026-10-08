@@ -12,8 +12,9 @@ import {
   type ZurufVorschlag,
 } from "../../../output";
 import { bindeAnbieter, bindeZustimmung, imBindungsrahmen } from "../../../reasoner";
-import type { Guards } from "../http";
+import type { Guards, SessionUser } from "../http";
 import { sendError } from "../http";
+import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
 // ================================================================================================
 // JOB 3091 · M2 — DER ZURUF AUS DEM WORD-PANEL: `POST /api/klara/sessions/{sessionId}/zuruf`
@@ -221,11 +222,24 @@ export function klaraZurufRoutes(deps: KlaraZurufRouteDeps, guards: Guards): Fas
       return freigabe;
     },
   };
-  const zuruf = new ZurufService({
-    koService: deps.ko,
-    einwilligungspruefer,
-    ...(deps.modell ? { formulierer: formuliererAusModell(deps.modell) } : {}),
-  });
+  // aufnahme:20260922:gesamt-leserechte: der Erzeuger liest seine Quellen über einen Zugang, der
+  // nur liefert, was DIESER Betrachter sehen darf (Stufe, Autor, führender Space — die eine Regel
+  // aus `../sichtbarkeit`). Vorher ging der Inhalt eines internen Objekts aus einem fremden Space an
+  // den Formulierer, sobald jemand seine Kennung nannte. Ein verborgenes Objekt fällt wie eine
+  // unbekannte Kennung weg; gelesen wird weiterhin erst NACH der Einwilligung (im Erzeuger).
+  const zurufFuer = (user: SessionUser): ZurufService => {
+    const sichtbar = sichtbarkeitsfilterFuer(user);
+    return new ZurufService({
+      koService: {
+        get: async (id: string) => {
+          const ko = await deps.ko.get(id);
+          return ko && sichtbar(ko) ? ko : undefined;
+        },
+      },
+      einwilligungspruefer,
+      ...(deps.modell ? { formulierer: formuliererAusModell(deps.modell) } : {}),
+    });
+  };
 
   return async (app) => {
     // Bens B3 (Runde 2): je Anfrage ein Rahmen für die Klara-Anbieterbindung
@@ -261,7 +275,7 @@ export function klaraZurufRoutes(deps: KlaraZurufRouteDeps, guards: Guards): Fas
             `koIds: mindestens eine und höchstens ${ZURUF_MAX_QUELLEN} Quellenkennungen sind erforderlich.`,
           );
         }
-        const vorschlag = await zuruf.schlageVor({
+        const vorschlag = await zurufFuer(user).schlageVor({
           art,
           text,
           koIds,

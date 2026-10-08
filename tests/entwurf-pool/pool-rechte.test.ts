@@ -162,7 +162,8 @@ describe("K1 · ohne die bewusste Handlung ist kein Entwurf im Pool", () => {
           url: `/api/drafts/${id}`,
           headers: wer.kopf,
         });
-        expect(einzel.statusCode).toBe(403);
+        // aufnahme:20260922:gesamt-leserechte (R-0239): nicht sichtbar heisst nicht vorhanden.
+        expect(einzel.statusCode).toBe(404);
         expect(einzel.body).not.toContain("Linie 4");
       }
     }
@@ -191,7 +192,8 @@ describe("K1 · ohne die bewusste Handlung ist kein Entwurf im Pool", () => {
       url: `/api/objects/${b.privatBild}/raw`,
       headers: b.ada.kopf,
     });
-    expect({ einzel: einzel.statusCode, roh: roh.statusCode }).toEqual({ einzel: 403, roh: 404 });
+    // R-0239: Entwurfsweg und Anhangsweg antworten seither gleich — beide „nicht vorhanden".
+    expect({ einzel: einzel.statusCode, roh: roh.statusCode }).toEqual({ einzel: 404, roh: 404 });
   });
 });
 
@@ -217,9 +219,9 @@ describe("K2 · der Autor gibt einen eigenen Entwurf in den Pool — und nur er"
 
   it("A2 · ein anderer Schreibberechtigter kann einen fremden Entwurf weder teilen noch zurücknehmen", async () => {
     const b = await buehne();
-    // Privat: der Entwurf ist für ihn nicht da (403 wie jeder andere Entwurfsweg).
-    expect((await inPool(b, b.otto.kopf, b.privatId, true)).statusCode).toBe(403);
-    expect((await inPool(b, b.ada.kopf, b.privatId, true)).statusCode).toBe(403);
+    // Privat: der Entwurf ist für ihn nicht da (404 wie jeder andere Entwurfsweg — R-0239).
+    expect((await inPool(b, b.otto.kopf, b.privatId, true)).statusCode).toBe(404);
+    expect((await inPool(b, b.ada.kopf, b.privatId, true)).statusCode).toBe(404);
     // Im Pool: sichtbar, aber nicht seiner — zurücknehmen darf er ihn nicht.
     expect((await inPool(b, b.anna.kopf, b.poolId, true)).statusCode).toBe(200);
     const fremd = await inPool(b, b.otto.kopf, b.poolId, false);
@@ -307,7 +309,7 @@ describe("K3 · ein Pool-Entwurf ist für alle Schreibberechtigten da — ein pr
     expect(await listenIds(b, b.vera.kopf)).toBe(403);
   });
 
-  it("P3 · Einzelabruf: Pool-Entwurf 200 mit Inhalt, privater 403 ohne Inhalt", async () => {
+  it("P3 · Einzelabruf: Pool-Entwurf 200 mit Inhalt, privater 404 ohne Inhalt", async () => {
     const b = await buehne();
     await inPool(b, b.anna.kopf, b.poolId, true);
     const pool = await b.app.inject({
@@ -323,11 +325,11 @@ describe("K3 · ein Pool-Entwurf ist für alle Schreibberechtigten da — ein pr
       url: `/api/drafts/${b.privatId}`,
       headers: b.otto.kopf,
     });
-    expect(privat.statusCode).toBe(403);
+    expect(privat.statusCode).toBe(404);
     expect(privat.body).not.toContain("Annas privater Entwurf");
   });
 
-  it("P4 · nächster Schritt: Pool-Entwurf 200, privater 403", async () => {
+  it("P4 · nächster Schritt: Pool-Entwurf 200, privater 404", async () => {
     const b = await buehne();
     await inPool(b, b.anna.kopf, b.poolId, true);
     const schritt = (id: string) =>
@@ -337,7 +339,7 @@ describe("K3 · ein Pool-Entwurf ist für alle Schreibberechtigten da — ein pr
         headers: b.otto.kopf,
       });
     expect((await schritt(b.poolId)).statusCode).toBe(200);
-    expect((await schritt(b.privatId)).statusCode).toBe(403);
+    expect((await schritt(b.privatId)).statusCode).toBe(404);
   });
 
   it("P5 · Anhang: die Bytes des Pool-Entwurfs ja, die des privaten nein — ohne Schreibrecht keine", async () => {
@@ -362,7 +364,7 @@ describe("K3 · ein Pool-Entwurf ist für alle Schreibberechtigten da — ein pr
     });
   });
 
-  it("P6 · Fortsetzen: Otto schreibt im Pool-Entwurf weiter — derselbe Entwurf, Autorin bleibt Anna; privat 403", async () => {
+  it("P6 · Fortsetzen: Otto schreibt im Pool-Entwurf weiter — derselbe Entwurf, Autorin bleibt Anna; privat 404", async () => {
     const b = await buehne();
     await inPool(b, b.anna.kopf, b.poolId, true);
     const vorher = await b.app.inject({
@@ -398,7 +400,7 @@ describe("K3 · ein Pool-Entwurf ist für alle Schreibberechtigten da — ein pr
       headers: b.otto.kopf,
       payload: { statement: "Übernommen." },
     });
-    expect(privat.statusCode).toBe(403);
+    expect(privat.statusCode).toBe(404);
   });
 
   it("P7 · zurückgenommen: derselbe Entwurf ist sofort wieder auf allen Lesewegen zu", async () => {
@@ -409,7 +411,7 @@ describe("K3 · ein Pool-Entwurf ist für alle Schreibberechtigten da — ein pr
     expect(
       (await b.app.inject({ method: "GET", url: `/api/drafts/${b.poolId}`, headers: b.otto.kopf }))
         .statusCode,
-    ).toBe(403);
+    ).toBe(404);
     expect(
       (
         await b.app.inject({

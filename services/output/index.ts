@@ -11,6 +11,7 @@ export {
   type OutputDocument,
   type GenerateOutputInput,
   type OutputErrorCode,
+  type OutputSichtbarkeit,
 } from "./src/types";
 // AUFTRAG-mega29 C3: der Ehrlichkeits-Satz des Herkunftsblocks (+ der Renderer, der ihn trägt).
 export { OUTPUT_NO_CHECK_NOTE, renderProvenance } from "./src/render";
@@ -28,6 +29,7 @@ export type {
   ScormBefund,
   ScormBefundCode,
   ScormBefundBereich,
+  ScormBetrachter,
   ScormEmpfaenger,
   ScormExportEingabe,
   ScormFassung,

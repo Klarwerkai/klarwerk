@@ -110,7 +110,8 @@ describe('JOB 3266 D1 · „Meine Entwürfe" zeigt nur die eigenen', () => {
       url: `/api/drafts/${fremdeKennung}`,
       headers: erikKopf,
     });
-    expect(direkt.statusCode).toBe(403);
+    // aufnahme:20260922:gesamt-leserechte (R-0239): 404 wie „gibt es nicht", nicht 403.
+    expect(direkt.statusCode).toBe(404);
 
     await app.close();
   });

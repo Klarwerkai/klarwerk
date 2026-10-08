@@ -1,0 +1,68 @@
+# Leserechte in Suche, Medien, Aktivitäten und Nebenwegen — Abgleich und Restlücken
+
+*Aufnahme 20260922 · `aufnahme:20260922:gesamt-leserechte` (Revision 1). Kriterien, Quellen und
+Nichtziele unverändert aus `AUFTRAG-B1.json` / `QUELLEN.json`. Basis: `a27922e6`
+(`1.0.0-beta.1.754`). Dieses Dokument ordnet jeden zugeordneten Originalpunkt dem heutigen Stand
+zu und nennt, was in diesem Lauf gebaut wurde. „Code" heißt Quelleninspektion an diesem Stand,
+„Test" nennt einen vorhandenen oder neuen Verhaltenstest — ob er grün ist, sagt erst sein Lauf,
+nicht dieses Dokument. Eine Lieferfassung entsteht erst mit der Auslieferung.*
+
+## In diesem Lauf geschlossen (konkrete Schutzlücken, K1/K3/K4)
+
+| Lücke am Stand `a27922e6` | Änderung | Test |
+| --- | --- | --- |
+| **Entwürfe verrieten ihre Existenz.** Ein fremder, nicht sichtbarer Entwurf antwortete auf allen Entwurfswegen 403 `FORBIDDEN` „Entwurf nicht verfuegbar." statt wie ein nicht vorhandener. Das ist genau der Fall des Nutzerwerts dieses Auftrags („403 verraet, dass der Entwurf existiert") und der Entscheidung J24 vom 13.08.2026 („… 404"), R-0239. | `requireVisibleDraft` (`capture-routes.ts`), `naechster-schritt-entwurf.ts` und die Dokumentübernahme mit `draftId` (`build-app.ts`, `draftPromotion.load/applyAndLoad`) antworten 404 `NOT_FOUND` „Entwurf nicht gefunden." — zeichengleich mit einer unbekannten Kennung, in DE/EN/NL. Der Katalogsatz `DRAFT_NOT_VISIBLE` ist entfallen. 403 bleibt nur für den **sichtbaren** Pool-Entwurf, an dem das Verfügungsrecht fehlt (Pedi `297afc57`). | `tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts` (F1–F4, H2), angepasst: `tests/entwurf-pool/pool-rechte.test.ts`, `tests/entwurf-einreichen/entwurf-ist-privat.test.ts`, `tests/entwurf-fortsetzen-fehlersatz/serversatz-bis-blatt.test.tsx`, `tests/app/ka8-naechster-schritt-*.test.ts`, `tests/d1-meine-entwuerfe/entwuerfe-nur-eigene.test.ts`, `tests/capture/mega21-vorgangsdatensatz.test.ts`, `services/app/src/build-app.test.ts` |
+| **Output Factory ohne Lesepolicy.** `GET /api/output/sources` und `POST /api/output/generate` prüften nur die Stufe am Objekt: der führende Space galt nicht, und eine fremde Kennung antwortete je nach Zustand `UNKNOWN_KO` / `NOT_VALIDATED` / `CONFIDENTIAL` (Existenzauskunft). | Pflichtfilter `sichtbarkeitsfilterFuer(user)` (fail-closed ohne Filter); nicht sichtbar antwortet wie `UNKNOWN_KO`. | `tests/security/leserechte-ausgabewege.test.ts` |
+| **SCORM-Übergabe nannte den Titel fremder vertraulicher Objekte.** `POST /api/output/scorm/pruefen` befundete `CONFIDENTIAL` **mit Titel** auch für Betrachter ohne Leserecht; Spaces galten nicht. Bilder gingen ins Paket, sobald ein validiertes Objekt ihre Kennung im Fließtext nannte — eine Behauptung, die der Bildabruf seit mega78 abweist. | Objekte über `sichtbarkeitsfilterFuer(user)`, Bilder über `beurteileAnhang` mit denselben Herkünften wie `GET /api/objects/:id`; nicht sichtbar = `UNKNOWN_KO` bzw. `MEDIA_MISSING`, die Bytes werden ohne Urteil gar nicht gelesen. | `tests/security/leserechte-ausgabewege.test.ts`, angepasst `tests/lernplattform-scorm/*` |
+| **Zuruf (Klara-Memo) las Quellen aus fremden Spaces.** `POST /api/klara/sessions/:id/zuruf` gab den Inhalt eines internen Objekts aus einem fremden Space an den Formulierer, sobald seine Kennung genannt wurde. | Der Erzeuger liest je Anfrage über einen Zugang mit der Lesepolicy des Betrachters; nicht sichtbar fällt wie eine unbekannte Kennung weg; Einwilligung weiterhin vor jedem Bestandszugriff. | `tests/security/leserechte-ausgabewege.test.ts` (Zuruf) |
+
+Der Lesewege-Sammler führt die vier Ausgabewege und den Zuruf jetzt als `PRAEDIKAT` (gemessen) statt
+`DIENST_FILTERT` (Leseurteil) — `tests/security/mega74-lesewege-sammler.test.ts`.
+
+**Folge für Verbraucher, benannt:** die Weboberfläche reicht den Serversatz durch und zeigt bei einem
+fremden Entwurf jetzt „Entwurf nicht gefunden."; die Browserleiste (`extensions/klara-browser`)
+deutet 404 auf einem gespeicherten Entwurf als „gibt es nicht mehr" und sichert danach neu — nach
+einem Kontowechsel in der Leiste entsteht also ein eigener Entwurf des neuen Kontos statt der
+Meldung „verweigert". Fremder Inhalt wird dabei nicht gelesen.
+
+## Je Originalpunkt
+
+| Punkt | Ergebnis heute | Beleg / offene Entscheidung |
+| --- | --- | --- |
+| R-0239 Prüfen ohne Verrat | **404 statt 403: in diesem Lauf gebaut** (s. oben). Getrennte Prüfrolle: `controller` mit `ko.validate`, getrennt von `experte` (Code `services/rbac/src/policy.ts`). Aktive Benachrichtigung bei Zuweisung: Einreichweg ruft `notifyAssignment` je Prüferin (Code `capture-routes.ts`, Promote). **Maskierte Autorantwort beim Prüfen: im Code nicht gefunden.** | Maskierung gehört laut Quelle zur Prüflogik (eigene Zeile S5/W8); dort offen, hier nicht gebaut. |
+| R-0450 Suche ohne vertrauliche Titel | Sichtbarkeit als SQL-Prädikat vor `LIMIT` (`sqlSichtbarkeitFuer`, `sichtbarkeit.ts`), Nachfilter an der Route. | Code; Tests `tests/security/380-trim-vor-pagination.test.ts`, `suchsichtbarkeit-altbestand-regel.test.ts` |
+| R-0492 / R-0630 Medien serverseitig | Bildabruf und Medienanalyse über `beurteileAnhang` (Trägerregel, fail-closed ohne Träger). SCORM-Bilder jetzt ebenso (neu). | Tests `mega74-anhang-vertraulich`, `mega76-anhang-herkuenfte`, `mega78-traeger-nachweis`, neu `leserechte-ausgabewege` |
+| R-0493 Sperre auf allen Leserouten, gezählt | Lesewege-Sammler über den Syntaxbaum mit Urteil je Route. | Test `mega74-lesewege-sammler` (vier Ausgabewege + Zuruf jetzt gemessen) |
+| R-0494 / R-0610 / R-1968 Nebenwege | Paarregel + Feldredaktion für Konflikte/Überschneidungen, Glocke über `sichtbareEintraege`. **E-Mail-Weg (R-0610) nicht eigens geprüft.** | Test `mega74-nebenwege-vertraulich`; E-Mail-Weg: offener Prüfpunkt |
+| R-0496 / R-1860 Aktivitätsansicht | Live-Wand filtert vor Ausgabe. | Test `tests/app/g14-livewall-helped-sichtbarkeit.test.ts` |
+| R-0506 / R-1839 Ein Tor vor allen Aktionen | `Record<KoAktion, Torurteil>` vor dem Schalter. | Test `mega80-kennung-ist-kein-leserecht` |
+| R-0508 / R-0515 / R-1842 / R-1964 Eine Stelle, 404 am Hauptleseweg | `darfSehen` (`sichtbarkeit.ts:90`), `GET /api/kos/:id`, Versionen, Belege → 404. Abnahme aller Lesewege mit Rollen/Entzug: in diesem Lauf für Ausgabewege und Entwürfe ergänzt. | Tests `mega74-lesepfad-vertraulich`, neu `leserechte-ausgabewege` (Entzug beim Folgeabruf) |
+| R-0509 Export | Bibliotheksexport mit Regel; Output Factory und SCORM jetzt mit Betrachterpolicy (neu). Quellenwiderspruch: Erkenntnisbuch „fertig" gegen Lagebericht „teilweise" (Quelle) — am Code heute neun + die hier geschlossenen Wege. | Tests `g6-export-formate-vertraulich`, neu `leserechte-ausgabewege` |
+| R-0511 / R-1970 Herkunftsnachweis „nicht scharf" | **Überholt:** `provenance-routes.ts:110` antwortet für nicht sichtbare Objekte 404 (scharf, JOB 1170). | Tests `g10-herkunft-zentrum-vertraulich`, `job1170-herkunft-zentrum-vertraulich` |
+| R-0513 Nur eigene Entwürfe | Entwürfe privat (`entwurfSichtbarFuer`, Pedi `debbb8e8`), Pool nur nach Handlung des Autors (R-2099). Einzelabruf fremder Entwürfe jetzt 404 (neu). | Tests `entwurf-ist-privat`, `pool-rechte`, `entwuerfe-nur-eigene` |
+| R-0517 Namensauskunft | `GET /api/directory` (`services/auth/src/routes.ts:872`) für angemeldete Nutzer. | Code; Wirkungsprüfung in diesem Lauf nicht wiederholt |
+| R-0524 / R-0743 / R-0976 Prüf-Board | `validation-routes.ts` mit Sichtbarkeitsprädikat. | Test `tests/security/g1-pruefboard-vertraulich.test.ts` |
+| R-0525 / R-2058 / R-2137 / SOLL:FR-RBAC-04 Serverseitige Prüfung | Rechtetor je Route + Routen-Recht-Register; Abweisung am Draht je Rolle. **Historisches AK „ohne Recht → 403" ist für Lesewege bewusst abgelöst: nicht sichtbar → 404** (mega80, R-0239). Ein Pen-Test (R-2058) liegt nicht vor. | Tests `tests/beta-rollenabnahme/rollen-am-draht.test.ts`, `routeGuardAudit`; Pen-Test: offene externe Voraussetzung |
+| R-0528 Rolle, Weg, Menü gleich | Nicht in diesem Lauf geprüft. | Offener Prüfpunkt (Oberflächenabnahme) |
+| R-0534 Konsole aus geprüftem Recht | `makeGuards` (`http.ts`) erzeugt Rolle und Space-Lesbarkeit aus der Anmeldung, nicht aus dem Aufruf. Einen Code-Anker für den „Bahnwechsel" der Quelle (JOB 2658, alte Steuerungsarchitektur) gibt es im Produkt nicht. | Code; Quellenbezug ungeklärt |
+| R-0538 / R-0548 Wissensnetz, Knotengröße aus sichtbarem Bestand | Lesemodell fail-closed, Sichtbarkeit vor der Rechnung. | Tests `tests/ko/kanten-lesekette-sichtbarkeit.test.ts`, `tests/wiki-grossbestand-nutzerweg/deckel-auf-sichtbarer-grundmenge.test.ts` |
+| R-0539 / R-0543 / R-0555 / R-1969 Gesamtvorhaben, Vertrag Quelle→Export, Bündel G9 | Eine Regel (`sichtbarkeit.ts`), Sammler über alle Routen; die hier geschlossenen Ausgabewege waren die letzten Leseurteile ohne Messung bei Ausgabe von KO-Inhalt. Die Ticket-Zusammenführung G9 (SCRUM-533/449/508/556) ist eine Planungsfrage, kein Produktcode. | Vollständige Matrix „jeder Zugriffspunkt × jede Rolle" (R-0543) bleibt offen |
+| R-0568 Vor Kollegen verbergen | Entschiedene Grenze laut Nichtziel: abgelöst durch die heutigen Rechte- und Vertraulichkeitsregeln (vertraulich: nur Prüfrolle/Autor; Spaces). | — |
+| R-0574 / R-0640 G1: was sieht ein reiner Leser? | Gebaut ist Variante A (vertraulich nur `ko.validate` oder Autor). **Quellenwiderspruch:** `sichtbarkeit.ts:34` nennt A „Pedis Variante A, ausdrücklich so gewollt"; die Steuerungsantworten 73/74 (07.09.) kennen „keine gesonderte A/B-Entscheidungsquelle". | Offene Entscheidung für Pedi: A bestätigen oder B (Freigabestufe je Nutzer) |
+| R-0592 / R-0672 Fehlende/unbekannte Stufe | Heute: fehlend/unbekannt gilt beim Lesen als „intern" (`sichtbarkeit.ts:39-43`); nur der trägerlose Anhang ist fail-closed. **R-0592 (fail-closed) widerspricht dem Gebauten**; die Entscheidungsakte E-VERTRAULICHKEIT-OHNE-STUFE-20260828 steht laut Quelle OFFEN. Nicht eigenmächtig umgestellt (Nichtziel „keine neue Policy"). | Offene Entscheidung für Pedi (Weg A/B) |
+| R-0629 Live-Wand, Prüf-Board, Suche, Netz | Vier Flächen mit Prädikat (s. Zeilen oben). | Tests wie oben |
+| R-0631 Vertraulichkeitsstempel in der Suchprojektion | `classification_snapshot` existiert als Fassungsbeleg, ist als Trimquelle ausdrücklich verboten (Höherstufung wirkt sofort über die lebende Zeile). | Code `sichtbarkeit.ts:172-176`; Test `380-trim-vor-pagination` |
+| R-0647 Leck in der Prüfliste | Laut Quelle G7 historisch geschlossen (JOB 2017/2020); heute u. a. Lückenwege über `darfSehen` (`import-run-routes.ts:212`), Prüf-Board mit Prädikat. Die konkrete „Kandidatenliste" der Quelle ist im heutigen Code nicht eindeutig zugeordnet. | Code; Zuordnung der Fläche ungeklärt |
+| R-1271 / R-1853 / R-1858 Pflicht statt optional | Zugänge Pflicht + zweite Linie `zugangTauglich` (`sichtbarkeit.ts:282`); dieselbe Bauform jetzt für Output/SCORM (`fuerBetrachterSichtbar`, `mediumSichtbar`). | Tests `mega76-schutz-erzwungen`, neu `leserechte-ausgabewege` (ohne Filter nichts sichtbar) |
+| P-D5-ORIGINAL-RECHTE (+ doppelte Quellfassung) | Laut Quelle LIVE `1.0.0-beta.1.574` (JOB 4304, Ben GRÜN). Rest (a): **Pedis G4-Entscheidung „KI aus verbietet zusätzlich den Originalabruf?" steht aus.** Rest (b) laut Quelle ausdrücklich nicht geschnitten. | Historischer Beleg; Test `tests/klara-quellen-nutzerweg/entzug-sperrt-die-quelle.test.ts`; PG+Chromium-Lauf hier nicht wiederholt |
+| TEST-A02 Rollen, Rechte, Gastkonto | Vollständige Rollen-/Gastabnahme laut Quelle offen; in diesem Lauf nicht als Gesamtabnahme erbracht. | Offener Prüfpunkt (Gesamtprüfung) |
+| package:entwuerfe | Gemeinsam mit `gesamt-entwurf-einreichen`, `erfassen-verwerfen`, `gesamt-papierkorb`; hier nur der Leserechte-Anteil (404 für fremde Entwürfe). Verwerf-/Lösch-/Papierkorbfälle gehören den anderen Aufträgen. | Abgegrenzt |
+
+## Grenzen dieses Laufs
+
+- Keine echte menschliche Bedienung, keine Produktivmittel, kein Pen-Test.
+- PG- und Neustartfälle (K3) wurden nicht neu gefahren; die Ausgabewege halten keinen
+  Zwischenspeicher (Urteil je Anfrage), der Bildabruf liest Träger bei jedem Urteil frisch
+  (Kandidaten-Speicher, JOB 2706).
+- Offene Entscheidungen für Pedi: G1 (A/B), fehlende Stufe (R-0592/R-0672), G4 (KI aus und
+  Originalabruf). Bis dahin bleibt das Gebaute unverändert.

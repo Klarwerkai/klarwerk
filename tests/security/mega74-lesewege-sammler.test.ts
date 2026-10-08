@@ -324,21 +324,24 @@ const REGISTER: Record<string, Eintrag> = {
     recht: "ko.validate",
     grund: "SCRUM-506 — includeConfidential als Datum (library-routes.ts:172).",
   },
+  // aufnahme:20260922:gesamt-leserechte: die vier Ausgabewege tragen jetzt die Lesepolicy des
+  // Betrachters (vorher nur die Stufe am Objekt — Spaces galten nicht, und die SCORM-Prüfung nannte
+  // den Titel eines fremden vertraulichen Objekts). Damit sind sie MESSBAR statt Leseurteil.
   "GET /api/output/sources": {
-    urteil: "DIENST_FILTERT",
-    grund: "output/src/service.ts:39 — !isConfidential auf der Quellenliste.",
+    urteil: "PRAEDIKAT",
+    grund: "sichtbarkeitsfilterFuer(user) als Pflichtfilter; zusätzlich !isConfidential.",
   },
   "POST /api/output/generate": {
-    urteil: "DIENST_FILTERT",
-    grund: "output/src/service.ts:62 — wirft bei vertraulichem KO.",
+    urteil: "PRAEDIKAT",
+    grund: "sichtbarkeitsfilterFuer(user); nicht sichtbar antwortet wie UNKNOWN_KO.",
   },
   "POST /api/output/scorm/pruefen": {
-    urteil: "DIENST_FILTERT",
-    grund: "output/src/scorm.ts LmsExportService.lade — vertrauliches KO wird Befund CONFIDENTIAL.",
+    urteil: "PRAEDIKAT",
+    grund: "sichtbarkeitsfilterFuer(user) für Objekte, beurteileAnhang für Bilder.",
   },
   "POST /api/output/scorm/paket": {
-    urteil: "DIENST_FILTERT",
-    grund: "output/src/scorm.ts LmsExportService.lade — vertrauliches KO blockiert, kein Paket.",
+    urteil: "PRAEDIKAT",
+    grund: "sichtbarkeitsfilterFuer(user) für Objekte, beurteileAnhang für Bilder.",
   },
   "POST /api/ask": {
     urteil: "DIENST_FILTERT",
@@ -348,11 +351,13 @@ const REGISTER: Record<string, Eintrag> = {
   // Modell und Titel/Version als Herkunft zurueck ans Panel. Der Erzeuger filtert an EINER Stelle,
   // bevor irgendetwas hinausgeht: nur `status === "validiert"` (zuruf.ts:384) und `dropConfidential`
   // (zuruf.ts:389); und er sammelt erst NACH bestaetigter Einwilligung des Sitzungstors (zuruf.ts:250).
+  // aufnahme:20260922:gesamt-leserechte: der Bestandszugang des Erzeugers trägt jetzt zusätzlich
+  // die Lesepolicy des Betrachters (vorher galt der führende Space hier nicht).
   "POST /api/klara/sessions/:sessionId/zuruf": {
-    urteil: "DIENST_FILTERT",
+    urteil: "PRAEDIKAT",
     grund:
-      "output/src/zuruf.ts:384/389 — nur validierte KOs, dropConfidential auf der Quellenliste; " +
-      "Einwilligung (zuruf.ts:250) vor jedem Bestandszugriff.",
+      "sichtbarkeitsfilterFuer(user) am Bestandszugang des Erzeugers; dazu nur validierte KOs und " +
+      "dropConfidential (zuruf.ts); Einwilligung vor jedem Bestandszugriff.",
   },
   "POST /api/knowledge/check": {
     // produkt:20261007:spaces: zusätzlich zu dropConfidential filtert die Route die Kandidaten

@@ -94,12 +94,11 @@ export function naechsterSchrittEntwurfRoutes(
 
       try {
         const draft = await capture.getDraft(request.params.id);
-        if (!draft) {
+        // aufnahme:20260922:gesamt-leserechte (R-0239, Entscheidung J24 vom 13.08.: „404"): ein
+        // Entwurf, den dieser Mensch nicht sehen darf, gibt es für ihn nicht — dieselbe Antwort wie
+        // für eine unbekannte Kennung. Vorher verriet 403 FORBIDDEN, dass der Entwurf existiert.
+        if (!draft || !canSeeDraft(user, draft)) {
           reply.code(404).send({ error: "NOT_FOUND", message: "Entwurf nicht gefunden." });
-          return;
-        }
-        if (!canSeeDraft(user, draft)) {
-          reply.code(403).send({ error: "FORBIDDEN", message: "Entwurf nicht verfuegbar." });
           return;
         }
 

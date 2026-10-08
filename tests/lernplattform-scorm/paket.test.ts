@@ -7,7 +7,15 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { SCORM_FORMAT, leseLmsEmpfaenger, leseScormEingabe } from "../../services/output";
-import { PNG_1X1, beispielKo, bestand, eingabe, entpacke, paketOderFehler } from "./beispiel";
+import {
+  ALLES_SICHTBAR,
+  PNG_1X1,
+  beispielKo,
+  bestand,
+  eingabe,
+  entpacke,
+  paketOderFehler,
+} from "./beispiel";
 import { xml } from "./scorm12-attrappe";
 
 const sha = (b: Uint8Array): string => createHash("sha256").update(b).digest("hex");
@@ -227,7 +235,7 @@ describe("K5 · fehlende Medien, nicht Unterstütztes, fehlende Rechte — vor d
 
   it("fehlendes Bild blockiert mit MEDIA_MISSING; es entsteht kein Paket", async () => {
     const { dienst } = bestand([mitBild()], {});
-    const p = await dienst.pruefe(eingabe(["KO-M"]));
+    const p = await dienst.pruefe(eingabe(["KO-M"]), ALLES_SICHTBAR);
     expect(p.exportierbar).toBe(false);
     expect(p.befunde).toContainEqual(
       expect.objectContaining({
@@ -237,7 +245,7 @@ describe("K5 · fehlende Medien, nicht Unterstütztes, fehlende Rechte — vor d
         koId: "KO-M",
       }),
     );
-    const r = await dienst.exportiere(eingabe(["KO-M"]));
+    const r = await dienst.exportiere(eingabe(["KO-M"]), ALLES_SICHTBAR);
     expect("daten" in r).toBe(false);
   });
 
@@ -245,7 +253,7 @@ describe("K5 · fehlende Medien, nicht Unterstütztes, fehlende Rechte — vor d
     const { dienst } = bestand([mitBild()], {
       "OBJ-BILD": { mime: "application/pdf", data: Buffer.from("%PDF-1.4") },
     });
-    const p = await dienst.pruefe(eingabe(["KO-M"]));
+    const p = await dienst.pruefe(eingabe(["KO-M"]), ALLES_SICHTBAR);
     expect(p.exportierbar).toBe(false);
     const b = p.befunde.find((x) => x.code === "MEDIA_UNSUPPORTED");
     expect(b?.detail).toContain("application/pdf");
@@ -268,7 +276,7 @@ describe("K5 · fehlende Medien, nicht Unterstütztes, fehlende Rechte — vor d
       ],
       { "OBJ-BILD": { mime: "image/png", data: PNG_1X1 } },
     );
-    const p = await dienst.pruefe(eingabe(["KO-M"]));
+    const p = await dienst.pruefe(eingabe(["KO-M"]), ALLES_SICHTBAR);
     expect(p.befunde).toContainEqual(
       expect.objectContaining({
         code: "MEDIA_FOREIGN",
@@ -280,7 +288,7 @@ describe("K5 · fehlende Medien, nicht Unterstütztes, fehlende Rechte — vor d
 
   it("nicht validiert und unbekannt blockieren mit eigenem Code; kein Paket", async () => {
     const { dienst } = bestand([beispielKo({ id: "KO-O", status: "offen" })]);
-    const p = await dienst.pruefe(eingabe(["KO-O", "KO-GIBT-ES-NICHT"]));
+    const p = await dienst.pruefe(eingabe(["KO-O", "KO-GIBT-ES-NICHT"]), ALLES_SICHTBAR);
     expect(p.exportierbar).toBe(false);
     expect(p.fassung).toBeNull();
     expect(p.befunde.map((b) => b.code).sort()).toEqual(["NOT_VALIDATED", "UNKNOWN_KO"]);
@@ -401,13 +409,13 @@ describe("K7 · keine geschützten Inhalte, Empfängerfreigabe getrennt, Kontore
       ["KO-S", "SCHUTZDATEN"],
       ["KO-R", "SOURCE_RESTRICTED"],
     ] as const) {
-      const p = await dienst.pruefe(eingabe([id]));
+      const p = await dienst.pruefe(eingabe([id]), ALLES_SICHTBAR);
       expect(p.exportierbar, id).toBe(false);
       expect(
         p.befunde.map((b) => b.code),
         id,
       ).toContain(code);
-      expect("daten" in (await dienst.exportiere(eingabe([id]))), id).toBe(false);
+      expect("daten" in (await dienst.exportiere(eingabe([id]), ALLES_SICHTBAR)), id).toBe(false);
     }
   });
 
@@ -415,7 +423,7 @@ describe("K7 · keine geschützten Inhalte, Empfängerfreigabe getrennt, Kontore
     const { dienst } = bestand([beispielKo({ id: "KO-B2", bodyHtml: BILD_HTML })], {
       "OBJ-BILD": { mime: "image/png", data: PNG_1X1, confidentiality: "streng_vertraulich" },
     });
-    const p = await dienst.pruefe(eingabe(["KO-B2"]));
+    const p = await dienst.pruefe(eingabe(["KO-B2"]), ALLES_SICHTBAR);
     expect(p.befunde.map((b) => b.code)).toContain("MEDIA_CONFIDENTIAL");
   });
 
@@ -430,7 +438,10 @@ describe("K7 · keine geschützten Inhalte, Empfängerfreigabe getrennt, Kontore
 
   it("Empfängerfreigabe ist eine eigene Prüfung: freigegebener Inhalt geht trotzdem nicht an einen fremden Empfänger", async () => {
     const { dienst } = standardBestand();
-    const fremd = await dienst.pruefe(eingabe(["KO-B"], { empfaenger: "fremdes-lms" }));
+    const fremd = await dienst.pruefe(
+      eingabe(["KO-B"], { empfaenger: "fremdes-lms" }),
+      ALLES_SICHTBAR,
+    );
     expect(fremd.exportierbar).toBe(false);
     expect(fremd.befunde).toEqual([
       expect.objectContaining({ code: "RECIPIENT_NOT_ALLOWED", bereich: "empfaenger" }),
@@ -439,9 +450,9 @@ describe("K7 · keine geschützten Inhalte, Empfängerfreigabe getrennt, Kontore
     expect(fremd.fassung?.objekte[0]?.koId).toBe("KO-B");
 
     const { dienst: ohneListe } = bestand([beispielKo({ id: "KO-B" })], {}, []);
-    const keine = await ohneListe.pruefe(eingabe(["KO-B"]));
+    const keine = await ohneListe.pruefe(eingabe(["KO-B"]), ALLES_SICHTBAR);
     expect(keine.befunde.map((b) => b.code)).toEqual(["RECIPIENTS_NOT_CONFIGURED"]);
-    expect("daten" in (await ohneListe.exportiere(eingabe(["KO-B"])))).toBe(false);
+    expect("daten" in (await ohneListe.exportiere(eingabe(["KO-B"]), ALLES_SICHTBAR))).toBe(false);
   });
 
   it("die Betreiberliste nimmt nur gültige Kennungen an (im Zweifel kein Empfänger)", () => {

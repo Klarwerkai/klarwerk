@@ -16,7 +16,8 @@
 //
 // DREI STELLEN, DREI ZUGÄNGE — und warum der dritte anders aussieht:
 //   E  unbekannte Entwurfskennung   → `GET /api/drafts/:id` → 404 NOT_FOUND  (DRAFT_NOT_FOUND)
-//   F  fremder, lebender Entwurf    → `GET /api/drafts/:id` → 403 FORBIDDEN  (DRAFT_NOT_VISIBLE)
+//   F  fremder, lebender Entwurf    → `GET /api/drafts/:id` → 404 NOT_FOUND  (DRAFT_NOT_FOUND —
+//      seit aufnahme:20260922:gesamt-leserechte, R-0239/J24; vorher 403 DRAFT_NOT_VISIBLE)
 //   G  der RBAC-Wächter             → eigene Fastify-Instanz → 403 FORBIDDEN (PERMISSION_DENIED)
 // `services/rbac`s `requirePermission` hat im Produkt heute KEINEN Aufrufer (gemessen: nur
 // `services/rbac/index.ts` exportiert ihn, die Routen fahren das Rechtetor aus
@@ -114,7 +115,7 @@ beforeAll(async () => {
   tokenFremde = await anmelden("fremde@q9entwurf.test");
 
   // `canSeeDraft` trennt nach EIGENTUM, nicht nach Recht: beide Konten tragen `ko.create`, nur
-  // eines legt den Entwurf an. Ohne diesen Unterschied gäbe es den 403-Fall gar nicht.
+  // eines legt den Entwurf an. Ohne diesen Unterschied gäbe es den F-Fall gar nicht.
   const angelegt = await app.inject({
     method: "POST",
     url: "/api/drafts",
@@ -187,42 +188,45 @@ describe("E · `Entwurf nicht gefunden.` spricht die Sprache der Sitzung", () =>
 // ------------------------------------------------------------------------------------------------
 // F · DER FREMDE ENTWURF
 // ------------------------------------------------------------------------------------------------
-describe("F · `Entwurf nicht verfuegbar.` spricht die Sprache der Sitzung", () => {
-  it("F1 EN · fremder Entwurf: 403 FORBIDDEN mit englischem Satz", async () => {
-    const antwort = await entwurfsabruf(tokenFremde, eigeneKennung, "en");
-    expect(antwort.status).toBe(403);
-    expect(antwort.koerper.error).toBe("FORBIDDEN");
-    expect(antwort.koerper.message).toBe("This draft is not available to you.");
-    expect(antwort.koerper.message).toBe(MELDUNGEN.DRAFT_NOT_VISIBLE.en);
-    expect(String(antwort.koerper.message)).not.toMatch(/Entwurf|verfuegbar|Unerwarteter/);
+// aufnahme:20260922:gesamt-leserechte (R-0239, Entscheidung J24 vom 13.08.2026: „404"): bis hierher
+// antwortete dieser Fall 403 FORBIDDEN mit eigenem Satz („Entwurf nicht verfuegbar.") — die
+// Auskunft, dass es den fremden Entwurf GIBT. Jetzt ist er für die Fremde nicht vorhanden: Status,
+// Code und Satz sind in JEDER Sprache zeichengleich mit der unbekannten Kennung aus E. Gemessen wird
+// deshalb gegen die E-Antwort derselben Sprache, nicht gegen einen zweiten Satz.
+describe("F · ein fremder Entwurf antwortet wie ein unbekannter — in jeder Sprache", () => {
+  it("F1 EN · fremder Entwurf: dieselbe Antwort wie die unbekannte Kennung", async () => {
+    const fremd = await entwurfsabruf(tokenFremde, eigeneKennung, "en");
+    const unbekannt = await entwurfsabruf(tokenFremde, UNBEKANNT, "en");
+    expect(fremd).toEqual(unbekannt);
+    expect(fremd.status).toBe(404);
   });
 
-  it("F2 NL · fremder Entwurf: 403 FORBIDDEN mit niederländischem Satz", async () => {
-    const antwort = await entwurfsabruf(tokenFremde, eigeneKennung, "nl");
-    expect(antwort.status).toBe(403);
-    expect(antwort.koerper.error).toBe("FORBIDDEN");
-    expect(antwort.koerper.message).toBe("Dit concept is niet voor jou beschikbaar.");
-    expect(antwort.koerper.message).toBe(MELDUNGEN.DRAFT_NOT_VISIBLE.nl);
-    expect(String(antwort.koerper.message)).not.toMatch(/Entwurf|verfuegbar|Unerwarteter/);
+  it("F2 NL · fremder Entwurf: dieselbe Antwort wie die unbekannte Kennung", async () => {
+    const fremd = await entwurfsabruf(tokenFremde, eigeneKennung, "nl");
+    const unbekannt = await entwurfsabruf(tokenFremde, UNBEKANNT, "nl");
+    expect(fremd).toEqual(unbekannt);
+    expect(fremd.status).toBe(404);
   });
 
-  it("F3 DE · fremder Entwurf: zeichengleicher deutscher Wortlaut", async () => {
+  it("F3 DE · fremder Entwurf: zeichengleicher deutscher Wortlaut der unbekannten Kennung", async () => {
     for (const sprache of [undefined, "de", "fr"]) {
       const antwort = await entwurfsabruf(tokenFremde, eigeneKennung, sprache);
-      expect(antwort.status, String(sprache)).toBe(403);
+      expect(antwort.status, String(sprache)).toBe(404);
       expect(antwort.koerper, String(sprache)).toEqual({
-        error: "FORBIDDEN",
-        message: "Entwurf nicht verfuegbar.",
+        error: "NOT_FOUND",
+        message: "Entwurf nicht gefunden.",
       });
     }
   });
 
-  it("F4 · es sind ZWEI Sätze und nicht einer doppelt — in jeder Sprache", async () => {
-    // Ohne diesen Fall bliebe ein Katalog grün, in dem beide Schlüssel denselben Text tragen: die
-    // Unterscheidung „gibt es nicht" gegen „gehört jemand anderem" wäre für den Menschen weg.
-    for (const sprache of ["de", "en", "nl"] as const) {
-      expect(MELDUNGEN.DRAFT_NOT_FOUND[sprache]).not.toBe(MELDUNGEN.DRAFT_NOT_VISIBLE[sprache]);
-    }
+  it("F4 · die Eignerin sieht ihren Entwurf weiterhin — die 404 gilt nur dem fremden Blick", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/drafts/${eigeneKennung}`,
+      headers: { authorization: `Bearer ${tokenEignerin}` },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain("Kesselhaus Nordstrang Schmierstellenliste 3956");
   });
 });
 
@@ -286,12 +290,14 @@ describe("H · Status und Fehlercode bleiben buchstäblich stehen", () => {
     }
   });
 
-  it("H2 · der Draht des fremden Entwurfs bleibt 403 FORBIDDEN in allen drei Sprachen", async () => {
+  // aufnahme:20260922:gesamt-leserechte: der Draht des fremden Entwurfs ist mit R-0239 bewusst
+  // verschoben worden (403 FORBIDDEN → 404 NOT_FOUND) — und bleibt danach ebenso buchstäblich stehen.
+  it("H2 · der Draht des fremden Entwurfs ist 404 NOT_FOUND in allen drei Sprachen", async () => {
     for (const sprache of ["de", "en", "nl"]) {
       const antwort = await entwurfsabruf(tokenFremde, eigeneKennung, sprache);
-      expect(antwort.status, sprache).toBe(403);
+      expect(antwort.status, sprache).toBe(404);
       expect(Object.keys(antwort.koerper).sort(), sprache).toEqual(["error", "message"]);
-      expect(antwort.koerper.error, sprache).toBe("FORBIDDEN");
+      expect(antwort.koerper.error, sprache).toBe("NOT_FOUND");
     }
   });
 

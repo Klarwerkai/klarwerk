@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryKoRepo, type KnowledgeObject, KoService } from "../../knowledge-object";
 import { OutputService } from "./service";
+import type { OutputSichtbarkeit } from "./types";
+
+// Ein Betrachter, der alles sehen darf — für die Fälle, die nicht die Lesepolicy prüfen.
+const alles: OutputSichtbarkeit = () => true;
 
 function ko(p: Partial<KnowledgeObject> & { id: string }): KnowledgeObject {
   return {
@@ -58,27 +62,27 @@ describe("OutputService (SCRUM-117 / FE-OUT)", () => {
   });
 
   it("listEligible liefert nur validierte KOs", async () => {
-    const sources = await svc.output.listEligible();
+    const sources = await svc.output.listEligible(alles);
     expect(sources.map((s) => s.id).sort()).toEqual(["K1", "K3"]);
     expect(sources.every((s) => s.status === "validiert")).toBe(true);
   });
 
   it("generate lehnt nicht-validierte Quelle ab (NOT_VALIDATED)", async () => {
-    await expect(svc.output.generate({ kind: "instruction", koIds: ["K2"] })).rejects.toMatchObject(
-      { code: "NOT_VALIDATED" },
-    );
+    await expect(
+      svc.output.generate({ kind: "instruction", koIds: ["K2"] }, alles),
+    ).rejects.toMatchObject({ code: "NOT_VALIDATED" });
   });
 
   it("generate lehnt unbekannte KO-ID + leere Auswahl + unbekannten Typ ab", async () => {
-    await expect(svc.output.generate({ kind: "instruction", koIds: ["X"] })).rejects.toMatchObject({
-      code: "UNKNOWN_KO",
-    });
-    await expect(svc.output.generate({ kind: "instruction", koIds: [] })).rejects.toMatchObject({
-      code: "NO_SOURCES",
-    });
+    await expect(
+      svc.output.generate({ kind: "instruction", koIds: ["X"] }, alles),
+    ).rejects.toMatchObject({ code: "UNKNOWN_KO" });
+    await expect(
+      svc.output.generate({ kind: "instruction", koIds: [] }, alles),
+    ).rejects.toMatchObject({ code: "NO_SOURCES" });
     await expect(
       // @ts-expect-error: ungültiger Typ wird zur Laufzeit abgewiesen
-      svc.output.generate({ kind: "marketing", koIds: ["K1"] }),
+      svc.output.generate({ kind: "marketing", koIds: ["K1"] }, alles),
     ).rejects.toMatchObject({ code: "UNKNOWN_KIND" });
   });
 
@@ -90,7 +94,10 @@ describe("OutputService (SCRUM-117 / FE-OUT)", () => {
       "training",
       "management_summary",
     ] as const) {
-      const doc = await svc.output.generate({ kind, koIds: ["K1"], audienceRole: "experte" });
+      const doc = await svc.output.generate(
+        { kind, koIds: ["K1"], audienceRole: "experte" },
+        alles,
+      );
       expect(doc.markdown).toContain("Ventil schließen");
       expect(doc.markdown.length).toBeGreaterThan(40);
       expect(doc.kind).toBe(kind);
@@ -100,12 +107,12 @@ describe("OutputService (SCRUM-117 / FE-OUT)", () => {
   });
 
   it("checklist nutzt abhakbare Punkte aus measures", async () => {
-    const doc = await svc.output.generate({ kind: "checklist", koIds: ["K1"] });
+    const doc = await svc.output.generate({ kind: "checklist", koIds: ["K1"] }, alles);
     expect(doc.markdown).toContain("- [ ] Hauptventil zudrehen");
   });
 
   it("Provenance je Quelle: KO-ID, Status, Trust, Version, Autor, abgeleitete Gültigkeit", async () => {
-    const doc = await svc.output.generate({ kind: "instruction", koIds: ["K1"] });
+    const doc = await svc.output.generate({ kind: "instruction", koIds: ["K1"] }, alles);
     const p = doc.provenance[0];
     expect(p).toMatchObject({
       koId: "K1",
@@ -122,7 +129,7 @@ describe("OutputService (SCRUM-117 / FE-OUT)", () => {
   });
 
   it("markiert niedrigen Trust als Unsicherheit", async () => {
-    const doc = await svc.output.generate({ kind: "instruction", koIds: ["K3"] });
+    const doc = await svc.output.generate({ kind: "instruction", koIds: ["K3"] }, alles);
     expect(doc.provenance[0]?.uncertain).toBe(true);
     expect(doc.markdown).toContain("niedriger Trust");
   });

@@ -99,7 +99,9 @@ describe("debbb8e8 · ein Entwurf ist privat — nur seine Autorin sieht ihn, au
     }).toEqual({ annaTelefon: true, annaRechner: true, admin: false, kollege: false });
   });
 
-  it("Einzelabruf: die Autorin bekommt den Inhalt am anderen Gerät, die Administratorin 403 ohne Inhalt", async () => {
+  // aufnahme:20260922:gesamt-leserechte (R-0239, J24 „404"): der fremde private Entwurf antwortet
+  // seither wie ein nicht vorhandener — 404 statt 403, damit seine Existenz nicht erfragbar ist.
+  it("Einzelabruf: die Autorin bekommt den Inhalt am anderen Gerät, die Administratorin 404 ohne Inhalt", async () => {
     const b = await buehne();
     const eigen = await b.app.inject({
       method: "GET",
@@ -111,7 +113,7 @@ describe("debbb8e8 · ein Entwurf ist privat — nur seine Autorin sieht ihn, au
 
     for (const headers of [b.ada, b.otto]) {
       const fremd = await b.app.inject({ method: "GET", url: `/api/drafts/${b.id}`, headers });
-      expect(fremd.statusCode).toBe(403);
+      expect(fremd.statusCode).toBe(404);
       expect(fremd.body).not.toContain("Linie 4");
       expect(fremd.body).not.toContain("Annas Entwurf");
     }
@@ -137,7 +139,7 @@ describe("debbb8e8 · ein Entwurf ist privat — nur seine Autorin sieht ihn, au
       payload: { operationId: "fremd-einreichen-0001" },
     });
     expect([aendern.statusCode, loeschen.statusCode, einreichen.statusCode]).toEqual([
-      403, 403, 403,
+      404, 404, 404,
     ]);
     // Der Entwurf steht unverändert bei seiner Autorin.
     const danach = await b.app.inject({
@@ -249,7 +251,7 @@ describe("debbb8e8 · ein Entwurf ist privat — nur seine Autorin sieht ihn, au
       admin: alsAdmin.statusCode,
       kollege: alsKollege.statusCode,
       entwurfAlsAdmin: entwurfAlsAdmin.statusCode,
-    }).toEqual({ autorin: 200, admin: 404, kollege: 404, entwurfAlsAdmin: 403 });
+    }).toEqual({ autorin: 200, admin: 404, kollege: 404, entwurfAlsAdmin: 404 });
     expect(alsAdmin.rawPayload.length).toBeLessThan(alsAutorin.rawPayload.length);
   });
 });

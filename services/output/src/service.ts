@@ -14,7 +14,9 @@ import {
   OUTPUT_KINDS,
   type OutputDocument,
   OutputError,
+  type OutputSichtbarkeit,
   type OutputSource,
+  fuerBetrachterSichtbar,
 } from "./types";
 
 export interface OutputServiceDeps {
@@ -34,12 +36,19 @@ export class OutputService {
   // Nur validierte KOs sind als Output-Quelle zulässig (Anti-Fake-Guard).
   // SCRUM-415: vertrauliche KOs erscheinen NICHT als Output-Quelle — ein Output ist teilbar (externer
   // Kontext), vertrauliche Objekte bleiben davon ausgeschlossen.
-  async listEligible(): Promise<OutputSource[]> {
+  // aufnahme:20260922:gesamt-leserechte: zusätzlich nur, was DIESER Betrachter sehen darf
+  // (`sichtbar`, Pflicht — ohne tauglichen Filter ist die Liste leer).
+  async listEligible(sichtbar: OutputSichtbarkeit): Promise<OutputSource[]> {
     const kos = await this.koService.list({ status: "validiert" });
-    return kos.filter((ko) => !isConfidential(ko.confidentiality)).map(toSource);
+    return kos
+      .filter((ko) => fuerBetrachterSichtbar(sichtbar, ko) && !isConfidential(ko.confidentiality))
+      .map(toSource);
   }
 
-  async generate(input: GenerateOutputInput): Promise<OutputDocument> {
+  async generate(
+    input: GenerateOutputInput,
+    sichtbar: OutputSichtbarkeit,
+  ): Promise<OutputDocument> {
     if (!OUTPUT_KINDS.includes(input.kind)) {
       throw new OutputError("UNKNOWN_KIND", `Unbekannter Output-Typ: ${input.kind}.`);
     }
@@ -49,7 +58,10 @@ export class OutputService {
     const selected: KnowledgeObject[] = [];
     for (const id of input.koIds) {
       const ko = await this.koService.get(id);
-      if (!ko) {
+      // aufnahme:20260922:gesamt-leserechte: ein Objekt, das der Betrachter nicht sehen darf, gibt
+      // es für ihn nicht — dieselbe Antwort wie für eine unbekannte Kennung, damit weder Status
+      // noch Stufe seine Existenz verraten.
+      if (!ko || !fuerBetrachterSichtbar(sichtbar, ko)) {
         throw new OutputError("UNKNOWN_KO", `Wissensobjekt nicht gefunden: ${id}.`);
       }
       if (ko.status !== "validiert") {
