@@ -17,10 +17,12 @@ import { DIENST_RECHTE, DIENST_SCHLUESSEL_HEADER } from "../../services/app/src/
 import {
   GEMEINSAME_ZUSTAENDE,
   INTEGRATIONS_VERTRAG,
+  SCHEMAS,
   integrationsOpenApi,
   vertragUndRoutenGleich,
   zustandErlaubt,
 } from "../../services/app/src/integrations-vertrag";
+import { CONFIDENTIALITY_LEVELS, KNOWLEDGE_TYPES } from "../../services/knowledge-object";
 
 const WURZEL = join(__dirname, "..", "..");
 const VOLL = "voll-schluessel-0123456789abcdef0123456789abcdef0";
@@ -130,6 +132,40 @@ const FAELLE: Fall[] = [
     erwartet: 201,
   },
   {
+    // Nacharbeit 2: die fachliche 400 des Imports trägt ihre Kennung aus der Tabelle.
+    name: "Einliefern mit unbekannter Wissensart",
+    methode: "POST",
+    pfad: "/api/library/import/candidates",
+    payload: {
+      items: [
+        {
+          title: "Pumpe P-2",
+          statement: "P-2 langsam anfahren.",
+          type: "keine_wissensart",
+          category: "X",
+        },
+      ],
+    },
+    erwartet: 400,
+  },
+  {
+    // Nacharbeit 2: der Import hat keine eigene Rumpfgrenze — es gilt die des Rahmens (1 MiB).
+    name: "Einliefern zu groß",
+    methode: "POST",
+    pfad: "/api/library/import/candidates",
+    payload: {
+      items: [
+        {
+          title: "Pumpe P-3",
+          statement: "x".repeat(1_100_000),
+          type: "best_practice",
+          category: "X",
+        },
+      ],
+    },
+    erwartet: 413,
+  },
+  {
     name: "Einliefern kein JSON",
     methode: "POST",
     pfad: "/api/library/import/candidates",
@@ -201,6 +237,27 @@ describe("R-0696 · jede beobachtete Antwort steht in der Tabelle", () => {
     expect(zustandErlaubt("POST", "/api/ask", 401, "UNAUTHENTICATED")).toBe(true);
     expect(zustandErlaubt("POST", "/api/ask", 503, "MODEL_BUSY")).toBe(false);
   });
+
+  it("T5 · kein Platzhalter: jeder Fehlerzustand nennt seine Kennung, und nur diese passt", () => {
+    const ohneKennung: string[] = [];
+    for (const r of INTEGRATIONS_VERTRAG) {
+      for (const z of r.zustaende) {
+        if (z.status >= 400 && z.fehler === undefined) {
+          ohneKennung.push(`${r.methode} ${r.pfad} ${z.status}`);
+        }
+      }
+    }
+    expect(ohneKennung, "Fehlerzustände ohne Kennung ließen jede Kennung zu").toEqual([]);
+    const importPfad = "/api/library/import/candidates";
+    expect(zustandErlaubt("POST", importPfad, 400, "BAD_REQUEST")).toBe(true);
+    expect(zustandErlaubt("POST", importPfad, 400, "DOKUMENT_UNBEKANNT")).toBe(true);
+    expect(zustandErlaubt("POST", importPfad, 400, "IRGENDEINE_KENNUNG")).toBe(false);
+    expect(zustandErlaubt("POST", importPfad, 413, "Payload Too Large")).toBe(true);
+    // Ein Erfolg passt nur ohne Fehlerkennung, ein Fehler nie ohne.
+    expect(zustandErlaubt("POST", importPfad, 201, undefined)).toBe(true);
+    expect(zustandErlaubt("POST", importPfad, 201, "BAD_REQUEST")).toBe(false);
+    expect(zustandErlaubt("POST", importPfad, 400, undefined)).toBe(false);
+  });
 });
 
 interface OpenApiOperation {
@@ -220,6 +277,28 @@ describe("R-0712 · maschinenlesbare Beschreibung", () => {
       readFileSync(join(WURZEL, "docs", "generated", "integrations-openapi.json"), "utf8"),
     );
     expect(datei).toEqual(integrationsOpenApi());
+  });
+
+  it("O3 · Wertemengen kommen aus dem Produkt, und keine Erfolgsantwort ist ein unbestimmtes Objekt", () => {
+    const schemas = SCHEMAS as Record<string, { enum?: unknown[] }>;
+    expect(schemas.Wissensart?.enum).toEqual([...KNOWLEDGE_TYPES]);
+    expect(schemas.Vertraulichkeit?.enum).toEqual([...CONFIDENTIALITY_LEVELS]);
+    const doc = integrationsOpenApi() as unknown as {
+      paths: Record<string, Record<string, { responses: Record<string, unknown> }>>;
+    };
+    const unbestimmt: string[] = [];
+    for (const [pfad, ops] of Object.entries(doc.paths)) {
+      for (const [methode, op] of Object.entries(ops)) {
+        for (const [status, antwort] of Object.entries(op.responses)) {
+          const inhalt = (antwort as { content?: Record<string, { schema?: unknown }> }).content;
+          const json = inhalt?.["application/json"]?.schema;
+          if (Number(status) < 300 && JSON.stringify(json) === JSON.stringify({ type: "object" })) {
+            unbestimmt.push(`${methode.toUpperCase()} ${pfad} ${status}`);
+          }
+        }
+      }
+    }
+    expect(unbestimmt, "Erfolgsantworten ohne beschriebene Felder").toEqual([]);
   });
 
   it("O2 · jede Route der Tabelle steht mit allen erlaubten Status in der Beschreibung", () => {

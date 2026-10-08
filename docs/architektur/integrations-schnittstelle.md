@@ -1,4 +1,4 @@
-# KLARWERK — Integrationsschnittstelle mit Dienst-Schlüsseln (Vertrag 1.0.0)
+# KLARWERK — Integrationsschnittstelle mit Dienst-Schlüsseln (Vertrag 1.1.0)
 
 > Aufnahme `gesamt-integrations-api` (R-0677, R-0688, R-0696, R-0698, R-0704, R-0712, R-0842).
 > Quelle der Wahrheit ist der Code: `services/app/src/integrations-vertrag.ts` (Tabelle),
@@ -13,8 +13,10 @@
 Ein angebundenes System schickt seinen Schlüssel im Kopf **`x-klarwerk-service-key`** — nicht als
 `Authorization`, nicht als Cookie, nie in der URL. Es gibt kein Menschenkonto und keine Sitzung.
 
-Ein falscher Schlüssel bekommt `401` (kein Rückfall auf eine Sitzung). Fehlversuche werden je
-Adresse gedrosselt (`429`, wie beim Klara-Schlüssel).
+Ein falscher Schlüssel bekommt `401` (kein Rückfall auf eine Sitzung). Das gilt auch, wenn gar
+kein Dienst-Schlüssel (mehr) konfiguriert ist: wer den Kopf weiter mitsendet, wird abgewiesen, selbst
+mit gültiger Sitzung im selben Aufruf. Fehlversuche werden je Adresse gedrosselt (`429`, wie beim
+Klara-Schlüssel).
 
 ## 2. Schlüssel einrichten, wechseln, sperren (Betrieb)
 
@@ -57,7 +59,10 @@ Jeder Export und jede Einlieferung trägt im Protokoll den Akteur `dienst:<id>`.
 
 ## 3. Verbindliche Zustandstabelle (R-0696)
 
-Diese Paare aus HTTP-Status und `error`-Feld darf die Schnittstelle liefern — keine anderen. Fehler
+Diese Paare aus HTTP-Status und `error`-Feld darf die Schnittstelle liefern — keine anderen. Jeder
+Fehlerzustand nennt genau seine Kennung; Erfolgsantworten tragen kein `error`. Die Felder der
+Anfragen und Antworten (Pflichtfelder, Wertemengen wie Wissensart und Vertraulichkeit,
+Antwortvarianten „beantwortet"/„Wissenslücke") stehen in `docs/generated/integrations-openapi.json`. Fehler
 haben immer die Form `{ "error": "<Kennung>", "message": "<Satz>" }`; bei `429` des Schlüssels
 zusätzlich `wartenSek`. Für die Standardfehler des HTTP-Rahmens steht in `error` die HTTP-
 Kurzbezeichnung und in `code` die Rahmenkennung.
@@ -86,8 +91,10 @@ Kurzbezeichnung und in `code` die Rahmenkennung.
 | | 415 | `Unsupported Media Type` | Rumpf ist nicht `application/json`. |
 | `GET /api/library/export` | 200 | — | Export im Format `format` = `json` (Standard), `markdown`, `mediawiki`, `html`. |
 | `POST /api/library/import/candidates` | 201 | — | Eingereiht; Antwort nennt die Kandidaten samt Dublettenbefund. |
-| | 400 | fachliche Kennung | Einträge unbrauchbar; `error` nennt den Grund. |
+| | 400 | `BAD_REQUEST` | Ein Eintrag ist unbrauchbar: unbekannte Wissensart (`type`) oder ungültige `sourceVersion`. Nichts wird eingereiht. |
+| | 400 | `DOKUMENT_UNBEKANNT` | Ein Eintrag nennt eine Dokumentkennung, die diese Instanz nicht vergeben hat. Nichts wird eingereiht. |
 | | 400 | `Bad Request` | Rumpf ist kein JSON. |
+| | 413 | `Payload Too Large` | Rumpf größer als 1 MiB. |
 | | 415 | `Unsupported Media Type` | Rumpf ist nicht `application/json`. |
 | `GET /health` | 200 | — | Instanz antwortet (`status = "ok"`, Version, Deploy-Stand). |
 | `GET /api/reasoner/status` | 200 | — | Abstrakter KI-Zustand, ohne Anbieter- oder Modellnamen. |
@@ -103,8 +110,8 @@ beliebig oft hintereinander auslösen. Gezählt wird je Konto über diese Routen
   `KLARWERK_KI_ANFRAGEN_FENSTER_SEK`; `KLARWERK_KI_ANFRAGEN_MAX=aus` schaltet die Bremse ab).
 - Darüber: `429`, `error = "KI_ANFRAGEN_GEBREMST"`, `Retry-After` und ein Satz in der Sprache der
   Anfrage mit der Wartezeit, z. B. „Sie haben in kurzer Zeit sehr viele KI-Anfragen gestellt. Bitte
-  warten Sie 42 Sekunden und versuchen Sie es dann erneut." Die Fragen-Seite zeigt genau diesen Satz
-  statt des allgemeinen Fehlertexts.
+  warten Sie 42 Sekunden und versuchen Sie es dann erneut." Die Fragen-Seite und die KI-Hilfesuche im
+  Klara-Panel zeigen genau diesen Satz statt des allgemeinen Fehlertexts (`apps/web/src/lib/kiBremse.ts`).
 - Schlüsselzugänge zählen hier nicht — sie haben ihre eigene Grenze.
 
 ## 5. Grenzen (ehrlich)

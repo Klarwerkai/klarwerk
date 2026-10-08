@@ -2764,6 +2764,28 @@ export function buildApp(
     if (addonApiEnabled()) {
       app.register(addinStaticRoutes());
     }
+  } else {
+    // Nacharbeit 2 (Bens Befund): auch OHNE Klara-Flag und ohne einen einzigen konfigurierten
+    // Dienst-Schlüssel bleibt der Anmeldehook für den Dienst-Schlüssel-Kopf wirksam. Wird der letzte
+    // Schlüssel entfernt, sendet ein angebundenes System ihn womöglich weiter — er ist dann ein
+    // ungültiger Anmeldeversuch (401, gedrosselt wie oben) und fällt NICHT auf eine mitgesendete
+    // Sitzung zurück. Ohne den Kopf bleibt jede Anfrage exakt wie vorher (kein authContext, kein
+    // CORS, keine Drossel).
+    const dienstFehlversuche = new AddonAuthAttemptThrottle(addonAuthThrottleConfigFromEnv());
+    app.addHook("onRequest", async (request, reply) => {
+      if (resolveAddonAuth(request, dienstLage).kind !== "invalid") {
+        return;
+      }
+      if (!dienstFehlversuche.registerFailure(request.ip, Date.now())) {
+        reply.code(429).header("retry-after", String(dienstFehlversuche.retryAfterSeconds())).send({
+          error: "RATE_LIMITED",
+          message: "Zu viele Zugangsversuche — bitte später erneut.",
+        });
+        return reply;
+      }
+      reply.code(401).send({ error: "UNAUTHENTICATED", message: "Ungültiger Dienst-Schlüssel." });
+      return reply;
+    });
   }
 
   // Aufnahme gesamt-integrations-api (R-0842): die Bremse für modellgestützte Anfragen ANGEMELDETER

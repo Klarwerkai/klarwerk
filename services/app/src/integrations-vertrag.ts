@@ -9,18 +9,24 @@ import { DIENST_ROUTEN, DIENST_SCHLUESSEL_HEADER, type DienstRecht } from "./die
 // `tests/integrations-api/zustandstabelle-am-draht.test.ts` fährt die Routen mit Dienst-Schlüsseln
 // und verlangt, dass jede beobachtete Antwort in dieser Tabelle steht.
 //
-// R-0712: aus derselben Tabelle entsteht die maschinenlesbare Beschreibung (OpenAPI 3.1,
-// `integrationsOpenApi()`). Die ausgelieferte Datei `docs/generated/integrations-openapi.json`
-// muss ihr gleich sein — gehalten vom selben Testordner. Die menschenlesbare Fassung steht in
-// `docs/architektur/integrations-schnittstelle.md`.
+// R-0712: aus derselben Tabelle und den Schemas unten entsteht die maschinenlesbare Beschreibung
+// (OpenAPI 3.1, `integrationsOpenApi()`). Die ausgelieferte Datei
+// `docs/generated/integrations-openapi.json` muss ihr gleich sein — gehalten vom selben Testordner.
+// Die menschenlesbare Fassung steht in `docs/architektur/integrations-schnittstelle.md`.
+//
+// Nacharbeit 2 (Bens Befunde): JEDER Fehlerzustand nennt jetzt seine Kennung — es gibt keinen
+// Platzhalter mehr, der jede beliebige Kennung zuließe; der Kandidatenimport führt seine 413 und
+// seine beiden fachlichen 400-Kennungen ausdrücklich; Anfragen und Antworten sind mit Feldern,
+// Pflichtfeldern, Wertemengen und Antwortvarianten beschrieben statt als „beliebiges Objekt".
 
-export const VERTRAGSFASSUNG = "1.0.0";
+export const VERTRAGSFASSUNG = "1.1.0";
 
 export interface Antwortzustand {
   readonly status: number;
   /**
-   * Der Wert des Felds `error` im Antwortkörper. Fehlt bei Erfolgsantworten. Für die Standardfehler
-   * des HTTP-Rahmens (Schema, Größe, Inhaltstyp) steht dort die HTTP-Kurzbezeichnung, dazu `code`.
+   * Der Wert des Felds `error` im Antwortkörper. Fehlt GENAU bei Erfolgsantworten (2xx). Für die
+   * Standardfehler des HTTP-Rahmens (Schema, Größe, Inhaltstyp) steht dort die HTTP-Kurzbezeichnung,
+   * dazu `code`.
    */
   readonly fehler?: string;
   readonly bedeutung: string;
@@ -33,8 +39,14 @@ export interface Vertragsroute {
   readonly pfad: string;
   readonly recht: DienstRecht;
   readonly zweck: string;
-  /** Form des Erfolgskörpers: ein Objekt, eine Liste oder der Export in seinen vier Formaten. */
-  readonly erfolg: "objekt" | "liste" | "export";
+  /** Schema des Erfolgskörpers (Name unter `components.schemas`); `export` = vier Formate. */
+  readonly erfolg:
+    | "Antwort"
+    | "Pruefergebnis"
+    | "export"
+    | "Kandidatenliste"
+    | "Betriebszustand"
+    | "KiZustand";
   readonly zustaende: readonly Antwortzustand[];
 }
 
@@ -90,7 +102,7 @@ export const INTEGRATIONS_VERTRAG: readonly Vertragsroute[] = [
     recht: "ask.validated",
     zweck:
       "Frage stellen. Antwort ausschließlich aus validiertem, nicht vertraulichem Wissen, ohne Modellaufruf; sonst eine ehrliche Wissenslücke.",
-    erfolg: "objekt",
+    erfolg: "Antwort",
     zustaende: [
       {
         status: 200,
@@ -113,7 +125,7 @@ export const INTEGRATIONS_VERTRAG: readonly Vertragsroute[] = [
     recht: "checktext.validated",
     zweck:
       "Text gegen validiertes Wissen prüfen (Dubletten, Überschneidungen, Widersprüche) — deterministisch, ohne Modell, nichts wird gespeichert.",
-    erfolg: "objekt",
+    erfolg: "Pruefergebnis",
     zustaende: [
       { status: 200, bedeutung: "Prüfergebnis (auch: keine Funde)." },
       { ...SCHEMAFEHLER, bedeutung: "text fehlt oder liegt außerhalb von 40–8.000 Zeichen." },
@@ -136,7 +148,7 @@ export const INTEGRATIONS_VERTRAG: readonly Vertragsroute[] = [
     recht: "import.kandidaten",
     zweck:
       "Wissen einliefern: die Einträge werden als Kandidaten in die Prüfwarteschlange gestellt. Ein Wissensobjekt entsteht erst, wenn ein berechtigter Mensch annimmt.",
-    erfolg: "liste",
+    erfolg: "Kandidatenliste",
     zustaende: [
       {
         status: 201,
@@ -144,10 +156,21 @@ export const INTEGRATIONS_VERTRAG: readonly Vertragsroute[] = [
       },
       {
         status: 400,
+        fehler: "BAD_REQUEST",
         bedeutung:
-          "Einträge unbrauchbar; error nennt den fachlichen Grund (Großbuchstaben-Kennung), message den Satz.",
+          "Ein Eintrag ist unbrauchbar: unbekannte Wissensart (type) oder ungültige sourceVersion. Es wird nichts eingereiht.",
       },
-      SCHEMAFEHLER,
+      {
+        status: 400,
+        fehler: "DOKUMENT_UNBEKANNT",
+        bedeutung:
+          "Ein Eintrag nennt eine Dokumentkennung, die diese Instanz nicht vergeben hat. Es wird nichts eingereiht.",
+      },
+      { ...SCHEMAFEHLER, bedeutung: "Rumpf ist kein JSON (code: FST_ERR_CTP_…)." },
+      {
+        ...ZU_GROSS,
+        bedeutung: "Rumpf größer als 1 MiB (code: FST_ERR_CTP_BODY_TOO_LARGE).",
+      },
       FALSCHER_INHALTSTYP,
     ],
   },
@@ -156,7 +179,7 @@ export const INTEGRATIONS_VERTRAG: readonly Vertragsroute[] = [
     pfad: "/health",
     recht: "status.read",
     zweck: "Betriebszustand: status, Version und Deploy-Stand der Instanz.",
-    erfolg: "objekt",
+    erfolg: "Betriebszustand",
     zustaende: [{ status: 200, bedeutung: "Instanz antwortet (status = ok)." }],
   },
   {
@@ -164,7 +187,7 @@ export const INTEGRATIONS_VERTRAG: readonly Vertragsroute[] = [
     pfad: "/api/reasoner/status",
     recht: "status.read",
     zweck: "Abstrakter KI-Zustand (aktiv/Modus), ohne Anbieter- oder Modellnamen.",
-    erfolg: "objekt",
+    erfolg: "KiZustand",
     zustaende: [{ status: 200, bedeutung: "Aktueller KI-Zustand." }],
   },
 ];
@@ -175,31 +198,151 @@ export function erlaubteZustaende(methode: string, pfad: string): readonly Antwo
   return route ? [...route.zustaende, ...GEMEINSAME_ZUSTAENDE] : GEMEINSAME_ZUSTAENDE;
 }
 
-/** Steht dieses Paar aus Status und `error` in der Tabelle der Route? */
+/**
+ * Steht dieses Paar aus Status und `error` in der Tabelle der Route? EXAKT: ein Erfolgszustand
+ * passt nur ohne `error`, ein Fehlerzustand nur mit genau seiner Kennung — kein Platzhalter.
+ */
 export function zustandErlaubt(
   methode: string,
   pfad: string,
   status: number,
   fehler: string | undefined,
 ): boolean {
-  return erlaubteZustaende(methode, pfad).some(
-    (z) => z.status === status && (z.fehler === undefined || z.fehler === fehler),
-  );
+  return erlaubteZustaende(methode, pfad).some((z) => z.status === status && z.fehler === fehler);
 }
 
 // ------------------------------------------------------------------------------------------------
-// R-0712 — OpenAPI 3.1 aus derselben Tabelle.
+// R-0712 — die Schemas. Sie beschreiben, was die Routen heute TATSÄCHLICH senden (Quellen: die
+// Antwortbauer in ask-routes.ts/answerEvidence, check-text-routes.ts `toResponse`,
+// library-routes.ts `toImportCandidateDto`, build-app.ts `/health`, ReasonerService.publicStatus).
+// Pflichtfelder sind nur dort gesetzt, wo der Bauer das Feld immer schreibt.
 // ------------------------------------------------------------------------------------------------
 
-const ANFRAGE_SCHEMAS: Readonly<Record<string, unknown>> = {
-  "POST /api/ask": {
+const NULLBAR_TEXT = { type: ["string", "null"] };
+const GANZZAHL = { type: "integer", minimum: 0 };
+
+export const SCHEMAS: Readonly<Record<string, unknown>> = {
+  Fehler: {
     type: "object",
+    required: ["error", "message"],
+    properties: {
+      error: { type: "string" },
+      message: { type: "string" },
+      code: { type: "string" },
+      wartenSek: { type: "integer", minimum: 1 },
+    },
+  },
+  Wissensart: {
+    type: "string",
+    enum: ["bauchgefuehl", "best_practice", "lernkurve", "technik", "negativwissen"],
+  },
+  Vertraulichkeit: { type: "string", enum: ["intern", "vertraulich", "streng_vertraulich"] },
+  Wissensklasse: {
+    type: "string",
+    enum: ["gesichert", "ungeprueft", "meinung", "extern", "annahme", "unbekannt"],
+  },
+  Frage: {
+    type: "object",
+    required: ["question"],
     properties: {
       question: { type: "string", maxLength: 8000 },
       locale: { type: "string", enum: ["de", "en", "nl"] },
     },
   },
-  "POST /api/check-text": {
+  Antwort: {
+    type: "object",
+    required: ["result", "answerId", "gap", "receipt"],
+    properties: {
+      result: {
+        type: "object",
+        required: [
+          "answered",
+          "answer",
+          "knowledgeClass",
+          "trust",
+          "sources",
+          "citedSources",
+          "steps",
+          "demo",
+          "captionSources",
+          "evidence",
+        ],
+        properties: {
+          answered: { type: "boolean" },
+          answer: NULLBAR_TEXT,
+          knowledgeClass: { $ref: "#/components/schemas/Wissensklasse" },
+          trust: { type: "number", minimum: 0, maximum: 100 },
+          sources: { type: "array", items: { type: "string" } },
+          citedSources: { type: "array", items: { type: "string" } },
+          captionSources: { type: "array", items: { type: "string" } },
+          steps: {
+            type: "array",
+            items: {
+              type: "object",
+              required: ["description", "sourceId", "snippet"],
+              properties: {
+                description: { type: "string" },
+                sourceId: NULLBAR_TEXT,
+                snippet: NULLBAR_TEXT,
+              },
+            },
+          },
+          demo: { type: "boolean" },
+          evidence: { $ref: "#/components/schemas/Evidenz" },
+        },
+        oneOf: [
+          {
+            title: "Beantwortet",
+            properties: {
+              answered: { const: true },
+              evidence: { properties: { grade: { enum: ["verified", "unverified"] } } },
+            },
+          },
+          {
+            title: "Wissenslücke",
+            properties: {
+              answered: { const: false },
+              evidence: { properties: { grade: { const: "gap" } } },
+            },
+          },
+        ],
+      },
+      answerId: NULLBAR_TEXT,
+      gap: { type: ["object", "null"] },
+      receipt: { type: "string" },
+    },
+  },
+  Evidenz: {
+    type: "object",
+    required: [
+      "grade",
+      "knowledgeClass",
+      "rawKnowledgeClass",
+      "checkCaveat",
+      "sourcesConflicted",
+      "conflictsUnproven",
+    ],
+    properties: {
+      grade: { type: "string", enum: ["verified", "unverified", "gap"] },
+      knowledgeClass: { $ref: "#/components/schemas/Wissensklasse" },
+      rawKnowledgeClass: { $ref: "#/components/schemas/Wissensklasse" },
+      checkCaveat: {
+        type: ["object", "null"],
+        required: ["reason", "unproven", "total"],
+        properties: {
+          reason: {
+            type: "string",
+            enum: ["unknown", "unchecked", "noCoverage", "incomplete", "unattributed"],
+          },
+          unproven: GANZZAHL,
+          total: GANZZAHL,
+        },
+      },
+      sourcesConflicted: { type: "boolean" },
+      conflictsUnproven: { type: "boolean" },
+    },
+  },
+  Textpruefung: {
     type: "object",
     required: ["text"],
     properties: {
@@ -208,7 +351,160 @@ const ANFRAGE_SCHEMAS: Readonly<Record<string, unknown>> = {
       locale: { type: "string", enum: ["de", "en"] },
     },
   },
-  "POST /api/library/import/candidates": {
+  Fundort: {
+    type: "object",
+    required: ["kategorie", "bereich", "bibliothekPfad"],
+    properties: {
+      kategorie: NULLBAR_TEXT,
+      bereich: NULLBAR_TEXT,
+      bibliothekPfad: { type: "string" },
+    },
+  },
+  Pruefergebnis: {
+    type: "object",
+    required: [
+      "duplicates",
+      "conflicts",
+      "konfliktpruefung",
+      "answer",
+      "note",
+      "persisted",
+      "sourceHits",
+      "sourceHitsTruncated",
+      "quellenfund",
+    ],
+    properties: {
+      duplicates: {
+        type: "array",
+        items: {
+          type: "object",
+          required: [
+            "koId",
+            "koTitle",
+            "relation",
+            "confidence",
+            "method",
+            "pruefstand",
+            "fundort",
+          ],
+          properties: {
+            koId: { type: "string" },
+            koTitle: { type: "string" },
+            relation: {
+              type: "string",
+              enum: ["identisch", "a_enthaelt_b", "b_enthaelt_a", "teilweise", "verwandt"],
+            },
+            confidence: { type: ["number", "null"] },
+            method: { type: "string", enum: ["model", "deterministic"] },
+            rationale: NULLBAR_TEXT,
+            pruefstand: { type: ["string", "null"], enum: ["validiert", "eingereicht", null] },
+            version: { type: ["integer", "null"] },
+            fundort: { $ref: "#/components/schemas/Fundort" },
+          },
+        },
+      },
+      conflicts: {
+        type: "array",
+        items: {
+          type: "object",
+          required: ["koId", "koTitle", "type", "confidence", "method", "pruefstand", "fundort"],
+          properties: {
+            koId: { type: "string" },
+            koTitle: { type: "string" },
+            type: {
+              type: "string",
+              enum: ["truth", "experience", "context", "temporal", "role"],
+            },
+            confidence: { type: ["number", "null"] },
+            method: { type: "string", enum: ["model"] },
+            rationale: NULLBAR_TEXT,
+            pruefstand: { type: ["string", "null"], enum: ["validiert", "eingereicht", null] },
+            fundort: { $ref: "#/components/schemas/Fundort" },
+          },
+        },
+      },
+      konfliktpruefung: {
+        type: "object",
+        required: ["gelaufen", "grund", "kandidaten", "ausgefallen", "verworfen"],
+        properties: {
+          gelaufen: { type: "boolean" },
+          grund: {
+            type: ["string", "null"],
+            enum: [
+              "nicht_angefordert",
+              "vertraulich",
+              "kein_konfliktdienst",
+              "kein_modell",
+              "modellfehler",
+              "urteil_verworfen",
+              null,
+            ],
+          },
+          kandidaten: GANZZAHL,
+          ausgefallen: GANZZAHL,
+          verworfen: GANZZAHL,
+        },
+      },
+      answer: { type: "null" },
+      note: NULLBAR_TEXT,
+      persisted: { const: false },
+      sourceHits: {
+        type: "array",
+        items: {
+          type: "object",
+          required: [
+            "refId",
+            "koTitle",
+            "coverage",
+            "gedeckteZeichen",
+            "passageZeichen",
+            "fundstelle",
+          ],
+          properties: {
+            refId: { type: "string" },
+            koTitle: { type: "string" },
+            coverage: { type: "string", enum: ["full", "partial"] },
+            gedeckteZeichen: GANZZAHL,
+            passageZeichen: GANZZAHL,
+            fundstelle: { type: "string" },
+            fundort: { $ref: "#/components/schemas/Fundort" },
+          },
+        },
+      },
+      sourceHitsTruncated: { type: "boolean" },
+      quellenfund: {
+        type: "object",
+        required: ["gelaufen", "grund", "geprueft"],
+        properties: {
+          gelaufen: { type: "boolean" },
+          grund: {
+            type: ["string", "null"],
+            enum: ["passage_zu_kurz", "suche_nicht_verfuegbar", null],
+          },
+          geprueft: GANZZAHL,
+        },
+      },
+    },
+  },
+  Wissensobjekt: {
+    type: "object",
+    required: ["id", "title", "statement", "type", "category", "status", "version"],
+    properties: {
+      id: { type: "string" },
+      title: { type: "string" },
+      statement: { type: "string" },
+      type: { $ref: "#/components/schemas/Wissensart" },
+      category: { type: "string" },
+      status: { type: "string", enum: ["validiert"] },
+      version: { type: "integer", minimum: 1 },
+      confidentiality: { type: "string", enum: ["intern"] },
+      conditions: { type: "array", items: { type: "string" } },
+      measures: { type: "array", items: { type: "string" } },
+      tags: { type: "array", items: { type: "string" } },
+      trust: { type: "number" },
+    },
+  },
+  Einlieferung: {
     type: "object",
     required: ["items"],
     properties: {
@@ -220,72 +516,165 @@ const ANFRAGE_SCHEMAS: Readonly<Record<string, unknown>> = {
           properties: {
             title: { type: "string" },
             statement: { type: "string" },
-            type: { type: "string" },
+            type: { $ref: "#/components/schemas/Wissensart" },
             category: { type: "string" },
             tags: { type: "array", items: { type: "string" } },
-            confidentiality: { type: "string" },
+            confidentiality: { $ref: "#/components/schemas/Vertraulichkeit" },
             externalId: { type: "string" },
             sourceScope: { type: "string" },
+            sourceVersion: { type: "integer", minimum: 0 },
           },
+        },
+      },
+    },
+  },
+  Kandidatenliste: {
+    type: "array",
+    items: {
+      type: "object",
+      required: ["id", "item", "status", "duplicate", "note", "koId", "createdAt"],
+      properties: {
+        id: { type: "string" },
+        item: { type: "object" },
+        status: {
+          type: "string",
+          enum: ["neu", "in_bearbeitung", "angenommen", "abgelehnt", "info-angefragt"],
+        },
+        duplicate: { type: "boolean" },
+        note: NULLBAR_TEXT,
+        koId: NULLBAR_TEXT,
+        createdAt: { type: "string", format: "date-time" },
+        dublettenbefund: {
+          type: "object",
+          required: ["ergebnis"],
+          properties: {
+            ergebnis: {
+              type: "string",
+              enum: [
+                "keine",
+                "identisch",
+                "aehnlich",
+                "pruefung_nicht_moeglich",
+                "nicht_gestellt",
+                "im_papierkorb",
+                "wiederverwendet",
+              ],
+            },
+            aehnlichkeit: { type: "number" },
+            treffer: {
+              oneOf: [
+                {
+                  type: "object",
+                  required: ["art", "koId"],
+                  properties: { art: { const: "wissensobjekt" }, koId: { type: "string" } },
+                },
+                {
+                  type: "object",
+                  required: ["art", "kandidatId"],
+                  properties: { art: { const: "kandidat" }, kandidatId: { type: "string" } },
+                },
+              ],
+            },
+          },
+        },
+      },
+    },
+  },
+  KiZustand: {
+    type: "object",
+    required: ["active", "mode", "reachable", "tasks", "billable", "kiAbgeschaltet"],
+    properties: {
+      active: { type: "boolean" },
+      mode: { type: "string", enum: ["cloud", "local", "deterministic"] },
+      reachable: { type: "string", enum: ["none", "unverified", "active", "unreachable"] },
+      tasks: { type: "object", additionalProperties: { type: "boolean" } },
+      billable: { type: "object", additionalProperties: { type: "boolean" } },
+      kiAbgeschaltet: { type: "boolean" },
+    },
+  },
+  Betriebszustand: {
+    type: "object",
+    required: ["status", "version", "commit", "ai", "aiRuns"],
+    properties: {
+      status: { const: "ok" },
+      version: { type: "string" },
+      commit: { type: "string" },
+      ai: { $ref: "#/components/schemas/KiZustand" },
+      aiRuns: {
+        type: "object",
+        required: ["available", "recent"],
+        properties: {
+          available: { type: "boolean" },
+          recent: { type: "array", items: { type: "object" } },
         },
       },
     },
   },
 };
 
-const LISTE = { type: "array", items: { type: "object" } };
+const ANFRAGE_SCHEMAS: Readonly<Record<string, string>> = {
+  "POST /api/ask": "Frage",
+  "POST /api/check-text": "Textpruefung",
+  "POST /api/library/import/candidates": "Einlieferung",
+};
+
+const ref = (name: string): { $ref: string } => ({ $ref: `#/components/schemas/${name}` });
 const TEXT = { schema: { type: "string" } };
+
+/** Die vier gemeinsamen Fehlerantworten als wiederverwendbare `components.responses`. */
+const GEMEINSAME_ANTWORTNAMEN: Readonly<Record<number, string>> = {
+  401: "NichtAngemeldet",
+  403: "RechtFehlt",
+  429: "Gebremst",
+  500: "Intern",
+};
+
+function beschreibung(z: Antwortzustand): string {
+  return z.fehler ? `${z.fehler}: ${z.bedeutung}` : z.bedeutung;
+}
 
 function erfolgsinhalt(erfolg: Vertragsroute["erfolg"]): Record<string, unknown> {
   if (erfolg === "export") {
     return {
-      "application/json": { schema: LISTE },
+      "application/json": { schema: { type: "array", items: ref("Wissensobjekt") } },
       "text/markdown": TEXT,
       "text/plain": TEXT,
       "text/html": TEXT,
     };
   }
-  return { "application/json": { schema: erfolg === "liste" ? LISTE : { type: "object" } } };
+  return { "application/json": { schema: ref(erfolg) } };
 }
 
-function antwortAus(z: Antwortzustand, erfolg: Vertragsroute["erfolg"]): Record<string, unknown> {
-  const beschreibung = z.fehler ? `${z.fehler}: ${z.bedeutung}` : z.bedeutung;
+function antwortAus(zustaende: readonly Antwortzustand[], erfolg: Vertragsroute["erfolg"]) {
+  const erste = zustaende[0];
+  const status = erste?.status ?? 0;
+  const fehler = zustaende.flatMap((z) => (z.fehler ? [z.fehler] : []));
+  const mitWartezeit = zustaende.some((z) => z.kopf?.includes("retry-after"));
+  // Die Fehlerkennung(en) dieses Status — genau die aus der Tabelle, keine andere.
+  const kennung = fehler.length === 1 ? { const: fehler[0] } : { enum: fehler };
+  const fehlerSchema = { allOf: [ref("Fehler"), { properties: { error: kennung } }] };
   return {
-    description: beschreibung,
-    ...(z.kopf?.includes("retry-after")
+    description: zustaende.map(beschreibung).join(" | "),
+    ...(mitWartezeit
       ? { headers: { "Retry-After": { schema: { type: "integer", minimum: 1 } } } }
       : {}),
     content:
-      z.status >= 400
-        ? { "application/json": { schema: { $ref: "#/components/schemas/Fehler" } } }
-        : erfolgsinhalt(erfolg),
+      status >= 400 ? { "application/json": { schema: fehlerSchema } } : erfolgsinhalt(erfolg),
   };
 }
 
 function antwortenFuer(route: Vertragsroute): Record<string, unknown> {
   const nachStatus = new Map<number, Antwortzustand[]>();
-  for (const z of [...route.zustaende, ...GEMEINSAME_ZUSTAENDE]) {
+  for (const z of route.zustaende) {
     nachStatus.set(z.status, [...(nachStatus.get(z.status) ?? []), z]);
   }
   const antworten: Record<string, unknown> = {};
-  for (const status of [...nachStatus.keys()].sort((a, b) => a - b)) {
-    const zustaende = nachStatus.get(status) ?? [];
-    const erste = zustaende[0];
-    if (!erste) {
-      continue;
-    }
-    const kopf = zustaende.flatMap((z) => z.kopf ?? []);
-    const zusammen: Antwortzustand =
-      zustaende.length === 1
-        ? erste
-        : {
-            status,
-            bedeutung: zustaende
-              .map((z) => (z.fehler ? `${z.fehler}: ${z.bedeutung}` : z.bedeutung))
-              .join(" | "),
-            ...(kopf.length > 0 ? { kopf } : {}),
-          };
-    antworten[String(status)] = antwortAus(zusammen, route.erfolg);
+  const alle = [...nachStatus.keys(), ...GEMEINSAME_ZUSTAENDE.map((z) => z.status)];
+  for (const status of alle.sort((a, b) => a - b)) {
+    const gemeinsam = GEMEINSAME_ANTWORTNAMEN[status];
+    antworten[String(status)] = gemeinsam
+      ? { $ref: `#/components/responses/${gemeinsam}` }
+      : antwortAus(nachStatus.get(status) ?? [], route.erfolg);
   }
   return antworten;
 }
@@ -293,8 +682,8 @@ function antwortenFuer(route: Vertragsroute): Record<string, unknown> {
 export function integrationsOpenApi(): Record<string, unknown> {
   const paths: Record<string, Record<string, unknown>> = {};
   for (const route of INTEGRATIONS_VERTRAG) {
-    const schluessel = `${route.methode} ${route.pfad}`;
-    const anfrage = ANFRAGE_SCHEMAS[schluessel];
+    const anfrage = ANFRAGE_SCHEMAS[`${route.methode} ${route.pfad}`];
+    const rumpf = anfrage ? { "application/json": { schema: ref(anfrage) } } : undefined;
     const operation: Record<string, unknown> = {
       summary: route.zweck,
       "x-klarwerk-recht": route.recht,
@@ -311,12 +700,17 @@ export function integrationsOpenApi(): Record<string, unknown> {
             ],
           }
         : {}),
-      ...(anfrage
-        ? { requestBody: { required: true, content: { "application/json": { schema: anfrage } } } }
-        : {}),
+      ...(rumpf ? { requestBody: { required: true, content: rumpf } } : {}),
       responses: antwortenFuer(route),
     };
     paths[route.pfad] = { ...(paths[route.pfad] ?? {}), [route.methode.toLowerCase()]: operation };
+  }
+  const responses: Record<string, unknown> = {};
+  for (const z of GEMEINSAME_ZUSTAENDE) {
+    const name = GEMEINSAME_ANTWORTNAMEN[z.status];
+    if (name) {
+      responses[name] = antwortAus([z], "Antwort");
+    }
   }
   return {
     openapi: "3.1.0",
@@ -331,18 +725,8 @@ export function integrationsOpenApi(): Record<string, unknown> {
       securitySchemes: {
         dienstSchluessel: { type: "apiKey", in: "header", name: DIENST_SCHLUESSEL_HEADER },
       },
-      schemas: {
-        Fehler: {
-          type: "object",
-          required: ["error"],
-          properties: {
-            error: { type: "string" },
-            message: { type: "string" },
-            code: { type: "string" },
-            wartenSek: { type: "integer", minimum: 1 },
-          },
-        },
-      },
+      responses,
+      schemas: SCHEMAS,
     },
   };
 }

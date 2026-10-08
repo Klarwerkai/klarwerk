@@ -185,14 +185,17 @@ function findeDienstSchluessel(
 // Die EINE Key-Auflösung pro Request (aufgerufen genau einmal im onRequest-Hook). Flag AUS oder kein
 // Header → "none" (Session-Pfad). Header vorhanden + gültig → "valid" + Principal. Header vorhanden,
 // aber ungültig → "invalid" (→ 401, kein Fallback auf Session mit falschem Key).
-// Aufnahme gesamt-integrations-api: ZUERST der Dienst-Schlüssel-Kopf (unabhängig vom Klara-Flag,
-// nur wenn Dienst-Schlüssel konfiguriert sind), danach unverändert der Klara-Schlüssel.
+// Aufnahme gesamt-integrations-api: ZUERST der Dienst-Schlüssel-Kopf (unabhängig vom Klara-Flag),
+// danach unverändert der Klara-Schlüssel. Nacharbeit 2 (Bens Befund): der Kopf wird auch dann
+// ausgewertet, wenn KEIN Dienst-Schlüssel (mehr) konfiguriert ist — ein gesperrter oder entfernter
+// Schlüssel ist ein ungültiger Anmeldeversuch (401) und fällt nie auf eine mitgesendete Sitzung
+// zurück.
 export function resolveAddonAuth(
   request: FastifyRequest,
   dienst: DienstSchluesselLage = KEINE_DIENST_SCHLUESSEL,
 ): AddonAuthResolution {
   const dienstAngabe = request.headers[DIENST_SCHLUESSEL_HEADER];
-  if (dienst.schluessel.length > 0 && typeof dienstAngabe === "string" && dienstAngabe.length > 0) {
+  if (typeof dienstAngabe === "string" && dienstAngabe.length > 0) {
     const s = findeDienstSchluessel(dienst, dienstAngabe);
     return s ? { kind: "valid", principal: dienstPrincipal(s) } : { kind: "invalid", dienst: true };
   }

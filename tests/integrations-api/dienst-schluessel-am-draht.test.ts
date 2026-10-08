@@ -440,4 +440,39 @@ describe("Abgrenzung · Klara-Pfad bleibt, wo er war", () => {
     });
     expect(res.statusCode).toBe(401);
   });
+
+  it("A3 · letzter Schlüssel entfernt: ein weiter mitgesendeter Schlüssel fällt NICHT auf die Sitzung zurück", async () => {
+    // Nacharbeit 2 (Bens Befund): nicht gesetzt UND leere Liste — beide Fälle, jeweils mit einer
+    // gültigen Admin-Sitzung im selben Aufruf.
+    for (const konfiguration of [undefined, "[]"]) {
+      if (konfiguration === undefined) {
+        delete process.env.KLARWERK_SERVICE_KEYS;
+      } else {
+        process.env.KLARWERK_SERVICE_KEYS = konfiguration;
+      }
+      const { app, headers } = await appMitBestand();
+      const mitSitzung = await app.inject({
+        method: "GET",
+        url: "/api/library/export",
+        headers: { ...headers, [KOPF]: WIKI },
+      });
+      expect(mitSitzung.statusCode, `KLARWERK_SERVICE_KEYS=${konfiguration}`).toBe(401);
+      expect(mitSitzung.json().error).toBe("UNAUTHENTICATED");
+      // Kalibrierung: dieselbe Sitzung OHNE den Kopf kommt durch — die 401 hängt am Schlüssel.
+      const ohneKopf = await app.inject({ method: "GET", url: "/api/library/export", headers });
+      expect(ohneKopf.statusCode).toBe(200);
+    }
+  });
+
+  it("A4 · nur Klara-Flag an, kein Dienst-Schlüssel: der Dienst-Kopf ist trotzdem 401 statt Sitzung", async () => {
+    process.env.KLARWERK_ADDON_API = "1";
+    process.env.KLARWERK_ADDON_API_KEY = "klara-schluessel-fuer-a4-0123456789abcdef";
+    const { app, headers } = await appMitBestand();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/library/export",
+      headers: { ...headers, [KOPF]: WIKI },
+    });
+    expect(res.statusCode).toBe(401);
+  });
 });
