@@ -452,7 +452,7 @@ export function Help(): JSX.Element {
                     <dl className="mt-1.5 space-y-2">
                       {BIBLIOTHEK_TEILE.map((teil) => (
                         <div key={teil}>
-                          <dt className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                          <dt className="font-mono text-klein uppercase tracking-wider text-muted-2">
                             {t(`hilfebibliothek.teil.${teil}`)}
                           </dt>
                           <dd
@@ -582,7 +582,7 @@ export function Help(): JSX.Element {
             }
             return (
               <div key={gruppe} data-hilfe-gruppe={gruppe} className="mt-3">
-                <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+                <h3 className="font-mono text-klein uppercase tracking-wider text-muted-2">
                   {t(`hilfebibliothek.gruppe.${gruppe}`)}
                 </h3>
                 <ul className="mt-1.5 space-y-2">
@@ -601,7 +601,7 @@ export function Help(): JSX.Element {
                           <dl className="mt-1.5 space-y-2">
                             {BIBLIOTHEK_TEILE.map((teil) => (
                               <div key={teil}>
-                                <dt className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                                <dt className="font-mono text-klein uppercase tracking-wider text-muted-2">
                                   {t(`hilfebibliothek.teil.${teil}`)}
                                 </dt>
                                 <dd

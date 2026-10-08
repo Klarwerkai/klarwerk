@@ -88,7 +88,7 @@ function Vorschlagsliste({
           ))}
         </ul>
       )}
-      <p className="text-[10.5px] text-muted-2">
+      <p className="text-klein text-muted-2">
         {t("ansprechpartner.grundlage", {
           objekte: auskunft.grundlage.objekte,
           luecken: auskunft.grundlage.aehnlicheLuecken,

@@ -841,6 +841,75 @@ describe("R-1399 · Sichtnachweis: Lesetexte aus dem Hauptstand auf 11 px", () =
   }, 90_000);
 
   // ----------------------------------------------------------------------------------------------
+  // Nacharbeit 20 · R-0918 S1: vier weitere Lesetexte unter 11 px aus dem Hauptstand tragen jetzt
+  // `text-klein` — drei in der Hilfe-Bibliothek (`pages/Help.tsx`), einer in der Ansprechpartner-
+  // Auskunft einer Lücke (`components/LueckenAnsprechpartner.tsx`).
+  //   b14-hilfe-bibliothek.png        — /hilfe, Gruppenüberschrift und Teilbezeichnungen
+  //   b15-luecke-ansprechpartner.png  — /risiko?fall=…, „Ansprechpartner“ aufgeklappt
+  // ----------------------------------------------------------------------------------------------
+  it("B14 · Hilfe-Bibliothek: Gruppenüberschriften und Teilbezeichnungen in 11 px", async () => {
+    expect(fehler2).toBeNull();
+    const s = (stand2 as H4Stand).seite;
+    await s.goto(`${ORIGIN}/hilfe`, { waitUntil: "load", timeout: 60_000 });
+    await warte2("[data-hilfe-gruppe] > h3");
+    await s.evaluate(
+      fn(`() => {
+        for (const d of document.querySelectorAll('details[data-hilfe-artikel]')) d.open = true;
+      }`),
+    );
+    const gruppen = await groessen("[data-hilfe-gruppe] > h3");
+    const teile = await groessen("[data-hilfe-artikel] dt");
+    console.info(`R-1399 · B14 · ${gruppen.length} Gruppen, ${teile.length} Teile`);
+    expect(gruppen.length).toBeGreaterThan(0);
+    expect(teile.length).toBeGreaterThan(0);
+    expect([...new Set([...gruppen, ...teile].map((g) => g.px))]).toEqual(["11px"]);
+    await ausschnitt2("[data-hilfe-gruppe]", "b14-hilfe-bibliothek");
+    expect((stand2 as H4Stand).seitenfehler).toEqual([]);
+  }, 90_000);
+
+  it("B15 · Lücke → Ansprechpartner: die Grundlagenzeile der Auskunft steht in 11 px", async () => {
+    expect(fehler2).toBeNull();
+    const s = (stand2 as H4Stand).seite;
+    // Die Auskunft steht hinter dem Serverschalter `expertMatching` (`KLARWERK_EXPERT_MATCHING`,
+    // bei jeder Anfrage gelesen, wie in `tests/expertensuche/ansprechpartner-route.test.ts`).
+    // Er gilt nur für diesen Fall und wird danach zurückgesetzt.
+    const vorher = process.env.KLARWERK_EXPERT_MATCHING;
+    process.env.KLARWERK_EXPERT_MATCHING = "1";
+    try {
+      const gapId = await s.evaluate<string | null>(
+        fn(`async () => {
+          const res = await fetch("/api/ask", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ question: "Wie entlüfte ich die Kühlmittelpumpe an Linie 5?" }),
+          });
+          const j = await res.json().catch(() => ({}));
+          return j && j.gap ? j.gap.id : null;
+        }`),
+      );
+      expect(gapId, "die Frage hat keine Lücke angelegt").not.toBeNull();
+      await s.goto(`${ORIGIN}/risiko?fall=${encodeURIComponent(gapId as string)}`, {
+        waitUntil: "load",
+        timeout: 60_000,
+      });
+      const zeile = '[data-testid="luecke-zeile"][aria-current="true"]';
+      await warte2(`${zeile} [data-testid="luecke-ansprechpartner"] button`);
+      await s.click(`${zeile} [data-testid="luecke-ansprechpartner"] button`);
+      const grundlage = `${zeile} [data-testid="luecke-ansprechpartner"] p.text-klein`;
+      await warte2(grundlage);
+      const g = await groessen(grundlage);
+      console.info(`R-1399 · B15 · ${JSON.stringify(g)}`);
+      expect(g.length).toBe(1);
+      expect(g[0]?.px).toBe("11px");
+      await ausschnitt2(zeile, "b15-luecke-ansprechpartner");
+      expect((stand2 as H4Stand).seitenfehler).toEqual([]);
+    } finally {
+      if (vorher === undefined) Reflect.deleteProperty(process.env, "KLARWERK_EXPERT_MATCHING");
+      else process.env.KLARWERK_EXPERT_MATCHING = vorher;
+    }
+  }, 90_000);
+
+  // ----------------------------------------------------------------------------------------------
   // Ben, Nacharbeit 18 · die zwei Foto-/Interview-Plaketten an der gebauten Erfassungsfläche:
   //   b11-foto-befund-ki.png          — /erfassen?weg=interview, Foto gewählt, „Bild auswerten“
   //                                     → Plakette „KI-Vorschlag“ (FotoInterviewStart.tsx)
