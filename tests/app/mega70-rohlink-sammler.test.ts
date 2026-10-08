@@ -41,6 +41,20 @@
 //  4. QUELLTEXT, KEIN VERHALTEN. Dass die gesperrte Fassung wirklich keine <a href> rendert,
 //     beweisen RoleLink.tsx (ein <Link> nur im erlaubten Zweig, gepinnt in mega51 A3) und der
 //     gemountete mega51-Fall.
+//  5. GEMISCHTE ALTERNATIVEN. Ein Ausdruck, der Templates UND einen anderen Zweig trägt
+//     (`c ? \`/a/${x}\` : ziel`), wird über seine Templates gelesen; der Nicht-Template-Zweig ist
+//     nicht erhoben. Heute gibt es keinen solchen Ausdruck auf den drei Flächen.
+//
+// AUFTRAG-mega72 (OFFEN.md B41) — DER SAMMLER SAGT NICHT BREITER ZU, ALS ER ERHEBT:
+//  A  Ein UNABHÄNGIGER Rohzähler zählt jedes `to=` im kommentarfreien Quelltext und wird exakt
+//     gegen die erfolgreich gelesenen Vorkommen kalibriert. Ein Attribut, das der Leser nicht
+//     fassen kann (z. B. verschachtelte Klammern), fällt nicht mehr still heraus, sondern steht
+//     rot mit Datei und Zeile. Ein Ausdruck mit mehreren Templates liefert ALLE seine Ziele, nicht
+//     nur das erste. Zwei synthetische Negativ-Kalibrierungen am Ende beweisen, dass beides rot
+//     wird: verschachtelte Klammern und zwei unterschiedlich geschützte Template-Ziele.
+//  B  Die Zielmenge der Erfolgskarte wird über die produktive Rollenliste `ROLES` gelesen, nicht
+//     über einen hart codierten Zweier-Satz. `FLAECHEN` und `HERKUNFT` bleiben: sie sind oben
+//     als Geltungsbereich benannt und für erfasste Ausdrücke fail-closed (unbekannt = rot).
 // ================================================================================================
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -79,6 +93,11 @@ function ohneKommentare(src: string): string {
 
 function zeileVon(src: string, index: number): number {
   return src.slice(0, index).split("\n").length;
+}
+
+// Das wörtliche Zitat einer Fundstelle: ab dem Treffer bis zum Zeilenende.
+function restDerZeile(src: string, index: number): string {
+  return (src.slice(index).split("\n")[0] ?? "").trim();
 }
 
 // ── Stufe 0: die Flächen samt Rollenschwelle — aus routes.tsx erhoben, nicht abgeschrieben ──────
@@ -214,10 +233,8 @@ const HERKUNFT: Record<(typeof FLAECHEN)[number], Herkunft[]> = {
     {
       muster: /^demoHref\(s\.to, params\)$/,
       herkunft: "lib/captureSuccess.ts · captureNextSteps",
-      ziele: () =>
-        (["experte", "controller"] as Role[]).flatMap((rolle) =>
-          captureNextSteps("ko-x", rolle).map((s) => s.to),
-        ),
+      // AUFTRAG-mega72 B: jede produktive Rolle, nicht ein abgeschriebener Zweier-Satz.
+      ziele: () => ROLES.flatMap((rolle) => captureNextSteps("ko-x", rolle).map((s) => s.to)),
     },
     {
       muster: /^CAPTURE_FRONT_DOOR_ROUTE$/,
@@ -267,16 +284,37 @@ interface Vorkommen {
   unbekannt: string | null;
 }
 
-// ── Stufe 1: jedes to= samt tragendem Tag ───────────────────────────────────────────────────────
-function erhebe(datei: (typeof FLAECHEN)[number]): Vorkommen[] {
-  return DATEIEN[datei].flatMap((pfad) => erhebeDatei(datei, pfad));
+interface Erhebung {
+  vorkommen: Vorkommen[];
+  /** AUFTRAG-mega72 A: so viele `to=` zählt der unabhängige Rohzähler. */
+  roh: number;
+  /** Jedes `to=`, das der Rohzähler sieht, der Leser aber nicht fassen kann — mit Datei:Zeile. */
+  unlesbar: string[];
 }
 
-function erhebeDatei(datei: (typeof FLAECHEN)[number], pfad: string): Vorkommen[] {
-  const src = ohneKommentare(lies(join(WEB_SRC, pfad)));
+// ── Stufe 1: jedes to= samt tragendem Tag ───────────────────────────────────────────────────────
+function erhebe(datei: (typeof FLAECHEN)[number]): Erhebung {
+  const teile = DATEIEN[datei].map((pfad) => erhebeQuelle(datei, pfad, lies(join(WEB_SRC, pfad))));
+  return {
+    vorkommen: teile.flatMap((t) => t.vorkommen),
+    roh: teile.reduce((summe, t) => summe + t.roh, 0),
+    unlesbar: teile.flatMap((t) => t.unlesbar),
+  };
+}
+
+// Die Quelle wird hereingereicht (nicht hier gelesen), damit die Negativ-Kalibrierungen unten
+// denselben Leser über synthetischen Quelltext laufen lassen können.
+function erhebeQuelle(
+  datei: (typeof FLAECHEN)[number],
+  pfad: string,
+  roheQuelle: string,
+): Erhebung {
+  const src = ohneKommentare(roheQuelle);
   const out: Vorkommen[] = [];
+  const gelesen = new Set<number>();
   for (const m of src.matchAll(/\bto=(?:"([^"]*)"|\{((?:[^{}]|\$\{[^{}]*\})*)\})/g)) {
     const index = m.index ?? 0;
+    gelesen.add(index);
     // Das tragende Tag: die letzte öffnende spitze Klammer vor dem Attribut.
     const davor = src.slice(0, index);
     const tagStart = davor.lastIndexOf("<");
@@ -289,11 +327,13 @@ function erhebeDatei(datei: (typeof FLAECHEN)[number], pfad: string): Vorkommen[
     // der Pfad — demoHref hängt nur Demo-Query an, loeseTemplate liest Platzhalter wie der Router
     // ein `:id`. (Die Kalibrierung hat diese Regel erzwungen: ohne sie fiel Library:929 als
     // „unbekannte Herkunft" auf.)
-    const template = ausdruck?.match(/`(\/[^`]*)`/) ?? null;
+    // AUFTRAG-mega72 A: ALLE Templates des Ausdrucks — `c ? \`/a\` : \`/b\`` hat zwei Ziele, und
+    // das zweite darf nicht still hinter dem ersten verschwinden.
+    const templates = [...(ausdruck ?? "").matchAll(/`(\/[^`]*)`/g)].map((t) => t[1] as string);
     if (literal !== null) {
       ziele = [literal];
-    } else if (template?.[1]) {
-      ziele = [loeseTemplate(template[1])];
+    } else if (templates.length > 0) {
+      ziele = templates.map(loeseTemplate);
     } else if (ausdruck?.startsWith("`") && ausdruck.endsWith("`")) {
       ziele = [loeseTemplate(ausdruck.slice(1, -1))];
     } else if (ausdruck !== null) {
@@ -306,12 +346,37 @@ function erhebeDatei(datei: (typeof FLAECHEN)[number], pfad: string): Vorkommen[
     }
     out.push({ quelle: pfad, zeile: zeileVon(src, index), tag, roh: m[0], ziele, unbekannt });
   }
-  return out;
+  // AUFTRAG-mega72 A: der Rohzähler ist vom Leser UNABHÄNGIG — er kennt keine Klammerregel, nur
+  // das Attribut. Was er sieht und der Leser nicht, ist rot und wird mit Datei:Zeile zitiert.
+  const rohIndizes = [...src.matchAll(/\bto=/g)].map((m) => m.index ?? 0);
+  const unlesbar = rohIndizes
+    .filter((index) => !gelesen.has(index))
+    .map((index) => `${pfad}:${zeileVon(src, index)}  ${restDerZeile(src, index)}`);
+  return { vorkommen: out, roh: rohIndizes.length, unlesbar };
 }
 
-describe("mega70 D · kein bewachtes Ziel wird auf Library/Capture über einen rohen Link zum Weg", () => {
+// Stufe 3 als Funktion — die Fläche und die Negativ-Kalibrierung prüfen mit DERSELBEN Zusage.
+function verstoesseVon(vorkommen: Vorkommen[], rollen: readonly Role[]): string[] {
+  return vorkommen
+    .filter((v) => v.tag !== "RoleLink")
+    .flatMap((v) =>
+      v.ziele.flatMap((ziel) =>
+        rollen
+          .filter((rolle) => !routePathAllows(ziel, rolle))
+          .map((rolle) => `${v.quelle}:${v.zeile}  <${v.tag} to=…> → ${ziel} (${rolle})`),
+      ),
+    );
+}
+
+describe("mega70 D · kein bewachtes Ziel wird auf Library/Capture/Ask über einen rohen Link zum Weg", () => {
   for (const datei of FLAECHEN) {
-    const vorkommen = erhebe(datei);
+    const erhebung = erhebe(datei);
+    const { vorkommen } = erhebung;
+
+    it(`${datei}: der Rohzähler kalibriert exakt gegen die gelesenen to= (mega72 A)`, () => {
+      expect(erhebung.unlesbar).toEqual([]);
+      expect(vorkommen.length).toBe(erhebung.roh);
+    });
 
     it(`${datei}: die Erhebung läuft nicht leer und jedes to= sitzt an einem bekannten Tag`, () => {
       // Die Zusage ist „die Erhebung läuft nicht leer" — eine Untergrenze, damit ein kaputter
@@ -344,26 +409,62 @@ describe("mega70 D · kein bewachtes Ziel wird auf Library/Capture über einen r
     });
 
     it(`${datei}: die Zusage — rohe Links nur auf Ziele, die JEDE sehende Rolle begehen darf`, () => {
-      const rollen = rollenDerFlaeche(datei);
-      const verstoesse = vorkommen
-        .filter((v) => v.tag !== "RoleLink")
-        .flatMap((v) =>
-          v.ziele.flatMap((ziel) =>
-            rollen
-              .filter((rolle) => !routePathAllows(ziel, rolle))
-              .map((rolle) => `${v.quelle}:${v.zeile}  <${v.tag} to=…> → ${ziel} (${rolle})`),
-          ),
-        );
-      expect(verstoesse).toEqual([]);
+      expect(verstoesseVon(vorkommen, rollenDerFlaeche(datei))).toEqual([]);
     });
   }
 
   it("die Kalibrier-Zusicherung: die Erhebung kennt die Registry des Routers (nicht still leer)", () => {
     // Ohne bewachte Ziele in der Erhebung wäre Stufe 3 trivial grün.
-    const alleZiele = FLAECHEN.flatMap((d) => erhebe(d).flatMap((v) => v.ziele));
+    const alleZiele = FLAECHEN.flatMap((d) => erhebe(d).vorkommen.flatMap((v) => v.ziele));
     const bewacht = alleZiele.filter((z) =>
       GUARDED_ITEMS.some((i) => i.path === (z.split("?")[0] ?? "")),
     );
     expect(bewacht.length).toBeGreaterThan(3);
+  });
+});
+
+// ── AUFTRAG-mega72 A: zwei synthetische Negativ-Kalibrierungen ──────────────────────────────────
+// Derselbe Leser, derselbe Rohzähler, dieselbe Zusage — nur über Quelltext, der GENAU die beiden
+// Lücken trägt, durch die der alte Sammler still grün blieb. Beide MÜSSEN rot sein; ein grüner
+// Ausgang hier hieße, dass der Sammler wieder breiter zusagt, als er erhebt.
+// Der Platzhalter wird zusammengesetzt, damit im Testquelltext keine `${…}`-Zeichenfolge in einem
+// gewöhnlichen String steht.
+const platzhalter = (name: string): string => `\${${name}}`;
+
+describe("mega72 A · Negativ-Kalibrierung: was der Sammler nicht fassen kann, wird sichtbar rot", () => {
+  it("verschachtelte Klammern: der Rohzähler sieht das Attribut, der Leser nicht → rot mit Datei:Zeile", () => {
+    const quelle = [
+      "export function Synthetisch() {",
+      "  return (",
+      '    <Link to={ziel({ rolle: "experte" })}>Weiter</Link>',
+      "  );",
+      "}",
+    ].join("\n");
+    const erhebung = erhebeQuelle("Library", "synthetisch/verschachtelt.tsx", quelle);
+    expect(erhebung.roh).toBe(1);
+    expect(erhebung.vorkommen).toHaveLength(0);
+    expect(erhebung.unlesbar).toEqual([
+      'synthetisch/verschachtelt.tsx:3  to={ziel({ rolle: "experte" })}>Weiter</Link>',
+    ]);
+  });
+
+  it("zwei unterschiedlich geschützte Template-Ziele: das bewachte zweite fällt nicht hinter das erste", () => {
+    const id = platzhalter("k.id");
+    const quelle = [
+      "export function Synthetisch() {",
+      "  return (",
+      `    <Link to={offen ? \`/wissen/${id}\` : \`/validierung?ko=${id}\`}>Öffnen</Link>`,
+      "  );",
+      "}",
+    ].join("\n");
+    const erhebung = erhebeQuelle("Library", "synthetisch/zwei-templates.tsx", quelle);
+    expect(erhebung.unlesbar).toEqual([]);
+    expect(erhebung.vorkommen).toHaveLength(1);
+    expect(erhebung.vorkommen[0]?.ziele).toEqual(["/wissen/x", "/validierung?ko=x"]);
+    // Die Zusage für die Rollen, die die Bibliothek sehen: /validierung ist erst ab controller.
+    expect(verstoesseVon(erhebung.vorkommen, rollenDerFlaeche("Library"))).toEqual([
+      "synthetisch/zwei-templates.tsx:3  <Link to=…> → /validierung?ko=x (viewer)",
+      "synthetisch/zwei-templates.tsx:3  <Link to=…> → /validierung?ko=x (experte)",
+    ]);
   });
 });
