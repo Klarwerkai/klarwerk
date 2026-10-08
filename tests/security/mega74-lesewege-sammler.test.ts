@@ -138,12 +138,12 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "JOB 3326 — sichtbareFuer + sqlSichtbarkeitFuer über der Grundmenge.",
   },
-  // Die Ladeaktion gibt keinen KO-Inhalt aus: ihre Antwort ist eine Bilanz aus Zahlen und den
-  // Paketschlüsseln der Lieferung (`nichtZugeordnet`) — keine Titel, keine Kennungen des Bestands.
+  // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 10): das frühere Urteil KEIN_KO_INHALT
+  // stimmte nicht — die Bilanz nannte Objektkennungen (`textGeaendert`, `originalGeaendert`) und
+  // zählte unsichtbare Objekte mit. Jetzt zählt und nennt sie nur, was der Admin sehen darf.
   "POST /api/admin/lesevarianten/laden": {
-    urteil: "KEIN_KO_INHALT",
-    grund:
-      "JOB 3326 — Antwort ist eine Zählbilanz plus Lieferschlüssel (lesevarianten.ts, LadeBilanz).",
+    urteil: "PRAEDIKAT",
+    grund: "Ladebilanz über sichtbarkeitsfilterFuer(user); Zuordnung bleibt bestandsweit.",
   },
   "GET /api/library/search": { urteil: "PRAEDIKAT", grund: "Block B — Titel/Kernaussage." },
   "GET /api/categories": {

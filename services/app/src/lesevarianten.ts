@@ -687,6 +687,14 @@ export interface LesevariantenLadeDeps {
   repo: LesevariantenRepo;
   /** Der Bestand, gegen den zugeordnet wird (ungetrimmt — das Laden ist ein Admin-Vorgang). */
   kos(): Promise<KnowledgeObject[]>;
+  /**
+   * aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 10): die Lesepolicy des AUFRUFERS. Die
+   * Zuordnung und das Schreiben laufen weiter über den ganzen Bestand; die ZURÜCKGEGEBENE Bilanz
+   * zählt und nennt nur Objekte, die er sehen darf. Ein Datensatz, dessen Objekte alle unsichtbar
+   * sind, steht dort unter `nichtZugeordnet` — genau wie ein Datensatz ohne Objekt, sonst wäre der
+   * Unterschied eine Existenzauskunft. Fehlt der Filter, ist die Bilanz die bestandsweite.
+   */
+  sichtbar?(ko: KnowledgeObject): boolean;
   audit?: AuditService;
   jetzt?(): Date;
 }
@@ -727,24 +735,41 @@ export async function ladeLesevarianten(
       paket.records.flatMap((r) => paket.languages.filter((l) => l !== r.original_language)),
     ),
   ];
-  const bilanz: LesevariantenLadeBilanz = {
+  const bilanzUeber = (
+    menge: readonly Zuordnung[],
+    nichtZugeordnet: string[],
+  ): LesevariantenLadeBilanz => ({
     paket: paket.package_id,
     records: paket.records.length,
     sprachen,
-    zugeordnet: new Set(treffer.map((t) => t.record.key)).size,
-    objekte: new Set(treffer.map((t) => t.ko.id)).size,
-    ueberConfluence: treffer.filter((t) => t.weg === "confluence").length,
-    ueberPaketschluessel: treffer.filter((t) => t.weg === "paketschluessel").length,
+    zugeordnet: new Set(menge.map((t) => t.record.key)).size,
+    objekte: new Set(menge.map((t) => t.ko.id)).size,
+    ueberConfluence: menge.filter((t) => t.weg === "confluence").length,
+    ueberPaketschluessel: menge.filter((t) => t.weg === "paketschluessel").length,
     neu: 0,
     aktualisiert: 0,
     textGeaendert: [],
-    nichtZugeordnet: ohneObjekt,
+    nichtZugeordnet,
     originalGeaendert: [],
     quellabgleichBestaetigt: 0,
     quellabgleichUnbestaetigt: 0,
     ohneText: [],
-  };
+  });
+  // `bilanz` ist die bestandsweite (Audit), `ausgabe` die des Aufrufers (Antwort). Ohne Filter
+  // ist es dasselbe Objekt.
+  const bilanz = bilanzUeber(treffer, ohneObjekt);
+  const sichtbar = deps.sichtbar;
+  let ausgabe = bilanz;
+  if (sichtbar) {
+    const sichtbareTreffer = treffer.filter((t) => sichtbar(t.ko));
+    const mitSichtbarem = new Set(sichtbareTreffer.map((t) => t.record.key));
+    ausgabe = bilanzUeber(
+      sichtbareTreffer,
+      paket.records.map((r) => r.key).filter((key) => !mitSichtbarem.has(key)),
+    );
+  }
   for (const { record, ko } of treffer) {
+    const ziele = ausgabe === bilanz || !sichtbar?.(ko) ? [bilanz] : [bilanz, ausgabe];
     const abdruck = originalAbdruck(ko);
     for (const lang of paket.languages) {
       if (lang === record.original_language) {
@@ -756,7 +781,9 @@ export async function ladeLesevarianten(
       // Datensatz mit kaputtem Textfeld zählt jetzt als „ohne Text" statt eine Ausnahme zu werfen.
       const text = textFuerSprache(paket, record, lang);
       if (!text || text.paragraphs.length === 0) {
-        bilanz.ohneText.push(`${record.key}/${lang}`);
+        for (const b of ziele) {
+          b.ohneText.push(`${record.key}/${lang}`);
+        }
         continue;
       }
       const vorher = await deps.repo.get(ko.id, lang);
@@ -775,7 +802,9 @@ export async function ladeLesevarianten(
       // frisch gegen das heutige Original.
       const gleicheUebersetzung = vorher?.uebersetzungSha256 === uebersetzungSha256;
       if (vorher && !gleicheUebersetzung) {
-        bilanz.textGeaendert.push(ko.id);
+        for (const b of ziele) {
+          b.textGeaendert.push(ko.id);
+        }
       }
       const originalSha256 = gleicheUebersetzung && vorher ? vorher.originalSha256 : abdruck;
       const quellabgleich =
@@ -795,20 +824,22 @@ export async function ladeLesevarianten(
         quellabgleich,
         updatedAt: gleicheUebersetzung && vorher ? vorher.updatedAt : jetzt,
       });
-      if (warVorhanden) {
-        bilanz.aktualisiert += 1;
-      } else {
-        bilanz.neu += 1;
-      }
-      if (quellabgleich === "bestaetigt") {
-        bilanz.quellabgleichBestaetigt += 1;
-      } else {
-        bilanz.quellabgleichUnbestaetigt += 1;
-      }
-      // Der Bericht steht NACH dem Schreiben und beschreibt den Zustand, den der Leser gleich
-      // sieht — nicht den, der vorher galt.
-      if (originalSha256 !== abdruck && !bilanz.originalGeaendert.includes(ko.id)) {
-        bilanz.originalGeaendert.push(ko.id);
+      for (const b of ziele) {
+        if (warVorhanden) {
+          b.aktualisiert += 1;
+        } else {
+          b.neu += 1;
+        }
+        if (quellabgleich === "bestaetigt") {
+          b.quellabgleichBestaetigt += 1;
+        } else {
+          b.quellabgleichUnbestaetigt += 1;
+        }
+        // Der Bericht steht NACH dem Schreiben und beschreibt den Zustand, den der Leser gleich
+        // sieht — nicht den, der vorher galt.
+        if (originalSha256 !== abdruck && !b.originalGeaendert.includes(ko.id)) {
+          b.originalGeaendert.push(ko.id);
+        }
       }
     }
   }
@@ -828,7 +859,7 @@ export async function ladeLesevarianten(
       quellabgleichUnbestaetigt: bilanz.quellabgleichUnbestaetigt,
     },
   });
-  return bilanz;
+  return ausgabe;
 }
 
 // ================================================================================================

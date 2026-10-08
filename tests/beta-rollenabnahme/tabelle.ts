@@ -513,7 +513,7 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     pfad: "/api/admin/lesevarianten/laden",
     art: "zurueckgestellt",
     grund:
-      "Lädt Übersetzungen für ein Paket und liest dafür den ganzen Bestand, um Anker zuzuordnen. Ein Ladelauf, kein Türtest.",
+      "Lädt Übersetzungen für ein Paket und liest dafür den ganzen Bestand, um Anker zuzuordnen. Ein Ladelauf, kein Türtest. Die ausgegebene Bilanz folgt der Lesepolicy des Aufrufers: tests/security/leserechte-lesevarianten-bilanz.test.ts.",
   },
   {
     methode: "POST",

@@ -262,7 +262,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // JOB 3326: die Admin-Aktion „Übersetzungen für Paket laden" — dieselbe Tür wie das Laden eines
   // Beispielpakets. Sie liest den ganzen Bestand, um Anker zuzuordnen, und schreibt ausschliesslich
   // in `lesevarianten`; ein weicheres Recht wäre eine Bestandsauskunft durch die Hintertür.
-  "POST /api/admin/lesevarianten/laden": { protection: "users.manage" },
+  // aufnahme:20260922:gesamt-leserechte: die Ladebilanz zählt und nennt nur Sichtbares.
+  "POST /api/admin/lesevarianten/laden": {
+    protection: "users.manage",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
   "GET /api/analytics/impact": {
     protection: "ko.read",
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
