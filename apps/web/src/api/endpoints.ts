@@ -860,6 +860,15 @@ export const endpoints = {
         ...(locale ? { locale } : {}),
         ...(thread && thread.length > 0 ? { thread } : {}),
       }),
+    // R-0305/R-1099: dieselbe Frage samt Faden, zusätzlich vom Zweitmodell beantwortet. Derselbe
+    // Endpunkt — Auth, Schema, Filter und Egress-Regeln bleiben die der Frage.
+    zweitmeinung: (question: string, locale?: ReasonerLocale, thread?: readonly string[]) =>
+      api.post<AskResponse>("/ask", {
+        question,
+        ...(locale ? { locale } : {}),
+        ...(thread && thread.length > 0 ? { thread } : {}),
+        zweitmeinung: true,
+      }),
     // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang
     // zurück — ohne gültigen, dieses KO belegenden Receipt antwortet der Server 403.
     helpful: (koId: string, receipt: string) => api.post<void>("/ask/helpful", { koId, receipt }),

@@ -90,11 +90,21 @@ import type {
   ReasonerTaskConfigEingabe,
   ReasonerTaskMap,
   ReasonerWahlMigration,
+  ReasonerZweitmeinungWahl,
   Relevanztext,
   StructureResult,
+  ZweitmeinungErgebnis,
+  ZweitmeinungGrund,
+  ZweitmeinungStufe,
 } from "./types";
 // JOB 3134 (KI-WAHL): die beiden externen Anbieter als Aufzählung und ihr lesbarer Name.
-import { REASONER_CLOUD_ANBIETER, REASONER_CLOUD_ANBIETER_NAME } from "./types";
+import {
+  REASONER_CLOUD_ANBIETER,
+  REASONER_CLOUD_ANBIETER_NAME,
+  REASONER_ZWEITMEINUNG_WAHLEN,
+} from "./types";
+// R-0305/R-1099: der reine Abgleich zweier Antworten.
+import { vergleicheAntworten } from "./zweitmeinung";
 
 // SCRUM-525 P.5 (WP-C): Befund 3(a) — eine per Deploy-ENV gesetzte Policy (KLARWERK_REASONER_POLICY)
 // ist eine bewusste, deklarative Vorgabe des Deploys; sie darf NICHT still von einem Admin-Schreibpfad
@@ -501,7 +511,14 @@ function clone(config: ReasonerTaskConfig): ReasonerTaskConfig {
     // tragen bewusst KEINE Freigabe; dass sie hier trotzdem kopiert würde, ist die Zusage für jeden
     // anderen Aufrufer und nicht der Weg, auf dem eine Vorgabe hereinkäme.
     ...(config.kiFreigabe ? { kiFreigabe: { ...config.kiFreigabe } } : {}),
+    // R-0305/R-1099: die Wahl der Zweitmeinung reist aus demselben Grund mit.
+    ...(config.zweitmeinung ? { zweitmeinung: config.zweitmeinung } : {}),
   };
+}
+
+// R-0305/R-1099: nur die benannten Wahlen zählen; alles andere ist ein Eingabefehler, kein „aus".
+function istZweitmeinungWahl(wert: unknown): wert is ReasonerZweitmeinungWahl {
+  return (REASONER_ZWEITMEINUNG_WAHLEN as readonly unknown[]).includes(wert);
 }
 
 // ================================================================================================
@@ -1236,6 +1253,8 @@ export class Reasoner {
   private normalizeTaskConfig(
     next: ReasonerTaskConfigEingabe,
     bisher?: ReasonerKiFreigabe | undefined,
+    // R-0305/R-1099: die bisherige Wahl der Zweitmeinung — dieselbe Regel wie `bisher`.
+    bisherZweitmeinung?: ReasonerZweitmeinungWahl | undefined,
   ): {
     config: ReasonerTaskConfig;
     migration: ReasonerPolicyMigration | undefined;
@@ -1269,8 +1288,25 @@ export class Reasoner {
       next.kiFreigabe === undefined
         ? normalisiereKiFreigabe(bisher)
         : normalisiereKiFreigabe(next.kiFreigabe);
+    // R-0305/R-1099: weglassen = unverändert, `null` = aus, sonst nur eine benannte Wahl.
+    if (
+      next.zweitmeinung !== undefined &&
+      next.zweitmeinung !== null &&
+      !istZweitmeinungWahl(next.zweitmeinung)
+    ) {
+      throw new Error("Ungültige Wahl für die Zweitmeinung.");
+    }
+    let zweitmeinung = bisherZweitmeinung;
+    if (next.zweitmeinung !== undefined) {
+      zweitmeinung = next.zweitmeinung ?? undefined;
+    }
     return {
-      config: { global: global.wahl, perTask, ...(kiFreigabe ? { kiFreigabe } : {}) },
+      config: {
+        global: global.wahl,
+        perTask,
+        ...(kiFreigabe ? { kiFreigabe } : {}),
+        ...(zweitmeinung ? { zweitmeinung } : {}),
+      },
       migration: migriert ? migration : undefined,
     };
   }
@@ -1290,7 +1326,12 @@ export class Reasoner {
     }
     // JOB 3549: der bisherige Freigabestand wird durchgereicht — ein Speichern der ZUORDNUNG ohne
     // Rumpf-Feld `kiFreigabe` lässt die Freigabe, wie sie war (weder gelöscht noch erteilt).
-    const normalized = this.normalizeTaskConfig(next, this.taskConfig.kiFreigabe); // wirft bei Ungültigem, bevor irgendetwas passiert
+    // R-0305/R-1099: ebenso die Wahl der Zweitmeinung.
+    const normalized = this.normalizeTaskConfig(
+      next,
+      this.taskConfig.kiFreigabe,
+      this.taskConfig.zweitmeinung,
+    ); // wirft bei Ungültigem, bevor irgendetwas passiert
     await this.policyRepo.set(normalized.config); // ZUERST persistieren …
     this.taskConfig = normalized.config; // … Laufzeit erst nach erfolgreichem Write
     this.migration = normalized.migration;
@@ -1414,11 +1455,19 @@ export class Reasoner {
     // bestehenden (positionalen) Aufrufe unverändert bleiben. Ohne Kontext bleibt der Datensatz
     // exakt wie bisher — ein ungebundener Aufrufer schreibt keine leeren Felder.
     context?: ModelRunContext,
+    // R-0305/R-1099: die Zweitmeinung. `kette` ersetzt die Kette der Aufgabe durch GENAU die
+    // übergebenen Glieder (dort: das gewählte Zweitmodell, ohne deterministischen Ersatz — ein
+    // Ersatz wäre keine zweite Einschätzung). `beantwortetVon` meldet das Glied, das geantwortet
+    // hat. Ohne Angabe ist der Lauf Zeile für Zeile der bisherige.
+    lenkung?: {
+      kette?: readonly ReasonerProvider[];
+      beantwortetVon?: (provider: ReasonerProvider) => void;
+    },
   ): Promise<T> {
     const startedAt = new Date().toISOString();
     // D5: die Abschalt-Epoche beim Start dieses Laufs — vor jedem Warten (s. `kiAbschaltStand`).
     const kiBeginn = this.kiAbschaltEpoche;
-    const chain = this.providerChain(task, confidential);
+    const chain = lenkung?.kette ? [...lenkung.kette] : this.providerChain(task, confidential);
     let lastError: unknown;
     // JOB 3036: das zuletzt WIRKLICH GERUFENE Modell. Nur der Fehler-Datensatz unten liest es — ein
     // gescheiterter Lauf soll sagen, an welchem Modell er gescheitert ist, statt von einem rein
@@ -1585,6 +1634,7 @@ export class Reasoner {
           },
           context,
         );
+        lenkung?.beantwortetVon?.(provider);
         return result;
       } catch (err) {
         // SCRUM-498 B2: Backpressure ist KEIN Provider-Fehler — nicht auf den deterministischen
@@ -2292,6 +2342,144 @@ export class Reasoner {
     // es gibt drei Provider-Wege zu einer Antwort (Cloud, lokal, deterministisch), und drei
     // Stellen wären drei Gelegenheiten, sie zu vergessen.
     return { ...result, aiGenerated: aiGeneratedMark("answer", result.demo) };
+  }
+
+  // ==============================================================================================
+  // AUFNAHME 20260922 (R-0305, R-1099) — DIESELBE FRAGE, ZWEI MODELLE, NEBENEINANDER.
+  // ==============================================================================================
+  //
+  // Die erste Antwort entsteht GENAU wie bei `answer` (Kette der Aufgabe, Kennzeichnung, Protokoll).
+  // Die zweite bekommt dieselbe Frage, denselben Kontext, dieselbe Vertraulichkeit und denselben
+  // Relevanztext — aber von dem Modell, das der Administrator für die Zweitmeinung gewählt hat, und
+  // NUR von ihm (`lenkung.kette`). Beide Läufe gehen durch `runTask`: KI-Abschaltung,
+  // Anbieterbindung, Vertraulichkeitsriegel und Laufprotokoll gelten für den zweiten wie für den
+  // ersten, ohne zweite Auslegung.
+  //
+  // UNABHÄNGIG HEISST: ein anderes Glied als das, das die erste Antwort geliefert hat. Hat dasselbe
+  // Modell beide Male gearbeitet, wird kein zweiter Lauf gemacht und das gesagt — eine Wiederholung
+  // als Zweitmeinung auszugeben, wäre genau der „eine Weg", vor dem R-0305 schützen soll.
+  //
+  // Scheitert der zweite Lauf, bleibt die erste Antwort gültig; der Grund steht im Ergebnis. Nur die
+  // KI-Abschaltung bricht das Ganze ab — sie gilt für die Frage, nicht für einen Lauf.
+  async answerMitZweitmeinung(
+    question: string,
+    context: readonly KnowledgeRef[],
+    locale: ReasonerLocale = "de",
+    confidential = false,
+    runContext?: ModelRunContext,
+    relevanz?: Relevanztext,
+    dokumenttext?: string,
+  ): Promise<{ erste: AnswerResult; zweitmeinung: ZweitmeinungErgebnis }> {
+    const frage = (p: ReasonerProvider): Promise<AnswerResult> =>
+      dokumenttext === undefined
+        ? p.answer(question, context, locale, confidential, relevanz)
+        : p.answer(question, context, locale, confidential, relevanz, dokumenttext);
+    // Ein Behälter statt `let`: die Zuweisung geschieht im Rückruf, und eine Variable verengte der
+    // Typprüfer danach fälschlich auf `undefined`.
+    const ersterLauf: { provider?: ReasonerProvider } = {};
+    const ersteRoh = await this.runTask("answer", locale, frage, confidential, runContext, {
+      beantwortetVon: (p) => {
+        ersterLauf.provider = p;
+      },
+    });
+    const ersterProvider = ersterLauf.provider;
+    const erste = { ...ersteRoh, aiGenerated: aiGeneratedMark("answer", ersteRoh.demo) };
+    const nicht = (grund: ZweitmeinungGrund) => ({
+      erste,
+      zweitmeinung: { status: "nicht_moeglich" as const, grund },
+    });
+    const wahl = this.zweitmeinungsModell(confidential);
+    if ("grund" in wahl) {
+      return nicht(wahl.grund);
+    }
+    if (ersterProvider === undefined || ersterProvider === wahl.provider) {
+      return nicht("nicht_unabhaengig");
+    }
+    let zweiteRoh: AnswerResult;
+    try {
+      zweiteRoh = await this.runTask("answer", locale, frage, confidential, runContext, {
+        kette: [wahl.provider],
+      });
+    } catch (fehler) {
+      if (fehler instanceof KiAbgeschaltetFehler) {
+        throw fehler;
+      }
+      return nicht("fehlgeschlagen");
+    }
+    // Dieselbe Quellenpflicht wie im Fragedienst (SCRUM-490 R2 A2): „beantwortet" ohne Quelle ist
+    // keine belegte Antwort und wird als ehrliche Leer-Antwort gegenübergestellt.
+    const belegt = zweiteRoh.answered && zweiteRoh.sources.length > 0;
+    const zweite = {
+      answered: belegt,
+      answer: belegt ? zweiteRoh.answer : null,
+      sources: zweiteRoh.sources,
+      citedSources: belegt ? zweiteRoh.citedSources : [],
+      demo: zweiteRoh.demo,
+      aiGenerated: aiGeneratedMark("answer", zweiteRoh.demo),
+    };
+    const ersteBelegt = erste.answered && erste.sources.length > 0;
+    const abweichungen = vergleicheAntworten(
+      {
+        answered: ersteBelegt,
+        answer: ersteBelegt ? erste.answer : null,
+        citedSources: ersteBelegt ? erste.citedSources : [],
+      },
+      zweite,
+    );
+    return {
+      erste,
+      zweitmeinung: {
+        status: "verglichen",
+        ersteStufe: this.stufeVon(ersterProvider),
+        zweiteStufe: this.stufeVon(wahl.provider),
+        zweite,
+        abweichend: abweichungen.length > 0,
+        abweichungen,
+      },
+    };
+  }
+
+  // R-0305/R-1099: welches Modell die Zweitmeinung geben darf — oder warum keines. Jede Prüfung ist
+  // dieselbe, die auch der Kettenbau anwendet (`chainForChoice`); es gibt keine zweite Auffassung.
+  private zweitmeinungsModell(
+    confidential: boolean,
+  ): { provider: ReasonerProvider } | { grund: ZweitmeinungGrund } {
+    const wahl = this.taskConfig.zweitmeinung;
+    if (wahl === undefined) {
+      return { grund: "nicht_eingerichtet" };
+    }
+    // Eine Klara-Anbieterbindung lässt nur ihren Anbieter zu — jedes andere Glied wäre ein
+    // Ausweichweg, den niemand freigegeben hat (`runTask`, R-0590).
+    const gebunden = confidential ? undefined : gebundenerAnbieter();
+    if (wahl === "local") {
+      if (!this.usingSecondary()) {
+        return { grund: "nicht_verfuegbar" };
+      }
+      if (confidential && this.secondary.rejectsConfidential?.() === true) {
+        return { grund: "nicht_freigegeben" };
+      }
+      return gebunden === undefined ? { provider: this.secondary } : { grund: "nicht_freigegeben" };
+    }
+    const provider = this.cloudProvider(wahl);
+    if (!provider) {
+      return { grund: "nicht_verfuegbar" };
+    }
+    if (!this.oeffentlicheKiErlaubt(confidential) || !anbieterZugelassen(wahl)) {
+      return { grund: "nicht_freigegeben" };
+    }
+    if (gebunden !== undefined && gebunden !== wahl) {
+      return { grund: "nicht_freigegeben" };
+    }
+    return { provider };
+  }
+
+  // R-0305/R-1099: die Stufe eines Glieds für die Gegenüberstellung — kein Anbieter- oder
+  // Modellname (WP-VIP2-GATE-2).
+  private stufeVon(provider: ReasonerProvider): ZweitmeinungStufe {
+    if (provider === this.fallback) {
+      return "deterministic";
+    }
+    return this.anbieterVon(provider) === undefined ? "local" : "cloud";
   }
 
   // SCRUM-490 R2 (B1): RETRIEVAL-ONLY-Antwort für den Add-on-Pfad (Klara). Der Eingabetext ist der

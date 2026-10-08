@@ -35,6 +35,8 @@ import {
   type Verwendung,
   chipPunkt,
 } from "../components/fragen/Quellenplaketten";
+// R-0305/R-1099: die Zweitmeinung zur stehenden Antwort.
+import { Zweitmeinung } from "../components/fragen/Zweitmeinung";
 import { useVorlesen } from "../components/fragen/useVorlesen";
 import { FRAGEN_ZIEL } from "../components/fragen/ziele";
 // WP-UX-WOW-1 U1 / JOB 3064 §5: sichere Markdown-Darstellung der Antwort (React-Elemente, kein
@@ -2325,6 +2327,15 @@ export function Ask(): JSX.Element {
                     </p>
                   )}
                 </div>
+                {/* R-0305/R-1099: die Zweitmeinung — eigene Anfrage, eigener Zustand (Begründung im
+                  Baustein). `key` bindet sie an genau diese Frage: eine neue Frage beginnt leer. */}
+                <Zweitmeinung
+                  key={asked}
+                  frage={asked}
+                  faden={fadenFuerAnfrage(faden, asked)}
+                  billable={answerBillable}
+                  titelVon={(id) => (kos.data ?? []).find((k) => k.id === id)?.title}
+                />
               </div>
             ) : (
               <Card className="mt-3 border-dashed" data-testid="ask-gap">

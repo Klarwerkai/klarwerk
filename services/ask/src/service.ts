@@ -20,6 +20,7 @@ import {
   type ReasonerLocale,
   type Relevanztext,
   type ZuordnungsPaar,
+  type ZweitmeinungErgebnis,
   decktAlleFragebegriffe,
   queryTokens,
   waehleKandidaten,
@@ -537,6 +538,10 @@ export interface AskResult {
   // bleibt fuer ihn die ehrliche Auskunft. Die Sperrlogik selbst ist unberuehrt
   // (E-VERTRAULICHKEIT-OHNE-STUFE-20260828: erklaeren ja, sperren oder entsperren nein).
   verschlossen?: VerschlossenHinweis[];
+  // AUFNAHME 20260922 (R-0305, R-1099): die Gegenüberstellung mit dem Zweitmodell — NUR, wenn die
+  // Frage sie angefordert hat (`opts.zweitmeinung`). Sonst fehlt das Feld vollständig, und der
+  // Antwortkörper ist der bisherige.
+  zweitmeinung?: ZweitmeinungErgebnis;
 }
 
 /**
@@ -862,6 +867,14 @@ export class AskService {
        * von der Route, und nur im Konsolenzweig.
        */
       gespraechsfaden?: readonly string[];
+      /**
+       * AUFNAHME 20260922 (R-0305, R-1099): dieselbe Frage zusätzlich vom Zweitmodell beantworten
+       * lassen und gegenüberstellen (`Reasoner.answerMitZweitmeinung`). Beide Modelle bekommen
+       * DIESELBEN Kandidaten — die Sichtbarkeits-, Prüfstands- und Vertraulichkeitsfilter liefen
+       * davor und gelten für beide. Wirkungslos mit `retrievalOnly` (dort fragt kein Modell).
+       * Gesetzt nur von der Route, und nur im Konsolenzweig.
+       */
+      zweitmeinung?: boolean;
     },
     // produkt:20261007:spaces — WAS DER FRAGENDE ÜBERHAUPT SEHEN DARF, als fertige Entscheidung der
     // Route (`sichtbarkeitsfilterFuer`, samt führendem Space). Bewusst ein EIGENER Parameter und
@@ -1052,12 +1065,24 @@ export class AskService {
     // D5: die gelesenen Kandidaten gehen gleich an den Antwortweg (Modell oder deterministischer
     // Ersatz). Wurde inzwischen abgeschaltet, verlassen sie diesen Dienst nicht.
     this.pruefeKiSperre("antwortweg", kiBeginn);
+    // R-0305/R-1099: angefordert — dann beantworten beide Modelle dieselbe Frage aus denselben
+    // `candidates` mit denselben Argumenten, und die erste Antwort ist hier die Antwort wie sonst
+    // auch. Der Weg des Add-ins (`retrievalOnly`) bleibt davon unberührt: dort fragt kein Modell.
+    const zweitmeinungFeld: { zweitmeinung?: ZweitmeinungErgebnis } = {};
+    const antworte = async (...args: Parameters<Reasoner["answer"]>): Promise<AnswerResult> => {
+      if (opts?.zweitmeinung !== true) {
+        return this.reasoner.answer(...args);
+      }
+      const beide = await this.reasoner.answerMitZweitmeinung(...args);
+      zweitmeinungFeld.zweitmeinung = beide.zweitmeinung;
+      return beide.erste;
+    };
     const rawResult = await this.mitUebertragungssperre(() =>
       opts?.retrievalOnly
         ? // JOB 3049: TOR 2, Weg des Add-ins — derselbe Relevanztext wie an Tor 1. Ohne ihn hier
           // wäre genau der Klara-Weg der eine, der die Zusage nicht einlöst.
           this.reasoner.answerRetrievalOnly(frageImZusammenhang, candidates, locale, relevanz)
-        : this.reasoner.answer(
+        : antworte(
             frageImZusammenhang,
             candidates,
             locale,
@@ -1192,6 +1217,30 @@ export class AskService {
         prefilterTermLimit: ASK_PREFILTER_TERM_LIMIT,
       },
     });
+    // R-1099: „Weichen sie voneinander ab, ist das ein Warnzeichen, dem jemand nachgehen muss."
+    // Damit dieses Warnzeichen nicht nur auf einem Bildschirm steht, der gleich wieder zu ist, wird
+    // die Gegenüberstellung protokolliert — als eigener Eintrag, damit `ask.query` seine
+    // inventarisierte Feldmenge behält (docs/datenschutz/pruefprotokoll-nutzdaten.md). Ziel ist die
+    // tragende Quelle, an der man der Abweichung nachgeht. Nur Zustände, kein Frage- oder
+    // Antworttext, kein Anbieter- oder Modellname.
+    const zweitmeinung = zweitmeinungFeld.zweitmeinung;
+    if (zweitmeinung) {
+      await this.audit?.record({
+        actor: actorId,
+        action: "ask.zweitmeinung",
+        target: result.citedSources[0] ?? result.sources[0] ?? "-",
+        payload:
+          zweitmeinung.status === "verglichen"
+            ? {
+                status: zweitmeinung.status,
+                abweichend: zweitmeinung.abweichend,
+                abweichungen: zweitmeinung.abweichungen.join(","),
+                ersteStufe: zweitmeinung.ersteStufe,
+                zweiteStufe: zweitmeinung.zweiteStufe,
+              }
+            : { status: zweitmeinung.status, grund: zweitmeinung.grund },
+      });
+    }
     // AUFTRAG-mega77 BLOCK A: hier wurde `ungeprueftUnterdrueckt` berechnet. Die Berechnung ist
     // ERSATZLOS entfernt — Begründung am Feld-Grabstein in `AskResult` oben. Kurz: sie lief ohne
     // Betrachterfilter (Leck ab n = 1, Orakel bei enger Wiederholung) und zählte die gedeckelte
@@ -1202,7 +1251,15 @@ export class AskService {
       // liefert das oben emittierte metadata-only ask.query-Audit (trägt Actor + answered=false, keinen
       // Text). Ohne die Option bleibt der Pfad byte-identisch: Gap anlegen.
       if (opts?.gapPolicy === "count_only") {
-        return { result, answerId, gap: null, receipt, ...ungeprueftFeld, ...verschlossenFeld };
+        return {
+          result,
+          answerId,
+          gap: null,
+          receipt,
+          ...ungeprueftFeld,
+          ...verschlossenFeld,
+          ...zweitmeinungFeld,
+        };
       }
       // GAP-SPRACHHERKUNFT: `locale` steuert schon die Antwortsprache des Reasoners und liegt hier
       // ohnehin vor — es ging bisher nur verloren. Mitgegeben, damit die Oberfläche einen
@@ -1214,9 +1271,25 @@ export class AskService {
       const gap = await this.createGap(frageImZusammenhang, actorId, opts?.demoSeed, locale, () =>
         this.pruefeKiSperre("ergebnis", kiBeginn),
       );
-      return { result, answerId, gap, receipt, ...ungeprueftFeld, ...verschlossenFeld };
+      return {
+        result,
+        answerId,
+        gap,
+        receipt,
+        ...ungeprueftFeld,
+        ...verschlossenFeld,
+        ...zweitmeinungFeld,
+      };
     }
-    return { result, answerId, gap: null, receipt, ...ungeprueftFeld, ...verschlossenFeld };
+    return {
+      result,
+      answerId,
+      gap: null,
+      receipt,
+      ...ungeprueftFeld,
+      ...verschlossenFeld,
+      ...zweitmeinungFeld,
+    };
   }
 
   /**

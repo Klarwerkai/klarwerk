@@ -1821,7 +1821,38 @@ export interface AskResponse {
   // JOB 2626 D1: nur bei Nicht-Antwort UND nur auf Wegen mit Betrachterfilter vorhanden; ein
   // älterer Server sendet das Feld nicht — die Fläche fällt dann auf die generische Leermeldung.
   verschlossen?: VerschlossenHinweis[];
+  // AUFNAHME 20260922 (R-0305, R-1099): nur, wenn die Frage mit `zweitmeinung: true` gestellt wurde.
+  zweitmeinung?: ZweitmeinungErgebnis;
 }
+
+// R-0305/R-1099: Spiegel von `ZweitmeinungErgebnis` in `services/reasoner/src/types.ts` (der
+// webbuild kopiert nur `apps/web`, ein Import von dort bräche den Produktionsbau). `stufe` statt
+// Anbieter- oder Modellname — die Antwort geht an jeden Fragenden.
+export type ZweitmeinungStufe = "cloud" | "local" | "deterministic";
+export type ZweitmeinungGrund =
+  | "nicht_eingerichtet"
+  | "nicht_verfuegbar"
+  | "nicht_freigegeben"
+  | "nicht_unabhaengig"
+  | "fehlgeschlagen";
+export type ZweitmeinungAbweichung = "beantwortet" | "quellen" | "zahlen";
+export interface ZweitmeinungAntwort {
+  answered: boolean;
+  answer: string | null;
+  sources: string[];
+  citedSources: string[];
+  demo: boolean;
+}
+export type ZweitmeinungErgebnis =
+  | {
+      status: "verglichen";
+      ersteStufe: ZweitmeinungStufe;
+      zweiteStufe: ZweitmeinungStufe;
+      zweite: ZweitmeinungAntwort;
+      abweichend: boolean;
+      abweichungen: ZweitmeinungAbweichung[];
+    }
+  | { status: "nicht_moeglich"; grund: ZweitmeinungGrund };
 
 // FR-EXT-03 / FE-OUT: Output Factory (SCRUM-117/109).
 export type OutputKind =

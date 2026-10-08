@@ -77,6 +77,11 @@ const askBodySchema = {
       maxItems: GESPRAECHSFADEN_MAX_FRAGEN,
       items: { type: "string", maxLength: 8_000 },
     },
+    // AUFNAHME 20260922 (R-0305, R-1099) — DIE ZWEITMEINUNG: dieselbe Frage zusätzlich vom Modell
+    // beantworten lassen, das der Administrator dafür gewählt hat, und beide gegenüberstellen.
+    // Wirksam NUR im Konsolenzweig (wie `thread`); Add-on- und Word-Wege lassen es liegen — ihre
+    // Egress-Verträge kennen keinen zweiten Empfänger und bekommen keinen.
+    zweitmeinung: { type: "boolean" },
   },
 } as const;
 
@@ -548,6 +553,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         selectionConfidentiality?: string;
         questionSource?: string;
         thread?: string[];
+        zweitmeinung?: boolean;
       };
     }>(
       "/api/ask",
@@ -838,6 +844,8 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           validatedOnly: true,
           ungeprueftSichtbarFuer: sichtbarkeitsfilterFuer(user),
           verschlossenSichtbarFuer: sichtbarkeitsfilterFuer(user),
+          // R-0305/R-1099: nur hier und nur auf ausdrückliche Anforderung.
+          ...(request.body.zweitmeinung === true ? { zweitmeinung: true } : {}),
         });
       },
     );
