@@ -140,8 +140,8 @@ diff --git a/apps/web/src/components/erfassen/Blatt.tsx b/apps/web/src/component
 index da90a288..c7e49ac9 100644
 --- a/apps/web/src/components/erfassen/Blatt.tsx
 +++ b/apps/web/src/components/erfassen/Blatt.tsx
-@@ -61,7 +61,6 @@ import { type SpeechRec, diktatSprache, makeRec } from "../../lib/speechDictatio
- import { hasSpeechRecognition } from "../../lib/speechSupport";
+@@ -71,7 +71,6 @@ import { hasSpeechRecognition, istIosGeraet } from "../../lib/speechSupport";
+ import { type Speicherzustand, speicherzustand } from "../../lib/speicherzustand";
  import type { TitelMitQuelle } from "../../lib/titelRangfolge";
  import { useAiBillable } from "../../lib/useAiBillable";
 -import { umfangKurz } from "../../lib/vorschauUmfang";
@@ -152,8 +152,8 @@ index da90a288..c7e49ac9 100644
          : draftProvenance(declaredConfidentiality, undefined, activeDraftId ?? undefined),
      [declaredConfidentiality, activeDraftId],
    );
--  const { verdict, checkStatus, pruefumfang } = useLiveKnowledgeCheck(
-+  const { verdict, checkStatus } = useLiveKnowledgeCheck(
+-  const { verdict, checkStatus, pruefumfang, negativwissen } = useLiveKnowledgeCheck(
++  const { verdict, checkStatus, negativwissen } = useLiveKnowledgeCheck(
      liveText,
      livePruefHerkunft,
      gespeicherterStand,
