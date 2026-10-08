@@ -14,6 +14,22 @@
 // „Links gilt / Rechts gilt / Beide gelten, je nach Kontext / Kein Widerspruch" und rechts der
 // Textlink „Zweitmeinung anfragen".
 //
+// R-0252: VOR den Karten steht ein Satz, welche Art von Arbeit vorliegt (Regel, Sache, Version), und
+// das Band richtet sich danach (`lib/conflictView.ts`, `conflictWorkActions`): der Sachkonflikt
+// behält genau die Knöpfe oben; der Regelkonflikt bietet keine Zweitmeinung an; der
+// Versionskonflikt fragt „Linker/Rechter Stand gilt", ohne „Beide gelten" und ohne Zweitmeinung.
+// Ohne Einordnung (Nacharbeit 5): drei Knöpfe „Als Regel-/Sach-/Versionskonflikt einordnen" stehen
+// vorn; die typabhängigen Aktionen sind bis dahin sichtbar gesperrt, ein Satz nennt den Grund. Die
+// Einordnung wird gespeichert (`POST /api/conflicts/:id/arbeitsart`), danach gilt das passende Band.
+//
+// R-0215 / R-1714: ein OFFENER Wahrheitskonflikt ist noch nicht eskaliert. Dann steht „Eskalieren"
+// vorn im Band, Entscheidungen und Zweitmeinung sind sichtbar gesperrt (der Dienst lehnt sie mit
+// 409 ab), und ein Satz darunter sagt warum. „Kein Widerspruch" bleibt offen — er entscheidet
+// keine Wahrheit, er verneint den Befund.
+//
+// R-0263: nach „Links/Rechts gilt" wählt der Mensch, ob die Seite überstimmt oder nur präzisiert
+// (dann mit Geltungsbereich). Der Vorrang gilt nur zwischen diesen zwei Punkten.
+//
 // NICHTS GEHT VERLOREN (Auftrag §11): Eskalieren, Eskalationspfad, Vergleichsseite und Details
 // liegen im „···" jeder Karte; Herkunft, Sicherheit, Begründung, Zitate, Bedingungen, Maßnahmen,
 // Quellen, Status, nächster Schritt, Beweislage und der Wirkungssatz liegen im „Mehr" jeder Karte;
@@ -31,7 +47,13 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos } from "../api/hooks";
-import type { Conflict, ConflictStatus, KnowledgeObject } from "../api/types";
+import type {
+  Conflict,
+  ConflictStatus,
+  ConflictWorkKind,
+  KnowledgeObject,
+  VorrangArt,
+} from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
 import { SourceEvidence } from "../components/ko/SourceEvidence";
@@ -73,6 +95,12 @@ import {
   conflictEvidenceBalance,
   conflictKoPair,
   conflictNextStep,
+  conflictWorkActions,
+  conflictWorkKind,
+  einordnungAusstehend,
+  eskalationAusstehend,
+  klaraVorschlag,
+  naechsterSchrittSchluessel,
   resolutionEffect,
 } from "../lib/conflictView";
 import { leseFall } from "../lib/fallAbsprung";
@@ -81,6 +109,9 @@ import { clusterReihenfolge, konfliktCluster } from "../lib/konfliktCluster";
 import { REVIEW_HELP_TOPICS } from "../lib/reviewHelp";
 
 const PATH: ConflictStatus[] = ["eskaliert", "zweitmeinung", "geloest"];
+
+/** R-0252: die drei Arbeitsarten des Einordnungswegs, in der Reihenfolge der Auftragsquelle. */
+const EINORDNUNG: readonly ConflictWorkKind[] = ["regel", "sache", "version"];
 
 // JOB 1125: der Redaktionsmarker der Serversicht. Ohne ihn verschwänden zurückgehaltene Belege
 // LAUTLOS, und ein Betrachter hielte einen Fund ohne Zitate für einen Fund ohne Belege.
@@ -111,8 +142,16 @@ export function Conflicts(): JSX.Element {
   const qc = useQueryClient();
   const [decision, setDecision] = useState("");
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+  // R-0263: welche Seite gilt (null = „Beide gelten", kein Vorrang), ob sie überstimmt oder nur
+  // präzisiert, und — beim Präzisieren — der Geltungsbereich.
+  const [gewaehlteSeite, setGewaehlteSeite] = useState<"a" | "b" | null>(null);
+  const [vorrangArt, setVorrangArt] = useState<VorrangArt>("ueberstimmt");
+  const [geltungsbereich, setGeltungsbereich] = useState("");
   const [opinionId, setOpinionId] = useState<string | null>(null);
   const [opinion, setOpinion] = useState("");
+  // R-1105: „Kein Widerspruch" schließt erst mit der Begründung des Menschen.
+  const [dismissingId, setDismissingId] = useState<string | null>(null);
+  const [dismissNote, setDismissNote] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [gewaehlt, setGewaehlt] = useState(0);
   // R-0961: `?fall=<id>` aus der Aufgabenliste wählt genau diesen Konflikt vor. Die Vorwahl gilt,
@@ -131,6 +170,17 @@ export function Conflicts(): JSX.Element {
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
 
+  // R-0252 (Nacharbeit 5): der Einordnungsweg — die befugte Person legt die Arbeitsart fest.
+  const einordnen = useMutation({
+    mutationFn: (v: { id: string; arbeitsart: ConflictWorkKind }) =>
+      endpoints.conflicts.einordnen(v.id, v.arbeitsart),
+    onSuccess: () => {
+      invalidate();
+      setErr(null);
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
+  });
+
   const secondOpinion = useMutation({
     mutationFn: (id: string) => endpoints.conflicts.secondOpinion(id, opinion.trim()),
     onSuccess: () => {
@@ -143,25 +193,43 @@ export function Conflicts(): JSX.Element {
   });
 
   const resolve = useMutation({
-    mutationFn: (c: { id: string; koA: string }) =>
+    mutationFn: (c: { id: string; koA: string; koB: string }) =>
       endpoints.ko.act(c.koA, {
         action: "resolve-conflict",
         conflictId: c.id,
         decision: decision.trim(),
+        // R-0263: der Vorrang wirkt nur zwischen GENAU diesen zwei Punkten. „Beide gelten" legt
+        // keinen fest und schickt deshalb nichts.
+        ...(gewaehlteSeite
+          ? {
+              vorrang: {
+                art: vorrangArt,
+                gilt: gewaehlteSeite === "a" ? c.koA : c.koB,
+                ...(vorrangArt === "schraenkt_ein"
+                  ? { geltungsbereich: geltungsbereich.trim() }
+                  : {}),
+              },
+            }
+          : {}),
       }),
     onSuccess: () => {
       invalidate();
       setResolvingId(null);
       setDecision("");
+      setGewaehlteSeite(null);
+      setVorrangArt("ueberstimmt");
+      setGeltungsbereich("");
       setErr(null);
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
 
   const dismiss = useMutation({
-    mutationFn: (id: string) => endpoints.conflicts.dismiss(id),
+    mutationFn: (id: string) => endpoints.conflicts.dismiss(id, dismissNote.trim()),
     onSuccess: () => {
       invalidate();
+      setDismissingId(null);
+      setDismissNote("");
       setErr(null);
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
@@ -387,6 +455,36 @@ export function Conflicts(): JSX.Element {
     // KEIN Satz über die Abwesenheit — Nichtwissen wird nicht zu einer Auskunft.
     const beschreibung = redigiert || origin.isAuto ? "" : (c.description ?? "").trim();
 
+    // R-0252: die Art der Arbeit steht VOR den Karten — EIN Satz, flach, ohne Aufklappen. Er sagt
+    // dazu, ob die Einordnung bei der Anlage gewählt oder von der Prüfung erkannt wurde. Das Band
+    // darunter richtet sich nach ihr (`conflictWorkActions`). Die Arbeitsart ist eine Einordnung,
+    // kein Inhalt: sie bleibt auch bei Redaktion stehen (Redaktion leert Text und Zitate).
+    const arbeit = conflictWorkKind(c);
+    const band = conflictWorkActions(arbeit.kind);
+    // Nacharbeit 2: ohne Einordnung sagt der Satz „nicht bestimmt" — er rät keine Art aus `type`.
+    const arbeitSatz =
+      arbeit.kind === null
+        ? t("konfliktarbeit.satz.offen")
+        : `${t(`konfliktarbeit.satz.${arbeit.kind}`)} ${t(
+            arbeit.herkunft === "erkannt" ? "konfliktarbeit.erkannt" : "konfliktarbeit.gewaehlt",
+          )}`;
+    // R-0215 / R-1714: solange der Wahrheitskonflikt nicht eskaliert ist, sind Entscheidung und
+    // Zweitmeinung gesperrt — sichtbar, mit Grund, und „Eskalieren" steht vorn im Band.
+    const gesperrt = eskalationAusstehend(c);
+    // R-0252 (Nacharbeit 5): ohne Arbeitsart wird ZUERST eingeordnet — die typabhängigen Aktionen
+    // stehen sichtbar, aber gesperrt da, bis die befugte Person Regel, Sache oder Version gewählt hat.
+    const einordnungOffen = einordnungAusstehend(c);
+    const entscheidungGesperrt = gesperrt || einordnungOffen;
+    // R-0263 (Nacharbeit 5): Klaras Vorschlag Widerspruch/Präzisierung — er steht im
+    // Entscheidungsweg, entscheiden muss die Person (`klaraVorschlag`, lib/conflictView.ts).
+    const vorschlag = klaraVorschlag(c);
+    const vorschlagSatz = vorschlag
+      ? t(vorschlag.schluessel, {
+          title: (vorschlag.seite === "a" ? pair.a?.title : pair.b?.title) ?? "",
+          bereich: vorschlag.geltungsbereich || t("konfliktarbeit.amPunkt.bereichZurueck"),
+        })
+      : null;
+
     const mehr = (seite: "a" | "b"): JSX.Element => {
       const ko = seite === "a" ? pair.a : pair.b;
       const zitat = seite === "a" ? origin.quoteA : origin.quoteB;
@@ -466,7 +564,7 @@ export function Conflicts(): JSX.Element {
             </PruefenMehrBlock>
           ) : null}
           <PruefenMehrBlock beschriftung={t("con.nextLabel")}>
-            {t(`con.next.${conflictNextStep(c)}`)}
+            {t(naechsterSchrittSchluessel(conflictNextStep(c)))}
           </PruefenMehrBlock>
           <PruefenMehrBlock beschriftung={t("pruefen.mehr.effect")}>
             {t("con.resolveEffect")}
@@ -537,12 +635,17 @@ export function Conflicts(): JSX.Element {
       );
     };
 
-    /** „Links gilt" / „Rechts gilt" / „Beide gelten": derselbe dokumentierende Weg, andere Vorbelegung. */
-    const oeffneAufloesung = (vorbelegung: string): void => {
+    /** „Links gilt" / „Rechts gilt" / „Beide gelten": derselbe dokumentierende Weg, andere Vorbelegung.
+     *  R-0263: `gilt` merkt sich die gewählte Seite — „Beide gelten" (null) legt keinen Vorrang fest. */
+    const oeffneAufloesung = (vorbelegung: string, gilt: "a" | "b" | null): void => {
       setErr(null);
       setDecision(vorbelegung);
+      setGewaehlteSeite(gilt);
+      setVorrangArt("ueberstimmt");
+      setGeltungsbereich("");
       setResolvingId(c.id);
     };
+    const praezisiert = gewaehlteSeite !== null && vorrangArt === "schraenkt_ein";
 
     return (
       <>
@@ -580,6 +683,10 @@ export function Conflicts(): JSX.Element {
             </span>
           ) : null}
         </PruefenPaarZeile>
+
+        <p data-testid="konflikt-arbeitsart" className="text-[13px] leading-relaxed text-muted">
+          {arbeitSatz}
+        </p>
 
         {clusterHinweis(c)}
 
@@ -624,50 +731,94 @@ export function Conflicts(): JSX.Element {
 
         {offen ? (
           <PruefenAktionsband>
+            {gesperrt ? (
+              <PruefenKnopf
+                ton="primaer"
+                kennung="eskalieren"
+                disabled={escalate.isPending}
+                onClick={() => escalate.mutate(c.id)}
+              >
+                {t("con.escalate")}
+              </PruefenKnopf>
+            ) : null}
+            {einordnungOffen
+              ? EINORDNUNG.map((art) => (
+                  <PruefenKnopf
+                    key={art}
+                    kennung={`einordnen-${art}`}
+                    disabled={einordnen.isPending}
+                    onClick={() => einordnen.mutate({ id: c.id, arbeitsart: art })}
+                  >
+                    {t(`konfliktarbeit.einordnen.${art}`)}
+                  </PruefenKnopf>
+                ))
+              : null}
             <PruefenKnopf
               ton="primaer"
               kennung="links-gilt"
+              disabled={entscheidungGesperrt}
               onClick={() =>
-                oeffneAufloesung(t("con.prefill.side", { title: pair.a?.title ?? "" }))
+                oeffneAufloesung(t("con.prefill.side", { title: pair.a?.title ?? "" }), "a")
               }
             >
-              {t("con.side.left")}
+              {t(band.linksKey)}
             </PruefenKnopf>
             <PruefenKnopf
               ton="primaer"
               kennung="rechts-gilt"
+              disabled={entscheidungGesperrt}
               onClick={() =>
-                oeffneAufloesung(t("con.prefill.side", { title: pair.b?.title ?? "" }))
+                oeffneAufloesung(t("con.prefill.side", { title: pair.b?.title ?? "" }), "b")
               }
             >
-              {t("con.side.right")}
+              {t(band.rechtsKey)}
             </PruefenKnopf>
-            <PruefenKnopf
-              kennung="beide-gelten"
-              onClick={() => oeffneAufloesung(t("con.prefill.both"))}
-            >
-              {t("con.side.both")}
-            </PruefenKnopf>
+            {band.beideGelten ? (
+              <PruefenKnopf
+                kennung="beide-gelten"
+                disabled={entscheidungGesperrt}
+                onClick={() => oeffneAufloesung(t("con.prefill.both"), null)}
+              >
+                {t("con.side.both")}
+              </PruefenKnopf>
+            ) : null}
             {canDismiss(c) ? (
               <PruefenKnopf
                 kennung="kein-widerspruch"
                 disabled={dismiss.isPending}
-                onClick={() => dismiss.mutate(c.id)}
+                onClick={() => {
+                  setErr(null);
+                  setDismissNote("");
+                  setDismissingId(dismissingId === c.id ? null : c.id);
+                }}
               >
                 {t("con.side.none")}
               </PruefenKnopf>
             ) : null}
-            <PruefenBandLink
-              kennung="zweitmeinung"
-              onClick={() => {
-                setErr(null);
-                setOpinion("");
-                setOpinionId(opinionId === c.id ? null : c.id);
-              }}
-            >
-              {t("con.secondOpinionAdd")}
-            </PruefenBandLink>
+            {band.zweitmeinung ? (
+              <PruefenBandLink
+                kennung="zweitmeinung"
+                disabled={entscheidungGesperrt}
+                onClick={() => {
+                  setErr(null);
+                  setOpinion("");
+                  setOpinionId(opinionId === c.id ? null : c.id);
+                }}
+              >
+                {t("con.secondOpinionAdd")}
+              </PruefenBandLink>
+            ) : null}
           </PruefenAktionsband>
+        ) : null}
+        {offen && gesperrt ? (
+          <p data-testid="konflikt-eskalation-zuerst" className="text-[12.5px] text-muted">
+            {t("konfliktarbeit.eskalation.zuerst")}
+          </p>
+        ) : null}
+        {offen && einordnungOffen ? (
+          <p data-testid="konflikt-einordnung-zuerst" className="text-[12.5px] text-muted">
+            {t("konfliktarbeit.einordnung.zuerst")}
+          </p>
         ) : null}
 
         {/* Die Begründung ist vorbelegt und EDITIERBAR — die Entscheidung bleibt beim Menschen. */}
@@ -677,6 +828,53 @@ export function Conflicts(): JSX.Element {
               {t("con.resolveEffect")}
               {wirkung.revalidationRecommended ? <span> {t("con.resolveRevalidate")}</span> : null}
             </div>
+            {/* R-0263 (Nacharbeit 5): Klaras Vorschlag steht im Entscheidungsweg — als Vorschlag,
+                nicht als Vorbelegung. Wählen und den Geltungsbereich festlegen tut die Person. */}
+            {vorschlagSatz && band.praezisierung ? (
+              <p data-testid="konflikt-vorschlag" className="text-[12.5px] text-muted">
+                {vorschlagSatz}
+              </p>
+            ) : null}
+            {/* R-0263: gilt die gewählte Seite überall, oder präzisiert sie die andere nur in einem
+                Geltungsbereich? Beim Versionskonflikt gibt es nur das Überstimmen. */}
+            {gewaehlteSeite !== null && band.praezisierung ? (
+              <fieldset data-testid="konflikt-vorrang" className="space-y-1 text-[13px]">
+                <legend className="font-medium text-muted">
+                  {t("konfliktarbeit.vorrang.frage")}
+                </legend>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name={`vorrang-${c.id}`}
+                    checked={vorrangArt === "ueberstimmt"}
+                    onChange={() => setVorrangArt("ueberstimmt")}
+                  />
+                  {t("konfliktarbeit.vorrang.ueberstimmt")}
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name={`vorrang-${c.id}`}
+                    data-testid="konflikt-vorrang-praezisiert"
+                    checked={vorrangArt === "schraenkt_ein"}
+                    onChange={() => setVorrangArt("schraenkt_ein")}
+                  />
+                  {t("konfliktarbeit.vorrang.schraenktEin")}
+                </label>
+                {praezisiert ? (
+                  <input
+                    type="text"
+                    data-testid="konflikt-geltungsbereich"
+                    value={geltungsbereich}
+                    onChange={(e) => setGeltungsbereich(e.target.value)}
+                    aria-label={t("konfliktarbeit.vorrang.geltungsbereich")}
+                    placeholder={t("konfliktarbeit.vorrang.geltungsbereichHinweis")}
+                    className="h-10 w-full rounded-input border border-hairline bg-surface px-2.5 text-sm"
+                  />
+                ) : null}
+                <p className="text-[12px] text-muted">{t("konfliktarbeit.vorrang.wirkung")}</p>
+              </fieldset>
+            ) : null}
             <textarea
               value={decision}
               onChange={(e) => setDecision(e.target.value)}
@@ -687,8 +885,12 @@ export function Conflicts(): JSX.Element {
             />
             <Button
               variant="primary"
-              disabled={resolve.isPending || decision.trim().length === 0}
-              onClick={() => resolve.mutate({ id: c.id, koA: c.koA })}
+              disabled={
+                resolve.isPending ||
+                decision.trim().length === 0 ||
+                (praezisiert && geltungsbereich.trim().length === 0)
+              }
+              onClick={() => resolve.mutate({ id: c.id, koA: c.koA, koB: c.koB })}
             >
               {t("con.resolveConfirm")}
             </Button>
@@ -711,6 +913,29 @@ export function Conflicts(): JSX.Element {
               onClick={() => secondOpinion.mutate(c.id)}
             >
               {t("con.secondOpinionConfirm")}
+            </Button>
+          </div>
+        ) : null}
+
+        {dismissingId === c.id ? (
+          <div data-testid="pruefen-fehlalarm" className="space-y-2">
+            <div className="rounded-input bg-trust-warn-bg p-2.5 text-[12px] text-trust-warn-text">
+              {t("fehlalarm.wirkung")}
+            </div>
+            <textarea
+              value={dismissNote}
+              onChange={(e) => setDismissNote(e.target.value)}
+              rows={2}
+              aria-label={t("con.dismiss")}
+              placeholder={t("fehlalarm.platzhalter")}
+              className="w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none focus:border-ink/30"
+            />
+            <Button
+              variant="primary"
+              disabled={dismiss.isPending || dismissNote.trim().length === 0}
+              onClick={() => dismiss.mutate(c.id)}
+            >
+              {t("con.dismiss")}
             </Button>
           </div>
         ) : null}
