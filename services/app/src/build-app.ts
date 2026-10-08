@@ -378,6 +378,8 @@ import { speicherVorgang } from "./speicher-vorgang";
 // Start bei fehlenden Pflichtwerten verweigert und beim Hochfahren ohne Geheimniswerte berichtet,
 // was diese Instanz hat und was ihr fehlt.
 import { ermittleBestand, pruefeStartvertrag, startbericht } from "./start-vertrag";
+// R-0554 / R-2128: die Wissensübergabe beim Ausscheiden (Kompositionswurzel, vier Module).
+import { Wissensuebergabe } from "./wissensuebergabe";
 
 // ================================================================================================
 // JOB 3776 — WO DER STARTVERTRAG GERUFEN WIRD: AM EINSTIEGSPUNKT. HIER NICHT MEHR.
@@ -559,6 +561,8 @@ export interface AppServices {
   // SCRUM-118: optionaler externer Such-Proxy (undefined, wenn EXTERNAL_SEARCH=off).
   externalSearch: ExternalSearchService | undefined;
   lifecycle: LifecycleService;
+  // R-0554 / R-2128: Wissensübergabe beim Ausscheiden (Vorschau + Ausführung + Protokoll).
+  wissensuebergabe: Wissensuebergabe;
   i18n: I18nService;
   objects: ObjectStore;
   // AUFTRAG-mega20 Block C: die MODULÜBERGREIFENDE Referenzprüfung — verdrahtet mit den echten
@@ -1269,8 +1273,34 @@ export function assembleServices(
   // SCRUM-506.
   policyNahtSchliessen((betrachter) => sichtbarkeitsfilterFuer(betrachter as never) as never);
 
+  // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden. Sie bekommt dieselben Dienste und
+  // Ablagen wie die übrigen Wege — die Einzelübergabe `setAuthor`, den Eigentumsgeber, die
+  // Entwurfs-, Lücken- und Zuweisungsablagen — und keinen eigenen Bestand.
+  const wissensuebergabe = new Wissensuebergabe({
+    kos: () => ko.list(),
+    setAuthor: (koId, to, actor) => lifecycle.transferAuthor(koId, to, actor),
+    setOwnership: (koId, value, actor) => ko.setOwnership(koId, value, actor),
+    drafts: repos.drafts,
+    gaps: () => ask.listGaps(),
+    assignGap: (gapId, to) => ask.assignGap(gapId, to),
+    assignments: {
+      all: () => repos.assignments.all(),
+      find: (koId, userId) => repos.assignments.find(koId, userId),
+      create: (zuweisung) => repos.assignments.create(zuweisung),
+      remove: async (koId, userId) => {
+        if (!repos.assignments.remove) {
+          throw new Error("Diese Zuweisungsablage kann keine Prüfaufgabe entfernen.");
+        }
+        await repos.assignments.remove(koId, userId);
+      },
+    },
+    audit,
+    nachfolgerBekannt: async (id) => (await repos.users.findById(id))?.approved === true,
+  });
+
   return {
     audit,
+    wissensuebergabe,
     reasoner,
     klaraSessions: opts.klaraSessions ?? new InMemoryKlaraSessionRepo(),
     // JOB 3326: die Lesevarianten-Ablage — Postgres, wenn injiziert, sonst im Speicher.
@@ -3604,7 +3634,9 @@ export function buildApp(
   );
   // AUFTRAG-JOB2017 (G7): derselbe Zugang wie bei conflictRoutes/overlapRoutes/notificationsRoutes
   // — eine Instanz, keine zweite Aufloesung. Pflichtparameter, s. lifecycle-routes.ts.
-  app.register(lifecycleRoutes(services.lifecycle, guards, koSichtbarkeit));
+  app.register(
+    lifecycleRoutes(services.lifecycle, guards, koSichtbarkeit, services.wissensuebergabe),
+  );
   app.register(
     notificationsRoutes(
       {

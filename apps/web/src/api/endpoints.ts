@@ -115,6 +115,8 @@ import type {
   SlideConvertResponse,
   StructureResult,
   TrashedKo,
+  UebergabeErgebnis,
+  UebergabeVorschau,
   UploadLimits,
   ValidationBoardKo,
   ValidationSettings,
@@ -373,6 +375,8 @@ export type KoAction =
   // R-0263: `vorrang` optional — welcher der beiden Punkte gilt bzw. einschränkt.
   | { action: "resolve-conflict"; conflictId: string; decision: string; vorrang?: VorrangWahl }
   | { action: "transfer-author"; newAuthor: string }
+  // R-0507: der benannte Eigentümer gibt seine Verantwortung zurück (sonst 403 `NOT_OWNER`).
+  | { action: "ownership-release" }
   // AUFTRAG-mega15 Block B (bens SB-4): dieser Vertrag war schon richtig — falsch war der
   // Laufzeitpfad, der zusätzlich ein `provider` mitschickte, und der Server, der seine Stufen-
   // Sperre nach diesem Client-Feld ausrichtete. Beides ist jetzt aufgeräumt: die Herkunft leitet
@@ -1105,6 +1109,11 @@ export const endpoints = {
     // SCRUM-146: vorhandener Asset-Change-Pfad → markiert gekoppelte KOs als „prüfen".
     assetChanged: (assetRef: string) =>
       api.post<string[]>("/lifecycle/asset-changed", { assetRef }),
+    // R-0554: Wissensübergabe beim Ausscheiden — erst Vorschau, dann Ausführung (Recht `users.manage`).
+    uebergabeVorschau: (von: string, an: string) =>
+      api.post<UebergabeVorschau>("/lifecycle/handover/preview", { from: von, to: an }),
+    uebergeben: (von: string, an: string) =>
+      api.post<UebergabeErgebnis>("/lifecycle/handover", { from: von, to: an }),
   },
   // SCRUM-145: vorhandene Learning-Path-API (rollenbasiert, Fortschritt serverseitig).
   learningPaths: {

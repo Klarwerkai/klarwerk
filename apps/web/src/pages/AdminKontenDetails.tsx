@@ -18,6 +18,7 @@ import { NAV_GROUPS, ROLES, type Role, roleAllows } from "../app/navigation";
 // JE KARTE EIN EIGENER TEXT: die vier Karten sind vier Bildschirme, und ein gemeinsamer Satz an der
 // Dateiwurzel stünde auf allen vieren gleich und erklärte keine.
 import { HelpTip } from "../components/HelpTip";
+import { Wissensuebergabe } from "../components/Wissensuebergabe";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { freiheitenSchluessel, kiWahlFrei } from "../components/einstellungen/rollenFreiheiten";
@@ -538,6 +539,13 @@ export function NutzerDetail({
                 {t("adm.approve")}
               </button>
             )}
+
+            {/* R-0554 / R-2128: bevor ein Konto geht, wandert sein Wissen — vor dem Löschen, an
+                derselben Karte. Nachfolger kann nur ein freigeschaltetes Konto sein. */}
+            <Wissensuebergabe
+              von={nutzer.id}
+              kandidaten={(users.data ?? []).filter((u) => u.approved && u.id !== nutzer.id)}
+            />
 
             <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-4">
               <Button

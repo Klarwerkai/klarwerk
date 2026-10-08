@@ -175,6 +175,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `category`, `tags` | `ko.create` | `category` bzw. `tags`, `expectedMetadataRevision?` |
 | `confidentiality` | `ko.create` | Stufe |
 | `ownership` | `ko.validate` | `ownership` |
+| `ownership-release` | `ko.read`; nur der benannte Eigentümer selbst (sonst 403 `NOT_OWNER`) | — (Spur `reviewers`/`validators` bleibt; Audit `ko.ownership-released`) |
 | `conflict` | `ko.validate` | `conflict` (antwortet 201) |
 | `resolve-conflict` | `conflict.resolve` | `conflictId`, `decision` |
 | `transfer-author` | `users.manage` | `newAuthor` |
@@ -302,6 +303,8 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `POST` | `/api/lifecycle/couple` | `ko.create` | Rumpf `{ assetRef, koId }` | 204 | Dienstfehler |
 | `GET` | `/api/lifecycle/couplings/:koId` | `ko.read`, sichtbar | — | 200 Kopplungen | 404 |
 | `POST` | `/api/lifecycle/asset-changed` | `ko.validate` | Rumpf `{ assetRef }` | 200 betroffene Objekte | Dienstfehler |
+| `POST` | `/api/lifecycle/handover/preview` | `users.manage` | Rumpf `{ from, to }` | 200 Vorschau der Wissensübergabe (Wissensobjekte mit Titel, Eigentum, Entwürfe/Lücken/Prüfaufgaben als Kennung); schreibt nichts | 400 `INVALID` (leer/gleiche Person); 404 `NOT_FOUND` (Nachfolger kein freigeschaltetes Konto) |
+| `POST` | `/api/lifecycle/handover` | `users.manage` | Rumpf `{ from, to }` | 200 `{ uebergeben, fehlgeschlagen }`; Protokoll `lifecycle.handover`, je Objekt `ko.author-transferred`/`ko.ownership` | wie Vorschau |
 | `GET` | `/api/lifecycle/pending` | `ko.read` | — | 200 Kennungen sichtbarer offener Objekte | — |
 | `POST` | `/api/learning-paths` | `ko.create` | Rumpf `{ role, steps: [{ title }] }` | 201 Lernpfad | Dienstfehler |
 | `GET` | `/api/learning-paths/:role` | `ko.read` | — | 200 Lernpfad | 404 `NOT_FOUND` |
