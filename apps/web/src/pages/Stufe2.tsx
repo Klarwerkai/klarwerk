@@ -73,6 +73,7 @@ import { WissensPriorisierung } from "../components/WissensPriorisierung";
 // JOB 4153: Art und Richtung in Klartext kommen von DER Stelle, an der die Textdarstellung sie
 // auch nimmt — Bild und Liste dürfen dieselbe Kante nicht verschieden benennen.
 import { beziehungsartText, beziehungsrichtungKurz } from "../components/WissensbeziehungenBereich";
+import { WochenupdateTeamgespraech } from "../components/WochenupdateTeamgespraech";
 // F-0140 / K-20: derselbe Zustandsbanner, den der Ergebnis-View schon benutzt — kein zweiter.
 import { RunStateBanner } from "../components/confluence-import/RunStateBanner";
 // JOB 4086: der SharePoint-/OneDrive-Weg. Er haengt an DIESER Seite und nicht an einem eigenen
@@ -434,6 +435,12 @@ export function Output(): JSX.Element {
           </div>
         </Card>
       ) : null}
+
+      {/* RECHERCHE:pmo-fea-0004: das Wissensupdate fürs Teamgespräch — eigener Weg ohne
+          Quellenauswahl (der Zeitraum wählt), auf Abruf und ohne Versand. */}
+      <div className="mt-4">
+        <WochenupdateTeamgespraech />
+      </div>
     </div>
   );
 }
