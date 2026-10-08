@@ -1347,6 +1347,39 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     expect(rot).toHaveLength(1);
   });
 
+  it("Nacharbeit 20: Schreibzugriffe über einen Alias treffen dasselbe Props-Objekt", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Alias.tsx": [
+          "export function F(): JSX.Element {",
+          "  const p: { role?: string } = {};",
+          "  const q = p;",
+          "  q.role = holeRolle();",
+          "  let r: Record<string, string> = {};",
+          "  r = p;",
+          "  r.role = holeRolle();",
+          "  const s = Math.random() > 0.5 ? p : {};",
+          "  veraendere(s);",
+          "  const nutzer = { role: 'x' };",
+          "  const n2 = nutzer;",
+          "  n2.role = holeRolle();",
+          "  return <div {...p} />;",
+          "}",
+        ],
+      }),
+    );
+    const an = (stelle: string): string[] => rot.filter((z) => z.includes(stelle));
+    // bens Fall wörtlich: `q` ist ein Alias von `p`, der Schreibzugriff trifft die Props.
+    expect(an("components/Alias.tsx:4")[0]).toContain("statisch nicht bestimmbar");
+    // Ein Alias über eine spätere Zuweisung und über einen Bedingungszweig.
+    expect(an("components/Alias.tsx:7")[0]).toContain("statisch nicht bestimmbar");
+    expect(an("components/Alias.tsx:9")[0]).toContain("kann dort verändert werden");
+    // Ein Alias eines Objekts, das in keinen Spread fliesst, bleibt die Benutzerrolle.
+    expect(an("components/Alias.tsx:12"), "nutzer/n2 fliessen in keinen Spread").toEqual([]);
+    expect(rot).toHaveLength(3);
+  });
+
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
     const { rot } = pruefeModalgrenze(
       legeBaum({

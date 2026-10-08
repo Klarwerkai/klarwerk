@@ -1917,18 +1917,61 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
   // Nacharbeit 18 (ben): trägt dieser Bezeichner eine lokale Bindung, deren Objekt — über
   // Bindungsketten — in einen JSX-Spread oder an `createElement` fliesst?
   // Je Deklaration einmal ermittelt: die Prüfung läuft für jedes Bezeichner-Argument jedes Aufrufs.
-  const propsFluss = new Map<ts.Node, boolean>();
-  const imPropsFluss = (id: ts.Identifier): boolean =>
+  const bindungsVerwendungen = new Map<ts.Node, ts.Identifier[]>();
+  const verwendungenVon = (
+    d: ts.VariableDeclaration & { name: ts.Identifier },
+  ): ts.Identifier[] => {
+    let liste = bindungsVerwendungen.get(d);
+    if (liste === undefined) {
+      liste = verwendungen(d, d.name.text);
+      bindungsVerwendungen.set(d, liste);
+    }
+    return liste;
+  };
+  const direktImFluss = new Map<ts.Node, boolean>();
+  // Nacharbeit 20 (ben): die Bindungen, deren OBJEKT eine Deklaration ebenfalls trägt — über den
+  // Initialisierer und spätere Zuweisungen (`const q = p`, `r = p`, `s = c ? p : {}`).
+  const quellBezeichner = (ausdruck: ts.Node): ts.Identifier[] => {
+    if (ts.isIdentifier(ausdruck)) {
+      return [ausdruck];
+    }
+    const kinder: ts.Node[] = [];
+    ts.forEachChild(ausdruck, (kind) => {
+      // Nur wertdurchreichende Kinder (Zweige, `??`/`||`, `&&` rechts, Klammer, `as` …), keine Typen.
+      if (reichtWertDurch(ausdruck, kind) && !ts.isTypeNode(kind)) {
+        kinder.push(kind);
+      }
+    });
+    return kinder.flatMap(quellBezeichner);
+  };
+  // Liegt die Bindung im Props-Fluss — direkt (ihre Verwendungen erreichen einen Spread) oder als
+  // ALIAS eines Objekts, das ihn erreicht? Eine `const`-Bindung macht kein Objekt unveränderlich,
+  // und ein Alias beschreibt dasselbe Objekt.
+  const imPropsFluss = (id: ts.Identifier, besucht: Set<ts.Node> = new Set()): boolean =>
     sichtbareDeklarationen(deklarationen, id).some((d) => {
-      if (!ts.isVariableDeclaration(d) || !ts.isIdentifier(d.name)) {
+      if (!ts.isVariableDeclaration(d) || !ts.isIdentifier(d.name) || besucht.has(d)) {
         return false;
       }
-      let ergebnis = propsFluss.get(d);
-      if (ergebnis === undefined) {
-        ergebnis = verwendungen(d, d.name.text).some((v) => istPropsObjekt(v));
-        propsFluss.set(d, ergebnis);
+      besucht.add(d);
+      const bindung = d as ts.VariableDeclaration & { name: ts.Identifier };
+      let direkt = direktImFluss.get(d);
+      if (direkt === undefined) {
+        direkt = verwendungenVon(bindung).some((v) => istPropsObjekt(v));
+        direktImFluss.set(d, direkt);
       }
-      return ergebnis;
+      if (direkt) {
+        return true;
+      }
+      const zuweisungen = verwendungenVon(bindung).flatMap((v) => {
+        const p = v.parent;
+        return ts.isBinaryExpression(p) &&
+          p.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+          p.left === v
+          ? [p.right]
+          : [];
+      });
+      const quellen = [...(d.initializer ? [d.initializer] : []), ...zuweisungen];
+      return quellen.flatMap(quellBezeichner).some((q) => imPropsFluss(q, besucht));
     });
 
   // Ein Schreibzugriff `x.role = …`, `x[k] = …` (auch `+=`, `??=` …). An einem Objekt im
