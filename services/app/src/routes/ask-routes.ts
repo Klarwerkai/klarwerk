@@ -717,8 +717,14 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // eine Klara-Bindung oder ein Klara-Feld trägt, wird ABGEWIESEN — nicht still in die Konsole
         // gelassen (dann ginge Dokumenttext womöglich ans Modell) und nicht still eingeengt (dann
         // stünde die Klara-Behandlung wieder hier). Fail-closed, und der Grund steht im Körper.
+        // Ausnahme R-0688 (Integrations-API): ein DIENST-Schlüssel hat keine Klara-Sitzung; schickt er
+        // Klara-Köpfe mit, bekommt er wie zugesagt den engen Zweig unten (validiert, kein Modell) —
+        // die Köpfe wirken dort nicht. Klara-Felder im Körper weist auch er ab.
+        const dienstSchluessel =
+          request.authContext?.authKind === "addon" &&
+          request.authContext.principal.dienst !== undefined;
         if (
-          klaraBindungVorhanden(request.headers) ||
+          (klaraBindungVorhanden(request.headers) && !dienstSchluessel) ||
           klaraFelderVorhanden(request.body as Record<string, unknown>)
         ) {
           reply.code(400).send({
@@ -732,6 +738,11 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         const faden = (request.body.thread ?? []).filter((frage) => frage.trim().length > 0);
         const auth = request.authContext;
         if (auth?.authKind === "addon") {
+          // Aufnahme gesamt-integrations-api (R-0688) × R-0700: ein Schlüsselzugang — Klara- wie
+          // DIENST-Schlüssel — bekommt hier ausschließlich den engen Zweig (validiertes Wissen, kein
+          // Modell). Eine Einwilligung hebt die Enge nur an Klaras eigenem Zugang auf, und der weist
+          // Schlüsselzugänge ab (403). Ein Dienst-Schlüssel, der Klara-Köpfe mitschickt, landet
+          // deshalb hier (die Abweisung oben nimmt ihn aus) — nie bei einer Einwilligung.
           // SCRUM-490 D1/D2: validated-only + count_only für den Nur-Lese-Add-on-Key. R2 (B1):
           // retrievalOnly → der vertrauliche Dokumenttext wird NIE ans Modell/den Embedder gegeben; die
           // Antwort ist rein Retrieval gegen validierte, nicht-vertrauliche KOs (kein Egress).

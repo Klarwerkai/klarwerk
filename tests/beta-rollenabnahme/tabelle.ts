@@ -965,6 +965,44 @@ export const TABELLE: Zeile[] = [
     payload: {},
     erwartet: NUR_ADMIN,
   },
+  // R-0170: die Zugangsauskunft und die drei Türen des Jira-Imports. Wie bei SharePoint stehen sie
+  // vollständig in der Abnahme: die Bühne setzt keine Jira-Zugangsdaten, der Adapter kommt nicht
+  // zustande, und die Türen antworten mit 503 vor jedem Effekt. Gemessen wird das Rechtetor.
+  {
+    gruppe: "importAccessRoutes",
+    methode: "GET",
+    pfad: "/api/import/jira/zugang",
+    belegstelle: "services/app/src/routes/import-access-routes.ts:149",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "jiraImportRoutes",
+    methode: "POST",
+    pfad: "/api/admin/import/jira/issues",
+    belegstelle: "services/app/src/routes/jira-import-routes.ts:155",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "jiraImportRoutes",
+    methode: "POST",
+    pfad: "/api/admin/import/jira/apply",
+    belegstelle: "services/app/src/routes/jira-import-routes.ts:182",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "jiraImportRoutes",
+    methode: "POST",
+    pfad: "/api/admin/import/jira/project-apply",
+    belegstelle: "services/app/src/routes/jira-import-routes.ts:243",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
   {
     gruppe: "importRunRoutes",
     methode: "GET",
