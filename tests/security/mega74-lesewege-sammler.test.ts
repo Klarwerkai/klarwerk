@@ -169,6 +169,13 @@ interface Eintrag {
 interface Glied {
   datei: string;
   funktion: string;
+  /**
+   * NACHARBEIT 5 (Befund ben, R-1175): WO der Filter in dieses Glied hineinkommt — Argument-Index
+   * und bei einem Objektparameter die Eigenschaft. Bei `anwendung` Pflicht für jedes Glied: die
+   * Route muss an dieser Stelle die zentrale Entscheidung ÜBERGEBEN, jedes Glied reicht seinen
+   * Parameter an derselben Stelle des nächsten weiter, das letzte ruft ihn auf.
+   */
+  filter?: { index: number; eigenschaft?: string };
 }
 
 /**
@@ -424,7 +431,13 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/output/sources": {
     urteil: "DIENST_FILTERT",
     entscheidung: "sichtbarkeitsfilterFuer",
-    kette: [{ datei: "services/output/src/service.ts", funktion: "listEligible" }],
+    kette: [
+      {
+        datei: "services/output/src/service.ts",
+        funktion: "listEligible",
+        filter: { index: 0 },
+      },
+    ],
     anwendung: "sichtbar",
     grund:
       "Route bildet sichtbarkeitsfilterFuer(user); listEligible wendet ihn an (neben isConfidential).",
@@ -432,7 +445,9 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/output/generate": {
     urteil: "DIENST_FILTERT",
     entscheidung: "sichtbarkeitsfilterFuer",
-    kette: [{ datei: "services/output/src/service.ts", funktion: "generate" }],
+    kette: [
+      { datei: "services/output/src/service.ts", funktion: "generate", filter: { index: 1 } },
+    ],
     anwendung: "sichtbar",
     grund: "Unsichtbares KO antwortet wie unbekanntes (UNKNOWN_KO); vertrauliches wirft weiterhin.",
   },
@@ -440,9 +455,9 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "DIENST_FILTERT",
     entscheidung: "sichtbarkeitsfilterFuer",
     kette: [
-      { datei: "services/output/src/scorm.ts", funktion: "pruefe" },
-      { datei: "services/output/src/scorm.ts", funktion: "bereite" },
-      { datei: "services/output/src/scorm.ts", funktion: "lade" },
+      { datei: "services/output/src/scorm.ts", funktion: "pruefe", filter: { index: 1 } },
+      { datei: "services/output/src/scorm.ts", funktion: "bereite", filter: { index: 1 } },
+      { datei: "services/output/src/scorm.ts", funktion: "lade", filter: { index: 2 } },
     ],
     anwendung: "sichtbar",
     grund: "scorm.ts lade — unsichtbar blockiert wie UNKNOWN_KO; vertraulich bleibt CONFIDENTIAL.",
@@ -451,9 +466,9 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "DIENST_FILTERT",
     entscheidung: "sichtbarkeitsfilterFuer",
     kette: [
-      { datei: "services/output/src/scorm.ts", funktion: "exportiere" },
-      { datei: "services/output/src/scorm.ts", funktion: "bereite" },
-      { datei: "services/output/src/scorm.ts", funktion: "lade" },
+      { datei: "services/output/src/scorm.ts", funktion: "exportiere", filter: { index: 1 } },
+      { datei: "services/output/src/scorm.ts", funktion: "bereite", filter: { index: 1 } },
+      { datei: "services/output/src/scorm.ts", funktion: "lade", filter: { index: 2 } },
     ],
     anwendung: "sichtbar",
     grund: "scorm.ts lade — unsichtbares oder vertrauliches KO blockiert, kein Paket.",
@@ -461,7 +476,7 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/ask": {
     urteil: "DIENST_FILTERT",
     entscheidung: "sichtbarkeitsfilterFuer",
-    kette: [{ datei: "services/ask/src/service.ts", funktion: "ask" }],
+    kette: [{ datei: "services/ask/src/service.ts", funktion: "ask", filter: { index: 4 } }],
     anwendung: "grundlageSichtbarFuer",
     grund:
       "Sitzung: sichtbarkeitsfilterFuer(betrachter); Schlüssel: sichtbarkeitsfilterFuer(schluessel" +
@@ -475,8 +490,8 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "DIENST_FILTERT",
     entscheidung: "sichtbarkeitsfilterFuer",
     kette: [
-      { datei: "services/output/src/zuruf.ts", funktion: "schlageVor" },
-      { datei: "services/output/src/zuruf.ts", funktion: "sammleQuellen" },
+      { datei: "services/output/src/zuruf.ts", funktion: "schlageVor", filter: { index: 1 } },
+      { datei: "services/output/src/zuruf.ts", funktion: "sammleQuellen", filter: { index: 1 } },
     ],
     anwendung: "sichtbar",
     grund:
@@ -493,9 +508,21 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "DIENST_FILTERT",
     entscheidung: "sichtbarkeitsfilterFuer",
     kette: [
-      { datei: "services/app/src/check-text-detection.ts", funktion: "checkText" },
-      { datei: "services/app/src/check-text-detection.ts", funktion: "selectPool" },
-      { datei: "services/app/src/check-text-detection.ts", funktion: "istPoolKandidat" },
+      {
+        datei: "services/app/src/check-text-detection.ts",
+        funktion: "checkText",
+        filter: { index: 1, eigenschaft: "poolSichtbar" },
+      },
+      {
+        datei: "services/app/src/check-text-detection.ts",
+        funktion: "selectPool",
+        filter: { index: 1, eigenschaft: "poolSichtbar" },
+      },
+      {
+        datei: "services/app/src/check-text-detection.ts",
+        funktion: "istPoolKandidat",
+        filter: { index: 2, eigenschaft: "poolSichtbar" },
+      },
     ],
     anwendung: "poolSichtbar",
     grund:
@@ -504,7 +531,7 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/reasoner": {
     urteil: "DIENST_FILTERT",
     entscheidung: "sichtbarkeitsfilterFuer",
-    kette: [{ datei: "services/ask/src/service.ts", funktion: "ask" }],
+    kette: [{ datei: "services/ask/src/service.ts", funktion: "ask", filter: { index: 4 } }],
     anwendung: "grundlageSichtbarFuer",
     grund: "task 'ask' reicht dieselbe Grundlage wie /api/ask in den ask-Dienst.",
   },
@@ -848,7 +875,13 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/klara/answers/:answerId/explanation": {
     urteil: "DIENST_FILTERT",
     entscheidung: "sichtbarkeitsfilterFuer",
-    kette: [{ datei: "services/app/src/services/answer-explanation.ts", funktion: "erklaere" }],
+    kette: [
+      {
+        datei: "services/app/src/services/answer-explanation.ts",
+        funktion: "erklaere",
+        filter: { index: 1, eigenschaft: "sichtbar" },
+      },
+    ],
     anwendung: "sichtbar",
     grund:
       "services/app/src/services/answer-explanation.ts — gehoertNutzer() als Eigentumstor, isConfidential() schwaerzt je Beleg.",
@@ -1163,6 +1196,8 @@ interface Fund {
   aufrufe: Set<string>;
   /** Nacharbeit 2: der Quelltext der Registrierung (für die Weiterleitungsbindung). */
   aufrufText: string;
+  /** Nacharbeit 5: die AUSGEFÜHRTEN Aufrufknoten der Registrierung samt Helfern (Argumentbindung). */
+  ausgefuehrteAufrufe?: readonly ts.CallExpression[];
 }
 
 /** Der Name des Aufgerufenen: `f(…)` → `f`, `x.y.f(…)` → `f`; sonst `undefined`. */
@@ -1543,6 +1578,7 @@ function erhebeDatei(datei: string, text: string): Dateierhebung {
           let praedikatImAufruf = false;
           const rechte = new Set<string>();
           const aufrufe = new Set<string>();
+          const ausgefuehrteAufrufe: ts.CallExpression[] = [];
           // Die Rümpfe der lokalen Helfer, in die dieser Fund hineingelaufen ist — die
           // Dominanzprüfung unten muss sie mitlesen, sonst verstecken sich Fail-open-Zweige
           // einfach eine Funktion tiefer.
@@ -1556,6 +1592,7 @@ function erhebeDatei(datei: string, text: string): Dateierhebung {
             lokaleHelfer,
             (x) => {
               if (ts.isCallExpression(x)) {
+                ausgefuehrteAufrufe.push(x);
                 const name = aufgerufenerName(x.expression);
                 if (name !== undefined) {
                   aufrufe.add(name);
@@ -1588,6 +1625,7 @@ function erhebeDatei(datei: string, text: string): Dateierhebung {
             rechte,
             aufrufe,
             aufrufText: n.getText(sf),
+            ausgefuehrteAufrufe,
           });
         }
       }
@@ -1659,11 +1697,14 @@ function aufrufeIn(knoten: ts.Node, helfer: ReadonlyMap<string, ts.Node>): Set<s
 }
 
 /** Der Rumpf der ersten Funktion oder Methode dieses Namens in der Datei, samt Zeile. */
-function funktionsRumpf(
-  sf: ts.SourceFile,
-  name: string,
-): { rumpf: ts.Node; zeile: number } | undefined {
-  let treffer: { rumpf: ts.Node; zeile: number } | undefined;
+interface Funktionsfund {
+  rumpf: ts.Node;
+  zeile: number;
+  knoten: ts.SignatureDeclarationBase;
+}
+
+function funktionsRumpf(sf: ts.SourceFile, name: string): Funktionsfund | undefined {
+  let treffer: Funktionsfund | undefined;
   const heisst = (k: ts.Node | undefined): boolean =>
     k !== undefined && (ts.isIdentifier(k) || ts.isPrivateIdentifier(k)) && k.text === name;
   const zeile = (n: ts.Node): number => sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1;
@@ -1672,7 +1713,7 @@ function funktionsRumpf(
       return;
     }
     if ((ts.isFunctionDeclaration(n) || ts.isMethodDeclaration(n)) && heisst(n.name) && n.body) {
-      treffer = { rumpf: n.body, zeile: zeile(n) };
+      treffer = { rumpf: n.body, zeile: zeile(n), knoten: n };
       return;
     }
     if (
@@ -1681,13 +1722,308 @@ function funktionsRumpf(
       n.initializer &&
       (ts.isArrowFunction(n.initializer) || ts.isFunctionExpression(n.initializer))
     ) {
-      treffer = { rumpf: n.initializer.body, zeile: zeile(n) };
+      treffer = { rumpf: n.initializer.body, zeile: zeile(n), knoten: n.initializer };
       return;
     }
     ts.forEachChild(n, besuche);
   };
   besuche(sf);
   return treffer;
+}
+
+// ================================================================================================
+// NACHARBEIT 5 (Befund ben, R-1175) — DIE ÜBERGABE, NICHT NUR DIE NAMEN.
+// ================================================================================================
+//
+// Bis hierher genügte, dass die Route `sichtbarkeitsfilterFuer` IRGENDWO aufrief und der Dienst
+// IRGENDEINEN Aufruf namens `sichtbar` enthielt. `sichtbarkeitsfilterFuer(user);
+// reply.send(await output.listEligible());` war damit grün — und der Dienst lief mit seinem
+// Vorgabewert, der alles durchlässt. Jetzt wird die ARGUMENTBINDUNG nachgegangen:
+//   · jeder ausgeführte Aufruf des ersten Glieds in der Route übergibt an `filter` einen Ausdruck,
+//     der sich auf einen Aufruf der zentralen Entscheidung zurückführen lässt (direkt, über eine
+//     Konstante/Variable mit ALLEN Zuweisungen, über eine Objekteigenschaft samt Spreads, über
+//     beide Zweige einer Bedingung);
+//   · jedes Glied reicht seinen Filterparameter an derselben Stelle des nächsten Glieds weiter;
+//   · das letzte Glied ruft genau diesen Parameter auf.
+// Was sich nicht so zurückführen lässt — fehlend, ersetzt, unauflösbar — ist rot mit Datei:Zeile.
+
+function ohneHuelleAusdruck(n: ts.Expression): ts.Expression {
+  let x = n;
+  while (
+    ts.isParenthesizedExpression(x) ||
+    ts.isAsExpression(x) ||
+    ts.isNonNullExpression(x) ||
+    ts.isSatisfiesExpression(x)
+  ) {
+    x = x.expression;
+  }
+  return x;
+}
+
+/** Alle Werte, die dieser Bezeichner annehmen kann: Initialisierer plus jede Zuweisung im Block. */
+function wertDefinitionen(id: ts.Identifier): ts.Expression[] | undefined {
+  for (let p: ts.Node | undefined = id.parent; p; p = p.parent) {
+    if (!(ts.isBlock(p) || ts.isSourceFile(p) || ts.isModuleBlock(p))) {
+      continue;
+    }
+    for (const anweisung of p.statements) {
+      if (!ts.isVariableStatement(anweisung)) {
+        continue;
+      }
+      for (const d of anweisung.declarationList.declarations) {
+        if (!ts.isIdentifier(d.name) || d.name.text !== id.text) {
+          continue;
+        }
+        const werte: ts.Expression[] = d.initializer ? [d.initializer] : [];
+        const sammle = (n: ts.Node): void => {
+          if (
+            ts.isBinaryExpression(n) &&
+            n.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+            ts.isIdentifier(n.left) &&
+            n.left.text === id.text
+          ) {
+            werte.push(n.right);
+          }
+          ts.forEachChild(n, sammle);
+        };
+        sammle(p);
+        return werte.length > 0 ? werte : undefined;
+      }
+    }
+  }
+  return undefined;
+}
+
+/** Lässt sich dieser Ausdruck vollständig auf einen Aufruf der zentralen Entscheidung zurückführen? */
+function istZentraleEntscheidung(n: ts.Expression, tiefe = 0): boolean {
+  if (tiefe > 6) {
+    return false;
+  }
+  const x = ohneHuelleAusdruck(n);
+  if (ts.isCallExpression(x)) {
+    const name = aufgerufenerName(x.expression);
+    return name !== undefined && ZENTRALE_ENTSCHEIDUNGEN.has(name);
+  }
+  if (ts.isConditionalExpression(x)) {
+    return (
+      istZentraleEntscheidung(x.whenTrue, tiefe + 1) &&
+      istZentraleEntscheidung(x.whenFalse, tiefe + 1)
+    );
+  }
+  if (ts.isIdentifier(x)) {
+    const werte = wertDefinitionen(x);
+    return werte?.every((w) => istZentraleEntscheidung(w, tiefe + 1)) ?? false;
+  }
+  return false;
+}
+
+interface Eigenschaftslage {
+  /** Die Ausdrücke, die die Eigenschaft tragen können. */
+  werte: ts.Expression[];
+  /** Ist sie sicher gesetzt (auf jedem Zweig)? */
+  sicher: boolean;
+  /** Könnte ein nicht lesbarer Spread sie überschreiben? */
+  unklar: boolean;
+}
+
+/** Welche Werte trägt `name` in diesem Objektausdruck — samt Spreads und Bedingungen? */
+function eigenschaftIn(n: ts.Expression, name: string, tiefe = 0): Eigenschaftslage {
+  const unklar: Eigenschaftslage = { werte: [], sicher: false, unklar: true };
+  if (tiefe > 6) {
+    return unklar;
+  }
+  const x = ohneHuelleAusdruck(n);
+  if (ts.isIdentifier(x)) {
+    const werte = wertDefinitionen(x);
+    if (werte === undefined) {
+      return unklar;
+    }
+    const lagen = werte.map((w) => eigenschaftIn(w, name, tiefe + 1));
+    return {
+      werte: lagen.flatMap((l) => l.werte),
+      sicher: lagen.every((l) => l.sicher),
+      unklar: lagen.some((l) => l.unklar),
+    };
+  }
+  if (ts.isConditionalExpression(x)) {
+    const a = eigenschaftIn(x.whenTrue, name, tiefe + 1);
+    const b = eigenschaftIn(x.whenFalse, name, tiefe + 1);
+    return {
+      werte: [...a.werte, ...b.werte],
+      sicher: a.sicher && b.sicher,
+      unklar: a.unklar || b.unklar,
+    };
+  }
+  if (!ts.isObjectLiteralExpression(x)) {
+    return unklar;
+  }
+  let lage: Eigenschaftslage = { werte: [], sicher: false, unklar: false };
+  for (const prop of x.properties) {
+    if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === name) {
+      lage = { werte: [prop.initializer], sicher: true, unklar: false };
+    } else if (ts.isShorthandPropertyAssignment(prop) && prop.name.text === name) {
+      lage = { werte: [prop.name], sicher: true, unklar: false };
+    } else if (ts.isSpreadAssignment(prop)) {
+      const innen = eigenschaftIn(prop.expression, name, tiefe + 1);
+      if (innen.unklar) {
+        lage = { ...lage, unklar: true };
+      } else if (innen.sicher) {
+        lage = { werte: innen.werte, sicher: true, unklar: false };
+      } else if (innen.werte.length > 0) {
+        lage = { ...lage, werte: [...lage.werte, ...innen.werte] };
+      }
+    }
+  }
+  return lage;
+}
+
+/** Trägt dieses Argument (bzw. seine Eigenschaft) die zentrale Entscheidung? */
+function uebergibtZentral(
+  aufruf: ts.CallExpression,
+  filter: { index: number; eigenschaft?: string },
+): boolean {
+  const arg = aufruf.arguments[filter.index];
+  if (!arg) {
+    return false;
+  }
+  if (filter.eigenschaft === undefined) {
+    return istZentraleEntscheidung(arg);
+  }
+  const lage = eigenschaftIn(arg, filter.eigenschaft);
+  return (
+    lage.sicher &&
+    !lage.unklar &&
+    lage.werte.length > 0 &&
+    lage.werte.every((w) => istZentraleEntscheidung(w))
+  );
+}
+
+/** Die ausgeführten Aufrufknoten in einem Rumpf (samt aufgerufener Helfer der Datei). */
+function ausgefuehrteAufrufeIn(
+  knoten: ts.Node,
+  helfer: ReadonlyMap<string, ts.Node>,
+): ts.CallExpression[] {
+  const aufrufe: ts.CallExpression[] = [];
+  laufeAusgefuehrt(knoten, helfer, (n) => {
+    if (ts.isCallExpression(n)) {
+      aufrufe.push(n);
+    }
+  });
+  return aufrufe;
+}
+
+/** Der Name des Parameters an `index` — nur ein schlichter Bezeichner zählt. */
+function parameterAn(f: ts.SignatureDeclarationBase, index: number): string | undefined {
+  const p = f.parameters[index];
+  return p && ts.isIdentifier(p.name) ? p.name.text : undefined;
+}
+
+/** Ruft dieser Aufruf den Filter `param` (bzw. `param.eigenschaft`) selbst auf? */
+function ruftFilter(aufruf: ts.CallExpression, param: string, eigenschaft?: string): boolean {
+  const e = ohneHuelleAusdruck(aufruf.expression);
+  if (eigenschaft === undefined) {
+    return ts.isIdentifier(e) && e.text === param;
+  }
+  return (
+    ts.isPropertyAccessExpression(e) &&
+    e.name.text === eigenschaft &&
+    ts.isIdentifier(e.expression) &&
+    e.expression.text === param
+  );
+}
+
+function zeileVon(n: ts.Node): number {
+  const sf = n.getSourceFile();
+  return sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1;
+}
+
+/** Nacharbeit 5: die Übergabe der Entscheidung durch die ganze Kette — leer = belegt. */
+function pruefeUebergabe(
+  schluessel: string,
+  kette: readonly Glied[],
+  fund: Pick<Fund, "datei" | "zeile" | "ausgefuehrteAufrufe">,
+  lies: (datei: string) => string,
+): string[] {
+  const ort = `${fund.datei}:${fund.zeile}`;
+  const erstes = kette[0];
+  if (!erstes || fund.ausgefuehrteAufrufe === undefined) {
+    return [
+      `${ort} — ${schluessel}: Übergabe nicht prüfbar (keine Kette oder keine Aufrufknoten).`,
+    ];
+  }
+  if (kette.some((g) => g.filter === undefined)) {
+    return [`${ort} — ${schluessel}: ein Glied nennt nicht, wo der Filter ankommt (filter).`];
+  }
+  const anErstes = fund.ausgefuehrteAufrufe.filter(
+    (c) => aufgerufenerName(c.expression) === erstes.funktion,
+  );
+  if (anErstes.length === 0) {
+    return [`${ort} — ${schluessel}: ruft das Glied ${erstes.funktion} nicht auf.`];
+  }
+  const maengel: string[] = [];
+  for (const c of anErstes) {
+    if (!uebergibtZentral(c, erstes.filter ?? { index: -1 })) {
+      maengel.push(
+        `${fund.datei}:${zeileVon(c)} — ${schluessel}: ${erstes.funktion}(…) bekommt an der Filterstelle nicht die zentrale Entscheidung (fehlt, ersetzt oder nicht auflösbar).`,
+      );
+    }
+  }
+  if (maengel.length > 0) {
+    return maengel;
+  }
+  for (let i = 0; i < kette.length; i++) {
+    const glied = kette[i];
+    if (!glied?.filter) {
+      return [`${ort} — ${schluessel}: Glied ${i} ohne Filterstelle.`];
+    }
+    let text: string;
+    try {
+      text = lies(glied.datei);
+    } catch {
+      return [`${glied.datei}:1 — ${schluessel}: Datei des Glieds ${glied.funktion} nicht lesbar.`];
+    }
+    const sf = ts.createSourceFile(glied.datei, text, ts.ScriptTarget.Latest, true);
+    const f = funktionsRumpf(sf, glied.funktion);
+    if (!f) {
+      return [`${glied.datei}:1 — ${schluessel}: Funktion ${glied.funktion} nicht gefunden.`];
+    }
+    const stelle = `${glied.datei}:${f.zeile}`;
+    const param = parameterAn(f.knoten, glied.filter.index);
+    if (param === undefined) {
+      return [
+        `${stelle} — ${schluessel}: ${glied.funktion} hat an Stelle ${glied.filter.index} keinen benannten Parameter.`,
+      ];
+    }
+    const aufrufe = ausgefuehrteAufrufeIn(f.rumpf, benannteHelfer(sf));
+    const naechstes = kette[i + 1];
+    if (naechstes === undefined) {
+      if (!aufrufe.some((c) => ruftFilter(c, param, glied.filter?.eigenschaft))) {
+        const was = glied.filter.eigenschaft ? `${param}.${glied.filter.eigenschaft}` : param;
+        return [
+          `${stelle} — ${schluessel}: ${glied.funktion} ruft den übergebenen Filter ${was} nicht auf.`,
+        ];
+      }
+      continue;
+    }
+    const weiter = aufrufe.filter((c) => aufgerufenerName(c.expression) === naechstes.funktion);
+    if (weiter.length === 0) {
+      return [`${stelle} — ${schluessel}: ruft das Glied ${naechstes.funktion} nicht auf.`];
+    }
+    for (const c of weiter) {
+      const arg = naechstes.filter ? c.arguments[naechstes.filter.index] : undefined;
+      const durchgereicht =
+        arg !== undefined &&
+        ts.isIdentifier(ohneHuelleAusdruck(arg)) &&
+        (ohneHuelleAusdruck(arg) as ts.Identifier).text === param &&
+        naechstes.filter?.eigenschaft === glied.filter.eigenschaft;
+      if (!durchgereicht) {
+        return [
+          `${glied.datei}:${zeileVon(c)} — ${schluessel}: ${naechstes.funktion}(…) bekommt den Filter ${param} nicht an seiner Filterstelle.`,
+        ];
+      }
+    }
+  }
+  return [];
 }
 
 /**
@@ -1700,7 +2036,7 @@ function funktionsRumpf(
 function pruefeDienstweg(
   schluessel: string,
   e: Eintrag,
-  fund: Pick<Fund, "datei" | "zeile" | "aufrufe" | "aufrufText">,
+  fund: Pick<Fund, "datei" | "zeile" | "aufrufe" | "aufrufText" | "ausgefuehrteAufrufe">,
   lies: (datei: string) => string,
 ): string[] {
   const ort = `${fund.datei}:${fund.zeile}`;
@@ -1730,10 +2066,12 @@ function pruefeDienstweg(
       `${ort} — ${schluessel}: „${e.entscheidung}“ ist nicht die zentrale Sichtbarkeitsentscheidung (sichtbarkeit.ts) — eine Vertraulichkeitsregel allein genügt nicht.`,
     ];
   }
-  if (e.anwendung !== undefined && !fund.aufrufe.has(e.entscheidung)) {
-    return [`${ort} — ${schluessel}: die Route bildet die Entscheidung ${e.entscheidung} nicht.`];
+  if (e.anwendung !== undefined) {
+    // Nacharbeit 5: die Entscheidung wird gebildet UND übergeben UND angewendet — die blosse
+    // Anwesenheit der Aufrufnamen genügt nicht mehr (`pruefeUebergabe`).
+    return pruefeUebergabe(schluessel, e.kette, fund, lies);
   }
-  const ziel = e.anwendung ?? e.entscheidung;
+  const ziel = e.entscheidung;
   let rufe: ReadonlySet<string> = fund.aufrufe;
   let stelle = ort;
   for (const glied of e.kette) {
@@ -1761,6 +2099,27 @@ function pruefeDienstweg(
 }
 
 const LIES_AUS_DEM_BAUM = (datei: string): string => readFileSync(join(REPO_WURZEL, datei), "utf8");
+
+/** Kalibrierhilfe (Nacharbeit 5): ein Dienstweg-Eintrag über `probe/dienst.ts::liste(sichtbar)`. */
+function probeEintrag(): Eintrag {
+  return {
+    urteil: "DIENST_FILTERT",
+    entscheidung: "sichtbarkeitsfilterFuer",
+    kette: [{ datei: "probe/dienst.ts", funktion: "liste", filter: { index: 0 } }],
+    anwendung: "sichtbar",
+    grund: "Probe.",
+  };
+}
+
+/** Kalibrierhilfe (Nacharbeit 5): der Fund einer synthetischen Route — mit echten Aufrufknoten. */
+function probeRoute(rumpf: string): Fund {
+  const quelle = `app.get("/probe", async (request, reply) => {\n  const user = await waechter(request);\n  ${rumpf}\n});`;
+  const fund = erhebeDatei("probe-routes.ts", quelle).funde[0];
+  if (!fund) {
+    throw new Error("die Proberoute wurde nicht erhoben — die Kalibrierung prüfte nichts");
+  }
+  return fund;
+}
 
 describe("mega74 E · der Sammler über alle Lesewege", () => {
   it("die Erhebung ist vollständig — keine unlesbare Datei, keine Zählerabweichung", () => {
@@ -1853,39 +2212,98 @@ describe("mega74 E · der Sammler über alle Lesewege", () => {
   });
 
   it("KALIBRIERUNG — ein entfernter Dienstfilter oder eine blosse Erwähnung wird rot", () => {
-    const eintrag: Eintrag = {
-      urteil: "DIENST_FILTERT",
-      entscheidung: "sichtbarkeitsfilterFuer",
-      kette: [{ datei: "probe/dienst.ts", funktion: "liste" }],
-      anwendung: "sichtbar",
-      grund: "Probe.",
-    };
-    const fund = {
-      datei: "probe-routes.ts",
-      zeile: 7,
-      aufrufe: new Set(["liste", "sichtbarkeitsfilterFuer"]),
-      aufrufText: "",
-    };
+    const eintrag = probeEintrag();
+    const fund = probeRoute("reply.send(await dienst.liste(sichtbarkeitsfilterFuer(user)));");
     const mitFilter =
       "class D { liste(sichtbar) { return kos.filter((k) => !isConfidential(k.c) && sichtbar(k)); } }";
     expect(pruefeDienstweg("GET /probe", eintrag, fund, () => mitFilter)).toEqual([]);
 
     const ohneFilter = "class D { liste(sichtbar) { return kos; } }";
     expect(pruefeDienstweg("GET /probe", eintrag, fund, () => ohneFilter).join("\n")).toContain(
-      "probe/dienst.ts:1 — GET /probe: ruft die Entscheidung sichtbar nicht auf",
+      "probe/dienst.ts:1 — GET /probe: liste ruft den übergebenen Filter sichtbar nicht auf",
     );
     // Eine Erwähnung ohne Aufruf ist kein Filter.
     const nurErwaehnt = "class D { liste(sichtbar) { void sichtbar; return kos; } }";
     expect(pruefeDienstweg("GET /probe", eintrag, fund, () => nurErwaehnt)).not.toEqual([]);
-    // Bildet die Route die zentrale Entscheidung nicht, nützt der Filter im Dienst nichts.
-    const ohneZentrale = { ...fund, aufrufe: new Set(["liste"]) };
-    expect(pruefeDienstweg("GET /probe", eintrag, ohneZentrale, () => mitFilter)).not.toEqual([]);
     // Ruft die Route das erste Glied nicht, ist der Weg unterbrochen.
-    const ohneAufruf = { ...fund, aufrufe: new Set(["sichtbarkeitsfilterFuer"]) };
+    const ohneAufruf = probeRoute("sichtbarkeitsfilterFuer(user); reply.send(kos);");
     expect(pruefeDienstweg("GET /probe", eintrag, ohneAufruf, () => mitFilter)).not.toEqual([]);
     // Und ein Eintrag nur mit Prosa ist rot.
     const nurProsa: Eintrag = { urteil: "DIENST_FILTERT", grund: "service.ts:1 — filtert." };
     expect(pruefeDienstweg("GET /probe", nurProsa, fund, () => mitFilter)).not.toEqual([]);
+  });
+
+  // NACHARBEIT 5 (Befund ben, R-1175): die Entscheidung muss ÜBERGEBEN werden, nicht bloss irgendwo
+  // gebildet. Der Dienst hat einen Vorgabewert, der alles durchlässt — ohne Übergabe gilt er.
+  it("KALIBRIERUNG (Nacharbeit 5) — gebildet, aber nicht übergeben, ist rot (Bens Fall)", () => {
+    const eintrag = probeEintrag();
+    const dienst =
+      "class D { liste(sichtbar = () => true) { return kos.filter((k) => sichtbar(k)); } }";
+    const bens = probeRoute("sichtbarkeitsfilterFuer(user);\n  reply.send(await dienst.liste());");
+    expect(pruefeDienstweg("GET /probe", eintrag, bens, () => dienst).join("\n")).toContain(
+      "liste(…) bekommt an der Filterstelle nicht die zentrale Entscheidung",
+    );
+    // Ersetzt: ein eigener Filter statt der zentralen Entscheidung.
+    const ersetzt = probeRoute(
+      "sichtbarkeitsfilterFuer(user);\n  reply.send(await dienst.liste(() => true));",
+    );
+    expect(pruefeDienstweg("GET /probe", eintrag, ersetzt, () => dienst)).not.toEqual([]);
+    // Über eine Variable mit EINER ersetzenden Zuweisung: rot.
+    const umgehaengt = probeRoute(
+      "let sicht = sichtbarkeitsfilterFuer(user);\n  if (x) { sicht = () => true; }\n" +
+        "  reply.send(await dienst.liste(sicht));",
+    );
+    expect(pruefeDienstweg("GET /probe", eintrag, umgehaengt, () => dienst)).not.toEqual([]);
+    // GEGENPROBE: über eine Konstante übergeben ist grün.
+    const konstante = probeRoute(
+      "const sicht = sichtbarkeitsfilterFuer(user);\n  reply.send(await dienst.liste(sicht));",
+    );
+    expect(pruefeDienstweg("GET /probe", eintrag, konstante, () => dienst)).toEqual([]);
+  });
+
+  it("KALIBRIERUNG (Nacharbeit 5) — Objektparameter und Weitergabe zwischen Gliedern", () => {
+    const objektEintrag: Eintrag = {
+      ...probeEintrag(),
+      kette: [
+        {
+          datei: "probe/dienst.ts",
+          funktion: "liste",
+          filter: { index: 0, eigenschaft: "sichtbar" },
+        },
+      ],
+    };
+    const objektDienst = "class D { liste(deps) { return kos.filter((k) => deps.sichtbar(k)); } }";
+    const gut = probeRoute(
+      "const basis = { a: 1 };\n" +
+        "  reply.send(await dienst.liste({ ...basis, sichtbar: sichtbarkeitsfilterFuer(user) }));",
+    );
+    expect(pruefeDienstweg("GET /probe", objektEintrag, gut, () => objektDienst)).toEqual([]);
+    // Ein nicht lesbarer Spread NACH der Eigenschaft könnte sie überschreiben: rot.
+    const ueberschrieben = probeRoute(
+      "reply.send(await dienst.liste({ sichtbar: sichtbarkeitsfilterFuer(user), ...fremd() }));",
+    );
+    expect(
+      pruefeDienstweg("GET /probe", objektEintrag, ueberschrieben, () => objektDienst),
+    ).not.toEqual([]);
+
+    const zweiGlieder: Eintrag = {
+      ...probeEintrag(),
+      kette: [
+        { datei: "probe/dienst.ts", funktion: "liste", filter: { index: 0 } },
+        { datei: "probe/dienst.ts", funktion: "innen", filter: { index: 1 } },
+      ],
+    };
+    const route = probeRoute("reply.send(await dienst.liste(sichtbarkeitsfilterFuer(user)));");
+    const weitergereicht =
+      "class D { liste(sichtbar) { return this.innen(kos, sichtbar); }\n" +
+      "  innen(kos, s) { return kos.filter((k) => s(k)); } }";
+    expect(pruefeDienstweg("GET /probe", zweiGlieder, route, () => weitergereicht)).toEqual([]);
+    const unterwegsErsetzt =
+      "class D { liste(sichtbar) { return this.innen(kos, () => true); }\n" +
+      "  innen(kos, s) { return kos.filter((k) => s(k)); } }";
+    expect(pruefeDienstweg("GET /probe", zweiGlieder, route, () => unterwegsErsetzt)).not.toEqual(
+      [],
+    );
   });
 
   it("KALIBRIERUNG (Nacharbeit 3) — eine Vertraulichkeitsregel allein ist rot, auch wenn sie greift", () => {
@@ -1909,19 +2327,8 @@ describe("mega74 E · der Sammler über alle Lesewege", () => {
 
   it("KALIBRIERUNG (Nacharbeit 3) — ein nie aufgerufener Rumpf schützt nicht (Dienstkette)", () => {
     // Befund ben, wörtlich: die Entscheidung steht in einem lokalen Helfer, der nie läuft.
-    const eintrag: Eintrag = {
-      urteil: "DIENST_FILTERT",
-      entscheidung: "sichtbarkeitsfilterFuer",
-      kette: [{ datei: "probe/dienst.ts", funktion: "liste" }],
-      anwendung: "sichtbar",
-      grund: "Probe.",
-    };
-    const fund = {
-      datei: "probe-routes.ts",
-      zeile: 7,
-      aufrufe: new Set(["liste", "sichtbarkeitsfilterFuer"]),
-      aufrufText: "",
-    };
+    const eintrag = probeEintrag();
+    const fund = probeRoute("reply.send(await dienst.liste(sichtbarkeitsfilterFuer(user)));");
     const unbenutzt =
       "class D { liste(sichtbar) { const unbenutzt = () => sichtbar(ko); return kos; } }";
     expect(pruefeDienstweg("GET /probe", eintrag, fund, () => unbenutzt)).not.toEqual([]);
