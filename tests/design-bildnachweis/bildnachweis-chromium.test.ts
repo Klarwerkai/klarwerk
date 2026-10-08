@@ -801,4 +801,80 @@ describe("R-1399 · Sichtnachweis: Lesetexte aus dem Hauptstand auf 11 px", () =
     console.info(`R-1399 · Bild ${bild("b10-klara-vorschau-artikel")}`);
     expect((stand2 as H4Stand).seitenfehler).toEqual([]);
   }, 120_000);
+
+  // ----------------------------------------------------------------------------------------------
+  // Ben, Nacharbeit 18 · die zwei Foto-/Interview-Plaketten an der gebauten Erfassungsfläche:
+  //   b11-foto-befund-ki.png          — /erfassen?weg=interview, Foto gewählt, „Bild auswerten“
+  //                                     → Plakette „KI-Vorschlag“ (FotoInterviewStart.tsx)
+  //   b12-interview-foto-plakette.png — „Foto-Interview starten“ → Plakette „Foto-Interview“
+  //                                     neben der Fragezählung (Capture.tsx)
+  // FESTE ANTWORTEN, AUSDRÜCKLICH GEKENNZEICHNET: die Bühne hat kein Bildmodell. Genau zwei Antworten
+  // sind vorgegeben — die Statusauskunft meldet die Aufgaben „describe“/„interview“ als nutzbar
+  // (der echte Status, nur diese Felder überschrieben), und `POST /api/reasoner/describe` liefert den
+  // festen Befund unten (wie `tests/foto-wissen/foto-interview-start-mounted.test.tsx` S1/S2). Alles
+  // andere — Fläche, Foto-Einlesen im Browser, Interviewstart — ist der echte Weg.
+  // ----------------------------------------------------------------------------------------------
+  const FOTO_BEFUND = "FESTE TESTANTWORT · Kehlnaht mit Riss am Nahtübergang.";
+  const PNG_1X1 =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const KLICK_TEXT = `(text) => {
+    const b = [...document.querySelectorAll('button')].find(
+      (x) => (x.textContent || '').trim() === text && !x.disabled,
+    );
+    if (!b) return false;
+    b.click();
+    return true;
+  }`;
+
+  it("B11/B12 · Foto-Interview: Plakette „KI-Vorschlag“ und Plakette „Foto-Interview“ in 11 px", async () => {
+    expect(fehler2).toBeNull();
+    const st = stand2 as H4Stand;
+    const s = st.seite;
+    st.antworten.vorAuslieferung = async (url, body) => {
+      if (url.pathname !== "/api/reasoner/status") return body;
+      const echt = JSON.parse(body) as { tasks?: Record<string, boolean> };
+      return JSON.stringify({
+        ...echt,
+        active: true,
+        mode: "local",
+        reachable: "ok",
+        tasks: { ...(echt.tasks ?? {}), describe: true, interview: true },
+        billable: {},
+      });
+    };
+    await s.route(`${ORIGIN}/api/reasoner/describe`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ text: FOTO_BEFUND, demo: false }),
+      });
+    });
+    try {
+      await s.goto(`${ORIGIN}/erfassen?weg=interview`, { waitUntil: "load", timeout: 60_000 });
+      await warte2('[data-foto-interview] input[type="file"]');
+      await s.setInputFiles('[data-foto-interview] input[type="file"]', [
+        { name: "schaden.png", mimeType: "image/png", buffer: Buffer.from(PNG_1X1, "base64") },
+      ]);
+      await warte2("[data-foto-interview] img");
+      expect(await s.evaluate<boolean>(fn(KLICK_TEXT), "Bild auswerten")).toBe(true);
+      await warte2("[data-foto-interview] textarea");
+
+      const ki = await groessen("[data-foto-interview] span.font-mono");
+      console.info(`R-1399 · B11 · ${JSON.stringify(ki)}`);
+      expect(ki).toEqual([{ px: "11px", text: "KI-Vorschlag" }]);
+      await ausschnitt2("[data-foto-interview]", "b11-foto-befund-ki");
+
+      expect(await s.evaluate<boolean>(fn(KLICK_TEXT), "Foto-Interview starten")).toBe(true);
+      // Die Kopfzeile des laufenden Interviews: Fragezählung, Quellen- und Foto-Plakette.
+      const plakette = '[data-help="cap:interview"] > div:first-child span.rounded-pill.border';
+      await warte2(plakette);
+      const iv = await groessen(plakette);
+      console.info(`R-1399 · B12 · ${JSON.stringify(iv)}`);
+      expect(iv).toEqual([{ px: "11px", text: "Foto-Interview" }]);
+      await ausschnitt2('[data-help="cap:interview"]', "b12-interview-foto-plakette");
+      expect(st.seitenfehler).toEqual([]);
+    } finally {
+      Reflect.deleteProperty(st.antworten, "vorAuslieferung");
+    }
+  }, 120_000);
 });
