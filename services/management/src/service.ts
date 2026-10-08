@@ -51,7 +51,7 @@ export class ManagementService {
   //
   // Der Snapshot leitet aus dem KO-Bestand Gesamt-, Validierungs- und Offen-Zähler ab, dazu
   // durchschnittliches Vertrauen, Reife-, Kapital- und Risikoscores, Kategorieprioritäten MIT
-  // NAMEN, Knowledge-House-Zeilen mit `category`/`koCount`/`validatedRatio` und die
+  // NAMEN, Knowledge-House-Zeilen (je Fachgebiet) mit Name/`koCount`/`validatedRatio` und die
   // 30/60/90-Tage-Fenster. Ein einzelnes vertrauliches KO konnte eine neue Kategoriezeile
   // erzeugen, Zeitfenster verändern und mehrere globale Scores verschieben; bei einer
   // vertraulich-only Kategorie zeigte `house` unmittelbar Name und `koCount: 1`.

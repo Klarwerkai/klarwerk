@@ -39,6 +39,7 @@ export type {
   Recommendation,
   RecommendationSeverity,
   HouseFloor,
+  HouseFlow,
   PilotWindow,
   MetricsInput,
   BusFactorLike,

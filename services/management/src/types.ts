@@ -122,11 +122,31 @@ export interface Recommendation {
   count: number;
 }
 
+// R-0768 / FR-EXT-05 (FE-MGMT-08): ein Stockwerk je FACHGEBIET (`KnowledgeObject.domain`), nicht je
+// Kategorie. `domain: null` sammelt die Objekte ohne angegebenes Fachgebiet — es wird nicht aus der
+// Kategorie abgeleitet (dieselbe Regel wie am Feld selbst).
 export interface HouseFloor {
-  category: string;
+  domain: string | null;
   koCount: number;
-  validatedRatio: number; // %
-  fragile: boolean;
+  validated: number;
+  validatedRatio: number; // % = Füllgrad (Anteil gesicherten, d. h. validierten Wissens)
+  authorCount: number;
+  singleSource: boolean; // nur ein Urheber (dieselbe Regel wie der Bus-Faktor)
+  fragile: boolean; // Füllgrad < 50 % oder nur ein Urheber
+  imported: number;
+}
+
+// R-0768 / FR-EXT-05: die Kennzahlen des Durchlaufs Import → Haus → Ausgabe.
+export interface HouseFlow {
+  imported: number; // über einen Importweg entstanden (importedVia / origin „import")
+  importedValidated: number; // davon validiert
+  inHouse: number; // Bestand im Haus
+  secured: number; // davon validiert = gesichert
+  floors: number;
+  fragileFloors: number;
+  // Validierte Objekte sind die zulässige Output-Quelle (services/output). Gezählt wird die
+  // AUSGABEFÄHIGKEIT; erzeugte Ausgaben legt der Output-Dienst nicht ab.
+  outputReady: number;
 }
 
 export interface PilotWindow {
@@ -145,5 +165,6 @@ export interface ManagementSnapshot {
   priorities: CategoryPriority[];
   recommendations: Recommendation[];
   house: HouseFloor[];
+  houseFlow: HouseFlow;
   pilot: PilotWindow[];
 }

@@ -2123,8 +2123,32 @@ export interface ManagementSnapshot {
   maturity: { stage: number; stageKey: string; progressPct: number };
   priorities: MgmtPriority[];
   recommendations: { key: string; severity: "hoch" | "mittel"; count: number }[];
-  house: { category: string; koCount: number; validatedRatio: number; fragile: boolean }[];
+  house: MgmtHouseFloor[];
+  houseFlow: MgmtHouseFlow;
   pilot: { days: number; created: number; validated: number }[];
+}
+
+// R-0768 / FR-EXT-05: ein Stockwerk je Fachgebiet; `domain: null` = ohne angegebenes Fachgebiet.
+export interface MgmtHouseFloor {
+  domain: string | null;
+  koCount: number;
+  validated: number;
+  validatedRatio: number;
+  authorCount: number;
+  singleSource: boolean;
+  fragile: boolean;
+  imported: number;
+}
+
+// R-0768 / FR-EXT-05: Import → Haus → Ausgabe (Ausgabe = ausgabefähig, d. h. validiert).
+export interface MgmtHouseFlow {
+  imported: number;
+  importedValidated: number;
+  inHouse: number;
+  secured: number;
+  floors: number;
+  fragileFloors: number;
+  outputReady: number;
 }
 
 export interface StructureResult {

@@ -4,7 +4,6 @@ import { onlineManager, useMutation, useQueryClient } from "@tanstack/react-quer
 import {
   ArrowDown,
   ArrowUp,
-  Building2,
   ChevronDown,
   Copy,
   Download,
@@ -73,6 +72,7 @@ import { WissensPriorisierung } from "../components/WissensPriorisierung";
 // JOB 4153: Art und Richtung in Klartext kommen von DER Stelle, an der die Textdarstellung sie
 // auch nimmt — Bild und Liste dürfen dieselbe Kante nicht verschieden benennen.
 import { beziehungsartText, beziehungsrichtungKurz } from "../components/WissensbeziehungenBereich";
+import { Wissenshaus } from "../components/Wissenshaus";
 // F-0140 / K-20: derselbe Zustandsbanner, den der Ergebnis-View schon benutzt — kein zweiter.
 import { RunStateBanner } from "../components/confluence-import/RunStateBanner";
 // JOB 4086: der SharePoint-/OneDrive-Weg. Er haengt an DIESER Seite und nicht an einem eigenen
@@ -1591,29 +1591,14 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
         </div>
       </Card>
 
-      {/* FE-MGMT-08: Knowledge House */}
+      {/* FE-MGMT-08 / FR-EXT-05: Knowledge House — Stockwerke je Fachgebiet, Import → Haus → Ausgabe
+          (R-0768; components/Wissenshaus). */}
       <Card id={sectionAnchor("house")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.house")}</SectionLabel>
         {snap.house.length === 0 ? (
           <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.empty")}</p>
         ) : (
-          <ul className="mt-2 space-y-1.5">
-            {snap.house.map((f) => (
-              <li
-                key={f.category}
-                className={`flex items-center gap-2 rounded-input border px-2.5 py-2 ${
-                  f.fragile ? "border-trust-crit-fill/30 bg-trust-crit-bg" : "border-hairline"
-                }`}
-              >
-                <Building2 size={14} className="text-muted-2" />
-                <span className="min-w-0 flex-1 truncate text-[13px] text-text">{f.category}</span>
-                <span className="font-mono text-[11px] text-muted-2">
-                  {f.koCount} · {f.validatedRatio}% ·{" "}
-                  {t(f.fragile ? "mgmt.fragile" : "mgmt.stable")}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <Wissenshaus floors={snap.house} flow={snap.houseFlow} />
         )}
       </Card>
 
