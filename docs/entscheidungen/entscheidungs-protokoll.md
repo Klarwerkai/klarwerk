@@ -64,6 +64,13 @@ Am Basisstand per Quelleninspektion festgestellt:
   Rahmenwörter der langen Frage („English", „cite", „stored" …), die keine Quelle trägt, und filtert so
   beide Quellen vor dem Reasoner heraus. K1/kurz im selben Lauf ist grün. Die Abstimmung zwischen
   R-0473 und JOB 3365 ist eine offene Produktentscheidung außerhalb dieses Auftrags.
+- **Fremder Basisfehler 2 (nicht von R-1643 verursacht, nicht hier behoben)**:
+  `tests/klara-quellen-nutzerweg/zwei-quellen-bleiben-zwei.test.ts` W2 war am Kandidaten `ffc3ffd8` rot,
+  und zwar schon im Testaufbau: `admin-validate` der zweiten, wortgleichen Quelle liefert 409
+  `DUPLICATE_ACK_REQUIRED` aus dem Dublettentor (`services/app/src/routes/validation-routes.ts`,
+  `dublettenTor`). Die wortgleiche Kopie ist eine offene Dublette, und der Testaufbau schickt kein
+  `duplicateAcknowledged: true` mit. Gefragt wird in W2 gar nicht erst. W1 (zwei abweichende Fristen,
+  geänderter Rückfall mit zwei Quellen über `POST /api/ask`) ist im selben Lauf grün.
 
 ## Quellenwidersprüche und offene Grenzen
 
