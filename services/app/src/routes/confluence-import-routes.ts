@@ -732,6 +732,40 @@ function uebernahmeZaehler(bilanz: Uebernahmebilanz): ImportRun["counters"] {
 }
 
 /**
+ * R-0144 — DER GRUND EINES TEILAUSFALLS AN ZEIT ODER DATENVOLUMEN, AM LAUF SELBST.
+ *
+ * Scheitert der Einzelabruf einer Seite an Frist, Zeitbudget oder Antwortgrösse, zaehlt die Seite
+ * als gescheitert und der Lauf endet `PARTIAL`. Bis hierher stand der Grund nur als Fehlerklasse in
+ * der Antwort dieses Aufrufs; der gespeicherte Lauf trug `failureCode: null`, und wer ihn spaeter
+ * las (`GET /api/admin/import/runs/:importId`), erfuhr nicht, dass Zeit oder Datenvolumen nicht
+ * gereicht hatten. Jetzt traegt er denselben Code wie der Gesamtlauf (`abbruchCode`) — den ersten
+ * aufgetretenen — und einen Satz mit den Zahlen je Grund. Keine Seitenkennung, kein Quelltext.
+ *
+ * `null` heisst: kein Element ist an einer dieser Grenzen gescheitert. Andere Fehler bleiben, was
+ * sie waren (Zaehler + Antwort), damit kein Code einen Grund behauptet, den es nicht gab.
+ */
+function uebernahmeGrenzgrund(
+  grenzen: readonly string[],
+): { failureCode: string; failureReason: string } | null {
+  const [erster] = grenzen;
+  if (erster === undefined) {
+    return null;
+  }
+  const anlass: Record<string, string> = {
+    CONFLUENCE_TIMEOUT: "Zeitüberschreitung",
+    CONFLUENCE_BUDGET: "erschöpftem Zeitbudget",
+    CONFLUENCE_RESPONSE_TOO_LARGE: "zu großer Antwort",
+  };
+  const teile = [...new Set(grenzen)].map(
+    (code) => `${grenzen.filter((g) => g === code).length} Seite(n) wegen ${anlass[code] ?? code}`,
+  );
+  return {
+    failureCode: erster,
+    failureReason: sanitizeImportFailureReason(`${teile.join(", ")} nicht übernommen.`),
+  };
+}
+
+/**
  * Legt den Uebernahmelauf an — VOR dem ersten Schreibeffekt (§133) — und gibt seine Kennung.
  *
  * `null` heisst „ohne Spur weitermachen": entweder gibt es keine Laufablage (Bestandstests, die
@@ -1460,6 +1494,8 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           let alreadyQueued = 0;
           const failed: { id: string; reason: string }[] = [];
           const notFound: string[] = [];
+          // R-0144: die Grenzcodes der gescheiterten Einzelabrufe, in Auftretensfolge.
+          const grenzen: string[] = [];
           // JOB 3288: DIE KENNUNG VOR DEM ERSTEN SCHREIBEFFEKT. Ab hier kann diese Uebernahme
           // Kandidaten anlegen — von hier an ist sie eine Tatsache und traegt einen Lauf.
           uebernahmelauf = await legeUebernahmelaufAn(
@@ -1517,6 +1553,10 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
                 alreadyQueued += 1;
               }
             } catch (err) {
+              const grenze = confluenceGrenze(err);
+              if (grenze) {
+                grenzen.push(grenze.error);
+              }
               // PII-frei: nur Id + Fehlerklasse, nie Inhalte.
               failed.push({ id, reason: err instanceof Error ? err.name : "unknown" });
             }
@@ -1535,6 +1575,7 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
             {
               status: uebernahmeStatus(bilanz),
               completedAt: new Date().toISOString(),
+              ...(uebernahmeGrenzgrund(grenzen) ?? {}),
               counters: uebernahmeZaehler(bilanz),
             },
             request.log,
