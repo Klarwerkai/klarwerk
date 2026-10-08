@@ -50,16 +50,27 @@ async function frage(b: FrischeBuehne, rolle: Rolle): Promise<{ koId: string; re
   return { koId, receipt: antwort.receipt };
 }
 
+// Die Fragenseite antwortet nur aus GEPRÜFTEM Wissen (R-0584). Ein bloß angelegtes Objekt bleibt
+// ohne Modell ungeprüft (KI-Prüfung `no-model`), und die Frage endet in einer Wissenslücke — gemessen
+// in Nacharbeit 2. Deshalb wie im Betrieb: der Experte legt an, der Admin gibt frei.
 async function aufbau(): Promise<{ b: FrischeBuehne; koId: string }> {
   const b = await baueFrischeBuehne();
   const res = await b.app.inject({
     method: "POST",
     url: "/api/kos",
-    headers: kopf(b, "admin"),
+    headers: kopf(b, "experte"),
     payload: { ...KO_INHALT },
   });
   expect(res.statusCode, res.body).toBe(201);
-  return { b, koId: (res.json() as { id: string }).id };
+  const koId = (res.json() as { id: string }).id;
+  const freigabe = await b.app.inject({
+    method: "PUT",
+    url: `/api/kos/${koId}`,
+    headers: kopf(b, "admin"),
+    payload: { action: "admin-validate" },
+  });
+  expect(freigabe.statusCode, freigabe.body).toBeLessThan(300);
+  return { b, koId };
 }
 
 function melde(b: FrischeBuehne, rolle: Rolle, payload: Record<string, unknown>) {
