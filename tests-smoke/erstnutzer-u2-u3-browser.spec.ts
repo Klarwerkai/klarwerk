@@ -13,8 +13,9 @@
 //     Suchwelten. Gemessen wird, dass jede Fläche ihren Suchraum nennt, dass ein Nulltreffer weiterführt
 //     und dass von der Entwurfswelt ein benannter Weg in die Bibliothek führt.
 //   · U3 — „Navigation nicht selbsterklärend, ‚Meine Aufgaben‘ sagt nicht, was es meint“: Gemessen wird
-//     der Weg Start → Zahnrad → „Weitere Bereiche“ → „Meine Aufgaben“ und dass die Seitenhilfe dort
-//     sagt, was gemeint ist. Die Kopfband-Punkte tragen dabei keinen nativen Tooltip (Pedi 04.09.:
+//     der Weg Start → „Arbeitsbereiche“ → „Offene Aufgaben“ (bis zur Gesamt-Navigation 20260922:
+//     Zahnrad → „Weitere Bereiche“ → „Meine Aufgaben“) und dass die Seitenhilfe dort sagt, was
+//     gemeint ist. Die Kopfband-Punkte tragen dabei keinen nativen Tooltip (Pedi 04.09.:
 //     Erklärung hinter das Zahnrad, nicht ins Sichtfeld).
 //
 // Die erwarteten Texte stehen hier wörtlich (DE ist die Standardsprache des Smoke-Browsers). Die
@@ -110,7 +111,12 @@ test("U2 · Meine Entwürfe: der Suchraum der Entwürfe ist benannt und führt i
   }
 });
 
-test("U3 · „Meine Aufgaben“ ist über das Zahnrad erreichbar, und die Seitenhilfe sagt, was gemeint ist", async ({
+// NACHGEFÜHRT (Aufnahme 20260922 · Gesamt-Navigation, R-1813 = OFFEN.md U3): der Weg und der Name
+// stammen aus einem älteren Stand. FE-002 hat „Weitere Bereiche“ aus dem Zahnrad unter das
+// beschriftete „Arbeitsbereiche“ im Kopfband geholt, R-0962 den Punkt in „Offene Aufgaben“
+// umbenannt. Gemessen wird jetzt der heutige Weg mit dem heutigen Namen — und dass „Meine Aufgaben“
+// auf dem Weg nirgends mehr steht. Die Seitenhilfe kommt weiter aus dem Zahnrad.
+test("U3 · „Offene Aufgaben“ ist über „Arbeitsbereiche“ erreichbar, und die Seitenhilfe sagt, was gemeint ist", async ({
   page,
 }) => {
   await ensureLoggedIn(page);
@@ -133,27 +139,31 @@ test("U3 · „Meine Aufgaben“ ist über das Zahnrad erreichbar, und die Seite
     expect(a.beschrieben, `${a.href} trägt aria-describedby`).toBe(false);
   }
 
-  // Der Weg: Zahnrad → „Weitere Bereiche“ → „Meine Aufgaben“.
-  await page.getByTestId("kopfband-zahnrad").click();
-  await expect(page.getByTestId("zahnrad-menue")).toBeVisible();
-  await page.getByTestId("zahnrad-weitere-bereiche").click();
+  // Der Weg: „Arbeitsbereiche“ → „Offene Aufgaben“.
+  await page.getByTestId("kopfband-arbeitsbereiche").click();
+  const bereiche = page.getByTestId("arbeitsbereiche-menue");
+  await expect(bereiche).toBeVisible();
+  await expect(bereiche).not.toContainText("Meine Aufgaben");
   const aufgaben = page.getByTestId("bereich-aufgaben");
-  await expect(aufgaben).toContainText("Meine Aufgaben");
+  await expect(aufgaben).toContainText("Offene Aufgaben");
   await aufgaben.click();
   await expect(page).toHaveURL(/\/aufgaben(?:[?#]|$)/);
   const seite = page.getByTestId("page-aufgaben");
   await expect(seite).toBeVisible({ timeout: 15_000 });
-  await expect(seite.getByRole("heading", { level: 1 })).toHaveText("Meine Aufgaben");
+  await expect(seite.getByRole("heading", { level: 1 })).toHaveText("Offene Aufgaben");
+  // Der Satz unter der Überschrift sagt ohne Klick, was hier landet (R-0962).
+  await expect(seite.getByTestId("page-lead")).toContainText("zurückgegebene Entwürfe");
 
   // Die Erklärung steht nicht im Sichtfeld, sondern auf Abruf in der Seitenhilfe. Der
-  // Routenwechsel hat das Menü geschlossen (`ZahnradMenue.tsx`); es wird neu geöffnet.
-  await expect(page.getByTestId("zahnrad-menue")).toHaveCount(0);
+  // Routenwechsel hat das Menü geschlossen (`ArbeitsbereicheMenue.tsx`).
+  await expect(bereiche).toHaveCount(0);
   await expect(page.getByTestId("seitenhilfe-liste")).toHaveCount(0);
   await page.getByTestId("kopfband-zahnrad").click();
   await page.getByTestId("zahnrad-seitenhilfe").click();
   const hilfe = page.getByTestId("seitenhilfe-liste");
   await expect(hilfe).toBeVisible();
-  await expect(hilfe).toContainText("Meine Aufgaben");
-  await expect(hilfe).toContainText("Hier steht deine eigene Arbeit an einer Stelle");
+  await expect(hilfe).toContainText("Offene Aufgaben");
+  await expect(hilfe).not.toContainText("Meine Aufgaben");
+  await expect(hilfe).toContainText("Hier steht die offene Arbeit an einer Stelle");
   await expect(hilfe).toContainText("Nächster Schritt: die oberste Zeile anklicken");
 });
