@@ -902,11 +902,19 @@ export const endpoints = {
       }),
     // R-0305/R-1099: dieselbe Frage samt Faden, zusätzlich vom Zweitmodell beantwortet. Derselbe
     // Endpunkt — Auth, Schema, Filter und Egress-Regeln bleiben die der Frage.
-    zweitmeinung: (question: string, locale?: ReasonerLocale, thread?: readonly string[]) =>
+    // Ben (Nacharbeit 9): auch derselbe Fragekontext (R-1633) wie bei der stehenden Antwort — sonst
+    // gewichtet die Gegenüberstellung andere Quellen als die Antwort, auf die sie sich bezieht.
+    zweitmeinung: (
+      question: string,
+      locale?: ReasonerLocale,
+      thread?: readonly string[],
+      fragekontext?: Fragekontext,
+    ) =>
       api.post<AskResponse>("/ask", {
         question,
         ...(locale ? { locale } : {}),
         ...(thread && thread.length > 0 ? { thread } : {}),
+        ...(fragekontext ? { fragekontext } : {}),
         zweitmeinung: true,
       }),
     // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang

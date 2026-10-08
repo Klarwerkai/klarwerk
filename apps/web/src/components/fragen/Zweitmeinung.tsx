@@ -23,7 +23,12 @@ import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../../api/client";
 import { endpoints } from "../../api/endpoints";
-import type { ZweitmeinungAntwort, ZweitmeinungErgebnis, ZweitmeinungStufe } from "../../api/types";
+import type {
+  Fragekontext,
+  ZweitmeinungAntwort,
+  ZweitmeinungErgebnis,
+  ZweitmeinungStufe,
+} from "../../api/types";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { AiCostHint } from "../AiCostHint";
 import { AiGeneratedNotice } from "../AiGeneratedNotice";
@@ -84,6 +89,7 @@ function Spalte({
 export function Zweitmeinung({
   frage,
   faden,
+  kontext,
   billable,
   titelVon,
 }: {
@@ -91,6 +97,9 @@ export function Zweitmeinung({
   frage: string;
   /** Der Gesprächsfaden, mit dem sie gestellt wurde (R-0348) — leer ohne Faden. */
   faden: readonly string[];
+  /** Ben (Nacharbeit 9): der Fragekontext (R-1633), mit dem die stehende Antwort gestellt wurde —
+   *  nicht die aktuelle Auswahl. Ohne Kontext gefragt: abwesend. */
+  kontext?: Fragekontext | undefined;
   /** Kann der Klick etwas kosten? Er fragt den Antwortweg UND das gewählte Zweitmodell — die Seite
    *  leitet das aus beiden ab (`deriveZweitmeinungBillable`, lib/aiAvailability.ts). */
   billable: boolean | undefined;
@@ -99,7 +108,8 @@ export function Zweitmeinung({
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const anfrage = useMutation({
-    mutationFn: () => endpoints.ask.zweitmeinung(frage, toReasonerLocale(i18n.language), faden),
+    mutationFn: () =>
+      endpoints.ask.zweitmeinung(frage, toReasonerLocale(i18n.language), faden, kontext),
   });
   const stufe = (wert: ZweitmeinungStufe): string => t(`zweitmeinung.stufe.${wert}`);
   const antwort = anfrage.data;

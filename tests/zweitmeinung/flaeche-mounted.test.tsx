@@ -133,7 +133,10 @@ describe("R-0305/R-1099 · die Zweitmeinung auf der Fragenseite", () => {
     expect(text(c, "ask-zweitmeinung-knopf")).toBe("Zweitmeinung einholen");
     await einholen(c);
 
-    expect(draht.aufrufe).toEqual([[FRAGE, "de", ["Wie wird Ventil X gewartet?"]]]);
+    expect(draht.aufrufe).toHaveLength(1);
+    expect(draht.aufrufe[0]?.slice(0, 3)).toEqual([FRAGE, "de", ["Wie wird Ventil X gewartet?"]]);
+    // Ohne `kontext`-Eigenschaft gefragt: kein Fragekontext (Ben, Nacharbeit 9; s. kontext-bindung).
+    expect(draht.aufrufe[0]?.[3]).toBeUndefined();
     const warnung = c.querySelector('[data-testid="ask-zweitmeinung-warnung"]');
     expect(warnung?.getAttribute("role")).toBe("alert");
     expect(warnung?.textContent).toContain("Warnzeichen");
