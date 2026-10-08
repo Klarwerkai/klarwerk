@@ -14,6 +14,7 @@ import { registerSecurityHeaders } from "./security-headers";
 // JOB 3776: der Startvertrag wird am Einstiegspunkt gerufen — als erste Anweisung von `start()`,
 // damit sein Abbruch durch `start().catch(...)` läuft und als EINE lesbare Zeile erscheint.
 import { pruefeStartvertrag } from "./start-vertrag";
+import { startfehlerZeile } from "./startfehler-zeile";
 import { assertPersistentStore, normalizeEnv } from "./storage-guard";
 import { resolveTrashSweepIntervalMs, startTrashSweepScheduler } from "./trash-sweep-scheduler";
 import { registerWebStatic } from "./web-static";
@@ -262,6 +263,8 @@ async function start(): Promise<void> {
 }
 
 start().catch((error) => {
-  process.stderr.write(`Serverstart fehlgeschlagen: ${String(error)}\n`);
+  // R-0623 (Ben, Nacharbeit 5): nur Ereignistext und freigegebene Fehlerkennungen — nie die rohe
+  // Meldung oder der Stack (`startfehler-zeile.ts`).
+  process.stderr.write(`${startfehlerZeile(error)}\n`);
   process.exit(1);
 });

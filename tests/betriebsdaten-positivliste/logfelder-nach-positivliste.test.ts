@@ -22,6 +22,8 @@ import {
   inhaltsfreieFehlerkennung,
 } from "../../services/app/src/log-positivliste";
 import { externalRoutes } from "../../services/app/src/routes/external-routes";
+import { StartvertragError } from "../../services/app/src/start-vertrag";
+import { STARTFEHLER_EREIGNIS, startfehlerZeile } from "../../services/app/src/startfehler-zeile";
 import type { IntervalHandle } from "../../services/app/src/trash-sweep-scheduler";
 import { InMemoryExternalKnowledgePolicyRepo } from "../../services/external-search/src/policy";
 import { ExternalSearchService } from "../../services/external-search/src/service";
@@ -251,5 +253,50 @@ describe("R-0623 · Betriebslogfelder nur nach Positivliste", () => {
     // Die Feldliste wirkt daneben unverändert.
     expect(zeilen().find((z) => z.event === "probe")?.msg).toBe(MELDUNG_NICHT_GELISTET);
     expect(gelisteteMeldung("Befund: Anna Meier")).toBe(MELDUNG_NICHT_GELISTET);
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // Ben, Nacharbeit 5: „Der Fehlerweg beim Serverstart schreibt weiterhin String(error) ungefiltert
+  // auf stderr … Die neue Loggerabsicherung greift hier nicht."
+  // ----------------------------------------------------------------------------------------------
+  it("L10 · Startfehler: Kundeninhalt in Meldung und Stack erreicht die stderr-Zeile nicht", () => {
+    const fehler = new Error(`duplicate key value: Key (email)=(${INHALT}@example.org) exists`);
+    (fehler as Error & { code: string }).code = "23505";
+    fehler.stack = `Error: ${fehler.message}\n    at migrate (/srv/klarwerk/services/app/src/db.ts:12:7)`;
+    const zeile = startfehlerZeile(fehler);
+
+    expect(zeile).not.toContain(INHALT);
+    expect(zeile).not.toContain("duplicate key");
+    expect(zeile).not.toMatch(/[\r\n]/);
+    expect(zeile.startsWith(`${STARTFEHLER_EREIGNIS} Error `)).toBe(true);
+    // Die freigegebenen Kennungen bleiben: Typ, Code aus der Liste, Quelltextstelle.
+    expect(zeile).toContain("code 23505");
+    expect(zeile).toContain("herkunft services/app/src/db.ts:12:7");
+    expect(zeile).toContain(ERR_TEXT_UNTERDRUECKT);
+
+    // Ein unbekannter Typ, ein unbekannter Code, kein Error-Objekt: jeweils der stabile Ersatz.
+    const fremd = new Error(INHALT);
+    fremd.name = `Anna Meier ${INHALT}`;
+    (fremd as Error & { code: string }).code = `CODE_${INHALT}`;
+    expect(startfehlerZeile(fremd)).not.toContain(INHALT);
+    expect(startfehlerZeile(fremd)).toContain("UNBEKANNT");
+    expect(startfehlerZeile(`Befund ${INHALT}`)).not.toContain(INHALT);
+  });
+
+  it("L11 · Startvertrag: alle fehlenden Namen stehen weiter in der einen Zeile — nur Namen", () => {
+    const zeile = startfehlerZeile(
+      new StartvertragError(["DATABASE_URL", "APP_BASE_URL", `kein Name ${INHALT}`]),
+    );
+    expect(zeile.startsWith(`${STARTFEHLER_EREIGNIS} StartvertragError: `)).toBe(true);
+    expect(zeile).toContain("DATABASE_URL, APP_BASE_URL");
+    expect(zeile).toContain("Pflichtwert(e)");
+    expect(zeile).not.toContain(INHALT);
+  });
+
+  it("L12 · server.ts schreibt den Startfehler nur über die begrenzte Zeile", () => {
+    const server = readFileSync("services/app/src/server.ts", "utf8");
+    const faenger = server.slice(server.indexOf("start().catch("));
+    expect(faenger).toMatch(/process\.stderr\.write\(`\$\{startfehlerZeile\(error\)\}\\n`\);/);
+    expect(faenger).not.toMatch(/String\(error\)|error\.message|error\.stack/);
   });
 });
