@@ -354,6 +354,18 @@ export interface ReasonerCloudAnbieterStatus {
   grund?: string;
 }
 
+// R-0702: die HERKUNFT eines KI-Zugangs kommt aus der zentralen Zugangsverwaltung dieses Servers
+// (`anbieter-herkunft.ts`), nicht aus einer Deutung der Modellkennung im Browser. `nachweis` sagt,
+// wie belastbar die Angabe ist: `behauptet` = Angabe des Anbieters zu seinem Sitz, von KLARWERK
+// nicht geprüft; `geprueft` = ein belegter Nachweis liegt vor (heute für keinen Zugang);
+// `unbekannt` = es gibt keine Angabe (dann ist auch `land` null).
+export type ReasonerHerkunftNachweis = "geprueft" | "behauptet" | "unbekannt";
+
+export interface ReasonerZugangHerkunft {
+  land: string | null; // ISO-3166-Alpha-2, klein geschrieben (z. B. "us"), oder null
+  nachweis: ReasonerHerkunftNachweis;
+}
+
 // SCRUM-525 P.5 (WP-C): Herkunft der AKTIVEN Policy — "env" (Deploy-ENV KLARWERK_REASONER_POLICY,
 // deklarativ pro Deploy, per Admin-Schreibpfad NICHT änderbar), "db" (persistierte Admin-Wahl) oder
 // "default" (nichts konfiguriert/geladen, inkl. eines fail-closed Ladefehlers — s. Reasoner.setTaskConfig).
@@ -462,6 +474,9 @@ export interface ReasonerConfigStatus {
   // JOB 3134: die beiden externen Anbieter EINZELN — eingerichtet oder nicht, und warum nicht.
   // `cloudConfigured` oben bleibt „irgendein externer Anbieter ist eingerichtet".
   cloudProviders: Record<ReasonerCloudAnbieter, ReasonerCloudAnbieterStatus>;
+  // R-0702: die Herkunft je Zugang aus der zentralen Zugangsverwaltung, mit Nachweisstufe.
+  // Optional, damit vorhandene Statusattrappen gültig bleiben; „fehlt" heißt „keine Angabe".
+  herkunft?: Record<ReasonerCloudAnbieter | "local", ReasonerZugangHerkunft>;
   // JOB 3134: der Anbieter, auf den „auto" (und die abgelösten Werte) heute aufgelöst werden — der
   // erste eingerichtete in der Reihenfolge von REASONER_CLOUD_ANBIETER; null, wenn keiner
   // eingerichtet ist. Die Fläche zeigt ihn neben „Auto", statt ihn raten zu lassen.

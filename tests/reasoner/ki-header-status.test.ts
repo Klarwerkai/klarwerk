@@ -5,12 +5,19 @@ import {
   KI_HEADER_TEXT,
   kiHeaderStatus,
   kiHeaderStatusFromPublic,
+  kiHerkunftAnzeige,
 } from "../../apps/web/src/lib/kiHeaderStatus";
-import { KI_ORIGIN_TEXT, kiOrigin } from "../../apps/web/src/lib/kiOrigin";
 
-// Pedi 05.07.: Header-Pille „In welcher KI bin ich?" + Herkunftsland + DSGVO-Bestätigung.
-// Regel: DSGVO IMMER „nein" — außer es ist eine interne KI aus Europa. Getestet: Aggregation
-// über alle Aufgaben, Herkunfts-Ableitung, die Nein-außer-Europa-Regel, Key-Auflösung DE+EN.
+// Pedi 05.07.: Header-Anzeige „In welcher KI bin ich?". Getestet: Aggregation über alle Aufgaben,
+// Anbieter und Herkunft aus der Serverauskunft, Key-Auflösung DE/EN/NL.
+//
+// R-0599 (Auftrag ki-modus-wahrheit): die frühere Regel „DSGVO immer nein, außer interne KI aus
+// Europa" ist GESTRICHEN — sie ließ sich aus Herkunftsland und Modellname nicht ableiten. Dieser Test
+// hielt sie bis dahin fest; er hält jetzt das Gegenteil fest: die Ableitung trägt KEINE DSGVO-Aussage
+// mehr, und an ihrer Stelle stehen Betriebsort/Datenfluss, Herkunft mit Nachweisstufe und die
+// offenen Prüfungen.
+// R-0702: die Herkunft wird nicht mehr aus der Modellkennung geraten (kiOrigin.ts ist entfernt),
+// sondern kommt aus `config.herkunft` — der zentralen Zugangsverwaltung des Servers.
 function config(overrides: Partial<ReasonerConfigStatus> = {}): ReasonerConfigStatus {
   return {
     provider: "anthropic:claude-sonnet-4-6",
@@ -38,6 +45,11 @@ function config(overrides: Partial<ReasonerConfigStatus> = {}): ReasonerConfigSt
       select: "cloud",
       extract: "cloud",
     },
+    herkunft: {
+      openai: { land: "us", nachweis: "behauptet" },
+      anthropic: { land: "us", nachweis: "behauptet" },
+      local: { land: null, nachweis: "unbekannt" },
+    },
     supportsLocales: ["de", "en"],
     tasks: ["structure", "assist", "interview", "answer", "select", "extract"],
     ...overrides,
@@ -62,54 +74,57 @@ const ALL_RULE = {
   extract: "deterministic",
 } as const;
 
-describe("Pedi 05.07.: kiOrigin — Herkunftsland nur bei eindeutiger Kennung (nichts raten)", () => {
-  it("kennt die eindeutigen Anbieter-Kennungen", () => {
-    expect(kiOrigin("anthropic:claude-sonnet-4-6")).toEqual({
-      countryKey: KI_ORIGIN_TEXT.us,
-      eu: false,
+describe("R-0702: Herkunft kommt vom Server, mit Nachweisstufe — nichts raten", () => {
+  it("behauptete Angabe → Land + Satz „Angabe des Anbieters, nicht geprüft“", () => {
+    expect(kiHerkunftAnzeige({ land: "us", nachweis: "behauptet" })).toEqual({
+      key: KI_HEADER_TEXT.herkunftBehauptet,
+      landKey: "country.us",
+      landCode: "US",
     });
-    expect(kiOrigin("ollama:qwen3-32b")).toEqual({ countryKey: KI_ORIGIN_TEXT.cn, eu: false });
-    // Die Laufzeit „ollama" darf NICHT als „llama"/Meta gelten — das Modell dahinter zählt.
-    expect(kiOrigin("ollama:llama3-8b")).toEqual({ countryKey: KI_ORIGIN_TEXT.us, eu: false });
-    expect(kiOrigin("ollama:mistral-7b")).toEqual({ countryKey: KI_ORIGIN_TEXT.fr, eu: true });
-    expect(kiOrigin("aleph-alpha:luminous")).toEqual({ countryKey: KI_ORIGIN_TEXT.de, eu: true });
   });
 
-  it("unbekannte Kennung → ehrlich unbekannt (eu: null, zählt wie „nein“)", () => {
-    expect(kiOrigin("ollama:geheimmodell-9000")).toEqual({
-      countryKey: KI_ORIGIN_TEXT.unknown,
-      eu: null,
+  it("geprüfte Angabe → eigener Satz; unbekannter Ländercode bleibt Code statt falscher Name", () => {
+    expect(kiHerkunftAnzeige({ land: "ie", nachweis: "geprueft" })).toEqual({
+      key: KI_HEADER_TEXT.herkunftGeprueft,
+      landKey: null,
+      landCode: "IE",
     });
-    expect(kiOrigin(null)).toEqual({ countryKey: KI_ORIGIN_TEXT.unknown, eu: null });
+  });
+
+  it("keine Angabe, „unbekannt“ oder Land null → ehrlich „Herkunft unbekannt“", () => {
+    const unbekannt = { key: KI_HEADER_TEXT.herkunftUnbekannt, landKey: null, landCode: null };
+    expect(kiHerkunftAnzeige(undefined)).toEqual(unbekannt);
+    expect(kiHerkunftAnzeige({ land: null, nachweis: "unbekannt" })).toEqual(unbekannt);
+    expect(kiHerkunftAnzeige({ land: null, nachweis: "behauptet" })).toEqual(unbekannt);
+  });
+
+  it("ohne Serverangabe wird die Herkunft NICHT aus dem Modellnamen geraten", () => {
+    // Früher: „mistral" im Namen → Frankreich/EU. Heute zählt nur die Auskunft des Servers.
+    const { herkunft: _weg, ...ohne } = config({
+      effectiveProvider: { ...ALL_LOCAL },
+      localConfigured: true,
+      localProvider: "ollama:mistral-7b",
+    });
+    expect(kiHeaderStatus(ohne).herkunft?.key).toBe(KI_HEADER_TEXT.herkunftUnbekannt);
   });
 });
 
-describe("Pedi 05.07.: kiHeaderStatus — DSGVO immer „nein“, außer interne KI aus Europa", () => {
-  it("alles Cloud (Anthropic) → Externe KI, Herkunft USA, DSGVO: nein", () => {
+describe("R-0599: kiHeaderStatus — Ort, Anbieter, Herkunft, offene Prüfungen; keine DSGVO-Aussage", () => {
+  it("alles Cloud (Anthropic) → extern, Anbieter lesbar, Herkunft vom Server, offene Prüfungen", () => {
     const s = kiHeaderStatus(config());
-    expect(s?.mode).toBe("external");
-    expect(s?.labelKey).toBe(KI_HEADER_TEXT.external);
-    expect(s?.dsgvoConfirm).toBe(false);
-    expect(s?.dsgvoKey).toBe(KI_HEADER_TEXT.dsgvoNo);
-    expect(s?.countryKey).toBe(KI_ORIGIN_TEXT.us);
-    expect(s?.detail).toBe("anthropic:claude-sonnet-4-6");
+    expect(s.mode).toBe("external");
+    expect(s.labelKey).toBe(KI_HEADER_TEXT.external);
+    expect(s.hintKey).toBe(KI_HEADER_TEXT.hintExternal);
+    expect(s.detail).toBe("Claude (Anthropic) · claude-sonnet-4-6");
+    expect(s.herkunft).toEqual({
+      key: KI_HEADER_TEXT.herkunftBehauptet,
+      landKey: "country.us",
+      landCode: "US",
+    });
+    expect(s.offenePruefungenKey).toBe(KI_HEADER_TEXT.offenePruefungen);
   });
 
-  it("intern, aber Modell aus China (Qwen) → trotzdem DSGVO: nein (Herkunft schlägt Standort)", () => {
-    const s = kiHeaderStatus(
-      config({
-        effectiveProvider: { ...ALL_LOCAL },
-        localConfigured: true,
-        localProvider: "ollama:qwen3-32b",
-      }),
-    );
-    expect(s?.mode).toBe("internal");
-    expect(s?.labelKey).toBe(KI_HEADER_TEXT.internal);
-    expect(s?.dsgvoConfirm).toBe(false);
-    expect(s?.countryKey).toBe(KI_ORIGIN_TEXT.cn);
-  });
-
-  it("interne KI aus Europa (Mistral lokal) → der EINZIGE Fall mit DSGVO: ja", () => {
+  it("vom Betreiber eingerichteter Server → intern, Herkunft unbekannt, offene Prüfungen", () => {
     const s = kiHeaderStatus(
       config({
         effectiveProvider: { ...ALL_LOCAL },
@@ -117,43 +132,31 @@ describe("Pedi 05.07.: kiHeaderStatus — DSGVO immer „nein“, außer interne
         localProvider: "ollama:mistral-7b",
       }),
     );
-    expect(s?.mode).toBe("internal");
-    expect(s?.dsgvoConfirm).toBe(true);
-    expect(s?.dsgvoKey).toBe(KI_HEADER_TEXT.dsgvoYes);
-    expect(s?.countryKey).toBe(KI_ORIGIN_TEXT.fr);
+    expect(s.mode).toBe("internal");
+    expect(s.labelKey).toBe(KI_HEADER_TEXT.internal);
+    expect(s.hintKey).toBe(KI_HEADER_TEXT.hintInternal);
+    expect(s.detail).toBe("ollama:mistral-7b");
+    expect(s.herkunft?.key).toBe(KI_HEADER_TEXT.herkunftUnbekannt);
+    expect(s.offenePruefungenKey).toBe(KI_HEADER_TEXT.offenePruefungen);
   });
 
-  it("intern mit unbekannter Herkunft → DSGVO: nein (kein Fake-Ja)", () => {
-    const s = kiHeaderStatus(
-      config({
-        effectiveProvider: { ...ALL_LOCAL },
-        localConfigured: true,
-        localProvider: "ollama:geheimmodell-9000",
-      }),
-    );
-    expect(s?.dsgvoConfirm).toBe(false);
-    expect(s?.countryKey).toBe(KI_ORIGIN_TEXT.unknown);
-  });
-
-  it("rein deterministisch → Z4 Keine KI mit sichtbarem Ersatzmodus", () => {
+  it("rein deterministisch → Z4 Keine KI mit sichtbarem Ersatzmodus, ohne Herkunft/Prüfungen", () => {
     const s = kiHeaderStatus(config({ effectiveProvider: { ...ALL_RULE } }));
     expect(s.mode).toBe("none");
-    expect(s.dsgvoConfirm).toBe(false);
-    expect(s.countryKey).toBeNull();
-    expect(s.dsgvoKey).toBeNull();
     expect(s.labelKey).toBe(KI_HEADER_TEXT.none);
     expect(s.subtitleKey).toBe(KI_HEADER_TEXT.noneSubtitle);
     expect(s.detail).toBeNull();
+    expect(s.herkunft).toBeNull();
+    expect(s.offenePruefungenKey).toBeNull();
   });
 
-  it("Cloud und lokales Modell → Z3 Beide, DSGVO: nein (strengste Stufe)", () => {
+  it("Cloud und lokales Modell → Z3 Beide", () => {
     const s = kiHeaderStatus(
       config({ effectiveProvider: { ...ALL_RULE, answer: "cloud", assist: "local" } }),
     );
-    expect(s?.mode).toBe("mixed");
-    expect(s?.dsgvoConfirm).toBe(false);
-    expect(s?.labelKey).toBe(KI_HEADER_TEXT.mixed);
-    expect(s?.hintKey).toBe(KI_HEADER_TEXT.hintMixed);
+    expect(s.mode).toBe("mixed");
+    expect(s.labelKey).toBe(KI_HEADER_TEXT.mixed);
+    expect(s.hintKey).toBe(KI_HEADER_TEXT.hintMixed);
   });
 
   it("Cloud plus deterministic bleibt Z1 Externe KI und wird nicht zu Beide", () => {
@@ -167,19 +170,43 @@ describe("Pedi 05.07.: kiHeaderStatus — DSGVO immer „nein“, außer interne
     expect(kiHeaderStatus(config({ tasks: [], effectiveProvider: {} })).mode).toBe("none");
   });
 
-  it("alle Anzeige-Keys lösen in DE und EN auf (keine rohen Keys im Header)", async () => {
-    const keys = [...Object.values(KI_HEADER_TEXT), ...Object.values(KI_ORIGIN_TEXT)];
-    for (const lng of ["de", "en"] as const) {
-      await i18n.changeLanguage(lng);
-      for (const key of keys) {
-        expect(i18n.t(key), `${lng}:${key}`).not.toBe(key);
-        expect(i18n.t(key).length, `${lng}:${key}`).toBeGreaterThan(1);
-      }
+  it("die Ableitung trägt in keinem Zustand mehr ein DSGVO-Feld", () => {
+    const zustaende = [
+      kiHeaderStatus(config()),
+      kiHeaderStatus(config({ effectiveProvider: { ...ALL_LOCAL }, localConfigured: true })),
+      kiHeaderStatus(config({ effectiveProvider: { ...ALL_RULE } })),
+      kiHeaderStatusFromPublic({ active: true, mode: "cloud" }),
+      kiHeaderStatusFromPublic({ active: true, mode: "local" }),
+    ];
+    for (const s of zustaende) {
+      expect(
+        Object.keys(s).some((k) => /dsgvo/i.test(k)),
+        JSON.stringify(s),
+      ).toBe(false);
     }
   });
 
-  // B2 (Pedi-UX): die sichtbaren Kurz-Labels sind jetzt sachliche Moduswahl statt „Externe KI/Beide";
-  // Land + DSGVO wandern in den Tooltip (Ehrlichkeit bleibt: der Hinweistext nennt DSGVO klar).
+  it("alle Anzeige-Keys lösen in DE, EN und NL auf — und keiner nennt DSGVO/GDPR/AVG", async () => {
+    for (const lng of ["de", "en", "nl"] as const) {
+      await i18n.changeLanguage(lng);
+      for (const key of Object.values(KI_HEADER_TEXT)) {
+        const text = i18n.t(key, { land: "USA" });
+        expect(text, `${lng}:${key}`).not.toBe(key);
+        expect(text.length, `${lng}:${key}`).toBeGreaterThan(1);
+        expect(text, `${lng}:${key}`).not.toMatch(/DSGVO|GDPR|AVG/);
+      }
+    }
+    await i18n.changeLanguage("de");
+  });
+
+  it("die offenen Prüfungen nennen Auftragsverarbeitung, Unterauftragnehmer, Trainingsausschluss", async () => {
+    await i18n.changeLanguage("de");
+    const satz = i18n.t(KI_HEADER_TEXT.offenePruefungen);
+    expect(satz).toContain("Auftragsverarbeitung");
+    expect(satz).toContain("Unterauftragnehmer");
+    expect(satz).toContain("Trainingsausschluss");
+  });
+
   it("Pedi-Copy: KI-Modus-Labels (Cloud/Cloud+Lokal) + sichtbarer deterministischer Ersatzmodus", async () => {
     await i18n.changeLanguage("de");
     // AUFTRAG-mega51 BLOCK G1: „KI-Modus" ist eine Einstellung; gemeint ist der ORT.
@@ -187,24 +214,21 @@ describe("Pedi 05.07.: kiHeaderStatus — DSGVO immer „nein“, außer interne
     expect(i18n.t(KI_HEADER_TEXT.mixed)).toBe("KI rechnet in der Cloud und im eigenen Haus");
     expect(i18n.t(KI_HEADER_TEXT.none)).toBe("Keine KI");
     expect(i18n.t(KI_HEADER_TEXT.noneSubtitle)).toBe("deterministischer Ersatzmodus");
-    // Der DSGVO-Status bleibt als Detail (Tooltip/Hinweis) klar erhalten.
-    expect(i18n.t(KI_HEADER_TEXT.dsgvoNo)).toBe("DSGVO: nein");
   });
 });
 
-// WP-VIP2-GATE-2 (bens Fix 3): die Pille normaler Nutzer speist sich aus dem OEFFENTLICHEN
-// abstrahierten Status (config ist jetzt Admin-Sicht) — ehrlich ohne Herkunft/Modellname.
-describe("WP-VIP2-GATE-2 Fix 3: kiHeaderStatusFromPublic (Pille fuer Nicht-Admins)", () => {
-  it("cloud → extern, local → intern — beide OHNE Herkunfts-/DSGVO-Detail (fail-safe nein)", () => {
+// WP-VIP2-GATE-2 (bens Fix 3): die Zeile normaler Nutzer speist sich aus dem OEFFENTLICHEN
+// abstrahierten Status (config ist Admin-Sicht) — ehrlich ohne Herkunft/Modellname.
+describe("WP-VIP2-GATE-2 Fix 3: kiHeaderStatusFromPublic (Zeile fuer Nicht-Admins)", () => {
+  it("cloud → extern, local → intern — beide OHNE Herkunft und Modellname", () => {
     const cloud = kiHeaderStatusFromPublic({ active: true, mode: "cloud" });
     expect(cloud.mode).toBe("external");
     expect(cloud.labelKey).toBe(KI_HEADER_TEXT.external);
-    expect(cloud.countryKey).toBeNull();
+    expect(cloud.herkunft).toBeNull();
     expect(cloud.detail).toBeNull();
-    expect(cloud.dsgvoConfirm).toBe(false);
     const local = kiHeaderStatusFromPublic({ active: true, mode: "local" });
     expect(local.mode).toBe("internal");
-    expect(local.dsgvoConfirm).toBe(false); // ohne Herkunftsbeleg KEIN Fake-Ja
+    expect(local.herkunft).toBeNull();
   });
 
   it("deterministisch/inaktiv/ungeladen → neutraler Keine-KI-Zustand", () => {

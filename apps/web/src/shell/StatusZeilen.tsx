@@ -70,8 +70,11 @@ function ExternalStageZeile(): JSX.Element | null {
   );
 }
 
-// Pedi 05.07.: „In welcher KI bin ich — und was ist der DSGVO-Status?" — ehrliche Auskunft mit
-// Herkunftsland. DSGVO-Bestätigung IMMER „nein", außer interne KI aus Europa (dann grün).
+// Pedi 05.07.: „In welcher KI bin ich?" — ehrliche Auskunft über Ort und Anbieter.
+// R-0599: die frühere DSGVO-Ja/Nein-Aussage ist gestrichen (aus Land und Modellname nicht
+// ableitbar). Der Tooltip nennt stattdessen Betriebsort und Datenfluss, Anbieter, Herkunft mit
+// Nachweisstufe und die offenen Prüfungen. Der Punkt ist nie grün: ein Grün hing an der
+// gestrichenen DSGVO-Bestätigung, und eine andere belegte Grundlage dafür gibt es nicht.
 function KiModeZeile(): JSX.Element {
   const { t } = useTranslation();
   // WP-VIP2-GATE-2 (bens Fix 3): /api/reasoner/config ist echte Admin-Sicht (users.manage).
@@ -87,20 +90,22 @@ function KiModeZeile(): JSX.Element {
   const status = vollstaendig
     ? kiHeaderStatus(config.data)
     : kiHeaderStatusFromPublic(publicStatus.data);
-  const ok = status.dsgvoConfirm;
   const neutral = status.mode === "none";
-  // B2: die Zeile zeigt nur den MODUS; Herkunft + DSGVO-Status stehen im Tooltip — die
-  // Ehrlichkeit bleibt vollständig.
-  const detailLine =
-    status.countryKey && status.dsgvoKey ? `${t(status.countryKey)} · ${t(status.dsgvoKey)}` : null;
+  // B2: die Zeile zeigt nur den MODUS; Anbieter, Herkunft und offene Prüfungen stehen im Tooltip.
+  const herkunftLine = status.herkunft
+    ? t(status.herkunft.key, {
+        land: status.herkunft.landKey ? t(status.herkunft.landKey) : status.herkunft.landCode,
+      })
+    : null;
+  const offenLine = status.offenePruefungenKey ? t(status.offenePruefungenKey) : null;
   // AUFTRAG-mega38 BLOCK H: der Klartextsatz steht VORNE.
-  const tooltip = [t("topbar.plain.ki"), t(status.hintKey), status.detail, detailLine]
+  const tooltip = [t("topbar.plain.ki"), t(status.hintKey), status.detail, herkunftLine, offenLine]
     .filter(Boolean)
     .join(" — ");
   return (
     <MenueZeile to="/admin" title={tooltip} testid="status-ki">
       <span className="inline-flex items-center gap-2">
-        <Punkt klasse={neutral ? "bg-muted-2" : ok ? "bg-trust-pos-fill" : "bg-trust-warn-fill"} />
+        <Punkt klasse={neutral ? "bg-muted-2" : "bg-trust-warn-fill"} />
         {t(status.labelKey)}
         {status.subtitleKey ? (
           <span className="text-muted-2">· {t(status.subtitleKey)}</span>

@@ -57,14 +57,20 @@ describe("B1b: Mobile-Ansicht hat einen Rückweg zur Vollversion", () => {
   });
 });
 
-describe("B2: KI-Zeile zeigt den Modus, DSGVO/Land nur im Tooltip", () => {
+describe("B2: KI-Zeile zeigt den Modus, Details nur im Tooltip", () => {
   const src = read("apps/web/src/shell/StatusZeilen.tsx");
-  it("die Zeile rendert KEINE grelle DSGVO-Zeile mehr (Land · DSGVO wandert in den Tooltip)", () => {
+  it("die Zeile rendert KEINE DSGVO-Aussage mehr — weder sichtbar noch im Tooltip (R-0599)", () => {
     // Das alte Pillen-Subtitle-Muster „· {t(status.countryKey)} · {t(status.dsgvoKey)}“ ist entfernt.
     expect(src).not.toContain("· {t(status.countryKey)} · {t(status.dsgvoKey)}");
-    // Der Tooltip wird aus hint + detail + Land/DSGVO zusammengesetzt.
+    // R-0599 (Auftrag ki-modus-wahrheit): bis hierher verlangte dieser Fall die Zeichenfolge
+    // „status.countryKey && status.dsgvoKey" — also dass der Tooltip die DSGVO-Aussage trägt. Sie ist
+    // gestrichen, weil sie sich aus Land und Modellname nicht ableiten lässt. Der Tooltip setzt sich
+    // jetzt aus Hinweis (Betriebsort/Datenfluss), Anbieter, Herkunft und offenen Prüfungen zusammen.
     expect(src).toContain("title={tooltip}");
-    expect(src).toContain("status.countryKey && status.dsgvoKey");
+    expect(src).not.toContain("dsgvoKey");
+    expect(src).not.toContain("dsgvoConfirm");
+    expect(src).toContain("status.herkunft");
+    expect(src).toContain("status.offenePruefungenKey");
   });
 
   it("die sichtbaren Kurz-Labels sagen sachlich, WO die KI rechnet, DE/EN/NL", () => {
@@ -89,8 +95,14 @@ describe("B2: KI-Zeile zeigt den Modus, DSGVO/Land nur im Tooltip", () => {
     );
   });
 
-  it("die EHRLICHKEIT bleibt: der Hinweistext nennt DSGVO weiterhin klar", () => {
-    expect(String(i18n.getResource("de", "translation", "topbar.kiExternalHint"))).toMatch(/DSGVO/);
-    expect(String(i18n.getResource("de", "translation", "topbar.kiDsgvoNo"))).toBe("DSGVO: nein");
+  // R-0599: die EHRLICHKEIT bleibt, nur in belegbarer Form — statt „DSGVO: nein" nennt der Hinweis
+  // Betriebsort und Datenfluss, und die nicht hinterlegten Punkte stehen als offene Prüfung da.
+  it("die EHRLICHKEIT bleibt: Hinweis nennt Betriebsort/Datenfluss und die offenen Prüfungen", () => {
+    const hinweis = String(i18n.getResource("de", "translation", "kilage.kopf.hinweisExtern"));
+    expect(hinweis).toContain("Betriebsort");
+    expect(hinweis).toContain("Datenfluss");
+    expect(hinweis).not.toMatch(/DSGVO/);
+    const offen = String(i18n.getResource("de", "translation", "kilage.kopf.offenePruefungen"));
+    expect(offen).toMatch(/Auftragsverarbeitung.*Unterauftragnehmer.*Trainingsausschluss/);
   });
 });

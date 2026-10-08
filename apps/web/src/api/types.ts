@@ -2598,6 +2598,18 @@ export interface ReasonerCloudAnbieterStatus {
   grund?: string;
 }
 
+// R-0702: die Herkunft je KI-Zugang — WORTGLEICH zu `ReasonerZugangHerkunft` in
+// `services/reasoner/src/types.ts`. Geliefert von der zentralen Zugangsverwaltung des Servers
+// (`anbieter-herkunft.ts`); die Fläche rät sie nicht mehr aus der Modellkennung.
+// `behauptet` = Angabe des Anbieters, nicht geprüft · `geprueft` = belegter Nachweis ·
+// `unbekannt` = keine Angabe (dann `land: null`).
+export type ReasonerHerkunftNachweis = "geprueft" | "behauptet" | "unbekannt";
+
+export interface ReasonerZugangHerkunft {
+  land: string | null;
+  nachweis: ReasonerHerkunftNachweis;
+}
+
 // Welcher abgelöste Wert wohin überführt wurde — nachvollziehbar, nicht still.
 export interface ReasonerWahlMigration {
   von: "model" | "cloud";
@@ -2626,6 +2638,9 @@ export interface ReasonerConfigStatus {
   effectiveAnbieter?: Record<string, ReasonerCloudAnbieter | "local" | "deterministic">;
   // JOB 3134: die beiden externen Anbieter einzeln — eingerichtet oder nicht, und warum nicht.
   cloudProviders?: Record<ReasonerCloudAnbieter, ReasonerCloudAnbieterStatus>;
+  // R-0702: Herkunft je Zugang mit Nachweisstufe. Optional — ein älterer Server sendet sie nicht,
+  // dann zeigt die Fläche „Herkunft unbekannt" statt zu raten.
+  herkunft?: Record<ReasonerCloudAnbieter | "local", ReasonerZugangHerkunft>;
   // JOB 3134: der Anbieter hinter „Auto" (der erste eingerichtete); null, wenn keiner eingerichtet.
   autoAnbieter?: ReasonerCloudAnbieter | null;
   // JOB 3134: nachvollziehbare Migration abgelöster Werte (`cloud`/`model`) — nur solange die

@@ -12,6 +12,8 @@ import {
   sanitizeModelRunContext,
   traceFuerLauf,
 } from "../../model-runs";
+// R-0702: die Herkunft je KI-Zugang aus der zentralen Zugangsverwaltung (statt im Browser geraten).
+import { zugangHerkunft } from "./anbieter-herkunft";
 import {
   KlaraAusweichwegGesperrtFehler,
   anbieterZugelassen,
@@ -2026,6 +2028,8 @@ export class Reasoner {
         openai: this.cloudStatus("openai"),
         anthropic: this.cloudStatus("anthropic"),
       },
+      // R-0702: Herkunft je Zugang mit Nachweisstufe — nur Angaben, nie ein Schlüssel.
+      herkunft: zugangHerkunft(),
       autoAnbieter: this.vorgabeAnbieter() ?? null,
       ...(this.migration ? { migration: this.migration } : {}),
       persisted: this.policySource === "db",
