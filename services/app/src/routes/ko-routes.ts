@@ -140,6 +140,11 @@ export interface KoRoutesDeps {
   // OPTIONAL BLEIBT OPTIONAL: ein direkt konstruierter Routentest ohne Port bekommt weiterhin die
   // ehrliche Auslassung mit ihrem Grund — keine 0, keine erfundene Verknuepfungszahl.
   kanten?: WissensnetzDeps["kanten"];
+  // R-0235 / R-0749: „Hat geholfen" am angewendeten Wissensobjekt — ohne vorausgehende Antwort.
+  // Eine schmale Funktion statt des Ask-Dienstes (dieselbe Bauart wie `draftPromotion`); die
+  // Composition-Root verdrahtet `AskService.markKoHelpful`. Fehlt sie, antwortet die Aktion ehrlich
+  // mit 400 statt halb zu laufen.
+  hilfreich?: ((koId: string, actor: string) => Promise<void>) | undefined;
 }
 
 /**
@@ -441,7 +446,10 @@ type KoAktion =
   // AM Objekt unter `:id` — sie passieren das Tor, mit demselben Gate wie `comment`.
   | "comment-resolve"
   | "comment-reopen"
-  | "revalidate";
+  | "revalidate"
+  // R-0235 / R-0749: „Hat geholfen" am angewendeten Objekt — Bewährung, ausdrücklich keine
+  // Prüfstimme. Arbeitet AM Objekt unter `:id` und passiert deshalb das Tor.
+  | "helpful";
 
 /**
  * `tor` — die Aktion arbeitet AM Objekt unter `:id`. Sie passiert das Sichtbarkeitstor.
@@ -500,6 +508,8 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   "comment-resolve": "tor",
   "comment-reopen": "tor",
   revalidate: "tor",
+  // R-0235 / R-0749: nur wer das Objekt sehen darf, kann melden, dass es geholfen hat.
+  helpful: "tor",
 };
 
 /** Die Grundmenge als Datum — der Wächter liest sie, statt sie noch einmal abzuschreiben. */
@@ -3586,6 +3596,23 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return;
             }
             reply.code(200).send(await lifecycle.confirmStillValid(id, user.id));
+            return;
+          }
+          // R-0235 / R-0749: „Hat geholfen" am Objekt selbst. Recht wie beim Antwortfeedback
+          // (`ko.read`, POST /api/ask/helpful); die Sichtbarkeit hat das Tor oben entschieden.
+          // Wirkung: ein leichter Trust-Schritt + Audit `answer.helpful` (genau einmal je Person und
+          // Objekt, über beide Wege gemeinsam), Rückmeldung an Autor und Urheber über die Glocke.
+          // Keine Prüfstimme: Status, Fassung und Validierungen bleiben unberührt.
+          case "helpful": {
+            const user = await guards.requirePermission("ko.read", request, reply);
+            if (!user) {
+              return;
+            }
+            if (!deps.hilfreich) {
+              return badRequest("„Hat geholfen“ ist in diesem Aufbau nicht verfügbar.");
+            }
+            await deps.hilfreich(id, user.id);
+            reply.code(204).send();
             return;
           }
           default:

@@ -34,7 +34,7 @@ wiederholt.
 | Aktion | Nutzlast | Klasse |
 | --- | --- | --- |
 | `ask.query` | `answered`, `retrievalMode`, `prefilterCount`, `candidateCount`, `topK`, `prefilterQueries`, `prefilterTermLimit` | Z — **kein Fragetext, keine Suchwörter** (gemessen) |
-| `answer.helpful` | `koTitle`, `koAuthor` | M, K |
+| `answer.helpful` | `koTitle`, `koAuthor`, `koOriginalAuthor`, `via` (nur `"wissensobjekt"` beim Klick am Objekt) | M, K |
 | `gap.created` | — | — (gemessen: leer; Fragetext steht nur in der Lücke selbst) |
 | `gap.priority-changed` | — | — |
 

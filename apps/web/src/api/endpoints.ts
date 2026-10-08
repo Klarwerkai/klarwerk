@@ -8,6 +8,7 @@ import type {
   AnswerResult,
   // JOB 4154 (WIKI-GESAMTANWEISUNG): der Drahtvertrag der zusammengesetzten Anweisung.
   Anweisung,
+  AnweisungEntscheidung,
   AnweisungKopfEingabe,
   AnweisungLesestand,
   AnweisungStaende,
@@ -155,6 +156,8 @@ export interface AnweisungListeneintrag {
   urheber: string;
   erstelltAm: string;
   geaendertAm: string;
+  /** STATUS-FREIGABE · dieselbe festgehaltene Entscheidung wie am Einzelabruf; fehlt = nicht festgehalten. */
+  entscheidung?: AnweisungEntscheidung;
   sichtbareBausteine: number;
   verborgeneBausteine: number;
   unvollstaendig: boolean;
@@ -646,6 +649,9 @@ export const endpoints = {
     createFromDocument: (body: CreateFromDocumentRequest) =>
       api.post<CreateFromDocumentResponse>("/kos/from-document", body),
     act: (id: string, body: KoAction) => api.put<KnowledgeObject>(`/kos/${id}`, body),
+    // R-0235 / R-0749: „Hat geholfen" am angewendeten Objekt, ohne vorausgehende Antwort. Der
+    // Server antwortet mit 204 (kein Objekt) — deshalb ein eigener Aufruf neben `act`.
+    helpful: (id: string) => api.put<void>(`/kos/${id}`, { action: "helpful" }),
     // AUFTRAG-mega18 Block A-1: eigener Aufruf, weil die Antwort ein COMMIT-ERGEBNIS ist und kein
     // KnowledgeObject — der Aufrufer erfährt daraus ohne Rückfrage, was gilt.
     appendDocument: (id: string, appendDocument: DocumentAppendRequest) =>
