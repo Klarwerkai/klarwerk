@@ -94,6 +94,7 @@ import {
 } from "../lib/conflictView";
 import { leseFall } from "../lib/fallAbsprung";
 import { conflictFinding, groupFindingsByBeitrag, resolveKo } from "../lib/findingGroups";
+import { clusterReihenfolge, konfliktCluster } from "../lib/konfliktCluster";
 import { REVIEW_HELP_TOPICS } from "../lib/reviewHelp";
 
 const PATH: ConflictStatus[] = ["eskaliert", "zweitmeinung", "geloest"];
@@ -208,7 +209,12 @@ export function Conflicts(): JSX.Element {
   // Die Gruppen-ÜBERSCHRIFT ist mit dem Kartenpaar entfallen (es steht immer genau ein Konflikt da,
   // mit „k von n"); die REIHENFOLGE bleibt und kommt weiterhin aus derselben Quelle: Befunde
   // desselben Beitrags stehen beieinander, neueste Gruppe zuerst. Kein zweiter Sortierbegriff.
-  const items = groupFindingsByBeitrag(query.data ?? []).flatMap((g) => g.items);
+  // R-1637: Widersprüche, die über gemeinsame Beiträge zusammenhängen, stehen beim Blättern
+  // nebeneinander und tragen die Cluster-Auskunft. Ohne Cluster bleibt die Reihenfolge die alte.
+  const items = clusterReihenfolge(
+    groupFindingsByBeitrag(query.data ?? []).flatMap((g) => g.items),
+  );
+  const cluster = konfliktCluster(items);
   // bens Korrekturpflicht 2 (Runde 4): Ein Konflikt IST das Paar seiner beiden Wissensobjekte —
   // ohne den zweiten Abruf gibt es keine Karte, sondern nur zwei IDs. Solange er läuft, ist die
   // Fläche am Laden; sie sagt nicht „Objekt entfernt" und bietet keine Entscheidung an.
@@ -277,6 +283,71 @@ export function Conflicts(): JSX.Element {
       </div>
     </div>
   );
+
+  // ================================================================================================
+  // R-1637 · Die Cluster-Auskunft über dem Kartenpaar. Sie erscheint NUR, wenn der angezeigte
+  // Konflikt zu einem Cluster gehört — ein einzelner Konflikt sieht aus wie bisher. Die Mitglieder
+  // sind Sprungmarken auf dieselbe Fläche; entschieden wird weiter je Widerspruch.
+  // ================================================================================================
+  function clusterHinweis(c: Conflict): JSX.Element | null {
+    const gruppe = cluster.get(c.id);
+    if (!gruppe) {
+      return null;
+    }
+    const titelVon = (ko: string): string =>
+      resolveKo(ko, kos.data ?? [])?.title ?? t("board.koRemoved");
+    const ueberschrift = t("konfliktcluster.titel", {
+      n: gruppe.konflikte.length,
+      m: gruppe.beitraege.length,
+    });
+    return (
+      <div
+        data-testid="konflikt-cluster"
+        className="space-y-2 rounded-input bg-trust-warn-bg p-3 text-[12.5px] text-trust-warn-text"
+      >
+        <div className="font-semibold">{ueberschrift}</div>
+        <p>{t("konfliktcluster.erklaerung")}</p>
+        <div>
+          <span className="font-semibold">{t("konfliktcluster.beitraege")}: </span>
+          <span data-testid="konflikt-cluster-beitraege">
+            {gruppe.beitraege.map(titelVon).join(" · ")}
+          </span>
+        </div>
+        <div>
+          <div className="mb-1 font-semibold">{t("konfliktcluster.widersprueche")}</div>
+          <div className="flex flex-wrap gap-1.5">
+            {gruppe.konflikte.map((id) => {
+              const mitglied = items.find((k) => k.id === id);
+              if (!mitglied) {
+                return null;
+              }
+              const angezeigt = id === c.id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  data-text="knopf"
+                  data-testid="konflikt-cluster-mitglied"
+                  aria-current={angezeigt ? "true" : undefined}
+                  disabled={angezeigt}
+                  onClick={() => blaettern(items.indexOf(mitglied))}
+                  className={cx(
+                    "rounded-pill px-2 py-1 text-[11.5px]",
+                    angezeigt ? "bg-ink text-white" : "border border-hairline bg-surface text-text",
+                  )}
+                >
+                  {t("konfliktcluster.paar", {
+                    a: titelVon(mitglied.koA),
+                    b: titelVon(mitglied.koB),
+                  })}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ================================================================================================
   // Zeichenfunktion, keine innere Komponente — Begründung wie in `Validation.tsx`: eine bei jedem
@@ -573,6 +644,8 @@ export function Conflicts(): JSX.Element {
         <p data-testid="konflikt-arbeitsart" className="text-[13px] leading-relaxed text-muted">
           {arbeitSatz}
         </p>
+
+        {clusterHinweis(c)}
 
         {/* Ohne Beschriftung — und das ist eine Entscheidung, keine Lücke: es gibt keinen
             bestehenden Schlüssel, der „der bei der Anlage erfasste Satz" sachlich richtig benennt

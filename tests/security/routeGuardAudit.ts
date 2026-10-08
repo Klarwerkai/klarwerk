@@ -638,6 +638,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // PMO-FEA-0003: das freiwillige Foto — hinterlegen und widerrufen, nur für das EIGENE Konto.
   "PUT /api/livewall/photo": { protection: "auth" },
   "DELETE /api/livewall/photo": { protection: "auth" },
+  // R-0466: das eigene Interaktionsgedächtnis — lesen, merken, einzeln und ganz löschen, jeweils
+  // nur für das EIGENE Konto (user.id aus der Sitzung). Wie die Live-Wand: kein zusätzliches Recht.
+  "GET /api/me/gedaechtnis": { protection: "auth" },
+  "POST /api/me/gedaechtnis": { protection: "auth" },
+  "DELETE /api/me/gedaechtnis/:id": { protection: "auth" },
+  "DELETE /api/me/gedaechtnis": { protection: "auth" },
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler — jeder angemeldete Nutzer,
   // AUSSCHLIESSLICH über die eigene Identität (user.id) abgeleitet, nur Zahlen.
   "GET /api/me/impact": { protection: "auth" },
