@@ -1,0 +1,318 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "KLARWERK Integrationsschnittstelle",
+    "version": "1.0.0",
+    "description": "Anmeldung mit Dienst-Schlüssel im Kopf x-klarwerk-service-key. Jeder Schlüssel hat eigene Rechte und eine eigene Anfragegrenze. Antworten aus Wissen stammen ausschließlich aus validiertem Wissen. Zustandstabelle: docs/architektur/integrations-schnittstelle.md."
+  },
+  "paths": {
+    "/api/ask": {
+      "post": {
+        "summary": "Frage stellen. Antwort ausschließlich aus validiertem, nicht vertraulichem Wissen, ohne Modellaufruf; sonst eine ehrliche Wissenslücke.",
+        "x-klarwerk-recht": "ask.validated",
+        "security": [{ "dienstSchluessel": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "question": { "type": "string", "maxLength": 8000 },
+                  "locale": { "type": "string", "enum": ["de", "en", "nl"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Beantwortet (result.answered = true, mit Quellen) ODER Wissenslücke (result.answered = false). Beides ist ein Erfolg.",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          },
+          "400": {
+            "description": "Bad Request: Rumpf verletzt das Schema oder ist kein JSON (code: FST_ERR_VALIDATION bzw. FST_ERR_CTP_…).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: Kein gültiger Dienst-Schlüssel: falsch, gesperrt oder nicht (mehr) konfiguriert. Es gibt keinen Rückfall auf eine Sitzung.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "403": {
+            "description": "FORBIDDEN: Der Schlüssel ist gültig, trägt aber das Recht dieser Route nicht.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "413": {
+            "description": "Payload Too Large: Rumpf größer als 128 KiB (code: FST_ERR_CTP_BODY_TOO_LARGE).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "415": {
+            "description": "Unsupported Media Type: Rumpf ist nicht application/json (code: FST_ERR_CTP_INVALID_MEDIA_TYPE).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "429": {
+            "description": "RATE_LIMITED: Grenze des Schlüssels erreicht, oder zu viele Fehlversuche von dieser Adresse. Retry-After nennt die Wartezeit in Sekunden; beim Schlüssel steht sie zusätzlich als wartenSek im Körper.",
+            "headers": { "Retry-After": { "schema": { "type": "integer", "minimum": 1 } } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "500": {
+            "description": "INTERNAL: Interner Fehler; Einzelheiten bleiben im Serverprotokoll. Die Anfrage darf wiederholt werden.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "503": {
+            "description": "KI_ABGESCHALTET: Der Administrator hat die Fragefunktion der Instanz abgeschaltet.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          }
+        }
+      }
+    },
+    "/api/check-text": {
+      "post": {
+        "summary": "Text gegen validiertes Wissen prüfen (Dubletten, Überschneidungen, Widersprüche) — deterministisch, ohne Modell, nichts wird gespeichert.",
+        "x-klarwerk-recht": "checktext.validated",
+        "security": [{ "dienstSchluessel": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["text"],
+                "properties": {
+                  "text": { "type": "string", "minLength": 40, "maxLength": 8000 },
+                  "title": { "type": "string" },
+                  "locale": { "type": "string", "enum": ["de", "en"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Prüfergebnis (auch: keine Funde).",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          },
+          "400": {
+            "description": "Bad Request: text fehlt oder liegt außerhalb von 40–8.000 Zeichen.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: Kein gültiger Dienst-Schlüssel: falsch, gesperrt oder nicht (mehr) konfiguriert. Es gibt keinen Rückfall auf eine Sitzung.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "403": {
+            "description": "FORBIDDEN: Der Schlüssel ist gültig, trägt aber das Recht dieser Route nicht.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "413": {
+            "description": "Payload Too Large: Rumpf größer als 128 KiB (code: FST_ERR_CTP_BODY_TOO_LARGE).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "415": {
+            "description": "Unsupported Media Type: Rumpf ist nicht application/json (code: FST_ERR_CTP_INVALID_MEDIA_TYPE).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "429": {
+            "description": "RATE_LIMITED: Grenze des Schlüssels erreicht, oder zu viele Fehlversuche von dieser Adresse. Retry-After nennt die Wartezeit in Sekunden; beim Schlüssel steht sie zusätzlich als wartenSek im Körper.",
+            "headers": { "Retry-After": { "schema": { "type": "integer", "minimum": 1 } } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "500": {
+            "description": "INTERNAL: Interner Fehler; Einzelheiten bleiben im Serverprotokoll. Die Anfrage darf wiederholt werden.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          }
+        }
+      }
+    },
+    "/api/library/export": {
+      "get": {
+        "summary": "Wissen ausleiten: validierte, nicht vertrauliche Wissensobjekte; format = json (Standard), markdown, mediawiki oder html. Jeder Export wird protokolliert (Akteur dienst:<id>).",
+        "x-klarwerk-recht": "export.validated",
+        "security": [{ "dienstSchluessel": [] }],
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["json", "markdown", "mediawiki", "html"] }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Export im angefragten Format.",
+            "content": {
+              "application/json": { "schema": { "type": "array", "items": { "type": "object" } } },
+              "text/markdown": { "schema": { "type": "string" } },
+              "text/plain": { "schema": { "type": "string" } },
+              "text/html": { "schema": { "type": "string" } }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: Kein gültiger Dienst-Schlüssel: falsch, gesperrt oder nicht (mehr) konfiguriert. Es gibt keinen Rückfall auf eine Sitzung.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "403": {
+            "description": "FORBIDDEN: Der Schlüssel ist gültig, trägt aber das Recht dieser Route nicht.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "429": {
+            "description": "RATE_LIMITED: Grenze des Schlüssels erreicht, oder zu viele Fehlversuche von dieser Adresse. Retry-After nennt die Wartezeit in Sekunden; beim Schlüssel steht sie zusätzlich als wartenSek im Körper.",
+            "headers": { "Retry-After": { "schema": { "type": "integer", "minimum": 1 } } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "500": {
+            "description": "INTERNAL: Interner Fehler; Einzelheiten bleiben im Serverprotokoll. Die Anfrage darf wiederholt werden.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          }
+        }
+      }
+    },
+    "/api/library/import/candidates": {
+      "post": {
+        "summary": "Wissen einliefern: die Einträge werden als Kandidaten in die Prüfwarteschlange gestellt. Ein Wissensobjekt entsteht erst, wenn ein berechtigter Mensch annimmt.",
+        "x-klarwerk-recht": "import.kandidaten",
+        "security": [{ "dienstSchluessel": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["items"],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["title", "statement", "type", "category"],
+                      "properties": {
+                        "title": { "type": "string" },
+                        "statement": { "type": "string" },
+                        "type": { "type": "string" },
+                        "category": { "type": "string" },
+                        "tags": { "type": "array", "items": { "type": "string" } },
+                        "confidentiality": { "type": "string" },
+                        "externalId": { "type": "string" },
+                        "sourceScope": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Eingereiht; die Antwort nennt die Kandidaten samt Dublettenbefund.",
+            "content": {
+              "application/json": { "schema": { "type": "array", "items": { "type": "object" } } }
+            }
+          },
+          "400": {
+            "description": "Einträge unbrauchbar; error nennt den fachlichen Grund (Großbuchstaben-Kennung), message den Satz. | Bad Request: Rumpf verletzt das Schema oder ist kein JSON (code: FST_ERR_VALIDATION bzw. FST_ERR_CTP_…).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: Kein gültiger Dienst-Schlüssel: falsch, gesperrt oder nicht (mehr) konfiguriert. Es gibt keinen Rückfall auf eine Sitzung.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "403": {
+            "description": "FORBIDDEN: Der Schlüssel ist gültig, trägt aber das Recht dieser Route nicht.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "415": {
+            "description": "Unsupported Media Type: Rumpf ist nicht application/json (code: FST_ERR_CTP_INVALID_MEDIA_TYPE).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "429": {
+            "description": "RATE_LIMITED: Grenze des Schlüssels erreicht, oder zu viele Fehlversuche von dieser Adresse. Retry-After nennt die Wartezeit in Sekunden; beim Schlüssel steht sie zusätzlich als wartenSek im Körper.",
+            "headers": { "Retry-After": { "schema": { "type": "integer", "minimum": 1 } } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "500": {
+            "description": "INTERNAL: Interner Fehler; Einzelheiten bleiben im Serverprotokoll. Die Anfrage darf wiederholt werden.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Betriebszustand: status, Version und Deploy-Stand der Instanz.",
+        "x-klarwerk-recht": "status.read",
+        "security": [{ "dienstSchluessel": [] }],
+        "responses": {
+          "200": {
+            "description": "Instanz antwortet (status = ok).",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: Kein gültiger Dienst-Schlüssel: falsch, gesperrt oder nicht (mehr) konfiguriert. Es gibt keinen Rückfall auf eine Sitzung.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "403": {
+            "description": "FORBIDDEN: Der Schlüssel ist gültig, trägt aber das Recht dieser Route nicht.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "429": {
+            "description": "RATE_LIMITED: Grenze des Schlüssels erreicht, oder zu viele Fehlversuche von dieser Adresse. Retry-After nennt die Wartezeit in Sekunden; beim Schlüssel steht sie zusätzlich als wartenSek im Körper.",
+            "headers": { "Retry-After": { "schema": { "type": "integer", "minimum": 1 } } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "500": {
+            "description": "INTERNAL: Interner Fehler; Einzelheiten bleiben im Serverprotokoll. Die Anfrage darf wiederholt werden.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          }
+        }
+      }
+    },
+    "/api/reasoner/status": {
+      "get": {
+        "summary": "Abstrakter KI-Zustand (aktiv/Modus), ohne Anbieter- oder Modellnamen.",
+        "x-klarwerk-recht": "status.read",
+        "security": [{ "dienstSchluessel": [] }],
+        "responses": {
+          "200": {
+            "description": "Aktueller KI-Zustand.",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: Kein gültiger Dienst-Schlüssel: falsch, gesperrt oder nicht (mehr) konfiguriert. Es gibt keinen Rückfall auf eine Sitzung.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "403": {
+            "description": "FORBIDDEN: Der Schlüssel ist gültig, trägt aber das Recht dieser Route nicht.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "429": {
+            "description": "RATE_LIMITED: Grenze des Schlüssels erreicht, oder zu viele Fehlversuche von dieser Adresse. Retry-After nennt die Wartezeit in Sekunden; beim Schlüssel steht sie zusätzlich als wartenSek im Körper.",
+            "headers": { "Retry-After": { "schema": { "type": "integer", "minimum": 1 } } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          },
+          "500": {
+            "description": "INTERNAL: Interner Fehler; Einzelheiten bleiben im Serverprotokoll. Die Anfrage darf wiederholt werden.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Fehler" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "dienstSchluessel": { "type": "apiKey", "in": "header", "name": "x-klarwerk-service-key" }
+    },
+    "schemas": {
+      "Fehler": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": { "type": "string" },
+          "message": { "type": "string" },
+          "code": { "type": "string" },
+          "wartenSek": { "type": "integer", "minimum": 1 }
+        }
+      }
+    }
+  }
+}

@@ -34,6 +34,7 @@ import {
   type UserRepo,
   authRoutes,
   createOidcProviderFromEnv,
+  sprache,
 } from "../../auth";
 import {
   CaptureError,
@@ -223,6 +224,7 @@ import {
 } from "./addon-auth-throttle";
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import { type AiCheckWorker, createAiCheckRunner, createAiCheckWorker } from "./ai-check-worker";
+import { Anfragebremse, bremsSatz } from "./anfragebremse";
 import {
   type BearbeitungsRepo,
   InMemoryBearbeitungsRepo,
@@ -244,6 +246,7 @@ import {
   PgConfluenceImportSchalterRepo,
 } from "./confluence-import-schalter";
 import { registerHerkunftspruefung } from "./csrf";
+import { ladeDienstSchluessel, matchDienstRoute } from "./dienst-schluessel";
 import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
@@ -267,6 +270,7 @@ import {
   type KenntnisnahmeRepo,
   PgKenntnisnahmeRepo,
 } from "./kenntnisnahme";
+import { kiGrenzeAusEnv, registriereKiAnfragebremse } from "./ki-anfragebremse";
 // WP-D11: PPTX-Folien → PNG (Route + injizierbarer Konverter).
 import {
   InMemoryLesevariantenRepo,
@@ -2604,7 +2608,18 @@ export function buildApp(
   // ben-Review SCRUM-490 (P2): (1) Origin fail-closed validieren — "*"/leer/malformed → gar kein CORS
   // (resolveAddonOrigin === null). (2) Scope über einen Delegator strikt auf die Add-on-Pfade begrenzen;
   // alle anderen Routen bekommen { origin: false } → keinerlei CORS-Header (nicht mehr app-weit).
-  if (addonApiEnabled()) {
+  //
+  // Aufnahme gesamt-integrations-api (R-0677/R-0688/R-0698/R-0704): derselbe Anmeldehook nimmt
+  // zusätzlich DIENST-SCHLÜSSEL an (`dienst-schluessel.ts`) — unabhängig vom Klara-Flag, sobald
+  // `KLARWERK_SERVICE_KEYS` mindestens einen gültigen Eintrag hat. Ein Dienst-Schlüssel erreicht
+  // nur die Routen seiner Rechte (`DIENST_ROUTEN`, sonst 403) und zählt gegen seine eigene Grenze
+  // (429 + Retry-After). CORS und das Add-in-Bündel bleiben allein am Klara-Flag.
+  const dienstLage = ladeDienstSchluessel();
+  for (const grund of dienstLage.fehler) {
+    console.warn(`[dienst-schluessel] Eintrag verworfen: ${grund}`);
+  }
+  const dienstBremse = new Anfragebremse();
+  if (addonApiEnabled() || dienstLage.schluessel.length > 0) {
     // SCRUM-490 D2: request-lokaler Auth-Kontext. Der Add-on-Key wird hier GENAU EINMAL pro Request
     // validiert und der Principal (Capabilities ask.validated + checktext.validated) am Request
     // getragen; Rate-Limiter, allowList und
@@ -2622,7 +2637,7 @@ export function buildApp(
     // ausgenommen (Session-Pfad ungedrosselt).
     const authAttemptThrottle = new AddonAuthAttemptThrottle(addonAuthThrottleConfigFromEnv());
     app.addHook("onRequest", async (request, reply) => {
-      const auth = resolveAddonAuth(request);
+      const auth = resolveAddonAuth(request, dienstLage);
       // SCRUM-490 R3/R4 (B2): Throttle für fehlgeschlagene Add-on-Auth-Versuche — VOR dem 401/Principal.
       //  Fix 3: ein UNGÜLTIGER Key zählt auf JEDER Route (kein 401/403-Gültigkeitsorakel, keine
       //         ungedrosselte Fremdroute); fehlende Auth zählt gegen die NORMALISIERTEN Add-on-Endpunkte
@@ -2664,8 +2679,39 @@ export function buildApp(
         }
       }
       if (auth.kind === "invalid") {
-        reply.code(401).send({ error: "UNAUTHENTICATED", message: "Ungültiger Add-in-Zugang." });
+        reply.code(401).send({
+          error: "UNAUTHENTICATED",
+          message: auth.dienst ? "Ungültiger Dienst-Schlüssel." : "Ungültiger Add-in-Zugang.",
+        });
         return reply;
+      }
+      if (auth.kind === "valid" && auth.principal.dienst) {
+        request.authContext = { authKind: "addon", principal: auth.principal };
+        const route = matchDienstRoute(request.method, request.routeOptions?.url, request.raw.url);
+        if (!route || !principalHasCapability(auth.principal, route.recht)) {
+          reply.code(403).send({
+            error: "FORBIDDEN",
+            message: "Dieser Dienst-Schlüssel hat kein Recht für diese Anfrage.",
+          });
+          return reply;
+        }
+        const urteil = dienstBremse.zaehle(
+          auth.principal.id,
+          auth.principal.dienst.grenze,
+          Date.now(),
+        );
+        if (!urteil.erlaubt) {
+          reply
+            .code(429)
+            .header("retry-after", String(urteil.wartenSek))
+            .send({
+              error: "RATE_LIMITED",
+              message: bremsSatz("dienst", sprache(request), urteil.wartenSek),
+              wartenSek: urteil.wartenSek,
+            });
+          return reply;
+        }
+        return;
       }
       if (auth.kind === "valid") {
         request.authContext = { authKind: "addon", principal: auth.principal };
@@ -2692,7 +2738,7 @@ export function buildApp(
     // Enge (nur addon-Principal, gekeyt auf den Actor; Session-Requests exempt) steckt in
     // addonRateLimit(). Flag AUS → hier gar nicht registriert → /api/ask exakt wie heute.
     app.register(rateLimit, { global: false });
-    const addonOrigin = resolveAddonOrigin();
+    const addonOrigin = addonApiEnabled() ? resolveAddonOrigin() : null;
     if (addonOrigin !== null) {
       app.register(
         cors,
@@ -2715,8 +2761,18 @@ export function buildApp(
     // SCRUM-490 H: das statische Klara-Add-in-Bundle unter /addin/* — NUR bei aktivem Flag. Traversal-
     // sicher (explizite Datei-Map), kein Directory-Listing, öffentlich lesbar (kein Key), berührt den
     // Add-on-Auth/Throttle-Pfad nicht und öffnet keinen neuen API-Weg. Flag AUS → nicht registriert → 404.
-    app.register(addinStaticRoutes());
+    if (addonApiEnabled()) {
+      app.register(addinStaticRoutes());
+    }
   }
+
+  // Aufnahme gesamt-integrations-api (R-0842): die Bremse für modellgestützte Anfragen ANGEMELDETER
+  // Nutzer — nach dem Anmeldehook oben, damit Schlüsselzugänge schon erkannt sind und nicht doppelt
+  // zählen. `KLARWERK_KI_ANFRAGEN_MAX=aus` schaltet sie ab (s. ki-anfragebremse.ts).
+  registriereKiAnfragebremse(app, {
+    authenticate: (token) => services.auth.authenticate(token),
+    grenze: kiGrenzeAusEnv(),
+  });
 
   // JOB 1113 (JOB-947-B3): /health nennt jetzt zusätzlich VERSION und DEPLOY-COMMIT.
   //
@@ -3407,7 +3463,9 @@ export function buildApp(
   // registriert → Endpunkt existiert nicht → bit-identisch zum heutigen Verhalten. Deterministische
   // Stufe-1-Dry-Run-Prüfung (kein Modell, keine Persistenz; nur Validiertes gilt allein für den
   // Add-in-Pfad, der Session-Pfad prüft seit JOB 3020 auch Ungeprüftes — check-text-routes.ts).
-  if (addonApiEnabled()) {
+  // Aufnahme gesamt-integrations-api: ebenso, sobald Dienst-Schlüssel konfiguriert sind (Recht
+  // `checktext.validated`).
+  if (addonApiEnabled() || dienstLage.schluessel.length > 0) {
     app.register(
       checkTextRoutes(
         {

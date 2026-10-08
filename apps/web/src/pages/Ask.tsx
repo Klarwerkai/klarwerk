@@ -1033,6 +1033,10 @@ export function Ask(): JSX.Element {
   // Sie bekommt ihren eigenen Wortlaut und keinen „Erneut versuchen"-Knopf.
   const abgeschaltetAbgewiesen =
     ask.error instanceof ApiError && ask.error.code === "KI_ABGESCHALTET";
+  // R-0842: die KI-Bremse hat abgewiesen. Das ist kein Hängenbleiben — der Server nennt in seinem
+  // Satz die Wartezeit, und genau dieser Satz steht da statt des allgemeinen Fehlertexts.
+  const gebremstAbgewiesen =
+    ask.error instanceof ApiError && ask.error.code === "KI_ANFRAGEN_GEBREMST";
 
   const resultRef = useRef<HTMLDivElement | null>(null);
   // ==============================================================================================
@@ -1653,6 +1657,15 @@ export function Ask(): JSX.Element {
                 </p>
                 <p className="mt-0.5 text-[12.5px] leading-relaxed text-trust-crit-text">
                   {t("d5kiaus.text")}
+                </p>
+              </div>
+            ) : gebremstAbgewiesen ? (
+              <div data-testid="ask-ki-gebremst">
+                <p className="text-[13px] font-semibold text-trust-crit-text">
+                  {t("ask.gebremst.titel")}
+                </p>
+                <p className="mt-0.5 text-[12.5px] leading-relaxed text-trust-crit-text">
+                  {ask.error?.message}
                 </p>
               </div>
             ) : (
