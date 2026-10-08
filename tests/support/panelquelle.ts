@@ -195,8 +195,11 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * Auswertung von `KI_ABGESCHALTET` (gesamt-funktionsschalter, R-1040; 12498 Zeilen). Der Wert unten
  * beschreibt das zusammengeführte Dokument nicht mehr und ist ein PLATZHALTER bis zur Messung
  * („Received" von E2).
+ * NACHARBEIT 10: GEMESSEN im Prüflauf zu Kandidat a54d2eff am zusammengeführten Panel (`96fc81a8…`,
+ * „Received" von E2, HISTORIE/nacharbeit-10/PRUEFUNG/panel-pins-nach-integration.log) und
+ * unverändert übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "baadfb41272c9930947d8f9401ad3fb59ebdf6bb";
+export const PANEL_VOR_SCHNITT_BLOB = "96fc81a8d6d454d793babc4eb75524f7ce83ec93";
 
 export interface PanelTeile {
   html: string;
