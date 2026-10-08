@@ -147,6 +147,7 @@ export function DemoKennzeichen({ form }: { form: "marke" | "band" }): JSX.Eleme
 
 /** Das Wortzeichen — einmal beschrieben, an drei Stellen verwendet. */
 function Wortmarke({ hell }: { hell: boolean }): JSX.Element {
+  const { t } = useTranslation();
   const stand = useSyncExternalStore(abonniereBranding, aktuellesBranding, aktuellesBranding);
   // Ein Profil OHNE Schalter und ein Schalter OHNE Profil sind beide „aus" — wörtlich die Regel aus
   // `shell/Logo.tsx:39-40`, damit die Anmeldemaske und die Hülle nicht zwei Sichtbarkeitsbegriffe
@@ -171,7 +172,8 @@ function Wortmarke({ hell }: { hell: boolean }): JSX.Element {
             hell ? "text-white/50" : "text-muted-2"
           }`}
         >
-          Reasoning System
+          {/* R-1169: der Markenuntertitel kommt aus dem Katalog (`app.subtitle`). */}
+          {t("app.subtitle")}
         </span>
       </span>
       {profil === null || marke === null ? null : (

@@ -48,9 +48,18 @@ export interface ReviewHelpTopic {
   bodyKey: string;
 }
 
+// R-1176 (gesamt-sprache-begriffe): Diese Texte zitierten den Knopf englisch klein geschrieben
+// („report conflict“ statt „Report conflict“). Der Grundbestand steht unter Prüfsumme; die
+// berichtigte Fassung liegt in `texte/knopfzitat.ts`, der deutsche Wortlaut ist zeichengleich.
+const BODY_ABWEICHEND: Partial<Record<ReviewHelpId, string>> = {
+  reject: "knopfzitat.vhelp.reject",
+  assign: "knopfzitat.vhelp.assign",
+  contribution: "knopfzitat.vhelp.contribution",
+};
+
 // Schlüssel-Schema bewusst flach und stabil: vhelp.<id>.title / vhelp.<id>.body.
 export function reviewHelp(id: ReviewHelpId): ReviewHelpTopic {
-  return { id, titleKey: `vhelp.${id}.title`, bodyKey: `vhelp.${id}.body` };
+  return { id, titleKey: `vhelp.${id}.title`, bodyKey: BODY_ABWEICHEND[id] ?? `vhelp.${id}.body` };
 }
 
 export const REVIEW_HELP_TOPICS: readonly ReviewHelpTopic[] = REVIEW_HELP_IDS.map(reviewHelp);

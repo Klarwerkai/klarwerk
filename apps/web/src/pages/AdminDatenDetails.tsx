@@ -1050,10 +1050,7 @@ export function AuditDetail({ onZurueck }: { onZurueck: () => void }): JSX.Eleme
       {/* JOB 3670: Diese Karte hatte bisher überhaupt keine Hilfequelle — weder ein „?"-Menü noch
           einen Eintrag im Zahnrad. Der Text sagt das Wichtigste zuerst: hier wird nur gelesen, und
           die vollständige Kette samt Prüfknopf wohnt woanders. */}
-      <HelpTip
-        title={t("seitenhilfe.admin.audit.titel")}
-        body={t("seitenhilfe.admin.audit.text")}
-      />
+      <HelpTip title={t("seitenhilfe.admin.audit.titel")} body={t("knopfzitat.admin.audit")} />
       <Abfragehuelle abfrage={audit}>
         {(entries) => {
           const userEntries = entries

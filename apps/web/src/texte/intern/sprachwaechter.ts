@@ -5,91 +5,186 @@
 // R-1169 verlangt einen Wächter im Bau, der anschlägt, wenn ein Text nicht in allen drei Sprachen
 // vorliegt, wenn eine unbekannte Sprache auftaucht, UND wenn ein Text hart im Code steht statt in
 // der Übersetzungsdatei. Die erste Hälfte trägt seit JOB 4367 der Textmodul-Vertrag
-// (`./pruefung.ts`, Regeln 4 und — seit dieser Aufnahme — „unbekannter Eintrag" in der Modulform).
-// Diese Datei trägt die beiden anderen:
+// (`./pruefung.ts`, Regel 4 und „unbekannter Eintrag" in der Modulform). Diese Datei trägt die
+// beiden anderen:
 //
 //   1. UNBEKANNTE SPRACHE IM GRUNDBESTAND. `woerterbuch/` führt je Sprache eine Datei. Eine
-//      `fr.ts` dort wäre heute still: `i18n.ts` importiert sie nicht, niemand sähe sie. Der Wächter
-//      lässt nur die Sprachen der Oberfläche zu (`SPRACHEN` aus `./pruefung.ts`).
+//      `fr.ts` dort wäre still: `i18n.ts` importiert sie nicht, niemand sähe sie. Der Wächter lässt
+//      nur die Sprachen der Oberfläche zu (`SPRACHEN` aus `./pruefung.ts`).
 //
-//   2. HART CODIERTE ANZEIGETEXTE IN TSX. Gesucht wird zeilenweise nach zwei Formen, die in diesem
-//      Baum Anzeigetext bedeuten:
-//        · Text zwischen zwei Tags auf derselben Zeile:   <span>Bildgröße</span>
-//        · ein Textattribut mit Wortlaut:                 title="App-Version (Beta-Phase)"
-//                                                         (title, placeholder, aria-label, alt)
-//      Ein Wort zählt ab drei Buchstaben. Ausgenommen sind Kommentarzeilen (`//`, `*`, `{/*`), ein
-//      `>` nach `=` oder `-` (Pfeilfunktion `=> Promise<…>`, kein Tag) und Text mit `:` oder `,`
-//      (Typargumente wie `Map<string, X>, b: Set<…>`).
+//   2. HART CODIERTE ANZEIGETEXTE IN TSX — ANHAND DER JSX-STRUKTUR, nicht zeilenweise. Jede
+//      `.tsx`-Datei (ohne Tests) wird mit dem TypeScript-Parser gelesen; gemeldet wird:
+//        · JSX-Text zwischen Tags, auch mit Komma, Doppelpunkt und über mehrere Zeilen
+//                                                     <span>Hallo, Welt</span>
+//        · ein JSX-Zeichenkettenausdruck als Kind      {"Hallo"} · {`${n} Einträge`}
+//          — auch als Zweig von `?:`, `&&`, `||`, `??`  {ok ? "OK" : "FAIL"}
+//        · ein Textattribut mit Wortlaut               title="…" · placeholder="…" ·
+//                                                     aria-label="…" · alt="…" (auch als {"…"})
+//      Kommentare kommen im Syntaxbaum nicht als Text vor; Typargumente (`Map<string, X>`) und
+//      Pfeilfunktionen sind dort Typen und Ausdrücke, kein JSX-Text. Ein Text zählt erst, wenn er
+//      zwei aufeinanderfolgende Buchstaben trägt („v1", „×", „%" zählen nicht), und er zählt NICHT,
+//      wenn er ein technischer Bezeichner ist: ein einziges Wort ohne Leerzeichen mit einem
+//      Trenner wie `.`, `/`, `_`, `#` oder einem Binnen-Großbuchstaben (`klarwerk.ai`,
+//      `screenshots/x.png`, `lib.facet.tag`, `iPhone`). Inhalte von `<style>`/`<script>` sind Code.
 //
-// WAS DER WÄCHTER NICHT SIEHT, ausdrücklich: Text, der über mehrere Zeilen läuft, Text mit Doppel-
-// punkt oder Komma, Zeichenketten in Variablen und Texte in `.ts`-Dateien. Er ist eine Sperrklinke
-// gegen den häufigsten Fall, kein Beweis, dass nirgends ein Text hart steht.
+// WAS DER WÄCHTER NICHT SIEHT, ausdrücklich: Zeichenketten in Variablen und Datenlisten, die später
+// gerendert werden, und Texte in `.ts`-Dateien. Dafür müsste er den Datenfluss kennen.
 //
-// DIE SPERRKLINKE. Was heute noch gefunden wird, steht namentlich in `BEKANNTE_STELLEN` — mit Grund.
-// Mehr Funde in einer Datei, oder Funde in einer Datei, die dort nicht steht, brechen den Bau ab
-// und nennen Datei, Zeile und Wortlaut. Weniger Funde sind kein Fehler; der Eintrag gehört dann
-// herabgesetzt (das hält `tests/sprache-begriffe/sprachwaechter.test.ts`, Fall H-2).
+// AUSNAHMEN SIND AN DATEI UND WORTLAUT GEBUNDEN, nicht an eine Anzahl: `AUSNAHMEN` nennt je
+// Fundstelle die Datei, den Text und den Grund. Ein anderer Text in derselben Datei übernimmt keine
+// Ausnahme, und eine Ausnahme, deren Text nicht mehr gefunden wird, ist selbst ein Befund (sie
+// gehört gestrichen). Beides hält `tests/sprache-begriffe/sprachwaechter.test.ts` fest.
 //
 // WARUM HIER UND NICHT NUR IM TEST: dieselbe Funktion ruft das Vite-Plugin `textmodul-vertrag`
 // (`./sammeln.ts`) beim Produktbuild. Damit fällt ein neuer harter Text im Bau auf, nicht erst im
 // Browser — und nicht nur dort, wo jemand den Test laufen lässt.
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import ts from "typescript";
 import { SPRACHEN } from "./pruefung";
 
-/**
- * Eine Zeile mit hart codiertem Anzeigetext. Bewusst EIN Ausdruck — die Zahlen in
- * `BEKANNTE_STELLEN` sind mit genau diesem Ausdruck erhoben.
- */
-export const HARTKODIERT_MUSTER =
-  /^\s*(?:[^/*\s{]|\{[^/]).*(?:(?:^|[^=-])>[^<>{}()=&|;:,]*[A-Za-zÄÖÜäöüß]{3,}[^<>{}()=&|;:,]*<|\b(?:placeholder|title|aria-label|alt)="[^"{]*[A-Za-zÄÖÜäöüß]{3,}[^"]*")/;
+/** Die Attribute, deren Wert Anzeige- oder Vorlesetext ist. */
+export const TEXTATTRIBUTE: ReadonlySet<string> = new Set([
+  "title",
+  "placeholder",
+  "aria-label",
+  "alt",
+]);
 
-export interface BekannteStelle {
-  /** So viele Zeilen dürfen in dieser Datei höchstens gefunden werden. */
-  readonly anzahl: number;
-  /** Warum sie bleiben dürfen — ohne Grund kein Eintrag. */
+/** Elemente, deren Kinder Code sind und kein Anzeigetext. */
+const CODE_ELEMENTE: ReadonlySet<string> = new Set(["style", "script"]);
+
+const ZWEI_BUCHSTABEN = /\p{L}\p{L}/u;
+const EIN_WORT = /^[\p{L}\p{N}_.\-/:#?=&@%+~]+$/u;
+const TRENNER = /[._/#?=&@~]|\p{Ll}\p{Lu}/u;
+
+/** Leerraum zusammenfassen, Ränder abschneiden — so, wie der Text auf der Seite steht. */
+export function normalisiere(roh: string): string {
+  return roh.replace(/\s+/g, " ").trim();
+}
+
+/** Ist dieser Text etwas, das ein Mensch liest — und kein technischer Bezeichner? */
+export function istAnzeigetext(roh: string): boolean {
+  const text = normalisiere(roh);
+  if (!ZWEI_BUCHSTABEN.test(text)) {
+    return false;
+  }
+  return !(EIN_WORT.test(text) && TRENNER.test(text));
+}
+
+export interface Ausnahme {
+  /** relativ zu `apps/web/src`, mit `/` */
+  readonly datei: string;
+  /** der normalisierte Wortlaut, zeichengleich */
+  readonly text: string;
+  /** Warum genau dieser Text bleiben darf. */
   readonly grund: string;
 }
 
-/** Die heute gemessenen Funde, relativ zu `apps/web/src`, mit Grund. */
-export const BEKANNTE_STELLEN: Readonly<Record<string, BekannteStelle>> = {
-  "auth/BrandPanel.tsx": {
-    anzahl: 1,
-    grund: "Marke „klarwerk.ai“ unter dem Anmeldebild — ein Name, kein übersetzbarer Text.",
-  },
-  "auth/SsoCallback.tsx": {
-    anzahl: 2,
-    grund: "Marke „KLARWERK“ und „klarwerk.ai“ auf der Rückkehrseite der Anmeldung.",
-  },
-  "pages/Mobile.tsx": {
-    anzahl: 1,
-    grund: "Marke „KLARWERK“ im Kopf der mobilen Fläche.",
-  },
-  "pages/Capture.tsx": {
-    anzahl: 1,
-    grund:
-      "Fehltreffer: eine Zeile eines mehrzeiligen JSX-Kommentars, die mit einem Backtick beginnt.",
-  },
-};
+const MARKE =
+  "Wortmarke KLARWERK — ein Name, kein übersetzbarer Text (docs/ci/CI_KURZREFERENZ.md: Wortmarke in Versalien).";
+
+/** Die heute gemessenen, begründeten Fundstellen. Jede ist an Datei UND Wortlaut gebunden. */
+export const AUSNAHMEN: readonly Ausnahme[] = [
+  { datei: "auth/BrandPanel.tsx", text: "KLARWERK", grund: MARKE },
+  { datei: "auth/SsoCallback.tsx", text: "KLARWERK", grund: MARKE },
+  { datei: "pages/Mobile.tsx", text: "KLARWERK", grund: MARKE },
+  { datei: "shell/Logo.tsx", text: "KLARWERK", grund: MARKE },
+];
 
 export interface Fund {
   /** relativ zu `apps/web/src`, mit `/` */
   readonly datei: string;
   /** 1-basiert */
   readonly zeile: number;
+  /** normalisiert */
   readonly text: string;
+  readonly art: "jsx-text" | "jsx-ausdruck" | "attribut";
 }
 
-/** Die Zeilennummern (1-basiert), die das Muster in einem Quelltext trifft. */
-export function hartkodierteZeilen(quelle: string): number[] {
-  const treffer: number[] = [];
-  const zeilen = quelle.split("\n");
-  for (let index = 0; index < zeilen.length; index += 1) {
-    if (HARTKODIERT_MUSTER.test(zeilen[index] ?? "")) {
-      treffer.push(index + 1);
+/** Die literalen Textteile eines Ausdrucks — auch in den Zweigen von `?:`, `&&`, `||`, `??`. */
+function literaleTexte(ausdruck: ts.Expression): string[] {
+  if (ts.isParenthesizedExpression(ausdruck)) {
+    return literaleTexte(ausdruck.expression);
+  }
+  if (ts.isStringLiteral(ausdruck) || ts.isNoSubstitutionTemplateLiteral(ausdruck)) {
+    return [ausdruck.text];
+  }
+  if (ts.isTemplateExpression(ausdruck)) {
+    return [ausdruck.head.text, ...ausdruck.templateSpans.map((span) => span.literal.text)];
+  }
+  if (ts.isConditionalExpression(ausdruck)) {
+    return [...literaleTexte(ausdruck.whenTrue), ...literaleTexte(ausdruck.whenFalse)];
+  }
+  if (ts.isBinaryExpression(ausdruck)) {
+    const op = ausdruck.operatorToken.kind;
+    if (op === ts.SyntaxKind.AmpersandAmpersandToken) {
+      return literaleTexte(ausdruck.right);
+    }
+    if (op === ts.SyntaxKind.BarBarToken || op === ts.SyntaxKind.QuestionQuestionToken) {
+      return [...literaleTexte(ausdruck.left), ...literaleTexte(ausdruck.right)];
     }
   }
-  return treffer;
+  return [];
+}
+
+/** Ist der Knoten Kind eines `<style>`/`<script>`-Elements? */
+function inCodeElement(knoten: ts.Node, quelle: ts.SourceFile): boolean {
+  const eltern = knoten.parent;
+  return (
+    eltern !== undefined &&
+    ts.isJsxElement(eltern) &&
+    CODE_ELEMENTE.has(eltern.openingElement.tagName.getText(quelle))
+  );
+}
+
+/** Jeder hart codierte Anzeigetext in einem TSX-Quelltext, mit Zeile. */
+export function hartkodierteTexte(
+  inhalt: string,
+  datei = "probe.tsx",
+): { zeile: number; text: string; art: Fund["art"] }[] {
+  const quelle = ts.createSourceFile(
+    datei,
+    inhalt,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const funde: { zeile: number; text: string; art: Fund["art"] }[] = [];
+  const melde = (position: number, roh: string, art: Fund["art"]): void => {
+    if (istAnzeigetext(roh)) {
+      const zeile = quelle.getLineAndCharacterOfPosition(position).line + 1;
+      funde.push({ zeile, text: normalisiere(roh), art });
+    }
+  };
+  const besuche = (knoten: ts.Node): void => {
+    if (ts.isJsxText(knoten) && !inCodeElement(knoten, quelle)) {
+      // Die Zeile des ersten sichtbaren Zeichens, nicht die des führenden Zeilenumbruchs.
+      const vorlauf = knoten.text.length - knoten.text.trimStart().length;
+      melde(knoten.getStart(quelle) + vorlauf, knoten.text, "jsx-text");
+    } else if (
+      ts.isJsxExpression(knoten) &&
+      knoten.expression !== undefined &&
+      (ts.isJsxElement(knoten.parent) || ts.isJsxFragment(knoten.parent)) &&
+      !inCodeElement(knoten, quelle)
+    ) {
+      for (const text of literaleTexte(knoten.expression)) {
+        melde(knoten.getStart(quelle), text, "jsx-ausdruck");
+      }
+    } else if (ts.isJsxAttribute(knoten) && TEXTATTRIBUTE.has(knoten.name.getText(quelle))) {
+      const wert = knoten.initializer;
+      if (wert !== undefined && ts.isStringLiteral(wert)) {
+        melde(knoten.getStart(quelle), wert.text, "attribut");
+      } else if (wert !== undefined && ts.isJsxExpression(wert) && wert.expression !== undefined) {
+        for (const text of literaleTexte(wert.expression)) {
+          melde(knoten.getStart(quelle), text, "attribut");
+        }
+      }
+    }
+    ts.forEachChild(knoten, besuche);
+  };
+  besuche(quelle);
+  return funde;
 }
 
 /** Alle `.tsx`-Dateien unter `srcOrdner`, ohne Testdateien und ohne versteckte Ordner. */
@@ -124,40 +219,49 @@ function tsxDateien(srcOrdner: string, unterordner = ""): string[] {
 export function hartkodierteFunde(srcOrdner: string): Fund[] {
   const funde: Fund[] = [];
   for (const datei of tsxDateien(srcOrdner)) {
-    const zeilen = readFileSync(join(srcOrdner, datei), "utf8").split("\n");
-    for (const nummer of hartkodierteZeilen(zeilen.join("\n"))) {
-      funde.push({ datei, zeile: nummer, text: (zeilen[nummer - 1] ?? "").trim() });
+    const inhalt = readFileSync(join(srcOrdner, datei), "utf8");
+    for (const fund of hartkodierteTexte(inhalt, datei)) {
+      funde.push({ datei, ...fund });
     }
   }
   return funde;
 }
 
+const passt = (fund: Fund, ausnahme: Ausnahme): boolean =>
+  fund.datei === ausnahme.datei && fund.text === ausnahme.text;
+
 /**
- * Die Sperrklinke: Befunde als Liste, leer heißt grün. Gemeldet wird je Datei, die MEHR Funde trägt
- * als `bekannt` erlaubt — mit jeder Fundzeile, damit niemand suchen muss.
+ * Befunde als Liste, leer heißt grün:
+ *   · jeder Fund, den keine Ausnahme mit DERSELBEN Datei und DEMSELBEN Wortlaut deckt;
+ *   · jede Ausnahme, deren Datei im Baum liegt, deren Text dort aber nicht mehr gefunden wird
+ *     (sie gehört gestrichen). Ausnahmen zu Dateien, die der geprüfte Baum gar nicht trägt — die
+ *     Bühnen der Vertragstests —, sind keine Aussage über diesen Baum.
  */
 export function pruefeHartkodierteTexte(
   srcOrdner: string,
-  bekannt: Readonly<Record<string, BekannteStelle>> = BEKANNTE_STELLEN,
+  ausnahmen: readonly Ausnahme[] = AUSNAHMEN,
 ): string[] {
-  const jeDatei = new Map<string, Fund[]>();
-  for (const fund of hartkodierteFunde(srcOrdner)) {
-    jeDatei.set(fund.datei, [...(jeDatei.get(fund.datei) ?? []), fund]);
-  }
+  const dateien = new Set(tsxDateien(srcOrdner));
+  const funde = hartkodierteFunde(srcOrdner);
   const fehler: string[] = [];
-  for (const [datei, funde] of [...jeDatei.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    const erlaubt = bekannt[datei]?.anzahl ?? 0;
-    if (funde.length > erlaubt) {
-      const stellen = funde.map((f) => `${f.datei}:${f.zeile} ${f.text}`).join(" | ");
+  for (const fund of funde) {
+    if (!ausnahmen.some((ausnahme) => passt(fund, ausnahme))) {
       fehler.push(
-        `${datei}: ${funde.length} hart codierte Anzeigetexte, erlaubt ${erlaubt} — Text über t("…") aus einem Textmodul holen (apps/web/src/texte/). Fundstellen: ${stellen}`,
+        `${fund.datei}:${fund.zeile}: hart codierter Anzeigetext (${fund.art}) „${fund.text}“ — über t("…") aus einem Textmodul holen (apps/web/src/texte/).`,
+      );
+    }
+  }
+  for (const ausnahme of ausnahmen) {
+    if (dateien.has(ausnahme.datei) && !funde.some((fund) => passt(fund, ausnahme))) {
+      fehler.push(
+        `${ausnahme.datei}: Ausnahme „${ausnahme.text}“ hat keinen Fund mehr — in apps/web/src/texte/intern/sprachwaechter.ts streichen.`,
       );
     }
   }
   return fehler;
 }
 
-/** Unbekannte Sprachen im Grundbestand: jede Datei in `woerterbuch/`, die keine Sprache der Oberfläche ist. */
+/** Unbekannte Sprachen im Grundbestand: jede Datei in `woerterbuch/` ausser de/en/nl. */
 export function pruefeSprachdateien(srcOrdner: string): string[] {
   let dateien: string[] = [];
   try {

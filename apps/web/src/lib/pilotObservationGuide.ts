@@ -33,7 +33,8 @@ export const PILOT_OBSERVATIONS: readonly PilotObservation[] = [
   {
     id: "outdated",
     labelKey: "pilot.obs.outdated.label",
-    mapKey: "pilot.obs.outdated.map",
+    // R-1176: zitiert den Knopf „Aktuell halten“ zeichengleich (`texte/knopfzitat.ts`).
+    mapKey: "knopfzitat.pilot.veraltet",
     to: "/lebenszyklus",
   },
   {

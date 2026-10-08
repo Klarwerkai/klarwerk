@@ -12,7 +12,7 @@
 // `textmodul-vertrag`):
 //
 //   U  unbekannte Sprache — im Textmodul (`fr: {…}`) und im Grundbestand (`woerterbuch/fr.ts`)
-//   H  hart codierter Anzeigetext in TSX — als Sperrklinke gegen den gemessenen Bestand
+//   H  hart codierter Anzeigetext in TSX — anhand der JSX-Struktur, Ausnahmen an Datei UND Wortlaut
 //   P  das Plugin bricht an beidem ab und läuft am echten Baum durch
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,9 +21,11 @@ import { afterAll, describe, expect, it } from "vitest";
 import { pruefeTextmodule } from "../../apps/web/src/texte/intern/pruefung";
 import { textmodulVertrag } from "../../apps/web/src/texte/intern/sammeln";
 import {
-  BEKANNTE_STELLEN,
+  AUSNAHMEN,
+  type Ausnahme,
   hartkodierteFunde,
-  hartkodierteZeilen,
+  hartkodierteTexte,
+  istAnzeigetext,
   pruefeHartkodierteTexte,
   pruefeSprachdateien,
 } from "../../apps/web/src/texte/intern/sprachwaechter";
@@ -69,6 +71,10 @@ const modul = (extra: Record<string, unknown> = {}): Record<string, unknown> => 
   },
 });
 
+/** Kurzform: was der Wächter in einem Quelltext findet, als `zeile: text`. */
+const fundeIn = (quelle: string): string[] =>
+  hartkodierteTexte(quelle).map((f) => `${f.zeile}: ${f.text}`);
+
 describe("K15 · U — eine unbekannte Sprache fällt nicht mehr still durch", () => {
   it("U-1: ein Textmodul mit `fr` wird gemeldet — mit Modul und Sprache", () => {
     const fehler = pruefeTextmodule(modul({ fr: { "probe.titel": "FR" } }), new Set<string>());
@@ -94,80 +100,140 @@ describe("K15 · U — eine unbekannte Sprache fällt nicht mehr still durch", (
   });
 });
 
-describe("K15 · H — hart codierte Anzeigetexte", () => {
-  it("H-1: der echte Baum hält die Sperrklinke", () => {
+describe("K15 · H — hart codierte Anzeigetexte, erkannt an der JSX-Struktur", () => {
+  it("H-1: der echte Baum ist sauber — jeder Fund ist eine benannte Ausnahme", () => {
     expect(pruefeHartkodierteTexte(SRC)).toEqual([]);
   });
 
-  it("H-2: der Bestand ist genau der gemessene — jede bekannte Stelle mit Grund", () => {
-    // Exakt, nicht nur „höchstens": ist eine Stelle behoben, gehört ihr Eintrag herabgesetzt,
-    // sonst dürfte dort still ein neuer harter Text nachwachsen.
-    const ist: Record<string, number> = {};
-    for (const fund of hartkodierteFunde(SRC)) {
-      ist[fund.datei] = (ist[fund.datei] ?? 0) + 1;
-    }
-    const soll = Object.fromEntries(
-      Object.entries(BEKANNTE_STELLEN).map(([datei, stelle]) => [datei, stelle.anzahl]),
-    );
-    expect(ist).toEqual(soll);
-    for (const [datei, stelle] of Object.entries(BEKANNTE_STELLEN)) {
-      expect(stelle.grund.length, `${datei} ohne Grund`).toBeGreaterThan(20);
+  it("H-2: die Funde sind GENAU die Ausnahmen — Datei und Wortlaut, jede mit Grund", () => {
+    const ist = hartkodierteFunde(SRC).map((f) => `${f.datei} · ${f.text}`);
+    const soll = AUSNAHMEN.map((a) => `${a.datei} · ${a.text}`);
+    expect(ist.sort()).toEqual(soll.sort());
+    for (const a of AUSNAHMEN) {
+      expect(a.grund.length, `${a.datei} „${a.text}“ ohne Grund`).toBeGreaterThan(20);
     }
   });
 
-  it("H-3: die in dieser Aufnahme behobenen Stellen sind wirklich weg", () => {
+  it("H-3: die in dieser Aufnahme behobenen Stellen tragen keinen harten Text mehr", () => {
     const dateien = new Set(hartkodierteFunde(SRC).map((f) => f.datei));
     for (const datei of [
       "components/RichTextEditor.tsx",
       "shell/ZahnradMenue.tsx",
       "pages/UiKit.tsx",
+      "pages/PlaceholderPage.tsx",
+      "pages/AdminKiDetails.tsx",
     ]) {
       expect(dateien.has(datei), `${datei} trägt wieder einen harten Text`).toBe(false);
     }
+    const texte = hartkodierteFunde(SRC).map((f) => f.text);
+    expect(texte).not.toContain("Reasoning System");
+    expect(texte).not.toContain("Klarwerk - zur Startseite");
   });
 
-  it("H-4: Rotnachweis — Text zwischen Tags und ein Textattribut werden gefunden", () => {
+  it("H-4: Rotnachweis — Komma, Doppelpunkt, Zeilenumbruch, Ausdrücke und Attribute", () => {
     const quelle = [
-      "export function Probe() {",
+      "export function Probe({ ok, n }: { ok: boolean; n: number }) {",
       "  return (",
       '    <div title="App-Version (Beta-Phase)">',
-      '      <span className="x">Bildgröße</span>',
-      '      <input placeholder="Deine Antwort" />',
+      "      <span>Hallo, Welt</span>",
+      "      <p>",
+      "        Achtung: das ist",
+      "        ein langer Satz",
+      "      </p>",
+      '      {"Gespeichert"}',
+      '      {ok ? "OK" : "FAIL"}',
+      "      {`${n} Einträge`}",
+      '      <input aria-label={"Suchbegriff"} placeholder="Deine Antwort" />',
+      '      {n > 0 && "Weitere vorhanden"}',
       "    </div>",
       "  );",
       "}",
     ].join("\n");
-    expect(hartkodierteZeilen(quelle)).toEqual([3, 4, 5]);
+    expect(fundeIn(quelle)).toEqual([
+      "3: App-Version (Beta-Phase)",
+      "4: Hallo, Welt",
+      "6: Achtung: das ist ein langer Satz",
+      "9: Gespeichert",
+      "10: OK",
+      "10: FAIL",
+      "11: Einträge",
+      "12: Suchbegriff",
+      "12: Deine Antwort",
+      "13: Weitere vorhanden",
+    ]);
   });
 
-  it("H-5: keine Fehltreffer an Pfeilfunktionen, Typargumenten, Kommentaren und t()", () => {
+  it("H-5: keine Fehltreffer an Code, Kommentaren, t(), Bezeichnern und Zeichen", () => {
     const quelle = [
-      "  onSave: () => Promise<boolean>;",
-      "  laden: (koId: string) => Promise<KoVersionSnapshot[]>;",
-      "  const [a, b] = useState<ReadonlySet<string>>(() => new Set<string>());",
-      "function f(a: Map<string, Foo>, b: Set<string>) {}",
+      "type P = { onSave: () => Promise<boolean>; m: Map<string, Set<string>> };",
+      "export function Probe({ t, n, a, b }: { t: (k: string) => string; n: number; a: number; b: number }) {",
+      "  const x = a > b ? 1 : 2;",
       "  // <b>Kommentar mit Tag</b>",
-      "  {/* <span>auch das</span> */}",
-      '  <span className="x">{t("beschriftung.editor.bildgroesse")}</span>',
-      '  <span title={t("beschriftung.zahnrad.version")}>v1</span>',
+      "  return (",
+      '    <div className={x > 1 ? "font-bold" : ""}>',
+      "      {/* <span>auch das, mit Komma: ja</span> */}",
+      '      <span className="x">{t("beschriftung.editor.bildgroesse")}</span>',
+      '      <span title={t("beschriftung.zahnrad.version")}>v{n}</span>',
+      '      {n > 0 ? t("a.b") : t("c.d")}',
+      "      <span>klarwerk.ai</span>",
+      '      {"lib.facet.tag"}',
+      '      {" "} · → {"—"} × %',
+      "      <style>{`.blatt-text div { display: none; }`}</style>",
+      "    </div>",
+      "  );",
+      "}",
     ].join("\n");
-    expect(hartkodierteZeilen(quelle)).toEqual([]);
+    expect(fundeIn(quelle)).toEqual([]);
   });
 
-  it("H-6: ein neuer harter Text in einer Bühne bricht die Sperrklinke — mit Datei und Zeile", () => {
+  it("H-6: eine Ausnahme ist an den WORTLAUT gebunden — ein anderer Text übernimmt sie nicht", () => {
+    // Bens Fall: in BrandPanel.tsx ersetzt ein unübersetzter Bedienhinweis die Wortmarke. Gleiche
+    // Datei, gleiche Anzahl Funde — trotzdem rot, und die verwaiste Ausnahme wird ebenfalls gemeldet.
+    const wurzel = buehne({
+      "auth/BrandPanel.tsx": "export const B = () => <span>Jetzt anmelden</span>;\n",
+    });
+    const ausnahmen: Ausnahme[] = [
+      { datei: "auth/BrandPanel.tsx", text: "KLARWERK", grund: "Wortmarke, kein Anzeigetext" },
+    ];
+    const fehler = pruefeHartkodierteTexte(join(wurzel, "src"), ausnahmen);
+    expect(fehler).toHaveLength(2);
+    expect(fehler[0]).toContain("auth/BrandPanel.tsx:1: hart codierter Anzeigetext");
+    expect(fehler[0]).toContain("„Jetzt anmelden“");
+    expect(fehler[1]).toContain("Ausnahme „KLARWERK“ hat keinen Fund mehr");
+  });
+
+  it("H-7: Gegenprobe — der Text der Ausnahme selbst bleibt zulässig", () => {
+    const wurzel = buehne({
+      "auth/BrandPanel.tsx": "export const B = () => <span>KLARWERK</span>;\n",
+    });
+    const ausnahmen: Ausnahme[] = [
+      { datei: "auth/BrandPanel.tsx", text: "KLARWERK", grund: "Wortmarke, kein Anzeigetext" },
+    ];
+    expect(pruefeHartkodierteTexte(join(wurzel, "src"), ausnahmen)).toEqual([]);
+  });
+
+  it("H-8: Bezeichner und Anzeigetext werden getrennt", () => {
+    for (const text of ["Hallo, Welt", "Hinweis:", "OK", "KLARWERK", "Stufe 2", "Design: §"]) {
+      expect(istAnzeigetext(text), text).toBe(true);
+    }
+    for (const text of ["klarwerk.ai", "lib.facet.tag", "bilder/x-1.png", "v", "·", "%"]) {
+      expect(istAnzeigetext(text), text).toBe(false);
+    }
+  });
+
+  it("H-9: ein neuer harter Text in einer Bühne bricht die Prüfung — mit Datei und Zeile", () => {
     const wurzel = buehne({
       "pages/Neu.tsx": [
         "export function Neu() {",
-        '  return <span className="x">Speichern</span>;',
+        '  return <span className="x">Speichern, bitte</span>;',
         "}",
         "",
       ].join("\n"),
     });
-    const fehler = pruefeHartkodierteTexte(join(wurzel, "src"));
+    const fehler = pruefeHartkodierteTexte(join(wurzel, "src"), []);
     expect(fehler).toHaveLength(1);
     expect(fehler[0]).toContain("pages/Neu.tsx:2");
-    expect(fehler[0]).toContain("Speichern");
-    expect(fehler[0]).toContain("erlaubt 0");
+    expect(fehler[0]).toContain("Speichern, bitte");
   });
 });
 
@@ -178,7 +244,7 @@ describe("K15 · P — dieselbe Prüfung stoppt den Produktbuild", () => {
 
   it("P-2: ein harter Text bricht den Build ab — benannt als Sprachwächter", () => {
     const wurzel = buehne({
-      "pages/Neu.tsx": 'export const Neu = () => <p className="x">Hallo Welt</p>;\n',
+      "pages/Neu.tsx": 'export const Neu = () => <p className="x">Hallo, Welt</p>;\n',
     });
     expect(() => fahrePlugin(wurzel)).toThrow(/Sprachwächter[\s\S]*pages\/Neu\.tsx:1/);
   });
