@@ -63,6 +63,15 @@ import {
 
 adapterUmgebungSetzen();
 
+/**
+ * Die Frage für die Antwortfälle E1/E2. NICHT die Kettenfrage `FRAGE` („… behandelt?"): Tor 1 bindet
+ * seit R-0473 jeden substanztragenden Fragebegriff (`decktAlleFragebegriffe`), und „behandelt" steht
+ * in der Aussage des Ketteneintrags nicht („… wird vor dem Wechsel entlastet."). Der Server schliesst
+ * den Eintrag dann zu Recht aus — gemessen in nacharbeit-2 an der Kalibrierung (`answered: false`,
+ * Eintrag unter `verschlossen`). Diese Frage trägt nur Begriffe, die in Titel und Aussage stehen.
+ */
+const GEDECKTE_FRAGE = "Wie wird die Zylinderkopfdichtung XQ42 vor dem Wechsel entlastet?";
+
 /** Das Kennwort, mit dem `neuesKonto` jedes Konto anlegt (`kette.ts`). */
 const KENNWORT = "geheim12345";
 
@@ -325,7 +334,7 @@ describe("E1 · K1/K2/K3 — echte KI-Antwort, gespeichert, nach Seitenwechsel, 
     expect(q(document, "klara-figur")?.dataset.betrieb).toBe("echt");
     expect(q(document, "klara-demo-hinweis")).toBeNull();
     const eingabe = q<HTMLInputElement>(document, "klara-eingabe") as HTMLInputElement;
-    await tippe(eingabe, FRAGE);
+    await tippe(eingabe, GEDECKTE_FRAGE);
     expect(q<HTMLButtonElement>(document, "klara-senden")?.disabled).toBe(true);
     expect(draht.aufrufe.some((x) => x.url === "/api/ask")).toBe(false);
 
@@ -335,7 +344,7 @@ describe("E1 · K1/K2/K3 — echte KI-Antwort, gespeichert, nach Seitenwechsel, 
     // KALIBRIERUNG im selben Augenblick: derselbe Server beantwortet DIESELBE Frage DERSELBEN Person
     // über den Kettenweg mit dem Modell. Ist das rot, liegt der Fehler nicht bei Klara.
     await eintragMitOriginal(a.app, a.admin);
-    const kalibrierung = await kettenFrage(a.app, leser);
+    const kalibrierung = await kettenFrage(a.app, leser, GEDECKTE_FRAGE);
     expect(
       kalibrierung.answered && kalibrierung.citedSources.length > 0,
       `Kalibrierung: der Frageweg selbst antwortet nicht mit dem Modell — ${kalibrierung.roh}`,
@@ -367,7 +376,10 @@ describe("E1 · K1/K2/K3 — echte KI-Antwort, gespeichert, nach Seitenwechsel, 
       ["klara", "ki"],
     ]);
     expect(amServer?.nachrichten[1]?.antwortId).toBeTruthy();
-    expect(amServer?.letzterSchritt).toMatchObject({ stand: "beantwortet", text: FRAGE });
+    expect(amServer?.letzterSchritt).toMatchObject({
+      stand: "beantwortet",
+      text: GEDECKTE_FRAGE,
+    });
     const beginn = q(document, "klara-gespraech-beginn")?.textContent ?? "";
     expect(beginn).toContain("Begonnen auf");
 
@@ -404,7 +416,7 @@ describe("E1 · K1/K2/K3 — echte KI-Antwort, gespeichert, nach Seitenwechsel, 
     await neuLaden("/klara-vorschau");
     await bis(() => Boolean(q(document, "klara-echt-leer")), 120);
     expect(nachrichten()).toHaveLength(0);
-    expect(q(document, "klara-gespraech")?.textContent).not.toContain(FRAGE);
+    expect(q(document, "klara-gespraech")?.textContent).not.toContain(GEDECKTE_FRAGE);
     expect(await serverGespraech(a, fremd)).toBeNull();
     const direkt = await a.app.inject({
       method: "GET",
@@ -425,10 +437,10 @@ describe("E2 · K1 — ohne Modell heisst eine Antwort nie „KI-Antwort“", ()
     await einwilligen();
     await eintragMitOriginal(a.app, a.admin);
     // KALIBRIERUNG: ohne Modell beantwortet der Frageweg dieselbe Frage wörtlich aus dem Eintrag.
-    const kalibrierung = await kettenFrage(a.app, leser);
+    const kalibrierung = await kettenFrage(a.app, leser, GEDECKTE_FRAGE);
     expect(kalibrierung.answered, `Kalibrierung: ${kalibrierung.roh}`).toBe(true);
     const mitschnitt = frageMitschneiden();
-    await fragen(FRAGE);
+    await fragen(GEDECKTE_FRAGE);
     const antwort = await bisAntwort();
     expect(antwort.dataset.modus, `Antwort des Servers an Klara: ${mitschnitt.letzte}`).toBe(
       "ohne_ki",
