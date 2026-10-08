@@ -923,7 +923,57 @@ describe("R-1399 · Sichtnachweis: Lesetexte aus dem Hauptstand auf 11 px", () =
       console.info(`R-1399 · B15 · ${JSON.stringify(g)}`);
       expect(g.length).toBe(1);
       expect(g[0]?.px).toBe("11px");
-      await ausschnitt2(zeile, "b15-luecke-ansprechpartner");
+
+      // Nacharbeit 22 (Ben): im Bild verdeckten der Kenntnisnahmehinweis und das aus B10 noch
+      // offene Klara-Gespräch die Zeile. Beide werden über ihre vorgesehenen Bedienelemente
+      // geschlossen („Verstanden — weiter“, Klaras „Schliessen“), dann kommt die Zeile in Sicht.
+      const da = (sel: string): Promise<boolean> =>
+        s.evaluate<boolean>(fn("(sel) => !!document.querySelector(sel)"), sel);
+      if (await da('[data-testid="notice-ack"]')) {
+        await s.click('[data-testid="notice-ack"]');
+        await s.waitForFunction(
+          fn(`() => !document.querySelector('[data-testid="notice-banner"]')`),
+          undefined,
+          { timeout: 15_000 },
+        );
+      }
+      if (await da('[data-testid="klara-gespraech"]')) {
+        await s.click('[data-testid="klara-schliessen"]');
+        await s.waitForFunction(
+          fn(`() => !document.querySelector('[data-testid="klara-gespraech"]')`),
+          undefined,
+          { timeout: 15_000 },
+        );
+      }
+      // Sichtbar heisst: die Zeile liegt im Fenster, und an ihrer Mitte liegt sie selbst obenauf —
+      // nicht ein Hinweis, ein Gespräch oder Klaras Figur.
+      const lage = await s.evaluate<{ imFenster: boolean; obenauf: boolean; clip: Rechteck }>(
+        fn(`(sel) => {
+          const p = document.querySelector(sel);
+          p.scrollIntoView({ block: 'center' });
+          const r = p.getBoundingClientRect();
+          const oben = document.elementFromPoint(r.left + Math.min(40, r.width / 2), r.top + r.height / 2);
+          const z = p.closest('[data-testid="luecke-zeile"]').getBoundingClientRect();
+          const y = Math.max(0, Math.max(z.top, r.top - 160) - 12);
+          const x = Math.max(0, z.left - 12);
+          return {
+            imFenster: r.top >= 0 && r.bottom <= window.innerHeight,
+            obenauf: !!oben && (oben === p || p.contains(oben)),
+            clip: {
+              x,
+              y,
+              width: Math.min(z.width + 24, window.innerWidth - x),
+              height: Math.min(r.bottom + 12 - y, window.innerHeight - y),
+            },
+          };
+        }`),
+        grundlage,
+      );
+      console.info(`R-1399 · B15 · Lage ${JSON.stringify(lage)}`);
+      expect(lage.imFenster, "Grundlagenzeile ausserhalb des Fensters").toBe(true);
+      expect(lage.obenauf, "Grundlagenzeile ist verdeckt").toBe(true);
+      await s.screenshot({ path: bild("b15-luecke-ansprechpartner"), clip: lage.clip });
+      console.info(`R-1399 · Bild ${bild("b15-luecke-ansprechpartner")}`);
       expect((stand2 as H4Stand).seitenfehler).toEqual([]);
     } finally {
       if (vorher === undefined) Reflect.deleteProperty(process.env, "KLARWERK_EXPERT_MATCHING");
