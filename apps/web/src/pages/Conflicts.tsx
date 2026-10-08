@@ -113,6 +113,9 @@ export function Conflicts(): JSX.Element {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [opinionId, setOpinionId] = useState<string | null>(null);
   const [opinion, setOpinion] = useState("");
+  // R-1105: „Kein Widerspruch" schließt erst mit der Begründung des Menschen.
+  const [dismissingId, setDismissingId] = useState<string | null>(null);
+  const [dismissNote, setDismissNote] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [gewaehlt, setGewaehlt] = useState(0);
   // R-0961: `?fall=<id>` aus der Aufgabenliste wählt genau diesen Konflikt vor. Die Vorwahl gilt,
@@ -159,9 +162,11 @@ export function Conflicts(): JSX.Element {
   });
 
   const dismiss = useMutation({
-    mutationFn: (id: string) => endpoints.conflicts.dismiss(id),
+    mutationFn: (id: string) => endpoints.conflicts.dismiss(id, dismissNote.trim()),
     onSuccess: () => {
       invalidate();
+      setDismissingId(null);
+      setDismissNote("");
       setErr(null);
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
@@ -652,7 +657,11 @@ export function Conflicts(): JSX.Element {
               <PruefenKnopf
                 kennung="kein-widerspruch"
                 disabled={dismiss.isPending}
-                onClick={() => dismiss.mutate(c.id)}
+                onClick={() => {
+                  setErr(null);
+                  setDismissNote("");
+                  setDismissingId(dismissingId === c.id ? null : c.id);
+                }}
               >
                 {t("con.side.none")}
               </PruefenKnopf>
@@ -711,6 +720,29 @@ export function Conflicts(): JSX.Element {
               onClick={() => secondOpinion.mutate(c.id)}
             >
               {t("con.secondOpinionConfirm")}
+            </Button>
+          </div>
+        ) : null}
+
+        {dismissingId === c.id ? (
+          <div data-testid="pruefen-fehlalarm" className="space-y-2">
+            <div className="rounded-input bg-trust-warn-bg p-2.5 text-[12px] text-trust-warn-text">
+              {t("fehlalarm.wirkung")}
+            </div>
+            <textarea
+              value={dismissNote}
+              onChange={(e) => setDismissNote(e.target.value)}
+              rows={2}
+              aria-label={t("con.dismiss")}
+              placeholder={t("fehlalarm.platzhalter")}
+              className="w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none focus:border-ink/30"
+            />
+            <Button
+              variant="primary"
+              disabled={dismiss.isPending || dismissNote.trim().length === 0}
+              onClick={() => dismiss.mutate(c.id)}
+            >
+              {t("con.dismiss")}
             </Button>
           </div>
         ) : null}
