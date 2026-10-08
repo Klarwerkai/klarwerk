@@ -890,6 +890,55 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     expect(rot).toHaveLength(3);
   });
 
+  it("Nacharbeit 8: Sammeldateien werden bis zur Deklaration verfolgt (MyTasks → trust/index.ts)", () => {
+    // Die Bauform aus `pages/MyTasks.tsx`: `<KoAuthorLine {...it.author} />` mit KoAuthorLine aus
+    // `components/trust` (index.ts: `export { KoAuthorLine } from "./KoAuthorLine"`). Die
+    // Komponente reicht nichts weiter — der offene Spread ist dort kein Befund.
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Knopf.tsx": [
+          'import type { ButtonHTMLAttributes } from "react";',
+          "export function Knopf(props: ButtonHTMLAttributes<HTMLButtonElement>): JSX.Element {",
+          "  return <button {...props} />;",
+          "}",
+        ],
+        "apps/web/src/components/Stumm.tsx": [
+          "export function Stumm(p: { id: string }): JSX.Element {",
+          "  return <span>{p.id}</span>;",
+          "}",
+        ],
+        "apps/web/src/components/index.ts": [
+          'export { Stumm as Leise } from "./Stumm";',
+          'export * from "./Knopf";',
+        ],
+        "apps/web/src/pages/Seite.tsx": [
+          'import { Knopf, Leise } from "../components";',
+          'import { mach } from "./mach";',
+          "export function Seite(): JSX.Element {",
+          "  return (",
+          "    <div>",
+          "      <Leise {...mach()} />",
+          "      <Knopf {...mach()} />",
+          "    </div>",
+          "  );",
+          "}",
+        ],
+      }),
+    );
+    const ziel = "<Knopf> (apps/web/src/components/Knopf.tsx)";
+    expect(
+      rot.filter((z) => z.includes("pages/Seite.tsx:6")),
+      "Alias über Re-Export",
+    ).toEqual([]);
+    expect(rot.filter((z) => z.includes("pages/Seite.tsx:7 — gespreizte Props"))).toHaveLength(1);
+    expect(
+      rot.filter((z) => z.includes(ziel)),
+      "export * bis Knopf.tsx",
+    ).toHaveLength(1);
+    expect(rot).toHaveLength(1);
+  });
+
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
     const { rot } = pruefeModalgrenze(
       legeBaum({

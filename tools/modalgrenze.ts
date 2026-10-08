@@ -592,11 +592,84 @@ function importZiel(name: ts.Identifier, modul: Modulumfeld | undefined): Import
     const exportName = (element.propertyName ?? element.name).text;
     for (const kandidat of modulKandidaten(modul?.datei ?? "", anweisung.moduleSpecifier.text)) {
       const quelle = modul?.leser(kandidat);
-      if (quelle) {
-        return { art: "modul", quelle, datei: kandidat, name: exportName };
+      if (quelle && modul) {
+        // Nacharbeit 8: über Sammeldateien (`components/trust/index.ts`) zur echten Deklaration.
+        const ziel = folgeReexport({ quelle, datei: kandidat, name: exportName }, modul.leser, 0);
+        return ziel ? { art: "modul", ...ziel } : { art: "paket" };
       }
     }
     return { art: "paket" };
+  }
+  return undefined;
+}
+
+/** Wo ein exportierter Name deklariert ist: Modul, Pfad, Name dort. */
+interface Exportort {
+  quelle: Quelle;
+  datei: string;
+  name: string;
+}
+
+/** Deklariert das Modul `name` auf oberster Ebene selbst (Funktion, Klasse, Typ, Variable)? */
+function deklariertSelbst(quelle: Quelle, name: string): boolean {
+  return quelle.ast.statements.some((s) => {
+    if (
+      ts.isFunctionDeclaration(s) ||
+      ts.isClassDeclaration(s) ||
+      ts.isInterfaceDeclaration(s) ||
+      ts.isTypeAliasDeclaration(s)
+    ) {
+      return s.name?.text === name;
+    }
+    if (ts.isVariableStatement(s)) {
+      return s.declarationList.declarations.some(
+        (d) => ts.isIdentifier(d.name) && d.name.text === name,
+      );
+    }
+    return false;
+  });
+}
+
+/**
+ * Nacharbeit 8: ein Export, der nur weitergereicht wird — `export { X } from "./X"`,
+ * `export { X as Y } from "./X"`, `export * from "./X"` —, wird bis zur Deklaration verfolgt.
+ * `undefined`: die Deklaration ist nicht zu finden (Paket, unbekanntes Modul) — nicht lesbar.
+ */
+function folgeReexport(ort: Exportort, leser: Modulleser, tiefe: number): Exportort | undefined {
+  if (tiefe > MAX_TIEFE) {
+    return undefined;
+  }
+  if (deklariertSelbst(ort.quelle, ort.name)) {
+    return ort;
+  }
+  for (const s of ort.quelle.ast.statements) {
+    if (
+      !ts.isExportDeclaration(s) ||
+      !s.moduleSpecifier ||
+      !ts.isStringLiteral(s.moduleSpecifier)
+    ) {
+      continue;
+    }
+    let name: string | undefined;
+    if (s.exportClause === undefined) {
+      name = ort.name;
+    } else if (ts.isNamedExports(s.exportClause)) {
+      const element = s.exportClause.elements.find((e) => e.name.text === ort.name);
+      name = element ? (element.propertyName ?? element.name).text : undefined;
+    }
+    if (name === undefined) {
+      continue;
+    }
+    for (const kandidat of modulKandidaten(ort.datei, s.moduleSpecifier.text)) {
+      const quelle = leser(kandidat);
+      if (quelle) {
+        const ziel = folgeReexport({ quelle, datei: kandidat, name }, leser, tiefe + 1);
+        if (ziel) {
+          return ziel;
+        }
+        break;
+      }
+    }
   }
   return undefined;
 }
@@ -1244,7 +1317,8 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
   const komponentenStellen: Komponentenstelle[] = [];
 
   // Wohin ein Spread in eine Komponente geht: eine Funktion des Bestands — oder nichts Lesbares
-  // (Paket, Wert, Re-Export); dann zählt die Stelle im Tor wie eine an einem DOM-Element.
+  // (Paket, Wert); dann zählt die Stelle im Tor wie eine an einem DOM-Element. Re-Exporte über
+  // Sammeldateien folgt `importZiel` bis zur Deklaration (Nacharbeit 8).
   const komponentenZiel = (tag: ts.Node): Komponentenstelle["ziel"] => {
     if (!ts.isIdentifier(tag)) {
       return undefined;
