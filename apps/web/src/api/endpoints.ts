@@ -649,6 +649,9 @@ export const endpoints = {
     createFromDocument: (body: CreateFromDocumentRequest) =>
       api.post<CreateFromDocumentResponse>("/kos/from-document", body),
     act: (id: string, body: KoAction) => api.put<KnowledgeObject>(`/kos/${id}`, body),
+    // R-0235 / R-0749: „Hat geholfen" am angewendeten Objekt, ohne vorausgehende Antwort. Der
+    // Server antwortet mit 204 (kein Objekt) — deshalb ein eigener Aufruf neben `act`.
+    helpful: (id: string) => api.put<void>(`/kos/${id}`, { action: "helpful" }),
     // AUFTRAG-mega18 Block A-1: eigener Aufruf, weil die Antwort ein COMMIT-ERGEBNIS ist und kein
     // KnowledgeObject — der Aufrufer erfährt daraus ohne Rückfrage, was gilt.
     appendDocument: (id: string, appendDocument: DocumentAppendRequest) =>
@@ -848,8 +851,14 @@ export const endpoints = {
   },
   ask: {
     // FR-I18N-01: aktuelle UI-Sprache mitsenden (Default serverseitig "de").
-    ask: (question: string, locale?: ReasonerLocale) =>
-      api.post<AskResponse>("/ask", { question, ...(locale ? { locale } : {}) }),
+    // R-0348: `thread` = die vorangegangenen Fragen der Fragestrecke (lib/gespraechsfaden.ts).
+    // Ohne Faden bleibt der Körper wie bisher.
+    ask: (question: string, locale?: ReasonerLocale, thread?: readonly string[]) =>
+      api.post<AskResponse>("/ask", {
+        question,
+        ...(locale ? { locale } : {}),
+        ...(thread && thread.length > 0 ? { thread } : {}),
+      }),
     // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang
     // zurück — ohne gültigen, dieses KO belegenden Receipt antwortet der Server 403.
     helpful: (koId: string, receipt: string) => api.post<void>("/ask/helpful", { koId, receipt }),
