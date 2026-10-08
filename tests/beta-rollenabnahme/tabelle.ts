@@ -905,6 +905,16 @@ export const TABELLE: Zeile[] = [
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
+  // R-0466: das eigene Interaktionsgedächtnis. Jede angemeldete Rolle führt ihr eigenes; die
+  // schreibenden Türen stehen in `schreibende-tueren.ts`.
+  {
+    gruppe: "gedaechtnisRoutes",
+    methode: "GET",
+    pfad: "/api/me/gedaechtnis",
+    belegstelle: "services/app/src/routes/gedaechtnis-routes.ts:80",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
   // R-1064: der Supportweg der Installation. Jede angemeldete Rolle braucht ihn (Hilfeseite
   // `minRole: "viewer"`), deshalb bewusst kein Recht über die Anmeldung hinaus.
   {
