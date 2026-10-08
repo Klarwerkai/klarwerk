@@ -25,7 +25,13 @@ export interface KlaraAufraeumenDeps {
   /** Ein Aufräumlauf; liefert die Zahl gelöschter Sitzungen. */
   readonly lauf: () => Promise<number>;
   readonly intervalMs: number;
-  readonly log: { info: (text: string) => void; warn: (text: string) => void };
+  // R-0623 (Ben, Nacharbeit 3): eine Warnung trägt den Fehler STRUKTURIERT als `err` und einen
+  // festen Ereignistext — nie `String(error)` im Text, der Kundeninhalte enthalten kann. In
+  // `server.ts` geht beides an den App-Logger und damit über den Erlaubnislisten-Serializer.
+  readonly log: {
+    info: (text: string) => void;
+    warn: (felder: { err: unknown }, text: string) => void;
+  };
   readonly setIntervalFn?: (callback: () => void, ms: number) => IntervalHandle;
   readonly clearIntervalFn?: (handle: IntervalHandle) => void;
 }
@@ -43,7 +49,7 @@ export function starteKlaraAufraeumen(deps: KlaraAufraeumenDeps): TrashSweepSche
     }
   };
   const fehler = (anlass: string) => (error: unknown) => {
-    deps.log.warn(`Klara-Aufräumlauf (${anlass}) übersprungen: ${String(error)}`);
+    deps.log.warn({ err: error }, `Klara-Aufräumlauf (${anlass}) übersprungen`);
   };
   deps.lauf().then(gemeldet("Start"), fehler("Start"));
   return startTrashSweepScheduler({

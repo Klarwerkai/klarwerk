@@ -299,6 +299,19 @@ const REGISTER: Record<string, Eintrag> = {
   },
   "GET /api/conflicts": { urteil: "PRAEDIKAT", grund: "Block D — Paar-Tor, wörtliche Zitate." },
   "GET /api/conflicts/:id": { urteil: "PRAEDIKAT", grund: "Block D — Paar-Tor." },
+  // R-0263 (Aufnahme gesamt-konfliktklassifikation): Vorrang am Punkt — Paar-Tor je Eintrag,
+  // der Geltungsbereich (Menschentext) zusätzlich hinter `feldFreigabe`.
+  "GET /api/conflicts/vorrang/:id": {
+    urteil: "PRAEDIKAT",
+    grund: "R-0263 — Paar-Tor je Eintrag, Geltungsbereich hinter feldFreigabe.",
+  },
+  // R-0252 (Nacharbeit 6): der Einordnungsweg ändert UND antwortet mit dem Konflikt — deshalb das
+  // Paar-Tor vor der Änderung (unsichtbar ⇒ 404, nichts geändert) und die Antwort durch
+  // feldFreigabe/redigiereKonflikt wie der Detailweg.
+  "POST /api/conflicts/:id/arbeitsart": {
+    urteil: "PRAEDIKAT",
+    grund: "R-0252 — Paar-Tor vor der Einordnung, Antwort redigiert wie GET /api/conflicts/:id.",
+  },
   "GET /api/duplicates": { urteil: "PRAEDIKAT", grund: "Block D — Eigenanteile/Aspekte." },
   "GET /api/duplicates/:id": { urteil: "PRAEDIKAT", grund: "Block D — Paar-Tor." },
   // AUFTRAG-mega76 BLOCK C: war `PRAEDIKAT_IM_MODUL` — das schwächere Urteil „irgendwo in
@@ -528,6 +541,22 @@ const REGISTER: Record<string, Eintrag> = {
   "DELETE /api/livewall/photo": {
     urteil: "EIGENER_BESTAND",
     grund: "löscht nur das eigene Foto (user.id), Antwort nur der Wahrheitswert.",
+  },
+  "GET /api/me/gedaechtnis": {
+    urteil: "EIGENER_BESTAND",
+    grund: "nur die eigenen Gedächtniseinträge (gedaechtnis-routes.ts, user.id); kein KO-Inhalt.",
+  },
+  "POST /api/me/gedaechtnis": {
+    urteil: "EIGENER_BESTAND",
+    grund: "legt nur einen eigenen Eintrag an; die Antwortkennung muss eine eigene sein.",
+  },
+  "DELETE /api/me/gedaechtnis/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund: "löscht nur einen eigenen Eintrag (user.id), fremd und unbekannt antworten 404.",
+  },
+  "DELETE /api/me/gedaechtnis": {
+    urteil: "EIGENER_BESTAND",
+    grund: "löscht nur das eigene Gedächtnis (user.id), Antwort nur die Zahl.",
   },
   // --- Kein Inhalt eines Wissensobjekts ------------------------------------------------------
   "GET /health": { urteil: "KEIN_KO_INHALT", grund: "Betriebszustand." },
@@ -787,6 +816,8 @@ const REGISTER: Record<string, Eintrag> = {
     "PUT /api/gaps/:id": "ko.assign.",
     "DELETE /api/gaps/:id": "ko.validate.",
     "POST /api/ask/helpful": "Rückmeldung des Aufrufers.",
+    // R-1649: Antwort nur `{ vermerkt, entwurfId }` — der eigene Vermerk und der eigene Entwurf.
+    "POST /api/ask/not-helpful": "Rückmeldung des Aufrufers; optional eigener Entwurf.",
     "PUT /api/validation/settings": "users.manage.",
     "PUT /api/external/policy": "users.manage.",
     "POST /api/lifecycle/couple": "ko.create; Antwort ohne KO-Inhalt.",
