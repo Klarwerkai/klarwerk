@@ -66,6 +66,24 @@ describe("Insel-Hausbetrieb: Konkretisierung am Bestand", () => {
     }
   });
 
+  it("K4 · Originalzielzustände bleiben im Umfang und werden nicht abgeschwächt", () => {
+    // R-0815: das kleine Update bleibt offener Rest DIESES Auftrags, keine Neubestellung.
+    const r0815 = abschnitt("6. Punktliste")
+      .split("\n")
+      .find((z) => z.startsWith("| R-0815"));
+    expect(r0815).toContain("Offener Rest dieses Auftrags, nicht erfüllt.");
+    expect(r0815).not.toMatch(/eigene Anforderung|neu bestell|weiterhin\?/);
+
+    // R-0856: „ohne Betriebsunterbrechung" bleibt Soll; die Neustartpause ist nur eine offene
+    // Abschwächung, nicht ausserhalb des Umfangs.
+    const r0856 = abschnitt("4. R-0856");
+    expect(r0856).toContain("gilt der Originalzielzustand ohne");
+    expect(r0856).not.toContain("ginge über die Quellen hinaus");
+    // Die Quelle verlangt eine Probe, aber keine menschliche Durchführung.
+    expect(r0856).not.toMatch(/Menschen/);
+    expect(r0856).toContain("fehlt weiterhin");
+  });
+
   it("K5 · jeder genannte Repopfad existiert", () => {
     const pfade = [...TEXT.matchAll(/`((?:services|scripts|docs|tests)\/[^`\s*<…]+)`/g)].map(
       (m) => m[1] ?? "",

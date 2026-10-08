@@ -162,13 +162,15 @@ Weg ist beschrieben und geprobt."
 - **N1 · Ein Weg.** Ein Sicherheitsupdate ist ein normales Release über denselben signierten Updateweg
   (H3). Kein zweiter Weg an Sicherung, Vertrag und Rückfall vorbei. Weil das Paket `node_modules`
   enthält, ist auch ein reines Abhängigkeits-Update ein vollständiges Release.
-- **N2 · Unterbrechung.** Der heutige Weg beendet den alten Server, schaltet um und startet den neuen
-  (§6.1 Schritt 3). Zwischen Stopp und grünem Health ist die App nicht erreichbar. Wie lange das dauert,
-  ist nicht gemessen. Zwei gleichzeitig laufende Fassungen auf demselben Journal sind im heutigen
-  Aufbau nicht vorgesehen. **Entscheidung offen:** Bedeutet „ohne den Betrieb zu unterbrechen", dass
-  keine Daten verloren gehen und automatisch zurückgefallen wird, bei einer kurzen, angekündigten
-  Neustartpause (erfüllbar mit dem Bestand plus Messung)? Oder ist echter unterbrechungsfreier Betrieb
-  gemeint? Der wäre ein Architekturumbau und ginge über die Quellen hinaus.
+- **N2 · Ohne Betriebsunterbrechung.** **Soll (Originalwortlaut, unverändert im Umfang):** Das
+  Sicherheitsupdate wird eingespielt, ohne den Betrieb zu unterbrechen. **Ist, abweichend:** Der
+  heutige Weg beendet den alten Server, schaltet um und startet den neuen (§6.1 Schritt 3). Zwischen
+  Stopp und grünem Health ist die App nicht erreichbar, und wie lange das dauert, ist nicht gemessen.
+  Zwei gleichzeitig laufende Fassungen auf demselben Journal sind im heutigen Aufbau nicht vorgesehen.
+  Der Zielzustand ist deshalb **nicht erfüllt**, und um ihn zu erreichen, muss der Umschaltweg geändert
+  werden. **Entscheidung offen:** ob eine kurze, angekündigte Neustartpause als Abschwächung dieser
+  Anforderung zugelassen wird. Bis jemand das entscheidet, gilt der Originalzielzustand ohne
+  Unterbrechung.
 - **N3 · Beschrieben.** Der Notfallpfad in `docs/operations/maintenance-update-process.md` §11 ist auf
   Cloud/Coolify zugeschnitten. **Soll für die Insel:** Sicherheitsmeldung bewerten → Release bauen →
   signieren (H3) → Datenträger → `update-einspielen.sh` → Health mit Version → Ergebniszeile und
@@ -176,8 +178,9 @@ Weg ist beschrieben und geprobt."
   wenn H3 existiert. Ohne Signatur wäre die Beschreibung eine Behauptung.
 - **N4 · Geprobt.** **Fehlt.** Die Quelle sagt dazu: „Der Wartungs- und Updateprozess beschreibt einen
   Notfallpfad, der nicht geprobt ist." Den Paketlauf von B4 kann man technisch als Probe des Update- und
-  Rückfallweges werten. Eine Probe *des Sicherheitsupdates* braucht zusätzlich gemessene
-  Unterbrechungsdauer und einen Lauf durch einen Menschen am Prüfplatz.
+  Rückfallweges werten. Ein Nachweis, dass der Sicherheitsupdate-Weg geprobt ist, fehlt weiterhin:
+  Es gibt keinen Probelauf eines Sicherheitsupdates über den beschriebenen Weg (N3), der auch zeigt,
+  dass der Betrieb dabei nicht unterbrochen wird (N2).
 
 ---
 
@@ -221,9 +224,9 @@ Der Austausch braucht **keinen eigenen Schreibweg**. Er wird an die vorhandenen 
 
 | Punkt | Stand laut Quelle | Ergebnis in diesem Auftrag | Verbleibende Entscheidung / Rest |
 | --- | --- | --- | --- |
-| R-0815 Update ohne Datenverlust (~2 MB statt ~268 MB) | bestehender Auftrag (B4) | Abgegrenzt zu B4. Widerspruch W1 festgehalten. | Will Pedi das kleine Teilupdate ohne `node_modules` weiterhin? Dann ist es eine eigene Anforderung neben B4. B4 liefert heute das volle Release. |
+| R-0815 Update ohne Datenverlust (~2 MB statt ~268 MB) | bestehender Auftrag (B4) und diesem Auftrag zugeordnet | **Offener Rest dieses Auftrags, nicht erfüllt.** Das vollständige B4-Release enthält `node_modules` und belegt nicht das kleine Update, das nur Programm und Oberfläche ersetzt und installierte Bibliotheken und Daten unberührt lässt. Widerspruch W1 festgehalten. | Kleines Update (nur Programm und Oberfläche, Bibliotheken und Daten unberührt, etwa 2 MB statt etwa 268 MB) steht weiter aus. Ungeklärt ist, wie es neben dem B4-Weg mit Sicherung, Schema-Vertrag und Rückfall gebaut wird, ohne einen zweiten Weg daran vorbei. |
 | R-0849 Hausbetrieb als Produkt | Arbeitsauftrag | §3 H1–H6 konkretisiert | H1(a–c), H2 Messung, H3(a–e), H5, H6 Modell; Freigabe trotz früherer Einstufung „SPAETER" (W6) |
-| R-0856 Notfallupdate bei Sicherheitslücken | Arbeitsauftrag | §4 N1–N4 konkretisiert | N2 Bedeutung von „ohne Unterbrechung"; N4 Probe fehlt |
+| R-0856 Notfallupdate bei Sicherheitslücken | Arbeitsauftrag | §4 N1–N4 konkretisiert. Der Zielzustand „ohne Betriebsunterbrechung" ist heute nicht erfüllt (N2). | Umschaltweg ohne Unterbrechung; ob eine Neustartpause als Abschwächung zugelassen wird, ist offen (N2); Nachweis einer Probe fehlt (N4) |
 | R-0859 Signierter Datenabgleich per Datenträger | Arbeitsauftrag | §5 D1–D7 an Import-/Rechtevertrag gebunden | „Regeln", D4, Löschungen, Schlüssel, Richtung |
 | P-C-INSELPAKET-STARTET | bestehender Auftrag (B4) | Abgegrenzt zu B4 | B4 K1–K8 |
 | priority:C-INSELPAKET-STARTET:e64d27979c61 | bestehender Auftrag (B4), gleicher Wortlaut wie P-C-INSELPAKET-STARTET | Abgegrenzt zu B4 | B4 K1–K8 |
@@ -239,7 +242,8 @@ Der Austausch braucht **keinen eigenen Schreibweg**. Er wird an die vorhandenen 
   (`UPDATE-einspielen.command`). Heute baut der offizielle Bauer ein vollständiges Release mit
   `npm ci --omit=dev`. `update-einspielen.sh` schaltet ganze Release-Verzeichnisse um. Ein
   `UPDATE-einspielen.command` gibt es unter `scripts/insel/` nicht mehr. Der Kopf von
-  `update-einspielen.sh` hält fest, dass jener kleine Weg „gar nichts" sicherte.
+  `update-einspielen.sh` hält fest, dass jener kleine Weg „gar nichts" sicherte. Das volle Release
+  ersetzt die Anforderung nicht: R-0815 bleibt diesem Auftrag zugeordnet und bleibt offen.
 - **W2 · Tailscale gegen Abschottung.** Die Übergabe nennt als Transportweg auf die Insel „per
   Tailscale", also eine Netzverbindung. R-0859 setzt voraus, dass „ein Netzabgleich dort nicht erlaubt
   ist". Ungeklärt ist, ob Programmupdates per Tailscale erlaubt bleiben und nur Wissen per Datenträger
@@ -251,7 +255,9 @@ Der Austausch braucht **keinen eigenen Schreibweg**. Er wird an die vorhandenen 
   (`createLocalClientFromEnv` in `services/reasoner/src/model-client.ts`, dort umhüllt von
   `createCappedLocalClientFromEnv`, und diese Hülle ruft `services/app/src/build-app.ts` auf). Die
   Readiness-Notiz ist an dieser Stelle veraltet.
-- **W5 · „Ohne Unterbrechung" gegen Umschaltweg.** Siehe N2.
+- **W5 · „Ohne Unterbrechung" gegen Umschaltweg.** R-0856 verlangt ein Update ohne
+  Betriebsunterbrechung, der heutige Weg stoppt den Server vor dem Neustart. Der Zielzustand bleibt
+  bestehen (N2).
 - **W6 · Zeitliche Einstufung.** R-0849 trägt als frühere Begründung „das ist ein zweites Unternehmen
   und darf nicht parallel zum ersten Cloud-Piloten laufen" (Status damals `SPAETER`). Dieser Auftrag
   verlangt die Bearbeitung. Die Konkretisierung hier verletzt das nicht. Ob mit dem **Bau** von Signierung

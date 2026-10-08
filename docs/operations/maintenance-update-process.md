@@ -308,8 +308,8 @@ Klarwerk ist **anbieteragnostisch**: ohne `ANTHROPIC_API_KEY` läuft der **deter
 5. **Nacharbeit:** Ursache dokumentieren, Gate/Checkliste ergänzen (Harness-Correction-Gedanke), erst dann erneut ausrollen.
 
 > **Insel:** Dieser Pfad ist auf Cloud/Coolify zugeschnitten. Für die Insel ist ein Sicherheitsupdate
-> **weder signiert noch geprobt**; Sollablauf, Bedeutung von „ohne Unterbrechung" und die offenen
-> Entscheidungen stehen in `docs/operations/insel-hausbetrieb-anforderungen.md` §4.
+> **weder signiert noch geprobt**, und der heutige Umschaltweg unterbricht den Betrieb. Sollablauf,
+> Abweichung vom Ziel „ohne Unterbrechung" und die offenen Entscheidungen stehen in `docs/operations/insel-hausbetrieb-anforderungen.md` §4.
 
 ---
 
