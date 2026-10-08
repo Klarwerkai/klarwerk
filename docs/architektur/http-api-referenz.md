@@ -324,7 +324,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `POST` | `/api/gesamtanweisungen/:id/vorlegen` | `ko.create` | Rumpf `{ version }` | 200 Anweisung | 400 `VALIDATION`; 409 `CONFLICT` |
 | `POST` | `/api/gesamtanweisungen/:id/entscheiden` | `ko.validate` | Rumpf `{ version, entscheidung: angenommen \| abgelehnt }` | 200 Anweisung | 400 `VALIDATION`; 409 `CONFLICT` |
 
-### 3.8 Verwaltung und Quellenimport (`adminRoutes`, `importAccessRoutes`, `confluenceImportRoutes`, `importRunRoutes`, `sharepointImportRoutes`)
+### 3.8 Verwaltung und Quellenimport (`adminRoutes`, `importAccessRoutes`, `confluenceImportRoutes`, `importRunRoutes`, `sharepointImportRoutes`, `jiraImportRoutes`)
 
 | Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
 | --- | --- | --- | --- | --- | --- |
@@ -344,6 +344,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `GET` | `/api/import/confluence/zugang` | `users.manage` | — | 200 Zugangszustand | — |
 | `PUT` | `/api/import/confluence/schalter` | `users.manage` | Rumpf `{ an: true \| false }` | 200 neuer Schalterstand | 400 `BAD_REQUEST`; 409 `IMPORT_NOT_RELEASED`; 503 `SWITCH_UNAVAILABLE` |
 | `GET` | `/api/import/sharepoint/zugang` | `users.manage` | — | 200 Zugangszustand | — |
+| `GET` | `/api/import/jira/zugang` | `users.manage` | — | 200 Zugangszustand | — |
 | `POST` | `/api/admin/import/confluence` | `users.manage` (Schalter `KLARWERK_CONFLUENCE_IMPORT`) | Rumpf `{ dryRun? }` | 200 Zusammenfassung bzw. 202 `{ importId, status: "QUEUED" }` | 503 `IMPORT_UNAVAILABLE`; 409 `IMPORT_ALREADY_RUNNING`; `IMPORT_FAILED` |
 | `POST` | `/api/admin/import/confluence/explore` | `users.manage` (Schalter wie oben) | — | 200 Erkundung | 503 `IMPORT_UNAVAILABLE`; `EXPLORE_FAILED` |
 | `POST` | `/api/admin/import/confluence/select` | `users.manage` (Schalter wie oben) | Rumpf `{ prompt?, criteria?, locale?, promptConfidential? }` | 200 Auswahlvorschau | 400 `BAD_REQUEST`; 503 `IMPORT_UNAVAILABLE`; `SELECT_FAILED` |
@@ -355,6 +356,9 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `POST` | `/api/admin/import/sharepoint/files` | `users.manage` (Schalter `KLARWERK_SHAREPOINT_IMPORT`) | Rumpf `{ folderId?, ids? }` | 200 `{ dateien, truncated, nurBefunde, befunde }` | 503 `IMPORT_UNAVAILABLE`; 400 `APPLY_TOO_MANY`; 403/404/502 `SHAREPOINT_*` |
 | `POST` | `/api/admin/import/sharepoint/folder-apply` | `users.manage` (Schalter `KLARWERK_SHAREPOINT_IMPORT`) | Rumpf `{ folderId?, fortsetzung? }` | 200 Übernahmebilanz eines Ordners (in Losen) | 503 `IMPORT_UNAVAILABLE`; 400 `FORTSETZUNG_INVALID`, `FORTSETZUNG_ORDNER`; 409 `FORTSETZUNG_UNBEKANNT`, `FORTSETZUNG_BELEGT` |
 | `POST` | `/api/admin/import/sharepoint/apply` | `users.manage` (Schalter wie oben) | Rumpf `{ ids }` | 200 Übernahmebilanz | 503 `IMPORT_UNAVAILABLE`; 400 `APPLY_EMPTY_SELECTION`, `APPLY_TOO_MANY` |
+| `POST` | `/api/admin/import/jira/issues` | `users.manage` (Schalter `KLARWERK_JIRA_IMPORT`) | Rumpf `{ fortsetzung? }` | 200 `{ projekt, vorgaenge, fortsetzung }` (lesend) | 503 `IMPORT_UNAVAILABLE`; 400 `FORTSETZUNG_INVALID`; 403/404/502 `JIRA_*` |
+| `POST` | `/api/admin/import/jira/apply` | `users.manage` (Schalter wie oben) | Rumpf `{ keys }` | 200 Übernahmebilanz `{ imported, alreadyQueued, failed, notFound, vorgaenge, importId? }` | 503 `IMPORT_UNAVAILABLE`; 400 `APPLY_EMPTY_SELECTION`, `APPLY_TOO_MANY`; 403 `JIRA_FORBIDDEN`, `JIRA_ROLES_FORBIDDEN`; 404/502 `JIRA_*` |
+| `POST` | `/api/admin/import/jira/project-apply` | `users.manage` (Schalter wie oben) | Rumpf `{ fortsetzung? }` | 200 Übernahmebilanz einer Projektseite samt `fortsetzung`, `projektAbgeschlossen` | 503 `IMPORT_UNAVAILABLE`; 400 `FORTSETZUNG_INVALID`; 403 `JIRA_FORBIDDEN`, `JIRA_ROLES_FORBIDDEN`; 404/502 `JIRA_*` |
 
 ### 3.9 Älteres Klara-Add-in (`addinStaticRoutes`, Schalter `KLARWERK_ADDON_API`)
 
