@@ -1064,6 +1064,52 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     expect(rot).toHaveLength(4);
   });
 
+  it("Nacharbeit 12: Namensräume über Alias-Export und export * werden vollständig erhoben", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Weiter.tsx": [
+          "export function Weiter(p: any): JSX.Element { return <div {...p} />; }",
+        ],
+        // bens Fall wörtlich: a.ts exportiert Weiter als W, index.ts exportiert * aus a.ts.
+        "apps/web/src/components/a.ts": [
+          'import { Weiter } from "./Weiter";',
+          "export { Weiter as W };",
+        ],
+        "apps/web/src/components/index.ts": ['export * from "./a";'],
+        "apps/web/src/components/Nutzer.tsx": [
+          'import * as M from "./index";',
+          "const { W } = M;",
+          "export const a = W(JSON.parse('{}'));",
+          "export const b = M.W(JSON.parse('{}'));",
+        ],
+        // Nicht abschliessend: `export *` aus einem Paket, das der Leser nicht kennt.
+        "apps/web/src/components/offen.ts": ['export * from "fremdes-paket";'],
+        "apps/web/src/components/Offen.tsx": [
+          'import * as N from "./offen";',
+          "export const n = [N];",
+        ],
+        // Gegenfall: abschliessend erhoben und ohne Weiterreicher.
+        "apps/web/src/components/Stumm.tsx": [
+          "export function Stumm(p: { id: string }): JSX.Element { return <span>{p.id}</span>; }",
+        ],
+        "apps/web/src/components/still.ts": ['export * from "./Stumm";'],
+        "apps/web/src/components/Still.tsx": [
+          'import * as S from "./still";',
+          "export const s = [S];",
+        ],
+      }),
+    );
+    const an = (stelle: string): string[] => rot.filter((z) => z.includes(stelle));
+    // Die Entnahme `const { W } = M` ist eine Wertverwendung: W ist über export * erhoben.
+    expect(an("components/Nutzer.tsx:2")[0]).toContain("enthält den Weiterreicher W");
+    // Der Aufruf über den Namensraum folgt export * und dem lokalen Alias bis zu Weiter.
+    expect(an("components/Nutzer.tsx:4")[0]).toContain("in <Weiter>");
+    expect(an("components/Offen.tsx:2")[0]).toContain("nicht vollständig auflösbar");
+    expect(an("components/Still.tsx:"), "abschliessend ohne Weiterreicher").toEqual([]);
+    expect(rot).toHaveLength(3);
+  });
+
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
     const { rot } = pruefeModalgrenze(
       legeBaum({

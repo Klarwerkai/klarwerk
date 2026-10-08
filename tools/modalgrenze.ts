@@ -680,6 +680,28 @@ function folgeReexport(ort: Exportort, leser: Modulleser, tiefe: number): Export
       return folgeReexport({ ...ort, name: benannt }, leser, tiefe + 1);
     }
   }
+  // Nacharbeit 12 (ben): `export { Weiter as W }` OHNE `from` — ein lokaler Alias, der auf eine
+  // Deklaration dieses Moduls oder auf einen Import zeigt.
+  for (const s of ort.quelle.ast.statements) {
+    if (
+      !ts.isExportDeclaration(s) ||
+      s.moduleSpecifier !== undefined ||
+      s.exportClause === undefined ||
+      !ts.isNamedExports(s.exportClause)
+    ) {
+      continue;
+    }
+    const element = s.exportClause.elements.find((e) => e.name.text === ort.name);
+    if (element === undefined) {
+      continue;
+    }
+    const lokal = (element.propertyName ?? element.name).text;
+    if (deklariertSelbst(ort.quelle, lokal)) {
+      return { ...ort, name: lokal };
+    }
+    const importiert = importBindung(ort, lokal, leser);
+    return importiert ? folgeReexport(importiert, leser, tiefe + 1) : undefined;
+  }
   for (const s of ort.quelle.ast.statements) {
     if (
       !ts.isExportDeclaration(s) ||
@@ -710,6 +732,116 @@ function folgeReexport(ort: Exportort, leser: Modulleser, tiefe: number): Export
     }
   }
   return undefined;
+}
+
+/** Das Modul hinter einem relativen Spezifizierer, wie der Leser es kennt. */
+function leseModul(
+  vonDatei: string,
+  spezifizierer: string,
+  leser: Modulleser,
+): Exportort | undefined {
+  for (const kandidat of modulKandidaten(vonDatei, spezifizierer)) {
+    const quelle = leser(kandidat);
+    if (quelle) {
+      return { quelle, datei: kandidat, name: "" };
+    }
+  }
+  return undefined;
+}
+
+/** Woher ein Modul einen lokalen Namen importiert: Zielmodul und Name dort (`default` inklusive). */
+function importBindung(ort: Exportort, lokal: string, leser: Modulleser): Exportort | undefined {
+  for (const s of ort.quelle.ast.statements) {
+    if (!ts.isImportDeclaration(s) || !ts.isStringLiteral(s.moduleSpecifier)) {
+      continue;
+    }
+    const klausel = s.importClause;
+    const bindungen = klausel?.namedBindings;
+    const element =
+      bindungen !== undefined && ts.isNamedImports(bindungen)
+        ? bindungen.elements.find((e) => e.name.text === lokal)
+        : undefined;
+    let name: string | undefined;
+    if (klausel?.name?.text === lokal) {
+      name = "default";
+    } else if (element !== undefined) {
+      name = (element.propertyName ?? element.name).text;
+    }
+    if (name === undefined) {
+      continue;
+    }
+    const modul = leseModul(ort.datei, s.moduleSpecifier.text, leser);
+    return modul ? { ...modul, name } : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Nacharbeit 12 (ben): ALLE Namen, die ein Modul als Wert exportiert — eigene Exporte, Aliasse
+ * (`export { Weiter as W }`), `export * as ns` und rekursiv `export * from` (ohne `default`), mit
+ * Zyklenschutz. `vollstaendig: false`, wenn ein `export *` auf ein nicht lesbares Modul zeigt: dann
+ * ist die Liste nicht abschliessend.
+ */
+function exportierteNamen(
+  modul: Exportort,
+  leser: Modulleser,
+  besucht: Set<string> = new Set(),
+): { namen: Set<string>; vollstaendig: boolean } {
+  const namen = new Set<string>();
+  let vollstaendig = true;
+  if (besucht.has(modul.datei)) {
+    return { namen, vollstaendig };
+  }
+  besucht.add(modul.datei);
+  for (const s of modul.quelle.ast.statements) {
+    if (ts.isExportDeclaration(s)) {
+      if (s.exportClause === undefined) {
+        const ziel =
+          s.moduleSpecifier && ts.isStringLiteral(s.moduleSpecifier)
+            ? leseModul(modul.datei, s.moduleSpecifier.text, leser)
+            : undefined;
+        if (ziel === undefined) {
+          vollstaendig = false;
+          continue;
+        }
+        const unter = exportierteNamen(ziel, leser, besucht);
+        for (const n of unter.namen) {
+          if (n !== "default") {
+            namen.add(n);
+          }
+        }
+        vollstaendig = vollstaendig && unter.vollstaendig;
+      } else if (ts.isNamedExports(s.exportClause)) {
+        for (const element of s.exportClause.elements) {
+          namen.add(element.name.text);
+        }
+      } else {
+        namen.add(s.exportClause.name.text);
+      }
+      continue;
+    }
+    if (ts.isExportAssignment(s)) {
+      namen.add("default");
+      continue;
+    }
+    if (ts.isFunctionDeclaration(s) || ts.isClassDeclaration(s)) {
+      const flags = ts.getCombinedModifierFlags(s);
+      if ((flags & ts.ModifierFlags.Default) !== 0) {
+        namen.add("default");
+      } else if ((flags & ts.ModifierFlags.Export) !== 0 && s.name) {
+        namen.add(s.name.text);
+      }
+      continue;
+    }
+    if (ts.isVariableStatement(s)) {
+      for (const d of s.declarationList.declarations) {
+        if (ts.isIdentifier(d.name) && istExportiert(d)) {
+          namen.add(d.name.text);
+        }
+      }
+    }
+  }
+  return { namen, vollstaendig };
 }
 
 /** Die exportierten Typdeklarationen `name` eines Moduls (Interfaces dürfen mehrfach stehen). */
@@ -2083,17 +2215,19 @@ function weiterreicherVerwendungen(
         }
         return;
       }
-      const exportNamen = modul.quelle.ast.statements.flatMap((s) =>
-        ts.isExportDeclaration(s) && s.exportClause && ts.isNamedExports(s.exportClause)
-          ? s.exportClause.elements.map((el) => el.name.text)
-          : [],
-      );
-      const enthalten = [...new Set([...namen, ...exportNamen])].filter(
-        (n) => ausNamensraum(modul, n) !== undefined,
-      );
+      // Nacharbeit 12 (ben): die TATSÄCHLICH exportierten Namen, rekursiv über Aliasse und
+      // `export *` — ein Alias wie `W` aus `export { Weiter as W }` hinter `export *` zählt mit.
+      const exportiert = exportierteNamen(modul, leser);
+      const enthalten = [...exportiert.namen].filter((n) => ausNamensraum(modul, n) !== undefined);
+      const stelle = `${quelle.datei}:${zeileVon(sf, m)} — der Namensraum ${m.text}`;
       if (enthalten.length > 0) {
         ergebnis.befunde.push(
-          `${quelle.datei}:${zeileVon(sf, m)} — der Namensraum ${m.text} enthält den Weiterreicher ${enthalten.join(", ")} und wird hier als Wert verwendet: dessen Aufrufer und deren Rollen kann dieser Sammler nicht finden`,
+          `${stelle} enthält den Weiterreicher ${enthalten.join(", ")} und wird hier als Wert verwendet: dessen Aufrufer und deren Rollen kann dieser Sammler nicht finden`,
+        );
+      } else if (!exportiert.vollstaendig && weiter.size > 0) {
+        // Nicht abschliessend erhoben ist nicht nachweislich frei von Weiterreichern.
+        ergebnis.befunde.push(
+          `${stelle} wird hier als Wert verwendet, seine Exporte sind nicht vollständig auflösbar (export * aus einem nicht lesbaren Modul): ob er einen Weiterreicher enthält, kann dieser Sammler nicht beurteilen`,
         );
       }
     };
