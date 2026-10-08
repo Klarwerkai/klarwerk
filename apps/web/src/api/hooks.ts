@@ -199,9 +199,9 @@ export const useExpertise = (enabled: boolean) =>
 // ein 404 jetzt `data === null`, und die optionale Verkettung dort greift aus einem DATENzustand
 // statt aus einem übergangenen Fehler. Dass die Fläche dabei unsichtbar bleibt, ist ab jetzt
 // gemessen (tests/app/577-abwesenheit-verbraucher-mounted.test.tsx).
-// R-1663 / R-2178: der Abruf bleibt LAZY wie bei `useConflicts` — seit die Risikoseite den Schalter
-// `expertMatching` selbst liest, zieht sie diesen Hook mit, und ein teilweise gesetztes
-// `endpoints`-Objekt darf dort nicht schon beim Rendern abreissen (fail-closed bleibt: Fehler = aus).
+// R-1663 / R-2178: der Abruf ist LAZY wie bei `useConflicts` — ein teilweise gesetztes
+// `endpoints`-Objekt darf eine Fläche nicht schon beim Rendern abreissen (fail-closed bleibt:
+// Fehler = aus).
 export const useFeatures = () =>
   useQuery({
     queryKey: ["features"],

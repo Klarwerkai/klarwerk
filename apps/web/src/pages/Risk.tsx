@@ -9,7 +9,6 @@ import {
   useConflicts,
   useDirectory,
   useExpertise,
-  useFeatures,
   useGaps,
   useKos,
   useLifecyclePending,
@@ -65,11 +64,13 @@ export function Risk(): JSX.Element {
   // das Flag serverseitig AUS, kommt 404 → keine Daten → nichts gerendert (exakt heutiges Verhalten).
   const { role } = useRole();
   const expertise = useExpertise(canSeeExpertise(role));
-  // R-1663 / R-2178: die Ansprechpartner je Lücke hängen am Schalter selbst, nicht an `expertise`:
-  // ein leerer Themenüberblick heisst nicht, dass zu einer Frage keine Spur existiert.
-  const features = useFeatures();
-  const ansprechpartnerSichtbar =
-    canSeeExpertise(role) && (features.data?.features.expertMatching ?? false);
+  // R-1663 / R-2178: die Ansprechpartner je Lücke hängen am selben Schalter wie die Expertise-Route,
+  // und die Oberfläche erfährt ihn auf demselben Weg — an der Abwesenheit der Route (`null` bei 404,
+  // JOB 577; `expertMatching` steht nach R-1975 bewusst NICHT in `FeatureName`, Leserregister
+  // tests/funktionsschalter/schalter-leser.test.ts). Geprüft wird „Antwort ist eine Liste", nicht
+  // „Liste ist nicht leer": ein leerer Themenüberblick heisst nicht, dass zu einer Frage keine Spur
+  // existiert.
+  const ansprechpartnerSichtbar = canSeeExpertise(role) && Array.isArray(expertise.data);
   const qc = useQueryClient();
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["gaps"] });
   // R-0846 / L6: eine Lücke schliesst nur mit dem Wissensobjekt, das sie beantwortet. Der Server
