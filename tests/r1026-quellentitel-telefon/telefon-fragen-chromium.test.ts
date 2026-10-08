@@ -80,12 +80,12 @@ async function fragenBei(breite: number, hoehe: number): Promise<Befund> {
       `() => [...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Fragen').click()`,
     ),
   );
-  await s.seite.waitForFunction(fn(`() => !!document.querySelector('forminput')`), undefined, {
+  await s.seite.waitForFunction(fn(`() => !!document.querySelector('form input')`), undefined, {
     timeout: 30_000,
   });
   await s.seite.evaluate(
     fn(`(frage) => {
-      const input = document.querySelector('forminput');
+      const input = document.querySelector('form input');
       const setzen = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
       setzen.call(input, frage);
       input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -94,12 +94,12 @@ async function fragenBei(breite: number, hoehe: number): Promise<Befund> {
   );
   await s.seite.waitForFunction(
     fn(
-      `() => { const b = document.querySelector('formbutton[type="submit"]'); return !!b && !b.disabled; }`,
+      `() => { const b = document.querySelector('form button[type="submit"]'); return !!b && !b.disabled; }`,
     ),
     undefined,
     { timeout: 30_000 },
   );
-  await s.seite.evaluate(fn(`() => document.querySelector('formbutton[type="submit"]').click()`));
+  await s.seite.evaluate(fn(`() => document.querySelector('form button[type="submit"]').click()`));
   await s.seite.waitForFunction(
     fn(
       `(titel) => [...document.querySelectorAll('a[title]')].some((x) => x.getAttribute('title') === titel)`,
