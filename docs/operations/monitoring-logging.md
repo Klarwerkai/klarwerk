@@ -48,7 +48,7 @@
 - **Regel für eigene Log-Erweiterungen:** nur Metadaten, keine Klartext-Inhalte/PII.
 - **Fehler nur als erlaubte, strukturierte Felder** (`services/app/src/build-app.ts`, `baueLoggerOptionen`): `type`, `code`, `herkunft` (`datei:zeile:spalte`); Meldung und Stack stehen nie im Protokoll. `type`/`code` nur von `ERLAUBTE_FEHLERTYPEN`/`ERLAUBTE_FEHLERCODES`, sonst `UNBEKANNT`. Eine neue Fehlerklasse oder ein neuer Code in `services/**` macht `services/app/src/build-app.test.ts` rot, bis sie dort eingetragen ist.
 - **Anfragen:** nur Methode und Pfad ohne Abfrageteil; keine Header, Adressen, Inhalte.
-- **Senke für alles Übrige** (`senkeUeberWert`, `services/app/src/log-sanitize.ts`): entfernt Geheimnisformen, **E-Mail-Adressen** und **ausgewiesene Namen** (`Name: …`, `vorname=…`, `Autor: …`); Felder wie `name`, `email`, `autor`, `empfaenger` fallen in jeder Tiefe ganz weg. **Grenze:** Ein Name ohne Kennzeichnung im Freitext ist nicht erkennbar — davor schützt nur die Erlaubnisliste der Fehlerfelder.
+- **Senke für alles Übrige** (`senkeUeberWert`, `services/app/src/log-sanitize.ts`): entfernt Geheimnisformen, **E-Mail-Adressen** und **ausgewiesene Namen** (`Name: …`, `vorname=…`, `Autor: …`); Felder wie `name`, `email`, `autor`, `empfaenger` fallen in jeder Tiefe ganz weg. Klasseninstanzen, `Map`/`Set` und alles jenseits der Tiefengrenze werden durch einen festen Wert ersetzt; Fehler außerhalb von `err` erhalten dieselbe strukturierte Form wie dort. **Grenze:** Ein Name ohne Kennzeichnung im Freitext ist nicht erkennbar — davor schützt nur die Erlaubnisliste der Fehlerfelder.
 
 ---
 

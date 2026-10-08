@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  ERR_TEXT_UNTERDRUECKT,
+  ERR_UNBEKANNT,
   LOG_LEVEL_ENV,
+  SENKE_NICHT_EINFACH,
   SENKE_ZU_TIEF,
   buildApp,
   buildServices,
@@ -172,6 +175,84 @@ describe("R-0664 · Personenmuster in der Logsenke", () => {
     const bereinigt = JSON.stringify(senkeUeberWert(zyklisch, {}));
     expect(bereinigt).toContain(SENKE_ZU_TIEF);
     expect(bereinigt).not.toContain("Meier");
+  });
+
+  // Ben, Nacharbeit 4: nicht einfache Objekte gab die Senke unverändert zurück — eine
+  // Klasseninstanz mit eigenen Feldern `name`/`email` lief an der Personenfeldprüfung vorbei.
+  class Kontakt {
+    name = "Anna Meier";
+    email = ADRESSE;
+    id = "k-1";
+  }
+
+  it("Klasseninstanz: in jeder Tiefe durch den festen Wert ersetzt, nie durchgereicht", () => {
+    for (const traeger of [
+      { kontakt: new Kontakt() },
+      { liste: [new Kontakt()] },
+      { a: { b: { kontakt: new Kontakt() } } },
+      { karte: new Map([["name", "Anna Meier"]]) },
+    ]) {
+      const bereinigt = JSON.stringify(senkeUeberWert(traeger, {}));
+      expect(bereinigt).not.toContain("Meier");
+      expect(bereinigt).not.toContain(ADRESSE);
+      expect(bereinigt).toContain(SENKE_NICHT_EINFACH);
+    }
+    // Auch als ganzes Logargument.
+    expect(senkeUeberWert(new Kontakt(), {})).toBe(SENKE_NICHT_EINFACH);
+  });
+
+  it("Fehler ausserhalb von `err`: dieselbe strukturierte Form, kein Text, kein eigenes Namensfeld", () => {
+    class Boshaft extends Error {
+      override name = `Zustellfehler ${ADRESSE}`;
+      kontakt = "Anna Meier";
+    }
+    const bereinigt = senkeUeberWert({ ursache: new Boshaft(`an ${ADRESSE}`) }, {}) as {
+      ursache: Record<string, unknown>;
+    };
+    expect(Object.keys(bereinigt.ursache).sort()).toEqual([
+      "code",
+      "herkunft",
+      "message",
+      "stack",
+      "type",
+    ]);
+    expect(bereinigt.ursache.type).toBe(ERR_UNBEKANNT);
+    expect(bereinigt.ursache.message).toBe(ERR_TEXT_UNTERDRUECKT);
+    expect(JSON.stringify(bereinigt)).not.toContain("Meier");
+    expect(JSON.stringify(bereinigt)).not.toContain(ADRESSE);
+  });
+
+  it("Gegenprobe: ein Datum bleibt als ISO-Angabe lesbar", () => {
+    const zeit = new Date("2026-10-08T12:00:00.000Z");
+    expect(senkeUeberWert({ zeit }, {})).toEqual({ zeit: "2026-10-08T12:00:00.000Z" });
+  });
+
+  it("am ECHTEN Logger: Klasseninstanz ersetzt, `err` und `req` laufen weiter durch ihre Serializer", async () => {
+    const puffer = logPuffer();
+    const app = buildApp(buildServices(), { log: { senke: puffer.senke, stufe: "info" } });
+    const fehler = new Error(`Zustellung an ${ADRESSE}`) as Error & { code?: string };
+    fehler.code = "NOT_FOUND";
+    app.log.warn(
+      {
+        probe: "klasse",
+        kontakt: new Kontakt(),
+        err: fehler,
+        req: { method: "GET", url: "/api/x?email=anna" },
+      },
+      "Probe Klasseninstanz",
+    );
+    const zeile = puffer.zeilen().find((z) => z.probe === "klasse");
+    expect(zeile, "die Logzeile fehlt").toBeDefined();
+    expect(zeile?.kontakt).toBe(SENKE_NICHT_EINFACH);
+    // Der err-Serializer hat den Fehler bekommen — nicht die Senke, nicht der feste Wert.
+    const err = zeile?.err as Record<string, unknown>;
+    expect(err.type).toBe("Error");
+    expect(err.code).toBe("NOT_FOUND");
+    expect(err.message).toBe(ERR_TEXT_UNTERDRUECKT);
+    expect(zeile?.req).toEqual({ methode: "GET", pfad: "/api/x" });
+    expect(puffer.roh()).not.toContain("Meier");
+    expect(puffer.roh()).not.toContain(ADRESSE);
+    await app.close();
   });
 
   it("am ECHTEN Logger: ein tief verschachteltes Personenfeld steht nicht in der Zeile", async () => {

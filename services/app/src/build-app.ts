@@ -2342,6 +2342,33 @@ const SENKE_MAX_TIEFE = 6;
 export const SENKE_ZU_TIEF = "[unterdrueckt: zu tief verschachtelt]";
 
 /**
+ * Was anstelle eines nicht einfachen Objekts (Klasseninstanz, Map, Set, Buffer …) steht.
+ *
+ * R-0664 (Ben, Nacharbeit 4): Solche Objekte gab die Senke ungeprüft weiter. Ihre Felder lassen
+ * sich nicht zuverlässig durchsuchen — ein `toJSON` kann beliebigen Text liefern. Fail-closed.
+ */
+export const SENKE_NICHT_EINFACH = "[unterdrueckt: kein einfaches Objekt]";
+
+/** Die Felder, für die pino einen eigenen Serializer (die Erlaubnisliste) anwendet. */
+const SERIALISIERTE_FELDER: ReadonlySet<string> = new Set(["req", "res", "err"]);
+
+/**
+ * Der `err`-Serializer: vier Felder aus geschlossenen Mengen, kein freier Wert.
+ *
+ * Herausgelöst aus `baueLoggerOptionen`, damit die Senke einen Fehler, der NICHT unter `err` steht,
+ * in dieselbe Form bringt (R-0664, Ben Nacharbeit 4) — statt ihn zu verwerfen oder roh zu lassen.
+ */
+export function serialisiereFehler(fehler: Error & { code?: unknown }): Record<string, string> {
+  return {
+    type: erlaubterTyp(fehler.name),
+    code: erlaubterCode(fehler.code),
+    herkunft: herkunftAusStack(fehler.stack),
+    message: ERR_TEXT_UNTERDRUECKT,
+    stack: ERR_TEXT_UNTERDRUECKT,
+  };
+}
+
+/**
  * Domänen-Fehlercodes sind GROSSBUCHSTABEN_MIT_UNTERSTRICH — dieselbe Form, über die `http.ts:136`
  * sie als öffentliche Codes erkennt und an Clients sendet.
  *
@@ -2387,13 +2414,35 @@ export function senkeUeberWert(
   if (Array.isArray(wert)) {
     return wert.map((eintrag) => senkeUeberWert(eintrag, env, tiefe + 1));
   }
+  // R-0664 (Ben, Nacharbeit 4): Bis hierher gab die Senke JEDES nicht einfache Objekt unverändert
+  // zurück — eine Klasseninstanz mit eigenen Feldern `name`/`email` lief an der Personenfeldprüfung
+  // vorbei, und pino schrieb ihre aufzählbaren Felder ins Protokoll. Jetzt gilt:
+  //   · ein Fehler als ganzes Logargument (`log.error(fehler)`) bleibt — pino reicht ihn an den
+  //     `err`-Serializer, und der gibt nur Felder aus geschlossenen Mengen aus;
+  //   · ein Fehler an jeder anderen Stelle bekommt hier dieselbe strukturierte Form;
+  //   · ein Datum wird zu seiner ISO-Angabe;
+  //   · alles andere (Klasseninstanzen, Map, Set, Buffer …) wird durch einen festen Wert ersetzt.
+  // Die Werte unter `req`/`res`/`err` reicht die Schleife unten unberührt an ihre Serializer.
+  if (wert instanceof Error) {
+    return tiefe === 0 ? wert : serialisiereFehler(wert);
+  }
+  if (wert instanceof Date) {
+    return Number.isNaN(wert.getTime()) ? SENKE_NICHT_EINFACH : wert.toISOString();
+  }
   if (!istEinfachesObjekt(wert)) {
-    return wert;
+    return SENKE_NICHT_EINFACH;
   }
   const ergebnis: Record<string, unknown> = {};
   for (const [schluessel, inhalt] of Object.entries(wert)) {
     // R-0664 (DS20): ein Feld, das eine Person benennt (`name`, `email`, `autor` …), fällt ganz weg.
     if (istPersonenFeld(schluessel)) {
+      continue;
+    }
+    // Die drei Felder mit eigenem Serializer: dort ist die Erlaubnisliste. Nur auf der obersten
+    // Ebene — nur dort wendet pino sie an. `FastifyRequest`/`FastifyReply` sind Klasseninstanzen
+    // und würden sonst oben durch den festen Wert ersetzt, bevor ihr Serializer sie sieht.
+    if (tiefe === 0 && SERIALISIERTE_FELDER.has(schluessel)) {
+      ergebnis[schluessel] = inhalt;
       continue;
     }
     // Ben R3 B8: die Trace-Ausnahme setzt NUR die Token-Regel aus — der Wert einer
@@ -2460,13 +2509,7 @@ export function baueLoggerOptionen(vorgabe?: {
       // Quelltext, ohne Nutzerdaten. `code` und `type` sagen, welcher Zweig lief. `reqId` bindet
       // alle Zeilen eines Vorgangs zusammen. Und `herkunft`+`code`+`type` gruppieren gleiche
       // Ursachen zuverlässig — auch dann, wenn in der Meldung verschiedene Werte standen.
-      err: (fehler: Error & { code?: unknown }) => ({
-        type: erlaubterTyp(fehler.name),
-        code: erlaubterCode(fehler.code),
-        herkunft: herkunftAusStack(fehler.stack),
-        message: ERR_TEXT_UNTERDRUECKT,
-        stack: ERR_TEXT_UNTERDRUECKT,
-      }),
+      err: serialisiereFehler,
     },
     // Dritte Linie. Mit den Serializern oben erreichen diese Felder den Logger gar nicht erst; die
     // Liste steht für den Fall, dass eine künftige Logzeile sie selbst mitgibt. `remove` löscht das
