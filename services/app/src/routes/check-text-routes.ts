@@ -649,7 +649,10 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
           ...quellenSicht,
         };
         // Der vertrauliche Rückfall bleibt deterministisch; weder Judge noch Embedder erhalten Text.
-        const wantDeep = request.body.want === "deep";
+        // Aufnahme gesamt-integrations-api: ein DIENST-Schlüssel bekommt nur Stufe 1 — kein
+        // Modell-Judge, kein Textabfluss, keine Modellkosten (wie sein Fragezweig, ask-routes.ts).
+        const wantDeep =
+          request.body.want === "deep" && request.authContext?.principal?.dienst === undefined;
         const gebunden = klaraBindungVorhanden(request.headers);
         const actorId = istAddon
           ? request.authContext?.principal?.id

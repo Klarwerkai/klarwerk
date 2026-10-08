@@ -2148,6 +2148,7 @@ const nl: typeof de = {
   "ask.error.body":
     "Het verzoek is onderweg blijven steken. Dit is GEEN uitspraak over de kennis — het betekent niet dat er geen antwoord is. Probeer het opnieuw.",
   "ask.error.retry": "Opnieuw proberen",
+  "ask.gebremst.titel": "Even geduld.",
   "ask.offline": "Geen verbinding.",
   "ask.wiederaufnahme.entwurf":
     "Hier kun je verdergaan: je nog niet verzonden concept staat weer in het vraagveld.",

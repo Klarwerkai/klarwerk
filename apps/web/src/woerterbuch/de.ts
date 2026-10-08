@@ -2753,6 +2753,9 @@ const de = {
   "ask.error.body":
     "Die Anfrage ist unterwegs steckengeblieben. Das ist KEINE Aussage über das Wissen — es bedeutet nicht, dass es keine Antwort gibt. Bitte erneut versuchen.",
   "ask.error.retry": "Erneut versuchen",
+  // Aufnahme gesamt-integrations-api (R-0842): die KI-Bremse hat abgewiesen — der Satz mit der
+  // Wartezeit kommt vom Server (`services/app/src/anfragebremse.ts`), hier steht nur die Überschrift.
+  "ask.gebremst.titel": "Bitte kurz warten.",
   // JOB 3064 §9: offline ist KEIN Fehlschlag, sondern ein Nicht-Versuch — die Frage ist nie
   // losgegangen. Der Fehlersatz („steckengeblieben") wäre hier schlicht unwahr.
   "ask.offline": "Keine Verbindung.",

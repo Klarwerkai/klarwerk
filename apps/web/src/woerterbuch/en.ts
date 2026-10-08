@@ -2148,6 +2148,7 @@ const en: typeof de = {
   "ask.error.body":
     "The request got stuck on the way. This is NOT a statement about the knowledge — it does not mean there is no answer. Please try again.",
   "ask.error.retry": "Try again",
+  "ask.gebremst.titel": "Please wait a moment.",
   "ask.offline": "No connection.",
   "ask.wiederaufnahme.entwurf":
     "Pick up where you left off: your unsent draft is back in the question field.",
