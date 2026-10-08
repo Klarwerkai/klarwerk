@@ -27,6 +27,7 @@ const steuerung = vi.hoisted(() => ({
     demo: true,
   })),
   entwuerfeLeeren: (): void => {},
+  angelegt: [] as Record<string, unknown>[],
 }));
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -45,6 +46,7 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
   let svc = new CaptureService({ repo: new InMemoryDraftRepo() });
   steuerung.entwuerfeLeeren = () => {
     svc = new CaptureService({ repo: new InMemoryDraftRepo() });
+    steuerung.angelegt.length = 0;
   };
   const ok = <T,>(v: T) => vi.fn(async () => v);
   return {
@@ -56,7 +58,10 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
       gaps: { list: ok([]) },
       drafts: {
         list: vi.fn(async () => svc.listDrafts()),
-        create: vi.fn(async (p: P) => svc.createDraft(p, "u1")),
+        create: vi.fn(async (p: P) => {
+          steuerung.angelegt.push(p);
+          return svc.createDraft(p, "u1");
+        }),
         update: vi.fn(async (id: string, p: P) => svc.continueDraft(id, p, "u1")),
         remove: vi.fn(async (id: string) => svc.deleteDraft(id)),
         promote: vi.fn(async () => ({})),
@@ -384,6 +389,33 @@ describe("gesamt-ocr · FR-CAP-05 · erkannter Bildtext als Kontext des geführt
     expect(kontext).toContain("[aushang[1].png]");
     expect(kontext).toContain("[Hinweis]\nNur mit Schutzbrille.");
   });
+
+  it("I7 · Bens Befund (Nacharbeit 5): nach dem Speichern erbt der nächste Beitrag keinen Bildtext", async () => {
+    // Ein strukturierter Entwurf mit erkanntem Bildtext, gespeichert und fortgesetzt — damit liegen
+    // die Abschnitte NUR im gesicherten Zustand, nicht im Rohtext (wie in I5).
+    await erkenneBild();
+    await entferneBild();
+    await klicke(knopfMit(i18n.t("capture.structure")) as HTMLButtonElement);
+    await speichereUeberWache();
+    expect(steuerung.angelegt).toHaveLength(1);
+    expect(steuerung.angelegt[0]?.ocrAbschnitte).toEqual([{ name: "aushang.png", text: ERKANNT }]);
+    await neuOeffnenUndFortsetzen();
+
+    // Den fortgesetzten Entwurf auf der Wissensseite speichern — der Arbeitsraum bleibt offen.
+    const speichern = knopfMit(i18n.t("capture.saveDraft"));
+    expect(speichern).not.toBeNull();
+    await klicke(speichern as HTMLButtonElement);
+
+    // Ein NEUER Beitrag im selben Arbeitsraum: sein Interview trägt keinen fremden Bildtext …
+    await tippe(rohtextFeld(), "Neuer Beitrag ohne Bild.");
+    const kontext = await starteInterview();
+    expect(kontext).toBe("");
+
+    // … und sein Entwurf sichert keine fremden Abschnitte.
+    await speichereUeberWache();
+    expect(steuerung.angelegt).toHaveLength(2);
+    expect(steuerung.angelegt[1]?.ocrAbschnitte).toBeUndefined();
+  });
 });
 
 async function entferneBild(): Promise<void> {
@@ -399,6 +431,7 @@ async function entferneBild(): Promise<void> {
 
 /** Speichern über die Navigationswache (der vorhandene Entwurfsweg). */
 async function speichereUeberWache(): Promise<void> {
+  nav.weiter = false;
   const wegklick = container.querySelector<HTMLButtonElement>("[data-testid=navprobe]");
   await klicke(wegklick as HTMLButtonElement);
   const speichern = knopfMit(i18n.t("nav.guard.save"));

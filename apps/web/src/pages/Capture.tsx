@@ -2327,6 +2327,9 @@ export function CaptureArbeitsraum({
       void qc.invalidateQueries({ queryKey: ["drafts"] });
       setDraft(null);
       setRaw("");
+      // Aufnahme `gesamt-ocr` (Nacharbeit 5): die gesicherten Bildtext-Abschnitte gehörten zu DIESEM
+      // Beitrag — sonst trüge der nächste sie unsichtbar ins Interview und in seinen Entwurf.
+      setOcrGesichert([]);
       setBodyHtml("");
       setTags([]);
       setImages([]);
@@ -2520,6 +2523,9 @@ export function CaptureArbeitsraum({
       // Bugfix (Pedi 04.07.): nach dem Speichern ist die Eingabe leer/neu — der Entwurf liegt in
       // „Entwürfe fortsetzen"; Weiterarbeiten läuft bewusst über „Fortsetzen".
       setRaw("");
+      // Aufnahme `gesamt-ocr` (Nacharbeit 5): die gesicherten Abschnitte liegen jetzt im Entwurf und
+      // kommen über „Fortsetzen" zurück — im geleerten Arbeitsraum haben sie nichts mehr zu suchen.
+      setOcrGesichert([]);
       setDraft(null);
       setBodyHtml("");
       setTags([]);
