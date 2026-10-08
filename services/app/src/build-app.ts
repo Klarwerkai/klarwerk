@@ -362,6 +362,7 @@ import { slidesRoutes } from "./routes/slides-routes";
 import { spacesRoutes } from "./routes/spaces-routes";
 import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
 import { validationRoutes } from "./routes/validation-routes";
+import { wissensauskunftRoutes } from "./routes/wissensauskunft-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
 import { stelleSuchprojektionBereit } from "./search-projection-startup";
@@ -3479,6 +3480,22 @@ export function buildApp(
     kennung: () => randomUUID(),
   });
   app.register(kenntnisnahmeRoutes({ dienst: kenntnisnahmeDienst, kos: services.ko }, guards));
+  // R-1644: die Wissensauskunft zum Zeitpunkt — liest Fassungen, Audit-Protokoll und Kenntnisnahmen,
+  // schreibt nichts. Dieselbe Uhr wie die Kenntnisnahme, damit „nicht in der Zukunft" zu deren
+  // Zeitpunkten passt.
+  app.register(
+    wissensauskunftRoutes(
+      {
+        kos: services.ko,
+        ko: services.ko,
+        audit: services.audit,
+        kenntnisnahmen: services.kenntnisnahmen,
+        konten: () => services.auth.listUsers(),
+        jetzt: services.kenntnisnahmeUhr,
+      },
+      guards,
+    ),
+  );
   // ==============================================================================================
   // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS) — HIER BEKOMMT DIE GESAMTANWEISUNG IHRE TÜR.
   // ==============================================================================================
