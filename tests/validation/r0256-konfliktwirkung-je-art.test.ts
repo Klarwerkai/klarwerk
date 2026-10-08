@@ -40,7 +40,7 @@ describe("R-0256 · Konfliktgewichte je Art in der Formel", () => {
   it("ohne offenen Konflikt bleibt der Wert, wie die Stimmen ihn ergeben", () => {
     expect(applyConflictImpact(73, [])).toBe(73);
     expect(computeOutcome(["up"], 1).trust).toBe(TRUST_MAX);
-    expect(computeOutcome(["up"], 1, []).trust).toBe(TRUST_MAX);
+    expect(computeOutcome(["up"], 1, { offeneKonflikte: [] }).trust).toBe(TRUST_MAX);
   });
 
   it("mehrere offene Konflikte: es zählt die stärkste Wirkung, nicht die Summe", () => {
@@ -57,10 +57,10 @@ describe("R-0256 · Konfliktgewichte je Art in der Formel", () => {
   });
 
   it("der Status folgt weiter allein den Stimmen (FR-VAL-02) — ein Konflikt ist kein „abgelehnt“", () => {
-    const gruen = computeOutcome(["up", "up"], 2, ["truth"]);
+    const gruen = computeOutcome(["up", "up"], 2, { offeneKonflikte: ["truth"] });
     expect(gruen.status).toBe("validiert");
     expect(gruen.trust).toBe(87);
-    const rot = computeOutcome(["up", "up", "down"], 2, ["role"]);
+    const rot = computeOutcome(["up", "up", "down"], 2, { offeneKonflikte: ["role"] });
     expect(rot.status).toBe("offen");
   });
 });

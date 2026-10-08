@@ -24,6 +24,16 @@ export interface RatingRepo {
    * Sparsamkeit: `= ANY($1)` mit leerem Feld ist eine Anweisung, die nie eine Zeile treffen kann.
    */
   listByKos(koIds: readonly string[]): Promise<Rating[]>;
+  /**
+   * R-0254: die Prüferfahrung — je Person die Zahl ihrer Bewertungen an ANDEREN Objekten als
+   * `ausserKoId`. Personen ohne frühere Bewertung fehlen in der Karte (= 0). Leere Eingabe macht
+   * keine Abfrage. OPTIONAL, damit handgeschriebene Test-Doubles nicht brechen; ohne die Methode
+   * zählt jede Stimme wie die eines Neulings.
+   */
+  fruehereBewertungen?(
+    userIds: readonly string[],
+    ausserKoId: string,
+  ): Promise<Map<string, number>>;
 }
 
 export interface AssignmentRepo {
@@ -67,6 +77,20 @@ export class InMemoryRatingRepo implements RatingRepo {
     }
     const gesucht = new Set(koIds);
     return Promise.resolve([...this.ratings.values()].filter((r) => gesucht.has(r.koId)));
+  }
+
+  fruehereBewertungen(
+    userIds: readonly string[],
+    ausserKoId: string,
+  ): Promise<Map<string, number>> {
+    const anzahl = new Map<string, number>();
+    const gesucht = new Set(userIds);
+    for (const r of this.ratings.values()) {
+      if (gesucht.has(r.userId) && r.koId !== ausserKoId) {
+        anzahl.set(r.userId, (anzahl.get(r.userId) ?? 0) + 1);
+      }
+    }
+    return Promise.resolve(anzahl);
   }
 }
 

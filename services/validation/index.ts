@@ -19,7 +19,23 @@ export {
   CONFLICT_TRUST_IMPACT,
   CONFLICT_TRUST_FLOOR,
 } from "./src/trust";
-export type { ValidationOutcome, KonfliktArt } from "./src/trust";
+// R-0254 / R-0256: Gewichte nach Prüfererfahrung und je Quellenart (Begründung in trust.ts).
+export {
+  PRUEFER_ERFAHRUNG_AB,
+  PRUEFER_GEWICHT,
+  prueferStufe,
+  QUELLEN_TRUST_WIRKUNG,
+  quellenArtVon,
+  quellenAufschlag,
+} from "./src/trust";
+export type {
+  ValidationOutcome,
+  KonfliktArt,
+  PrueferStufe,
+  QuellenArt,
+  GewichteteStimme,
+  FormelEingaben,
+} from "./src/trust";
 export {
   InMemoryRatingRepo,
   InMemoryAssignmentRepo,

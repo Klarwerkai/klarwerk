@@ -10,7 +10,15 @@ import {
   type ValidationSettingsRepo,
   normalizeDefaultNeeded,
 } from "./settings";
-import { type KonfliktArt, TRUST_MAX, type ValidationOutcome, computeOutcome } from "./trust";
+import {
+  type KonfliktArt,
+  PRUEFER_GEWICHT,
+  TRUST_MAX,
+  type ValidationOutcome,
+  computeOutcome,
+  prueferStufe,
+  quellenArtVon,
+} from "./trust";
 import type { Assignment, Rating } from "./types";
 import { ValidationError, type Verdict } from "./types";
 
@@ -252,10 +260,6 @@ export class ValidationService {
       createdAt: new Date(this.now()).toISOString(),
       koVersion: ratedVersion,
     };
-    // R-0256: die offenen Konflikte VOR der Klammer, einmal je Bewertung. Die Konfliktabfrage liest
-    // selbst Objektfassungen (Versionsbindung im Konfliktdienst) und gehört deshalb nicht unter den
-    // KO-Lock, den `lese` unten hält.
-    const offeneKonflikte = (await this.offeneKonfliktArten?.(koId)) ?? [];
     // Aufnahme gesamt-auditprotokoll (Lauf 3, Runde 3, BEN-R2-B1): die Stimmenlage wird NICHT mehr
     // vor der Klammer gebildet, sondern in ihr (`lese`, aufgerufen aus `zustand` unter dem KO-Lock
     // und — bei einer zweiten Instanz — nach dem neuen Lesen). Zwei gleichzeitige Bewertungen sahen
@@ -268,20 +272,43 @@ export class ValidationService {
       zuweisung: Assignment | undefined;
     }
     let stand: Stimmenlage | undefined;
-    const lese = async (): Promise<Stimmenlage> => {
+    // `aktuell` ist das Objekt, wie die Klammer es unter dem KO-Lock gelesen hat (ohne: das oben
+    // gelesene). Seine Belegstellen bestimmen die Quellenarten (R-0256).
+    //
+    // Aufnahme gesamt-peer-validierung (Ben, Nacharbeit 1): AUCH DER KONFLIKTBESTAND UND DIE
+    // PRÜFERFAHRUNG WERDEN HIER GELESEN — je Versuch, unter dem KO-Lock. Vorher kam der
+    // Konfliktbestand einmal VOR der Klammer; ein in der Lücke angelegter Wahrheitskonflikt fehlte,
+    // und die Bewertung schrieb „99" über dessen Strafe, auch im erneuten Versuch nach STALE_WRITE.
+    // Keine rekursive Sperre: die Konfliktabfrage liest Fassungen über `aktuelleFassungVon`
+    // (ungesperrt), die Erfahrung kommt aus dem Bewertungsspeicher. `markTruthConflictReview` nimmt
+    // seinerseits denselben Lock und wartet daher, bis diese Klammer geschrieben hat.
+    const lese = async (aktuell: KnowledgeObject = ko): Promise<Stimmenlage> => {
       const bisher = await this.ratings.listByKo(koId);
       const vorherige = bisher.find((r) => r.userId === userId);
       const all = vorherige
         ? bisher.map((r) => (r.userId === userId ? bewertung : r))
         : [...bisher, bewertung];
       // Nur Bewertungen der aktuell bewerteten Version zählen (stale Vorversions-Bewertungen ausgeschlossen).
-      const currentVotes = all
-        .filter((r) => ratingVersion(r) === ratedVersion)
-        .map((r) => r.verdict);
+      const current = all.filter((r) => ratingVersion(r) === ratedVersion);
+      const [offeneKonflikte, erfahrung] = await Promise.all([
+        this.offeneKonfliktArten?.(koId) ?? Promise.resolve([] as KonfliktArt[]),
+        this.ratings.fruehereBewertungen?.(
+          current.map((r) => r.userId),
+          koId,
+        ) ?? Promise.resolve(new Map<string, number>()),
+      ]);
+      // R-0254: jede Stimme mit dem Gewicht der Prüferstufe ihrer Person.
+      const stimmen = current.map((r) => ({
+        verdict: r.verdict,
+        gewicht: PRUEFER_GEWICHT[prueferStufe(erfahrung.get(r.userId) ?? 0)],
+      }));
       stand = {
         vorherige,
         all,
-        outcome: computeOutcome(currentVotes, ko.neededValidations, offeneKonflikte),
+        outcome: computeOutcome(stimmen, aktuell.neededValidations, {
+          offeneKonflikte,
+          quellenArten: (aktuell.sources ?? []).map(quellenArtVon),
+        }),
         zuweisung: await this.assignments.find(koId, userId),
       };
       return stand;
@@ -358,9 +385,9 @@ export class ValidationService {
     // Compare-and-Set; ein zwischenzeitliches `revise` erbt den Verweis nicht.
     const { geschrieben, ref } = await this.koService.setValidationStateMitBeleg(
       koId,
-      async () => {
+      async (aktuell) => {
         rueckwaerts.length = 0;
-        const { outcome } = await lese();
+        const { outcome } = await lese(aktuell);
         return { trust: outcome.trust, status: outcome.status };
       },
       { expectedVersion: ratedVersion, beiVersionswechsel: "nurBeleg" },

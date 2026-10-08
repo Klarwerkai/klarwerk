@@ -6130,38 +6130,46 @@ export class KoService {
   // bei Konflikten gegen nicht existierende/offene Bezugs-KOs). Konsistent mit der FE-Ableitung aus
   // SCRUM-357 (ready → in Prüfung). Eine spätere Auto-Erholung bleibt bewusst aus: nach `resolve` bleibt
   // das KO review-pflichtig und wird über die normale Bewertung erneut validiert (kein Fake-Validate).
+  //
+  // Aufnahme gesamt-peer-validierung (Ben, Nacharbeit 1): UNTER DEMSELBEN KO-LOCK wie die
+  // Bewertungsklammer (`setValidationStateMitBeleg`). Ohne ihn las dieser Weg „offen" und tat nichts,
+  // während eine laufende Bewertung noch rechnete — und die Bewertung schrieb danach „validiert, 99"
+  // über einen eben angelegten Wahrheitskonflikt. Jetzt wartet er auf die Bewertung und findet dann
+  // ihr „validiert"; die Bewertung liest den Konfliktbestand ihrerseits erst unter dem Lock.
   async markTruthConflictReview(
     id: string,
     actor = "system",
   ): Promise<KnowledgeObject | undefined> {
-    const ko = await this.repo.findById(id);
-    if (!ko || ko.status !== "validiert") {
-      return ko;
-    }
-    const previousTrust = ko.trust;
-    const trust = Math.max(0, ko.trust - TRUTH_CONFLICT_TRUST_PENALTY);
-    const updated: KnowledgeObject = { ...ko, status: "offen", trust };
-    await this.schreibeMitBeleg(
-      (tx) => this.repo.update(updated, tx),
-      async (tx) => {
-        await this.audit?.record(
-          {
-            actor,
-            action: "ko.conflict-review",
-            target: id,
-            payload: {
-              previousStatus: "validiert",
-              previousTrust,
-              trust,
-              reason: "truth-conflict",
+    return this.withKoLock(id, async () => {
+      const ko = await this.repo.findById(id);
+      if (!ko || ko.status !== "validiert") {
+        return ko;
+      }
+      const previousTrust = ko.trust;
+      const trust = Math.max(0, ko.trust - TRUTH_CONFLICT_TRUST_PENALTY);
+      const updated: KnowledgeObject = { ...ko, status: "offen", trust };
+      await this.schreibeMitBeleg(
+        (tx) => this.repo.update(updated, tx),
+        async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.conflict-review",
+              target: id,
+              payload: {
+                previousStatus: "validiert",
+                previousTrust,
+                trust,
+                reason: "truth-conflict",
+              },
             },
-          },
-          tx,
-        );
-      },
-      () => this.rollbackKo(ko),
-    );
-    return updated;
+            tx,
+          );
+        },
+        () => this.rollbackKo(ko),
+      );
+      return updated;
+    });
   }
 
   // Von der Validierung gesetzt (FR-VAL-01/02): Trust + Status nach Bewertungslage.
