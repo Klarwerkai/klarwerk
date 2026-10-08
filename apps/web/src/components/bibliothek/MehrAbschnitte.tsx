@@ -75,6 +75,7 @@ import {
 } from "../../lib/koSource";
 import { diffForVersion, paarDiff } from "../../lib/koVersionDiff";
 import { koVersionRows, uebernahmeHerkunft } from "../../lib/koVersionSnapshots";
+import { lesekontextMerken } from "../../lib/lesekontext";
 import { useNetzOnline } from "../../lib/netzzustand";
 import { nochNichtFachlichGeprueft } from "../../lib/pruefeinordnung";
 import {
@@ -103,6 +104,7 @@ import { AiCheckCoverageNotes } from "../AiCheckCoverageHint";
 import { ConflictTargetPicker } from "../ConflictTargetPicker";
 import { ExternalUrlText } from "../ExternalUrlText";
 import { GeltungFeld } from "../Geltung";
+import { HelpTip } from "../HelpTip";
 import { KnowledgeNeighborhood } from "../KnowledgeNeighborhood";
 import { RoleLink } from "../RoleLink";
 import { SanitizedHtml } from "../SanitizedHtml";
@@ -400,7 +402,13 @@ function diskussionsfaeden(beitraege: readonly KoDiskussionsbeitrag[]): Diskussi
 export function MehrAbschnitte({
   ko,
   sprungZiel,
-}: { ko: KnowledgeObject; sprungZiel?: Sprungziel | undefined }): JSX.Element {
+  anfangsOffen,
+}: {
+  ko: KnowledgeObject;
+  sprungZiel?: Sprungziel | undefined;
+  /** N-0020: die beim Verlassen offenen Abschnitte (`lib/lesekontext.ts`), sonst alle zu. */
+  anfangsOffen?: readonly string[] | undefined;
+}): JSX.Element {
   const { t, i18n } = useTranslation();
   const id = ko.id;
   const { role } = useRole();
@@ -1187,7 +1195,9 @@ export function MehrAbschnitte({
   const gueltigkeit = validityProtectionView(ko, pending.data ?? [], conflicts.data ?? []);
 
   // ---- JOB 3108 · UX-03: die EINE Menge der offenen Abschnitte, und der Sprung hinein -----------
-  const [offene, setOffene] = useState<ReadonlySet<string>>(() => new Set<string>());
+  const [offene, setOffene] = useState<ReadonlySet<string>>(
+    () => new Set<string>(anfangsOffen ?? []),
+  );
   const wurzel = useRef<HTMLDivElement | null>(null);
   /**
    * Der Sprung läuft in ZWEI Zügen: erst öffnen, dann hinführen. In EINEM Zug ginge es nicht — im
@@ -1464,6 +1474,18 @@ export function MehrAbschnitte({
         ) : null}
         {canReview ? (
           <div className="mt-2 space-y-2">
+            {/* R-0888 / R-1017 (gesamt-hilfen, Nacharbeit 13): die vorhandenen Erklärungen dieser
+                Handlung (`lib/reviewHelp.ts`) stehen in der Seitenhilfe, solange die Handlung
+                da ist — der beschlossene Weg (`HelpTip`, Pedi 04.09.), kein „?" im Sichtfeld. */}
+            <HelpTip
+              title={t("vhelp.reportConflict.title")}
+              body={t("vhelp.reportConflict.body")}
+            />
+            {/* Nacharbeit 15: die berichtigte Fassung nennt auch die Pflichtwahl „Art der Arbeit“. */}
+            <HelpTip
+              title={t("vhelp.conflictForm.title")}
+              body={t("abschnittshilfe.conflictForm.body")}
+            />
             <div className="space-y-1.5">
               <span className="block text-[12.5px] font-medium text-muted">
                 {t("ko.conflictTarget")}
@@ -1549,6 +1571,7 @@ export function MehrAbschnitte({
         offen={offene.has("quellen")}
         aufWechsel={(o) => abschnittUmschalten("quellen", o)}
       >
+        <HelpTip title={t("vhelp.sourcesLevel2.title")} body={t("vhelp.sourcesLevel2.body")} />
         {(ko.sources ?? []).length === 0 ? (
           <p className="text-[12.5px] text-muted">{t("ko.sourcesEmpty")}</p>
         ) : (
@@ -1706,6 +1729,8 @@ export function MehrAbschnitte({
         <ImportErgebnis ko={ko} />
         {canEdit ? (
           <div className="mt-3 space-y-2 border-t border-hairline pt-3">
+            <HelpTip title={t("vhelp.sourceFields.title")} body={t("vhelp.sourceFields.body")} />
+            <HelpTip title={t("vhelp.sourceAdd.title")} body={t("vhelp.sourceAdd.body")} />
             <TextInput
               value={sourceForm.label}
               onChange={(e) => setSourceForm((s) => ({ ...s, label: e.target.value }))}
@@ -1804,6 +1829,7 @@ export function MehrAbschnitte({
       >
         {canEdit && canSearchExternal(extStage) ? (
           <div className="space-y-2">
+            <HelpTip title={t("vhelp.sourceSearch.title")} body={t("vhelp.sourceSearch.body")} />
             {extAttachAllowed ? null : (
               <p
                 data-testid="ext-attach-blocked"
@@ -1881,6 +1907,7 @@ export function MehrAbschnitte({
         aufWechsel={(o) => abschnittUmschalten("beitrag", o)}
       >
         <div className="space-y-2">
+          <HelpTip title={t("vhelp.contribution.title")} body={t("vhelp.contribution.body")} />
           <textarea
             value={source.contribution}
             onChange={(e) => setSource((s) => ({ ...s, contribution: e.target.value }))}
@@ -1969,6 +1996,7 @@ export function MehrAbschnitte({
         ) : null}
         {canTransfer ? (
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hairline pt-3">
+            <HelpTip title={t("vhelp.transfer.title")} body={t("vhelp.transfer.body")} />
             <select
               aria-label={t("ko.transferTitle")}
               value={newAuthor}
@@ -2126,9 +2154,13 @@ export function MehrAbschnitte({
             </ul>
           );
         })()}
-        {/* mega70 B3: `/graph` verlangt `admin` — die gesperrte Fassung verliert Link und Pfeil. */}
+        {/* mega70 B3: `/graph` verlangt `admin` — die gesperrte Fassung verliert Link und Pfeil.
+            N-0020: vor dem Wechsel merkt sich die Lesefläche, WO gelesen wurde (Rollstand und
+            offene Abschnitte); Browser-Zurück stellt es wieder her (`lib/lesekontext.ts`). */}
         <RoleLink
           to="/graph"
+          testId="bib-herkunft-graph"
+          onClick={() => lesekontextMerken(ko.id, wurzel.current, offene)}
           className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold text-ai"
           hoverClassName="hover:underline"
         >
@@ -2243,6 +2275,7 @@ export function MehrAbschnitte({
             </>
           );
         })()}
+        <HelpTip title={t("vhelp.validity.title")} body={t("vhelp.validity.body")} />
         <dl className="mb-3 space-y-1.5 text-[12.5px]">
           <div className="flex items-center justify-between gap-2">
             <dt className="text-muted">{t("ko.ovTrust")}</dt>
