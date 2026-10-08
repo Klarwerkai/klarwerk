@@ -31,7 +31,9 @@ interface ModalProps {
   // Fläche (`data-navguard-dialog`), die er vor dem Anschluss noch selbst gerendert hat. Die Marke
   // gehört auf das Panel und nicht auf eine Hülle darum: nur so liegt sie im Portal-Anker, trägt
   // den Dialogtext und enthält den Fokus — die drei Zusicherungen aus JOB 1850.
-  panelMarker?: string;
+  // Der Typ hält den Vertrag „Datenattribut“ fest: als berechneter Schlüssel gespreizt, könnte ein
+  // beliebiger String sonst auch `role` setzen (Modalgrenze, Register A17b, Nacharbeit 15).
+  panelMarker?: `data-${string}`;
   // JOB 1900: die Grenze AUSDRÜCKLICH gereicht, für Flächen, die sie über den Kontext nicht
   // erreichen. Das ist genau EINE: der Navigationswächter hängt in `App.tsx:99` OBERHALB von
   // `ModalBoundaryProvider` (bewusst, damit er den Seitenabsturz überlebt) und bekommt die Grenze

@@ -947,6 +947,101 @@ function importierterNamensraum(
   return undefined;
 }
 
+/**
+ * Nacharbeit 15 (ben): kann ein berechneter Schlüssel `[k]` die Eigenschaft `role` sein?
+ * `rolle`: er ist es (auch nur möglicherweise, als einer von mehreren Werten). `keine-rolle`:
+ * nachweislich nicht — bestimmter Wert, importierte Konstante oder ein Typ, der `role` ausschliesst
+ * (`data-${string}`, Literal-Union ohne `role`). `unbestimmt`: alles andere — nie rollenfrei.
+ */
+type Schluesselurteil = "rolle" | "keine-rolle" | "unbestimmt";
+
+function schluesselUrteil(
+  ausdruck: ts.Expression,
+  deklarationen: Deklarationen,
+  umfeld: Modulumfeld | undefined,
+): Schluesselurteil {
+  const werte = statischeWerte(ausdruck, deklarationen);
+  if (werte.werte.some((w) => w.text === "role")) {
+    return "rolle";
+  }
+  if (werte.offen.length === 0) {
+    return "keine-rolle";
+  }
+  if (!ts.isIdentifier(ausdruck)) {
+    return "unbestimmt";
+  }
+  const lokal = sichtbareDeklarationen(deklarationen, ausdruck);
+  if (lokal.length > 0) {
+    const ausgeschlossen = lokal.every((d) =>
+      typSchliesstRolleAus(schluesselTyp(d, deklarationen), deklarationen, 0),
+    );
+    return ausgeschlossen ? "keine-rolle" : "unbestimmt";
+  }
+  // Eine importierte Konstante (`D44_EDITOR_MARKE`) wird im Zielmodul ausgewertet.
+  const ziel = importZiel(ausdruck, umfeld);
+  if (ziel?.art !== "modul") {
+    return "unbestimmt";
+  }
+  for (const s of ziel.quelle.ast.statements) {
+    if (!ts.isVariableStatement(s) || (s.declarationList.flags & ts.NodeFlags.Const) === 0) {
+      continue;
+    }
+    for (const d of s.declarationList.declarations) {
+      if (ts.isIdentifier(d.name) && d.name.text === ziel.name && d.initializer) {
+        const zielWerte = statischeWerte(d.initializer, sammleDeklarationen(ziel.quelle.ast));
+        if (zielWerte.werte.some((w) => w.text === "role")) {
+          return "rolle";
+        }
+        return zielWerte.offen.length === 0 ? "keine-rolle" : "unbestimmt";
+      }
+    }
+  }
+  return "unbestimmt";
+}
+
+/** Der deklarierte Typ eines Schlüsselwerts: Parameter, destrukturiertes Feld oder Variable. */
+function schluesselTyp(d: ts.Node, deklarationen: Deklarationen): ts.TypeNode | undefined {
+  if (ts.isParameter(d) || ts.isVariableDeclaration(d)) {
+    return d.type;
+  }
+  if (ts.isBindingElement(d)) {
+    return bindungsTypIn(deklarationen, d);
+  }
+  return undefined;
+}
+
+/** Schliesst dieser Typ den Wert `role` nachweislich aus? Ohne Typ: nein. */
+function typSchliesstRolleAus(
+  typ: ts.TypeNode | undefined,
+  deklarationen: Deklarationen,
+  tiefe: number,
+): boolean {
+  if (typ === undefined || tiefe > MAX_TIEFE) {
+    return false;
+  }
+  if (ts.isParenthesizedTypeNode(typ)) {
+    return typSchliesstRolleAus(typ.type, deklarationen, tiefe + 1);
+  }
+  if (ts.isUnionTypeNode(typ)) {
+    return typ.types.every((t) => typSchliesstRolleAus(t, deklarationen, tiefe + 1));
+  }
+  if (ts.isTemplateLiteralTypeNode(typ)) {
+    // `data-${string}`: jeder Wert beginnt mit `data-` — `role` nachweislich nicht.
+    return !"role".startsWith(typ.head.text);
+  }
+  if (ts.isLiteralTypeNode(typ)) {
+    return istZeichenkettenLiteral(typ.literal) ? typ.literal.text !== "role" : true;
+  }
+  if (typ.kind === ts.SyntaxKind.UndefinedKeyword || typ.kind === ts.SyntaxKind.NullKeyword) {
+    return true;
+  }
+  if (ts.isTypeReferenceNode(typ) && ts.isIdentifier(typ.typeName)) {
+    const alias = typNamen(deklarationen, typ.typeName.text).find(ts.isTypeAliasDeclaration);
+    return alias ? typSchliesstRolleAus(alias.type, deklarationen, tiefe + 1) : false;
+  }
+  return false;
+}
+
 /** Die exportierten Typdeklarationen `name` eines Moduls (Interfaces dürfen mehrfach stehen). */
 function exportierteTypen(quelle: Quelle, name: string): ts.Node[] {
   return quelle.ast.statements.filter(
@@ -1220,6 +1315,15 @@ export function propsRolle(
     for (const eig of mitEigenen ? k.properties : []) {
       if (ts.isPropertyAssignment(eig) && eigenschaftsName(eig.name) === "role") {
         teile.push({ ...keineRolle(), bild: statischeWerte(eig.initializer, deklarationen) });
+      }
+      // Nacharbeit 15: berechnete Schlüssel auch im direkten Aufruf.
+      if (ts.isPropertyAssignment(eig) && ts.isComputedPropertyName(eig.name)) {
+        const urteil = schluesselUrteil(eig.name.expression, deklarationen, umfeld);
+        if (urteil === "rolle") {
+          teile.push({ ...keineRolle(), bild: statischeWerte(eig.initializer, deklarationen) });
+        } else if (urteil === "unbestimmt") {
+          teile.push(nichtAufloesbar(eig.name));
+        }
       }
       if (ts.isShorthandPropertyAssignment(eig) && eig.name.text === "role") {
         teile.push({ ...keineRolle(), bild: statischeWerte(eig.name, deklarationen) });
@@ -1853,6 +1957,19 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
     if (ts.isPropertyAssignment(node) && node.name.getText(sf).replace(/["']/g, "") === "role") {
       meldeRolle(node.initializer, istPropsObjekt(node.parent));
     }
+    // Nacharbeit 15 (ben): ein BERECHNETER Schlüssel (`{ ['ro' + 'le']: … }`, `{ [k]: … }`) wird
+    // ausgewertet. Ist er `role`, gilt der Wert als Rolle; ist er nicht bestimmbar und nicht
+    // nachweislich rollenfrei, ist das in einem Props-Objekt eine unbekannte Bauform.
+    if (ts.isPropertyAssignment(node) && ts.isComputedPropertyName(node.name)) {
+      const urteil = schluesselUrteil(node.name.expression, deklarationen, umfeld);
+      if (urteil === "rolle") {
+        meldeRolle(node.initializer, istPropsObjekt(node.parent));
+      } else if (urteil === "unbestimmt" && istPropsObjekt(node.parent)) {
+        unbekannteBauformen.push(
+          `${quelle.datei}:${zeileVon(sf, node.name)} — berechneter Schlüssel „${node.name.getText(sf).slice(0, 60)}“ in Props ist statisch nicht bestimmbar: ob er eine Rolle setzt, kann dieser Sammler nicht beurteilen`,
+        );
+      }
+    }
     if (ts.isShorthandPropertyAssignment(node) && node.name.text === "role") {
       meldeRolle(node.name, istPropsObjekt(node.parent));
     }
@@ -2295,7 +2412,8 @@ function weiterreicherVerwendungen(
           zeile,
           text,
           ziel: { modul: ziel.slice(0, trenner), name: ziel.slice(trenner + 1) },
-          abbruch: r.abbrueche.length > 0,
+          // `mitEigenen` umfasst `r` und zusätzlich nicht bestimmbare eigene Schlüssel (Nacharbeit 15).
+          abbruch: mitEigenen.abbrueche.length > 0,
           funktionen: r.vonAufrufern.map((q) => q.funktion),
         });
         return;

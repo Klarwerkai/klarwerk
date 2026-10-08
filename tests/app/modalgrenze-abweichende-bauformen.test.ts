@@ -1181,6 +1181,41 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     expect(rot).toHaveLength(2);
   });
 
+  it("Nacharbeit 15: berechnete Schlüssel in Props werden ausgewertet, unbestimmte sind rot", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/lib/marke.ts": ['export const MARKE = "data-marke";'],
+        "apps/web/src/components/Berechnet.tsx": [
+          'import { MARKE } from "../lib/marke";',
+          "type Marke = `data-${string}`;",
+          "export function F({ k, frei }: { k: Marke; frei: string }): JSX.Element {",
+          "  const zaehler = { [frei]: 1 };",
+          "  return (",
+          "    <div data-n={zaehler[frei]}>",
+          "      <div {...{ ['ro' + 'le']: 'dia' + 'log' }} />",
+          "      <div {...{ [MARKE]: true }} />",
+          "      <div {...{ [k]: '' }} />",
+          "      <div {...{ [frei]: 'x' }} />",
+          "    </div>",
+          "  );",
+          "}",
+        ],
+      }),
+    );
+    const an = (stelle: string): string[] => rot.filter((z) => z.includes(stelle));
+    // bens Fall wörtlich: der berechnete Schlüssel ist `role`, der Wert `dialog`.
+    expect(an("components/Berechnet.tsx:7")[0]).toContain("role-dialog");
+    // Importierte Konstante (Form aus KnowledgeInputStudio) und `data-${string}` (Form aus Modal).
+    expect(an("components/Berechnet.tsx:8"), "MARKE = data-marke").toEqual([]);
+    expect(an("components/Berechnet.tsx:9"), "k: data-${string}").toEqual([]);
+    // Ein freier String als Schlüssel in Props könnte `role` sein — nicht rollenfrei.
+    expect(an("components/Berechnet.tsx:10")[0]).toContain("berechneter Schlüssel");
+    // Derselbe freie Schlüssel in einem gewöhnlichen Objekt baut nichts.
+    expect(an("components/Berechnet.tsx:4"), "kein Props-Objekt").toEqual([]);
+    expect(rot).toHaveLength(2);
+  });
+
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
     const { rot } = pruefeModalgrenze(
       legeBaum({
