@@ -98,6 +98,7 @@ import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
+import { AUTHOR_LOADING_KEY } from "../../apps/web/src/lib/koAuthor";
 import { Analytics } from "../../apps/web/src/pages/Analytics";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -232,6 +233,16 @@ describe("Gesamt-Kennzahlen · die Auswertungsseite gegen ihre Originalkriterien
 
   it("K3 · FR-VAL-06 / FR-ANA-01: offen/erledigt je Person, mit Namen, meiste offene zuerst", async () => {
     await mount();
+    // Die Personenzeilen erscheinen erst mit der Zuweisungsübersicht, und erst dann fragt die Zeile
+    // das Personenverzeichnis — eine Abfrage später. Gewartet wird, bis kein Name mehr „lädt";
+    // geprüft wird danach unverändert der volle Sollwert (bleibt er aus, scheitert der Vergleich).
+    const laedt = i18n.t(AUTHOR_LOADING_KEY);
+    for (let runde = 0; runde < 10; runde++) {
+      if (!(element("analytics-personen").textContent ?? "").includes(laedt)) {
+        break;
+      }
+      await act(flush);
+    }
     const personen = element("analytics-personen");
     const zeilen = [...personen.children].map((z) => z.textContent ?? "");
     expect(zeilen).toEqual([
