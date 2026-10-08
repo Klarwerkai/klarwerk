@@ -1,7 +1,12 @@
-import { readFileSync, readdirSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import {
+  REPO_WURZEL,
+  ohneKommentare,
+  produktCodeDateien,
+} from "../../../tests/support/onsendGrundmenge";
 
 // WP-E2 (ben-Auflage 1b) · AUFTRAG-mega71 Block B: Architektur-Pin auf QUELLTEXT-Ebene. Die
 // WP-E-Regel "onSend-Hooks IMMER synchron (Callback-Stil)" ist im Typsystem nicht erzwingbar —
@@ -17,70 +22,34 @@ import { describe, expect, it } from "vitest";
 // zitiert, statt still aus der Erhebung zu fallen; eine LEERE Erhebung ist ein Fehler und kein
 // Erfolg — ein Sammler, der nichts findet, prüft nichts.
 //
-// GRUNDMENGE (Auftrag gesamt-sendehook-sammler, R-1397/I32): bis dahin sah der Sammler nur sein
-// eigenes Verzeichnis services/app/src, nur `.ts` und nur `.addHook("onSend"|'onSend', …)`.
-// Drei Bauformen fielen damit weiterhin still heraus, ohne irgendeinen Wächter rot zu machen:
-// ein Hookname als Template-Literal (`` addHook(`onSend`, async …) ``), ein onSend als
-// Routenoption/Methoden-Kurzform außerhalb von services/ und jede Datei mit anderer Endung
-// (.tsx/.mts/.cts/.js/.mjs/.cjs). Erhoben wird deshalb jetzt der GANZE Quellbaum des Repos:
-//   · jede Codedatei (s. CODE) außer *.test.*/*.spec.*,
-//   · ohne node_modules, Punkt-Verzeichnisse und Bauausgaben (s. NICHT_ERHOBEN),
-//   · ohne die Testbäume tests/ und tests-smoke/ — dort hängen Prüfstände bewusst eigene async-
-//     onSend-Hooks an Test-Apps (z. B. tests/app/mega71-onsend-synchron.test.ts Teil 2 als fremder
-//     Hook); das ist Messaufbau, keine Produktverdrahtung.
+// GRUNDMENGE (Auftrag gesamt-sendehook-sammler, R-1397/I32): der ganze Quellbaum des Repos, alle
+// JS/TS-Endungen, ohne Testbäume — festgelegt EINMAL in tests/support/onsendGrundmenge.ts, die
+// auch der ergänzende B44-Wächter liest. Zwei Wächter mit zwei Grundmengen hätten wieder eine
+// Stelle, an die keiner hinsieht.
+//
+// ROHZÄHLER STATT MUSTERLISTE (bens Befunde zum Kandidaten 8e554855): eine Erhebung, die nur
+// die Registrierungswege sieht, die jemand vorher aufgeschrieben hat, ist wieder eine Liste — nur
+// eine Ebene tiefer. Ein Routenmodul ohne eigenen Fastify-Import (`export default (app) =>
+// app.get(url, { async onSend(…) {…} }, h)`) und ein indirekter Hookname (`const hook = "onSend";
+// app.addHook(hook, async …)`) fielen genau so heraus. Deshalb gilt jetzt:
+//   1. JEDES Vorkommen des Bezeichners `onSend` im Code (außerhalb von Kommentaren) muss von
+//      einer erkannten Registrierung erklärt werden — `.addHook("onSend", …)`, Routenoption
+//      `{ onSend: … }` oder Methoden-Kurzform `{ onSend(…) {…} }`. Ein unerklärtes Vorkommen
+//      (Zeichenkette in einer Konstante, Kurzschreibweise `{ onSend }`, Zuweisung `o.onSend = …`,
+//      Aufruf …) ist rot als `unbekannt`. Keine Wortsuche nach „fastify" als Ausschluss mehr.
+//   2. JEDES `addHook`, dessen erstes Argument kein schlichtes Literal ist (Variable, Template mit
+//      Platzhalter, Verkettung, `app["addHook"]`, `.bind` …), ist rot als `unbekannt`: ob es
+//      onSend registriert, lässt sich am Text nicht entscheiden — also nicht still durchwinken.
 //
 // GELTUNGSBEREICH, bewusst breiter als "app-global": erhoben wird jede onSend-Registrierung im
 // Produktbaum, auch eine plugin-gekapselte oder eine Routenoption. Begründung: das Doppel-Send-
 // Fenster hängt an den async-Hops der SEND-Pipeline einer Route — ein gekapselter async-Hook öffnet
 // es für seine Routen genauso (Mechanik in routes/addin-static-routes.ts:130 ff.). Heute sind alle
 // vier Fundstellen app-global und liegen unter services/app/src; schlägt der Sammler je auf eine
-// Registrierung an, für die die Regel nachweislich nicht gilt, wird er ENGER gebaut statt
-// abgeschaltet (mega71-Grenzregel).
+// Stelle an, für die die Regel nachweislich nicht gilt (etwa ein Frontend-Objekt mit einem
+// Schlüssel `onSend`), wird er nach bewusster Entscheidung ENGER gebaut statt abgeschaltet
+// (mega71-Grenzregel).
 const SRC = dirname(fileURLToPath(import.meta.url));
-const REPO = resolve(SRC, "..", "..", "..");
-
-const CODE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
-// Abhängigkeiten, Bauausgaben und unversionierte Arbeitsordner (.gitignore) — überall im Baum.
-const NICHT_ERHOBEN = new Set([
-  "node_modules",
-  "dist",
-  "build",
-  "coverage",
-  "test-results",
-  "playwright-report",
-  "_relay",
-  "LOT",
-]);
-// Die Testbäume — nur auf oberster Ebene; ein `tests`-Ordner tief im Produktbaum bleibt erhoben.
-const TESTBAEUME = new Set(["tests", "tests-smoke"]);
-
-// Kommentare raus, Zeilennummern ERHALTEN (Muster aus tests/app/mega70-rohlink-sammler.test.ts):
-// eine bloße Erwähnung („hier stand ein async onSend") zählt nicht als Registrierung, Fundstellen
-// bleiben zitierfähig.
-function ohneKommentare(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
-    .replace(/(^|\s)\/\/.*$/gm, (m) => m.replace(/[^\n]/g, " "));
-}
-
-function produktDateien(dir: string, ebene = 0): string[] {
-  const out: string[] = [];
-  for (const eintrag of readdirSync(dir, { withFileTypes: true })) {
-    const pfad = join(dir, eintrag.name);
-    if (eintrag.isDirectory()) {
-      const ausgenommen =
-        eintrag.name.startsWith(".") ||
-        NICHT_ERHOBEN.has(eintrag.name) ||
-        (ebene === 0 && TESTBAEUME.has(eintrag.name));
-      if (!ausgenommen) {
-        out.push(...produktDateien(pfad, ebene + 1));
-      }
-    } else if (CODE.test(eintrag.name) && !/\.(?:test|spec)\.[^.]+$/.test(eintrag.name)) {
-      out.push(pfad);
-    }
-  }
-  return out;
-}
 
 interface OnSendRegistrierung {
   fundort: string; // "<datei>:<zeile>"
@@ -105,52 +74,73 @@ function formVon(rest: string): OnSendRegistrierung["form"] {
   return "unbekannt";
 }
 
-// Die drei Registrierungswege, die Fastify für onSend kennt:
-//  ADDHOOK   = `.addHook("onSend", …)` — Hookname in jeder Literalform, auch als Template-Literal;
-//  OPTION    = Routenoption `{ onSend: … }` (auch `"onSend": …`);
-//  METHODE   = Methoden-Kurzform in einem Optionsobjekt `{ onSend(req, reply, payload, done) {…} }`
-//              bzw. `{ async onSend(…) {…} }`.
-// OPTION und METHODE sind als Muster nicht Fastify-spezifisch (ein Frontend-Objekt darf einen
-// Schlüssel `onSend` tragen) und werden deshalb nur in Dateien erhoben, die Fastify ansprechen.
-// `.addHook(` ist Fastify-eigen und wird überall erhoben.
-const ADDHOOK = /\baddHook\(\s*(["'`])onSend\1\s*,\s*/g;
-const OPTION = /(?<=^|[\s{,(])["']?onSend["']?\s*:\s*/gm;
+// Die erkannten Registrierungswege:
+//  ADDHOOK  = jedes `addHook`; ein schlichtes Literal als erstes Argument wird gelesen, alles
+//             andere ist ein indirekter Hookname;
+//  OPTION   = Routenoption `{ onSend: … }` (auch `"onSend": …`, `["onSend"]: …`);
+//  METHODE  = Methoden-Kurzform `{ onSend(req, reply, payload, done) {…} }` / `{ async onSend(…) }`.
+// ROH zählt jedes Vorkommen des Bezeichners — was keiner der drei Wege erklärt, ist `unbekannt`.
+const ADDHOOK = /\baddHook\b/g;
+const ADDHOOK_LITERAL = /^\(\s*(["'`])(\w+)\1\s*,\s*/;
+const OPTION = /(?<=^|[\s{,(])\[?\s*["'`]?onSend["'`]?\s*\]?\s*:\s*/gm;
 const METHODE = /(?<=^|[\s{,(])(async\s+)?onSend\s*(?=\()/gm;
-const FASTIFY = /fastify/i;
+const ROH = /\bonSend\b/g;
 
 function registrierungenIn(src: string, datei: string): OnSendRegistrierung[] {
   const text = ohneKommentare(src);
   const funde: OnSendRegistrierung[] = [];
-  const merke = (index: number, rest: string) => {
+  const erklaert = new Set<number>();
+  const zeileVon = (index: number) => text.slice(0, index).split("\n").length;
+  const merke = (index: number, form: OnSendRegistrierung["form"], rest: string) => {
     funde.push({
-      fundort: `${datei}:${text.slice(0, index).split("\n").length}`,
-      form: formVon(rest),
+      fundort: `${datei}:${zeileVon(index)}`,
+      form,
       zitat: rest.split("\n", 1)[0]?.trim() ?? "",
     });
   };
   for (const m of text.matchAll(ADDHOOK)) {
-    merke(m.index ?? 0, text.slice((m.index ?? 0) + m[0].length));
-  }
-  if (FASTIFY.test(text)) {
-    for (const m of text.matchAll(OPTION)) {
-      merke(m.index ?? 0, text.slice((m.index ?? 0) + m[0].length));
+    const index = m.index ?? 0;
+    const rest = text.slice(index + m[0].length);
+    const literal = ADDHOOK_LITERAL.exec(rest);
+    if (!literal) {
+      // Indirekter Hookname: am Text nicht entscheidbar, ob onSend gemeint ist.
+      merke(index, "unbekannt", `addHook${rest}`);
+    } else if (literal[2] === "onSend") {
+      erklaert.add(index + m[0].length + literal[0].indexOf("onSend"));
+      merke(index, formVon(rest.slice(literal[0].length)), rest.slice(literal[0].length));
     }
-    for (const m of text.matchAll(METHODE)) {
-      // `async onSend(…)` → "async (…)", `onSend(…)` → "(…)": derselbe Form-Leser wie oben.
-      merke(m.index ?? 0, `${m[1] ?? ""}${text.slice((m.index ?? 0) + m[0].length)}`);
+  }
+  for (const m of text.matchAll(OPTION)) {
+    const index = m.index ?? 0;
+    erklaert.add(index + m[0].indexOf("onSend"));
+    const rest = text.slice(index + m[0].length);
+    merke(index, formVon(rest), rest);
+  }
+  for (const m of text.matchAll(METHODE)) {
+    const index = m.index ?? 0;
+    erklaert.add(index + m[0].indexOf("onSend"));
+    // `async onSend(…)` → "async (…)", `onSend(…)` → "(…)": derselbe Form-Leser wie oben.
+    const rest = `${m[1] ?? ""}${text.slice(index + m[0].length)}`;
+    merke(index, formVon(rest), rest);
+  }
+  for (const m of text.matchAll(ROH)) {
+    const index = m.index ?? 0;
+    if (!erklaert.has(index)) {
+      const zeile = text.slice(text.lastIndexOf("\n", index) + 1);
+      merke(index, "unbekannt", zeile);
     }
   }
   return funde;
 }
 
-function erhebeOnSendRegistrierungen(wurzel: string): OnSendRegistrierung[] {
-  return produktDateien(wurzel).flatMap((datei) =>
-    registrierungenIn(readFileSync(datei, "utf8"), relative(wurzel, datei)),
+function erhebeOnSendRegistrierungen(): OnSendRegistrierung[] {
+  return produktCodeDateien().flatMap((datei) =>
+    registrierungenIn(readFileSync(datei, "utf8"), relative(REPO_WURZEL, datei)),
   );
 }
 
 describe("WP-E2/mega71 B: onSend-Hooks im Produktbaum bleiben synchron (Sammler, keine Liste)", () => {
-  const funde = erhebeOnSendRegistrierungen(REPO);
+  const funde = erhebeOnSendRegistrierungen();
 
   it("die Erhebung läuft nicht leer — ein Sammler, der nichts findet, prüft nichts", () => {
     expect(funde.length).toBeGreaterThan(0);
@@ -159,7 +149,7 @@ describe("WP-E2/mega71 B: onSend-Hooks im Produktbaum bleiben synchron (Sammler,
   it("JEDE gefundene onSend-Registrierung trägt den 4-Parameter-Callback-Stil (done)", () => {
     const verstoesse = funde
       .filter((f) => f.form !== "callback")
-      .map((f) => `${f.fundort} [${f.form}]  onSend → ${f.zitat}`);
+      .map((f) => `${f.fundort} [${f.form}]  ${f.zitat}`);
     expect(
       verstoesse,
       "async onSend ist verboten (WP-E) — Mechanik s. addin-static-routes.ts:130 ff.",
@@ -177,23 +167,39 @@ describe("WP-E2/mega71 B: onSend-Hooks im Produktbaum bleiben synchron (Sammler,
   });
 
   it("KALIBRIERUNG: die Erhebung sieht jeden Registrierungsweg — auch die bis dahin blinden", () => {
-    const F = 'import type { FastifyInstance } from "fastify";\n';
+    // Bewusst OHNE Fastify-Import: ein eingebundenes Routenmodul trägt oft keinen (ben zu 8e554855).
     const faelle: Array<[string, OnSendRegistrierung["form"][]]> = [
       ['app.addHook("onSend", async (req, reply) => {})', ["async"]],
       ["app.addHook(`onSend`, async (req, reply) => {})", ["async"]],
       ['app\n  .addHook(\n    "onSend",\n    async (req, reply) => {})', ["async"]],
-      [`${F}app.get("/a", { onSend: async (r, s, p) => p }, h)`, ["async"]],
-      [`${F}app.get("/a", { async onSend(r, s, p) { return p } }, h)`, ["async"]],
-      [`${F}app.get("/a", { onSend: [stempel] }, h)`, ["unbekannt"]],
-      [`${F}app.get("/a", { onSend(r, s, p, done) { done() } }, h)`, ["callback"]],
       ['app.addHook("onSend", (r, s, p, done) => done(null, p))', ["callback"]],
-      // Keine Registrierung: bloße Erwähnung im Kommentar, Frontend-Schlüssel ohne Fastify-Bezug.
+      // Routenmodul ohne eigenen Fastify-Import — wörtlich bens Gegenbeispiel.
+      [
+        "export default app => { app.get('/x', { async onSend(r,s,p) { return p; } }, handler); }",
+        ["async"],
+      ],
+      ['app.get("/a", { onSend: async (r, s, p) => p }, h)', ["async"]],
+      ['app.get("/a", { ["onSend"]: async (r, s, p) => p }, h)', ["async"]],
+      ['app.get("/a", { onSend: [stempel] }, h)', ["unbekannt"]],
+      ['app.get("/a", { onSend(r, s, p, done) { done() } }, h)', ["callback"]],
+      // Indirekte Hooknamen — wörtlich bens Gegenbeispiel und seine Verwandten.
+      ["const hook = 'onSend'; app.addHook(hook, async (r, s) => {})", ["unbekannt", "unbekannt"]],
+      ["app.addHook(`on${art}`, async (r, s) => {})", ["unbekannt"]],
+      ['app["addHook"]("onSend", async (r, s) => {})', ["unbekannt", "unbekannt"]],
+      // Nicht erklärte Vorkommen: Kurzschreibweise und Zuweisung.
+      [
+        'const onSend = async (r, s) => {}; app.get("/a", { onSend }, h)',
+        ["unbekannt", "unbekannt"],
+      ],
+      ["opts.onSend = async (r, s) => {}", ["unbekannt"]],
+      // Keine Registrierung: bloße Erwähnung im Kommentar, anderer Hook, anderer Bezeichner.
       ['// app.addHook("onSend", async () => {})', []],
-      ["const props = { onSend: async () => {} };", []],
+      ['app.addHook("onRequest", async (r) => {})', []],
+      ["const onSendError = 1;", []],
     ];
     for (const [src, erwartet] of faelle) {
       expect(
-        registrierungenIn(src, "x.ts").map((f) => f.form),
+        registrierungenIn(src, "x.mts").map((f) => f.form),
         src,
       ).toEqual(erwartet);
     }
@@ -204,6 +210,12 @@ describe("WP-E2/mega71 B: onSend-Hooks im Produktbaum bleiben synchron (Sammler,
     // Das ist KEINE neue Liste: geprüft wird nur, dass die selbst erhobene Grundmenge sie erreicht.
     const ziel = `${join("services", "app", "src", "web-static.ts")}:`;
     expect(funde.some((f) => f.fundort.startsWith(ziel))).toBe(true);
+  });
+
+  it("KALIBRIERUNG: die gemeinsame Grundmenge trägt jede Code-Endung, nicht nur .ts", () => {
+    // Prüft die Endungsregel der gemeinsamen Grundmenge, ohne eine Datei zu benennen: es gibt im
+    // Repo Produktdateien mit anderen Endungen (z. B. tools/*.mjs) — sie müssen erhoben werden.
+    expect(produktCodeDateien().some((d) => /\.(?:mjs|cjs|tsx|js)$/.test(d))).toBe(true);
   });
 
   it("server.ts verdrahtet Noindex- und Security-Header-Hooks über die exportierten Produktionsfunktionen", () => {
