@@ -1159,6 +1159,27 @@ export interface ExpertiseEntry {
   contributors: ExpertiseContributor[];
 }
 
+// R-1663 / R-2178: passende Ansprechpartner zu einer Wissenslücke, begründet aus Wissensspuren
+// (`GET /api/gaps/:id/ansprechpartner`; Server: services/ask/src/ansprechpartner.ts). Jede Zahl ist
+// eine gespeicherte Tatsache am Objekt oder an der Lücke — kein Punktwert, keine Rangfolge.
+export interface AnsprechpartnerSpuren {
+  originalautor: number;
+  erfasst: number;
+  validiert: number;
+  pruefung: number;
+  verantwortlich: number;
+  aehnlicheLuecken: number;
+}
+export interface AnsprechpartnerVorschlag {
+  personId: string;
+  spuren: AnsprechpartnerSpuren;
+  objekte: { id: string; title: string }[];
+}
+export interface AnsprechpartnerAuskunft {
+  vorschlaege: AnsprechpartnerVorschlag[];
+  grundlage: { objekte: number; aehnlicheLuecken: number };
+}
+
 export interface GraphNode {
   id: string;
   title: string;

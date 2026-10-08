@@ -5,6 +5,7 @@ import { ApiError, api } from "./client";
 import type {
   AiCheckCoverageSummary,
   Analytics,
+  AnsprechpartnerAuskunft,
   AnswerResult,
   // JOB 4154 (WIKI-GESAMTANWEISUNG): der Drahtvertrag der zusammengesetzten Anweisung.
   Anweisung,
@@ -784,6 +785,9 @@ export const endpoints = {
     // SCRUM-115 / FE-RISK-02: Priorität der Wissenslücke setzen.
     setPriority: (id: string, priority: GapPriority) => api.put<Gap>(`/gaps/${id}`, { priority }),
     remove: (id: string) => api.del<void>(`/gaps/${id}?confirm=true`),
+    // R-1663 / R-2178: begründete Ansprechpartner nach Wissensspuren (Schalter expertMatching).
+    ansprechpartner: (id: string) =>
+      api.get<AnsprechpartnerAuskunft>(`/gaps/${encodeURIComponent(id)}/ansprechpartner`),
   },
   // WP-D11: PPTX-Folien → PNG je Folie (Server-Konvertierung; base64 konsistent zum Objekt-Upload).
   slides: {

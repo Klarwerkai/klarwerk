@@ -506,6 +506,14 @@ const REGISTER: Record<string, Eintrag> = {
     grund: "ask/gap-visibility redactGapForViewer (ask-routes.ts:258).",
   },
   "GET /api/gaps/summary": { urteil: "KEIN_KO_INHALT", grund: "Zähler, keine Fragetexte." },
+  // R-1663 / R-2178: gibt Titel der Objekte aus, auf denen die Spuren einer Person liegen — also
+  // KO-Inhalt. Die Grundmenge läuft durch `sichtbarkeitsfilterFuer` (und `dropConfidential`) im
+  // AskService, bevor gezählt wird; dazu Schalter `expertMatching` und `ko.assign`.
+  "GET /api/gaps/:id/ansprechpartner": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "R-2178 — sichtbarkeitsfilterFuer über der Objektgrundlage, Titel nur sichtbarer Objekte.",
+  },
   // --- Entwürfe: eigener Bestand, nach Eigentümer begrenzt -----------------------------------
   // Pool-Auftrag (R-2099): dazu kommen Entwürfe, die ihr Autor BEWUSST in den gemeinsamen Pool
   // gegeben hat — Entwürfe, keine Wissensobjekte; entschieden von derselben einen Regel
@@ -640,6 +648,28 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/spaces/verschiebung": {
     urteil: "PRAEDIKAT",
     grund: "Spacewechsel nur an einem sichtbaren Artikel.",
+  },
+  // Hauptverantwortung übergeben (verantwortung-routes.ts): Titel nur über `darfSehen`; für nicht
+  // einsehbare Beiträge Kennung, Status und Space, aber kein Inhalt.
+  "GET /api/verantwortung/person/:id": {
+    urteil: "PRAEDIKAT",
+    grund: "Bestand einer Person — Titel nur für einsehbare Beiträge.",
+  },
+  "GET /api/verantwortung/ungeklaert": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Anzahl je Person ohne aktive Verantwortung; keine Titel, keine Kennungen.",
+  },
+  "POST /api/verantwortung/vorschau": {
+    urteil: "PRAEDIKAT",
+    grund: "Vorschau je Nachfolger — Titel nur für einsehbare Beiträge.",
+  },
+  "POST /api/verantwortung/uebergabe": {
+    urteil: "PRAEDIKAT",
+    grund: "Ergebnis je Beitrag — Titel nur für einsehbare Beiträge.",
+  },
+  "POST /api/verantwortung/deaktivierung": {
+    urteil: "PRAEDIKAT",
+    grund: "Übergabeergebnis vor der Deaktivierung — Titel nur für einsehbare Beiträge.",
   },
   "GET /api/i18n/locales": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
   "GET /api/i18n/:locale/:key": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
