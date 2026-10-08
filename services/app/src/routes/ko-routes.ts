@@ -2152,17 +2152,40 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         }
         const status = subject.aiCheck?.status;
         if (umfang === "vollstaendig") {
-          // R-1124: ein laufender Job behält seinen Umfang — kein zweiter Lauf daneben.
-          if (aiCheckWorker.laeuft(request.params.id)) {
+          // R-1124 (Bens Befund zu 3e62e335): die Wahl wird SYNCHRON im Worker vorgemerkt, bevor
+          // irgendein Speicherzugriff folgt. Die Vormerkung hält einen wartenden Job dieses Objekts
+          // vom Start zurück, bis er hochgestuft eingereiht ist — der Übergang wartend → laufend
+          // kann die Wahl damit nicht mehr verschlucken. Läuft schon ein Job, gibt es keine
+          // Vormerkung: 409, und der Prüfstatus bleibt unberührt.
+          const vormerkung = aiCheckWorker.vollabgleichVormerken?.(request.params.id);
+          if (vormerkung === undefined) {
+            reply.code(503).send({
+              error: "AI_CHECK_UNAVAILABLE",
+              message: "Die Hintergrund-Pruefung kennt keinen Vollabgleich.",
+            });
+            return;
+          }
+          if (vormerkung === null) {
             reply.code(409).send({
               error: "AI_CHECK_LAEUFT",
               message: "Fuer dieses Wissensobjekt laeuft gerade eine Pruefung.",
             });
             return;
           }
-          // AUFNAHME 20260922: ein ÜBERHOLTER abgeschlossener Nachweis ist wiederholbar — er gilt für
-          // eine frühere Basis. Läuft für das Objekt schon ein Job, reiht der Worker nicht doppelt ein.
-        } else if (status !== "failed" && status !== "pending" && !subject.aiCheck?.ueberholt) {
+          try {
+            await ko.markAiCheckPending(request.params.id);
+            const vermerkt = await ko.get(request.params.id);
+            vormerkung.einreihen(vermerkt?.aiCheck?.koVersion);
+          } catch (error) {
+            vormerkung.verwerfen();
+            throw error;
+          }
+          reply.code(200).send({ status: "pending", umfang });
+          return;
+        }
+        // AUFNAHME 20260922: ein ÜBERHOLTER abgeschlossener Nachweis ist wiederholbar — er gilt für
+        // eine frühere Basis. Läuft für das Objekt schon ein Job, reiht der Worker nicht doppelt ein.
+        if (status !== "failed" && status !== "pending" && !subject.aiCheck?.ueberholt) {
           reply.code(409).send({
             error: "AI_CHECK_NOT_RETRYABLE",
             message: "Fuer dieses Wissensobjekt steht kein wiederholbarer Pruef-Job an.",
@@ -2173,12 +2196,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         // WP-SHIP8-CLOSE-2 (bens F3): Vermerk NACH dem Setzen frisch lesen — der Job trägt die
         // Zielversion synchron (subject von oben wäre der VERALTETE Vermerk vor dem Retry).
         const marked = await ko.get(request.params.id);
-        aiCheckWorker.enqueue(request.params.id, marked?.aiCheck?.koVersion, umfang);
-        if (umfang === "vollstaendig") {
-          reply.code(200).send({ status: "pending", umfang });
-        } else {
-          reply.code(200).send({ status: "pending" });
-        }
+        aiCheckWorker.enqueue(request.params.id, marked?.aiCheck?.koVersion);
+        reply.code(200).send({ status: "pending" });
       } catch (error) {
         sendError(reply, error);
       }

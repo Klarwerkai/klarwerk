@@ -177,6 +177,13 @@ export function classifyAiCheckFailure(err: unknown): AiCheckFailureReason {
 // nur aus der ausdrücklichen Wahl am Wiederholen-Weg (detection-cap.ts).
 export type AiCheckRunner = (koId: string, umfang?: PruefUmfang) => Promise<AiCheckRunOutcome>;
 
+export interface VollabgleichVormerkung {
+  /** Reiht den Job als Vollabgleich ein bzw. stuft den wartenden hoch und löst die Sperre. */
+  einreihen(expectedKoVersion?: number): void;
+  /** Löst die Sperre ohne Einreihung (Fehlerpfad des Aufrufers). */
+  verwerfen(): void;
+}
+
 export interface AiCheckWorker {
   // Reiht einen Prüf-Job ein (dedupliziert gegen Queue UND laufenden Job) und startet die
   // Abarbeitung — feuert-und-vergisst, der Aufrufer wartet nie.
@@ -188,8 +195,18 @@ export interface AiCheckWorker {
   // ist die Eviction FAIL-CLOSED (kein Status-Write, s. enqueueInternal).
   // R-1124: `umfang` = "vollstaendig" markiert den Job als gewählten Vollabgleich. Steht für das
   // Objekt schon ein WARTENDER Job an, wird er hochgestuft (nie herab); ein LAUFENDER bleibt, wie er
-  // ist — das prüft der Aufrufer vorher über `laeuft`.
+  // ist. Wer die Wahl BESTÄTIGEN muss (Route), nimmt `vollabgleichVormerken`.
   enqueue(koId: string, expectedKoVersion?: number, umfang?: PruefUmfang): void;
+  /**
+   * R-1124 (Bens Befund zu 3e62e335) — die Wahl, die nicht verloren gehen kann. SYNCHRON: läuft für
+   * das Objekt gerade ein Job, `null` (nichts vorgemerkt). Sonst hält die Vormerkung jeden wartenden
+   * Job DIESES Objekts vom Start zurück, bis `einreihen` ihn als Vollabgleich einreiht bzw.
+   * hochstuft — oder `verwerfen` die Sperre ohne Einreihung löst. Zwischen Vormerkung und Einreihung
+   * darf der Aufrufer asynchron arbeiten (Vermerk setzen und lesen); der Übergang wartend → laufend
+   * kann die Wahl dabei nicht mehr verschlucken. Optional, damit schmale Attrappen gültig bleiben;
+   * fehlt sie, kann der Aufrufer keinen Vollabgleich zusagen.
+   */
+  vollabgleichVormerken?(koId: string): VollabgleichVormerkung | null;
   has(koId: string): boolean;
   /**
    * PRÜFSTATUS-ANZEIGE (R-0208): läuft der Job für dieses Objekt GERADE (nicht nur eingereiht)?
@@ -287,6 +304,17 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
   // R-1124: Jobs, für die ein Mensch den Vollabgleich gewählt hat (wartend oder laufend). Nur im
   // Speicher wie die Queue; ein Neustart oder eine Verdrängung fällt auf den gedeckelten Lauf zurück.
   const vollstaendig = new Set<string>();
+  // R-1124 (Bens Befund zu 3e62e335): offene Vormerkungen je Objekt. Ein wartender Job eines
+  // vorgemerkten Objekts startet nicht, bis jede Vormerkung eingereiht oder verworfen ist.
+  const vorgemerkt = new Map<string, number>();
+  const vormerkungLoesen = (koId: string): void => {
+    const rest = (vorgemerkt.get(koId) ?? 0) - 1;
+    if (rest > 0) {
+      vorgemerkt.set(koId, rest);
+    } else {
+      vorgemerkt.delete(koId);
+    }
+  };
   // WP-SHIP8-FINAL: Auto-Retry-Zähler je KO — zählt Re-Enqueues für GENAU EINE Zielversion;
   // eine neue Version setzt den Zähler zurück (der Deckel begrenzt den revise-Loop, nicht den
   // normalen Fluss). Nur im Speicher — wie die Queue selbst (Neustart-Grenze oben).
@@ -486,8 +514,13 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
   };
 
   const pump = (): void => {
-    while (active < AI_CHECK_CONCURRENCY && queue.length > 0) {
-      const koId = queue.shift() as string;
+    while (active < AI_CHECK_CONCURRENCY) {
+      // R-1124: ein vorgemerktes Objekt wird übersprungen, die übrigen laufen weiter.
+      const stelle = queue.findIndex((id) => !vorgemerkt.has(id));
+      if (stelle < 0) {
+        break;
+      }
+      const [koId] = queue.splice(stelle, 1) as [string];
       queuedIds.delete(koId);
       queuedVersions.delete(koId); // der Lauf (runOne) liest seine Erwartung selbst frisch
       runningIds.add(koId);
@@ -514,6 +547,34 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
     enqueue(koId: string, expectedKoVersion?: number, umfang?: PruefUmfang): void {
       enqueueInternal(koId, expectedKoVersion, umfang);
       pump();
+    },
+    vollabgleichVormerken(koId: string): VollabgleichVormerkung | null {
+      if (runningIds.has(koId)) {
+        return null;
+      }
+      vorgemerkt.set(koId, (vorgemerkt.get(koId) ?? 0) + 1);
+      let offen = true;
+      return {
+        einreihen(expectedKoVersion?: number): void {
+          if (!offen) {
+            return;
+          }
+          offen = false;
+          // Solange die Vormerkung stand, konnte kein Job dieses Objekts starten: er wartet (und
+          // wird hochgestuft) oder steht noch gar nicht an (und wird neu eingereiht).
+          enqueueInternal(koId, expectedKoVersion, "vollstaendig");
+          vormerkungLoesen(koId);
+          pump();
+        },
+        verwerfen(): void {
+          if (!offen) {
+            return;
+          }
+          offen = false;
+          vormerkungLoesen(koId);
+          pump();
+        },
+      };
     },
     has(koId: string): boolean {
       return queuedIds.has(koId) || runningIds.has(koId);

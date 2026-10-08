@@ -14,11 +14,17 @@
 //   · V4  der Runner reicht den Umfang an beide Wege, die Zusammenfassung ist vollständig;
 //   · V5  der Worker trägt die Wahl je Job (hochstufen, nie herab; Normalfall ruft wie bisher);
 //   · V6  die Route nimmt die Wahl nur von `ko.validate`, auch bei aktuellem Nachweis, und weist
-//         einen unbekannten Umfang ab; ohne Angabe gilt weiter der 409 des Bestands.
+//         einen unbekannten Umfang ab; ohne Angabe gilt weiter der 409 des Bestands;
+//   · V7  (Bens Befund zu 3e62e335) der Übergang wartend → laufend verschluckt die Wahl nicht:
+//         die Vormerkung hält den wartenden Job zurück, bis er hochgestuft ist; läuft er schon,
+//         gibt es keine Vormerkung (409) und der Prüfstatus bleibt unberührt;
+//   · V8  dasselbe an der echten Route: der wartende gedeckelte Job würde genau WÄHREND der
+//         Speicherzugriffe der Route starten — er startet erst danach, und zwar als Vollabgleich.
 //
 // GEGENPROBE: in `conflict-detection.ts` `vollabgleich: umfang === "vollstaendig"` entfernen → V2
 // wird rot (die fünf Nicht-Nachbarn fehlen); `cap: vergleichsDeckel(umfang)` durch den festen Deckel
-// ersetzen → V2 und V3 werden rot.
+// ersetzen → V2 und V3 werden rot. In `pump` (ai-check-worker.ts) die Vormerkung nicht beachten
+// (`queue.findIndex(() => true)`) → V7 und V8 werden rot (der Job startet gedeckelt).
 import { describe, expect, it } from "vitest";
 import {
   type AiCheckRunner,
@@ -274,5 +280,142 @@ describe("R-1124 · Route POST /api/kos/:id/ai-check", () => {
     await worker.idle();
     expect(aufrufe).toEqual([`${ko.id}:ohne`, `${ko.id}:vollstaendig`]);
     expect((await s.ko.get(ko.id))?.aiCheck?.status).toBe("done");
+  });
+});
+
+/** Ein Lauf, der je Objekt auf ein eigenes Tor wartet und seinen Aufruf protokolliert. */
+function torLauf() {
+  const aufrufe: string[] = [];
+  const tore = new Map<string, () => void>();
+  // Geöffnet, bevor der Lauf sein Tor aufgestellt hat (der Worker liest vorher asynchron).
+  const vorabOffen = new Set<string>();
+  const run: AiCheckRunner = async (koId, umfang) => {
+    aufrufe.push(`${koId}:${umfang ?? "ohne"}`);
+    if (!vorabOffen.delete(koId)) {
+      await new Promise<void>((r) => {
+        tore.set(koId, r);
+      });
+    }
+    return { ok: true };
+  };
+  const oeffne = (koId: string): void => {
+    const tor = tore.get(koId);
+    if (tor) {
+      tore.delete(koId);
+      tor();
+    } else {
+      vorabOffen.add(koId);
+    }
+  };
+  return { aufrufe, run, oeffne };
+}
+
+const ticks = (ms = 50): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+describe("R-1124 · Startwechsel wartend → laufend (Bens Befund zu 3e62e335)", () => {
+  it("V7: die Vormerkung hält den wartenden Job zurück; laufend → keine Vormerkung", async () => {
+    const s = buildServices();
+    const a = await anlegen(s, "A", "erstes objekt im betrieb", "Betrieb");
+    const b = await anlegen(s, "B", "zweites objekt im betrieb", "Betrieb");
+    const lauf = torLauf();
+    const worker = createAiCheckWorker({ ko: s.ko, run: lauf.run, log: leiseLog });
+    worker.enqueue(a.id); // läuft
+    worker.enqueue(b.id); // wartet gedeckelt
+    expect(worker.vollabgleichVormerken?.(a.id), "laufender Job: nichts zuzusagen").toBeNull();
+
+    const vormerkung = worker.vollabgleichVormerken?.(b.id);
+    expect(vormerkung).toBeTruthy();
+    lauf.oeffne(a.id); // A endet — ohne Vormerkung startete B jetzt gedeckelt
+    await ticks();
+    expect(worker.laeuft(b.id), "B wartet auf die Einreihung").toBe(false);
+    vormerkung?.einreihen();
+    await ticks();
+    expect(worker.laeuft(b.id)).toBe(true);
+    lauf.oeffne(b.id);
+    await worker.idle();
+    expect(lauf.aufrufe).toEqual([`${a.id}:ohne`, `${b.id}:vollstaendig`]);
+  });
+
+  it("V7b: verwerfen löst die Sperre — der wartende Job läuft gedeckelt weiter", async () => {
+    const s = buildServices();
+    const a = await anlegen(s, "A", "erstes objekt im betrieb", "Betrieb");
+    const b = await anlegen(s, "B", "zweites objekt im betrieb", "Betrieb");
+    const lauf = torLauf();
+    const worker = createAiCheckWorker({ ko: s.ko, run: lauf.run, log: leiseLog });
+    worker.enqueue(a.id);
+    worker.enqueue(b.id);
+    const vormerkung = worker.vollabgleichVormerken?.(b.id);
+    lauf.oeffne(a.id);
+    await ticks();
+    vormerkung?.verwerfen();
+    vormerkung?.einreihen(); // nach dem Verwerfen wirkungslos
+    await ticks();
+    lauf.oeffne(b.id);
+    await worker.idle();
+    expect(lauf.aufrufe).toEqual([`${a.id}:ohne`, `${b.id}:ohne`]);
+  });
+
+  it("V8: an der Route startet der wartende Job erst nach der Zusage — als Vollabgleich", async () => {
+    const s = buildServices();
+    const lauf = torLauf();
+    const worker = createAiCheckWorker({ ko: s.ko, run: lauf.run, log: leiseLog });
+    s.aiCheckWorker = worker;
+    const app = buildApp(s);
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Pedi", email: "p@x.de", password: "secret123" },
+    });
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "p@x.de", password: "secret123" },
+    });
+    const headers = { authorization: `Bearer ${login.json().token}` };
+
+    const a = await anlegen(s, "A", "erstes objekt im betrieb", "Betrieb");
+    const b = await anlegen(s, "B", "zweites objekt im betrieb", "Betrieb");
+    for (const ko of [a, b]) {
+      await s.ko.markAiCheckPending(ko.id);
+      worker.enqueue(ko.id, (await s.ko.get(ko.id))?.aiCheck?.koVersion);
+    }
+    // A läuft, B wartet gedeckelt. Genau während die Route den Vermerk von B setzt, endet A — der
+    // Moment, in dem der Worker ohne Absicherung B gedeckelt startete.
+    const vermerken = s.ko.markAiCheckPending.bind(s.ko);
+    s.ko.markAiCheckPending = async (id: string, at?: string) => {
+      if (id === b.id) {
+        lauf.oeffne(a.id);
+        await ticks();
+      }
+      return vermerken(id, at);
+    };
+
+    const zusage = await app.inject({
+      method: "POST",
+      url: `/api/kos/${b.id}/ai-check`,
+      headers,
+      payload: { umfang: "vollstaendig" },
+    });
+    expect(zusage.statusCode).toBe(200);
+    expect(zusage.json()).toEqual({ status: "pending", umfang: "vollstaendig" });
+    await ticks();
+    lauf.oeffne(b.id);
+    await worker.idle();
+    expect(lauf.aufrufe).toEqual([`${a.id}:ohne`, `${b.id}:vollstaendig`]);
+
+    // Läuft der Job schon, sagt die Route nichts zu und lässt den Prüfstatus stehen.
+    worker.enqueue(a.id, (await s.ko.get(a.id))?.aiCheck?.koVersion);
+    const vorher = (await s.ko.get(a.id))?.aiCheck;
+    const abgelehnt = await app.inject({
+      method: "POST",
+      url: `/api/kos/${a.id}/ai-check`,
+      headers,
+      payload: { umfang: "vollstaendig" },
+    });
+    expect(abgelehnt.statusCode).toBe(409);
+    expect(abgelehnt.json().error).toBe("AI_CHECK_LAEUFT");
+    expect((await s.ko.get(a.id))?.aiCheck).toEqual(vorher);
+    lauf.oeffne(a.id);
+    await worker.idle();
   });
 });
