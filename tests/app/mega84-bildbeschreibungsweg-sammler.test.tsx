@@ -2169,8 +2169,15 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Komponenten über 480 kamen mit main (Grundmenge 596 → 644). Welche es außer `Zeichnung` und
     // `AnhangZeichnung` sind, ist ohne Git-Verlauf nicht namentlich bestimmt. `anbieter` 1 und
     // `traeger` 2 sind in derselben Meldung unverändert — keine neue Bildbeschreibungsfläche.
+    //
+    // Nacharbeit 8: GEMESSEN 513. Am Kandidaten 85661d72 meldete der Sammler wörtlich „gemessen: 513
+    // Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 647 Quelldateien … expected
+    // { komponenten: 513, … } to deeply equal { komponenten: 512, … }"; die übrigen 43 Fälle grün.
+    // Seit 2100605a änderte dieser Auftrag nur diesen Sollwert (eine Testdatei, keine Quelldatei der
+    // Grundmenge); die eine Komponente kam mit main (Grundmenge 644 → 647), namentlich ohne
+    // Git-Verlauf nicht bestimmt. `anbieter` 1 und `traeger` 2 unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 512,
+      komponenten: 513,
       anbieter: 1,
       traeger: 2,
     });
