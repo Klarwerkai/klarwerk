@@ -381,6 +381,79 @@ describe("Register A17b · Nacharbeit (ben Befund 1): Rollenwerte werden am Synt
     expect(modalAbgleich(rolle)).toEqual([]);
   });
 
+  it("Nacharbeit 4: gespreizte Props mit lokal typisierter Rolle werden am Spread ausgewertet", () => {
+    // bens Fall wörtlich: die Rolle steht nur im Parametertyp, nirgends ein Objektliteral.
+    const datei = "apps/web/src/components/A17bPropsParameter.tsx";
+    const parameter = synth(datei, [
+      "export function F(props: { role: 'dialog' }): JSX.Element {",
+      "  return <div {...props} />;",
+      "}",
+    ]);
+    expect(parameter.kandidaten).toEqual([{ datei, zeile: 2, art: "role-dialog" }]);
+    expect(modalAbgleich(parameter), "zugeflossen ⇒ keine unbekannte Bauform").toEqual([]);
+    expect(beurteile([parameter]).rot[0]).toContain(`${datei}:2`);
+
+    // Rest-Bindung über ein lokales Interface; an createElement über einen lokalen Alias.
+    const rest = synth("apps/web/src/components/A17bPropsRest.tsx", [
+      'interface Props { id: string; role: "alertdialog" | "region"; }',
+      "export function F({ id, ...rest }: Props): JSX.Element {",
+      "  return <section id={id} {...rest} />;",
+      "}",
+    ]);
+    expect(rest.kandidaten.map((k) => `${k.zeile}:${k.art}`)).toEqual(["3:role-dialog"]);
+
+    const erzeugt = synth("apps/web/src/lib/a17bPropsCreate.ts", [
+      'import { createElement } from "react";',
+      'type Props = { role: "dialog" };',
+      "export function f(props: Props): unknown {",
+      '  return createElement("div", props);',
+      "}",
+    ]);
+    expect(erzeugt.kandidaten.map((k) => `${k.zeile}:${k.art}`)).toEqual(["4:role-dialog"]);
+  });
+
+  it("Nacharbeit 4: eine vorhandene, aber unbestimmbare Rolle gespreizter Props ist rot", () => {
+    const datei = "apps/web/src/components/A17bPropsOffen.tsx";
+    const e = synth(datei, [
+      "export function F(props: { id: string; role?: string }): JSX.Element {",
+      "  return <div {...props} />;",
+      "}",
+    ]);
+    expect(e.kandidaten).toEqual([]);
+    const rot = modalAbgleich(e);
+    expect(rot).toHaveLength(1);
+    expect(rot[0]).toContain(`${datei}:2`);
+    expect(rot[0]).toContain("statisch nicht bestimmbar");
+  });
+
+  it("Nacharbeit 4 GEGENPROBE: ohne Rolle im Typ, mit herausgelöster Rolle und als reiner Typ kein Befund", () => {
+    const ohneRolle = synth("apps/web/src/components/A17bPropsOhneRolle.tsx", [
+      "type Props = { id: string; titel?: string };",
+      "export function F(props: Props): JSX.Element {",
+      "  return <div {...props} />;",
+      "}",
+    ]);
+    expect(ohneRolle.kandidaten).toEqual([]);
+    expect(modalAbgleich(ohneRolle)).toEqual([]);
+
+    // `role` ist neben dem Rest herausgelöst — der Rest trägt keine Rolle mehr.
+    const herausgeloest = synth("apps/web/src/components/A17bPropsHerausgeloest.tsx", [
+      'interface Props { id: string; role: "dialog" | "region"; }',
+      "export function F({ role, ...rest }: Props): JSX.Element {",
+      "  return <section {...rest} data-rolle={role} />;",
+      "}",
+    ]);
+    expect(herausgeloest.kandidaten).toEqual([]);
+    expect(modalAbgleich(herausgeloest)).toEqual([]);
+
+    // Ein reiner Typ ohne Verwendung bleibt ausgenommen.
+    const unbenutzt = synth("apps/web/src/lib/a17bPropsTyp.ts", [
+      'export type DialogProps = { role: "dialog" };',
+    ]);
+    expect(unbenutzt.kandidaten).toEqual([]);
+    expect(modalAbgleich(unbenutzt)).toEqual([]);
+  });
+
   it("GEGENPROBE: die Bauformen des Bestands bleiben ohne Befund (Parameter-Vorgabe mit Literal-Union, Bedingung)", () => {
     // Die Form aus `apps/web/src/shell/Menue.tsx`: destrukturierter Parameter, Vorgabe und
     // Literal-Union im Typ — vollständig bestimmbar, kein Dialog.
@@ -529,6 +602,21 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
       }),
     );
     expect(titel.rot).toEqual([]);
+  });
+
+  it("Nacharbeit 4: bens Parameter-Spread in einem sonst grünen Baum macht das TOR rot", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Gespreizt.tsx": [
+          "export function Gespreizt(props: { role: 'dialog' }): JSX.Element {",
+          "  return <div {...props} />;",
+          "}",
+        ],
+      }),
+    );
+    expect(rot).toHaveLength(1);
+    expect(rot[0]).toContain("apps/web/src/components/Gespreizt.tsx:2 — role-dialog");
   });
 
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {

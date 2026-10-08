@@ -306,6 +306,189 @@ function verkette(knoten: ts.Node, links: Wertbild, rechts: Wertbild): Wertbild 
   };
 }
 
+// Die Typauflösung liegt auf Modulebene: die Wertauswertung (`statischeWerte`) und die Rolle
+// gespreizter Props (`propsRollenwerte`, Nacharbeit 4) lesen dieselben lokalen Typen.
+
+function typNamen(deklarationen: Deklarationen, name: string): ts.Node[] {
+  const alle = deklarationen.get(name) ?? [];
+  return alle.filter((d) => ts.isTypeAliasDeclaration(d) || ts.isInterfaceDeclaration(d));
+}
+
+/** Der Typ des Mitglieds `name` in einem LOKAL deklarierten Objekttyp — sonst `undefined`. */
+function mitgliedsTypIn(
+  deklarationen: Deklarationen,
+  typ: ts.TypeNode,
+  name: string,
+  tiefe: number,
+): ts.TypeNode | undefined {
+  if (tiefe > MAX_TIEFE) {
+    return undefined;
+  }
+  if (ts.isParenthesizedTypeNode(typ)) {
+    return mitgliedsTypIn(deklarationen, typ.type, name, tiefe + 1);
+  }
+  if (ts.isIntersectionTypeNode(typ)) {
+    for (const t of typ.types) {
+      const gefunden = mitgliedsTypIn(deklarationen, t, name, tiefe + 1);
+      if (gefunden) {
+        return gefunden;
+      }
+    }
+    return undefined;
+  }
+  const mitglieder = (liste: ts.NodeArray<ts.TypeElement>): ts.TypeNode | undefined => {
+    for (const m of liste) {
+      if (ts.isPropertySignature(m) && eigenschaftsName(m.name) === name) {
+        return m.type;
+      }
+    }
+    return undefined;
+  };
+  if (ts.isTypeLiteralNode(typ)) {
+    return mitglieder(typ.members);
+  }
+  if (ts.isTypeReferenceNode(typ) && ts.isIdentifier(typ.typeName)) {
+    for (const d of typNamen(deklarationen, typ.typeName.text)) {
+      let gefunden: ts.TypeNode | undefined;
+      if (ts.isInterfaceDeclaration(d)) {
+        gefunden = mitglieder(d.members);
+      } else if (ts.isTypeAliasDeclaration(d)) {
+        gefunden = mitgliedsTypIn(deklarationen, d.type, name, tiefe + 1);
+      }
+      if (gefunden) {
+        return gefunden;
+      }
+    }
+  }
+  return undefined;
+}
+
+/** Die Zeichenkettenwerte eines Typs: Literal-Unionen und lokale Aliasse; sonst offen. */
+function typWerteIn(deklarationen: Deklarationen, typ: ts.TypeNode, tiefe: number): Wertbild {
+  if (tiefe > MAX_TIEFE) {
+    return { werte: [], offen: [typ] };
+  }
+  if (ts.isLiteralTypeNode(typ)) {
+    return istZeichenkettenLiteral(typ.literal)
+      ? { werte: [{ text: typ.literal.text, knoten: typ.literal }], offen: [] }
+      : { werte: [], offen: [] };
+  }
+  if (ts.isUnionTypeNode(typ)) {
+    return vereine(typ.types.map((t) => typWerteIn(deklarationen, t, tiefe + 1)));
+  }
+  if (ts.isParenthesizedTypeNode(typ)) {
+    return typWerteIn(deklarationen, typ.type, tiefe + 1);
+  }
+  if (
+    typ.kind === ts.SyntaxKind.UndefinedKeyword ||
+    typ.kind === ts.SyntaxKind.NullKeyword ||
+    typ.kind === ts.SyntaxKind.BooleanKeyword ||
+    typ.kind === ts.SyntaxKind.NumberKeyword
+  ) {
+    return { werte: [], offen: [] };
+  }
+  if (ts.isTypeReferenceNode(typ) && ts.isIdentifier(typ.typeName)) {
+    const alias = typNamen(deklarationen, typ.typeName.text).find(ts.isTypeAliasDeclaration);
+    if (alias) {
+      return typWerteIn(deklarationen, alias.type, tiefe + 1);
+    }
+  }
+  return { werte: [], offen: [typ] };
+}
+
+/** Der Typ, den eine destrukturierte Bindung aus dem Typ ihres Halters bekommt. */
+function bindungsTypIn(
+  deklarationen: Deklarationen,
+  b: ts.BindingElement,
+): ts.TypeNode | undefined {
+  const name = b.propertyName ?? b.name;
+  const muster = b.parent;
+  const halter = muster.parent;
+  if (
+    !ts.isObjectBindingPattern(muster) ||
+    !(ts.isIdentifier(name) || ts.isStringLiteral(name)) ||
+    !(ts.isParameter(halter) || ts.isVariableDeclaration(halter)) ||
+    !halter.type
+  ) {
+    return undefined;
+  }
+  return mitgliedsTypIn(deklarationen, halter.type, name.text, 0);
+}
+
+/** Steht im Wert (auch hinter Klammer, Bedingung, `as`, Rückfallkette) ein Objektliteral? */
+function traegtObjektliteral(n: ts.Node): boolean {
+  if (ts.isObjectLiteralExpression(n)) {
+    return true;
+  }
+  if (!istWerthuelle(n)) {
+    return false;
+  }
+  return ts.forEachChild(n, (c) => traegtObjektliteral(c) || undefined) ?? false;
+}
+
+/**
+ * Der Objekttyp, den eine Deklaration als Props-Wert trägt — nur wenn er LOKAL steht. Ein
+ * Objektliteral als Initialisierer gibt `undefined`: dessen `role` erhebt der Eigenschaftsbesucher
+ * (`istPropsObjekt`), eine zweite Meldung derselben Stelle wäre eine Doppelzählung.
+ */
+function propsTypVon(deklarationen: Deklarationen, d: ts.Node): ts.TypeNode | undefined {
+  if (ts.isParameter(d) && ts.isIdentifier(d.name)) {
+    return d.type;
+  }
+  if (ts.isVariableDeclaration(d)) {
+    return d.initializer !== undefined && traegtObjektliteral(d.initializer) ? undefined : d.type;
+  }
+  if (ts.isBindingElement(d) && d.dotDotDotToken !== undefined) {
+    // `{ a, ...rest }: Props` — `rest` trägt `role`, sofern es nicht daneben herausgelöst wurde.
+    const muster = d.parent;
+    if (!ts.isObjectBindingPattern(muster)) {
+      return undefined;
+    }
+    const herausgeloest = muster.elements.some((e) => {
+      const name = e.propertyName ?? e.name;
+      return e !== d && ts.isIdentifier(name) && name.text === "role";
+    });
+    const halter = muster.parent;
+    if (herausgeloest || !(ts.isParameter(halter) || ts.isVariableDeclaration(halter))) {
+      return undefined;
+    }
+    return halter.type;
+  }
+  if (ts.isBindingElement(d)) {
+    return bindungsTypIn(deklarationen, d);
+  }
+  return undefined;
+}
+
+/**
+ * Nacharbeit 4 (ben): die Rolle eines GESPREIZTEN Props-Ausdrucks, am Verwendungsort bestimmt —
+ * `<div {...props} />` oder `createElement("div", props)`, wenn `props` ein Parameter, eine
+ * destrukturierte Bindung oder ein Rest mit lokal deklariertem Typ ist. `undefined` heisst: nach
+ * allem, was diese Datei sagt, trägt der Ausdruck keine Rolle (oder sein Typ ist importiert und
+ * hier nicht lesbar). Ein Wertbild mit `offen` heisst: eine Rolle ist da, ihr Wert steht nicht fest.
+ */
+export function propsRollenwerte(
+  ausdruck: ts.Node,
+  deklarationen: Deklarationen,
+): Wertbild | undefined {
+  let k: ts.Node = ausdruck;
+  while (ts.isParenthesizedExpression(k) || ts.isNonNullExpression(k) || ts.isAsExpression(k)) {
+    k = k.expression;
+  }
+  if (!ts.isIdentifier(k)) {
+    return undefined;
+  }
+  const bilder: Wertbild[] = [];
+  for (const d of sichtbareDeklarationen(deklarationen, k)) {
+    const typ = propsTypVon(deklarationen, d);
+    const rolle = typ ? mitgliedsTypIn(deklarationen, typ, "role", 0) : undefined;
+    if (rolle) {
+      bilder.push(typWerteIn(deklarationen, rolle, 0));
+    }
+  }
+  return bilder.length > 0 ? vereine(bilder) : undefined;
+}
+
 /**
  * Alle möglichen Zeichenkettenwerte eines Ausdrucks, statisch am Syntaxbaum ermittelt. Ein
  * nicht-zeichenkettiger Wert (`undefined`, `null`, Zahl, Wahrheitswert) trägt nichts bei; alles,
@@ -316,100 +499,10 @@ export function statischeWerte(ausdruck: ts.Node, deklarationen: Deklarationen):
   const unbestimmt = (n: ts.Node): Wertbild => ({ werte: [], offen: [n] });
   const besucht = new Set<ts.Node>();
 
-  const typNamen = (name: string): ts.Node[] => {
-    const alle = deklarationen.get(name) ?? [];
-    return alle.filter((d) => ts.isTypeAliasDeclaration(d) || ts.isInterfaceDeclaration(d));
-  };
-
-  const mitgliedsTyp = (typ: ts.TypeNode, name: string, tiefe: number): ts.TypeNode | undefined => {
-    if (tiefe > MAX_TIEFE) {
-      return undefined;
-    }
-    if (ts.isParenthesizedTypeNode(typ)) {
-      return mitgliedsTyp(typ.type, name, tiefe + 1);
-    }
-    if (ts.isIntersectionTypeNode(typ)) {
-      for (const t of typ.types) {
-        const gefunden = mitgliedsTyp(t, name, tiefe + 1);
-        if (gefunden) {
-          return gefunden;
-        }
-      }
-      return undefined;
-    }
-    const mitglieder = (liste: ts.NodeArray<ts.TypeElement>): ts.TypeNode | undefined => {
-      for (const m of liste) {
-        if (ts.isPropertySignature(m) && eigenschaftsName(m.name) === name) {
-          return m.type;
-        }
-      }
-      return undefined;
-    };
-    if (ts.isTypeLiteralNode(typ)) {
-      return mitglieder(typ.members);
-    }
-    if (ts.isTypeReferenceNode(typ) && ts.isIdentifier(typ.typeName)) {
-      for (const d of typNamen(typ.typeName.text)) {
-        let gefunden: ts.TypeNode | undefined;
-        if (ts.isInterfaceDeclaration(d)) {
-          gefunden = mitglieder(d.members);
-        } else if (ts.isTypeAliasDeclaration(d)) {
-          gefunden = mitgliedsTyp(d.type, name, tiefe + 1);
-        }
-        if (gefunden) {
-          return gefunden;
-        }
-      }
-    }
-    return undefined;
-  };
-
-  const typWerte = (typ: ts.TypeNode, tiefe: number): Wertbild => {
-    if (tiefe > MAX_TIEFE) {
-      return unbestimmt(typ);
-    }
-    if (ts.isLiteralTypeNode(typ)) {
-      return istZeichenkettenLiteral(typ.literal)
-        ? { werte: [{ text: typ.literal.text, knoten: typ.literal }], offen: [] }
-        : leer();
-    }
-    if (ts.isUnionTypeNode(typ)) {
-      return vereine(typ.types.map((t) => typWerte(t, tiefe + 1)));
-    }
-    if (ts.isParenthesizedTypeNode(typ)) {
-      return typWerte(typ.type, tiefe + 1);
-    }
-    if (
-      typ.kind === ts.SyntaxKind.UndefinedKeyword ||
-      typ.kind === ts.SyntaxKind.NullKeyword ||
-      typ.kind === ts.SyntaxKind.BooleanKeyword ||
-      typ.kind === ts.SyntaxKind.NumberKeyword
-    ) {
-      return leer();
-    }
-    if (ts.isTypeReferenceNode(typ) && ts.isIdentifier(typ.typeName)) {
-      const alias = typNamen(typ.typeName.text).find(ts.isTypeAliasDeclaration);
-      if (alias) {
-        return typWerte(alias.type, tiefe + 1);
-      }
-    }
-    return unbestimmt(typ);
-  };
-
-  const bindungsTyp = (b: ts.BindingElement): ts.TypeNode | undefined => {
-    const name = b.propertyName ?? b.name;
-    const muster = b.parent;
-    const halter = muster.parent;
-    if (
-      !ts.isObjectBindingPattern(muster) ||
-      !(ts.isIdentifier(name) || ts.isStringLiteral(name)) ||
-      !(ts.isParameter(halter) || ts.isVariableDeclaration(halter)) ||
-      !halter.type
-    ) {
-      return undefined;
-    }
-    return mitgliedsTyp(halter.type, name.text, 0);
-  };
+  const typWerte = (typ: ts.TypeNode, tiefe: number): Wertbild =>
+    typWerteIn(deklarationen, typ, tiefe);
+  const bindungsTyp = (b: ts.BindingElement): ts.TypeNode | undefined =>
+    bindungsTypIn(deklarationen, b);
 
   // `besucht` ist der aktuelle Auflösungspfad, kein Gedächtnis: `a + a` wertet `a` zweimal aus,
   // nur ein Kreis (`const a = b; const b = a`) bricht ab.
@@ -668,6 +761,26 @@ export function erhebeDatei(quelle: Quelle): DateiErhebung {
     }
   };
 
+  // Die Rolle gespreizter Props: ein Dialogwert wird Kandidat am Spread, eine vorhandene, aber
+  // unbestimmbare Rolle (`role?: string`) eine unbekannte Bauform — rot mit Datei und Zeile.
+  const meldePropsRolle = (ausdruck: ts.Node): void => {
+    const bild = propsRollenwerte(ausdruck, deklarationen);
+    if (bild === undefined) {
+      return;
+    }
+    for (const w of bild.werte) {
+      if (istDialogName(w.text)) {
+        melde(ausdruck, "role-dialog");
+        kandidatTokens.add(w.knoten);
+      }
+    }
+    if (bild.offen.length > 0) {
+      unbekannteBauformen.push(
+        `${quelle.datei}:${zeileVon(sf, ausdruck)} — gespreizte Props „${ausdruck.getText(sf).slice(0, 60)}“ tragen eine Rolle, deren Wert statisch nicht bestimmbar ist: ob hier ein Dialog entsteht, kann dieser Sammler nicht beurteilen`,
+      );
+    }
+  };
+
   // Alle Verwendungen einer lokalen Bindung — nach derselben Sichtbarkeitsregel wie die
   // Wertauswertung, damit ein gleichnamiger Bezeichner in einem anderen Block nicht mitzählt.
   const verwendungen = (decl: ts.Node, name: string): ts.Identifier[] => {
@@ -850,6 +963,18 @@ export function erhebeDatei(quelle: Quelle): DateiErhebung {
     }
     if (ts.isShorthandPropertyAssignment(node) && node.name.text === "role") {
       meldeRolle(node.name, istPropsObjekt(node.parent));
+    }
+    // Nacharbeit 4 (ben): der SPREAD ist selbst Ausgangspunkt. `<div {...props} />` mit
+    // `props: { role: "dialog" }` hat kein Objektliteral, an dem der Besucher oben ansetzen könnte —
+    // die Rolle steht nur im lokalen Typ des Parameters (`propsRollenwerte`).
+    if (ts.isJsxSpreadAttribute(node)) {
+      meldePropsRolle(node.expression);
+    }
+    if (ts.isCallExpression(node) && aufrufName(node) === "createElement") {
+      const props = node.arguments[1];
+      if (props) {
+        meldePropsRolle(props);
+      }
     }
     if (ts.isCallExpression(node) && aufrufName(node) === "setAttribute") {
       const [attribut, wert] = node.arguments;
