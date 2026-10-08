@@ -560,7 +560,12 @@ type Kurzwortbefund = { readonly kandidaten: number; readonly gefunden: number }
 const KURZWORT: ReadonlyMap<string, Kurzwortbefund> = new Map<string, Kurzwortbefund>([
   ["de", { kandidaten: 26, gefunden: 26 }],
   ["en", { kandidaten: 31, gefunden: 31 }],
-  ["nl", { kandidaten: 30, gefunden: 30 }],
+  // Aufnahme gesamt-sprache-begriffe (R-0908/R-0975, Integration): die NL-Abschnittstitel trugen
+  // zwei Kürzel für dasselbe — „KM" (kwaliteitsmanagement, dreimal) und „QM" (einmal). Klara zeigt
+  // jetzt die einheitlichen Titel aus `texte/fachwort.ts`, durchgehend „KM"; damit verlässt genau
+  // das Kurzwort „qm" den NL-Korpus. 30 → 29 kommt vom TEXT, wie die Meldung unten voraussetzt;
+  // die Schwellen in `klaraRegistry.ts` sind unverändert.
+  ["nl", { kandidaten: 29, gefunden: 29 }],
 ]);
 
 // ------------------------------------------------------------------------------------------------

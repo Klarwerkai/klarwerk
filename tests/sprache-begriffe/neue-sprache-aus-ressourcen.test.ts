@@ -45,6 +45,14 @@ import { repoPfad } from "../support/repoPfad";
 
 const MIT_FR = ["de", "en", "nl", "fr"];
 
+/** Das Wurzelelement unter jsdom — strukturell typisiert, der Root-Typcheck führt kein lib.dom. */
+interface WurzelLike {
+  getAttribute(name: string): string | null;
+  setAttribute(name: string, wert: string): void;
+}
+const wurzel = (): WurzelLike =>
+  (globalThis as unknown as { document: { documentElement: WurzelLike } }).document.documentElement;
+
 const buehnen: string[] = [];
 afterAll(() => {
   for (const ordner of buehnen) {
@@ -174,7 +182,7 @@ describe("K10 · R-0997 — die Sprachmenge kommt aus den Ressourcen", () => {
 describe("K10 · die Wahl folgt der Anmeldung, `<html lang>` bleibt bei JOB 536", () => {
   afterEach(() => {
     globalThis.localStorage.removeItem(SPRACHE_STORAGE_KEY);
-    document.documentElement.setAttribute("lang", "de");
+    wurzel().setAttribute("lang", "de");
   });
 
   it("R-6 eine angemeldete Sprache wird beim Start übernommen, eine nicht angemeldete nicht", () => {
@@ -185,11 +193,11 @@ describe("K10 · die Wahl folgt der Anmeldung, `<html lang>` bleibt bei JOB 536"
 
   it("R-7 die Regel für <html lang> ist getrennt und unverändert: genau de|en|nl, fr ist ein No-op", () => {
     expect([...ERLAUBTE_SPRACHEN]).toEqual(["de", "en", "nl"]);
-    document.documentElement.setAttribute("lang", "de");
+    wurzel().setAttribute("lang", "de");
     applyHtmlLang("fr");
-    expect(document.documentElement.getAttribute("lang")).toBe("de");
+    expect(wurzel().getAttribute("lang")).toBe("de");
     applyHtmlLang("en");
-    expect(document.documentElement.getAttribute("lang")).toBe("en");
+    expect(wurzel().getAttribute("lang")).toBe("en");
   });
 
   it("R-8 keine Sprachliste mehr im Programm: Umschalter und Laufzeit lesen die angemeldete Menge", () => {
