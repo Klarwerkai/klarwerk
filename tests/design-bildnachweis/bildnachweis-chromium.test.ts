@@ -863,7 +863,29 @@ describe("R-1399 · Sichtnachweis: Lesetexte aus dem Hauptstand auf 11 px", () =
     expect(gruppen.length).toBeGreaterThan(0);
     expect(teile.length).toBeGreaterThan(0);
     expect([...new Set([...gruppen, ...teile].map((g) => g.px))]).toEqual(["11px"]);
-    await ausschnitt2("[data-hilfe-gruppe]", "b14-hilfe-bibliothek");
+    // Nacharbeit 21: die erste Gruppe liegt unter dem Fenster (die Shell scrollt in `<main>`), und
+    // aufgeklappt ist sie höher als das Fenster — der Ausschnitt lag ausserhalb des Bildes. Sie wird
+    // deshalb an den oberen Rand geholt, und das Bild nimmt den sichtbaren Teil ab ihrer Überschrift.
+    const clip = await s.evaluate<Rechteck | null>(
+      fn(`() => {
+        const g = document.querySelector('[data-hilfe-gruppe]');
+        if (!g) return null;
+        g.scrollIntoView({ block: 'start' });
+        const r = g.getBoundingClientRect();
+        const y = Math.max(0, r.top - 12);
+        const x = Math.max(0, r.left - 12);
+        return {
+          x,
+          y,
+          width: Math.min(r.width + 24, window.innerWidth - x),
+          height: Math.min(r.height + 24, window.innerHeight - y),
+        };
+      }`),
+    );
+    expect(clip, "Hilfe-Gruppe nicht gefunden").not.toBeNull();
+    expect((clip as Rechteck).height).toBeGreaterThan(40);
+    await s.screenshot({ path: bild("b14-hilfe-bibliothek"), clip });
+    console.info(`R-1399 · B14 · Bild ${bild("b14-hilfe-bibliothek")}`, JSON.stringify(clip));
     expect((stand2 as H4Stand).seitenfehler).toEqual([]);
   }, 90_000);
 
