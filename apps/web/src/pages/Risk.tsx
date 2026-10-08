@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
@@ -65,8 +65,10 @@ export function Risk(): JSX.Element {
   const expertise = useExpertise(canSeeExpertise(role));
   const qc = useQueryClient();
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["gaps"] });
+  // R-0846 / L6: eine Lücke schliesst nur mit dem Wissensobjekt, das sie beantwortet. Der Server
+  // prüft den Bezug; scheitert er, bleibt die Lücke offen und die Zeile sagt es.
   const close = useMutation({
-    mutationFn: (id: string) => endpoints.gaps.close(id),
+    mutationFn: ({ id, koId }: { id: string; koId: string }) => endpoints.gaps.close(id, koId),
     onSuccess: invalidate,
   });
   const assign = useMutation({
@@ -490,14 +492,31 @@ export function Risk(): JSX.Element {
                             </option>
                           ))}
                         </select>
-                        <button
-                          type="button"
-                          title={t("risk.close")}
-                          onClick={() => close.mutate(g.id)}
-                          className="grid h-8 w-8 place-items-center rounded-btn text-trust-pos-text hover:bg-trust-pos-bg"
+                        <select
+                          value=""
+                          data-testid="luecke-schliessen"
+                          disabled={close.isPending || (kos.data ?? []).length === 0}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              close.mutate({ id: g.id, koId: e.target.value });
+                            }
+                          }}
+                          title={t("risk.closeWithTitle")}
+                          aria-label={t("risk.closeWithTitle")}
+                          className="h-8 w-40 rounded-input border border-hairline bg-surface px-2 text-[12px] text-muted"
                         >
-                          <Check size={15} />
-                        </button>
+                          <option value="">{t("risk.close")}</option>
+                          {(kos.data ?? []).map((k) => (
+                            <option key={k.id} value={k.id}>
+                              {k.title}
+                            </option>
+                          ))}
+                        </select>
+                        {close.isError && close.variables?.id === g.id ? (
+                          <span role="alert" className="text-[11px] text-trust-crit-text">
+                            {t("risk.closeFailed")}
+                          </span>
+                        ) : null}
                       </>
                     ) : null}
                     <button
