@@ -2153,8 +2153,17 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Plan-Sprachanmerkung: 495 + 2 = 497. EHRLICH GESAGT: GERECHNET, nicht gemessen; was der
     // Hauptstand seit 33aad029 sonst an Bauteilen gebracht hat, ist darin nicht enthalten. Weicht
     // der Prüflauf ab, gehört die gemessene Zahl hierher. `anbieter` 1 und `traeger` 2 bleiben.
+    //
+    // gesamt-hilfen Nacharbeit 12: GEMESSEN 515. Am Kandidaten 01c730f4 meldete der Sammler
+    // wörtlich „gemessen: 515 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 657 Quelldateien …
+    // expected { komponenten: 515, … } to deeply equal { komponenten: 497, … }". Seit der Messung 495
+    // (33aad029, Grundmenge 621) hat gesamt-hilfen KEIN Bauteil hinzugefügt: dazugekommen sind
+    // nur `lib/klaraBibliothek.ts` (Funktionen, kein Bauteil) und ein Testfall. Die 20 Komponenten
+    // über 495 kommen also aus dem eingemischten Hauptstand (Grundmenge 621 → 657), darunter laut
+    // Kommentar oben `Zeichnung` und `AnhangZeichnung`. Die übrigen 18 sind ohne Git-Verlauf an
+    // diesem Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 497,
+      komponenten: 515,
       anbieter: 1,
       traeger: 2,
     });
