@@ -64,6 +64,11 @@ mit der Veröffentlichung; bis dahin gilt hier: **gebaut und im Prüflauf, nicht
    (`klara-aufraeumen.ts`, R-0609). Das Inventar gibt den heutigen Stand an; das Dokument des
    gesonderten Auftrags ist nicht geändert.
 6. **Frist des Löschantrags:** keine Quelle nennt sie; gewählt ist die gesetzliche Regelfrist (s. o.).
+7. **„KI-Läufe ohne Personenbezug"** (alte Klassifikation §1 und die erste Fassung dieses Inventars)
+   ist widerlegt (Prüflauf Nacharbeit 1): `ModelRunRecord` trägt seit dem Laufkontext die Kennung
+   der anfragenden Person (`actor`). Richtig bleibt nur der Befund aus R-0583 — **keine Inhalte**.
+   Inventar und §1 sind korrigiert; in der Selbstauskunft fehlen die KI-Läufe weiterhin (kein
+   Leseweg je Person in der Ablage) und stehen dort als „nicht enthalten" mit Grund.
 
 ## Fehlende Belege (benannt, nicht ersetzt)
 
@@ -78,3 +83,13 @@ mit der Veröffentlichung; bis dahin gilt hier: **gebaut und im Prüflauf, nicht
   (`scripts/backup/restore-drill.sh`). `management_category_profiles` und
   `management_retirement_horizons` (R-0751/R-1639/R-2183) werden migriert, stehen dort aber nicht.
   Das liegt ausserhalb dieses Auftrags und ist hier nur benannt.
+- Prüflauf Nacharbeit 1 (Kandidat `e70c4636`), rot nur an fremden Routen — `datenschutzRoutes`
+  selbst ist in allen drei Wächtern abgenommen (`rollen-am-draht.test.ts` 144/144 grün):
+  - `tests/beta-rollenabnahme/jede-gruppe-steht-in-der-tabelle.test.ts` W2/W8: `begriffeRoutes`
+    (Firmenwörterbuch) ohne Tabellenzeile; Schreibzeile `PUT /api/drafts/:id/pool` ohne Zeilennummer.
+  - `…/jede-registrierte-route-ist-abgenommen.test.ts` E2/E8: sieben Türen ohne Platz
+    (`GET /api/admin/import/knowledge/:koId` und sechs `/api/begriffe…`), daher 227 statt 234.
+  - `tests/security/g10-herkunft-zentrum-vertraulich.test.ts`: drei `/api/library/import…`-Routen
+    fahren `darfSehen` ohne Zeilenrechtseintrag.
+  Diese Dateien sind deshalb nicht mehr in der Prüfauswahl dieses Auftrags; die Befunde bleiben im
+  Archiv (`HISTORIE/nacharbeit-1/PRUEFUNG`).

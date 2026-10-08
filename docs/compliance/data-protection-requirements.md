@@ -28,7 +28,7 @@
 | **Anhänge** (`object-store`) | Original-Dateien/Bilder (Bytes) | intern–**sensibel möglich** | **möglich** (Foto/Dokument) | Postgres (`objects`) |
 | **Quellen** (`KoSource`) | externe Belege (url/excerpt/provider) | öffentlich/extern | gering | Postgres |
 | **Audit-Log** | wer (User-ID), wann, Aktion, Ziel, `payload` | **personenbezogen** | **ja** | append-only Hash-Kette |
-| **ModelRun-Protokoll** | **nur Metadaten** (Provider/Status/Fallback/Timing/generischer Fehler) | technisch | **nein** (per Design **keine** Prompt-/Antworttexte/KO-Inhalte) | Postgres (`model-runs`) |
+| **ModelRun-Protokoll** | **nur Metadaten** (Provider/Status/Fallback/Timing/generischer Fehler) plus Laufkontext: Kennung der anfragenden Person (`actor`) und des Wissensobjekts (`subject`) | technisch | **ja, über die Kennung** (`actor`) — aber per Design **keine** Prompt-/Antworttexte/KO-Inhalte | Postgres (`model-runs`) |
 | **Wissenslücken** (`Gap`) | **die gestellte Frage** (Freitext) + Status/Priorität | intern–**personenbezogen möglich** | **möglich** (Frage als Freitext) | Postgres |
 | **Konto/Auth** | Name, E-Mail, Rolle, Login-Events | **personenbezogen** | **ja** | Postgres + Audit |
 | **Server-/Proxy-Logs** | ggf. IP, Request-Meta (außerhalb App-Audit) | personenbezogen möglich | möglich | Betreiber-Logging (Coolify/Proxy) |

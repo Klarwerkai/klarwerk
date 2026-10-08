@@ -95,22 +95,33 @@ describe("I2 · jede Datenart ist vollständig beschrieben", () => {
 });
 
 describe("I3 · die ehrlichen Befunde", () => {
-  it("KI-Läufe: kein Personenbezug, ausdrücklich keine Inhalte", () => {
-    const d = DATENINVENTAR.find((x) => x.id === "modelllaeufe");
-    expect(d?.personenbezug).toBe("nein");
-    expect(d?.befund).toMatch(/keine Inhalte/);
-    expect(d?.ablage.tabellen).toEqual(["model_runs"]);
-  });
+  // Nacharbeit 1: die erste Fassung behauptete „kein Personenbezug" und prüfte, der Datensatz habe
+  // kein Personenfeld. Der Prüflauf hat das widerlegt — `ModelRunRecord` trägt `actor` (die Kennung
+  // der anfragenden Person aus `ModelRunContext`). Gemessen wird jetzt beides getrennt: KEIN
+  // Inhaltsfeld (der ehrliche Befund aus R-0583), und das vorhandene Personenfeld steht im Inventar.
+  const quelle = readFileSync(join(WURZEL, "services/model-runs/src/types.ts"), "utf8");
+  const start = quelle.indexOf("export interface ModelRunRecord");
+  const rumpf = quelle.slice(start, quelle.indexOf("\n}", start));
+  const felder = [...rumpf.matchAll(/^ {2}([a-zA-Z]+)\??:/gm)].map((m) => m[1]);
 
-  it("der Datensatz eines KI-Laufs hat wirklich kein Feld für Prompt, Antwort oder Person", () => {
-    const quelle = readFileSync(join(WURZEL, "services/model-runs/src/types.ts"), "utf8");
-    const start = quelle.indexOf("export interface ModelRunRecord");
-    const rumpf = quelle.slice(start, quelle.indexOf("\n}", start));
-    const felder = [...rumpf.matchAll(/^ {2}([a-zA-Z]+)\??:/gm)].map((m) => m[1]);
+  it("der Datensatz eines KI-Laufs hat wirklich kein Feld für Prompt, Antwort oder Inhalt", () => {
     expect(felder.length).toBeGreaterThan(5);
-    for (const verboten of ["prompt", "answer", "text", "content", "actor", "userId", "user"]) {
+    for (const verboten of ["prompt", "answer", "antwort", "text", "content", "inhalt", "body"]) {
       expect(felder, `ModelRunRecord trägt ${verboten}`).not.toContain(verboten);
     }
+  });
+
+  it("KI-Läufe: keine Inhalte, aber die Kennung der anfragenden Person — so steht es im Inventar", () => {
+    // Gegenprobe zur widerlegten Fassung: das Personenfeld ist da …
+    expect(felder).toContain("actor");
+    const d = DATENINVENTAR.find((x) => x.id === "modelllaeufe");
+    // … und deshalb darf das Inventar keinen fehlenden Personenbezug behaupten.
+    expect(d?.personenbezug).toBe("ja");
+    expect(d?.personenbezugGrund).toMatch(/actor/);
+    expect(d?.befund).toMatch(/keine Inhalte/);
+    expect(d?.ablage.tabellen).toEqual(["model_runs"]);
+    // Nicht in der Selbstauskunft — dann nur mit ausgeschriebenem Grund.
+    expect(d?.selbstauskunft.enthalten).toBe(false);
   });
 
   it("Wissenslücken: der Fragetext wird gespeichert und steht als Befund im Inventar", () => {
@@ -164,10 +175,24 @@ describe("I4 · das Verarbeitungsverzeichnis entsteht aus dem System", () => {
   });
 
   it("Datenarten ohne Personenbezug erscheinen in keiner Tätigkeit — im Inventar aber schon", () => {
-    const v = erzeugeVerarbeitungsverzeichnis(ohneExtern, zeit);
+    // Nacharbeit 1: im Produktinventar trägt seit der Korrektur keine Datenart mehr „nein"; die
+    // Regel wird deshalb an einem erweiterten Inventar gemessen, nicht an einer Behauptung.
+    const ohneBezug = {
+      ...(DATENINVENTAR[0] as (typeof DATENINVENTAR)[number]),
+      id: "probe_ohne_bezug",
+      name: "Probe ohne Personenbezug",
+      personenbezug: "nein" as const,
+      ablage: { ort: "Probe", tabellen: [] },
+    };
+    const v = erzeugeVerarbeitungsverzeichnis(ohneExtern, zeit, [...DATENINVENTAR, ohneBezug]);
     const inTaetigkeiten = v.taetigkeiten.flatMap((t) => t.datenkategorien.map((d) => d.datenart));
-    expect(inTaetigkeiten).not.toContain("modelllaeufe");
-    expect(v.datenarten.map((d) => d.id)).toContain("modelllaeufe");
+    expect(inTaetigkeiten).not.toContain("probe_ohne_bezug");
+    expect(v.datenarten.map((d) => d.id)).toContain("probe_ohne_bezug");
+    // Und die KI-Läufe stehen MIT ihrem Personenbezug in der KI-Tätigkeit.
+    const ki = erzeugeVerarbeitungsverzeichnis(ohneExtern, zeit).taetigkeiten.find(
+      (t) => t.id === "ki",
+    );
+    expect(ki?.datenkategorien.map((d) => d.datenart)).toContain("modelllaeufe");
   });
 
   it("die Empfänger folgen der Betriebslage — ohne externe KI wird keiner behauptet", () => {

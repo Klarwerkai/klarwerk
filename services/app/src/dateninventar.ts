@@ -286,15 +286,21 @@ export const DATENINVENTAR: readonly Datenart[] = [
     id: "modelllaeufe",
     name: "KI-Läufe (ModelRun-Protokoll)",
     inhalt:
-      "Aufgabe, Anbieter, Modell, Status, Zeitpunkte, Rückfall, Tokenverbrauch, generische Fehlermeldung.",
-    personenbezug: "nein",
-    personenbezugGrund: "Keine Kennung einer Person und keine Inhalte.",
+      "Aufgabe, Anbieter, Modell, Status, Zeitpunkte, Rückfall, Tokenverbrauch, Kosten, generische Fehlermeldung; als Laufkontext die Kennung der anfragenden Person (`actor`) und die Kennung des betroffenen Wissensobjekts (`subject`).",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Der Laufkontext trägt die Kennung der authentifiziert anfragenden Person (`ModelRunContext.actor`), sofern der Aufrufer sie kennt.",
     ablage: { ort: DATENBANK, tabellen: ["model_runs"] },
     taetigkeit: "ki",
     loeschung: "Kein Löschweg.",
     frist: BETREIBERFRIST,
-    selbstauskunft: { enthalten: false, grund: "Ohne Personenbezug." },
-    befund: "KI-Läufe speichern keine Inhalte: weder Prompt noch Antwort noch Wissensinhalt.",
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Heute ohne Leseweg je Person (die Ablage kennt nur die jüngsten Läufe und Zeitfenster); die Läufe enthalten neben der Kennung keine Inhalte. Auskunft auf Anfrage durch den Betreiber aus der Datenbank.",
+    },
+    befund:
+      "KI-Läufe speichern keine Inhalte: weder Prompt noch Antwort noch Wissensinhalt — wohl aber die Kennung der anfragenden Person.",
   },
   {
     id: "klara",
