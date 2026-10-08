@@ -295,6 +295,92 @@ describe("Register A17b · Nacharbeit (ben Befund 1): Rollenwerte werden am Synt
     expect(modalAbgleich(spread)[0]).toContain("A17bSpreadOffen.tsx:2");
   });
 
+  it("Nacharbeit 3: ein zwischengespeichertes Props-Objekt wird bis zum Spread verfolgt", () => {
+    const datei = "apps/web/src/components/A17bPropsVariable.tsx";
+    const variable = synth(datei, [
+      'import { rolleVonAussen } from "../lib/rollen";',
+      "export function F(): JSX.Element {",
+      "  const p = { role: rolleVonAussen };",
+      "  return <div {...p} />;",
+      "}",
+    ]);
+    const rot = modalAbgleich(variable);
+    expect(rot).toHaveLength(1);
+    expect(rot[0]).toContain(`${datei}:3`);
+    expect(rot[0]).toContain("statisch nicht bestimmbar");
+
+    // Über einen Objekt-Spread in ein zweites Objekt und weiter an createElement.
+    const kette = synth("apps/web/src/lib/a17bPropsKette.ts", [
+      'import { createElement } from "react";',
+      'import { rolleVonAussen } from "./rollen";',
+      "export function f(): unknown {",
+      "  const p = { role: rolleVonAussen };",
+      '  const q = { ...p, id: "x" };',
+      '  return createElement("div", q);',
+      "}",
+    ]);
+    expect(modalAbgleich(kette)[0]).toContain("a17bPropsKette.ts:4");
+
+    // Ein bestimmter Dialogwert über dieselbe Kette ist ein Kandidat.
+    const bestimmt = synth("apps/web/src/components/A17bPropsDialog.tsx", [
+      "export function F(): JSX.Element {",
+      "  const p = { role: 'dia' + 'log' };",
+      "  return <div {...p} />;",
+      "}",
+    ]);
+    expect(arten(bestimmt)).toEqual(["role-dialog"]);
+  });
+
+  it("Nacharbeit 3 GEGENPROBE: eine Benutzerrolle, die in keinen Spread fliesst, bleibt ohne Befund", () => {
+    const e = synth("apps/web/src/components/A17bBenutzerVariable.tsx", [
+      'import { rolleVonAussen, speichere } from "../lib/rollen";',
+      "export function a(): void {",
+      "  const p = { role: rolleVonAussen };",
+      "  speichere(p);",
+      "}",
+      "export function B(): JSX.Element {",
+      '  const p = { id: "x" };',
+      "  return <div {...p} />;",
+      "}",
+    ]);
+    expect(e.kandidaten).toEqual([]);
+    expect(modalAbgleich(e), "gleichnamiges p in anderem Block zählt nicht").toEqual([]);
+  });
+
+  it("Nacharbeit 3: Textattribute an DOM-Elementen sind Oberflächentext und sperren das Tor nicht", () => {
+    const text = synth("apps/web/src/components/A17bTextattribut.tsx", [
+      "export function F({ offen }: { offen: boolean }): JSX.Element {",
+      "  return (",
+      '    <p aria-label={"alertdialog"}>',
+      '      <span title="dialog" />',
+      '      <img alt={offen ? "dialog" : "bild"} src="x.png" />',
+      "    </p>",
+      "  );",
+      "}",
+    ]);
+    expect(text.kandidaten).toEqual([]);
+    expect(modalAbgleich(text)).toEqual([]);
+
+    // Gegenproben: an einem BAUTEIL kann die Prop ein Element bauen — sie bleibt unbekannt und rot;
+    // `role` an einem DOM-Element bleibt ein Kandidat.
+    const bauteil = synth("apps/web/src/components/A17bBauteilProp.tsx", [
+      'import { Huelle } from "./Huelle";',
+      "export function F(): JSX.Element {",
+      '  return <Huelle as="dialog" />;',
+      "}",
+    ]);
+    expect(modalAbgleich(bauteil)).toHaveLength(1);
+    expect(modalAbgleich(bauteil)[0]).toContain("A17bBauteilProp.tsx:3");
+
+    const rolle = synth("apps/web/src/components/A17bSpanRolle.tsx", [
+      "export function F(): JSX.Element {",
+      '  return <span role="dialog" title="dialog" />;',
+      "}",
+    ]);
+    expect(arten(rolle)).toEqual(["role-dialog"]);
+    expect(modalAbgleich(rolle)).toEqual([]);
+  });
+
   it("GEGENPROBE: die Bauformen des Bestands bleiben ohne Befund (Parameter-Vorgabe mit Literal-Union, Bedingung)", () => {
     // Die Form aus `apps/web/src/shell/Menue.tsx`: destrukturierter Parameter, Vorgabe und
     // Literal-Union im Typ — vollständig bestimmbar, kein Dialog.
@@ -414,6 +500,35 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
       }),
     );
     expect(typ.rot).toEqual([]);
+  });
+
+  it("Nacharbeit 3: zwischengespeicherte Props machen das TOR rot; ein title-Text nicht", () => {
+    const props = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Props.tsx": [
+          'import { rolleVonAussen } from "../lib/rollen";',
+          "export function Props(): JSX.Element {",
+          "  const p = { role: rolleVonAussen };",
+          "  return <div {...p} />;",
+          "}",
+        ],
+      }),
+    );
+    expect(props.rot).toHaveLength(1);
+    expect(props.rot[0]).toContain("apps/web/src/components/Props.tsx:3");
+
+    const titel = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Titel.tsx": [
+          "export function Titel(): JSX.Element {",
+          '  return <span title="dialog" />;',
+          "}",
+        ],
+      }),
+    );
+    expect(titel.rot).toEqual([]);
   });
 
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {

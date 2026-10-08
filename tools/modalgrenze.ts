@@ -515,14 +515,58 @@ export function statischeWerte(ausdruck: ts.Node, deklarationen: Deklarationen):
 }
 
 /**
+ * Eine Hülle, die einen Wert nur durchreicht oder zwischen Werten wählt: Klammer, Bedingung,
+ * `as`/`satisfies`, Rückfall- und Verknüpfungsketten. Eine Zuweisung gehört nicht dazu.
+ */
+function istWerthuelle(n: ts.Node): boolean {
+  return (
+    ts.isParenthesizedExpression(n) ||
+    ts.isConditionalExpression(n) ||
+    ts.isAsExpression(n) ||
+    ts.isSatisfiesExpression(n) ||
+    (ts.isBinaryExpression(n) && n.operatorToken.kind !== ts.SyntaxKind.EqualsToken)
+  );
+}
+
+/**
+ * Ein Textattribut an einem INTRINSISCHEN Element (`<span title="dialog" />`) — nicht `role`.
+ * Ein kleingeschriebener Tag ist ein DOM-Element; seine übrigen Attribute sind Text und bauen
+ * keine Fläche. Ein Bauteil (`<Huelle as="dialog" />`) kann seine Props dagegen zu einem Element
+ * machen und bleibt deshalb ausserhalb dieser Ausnahme.
+ */
+function istTextattributIntrinsisch(literal: ts.Node): boolean {
+  let k: ts.Node = literal;
+  while (k.parent !== undefined && (istWerthuelle(k.parent) || ts.isJsxExpression(k.parent))) {
+    k = k.parent;
+  }
+  const attribut = k.parent;
+  if (attribut === undefined || !ts.isJsxAttribute(attribut) || attribut.initializer !== k) {
+    return false;
+  }
+  if (attribut.name.getText() === "role") {
+    return false;
+  }
+  const element = attribut.parent.parent;
+  return (
+    (ts.isJsxOpeningElement(element) || ts.isJsxSelfClosingElement(element)) &&
+    ts.isIdentifier(element.tagName) &&
+    /^[a-z]/.test(element.tagName.text)
+  );
+}
+
+/**
  * Ist dieses Dialog-Literal nachweislich KEIN Bau? Eine Typdeklaration (`type R = "dialog" | …`)
- * baut keine Fläche, ein Vergleich (`rolle === "dialog"`, `case "dialog":`) liest nur. Alles
- * andere, das keiner erkannten Bauform zugeflossen ist, bleibt eine unbekannte Bauform.
+ * baut keine Fläche, ein Vergleich (`rolle === "dialog"`, `case "dialog":`) liest nur, ein
+ * Textattribut an einem DOM-Element (`<span title="dialog" />`) ist Oberflächentext (Nacharbeit 3).
+ * Alles andere, das keiner erkannten Bauform zugeflossen ist, bleibt eine unbekannte Bauform.
  */
 export function istReinerDialogText(literal: ts.Node): boolean {
   const p = literal.parent;
   if (!p) {
     return false;
+  }
+  if (istTextattributIntrinsisch(literal)) {
+    return true;
   }
   if (ts.isLiteralTypeNode(p)) {
     return true;
@@ -624,29 +668,52 @@ export function erhebeDatei(quelle: Quelle): DateiErhebung {
     }
   };
 
+  // Alle Verwendungen einer lokalen Bindung — nach derselben Sichtbarkeitsregel wie die
+  // Wertauswertung, damit ein gleichnamiger Bezeichner in einem anderen Block nicht mitzählt.
+  const verwendungen = (decl: ts.Node, name: string): ts.Identifier[] => {
+    const gefunden: ts.Identifier[] = [];
+    const gehe = (n: ts.Node): void => {
+      if (
+        ts.isIdentifier(n) &&
+        n.text === name &&
+        n.parent !== decl &&
+        sichtbareDeklarationen(deklarationen, n).includes(decl)
+      ) {
+        gefunden.push(n);
+      }
+      ts.forEachChild(n, gehe);
+    };
+    gehe(sf);
+    return gefunden;
+  };
+
   // Ist dieses Objekt das Props-Objekt einer Bauform (JSX-Spread oder `createElement`)? Nur dort
   // ist `role` sicher die ARIA-Rolle — sonst ist es in diesem Produkt meist die Benutzerrolle.
-  const istPropsObjekt = (objekt: ts.Node): boolean => {
-    let k: ts.Node = objekt;
-    while (
-      k.parent &&
-      (ts.isParenthesizedExpression(k.parent) ||
-        ts.isConditionalExpression(k.parent) ||
-        ts.isAsExpression(k.parent) ||
-        ts.isSatisfiesExpression(k.parent) ||
-        (ts.isBinaryExpression(k.parent) &&
-          k.parent.operatorToken.kind !== ts.SyntaxKind.EqualsToken))
-    ) {
-      k = k.parent;
+  // Nacharbeit 3 (ben): das Objekt wird auch über lokale Bindungen und Objekt-Spreads verfolgt —
+  // `const p = { role: x }; <div {...p} />` und `const q = { ...p }; createElement("div", q)`.
+  const istPropsObjekt = (objekt: ts.Node, tiefe = 0): boolean => {
+    if (tiefe > MAX_TIEFE) {
+      return false;
     }
-    const p = k.parent;
-    return (
-      p !== undefined &&
-      (ts.isJsxSpreadAttribute(p) ||
-        (ts.isCallExpression(p) &&
-          aufrufName(p) === "createElement" &&
-          p.arguments.some((a) => a === k)))
-    );
+    let k: ts.Node = objekt;
+    let p: ts.Node | undefined = k.parent;
+    while (p !== undefined && (istWerthuelle(p) || ts.isSpreadAssignment(p))) {
+      k = ts.isSpreadAssignment(p) ? p.parent : p;
+      p = k.parent;
+    }
+    if (p === undefined) {
+      return false;
+    }
+    if (ts.isJsxSpreadAttribute(p)) {
+      return true;
+    }
+    if (ts.isCallExpression(p) && aufrufName(p) === "createElement") {
+      return p.arguments.some((a) => a === k);
+    }
+    if (ts.isVariableDeclaration(p) && p.initializer === k && ts.isIdentifier(p.name)) {
+      return verwendungen(p, p.name.text).some((v) => istPropsObjekt(v, tiefe + 1));
+    }
+    return false;
   };
 
   // AUFTRAG-mega76 BLOCK E — die Kette `<dialog ref={R}>` … `R.current.showModal()` nachziehen.
