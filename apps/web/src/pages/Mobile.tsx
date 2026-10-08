@@ -2,9 +2,11 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
+  Camera,
   Check,
   CloudOff,
   FilePlus2,
+  ImagePlus,
   RefreshCw,
   RotateCcw,
   Search,
@@ -12,7 +14,7 @@ import {
   WifiOff,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -43,12 +45,14 @@ import { AnswerMarkdown } from "../components/AnswerMarkdown";
 // beim Sammler an (`shell/SeitenhilfeContext.tsx`), und das Zahnrad-Menü listet sie unter
 // „Seitenhilfe". Pedi (04.09.): „Erklärung gehört hinter Zahnrad/Profil, nicht ins Sichtfeld."
 import { HelpTip } from "../components/HelpTip";
+import { UploadLimitsHint } from "../components/UploadLimitsHint";
 import { ConfidenceBar, KnowledgeTypeTag, StatusPill } from "../components/trust";
 import { selectAnswer } from "../lib/askResponse";
 import { conflictImpact } from "../lib/conflictImpact";
 import { anzeigestatusAnker, anzeigestatusAus } from "../lib/displayStatus";
 import {
   type DraftFeld,
+  type DraftFormFoto,
   type DraftFormState,
   EMPTY_DRAFT_FORM,
   abweichendeFelder,
@@ -60,6 +64,7 @@ import {
   isDraftFormFillable,
 } from "../lib/draftForm";
 import { conflictKnowledge } from "../lib/effectiveAnswer";
+import { fileToThumbDataUrl } from "../lib/files";
 import type { EvidenceTone } from "../lib/knowledgeClass";
 // D-036 (JOB 1118): derselbe Dreiphasenvertrag, den Start und Analytics schon fahren —
 // `loading | loaded | error`. Er ist der Grund, warum unten keine Leerbehauptung mehr aus
@@ -73,6 +78,12 @@ import {
   isPending,
   requestConfirm,
 } from "../lib/mobileConfirm";
+import {
+  LEERE_INTERVIEW_ANTWORTEN,
+  MOBIL_INTERVIEW_FRAGEN,
+  interviewBegonnen,
+  interviewZuForm,
+} from "../lib/mobileInterview";
 import type { QueueStatus } from "../lib/offlineQueue";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 // JOB 4333: die Zahl der noch nicht übertragenen Vorgänge auf DIESEM Gerät — kontounabhängig und
@@ -83,6 +94,15 @@ import { offeneVorgaengeAmGeraet } from "../lib/sessionState";
 import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../lib/useDebouncedValue";
 
 type MobileTab = "capture" | "ask" | "lookup";
+
+/** FR-MOB-02: die zwei Erfassungsarten am Handy. */
+type ErfassungsModus = "notiz" | "interview";
+
+/**
+ * FR-CAP-04: Fotos je neuem Entwurf. Sie reisen als verkleinertes JPEG im Body (wie am Desktop) und
+ * liegen offline in der Warteschlange im Gerätespeicher — die Grenze hält beides klein genug.
+ */
+const MOBIL_FOTOS_MAX = 5;
 
 const EVIDENCE_TONE: Record<EvidenceTone, string> = {
   pos: "bg-trust-pos-bg text-trust-pos-text",
@@ -306,11 +326,20 @@ export function Mobile(): JSX.Element {
    * kein Ausweg.
    */
   const [beiseite, setBeiseite] = useState<{ titel: string; text: string } | null>(null);
+  // FR-MOB-02: Notiz oder Interview. Die Wahl bleibt über das Speichern hinaus stehen — wer an der
+  // Anlage drei Dinge nacheinander festhält, wählt nicht jedes Mal neu.
+  const [modus, setModus] = useState<ErfassungsModus>("notiz");
+  const [ivAntworten, setIvAntworten] = useState<readonly string[]>(LEERE_INTERVIEW_ANTWORTEN);
+  const [ivSchritt, setIvSchritt] = useState(0);
+  const kameraRef = useRef<HTMLInputElement>(null);
+  const mediathekRef = useRef<HTMLInputElement>(null);
   const resetForm = (): void => {
     setForm({ ...EMPTY_DRAFT_FORM });
     setBaseline({ ...EMPTY_DRAFT_FORM });
     setEditingId(null);
     setKonflikt(null);
+    setIvAntworten(LEERE_INTERVIEW_ANTWORTEN);
+    setIvSchritt(0);
   };
   const invalidateDrafts = (): void => void qc.invalidateQueries({ queryKey: ["drafts"] });
   const fail = (e: unknown): void =>
@@ -333,6 +362,76 @@ export function Mobile(): JSX.Element {
   // Der Schalter dafür ist `form.segments` und NICHTS daneben: er reist im Formularzustand mit,
   // damit es keinen Speicherweg geben kann, der ihn vergisst (s. `formToPayload`).
   const bodyMode = form.segments !== undefined;
+
+  // ============================================================================================
+  // FR-MOB-02 / R-0092 — NOTIZ UND INTERVIEW, „ALS ENTWURF SPEICHERN" BLEIBT DIE HAUPTAKTION.
+  // ============================================================================================
+  //
+  // Beide Arten schreiben in DASSELBE Formular und speichern über DENSELBEN Weg (Knopf, Wächter,
+  // Warteschlange) — das Interview füllt es nur Frage für Frage (`interviewZuForm`). Angeboten wird
+  // die Wahl nur beim NEUEN Erfassen: ein fortgesetzter Entwurf hat seinen Text schon (JOB 3377).
+  //
+  // GEWECHSELT WIRD NUR OHNE TEXTEINGABE. Sonst stünde Getipptes in einem Feld, das die andere Art
+  // gar nicht zeigt — und würde unsichtbar mitgespeichert. Fotos zeigen beide Arten, sie sperren
+  // daher nicht.
+  const erfassungsartWaehlbar = !editingId;
+  const interviewAktiv = modus === "interview" && erfassungsartWaehlbar;
+  const modusGesperrt =
+    form.title.trim().length > 0 ||
+    form.statement.trim().length > 0 ||
+    interviewBegonnen(ivAntworten);
+  const modusWaehlen = (neu: ErfassungsModus): void => {
+    if (neu === modus || modusGesperrt) {
+      return;
+    }
+    setModus(neu);
+    setIvAntworten(LEERE_INTERVIEW_ANTWORTEN);
+    setIvSchritt(0);
+  };
+  const antwortSetzen = (wert: string): void => {
+    const neu = ivAntworten.map((a, i) => (i === ivSchritt ? wert : a));
+    setIvAntworten(neu);
+    setForm((f) => interviewZuForm(neu, f));
+  };
+
+  // ============================================================================================
+  // FR-CAP-04 — FOTO AUS KAMERA ODER MEDIATHEK, ENTFERNBAR.
+  // ============================================================================================
+  //
+  // Zwei getrennte Quellen, weil ein einziges Dateifeld je nach Gerät die Kamera nicht anbietet:
+  // `capture="environment"` öffnet die Rückkamera, das Feld ohne `capture` die Mediathek.
+  // Verkleinert wird wie am Desktop-Editor (`fileToThumbDataUrl`), gespeichert im Body
+  // (`draftBodyMitFotos`). Nur beim NEUEN Erfassen — an einem fortgesetzten Entwurf stehen Bilder
+  // als feste Blöcke im Text.
+  const fotosMoeglich = !editingId;
+  const fotos = form.fotos ?? [];
+  const fotosHinzufuegen = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const dateien = Array.from(e.target.files ?? []).filter((d) => d.type.startsWith("image/"));
+    // Dasselbe Foto noch einmal wählen soll wieder ein Ereignis auslösen.
+    e.target.value = "";
+    const frei = MOBIL_FOTOS_MAX - fotos.length;
+    if (dateien.length > frei) {
+      push("error", t("mob.foto.max", { max: MOBIL_FOTOS_MAX }));
+    }
+    const neu: DraftFormFoto[] = [];
+    for (const datei of dateien.slice(0, Math.max(0, frei))) {
+      try {
+        neu.push({
+          id: crypto.randomUUID(),
+          name: datei.name,
+          dataUrl: await fileToThumbDataUrl(datei),
+        });
+      } catch {
+        push("error", t("mob.foto.fehler"));
+      }
+    }
+    if (neu.length > 0) {
+      setForm((f) => ({ ...f, fotos: [...(f.fotos ?? []), ...neu].slice(0, MOBIL_FOTOS_MAX) }));
+    }
+  };
+  const fotoEntfernen = (id: string): void => {
+    setForm((f) => ({ ...f, fotos: (f.fotos ?? []).filter((x) => x.id !== id) }));
+  };
 
   // JOB 4193: der Anzeigetitel wird jetzt zu einer ÜBERGEBENEN Fassung gebildet und nicht mehr nur
   // zum aktuellen Formular — die Auflösung eines Konflikts beschriftet den Warteschlangeneintrag
@@ -701,6 +800,8 @@ export function Mobile(): JSX.Element {
       setBaseline(offline);
       setEditingId(id);
       setBeiseite(null);
+      setIvAntworten(LEERE_INTERVIEW_ANTWORTEN);
+      setIvSchritt(0);
       if (queue.online) {
         void konfliktOeffnen(id, "wiedereroeffnen", op);
       } else {
@@ -716,6 +817,8 @@ export function Mobile(): JSX.Element {
       setEditingId(id);
       setKonflikt(null);
       setBeiseite(null);
+      setIvAntworten(LEERE_INTERVIEW_ANTWORTEN);
+      setIvSchritt(0);
     }
   };
 
@@ -888,30 +991,181 @@ export function Mobile(): JSX.Element {
             <p className="mb-2 text-[13px] text-muted">
               {editingId ? t("mob.editing") : t("mob.sub")}
             </p>
-            <div className="space-y-2">
-              <input
-                value={form.title}
-                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                placeholder={t("mob.formTitle")}
-                className="h-10 w-full rounded-input border border-hairline bg-page px-3 text-sm outline-none focus:border-ink/30"
-              />
-              {/* JOB 3377: EIN Textfeld, zwei mögliche Quellen. Trägt der fortgesetzte Entwurf
-                  einen Body, steht hier DERSELBE Fliesstext, den die Vollversion im Editor zeigt
-                  (feste Blöcke als nummerierte Platzhalter an ihrer Stelle); sonst wie bisher die
-                  Kernaussage. Die gespeicherte Kernaussage wird dabei nicht überschrieben — sie
-                  bleibt aus der Nutzlast (`formToPayload`). */}
-              <textarea
-                data-testid={bodyMode ? "mob-body" : "mob-statement"}
-                value={bodyMode ? (form.body ?? "") : form.statement}
-                onChange={(e) =>
-                  setForm((f) =>
-                    bodyMode ? { ...f, body: e.target.value } : { ...f, statement: e.target.value },
-                  )
-                }
-                placeholder={t("mob.formStatement")}
-                rows={bodyMode ? 6 : 3}
-                className="w-full resize-y rounded-input border border-hairline bg-page p-2.5 text-sm outline-none focus:border-ink/30"
-              />
+            <div data-testid="mob-erfassung" className="space-y-2">
+              {/* FR-MOB-02: die Wahl der Erfassungsart — bewusst ZURÜCKHALTEND gezeichnet (Umriss,
+                  keine Füllung). Die einzige gefüllte Fläche dieses Bereichs ist und bleibt
+                  „Als Entwurf speichern". */}
+              {erfassungsartWaehlbar ? (
+                <fieldset
+                  data-testid="mob-modus"
+                  title={modusGesperrt ? t("mob.modusGesperrt") : undefined}
+                  className="flex gap-1 rounded-btn border border-hairline p-0.5"
+                >
+                  <legend className="sr-only">{t("mob.modusGruppe")}</legend>
+                  {(["notiz", "interview"] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      aria-pressed={modus === m}
+                      disabled={modus !== m && modusGesperrt}
+                      onClick={() => modusWaehlen(m)}
+                      className={`flex-1 rounded-btn py-1 text-[12px] font-semibold disabled:opacity-40 ${
+                        modus === m ? "border border-hairline bg-page text-text" : "text-muted"
+                      }`}
+                    >
+                      {m === "notiz" ? t("mob.note") : t("mob.interview")}
+                    </button>
+                  ))}
+                </fieldset>
+              ) : null}
+              {interviewAktiv ? (
+                <div data-testid="mob-interview" className="space-y-1.5">
+                  <div className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                    {t("mob.iv.fortschritt", {
+                      nummer: ivSchritt + 1,
+                      gesamt: MOBIL_INTERVIEW_FRAGEN.length,
+                    })}
+                  </div>
+                  <label className="block text-[13px] leading-snug text-text">
+                    {t(MOBIL_INTERVIEW_FRAGEN[ivSchritt] ?? MOBIL_INTERVIEW_FRAGEN[0])}
+                    <textarea
+                      data-testid="mob-interview-antwort"
+                      value={ivAntworten[ivSchritt] ?? ""}
+                      onChange={(e) => antwortSetzen(e.target.value)}
+                      rows={3}
+                      className="mt-1.5 w-full resize-y rounded-input border border-hairline bg-page p-2.5 text-sm outline-none focus:border-ink/30"
+                    />
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={ivSchritt === 0}
+                      onClick={() => setIvSchritt((s) => Math.max(0, s - 1))}
+                      className="flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1.5 text-[12px] font-semibold text-muted hover:text-text disabled:opacity-40"
+                    >
+                      <ArrowLeft size={13} />
+                      {t("mob.iv.zurueck")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={ivSchritt >= MOBIL_INTERVIEW_FRAGEN.length - 1}
+                      onClick={() =>
+                        setIvSchritt((s) => Math.min(MOBIL_INTERVIEW_FRAGEN.length - 1, s + 1))
+                      }
+                      className="ml-auto flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1.5 text-[12px] font-semibold text-muted hover:text-text disabled:opacity-40"
+                    >
+                      {t("mob.iv.weiter")}
+                      <ArrowRight size={13} />
+                    </button>
+                  </div>
+                  <p className="text-[11.5px] leading-relaxed text-muted">{t("mob.iv.hinweis")}</p>
+                </div>
+              ) : (
+                <>
+                  <input
+                    value={form.title}
+                    onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                    placeholder={t("mob.formTitle")}
+                    className="h-10 w-full rounded-input border border-hairline bg-page px-3 text-sm outline-none focus:border-ink/30"
+                  />
+                  {/* JOB 3377: EIN Textfeld, zwei mögliche Quellen. Trägt der fortgesetzte Entwurf
+                      einen Body, steht hier DERSELBE Fliesstext, den die Vollversion im Editor zeigt
+                      (feste Blöcke als nummerierte Platzhalter an ihrer Stelle); sonst wie bisher die
+                      Kernaussage. Die gespeicherte Kernaussage wird dabei nicht überschrieben — sie
+                      bleibt aus der Nutzlast (`formToPayload`). */}
+                  <textarea
+                    data-testid={bodyMode ? "mob-body" : "mob-statement"}
+                    value={bodyMode ? (form.body ?? "") : form.statement}
+                    onChange={(e) =>
+                      setForm((f) =>
+                        bodyMode
+                          ? { ...f, body: e.target.value }
+                          : { ...f, statement: e.target.value },
+                      )
+                    }
+                    placeholder={t("mob.formStatement")}
+                    rows={bodyMode ? 6 : 3}
+                    className="w-full resize-y rounded-input border border-hairline bg-page p-2.5 text-sm outline-none focus:border-ink/30"
+                  />
+                </>
+              )}
+              {/* FR-CAP-04: zwei Quellen, zwei Knöpfe. Die Dateifelder sind unsichtbar; bedient
+                  werden sie über die Knöpfe, damit Tastatur und Vorlesehilfe einen benannten
+                  Bedienpunkt haben. */}
+              {fotosMoeglich ? (
+                <div data-testid="mob-fotos" className="space-y-1.5">
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={fotos.length >= MOBIL_FOTOS_MAX}
+                      onClick={() => kameraRef.current?.click()}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-btn border border-hairline py-1.5 text-[12px] font-semibold text-muted hover:text-text disabled:opacity-40"
+                    >
+                      <Camera size={14} />
+                      {t("mob.foto.kamera")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={fotos.length >= MOBIL_FOTOS_MAX}
+                      onClick={() => mediathekRef.current?.click()}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-btn border border-hairline py-1.5 text-[12px] font-semibold text-muted hover:text-text disabled:opacity-40"
+                    >
+                      <ImagePlus size={14} />
+                      {t("mob.foto.mediathek")}
+                    </button>
+                    <input
+                      ref={kameraRef}
+                      data-testid="mob-foto-kamera"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      tabIndex={-1}
+                      aria-hidden="true"
+                      className="hidden"
+                      onChange={(e) => void fotosHinzufuegen(e)}
+                    />
+                    <input
+                      ref={mediathekRef}
+                      data-testid="mob-foto-mediathek"
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      tabIndex={-1}
+                      aria-hidden="true"
+                      className="hidden"
+                      onChange={(e) => void fotosHinzufuegen(e)}
+                    />
+                  </div>
+                  {/* SCRUM-421: an jeder Auswahlstelle dieselbe Anzeige aus derselben Serverquelle
+                      (tests/app/upload-limits-visible.test.ts). Ohne Netz bleibt sie leer, statt
+                      eine Zahl zu behaupten — und ohne bestätigte Sitzung steht sie gar nicht da
+                      (JOB 4333 R2: nichts, was vom Server kam). */}
+                  {serverInhalteGesperrt ? null : <UploadLimitsHint />}
+                  {fotos.length > 0 ? (
+                    <ul className="grid grid-cols-4 gap-1.5">
+                      {fotos.map((foto) => (
+                        <li key={foto.id} className="relative">
+                          <img
+                            src={foto.dataUrl}
+                            alt={foto.name}
+                            className="h-14 w-full rounded-input border border-hairline object-cover"
+                          />
+                          {/* Am Telefon gibt es kein Überfahren mit der Maus — der Knopf steht
+                              deshalb IMMER da, nicht erst beim Hover wie am Desktop. */}
+                          <button
+                            type="button"
+                            aria-label={`${t("mob.foto.entfernen")}: ${foto.name}`}
+                            onClick={() => fotoEntfernen(foto.id)}
+                            className="absolute right-0.5 top-0.5 grid h-6 w-6 place-items-center rounded-full bg-ink/70 text-white"
+                          >
+                            <X size={12} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="flex gap-2">
                 {/* JOB 4193 R5 (BEN Korrekturpflicht 2): AN BEIDEN ENDEN gesperrt — sichtbar hier
                     und wirksam im Handler (`onSave`), aus EINEM Wahrheitsort (`schreibenGesperrt`).
@@ -919,6 +1173,7 @@ export function Mobile(): JSX.Element {
                     dem BEN die fremde Fassung überschrieben hat. */}
                 <button
                   type="button"
+                  data-testid="mob-primaer"
                   disabled={save.isPending || !isDraftFormFillable(form) || schreibenGesperrt}
                   title={schreibenGesperrt ? t("mob.stand.erstAufloesen") : undefined}
                   onClick={onSave}
