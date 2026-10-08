@@ -2123,8 +2123,14 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `CAPTION_AI_TEXT`) und trägt keinen eigenen Titel (kein `documentTitle`-Prop): `anbieter` 1
     // und `traeger` 2 bleiben. EHRLICH GESAGT: die 452 ist GERECHNET (451 + 1) — dieser Auftrag
     // durfte keinen Testlauf selbst starten; weicht der Prüflauf ab, gehört die gemessene Zahl hin.
+    // NACHARBEIT 2 (BEN: CAD-/PDF-Arbeitsweg): 452 → 453, GENAU EIN Bauteil mehr:
+    //     + `AnhangZeichnung` (`components/bibliothek/AnhangZeichnung.tsx`) — die hochgeladene
+    //       Zeichnung (PDF-Seite, DXF, Bild) mit Seitenwahl, gereicht an `Zeichnung`.
+    // Kein `CAPTION_AI_TEXT`, kein `documentTitle`. Ebenfalls GERECHNET (452 + 1). Hinweis: der
+    // Prüflauf von nacharbeit-1 mass 494 am integrierten Stand — die Abweichung über diese eine
+    // Komponente hinaus stammt aus fremden Lieferungen und ist hier nicht nachgezogen.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 452,
+      komponenten: 453,
       anbieter: 1,
       traeger: 2,
     });

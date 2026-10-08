@@ -39,6 +39,21 @@ export default {
     "stellenbezug.punkt.entfernen": "Punkt entfernen",
     "stellenbezug.sprechen.start": "Notiz sprechen",
     "stellenbezug.sprechen.stop": "Sprechen beenden",
+    "stellenbezug.art.anhang": "Zeichnung (Anhang)",
+    "stellenbezug.anhang.stelle": "{{art}} · Fassung v{{version}}",
+    "stellenbezug.anhang.stelleSeite": "{{art}} · Seite {{seite}} · Fassung v{{version}}",
+    "stellenbezug.anhang.seiteVon": "Seite {{seite}} von {{seiten}}",
+    "stellenbezug.anhang.seiteZurueck": "Vorherige Seite",
+    "stellenbezug.anhang.seiteWeiter": "Nächste Seite",
+    "stellenbezug.anhang.ausgelassen":
+      "{{anzahl}} Elemente der CAD-Datei (etwa Bemaßung, Text, Schraffur) werden hier nicht gezeichnet.",
+    "stellenbezug.anhang.fehler.dwg":
+      "DWG-Dateien kann KLARWERK nicht darstellen. Bitte die Zeichnung als PDF oder DXF exportieren und diese Datei anhängen.",
+    "stellenbezug.anhang.fehler.leer":
+      "In dieser Datei steht nichts, was sich als Zeichnung darstellen lässt.",
+    "stellenbezug.anhang.fehler.laden":
+      "Die Zeichnung konnte nicht geladen werden. Bitte später noch einmal auswählen.",
+    "stellenbezug.anhang.hochladen": "Zeichnung anhängen (PDF, CAD)",
   },
   en: {
     "stellenbezug.waehlen": "Refers to (optional)",
@@ -64,6 +79,20 @@ export default {
     "stellenbezug.punkt.entfernen": "Remove point",
     "stellenbezug.sprechen.start": "Speak note",
     "stellenbezug.sprechen.stop": "Stop speaking",
+    "stellenbezug.art.anhang": "Drawing (attachment)",
+    "stellenbezug.anhang.stelle": "{{art}} · version v{{version}}",
+    "stellenbezug.anhang.stelleSeite": "{{art}} · page {{seite}} · version v{{version}}",
+    "stellenbezug.anhang.seiteVon": "Page {{seite}} of {{seiten}}",
+    "stellenbezug.anhang.seiteZurueck": "Previous page",
+    "stellenbezug.anhang.seiteWeiter": "Next page",
+    "stellenbezug.anhang.ausgelassen":
+      "{{anzahl}} elements of the CAD file (such as dimensions, text, hatching) are not drawn here.",
+    "stellenbezug.anhang.fehler.dwg":
+      "KLARWERK cannot display DWG files. Please export the drawing as PDF or DXF and attach that file.",
+    "stellenbezug.anhang.fehler.leer": "This file contains nothing that can be shown as a drawing.",
+    "stellenbezug.anhang.fehler.laden":
+      "The drawing could not be loaded. Please select it again later.",
+    "stellenbezug.anhang.hochladen": "Attach drawing (PDF, CAD)",
   },
   nl: {
     "stellenbezug.waehlen": "Verwijst naar (optioneel)",
@@ -89,5 +118,20 @@ export default {
     "stellenbezug.punkt.entfernen": "Punt verwijderen",
     "stellenbezug.sprechen.start": "Notitie inspreken",
     "stellenbezug.sprechen.stop": "Inspreken stoppen",
+    "stellenbezug.art.anhang": "Tekening (bijlage)",
+    "stellenbezug.anhang.stelle": "{{art}} · versie v{{version}}",
+    "stellenbezug.anhang.stelleSeite": "{{art}} · pagina {{seite}} · versie v{{version}}",
+    "stellenbezug.anhang.seiteVon": "Pagina {{seite}} van {{seiten}}",
+    "stellenbezug.anhang.seiteZurueck": "Vorige pagina",
+    "stellenbezug.anhang.seiteWeiter": "Volgende pagina",
+    "stellenbezug.anhang.ausgelassen":
+      "{{anzahl}} elementen van het CAD-bestand (zoals maatvoering, tekst, arcering) worden hier niet getekend.",
+    "stellenbezug.anhang.fehler.dwg":
+      "KLARWERK kan DWG-bestanden niet weergeven. Exporteer de tekening als PDF of DXF en voeg dat bestand toe.",
+    "stellenbezug.anhang.fehler.leer":
+      "Dit bestand bevat niets dat als tekening kan worden weergegeven.",
+    "stellenbezug.anhang.fehler.laden":
+      "De tekening kon niet worden geladen. Selecteer haar later opnieuw.",
+    "stellenbezug.anhang.hochladen": "Tekening toevoegen (PDF, CAD)",
   },
 } satisfies Textmodul;

@@ -43,8 +43,10 @@ export { confirmedSourceAnchor } from "./src/source-anchor";
 export type { AnchorCandidateAttachment } from "./src/source-anchor";
 // P-WIKI-STELLENBEZUG: die Form einer Stelle im Text (Route) und ihre Prüfung (Dienst).
 export {
+  STELLE_SEITE_MAX,
   STELLE_TEXT_MAX,
   leseStelle,
+  stelleAmAnhang,
   stelleImInhalt,
   stellenbloeckeAusHtml,
 } from "./src/stellen-anker";
