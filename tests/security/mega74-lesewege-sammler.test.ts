@@ -677,6 +677,28 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Spacewechsel nur an einem sichtbaren Artikel.",
   },
+  // Hauptverantwortung übergeben (verantwortung-routes.ts): Titel nur über `darfSehen`; für nicht
+  // einsehbare Beiträge Kennung, Status und Space, aber kein Inhalt.
+  "GET /api/verantwortung/person/:id": {
+    urteil: "PRAEDIKAT",
+    grund: "Bestand einer Person — Titel nur für einsehbare Beiträge.",
+  },
+  "GET /api/verantwortung/ungeklaert": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Anzahl je Person ohne aktive Verantwortung; keine Titel, keine Kennungen.",
+  },
+  "POST /api/verantwortung/vorschau": {
+    urteil: "PRAEDIKAT",
+    grund: "Vorschau je Nachfolger — Titel nur für einsehbare Beiträge.",
+  },
+  "POST /api/verantwortung/uebergabe": {
+    urteil: "PRAEDIKAT",
+    grund: "Ergebnis je Beitrag — Titel nur für einsehbare Beiträge.",
+  },
+  "POST /api/verantwortung/deaktivierung": {
+    urteil: "PRAEDIKAT",
+    grund: "Übergabeergebnis vor der Deaktivierung — Titel nur für einsehbare Beiträge.",
+  },
   "GET /api/i18n/locales": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
   "GET /api/i18n/:locale/:key": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
   "GET /addin": { urteil: "KEIN_KO_INHALT", grund: "statisches Add-in-Bundle." },

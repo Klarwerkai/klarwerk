@@ -279,6 +279,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // zwei `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "GEDAECHTNIS_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261007:ownership-uebergabe: die Nachfolge bei Befristung. ADDITIV, nachgezählt: ein
+  // einziges `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "VERANTWORTUNG_NACHFOLGE_SCHEMA", risiko: "ADDITIV" },
   // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche. ADDITIV, nachgezählt: ein
   // `CREATE TABLE IF NOT EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed,
   // kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
