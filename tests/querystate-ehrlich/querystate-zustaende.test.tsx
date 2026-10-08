@@ -48,11 +48,13 @@ function Pruefling(): ReturnType<typeof createElement> {
   return createElement(QueryState, {
     query,
     emptyText: LEERSATZ,
-    children: (zeilen: string[]) =>
+    // `createElement` leitet den Typparameter von `QueryState` nicht ab (er bleibt `unknown`); die
+    // Abfrage liefert hier aber immer `string[]`.
+    children: (zeilen: unknown) =>
       createElement(
         "ul",
         { "data-testid": "bestand" },
-        zeilen.map((z) => createElement("li", { key: z }, z)),
+        (zeilen as string[]).map((z) => createElement("li", { key: z }, z)),
       ),
   });
 }
