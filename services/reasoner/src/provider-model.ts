@@ -15,28 +15,31 @@ import {
   selectCandidates,
   sourceLabel,
 } from "./provider";
-import type {
-  AbbruchBefund,
-  AnswerResult,
-  AssistResult,
-  CandidateGroup,
-  ConflictJudgeResult,
-  DescribeImageResult,
-  DuplicateAspect,
-  DuplicateJudgeResult,
-  EnrichResult,
-  ExtractResult,
-  ExtractedPoint,
-  GroupCandidateInput,
-  GroupCandidatesResult,
-  InterviewResult,
-  KlaraVorschlagUrteil,
-  KnowledgeRef,
-  Kollision,
-  KollisionSeite,
-  ReasonerLocale,
-  Relevanztext,
-  StructureResult,
+import {
+  type AbbruchBefund,
+  type AnswerResult,
+  type AssistResult,
+  type CandidateGroup,
+  type ConflictJudgeResult,
+  type DescribeImageResult,
+  type DuplicateAspect,
+  type DuplicateJudgeResult,
+  type EnrichResult,
+  type ExtractResult,
+  type ExtractedPoint,
+  type GroupCandidateInput,
+  type GroupCandidatesResult,
+  type InterviewResult,
+  type KlaraVorschlagUrteil,
+  type KnowledgeRef,
+  type Kollision,
+  type KollisionSeite,
+  type ReasonerLocale,
+  type Relevanztext,
+  // FR-STR-01: die gültigen Wissensarten für Vertrag (Prompt) und Rücklesen (Parser) — EINE Liste.
+  STRUCTURE_KNOWLEDGE_TYPES,
+  type StructureKnowledgeType,
+  type StructureResult,
 } from "./types";
 
 // Abstrakter Modell-Client: kapselt den eigentlichen (anbieterspezifischen) Aufruf.
@@ -143,9 +146,8 @@ function taskInstruction(locale: ReasonerLocale, de: string, en: string): string
 // FR-I18N-01: Systemprompts sprachbewusst. JSON-Contract der structure-Aufgabe bleibt
 // in beiden Sprachen identisch — nur die Anweisung ist lokalisiert.
 function structureSystem(locale: ReasonerLocale): string {
-  const contract =
-    '{"title": string, "statement": string, "conditions": string[], "measures": string[], ' +
-    '"tags": string[], "confidence": number (0..1)}';
+  const knowledgeTypes = STRUCTURE_KNOWLEDGE_TYPES.map((k) => `"${k}"`).join(" | ");
+  const contract = `{"title": string, "statement": string, "conditions": string[], "measures": string[], "tags": string[], "confidence": number (0..1), "knowledgeType": ${knowledgeTypes}}`;
   const base = taskInstruction(
     locale,
     `Du strukturierst industrielles Erfahrungswissen. Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Erfinde nichts dazu.`,
@@ -1886,6 +1888,13 @@ function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.map((v) => String(v)) : [];
 }
 
+// FR-STR-01: nur einer der fünf gültigen Werte wird übernommen; alles andere (fehlend, frei
+// erfunden, falsch geschrieben) ergibt KEINE Wissensart — nie geraten, nie auf einen Standard gebogen.
+function asStructureKnowledgeType(value: unknown): StructureKnowledgeType | undefined {
+  const candidate = typeof value === "string" ? value.trim() : "";
+  return STRUCTURE_KNOWLEDGE_TYPES.find((k) => k === candidate);
+}
+
 function clamp01(value: number): number {
   if (Number.isNaN(value)) {
     return 0;
@@ -1962,6 +1971,7 @@ export class ModelProvider implements ReasonerProvider {
     const raw = await client.complete(structureSystem(locale), rawText, confidential);
     const parsed = JSON.parse(extractJson(raw)) as Record<string, unknown>;
     const firstSentence = rawText.split(/[.!?]/)[0]?.trim() ?? rawText.trim();
+    const knowledgeType = asStructureKnowledgeType(parsed.knowledgeType);
     return {
       title: String(parsed.title ?? firstSentence).trim(),
       statement: String(parsed.statement ?? rawText).trim(),
@@ -1969,6 +1979,7 @@ export class ModelProvider implements ReasonerProvider {
       measures: asStringArray(parsed.measures),
       tags: asStringArray(parsed.tags),
       confidence: clamp01(Number(parsed.confidence ?? 0)),
+      ...(knowledgeType ? { knowledgeType } : {}),
       demo: false,
     };
   }
