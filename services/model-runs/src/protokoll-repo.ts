@@ -1,3 +1,4 @@
+import { nurGelisteteLauffelder } from "./positivliste";
 import { type Preisliste, mitKosten } from "./preisliste";
 import type { ModelRunRepo } from "./repo";
 import type { ModelRunRecord } from "./types";
@@ -8,6 +9,7 @@ import type { ModelRunRecord } from "./types";
 //
 // Ein Mantel um das eigentliche Protokoll-Repo, den die Kompositionswurzel einmal anlegt. Damit gilt
 // für JEDEN Schreiber (Reasoner, künftige Wege) dasselbe, ohne dass einer es vergessen kann:
+//   0. nur Felder der Positivliste (`positivliste.ts`, R-0623) werden übernommen;
 //   1. die Kosten werden aus Verbrauch × Preisliste berechnet und MIT dem Preisstand gespeichert;
 //   2. nach dem Speichern geht eine strukturierte Logzeile `ki_lauf` an die Logsenke — dieselben
 //      Metadaten wie der Datensatz, ohne Fehlertext, Anfragenden und Gegenstand (die gehören in das
@@ -83,7 +85,8 @@ export class ProtokollModelRunRepo implements ModelRunRepo {
   }
 
   async append(record: ModelRunRecord): Promise<void> {
-    const lauf = mitKosten(record, this.preisliste);
+    // R-0623: nur Felder der Positivliste werden erhoben — vor Kosten, Speicher und Logzeile.
+    const lauf = mitKosten(nurGelisteteLauffelder(record), this.preisliste);
     await this.inner.append(lauf);
     try {
       this.log?.(kiLaufLogzeile(lauf));

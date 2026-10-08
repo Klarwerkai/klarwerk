@@ -38,6 +38,12 @@ export {
   type Preisliste,
   type ModellPreis,
 } from "./src/preisliste";
+// Aufnahme gesamt-telemetrie (R-0623): die Positivliste der Betriebsdaten eines Laufs.
+export {
+  nurGelisteteLauffelder,
+  MODEL_RUN_FELDER,
+  MODEL_RUN_VERSUCH_FELDER,
+} from "./src/positivliste";
 export {
   ProtokollModelRunRepo,
   kiLaufLogzeile,
