@@ -11,9 +11,15 @@
 //       Vertraulichkeitsregel gilt für den Kontext genauso wie für die Antworten.
 //   R3  ein Kontext, der keine Zeichenkette ist, wird nicht weitergereicht.
 //   P1  der Prompt nennt den Text ausdrücklich als Kontext (keine Antwort) und deckelt seine Länge.
-//   K1  der Client schickt nur, was noch im Rohtext steht.
+//   K1–K4  der Client schickt die erkannten Abschnitte des Rohtextes in ihrer AKTUELLEN Fassung —
+//          auch korrigiert, und erst nach dem Entfernen nicht mehr (Nacharbeit 3). Das Fortsetzen
+//          eines gespeicherten Entwurfs belegt der gemountete Test I4.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { interviewKontext } from "../../apps/web/src/lib/interviewKontext";
+import {
+  interviewKontext,
+  ocrAbschnittKopf,
+  ocrAbschnitte,
+} from "../../apps/web/src/lib/interviewKontext";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { InMemoryModelRunRepo } from "../../services/model-runs";
 import { DeterministicProvider, ModelProvider, Reasoner } from "../../services/reasoner";
@@ -182,14 +188,36 @@ describe("gesamt-ocr · FR-CAP-05 · Prompt und Client-Auswahl", () => {
     expect(ohne.user[0]?.startsWith("Bisherige Antworten:")).toBe(true);
   });
 
-  it("K1 · der Client schickt nur erkannten Text, der noch im Rohtext steht", () => {
-    const erkannt = [
-      { name: "aushang.png", text: ERKANNT },
-      { name: "notiz.jpg", text: "Gelöschter Block" },
-    ];
-    const raw = `Mein Text.\n\n[OCR: aushang.png]\n${ERKANNT}`;
-    expect(interviewKontext(erkannt, raw)).toBe(`[aushang.png]\n${ERKANNT}`);
-    expect(interviewKontext(erkannt, "")).toBe("");
-    expect(interviewKontext([], raw)).toBe("");
+  it("K1 · Kontext sind nur die erkannten Abschnitte des Rohtextes, nicht der übrige Text", () => {
+    const raw = [
+      "Mein eigener Text.",
+      "",
+      `${ocrAbschnittKopf("aushang.png")}\n${ERKANNT}`,
+      "",
+      "[Handbuch.pdf]\nText aus einem Dokument, kein Bild.",
+      "",
+      `${ocrAbschnittKopf("notiz.jpg")}\nZweiter erkannter Block.`,
+    ].join("\n");
+    expect(interviewKontext(raw)).toBe(
+      `[aushang.png]\n${ERKANNT}\n\n[notiz.jpg]\nZweiter erkannter Block.`,
+    );
+    expect(interviewKontext("Nur eigener Text.")).toBe("");
+    expect(interviewKontext("")).toBe("");
+  });
+
+  it("K2 · Bens Befund: eine Korrektur im erkannten Block aktualisiert den Kontext", () => {
+    const korrigiert = ERKANNT.replace("V3", "V8");
+    const raw = `Mein Text.\n\n${ocrAbschnittKopf("aushang.png")}\n${korrigiert}`;
+    expect(interviewKontext(raw)).toBe(`[aushang.png]\n${korrigiert}`);
+  });
+
+  it("K3 · erst das Entfernen schließt aus: Kopf gelöscht oder Inhalt geleert", () => {
+    expect(interviewKontext(`Mein Text.\n\n${ERKANNT}`)).toBe("");
+    expect(interviewKontext(`Mein Text.\n\n${ocrAbschnittKopf("aushang.png")}\n   \n`)).toBe("");
+  });
+
+  it("K4 · Abschnitte enden an der nächsten Kopfzeile; der Bildname bleibt erhalten", () => {
+    const raw = `${ocrAbschnittKopf("aushang.png")}\n${ERKANNT}\n\n[Transkript: band.mp3]\nGesprochen.`;
+    expect(ocrAbschnitte(raw)).toEqual([{ name: "aushang.png", text: ERKANNT }]);
   });
 });

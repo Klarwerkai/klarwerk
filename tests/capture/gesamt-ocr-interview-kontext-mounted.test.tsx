@@ -9,6 +9,10 @@
 // Bild anhängen → „OCR → Text" klicken → Interview bewusst starten. Erwartet: der Interview-Aufruf
 // trägt den erkannten Text als Kontext. Gegenprobe: ohne Klick auf die Erkennung kein Kontext.
 // Die Bild-Engine und die Vorschau-Erzeugung (Canvas, in jsdom nicht vorhanden) sind ersetzt.
+//
+// Bens Befunde (Nacharbeit 3): I3 — eine Korrektur im erkannten Block landet im Kontext; I4 —
+// gespeichert, neu geöffnet (frische Seite, ECHTER Entwurfsdienst im Speicher) und fortgesetzt,
+// trägt der Interview-Aufruf den erkannten Text weiterhin.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OcrResult } from "../../apps/web/src/lib/ocr";
 
@@ -19,6 +23,7 @@ const steuerung = vi.hoisted(() => ({
     done: false,
     demo: true,
   })),
+  entwuerfeLeeren: (): void => {},
 }));
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -29,16 +34,30 @@ vi.mock("../../apps/web/src/api/auth", () => ({
   },
 }));
 
-vi.mock("../../apps/web/src/api/endpoints", () => {
+// Der Entwurfsweg ist der ECHTE Dienst (im Speicher) — Muster aus interview-pending-turn-mounted.
+vi.mock("../../apps/web/src/api/endpoints", async () => {
+  const { InMemoryDraftRepo } = await import("../../services/capture/src/repo");
+  const { CaptureService } = await import("../../services/capture/src/service");
+  type P = Record<string, unknown>;
+  let svc = new CaptureService({ repo: new InMemoryDraftRepo() });
+  steuerung.entwuerfeLeeren = () => {
+    svc = new CaptureService({ repo: new InMemoryDraftRepo() });
+  };
   const ok = <T,>(v: T) => vi.fn(async () => v);
   return {
     endpoints: {
       validation: { settings: ok({ defaultNeededValidations: 3 }) },
-      external: { policy: ok({ enabled: false }) },
+      external: { policy: ok({ stage: "search_on_click" }), search: ok([]) },
       uploadLimits: { get: ok({ maxAttachments: 10, maxAttachmentBytes: 20_000_000 }) },
       directory: { list: ok([]) },
       gaps: { list: ok([]) },
-      drafts: { list: ok([]) },
+      drafts: {
+        list: vi.fn(async () => svc.listDrafts()),
+        create: vi.fn(async (p: P) => svc.createDraft(p, "u1")),
+        update: vi.fn(async (id: string, p: P) => svc.continueDraft(id, p, "u1")),
+        remove: vi.fn(async (id: string) => svc.deleteDraft(id)),
+        promote: vi.fn(async () => ({})),
+      },
       reasoner: {
         status: ok({ active: false, mode: "off", reachable: "off" }),
         config: ok(null),
@@ -65,7 +84,7 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter, Route, Routes } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
-import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
+import { NavGuardProvider, useNavGuard } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
@@ -84,10 +103,28 @@ let modus: "freitext" | "interview" | undefined;
 let zeichnen: (() => Promise<void>) | null = null;
 
 const flush = async (): Promise<void> => {
-  for (let i = 0; i < 25; i++) {
+  for (let i = 0; i < 30; i++) {
     await new Promise((r) => setTimeout(r, 0));
   }
 };
+
+/** Ein Wegklick aus der Seite — die Navigationswache bietet „Speichern" an (Muster pending-turn). */
+const nav = { weiter: false };
+function NavProbe(): JSX.Element {
+  const { guard } = useNavGuard();
+  return createElement(
+    "button",
+    {
+      type: "button",
+      "data-testid": "navprobe",
+      onClick: () =>
+        guard(() => {
+          nav.weiter = true;
+        }),
+    },
+    "navprobe",
+  );
+}
 
 async function mount(): Promise<void> {
   container = document.createElement("div");
@@ -123,6 +160,7 @@ async function mount(): Promise<void> {
                         element: createElement(CaptureArbeitsraum, { modus }),
                       }),
                     ),
+                    createElement(NavProbe),
                   ),
                 ),
               ),
@@ -152,6 +190,8 @@ beforeEach(async () => {
   (globalThis as unknown as { fetch: unknown }).fetch = vi.fn();
   steuerung.ocr.mockReset();
   steuerung.interview.mockClear();
+  steuerung.entwuerfeLeeren();
+  nav.weiter = false;
   await mount();
 });
 
@@ -202,6 +242,48 @@ async function klicke(b: HTMLButtonElement): Promise<void> {
   await act(flush);
 }
 
+/** Knopf, dessen Beschriftung den Teil enthält (Knöpfe mit Symbol oder Zähler). */
+function knopfMit(teil: string): HTMLButtonElement | null {
+  const passt = (b: HTMLButtonElement): boolean =>
+    (b.textContent ?? "").replace(/\s+/g, " ").includes(teil);
+  return [...container.querySelectorAll("button")].find(passt) ?? null;
+}
+
+/** Das Rohtextfeld des Erzählens. */
+function rohtextFeld(): HTMLTextAreaElement {
+  const ph = i18n.t("capture.rawPlaceholder");
+  const feld = [...container.querySelectorAll("textarea")].find((x) => x.placeholder === ph);
+  if (!feld) {
+    throw new Error("Kein Rohtextfeld");
+  }
+  return feld;
+}
+
+async function tippe(feld: HTMLTextAreaElement, wert: string): Promise<void> {
+  const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+  setter?.call(feld, wert);
+  await act(async () => {
+    feld.dispatchEvent(new Event("input", { bubbles: true }));
+    await flush();
+  });
+}
+
+/** Bild anhängen und seinen Text auf Klick erkennen lassen. */
+async function erkenneBild(): Promise<void> {
+  steuerung.ocr.mockResolvedValue({ status: "success", text: ERKANNT });
+  await haengeBildAn();
+  await klicke(knopf(i18n.t("capture.ocr")));
+  expect(steuerung.ocr).toHaveBeenCalledTimes(1);
+}
+
+/** Das Interview bewusst starten und den mitgeschickten Kontext zurückgeben. */
+async function starteInterview(): Promise<string> {
+  await waehleModus("interview");
+  await klicke(knopf(i18n.t("capture.ivStart")));
+  expect(steuerung.interview).toHaveBeenCalledTimes(1);
+  return String(steuerung.interview.mock.calls[0]?.[3] ?? "");
+}
+
 describe("gesamt-ocr · FR-CAP-05 · erkannter Bildtext als Kontext des geführten Interviews", () => {
   it("I1 · nach dem Klick auf die Erkennung trägt der Interview-Aufruf den erkannten Text", async () => {
     steuerung.ocr.mockResolvedValue({ status: "success", text: ERKANNT });
@@ -231,5 +313,55 @@ describe("gesamt-ocr · FR-CAP-05 · erkannter Bildtext als Kontext des geführt
     expect(steuerung.ocr).not.toHaveBeenCalled();
     expect(steuerung.interview).toHaveBeenCalledTimes(1);
     expect(steuerung.interview.mock.calls[0]?.[3] ?? "").toBe("");
+  });
+
+  it("I3 · Bens Befund: ein korrigiertes Zeichen im erkannten Block landet im Kontext", async () => {
+    await erkenneBild();
+    const korrigiert = ERKANNT.replace("V3", "V8");
+    const feld = rohtextFeld();
+    expect(feld.value).toContain(ERKANNT);
+    await tippe(feld, feld.value.replace(ERKANNT, korrigiert));
+
+    const kontext = await starteInterview();
+    expect(kontext).toContain(korrigiert);
+    expect(kontext).not.toContain(ERKANNT);
+  });
+
+  it("I4 · Bens Befund: gespeichert, neu geöffnet und fortgesetzt — der Kontext ist wieder da", async () => {
+    await erkenneBild();
+    // Das Bild selbst reist nicht im Entwurf (lokaler Anhang) — vor dem Speichern entfernen, damit
+    // die Wache nicht über ein ungesichertes Bild spricht. Der erkannte TEXT steht im Rohtext.
+    const bildKachel = container.querySelector('img[alt="aushang.png"]')?.parentElement;
+    const wahl = `button[aria-label="${i18n.t("capture.listRemove")}"]`;
+    const bildEntfernen = bildKachel?.querySelector<HTMLButtonElement>(wahl);
+    if (bildEntfernen) {
+      await klicke(bildEntfernen);
+    }
+
+    // Speichern über die Navigationswache (der vorhandene Entwurfsweg).
+    const wegklick = container.querySelector<HTMLButtonElement>("[data-testid=navprobe]");
+    await klicke(wegklick as HTMLButtonElement);
+    const speichern = knopfMit(i18n.t("nav.guard.save"));
+    expect(speichern).not.toBeNull();
+    await klicke(speichern as HTMLButtonElement);
+    expect(nav.weiter).toBe(true);
+
+    // Eine FRISCHE Seite — kein Sitzungszustand überlebt; nur der gespeicherte Entwurf.
+    modus = undefined;
+    act(() => root.unmount());
+    container.remove();
+    await mount();
+    const aufklappen = knopfMit("Entwürfe anzeigen");
+    if (aufklappen) {
+      await klicke(aufklappen);
+    }
+    const fortsetzen = knopfMit(i18n.t("capture.resume"));
+    expect(fortsetzen).not.toBeNull();
+    await klicke(fortsetzen as HTMLButtonElement);
+    expect(rohtextFeld().value).toContain(ERKANNT);
+
+    const kontext = await starteInterview();
+    expect(kontext).toContain(ERKANNT);
+    expect(kontext).toContain("aushang.png");
   });
 });

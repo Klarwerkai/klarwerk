@@ -245,7 +245,7 @@ import {
   interviewSourceKey,
   isInterviewDone,
 } from "../lib/interviewFlow";
-import { type ErkannterBildtext, interviewKontext } from "../lib/interviewKontext";
+import { interviewKontext, ocrAbschnittKopf } from "../lib/interviewKontext";
 import {
   EMPTY_SOURCE_FORM,
   type SourceFormInput,
@@ -1062,9 +1062,6 @@ export function CaptureArbeitsraum({
   // die aktuelle ist — eine SPÄTE Antwort eines vor dem Speichern gestarteten Requests kann den
   // danach geltenden Zustand damit nicht wieder einschreiben.
   const ivRunRef = useRef(0);
-  // Aufnahme `gesamt-ocr` (FR-CAP-05): was der Mensch auf Klick in Bildern erkannt hat — reist als
-  // Kontext ins Interview, solange es noch im Rohtext steht (lib/interviewKontext.ts).
-  const [erkannteBildtexte, setErkannteBildtexte] = useState<readonly ErkannterBildtext[]>([]);
 
   // PMO-FEA-0006: „Aus Datei" — Dokumenttext, optionaler Suchauftrag, KI-Punkteliste,
   // sichtbare Entwurfs-Warteschlange. Nichts wird automatisch gespeichert.
@@ -1333,7 +1330,9 @@ export function CaptureArbeitsraum({
         v.answers,
         locale,
         draftProvenance(confidentiality, undefined, draftId ?? undefined),
-        interviewKontext(erkannteBildtexte, raw),
+        // Aufnahme `gesamt-ocr` (FR-CAP-05): die auf Klick erkannten Abschnitte des Rohtextes, so wie
+        // sie JETZT dastehen — auch nach dem Fortsetzen eines Entwurfs (lib/interviewKontext.ts).
+        interviewKontext(raw),
       ),
     onSuccess: (res, v) => {
       if (v.run !== ivRunRef.current) {
@@ -4737,10 +4736,9 @@ export function CaptureArbeitsraum({
     try {
       const res = await runImageOcr(img.dataUrl);
       if (res.status === "success" && res.text.length > 0) {
-        setRaw((prev) =>
-          prev ? `${prev}\n\n[OCR: ${img.name}]\n${res.text}` : `[OCR: ${img.name}]\n${res.text}`,
-        );
-        setErkannteBildtexte((prev) => [...prev, { name: img.name, text: res.text }]);
+        // Der Abschnittskopf ist zugleich die Zuordnung für den Interviewkontext (gesamt-ocr).
+        const abschnitt = `${ocrAbschnittKopf(img.name)}\n${res.text}`;
+        setRaw((prev) => (prev ? `${prev}\n\n${abschnitt}` : abschnitt));
         setNotice(t("capture.ocrDone", { name: img.name }));
       } else if (res.status === "success") {
         setErr(t("capture.ocrEmpty", { name: img.name }));
