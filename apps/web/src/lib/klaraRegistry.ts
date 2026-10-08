@@ -6,7 +6,7 @@
 import { CAPTURE_HELP_TOPICS } from "./captureHelp";
 import { FAQ_CONTENT } from "./faqContent";
 import { HELP_TOPICS } from "./helpTopics";
-import { REVIEW_HELP_TOPICS } from "./reviewHelp";
+import { REVIEW_HELP_ROUTE, REVIEW_HELP_TOPICS } from "./reviewHelp";
 
 export type KlaraKind = "page" | "field" | "topic" | "faq" | "artikel";
 
@@ -178,7 +178,8 @@ export function allKlaraEntries(): readonly KlaraEntry[] {
     kind: "field",
     titleKey: t.titleKey,
     bodyKey: t.bodyKey,
-    route: "/validierung",
+    // Nacharbeit 13: dorthin, wo die Handlung heute lebt (`REVIEW_HELP_ROUTE`, `lib/reviewHelp.ts`).
+    route: REVIEW_HELP_ROUTE[t.id] ?? "/validierung",
   }));
   const sections: KlaraEntry[] = KLARA_SECTIONS.map((s) => ({
     id: `sec:${s.key}`,

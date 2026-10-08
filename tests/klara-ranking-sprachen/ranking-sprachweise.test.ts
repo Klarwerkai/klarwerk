@@ -205,16 +205,14 @@ const TRAGKRAFT: ReadonlyMap<string, Tragkraft> = new Map<string, Tragkraft>([
   [
     "de → papierkorb",
     {
-      zahl: 0,
+      zahl: 1,
       satz:
-        "TOT, und zwar als ECHTER FUND, nicht als Tippfehler: derselbe Befund steht seit JOB 3798 " +
-        "namentlich im DE-Ehrlichkeitswächter (`tests/help/klara-registry.test.ts:274-287`). " +
-        "Klaras einzige Löschhilfe (`vhelp.deleteKo.body`) sagt „endgültig“ und kennt den " +
-        "Papierkorb nicht, während die Löschabfrage der Fläche 28 Tage Wiederherstellung " +
-        "verspricht. Wer „löschen“ tippt, erfährt von Klara nichts von der Rückholbarkeit. Die " +
-        "Behebung bräuchte `i18n.ts` und ist hier nach §10 gesperrt — sie steht als REST in der " +
-        "Rückgabe. Der zweite Stamm desselben Schlüssels trägt (siehe „de → entfern“), das " +
-        "Synonym läuft also nicht ganz ins Leere.",
+        "BEHOBEN in Aufnahme gesamt-hilfen, Nacharbeit 13 (Ben): bis dahin TOT (0) — Klaras " +
+        "einzige Löschhilfe (`vhelp.deleteKo.body`) sagte „endgültig“ und kannte den Papierkorb " +
+        "nicht. Sie steht jetzt unter `loeschhilfe.deleteKo.body` (`texte/loeschhilfe.ts`, " +
+        "umgeleitet in `lib/reviewHelp.ts`) und nennt Papierkorb, 30 Tage und die " +
+        "Wiederherstellung durch den Admin. Wer „löschen“ tippt, findet damit genau diesen einen " +
+        "Eintrag über den ersten Stamm.",
     },
   ],
   [

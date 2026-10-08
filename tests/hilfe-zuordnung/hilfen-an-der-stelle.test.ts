@@ -5,35 +5,29 @@
 //
 // DER ORIGINALWORTLAUT: R-0888 „Neben Feldern und Abschnitten steht ein Fragezeichen, das erklärt,
 // was das Element tut …"; R-1017 „Erklärungen erscheinen an der Stelle der Oberfläche, an der ein
-// Anwender ins Stocken gerät". Die Quelle zu R-1017 (mega92 Block E) verlangt ZUERST eine
-// Erhebung, welche Flächen heute eine Hilfe tragen und welche nicht.
+// Anwender ins Stocken gerät". Die beschlossene Form ist seit Pedis Entscheidung vom 04.09. nicht
+// das „?" im Sichtfeld, sondern die Seitenhilfe im Zahnrad bzw. das „?"-Menü der Fläche (Z5).
 //
-// BENS BEFUND (Nacharbeit 10): „Er zählt Hilfetexte und Komponenten, ordnet sie aber nicht den
-// heutigen Feldern und Abschnitten zu." Die Zuordnung steht in
-// `docs/hilfe/aufnahme-20260922-gesamt-hilfen.md` (Abschnitt „Zuordnung der Hilfen zu Feldern und
-// Abschnitten"). Dieser Fall hält sie am QUELLTEXT fest, damit sie keine Behauptung bleibt:
-//   Z1 · Erfassen: jedes der 23 Erfassen-Themen steht im „?"-Werkzeug des Blattes und in dessen
-//        Seitenhilfe;
-//   Z2 · Prüfbereich und Konflikte: welche Prüf-Themen welches „?"-Menü zeigt — aus den Filtern
-//        der Seiten gelesen; zusammen mit der Detailseite ergibt das genau den Katalog;
-//   Z3 · Detailseite: die zwölf Themen der Wissensobjekt-Seite zeigt KEINE Fläche (tatsächlich
-//        fehlend an der Stelle; erreichbar nur über Klaras Suche);
-//   Z4 · die Elementanker, an denen Klara ein Feld beim Antippen erklärt, und dass jeder auflöst;
-//   Z5 · die entschiedene Form: `HelpTip` zeichnet nichts ins Sichtfeld, er meldet an die
-//        Seitenhilfe (Pedi 04.09., JOB 3060);
-//   Z6 · von den 79 Überschriften des Hilfe-Registers (Stand 05.07.) sind die 14 der alten
-//        Detailseite entfallen.
+// BENS BEFUNDE:
+//   Nacharbeit 10 — „ordnet sie aber nicht den heutigen Feldern und Abschnitten zu": die Zuordnung
+//     steht in `docs/hilfe/aufnahme-20260922-gesamt-hilfen.md`; Z1, Z2, Z4–Z6 halten sie fest.
+//   Nacharbeit 13 — „Die Erhebung ist damit geliefert, die festgestellten Funktionslücken bestehen
+//     weiter": seither stehen die Erklärungen AN DER STELLE. Z3 (Wissensobjekt-Handlungen und
+//     „Noch gültig"), Z7 (Abschnittserklärungen) und Z8 (berichtigte Löschhilfe, Registry-Ziele)
+//     prüfen das am Quelltext; dass eine angemeldete Erklärung im Zahnrad wirklich erscheint,
+//     belegen für den Baustein `HelpTip` die gemounteten Seitenhilfe-Wächter
+//     (`tests/seitenhilfe-flaechen/`, `tests/seitenhilfe-luecken/`).
 //
-// Ändert sich eine Zuordnung (ein Thema wandert an eine Fläche, ein Anker kommt dazu), wird dieser
-// Fall rot — und die Tabelle im Abgleichsdokument ist nachzuführen. Er ist ein Inventar, keine
-// Abnahme: „fehlend" in Z3 ist ein Befund, kein Sollzustand.
+// GEGENPROBEN: eine Anmeldung aus `MehrAbschnitte.tsx` nehmen → Z3 rot; eine Abschnittserklärung
+// entfernen → Z7 rot; `BODY_KEY_ABWEICHEND` in `lib/reviewHelp.ts` leeren → Z8 rot.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BLATT_HILFE_THEMEN } from "../../apps/web/src/components/erfassen/hilfe";
+import i18n from "../../apps/web/src/i18n";
 import { CAPTURE_HELP_IDS } from "../../apps/web/src/lib/captureHelp";
 import { klaraEntryById } from "../../apps/web/src/lib/klaraRegistry";
-import { REVIEW_HELP_IDS } from "../../apps/web/src/lib/reviewHelp";
+import { REVIEW_HELP_IDS, reviewHelp } from "../../apps/web/src/lib/reviewHelp";
 import { REPO_WURZEL, repoPfad } from "../support/repoPfad";
 
 const lies = (pfad: string): string => readFileSync(repoPfad(pfad), "utf8");
@@ -44,14 +38,14 @@ function gefilterteThemen(datei: string): string[] {
   return [...(treffer?.[1] ?? "").matchAll(/"(\w+)"/g)].map((wert) => wert[1] ?? "");
 }
 
-/** Alle Quelldateien der Oberfläche: Seiten, Bauteile, Hülle. */
+/** Alle Quelldateien der Oberfläche: Seiten, Bauteile, Hülle — ohne die dort liegenden Tests. */
 function oberflaechendateien(): string[] {
   const dateien: string[] = [];
   const gehe = (ordner: string): void => {
     for (const name of readdirSync(ordner)) {
       const pfad = join(ordner, name);
       if (statSync(pfad).isDirectory()) gehe(pfad);
-      else if (/\.tsx?$/.test(name)) dateien.push(pfad);
+      else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) dateien.push(pfad);
     }
   };
   for (const ordner of ["pages", "components", "shell"]) gehe(repoPfad(`apps/web/src/${ordner}`));
@@ -73,8 +67,8 @@ const PRUEFBEREICH = [
   "markTrue",
 ];
 const KONFLIKTE = ["conflictEscalate", "conflictSecondOpinion", "conflictResolve"];
+// Die Handlungen am Wissensobjekt (Leseansicht und ihr „Mehr“-Blatt).
 const DETAILSEITE = [
-  "stillValid",
   "reportConflict",
   "conflictForm",
   "sourcesLevel2",
@@ -86,6 +80,12 @@ const DETAILSEITE = [
   "validity",
   "transfer",
   "deleteKo",
+];
+// „Noch gültig“ steht als Knopf im Reiter „Erneut“ (`pages/Lifecycle.tsx`).
+const ERNEUT = ["stillValid"];
+const DETAILSEITE_BAUTEILE = [
+  "apps/web/src/components/bibliothek/MehrAbschnitte.tsx",
+  "apps/web/src/components/bibliothek/BibliothekLesen.tsx",
 ];
 const ANKER = [
   "cap:interview",
@@ -114,10 +114,53 @@ const ENTFALLEN = [
   "ko.comments",
   "ko.attachments",
 ];
-const DETAILSEITE_DATEIEN = [
-  "apps/web/src/pages/KnowledgeDetail.tsx",
-  "apps/web/src/components/bibliothek/BibliothekLesen.tsx",
-  "apps/web/src/components/bibliothek/MehrAbschnitte.tsx",
+const DETAILSEITE_DATEIEN = ["apps/web/src/pages/KnowledgeDetail.tsx", ...DETAILSEITE_BAUTEILE];
+
+// Abschnitte des Hilfe-Registers, die heute gezeichnet werden und bis Nacharbeit 13 keine eigene
+// Erklärung an der Stelle hatten: [Datei, Überschrift, Schlüssel der Erklärung].
+const STUFE2 = "apps/web/src/pages/Stufe2.tsx";
+const ABSCHNITTE: readonly (readonly [string, string, string])[] = [
+  ["apps/web/src/pages/Analytics.tsx", "ana.byType", "shelp.ana.byType"],
+  ["apps/web/src/pages/Analytics.tsx", "ana.weekly", "shelp.ana.weekly"],
+  ["apps/web/src/pages/Ask.tsx", "ask.steps", "shelp.ask.steps"],
+  [
+    "apps/web/src/components/CaptureDraftList.tsx",
+    "capture.resumeTitle",
+    "abschnittshilfe.capture.resumeTitle",
+  ],
+  ["apps/web/src/pages/Capture.tsx", "ext.title", "shelp.ext.title"],
+  [
+    "apps/web/src/pages/ExternalKnowledge.tsx",
+    "extpage.resultsTitle",
+    "shelp.extpage.resultsTitle",
+  ],
+  ["apps/web/src/components/ImportJsonUpload.tsx", "imp.uploadTitle", "shelp.imp.uploadTitle"],
+  ...[
+    "out.kindTitle",
+    "out.sourcesTitle",
+    "out.composeTitle",
+    "out.previewTitle",
+    "out.provenanceTitle",
+    "ext.pipeline.title",
+    "imp.queueTitle",
+    "mgmt.jumpTitle",
+    "mgmt.overview",
+    "mgmt.capital",
+    "mgmt.valuation",
+    "mgmt.statement",
+    "mgmt.maturity",
+    "mgmt.house",
+    "mgmt.recommendations",
+    "mgmt.priorities",
+    "mgmt.pilot",
+    "mrun.title",
+    "rcfg.title",
+    "evx.title",
+    "prov.title",
+    "readiness.title",
+    "kos.hintsTitle",
+    "evFresh.title",
+  ].map((key) => [STUFE2, key, `shelp.${key}`] as const),
 ];
 
 describe("R-0888 / R-1017 · Zuordnung der vorhandenen Hilfen zu Feldern und Abschnitten", () => {
@@ -130,31 +173,38 @@ describe("R-0888 / R-1017 · Zuordnung der vorhandenen Hilfen zu Feldern und Abs
     expect(blatt).toContain("data-testid={`blatt-hilfe-${thema.id}`}");
   });
 
-  it("Z2 · Prüfbereich und Konflikte: jedes „?“-Menü zeigt genau seine Themen, der Rest gehört zur Detailseite", () => {
+  it("Z2 · jedes Prüf-Thema hat genau eine Fläche: Prüfkopf, Konflikte, Wissensobjekt oder „Erneut“", () => {
     expect(gefilterteThemen("apps/web/src/pages/Validation.tsx")).toEqual(PRUEFBEREICH);
     expect(gefilterteThemen("apps/web/src/pages/Conflicts.tsx")).toEqual(KONFLIKTE);
-    const zugeordnet = [...PRUEFBEREICH, ...KONFLIKTE, ...DETAILSEITE];
+    const zugeordnet = [...PRUEFBEREICH, ...KONFLIKTE, ...DETAILSEITE, ...ERNEUT];
     expect(new Set(zugeordnet).size, "ein Thema an zwei Flächen").toBe(zugeordnet.length);
     expect([...zugeordnet].sort()).toEqual([...REVIEW_HELP_IDS].sort());
   });
 
-  it("Z3 · Detailseite: keine Fläche zeigt die zwölf Erklärungen — sie fehlen an der Stelle", () => {
-    const funde: string[] = [];
-    for (const datei of oberflaechendateien()) {
-      const quelle = readFileSync(datei, "utf8");
-      for (const id of DETAILSEITE) {
-        if (quelle.includes(`"${id}"`) || quelle.includes(`vhelp.${id}`)) {
-          funde.push(`${relative(REPO_WURZEL, datei)}: ${id}`);
-        }
-      }
+  it("Z3 · Nacharbeit 13: die Erklärungen der Wissensobjekt-Handlungen und von „Noch gültig“ stehen an der Stelle", () => {
+    const bauteile = DETAILSEITE_BAUTEILE.map(lies).join("\n");
+    const fehlt: string[] = [];
+    for (const id of DETAILSEITE) {
+      const thema = reviewHelp(id as (typeof REVIEW_HELP_IDS)[number]);
+      // `deleteKo` holt Titel und Text über `reviewHelp` (berichtigter Text, Z8); die übrigen
+      // nennen ihre Schlüssel unmittelbar.
+      const direkt =
+        bauteile.includes(`title={t("${thema.titleKey}")}`) &&
+        bauteile.includes(`body={t("${thema.bodyKey}")}`);
+      const ueberKatalog =
+        bauteile.includes(`title={t(reviewHelp("${id}").titleKey)}`) &&
+        bauteile.includes(`body={t(reviewHelp("${id}").bodyKey)}`);
+      if (!direkt && !ueberKatalog) fehlt.push(id);
     }
-    expect(funde, "eine Fläche zeigt jetzt ein Thema — Zuordnung nachführen").toEqual([]);
-    // Die Detailseite trägt nur ihre Seitenhilfe (Abschnittsebene), kein Element-Thema.
-    const detail = lies("apps/web/src/pages/KnowledgeDetail.tsx");
-    expect(detail).toContain('<HelpTip title={t("seitenhilfe.wissen.title")}');
-    // „Noch gültig" hat heute kein Bedienelement mehr: die Leseansicht bietet „Re-Validierung".
-    const flaechen = oberflaechendateien().map((datei) => readFileSync(datei, "utf8"));
-    expect(flaechen.some((quelle) => quelle.includes('"ko.stillValid"'))).toBe(false);
+    expect(fehlt, "diese Handlungen am Wissensobjekt melden ihre Erklärung nicht an").toEqual([]);
+    // „Noch gültig“: der Knopf steht im Reiter „Erneut“, und die Erklärung im „?“-Menü daneben.
+    const erneut = lies("apps/web/src/pages/Lifecycle.tsx");
+    expect(erneut).toContain('{t("lcy.stillValid")}');
+    expect(erneut).toContain('<PruefenHilfeBlock titel={t("vhelp.stillValid.title")}>');
+    expect(erneut).toContain('{t("vhelp.stillValid.body")}');
+    // Der Knopf heißt „Noch gültig → neue Version“; die Erklärung trägt seinen ersten Teil als Titel.
+    const de = i18n.getFixedT("de");
+    expect(de("lcy.stillValid").startsWith(de("vhelp.stillValid.title"))).toBe(true);
   });
 
   it("Z4 · die Elementanker, an denen Klara ein Feld beim Antippen erklärt — und jeder löst auf", () => {
@@ -170,7 +220,7 @@ describe("R-0888 / R-1017 · Zuordnung der vorhandenen Hilfen zu Feldern und Abs
     }
   });
 
-  it("Z6 · Hilfe-Register (Stand 05.07.): die 14 Überschriften der alten Detailseite gibt es nicht mehr", () => {
+  it("Z6 · Hilfe-Register (Stand 05.07.): die Überschriften der alten Detailseite gibt es nicht mehr", () => {
     // `docs/hilfe/HILFE-REGISTER.md` Teil 1 führt 18 Überschriften der Detailseite. Seit dem Umbau auf
     // die Leseansicht (`BibliothekLesen`, „Mehr“-Blatt `MehrAbschnitte`) zeichnet keine Fläche diese
     // 13 Schlüssel mehr; „Externe Quelle suchen“ (`ext.title`) steht nur noch beim Erfassen.
@@ -181,6 +231,59 @@ describe("R-0888 / R-1017 · Zuordnung der vorhandenen Hilfen zu Feldern und Abs
     for (const datei of DETAILSEITE_DATEIEN) {
       expect(lies(datei), `${datei}: „ext.title“`).not.toContain('"ext.title"');
     }
+    // Nacharbeit 13: „Aussage“, „Bedingungen“, „Maßnahme“ (`components/ko/KoRead.tsx`) stehen nur noch
+    // in Bausteinen, die KEINE Fläche montiert — eingebunden wird `KoRead` allein von `KoReadView`,
+    // und `KoReadView` von niemandem.
+    const einbinder = oberflaechendateien()
+      .filter((datei) => /from "\.{1,2}\/(ko\/|components\/ko\/)?KoReadView"/.test(lies(datei)))
+      .map((datei) => relative(REPO_WURZEL, datei));
+    expect(einbinder, "KoReadView wird wieder montiert — Zuordnung nachführen").toEqual([]);
+  });
+
+  it("Z7 · Nacharbeit 13: jeder gezeichnete Register-Abschnitt meldet seine Erklärung an der Stelle an", () => {
+    const fehlt: string[] = [];
+    for (const [datei, ueberschrift, erklaerung] of ABSCHNITTE) {
+      const quelle = lies(datei);
+      if (!quelle.includes(`<SectionLabel>{t("${ueberschrift}"`)) {
+        fehlt.push(`${datei}: die Überschrift ${ueberschrift} steht nicht mehr da`);
+      }
+      if (!quelle.includes(`body={t("${erklaerung}")}`)) {
+        fehlt.push(`${datei}: ${ueberschrift} meldet ${erklaerung} nicht an`);
+      }
+      for (const sprache of ["de", "en", "nl"] as const) {
+        const text = i18n.getFixedT(sprache)(erklaerung);
+        if (text === erklaerung || text.trim().length < 40) {
+          fehlt.push(`${sprache}: ${erklaerung} fehlt`);
+        }
+      }
+    }
+    expect(fehlt).toEqual([]);
+    expect(ABSCHNITTE.length).toBe(31);
+  });
+
+  it("Z8 · Nacharbeit 13: die Löschhilfe sagt, was Löschen tut, und Klara führt jedes Thema an seine Fläche", () => {
+    const loeschen = reviewHelp("deleteKo");
+    expect(loeschen.bodyKey).toBe("loeschhilfe.deleteKo.body");
+    // Die Frist steht EINMAL im Server; der Text muss genau sie nennen.
+    const dienst = lies("services/knowledge-object/src/service.ts");
+    const tage = /export const TRASH_RETENTION_DAYS = (\d+);/.exec(dienst)?.[1];
+    expect(tage, "die Papierkorbfrist ist im Server nicht lesbar").toBeDefined();
+    const erwartet = {
+      de: ["Papierkorb", `${tage} Tage`, "Admin"],
+      en: ["recycle bin", `${tage} days`, "admin"],
+      nl: ["prullenbak", `${tage} dagen`, "admin"],
+    } as const;
+    for (const sprache of ["de", "en", "nl"] as const) {
+      const text = i18n.getFixedT(sprache)(loeschen.bodyKey);
+      for (const wort of erwartet[sprache]) {
+        expect(text, `${sprache}: „${wort}“ fehlt in der Löschhilfe`).toContain(wort);
+      }
+      expect(klaraEntryById("rev:deleteKo")?.bodyKey).toBe(loeschen.bodyKey);
+    }
+    expect(klaraEntryById("rev:stillValid")?.route).toBe("/lebenszyklus");
+    expect(klaraEntryById("rev:deleteKo")?.route).toBe("/bibliothek");
+    expect(klaraEntryById("rev:conflictResolve")?.route).toBe("/konflikte");
+    expect(klaraEntryById("rev:approve")?.route).toBe("/validierung");
   });
 
   it("Z5 · die entschiedene Form: `HelpTip` zeichnet nichts ins Sichtfeld, er meldet an die Seitenhilfe", () => {
