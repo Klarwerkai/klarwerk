@@ -166,6 +166,17 @@ export interface KoAttachment {
 // „offen" noch „keine Kategorie vorhanden"; kein Platzhalter, kein Standardwert.
 export interface KnowledgeCheckResult {
   status: "done" | "pending" | "failed";
+  // AUFNAHME 20260922 · NEGATIVWISSEN-HINWEIS (R-1629): ähnliche Einträge der Wissensart
+  // „negativwissen" (Vertrag bei `negativwissenAuskunft` in services/app/src/knowledge-check.ts).
+  // Der Server lässt das Feld ohne Treffer weg — fehlt es, gibt es nichts anzuzeigen.
+  negativwissen?: {
+    id: string;
+    title: string;
+    statement: string;
+    score: number;
+    koStatus: KoStatus | null;
+    koCategory: string | null;
+  }[];
   similar: {
     id: string;
     title: string;
@@ -534,6 +545,9 @@ export interface KnowledgeObject {
   // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet, unabhängig von der Kategorie (Spiegel von
   // services/knowledge-object/src/types.ts). Fehlt = kein Fachgebiet angegeben, nichts abgeleitet.
   domain?: string;
+  // R-1632 / R-1633: wo dieser Punkt gilt (Spiegel von services/knowledge-object/src/geltung.ts).
+  // Fehlt = keine Geltung angegeben, nichts abgeleitet.
+  geltung?: KoGeltung;
   tags: string[];
   confidence: number;
   trust: number;
@@ -647,6 +661,10 @@ export interface KnowledgeObject {
     laeuft?: boolean;
     konfliktGefunden?: boolean;
   };
+  // R-1107 (Aufnahme gesamt-dublettenvergleich): Spiegel von `services/knowledge-object/src/
+  // types.ts` — gesetzt, wenn dieser Artikel über den Zusammenführen-Assistenten in einem
+  // Führungsartikel aufgegangen ist. Er bleibt lesbar; das Feld nennt den verbleibenden Artikel.
+  mergedInto?: { koId: string; version: number; overlapId: string; at: string; by: string };
 }
 
 // ================================================================================================
@@ -777,6 +795,29 @@ export interface TrashedKo {
 
 export type ConflictType = "truth" | "experience" | "context" | "temporal" | "role";
 export type ConflictStatus = "offen" | "eskaliert" | "zweitmeinung" | "geloest";
+// R-0252: die Art der nötigen Arbeit (Regel/Sache/Version) — Spiegel von services/conflicts/src/types.ts.
+export type ConflictWorkKind = "regel" | "sache" | "version";
+// R-0263: Vorrang zwischen den zwei Punkten einer Entscheidung — Spiegel von services/conflicts.
+export type VorrangArt = "ueberstimmt" | "schraenkt_ein";
+export interface VorrangWahl {
+  art: VorrangArt;
+  /** Kennung der Seite, die gilt (bei `schraenkt_ein`: die speziellere). */
+  gilt: string;
+  geltungsbereich?: string;
+}
+export interface KonfliktVorrang {
+  art: VorrangArt;
+  vorrangKo: string;
+  nachrangKo: string;
+  geltungsbereich: string | null;
+}
+/** Eine Zeile von `GET /api/conflicts/vorrang/:id` — der Vorrang am einzelnen Punkt. */
+export interface VorrangAmPunkt extends KonfliktVorrang {
+  konfliktId: string;
+  entschiedenVon: string | null;
+  /** Gesetzt, wenn der Geltungsbereich für diesen Betrachter zurückgehalten ist. */
+  redacted?: boolean;
+}
 
 // Berater-Konzept 04.07. (Stufe 4): Herkunft + Erkennungs-Metadaten eines automatisch erkannten
 // Konflikts — macht den Fund am Board erklärbar (Sicherheit, Begründung, wörtliche Zitate).
@@ -804,6 +845,13 @@ export interface ConflictDetector {
   quotes?: { a: string; b: string };
   // SCRUM-492: optionale strukturierte Gegenüberstellung für die Kollisions-Kacheln.
   kollision?: Kollision;
+  // R-0263: Klaras Vorschlag Widerspruch/Präzisierung — Spiegel von services/conflicts (`spezieller`
+  // ist die Kennung des engeren Punkts). Ein Vorschlag, keine Entscheidung.
+  vorschlag?: {
+    art: "widerspruch" | "praezisierung";
+    spezieller?: string;
+    geltungsbereich?: string;
+  };
 }
 
 export interface Conflict {
@@ -811,6 +859,10 @@ export interface Conflict {
   koA: string;
   koB: string;
   type: ConflictType;
+  // R-0252: gewählt (manuell) oder von der Prüfung eingeordnet (auto). Fehlt = nicht bestimmt.
+  arbeitsart?: ConflictWorkKind;
+  // R-0263: an entschiedenen Konflikten der festgelegte Vorrang.
+  vorrang?: KonfliktVorrang;
   description: string;
   status: ConflictStatus;
   secondOpinion: string | null;
@@ -876,6 +928,31 @@ export interface OverlapResolution {
   by: string | null;
   note: string | null;
   at: string;
+  // R-1107: nur bei `merged` — der verbleibende Führungsartikel und seine neue Fassung.
+  mergedIntoKoId?: string;
+  mergedVersion?: number;
+}
+
+// R-1107 / R-0201 (Aufnahme gesamt-dublettenvergleich): der Drahtvertrag von
+// `POST /api/duplicates/:id/merge` — Spiegel von `services/app/src/dubletten-zusammenfuehrung.ts`.
+export type ZusammenfuehrungsSeite = "fuehrend" | "aufgehend";
+
+export interface ZusammenfuehrungsAuftrag {
+  fuehrend: { id: string; version: number };
+  aufgehend: { id: string; version: number };
+  titel: ZusammenfuehrungsSeite;
+  kernaussage: ZusammenfuehrungsSeite;
+  bedingungen: string[];
+  massnahmen: string[];
+  quellen: string[];
+  bestaetigt: true;
+  vermerk?: string;
+}
+
+export interface ZusammenfuehrungsErgebnis {
+  befund: OverlapEntry;
+  fuehrend: { id: string; version: number; status: KoStatus };
+  aufgehend: { id: string; mergedInto?: KnowledgeObject["mergedInto"] };
 }
 
 export interface OverlapEntry {
@@ -1041,6 +1118,8 @@ export interface DraftPayload {
     question?: string;
     done?: boolean;
     demo?: boolean;
+    // R-1624: bestätigter Bildbefund eines Foto-Interviews (Klartext); fehlt = normales Interview.
+    imageContext?: string;
   };
 }
 
@@ -1821,6 +1900,35 @@ export interface AskResponse {
   // JOB 2626 D1: nur bei Nicht-Antwort UND nur auf Wegen mit Betrachterfilter vorhanden; ein
   // älterer Server sendet das Feld nicht — die Fläche fällt dann auf die generische Leermeldung.
   verschlossen?: VerschlossenHinweis[];
+  // R-1633: nur wenn ein Fragekontext mitgeschickt wurde — wofür gewichtet wurde und je Quelle
+  // ihre Geltung und Passung (Spiegel von `AskGeltungsauskunft`, services/ask/src/service.ts).
+  geltung?: AskGeltungsauskunft;
+}
+
+// ================================================================================================
+// R-1632 / R-1633 (gesamt-standortwissen) — Spiegel von services/knowledge-object/src/geltung.ts.
+// ================================================================================================
+export type GeltungsEbene = "konzern" | "werk" | "schicht";
+export interface KoGeltung {
+  ebene: GeltungsEbene;
+  werk?: string;
+  schicht?: string;
+  rolle?: string;
+}
+export interface Fragekontext {
+  werk?: string;
+  schicht?: string;
+  rolle?: string;
+}
+export type GeltungsPassung =
+  | "eigene_schicht"
+  | "eigenes_werk"
+  | "konzern"
+  | "unbestimmt"
+  | "andere";
+export interface AskGeltungsauskunft {
+  fragekontext: Fragekontext;
+  quellen: { id: string; passung: GeltungsPassung; geltung?: KoGeltung }[];
 }
 
 // FR-EXT-03 / FE-OUT: Output Factory (SCRUM-117/109).
@@ -2026,6 +2134,8 @@ export interface StructureResult {
   measures: string[];
   tags: string[];
   confidence: number;
+  // FR-STR-01: vom Modell vorgeschlagene Wissensart; fehlt beim Fallback oder ungültigem Modellwert.
+  knowledgeType?: KnowledgeType;
   demo: boolean;
   // WP-D8: ehrliche Fallback-Ursache (nur bei demo:true) — "no-model" = kein Modell konfiguriert/aktiv,
   // "model-error" = Modell versucht, aber gescheitert (HTTP/Quota/Netz/Parse). WP-D10 (Fix 3):
@@ -2535,6 +2645,10 @@ export interface ReasonerStatus {
   // `tasks`/`reachable`, die auch bei einer Störung `false` werden — die Fläche sagt die beiden
   // Lagen verschieden. Fehlt es (alter Server), behauptet die Oberfläche keine Abschaltung.
   kiAbgeschaltet?: boolean;
+  // Auftrag gesamt-ki-freigaberegeln (R-0606): der wirksame Stand der zentralen Adminfreigabe für
+  // öffentliche KI — `blockiert` (Vorgabe), `frei` (Grundfreigabe) oder `frei_vertraulich` (beide
+  // Freigaben). Gelesen von der Kopfzeile. Fehlt es (alter Server), zeigt sie nichts an.
+  extern?: "blockiert" | "frei" | "frei_vertraulich";
 }
 
 // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten, keine Secrets).
@@ -2762,22 +2876,36 @@ export interface DemoSeedResult {
 
 // Audit-P4 (SCRUM-398): Live-Wall — „frisch gesichert / hat heute geholfen" (read-only).
 export interface LiveWall {
+  // PMO-FEA-0003: ohne Autorenkennung — eine Person nennt die Wand nur mit Zustimmung (`validated`).
   saved: Array<{
     koId: string;
     title: string;
-    author: string;
     at: string;
     status: "offen" | "validiert";
   }>;
   helped: Array<{ koId: string; title: string; at: string }>;
   helpedToday: number;
+  // PMO-FEA-0003: neues validiertes Wissen; `name` und `foto` (Daten-URL) nur bei wirksamer
+  // Zustimmung der Person. Optional, weil Bestandsserver das Feld nicht kennen.
+  validated?: Array<{ koId: string; title: string; at: string; name?: string; foto?: string }>;
 }
 
+export interface LiveWallConsent {
+  nameConsent: boolean;
+  // PMO-FEA-0003: hat dieses Konto ein Foto hinterlegt? `photo` nur zur eigenen Vorschau.
+  photoConsent?: boolean;
+  photo?: string;
+}
+
+// R-0894: `escalation` = eskalierter Wahrheitskonflikt, `return` = Rückgabe zur Nacharbeit an die
+// verantwortliche Person (Spiegel von services/app/src/notification-feed.ts).
 export type NotificationKind =
   | "conflict"
+  | "escalation"
   | "duplicate"
   | "gap"
   | "assignment"
+  | "return"
   | "impact"
   | "kenntnisnahme";
 
@@ -2811,9 +2939,13 @@ export interface Notification {
 // Schalter die notwendige Wahrheit (feature-flags.ts, Routen-Registrierung) und wird in
 // /api/features weiter gemeldet — ein zusätzlicher, hier untypisierter Payload-Schlüssel ist im
 // Partial-Vertrag zulässig und wird von niemandem gelesen.
+// R-1975 / R-0791 (I27): `herkunft` und `expertMatching` stehen aus demselben Grund NICHT mehr hier.
+// Beide waren typisiert, aber kein Frontend-Code las sie — dieselbe stille Zusage ohne Wirkung wie
+// `confluenceImport` vor mega69. Wo die Oberfläche ihre Wirkung tatsächlich erfährt (oder dass es
+// keine Fläche gibt), steht je Schalter im Leserregister
+// `tests/funktionsschalter/schalter-leser.test.ts`. Es wird rot, sobald hier ein Name ohne echten
+// Leser steht oder der Server einen Schalter meldet, den das Register nicht einordnet.
 export type FeatureName =
-  | "herkunft"
-  | "expertMatching"
   // AUFTRAG-mega61: die zwei Notausschalter. Ihre Vorgabe ist AN (Server: feature-flags.ts) — sie
   // sperren nichts, sie erlauben nur das Abschalten einer Pflichtfläche, wenn sie im Betrieb stört.
   // AUFTRAG-mega62 Block A: `hinweisbanner` deckt BEIDE Flächen des Hinweises — den Banner in der
@@ -3035,6 +3167,14 @@ export interface UebernommeneAenderung {
   uebernommenAm: string;
 }
 
+/** Drahtform von `AnweisungEntscheidung` (`gesamtanweisung-types.ts`). `von` ist eine Kontokennung. */
+export interface AnweisungEntscheidung {
+  ergebnis: "angenommen" | "abgelehnt";
+  von: string;
+  am: string;
+  version: number;
+}
+
 export interface AnweisungLesestand {
   id: string;
   titel: string;
@@ -3046,6 +3186,11 @@ export interface AnweisungLesestand {
   urheber: string;
   erstelltAm: string;
   geaendertAm: string;
+  /**
+   * STATUS-FREIGABE · die festgehaltene letzte Entscheidung (wer, wann, welche Fassung). Fehlt sie,
+   * ist nichts festgehalten — die Fläche nennt dann keine Person und keine geratene.
+   */
+  entscheidung?: AnweisungEntscheidung;
   /** NUR die zugänglichen Bausteine. Ein verborgener steht hier gar nicht, auch nicht leer. */
   bausteine: BausteinLesestand[];
   unvollstaendig: boolean;
@@ -3101,6 +3246,7 @@ export interface Anweisung {
   urheber: string;
   erstelltAm: string;
   geaendertAm: string;
+  entscheidung?: AnweisungEntscheidung;
 }
 
 export interface AnweisungKopfEingabe {

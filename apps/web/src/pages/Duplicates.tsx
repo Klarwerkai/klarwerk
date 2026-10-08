@@ -30,6 +30,7 @@ import { useDuplicates, useKos } from "../api/hooks";
 import type { KnowledgeObject, OverlapEntry } from "../api/types";
 import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
 import { HelpTip } from "../components/HelpTip";
+import { SourceEvidence } from "../components/ko/SourceEvidence";
 import { PruefenKopf } from "../components/pruefen/PruefenKopf";
 import { PruefenMehr, PruefenMehrBlock, PruefenMehrZeile } from "../components/pruefen/PruefenMehr";
 import {
@@ -61,7 +62,7 @@ import {
   markiereTeile,
 } from "../components/pruefen/markierung";
 import { abhaengigeQuelle, flaechenZustand } from "../components/pruefen/zaehler";
-import { conflictKoPair } from "../lib/conflictView";
+import { conflictEvidenceBalance, conflictKoPair } from "../lib/conflictView";
 import {
   DUPLICATE_BOARD_TEXT,
   canClose,
@@ -294,6 +295,38 @@ export function Duplicates(): JSX.Element {
       e.aspects.map((a) => a.zitatB),
     );
     const redigiert = istRedigiert(e);
+    // ============================================================================================
+    // R-0261 (Aufnahme gesamt-dublettenvergleich) — QUELLE, QUELLDATUM, KONFIDENZ OHNE AUFKLAPPEN.
+    // ============================================================================================
+    //
+    // Derselbe Belegbaustein wie an der Konfliktfläche (`ko/SourceEvidence`, kompakte Variante),
+    // mit derselben Ehrlichkeitsregel: das Quelldatum stammt nur aus einer echten Quelle, ohne
+    // Quelle steht „kein Quelldatum" (SCRUM-527). Anders als dort steht er hier direkt AUF der Karte
+    // und nicht im „Mehr" — genau das verlangt R-0261. Fehlt ein Objekt, steht kein Beleg.
+    //
+    // `data-text="meta"`: die Zeile ist eine ANGABE der Karte wie „Status · Kategorie · Jahr"
+    // darüber, kein Erklärtext — der Textmesser der Fläche (`tests/design/zielbild-h2-pruefen.test.ts`,
+    // höchstens 80 Zeichen Erklärtext) zählt sie deshalb zu Recht nicht mit.
+    const beleg = (ko: KnowledgeObject | null): JSX.Element | undefined =>
+      ko ? (
+        <div data-text="meta">
+          <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-muted-2">
+            {t("dublettenvergleich.beleg")}
+          </div>
+          <SourceEvidence
+            sources={ko.sources ?? []}
+            confidence={ko.confidence}
+            date={ko.sources?.[0]?.at ?? null}
+            variant="compact"
+          />
+        </div>
+      ) : undefined;
+    // Der Satz zur Beweislage: NUR in freigegebenen Fällen — beide Seiten für diesen Menschen
+    // lesbar (nicht redigiert) und beide geladen — und nur, wenn es etwas zu sagen gibt (keine oder
+    // genau eine Seite belegt; dieselbe Regel `conflictEvidenceBalance` wie an der Konfliktfläche).
+    // Sonst schweigt er: kein Block, kein Satz über die Abwesenheit. Er steht wie dort im „Mehr"
+    // (`pruefen.mehr.evidence`): ein Satz ist Erklärtext, und die Fläche zeigt, sie erklärt nicht.
+    const beweislage = redigiert ? null : conflictEvidenceBalance(pair);
 
     const mehr = (seite: "a" | "b"): JSX.Element => {
       const eigen = seite === "a" ? e.eigenanteilA : e.eigenanteilB;
@@ -322,6 +355,17 @@ export function Duplicates(): JSX.Element {
           {redigiert ? (
             <PruefenMehrBlock beschriftung={t("dup.redacted.title")}>
               {t("dup.redacted.body")}
+            </PruefenMehrBlock>
+          ) : null}
+          {beweislage ? (
+            <PruefenMehrBlock beschriftung={t("pruefen.mehr.evidence")}>
+              <span data-testid="dublette-beweislage">
+                {beweislage.kind === "neither"
+                  ? t("dublettenvergleich.beweislage.keine")
+                  : t("dublettenvergleich.beweislage.einseitig", {
+                      titel: (beweislage.side === "a" ? pair.a?.title : pair.b?.title) ?? "",
+                    })}
+              </span>
             </PruefenMehrBlock>
           ) : null}
           {e.aspects.length > 0 ? (
@@ -368,6 +412,15 @@ export function Duplicates(): JSX.Element {
           <PruefenMenueLink to={`/duplikate/${e.id}/vergleich`}>
             {t("dup.compareReadonly")}
           </PruefenMenueLink>
+          {/* R-1107: der Weg in den vierschrittigen Zusammenführen-Assistenten. Ein LINK, kein
+              Knopf: hier wird nichts zusammengeführt — der Assistent führt durch Auswahl und
+              Vorschau, erst dort wird ausdrücklich freigegeben. Ob dieser Mensch es darf (R-0565),
+              erklärt der Assistent selbst; das Aktionsband bleibt bei seinen vier Entscheidungen. */}
+          {canClose(e) ? (
+            <PruefenMenueLink to={`/duplikate/${e.id}/zusammenfuehren`}>
+              {t("dublettenvergleich.menue")}
+            </PruefenMenueLink>
+          ) : null}
           {ko ? (
             <PruefenMenueLink to={`/wissen/${ko.id}`}>{t("dup.openKo")}</PruefenMenueLink>
           ) : null}
@@ -526,6 +579,7 @@ export function Duplicates(): JSX.Element {
             meta={metaVon(pair.a, t)}
             teile={teileA}
             aktionen={aktionen("a")}
+            beleg={beleg(pair.a)}
             mehr={mehr("a")}
           />
           <PruefenPaarKarte
@@ -535,6 +589,7 @@ export function Duplicates(): JSX.Element {
             meta={metaVon(pair.b, t)}
             teile={teileB}
             aktionen={aktionen("b")}
+            beleg={beleg(pair.b)}
             mehr={mehr("b")}
           />
         </PruefenPaar>

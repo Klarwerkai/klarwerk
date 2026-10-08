@@ -186,8 +186,12 @@ export const JSON_SOURCE_IDS = ["json", "json-file"] as const;
 //    Anbindung — kein Modul, kein Schalter, keine Route. Also `planned`, nicht `soon`. Beide
 //    Kacheln wandern damit in den eingeklappten „In Planung"-Bereich; die Aufklappzeile der
 //    Systemgruppe zaehlt danach 12 statt 10.
-//  · JIRA BLEIBT „bald", und zwar belegt: `build-app.ts:548` nennt als naechste Quelle ausdruecklich
-//    „kuenftig: || jiraEnabled || …". Word und PDF stehen dort nicht.
+//  · JIRA BLEIBT „bald". Der Beleg von damals (`build-app.ts`: „kuenftig: || jiraEnabled || …") ist
+//    ueberholt — seit R-0170 gibt es `services/jira/`, den Schalter `jiraImport` und
+//    `services/app/src/routes/jira-import-routes.ts`. Was fehlt, ist die BEDIENFLAECHE: keine Kachel-
+//    Zielseite, keine Zugangskarte, kein Auswahl- und Uebernahmedialog in dieser Oberflaeche. Eine
+//    Kachel auf `active` versprache einen Weg, den ein Mensch hier nicht gehen kann; „bald" heisst
+//    deshalb weiter „in Arbeit". Word und PDF haben keinen der drei Bausteine.
 //  · KEIN WIDERSPRUCH ZUR DATEIKACHEL: „Word-Dokumentquelle (Anbindung) · geplant" und
 //    „Word-Datei (.docx) · im Erfassen" sind zwei Aussagen ueber zwei verschiedene Wege, nicht
 //    zwei Aussagen ueber denselben.

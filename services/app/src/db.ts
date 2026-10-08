@@ -4,6 +4,7 @@ import { AUDIT_EVENT_ID_SCHEMA, AUDIT_HASH_VERSION_SCHEMA, AUDIT_SCHEMA } from "
 import { AUTH_SCHEMA } from "../../auth";
 import { CAPTURE_CREATE_OPERATION_SCHEMA, CAPTURE_SCHEMA } from "../../capture";
 import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
+import { vorratsKonfiguration } from "../../db-tx";
 import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
 import {
   DOKUMENTAKTE_SCHEMA,
@@ -11,6 +12,7 @@ import {
   KANTEN_SCHEMA,
   KO_CREATE_OPERATION_SCHEMA,
   KO_EVIDENCE_SCHEMA,
+  KO_FREMDSCHLUESSEL_SCHEMA,
   KO_IMPORT_ANCHOR_SCHEMA,
   KO_METADATA_PROJECTION_SCHEMA,
   KO_PROJECTION_CONTROL_SCHEMA,
@@ -51,17 +53,27 @@ import { CONFLUENCE_IMPORT_SCHALTER_SCHEMA } from "./confluence-import-schalter"
 // Firmenwörterbuch: die Fassungen des Begriffskatalogs. Im App-Wurzelverzeichnis wie die
 // Markenwahl: Editor und Word-Panel lesen ihn, kein Fachmodul besitzt ihn.
 import { BEGRIFFE_SCHEMA } from "./firmenwoerterbuch";
+// R-0466: das Interaktionsgedächtnis (frühere Fragen, Antworten, Vorlieben je Konto). Im
+// App-Wurzelverzeichnis wie die Live-Wand-Fotos: ein eigener Datenraum, den kein Fachmodul besitzt.
+import { GEDAECHTNIS_SCHEMA } from "./interaktionsgedaechtnis";
 // Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen.
 import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
 // JOB 3326: die Lesevarianten (gekennzeichnete Leseübersetzungen). Sie wohnen im App-Root und nicht
 // im knowledge-object-Modul, weil sie das KO-Modell ausdrücklich NICHT umbauen: die Variante ist ein
 // eigener, danebenliegender Datenraum, den kein Lesepfad des Originals berührt.
 import { LESEVARIANTEN_SCHEMA } from "./lesevarianten";
+// PMO-FEA-0003: die freiwilligen Fotos der Live-Wand (eine Zeile je zustimmendem Konto).
+import { LIVEWALL_FOTO_SCHEMA } from "./livewall-fotos";
 import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
+// produkt:20261007:spaces: die Fassungen der Arbeitsräume. Im App-Wurzelverzeichnis wie das
+// Firmenwörterbuch: die Sichtbarkeitsregel (`sichtbarkeit.ts`) liest sie, kein Fachmodul besitzt sie.
+import { SPACES_SCHEMA } from "./spaces";
 
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
+// R-0798: mit Zeitgrenzen — begrenztes Warten auf eine freie Verbindung (Notbremse für den Vorrat)
+// und eine Serverfrist für Sitzungen, die in einer offenen Transaktion schweigen (s. db-tx/vorrat.ts).
 export function createPool(connectionString?: string): Pool {
-  return new Pool(connectionString ? { connectionString } : {});
+  return new Pool(vorratsKonfiguration(connectionString));
 }
 
 // ================================================================================================
@@ -141,6 +153,10 @@ export const schemas = [
   // zurück).
   KO_PROJECTION_CONTROL_SCHEMA,
   KO_EVIDENCE_SCHEMA,
+  // R-0846 / L6: Fremdschlüssel von `ko_versions` und `ko_evidence` auf `kos`. ZWANG zur Stellung:
+  // alle drei Tabellen müssen stehen. Additiv (ADD CONSTRAINT … NOT VALID hinter Existenzprüfung);
+  // der Altbestand wird nicht geprüft, das bleibt ein Betreiberschritt (tools/datenintegritaet.ts).
+  KO_FREMDSCHLUESSEL_SCHEMA,
   // JOB 4151: die kuratierten Beziehungen (`ko_kanten`). NACH `KO_SCHEMA`, weil ihre Endpunkte auf
   // Wissensobjekte zeigen — eine Reihenfolgebedingung im technischen Sinn gibt es nicht (kein
   // Fremdschlüssel, keine Extension; die Begründung dafür steht an der DDL selbst), die Nähe ist
@@ -242,6 +258,17 @@ export const schemas = [
   // Extension; sie steht am Ende, weil das die lesbare Ordnung ist (keine Abhängigkeit zu den
   // Stufen davor — die Reihenfolge nach der Zusammenführung mit main ist frei).
   IMPORT_RUN_SOURCE_SYNC_SCHEMA,
+  // produkt:20261007:spaces: die unveränderlichen Fassungen der Spaces. Additiv und wiederholbar
+  // (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  SPACES_SCHEMA,
+  // PMO-FEA-0003: die freiwilligen Fotos der Live-Wand. Additiv und wiederholbar (CREATE TABLE IF
+  // NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare
+  // Ordnung ist.
+  LIVEWALL_FOTO_SCHEMA,
+  // R-0466: das Interaktionsgedächtnis. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT
+  // EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare
+  // Ordnung ist.
+  GEDAECHTNIS_SCHEMA,
 ];
 
 // ================================================================================================

@@ -1,8 +1,10 @@
 // WP-UX-WOW-1 U9 (Kopfs Befund): /import & Co. leiteten bei ausgeschalteter Stufe 2 STILL auf
 // /start um — der Nutzer wusste nie, warum. Statt der Umleitung erklärt eine freundliche Karte
 // die Lage: das Modul gehört zu den Erweiterten Funktionen (Stufe 2). Admins schalten Stufe 2
-// direkt hier ein (der BESTEHENDE Toggle aus der Sidebar — kein neuer Zustand); alle anderen
+// direkt hier ein (derselbe Zustand wie das Häkchen unter Admin · System — kein neuer); alle anderen
 // bekommen den ehrlichen Hinweis, dass das eine Admin-Einstellung ist, plus den Weg zurück.
+// R-0923: dieser Hinweis nennt den heutigen Ort des Schalters (System · Erweiterte Module) und
+// nicht mehr die mit JOB 3060 entfernte Seitenleiste (`zweitestufe.gate.adminOnly`).
 //
 // AUFTRAG-mega70 BLOCK A (bens Befund, sammel66-vortest): der ROLLENFALL blieb bis dahin die
 // stille Umleitung — die Entscheidung gegen stille Umleitungen war nur für Stufe 2 umgesetzt.
@@ -74,7 +76,7 @@ export function Stage2Notice(): JSX.Element {
             {t("stage2.gate.enable")}
           </Button>
         ) : (
-          <p className="w-full text-[12.5px] text-muted-2">{t("stage2.gate.adminOnly")}</p>
+          <p className="w-full text-[12.5px] text-muted-2">{t("zweitestufe.gate.adminOnly")}</p>
         )
       }
     />

@@ -1245,15 +1245,24 @@ export function BibliothekFlaeche({
   // Bericht die Fläche und die Liste ist (in der Vorgabe) eingeklappt. Eine Vorwahl stellte den
   // Erstbesuch in einen Bericht, den niemand gewählt hat, mit weggeklappter Liste davor. Ohne Wahl
   // trägt deshalb die Liste die Fläche allein — wie auf dem Telefon.
+  //
+  // UX-02 · LESEWAHL BEI VERZÖGERTEM BESTAND (`docs/entscheidungen/ux02-lesewahl.md`) — DIE VORWAHL
+  // FOLGT DER LISTE, NICHT DER UNGEPRÜFTEN MENGE DAHINTER. Schweigt die Liste (`listeSchweigt`:
+  // Adresskeim wartet auf den bestätigten Bestand, oder dessen Erstabruf ist gescheitert), steht
+  // links KEINE Zeile — `win.visible` ist dann aber schon die ungeprüft gefilterte Menge. Ihr erster
+  // Eintrag rechts wäre ein Bericht, den weder der Mensch gewählt noch die Liste als Treffer
+  // genannt hat: genau der stille Ersatz aus N-0006, nur zeitlich verschoben. Die AUSDRÜCKLICHE
+  // Wahl (`gewaehlt`, Pfad oder `EINTRAG_PARAM`) hängt nicht an der Liste und bleibt stehen; die
+  // Lesefläche selbst wird nicht ausgeblendet, sie bleibt bis zur Antwort nur ohne Bericht.
   const einspaltig = schmal || tablet;
-  const vorwahl = einspaltig ? null : (sichtbareIds[0] ?? null);
+  const vorwahl = einspaltig || listeSchweigt ? null : (sichtbareIds[0] ?? null);
   const gewaehltEffektiv = gewaehlt ?? vorwahl;
   // N-0074 (K27): die AUSDRÜCKLICHE Wahl bleibt stehen (N-0006, oben) — aber die Lesefläche sagt
   // jetzt, wenn Suche, Facetten, Zeitraum, Umschalter oder Bereich sie aus der Treffermenge
   // ausschliessen. Geprüft wird gegen die VOLLE gefilterte Menge (`sorted`), nicht gegen das
   // sichtbare Fenster: ein Eintrag hinter „Mehr laden" ist ein Treffer. Nur bei frischem Abruf
   // und geprüfter Auswahl — sonst wäre „nicht dabei" eine Aussage ohne Grundlage. Die Vorwahl
-  // (`vorwahl`) ist per Bau immer ein Treffer und braucht die Prüfung nicht.
+  // (`vorwahl`) ist per Bau immer ein Treffer einer zeichnenden Liste und braucht die Prüfung nicht.
   const auswahlAusserhalbTreffer =
     gewaehlt !== null &&
     frisch &&
@@ -1583,6 +1592,53 @@ export function BibliothekFlaeche({
     aktiveFilterZahl > 0 ||
     scope !== DEFAULT_LIBRARY_SCOPE ||
     verworfeneEingrenzung.length > 0;
+  // ================================================================================================
+  // SPEICHERN-ERHOLUNG (Ausbauliste Punkt 6) — DER NULLTREFFER NENNT SEINE FILTER UND LÖST SIE.
+  // ================================================================================================
+  //
+  // Bis hierher stand unter „Nichts gefunden." nur der Suchraum; WELCHE Filter die Treffer
+  // wegnahmen, stand ausschliesslich in den Menüs, und „Alle zurücksetzen" lag im Filtermenü
+  // (`bib-filter-reset`). Wer nichts fand, musste also erst wissen, dass er suchen muss.
+  //
+  // Die Angaben lesen GENAU die Zustände, die `onResetFilters` zurücksetzt — Facetten (samt Bereich
+  // und einer strukturell leeren Dimension), Zeitraum, Zustands-Umschalter —, damit der Knopf
+  // daneben nichts verspricht, was er nicht tut, und nichts tut, was nicht dasteht. Suchtext und
+  // Geltungsbereich gehören NICHT dazu: der Suchtext bleibt im Feld (das sagt der Knopf), der
+  // Bereich hat seinen eigenen Weg (`bib-leer-anderer-raum`). Die Gruppierung filtert nichts.
+  const aktiveFilterAngaben: { schluessel: string; text: string }[] = [
+    ...LIBRARY_FILTER_CONFIGS.flatMap((c) => {
+      const werte = facetSelectedValues(wirksameAuswahl[c.key]);
+      if (werte.length > 0) {
+        return [
+          {
+            schluessel: c.key,
+            text: `${t(c.labelKey)}: ${werte.map((w) => facetValueLabel(c.key, w)).join(", ")}`,
+          },
+        ];
+      }
+      return isFacetNoMatch(wirksameAuswahl[c.key])
+        ? [{ schluessel: c.key, text: t(c.labelKey) }]
+        : [];
+    }),
+    ...(isFacetRangeActive(range)
+      ? [
+          {
+            schluessel: "zeitraum",
+            text: `${t("lib.facet.rangeLabel")}: ${range.from || "…"} – ${range.to || "…"}`,
+          },
+        ]
+      : []),
+    ...(segment === BIB_SEGMENT_STANDARD
+      ? []
+      : [
+          {
+            schluessel: "zustand",
+            text: `${t("lib.segment.label")}: ${t(`status.${segment}`)}`,
+          },
+        ]),
+  ];
+  const nulltrefferFilterLoesbar =
+    aktiveFilterAngaben.length > 0 || verworfeneEingrenzung.length > 0;
   const bereichGruppe = groups.find((g) => g.key === BEREICH_KEY);
   const bereichGewaehlt = facetSelectedValues(wirksameAuswahl[BEREICH_KEY]);
 
@@ -1877,6 +1933,31 @@ export function BibliothekFlaeche({
                 </button>
               ) : null}
             </>
+          }
+          leerFilter={
+            nulltrefferFilterLoesbar ? (
+              <>
+                {aktiveFilterAngaben.length > 0 ? <span>{t("erholung.filter.aktiv")}</span> : null}
+                {aktiveFilterAngaben.map((angabe) => (
+                  <span
+                    key={angabe.schluessel}
+                    data-testid="bib-leer-filter-angabe"
+                    data-filter={angabe.schluessel}
+                    className="rounded-btn border border-hairline px-2 py-0.5 text-text"
+                  >
+                    {angabe.text}
+                  </span>
+                ))}
+                <button
+                  type="button"
+                  data-testid="bib-leer-filter-reset"
+                  onClick={onResetFilters}
+                  className="rounded-btn border border-hairline px-2.5 py-1 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
+                >
+                  {t("erholung.filter.zuruecksetzen")}
+                </button>
+              </>
+            ) : null
           }
           leerAktion={
             <RoleLink

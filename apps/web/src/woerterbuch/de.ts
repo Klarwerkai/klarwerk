@@ -381,6 +381,13 @@ const de = {
   "topbar.plain.external":
     "Zeigt, ob Klarwerk beim Antworten auch im offenen Internet nachsehen darf. „Blockiert“ heißt: nein, es bleibt bei eurem eigenen Wissen.",
   // AUFTRAG-mega51 BLOCK G1: „KI-Modus" ist eine Einstellung; gemeint ist der ORT.
+  // Auftrag gesamt-ki-freigaberegeln (R-0606): der wirksame Stand der zentralen Adminfreigabe für
+  // öffentliche KI, sichtbar über der Kopfzeile (`shell/ExternStatus.tsx`).
+  "topbar.extern.blockiert": "Extern: Blockiert",
+  "topbar.extern.frei": "Extern: Freigegeben",
+  "topbar.extern.freiVertraulich": "Extern: Freigegeben, auch Vertrauliches",
+  "topbar.extern.hinweis":
+    "Ob Inhalte an eine öffentliche KI gehen dürfen, legt der Administrator fest. Vorgabe: blockiert.",
   "topbar.kiExternal": "KI rechnet in der Cloud",
   "topbar.kiInternal": "KI rechnet im eigenen Haus",
   "topbar.kiMixed": "KI rechnet in der Cloud und im eigenen Haus",
@@ -2746,6 +2753,9 @@ const de = {
   "ask.error.body":
     "Die Anfrage ist unterwegs steckengeblieben. Das ist KEINE Aussage über das Wissen — es bedeutet nicht, dass es keine Antwort gibt. Bitte erneut versuchen.",
   "ask.error.retry": "Erneut versuchen",
+  // Aufnahme gesamt-integrations-api (R-0842): die KI-Bremse hat abgewiesen — der Satz mit der
+  // Wartezeit kommt vom Server (`services/app/src/anfragebremse.ts`), hier steht nur die Überschrift.
+  "ask.gebremst.titel": "Bitte kurz warten.",
   // JOB 3064 §9: offline ist KEIN Fehlschlag, sondern ein Nicht-Versuch — die Frage ist nie
   // losgegangen. Der Fehlersatz („steckengeblieben") wäre hier schlicht unwahr.
   "ask.offline": "Keine Verbindung.",
@@ -3755,6 +3765,7 @@ const de = {
   "ko.attachmentOriginalUnavailable": "Original nicht verfügbar",
   // JOB 3061 · H2 — die gemeinsame Prüffläche (vier Reiter, vier Menüorte).
   "pruefen.title": "Prüfen",
+  "pruefen.handeltAls": "Du prüfst als {{role}}",
   "pruefen.tab.offen": "Offen",
   "pruefen.tab.konflikte": "Konflikte",
   "pruefen.tab.duplikate": "Duplikate",
@@ -4027,6 +4038,27 @@ const de = {
   "start.livewall.helpedToday": "heute geholfen: {{n}}",
   "start.livewall.savedEmpty": "Noch nichts erfasst — der erste Beitrag erscheint hier.",
   "start.livewall.helpedEmpty": "Noch keine „hat geholfen“-Rückmeldung.",
+  // PMO-FEA-0003: hier ist „validiert" wörtlich gemeint — der Zweig filtert auf diesen Status.
+  "start.livewall.validated": "Neu validiert",
+  "start.livewall.validatedEmpty": "Noch kein validiertes Wissen.",
+  "start.livewall.nameConsent":
+    "Meinen Namen bei meinem validierten Wissen hier zeigen. Freiwillig, jederzeit widerrufbar; ohne Zustimmung erscheint kein Name.",
+  "start.livewall.photoConsent":
+    "Mein Foto bei meinem validierten Wissen hier zeigen. Freiwillig; „Foto entfernen“ löscht es sofort.",
+  "start.livewall.photoAdd": "Foto wählen",
+  "start.livewall.photoReplace": "Foto ersetzen",
+  "start.livewall.photoRevoke": "Foto entfernen",
+  "start.livewall.photoError":
+    "Das Foto konnte nicht übernommen werden. Bitte ein PNG-, JPEG- oder WebP-Bild wählen.",
+  "start.livewall.photoAlt": "Foto der Autorin oder des Autors",
+  "start.livewall.photoOwnAlt": "Mein Foto für die Wand",
+  "start.livewall.beamerOpen": "Als Beamer-Ansicht öffnen",
+  "start.livewall.beamerFullscreen": "Vollbild",
+  "start.livewall.beamerLoading": "Lädt …",
+  "start.livewall.beamerError":
+    "Die Wand ist gerade nicht abrufbar. Sie versucht es im nächsten Takt erneut.",
+  "start.livewall.beamerStale":
+    "Keine frische Verbindung — Namen und Fotos sind ausgeblendet, bis die Wand wieder aktuell ist.",
   // AUFTRAG-mega51 BLOCK G1: DE und NL trugen hier die englische Bezeichnung.
   "con.kicker": "Konflikt-Übersicht",
   "con.title": "Konflikte klären — ohne Wissen zu verlieren",
@@ -4135,6 +4167,8 @@ const de = {
   "con.openKo": "Objekt öffnen",
   "con.compareOpen": "Beide gegenüberstellen",
   "con.readonlyCompare": "Read-only-Vergleich",
+  // Aufnahme gesamt-konfliktboard (FR-CON-04): Name des Menüs mit allen offenen Fällen.
+  "con.caseList": "Alle offenen Konflikte ({{count}})",
   "con.detectedOn": "Erkannt am {{date}}",
   "con.evidenceSideLabel": "Beleg dieser Seite",
   // ==============================================================================================
@@ -5315,6 +5349,8 @@ const de = {
   "risk.priority.mittel": "mittel",
   "risk.priority.niedrig": "niedrig",
   "risk.close": "Schließen",
+  "risk.closeWithTitle": "Mit dem Wissensobjekt schließen, das diese Lücke beantwortet",
+  "risk.closeFailed": "Nicht geschlossen — das Wissensobjekt fehlt oder liegt im Papierkorb.",
   "risk.assign": "Experte …",
   "risk.delete": "Löschen",
   "risk.gapNextLabel": "Nächster Schritt",
@@ -5991,6 +6027,24 @@ const de = {
   "mob.photo": "Foto",
   "mob.interview": "Interview",
   "mob.lookup": "Nachschlagen",
+  // FR-MOB-02 / FR-CAP-04: Erfassungsart Notiz/Interview und Fotos am Handy. Die Interviewfragen
+  // sind wörtlich die feste Folge des Servers (services/reasoner/src/provider.ts, INTERVIEW_QUESTIONS).
+  "mob.modusGruppe": "Erfassungsart",
+  "mob.modusGesperrt": "Erst speichern oder leeren, dann die Erfassungsart wechseln.",
+  "mob.iv.frage1": "Worum geht es? Formuliere die Kernaussage in einem Satz.",
+  "mob.iv.frage2": "Unter welchen Bedingungen oder ab wann gilt das?",
+  "mob.iv.frage3": "Welche Maßnahme oder Konsequenz folgt daraus?",
+  "mob.iv.frage4": "Welche Stichworte/Tags helfen beim Wiederfinden? (kommagetrennt)",
+  "mob.iv.fortschritt": "Frage {{nummer}} von {{gesamt}}",
+  "mob.iv.weiter": "Nächste Frage",
+  "mob.iv.zurueck": "Vorige Frage",
+  "mob.iv.hinweis": "Jede Antwort steht sofort im Entwurf — speichern geht nach jeder Frage.",
+  "mob.foto.kamera": "Kamera",
+  "mob.foto.mediathek": "Mediathek",
+  "mob.foto.entfernen": "Foto entfernen",
+  "mob.foto.fehler": "Das Foto konnte nicht gelesen werden.",
+  "mob.foto.max": "Höchstens {{max}} Fotos je Entwurf.",
+  "mob.foto.inArbeit": "Foto wird vorbereitet … gespeichert werden kann gleich.",
   "mob.editing": "Entwurf wird fortgesetzt.",
   "mob.formTitle": "Kernaussage",
   "mob.formStatement": "Was ist passiert / was gilt?",

@@ -637,6 +637,7 @@
               ),
             };
           }
+          if (res.status === 503) { return res.json().then(function (s) { return s && s.error === "KI_ABGESCHALTET" ? { kind: "ki-abgeschaltet" } : { kind: "error", detail: "HTTP 503" }; }, function () { return { kind: "error", detail: "HTTP 503" }; }); } // R-1040: Abschaltung durch den Administrator ≠ Störung
           if (!res.ok) { return res.status !== 409 ? { kind: "error", detail: "HTTP " + res.status } : res.json().then(function (s) { return s && s.error === "KLARA_AUSWEICHWEG_GESPERRT" ? (typeof s.reason === "string" ? { kind: "fallback-blocked", reason: s.reason } : { kind: "fallback-blocked" }) : { kind: "error", detail: "HTTP 409" }; }, function () { return { kind: "error", detail: "HTTP 409" }; }); } // R-0590: gesperrter Ausweichweg = Grund statt nacktem 409
           return res.json().then(function (body) {
             var result = body && body.result ? body.result : null;
@@ -1844,7 +1845,7 @@
           "Fehlendes Recht: Dein Konto darf das KLARWERK-Wissen nicht lesen. Bitte an die KLARWERK-Administration wenden.",
         askRateLimited: "Zu viele Anfragen — bitte in {n} Sekunden erneut versuchen.",
         askRateLimitedUnknown: "Zu viele Anfragen — bitte später erneut versuchen.",
-        askFallbackBlocked: "Keine Antwort: Der KI-Anbieter, dem du zugestimmt hast, hat nicht geantwortet. Ein anderer Antwortweg wird nicht ersatzweise benutzt, solange nicht entschieden ist, dass er gleichwertig ist.", askFallbackConsentEnded: "Keine Antwort: Deine Zustimmung für dieses Dokument ist beendet. Bitte erneut zustimmen, um die externe KI zu nutzen.",
+        askFallbackBlocked: "Keine Antwort: Der KI-Anbieter, dem du zugestimmt hast, hat nicht geantwortet. Ein anderer Antwortweg wird nicht ersatzweise benutzt, solange nicht entschieden ist, dass er gleichwertig ist.", askFallbackConsentEnded: "Keine Antwort: Deine Zustimmung für dieses Dokument ist beendet. Bitte erneut zustimmen, um die externe KI zu nutzen.", askKiAbgeschaltet: "Der Administrator hat die KI abgeschaltet. Fragen an Klara werden derzeit nicht beantwortet. Die Bibliothek und die Originale bleiben nach deinen Leserechten nutzbar.",
         askAnswerTitle: "Quellengebundene Antwort",
         // AUFTRAG-mega34 B2: die Einstufung — im Panel UND im eingefuegten Text. Bis hierher
         // versprach diese Flaeche unbedingt "geprueftes Wissen", auch bei gedeckelter Abdeckung
@@ -2216,7 +2217,7 @@
           "Missing permission: your account may not read the KLARWERK knowledge base. Please contact your KLARWERK administrator.",
         askRateLimited: "Too many requests — please try again in {n} seconds.",
         askRateLimitedUnknown: "Too many requests — please try again later.",
-        askFallbackBlocked: "No answer: the AI provider you consented to did not respond. No other answer path is used as a substitute until it has been decided that it is equivalent.", askFallbackConsentEnded: "No answer: your consent for this document has ended. Please consent again to use the external AI.",
+        askFallbackBlocked: "No answer: the AI provider you consented to did not respond. No other answer path is used as a substitute until it has been decided that it is equivalent.", askFallbackConsentEnded: "No answer: your consent for this document has ended. Please consent again to use the external AI.", askKiAbgeschaltet: "The administrator has switched AI off. Questions to Klara are currently not answered. The library and the originals remain available according to your read permissions.",
         askAnswerTitle: "Source-bound answer",
         // AUFTRAG-mega34 B2: the classification — in the panel AND in the inserted text.
         askEvidenceVerified: "Classification: assured — sources evidenced, no open contradictions known.",
@@ -2555,7 +2556,7 @@
           "Ontbrekend recht: je account mag de KLARWERK-kennis niet lezen. Neem contact op met de KLARWERK-beheerder.",
         askRateLimited: "Te veel verzoeken — probeer het over {n} seconden opnieuw.",
         askRateLimitedUnknown: "Te veel verzoeken — probeer het later opnieuw.",
-        askFallbackBlocked: "Geen antwoord: de AI-aanbieder waarvoor je toestemming hebt gegeven, heeft niet geantwoord. Er wordt geen andere antwoordweg als vervanging gebruikt zolang niet is besloten dat die gelijkwaardig is.", askFallbackConsentEnded: "Geen antwoord: je toestemming voor dit document is beëindigd. Geef opnieuw toestemming om de externe AI te gebruiken.",
+        askFallbackBlocked: "Geen antwoord: de AI-aanbieder waarvoor je toestemming hebt gegeven, heeft niet geantwoord. Er wordt geen andere antwoordweg als vervanging gebruikt zolang niet is besloten dat die gelijkwaardig is.", askFallbackConsentEnded: "Geen antwoord: je toestemming voor dit document is beëindigd. Geef opnieuw toestemming om de externe AI te gebruiken.", askKiAbgeschaltet: "De beheerder heeft AI uitgeschakeld. Vragen aan Klara worden momenteel niet beantwoord. De bibliotheek en de originelen blijven beschikbaar volgens je leesrechten.",
         askAnswerTitle: "Bronvast antwoord",
         // AUFTRAG-mega34 B2: de classificatie — in het paneel EN in de ingevoegde tekst.
         askEvidenceVerified: "Classificatie: gewaarborgd — bronnen aangetoond, geen open tegenstrijdigheden bekend.",
@@ -6261,8 +6262,8 @@
       }
       // JOB 3056 K1 (§9): ohne Verbindung EIN Satz „Keine Verbindung." und „Erneut versuchen";
       // ein benannter Serverfehler nennt weiter sein Detail. R-0590: der gesperrte Ausweichweg nennt seinen Grund (bei beendeter Zustimmung ohne „Erneut versuchen").
-      showAskStatus("warn", outcome.kind === "fallback-blocked" ? t(outcome.reason === "consent_ended" ? "askFallbackConsentEnded" : "askFallbackBlocked") : outcome.detail ? t("askError", { detail: outcome.detail }) : t("askOffline"));
-      if (outcome.reason !== "consent_ended") { askRetryZeigen(); }
+      showAskStatus("warn", outcome.kind === "ki-abgeschaltet" ? t("askKiAbgeschaltet") : outcome.kind === "fallback-blocked" ? t(outcome.reason === "consent_ended" ? "askFallbackConsentEnded" : "askFallbackBlocked") : outcome.detail ? t("askError", { detail: outcome.detail }) : t("askOffline"));
+      if (outcome.reason !== "consent_ended" && outcome.kind !== "ki-abgeschaltet") { askRetryZeigen(); } // R-1040: eine Abschaltung ist eine Entscheidung — kein „Erneut versuchen"
     }
 
     // Auswahl lesen (nur Text — die Frage ist Klartext); ohne Office ehrlich leer → Eingabefeld.
