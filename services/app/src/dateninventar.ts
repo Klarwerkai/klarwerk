@@ -240,10 +240,10 @@ export const DATENINVENTAR: readonly Datenart[] = [
     id: "befunde",
     name: "Widerspruchs- und Dublettenbefunde",
     inhalt:
-      "Befund zu zwei Wissensobjekten mit Begründung, Stand, Entscheidung und entscheidender Kennung.",
+      "Befund zu zwei Wissensobjekten mit Begründung, Stand, Entscheidung und entscheidender Kennung; dazu das Prüfgedächtnis der Erkennung je Objektpaar (Paarkennung, Hash des geprüften Textstands, Ausgang, Zeitpunkt — kein Text, keine Personenkennung).",
     personenbezug: "moeglich",
     personenbezugGrund: "Kennung der entscheidenden Person; Begründung zitiert Freitext.",
-    ablage: { ort: DATENBANK, tabellen: ["conflicts", "ko_overlaps"] },
+    ablage: { ort: DATENBANK, tabellen: ["conflicts", "ko_overlaps", "conflict_pair_memory"] },
     taetigkeit: "pruefung",
     loeschung: "Offene Befunde werden bei der Endlöschung eines beteiligten Objekts geschlossen.",
     frist: BETREIBERFRIST,
@@ -497,7 +497,8 @@ export const DATENINVENTAR: readonly Datenart[] = [
   {
     id: "livewallfotos",
     name: "Fotos der Live-Wand",
-    inhalt: "Ein freiwillig hochgeladenes Porträt je Konto (Rasterbild als Daten-URL) mit Zeitpunkt.",
+    inhalt:
+      "Ein freiwillig hochgeladenes Porträt je Konto (Rasterbild als Daten-URL) mit Zeitpunkt.",
     personenbezug: "ja",
     personenbezugGrund: "Bild der Person, ihrem Konto zugeordnet.",
     ablage: { ort: DATENBANK, tabellen: ["livewall_fotos"] },
