@@ -2725,11 +2725,13 @@ export class Reasoner {
     locale: ReasonerLocale = "de",
     // SCRUM-502 Schicht 2: vertraulicher Draft → Cloud aus der Kette.
     confidential = false,
+    // R-1624: optionaler, vom Menschen bestätigter Bildbefund → Foto-Fragenfolge.
+    imageContext?: string,
   ): Promise<InterviewResult> {
     const result = await this.runTask(
       "interview",
       locale,
-      (p) => p.interview(answers, locale, confidential),
+      (p) => p.interview(answers, locale, confidential, imageContext),
       confidential,
     );
     // mega61 Block F: Interviewfragen sind erzeugter Text — gekennzeichnet.

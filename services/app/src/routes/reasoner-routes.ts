@@ -530,6 +530,8 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         instruction?: string;
         // PMO-FEA-0006: optionaler Suchauftrag des Experten für 'extract' (wonach suchen?).
         query?: string;
+        // R-1624: optionaler, vom Menschen bestätigter Bildbefund für 'interview' (Foto-Fragen).
+        imageContext?: unknown;
         // SCRUM-451: Ergebnis-Sprache für 'extract' — "system" (Default, UI-Sprache) oder
         // "source" (Sprache des Dokuments, nichts übersetzen).
         outputLanguage?: "system" | "source";
@@ -671,9 +673,20 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             log: request.log,
           },
         );
+        // R-1624: nur ein String wird als Bildbefund weitergereicht; Fremdtypen ergeben „kein
+        // Foto-Interview" statt eines Fehlers. Gesäubert und gekappt wird autoritativ im Provider
+        // (`normalizeInterviewImageContext`), egal, was der Client schickt.
+        const imageContext = request.body.imageContext;
         reply
           .code(200)
-          .send(await reasoner.interview(request.body.answers ?? [], locale, confidential));
+          .send(
+            await reasoner.interview(
+              request.body.answers ?? [],
+              locale,
+              confidential,
+              typeof imageContext === "string" ? imageContext : undefined,
+            ),
+          );
         return;
       }
       if (task === "extract") {
