@@ -368,7 +368,17 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/duplicate-signal": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
   "GET /api/conflicts": { protection: "ko.read", zeilenrecht: ["sichtbarePaare"] },
   "GET /api/conflicts/:id": { protection: "ko.read", zeilenrecht: ["paarSichtbar"] },
+  // Aufnahme gesamt-konfliktklassifikation · R-0263: der Vorrang am Punkt — dasselbe Paar-Tor je
+  // Eintrag, der Geltungsbereich zusätzlich über `feldFreigabe` (wie `description`).
+  "GET /api/conflicts/vorrang/:id": { protection: "ko.read", zeilenrecht: ["paarSichtbar"] },
   "POST /api/conflicts/:id/escalate": { protection: "conflict.resolve" },
+  // R-0252 (Nacharbeit 5): der Einordnungsweg — dasselbe Recht wie Eskalieren und Entscheiden.
+  // Nacharbeit 6: dasselbe Paar-Tor wie der Detailweg — unsichtbar ⇒ 404 und keine Änderung; die
+  // Antwort geht durch `feldFreigabe`/`redigiereKonflikt`.
+  "POST /api/conflicts/:id/arbeitsart": {
+    protection: "conflict.resolve",
+    zeilenrecht: ["paarSichtbar"],
+  },
   "POST /api/conflicts/:id/dismiss": { protection: "conflict.resolve" },
   "POST /api/conflicts/:id/second-opinion": { protection: "ko.validate" },
 

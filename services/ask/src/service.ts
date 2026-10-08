@@ -1,13 +1,17 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import {
+  type Fragekontext,
+  type GeltungsPassung,
   type KnowledgeObject,
+  type KoGeltung,
   type KoService,
   SUCH_ZUORDNUNGEN,
   type SuchZuordnung,
   type WithTx,
   dropConfidential,
   expandSearchTerms,
+  geltungFuerFrage,
   isConfidential,
   normalizeSearchTerms,
 } from "../../knowledge-object";
@@ -542,6 +546,17 @@ export interface AskResult {
   // Frage sie angefordert hat (`opts.zweitmeinung`). Sonst fehlt das Feld vollständig, und der
   // Antwortkörper ist der bisherige.
   zweitmeinung?: ZweitmeinungErgebnis;
+  // R-1633 — WOFÜR GEWICHTET WURDE, SICHTBAR. Nur wenn der Fragende einen Fragekontext angegeben
+  // hat (Werk/Schicht/Rolle); sonst fehlt das Feld vollständig. Je herangezogener Quelle
+  // (`result.sources`, also nach Sichtbarkeits-, Vertraulichkeits- und Freigabefilter) ihre Geltung
+  // und wie sie zum Kontext passt — dieselbe Rechnung, die die Rangfolge bestimmt hat.
+  geltung?: AskGeltungsauskunft;
+}
+
+/** R-1633: der Fragekontext und je Quelle ihre Geltung und Passung (Regel: `geltungFuerFrage`). */
+export interface AskGeltungsauskunft {
+  fragekontext: Fragekontext;
+  quellen: { id: string; passung: GeltungsPassung; geltung?: KoGeltung }[];
 }
 
 /**
@@ -862,6 +877,13 @@ export class AskService {
        */
       dokumenttextFreigegeben?: boolean;
       /**
+       * Auftrag gesamt-ki-freigaberegeln (Ben Nacharbeit 2): der hinausgehende Dokumenttext (Markierung
+       * oder Frage) ist als VERTRAULICH markiert und nur durch die zweite zentrale Adminfreigabe
+       * gedeckt. Dann läuft die Antwort als vertraulich in den Reasoner — der Kern und der Chokepoint
+       * entscheiden dieselbe Freigabe noch einmal. Gesetzt ausschliesslich von der Route.
+       */
+      dokumenttextVertraulich?: boolean;
+      /**
        * R-0348: die vorangegangenen Fragen derselben Fragestrecke, älteste zuerst (höchstens
        * `GESPRAECHSFADEN_MAX_FRAGEN` zählen). Wirkung und Grenzen an `fadenfragen`. Gesetzt nur
        * von der Route, und nur im Konsolenzweig.
@@ -875,6 +897,13 @@ export class AskService {
        * Gesetzt nur von der Route, und nur im Konsolenzweig.
        */
       zweitmeinung?: boolean;
+      /**
+       * R-1633: wofür gefragt wird (Werk/Schicht/Rolle), bereits geprüft (`normalizeFragekontext`).
+       * Wirkung: je Kandidat ein `geltungsrang`, der unter GLEICH relevanten Quellen ordnet
+       * (Regel an `rankCandidates`), und die Auskunft `geltung` an der Antwort. Gesetzt nur von
+       * der Route, und nur im Konsolenzweig — wie der Gesprächsfaden.
+       */
+      fragekontext?: Fragekontext;
     },
     // produkt:20261007:spaces — WAS DER FRAGENDE ÜBERHAUPT SEHEN DARF, als fertige Entscheidung der
     // Route (`sichtbarkeitsfilterFuer`, samt führendem Space). Bewusst ein EIGENER Parameter und
@@ -976,6 +1005,8 @@ export class AskService {
             .map((ko) => ({ id: ko.id, title: ko.title, status: ko.status })),
         }
       : {};
+    // R-1633: der Fragekontext (Werk/Schicht/Rolle) — ohne ihn ist der Ablauf der bisherige.
+    const fragekontext = opts?.fragekontext;
     // D5: die Suchprojektion trägt den Dokumenttext — ein weiterer inhaltlesender Schritt.
     this.pruefeKiSperre("suchprojektion", kiBeginn);
     const refs: KnowledgeRef[] = await Promise.all(
@@ -1000,6 +1031,10 @@ export class AskService {
           // Kontextpfad mit (captionTexts-Suchfeld — kein bodyHtml-Vollload, kein neuer Scanner).
           ...(ko.captionTexts?.length ? { captionTexts: ko.captionTexts } : {}),
           ...(projektion?.bodyText.trim() ? { bodyText: projektion.bodyText } : {}),
+          // R-1633: nur mit Fragekontext — dann ordnet der Rang an BEIDEN Toren (dieselben Refs).
+          ...(fragekontext
+            ? { geltungsrang: geltungFuerFrage(ko.geltung, fragekontext).rang }
+            : {}),
         };
       }),
     );
@@ -1056,7 +1091,9 @@ export class AskService {
     //     die Cloud fällt aus der Providerkette UND `ConfidentialEgressError` schlägt an.
     // Auf `prefilteredRaw` abzuleiten wäre falsch: dann würde eine Frage, die zufällig ein
     // vertrauliches Objekt streift, ihre Antwort verlieren, obwohl das Objekt längst entfernt ist.
-    const kontextVertraulich = prefiltered.some((ko) => isConfidential(ko.confidentiality));
+    const kontextVertraulich =
+      prefiltered.some((ko) => isConfidential(ko.confidentiality)) ||
+      opts?.dokumenttextVertraulich === true;
     // F-0295 / R-0639: der markierte Dokumenttext — nur mit bestandener eigener Deckungsprüfung.
     const dokumenttext =
       opts?.dokumenttextFreigegeben === true && opts.selection?.trim()
@@ -1142,6 +1179,24 @@ export class AskService {
       );
     });
     const result = { ...resultCore, captionSources };
+    // R-1633 — „Sichtbar im UI": je herangezogener Quelle Geltung und Passung, aus denselben
+    // Objekten (`prefiltered`) und derselben Regel, die den Rang gesetzt hat. Ohne Kontext fehlt
+    // das Feld; eine Quelle ohne Objekt in `prefiltered` gilt als ohne Geltungsangabe.
+    const geltungFeld: { geltung?: AskGeltungsauskunft } = fragekontext
+      ? {
+          geltung: {
+            fragekontext,
+            quellen: result.sources.map((id) => {
+              const g = prefiltered.find((ko) => ko.id === id)?.geltung;
+              return {
+                id,
+                passung: geltungFuerFrage(g, fragekontext).passung,
+                ...(g ? { geltung: g } : {}),
+              };
+            }),
+          },
+        }
+      : {};
     // JOB 2626 D1 — DIE TORLAGE, wenn es keine Antwort gab (Vertrag und Grenzen am Feld
     // `AskResult.verschlossen`). Gerechnet wird auf `dropConfidential(prefilteredRaw)` — derselbe
     // Schnitt wie bei `ungeprueft` eine Seite weiter oben: NIE ueber Vertrauliches, NUR was der
@@ -1259,6 +1314,7 @@ export class AskService {
           ...ungeprueftFeld,
           ...verschlossenFeld,
           ...zweitmeinungFeld,
+          ...geltungFeld,
         };
       }
       // GAP-SPRACHHERKUNFT: `locale` steuert schon die Antwortsprache des Reasoners und liegt hier
@@ -1279,6 +1335,7 @@ export class AskService {
         ...ungeprueftFeld,
         ...verschlossenFeld,
         ...zweitmeinungFeld,
+        ...geltungFeld,
       };
     }
     return {
@@ -1289,6 +1346,7 @@ export class AskService {
       ...ungeprueftFeld,
       ...verschlossenFeld,
       ...zweitmeinungFeld,
+      ...geltungFeld,
     };
   }
 

@@ -215,7 +215,9 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `PUT` | `/api/validation/settings` | `users.manage` | Rumpf `{ defaultNeededValidations }` | 200 `{ defaultNeededValidations }` | Dienstfehler |
 | `GET` | `/api/conflicts` | `ko.read` | — | 200 offene Konflikte, sichtbarkeitsgefiltert | — |
 | `GET` | `/api/conflicts/:id` | `ko.read`, sichtbar | — | 200 Konflikt | 404 `NOT_FOUND` |
+| `GET` | `/api/conflicts/vorrang/:id` | `ko.read`, Paar sichtbar | Pfad `:id` = Wissensobjekt | 200 Liste festgelegter Vorrang-Beziehungen (R-0263) | — |
 | `POST` | `/api/conflicts/:id/escalate` | `conflict.resolve` | — | 200 Konflikt | Dienstfehler |
+| `POST` | `/api/conflicts/:id/arbeitsart` | `conflict.resolve` | Rumpf `{ arbeitsart: regel\|sache\|version }` | 200 Konflikt (R-0252) | 400 `BAD_REQUEST`, Dienstfehler |
 | `POST` | `/api/conflicts/:id/dismiss` | `conflict.resolve` | Rumpf `{ note? }` | 200 Konflikt | Dienstfehler |
 | `POST` | `/api/conflicts/:id/second-opinion` | `ko.validate` | Rumpf `{ opinion }` | 200 Konflikt | Dienstfehler |
 | `GET` | `/api/duplicate-signal` | `ko.read` | — | 200 eigene Objekte mit offenem Befund | — |
@@ -251,7 +253,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `POST` | `/api/klara/sessions/:sessionId/close` | `ko.read` | — | 200 geschlossene Sitzung | Dienstfehler |
 | `POST` | `/api/klara/sessions/:sessionId/zuruf` | `ko.read` | Rumpf `{ text, koIds, art }` | 200 Vorschlag (schreibt nichts) | 503 `NO_FORMULIERER`; Dienstfehler |
 | `GET` | `/api/klara/answers/:answerId/explanation` | `ko.read` | — | 200 Erklärung der Antwort | 404 `NOT_FOUND` |
-| `POST` | `/api/knowledge/check` | `ko.read` | Rumpf `{ text, source?, koId?, draftId?, confidentiality?, nichtEingestuft? }` | 200 Ähnlichkeits-/Widerspruchsbefund | — |
+| `POST` | `/api/knowledge/check` | `ko.read` | Rumpf `{ text, source?, koId?, draftId?, confidentiality?, nichtEingestuft? }` | 200 Ähnlichkeits-/Widerspruchsbefund; bei ähnlichem Negativwissen zusätzlich `negativwissen[]` | — |
 | `POST` | `/api/check-text` | `ko.read` oder Add-in-Fähigkeit (Schalter `KLARWERK_ADDON_API`) | Rumpf `{ text, title?, locale?, want?, source?, koId?, confidentiality?, nichtEingestuft? }` | 200 Prüfergebnis | 403 `FORBIDDEN`; 400 Formfehler |
 | `POST` | `/api/reasoner` | `ko.read` | Rumpf `{ task, text?, answers?, locale?, instruction?, query?, outputLanguage?, source?, koId?, confidentiality?, nichtEingestuft?, draftId? }` | 200 Ergebnis der Aufgabe | 400 `BAD_REQUEST`; 409 `CONFIDENTIAL_CLOUD_BLOCKED` (mit `reason`); 503 `KI_ABGESCHALTET` |
 | `POST` | `/api/reasoner/describe` | `ko.read` (vor dem Einlesen) | Rumpf `{ dataUrl, locale?, source?, koId?, confidentiality?, nichtEingestuft?, draftId?, context? }` | 200 Bildbeschreibung | 400 `BAD_REQUEST`; 413 `PAYLOAD_TOO_LARGE` |

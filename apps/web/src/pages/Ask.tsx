@@ -6,7 +6,12 @@ import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos, useReasonerStatus } from "../api/hooks";
-import type { AnswerResult, VerschlossenHinweis } from "../api/types";
+import type {
+  AnswerResult,
+  AskGeltungsauskunft,
+  Fragekontext,
+  VerschlossenHinweis,
+} from "../api/types";
 import { useToast } from "../app/ToastContext";
 // AUFTRAG-mega69 B1 (bens sammel65-Auflage 1): der Kostenhinweis der Beispiel-Chips läuft über
 // DASSELBE zentrale Bauteil und DIESELBE Ableitung wie alle anderen Auslösestellen — bedingt an
@@ -14,6 +19,7 @@ import { useToast } from "../app/ToastContext";
 import { AiCostHint } from "../components/AiCostHint";
 import { AiGeneratedNotice } from "../components/AiGeneratedNotice";
 import { DemoBanner } from "../components/DemoBanner";
+import { FragekontextWahl, GeltungsAuskunft, fragekontextZumSenden } from "../components/Geltung";
 import { HelpTip } from "../components/HelpTip";
 // AUFTRAG-mega71 BLOCK E (Befund aus mega70 Block E, jetzt frei): diese Fläche trug dieselbe
 // Sackgassen-Fehlerklasse FÜNFFACH — zweimal /validierung (Führungskarte + Prüfvorbehalt-CTA),
@@ -504,6 +510,8 @@ interface AskAnfrage {
   faden: string[];
   // Ben, Nacharbeit 2: die Fadengeneration beim Absenden — „Neues Thema" zählt sie hoch.
   fadenGeneration: number;
+  // R-1633: der Fragekontext beim Absenden; fehlt er, ist der Aufruf der bisherige.
+  kontext?: Fragekontext;
 }
 
 export function Ask(): JSX.Element {
@@ -649,6 +657,11 @@ export function Ask(): JSX.Element {
   );
   // Die zuletzt gestellte Frage steht schon in der Fragezeile; aufgezählt werden die früheren.
   const fadenFrueher = faden.filter((frage) => frage !== asked);
+  // R-1633: wofür gefragt wird (Werk/Schicht/Rolle) und die Auskunft des Servers, wofür die
+  // stehende Antwort gewichtet wurde. Die Angabe gilt für diese Sitzung der Seite; sie wird nicht
+  // gespeichert.
+  const [fragekontext, setFragekontext] = useState<Fragekontext>({});
+  const [geltungsAuskunft, setGeltungsAuskunft] = useState<AskGeltungsauskunft | null>(null);
   // Ben, Nacharbeit 2: „Neues Thema" während einer laufenden Nachfrage. Die später eintreffende
   // Antwort darf ihre Frage nicht wieder in den geleerten Faden tragen — sie gehört zum alten
   // Thema. Jede Anfrage trägt die Generation, unter der sie startete (wie `kontoGeneration`).
@@ -789,10 +802,18 @@ export function Ask(): JSX.Element {
   const kontoGeneration = useRef(0);
   const ask = useMutation({
     mutationFn: (anfrage: AskAnfrage) =>
-      // R-0348: ohne Faden genau der bisherige Aufruf.
-      anfrage.faden.length > 0
-        ? endpoints.ask.ask(anfrage.frage, toReasonerLocale(i18n.language), anfrage.faden)
-        : endpoints.ask.ask(anfrage.frage, toReasonerLocale(i18n.language)),
+      // R-1633: mit Fragekontext reist er mit; ohne bleibt es bei den bisherigen Aufrufen.
+      anfrage.kontext
+        ? endpoints.ask.ask(
+            anfrage.frage,
+            toReasonerLocale(i18n.language),
+            anfrage.faden,
+            anfrage.kontext,
+          )
+        : // R-0348: ohne Faden genau der bisherige Aufruf.
+          anfrage.faden.length > 0
+          ? endpoints.ask.ask(anfrage.frage, toReasonerLocale(i18n.language), anfrage.faden)
+          : endpoints.ask.ask(anfrage.frage, toReasonerLocale(i18n.language)),
     // D5: eine schon offene Fläche kennt die Abschaltung noch nicht — der Server hat sie eben
     // gemeldet. Der Status wird neu gelesen, damit der Absendeknopf danach gesperrt ist und der
     // Hinweis dasteht, statt dass der Mensch dieselbe Absage ein zweites Mal abholt.
@@ -837,6 +858,8 @@ export function Ask(): JSX.Element {
       // JOB 2626 D1: dieselbe Bindung wie für Antwort/Receipt/Lücke — die Torlage gehört zu genau
       // einer Frage und darf nie neben dem Ergebnis einer anderen stehen.
       setVerschlossen([]);
+      // R-1633: dieselbe Bindung — die Gewichtungsauskunft gehört zu genau einer Antwort.
+      setGeltungsAuskunft(null);
     },
     // SCRUM-138: Backend liefert { result, gap, receipt } — Antwort + Answer-Receipt entpacken.
     onSuccess: (r, { frage: question, generation, fadenGeneration: fadenStand }) => {
@@ -858,6 +881,8 @@ export function Ask(): JSX.Element {
       // JOB 2626 D1: abwesend heißt „nicht gefragt oder nichts zu melden" — beides fällt ehrlich
       // auf die leere Liste und damit auf die generische Leermeldung zurück.
       setVerschlossen(r.verschlossen ?? []);
+      // R-1633: abwesend heißt „ohne Fragekontext gefragt" — dann steht keine Auskunft da.
+      setGeltungsAuskunft(r.geltung ?? null);
       // FUNKE-FIX2 P0: die neue Lücke merken (ID für den Capture-Einstieg) und die Gap-Liste
       // invalidieren, damit Capture die frisch erzeugte Lücke über ihre ID auflösen kann (der Ersteller
       // ist berechtigt → Volltext). Kein Fragetext in der URL.
@@ -1152,14 +1177,16 @@ export function Ask(): JSX.Element {
       // nach dem Absenden offen, stünden Beispieltexte und Hinweise zwischen Feld und Antwort. Sie
       // schliesst deshalb hier — nur bei einem ANGENOMMENEN Absenden, für Feld, Chip und Auto-Ask.
       setBeispiele(false);
+      const kontext = fragekontextZumSenden(fragekontext);
       ask.mutate({
         frage: trimmed,
         generation: kontoGeneration.current,
         faden: fadenFuerAnfrage(faden, trimmed),
         fadenGeneration: fadenGeneration.current,
+        ...(kontext ? { kontext } : {}),
       });
     },
-    [answerAi.available, ask.isPending, ask.mutate, faden],
+    [answerAi.available, ask.isPending, ask.mutate, faden, fragekontext],
   );
 
   // WP-UX-WOW-1 U2/U3: Beispiel-Chip → Frage setzen UND direkt senden (ein Klick → Antwort).
@@ -1528,6 +1555,9 @@ export function Ask(): JSX.Element {
             </button>
           </div>
         ) : null}
+        {/* R-1633: „Ich frage für" Werk/Schicht/Rolle — gleich passende Quellen dieses Orts
+            stehen vorn; nichts wird ausgeblendet. Zugeklappt, solange niemand es braucht. */}
+        <FragekontextWahl wert={fragekontext} onWert={setFragekontext} kos={kos.data ?? []} />
         <FrageFeld
           wert={q}
           onWert={setQ}
@@ -2000,6 +2030,15 @@ export function Ask(): JSX.Element {
                         );
                       })}
                     </div>
+                  ) : null}
+                  {/* R-1633 — „Sichtbar im UI": wofür gewichtet wurde und wie jede herangezogene
+                    Quelle dazu passt. Nur wenn mit Fragekontext gefragt wurde; die Passung sagt
+                    der Server (dieselbe Rechnung, die die Reihenfolge bestimmt hat). */}
+                  {geltungsAuskunft ? (
+                    <GeltungsAuskunft
+                      auskunft={geltungsAuskunft}
+                      titelVon={(id) => quellenAuskunft.find((s) => s.id === id)?.label ?? id}
+                    />
                   ) : null}
                   {/* §5: das „…" rechts oben IN der Antwortkarte. Absolut gesetzt, damit es die
                     Reihenfolge der Inhaltselemente nicht verschiebt (D-047). */}
