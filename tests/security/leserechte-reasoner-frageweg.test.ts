@@ -270,11 +270,14 @@ describe("POST /api/reasoner (task ask) — Grundlage nur aus dem, was der Frage
 describe("POST /api/ask mit Dienst-Schlüssel — nie aus geschlossenem Space, nie Vertrauliches", () => {
   it("Gegenprobe offenes Objekt; gesperrt sind vertrauliches Objekt und Objekt im Mitglieder-Space", async () => {
     const { app, admin, koId: imSpaceId } = await buehne({ mitFrageSchluessel: true });
+    // Alle drei Objekte tragen JEDEN gebundenen Fragebegriff („läuft", WORT) — sonst fiele ein
+    // Objekt schon an der Begriffsregel R-0473 (`decktAlleFragebegriffe`), und sein Fehlen bewiese
+    // nichts über Space oder Vertraulichkeit.
     const offenId = await freigegebenesObjekt(app, admin, {
       title: `${WORT} im offenen Handbuch`,
-      statement: `Der ${WORT} wird im offenen Handbuch Schritt für Schritt beschrieben.`,
+      statement: `Der ${WORT} läuft laut offenem Handbuch in drei Teilschritten.`,
     });
-    const geheimAussage = `Der ${WORT} der Rezepturlinie bleibt vertraulich.`;
+    const geheimAussage = `Der ${WORT} der Rezepturlinie läuft nur unter Aufsicht.`;
     const geheimId = await freigegebenesObjekt(app, admin, {
       title: `${WORT} der Rezepturlinie`,
       statement: geheimAussage,
