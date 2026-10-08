@@ -345,7 +345,7 @@ describe("R-0299 · Betreiber und Wissensstand — nur aus belegten Angaben", ()
     });
   });
 
-  it("W5 · nur ein BELEGTER Stichtag wird als Stichtag gezeigt — mit seiner Quelle", () => {
+  it("W5 · nur ein BELEGTER Wissensstand wird als Wissensstand gezeigt — mit Quelle und Abrufdatum", () => {
     const anzeige = betreiberKartenAnzeige({
       zugang: "anthropic",
       betreiber: "Anthropic",
@@ -355,13 +355,79 @@ describe("R-0299 · Betreiber und Wissensstand — nur aus belegten Angaben", ()
         stand: "2000-01",
         nachweis: "belegt",
         quelle: "Beispielfundstelle",
+        abgerufen: "2000-02-01",
         quellenbedarf: null,
       },
       verfuegbarkeit: "ungeprueft",
     });
     expect(anzeige.wissensstand).toEqual({
       key: BETREIBER_KARTE_TEXT.wissensstandBelegt,
-      params: { stand: "2000-01", quelle: "Beispielfundstelle" },
+      params: { stand: "2000-01", quelle: "Beispielfundstelle", abgerufen: "2000-02-01" },
+    });
+    expect(anzeige.quellenbedarf).toBeNull();
+  });
+
+  // Ben nacharbeit-10: die TATSÄCHLICHEN Tabelleneinträge aus der Herstellerbeschaffung
+  // (QUELLEN-R0299-HERSTELLER-20261008.json) — exakte Kennung, veröffentlichter „knowledge cutoff",
+  // Herstellerquelle, Abrufdatum. Und die Gegenrichtung: jede andere Kennung bleibt unbekannt.
+  it("W7 · die belegten Kennungen liefern den veröffentlichten Wissensstand mit Herstellerquelle", () => {
+    expect(modellWissensstand("gpt-6-astra")).toEqual({
+      stand: "2026-04-30",
+      nachweis: "belegt",
+      quelle: "https://developers.openai.com/api/docs/models/gpt-6-astra",
+      abgerufen: "2026-10-08",
+      quellenbedarf: null,
+    });
+    expect(modellWissensstand("gpt-4o-mini")).toEqual({
+      stand: "2023-10-01",
+      nachweis: "belegt",
+      quelle: "https://developers.openai.com/api/docs/models/gpt-4o-mini",
+      abgerufen: "2026-10-08",
+      quellenbedarf: null,
+    });
+    // Sonnet 4.6: der VERLÄSSLICHE Wissensstand (Aug 2025), nicht das Trainingsdatenende (Jan 2026).
+    const sonnet = modellWissensstand("claude-sonnet-4-6");
+    expect(sonnet).toEqual({
+      stand: "2025-08",
+      nachweis: "belegt",
+      quelle: "https://platform.claude.com/docs/en/models/sonnet-4-6/overview",
+      abgerufen: "2026-10-08",
+      quellenbedarf: null,
+    });
+    expect(sonnet.stand).not.toBe("2026-01");
+  });
+
+  it("W8 · kein Präfix- oder Versionsraten: Nachbarkennungen bleiben unbekannt", () => {
+    for (const kennung of [
+      "gpt-4o-mini-2024-07-18",
+      "GPT-4O-MINI",
+      "gpt-4o",
+      "claude-sonnet-4-6-20260101",
+      "claude-sonnet-4-5",
+      "lokal-test-modell",
+    ]) {
+      const stand = modellWissensstand(kennung);
+      expect([kennung, stand.nachweis, stand.stand]).toEqual([kennung, "unbekannt", null]);
+      expect(stand.quellenbedarf).toContain(kennung);
+    }
+  });
+
+  it("W9 · die Karte zeigt einen belegten Eintrag mit Quelle und Abrufdatum, ohne Quellenbedarf", () => {
+    const anzeige = betreiberKartenAnzeige({
+      zugang: "anthropic",
+      betreiber: "Claude (Anthropic)",
+      modell: "claude-sonnet-4-6",
+      herkunft: { land: "us", nachweis: "behauptet" },
+      wissensstand: modellWissensstand("claude-sonnet-4-6"),
+      verfuegbarkeit: "ungeprueft",
+    });
+    expect(anzeige.wissensstand).toEqual({
+      key: BETREIBER_KARTE_TEXT.wissensstandBelegt,
+      params: {
+        stand: "2025-08",
+        quelle: "https://platform.claude.com/docs/en/models/sonnet-4-6/overview",
+        abgerufen: "2026-10-08",
+      },
     });
     expect(anzeige.quellenbedarf).toBeNull();
   });

@@ -56,15 +56,16 @@ export default {
     "kilage.karte.modellUnbekannt": "nicht gemeldet",
     "kilage.karte.herkunft": "Herkunft",
     "kilage.karte.wissensstand": "Wissensstand",
-    "kilage.karte.wissensstandBelegt": "{{stand}} (Beleg: {{quelle}})",
+    "kilage.karte.wissensstandBelegt":
+      "{{stand}} (vom Hersteller veröffentlichter Wissensstand; Quelle: {{quelle}}, abgerufen am {{abgerufen}})",
     "kilage.karte.wissensstandUnbekannt":
-      "unbekannt — für dieses Modell ist kein belegter Stichtag hinterlegt",
+      "unbekannt — für dieses Modell ist kein vom Hersteller veröffentlichter Wissensstand hinterlegt",
     "kilage.karte.quellenbedarf":
-      "Fehlende Quelle: die Herstellerangabe zum Trainingsdaten-Stichtag von „{{modell}}“ (Modellkarte oder Dokumentation des Anbieters, mit Fundstelle und Abrufdatum).",
+      "Fehlende Quelle: die Herstellerangabe zum veröffentlichten Wissensstand („knowledge cutoff“) von „{{modell}}“ (Modellkarte oder Dokumentation des Anbieters, mit Fundstelle und Abrufdatum).",
     "kilage.karte.keinModell":
       "Gerade arbeitet kein KI-Modell — Antworten entstehen regelbasiert aus geprüftem Wissen. Einen Wissensstand, der veralten könnte, gibt es deshalb nicht.",
     "kilage.karte.hinweis":
-      "Ein Modell kennt nur, was bis zu seinem Stichtag in seinen Trainingsdaten stand. Aktuelles kommt ausschliesslich aus dem geprüften Wissen dieser Installation.",
+      "Der Wissensstand ist der Zeitpunkt, bis zu dem der Hersteller das Wissen des Modells als verlässlich angibt — nicht unbedingt das Ende seiner Trainingsdaten. Aktuelles kommt ausschliesslich aus dem geprüften Wissen dieser Installation.",
   },
   en: {
     "kilage.kopf.hinweisExtern":
@@ -107,15 +108,16 @@ export default {
     "kilage.karte.modellUnbekannt": "not reported",
     "kilage.karte.herkunft": "Origin",
     "kilage.karte.wissensstand": "Knowledge cut-off",
-    "kilage.karte.wissensstandBelegt": "{{stand}} (source: {{quelle}})",
+    "kilage.karte.wissensstandBelegt":
+      "{{stand}} (knowledge cut-off published by the vendor; source: {{quelle}}, retrieved {{abgerufen}})",
     "kilage.karte.wissensstandUnbekannt":
-      "unknown — no documented cut-off date is recorded for this model",
+      "unknown — no knowledge cut-off published by the vendor is recorded for this model",
     "kilage.karte.quellenbedarf":
-      "Missing source: the vendor's statement of the training-data cut-off for “{{modell}}” (model card or vendor documentation, with location and retrieval date).",
+      "Missing source: the vendor's published knowledge cut-off for “{{modell}}” (model card or vendor documentation, with location and retrieval date).",
     "kilage.karte.keinModell":
       "No AI model is working right now — answers are produced rule-based from validated knowledge. There is therefore no knowledge cut-off that could be outdated.",
     "kilage.karte.hinweis":
-      "A model only knows what was in its training data up to its cut-off. Anything current comes solely from the validated knowledge of this installation.",
+      "The knowledge cut-off is the date up to which the vendor states the model's knowledge is reliable — not necessarily the end of its training data. Anything current comes solely from the validated knowledge of this installation.",
   },
   nl: {
     "kilage.kopf.hinweisExtern":
@@ -158,14 +160,15 @@ export default {
     "kilage.karte.modellUnbekannt": "niet gemeld",
     "kilage.karte.herkunft": "Herkomst",
     "kilage.karte.wissensstand": "Kennisstand",
-    "kilage.karte.wissensstandBelegt": "{{stand}} (bron: {{quelle}})",
+    "kilage.karte.wissensstandBelegt":
+      "{{stand}} (door de fabrikant gepubliceerde kennisstand; bron: {{quelle}}, geraadpleegd op {{abgerufen}})",
     "kilage.karte.wissensstandUnbekannt":
-      "onbekend — voor dit model is geen onderbouwde peildatum vastgelegd",
+      "onbekend — voor dit model is geen door de fabrikant gepubliceerde kennisstand vastgelegd",
     "kilage.karte.quellenbedarf":
-      "Ontbrekende bron: de opgave van de fabrikant over de peildatum van de trainingsgegevens van „{{modell}}” (modelkaart of documentatie van de aanbieder, met vindplaats en datum van raadpleging).",
+      "Ontbrekende bron: de opgave van de fabrikant over de gepubliceerde kennisstand („knowledge cutoff”) van „{{modell}}” (modelkaart of documentatie van de aanbieder, met vindplaats en datum van raadpleging).",
     "kilage.karte.keinModell":
       "Er werkt op dit moment geen AI-model — antwoorden ontstaan op basis van regels uit gecontroleerde kennis. Er is daarom geen kennisstand die verouderd kan zijn.",
     "kilage.karte.hinweis":
-      "Een model kent alleen wat tot zijn peildatum in zijn trainingsgegevens stond. Actuele informatie komt uitsluitend uit de gecontroleerde kennis van deze installatie.",
+      "De kennisstand is het moment tot waarop de fabrikant de kennis van het model als betrouwbaar opgeeft — niet noodzakelijk het einde van zijn trainingsgegevens. Actuele informatie komt uitsluitend uit de gecontroleerde kennis van deze installatie.",
   },
 } satisfies Textmodul;

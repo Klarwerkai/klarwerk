@@ -2,9 +2,11 @@
 //
 // Sie macht sichtbar, wer das gerade antwortende Modell betreibt und bis wann sein Wissen reicht —
 // damit in der Vorführung keine falsche Aktualität suggeriert wird. Die Angaben kommen aus der
-// Serverauskunft (`configStatus().betreiber`, `Reasoner.betreiberKarte()`); der Wissensstand NUR
-// aus belegten Herstellerangaben (`services/reasoner/src/anbieter-herkunft.ts`). Fehlt der Beleg,
-// steht „unbekannt" UND die konkret fehlende Quelle da — nie eine Zahl aus dem Gedächtnis.
+// Serverauskunft (`configStatus().betreiber`, `Reasoner.betreiberKarte()`); der Wissensstand ist der
+// vom Hersteller veröffentlichte „knowledge cutoff" (nicht das Trainingsdatenende), NUR aus belegten
+// Herstellerangaben (`services/reasoner/src/anbieter-herkunft.ts`) — mit Quelle und Abrufdatum.
+// Fehlt der Beleg, steht „unbekannt" UND die konkret fehlende Quelle da — nie eine Zahl aus dem
+// Gedächtnis.
 //
 // DOM-frei und testbar — die Karte rendert nur das Ergebnis.
 import type { ReasonerBetreiberKarte } from "../api/types";
@@ -35,7 +37,7 @@ export type KartenWert =
   | { readonly wortlaut: string };
 
 export interface BetreiberKartenAnzeige {
-  /** `false`: kein Modell arbeitet — die Karte sagt nur das, ohne Betreiber und Stichtag. */
+  /** `false`: kein Modell arbeitet — die Karte sagt nur das, ohne Betreiber und Wissensstand. */
   modellArbeitet: boolean;
   /**
    * Ben nacharbeit-7: arbeitet kein Modell, WEIL das eingerichtete zuletzt nicht antwortete, sagt
@@ -47,7 +49,7 @@ export interface BetreiberKartenAnzeige {
   modell: KartenWert | null;
   herkunft: KiHerkunftAnzeige | null;
   wissensstand: KartenWert | null;
-  /** Nur bei unbekanntem Stichtag: welche Quelle fehlt. */
+  /** Nur bei unbekanntem Wissensstand: welche Quelle fehlt. */
   quellenbedarf: KartenWert | null;
 }
 
@@ -90,7 +92,11 @@ export function betreiberKartenAnzeige(karte: ReasonerBetreiberKarte): Betreiber
     wissensstand: belegt
       ? {
           key: BETREIBER_KARTE_TEXT.wissensstandBelegt,
-          params: { stand: belegt.stand ?? "", quelle: belegt.quelle ?? "" },
+          params: {
+            stand: belegt.stand ?? "",
+            quelle: belegt.quelle ?? "",
+            abgerufen: belegt.abgerufen ?? "",
+          },
         }
       : { key: BETREIBER_KARTE_TEXT.wissensstandUnbekannt },
     quellenbedarf: belegt

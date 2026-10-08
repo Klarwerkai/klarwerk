@@ -366,13 +366,16 @@ export interface ReasonerZugangHerkunft {
   nachweis: ReasonerHerkunftNachweis;
 }
 
-// R-0299: der Wissensstand eines Modells — NUR aus belegten Herstellerangaben (`anbieter-herkunft.ts`).
-// Fehlt der Beleg, ist `stand` null, `nachweis` „unbekannt", und `quellenbedarf` nennt die fehlende
-// Quelle.
+// R-0299: der Wissensstand eines Modells — der vom Hersteller VERÖFFENTLICHTE „knowledge cutoff",
+// NUR aus belegten Herstellerangaben (`anbieter-herkunft.ts`). Er ist nicht dasselbe wie das Ende der
+// Trainingsdaten (Anthropic nennt beides getrennt). Fehlt der Beleg, ist `stand` null, `nachweis`
+// „unbekannt", und `quellenbedarf` nennt die fehlende Quelle.
 export interface ReasonerModellWissensstand {
   stand: string | null;
   nachweis: "belegt" | "unbekannt";
   quelle: string | null;
+  /** Wann die Herstellerquelle gelesen wurde (ISO-Datum); `null` ohne Beleg. */
+  abgerufen: string | null;
   quellenbedarf: string | null;
 }
 

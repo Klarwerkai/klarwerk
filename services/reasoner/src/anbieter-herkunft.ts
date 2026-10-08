@@ -42,17 +42,22 @@ export function zugangHerkunft(): Record<ReasonerCloudAnbieter | "local", Reason
 // ================================================================================================
 //
 // Die Karte „Betreiber und Wissensstand" soll in der Vorführung keine falsche Aktualität
-// suggerieren. Der Wissensstand eines Modells (der Stichtag seiner Trainingsdaten) ist eine Angabe
-// des HERSTELLERS je Modellkennung — er lässt sich weder aus dem Namen ableiten noch erfragen.
+// suggerieren. Der Wissensstand eines Modells ist der vom HERSTELLER veröffentlichte „knowledge
+// cutoff" je Modellkennung — der Zeitpunkt, bis zu dem der Hersteller das Wissen des Modells als
+// verlässlich angibt. Er ist NICHT dasselbe wie das Ende der Trainingsdaten: Anthropic nennt für
+// Claude Sonnet 4.6 beides getrennt („Reliable knowledge cutoff Aug 2025", „Training data cutoff
+// Jan 2026"); gezeigt wird ausschliesslich der verlässliche Wissensstand. Er lässt sich weder aus
+// dem Namen ableiten noch erfragen.
 //
 // DESHALB GIBT ES HIER NUR EINE TABELLE BELEGTER ANGABEN, geschlüsselt nach der EXAKTEN
-// Modellkennung, wie sie der Client meldet. Jeder Eintrag trägt seinen Beleg (Dokument/Fundstelle
-// des Herstellers) und das Abrufdatum. HEUTE IST SIE LEER: für die angebotenen Modelle liegt in
-// diesem Bestand keine belegte Herstellerangabe vor, und eine aus dem Gedächtnis eingetragene Zahl
-// wäre genau die falsche Aktualität, gegen die die Karte gebaut ist. Fehlt der Eintrag, sagt die
-// Auskunft ehrlich „unbekannt" und nennt, WELCHE Quelle fehlt (`quellenbedarf`).
+// Modellkennung, wie sie der Client meldet — kein Präfix-, Familien- oder Versionsraten. Jeder
+// Eintrag trägt seine Herstellerquelle und das Abrufdatum (Beschaffung:
+// QUELLEN-R0299-HERSTELLER-20261008.json). Eine andere oder unbekannte Kennung — jedes lokale Modell,
+// jeder frei konfigurierte Override — bleibt ehrlich „unbekannt" und nennt, WELCHE Quelle fehlt
+// (`quellenbedarf`). Eine aus dem Gedächtnis eingetragene Zahl wäre genau die falsche Aktualität,
+// gegen die die Karte gebaut ist.
 interface BelegterWissensstand {
-  /** Stichtag der Trainingsdaten, wie der Hersteller ihn nennt (ISO-Monat oder -Datum). */
+  /** Veröffentlichter „knowledge cutoff" des Herstellers (ISO-Monat oder -Datum). */
   readonly stand: string;
   /** Fundstelle des Herstellers (Modellkarte, Dokumentationsseite) — nie eine Vermutung. */
   readonly quelle: string;
@@ -60,7 +65,27 @@ interface BelegterWissensstand {
   readonly abgerufen: string;
 }
 
-const BELEGTE_WISSENSSTAENDE: Readonly<Record<string, BelegterWissensstand>> = {};
+const BELEGTE_WISSENSSTAENDE: Readonly<Record<string, BelegterWissensstand>> = {
+  // OpenAI, Modellübersicht: „Apr 30, 2026 knowledge cutoff".
+  "gpt-6-astra": {
+    stand: "2026-04-30",
+    quelle: "https://developers.openai.com/api/docs/models/gpt-6-astra",
+    abgerufen: "2026-10-08",
+  },
+  // OpenAI, Modellübersicht: „Oct 01, 2023 knowledge cutoff".
+  "gpt-4o-mini": {
+    stand: "2023-10-01",
+    quelle: "https://developers.openai.com/api/docs/models/gpt-4o-mini",
+    abgerufen: "2026-10-08",
+  },
+  // Anthropic, Specifications: „Reliable knowledge cutoff Aug 2025" — NICHT das dort ebenfalls
+  // genannte Trainingsdatenende Jan 2026.
+  "claude-sonnet-4-6": {
+    stand: "2025-08",
+    quelle: "https://platform.claude.com/docs/en/models/sonnet-4-6/overview",
+    abgerufen: "2026-10-08",
+  },
+};
 
 /**
  * Der Wissensstand eines Modells — belegt aus der Tabelle oben, sonst ausdrücklich unbekannt mit
@@ -71,14 +96,21 @@ export function modellWissensstand(modell: string | null | undefined): ReasonerM
   const kennung = (modell ?? "").trim();
   const beleg = kennung ? BELEGTE_WISSENSSTAENDE[kennung] : undefined;
   if (beleg) {
-    return { stand: beleg.stand, nachweis: "belegt", quelle: beleg.quelle, quellenbedarf: null };
+    return {
+      stand: beleg.stand,
+      nachweis: "belegt",
+      quelle: beleg.quelle,
+      abgerufen: beleg.abgerufen,
+      quellenbedarf: null,
+    };
   }
   return {
     stand: null,
     nachweis: "unbekannt",
     quelle: null,
+    abgerufen: null,
     quellenbedarf: kennung
-      ? `Herstellerangabe zum Trainingsdaten-Stichtag des Modells „${kennung}" (Modellkarte oder Dokumentation des Anbieters, mit Fundstelle und Abrufdatum).`
-      : "Keine Modellkennung gemeldet — ohne sie lässt sich kein Stichtag belegen.",
+      ? `Herstellerangabe zum veröffentlichten Wissensstand („knowledge cutoff") des Modells „${kennung}" (Modellkarte oder Dokumentation des Anbieters, mit Fundstelle und Abrufdatum).`
+      : "Keine Modellkennung gemeldet — ohne sie lässt sich kein Wissensstand belegen.",
   };
 }

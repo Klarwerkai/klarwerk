@@ -2646,6 +2646,7 @@ export interface ReasonerModellWissensstand {
   stand: string | null;
   nachweis: "belegt" | "unbekannt";
   quelle: string | null;
+  abgerufen: string | null;
   quellenbedarf: string | null;
 }
 
