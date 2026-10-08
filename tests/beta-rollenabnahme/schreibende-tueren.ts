@@ -1156,7 +1156,7 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     gruppe: "captureRoutes",
     methode: "PUT",
     route: "/api/drafts/:id/pool",
-    belegstelle: "services/app/src/routes/capture-routes.ts (PUT /api/drafts/:id/pool)",
+    belegstelle: "services/app/src/routes/capture-routes.ts:1664",
     erfolg: [200],
     tor: "ko.create, dann Autorenrecht am Entwurf (canManageDraft)",
     erwartet: AB_EXPERTE,

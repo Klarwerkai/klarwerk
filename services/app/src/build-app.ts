@@ -3021,7 +3021,13 @@ export function buildApp(
     }),
   );
   // FR-VAL-07: EIN Notifier für alle Zuweisungswege (Board-Zuweisung + Einreichen, SCRUM-395).
-  const notifyAssignment = makeAssignmentNotifier(services.auth, services.mailer);
+  // aufnahme:20260922:gesamt-leserechte (R-0610): die Mail nennt das Objekt — sie geht nur an
+  // Empfänger, die es nach der EINEN Regel (`darfSehen`) sehen dürfen, mit denselben lesbaren
+  // Spaces wie die Anmeldung (`makeGuards` oben).
+  const notifyAssignment = makeAssignmentNotifier(services.auth, services.mailer, {
+    ko: (koId) => services.ko.get(koId),
+    spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
+  });
   // Weg 3: semantischer Vorfilter der Duplikat-Erkennung. Standard AUS → beide Routen bekommen
   // undefined → heutiges „jeder gegen jeden". Erst KLARWERK_DUP_PREFILTER=1 schaltet ihn scharf.
   const semanticPrefilter = createSemanticPrefilterFromEnv();
