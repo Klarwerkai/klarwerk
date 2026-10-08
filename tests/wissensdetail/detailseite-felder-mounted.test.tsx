@@ -293,13 +293,20 @@ describe("Wissensdetail · die Seite heißt wie ihr Wissen und sagt Status und S
   it("T2 · der Status steht auf der Lesefläche genau einmal, die Sicherheit höchstens einmal", async () => {
     await i18n.changeLanguage("de");
     const c = await mount();
-    const lesen = text(teil(c, "bib-lesen"));
+    const flaeche = teil(c, "bib-lesen") as HTMLElement;
+    const lesen = text(flaeche);
     const pille = text(teil(c, "bib-pille"));
     expect(pille.length, "die Statuspille fehlt").toBeGreaterThan(0);
-    // Als ganzes Wort gezählt: „Validierte"/„validierten" in anderen Sätzen sind keine Statusangabe.
+    // Je TEXTKNOTEN als ganzes Wort gezählt. `textContent` der ganzen Fläche klebt benachbarte
+    // Pillen ohne Zwischenraum aneinander („ValidiertIntern") — dort gäbe es keine Wortgrenze.
+    // „Validierte"/„validierten" in anderen Sätzen sind keine Statusangabe.
     const alsWort = new RegExp(`(^|[^\\p{L}])${pille}(?=$|[^\\p{L}])`, "gu");
-    expect(lesen.match(alsWort)?.length ?? 0).toBe(1);
-    const flaeche = teil(c, "bib-lesen") as HTMLElement;
+    let statusNennungen = 0;
+    const gang = document.createTreeWalker(flaeche, NodeFilter.SHOW_TEXT);
+    for (let k = gang.nextNode(); k !== null; k = gang.nextNode()) {
+      statusNennungen += (k.textContent ?? "").match(alsWort)?.length ?? 0;
+    }
+    expect(statusNennungen).toBe(1);
     expect(flaeche.querySelectorAll('[data-objektstatus="wissen"]').length).toBe(1);
     expect(vorkommen(lesen, i18n.t("evidence.percentSure", { pct: 80 }))).toBeLessThanOrEqual(1);
   });
