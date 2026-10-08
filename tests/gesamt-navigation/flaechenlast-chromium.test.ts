@@ -60,8 +60,15 @@ const KENNUNG = "R-1023b · Messung";
  *     (`components/bibliothek/BibliothekFlaeche.tsx`)
  * F2 misst weiter gegen die Rangliste des jeweiligen Laufs: rückt eine andere Fläche nach vorn,
  * wird der Fall rot.
+ *
+ * Lauf nacharbeit-7 (Kandidat 35d8b164, mit korrigierter Zählregel — zugeklappte `<details>` zählen
+ * nicht mehr — und einer Doppelung im Bestand): Hilfe 476→134, Risiken und Lücken 135→135,
+ * Wissensobjekt bearbeiten 134→69, Themenkarte 113 … Platz 2 und 3 liegen einen Punkt auseinander.
+ * Entlastet ist deshalb auch:
+ *   · Risiken und Lücken — die Pflege der Eingänge (nur Admin) hinter `risiko-pflege-schalter`
+ *     (`pages/Risk.tsx`)
  */
-const ENTLASTET: readonly string[] = ["Hilfe", "Wissensobjekt bearbeiten"];
+const ENTLASTET: readonly string[] = ["Hilfe", "Wissensobjekt bearbeiten", "Risiken und Lücken"];
 
 /** Zwei textgleiche Beiträge — die deterministische Erkennung legt daraus eine Doppelung an. */
 const DOPPEL_TITEL = "R-1023b · Messbeitrag Doppelung";
@@ -351,11 +358,20 @@ describe("R-1023 (b) · überladene Flächen messen und die zwei schlimmsten ent
     const rang = [...ergebnisse].sort((a, b) => last(b.vorher) - last(a.vorher));
     const spitze = rang.slice(0, 2);
     const liste = rang.map((e) => `${e.name} ${last(e.vorher)}→${last(e.nachher)}`).join(", ");
+    // Die Anforderung: die zwei schwersten Flächen DIESES Laufs sind entlastet. Mehr entlastete
+    // Flächen verletzen sie nicht (Lauf nacharbeit-7: Platz 2 und 3 lagen 135 zu 134 — beide sind
+    // entlastet); jede als entlastet geführte Fläche muss es aber nachweislich sein (Schleife unten).
+    const nichtEntlastet = spitze.filter((e) => !ENTLASTET.includes(e.name)).map((e) => e.name);
     expect(
-      spitze.map((e) => e.name).sort(),
+      nichtEntlastet,
       `die zwei am stärksten belasteten Flächen sind laut Messung ${spitze.map((e) => e.name).join(" und ")} — Rangliste vorher→nachher: ${liste}`,
-    ).toEqual([...ENTLASTET].sort());
-    for (const e of spitze) {
+    ).toEqual([]);
+    const gemessen = ENTLASTET.map((name) => ergebnisse.find((e) => e.name === name));
+    expect(
+      gemessen.filter((e) => e === undefined),
+      "eine entlastete Fläche fehlt",
+    ).toEqual([]);
+    for (const e of gemessen.filter((x): x is Ergebnis => x !== undefined)) {
       expect(e.nachher.schalter, `${e.name}: kein Entlastungsschalter`).toBeGreaterThan(0);
       const leichter = `${e.name}: nachher nicht leichter als vorher`;
       expect(last(e.nachher), leichter).toBeLessThan(last(e.vorher));

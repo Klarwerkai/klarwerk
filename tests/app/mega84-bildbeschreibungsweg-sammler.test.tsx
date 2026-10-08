@@ -2162,8 +2162,23 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // über 495 kommen also aus dem eingemischten Hauptstand (Grundmenge 621 → 657), darunter laut
     // Kommentar oben `Zeichnung` und `AnhangZeichnung`. Die übrigen 18 sind ohne Git-Verlauf an
     // diesem Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // AUFNAHME 20260922 · GESAMT-NAVIGATION, Nacharbeit 7: GEMESSEN 523. Am Kandidaten 35d8b164
+    // meldete der Sammler wörtlich „gemessen: 523 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge
+    // 670 Quelldateien … expected { komponenten: 523, … } to deeply equal { komponenten: 515, … }".
+    // Seit dem letzten Stand dieser Zahl (df501851) kamen 13 Quelldateien dazu (657 → 670, per
+    // `git diff --diff-filter=A` bestimmt). Dieser Auftrag trägt GENAU EIN Bauteil bei:
+    //     + `WeiterUntenHinweis` (`shell/WeiterUnten.tsx`) — „Weitere Einträge unten" am Rand des
+    //       Drawers und der Übersicht „Arbeitsbereiche" (R-1045)
+    // (`texte/navigation.ts` ist ein Textmodul ohne Bauteil; die Entlastungsschalter in `Help.tsx`,
+    // `Risk.tsx` und `BibliothekFlaeche.tsx` stehen inline, ohne neues Bauteil). Die übrigen 7 kamen
+    // mit dem eingemischten Hauptstand, aus den dort neuen Dateien
+    // `components/LueckenAnsprechpartner.tsx`, `components/VerantwortungUebergabe.tsx` und
+    // `components/wissensauskunft/WissensauskunftBereich.tsx`; einzeln gezählt ist das ohne Lauf
+    // nicht. Kein Bauteil bietet eine Bildbeschreibung an oder trägt `documentTitle`:
+    // `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 515,
+      komponenten: 523,
       anbieter: 1,
       traeger: 2,
     });

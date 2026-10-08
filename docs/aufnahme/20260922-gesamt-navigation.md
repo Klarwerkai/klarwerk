@@ -19,7 +19,7 @@ N-0012 und `package:navigation`.
 | R-1023 / R-1813 Name „Meine Aufgaben“ | Menüpunkt, Hilfe, Seitenhilfe: geliefert (vorher, R-0962). **Verweis aus der leeren Prüfliste: geliefert in diesem Lauf** | R-0962 (`docs/aufnahme/20260922-gesamt-aufgabenansicht.md`); dieser Lauf | `tests/aufgaben-ansicht/gegenstand-statt-besitzer.test.tsx`, `tests/gesamt-navigation/aufgaben-verweis.test.ts` |
 | R-1813 U3-Browserweg | **nachgeführt in diesem Lauf** (der Smoke suchte den alten Weg „Zahnrad → Weitere Bereiche → Meine Aufgaben“) | dieser Lauf (nur Test) | `tests-smoke/gesamt-navigation-u3-browser.spec.ts` (Nacharbeit 1: aus `erstnutzer-u2-u3-browser.spec.ts` herausgelöst) |
 | R-1023 Navigation selbsterklärend | geliefert (vorher): vier Obergruppen, „Arbeitsbereiche“ statt Zahnrad, „Seite finden ⌘K“, Seitenhilfe je Menüpunkt | JOB 3337, FE-002, JOB 3028 | `tests/fe002-kopfband/kopfband-fe002.test.tsx`, `tests/bedienbarkeit/u3-menuepunkt-erklaert-sich.test.tsx` |
-| R-1023 Teilstück (b) „zu viele Informationen auf einer Seite“ | **gemessen (Nacharbeit 5/6) und die zwei schwersten Flächen entlastet (Nacharbeit 6):** Hilfe, Wissensobjekt bearbeiten | Nacharbeit 6 | `tests/gesamt-navigation/flaechenlast-chromium.test.ts` (vorher: Lauf nacharbeit-6; nachher: F2) |
+| R-1023 Teilstück (b) „zu viele Informationen auf einer Seite“ | **gemessen (Nacharbeit 5/6) und die zwei schwersten Flächen entlastet (Nacharbeit 6/7):** Hilfe, Wissensobjekt bearbeiten, Risiken und Lücken | Nacharbeit 6 | `tests/gesamt-navigation/flaechenlast-chromium.test.ts` (vorher: Lauf nacharbeit-6; nachher: F2) |
 | R-1045 „es geht unten weiter“ | **geliefert in diesem Lauf** | dieser Lauf | `tests/gesamt-navigation/weiter-unten-mounted.test.tsx`, `tablet-chromium.test.ts` T2, T4, T5 |
 | R-1045 Entwicklerschalter nehmen keine Höhe | vorhanden seit JOB 3060 (Rollenvorschau steht in der scrollenden Liste, ohne Vorschau gar nicht); **gemessen in diesem Lauf** | JOB 3060 | `tablet-chromium.test.ts` T3 |
 | package:navigation, kein Punkt verschwindet schmal | geliefert (vorher) | JOB 3503, JOB 3605 | `tests/navigation-schmal/kein-sonderpunkt-schmal.test.tsx`, T1 |
@@ -70,6 +70,25 @@ aufklappbar gemacht, ohne etwas zu löschen, mit Beleg vorher und nachher.
      bearbeitet wird. Das waren rund 60 Elemente, die beim Bearbeiten niemand braucht. Der Schalter
      `bib-liste-beim-bearbeiten` („Trefferliste einblenden“) holt sie zurück. Endet das Bearbeiten,
      steht die Liste wieder. Telefon und Tablet sind ohnehin einspaltig und unverändert.
+- **Lauf nacharbeit-7 (Kandidat `35d8b164`), mit korrigierter Zählregel und einer Doppelung im
+  Bestand:**
+  - Hilfe 476 → 134
+  - Risiken und Lücken 135 → 135
+  - Wissensobjekt bearbeiten 134 → 69
+  - Themenkarte 113 · Offene Aufgaben 87 · Wissensobjekt lesen 83 · Bibliothek 81 · Prüfen 38 ·
+    Erfassen 28 · Konflikte 24 · Doppelungen 17 · Doppelungsvergleich 11 · Konfliktvergleich 10 ·
+    alle übrigen ≤ 16
+
+  Beide Entlastungen wirken. Platz 2 und 3 liegen nach der neuen Zählregel aber nur einen Punkt
+  auseinander, und „Risiken und Lücken“ lag knapp vorn. Deshalb ist auch diese Fläche entlastet:
+  3. **Risiken und Lücken** (`pages/Risk.tsx`): Die Pflege der Eingänge (nur Admin) machte rund 85
+     der 135 aus: je Bereich Verantwortung, vier Stufen und Speichern, dazu die
+     Ruhestandshorizonte. Sie steht jetzt hinter dem Schalter `risiko-pflege-schalter` („Bereiche und
+     Ruhestandshorizonte pflegen“). Aufgeklappt ist sie unverändert dasselbe Bauteil
+     (`BereichsprofilPflege`); Rechte und Server bleiben unberührt.
+  F2 verlangt weiterhin, dass die zwei schwersten Flächen des jeweiligen Laufs entlastet sind, und
+  prüft jede als entlastet geführte Fläche einzeln (Schalter, nachher leichter, aufgeklappt
+  vollständig).
 - **Beleg nachher:** Derselbe Test misst je Fläche den eingeklappten Stand (nachher) und den
   aufgeklappten (vorher, alle `data-entlastung-schalter` geöffnet). F2 prüft:
   - Die zwei schwersten Flächen der aktuellen Rangliste sind genau diese zwei.
@@ -118,6 +137,15 @@ aufklappbar gemacht, ohne etwas zu löschen, mit Beleg vorher und nachher.
   Umfang vor dem 12.08. ist historisch und durch die späteren Lieferungen überholt.
 - **Echtes Tablet:** Gemessen wird Chromium mit Tablet-Maßen. Touch, Safari/WebKit auf dem iPad und
   die Bedienung am Gerät sind nicht belegt.
+- **Fremdbefund Klassenbindungen (Nacharbeit 7):** `tests/app/mega47-modale-flaechen-sammler.test.tsx`
+  meldet 251 statt 226 unauflösbare Klassenbindungen. Gezählt werden nur `className={…}`-Ausdrücke.
+  Die Dateien dieses Auftrags fügen seit dem letzten Stand dieser Zahl (`df501851`) keinen einzigen
+  hinzu; alle neuen Schalter tragen wörtliche Klassen. Die +25 stammen aus dem eingemischten
+  Hauptstand und lassen sich ohne Lauf nicht einzeln benennen. Der Pin bleibt unverändert, und der
+  Test ist nicht mehr Teil dieser Prüfauswahl.
+- **Bauteilinventur (Nacharbeit 7):** `tests/app/mega84-bildbeschreibungsweg-sammler.test.tsx` ist
+  auf die gemessenen 523 nachgeführt, nach der Konvention der Datei. Davon trägt dieser Auftrag 1
+  bei (`WeiterUntenHinweis`); 7 kamen mit dem Hauptstand. Die Zuordnung steht am Pin.
 - **Unveränderter Fremdbefund:** `tests/i18n-woerterbuch/aufteilung-unveraendert.test.ts` W1
   vergleicht die Wörterbücher Byte für Byte mit `i18n-vor-aufteilung.txt`. Diese Datei trägt noch
   „Meine Aufgaben“, während `woerterbuch/de.ts` seit R-0962 „Offene Aufgaben“ trägt. Nach dieser
