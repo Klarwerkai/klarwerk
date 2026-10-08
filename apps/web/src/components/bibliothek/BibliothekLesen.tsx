@@ -107,6 +107,7 @@ import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { Bearbeitungshinweis, useEigeneBearbeitung } from "./Bearbeitungshinweis";
 import { MehrAbschnitte, type Sprungziel } from "./MehrAbschnitte";
 import { Menue, MenuePunkt, MenueTrenner } from "./Menue";
+import { Wissensempfehlung } from "./Wissensempfehlung";
 import { fragenHref } from "./fragen";
 import { type ZustandsTon, zustandsTon } from "./zustand";
 
@@ -3622,6 +3623,10 @@ export function BibliothekLesen({
                 der Hülle, s. Kopf dieser Datei). Der Bereich hängt am gelesenen Eintrag; sein
                 Zustandsmodell steht an `Beziehungsbereich` oben. */}
             <Beziehungsbereich key={ko.id} koId={ko.id} />
+
+            {/* R-1656 „Du solltest auch wissen…": verwandte Einträge mit ihrem Grund — sichtbar
+                ohne Aufklappen; ohne Empfehlung zeichnet die Fläche nichts (Kopf der Datei). */}
+            <Wissensempfehlung key={`empfehlung-${ko.id}`} koId={ko.id} />
 
             {/* Die EINE Zeile „Mehr" — dahinter die dreizehn Abschnitte, zugeklappt als Vorgabe. */}
             <div

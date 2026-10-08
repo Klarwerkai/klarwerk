@@ -2129,8 +2129,14 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Kein `CAPTION_AI_TEXT`, kein `documentTitle`. Ebenfalls GERECHNET (452 + 1). Hinweis: der
     // Prüflauf von nacharbeit-1 mass 494 am integrierten Stand — die Abweichung über diese eine
     // Komponente hinaus stammt aus fremden Lieferungen und ist hier nicht nachgezogen.
+    // R-1656 („Du solltest auch wissen…"): 453 → 454, GENAU EIN Bauteil mehr:
+    //     + `Wissensempfehlung` (`components/bibliothek/Wissensempfehlung.tsx`) — verwandte
+    //       Einträge mit ihrem Grund in der Lesespalte; die Grundzeile ist eine Hilfsfunktion
+    //       (`grundText`), kein eigenes Bauteil.
+    // Kein Bild, kein `CAPTION_AI_TEXT`, kein `documentTitle`: `anbieter` 1 und `traeger` 2 bleiben.
+    // Ebenfalls GERECHNET (453 + 1) — dieser Auftrag durfte keinen Testlauf selbst starten.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 453,
+      komponenten: 454,
       anbieter: 1,
       traeger: 2,
     });

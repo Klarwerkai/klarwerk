@@ -279,6 +279,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // zwei `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "GEDAECHTNIS_SCHEMA", risiko: "ADDITIV" },
+  // R-1656: der Co-Reading-Zähler. ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT EXISTS` und ein
+  // `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "MITGELESEN_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

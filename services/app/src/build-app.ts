@@ -362,6 +362,7 @@ import { slidesRoutes } from "./routes/slides-routes";
 import { spacesRoutes } from "./routes/spaces-routes";
 import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
 import { validationRoutes } from "./routes/validation-routes";
+import { wissensempfehlungRoutes } from "./routes/wissensempfehlung-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
 import { stelleSuchprojektionBereit } from "./search-projection-startup";
@@ -379,6 +380,13 @@ import { speicherVorgang } from "./speicher-vorgang";
 // Start bei fehlenden Pflichtwerten verweigert und beim Hochfahren ohne Geheimniswerte berichtet,
 // was diese Instanz hat und was ihr fehlt.
 import { ermittleBestand, pruefeStartvertrag, startbericht } from "./start-vertrag";
+// R-1656: „Du solltest auch wissen…" — der Co-Reading-Zähler ist im Postgres-Betrieb haltbar.
+import {
+  InMemoryMitgelesenRepo,
+  type MitgelesenRepo,
+  PgMitgelesenRepo,
+  WissensempfehlungDienst,
+} from "./wissensempfehlung";
 
 // ================================================================================================
 // JOB 3776 — WO DER STARTVERTRAG GERUFEN WIRD: AM EINSTIEGSPUNKT. HIER NICHT MEHR.
@@ -496,6 +504,12 @@ export interface AppServices {
    * Neustart des Dev-Betriebs verloren, ist das die Richtung des Löschens, nicht des Offenlegens.
    */
   gedaechtnis: GedaechtnisRepo;
+  /**
+   * R-1656: der Co-Reading-Zähler (`wissensempfehlung.ts`) — je Paar nur eine Zahl, ohne
+   * Kontokennung. Aus demselben Grund wie `gedaechtnis` NICHT in `AppRepos`; im Postgres-Betrieb
+   * haltbar (`PgMitgelesenRepo`), sonst die In-Memory-Ablage.
+   */
+  mitgelesen: MitgelesenRepo;
   /**
    * R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — über die Oberfläche umlegbar,
    * von jeder Confluence-Importroute je Anfrage durchgesetzt. Aus demselben Grund wie
@@ -990,6 +1004,8 @@ export function assembleServices(
     livewallFotos?: LiveWallFotoRepo;
     // R-0466: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     gedaechtnis?: GedaechtnisRepo;
+    // R-1656: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    mitgelesen?: MitgelesenRepo;
     // R-0134 / R-1005: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     confluenceImportSchalter?: ConfluenceImportSchalterRepo;
     // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
@@ -1305,6 +1321,8 @@ export function assembleServices(
     livewallFotos: opts.livewallFotos ?? new InMemoryLiveWallFotoRepo(),
     // R-0466: das Interaktionsgedächtnis — Postgres, wenn injiziert, sonst im Speicher.
     gedaechtnis: opts.gedaechtnis ?? new InMemoryGedaechtnisRepo(),
+    // R-1656: der Co-Reading-Zähler — Postgres, wenn injiziert, sonst im Speicher.
+    mitgelesen: opts.mitgelesen ?? new InMemoryMitgelesenRepo(),
     // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
     confluenceImportSchalter:
       opts.confluenceImportSchalter ?? new InMemoryConfluenceImportSchalterRepo(),
@@ -1761,6 +1779,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // R-0466: Gedächtniseinträge überleben Neustart und Deploy bis zu ihrer Frist; Löschen und
       // Fristablauf entfernen die Zeile in derselben Datenbank (`GEDAECHTNIS_SCHEMA`).
       gedaechtnis: new PgGedaechtnisRepo(pool),
+      // R-1656: die Paarzahlen überleben Neustart und Deploy (`MITGELESEN_SCHEMA`).
+      mitgelesen: new PgMitgelesenRepo(pool),
       // R-0134 / R-1005: der Betreiberschalter überlebt Neustart und Deploy — sonst stünde ein
       // ausgeschalteter Import nach dem nächsten Neustart still wieder auf „an".
       confluenceImportSchalter: new PgConfluenceImportSchalterRepo(pool),
@@ -3479,6 +3499,24 @@ export function buildApp(
     kennung: () => randomUUID(),
   });
   app.register(kenntnisnahmeRoutes({ dienst: kenntnisnahmeDienst, kos: services.ko }, guards));
+  // R-1656: „Du solltest auch wissen…". Themennähe ist die vorhandene Schlagwort-Nachbarschaft
+  // (`library.neighbors`, mega68), Konflikte kommen aus dem Konfliktdienst, Co-Reading aus dem
+  // kontolosen Paarzähler. Die Sichtbarkeit entscheidet die Route je Aufrufer.
+  app.register(
+    wissensempfehlungRoutes(
+      {
+        dienst: new WissensempfehlungDienst({
+          repo: services.mitgelesen,
+          ko: services.ko,
+          thema: async (koId, sichtbar) =>
+            (await services.library.neighbors(koId, { sichtbar })).neighbors,
+          konflikte: services.conflicts,
+        }),
+        kos: services.ko,
+      },
+      guards,
+    ),
+  );
   // ==============================================================================================
   // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS) — HIER BEKOMMT DIE GESAMTANWEISUNG IHRE TÜR.
   // ==============================================================================================
