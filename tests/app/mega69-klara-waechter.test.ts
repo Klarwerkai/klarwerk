@@ -2762,7 +2762,28 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Prüflauf zu Kandidat a757d6c3 GEMESSEN („Received", HISTORIE/nacharbeit-1/PRUEFUNG/
     // panel-pins-messung.log) und unverändert übernommen; die Panel-Dateien sind seit dieser Messung
     // unberührt.
-    const PIN = "cf784c5af1fcba27f141e1e3dd17c038283388f85206c2f9e19a243ee7a8d297";
+    // AUFNAHME gesamt-funktionsschalter (R-1040, Ben nacharbeit-2) — DER PIN MUSS WANDERN.
+    // `taskpane.js` wertet in `performAsk` die 503 `KI_ABGESCHALTET` aus (Ergebnisart
+    // `ki-abgeschaltet`) und nennt in `#ask-status` die administrative Abschaltung statt
+    // „Fragen fehlgeschlagen (HTTP 503)"; dort kein „Erneut versuchen". Ein neuer Wörterbuchschlüssel
+    // je Sprache (`askKiAbgeschaltet`, in der Zeile von `askFallbackConsentEnded`); netto eine Zeile
+    // (B3: 12493). Gemessen in `tests/app/word-addin-ask.test.ts` (R-1040, DE/EN/NL + Gegenprobe).
+    // Auslieferungsfolgen: kein neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder
+    // Manifeständerung, kein Sideload.
+    // NACHARBEIT 3 (gesamt-funktionsschalter): PIN BEWUSST AKTUALISIERT (eefba3bd… -> dce012c0…). Im
+    // Prüflauf zu Kandidat e9529cb7 GEMESSEN („Received", HISTORIE/nacharbeit-3/PRUEFUNG/
+    // word-addin-auslieferungswaechter.log) und unverändert übernommen; die vier Panel-Dateien sind
+    // seit dieser Messung unberührt (Nacharbeit 3 ändert nur Testdateien).
+    // INTEGRATION gesamt-dokumenterzeugung × gesamt-funktionsschalter (main d8717621, Nacharbeit 2):
+    // BEIDE Änderungen stehen jetzt im Fenster — der Verweis auf `anleitung.js` in `taskpane.html`
+    // (gesamt-dokumenterzeugung) UND die Auswertung von 503 `KI_ABGESCHALTET` samt
+    // `askKiAbgeschaltet` in `taskpane.js` (gesamt-funktionsschalter). Keine der beiden Messungen
+    // (`cf784c5a…` zu a757d6c3, `dce012c0…` zu e9529cb7) beschreibt das zusammengefügte Fenster; beide
+    // galten nur für ihren Zweig. Der Wert unten ist der von main und damit ein PLATZHALTER bis zur
+    // Messung: ohne zugelassenes Hash-Werkzeug ist der neue SHA-256 hier nicht berechenbar. Der
+    // Prüflauf meldet ihn als „Received", er wird danach gemessen übernommen. Auslieferungsfolgen
+    // beider Seiten wie in den zwei Absätzen darüber; die Vereinigung fügt keine hinzu.
+    const PIN = "dce012c092e3445073b0629f1b8348a5f4b04457c1986e3c68657c7ad5860d64";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
