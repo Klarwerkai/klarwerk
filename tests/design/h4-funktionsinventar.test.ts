@@ -257,7 +257,9 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
     expect(fehler).toBeNull();
     expect(alles(listenMenue).length).toBeGreaterThan(0);
     expect(alles(filterMenue).length).toBeGreaterThan(0);
-    expect(mehr?.abschnitte.length).toBe(13);
+    // R-1644: dazu kommt für Prüfende (Controller/Admin — „Pedi" ist hier der erste, also Admin)
+    // der vierzehnte Abschnitt „wissensauskunft". Ohne Prüferecht bleiben es dreizehn.
+    expect(mehr?.abschnitte.length).toBe(14);
   });
 
   it("F01 · Volltextsuche — Suchfeld oben links", async () => {
@@ -421,6 +423,7 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
     "kopplung",
     "herkunftskette",
     "historie",
+    "wissensauskunft",
     "belege",
     "schnappschuesse",
     "kommentare",

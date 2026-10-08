@@ -254,6 +254,12 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Kenntnisnahme — nur die eigene Anforderung und nur bei darfSehen, sonst 404.",
   },
+  // --- R-1644: Wissensauskunft zum Zeitpunkt -------------------------------------------------------
+  // Trägt Titel und Kernaussage der damals geltenden Fassung; darfSehen vor jeder Antwort.
+  "GET /api/kos/:id/wissensauskunft": {
+    urteil: "PRAEDIKAT",
+    grund: "Wissensauskunft — darfSehen am Eintrag vor der Ausgabe, sonst 404.",
+  },
   // --- W2-A/148: die Laufdomäne des Imports -------------------------------------------------
   // Der Lauf selbst trägt AUSSCHLIESSLICH Kennungen, Status, Zeitstempel und Zähler — keine Zeile
   // Fachinhalt. `knowledgeObjectId` ist eine Id, kein Inhalt (import-run-routes.ts:88-99).
