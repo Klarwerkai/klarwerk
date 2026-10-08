@@ -18,7 +18,7 @@ import { PausedMarker, StaleMarker } from "../components/LoadState";
 import { KoAuthorLine } from "../components/trust";
 import { PageHeader } from "../components/ui";
 import { fallHref } from "../lib/fallAbsprung";
-import { gapLocaleTag } from "../lib/gapLocaleTag";
+import { gapTitelEtikett } from "../lib/gapLocaleTag";
 import { type KoAuthorParts, koAuthorParts } from "../lib/koAuthor";
 import { groupLoadPhase, gruppeAngehalten, isGroupStale } from "../lib/loadingState";
 // JOB 3808: der Onlinezustand wird GEREICHT, nicht gedeutet — dieselbe eine Quelle wie auf der
@@ -211,8 +211,9 @@ export function MyTasks(): JSX.Element {
     ),
     // FUNKE-FIX2 P0: ohne Detail-Berechtigung liefert der Server den Fragetext redigiert.
     // GAP-SPRACHHERKUNFT: der Fragetext behält die Sprache seiner Quelle; ein Etikett benennt sie.
+    // R-0307 / R-1061: ohne Sprachangabe (Altbestand) steht das neutrale Etikett „Originalfrage".
     ...(gaps.data ?? []).filter(isOpenGap).map((g) => {
-      const sprache = gapLocaleTag(g.locale, i18n.language);
+      const sprache = gapTitelEtikett(g, i18n.language, t);
       return task({
         id: g.id,
         label: g.redacted ? t("task.gapRedacted") : g.question,

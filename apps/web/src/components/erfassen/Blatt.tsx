@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { endpoints } from "../../api/endpoints";
-import { useDrafts, useKos } from "../../api/hooks";
+import { useDrafts, useGaps, useKos } from "../../api/hooks";
 import type {
   AssistResult,
   Confidentiality,
@@ -46,6 +46,7 @@ import {
   assistActionInstructionKey,
   assistActionLabelKey,
 } from "../../lib/captureAiAssist";
+import { readGapId, resolveGapQuestion } from "../../lib/captureFromGap";
 import {
   FRONT_DOOR_STRUCTURING_UNAVAILABLE_KEY,
   buildFrontDoorPayload,
@@ -338,6 +339,38 @@ const BLATT_SCHUTZDATEN_WARNUNG_ID = "blatt-schutzdaten-warnung";
 const BLATT_LADEN_HINWEIS_ID = "blatt-laden-hinweis";
 
 /**
+ * N-0084 — DIE AUSGANGSFRAGE ÜBER DEM EDITOR.
+ *
+ * Befund (Seiteninventar 08.09.): „Wissen erfassen" aus einer Lücke öffnete `/erfassen?gap=<id>`,
+ * und seit `/erfassen` das Blatt rendert, stand dort ein leerer Editor ohne den Wortlaut der Frage —
+ * die Karte mit der Ausgangsfrage lag nur im alten Arbeitsraum. Man musste sich die Frage merken.
+ *
+ * Dieselbe Auflösung wie im Arbeitsraum (`resolveGapQuestion`): der Text kommt nur aus der
+ * serverseitig berechtigungsgefilterten Lückenliste; eine redigierte oder unbekannte Lücke zeigt
+ * nichts. Eine eigene Komponente, damit die Lückenliste NUR bei `?gap=` abgefragt wird.
+ */
+function BlattAusgangsfrage({ gapId }: { gapId: string }): JSX.Element | null {
+  const { t } = useTranslation();
+  const gaps = useGaps();
+  const frage = resolveGapQuestion(gapId, gaps.data);
+  if (!frage) {
+    return null;
+  }
+  return (
+    <section
+      data-testid="blatt-ausgangsfrage"
+      aria-label={t("gap.ausgangsfrage")}
+      className="rounded-[10px] border border-dashed border-hairline bg-surface px-4 py-3"
+    >
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-2">
+        {t("gap.ausgangsfrage")}
+      </div>
+      <p className="mt-1 break-words text-[14px] leading-snug text-text">„{frage}“</p>
+    </section>
+  );
+}
+
+/**
  * Die zwei Regeln, mit denen das Blatt den `RichTextEditor` von aussen auf Blatt-Maß bringt.
  * Sie stehen bewusst als benannte Konstante und nicht als Zeichenkette im JSX — was sie tun und
  * warum, steht an ihrer Verwendungsstelle.
@@ -367,6 +400,7 @@ export function Blatt({
   const { setGuard } = useNavGuard();
   const [searchParams, setSearchParams] = useSearchParams();
   const resumeDraftId = searchParams.get("draft");
+  const gapId = readGapId(searchParams);
 
   // ---- Inhalt des Blattes ----------------------------------------------------------------------
   const [title, setTitle] = useState("");
@@ -3249,6 +3283,8 @@ export function Blatt({
             der Textmesser misst weiterhin das ruhende Blatt. */}
         {isDemoContext(searchParams) ? <DemoBanner surface="capture" /> : null}
         {werkzeugzeile}
+        {/* N-0084: aus einer Lücke geöffnet — die Ausgangsfrage steht über dem Blatt. */}
+        {gapId ? <BlattAusgangsfrage gapId={gapId} /> : null}
 
         <div
           data-testid="blatt"

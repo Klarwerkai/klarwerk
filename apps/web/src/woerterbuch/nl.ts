@@ -2346,6 +2346,9 @@ const nl: typeof de = {
     "De bekende tegenstrijdigheden konden niet worden opgehaald. Of een van de bronnen in een open conflict staat, is daarmee onbekend; dit antwoord geldt daarom als ongecontroleerd.",
   "gap.privacyNotice":
     "De vraag wordt als kennishiaat opgeslagen — geen antwoord en geen gevalideerde kennis. Leg alsjeblieft geen gevoelige of persoonsgebonden details vast; vul later gecontroleerde ervaring aan.",
+  "gap.originalfrage": "Oorspronkelijke vraag",
+  "gap.askCount": "{{count}}× gevraagd",
+  "gap.ausgangsfrage": "Vraag achter dit kennishiaat",
   "ask.toGaps": "Naar de kennishiaten",
   "ask.toCapture": "Kennis vastleggen",
   "ko.use.ready": "Bruikbaar in de praktijk",

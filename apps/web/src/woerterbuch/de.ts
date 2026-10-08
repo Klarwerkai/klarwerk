@@ -3061,6 +3061,13 @@ const de = {
   // SCRUM-283: datensparsamer, ehrlicher Hinweis zur gespeicherten Wissenslücke (Ask + Risk).
   "gap.privacyNotice":
     "Die Frage wird als Wissenslücke gespeichert — keine Antwort und kein validiertes Wissen. Bitte keine sensiblen oder personenbezogenen Details erfassen; ergänze später geprüfte Erfahrung.",
+  // R-0307 / R-1061: das neutrale Etikett für Lücken ohne Sprachangabe (Altbestand) — immer wahr,
+  // weil der Titel die gestellte Frage im Wortlaut ist; es behauptet keine Sprache.
+  "gap.originalfrage": "Originalfrage",
+  // R-0333 / R-0753: die Häufigkeit derselben Frage, erst ab zwei.
+  "gap.askCount": "{{count}}× gefragt",
+  // N-0084: die Ausgangsfrage über dem Editor, wenn das Blatt aus einer Lücke geöffnet wurde.
+  "gap.ausgangsfrage": "Ausgangsfrage der Wissenslücke",
   "ask.toGaps": "Zu den Wissenslücken",
   "ask.toCapture": "Wissen erfassen",
   "ko.use.ready": "Produktionsnah nutzbar",

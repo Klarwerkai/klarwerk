@@ -2356,6 +2356,9 @@ const en: typeof de = {
   // SCRUM-283: data-minimising, honest notice about the stored knowledge gap (Ask + Risk).
   "gap.privacyNotice":
     "The question is stored as a knowledge gap — not an answer and not validated knowledge. Please avoid sensitive or personal details; add reviewed experience later.",
+  "gap.originalfrage": "Original question",
+  "gap.askCount": "asked {{count}}×",
+  "gap.ausgangsfrage": "Question behind this knowledge gap",
   "ask.toGaps": "To the knowledge gaps",
   "ask.toCapture": "Capture knowledge",
   "ko.use.ready": "Ready to use",
