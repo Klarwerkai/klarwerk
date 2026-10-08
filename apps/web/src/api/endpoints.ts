@@ -982,6 +982,8 @@ export const endpoints = {
         topic?: string | null;
         // R-0088: die Recherche des ersten Turns — zurückgereicht, damit nur einmal recherchiert wird.
         research?: readonly InterviewResearchPoint[] | null;
+        // R-0088: ausdrücklicher Wunsch nach Quellenrecherche (Knopf „Zum Thema recherchieren").
+        recherchieren?: boolean;
       },
     ) =>
       api.post<InterviewResult>("/reasoner", {
@@ -992,6 +994,7 @@ export const endpoints = {
         ...(guide?.tree ? { tree: true } : {}),
         ...(guide?.topic?.trim() ? { topic: guide.topic.trim() } : {}),
         ...(guide?.research && guide.research.length > 0 ? { research: guide.research } : {}),
+        ...(guide?.recherchieren ? { recherchieren: true } : {}),
         ...provenanceFields(provenance),
       }),
     // WP-BILD-1c/1f: KI-Bildbeschreibung als VORSCHLAG für die Bild-Fußnote (Vision). EIGENE

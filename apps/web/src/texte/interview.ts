@@ -39,7 +39,12 @@ export default {
     "interview.angebot.text":
       "Klara kann das Wissen gleich im Gespräch abholen: drei Fragen, ein Entwurf, fertig zur Prüfung.",
     "interview.angebot.knopf": "Im Gespräch erfassen",
-    "interview.recherche.titel": "Klaras Recherche zum Thema (KI, ungeprüft):",
+    "interview.recherche.titel":
+      "Klaras Recherche zum Thema (aus Quellen, KI-ausgewertet, ungeprüft):",
+    "interview.recherche.quelle": "Quelle:",
+    "interview.recherche.knopf": "Zum Thema in Quellen recherchieren",
+    "interview.recherche.leer":
+      "Dazu ließ sich nichts recherchieren – keine passenden Quellen, Suche gesperrt, vertraulicher Inhalt oder kein KI-Modell.",
     "interview.recherche.grenze":
       "Nur Anlass für gezieltere Fragen – in den Entwurf kommt allein, was du antwortest.",
   },
@@ -70,7 +75,12 @@ export default {
     "interview.angebot.text":
       "Klara can collect this knowledge right now in a conversation: three questions, one draft, ready for review.",
     "interview.angebot.knopf": "Capture in a conversation",
-    "interview.recherche.titel": "Klara's research on the subject (AI, unverified):",
+    "interview.recherche.titel":
+      "Klara's research on the subject (from sources, AI-evaluated, unverified):",
+    "interview.recherche.quelle": "Source:",
+    "interview.recherche.knopf": "Research the subject in sources",
+    "interview.recherche.leer":
+      "Nothing could be researched – no matching sources, search blocked, confidential content or no AI model.",
     "interview.recherche.grenze":
       "Only a prompt for more specific questions – the draft contains only what you answer.",
   },
@@ -102,7 +112,12 @@ export default {
     "interview.angebot.text":
       "Klara kan deze kennis meteen in een gesprek ophalen: drie vragen, één concept, klaar voor controle.",
     "interview.angebot.knopf": "In een gesprek vastleggen",
-    "interview.recherche.titel": "Klara's onderzoek naar het onderwerp (AI, niet geverifieerd):",
+    "interview.recherche.titel":
+      "Klara's onderzoek naar het onderwerp (uit bronnen, door AI beoordeeld, niet geverifieerd):",
+    "interview.recherche.quelle": "Bron:",
+    "interview.recherche.knopf": "Het onderwerp in bronnen onderzoeken",
+    "interview.recherche.leer":
+      "Er kon niets worden onderzocht – geen passende bronnen, zoeken geblokkeerd, vertrouwelijke inhoud of geen AI-model.",
     "interview.recherche.grenze":
       "Alleen aanleiding voor gerichtere vragen – in het concept komt alleen wat jij antwoordt.",
   },

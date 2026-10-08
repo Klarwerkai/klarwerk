@@ -2871,6 +2871,8 @@ export interface InterviewResult {
 export interface InterviewResearchPoint {
   node: InterviewNodeId;
   hint: string;
+  // Bens Befund nacharbeit-6: jeder Prüfpunkt stammt aus einer abgerufenen Quelle.
+  source: { title: string; url: string; snippet?: string };
 }
 
 // AUFNAHME 20260922 · WISSEN-INTERVIEW: die Knoten des Fragebaums (Spiegel des Servers).

@@ -1102,6 +1102,9 @@ export function CaptureArbeitsraum({
   const [ivTopic, setIvTopic] = useState<string | null>(null);
   // R-0088: die ungeprüften Recherche-Prüfpunkte des Modells für dieses Interview.
   const [ivResearch, setIvResearch] = useState<InterviewResearchPoint[]>([]);
+  // Bens Befund nacharbeit-6: die gewünschte Quellenrecherche ergab nichts (keine Quellen, Stufe
+  // gesperrt, vertraulich oder ohne KI-Modell) — die Fläche sagt das, statt zu schweigen.
+  const [ivRechercheLeer, setIvRechercheLeer] = useState(false);
   const [ivConfirmed, setIvConfirmed] = useState(false);
   // AUFTRAG-mega6 Block C (bens ROT 3, zweiter Teil): laufende Nummer des aktuell GÜLTIGEN
   // Interview-Turns. Jeder Start erhöht sie, jedes Räumen (Save-Erfolg, Verwerfen) ebenfalls. Die
@@ -1415,6 +1418,7 @@ export function CaptureArbeitsraum({
       tree: boolean;
       topic: string | null;
       research: InterviewResearchPoint[];
+      recherchieren?: boolean;
       imageContext?: string;
     }) =>
       endpoints.reasoner.interview(
@@ -1422,7 +1426,12 @@ export function CaptureArbeitsraum({
         locale,
         draftProvenance(confidentiality, undefined, draftId ?? undefined),
         v.imageContext,
-        { tree: v.tree, topic: v.topic, research: v.research },
+        {
+          tree: v.tree,
+          topic: v.topic,
+          research: v.research,
+          ...(v.recherchieren ? { recherchieren: true } : {}),
+        },
       ),
     onSuccess: (res, v) => {
       if (v.run !== ivRunRef.current) {
@@ -1434,6 +1443,10 @@ export function CaptureArbeitsraum({
       // zurückgereicht, damit nur einmal recherchiert wird) — als ungeprüfter Hinweis, nie im Entwurf.
       if (res.research && res.research.length > 0) {
         setIvResearch(res.research);
+      }
+      // Bens Befund nacharbeit-6: eine gewünschte Recherche, die nichts ergab, wird gesagt.
+      if (v.recherchieren) {
+        setIvRechercheLeer(!(res.research && res.research.length > 0));
       }
       // Im Fragebaum schließt der Server nie selbst ab — er bietet den Abschluss nur an. Das
       // Foto-Interview (R-1624) und ein fortgesetzter Altentwurf schließen wie bisher selbst ab.
@@ -1462,6 +1475,7 @@ export function CaptureArbeitsraum({
       topic: string | null;
       befund: string | null;
       research: InterviewResearchPoint[];
+      recherchieren?: boolean;
     } = {
       tree: ivTree,
       topic: ivTopic,
@@ -1476,6 +1490,7 @@ export function CaptureArbeitsraum({
       tree: guide.tree,
       topic: guide.topic,
       research: guide.research,
+      ...(guide.recherchieren ? { recherchieren: true } : {}),
       ...(guide.befund ? { imageContext: guide.befund } : {}),
     });
   };
@@ -2969,6 +2984,7 @@ export function CaptureArbeitsraum({
     setIvTopic(null);
     setIvConfirmed(false);
     setIvResearch([]);
+    setIvRechercheLeer(false);
   };
 
   // E2E-003: „Verwerfen" muss das GESAMTE Erfassungsmodell auf Leerzustand bringen — nicht nur die
@@ -4906,6 +4922,7 @@ export function CaptureArbeitsraum({
     setIvTopic(topic);
     setIvConfirmed(false);
     setIvResearch([]);
+    setIvRechercheLeer(false);
     if (foto) {
       setBodyHtml((prev) => applyFotoAnker(prev, foto));
     }
@@ -4963,6 +4980,38 @@ export function CaptureArbeitsraum({
     ) : null;
   // R-0088: die Recherche des Modells — sichtbar und ausdrücklich UNGEPRÜFT. Sie ist nur der Anlass
   // für gezieltere Rückfragen; in den Entwurf kommt allein, was der Mensch darauf antwortet.
+  //
+  // Bens Befund nacharbeit-6: recherchiert wird in QUELLEN, und zwar auf ausdrücklichen Wunsch —
+  // der Knopf wiederholt den aktuellen Turn mit `recherchieren`, die Route ruft zum Thema Quellen
+  // ab (Admin-Stufe, nie vertraulich), das Modell leitet daraus die Prüfpunkte ab.
+  const ivRechercheMoeglich =
+    ivTree &&
+    ivResearch.length === 0 &&
+    ivBereit &&
+    ivResult !== null &&
+    !isInterviewDone(ivResult) &&
+    Boolean(ivTopic?.trim() || ivAnswers[0]?.trim());
+  const ivRecherchieren = (): void => {
+    runInterview(ivAnswers, {
+      tree: ivTree,
+      topic: ivTopic,
+      befund: ivBefund,
+      research: [],
+      recherchieren: true,
+    });
+  };
+  const ivRechercheKnopf = ivRechercheMoeglich ? (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button variant="ghost" onClick={ivRecherchieren}>
+        {t("interview.recherche.knopf")}
+      </Button>
+      {ivRechercheLeer ? (
+        <span data-testid="interview-recherche-leer" className="text-[12px] text-muted">
+          {t("interview.recherche.leer")}
+        </span>
+      ) : null}
+    </div>
+  ) : null;
   const ivRecherche =
     ivTree && ivResearch.length > 0 ? (
       <div data-testid="interview-recherche" className="text-[12px] text-muted">
@@ -4970,7 +5019,20 @@ export function CaptureArbeitsraum({
         <ul className="list-disc pl-5">
           {ivResearch.map((p) => (
             <li key={`${p.node}:${p.hint}`}>
-              {t(interviewNodeKey(p.node))}: {p.hint}
+              {t(interviewNodeKey(p.node))}: {p.hint}{" "}
+              {/* Bens Befund nacharbeit-6: die abgerufene Quelle steht am Hinweis, nachprüfbar. */}
+              <span>
+                ({t("interview.recherche.quelle")}{" "}
+                <a
+                  href={p.source.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline hover:text-text"
+                >
+                  {p.source.title}
+                </a>
+                )
+              </span>
             </li>
           ))}
         </ul>
@@ -6166,6 +6228,7 @@ export function CaptureArbeitsraum({
                     {ivBefund ? <p className="text-[12px] text-muted">{ivBefund}</p> : null}
                     {ivSpiegel}
                     {ivRecherche}
+                    {ivRechercheKnopf}
                     {ivAbschluss}
                     {/* SCRUM-403 (Pedi 03.07.): Frage vorlesen + Antwort diktieren — Sprache in
                       beide Richtungen; Knöpfe nur, wenn der Browser es ehrlich kann. */}

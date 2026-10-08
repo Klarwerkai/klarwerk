@@ -4,6 +4,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import {
   interviewResearchSubject,
   normalizeInterviewResearch,
+  normalizeInterviewSources,
   normalizeInterviewTopic,
   parseInterviewResearch,
 } from "./interview-tree";
@@ -1676,14 +1677,15 @@ function interviewPhotoGuidance(locale: ReasonerLocale): string {
   );
 }
 
-// R-0088: die Fachrecherche zum Interviewthema. Ergebnis sind PRÜFPUNKTE für Rückfragen, keine
-// Wissensaussagen: jeder Punkt ist einem Baumknoten zugeordnet und wird dem Experten als Frage
-// vorgelegt, nie als Tatsache in den Entwurf geschrieben.
+// R-0088: die Auswertung der abgerufenen Quellen zum Interviewthema. Ergebnis sind PRÜFPUNKTE für
+// Rückfragen, keine Wissensaussagen: jeder Punkt ist einem Baumknoten zugeordnet, nennt seine
+// Quelle (Nummer) und wird dem Experten als Frage vorgelegt, nie als Tatsache in den Entwurf
+// geschrieben. Nur was in den Quellen steht — kein Modellwissen.
 function interviewResearchSystem(locale: ReasonerLocale): string {
   const base = taskInstruction(
     locale,
-    'Du recherchierst für ein Experteninterview zum genannten Fachthema. Nenne höchstens drei fachliche Prüfpunkte, nach denen ein erfahrener Kollege bei genau diesem Thema gezielt nachfragen würde: typische Grenz- oder Schwellenwerte, bekannte Ausnahmen, häufige Ursachen, verworfene Alternativen, Geltungsgrenzen, Risiken. Jeder Punkt ist ein kurzer Hinweis (höchstens 25 Wörter), der beim Experten GEPRÜFT werden soll — keine Tatsachenbehauptung. Ordne jeden Punkt genau einem Knoten zu: schwelle, ausnahme, warum, alternativen, geltung oder risiko. Antworte AUSSCHLIESSLICH mit JSON: {"punkte":[{"knoten":"schwelle","hinweis":"..."}]}. Weißt du zum Thema nichts Belastbares, antworte {"punkte":[]}.',
-    'You are researching for an expert interview on the given subject. Name at most three technical check points a seasoned colleague would ask about specifically for exactly this subject: typical limits or thresholds, known exceptions, common causes, rejected alternatives, scope limits, risks. Each point is a short hint (at most 25 words) to be CHECKED with the expert — not a statement of fact. Assign each point to exactly one node: schwelle, ausnahme, warum, alternativen, geltung or risiko. Respond ONLY with JSON: {"punkte":[{"knoten":"schwelle","hinweis":"..."}]}. If you know nothing reliable about the subject, respond {"punkte":[]}.',
+    'Du wertest die nummerierten Quellen für ein Experteninterview zum genannten Fachthema aus. Leite AUSSCHLIESSLICH aus diesen Quellen höchstens drei fachliche Prüfpunkte ab, nach denen ein erfahrener Kollege gezielt nachfragen würde: Grenz- oder Schwellenwerte, Ausnahmen, Ursachen, verworfene Alternativen, Geltungsgrenzen, Risiken. Nutze kein eigenes Wissen. Jeder Punkt ist ein kurzer Hinweis (höchstens 25 Wörter), der beim Experten GEPRÜFT werden soll — keine Tatsachenbehauptung. Ordne jeden Punkt genau einem Knoten zu (schwelle, ausnahme, warum, alternativen, geltung oder risiko) und nenne die Nummer der Quelle, aus der er stammt. Antworte AUSSCHLIESSLICH mit JSON: {"punkte":[{"knoten":"schwelle","hinweis":"...","quelle":1}]}. Geben die Quellen zum Thema nichts her, antworte {"punkte":[]}.',
+    'You evaluate the numbered sources for an expert interview on the given subject. Derive, EXCLUSIVELY from these sources, at most three technical check points a seasoned colleague would ask about specifically: limits or thresholds, exceptions, causes, rejected alternatives, scope limits, risks. Do not use your own knowledge. Each point is a short hint (at most 25 words) to be CHECKED with the expert — not a statement of fact. Assign each point to exactly one node (schwelle, ausnahme, warum, alternativen, geltung or risiko) and give the number of the source it comes from. Respond ONLY with JSON: {"punkte":[{"knoten":"schwelle","hinweis":"...","quelle":1}]}. If the sources yield nothing on the subject, respond {"punkte":[]}.',
   );
   return `${base} ${outputLanguageRule(locale)}`;
 }
@@ -2254,6 +2256,11 @@ export class ModelProvider implements ReasonerProvider {
   // Rückfragen: der Aufrufer zeigt sie als solche, und in den Entwurf kommen sie nie. Scheitert der
   // Aufruf oder ist die Antwort unlesbar, läuft das Interview ehrlich OHNE Recherche weiter (kein
   // erfundener Ersatz) — der Fehler einer Vertraulichkeitssperre trifft danach die Frage selbst.
+  //
+  // BENS BEFUND (nacharbeit-6): „Der Prompt ‚Du recherchierst' ersetzt keinen Recherchezugriff."
+  // Jetzt wertet dieser Aufruf nur noch QUELLEN aus, die die Route zum Thema tatsächlich abgerufen
+  // hat (`options.sources`, Quellensuche `services/external-search`). Ohne Quellen: keine Recherche
+  // und kein Modellaufruf. Jeder Prüfpunkt muss eine dieser Quellen nennen, sonst fällt er weg.
   private async researchInterviewTopic(
     answers: readonly string[],
     locale: ReasonerLocale,
@@ -2265,18 +2272,22 @@ export class ModelProvider implements ReasonerProvider {
       return known;
     }
     const subject = interviewResearchSubject(answers, options);
-    if (!subject) {
+    const sources = normalizeInterviewSources(options.sources);
+    if (!subject || sources.length === 0) {
       return [];
     }
     const labels = LABELS[locale];
     const prior = answers.map((a, i) => `A${i + 1}: ${a}`).join("\n");
+    const quellenBlock = sources
+      .map((s, i) => `[${i + 1}] ${s.title} (${s.url})${s.snippet ? `\n${s.snippet}` : ""}`)
+      .join("\n\n");
     try {
       const raw = await this.requireClient().complete(
         interviewResearchSystem(locale),
-        `${labels.topic}: ${subject}\n\n${labels.priorAnswers}:\n${prior || labels.none}`,
+        `${labels.topic}: ${subject}\n\n${labels.sources}:\n${quellenBlock}\n\n${labels.priorAnswers}:\n${prior || labels.none}`,
         confidential,
       );
-      return parseInterviewResearch(raw);
+      return parseInterviewResearch(raw, sources);
     } catch {
       return [];
     }

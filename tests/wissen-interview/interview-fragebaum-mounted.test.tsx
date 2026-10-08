@@ -23,10 +23,11 @@ vi.mock("../../apps/web/src/api/auth", () => ({
   },
 }));
 
-// R-0088: steht `recherche` auf einer Liste, liefert der gestellte Server sie — wie der echte
-// ModelProvider — ab der Kernaussage mit, solange der Client noch keine zurückreicht.
+// R-0088: steht `recherche` auf einer Liste, liefert der gestellte Server sie — wie die echte Route
+// (Quellensuche) mit dem ModelProvider — NUR auf ausdrücklichen Wunsch (`recherchieren`) und ab der
+// Kernaussage; danach reicht der Client sie zurück. Jeder Punkt trägt seine Quelle.
 const box = vi.hoisted(() => ({
-  recherche: [] as { node: string; hint: string }[],
+  recherche: [] as { node: string; hint: string; source: { title: string; url: string } }[],
 }));
 
 vi.mock("../../apps/web/src/api/endpoints", async () => {
@@ -51,14 +52,20 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
             _herkunft: unknown,
             // R-1624 (main): der Bildbefund steht an 4. Stelle; ohne Foto bleibt er leer.
             _bildbefund: string | undefined,
-            guide?: { tree?: boolean; topic?: string | null; research?: unknown[] | null },
+            guide?: {
+              tree?: boolean;
+              topic?: string | null;
+              research?: unknown[] | null;
+              recherchieren?: boolean;
+            },
           ) => {
             const res = treeInterview(answers, false, "de", {
               tree: guide?.tree === true,
               ...(guide?.topic ? { topic: guide.topic } : {}),
             });
             const zurueck = guide?.research ?? [];
-            const recherche = zurueck.length > 0 ? zurueck : box.recherche;
+            const recherche =
+              zurueck.length > 0 ? zurueck : guide?.recherchieren ? box.recherche : [];
             return answers.length > 0 && recherche.length > 0 && !res.done
               ? { ...res, research: recherche }
               : res;
@@ -285,29 +292,49 @@ describe("Lücken-Interview am echten Arbeitsraum", () => {
     expect(feldMitWert("Ventil X bei Überdruck schließen")).toBe(false);
   });
 
-  // R-0088 (Bens Befund nacharbeit-4): die Recherche ist sichtbar als UNGEPRÜFT, reist zurück
-  // (einmal recherchiert) und landet NICHT im Entwurf — der besteht nur aus den Antworten.
-  it("Recherche: sichtbar als ungeprüft, zurückgereicht, nie im übernommenen Entwurf", async () => {
+  // R-0088 (Bens Befunde nacharbeit-4/-6): die Recherche läuft auf ausdrücklichen Wunsch in Quellen,
+  // ist sichtbar als UNGEPRÜFT samt Quelle, reist zurück (einmal recherchiert) und landet NICHT im
+  // Entwurf — der besteht nur aus den Antworten.
+  it("Recherche: auf Knopf, mit Quelle, als ungeprüft, zurückgereicht, nie im Entwurf", async () => {
     const HINWEIS = "Dampfventile sprechen oft bei 6 bar an.";
-    box.recherche = [{ node: "schwelle", hint: HINWEIS }];
+    const QUELLE = {
+      title: "Sicherheitsventil",
+      url: "https://de.wikipedia.org/wiki/Sicherheitsventil",
+    };
+    const PUNKT = { node: "schwelle", hint: HINWEIS, source: QUELLE };
+    box.recherche = [PUNKT];
     await mount(null);
     await klick(knopf(i18n.t("capture.ivStart")));
+    // Vor der Kernaussage gibt es nichts zu recherchieren — kein Knopf.
     expect(teil("interview-recherche")).toBeNull();
+    expect(
+      [...container.querySelectorAll("button")].some((b) =>
+        (b.textContent ?? "").includes(i18n.t("interview.recherche.knopf")),
+      ),
+    ).toBe(false);
 
     await antworte("Ventil X bei Überdruck schließen");
+    // Ohne Wunsch keine Recherche — der Turn hat nicht gesucht.
+    expect(teil("interview-recherche")).toBeNull();
+    const vorher = interviewMock.mock.calls.length;
+    await klick(knopf(i18n.t("interview.recherche.knopf")));
+    // Derselbe Turn noch einmal, jetzt mit dem ausdrücklichen Wunsch.
+    expect(interviewMock.mock.calls.length).toBe(vorher + 1);
+    const wunsch = interviewMock.mock.calls[vorher];
+    expect(wunsch?.[0]).toEqual(["Ventil X bei Überdruck schließen"]);
+    expect(wunsch?.[4]).toEqual({ tree: true, topic: null, research: [], recherchieren: true });
+
     const recherche = teil("interview-recherche");
     expect(recherche?.textContent).toContain(i18n.t("interview.recherche.titel"));
     expect(recherche?.textContent).toContain(`Schwellenwert: ${HINWEIS}`);
+    expect(recherche?.textContent).toContain(QUELLE.title);
+    expect(recherche?.querySelector("a")?.getAttribute("href")).toBe(QUELLE.url);
     expect(recherche?.textContent).toContain(i18n.t("interview.recherche.grenze"));
 
     await antworte("bei Überdruck");
     // Der nächste Turn reicht die Recherche zurück — der Server muss nicht erneut recherchieren.
     const letzter = interviewMock.mock.calls[interviewMock.mock.calls.length - 1];
-    expect(letzter?.[4]).toEqual({
-      tree: true,
-      topic: null,
-      research: [{ node: "schwelle", hint: HINWEIS }],
-    });
+    expect(letzter?.[4]).toEqual({ tree: true, topic: null, research: [PUNKT] });
 
     await antworte("Handventil zu");
     await antworte("ab 7 bar");
@@ -315,5 +342,15 @@ describe("Lücken-Interview am echten Arbeitsraum", () => {
     expect(feldMitWert("Ventil X bei Überdruck schließen")).toBe(true);
     // Übernommen ist nur, was der Mensch gesagt hat — der Recherchehinweis steht nirgends mehr.
     expect(container.innerHTML).not.toContain(HINWEIS);
+  });
+
+  it("gewünschte Recherche ohne Ergebnis wird gesagt, nicht verschwiegen", async () => {
+    box.recherche = [];
+    await mount(null);
+    await klick(knopf(i18n.t("capture.ivStart")));
+    await antworte("Ventil X bei Überdruck schließen");
+    await klick(knopf(i18n.t("interview.recherche.knopf")));
+    expect(teil("interview-recherche")).toBeNull();
+    expect(teil("interview-recherche-leer")?.textContent).toBe(i18n.t("interview.recherche.leer"));
   });
 });

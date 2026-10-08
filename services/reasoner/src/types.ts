@@ -253,10 +253,20 @@ export interface InterviewResult {
   research?: InterviewResearchPoint[];
 }
 
-// R-0088: ein Recherche-Prüfpunkt — der Knoten, zu dem er nachhakt, und der kurze Hinweis.
+// R-0088: ein Recherche-Prüfpunkt — der Knoten, zu dem er nachhakt, der kurze Hinweis und die
+// Quelle, aus der er stammt (Bens Befund nacharbeit-6: ohne Quellenabruf keine Recherche).
 export interface InterviewResearchPoint {
   node: InterviewNodeId;
   hint: string;
+  source: InterviewResearchSource;
+}
+
+// R-0088: eine abgerufene Quelle der Recherche (Titel, Adresse, Auszug) — so, wie die
+// Quellensuche (`services/external-search`) sie liefert.
+export interface InterviewResearchSource {
+  title: string;
+  url: string;
+  snippet?: string;
 }
 
 // AUFNAHME 20260922 · WISSEN-INTERVIEW: die Knoten des Fragebaums. Pflicht sind Kernaussage,
@@ -298,6 +308,10 @@ export interface InterviewOptions {
   // R-0088: die Recherche eines früheren Turns, vom Client zurückgereicht — so wird je Interview
   // nur einmal recherchiert. Der Reasoner prüft und kappt sie (`normalizeInterviewResearch`).
   research?: unknown;
+  // R-0088 (Bens Befund nacharbeit-6): die zum Thema ABGERUFENEN Quellen. Gesetzt nur von der
+  // Route, nach Stufen- und Vertraulichkeitsprüfung. Ohne Quellen gibt es keine Recherche — das
+  // Modell leitet Prüfpunkte nur aus ihnen ab, nie aus eigenem Wissen.
+  sources?: unknown;
 }
 
 // PMO-FEA-0006: ein aus einem Dokument extrahierter Wissenspunkt. sourceExcerpt ist die

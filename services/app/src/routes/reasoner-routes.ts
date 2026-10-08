@@ -5,8 +5,14 @@ import type { CaptureService } from "../../../capture";
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE_STAGE,
   type ExternalKnowledgePolicyRepo,
+  type ExternalResult,
+  type ExternalSearchService,
+  externalSearchAllowed,
   publicAiEnrichmentAllowed,
 } from "../../../external-search";
+
+// R-0088: die Suchanfrage der Interview-Recherche ist das Thema — begrenzt wie das Thema selbst.
+const MAX_INTERVIEW_QUELLEN_ANFRAGE = 200;
 import { type Confidentiality, type KoService, isConfidential } from "../../../knowledge-object";
 import {
   // JOB 3353 B: der EINE Fehlertyp, den der Reasoner wirft, wenn er GEMESSEN hat, dass die
@@ -94,6 +100,9 @@ export interface ReasonerRoutesDeps {
   ask: AskService;
   // SCRUM-426: Freigabe-Gate der Public-KI-Anreicherung (Admin-Regler SCRUM-414).
   externalKnowledge: ExternalKnowledgePolicyRepo;
+  // R-0088: die Quellensuche für die Recherche im geführten Interview (dieselbe wie die der
+  // Oberfläche, `createExternalSearchFromEnv`). OPTIONAL: fehlt sie, recherchiert das Interview nicht.
+  externalSearch?: ExternalSearchService | undefined;
   // SCRUM-502 Schicht 2: für den autoritativen koId-Load der gespeicherten Vertraulichkeitsstufe.
   ko: KoService;
   // JOB 2692 D1 (Review-Befund 17): der autoritative draftId-Load — die im ENTWURF gespeicherte
@@ -342,7 +351,47 @@ function gleicherStand(a: Schalterstand, b: Schalterstand): boolean {
 }
 
 export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): FastifyPluginAsync {
-  const { reasoner, ask, externalKnowledge, ko, capture, ka4, audit } = deps;
+  const { reasoner, ask, externalKnowledge, ko, capture, ka4, audit, externalSearch } = deps;
+
+  // R-0088 (Bens Befund nacharbeit-6): die Quellenrecherche des geführten Interviews. Gibt die
+  // abgerufenen Quellen zurück oder — ehrlich — keine: außerhalb des Fragebaums, beim Foto-Interview,
+  // wenn die Recherche schon vorliegt, ohne Thema, bei vertraulichem Inhalt, wenn die Admin-Stufe
+  // keine externe Suche erlaubt, ohne eingerichtete Quellensuche oder wenn der Abruf scheitert.
+  //
+  // AUSGELÖST NUR AUF AUSDRÜCKLICHEN WUNSCH (`recherchieren: true`, Knopf „Zum Thema recherchieren"):
+  // die Standardstufe der externen Wissensabfrage heißt „Suche nur auf Klick" (SCRUM-414) — eine
+  // still bei jedem Turn ausgelöste Suche wäre genau das, was diese Stufe ausschließt.
+  const interviewQuellen = async (lage: {
+    gewuenscht: boolean;
+    baum: boolean;
+    bildbefund: string | undefined;
+    research: readonly unknown[];
+    confidential: boolean;
+    subject: string;
+    log: { warn: (obj: unknown, msg: string) => void };
+  }): Promise<ExternalResult[]> => {
+    if (
+      !lage.gewuenscht ||
+      !lage.baum ||
+      lage.bildbefund?.trim() ||
+      lage.research.length > 0 ||
+      !lage.subject ||
+      lage.confidential ||
+      !externalSearch
+    ) {
+      return [];
+    }
+    const stage = (await externalKnowledge.getStage()) ?? DEFAULT_EXTERNAL_KNOWLEDGE_STAGE;
+    if (!externalSearchAllowed(stage)) {
+      return [];
+    }
+    try {
+      return await externalSearch.search(lage.subject.slice(0, MAX_INTERVIEW_QUELLEN_ANFRAGE));
+    } catch (error) {
+      lage.log.warn({ err: error }, "interview: Quellenrecherche fehlgeschlagen");
+      return [];
+    }
+  };
 
   // Ein Load je Anker liefert die hebende Stufe und den echten Subjektbezug. Keine frei
   // gelieferte Kennung wird als gefundenes Subjekt ausgegeben. Ohne Klara-Bindung bleibt der
@@ -509,6 +558,8 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         tree?: unknown;
         topic?: unknown;
         research?: unknown;
+        // R-0088: der ausdrückliche Wunsch nach Quellenrecherche zu diesem Turn.
+        recherchieren?: unknown;
         locale?: "de" | "en";
         // SCRUM-312: optionale Bearbeitungs-Anweisung für 'assist' (klarer/strukturieren/… oder frei).
         instruction?: string;
@@ -665,20 +716,32 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         // `topic` das Lücken-Interview. Nur Typ-geprüfte Werte reisen weiter; das Thema begrenzt der
         // Reasoner selbst (`normalizeInterviewTopic`).
         const topic = typeof request.body.topic === "string" ? request.body.topic : undefined;
+        const answers = request.body.answers ?? [];
+        const research = Array.isArray(request.body.research) ? request.body.research : [];
+        const bildbefund = typeof imageContext === "string" ? imageContext : undefined;
+        // R-0088 (Bens Befund nacharbeit-6): die ECHTE Quellenrecherche zum Thema — über die
+        // vorhandene Quellensuche (`services/external-search`), unter denselben Bedingungen wie
+        // die Suche in der Oberfläche: Admin-Stufe `externalSearchAllowed`, und NIE für vertrauliche
+        // Inhalte (das Thema verließe sonst das Haus). Nur im Fragebaum, ohne Bildbefund und nur,
+        // solange der Client noch keine Recherche zurückreicht (einmal je Interview).
+        const sources = await interviewQuellen({
+          gewuenscht: request.body.recherchieren === true,
+          baum: request.body.tree === true || Boolean(topic?.trim()),
+          bildbefund,
+          research,
+          confidential,
+          subject: (topic ?? (typeof answers[0] === "string" ? answers[0] : "")).trim(),
+          log: request.log,
+        });
         reply.code(200).send(
-          await reasoner.interview(
-            request.body.answers ?? [],
-            locale,
-            confidential,
-            typeof imageContext === "string" ? imageContext : undefined,
-            {
-              tree: request.body.tree === true,
-              ...(topic ? { topic } : {}),
-              // R-0088: die Recherche eines früheren Turns — roh durchgereicht, geprüft und gekappt
-              // wird sie im Reasoner (`normalizeInterviewResearch`).
-              ...(Array.isArray(request.body.research) ? { research: request.body.research } : {}),
-            },
-          ),
+          await reasoner.interview(answers, locale, confidential, bildbefund, {
+            tree: request.body.tree === true,
+            ...(topic ? { topic } : {}),
+            // R-0088: die Recherche eines früheren Turns — roh durchgereicht, geprüft und gekappt
+            // wird sie im Reasoner (`normalizeInterviewResearch`).
+            ...(research.length > 0 ? { research } : {}),
+            ...(sources.length > 0 ? { sources } : {}),
+          }),
         );
         return;
       }

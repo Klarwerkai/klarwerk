@@ -11,7 +11,7 @@
 //   R-0091   Lücken-Interview: drei Fragen zu einem festen Thema, dann ein Entwurf.
 //   R-0088   mit Modell: das Fachthema steht im Prompt, die Frage wird darauf ausgerichtet.
 // Und als Gegenprobe: OHNE Fragebaum-Option bleibt das alte Interview Wort für Wort, wie es war.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { Reasoner } from "../../services/reasoner";
 import { nenntSchwelle, treeInterview } from "../../services/reasoner/src/interview-tree";
@@ -96,17 +96,20 @@ describe("R-0043 / R-0113 / Argus: der Fragebaum", () => {
 
   // Bens Befund nacharbeit-4: jede Ziffer zählte als Schwelle. „Anlage 2" ist eine Kennung, kein
   // Grenzwert — dann wird weiter nachgebohrt, und die Schwelle bleibt eine Lücke.
-  it("Kennungen mit Ziffer sind keine Schwelle: „Bei Anlage 2 im Handbetrieb“ → Schwellenfrage folgt", () => {
-    const res = treeInterview(
-      ["Ventil X schließen", "Bei Anlage 2 im Handbetrieb", "Handventil zu"],
-      true,
-      "de",
-      BAUM,
-    );
-    expect(res.node).toBe("schwelle");
-    expect(res.question).toContain("Schwellenwert");
-    expect(res.gaps?.open).toContain("schwelle");
-  });
+  it.each(["Bei Anlage 2 im Handbetrieb", "Bei Anlage 2A im Handbetrieb"])(
+    "Kennungen mit Ziffer sind keine Schwelle: „%s“ → Schwellenfrage folgt, Lücke bleibt offen",
+    (bedingung) => {
+      const res = treeInterview(
+        ["Ventil X schließen", bedingung, "Handventil zu"],
+        true,
+        "de",
+        BAUM,
+      );
+      expect(res.node).toBe("schwelle");
+      expect(res.question).toContain("Schwellenwert");
+      expect(res.gaps?.open).toContain("schwelle");
+    },
+  );
 
   it.each([
     ["ab 6 bar", true],
@@ -119,6 +122,15 @@ describe("R-0043 / R-0113 / Argus: der Fragebaum", () => {
     ["an Linie 4 morgens", false],
     ["bei Pumpe P-12", false],
     ["im Werk 3 Schicht 2", false],
+    // Bens Befund nacharbeit-6: Kennungen mit Buchstabenendung sind keine Messwerte.
+    ["Bei Anlage 2A im Handbetrieb", false],
+    ["an Halle 3 V im Nachtbetrieb", false],
+    ["Kran KT-3 mm-genau ausrichten", false],
+    ["Pumpe P2bar", false],
+    ["Antrieb 4 S", false],
+    // Einbuchstabige Einheit zählt nur mit Vergleich — dann ist sie eindeutig.
+    ["ab 16 A Anlaufstrom", true],
+    ["2 kW Heizleistung", true],
   ])("nenntSchwelle(%j) → %s", (bedingung, erwartet) => {
     expect(nenntSchwelle(bedingung)).toBe(erwartet);
   });
@@ -258,19 +270,65 @@ function recherchierenderClient(
   };
 }
 
+// Bens Befund nacharbeit-6: die Recherche wertet ABGERUFENE QUELLEN aus. So, wie die Quellensuche
+// (`services/external-search`) sie liefert — Titel, Adresse, Auszug.
+const QUELLE_VENTIL = {
+  title: "Sicherheitsventil",
+  url: "https://de.wikipedia.org/wiki/Sicherheitsventil",
+  snippet: "Ein Sicherheitsventil öffnet beim Erreichen des eingestellten Ansprechdrucks.",
+  provider: "wikipedia",
+};
+const QUELLE_ANFAHREN = {
+  title: "Anfahrvorgang",
+  url: "https://de.wikipedia.org/wiki/Anfahrvorgang",
+  snippet: "Beim Anfahren einer Anlage gelten besondere Betriebsgrenzen.",
+  provider: "wikipedia",
+};
+const QUELLEN = [QUELLE_VENTIL, QUELLE_ANFAHREN];
+const MIT_QUELLEN = { tree: true, sources: QUELLEN } as const;
+
 const RECHERCHE = JSON.stringify({
   punkte: [
     {
       knoten: "schwelle",
       hinweis: "Sicherheitsventile an Dampfleitungen sprechen oft bei 6 bar an.",
+      quelle: 1,
     },
-    { knoten: "ausnahme", hinweis: "Im Anfahrbetrieb gelten häufig andere Druckgrenzen." },
-    { knoten: "unbekannt", hinweis: "wird verworfen" },
+    {
+      knoten: "ausnahme",
+      hinweis: "Im Anfahrbetrieb gelten häufig andere Druckgrenzen.",
+      quelle: 2,
+    },
+    { knoten: "unbekannt", hinweis: "wird verworfen", quelle: 1 },
+    // Ohne gültige Quelle — Modellwissen statt Recherche — fällt der Punkt weg.
+    { knoten: "risiko", hinweis: "ohne Quelle — wird verworfen" },
+    { knoten: "risiko", hinweis: "falsche Quellnummer — wird verworfen", quelle: 7 },
   ],
 });
 
-describe("R-0088: themenbezogene Fachrecherche mit Modell — für tiefere Rückfragen, nie als Wissen", () => {
-  it("recherchiert zum Thema und hakt an der Frage gezielt am passenden Prüfpunkt nach", async () => {
+const ERWARTETE_RECHERCHE = [
+  {
+    node: "schwelle",
+    hint: "Sicherheitsventile an Dampfleitungen sprechen oft bei 6 bar an.",
+    source: {
+      title: QUELLE_VENTIL.title,
+      url: QUELLE_VENTIL.url,
+      snippet: QUELLE_VENTIL.snippet,
+    },
+  },
+  {
+    node: "ausnahme",
+    hint: "Im Anfahrbetrieb gelten häufig andere Druckgrenzen.",
+    source: {
+      title: QUELLE_ANFAHREN.title,
+      url: QUELLE_ANFAHREN.url,
+      snippet: QUELLE_ANFAHREN.snippet,
+    },
+  },
+];
+
+describe("R-0088: quellengebundene Fachrecherche — für tiefere Rückfragen, nie als Wissen", () => {
+  it("wertet die abgerufenen Quellen aus und hakt an der Frage gezielt am passenden Prüfpunkt nach", async () => {
     const { client, aufrufe } = recherchierenderClient(RECHERCHE);
     // Voller Fragebaum (kein Lücken-Thema — das wäre der kurze Drei-Fragen-Baum ohne Schwellen-
     // knoten, nach drei Antworten durch): Fachthema der Recherche ist dann die Kernaussage.
@@ -279,14 +337,21 @@ describe("R-0088: themenbezogene Fachrecherche mit Modell — für tiefere Rück
       "de",
       false,
       undefined,
-      BAUM,
+      MIT_QUELLEN,
     );
-    // Erst die Recherche (zum Fachthema), dann die gezielte Frage.
+    // Erst die Auswertung der Quellen (zum Fachthema), dann die gezielte Frage.
     expect(aufrufe).toHaveLength(2);
     expect(aufrufe[0]?.system).toContain('"punkte"');
+    expect(aufrufe[0]?.system).toContain("AUSSCHLIESSLICH aus diesen Quellen");
     expect(aufrufe[0]?.user).toContain(
       "Fachthema des Interviews: Ventil X bei Überdruck schließen",
     );
+    // Die Quellen stehen nummeriert und mit Auszug im Auftrag an das Modell.
+    expect(aufrufe[0]?.user).toContain(
+      "[1] Sicherheitsventil (https://de.wikipedia.org/wiki/Sicherheitsventil)",
+    );
+    expect(aufrufe[0]?.user).toContain(QUELLE_VENTIL.snippet);
+    expect(aufrufe[0]?.user).toContain("[2] Anfahrvorgang");
     // Die Frage zum Knoten „schwelle" bekommt GENAU den Schwellen-Prüfpunkt als Ziel …
     expect(res.node).toBe("schwelle");
     expect(aufrufe[1]?.user).toContain("Recherchehinweise (ungeprüft, keine Fakten):");
@@ -297,42 +362,39 @@ describe("R-0088: themenbezogene Fachrecherche mit Modell — für tiefere Rück
     expect(res.question).toBe(
       "Gilt bei dir auch die übliche Grenze von 6 bar, oder schließt du früher?",
     );
-    // … die Recherche reist sichtbar mit (ungültige Knoten verworfen) …
-    expect(res.research).toEqual([
-      {
-        node: "schwelle",
-        hint: "Sicherheitsventile an Dampfleitungen sprechen oft bei 6 bar an.",
-      },
-      { node: "ausnahme", hint: "Im Anfahrbetrieb gelten häufig andere Druckgrenzen." },
-    ]);
+    // … die Recherche reist sichtbar MIT IHRER QUELLE mit (ungültige Knoten und Punkte ohne
+    // gültige Quelle verworfen) …
+    expect(res.research).toEqual(ERWARTETE_RECHERCHE);
     // … und steht NICHT im Entwurf: der besteht nur aus den Antworten des Menschen.
     expect(JSON.stringify(res.draft)).not.toContain("6 bar");
     expect(res.depth).toEqual([]);
     expect(res.gaps?.open).toContain("schwelle");
   });
 
-  it("ohne Thema recherchiert es zur Kernaussage — vor der Kernaussage gibt es nichts zu recherchieren", async () => {
-    const vorher = recherchierenderClient(RECHERCHE);
-    await new ModelProvider(vorher.client).interview([], "de", false, undefined, BAUM);
-    expect(vorher.aufrufe).toHaveLength(1);
-    expect(vorher.aufrufe[0]?.system).not.toContain('"punkte"');
-
-    const nachher = recherchierenderClient(RECHERCHE);
-    await new ModelProvider(nachher.client).interview(
+  it("ohne abgerufene Quellen keine Recherche — das Modell wird nicht um eigenes Wissen gebeten", async () => {
+    const { client, aufrufe } = recherchierenderClient(RECHERCHE);
+    const res = await new ModelProvider(client).interview(
       ["Ventil X bei Überdruck schließen"],
       "de",
       false,
       undefined,
       BAUM,
     );
-    expect(nachher.aufrufe).toHaveLength(2);
-    expect(nachher.aufrufe[0]?.user).toContain(
-      "Fachthema des Interviews: Ventil X bei Überdruck schließen",
-    );
+    expect(aufrufe).toHaveLength(1);
+    expect(aufrufe[0]?.system).not.toContain('"punkte"');
+    expect(res).not.toHaveProperty("research");
+  });
+
+  it("vor der Kernaussage gibt es nichts zu recherchieren — auch mit Quellen kein Auswertungsaufruf", async () => {
+    const { client, aufrufe } = recherchierenderClient(RECHERCHE);
+    await new ModelProvider(client).interview([], "de", false, undefined, MIT_QUELLEN);
+    expect(aufrufe).toHaveLength(1);
+    expect(aufrufe[0]?.system).not.toContain('"punkte"');
   });
 
   it("einmal je Interview: zurückgereichte Recherche wird geprüft wiederverwendet, kein zweiter Aufruf", async () => {
     const { client, aufrufe } = recherchierenderClient(RECHERCHE);
+    const ausnahme = ERWARTETE_RECHERCHE[1];
     const res = await new ModelProvider(client).interview(
       ["Ventil X schließen", "bei Überdruck", "Handventil zu", "ab 6 bar"],
       "de",
@@ -341,8 +403,14 @@ describe("R-0088: themenbezogene Fachrecherche mit Modell — für tiefere Rück
       {
         tree: true,
         research: [
-          { node: "ausnahme", hint: "Im Anfahrbetrieb gelten häufig andere Druckgrenzen." },
-          { node: "kern", hint: "nicht recherchierbar — verworfen" },
+          ausnahme,
+          { node: "kern", hint: "nicht recherchierbar — verworfen", source: QUELLE_VENTIL },
+          { node: "risiko", hint: "ohne Quelle — verworfen" },
+          {
+            node: "risiko",
+            hint: "unsichere Adresse — verworfen",
+            source: { title: "X", url: "javascript:alert(1)" },
+          },
           "kein Objekt",
         ],
       },
@@ -352,19 +420,17 @@ describe("R-0088: themenbezogene Fachrecherche mit Modell — für tiefere Rück
     expect(aufrufe[0]?.user).toContain(
       "Prüfpunkt für diese Frage: Im Anfahrbetrieb gelten häufig andere Druckgrenzen.",
     );
-    expect(res.research).toEqual([
-      { node: "ausnahme", hint: "Im Anfahrbetrieb gelten häufig andere Druckgrenzen." },
-    ]);
+    expect(res.research).toEqual([ausnahme]);
   });
 
-  it("unlesbare Recherche: das Interview läuft ehrlich ohne Recherche weiter, nichts erfunden", async () => {
+  it("unlesbare Auswertung: das Interview läuft ehrlich ohne Recherche weiter, nichts erfunden", async () => {
     const { client, aufrufe } = recherchierenderClient("Leider kein JSON.");
     const res = await new ModelProvider(client).interview(
       ["Ventil X schließen"],
       "de",
       false,
       undefined,
-      { tree: true, topic: "Überdruck an Linie 4" },
+      { tree: true, topic: "Überdruck an Linie 4", sources: QUELLEN },
     );
     expect(aufrufe).toHaveLength(2);
     expect(aufrufe[1]?.user).not.toContain("Recherchehinweise");
@@ -378,6 +444,7 @@ describe("R-0088: themenbezogene Fachrecherche mit Modell — für tiefere Rück
     const res = await new Reasoner().interview(["Ventil X schließen"], "de", false, undefined, {
       tree: true,
       topic: "Überdruck an Linie 4",
+      sources: QUELLEN,
     });
     expect(res.demo).toBe(true);
     expect(res).not.toHaveProperty("research");
@@ -392,10 +459,10 @@ describe("R-0088: themenbezogene Fachrecherche mit Modell — für tiefere Rück
       undefined,
       { tree: true, topic: "Überdruck an Linie 4" },
     );
-    // Aufruf 1 ist die Recherche (Antwort hier unlesbar → keine Punkte), Aufruf 2 die Frage.
-    expect(aufrufe).toHaveLength(2);
-    expect(aufrufe[1]?.user).toContain("Fachthema des Interviews: Überdruck an Linie 4");
-    expect(aufrufe[1]?.user).toContain("Leitfrage: Unter welchen Bedingungen");
+    // Ohne abgerufene Quellen keine Recherche — der einzige Aufruf ist die Frage.
+    expect(aufrufe).toHaveLength(1);
+    expect(aufrufe[0]?.user).toContain("Fachthema des Interviews: Überdruck an Linie 4");
+    expect(aufrufe[0]?.user).toContain("Leitfrage: Unter welchen Bedingungen");
     expect(res.question).toBe("Ab welchem Druck genau schließt du Ventil X?");
     expect(res.demo).toBe(false);
     expect(res.node).toBe("bedingung");
@@ -414,9 +481,9 @@ describe("R-0088: themenbezogene Fachrecherche mit Modell — für tiefere Rück
   it("ohne Thema bleibt der Prompt beim bisherigen Wortlaut (keine Themenzeile)", async () => {
     const { client, aufrufe } = aufzeichnenderClient();
     await new ModelProvider(client).interview(["a"], "de", false, undefined, BAUM);
-    // Aufruf 1 recherchiert zur Kernaussage („a", unlesbare Antwort → keine Punkte); die Frage
-    // selbst trägt dann weder Themenzeile noch Recherche.
-    expect(aufrufe[1]?.user.startsWith("Bisherige Antworten:")).toBe(true);
+    // Ohne Quellen keine Recherche: die Frage trägt weder Themenzeile noch Recherche.
+    expect(aufrufe).toHaveLength(1);
+    expect(aufrufe[0]?.user.startsWith("Bisherige Antworten:")).toBe(true);
   });
 });
 
@@ -536,6 +603,85 @@ describe("Durchreichung: Dienst und echte Route POST /api/reasoner", () => {
       payload: { task: "interview", answers: [], tree: "ja", topic: { x: 1 } },
     });
     expect(fremd.json()).not.toHaveProperty("gaps");
+    await app.close();
+  });
+});
+
+// R-0088 (Bens Befund nacharbeit-6): die ECHTE Quellenrecherche an der Route. Gestellt ist nur der
+// Anbieter der Quellensuche (kein Netz); Stufe, Vertraulichkeit und Durchreichung sind die echten.
+describe("R-0088: Quellenrecherche an der echten Route POST /api/reasoner", () => {
+  async function aufbau() {
+    const services = buildServices();
+    const reasoner = new Reasoner();
+    const interviewSpion = vi.spyOn(reasoner, "interview");
+    const suchanfragen: string[] = [];
+    const veraenderbar = services as unknown as {
+      reasoner: Reasoner;
+      externalSearch: unknown;
+    };
+    veraenderbar.reasoner = reasoner;
+    veraenderbar.externalSearch = {
+      providerName: "wikipedia",
+      search: async (q: string) => {
+        suchanfragen.push(q);
+        return QUELLEN;
+      },
+    };
+    const app = buildApp(services);
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Admin", email: "admin@x.de", password: "secret123" },
+    });
+    const anmeldung = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "admin@x.de", password: "secret123" },
+    });
+    const headers = { authorization: `Bearer ${anmeldung.json().token}` };
+    const turn = (payload: Record<string, unknown>) =>
+      app.inject({
+        method: "POST",
+        url: "/api/reasoner",
+        headers,
+        payload: {
+          task: "interview",
+          answers: ["Ventil X bei Überdruck schließen"],
+          tree: true,
+          source: "draft",
+          confidentiality: "intern",
+          ...payload,
+        },
+      });
+    return { services, app, interviewSpion, suchanfragen, turn };
+  }
+
+  function letzteOptionen(spion: { mock: { calls: unknown[][] } }): Record<string, unknown> {
+    const aufrufe = spion.mock.calls;
+    return (aufrufe[aufrufe.length - 1]?.[4] ?? {}) as Record<string, unknown>;
+  }
+
+  it("auf Wunsch: ruft zum Thema Quellen ab und reicht sie an den Reasoner", async () => {
+    const { app, interviewSpion, suchanfragen, turn } = await aufbau();
+    const res = await turn({ recherchieren: true });
+    expect(res.statusCode).toBe(200);
+    expect(suchanfragen).toEqual(["Ventil X bei Überdruck schließen"]);
+    expect(letzteOptionen(interviewSpion).sources).toEqual(QUELLEN);
+    await app.close();
+  });
+
+  it("ohne Wunsch, bei vertraulichem Inhalt, mit vorhandener Recherche oder gesperrter Stufe: keine Suche", async () => {
+    const { services, app, interviewSpion, suchanfragen, turn } = await aufbau();
+    await turn({});
+    await turn({ recherchieren: true, confidentiality: "vertraulich" });
+    await turn({ recherchieren: true, research: ERWARTETE_RECHERCHE });
+    await turn({ recherchieren: true, imageContext: "Riss an der Naht" });
+    await (
+      services as unknown as { externalKnowledge: { setStage: (s: string) => Promise<void> } }
+    ).externalKnowledge.setStage("blocked");
+    await turn({ recherchieren: true });
+    expect(suchanfragen).toEqual([]);
+    expect(letzteOptionen(interviewSpion)).not.toHaveProperty("sources");
     await app.close();
   });
 });
