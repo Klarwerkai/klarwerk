@@ -1411,6 +1411,56 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     expect(rot).toHaveLength(2);
   });
 
+  it("Nacharbeit 22: gespreizte Parameter, lesende Empfänger und Ablagen in Objekten", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/lib/props.ts": [
+          "export function lies(p: { id: string }): string { return p.id; }",
+          "export function schreibe(p: { role?: string }): void { p.role = 'x'; }",
+        ],
+        "apps/web/src/components/Parameter.tsx": [
+          'import { lies, schreibe } from "../lib/props";',
+          "export function F(p: { role?: string }): JSX.Element {",
+          "  p.role = holeRolle();",
+          "  return <div {...p} />;",
+          "}",
+          "export function G(q: { id: string }): JSX.Element {",
+          "  const n = lies(q);",
+          "  schreibe(q);",
+          "  zaehle(q);",
+          "  return <div {...q} data-n={n} />;",
+          "}",
+          "function zaehle(x: { id: string }): number { return unbekannt(x); }",
+          "export function H(r: { id: string }): JSX.Element {",
+          "  const o = { r };",
+          "  return <div {...r} data-o={o} />;",
+          "}",
+          "export function K(): JSX.Element {",
+          "  const p: { role?: string } = {};",
+          "  const o = { p };",
+          "  o.p.role = holeRolle();",
+          "  return <div {...p} />;",
+          "}",
+        ],
+      }),
+    );
+    const an = (stelle: string): string[] => rot.filter((z) => z.includes(stelle));
+    // bens Fall 1 wörtlich: die Funktion schreibt selbst in ihren gespreizten Parameter.
+    expect(an("components/Parameter.tsx:3")[0]).toContain("statisch nicht bestimmbar");
+    // (Der Typ `role?: string` macht den Spread selbst schon rot — Regel aus Nacharbeit 4.)
+    expect(an("components/Parameter.tsx:4")).toHaveLength(1);
+    // Ein nachweislich lesender Empfänger verändert nichts; ein schreibender und ein unbekannter
+    // (über eine lokale Funktion weitergereicht) schon.
+    expect(an("components/Parameter.tsx:7"), "lies() liest nur").toEqual([]);
+    expect(an("components/Parameter.tsx:8")[0]).toContain("kann dort verändert werden");
+    expect(an("components/Parameter.tsx:9")[0]).toContain("kann dort verändert werden");
+    // bens Fall 2 wörtlich: das Props-Objekt liegt in `o` — die Ablage ist rot.
+    expect(an("components/Parameter.tsx:19")[0]).toContain("in einem anderen Objekt");
+    expect(an("components/Parameter.tsx:14")[0]).toContain("in einem anderen Objekt");
+    expect(rot).toHaveLength(6);
+  });
+
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
     const { rot } = pruefeModalgrenze(
       legeBaum({

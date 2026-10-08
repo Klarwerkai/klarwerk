@@ -1922,7 +1922,7 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
       const ziel = p.left;
       return sichtbareDeklarationen(deklarationen, ziel).some(
         (d) =>
-          ts.isVariableDeclaration(d) &&
+          (ts.isVariableDeclaration(d) || ts.isParameter(d)) &&
           ts.isIdentifier(d.name) &&
           verwendungen(d, d.name.text).some((v) => v !== ziel && istPropsObjekt(v, tiefe + 1)),
       );
@@ -1934,12 +1934,10 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
   // Bindungsketten — in einen JSX-Spread oder an `createElement` fliesst?
   // Je Deklaration einmal ermittelt: die Prüfung läuft für jedes Bezeichner-Argument jedes Aufrufs.
   const bindungsVerwendungen = new Map<ts.Node, ts.Identifier[]>();
-  const verwendungenVon = (
-    d: ts.VariableDeclaration & { name: ts.Identifier },
-  ): ts.Identifier[] => {
+  const verwendungenVon = (d: ts.Node, name: string): ts.Identifier[] => {
     let liste = bindungsVerwendungen.get(d);
     if (liste === undefined) {
-      liste = verwendungen(d, d.name.text);
+      liste = verwendungen(d, name);
       bindungsVerwendungen.set(d, liste);
     }
     return liste;
@@ -1963,22 +1961,28 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
   // Liegt die Bindung im Props-Fluss — direkt (ihre Verwendungen erreichen einen Spread) oder als
   // ALIAS eines Objekts, das ihn erreicht? Eine `const`-Bindung macht kein Objekt unveränderlich,
   // und ein Alias beschreibt dasselbe Objekt.
+  // Nacharbeit 22 (ben): auch PARAMETER und destrukturierte Bindungen tragen Props — schreibt eine
+  // Funktion selbst in ihren gespreizten Parameter, ist das IHRE Rolle, nicht die der Aufrufer.
   const imPropsFluss = (id: ts.Identifier, besucht: Set<ts.Node> = new Set()): boolean =>
     sichtbareDeklarationen(deklarationen, id).some((d) => {
-      if (!ts.isVariableDeclaration(d) || !ts.isIdentifier(d.name) || besucht.has(d)) {
+      if (
+        !(ts.isVariableDeclaration(d) || ts.isParameter(d) || ts.isBindingElement(d)) ||
+        !ts.isIdentifier(d.name) ||
+        besucht.has(d)
+      ) {
         return false;
       }
       besucht.add(d);
-      const bindung = d as ts.VariableDeclaration & { name: ts.Identifier };
+      const name = d.name.text;
       let direkt = direktImFluss.get(d);
       if (direkt === undefined) {
-        direkt = verwendungenVon(bindung).some((v) => istPropsObjekt(v));
+        direkt = verwendungenVon(d, name).some((v) => istPropsObjekt(v));
         direktImFluss.set(d, direkt);
       }
       if (direkt) {
         return true;
       }
-      const zuweisungen = verwendungenVon(bindung).flatMap((v) => {
+      const zuweisungen = verwendungenVon(d, name).flatMap((v) => {
         const p = v.parent;
         return ts.isBinaryExpression(p) &&
           p.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
@@ -2065,12 +2069,159 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
         }
         return;
       }
-      if (!zuweisung) {
+      // Nacharbeit 22: eine auflösbare Funktion, die ihren Parameter nachweislich nur LIEST
+      // (`countActiveFilters(props)`), verändert nichts. Alles andere bleibt rot.
+      if (!zuweisung && kannVeraendern(aufruf, index, 0)) {
         unbekannteBauformen.push(
           `${stelle} wird an ${aufruf.expression.getText(sf).slice(0, 40)}(…) weitergegeben und kann dort verändert werden: seine Rolle kann dieser Sammler nicht beurteilen`,
         );
       }
     });
+  };
+
+  // Nacharbeit 22 (ben): ein Props-Objekt, das in ein anderes Objekt oder Array gelegt wird
+  // (`{ p }`, `{ x: p }`, `[p]`), ist über dieses erreichbar — `o.p.role = …` verfolgt der Sammler
+  // nicht. Die Ablage selbst ist deshalb rot, statt die spätere Änderung still zu verlieren.
+  const pruefeAblage = (id: ts.Identifier): void => {
+    let k: ts.Node = id;
+    while (k.parent !== undefined && reichtWertDurch(k.parent, k)) {
+      k = k.parent;
+    }
+    const p = k.parent;
+    const abgelegt =
+      (ts.isPropertyAssignment(p) && p.initializer === k) ||
+      ts.isShorthandPropertyAssignment(p) ||
+      ts.isArrayLiteralExpression(p);
+    if (abgelegt && imPropsFluss(id)) {
+      unbekannteBauformen.push(
+        `${quelle.datei}:${zeileVon(sf, id)} — Props-Objekt „${id.text}“ wird in einem anderen Objekt oder Array abgelegt: Änderungen darüber kann dieser Sammler nicht verfolgen`,
+      );
+    }
+  };
+
+  type Funktion = ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression;
+  const funktionAus = (d: ts.Node | undefined): Funktion | undefined => {
+    if (d !== undefined && ts.isFunctionDeclaration(d) && d.body) {
+      return d;
+    }
+    if (d !== undefined && ts.isVariableDeclaration(d) && d.initializer) {
+      const init = d.initializer;
+      return ts.isArrowFunction(init) || ts.isFunctionExpression(init) ? init : undefined;
+    }
+    return undefined;
+  };
+  // Die aufgerufene Funktion, wenn sie eindeutig lokal oder relativ importiert deklariert ist.
+  const aufgerufeneFunktion = (aufruf: ts.CallExpression): Funktion | undefined => {
+    const name = aufruf.expression;
+    if (!ts.isIdentifier(name)) {
+      return undefined;
+    }
+    const lokal = sichtbareDeklarationen(deklarationen, name);
+    if (lokal.length > 0) {
+      return lokal.length === 1 ? funktionAus(lokal[0]) : undefined;
+    }
+    const ziel = importZiel(name, umfeld);
+    return ziel?.art === "modul"
+      ? funktionAus(exportierteFunktion(ziel.quelle, ziel.name))
+      : undefined;
+  };
+  // Kann der Aufruf sein Argument an Position `index` verändern? Nur eine auflösbare Funktion, die
+  // den Parameter nachweislich bloss liest, verneint das; ein destrukturierter Parameter kopiert
+  // seine Felder und verändert das Objekt selbst nicht.
+  const kannVeraendern = (aufruf: ts.CallExpression, index: number, tiefe: number): boolean => {
+    if (tiefe > MAX_TIEFE) {
+      return true;
+    }
+    const funktion = aufgerufeneFunktion(aufruf);
+    if (funktion === undefined) {
+      return true;
+    }
+    const parameter = funktion.parameters[index];
+    if (parameter === undefined) {
+      return funktion.parameters.some((q) => q.dotDotDotToken !== undefined);
+    }
+    if (parameter.dotDotDotToken !== undefined) {
+      return true;
+    }
+    if (!ts.isIdentifier(parameter.name)) {
+      return false;
+    }
+    return parameterVeraendert(funktion, parameter.name.text, tiefe);
+  };
+  // Wird der Parameter `name` im Rumpf anders als lesend verwendet? Lesend: Feldzugriff ohne
+  // Schreiben/Löschen/Methodenaufruf, Spread (kopiert), Vergleich, `typeof`, `!`, Bedingung,
+  // Destrukturierung, Weitergabe an eine lokal nachweislich lesende Funktion. Alles andere —
+  // Alias, Rückgabe, Ablage, unbekannte Funktion — kann das Objekt verändern.
+  const parameterVeraendert = (funktion: Funktion, name: string, tiefe: number): boolean => {
+    const lokal = funktion.getSourceFile() === sf;
+    const lesend = (u: ts.Identifier): boolean => {
+      const p = u.parent;
+      if (
+        (ts.isPropertyAccessExpression(p) || ts.isElementAccessExpression(p)) &&
+        p.expression === u
+      ) {
+        const q = p.parent;
+        const geschrieben =
+          (ts.isBinaryExpression(q) &&
+            q.left === p &&
+            q.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+            q.operatorToken.kind <= ts.SyntaxKind.LastAssignment) ||
+          ts.isDeleteExpression(q) ||
+          (ts.isCallExpression(q) && q.expression === p) ||
+          ((ts.isPrefixUnaryExpression(q) || ts.isPostfixUnaryExpression(q)) &&
+            (q.operator === ts.SyntaxKind.PlusPlusToken ||
+              q.operator === ts.SyntaxKind.MinusMinusToken));
+        return !geschrieben;
+      }
+      if (ts.isJsxSpreadAttribute(p) || ts.isSpreadAssignment(p) || ts.isSpreadElement(p)) {
+        return true;
+      }
+      if (ts.isTypeOfExpression(p)) {
+        return true;
+      }
+      if (ts.isPrefixUnaryExpression(p) && p.operator === ts.SyntaxKind.ExclamationToken) {
+        return true;
+      }
+      if (ts.isBinaryExpression(p)) {
+        const op = p.operatorToken.kind;
+        return (
+          op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+          op === ts.SyntaxKind.ExclamationEqualsEqualsToken ||
+          op === ts.SyntaxKind.EqualsEqualsToken ||
+          op === ts.SyntaxKind.ExclamationEqualsToken ||
+          op === ts.SyntaxKind.InstanceOfKeyword
+        );
+      }
+      if (
+        (ts.isIfStatement(p) && p.expression === u) ||
+        (ts.isConditionalExpression(p) && p.condition === u)
+      ) {
+        return true;
+      }
+      if (ts.isVariableDeclaration(p) && p.initializer === u && !ts.isIdentifier(p.name)) {
+        return true;
+      }
+      if (ts.isCallExpression(p) && p.expression !== u && lokal) {
+        return !kannVeraendern(p, p.arguments.indexOf(u), tiefe + 1);
+      }
+      return false;
+    };
+    let veraendert = false;
+    const gehe = (n: ts.Node): void => {
+      if (veraendert) {
+        return;
+      }
+      if (ts.isIdentifier(n) && n.text === name && !istNurName(n) && !lesend(n)) {
+        veraendert = true;
+        return;
+      }
+      ts.forEachChild(n, gehe);
+    };
+    if (funktion.body === undefined) {
+      return true;
+    }
+    gehe(funktion.body);
+    return veraendert;
   };
 
   // AUFTRAG-mega76 BLOCK E — die Kette `<dialog ref={R}>` … `R.current.showModal()` nachziehen.
@@ -2310,6 +2461,9 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
     // andere Funktion kann `x` verändern — beides an einem Objekt im Props-Fluss.
     if (ts.isCallExpression(node)) {
       pruefeObjektweitergabe(node);
+    }
+    if (ts.isIdentifier(node) && !istNurName(node)) {
+      pruefeAblage(node);
     }
     // `ariaModal` — die DOM-Reflexion von `aria-modal`, abweichend benannt (A17b). Punktzugriff,
     // Objekt-Eigenschaft (auch Kurzform), JSX-Attribut und Index-Zugriff `el["ariaModal"]`.
