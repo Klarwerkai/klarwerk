@@ -38,7 +38,14 @@
 // nichts ungeklärt zurückbleibt.
 import type { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { AuditService } from "../../../audit";
-import { AuthError, type AuthService, type PublicUser, meldung, sprache } from "../../../auth";
+import {
+  AuthError,
+  type AuthService,
+  type PublicUser,
+  type Role,
+  meldung,
+  sprache,
+} from "../../../auth";
 import {
   type KnowledgeObject,
   type KoService,
@@ -62,7 +69,7 @@ import {
   zugangsstand,
   zulaessigeZiele,
 } from "../verantwortung";
-import type { NachfolgeRepo } from "../verantwortung-nachfolge";
+import type { NachfolgeEintrag, NachfolgeRepo } from "../verantwortung-nachfolge";
 
 export interface VerantwortungDienste {
   ko: KoService;
@@ -497,8 +504,54 @@ export function kontoendeSperre(
     "POST /api/users",
     "POST /api/auth/users/:id/approve",
   ]);
-  // Was der Vorlauf (preHandler) für den Nachlauf (onSend) derselben Anfrage festgestellt hat.
-  const vorlauf = new WeakMap<object, { handelnder: string; nachfolge: string | undefined }>();
+  // Was der Vorlauf (preHandler) für den Nachlauf (onSend/onResponse) derselben Anfrage festhält.
+  interface Vorlauf {
+    handelnder: string;
+    nachfolge: string | undefined;
+    /** Vor der Änderung vorweggenommen gesetzt: der Eintrag davor, für die Rücknahme. */
+    vorher?: { konto: string; eintrag: NachfolgeEintrag | undefined };
+    /** Der Antwortrumpf der Route — synchron im onSend gemerkt, ausgewertet im onResponse. */
+    antwort?: string;
+  }
+  const vorlauf = new WeakMap<object, Vorlauf>();
+
+  /**
+   * Die Nachfolge für ein befristetes Konto: die benannte, sonst die bisherige (noch zulässig),
+   * sonst die handelnde Kontoverwaltung — oder `undefined`, wenn keine davon zulässig ist.
+   */
+  async function waehleNachfolger(kontoId: string, v: Vorlauf, zeit: number) {
+    const konten = await dienste.auth.listUsers();
+    const zulaessig = (kandidat: string | undefined): kandidat is string =>
+      kandidat !== undefined &&
+      kandidat !== kontoId &&
+      kannVerantworten(
+        konten.find((k) => k.id === kandidat),
+        zeit,
+      );
+    const bisher = (await dienste.nachfolge.lies(kontoId))?.nachfolger;
+    return { bisher, nachfolger: [v.nachfolge, bisher, v.handelnder].find(zulaessig) };
+  }
+
+  /** Braucht dieses Konto (in diesem Stand) eine Nachfolge? Befristet und mit Anlagerecht. */
+  function brauchtNachfolge(konto: PublicUser, zeit: number): boolean {
+    return zugangsstand(konto, zeit) === "befristet" && can(konto.role, "ko.create");
+  }
+
+  /** Der Kontostand, den diese Änderung erzeugen WIRD (Rolle, Freigabe, Befristung aus dem Rumpf). */
+  function vorhersage(konto: PublicUser, pfad: string, rumpf: Record<string, unknown>): PublicUser {
+    const { accessExpiresAt: bisherigesEnde, ...ohneEnde } = konto;
+    const role = typeof rumpf.role === "string" ? (rumpf.role as Role) : konto.role;
+    const approved = pfad.endsWith("/approve") || rumpf.approve === true || konto.approved;
+    const ende =
+      typeof rumpf.accessExpiresAt === "string"
+        ? rumpf.accessExpiresAt
+        : rumpf.accessExpiresAt === null
+          ? undefined
+          : bisherigesEnde;
+    return ende === undefined
+      ? { ...ohneEnde, role, approved }
+      : { ...ohneEnde, role, approved, accessExpiresAt: ende };
+  }
 
   app.addHook("preHandler", async (request, reply) => {
     const pfad = request.routeOptions.url ?? "";
@@ -541,10 +594,35 @@ export function kontoendeSperre(
           return reply;
         }
       }
-      vorlauf.set(request, {
+      const v: Vorlauf = {
         handelnder: handelnder.id,
         nachfolge: typeof gewuenscht === "string" ? gewuenscht : undefined,
-      });
+      };
+      vorlauf.set(request, v);
+      // Nacharbeit 5: die Nachfolge steht VOR der Kontoänderung — nicht in einem asynchronen
+      // onSend (im Haus verboten: Doppel-Send-Fenster, `sync-onsend-hooks.test.ts`). Damit kann das
+      // befristete Konto ab der ersten Sekunde der Befristung nichts ohne Nachfolge anlegen.
+      // Scheitert die Änderung, nimmt `onResponse` den vorweggenommenen Eintrag zurück.
+      const bestehend =
+        typeof id === "string"
+          ? (await dienste.auth.listUsers()).find((k) => k.id === id)
+          : undefined;
+      if (bestehend) {
+        const zeit = jetzt();
+        const danach = vorhersage(bestehend, pfad, rumpf as Record<string, unknown>);
+        if (brauchtNachfolge(danach, zeit)) {
+          const { bisher, nachfolger } = await waehleNachfolger(bestehend.id, v, zeit);
+          if (nachfolger !== undefined && nachfolger !== bisher) {
+            v.vorher = { konto: bestehend.id, eintrag: await dienste.nachfolge.lies(bestehend.id) };
+            await dienste.nachfolge.setze({
+              konto: bestehend.id,
+              nachfolger,
+              gesetztVon: handelnder.id,
+              gesetztAm: new Date(zeit).toISOString(),
+            });
+          }
+        }
+      }
     }
     if (typeof id !== "string" || (!loeschen && !befristen)) {
       return;
@@ -564,50 +642,63 @@ export function kontoendeSperre(
     }
   });
 
-  // Nacharbeit 4 (Ben K5): nach einer GELUNGENEN Kontoänderung den Stand der Nachfolge angleichen.
-  // Ist das Konto danach befristet und darf Wissen anlegen, braucht es eine Nachfolge: die
-  // ausdrücklich benannte, sonst die bisherige (wenn noch zulässig), sonst die handelnde
-  // Kontoverwaltung. Ist es nicht (mehr) befristet, entfällt sie. Gelesen wird der Stand aus der
-  // Antwort der Route selbst — er ist das, was tatsächlich gespeichert wurde.
-  app.addHook("onSend", async (request, reply, payload) => {
+  // Nacharbeit 5: SYNCHRON und im Callback-Stil, wie jeder onSend-Hook im Haus. Er merkt sich nur
+  // den Antwortrumpf der Kontoroute; ausgewertet wird er nach dem Senden (`onResponse`).
+  app.addHook("onSend", (request, _reply, payload, done) => {
     const v = vorlauf.get(request);
-    if (!v || reply.statusCode < 200 || reply.statusCode >= 300 || typeof payload !== "string") {
-      return payload;
+    if (v && typeof payload === "string") {
+      v.antwort = payload;
     }
-    let konto: PublicUser | undefined;
+    done(null, payload);
+  });
+
+  // Nach dem Senden: der Stand der Nachfolge folgt dem, was die Route TATSÄCHLICH gespeichert hat.
+  //   · Abgewiesen (kein 2xx): eine vorweggenommene Nachfolge wird zurückgenommen.
+  //   · Gelungen, Konto danach nicht befristet oder ohne Anlagerecht: die Nachfolge entfällt.
+  //   · Gelungen, befristet mit Anlagerecht, noch ohne zulässige Nachfolge (neu angelegtes Konto):
+  //     sie wird jetzt gesetzt. Bis dahin legt das Konto nichts an (`NACHFOLGE_FEHLT`), es entsteht
+  //     also auch in diesem Augenblick kein Beitrag ohne Verantwortung.
+  app.addHook("onResponse", async (request, reply) => {
+    const v = vorlauf.get(request);
+    if (!v) {
+      return;
+    }
     try {
-      const gelesen = JSON.parse(payload) as Partial<PublicUser> | null;
-      konto = gelesen && typeof gelesen.id === "string" ? (gelesen as PublicUser) : undefined;
-    } catch {
-      konto = undefined;
+      if (reply.statusCode < 200 || reply.statusCode >= 300) {
+        if (v.vorher) {
+          await (v.vorher.eintrag
+            ? dienste.nachfolge.setze(v.vorher.eintrag)
+            : dienste.nachfolge.entferne(v.vorher.konto));
+        }
+        return;
+      }
+      let konto: PublicUser | undefined;
+      try {
+        const gelesen = JSON.parse(v.antwort ?? "") as Partial<PublicUser> | null;
+        konto = gelesen && typeof gelesen.id === "string" ? (gelesen as PublicUser) : undefined;
+      } catch {
+        konto = undefined;
+      }
+      if (!konto) {
+        return;
+      }
+      const zeit = jetzt();
+      if (!brauchtNachfolge(konto, zeit)) {
+        await dienste.nachfolge.entferne(konto.id);
+        return;
+      }
+      const { bisher, nachfolger } = await waehleNachfolger(konto.id, v, zeit);
+      if (nachfolger !== undefined && nachfolger !== bisher) {
+        await dienste.nachfolge.setze({
+          konto: konto.id,
+          nachfolger,
+          gesetztVon: v.handelnder,
+          gesetztAm: new Date(zeit).toISOString(),
+        });
+      }
+    } catch (fehler) {
+      // Fail-closed: ohne gespeicherte Nachfolge legt ein befristetes Konto nichts an.
+      request.log.error({ err: fehler }, "Nachfolge bei Befristung nicht angeglichen");
     }
-    if (!konto) {
-      return payload;
-    }
-    const zeit = jetzt();
-    if (zugangsstand(konto, zeit) !== "befristet" || !can(konto.role, "ko.create")) {
-      await dienste.nachfolge.entferne(konto.id);
-      return payload;
-    }
-    const kontoId = konto.id;
-    const konten = await dienste.auth.listUsers();
-    const zulaessig = (kandidat: string | undefined): kandidat is string =>
-      kandidat !== undefined &&
-      kandidat !== kontoId &&
-      kannVerantworten(
-        konten.find((k) => k.id === kandidat),
-        zeit,
-      );
-    const bisher = (await dienste.nachfolge.lies(kontoId))?.nachfolger;
-    const nachfolger = [v.nachfolge, bisher, v.handelnder].find(zulaessig);
-    if (nachfolger !== undefined && nachfolger !== bisher) {
-      await dienste.nachfolge.setze({
-        konto: kontoId,
-        nachfolger,
-        gesetztVon: v.handelnder,
-        gesetztAm: new Date(zeit).toISOString(),
-      });
-    }
-    return payload;
   });
 }
