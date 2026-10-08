@@ -9,6 +9,8 @@ import type { Conflict } from "./types";
 // OVERLAP_SCHEMA in overlap-repo-pg.ts.
 // Aufnahme 20260922 · Prüfung-Gedächtnis (R-1103/R-1105): `conflict_pair_memory` hält je Paar den
 // zuletzt beurteilten Textstand (nur Hash + Kennungen, s. pair-memory.ts). Rein additiv.
+// Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): `conflict_pair_obligations` hält je Lauf jede
+// ungeordnete Aussage-Paarpflicht samt Ständen und Zustand (s. paarpflichten.ts). Rein additiv.
 export const CONFLICTS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS conflicts (
   id text PRIMARY KEY,
@@ -19,6 +21,13 @@ CREATE INDEX IF NOT EXISTS conflicts_kob_idx ON conflicts ((data->>'koB'));
 CREATE TABLE IF NOT EXISTS conflict_pair_memory (
   pair_key text PRIMARY KEY,
   data jsonb NOT NULL
+);
+CREATE TABLE IF NOT EXISTS conflict_pair_obligations (
+  id text PRIMARY KEY,
+  lauf_id text NOT NULL,
+  pair_key text NOT NULL,
+  data jsonb NOT NULL,
+  UNIQUE (lauf_id, pair_key)
 );
 `;
 
