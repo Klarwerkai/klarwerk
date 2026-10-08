@@ -2143,6 +2143,24 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // bringen keine Komponente mit. Weicht die Messung ab, gilt der gemessene Wert samt Herkunft.
     // (489 ist am Kandidaten 2215c220 GEMESSEN bestätigt — nacharbeit-2-sammler-und-texte grün.)
     //
+    //
+    // Aus dem Hauptstand (Auftrag gesamt-hilfen), dort gegen 451 gerechnet:
+    // Aufnahme gesamt-hilfen, Nacharbeit 5 (R-0443): 451 → 452. GENAU EIN Bauteil kommt dazu:
+    //     + `Arbeitsweise` (`pages/Arbeitsweise.tsx`) — die eigene Seite „So arbeitet Klarwerk“
+    // Kein Bild, kein `documentTitle`, kein `CAPTION_AI_TEXT`; sie verwendet die vorhandene Sicht
+    // `SoArbeitetKlarwerk` wieder (dort nur ein optionaler Schalter, kein neues Bauteil).
+    // `anbieter` 1 und `traeger` 2 bleiben. EHRLICH GESAGT: die 452 ist GERECHNET (451 + 1), nicht
+    // gemessen; weicht der Prüflauf ab, nennt die Meldung oben die gemessene Zahl.
+    //
+    // Nacharbeit 6: GEMESSEN 495. Am Kandidaten 33aad029 meldete der Sammler wörtlich „gemessen:
+    // 495 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 621 Quelldateien … expected
+    // { komponenten: 495, … } to deeply equal { komponenten: 452, … }". Dieser Auftrag trägt genau
+    // EIN Bauteil (`Arbeitsweise`) bei; die 43 Komponenten über 452 kamen mit dem eingemischten
+    // Hauptstand (Grundmenge 559 → 621; aus diesem Auftrag `pages/Arbeitsweise.tsx`,
+    // `texte/arbeitsweise.ts`). Welche es sind, ist ohne Git-Verlauf an diesem Arbeitsbaum nicht
+    // namentlich bestimmt. Die danach ergänzte `lib/klaraBibliothek.ts` enthält kein Bauteil (nur
+    // die Funktion `allBibliothekEntries`). `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
     // Aus dem Hauptstand (Auftrag PLAN-SPRACHANMERKUNG), dort gegen 451 gerechnet:
     // PLAN-SPRACHANMERKUNG (R-1625, R-2177): 451 → 452. GENAU EIN Bauteil kommt dazu:
     //     + `Zeichnung` (`components/bibliothek/Zeichnung.tsx`) — die Zeichnung einer Rückfrage
@@ -2166,8 +2184,36 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // 489 + 26 = 515. EHRLICH GESAGT: GERECHNET über ein Diff-Muster, nicht gemessen — die Hand
     // startet keine Tests. Weicht der Prüflauf ab, nennt die Meldung die gemessene Zahl; die gehört
     // dann hierher. `anbieter` 1 und `traeger` 2 bleiben in beiden Reihen unverändert.
+    //
+    // Aus dem Hauptstand (gesamt-hilfen), gemessen ohne die Bauteile dieses Auftrags:
+    // ZUSAMMENFÜHRUNG beider Stände (gesamt-hilfen Nacharbeit 11, Kandidat 96b9e3a0): 497.
+    // Grundlage ist die GEMESSENE 495 von gesamt-hilfen (Kandidat 33aad029; sie enthält
+    // `Arbeitsweise` und den Hauptstand von damals, der hier noch 451 trug — `Zeichnung` und
+    // `AnhangZeichnung` waren darin also noch nicht enthalten). Dazu die zwei Bauteile der
+    // Plan-Sprachanmerkung: 495 + 2 = 497. EHRLICH GESAGT: GERECHNET, nicht gemessen; was der
+    // Hauptstand seit 33aad029 sonst an Bauteilen gebracht hat, ist darin nicht enthalten. Weicht
+    // der Prüflauf ab, gehört die gemessene Zahl hierher. `anbieter` 1 und `traeger` 2 bleiben.
+    //
+    // gesamt-hilfen Nacharbeit 12: GEMESSEN 515. Am Kandidaten 01c730f4 meldete der Sammler
+    // wörtlich „gemessen: 515 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 657 Quelldateien …
+    // expected { komponenten: 515, … } to deeply equal { komponenten: 497, … }". Seit der Messung 495
+    // (33aad029, Grundmenge 621) hat gesamt-hilfen KEIN Bauteil hinzugefügt: dazugekommen sind
+    // nur `lib/klaraBibliothek.ts` (Funktionen, kein Bauteil) und ein Testfall. Die 20 Komponenten
+    // über 495 kommen also aus dem eingemischten Hauptstand (Grundmenge 621 → 657), darunter laut
+    // Kommentar oben `Zeichnung` und `AnhangZeichnung`. Die übrigen 18 sind ohne Git-Verlauf an
+    // diesem Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // INTEGRATION (Aufnahme gesamt-ki-kennzeichnung, Nacharbeit 9): Die 515 von gesamt-hilfen ist
+    // GEMESSEN (Kandidat 01c730f4) — ohne die Bauteile dieses Auftrags; meine gerechnete 515 aus
+    // Nacharbeit 8 kam auf dieselbe Zahl, aber über einen anderen Stand. Der Zusammenschluss:
+    //     515  gemessen am Hauptstand-Stand 01c730f4
+    //   +   2  seither im Hauptstand bis 1139536b: `Antwort`, `WissensauskunftBereich`
+    //          (Diff 01c730f4..1139536b, keine entfernte Komponentendeklaration)
+    //   +   2  dieser Auftrag, im Hauptstand nicht enthalten: `AiSurfaceNotice`, `ErgebnisStufeMarke`
+    //   = 519. EHRLICH GESAGT: GERECHNET, nicht gemessen — die Hand startet keine Tests. Weicht der
+    // Prüflauf ab, nennt die Meldung die gemessene Zahl; die gehört dann hierher.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 515,
+      komponenten: 519,
       anbieter: 1,
       traeger: 2,
     });
