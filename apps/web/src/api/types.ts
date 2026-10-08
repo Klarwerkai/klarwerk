@@ -2825,9 +2825,13 @@ export interface Notification {
 // Schalter die notwendige Wahrheit (feature-flags.ts, Routen-Registrierung) und wird in
 // /api/features weiter gemeldet — ein zusätzlicher, hier untypisierter Payload-Schlüssel ist im
 // Partial-Vertrag zulässig und wird von niemandem gelesen.
+// R-1975 / R-0791 (I27): `herkunft` und `expertMatching` stehen aus demselben Grund NICHT mehr hier.
+// Beide waren typisiert, aber kein Frontend-Code las sie — dieselbe stille Zusage ohne Wirkung wie
+// `confluenceImport` vor mega69. Wo die Oberfläche ihre Wirkung tatsächlich erfährt (oder dass es
+// keine Fläche gibt), steht je Schalter im Leserregister
+// `tests/funktionsschalter/schalter-leser.test.ts`. Es wird rot, sobald hier ein Name ohne echten
+// Leser steht oder der Server einen Schalter meldet, den das Register nicht einordnet.
 export type FeatureName =
-  | "herkunft"
-  | "expertMatching"
   // AUFTRAG-mega61: die zwei Notausschalter. Ihre Vorgabe ist AN (Server: feature-flags.ts) — sie
   // sperren nichts, sie erlauben nur das Abschalten einer Pflichtfläche, wenn sie im Betrieb stört.
   // AUFTRAG-mega62 Block A: `hinweisbanner` deckt BEIDE Flächen des Hinweises — den Banner in der
