@@ -829,7 +829,12 @@ export function Mobile(): JSX.Element {
         <ArrowLeft size={15} />
         {t("topbar.toDesktop")}
       </button>
-      <div className="w-[340px] overflow-hidden rounded-[34px] border-4 border-ink bg-surface p-5">
+      {/* R-1026 (Aufnahme 20260922 · antwort-quellenanzeige): der Telefonrahmen ist 340 px breit,
+          die Hülle hält je 24 px Rand — zusammen 388 px. Auf einem 320-px-Telefon lief die Seite
+          deshalb seitlich über (gemessen: 10 px, tests/r1026-quellentitel-telefon/
+          telefon-fragen-chromium.test.ts T2). `max-w-full` lässt ihn dort auf die verfügbare
+          Breite schrumpfen; ab der vollen Breite bleibt er unverändert 340 px. */}
+      <div className="w-[340px] max-w-full overflow-hidden rounded-[34px] border-4 border-ink bg-surface p-5">
         <div className="mb-3 flex items-center justify-between">
           <span className="font-sans text-[15px] font-bold tracking-[2px] text-ink">KLARWERK</span>
           {queue.online ? (
