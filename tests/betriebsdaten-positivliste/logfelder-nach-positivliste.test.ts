@@ -295,7 +295,10 @@ describe("R-0623 · Betriebslogfelder nur nach Positivliste", () => {
 
   it("L12 · server.ts schreibt den Startfehler nur über die begrenzte Zeile", () => {
     const server = readFileSync("services/app/src/server.ts", "utf8");
-    const faenger = server.slice(server.indexOf("start().catch("));
+    // Der Fänger selbst steht auf Modulebene am Zeilenanfang; Kommentare nennen ihn nur.
+    const anfang = server.indexOf("\nstart().catch((error) => {");
+    expect(anfang, "der Fänger start().catch fehlt in server.ts").toBeGreaterThan(-1);
+    const faenger = server.slice(anfang);
     expect(faenger).toMatch(/process\.stderr\.write\(`\$\{startfehlerZeile\(error\)\}\\n`\);/);
     expect(faenger).not.toMatch(/String\(error\)|error\.message|error\.stack/);
   });
