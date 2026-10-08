@@ -372,7 +372,8 @@ describe("R-1655 · ValidationService: Routing, Opt-out, Messgrundlage", () => {
     expect(m.einreichen).toEqual({ erledigt: 0, offen: 0, medianStunden: null });
     expect(await a.assignments.find(neu.id, "anna")).toMatchObject({
       status: "done",
-      erledigtAm: "2026-10-01T16:00:00.000Z",
+      // 08:00 + 4 h (Anna früher) + 10 h (Bert früher) + 2 h = 00:00 am Folgetag.
+      erledigtAm: "2026-10-02T00:00:00.000Z",
     });
   });
 });

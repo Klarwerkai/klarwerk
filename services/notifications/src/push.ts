@@ -217,7 +217,10 @@ export function createPushFromEnv(
   if (!publicKey && !privateKey && !subject) {
     return undefined;
   }
-  const punkt = publicKey ? Buffer.from(publicKey, "base64url") : Buffer.alloc(0);
+  if (!publicKey) {
+    throw new PushKonfigurationError("VAPID_PUBLIC_KEY");
+  }
+  const punkt = Buffer.from(publicKey, "base64url");
   if (punkt.length !== 65 || punkt[0] !== 0x04) {
     throw new PushKonfigurationError("VAPID_PUBLIC_KEY");
   }
