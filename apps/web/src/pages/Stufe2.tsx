@@ -1660,7 +1660,9 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
           </ul>
         )}
         {/* R-1657 (ROADMAP 9.3): Wissens-Sprints je Bereich (components/WissensSprints). */}
-        {snap.sprints ? <WissensSprints sprints={snap.sprints} /> : null}
+        {snap.sprints ? (
+          <WissensSprints sprints={snap.sprints} analyse={snap.sprintAnalysis} />
+        ) : null}
       </Card>
 
       {/* FE-MGMT-09 / FR-EXT-04: Wissens-Priorisierung — die neun Faktoren der Quelle, gerankt,

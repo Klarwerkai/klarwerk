@@ -13,7 +13,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
-import type { MgmtSprint } from "../../apps/web/src/api/types";
+import type { MgmtSprint, MgmtSprintAnalysis } from "../../apps/web/src/api/types";
 import { WissensSprints } from "../../apps/web/src/components/WissensSprints";
 import i18n from "../../apps/web/src/i18n";
 
@@ -41,14 +41,22 @@ const HYDRAULIK: MgmtSprint = {
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
-async function mount(sprints: MgmtSprint[]): Promise<void> {
+async function mount(sprints: MgmtSprint[], analyse?: MgmtSprintAnalysis): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
-    root.render(createElement(WissensSprints, { sprints }));
+    root.render(createElement(WissensSprints, { sprints, analyse }));
   });
 }
+
+const STAND: MgmtSprintAnalysis = {
+  regular: true,
+  intervalMs: 900_000,
+  analyzedAt: null,
+  provider: null,
+  failure: null,
+};
 
 const zeilen = () => [...container.querySelectorAll('[data-testid="sprint"]')];
 
@@ -114,6 +122,65 @@ describe("R-1657 · Wissens-Sprints in der Empfehlungskarte", () => {
     await mount([SCHWEISSTECHNIK]);
     expect(zeilen()[0]?.textContent).toBe(
       "Gebied Schweißtechnik: 4 objecten in open conflicten, 12 objecten om te hervalideren. Sprint van 2 dagen voorstellen?",
+    );
+  });
+});
+
+// Nacharbeit 2 (Ben: „über Reasoner", „regelmäßig"): die Fläche sagt, wer einen Vorschlag trägt,
+// und wie es um die regelmäßige Reasoner-Analyse der eigenen Sicht steht.
+describe("R-1657 · Nacharbeit 2 — Herkunft und Analysestand", () => {
+  const quelle = (i: number) =>
+    zeilen()[i]?.querySelector('[data-testid="sprint-quelle"]')?.textContent;
+  const stand = () => container.querySelector('[data-testid="sprints-analyse"]')?.textContent;
+
+  it("F4 · Reasoner-Urteil: Marke „Reasoner“, Stand nennt den Anbieter; der Satz bleibt", async () => {
+    await mount(
+      [
+        { ...SCHWEISSTECHNIK, source: "reasoner" },
+        { ...HYDRAULIK, source: "rule" },
+      ],
+      {
+        ...STAND,
+        analyzedAt: "2026-10-01T08:00:00.000Z",
+        provider: "anthropic:test-modell",
+      },
+    );
+
+    expect(quelle(0)).toBe("Reasoner");
+    expect(quelle(1)).toBe("Regel");
+    expect(zeilen()[0]?.getAttribute("data-quelle")).toBe("reasoner");
+    expect(zeilen()[0]?.querySelector('[data-testid="sprint-satz"]')?.textContent).toBe(
+      "Bereich Schweißtechnik: 4 Objekte in offenen Konflikten, 12 Objekte zur Re-Validierung. 2-Tage-Sprint vorschlagen?",
+    );
+    expect(stand()).toContain("Bewertet vom Reasoner (anthropic:test-modell)");
+  });
+
+  it("F5 · kein Urteil: die Ursache steht da, und es gilt ausdrücklich die Regel", async () => {
+    await mount([{ ...HYDRAULIK, source: "rule" }], {
+      ...STAND,
+      analyzedAt: "2026-10-01T08:00:00.000Z",
+      failure: "confidential",
+    });
+
+    expect(stand()).toBe(
+      "Kein Reasoner-Urteil: vertrauliche Bereiche dürfen nicht an die eingerichtete KI. Es gilt die benannte Regel.",
+    );
+    expect(quelle(0)).toBe("Regel");
+  });
+
+  it("F6 · noch kein Lauf bzw. keine regelmäßige Analyse: beides wird benannt", async () => {
+    await mount([], STAND);
+    expect(stand()).toBe(
+      "Die Reasoner-Analyse für deine Sicht steht noch aus — bis dahin gilt die benannte Regel.",
+    );
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+
+    await mount([], { ...STAND, regular: false, intervalMs: null });
+    expect(stand()).toBe(
+      "Die regelmäßige Reasoner-Analyse läuft in dieser Instanz nicht — es gilt die benannte Regel.",
     );
   });
 });

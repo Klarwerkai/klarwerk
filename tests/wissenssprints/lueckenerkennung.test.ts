@@ -12,10 +12,25 @@
 //       Arbeitsumfang; Sprintlänge gedeckelt; ohne Konflikt-Eingang wird kein Konflikt behauptet
 //   S3  der echte Datenweg (buildServices, Konfliktdienst, Paar-Regel): ein Konflikt mit einem
 //       unsichtbaren Partner zählt nicht, und ein nur unsichtbarer Bereich erscheint gar nicht
-import { describe, expect, it } from "vitest";
+//
+// Nacharbeit 2 (Ben: „über Reasoner", „regelmäßig") — die regelmäßige Analyse je Betrachtersicht:
+//   R1  der Lauf legt dem Reasoner NUR Kennzahlen vor; danach tragen dessen Urteile die Vorschläge
+//       (`source: "reasoner"`); ändern sich die Kennzahlen eines Bereichs, gilt bis zum nächsten
+//       Lauf die Regel, und der nächste Lauf legt nur diesen Bereich erneut vor
+//   R2  je Sicht nur deren sichtbarer Bestand; das Egress-Bit folgt vertraulichen Objekten
+//   R3  regelmäßig aktiv: eine neue Sicht wird sofort einmal analysiert; der Stand ist sichtbar
+//   R4  kein Urteil (Ursache oder Fehler) ⇒ benannte Regel, Ursache im Stand, kein Absturz
+//   R5  echter Datenweg ohne Modell: der Lauf läuft, die Ursache heisst no-model
+import { describe, expect, it, vi } from "vitest";
 import { buildServices } from "../../services/app/src/build-app";
-import type { KnowledgeObject } from "../../services/knowledge-object";
-import { computeSnapshot } from "../../services/management";
+import type { KnowledgeObject, KoService } from "../../services/knowledge-object";
+import {
+  type GapJudgeOutcome,
+  type GapSignal,
+  ManagementService,
+  type SprintReasonKey,
+  computeSnapshot,
+} from "../../services/management";
 import { sprints } from "../../services/management/src/metrics";
 import type { MetricsInput } from "../../services/management/src/types";
 
@@ -84,6 +99,7 @@ describe("R-1657 · Wissens-Sprints aus erkannten Lücken und Konflikten", () =>
         ],
         workItems: 16,
         days: 2,
+        source: "rule",
       },
     ]);
     // Gegenprobe: drei validierte, vertrauenswürdige Objekte ohne Konflikt — kein Vorschlag.
@@ -169,5 +185,198 @@ describe("R-1657 · Wissens-Sprints aus erkannten Lücken und Konflikten", () =>
     expect(s?.reasons.find((r) => r.key === "thinKnowledge")?.count).toBe(0);
     expect(s?.workItems).toBe(2);
     expect(s?.days).toBe(1);
+  });
+});
+
+describe("R-1657 · Nacharbeit 2 — regelmäßige Lückenerkennung über den Reasoner, je Sicht", () => {
+  const ALLE = () => true;
+  const OEFFENTLICH = (k: KnowledgeObject) => (k.confidentiality ?? "intern") === "intern";
+  const GAP_FELDER = [
+    "bereich",
+    "geringesVertrauen",
+    "imKonflikt",
+    "mittleresVertrauen",
+    "objekte",
+    "revalidierung",
+    "validiert",
+  ];
+
+  function dienst(
+    kos: KnowledgeObject[],
+    antwort: (bereiche: readonly GapSignal[]) => GapJudgeOutcome | Promise<GapJudgeOutcome>,
+  ) {
+    const aufrufe: { bereiche: GapSignal[]; confidential: boolean }[] = [];
+    const bestand = { kos };
+    const management = new ManagementService({
+      koService: { list: async () => bestand.kos } as unknown as KoService,
+      listGaps: async () => [],
+      countOpenConflicts: async () => 0,
+      openConflictKoIds: async () => [],
+      pendingRevalidation: async () => [],
+      busFactor: async () => [],
+      judgeGaps: async (bereiche, confidential) => {
+        aufrufe.push({ bereiche: [...bereiche], confidential });
+        return antwort(bereiche);
+      },
+      now: () => NOW,
+    });
+    return { management, aufrufe, bestand };
+  }
+
+  const urteil = (bereich: string, tage: number, schwerpunkte: SprintReasonKey[]) => ({
+    bereich,
+    sprint: true,
+    tage,
+    schwerpunkte,
+  });
+
+  it("R1 · nur Kennzahlen gehen hinaus; danach tragen Reasoner-Urteile; Änderung ⇒ Regel bis zum Lauf", async () => {
+    const hydraulik = reihe("H", 4, { category: "Hydraulik", trust: 30 });
+    const montage = reihe("M", 3, { category: "Montage" });
+    const { management, aufrufe, bestand } = dienst([...hydraulik, ...montage], () => ({
+      urteile: [urteil("Hydraulik", 3, ["lowTrust"]), urteil("Montage", 1, ["thinKnowledge"])],
+      provider: "anthropic:test-modell",
+    }));
+
+    // Vor dem ersten Lauf: die benannte Regel, ausdrücklich so gekennzeichnet.
+    const vorher = await management.snapshot({ sichtbar: ALLE, sicht: "u1" });
+    expect(vorher.sprints.map((s) => [s.category, s.source])).toEqual([["Hydraulik", "rule"]]);
+    expect(vorher.sprintAnalysis).toEqual({
+      regular: false,
+      intervalMs: null,
+      analyzedAt: null,
+      provider: null,
+      failure: null,
+    });
+    expect(aufrufe).toHaveLength(0);
+
+    expect(await management.wissenssprintLauf()).toBe(1);
+    expect(aufrufe).toHaveLength(1);
+    // Hinaus gingen NUR Name und Zähler — kein Titel, keine Aussage, keine Kennung.
+    for (const b of aufrufe[0]?.bereiche ?? []) {
+      expect(Object.keys(b).sort()).toEqual(GAP_FELDER);
+    }
+    expect(JSON.stringify(aufrufe)).not.toMatch(/"H1"|"M1"|Aussage/);
+    expect(aufrufe[0]?.confidential).toBe(false);
+
+    const nachher = await management.snapshot({ sichtbar: ALLE, sicht: "u1" });
+    expect(nachher.sprints).toEqual([
+      {
+        category: "Hydraulik",
+        reasons: [{ key: "lowTrust", count: 4 }],
+        workItems: 4,
+        days: 3,
+        source: "reasoner",
+      },
+      {
+        category: "Montage",
+        reasons: [{ key: "thinKnowledge", count: 3 }],
+        workItems: 0,
+        days: 1,
+        source: "reasoner",
+      },
+    ]);
+    expect(nachher.sprintAnalysis.provider).toBe("anthropic:test-modell");
+    expect(nachher.sprintAnalysis.analyzedAt).toBe(new Date(NOW).toISOString());
+
+    // Neue Kennzahlen in Hydraulik: dort gilt bis zum nächsten Lauf wieder die Regel.
+    bestand.kos = [...bestand.kos, ko({ id: "H5", category: "Hydraulik", trust: 20 })];
+    const geaendert = await management.snapshot({ sichtbar: ALLE, sicht: "u1" });
+    expect(geaendert.sprints.map((s) => [s.category, s.source])).toEqual([
+      ["Hydraulik", "rule"],
+      ["Montage", "reasoner"],
+    ]);
+    await management.wissenssprintLauf();
+    expect(aufrufe[1]?.bereiche.map((b) => b.bereich)).toEqual(["Hydraulik"]);
+  });
+
+  it("R2 · je Sicht nur deren sichtbarer Bestand; vertrauliche Objekte setzen das Egress-Bit", async () => {
+    const kos = [
+      ...reihe("H", 3, { category: "Hydraulik", trust: 30 }),
+      ko({ id: "HV", category: "Hydraulik", confidentiality: "vertraulich" }),
+      ko({ id: "GV", category: "Geheimbereich", confidentiality: "streng_vertraulich" }),
+    ];
+    const { management, aufrufe } = dienst(kos, () => ({
+      urteile: [urteil("Hydraulik", 1, ["lowTrust"])],
+      provider: "lokal:test",
+    }));
+
+    await management.snapshot({ sichtbar: ALLE, sicht: "admin" });
+    await management.snapshot({ sichtbar: OEFFENTLICH, sicht: "leser" });
+    expect(await management.wissenssprintLauf()).toBe(2);
+
+    const [admin, leser] = aufrufe;
+    expect(admin?.confidential).toBe(true);
+    expect(admin?.bereiche.map((b) => b.bereich).sort()).toEqual(["Geheimbereich", "Hydraulik"]);
+    expect(admin?.bereiche.find((b) => b.bereich === "Hydraulik")?.objekte).toBe(4);
+    // Die Lesersicht: kein Geheimbereich, nur die drei öffentlichen Objekte, kein Egress-Bit.
+    expect(leser?.confidential).toBe(false);
+    expect(leser?.bereiche.map((b) => b.bereich)).toEqual(["Hydraulik"]);
+    expect(leser?.bereiche[0]?.objekte).toBe(3);
+    const alsLeser = await management.snapshot({ sichtbar: OEFFENTLICH, sicht: "leser" });
+    expect(JSON.stringify(alsLeser)).not.toContain("Geheimbereich");
+    expect(alsLeser.sprints.map((s) => [s.category, s.source])).toEqual([
+      ["Hydraulik", "reasoner"],
+    ]);
+  });
+
+  it("R3 · regelmäßig aktiv: eine neue Sicht wird sofort analysiert, der Stand nennt den Takt", async () => {
+    const { management, aufrufe } = dienst(reihe("H", 2, { category: "Hydraulik" }), () => ({
+      urteile: [],
+      provider: "anthropic:test-modell",
+    }));
+    management.regelmaessigeAnalyseAktiv(60_000);
+
+    const erst = await management.snapshot({ sichtbar: ALLE, sicht: "neu" });
+    expect(erst.sprintAnalysis.regular).toBe(true);
+    expect(erst.sprintAnalysis.intervalMs).toBe(60_000);
+    // Ohne `wissenssprintLauf`: das erste Urteil kam allein aus dem Vormerken der neuen Sicht.
+    await vi.waitFor(async () => {
+      const stand = await management.snapshot({ sichtbar: ALLE, sicht: "neu" });
+      expect(stand.sprintAnalysis.provider).toBe("anthropic:test-modell");
+    });
+    expect(aufrufe).toHaveLength(1);
+    // Der Reasoner nannte keinen Sprint ⇒ auch die Regel schlägt für diesen Bereich nichts mehr vor.
+    const danach = await management.snapshot({ sichtbar: ALLE, sicht: "neu" });
+    expect(danach.sprints).toEqual([]);
+  });
+
+  it("R4 · kein Urteil ⇒ benannte Regel und Ursache im Stand; ein Fehler bricht den Lauf nicht", async () => {
+    const ohne = dienst(reihe("H", 2, { category: "Hydraulik", trust: 10 }), () => ({
+      urteile: null,
+      failure: "no-model",
+    }));
+    await ohne.management.snapshot({ sichtbar: ALLE, sicht: "u" });
+    await ohne.management.wissenssprintLauf();
+    const snap = await ohne.management.snapshot({ sichtbar: ALLE, sicht: "u" });
+    expect(snap.sprints.map((s) => s.source)).toEqual(["rule"]);
+    expect(snap.sprintAnalysis.failure).toBe("no-model");
+
+    const kaputt = dienst(reihe("H", 2, { category: "Hydraulik", trust: 10 }), () => {
+      throw new Error("Anbieter weg");
+    });
+    await kaputt.management.snapshot({ sichtbar: ALLE, sicht: "u" });
+    await expect(kaputt.management.wissenssprintLauf()).resolves.toBe(1);
+    const nachFehler = await kaputt.management.snapshot({ sichtbar: ALLE, sicht: "u" });
+    expect(nachFehler.sprintAnalysis.failure).toBe("model-error");
+    expect(nachFehler.sprints.map((s) => s.source)).toEqual(["rule"]);
+  });
+
+  it("R5 · echter Datenweg ohne Modell: der Lauf geht über den Reasoner, Ursache no-model", async () => {
+    const services = buildServices();
+    await services.ko.create({
+      title: "Objekt R5",
+      statement: "Aussage R5",
+      type: "best_practice",
+      category: "Sprint R1657 R5",
+      author: "u-r5",
+    });
+    await services.management.snapshot({ sichtbar: ALLE, sicht: "u-r5" });
+
+    expect(await services.management.wissenssprintLauf()).toBe(1);
+    const snap = await services.management.snapshot({ sichtbar: ALLE, sicht: "u-r5" });
+    expect(snap.sprintAnalysis.failure).toBe("no-model");
+    const zeile = snap.sprints.find((s) => s.category === "Sprint R1657 R5");
+    expect(zeile?.source).toBe("rule");
   });
 });

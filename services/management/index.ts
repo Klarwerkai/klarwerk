@@ -1,5 +1,5 @@
 // Öffentliche API des Moduls management (SCRUM-120 / FE-MGMT).
-export { ManagementService } from "./src/service";
+export { ManagementService, MAX_SICHTEN, WISSENSSPRINT_TAKT_MS } from "./src/service";
 export type { ManagementDeps } from "./src/service";
 export { computeSnapshot, bandForScore } from "./src/metrics";
 // R-0751 / R-1639 / R-2183 (Nacharbeit 3): gepflegte Bereichsprofile und Ruhestandshorizonte.
@@ -41,6 +41,11 @@ export type {
   KnowledgeSprint,
   SprintReason,
   SprintReasonKey,
+  SprintAnalysis,
+  GapSignal,
+  GapVerdict,
+  GapJudge,
+  GapJudgeOutcome,
   HouseFloor,
   PilotWindow,
   MetricsInput,

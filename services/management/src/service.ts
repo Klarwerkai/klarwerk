@@ -3,7 +3,7 @@
 // die gepflegten Bereichsprofile und Ruhestandshorizonte (profiles.ts, über `deps.profiles`).
 import type { KnowledgeObject, KoService } from "../../knowledge-object";
 import { type RiskHorizonView, riskHorizon } from "./horizon";
-import { computeSnapshot } from "./metrics";
+import { bereichsSignale, computeSnapshot, gapSignal, signalSignatur } from "./metrics";
 import {
   type CategoryProfile,
   type ManagementProfileRepo,
@@ -12,7 +12,27 @@ import {
   normalizeRetirementHorizon,
   retirementDueAt,
 } from "./profiles";
-import type { BusFactorLike, ManagementSnapshot } from "./types";
+import type {
+  BusFactorLike,
+  GapJudge,
+  GapJudgeOutcome,
+  GapVerdictEntry,
+  ManagementSnapshot,
+  MetricsInput,
+} from "./types";
+
+/** Höchstzahl der Betrachtersichten, die die regelmäßige Analyse führt. */
+export const MAX_SICHTEN = 50;
+/** Vorgabetakt der regelmäßigen Lückenerkennung (server.ts, überschreibbar per Umgebung). */
+export const WISSENSSPRINT_TAKT_MS = 15 * 60_000;
+
+interface Sichtanalyse {
+  sichtbar: (ko: KnowledgeObject) => boolean;
+  urteile: Map<string, GapVerdictEntry>;
+  analysiertAm: string | null;
+  provider: string | null;
+  failure: string | null;
+}
 
 export interface ManagementDeps {
   koService: KoService;
@@ -35,6 +55,9 @@ export interface ManagementDeps {
   // Optional: ohne Ablage bleiben die vier eingeschätzten Faktoren ohne Daten und der
   // Bereichsblick leer — nichts wird ersatzweise angenommen.
   profiles?: ManagementProfileRepo;
+  // R-1657 (Nacharbeit 2): der Weg zum Reasoner-Urteil über die Kennzahlen je Bereich. Optional:
+  // ohne ihn gilt für die Wissens-Sprints die benannte Regel (metrics.ts).
+  judgeGaps?: GapJudge;
   now?: () => number;
 }
 
@@ -59,7 +82,31 @@ export class ManagementService {
   // `sichtbar` ist PFLICHT und greift an der GRUNDMENGE — vor `computeSnapshot`, nicht danach.
   async snapshot(opts: {
     sichtbar: (ko: KnowledgeObject) => boolean;
+    // R-1657 (Nacharbeit 2): die Kennung der Betrachtersicht (die Route setzt die Nutzerkennung).
+    // Mit ihr wird die Sicht für die regelmäßige Reasoner-Analyse vorgemerkt, und deren Urteile
+    // fließen in die Sprint-Vorschläge. Ohne sie bleibt es bei der benannten Regel.
+    sicht?: string;
   }): Promise<ManagementSnapshot> {
+    const analyse = opts.sicht ? this.merkeSicht(opts.sicht, opts.sichtbar) : undefined;
+    const input = await this.eingang(opts);
+    const body = computeSnapshot({ ...input, gapVerdicts: analyse?.urteile ?? null });
+    return {
+      generatedAt: new Date(this.now()).toISOString(),
+      ...body,
+      sprintAnalysis: {
+        regular: this.intervallMs !== null,
+        intervalMs: this.intervallMs,
+        analyzedAt: analyse?.analysiertAm ?? null,
+        provider: analyse?.provider ?? null,
+        failure: analyse?.failure ?? null,
+      },
+    };
+  }
+
+  /** Der Eingang der Metriken über der SICHTBAREN Grundmenge — für Snapshot und Analyse gleich. */
+  private async eingang(opts: {
+    sichtbar: (ko: KnowledgeObject) => boolean;
+  }): Promise<MetricsInput> {
     const [alle, gaps, openConflicts, pending, busFactor, konfliktKos, profile] = await Promise.all(
       [
         this.deps.koService.list({}),
@@ -78,7 +125,7 @@ export class ManagementService {
     const openGaps = gaps.filter((g) => g.status === "offen").length;
     const konfliktIds =
       konfliktKos === null ? null : konfliktKos.filter((id) => sichtbareIds.has(id));
-    const body = computeSnapshot({
+    return {
       kos,
       openGaps,
       openConflicts,
@@ -87,8 +134,132 @@ export class ManagementService {
       now: this.now(),
       openConflictKoIds: konfliktIds,
       categoryProfiles: profile,
+    };
+  }
+
+  // ==============================================================================================
+  // R-1657 (Nacharbeit 2) — DIE REGELMÄSSIGE LÜCKENERKENNUNG ÜBER DEN REASONER.
+  // ==============================================================================================
+  //
+  // Quelle: „KLARWERK analysiert regelmäßig …". Der Lauf (`wissenssprintLauf`, im Takt gestartet
+  // von services/app/src/server.ts) geht über jede vorgemerkte Betrachtersicht, rechnet deren
+  // Kennzahlen je Bereich über GENAU DEM, was diese Sicht sehen darf, und legt dem Reasoner die
+  // Bereiche vor, deren Kennzahlen sich seit dem letzten Urteil geändert haben.
+  //
+  // WARUM JE SICHT UND NICHT EINMAL ÜBER DEN GANZEN BESTAND: ein Urteil über den Gesamtbestand,
+  // das nur bei passenden Kennzahlen gezeigt wird, verriete durch sein Fehlen, dass ein Bereich
+  // unsichtbare Objekte trägt. Je Sicht entsteht jedes Urteil ausschliesslich aus deren eigenem
+  // sichtbaren Bestand; ob es vorliegt, hängt nur an ihrem eigenen Abruf.
+  //
+  // Begrenzung: höchstens MAX_SICHTEN Sichten, die zuletzt abgerufenen bleiben. Alles liegt im
+  // Prozessspeicher; nach einem Neustart urteilt der nächste Lauf neu.
+  private readonly sichten = new Map<string, Sichtanalyse>();
+  private intervallMs: number | null = null;
+  private sofortAnalysieren = false;
+  private laufend: Promise<number> | null = null;
+
+  /**
+   * Schaltet die regelmäßige Analyse für diesen Prozess als aktiv (der Takt selbst steht in
+   * server.ts). Ab dann wird eine NEU vorgemerkte Sicht sofort einmal analysiert, statt bis zum
+   * nächsten Takt zu warten.
+   */
+  regelmaessigeAnalyseAktiv(intervallMs: number): void {
+    this.intervallMs = intervallMs;
+    this.sofortAnalysieren = true;
+  }
+
+  private merkeSicht(schluessel: string, sichtbar: Sichtanalyse["sichtbar"]): Sichtanalyse {
+    const vorhanden = this.sichten.get(schluessel);
+    const sicht: Sichtanalyse = vorhanden ?? {
+      sichtbar,
+      urteile: new Map(),
+      analysiertAm: null,
+      provider: null,
+      failure: null,
+    };
+    sicht.sichtbar = sichtbar; // die jüngste Sichtbarkeitsentscheidung gilt
+    // Zuletzt abgerufen = zuletzt eingefügt; die älteste fällt bei Überlauf heraus.
+    this.sichten.delete(schluessel);
+    this.sichten.set(schluessel, sicht);
+    while (this.sichten.size > MAX_SICHTEN) {
+      const aelteste = this.sichten.keys().next().value;
+      if (aelteste === undefined) {
+        break;
+      }
+      this.sichten.delete(aelteste);
+    }
+    if (!vorhanden && this.sofortAnalysieren && this.deps.judgeGaps) {
+      // Erstes Urteil für diese Sicht ohne Wartezeit — der Abruf selbst wartet nicht darauf.
+      void this.analysiereSicht(sicht).catch(() => undefined);
+    }
+    return sicht;
+  }
+
+  /**
+   * EIN regelmäßiger Lauf über alle vorgemerkten Sichten. Gibt die Zahl der analysierten Sichten
+   * zurück. Überlappt nie mit sich selbst: läuft schon einer, wird dessen Ergebnis abgewartet.
+   */
+  wissenssprintLauf(): Promise<number> {
+    if (!this.deps.judgeGaps) {
+      return Promise.resolve(0);
+    }
+    if (this.laufend) {
+      return this.laufend;
+    }
+    this.laufend = (async () => {
+      let n = 0;
+      for (const sicht of [...this.sichten.values()]) {
+        await this.analysiereSicht(sicht);
+        n += 1;
+      }
+      return n;
+    })().finally(() => {
+      this.laufend = null;
     });
-    return { generatedAt: new Date(this.now()).toISOString(), ...body };
+    return this.laufend;
+  }
+
+  private async analysiereSicht(sicht: Sichtanalyse): Promise<void> {
+    const judge = this.deps.judgeGaps;
+    if (!judge) {
+      return;
+    }
+    const signale = bereichsSignale(await this.eingang({ sichtbar: sicht.sichtbar }));
+    const aktuell = new Set(signale.map((s) => s.bereich));
+    for (const bereich of [...sicht.urteile.keys()]) {
+      if (!aktuell.has(bereich)) {
+        sicht.urteile.delete(bereich);
+      }
+    }
+    const offen = signale.filter(
+      (s) => sicht.urteile.get(s.bereich)?.signatur !== signalSignatur(s),
+    );
+    sicht.analysiertAm = new Date(this.now()).toISOString();
+    if (offen.length === 0) {
+      return;
+    }
+    let ausgang: GapJudgeOutcome;
+    try {
+      ausgang = await judge(
+        offen.map(gapSignal),
+        offen.some((s) => s.confidential),
+      );
+    } catch {
+      ausgang = { urteile: null, failure: "model-error" };
+    }
+    if (!ausgang.urteile) {
+      sicht.failure = ausgang.failure ?? "model-error";
+      return;
+    }
+    const nachBereich = new Map(ausgang.urteile.map((u) => [u.bereich, u]));
+    for (const s of offen) {
+      sicht.urteile.set(s.bereich, {
+        signatur: signalSignatur(s),
+        urteil: nachBereich.get(s.bereich) ?? null,
+      });
+    }
+    sicht.provider = ausgang.provider ?? null;
+    sicht.failure = null;
   }
 
   // ==============================================================================================

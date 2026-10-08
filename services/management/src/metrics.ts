@@ -7,6 +7,8 @@ import type {
   Band,
   CapitalScore,
   CategoryPriority,
+  GapSignal,
+  GapVerdict,
   HouseFloor,
   KnowledgeSprint,
   KnowledgeStatement,
@@ -19,6 +21,7 @@ import type {
   PriorityFlag,
   Recommendation,
   SprintReason,
+  SprintReasonKey,
   ValuationFacts,
 } from "./types";
 
@@ -293,50 +296,147 @@ export function recommendations(input: MetricsInput): Recommendation[] {
 // oder hohe Konflikt-Dichte herrscht — und schlägt der Organisation Wissens-Sprints vor: ‚Bereich
 // Schweißtechnik: 4 offene Konflikte, 12 Objekte zur Re-Validierung. 2-Tage-Sprint vorschlagen?'"
 //
-// Die Analyse ist eine deterministische Regel über demselben sichtbaren Bestand wie der übrige
-// Snapshot — kein Modellaufruf, nichts verlässt das Haus. Je Kategorie zählt sie:
-//   conflicts      Objekte an einem offenen sichtbaren Konflikt (ohne Konflikt-Eingang: kein Grund)
-//   revalidation   Objekte auf der Revalidierungsliste
-//   lowTrust       Objekte mit Vertrauen unter TRUST_NIEDRIG
-//   thinKnowledge  weniger als WENIG_VALIDIERT validierte Objekte (count = Zahl der validierten)
+// ZWEI URTEILENDE, EINE GRUNDLAGE (Nacharbeit 2, Ben: „über Reasoner", „regelmäßig"):
+//   · Die KENNZAHLEN je Bereich (`bereichsSignale`) entstehen hier, über demselben sichtbaren
+//     Bestand wie der übrige Snapshot. Nur sie — Bereichsname und Zähler — gehen an den Reasoner.
+//   · Der REASONER urteilt regelmäßig je Betrachtersicht darüber (service.ts → wissenssprintLauf,
+//     services/reasoner → judgeKnowledgeGapsOutcome). Sein Urteil gilt für einen Bereich nur,
+//     solange die Kennzahlen, über die er geurteilt hat, unverändert sind (`signalSignatur`).
+//   · Fehlt ein passendes Reasoner-Urteil (kein Modell, Vertraulichkeit, noch kein Lauf, Bestand
+//     seither geändert), gilt die benannte REGEL und der Vorschlag trägt `source: "rule"`:
+//       conflicts      Objekte an einem offenen sichtbaren Konflikt (ohne Konflikt-Eingang: kein Grund)
+//       revalidation   Objekte auf der Revalidierungsliste
+//       lowTrust       Objekte mit Vertrauen unter TRUST_NIEDRIG
+//       thinKnowledge  weniger als WENIG_VALIDIERT validierte Objekte (count = Zahl der validierten)
+//     Sprintlänge: verschiedene betroffene Objekte / OBJEKTE_PRO_TAG, aufgerundet, 1 bis 5 Tage.
 // Offene Lücken (unbeantwortete Fragen) tragen keine Kategorie und bleiben deshalb in der globalen
 // Empfehlung „closeGaps" — sie werden keinem Bereich zugeraten.
-//
-// Sprintlänge: verschiedene betroffene Objekte / OBJEKTE_PRO_TAG, aufgerundet, 1 bis 5 Tage.
 const TRUST_NIEDRIG = 50;
 const WENIG_VALIDIERT = 3;
 const OBJEKTE_PRO_TAG = 8;
 const SPRINT_MAX_TAGE = 5;
 
-export function sprints(input: MetricsInput): KnowledgeSprint[] {
+/** Die Kennzahlen je Bereich plus der Arbeitsumfang (verschiedene betroffene Objekte). */
+export interface BereichsSignal extends GapSignal {
+  workItems: number;
+  /** Trägt der Bereich (für diese Sicht) ein vertrauliches Objekt? Entscheidet den Egress. */
+  confidential: boolean;
+}
+
+export function bereichsSignale(input: MetricsInput): BereichsSignal[] {
   const pendingSet = new Set(input.pendingRevalidation);
   const konflikte = input.openConflictKoIds ? new Set(input.openConflictKoIds) : null;
-  const out: KnowledgeSprint[] = [];
+  const out: BereichsSignal[] = [];
   for (const [category, list] of categories(input.kos)) {
     const imKonflikt = konflikte ? list.filter((k) => konflikte.has(k.id)) : [];
     const faellig = list.filter((k) => pendingSet.has(k.id));
     const schwach = list.filter((k) => (k.trust ?? 0) < TRUST_NIEDRIG);
-    const validiert = list.filter((k) => k.status === "validiert").length;
+    out.push({
+      bereich: category,
+      objekte: list.length,
+      validiert: list.filter((k) => k.status === "validiert").length,
+      mittleresVertrauen: avgTrustOf(list),
+      imKonflikt: konflikte ? imKonflikt.length : null,
+      revalidierung: faellig.length,
+      geringesVertrauen: schwach.length,
+      workItems: new Set([...imKonflikt, ...faellig, ...schwach].map((k) => k.id)).size,
+      confidential: list.some((k) => (k.confidentiality ?? "intern") !== "intern"),
+    });
+  }
+  return out;
+}
 
-    const reasons: SprintReason[] = [];
-    if (imKonflikt.length > 0) {
-      reasons.push({ key: "conflicts", count: imKonflikt.length });
+/** Was der Reasoner gesehen hat — genau die Kennzahlen, nichts sonst. */
+export function gapSignal(s: BereichsSignal): GapSignal {
+  return {
+    bereich: s.bereich,
+    objekte: s.objekte,
+    validiert: s.validiert,
+    mittleresVertrauen: s.mittleresVertrauen,
+    imKonflikt: s.imKonflikt,
+    revalidierung: s.revalidierung,
+    geringesVertrauen: s.geringesVertrauen,
+  };
+}
+
+/** Ein Urteil gilt nur für genau diese Kennzahlen. */
+export function signalSignatur(s: BereichsSignal): string {
+  return JSON.stringify(gapSignal(s));
+}
+
+function zahlZu(key: SprintReasonKey, s: BereichsSignal): number {
+  switch (key) {
+    case "conflicts":
+      return s.imKonflikt ?? 0;
+    case "revalidation":
+      return s.revalidierung;
+    case "lowTrust":
+      return s.geringesVertrauen;
+    case "thinKnowledge":
+      return s.validiert;
+  }
+}
+
+function regelSprint(s: BereichsSignal): KnowledgeSprint | null {
+  const keys: SprintReasonKey[] = [];
+  if ((s.imKonflikt ?? 0) > 0) {
+    keys.push("conflicts");
+  }
+  if (s.revalidierung > 0) {
+    keys.push("revalidation");
+  }
+  if (s.geringesVertrauen > 0) {
+    keys.push("lowTrust");
+  }
+  if (s.validiert < WENIG_VALIDIERT) {
+    keys.push("thinKnowledge");
+  }
+  if (keys.length === 0) {
+    return null;
+  }
+  return {
+    category: s.bereich,
+    reasons: keys.map((key) => ({ key, count: zahlZu(key, s) })),
+    workItems: s.workItems,
+    days: Math.min(SPRINT_MAX_TAGE, Math.max(1, Math.ceil(s.workItems / OBJEKTE_PRO_TAG))),
+    source: "rule",
+  };
+}
+
+const GRUND_REIHENFOLGE: readonly SprintReasonKey[] = [
+  "conflicts",
+  "revalidation",
+  "lowTrust",
+  "thinKnowledge",
+];
+
+function reasonerSprint(s: BereichsSignal, urteil: GapVerdict | null): KnowledgeSprint | null {
+  if (!urteil?.sprint) {
+    return null;
+  }
+  const keys = GRUND_REIHENFOLGE.filter((k) => urteil.schwerpunkte.includes(k));
+  const reasons: SprintReason[] = keys.map((key) => ({ key, count: zahlZu(key, s) }));
+  if (reasons.length === 0) {
+    return null;
+  }
+  return {
+    category: s.bereich,
+    reasons,
+    workItems: s.workItems,
+    days: Math.min(SPRINT_MAX_TAGE, Math.max(1, Math.round(urteil.tage))),
+    source: "reasoner",
+  };
+}
+
+export function sprints(input: MetricsInput): KnowledgeSprint[] {
+  const out: KnowledgeSprint[] = [];
+  for (const s of bereichsSignale(input)) {
+    const analyse = input.gapVerdicts?.get(s.bereich);
+    const vorschlag =
+      analyse?.signatur === signalSignatur(s) ? reasonerSprint(s, analyse.urteil) : regelSprint(s);
+    if (vorschlag) {
+      out.push(vorschlag);
     }
-    if (faellig.length > 0) {
-      reasons.push({ key: "revalidation", count: faellig.length });
-    }
-    if (schwach.length > 0) {
-      reasons.push({ key: "lowTrust", count: schwach.length });
-    }
-    if (validiert < WENIG_VALIDIERT) {
-      reasons.push({ key: "thinKnowledge", count: validiert });
-    }
-    if (reasons.length === 0) {
-      continue;
-    }
-    const workItems = new Set([...imKonflikt, ...faellig, ...schwach].map((k) => k.id)).size;
-    const days = Math.min(SPRINT_MAX_TAGE, Math.max(1, Math.ceil(workItems / OBJEKTE_PRO_TAG)));
-    out.push({ category, reasons, workItems, days });
   }
   out.sort(
     (a, b) =>
@@ -380,7 +480,9 @@ export function pilot(input: MetricsInput): PilotWindow[] {
   });
 }
 
-export function computeSnapshot(input: MetricsInput): Omit<ManagementSnapshot, "generatedAt"> {
+export function computeSnapshot(
+  input: MetricsInput,
+): Omit<ManagementSnapshot, "generatedAt" | "sprintAnalysis"> {
   const capital = capitalScore(input);
   return {
     overview: overview(input, capital.score),

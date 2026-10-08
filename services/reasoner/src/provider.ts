@@ -13,6 +13,8 @@ import type {
   InterviewResult,
   KnowledgeClass,
   KnowledgeRef,
+  LueckenBereich,
+  LueckenBereichsUrteil,
   ReasonerLocale,
   Relevanztext,
   StructureResult,
@@ -206,6 +208,14 @@ export interface ReasonerProvider {
     locale: ReasonerLocale,
     confidential: boolean,
   ): Promise<DuplicateJudgeResult | null>;
+  // R-1657 (ROADMAP 9.3): Lückenerkennung — urteilt über die Kennzahlen je Bereich, ob ein
+  // Wissens-Sprint angezeigt ist. NUR das echte Modell; der deterministische Fallback bewusst NICHT
+  // (die benannte Regel steht beim Aufrufer). Ungültige Antworten → null.
+  judgeKnowledgeGaps?(
+    bereiche: readonly LueckenBereich[],
+    locale: ReasonerLocale,
+    confidential: boolean,
+  ): Promise<LueckenBereichsUrteil[] | null>;
   // D-AISTATE PAKET 1 (bens V1, aistate-fix3): Egress-Politik des dahinterliegenden Clients —
   // `true` = dieser Provider darf vertrauliche Inhalte NICHT sehen (Cloud bzw. ein „lokal"
   // verdrahteter Endpunkt ohne bestätigte On-Prem-Origin). Der Reasoner nimmt ihn dann bei
