@@ -1,11 +1,14 @@
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import type { AuditService } from "../../../audit";
-import type {
-  ConflictInput,
-  ConflictService,
-  ConflictType,
-  OverlapService,
-  OverlapSettingsRepo,
+import { meldung, sprache } from "../../../auth";
+import {
+  type ConflictInput,
+  type ConflictService,
+  type ConflictType,
+  type OverlapService,
+  type OverlapSettingsRepo,
+  isConflictWorkKind,
+  isVorrangWahl,
 } from "../../../conflicts";
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE_STAGE,
@@ -140,6 +143,11 @@ export interface KoRoutesDeps {
   // OPTIONAL BLEIBT OPTIONAL: ein direkt konstruierter Routentest ohne Port bekommt weiterhin die
   // ehrliche Auslassung mit ihrem Grund — keine 0, keine erfundene Verknuepfungszahl.
   kanten?: WissensnetzDeps["kanten"];
+  // R-0235 / R-0749: „Hat geholfen" am angewendeten Wissensobjekt — ohne vorausgehende Antwort.
+  // Eine schmale Funktion statt des Ask-Dienstes (dieselbe Bauart wie `draftPromotion`); die
+  // Composition-Root verdrahtet `AskService.markKoHelpful`. Fehlt sie, antwortet die Aktion ehrlich
+  // mit 400 statt halb zu laufen.
+  hilfreich?: ((koId: string, actor: string) => Promise<void>) | undefined;
 }
 
 /**
@@ -425,6 +433,8 @@ type KoAktion =
   | "tags"
   // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet am Objekt setzen, ändern oder entfernen.
   | "domain"
+  // R-1632 / R-1633: die Geltung (Konzern/Werk/Schicht, optional Rolle) setzen oder entfernen.
+  | "geltung"
   | "confidentiality"
   // JOB 557: die Verantwortung am Objekt benennen (Recht `ko.validate`, s. den Zweig unten).
   | "ownership"
@@ -441,7 +451,10 @@ type KoAktion =
   // AM Objekt unter `:id` — sie passieren das Tor, mit demselben Gate wie `comment`.
   | "comment-resolve"
   | "comment-reopen"
-  | "revalidate";
+  | "revalidate"
+  // R-0235 / R-0749: „Hat geholfen" am angewendeten Objekt — Bewährung, ausdrücklich keine
+  // Prüfstimme. Arbeitet AM Objekt unter `:id` und passiert deshalb das Tor.
+  | "helpful";
 
 /**
  * `tor` — die Aktion arbeitet AM Objekt unter `:id`. Sie passiert das Sichtbarkeitstor.
@@ -485,6 +498,8 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   tags: "tor",
   // R-0431 (K2): arbeitet AM Objekt unter `:id` — es passiert das Sichtbarkeitstor wie `category`.
   domain: "tor",
+  // R-1632 / R-1633: arbeitet AM Objekt unter `:id` — es passiert das Sichtbarkeitstor wie `domain`.
+  geltung: "tor",
   confidentiality: "tor",
   // JOB 557: die Aktion arbeitet AM Objekt unter `:id` — sie passiert das Sichtbarkeitstor.
   ownership: "tor",
@@ -500,6 +515,8 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   "comment-resolve": "tor",
   "comment-reopen": "tor",
   revalidate: "tor",
+  // R-0235 / R-0749: nur wer das Objekt sehen darf, kann melden, dass es geholfen hat.
+  helpful: "tor",
 };
 
 /** Die Grundmenge als Datum — der Wächter liest sie, statt sie noch einmal abzuschreiben. */
@@ -582,6 +599,8 @@ interface PutBody {
   tags?: string[];
   /** R-0431 (K2): das Fachgebiet (`action: "domain"`). `unknown`, gelesen an der `case`. */
   domain?: unknown;
+  /** R-1632 / R-1633: die Geltung (`action: "geltung"`); `null` entfernt sie. Geprüft im Dienst. */
+  geltung?: unknown;
   conflict?: ConflictInput;
   /**
    * R-0238 — DIE WIDERSPRECHENDE ABLEHNUNG. Nur an `rate` mit `verdict: "down"`: das Objekt, dem
@@ -597,6 +616,8 @@ interface PutBody {
   fortsetzungFuerFassung?: unknown;
   conflictId?: string;
   decision?: string;
+  /** R-0263: die Vorrang-Wahl an `resolve-conflict`. `unknown`, geprüft an der `case`. */
+  vorrang?: unknown;
   newAuthor?: string;
   text?: string;
   /**
@@ -1786,12 +1807,15 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (loaded.reason === "invalid") {
               return badRequest(loaded.message ?? "Entwurfsinhalt ungueltig.");
             }
+            // Aufnahme gesamt-fehlermeldungen (P-Q9): dieselben zwei Katalogsätze wie die
+            // Entwurfsrouten (`capture-routes.ts`, JOB 3956) — bis hierher sprach dieser Weg in
+            // einer EN/NL-Sitzung als einziger noch Deutsch. Status und Code bleiben unverändert.
             reply.code(loaded.reason === "not-found" ? 404 : 403).send({
               error: loaded.reason === "not-found" ? "NOT_FOUND" : "FORBIDDEN",
-              message:
-                loaded.reason === "not-found"
-                  ? "Entwurf nicht gefunden."
-                  : "Entwurf nicht verfuegbar.",
+              message: meldung(
+                loaded.reason === "not-found" ? "DRAFT_NOT_FOUND" : "DRAFT_NOT_VISIBLE",
+                sprache(request),
+              ),
             });
             return;
           }
@@ -2977,7 +3001,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             const stelle = leseStelle(body.stelle);
             if (stelle === "unlesbar") {
               return badRequest(
-                "stelle muss Fassung (koVersion), Art (absatz, tabelle, bild), Abschnitt und Textstelle tragen.",
+                "stelle muss Fassung (koVersion), Art (absatz, tabelle, bild, anhang), Abschnitt und Textstelle tragen; eine Position (punkt, x und y je 0..1) gibt es nur bei Bild oder Anhang, eine Seite (ganzzahlig ab 1) nur bei einem Anhang.",
               );
             }
             reply.code(200).send(
@@ -3481,6 +3505,20 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             reply.code(200).send(await ko.setDomain(id, body.domain, user.id));
             return;
           }
+          case "geltung": {
+            // R-1632 / R-1633: dasselbe Recht wie das Fachgebiet (`ko.create`). Das Feld muss im
+            // Rumpf stehen — `null` entfernt die Angabe, ein fehlendes Feld ist kein Entfernen.
+            // Form und Vererbungsregel prüft der Dienst (`normalizeGeltung`, ungültig → 400).
+            const user = await guards.requirePermission("ko.create", request, reply);
+            if (!user) {
+              return;
+            }
+            if (!("geltung" in body)) {
+              return badRequest("geltung fehlt.");
+            }
+            reply.code(200).send(await ko.setGeltung(id, body.geltung, user.id));
+            return;
+          }
           case "tags": {
             const user = await guards.requirePermission("ko.create", request, reply);
             if (!user) {
@@ -3555,6 +3593,14 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!body.conflict) {
               return badRequest("conflict fehlt.");
             }
+            // R-0252: die Arbeitsart ist optional; steht sie da, muss sie eine der drei sein. Ein
+            // unbekannter Wert würde sonst als Auskunft „Art der Arbeit" am Konflikt stehen.
+            if (
+              body.conflict.arbeitsart !== undefined &&
+              !isConflictWorkKind(body.conflict.arbeitsart)
+            ) {
+              return badRequest("conflict.arbeitsart muss eines von regel, sache, version sein.");
+            }
             reply.code(201).send(await konfliktAnlegen(body.conflict, user.id));
             return;
           }
@@ -3566,7 +3612,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!body.conflictId || !body.decision) {
               return badRequest("conflictId/decision fehlt.");
             }
-            reply.code(200).send(await conflicts.resolve(body.conflictId, user.id, body.decision));
+            // R-0263: optional — welcher der beiden Punkte gilt bzw. einschränkt. Hier nur die Form;
+            // ob `gilt` zum Konflikt gehört und der Geltungsbereich steht, prüft der Dienst.
+            const roh = body.vorrang;
+            const vorrang = isVorrangWahl(roh) ? roh : undefined;
+            if (roh !== undefined && vorrang === undefined) {
+              return badRequest(
+                "vorrang muss { art: ueberstimmt|schraenkt_ein, gilt, geltungsbereich? } sein.",
+              );
+            }
+            const konfliktId = body.conflictId;
+            const text = body.decision;
+            reply.code(200).send(await conflicts.resolve(konfliktId, user.id, text, vorrang));
             return;
           }
           case "transfer-author": {
@@ -3586,6 +3643,23 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return;
             }
             reply.code(200).send(await lifecycle.confirmStillValid(id, user.id));
+            return;
+          }
+          // R-0235 / R-0749: „Hat geholfen" am Objekt selbst. Recht wie beim Antwortfeedback
+          // (`ko.read`, POST /api/ask/helpful); die Sichtbarkeit hat das Tor oben entschieden.
+          // Wirkung: ein leichter Trust-Schritt + Audit `answer.helpful` (genau einmal je Person und
+          // Objekt, über beide Wege gemeinsam), Rückmeldung an Autor und Urheber über die Glocke.
+          // Keine Prüfstimme: Status, Fassung und Validierungen bleiben unberührt.
+          case "helpful": {
+            const user = await guards.requirePermission("ko.read", request, reply);
+            if (!user) {
+              return;
+            }
+            if (!deps.hilfreich) {
+              return badRequest("„Hat geholfen“ ist in diesem Aufbau nicht verfügbar.");
+            }
+            await deps.hilfreich(id, user.id);
+            reply.code(204).send();
             return;
           }
           default:

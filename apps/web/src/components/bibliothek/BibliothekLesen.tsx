@@ -24,7 +24,12 @@ import {
   commitDocumentAppend,
   newAppendOperationId,
 } from "../../lib/appendToArticle";
-import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../../lib/bodyAiAssist";
+import {
+  applyBodyAssist,
+  applyBodyAssistBlock,
+  bodyTextForAssist,
+  spellingAssistHtmlOrNull,
+} from "../../lib/bodyAiAssist";
 import { appendExtractSections, normalizeExtractLocale } from "../../lib/bodyExtract";
 import {
   bodyFileLinksFromHtml,
@@ -1103,6 +1108,16 @@ export function BibliothekLesen({
   const act = useMutation({
     mutationFn: (body: KoAction) => endpoints.ko.act(koId, body),
     onSuccess: invalidate,
+    onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
+  });
+  // R-0235 / R-0749: „Hat geholfen" am Objekt selbst — Bewährung, keine Prüfstimme. Der Server
+  // zählt je Person und Objekt genau einmal; ein zweiter Klick ist ein ehrlicher No-op.
+  const hilfreich = useMutation({
+    mutationFn: () => endpoints.ko.helpful(koId),
+    onSuccess: () => {
+      invalidate();
+      push("success", t("ask.thanked"));
+    },
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
   const detailReview = useMutation({
@@ -2453,6 +2468,16 @@ export function BibliothekLesen({
                       {t("lib.revalidate")}
                     </MenuePunkt>
                   ) : null}
+                  <MenuePunkt
+                    testId="bib-menue-hilfreich"
+                    disabled={hilfreich.isPending || hilfreich.isSuccess}
+                    onClick={() => {
+                      hilfreich.mutate();
+                      schliessen();
+                    }}
+                  >
+                    {hilfreich.isSuccess ? t("ask.thanked") : t("ask.helpful")}
+                  </MenuePunkt>
                   {darfLoeschen ? (
                     <>
                       <MenueTrenner />
@@ -2773,6 +2798,7 @@ export function BibliothekLesen({
                 applyFn={(mode, _original, suggestion) =>
                   applyBodyAssist(mode, edit.bodyHtml, suggestion)
                 }
+                applySpelling={(suggestion) => spellingAssistHtmlOrNull(edit.bodyHtml, suggestion)}
                 onApply={(bodyHtml) => setEdit({ ...edit, bodyHtml })}
                 hintKey="capture.ai.bodyHint"
                 extraApplyActions={EDITOR_BLOCKS.map((block) => ({

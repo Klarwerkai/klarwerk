@@ -46,6 +46,8 @@ import {
   type EffectiveSearchDocument,
   composeEffectiveSearchDocument,
 } from "./effective-search-document";
+// R-1632 / R-1633: die Geltungsregel (Konzern/Werk/Schicht) — eine Fassung, Begründung dort.
+import { normalizeGeltung } from "./geltung";
 import {
   type KoMetadataProjection,
   metadataTextsEqual,
@@ -102,7 +104,7 @@ import { confirmedSourceAnchor } from "./source-anchor";
 // SCRUM-527 (WP2): Quell-URL-Allowlist an der Persistenzgrenze (nur absolute http/https).
 import { safeSourceUrl, sanitizeSources } from "./source-url";
 // P-WIKI-STELLENBEZUG: der Anker einer Rückfrage im Text — Prüfung und Vergleich.
-import { gleicheStelle, stelleImInhalt } from "./stellen-anker";
+import { gleicheStelle, stelleAmAnhang, stelleImInhalt } from "./stellen-anker";
 import {
   type AiCheckBasis,
   type AiCheckCoverage,
@@ -122,6 +124,8 @@ import {
   type KoCommentStelle,
   type KoCreateOperation,
   KoError,
+  // R-1107: der Verweis eines aufgegangenen Artikels auf den verbleibenden.
+  type KoMergedInto,
   // JOB 3667 R2: der gebundene Änderungsvorschlag (Fall 2 der Accountregel).
   type KoProposal,
   type KoRepairNote,
@@ -3479,7 +3483,16 @@ export class KoService {
             `Die Stelle wurde in Fassung v${stelle.koVersion} gewählt; der Eintrag steht inzwischen auf v${ko.version}. Der Beitrag wurde nicht angefügt — bitte die Stelle in der aktuellen Fassung neu wählen.`,
           );
         }
-        if (!stelleImInhalt(ko.bodyHtml, stelle)) {
+        // PLAN-SPRACHANMERKUNG: eine Stelle an einer hochgeladenen Zeichnung (PDF, CAD, Bild) hängt
+        // an der Anhangsliste dieser Fassung, nicht am Text.
+        if (stelle.art === "anhang") {
+          if (!stelleAmAnhang(ko.attachments, stelle)) {
+            throw new KoError(
+              "INVALID",
+              "Die gewählte Zeichnung ist in dieser Fassung kein eindeutiger Anhang des Eintrags.",
+            );
+          }
+        } else if (!stelleImInhalt(ko.bodyHtml, stelle)) {
           throw new KoError(
             "INVALID",
             "Die gewählte Stelle bestimmt in dieser Fassung keinen eindeutigen Block (Art, Abschnitt und Inhalt müssen zusammen passen).",
@@ -6078,6 +6091,37 @@ export class KoService {
     });
   }
 
+  // R-1632 / R-1633: die Geltung (Konzern/Werk/Schicht, optional Rolle) setzen, ändern oder mit
+  // `null` entfernen. Bauform wie `setDomain`: per KO serialisiert, Beleg im Audit, keine neue
+  // Inhaltsversion. Die Prüfung steht in `normalizeGeltung`; ein ungültiger Wert ist `INVALID` (400).
+  async setGeltung(id: string, roh: unknown, actor: string): Promise<KnowledgeObject> {
+    const eingang = normalizeGeltung(roh);
+    if (!eingang.ok) {
+      throw new KoError("INVALID", eingang.grund);
+    }
+    const nachher = eingang.geltung;
+    return this.mutateKo(id, (ko) => {
+      const vorher = ko.geltung;
+      if (JSON.stringify(vorher ?? null) === JSON.stringify(nachher ?? null)) {
+        return { updated: ko, value: ko };
+      }
+      const { geltung: _alt, ...ohne } = ko;
+      const updated: KnowledgeObject = nachher ? { ...ohne, geltung: nachher } : ohne;
+      return {
+        updated,
+        value: updated,
+        audit: async () => {
+          await this.audit?.record({
+            actor,
+            action: "ko.geltung-changed",
+            target: id,
+            payload: { vorher: vorher ?? null, nachher: nachher ?? null },
+          });
+        },
+      };
+    });
+  }
+
   // produkt:20261007:spaces — den führenden Space wechseln. Die Rechte prüft die Route (Schreibrecht
   // in Quell- und Zielspace, bestätigte Rechtevorschau). Der Dienst sichert nur zweierlei: der
   // Wechsel geht von GENAU dem Space aus, den die Vorschau gezeigt hat (`erwartet`, sonst
@@ -6387,6 +6431,65 @@ export class KoService {
               action: "ko.author-transferred",
               target: id,
               payload: { author },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
+  // ==============================================================================================
+  // R-1107 (Aufnahme gesamt-dublettenvergleich) — DEN AUFGEGANGENEN ARTIKEL KENNZEICHNEN.
+  // ==============================================================================================
+  //
+  // Der letzte Inhaltsschritt des Zusammenführen-Assistenten: der Führungsartikel hat seine neue
+  // Fassung bereits (`revise`), dieses Objekt bekommt den Verweis darauf. Es ändert sich NUR das
+  // Feld `mergedInto` — keine Inhaltsversion, kein Text, keine Quelle, kein Kommentar, keine
+  // Historie. Das Objekt bleibt im Bestand und dauerhaft lesbar.
+  //
+  // Bedingt wie `revise` mit `expectedVersion`: hat sich das Objekt seit der Vorschau bewegt, wird
+  // nichts geschrieben (`KO_STALE`). Ein zweites Zusammenführen desselben Objekts wird ebenso
+  // abgewiesen, statt den ersten Verweis zu überschreiben. WER das darf, entscheidet der Aufrufer
+  // (kuratorisch, R-0565) — dieser Dienst kennt keine Rechte.
+  async markMergedInto(
+    id: string,
+    ziel: Omit<KoMergedInto, "at" | "by">,
+    actor: string,
+    expectedVersion: number,
+  ): Promise<KnowledgeObject> {
+    if (ziel.koId === id) {
+      throw new KoError("INVALID", "Ein Wissensobjekt kann nicht in sich selbst aufgehen.");
+    }
+    return this.mutateKo(id, (ko) => {
+      this.pruefeErwarteteVersion(ko, expectedVersion);
+      if (ko.mergedInto) {
+        throw new KoError(
+          "KO_STALE",
+          "Dieses Wissensobjekt ist bereits in einem anderen Artikel aufgegangen. Es wurde nichts überschrieben.",
+        );
+      }
+      const mergedInto: KoMergedInto = {
+        ...ziel,
+        at: new Date(this.now()).toISOString(),
+        by: actor,
+      };
+      const updated: KnowledgeObject = { ...ko, mergedInto };
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.merged-into",
+              target: id,
+              payload: {
+                koId: ziel.koId,
+                version: ziel.version,
+                overlapId: ziel.overlapId,
+                eigeneVersion: ko.version,
+              },
             },
             tx,
           );
