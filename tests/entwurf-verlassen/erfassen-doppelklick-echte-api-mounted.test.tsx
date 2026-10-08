@@ -606,9 +606,10 @@ describe("entscheidung:14ce8681/8b909a1e · Fortschreiben und sichtbarer Hinweis
         "capture.bereitsGespeichertFortgeschrieben",
         "capture.bereitsGespeichertOeffnen",
       ]) {
-        expect(i18n.exists(key, { lng: sprache, fallbackLng: false }), `${sprache}: ${key}`).toBe(
-          true,
-        );
+        // Gelesen aus dem Paket DIESER Sprache — kein Rückfall auf Deutsch.
+        const eintrag: unknown = i18n.getResource(sprache, "translation", key);
+        expect(typeof eintrag, `${sprache}: ${key}`).toBe("string");
+        expect(String(eintrag).length, `${sprache}: ${key}`).toBeGreaterThan(10);
       }
       saetze.push(String(i18n.t("capture.bereitsGespeichert")));
     }

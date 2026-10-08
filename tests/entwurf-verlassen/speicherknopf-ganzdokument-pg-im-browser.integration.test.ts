@@ -1012,9 +1012,19 @@ describe("JOB 4352 Q · der sichtbare Speicherknopf im Browser, gegen echtes Pos
         expect(leitung.schluessel[1], "die Wiederholung trägt einen anderen Schlüssel").toBe(
           leitung.schluessel[0],
         );
-        expect(leitung.rumpfe[1], "die Wiederholung schickt eine andere Nutzlast").toBe(
+        // entscheidung:14ce8681: die Wiederholung eines unklaren Vorgangs trägt zusätzlich das
+        // TRANSPORTFELD `fortschreiben` (wie `operationId` kein Dokumentinhalt). Verglichen wird
+        // deshalb der Rumpf ohne dieses eine Feld — Zeichen für Zeichen, ohne weitere Ausnahme.
+        const rumpf2 = JSON.parse(leitung.rumpfe[1] ?? "{}") as Record<string, unknown>;
+        expect(rumpf2.fortschreiben, "die Wiederholung trägt kein `fortschreiben`").toBe(true);
+        const { fortschreiben: _transport, ...ohneTransport } = rumpf2;
+        expect(JSON.stringify(ohneTransport), "die Wiederholung schickt eine andere Nutzlast").toBe(
           leitung.rumpfe[0],
         );
+        expect(
+          Object.hasOwn(JSON.parse(leitung.rumpfe[0] ?? "{}") as object, "fortschreiben"),
+          "schon der erste Versuch trug `fortschreiben`",
+        ).toBe(false);
         expect(leitung.uploads, "die Wiederholung hat erneut hochgeladen").toBe(1);
         expect(await zeilenMitQuellsatz(db), "Doppelbestand ohne Änderung des Menschen").toBe(
           vorherDatei + 1,
