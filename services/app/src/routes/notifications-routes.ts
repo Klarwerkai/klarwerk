@@ -42,18 +42,29 @@ export interface NotificationRoutesDeps {
 // PMO-FEA-0002: „Hat geholfen"-Ereignisse für den Originalautor. Bewusst ehrlich:
 // nur fremde Klicks (kein Selbst-Applaus), nur Einträge mit Autor/Titel-Payload,
 // begrenzt auf die letzten 12 — kein Zähler, keine Rangliste (EK-19-Richtung).
+//
+// RECHERCHE:pmo-fea-0002: „auch nach Übergabe der Verantwortung". Gemeldet wird dem Autor zum
+// Zeitpunkt des Danks (`koAuthor`) UND dem ursprünglichen Autor (`koOriginalAuthor`) — derselbe
+// Klick erzeugt für eine Person genau eine Meldung. Ein Eintrag, der NUR über den Urheber trifft,
+// trägt `nurUrheber`: dort greift die Autor-Ausnahme der Sichtbarkeit nicht mehr (s. loadFeed).
+// Alt-Einträge ohne `koOriginalAuthor` wirken wie bisher nur für `koAuthor`.
 export function deriveImpacts(
   entries: Array<{ actor: string; target: string; at: string; payload: Record<string, unknown> }>,
   userId: string,
-): ImpactNotice[] {
-  const out: ImpactNotice[] = [];
+): Array<ImpactNotice & { nurUrheber?: true }> {
+  const out: Array<ImpactNotice & { nurUrheber?: true }> = [];
   for (const e of entries) {
     const koAuthor = e.payload.koAuthor;
+    const koOriginalAuthor = e.payload.koOriginalAuthor;
     const koTitle = e.payload.koTitle;
-    if (e.actor === userId || koAuthor !== userId || typeof koTitle !== "string") {
+    if (e.actor === userId || typeof koTitle !== "string") {
       continue;
     }
-    out.push({ koId: e.target, title: koTitle, at: e.at });
+    if (koAuthor === userId) {
+      out.push({ koId: e.target, title: koTitle, at: e.at });
+    } else if (koOriginalAuthor === userId) {
+      out.push({ koId: e.target, title: koTitle, at: e.at, nurUrheber: true });
+    }
   }
   return out.slice(-12);
 }
@@ -80,7 +91,7 @@ async function loadFeed(
   ]);
   const viewer = { viewerId: user.id };
   const gapViews = gaps.map((gap) => redactGapForViewer(gap, viewer));
-  const impacts = deriveImpacts(helpful, user.id);
+  const alleImpacts = deriveImpacts(helpful, user.id);
   const seen = new Set(seenIds);
   // ================================================================================================
   // AUFTRAG-mega74 BLOCK D (G5) — DIE SCHWÄCHSTE TÜR DES GANZEN SATZES.
@@ -91,9 +102,12 @@ async function loadFeed(
   // `title` in den Feed (notification-feed.ts:57-68 und :81-89). Nur der Gap-Zweig war redigiert.
   // Wer ein vertrauliches Objekt nicht öffnen durfte, bekam seinen Kern in der Glocke serviert.
   //
-  // Die Impacts brauchen KEIN Tor: `deriveImpacts` gibt ausschliesslich Titel von Objekten aus,
-  // deren AUTOR der Betrachter selbst ist (`koAuthor !== userId` → continue, :36) — die trägt die
-  // Autor-Ausnahme des Prädikats ohnehin.
+  // Die Impacts des AUTORS brauchen KEIN Tor: dort ist der Betrachter selbst `koAuthor` — die
+  // trägt die Autor-Ausnahme des Prädikats ohnehin.
+  //
+  // RECHERCHE:pmo-fea-0002: Meldungen, die NUR über den ursprünglichen Autor treffen (`nurUrheber`),
+  // laufen dagegen durch dasselbe Tor wie die Zuweisungen. Nach einer Übergabe ist der Urheber
+  // nicht mehr `author`; darf er das Objekt nicht mehr sehen, erscheint auch dessen Titel nicht.
   //
   // AUFTRAG-mega76 BLOCK A: die drei Aufrufe standen unter `deps.kos ? ... : <ungefiltert>`. Der
   // Zugang ist jetzt Pflicht, und die Filter laufen UNBEDINGT — es gibt keinen Zweig mehr, der das
@@ -108,6 +122,16 @@ async function loadFeed(
   // entzogen wurde, der sieht auch dessen Titel in der Glocke nicht mehr.
   const offeneKenntnisnahmen = (await deps.kenntnisnahmen?.meldungenFuer(user.id)) ?? [];
   const sichtbareKenntnisnahmen = await sichtbareEintraege(user, offeneKenntnisnahmen, deps.kos);
+  const sichtbareUrheberImpacts = new Set(
+    await sichtbareEintraege(
+      user,
+      alleImpacts.filter((im) => im.nurUrheber),
+      deps.kos,
+    ),
+  );
+  const impacts: ImpactNotice[] = alleImpacts
+    .filter((im) => !im.nurUrheber || sichtbareUrheberImpacts.has(im))
+    .map(({ koId, title, at }) => ({ koId, title, at }));
   return buildNotifications({
     conflicts: sichtbareKonflikte,
     overlaps: sichtbareUeberschneidungen,
