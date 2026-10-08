@@ -2212,8 +2212,17 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     //   +   2  dieser Auftrag, im Hauptstand nicht enthalten: `AiSurfaceNotice`, `ErgebnisStufeMarke`
     //   = 519. EHRLICH GESAGT: GERECHNET, nicht gemessen — die Hand startet keine Tests. Weicht der
     // Prüflauf ab, nennt die Meldung die gemessene Zahl; die gehört dann hierher.
+    //
+    // NACHARBEIT 10 · GEMESSEN 522. Am Kandidaten 46e7f627 meldete der Sammler wörtlich „gemessen:
+    // 522 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 669 Quelldateien … expected
+    // { komponenten: 522, … } to deeply equal { komponenten: 519, … }"
+    // (HISTORIE/nacharbeit-10/PRUEFUNG/nacharbeit-9-komponentensammler.log). Die Rechnung 519 war
+    // für ihren Stand richtig; danach wurde der Hauptstand 15102c19d eingemischt, und der bringt
+    // laut Diff 1139536b..15102c19d genau DREI Komponenten mit: `LueckenAnsprechpartner`,
+    // `Vorschlagsliste`, `Vorschlag` — keine entfernt. 519 + 3 = 522 deckt sich mit der Messung.
+    // `anbieter` 1 und `traeger` 2 sind unverändert — beide Seiten der Meldung nennen 1 und 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 519,
+      komponenten: 522,
       anbieter: 1,
       traeger: 2,
     });
