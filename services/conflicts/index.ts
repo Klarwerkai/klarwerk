@@ -5,6 +5,14 @@ export type { ConflictServiceDeps, DryRunConflict } from "./src/service";
 // versions-konditionalen Inserts (insertIfVersionsCurrent) — der App-Root bindet sie an den KO-Store.
 export { InMemoryConflictRepo, type ConflictRepo, type IsKoVersionCurrent } from "./src/repo";
 export { PgConflictRepo, CONFLICTS_SCHEMA } from "./src/repo-pg";
+// Aufnahme 20260922 · Prüfung-Gedächtnis (R-1103/R-1105): je Paar der zuletzt beurteilte Textstand.
+export {
+  type ConflictMemoryRepo,
+  type PairMemoryEntry,
+  type PairMemoryOutcome,
+  InMemoryConflictMemoryRepo,
+  PgConflictMemoryRepo,
+} from "./src/pair-memory";
 export { ConflictError } from "./src/types";
 // R-0252: die Arbeitsart (Regel/Sache/Version) — das Prädikat prüft den Drahtwert der Anlage-Route.
 export { isConflictWorkKind } from "./src/types";
