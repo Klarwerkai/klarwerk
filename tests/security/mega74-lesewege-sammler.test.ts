@@ -819,6 +819,8 @@ const REGISTER: Record<string, Eintrag> = {
     // R-1089: die Quittung nennt nur den Titel einer Quelle, die DIESEM Aufrufer im eigenen
     // Antwortvorgang ausgeliefert wurde (Beleg-Bindung), nie die verantwortliche Person.
     "POST /api/ask/report": "Rückmeldung des Aufrufers — Quittung zur eigenen Quelle.",
+    // R-1649: Antwort nur `{ vermerkt, entwurfId }` — der eigene Vermerk und der eigene Entwurf.
+    "POST /api/ask/not-helpful": "Rückmeldung des Aufrufers; optional eigener Entwurf.",
     "PUT /api/validation/settings": "users.manage.",
     "PUT /api/external/policy": "users.manage.",
     "POST /api/lifecycle/couple": "ko.create; Antwort ohne KO-Inhalt.",

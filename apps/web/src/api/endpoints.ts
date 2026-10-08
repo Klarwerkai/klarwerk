@@ -908,6 +908,14 @@ export const endpoints = {
     // R-1089: „Antwort falsch / Quelle passt nicht" — derselbe Beleg; die Antwort ist die Quittung.
     report: (koId: string, receipt: string, grund: AntwortMeldeGrund) =>
       api.post<AntwortMeldungQuittung>("/ask/report", { koId, receipt, grund }),
+    // R-1649: „nicht hilfreich" an der tragenden Quelle — derselbe Receipt wie beim „Danke";
+    // ein mitgeschickter abweichender Weg wird serverseitig ein Entwurf (`entwurfId`).
+    notHelpful: (body: {
+      koId: string;
+      receipt: string;
+      alternative?: string;
+      entwurfTitel?: string;
+    }) => api.post<{ vermerkt: boolean; entwurfId: string | null }>("/ask/not-helpful", body),
   },
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler (nur eigene Beiträge, nur Zahlen).
   me: {
