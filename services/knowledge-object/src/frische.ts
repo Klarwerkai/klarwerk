@@ -226,6 +226,7 @@ type FrischeKo = Pick<
   | "oeffentlich"
   | "frischeSignal"
   | "fristBestaetigung"
+  | "fristGrundlage"
 >;
 
 function zeit(wert: string | undefined): number {
@@ -312,8 +313,49 @@ interface Halbwertszeit {
 }
 
 /** Beginn des laufenden Stands in ms: letzte Fassung oder letzte Fristbestätigung — `NaN` ohne Datum. */
-function fristBezugMs(ko: FrischeKo): number {
+function fristBezugMs(
+  ko: Pick<KnowledgeObject, "createdAt" | "history" | "fristBestaetigung">,
+): number {
   return spaetester(letzteFassungMs(ko), zeit(ko.fristBestaetigung?.at));
+}
+
+/**
+ * R-0248 (Nacharbeit 7, Bens Befund) — DIE KATEGORIE GEHÖRT ZUM BESTÄTIGTEN STAND.
+ *
+ * Eine Kategorie wird ohne neue Fassung und ohne Fristbestätigung geändert (Einordnung,
+ * `KoService.updateCategory`). Rechnete die Frist mit der JETZIGEN Kategorie, gäbe schon das
+ * Umkategorisieren eines abgelaufenen Objekts es wieder frei — etwa von einer gelernten 40-Tage-Frist
+ * auf die 365-Tage-Vorgabe einer Kategorie ohne Lernstand.
+ *
+ * Deshalb hält der erste Kategoriewechsel innerhalb eines Stands die Kategorie fest, mit der dieser
+ * Stand begann (`fristGrundlage`, mit dem Beginn des Stands als `ab`). Solange der Stand läuft,
+ * rechnet die Frist mit ihr. Beginnt ein neuer Stand (neue Fassung oder Fristbestätigung des
+ * Verantwortlichen), passt `ab` nicht mehr — dann gilt die aktuelle Kategorie.
+ */
+function fristKategorie(ko: FrischeKo): string {
+  const grundlage = ko.fristGrundlage;
+  return grundlage && grundlage.ab === iso(fristBezugMs(ko)) ? grundlage.kategorie : ko.category;
+}
+
+/**
+ * R-0248: die Festschreibung beim Kategoriewechsel (s. `fristKategorie`) — für `updateCategory`.
+ * Eine Grundlage, die schon zum laufenden Stand gehört, bleibt stehen (der ERSTE Wechsel zählt);
+ * eine aus einem früheren Stand wird ersetzt. Ohne lesbaren Beginn gibt es nichts festzuhalten.
+ */
+export function fristGrundlageBeiKategoriewechsel(
+  ko: Pick<
+    KnowledgeObject,
+    "category" | "createdAt" | "history" | "fristBestaetigung" | "fristGrundlage"
+  >,
+): { kategorie: string; ab: string } | undefined {
+  const ab = iso(fristBezugMs(ko));
+  if (ab === null) {
+    return ko.fristGrundlage;
+  }
+  if (ko.fristGrundlage?.ab === ab) {
+    return ko.fristGrundlage;
+  }
+  return { kategorie: ko.category, ab };
 }
 
 /**
@@ -329,7 +371,7 @@ function halbwertszeitVon(
 ): Halbwertszeit {
   const beginn = fristBezugMs(ko);
   const aus = Number.isFinite(beginn)
-    ? gelernt?.zum(kategorieSchluessel(ko.category), beginn)
+    ? gelernt?.zum(kategorieSchluessel(fristKategorie(ko)), beginn)
     : undefined;
   if (aus) {
     return { tage: aus.tage, herkunft: "gelernt", beobachtungen: aus.beobachtungen };

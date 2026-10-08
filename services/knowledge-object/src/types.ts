@@ -685,6 +685,11 @@ export interface KnowledgeObject {
   // Regel und Ableitung in `frische.ts`.
   frischeSignal?: KoFrischeSignal;
   fristBestaetigung?: KoFrischeSignal;
+  // R-0248 (Nacharbeit 7): die Kategorie, mit der der laufende Stand begann (`ab` = Beginn des
+  // Stands), festgehalten beim ersten Kategoriewechsel innerhalb dieses Stands — damit ein reines
+  // Umkategorisieren eine abgelaufene Frist nicht verlängert. Gesetzt nur von
+  // `KoService.updateCategory`; Regel in `frische.ts` (`fristKategorie`). Optional, keine Migration.
+  fristGrundlage?: { kategorie: string; ab: string };
   asset: string | null;
   createdAt: string;
   history: HistoryEntry[];

@@ -50,6 +50,7 @@ import {
 import {
   type GelernteHalbwertszeiten,
   beobachtungenAus,
+  fristGrundlageBeiKategoriewechsel,
   halbwertszeitenAusVerlauf,
 } from "./frische";
 import { normalizeGeltung } from "./geltung";
@@ -6074,7 +6075,12 @@ export class KoService {
       id,
       actor,
       { action: "ko.category-changed", grund: "ko.updateCategory" },
-      (ko) => ({ ...ko, category }),
+      // R-0248 (Nacharbeit 7): die Kategorie des laufenden Stands bleibt Grundlage seiner Frist.
+      (ko) => {
+        const grundlage =
+          ko.category === category ? ko.fristGrundlage : fristGrundlageBeiKategoriewechsel(ko);
+        return { ...ko, category, ...(grundlage ? { fristGrundlage: grundlage } : {}) };
+      },
       opts,
     );
   }

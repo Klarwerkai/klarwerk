@@ -154,6 +154,28 @@ describe("Nacharbeit 5 · Löschen oder Umkategorisieren eines anderen Objekts v
     expect(await abgelaufen(w)).toBe(true);
   });
 
+  it("Nacharbeit 7 · das abgelaufene Ziel SELBST wird umkategorisiert — es bleibt abgelaufen", async () => {
+    const w = await aufbau();
+    // „Ohne Lernstand" hat keine Beobachtungen — dort gälte die 365-Tage-Vorgabe.
+    await w.ko.updateCategory(w.zielId, "Ohne Lernstand", "admin");
+    w.uhr.jetzt += TAG;
+    const ziel = await w.ko.get(w.zielId);
+    expect(ziel?.category).toBe("Ohne Lernstand");
+    expect(ziel?.fristGrundlage?.kategorie).toBe("Anlage 7");
+    expect(await abgelaufen(w)).toBe(true);
+    expect(await antwortKlasse(w)).toBe("ungeprueft");
+
+    // Ein zweiter Wechsel im selben Stand ändert die festgehaltene Grundlage nicht.
+    await w.ko.updateCategory(w.zielId, "Noch woanders", "admin");
+    expect((await w.ko.get(w.zielId))?.fristGrundlage?.kategorie).toBe("Anlage 7");
+    expect(await abgelaufen(w)).toBe(true);
+
+    // Erst die Bestätigung des Verantwortlichen beginnt einen neuen Stand — mit der neuen Kategorie.
+    await w.ko.bestaetigeFrische(w.zielId, "anna");
+    expect(await abgelaufen(w)).toBe(false);
+    expect(await antwortKlasse(w)).toBe("gesichert");
+  });
+
   it("die Wiederfreigabe hängt an der Bestätigung des Verantwortlichen", async () => {
     const w = await aufbau();
     await w.ko.delete(w.lernendId, "admin");
