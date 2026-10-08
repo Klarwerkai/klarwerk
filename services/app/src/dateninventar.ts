@@ -108,7 +108,7 @@ export const DATENINVENTAR: readonly Datenart[] = [
       "Kennungen von Autoren, Bearbeitern, Verantwortlichen und Kommentatoren; Freitext kann Angaben über Dritte enthalten.",
     ablage: { ort: DATENBANK, tabellen: ["kos", "ko_versions"] },
     taetigkeit: "wissen",
-    loeschung: `${PAPIERKORB} Frühere Fassungen in ko_versions bleiben nach der Endlöschung stehen (R-0634, offen).`,
+    loeschung: `${PAPIERKORB} Mit Datenbank nimmt die Endlöschung die Fassungen in ko_versions per Fremdschlüssel (ON DELETE CASCADE, R-0846) mit; Altbestand vor der Bereinigung (NOT VALID) kann verwaiste Fassungen tragen.`,
     frist: "Fachlicher Lebenszyklus; nur der Papierkorb hat eine Frist (30 Tage).",
     selbstauskunft: { enthalten: true },
   },
@@ -139,8 +139,9 @@ export const DATENINVENTAR: readonly Datenart[] = [
     personenbezugGrund: "Kann die Kennung der handelnden Person tragen.",
     ablage: { ort: DATENBANK, tabellen: ["ko_evidence"] },
     taetigkeit: "wissen",
-    loeschung: "Kein Löschweg; bleibt nach der Endlöschung stehen (R-0634, offen).",
-    frist: BETREIBERFRIST,
+    loeschung:
+      "Folgt mit Datenbank der Endlöschung des Wissensobjekts per Fremdschlüssel (ON DELETE CASCADE, R-0846); Altbestand vor der Bereinigung (NOT VALID) kann verwaiste Belege tragen.",
+    frist: "Wie das Wissensobjekt.",
     selbstauskunft: {
       enthalten: false,
       grund: "Je Wissensobjekt in dessen Herkunftsansicht einsehbar.",
@@ -471,6 +472,58 @@ export const DATENINVENTAR: readonly Datenart[] = [
     loeschung: "Kein Löschweg.",
     frist: BETREIBERFRIST,
     selbstauskunft: { enthalten: false, grund: "Technische Marken ohne Inhalt." },
+  },
+  {
+    id: "interaktionsgedaechtnis",
+    name: "Interaktionsgedächtnis",
+    inhalt:
+      "Je Konto gemerkte frühere Fragen mit der damaligen Antwort im Wortlaut und Vorlieben; Herkunft (eigene Eingabe oder geprüfte eigene Antwortkennung), Vertraulichkeit, Aufbewahrungsfrist.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Gehört genau einem Konto; Frage- und Antworttext sind Freitext und können sensible Angaben enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["interaktions_gedaechtnis"] },
+    taetigkeit: "fragen",
+    loeschung:
+      "Einzeln und vollständig durch das Konto selbst löschbar; abgelaufene Einträge löscht ein Aufräumlauf endgültig.",
+    frist: "Je Eintrag gewählt: 30, 90 oder 365 Tage (Vorgabe 90).",
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Nur das Konto selbst sieht, lädt und löscht sein Gedächtnis (eigene Fläche); die Verwaltung hat bewusst keinen Zugriff, deshalb steht es nicht in der auch von ihr erstellbaren Auskunftsdatei.",
+    },
+    befund:
+      "Anders als die Antwortbelege speichert das Gedächtnis Frage- UND Antworttext — aber nur, was das Konto selbst ablegt, mit Löschfrist.",
+  },
+  {
+    id: "livewallfotos",
+    name: "Fotos der Live-Wand",
+    inhalt: "Ein freiwillig hochgeladenes Porträt je Konto (Rasterbild als Daten-URL) mit Zeitpunkt.",
+    personenbezug: "ja",
+    personenbezugGrund: "Bild der Person, ihrem Konto zugeordnet.",
+    ablage: { ort: DATENBANK, tabellen: ["livewall_fotos"] },
+    taetigkeit: "betrieb",
+    loeschung: "Widerruf durch das Konto löscht die Bilddaten (nicht nur ein Merker).",
+    frist: "Bis zum Widerruf.",
+    selbstauskunft: {
+      enthalten: false,
+      grund: "Selbst hochgeladen und an der Live-Wand-Einstellung einsehbar und widerrufbar.",
+    },
+  },
+  {
+    id: "spaces",
+    name: "Arbeitsräume (Spaces)",
+    inhalt:
+      "Fassungen der Arbeitsräume mit Name, Zweck, zuständiger Person, Mitgliedern samt Recht, Ansichten, anlegender und ändernder Kennung.",
+    personenbezug: "ja",
+    personenbezugGrund: "Kennungen der zuständigen Person, der Mitglieder und der Bearbeiter.",
+    ablage: { ort: DATENBANK, tabellen: ["spaces_fassungen"] },
+    taetigkeit: "wissen",
+    loeschung: "Kein Löschweg — jede Fassung bleibt zuordenbar.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund: "Je Space mit Zuständigkeit und Mitgliedern in der Space-Ansicht einsehbar.",
+    },
   },
   {
     id: "loeschantraege",

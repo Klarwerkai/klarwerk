@@ -299,12 +299,13 @@ export function MeldungenListe({
                   className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${
                     read
                       ? "bg-hairline"
-                      : n.kind === "conflict"
+                      : n.kind === "conflict" || n.kind === "escalation"
                         ? "bg-trust-crit-fill"
                         : n.kind === "duplicate"
                           ? "bg-ai"
                           : n.kind === "assignment" ||
                               n.kind === "kenntnisnahme" ||
+                              n.kind === "return" ||
                               n.kind === "loeschantrag"
                             ? "bg-ai"
                             : n.kind === "impact"
@@ -325,6 +326,17 @@ export function MeldungenListe({
                   {/* SCRUM-363: ruhige „Dir ist Review-Arbeit zugewiesen"-Kennzeichnung. */}
                   {n.kind === "assignment" ? (
                     <span className="font-semibold text-ai">{t("topbar.notifAssignment")}: </span>
+                  ) : null}
+                  {/* R-0894: Rückgabe zur Nacharbeit und Eskalation als eigene Art erkennbar. */}
+                  {n.kind === "return" ? (
+                    <span className="font-semibold text-ai">
+                      {t("meldungsart.rueckgabe.zeile")}:{" "}
+                    </span>
+                  ) : null}
+                  {n.kind === "escalation" ? (
+                    <span className="font-semibold text-trust-crit-text">
+                      {t("meldungsart.eskalation.zeile")}:{" "}
+                    </span>
                   ) : null}
                   {/* PMO-FEA-0002: wertschätzende, unaufdringliche Wirkungs-Rückmeldung. */}
                   {n.kind === "impact" ? (

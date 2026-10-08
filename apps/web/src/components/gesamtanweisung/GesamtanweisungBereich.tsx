@@ -250,6 +250,8 @@ function Listeneintrag({
     <li
       data-testid={`${LISTE_MARKE}-eintrag`}
       data-anweisung={eintrag.id}
+      // STATUS-FREIGABE: die Objektgrenze für Klaras Zeige-Modus (`lib/statusFreigabe.ts`).
+      data-objekt="anleitung"
       className="rounded-card border border-hairline bg-page p-3"
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -272,6 +274,7 @@ function Listeneintrag({
             geaendertAm: eintrag.geaendertAm,
             abschnitte: eintrag.sichtbareBausteine + eintrag.verborgeneBausteine,
             unvollstaendig: eintrag.unvollstaendig || eintrag.verborgeneBausteine > 0,
+            entscheidung: eintrag.entscheidung,
           }}
           rechte={rechte}
         />

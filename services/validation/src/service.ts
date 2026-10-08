@@ -137,7 +137,15 @@ export interface AssignmentNotice {
   koId: string;
   title: string;
   at: string;
+  // R-0894: die offene Zuweisung ist eine RÜCKGABE zur Nacharbeit (`ko.returned-to-*`) an die
+  // verantwortliche Person — dann ist `at` der Zeitpunkt der Rückgabe, nicht die Erstellzeit.
+  rueckgabe?: true;
 }
+
+// Dieselbe Lesart wie `isReturnedForRework` (apps/web/src/lib/validationStatus.ts): eine Rückgabe gilt,
+// solange danach weder überarbeitet noch neu bewertet wurde.
+const RUECKGABE_AKTIONEN = new Set(["ko.returned-to-author", "ko.returned-to-owner"]);
+const RUECKGABE_ENDE_AKTIONEN = new Set(["ko.revised", "ko.rated"]);
 
 // ================================================================================================
 // W3-B (KW-W3-19) — DIE VALIDIERUNGSREFERENZ AM RUECKGABEWERT
@@ -786,9 +794,19 @@ export class ValidationService {
     const notices: AssignmentNotice[] = [];
     for (const a of mine) {
       const ko = await this.koService.get(a.koId);
-      if (ko) {
-        notices.push({ koId: ko.id, title: ko.title, at: ko.createdAt });
+      if (!ko) {
+        continue;
       }
+      // R-0894: eine offene Zuweisung an die VERANTWORTLICHE Person entsteht durch eine Rückgabe
+      // (`returnToResponsible`) — kann aber auch eine gewöhnliche Zuweisung sein. Entschieden wird
+      // am Protokoll dieses einen Objekts (gefilterter Leseweg, kein Vollscan — R-0726).
+      const rueckgabeAm =
+        a.userId === responsibleOf(ko) ? await this.offeneRueckgabeAm(ko.id) : undefined;
+      notices.push(
+        rueckgabeAm
+          ? { koId: ko.id, title: ko.title, at: rueckgabeAm, rueckgabe: true }
+          : { koId: ko.id, title: ko.title, at: ko.createdAt },
+      );
     }
     return notices;
   }
@@ -809,6 +827,18 @@ export class ValidationService {
       bewertungen: bewertungen.filter((r) => r.userId === userId),
       zuweisungen: zuweisungen.filter((a) => a.userId === userId),
     };
+  }
+
+  // Zeitpunkt der noch offenen Rückgabe dieses Objekts, sonst undefined (auch ohne Protokoll).
+  private async offeneRueckgabeAm(koId: string): Promise<string | undefined> {
+    if (!this.audit) {
+      return undefined;
+    }
+    const relevant = (await this.audit.list({ target: koId })).filter(
+      (e) => RUECKGABE_AKTIONEN.has(e.action) || RUECKGABE_ENDE_AKTIONEN.has(e.action),
+    );
+    const letzte = relevant.sort((x, y) => x.seq - y.seq).at(-1);
+    return letzte && RUECKGABE_AKTIONEN.has(letzte.action) ? letzte.at : undefined;
   }
 
   // FR-VAL-06: Übersicht offen/erledigt pro Person.

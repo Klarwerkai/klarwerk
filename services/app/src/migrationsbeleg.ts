@@ -181,6 +181,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   { stufe: "KO_METADATA_PROJECTION_SCHEMA", risiko: "ADDITIV" },
   { stufe: "KO_PROJECTION_CONTROL_SCHEMA", risiko: "ADDITIV" },
   { stufe: "KO_EVIDENCE_SCHEMA", risiko: "ADDITIV" },
+  // R-0846 / L6: zwei Fremdschlüssel (`NOT VALID`, hinter Existenzprüfung, `duplicate_object`
+  // abgefangen). ADDITIV, nachgezählt: kein RISIKOMARKER — `ON DELETE CASCADE` ist eine Regel für
+  // künftige Löschungen, kein `DELETE FROM`; der Altbestand wird weder geprüft noch geändert.
+  { stufe: "KO_FREMDSCHLUESSEL_SCHEMA", risiko: "ADDITIV" },
   // JOB 4151: die kuratierten Beziehungen (`ko_kanten`) und die Bindung ihrer Wiederholschlüssel
   // (`ko_kanten_beitrag`, BEN R3). ADDITIV, und zwar nachgezählt statt behauptet: von den sechs
   // RISIKOMARKERN oben trifft KEINER — die Stufe besteht aus ZWEI `CREATE TABLE IF NOT EXISTS`,
@@ -263,6 +267,18 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein
   // Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "IMPORT_RUN_SOURCE_SYNC_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261007:spaces: die Fassungen der Spaces. ADDITIV, nachgezählt: ein einziges
+  // `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "SPACES_SCHEMA", risiko: "ADDITIV" },
+  // PMO-FEA-0003: die freiwilligen Fotos der Live-Wand. ADDITIV, nachgezählt: ein einziges
+  // `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "LIVEWALL_FOTO_SCHEMA", risiko: "ADDITIV" },
+  // R-0466: das Interaktionsgedächtnis. ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT EXISTS` und
+  // zwei `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "GEDAECHTNIS_SCHEMA", risiko: "ADDITIV" },
   // Betroffenenrechte (R-0661): die Löschanträge. ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT
   // EXISTS`, ein `CREATE UNIQUE INDEX IF NOT EXISTS` (partiell: ein offener Antrag je Konto) und ein
   // `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine

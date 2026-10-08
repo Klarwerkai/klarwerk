@@ -7,11 +7,16 @@ import type { LoeschantragMeldung } from "./loeschantraege";
 // nur E-Mail; die Glocke/Popover-Quelle wird hier aus vorhandenen Signalen mit
 // Zeitstempel aggregiert: offene Konflikte, offene Wissenslücken und — SCRUM-363 —
 // die persönlichen offenen Review-Zuweisungen der aktuellen Person.
+// R-0894: `escalation` (eskalierter Wahrheitskonflikt) und `return` (Rückgabe zur Nacharbeit an die
+// verantwortliche Person) sind eigene Arten — vorher liefen sie als gewöhnlicher Konflikt bzw. als
+// „Review für dich" mit dem Sprungziel der Prüfliste.
 export type NotificationKind =
   | "conflict"
+  | "escalation"
   | "duplicate"
   | "gap"
   | "assignment"
+  | "return"
   | "impact"
   | "kenntnisnahme"
   | "loeschantrag";
@@ -124,9 +129,12 @@ export function buildNotifications(input: {
   for (const c of input.conflicts) {
     // JOB 1125: `description` beschreibt den Widerspruch zwischen beiden Aussagen — bei redigiertem
     // Konflikt bleibt der Titel leer und der Marker trägt die Aussage.
+    // R-0894: ein eskalierter Konflikt bekommt eine eigene Kennung — die Eskalation ist neu, auch
+    // wenn der Konflikt vorher schon gesehen war, und erscheint deshalb wieder als ungelesen.
+    const eskaliert = c.status === "eskaliert";
     items.push({
-      id: `con-${c.id}`,
-      kind: "conflict",
+      id: eskaliert ? `esc-${c.id}` : `con-${c.id}`,
+      kind: eskaliert ? "escalation" : "conflict",
       title: c.redacted ? "" : c.description,
       at: c.createdAt,
       ...(c.redacted ? { redacted: true } : {}),
@@ -165,9 +173,11 @@ export function buildNotifications(input: {
     }
   }
   for (const a of input.assignments ?? []) {
+    // R-0894: eine Rückgabe trägt ihren Zeitpunkt in der Kennung — eine zweite Rückgabe desselben
+    // Objekts ist ein neuer, ungelesener Hinweis.
     items.push({
-      id: `assign-${a.koId}`,
-      kind: "assignment",
+      id: a.rueckgabe ? `ret-${a.koId}-${a.at}` : `assign-${a.koId}`,
+      kind: a.rueckgabe ? "return" : "assignment",
       title: a.title,
       at: a.at,
       koId: a.koId,
