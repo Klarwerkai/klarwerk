@@ -36,6 +36,66 @@ export function summarizeImportQueue(candidates: readonly ImportCandidate[]): Im
   };
 }
 
+// ================================================================================================
+// Aufnahme 20260922 · import-gesamtvertrag (R-0179, FR-EXT-01) — DIE BEFUNDÜBERSICHT DES IMPORTS.
+// ================================================================================================
+//
+// FR-EXT-01 verlangt die Ergebnis-Befunde in sechs Arten: Kandidaten, Konflikte, fehlend, veraltet,
+// Dubletten, IP. Jede Zahl hier stammt aus einer VORHANDENEN Quelle; keine Art bekommt eine eigene,
+// neue Erkennungsregel:
+//   · Kandidaten, Dubletten — die Prüfliste selbst (dieselben Zahlen wie `summarizeImportQueue`).
+//   · fehlend — `candidateFindings().missingInfo` (dieselbe Regel wie das Abzeichen am Kandidaten).
+//   · Konflikte — übernommene Kandidaten, deren Wissensobjekt in einem UNGELÖSTEN Konflikt steht
+//     (`GET /api/conflicts`, dieselbe Regel wie `validityProtectionView`).
+//   · veraltet — übernommene Kandidaten, deren Wissensobjekt zur erneuten Prüfung ansteht
+//     (`GET /api/lifecycle/pending`, dort „revalidierung-faellig").
+//   · schützenswert — Kandidaten, deren Quelle „vertraulich" oder „streng vertraulich" meldet. Eine
+//     eigene IP-Bewertung gibt es weiterhin nicht (`IpSensitivity` unten bleibt „nicht-bewertet").
+//
+// `null` heißt „nicht ermittelt" (das Signal ist nicht abrufbar) — nie „null Befunde". Ein noch
+// nicht übernommener Kandidat hat kein Wissensobjekt und kann darum weder Konflikt noch Veraltung
+// tragen; das ist eine Grenze der Quelle, keine Entwarnung.
+export const IMPORT_FINDING_KINDS = [
+  "candidates",
+  "conflicts",
+  "missing",
+  "outdated",
+  "duplicates",
+  "protected",
+] as const;
+export type ImportFindingKind = (typeof IMPORT_FINDING_KINDS)[number];
+
+export type ImportFindingCounts = Record<ImportFindingKind, number | null>;
+
+export interface ImportFindingSignals {
+  /** Sichtbare Konflikte; `undefined`, solange (oder weil) sie nicht gelesen werden konnten. */
+  conflicts?: readonly Conflict[] | undefined;
+  /** Kennungen der zur erneuten Prüfung anstehenden Objekte; `undefined` = nicht gelesen. */
+  pendingIds?: readonly string[] | undefined;
+}
+
+const SCHUETZENSWERT = new Set(["vertraulich", "streng_vertraulich"]);
+
+export function importFindingsOverview(
+  candidates: readonly ImportCandidate[],
+  signals: ImportFindingSignals = {},
+): ImportFindingCounts {
+  const queue = summarizeImportQueue(candidates);
+  // Nur übernommene Kandidaten tragen eine Objektkennung.
+  const koIds = candidates.flatMap((c) => (c.koId ? [c.koId] : []));
+  const ungeloest = signals.conflicts?.filter((c) => c.status !== "geloest");
+  const imKonflikt = ungeloest ? new Set(ungeloest.flatMap((c) => [c.koA, c.koB])) : null;
+  const pending = signals.pendingIds ? new Set(signals.pendingIds) : null;
+  return {
+    candidates: queue.total,
+    conflicts: imKonflikt ? koIds.filter((id) => imKonflikt.has(id)).length : null,
+    missing: candidates.filter((c) => candidateFindings(c).missingInfo).length,
+    outdated: pending ? koIds.filter((id) => pending.has(id)).length : null,
+    duplicates: queue.duplicates,
+    protected: candidates.filter((c) => SCHUETZENSWERT.has(c.item.confidentiality ?? "")).length,
+  };
+}
+
 // SCRUM-91: kompakte Befunde je Kandidat (Badges) — nur aus vorhandenen Feldern abgeleitet.
 //
 // JOB 3116: zwei Befunde tragen eine KENNUNG, und sie tragen sie als Objekt oder gar nicht —

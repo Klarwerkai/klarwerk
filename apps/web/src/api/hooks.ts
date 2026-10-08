@@ -238,8 +238,10 @@ export const useQualitaetsblick = (gewaehlt: boolean) => ({
     enabled: gewaehlt,
   }),
 });
+// Lazy wie `useConflicts`: die Import-Seite liest den Hook seit R-0179 mit, und deren Testbestand
+// kennt diesen Endpunkt nicht überall.
 export const useLifecyclePending = () =>
-  useQuery({ queryKey: ["lifecycle", "pending"], queryFn: endpoints.lifecycle.pending });
+  useQuery({ queryKey: ["lifecycle", "pending"], queryFn: () => endpoints.lifecycle.pending() });
 export const useLearningPath = (role: string) =>
   useQuery({
     queryKey: ["learning-path", role],

@@ -56,6 +56,7 @@ import { HelpTip } from "../components/HelpTip";
 import { ImportAccessPanel } from "../components/ImportAccessPanel";
 import { ImportCleanup } from "../components/ImportCleanup";
 import { ImportExplore } from "../components/ImportExplore";
+import { ImportFindingsOverview } from "../components/ImportFindingsOverview";
 // WP-COCKPIT-LINIE: geführte Schritt-Leiste über dem Cockpit + klar abgegrenzter, eingeklappter
 // Verlauf (Pedis Stör-Befund zur Queue unter dem Cockpit).
 import { ImportHistorySection } from "../components/ImportHistory";
@@ -1364,6 +1365,11 @@ export function ImportReview(): JSX.Element {
                 );
               })()
             : null}
+          {/* R-0179 / FR-EXT-01: die sechs Befundarten der Import-Übersicht, aus vorhandenen
+              Signalen gezählt (ImportFindingsOverview). */}
+          {query.data && query.data.length > 0 ? (
+            <ImportFindingsOverview candidates={query.data} />
+          ) : null}
         </Card>
 
         <SectionLabel>{t("imp.queueTitle")}</SectionLabel>

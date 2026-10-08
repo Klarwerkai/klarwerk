@@ -1558,6 +1558,12 @@ export interface ImportItemInput {
   // R-0169 (Nacharbeit 5): die von Klarwerk vergebene INTERNE Dokumentkennung — die nächste
   // Fassung derselben Dokumentakte. Getrennt von `externalId` (Kennung im Quellsystem).
   dokumentId?: string;
+  // Aufnahme 20260922 · import-gesamtvertrag (R-0179): die Vertraulichkeit, die der Server am
+  // `ImportItem` führt (SCRUM-509/515: Erzeuger ist ein Quell-Governance-Signal, an der Ingest-Grenze
+  // `sanitizeImportConfidentiality`). Der Kandidatenweg gibt sie unverändert heraus; hier fehlte sie,
+  // und damit konnte die Befundübersicht schützenswertes Wissen nicht zählen. FEHLT das Feld, gilt
+  // beim Anlegen der Übernahme-Standard „intern" (N11) — das Fehlen ist kein „vertraulich".
+  confidentiality?: Confidentiality;
   // WP-IC-PAKET-1c (ROT-2): Decode-Marker des Server-Kandidaten — "decoded" heisst: Textfelder sind
   // kanonisch dekodiert, die Queue-Karte dekodiert NICHT erneut; fehlt er (Altbestand), defensiv nach.
   textCodec?: "decoded";
