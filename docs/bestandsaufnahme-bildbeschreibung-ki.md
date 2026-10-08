@@ -9,12 +9,13 @@ ausgeführt“. Wo kein jüngerer Abschlussbeleg vorliegt, ist der heutige Stand
 
 - Gelesen: `OFFEN.md` (Zeilen B27–B47, A29, A31), Code- und Testvermerke im Produktbaum, die
   Prüfläufe dieses Auftrags (HISTORIE/nacharbeit-1 und -2).
-- **Nicht gelesen:** `_relay/hand/erledigt/AUFTRAG-mega69.md` und
-  `_relay/hand/outbox/BERICHT-mega69.md` (Bericht vom 30.07.2026). Beide liegen außerhalb des für
-  diesen Auftrag freigegebenen Bereichs; der Lesezugriff wurde technisch abgewiesen. Die
-  Blockzuordnung unten stützt sich deshalb auf die Vermerke im Produktbaum, nicht auf den
-  Originalwortlaut. Die im Bericht genannten **Ausbauvorschläge sind ungelesen** und hier nicht
-  eingeordnet.
+- **Vom Verfasser nicht selbst gelesen:** `_relay/hand/erledigt/AUFTRAG-mega69.md` und
+  `_relay/hand/outbox/BERICHT-mega69.md` (Bericht vom 30.07.2026). Beide liegen außerhalb des
+  Bereichs, der für die Bearbeitung freigegeben ist; der Lesezugriff wurde technisch abgewiesen.
+  Ben hat beide gelesen. Block G und die Ausbauvorschläge P1–P3 stehen unten **nach Bens
+  Wiedergabe** (Benurteil nacharbeit-3, Beleg `BERICHT-mega69.md:291–389`), nicht nach eigenem
+  Originalwortlaut. Die Einzelheiten zu Fähigkeiten und Grenzen in Block G sind deshalb hier nicht
+  wiedergegeben.
 
 ## R-0045 · R-0046 · R-0050 · R-0051
 
@@ -54,20 +55,33 @@ Einordnung je Block. „Heute“ bezieht sich auf den Produktbaum dieses Kandida
 | D | Auslieferung von Klaras Datei nie unveränderlich gecacht | B35 **ROT** (async-Hook) → mega71 A → B46 grün → B47 Ship 10 | `services/app/src/web-static.ts` (Hook heute im Callback-Stil); `tests/app/mega69-klara-auslieferung.test.ts`, `services/app/src/sync-onsend-hooks.test.ts` | Korrektur gehört zum gesonderten Auftrag mega71; heutiger Lauf: ungeklärt |
 | E | Sichtbarer Auslieferungsstand im Word-Panel (Build-Stempel) | B33 geliefert | `lib/klaraStand.ts`, `apps/web/vite.config.ts`, `public/word-addin/taskpane.html`, `taskpane.js`; `mega69-klara-waechter.test.ts` (E/F) | heutiger Lauf: ungeklärt |
 | F | Auslieferungs-Wächter mit Inhalts-Pin über das Word-Panel | B33 geliefert | `tests/app/mega69-klara-waechter.test.ts`, `tests/app/mega69-klara-merkmale.test.ts` | Der Pin wandert mit jeder Panel-Änderung anderer Aufträge. In nacharbeit-1 war er rot, weil die Basis (Firmenwörterbuch, a7e6b249) `taskpane.html` geändert hatte (fremder Basisfehler); laut Ben ist er im integrierten Kandidaten anderweitig nachgeführt. Pflege gehört dem jeweils ändernden Auftrag |
-| G | **im Produktbaum keinem Vermerk zuordenbar** | ungeklärt | — | Inhalt und Ergebnis nur aus dem nicht lesbaren Originalauftrag/-bericht bestimmbar: **ungeklärt** |
+| G | **Zustandsbericht** über Klara: Fähigkeiten, Grenzen und Ausbauvorschläge. Der Originalauftrag verlangt ihn ausdrücklich; es ist ein Bericht, kein Code | Bericht vom 30.07.2026 (`BERICHT-mega69.md:291–389`, nach Ben) | kein Code-Beleg zu erwarten; die Vorschläge P1–P3 sind unten eingeordnet | Der Bericht beschreibt den Stand vom 30.07.2026; er belegt nicht den heutigen Stand |
 | H | Ungelesener Schalter `confluenceImport` aus dem Client-Vertrag entfernt | B33 geliefert | `apps/web/src/api/types.ts`; `docs/bestandsaufnahme-confluence-import.md` (R-0134); `tests/funktionsschalter/schalter-leser.test.ts` | heutiger Lauf: ungeklärt |
 | (Restschuld mega68) | Nachweis der Nachbarschaftsroute, kumulativ in `patches180` | B28 → B33 nachgereicht | — | Welchem Block das im Original zugeordnet ist, ist ohne Originalauftrag ungeklärt; Nachbarschaftsfilter gehört zu mega71 C |
 
+### Ausbauvorschläge aus Block G (Bericht vom 30.07.2026)
+
+Wortlaut nach Bens Wiedergabe (Benurteil nacharbeit-3). Die Zuordnung zum heutigen Stand stützt
+sich auf den Produktbaum.
+
+| Vorschlag | Inhalt (30.07.2026) | Heute im Produktbaum | Zuordnung / Stand |
+|---|---|---|---|
+| P1 | Bilder aus Word wirklich übernehmen, über `InlinePicture.getBase64ImageSrc()` | `apps/web/public/word-addin/taskpane.js` (Bildübernahme über `Body.inlinePictures` → `getBase64ImageSrc()`, WordApi 1.1), `apps/web/src/lib/wordAddin.ts`; `tests/app/mega74-klara-bilder.test.ts`, `tests/app/job2923-station1-beweislauf.test.tsx` | Umgesetzt im **gesonderten Auftrag mega74 Teil 2**; `OFFEN.md` B51 vermerkt dazu ben sammel71 ROT, eine jüngere Abnahme ist hier nicht zugeordnet. Offen bleibt laut `docs/klara/station1-bilder.md`, ob der echte Word-Host bei Metafile-Grafiken ein Rasterbild liefert. Das braucht einen Menschen mit geladenem Add-in. **Heutiger Stand ungeklärt** |
+| P2 | Zentrale Bereitstellung von Klara; Voraussetzung damals M365-Admin-Zugang bzw. eine Betriebsentscheidung | Nur Sideload-Anleitungen (`docs/word-addin/SIDELOAD-ANLEITUNG.md`); `docs/word-addin/ABNAHME-M365.md:48`: zentrale Bereitstellung „nicht beschrieben, nicht belegt“ | Eingeordnet unter „Betriebsreife“ im **gesonderten Vorgang** `docs/klara/aufnahme-20260922-gesamt-klara-assistenz.md` (Zentrale Bereitstellung: „kein Beleg“). Nicht umgesetzt. Es ist eine **externe Voraussetzung** (M365-Admin-Zugang, Betriebsentscheidung), kein Produktfehler; hier nicht entschieden |
+| P3 | Rückmeldung an Klara zum Entwurfsstatus | Kein eindeutiger Vermerk. Nächstliegend ist KA8 („nach dem Einreichen bietet Klara den nächsten Schritt an“), Route `/api/drafts/:id/naechster-schritt` | Gesonderter Vorgang `aufnahme-20260922-gesamt-klara-assistenz.md`, Widerspruch W1: KA8 gilt in `OFFEN.md` als erledigt, laut dieser Aufnahme ruft aber weder `taskpane.html` noch `apps/web/src` die Route auf. Ob P3 mit KA8 identisch ist, lässt sich ohne Originalwortlaut nicht belegen. **Heutiger Stand ungeklärt** |
+
 ### Abgrenzung
 
-- **Teil dieses Auftrags und hier geprüft:** nur Block A, weil nur er die Bildbeschreibung betrifft.
-  Er ist geliefert und in diesem Auftrag grün belegt.
+- **Umfang der Bestandsaufnahme:** alle acht mega69-Blöcke A–H samt P1–P3 gehören dazu und sind oben
+  eingeordnet.
+- **Technischer Prüfumfang dieses Auftrags:** nur Block A wurde in diesem Auftrag erneut technisch
+  ausgeführt; er ist in nacharbeit-1 bis -3 grün. Für B–H und P1–P3 wurde kein eigener Prüflauf
+  bestellt. Ihre Einordnung stützt sich auf historische Belege. Ohne jüngeren Abschlussbeleg ist
+  ihr **heutiger Erfüllungsstand ungeklärt**.
 - **Gesonderte, bereits abgeschlossene Aufträge:** mega71 (Korrekturen zu Ben ROT an mega69),
   ausgeliefert mit Ship 10 am 30.07.2026.
-- **Gesondert beauftragt:** A31/mega88 Block B (alle Bildwege verankern); A29/huelle3
-  (Einstieg der Bildbeschreibung, siehe R-0051).
-- **B–H sind keine Bildbeschreibungsfunktionen.** Sie sind laut Verlauf historisch geliefert und
-  über Ben GRÜN (B46) und Ship 10 abgeschlossen. Ein jüngerer Abschlussbeleg fehlt; ihr
-  **heutiger Erfüllungsstand ist ungeklärt**. Dieser Auftrag hat dafür keinen eigenen Prüflauf
-  bestellt.
-- **Ausbauvorschläge aus `BERICHT-mega69.md`:** nicht gelesen, nicht eingeordnet (Zugriff fehlt).
+- **Gesondert beauftragt bzw. geführt:** A31/mega88 Block B (alle Bildwege verankern); A29/huelle3
+  (Einstieg der Bildbeschreibung, siehe R-0051); mega74 Teil 2 (P1); Vorgang
+  `aufnahme:20260922:gesamt-klara-assistenz` (P2, P3/KA8).
+- **Externe Voraussetzung, keine Produktaufgabe dieses Auftrags:** zentrale Bereitstellung (P2)
+  mit M365-Admin-Zugang bzw. Betriebsentscheidung.
