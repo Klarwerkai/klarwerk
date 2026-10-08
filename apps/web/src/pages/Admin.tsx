@@ -581,6 +581,7 @@ export function Admin(): JSX.Element {
                     key={u.id}
                     label={u.name}
                     wert={nutzerWert(u)}
+                    schmalUntereinander
                     onOeffnen={() => geheZu("konten", `nutzer:${u.id}`)}
                   />
                 ))}

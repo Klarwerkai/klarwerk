@@ -15,8 +15,9 @@ import { SMOKE_NAME, ensureLoggedIn } from "./support/auth";
 // Der Quellstand trägt dafür heute zwei Verträge, die hier an der Kontenliste nachgemessen werden:
 //   · `components/einstellungen/Seite.tsx` (JOB 3155): unterhalb von `sm` steht die Reiterleiste
 //     ÜBER dem Inhalt, der Inhalt bekommt die volle Breite.
-//   · `components/einstellungen/Zeilenkarte.tsx` (JOB 3117): nichts wird gekürzt; reicht die Breite
-//     nicht, rückt der Wert (Rolle) UNTER die Beschriftung (Kontoname).
+//   · `components/einstellungen/Zeilenkarte.tsx` (JOB 3117): nichts wird gekürzt.
+//   · Kontenzeilen (`schmalUntereinander`, nur in `pages/Admin.tsx` an der Kontenliste): unterhalb
+//     von `sm` stehen Name und Rolle IMMER untereinander, auch bei kurzen Namen (Ben, Nacharbeit 2).
 // `tests/einstellungen-schmal/ux12b-einstellungen-schmal-chromium.test.ts` misst die Reiterleiste
 // und das Rollenraster, aber keine Kontozeile — diese Lücke schließt diese Datei.
 //
@@ -36,6 +37,7 @@ interface Zeilenmass {
   labelBreite: number;
   labelScroll: number;
   labelOben: number;
+  labelUnten: number;
   labelRechts: number;
   wertText: string;
   wertBreite: number;
@@ -57,6 +59,7 @@ async function kontenzeilenMessen(page: Page): Promise<Zeilenmass[]> {
         labelBreite: l?.width ?? 0,
         labelScroll: label?.scrollWidth ?? 0,
         labelOben: l?.top ?? 0,
+        labelUnten: l?.bottom ?? 0,
         labelRechts: l?.right ?? 0,
         wertText: (wert?.textContent ?? "").trim(),
         wertBreite: w?.width ?? 0,
@@ -80,6 +83,9 @@ function namePruefen(z: Zeilenmass): void {
   );
   expect(z.wertText).toContain("Administrator");
   expect(z.wertBreite, `Rolle zu „${z.name}“ hat 0 px`).toBeGreaterThan(0);
+  // N-0025: Name und Rolle stehen untereinander — unabhängig von der Namenslänge.
+  const darunter = `Rolle zu „${z.name}“ steht nicht unter dem Namen`;
+  expect(z.wertOben, darunter).toBeGreaterThanOrEqual(z.labelUnten - 1);
 }
 
 async function kontenSchmalOeffnen(page: Page): Promise<void> {
@@ -119,6 +125,17 @@ test.describe("N-0025 · Kontenliste bei 390 px", () => {
       namePruefen(eigene);
     }
 
+    // Begrenzt auf Kontenzeilen: die Rollenzeilen derselben Seite behalten ihre Zeilenrichtung.
+    const richtung = await page.evaluate((zeileSel) => {
+      const konto = document.querySelector(`[data-testid="flaeche-nutzer"] ${zeileSel}`);
+      const rolle = document.querySelector('[data-testid="zeile-rolle-admin"]');
+      return {
+        konto: konto ? getComputedStyle(konto).flexDirection : "",
+        rolle: rolle ? getComputedStyle(rolle).flexDirection : "",
+      };
+    }, ZEILE);
+    expect(richtung).toEqual({ konto: "column", rolle: "row" });
+
     // Der Name ist nicht nur gezeichnet, sondern gezielt wählbar: die Zeile öffnet genau dieses Konto.
     await page.getByTestId("flaeche-nutzer").locator(ZEILE, { hasText: SMOKE_NAME }).click();
     await expect(page.getByTestId("detail-nutzer")).toContainText(SMOKE_NAME, { timeout: 10_000 });
@@ -147,8 +164,6 @@ test.describe("N-0025 · Kontenliste bei 390 px", () => {
     expect(lang, `Zeile mit langem Namen fehlt: ${JSON.stringify(zeilen)}`).toBeDefined();
     if (lang) {
       namePruefen(lang);
-      const darunter = "die Rolle steht nicht unter dem langen Namen";
-      expect(lang.wertOben, darunter).toBeGreaterThan(lang.labelOben);
     }
     expect(await seitenBreite(page), "seitlicher Überlauf").toBeLessThanOrEqual(SCHMAL.width);
   });

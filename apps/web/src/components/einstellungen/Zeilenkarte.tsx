@@ -116,6 +116,19 @@ const UMBRUCH_TRAEGER = "min-w-0 break-words";
 const UMBRUCH_WERT_RECHTS = "ml-auto";
 /** Chevron und Schloss sind unteilbar — sie schrumpfen nicht mit und bleiben immer sichtbar. */
 const UMBRUCH_SYMBOL = "shrink-0";
+/**
+ * N-0025 (gesamt-nutzerverwaltung): Kontenzeilen stehen unterhalb von `sm` IMMER untereinander —
+ * Name oben, Rolle darunter, beide linksbündig über die volle Breite, unabhängig von der
+ * Namenslänge. Nur für Zeilen mit `schmalUntereinander`; alle anderen Zeilen behalten den
+ * Umbruchvertrag oben. Ab `sm` gilt wieder Label links, Wert rechts.
+ *
+ * Die Weiche hängt am Attribut `data-untereinander`, nicht an einer Bedingung in der
+ * Klassenliste: so bleiben beide Klassenlisten literal und für den Klassenbindungs-Sammler
+ * (`tests/app/mega47-modale-flaechen-sammler.test.tsx`) auflösbar.
+ */
+const SCHMAL_UNTEREINANDER_ZEILE =
+  "group/zeile max-sm:data-[untereinander]:flex-col max-sm:data-[untereinander]:items-start";
+const SCHMAL_UNTEREINANDER_WERT = "max-sm:group-data-[untereinander]/zeile:ml-0";
 
 /**
  * Eine Zeile. Genau eine der drei Ausprägungen:
@@ -131,6 +144,7 @@ export function Zeile({
   ton = "ruhig",
   ohneSymbol = false,
   vorn,
+  schmalUntereinander = false,
   testId,
 }: {
   label: string;
@@ -146,9 +160,12 @@ export function Zeile({
   ohneSymbol?: boolean;
   /** Etwas vor dem Label, im Label-Träger (das Kürzelzeichen des eigenen Kontos auf /profil). */
   vorn?: ReactNode;
+  /** Unterhalb von `sm` Label und Wert immer untereinander (Kontenliste, N-0025). */
+  schmalUntereinander?: boolean;
   testId?: string;
 }): JSX.Element {
   const { t } = useTranslation();
+  const untereinander = schmalUntereinander ? "ja" : undefined;
   const inhalt = (
     <>
       <span
@@ -166,6 +183,7 @@ export function Zeile({
         className={cx(
           UMBRUCH_TRAEGER,
           UMBRUCH_WERT_RECHTS,
+          SCHMAL_UNTEREINANDER_WERT,
           "flex items-center gap-1.5 text-[14px]",
           ton === "kritisch" ? "text-trust-crit-text" : "text-muted-2",
         )}
@@ -203,10 +221,12 @@ export function Zeile({
         type="button"
         data-einst="zeile"
         data-testid={testId}
+        data-untereinander={untereinander}
         onClick={onOeffnen}
         className={cx(
           UMBRUCH_ZEILE,
           "flex w-full items-center justify-between border-b border-hairline px-4 py-[13px] text-left last:border-b-0 hover:bg-hairline-soft",
+          SCHMAL_UNTEREINANDER_ZEILE,
         )}
       >
         {inhalt}
@@ -217,10 +237,12 @@ export function Zeile({
     <div
       data-einst="zeile"
       data-testid={testId}
+      data-untereinander={untereinander}
       title={steuerung ? undefined : t("einst.zeile.nurLesbar")}
       className={cx(
         UMBRUCH_ZEILE,
         "flex w-full items-center justify-between border-b border-hairline px-4 py-[13px] last:border-b-0",
+        SCHMAL_UNTEREINANDER_ZEILE,
       )}
     >
       {inhalt}
