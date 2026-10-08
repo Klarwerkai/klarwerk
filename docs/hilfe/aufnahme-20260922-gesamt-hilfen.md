@@ -8,6 +8,9 @@ Nacharbeit 6 am Kandidaten `33aad029`: Klara lädt die Bibliotheksartikel erst b
 (`lib/klaraBibliothek.ts`), weil sie statisch eingebunden den Eintritt über den Deckel aus R-0801
 hoben (gemessen 1403861 B gegen 1360000 B); im Diktieren-Artikel (EN) ersetzt „goes“ das Wort
 „flows“ (Wortwahlregel).
+Nacharbeit 15 am Kandidaten `44cc5bc7` (Befunde Bens): Klara liest für „Entwürfe fortsetzen“
+dieselbe berichtigte Fassung wie die Fläche. Die Erklärung zum Konfliktformular nennt jetzt auch
+die Pflichtwahl „Art der Arbeit“, an der Fläche und in Klara.
 Nacharbeit 14 am Kandidaten `f8441b15`: Der Eintritt stand 3567 B über dem Deckel aus R-0801. Klara
 lädt die Elementbeispiele (`lib/klaraBeispiele.ts`, R-0941) jetzt wie die Bibliothek erst beim
 Öffnen nach.
@@ -156,7 +159,12 @@ Berichtigt beim Einbinden:
 - `shelp.capture.resumeTitle` sagte „nichts davon sehen die Prüfer, solange du es nicht einreichst“.
   Seit dem gemeinsamen Entwurfspool (R-2099) kann ein Entwurf bewusst geteilt werden. An der Fläche
   steht deshalb `abschnittshilfe.capture.resumeTitle` (`texte/abschnittshilfe.ts`, DE/EN/NL).
-  Klaras Sektionseintrag `sec:capture.resumeTitle` liest weiterhin den alten Schlüssel (Rest).
+  Seit Nacharbeit 15 liest auch Klaras Sektionseintrag `sec:capture.resumeTitle` diese Fassung
+  (`KLARA_SECTIONS` mit eigenem `bodyKey`).
+- `vhelp.conflictForm` nannte „drei Angaben“, das Formular verlangt aber zusätzlich die „Art der
+  Arbeit“ (ohne sie bleibt „Konflikt eröffnen“ gesperrt). Seit Nacharbeit 15 gilt an der Fläche und
+  in Klara `abschnittshilfe.conflictForm.body` (DE/EN/NL). Die Fassung nennt alle vier Felder mit
+  ihrer Beschriftung, sagt, welche Pflicht sind, und erklärt die drei Arbeitsarten. Gegenprobe Z9.
 
 Grenzen dieser Erhebung:
 - **Am Quelltext, nicht live:** Die Spalte „erledigt“ beruht auf der Lesung des Quelltexts (Aufruf
@@ -164,9 +172,8 @@ Grenzen dieser Erhebung:
   SEITENHILFE-LÜCKEN (JOB 3741/3980) und die Verwaltungskarten (`tests/seitenhilfe-admin/`). Dass
   eine Anmeldung per `HelpTip` im Zahnrad erscheint, belegen diese Wächter für den Baustein selbst.
 - **Inhalt der Texte:** Die eingebundenen `shelp.*`- und `vhelp.*`-Texte habe ich gegen die heutige
-  Fläche gelesen. Berichtigt habe ich nur die drei oben genannten. Kleinere Unschärfen bleiben:
-  `vhelp.conflictForm` nennt „drei Angaben“, das Formular verlangt heute zusätzlich die Arbeitsart.
-  `vhelp.sourcesLevel2` und `vhelp.stillValid` sprechen von „Peer“-Prüfung (TEST-A18, unentschieden).
+  Fläche gelesen. Berichtigt sind die oben genannten (Löschhilfe, Entwürfe, Konfliktformular).
+  Weiter offen: `vhelp.sourcesLevel2` und `vhelp.stillValid` sprechen von „Peer“-Prüfung (TEST-A18, unentschieden).
   Der Knopf heißt „Noch gültig → neue Version“, obwohl er keine neue Version anlegt (`Lifecycle.tsx:11-16`
   benennt das selbst). Diese Beschriftung gehört nicht zu den Hilfetexten und ist hier nicht geändert.
 - **Seitenebene:** Jeder Menüpunkt hat einen Erklärsatz im Zahnrad

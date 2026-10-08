@@ -286,6 +286,34 @@ describe("R-0888 / R-1017 · Zuordnung der vorhandenen Hilfen zu Feldern und Abs
     expect(klaraEntryById("rev:approve")?.route).toBe("/validierung");
   });
 
+  it("Z9 · Nacharbeit 15: Fläche und Klara erklären Entwürfe und Konfliktformular mit derselben, geltenden Fassung", () => {
+    // Ben: „Seitenhilfe und Klara müssen denselben geltenden Sachverhalt erklären.“
+    expect(klaraEntryById("sec:capture.resumeTitle")?.bodyKey).toBe(
+      "abschnittshilfe.capture.resumeTitle",
+    );
+    const formular = reviewHelp("conflictForm");
+    expect(formular.bodyKey).toBe("abschnittshilfe.conflictForm.body");
+    expect(klaraEntryById("rev:conflictForm")?.bodyKey).toBe(formular.bodyKey);
+    // Keine Fläche liest mehr die alten Fassungen.
+    const flaechen = oberflaechendateien().map((datei) => readFileSync(datei, "utf8"));
+    for (const alt of ["vhelp.conflictForm.body", "shelp.capture.resumeTitle"]) {
+      expect(
+        flaechen.some((quelle) => quelle.includes(`"${alt}"`)),
+        alt,
+      ).toBe(false);
+    }
+    // Das Formular verlangt die Art der Arbeit — und die Erklärung nennt sie, samt Knopf, mit der
+    // angezeigten Beschriftung, in jeder Sprache.
+    expect(lies(DETAILSEITE_BAUTEILE[0] ?? "")).toContain("!conflict.arbeitsart");
+    for (const sprache of ["de", "en", "nl"] as const) {
+      const t = i18n.getFixedT(sprache);
+      const text = t(formular.bodyKey);
+      for (const key of ["konfliktarbeit.feld", "ko.conflictTarget", "ko.conflictSubmit"]) {
+        expect(text, `${sprache}: „${t(key)}“ fehlt in der Konflikthilfe`).toContain(t(key));
+      }
+    }
+  });
+
   it("Z5 · die entschiedene Form: `HelpTip` zeichnet nichts ins Sichtfeld, er meldet an die Seitenhilfe", () => {
     const baustein = lies("apps/web/src/components/HelpTip.tsx");
     expect(baustein).toContain("useSeitenhilfeAnmeldung(title, body);");

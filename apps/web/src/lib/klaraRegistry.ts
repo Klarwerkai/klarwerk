@@ -103,7 +103,9 @@ export const KLARA_PAGES: readonly KlaraPage[] = [
 // Sektions-Erklärungen (Berater-Lieferung 05.07., shelp.*): je Abschnitts-Überschrift EIN
 // Erklärtext. Titel = die Überschrift selbst; route = wo der Abschnitt lebt. Diese Einträge
 // sind zugleich Teil der KI-Wissensdatenbank (Klara Stufe 2) und Ziel der data-help-Anker.
-const KLARA_SECTIONS: readonly { key: string; route: string }[] = [
+// `bodyKey` nur, wo der Text vom Schema `shelp.<key>` abweicht (eingefrorener Altwert, berichtigte
+// Fassung in einem Textmodul) — dann sagen Seitenhilfe und Klara dasselbe.
+const KLARA_SECTIONS: readonly { key: string; route: string; bodyKey?: string }[] = [
   { key: "adm.seedTitle", route: "/admin" },
   { key: "adm.createTitle", route: "/admin" },
   { key: "adm.auditTitle", route: "/admin" },
@@ -111,7 +113,13 @@ const KLARA_SECTIONS: readonly { key: string; route: string }[] = [
   { key: "ana.weekly", route: "/analytics" },
   { key: "ask.steps", route: "/fragen" },
   { key: "ask.sources", route: "/fragen" },
-  { key: "capture.resumeTitle", route: "/erfassen" },
+  // Nacharbeit 15 (Ben): dieselbe berichtigte Fassung wie an der Fläche (`CaptureDraftList.tsx`) —
+  // `shelp.capture.resumeTitle` kannte den gemeinsamen Entwurfspool nicht.
+  {
+    key: "capture.resumeTitle",
+    route: "/erfassen",
+    bodyKey: "abschnittshilfe.capture.resumeTitle",
+  },
   { key: "ext.title", route: "/erfassen" },
   { key: "extpage.resultsTitle", route: "/extern" },
   { key: "ko.statement", route: "/bibliothek" },
@@ -185,7 +193,7 @@ export function allKlaraEntries(): readonly KlaraEntry[] {
     id: `sec:${s.key}`,
     kind: "field",
     titleKey: s.key,
-    bodyKey: `shelp.${s.key}`,
+    bodyKey: s.bodyKey ?? `shelp.${s.key}`,
     route: s.route,
   }));
   const topics: KlaraEntry[] = HELP_TOPICS.map((t) => ({

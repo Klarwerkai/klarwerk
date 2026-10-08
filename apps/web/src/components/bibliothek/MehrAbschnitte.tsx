@@ -1480,7 +1480,11 @@ export function MehrAbschnitte({
               title={t("vhelp.reportConflict.title")}
               body={t("vhelp.reportConflict.body")}
             />
-            <HelpTip title={t("vhelp.conflictForm.title")} body={t("vhelp.conflictForm.body")} />
+            {/* Nacharbeit 15: die berichtigte Fassung nennt auch die Pflichtwahl „Art der Arbeit“. */}
+            <HelpTip
+              title={t("vhelp.conflictForm.title")}
+              body={t("abschnittshilfe.conflictForm.body")}
+            />
             <div className="space-y-1.5">
               <span className="block text-[12.5px] font-medium text-muted">
                 {t("ko.conflictTarget")}

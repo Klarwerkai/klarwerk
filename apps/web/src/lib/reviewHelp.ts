@@ -54,6 +54,9 @@ export interface ReviewHelpTopic {
 // `texte/loeschhilfe.ts`) — dieselbe Bauform wie `BODY_KEY_ABWEICHEND` in `lib/captureHelp.ts`.
 const BODY_KEY_ABWEICHEND: Partial<Record<ReviewHelpId, string>> = {
   deleteKo: "loeschhilfe.deleteKo.body",
+  // Nacharbeit 15 (Ben): das Formular verlangt zusätzlich die Art der Arbeit; die berichtigte
+  // Fassung steht in `texte/abschnittshilfe.ts` und gilt an der Fläche wie in Klara.
+  conflictForm: "abschnittshilfe.conflictForm.body",
 };
 
 // Wo die Handlung zu einem Thema heute lebt — für Klaras „Zum Bereich“ (`lib/klaraRegistry.ts`).
