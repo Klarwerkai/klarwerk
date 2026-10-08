@@ -2907,7 +2907,8 @@ export function Blatt({
               </MenueEintrag>
               <MenueTrenner />
               <MenueEintrag onClick={() => setMehrFlaeche("klara")}>
-                {t("erfassen.mehr.klara")}
+                {/* N-0042: dieselbe Vorschau wie auf Start, derselbe Name (`texte/wordvorschau.ts`). */}
+                {t("wordvorschau.menu")}
               </MenueEintrag>
               {/* Der Knopf „Eingabe verwerfen" der Vordertür. Er bleibt ein BEWUSSTER Schritt mit
                   Rückfrage — nur seine Prominenz auf der Fläche ist weg (Auftrag §5a: „Zurück"
