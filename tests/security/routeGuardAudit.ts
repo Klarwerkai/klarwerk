@@ -500,6 +500,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // unterscheiden. Der Add-on-Zweig derselben Route fuehrt das Praedikat NICHT.
   "POST /api/ask": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   "POST /api/ask/helpful": { protection: "ko.read" },
+  // R-1649: ko.read; ein mitgeschickter Weg wird ein Entwurf und verlangt im Handler ko.create.
+  "POST /api/ask/not-helpful": { protection: "ko.read" },
 
   // --- MCP (mcp-routes.ts, R-0713) ---
   // Registriert mit der Konstante `MCP_PFAD`; erst seit der Scanner den Registrierungskopf liest,
