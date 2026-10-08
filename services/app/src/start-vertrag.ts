@@ -495,6 +495,27 @@ const GRUNDWERTE: readonly Startwert[] = [
     wofuer: "Abstand der periodischen Papierkorb-Endlöschung.",
     ohneIhn: "Es gilt der Abstand von sechs Stunden.",
   },
+  // R-0710: Wissensereignisse an Fremdwerkzeuge (`wissensereignisse.ts`). Die Liste trägt je Ziel
+  // das Signiergeheimnis — deshalb als Ganzes geheim.
+  {
+    name: "KLARWERK_WEBHOOKS",
+    bereich: "Integration",
+    pflicht: { art: "nie" },
+    geheim: true,
+    wofuer:
+      "Die Ziele, die über validierte Wissensobjekte, fällige Revalidierungen und offene Widersprüche benachrichtigt werden (JSON-Liste mit Kennung, https-Adresse, Ereignissen und Signiergeheimnis).",
+    ohneIhn:
+      "Es werden keine Ereignisse gemeldet; Fremdwerkzeuge können Wissen nur selbst abholen.",
+  },
+  {
+    name: "KLARWERK_WEBHOOKS_TAKT_SEK",
+    bereich: "Integration",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "60 Sekunden",
+    wofuer: "Abstand, in dem der Bestand auf neue Wissensereignisse abgeglichen wird.",
+    ohneIhn: "Es gilt der Abstand von 60 Sekunden (mindestens 10).",
+  },
   {
     name: "KLARWERK_SKIP_KEYCHAIN",
     bereich: "Betrieb",
