@@ -1508,9 +1508,27 @@ export class AskService {
     return this.save({ ...gap, assignee: expertId });
   }
 
-  async closeGap(id: string): Promise<Gap> {
+  // R-0846 / L6: eine Lücke schliesst NUR mit Objektbezug — dem Wissensobjekt, das sie beantwortet.
+  // Der Bezug kommt aus dem Aufruf oder, fehlt er dort, aus einem schon an der Lücke stehenden Bezug.
+  // In beiden Fällen muss das Objekt jetzt existieren und darf nicht im Papierkorb liegen
+  // (`koService.get`). Sonst wird NICHTS geschrieben: die Lücke bleibt offen, der Aufrufer bekommt
+  // BAD_REQUEST. Eine geschlossene Lücke ohne Bezug kann auf diesem Weg nicht mehr entstehen.
+  async closeGap(id: string, koId?: string): Promise<Gap> {
     const gap = await this.require(id);
-    return this.save({ ...gap, status: "geschlossen" });
+    const bezug = koId?.trim() || gap.koId?.trim();
+    if (!bezug) {
+      throw new AskError(
+        "BAD_REQUEST",
+        "Eine Wissenslücke wird mit dem Wissensobjekt geschlossen, das sie beantwortet (koId).",
+      );
+    }
+    if (!(await this.koService.get(bezug))) {
+      throw new AskError(
+        "BAD_REQUEST",
+        "Das Wissensobjekt existiert nicht oder liegt im Papierkorb — die Lücke bleibt offen.",
+      );
+    }
+    return this.save({ ...gap, status: "geschlossen", koId: bezug });
   }
 
   // SCRUM-115 / FE-RISK-02: Priorität einer Wissenslücke setzen.

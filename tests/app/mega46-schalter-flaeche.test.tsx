@@ -10,6 +10,12 @@
 // wäre ein „solange wir es nicht wissen, zeigen wir es mal" fatal.
 //
 // Gemountet am ECHTEN FeatureGate über den ECHTEN Hook; nur die HTTP-Grenze (endpoints) ist ersetzt.
+//
+// R-1975 / R-0791 (I27): Gemessen wurde hier bis dahin am Beispiel `herkunft` — einem Schalter,
+// den kein Frontend-Code liest und der deshalb aus `FeatureName` entfernt ist
+// (`tests/funktionsschalter/schalter-leser.test.ts`). Die Fälle stehen jetzt am Schalter, den
+// `FeatureGate` im Produkt wirklich trägt (`demodaten`, `AdminDatenDetails.tsx`). Jede Zusicherung
+// ist unverändert; nur Schaltername, Beschriftung und die Nachbarschalter der Nutzlast folgen.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   QueryClient,
@@ -43,7 +49,7 @@ const { FeatureGate } = await import("../../apps/web/src/components/FeatureGate"
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const INHALT = "Herkunft ansehen";
+const INHALT = "Demodaten laden";
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
@@ -58,7 +64,7 @@ function mount(): void {
         QueryClientProvider,
         { client },
         createElement(FeatureGate, {
-          feature: "herkunft",
+          feature: "demodaten",
           children: createElement("button", null, INHALT),
         }),
       ),
@@ -106,7 +112,7 @@ describe("mega46 F2 · die Fläche hinter einem Betriebsschalter", () => {
   });
 
   it("SCHALTER AUS: die Fläche wird GAR NICHT gerendert", async () => {
-    d.antwortet({ features: { herkunft: false, expertMatching: false, demodaten: false } });
+    d.antwortet({ features: { rechtsseiten: false, hinweisbanner: false, demodaten: false } });
     await durchatmen();
     // Nicht „ausgegraut", nicht „versteckt" — gar nicht im Dokument.
     expect(container.querySelector("button")).toBeNull();
@@ -115,7 +121,7 @@ describe("mega46 F2 · die Fläche hinter einem Betriebsschalter", () => {
   });
 
   it("SCHALTER AN: die Fläche ist da und bedienbar", async () => {
-    d.antwortet({ features: { herkunft: true, expertMatching: false, demodaten: false } });
+    d.antwortet({ features: { rechtsseiten: false, hinweisbanner: false, demodaten: true } });
     await durchatmen();
     const knopf = container.querySelector("button");
     expect(knopf).not.toBeNull();
@@ -124,7 +130,7 @@ describe("mega46 F2 · die Fläche hinter einem Betriebsschalter", () => {
   });
 
   it("EIN ANDERER SCHALTER schaltet diese Fläche NICHT frei", async () => {
-    d.antwortet({ features: { herkunft: false, expertMatching: true, demodaten: true } });
+    d.antwortet({ features: { rechtsseiten: true, hinweisbanner: true, demodaten: false } });
     await durchatmen();
     expect(container.querySelector("button")).toBeNull();
   });
