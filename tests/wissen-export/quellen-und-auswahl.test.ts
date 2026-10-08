@@ -25,6 +25,8 @@ const QUELLE: KoSource = {
   kind: "external",
   peerValidated: false,
   provider: "Confluence",
+  author: "admin",
+  at: "2026-09-01T08:00:00.000Z",
 };
 
 async function aufbau() {
@@ -76,6 +78,7 @@ async function aufbau() {
 
   return {
     app,
+    services,
     admin,
     experte: await anmelden("wx-experte@x.de"),
     ids: {
@@ -192,6 +195,21 @@ describe("R-0681 / FR-LIB-02 · Export der Auswahl", () => {
   it("ein leerer `ids`-Parameter ist eine leere Auswahl, nicht der Gesamtbestand", async () => {
     const ctx = await aufbau();
     expect(await titel(ctx, "/api/library/export?ids=")).toEqual([]);
+  });
+
+  // §12.3 „Export": auch ein Export der Auswahl hinterlässt `library.export` — mit GENAU den
+  // ausgelieferten Objekten, nicht mit der angefragten Liste. (Der Gesamtfall steht in
+  // `tests/audit-gesamt/aktionsmatrix-12-3.test.ts`; dort bricht der Lauf derzeit vorher im
+  // unveränderten Fragenweg ab, deshalb steht die Auswahl-Gegenprobe hier.)
+  it("Audit: der Beleg nennt die ausgelieferten Objekte der Auswahl", async () => {
+    const ctx = await aufbau();
+    const url = `/api/library/export?format=markdown&ids=${ctx.ids.dritter},${ctx.ids.offen}`;
+    await holen(ctx, url, ctx.experte);
+    const beleg = (await ctx.services.audit.list({ action: "library.export" })).at(-1);
+    expect(beleg?.payload.format).toBe("markdown");
+    expect(beleg?.payload.koIds).toEqual([ctx.ids.dritter]);
+    expect(beleg?.payload.count).toBe(1);
+    expect(beleg?.payload.includeConfidential).toBe(false);
   });
 
   it("der wiederholte Parameter wird wie die Kommaliste gelesen", async () => {
