@@ -253,3 +253,122 @@ export function nurGelisteteLogfelder(
 ): Record<string, unknown> {
   return felderNachListe(feldobjekt as Record<string, unknown>, LOGFELDER, fehlertyp);
 }
+
+// ================================================================================================
+// R-0623 (Ben, Nacharbeit 4) — AUCH DIE MELDUNGSTEXTE NUR AUS EINER AUSDRÜCKLICHEN LISTE.
+// ================================================================================================
+//
+// Bis hierher wurde ein Meldungstext nur auf ein Fehlermuster geprüft — eine Sperrliste:
+// `app.log.warn("Befund: Anna Meier")` kam unverändert durch. Jetzt steht eine Meldung nur dann in
+// der Zeile, wenn sie GENAU einer der folgenden Vorlagen entspricht. Jede andere wird durch
+// `MELDUNG_NICHT_GELISTET` ersetzt — vor der Ausgabe.
+//
+// EINE VORLAGE IST EIN FESTER SATZ AUS DEM QUELLTEXT. Wo der Satz einen Wert trägt, steht an der
+// Stelle ein Platzhalter mit derselben Wertregel wie bei den Feldern: `{zahl}`, `{wert}` (Kennung
+// ohne Leerzeichen), `{bezeichnung}` (kurz, Leerzeichen erlaubt) oder `{liste}` (Kennungen, durch
+// „, " getrennt). Ein Wert, der seiner Regel nicht genügt, lässt die ganze Meldung durchfallen.
+//
+// EINE NEUE MELDUNG KOMMT NUR ÜBER DIESE LISTE HINEIN; jede Vorlage nennt die Stelle, die sie
+// schreibt. Werte gehören bevorzugt in die gelisteten Felder, nicht in den Text.
+
+/** Was anstelle einer Meldung steht, die keiner Vorlage entspricht. */
+export const MELDUNG_NICHT_GELISTET = "[Meldung nicht gelistet]";
+
+const PLATZHALTER: Readonly<Record<string, string>> = {
+  zahl: String.raw`-?\d{1,15}(?:\.\d{1,6})?`,
+  wert: String.raw`[\p{L}\p{N}_.:\-()/]{1,160}`,
+  bezeichnung: String.raw`[\p{L}\p{N} _.:\-()/]{1,80}`,
+  liste: String.raw`[\p{L}\p{N}_.:\-]{1,60}(?:, [\p{L}\p{N}_.:\-]{1,60}){0,49}`,
+};
+
+const RUECKNAHME_KONTO = "JOB 4011: Rücknahme eines halb angelegten Kontos gescheitert — ";
+
+export const MELDUNGEN: readonly string[] = [
+  // Fastify selbst (Anfrage-/Antwortzeilen, Start).
+  "incoming request",
+  "request completed",
+  "Server listening at {wert}",
+  // build-app.ts
+  "ki_lauf",
+  "KLARWERK Startbericht",
+  "Bestandsabfrage gescheitert: {wert}",
+  "KLARWERK_TRUST_PROXY ist eine Hop-Anzahl und wird nicht mehr beachtet (GHSA-3m5p-2c4r-xxw2) — die IP-Adresse(n) des Proxys eintragen.",
+  // model-runs/src/preisliste.ts (über build-app.ts `ki_preisliste`)
+  "KLARWERK_KI_PREISLISTE ist kein gültiges JSON.",
+  "KLARWERK_KI_PREISLISTE braucht `waehrung` und `preisstand` (je kurzer Text).",
+  "KLARWERK_KI_PREISLISTE braucht `modelle` als Objekt.",
+  'KLARWERK_KI_PREISLISTE: Preis für „{wert}" unvollständig oder negativ.',
+  // http.ts, csrf.ts, support-routes.ts, external-routes.ts, ko-routes.ts
+  "Interner Betriebsfehler maskiert (HTTP 500 INTERNAL).",
+  "Schreibender Sitzungsaufruf fremder Herkunft abgelehnt",
+  "Supportkontakt gesetzt, aber nicht auslieferbar — die Hilfe zeigt ihn als ungültig an.",
+  "external-search: Anfrage an den Anbieter fehlgeschlagen",
+  "Konfliktvorschlag unvollständig",
+  // auth/src/routes.ts (die vier Sätze aus `restSatz`)
+  "Passwort-Reset-Mail konnte nicht gesendet werden",
+  `${RUECKNAHME_KONTO}ob und in welchem Zustand ein Konto zurückbleibt, war nicht mehr messbar.`,
+  `${RUECKNAHME_KONTO}im Bestand steht ein FREIGEGEBENES Konto, mit dem man sich anmelden kann.`,
+  `${RUECKNAHME_KONTO}der Rest ist nicht freigegeben — mit ihm kommt niemand herein.`,
+  `${RUECKNAHME_KONTO}im Bestand steht kein Konto aus diesem Aufruf.`,
+  // reasoner-routes.ts, ask-routes.ts
+  "reasoner.ki-freigabe konnte nicht protokolliert werden — Erweiterung abgelehnt",
+  "reasoner.ki-freigabe (Rücknahme) konnte nicht protokolliert werden — sie gilt trotzdem",
+  "reasoner.ka4.dokument-consent",
+  "ask.ka4.dokument-consent",
+  "ask.ka4.dokumenttext",
+  "ask.evidence: Quell-KO nicht auflösbar",
+  "ask.evidence: Konfliktabruf gescheitert — Einstufung bleibt unbelegt",
+  // confluence-/jira-/sharepoint-import-routes.ts
+  "confluence-import: {bezeichnung} fehlgeschlagen",
+  "confluence-import: Anhangsabgleich unvollständig",
+  "jira-import: {bezeichnung} fehlgeschlagen",
+  "sharepoint-import: {bezeichnung} fehlgeschlagen",
+  // slides-routes.ts, capture-routes.ts
+  "slides-convert",
+  "slides-convert-failed",
+  "docx-convert-failed",
+  "docx-bildverkleinerung-uebersprungen",
+  // security-headers.ts (Mandantennamen aus der Betreiberkonfiguration)
+  'KLARWERK_M365_MANDANTEN: Eintrag "{wert}" verworfen — {bezeichnung}. Er erscheint NICHT in frame-ancestors des Word-Taskpanes.',
+  "KLARWERK_M365_MANDANTEN: Word im Browser darf Klara aus den SharePoint-Herkünften von {liste} einbetten.",
+  // server.ts
+  "KI-Zuordnung konnte NICHT geladen werden — fail-closed auf global={wert} (kein Cloud-Egress). Bitte DB prüfen und den Prozess NEU STARTEN, um die persistierte Wahl zu laden (keine automatische Wiederherstellung im laufenden Betrieb) — oder die Zuordnung in der Zwischenzeit unter KI-Verwaltung neu setzen.",
+  "KI-Zuordnung per KLARWERK_REASONER_POLICY gesetzt (global={wert}, transient — überschreibt die persistierte Wahl für diesen Start).",
+  "KI-Zuordnung aus der Persistenz geladen (global={wert}).",
+  "Keine KI-Zuordnung konfiguriert — es gilt der Standard (global={wert}). Unter KI-Verwaltung setzbar; die Wahl wird dann persistiert.",
+  "Ungültige KLARWERK_REASONER_POLICY='{wert}' — ignoriert.",
+  "PID-Datei geschrieben: {wert} (pid {zahl})",
+  "KLARWERK läuft auf :{zahl} — Datenhaltung: {bezeichnung}",
+  "Papierkorb-Endlöschung eines KO fehlgeschlagen",
+  "Papierkorb-Endlöschung beim Start: {zahl} abgelaufene KO(s) entfernt.",
+  "Papierkorb-Endlöschung beim Start übersprungen",
+  "Papierkorb-Endlöschung (periodisch): {zahl} abgelaufene KO(s) entfernt.",
+  "Periodischer Papierkorb-Sweep übersprungen",
+  "Papierkorb-Sweep aktiv — Intervall {zahl} min.",
+  "Klara-Aufräumlauf aktiv — Intervall {zahl} min.",
+  "Gedächtnis aufgeräumt ({wert}): {zahl} abgelaufene Einträge gelöscht.",
+  "Gedächtnis-Aufräumlauf übersprungen",
+  // klara-aufraeumen.ts
+  "Klara-Sitzungen aufgeräumt ({wert}): {zahl} entfernt.",
+  "Klara-Aufräumlauf ({wert}) übersprungen",
+];
+
+function vorlageAlsMuster(vorlage: string): RegExp {
+  const teile = vorlage.split(/\{(zahl|wert|bezeichnung|liste)\}/);
+  const quelle = teile
+    .map((teil, i) =>
+      i % 2 === 1 ? `(?:${PLATZHALTER[teil]})` : teil.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+    )
+    .join("");
+  return new RegExp(`^${quelle}$`, "u");
+}
+
+const MELDUNGSMUSTER: readonly RegExp[] = MELDUNGEN.map(vorlageAlsMuster);
+
+/**
+ * Der Meldungstext einer Logzeile nach der Positivliste: unverändert, wenn er genau einer Vorlage
+ * entspricht — sonst `MELDUNG_NICHT_GELISTET`. Mehrzeiliges entspricht nie einer Vorlage.
+ */
+export function gelisteteMeldung(meldung: string): string {
+  return MELDUNGSMUSTER.some((muster) => muster.test(meldung)) ? meldung : MELDUNG_NICHT_GELISTET;
+}

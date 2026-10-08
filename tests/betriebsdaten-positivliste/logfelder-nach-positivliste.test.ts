@@ -12,14 +12,15 @@
 import { readFileSync } from "node:fs";
 import Fastify, { type FastifyInstance } from "fastify";
 import { describe, expect, it } from "vitest";
-import {
-  ERR_TEXT_UNTERDRUECKT,
-  baueLoggerOptionen,
-  begrenzteMeldung,
-} from "../../services/app/src/build-app";
+import { ERR_TEXT_UNTERDRUECKT, baueLoggerOptionen } from "../../services/app/src/build-app";
 import type { Guards } from "../../services/app/src/http";
 import { starteKlaraAufraeumen } from "../../services/app/src/klara-aufraeumen";
-import { LOGFELDER, inhaltsfreieFehlerkennung } from "../../services/app/src/log-positivliste";
+import {
+  LOGFELDER,
+  MELDUNG_NICHT_GELISTET,
+  gelisteteMeldung,
+  inhaltsfreieFehlerkennung,
+} from "../../services/app/src/log-positivliste";
 import { externalRoutes } from "../../services/app/src/routes/external-routes";
 import type { IntervalHandle } from "../../services/app/src/trash-sweep-scheduler";
 import { InMemoryExternalKnowledgePolicyRepo } from "../../services/external-search/src/policy";
@@ -53,12 +54,12 @@ describe("R-0623 · Betriebslogfelder nur nach Positivliste", () => {
         frage: INHALT,
         ka4: { entscheidung: "blockiert", grund: "kein_consent", passage: INHALT },
       },
-      "probe-zeile",
+      "ask.ka4.dokument-consent",
     );
     await app.close();
 
     expect(roh()).not.toContain(INHALT);
-    const zeile = zeilen().find((z) => z.msg === "probe-zeile");
+    const zeile = zeilen().find((z) => z.msg === "ask.ka4.dokument-consent");
     expect(zeile).toBeDefined();
     expect(zeile?.event).toBe("probe");
     expect(zeile?.koId).toBe("ko-1");
@@ -77,11 +78,11 @@ describe("R-0623 · Betriebslogfelder nur nach Positivliste", () => {
         stelle: "x".repeat(200),
         reason: "Anna Meier",
       },
-      "werte-probe",
+      "slides-convert",
     );
     await app.close();
 
-    const zeile = zeilen().find((z) => z.msg === "werte-probe") as Zeile;
+    const zeile = zeilen().find((z) => z.msg === "slides-convert") as Zeile;
     for (const feld of ["koId", "konto", "slides", "stelle"]) {
       expect(Object.hasOwn(zeile, feld), feld).toBe(false);
     }
@@ -216,22 +217,39 @@ describe("R-0623 · Betriebslogfelder nur nach Positivliste", () => {
     expect((zeile?.err as Zeile).message).toBe(ERR_TEXT_UNTERDRUECKT);
   });
 
-  it("L9 · reine Textaufrufe: eingebetteter Fehlertext, Folgezeilen und Formatwerte fallen weg", async () => {
+  // ----------------------------------------------------------------------------------------------
+  // Ben, Nacharbeit 4: „begrenzteMeldung übernimmt jede erste Zeile ohne das Muster „…Error: “
+  // unverändert. Beispielsweise würde app.log.warn('Befund: Anna Meier') weiterhin Kundeninhalt
+  // ausgeben. Dasselbe gilt für Meldungsargumente neben einem Feldobjekt."
+  // ----------------------------------------------------------------------------------------------
+  it("L9 · Meldungen nur nach Vorlagenliste — auch einzeiliger Kundeninhalt ohne Error-Präfix fällt weg", async () => {
     const { app, zeilen, roh } = mitLogger();
+    // Einzeiliger Kundeninhalt ohne jedes Fehlermuster — als reiner Text und neben einem Feldobjekt.
+    app.log.warn("Befund: Anna Meier");
+    app.log.warn(`Befund: ${INHALT}`);
+    app.log.warn({ event: "probe" }, `Befund: ${INHALT}`);
+    // Eingebetteter Fehlertext, Folgezeile, Formatwert.
     app.log.warn(`Lauf übersprungen: ${String(new TypeError(`kaputt bei ${INHALT}`))}`);
     app.log.warn(`Lauf übersprungen\n    at geheim (${INHALT}.ts:1:1)`);
     app.log.info("Formatprobe %s", INHALT);
+    // Eine gelistete Vorlage, deren Platzhalter einen Wert ausserhalb seiner Regel trägt.
+    app.log.info(`Bestandsabfrage gescheitert: ${INHALT} von Anna Meier`);
+    // Gelistete Vorlagen mit regelgerechten Werten bleiben unverändert.
     app.log.info("KLARWERK läuft auf :3000 — Datenhaltung: Postgres");
+    app.log.info("Klara-Sitzungen aufgeräumt (Start): 2 entfernt.");
+    app.log.warn({ err: new Error(INHALT) }, "Bestandsabfrage gescheitert: wissensobjekte");
     await app.close();
 
-    expect(roh()).not.toContain(INHALT);
+    const geloggt = roh();
+    expect(geloggt).not.toContain(INHALT);
+    expect(geloggt).not.toContain("Anna Meier");
     const meldungen = zeilen().map((z) => z.msg);
-    expect(meldungen).toContain(`Lauf übersprungen: ${ERR_TEXT_UNTERDRUECKT}`);
-    expect(meldungen).toContain("Lauf übersprungen");
-    // Ein gewöhnlicher Betriebssatz bleibt unverändert.
+    expect(meldungen.filter((m) => m === MELDUNG_NICHT_GELISTET)).toHaveLength(7);
     expect(meldungen).toContain("KLARWERK läuft auf :3000 — Datenhaltung: Postgres");
-    expect(begrenzteMeldung("Bestandsabfrage gescheitert: wissensobjekte")).toBe(
-      "Bestandsabfrage gescheitert: wissensobjekte",
-    );
+    expect(meldungen).toContain("Klara-Sitzungen aufgeräumt (Start): 2 entfernt.");
+    expect(meldungen).toContain("Bestandsabfrage gescheitert: wissensobjekte");
+    // Die Feldliste wirkt daneben unverändert.
+    expect(zeilen().find((z) => z.event === "probe")?.msg).toBe(MELDUNG_NICHT_GELISTET);
+    expect(gelisteteMeldung("Befund: Anna Meier")).toBe(MELDUNG_NICHT_GELISTET);
   });
 });

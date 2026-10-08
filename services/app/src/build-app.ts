@@ -294,7 +294,7 @@ import {
   type LiveWallFotoRepo,
   PgLiveWallFotoRepo,
 } from "./livewall-fotos";
-import { nurGelisteteLogfelder } from "./log-positivliste";
+import { gelisteteMeldung, nurGelisteteLogfelder } from "./log-positivliste";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
@@ -2440,15 +2440,16 @@ function istTraceKennung(schluessel: string, inhalt: unknown): inhalt is string 
  * (`nurGelisteteLogfelder`); ein nackter Fehler wird zu `{ err }`, damit er nur über den
  * Erlaubnislisten-Serializer erscheint. Wiederholt der Meldungstext den Text des mitgegebenen
  * Fehlers — oder fehlt er, sodass pino ihn aus dem Fehler nähme —, steht dort die Konstante
- * `ERR_TEXT_UNTERDRUECKT`. Alle übrigen Argumente bleiben, wie sie sind.
+ * `ERR_TEXT_UNTERDRUECKT`. Jeder andere Meldungstext steht nur, wenn er einer Vorlage der
+ * Meldungsliste entspricht (`gelisteteMeldung`), sonst `MELDUNG_NICHT_GELISTET`.
  */
 export function ohneFreienFehlertext(argumente: readonly unknown[]): unknown[] {
   const [erstes, meldung] = argumente;
-  // R-0623 (Ben, Nacharbeit 3): auch ein reiner Textaufruf läuft nicht mehr unverändert durch.
+  // R-0623 (Ben, Nacharbeit 3/4): auch ein reiner Textaufruf läuft nicht unverändert durch.
   // Weitere Argumente (Formatwerte für `%s` — im Bestand ungenutzt) fallen weg; ein Meldungstext
-  // wird begrenzt (`begrenzteMeldung`).
+  // steht nur nach der Positivliste der Meldungen (`log-positivliste.ts`, `MELDUNGEN`).
   if (typeof erstes === "string") {
-    return [begrenzteMeldung(erstes)];
+    return [gelisteteMeldung(erstes)];
   }
   if (erstes === null || typeof erstes !== "object") {
     return [];
@@ -2467,28 +2468,7 @@ export function ohneFreienFehlertext(argumente: readonly unknown[]): unknown[] {
   if (wiederholt) {
     return [felder, ERR_TEXT_UNTERDRUECKT];
   }
-  return typeof meldung === "string" ? [felder, begrenzteMeldung(meldung)] : [felder];
-}
-
-/**
- * Wie `String(error)` einen Fehler in Text verwandelt: `Error: …`, `TypeError: …`,
- * `ConfluenceRequestError: …`. Ab dieser Stelle steht in einer Meldung der freie Fehlertext.
- */
-const EINGEBETTETER_FEHLERTEXT = /\b[A-Za-z]*Error: /;
-
-/**
- * R-0623 — DER MELDUNGSTEXT EINER LOGZEILE, BEGRENZT.
- *
- * Meldungen sind im Quelltext gebaute Sätze; ihre Werte gehören in die gelisteten Felder. Zwei Wege,
- * auf denen trotzdem freier Text hineinkam, werden hier geschlossen: ein eingebetteter Fehlertext
- * (`… übersprungen: Error: duplicate key … (email)=(…)`) wird ab seinem Anfang durch
- * `ERR_TEXT_UNTERDRUECKT` ersetzt, und nur die erste Zeile bleibt — ein Stack oder ein mehrzeiliger
- * Fremdtext kommt nicht mit.
- */
-export function begrenzteMeldung(meldung: string): string {
-  const ersteZeile = meldung.split(/[\r\n]/, 1)[0] ?? "";
-  const treffer = EINGEBETTETER_FEHLERTEXT.exec(ersteZeile);
-  return treffer ? `${ersteZeile.slice(0, treffer.index)}${ERR_TEXT_UNTERDRUECKT}` : ersteZeile;
+  return typeof meldung === "string" ? [felder, gelisteteMeldung(meldung)] : [felder];
 }
 
 /**
