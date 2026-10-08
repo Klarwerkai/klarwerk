@@ -12,17 +12,27 @@
 //   2. Die englische und die niederländische Fassung desselben Textes müssen die englische bzw.
 //      niederländische Fassung mindestens EINES solchen Schlüssels zeichengleich enthalten.
 //
-// Was er NICHT kann, ehrlich: Er erkennt ein Zitat nur, wenn der deutsche Wortlaut mit einer
-// Beschriftung übereinstimmt. Ein deutsches Zitat, das schon im Deutschen vom Knopf abweicht, fällt
-// durch (Beispiel unten: `capture.file.connectHint` zitiert „Übernehmen", der Knopf heißt
-// „Ausgewählte übernehmen"). Und ein zufällig gleich lautendes Wort, das gar keinen Knopf meint,
-// wird als Zitat gelesen — die Liste BEKANNT trennt beides und nennt den Grund je Eintrag.
-// Prüfkarten liegen nicht in diesem Repository; Anleitungen unter `docs/` sind nur deutsch und
-// werden hier nicht gelesen.
+// Was der Katalogteil NICHT kann, ehrlich: Er erkennt ein Zitat nur, wenn der deutsche Wortlaut mit
+// einer Beschriftung übereinstimmt. Ein Zitat, das schon im Deutschen vom Knopf abweicht, fällt dort
+// durch — so war es bei `capture.file.connectHint` („Übernehmen" statt „Ausgewählte übernehmen",
+// Nacharbeit 6 berichtigt, Z-7 hält den Zusammenhang je Sprache fest). Ein zufällig gleich
+// lautendes Wort, das gar keinen Knopf meint, wird als Zitat gelesen — die Liste BEKANNT trennt
+// beides und nennt den Grund je Eintrag.
+//
+// TEIL D liest deshalb zusätzlich die Anleitung und die Prüfkarten im Repository (Liste ANLEITUNGEN)
+// von der anderen Seite her: JEDES Zitat dort ist entweder eine echte Beschriftung (deutscher
+// Katalogwert, mit EN- und NL-Fassung) oder steht einzeln begründet in KEIN_KNOPF (Beispieldaten,
+// Suchbegriff, Zustandsname, früherer Name, Satzteil aus einem Anzeigetext). Ein neues Zitat, das
+// zu keinem Knopf passt, macht den Wächter rot. Die Dokumente sind deutsch; ihre Beschriftungen
+// gibt es in EN und NL über denselben Schlüssel. Fett gesetzte Knopfnamen ohne Anführungszeichen
+// liest Teil D nicht (abgeglichen von Hand, Nacharbeit 6). Die zugeordnete Aufgabenkarte aus
+// DEMO-UX-V1 (`03_AUFTRAEGE/review/BERICHT-BEN-DEMO-UX-V1-A4-U3-READINESS-NACHPRUEFUNG-228.md`)
+// liegt außerhalb des Repositorys und wird hier nicht gelesen.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
+import { CAPTURE_FILE_TEXT } from "../../apps/web/src/lib/captureFromFile";
 import { reviewHelp } from "../../apps/web/src/lib/reviewHelp";
 
 type Katalog = Record<string, unknown>;
@@ -147,6 +157,12 @@ const ABGELOEST: ReadonlyArray<{ alt: string; neu: string; datei: string; knopf:
     datei: "lib/reviewHelp.ts",
     knopf: "vhelp.sourceAdd.title",
   },
+  {
+    alt: "capture.file.connectHint",
+    neu: "knopfzitat.datei.wege",
+    datei: "lib/captureFromFile.ts",
+    knopf: "capture.file.applyCta",
+  },
 ];
 
 // Was nach dieser Runde bleibt — je Eintrag an Schlüssel, Sprache und deutsches Zitat gebunden.
@@ -157,8 +173,6 @@ const BEKANNT: Record<string, string> = {
     "OFFEN, Produktentscheidung: der Knopf heißt englisch „Asset changed …“ (lcy.assetToggle); die englische Hilfe vermeidet „asset“ bewusst als Fachwort (Altkapitel-Wächter). Welches Wort gilt, ist nicht entschieden.",
   "help.capture.body · en · Prüfen & einreichen":
     "OFFEN, gesperrt: englisch „the final check“ statt „Review & submit“. Der Grundwert steht unter Prüfsumme, und der Kapitelschlüssel ist auf help.<id>.body festgelegt (seitenhilfe-navkapitel, Altkapitel-Wächter) — umhängen bräche beide.",
-  "capture.file.connectHint · en · Übernehmen":
-    "OFFEN, schon deutsch ungenau: der Knopf heißt „Ausgewählte übernehmen“ (capture.file.applyCta); „Übernehmen“ trifft zufällig andere Knöpfe. Englisch „Take over“ — richtiger Wortlaut erst nach deutscher Klärung.",
   // ---- ZUFALLSTREFFER: das zitierte Wort ist kein Knopf dieses Namens ----------------------
   "topbar.plain.reasoner · en · Ungeprüft":
     "Zufallstreffer: gemeint ist der Zustand „KI-Modell ungeprüft“ (topbar.reasonerUnverified), nicht die Wissensklasse ask.knowledgeClass.ungeprueft. Deutsch zitiert verkürzt.",
@@ -179,6 +193,107 @@ const BEKANNT: Record<string, string> = {
   "einstieg.knopf.einreichen · nl · in Prüfung":
     "Zufallstreffer: wie EN — nicht die Wissensnetz-Legende („in beoordeling“).",
 };
+
+function istText(wert: unknown): boolean {
+  return typeof wert === "string" && wert.trim() !== "";
+}
+
+function alsMuster(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// ---- TEIL D · Anleitung und Prüfkarten im Repository --------------------------------------------
+const WURZEL = process.cwd();
+const ANLEITUNGEN = [
+  "docs/onboarding/user-quickstart.md",
+  "docs/demo/stage-1-demo-path.md",
+  "docs/Berater/FE-001_PRUEFPAKET_ARBEITSANLEITUNGEN_2026-09-26.md",
+] as const;
+const DOKU_ZITAT = /[„"“]([^„"“”\n]{2,60})[“”"]/g;
+
+/** Alle deutschen Schlüssel, deren Wert genau dieses Zitat ist (Satzpunkt am Ende und
+ *  Platzhalter wie „Stand {{nummer}}" ↔ „Stand N" eingeschlossen). */
+function beschriftungenFuer(zitat: string, de: Katalog): string[] {
+  return Object.entries(de).flatMap(([key, wert]) => {
+    if (typeof wert !== "string" || wert === "") {
+      return [];
+    }
+    if (wert === zitat || wert.replace(/\.$/, "") === zitat) {
+      return [key];
+    }
+    if (!wert.includes("{{")) {
+      return [];
+    }
+    const teile = wert.split(/\{\{[^}]*\}\}/);
+    if ((teile.join("").match(/\p{L}/gu) ?? []).length < 3) {
+      return [];
+    }
+    return new RegExp(`^${teile.map(alsMuster).join("\\S+")}$`).test(zitat) ? [key] : [];
+  });
+}
+
+function dokuZitate(text: string): Array<{ zeile: number; zitat: string }> {
+  const funde: Array<{ zeile: number; zitat: string }> = [];
+  for (const [i, inhalt] of text.split("\n").entries()) {
+    for (const treffer of inhalt.matchAll(DOKU_ZITAT)) {
+      funde.push({ zeile: i + 1, zitat: treffer[1] ?? "" });
+    }
+  }
+  return funde;
+}
+
+/** Zitate, die weder eine Beschriftung sind noch einzeln begründet in `kein` stehen. */
+function unbekannteZitate(
+  datei: string,
+  text: string,
+  de: Katalog,
+  kein: Record<string, string>,
+): string[] {
+  return dokuZitate(text)
+    .filter(({ zitat }) => beschriftungenFuer(zitat, de).length === 0)
+    .filter(({ zitat }) => !(`${datei} · ${zitat}` in kein))
+    .map(({ zeile, zitat }) => `${datei}:${zeile} · ${zitat}`);
+}
+
+// Zitate in Anleitung und Prüfkarten, die bewusst KEINE Beschriftung sind — einzeln begründet.
+const QS = "docs/onboarding/user-quickstart.md";
+const DP = "docs/demo/stage-1-demo-path.md";
+const FE = "docs/Berater/FE-001_PRUEFPAKET_ARBEITSANLEITUNGEN_2026-09-26.md";
+const KEIN_KNOPF: Record<string, string> = {
+  [`${QS} · nicht eingerichtet`]:
+    "Zustandsname der Supportkarte; die Karte zeigt dazu einen ganzen Satz (help.support.notConfigured), keinen Knopf.",
+  [`${QS} · IT-Servicedesk`]:
+    "Beispielwert für KLARWERK_SUPPORT_LABEL, vom Betreiber frei gesetzt.",
+  [`${DP} · Ventil X bei Überdruck manuell schließen.`]:
+    "Titel eines Demo-Wissensobjekts (Beispieldaten aus seed-demo.ts), keine Beschriftung.",
+  [`${DP} · Filter F3 monatlich auf Verschmutzung prüfen.`]:
+    "Titel eines Demo-Wissensobjekts (Beispieldaten aus seed-demo.ts), keine Beschriftung.",
+  [`${DP} · Ventil X`]: "Kurzname des Demo-Wissensobjekts (Beispieldaten), keine Beschriftung.",
+  [`${DP} · Anlagenhandbuch Abschnitt 4.2`]: "Quellenangabe der Demo-Daten, keine Beschriftung.",
+  [`${DP} · skizze.png`]: "Dateiname des Demo-Anhangs, keine Beschriftung.",
+  [`${DP} · dünner`]: "Umgangssprachliche Wertung im Sprecherhinweis, kein Bedienelement.",
+  [`${DP} · KI-stärkere`]: "Umgangssprachliche Wertung im Sprecherhinweis, kein Bedienelement.",
+  [`${FE} · Arbeitsplatz im Homeoffice einrichten`]:
+    "Titel eines Beispieleintrags, den das Belegskript anlegt (Testdaten).",
+  [`${FE} · Sicher anmelden mit Zwei-Faktor`]:
+    "Titel eines Beispieleintrags, den das Belegskript anlegt (Testdaten).",
+  [`${FE} · Hilfe bei IT-Problemen holen`]:
+    "Titel eines Beispieleintrags, den das Belegskript anlegt (Testdaten).",
+  [`${FE} · Start im Homeoffice`]: "Titel der Arbeitsanleitung, den der Tester selbst eingibt.",
+  [`${FE} · Homeoffice`]: "Suchbegriff, den der Tester eintippt, keine Beschriftung.",
+  [`${FE} · anmelden`]: "Suchbegriff, den der Tester eintippt, keine Beschriftung.",
+  [`${FE} · IT-Problemen`]: "Suchbegriff, den der Tester eintippt, keine Beschriftung.",
+  [`${FE} · erneutes Öffnen mit erhaltenem Cache`]:
+    "Beschreibung eines Prüffalls, kein Bedienelement.",
+  [`${FE} · Entschieden`]:
+    "Früherer Name des Standes, im Text ausdrücklich als „bisher“ genannt; heute „Freigegeben“ (ga.stand.entschieden).",
+  [`${FE} · noch nicht freigegeben`]:
+    "Satzteil aus dem angezeigten Bedeutungstext des Standes „Vorgelegt“ (Textmodul fe001).",
+  [`${FE} · Inhaltsnachweis`]:
+    "Wort aus der Feldbeschriftung „Für Fachleute: Inhaltsnachweis angeben (optional)“ (fe001.auswahl.fachleute).",
+};
+/** Satzteile, die wörtlich in einem angezeigten Text stehen müssen. */
+const SATZTEIL = [`${FE} · noch nicht freigegeben`, `${FE} · Inhaltsnachweis`];
 
 const SRC = join(process.cwd(), "apps/web/src");
 
@@ -240,7 +355,7 @@ describe("R-1176 · zitierte Beschriftungen stimmen in allen drei Sprachen", () 
     expect(reviewHelp("approve").bodyKey).toBe("vhelp.approve.body");
   });
 
-  it("Z-5 deutsch bleibt zeichengleich — einzige Ausnahme: „im Haus“ wird „intern“ (R-0975)", () => {
+  it("Z-5 deutsch bleibt zeichengleich — außer „im Haus“ (R-0975) und dem schon deutsch falschen Dateihinweis", () => {
     const de = i18n.getFixedT("de");
     for (const { alt, neu } of ABGELOEST) {
       if (alt === "stage2.gate.body") {
@@ -248,8 +363,39 @@ describe("R-1176 · zitierte Beschriftungen stimmen in allen drei Sprachen", () 
         expect(de(neu)).toBe(de(alt).replace("im Haus „Stufe 2“", "intern „Stufe 2“"));
         continue;
       }
+      if (alt === "capture.file.connectHint") {
+        // Nacharbeit 6 (Ben): der alte deutsche Hinweis zitierte Knöpfe, die es so nicht gibt.
+        expect(de(alt)).toContain("„Übernehmen“");
+        expect(de(alt)).toContain("„Verbinden“");
+        expect(de(neu)).not.toContain("„Übernehmen“");
+        expect(de(neu)).not.toContain("„Verbinden“");
+        continue;
+      }
       expect(de(neu), neu).toBe(de(alt));
     }
+  });
+
+  it("Z-7 der Dateihinweis nennt die drei Knöpfe darunter zeichengleich — in DE, EN und NL", () => {
+    // Knopf und Hinweis gehören über CAPTURE_FILE_TEXT zusammen (`pages/Capture.tsx`: Hinweis,
+    // darunter mergeCta, saveDraftsCta, applyCta).
+    expect(CAPTURE_FILE_TEXT.connectHint).toBe("knopfzitat.datei.wege");
+    for (const lng of ["de", "en", "nl"]) {
+      const t = i18n.getFixedT(lng);
+      const hinweis = t(CAPTURE_FILE_TEXT.connectHint);
+      for (const knopf of [
+        CAPTURE_FILE_TEXT.mergeCta,
+        CAPTURE_FILE_TEXT.saveDraftsCta,
+        CAPTURE_FILE_TEXT.applyCta,
+      ]) {
+        expect(t(knopf), `${knopf} (${lng})`).not.toBe(knopf);
+        expect(hinweis, `${lng}: Hinweis zitiert ${knopf}`).toMatch(
+          new RegExp(`[„“"]${alsMuster(t(knopf))}[“”"]`),
+        );
+      }
+    }
+    // Die alten, falschen Kurzzitate kommen in keiner Sprache zurück.
+    expect(i18n.getFixedT("en")(CAPTURE_FILE_TEXT.connectHint)).not.toContain("“Take over”");
+    expect(i18n.getFixedT("nl")(CAPTURE_FILE_TEXT.connectHint)).not.toContain("„Overnemen“");
   });
 
   it("Z-6 Rotprobe: ein klein geschriebenes englisches Zitat wird gefunden, das richtige nicht", () => {
@@ -276,5 +422,88 @@ describe("R-1176 · zitierte Beschriftungen stimmen in allen drei Sprachen", () 
     expect(zitatAbweichungen(de, { en: richtig, nl })).toEqual([]);
     // Ein ausgenommener (abgelöster) Text wird nicht mehr gelesen.
     expect(zitatAbweichungen(de, { en: falsch, nl }, new Set(["probe.hilfe"]))).toEqual([]);
+  });
+});
+
+describe("R-1176 · Teil D — Anleitung und Prüfkarten zitieren nur echte Beschriftungen", () => {
+  const de = katalog("de");
+  const texte = ANLEITUNGEN.map((datei) => ({
+    datei,
+    text: readFileSync(join(WURZEL, datei), "utf8"),
+  }));
+
+  it("D-1 jedes Zitat ist eine Beschriftung des Produkts oder einzeln als Nicht-Knopf begründet", () => {
+    for (const { datei, text } of texte) {
+      expect(dokuZitate(text).length, `${datei}: kein Zitat gelesen`).toBeGreaterThan(0);
+    }
+    const unbekannt = texte.flatMap(({ datei, text }) =>
+      unbekannteZitate(datei, text, de, KEIN_KNOPF),
+    );
+    expect(unbekannt).toEqual([]);
+  });
+
+  it("D-2 jede zitierte Beschriftung gibt es auch auf Englisch und Niederländisch", () => {
+    const en = katalog("en");
+    const nl = katalog("nl");
+    for (const { datei, text } of texte) {
+      for (const { zeile, zitat } of dokuZitate(text)) {
+        const schluessel = beschriftungenFuer(zitat, de);
+        if (schluessel.length === 0) {
+          continue;
+        }
+        const dreisprachig = schluessel.some((k) => istText(en[k]) && istText(nl[k]));
+        expect(dreisprachig, `${datei}:${zeile} „${zitat}“ (${schluessel.join(", ")})`).toBe(true);
+      }
+    }
+  });
+
+  it("D-3 jeder Nicht-Knopf steht noch im Dokument, ist wirklich keine Beschriftung und begründet", () => {
+    const anzeigetexte = Object.values(de).filter((v): v is string => typeof v === "string");
+    for (const [eintrag, grund] of Object.entries(KEIN_KNOPF)) {
+      const [datei = "", zitat = ""] = eintrag.split(" · ");
+      const text = texte.find((t) => t.datei === datei)?.text ?? "";
+      expect(
+        dokuZitate(text).map((z) => z.zitat),
+        eintrag,
+      ).toContain(zitat);
+      expect(beschriftungenFuer(zitat, de), eintrag).toEqual([]);
+      expect(grund.length, eintrag).toBeGreaterThan(20);
+    }
+    for (const eintrag of SATZTEIL) {
+      const zitat = eintrag.split(" · ")[1] ?? "";
+      expect(
+        anzeigetexte.some((v) => v.includes(zitat)),
+        eintrag,
+      ).toBe(true);
+    }
+  });
+
+  it("D-4 die in Nacharbeit 6 berichtigten Zitate kommen nicht zurück", () => {
+    const qs = texte.find((t) => t.datei === QS)?.text ?? "";
+    const dp = texte.find((t) => t.datei === DP)?.text ?? "";
+    // Der Beispielchip heißt „findet passendes Wissen" (ask.expect.answer), nicht „validiertes".
+    expect(i18n.getFixedT("de")("ask.expect.answer")).toBe("findet passendes Wissen");
+    for (const text of [qs, dp]) {
+      expect(text).not.toContain("findet validiertes Wissen");
+      expect(text).toContain('„findet passendes Wissen"');
+    }
+    // „Bester nächster Einstieg" gibt es auf der Startseite nicht als Beschriftung.
+    expect(beschriftungenFuer("Bester nächster Einstieg", de)).toEqual([]);
+    expect(dp).not.toContain("„Bester nächster Einstieg");
+    expect(qs).not.toContain("„besten nächsten Einstieg");
+    // Der Demo-Datensatz folgt der Sprache des ladenden Admins (K11/K22) — die alte Aussage
+    // „ist deutsch" steht nicht mehr in der Anleitung.
+    expect(qs).not.toContain("Demo-Datensatz ist **deutsch**");
+  });
+
+  it("D-5 Rotprobe: ein Zitat, das keinem Knopf entspricht, wird gemeldet", () => {
+    const probe = "Dann „Ausgewählte übernehmen“ klicken, nicht „Übernehmen ausgewählt“.";
+    expect(beschriftungenFuer("Ausgewählte übernehmen", de)).toContain("capture.file.applyCta");
+    expect(unbekannteZitate("probe.md", probe, de, {})).toEqual([
+      "probe.md:1 · Übernehmen ausgewählt",
+    ]);
+    // Platzhalter und Satzpunkt: „Stand 3" ist eine Beschriftung, „Bewertung erfasst" auch.
+    expect(beschriftungenFuer("Stand 3", de).length).toBeGreaterThan(0);
+    expect(beschriftungenFuer("Bewertung erfasst", de)).toContain("val.decisionSaved");
   });
 });

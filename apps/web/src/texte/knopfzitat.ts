@@ -19,6 +19,9 @@
 //   vhelp.reject/assign/contribution.body
 //                                  EN klein geschrieben         Knopf: „Report conflict",
 //                                                               „Assigned to me", „Add source"
+//   capture.file.connectHint       DE/EN/NL „Verbinden"/„Übernehmen"
+//                                  Knöpfe: „Ausgewählte zu einem Eintrag verbinden",
+//                                  „Ausgewählte übernehmen" (Nacharbeit 6, schon deutsch abweichend)
 //
 // Die alten Schlüssel stehen im Grundbestand unter Prüfsumme
 // (`tests/i18n-textmodule/bestand-unveraendert.test.ts`); sie
@@ -51,6 +54,8 @@ export default {
       "Du bittest eine bestimmte Kollegin oder einen Kollegen um die Prüfung dieses Objekts. Die Person sieht es danach in ihrer persönlichen Review-Liste („Mir zugewiesen“) und bekommt eine Benachrichtigung über die Glocke. Die Zuweisung ist eine Einladung, keine Bewertung: Sie ändert weder Status noch Vertrauen, und geprüft wird erst, wenn die Person selbst entscheidet.",
     "knopfzitat.vhelp.contribution":
       "Du kennst eine Ergänzung, Korrektur oder Fundstelle, willst aber nicht selbst am Objekt arbeiten? Beschreibe sie hier — dein Hinweis wird als Kommentar am Wissensobjekt gespeichert, sichtbar für Autor und Prüfer. Anders als „Quelle hinzufügen“ entsteht dabei KEIN Quellen-Eintrag; es ist eine Nachricht an die Menschen, kein Beleg am Objekt.",
+    "knopfzitat.datei.wege":
+      "Mehrere anhaken, dann: „Ausgewählte zu einem Eintrag verbinden“ fasst sie zu EINEM Eintrag zusammen · „Als Entwürfe speichern“ legt je Punkt einen eigenen an · „Ausgewählte übernehmen“ arbeitet sie einzeln ab.",
   },
   en: {
     "knopfzitat.pilot.pflegen":
@@ -72,6 +77,8 @@ export default {
       "You ask a specific colleague to review this object. They will see it in their personal review list (“Assigned to me”) and receive a notification via the bell. The assignment is an invitation, not a rating: it changes neither status nor trust, and nothing is reviewed until that person decides themselves.",
     "knopfzitat.vhelp.contribution":
       "You know an addition, correction or reference but do not want to work on the object yourself? Describe it here — your note is stored as a comment on the knowledge object, visible to author and reviewers. Unlike “Add source”, NO source entry is created; it is a message to people, not evidence on the object.",
+    "knopfzitat.datei.wege":
+      "Tick several, then: “Connect selected into one entry” combines them into ONE entry · “Save as drafts” creates one per point · “Take over selected” processes them one by one.",
   },
   nl: {
     "knopfzitat.pilot.pflegen":
@@ -94,5 +101,7 @@ export default {
       'Je vraagt een bepaalde collega om de beoordeling van dit object. Die persoon ziet het daarna in haar persoonlijke review-lijst („Aan mij toegewezen") en krijgt een melding via de bel. De toewijzing is een uitnodiging, geen beoordeling: het verandert status noch vertrouwen, en beoordeeld wordt er pas als de persoon zelf beslist.',
     "knopfzitat.vhelp.contribution":
       'Ken je een aanvulling, correctie of vindplaats, maar wil je niet zelf aan het object werken? Beschrijf het hier — je tip wordt als opmerking bij het kennisobject opgeslagen, zichtbaar voor auteur en beoordelaar. Anders dan bij „Bron toevoegen" ontstaat hierbij GEEN bronvermelding; het is een bericht aan de mensen, geen bewijs bij het object.',
+    "knopfzitat.datei.wege":
+      "Meerdere aanvinken, dan: „Geselecteerde tot één item samenvoegen“ voegt ze samen tot ÉÉN item · „Als concepten opslaan“ maakt per punt een eigen concept · „Geselecteerde overnemen“ verwerkt ze een voor een.",
   },
 } satisfies Textmodul;
