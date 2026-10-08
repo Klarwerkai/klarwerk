@@ -1490,6 +1490,34 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     expect(rot).toHaveLength(3);
   });
 
+  it("Nacharbeit 24: arguments wird unabhängig von der Parameterform geprüft", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Argumente.tsx": [
+          "function aendere({}: {}): void { arguments[0].role = holeRolle(); }",
+          "function ohne(): void { arguments[0].role = holeRolle(); }",
+          "function liest({ id }: { id?: string }): string | undefined { return id; }",
+          "export function F(): JSX.Element {",
+          "  const p: { role?: string } = {};",
+          "  aendere(p);",
+          "  ohne(p);",
+          "  liest(p);",
+          "  return <div {...p} />;",
+          "}",
+        ],
+      }),
+    );
+    const an = (stelle: string): string[] => rot.filter((z) => z.includes(stelle));
+    // bens Fall wörtlich: destrukturierter Parameter, Änderung über arguments.
+    expect(an("components/Argumente.tsx:6")[0]).toContain("kann dort verändert werden");
+    // Dasselbe ohne jeden Parameter.
+    expect(an("components/Argumente.tsx:7")[0]).toContain("kann dort verändert werden");
+    // Ein destrukturierender Empfänger ohne arguments liest nur.
+    expect(an("components/Argumente.tsx:8"), "liest() kopiert nur Felder").toEqual([]);
+    expect(rot).toHaveLength(2);
+  });
+
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
     const { rot } = pruefeModalgrenze(
       legeBaum({

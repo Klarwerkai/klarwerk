@@ -2134,12 +2134,37 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
   // Kann der Aufruf sein Argument an Position `index` verändern? Nur eine auflösbare Funktion, die
   // den Parameter nachweislich bloss liest, verneint das; ein destrukturierter Parameter kopiert
   // seine Felder und verändert das Objekt selbst nicht.
+  // Nacharbeit 23/24 (ben): `arguments[0].role = …` erreicht ein Argument ohne Parameternamen —
+  // wer `arguments` benutzt, ist nicht nachweislich lesend.
+  const nutztArguments = (funktion: Funktion): boolean => {
+    let gefunden = false;
+    const gehe = (n: ts.Node): void => {
+      if (gefunden) {
+        return;
+      }
+      if (ts.isIdentifier(n) && n.text === "arguments" && !istNurName(n)) {
+        gefunden = true;
+        return;
+      }
+      ts.forEachChild(n, gehe);
+    };
+    if (funktion.body !== undefined) {
+      gehe(funktion.body);
+    }
+    return gefunden;
+  };
   const kannVeraendern = (aufruf: ts.CallExpression, index: number, tiefe: number): boolean => {
     if (tiefe > MAX_TIEFE) {
       return true;
     }
     const funktion = aufgerufeneFunktion(aufruf);
     if (funktion === undefined) {
+      return true;
+    }
+    // Nacharbeit 24 (ben): `arguments` erreicht jedes Argument — unabhängig davon, ob der
+    // Parameter benannt, destrukturiert oder gar nicht deklariert ist. Diese Prüfung steht deshalb
+    // VOR allen Freistellungen nach Parameterform.
+    if (nutztArguments(funktion)) {
       return true;
     }
     const parameter = funktion.parameters[index];
@@ -2218,12 +2243,6 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
         return;
       }
       if (ts.isIdentifier(n) && n.text === name && !istNurName(n) && !lesend(n)) {
-        veraendert = true;
-        return;
-      }
-      // Nacharbeit 23 (ben): `arguments[0].role = …` erreicht das Argument ohne den
-      // Parameternamen — wer `arguments` benutzt, ist nicht nachweislich lesend.
-      if (ts.isIdentifier(n) && n.text === "arguments" && !istNurName(n)) {
         veraendert = true;
         return;
       }
