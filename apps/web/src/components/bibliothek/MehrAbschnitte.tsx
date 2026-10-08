@@ -1946,7 +1946,7 @@ export function MehrAbschnitte({
         <ProvenanceLine
           author={nameOf(ko.author)}
           originalAuthor={nameOf(ko.originalAuthor)}
-          domain={ko.domain}
+          {...(ko.domain ? { domain: ko.domain } : {})}
           version={ko.version}
         />
         {/* R-0086: Tatsache oder Handlungsanweisung — nur, wenn beim Erfassen angegeben. */}
