@@ -35,6 +35,8 @@ describe("FUNKE: /api/me/impact + idempotentes Danke (HTTP end-to-end)", () => {
       payload: { email: "vera@x.de", password: "secret123" },
     });
     const vera = { headers: { authorization: `Bearer ${veraLogin.json().token}` } };
+    // R-0584: der Frageweg antwortet nur aus geprüftem Wissen — eine Bewertung genügt (s. `validieren`).
+    await services.validation.setDefaultNeededValidations(1, anna.id);
     const ko = await services.ko.create({
       title: "Pumpe entlüften",
       statement: "Vor dem Start entlüften.",
@@ -44,6 +46,17 @@ describe("FUNKE: /api/me/impact + idempotentes Danke (HTTP end-to-end)", () => {
       tags: [],
     });
     return { app, services, anna, vera, koId: ko.id };
+  }
+
+  // R-0584 (Auftrag gesamt-datenschutz-voreinstellung): ein offenes KO ist keine Antwortgrundlage
+  // mehr, also gäbe es ohne Validierung keinen Receipt für das „Danke". Validiert wird erst NACH der
+  // Nullmessung, damit `validated: 0` dort weiter genau das misst, was es misst.
+  async function validieren(
+    services: Awaited<ReturnType<typeof setup>>["services"],
+    koId: string,
+  ): Promise<void> {
+    const ergebnis = await services.validation.rate(koId, "pruefer-impact", "up");
+    expect(ergebnis.status).toBe("validiert");
   }
 
   // FUNKE-FIX P0 (bens ROT-1): das „Danke" verlangt den Answer-Receipt aus einem echten
@@ -65,7 +78,7 @@ describe("FUNKE: /api/me/impact + idempotentes Danke (HTTP end-to-end)", () => {
   }
 
   it("ohne Belege ehrliche Nullen; eigener Beitrag zählt; Danke eines ANDEREN erscheint genau einmal", async () => {
-    const { app, anna, vera, koId } = await setup();
+    const { app, services, anna, vera, koId } = await setup();
     const before = await app.inject({
       method: "GET",
       url: "/api/me/impact",
@@ -78,6 +91,7 @@ describe("FUNKE: /api/me/impact + idempotentes Danke (HTTP end-to-end)", () => {
       cited: 0,
       helpfulReceived: 0,
     });
+    await validieren(services, koId);
 
     // FUNKE F2: Vera dankt — zweimal geklickt, zählt EINMAL (idempotent je Nutzer+Ziel).
     const veraReceipt = await receiptFor(app, vera.headers);
@@ -119,7 +133,8 @@ describe("FUNKE: /api/me/impact + idempotentes Danke (HTTP end-to-end)", () => {
   // Answer-Receipt ist NICHT wirksam — die früher frei wählbare KO-ID ist zu (403), und die Wirkung
   // des Autors bleibt bei 0.
   it("unbelegte/fremd gewählte KO-ID → 403, keine Wirkung erzeugt", async () => {
-    const { app, anna, vera, koId } = await setup();
+    const { app, services, anna, vera, koId } = await setup();
+    await validieren(services, koId);
     // (a) gar kein Receipt.
     const noReceipt = await app.inject({
       method: "POST",

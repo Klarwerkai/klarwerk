@@ -10,20 +10,35 @@ import type {
   AssistResult,
   Confidentiality,
   DraftPayload,
+  KnowledgeType,
   SchutzdatenArt,
   StructureResult,
 } from "../../api/types";
 import { useSession } from "../../app/AuthContext";
 import { ImageDescribeProvider } from "../../app/ImageDescribeContext";
-import { WACHE_FLAECHE, useNavGuard, useUnloadGuard } from "../../app/NavGuardContext";
+import {
+  NavGuardSaveError,
+  WACHE_FLAECHE,
+  useNavGuard,
+  useUnloadGuard,
+} from "../../app/NavGuardContext";
 import { useToast } from "../../app/ToastContext";
 import { useLiveKnowledgeCheck } from "../../hooks/useLiveKnowledgeCheck";
+import {
+  type AuswahlModus,
+  type TextAuswahl,
+  auswahlImFeld,
+  auswahlNochGueltig,
+  auswahlUebernehmen,
+} from "../../lib/auswahlAssist";
 import {
   applyBodyAssist,
   applySpellingAssistPreservingHtml,
   applyStructureProposal,
   bodyTextForAssist,
+  structureCardKnowledgeType,
   structureProposalTitleOnly,
+  withDecidedKnowledgeType,
 } from "../../lib/bodyAiAssist";
 import {
   ASSIST_ACTIONS,
@@ -50,10 +65,13 @@ import {
 import { isDemoContext } from "../../lib/demoPilotPath";
 import { deriveStatus } from "../../lib/displayStatus";
 import { CLEARED_DRAFT_BODY_HTML } from "../../lib/draftBody";
+import { KNOWLEDGE_TYPES_DRAFT } from "../../lib/draftForm";
 import { erfassenFehlersatz } from "../../lib/erfassenFehlersatz";
 import { dominantCategory, pickExampleKo } from "../../lib/intakeExample";
 import { INTAKE_STARTERS, type IntakeStarter } from "../../lib/intakeStarters";
 import { deriveIntakeSuggestion } from "../../lib/intakeSuggestion";
+import { kiBremsSatz } from "../../lib/kiBremse";
+import { useNetzOnline } from "../../lib/netzzustand";
 // JOB 3266 (D1): dasselbe Datumsformat wie überall sonst in der Oberfläche — und dieselbe
 // Ehrlichkeit: ein fehlender oder unlesbarer Zeitwert wird `null`, nicht ein erfundenes Datum.
 import { toReasonerLocale } from "../../lib/reasonerLocale";
@@ -61,6 +79,7 @@ import { draftProvenance } from "../../lib/reasonerProvenance";
 import { isEmptyHtml } from "../../lib/richText";
 import { type SpeechRec, diktatSprache, makeRec } from "../../lib/speechDictation";
 import { hasSpeechRecognition, istIosGeraet } from "../../lib/speechSupport";
+import { type Speicherzustand, speicherzustand } from "../../lib/speicherzustand";
 import type { TitelMitQuelle } from "../../lib/titelRangfolge";
 import { useAiBillable } from "../../lib/useAiBillable";
 import { umfangKurz } from "../../lib/vorschauUmfang";
@@ -80,6 +99,7 @@ import { LiveReactionZone } from "../capture/intake/LiveReactionZone";
 import { StatusPill } from "../trust/StatusPill";
 import type { DisplayStatus } from "../trust/types";
 import { Menue, MenueEintrag, MenueFlaeche, MenueTrenner } from "./Menue";
+import { NegativwissenHinweis } from "./NegativwissenHinweis";
 import {
   SymbolBild,
   SymbolDatei,
@@ -132,6 +152,61 @@ export type ArbeitsraumModus = "interview" | "datei" | "formular";
  * schreibt ihren Wert als `ArbeitsraumModus`, und dieser Typ kommt aus genau dieser Datei.
  */
 const BLATT_WEGZIEL = "data-wegziel";
+
+/**
+ * SPEICHERN-ERHOLUNG: der Abbruch eines ohne Netz angehaltenen Speicherns, weil der Mensch die
+ * Eingabe inzwischen verworfen hat. Eine eigene Klasse, damit `save.onError` ihn von einem echten
+ * Fehlschlag unterscheiden kann — er ist keiner und bekommt keinen Fehlersatz.
+ */
+class WartendesSpeichernVerworfen extends Error {
+  constructor() {
+    super("Wartendes Speichern verworfen");
+    this.name = "WartendesSpeichernVerworfen";
+  }
+}
+
+/**
+ * SPEICHERN-ERHOLUNG (Nacharbeit 1): der beim Klick EINGEFRORENE Stand eines Speicherns. Aus ihm
+ * baut `save.mutationFn` die Nutzlast und `save.onMutate` den Bezugspunkt „gesichert" — beide
+ * sehen denselben Wert, auch wenn die Mutation ohne Netz wartet und danach weitergetippt wurde.
+ */
+interface Speicherauftrag {
+  readonly title: string;
+  readonly bodyHtml: string;
+  readonly confidentiality: Confidentiality;
+  readonly gewaehlteVertraulichkeit: Confidentiality | undefined;
+  readonly kategorie: string;
+  // FR-STR-01: die entschiedene Wissensart (aus dem Ordnen-Vorschlag übernommen oder geladen).
+  readonly wissensart: KnowledgeType | undefined;
+  readonly activeDraftId: string | null;
+  readonly bodyNieGeliefert: boolean;
+  readonly fallbackTitle: string;
+}
+
+/** Der Vergleichsstand für `savedStateRef` — genau die Felder, die das Dirty-Prädikat liest. */
+function abgesendetAus(auftrag: Speicherauftrag): {
+  title: string;
+  bodyHtml: string;
+  confidentiality: Confidentiality;
+  kategorie: string;
+  wissensart: KnowledgeType | undefined;
+} {
+  return {
+    title: auftrag.title,
+    bodyHtml: auftrag.bodyHtml,
+    confidentiality: auftrag.confidentiality,
+    kategorie: auftrag.kategorie,
+    wissensart: auftrag.wissensart,
+  };
+}
+
+/** SPEICHERN-ERHOLUNG: der Farbton je Lage — neutral, Warnung, Fehler, bestätigt. */
+const SPEICHERLAGE_TON: Record<Speicherzustand, string> = {
+  laeuft: "text-muted",
+  wartet: "text-trust-warn-text",
+  fehlgeschlagen: "text-trust-crit-text",
+  gespeichert: "text-trust-pos-text",
+};
 
 export type ArbeitsraumFabrik = (args: {
   modus: ArbeitsraumModus;
@@ -194,7 +269,14 @@ type LetzteAktion =
 // bisherigen Satz; die Fläche deutet nichts um, was der Server nicht ausdrücklich benannt hat.
 const CLOUD_GESPERRT_CODE = "CONFIDENTIAL_CLOUD_BLOCKED";
 
+// Aufnahme gesamt-integrations-api (R-0842): die ZWEITE ausdrücklich benannte Kennung. Hat die
+// KI-Bremse des Servers abgewiesen (`KI_ANFRAGEN_GEBREMST`), steht ihr Satz mit Wartezeit da —
+// für Strukturierung und Assistent gleichermassen (`kiBremsSatz`, apps/web/src/lib/kiBremse.ts).
 function kiFehlerMeldung(err: unknown, rueckfall: string): string {
+  const bremsSatz = kiBremsSatz(err);
+  if (bremsSatz) {
+    return bremsSatz;
+  }
   return err instanceof ApiError && err.code === CLOUD_GESPERRT_CODE ? err.message : rueckfall;
 }
 
@@ -314,6 +396,11 @@ export function Blatt({
     return () => beobachter.disconnect();
   }, [title]);
   const [kategorie, setKategorie] = useState("");
+  // FR-STR-01 (R-0315): die ENTSCHIEDENE Wissensart dieses Blatts. `undefined` = noch keine
+  // Entscheidung — dann reist sie nicht mit, und ein KI-Vorschlag darf sie in der Karte vorbelegen.
+  // Gesetzt wird sie nur durch bewusste Übernahme eines Ordnen-Vorschlags oder durch Laden eines
+  // Entwurfs, der eine Wissensart trägt.
+  const [wissensart, setWissensart] = useState<KnowledgeType | undefined>(undefined);
   const [confidentiality, setConfidentiality] = useState<Confidentiality>("intern");
   // JOB 504 D2 (übernommen): der ROHE Herkunftswert — `undefined` heisst „der fortgesetzte Entwurf
   // trug KEINE Stufe". Er steuert die Modell-Provenienz und wird bewusst NICHT geglättet.
@@ -488,7 +575,15 @@ export function Blatt({
     // geänderte Bereichswahl nicht als ungespeicherte Änderung — der Navigationswächter liess den
     // Menschen ziehen, und die Wahl war weg.
     kategorie: string;
-  }>({ title: "", bodyHtml: "", confidentiality: "intern", kategorie: "" });
+    // FR-STR-01: eine übernommene, noch nicht gesicherte Wissensart ist eine ungespeicherte Änderung.
+    wissensart: KnowledgeType | undefined;
+  }>({
+    title: "",
+    bodyHtml: "",
+    confidentiality: "intern",
+    kategorie: "",
+    wissensart: undefined,
+  });
 
   // ---- KI --------------------------------------------------------------------------------------
   const [structureProposal, setStructureProposal] = useState<StructureResult | null>(null);
@@ -496,9 +591,20 @@ export function Blatt({
   const [structureAccepted, setStructureAccepted] = useState(false);
   const [structureKeptRichBody, setStructureKeptRichBody] = useState(false);
   const [structureTitleAdopted, setStructureTitleAdopted] = useState(false);
+  // FR-STR-01: die Wissensart-Auswahl IN der Vorschlagskarte — vorbelegt nach
+  // `structureCardKnowledgeType`, vom Menschen korrigierbar, übernommen erst mit „Übernehmen".
+  const [structureCardType, setStructureCardType] = useState<KnowledgeType | undefined>(undefined);
+  // R-0300: `auswahl` ist die Markierung, auf die sich der Vorschlag bezieht — `null` heisst
+  // „ganzer Text" (der bisherige Weg, unverändert).
   const [assistProposal, setAssistProposal] = useState<
-    (AssistResult & { action: AssistRequest }) | null
+    (AssistResult & { action: AssistRequest; auswahl: TextAuswahl | null }) | null
   >(null);
+  // R-0300: die zuletzt im Schreibfeld markierte Stelle. Ein Ref, kein Zustand: sie wird bei jeder
+  // Auswahländerung gelesen und erst beim Auslösen einer KI-Aktion gebraucht — ein Rendern je
+  // Mausbewegung wäre reiner Aufwand.
+  const markierungRef = useRef<TextAuswahl | null>(null);
+  // Die Markierung DER laufenden Anfrage — gesetzt in `onMutate`, gelesen in `mutationFn`.
+  const anfrageAuswahlRef = useRef<TextAuswahl | null>(null);
   const [assistErr, setAssistErr] = useState<string | null>(null);
   const [assistAccepted, setAssistAccepted] = useState(false);
 
@@ -530,6 +636,20 @@ export function Blatt({
   const submitOperationRef = useRef<string | null>(null);
   const submitDraftRef = useRef<string | null>(null);
   const saveOperationRef = useRef<string | null>(null);
+  // SPEICHERN-ERHOLUNG (Ausbauliste Punkt 6) — EIN WARTENDES SPEICHERN, DAS DER MENSCH VERWORFEN HAT.
+  //
+  // Ohne Verbindung hält react-query das Speichern an (`save.isPaused`) und schickt es von selbst,
+  // sobald das Netz zurück ist. Verwirft der Mensch die Eingabe in dieser Zeit („Verwerfen und
+  // wechseln", „Eingabe verwerfen"), darf der angehaltene Aufruf danach NICHT doch noch schreiben —
+  // sonst entstünde später ein Entwurf aus einem Text, den er ausdrücklich weggeworfen hat. Die
+  // Marke ist ein Ref, weil der wieder anlaufende Aufruf sie lesen muss, auch wenn dieses Blatt
+  // längst ausgehängt ist; der Zustand daneben nimmt nur die Anzeige „wartet" zurück.
+  const wartendVerworfenRef = useRef(false);
+  const [wartendVerworfen, setWartendVerworfen] = useState(false);
+  // Die EINE Quelle des Onlinezustands (`lib/netzzustand.ts`) — dieselbe, aus der react-query sein
+  // `isPaused` ableitet. Gebraucht nur von der Wache: ohne Netz kann „Speichern und wechseln" nicht
+  // halten, was es verspricht.
+  const netzOnline = useNetzOnline();
 
   // ---- Bild und Diktat -------------------------------------------------------------------------
   const [captionRequest, setCaptionRequest] = useState<{
@@ -656,6 +776,28 @@ export function Blatt({
     return () => beobachter.disconnect();
   }, [ansicht]);
 
+  // R-0300 — DIE MARKIERUNG IM SCHREIBFELD MERKEN, solange sie dort steht. Wandert die Auswahl
+  // AUS dem Feld (Klick in das KI-Menü), bleibt die gemerkte Stelle stehen: genau sie soll die
+  // Aktion bearbeiten. Wird IM Feld nur noch ein Cursor gesetzt, gilt wieder der ganze Text.
+  // Das Bildbeschreibungsformular hat ein eigenes Textfeld (`#caption-form-text`) — es zählt nicht.
+  useEffect(() => {
+    const lesen = (): void => {
+      const feld = editorHuelleRef.current?.querySelector<HTMLElement>(
+        '[role="textbox"]:not(#caption-form-text)',
+      );
+      const auswahl = document.getSelection();
+      if (!feld || !auswahl || auswahl.rangeCount === 0) {
+        return;
+      }
+      if (!feld.contains(auswahl.getRangeAt(0).startContainer)) {
+        return;
+      }
+      markierungRef.current = auswahlImFeld(feld, auswahl);
+    };
+    document.addEventListener("selectionchange", lesen);
+    return () => document.removeEventListener("selectionchange", lesen);
+  }, []);
+
   // Die stille Live-Reaktion (§5): sie hört auf den Klartext des Blattes, nicht auf ein zweites Feld.
   const liveText = useMemo(() => bodyTextForAssist(bodyHtml), [bodyHtml]);
   // ================================================================================================
@@ -685,7 +827,7 @@ export function Blatt({
         : draftProvenance(declaredConfidentiality, undefined, activeDraftId ?? undefined),
     [declaredConfidentiality, activeDraftId],
   );
-  const { verdict, checkStatus, pruefumfang } = useLiveKnowledgeCheck(
+  const { verdict, checkStatus, pruefumfang, negativwissen } = useLiveKnowledgeCheck(
     liveText,
     livePruefHerkunft,
     gespeicherterStand,
@@ -743,6 +885,7 @@ export function Blatt({
     setStructureAccepted(false);
     setStructureKeptRichBody(false);
     setStructureTitleAdopted(false);
+    setStructureCardType(undefined);
   }, []);
 
   const clearAssistState = useCallback((): void => {
@@ -771,10 +914,14 @@ export function Blatt({
   // liest der Merge einen mitgeschickten Leerwert als LÖSCHUNG (`services/capture/src/service.ts`,
   // zitiert in `captureFrontDoor.ts`) — ein Blatt ohne Bereichswahl würde sonst die Kategorie eines
   // fremden Entwurfs beim ersten Speichern austragen.
+  // FR-STR-01: die entschiedene Wissensart reist an DERSELBEN Stelle mit (Regel am Helfer).
   const mitBereich = useCallback(
     (rumpf: DraftPayload): DraftPayload =>
-      kategorie.trim() ? { ...rumpf, category: kategorie.trim() } : rumpf,
-    [kategorie],
+      withDecidedKnowledgeType(
+        kategorie.trim() ? { ...rumpf, category: kategorie.trim() } : rumpf,
+        wissensart,
+      ),
+    [kategorie, wissensart],
   );
 
   const changeKategorie = (next: string): void => {
@@ -820,6 +967,11 @@ export function Blatt({
   // Adresse dem Wechsel, der unmittelbar folgt. Ein zweites Leeren daneben gibt es nicht: der
   // Menüweg „Eingabe verwerfen" und jeder andere Aufrufer gehen weiter durch `resetForNewEntry`.
   const blattLeeren = (): void => {
+    // SPEICHERN-ERHOLUNG: ein angehaltenes Speichern gehört zur verworfenen Eingabe (s. Marke oben).
+    if (save.isPaused) {
+      wartendVerworfenRef.current = true;
+      setWartendVerworfen(true);
+    }
     setTitle("");
     setBodyHtml("");
     setQuellBildzahl(null);
@@ -831,7 +983,14 @@ export function Blatt({
     setDeclaredConfidentiality(undefined);
     setVertraulichkeitMarkiert(false);
     setKategorie("");
-    savedStateRef.current = { title: "", bodyHtml: "", confidentiality: "intern", kategorie: "" };
+    setWissensart(undefined);
+    savedStateRef.current = {
+      title: "",
+      bodyHtml: "",
+      confidentiality: "intern",
+      kategorie: "",
+      wissensart: undefined,
+    };
     bodyNieGeliefertRef.current = false;
     // JOB 3633: Ein neues Blatt trägt keinen Befund über den Entwurf, den es gerade verlassen hat —
     // derselbe Grund wie beim Merker eine Zeile darüber.
@@ -999,11 +1158,17 @@ export function Blatt({
           ? (draft.payload.confidentiality as Confidentiality)
           : undefined;
         const loadedConfidentiality = confidentialityOf(declared);
+        // FR-STR-01: eine gespeicherte, gültige Wissensart ist eine bestehende Entscheidung — sie
+        // wird geschützt (kein KI-Vorschlag ersetzt sie ungefragt). Fehlt sie, bleibt sie offen.
+        const loadedWissensart = KNOWLEDGE_TYPES_DRAFT.includes(draft.payload.type as KnowledgeType)
+          ? (draft.payload.type as KnowledgeType)
+          : undefined;
         setActiveDraftId(draft.id);
         setGeladenVon({ id: draft.id, autor: draft.originalAuthor, imPool: draft.imPool === true });
         setTitle(loadedTitle);
         setBodyHtml(loadedBody);
         setKategorie(draft.payload.category ?? "");
+        setWissensart(loadedWissensart);
         loadedUpdatedAtRef.current = draft.updatedAt ?? null;
         // JOB 3556 R3: ab hier steht ein anderer gespeicherter Stand hinter diesem Blatt.
         setGespeicherterStand((n) => n + 1);
@@ -1022,6 +1187,7 @@ export function Blatt({
           bodyHtml: loadedBody,
           confidentiality: loadedConfidentiality,
           kategorie: draft.payload.category ?? "",
+          wissensart: loadedWissensart,
         };
         setSubmitValidation(false);
         setSubmittedKo(null);
@@ -1107,6 +1273,8 @@ export function Blatt({
     },
     onSuccess: (proposal) => {
       setStructureProposal(proposal);
+      // FR-STR-01: eine entschiedene Wissensart geht vor; sonst steht der KI-Vorschlag vorbelegt.
+      setStructureCardType(structureCardKnowledgeType(wissensart, proposal));
       setStructureErr(null);
     },
     onError: (e: unknown) => {
@@ -1120,7 +1288,8 @@ export function Blatt({
   const assist = useMutation({
     mutationFn: (action: AssistRequest) =>
       endpoints.reasoner.assist(
-        assistInput,
+        // R-0300: die markierte Stelle, wenn es eine gibt — sonst wie bisher der ganze Text.
+        anfrageAuswahlRef.current?.text ?? assistInput,
         locale,
         typeof action === "string" ? t(assistActionInstructionKey(action)) : action.instruction,
         // JOB 3353 A: dieselbe fehlende Kennung wie bei `structure` eine Ebene höher — und dies
@@ -1138,9 +1307,16 @@ export function Blatt({
       setStructureProposal(null);
       setStructureErr(null);
       setStructureAccepted(false);
+      // Eine Markierung zählt nur, wenn der Rumpf sie noch trägt (Entwurfswechsel, Weiterschreiben
+      // ohne Cursor im Feld); sonst gilt der ganze Text.
+      const markierung = markierungRef.current;
+      const auswahl =
+        markierung !== null && auswahlNochGueltig(bodyHtml, markierung) ? markierung : null;
+      anfrageAuswahlRef.current = auswahl;
+      return { auswahl };
     },
-    onSuccess: (proposal, action) => {
-      setAssistProposal({ ...proposal, action });
+    onSuccess: (proposal, action, kontext) => {
+      setAssistProposal({ ...proposal, action, auswahl: kontext?.auswahl ?? null });
       setAssistErr(null);
     },
     onError: (e: unknown) => {
@@ -1159,32 +1335,60 @@ export function Blatt({
   // (s. Effekt `formularNachSichern` bei `formularOeffnen`).
   const [formularNachSichern, setFormularNachSichern] = useState<ArbeitsraumModus | null>(null);
   const save = useMutation({
-    mutationFn: () => {
-      if (activeDraftId) {
+    // ==============================================================================================
+    // SPEICHERN-ERHOLUNG (Nacharbeit 1, BEN) — NUTZLAST UND QUITTUNG AUS DEMSELBEN SCHNAPPSCHUSS.
+    // ==============================================================================================
+    //
+    // BIS HIERHER las `mutationFn` Titel, Rumpf, Stufe und Bereich aus dem Abschluss des Renders,
+    // `onMutate` hielt dagegen den Klickstand fest. react-query reicht einer LAUFENDEN Mutation bei
+    // jedem Render die neuen Optionen weiter (`mutationObserver.setOptions`), und eine ohne Netz
+    // angehaltene Mutation ruft beim Wiederanlauf die AKTUELLE `mutationFn`. Wer während des Wartens
+    // von A auf B änderte, schickte also B — und das Blatt hielt A für gespeichert. Ein späteres
+    // Zurückändern auf A zeigte „Gespeichert – vom Server bestätigt", obwohl der Server B trug.
+    //
+    // JETZT ist der Stand eine VARIABLE der Mutation (`Speicherauftrag`, eingefroren beim Klick):
+    // `mutationFn` baut die Nutzlast daraus, `onMutate` den Bezugspunkt `savedStateRef` daraus. Beide
+    // sehen denselben, unveränderlichen Wert; was danach getippt wird, bleibt ungespeichert und zählt
+    // als Änderung. Der gesehene Serverstand (`loadedUpdatedAtRef`) wird bewusst erst beim Absenden
+    // gelesen — er ist keine Eingabe, sondern die Bedingung des Schreibvorgangs.
+    mutationFn: (auftrag: Speicherauftrag) => {
+      // SPEICHERN-ERHOLUNG: der Aufruf läuft erst JETZT an — nach einer Wartezeit ohne Netz womöglich
+      // lange nach dem Klick. Hat der Mensch die Eingabe inzwischen verworfen, geht nichts hinaus.
+      if (wartendVerworfenRef.current) {
+        wartendVerworfenRef.current = false;
+        return Promise.reject(new WartendesSpeichernVerworfen());
+      }
+      // FR-STR-01: die eingefrorene Wissensart reist an derselben Stelle wie der Bereich.
+      const mitAuftragsBereich = (rumpf: DraftPayload): DraftPayload =>
+        withDecidedKnowledgeType(
+          auftrag.kategorie.trim() ? { ...rumpf, category: auftrag.kategorie.trim() } : rumpf,
+          auftrag.wissensart,
+        );
+      if (auftrag.activeDraftId) {
         // AUFTRAG-mega7 Block A: Speichern auf einen BESTEHENDEN Entwurf ist ein PUT über den
         // Bestand — die Entwurfs-Id mitgeben, damit ein bewusst geleerter Rumpf als Löschmarker
         // reist statt vom partiellen Merge durch den Altwert ersetzt zu werden.
         const rumpf = buildFrontDoorPayload({
-          title,
-          bodyHtml,
-          fallbackTitle,
+          title: auftrag.title,
+          bodyHtml: auftrag.bodyHtml,
+          fallbackTitle: auftrag.fallbackTitle,
           // JOB 3082: NUR eine getroffene Wahl reist mit. Sichern bleibt ohne Stufe erlaubt (ein
           // halber Gedanke muss sich wegspeichern lassen) — der Entwurf trägt dann kein Feld, und
           // das Fortsetzen fragt wieder nach.
-          gewaehlteVertraulichkeit: declaredConfidentiality,
-          activeDraftId,
+          gewaehlteVertraulichkeit: auftrag.gewaehlteVertraulichkeit,
+          activeDraftId: auftrag.activeDraftId,
         });
         // JOB 2705 (R2-23 a): DER LÖSCHMARKER AUS DEM NICHTS. Hat der Server den Rumpf nie
         // geliefert und hat der Mensch ihn seither nicht angefasst, geht der Schlüssel GAR NICHT
         // mit — der partielle Merge lässt den Altwert stehen.
-        if (bodyNieGeliefertRef.current && rumpf.bodyHtml === CLEARED_DRAFT_BODY_HTML) {
+        if (auftrag.bodyNieGeliefert && rumpf.bodyHtml === CLEARED_DRAFT_BODY_HTML) {
           // biome-ignore lint/performance/noDelete: Schluessel muss fehlen, nicht leer sein
           delete rumpf.bodyHtml;
         }
         return withFrontDoorSaveTimeout(
           endpoints.drafts.update(
-            activeDraftId,
-            mitBereich(rumpf),
+            auftrag.activeDraftId,
+            mitAuftragsBereich(rumpf),
             loadedUpdatedAtRef.current
               ? { expectedUpdatedAt: loadedUpdatedAtRef.current }
               : undefined,
@@ -1196,19 +1400,25 @@ export function Blatt({
         saveOperationRef.current = newCreateOperationId();
       }
       return createFrontDoorDraft(
-        { title, bodyHtml, fallbackTitle, gewaehlteVertraulichkeit: declaredConfidentiality },
-        (payload, operationId) => endpoints.drafts.create(mitBereich(payload), operationId),
+        {
+          title: auftrag.title,
+          bodyHtml: auftrag.bodyHtml,
+          fallbackTitle: auftrag.fallbackTitle,
+          gewaehlteVertraulichkeit: auftrag.gewaehlteVertraulichkeit,
+        },
+        (payload, operationId) => endpoints.drafts.create(mitAuftragsBereich(payload), operationId),
         undefined,
         saveOperationRef.current,
       );
     },
-    onMutate: () => {
+    onMutate: (auftrag: Speicherauftrag) => {
       setErr(null);
       setSubmittedKo(null);
-      // JOB 2705 (R2-23 c): DER STAND, DER WIRKLICH ABGESENDET WIRD — festgehalten VOR dem Aufruf.
-      return { abgesendet: { title, bodyHtml, confidentiality, kategorie } };
+      // JOB 2705 (R2-23 c): DER STAND, DER WIRKLICH ABGESENDET WIRD — seit der Nacharbeit derselbe
+      // eingefrorene Auftrag, aus dem `mutationFn` die Nutzlast baut.
+      return { abgesendet: abgesendetAus(auftrag) };
     },
-    onSuccess: (draft, _variablen, kontext) => {
+    onSuccess: (draft, auftrag, kontext) => {
       setActiveDraftId(draft.id);
       // JOB 3408 (KI-UEBERNAHME-SPEICHERN): DER VORGANG IST VORBEI, ALSO IST DIE SPERRE VORBEI.
       // `saveRequestedRef` schützt EINEN laufenden Schreibvorgang vor einem zweiten Auslöser im
@@ -1231,7 +1441,7 @@ export function Blatt({
       setErr(null);
       // JOB 2705 (R2-23 c): der ABGESENDETE Stand ist der Bezugspunkt, nicht der aktuelle — sonst
       // gälte als „gesichert", was der Mensch während des Speicherns getippt hat.
-      const abgesendet = kontext?.abgesendet ?? { title, bodyHtml, confidentiality, kategorie };
+      const abgesendet = kontext?.abgesendet ?? abgesendetAus(auftrag);
       savedStateRef.current = abgesendet;
       setSubmitValidation(false);
       push("success", t("fd.toastSaved"));
@@ -1287,6 +1497,14 @@ export function Blatt({
     onError: (e) => {
       saveRequestedRef.current = false;
       nachSichernOeffnenRef.current = null;
+      // SPEICHERN-ERHOLUNG: kein Fehler, sondern die Wirkung der Wahl „Verwerfen". Es wurde nichts
+      // geschickt, also gibt es auch keinen Fehlersatz — und kein Vorgangsschlüssel ist offen.
+      if (e instanceof WartendesSpeichernVerworfen) {
+        saveOperationRef.current = null;
+        guardSaveRef.current = false;
+        setWartendVerworfen(false);
+        return;
+      }
       // JOB 2697: den Schlüssel NUR fallen lassen, wenn der Server EINDEUTIG geantwortet hat.
       if (createOperationIsSettled(e instanceof ApiError ? e.status : undefined)) {
         saveOperationRef.current = null;
@@ -1363,7 +1581,14 @@ export function Blatt({
       loadedUpdatedAtRef.current = null;
       setStaleConflict(false);
       setKategorie("");
-      savedStateRef.current = { title: "", bodyHtml: "", confidentiality, kategorie: "" };
+      setWissensart(undefined);
+      savedStateRef.current = {
+        title: "",
+        bodyHtml: "",
+        confidentiality,
+        kategorie: "",
+        wissensart: undefined,
+      };
       setSubmitValidation(false);
       setSearchParams({}, { replace: true });
       clearStructureState();
@@ -1475,6 +1700,7 @@ export function Blatt({
     setStructureProposal(null);
     setStructureErr(null);
     setStructureAccepted(false);
+    setStructureCardType(undefined);
   };
 
   const discardAssistProposal = (): void => {
@@ -1498,16 +1724,43 @@ export function Blatt({
     setBodyHtml(result.bodyHtml);
     setStructureKeptRichBody(result.preserved);
     setStructureTitleAdopted(result.titleAdopted);
+    // FR-STR-01: übernommen wird genau die Wissensart, die beim Klick in der Kartenauswahl steht —
+    // vorbelegt, aber vom Menschen bestätigt oder korrigiert. Keine Auswahl ⇒ nichts ändert sich.
+    if (structureCardType !== undefined) {
+      setWissensart(structureCardType);
+    }
+    setStructureCardType(undefined);
     setStructureProposal(null);
     setStructureErr(null);
     setStructureAccepted(true);
   };
 
-  const acceptAssistProposal = (): void => {
+  const acceptAssistProposal = (modus: AuswahlModus = "ersetzen"): void => {
     if (!assistProposal) {
       return;
     }
-    if (assistProposal.action === "spelling") {
+    if (assistProposal.auswahl !== null) {
+      // R-0300: nur die markierte Stelle wird ersetzt bzw. hinter ihr eingefügt; alles andere —
+      // Text wie Formatierung — bleibt, wie es ist.
+      const rechtschreibung = assistProposal.action === "spelling";
+      const neu = auswahlUebernehmen(bodyHtml, assistProposal.auswahl, assistProposal.text, {
+        modus,
+        rechtschreibung,
+      });
+      if (neu === null) {
+        // Zwei Gründe, zwei Sätze: die Stelle hat sich geändert — oder (Rechtschreibung) die
+        // Wörter des Vorschlags lassen sich nicht sicher auf die Formatierung verteilen.
+        let grund = rechtschreibung ? "fd.errSpelling" : "fd.errAssist";
+        if (!auswahlNochGueltig(bodyHtml, assistProposal.auswahl)) {
+          grund = "schreibhilfe.auswahlVeraltet";
+        }
+        setAssistErr(t(grund));
+        setAssistAccepted(false);
+        return;
+      }
+      setBodyHtml(neu);
+      markierungRef.current = null;
+    } else if (assistProposal.action === "spelling") {
       const result = applySpellingAssistPreservingHtml(bodyHtml, assistProposal.text);
       if (!result.applied) {
         setAssistErr(t("fd.errSpelling"));
@@ -1535,7 +1788,9 @@ export function Blatt({
     bodyHtml !== savedStateRef.current.bodyHtml ||
     confidentiality !== savedStateRef.current.confidentiality ||
     // JOB 3062 R6 (bens Befund 1): eine geänderte Bereichswahl IST eine ungespeicherte Änderung.
-    kategorie !== savedStateRef.current.kategorie;
+    kategorie !== savedStateRef.current.kategorie ||
+    // FR-STR-01: ebenso eine übernommene, noch nicht gesicherte Wissensart.
+    wissensart !== savedStateRef.current.wissensart;
   const istSchmutzig = inhaltWeichtAb || hasPendingProposal;
 
   // JOB 3106 (UX-01): die Bestätigungszeile steht, SOLANGE das Blatt dem gesicherten Stand
@@ -1554,13 +1809,31 @@ export function Blatt({
     [hasPendingProposal, hasSavableContent, confidentiality, t],
   );
 
+  // SPEICHERN-ERHOLUNG (Nacharbeit 1): der eine Ort, an dem der Klickstand eingefroren wird. Die
+  // Wache liest ihn über den Ref, damit ihre Anmeldung nicht bei jedem Tastendruck neu läuft —
+  // gelesen wird trotzdem der Stand des letzten Renders, also genau das, was im Dialog zu sehen war.
+  const speicherauftrag = (): Speicherauftrag =>
+    Object.freeze({
+      title,
+      bodyHtml,
+      confidentiality,
+      gewaehlteVertraulichkeit: declaredConfidentiality,
+      kategorie,
+      wissensart,
+      activeDraftId,
+      bodyNieGeliefert: bodyNieGeliefertRef.current,
+      fallbackTitle,
+    });
+  const speicherauftragRef = useRef(speicherauftrag);
+  speicherauftragRef.current = speicherauftrag;
+
   const requestSave = (): void => {
     if (!canSave || saveRequestedRef.current) {
       return;
     }
     setLetzteAktion({ art: "speichern" });
     saveRequestedRef.current = true;
-    save.mutate();
+    save.mutate(speicherauftrag());
   };
 
   const requestSubmit = (): void => {
@@ -1659,9 +1932,16 @@ export function Blatt({
         if (!hasSavableContent) {
           return;
         }
+        // SPEICHERN-ERHOLUNG: ohne Netz bliebe `mutateAsync` angehalten, und der Dialog stünde
+        // wortlos mit gesperrten Knöpfen da, bis die Verbindung irgendwann zurückkommt. Stattdessen
+        // sagt er den Grund, bleibt offen und lässt „Hier bleiben" und „Verwerfen" wählbar — die
+        // Wache wechselt bei einem Wurf nicht (`NavGuardContext.saveAndGo`).
+        if (!netzOnline) {
+          throw new NavGuardSaveError(t("erholung.speichern.wechselOhneVerbindung"));
+        }
         guardSaveRef.current = true;
         try {
-          await save.mutateAsync();
+          await save.mutateAsync(speicherauftragRef.current());
         } catch (e) {
           guardSaveRef.current = false;
           throw e;
@@ -1669,7 +1949,7 @@ export function Blatt({
       },
     });
     return () => setGuard(null);
-  }, [setGuard, istSchmutzig, unsicherbareGruende, hasSavableContent, save]);
+  }, [setGuard, istSchmutzig, unsicherbareGruende, hasSavableContent, save, netzOnline, t]);
 
   // ==============================================================================================
   // EINE LAGE, EIN SATZ (Zustandsmodell §9).
@@ -1696,6 +1976,25 @@ export function Blatt({
   const kiFehlerSatz = kiFehler ? `${kiFehler} ${t("fd.originalUnchanged")}` : null;
   const blattFehler: string | null =
     (staleConflict ? t("fd.draftStale") : null) ?? err ?? restartOffer;
+  // ==============================================================================================
+  // SPEICHERN-ERHOLUNG (Ausbauliste Punkt 6) — DIE LAGE DES EXPLIZITEN SPEICHERNS, SICHTBAR.
+  // ==============================================================================================
+  //
+  // Bis hierher sah der Mensch nach „Entwurf sichern" nur einen grauen Knopf: ob die Anfrage
+  // unterwegs war oder ohne Netz angehalten stand, war von aussen nicht zu unterscheiden. Die vier
+  // Lagen kommen aus EINER Ableitung (`lib/speicherzustand.ts`) und lesen nur, was schon da ist:
+  //   · unterwegs / angehalten — die Mutation selbst (`isPending`, `isPaused`). Ein verworfenes
+  //     Warten zählt nicht mehr: die Eingabe ist weg, und „wartet" wäre eine Zusage ohne Gegenstand.
+  //   · fehlgeschlagen — der Satz unter den Knöpfen steht, und er gehört zum SPEICHERN (nicht zum
+  //     Einreichen oder Laden). Der Satz selbst bleibt, wo er war (`BlattLage`).
+  //   · gespeichert — dieselbe Ablesung wie die Bestätigungszeile (`gesichertZeile`): der Server hat
+  //     quittiert, und das Blatt zeigt noch genau diesen Stand.
+  const speicherlage = speicherzustand({
+    unterwegs: save.isPending && !wartendVerworfen,
+    angehalten: save.isPaused,
+    fehlgeschlagen: blattFehler !== null && letzteAktion?.art === "speichern",
+    gespeichert: gesichertZeile !== null,
+  });
 
   // ---- Werkzeuge ------------------------------------------------------------------------------
 
@@ -1902,7 +2201,13 @@ export function Blatt({
       setGesicherterEntwurf(null);
       loadedUpdatedAtRef.current = null;
       setStaleConflict(false);
-      savedStateRef.current = { title: "", bodyHtml: "", confidentiality: "intern", kategorie: "" };
+      savedStateRef.current = {
+        title: "",
+        bodyHtml: "",
+        confidentiality: "intern",
+        kategorie: "",
+        wissensart: undefined,
+      };
       if (resumeDraftId === id) {
         setSearchParams({}, { replace: true });
       }
@@ -2904,7 +3209,9 @@ export function Blatt({
                Titel ableiten". Ihre FUNKTION ist nicht verschwunden, sie ist UMGEZOGEN: das
                Titel-Menü des Blattes bietet denselben Vorschlag aus derselben Rangfolge an
                (`titelVorschlag`, oben). Das hier ist die zweite Hälfte desselben Umzugs — ohne sie
-               stünde die Karte doppelt da.
+               stünde die Karte doppelt da. R-0071 (Ben, Nacharbeit 4): verborgen bleibt NUR die
+               gerahmte Karte des Editors; die immer sichtbare Titelzeile mit Herkunft steht als
+               eigene, knappe Zeile des Blattes über dem Schreibfeld (`blatt-titelzeile`).
             2. DER ABLAGEHINWEIS „Bilder hierher ziehen oder einfügen" in der Fußzeile des Editors.
                Sein TEXT ist nicht gelöscht: er steht als eigener Eintrag im „?"-Menü, mit DEMSELBEN
                i18n-Schlüssel — der Ort, an den §5 alle Erklärtexte verweist.
@@ -2994,24 +3301,34 @@ export function Blatt({
                 data-testid="blatt-menue-titel"
                 className="absolute left-0 top-full z-40 mt-1 min-w-[260px] rounded-[10px] border border-hairline bg-surface p-1 shadow-tile"
               >
+                {/* R-0071: „die Herkunft des Vorschlags nennt" — SICHTBAR am Eintrag, nicht nur als
+                    `title`-Tooltip: den gibt es ohne Zeiger (Telefon, Tastatur) nicht. Die Zeile
+                    steht im Menü, also erst, wenn jemand den Titel anfasst (JOB 3062 R6). */}
                 {titelVorschlag ? (
                   <MenueEintrag
-                    titel={t(
-                      titelVorschlag.quelle === "objekttext"
-                        ? "editor.titleSuggest.sourceText"
-                        : "editor.titleSuggest.sourceImage",
-                    )}
                     onClick={() => {
                       changeTitle(titelVorschlag.titel);
                       setOffenesMenue(null);
                     }}
                   >
-                    <span
-                      data-testid="blatt-titelvorschlag"
-                      data-quelle={titelVorschlag.quelle}
-                      className="truncate"
-                    >
-                      {t("editor.titleSuggest.label")}: {titelVorschlag.titel}
+                    <span className="flex min-w-0 flex-col leading-tight">
+                      <span
+                        data-testid="blatt-titelvorschlag"
+                        data-quelle={titelVorschlag.quelle}
+                        className="truncate"
+                      >
+                        {t("editor.titleSuggest.label")}: {titelVorschlag.titel}
+                      </span>
+                      <span
+                        data-testid="blatt-titelvorschlag-herkunft"
+                        className="truncate text-[11px] text-muted-2"
+                      >
+                        {t(
+                          titelVorschlag.quelle === "objekttext"
+                            ? "editor.titleSuggest.sourceText"
+                            : "editor.titleSuggest.sourceImage",
+                        )}
+                      </span>
                     </span>
                   </MenueEintrag>
                 ) : null}
@@ -3031,6 +3348,54 @@ export function Blatt({
               </div>
             ) : null}
           </div>
+
+          {/* ======================================================================================
+              R-0071 (Ben, Nacharbeit 4) — DIE TITELZEILE ÜBER DEM SCHREIBFELD, IMMER SICHTBAR.
+              ======================================================================================
+              „Über dem Schreibfeld steht dafür eine Titelzeile, die immer sichtbar bleibt und die
+              Herkunft des Vorschlags nennt. Lässt sich nichts ableiten, wird nichts erfunden; ein
+              selbst geschriebener Titel wird nie verdrängt." Dazu Pedi 27.08.: „die Titelzeile
+              immer sichtbar lassen, so ist es richtig" — kein hidden, keine Höhe 0.
+
+              JOB 3062 R6 hatte die Karte des Editors verborgen und den Vorschlag ins Titel-Menü
+              gelegt. Eine Entscheidung, die R-0071 für das Blatt aufhebt, ist nicht zugeordnet;
+              der Kommentar dort belegt keine. Deshalb steht die Zeile wieder hier — AUS DERSELBEN
+              QUELLE wie das Menü (`titelVorschlag`, die geprüfte Entscheidung des Editors), also
+              ohne zweite Rangfolge und ohne zweiten Wortlaut.
+
+              WARUM EIN KNOPF UND KEIN ABSATZ: Die Zeile IST die Übernahme — ein Klick setzt den
+              Vorschlag ins Titelfeld, sonst geschieht nichts (kein selbst geschriebener Titel wird
+              verdrängt). Ohne Vorschlag ist sie gesperrt und sagt in drei Wörtern, dass keiner da
+              ist — sie verschwindet nicht. */}
+          <button
+            type="button"
+            data-testid="blatt-titelzeile"
+            data-quelle={titelVorschlag?.quelle ?? "keine"}
+            disabled={titelVorschlag === null || !blattNimmtAn}
+            onClick={() => {
+              if (titelVorschlag) {
+                changeTitle(titelVorschlag.titel);
+              }
+            }}
+            className="-mt-2 flex w-full min-w-0 flex-wrap items-baseline gap-x-1.5 rounded-[8px] px-0 py-0.5 text-left text-[12.5px] leading-snug text-muted enabled:hover:text-text disabled:cursor-default"
+          >
+            {titelVorschlag ? (
+              <>
+                <span className="break-words font-semibold text-ai">
+                  {t("editor.titleSuggest.label")}: {titelVorschlag.titel}
+                </span>
+                <span data-testid="blatt-titelzeile-herkunft" className="text-muted-2">
+                  {t(
+                    titelVorschlag.quelle === "objekttext"
+                      ? "editor.titleSuggest.sourceText"
+                      : "editor.titleSuggest.sourceImage",
+                  )}
+                </span>
+              </>
+            ) : (
+              <span className="text-muted-2">{t("schreibhilfe.titelKeiner")}</span>
+            )}
+          </button>
 
           {/* §5.4: Fehlt der Inhalt beim Einreichversuch, bekommt das FELD den Rand — hier ohne
               Erklärsatz. Das war bis JOB 3114 auch beim Vertraulichkeits-Menü so; dort trägt die
@@ -3120,6 +3485,11 @@ export function Blatt({
               onUebernehmen={changeBodyHtml}
             />
           ) : null}
+
+          {/* AUFNAHME 20260922 · NEGATIVWISSEN-HINWEIS (R-1629): ähnelt der Text einem dokumentierten
+              Fehlschlag, steht das OFFEN da — nicht im zugeklappten Chip darunter. Ohne Treffer
+              rendert nichts. */}
+          <NegativwissenHinweis treffer={negativwissen} />
 
           {/* ==========================================================================================
               §5 — EIN STILLER CHIP UNTER DEM BLATT, NUR IM FALL, AUFKLAPPBAR.
@@ -3249,6 +3619,34 @@ export function Blatt({
               <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
                 {proposalTitleOnly ? t("fd.structureRichTitleOnly") : structureProposal.statement}
               </p>
+              {/* FR-STR-01 (R-0315): die Wissensart des Vorschlags — vorbelegt, korrigierbar,
+                  übernommen erst mit „Übernehmen". Eine bereits entschiedene Wissensart steht
+                  vorne; der abweichende KI-Vorschlag wird daneben genannt, nicht eingesetzt. */}
+              {structureCardType !== undefined ? (
+                <div data-testid="blatt-ki-vorschlag-wissensart" className="mt-2">
+                  <label className="flex items-center gap-2 text-[12.5px] text-muted">
+                    {t("capture.fType")}
+                    <select
+                      value={structureCardType}
+                      onChange={(e) => setStructureCardType(e.target.value as KnowledgeType)}
+                      className="rounded-[8px] border border-hairline bg-page px-2 py-1 text-[13px] text-text"
+                    >
+                      {KNOWLEDGE_TYPES_DRAFT.map((art) => (
+                        <option key={art} value={art} label={t(`ktype.${art}`)} />
+                      ))}
+                    </select>
+                  </label>
+                  {structureProposal.knowledgeType &&
+                  structureProposal.knowledgeType !== structureCardType ? (
+                    <p
+                      data-testid="blatt-ki-vorschlag-wissensart-ki"
+                      className="mt-1 text-[12px] text-muted"
+                    >
+                      {t("fd.aiProposal")}: {t(`ktype.${structureProposal.knowledgeType}`)}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               {/* mega61 Block E: der dauerhaft sichtbare KI-Satz (Art. 50 Abs. 1 und 5 KI-VO). Er
                   stand an der Vordertür und gehört an JEDE Modellfläche — diese Karte IST die
                   Modellfläche des Blattes. Er steht IN der Karte, nicht auf dem ruhenden Blatt:
@@ -3294,6 +3692,16 @@ export function Blatt({
                       : assistProposal.action.instruction,
                 })}
               </p>
+              {/* R-0300: Bezieht sich der Vorschlag auf eine Markierung, steht sie hier — wer
+                  übernimmt, soll sehen, WELCHE Stelle ersetzt wird. */}
+              {assistProposal.auswahl !== null ? (
+                <p
+                  data-testid="blatt-ki-auswahl"
+                  className="mt-1.5 line-clamp-2 whitespace-pre-wrap text-[12px] leading-relaxed text-muted"
+                >
+                  {t("schreibhilfe.auswahlBezug", { text: assistProposal.auswahl.text })}
+                </p>
+              ) : null}
               <p className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[13px] leading-relaxed text-text">
                 {assistProposal.text}
               </p>
@@ -3302,11 +3710,21 @@ export function Blatt({
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
-                  onClick={acceptAssistProposal}
+                  onClick={() => acceptAssistProposal("ersetzen")}
                   className="rounded-[8px] border border-hairline bg-page px-2.5 py-1 text-[13px] font-semibold text-text"
                 >
                   {t("fd.accept")}
                 </button>
+                {assistProposal.auswahl !== null ? (
+                  <button
+                    type="button"
+                    data-testid="blatt-ki-einfuegen"
+                    onClick={() => acceptAssistProposal("einfuegen")}
+                    className="rounded-[8px] border border-hairline bg-page px-2.5 py-1 text-[13px] font-semibold text-text"
+                  >
+                    {t("schreibhilfe.einfuegen")}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={discardAssistProposal}
@@ -3371,6 +3789,31 @@ export function Blatt({
               </button>
             )}
           </div>
+          {/* SPEICHERN-ERHOLUNG: die Lage des Speicherns, direkt unter dem Knopf, der sie ausgelöst
+              hat. Die Region steht IMMER im Baum (nur ihr Inhalt wechselt) — ein Vorleseprogramm
+              meldet zuverlässig nur Änderungen in einer Region, die schon vorher da war; dieselbe
+              Bauform wie `bib-offline-ansage`. In Ruhe ist sie leer und trägt keine Prosa. Der
+              Wartesatz sagt ausdrücklich, dass die Eingabe nur in diesem Fenster liegt: ein Neuladen
+              ohne Netz schützt dieses Blatt NICHT, und das wird nicht verschwiegen. */}
+          <output
+            aria-live="polite"
+            data-testid="blatt-speicherzustand"
+            data-zustand={speicherlage ?? "ruhe"}
+            className="pointer-events-auto block max-w-[420px] text-right text-[13px]"
+          >
+            {speicherlage ? (
+              <span className={`block ${SPEICHERLAGE_TON[speicherlage]}`}>
+                <span data-testid="blatt-speicherzustand-satz" className="block font-semibold">
+                  {t(`erholung.speichern.${speicherlage}`)}
+                </span>
+                {speicherlage === "wartet" ? (
+                  <span data-testid="blatt-speicherzustand-hinweis" className="mt-0.5 block">
+                    {t("erholung.speichern.wartetHinweis")}
+                  </span>
+                ) : null}
+              </span>
+            ) : null}
+          </output>
           {/* ========================================================================================
               JOB 3106 (UX-01) — DIE BESTÄTIGUNG NENNT DIE WEGE, STATT ZU VERWEHEN.
               ========================================================================================
