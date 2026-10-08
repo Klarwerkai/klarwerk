@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { pruefsummenPfad, schreibePaketPruefsumme } from "./paket-pruefsumme.mjs";
 import { fremdquellen } from "./paketinhalt.mjs";
 import {
   installBefehlText,
@@ -109,6 +110,8 @@ function escapeHtmlAttribute(value) {
 
 rmSync(stagingRoot, { recursive: true, force: true });
 rmSync(zipPath, { force: true });
+// Eine Prüfsumme aus einem früheren Lauf darf nie neben einem neuen oder fehlenden Paket liegen.
+rmSync(pruefsummenPfad(zipPath), { force: true });
 mkdirSync(releaseDir, { recursive: true });
 
 for (const file of ["package.json", "package-lock.json"]) {
@@ -276,8 +279,12 @@ function verpacke() {
 // Unterschied haengt; `zipPath`, `relativeZip` und `size` sind dann `null` und nicht etwa ein Pfad
 // auf eine Datei, die es nicht gibt (`zipPath` ist oben bei `:77` ausdruecklich geloescht worden).
 const verpackt = !OHNE_VERPACKUNG;
+// R-1487 (aufnahme:20260922:gesamt-kundenbetrieb): die Prüfsumme entsteht im selben Lauf aus dem
+// fertigen Paket, nie von Hand und nie für ein unverpacktes Release (`paket-pruefsumme.mjs`).
+let pruefsumme = null;
 if (verpackt) {
   verpacke();
+  pruefsumme = schreibePaketPruefsumme(zipPath);
 }
 console.log(
   JSON.stringify(
@@ -294,6 +301,8 @@ console.log(
       zipPath: verpackt ? zipPath : null,
       relativeZip: verpackt ? relative(repo, zipPath) : null,
       size: verpackt ? statSync(zipPath).size : null,
+      sha256: pruefsumme ? pruefsumme.sha256 : null,
+      sha256Datei: pruefsumme ? relative(repo, pruefsumme.datei) : null,
     },
     null,
     2,
