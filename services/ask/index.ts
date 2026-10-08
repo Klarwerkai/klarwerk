@@ -1,5 +1,5 @@
 // Öffentliche API des Moduls ask.
-export { AskService } from "./src/service";
+export { AskService, GESPRAECHSFADEN_MAX_FRAGEN } from "./src/service";
 export type { AskServiceDeps, AskResult, UngeprueftHinweis } from "./src/service";
 export { InMemoryGapRepo, type GapRepo } from "./src/repo";
 // R-1089: der Meldeweg „Antwort falsch / Quelle passt nicht" — die Glocke liest dieselbe Aktion.
