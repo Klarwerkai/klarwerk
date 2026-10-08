@@ -160,8 +160,26 @@ services:
       OIDC_GROUP_EXPERTE: ${OIDC_GROUP_EXPERTE:-}
       OIDC_REQUIRE_EMAIL_VERIFIED: ${OIDC_REQUIRE_EMAIL_VERIFIED:-}
       OIDC_SESSION_TTL_HOURS: ${OIDC_SESSION_TTL_HOURS:-}
-      # R-0541: nur noch Firmen-Login (1/true). Wirkt nur bei vollstaendigem SSO, s. oben.
+      # R-0541: nur noch Firmen-Login (1/true). Die Sperre gilt auch ohne eingerichteten Firmen-Login;
+      # der Startbericht sagt dann, was fehlt.
       KLARWERK_SSO_ONLY: ${KLARWERK_SSO_ONLY:-}
+      # R-0560: Firmen-Login ueber SAML. Dieselbe Regel wie oben: alle fuenf Pflichtwerte oder SAML
+      # ist aus, und der Startbericht nennt die fehlenden.
+      SAML_IDP_ENTITY_ID: ${SAML_IDP_ENTITY_ID:-}
+      SAML_IDP_SSO_URL: ${SAML_IDP_SSO_URL:-}
+      SAML_IDP_CERT: ${SAML_IDP_CERT:-}
+      SAML_SP_ENTITY_ID: ${SAML_SP_ENTITY_ID:-}
+      SAML_ACS_URL: ${SAML_ACS_URL:-}
+      SAML_AUTOPROVISION: ${SAML_AUTOPROVISION:-false}
+      SAML_ATTR_EMAIL: ${SAML_ATTR_EMAIL:-}
+      SAML_ATTR_NAME: ${SAML_ATTR_NAME:-}
+      SAML_ATTR_GROUPS: ${SAML_ATTR_GROUPS:-}
+      SAML_GROUP_ADMIN: ${SAML_GROUP_ADMIN:-}
+      SAML_GROUP_CONTROLLER: ${SAML_GROUP_CONTROLLER:-}
+      SAML_GROUP_EXPERTE: ${SAML_GROUP_EXPERTE:-}
+      # R-0556 / R-0571: Verzeichnispflege (SCIM) und Pruefzustaendigkeit je Space.
+      KLARWERK_SCIM_TOKEN: ${KLARWERK_SCIM_TOKEN:-}
+      KLARWERK_PRUEFZUSTAENDIGKEIT: ${KLARWERK_PRUEFZUSTAENDIGKEIT:-}
       # Word im Browser aus SharePoint/OneDrive: die SharePoint-Domaenenstaemme der eigenen
       # Microsoft-365-Mandanten (kommagetrennt, der Teil vor `.sharepoint.com`). OPTIONAL — leer
       # oder nicht gesetzt heisst: wie bisher, keine SharePoint-Herkunft darf das Taskpane

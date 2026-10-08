@@ -105,6 +105,8 @@ describe("JOB 4105 · V7 · GET /api/auth/status meldet die Selbstregistrierung 
         "needsSetup",
         "oidcEnabled",
         "passwordLoginEnabled",
+        // R-0560: ob SAML als Firmen-Login eingerichtet ist — ebenfalls ein Instanzschalter.
+        "samlEnabled",
         "selfRegistrationEnabled",
       ]);
     });

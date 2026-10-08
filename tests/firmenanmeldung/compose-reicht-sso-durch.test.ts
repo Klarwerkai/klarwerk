@@ -93,7 +93,7 @@ function anwendungsumgebung(
 ): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [name, roh] of block) {
-    if (name.startsWith("OIDC_") || name === "KLARWERK_SSO_ONLY") {
+    if (name.startsWith("OIDC_") || name.startsWith("SAML_") || name === "KLARWERK_SSO_ONLY") {
       env[name] = interpoliere(roh, dotenv);
     }
   }
@@ -104,11 +104,16 @@ function anwendungsumgebung(
 function geleseneNamen(): string[] {
   const quellen = [
     lies("services/auth/src/oidc.ts"),
+    lies("services/auth/src/saml.ts"),
     lies("services/auth/src/service.ts"),
     lies("services/auth/src/routes.ts"),
+    lies("services/app/src/routes/verzeichnis-routes.ts"),
+    lies("services/app/src/build-app.ts"),
   ].join("\n");
   const namen = new Set<string>();
-  for (const treffer of quellen.matchAll(/\benv\.((?:OIDC|KLARWERK_SSO)_[A-Z_]+)/g)) {
+  const muster =
+    /\benv\.((?:OIDC|SAML|KLARWERK_SSO|KLARWERK_SCIM)_[A-Z_]+|KLARWERK_PRUEFZUSTAENDIGKEIT)\b/g;
+  for (const treffer of quellen.matchAll(muster)) {
     namen.add(treffer[1] as string);
   }
   return [...namen].sort();
@@ -140,8 +145,17 @@ describe("R-0545 / R-0868 · der Firmen-Login auf dem Ein-Befehl-Weg", () => {
 
   it("C1 jeder Wert, den die Anmeldung liest, steht im environment:-Block des Dienstes app", () => {
     const gelesen = geleseneNamen();
-    // Die Erhebung greift: die sieben Pflichtwerte und der Schalter sind darunter.
-    expect(gelesen).toEqual(expect.arrayContaining([...PFLICHT, "KLARWERK_SSO_ONLY"]));
+    // Die Erhebung greift: die sieben Pflichtwerte, der Schalter, SAML und die Verzeichnispflege.
+    expect(gelesen).toEqual(
+      expect.arrayContaining([
+        ...PFLICHT,
+        "KLARWERK_SSO_ONLY",
+        "SAML_IDP_CERT",
+        "SAML_ACS_URL",
+        "KLARWERK_SCIM_TOKEN",
+        "KLARWERK_PRUEFZUSTAENDIGKEIT",
+      ]),
+    );
     expect(gelesen.filter((name) => !BLOCK.has(name))).toEqual([]);
   });
 

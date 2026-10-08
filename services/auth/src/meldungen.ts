@@ -267,6 +267,24 @@ export const MELDUNGEN = {
     en: "Password sign-in is switched off on this instance. Please sign in with your company login (SSO).",
     nl: "Aanmelden met een wachtwoord is op deze instantie uitgeschakeld. Meld je aan via de bedrijfslogin (SSO).",
   },
+  // R-0541 (Ben, Nacharbeit 2): das Passwort ist abgeschaltet, der Firmen-Login aber noch nicht
+  // eingerichtet. Die Sperre gilt trotzdem — der Satz sagt, wer das auflöst.
+  SSO_ONLY_NOT_CONFIGURED: {
+    de: "Die Anmeldung mit Passwort ist abgeschaltet, der Firmen-Login ist aber noch nicht eingerichtet. Bitte die IT bitten, die Anbieterwerte zu ergänzen.",
+    en: "Password sign-in is switched off, but the company login has not been set up yet. Please ask your IT team to add the provider settings.",
+    nl: "Aanmelden met een wachtwoord is uitgeschakeld, maar de bedrijfslogin is nog niet ingericht. Vraag je IT-afdeling de gegevens van de aanbieder aan te vullen.",
+  },
+  // R-0560: die SAML-Anmeldung.
+  SAML_DISABLED: {
+    de: "SAML ist nicht konfiguriert.",
+    en: "SAML is not configured.",
+    nl: "SAML is niet geconfigureerd.",
+  },
+  SAML_LOGIN_FAILED: {
+    de: "Die Anmeldung über den Firmen-Login (SAML) ist fehlgeschlagen. Bitte erneut anmelden.",
+    en: "Signing in with the company login (SAML) failed. Please sign in again.",
+    nl: "Aanmelden via de bedrijfslogin (SAML) is mislukt. Meld je opnieuw aan.",
+  },
 } as const satisfies Record<string, Record<Sprache, string>>;
 
 export type Meldungsschluessel = keyof typeof MELDUNGEN;

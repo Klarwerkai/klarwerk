@@ -79,12 +79,15 @@
   <p class="muted" id="zweck"></p>
   <p class="status hidden" id="lage"></p>
   <div id="formular" class="hidden">
-    <label for="email" id="email-label"></label>
-    <input type="email" id="email" autocomplete="username" />
-    <label for="kennwort" id="kennwort-label"></label>
-    <input type="password" id="kennwort" autocomplete="current-password" />
-    <button type="button" id="anmelden"></button>
+    <div id="passwortweg">
+      <label for="email" id="email-label"></label>
+      <input type="email" id="email" autocomplete="username" />
+      <label for="kennwort" id="kennwort-label"></label>
+      <input type="password" id="kennwort" autocomplete="current-password" />
+      <button type="button" id="anmelden"></button>
+    </div>
     <button type="button" class="ghost hidden" id="sso"></button>
+    <button type="button" class="ghost hidden" id="saml"></button>
     <p class="muted hidden" id="sso-hinweis"></p>
   </div>
   <div class="sprachen">
@@ -105,7 +108,10 @@
         kennwort: "Kennwort",
         anmelden: "Anmelden",
         sso: "Mit SSO anmelden",
+        saml: "Mit Firmenkonto (SAML) anmelden",
         ssoHinweis: "Nach der SSO-Anmeldung kehrt dieses Fenster von selbst hierher zurueck und uebergibt die Anmeldung an Klara — nichts schliessen, nicht erneut druecken.",
+        nurFirma: "Auf dieser Installation gilt nur der Firmen-Login — ein eigenes Kennwort fuer Klara gibt es hier nicht.",
+        nurFirmaFehlt: "Die Anmeldung mit Kennwort ist abgeschaltet, der Firmen-Login ist aber noch nicht eingerichtet. Bitte die IT fragen.",
         laeuft: "Anmeldung laeuft …",
         wartetAufWord: "Verbindung zu Word wird hergestellt …",
         pruefe: "Bestehende Anmeldung wird geprueft …",
@@ -123,7 +129,10 @@
         kennwort: "Password",
         anmelden: "Sign in",
         sso: "Sign in with SSO",
+        saml: "Sign in with company account (SAML)",
         ssoHinweis: "After the SSO sign-in, this window returns here by itself and hands the sign-in over to Klara — close nothing, press nothing again.",
+        nurFirma: "On this installation only the company login applies — there is no separate Klara password here.",
+        nurFirmaFehlt: "Password sign-in is switched off, but the company login has not been set up yet. Please ask your IT team.",
         laeuft: "Signing in …",
         wartetAufWord: "Connecting to Word …",
         pruefe: "Checking for an existing sign-in …",
@@ -141,7 +150,10 @@
         kennwort: "Wachtwoord",
         anmelden: "Aanmelden",
         sso: "Aanmelden met SSO",
+        saml: "Aanmelden met bedrijfsaccount (SAML)",
         ssoHinweis: "Na de SSO-aanmelding keert dit venster vanzelf hierheen terug en draagt de aanmelding over aan Klara — niets sluiten, niet opnieuw drukken.",
+        nurFirma: "Op deze installatie geldt alleen de bedrijfslogin — een apart wachtwoord voor Klara is er hier niet.",
+        nurFirmaFehlt: "Aanmelden met een wachtwoord is uitgeschakeld, maar de bedrijfslogin is nog niet ingericht. Vraag het je IT-afdeling.",
         laeuft: "Aanmelden …",
         wartetAufWord: "Verbinding met Word wordt gemaakt …",
         pruefe: "Bestaande aanmelding wordt gecontroleerd …",
@@ -221,6 +233,7 @@
       el("kennwort-label").textContent = t("kennwort");
       el("anmelden").textContent = t("anmelden");
       el("sso").textContent = t("sso");
+      el("saml").textContent = t("saml");
       el("sso-hinweis").textContent = t("ssoHinweis");
     }
 
@@ -438,6 +451,11 @@
       // `startePruefung` findet die Sitzung und uebergibt von selbst — kein zweiter Druck.
       window.location.href = "/api/auth/oidc/start?ziel=word-addin";
     });
+    el("saml").addEventListener("click", function () {
+      // R-0560: derselbe Rueckweg ueber SAML — die feste Kennung reist als RelayState mit, und der
+      // Ruecksprung des Servers fuehrt dieses Fenster hierher zurueck.
+      window.location.href = "/api/auth/saml/start?ziel=word-addin";
+    });
     el("lang-de").addEventListener("click", function () { setLang("de"); });
     el("lang-en").addEventListener("click", function () { setLang("en"); });
     el("lang-nl").addEventListener("click", function () { setLang("nl"); });
@@ -470,8 +488,19 @@
           .then(function (res) { return res.ok ? res.json() : null; }, function () { return null; })
           .then(function (stand) {
             oidcErlaubt = Boolean(stand && stand.oidcEnabled === true);
-            el("sso").className = oidcErlaubt ? "ghost" : "ghost hidden";
-            el("sso-hinweis").className = oidcErlaubt ? "muted" : "muted hidden";
+            var samlErlaubt = Boolean(stand && stand.samlEnabled === true);
+            // R-0541: sagt der Server AUSDRUECKLICH, dass das Kennwort abgeschaltet ist, gibt es
+            // hier kein Kennwortfeld mehr — es fuehrte nur in eine 403. Unbekannt aendert nichts.
+            var kennwortErlaubt = !(stand && stand.passwordLoginEnabled === false);
+            var firmenLogin = oidcErlaubt || samlErlaubt;
+            var stil = kennwortErlaubt ? "ghost" : "";
+            el("passwortweg").className = kennwortErlaubt ? "" : "hidden";
+            el("sso").className = oidcErlaubt ? stil : "ghost hidden";
+            el("saml").className = samlErlaubt ? stil : "ghost hidden";
+            el("sso-hinweis").className = firmenLogin ? "muted" : "muted hidden";
+            if (!kennwortErlaubt) {
+              zeigeLageSatz(firmenLogin ? "warn" : "err", firmenLogin ? "nurFirma" : "nurFirmaFehlt");
+            }
           });
       });
     }

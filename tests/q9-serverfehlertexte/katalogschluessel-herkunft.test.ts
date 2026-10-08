@@ -692,6 +692,11 @@ const AUS_DER_ROUTE = [
   "REGISTRATION_DISABLED",
   "REGISTRATION_RATE_LIMITED",
   "RESET_RATE_LIMITED",
+  // R-0560: die drei SAML-Türen (ohne Konfiguration) und der gescheiterte SAML-Rücksprung.
+  "SAML_DISABLED",
+  "SAML_LOGIN_FAILED",
+  // R-0541 (Nacharbeit 2): Passwort aus, Firmen-Login noch nicht eingerichtet.
+  "SSO_ONLY_NOT_CONFIGURED",
   "UNKNOWN_ROLE",
   "WEAK_PASSWORD",
 ];
@@ -1575,6 +1580,17 @@ const GEMESSEN_VON = {
   // Einführung: ein Fall, dessen `each`-Tabelle EN und NL wörtlich trägt.
   PASSWORD_LOGIN_DISABLED: [
     "tests/firmenanmeldung/passwort-abschaltbar.test.ts · P2 PASSWORD_LOGIN_DISABLED · alle vier Passwortwege antworten 403 auf %s",
+  ],
+  // R-0560 · die SAML-Sätze, gemessen am Tag ihrer Einführung: je ein Fall mit EN/NL-Tabelle.
+  SAML_DISABLED: [
+    "tests/firmenanmeldung/saml-anmeldung.test.ts · S1 SAML_DISABLED · die drei SAML-Türen antworten ohne Konfiguration 501 auf %s",
+  ],
+  SAML_LOGIN_FAILED: [
+    "tests/firmenanmeldung/saml-anmeldung.test.ts · S9 SAML_LOGIN_FAILED · eine verfälschte Antwort endet auf der Fehlerseite auf %s",
+  ],
+  // R-0541 (Nacharbeit 2) · Passwort aus, Firmen-Login fehlt.
+  SSO_ONLY_NOT_CONFIGURED: [
+    "tests/firmenanmeldung/passwort-abschaltbar.test.ts · P7 SSO_ONLY_NOT_CONFIGURED · ohne Firmen-Login bleiben alle vier Passwortwege gesperrt auf %s",
   ],
   // JOB 3956 · der Satz des RBAC-Wächters. DREI Fälle und nicht zwei: G4 fährt den
   // zusammengesetzten Sprachkopf („en-GB,en;q=0.9" und zwei weitere) und holt seine Erwartung über

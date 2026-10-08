@@ -5,6 +5,7 @@ import { type Meldungsschluessel, type Sprache, meldung } from "./meldungen";
 import { HINWEIS_TEXT_VERSION, hinweisFaellig } from "./notice";
 import { type OidcProvider, OidcUnreachableError, createPkcePair, randomToken } from "./oidc";
 import { LoginRateLimiter } from "./rate-limit";
+import { SamlFehler, type SamlProvider } from "./saml";
 import { type AuthService, istLesbaresAblaufdatum } from "./service";
 import { AuthError, type AuthErrorCode, type PublicUser, type Role } from "./types";
 
@@ -219,6 +220,25 @@ function sendError(reply: FastifyReply, error: unknown, sprache: Sprache): void 
   reply.code(500).send({ error: "INTERNAL", message: meldung("INTERNAL", sprache) });
 }
 
+/**
+ * R-0560: der SAML-Rücksprung ist eine Seitennavigation des Browsers, kein Abruf der Anwendung —
+ * eine JSON-Antwort stünde als Rohtext im Fenster. Gescheitert, liest der Mensch deshalb eine
+ * kleine Seite mit dem Katalogsatz in seiner Sprache und dem Weg zurück.
+ */
+function samlFehlerseite(reply: FastifyReply, satz: string, sprache: Sprache): void {
+  const sicher = satz.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  reply
+    .code(401)
+    .header("content-type", "text/html; charset=utf-8")
+    .header("cache-control", "no-store")
+    .send(
+      [
+        `<!doctype html><html lang="${sprache}"><head><meta charset="utf-8"><title>Klarwerk</title></head>`,
+        `<body><p data-testid="saml-fehler">${sicher}</p><p><a href="/">Klarwerk</a></p></body></html>`,
+      ].join(""),
+    );
+}
+
 // WP-VIP2-GATE (bens P1): Selbstregistrierung ist ein öffentlicher Schreibpfad und deshalb
 // FAIL-CLOSED hinter einem Schalter — Default AUS; nur ein explizites =1/true schaltet frei
 // (Dev-/Test-Setups setzen es bewusst, z. B. tests/setup-env.ts). Erst-Einrichtung läuft
@@ -235,21 +255,21 @@ export function selfRegistrationEnabled(
 // `selfRegistrationEnabled` (nur ein ausdrückliches =1/true schaltet), zur LAUFZEIT je Anfrage
 // gelesen.
 //
-// DER SCHALTER GREIFT NUR, WENN SSO WIRKLICH AKTIV IST. Ohne vollständige OIDC-Konfiguration
-// (`createOidcProviderFromEnv` liefert dann `undefined`) gäbe es sonst gar keinen Weg mehr herein —
-// eine Instanz, die sich mit einem Tippfehler in einer OIDC-Variablen selbst aussperrt. In diesem
-// Fall bleibt das Passwort offen, und der Startbericht nennt den Widerspruch
-// (`services/app/src/start-vertrag.ts`, Mangel zu KLARWERK_SSO_ONLY).
+// BEN-BEFUND NACHARBEIT 2: DER SCHALTER SPERRT IMMER. Bis hierher öffnete eine unvollständige
+// OIDC-Konfiguration das Passwort wieder — ein gesetzter Schalter galt dann still nicht. Jetzt gilt
+// er unabhängig davon, ob ein Firmen-Login (OIDC oder SAML) eingerichtet ist. Fehlt der, sagen es
+// drei Stellen verständlich: die 403 der Passwortwege (`SSO_ONLY_NOT_CONFIGURED`), die
+// Anmeldeseite und der Startbericht (`services/app/src/start-vertrag.ts`). Die Ersteinrichtung einer
+// Instanz OHNE jedes Konto bleibt der einzige Weg ohne Firmen-Login (s. `passwortwegZu`).
 export function ssoOnlyRequested(env: Record<string, string | undefined> = process.env): boolean {
   const flag = env.KLARWERK_SSO_ONLY;
   return flag === "1" || flag === "true";
 }
 
 export function passwordLoginEnabled(
-  oidcAktiv: boolean,
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  return !(oidcAktiv && ssoOnlyRequested(env));
+  return !ssoOnlyRequested(env);
 }
 
 // WP-VIP2-GATE (bens P1): Registrierungs-Rate-Limit (Konstante) — 5 Versuche je Minute je IP;
@@ -313,6 +333,8 @@ export function authRoutes(
     mailer?: Mailer | undefined;
     resetBaseUrl?: string | undefined;
     oidc?: OidcProvider | undefined;
+    // R-0560: der SAML-Weg (services/auth/src/saml.ts) — ohne vollständige Konfiguration nicht gesetzt.
+    saml?: SamlProvider | undefined;
     // SCRUM-356 / AG-06: injizierbarer Login-Brute-Force-Limiter (Default: kleiner In-Memory-Limiter).
     loginRateLimiter?: LoginRateLimiter | undefined;
     // SCRUM-367 / AG-06-RESET: injizierbarer Recovery-Limiter (forgot/reset). Default: eigener
@@ -379,13 +401,23 @@ export function authRoutes(
     // stellte Passwörter für einen Weg aus, den es nicht mehr gibt. Die Ersteinrichtung bleibt
     // offen: sie greift nur auf einer Instanz ohne ein einziges Konto, dort ist nichts zu schützen.
     const passwortwegZu = (request: FastifyRequest, reply: FastifyReply): boolean => {
-      if (passwordLoginEnabled(Boolean(options.oidc))) {
+      if (passwordLoginEnabled()) {
         return false;
       }
-      reply.code(403).send({
-        error: "PASSWORD_LOGIN_DISABLED",
-        message: meldung("PASSWORD_LOGIN_DISABLED", sprache(request)),
-      });
+      // Derselbe Fehlercode in beiden Fällen; der SATZ sagt, ob der Firmen-Login bereitsteht oder
+      // noch eingerichtet werden muss — sonst schickte die Meldung Menschen auf einen Weg, den es
+      // nicht gibt.
+      if (options.oidc || options.saml) {
+        reply.code(403).send({
+          error: "PASSWORD_LOGIN_DISABLED",
+          message: meldung("PASSWORD_LOGIN_DISABLED", sprache(request)),
+        });
+      } else {
+        reply.code(403).send({
+          error: "PASSWORD_LOGIN_DISABLED",
+          message: meldung("SSO_ONLY_NOT_CONFIGURED", sprache(request)),
+        });
+      }
       return true;
     };
 
@@ -824,6 +856,93 @@ export function authRoutes(
       },
     );
 
+    // R-0560: SAML-Start — AuthnRequest per Redirect-Bindung zum Anbieter. `?ziel=word-addin`
+    // schickt den Rücksprung zurück ins Anmeldefenster des Word-Add-ins (dieselbe EINE feste Kennung
+    // wie beim OIDC-Weg; jeder andere Wert endet in der Anwendung).
+    app.get<{ Querystring: { ziel?: unknown } }>("/api/auth/saml/start", async (request, reply) => {
+      if (!options.saml) {
+        reply
+          .code(501)
+          .send({ error: "SAML_DISABLED", message: meldung("SAML_DISABLED", sprache(request)) });
+        return;
+      }
+      const ausDemDialog = request.query?.ziel === OIDC_ZIEL_WORD_ADDIN;
+      reply.header("cache-control", "no-store");
+      reply.redirect(options.saml.anmeldeUrl(ausDemDialog ? OIDC_ZIEL_WORD_ADDIN : undefined));
+    });
+
+    // R-0560: die Dienstanbieter-Metadaten — das, was die IT beim Anbieter einträgt.
+    app.get("/api/auth/saml/metadata", async (request, reply) => {
+      if (!options.saml) {
+        reply
+          .code(501)
+          .send({ error: "SAML_DISABLED", message: meldung("SAML_DISABLED", sprache(request)) });
+        return;
+      }
+      reply
+        .header("content-type", "application/samlmetadata+xml; charset=utf-8")
+        .send(options.saml.metadaten());
+    });
+
+    // R-0560: der Rücksprung des Anbieters (HTTP-POST-Bindung, Formularkodierung). Der
+    // Formularparser gilt NUR in diesem eingekapselten Bereich: die übrigen Auth-Routen nehmen
+    // weiter ausschliesslich JSON an — ein Formular einer fremden Seite erreicht dort nichts.
+    // Ein Sitzungscookie reist bei diesem fremd ausgelösten POST nicht mit (`SameSite=Lax`); die
+    // Herkunftsprüfung der App lässt ihn deshalb durch, und es gibt keine Sitzung, in deren Namen
+    // geschrieben würde. Der Nachweis ist die signierte Antwort selbst.
+    app.register(async (app) => {
+      if (!app.hasContentTypeParser("application/x-www-form-urlencoded")) {
+        app.addContentTypeParser(
+          "application/x-www-form-urlencoded",
+          { parseAs: "string", bodyLimit: 1024 * 1024 },
+          (_request, rumpf, fertig) => {
+            fertig(null, Object.fromEntries(new URLSearchParams(String(rumpf))));
+          },
+        );
+      }
+      app.post<{ Body: { SAMLResponse?: unknown; RelayState?: unknown } | null }>(
+        "/api/auth/saml/acs",
+        async (request, reply) => {
+          const saml = options.saml;
+          if (!saml) {
+            reply.code(501).send({
+              error: "SAML_DISABLED",
+              message: meldung("SAML_DISABLED", sprache(request)),
+            });
+            return;
+          }
+          const antwort = request.body?.SAMLResponse;
+          try {
+            if (typeof antwort !== "string" || antwort === "") {
+              throw new SamlFehler("SAMLResponse fehlt");
+            }
+            const { claims, rolle } = saml.pruefeAntwort(antwort);
+            const { token } = await service.loginWithOidc(claims, saml.autoProvision, rolle);
+            reply.header("set-cookie", sessionCookie(token));
+            // Nur die EINE feste Kennung führt ins Dialogfenster — keine offene Weiterleitung.
+            const zurueckInsDialog = request.body?.RelayState === OIDC_ZIEL_WORD_ADDIN;
+            reply.redirect(zurueckInsDialog ? OIDC_WEITER_WORD_ADDIN : "/", 303);
+          } catch (error) {
+            request.log.warn(
+              {
+                event: "saml-anmeldung-abgelehnt",
+                grund: error instanceof SamlFehler ? error.grund : (error as Error)?.name,
+              },
+              "SAML-Anmeldung abgelehnt",
+            );
+            // Ein AuthError trägt einen Katalogschlüssel (Konto fehlt, nicht freigegeben,
+            // abgelaufen) — der Mensch soll genau diesen Grund lesen. Alles andere bleibt
+            // unspezifisch: keine Prüfdetails nach aussen.
+            const satz =
+              error instanceof AuthError
+                ? meldung(error.message, sprache(request))
+                : meldung("SAML_LOGIN_FAILED", sprache(request));
+            samlFehlerseite(reply, satz, sprache(request));
+          }
+        },
+      );
+    });
+
     app.post<{ Params: { id: string } }>("/api/auth/users/:id/approve", async (request, reply) => {
       const admin = await requireAdmin(request, reply);
       if (!admin) {
@@ -883,8 +1002,10 @@ export function authRoutes(
         needsSetup: await service.needsSetup(),
         oidcEnabled: Boolean(options.oidc),
         selfRegistrationEnabled: selfRegistrationEnabled(),
+        // R-0560: SAML als zweiter Firmen-Login.
+        samlEnabled: Boolean(options.saml),
         // R-0541: derselbe Aufruf, der oben die Passwortwege schliesst — keine zweite Auslegung.
-        passwordLoginEnabled: passwordLoginEnabled(Boolean(options.oidc)),
+        passwordLoginEnabled: passwordLoginEnabled(),
       });
     });
 

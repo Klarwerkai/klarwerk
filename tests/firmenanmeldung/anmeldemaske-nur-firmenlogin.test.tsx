@@ -10,8 +10,10 @@
 //   N1  Server sagt „nur SSO": kein Formular, kein Passwortfeld, keine Nebenwege — der SSO-Knopf
 //       und der erklärende Satz stehen da.
 //   N2  GEGENPROBE unbekannt (älterer Server ohne das Feld): alles wie bisher.
-//   N3  GEGENPROBE widersprüchlich (`passwordLoginEnabled: false`, aber SSO aus): das Formular
-//       bleibt — eine Maske ohne jeden Weg hinein wäre schlimmer als eine 403.
+//   N3  Passwort aus, aber kein Firmen-Login eingerichtet (Ben, Nacharbeit 2): auch dann kein
+//       Passwortformular — es führte nur in die 403 —, sondern der Satz, dass der Firmen-Login noch
+//       eingerichtet werden muss. (Bis Nacharbeit 1 hielt N3 das Gegenteil fest.)
+//   N6  SAML als einziger Firmen-Login: der SAML-Knopf steht da, der OIDC-Knopf nicht.
 //   N4  GEGENPROBE Ersteinrichtung: das Einrichtungsformular bleibt.
 //   N5  de/en/nl: je eigener Satz.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,6 +38,7 @@ vi.mock("../../apps/web/src/api/auth", async () => {
       forgot: () => Promise.resolve(),
       register: () => Promise.resolve({}),
       ssoStartUrl: "/api/auth/oidc/start",
+      samlStartUrl: "/api/auth/saml/start",
     },
   };
 });
@@ -146,11 +149,25 @@ describe("R-0541 · die Anmeldeseite bei „nur Firmen-Login“", () => {
     expect(knopfMit(baum, wort("de", "auth.ssoButton"))).toBeDefined();
   });
 
-  it("N3 Gegenprobe widersprüchlich: ohne aktives SSO bleibt das Passwortformular", async () => {
+  it("N3 Passwort aus ohne Firmen-Login: kein Formular, sondern der Satz, dass er fehlt", async () => {
     server.statusAntwort = { needsSetup: false, oidcEnabled: false, passwordLoginEnabled: false };
     const baum = await montieren();
-    expect(baum.querySelector("[data-testid=auth-sso-only]")).toBeNull();
-    expect(baum.querySelectorAll("input[type=password]")).toHaveLength(1);
+    expect(baum.querySelector("form")).toBeNull();
+    expect(baum.querySelectorAll("input[type=password]")).toHaveLength(0);
+    const fehlt = baum.querySelector("[data-testid=auth-sso-only-missing]");
+    expect(fehlt, "der Satz „Firmen-Login noch nicht eingerichtet“ fehlt").not.toBeNull();
+    expect(text(fehlt as HTMLElement)).toContain(wort("de", "auth.ssoOnlyMissing"));
+    // Kein Knopf in einen Weg, den es nicht gibt.
+    expect(knopfMit(baum, wort("de", "auth.ssoButton"))).toBeUndefined();
+    expect(knopfMit(baum, wort("de", "auth.samlButton"))).toBeUndefined();
+  });
+
+  it("N6 SAML als einziger Firmen-Login: der SAML-Knopf steht da, der OIDC-Knopf nicht", async () => {
+    server.statusAntwort = { needsSetup: false, samlEnabled: true, passwordLoginEnabled: false };
+    const baum = await montieren();
+    expect(baum.querySelectorAll("input[type=password]")).toHaveLength(0);
+    expect(knopfMit(baum, wort("de", "auth.samlButton"))).toBeDefined();
+    expect(knopfMit(baum, wort("de", "auth.ssoButton"))).toBeUndefined();
   });
 
   it("N4 Gegenprobe Ersteinrichtung: das Einrichtungsformular bleibt", async () => {

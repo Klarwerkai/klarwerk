@@ -47,6 +47,14 @@ export interface SpacesRouteDienste {
   audit?: AuditService;
   /** Uhr für `geaendertAm` — in Tests stellbar. */
   jetzt?: () => Date;
+  /**
+   * R-0571: die Prüfzuständigkeit aus dem Unternehmensverzeichnis. Nur gesetzt, wenn eine Zuordnung
+   * Gruppe → Space konfiguriert ist (`KLARWERK_PRUEFZUSTAENDIGKEIT`).
+   */
+  pruefzustaendigkeit?: {
+    zustaendige: (spaceId: string) => Promise<string[]>;
+    zuweisen: (koId: string, ids: string[], akteur: string) => Promise<void>;
+  };
 }
 
 /** Eine Zeile in einer Space- oder Ansichtsliste: dasselbe Objekt, keine Kopie. */
@@ -603,6 +611,33 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
           user.id,
           v.quelle?.id ?? null,
         );
+        // R-0571: wer laut Unternehmensverzeichnis für die Prüfung in diesem Space zuständig ist,
+        // wird Prüfende(r) dieses Objekts — ohne Handpflege. Nicht die Autorin, nicht wer verschiebt,
+        // und nicht für ein bereits validiertes Objekt (ein Umzug ist kein neuer Prüfanlass).
+        // Scheitert die Zuweisung, bleibt der Wechsel bestehen und die Antwort sagt es.
+        const zustaendigkeit = dienste.pruefzustaendigkeit;
+        let pruefzuweisung: string[] | "fehlgeschlagen" = [];
+        if (
+          zustaendigkeit &&
+          typeof nachher.spaceId === "string" &&
+          nachher.status !== "validiert"
+        ) {
+          try {
+            const ids = (await zustaendigkeit.zustaendige(nachher.spaceId)).filter(
+              (id) => id !== nachher.author && id !== user.id,
+            );
+            if (ids.length > 0) {
+              await zustaendigkeit.zuweisen(nachher.id, ids, user.id);
+            }
+            pruefzuweisung = ids;
+          } catch (fehlerWert) {
+            request.log.warn(
+              { err: fehlerWert, event: "pruefzustaendigkeit" },
+              "Prüfzuständige aus dem Verzeichnis konnten nicht zugewiesen werden",
+            );
+            pruefzuweisung = "fehlgeschlagen";
+          }
+        }
         reply.code(200).send({
           koId: nachher.id,
           version: nachher.version,
@@ -610,6 +645,7 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
           historyEintraege: nachher.history.length,
           spaceId: typeof nachher.spaceId === "string" ? nachher.spaceId : null,
           vorschau: v,
+          ...(zustaendigkeit ? { pruefzuweisung } : {}),
         });
       } catch (e) {
         if ((e as { code?: unknown }).code === "SPACE_STAND_VERALTET") {

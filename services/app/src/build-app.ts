@@ -34,6 +34,7 @@ import {
   type UserRepo,
   authRoutes,
   createOidcProviderFromEnv,
+  createSamlProviderFromEnv,
   sprache,
 } from "../../auth";
 import {
@@ -361,6 +362,11 @@ import { slidesRoutes } from "./routes/slides-routes";
 import { spacesRoutes } from "./routes/spaces-routes";
 import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
 import { validationRoutes } from "./routes/validation-routes";
+import {
+  lesePruefzustaendigkeit,
+  scimSchluessel,
+  verzeichnisRoutes,
+} from "./routes/verzeichnis-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
 import { stelleSuchprojektionBereit } from "./search-projection-startup";
@@ -3041,8 +3047,33 @@ export function buildApp(
       mailer: services.mailer,
       resetBaseUrl,
       oidc: createOidcProviderFromEnv(),
+      // R-0560: SAML als zweiter Firmen-Login; nur bei vollständiger Konfiguration gesetzt.
+      saml: createSamlProviderFromEnv(),
     }),
   );
+  // R-0556 / R-0571: die Pflege aus dem Unternehmensverzeichnis (SCIM). Ohne gültigen
+  // Verzeichnisschlüssel gibt es die Routen nicht — der Startbericht sagt, warum.
+  const verzeichnisSchluessel = scimSchluessel();
+  if (verzeichnisSchluessel) {
+    app.register(
+      verzeichnisRoutes({
+        auth: services.auth,
+        schluessel: verzeichnisSchluessel,
+        rollen: {
+          adminGroup: process.env.OIDC_GROUP_ADMIN,
+          controllerGroup: process.env.OIDC_GROUP_CONTROLLER,
+          expertGroup: process.env.OIDC_GROUP_EXPERTE,
+        },
+      }),
+    );
+  }
+  // R-0571: wer laut Verzeichnis für die Prüfung in einem Space zuständig ist. Ohne Zuordnung bleibt
+  // das Einreichen, wie es war (nur die genannten Prüfenden).
+  const pruefzustaendigkeit = lesePruefzustaendigkeit(process.env.KLARWERK_PRUEFZUSTAENDIGKEIT);
+  const pruefzustaendige =
+    pruefzustaendigkeit.size > 0
+      ? (spaceId: string) => services.auth.pruefzustaendigeFuer(spaceId, pruefzustaendigkeit)
+      : undefined;
   // FR-VAL-07: EIN Notifier für alle Zuweisungswege (Board-Zuweisung + Einreichen, SCRUM-395).
   const notifyAssignment = makeAssignmentNotifier(services.auth, services.mailer);
   // Weg 3: semantischer Vorfilter der Duplikat-Erkennung. Standard AUS → beide Routen bekommen
@@ -3759,7 +3790,31 @@ export function buildApp(
   // produkt:20261007:spaces: Arbeitsräume, Inhalte je Space und Ansicht, Rechtevorschau, Wechsel.
   app.register(
     spacesRoutes(
-      { spaces: services.spaces, ko: services.ko, auth: services.auth, audit: services.audit },
+      {
+        spaces: services.spaces,
+        ko: services.ko,
+        auth: services.auth,
+        audit: services.audit,
+        // R-0571: kommt ein Objekt in einen Space, werden die laut Verzeichnis Zuständigen zu
+        // Prüfenden — mit derselben idempotenten Zuweisung und Benachrichtigung wie beim Einreichen.
+        ...(pruefzustaendige
+          ? {
+              pruefzustaendigkeit: {
+                zustaendige: pruefzustaendige,
+                zuweisen: async (koId: string, ids: string[], akteur: string) => {
+                  await services.validation.zuweisenBeimEinreichen(koId, ids, akteur);
+                  const offen = await services.validation.nochZuBenachrichtigen(koId, ids, {
+                    altbestandBenachrichtigt: true,
+                  });
+                  for (const prueferin of offen) {
+                    await notifyAssignment(koId, [prueferin]);
+                    await services.validation.benachrichtigungErledigt(koId, prueferin);
+                  }
+                },
+              },
+            }
+          : {}),
+      },
       guards,
     ),
   );

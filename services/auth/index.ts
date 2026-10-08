@@ -7,7 +7,16 @@ export { TOKEN_HASH_PREFIX, hashTokenAtRest } from "./src/service";
 // Vorgabe ist das heutige Verhalten (14 Tage); die Zahl ist eine offene Frage bei Pedi.
 export { oidcSessionTtlMs } from "./src/service";
 export { migrateAuthTokensAtRest } from "./src/repo-pg";
-export { authRoutes } from "./src/routes";
+export { authRoutes, passwordLoginEnabled, ssoOnlyRequested } from "./src/routes";
+// R-0560: der SAML-Weg (Firmen-Login über das ältere Unternehmensverfahren).
+export {
+  createSamlProvider,
+  createSamlProviderFromEnv,
+  samlSchluesselAus,
+  SAML_PFLICHTSATZ,
+  type SamlKonfig,
+  type SamlProvider,
+} from "./src/saml";
 // WP-VIP2-GATE (bens P1): Registrierungs-Schalter + Cookie-Start-Wächter (testbar exportiert).
 export {
   assertCookieSecurityConfig,

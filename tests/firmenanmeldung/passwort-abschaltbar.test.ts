@@ -7,13 +7,16 @@
 //
 // DER SCHALTER ist `KLARWERK_SSO_ONLY` (=1/true), gelesen von `passwordLoginEnabled` in
 // `services/auth/src/routes.ts`. Gemessen wird am echten Auth-Draht (`app.inject`):
-//   P1  die Schalterregel selbst — nur ein ausdrückliches 1/true, und nur bei aktivem SSO.
+//   P1  die Schalterregel selbst — nur ein ausdrückliches 1/true, UNABHÄNGIG vom Firmen-Login.
 //   P2  EN/NL: alle vier Passwortwege antworten 403 mit dem Satz der Sprache (Katalogwächter H4).
 //   P3  DE und die Wirkung: kein Konto entsteht, keine Sitzung, keine Reset-Mail.
 //   P4  der Firmen-Login bleibt offen: Status meldet „nur SSO", Start und Rücklauf gehen durch.
 //   P5  GEGENPROBE ohne Schalter: die Passwortanmeldung läuft wie bisher.
-//   P6  AUSSPERRSCHUTZ an der echten Kompositionswurzel: Schalter an, SSO nicht konfiguriert —
-//       das Passwort bleibt offen, und der Startbericht nennt den Widerspruch.
+//   P6  BEN-BEFUND (Nacharbeit 2) an der echten Kompositionswurzel: Schalter an, KEIN Firmen-Login
+//       eingerichtet — das Passwort bleibt TROTZDEM gesperrt, und der Startbericht nennt, was fehlt.
+//       (Bis Nacharbeit 1 hielt dieser Fall das Gegenteil fest: offenes Passwort. Das widersprach
+//       R-0541 „nur noch der Firmen-Login" und ist berichtigt.)
+//   P7  EN/NL: ohne eingerichteten Firmen-Login sagt die 403 genau das (`SSO_ONLY_NOT_CONFIGURED`).
 import Fastify from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
@@ -97,16 +100,16 @@ afterEach(() => {
 });
 
 describe("R-0541 · nur noch Firmen-Login", () => {
-  it("P1 der Schalter: nur ein ausdrückliches 1/true, und nur bei aktivem SSO", () => {
+  it("P1 der Schalter: nur ein ausdrückliches 1/true — und dann gilt er immer", () => {
     expect(ssoOnlyRequested({ KLARWERK_SSO_ONLY: "1" })).toBe(true);
     expect(ssoOnlyRequested({ KLARWERK_SSO_ONLY: "true" })).toBe(true);
     for (const wert of [undefined, "", "0", "false", "ja", "TRUE"]) {
       expect(ssoOnlyRequested({ KLARWERK_SSO_ONLY: wert }), String(wert)).toBe(false);
+      expect(passwordLoginEnabled({ KLARWERK_SSO_ONLY: wert }), String(wert)).toBe(true);
     }
-    expect(passwordLoginEnabled(true, { KLARWERK_SSO_ONLY: "1" })).toBe(false);
-    // Ohne aktives SSO bleibt das Passwort offen — sonst gäbe es keinen Weg mehr herein.
-    expect(passwordLoginEnabled(false, { KLARWERK_SSO_ONLY: "1" })).toBe(true);
-    expect(passwordLoginEnabled(true, {})).toBe(true);
+    // Die Sperre hängt an keinem zweiten Wert — auch kein fehlender Firmen-Login öffnet sie.
+    expect(passwordLoginEnabled({ KLARWERK_SSO_ONLY: "1" })).toBe(false);
+    expect(passwordLoginEnabled({ KLARWERK_SSO_ONLY: "true", OIDC_ISSUER: "" })).toBe(false);
   });
 
   it.each([
@@ -194,23 +197,33 @@ describe("R-0541 · nur noch Firmen-Login", () => {
     }
   });
 
-  it("P6 Aussperrschutz: Schalter an, SSO nicht konfiguriert — das Passwort bleibt offen und der Startbericht sagt es", async () => {
+  it("P6 Schalter an, kein Firmen-Login eingerichtet: das Passwort bleibt GESPERRT und der Startbericht sagt, was fehlt", async () => {
     vi.stubEnv("KLARWERK_SSO_ONLY", "1");
-    // Die echte Kompositionswurzel: ohne OIDC_*-Werte liefert `createOidcProviderFromEnv` nichts.
+    // Die echte Kompositionswurzel: ohne OIDC_*- und SAML_*-Werte gibt es keinen Firmen-Login.
     const app = buildApp(buildServices());
     try {
       const status = await app.inject({ method: "GET", url: "/api/auth/status" });
-      expect(status.json()).toMatchObject({ oidcEnabled: false, passwordLoginEnabled: true });
+      expect(status.json()).toMatchObject({
+        oidcEnabled: false,
+        samlEnabled: false,
+        passwordLoginEnabled: false,
+      });
+      // Die Ersteinrichtung einer Instanz OHNE Konto bleibt der eine Weg (dokumentierte Ausnahme).
       const setup = await app.inject({ method: "POST", url: "/api/auth/setup", payload: ADMIN });
       expect(setup.statusCode, setup.body).toBe(201);
+      // Danach gilt die Sperre — auch für genau dieses Konto.
       const login = await app.inject({ ...PASSWORTWEGE[0] });
-      expect(login.statusCode, login.body).toBe(200);
+      expect(login.statusCode, login.body).toBe(403);
+      expect(login.json()).toMatchObject({ error: "PASSWORD_LOGIN_DISABLED" });
+      expect(login.json().message).toBe(
+        "Die Anmeldung mit Passwort ist abgeschaltet, der Firmen-Login ist aber noch nicht eingerichtet. Bitte die IT bitten, die Anbieterwerte zu ergänzen.",
+      );
     } finally {
       await app.close();
     }
     const halb = startbericht({ KLARWERK_SSO_ONLY: "1" }, { art: "leer" });
     const mangel = halb.maengel.find((m) => m.betrifft.includes("KLARWERK_SSO_ONLY"));
-    expect(mangel?.befund).toContain("bleibt deshalb OFFEN");
+    expect(mangel?.befund).toContain("GESPERRT");
     expect(mangel?.betrifft).toContain("OIDC_TOKEN_URL");
     // Gegenprobe: mit vollständigem SSO gibt es diesen Mangel nicht.
     const voll: Record<string, string> = { KLARWERK_SSO_ONLY: "1" };
@@ -228,4 +241,32 @@ describe("R-0541 · nur noch Firmen-Login", () => {
     const ganz = startbericht(voll, { art: "leer" });
     expect(ganz.maengel.some((m) => m.betrifft.includes("KLARWERK_SSO_ONLY"))).toBe(false);
   });
+
+  it.each([
+    [
+      "en",
+      "Password sign-in is switched off, but the company login has not been set up yet. Please ask your IT team to add the provider settings.",
+    ],
+    [
+      "nl",
+      "Aanmelden met een wachtwoord is uitgeschakeld, maar de bedrijfslogin is nog niet ingericht. Vraag je IT-afdeling de gegevens van de aanbieder aan te vullen.",
+    ],
+  ] as const)(
+    "P7 SSO_ONLY_NOT_CONFIGURED · ohne Firmen-Login bleiben alle vier Passwortwege gesperrt auf %s",
+    async (sprache, satz) => {
+      vi.stubEnv("KLARWERK_SSO_ONLY", "1");
+      const { app, service } = await buehne(false);
+      try {
+        for (const weg of PASSWORTWEGE) {
+          const res = await app.inject({ ...weg, headers: { "accept-language": sprache } });
+          expect(res.statusCode, weg.url).toBe(403);
+          expect(res.json().error, weg.url).toBe("PASSWORD_LOGIN_DISABLED");
+          expect(res.json().message, weg.url).toBe(satz);
+        }
+        expect((await service.listUsers()).map((u) => u.email)).toEqual([ADMIN.email]);
+      } finally {
+        await app.close();
+      }
+    },
+  );
 });

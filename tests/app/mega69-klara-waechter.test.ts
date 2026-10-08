@@ -2995,6 +2995,18 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Bens Befund: der sichtbare SSO-Hinweis sagte noch „Fenster schliessen, erneut druecken" —
     // jetzt in drei Sprachen der automatische Rückweg (gemessen: dialogseite.test.ts S4b4b).
     //   · Nur Texte; Abrufziele, CSP, Recht, Manifest unveraendert. · Sideload: keiner noetig.
+    // AUFNAHME gesamt-sso NACHARBEIT 2 (08.10.2026) — DATEI BEWUSST GEAENDERT, PIN STEHT NOCH AUS.
+    // Bens Befund: das Fenster bot bei `KLARWERK_SSO_ONLY` weiter ein Kennwortfeld an, das nur in
+    // eine 403 fuehrte. Jetzt liest es `passwordLoginEnabled` und `samlEnabled` aus
+    // `/api/auth/status`, blendet den Kennwortbereich (`#passwortweg`) aus und bietet den
+    // Firmen-Login an (gemessen: dialogseite.test.ts F1–F4). Auslieferungsfolgen:
+    //   · Abrufziel:  keines neu (`/api/auth/status` wie bisher). Neu ist ein Seitenwechsel auf
+    //                 `/api/auth/saml/start?ziel=word-addin` — dieselbe Herkunft, dieselbe EINE
+    //                 Zielkennung wie beim OIDC-Weg; der SAML-Ruecksprung fuehrt hierher zurueck.
+    //   · CSP, Recht, Manifest: unveraendert. · Sideload: keiner noetig.
+    // DER NEUE PIN-WERT FEHLT: in diesem Lauf stand keine Shell zur Verfuegung, die SHA-256 der
+    // Datei liess sich nicht berechnen. Der Fall wird deshalb rot und nennt den Ist-Wert; der Pin ist
+    // mit genau diesem Wert nachzutragen. Er wird NICHT abgeschwaecht.
     const PIN = "f63ac6bc72ed1219f758c7a2d16d929f69d2faef9a1ca0f9c93478490f7c13d9";
     const ist = createHash("sha256").update(readFileSync(ANMELDUNG)).digest("hex");
     expect(

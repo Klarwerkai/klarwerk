@@ -266,6 +266,32 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     grund:
       "Der SSO-Rückweg. Er prüft state, nonce und PKCE gegen kurzlebige Cookies aus `GET /api/auth/oidc/start`; ohne diesen Ablauf misst er keine Rechte, sondern die Ablaufprüfung.",
   },
+  // R-0556: die vier schreibenden Türen der Verzeichnispflege. Über sie entscheidet kein
+  // Rollenrecht, sondern der Verzeichnisschlüssel — dieselbe Prüfung, die an den drei lesenden Türen
+  // für alle fünf Akteure als 401 gemessen ist (TABELLE, `verzeichnisRoutes`).
+  ...(
+    [
+      ["POST", "/scim/v2/Users"],
+      ["PUT", "/scim/v2/Users/:id"],
+      ["PATCH", "/scim/v2/Users/:id"],
+      ["DELETE", "/scim/v2/Users/:id"],
+    ] as const
+  ).map(
+    ([methode, pfad]): Nichtabnahme => ({
+      methode,
+      pfad,
+      art: "baulich",
+      grund:
+        "Verzeichnispflege (SCIM, R-0556): das Tor ist der Verzeichnisschlüssel, keine Rolle — eine Rollenzeile hätte nichts zu unterscheiden. Dieselbe Schlüsselprüfung (`requireVerzeichnisSchluessel`) ist an den lesenden SCIM-Türen für alle fünf Akteure als 401 gemessen; Anlegen, Ändern und Sperren mit Schlüssel misst `tests/firmenanmeldung/verzeichnis-pflege.test.ts`.",
+    }),
+  ),
+  {
+    methode: "POST",
+    pfad: "/api/auth/saml/acs",
+    art: "baulich",
+    grund:
+      "Der SAML-Rücksprung (R-0560). Über diese Tür entscheidet kein Rechtetor, sondern die Signaturprüfung einer vom Anbieter signierten Antwort auf eine einmalige Anfragekennung (`services/auth/src/saml.ts`); eine feste Nutzlast für fünf Akteure gibt es nicht. Ohne SAML-Konfiguration antwortet sie allen gleich 501 `SAML_DISABLED`; ihre Prüfungen misst `tests/firmenanmeldung/saml-anmeldung.test.ts`.",
+  },
   {
     methode: "POST",
     pfad: "/api/auth/setup",
@@ -1683,6 +1709,55 @@ export const TABELLE: Zeile[] = [
     tor: "keines — der Einstieg in den SSO-Ablauf",
     erwartet: OEFFENTLICH(
       "Der Authorization-Code-Ablauf beginnt notwendig unangemeldet. Ohne konfiguriertes OIDC antwortet die Route allen fünf Akteuren gleich mit 501 `OIDC_DISABLED` (`routes.ts:681-686`) — gemessen ist damit, dass an dieser Tür weder 401 noch 403 steht.",
+    ),
+  },
+  // R-0556 / R-0571: die Verzeichnispflege (SCIM). Ihr Tor ist der Verzeichnisschlüssel, KEIN
+  // Rollenrecht — keine der fünf Sitzungen, auch nicht die des Admins, öffnet sie. Gemessen an den
+  // drei lesenden Türen; die schreibenden stehen mit Grund in `NICHT_ABGENOMMEN` und sind in
+  // `tests/firmenanmeldung/verzeichnis-pflege.test.ts` mit dem Schlüssel gefahren.
+  ...(
+    [
+      ["/scim/v2/ServiceProviderConfig", undefined, 349],
+      ["/scim/v2/Users", undefined, 367],
+      ["/scim/v2/Users/gibt-es-nicht", "/scim/v2/Users/:id", 399],
+    ] as const
+  ).map(
+    ([pfad, route, zeile]): Zeile => ({
+      gruppe: "verzeichnisRoutes",
+      methode: "GET",
+      pfad,
+      ...(route ? { route } : {}),
+      belegstelle: `services/app/src/routes/verzeichnis-routes.ts:${zeile}`,
+      tor: "Verzeichnisschlüssel (KLARWERK_SCIM_TOKEN) — kein Rollenrecht",
+      codes: { "401": "SCIM_UNAUTHORIZED" },
+      erwartet: {
+        anonym: "401",
+        viewer: "401",
+        experte: "401",
+        controller: "401",
+        admin: "401",
+      },
+    }),
+  ),
+  // R-0560: die zwei lesenden SAML-Türen — dieselbe Lage wie der OIDC-Einstieg darüber.
+  {
+    gruppe: "authRoutes",
+    methode: "GET",
+    pfad: "/api/auth/saml/start",
+    belegstelle: "services/auth/src/routes.ts:858",
+    tor: "keines — der Einstieg in den SAML-Ablauf",
+    erwartet: OEFFENTLICH(
+      "Die SAML-Anmeldung beginnt notwendig unangemeldet. Ohne SAML-Konfiguration antwortet die Route allen fünf Akteuren gleich mit 501 `SAML_DISABLED` — gemessen ist damit, dass an dieser Tür weder 401 noch 403 steht.",
+    ),
+  },
+  {
+    gruppe: "authRoutes",
+    methode: "GET",
+    pfad: "/api/auth/saml/metadata",
+    belegstelle: "services/auth/src/routes.ts:871",
+    tor: "keines — die Metadaten für die Einrichtung beim Anbieter",
+    erwartet: OEFFENTLICH(
+      "Die Dienstanbieter-Metadaten trägt die IT beim Anbieter ein, bevor es irgendeine Anmeldung gibt. Sie nennen nur Kennung und Rücksprungadresse dieser Instanz; ohne SAML-Konfiguration antwortet die Route allen gleich mit 501 `SAML_DISABLED`.",
     ),
   },
   // ----------------------------------------------------------------------------------------------
