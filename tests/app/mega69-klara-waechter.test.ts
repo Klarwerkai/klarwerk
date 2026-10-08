@@ -2747,6 +2747,15 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Prüflauf zu Kandidat f4db2037 GEMESSEN („Received", HISTORIE/nacharbeit-10/PRUEFUNG/
     // auslieferungswaechter-fenster.log) und unverändert übernommen; die vier Panel-Dateien sind seit
     // dieser Messung unberührt (`git diff f4db2037 -- apps/web/public/word-addin/` leer).
+    // AUFNAHME gesamt-funktionsschalter (R-1040, Ben nacharbeit-2) — DER PIN MUSS WANDERN.
+    // `taskpane.js` wertet in `performAsk` die 503 `KI_ABGESCHALTET` aus (Ergebnisart
+    // `ki-abgeschaltet`) und nennt in `#ask-status` die administrative Abschaltung statt
+    // „Fragen fehlgeschlagen (HTTP 503)"; dort kein „Erneut versuchen". Ein neuer Wörterbuchschlüssel
+    // je Sprache (`askKiAbgeschaltet`, in der Zeile von `askFallbackConsentEnded`); netto eine Zeile
+    // (B3: 12493). Gemessen in `tests/app/word-addin-ask.test.ts` (R-1040, DE/EN/NL + Gegenprobe).
+    // Auslieferungsfolgen: kein neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder
+    // Manifeständerung, kein Sideload. Ohne zugelassenes Hash-Werkzeug hier nicht berechenbar — der
+    // Prüflauf meldet den Ist-Wert als „Received", er wird danach gemessen übernommen.
     const PIN = "eefba3bdd389a30d41f4fbe37ad5bcdc336667559554212971ecbe7dff5f37d3";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
