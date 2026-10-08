@@ -1,3 +1,4 @@
+import { trenneVerzeichnis } from "../lib/geloeschteKonten";
 import type { ReasonerLocale } from "../lib/reasonerLocale";
 // WP-RETEST7 R8: Timeout-Konstante der Folien-Konvertierung (eine Quelle, lib/slideImages).
 import { SLIDES_CONVERT_TIMEOUT_MS } from "../lib/slideImages";
@@ -1032,7 +1033,11 @@ export const endpoints = {
     // Audit-P3 (SCRUM-397): bewusstes Als-gesehen-Markieren (idempotent, nur eigene Sicht).
     markSeen: (ids: string[]) => api.post<{ unseenCount: number }>("/notifications/seen", { ids }),
   },
-  directory: { list: () => api.get<{ id: string; name: string }[]>("/directory") },
+  // Aufnahme gesamt-wissen-herkunft (K3): gelöschte Konten kommen als Marke mit und werden hier
+  // abgetrennt — Zuweisungslisten sehen nur Konten, die Autorenzeile die Kennungen (lib/geloeschteKonten).
+  directory: {
+    list: () => api.get<{ id: string; name: string }[]>("/directory").then(trenneVerzeichnis),
+  },
   // Audit-P4 (SCRUM-398): Live-Wall (read-only Aggregation).
   livewall: {
     get: () => api.get<LiveWall>("/livewall"),

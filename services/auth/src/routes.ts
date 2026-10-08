@@ -869,13 +869,24 @@ export function authRoutes(
 
     // Schlankes Verzeichnis (nur id + Anzeigename) für Anzeige (Autorennamen) und
     // Zuweisung — für ALLE angemeldeten Nutzer, ohne Adminrecht.
+    //
+    // Aufnahme gesamt-wissen-herkunft (K3): dahinter stehen gelöschte Konten als
+    // `{ id, geloescht: true }` — OHNE Namen. Die Autorenzeile kann so „gelöscht" von „unbekannt"
+    // unterscheiden, ohne einen Namen herauszugeben, den nur die Verwalteransicht lesen darf. Der
+    // Web-Client trennt die Marken ab, bevor eine Zuweisungsliste sie sieht (api/endpoints.ts).
     app.get("/api/directory", async (request, reply) => {
       const user = await requireUser(request, reply);
       if (!user) {
         return;
       }
       const users = await service.listUsers();
-      reply.code(200).send(users.map((u) => ({ id: u.id, name: u.name })));
+      const geloescht = await service.listDeletedUserIds();
+      reply
+        .code(200)
+        .send([
+          ...users.map((u) => ({ id: u.id, name: u.name })),
+          ...geloescht.map((id) => ({ id, geloescht: true as const })),
+        ]);
     });
 
     // Admin legt einen Nutzer direkt an (sofort freigegeben), optional mit Rolle — und seit

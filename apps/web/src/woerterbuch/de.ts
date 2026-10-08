@@ -3580,6 +3580,9 @@ const de = {
   // machte aus einem Ausfall eine Geduldsfrage.
   "ko.authorLoading": "Autorenname wird geladen …",
   "ko.authorUnavailable": "Autorenname nicht abrufbar",
+  // Aufnahme gesamt-wissen-herkunft (K3): das Konto gab es und es wurde gelöscht — kein Name, nur
+  // das kurze Merkmal wie bei der Unbekannten, damit zwei Gelöschte nicht wie eine Person aussehen.
+  "ko.authorDeleted": "Gelöschtes Konto ({{ref}})",
   "ko.originalAuthor": "Original",
   "ko.transferPick": "Neuen Autor wählen …",
   "ko.transfer": "Übergeben",

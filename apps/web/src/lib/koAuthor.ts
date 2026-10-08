@@ -83,6 +83,19 @@ export const AUTHOR_UNKNOWN_KEY = "ko.authorUnknown";
 export const AUTHOR_LOADING_KEY = "ko.authorLoading";
 export const AUTHOR_UNAVAILABLE_KEY = "ko.authorUnavailable";
 
+// ================================================================================================
+// Aufnahme gesamt-wissen-herkunft (K3) — FALL 2 WAR NOCH EINMAL ZWEI FÄLLE.
+// ================================================================================================
+//
+// „Eintrag fehlt" hiess bis hierher immer „Unbekannte Person" — auch für ein Konto, das es gab und
+// das gelöscht wurde. Das ist keine Unbekannte, sondern eine bekannte Lücke: der Beitrag stammt von
+// einem Menschen, dessen Konto nicht mehr besteht. Das Verzeichnis nennt diese Kennungen seither
+// (ohne Namen, s. lib/geloeschteKonten.ts), und die Autorenzeile sagt es:
+//   2a. Verzeichnis da, Kennung als gelöscht belegt → „Gelöschtes Konto (ref)".
+//   2b. Verzeichnis da, Kennung nirgends belegt     → „Unbekannte Person (ref)" — wie bisher.
+// Der Name von damals bleibt draussen: ihn liest nur die Verwalteransicht aus dem Prüfprotokoll.
+export const AUTHOR_DELETED_KEY = "ko.authorDeleted";
+
 export interface DirectoryEntry {
   id: string;
   name: string;
@@ -97,11 +110,15 @@ export interface DirectoryQueryState {
   data: readonly DirectoryEntry[] | undefined;
   isPending: boolean;
   isError: boolean;
+  /** Fall 2a: Kennungen, die nachweislich einem gelöschten Konto gehörten (ohne Namen). */
+  deleted?: ReadonlySet<string>;
 }
 
 export interface AuthorNameTexts {
   /** Fall 2: das Verzeichnis liegt vor, dieser Autor steht nicht darin. */
   unknown: (ref: string) => string;
+  /** Fall 2a: das Verzeichnis liegt vor und belegt die Kennung als gelöschtes Konto. */
+  deleted?: (ref: string) => string;
   /** Fall 3: die Abfrage läuft noch — vergeht von selbst. */
   loading: () => string;
   /** Fall 4: die Abfrage ist fehlgeschlagen — bleibt, bis jemand etwas tut. */
@@ -124,8 +141,14 @@ export function makeAuthorNameResolver(
 ): NameResolver {
   const { data, isError, isPending } = verzeichnis;
   if (data) {
-    return (uid) =>
-      authorDisplayName(uid, data.find((eintrag) => eintrag.id === uid)?.name, texte.unknown);
+    const geloescht = verzeichnis.deleted;
+    const geloeschtText = texte.deleted;
+    return (uid) => {
+      const name = data.find((eintrag) => eintrag.id === uid)?.name;
+      // Ein gepflegter Name gewinnt immer; „gelöscht" ersetzt nur die Auskunft „unbekannt".
+      const fehlt = geloeschtText && geloescht?.has(uid) ? geloeschtText : texte.unknown;
+      return authorDisplayName(uid, name, fehlt);
+    };
   }
   if (isError) {
     return () => texte.unavailable();

@@ -17,7 +17,9 @@
 // Abfrage und dem Wörterbuch.
 import { useTranslation } from "react-i18next";
 import { useDirectory } from "../api/hooks";
+import { geloeschteKonten } from "./geloeschteKonten";
 import {
+  AUTHOR_DELETED_KEY,
   AUTHOR_LOADING_KEY,
   AUTHOR_UNAVAILABLE_KEY,
   AUTHOR_UNKNOWN_KEY,
@@ -41,9 +43,12 @@ export function useAuthorName(): NameResolver {
       data: verzeichnis,
       isPending: directory.isPending,
       isError: directory.isError || (directory.data !== undefined && verzeichnis === undefined),
+      // Aufnahme gesamt-wissen-herkunft (K3): aus DERSELBEN Verzeichnisantwort abgetrennt.
+      deleted: geloeschteKonten(),
     },
     {
       unknown: (ref) => t(AUTHOR_UNKNOWN_KEY, { ref }),
+      deleted: (ref) => t(AUTHOR_DELETED_KEY, { ref }),
       loading: () => t(AUTHOR_LOADING_KEY),
       unavailable: () => t(AUTHOR_UNAVAILABLE_KEY),
     },

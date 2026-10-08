@@ -2725,6 +2725,7 @@ const nl: typeof de = {
   "ko.authorUnknown": "Onbekende persoon ({{ref}})",
   "ko.authorLoading": "Auteursnaam wordt geladen …",
   "ko.authorUnavailable": "Auteursnaam niet beschikbaar",
+  "ko.authorDeleted": "Verwijderd account ({{ref}})",
   "ko.originalAuthor": "Origineel",
   "ko.transferPick": "Nieuwe auteur kiezen …",
   "ko.transfer": "Overdragen",

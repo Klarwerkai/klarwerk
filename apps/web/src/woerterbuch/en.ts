@@ -2735,6 +2735,7 @@ const en: typeof de = {
   "ko.authorUnknown": "Unknown person ({{ref}})",
   "ko.authorLoading": "Loading author name …",
   "ko.authorUnavailable": "Author name unavailable",
+  "ko.authorDeleted": "Deleted account ({{ref}})",
   "ko.originalAuthor": "Original",
   "ko.transferPick": "Choose new author …",
   "ko.transfer": "Transfer",
