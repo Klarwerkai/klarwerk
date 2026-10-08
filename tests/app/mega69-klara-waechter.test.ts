@@ -2776,10 +2776,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // INTEGRATION gesamt-bildbudget × gesamt-funktionsschalter (Nacharbeit 5): Beide Stände ändern
     // `taskpane.js` an getrennten Stellen (`sendTooLarge` de/en/nl bzw. `askKiAbgeschaltet` und
     // `performAsk`); die Zusammenführung trägt beide. Keiner der beiden gemessenen Werte (852ea03b…
-    // aus dem Bildbudget-Zweig, dce012c0… aus main) beschreibt die vereinigte Datei. DER PIN MUSS
-    // WANDERN; ohne zugelassenes Hash-Werkzeug ist er hier nicht berechenbar — unten steht der Wert
-    // von main, der Prüflauf meldet den Ist-Wert als „Received", er wird danach gemessen übernommen.
-    const PIN = "dce012c092e3445073b0629f1b8348a5f4b04457c1986e3c68657c7ad5860d64";
+    // aus dem Bildbudget-Zweig, dce012c0… aus main) beschreibt die vereinigte Datei. NACHARBEIT 6:
+    // PIN BEWUSST AKTUALISIERT (dce012c0… -> a6dc7a30…). Im Prüflauf zu Kandidat 1df43d16 GEMESSEN
+    // („Received", HISTORIE/nacharbeit-6/PRUEFUNG/panel-inhalts-pin.log) und unverändert übernommen;
+    // die Panel-Dateien sind seit dieser Messung unberührt.
+    const PIN = "a6dc7a300bbf2b40f096ad8ebd86464fa1d908e3d901782497fcdc206d2b0b64";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
