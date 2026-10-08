@@ -102,9 +102,29 @@ export interface Ungeklaert {
   vertretung: KontoKurz[];
 }
 
+/** Das Wissens-Vermächtnis-Buch einer Person (`services/output/src/vermaechtnis.ts`). */
+export interface VermaechtnisBuch {
+  person: { id: string; name: string | null };
+  titel: string;
+  erzeugtAm: string;
+  dateiname: string;
+  aufgenommen: number;
+  zeitraum: { von: string; bis: string } | null;
+  themen: { thema: string; anzahl: number }[];
+  ausgelassen: {
+    papierkorb: number;
+    nichtEinsehbar: number;
+    vertraulich: number;
+    nichtValidiert: number;
+  };
+  markdown: string;
+}
+
 export const verantwortungApi = {
   bestand: (personId: string) =>
     api.get<Bestand>(`/verantwortung/person/${encodeURIComponent(personId)}`),
+  vermaechtnis: (personId: string) =>
+    api.get<VermaechtnisBuch>(`/verantwortung/person/${encodeURIComponent(personId)}/vermaechtnis`),
   ungeklaert: () => api.get<Ungeklaert>("/verantwortung/ungeklaert"),
   vorschau: (von: string, zuteilung: readonly Zuteilung[]) =>
     api.post<Vorschau>("/verantwortung/vorschau", { von, zuteilung }),

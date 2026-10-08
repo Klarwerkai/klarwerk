@@ -19,6 +19,7 @@ import { NAV_GROUPS, ROLES, type Role, roleAllows } from "../app/navigation";
 // Dateiwurzel stünde auf allen vieren gleich und erklärte keine.
 import { HelpTip } from "../components/HelpTip";
 import { VerantwortungUebergabe } from "../components/VerantwortungUebergabe";
+import { VermaechtnisBuch } from "../components/VermaechtnisBuch";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { freiheitenSchluessel, kiWahlFrei } from "../components/einstellungen/rollenFreiheiten";
@@ -544,6 +545,10 @@ export function NutzerDetail({
                 Nachfolger übergeben, mit Vorschau; Zugang erst ohne Restbestand beenden. Für jedes
                 Konto, auch ein gesperrtes: gerade dort liegt Bestand, der eine Vertretung braucht. */}
             <VerantwortungUebergabe personId={nutzer.id} personName={nutzer.name} />
+
+            {/* aufnahme:20260922:gesamt-wissensvermaechtnis — die Beiträge dieser Person als
+                Wissens-Vermächtnis-Buch, digital oder gedruckt. Ändert kein Wissen. */}
+            <VermaechtnisBuch personId={nutzer.id} />
 
             <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-4">
               <Button

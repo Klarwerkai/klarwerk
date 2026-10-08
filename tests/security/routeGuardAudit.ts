@@ -784,6 +784,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Kontoverwaltung wie die bestehende Autorenübergabe. Titel nur, wo `darfSehen` es erlaubt; die
   // Liste ohne aktive Verantwortung nennt je Person nur eine Anzahl.
   "GET /api/verantwortung/person/:id": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
+  // aufnahme:20260922:gesamt-wissensvermaechtnis: das Vermächtnis-Buch einer Person — nur
+  // einsehbare, validierte, nicht vertrauliche Beiträge; der Rest steht nur als Anzahl darin.
+  "GET /api/verantwortung/person/:id/vermaechtnis": {
+    protection: "users.manage",
+    zeilenrecht: ["darfSehen"],
+  },
   "GET /api/verantwortung/ungeklaert": { protection: "users.manage" },
   "POST /api/verantwortung/vorschau": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
   "POST /api/verantwortung/uebergabe": { protection: "users.manage", zeilenrecht: ["darfSehen"] },

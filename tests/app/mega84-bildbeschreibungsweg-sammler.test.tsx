@@ -2162,8 +2162,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // über 495 kommen also aus dem eingemischten Hauptstand (Grundmenge 621 → 657), darunter laut
     // Kommentar oben `Zeichnung` und `AnhangZeichnung`. Die übrigen 18 sind ohne Git-Verlauf an
     // diesem Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // aufnahme:20260922:gesamt-wissensvermaechtnis: 515 → 516. GENAU EIN Bauteil kommt dazu:
+    //     + `VermaechtnisBuch` (`components/VermaechtnisBuch.tsx`) — das Wissens-Vermächtnis-Buch
+    //       einer Person in der Kontokarte (Vorschau als Text, Download, Druck).
+    // Kein Bild, kein `CAPTION_AI_TEXT`, kein `documentTitle`: `anbieter` 1 und `traeger` 2 bleiben.
+    // EHRLICH GESAGT: GERECHNET (515 + 1) — dieser Auftrag durfte keinen Testlauf selbst starten,
+    // und ob 515 den Stand nach `produkt:20261007:ownership-uebergabe` schon trug, ist ungemessen.
+    // Weicht der Prüflauf ab, gehört die gemessene Zahl hierher.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 515,
+      komponenten: 516,
       anbieter: 1,
       traeger: 2,
     });
