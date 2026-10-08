@@ -90,13 +90,15 @@ describe("JOB 4086: der SharePoint-Mapper", () => {
     mapDriveItemToImportItem({ ...DATEI, lastModifiedDateTime: zeitpunkt }, OPTS)?.sourceVersion;
 
   it("R-0144 · der Quellstand trägt die Revisionsidentität — von heute bis zur benannten Grenze", () => {
-    for (const zeitpunkt of ["2026-09-10T08:30:00Z", "2056-09-05T01:46:39Z"]) {
+    for (const zeitpunkt of ["2026-09-10T08:30:00Z", "2056-09-09T01:46:39Z"]) {
       const stand = standVon(zeitpunkt) ?? 0;
       expect(stand, zeitpunkt).toBeGreaterThan(1);
       expect(stand, zeitpunkt).toBeLessThanOrEqual(MAX_SOURCE_VERSION);
     }
     // Die erste Sekunde jenseits der Grenze wird NICHT gekappt — der Kern weist sie ehrlich ab.
-    expect(standVon("2056-09-05T01:46:40Z")).toBe(MAX_SOURCE_VERSION + 1);
+    // Nacharbeit 5: das Grenzdatum war um vier Tage falsch gerechnet (gemessen: 09-05 → 999_654_400).
+    expect(standVon("2056-09-09T01:46:39Z")).toBe(MAX_SOURCE_VERSION);
+    expect(standVon("2056-09-09T01:46:40Z")).toBe(MAX_SOURCE_VERSION + 1);
   });
 
   it("R-0144 · Bens Befund (Nacharbeit 4): zwei Fassungen in DERSELBEN Minute sind zwei Stände", () => {

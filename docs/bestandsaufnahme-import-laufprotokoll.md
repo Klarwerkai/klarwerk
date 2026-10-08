@@ -17,9 +17,9 @@ Legende: **geliefert** = im Code mit Test belegt · **dieser Lauf** = in diesem 
 | R-0144 Importlauf mit Zustand, Ergebnis, eigener Kennung | geliefert | Laufdomäne `ImportRun` mit neun kanonischen Zuständen, Zählern, `failureCode`/`failureReason` (`services/library-analytics/src/types.ts`, AUFTRAG-144; Ablage `repo.ts`/`repo-pg.ts`, Migration `IMPORT_RUN_SCHEMA`). Läufe entstehen auf allen vier Übernahmewegen: Confluence-Gesamtlauf, Confluence-Auswahl `/apply` (JOB 3288, `tests/import-volltext/selektivimport-hat-eine-lauf-kennung.test.ts`), SharePoint-Auswahl und SharePoint-Ordnerlos (JOB 4086, `sharepoint-import-routes.ts`). |
 | R-0144 Lauf lesbar und weiterverarbeitbar | geliefert | `GET /api/admin/import/runs/:importId` und `…/result` (`services/app/src/routes/import-run-routes.ts`, AUFTRAG 148; `tests/app/w2a-import-run-routes-148.test.ts`); der Kopf der Importseite liest daraus den letzten erfolgreichen Lauf (`import-access-service.ts`, `tests/import-volltext/kopf-zeigt-den-selektivimport.test.tsx`). |
 | R-0144 Abbruch samt Grund, wenn Zeit oder Datenvolumen nicht reichen | Gesamtlauf geliefert; **Übernahmewege dieser Lauf** | Gesamtlauf: `CONFLUENCE_TIMEOUT` / `CONFLUENCE_BUDGET` / `CONFLUENCE_RESPONSE_TOO_LARGE` am Lauf (R-0159, `tests/confluence-import-bedienung/folgeabruf-zeitlimit.test.tsx` Z1–Z3). **Dieser Lauf:** Confluence `/apply` und SharePoint-Übernahme schreiben den Grund jetzt ebenfalls an den gespeicherten Lauf (s. unten). |
-| R-0144 dauerhafter Datensatz zur externen Quelle | Confluence geliefert; **SharePoint Nacharbeit 3, Beleg ausstehend** | `ExternalSourceRecord` (unveränderliche Quellrevision, `types.ts` W2-A), geschrieben beim Einreihen im Namen eines Laufs (`laufbindung.ts`, `LibraryService.bindeAnLauf`) und bei der Annahme (`quellrevisionFestschreiben`); lesbar über `GET /api/admin/import/source-records/:id`. Confluence: `tests/confluence-quellabgleich/r0142-ergebnisweg.test.ts` E1 (grün). SharePoint: gebaut in Nacharbeit 3 (s. „Was dieser Lauf ändert“ 3), Nachweis `tests/import-laufprotokoll/sharepoint-lauf-traegt-quellrevision.test.ts` SP1 (grün an `890b7827` mit Minutenzählung) und SP2 (zwei Fassungen derselben Minute) — nach der Umstellung in Nacharbeit 4 **erneut auszuführen**. |
-| R-0144 Quelle und Fassung am Wissensobjekt | Confluence geliefert; **SharePoint Beleg ausstehend** | Herkunftsanker `provider` + `externalId` + `sourceVersion` + `sourceRecordId` + `importRunId` (`buildSource`; R-0142 Lauf 5 R3 B11); `GET /api/admin/import/knowledge/:koId`, Anzeige `apps/web/src/components/bibliothek/ImportErgebnis.tsx`. Confluence: `r0142-ergebnisweg.test.ts` (grün). SharePoint: `tests/sharepoint-inhalt/weg-am-draht-und-neustart.test.ts` W1 war an allen drei bisherigen Kandidaten **rot** (Widerspruch 11) und ist deshalb **kein** Herkunftsnachweis; Nachweis über W1 und SP1/SP2 (Neustart); grün an `890b7827` (Minutenzählung), nach Nacharbeit 4 erneut auszuführen. |
-| R-0701 ein Weg zum Ergebnis eines Importlaufs | Vertrag geliefert; **SharePoint-Elemente Nacharbeit 3, Beleg ausstehend** | Ein Vertrag, gebaut an einer Stelle: `laufNachAussen` (Lauf), `quelleNachAussen` (Quellrevision), `elementNachAussen` (Element) in `import-run-routes.ts`. Die Ergebnisfrage beantwortet `GET /api/admin/import/runs/:importId/result` quellneutral. Für SharePoint-Läufe lieferte sie bis Nacharbeit 3 `items: []`; mit der Laufbindung nennt sie nach der Annahme Element, Objekt, Ausgang und Revision (SP1; SP2 auch für eine zweite Fassung derselben Minute mit `BOUND`); nach Nacharbeit 4 erneut auszuführen. |
+| R-0144 dauerhafter Datensatz zur externen Quelle | Confluence geliefert; **SharePoint Nacharbeit 3, Beleg ausstehend** | `ExternalSourceRecord` (unveränderliche Quellrevision, `types.ts` W2-A), geschrieben beim Einreihen im Namen eines Laufs (`laufbindung.ts`, `LibraryService.bindeAnLauf`) und bei der Annahme (`quellrevisionFestschreiben`); lesbar über `GET /api/admin/import/source-records/:id`. Confluence: `tests/confluence-quellabgleich/r0142-ergebnisweg.test.ts` E1 (grün). SharePoint: gebaut in Nacharbeit 3 (s. „Was dieser Lauf ändert“ 3), Nachweis `tests/import-laufprotokoll/sharepoint-lauf-traegt-quellrevision.test.ts` SP1 und SP2 (zwei Fassungen derselben Minute) — grün an `d4b4deb3` (Sekundenzählung, HISTORIE/nacharbeit-5). |
+| R-0144 Quelle und Fassung am Wissensobjekt | Confluence geliefert; **SharePoint Beleg ausstehend** | Herkunftsanker `provider` + `externalId` + `sourceVersion` + `sourceRecordId` + `importRunId` (`buildSource`; R-0142 Lauf 5 R3 B11); `GET /api/admin/import/knowledge/:koId`, Anzeige `apps/web/src/components/bibliothek/ImportErgebnis.tsx`. Confluence: `r0142-ergebnisweg.test.ts` (grün). SharePoint: `tests/sharepoint-inhalt/weg-am-draht-und-neustart.test.ts` W1 war an allen drei bisherigen Kandidaten **rot** (Widerspruch 11) und ist deshalb **kein** Herkunftsnachweis; Nachweis über W1 und SP1/SP2 (Neustart); grün an `d4b4deb3` (HISTORIE/nacharbeit-5). |
+| R-0701 ein Weg zum Ergebnis eines Importlaufs | Vertrag geliefert; **SharePoint-Elemente Nacharbeit 3, Beleg ausstehend** | Ein Vertrag, gebaut an einer Stelle: `laufNachAussen` (Lauf), `quelleNachAussen` (Quellrevision), `elementNachAussen` (Element) in `import-run-routes.ts`. Die Ergebnisfrage beantwortet `GET /api/admin/import/runs/:importId/result` quellneutral. Für SharePoint-Läufe lieferte sie bis Nacharbeit 3 `items: []`; mit der Laufbindung nennt sie nach der Annahme Element, Objekt, Ausgang und Revision (SP1; SP2 auch für eine zweite Fassung derselben Minute mit `BOUND`); grün an `d4b4deb3`. |
 | P-IMPORT-REST Lauf-ID des Selektivimports in der Oberfläche | geliefert (JOB 3357) | Bilanz der Übernahme nennt jede Lauf-Kennung vollständig, abschreibbar und mit Ausgang (`apps/web/src/components/ImportGroups.tsx`, `LaufKennungen`/`LaufAusgang`); `tests/import-lauf-kennung/*` (u. a. `bilanz-zeigt-die-laufkennung.test.tsx`, `zwei-aufrufe-zwei-kennungen.test.tsx`, `ohne-lauf-keine-kennung.test.tsx`). |
 | P-IMPORT-REST exakter Seitentitel als Freitext → 0 Treffer | geliefert (JOB 3356) | Die KI-Deutung bleibt unverändert sichtbar, daneben steht der deterministische Titelbefund `titleFallback` mit eigener Trefferzahl und übernehmbaren Kriterien (`confluence-import-routes.ts` `/select`; `tests/import-freitext-titel/titel-satz-findet-die-seite.test.ts`, `titel-filter-ist-deterministisch.test.ts`, Fläche `auswahl-sagt-was-die-ki-verstand.test.tsx`). |
 
@@ -45,7 +45,8 @@ Legende: **geliefert** = im Code mit Test belegt · **dieser Lauf** = in diesem 
    „schon vorhanden“ verloren ging. **Jetzt** zählt `sharepointQuellstand`
    (`services/sharepoint/src/mapper.ts`) in **Sekunden seit 2025-01-01T00:00:00Z** (heute
    ≈ 54 Mio.), Zeitpunkte davor als 1. Das ist die volle Auflösung, die Graph liefert, und passt bis
-   2056-09-05T01:46:39Z. Die eingefrorenen Dateien bleiben unverändert (eine Erweiterung der
+   2056-09-09T01:46:39Z (Nacharbeit 5: zuvor um vier Tage falsch als 09-05 angegeben, gemessen
+   und berichtigt). Die eingefrorenen Dateien bleiben unverändert (eine Erweiterung der
    Revisionsidentität verlangte eine Freigabe nach FREEZE-144, die dieser Auftrag nicht hat). Die
    Sollwerte der SharePoint-Tests rechnen exakt dieselbe Vorschrift, keine Prüfung ist gelockert.
    `mapper.test.ts`: Grenze bis 2056 und erste Sekunde darüber (nicht gekappt), gleiche Minute
@@ -64,11 +65,11 @@ Grenzgrund, kein erfundener Grund, Kalibrierung ohne Störung), S1–S2 (SharePo
 leer ist keine Grenze); grün an drei Kandidaten. `tests/import-laufprotokoll/sharepoint-lauf-traegt-quellrevision.test.ts`
 SP1 — echter Adapter und Mapper, realistischer Zeitpunkt, Annahme über die Prüf-Warteschlange,
 `/result`, `/source-records`, `/knowledge`, danach echter Neustart aus derselben Journaldatei
-(grün an `890b7827` mit Minutenzählung; nach Nacharbeit 4 erneut ausgewählt). SP2 (Nacharbeit 4,
+(grün an `890b7827` mit Minutenzählung und an `d4b4deb3` mit Sekundenzählung). SP2 (Nacharbeit 4,
 Bens Befund) — zwei Fassungen um 09:15:01 und 09:15:59: die zweite wird eingereiht (nicht
 „schon vorhanden“), angenommen (`BOUND`, dasselbe Objekt), trägt eine eigene Quellrevision, und
-der Anker am Objekt nennt Lauf und Fassung der zweiten; dasselbe nach Neustart (noch nicht
-ausgeführt).
+der Anker am Objekt nennt Lauf und Fassung der zweiten; dasselbe nach Neustart (grün an
+`d4b4deb3`, HISTORIE/nacharbeit-5).
 
 Die eingefrorenen Dateien des Laufvertrags (FREEZE-144: `library-analytics/index.ts`,
 `src/types.ts`, `src/repo.ts`, `src/repo-pg.ts`) sind **nicht** geändert.
@@ -118,7 +119,7 @@ Die eingefrorenen Dateien des Laufvertrags (FREEZE-144: `library-analytics/index
 7. **PostgreSQL.** Bis Nacharbeit 2 schrieben die Änderungen nur `failureCode`/`failureReason` über
    `advance`. Seit Nacharbeit 3 landet der SharePoint-Quellstand im PG-Bestand; die Gegenprobe
    `tests/sharepoint-inhalt-gesamtweg/gesamtweg-pg-im-browser.integration.test.ts` (PG + Chromium)
-   war an `890b7827` mit Minutenzählung grün und ist nach Nacharbeit 4 erneut ausgewählt.
+   war an `890b7827` (Minutenzählung) und an `d4b4deb3` (Sekundenzählung) grün.
 8. **Echte Quellsysteme.** Weder eine echte Confluence-Instanz noch ein echter Microsoft-365-Mandant
    wurde angesprochen; Grenzfälle sind über Adapterattrappen gemessen.
 9. **SharePoint-Fassung gegen Revisionsidentität — technisch aufgelöst (Nacharbeit 3/4).**
@@ -131,7 +132,7 @@ Die eingefrorenen Dateien des Laufvertrags (FREEZE-144: `library-analytics/index
    auf (gleiche Minute = gleicher Stand, die zweite Fassung ging verloren). Jetzt: Sekunden seit
    2025-01-01 (s. „Was dieser Lauf ändert“ 3; Nachweis SP2 und `mapper.test.ts`). **Grenzen:**
    (a) zwei Änderungen in derselben SEKUNDE sind schon an der Quelle nicht unterscheidbar (Graph
-   nennt Sekunden); (b) ab 2056-09-05T01:46:40Z liegt der Stand über der Revisionsgrenze und wird
+   nennt Sekunden); (b) ab 2056-09-09T01:46:40Z liegt der Stand über der Revisionsgrenze und wird
    vom Kern abgewiesen, nicht gekappt — eine dauerhafte Lösung darüber hinaus verlangt die
    Erweiterung der Revisionsidentität mit Freigabe nach FREEZE-144; (c) Zeitpunkte vor 2025 werden
    zu 1 — unschädlich, weil SharePoint `lastModifiedDateTime` serverseitig setzt und jede spätere
