@@ -19,6 +19,20 @@ vi.mock("../../apps/web/src/api/auth", () => ({
   },
 }));
 
+// Nacharbeit 1: die angemeldete Person wird GESTELLT, wie in `tests/aufgaben-ansicht/*` — über die
+// echte Sitzungsabfrage kam in diesem Aufbau kein Nutzer an, und R-0266 hängt genau an ihm. Alle
+// übrigen Felder der Sitzung bleiben die echten (`AuthProvider` bleibt gemountet).
+vi.mock("../../apps/web/src/app/AuthContext", async (original) => {
+  const echt = await original<typeof import("../../apps/web/src/app/AuthContext")>();
+  return {
+    ...echt,
+    useSession: () => ({
+      ...echt.useSession(),
+      user: { id: "u1", name: "Pia", email: "p@x.de", role: "admin" },
+    }),
+  };
+});
+
 vi.mock("../../apps/web/src/api/endpoints", () => {
   const ok = <T,>(v: T) => vi.fn(async () => v);
   return {
