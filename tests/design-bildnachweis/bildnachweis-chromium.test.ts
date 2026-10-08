@@ -633,6 +633,35 @@ describe("R-1399 · Sichtnachweis: Lesetexte aus dem Hauptstand auf 11 px", () =
     mkdirSync(ORDNER, { recursive: true });
     try {
       stand2 = await h4Stand("/bibliothek", "bild2@design-bildnachweis.test", async (z) => {
+        // Nacharbeit 17: die Dubletten stammen von einem ZWEITEN Konto. Wer Autor einer Seite ist,
+        // darf sie nicht zusammenführen (R-0565, `zusammenfuehrenGesperrt` → „eigeneSeite“) — mit
+        // dem angemeldeten Konto als Autor zeigte B9 zu Recht nur die Sperre statt des Assistenten.
+        const adminLogin = await z.app.inject({
+          method: "POST",
+          url: "/api/auth/login",
+          payload: { email: "bild2@design-bildnachweis.test", password: "geheim12345" },
+        });
+        const adminToken = (adminLogin.json() as { token: string }).token;
+        const angelegt = await z.app.inject({
+          method: "POST",
+          url: "/api/users",
+          headers: { authorization: `Bearer ${adminToken}` },
+          payload: {
+            name: "Fremdautor",
+            email: "fremd@design-bildnachweis.test",
+            password: "geheim12345",
+            role: "experte",
+          },
+        });
+        if (angelegt.statusCode >= 300) {
+          throw new Error(`Fremdautor nicht angelegt: ${angelegt.statusCode} ${angelegt.body}`);
+        }
+        const fremdLogin = await z.app.inject({
+          method: "POST",
+          url: "/api/auth/login",
+          payload: { email: "fremd@design-bildnachweis.test", password: "geheim12345" },
+        });
+        const fremdId = (fremdLogin.json() as { user: { id: string } }).user.id;
         const anlegen = async (title: string, zusatz: string): Promise<string> => {
           const ko = (await z.services.ko.create({
             title,
@@ -640,7 +669,7 @@ describe("R-1399 · Sichtnachweis: Lesetexte aus dem Hauptstand auf 11 px", () =
             bodyHtml: `<p>${DUP_GEMEINSAM} ${zusatz}</p>`,
             type: "best_practice",
             category: "Instandhaltung",
-            author: z.autorId,
+            author: fremdId,
           } as never)) as { id: string };
           return ko.id;
         };
