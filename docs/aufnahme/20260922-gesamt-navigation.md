@@ -86,6 +86,11 @@ aufklappbar gemacht, ohne etwas zu löschen, mit Beleg vorher und nachher.
      Ruhestandshorizonte. Sie steht jetzt hinter dem Schalter `risiko-pflege-schalter` („Bereiche und
      Ruhestandshorizonte pflegen“). Aufgeklappt ist sie unverändert dasselbe Bauteil
      (`BereichsprofilPflege`); Rechte und Server bleiben unberührt.
+     **Nacharbeit 8 (Ben):** Die erste Fassung baute die Pflege beim Einklappen aus. Damit verwarf
+     sie ungespeicherte Eingaben, weil die Zeilen ihren Entwurf als lokalen Zustand halten. Jetzt
+     bleibt die Pflege montiert und ist eingeklappt nur per `hidden` verborgen.
+     `tests/gesamt-navigation/risiko-pflege-einklappen-mounted.test.tsx` fährt den Ablauf Ändern →
+     Einklappen → Aufklappen → Speichern an der echten Seite, mit Gegenprobe ohne Änderung.
   F2 verlangt weiterhin, dass die zwei schwersten Flächen des jeweiligen Laufs entlastet sind, und
   prüft jede als entlastet geführte Fläche einzeln (Schalter, nachher leichter, aufgeklappt
   vollständig).

@@ -69,6 +69,8 @@ export function Risk(): JSX.Element {
   // Verantwortung, vier Stufen und Speichern, dazu die Ruhestandshorizonte. Sie ist eine
   // Verwaltungsarbeit, keine Auskunft; sie steht jetzt hinter dem Schalter `risiko-pflege-schalter`
   // und ist aufgeklappt unverändert dieselbe Fläche (nichts gelöscht, keine Rechte geändert).
+  // Eingeklappt bleibt sie MONTIERT und ist nur verborgen — ungespeicherte Eingaben überleben das
+  // Ein- und Ausklappen (s. unten am Schalter).
   const [pflegeOffen, setPflegeOffen] = useState(false);
   const expertise = useExpertise(canSeeExpertise(role));
   // R-1663 / R-2178: die Ansprechpartner je Lücke hängen am selben Schalter wie die Expertise-Route,
@@ -307,12 +309,21 @@ export function Risk(): JSX.Element {
             data-testid="risiko-pflege-schalter"
             data-entlastung-schalter=""
             aria-expanded={pflegeOffen}
+            aria-controls="risiko-pflege"
             onClick={() => setPflegeOffen((offen) => !offen)}
             className="mb-2 inline-flex items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 py-1 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
           >
             {t(pflegeOffen ? "navigation.pflegeAusblenden" : "navigation.pflegeZeigen")}
           </button>
-          {pflegeOffen ? <BereichsprofilPflege /> : null}
+          {/* VERBORGEN, NICHT AUSGEBAUT (Ben, Nacharbeit 8): die Zeilen halten ihren ungespeicherten
+              Entwurf als lokalen Zustand (`BereichsprofilPflege.tsx`, `ProfilZeile`). Ein
+              bedingtes Rendern hätte ihn beim Einklappen verworfen — Ändern, Einklappen, Aufklappen
+              stand wieder beim gespeicherten Wert. `hidden` nimmt die Fläche aus Sicht und
+              Tabreihenfolge und lässt den Entwurf stehen; gemessen in
+              `tests/gesamt-navigation/risiko-pflege-einklappen-mounted.test.tsx`. */}
+          <div id="risiko-pflege" data-testid="risiko-pflege" hidden={!pflegeOffen}>
+            <BereichsprofilPflege />
+          </div>
         </div>
       ) : null}
 
