@@ -73,6 +73,7 @@ import {
 import { selectAnswer } from "../lib/askResponse";
 import { stepsBeyondSources, stepsWorthShowing } from "../lib/askSteps";
 import { answerReviewGuard, evidenzWiederholtStatus } from "../lib/askView";
+import { belegstelleHref } from "../lib/belegstelle";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 // JOB 3267 Q1: der Prüfstand einer Quelle kommt aus der EINEN Ableitung, die auch Bibliothek und
@@ -1356,6 +1357,21 @@ export function Ask(): JSX.Element {
       pruefstandHinweis: t("ask.pruefstand.hint", { stand: standWort }),
     };
   });
+  // Aufnahme 20260922 · antwort-quellenanzeige (R-0326): der Weg aus der Antwort an die Belegstelle.
+  // Eine TRAGENDE Quelle führt auf `/wissen/:id?stelle=…&fassung=…` (lib/belegstelle.ts) — Passage
+  // ist, was der Server als Beleg dieser Quelle zitiert (`steps[].snippet`, sonst ihre Aussage),
+  // Fassung ihre Inhaltsversion; die Lesefläche sucht, markiert und springt dorthin. Eine nur
+  // herangezogene Quelle hat keine tragende Passage und führt auf die blosse Objektadresse.
+  const quellenHref = (id: string): string => {
+    const quelle = quellenAuskunft.find((q) => q.id === id);
+    const ko = kosById.get(id);
+    const zitiert = result?.steps.find((st) => st.sourceId === id)?.snippet ?? ko?.statement ?? "";
+    const stelle =
+      quelle?.carrying && zitiert.trim() !== ""
+        ? { passage: zitiert, fassung: ko?.version ?? null }
+        : null;
+    return demoHref(belegstelleHref(id, stelle), params);
+  };
   const buildExport = (): { markdown: string; filename: string } | null => {
     if (!result?.answered || !effective) {
       return null;
@@ -2099,7 +2115,7 @@ export function Ask(): JSX.Element {
                         return (
                           <Link
                             key={s.id}
-                            to={demoHref(`/wissen/${s.id}`, params)}
+                            to={quellenHref(s.id)}
                             data-testid="ask-quellen-chip"
                             data-tutorial-ziel={FRAGEN_ZIEL.quellenchip}
                             className={QUELLEN_CHIP_KLASSE}
@@ -2361,7 +2377,7 @@ export function Ask(): JSX.Element {
                             der Bibliothek — so kommt man aus der Antwort schnell zum Artikel. */}
                                   {s.sourceId ? (
                                     <Link
-                                      to={demoHref(`/wissen/${s.sourceId}`, params)}
+                                      to={quellenHref(s.sourceId)}
                                       className="inline-flex items-center gap-1 font-medium text-brand-text hover:underline"
                                     >
                                       <span className="text-text">{s.description}</span>
@@ -2389,7 +2405,7 @@ export function Ask(): JSX.Element {
                           <QuellenListe
                             quellen={quellenAuskunft}
                             zuordnungTragfaehig={zuordnungTragfaehig}
-                            wissenHref={(id) => demoHref(`/wissen/${id}`, params)}
+                            wissenHref={quellenHref}
                             bildfundstelle={(id) => result.captionSources?.includes(id) ?? false}
                             koVon={(id) => (kos.data ?? []).find((k) => k.id === id)}
                             autorVon={authorNameOf}

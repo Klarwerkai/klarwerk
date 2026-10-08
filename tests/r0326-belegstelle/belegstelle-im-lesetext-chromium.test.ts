@@ -14,7 +14,7 @@
 // Absätzen ABSATZ_1/ABSATZ_2).
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { ABSATZ_2, type H4Stand, ORIGIN, fn, h4Stand } from "../design/h4-harness";
+import { ABSATZ_1, ABSATZ_2, type H4Stand, ORIGIN, fn, h4Stand } from "../design/h4-harness";
 
 let stand: H4Stand | null = null;
 let fehler: string | null = null;
@@ -137,6 +137,61 @@ describe("R-0326/R-0329 · Belegstelle und Wissensnetz-Einstieg an der gebauten 
     expect(lage.top).toBeLessThan(lage.hoehe);
     expect(lage.offen).toEqual(["nachbarschaft"]);
   }, 90_000);
+
+  // ==============================================================================================
+  // K1 · DER GANZE KLICKWEG AUS DER ANTWORT (Ben, Nacharbeit 11): nicht eine selbst gebaute Adresse,
+  // sondern Fragenseite → echte Frage an die echte App → Klick auf den Quellenchip der Antwort →
+  // Lesefläche. Dort ist die zitierte Passage der tragenden Quelle markiert und angesprungen.
+  // ==============================================================================================
+  it("K1 · Frage → Antwort → Klick auf den Quellenchip: die zitierte Passage ist im Quelldokument markiert und im Bild", async () => {
+    expect(fehler).toBeNull();
+    const s = stand as H4Stand;
+    await s.seite.goto(`${ORIGIN}/fragen`, { waitUntil: "load" });
+    await s.seite.waitForFunction(
+      fn(`() => !!document.querySelector('[data-testid="page-fragen"] form input')`),
+      undefined,
+      { timeout: 30_000 },
+    );
+    // Nur Begriffe, die der Eintrag wirklich trägt (R-0473: alle Fragebegriffe müssen in der Quelle
+    // stehen — sonst wird die Frage vertragsgemäß eine Wissenslücke).
+    await s.seite.click('[data-testid="page-fragen"] form input');
+    await s.seite.keyboard.type("Wie sind Halterungen und Profile auszuführen?");
+    await s.seite.click('[data-testid="page-fragen"] form button[type="submit"]');
+    await s.seite.waitForFunction(
+      fn(
+        `(id) => !!document.querySelector('[data-testid="ask-quellen-chip"][href*="' + id + '"]')`,
+      ),
+      s.koId,
+      { timeout: 45_000 },
+    );
+    const href = await s.seite.evaluate<string>(
+      fn(
+        `(id) => document.querySelector('[data-testid="ask-quellen-chip"][href*="' + id + '"]').getAttribute('href')`,
+      ),
+      s.koId,
+    );
+    console.info(`R-0326 · Chip der Antwort → ${href}`);
+    // Der Chip trägt den Anker der TRAGENDEN Passage — er wurde nicht vom Test gebaut.
+    const anker = new URL(href, ORIGIN);
+    expect(anker.pathname).toBe(`/wissen/${s.koId}`);
+    expect(anker.searchParams.get("stelle")).toBe(ABSATZ_1);
+    // Der echte Zeigerklick (Router-Navigation der Anwendung).
+    await s.seite.click(`[data-testid="ask-quellen-chip"][href*="${s.koId}"]`);
+    await s.seite.waitForFunction(
+      fn(
+        `() => document.querySelectorAll('[data-testid="bib-text"] mark[data-bib-belegstelle]').length > 0`,
+      ),
+      undefined,
+      { timeout: 30_000 },
+    );
+    await s.seite.waitForTimeout(500);
+    const m = await s.seite.evaluate<Lage>(fn(MESSEN));
+    console.info(`R-0326 · nach dem Klick → ${JSON.stringify(m)}`);
+    expect(m.marken.join("")).toBe(ABSATZ_1);
+    expect(m.imBild).toBe(true);
+    expect(m.fokusInMarke).toBe(true);
+    expect(m.lage).toBe("markiert");
+  }, 120_000);
 
   it("Z · Chromium meldete keinen Seitenfehler", () => {
     expect(fehler).toBeNull();

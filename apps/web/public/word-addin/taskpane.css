@@ -531,6 +531,9 @@
     /* Aufnahme 20260922 · antwort-quellenanzeige (R-0329): die Ziffer oeffnet den Einschub ihrer
        Quelle; der Einschub steht unter den Chips (Titel, Stand, hervorgehobene Passage, zwei Aktionen). */
     #ask-fussnoten .fussnote { pointer-events: auto; cursor: pointer; }
+    /* R-0310: die Ziffern eines früheren Absatzes, relativ zum Textende an sein Absatzende gesetzt. */
+    #ask-fussnoten .absatzmarke { position: absolute; white-space: nowrap; }
+    #ask-fussnoten .absatzmarke.hidden { display: none; }
     #ask-einschub { margin: 0; padding: 8px 10px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 12px; }
     #ask-einschub h3 { margin: 0 0 2px; font-size: 13px; color: var(--ink); overflow-wrap: anywhere; }
     #ask-einschub .einschub-stand, #ask-einschub-kein-original { margin: 0 0 6px; color: var(--muted); }

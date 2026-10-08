@@ -198,6 +198,10 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 10: GEMESSEN im Prüflauf zu Kandidat a54d2eff am zusammengeführten Panel (`96fc81a8…`,
  * „Received" von E2, HISTORIE/nacharbeit-10/PRUEFUNG/panel-pins-nach-integration.log) und
  * unverändert übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 11 (Ben zu c022ce07, R-0310/R-0326): `taskpane.js` und `taskpane.css` geändert
+ * (Absatz-Belege, Fußnoten je Absatz, Passage als Belegstellen-Link). Der Wert unten ist wieder ein
+ * PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet den Ist-Wert als „Received", er wird danach
+ * gemessen übernommen.
  */
 export const PANEL_VOR_SCHNITT_BLOB = "96fc81a8d6d454d793babc4eb75524f7ce83ec93";
 

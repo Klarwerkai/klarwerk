@@ -2807,6 +2807,16 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // aefb62af…). Im Prüflauf zu Kandidat a54d2eff am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
     // HISTORIE/nacharbeit-10/PRUEFUNG/panel-pins-nach-integration.log) und unverändert übernommen;
     // die Panel-Dateien sind seit dieser Messung unberührt.
+    // NACHARBEIT 11 (antwort-quellenanzeige, Ben zu c022ce07: R-0310, R-0326) — DER PIN MUSS
+    // WANDERN. `taskpane.js`: `askAbsaetzeLesen` liest das neue Antwortfeld `absaetze` (je Absatz
+    // die tragenden Quellen); ausgegeben werden nur belegte Absätze, ohne einen belegten Absatz
+    // bleibt die Antwort eine Lücke; die Fußnoten stehen je Absatz (`absatzmarke`); die Passage im
+    // Einschub ist selbst der Link auf die Belegstelle (`askStelleHref`, die zwei Aktionen bleiben).
+    // Mehrere Kommentarköpfe verdichtet (B3: 12492 Zeilen). `taskpane.css`: `.absatzmarke`.
+    // Auslieferungsfolgen: kein neues Abrufziel (`/api/ask` trägt das Feld zusätzlich), nur
+    // gleichherkünftige Links, keine CSP-, Rechte- oder Manifeständerung, kein neuer
+    // Wörterbuchschlüssel, kein Sideload. Der Wert unten ist ein PLATZHALTER; der Prüflauf meldet
+    // den Ist-Wert als „Received", er wird danach gemessen übernommen.
     const PIN = "aefb62af8774839c5001c2d0a33d2b0aa10013544a3aeeaec647487277f30054";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(

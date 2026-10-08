@@ -660,6 +660,30 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
     // Ask-Fluss: beide Fassungen liefern auf denselben Fake-fetch-Faellen dasselbe Ergebnis.
     const flows: [string, AskFetchFn][] = [
       ["answered", async () => fakeRes(200, ANSWERED_BODY)],
+      // R-0310: die Absatz-Beleg-Zuordnung — beide Fassungen geben NUR belegte Absätze aus und
+      // fallen ohne belegten Absatz in die Lücke.
+      [
+        "answered-absaetze",
+        async () =>
+          fakeRes(200, {
+            ...ANSWERED_BODY,
+            result: { ...ANSWERED_BODY.result, citedSources: ["ko-2"] },
+            absaetze: [
+              { text: "**Ventil** entlasten. [2]", quellen: ["ko-2"] },
+              { text: "Ohne Beleg.", quellen: [] },
+              { text: "Fremd.", quellen: ["ko-1"] },
+            ],
+          }),
+      ],
+      [
+        "answered-absaetze-unbelegt",
+        async () =>
+          fakeRes(200, {
+            ...ANSWERED_BODY,
+            result: { ...ANSWERED_BODY.result, citedSources: ["ko-2"] },
+            absaetze: [{ text: "Ohne Beleg.", quellen: [] }],
+          }),
+      ],
       ["gap", async () => fakeRes(200, GAP_BODY)],
       ["auth", async () => fakeRes(401, {})],
       // AUFTRAG-JOB507-D4: der neue 403- und der neue 429-Ausgang laufen durch DENSELBEN Vergleich.

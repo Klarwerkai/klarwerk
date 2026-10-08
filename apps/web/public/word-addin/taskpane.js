@@ -469,11 +469,25 @@
       return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
     }
 
-    // AUFTRAG-JOB507-D4 — Retry-After: eine Zahl, sechs Klassen, eine Obergrenze. Spiegel von
-    // apps/web/src/lib/wordAddin.ts#parseRetryAfterSeconds; die ausfuehrliche Begruendung steht dort.
-    // Feste Reihenfolge: fehlend → null · leer → null · ganze Sekunden → gedeckelt · negative
-    // Sekunden → 0 · HTTP-Datum → Zukunft gedeckelt / Vergangenheit 0 · sonst → null.
-    // `null` heisst „unbekannt", `0` heisst „jetzt" — das ist nicht dasselbe.
+    // R-0310 (Spiegel von wordAddin.ts#askAbsaetzeLesen): die Absatz-Beleg-Zuordnung des Servers.
+    // Fehlt das Feld → undefined (alter Server, keine Aussage). Sonst NUR Absaetze mit mindestens einer
+    // TRAGENDEN Quelle (`cited`), Marken `[n]` und Markdown entfernt; unbelegte fallen weg.
+    function askAbsaetzeLesen(body, cited) {
+      if (!body || !Array.isArray(body.absaetze)) { return undefined; }
+      var tragend = Array.isArray(cited) ? cited : [];
+      var out = [];
+      for (var i = 0; i < body.absaetze.length; i += 1) {
+        var a = body.absaetze[i] || {};
+        var q = Array.isArray(a.quellen) ? a.quellen.filter(function (id) { return typeof id === "string" && tragend.indexOf(id) !== -1; }) : [];
+        var text = typeof a.text === "string" ? stripAskAnswerMarkdown(a.text.replace(/\s*\[[0-9\s,]+\]/g, "")) : "";
+        if (q.length > 0 && text.length > 0) { out.push({ text: text, quellen: q }); }
+      }
+      return out;
+    }
+
+    // AUFTRAG-JOB507-D4 — Retry-After (Spiegel von wordAddin.ts#parseRetryAfterSeconds, Begruendung
+    // dort): fehlend/leer → null · Sekunden → gedeckelt · negativ → 0 · HTTP-Datum → Zukunft
+    // gedeckelt / Vergangenheit 0 · sonst null. `null` heisst „unbekannt", `0` heisst „jetzt".
     var WORD_ADDIN_RETRY_AFTER_MAX_SECONDS = 3600;
     // Die Datumsform wird GEPRUEFT, bevor Date.parse laeuft: Date.parse ist nachsichtig und liest
     // auch „12.5" als Datum (im Red-first-Lauf belegt) — eine erfundene Auskunft saehe dann aus wie
@@ -662,11 +676,10 @@
                 if (typeof cid === "string" && cid.trim().length > 0) { cited.push(cid); }
               }
             }
-            // JOB 3366 (KI-FRAGMENT-SICHTBAR): der belegte Abbruchbefund des Servers. GELESEN,
-            // nie hergeleitet — dieselbe Beweislast-Umkehr wie bei `citedSources` darueber: das
-            // Feld muss ein Objekt sein UND `finishReason` als nichtleere Zeichenkette tragen,
-            // sonst gilt es als NICHT gemeldet. Ein aelterer Server sendet es gar nicht; das fuehrt
-            // in den bisherigen Zustand (kein Satz), nie in die Entwarnung „vollstaendig".
+            // R-0310: die ausdrueckliche Absatz-Beleg-Zuordnung (`body.absaetze`) — nur belegte Absaetze.
+            var absaetze = askAbsaetzeLesen(body, cited);
+            // JOB 3366: der Abbruchbefund des Servers wird GELESEN (Objekt mit nichtleerem
+            // `finishReason`), nie hergeleitet; fehlt er, gilt er als NICHT gemeldet.
             var abgeschnitten = false;
             var befund = result ? result.abgeschnitten : null;
             if (befund && typeof befund === "object" && typeof befund.finishReason === "string" && befund.finishReason.length > 0) {
@@ -677,11 +690,8 @@
               firstStep && typeof firstStep.snippet === "string" && firstStep.snippet.trim().length > 0
                 ? firstStep.snippet.trim()
                 : undefined;
-            // JOB 3092 S6 (W5): die Meldung „vorhanden, aber ungeprueft" (JOB 1591 D1) reist NEBEN
-            // `result` im Koerper (`ungeprueft`, nur auf dem Sitzungsweg) und wird GELESEN, nie
-            // hergeleitet: abwesend heisst „nicht gefragt", `[]` heisst „nachgesehen, nichts" —
-            // die Flaeche zeigt in beiden Faellen keinen Satz und behauptet nie „alles geprueft".
-            // Ein Eintrag ohne Kennung ist keine Meldung. Der abgesetzte Rumpf bleibt byte-gleich.
+            // JOB 3092 S6 (W5): `ungeprueft` (JOB 1591 D1, nur Sitzungsweg) wird GELESEN; abwesend
+            // und `[]` zeigen keinen Satz, nie „alles geprueft"; ein Eintrag ohne Kennung zaehlt nicht.
             var ungeprueft;
             if (body && Array.isArray(body.ungeprueft)) {
               ungeprueft = [];
@@ -701,17 +711,16 @@
               result.answered === true &&
               typeof answer === "string" &&
               answer.trim().length > 0 &&
-              sources.length > 0
+              sources.length > 0 &&
+              (!absaetze || absaetze.length > 0) // R-0310: ohne belegten Absatz wird nichts ausgegeben
             ) {
-              // JOB 3366: die Tatsache reist NUR MIT, WENN SIE EINE IST. Ein `abgeschnitten: false`
-              // an jeder Antwort waere die positive Gegenaussage „vollstaendig", die §9 verbietet —
-              // und es machte den Spiegel-Vertrag mit `apps/web/src/lib/wordAddin.ts` an JEDEM
-              // Ergebnis ungleich statt nur an den abgeschnittenen (word-addin-ask.test.ts, Teil 3).
+              // JOB 3366: `abgeschnitten` reist NUR MIT, WENN es gemeldet ist (kein „vollstaendig").
               var fragmentFeld = abgeschnitten ? { abgeschnitten: true } : {};
               return Object.assign(fragmentFeld, {
                 kind: "answered",
-                // WP-UX-WOW-1 U1: Klartext im Panel UND im eingefuegten Text.
-                answer: stripAskAnswerMarkdown(answer),
+                // WP-UX-WOW-1 U1: Klartext im Panel UND im eingefuegten Text; R-0310: NUR belegte Absaetze.
+                answer: absaetze ? absaetze.map(function (a) { return a.text; }).join("\n\n") : stripAskAnswerMarkdown(answer),
+                absaetze: absaetze,
                 sources: sources,
                 trust: typeof result.trust === "number" ? result.trust : 0,
                 // AUFTRAG-mega34 B: die serverseitige Einstufung reist mit. Fehlt sie, ist der
@@ -720,18 +729,12 @@
                 evidence: result.evidence || undefined,
                 citedSources: cited,
                 snippet: snippet,
-                // AUFTRAG-mega81 BLOCK A: das serverseitige Kennzeichnungssignal wird GELESEN.
-                // Auf dem retrieval-only-Weg dieses Fensters fehlt es immer (der Server laesst es
-                // dort bewusst weg) — die Behauptung entsteht also nie aus einer Annahme.
-                // G24: geprueft statt gecastet — siehe KW-KLARA-AI-MARK-* weiter unten.
+                // AUFTRAG-mega81 A / G24: das Kennzeichnungssignal wird GELESEN und geprueft.
                 aiGenerated: istKiKennzeichnung(result.aiGenerated),
                 ungeprueft: ungeprueft,
               });
             }
-            // AUFTRAG-mega77 BLOCK A: die Wissensluecke ist wieder eine reine Wissensluecke — der
-            // Antwortkoerper wird hier NICHT mehr nach einer Bestandszahl durchsucht.
-            // JOB 3092 S6 (W5): sie traegt aber, was der Server AUSDRUECKLICH und betrachter-
-            // gefiltert meldet (JOB 1591) — keine Zahl aus der Vorauswahl, sondern die Liste selbst.
+            // AUFTRAG-mega77 A: eine reine Wissensluecke; JOB 3092 S6: mit der gemeldeten Liste.
             return { kind: "gap", ungeprueft: ungeprueft };
           });
         })
@@ -826,9 +829,7 @@
       return grade === "verified" ? texts.verified : texts.unverified;
     }
 
-    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — Spiegel von wordAddin.ts#askEvidenceDetail.
-    // Es wird NICHTS berechnet: gelesen wird nur, was `result.evidence` mitgebracht hat. Die
-    // Regel selbst bleibt in services/ask/src/answer-evidence.ts (KW-W1-13).
+    // W1-VERTRAUENSKOPF-08 B — Spiegel von askEvidenceDetail: nur gelesen, nie berechnet (KW-W1-13).
     var ASK_CAVEAT_KEYS = ["unknown", "unchecked", "noCoverage", "incomplete", "unattributed"];
 
     function askCount(value) {
@@ -858,10 +859,7 @@
       return { caveat: caveat, conflict: conflict };
     }
 
-    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — Spiegel von wordAddin.ts#askSnippetWorthShowing.
-    // Auf dem heutigen retrieval-only-Weg IST die Antwort die Aussage der tragenden Quelle: dann
-    // sind Antwort und Ausschnitt identisch, und derselbe Satz unter zwei Namen saehe aus wie ein
-    // zweiter Beleg. Genau das hat mega39 D2 in der Konsole entfernt.
+    // W1-VERTRAUENSKOPF-08 B — Spiegel von askSnippetWorthShowing: kein Ausschnitt, der die Antwort ist.
     function askSnippetWorthShowing(answer, snippet) {
       var s = typeof snippet === "string" ? snippet.replace(/\s+/g, " ").trim() : "";
       if (s.length === 0) { return false; }
@@ -876,10 +874,8 @@
       return citedSources.indexOf(id) >= 0 ? "carrying" : "consulted";
     }
 
-    // AUFTRAG-mega34 B2: der EINGEFUEGTE Text traegt die Einstufung mit. Das ist der Punkt, an dem
-    // das Ergebnis das Haus verlaesst — ein Hinweis nur im Panel reist nicht mit ins Dokument.
-    // AUFTRAG-mega36 D: ohne Koerper (nach Abzug eines bereits vorhandenen Metablocks) beginnt der
-    // Text NICHT mit zwei Leerzeilen — die Quellen-Zeile steht dann allein.
+    // AUFTRAG-mega34 B2: der eingefuegte Text traegt die Einstufung mit; mega36 D: ohne Koerper
+    // steht die Quellen-Zeile allein (keine fuehrenden Leerzeilen).
     function buildAnswerInsertText(answer, sourceLine, truncatedNote, evidenceNote) {
       var head = answer.replace(/\s+$/g, "");
       var base = head.length > 0 ? head + "\n\n" + sourceLine : sourceLine;
@@ -902,14 +898,8 @@
     }
 
     // AUFTRAG-mega35 A1 — DIE EINE STELLE, AN DER DER AUSZUGEBENDE TEXT ENTSTEHT (Spiegel von
-    // composeAnswerOutput in wordAddin.ts). Der Nutzerin gehoert NUR der Antwortkoerper; Einstufung
-    // und Quellen-Zeile setzt diese Funktion im AUGENBLICK des Kopierens/Einfuegens an — sie koennen
-    // deshalb nicht fehlen, egal wann und wie lange bearbeitet wurde.
-    // AUFTRAG-mega36 D (bens GELB-2): die Zusammensetzung ist IDEMPOTENT. Erkannt wird der am ENDE
-    // angehaengte Metablock — Zeilen in genau den Formen, die diese Funktion selbst erzeugt (beide
-    // Quellen-Zeilen-Vorlagen mit {titles}/{date} als Platzhalter, die beiden Einstufungstexte, der
-    // Kappungshinweis). GRENZE: nur der Trailing-Block; eine Metazeile MITTEN im Koerper und eine
-    // Metazeile in einer ANDEREN Sprache bleiben stehen.
+    // composeAnswerOutput): Einstufung und Quellen-Zeile entstehen erst beim Kopieren/Einfuegen.
+    // mega36 D: IDEMPOTENT — nur der angehaengte Metablock (eigene Formen) am ENDE wird erkannt.
     function composedMetaLinePattern(template) {
       var escaped = template.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       return new RegExp("^" + escaped.replace(/\\\{titles\\\}/g, ".*").replace(/\\\{date\\\}/g, ".*") + "$");
@@ -952,10 +942,7 @@
       );
     }
 
-    // AUFTRAG-mega36 B2: GANZE Auswahl oder Bruchstueck. Der abgefangene native Kopiervorgang gibt
-    // den abgeleiteten Text NUR bei ganzem Antwortkoerper aus; eine Teilauswahl bleibt roh (ein
-    // Bruchstueck ist keine Antwort und traegt deshalb auch keine Einstufung). Umgebender Leerraum
-    // darf ausgelassen werden — mehr nicht.
+    // AUFTRAG-mega36 B2: nur der GANZE Antwortkoerper (umgebender Leerraum egal) gilt als Ausgabe.
     function answerSelectionIsWhole(value, start, end) {
       var body = (value || "").replace(/^\s+|\s+$/g, "");
       if (body.length === 0) { return false; }
@@ -979,10 +966,8 @@
         : "other";
     }
 
-    // AUFTRAG-klara1b (Teil A): Einfuegen ROBUST — moderner Word.run-Weg zuerst, setSelectedDataAsync
-    // als Fallback; Berechtigungsfehler wird ehrlich als "permission" gemeldet (Ausweg Kopieren).
-    // DOM-/Office-frei: die konkreten Aufrufe reicht der Aufrufer als injizierte Versuche (Spiegel des
-    // Moduls performInsert — sequenziell, erster Erfolg gewinnt).
+    // AUFTRAG-klara1b (Teil A): Einfuegen ROBUST (Spiegel von performInsert) — injizierte Versuche,
+    // sequenziell, erster Erfolg gewinnt; ein Berechtigungsfehler wird ehrlich "permission".
     function performInsert(text, attempts) {
       var index = 0;
       var lastDetail = "";
@@ -1045,16 +1030,9 @@
     }
 
     // KW-KLARA-AISTATE-START
-    // AUFTRAG-mega75 Block B — Spiegel von apps/web/src/lib/wordAddin.ts#klaraAiLage.
-    //
-    // Dort wird NICHTS nachgebaut: `klaraAiLage` importiert und RUFT `deriveAiAvailable`
-    // (lib/aiAvailability.ts) und `aiTaskInfoPublic` (lib/reasonerTaskInfo.ts) — also genau die
-    // Funktionen, an denen auch AiModelInfo in der Anwendung haengt. Nur DIESE Fassung hier muss
-    // spiegeln, weil das Taskpane buildlos ist (kein Modulsystem, kein Bundler).
-    //
-    // Der Spiegel ist ueber den VOLLEN Vertrags-Zustandsraum gepinnt, nicht auf ein paar Beispiele:
-    // tests/app/mega75-klara-ki-status.test.ts faehrt jeden Punkt aus interface ReasonerStatus
-    // (api/types.ts) durch beide Fassungen und vergleicht. Ein Wechsel dort wird hier rot.
+    // AUFTRAG-mega75 Block B — Spiegel von wordAddin.ts#klaraAiLage (dort RUFT sie deriveAiAvailable
+    // und aiTaskInfoPublic; hier gespiegelt, weil das Taskpane buildlos ist). Ueber den vollen
+    // Zustandsraum von ReasonerStatus gepinnt: tests/app/mega75-klara-ki-status.test.ts.
     var KLARA_AI_TASK = "answer";
 
     function deriveAiAvailable(status, task) {
@@ -1078,20 +1056,9 @@
     }
     // KW-KLARA-AISTATE-END
 
-    // ============================================================================================
-    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A — Spiegel von wordAddin.ts#klaraTrustHead.
-    // ============================================================================================
-    //
-    // BEWUSST AUSSERHALB der mega75-Schnittmarken. Der Sammler von
-    // tests/app/mega75-klara-ki-status.test.ts liest GENAU den Block zwischen KW-KLARA-AISTATE-*
-    // und vergleicht die dort verzweigten Vertragswerte (mode/reachable) mit den echten
-    // KLARWERK-Ableitungsmodulen. Diese Uebersetzung darf diesen Zustandsraum weder erweitern noch
-    // verengen — sie verzweigt deshalb ausschliesslich auf dem ERGEBNIS von `klaraAiLage`, nie auf
-    // einem Feld von ReasonerStatus. Der einzige Zustandsbesitzer bleibt `klaraAiLage`.
-    //
-    // KW-W1-13: `detailKeys` ist die BASIC-1-Erweiterungsstelle (Provider, Modell, Admin-Vorgabe,
-    // Abweichung, Sitzung, Consent). Heute leer — es gibt keine Vertragsdaten, aus denen sie zu
-    // fuellen waere, und Platzhalter waeren erfundene Werte.
+    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A — Spiegel von wordAddin.ts#klaraTrustHead, BEWUSST
+    // ausserhalb der mega75-Schnittmarken: verzweigt nur auf dem ERGEBNIS von `klaraAiLage`, nie auf
+    // ReasonerStatus. KW-W1-13: `detailKeys` bleibt leer, solange es keine Vertragsdaten gibt.
     // KW-KLARA-TRUSTHEAD-START
     function klaraTrustKey(prefix, lage) {
       return prefix + lage.charAt(0).toUpperCase() + lage.slice(1);
@@ -1112,24 +1079,10 @@
     }
     // KW-KLARA-TRUSTHEAD-END
 
-    // ============================================================================================
-    // AUFTRAG-W1-KLARA-KOPF-CONSENT-06 (BASIC-1) — DIE ANZEIGE-ABLEITUNG DES S4-VERTRAGS.
-    // ============================================================================================
-    //
-    // WAS SIE TUT: sie UEBERSETZT eine `KlaraSessionView`/`KlaraResolution` in Anzeige-Schluessel.
-    // WAS SIE NICHT TUT: entscheiden. Modus, Anbieter, Modell, Abweichung, Consentbedarf und
-    // Ausfuehrbarkeit stehen im Antwortobjekt; hier wird nichts abgeleitet, gewichtet oder
-    // ergaenzt (Auftrag No-Go 1).
-    //
-    // WARUM SIE INLINE STEHT UND NICHT IN wordAddin.ts: der erlaubte Dateibereich dieses Auftrags
-    // umfasst apps/web/public/word-addin/** und schliesst `apps/web/src/**` ausdruecklich aus.
-    // Das Aufgabenfenster ist buildlos; damit die WIRKLICH ausgelieferte Ableitung geprueft werden
-    // kann und nicht nur ihr Quelltext, traegt sie eigene Schnittmarken — dieselbe Bauform wie
-    // KW-KLARA-AISTATE-* und KW-KLARA-ASK-FETCH-*. Die Grenze ist im Bericht benannt.
-    //
-    // FAIL-SAFE IN EINE RICHTUNG: was der Server nicht gesagt hat, wird nicht behauptet. Ein
-    // unbekannter Modus, ein unbekannter Grund oder ein fehlendes Feld fuehren in einen benannten
-    // Vorbehalt — nie in „bereit", nie in „keine KI", nie in eine erfundene Bezeichnung.
+    // AUFTRAG-W1-KLARA-KOPF-CONSENT-06 (BASIC-1) — DIE ANZEIGE-ABLEITUNG DES S4-VERTRAGS: sie
+    // UEBERSETZT `KlaraSessionView`/`KlaraResolution` in Anzeige-Schluessel und entscheidet nichts
+    // (No-Go 1). Inline mit eigenen Schnittmarken, damit die ausgelieferte Ableitung pruefbar ist.
+    // FAIL-SAFE: Unbekanntes oder Fehlendes fuehrt in einen benannten Vorbehalt, nie in „bereit".
     // KW-KLARA-S4-START
     var KLARA_S4_MODES = ["deterministic", "internal", "external"];
     var KLARA_S4_REASONS = [
@@ -5955,9 +5908,15 @@
       var passage = document.createElement("blockquote");
       passage.className = "einschub-passage";
       if (q.passage) {
-        var mark = document.createElement("mark");
+        // R-0326: die Passage IST das Zitat — ein Klick springt an ihre Stelle im Quelldokument
+        // (Web-Ansicht, `?stelle=…&fassung=…`, dort markiert und angesprungen). Keine dritte Aktion.
+        var zitat = passage.appendChild(document.createElement("a"));
+        zitat.className = "einschub-zitat";
+        zitat.href = askStelleHref(q);
+        zitat.target = "_blank";
+        zitat.rel = "noopener noreferrer";
+        var mark = zitat.appendChild(document.createElement("mark"));
         mark.textContent = q.passage;
-        passage.appendChild(mark);
       } else {
         passage.textContent = t("askEinschubKeinePassage");
       }
@@ -6088,10 +6047,9 @@
     // #ask-answer-spiegel mit denselben Schriftmassen, neu gemessen nach Text-, Hoehen- und
     // Breitenwechsel; ist das Ende in der kompakten Ansicht abgeschnitten, sind sie verborgen).
     // WELCHE ZIFFER WOHIN: je TRAGENDER Quelle (askQuellenTragend) eine, mit der Nummer ihres Chips.
-    // Der retrieval-only-Weg liefert die Aussage GENAU EINER Quelle (provider.ts: answer =
-    // best.statement, citedSources = [best.id]) — dann steht „1". Der Vertrag ordnet Quellen der
-    // ANTWORT zu, nicht einzelnen Absaetzen; ohne verwertbare Zuordnung steht KEINE Ziffer.
-    // R-0329: ein Klick auf die Ziffer oeffnet den Einschub ihrer Quelle.
+    // R-0310: traegt die Antwort die Absatz-Beleg-Zuordnung (`absaetze`), steht am Ende JEDES
+    // Absatzes die Ziffer SEINER Quellen (`.absatzmarke`, relativ zum Textende gesetzt); ohne sie
+    // wie bisher alle tragenden Ziffern am Textende. R-0329: Klick auf eine Ziffer → Einschub.
     var ASK_SPIEGEL_EIGENSCHAFTEN = [
       "font-family", "font-size", "font-weight", "font-style", "letter-spacing", "word-spacing",
       "line-height", "text-transform", "text-indent", "tab-size", "box-sizing",
@@ -6101,16 +6059,46 @@
       var halter = document.getElementById("ask-fussnoten");
       if (!halter) { return; }
       halter.textContent = "";
-      var quellen = currentAskOutcome && currentAskOutcome.kind === "answered" ? askQuellenTragend : [];
-      for (var i = 0; i < quellen.length; i += 1) {
-        var ziffer = document.createElement("sup");
-        ziffer.className = "fussnote";
-        ziffer.setAttribute("data-quelle", quellen[i].id);
-        ziffer.textContent = String(i + 1);
-        askEinschubAusloeser(ziffer, quellen[i].id);
-        halter.appendChild(ziffer);
+      var antwort = currentAskOutcome && currentAskOutcome.kind === "answered" ? currentAskOutcome : null;
+      var quellen = antwort ? askQuellenTragend : [];
+      var gruppen = antwort && antwort.absaetze
+        ? antwort.absaetze.map(function (a) { return quellen.filter(function (q) { return a.quellen.indexOf(q.id) !== -1; }); })
+        : [quellen];
+      for (var g = 0; g < gruppen.length; g += 1) {
+        var ziel = halter;
+        if (g < gruppen.length - 1) {
+          ziel = halter.appendChild(document.createElement("span"));
+          ziel.className = "absatzmarke";
+        }
+        for (var i = 0; i < gruppen[g].length; i += 1) {
+          var ziffer = document.createElement("sup");
+          ziffer.className = "fussnote";
+          ziffer.setAttribute("data-quelle", gruppen[g][i].id);
+          if (antwort && antwort.absaetze) { ziffer.setAttribute("data-absatz", String(g)); }
+          ziffer.textContent = String(quellen.indexOf(gruppen[g][i]) + 1);
+          askEinschubAusloeser(ziffer, gruppen[g][i].id);
+          ziel.appendChild(ziffer);
+        }
       }
       askFussnotenSetzen();
+    }
+
+    // R-0310: der Spiegel mit einer Marke am Ende der ersten `vorne` Absaetze und am Textende.
+    function askSpiegelFuellen(spiegel, wert, vorne) {
+      spiegel.textContent = "";
+      var marken = [];
+      var von = 0;
+      var trenner = /\n[ \t]*\n/g;
+      var m;
+      var marke = function () { var s = document.createElement("span"); s.className = "textende"; return s; };
+      while (marken.length < vorne && (m = trenner.exec(wert)) !== null) {
+        spiegel.appendChild(document.createTextNode(wert.slice(von, m.index)));
+        marken.push(spiegel.appendChild(marke()));
+        von = m.index;
+      }
+      spiegel.appendChild(document.createTextNode(wert.slice(von)));
+      marken.push(spiegel.appendChild(marke()));
+      return marken;
     }
 
     function askFussnotenSetzen() {
@@ -6127,10 +6115,9 @@
         );
       }
       spiegel.style.width = feld.clientWidth + "px";
-      spiegel.textContent = feld.value;
-      var marke = document.createElement("span");
-      marke.className = "textende";
-      spiegel.appendChild(marke);
+      var gruppen = halter.querySelectorAll(".absatzmarke");
+      var marken = askSpiegelFuellen(spiegel, feld.value, gruppen.length);
+      var marke = marken[marken.length - 1];
       var zeilenhoehe = parseFloat(stil.lineHeight);
       // Ohne Layout (jsdom) bleiben die Ziffern da, nur ohne Koordinaten; mit Layout stehen sie am
       // Textende — oder sind verborgen, wenn das Ende in der kompakten Ansicht nicht im Bild ist.
@@ -6140,6 +6127,13 @@
       halter.style.left = marke.offsetLeft + "px";
       halter.style.top = marke.offsetTop + "px";
       halter.style.lineHeight = zeilenhoehe > 0 ? zeilenhoehe + "px" : "";
+      // R-0310: die Absatzmarken stehen relativ zum Textende; fehlt ihr Absatz (bearbeitet), verborgen.
+      for (var g = 0; g < gruppen.length; g += 1) {
+        var am = marken.length - 1 > g ? marken[g] : null;
+        gruppen[g].className = am ? "absatzmarke" : "absatzmarke hidden";
+        gruppen[g].style.left = (am ? am.offsetLeft - marke.offsetLeft : 0) + "px";
+        gruppen[g].style.top = (am ? am.offsetTop - marke.offsetTop : 0) + "px";
+      }
     }
 
     // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — EINE STELLE FUER DIE GANZE EVIDENZ, aus

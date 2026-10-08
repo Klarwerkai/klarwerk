@@ -550,7 +550,19 @@ describe("Aufnahme 20260922 · R-0309/R-0325 — Stand an der Herkunftszeile, tr
         aus: false,
       },
     ]);
-    expect(box?.querySelectorAll("a, button")).toHaveLength(2);
+    // GENAU zwei Aktionen; dazu ist die Passage selbst das Zitat (R-0326, Nacharbeit 11): ein Klick
+    // führt an ihre Stelle im Quelldokument — Textanker mit Passage und Fassung.
+    const aktionsElemente = box?.querySelectorAll(
+      ".einschub-aktionen a, .einschub-aktionen button",
+    );
+    expect(aktionsElemente).toHaveLength(2);
+    const zitat = box?.querySelector<HTMLAnchorElement>(".einschub-passage a.einschub-zitat");
+    expect(zitat?.querySelector("mark")?.textContent).toBe("Offene Profile sind zu bevorzugen.");
+    const ziel = new URL(zitat?.getAttribute("href") ?? "", window.location.origin);
+    expect(ziel.pathname).toBe("/wissen/ka");
+    expect(ziel.searchParams.get("stelle")).toBe("Offene Profile sind zu bevorzugen.");
+    expect(ziel.searchParams.get("fassung")).toBe("3");
+    expect(zitat?.getAttribute("target")).toBe("_blank");
   });
 
   it("E4 · R-0326: der Quellenlink trägt die Belegstelle — Passage und Fassung als Textanker für die Web-Ansicht", async () => {
@@ -621,5 +633,107 @@ describe("Aufnahme 20260922 · R-0309/R-0325 — Stand an der Herkunftszeile, tr
     el("kw-zurueck").click();
     await ruhe();
     expect(einschub()).toBeNull();
+  });
+});
+
+// ================================================================================================
+// AUFNAHME 20260922 · ANTWORT-QUELLENANZEIGE (R-0310) — QUELLENMARKE JE ABSATZ, UNBELEGTES BLEIBT DRAUSSEN.
+// ================================================================================================
+//
+// Der Server liefert neben `result` die ausdrückliche Zuordnung `absaetze` (services/app/src/
+// absatz-belege.ts). Gemessen wird, was das Panel daraus macht: nur belegte Absätze stehen im Feld
+// (und gehen damit auch nur so nach Word), jeder trägt am Ende die Ziffer seiner Quelle(n) —
+// dieselbe Nummer wie ihr Chip —, und ohne belegten Absatz gibt es keine Antwort.
+describe("Aufnahme 20260922 · R-0310 — Absatz-Beleg-Zuordnung im Panel (gemountet)", () => {
+  afterEach(() => {
+    panelAbraeumen();
+  });
+
+  const DREI_ABSAETZE =
+    "Offene Profile sind zu bevorzugen. [1]\n\nDas Wetter in Spritzzonen ist meist feucht.\n\nGeschlossene Profile sind zu begruenden. [2]";
+
+  function ziffern(): Array<{ text: string; quelle: string | null; absatz: string | null }> {
+    return [...document.querySelectorAll("#ask-fussnoten sup.fussnote")].map((s) => ({
+      text: (s.textContent ?? "").trim(),
+      quelle: s.getAttribute("data-quelle"),
+      absatz: s.getAttribute("data-absatz"),
+    }));
+  }
+
+  it("P1 · der unbelegte Absatz wird NICHT ausgegeben; jeder belegte Absatz endet mit der Ziffer SEINER Quelle", async () => {
+    starten({
+      ask: {
+        result: antwort({ answer: DREI_ABSAETZE }),
+        gap: null,
+        receipt: "r",
+        absaetze: [
+          { text: "Offene Profile sind zu bevorzugen. [1]", quellen: ["ka"] },
+          { text: "Das Wetter in Spritzzonen ist meist feucht.", quellen: [] },
+          { text: "Geschlossene Profile sind zu begruenden. [2]", quellen: ["kb"] },
+        ],
+      },
+    });
+    await ruhe();
+    await fragen();
+    expect(el<HTMLTextAreaElement>("ask-answer-edit").value).toBe(
+      "Offene Profile sind zu bevorzugen.\n\nGeschlossene Profile sind zu begruenden.",
+    );
+    // Absatz 0 → Ziffer 1 (Design Guide, Chip 1) als Absatzmarke; Absatz 1 → Ziffer 2 am Textende.
+    expect(ziffern()).toEqual([
+      { text: "1", quelle: "ka", absatz: "0" },
+      { text: "2", quelle: "kb", absatz: "1" },
+    ]);
+    expect(document.querySelectorAll("#ask-fussnoten .absatzmarke sup")).toHaveLength(1);
+    // Dieselbe Nummer wie der Chip derselben Quelle.
+    const chip = document.querySelector('#ask-sources li.quelle-chip[data-quelle="kb"]');
+    expect((chip?.textContent ?? "").trim().startsWith("2 ·")).toBe(true);
+    // Der unbelegte Satz steht nirgends in der Antwortkarte.
+    expect(el("antwortkarte").textContent ?? "").not.toContain("Wetter");
+  });
+
+  it("P2 · kein Absatz belegt (oder nur fremde Quellen): KEINE Antwort — die ehrliche Lücke", async () => {
+    starten({
+      ask: {
+        result: antwort({ answer: "Ein Satz ohne Beleg." }),
+        gap: null,
+        receipt: "r",
+        absaetze: [
+          { text: "Ein Satz ohne Beleg.", quellen: [] },
+          { text: "Noch einer.", quellen: ["ko-gibt-es-nicht"] },
+        ],
+      },
+    });
+    await ruhe();
+    await fragen();
+    expect(sichtbar(el("ask-gap-block"))).toBe(true);
+    expect(el<HTMLTextAreaElement>("ask-answer-edit").value).toBe("");
+    expect(ziffern()).toEqual([]);
+  });
+
+  it("P3 · ein belegter Absatz: die eine Ziffer steht am Textende wie bisher; ohne Feld bleibt alles beim Alten", async () => {
+    starten({
+      ask: {
+        result: antwort({ citedSources: ["ka"], sources: ["ka"] }),
+        gap: null,
+        receipt: "r",
+        absaetze: [{ text: "Offene Profile sind zu bevorzugen.", quellen: ["ka"] }],
+      },
+    });
+    await ruhe();
+    await fragen();
+    expect(el<HTMLTextAreaElement>("ask-answer-edit").value).toBe(
+      "Offene Profile sind zu bevorzugen.",
+    );
+    expect(ziffern()).toEqual([{ text: "1", quelle: "ka", absatz: "0" }]);
+    expect(document.querySelectorAll("#ask-fussnoten .absatzmarke")).toHaveLength(0);
+    panelAbraeumen();
+    // Gegenprobe: ein Server ohne `absaetze` — die Ziffern aller tragenden Quellen am Textende.
+    starten({ ask: { result: antwort(), gap: null, receipt: "r" } });
+    await ruhe();
+    await fragen();
+    expect(ziffern().map((z) => [z.text, z.absatz])).toEqual([
+      ["1", null],
+      ["2", null],
+    ]);
   });
 });

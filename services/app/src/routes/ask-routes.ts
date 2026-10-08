@@ -16,6 +16,7 @@ import {
 } from "../../../knowledge-object";
 import { can } from "../../../rbac";
 import { bindeAnbieter, bindeZustimmung, imBindungsrahmen } from "../../../reasoner";
+import { absatzBelege } from "../absatz-belege";
 import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
 import { type Guards, type SessionUser, sendError } from "../http";
@@ -804,7 +805,14 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             }
             throw fehler;
           }
-          reply.code(200).send({ ...out, result: { ...out.result, evidence } });
+          // R-0310: die ausdrückliche Absatz-Beleg-Zuordnung reist NEBEN `result` (absatz-belege.ts);
+          // ohne beantwortete Frage fehlt sie.
+          const absaetze = absatzBelege(out.result);
+          reply.code(200).send({
+            ...out,
+            result: { ...out.result, evidence },
+            ...(absaetze ? { absaetze } : {}),
+          });
         };
         const auth = request.authContext;
         if (auth?.authKind === "addon") {
