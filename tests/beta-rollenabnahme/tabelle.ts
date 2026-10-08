@@ -848,6 +848,19 @@ export const TABELLE: Zeile[] = [
     payload: {},
     erwartet: AB_CONTROLLER,
   },
+  // Aufnahme gesamt-konfliktklassifikation · R-0252 (Nacharbeit 5): der Einordnungsweg — dasselbe
+  // Recht wie Eskalieren und Entscheiden. Die Nutzlast ist formgerecht, damit die Zeile das Tor
+  // misst und nicht die Rumpfprüfung.
+  {
+    gruppe: "conflictRoutes",
+    methode: "POST",
+    pfad: "/api/conflicts/gibt-es-nicht/arbeitsart",
+    route: "/api/conflicts/:id/arbeitsart",
+    belegstelle: "services/app/src/routes/conflicts-routes.ts:316",
+    tor: "conflict.resolve",
+    payload: { arbeitsart: "regel" },
+    erwartet: AB_CONTROLLER,
+  },
   {
     gruppe: "confluenceImportRoutes",
     methode: "POST",
@@ -899,6 +912,16 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/me/impact",
     belegstelle: "services/app/src/routes/impact-routes.ts:15",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  // R-0466: das eigene Interaktionsgedächtnis. Jede angemeldete Rolle führt ihr eigenes; die
+  // schreibenden Türen stehen in `schreibende-tueren.ts`.
+  {
+    gruppe: "gedaechtnisRoutes",
+    methode: "GET",
+    pfad: "/api/me/gedaechtnis",
+    belegstelle: "services/app/src/routes/gedaechtnis-routes.ts:80",
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
@@ -958,6 +981,44 @@ export const TABELLE: Zeile[] = [
     methode: "POST",
     pfad: "/api/admin/import/sharepoint/folder-apply",
     belegstelle: "services/app/src/routes/sharepoint-import-routes.ts:554",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  // R-0170: die Zugangsauskunft und die drei Türen des Jira-Imports. Wie bei SharePoint stehen sie
+  // vollständig in der Abnahme: die Bühne setzt keine Jira-Zugangsdaten, der Adapter kommt nicht
+  // zustande, und die Türen antworten mit 503 vor jedem Effekt. Gemessen wird das Rechtetor.
+  {
+    gruppe: "importAccessRoutes",
+    methode: "GET",
+    pfad: "/api/import/jira/zugang",
+    belegstelle: "services/app/src/routes/import-access-routes.ts:149",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "jiraImportRoutes",
+    methode: "POST",
+    pfad: "/api/admin/import/jira/issues",
+    belegstelle: "services/app/src/routes/jira-import-routes.ts:155",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "jiraImportRoutes",
+    methode: "POST",
+    pfad: "/api/admin/import/jira/apply",
+    belegstelle: "services/app/src/routes/jira-import-routes.ts:182",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "jiraImportRoutes",
+    methode: "POST",
+    pfad: "/api/admin/import/jira/project-apply",
+    belegstelle: "services/app/src/routes/jira-import-routes.ts:243",
     tor: "users.manage",
     payload: {},
     erwartet: NUR_ADMIN,
@@ -1692,6 +1753,17 @@ export const TABELLE: Zeile[] = [
     pfad: "/api/conflicts/gibt-es-nicht",
     route: "/api/conflicts/:id",
     belegstelle: "services/app/src/routes/conflicts-routes.ts:240",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  // Aufnahme gesamt-konfliktklassifikation · R-0263: der festgelegte Vorrang am einzelnen Punkt.
+  // Ein Lesetor wie die Konfliktliste; ein unbekannter Punkt bekommt eine leere Liste.
+  {
+    gruppe: "conflictRoutes",
+    methode: "GET",
+    pfad: "/api/conflicts/vorrang/gibt-es-nicht",
+    route: "/api/conflicts/vorrang/:id",
+    belegstelle: "services/app/src/routes/conflicts-routes.ts:254",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },

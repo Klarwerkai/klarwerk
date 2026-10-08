@@ -24,6 +24,13 @@ import {
 import { useToast } from "../../app/ToastContext";
 import { useLiveKnowledgeCheck } from "../../hooks/useLiveKnowledgeCheck";
 import {
+  type AuswahlModus,
+  type TextAuswahl,
+  auswahlImFeld,
+  auswahlNochGueltig,
+  auswahlUebernehmen,
+} from "../../lib/auswahlAssist";
+import {
   applyBodyAssist,
   applySpellingAssistPreservingHtml,
   applyStructureProposal,
@@ -59,6 +66,7 @@ import { erfassenFehlersatz } from "../../lib/erfassenFehlersatz";
 import { dominantCategory, pickExampleKo } from "../../lib/intakeExample";
 import { INTAKE_STARTERS, type IntakeStarter } from "../../lib/intakeStarters";
 import { deriveIntakeSuggestion } from "../../lib/intakeSuggestion";
+import { kiBremsSatz } from "../../lib/kiBremse";
 import { useNetzOnline } from "../../lib/netzzustand";
 // JOB 3266 (D1): dasselbe Datumsformat wie überall sonst in der Oberfläche — und dieselbe
 // Ehrlichkeit: ein fehlender oder unlesbarer Zeitwert wird `null`, nicht ein erfundenes Datum.
@@ -87,6 +95,7 @@ import { LiveReactionZone } from "../capture/intake/LiveReactionZone";
 import { StatusPill } from "../trust/StatusPill";
 import type { DisplayStatus } from "../trust/types";
 import { Menue, MenueEintrag, MenueFlaeche, MenueTrenner } from "./Menue";
+import { NegativwissenHinweis } from "./NegativwissenHinweis";
 import {
   SymbolBild,
   SymbolDatei,
@@ -252,7 +261,14 @@ type LetzteAktion =
 // bisherigen Satz; die Fläche deutet nichts um, was der Server nicht ausdrücklich benannt hat.
 const CLOUD_GESPERRT_CODE = "CONFIDENTIAL_CLOUD_BLOCKED";
 
+// Aufnahme gesamt-integrations-api (R-0842): die ZWEITE ausdrücklich benannte Kennung. Hat die
+// KI-Bremse des Servers abgewiesen (`KI_ANFRAGEN_GEBREMST`), steht ihr Satz mit Wartezeit da —
+// für Strukturierung und Assistent gleichermassen (`kiBremsSatz`, apps/web/src/lib/kiBremse.ts).
 function kiFehlerMeldung(err: unknown, rueckfall: string): string {
+  const bremsSatz = kiBremsSatz(err);
+  if (bremsSatz) {
+    return bremsSatz;
+  }
   return err instanceof ApiError && err.code === CLOUD_GESPERRT_CODE ? err.message : rueckfall;
 }
 
@@ -554,9 +570,17 @@ export function Blatt({
   const [structureAccepted, setStructureAccepted] = useState(false);
   const [structureKeptRichBody, setStructureKeptRichBody] = useState(false);
   const [structureTitleAdopted, setStructureTitleAdopted] = useState(false);
+  // R-0300: `auswahl` ist die Markierung, auf die sich der Vorschlag bezieht — `null` heisst
+  // „ganzer Text" (der bisherige Weg, unverändert).
   const [assistProposal, setAssistProposal] = useState<
-    (AssistResult & { action: AssistRequest }) | null
+    (AssistResult & { action: AssistRequest; auswahl: TextAuswahl | null }) | null
   >(null);
+  // R-0300: die zuletzt im Schreibfeld markierte Stelle. Ein Ref, kein Zustand: sie wird bei jeder
+  // Auswahländerung gelesen und erst beim Auslösen einer KI-Aktion gebraucht — ein Rendern je
+  // Mausbewegung wäre reiner Aufwand.
+  const markierungRef = useRef<TextAuswahl | null>(null);
+  // Die Markierung DER laufenden Anfrage — gesetzt in `onMutate`, gelesen in `mutationFn`.
+  const anfrageAuswahlRef = useRef<TextAuswahl | null>(null);
   const [assistErr, setAssistErr] = useState<string | null>(null);
   const [assistAccepted, setAssistAccepted] = useState(false);
 
@@ -728,6 +752,28 @@ export function Blatt({
     return () => beobachter.disconnect();
   }, [ansicht]);
 
+  // R-0300 — DIE MARKIERUNG IM SCHREIBFELD MERKEN, solange sie dort steht. Wandert die Auswahl
+  // AUS dem Feld (Klick in das KI-Menü), bleibt die gemerkte Stelle stehen: genau sie soll die
+  // Aktion bearbeiten. Wird IM Feld nur noch ein Cursor gesetzt, gilt wieder der ganze Text.
+  // Das Bildbeschreibungsformular hat ein eigenes Textfeld (`#caption-form-text`) — es zählt nicht.
+  useEffect(() => {
+    const lesen = (): void => {
+      const feld = editorHuelleRef.current?.querySelector<HTMLElement>(
+        '[role="textbox"]:not(#caption-form-text)',
+      );
+      const auswahl = document.getSelection();
+      if (!feld || !auswahl || auswahl.rangeCount === 0) {
+        return;
+      }
+      if (!feld.contains(auswahl.getRangeAt(0).startContainer)) {
+        return;
+      }
+      markierungRef.current = auswahlImFeld(feld, auswahl);
+    };
+    document.addEventListener("selectionchange", lesen);
+    return () => document.removeEventListener("selectionchange", lesen);
+  }, []);
+
   // Die stille Live-Reaktion (§5): sie hört auf den Klartext des Blattes, nicht auf ein zweites Feld.
   const liveText = useMemo(() => bodyTextForAssist(bodyHtml), [bodyHtml]);
   // ================================================================================================
@@ -757,7 +803,7 @@ export function Blatt({
         : draftProvenance(declaredConfidentiality, undefined, activeDraftId ?? undefined),
     [declaredConfidentiality, activeDraftId],
   );
-  const { verdict, checkStatus, pruefumfang } = useLiveKnowledgeCheck(
+  const { verdict, checkStatus, pruefumfang, negativwissen } = useLiveKnowledgeCheck(
     liveText,
     livePruefHerkunft,
     gespeicherterStand,
@@ -1197,7 +1243,8 @@ export function Blatt({
   const assist = useMutation({
     mutationFn: (action: AssistRequest) =>
       endpoints.reasoner.assist(
-        assistInput,
+        // R-0300: die markierte Stelle, wenn es eine gibt — sonst wie bisher der ganze Text.
+        anfrageAuswahlRef.current?.text ?? assistInput,
         locale,
         typeof action === "string" ? t(assistActionInstructionKey(action)) : action.instruction,
         // JOB 3353 A: dieselbe fehlende Kennung wie bei `structure` eine Ebene höher — und dies
@@ -1215,9 +1262,16 @@ export function Blatt({
       setStructureProposal(null);
       setStructureErr(null);
       setStructureAccepted(false);
+      // Eine Markierung zählt nur, wenn der Rumpf sie noch trägt (Entwurfswechsel, Weiterschreiben
+      // ohne Cursor im Feld); sonst gilt der ganze Text.
+      const markierung = markierungRef.current;
+      const auswahl =
+        markierung !== null && auswahlNochGueltig(bodyHtml, markierung) ? markierung : null;
+      anfrageAuswahlRef.current = auswahl;
+      return { auswahl };
     },
-    onSuccess: (proposal, action) => {
-      setAssistProposal({ ...proposal, action });
+    onSuccess: (proposal, action, kontext) => {
+      setAssistProposal({ ...proposal, action, auswahl: kontext?.auswahl ?? null });
       setAssistErr(null);
     },
     onError: (e: unknown) => {
@@ -1618,11 +1672,32 @@ export function Blatt({
     setStructureAccepted(true);
   };
 
-  const acceptAssistProposal = (): void => {
+  const acceptAssistProposal = (modus: AuswahlModus = "ersetzen"): void => {
     if (!assistProposal) {
       return;
     }
-    if (assistProposal.action === "spelling") {
+    if (assistProposal.auswahl !== null) {
+      // R-0300: nur die markierte Stelle wird ersetzt bzw. hinter ihr eingefügt; alles andere —
+      // Text wie Formatierung — bleibt, wie es ist.
+      const rechtschreibung = assistProposal.action === "spelling";
+      const neu = auswahlUebernehmen(bodyHtml, assistProposal.auswahl, assistProposal.text, {
+        modus,
+        rechtschreibung,
+      });
+      if (neu === null) {
+        // Zwei Gründe, zwei Sätze: die Stelle hat sich geändert — oder (Rechtschreibung) die
+        // Wörter des Vorschlags lassen sich nicht sicher auf die Formatierung verteilen.
+        let grund = rechtschreibung ? "fd.errSpelling" : "fd.errAssist";
+        if (!auswahlNochGueltig(bodyHtml, assistProposal.auswahl)) {
+          grund = "schreibhilfe.auswahlVeraltet";
+        }
+        setAssistErr(t(grund));
+        setAssistAccepted(false);
+        return;
+      }
+      setBodyHtml(neu);
+      markierungRef.current = null;
+    } else if (assistProposal.action === "spelling") {
       const result = applySpellingAssistPreservingHtml(bodyHtml, assistProposal.text);
       if (!result.applied) {
         setAssistErr(t("fd.errSpelling"));
@@ -3062,7 +3137,9 @@ export function Blatt({
                Titel ableiten". Ihre FUNKTION ist nicht verschwunden, sie ist UMGEZOGEN: das
                Titel-Menü des Blattes bietet denselben Vorschlag aus derselben Rangfolge an
                (`titelVorschlag`, oben). Das hier ist die zweite Hälfte desselben Umzugs — ohne sie
-               stünde die Karte doppelt da.
+               stünde die Karte doppelt da. R-0071 (Ben, Nacharbeit 4): verborgen bleibt NUR die
+               gerahmte Karte des Editors; die immer sichtbare Titelzeile mit Herkunft steht als
+               eigene, knappe Zeile des Blattes über dem Schreibfeld (`blatt-titelzeile`).
             2. DER ABLAGEHINWEIS „Bilder hierher ziehen oder einfügen" in der Fußzeile des Editors.
                Sein TEXT ist nicht gelöscht: er steht als eigener Eintrag im „?"-Menü, mit DEMSELBEN
                i18n-Schlüssel — der Ort, an den §5 alle Erklärtexte verweist.
@@ -3152,24 +3229,34 @@ export function Blatt({
                 data-testid="blatt-menue-titel"
                 className="absolute left-0 top-full z-40 mt-1 min-w-[260px] rounded-[10px] border border-hairline bg-surface p-1 shadow-tile"
               >
+                {/* R-0071: „die Herkunft des Vorschlags nennt" — SICHTBAR am Eintrag, nicht nur als
+                    `title`-Tooltip: den gibt es ohne Zeiger (Telefon, Tastatur) nicht. Die Zeile
+                    steht im Menü, also erst, wenn jemand den Titel anfasst (JOB 3062 R6). */}
                 {titelVorschlag ? (
                   <MenueEintrag
-                    titel={t(
-                      titelVorschlag.quelle === "objekttext"
-                        ? "editor.titleSuggest.sourceText"
-                        : "editor.titleSuggest.sourceImage",
-                    )}
                     onClick={() => {
                       changeTitle(titelVorschlag.titel);
                       setOffenesMenue(null);
                     }}
                   >
-                    <span
-                      data-testid="blatt-titelvorschlag"
-                      data-quelle={titelVorschlag.quelle}
-                      className="truncate"
-                    >
-                      {t("editor.titleSuggest.label")}: {titelVorschlag.titel}
+                    <span className="flex min-w-0 flex-col leading-tight">
+                      <span
+                        data-testid="blatt-titelvorschlag"
+                        data-quelle={titelVorschlag.quelle}
+                        className="truncate"
+                      >
+                        {t("editor.titleSuggest.label")}: {titelVorschlag.titel}
+                      </span>
+                      <span
+                        data-testid="blatt-titelvorschlag-herkunft"
+                        className="truncate text-[11px] text-muted-2"
+                      >
+                        {t(
+                          titelVorschlag.quelle === "objekttext"
+                            ? "editor.titleSuggest.sourceText"
+                            : "editor.titleSuggest.sourceImage",
+                        )}
+                      </span>
                     </span>
                   </MenueEintrag>
                 ) : null}
@@ -3189,6 +3276,54 @@ export function Blatt({
               </div>
             ) : null}
           </div>
+
+          {/* ======================================================================================
+              R-0071 (Ben, Nacharbeit 4) — DIE TITELZEILE ÜBER DEM SCHREIBFELD, IMMER SICHTBAR.
+              ======================================================================================
+              „Über dem Schreibfeld steht dafür eine Titelzeile, die immer sichtbar bleibt und die
+              Herkunft des Vorschlags nennt. Lässt sich nichts ableiten, wird nichts erfunden; ein
+              selbst geschriebener Titel wird nie verdrängt." Dazu Pedi 27.08.: „die Titelzeile
+              immer sichtbar lassen, so ist es richtig" — kein hidden, keine Höhe 0.
+
+              JOB 3062 R6 hatte die Karte des Editors verborgen und den Vorschlag ins Titel-Menü
+              gelegt. Eine Entscheidung, die R-0071 für das Blatt aufhebt, ist nicht zugeordnet;
+              der Kommentar dort belegt keine. Deshalb steht die Zeile wieder hier — AUS DERSELBEN
+              QUELLE wie das Menü (`titelVorschlag`, die geprüfte Entscheidung des Editors), also
+              ohne zweite Rangfolge und ohne zweiten Wortlaut.
+
+              WARUM EIN KNOPF UND KEIN ABSATZ: Die Zeile IST die Übernahme — ein Klick setzt den
+              Vorschlag ins Titelfeld, sonst geschieht nichts (kein selbst geschriebener Titel wird
+              verdrängt). Ohne Vorschlag ist sie gesperrt und sagt in drei Wörtern, dass keiner da
+              ist — sie verschwindet nicht. */}
+          <button
+            type="button"
+            data-testid="blatt-titelzeile"
+            data-quelle={titelVorschlag?.quelle ?? "keine"}
+            disabled={titelVorschlag === null || !blattNimmtAn}
+            onClick={() => {
+              if (titelVorschlag) {
+                changeTitle(titelVorschlag.titel);
+              }
+            }}
+            className="-mt-2 flex w-full min-w-0 flex-wrap items-baseline gap-x-1.5 rounded-[8px] px-0 py-0.5 text-left text-[12.5px] leading-snug text-muted enabled:hover:text-text disabled:cursor-default"
+          >
+            {titelVorschlag ? (
+              <>
+                <span className="break-words font-semibold text-ai">
+                  {t("editor.titleSuggest.label")}: {titelVorschlag.titel}
+                </span>
+                <span data-testid="blatt-titelzeile-herkunft" className="text-muted-2">
+                  {t(
+                    titelVorschlag.quelle === "objekttext"
+                      ? "editor.titleSuggest.sourceText"
+                      : "editor.titleSuggest.sourceImage",
+                  )}
+                </span>
+              </>
+            ) : (
+              <span className="text-muted-2">{t("schreibhilfe.titelKeiner")}</span>
+            )}
+          </button>
 
           {/* §5.4: Fehlt der Inhalt beim Einreichversuch, bekommt das FELD den Rand — hier ohne
               Erklärsatz. Das war bis JOB 3114 auch beim Vertraulichkeits-Menü so; dort trägt die
@@ -3278,6 +3413,11 @@ export function Blatt({
               onUebernehmen={changeBodyHtml}
             />
           ) : null}
+
+          {/* AUFNAHME 20260922 · NEGATIVWISSEN-HINWEIS (R-1629): ähnelt der Text einem dokumentierten
+              Fehlschlag, steht das OFFEN da — nicht im zugeklappten Chip darunter. Ohne Treffer
+              rendert nichts. */}
+          <NegativwissenHinweis treffer={negativwissen} />
 
           {/* ==========================================================================================
               §5 — EIN STILLER CHIP UNTER DEM BLATT, NUR IM FALL, AUFKLAPPBAR.
@@ -3452,6 +3592,16 @@ export function Blatt({
                       : assistProposal.action.instruction,
                 })}
               </p>
+              {/* R-0300: Bezieht sich der Vorschlag auf eine Markierung, steht sie hier — wer
+                  übernimmt, soll sehen, WELCHE Stelle ersetzt wird. */}
+              {assistProposal.auswahl !== null ? (
+                <p
+                  data-testid="blatt-ki-auswahl"
+                  className="mt-1.5 line-clamp-2 whitespace-pre-wrap text-[12px] leading-relaxed text-muted"
+                >
+                  {t("schreibhilfe.auswahlBezug", { text: assistProposal.auswahl.text })}
+                </p>
+              ) : null}
               <p className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[13px] leading-relaxed text-text">
                 {assistProposal.text}
               </p>
@@ -3460,11 +3610,21 @@ export function Blatt({
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
-                  onClick={acceptAssistProposal}
+                  onClick={() => acceptAssistProposal("ersetzen")}
                   className="rounded-[8px] border border-hairline bg-page px-2.5 py-1 text-[13px] font-semibold text-text"
                 >
                   {t("fd.accept")}
                 </button>
+                {assistProposal.auswahl !== null ? (
+                  <button
+                    type="button"
+                    data-testid="blatt-ki-einfuegen"
+                    onClick={() => acceptAssistProposal("einfuegen")}
+                    className="rounded-[8px] border border-hairline bg-page px-2.5 py-1 text-[13px] font-semibold text-text"
+                  >
+                    {t("schreibhilfe.einfuegen")}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={discardAssistProposal}

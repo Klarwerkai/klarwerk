@@ -44,6 +44,14 @@ export const SCHALTER_REGISTRY = {
    * Zustand „ausgeschaltet" überhaupt melden kann.
    */
   sharepointImport: "KLARWERK_SHAREPOINT_IMPORT",
+  /**
+   * R-0170: der Jira-Import (Vorgänge und Epics eines Projekts, Projektrollen als Leserechte).
+   *
+   * Ein eigener Schalter aus demselben Grund wie bei SharePoint: ein Betrieb, der Confluence oder
+   * SharePoint anbindet, hat damit über Jira nichts gesagt. Er schaltet die ANWESENHEIT der drei
+   * Jira-Routen (`build-app.ts`); ob Zugangsdaten stehen, sagt `GET /api/import/jira/zugang`.
+   */
+  jiraImport: "KLARWERK_JIRA_IMPORT",
   /** Consultant-System: Thema→Personen-Matching, vor BR/DSB-Freigabe unsichtbar. */
   expertMatching: "KLARWERK_EXPERT_MATCHING",
   /** AUFTRAG-mega61 Block A: die beiden Rechtsseiten /impressum und /datenschutz. */
