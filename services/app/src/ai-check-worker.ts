@@ -40,6 +40,7 @@ import {
 } from "../../knowledge-object";
 import type { Reasoner } from "../../reasoner";
 import { detectConflictsForKo } from "./conflict-detection";
+import type { PruefUmfang } from "./detection-cap";
 import { type SemanticPrefilter, detectDuplicatesForKo } from "./duplicate-detection";
 
 // GENAU EIN Prüf-Job gleichzeitig (Konstante, gepinnt): die Erkennung feuert je Lauf viele
@@ -172,7 +173,16 @@ export function classifyAiCheckFailure(err: unknown): AiCheckFailureReason {
   return "model-error";
 }
 
-export type AiCheckRunner = (koId: string) => Promise<AiCheckRunOutcome>;
+// AUFNAHME 20260922 · R-1124: `umfang` fehlt im Normalfall (= gedeckelt); `vollstaendig` kommt
+// nur aus der ausdrücklichen Wahl am Wiederholen-Weg (detection-cap.ts).
+export type AiCheckRunner = (koId: string, umfang?: PruefUmfang) => Promise<AiCheckRunOutcome>;
+
+export interface VollabgleichVormerkung {
+  /** Reiht den Job als Vollabgleich ein bzw. stuft den wartenden hoch und löst die Sperre. */
+  einreihen(expectedKoVersion?: number): void;
+  /** Löst die Sperre ohne Einreihung (Fehlerpfad des Aufrufers). */
+  verwerfen(): void;
+}
 
 export interface AiCheckWorker {
   // Reiht einen Prüf-Job ein (dedupliziert gegen Queue UND laufenden Job) und startet die
@@ -183,7 +193,20 @@ export interface AiCheckWorker {
   // Eviction sonst auf den UNVERSIONIERTEN Altpfad kippen und den NEUEN pending-Vermerk einer
   // Revision fälschlich als failed/queue-overflow markieren. Fehlt die Version wider Erwarten,
   // ist die Eviction FAIL-CLOSED (kein Status-Write, s. enqueueInternal).
-  enqueue(koId: string, expectedKoVersion?: number): void;
+  // R-1124: `umfang` = "vollstaendig" markiert den Job als gewählten Vollabgleich. Steht für das
+  // Objekt schon ein WARTENDER Job an, wird er hochgestuft (nie herab); ein LAUFENDER bleibt, wie er
+  // ist. Wer die Wahl BESTÄTIGEN muss (Route), nimmt `vollabgleichVormerken`.
+  enqueue(koId: string, expectedKoVersion?: number, umfang?: PruefUmfang): void;
+  /**
+   * R-1124 (Bens Befund zu 3e62e335) — die Wahl, die nicht verloren gehen kann. SYNCHRON: läuft für
+   * das Objekt gerade ein Job, `null` (nichts vorgemerkt). Sonst hält die Vormerkung jeden wartenden
+   * Job DIESES Objekts vom Start zurück, bis `einreihen` ihn als Vollabgleich einreiht bzw.
+   * hochstuft — oder `verwerfen` die Sperre ohne Einreihung löst. Zwischen Vormerkung und Einreihung
+   * darf der Aufrufer asynchron arbeiten (Vermerk setzen und lesen); der Übergang wartend → laufend
+   * kann die Wahl dabei nicht mehr verschlucken. Optional, damit schmale Attrappen gültig bleiben;
+   * fehlt sie, kann der Aufrufer keinen Vollabgleich zusagen.
+   */
+  vollabgleichVormerken?(koId: string): VollabgleichVormerkung | null;
   has(koId: string): boolean;
   /**
    * PRÜFSTATUS-ANZEIGE (R-0208): läuft der Job für dieses Objekt GERADE (nicht nur eingereiht)?
@@ -278,6 +301,20 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
   // undefined bedeutete einen UNVERSIONIERTEN Abschluss, der den neuen Vermerk einer Revision
   // fälschlich überschreiben konnte. undefined heißt jetzt: Eviction FAIL-CLOSED (kein Write).
   const queuedVersions = new Map<string, number | undefined>();
+  // R-1124: Jobs, für die ein Mensch den Vollabgleich gewählt hat (wartend oder laufend). Nur im
+  // Speicher wie die Queue; ein Neustart oder eine Verdrängung fällt auf den gedeckelten Lauf zurück.
+  const vollstaendig = new Set<string>();
+  // R-1124 (Bens Befund zu 3e62e335): offene Vormerkungen je Objekt. Ein wartender Job eines
+  // vorgemerkten Objekts startet nicht, bis jede Vormerkung eingereiht oder verworfen ist.
+  const vorgemerkt = new Map<string, number>();
+  const vormerkungLoesen = (koId: string): void => {
+    const rest = (vorgemerkt.get(koId) ?? 0) - 1;
+    if (rest > 0) {
+      vorgemerkt.set(koId, rest);
+    } else {
+      vorgemerkt.delete(koId);
+    }
+  };
   // WP-SHIP8-FINAL: Auto-Retry-Zähler je KO — zählt Re-Enqueues für GENAU EINE Zielversion;
   // eine neue Version setzt den Zähler zurück (der Deckel begrenzt den revise-Loop, nicht den
   // normalen Fluss). Nur im Speicher — wie die Queue selbst (Neustart-Grenze oben).
@@ -306,9 +343,20 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
     }
   };
 
-  const enqueueInternal = (koId: string, expectedKoVersion?: number): void => {
-    if (queuedIds.has(koId) || runningIds.has(koId)) {
+  const enqueueInternal = (
+    koId: string,
+    expectedKoVersion?: number,
+    umfang: PruefUmfang = "gedeckelt",
+  ): void => {
+    if (queuedIds.has(koId)) {
+      // R-1124: ein wartender Job wird auf den gewählten Vollabgleich HOCHGESTUFT, nie herab.
+      if (umfang === "vollstaendig") {
+        vollstaendig.add(koId);
+      }
       return; // dedupliziert — derselbe Job steht nie doppelt an
+    }
+    if (runningIds.has(koId)) {
+      return; // dedupliziert — der laufende Job behält seinen Umfang
     }
     // WP-SHIP8-FINAL: Queue-Kappe — der ÄLTESTE wartende Job wird ehrlich als failed/
     // queue-overflow abgeschlossen statt die Queue still wachsen zu lassen.
@@ -323,6 +371,7 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
       const evicted = queue.shift();
       if (evicted !== undefined) {
         queuedIds.delete(evicted);
+        vollstaendig.delete(evicted);
         const expectedVersion = queuedVersions.get(evicted);
         queuedVersions.delete(evicted);
         if (expectedVersion === undefined) {
@@ -348,6 +397,9 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
     queue.push(koId);
     queuedIds.add(koId);
     queuedVersions.set(koId, expectedKoVersion);
+    if (umfang === "vollstaendig") {
+      vollstaendig.add(koId);
+    }
   };
 
   // true = Auto-Re-Enqueue für diese Zielversion ist noch im Deckel (und wird gezählt).
@@ -389,7 +441,11 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
     } catch {
       startBasis = undefined;
     }
-    const outcome = await runWithTimeout(deps.run(koId), jobTimeoutMs);
+    // R-1124: nur der gewählte Vollabgleich trägt seinen Umfang mit; der Normalfall ruft wie bisher.
+    const outcome = await runWithTimeout(
+      vollstaendig.has(koId) ? deps.run(koId, "vollstaendig") : deps.run(koId),
+      jobTimeoutMs,
+    );
     // AUFNAHME 20260922: hat sich die Basis WÄHREND des Laufs geändert, wird das Ergebnis NICHT
     // eingetragen — es gälte für einen Stand, den es nicht mehr gibt. Gleicher Text genügt dafür
     // nicht: die Fassungsnummer ist Teil der Basis. Das enge Restfenster zwischen dieser Probe und
@@ -458,8 +514,13 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
   };
 
   const pump = (): void => {
-    while (active < AI_CHECK_CONCURRENCY && queue.length > 0) {
-      const koId = queue.shift() as string;
+    while (active < AI_CHECK_CONCURRENCY) {
+      // R-1124: ein vorgemerktes Objekt wird übersprungen, die übrigen laufen weiter.
+      const stelle = queue.findIndex((id) => !vorgemerkt.has(id));
+      if (stelle < 0) {
+        break;
+      }
+      const [koId] = queue.splice(stelle, 1) as [string];
       queuedIds.delete(koId);
       queuedVersions.delete(koId); // der Lauf (runOne) liest seine Erwartung selbst frisch
       runningIds.add(koId);
@@ -469,10 +530,12 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
         .then((requeueVersion) => {
           runningIds.delete(koId);
           active -= 1;
+          const warVollstaendig = vollstaendig.delete(koId);
           if (requeueVersion !== null) {
             // NACH der runningIds-Freigabe — sonst würde die Dedupe den frischen Job schlucken.
             // WP-SHIP8-CLOSE-2 (bens F3): die Zielversion des frischen Vermerks reist synchron mit.
-            enqueueInternal(koId, requeueVersion);
+            // R-1124: der frische Job für die neue Basis behält den gewählten Umfang.
+            enqueueInternal(koId, requeueVersion, warVollstaendig ? "vollstaendig" : "gedeckelt");
           }
           pump();
         });
@@ -481,9 +544,37 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
   };
 
   return {
-    enqueue(koId: string, expectedKoVersion?: number): void {
-      enqueueInternal(koId, expectedKoVersion);
+    enqueue(koId: string, expectedKoVersion?: number, umfang?: PruefUmfang): void {
+      enqueueInternal(koId, expectedKoVersion, umfang);
       pump();
+    },
+    vollabgleichVormerken(koId: string): VollabgleichVormerkung | null {
+      if (runningIds.has(koId)) {
+        return null;
+      }
+      vorgemerkt.set(koId, (vorgemerkt.get(koId) ?? 0) + 1);
+      let offen = true;
+      return {
+        einreihen(expectedKoVersion?: number): void {
+          if (!offen) {
+            return;
+          }
+          offen = false;
+          // Solange die Vormerkung stand, konnte kein Job dieses Objekts starten: er wartet (und
+          // wird hochgestuft) oder steht noch gar nicht an (und wird neu eingereiht).
+          enqueueInternal(koId, expectedKoVersion, "vollstaendig");
+          vormerkungLoesen(koId);
+          pump();
+        },
+        verwerfen(): void {
+          if (!offen) {
+            return;
+          }
+          offen = false;
+          vormerkungLoesen(koId);
+          pump();
+        },
+      };
     },
     has(koId: string): boolean {
       return queuedIds.has(koId) || runningIds.has(koId);
@@ -531,7 +622,7 @@ export interface AiCheckRunnerDeps {
 // Modell lief nur der deterministische Anteil → ehrlich failed/no-model. Nur ein Lauf ohne
 // jeden Fehler ist done. Die detect*-Kerne erhalten Urteil UND neutrale Ursache.
 export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
-  return async (koId: string): Promise<AiCheckRunOutcome> => {
+  return async (koId: string, umfang: PruefUmfang = "gedeckelt"): Promise<AiCheckRunOutcome> => {
     let failure: unknown = null;
     const captureFailure = (msg: string, err: unknown): void => {
       failure = failure ?? err ?? new Error(msg);
@@ -579,6 +670,7 @@ export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
       koId,
       { ko: deps.ko, conflicts: deps.conflicts, reasoner: observedReasoner },
       captureFailure,
+      umfang,
     );
     const duplicateCoverage = await detectDuplicatesForKo(
       koId,
@@ -590,6 +682,7 @@ export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
         semanticPrefilter: deps.semanticPrefilter,
       },
       captureFailure,
+      umfang,
     );
     // Interne Gründe nie persistieren: vollständige Projektion auf den bestehenden Drahtvertrag.
     const merged = mergeCoverage(conflictCoverage, duplicateCoverage);
