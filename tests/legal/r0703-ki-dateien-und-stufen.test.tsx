@@ -108,6 +108,7 @@ import {
   kiHerkunftAus,
 } from "../../apps/web/src/lib/kiHerkunft";
 import { Ask } from "../../apps/web/src/pages/Ask";
+import { ToastViewport } from "../../apps/web/src/shell/ToastViewport";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -170,7 +171,9 @@ async function montiereIn(lage: Lage): Promise<Flaeche> {
         createElement(
           MemoryRouter,
           { initialEntries: ["/fragen?q=Ventil&ask=1"] },
-          createElement(ToastProvider, null, createElement(Ask)),
+          // Nacharbeit 5: der Provider hält Meldungen nur im Zustand — angezeigt werden sie von der
+          // App-Hülle (`ToastViewport`). Ohne sie wäre jede Meldung unsichtbar, auch eine richtige.
+          createElement(ToastProvider, null, createElement(Ask), createElement(ToastViewport)),
         ),
       ),
     );
