@@ -2,12 +2,30 @@
 // Mapping Formular ↔ DraftPayload, Resume-Status, Vollständigkeit. Kein DOM, kein API-Aufruf.
 import type { Draft, DraftPayload, KnowledgeType } from "../api/types";
 import {
+  type DraftBodyFoto,
   type DraftBodySegment,
   draftBodyFromText,
+  draftBodyMitFotos,
   draftBodyPatch,
   draftBodyText,
   splitDraftBody,
 } from "./draftBody";
+
+/** Ein am Handy aufgenommenes oder aus der Mediathek gewähltes Foto (FR-CAP-04). */
+export interface DraftFormFoto extends DraftBodyFoto {
+  readonly id: string;
+}
+
+/**
+ * Was das Handy-Interview über die Kernaussage hinaus festhält (FR-MOB-02) — dieselbe Zuordnung
+ * Antwort → Feld wie der deterministische Interviewweg des Servers (`condenseInterview`,
+ * services/reasoner/src/provider.ts): Bedingung, Maßnahme, Stichworte.
+ */
+export interface DraftFormStruktur {
+  readonly conditions: readonly string[];
+  readonly measures: readonly string[];
+  readonly tags: readonly string[];
+}
 
 // Schlankes Mobile-/Resume-Formular: Titel + Aussage genügen für einen Entwurf.
 export interface DraftFormState {
@@ -45,6 +63,17 @@ export interface DraftFormState {
    * `tests/app/job2684-draft-stale-route.test.ts`: `payload.expectedUpdatedAt` bleibt `undefined`.
    */
   gesehenerStand?: string;
+  /**
+   * FR-MOB-02 — die Felder, die das Handy-Interview zusätzlich zur Kernaussage füllt. Nur an einem
+   * NEUEN Entwurf ohne Body; fehlt das Feld, bleibt jeder Weg wörtlich wie bisher.
+   */
+  struktur?: DraftFormStruktur;
+  /**
+   * FR-CAP-04 — Fotos eines NEUEN Entwurfs. Sie reisen aus demselben Grund im Formularzustand wie
+   * `segments`: Knopf, Weggeh-Wächter und Warteschlange bauen ihre Nutzlast alle über
+   * `formToPayload` — keiner davon kann die Fotos vergessen.
+   */
+  fotos?: readonly DraftFormFoto[];
 }
 
 export const EMPTY_DRAFT_FORM: DraftFormState = { title: "", statement: "" };
@@ -75,7 +104,46 @@ export function formToPayload(form: DraftFormState): DraftPayload {
   if (statement) {
     payload.statement = statement;
   }
+  // FR-MOB-02: nur gesetzte Einträge — ein leeres Interviewfeld legt am Entwurf nichts an.
+  const struktur = form.struktur;
+  if (struktur) {
+    const conditions = nichtLeer(struktur.conditions);
+    const measures = nichtLeer(struktur.measures);
+    const tags = nichtLeer(struktur.tags);
+    if (conditions.length > 0) {
+      payload.conditions = conditions;
+    }
+    if (measures.length > 0) {
+      payload.measures = measures;
+    }
+    if (tags.length > 0) {
+      payload.tags = tags;
+    }
+  }
+  // FR-CAP-04: Fotos gehen als Body mit. Die Kernaussage bleibt daneben stehen — wie an jedem
+  // Entwurf mit Body (JOB 3377), und `draftTitle` findet den Listentitel weiterhin dort.
+  if (form.fotos && form.fotos.length > 0) {
+    payload.bodyHtml = draftBodyMitFotos(form.statement, form.fotos);
+  }
   return payload;
+}
+
+function nichtLeer(werte: readonly string[]): string[] {
+  return werte.map((w) => w.trim()).filter((w) => w.length > 0);
+}
+
+/** Vergleichbare Kurzform der Interviewfelder — für „geändert?" und „speicherbar?". */
+function strukturText(form: DraftFormState): string {
+  const s = form.struktur;
+  if (!s) {
+    return "";
+  }
+  const teile = [s.conditions, s.measures, s.tags].map((l) => nichtLeer(l));
+  return teile.some((l) => l.length > 0) ? JSON.stringify(teile) : "";
+}
+
+function fotoKennungen(form: DraftFormState): string {
+  return (form.fotos ?? []).map((f) => f.id).join(",");
 }
 
 /**
@@ -162,20 +230,26 @@ export function abweichendeFelder(meins: DraftFormState, anderes: DraftFormState
 }
 
 // Nur die bearbeitbaren Textfelder zählen; segments ist der unverändert mitreisende Bauplan.
+// Interviewfelder und Fotos sind Eingaben wie der Text — auch sie schützt der Weggeh-Wächter.
 export function isDraftFormChanged(form: DraftFormState, baseline: DraftFormState): boolean {
   return (
     form.title.trim() !== baseline.title.trim() ||
     form.statement.trim() !== baseline.statement.trim() ||
-    (form.body ?? "").trim() !== (baseline.body ?? "").trim()
+    (form.body ?? "").trim() !== (baseline.body ?? "").trim() ||
+    strukturText(form) !== strukturText(baseline) ||
+    fotoKennungen(form) !== fotoKennungen(baseline)
   );
 }
 
-// Ein Entwurf ist speicherbar, sobald irgendein Inhalt da ist.
+// Ein Entwurf ist speicherbar, sobald irgendein Inhalt da ist — auch ein Foto allein ist etwas,
+// das an der Anlage festgehalten werden will.
 export function isDraftFormFillable(form: DraftFormState): boolean {
   return (
     form.title.trim().length > 0 ||
     form.statement.trim().length > 0 ||
-    (form.body ?? "").trim().length > 0
+    (form.body ?? "").trim().length > 0 ||
+    strukturText(form).length > 0 ||
+    (form.fotos?.length ?? 0) > 0
   );
 }
 
