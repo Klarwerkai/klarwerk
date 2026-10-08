@@ -797,15 +797,20 @@ export function CaptureArbeitsraum({
     setNegativForm(next);
     hebeStufeFuerBezugAn(next.bezug);
   };
-  // Die Wissensart wechseln: wird es Negativwissen, gilt ein schon angegebener Bezug sofort.
-  // FR-STR-01: beide Aufrufer (Auswahlliste und Einstieg „Lerneffekt dokumentieren") sind eine
-  // menschliche Wahl — danach überschreibt kein KI-Vorschlag die Wissensart.
-  const waehleWissensart = (k: KnowledgeType): void => {
-    typeEntschiedenRef.current = true;
-    setType(k);
+  // Nach einem Wechsel der Wissensart: wird es Negativwissen, gilt ein angegebener Bezug sofort.
+  const stufeNachWissensart = (k: KnowledgeType): void => {
     if (k === "negativwissen") {
       hebeStufeFuerBezugAn(negativForm.bezug);
     }
+  };
+  // Der Einstieg „Lerneffekt dokumentieren". FR-STR-01: auch er ist eine menschliche Wahl — danach
+  // überschreibt kein KI-Vorschlag die Wissensart. Die Auswahlliste trägt dieselben drei Schritte
+  // in ihrem `onChange` (dort in der Form, die tests/strukturierung/fr-str-01-wissensart.test.ts
+  // festhält).
+  const waehleWissensart = (k: KnowledgeType): void => {
+    typeEntschiedenRef.current = true;
+    setType(k);
+    stufeNachWissensart(k);
   };
   const vertraulichkeitRef = useRef<HTMLSelectElement | null>(null);
   // JOB 3082 (Q3 a): der abgewiesene Einreichversuch klappt die erweiterten Felder auf; erst DANACH
@@ -6649,7 +6654,11 @@ export function CaptureArbeitsraum({
                     >
                       <select
                         value={type}
-                        onChange={(e) => waehleWissensart(e.target.value as KnowledgeType)}
+                        onChange={(e) => {
+                          typeEntschiedenRef.current = true;
+                          setType(e.target.value as KnowledgeType);
+                          stufeNachWissensart(e.target.value as KnowledgeType);
+                        }}
                         className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
                       >
                         {KNOWLEDGE_TYPES.map((k) => (
