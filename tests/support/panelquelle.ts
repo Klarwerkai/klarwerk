@@ -188,8 +188,11 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * beschreibt nur den Zweig gesamt-dokumenterzeugung, nicht das vereinigte Fenster. Er ist ein
  * PLATZHALTER bis zur Messung; ohne zugelassenes Hash-Werkzeug nicht berechenbar. E2 meldet den
  * Wert im Prüflauf als „Received"; er wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 3 (gesamt-dokumenterzeugung): GEMESSEN im Prüflauf zu Kandidat b4a727cc (`84122c98…`,
+ * „Received" von E2, HISTORIE/nacharbeit-3/PRUEFUNG/panel-pins-integration.log) und unverändert
+ * übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "ca1f9d532b6f821fbb645b0770f0a83b5a2a6713";
+export const PANEL_VOR_SCHNITT_BLOB = "84122c985224d255531114ffb914e946c0093613";
 
 export interface PanelTeile {
   html: string;

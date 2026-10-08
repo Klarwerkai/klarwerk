@@ -2783,7 +2783,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Messung: ohne zugelassenes Hash-Werkzeug ist der neue SHA-256 hier nicht berechenbar. Der
     // Prüflauf meldet ihn als „Received", er wird danach gemessen übernommen. Auslieferungsfolgen
     // beider Seiten wie in den zwei Absätzen darüber; die Vereinigung fügt keine hinzu.
-    const PIN = "dce012c092e3445073b0629f1b8348a5f4b04457c1986e3c68657c7ad5860d64";
+    // NACHARBEIT 3 (gesamt-dokumenterzeugung): PIN BEWUSST AKTUALISIERT (Platzhalter dce012c0… ->
+    // a42c4302…). Im Prüflauf zu Kandidat b4a727cc GEMESSEN („Received", HISTORIE/nacharbeit-3/
+    // PRUEFUNG/panel-pins-integration.log) und unverändert übernommen; die Panel-Dateien sind seit
+    // dieser Messung unberührt.
+    const PIN = "a42c43025a1ee33c872fde3dfe7e9a439bfb0724d350c6882ae764c0612254a2";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
