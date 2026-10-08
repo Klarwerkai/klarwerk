@@ -19,10 +19,12 @@
 // hat eine eigene Paritätsprüfung (`tests/app/word-addin-wortvergleich.test.ts` V5).
 //
 // DIESER WÄCHTER liest die ausgelieferten Dateien mit dem TypeScript-Parser (ohne sie auszuführen)
-// und vergleicht JEDES Wörterbuch der Form `{ de: {…}, en: {…}, nl: {…} }`: dieselben Schlüssel
-// in allen drei Sprachen, keine weitere Sprache, kein leerer Text. Die Wörterbücher werden aus der
-// Quelle gefunden, nicht aus einer Liste; die Liste unten ist nur die Kalibrierung, dass die
-// bekannten wirklich gelesen werden.
+// und prüft JEDES Wörterbuch — erkannt an mindestens einem Sprachblock `de`/`en`/`nl` als Objekt —
+// auf Vollständigkeit: alle drei Blöcke da, dieselben Schlüssel, keine weitere Sprache, kein leerer
+// Text in irgendeiner Sprache. Erkennung und Vollständigkeit sind getrennt (Nacharbeit 9, Ben): ein
+// neues Wörterbuch ohne NL fiel vorher gar nicht auf, ein leerer deutscher Wert auch nicht (S-5,
+// S-6). Die Wörterbücher werden aus der Quelle gefunden, nicht aus einer Liste; die Liste unten
+// ist nur die Kalibrierung, dass die bekannten wirklich gelesen werden.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
@@ -44,7 +46,16 @@ function eigenschaftsname(name: ts.PropertyName): string | null {
   return null;
 }
 
-/** Jedes Objektliteral, dessen Eigenschaften `de`, `en` UND `nl` selbst Objektliterale sind. */
+/** Eine Eigenschaft, die wie ein Sprachkürzel heißt („de", „fr" …). */
+const SPRACHKUERZEL = /^[a-z]{2}$/;
+
+/**
+ * ERKENNUNG (getrennt von der Vollständigkeit, Nacharbeit 9): Wörterbuch ist jedes Objektliteral
+ * mit MINDESTENS EINEM Block `de`, `en` oder `nl`, der selbst ein Objektliteral ist. Ob alle drei
+ * Blöcke da sind, entscheidet erst `abweichungen` — ein neues Wörterbuch ohne NL wird so gefunden
+ * und gemeldet, statt still übersehen. Ein Objekt mit Zeichenketten unter `de`/`en`/`nl`
+ * (Sprachnamen wie `KW_SPRACHNAMEN`) ist kein Wörterbuch.
+ */
 function woerterbuecher(quelltext: string, datei = "probe.js"): Woerterbuch[] {
   const quelle = ts.createSourceFile(
     datei,
@@ -62,7 +73,10 @@ function woerterbuecher(quelltext: string, datei = "probe.js"): Woerterbuch[] {
           continue;
         }
         const sprache = eigenschaftsname(eigenschaft.name);
-        if (sprache === null || !ts.isObjectLiteralExpression(eigenschaft.initializer)) {
+        if (sprache === null || !SPRACHKUERZEL.test(sprache)) {
+          continue;
+        }
+        if (!ts.isObjectLiteralExpression(eigenschaft.initializer)) {
           continue;
         }
         const texte = new Map<string, ts.Expression>();
@@ -77,7 +91,7 @@ function woerterbuecher(quelltext: string, datei = "probe.js"): Woerterbuch[] {
         }
         sprachen.set(sprache, texte);
       }
-      if (SPRACHEN.every((s) => sprachen.has(s))) {
+      if (SPRACHEN.some((s) => sprachen.has(s))) {
         const eltern = knoten.parent;
         const zeile = quelle.getLineAndCharacterOfPosition(knoten.getStart()).line + 1;
         const name =
@@ -93,28 +107,46 @@ function woerterbuecher(quelltext: string, datei = "probe.js"): Woerterbuch[] {
   return funde;
 }
 
-/** Jede Abweichung eines Wörterbuchs als lesbarer Satz. */
+/**
+ * VOLLSTÄNDIGKEIT: jede Abweichung eines erkannten Wörterbuchs als lesbarer Satz — fehlender
+ * Sprachblock, unbekannte Sprache, fehlender oder überzähliger Schlüssel gegenüber DE und ein
+ * leerer Text in JEDER der drei Sprachen (auch Deutsch: ein leerer deutscher Wert ist zugleich der
+ * Rückfall aller anderen).
+ */
 function abweichungen(datei: string, woerterbuch: Woerterbuch): string[] {
   const funde: string[] = [];
-  const de = woerterbuch.sprachen.get("de") ?? new Map<string, ts.Expression>();
+  const name = `${datei} · ${woerterbuch.name}`;
   for (const sprache of woerterbuch.sprachen.keys()) {
     if (!(SPRACHEN as readonly string[]).includes(sprache)) {
-      funde.push(`${datei} · ${woerterbuch.name}: unbekannte Sprache „${sprache}"`);
+      funde.push(`${name}: unbekannte Sprache „${sprache}"`);
     }
   }
+  for (const sprache of SPRACHEN) {
+    if (!woerterbuch.sprachen.has(sprache)) {
+      funde.push(`${name}: fehlt Sprachblock „${sprache}"`);
+    }
+  }
+  const de = woerterbuch.sprachen.get("de") ?? new Map<string, ts.Expression>();
   for (const sprache of ["en", "nl"]) {
-    const texte = woerterbuch.sprachen.get(sprache) ?? new Map<string, ts.Expression>();
+    const texte = woerterbuch.sprachen.get(sprache);
+    if (texte === undefined || !woerterbuch.sprachen.has("de")) {
+      continue;
+    }
     for (const schluessel of de.keys()) {
       if (!texte.has(schluessel)) {
-        funde.push(`${datei} · ${woerterbuch.name}.${sprache}: fehlt „${schluessel}"`);
+        funde.push(`${name}.${sprache}: fehlt „${schluessel}"`);
       }
     }
-    for (const [schluessel, wert] of texte) {
+    for (const schluessel of texte.keys()) {
       if (!de.has(schluessel)) {
-        funde.push(`${datei} · ${woerterbuch.name}.${sprache}: nur hier „${schluessel}"`);
+        funde.push(`${name}.${sprache}: nur hier „${schluessel}"`);
       }
+    }
+  }
+  for (const sprache of SPRACHEN) {
+    for (const [schluessel, wert] of woerterbuch.sprachen.get(sprache) ?? []) {
       if (ts.isStringLiteralLike(wert) && wert.text.trim() === "") {
-        funde.push(`${datei} · ${woerterbuch.name}.${sprache}: leer „${schluessel}"`);
+        funde.push(`${name}.${sprache}: leer „${schluessel}"`);
       }
     }
   }
@@ -168,6 +200,9 @@ describe("K22 · package:sprache — die Word-Sprachumschaltung lässt keine Spr
       const namen = woerterbuecher(text, datei).map((w) => w.name);
       expect(namen, datei).toEqual(expect.arrayContaining([...erwartet]));
     }
+    // Abgrenzung: die Sprachnamen des Fensters (Zeichenketten unter de/en/nl) sind kein Wörterbuch.
+    const panelNamen = woerterbuecher(QUELLEN[0]?.text ?? "").map((w) => w.name);
+    expect(panelNamen).not.toContain("KW_SPRACHNAMEN");
     // Das Hauptwörterbuch ist nicht klein — sonst wäre die Parität trivial.
     const strings = woerterbuecher(QUELLEN[0]?.text ?? "").find((w) => w.name === "STRINGS");
     expect(strings?.sprachen.get("de")?.size ?? 0).toBeGreaterThan(300);
@@ -217,5 +252,20 @@ describe("K22 · package:sprache — die Word-Sprachumschaltung lässt keine Spr
     expect(woerterbuecher(mitFr).flatMap((w) => abweichungen("probe.js", w))).toEqual([
       'probe.js · X: unbekannte Sprache „fr"',
     ]);
+  });
+
+  it("S-5 Gegenfall (Nacharbeit 9): ein neues Wörterbuch ohne NL-Block wird erkannt und gemeldet", () => {
+    const quelle = 'var NEU = { de: { a: "Probe" }, en: { a: "Sample" } };';
+    const entdeckt = woerterbuecher(quelle);
+    expect(entdeckt.map((w) => w.name)).toContain("NEU");
+    expect(entdeckt.flatMap((w) => abweichungen("probe.js", w))).toEqual([
+      'probe.js · NEU: fehlt Sprachblock „nl"',
+    ]);
+  });
+
+  it("S-6 Gegenfall (Nacharbeit 9): ein leerer deutscher Wert wird gemeldet", () => {
+    const quelle = 'var NEU = { de: { a: "  " }, en: { a: "Sample" }, nl: { a: "Voorbeeld" } };';
+    const funde = woerterbuecher(quelle).flatMap((w) => abweichungen("probe.js", w));
+    expect(funde).toEqual(['probe.js · NEU.de: leer „a"']);
   });
 });

@@ -171,8 +171,18 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 8 (firmenwoerterbuch): GEMESSEN im Prüflauf zu Kandidat a8ec940f (`5d7ae0b8…`,
  * „Received" von E2, HISTORIE/nacharbeit-8/PRUEFUNG/panel-integration-pins.log) und unverändert
  * übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ *
+ * Aufnahme 20260922 · gesamt-sprache-begriffe (K22, Nacharbeit 9): `renderStatics` setzt jetzt den
+ * Gruppennamen der Sprachwahl `#einst-sprache-wahl` über `t("einstSprache")` (genau eine Zeile in
+ * `taskpane.js`). Schon VOR dieser Änderung stimmte der Wert oben nicht mehr: die technische Hilfe
+ * (HILFE/9fc941b647e097d430188be2/BLOB-MESSUNG.json) maß am unveränderten Kandidaten 12e61e0b mit
+ * diesem Helfer und `git hash-object --stdin` übereinstimmend `44bde204…`. GEMESSEN am endgültigen
+ * Inhalt: die vier Dateien genau nach `fuegePanelZusammen` zusammengesetzt (Teile per `sed`/`cat`),
+ * Kennung über `git diff --no-index --full-index`. Kalibrierung: dasselbe Verfahren mit
+ * `taskpane.js` aus 12e61e0b ergibt wörtlich `44bde204b953ee540c934d29e23c6b8873a29aee`; mit der
+ * Korrektur `44414ac3…` (Beleg CLAUDE/BLOB-MESSUNG-NACHARBEIT-9.json im Auftragsordner).
  */
-export const PANEL_VOR_SCHNITT_BLOB = "5d7ae0b8fccc34c05e5c070cea753189729ef841";
+export const PANEL_VOR_SCHNITT_BLOB = "44414ac3fb1537490caf7fe614699db39755fcb4";
 
 export interface PanelTeile {
   html: string;

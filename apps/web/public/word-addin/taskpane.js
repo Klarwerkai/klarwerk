@@ -2892,6 +2892,7 @@
       document.getElementById("kw-zahnrad").setAttribute("aria-label", t("einstTitel"));
       document.getElementById("einst-mitlesen").setAttribute("aria-label", t("einstMitlesen"));
       document.getElementById("einst-sprache-wert").textContent = KW_SPRACHNAMEN[lang] || lang;
+      document.getElementById("einst-sprache-wahl").setAttribute("aria-label", t("einstSprache")); // K22
       document.getElementById("einst-server-wert").textContent = window.location.host || "–";
       document.getElementById("ka1-block").setAttribute("aria-label", t("ka1Title"));
       document.documentElement.lang = lang;
