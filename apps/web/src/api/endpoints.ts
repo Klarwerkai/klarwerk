@@ -31,6 +31,7 @@ import type {
   Conflict,
   ConflictSelfTestResult,
   ConflictType,
+  ConflictWorkKind,
   DemoPackageListResponse,
   DemoPackagePreview,
   DemoPackageResult,
@@ -117,6 +118,8 @@ import type {
   ValidationBoardKo,
   ValidationSettings,
   Verdict,
+  VorrangAmPunkt,
+  VorrangWahl,
   // R-1107: der Drahtvertrag des Zusammenführens.
   ZusammenfuehrungsAuftrag,
   ZusammenfuehrungsErgebnis,
@@ -350,9 +353,17 @@ export type KoAction =
   | { action: "confidentiality"; level: Confidentiality }
   | {
       action: "conflict";
-      conflict: { koA: string; koB: string; type: ConflictType; description: string };
+      // R-0252: `arbeitsart` optional — fehlt sie, leitet die Konfliktseite sie aus `type` ab.
+      conflict: {
+        koA: string;
+        koB: string;
+        type: ConflictType;
+        arbeitsart?: ConflictWorkKind;
+        description: string;
+      };
     }
-  | { action: "resolve-conflict"; conflictId: string; decision: string }
+  // R-0263: `vorrang` optional — welcher der beiden Punkte gilt bzw. einschränkt.
+  | { action: "resolve-conflict"; conflictId: string; decision: string; vorrang?: VorrangWahl }
   | { action: "transfer-author"; newAuthor: string }
   // AUFTRAG-mega15 Block B (bens SB-4): dieser Vertrag war schon richtig — falsch war der
   // Laufzeitpfad, der zusätzlich ein `provider` mitschickte, und der Server, der seine Stufen-
@@ -711,6 +722,11 @@ export const endpoints = {
     // Berater-Konzept 04.07. (Stufe 4): „Fehlalarm — kein Widerspruch" schließt den Konflikt.
     dismiss: (id: string, note?: string) =>
       api.post<Conflict>(`/conflicts/${id}/dismiss`, note ? { note } : {}),
+    // R-0252: der Einordnungsweg — Arbeitsart eines noch nicht eingeordneten Konflikts festlegen.
+    einordnen: (id: string, arbeitsart: ConflictWorkKind) =>
+      api.post<Conflict>(`/conflicts/${id}/arbeitsart`, { arbeitsart }),
+    // R-0263: der festgelegte Vorrang am einzelnen Punkt (`koId` = Wissensobjekt).
+    vorrang: (koId: string) => api.get<VorrangAmPunkt[]>(`/conflicts/vorrang/${koId}`),
   },
   // Berater-Konzept Duplikate 04.07. (Stufe D4): Überschneidungs-/Duplikat-Board. Liste + Detail
   // lesen alle Leseberechtigten; die menschlichen Abschlüsse sind kuratorische Entscheidungen.

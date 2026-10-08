@@ -792,6 +792,29 @@ export interface TrashedKo {
 
 export type ConflictType = "truth" | "experience" | "context" | "temporal" | "role";
 export type ConflictStatus = "offen" | "eskaliert" | "zweitmeinung" | "geloest";
+// R-0252: die Art der nötigen Arbeit (Regel/Sache/Version) — Spiegel von services/conflicts/src/types.ts.
+export type ConflictWorkKind = "regel" | "sache" | "version";
+// R-0263: Vorrang zwischen den zwei Punkten einer Entscheidung — Spiegel von services/conflicts.
+export type VorrangArt = "ueberstimmt" | "schraenkt_ein";
+export interface VorrangWahl {
+  art: VorrangArt;
+  /** Kennung der Seite, die gilt (bei `schraenkt_ein`: die speziellere). */
+  gilt: string;
+  geltungsbereich?: string;
+}
+export interface KonfliktVorrang {
+  art: VorrangArt;
+  vorrangKo: string;
+  nachrangKo: string;
+  geltungsbereich: string | null;
+}
+/** Eine Zeile von `GET /api/conflicts/vorrang/:id` — der Vorrang am einzelnen Punkt. */
+export interface VorrangAmPunkt extends KonfliktVorrang {
+  konfliktId: string;
+  entschiedenVon: string | null;
+  /** Gesetzt, wenn der Geltungsbereich für diesen Betrachter zurückgehalten ist. */
+  redacted?: boolean;
+}
 
 // Berater-Konzept 04.07. (Stufe 4): Herkunft + Erkennungs-Metadaten eines automatisch erkannten
 // Konflikts — macht den Fund am Board erklärbar (Sicherheit, Begründung, wörtliche Zitate).
@@ -819,6 +842,13 @@ export interface ConflictDetector {
   quotes?: { a: string; b: string };
   // SCRUM-492: optionale strukturierte Gegenüberstellung für die Kollisions-Kacheln.
   kollision?: Kollision;
+  // R-0263: Klaras Vorschlag Widerspruch/Präzisierung — Spiegel von services/conflicts (`spezieller`
+  // ist die Kennung des engeren Punkts). Ein Vorschlag, keine Entscheidung.
+  vorschlag?: {
+    art: "widerspruch" | "praezisierung";
+    spezieller?: string;
+    geltungsbereich?: string;
+  };
 }
 
 export interface Conflict {
@@ -826,6 +856,10 @@ export interface Conflict {
   koA: string;
   koB: string;
   type: ConflictType;
+  // R-0252: gewählt (manuell) oder von der Prüfung eingeordnet (auto). Fehlt = nicht bestimmt.
+  arbeitsart?: ConflictWorkKind;
+  // R-0263: an entschiedenen Konflikten der festgelegte Vorrang.
+  vorrang?: KonfliktVorrang;
   description: string;
   status: ConflictStatus;
   secondOpinion: string | null;
