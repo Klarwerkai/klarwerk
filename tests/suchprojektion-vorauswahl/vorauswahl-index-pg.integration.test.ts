@@ -14,8 +14,9 @@
 //       (die Form vor dieser Änderung) liefern Zeile für Zeile dasselbe — Inhalt, Kategorie,
 //       Schlagwort, ein Objekt ohne Metadatenzeile, und eine ältere Fassung, deren Text NICHT
 //       treffen darf.
-//   V2  DER PLAN NUTZT DIE TRIGRAMM-INDIZES. Mit `enable_seqscan = off` wählt der Planner jeden
-//       Indexweg, den die Anweisung zulässt; im Plan stehen dann alle drei Trigramm-Indizes.
+//   V2  DER PLAN NUTZT DIE TRIGRAMM-INDIZES. Mit `enable_seqscan = off` und `enable_indexscan =
+//       off` sind die vollen Durchläufe (auch der über den Primärschlüssel mit Filter) gesperrt; im
+//       Plan stehen dann alle drei Trigramm-Indizes als Bitmap-Zugriff.
 //   K   KALIBRIERUNG: dieselbe Messung an der Form ohne Vorauswahl findet KEINEN der drei — sonst
 //       wäre V2 auch ohne diese Änderung grün und bewiese nichts.
 //
@@ -120,6 +121,8 @@ describe("Suchprojektion · R-1134 — die Vorauswahl gegen echtes PostgreSQL", 
         AT,
       ),
     );
+    // Der Planner schätzt mit den Statistiken des tatsächlichen Bestands, nicht mit Vorgaben.
+    await pool.query("ANALYZE kos, ko_search_projections, ko_metadata_projections");
 
     // Die Anweisung, die der Adapter WIRKLICH absetzt — aufgezeichnet, nicht nachgebaut.
     const abgesetzt: { sql: string; params: unknown[] }[] = [];
@@ -143,14 +146,22 @@ describe("Suchprojektion · R-1134 — die Vorauswahl gegen echtes PostgreSQL", 
     await pg?.abraeumen();
   });
 
+  // WAS DIE MESSUNG FRAGT: KANN die Anweisung die Trigramm-Indizes nutzen? Bei ~300 Zeilen hält der
+  // Planner einen vollen Durchlauf für billiger — als Seq Scan oder, wenn der abgeschaltet ist, als
+  // Index Scan über den Primärschlüssel MIT Filter (Nacharbeit 1: so lief der Metadaten-Arm). Beides
+  // liest jede Zeile. Abgeschaltet bleibt deshalb genau dieser Vollweg; Bitmap-Zugriffe bleiben
+  // erlaubt — und die gibt es nur dort, wo die Anweisung eine Indexbedingung hergibt. Die Kalibrierung
+  // K misst unter denselben Schaltern, dass die alte Form keine hergab.
   async function plan(sql: string, params: unknown[]): Promise<string> {
     const client = await pool.connect();
     try {
       await client.query("SET enable_seqscan = off");
+      await client.query("SET enable_indexscan = off");
       const res = await client.query<{ "QUERY PLAN": string }>(`EXPLAIN ${sql}`, params);
       return res.rows.map((r) => r["QUERY PLAN"]).join("\n");
     } finally {
       await client.query("RESET enable_seqscan");
+      await client.query("RESET enable_indexscan");
       client.release();
     }
   }
