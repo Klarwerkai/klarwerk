@@ -93,6 +93,15 @@ async function karte(): Promise<void> {
     );
     await flush();
   });
+  // Nacharbeit 1 (rot: „Lädt …" statt Karte): React führt die Effekte erst am ENDE eines `act` aus —
+  // die Statusabfrage startet also erst nach dem ersten Block. Die Antwort und ihr Rendern brauchen
+  // eigene `act`-Runden, wie in `tests/seitenhilfe-admin/vier-adminflaechen-erklaeren-sich.test.tsx`.
+  await act(flush);
+  await act(flush);
+  // Kein Fall misst den Ladezustand: steht er noch, ist das ein Prüfstandsfehler, kein Befund.
+  if (container.querySelector('[data-einst="laedt"]')) {
+    throw new Error("Statusabfrage der Karte ist nicht beantwortet");
+  }
 }
 
 const text = (el: Element): string => (el.textContent ?? "").replace(/\s+/g, " ").trim();
@@ -113,6 +122,8 @@ async function klick(beschriftung: string): Promise<void> {
     b.click();
     await flush();
   });
+  // Antwort der Mutation (Erfolg/Absage) und ihre Folgezustände in eigener Runde rendern.
+  await act(flush);
 }
 
 const passwortfeld = (): HTMLInputElement | null =>
