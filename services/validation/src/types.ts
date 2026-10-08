@@ -24,6 +24,12 @@ export interface Assignment {
   // `nochZuBenachrichtigen` mit dem Nachweis des Aufrufers. Eine vorhandene Zuweisung allein beweist
   // nicht, dass die Benachrichtigung lief.
   benachrichtigung?: "ausstehend" | "erledigt";
+  /**
+   * R-0571: „verzeichnis" = aus der Prüfzuständigkeit des Unternehmensverzeichnisses abgeleitet.
+   * Nur solche OFFENEN Zuweisungen gleicht `verzeichnisAbgleichen` mit dem Gruppenstand ab; ohne
+   * Feld ist die Zuweisung von Hand (oder beim Einreichen) entstanden und bleibt unberührt.
+   */
+  quelle?: "verzeichnis";
 }
 
 // SCRUM-395: INVALID_DEFAULT = ungültige Standard-Prüferanzahl (Admin-Einstellung).

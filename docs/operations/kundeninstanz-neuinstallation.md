@@ -289,7 +289,10 @@ das Konto bleibt mit seinen Spuren bestehen), ein Wechsel passt die Rolle an. In
 als Mandanten-URL die öffentliche Adresse + `/scim/v2` und als geheimes Token diesen Wert ein; die
 Gruppen kommen über App-Rollen (SCIM-Attribut `roles`) und werden mit denselben Namen wie
 `OIDC_GROUP_*` auf Rollen abgebildet. `KLARWERK_PRUEFZUSTAENDIGKEIT=QM-Pruefung=space-qm` macht die
-Mitglieder einer Verzeichnisgruppe zu Prüfenden für Objekte, die in diesen Space kommen.
+Mitglieder einer Verzeichnisgruppe zu Prüfenden für die Objekte in diesem Space. Das gilt auch für
+Objekte, die schon dort liegen: Nach jeder Änderung aus dem Verzeichnis (Eintritt, Austritt,
+Gruppenwechsel) und bei jedem Space-Wechsel gleicht Klara die daraus abgeleiteten offenen
+Zuweisungen ab. Von Hand vergebene Zuweisungen und erledigte Prüfungen bleiben bestehen.
 
 ## 3. Der Start
 

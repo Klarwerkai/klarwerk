@@ -1583,7 +1583,7 @@ const GEMESSEN_VON = {
   ],
   // R-0560 · die SAML-Sätze, gemessen am Tag ihrer Einführung: je ein Fall mit EN/NL-Tabelle.
   SAML_DISABLED: [
-    "tests/firmenanmeldung/saml-anmeldung.test.ts · S1 SAML_DISABLED · die drei SAML-Türen antworten ohne Konfiguration 501 auf %s",
+    "tests/firmenanmeldung/saml-anmeldung.test.ts · S1 SAML_DISABLED · die vier SAML-Türen antworten ohne Konfiguration 501 auf %s",
   ],
   SAML_LOGIN_FAILED: [
     "tests/firmenanmeldung/saml-anmeldung.test.ts · S9 SAML_LOGIN_FAILED · eine verfälschte Antwort endet auf der Fehlerseite auf %s",

@@ -295,7 +295,7 @@ function istUnregistriert(status: number, body: string): boolean {
  * genau 501 und nur mit `OIDC_DISABLED` im Rumpf. Ein 500/502/503/504 ist IMMER rot, auch hier.
  */
 //
-// R-0560 (Aufnahme gesamt-sso): der SAML-Weg bringt drei weitere Türen derselben Art mit — sie
+// R-0560 (Aufnahme gesamt-sso): der SAML-Weg bringt vier weitere Türen derselben Art mit — sie
 // antworten ohne Konfiguration ebenso bewusst 501, mit `SAML_DISABLED` (`routes.ts`, `if
 // (!options.saml)`). Die Ausnahme bleibt GESCHLOSSEN: jede Tür steht namentlich mit GENAU ihrem
 // Schlüssel da, nicht „irgendein *_DISABLED".
@@ -305,6 +305,7 @@ const AUSGESCHALTET_501_SCHLUESSEL: Readonly<Record<string, string>> = {
   "GET /api/auth/saml/start": "SAML_DISABLED",
   "GET /api/auth/saml/metadata": "SAML_DISABLED",
   "POST /api/auth/saml/acs": "SAML_DISABLED",
+  "GET /api/auth/saml/abschluss": "SAML_DISABLED",
 };
 const AUSGESCHALTET_501: readonly string[] = Object.keys(AUSGESCHALTET_501_SCHLUESSEL);
 

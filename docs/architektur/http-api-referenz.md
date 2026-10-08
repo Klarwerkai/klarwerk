@@ -109,9 +109,10 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 | `POST` | `/api/auth/reset` | keines | Rumpf `{ token, newPassword }` | 204 | 429 `RATE_LIMITED`; Dienstfehler |
 | `GET` | `/api/auth/oidc/start` | keines | — | Weiterleitung zum Anbieter, setzt die Ablauf-Cookies (state, nonce, PKCE) | 501 `OIDC_DISABLED` |
 | `POST` | `/api/auth/oidc` | keines | Rumpf `{ code, state }` | 200 `{ user, token }`, setzt `kw_session` | 501 `OIDC_DISABLED`; 400 `OIDC_INVALID` (state passt nicht); 401 `OIDC_INVALID` (Anmeldung gescheitert) |
-| `GET` | `/api/auth/saml/start` | keines | — | Weiterleitung zum Anbieter mit AuthnRequest (Anfragekennung 10 min, einmalig) | 501 `SAML_DISABLED` |
+| `GET` | `/api/auth/saml/start` | keines | — | Weiterleitung zum Anbieter mit AuthnRequest (Anfragekennung 10 min, einmalig), setzt den Browsernachweis `kw_saml_bindung` (HttpOnly, Pfad `/api/auth/saml`) | 501 `SAML_DISABLED` |
 | `GET` | `/api/auth/saml/metadata` | keines | — | 200 SP-Metadaten (`application/samlmetadata+xml`) | 501 `SAML_DISABLED` |
-| `POST` | `/api/auth/saml/acs` | keines (signierte SAML-Antwort ist der Nachweis) | Formularfeld `SAMLResponse` | 303 nach `/`, setzt `kw_session` | 501 `SAML_DISABLED`; 401 HTML-Seite mit `SAML_LOGIN_FAILED` bzw. dem Kontogrund |
+| `POST` | `/api/auth/saml/acs` | keines (signierte SAML-Antwort ist der Nachweis) | Formularfeld `SAMLResponse` | 303 nach `/api/auth/saml/abschluss?code=…` (Abschlusscode 2 min, einmalig) — noch keine Sitzung | 501 `SAML_DISABLED`; 401 HTML-Seite mit `SAML_LOGIN_FAILED` |
+| `GET` | `/api/auth/saml/abschluss` | keines (Abschlusscode und Browsernachweis des startenden Browsers) | Abfrage `code`, Cookie `kw_saml_bindung` | 303 nach `/` bzw. ins Word-Anmeldefenster, setzt `kw_session` | 501 `SAML_DISABLED`; 401 HTML-Seite mit `SAML_LOGIN_FAILED` (Nachweis fehlt/passt nicht, Code unbekannt/verbraucht) bzw. dem Kontogrund |
 | `GET` | `/api/auth/status` | keines | — | 200 `{ needsSetup, oidcEnabled, samlEnabled, selfRegistrationEnabled, passwordLoginEnabled }` | — |
 | `POST` | `/api/auth/setup` | keines (nur auf leerer Instanz) | Rumpf `{ name, email, password }` | 201 `{ user, token }`, setzt `kw_session` — erstes Konto, Admin | 409 `ALREADY_SETUP`; Dienstfehler |
 | `POST` | `/api/auth/users/:id/approve` | `requireAdmin` | — | 200 freigegebenes Konto | 401; 403 `FORBIDDEN`; Dienstfehler |
@@ -145,7 +146,7 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/scim/v2/Users/:id` | Verzeichnisschlüssel | — | 200 SCIM-User | 401 `SCIM_UNAUTHORIZED`; 404 |
 | `POST` | `/scim/v2/Users` | Verzeichnisschlüssel | SCIM-User (`userName`, `displayName`, `active`, `roles`) | 201 angelegtes Konto (Rolle aus `roles`) | 401 `SCIM_UNAUTHORIZED`; 400; 409 `uniqueness` |
 | `PUT` | `/scim/v2/Users/:id` | Verzeichnisschlüssel | SCIM-User (ersetzt Name, Adresse, `active`, `roles`) | 200 Konto | 401 `SCIM_UNAUTHORIZED`; 404; 409 |
-| `PATCH` | `/scim/v2/Users/:id` | Verzeichnisschlüssel | PatchOp für `active`, `userName`, `displayName`, `roles` | 200 Konto | 401 `SCIM_UNAUTHORIZED`; 400; 404; 409 |
+| `PATCH` | `/scim/v2/Users/:id` | Verzeichnisschlüssel | PatchOp für `active`, `userName`, `displayName`, `roles` und den gefilterten Pfad `roles[value eq "…"]` (`remove`/`replace` nur dieses Eintrags) | 200 Konto; gleicht danach die Prüfzuweisungen bestehender Objekte ab | 401 `SCIM_UNAUTHORIZED`; 400 (`invalidPath` für jeden anderen Rollenpfad); 404; 409 |
 | `DELETE` | `/scim/v2/Users/:id` | Verzeichnisschlüssel | — | 204 — Austritt: Konto GESPERRT (nicht gelöscht), Sitzungen enden | 401 `SCIM_UNAUTHORIZED`; 404; 409 `mutability` |
 
 ### 3.3 Wissensobjekte (`koRoutes`, `lesevarianten`, `kanten`, `bearbeitung`, `provenance`)

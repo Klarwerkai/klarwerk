@@ -210,7 +210,13 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "public",
     reason:
       "SAML-Rücksprung des Anbieters; prüft Signatur gegen das konfigurierte Zertifikat, " +
-      "InResponseTo (einmalig), Audience, Recipient und Zeitfenster.",
+      "InResponseTo (einmalig), Audience, Recipient und Zeitfenster. Vergibt KEINE Sitzung.",
+  },
+  "GET /api/auth/saml/abschluss": {
+    protection: "public",
+    reason:
+      "SAML-Abschluss; Sitzung nur mit einmaligem Abschlusscode UND dem Browsernachweis, " +
+      "den der Start in den startenden Browser gelegt hat.",
   },
   // R-0556 / R-0571: die Pflege aus dem Unternehmensverzeichnis (SCIM 2.0) — Verzeichnisschlüssel.
   "GET /scim/v2/ServiceProviderConfig": { protection: "verzeichnis" },

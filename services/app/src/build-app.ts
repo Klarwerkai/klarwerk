@@ -3095,6 +3095,54 @@ export function buildApp(
       saml: createSamlProviderFromEnv(),
     }),
   );
+  // FR-VAL-07: EIN Notifier für alle Zuweisungswege (Board-Zuweisung + Einreichen, SCRUM-395).
+  const notifyAssignment = makeAssignmentNotifier(services.auth, services.mailer);
+  // R-0571: wer laut Verzeichnis für die Prüfung in einem Space zuständig ist. Ohne Zuordnung bleibt
+  // das Einreichen, wie es war (nur die genannten Prüfenden).
+  const pruefzustaendigkeit = lesePruefzustaendigkeit(process.env.KLARWERK_PRUEFZUSTAENDIGKEIT);
+  // Gleicht die aus dem Verzeichnis abgeleiteten Zuweisungen EINES Objekts mit dem heutigen Stand
+  // ab (Space des Objekts × Gruppen der Konten) und benachrichtigt neu Zuständige. Ein validiertes
+  // oder gelöschtes Objekt ist kein Prüfanlass mehr und bleibt unberührt.
+  const zustaendigkeitAbgleichen = async (
+    koId: string,
+    akteur: string,
+    jeSpace = new Map<string, Promise<string[]>>(),
+  ): Promise<string[] | undefined> => {
+    const ko = await services.ko.get(koId);
+    if (!ko || ko.deletedAt || ko.status === "validiert") {
+      return undefined;
+    }
+    const space = typeof ko.spaceId === "string" ? ko.spaceId : undefined;
+    if (space && !jeSpace.has(space)) {
+      jeSpace.set(space, services.auth.pruefzustaendigeFuer(space, pruefzustaendigkeit));
+    }
+    const soll = space ? ((await jeSpace.get(space))?.filter((id) => id !== ko.author) ?? []) : [];
+    await services.validation.verzeichnisAbgleichen(koId, soll, akteur);
+    const offen = await services.validation.nochZuBenachrichtigen(koId, soll, {
+      altbestandBenachrichtigt: true,
+    });
+    for (const prueferin of offen) {
+      await notifyAssignment(koId, [prueferin]);
+      await services.validation.benachrichtigungErledigt(koId, prueferin);
+    }
+    return soll;
+  };
+  // Nach jeder Verzeichnisänderung (Eintritt, Austritt, Gruppenwechsel): ALLE betroffenen Objekte —
+  // die in zugeordneten Spaces und die, an denen noch eine offene Verzeichnis-Zuweisung hängt.
+  const alleZustaendigkeitenAbgleichen = async (): Promise<void> => {
+    const spaces = new Set([...pruefzustaendigkeit.values()].flat());
+    const ids = new Set(await services.validation.koMitVerzeichnisZuweisung());
+    for (const ko of await services.ko.list()) {
+      if (typeof ko.spaceId === "string" && spaces.has(ko.spaceId)) {
+        ids.add(ko.id);
+      }
+    }
+    // Die Zuständigen je Space einmal je Lauf lesen, nicht einmal je Objekt.
+    const jeSpace = new Map<string, Promise<string[]>>();
+    for (const koId of ids) {
+      await zustaendigkeitAbgleichen(koId, "system", jeSpace);
+    }
+  };
   // R-0556 / R-0571: die Pflege aus dem Unternehmensverzeichnis (SCIM). Ohne gültigen
   // Verzeichnisschlüssel gibt es die Routen nicht — der Startbericht sagt, warum.
   const verzeichnisSchluessel = scimSchluessel();
@@ -3108,18 +3156,10 @@ export function buildApp(
           controllerGroup: process.env.OIDC_GROUP_CONTROLLER,
           expertGroup: process.env.OIDC_GROUP_EXPERTE,
         },
+        ...(pruefzustaendigkeit.size > 0 ? { nachAenderung: alleZustaendigkeitenAbgleichen } : {}),
       }),
     );
   }
-  // R-0571: wer laut Verzeichnis für die Prüfung in einem Space zuständig ist. Ohne Zuordnung bleibt
-  // das Einreichen, wie es war (nur die genannten Prüfenden).
-  const pruefzustaendigkeit = lesePruefzustaendigkeit(process.env.KLARWERK_PRUEFZUSTAENDIGKEIT);
-  const pruefzustaendige =
-    pruefzustaendigkeit.size > 0
-      ? (spaceId: string) => services.auth.pruefzustaendigeFuer(spaceId, pruefzustaendigkeit)
-      : undefined;
-  // FR-VAL-07: EIN Notifier für alle Zuweisungswege (Board-Zuweisung + Einreichen, SCRUM-395).
-  const notifyAssignment = makeAssignmentNotifier(services.auth, services.mailer);
   // Weg 3: semantischer Vorfilter der Duplikat-Erkennung. Standard AUS → beide Routen bekommen
   // undefined → heutiges „jeder gegen jeden". Erst KLARWERK_DUP_PREFILTER=1 schaltet ihn scharf.
   const semanticPrefilter = createSemanticPrefilterFromEnv();
@@ -3842,24 +3882,11 @@ export function buildApp(
         ko: services.ko,
         auth: services.auth,
         audit: services.audit,
-        // R-0571: kommt ein Objekt in einen Space, werden die laut Verzeichnis Zuständigen zu
-        // Prüfenden — mit derselben idempotenten Zuweisung und Benachrichtigung wie beim Einreichen.
-        ...(pruefzustaendige
-          ? {
-              pruefzustaendigkeit: {
-                zustaendige: pruefzustaendige,
-                zuweisen: async (koId: string, ids: string[], akteur: string) => {
-                  await services.validation.zuweisenBeimEinreichen(koId, ids, akteur);
-                  const offen = await services.validation.nochZuBenachrichtigen(koId, ids, {
-                    altbestandBenachrichtigt: true,
-                  });
-                  for (const prueferin of offen) {
-                    await notifyAssignment(koId, [prueferin]);
-                    await services.validation.benachrichtigungErledigt(koId, prueferin);
-                  }
-                },
-              },
-            }
+        // R-0571: wechselt ein Objekt den Space, folgen ihm die laut Verzeichnis Zuständigen —
+        // neue werden zugewiesen und benachrichtigt, die des alten Space verlieren die offene
+        // Verzeichnis-Zuweisung.
+        ...(pruefzustaendigkeit.size > 0
+          ? { pruefzustaendigkeit: { abgleichen: zustaendigkeitAbgleichen } }
           : {}),
       },
       guards,

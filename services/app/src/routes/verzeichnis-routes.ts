@@ -77,6 +77,13 @@ export interface VerzeichnisRoutesDeps {
   schluessel: string;
   /** Gruppennamen → Rolle, dieselben wie am Firmen-Login. */
   rollen: Omit<OidcRoleConfig, "roleClaim">;
+  /**
+   * R-0571: nach jeder geschriebenen Änderung (Eintritt, Austritt, Gruppenwechsel) — gleicht die
+   * aus dem Verzeichnis abgeleiteten Prüfzuweisungen BESTEHENDER Objekte mit dem neuen Stand ab.
+   * Scheitert er, antwortet die Route mit einem Fehler; das Verzeichnis wiederholt den (idempotenten)
+   * Aufruf, und der Abgleich läuft erneut.
+   */
+  nachAenderung?: () => Promise<void>;
 }
 
 interface ScimEingabe {
@@ -202,7 +209,20 @@ function leseNutzer(body: unknown): ScimEingabe {
   };
 }
 
-/** RFC 7644 §3.5.2 — die Pfade, die die Pflege braucht. Unbekannte Pfade werden übergangen. */
+/** `roles[value eq "X"]` → `X`; jeder andere Rollenpfad ist ein `invalidPath`. */
+function rollenFilter(pfad: string): string {
+  const passt = /^roles\[\s*value\s+eq\s+"((?:[^"\\]|\\.)*)"\s*\]$/i.exec(pfad.trim());
+  if (!passt) {
+    throw new ScimFehler(400, "Unsupported roles path", "invalidPath");
+  }
+  return (passt[1] ?? "").replace(/\\(.)/g, "$1");
+}
+
+/**
+ * RFC 7644 §3.5.2 — die Pfade, die die Pflege braucht. Unbekannte Attribute (etwa
+ * `name.givenName` oder Erweiterungsschemata, die Entra mitschickt) werden übergangen; ein
+ * Rollenpfad, den die Pflege nicht auswerten kann, wird dagegen abgewiesen (`rollenFilter`).
+ */
 function wendePatchAn(aktuell: PublicUser, body: unknown): ScimEingabe {
   const ops = (body as { Operations?: unknown })?.Operations;
   if (!Array.isArray(ops)) {
@@ -247,7 +267,7 @@ function wendePatchAn(aktuell: PublicUser, body: unknown): ScimEingabe {
       if (name) {
         ergebnis.name = name;
       }
-    } else if (pfadKlein.startsWith("roles")) {
+    } else if (pfadKlein === "roles") {
       const werte = wert === undefined ? [] : gruppenAus(wert);
       if (op === "add") {
         gruppen = [...new Set([...gruppen, ...werte])];
@@ -255,6 +275,27 @@ function wendePatchAn(aktuell: PublicUser, body: unknown): ScimEingabe {
         gruppen = werte;
       } else {
         gruppen = werte.length === 0 ? [] : gruppen.filter((g) => !werte.includes(g));
+      }
+      gruppenGeaendert = true;
+    } else if (pfadKlein.startsWith("roles")) {
+      // Gefilterter Pfad (§3.5.2.2/§3.5.2.3): `roles[value eq "QM-Pruefung"]` trifft NUR diesen
+      // Eintrag. Jeder andere Rollenpfad wird abgewiesen — als Änderung der ganzen Liste
+      // ausgeführt, nähme er sonst alle Gruppen und damit Rolle und Prüfzuständigkeiten mit.
+      const gewaehlt = rollenFilter(pfad);
+      if (op === "add") {
+        throw new ScimFehler(400, "add does not accept a value filter", "invalidPath");
+      }
+      const treffer = (g: string) => g.toLowerCase() === gewaehlt.toLowerCase();
+      if (op === "replace") {
+        // §3.5.2.3: ein Filter ohne Treffer ist beim Ersetzen ein Fehler, keine stille Ergänzung.
+        if (!gruppen.some(treffer)) {
+          throw new ScimFehler(400, "No role matches the value filter", "noTarget");
+        }
+        const ersatz = wert === undefined ? [] : gruppenAus(wert);
+        gruppen = [...new Set(gruppen.flatMap((g) => (treffer(g) ? ersatz : [g])))];
+      } else {
+        // Entfernen einer schon fehlenden Rolle ändert nichts — das Verzeichnis darf es wiederholen.
+        gruppen = gruppen.filter((g) => !treffer(g));
       }
       gruppenGeaendert = true;
     }
@@ -430,6 +471,7 @@ export function verzeichnisRoutes(deps: VerzeichnisRoutesDeps): FastifyPluginAsy
           rolle: rolleAus(eingabe.gruppen),
           gruppen: eingabe.gruppen,
         });
+        await deps.nachAenderung?.();
         return { status: 201, rumpf: alsScim(konto) };
       });
     });
@@ -450,6 +492,7 @@ export function verzeichnisRoutes(deps: VerzeichnisRoutesDeps): FastifyPluginAsy
           gruppen,
           rolle: rolleAus(gruppen),
         });
+        await deps.nachAenderung?.();
         return { status: 200, rumpf: alsScim(konto) };
       });
     });
@@ -469,6 +512,7 @@ export function verzeichnisRoutes(deps: VerzeichnisRoutesDeps): FastifyPluginAsy
           ...aenderung,
           rolle: rolleAus(aenderung.gruppen),
         });
+        await deps.nachAenderung?.();
         return { status: 200, rumpf: alsScim(konto) };
       });
     });
@@ -482,6 +526,7 @@ export function verzeichnisRoutes(deps: VerzeichnisRoutesDeps): FastifyPluginAsy
       await antworte(reply, async () => {
         await vorhanden(request.params.id);
         await deps.auth.verzeichnisAendern(request.params.id, { aktiv: false });
+        await deps.nachAenderung?.();
         return { status: 204 };
       });
     });

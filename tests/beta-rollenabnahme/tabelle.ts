@@ -1724,7 +1724,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "authRoutes",
     methode: "GET",
     pfad: "/api/auth/saml/start",
-    belegstelle: "services/auth/src/routes.ts:862",
+    belegstelle: "services/auth/src/routes.ts:892",
     tor: "keines — der Einstieg in den SAML-Ablauf",
     erwartet: OEFFENTLICH(
       "Die SAML-Anmeldung beginnt notwendig unangemeldet. Ohne SAML-Konfiguration antwortet die Route allen fünf Akteuren gleich mit 501 `SAML_DISABLED` — gemessen ist damit, dass an dieser Tür weder 401 noch 403 steht.",
@@ -1734,7 +1734,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "authRoutes",
     methode: "GET",
     pfad: "/api/auth/saml/metadata",
-    belegstelle: "services/auth/src/routes.ts:875",
+    belegstelle: "services/auth/src/routes.ts:914",
     tor: "keines — die Metadaten für die Einrichtung beim Anbieter",
     erwartet: OEFFENTLICH(
       "Die Dienstanbieter-Metadaten trägt die IT beim Anbieter ein, bevor es irgendeine Anmeldung gibt. Sie nennen nur Kennung und Rücksprungadresse dieser Instanz; ohne SAML-Konfiguration antwortet die Route allen gleich mit 501 `SAML_DISABLED`.",
@@ -1747,11 +1747,23 @@ export const TABELLE: Zeile[] = [
     gruppe: "authRoutes",
     methode: "POST",
     pfad: "/api/auth/saml/acs",
-    belegstelle: "services/auth/src/routes.ts:904",
+    belegstelle: "services/auth/src/routes.ts:968",
     tor: "keines — der Nachweis ist die signierte Antwort des Anbieters",
     payload: { SAMLResponse: "keine-echte-saml-antwort" },
     erwartet: OEFFENTLICH(
       "Der Rücksprung des SAML-Anbieters kommt notwendig ohne Klarwerk-Sitzung (fremd ausgelöster Formular-POST). Ohne SAML-Konfiguration antwortet er allen fünf Akteuren gleich mit 501 `SAML_DISABLED`; die Prüfung der signierten Antwort selbst steht in `tests/firmenanmeldung/saml-anmeldung.test.ts`.",
+    ),
+  },
+  // Der SAML-Abschluss: erst hier entsteht die Sitzung, und nur mit dem Nachweis des startenden
+  // Browsers (S10/S13 in `saml-anmeldung.test.ts`). Ohne Konfiguration allen fünf gleich 501.
+  {
+    gruppe: "authRoutes",
+    methode: "GET",
+    pfad: "/api/auth/saml/abschluss",
+    belegstelle: "services/auth/src/routes.ts:1017",
+    tor: "keines — der Nachweis sind Abschlusscode und Browsernachweis des startenden Browsers",
+    erwartet: OEFFENTLICH(
+      "Der Abschluss folgt unmittelbar auf den Rücksprung des Anbieters, also notwendig vor jeder Klarwerk-Sitzung. Ohne SAML-Konfiguration antwortet er allen fünf Akteuren gleich mit 501 `SAML_DISABLED`; die Bindung an den startenden Browser steht in `tests/firmenanmeldung/saml-anmeldung.test.ts` (S10, S13).",
     ),
   },
   // ----------------------------------------------------------------------------------------------

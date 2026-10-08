@@ -1,11 +1,11 @@
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { Mailer } from "../../notifications";
 import { type Meldungsschluessel, type Sprache, meldung } from "./meldungen";
 import { HINWEIS_TEXT_VERSION, hinweisFaellig } from "./notice";
 import { type OidcProvider, OidcUnreachableError, createPkcePair, randomToken } from "./oidc";
 import { LoginRateLimiter } from "./rate-limit";
-import { SamlFehler, type SamlProvider } from "./saml";
+import { type SamlErgebnis, SamlFehler, type SamlProvider } from "./saml";
 import { type AuthService, istLesbaresAblaufdatum } from "./service";
 import { AuthError, type AuthErrorCode, type PublicUser, type Role } from "./types";
 
@@ -162,6 +162,36 @@ function flowCookie(name: string, value: string): string {
 function clearFlowCookie(name: string): string {
   const base = `${name}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`;
   return cookieSecure() ? `${base}; Secure` : base;
+}
+
+// R-0560 · BROWSERBINDUNG DES SAML-WEGS. Eine gültig signierte Antwort beweist, WER sich beim
+// Anbieter angemeldet hat — nicht, in WELCHEM Browser. Ohne Bindung könnte jemand seine eigene
+// frische Antwort per selbst abschickendem Formular in einen fremden Browser posten und ihn so
+// unter seinem Konto anmelden (Login-CSRF), oder eine abgegriffene Antwort in seinem eigenen Browser
+// einlösen. Deshalb legt der Start einen einmaligen Nachweis in GENAU den startenden Browser
+// (`HttpOnly`, nur unter `/api/auth/saml`), der Anbieter merkt sich dessen Prüfsumme zur Anfrage.
+// Der Rücksprung kommt als Formular-POST von der Seite des Anbieters — dorthin reist ein
+// `SameSite=Lax`-Cookie nicht mit, und `SameSite=None` bleibt ausgeschlossen (s. unten). Der ACS
+// prüft deshalb die Antwort, merkt sich das Ergebnis unter einem einmaligen Abschlusscode und leitet
+// per 303 auf `GET /api/auth/saml/abschluss` — eine Seitennavigation, zu der das Cookie mitreist.
+// ERST dort, nach dem Vergleich in konstanter Zeit, entsteht die Sitzung.
+const SAML_BINDUNG_COOKIE = "kw_saml_bindung";
+const SAML_COOKIE_PFAD = "/api/auth/saml";
+const SAML_ABSCHLUSS_FRIST_MS = 2 * 60 * 1000;
+const SAML_ABSCHLUESSE_MAX = 10_000;
+
+function samlBindungCookie(wert: string): string {
+  const base = `${SAML_BINDUNG_COOKIE}=${wert}; HttpOnly; Path=${SAML_COOKIE_PFAD}; Max-Age=${OIDC_FLOW_MAX_AGE}; SameSite=Lax`;
+  return cookieSecure() ? `${base}; Secure` : base;
+}
+
+function samlBindungLoeschen(): string {
+  const base = `${SAML_BINDUNG_COOKIE}=; HttpOnly; Path=${SAML_COOKIE_PFAD}; Max-Age=0; SameSite=Lax`;
+  return cookieSecure() ? `${base}; Secure` : base;
+}
+
+function pruefsummeHex(wert: string): string {
+  return createHash("sha256").update(wert).digest("hex");
 }
 
 function readCookie(request: FastifyRequest, wanted: string): string | undefined {
@@ -867,8 +897,17 @@ export function authRoutes(
         return;
       }
       const ausDemDialog = request.query?.ziel === OIDC_ZIEL_WORD_ADDIN;
+      // Der einmalige Browsernachweis (s. `SAML_BINDUNG_COOKIE`): der Browser bekommt den Wert,
+      // der Anbieter merkt sich nur seine Prüfsumme.
+      const nachweis = randomToken();
       reply.header("cache-control", "no-store");
-      reply.redirect(options.saml.anmeldeUrl(ausDemDialog ? OIDC_ZIEL_WORD_ADDIN : undefined));
+      reply.header("set-cookie", samlBindungCookie(nachweis));
+      reply.redirect(
+        options.saml.anmeldeUrl(
+          ausDemDialog ? OIDC_ZIEL_WORD_ADDIN : undefined,
+          pruefsummeHex(nachweis),
+        ),
+      );
     });
 
     // R-0560: die Dienstanbieter-Metadaten — das, was die IT beim Anbieter einträgt.
@@ -884,12 +923,37 @@ export function authRoutes(
         .send(options.saml.metadaten());
     });
 
+    // R-0560: geprüfte, aber noch nicht an den Browser gebundene Anmeldungen — je einmaliger
+    // Abschlusscode, zwei Minuten lang, genau einmal einlösbar. Nur in diesem Prozess.
+    const samlAbschluesse = new Map<
+      string,
+      { ergebnis: SamlErgebnis; insDialog: boolean; bis: number }
+    >();
+    const samlAbschlussMerken = (ergebnis: SamlErgebnis, insDialog: boolean): string => {
+      const nun = Date.now();
+      for (const [code, eintrag] of samlAbschluesse) {
+        if (eintrag.bis <= nun) {
+          samlAbschluesse.delete(code);
+        }
+      }
+      if (samlAbschluesse.size >= SAML_ABSCHLUESSE_MAX) {
+        const aeltester = samlAbschluesse.keys().next().value;
+        if (aeltester !== undefined) {
+          samlAbschluesse.delete(aeltester);
+        }
+      }
+      const code = randomToken();
+      samlAbschluesse.set(code, { ergebnis, insDialog, bis: nun + SAML_ABSCHLUSS_FRIST_MS });
+      return code;
+    };
+
     // R-0560: der Rücksprung des Anbieters (HTTP-POST-Bindung, Formularkodierung). Der
     // Formularparser gilt NUR in diesem eingekapselten Bereich: die übrigen Auth-Routen nehmen
     // weiter ausschliesslich JSON an — ein Formular einer fremden Seite erreicht dort nichts.
     // Ein Sitzungscookie reist bei diesem fremd ausgelösten POST nicht mit (`SameSite=Lax`); die
     // Herkunftsprüfung der App lässt ihn deshalb durch, und es gibt keine Sitzung, in deren Namen
-    // geschrieben würde. Der Nachweis ist die signierte Antwort selbst.
+    // geschrieben würde. Hier entsteht auch KEINE Sitzung: die geprüfte Antwort wartet unter einem
+    // Abschlusscode auf den Browser, der die Anfrage gestellt hat (`/api/auth/saml/abschluss`).
     app.register(async (app) => {
       if (!app.hasContentTypeParser("application/x-www-form-urlencoded")) {
         app.addContentTypeParser(
@@ -916,12 +980,15 @@ export function authRoutes(
             if (typeof antwort !== "string" || antwort === "") {
               throw new SamlFehler("SAMLResponse fehlt");
             }
-            const { claims, rolle } = saml.pruefeAntwort(antwort);
-            const { token } = await service.loginWithOidc(claims, saml.autoProvision, rolle);
-            reply.header("set-cookie", sessionCookie(token));
+            const ergebnis = saml.pruefeAntwort(antwort);
+            if (ergebnis.bindung === undefined) {
+              throw new SamlFehler("Anfrage ohne Browserbindung");
+            }
             // Nur die EINE feste Kennung führt ins Dialogfenster — keine offene Weiterleitung.
-            const zurueckInsDialog = request.body?.RelayState === OIDC_ZIEL_WORD_ADDIN;
-            reply.redirect(zurueckInsDialog ? OIDC_WEITER_WORD_ADDIN : "/", 303);
+            const insDialog = request.body?.RelayState === OIDC_ZIEL_WORD_ADDIN;
+            const code = samlAbschlussMerken(ergebnis, insDialog);
+            reply.header("cache-control", "no-store");
+            reply.redirect(`${SAML_COOKIE_PFAD}/abschluss?code=${encodeURIComponent(code)}`, 303);
           } catch (error) {
             request.log.warn(
               {
@@ -942,6 +1009,59 @@ export function authRoutes(
         },
       );
     });
+
+    // R-0560: der Abschluss — die Sitzung entsteht NUR in dem Browser, der die Anfrage gestellt hat.
+    // Ohne passenden Nachweis (anderer Browser, Cookie fehlt, Code unbekannt, abgelaufen oder schon
+    // eingelöst) endet es auf der Fehlerseite, ohne Sitzung. Der Code verfällt beim ersten Versuch.
+    app.get<{ Querystring: { code?: unknown } }>(
+      "/api/auth/saml/abschluss",
+      async (request, reply) => {
+        const saml = options.saml;
+        if (!saml) {
+          reply
+            .code(501)
+            .send({ error: "SAML_DISABLED", message: meldung("SAML_DISABLED", sprache(request)) });
+          return;
+        }
+        const code = request.query?.code;
+        const eintrag = typeof code === "string" ? samlAbschluesse.get(code) : undefined;
+        if (typeof code === "string") {
+          samlAbschluesse.delete(code);
+        }
+        const nachweis = readCookie(request, SAML_BINDUNG_COOKIE);
+        try {
+          if (!eintrag || eintrag.bis <= Date.now()) {
+            throw new SamlFehler("Abschlusscode unbekannt, abgelaufen oder verbraucht");
+          }
+          const soll = Buffer.from(eintrag.ergebnis.bindung ?? "", "utf8");
+          const ist = Buffer.from(nachweis ? pruefsummeHex(nachweis) : "", "utf8");
+          if (soll.length === 0 || ist.length !== soll.length || !timingSafeEqual(ist, soll)) {
+            throw new SamlFehler("Browsernachweis fehlt oder passt nicht");
+          }
+          const { claims, rolle } = eintrag.ergebnis;
+          const { token } = await service.loginWithOidc(claims, saml.autoProvision, rolle);
+          reply.header("set-cookie", [samlBindungLoeschen(), sessionCookie(token)]);
+          reply.header("cache-control", "no-store");
+          reply.redirect(eintrag.insDialog ? OIDC_WEITER_WORD_ADDIN : "/", 303);
+        } catch (error) {
+          request.log.warn(
+            {
+              event: "saml-anmeldung-abgelehnt",
+              grund: error instanceof SamlFehler ? error.grund : (error as Error)?.name,
+            },
+            "SAML-Anmeldung abgelehnt",
+          );
+          // Wie am ACS: ein AuthError nennt den Grund aus dem Katalog, alles andere bleibt allgemein.
+          // Der Nachweis ist in jedem Fall verbraucht.
+          const satz =
+            error instanceof AuthError
+              ? meldung(error.message, sprache(request))
+              : meldung("SAML_LOGIN_FAILED", sprache(request));
+          reply.header("set-cookie", samlBindungLoeschen());
+          samlFehlerseite(reply, satz, sprache(request));
+        }
+      },
+    );
 
     app.post<{ Params: { id: string } }>("/api/auth/users/:id/approve", async (request, reply) => {
       const admin = await requireAdmin(request, reply);

@@ -2,7 +2,7 @@
 // AUFNAHME gesamt-sso · R-0560 — ANMELDUNG ÜBER DAS ÄLTERE UNTERNEHMENSVERFAHREN SAML.
 // ================================================================================================
 //
-// Gemessen werden `services/auth/src/saml.ts` und die drei Türen in `routes.ts`.
+// Gemessen werden `services/auth/src/saml.ts` und die vier Türen in `routes.ts`.
 //
 // WARUM DIE SIGNATUREN HIER NICHT MIT DEM KANONISIERER DES PRODUKTS ENTSTEHEN: sonst bestätigte der
 // Test nur, dass ein Fehler auf beiden Seiten derselbe ist. Die signierten Teile stehen deshalb
@@ -14,7 +14,7 @@
 // eigene Fälle (K1–K5) mit Erwartungen aus der W3C-Regel, nicht aus dem eigenen Ergebnis.
 //
 //   K1–K5 exc-c14n: Namensräume, Attributreihenfolge, Vorgabenamensraum, Maskierung, PrefixList.
-//   S1    EN/NL: ohne Konfiguration antworten Start, Metadaten und Rücksprung 501 SAML_DISABLED.
+//   S1    EN/NL: ohne Konfiguration antworten Start, Metadaten, Rücksprung und Abschluss 501.
 //   S2    eine gültige, signierte Antwort ergibt Identität, Adresse, Gruppen und Rolle.
 //   S3    eine nach dem Signieren veränderte NameID scheitert am Digest.
 //   S4    eine mit fremdem Schlüssel signierte Antwort scheitert an der Signatur.
@@ -23,9 +23,12 @@
 //   S7    falsche Audience, falscher Empfänger, abgelaufene Assertion, unsignierte Antwort, DOCTYPE.
 //   S8    ein Kommentar in der NameID ändert weder Signatur noch gelesenen Wert.
 //   S9    EN/NL: ein gescheiterter Rücksprung zeigt die Fehlerseite mit dem Katalogsatz.
-//   S10   der ganze Weg am Draht: Start → signierte Antwort → Sitzung → /api/auth/me.
+//   S10   der ganze Weg am Draht: Start (Browsernachweis) → signierte Antwort (noch keine Sitzung)
+//         → Abschluss mit dem Nachweis → Sitzung → /api/auth/me. S10b: zurück ins Word-Fenster.
 //   S11   „nur Firmen-Login" mit SAML: Passwortweg zu, Status meldet SAML.
 //   S12   Konfiguration aus der Umgebung: öffentlicher Schlüssel als PEM, Lücken, Unlesbares.
+//   S13   Browserbindung: eine gültige Antwort ohne, mit fremdem oder geratenem Nachweis ergibt
+//         keine Sitzung; der Abschlusscode gilt nur einmal; eine Anfrage ohne Bindung wird abgelehnt.
 import { createHash, createSign, generateKeyPairSync } from "node:crypto";
 import { inflateRawSync } from "node:zlib";
 import Fastify from "fastify";
@@ -89,6 +92,8 @@ interface Angaben {
   /** Wer signiert — Vorgabe: der konfigurierte Anbieter. */
   schluessel?: typeof ANBIETER.privateKey;
   ohneSignatur?: boolean;
+  /** Vorgabe `_assertion-1`; eine zweite Einlösung derselben Kennung wäre eine Wiederholung. */
+  assertionId?: string;
 }
 
 /**
@@ -97,7 +102,7 @@ interface Angaben {
  */
 function antwort(a: Angaben): string {
   const jetzt = a.jetzt ?? JETZT;
-  const assertionId = "_assertion-1";
+  const assertionId = a.assertionId ?? "_assertion-1";
   const kopf = (mitNs: boolean) =>
     `<saml:Assertion${mitNs ? ` xmlns:saml="${NS_A}"` : ""} ID="${assertionId}" IssueInstant="${zeit(jetzt)}" Version="2.0">`;
   const issuer = `<saml:Issuer>${IDP}</saml:Issuer>`;
@@ -299,12 +304,44 @@ async function buehne(anbieter?: SamlProvider) {
   return { app, service };
 }
 
+type App = Awaited<ReturnType<typeof buehne>>["app"];
+
+/** Ein Browser startet: Weiterleitung, gestellte Anfrage und sein Nachweis als Cookie-Paar. */
+async function samlStart(app: App, query = "") {
+  const start = await app.inject({ method: "GET", url: `/api/auth/saml/start${query}` });
+  const ziel = new URL(String(start.headers.location));
+  const anfrage = inflateRawSync(
+    Buffer.from(ziel.searchParams.get("SAMLRequest") ?? "", "base64"),
+  ).toString("utf8");
+  const nachweis = /kw_saml_bindung=[^;]+/.exec(String(start.headers["set-cookie"] ?? ""))?.[0];
+  expect(nachweis, "der Start hat keinen Browsernachweis gesetzt").toBeDefined();
+  return {
+    start,
+    anfrage,
+    anfrageId: /ID="([^"]+)"/.exec(anfrage)?.[1] ?? "",
+    nachweis: nachweis ?? "",
+  };
+}
+
+/** Der Rücksprung des Anbieters — ein fremd ausgelöster Formular-POST, also OHNE Cookies. */
+function acs(app: App, xml: string, relayState?: string) {
+  return app.inject({
+    method: "POST",
+    url: "/api/auth/saml/acs",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    payload: new URLSearchParams({
+      SAMLResponse: b64(xml),
+      ...(relayState ? { RelayState: relayState } : {}),
+    }).toString(),
+  });
+}
+
 describe("R-0560 · die SAML-Türen am Draht", () => {
   it.each([
     ["en", "SAML is not configured."],
     ["nl", "SAML is niet geconfigureerd."],
   ] as const)(
-    "S1 SAML_DISABLED · die drei SAML-Türen antworten ohne Konfiguration 501 auf %s",
+    "S1 SAML_DISABLED · die vier SAML-Türen antworten ohne Konfiguration 501 auf %s",
     async (sprache, satz) => {
       const { app } = await buehne();
       try {
@@ -312,6 +349,7 @@ describe("R-0560 · die SAML-Türen am Draht", () => {
           { method: "GET" as const, url: "/api/auth/saml/start" },
           { method: "GET" as const, url: "/api/auth/saml/metadata" },
           { method: "POST" as const, url: "/api/auth/saml/acs", payload: { SAMLResponse: "x" } },
+          { method: "GET" as const, url: "/api/auth/saml/abschluss?code=x" },
         ]) {
           const res = await app.inject({ ...tuer, headers: { "accept-language": sprache } });
           expect(res.statusCode, tuer.url).toBe(501);
@@ -355,36 +393,43 @@ describe("R-0560 · die SAML-Türen am Draht", () => {
     },
   );
 
-  it("S10 der ganze Weg: Start, signierte Antwort, Sitzung, /api/auth/me", async () => {
+  it("S10 der ganze Weg: Start, signierte Antwort, Abschluss im selben Browser, Sitzung", async () => {
     const jetzt = Date.now();
     const anbieter = createSamlProvider(konfig(), { now: () => jetzt });
     const { app } = await buehne(anbieter);
     try {
-      const start = await app.inject({ method: "GET", url: "/api/auth/saml/start" });
-      expect(start.statusCode).toBe(302);
-      const ziel = new URL(String(start.headers.location));
+      const browser = await samlStart(app);
+      expect(browser.start.statusCode).toBe(302);
+      const ziel = new URL(String(browser.start.headers.location));
       expect(ziel.origin + ziel.pathname).toBe("https://idp.firma.test/sso");
-      const anfrage = inflateRawSync(
-        Buffer.from(ziel.searchParams.get("SAMLRequest") ?? "", "base64"),
-      ).toString("utf8");
-      expect(anfrage).toContain(`AssertionConsumerServiceURL="${ACS}"`);
-      expect(anfrage).toContain(`<saml:Issuer>${SP}</saml:Issuer>`);
-      const anfrageId = /ID="([^"]+)"/.exec(anfrage)?.[1] ?? "";
-      expect(anfrageId).toMatch(/^_[0-9a-f]{32}$/);
+      expect(browser.anfrage).toContain(`AssertionConsumerServiceURL="${ACS}"`);
+      expect(browser.anfrage).toContain(`<saml:Issuer>${SP}</saml:Issuer>`);
+      expect(browser.anfrageId).toMatch(/^_[0-9a-f]{32}$/);
+      // Der Nachweis: nur für die SAML-Türen, nicht für Skripte lesbar.
+      const gesetztBeimStart = String(browser.start.headers["set-cookie"] ?? "");
+      expect(gesetztBeimStart).toContain("HttpOnly");
+      expect(gesetztBeimStart).toContain("Path=/api/auth/saml");
+      expect(gesetztBeimStart).toContain("SameSite=Lax");
 
-      const ruecksprung = await app.inject({
-        method: "POST",
-        url: "/api/auth/saml/acs",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        payload: new URLSearchParams({
-          SAMLResponse: b64(antwort({ inResponseTo: anfrageId, jetzt })),
-        }).toString(),
-      });
+      // Der Rücksprung des Anbieters (fremd ausgelöster POST, ohne Cookie): noch KEINE Sitzung.
+      const ruecksprung = await acs(app, antwort({ inResponseTo: browser.anfrageId, jetzt }));
       expect(ruecksprung.statusCode, ruecksprung.body).toBe(303);
-      expect(ruecksprung.headers.location).toBe("/");
-      const gesetzt = String(ruecksprung.headers["set-cookie"] ?? "");
+      expect(ruecksprung.headers["set-cookie"]).toBeUndefined();
+      const abschlussUrl = String(ruecksprung.headers.location);
+      expect(abschlussUrl).toMatch(/^\/api\/auth\/saml\/abschluss\?code=[\w-]{43}$/);
+
+      const abschluss = await app.inject({
+        method: "GET",
+        url: abschlussUrl,
+        headers: { cookie: browser.nachweis },
+      });
+      expect(abschluss.statusCode, abschluss.body).toBe(303);
+      expect(abschluss.headers.location).toBe("/");
+      const gesetzt = String(abschluss.headers["set-cookie"] ?? "");
       const sitzung = /kw_session=[^;]+/.exec(gesetzt)?.[0];
       expect(sitzung, gesetzt).toBeDefined();
+      // Der Nachweis ist verbraucht und wird gelöscht.
+      expect(gesetzt).toContain("kw_saml_bindung=; HttpOnly; Path=/api/auth/saml; Max-Age=0");
 
       const ich = await app.inject({
         method: "GET",
@@ -410,27 +455,86 @@ describe("R-0560 · die SAML-Türen am Draht", () => {
     const anbieter = createSamlProvider(konfig(), { now: () => jetzt });
     const { app } = await buehne(anbieter);
     try {
-      const start = await app.inject({
-        method: "GET",
-        url: "/api/auth/saml/start?ziel=word-addin",
-      });
-      const ziel = new URL(String(start.headers.location));
+      const browser = await samlStart(app, "?ziel=word-addin");
+      const ziel = new URL(String(browser.start.headers.location));
       expect(ziel.searchParams.get("RelayState")).toBe("word-addin");
-      const anfrage = inflateRawSync(
-        Buffer.from(ziel.searchParams.get("SAMLRequest") ?? "", "base64"),
-      ).toString("utf8");
-      const anfrageId = /ID="([^"]+)"/.exec(anfrage)?.[1] ?? "";
-      const ruecksprung = await app.inject({
-        method: "POST",
-        url: "/api/auth/saml/acs",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        payload: new URLSearchParams({
-          SAMLResponse: b64(antwort({ inResponseTo: anfrageId, jetzt })),
-          RelayState: "word-addin",
-        }).toString(),
-      });
+      const ruecksprung = await acs(
+        app,
+        antwort({ inResponseTo: browser.anfrageId, jetzt }),
+        "word-addin",
+      );
       expect(ruecksprung.statusCode, ruecksprung.body).toBe(303);
-      expect(ruecksprung.headers.location).toBe("/word-addin/anmeldung.html");
+      const abschluss = await app.inject({
+        method: "GET",
+        url: String(ruecksprung.headers.location),
+        headers: { cookie: browser.nachweis },
+      });
+      expect(abschluss.statusCode, abschluss.body).toBe(303);
+      expect(abschluss.headers.location).toBe("/word-addin/anmeldung.html");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("S13 ohne den Nachweis des startenden Browsers entsteht keine Sitzung", async () => {
+    const jetzt = Date.now();
+    const anbieter = createSamlProvider(konfig(), { now: () => jetzt });
+    const { app } = await buehne(anbieter);
+    const ohneSitzung = (res: { statusCode: number; body: string; headers: object }) => {
+      expect(res.statusCode, res.body).toBe(401);
+      expect(res.body).toContain('data-testid="saml-fehler"');
+      expect(String((res.headers as Record<string, unknown>)["set-cookie"] ?? "")).not.toContain(
+        "kw_session=",
+      );
+    };
+    try {
+      // Login-CSRF: der Angreifer startet SELBST, meldet sich beim Anbieter an und lässt seine
+      // frische Antwort von einem fremden Browser einlösen — der hat keinen oder einen anderen
+      // Nachweis.
+      const opfer = await samlStart(app);
+      const versuche: [string, string | undefined][] = [
+        ["ohne Nachweis", undefined],
+        ["Nachweis eines anderen Browsers", opfer.nachweis],
+        ["geratener Nachweis", "kw_saml_bindung=geraten"],
+      ];
+      for (const [nr, [name, cookie]] of versuche.entries()) {
+        const angreifer = await samlStart(app);
+        const ruecksprung = await acs(
+          app,
+          antwort({ inResponseTo: angreifer.anfrageId, jetzt, assertionId: `_versuch-${nr}` }),
+        );
+        expect(ruecksprung.statusCode, name).toBe(303);
+        const abschluss = await app.inject({
+          method: "GET",
+          url: String(ruecksprung.headers.location),
+          headers: cookie ? { cookie } : {},
+        });
+        ohneSitzung(abschluss);
+        // Danach ist der Code verbraucht — auch der startende Browser löst ihn nicht mehr ein.
+        const nochmal = await app.inject({
+          method: "GET",
+          url: String(ruecksprung.headers.location),
+          headers: { cookie: angreifer.nachweis },
+        });
+        ohneSitzung(nochmal);
+      }
+
+      // Ein erfundener Code ohne Rücksprung führt ebenso nirgends hin.
+      ohneSitzung(
+        await app.inject({
+          method: "GET",
+          url: "/api/auth/saml/abschluss?code=erfunden",
+          headers: { cookie: opfer.nachweis },
+        }),
+      );
+
+      // Eine Anfrage, die ohne Browserbindung gestellt wurde, löst der Rücksprung gar nicht ein.
+      const { app: ohneBindung } = await buehne(anbieterMitAnfrage());
+      try {
+        ohneSitzung(await acs(ohneBindung, antwort({ inResponseTo: "_anfrage-1" })));
+      } finally {
+        await ohneBindung.close();
+      }
     } finally {
       await app.close();
     }

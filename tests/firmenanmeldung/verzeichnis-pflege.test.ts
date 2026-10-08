@@ -14,7 +14,14 @@
 //   V7  R-0571: Prüfzuständigkeit aus Verzeichnisgruppen — nur freigegebene Mitglieder, und die
 //       Zuordnung folgt jedem Wechsel.
 //   V8  R-0571 an der echten Kompositionswurzel: kommt ein Wissensobjekt in den Space, wird die im
-//       Verzeichnis Zuständige Prüferin — nicht die Autorin, nicht wer verschiebt.
+//       Verzeichnis Zuständige Prüferin — nicht die Autorin.
+//   V9  gefilterter Rollenpfad: `remove roles[value eq "…"]` nimmt NUR diese Gruppe, `replace`
+//       tauscht nur sie; jeder andere Rollenpfad wird mit 400 invalidPath abgewiesen und ändert nichts.
+//   V10 R-0571 für BESTEHENDE Objekte: Eintritt, Gruppenwechsel und Austritt im Verzeichnis gleichen
+//       die offenen Prüfzuweisungen eines schon im Space liegenden Objekts ab; eine Hand-Zuweisung
+//       bleibt.
+//   V11 der Abgleich am Dienst: nur offene Verzeichnis-Zuweisungen werden entzogen — Hand-Zuweisungen
+//       und erledigte Prüfungen bleiben, ein zweiter Lauf ändert nichts.
 import Fastify from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
@@ -25,6 +32,9 @@ import {
 import { InMemorySessionRepo, InMemoryUserRepo } from "../../services/auth/src/repo";
 import { authRoutes } from "../../services/auth/src/routes";
 import { AuthService } from "../../services/auth/src/service";
+import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
+import { InMemoryAssignmentRepo, InMemoryRatingRepo } from "../../services/validation/src/repo";
+import { ValidationService } from "../../services/validation/src/service";
 
 const SCHLUESSEL = "verzeichnisschluessel-fuer-den-test-0123456789";
 const SCIM = { authorization: `Bearer ${SCHLUESSEL}`, "content-type": "application/scim+json" };
@@ -267,6 +277,58 @@ describe("R-0556 · Verzeichnispflege über SCIM", () => {
       await app.close();
     }
   });
+
+  it("V9 gefilterter Rollenpfad ändert nur den gewählten Eintrag, Unbekanntes wird abgewiesen", async () => {
+    const { app, service } = await buehne();
+    try {
+      const neu = await eintritt(app, "paula@firma.test", ["QM-Pruefung", "klara-pruefer"]);
+      const pfad = (operationen: Record<string, unknown>[]) =>
+        app.inject({
+          method: "PATCH",
+          url: `/scim/v2/Users/${neu.id}`,
+          headers: SCIM,
+          payload: patch(operationen),
+        });
+
+      // So entfernt Entra EINE Rolle: Filter im Pfad, kein Wert.
+      const entfernt = await pfad([{ op: "remove", path: 'roles[value eq "QM-Pruefung"]' }]);
+      expect(entfernt.statusCode, entfernt.body).toBe(200);
+      expect(await service.kontoLesen(neu.id)).toMatchObject({
+        role: "controller",
+        verzeichnisGruppen: ["klara-pruefer"],
+      });
+
+      // replace mit Filter tauscht nur diesen Eintrag.
+      const getauscht = await pfad([
+        { op: "replace", path: 'roles[value eq "klara-pruefer"]', value: [{ value: "Recht" }] },
+      ]);
+      expect(getauscht.statusCode, getauscht.body).toBe(200);
+      expect((await service.kontoLesen(neu.id))?.verzeichnisGruppen).toEqual(["Recht"]);
+
+      // Nicht auswertbare Rollenpfade: 400 invalidPath — und die Gruppen bleiben, wie sie sind.
+      for (const operation of [
+        { op: "remove", path: 'roles[type eq "work"]' },
+        { op: "remove", path: "roles.value" },
+        { op: "add", path: 'roles[value eq "Recht"]', value: [{ value: "klara-admins" }] },
+      ]) {
+        const res = await pfad([operation]);
+        expect(res.statusCode, JSON.stringify(operation)).toBe(400);
+        expect(res.json()).toMatchObject({ scimType: "invalidPath", status: "400" });
+      }
+      // Ersetzen über einen Filter ohne Treffer: 400 noTarget (RFC 7644 §3.5.2.3).
+      const ohneTreffer = await pfad([
+        { op: "replace", path: 'roles[value eq "QM-Pruefung"]', value: [{ value: "Neu" }] },
+      ]);
+      expect(ohneTreffer.statusCode).toBe(400);
+      expect(ohneTreffer.json()).toMatchObject({ scimType: "noTarget" });
+      expect(await service.kontoLesen(neu.id)).toMatchObject({
+        role: "viewer",
+        verzeichnisGruppen: ["Recht"],
+      });
+    } finally {
+      await app.close();
+    }
+  });
 });
 
 describe("R-0571 · Prüfzuständigkeit aus dem Verzeichnis", () => {
@@ -304,51 +366,8 @@ describe("R-0571 · Prüfzuständigkeit aus dem Verzeichnis", () => {
   });
 
   it("V8 an der echten App: kommt ein Objekt in den Space, wird die Zuständige Prüferin", async () => {
-    vi.stubEnv("KLARWERK_SCIM_TOKEN", SCHLUESSEL);
-    vi.stubEnv("KLARWERK_PRUEFZUSTAENDIGKEIT", "QM-Pruefung=space-qm");
-    const services = buildServices();
-    const app = buildApp(services);
+    const { app, services, erika, koAnlegen, verschieben } = await appBuehne();
     try {
-      await app.inject({ method: "POST", url: "/api/auth/register", payload: ADMIN });
-      const adminLogin = await app.inject({
-        method: "POST",
-        url: "/api/auth/login",
-        payload: ADMIN,
-      });
-      const admin = { authorization: `Bearer ${adminLogin.json().token}` };
-      const adminId = String(adminLogin.json().user.id);
-      const autorin = { name: "Erika Autorin", email: "erika@firma.test", password: "geheim12345" };
-      const angelegt = await app.inject({
-        method: "POST",
-        url: "/api/users",
-        headers: admin,
-        payload: { ...autorin, role: "experte" },
-      });
-      expect(angelegt.statusCode, angelegt.body).toBe(201);
-      const erikaLogin = await app.inject({
-        method: "POST",
-        url: "/api/auth/login",
-        payload: autorin,
-      });
-      const erika = { authorization: `Bearer ${erikaLogin.json().token}` };
-
-      // Der Space mit der Kennung, auf die die Zuordnung zeigt — offen für alle mit Schreibrecht.
-      const am = new Date().toISOString();
-      await services.spaces.lege({
-        id: "space-qm",
-        version: 1,
-        name: "Qualität",
-        zweck: "Prüfmittel und Prüfanweisungen.",
-        verantwortlich: adminId,
-        zugang: "alle",
-        mitglieder: [],
-        ansichten: [],
-        angelegtVon: adminId,
-        angelegtAm: am,
-        geaendertVon: adminId,
-        geaendertAm: am,
-      });
-
       // Das Verzeichnis meldet die Prüferin mit ihrer Gruppe.
       const paula = await app.inject({
         method: "POST",
@@ -363,48 +382,12 @@ describe("R-0571 · Prüfzuständigkeit aus dem Verzeichnis", () => {
       expect(paula.statusCode, paula.body).toBe(201);
       const paulaId = String(paula.json().id);
 
-      const ko = await app.inject({
-        method: "POST",
-        url: "/api/kos",
-        headers: erika,
-        payload: {
-          confidentiality: "intern",
-          title: "Messschieber vor jeder Schicht prüfen",
-          statement: "Der Messschieber wird vor jeder Schicht gegen das Endmaß geprüft.",
-          type: "best_practice",
-          category: "Prüfmittel",
-          tags: ["pruefmittel"],
-        },
-      });
-      expect(ko.statusCode, ko.body).toBe(201);
-      const koId = String(ko.json().id);
+      const koId = await koAnlegen();
       // Vor dem Spacewechsel: keine Zuweisung an die Prüferin.
       const offenVorher = await services.validation.openAssignmentsFor(paulaId);
       expect(offenVorher.map((a) => a.koId)).toEqual([]);
 
-      const vorschau = await app.inject({
-        method: "POST",
-        url: "/api/spaces/verschiebung/vorschau",
-        headers: erika,
-        payload: { koId, zielSpaceId: "space-qm" },
-      });
-      expect(vorschau.statusCode, vorschau.body).toBe(200);
-      const v = vorschau.json();
-      const wechsel = await app.inject({
-        method: "POST",
-        url: "/api/spaces/verschiebung",
-        headers: erika,
-        payload: {
-          koId,
-          zielSpaceId: "space-qm",
-          basis: {
-            quelleId: v.quelle?.id ?? null,
-            quelleVersion: v.quelle?.version ?? null,
-            zielId: v.ziel?.id ?? null,
-            zielVersion: v.ziel?.version ?? null,
-          },
-        },
-      });
+      const wechsel = await verschieben(koId, "space-qm", erika);
       expect(wechsel.statusCode, wechsel.body).toBe(200);
       expect(wechsel.json().pruefzuweisung).toEqual([paulaId]);
       const offenNachher = await services.validation.openAssignmentsFor(paulaId);
@@ -413,4 +396,203 @@ describe("R-0571 · Prüfzuständigkeit aus dem Verzeichnis", () => {
       await app.close();
     }
   });
+
+  it("V10 bestehende Objekte folgen dem Verzeichnis: Eintritt, Gruppenwechsel, Austritt", async () => {
+    const { app, services, adminId, erika, koAnlegen, verschieben } = await appBuehne();
+    try {
+      // Das Objekt liegt SCHON im Space, bevor irgendwer im Verzeichnis zuständig ist.
+      const koId = await koAnlegen();
+      const wechsel = await verschieben(koId, "space-qm", erika);
+      expect(wechsel.json().pruefzuweisung).toEqual([]);
+
+      // Von Hand zugewiesen: Rita, ohne Prüfgruppe — sie bleibt, was immer das Verzeichnis tut.
+      const rita = await app.inject({
+        method: "POST",
+        url: "/scim/v2/Users",
+        headers: SCIM,
+        payload: JSON.stringify({ userName: "rita@firma.test", displayName: "Rita" }),
+      });
+      const ritaId = String(rita.json().id);
+      await services.validation.assign(koId, [ritaId], adminId);
+      const offen = async (id: string) =>
+        (await services.validation.openAssignmentsFor(id)).map((a) => a.koId);
+
+      // Eintritt in die Prüfgruppe → Zuweisung am BESTEHENDEN Objekt.
+      const paula = await app.inject({
+        method: "POST",
+        url: "/scim/v2/Users",
+        headers: SCIM,
+        payload: JSON.stringify({
+          userName: "paula@firma.test",
+          displayName: "Paula Prüferin",
+          roles: [{ value: "QM-Pruefung" }, { value: "klara-pruefer" }],
+        }),
+      });
+      expect(paula.statusCode, paula.body).toBe(201);
+      const paulaId = String(paula.json().id);
+      expect(await offen(paulaId)).toEqual([koId]);
+
+      // Gruppenwechsel (so schickt Entra das Entfernen EINER Rolle) → die offene Zuweisung endet.
+      const wechselGruppe = await app.inject({
+        method: "PATCH",
+        url: `/scim/v2/Users/${paulaId}`,
+        headers: SCIM,
+        payload: patch([{ op: "remove", path: 'roles[value eq "QM-Pruefung"]' }]),
+      });
+      expect(wechselGruppe.statusCode, wechselGruppe.body).toBe(200);
+      expect(wechselGruppe.json().roles).toEqual([{ value: "klara-pruefer" }]);
+      expect(await offen(paulaId)).toEqual([]);
+      expect(await offen(ritaId)).toEqual([koId]);
+
+      // Zurück in die Gruppe → wieder zuständig; Austritt → die Zuweisung endet erneut.
+      await app.inject({
+        method: "PATCH",
+        url: `/scim/v2/Users/${paulaId}`,
+        headers: SCIM,
+        payload: patch([{ op: "add", path: "roles", value: [{ value: "QM-Pruefung" }] }]),
+      });
+      expect(await offen(paulaId)).toEqual([koId]);
+      const austritt = await app.inject({
+        method: "DELETE",
+        url: `/scim/v2/Users/${paulaId}`,
+        headers: SCIM,
+      });
+      expect(austritt.statusCode).toBe(204);
+      expect(await offen(paulaId)).toEqual([]);
+      expect(await offen(ritaId)).toEqual([koId]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("V11 der Abgleich entzieht nur offene Verzeichnis-Zuweisungen — Hand und Erledigtes bleiben", async () => {
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    const assignments = new InMemoryAssignmentRepo();
+    const validation = new ValidationService({
+      koService,
+      ratings: new InMemoryRatingRepo(),
+      assignments,
+    });
+    const ko = await koService.create({
+      title: "Aussage",
+      statement: "Inhalt.",
+      type: "best_practice",
+      category: "Anlage 1",
+      author: "anna",
+      neededValidations: 2,
+    });
+    await validation.assign(ko.id, ["hand"], "controller");
+    expect(await validation.verzeichnisAbgleichen(ko.id, ["paula", "hugo"])).toEqual({
+      neu: ["paula", "hugo"],
+      entzogen: [],
+    });
+    // Hugo prüft — seine Zuweisung ist erledigt, eine Prüfspur.
+    await validation.rate(ko.id, "hugo", "up");
+    expect((await assignments.find(ko.id, "hugo"))?.status).toBe("done");
+
+    // Niemand mehr zuständig: nur Paulas OFFENE Verzeichnis-Zuweisung geht.
+    expect(await validation.verzeichnisAbgleichen(ko.id, [])).toEqual({
+      neu: [],
+      entzogen: ["paula"],
+    });
+    expect(await assignments.find(ko.id, "paula")).toBeUndefined();
+    expect(await assignments.find(ko.id, "hand")).toMatchObject({ status: "open" });
+    expect(await assignments.find(ko.id, "hugo")).toMatchObject({
+      status: "done",
+      quelle: "verzeichnis",
+    });
+    // Idempotent — und eine erledigte Prüfung wird nicht wieder geöffnet.
+    expect(await validation.verzeichnisAbgleichen(ko.id, [])).toEqual({ neu: [], entzogen: [] });
+    expect(await validation.verzeichnisAbgleichen(ko.id, ["hugo"])).toEqual({
+      neu: [],
+      entzogen: [],
+    });
+    expect(await assignments.find(ko.id, "hugo")).toMatchObject({ status: "done" });
+  });
 });
+
+/** Die echte Kompositionswurzel mit Verzeichnis, Zuordnung `QM-Pruefung → space-qm` und Autorin. */
+async function appBuehne() {
+  vi.stubEnv("KLARWERK_SCIM_TOKEN", SCHLUESSEL);
+  vi.stubEnv("KLARWERK_PRUEFZUSTAENDIGKEIT", "QM-Pruefung=space-qm");
+  vi.stubEnv("OIDC_GROUP_CONTROLLER", "klara-pruefer");
+  const services = buildServices();
+  const app = buildApp(services);
+  await app.inject({ method: "POST", url: "/api/auth/register", payload: ADMIN });
+  const adminLogin = await app.inject({ method: "POST", url: "/api/auth/login", payload: ADMIN });
+  const admin = { authorization: `Bearer ${adminLogin.json().token}` };
+  const adminId = String(adminLogin.json().user.id);
+  const autorin = { name: "Erika Autorin", email: "erika@firma.test", password: "geheim12345" };
+  const angelegt = await app.inject({
+    method: "POST",
+    url: "/api/users",
+    headers: admin,
+    payload: { ...autorin, role: "experte" },
+  });
+  expect(angelegt.statusCode, angelegt.body).toBe(201);
+  const erikaLogin = await app.inject({ method: "POST", url: "/api/auth/login", payload: autorin });
+  const erika = { authorization: `Bearer ${erikaLogin.json().token}` };
+
+  // Der Space mit der Kennung, auf die die Zuordnung zeigt — offen für alle mit Schreibrecht.
+  const am = new Date().toISOString();
+  await services.spaces.lege({
+    id: "space-qm",
+    version: 1,
+    name: "Qualität",
+    zweck: "Prüfmittel und Prüfanweisungen.",
+    verantwortlich: adminId,
+    zugang: "alle",
+    mitglieder: [],
+    ansichten: [],
+    angelegtVon: adminId,
+    angelegtAm: am,
+    geaendertVon: adminId,
+    geaendertAm: am,
+  });
+
+  const koAnlegen = async (): Promise<string> => {
+    const ko = await app.inject({
+      method: "POST",
+      url: "/api/kos",
+      headers: erika,
+      payload: {
+        confidentiality: "intern",
+        title: "Messschieber vor jeder Schicht prüfen",
+        statement: "Der Messschieber wird vor jeder Schicht gegen das Endmaß geprüft.",
+        type: "best_practice",
+        category: "Prüfmittel",
+        tags: ["pruefmittel"],
+      },
+    });
+    expect(ko.statusCode, ko.body).toBe(201);
+    return String(ko.json().id);
+  };
+
+  const verschieben = async (koId: string, zielSpaceId: string, wer: Record<string, string>) => {
+    const vorschau = await app.inject({
+      method: "POST",
+      url: "/api/spaces/verschiebung/vorschau",
+      headers: wer,
+      payload: { koId, zielSpaceId },
+    });
+    expect(vorschau.statusCode, vorschau.body).toBe(200);
+    const v = vorschau.json();
+    return app.inject({
+      method: "POST",
+      url: "/api/spaces/verschiebung",
+      headers: wer,
+      payload: {
+        koId,
+        zielSpaceId,
+        basis: {
+          quelleId: v.quelle?.id ?? null,
+          quelleVersion: v.quelle?.version ?? null,
+          zielId: v.ziel?.id ?? null,
+          zielVersion: v.ziel?.version ?? null,
+        },
+      },
+    });
+  };
+
+  return { app, services, adminId, erika, koAnlegen, verschieben };
+}

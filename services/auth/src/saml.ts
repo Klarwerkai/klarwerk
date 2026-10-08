@@ -17,10 +17,14 @@ import type { Role } from "./types";
 //
 // DER WEG (SP-initiiert, wie ihn Entra ID, ADFS, Okta und Keycloak führen):
 //   1. `GET /api/auth/saml/start` schickt eine AuthnRequest per HTTP-Redirect-Bindung zum Anbieter.
-//      Ihre Kennung merkt sich dieser Prozess zehn Minuten lang — EINMAL einlösbar.
+//      Ihre Kennung merkt sich dieser Prozess zehn Minuten lang — EINMAL einlösbar — zusammen mit
+//      der Prüfsumme eines einmaligen Browsernachweises, den der Start als Cookie in GENAU den
+//      startenden Browser legt.
 //   2. Der Anbieter schickt die signierte Antwort per HTTP-POST an `POST /api/auth/saml/acs`.
 //   3. `pruefeAntwort` prüft sie vollständig (unten) und gibt dieselbe Identität zurück, die der
-//      OIDC-Weg liefert (`OidcClaims`). Ab dort ist es DERSELBE Anmeldeweg (`loginWithOidc`):
+//      OIDC-Weg liefert (`OidcClaims`), dazu die Bindung der eingelösten Anfrage.
+//   4. `GET /api/auth/saml/abschluss` vergibt die Sitzung erst, wenn der Browser den passenden
+//      Nachweis vorzeigt (s. `routes.ts`). Ab dort ist es DERSELBE Anmeldeweg (`loginWithOidc`):
 //      Verknüpfung über (Aussteller, Subjekt), Selbstanlage, Rolle aus Gruppen, Sperre, Ablauf.
 //
 // WARUM KEINE FREMDE BIBLIOTHEK: im Bestand liegt keine XML-Signaturbibliothek, und eine
@@ -624,6 +628,12 @@ export interface SamlKonfig {
 export interface SamlErgebnis {
   claims: OidcClaims;
   rolle: Role;
+  /**
+   * Die Browserbindung der eingelösten Anfrage (Prüfsumme des Nachweises, den der Start in den
+   * startenden Browser gelegt hat) — `undefined`, wenn die Anfrage ohne gestellt wurde. Die Route
+   * vergibt eine Sitzung NUR, wenn der zurückkehrende Browser den passenden Nachweis vorzeigt.
+   */
+  bindung: string | undefined;
 }
 
 export interface SamlProvider {
@@ -631,9 +641,10 @@ export interface SamlProvider {
   readonly autoProvision: boolean;
   /**
    * Die Adresse beim Anbieter; die Anfragekennung gilt zehn Minuten und genau einmal. `relayState`
-   * reist unverändert hin und zurück — die Route lässt dafür nur EINEN festen Wert zu.
+   * reist unverändert hin und zurück — die Route lässt dafür nur EINEN festen Wert zu. `bindung`
+   * wird mit der Anfragekennung gemerkt und von `pruefeAntwort` zurückgegeben.
    */
-  anmeldeUrl(relayState?: string): string;
+  anmeldeUrl(relayState?: string, bindung?: string): string;
   pruefeAntwort(samlResponse: string): SamlErgebnis;
   metadaten(): string;
 }
@@ -661,16 +672,19 @@ export function createSamlProvider(
 ): SamlProvider {
   const jetzt = deps.now ?? (() => Date.now());
   const neueId = deps.genId ?? (() => `_${randomBytes(16).toString("hex")}`);
-  const offeneAnfragen = new Map<string, number>();
+  const offeneAnfragen = new Map<string, { bis: number; bindung: string | undefined }>();
   const verbrauchteAssertions = new Map<string, number>();
 
   const raeumeAuf = (): void => {
     const nun = jetzt();
-    for (const ablage of [offeneAnfragen, verbrauchteAssertions]) {
-      for (const [id, bis] of ablage) {
-        if (bis <= nun) {
-          ablage.delete(id);
-        }
+    for (const [id, anfrage] of offeneAnfragen) {
+      if (anfrage.bis <= nun) {
+        offeneAnfragen.delete(id);
+      }
+    }
+    for (const [id, bis] of verbrauchteAssertions) {
+      if (bis <= nun) {
+        verbrauchteAssertions.delete(id);
       }
     }
   };
@@ -678,7 +692,7 @@ export function createSamlProvider(
   return {
     config,
     autoProvision: config.autoProvision,
-    anmeldeUrl(relayState?: string): string {
+    anmeldeUrl(relayState?: string, bindung?: string): string {
       raeumeAuf();
       if (offeneAnfragen.size >= OFFENE_ANFRAGEN_MAX) {
         // Eine Flut offener Starts darf den Speicher nicht füllen; die älteste fällt heraus.
@@ -689,7 +703,7 @@ export function createSamlProvider(
       }
       const id = neueId();
       const nun = jetzt();
-      offeneAnfragen.set(id, nun + SAML_ANFRAGE_FRIST_MS);
+      offeneAnfragen.set(id, { bis: nun + SAML_ANFRAGE_FRIST_MS, bindung });
       const zeit = new Date(nun).toISOString().replace(/\.\d{3}Z$/, "Z");
       const anfrage = [
         `<samlp:AuthnRequest xmlns:samlp="${SAML_NS.protocol}" xmlns:saml="${SAML_NS.assertion}"`,
@@ -724,8 +738,8 @@ export function createSamlProvider(
       // InResponseTo ZUERST und einmalig: eine Antwort ohne eigene Anfrage (IdP-initiiert) oder
       // eine zweite Einlösung derselben Anfrage kommt nicht weiter.
       const inResponseTo = attributVon(wurzel, "InResponseTo");
-      const frist = inResponseTo === undefined ? undefined : offeneAnfragen.get(inResponseTo);
-      if (inResponseTo === undefined || frist === undefined || frist <= nun) {
+      const anfrage = inResponseTo === undefined ? undefined : offeneAnfragen.get(inResponseTo);
+      if (inResponseTo === undefined || anfrage === undefined || anfrage.bis <= nun) {
         throw new SamlFehler("InResponseTo unbekannt, abgelaufen oder verbraucht");
       }
       offeneAnfragen.delete(inResponseTo);
@@ -845,7 +859,11 @@ export function createSamlProvider(
         emailVerified: undefined,
         rolesClaimPresent: gruppen !== undefined,
       };
-      return { claims, rolle: mapOidcRole(claims.roles, { roleClaim: "", ...config.rollen }) };
+      return {
+        claims,
+        rolle: mapOidcRole(claims.roles, { roleClaim: "", ...config.rollen }),
+        bindung: anfrage.bindung,
+      };
     },
 
     metadaten(): string {
