@@ -102,6 +102,34 @@ describe("AskService", () => {
     expect(eintrag?.payload).toMatchObject({ koAuthor: "bob", koOriginalAuthor: "anna" });
   });
 
+  // R-0235 / R-0749: „Hat geholfen" am angewendeten Objekt — OHNE vorausgehende Antwort. Derselbe
+  // Kern wie das Antwortfeedback; ein Schritt je Person und Objekt, gleich über welchen Weg.
+  it("R-0749: markKoHelpful ohne Antwortbeleg — Trust +2, Audit mit via, genau einmal je Person", async () => {
+    const ko = (await ctx.koService.list())[0];
+    if (!ko) {
+      throw new Error("KO fehlt.");
+    }
+    await ctx.ask.markKoHelpful(ko.id, "viewer-1");
+    expect((await ctx.koService.get(ko.id))?.trust).toBe(Math.min(99, ko.trust + 2));
+    const [eintrag] = await ctx.audit.list({ action: "answer.helpful" });
+    expect(eintrag?.payload).toMatchObject({
+      koTitle: ko.title,
+      koAuthor: "anna",
+      koOriginalAuthor: "anna",
+      via: "wissensobjekt",
+    });
+    // Zweiter Klick am Objekt UND ein späteres Antwortfeedback derselben Person: kein weiterer Schritt.
+    await ctx.ask.markKoHelpful(ko.id, "viewer-1");
+    await ctx.ask.markHelpful(await receiptFor("viewer-1"), ko.id, "viewer-1");
+    expect(await ctx.audit.list({ action: "answer.helpful" })).toHaveLength(1);
+    expect((await ctx.koService.get(ko.id))?.trust).toBe(Math.min(99, ko.trust + 2));
+    // Unbekanntes Objekt: NOT_FOUND, nichts geschrieben.
+    await expect(ctx.ask.markKoHelpful("gibt-es-nicht", "viewer-1")).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+    expect(await ctx.audit.list({ action: "answer.helpful" })).toHaveLength(1);
+  });
+
   // FUNKE-FIX P0 (bens ROT-1): eine unbelegte/fremd gewählte KO-ID ist NICHT mehr wirksam →
   // FORBIDDEN, kein Trust, kein Audit. Weder ein leerer Beleg, noch ein gültiger Beleg für ein
   // NICHT ausgeliefertes KO, noch der Beleg EINES ANDEREN Nutzers autorisiert das „Danke".
