@@ -136,7 +136,8 @@ export class ConflictService {
     this.onError =
       deps.onError ??
       ((context, error) => {
-        console.error(`[conflicts] ${context}:`, error);
+        // R-0623: nur die Fehlerklasse — Meldung und Stack können Inhalte tragen.
+        console.error(`[conflicts] ${context}: ${error instanceof Error ? error.name : "unknown"}`);
       });
   }
 

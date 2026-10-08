@@ -140,7 +140,8 @@ export async function detectDuplicatesForKo(
 // Repo-Idiom (seed.ts): schmaler, immer sichtbarer Log für best-effort-Betrieb (Fastify läuft ohne
 // eigenen Logger). Bewusst kein Werfen.
 function defaultLog(msg: string, err: unknown): void {
-  console.warn(`[dup-prefilter] ${msg}`, err);
+  // R-0623: nur die Fehlerklasse — Meldung und Stack können Inhalte tragen.
+  console.warn(`[dup-prefilter] ${msg}: ${err instanceof Error ? err.name : "unknown"}`);
 }
 
 // Weg 3 (B6): bettet ein frisch angelegtes KO ein und legt es im Vektor-Store ab, damit KÜNFTIGE
