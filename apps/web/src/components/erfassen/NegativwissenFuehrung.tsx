@@ -39,10 +39,10 @@ export function NegativwissenFuehrung({
   ): NegativwissenUeberschreitung[] => ueberschreitungen.filter((u) => u.feld === feld);
   const satz = (u: NegativwissenUeberschreitung): string =>
     u.art === "anzahl"
-      ? t("negativwissen.grenze.anzahl", { ist: u.ist, max: u.max })
+      ? t("negativwissen.obergrenze.anzahl", { ist: u.ist, max: u.max })
       : u.feld === "warnsignale"
-        ? t("negativwissen.grenze.warnsignal", { ist: u.ist, max: u.max })
-        : t("negativwissen.grenze.zeichen", { ist: u.ist, max: u.max });
+        ? t("negativwissen.obergrenze.warnsignal", { ist: u.ist, max: u.max })
+        : t("negativwissen.obergrenze.zeichen", { ist: u.ist, max: u.max });
   const setzeFeld = (feld: NegativwissenTextfeld, wert: string): void => {
     const next = { ...form };
     next[feld] = wert;
@@ -61,7 +61,7 @@ export function NegativwissenFuehrung({
     >
       <div>
         <h3 id="negativwissen-fuehrung-titel" className="text-[13.5px] font-semibold text-text">
-          {t("negativwissen.titel")}
+          {t("negativwissen.fuehrungTitel")}
         </h3>
         <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted-2">
           {t("negativwissen.hinweis")}
@@ -163,7 +163,7 @@ export function NegativwissenFuehrung({
           data-testid="negativwissen-grenze-gesperrt"
           className="text-[12px] text-trust-crit-text"
         >
-          {t("negativwissen.grenze.gesperrt")}
+          {t("negativwissen.obergrenze.gesperrt")}
         </p>
       ) : null}
     </section>

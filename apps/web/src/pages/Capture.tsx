@@ -3549,7 +3549,7 @@ export function CaptureArbeitsraum({
     // BEN, Nacharbeit 2 (R-1664/R-2179): ein Lerneffekt über seinen Obergrenzen. Der Server würde
     // ihn abweisen; hier geht er gar nicht erst hinaus, und die Eingabe bleibt vollständig stehen.
     if (negativUeberschritten) {
-      return { erlaubt: false, grund: t("negativwissen.grenze.gesperrt") };
+      return { erlaubt: false, grund: t("negativwissen.obergrenze.gesperrt") };
     }
     return { erlaubt: true, grund: null };
   }, [resumeAnchorsMissing, entwurfLaedt, negativUeberschritten, t]);
@@ -4904,7 +4904,7 @@ export function CaptureArbeitsraum({
     // Der Block zeigt die Stelle am Feld; hier steht derselbe Satz als Meldung, damit der Klick
     // nicht wortlos ausbleibt. Nichts wird geleert oder gekürzt.
     if (negativUeberschritten) {
-      setErr(t("negativwissen.grenze.gesperrt"));
+      setErr(t("negativwissen.obergrenze.gesperrt"));
       return;
     }
     const schritt = beispielEinreichSchritt({

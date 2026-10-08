@@ -1,20 +1,35 @@
 // ================================================================================================
-// R-1664 / R-2179 / R-2180 · LERNEFFEKT GEFÜHRT DOKUMENTIEREN (Wissensart Negativwissen).
+// NEGATIVWISSEN — ZWEI NUTZERWEGE, EIN TEXTMODUL.
 // ================================================================================================
 //
-// Die Texte des geführten Erfassungsblocks (`components/erfassen/NegativwissenFuehrung.tsx`) und
-// seiner Anzeige am Wissensobjekt (`components/ko/NegativwissenAnzeige.tsx`). UX-Regel der Quelle
-// (Addendum:281): keine beschämende Sprache — „Lerneffekt dokumentieren", nicht „Fehler melden".
+// 1) AUFNAHME 20260922 · NEGATIVWISSEN-HINWEIS (R-1629) — die Texte des Hinweises beim Erfassen
+//    (`negativwissen.titel`, `.einleitung`, `.grenze`). Der Hinweis erscheint, wenn der Entwurf
+//    einem Eintrag der Wissensart „Negativwissen" ähnelt (services/app/src/knowledge-check.ts,
+//    `negativwissenAuskunft`). Belegt ist nur die Textnähe — die Texte sagen deshalb „bitte vorher
+//    lesen" und fällen kein Urteil über den Entwurf.
+//
+// 2) R-1664 / R-2179 / R-2180 · LERNEFFEKT GEFÜHRT DOKUMENTIEREN — die Texte des geführten
+//    Erfassungsblocks (`components/erfassen/NegativwissenFuehrung.tsx`) und seiner Anzeige am
+//    Wissensobjekt (`components/ko/NegativwissenAnzeige.tsx`). UX-Regel der Quelle (Addendum:281):
+//    keine beschämende Sprache — „Lerneffekt dokumentieren", nicht „Fehler melden".
+//    Bei der Zusammenführung mit (1) umbenannt, weil dieselben Namen dort schon eine andere
+//    Bedeutung tragen: der Blocktitel heißt `negativwissen.fuehrungTitel`, die Grenzmeldungen
+//    `negativwissen.obergrenze.*` (`negativwissen.grenze` ist der Hinweissatz aus 1).
 import type { Textmodul } from "./intern/pruefung";
 
 export default {
   praefix: "negativwissen.",
   legacySchluessel: [],
   de: {
+    "negativwissen.titel": "Achtung: Das wurde schon einmal probiert",
+    "negativwissen.einleitung":
+      "Dein Text ähnelt einem Weg, der als Negativwissen festgehalten ist („haben wir probiert, ging nicht“). Lies nach, warum er nicht funktioniert hat, bevor du ihn erneut vorschlägst.",
+    "negativwissen.grenze":
+      "Der Hinweis beruht auf Textähnlichkeit. Ob du wirklich denselben Weg meinst, entscheidest du.",
     "negativwissen.einstieg": "Lerneffekt dokumentieren",
     "negativwissen.einstiegHinweis":
       "Was hat nicht funktioniert, und was sollten wir künftig vermeiden? Erfahrung sichern.",
-    "negativwissen.titel": "Lerneffekt dokumentieren",
+    "negativwissen.fuehrungTitel": "Lerneffekt dokumentieren",
     "negativwissen.hinweis":
       "Die Kernaussage beschreibt, was passiert ist. Die Fragen hier halten fest, woran man es künftig früher erkennt und wie man es vermeidet. Alles ist freiwillig — nenne keine Namen.",
     "negativwissen.q.incidentTrigger": "Was hat es ausgelöst?",
@@ -33,18 +48,25 @@ export default {
       "Mit diesem Bezug ist der Eintrag mindestens vertraulich und geht nicht in externe Kontexte.",
     "negativwissen.stufeGesperrt": "nicht wählbar bei diesem Bezug",
     "negativwissen.anzeigeTitel": "Lerneffekt",
-    "negativwissen.grenze.zeichen": "Zu lang: {{ist}} Zeichen, höchstens {{max}}. Bitte kürzen.",
-    "negativwissen.grenze.warnsignal":
+    "negativwissen.obergrenze.zeichen":
+      "Zu lang: {{ist}} Zeichen, höchstens {{max}}. Bitte kürzen.",
+    "negativwissen.obergrenze.warnsignal":
       "Ein Warnsignal hat {{ist}} Zeichen, höchstens {{max}} je Zeile. Bitte kürzen.",
-    "negativwissen.grenze.anzahl": "{{ist}} Warnsignale, höchstens {{max}}. Bitte zusammenfassen.",
-    "negativwissen.grenze.gesperrt":
+    "negativwissen.obergrenze.anzahl":
+      "{{ist}} Warnsignale, höchstens {{max}}. Bitte zusammenfassen.",
+    "negativwissen.obergrenze.gesperrt":
       "Sichern und Einreichen sind gesperrt, bis die markierten Angaben in die Grenzen passen. Deine Eingaben bleiben erhalten — es wird nichts abgeschnitten.",
   },
   en: {
+    "negativwissen.titel": "Heads-up: this has been tried before",
+    "negativwissen.einleitung":
+      "Your text resembles an approach recorded as negative knowledge (“we tried this, it did not work”). Read why it failed before you propose it again.",
+    "negativwissen.grenze":
+      "This hint is based on text similarity. Whether you really mean the same approach is your call.",
     "negativwissen.einstieg": "Document a lesson learned",
     "negativwissen.einstiegHinweis":
       "What did not work, and what should we avoid in future? Secure the experience.",
-    "negativwissen.titel": "Document a lesson learned",
+    "negativwissen.fuehrungTitel": "Document a lesson learned",
     "negativwissen.hinweis":
       "The key statement describes what happened. The questions here record how to recognise it earlier next time and how to avoid it. Everything is optional — do not name anyone.",
     "negativwissen.q.incidentTrigger": "What triggered it?",
@@ -63,19 +85,25 @@ export default {
       "With this reference the entry is at least confidential and never goes into external contexts.",
     "negativwissen.stufeGesperrt": "not available with this reference",
     "negativwissen.anzeigeTitel": "Lesson learned",
-    "negativwissen.grenze.zeichen":
+    "negativwissen.obergrenze.zeichen":
       "Too long: {{ist}} characters, at most {{max}}. Please shorten.",
-    "negativwissen.grenze.warnsignal":
+    "negativwissen.obergrenze.warnsignal":
       "A warning sign has {{ist}} characters, at most {{max}} per line. Please shorten.",
-    "negativwissen.grenze.anzahl": "{{ist}} warning signs, at most {{max}}. Please combine them.",
-    "negativwissen.grenze.gesperrt":
+    "negativwissen.obergrenze.anzahl":
+      "{{ist}} warning signs, at most {{max}}. Please combine them.",
+    "negativwissen.obergrenze.gesperrt":
       "Saving and submitting are blocked until the marked entries fit the limits. Your input is kept — nothing is cut off.",
   },
   nl: {
+    "negativwissen.titel": "Let op: dit is al eens geprobeerd",
+    "negativwissen.einleitung":
+      "Je tekst lijkt op een aanpak die als negatieve kennis is vastgelegd (‘hebben we geprobeerd, werkte niet’). Lees waarom het niet werkte voordat je het opnieuw voorstelt.",
+    "negativwissen.grenze":
+      "Deze hint is gebaseerd op tekstgelijkenis. Of je echt dezelfde aanpak bedoelt, bepaal je zelf.",
     "negativwissen.einstieg": "Leereffect vastleggen",
     "negativwissen.einstiegHinweis":
       "Wat werkte niet, en wat moeten we in de toekomst vermijden? Ervaring vastleggen.",
-    "negativwissen.titel": "Leereffect vastleggen",
+    "negativwissen.fuehrungTitel": "Leereffect vastleggen",
     "negativwissen.hinweis":
       "De kernuitspraak beschrijft wat er gebeurde. De vragen hier leggen vast hoe je het de volgende keer eerder herkent en hoe je het vermijdt. Alles is vrijwillig — noem geen namen.",
     "negativwissen.q.incidentTrigger": "Wat was de aanleiding?",
@@ -94,12 +122,13 @@ export default {
       "Met deze betrokkenheid is de invoer minstens vertrouwelijk en gaat hij nooit naar externe contexten.",
     "negativwissen.stufeGesperrt": "niet kiesbaar bij deze betrokkenheid",
     "negativwissen.anzeigeTitel": "Leereffect",
-    "negativwissen.grenze.zeichen": "Te lang: {{ist}} tekens, hoogstens {{max}}. Graag inkorten.",
-    "negativwissen.grenze.warnsignal":
+    "negativwissen.obergrenze.zeichen":
+      "Te lang: {{ist}} tekens, hoogstens {{max}}. Graag inkorten.",
+    "negativwissen.obergrenze.warnsignal":
       "Een waarschuwingssignaal heeft {{ist}} tekens, hoogstens {{max}} per regel. Graag inkorten.",
-    "negativwissen.grenze.anzahl":
+    "negativwissen.obergrenze.anzahl":
       "{{ist}} waarschuwingssignalen, hoogstens {{max}}. Graag samenvoegen.",
-    "negativwissen.grenze.gesperrt":
+    "negativwissen.obergrenze.gesperrt":
       "Opslaan en indienen zijn geblokkeerd tot de gemarkeerde gegevens binnen de grenzen passen. Je invoer blijft behouden — er wordt niets afgekapt.",
   },
 } satisfies Textmodul;

@@ -373,7 +373,7 @@ describe("Lerneffekt geführt und vertraulich im Erfassen-Arbeitsraum", () => {
     expect(element("negativwissen-avoidanceRule-grenze").textContent).toContain("2001");
     expect(element("negativwissen-avoidanceRule").getAttribute("aria-invalid")).toBe("true");
     expect(element("negativwissen-grenze-gesperrt").textContent).toContain(
-      i18n.t("negativwissen.grenze.gesperrt"),
+      i18n.t("negativwissen.obergrenze.gesperrt"),
     );
 
     await bisZumEntwurf();
@@ -386,7 +386,7 @@ describe("Lerneffekt geführt und vertraulich im Erfassen-Arbeitsraum", () => {
     expect(hinaus, JSON.stringify(hinaus.map((r) => r.url))).toEqual([]);
     expect(await bestand()).toHaveLength(0);
     expect(element<HTMLTextAreaElement>("negativwissen-avoidanceRule").value).toBe(zuLang);
-    expect(seitentext()).toContain(i18n.t("negativwissen.grenze.gesperrt"));
+    expect(seitentext()).toContain(i18n.t("negativwissen.obergrenze.gesperrt"));
 
     // Gekürzt auf die Grenze geht derselbe Fall vollständig durch.
     const passt = "R".repeat(2000);
