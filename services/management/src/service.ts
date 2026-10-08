@@ -251,12 +251,18 @@ export class ManagementService {
       sicht.failure = ausgang.failure ?? "model-error";
       return;
     }
+    // Nacharbeit 4 (Ben): abgeschlossen ist ein Bereich NUR mit einem tatsächlich gelieferten
+    // Urteil — ein ausdrückliches `sprint: false` ist ein negativer Abschluss. Fehlt der Bereich in
+    // der Antwort (leere oder unvollständige Liste, vom Parser verworfener Eintrag), bleibt er
+    // OFFEN: es gilt der gekennzeichnete Regelvorschlag, und der nächste Lauf legt ihn erneut vor.
     const nachBereich = new Map(ausgang.urteile.map((u) => [u.bereich, u]));
     for (const s of offen) {
-      sicht.urteile.set(s.bereich, {
-        signatur: signalSignatur(s),
-        urteil: nachBereich.get(s.bereich) ?? null,
-      });
+      const urteil = nachBereich.get(s.bereich);
+      if (urteil) {
+        sicht.urteile.set(s.bereich, { signatur: signalSignatur(s), urteil });
+      } else {
+        sicht.urteile.delete(s.bereich);
+      }
     }
     sicht.provider = ausgang.provider ?? null;
     sicht.failure = null;

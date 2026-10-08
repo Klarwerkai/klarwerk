@@ -21,6 +21,9 @@
 //   R3  regelmäßig aktiv: eine neue Sicht wird sofort einmal analysiert; der Stand ist sichtbar
 //   R4  kein Urteil (Ursache oder Fehler) ⇒ benannte Regel, Ursache im Stand, kein Absturz
 //   R5  echter Datenweg ohne Modell: der Lauf läuft, die Ursache heisst no-model
+//   R6  (Nacharbeit 4, Ben) leere oder unvollständige Antwort: fehlende Bereiche behalten den
+//       Regelvorschlag und werden im nächsten Lauf erneut vorgelegt; nur `sprint: false` (R3)
+//       schliesst negativ ab
 import { describe, expect, it, vi } from "vitest";
 import { buildServices } from "../../services/app/src/build-app";
 import type { KnowledgeObject, KoService } from "../../services/knowledge-object";
@@ -321,8 +324,9 @@ describe("R-1657 · Nacharbeit 2 — regelmäßige Lückenerkennung über den Re
   });
 
   it("R3 · regelmäßig aktiv: eine neue Sicht wird sofort analysiert, der Stand nennt den Takt", async () => {
+    // Nacharbeit 4 (Ben): die negative Entscheidung ist ein AUSDRÜCKLICHES Bereichsurteil.
     const { management, aufrufe } = dienst(reihe("H", 2, { category: "Hydraulik" }), () => ({
-      urteile: [],
+      urteile: [{ bereich: "Hydraulik", sprint: false, tage: 1, schwerpunkte: [] }],
       provider: "anthropic:test-modell",
     }));
     management.regelmaessigeAnalyseAktiv(60_000);
@@ -336,9 +340,58 @@ describe("R-1657 · Nacharbeit 2 — regelmäßige Lückenerkennung über den Re
       expect(stand.sprintAnalysis.provider).toBe("anthropic:test-modell");
     });
     expect(aufrufe).toHaveLength(1);
-    // Der Reasoner nannte keinen Sprint ⇒ auch die Regel schlägt für diesen Bereich nichts mehr vor.
+    // Ausdrücklich `sprint: false` ⇒ negativer Abschluss: auch die Regel schlägt nichts mehr vor,
+    // und bei unveränderten Kennzahlen wird der Bereich nicht erneut vorgelegt.
     const danach = await management.snapshot({ sichtbar: ALLE, sicht: "neu" });
     expect(danach.sprints).toEqual([]);
+    await management.wissenssprintLauf();
+    expect(aufrufe).toHaveLength(1);
+  });
+
+  it("R6 · leere oder unvollständige Antwort: fehlende Bereiche behalten die Regel und bleiben offen", async () => {
+    const kos = [
+      ...reihe("H", 2, { category: "Hydraulik", trust: 10 }),
+      ...reihe("L", 2, { category: "Lackierung", trust: 20 }),
+    ];
+    const antworten: GapJudgeOutcome[] = [
+      // Lauf 1: leere Liste — kein Bereich ist beurteilt.
+      { urteile: [], provider: "anthropic:test-modell" },
+      // Lauf 2: nur Hydraulik beurteilt; Lackierung fehlt (z. B. vom Parser verworfen).
+      { urteile: [urteil("Hydraulik", 2, ["lowTrust"])], provider: "anthropic:test-modell" },
+      // Lauf 3: nun auch Lackierung.
+      { urteile: [urteil("Lackierung", 1, ["lowTrust"])], provider: "anthropic:test-modell" },
+    ];
+    const LEER: GapJudgeOutcome = { urteile: [] };
+    const { management, aufrufe } = dienst(kos, () => antworten[aufrufe.length - 1] ?? LEER);
+    const quellen = async () => {
+      const snap = await management.snapshot({ sichtbar: ALLE, sicht: "u" });
+      return snap.sprints.map((s) => [s.category, s.source]).sort();
+    };
+
+    await management.snapshot({ sichtbar: ALLE, sicht: "u" });
+    await management.wissenssprintLauf();
+    // Leere Antwort: kein Regelvorschlag verschwindet.
+    expect(await quellen()).toEqual([
+      ["Hydraulik", "rule"],
+      ["Lackierung", "rule"],
+    ]);
+
+    await management.wissenssprintLauf();
+    // Beide Bereiche wurden erneut vorgelegt — die leere Antwort hat nichts abgeschlossen.
+    const zweiterLauf = aufrufe[1]?.bereiche.map((b) => b.bereich).sort();
+    expect(zweiterLauf).toEqual(["Hydraulik", "Lackierung"]);
+    expect(await quellen()).toEqual([
+      ["Hydraulik", "reasoner"],
+      ["Lackierung", "rule"],
+    ]);
+
+    await management.wissenssprintLauf();
+    // Nur der noch offene Bereich geht erneut hinaus.
+    expect(aufrufe[2]?.bereiche.map((b) => b.bereich)).toEqual(["Lackierung"]);
+    expect(await quellen()).toEqual([
+      ["Hydraulik", "reasoner"],
+      ["Lackierung", "reasoner"],
+    ]);
   });
 
   it("R4 · kein Urteil ⇒ benannte Regel und Ursache im Stand; ein Fehler bricht den Lauf nicht", async () => {

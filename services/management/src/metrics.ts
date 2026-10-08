@@ -410,14 +410,16 @@ const GRUND_REIHENFOLGE: readonly SprintReasonKey[] = [
   "thinKnowledge",
 ];
 
-function reasonerSprint(s: BereichsSignal, urteil: GapVerdict | null): KnowledgeSprint | null {
-  if (!urteil?.sprint) {
+// Nacharbeit 4 (Ben): nur ein ausdrückliches `sprint: false` schliesst einen Bereich negativ ab.
+// Ein positives Urteil ohne verwertbaren Grund ist kein Urteil — dann gilt die Regel weiter.
+function reasonerSprint(s: BereichsSignal, urteil: GapVerdict): KnowledgeSprint | null {
+  if (!urteil.sprint) {
     return null;
   }
   const keys = GRUND_REIHENFOLGE.filter((k) => urteil.schwerpunkte.includes(k));
   const reasons: SprintReason[] = keys.map((key) => ({ key, count: zahlZu(key, s) }));
   if (reasons.length === 0) {
-    return null;
+    return regelSprint(s);
   }
   return {
     category: s.bereich,

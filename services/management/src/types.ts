@@ -176,10 +176,13 @@ export type GapJudge = (
   confidential: boolean,
 ) => Promise<GapJudgeOutcome>;
 
-/** Ein gespeichertes Urteil: gilt nur, solange die Kennzahlen dieselben sind. */
+/**
+ * Ein gespeichertes Urteil: gilt nur, solange die Kennzahlen dieselben sind. Gespeichert wird nur
+ * ein tatsächlich geliefertes Bereichsurteil; ein fehlendes bleibt offen (Nacharbeit 4).
+ */
 export interface GapVerdictEntry {
   signatur: string;
-  urteil: GapVerdict | null; // null = der Reasoner hat für diesen Bereich keinen Sprint genannt
+  urteil: GapVerdict; // sprint: false = ausdrücklicher negativer Abschluss
 }
 
 /** Stand der regelmäßigen Reasoner-Analyse für DIESE Betrachtersicht. */
