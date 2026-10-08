@@ -106,6 +106,7 @@ import { REPO_WURZEL } from "../support/repoPfad";
 import {
   pfadVon,
   routenquellen,
+  serverInstanzen,
   textlaufLuecken,
   zeichenkettenKonstanten,
 } from "./schnittstellenErhebung";
@@ -133,7 +134,8 @@ type Urteil =
   | "PRAEDIKAT"
   // Nur Rollen, die Vertrauliches ohnehin sehen dürfen, erreichen die Route. NACHGEPRÜFT.
   | "KURATORENTOR"
-  // Ein Dienst filtert; die Fundstelle steht in der Begründung. LESEURTEIL.
+  // Ein Dienst filtert. Seit Nacharbeit 2 NACHGEPRÜFT: `kette`/`entscheidung` (oder `weiterleitung`)
+  // werden im Syntaxbaum nachgegangen; die Begründung ist nur noch Erläuterung.
   | "DIENST_FILTERT"
   // Gibt keinen Inhalt eines Wissensobjekts aus. LESEURTEIL.
   | "KEIN_KO_INHALT"
@@ -146,7 +148,67 @@ interface Eintrag {
   recht?: string;
   /** Begründung — bei den LESEURTEILEN mit Fundstelle. */
   grund: string;
+  /**
+   * NACHARBEIT 2 (Befund ben, R-1175): bei DIENST_FILTERT der NACHPRÜFBARE Weg zur Entscheidung.
+   * Die Registrierung ruft `kette[0].funktion`, jedes Glied ruft das nächste, das letzte ruft
+   * `entscheidung`. Ohne Kette und Entscheidung — oder wenn ein Glied fehlt — ist der Eintrag rot.
+   */
+  kette?: readonly Glied[];
+  entscheidung?: string;
+  /** Statt einer Kette: die Registrierung reicht an diese (selbst verfolgte) Route weiter. */
+  weiterleitung?: string;
 }
+
+interface Glied {
+  datei: string;
+  funktion: string;
+}
+
+/**
+ * Die zulässigen Entscheidungen am Ende einer Dienstkette. ZENTRAL: die Prädikate aus
+ * `services/app/src/sichtbarkeit.ts` und die Naht des Wissensnetzes, die die Kompositionswurzel mit
+ * genau dieser Policy schliesst (`policyFuer`, `policyNahtSchliessen`). VERTRAULICHKEITSREGEL: die
+ * Vertraulichkeitsstufe des Wissensobjekts (`isConfidential`/`dropConfidential`) bzw. der zentrale
+ * Sichtvertrag der Lücken (`redactGapForViewer`).
+ */
+const ZENTRALE_ENTSCHEIDUNGEN = new Set([
+  "darfSehen",
+  "sichtbareFuer",
+  "sichtbarkeitsfilterFuer",
+  "beurteileAnhang",
+  "paarSichtbar",
+  "sichtbarePaare",
+  "sichtbareEintraege",
+  "policyFuer",
+]);
+const VERTRAULICHKEITSREGELN = new Set([
+  "isConfidential",
+  "dropConfidential",
+  "redactGapForViewer",
+]);
+
+/**
+ * OFFEN, BENANNT, NICHT ENTSCHIEDEN: diese wissensführenden Wege entscheiden nachweislich — aber
+ * über die VERTRAULICHKEITSREGEL, nicht über `sichtbarkeit.ts` (also z. B. nicht über Space oder
+ * Autorschaft eines nicht vertraulichen Eintrags). Ob sie auf die eine Sichtbarkeitsentscheidung
+ * umgestellt werden müssen, ist eine Produktentscheidung, die dieser Wächter nicht trifft. Die
+ * Liste ist GESCHLOSSEN: ein neuer Weg dieser Art ist rot, bis er hier steht; ein umgestellter
+ * ebenfalls (dann streichen).
+ */
+const NUR_VERTRAULICHKEITSREGEL = [
+  "GET /api/output/sources",
+  "POST /api/output/generate",
+  "POST /api/output/scorm/pruefen",
+  "POST /api/output/scorm/paket",
+  "POST /api/ask",
+  "POST /api/klara/sessions/:sessionId/zuruf",
+  "POST /api/check-text",
+  "POST /api/reasoner",
+  "GET /api/gaps",
+  "GET /api/klara/answers/:answerId/explanation",
+  // Weiterleitung an POST /api/ask mit demselben Dienst-Schlüssel (mcp-routes.ts).
+  "POST /mcp",
+] as const;
 
 // ================================================================================================
 // DAS REGISTER — EIN URTEIL JE ROUTE.
@@ -206,6 +268,11 @@ const REGISTER: Record<string, Eintrag> = {
   // (`lesemodell.ts:164`).
   "GET /api/wissensnetz/luecken": {
     urteil: "DIENST_FILTERT",
+    kette: [
+      { datei: "services/wissensnetz/src/luecken-einstieg.ts", funktion: "wissensnetzMetrikFuer" },
+      { datei: "services/wissensnetz/src/luecken-einstieg.ts", funktion: "wissensnetzLuecken" },
+    ],
+    entscheidung: "policyFuer",
     grund:
       "Das Wissensnetz-Modul filtert vor dem Zaehlen: luecken-einstieg.ts:36 ruft policyFuer(betrachter), " +
       "die zentrale Policy kommt aus build-app.ts (policyNahtSchliessen). Ist die Naht offen, wirft " +
@@ -372,22 +439,40 @@ const REGISTER: Record<string, Eintrag> = {
   },
   "GET /api/output/sources": {
     urteil: "DIENST_FILTERT",
+    kette: [{ datei: "services/output/src/service.ts", funktion: "listEligible" }],
+    entscheidung: "isConfidential",
     grund: "output/src/service.ts:39 — !isConfidential auf der Quellenliste.",
   },
   "POST /api/output/generate": {
     urteil: "DIENST_FILTERT",
+    kette: [{ datei: "services/output/src/service.ts", funktion: "generate" }],
+    entscheidung: "isConfidential",
     grund: "output/src/service.ts:62 — wirft bei vertraulichem KO.",
   },
   "POST /api/output/scorm/pruefen": {
     urteil: "DIENST_FILTERT",
+    kette: [
+      { datei: "services/output/src/scorm.ts", funktion: "pruefe" },
+      { datei: "services/output/src/scorm.ts", funktion: "bereite" },
+      { datei: "services/output/src/scorm.ts", funktion: "lade" },
+    ],
+    entscheidung: "isConfidential",
     grund: "output/src/scorm.ts LmsExportService.lade — vertrauliches KO wird Befund CONFIDENTIAL.",
   },
   "POST /api/output/scorm/paket": {
     urteil: "DIENST_FILTERT",
+    kette: [
+      { datei: "services/output/src/scorm.ts", funktion: "exportiere" },
+      { datei: "services/output/src/scorm.ts", funktion: "bereite" },
+      { datei: "services/output/src/scorm.ts", funktion: "lade" },
+    ],
+    entscheidung: "isConfidential",
     grund: "output/src/scorm.ts LmsExportService.lade — vertrauliches KO blockiert, kein Paket.",
   },
   "POST /api/ask": {
     urteil: "DIENST_FILTERT",
+    kette: [{ datei: "services/ask/src/service.ts", funktion: "ask" }],
+    entscheidung: "dropConfidential",
     grund: "ask/src/service.ts:145 — dropConfidential vor der Auswahl, auf ALLEN Zweigen.",
   },
   // JOB 3091 (KA6 Memo): der Zuruf traegt Kernaussagen validierter Wissensobjekte als Belege zum
@@ -396,6 +481,11 @@ const REGISTER: Record<string, Eintrag> = {
   // (zuruf.ts:389); und er sammelt erst NACH bestaetigter Einwilligung des Sitzungstors (zuruf.ts:250).
   "POST /api/klara/sessions/:sessionId/zuruf": {
     urteil: "DIENST_FILTERT",
+    kette: [
+      { datei: "services/output/src/zuruf.ts", funktion: "schlageVor" },
+      { datei: "services/output/src/zuruf.ts", funktion: "sammleQuellen" },
+    ],
+    entscheidung: "dropConfidential",
     grund:
       "output/src/zuruf.ts:384/389 — nur validierte KOs, dropConfidential auf der Quellenliste; " +
       "Einwilligung (zuruf.ts:250) vor jedem Bestandszugriff.",
@@ -408,10 +498,18 @@ const REGISTER: Record<string, Eintrag> = {
   },
   "POST /api/check-text": {
     urteil: "DIENST_FILTERT",
-    grund: "app/src/check-text-detection.ts:121 — !isConfidential je Kandidat.",
+    kette: [
+      { datei: "services/app/src/check-text-detection.ts", funktion: "checkText" },
+      { datei: "services/app/src/check-text-detection.ts", funktion: "selectPool" },
+      { datei: "services/app/src/check-text-detection.ts", funktion: "istPoolKandidat" },
+    ],
+    entscheidung: "isConfidential",
+    grund: "app/src/check-text-detection.ts istPoolKandidat — !isConfidential je Kandidat.",
   },
   "POST /api/reasoner": {
     urteil: "DIENST_FILTERT",
+    kette: [{ datei: "services/ask/src/service.ts", funktion: "ask" }],
+    entscheidung: "dropConfidential",
     grund: "task 'ask' läuft über denselben ask-Dienst (dropConfidential, s. o.).",
   },
   "POST /api/reasoner/describe": {
@@ -530,6 +628,8 @@ const REGISTER: Record<string, Eintrag> = {
   // --- Gaps: eigener Sichtbarkeitsvertrag ----------------------------------------------------
   "GET /api/gaps": {
     urteil: "DIENST_FILTERT",
+    kette: [],
+    entscheidung: "redactGapForViewer",
     grund: "ask/gap-visibility redactGapForViewer (ask-routes.ts:258).",
   },
   "GET /api/gaps/summary": { urteil: "KEIN_KO_INHALT", grund: "Zähler, keine Fragetexte." },
@@ -683,6 +783,7 @@ const REGISTER: Record<string, Eintrag> = {
   },
   "POST /mcp": {
     urteil: "DIENST_FILTERT",
+    weiterleitung: "POST /api/ask",
     grund:
       "R-0713 — Werkzeugaufrufe gehen mit demselben Dienst-Schlüssel an POST /api/ask " +
       "(mcp-routes.ts, `weiterleiten`); dessen Schlüsselzweig gibt nur validiertes, nicht " +
@@ -748,6 +849,8 @@ const REGISTER: Record<string, Eintrag> = {
   // vertrauliche Belege je Leser.
   "GET /api/klara/answers/:answerId/explanation": {
     urteil: "DIENST_FILTERT",
+    kette: [{ datei: "services/app/src/services/answer-explanation.ts", funktion: "erklaere" }],
+    entscheidung: "isConfidential",
     grund:
       "services/app/src/services/answer-explanation.ts — gehoertNutzer() als Eigentumstor, isConfidential() schwaerzt je Beleg.",
   },
@@ -1055,7 +1158,25 @@ interface Fund {
   /** mega76 C: die Stellen, an denen der Schutz BEDINGT ist. Leer = dominant. */
   bedingt: string[];
   rechte: Set<string>;
+  /** Nacharbeit 2: die Namen aller AUFGERUFENEN Funktionen/Methoden der Registrierung samt Helfern. */
+  aufrufe: Set<string>;
+  /** Nacharbeit 2: der Quelltext der Registrierung (für die Weiterleitungsbindung). */
+  aufrufText: string;
 }
+
+/** Der Name des Aufgerufenen: `f(…)` → `f`, `x.y.f(…)` → `f`; sonst `undefined`. */
+function aufgerufenerName(e: ts.Expression): string | undefined {
+  if (ts.isIdentifier(e)) {
+    return e.text;
+  }
+  if (ts.isPropertyAccessExpression(e)) {
+    return e.name.text;
+  }
+  return undefined;
+}
+
+/** Array-Methoden, die einen übergebenen Rückruf selbst aufrufen. */
+const RUECKRUF_METHODEN = new Set(["filter", "map", "flatMap", "some", "every", "find", "forEach"]);
 
 // AUFTRAG-mega76 BLOCK C, Grenze 1: `readdirSync` war NICHT rekursiv. Ein neues Unterverzeichnis
 // unter `routes/` blieb unsichtbar, solange die Untergrenze anderweitig erfüllt war — die Erhebung
@@ -1274,6 +1395,8 @@ function erhebeDatei(datei: string, text: string): Dateierhebung {
     // R-1175 (R3): die Methodennamen, die der Syntaxbaum beurteilt hat — der Textlauf unten
     // meldet jede Stelle, die NICHT darunter ist, mit ihrer Zeile.
     const gelesen = new Set<number>();
+    // Nacharbeit 2: die Serverinstanzen dieser Datei, unabhängig vom Namen (schnittstellenErhebung.ts).
+    const instanzen = serverInstanzen(sf);
     const besuche = (n: ts.Node): void => {
       if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)) {
         const methode = n.expression.name.text;
@@ -1286,30 +1409,50 @@ function erhebeDatei(datei: string, text: string): Dateierhebung {
           METHODEN.has(methode) &&
           !pfad?.startsWith("/") &&
           ts.isIdentifier(empfaenger) &&
-          empfaenger.text === "app"
+          instanzen.has(empfaenger.text)
         ) {
           unlesbar.push(
-            `${datei}:${sf.getLineAndCharacterOfPosition(n.getStart()).line + 1} — app.${methode}(…) mit einem Pfad, den der Sammler nicht auflösen kann (weder Literal noch Konstante dieser Datei). Ein Leseweg ohne Urteil wäre unsichtbar.`,
+            `${datei}:${sf.getLineAndCharacterOfPosition(n.getStart()).line + 1} — ${empfaenger.text}.${methode}(…) mit einem Pfad, den der Sammler nicht auflösen kann (weder Literal noch Konstante dieser Datei). Ein Leseweg ohne Urteil wäre unsichtbar.`,
           );
         }
         if (METHODEN.has(methode) && pfad?.startsWith("/")) {
           let praedikatImAufruf = false;
           const rechte = new Set<string>();
+          const aufrufe = new Set<string>();
           const besucht = new Set<string>();
           // Die Rümpfe der lokalen Helfer, in die dieser Fund hineingelaufen ist — die
           // Dominanzprüfung unten muss sie mitlesen, sonst verstecken sich Fail-open-Zweige
           // einfach eine Funktion tiefer.
           const mitgelesen: ts.Node[] = [];
+          // NACHARBEIT 2 (Befund ben, R-1175): bis hierher genügte ein BEZEICHNER namens
+          // `darfSehen` — `void darfSehen; return geheim;` galt als geschützt, und ein lokaler
+          // Helfer wurde schon bei blosser Namensnennung verfolgt. Jetzt zählt nur ein AUFRUF:
+          // das Prädikat muss aufgerufen werden, ein Helfer muss aufgerufen oder als Rückruf an
+          // eine Array-Methode übergeben werden (dort ruft ihn die Laufzeit).
+          const folge = (name: string): void => {
+            const rumpf = lokaleHelfer.get(name);
+            if (rumpf && !besucht.has(name)) {
+              besucht.add(name);
+              mitgelesen.push(rumpf);
+              scan(rumpf);
+            }
+          };
           const scan = (x: ts.Node): void => {
-            if (ts.isIdentifier(x)) {
-              if (PRAEDIKAT_NAMEN.test(x.text)) {
-                praedikatImAufruf = true;
-              }
-              const rumpf = lokaleHelfer.get(x.text);
-              if (rumpf && !besucht.has(x.text)) {
-                besucht.add(x.text);
-                mitgelesen.push(rumpf);
-                scan(rumpf);
+            if (ts.isCallExpression(x)) {
+              const name = aufgerufenerName(x.expression);
+              if (name !== undefined) {
+                aufrufe.add(name);
+                if (PRAEDIKAT_NAMEN.test(name)) {
+                  praedikatImAufruf = true;
+                }
+                folge(name);
+                if (RUECKRUF_METHODEN.has(name)) {
+                  for (const arg of x.arguments) {
+                    if (ts.isIdentifier(arg)) {
+                      folge(arg.text);
+                    }
+                  }
+                }
               }
             }
             if (ts.isStringLiteral(x) && /^(ko|users|conflict)\.[a-z]+$/.test(x.text)) {
@@ -1325,6 +1468,8 @@ function erhebeDatei(datei: string, text: string): Dateierhebung {
             praedikatImAufruf,
             bedingt: [n, ...mitgelesen].flatMap((teil) => bedingterSchutz(teil, sf)),
             rechte,
+            aufrufe,
+            aufrufText: n.getText(sf),
           });
         }
       }
@@ -1363,6 +1508,133 @@ const ERHEBUNG = (() => {
   }
   return { funde, unlesbar, zaehlerAbweichung, dateizahl: alle.length };
 })();
+
+// ================================================================================================
+// NACHARBEIT 2 (Befund ben, R-1175) — DIENST_FILTERT IST KEIN LESEURTEIL MEHR, SONDERN EIN WEG.
+// ================================================================================================
+//
+// Bis hierher genügte für einen wissensführenden Dienstweg eine Fundstelle in Prosa. Wer den Filter
+// im Dienst entfernte, liess den Sammler grün. Jetzt muss der Eintrag den Weg NENNEN — Registrierung
+// → Glied für Glied → Entscheidung — und der Sammler geht ihn im Syntaxbaum nach: jedes Glied muss
+// in seiner Datei als Funktion/Methode stehen und das nächste wirklich AUFRUFEN, das letzte die
+// Entscheidung. Was fehlt oder nicht lesbar ist, ist rot mit Datei und Zeile.
+//
+// BENANNTE GRENZEN: Glieder werden über ihren NAMEN in der genannten Datei gefunden, nicht über den
+// Typprüfer; nachgewiesen ist, dass der Weg die Entscheidung AUFRUFT, nicht, dass jeder Rückgabepfad
+// durch sie läuft (dieselbe syntaktische Grenze wie bei PRAEDIKAT).
+
+/** Die Namen aller in diesem Teilbaum AUFGERUFENEN Funktionen und Methoden. */
+function aufrufeIn(knoten: ts.Node): Set<string> {
+  const namen = new Set<string>();
+  const besuche = (n: ts.Node): void => {
+    if (ts.isCallExpression(n)) {
+      const name = aufgerufenerName(n.expression);
+      if (name !== undefined) {
+        namen.add(name);
+      }
+    }
+    ts.forEachChild(n, besuche);
+  };
+  besuche(knoten);
+  return namen;
+}
+
+/** Der Rumpf der ersten Funktion oder Methode dieses Namens in der Datei, samt Zeile. */
+function funktionsRumpf(
+  sf: ts.SourceFile,
+  name: string,
+): { rumpf: ts.Node; zeile: number } | undefined {
+  let treffer: { rumpf: ts.Node; zeile: number } | undefined;
+  const heisst = (k: ts.Node | undefined): boolean =>
+    k !== undefined && (ts.isIdentifier(k) || ts.isPrivateIdentifier(k)) && k.text === name;
+  const zeile = (n: ts.Node): number => sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1;
+  const besuche = (n: ts.Node): void => {
+    if (treffer) {
+      return;
+    }
+    if ((ts.isFunctionDeclaration(n) || ts.isMethodDeclaration(n)) && heisst(n.name) && n.body) {
+      treffer = { rumpf: n.body, zeile: zeile(n) };
+      return;
+    }
+    if (
+      (ts.isVariableDeclaration(n) || ts.isPropertyDeclaration(n)) &&
+      heisst(n.name) &&
+      n.initializer &&
+      (ts.isArrowFunction(n.initializer) || ts.isFunctionExpression(n.initializer))
+    ) {
+      treffer = { rumpf: n.initializer.body, zeile: zeile(n) };
+      return;
+    }
+    ts.forEachChild(n, besuche);
+  };
+  besuche(sf);
+  return treffer;
+}
+
+/** Die Entscheidung am Ende des Wegs — bei einer Weiterleitung die der Zielroute. */
+function endEntscheidung(e: Eintrag): string | undefined {
+  return e.weiterleitung ? REGISTER[e.weiterleitung]?.entscheidung : e.entscheidung;
+}
+
+/** Geht den Weg eines DIENST_FILTERT-Eintrags nach. Leer = belegt; sonst je Mangel Datei:Zeile. */
+function pruefeDienstweg(
+  schluessel: string,
+  e: Eintrag,
+  fund: Pick<Fund, "datei" | "zeile" | "aufrufe" | "aufrufText">,
+  lies: (datei: string) => string,
+): string[] {
+  const ort = `${fund.datei}:${fund.zeile}`;
+  if (e.weiterleitung !== undefined) {
+    const ziel = REGISTER[e.weiterleitung];
+    const pfad = e.weiterleitung.split(" ")[1] ?? "";
+    const maengel: string[] = [];
+    if (!fund.aufrufText.includes(`"${pfad}"`)) {
+      maengel.push(
+        `${ort} — ${schluessel}: die Weiterleitung an ${e.weiterleitung} steht nicht im Aufruf`,
+      );
+    }
+    if (!ziel || ziel.weiterleitung !== undefined || (ziel.urteil !== "PRAEDIKAT" && !ziel.kette)) {
+      maengel.push(
+        `${ort} — ${schluessel}: das Ziel ${e.weiterleitung} ist selbst nicht verfolgbar`,
+      );
+    }
+    return maengel;
+  }
+  if (e.kette === undefined || e.entscheidung === undefined) {
+    return [
+      `${ort} — ${schluessel}: DIENST_FILTERT ohne nachprüfbaren Weg (kette/entscheidung) — eine Prosabegründung genügt nicht.`,
+    ];
+  }
+  if (!ZENTRALE_ENTSCHEIDUNGEN.has(e.entscheidung) && !VERTRAULICHKEITSREGELN.has(e.entscheidung)) {
+    return [`${ort} — ${schluessel}: „${e.entscheidung}“ ist keine zulässige Entscheidung.`];
+  }
+  let rufe: ReadonlySet<string> = fund.aufrufe;
+  let stelle = ort;
+  for (const glied of e.kette) {
+    if (!rufe.has(glied.funktion)) {
+      return [`${stelle} — ${schluessel}: ruft das Glied ${glied.funktion} nicht auf.`];
+    }
+    let text: string;
+    try {
+      text = lies(glied.datei);
+    } catch {
+      return [`${glied.datei}:1 — ${schluessel}: Datei des Glieds ${glied.funktion} nicht lesbar.`];
+    }
+    const sf = ts.createSourceFile(glied.datei, text, ts.ScriptTarget.Latest, true);
+    const f = funktionsRumpf(sf, glied.funktion);
+    if (!f) {
+      return [`${glied.datei}:1 — ${schluessel}: Funktion ${glied.funktion} nicht gefunden.`];
+    }
+    rufe = aufrufeIn(f.rumpf);
+    stelle = `${glied.datei}:${f.zeile}`;
+  }
+  if (!rufe.has(e.entscheidung)) {
+    return [`${stelle} — ${schluessel}: ruft die Entscheidung ${e.entscheidung} nicht auf.`];
+  }
+  return [];
+}
+
+const LIES_AUS_DEM_BAUM = (datei: string): string => readFileSync(join(REPO_WURZEL, datei), "utf8");
 
 describe("mega74 E · der Sammler über alle Lesewege", () => {
   it("die Erhebung ist vollständig — keine unlesbare Datei, keine Zählerabweichung", () => {
@@ -1428,6 +1700,90 @@ describe("mega74 E · der Sammler über alle Lesewege", () => {
       luegner,
       `Behauptetes Recht steht nicht in der Registrierung:\n${luegner.join("\n")}`,
     ).toEqual([]);
+  });
+
+  // NACHARBEIT 2 (Befund ben, R-1175): der Schutz eines Dienstwegs wird nachgegangen, nicht geglaubt.
+  it("wer DIENST_FILTERT behauptet, ist bis zur aufgerufenen Entscheidung verfolgbar", () => {
+    const maengel = ERHEBUNG.funde.flatMap((f) => {
+      const e = REGISTER[f.schluessel];
+      return e?.urteil === "DIENST_FILTERT"
+        ? pruefeDienstweg(f.schluessel, e, f, LIES_AUS_DEM_BAUM)
+        : [];
+    });
+    expect(
+      maengel,
+      `Diese Dienstwege tragen KO-Inhalt, ohne dass der Weg zur Schutzentscheidung nachweisbar ist:\n${maengel.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("die Dienstwege, die NUR die Vertraulichkeitsregel fahren, sind vollständig benannt", () => {
+    const gemessen = Object.entries(REGISTER)
+      .filter(([, e]) => e.urteil === "DIENST_FILTERT")
+      .filter(([, e]) => !ZENTRALE_ENTSCHEIDUNGEN.has(endEntscheidung(e) ?? ""))
+      .map(([schluessel]) => schluessel)
+      .sort();
+    expect(
+      gemessen,
+      "NUR_VERTRAULICHKEITSREGEL weicht vom Register ab — ein solcher Weg muss benannt (oder umgestellt und gestrichen) werden",
+    ).toEqual([...NUR_VERTRAULICHKEITSREGEL].sort());
+  });
+
+  it("KALIBRIERUNG — ein entfernter Dienstfilter oder eine blosse Erwähnung wird rot", () => {
+    const eintrag: Eintrag = {
+      urteil: "DIENST_FILTERT",
+      kette: [{ datei: "probe/dienst.ts", funktion: "liste" }],
+      entscheidung: "isConfidential",
+      grund: "Probe.",
+    };
+    const fund = {
+      datei: "probe-routes.ts",
+      zeile: 7,
+      aufrufe: new Set(["liste"]),
+      aufrufText: "",
+    };
+    const mitFilter = "class D { liste() { return kos.filter((k) => !isConfidential(k.c)); } }";
+    expect(pruefeDienstweg("GET /probe", eintrag, fund, () => mitFilter)).toEqual([]);
+
+    const ohneFilter = "class D { liste() { return kos; } }";
+    expect(pruefeDienstweg("GET /probe", eintrag, fund, () => ohneFilter).join("\n")).toContain(
+      "probe/dienst.ts:1 — GET /probe: ruft die Entscheidung isConfidential nicht auf",
+    );
+    // Eine Erwähnung ohne Aufruf ist kein Filter.
+    const nurErwaehnt = "class D { liste() { void isConfidential; return kos; } }";
+    expect(pruefeDienstweg("GET /probe", eintrag, fund, () => nurErwaehnt)).not.toEqual([]);
+    // Ruft die Route das erste Glied nicht, ist der Weg unterbrochen.
+    const ohneAufruf = { ...fund, aufrufe: new Set<string>() };
+    expect(pruefeDienstweg("GET /probe", eintrag, ohneAufruf, () => mitFilter)).not.toEqual([]);
+    // Und ein Eintrag nur mit Prosa ist rot.
+    const nurProsa: Eintrag = { urteil: "DIENST_FILTERT", grund: "service.ts:1 — filtert." };
+    expect(pruefeDienstweg("GET /probe", nurProsa, fund, () => mitFilter)).not.toEqual([]);
+  });
+
+  it("KALIBRIERUNG — nur ein AUFRUF des Prädikats zählt, keine blosse Namensnennung", () => {
+    const erwaehnt = erhebeDatei(
+      "erwaehnt.ts",
+      'app.get("/api/x", async (request, reply) => { void darfSehen; reply.send(geheim); });',
+    );
+    expect(erwaehnt.funde[0]?.praedikatImAufruf, "`void darfSehen` ist kein Schutz").toBe(false);
+
+    const helferNurGenannt = erhebeDatei(
+      "helfer-genannt.ts",
+      "const schuetze = (u, k) => darfSehen(u, k);\n" +
+        'app.get("/api/x", async (request, reply) => { void schuetze; reply.send(geheim); });',
+    );
+    expect(
+      helferNurGenannt.funde[0]?.praedikatImAufruf,
+      "ein nur genannter Helfer schützt nicht",
+    ).toBe(false);
+
+    const helferAlsRueckruf = erhebeDatei(
+      "helfer-rueckruf.ts",
+      "const schuetze = (k) => darfSehen(user, k);\n" +
+        'app.get("/api/x", async (request, reply) => { reply.send(alle.filter(schuetze)); });',
+    );
+    expect(helferAlsRueckruf.funde[0]?.praedikatImAufruf, "Rückruf an filter wird gerufen").toBe(
+      true,
+    );
   });
 
   // ================================================================================================
@@ -1585,6 +1941,8 @@ sahen die vier Fail-open-Zweige aus mega74 aus — und der Sammler war dabei gr�
       praedikatImAufruf: false,
       bedingt: [],
       rechte: new Set(["ko.read"]),
+      aufrufe: new Set(),
+      aufrufText: "",
     };
     expect(
       REGISTER[erfunden.schluessel],

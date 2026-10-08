@@ -255,6 +255,64 @@ describe("R-1165 · die Erhebung über alle Schnittstellen des Servers", () => {
     expect(kommentar.unlesbar).toEqual([]);
   });
 
+  it("KALIBRIERUNG (Nacharbeit 2) — `scope.get(PFAD, …)` außerhalb der Routenverzeichnisse fällt auf", () => {
+    // Befund ben: genau diese Bauform traf keines der alten Suchmuster und blieb ohne Matrixeintrag
+    // und ohne rote Meldung.
+    const wurzel = mkdtempSync(join(tmpdir(), "kw-r1165-scope-"));
+    try {
+      mkdirSync(join(wurzel, "irgendwo"));
+      const quelle = 'const PFAD = "/api/neu";\nscope.get(PFAD, handler);\n';
+      writeFileSync(join(wurzel, "irgendwo", "neu.ts"), quelle);
+      expect(routenquellen(wurzel, wurzel)).toEqual(["irgendwo/neu.ts"]);
+      const neu = erhebeRegistrierungen("irgendwo/neu.ts", quelle);
+      expect(neu.unlesbar).toEqual([]);
+      expect(neu.registrierungen.map((r) => `${routeKey(r.methode, r.pfad)}:${r.zeile}`)).toEqual([
+        "GET /api/neu:2",
+      ]);
+      // … und ist damit rot: kein Matrixeintrag, gemessen öffentlich.
+      expect(ROUTE_GUARD_MATRIX["GET /api/neu"]).toBeUndefined();
+      expect(schutzartVon(neu.registrierungen[0]?.aufruf ?? "")).toBe("public");
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it("KALIBRIERUNG (Nacharbeit 2) — Pluginparameter jedes Namens sind Serverinstanzen; Unlesbares ist rot", () => {
+    const formen: Array<[string, string, number]> = [
+      [
+        "getypt.ts",
+        'import type { FastifyPluginAsync } from "fastify";\nimport { PFAD } from "./pfade";\n' +
+          "export const plugin: FastifyPluginAsync = async (scope) => {\n" +
+          "  scope.get(PFAD, async () => ({}));\n};\n",
+        4,
+      ],
+      [
+        "zurueckgegeben.ts",
+        'import type { FastifyPluginAsync } from "fastify";\n' +
+          "export function routen(): FastifyPluginAsync {\n" +
+          '  return async (srv) => {\n    srv.delete(BASIS + "/x", h);\n  };\n}\n',
+        4,
+      ],
+      [
+        "registriert.ts",
+        "export function bau(server) {\n" +
+          "  server.register(async (s) => {\n    s.post(`/api/${teil}`, h);\n  });\n}\n",
+        3,
+      ],
+      [
+        "instanz.ts",
+        'import type { FastifyInstance } from "fastify";\n' +
+          "export function haenge(f: FastifyInstance): void {\n  f.put(ZIEL, h);\n}\n",
+        3,
+      ],
+    ];
+    for (const [datei, quelle, zeile] of formen) {
+      const erhebung = erhebeRegistrierungen(datei, quelle);
+      expect(erhebung.registrierungen, datei).toEqual([]);
+      expect(erhebung.unlesbar.join("\n"), datei).toContain(`${datei}:${zeile} —`);
+    }
+  });
+
   it("KALIBRIERUNG — die Dateierhebung folgt keiner Liste: sie steigt ab und nimmt jede Routendatei", () => {
     const wurzel = mkdtempSync(join(tmpdir(), "kw-r1165-"));
     try {

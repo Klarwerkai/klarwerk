@@ -41,9 +41,12 @@
 // BENANNTE GRENZEN (verschwiegen wird eine Grenze zur Falle):
 //   · Gelesen wird `services/**/*.ts` (ohne Tests, `.d.ts`, `node_modules`, `dist`). Ein Server
 //     ausserhalb von `services/` oder in `.js` geschriebene Routen sähe die Erhebung nicht.
-//   · Eine Registrierung an einem Empfänger, der NICHT `app` heisst, UND mit einem Pfad, der KEIN
-//     Literal ist (`scope.get(PFAD, …)`), erkennt weder Syntaxbaum noch Textlauf als Route — ein
-//     solches Muster würde `map.get(SCHLUESSEL)` nicht von einer Route unterscheiden können.
+//   · NACHARBEIT 2 (Befund ben): `scope.get(PFAD, …)` ist jetzt erfasst — als Registrierung, wenn
+//     `PFAD` eine `"/…"`-Konstante der Datei ist (gleich welcher Empfänger), und als ROT, wenn
+//     `scope` eine erhobene Serverinstanz ist und der Pfad sich nicht auflösen lässt
+//     (`serverInstanzen`). Weiterhin NICHT erkennbar: ein Empfänger, der weder als Instanz
+//     erhebbar ist (ungetypt, nicht über `register`/Plugin-Typ gebunden) noch einen auflösbaren
+//     `"/…"`-Pfad trägt — er wäre von `map.get(SCHLUESSEL)` nicht zu unterscheiden.
 //   · Auslieferungen OHNE `<empfänger>.<methode>(…)` — `app.register(fastifyStatic, …)` und
 //     `setNotFoundHandler` in `web-static.ts` (die gebaute Oberfläche, keine Wissensobjekte) — sind
 //     keine Registrierungen im Sinne dieser Erhebung.
@@ -94,11 +97,115 @@ const TEXT_MIT_PFAD =
 const TEXT_AN_APP = /\bapp\.(get|post|put|delete|patch|all|head|options)\s*[<(]/g;
 const TEXT_ROUTE = /\.route\s*\(/g;
 
+// Nacharbeit 2 (Befund ben, R-1165/R-1175): `const PFAD = "/api/neu"; scope.get(PFAD, handler);`
+// traf keines der drei Muster oben — die Datei kam gar nicht erst in den Syntaxlauf. Deshalb nimmt
+// die Dateierhebung zusätzlich jede Datei, die (a) Fastify kennt (Import, Instanz- oder
+// Plugin-Typ, `Fastify(…)`), oder (b) eine `"/…"`-Konstante führt UND eine Methode mit einem
+// Bezeichner als erstem Argument aufruft. Grob mit Absicht: zu viel kostet nur Zeit.
+const TEXT_KENNT_FASTIFY =
+  /from\s+["'](fastify|fastify-plugin)["']|\bFastify(Instance|PluginAsync|PluginCallback)\b|\bFastify\s*\(/;
+const TEXT_PFADKONSTANTE = /\bconst\s+[A-Za-z_$][\w$]*\s*=\s*["'`]\//;
+const TEXT_BEZEICHNER_ALS_PFAD =
+  /\.(get|post|put|delete|patch|all|head|options)\s*(<[\s\S]{0,400}?>)?\s*\(\s*[A-Za-z_$]/;
+
 /** Sieht dieser Quelltext nach einer Routendatei aus? Grob mit Absicht: zu viel kostet nur Zeit. */
 export function siehtAusWieRoutenquelle(text: string): boolean {
-  return [TEXT_MIT_PFAD, TEXT_AN_APP, TEXT_ROUTE].some((muster) =>
-    new RegExp(muster.source).test(text),
+  return (
+    [TEXT_MIT_PFAD, TEXT_AN_APP, TEXT_ROUTE].some((muster) =>
+      new RegExp(muster.source).test(text),
+    ) ||
+    TEXT_KENNT_FASTIFY.test(text) ||
+    (TEXT_PFADKONSTANTE.test(text) && TEXT_BEZEICHNER_ALS_PFAD.test(text))
   );
+}
+
+/** Der erste Parameter einer Funktion, wenn er ein schlichter Bezeichner ist. */
+function ersterParameter(f: ts.SignatureDeclarationBase): string | undefined {
+  const p = f.parameters[0];
+  return p && ts.isIdentifier(p.name) ? p.name.text : undefined;
+}
+
+function istFunktionsliteral(n: ts.Node): n is ts.ArrowFunction | ts.FunctionExpression {
+  return ts.isArrowFunction(n) || ts.isFunctionExpression(n);
+}
+
+/**
+ * Nacharbeit 2: die SERVERINSTANZEN dieser Datei — unabhängig von ihrem Namen. Eine Instanz ist
+ *   · ein Parameter mit dem Typ `FastifyInstance`,
+ *   · der erste Parameter eines Plugins: einer Funktion, die an `.register(…)` geht, mit
+ *     `fp(…)`/`fastifyPlugin(…)` umhüllt ist, als `FastifyPlugin…` getypt/zugesichert ist oder aus
+ *     einer Funktion mit Rückgabetyp `FastifyPlugin…` zurückgegeben wird,
+ *   · eine Variable, die `Fastify(…)`/`fastify(…)` zugewiesen bekommt,
+ *   · und weiterhin `app`.
+ * Jede `<instanz>.<methode>(…)` ist eine Registrierung; ihr Pfad muss sich auflösen lassen.
+ * BENANNTE GRENZE: die Zuordnung geht über den NAMEN innerhalb der Datei, nicht über den Typprüfer.
+ */
+export function serverInstanzen(sf: ts.SourceFile): Set<string> {
+  const instanzen = new Set<string>(["app"]);
+  const istPluginTyp = (typ: ts.TypeNode | undefined): boolean =>
+    typ !== undefined && /\bFastifyPlugin(Async|Callback)?\b/.test(typ.getText(sf));
+  const merke = (f: ts.Node): void => {
+    if (istFunktionsliteral(f)) {
+      const name = ersterParameter(f);
+      if (name) {
+        instanzen.add(name);
+      }
+    }
+  };
+  const besuche = (n: ts.Node): void => {
+    if (ts.isParameter(n) && ts.isIdentifier(n.name) && n.type) {
+      if (/\bFastifyInstance\b/.test(n.type.getText(sf))) {
+        instanzen.add(n.name.text);
+      }
+    }
+    if (ts.isCallExpression(n)) {
+      const aufgerufen = n.expression;
+      const name = ts.isIdentifier(aufgerufen)
+        ? aufgerufen.text
+        : ts.isPropertyAccessExpression(aufgerufen)
+          ? aufgerufen.name.text
+          : "";
+      if (name === "register" || name === "fp" || name === "fastifyPlugin") {
+        for (const arg of n.arguments) {
+          merke(arg);
+        }
+      }
+    }
+    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer) {
+      const init = n.initializer;
+      if (
+        ts.isCallExpression(init) &&
+        ts.isIdentifier(init.expression) &&
+        /^(Fastify|fastify)$/.test(init.expression.text)
+      ) {
+        instanzen.add(n.name.text);
+      }
+      if (istPluginTyp(n.type)) {
+        merke(ohneHuelle(init));
+      }
+    }
+    if ((ts.isAsExpression(n) || ts.isSatisfiesExpression(n)) && istPluginTyp(n.type)) {
+      merke(ohneHuelle(n.expression));
+    }
+    if (ts.isReturnStatement(n) && n.expression) {
+      let f: ts.Node | undefined = n.parent;
+      while (f && !ts.isFunctionLike(f)) {
+        f = f.parent;
+      }
+      if (f && ts.isFunctionLike(f) && istPluginTyp(f.type)) {
+        merke(ohneHuelle(n.expression));
+      }
+    }
+    if (istFunktionsliteral(n) && !ts.isBlock(n.body) && n.parent) {
+      // `(): FastifyPluginAsync => async (scope) => {…}` — Rückgabe ohne `return`.
+      if (istPluginTyp(n.type)) {
+        merke(ohneHuelle(n.body));
+      }
+    }
+    ts.forEachChild(n, besuche);
+  };
+  besuche(sf);
+  return instanzen;
 }
 
 function istProduktquelle(name: string): boolean {
@@ -240,14 +347,25 @@ export function textlaufLuecken(
   sf: ts.SourceFile,
   datei: string,
   gelesen: ReadonlySet<number>,
+  instanzen: ReadonlySet<string> = serverInstanzen(sf),
 ): string[] {
   const geschwaerzt = kommentareGeschwaerzt(sf);
   const zeile = (pos: number): number => sf.getLineAndCharacterOfPosition(pos).line + 1;
   const luecken: string[] = [];
-  const muster: ReadonlyArray<readonly [RegExp, number]> = [
+  const muster: Array<readonly [RegExp, number]> = [
     [TEXT_MIT_PFAD, ".".length],
     [TEXT_AN_APP, "app.".length],
   ];
+  // Nacharbeit 2: dasselbe Netz unter jeder weiteren Serverinstanz, gleich wie sie heisst.
+  for (const name of instanzen) {
+    if (name !== "app") {
+      const sicher = name.replace(/\$/g, "\\$");
+      muster.push([
+        new RegExp(`(?<![\\w$.])${sicher}\\.(${[...METHODEN].join("|")})\\s*[<(]`, "g"),
+        name.length + 1,
+      ]);
+    }
+  }
   for (const [regel, versatz] of muster) {
     for (const treffer of geschwaerzt.matchAll(regel)) {
       const pos = (treffer.index ?? 0) + versatz;
@@ -280,6 +398,7 @@ export function erhebeRegistrierungen(datei: string, text: string): Dateierhebun
     return { registrierungen, unlesbar };
   }
   const konstanten = zeichenkettenKonstanten(sf);
+  const instanzen = serverInstanzen(sf);
   const gelesen = new Set<number>();
   const besuche = (n: ts.Node): void => {
     if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)) {
@@ -288,7 +407,8 @@ export function erhebeRegistrierungen(datei: string, text: string): Dateierhebun
         gelesen.add(name.getStart(sf));
         const pfad = pfadVon(n.arguments[0], konstanten);
         const empfaenger = n.expression.expression;
-        const anApp = ts.isIdentifier(empfaenger) && empfaenger.text === "app";
+        // Nacharbeit 2: nicht mehr nur `app`, sondern jede erhobene Serverinstanz.
+        const anApp = ts.isIdentifier(empfaenger) && instanzen.has(empfaenger.text);
         if (pfad?.startsWith("/")) {
           registrierungen.push({
             methode: name.text.toUpperCase(),
@@ -299,7 +419,7 @@ export function erhebeRegistrierungen(datei: string, text: string): Dateierhebun
           });
         } else if (anApp) {
           unlesbar.push(
-            `${datei}:${zeile(n.getStart(sf))} — app.${name.text}(…) mit einem Pfad, den die Erhebung nicht auflösen kann (weder Literal noch Konstante dieser Datei, oder kein "/"-Pfad).`,
+            `${datei}:${zeile(n.getStart(sf))} — ${empfaenger.getText(sf)}.${name.text}(…) an einer Serverinstanz mit einem Pfad, den die Erhebung nicht auflösen kann (weder Literal noch Konstante dieser Datei, oder kein "/"-Pfad).`,
           );
         }
       }
@@ -307,7 +427,7 @@ export function erhebeRegistrierungen(datei: string, text: string): Dateierhebun
     ts.forEachChild(n, besuche);
   };
   besuche(sf);
-  unlesbar.push(...textlaufLuecken(sf, datei, gelesen));
+  unlesbar.push(...textlaufLuecken(sf, datei, gelesen, instanzen));
   return { registrierungen, unlesbar };
 }
 
