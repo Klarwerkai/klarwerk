@@ -377,6 +377,12 @@ describe("Paarpflichten gegen echtes Postgres", () => {
     expect(bilanz).toMatchObject({ gesamt: 10, geurteilt: 10, rest: 0, abgeschlossen: true });
     const pflichten = await s2.paarpflichten.liste("lauf-pg");
     expect(pflichten.filter((p) => p.urteil)).toHaveLength(10);
-    expect(pflichten.filter((p) => p.vorlagen === 2).map((p) => paarVon(p.a, p.b))).toEqual(["bc"]);
+    // Die Kennungen sind hier echte UUIDs, keine Buchstaben: Instanz 1 hat in Paarschlüssel-
+    // Reihenfolge vier Paare geurteilt und hing am FÜNFTEN. Genau dieses wurde zweimal vorgelegt,
+    // jedes andere genau einmal (`liste` ist nach Paarschlüssel geordnet).
+    const haengendesPaar = pflichten[4]?.pairKey;
+    const zweimal = pflichten.filter((p) => p.vorlagen === 2).map((p) => p.pairKey);
+    expect(zweimal).toEqual([haengendesPaar]);
+    expect(pflichten.filter((p) => p.vorlagen === 1)).toHaveLength(9);
   });
 });
