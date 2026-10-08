@@ -8,7 +8,12 @@ import {
   redactGapForViewer,
 } from "../../../ask";
 import type { ConflictService } from "../../../conflicts";
-import type { KnowledgeObject, KoService } from "../../../knowledge-object";
+import {
+  GELTUNG_TEXT_MAX,
+  type KnowledgeObject,
+  type KoService,
+  normalizeFragekontext,
+} from "../../../knowledge-object";
 import { bindeAnbieter, bindeZustimmung, imBindungsrahmen } from "../../../reasoner";
 import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
@@ -76,6 +81,18 @@ const askBodySchema = {
       type: "array",
       maxItems: GESPRAECHSFADEN_MAX_FRAGEN,
       items: { type: "string", maxLength: 8_000 },
+    },
+    // R-1633 — WOFÜR GEFRAGT WIRD: Werk, Schicht, Rolle (je optional, ≤ GELTUNG_TEXT_MAX). Wirkt
+    // wie der Faden NUR im Konsolenzweig: es ordnet gleich relevante Quellen nach ihrer Geltung und
+    // liefert die Auskunft `geltung`. Add-on- und Word-Wege lassen es liegen.
+    fragekontext: {
+      type: "object",
+      properties: {
+        werk: { type: "string", maxLength: GELTUNG_TEXT_MAX },
+        schicht: { type: "string", maxLength: GELTUNG_TEXT_MAX },
+        rolle: { type: "string", maxLength: GELTUNG_TEXT_MAX },
+      },
+      additionalProperties: false,
     },
   },
 } as const;
@@ -548,6 +565,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         selectionConfidentiality?: string;
         questionSource?: string;
         thread?: string[];
+        fragekontext?: unknown;
       };
     }>(
       "/api/ask",
@@ -637,6 +655,12 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // Konsolenzweig; ohne Faden bleibt `opts` dort wie bisher unangetastet.
         const faden = (request.body.thread ?? []).filter((frage) => frage.trim().length > 0);
         let fadenErlaubt = false;
+        // R-1633: der Fragekontext — geprüft hier, wirksam nur dort, wo auch der Faden wirkt.
+        const fragekontext = normalizeFragekontext(request.body.fragekontext);
+        if (fragekontext === null) {
+          reply.code(400).send({ error: "INVALID", message: "fragekontext ist ungültig." });
+          return;
+        }
         // R-0639, Befund B1: STAMMT DIE FRAGE SELBST AUS DEM DOKUMENT, verlässt sie die Enge nur mit
         // bestandener Dokumenttext-Prüfung — dieselbe Prüfung, dieselbe Vertraulichkeitsregel wie
         // für `selection`. Hält sie, läuft der Zweig in die unveränderte Enge (retrieval-only, kein
@@ -674,11 +698,28 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             ))
               ? { dokumenttextFreigegeben: true as const }
               : {};
-          const mitAuswahl = markierung ? { ...opts, ...markierung, ...dokumenttextFeld } : opts;
-          const mitMarkierung =
+          // gesamt-ki-freigaberegeln (Ben Nacharbeit 2): geht vertraulich markierter Dokumenttext
+          // hinaus — als Markierung oder als Frage selbst —, dann nur, weil die zweite zentrale
+          // Adminfreigabe ihn gedeckt hat. Die EINSTUFUNG reist dann mit bis in den Reasoner, damit der
+          // Kern und der Chokepoint dieselbe Freigabe noch einmal fragen. Sonst fehlt das Feld.
+          const vertraulichHinaus =
+            markierungVertraulich(request.body.selectionConfidentiality) &&
+            ("dokumenttextFreigegeben" in dokumenttextFeld || (ka4Bestaetigt && frageIstDokument));
+          const vertraulichFeld = vertraulichHinaus
+            ? { dokumenttextVertraulich: true as const }
+            : {};
+          const mitAuswahl = markierung
+            ? { ...opts, ...markierung, ...dokumenttextFeld, ...vertraulichFeld }
+            : vertraulichHinaus
+              ? { ...opts, ...vertraulichFeld }
+              : opts;
+          const mitFaden =
             fadenErlaubt && faden.length > 0
               ? { ...mitAuswahl, gespraechsfaden: faden }
               : mitAuswahl;
+          // R-1633: dieselbe Grenze wie der Faden — nur im Konsolenzweig, sonst unangetastet.
+          const mitMarkierung =
+            fadenErlaubt && fragekontext ? { ...mitFaden, fragekontext } : mitFaden;
           const betrachter = request.askSessionUser;
           let grundlage: (ko: KnowledgeObject) => boolean;
           if (betrachter) {
@@ -725,7 +766,11 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           // KW-KA4: NUR eine serverbestätigte Einwilligung für exakt diese Sitzung UND dieses
           // Dokument hebt die Enge auf. Ohne sie fällt der Ablauf in den unveränderten Zweig
           // darunter — Zeile für Zeile derselbe wie vor KA4.
+          // Aufnahme gesamt-integrations-api (R-0688): ein DIENST-Schlüssel hat keine Klara-Sitzung
+          // und nie eine Einwilligung — er bekommt ausschließlich den engen Zweig darunter
+          // (validiertes Wissen, kein Modell), auch wenn er Klara-Köpfe mitschickt.
           if (
+            !auth.principal.dienst &&
             (await ka4Freigabe(
               deps.klaraSessions,
               request.headers,
