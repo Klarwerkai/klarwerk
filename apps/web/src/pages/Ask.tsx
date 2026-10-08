@@ -6,7 +6,12 @@ import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos, useReasonerStatus } from "../api/hooks";
-import type { AnswerResult, VerschlossenHinweis } from "../api/types";
+import type {
+  AnswerResult,
+  AskGeltungsauskunft,
+  Fragekontext,
+  VerschlossenHinweis,
+} from "../api/types";
 import { useToast } from "../app/ToastContext";
 // AUFTRAG-mega69 B1 (bens sammel65-Auflage 1): der Kostenhinweis der Beispiel-Chips läuft über
 // DASSELBE zentrale Bauteil und DIESELBE Ableitung wie alle anderen Auslösestellen — bedingt an
@@ -14,6 +19,7 @@ import { useToast } from "../app/ToastContext";
 import { AiCostHint } from "../components/AiCostHint";
 import { AiGeneratedNotice, AiSurfaceNotice } from "../components/AiGeneratedNotice";
 import { DemoBanner } from "../components/DemoBanner";
+import { FragekontextWahl, GeltungsAuskunft, fragekontextZumSenden } from "../components/Geltung";
 import { HelpTip } from "../components/HelpTip";
 // AUFTRAG-mega71 BLOCK E (Befund aus mega70 Block E, jetzt frei): diese Fläche trug dieselbe
 // Sackgassen-Fehlerklasse FÜNFFACH — zweimal /validierung (Führungskarte + Prüfvorbehalt-CTA),
@@ -27,6 +33,7 @@ import { RoleLink } from "../components/RoleLink";
 // und Plaketten, Warte- und KI-aus-Zustand. Sie standen bis dahin inline hier.
 import { AntwortPlatzhalter, KiNichtVerfuegbar } from "../components/fragen/Antwortbausteine";
 import { FrageFeld } from "../components/fragen/FrageFeld";
+import { NichtHilfreichKarte } from "../components/fragen/NichtHilfreichKarte";
 import { EVIDENCE_TONE, QuellenListe } from "../components/fragen/QuellenListe";
 import {
   QUELLEN_CHIP_KLASSE,
@@ -102,6 +109,7 @@ import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { ergebnisStufeFuerAntwort, kiHerkunftAus } from "../lib/kiHerkunft";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { formatKoTimestamp } from "../lib/koDates";
+import { erkenneNichtHilfreich } from "../lib/nichtHilfreich";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { istIosGeraet } from "../lib/speechSupport";
@@ -512,6 +520,17 @@ interface AskAnfrage {
   faden: string[];
   // Ben, Nacharbeit 2: die Fadengeneration beim Absenden — „Neues Thema" zählt sie hoch.
   fadenGeneration: number;
+  // R-1633: der Fragekontext beim Absenden; fehlt er, ist der Aufruf der bisherige.
+  kontext?: Fragekontext;
+}
+
+// R-1649: die erkannte, noch nicht bestätigte Rückmeldung und ihr Ergebnis (s. `Ask`).
+interface NichtHilfreichOffen {
+  koId: string;
+  alternative: string;
+}
+interface NichtHilfreichErledigt {
+  entwurfId: string | null;
 }
 
 export function Ask(): JSX.Element {
@@ -657,6 +676,11 @@ export function Ask(): JSX.Element {
   );
   // Die zuletzt gestellte Frage steht schon in der Fragezeile; aufgezählt werden die früheren.
   const fadenFrueher = faden.filter((frage) => frage !== asked);
+  // R-1633: wofür gefragt wird (Werk/Schicht/Rolle) und die Auskunft des Servers, wofür die
+  // stehende Antwort gewichtet wurde. Die Angabe gilt für diese Sitzung der Seite; sie wird nicht
+  // gespeichert.
+  const [fragekontext, setFragekontext] = useState<Fragekontext>({});
+  const [geltungsAuskunft, setGeltungsAuskunft] = useState<AskGeltungsauskunft | null>(null);
   // Ben, Nacharbeit 2: „Neues Thema" während einer laufenden Nachfrage. Die später eintreffende
   // Antwort darf ihre Frage nicht wieder in den geleerten Faden tragen — sie gehört zum alten
   // Thema. Jede Anfrage trägt die Generation, unter der sie startete (wie `kontoGeneration`).
@@ -801,10 +825,18 @@ export function Ask(): JSX.Element {
   const kontoGeneration = useRef(0);
   const ask = useMutation({
     mutationFn: (anfrage: AskAnfrage) =>
-      // R-0348: ohne Faden genau der bisherige Aufruf.
-      anfrage.faden.length > 0
-        ? endpoints.ask.ask(anfrage.frage, toReasonerLocale(i18n.language), anfrage.faden)
-        : endpoints.ask.ask(anfrage.frage, toReasonerLocale(i18n.language)),
+      // R-1633: mit Fragekontext reist er mit; ohne bleibt es bei den bisherigen Aufrufen.
+      anfrage.kontext
+        ? endpoints.ask.ask(
+            anfrage.frage,
+            toReasonerLocale(i18n.language),
+            anfrage.faden,
+            anfrage.kontext,
+          )
+        : // R-0348: ohne Faden genau der bisherige Aufruf.
+          anfrage.faden.length > 0
+          ? endpoints.ask.ask(anfrage.frage, toReasonerLocale(i18n.language), anfrage.faden)
+          : endpoints.ask.ask(anfrage.frage, toReasonerLocale(i18n.language)),
     // D5: eine schon offene Fläche kennt die Abschaltung noch nicht — der Server hat sie eben
     // gemeldet. Der Status wird neu gelesen, damit der Absendeknopf danach gesperrt ist und der
     // Hinweis dasteht, statt dass der Mensch dieselbe Absage ein zweites Mal abholt.
@@ -849,6 +881,8 @@ export function Ask(): JSX.Element {
       // JOB 2626 D1: dieselbe Bindung wie für Antwort/Receipt/Lücke — die Torlage gehört zu genau
       // einer Frage und darf nie neben dem Ergebnis einer anderen stehen.
       setVerschlossen([]);
+      // R-1633: dieselbe Bindung — die Gewichtungsauskunft gehört zu genau einer Antwort.
+      setGeltungsAuskunft(null);
     },
     // SCRUM-138: Backend liefert { result, gap, receipt } — Antwort + Answer-Receipt entpacken.
     onSuccess: (r, { frage: question, generation, fadenGeneration: fadenStand }) => {
@@ -870,6 +904,8 @@ export function Ask(): JSX.Element {
       // JOB 2626 D1: abwesend heißt „nicht gefragt oder nichts zu melden" — beides fällt ehrlich
       // auf die leere Liste und damit auf die generische Leermeldung zurück.
       setVerschlossen(r.verschlossen ?? []);
+      // R-1633: abwesend heißt „ohne Fragekontext gefragt" — dann steht keine Auskunft da.
+      setGeltungsAuskunft(r.geltung ?? null);
       // FUNKE-FIX2 P0: die neue Lücke merken (ID für den Capture-Einstieg) und die Gap-Liste
       // invalidieren, damit Capture die frisch erzeugte Lücke über ihre ID auflösen kann (der Ersteller
       // ist berechtigt → Volltext). Kein Fragetext in der URL.
@@ -899,6 +935,35 @@ export function Ask(): JSX.Element {
   // Ben R1, F8: eine WIEDERAUFGENOMMENE Antwort trägt ihren alten Beleg. Ist er abgelaufen, bietet
   // die Fläche die Rückmeldung nicht mehr an, sondern sagt, warum — und wie es wieder geht.
   const belegGueltig = belegNochGueltig(receipt, antwortAm, Date.now());
+  // R-1649: „Das war nicht hilfreich, ich habe es so gemacht …" ins Fragefeld gesprochen — erkannt
+  // beim Absenden (`lib/nichtHilfreich.ts`), gespeichert erst nach der Bestätigung in der Karte.
+  // Ziel ist dieselbe tragende Quelle wie beim „Hat geholfen", mit demselben Beleg.
+  const [nichtHilfreich, setNichtHilfreich] = useState<NichtHilfreichOffen | null>(null);
+  const [nichtHilfreichErledigt, setNichtHilfreichErledigt] =
+    useState<NichtHilfreichErledigt | null>(null);
+  const quelleTitel = (koId: string): string =>
+    (kos.data ?? []).find((ko) => ko.id === koId)?.title ?? koId;
+  const nichtHilfreichMelden = useMutation({
+    mutationFn: ({ koId, alternative }: { koId: string; alternative: string | null }) =>
+      endpoints.ask.notHelpful({
+        koId,
+        receipt,
+        ...(alternative
+          ? {
+              alternative,
+              entwurfTitel: t("sprachfeedback.entwurfTitel", {
+                titel: quelleTitel(koId),
+              }),
+            }
+          : {}),
+      }),
+    onSuccess: (r) => {
+      setNichtHilfreich(null);
+      setNichtHilfreichErledigt({ entwurfId: r.entwurfId });
+      setQ("");
+    },
+    onError: rueckmeldungAbgelehnt,
+  });
 
   // Ergänzung 1 · SCHREIBEN: jede Änderung an Entwurf oder stehender Antwort geht in den Stand
   // DIESES Kontos. Eine neue Frage räumt die alte Antwort in `onMutate` ab — damit ist auch der
@@ -1164,14 +1229,19 @@ export function Ask(): JSX.Element {
       // nach dem Absenden offen, stünden Beispieltexte und Hinweise zwischen Feld und Antwort. Sie
       // schliesst deshalb hier — nur bei einem ANGENOMMENEN Absenden, für Feld, Chip und Auto-Ask.
       setBeispiele(false);
+      // R-1649: eine neue Frage beendet eine offene oder erledigte „nicht hilfreich"-Rückmeldung.
+      setNichtHilfreich(null);
+      setNichtHilfreichErledigt(null);
+      const kontext = fragekontextZumSenden(fragekontext);
       ask.mutate({
         frage: trimmed,
         generation: kontoGeneration.current,
         faden: fadenFuerAnfrage(faden, trimmed),
         fadenGeneration: fadenGeneration.current,
+        ...(kontext ? { kontext } : {}),
       });
     },
-    [answerAi.available, ask.isPending, ask.mutate, faden],
+    [answerAi.available, ask.isPending, ask.mutate, faden, fragekontext],
   );
 
   // WP-UX-WOW-1 U2/U3: Beispiel-Chip → Frage setzen UND direkt senden (ein Klick → Antwort).
@@ -1584,6 +1654,9 @@ export function Ask(): JSX.Element {
         <p data-testid="ask-ki-flaechensatz" className="m-0 mb-2">
           <AiSurfaceNotice />
         </p>
+        {/* R-1633: „Ich frage für" Werk/Schicht/Rolle — gleich passende Quellen dieses Orts
+            stehen vorn; nichts wird ausgeblendet. Zugeklappt, solange niemand es braucht. */}
+        <FragekontextWahl wert={fragekontext} onWert={setFragekontext} kos={kos.data ?? []} />
         <FrageFeld
           wert={q}
           onWert={setQ}
@@ -1594,6 +1667,23 @@ export function Ask(): JSX.Element {
             // AUFTRAG-mega38 BLOCK J2: der Fehlversuch wird HIER vermerkt — der Knopf ist bei leerer
             // Frage gesperrt, per Eingabetaste kommt man aber sehr wohl bis hierher.
             setEmptyAttempted(q.trim().length === 0);
+            // R-1649: steht eine belegte Antwort mit tragender Quelle da und sagt der Text „nicht
+            // hilfreich", wird nicht gefragt, sondern die Bestätigung gezeigt. Ohne gültigen Beleg
+            // bleibt es eine gewöhnliche Frage — eine Rückmeldung ginge dann ohnehin ins 403.
+            // Das Diktat HÄNGT AN: nach einer Antwort steht deren Frage noch im Feld, und der
+            // gesprochene Satz folgt dahinter. Gelesen wird deshalb nur, was neu dazukam.
+            const tragend = result?.answered ? (result.citedSources ?? [])[0] : undefined;
+            const frageVorher = antwortFrage.current;
+            const gesagt =
+              frageVorher && q.trimStart().startsWith(frageVorher)
+                ? q.trimStart().slice(frageVorher.length)
+                : q;
+            const erkannt = tragend && belegGueltig ? erkenneNichtHilfreich(gesagt) : null;
+            if (tragend && erkannt) {
+              setNichtHilfreichErledigt(null);
+              setNichtHilfreich({ koId: tragend, alternative: erkannt.alternative });
+              return;
+            }
             submitAsk(q);
           }}
           // E2E-018 / AUFTRAG-mega39 BLOCK G: „ungültig" erst NACH dem Fehlversuch — im Takt mit der
@@ -1620,6 +1710,42 @@ export function Ask(): JSX.Element {
         >
           {answerAi.available && emptyAttempted && q.trim().length === 0 ? t("ask.emptyHint") : ""}
         </output>
+        {nichtHilfreich ? (
+          <NichtHilfreichKarte
+            key={`${nichtHilfreich.koId}:${nichtHilfreich.alternative}`}
+            quelleTitel={quelleTitel(nichtHilfreich.koId)}
+            alternative={nichtHilfreich.alternative}
+            laeuft={nichtHilfreichMelden.isPending}
+            onBestaetigen={(alternative) =>
+              nichtHilfreichMelden.mutate({ koId: nichtHilfreich.koId, alternative })
+            }
+            onAlsFrage={() => {
+              setNichtHilfreich(null);
+              submitAsk(q);
+            }}
+            onVerwerfen={() => setNichtHilfreich(null)}
+          />
+        ) : null}
+        {nichtHilfreichErledigt ? (
+          <output
+            data-testid="ask-nicht-hilfreich-erledigt"
+            className="mt-3 block text-[13px] text-muted"
+          >
+            {nichtHilfreichErledigt.entwurfId
+              ? t("sprachfeedback.erledigtMitEntwurf")
+              : t("sprachfeedback.erledigt")}{" "}
+            {nichtHilfreichErledigt.entwurfId ? (
+              <RoleLink
+                to={`/erfassen?draft=${encodeURIComponent(nichtHilfreichErledigt.entwurfId)}`}
+                testId="ask-nicht-hilfreich-entwurf"
+                className="inline-flex items-center gap-1 font-semibold text-brand-text"
+                hoverClassName="hover:underline"
+              >
+                {() => t("sprachfeedback.entwurfOeffnen")}
+              </RoleLink>
+            ) : null}
+          </output>
+        ) : null}
         <span className="block [&:not(:empty)]:mt-3">
           {/* ====================================================================================
             JOB 4224 · D5, LIEFERUNG 5 — DIE LAGE ZU NENNEN IST NICHT DASSELBE WIE EINEN WEG ZU
@@ -2056,6 +2182,15 @@ export function Ask(): JSX.Element {
                         );
                       })}
                     </div>
+                  ) : null}
+                  {/* R-1633 — „Sichtbar im UI": wofür gewichtet wurde und wie jede herangezogene
+                    Quelle dazu passt. Nur wenn mit Fragekontext gefragt wurde; die Passung sagt
+                    der Server (dieselbe Rechnung, die die Reihenfolge bestimmt hat). */}
+                  {geltungsAuskunft ? (
+                    <GeltungsAuskunft
+                      auskunft={geltungsAuskunft}
+                      titelVon={(id) => quellenAuskunft.find((s) => s.id === id)?.label ?? id}
+                    />
                   ) : null}
                   {/* §5: das „…" rechts oben IN der Antwortkarte. Absolut gesetzt, damit es die
                     Reihenfolge der Inhaltselemente nicht verschiebt (D-047). */}

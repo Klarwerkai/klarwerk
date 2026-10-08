@@ -2141,8 +2141,33 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `ANGEBOT_MUSTER`) und trägt kein `documentTitle`-Prop — nur Grundmenge. Die übrigen neuen
     // Dateien (`lib/kiHerkunft.ts`, `lib/antwortDateien.ts`, `components/fragen/antwortMenue.ts`)
     // bringen keine Komponente mit. Weicht die Messung ab, gilt der gemessene Wert samt Herkunft.
+    // (489 ist am Kandidaten 2215c220 GEMESSEN bestätigt — nacharbeit-2-sammler-und-texte grün.)
+    //
+    // Aus dem Hauptstand (Auftrag PLAN-SPRACHANMERKUNG), dort gegen 451 gerechnet:
+    // PLAN-SPRACHANMERKUNG (R-1625, R-2177): 451 → 452. GENAU EIN Bauteil kommt dazu:
+    //     + `Zeichnung` (`components/bibliothek/Zeichnung.tsx`) — die Zeichnung einer Rückfrage
+    //       mit ihrer Marke; antippbar beim Schreiben, nur lesend am gespeicherten Beitrag.
+    // Sie zeigt ein Bild aus dem Inhalt, bietet aber keine Bildbeschreibung an (kein
+    // `CAPTION_AI_TEXT`) und trägt keinen eigenen Titel (kein `documentTitle`-Prop): `anbieter` 1
+    // und `traeger` 2 bleiben. EHRLICH GESAGT: die 452 ist GERECHNET (451 + 1) — dieser Auftrag
+    // durfte keinen Testlauf selbst starten; weicht der Prüflauf ab, gehört die gemessene Zahl hin.
+    // NACHARBEIT 2 (BEN: CAD-/PDF-Arbeitsweg): 452 → 453, GENAU EIN Bauteil mehr:
+    //     + `AnhangZeichnung` (`components/bibliothek/AnhangZeichnung.tsx`) — die hochgeladene
+    //       Zeichnung (PDF-Seite, DXF, Bild) mit Seitenwahl, gereicht an `Zeichnung`.
+    // Kein `CAPTION_AI_TEXT`, kein `documentTitle`. Ebenfalls GERECHNET (452 + 1). Hinweis: der
+    // Prüflauf von nacharbeit-1 mass 494 am integrierten Stand — die Abweichung über diese eine
+    // Komponente hinaus stammt aus fremden Lieferungen und ist hier nicht nachgezogen.
+    //
+    // INTEGRATION (Aufnahme gesamt-ki-kennzeichnung, Nacharbeit 8): beide Zählreihen treffen sich.
+    // Ausgangspunkt ist die GEMESSENE 489 (Kandidat 2215c220, Hauptstand dc8fadeda). Seither bringt
+    // der Hauptstand bis 4878a322 laut Diff 26 Komponentendeklarationen in `.tsx` mit und entfernt
+    // keine — darunter `Zeichnung` und `AnhangZeichnung` aus dem Absatz darüber, dazu u. a.
+    // `FragekontextWahl`, `KlaraVorschau`, `NichtHilfreichKarte`, `GeltungFeld`, `ExternStatus`.
+    // 489 + 26 = 515. EHRLICH GESAGT: GERECHNET über ein Diff-Muster, nicht gemessen — die Hand
+    // startet keine Tests. Weicht der Prüflauf ab, nennt die Meldung die gemessene Zahl; die gehört
+    // dann hierher. `anbieter` 1 und `traeger` 2 bleiben in beiden Reihen unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 489,
+      komponenten: 515,
       anbieter: 1,
       traeger: 2,
     });

@@ -38,12 +38,15 @@ export const ASK_CAPABILITY = "ask.validated" as const;
 export const CHECKTEXT_CAPABILITY = "checktext.validated" as const;
 // Aufnahme gesamt-integrations-api: die drei weiteren Rechte trägt nur ein Dienst-Schlüssel
 // (`dienst-schluessel.ts`) — der Klara-Schlüssel bleibt bei den beiden obigen.
+// Aufnahme gesamt-mcp (R-0713): `mcp.werkzeug` öffnet den MCP-Zugang (`routes/mcp-routes.ts`),
+// ebenfalls nur für einen Dienst-Schlüssel.
 export type AddonCapability =
   | typeof ASK_CAPABILITY
   | typeof CHECKTEXT_CAPABILITY
   | "export.validated"
   | "import.kandidaten"
-  | "status.read";
+  | "status.read"
+  | "mcp.werkzeug";
 
 // Rückwärtskompatibler Alias (SCRUM-490): früher trug der Principal genau diese eine Capability.
 export const ADDON_CAPABILITY = ASK_CAPABILITY;

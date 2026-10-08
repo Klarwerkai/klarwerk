@@ -443,3 +443,60 @@ body.klara-inspect * {
   left: 0;
   right: auto;
 }
+
+/* KLARA-VORSCHAU (components/klara-vorschau/): die bewegliche Figur und ihr Gespräch.
+   Zustand steht IMMER zusätzlich als Text da („Anfrage läuft …“, „Antwort bereit“,
+   „Entscheidung nötig“) — die Bewegung ist sparsam und entfällt bei reduzierter Bewegung ganz. */
+.klara-figur {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.klara-figur[data-status="entscheidung"] {
+  outline: 3px solid rgb(var(--kw-brand));
+  outline-offset: 3px;
+}
+.klara-figur[data-ablage="true"] {
+  outline: 3px dashed rgb(var(--kw-ai));
+  outline-offset: 4px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .klara-figur {
+    transition: width 0.15s ease, height 0.15s ease;
+  }
+  .klara-figur[data-status="laeuft"] img {
+    animation: kw-klara-denkt 1.4s ease-in-out infinite;
+  }
+  .klara-figur[data-status="antwort"] {
+    animation: kw-klara-bereit 1.2s ease-out 2;
+  }
+}
+@keyframes kw-klara-denkt {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+@keyframes kw-klara-bereit {
+  from {
+    box-shadow: 0 0 0 0 rgb(var(--kw-brand) / 0.55);
+  }
+  to {
+    box-shadow: 0 0 0 12px rgb(var(--kw-brand) / 0);
+  }
+}
+/* Seitliche Ansicht auf breiten Bildschirmen: die App rückt zur Seite, statt verdeckt zu werden —
+   wichtige Seitenaktionen bleiben erreichbar. */
+@media (min-width: 900px) {
+  body.klara-seitlich #root {
+    padding-right: 380px;
+  }
+}
+.klara-zeiger {
+  outline: 3px solid rgb(var(--kw-brand));
+  outline-offset: 4px;
+  border-radius: 8px;
+}
