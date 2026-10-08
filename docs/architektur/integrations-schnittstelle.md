@@ -187,4 +187,5 @@ Grenzen (ehrlich):
   erreichbar.
 - Eine echte Anmeldung aus einem dieser Programme gegen eine laufende Instanz ist damit **nicht**
   belegt — sie braucht eine erreichbare Instanz, einen ausgestellten Schlüssel und eine Abnahme im
-  Betrieb.
+  Betrieb. Ablauf, fehlende Mittel und die Zuordnung jeder Rechtezusage zu Code und Gegenprobe:
+  `docs/abnahme/mcp-fremdclient-abnahme.md`.
