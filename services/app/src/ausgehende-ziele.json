@@ -56,6 +56,14 @@
       "freigabe": "Nur https; Origin gepinnt, keine Weiterleitung auf fremde Hosts"
     },
     {
+      "kennung": "import-jira",
+      "zweck": "Import aus dem Jira des Betreibers (REST-API v2)",
+      "dateien": ["services/jira/src/rest-client.ts"],
+      "hosts": [],
+      "umgebung": ["KLARWERK_JIRA_BASE_URL"],
+      "freigabe": "Nur bei vollstaendiger Konfiguration (jiraClientFromEnv: bekannter Anmeldeweg, KLARWERK_JIRA_TOKEN, bei Cloud zusaetzlich KLARWERK_JIRA_USER, Projektschluessel KLARWERK_JIRA_PROJECT); nur https; jede Ziel-URL auf die Origin der Basisadresse gepinnt (pruefeJiraUrl); redirect: error, keine Weiterleitung auf fremde Hosts"
+    },
+    {
       "kennung": "import-sharepoint",
       "zweck": "Import aus SharePoint und OneDrive ueber Microsoft Graph",
       "dateien": ["services/sharepoint/src/graph-client.ts"],

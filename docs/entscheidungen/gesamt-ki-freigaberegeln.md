@@ -36,7 +36,10 @@ Keine Sperre gegen fehlende Zustimmung wurde gelockert.
 ## Stand je Kriterium
 
 - **K1 · R-0586:** gebaut. Geltungsbereich Server (`services/**`) und Word-Aufgabenfenster; nicht erfasst
-  `desktop-app/`, `scripts/`, `tools/`.
+  `desktop-app/`, `scripts/`, `tools/`. Nachgeführt in Nacharbeit 4: der mit dem Hauptstand
+  hinzugekommene Jira-Import (`services/jira/src/rest-client.ts`, `KLARWERK_JIRA_BASE_URL`, https,
+  gepinnte Origin, keine Weiterleitung). Der Vollständigkeitsvergleich gilt für den jeweils
+  integrierten Stand; ein neuer Client ohne Eintrag macht `ausgehende-ziele.test.ts` rot.
 - **K2 · R-0606:** Vorgabe gesperrt; die Kopfzeile zeigt den wirksamen Stand. Die Stufen sind zweistufig
   steuerbar (intern / vertraulich einschliesslich streng vertraulich), siehe K6.
 - **K3 · R-0615:** Bestand (vier Stufen, Vorgabe `search_on_click`, `blocked` serverseitig), belegt durch
