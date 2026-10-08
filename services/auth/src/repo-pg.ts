@@ -88,6 +88,11 @@ CREATE TABLE IF NOT EXISTS password_resets (
 // diese Zeile eine Annahme mit benanntem Restrisiko — nach dem Muster, das `docs/TEAM6_UPDATE.md`
 // fuer `pg_trgm` bereits verwendet.
 //
+// DAS TOR (R-0824): was erfuellt sein muss, bevor eine zweite Instanz gegen dieselbe Datenbank
+// laufen darf, steht in `docs/operations/mehrinstanz-tor.md` — diese Stelle dort als T2, neben den
+// uebrigen Stellen, die auf einer einzigen Instanz beruhen. Solange das Tor GESPERRT ist, bleibt
+// die Annahme oben in Kraft.
+//
 // ZUSAETZLICH faehrt der
 // AuthService uebergangsweise Dual-Read (Hash zuerst, dann Klartext mit In-Place-Rehashing, s.
 // findSessionDualRead): selbst ein Rolling-Deploy mit kurzzeitigem Altprozess erzeugt damit KEIN
