@@ -18,6 +18,8 @@
 //   test-results/bildnachweis/b6-mobil-entwurf.png, -rueckfrage.png, -quittung.png
 //                                                                 — /mobile (390 px): Entwurfszeile,
 //                                                                   Rückfrage „Löschen?“, Quittung (K33)
+//   test-results/bildnachweis/b7-luecke-erfassen-ausgangsfrage.png — /risiko?fall=… → „Wissen
+//                                                                   erfassen“ → Blatt mit Frage (K19)
 //
 // Startbefehl (wie jede Datei der Browsergruppe, nach `./tools/build`):
 //   npx vitest run --config vitest.browser.config.ts tests/design-bildnachweis/bildnachweis-chromium.test.ts
@@ -497,6 +499,84 @@ describe("R-1399 · Sichtnachweis: Exportumfang, Kenntnisnahme, Werksreset-Rück
     expect(quittung, "die alte Quittung „Entwurf verworfen“ steht noch da").toBe(true);
     await s.screenshot({ path: bild("b6-mobil-quittung") });
     console.info(`R-1399 · Bilder ${bild("b6-mobil-entwurf")}, -rueckfrage, -quittung`);
+    expect((stand as H4Stand).seitenfehler).toEqual([]);
+  }, 120_000);
+
+  // ----------------------------------------------------------------------------------------------
+  // Ben, Nacharbeit 10 · REVIEW26 „Lückenbezug" (K19): der ganze Weg Lücke → „Wissen erfassen" →
+  // normales Blatt, an der gebauten App. Die Lücke entsteht über den echten Frageweg
+  // (`POST /api/ask`, unbeantwortbare Frage des angemeldeten Kontos — Ersteller sieht den Volltext).
+  // ----------------------------------------------------------------------------------------------
+  const LUECKEN_FRAGE = "Warum schwankt der Dosierwert an Testlinie L4?";
+
+  it("B7 · Lücke → „Wissen erfassen“ → Blatt: die Ausgangsfrage steht über dem Antworteditor", async () => {
+    expect(fehler).toBeNull();
+    const s = (stand as H4Stand).seite;
+    await s.setViewportSize({ width: 1620, height: 900 });
+    const gefragt = await s.evaluate<{ status: number; gapId: string | null }>(
+      fn(`async (frage) => {
+        const res = await fetch("/api/ask", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ question: frage }),
+        });
+        const j = await res.json().catch(() => ({}));
+        return { status: res.status, gapId: j && j.gap ? j.gap.id : null };
+      }`),
+      LUECKEN_FRAGE,
+    );
+    expect(gefragt.status).toBeLessThan(300);
+    expect(gefragt.gapId, "die Frage hat keine Lücke angelegt").not.toBeNull();
+    const gapId = gefragt.gapId as string;
+
+    await s.goto(`${ORIGIN}/risiko?fall=${encodeURIComponent(gapId)}`, {
+      waitUntil: "load",
+      timeout: 60_000,
+    });
+    await warte('[data-testid="luecke-zeile"][aria-current="true"]');
+    const zeile = await s.evaluate<{ text: string; ziel: string | null }>(
+      fn(`() => {
+        const z = document.querySelector('[data-testid="luecke-zeile"][aria-current="true"]');
+        const a = [...z.querySelectorAll('a')].find((x) => (x.getAttribute('href') || '').startsWith('/erfassen?gap='));
+        return { text: z.innerText || '', ziel: a ? a.getAttribute('href') : null };
+      }`),
+    );
+    expect(zeile.text).toContain(LUECKEN_FRAGE);
+    expect(zeile.ziel).toBe(`/erfassen?gap=${encodeURIComponent(gapId)}`);
+    await s.click('[data-testid="luecke-zeile"][aria-current="true"] a[href^="/erfassen?gap="]');
+    await warte('[data-testid="blatt-ausgangsfrage-text"]');
+
+    const m = await s.evaluate<{
+      adresse: string;
+      frage: string;
+      ueberTitel: boolean;
+      ueberText: boolean;
+      titel: string;
+      imText: boolean;
+    }>(
+      fn(`() => {
+        const top = (sel) => document.querySelector(sel).getBoundingClientRect().top;
+        const frage = document.querySelector('[data-testid="blatt-ausgangsfrage-text"]');
+        const text = document.querySelector('[data-testid="blatt-text"]');
+        return {
+          adresse: location.pathname + location.search,
+          frage: (frage.innerText || '').trim(),
+          ueberTitel: top('[data-testid="blatt-ausgangsfrage"]') < top('[data-testid="blatt-titel"]'),
+          ueberText: top('[data-testid="blatt-ausgangsfrage"]') < top('[data-testid="blatt-text"]'),
+          titel: document.querySelector('[data-testid="blatt-titel"]').value,
+          imText: (text.innerText || '').includes(${JSON.stringify(LUECKEN_FRAGE)}),
+        };
+      }`),
+    );
+    console.info(`R-1399 · B7 · ${JSON.stringify(m)}`);
+    expect(m.adresse).toBe(`/erfassen?gap=${encodeURIComponent(gapId)}`);
+    expect(m.frage).toBe(LUECKEN_FRAGE);
+    expect(m.ueberTitel).toBe(true);
+    expect(m.ueberText).toBe(true);
+    // Die Frage ist Bezug, nicht Inhalt: Titel und Text des Blattes bleiben die des Menschen.
+    expect(m.titel).toBe("");
+    expect(m.imText).toBe(false);
+    await ausschnitt('[data-testid="blatt"]', "b7-luecke-erfassen-ausgangsfrage");
     expect((stand as H4Stand).seitenfehler).toEqual([]);
   }, 120_000);
 });
