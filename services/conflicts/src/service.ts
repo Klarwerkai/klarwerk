@@ -443,6 +443,9 @@ export class ConflictService {
       modelLabel?: string;
       isCurrent?: (koId: string, version: number) => boolean | Promise<boolean>;
       coverage?: DetectionCoverage;
+      // AUFNAHME 20260922 · R-1124: true = ohne fachlichen Vorfilter (jedes Bestandsobjekt ist
+      // Kandidat). Zusammen mit `cap = ∞` der gewählte Vollabgleich; ohne Angabe wie bisher.
+      vollabgleich?: boolean;
       // R-1632 / R-1633: geben BEIDE Seiten eine Geltung an und liegt sie verschieden, ist ein
       // erkannter Widerspruch ein Kontext- bzw. Rollenkonflikt statt eines Wahrheitskonflikts
       // (Regel in knowledge-object `geltungsKollision`). Ohne Regel: Bestandsverhalten.
@@ -454,7 +457,12 @@ export class ConflictService {
     // sortierte) Liste geholt und der Deckel erst in der Schleife über die tatsächlichen Vergleiche
     // gezogen. Ein Paar mit bereits offenem Befund kostet damit nur seinen Rang, keinen Prüfplatz.
     const cap = options.cap ?? 8;
-    const ranked = selectCandidates(subject, pool, Number.POSITIVE_INFINITY);
+    const ranked = selectCandidates(
+      subject,
+      pool,
+      Number.POSITIVE_INFINITY,
+      options.vollabgleich !== true,
+    );
     const coverage = options.coverage;
     if (coverage) {
       coverage.available = pool.filter((c) => c.refId !== subject.refId).length;
