@@ -400,5 +400,8 @@ export const useExternalPolicy = () =>
 
 // AUFTRAG-mega14 Block E (SCRUM-421): EINE Quelle für die geltenden Upload-Grenzen — dieselbe, die
 // der Server erzwingt. Jede Auswahlstelle liest hierüber; React Query bündelt die Abfrage.
+// Der Endpunkt wird erst IN der Abfrage gelesen: der Hinweis ist eine Nebenauskunft und darf seine
+// Fläche nie abstürzen lassen (`UploadLimitsHint.tsx`) — ein Fehler landet als Abfragefehler, und
+// der Hinweis zeigt dann nichts.
 export const useUploadLimits = () =>
-  useQuery({ queryKey: ["upload-limits"], queryFn: endpoints.uploadLimits.get });
+  useQuery({ queryKey: ["upload-limits"], queryFn: () => endpoints.uploadLimits.get() });

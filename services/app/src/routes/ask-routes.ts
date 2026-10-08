@@ -8,7 +8,13 @@ import {
   redactGapForViewer,
 } from "../../../ask";
 import type { ConflictService } from "../../../conflicts";
-import type { KnowledgeObject, KoService } from "../../../knowledge-object";
+import {
+  GELTUNG_TEXT_MAX,
+  type KnowledgeObject,
+  type KoService,
+  normalizeFragekontext,
+} from "../../../knowledge-object";
+import { can } from "../../../rbac";
 import { bindeAnbieter, bindeZustimmung, imBindungsrahmen } from "../../../reasoner";
 import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
@@ -46,6 +52,18 @@ const askBodySchema = {
       type: "array",
       maxItems: GESPRAECHSFADEN_MAX_FRAGEN,
       items: { type: "string", maxLength: 8_000 },
+    },
+    // R-1633 — WOFÜR GEFRAGT WIRD: Werk, Schicht, Rolle (je optional, ≤ GELTUNG_TEXT_MAX). Wirkt
+    // wie der Faden NUR im Konsolenzweig: es ordnet gleich relevante Quellen nach ihrer Geltung und
+    // liefert die Auskunft `geltung`. Add-on- und Word-Wege lassen es liegen.
+    fragekontext: {
+      type: "object",
+      properties: {
+        werk: { type: "string", maxLength: GELTUNG_TEXT_MAX },
+        schicht: { type: "string", maxLength: GELTUNG_TEXT_MAX },
+        rolle: { type: "string", maxLength: GELTUNG_TEXT_MAX },
+      },
+      additionalProperties: false,
     },
   },
 } as const;
@@ -146,6 +164,50 @@ export interface AskRouteDeps {
    * werden. Fehlt die Quelle, fällt dort JEDES Objekt mit führendem Space weg (fail-closed).
    */
   offeneSpaces?: (() => Promise<ReadonlySet<string>>) | undefined;
+  /**
+   * R-1649: legt den abweichenden Weg aus „nicht hilfreich, ich habe es so gemacht …" als Entwurf
+   * an. Eine schmale Funktion statt des Erfassungsdienstes (dieselbe Bauart wie `hilfreich` in
+   * `ko-routes.ts`); die Composition-Root verdrahtet `CaptureService.createDraft`. Fehlt sie, wird
+   * ein mitgeschickter Weg ehrlich mit 400 abgewiesen statt still verworfen.
+   */
+  alternativeAlsEntwurf?:
+    | ((entwurf: { title: string; statement: string }, author: string) => Promise<{ id: string }>)
+    | undefined;
+}
+
+// R-1649: Hülle von POST /api/ask/not-helpful — der abweichende Weg und der Titelvorschlag im selben
+// Maß wie eine Frage (der Titel wird danach gekürzt). Geprüft im Handler, NACH dem Rechtetor (ein
+// Fastify-Schema liefe davor und antwortete Unangemeldeten mit 400 statt 401).
+interface NichtHilfreichRumpf {
+  koId: string;
+  receipt?: string;
+  alternative?: string;
+  entwurfTitel?: string;
+}
+
+function nichtHilfreichRumpf(roh: unknown): NichtHilfreichRumpf | null {
+  if (!roh || typeof roh !== "object" || Array.isArray(roh)) {
+    return null;
+  }
+  const { koId, receipt, alternative, entwurfTitel } = roh as Record<string, unknown>;
+  const text = (wert: unknown, max: number): boolean =>
+    wert === undefined || (typeof wert === "string" && [...wert].length <= max);
+  if (typeof koId !== "string" || koId.length === 0 || koId.length > 200) {
+    return null;
+  }
+  // Der Beleg ist opak und wird vom Dienst geprüft; hier zählt nur, dass er Text ist.
+  if (!text(receipt, Number.POSITIVE_INFINITY)) {
+    return null;
+  }
+  if (!text(alternative, 8_000) || !text(entwurfTitel, 8_000)) {
+    return null;
+  }
+  return {
+    koId,
+    ...(typeof receipt === "string" ? { receipt } : {}),
+    ...(typeof alternative === "string" ? { alternative } : {}),
+    ...(typeof entwurfTitel === "string" ? { entwurfTitel } : {}),
+  };
 }
 
 // ================================================================================================
@@ -653,6 +715,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         locale?: string;
         mode?: string;
         thread?: string[];
+        fragekontext?: unknown;
       } & Record<string, unknown>;
     }>(
       "/api/ask",
@@ -736,6 +799,12 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         }
         // R-0348: der Gesprächsfaden der Konsole — nur im Konsolenzweig unten wirksam.
         const faden = (request.body.thread ?? []).filter((frage) => frage.trim().length > 0);
+        // R-1633: der Fragekontext — geprüft hier, wirksam nur dort, wo auch der Faden wirkt.
+        const fragekontext = normalizeFragekontext(request.body.fragekontext);
+        if (fragekontext === null) {
+          reply.code(400).send({ error: "INVALID", message: "fragekontext ist ungültig." });
+          return;
+        }
         const auth = request.authContext;
         if (auth?.authKind === "addon") {
           // Aufnahme gesamt-integrations-api (R-0688) × R-0700: ein Schlüsselzugang — Klara- wie
@@ -801,6 +870,11 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // (JOB 1591 W5) GEMELDET, nicht verwendet — gefiltert durch die Sichtbarkeit DIESES Nutzers.
         // R-0348: nur hier — getippte Fragen eines Sitzungsnutzers ohne Dokumentbezug — reist der
         // Gesprächsfaden mit (Wirkung und Grenzen an `fadenfragen` im Fragedienst).
+        // R-1633: dieselbe Grenze für den Fragekontext — nur hier, sonst unangetastet.
+        const konsolenZusatz = {
+          ...(faden.length > 0 ? { gespraechsfaden: faden } : {}),
+          ...(fragekontext ? { fragekontext } : {}),
+        };
         await antwortLauf(deps, request, reply, {
           question,
           locale,
@@ -810,7 +884,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             ungeprueftSichtbarFuer: sichtbarkeitsfilterFuer(user),
             verschlossenSichtbarFuer: sichtbarkeitsfilterFuer(user),
           },
-          ...(faden.length > 0 ? { zusatz: { gespraechsfaden: faden } } : {}),
+          ...(Object.keys(konsolenZusatz).length > 0 ? { zusatz: konsolenZusatz } : {}),
         });
       },
     );
@@ -835,6 +909,59 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         }
       },
     );
+
+    // R-1649 (ROADMAP 7.3): „Das war nicht hilfreich, ich habe es so gemacht …" — die Negativ-
+    // Bewährung an der tragenden Quelle, optional verbunden mit dem abweichenden Weg als Entwurf.
+    // Erkannt wird der Satz in der Fläche (Diktat ins Fragefeld, `apps/web/src/lib/nichtHilfreich.ts`);
+    // hier gilt dieselbe Bindung wie beim „Danke": Recht `ko.read` und der Answer-Receipt. Wer einen
+    // Weg mitschickt, legt einen Entwurf an und braucht dafür dasselbe Recht wie jeder Entwurfsweg
+    // (`ko.create`) — fehlt es, wird VOR jedem Schreiben abgewiesen, auch der Vermerk entsteht nicht.
+    app.post<{ Body: unknown }>("/api/ask/not-helpful", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      // Die Gestalt erst NACH dem Tor: ein Unangemeldeter erfährt 401, nichts über den Rumpf.
+      const body = nichtHilfreichRumpf(request.body);
+      if (!body) {
+        reply.code(400).send({
+          error: "BAD_REQUEST",
+          message: "koId fehlt, oder receipt, alternative oder entwurfTitel ist ungültig.",
+        });
+        return;
+      }
+      const alternative = body.alternative?.trim() ?? "";
+      if (alternative && !can(user.role, "ko.create")) {
+        reply.code(403).send({
+          error: "FORBIDDEN",
+          message: "Einen Entwurf anlegen darf diese Rolle nicht.",
+        });
+        return;
+      }
+      const anlegen = deps.alternativeAlsEntwurf;
+      if (alternative && !anlegen) {
+        reply.code(400).send({
+          error: "BAD_REQUEST",
+          message: "Ein Entwurf aus der Rückmeldung ist in diesem Aufbau nicht verfügbar.",
+        });
+        return;
+      }
+      // Der Titel nennt die Quelle, deren Titel beliebig lang sein kann — gekürzt, nicht abgewiesen.
+      const titel = [...(body.entwurfTitel?.trim() || alternative)].slice(0, 200).join("");
+      try {
+        const ergebnis = await ask.markNotHelpful(
+          body.receipt ?? "",
+          body.koId,
+          user.id,
+          alternative && anlegen
+            ? async () => (await anlegen({ title: titel, statement: alternative }, user.id)).id
+            : undefined,
+        );
+        reply.code(200).send(ergebnis);
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
 
     // FUNKE-FIX2 P0 (bens Erforderlich 1): rein aggregierte Zähler — KEIN Fragetext. Die Startseite
     // nutzt AUSSCHLIESSLICH diesen Endpunkt (kein Volltext-Fetch der Lücken mehr auf /start).

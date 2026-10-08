@@ -1,4 +1,5 @@
 import type { DokumentHerkunft } from "./dokumentakte";
+import type { KoGeltung } from "./geltung";
 
 // FR-KO-02: fünf Wissensarten (Pflichtenheft §3.5).
 export type KnowledgeType =
@@ -555,6 +556,15 @@ export interface KnowledgeObject {
   // abgeleitet oder nachgetragen; der Altbestand erscheint in der Facette als „ohne Wert".
   // Gesetzt wird es beim Anlegen (`CreateKoInput.domain`) oder nachträglich über `setDomain`.
   domain?: string;
+  // ============================================================================================
+  // R-1632 / R-1633 (aufnahme:20260922:gesamt-standortwissen) — WO DIESER PUNKT GILT.
+  // ============================================================================================
+  //
+  // Konzern-Standard, Werks-Praxis oder schichtspezifisch, optional mit Rolle; Regel und Vererbung
+  // in `geltung.ts`. Gesetzt nur über `setGeltung`; die Anlage- und Überarbeitungswege übernehmen es
+  // nicht aus dem Rumpf. Optional, keine Migration; fehlt es, ist die Geltung UNBEKANNT und wird
+  // nicht abgeleitet.
+  geltung?: KoGeltung;
   // ============================================================================================
   // produkt:20261007:spaces — DER FÜHRENDE SPACE. ER BESTIMMT, WER DIESES OBJEKT SEHEN DARF.
   // ============================================================================================
