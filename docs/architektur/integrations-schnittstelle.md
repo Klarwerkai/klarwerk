@@ -110,8 +110,8 @@ beliebig oft hintereinander auslösen. Gezählt wird je Konto über diese Routen
   `KLARWERK_KI_ANFRAGEN_FENSTER_SEK`; `KLARWERK_KI_ANFRAGEN_MAX=aus` schaltet die Bremse ab).
 - Darüber: `429`, `error = "KI_ANFRAGEN_GEBREMST"`, `Retry-After` und ein Satz in der Sprache der
   Anfrage mit der Wartezeit, z. B. „Sie haben in kurzer Zeit sehr viele KI-Anfragen gestellt. Bitte
-  warten Sie 42 Sekunden und versuchen Sie es dann erneut." Die Fragen-Seite und die KI-Hilfesuche im
-  Klara-Panel zeigen genau diesen Satz statt des allgemeinen Fehlertexts (`apps/web/src/lib/kiBremse.ts`).
+  warten Sie 42 Sekunden und versuchen Sie es dann erneut." Die Fragen-Seite, die KI-Hilfesuche im
+  Klara-Panel und das Bildbeschreibungsformular im Editor zeigen genau diesen Satz statt des allgemeinen Fehlertexts (`apps/web/src/lib/kiBremse.ts`).
 - Schlüsselzugänge zählen hier nicht — sie haben ihre eigene Grenze.
 
 ## 5. Grenzen (ehrlich)
