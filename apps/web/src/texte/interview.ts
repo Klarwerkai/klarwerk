@@ -39,6 +39,9 @@ export default {
     "interview.angebot.text":
       "Klara kann das Wissen gleich im Gespräch abholen: drei Fragen, ein Entwurf, fertig zur Prüfung.",
     "interview.angebot.knopf": "Im Gespräch erfassen",
+    "interview.recherche.titel": "Klaras Recherche zum Thema (KI, ungeprüft):",
+    "interview.recherche.grenze":
+      "Nur Anlass für gezieltere Fragen – in den Entwurf kommt allein, was du antwortest.",
   },
   en: {
     "interview.knoten.kern": "Core message",
@@ -67,6 +70,9 @@ export default {
     "interview.angebot.text":
       "Klara can collect this knowledge right now in a conversation: three questions, one draft, ready for review.",
     "interview.angebot.knopf": "Capture in a conversation",
+    "interview.recherche.titel": "Klara's research on the subject (AI, unverified):",
+    "interview.recherche.grenze":
+      "Only a prompt for more specific questions – the draft contains only what you answer.",
   },
   nl: {
     "interview.knoten.kern": "Kernboodschap",
@@ -96,5 +102,8 @@ export default {
     "interview.angebot.text":
       "Klara kan deze kennis meteen in een gesprek ophalen: drie vragen, één concept, klaar voor controle.",
     "interview.angebot.knopf": "In een gesprek vastleggen",
+    "interview.recherche.titel": "Klara's onderzoek naar het onderwerp (AI, niet geverifieerd):",
+    "interview.recherche.grenze":
+      "Alleen aanleiding voor gerichtere vragen – in het concept komt alleen wat jij antwoordt.",
   },
 } satisfies Textmodul;

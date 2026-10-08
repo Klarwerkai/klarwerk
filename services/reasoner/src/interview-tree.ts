@@ -2,6 +2,7 @@ import type {
   InterviewAnswerRef,
   InterviewNodeId,
   InterviewOptions,
+  InterviewResearchPoint,
   InterviewResult,
   ReasonerLocale,
   StructureResult,
@@ -19,8 +20,8 @@ import type {
 //   · ein Baum aus Knoten mit Gewicht. Pflicht sind Kernaussage, Bedingung, Maßnahme; danach bohrt
 //     er nach Schwellen und Ausnahmen (R-0043) und nach Warum, verworfenen Alternativen,
 //     Geltungsbereich, Risiken und der Herkunft des Wissens (Argus-Recherche).
-//   · eine Verzweigung: nennt die Bedingung schon eine Zahl, ist die Schwelle damit belegt und wird
-//     nicht noch einmal erfragt.
+//   · eine Verzweigung: nennt die Bedingung schon einen Schwellenwert (`nenntSchwelle`), ist die
+//     Schwelle damit belegt und wird nicht noch einmal erfragt.
 //   · ein Restlückenwert: der Anteil des Gewichts, der noch nicht mit einer Antwort belegt ist.
 //   · `sufficient` sagt nur, dass der Mensch abschließen DARF. Abgeschlossen wird nie von selbst —
 //     die Bestätigung gibt der Mensch in der Oberfläche.
@@ -40,7 +41,25 @@ interface TreeNode {
   applies?: (given: ReadonlyMap<InterviewNodeId, string>) => boolean;
 }
 
-const hatZahl = (text: string | undefined): boolean => /\d/.test(text ?? "");
+// BENS BEFUND (nacharbeit-4): hier stand `/\d/` — jede Ziffer galt als Schwelle. „Bei Anlage 2 im
+// Handbetrieb" nennt aber keinen Grenzwert; die Schwellenfrage entfiel trotzdem und der
+// Restlückenwert fiel zu niedrig aus. Als Schwelle zählt jetzt nur, was eine ist:
+//   · ein Vergleich vor einer Zahl („ab 6", „über 80", „< 5", „mindestens 3", „above 10") oder
+//   · eine Zahl mit Messeinheit („6 bar", „5 °C", „30 min", „80 %", „1500 U/min").
+// Anlagen-, Linien- und Teilekennungen („Anlage 2", „Linie 4", „P-12") sind keine Schwelle.
+const VERGLEICH =
+  "(?:ab|über|ueber|unter|bis|oberhalb|unterhalb|mehr als|weniger als|größer als|groesser als|kleiner als|mindestens|höchstens|hoechstens|maximal|minimal|max\\.?|min\\.?|above|below|over|under|at least|at most|more than|less than|greater than|exceeds?|vanaf|boven|onder|meer dan|minder dan|minimaal|maximaal|tot)";
+const EINHEIT =
+  "(?:mbar|bar|psi|kpa|mpa|pa|°\\s?[cf]|°|grad|kelvin|%|‰|ppm|µm|mm|cm|km|m|mg|kg|g|t|ml|l|m³|m3|minuten|min|sekunden|sek|s|stunden|std|h|tage|tag|kv|mv|v|ka|ma|a|kw|mw|w|khz|hz|nm|kn|n|u\\/min|rpm|db|lux)";
+const SCHWELLE_VERGLEICH = new RegExp(`(?:^|[^a-zäöüß])${VERGLEICH}\\s*\\d`, "i");
+const SCHWELLE_SYMBOL = /[<>≤≥]=?\s*\d/;
+const SCHWELLE_EINHEIT = new RegExp(`\\d(?:[.,]\\d+)?\\s*${EINHEIT}(?![a-zäöüß0-9])`, "i");
+
+/** Nennt der Text einen echten Schwellenwert (nicht nur irgendeine Ziffer)? */
+export function nenntSchwelle(text: string | undefined): boolean {
+  const t = text ?? "";
+  return SCHWELLE_VERGLEICH.test(t) || SCHWELLE_SYMBOL.test(t) || SCHWELLE_EINHEIT.test(t);
+}
 
 const KERN: TreeNode = {
   id: "kern",
@@ -88,7 +107,7 @@ const TREE: readonly TreeNode[] = [
       en: "Is there a limit or threshold at which you act differently? How do you notice it?",
       nl: "Is er een grens- of drempelwaarde waarbij je anders handelt? Waaraan herken je die?",
     },
-    applies: (given) => !hatZahl(given.get("bedingung")),
+    applies: (given) => !nenntSchwelle(given.get("bedingung")),
   },
   {
     id: "ausnahme",
@@ -171,6 +190,81 @@ export const MAX_INTERVIEW_TOPIC_LENGTH = 200;
 /** Das Thema, so wie es in Frage und Prompt eingeht: getrimmt, eine Zeile, begrenzt. */
 export function normalizeInterviewTopic(topic: string | undefined): string {
   return (topic ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_INTERVIEW_TOPIC_LENGTH);
+}
+
+// ================================================================================================
+// R-0088 — DIE THEMENBEZOGENE RECHERCHE (Bens Befund nacharbeit-4: „die gezielte Fachrecherche fehlt").
+// ================================================================================================
+//
+// Mit gültigem KI-Schlüssel recherchiert das Modell zum Fachthema (Lücken-Thema, sonst die
+// Kernaussage) höchstens drei Prüfpunkte: typische Grenzwerte, bekannte Ausnahmen, Ursachen,
+// verworfene Wege, Geltung, Risiken — jeweils einem Baumknoten zugeordnet. Die Rückfrage zu diesem
+// Knoten hakt dann gezielt daran nach. Die Punkte sind UNGEPRÜFT: sie stehen sichtbar als solche da
+// und gehen nie in den Entwurf (der besteht weiter nur aus den Antworten des Menschen).
+// Die reinen Teile (Prüfen, Kappen, Antwort lesen) stehen hier, der Modellaufruf im ModelProvider.
+
+export const MAX_INTERVIEW_RESEARCH_POINTS = 3;
+export const MAX_INTERVIEW_RESEARCH_HINT_LENGTH = 200;
+const RESEARCH_NODES: ReadonlySet<InterviewNodeId> = new Set<InterviewNodeId>([
+  "schwelle",
+  "ausnahme",
+  "warum",
+  "alternativen",
+  "geltung",
+  "risiko",
+]);
+
+/** Recherchepunkte prüfen und kappen — für Modellantworten wie für vom Client zurückgereichte. */
+export function normalizeInterviewResearch(value: unknown): InterviewResearchPoint[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const points: InterviewResearchPoint[] = [];
+  for (const raw of value) {
+    if (typeof raw !== "object" || raw === null) {
+      continue;
+    }
+    const entry = raw as Record<string, unknown>;
+    const node = entry.node ?? entry.knoten;
+    const hint = entry.hint ?? entry.hinweis;
+    if (typeof node !== "string" || !RESEARCH_NODES.has(node as InterviewNodeId)) {
+      continue;
+    }
+    if (typeof hint !== "string") {
+      continue;
+    }
+    const text = hint.replace(/\s+/g, " ").trim().slice(0, MAX_INTERVIEW_RESEARCH_HINT_LENGTH);
+    if (text) {
+      points.push({ node: node as InterviewNodeId, hint: text });
+    }
+    if (points.length >= MAX_INTERVIEW_RESEARCH_POINTS) {
+      break;
+    }
+  }
+  return points;
+}
+
+/** Die Modellantwort der Recherche lesen: das erste JSON-Objekt mit `punkte`; sonst nichts. */
+export function parseInterviewResearch(raw: string): InterviewResearchPoint[] {
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start < 0 || end <= start) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
+    return normalizeInterviewResearch(parsed.punkte ?? parsed.points);
+  } catch {
+    return [];
+  }
+}
+
+/** Worüber recherchiert wird: das Lücken-Thema, sonst die Kernaussage; leer = noch nichts. */
+export function interviewResearchSubject(
+  answers: readonly string[],
+  options: InterviewOptions,
+): string {
+  return normalizeInterviewTopic(options.topic) || normalizeInterviewTopic(answers[0]);
 }
 
 function topicQuestion(topic: string, locale: ReasonerLocale): string {

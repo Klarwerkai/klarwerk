@@ -2863,6 +2863,14 @@ export interface InterviewResult {
   gaps?: { value: number; open: InterviewNodeId[] };
   mirror?: { node: InterviewNodeId; text: string } | null;
   depth?: { node: InterviewNodeId; text: string }[];
+  // R-0088: ungeprüfte Recherche-Prüfpunkte des Modells zum Fachthema (nur mit KI-Schlüssel).
+  research?: InterviewResearchPoint[];
+}
+
+// R-0088: ein Recherche-Prüfpunkt (Spiegel von services/reasoner/src/types.ts).
+export interface InterviewResearchPoint {
+  node: InterviewNodeId;
+  hint: string;
 }
 
 // AUFNAHME 20260922 · WISSEN-INTERVIEW: die Knoten des Fragebaums (Spiegel des Servers).

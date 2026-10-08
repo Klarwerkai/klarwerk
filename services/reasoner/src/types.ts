@@ -247,6 +247,16 @@ export interface InterviewResult {
   gaps?: InterviewGaps; // Maß der verbleibenden Lücken
   mirror?: InterviewAnswerRef | null; // zuletzt Verstandenes — wörtlich die letzte Antwort
   depth?: InterviewAnswerRef[]; // vertiefende Antworten (Schwelle, Ausnahme, Warum …), wörtlich
+  // R-0088: die themenbezogene Recherche des Modells — UNGEPRÜFTE Prüfpunkte, an denen die
+  // Rückfragen gezielt nachhaken. Sie gehen NIE in den Entwurf; übernommen wird nur, was der
+  // Mensch darauf antwortet. Ohne Modell (kein gültiger KI-Schlüssel) fehlt das Feld.
+  research?: InterviewResearchPoint[];
+}
+
+// R-0088: ein Recherche-Prüfpunkt — der Knoten, zu dem er nachhakt, und der kurze Hinweis.
+export interface InterviewResearchPoint {
+  node: InterviewNodeId;
+  hint: string;
 }
 
 // AUFNAHME 20260922 · WISSEN-INTERVIEW: die Knoten des Fragebaums. Pflicht sind Kernaussage,
@@ -285,6 +295,9 @@ export interface InterviewOptions {
   // R-0091 / R-0088: das Thema steht fest (Lücken-Interview). Kurzer Baum mit drei Fragen; ein
   // Modell richtet die Fragen auf dieses Fachthema aus.
   topic?: string;
+  // R-0088: die Recherche eines früheren Turns, vom Client zurückgereicht — so wird je Interview
+  // nur einmal recherchiert. Der Reasoner prüft und kappt sie (`normalizeInterviewResearch`).
+  research?: unknown;
 }
 
 // PMO-FEA-0006: ein aus einem Dokument extrahierter Wissenspunkt. sourceExcerpt ist die

@@ -245,7 +245,7 @@ describe("R-0091: Vorschau ohne Treffer → Klara bietet das Lücken-Interview a
 
     await klick(knopf(i18n.t("capture.ivStart")));
     expect(interviewMock).toHaveBeenCalledTimes(1);
-    expect(interviewMock.mock.calls[0]?.[4]).toEqual({ tree: true, topic: TEXT });
+    expect(interviewMock.mock.calls[0]?.[4]).toEqual({ tree: true, topic: TEXT, research: [] });
     expect(container.textContent).toContain(`Thema: „${TEXT}“`);
   });
 

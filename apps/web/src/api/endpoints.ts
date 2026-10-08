@@ -68,6 +68,7 @@ import type {
   ImportRunStartResponse,
   ImportSelectCriteria,
   ImportSelectResponse,
+  InterviewResearchPoint,
   InterviewResult,
   KandidatenLesevariante,
   KnowledgeCheckResult,
@@ -976,7 +977,12 @@ export const endpoints = {
       provenance: ReasonerProvenance,
       // R-1624: bestätigter Bildbefund des Fotos (Klartext, kein Bild) → Foto-Fragenfolge.
       imageContext?: string,
-      guide?: { tree?: boolean; topic?: string | null },
+      guide?: {
+        tree?: boolean;
+        topic?: string | null;
+        // R-0088: die Recherche des ersten Turns — zurückgereicht, damit nur einmal recherchiert wird.
+        research?: readonly InterviewResearchPoint[] | null;
+      },
     ) =>
       api.post<InterviewResult>("/reasoner", {
         task: "interview",
@@ -985,6 +991,7 @@ export const endpoints = {
         ...(imageContext?.trim() ? { imageContext: imageContext.trim() } : {}),
         ...(guide?.tree ? { tree: true } : {}),
         ...(guide?.topic?.trim() ? { topic: guide.topic.trim() } : {}),
+        ...(guide?.research && guide.research.length > 0 ? { research: guide.research } : {}),
         ...provenanceFields(provenance),
       }),
     // WP-BILD-1c/1f: KI-Bildbeschreibung als VORSCHLAG für die Bild-Fußnote (Vision). EIGENE

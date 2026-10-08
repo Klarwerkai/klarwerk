@@ -26,6 +26,7 @@ import type {
   DraftPayload,
   ExternalResult,
   ExtractedPoint,
+  InterviewResearchPoint,
   InterviewResult,
   KnowledgeObject,
   KnowledgeType,
@@ -1099,6 +1100,8 @@ export function CaptureArbeitsraum({
   // läuft in der bisherigen Fragenfolge weiter — seine Antworten gehören zu deren Reihenfolge.
   const [ivTree, setIvTree] = useState(false);
   const [ivTopic, setIvTopic] = useState<string | null>(null);
+  // R-0088: die ungeprüften Recherche-Prüfpunkte des Modells für dieses Interview.
+  const [ivResearch, setIvResearch] = useState<InterviewResearchPoint[]>([]);
   const [ivConfirmed, setIvConfirmed] = useState(false);
   // AUFTRAG-mega6 Block C (bens ROT 3, zweiter Teil): laufende Nummer des aktuell GÜLTIGEN
   // Interview-Turns. Jeder Start erhöht sie, jedes Räumen (Save-Erfolg, Verwerfen) ebenfalls. Die
@@ -1411,6 +1414,7 @@ export function CaptureArbeitsraum({
       run: number;
       tree: boolean;
       topic: string | null;
+      research: InterviewResearchPoint[];
       imageContext?: string;
     }) =>
       endpoints.reasoner.interview(
@@ -1418,7 +1422,7 @@ export function CaptureArbeitsraum({
         locale,
         draftProvenance(confidentiality, undefined, draftId ?? undefined),
         v.imageContext,
-        { tree: v.tree, topic: v.topic },
+        { tree: v.tree, topic: v.topic, research: v.research },
       ),
     onSuccess: (res, v) => {
       if (v.run !== ivRunRef.current) {
@@ -1426,6 +1430,11 @@ export function CaptureArbeitsraum({
       }
       setIvResult(res);
       setErr(null);
+      // R-0088: die Recherche des Modells bleibt für die weiteren Turns stehen (sie wird
+      // zurückgereicht, damit nur einmal recherchiert wird) — als ungeprüfter Hinweis, nie im Entwurf.
+      if (res.research && res.research.length > 0) {
+        setIvResearch(res.research);
+      }
       // Im Fragebaum schließt der Server nie selbst ab — er bietet den Abschluss nur an. Das
       // Foto-Interview (R-1624) und ein fortgesetzter Altentwurf schließen wie bisher selbst ab.
       if (!v.tree && isInterviewDone(res)) {
@@ -1448,10 +1457,16 @@ export function CaptureArbeitsraum({
   // herein, weil die eben gesetzten Zustände in diesem Render noch nicht gelten.
   const runInterview = (
     answers: string[],
-    guide: { tree: boolean; topic: string | null; befund: string | null } = {
+    guide: {
+      tree: boolean;
+      topic: string | null;
+      befund: string | null;
+      research: InterviewResearchPoint[];
+    } = {
       tree: ivTree,
       topic: ivTopic,
       befund: ivBefund,
+      research: ivResearch,
     },
   ): void => {
     ivRunRef.current += 1;
@@ -1460,6 +1475,7 @@ export function CaptureArbeitsraum({
       run: ivRunRef.current,
       tree: guide.tree,
       topic: guide.topic,
+      research: guide.research,
       ...(guide.befund ? { imageContext: guide.befund } : {}),
     });
   };
@@ -2952,6 +2968,7 @@ export function CaptureArbeitsraum({
     setIvTree(false);
     setIvTopic(null);
     setIvConfirmed(false);
+    setIvResearch([]);
   };
 
   // E2E-003: „Verwerfen" muss das GESAMTE Erfassungsmodell auf Leerzustand bringen — nicht nur die
@@ -4888,10 +4905,11 @@ export function CaptureArbeitsraum({
     setIvTree(tree);
     setIvTopic(topic);
     setIvConfirmed(false);
+    setIvResearch([]);
     if (foto) {
       setBodyHtml((prev) => applyFotoAnker(prev, foto));
     }
-    runInterview([], { tree, topic, befund });
+    runInterview([], { tree, topic, befund, research: [] });
   };
 
   // R-0113: „Weiß ich nicht" — die Frage bleibt eine Lücke, das Interview geht weiter.
@@ -4942,6 +4960,22 @@ export function CaptureArbeitsraum({
           text: ivResult.mirror.text,
         })}
       </p>
+    ) : null;
+  // R-0088: die Recherche des Modells — sichtbar und ausdrücklich UNGEPRÜFT. Sie ist nur der Anlass
+  // für gezieltere Rückfragen; in den Entwurf kommt allein, was der Mensch darauf antwortet.
+  const ivRecherche =
+    ivTree && ivResearch.length > 0 ? (
+      <div data-testid="interview-recherche" className="text-[12px] text-muted">
+        <p className="font-medium">{t("interview.recherche.titel")}</p>
+        <ul className="list-disc pl-5">
+          {ivResearch.map((p) => (
+            <li key={`${p.node}:${p.hint}`}>
+              {t(interviewNodeKey(p.node))}: {p.hint}
+            </li>
+          ))}
+        </ul>
+        <p>{t("interview.recherche.grenze")}</p>
+      </div>
     ) : null;
   // R-0113: der Abschluss wird ANGEBOTEN, nie von selbst vollzogen.
   const ivAbschluss =
@@ -6105,6 +6139,7 @@ export function CaptureArbeitsraum({
                     {ivThemaZeile}
                     {ivLueckenwert}
                     {ivSpiegel}
+                    {ivRecherche}
                     {ivAbschluss}
                   </div>
                 ) : (
@@ -6130,6 +6165,7 @@ export function CaptureArbeitsraum({
                       nur im Prompt. */}
                     {ivBefund ? <p className="text-[12px] text-muted">{ivBefund}</p> : null}
                     {ivSpiegel}
+                    {ivRecherche}
                     {ivAbschluss}
                     {/* SCRUM-403 (Pedi 03.07.): Frage vorlesen + Antwort diktieren — Sprache in
                       beide Richtungen; Knöpfe nur, wenn der Browser es ehrlich kann. */}

@@ -508,6 +508,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         // AUFNAHME 20260922 · WISSEN-INTERVIEW: Fragebaum und Lücken-Thema für 'interview'.
         tree?: unknown;
         topic?: unknown;
+        research?: unknown;
         locale?: "de" | "en";
         // SCRUM-312: optionale Bearbeitungs-Anweisung für 'assist' (klarer/strukturieren/… oder frei).
         instruction?: string;
@@ -673,6 +674,9 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             {
               tree: request.body.tree === true,
               ...(topic ? { topic } : {}),
+              // R-0088: die Recherche eines früheren Turns — roh durchgereicht, geprüft und gekappt
+              // wird sie im Reasoner (`normalizeInterviewResearch`).
+              ...(Array.isArray(request.body.research) ? { research: request.body.research } : {}),
             },
           ),
         );
