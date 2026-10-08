@@ -2793,7 +2793,8 @@ export type NotificationKind =
   | "assignment"
   | "return"
   | "impact"
-  | "kenntnisnahme";
+  | "kenntnisnahme"
+  | "veroeffentlichung";
 
 export interface Notification {
   id: string;
@@ -2811,6 +2812,9 @@ export interface Notification {
   fassung?: number;
   erinnerung?: boolean;
   ueberfaellig?: boolean;
+  // Veröffentlichung: neu oder Aktualisierung, und ob hervorgehoben gemeldet (nur bei diesem `kind`).
+  art?: "neu" | "aktualisierung";
+  hervorgehoben?: boolean;
 }
 
 // AUFTRAG-mega46 Block F: die Betriebsschalter, die die Oberfläche erfahren darf — AUSSCHLIESSLICH

@@ -127,6 +127,7 @@ import {
   type KoRepairNote,
   type KoSource,
   type KoStatus,
+  type KoVeroeffentlichung,
   type TrashedKo,
 } from "./types";
 
@@ -6112,6 +6113,48 @@ export class KoService {
               action: "ko.space-changed",
               target: id,
               payload: { vorher, nachher: spaceId, version: ko.version },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
+  // produkt:20261007:veroeffentlichungsoptionen — einen Veröffentlichungsvermerk anhängen.
+  //
+  // `bilde` bekommt das FRISCH unter dem KO-Lock gelesene Objekt und entscheidet dort, ob die
+  // Veröffentlichung zulässig ist (gültige Fassung, erwartete Version, nicht schon veröffentlicht) —
+  // es wirft sonst. Damit kann zwischen Vorschau und Schreiben weder eine Überarbeitung noch eine
+  // zweite Veröffentlichung derselben Fassung durchrutschen. Der Vermerk berührt nichts ausser
+  // `veroeffentlichungen`: Inhaltsversion, `history`, Status und Sichtbarkeitsfelder bleiben. Vermerk
+  // und Beleg `ko.veroeffentlicht` committen gemeinsam (`mutateKo`).
+  async vermerkeVeroeffentlichung(
+    id: string,
+    bilde: (ko: KnowledgeObject) => KoVeroeffentlichung,
+  ): Promise<{ ko: KnowledgeObject; vermerk: KoVeroeffentlichung }> {
+    return this.mutateKo(id, (ko) => {
+      const vermerk = bilde(ko);
+      const updated: KnowledgeObject = {
+        ...ko,
+        veroeffentlichungen: [...(ko.veroeffentlichungen ?? []), vermerk],
+      };
+      return {
+        updated,
+        value: { ko: updated, vermerk },
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor: vermerk.von,
+              action: "ko.veroeffentlicht",
+              target: id,
+              payload: {
+                vermerkId: vermerk.id,
+                fassung: vermerk.fassung,
+                art: vermerk.art,
+                meldung: vermerk.meldung,
+                empfaenger: vermerk.empfaenger,
+              },
             },
             tx,
           );

@@ -1,10 +1,10 @@
 {
-  "version": 13,
+  "version": 14,
   "erhoben_am": "2026-10-01",
-  "nachgefuehrt_von": "produkt:20261007:speichern-erholung, Nacharbeit 1: ein weiterer Fall je Projekt chromium, firefox und webkit (K2/K3 Nacharbeit: Weiterschreiben waehrend des Wartens). Version 12 davor: drei Faelle mehr je Projekt chromium, firefox und webkit, alle in speichern-erholung-browser.spec.ts — Speicherzustand ohne Netz, Seitenwechsel ohne Netz, Nulltreffer mit Filterruecksetzen. NICHT gemessen, sondern aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt). Vorgefundene, fremde Drift unveraendert gelassen: firmenwoerterbuch-browser.spec.ts und bildschirmablauf-browser.spec.ts stehen nicht im Manifest. Vorher: gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3), drei Faelle in erstnutzer-u2-u3-browser.spec.ts.",
+  "nachgefuehrt_von": "produkt:20261007:veroeffentlichungsoptionen, Lauf 1: ein Fall mehr im Projekt chromium-zustand (veroeffentlichung-browser.spec.ts, laeuft wegen des angelegten Bestands nur im isolierten Kontext). NICHT gemessen, sondern aus dem Testtitel nachgetragen (kein Lauf in diesem Auftragsschritt). Version 13 davor: produkt:20261007:speichern-erholung, Nacharbeit 1: ein weiterer Fall je Projekt chromium, firefox und webkit (K2/K3 Nacharbeit: Weiterschreiben waehrend des Wartens). Version 12 davor: drei Faelle mehr je Projekt chromium, firefox und webkit, alle in speichern-erholung-browser.spec.ts — Speicherzustand ohne Netz, Seitenwechsel ohne Netz, Nulltreffer mit Filterruecksetzen. NICHT gemessen, sondern aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt). Vorgefundene, fremde Drift unveraendert gelassen: firmenwoerterbuch-browser.spec.ts und bildschirmablauf-browser.spec.ts stehen nicht im Manifest. Vorher: gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3), drei Faelle in erstnutzer-u2-u3-browser.spec.ts.",
   "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
   "zweck": "Sollmanifest der Smoke-Mengen je Projekt. Drift (Hinzufuegen, Entfernen, Umbenennen) macht die Mengenpruefung rot.",
-  "gesamt_fallinstanzen": 213,
+  "gesamt_fallinstanzen": 214,
   "projekte": {
     "setup-zustand": {
       "soll": 1,
@@ -229,7 +229,7 @@
       ]
     },
     "chromium-zustand": {
-      "soll": 16,
+      "soll": 17,
       "titel": [
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Einreichen ohne Inhalt führt an die Pflichtangabe und legt nichts an",
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Einreichen zeigt Status und alle nächsten Schritte",
@@ -246,7 +246,8 @@
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Fall 9 (de): natives Einfügen übersteht Sichern und Wiederöffnen",
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Fall 9 (en): natives Einfügen übersteht Sichern und Wiederöffnen",
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · das Blatt läuft bei 390x844 (Telefon) nicht waagerecht über",
-        "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · das Blatt läuft bei 768x1024 (Tablet) nicht waagerecht über"
+        "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · das Blatt läuft bei 768x1024 (Tablet) nicht waagerecht über",
+        "veroeffentlichung-browser.spec.ts › K1/K3/K4: die Wahl erklärt ihre Wirkung, „hervorgehoben“ erreicht die Leserin oben in der Glocke"
       ]
     }
   }

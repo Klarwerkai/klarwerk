@@ -2115,8 +2115,17 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // die drei Komponenten über 448 kamen mit dem erneut eingemischten Hauptstand (Grundmenge
     // 549 → 559, davon 2 aus diesem Auftrag). Welche es sind, ist ohne Git-Verlauf an diesem
     // Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // produkt:20261007:veroeffentlichungsoptionen: 451 → 452. GENAU EIN Bauteil kommt dazu:
+    //     + `VeroeffentlichungBereich` (`components/veroeffentlichung/VeroeffentlichungBereich.tsx`)
+    //       — Stand, Meldungswahl und Wirkung der Veröffentlichung, exportiert, genau ein Aufrufer:
+    //       `BibliothekLesen`.
+    // Kein Bild, kein `documentTitle`, kein `CAPTION_AI_TEXT` — nur Text, Auswahlfelder und ein
+    // Knopf; `anbieter` 1 und `traeger` 2 bleiben. EHRLICH GESAGT: die 452 ist GERECHNET (451 + 1),
+    // nicht gemessen — dieser Arbeitsbaum durfte keine Tests ausführen. Weicht der Prüflauf ab,
+    // nennt die Meldung oben die gemessene Zahl, und DIE gehört hier hin.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 451,
+      komponenten: 452,
       anbieter: 1,
       traeger: 2,
     });

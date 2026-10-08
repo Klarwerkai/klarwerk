@@ -17,7 +17,21 @@ export type NotificationKind =
   | "assignment"
   | "return"
   | "impact"
-  | "kenntnisnahme";
+  | "kenntnisnahme"
+  | "veroeffentlichung";
+
+// Veröffentlichung (produkt:20261007:veroeffentlichungsoptionen): eine bei „normal" oder
+// „hervorgehoben" veröffentlichte Fassung, deren Empfängerkreis die aktuelle Person enthält. Bereits
+// auf den Betrachter und über die Sichtbarkeit gefiltert (Route) — „still" kommt hier nie an.
+export interface VeroeffentlichungNotice {
+  vermerkId: string;
+  koId: string;
+  title: string;
+  fassung: number;
+  art: "neu" | "aktualisierung";
+  hervorgehoben: boolean;
+  at: string;
+}
 
 // Kenntnisnahme: eine offene Anforderung an die aktuelle Person. Bereits auf den Betrachter UND
 // über die Sichtbarkeit gefiltert (Route) — hier wird nichts nachgeprüft und nichts erfunden.
@@ -56,6 +70,10 @@ export interface Notification {
   fassung?: number;
   erinnerung?: boolean;
   ueberfaellig?: boolean;
+  // Veröffentlichung: neu oder Aktualisierung, und ob sie hervorgehoben gemeldet wurde. Nur bei
+  // `kind: "veroeffentlichung"` gesetzt (`fassung` trägt dort die veröffentlichte Fassung).
+  art?: "neu" | "aktualisierung";
+  hervorgehoben?: boolean;
 }
 
 // SCRUM-363 / AG-15: persönliche offene Review-Zuweisungen kommen als eigene Kategorie in den Feed.
@@ -80,8 +98,21 @@ export function buildNotifications(input: {
   // ein neuer Fund auch ohne Besuch der Duplikate-Seite auffällt.
   overlaps?: (OverlapEntry & { redacted?: boolean })[];
   kenntnisnahmen?: KenntnisnahmeNotice[];
+  veroeffentlichungen?: VeroeffentlichungNotice[];
 }): Notification[] {
   const items: Notification[] = [];
+  for (const v of input.veroeffentlichungen ?? []) {
+    items.push({
+      id: `pub-${v.vermerkId}`,
+      kind: "veroeffentlichung",
+      title: v.title,
+      at: v.at,
+      koId: v.koId,
+      fassung: v.fassung,
+      art: v.art,
+      hervorgehoben: v.hervorgehoben,
+    });
+  }
   // Je Anforderung EIN Eintrag. Eine Erinnerung bekommt eine neue Kennung (mit ihrem Zeitpunkt),
   // damit sie wieder als ungelesen erscheint — sie ersetzt den Eintrag, statt einen zweiten
   // daneben zu stellen.

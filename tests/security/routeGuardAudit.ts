@@ -318,6 +318,14 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.read",
     zeilenrecht: ["darfSehen"],
   },
+  // Veröffentlichung mit Meldungswahl: der Stand mit `ko.read`, das Veröffentlichen mit dem
+  // vorhandenen Freigaberecht `ko.validate`. Beide Türen halten den Eintrag vor der Antwort gegen
+  // `darfSehen` (sonst 404 wie am Detailabruf).
+  "GET /api/kos/:id/veroeffentlichung": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "POST /api/kos/:id/veroeffentlichung": {
+    protection: "ko.validate",
+    zeilenrecht: ["darfSehen"],
+  },
   "POST /api/kos": { protection: "ko.create" },
   // AUFTRAG-mega19 Block B: die Erstanlage AUS Dokumenten (Inhalt + Anker + Belegstellen in EINEM
   // Vorgang). Dasselbe Basisrecht wie das gewöhnliche Einreichen — die Route ist eine ENGERE Tür

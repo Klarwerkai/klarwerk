@@ -65,6 +65,7 @@ wiederholt.
 | `ko.returned-to-owner`, `ko.returned-to-author` | `verdict`, `author`, `responsible`, `responsibleKind`, `koVersion` | Z, K |
 | `ko.assigned` | `userIds` | K |
 | `ko.revalidated` | `pendingCleared`, `version` | Z |
+| `ko.veroeffentlicht` | `vermerkId`, `fassung`, `art`, `meldung` (still/normal/hervorgehoben), `empfaenger` (nur Anzahl) | K, Z — Empfängerkennungen werden weder hier noch am Wissensobjekt gespeichert |
 | `ko.create-followup-failed` | `step`, `reason` (nur Fehlerklasse) | Z |
 | `validation.defaultNeeded.set` | `value` | Z |
 | Dublette bestätigt (`DUBLETTE_BESTAETIGT_AUDIT`) | `overlapIds`, `weg` | K, Z |

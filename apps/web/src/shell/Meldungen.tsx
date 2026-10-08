@@ -299,7 +299,9 @@ export function MeldungenListe({
                   className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${
                     read
                       ? "bg-hairline"
-                      : n.kind === "conflict" || n.kind === "escalation"
+                      : n.kind === "conflict" ||
+                          n.kind === "escalation" ||
+                          (n.kind === "veroeffentlichung" && n.hervorgehoben)
                         ? "bg-trust-crit-fill"
                         : n.kind === "duplicate"
                           ? "bg-ai"
@@ -353,6 +355,24 @@ export function MeldungenListe({
                           : n.erinnerung
                             ? "kenntnisnahme.meldungErinnerung"
                             : "kenntnisnahme.meldung",
+                      )}
+                      {n.fassung ? ` (V${n.fassung})` : ""}:{" "}
+                    </span>
+                  ) : null}
+                  {/* Veröffentlichung: neu oder aktualisiert; „hervorgehoben" trägt die Markierung
+                      „Wichtig" und steht oben, bis sie gelesen ist (Reihenfolge vom Server). */}
+                  {n.kind === "veroeffentlichung" ? (
+                    <span
+                      className={`font-semibold ${
+                        n.hervorgehoben ? "text-trust-crit-text" : "text-ai"
+                      }`}
+                      data-hervorgehoben={n.hervorgehoben ? "ja" : "nein"}
+                    >
+                      {n.hervorgehoben ? `${t("veroeffentlichung.meldungWichtig")} · ` : ""}
+                      {t(
+                        n.art === "aktualisierung"
+                          ? "veroeffentlichung.meldungAktualisierung"
+                          : "veroeffentlichung.meldungNeu",
                       )}
                       {n.fassung ? ` (V${n.fassung})` : ""}:{" "}
                     </span>

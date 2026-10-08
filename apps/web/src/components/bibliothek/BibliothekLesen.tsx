@@ -93,6 +93,7 @@ import { ListEditor, TagEditor } from "../editors";
 import { KenntnisnahmeBereich } from "../kenntnisnahme/KenntnisnahmeBereich";
 import { KNOWLEDGE_TYPES } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
+import { VeroeffentlichungBereich } from "../veroeffentlichung/VeroeffentlichungBereich";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { Bearbeitungshinweis, useEigeneBearbeitung } from "./Bearbeitungshinweis";
 import { MehrAbschnitte, type Sprungziel } from "./MehrAbschnitte";
@@ -2664,6 +2665,10 @@ export function BibliothekLesen({
           koId={koId}
           darfAnfordern={role === "controller" || role === "admin"}
         />
+        {/* Veröffentlichung (produkt:20261007:veroeffentlichungsoptionen): welche Fassung
+            veröffentlicht ist — und für Freigebende die Wahl still/normal/hervorgehoben samt
+            Wirkung. Was jemand darf, entscheidet allein die Serverantwort (`ko.validate`). */}
+        <VeroeffentlichungBereich koId={koId} />
         {edit ? (
           // ---- Bearbeiten: dasselbe Formular wie bisher, an derselben Stelle -------------------
           <div className="space-y-3">

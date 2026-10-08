@@ -9,6 +9,7 @@ import {
   type ImpactNotice,
   type KenntnisnahmeNotice,
   type Notification,
+  type VeroeffentlichungNotice,
   buildNotifications,
 } from "../notification-feed";
 import { type KoSichtbarkeitsZugang, sichtbareEintraege, sichtbarePaare } from "../sichtbarkeit";
@@ -37,6 +38,9 @@ export interface NotificationRoutesDeps {
   // Optional, weil der Feed auch ohne diesen Dienst gebaut werden kann; die Sichtbarkeit läuft
   // unten in jedem Fall über dieselbe Prüfung wie bei den Zuweisungen.
   kenntnisnahmen?: { meldungenFuer(nutzerId: string): Promise<KenntnisnahmeNotice[]> };
+  // Veröffentlichung: Meldungen bei „normal"/„hervorgehoben" an den festgehaltenen Empfängerkreis.
+  // Die Sichtbarkeit wird unten trotzdem neu geprüft — ein späterer Entzug wirkt sofort.
+  veroeffentlichungen?: { meldungenFuer(nutzerId: string): Promise<VeroeffentlichungNotice[]> };
 }
 
 // PMO-FEA-0002: „Hat geholfen"-Ereignisse für den Originalautor. Bewusst ehrlich:
@@ -108,17 +112,28 @@ async function loadFeed(
   // entzogen wurde, der sieht auch dessen Titel in der Glocke nicht mehr.
   const offeneKenntnisnahmen = (await deps.kenntnisnahmen?.meldungenFuer(user.id)) ?? [];
   const sichtbareKenntnisnahmen = await sichtbareEintraege(user, offeneKenntnisnahmen, deps.kos);
-  return buildNotifications({
+  const veroeffentlichungen = (await deps.veroeffentlichungen?.meldungenFuer(user.id)) ?? [];
+  const sichtbareVeroeffentlichungen = await sichtbareEintraege(
+    user,
+    veroeffentlichungen,
+    deps.kos,
+  );
+  const feed = buildNotifications({
     conflicts: sichtbareKonflikte,
     overlaps: sichtbareUeberschneidungen,
     gaps: gapViews,
     assignments: sichtbareZuweisungen,
     impacts,
     kenntnisnahmen: sichtbareKenntnisnahmen,
+    veroeffentlichungen: sichtbareVeroeffentlichungen,
   }).map((n) => ({
     ...n,
     seen: seen.has(n.id),
   }));
+  // Veröffentlichung „hervorgehoben": steht oben, solange sie ungelesen ist. Die übrige Reihenfolge
+  // bleibt unverändert (neueste zuerst); ohne hervorgehobene Meldung ändert sich nichts.
+  const oben = (n: (typeof feed)[number]): boolean => n.hervorgehoben === true && !n.seen;
+  return [...feed.filter(oben), ...feed.filter((n) => !oben(n))];
 }
 
 export function notificationsRoutes(

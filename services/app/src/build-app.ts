@@ -343,6 +343,7 @@ import { slidesRoutes } from "./routes/slides-routes";
 import { spacesRoutes } from "./routes/spaces-routes";
 import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
 import { validationRoutes } from "./routes/validation-routes";
+import { veroeffentlichungRoutes } from "./routes/veroeffentlichung-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
 import { stelleSuchprojektionBereit } from "./search-projection-startup";
@@ -360,6 +361,8 @@ import { speicherVorgang } from "./speicher-vorgang";
 // Start bei fehlenden Pflichtwerten verweigert und beim Hochfahren ohne Geheimniswerte berichtet,
 // was diese Instanz hat und was ihr fehlt.
 import { ermittleBestand, pruefeStartvertrag, startbericht } from "./start-vertrag";
+// produkt:20261007:veroeffentlichungsoptionen — Veröffentlichung mit Meldungswahl still/normal/hervorgehoben.
+import { VeroeffentlichungDienst } from "./veroeffentlichung";
 
 // ================================================================================================
 // JOB 3776 — WO DER STARTVERTRAG GERUFEN WIRD: AM EINSTIEGSPUNKT. HIER NICHT MEHR.
@@ -3299,6 +3302,23 @@ export function buildApp(
     kennung: () => randomUUID(),
   });
   app.register(kenntnisnahmeRoutes({ dienst: kenntnisnahmeDienst, kos: services.ko }, guards));
+  // produkt:20261007:veroeffentlichungsoptionen — Veröffentlichung mit Meldungswahl. Der Leserkreis
+  // ist derselbe wie der Empfängerkreis einer Kenntnisnahme (eine Regel, eine Stelle); der Vermerk
+  // liegt am Eintrag, der Beleg im Prüfprotokoll. Dieselbe Instanz speist die Glocke unten.
+  const veroeffentlichungDienst = new VeroeffentlichungDienst({
+    ko: services.ko,
+    leser: (ko) => kenntnisnahmeDienst.moeglicheEmpfaenger(ko),
+    kontoNamen: () => kenntnisnahmeDienst.kontoNamen(),
+    kontoSeit: async (nutzerId) =>
+      (await services.auth.listUsers()).find((u) => u.id === nutzerId)?.createdAt,
+    kenntnisnahmen: (ko) => kenntnisnahmeDienst.uebersicht(ko),
+    belege: () => services.audit.list({ action: "ko.veroeffentlicht" }),
+    jetzt: services.kenntnisnahmeUhr,
+    kennung: () => randomUUID(),
+  });
+  app.register(
+    veroeffentlichungRoutes({ dienst: veroeffentlichungDienst, kos: services.ko }, guards),
+  );
   // ==============================================================================================
   // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS) — HIER BEKOMMT DIE GESAMTANWEISUNG IHRE TÜR.
   // ==============================================================================================
@@ -3467,6 +3487,8 @@ export function buildApp(
         kos: koSichtbarkeit,
         // Kenntnisnahme: offene Anforderungen und Erinnerungen des Betrachters.
         kenntnisnahmen: kenntnisnahmeDienst,
+        // Veröffentlichung: Meldungen bei „normal" und „hervorgehoben" — nie bei „still".
+        veroeffentlichungen: veroeffentlichungDienst,
       },
       guards,
     ),
