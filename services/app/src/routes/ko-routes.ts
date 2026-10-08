@@ -1,12 +1,14 @@
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import type { AuditService } from "../../../audit";
 import { meldung, sprache } from "../../../auth";
-import type {
-  ConflictInput,
-  ConflictService,
-  ConflictType,
-  OverlapService,
-  OverlapSettingsRepo,
+import {
+  type ConflictInput,
+  type ConflictService,
+  type ConflictType,
+  type OverlapService,
+  type OverlapSettingsRepo,
+  isConflictWorkKind,
+  isVorrangWahl,
 } from "../../../conflicts";
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE_STAGE,
@@ -68,6 +70,7 @@ import {
 // JOB 2009 D2 (H3): der Einstieg, der die PORTS nimmt — nicht das Lesemodell (C1 bleibt gruen).
 import { wissensnetzMetrikFuer } from "../../../wissensnetz";
 import type { AiCheckWorker } from "../ai-check-worker";
+import type { PruefUmfang } from "../detection-cap";
 import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
 import { type Guards, type SessionUser, sendError } from "../http";
 import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten";
@@ -431,6 +434,8 @@ type KoAktion =
   | "tags"
   // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet am Objekt setzen, ändern oder entfernen.
   | "domain"
+  // R-1632 / R-1633: die Geltung (Konzern/Werk/Schicht, optional Rolle) setzen oder entfernen.
+  | "geltung"
   | "confidentiality"
   // JOB 557: die Verantwortung am Objekt benennen (Recht `ko.validate`, s. den Zweig unten).
   | "ownership"
@@ -494,6 +499,8 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   tags: "tor",
   // R-0431 (K2): arbeitet AM Objekt unter `:id` — es passiert das Sichtbarkeitstor wie `category`.
   domain: "tor",
+  // R-1632 / R-1633: arbeitet AM Objekt unter `:id` — es passiert das Sichtbarkeitstor wie `domain`.
+  geltung: "tor",
   confidentiality: "tor",
   // JOB 557: die Aktion arbeitet AM Objekt unter `:id` — sie passiert das Sichtbarkeitstor.
   ownership: "tor",
@@ -593,6 +600,8 @@ interface PutBody {
   tags?: string[];
   /** R-0431 (K2): das Fachgebiet (`action: "domain"`). `unknown`, gelesen an der `case`. */
   domain?: unknown;
+  /** R-1632 / R-1633: die Geltung (`action: "geltung"`); `null` entfernt sie. Geprüft im Dienst. */
+  geltung?: unknown;
   conflict?: ConflictInput;
   /**
    * R-0238 — DIE WIDERSPRECHENDE ABLEHNUNG. Nur an `rate` mit `verdict: "down"`: das Objekt, dem
@@ -608,6 +617,8 @@ interface PutBody {
   fortsetzungFuerFassung?: unknown;
   conflictId?: string;
   decision?: string;
+  /** R-0263: die Vorrang-Wahl an `resolve-conflict`. `unknown`, geprüft an der `case`. */
+  vorrang?: unknown;
   newAuthor?: string;
   text?: string;
   /**
@@ -2137,12 +2148,27 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     // WP-SUBMIT-ASYNC (Teil 3, Retry): reiht einen FEHLGESCHLAGENEN (oder festhängenden pending-)
     // Prüf-Job neu ein. Recht ko.validate — der Knopf lebt auf den Validierungs-Karten der Prüfer.
     // done/ohne Feld ist nicht wiederholbar (ehrlicher 409 statt stillem Doppel-Lauf).
+    //
+    // AUFNAHME 20260922 · R-1124: `{ "umfang": "vollstaendig" }` wählt für DIESES Objekt den
+    // Vollabgleich gegen den ganzen Bestand (ohne Deckel, ohne fachlichen Vorfilter; s.
+    // detection-cap.ts). Die Wahl ist auch bei einem aktuellen fertigen Nachweis zulässig — sie
+    // fordert ausdrücklich mehr, als der gedeckelte Lauf belegt hat. Läuft schon ein Job, wird
+    // nichts verdoppelt (409); ein wartender wird hochgestuft. Ohne Angabe gilt alles wie bisher.
     app.post<{ Params: { id: string } }>("/api/kos/:id/ai-check", async (request, reply) => {
       const user = await guards.requirePermission("ko.validate", request, reply);
       if (!user) {
         return;
       }
       try {
+        const gewaehlt = (request.body as { umfang?: unknown } | undefined)?.umfang;
+        if (gewaehlt !== undefined && gewaehlt !== "gedeckelt" && gewaehlt !== "vollstaendig") {
+          reply.code(400).send({
+            error: "AI_CHECK_UMFANG_UNBEKANNT",
+            message: 'Pruefumfang ist "gedeckelt" oder "vollstaendig".',
+          });
+          return;
+        }
+        const umfang: PruefUmfang = gewaehlt === "vollstaendig" ? "vollstaendig" : "gedeckelt";
         const subject = await ko.get(request.params.id);
         if (!subject) {
           reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
@@ -2156,6 +2182,38 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           return;
         }
         const status = subject.aiCheck?.status;
+        if (umfang === "vollstaendig") {
+          // R-1124 (Bens Befund zu 3e62e335): die Wahl wird SYNCHRON im Worker vorgemerkt, bevor
+          // irgendein Speicherzugriff folgt. Die Vormerkung hält einen wartenden Job dieses Objekts
+          // vom Start zurück, bis er hochgestuft eingereiht ist — der Übergang wartend → laufend
+          // kann die Wahl damit nicht mehr verschlucken. Läuft schon ein Job, gibt es keine
+          // Vormerkung: 409, und der Prüfstatus bleibt unberührt.
+          const vormerkung = aiCheckWorker.vollabgleichVormerken?.(request.params.id);
+          if (vormerkung === undefined) {
+            reply.code(503).send({
+              error: "AI_CHECK_UNAVAILABLE",
+              message: "Die Hintergrund-Pruefung kennt keinen Vollabgleich.",
+            });
+            return;
+          }
+          if (vormerkung === null) {
+            reply.code(409).send({
+              error: "AI_CHECK_LAEUFT",
+              message: "Fuer dieses Wissensobjekt laeuft gerade eine Pruefung.",
+            });
+            return;
+          }
+          try {
+            await ko.markAiCheckPending(request.params.id);
+            const vermerkt = await ko.get(request.params.id);
+            vormerkung.einreihen(vermerkt?.aiCheck?.koVersion);
+          } catch (error) {
+            vormerkung.verwerfen();
+            throw error;
+          }
+          reply.code(200).send({ status: "pending", umfang });
+          return;
+        }
         // AUFNAHME 20260922: ein ÜBERHOLTER abgeschlossener Nachweis ist wiederholbar — er gilt für
         // eine frühere Basis. Läuft für das Objekt schon ein Job, reiht der Worker nicht doppelt ein.
         if (status !== "failed" && status !== "pending" && !subject.aiCheck?.ueberholt) {
@@ -2991,7 +3049,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             const stelle = leseStelle(body.stelle);
             if (stelle === "unlesbar") {
               return badRequest(
-                "stelle muss Fassung (koVersion), Art (absatz, tabelle, bild), Abschnitt und Textstelle tragen.",
+                "stelle muss Fassung (koVersion), Art (absatz, tabelle, bild, anhang), Abschnitt und Textstelle tragen; eine Position (punkt, x und y je 0..1) gibt es nur bei Bild oder Anhang, eine Seite (ganzzahlig ab 1) nur bei einem Anhang.",
               );
             }
             reply.code(200).send(
@@ -3495,6 +3553,20 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             reply.code(200).send(await ko.setDomain(id, body.domain, user.id));
             return;
           }
+          case "geltung": {
+            // R-1632 / R-1633: dasselbe Recht wie das Fachgebiet (`ko.create`). Das Feld muss im
+            // Rumpf stehen — `null` entfernt die Angabe, ein fehlendes Feld ist kein Entfernen.
+            // Form und Vererbungsregel prüft der Dienst (`normalizeGeltung`, ungültig → 400).
+            const user = await guards.requirePermission("ko.create", request, reply);
+            if (!user) {
+              return;
+            }
+            if (!("geltung" in body)) {
+              return badRequest("geltung fehlt.");
+            }
+            reply.code(200).send(await ko.setGeltung(id, body.geltung, user.id));
+            return;
+          }
           case "tags": {
             const user = await guards.requirePermission("ko.create", request, reply);
             if (!user) {
@@ -3569,6 +3641,14 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!body.conflict) {
               return badRequest("conflict fehlt.");
             }
+            // R-0252: die Arbeitsart ist optional; steht sie da, muss sie eine der drei sein. Ein
+            // unbekannter Wert würde sonst als Auskunft „Art der Arbeit" am Konflikt stehen.
+            if (
+              body.conflict.arbeitsart !== undefined &&
+              !isConflictWorkKind(body.conflict.arbeitsart)
+            ) {
+              return badRequest("conflict.arbeitsart muss eines von regel, sache, version sein.");
+            }
             reply.code(201).send(await konfliktAnlegen(body.conflict, user.id));
             return;
           }
@@ -3580,7 +3660,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!body.conflictId || !body.decision) {
               return badRequest("conflictId/decision fehlt.");
             }
-            reply.code(200).send(await conflicts.resolve(body.conflictId, user.id, body.decision));
+            // R-0263: optional — welcher der beiden Punkte gilt bzw. einschränkt. Hier nur die Form;
+            // ob `gilt` zum Konflikt gehört und der Geltungsbereich steht, prüft der Dienst.
+            const roh = body.vorrang;
+            const vorrang = isVorrangWahl(roh) ? roh : undefined;
+            if (roh !== undefined && vorrang === undefined) {
+              return badRequest(
+                "vorrang muss { art: ueberstimmt|schraenkt_ein, gilt, geltungsbereich? } sein.",
+              );
+            }
+            const konfliktId = body.conflictId;
+            const text = body.decision;
+            reply.code(200).send(await conflicts.resolve(konfliktId, user.id, text, vorrang));
             return;
           }
           case "transfer-author": {
