@@ -1583,6 +1583,53 @@ export class AskService {
     );
   }
 
+  // R-1649 (ROADMAP 7.3): „Das war nicht hilfreich, ich habe es so gemacht …" — die NEGATIV-
+  // BEWÄHRUNG zu genau der tragenden Quelle einer Antwort, an die sich ein abweichender Weg als
+  // Wissensentwurf anschliessen kann. Dieselbe Bindung wie `markHelpful`: ohne gültigen Answer-Receipt,
+  // der GENAU dieses KO diesem Nutzer als Quelle belegt, wird nichts geschrieben (403) — auch kein
+  // Entwurf. Erst danach läuft `entwurf` (vom Aufrufer, die Route kennt den Erfassungsdienst), und
+  // seine Kennung reist in den Audit-Beleg: so ist der neue Entwurf mit dem misslungenen Vorschlag
+  // verbunden.
+  // Bewusst KEIN Trust-Abzug und keine Prüfstimme: die Rückmeldung wird registriert, nicht als Urteil
+  // über die Gültigkeit vollzogen. Genau ein Beleg je Person und Objekt (recordOnce); eine spätere
+  // zweite Meldung derselben Person legt ihren Entwurf trotzdem an — neues Wissen geht nicht verloren
+  // —, schreibt aber keinen zweiten Beleg (`vermerkt: false`).
+  async markNotHelpful(
+    receipt: string,
+    koId: string,
+    actor: string,
+    entwurf?: () => Promise<string>,
+  ): Promise<{ vermerkt: boolean; entwurfId: string | null }> {
+    const bound = verifyAnswerReceipt(this.receiptSecret, receipt, this.now());
+    if (!bound || bound.userId !== actor || !bound.sources.includes(koId)) {
+      throw new AskError("FORBIDDEN", "Kein gültiger Antwort-Beleg für dieses Wissensobjekt.");
+    }
+    const ko = await this.koService.get(koId);
+    if (!ko || ko.deletedAt) {
+      throw new AskError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    const entwurfId = entwurf ? await entwurf() : null;
+    const audit = this.audit;
+    if (!audit) {
+      // Degenerationsfall ohne Audit (Dev/Tests): es gibt keinen Ort, an dem der Vermerk stünde.
+      return { vermerkt: false, entwurfId };
+    }
+    const vermerkt = await this.serializeHelpful(() =>
+      audit.recordOnce(`answer.not_helpful:${actor}:${koId}`, {
+        actor,
+        action: "answer.not_helpful",
+        target: koId,
+        payload: {
+          koTitle: ko.title,
+          koAuthor: ko.author,
+          koOriginalAuthor: ko.originalAuthor || ko.author,
+          ...(entwurfId ? { entwurfId } : {}),
+        },
+      }),
+    );
+    return { vermerkt, entwurfId };
+  }
+
   // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): der gekoppelte Kern des „Danke". recordOnce (Event-CAS) und
   // der atomare Trust-Inkrement liegen in DERSELBEN Persistenz-Transaktion (gemeinsamer TxContext), so
   // dass entweder BEIDE oder KEINE wirksam werden. Fail-forward: schlägt der Trust-Schritt fehl, rollt

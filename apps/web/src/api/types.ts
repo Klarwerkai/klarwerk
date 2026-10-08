@@ -2163,6 +2163,8 @@ export interface StructureResult {
   measures: string[];
   tags: string[];
   confidence: number;
+  // FR-STR-01: vom Modell vorgeschlagene Wissensart; fehlt beim Fallback oder ungültigem Modellwert.
+  knowledgeType?: KnowledgeType;
   demo: boolean;
   // WP-D8: ehrliche Fallback-Ursache (nur bei demo:true) — "no-model" = kein Modell konfiguriert/aktiv,
   // "model-error" = Modell versucht, aber gescheitert (HTTP/Quota/Netz/Parse). WP-D10 (Fix 3):
