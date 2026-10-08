@@ -97,8 +97,12 @@
         kiEntwurf: "Mit Klara ausformulieren (KI-Entwurf)",
         kiKennzeichnung: "KI-Entwurf – formuliert von {wer}. Nicht geprüft: vor Verwendung lesen, kürzen und verantworten.",
         kiAnbieterUnbekannt: "einem Modell (Anbieter vom Server nicht genannt)",
-        kiHerkunft: "Quelle: „{titel}“ · Fassung {version} · Prüfstand {stufe} · Kennung {id}",
-        kiAuftrag: "Formuliere eine {textsorte} zu: {vorhaben}. {form}",
+        kiHerkunft: "[{marke}] Quelle: „{titel}“ · Fassung {version} · Prüfstand {status} · Vertrauenswert {trust} · Kennung {id}",
+        ohneQuellenbezug: "[ohne Quellenbezug – bitte prüfen]",
+        kiAuftrag: "Formuliere eine {textsorte} zu: {vorhaben}. {verlauf}{form}",
+        kiVerlauf: "Gesprächsverlauf, spätere Angaben präzisieren frühere: {runden}. ",
+        kiRunde: "{n}) „{frage}“ (Belege: {marken})",
+        kiRundeOhne: "{n}) „{frage}“ (keine geprüften Belege)",
         kiForm_betriebsmitteilung: "Form: Betreff, Anrede an die Belegschaft, sachlich-freundlicher Ton in Sie-Form, Anlass, geltende Punkte, was zu tun ist, Ansprechpartner, Gruß. Verwende nur Aussagen aus den angegebenen Quellen.",
         kiForm_allgemein: "Verwende nur Aussagen aus den angegebenen Quellen.",
         kiNichtMoeglich: "Mit KI gerade nicht möglich: {grund}",
@@ -201,8 +205,12 @@
         kiEntwurf: "Let Klara phrase it (AI draft)",
         kiKennzeichnung: "AI draft – phrased by {wer}. Not reviewed: read, shorten and take responsibility before use.",
         kiAnbieterUnbekannt: "a model (provider not named by the server)",
-        kiHerkunft: "Source: “{titel}” · version {version} · review status {stufe} · ID {id}",
-        kiAuftrag: "Draft a {textsorte} on: {vorhaben}. {form}",
+        kiHerkunft: "[{marke}] Source: “{titel}” · version {version} · review status {status} · trust {trust} · ID {id}",
+        ohneQuellenbezug: "[no source reference – please check]",
+        kiAuftrag: "Draft a {textsorte} on: {vorhaben}. {verlauf}{form}",
+        kiVerlauf: "Conversation so far, later statements refine earlier ones: {runden}. ",
+        kiRunde: "{n}) “{frage}” (sources: {marken})",
+        kiRundeOhne: "{n}) “{frage}” (no reviewed sources)",
         kiForm_betriebsmitteilung: "Form: subject, greeting to the staff, factual and friendly formal tone, occasion, applicable points, what to do, contact, closing. Use only statements from the given sources.",
         kiForm_allgemein: "Use only statements from the given sources.",
         kiNichtMoeglich: "AI not possible right now: {grund}",
@@ -305,8 +313,12 @@
         kiEntwurf: "Laat Klara het formuleren (AI-concept)",
         kiKennzeichnung: "AI-concept – geformuleerd door {wer}. Niet gecontroleerd: lezen, inkorten en verantwoorden vóór gebruik.",
         kiAnbieterUnbekannt: "een model (aanbieder niet genoemd door de server)",
-        kiHerkunft: "Bron: ‘{titel}’ · versie {version} · controlestatus {stufe} · kenmerk {id}",
-        kiAuftrag: "Formuleer een {textsorte} over: {vorhaben}. {form}",
+        kiHerkunft: "[{marke}] Bron: ‘{titel}’ · versie {version} · controlestatus {status} · betrouwbaarheid {trust} · kenmerk {id}",
+        ohneQuellenbezug: "[zonder bronverwijzing – controleer]",
+        kiAuftrag: "Formuleer een {textsorte} over: {vorhaben}. {verlauf}{form}",
+        kiVerlauf: "Gespreksverloop, latere uitspraken verfijnen eerdere: {runden}. ",
+        kiRunde: "{n}) ‘{frage}’ (bronnen: {marken})",
+        kiRundeOhne: "{n}) ‘{frage}’ (geen gecontroleerde bronnen)",
         kiForm_betriebsmitteilung: "Vorm: onderwerp, aanhef aan het personeel, zakelijk-vriendelijke toon met u, aanleiding, geldende punten, wat te doen, contactpersoon, groet. Gebruik alleen uitspraken uit de opgegeven bronnen.",
         kiForm_allgemein: "Gebruik alleen uitspraken uit de opgegeven bronnen.",
         kiNichtMoeglich: "AI nu niet mogelijk: {grund}",
@@ -394,8 +406,6 @@
     // Die Dokumentarten der Output Factory (`OUTPUT_KINDS`, services/output/src/types.ts), in der
     // Reihenfolge von R-0732. Verfahrensanweisung = derselbe Renderer wie die Arbeitsanweisung (SOP).
     var ANLEITUNG_ARTEN = ["instruction", "checklist", "troubleshooting", "training", "faq", "management_summary", "betriebsmitteilung"];
-    // Die Schrift, die der Text HINTER dem Cursor beim Teilen des Absatzes behält (Word.Font, 1.1).
-    var ANLEITUNG_SCHRIFT = ["bold", "italic", "underline", "strikeThrough", "color", "highlightColor", "name", "size"];
     // Wie viele frühere Fragen `/api/ask` als Gesprächsfaden annimmt (GESPRAECHSFADEN_MAX_FRAGEN).
     var ANLEITUNG_FADEN_MAX = 3;
 
@@ -826,9 +836,9 @@
      * Steht der Cursor (bzw. das Ende der Markierung) am Absatzende, kommen die Zeilen als eigene
      * Absätze direkt dahinter — derselbe Weg wie das Einfügen eines Bildes. Steht er MITTEN im
      * Absatz, wird der Absatz dort geteilt: der Text vor dem Cursor bleibt stehen, die Zeilen folgen,
-     * und der Text hinter dem Cursor steht danach als eigener Absatz — mit der Formatvorlage des
-     * Absatzes und der Schrift, die Word für ihn meldet (gemischte Werte meldet Word als `null`;
-     * die bleiben ungesetzt). Nichts wird überschrieben. Das Teilen braucht `Range.getRange`/
+     * und der Bereich hinter dem Cursor steht danach als eigener Absatz — als OOXML verschoben, also
+     * mit allen Läufen, gemischter Formatierung, Hyperlinks, Feldern und den Absatzeigenschaften
+     * (Nacharbeit 7). Nichts wird überschrieben. Das Teilen braucht `Range.getRange`/
      * `expandTo` (WordApi 1.3); meldet der Host 1.3 nicht, bleibt es beim Einfügen hinter dem Absatz.
      * `done(true|false)`.
      */
@@ -858,30 +868,27 @@
             setzen(absatz);
             return context.sync();
           }
-          // Der Text vom Cursor bis zum Absatzende — er muss HINTER die eingefügten Zeilen.
+          // Der Bereich vom Cursor bis zum Absatzende — er muss HINTER die eingefügten Zeilen.
           var rest = auswahl.getRange("End").expandTo(absatz.getRange("End"));
           rest.load("text");
-          rest.font.load(ANLEITUNG_SCHRIFT.join(","));
-          absatz.load("style");
+          // Nacharbeit 7 (Bens Befund): VERLUSTFREI VERSCHOBEN, NICHT ALS KLARTEXT NEU GESCHRIEBEN.
+          // Der Rest reist als OOXML (`Range.getOoxml`, WordApi 1.1): Läufe mit gemischter
+          // Formatierung, Hyperlinks, Felder und die Absatzeigenschaften bleiben, wie sie sind.
+          var restOoxml = rest.getOoxml();
           return context.sync().then(function () {
             var restText = String(rest.text || "").replace(/[\r\n]+$/, "");
             if (restText.length === 0) {
               setzen(absatz);
               return context.sync();
             }
-            var schrift = {};
-            for (var s = 0; s < ANLEITUNG_SCHRIFT.length; s += 1) {
-              var wert = rest.font[ANLEITUNG_SCHRIFT[s]];
-              if (wert !== null && wert !== undefined) { schrift[ANLEITUNG_SCHRIFT[s]] = wert; }
-            }
-            var stil = absatz.style;
-            rest.delete();
-            var nachher = setzen(absatz).insertParagraph(restText, "After");
-            if (stil) { nachher.style = stil; }
-            for (var name in schrift) {
-              if (Object.prototype.hasOwnProperty.call(schrift, name)) { nachher.font[name] = schrift[name]; }
-            }
-            return context.sync();
+            // Erst die Kopie hinter die eingefügten Zeilen setzen und bestätigen lassen, DANN das
+            // Original entfernen: scheitert das Einsetzen, bleibt der Rest unangetastet stehen.
+            var nachher = setzen(absatz).insertParagraph("", "After");
+            nachher.insertOoxml(restOoxml.value, "Replace");
+            return context.sync().then(function () {
+              rest.delete();
+              return context.sync();
+            });
           });
         });
       }).then(function () { done(true); }, function () { done(false); });
@@ -1035,13 +1042,22 @@
      * steht als „nicht angegeben/benannt/festgehalten" da — nichts wird ergänzt.
      */
     function anleitungHerkunftZeile(h) {
-      var zeile = anleitungT("herkunft", {
+      return anleitungT("herkunft", {
         titel: h.title,
         version: h.version,
         status: h.status,
         trust: h.trust,
         id: h.koId
-      });
+      }) + anleitungPflichtTeil(h);
+    }
+
+    /**
+     * Der Pflichtteil jeder Herkunftszeile (R-0337/R-1739) — Geltung, verantwortliche Rolle,
+     * Verantwortung, Fassungsdatum, letzte Prüfung, offene Unsicherheiten. Derselbe Teil für
+     * Baustein und KI-Entwurf; fehlt ein Feld (ältere Antwort), steht es als „nicht …" da.
+     */
+    function anleitungPflichtTeil(h) {
+      var zeile = "";
       var validiert = Array.isArray(h.validiertVon) && h.validiertVon.length > 0
         ? anleitungT("validiertVon", { liste: h.validiertVon.join(", ") })
         : "";
@@ -1392,7 +1408,8 @@
         anleitungZeichnen();
         return;
       }
-      anleitungErzeugenMit(ids, anleitungFaden[0].frage);
+      // Nacharbeit 7: der durch ALLE Runden präzisierte Auftrag, nicht nur die erste Frage.
+      anleitungErzeugenMit(ids, anleitungVorhaben());
     }
 
     /** Der KI-Entwurf als Word-Absätze: Kennzeichnung zuerst, dann Text, dann Herkunft je Quelle. */
@@ -1402,26 +1419,88 @@
       var wer = typeof body.anbieter === "string" && body.anbieter
         ? body.anbieter + (typeof body.modell === "string" && body.modell ? " (" + body.modell + ")" : "")
         : anleitungT("kiAnbieterUnbekannt");
-      var zeilen = [{ text: anleitungT("kiKennzeichnung", { wer: wer }), ueberschrift: false }];
-      var teile = body.entwurf.split(/\r?\n/);
-      for (var i = 0; i < teile.length; i += 1) {
-        var z = anleitungNorm(teile[i]);
-        if (z) { zeilen.push({ text: z, ueberschrift: false }); }
-      }
+      // Die Quellen nach ihrer Marke („Q1" …) — Grundlage der Passagenzuordnung.
+      var quellen = {};
+      var herkunftZeilen = [];
       for (var j = 0; j < body.herkunft.length; j += 1) {
         var h = body.herkunft[j];
         if (!h || typeof h.koId !== "string" || typeof h.titel !== "string") { return null; }
-        zeilen.push({
+        var marke = typeof h.marke === "string" && h.marke ? h.marke : "Q" + (j + 1);
+        var version = typeof h.version === "number" ? h.version : "?";
+        quellen[marke] = { id: h.koId, version: version };
+        herkunftZeilen.push({
           text: anleitungT("kiHerkunft", {
+            marke: marke,
             titel: h.titel,
-            version: typeof h.version === "number" ? h.version : "?",
-            stufe: typeof h.stufe === "string" ? h.stufe : "?",
+            version: version,
+            status: typeof h.stufe === "string" ? h.stufe : "?",
+            trust: typeof h.trust === "number" ? h.trust : anleitungT("nichtAngegeben"),
             id: h.koId
-          }),
+          }) + anleitungPflichtTeil(h),
           ueberschrift: false
         });
       }
-      return zeilen;
+      var zeilen = [{ text: anleitungT("kiKennzeichnung", { wer: wer }), ueberschrift: false }];
+      // R-0349/R-0414: je Passage die Marken ihrer Quellen (Kennung und Fassung). Eine Passage ohne
+      // gültige Marke wird ausdrücklich als „ohne Quellenbezug" gekennzeichnet — nie einer Quelle
+      // zugeschlagen. Ohne `passagen` (ältere Antwort) gilt jede Zeile als ohne Quellenbezug.
+      var passagen = Array.isArray(body.passagen) ? body.passagen : null;
+      if (!passagen) {
+        passagen = [];
+        var teile = body.entwurf.split(/\r?\n/);
+        for (var t = 0; t < teile.length; t += 1) { passagen.push({ text: teile[t], marken: [] }); }
+      }
+      for (var i = 0; i < passagen.length; i += 1) {
+        var p = passagen[i];
+        var text = anleitungNorm(p && p.text);
+        if (!text) { continue; }
+        var verweise = [];
+        var marken = p && Array.isArray(p.marken) ? p.marken : [];
+        for (var m = 0; m < marken.length; m += 1) {
+          var q = quellen[marken[m]];
+          if (q) { verweise.push("[" + marken[m] + ": " + q.id + " · v" + q.version + "]"); }
+        }
+        zeilen.push({
+          text: text + " " + (verweise.length > 0 ? verweise.join(" ") : anleitungT("ohneQuellenbezug")),
+          ueberschrift: false
+        });
+      }
+      return zeilen.concat(herkunftZeilen);
+    }
+
+    /**
+     * Das Vorhaben aus dem GANZEN Gesprächsfaden (Nacharbeit 7): jede Runde präzisiert die vorige —
+     * „nur für die Nachtschicht" gehört zum Auftrag wie die erste Frage. Die Runden werden in ihrer
+     * Reihenfolge verbunden; ein Rückbezug („und gilt das auch …") bleibt so mit seinem Bezug lesbar.
+     */
+    function anleitungVorhaben() {
+      var fragen = [];
+      for (var i = 0; i < anleitungFaden.length; i += 1) { fragen.push(anleitungFaden[i].frage); }
+      return fragen.join(" – ");
+    }
+
+    /**
+     * Der Gesprächsverlauf für den KI-Auftrag: je Runde die Frage und die Marken der geprüften
+     * Fundstellen DIESER Runde — so ist jede Quelle dem Gesprächsstand zugeordnet, in dem sie kam.
+     * Die Marken folgen der Reihenfolge von `anleitungFadenIds` (= `koIds` des Zurufs = Q1, Q2 …).
+     * Bei nur einer Runde gibt es keinen Verlauf zu nennen.
+     */
+    function anleitungVerlauf(ids) {
+      if (anleitungFaden.length < 2) { return ""; }
+      var runden = [];
+      for (var i = 0; i < anleitungFaden.length; i += 1) {
+        var marken = [];
+        var punkte = anleitungFaden[i].punkte;
+        for (var j = 0; j < punkte.length; j += 1) {
+          var stelle = punkte[j].geprueft ? ids.indexOf(punkte[j].id) : -1;
+          var marke = stelle >= 0 ? "Q" + (stelle + 1) : null;
+          if (marke && marken.indexOf(marke) === -1) { marken.push(marke); }
+        }
+        runden.push(marken.length > 0
+          ? anleitungT("kiRunde", { n: i + 1, frage: anleitungFaden[i].frage, marken: marken.join(", ") })
+          : anleitungT("kiRundeOhne", { n: i + 1, frage: anleitungFaden[i].frage }));
+      }
+      return anleitungT("kiVerlauf", { runden: runden.join("; ") });
     }
 
     /** „Mit Klara ausformulieren" — der bestehende Zuruf-Weg (KA6), nur mit Einwilligung. */
@@ -1449,7 +1528,8 @@
       var art = document.getElementById("anleitung-art").value || ANLEITUNG_ARTEN[0];
       var auftrag = anleitungT("kiAuftrag", {
         textsorte: anleitungT("art_" + art),
-        vorhaben: anleitungFaden[0].frage,
+        vorhaben: anleitungVorhaben(),
+        verlauf: anleitungVerlauf(ids),
         form: anleitungT(art === "betriebsmitteilung" ? "kiForm_betriebsmitteilung" : "kiForm_allgemein")
       });
       var ende = anleitungLaufStarten();

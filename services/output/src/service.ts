@@ -1,7 +1,7 @@
 // FR-EXT-03 / SCRUM-117: Output-Service. Stateless — keine Persistenz, keine KO-Mutation.
 // Quelle sind ausschließlich validierte KnowledgeObjects; nicht-validierte werden abgelehnt.
-import { type AuditEntry, type AuditRepo, pruefeValidationDecisionRef } from "../../audit";
 import { type KnowledgeObject, type KoService, isConfidential } from "../../knowledge-object";
+import { type AuditLeser, pruefnachweiseFuer } from "./pruefnachweis";
 import {
   KIND_TITLE,
   OUTPUT_NO_CHECK_NOTE,
@@ -29,13 +29,13 @@ export interface OutputServiceDeps {
    * Integritätsprüfung (`pruefeValidationDecisionRef`, KW-W3-19). Fehlt er, ist kein Prüfdatum
    * belegbar — das steht dann als Unsicherheit da, nicht als erfundenes Datum.
    */
-  audit?: Pick<AuditRepo, "all" | "findBySeq">;
+  audit?: AuditLeser;
 }
 
 export class OutputService {
   private readonly koService: KoService;
   private readonly now: () => number;
-  private readonly audit: Pick<AuditRepo, "all" | "findBySeq"> | undefined;
+  private readonly audit: AuditLeser | undefined;
 
   constructor(deps: OutputServiceDeps) {
     this.koService = deps.koService;
@@ -51,38 +51,9 @@ export class OutputService {
     return kos.filter((ko) => !isConfidential(ko.confidentiality)).map(toSource);
   }
 
-  /**
-   * R-0337: das Prüfdatum je Quelle aus ihrem Validierungsnachweis — adressiert über
-   * `validationDecisionRef`, geprüft gegen Hash, Kette, Ereignisart und DIESE Fassung. Die Kette
-   * wird nur geladen, wenn mindestens eine Quelle einen Nachweis trägt.
-   */
-  private async pruefnachweise(kos: readonly KnowledgeObject[]): Promise<OutputPruefnachweis[]> {
-    const findBySeq = this.audit?.findBySeq?.bind(this.audit);
-    if (!this.audit || !findBySeq || !kos.some((ko) => ko.validationDecisionRef)) {
-      return kos.map(() => ({ zustand: "MISSING" }));
-    }
-    const kette: AuditEntry[] = await this.audit.all();
-    const raus: OutputPruefnachweis[] = [];
-    for (const ko of kos) {
-      const ref = ko.validationDecisionRef;
-      if (!ref) {
-        raus.push({ zustand: "MISSING" });
-        continue;
-      }
-      const eintrag = await findBySeq(ref.auditSeq);
-      const zustand = pruefeValidationDecisionRef(
-        eintrag,
-        ref,
-        { koId: ko.id, koVersion: ko.version },
-        kette,
-      );
-      raus.push(
-        zustand === "OK" && eintrag
-          ? { zustand: "OK", am: eintrag.at, ereignis: eintrag.action }
-          : { zustand: zustand === "OK" ? "MISSING" : zustand },
-      );
-    }
-    return raus;
+  /** R-0337: das Prüfdatum je Quelle — dieselbe Lesung wie im Zuruf (`pruefnachweis.ts`). */
+  private pruefnachweise(kos: readonly KnowledgeObject[]): Promise<OutputPruefnachweis[]> {
+    return pruefnachweiseFuer(this.audit, kos);
   }
 
   async generate(input: GenerateOutputInput): Promise<OutputDocument> {

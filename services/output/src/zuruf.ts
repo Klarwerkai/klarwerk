@@ -51,6 +51,7 @@ import {
   type KoService,
   dropConfidential,
 } from "../../knowledge-object";
+import { type AuditLeser, pruefnachweiseFuer } from "./pruefnachweis";
 import { toProvenance } from "./render";
 import type { OutputProvenance } from "./types";
 
@@ -109,6 +110,59 @@ export interface ZurufBeleg {
   koId: string;
   title: string;
   text: string;
+  /**
+   * gesamt-dokumenterzeugung (R-0349/R-0414, Nacharbeit 7): die Marke dieses Belegs („Q1" …) —
+   * dieselbe wie in `provenance[].marke`. Der Formulierer setzt sie hinter jeden Absatz, der sich
+   * auf den Beleg stützt; der Erzeuger liest sie daraus zurück (`passagenAus`).
+   */
+  marke: string;
+}
+
+/**
+ * Eine Passage des Vorschlags und die Marken der Belege, auf die sie sich stützt. `marken` leer
+ * heißt: der Formulierer hat für diese Passage KEINE (gültige) Quelle genannt — das wird am Panel
+ * ausdrücklich so gekennzeichnet, nicht einer Quelle zugeschlagen.
+ */
+export interface ZurufPassage {
+  text: string;
+  marken: string[];
+}
+
+/** `[Q1]`, `[Q1, Q2]` — die Belegmarken, die der Formulierer setzen soll. */
+const ZURUF_MARKE_RE = /\[(Q\d+(?:\s*,\s*Q\d+)*)\]/g;
+
+/**
+ * Zerlegt den Vorschlag in Passagen (eine je nichtleerer Zeile) und liest je Passage die
+ * Belegmarken heraus. Nur Marken, die es wirklich gibt (`Q1` … `Q<anzahl>`), zählen; eine erfundene
+ * Marke wird verworfen und lässt die Passage ohne Quellenbezug, statt eine Zuordnung zu behaupten.
+ */
+export function passagenAus(vorschlag: string, anzahlQuellen: number): ZurufPassage[] {
+  const raus: ZurufPassage[] = [];
+  for (const zeile of vorschlag.split(/\r?\n/)) {
+    const roh = zeile.trim();
+    if (roh.length === 0) {
+      continue;
+    }
+    const marken: string[] = [];
+    const text = roh
+      .replace(ZURUF_MARKE_RE, (_treffer: string, gruppe: string) => {
+        for (const teil of gruppe.split(",")) {
+          const nummer = Number(teil.trim().slice(1));
+          const marke = `Q${nummer}`;
+          if (nummer >= 1 && nummer <= anzahlQuellen && !marken.includes(marke)) {
+            marken.push(marke);
+          }
+        }
+        return "";
+      })
+      .replace(/\s+([.,;:!?])/g, "$1")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+    if (text.length > 0) {
+      raus.push({ text, marken });
+    }
+  }
+  return raus;
 }
 
 /**
@@ -201,8 +255,13 @@ export interface ZurufVorschlag {
    * stehen. `frei` — er tut es nicht; dann ist er reine KI-Formulierung ohne Bestandsbezug.
    */
   herkunft: "bestand" | "frei";
-  /** Die validierten Quellen, in der Form, die der Output-Export schon benutzt. */
+  /**
+   * Die validierten Quellen, in der Form, die der Output-Export schon benutzt — mit allen
+   * Pflichtangaben, das Prüfdatum aus dem geprüften Validierungsnachweis (Nacharbeit 7).
+   */
   provenance: OutputProvenance[];
+  /** R-0349/R-0414 (Nacharbeit 7): der Vorschlag je Passage, mit den Marken ihrer Quellen. */
+  passagen: ZurufPassage[];
   /** Erzeugungszeitpunkt, ISO — wie in `OutputDocument`. */
   generatedAt: string;
   /**
@@ -227,6 +286,11 @@ export interface ZurufServiceDeps {
    */
   einwilligungspruefer?: Ka6Einwilligungspruefer;
   now?: () => number;
+  /**
+   * gesamt-dokumenterzeugung (R-0337, Nacharbeit 7): derselbe Leseweg zum Validierungsnachweis wie
+   * im `OutputService`. Fehlt er, steht das Prüfdatum als „nicht belegt" da — nie als Annahme.
+   */
+  audit?: AuditLeser;
 }
 
 export class ZurufService {
@@ -234,12 +298,14 @@ export class ZurufService {
   private readonly formulierer: Formulierer | undefined;
   private readonly einwilligungspruefer: Ka6Einwilligungspruefer | undefined;
   private readonly now: () => number;
+  private readonly audit: AuditLeser | undefined;
 
   constructor(deps: ZurufServiceDeps) {
     this.koService = deps.koService;
     this.formulierer = deps.formulierer;
     this.einwilligungspruefer = deps.einwilligungspruefer;
     this.now = deps.now ?? (() => Date.now());
+    this.audit = deps.audit;
   }
 
   /**
@@ -290,7 +356,12 @@ export class ZurufService {
       // `statement` ist die Plaintext-Kurzfassung, die auch Output, Ask und Suche lesen
       // (`knowledge-object/src/types.ts:193`) — kein `bodyHtml`, damit nichts Ausgezeichnetes
       // in einen Formulierungsauftrag geraet.
-      belege: quellen.map((ko) => ({ koId: ko.id, title: ko.title, text: ko.statement })),
+      belege: quellen.map((ko, i) => ({
+        koId: ko.id,
+        title: ko.title,
+        text: ko.statement,
+        marke: `Q${i + 1}`,
+      })),
     };
 
     const roh = await this.formulierer.formuliere(auftrag);
@@ -303,12 +374,16 @@ export class ZurufService {
       );
     }
 
+    const pruefungen = await pruefnachweiseFuer(this.audit, quellen);
     return {
       art: eingabe.art,
       vorschlag,
       aiGenerated: true,
       herkunft: quellen.length > 0 ? "bestand" : "frei",
-      provenance: quellen.map((ko, i) => toProvenance(ko, { marke: `Q${i + 1}` })),
+      provenance: quellen.map((ko, i) =>
+        toProvenance(ko, { marke: `Q${i + 1}`, pruefung: pruefungen[i] ?? { zustand: "MISSING" } }),
+      ),
+      passagen: passagenAus(vorschlag, quellen.length),
       generatedAt: new Date(this.now()).toISOString(),
       anbieter: freigabe.anbieter,
       modell: freigabe.modell,

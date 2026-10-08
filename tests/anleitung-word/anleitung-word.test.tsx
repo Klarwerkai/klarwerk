@@ -215,11 +215,47 @@ async function serverAntwort(url: string, init?: { method?: string; body?: strin
 
 // --- Die Word-Attrappe ---------------------------------------------------------------------------
 
+/** Ein Lauf im Absatz — mit Formatierung, Hyperlink oder Feld, wie Word sie in OOXML trägt. */
+interface Lauf {
+  text: string;
+  fett?: boolean;
+  link?: string;
+  feld?: string;
+}
+
 interface Absatz {
   text: string;
   stil: string;
-  /** Die Schrift des Absatzes, wie Word sie meldet (nur, was ein Fall braucht). */
-  schrift?: Record<string, unknown>;
+  /**
+   * Nacharbeit 7: die Läufe des Absatzes, wo ein Fall Struktur braucht. Fehlt das Feld, ist der
+   * Absatz ein einziger schlichter Lauf. OOXML bildet die Attrappe als JSON dieser Läufe nach —
+   * gemessen wird, dass das Panel sie UNVERÄNDERT verschiebt, nicht wie Word OOXML kodiert.
+   */
+  struktur?: Lauf[];
+}
+
+function laeufeVon(a: Absatz): Lauf[] {
+  return a.struktur ?? [{ text: a.text }];
+}
+
+/** Teilt Läufe an einer Zeichenposition; ein Lauf, der sie überspannt, wird geteilt. */
+function teilen(laeufe: Lauf[], ab: number): [Lauf[], Lauf[]] {
+  const vorne: Lauf[] = [];
+  const hinten: Lauf[] = [];
+  let pos = 0;
+  for (const lauf of laeufe) {
+    const ende = pos + lauf.text.length;
+    if (ende <= ab) {
+      vorne.push(lauf);
+    } else if (pos >= ab) {
+      hinten.push(lauf);
+    } else {
+      vorne.push({ ...lauf, text: lauf.text.slice(0, ab - pos) });
+      hinten.push({ ...lauf, text: lauf.text.slice(ab - pos) });
+    }
+    pos = ende;
+  }
+  return [vorne, hinten];
 }
 
 let dokument: Absatz[] = [];
@@ -255,9 +291,15 @@ function absatzObjekt(a: Absatz) {
     set style(wert: string) {
       a.stil = wert;
     },
-    get font() {
-      a.schrift ??= {};
-      return a.schrift;
+    /** `insertOoxml(…, "Replace")`: der Absatz wird zu genau dem verschobenen Inhalt. */
+    insertOoxml(wert: string, ort: string) {
+      if (ort !== "Replace") {
+        throw new Error(`insertOoxml-Ort ${ort} ist in der Attrappe nicht nachgebildet`);
+      }
+      const paket = JSON.parse(wert) as { stil: string; laeufe: Lauf[] };
+      a.stil = paket.stil;
+      a.struktur = paket.laeufe;
+      a.text = paket.laeufe.map((l) => l.text).join("");
     },
     getRange(_ort: string) {
       return { absatz: a };
@@ -305,11 +347,19 @@ function wordAttrappe() {
                       get text() {
                         return hier ? hier.text.slice(ab()) : "";
                       },
-                      font: { load() {}, ...(hier?.schrift ?? {}) },
                       load() {},
+                      // OOXML des Rests: Absatzvorlage und Läufe samt Link und Feld.
+                      getOoxml() {
+                        const laeufe = hier ? teilen(laeufeVon(hier), ab())[1] : [];
+                        return { value: JSON.stringify({ stil: hier?.stil ?? "", laeufe }) };
+                      },
                       delete() {
                         if (hier) {
+                          const [vorne] = teilen(laeufeVon(hier), ab());
                           hier.text = hier.text.slice(0, ab());
+                          if (hier.struktur) {
+                            hier.struktur = vorne;
+                          }
                         }
                       },
                     };
@@ -1009,34 +1059,72 @@ describe("D · ein Dokument aus geprüftem Wissen erzeugen und vollständig in W
 // folgt, der Text dahinter steht danach — mit Formatvorlage und Schrift seines Absatzes.
 
 describe("C · Einfügen an der tatsächlichen Cursorposition", () => {
-  it("C1: Baustein mitten im Absatz — vorher | Baustein | nachher, nichts verloren", async () => {
-    dokument = [
-      {
-        text: "Vor der Wartung prüfen. Danach dokumentieren.",
-        stil: "Standard",
-        schrift: { bold: true },
-      },
+  it("C1: Baustein mitten im Absatz — vorher | Baustein | nachher; Hyperlink, Feld und gemischte Formatierung bleiben", async () => {
+    // Nacharbeit 7 (Bens Befund 2): der Rest hinter dem Cursor trägt gemischte Formatierung, einen
+    // Hyperlink davor und ein Feld dahinter. Er darf NICHT als Klartext neu entstehen.
+    const VORNE: Lauf[] = [
+      { text: "Siehe " },
+      { text: "Handbuch", link: "https://intranet.example/handbuch" },
+      { text: ", " },
     ];
+    const HINTEN: Lauf[] = [
+      { text: "Kapitel 3", fett: true },
+      { text: ", Seite " },
+      { text: "12", feld: "PAGEREF _Ref1" },
+      { text: "." },
+    ];
+    const ganz = [...VORNE, ...HINTEN];
+    dokument = [{ text: ganz.map((l) => l.text).join(""), stil: "Aufzählung", struktur: ganz }];
     cursor = 0;
-    cursorVersatz = "Vor der Wartung prüfen. ".length;
+    cursorVersatz = "Siehe Handbuch, ".length;
     panelStarten();
     await bausteinWaehlen("ko-ventil");
     await klick("anleitung-baustein-btn");
     expect(dokument.map((a) => a.text)).toEqual([
-      "Vor der Wartung prüfen. ",
+      "Siehe Handbuch, ",
       "Vor jeder Wartung das Druckventil drucklos schalten.",
       "Gilt, wenn: Wartung am Druckventil",
       "1. Absperrhahn schließen.",
       "2. Druck am Manometer prüfen (0 bar).",
       HERKUNFT_VENTIL,
-      "Danach dokumentieren.",
+      "Kapitel 3, Seite 12.",
     ]);
-    // Der Text hinter dem Cursor behält Formatvorlage und Schrift seines Absatzes.
+    // Vor dem Cursor: unverändert, samt Hyperlink.
+    expect(dokument[0]).toEqual({ text: "Siehe Handbuch, ", stil: "Aufzählung", struktur: VORNE });
+    // Hinter dem Cursor: dieselben Läufe — Fettung, Feld, Absatzvorlage —, verschoben, nicht neu.
     expect(dokument.at(-1)).toEqual({
-      text: "Danach dokumentieren.",
-      stil: "Standard",
-      schrift: { bold: true },
+      text: "Kapitel 3, Seite 12.",
+      stil: "Aufzählung",
+      struktur: HINTEN,
     });
+  });
+
+  it("C1b: scheitert das Einsetzen des Rests, wird das Original NICHT gelöscht", async () => {
+    dokument = [{ text: "Vorne. Hinten.", stil: "Standard" }];
+    cursorVersatz = "Vorne. ".length;
+    panelStarten();
+    const echtesWord = g.Word as { run(a: (k: unknown) => unknown): Promise<unknown> };
+    // Word lehnt das OOXML ab: der zweite `sync` (nach dem Einsetzen) scheitert.
+    g.Word = {
+      run(arbeit: (k: unknown) => unknown) {
+        return echtesWord.run((kontext) => {
+          const k = kontext as { sync: () => Promise<void> };
+          let zaehler = 0;
+          const echt = k.sync;
+          k.sync = () => {
+            zaehler += 1;
+            return zaehler === 3 ? Promise.reject(new Error("OOXML abgelehnt")) : echt();
+          };
+          return arbeit(k);
+        });
+      },
+    };
+    await bausteinWaehlen("ko-wackelig");
+    await klick("anleitung-baustein-btn");
+    // Der Text hinter dem Cursor steht noch im Ausgangsabsatz — nichts ist verloren; der Fehler
+    // wird gemeldet, nicht als Erfolg ausgegeben.
+    expect(dokument[0]?.text).toBe("Vorne. Hinten.");
+    expect(text("anleitung-stand")).not.toContain("Eingefügt");
   });
 
   it("C2: ein erzeugtes Dokument mitten im Absatz — derselbe Schnitt", async () => {
@@ -1200,8 +1288,27 @@ describe("F · Gesprächsfaden: Recherche im Haus, was fehlt, Entwurf auf Zuruf"
       return Promise.resolve({
         entwurf:
           "Liebe Kolleginnen und Kollegen,\n\nvor jeder Wartung bitte das Ventil drucklos schalten.",
+        // Nacharbeit 7: der erweiterte Drahtvertrag — Passagen mit Marken, volle Herkunft je Quelle
+        // (Form wie `ZurufAntwort`, services/app/src/routes/klara-session-routes.ts).
+        passagen: [
+          { text: "Liebe Kolleginnen und Kollegen,", marken: [] },
+          { text: "vor jeder Wartung bitte das Ventil drucklos schalten.", marken: ["Q1"] },
+        ],
         herkunft: [
-          { koId: "ko-ventil", titel: "Ventil drucklos schalten", stufe: "validiert", version: 3 },
+          {
+            koId: "ko-ventil",
+            titel: "Ventil drucklos schalten",
+            stufe: "validiert",
+            version: 3,
+            marke: "Q1",
+            trust: 92,
+            geltungsbereich: "Werks-Praxis (Werk Nord), Rolle Instandhaltung",
+            verantwortlicheRolle: "Instandhaltungsleitung",
+            verantwortlich: "meister-1",
+            fassungVom: "2026-09-30T08:00:00.000Z",
+            letztePruefungAm: "2026-10-01T09:00:00.000Z",
+            unsicherheiten: [],
+          },
         ],
         anbieter: "Hausmodell",
         modell: "m-1",
@@ -1220,9 +1327,11 @@ describe("F · Gesprächsfaden: Recherche im Haus, was fehlt, Entwurf auf Zuruf"
     expect(auftrag).toContain("Anrede an die Belegschaft");
     expect(eingefuegt().map((a) => a.text)).toEqual([
       "KI-Entwurf – formuliert von Hausmodell (m-1). Nicht geprüft: vor Verwendung lesen, kürzen und verantworten.",
-      "Liebe Kolleginnen und Kollegen,",
-      "vor jeder Wartung bitte das Ventil drucklos schalten.",
-      "Quelle: „Ventil drucklos schalten“ · Fassung 3 · Prüfstand validiert · Kennung ko-ventil",
+      // Je Passage ihre Quelle mit Kennung und Fassung — eine Passage ohne Beleg wird so genannt.
+      "Liebe Kolleginnen und Kollegen, [ohne Quellenbezug – bitte prüfen]",
+      "vor jeder Wartung bitte das Ventil drucklos schalten. [Q1: ko-ventil · v3]",
+      // Die Quelle mit allen Pflichtangaben (R-0337/R-1739), das Prüfdatum aus dem Auditnachweis.
+      "[Q1] Quelle: „Ventil drucklos schalten“ · Fassung 3 · Prüfstand validiert · Vertrauenswert 92 · Kennung ko-ventil · Geltung: Werks-Praxis (Werk Nord), Rolle Instandhaltung · Verantwortliche Rolle: Instandhaltungsleitung · Verantwortung: meister-1 · Fassung vom 2026-09-30 · Letzte Prüfung: 2026-10-01",
     ]);
     expect(text("anleitung-stand")).toBe(
       "KI-Entwurf eingefügt – oben gekennzeichnet, mit Herkunft je Quelle.",
@@ -1258,6 +1367,83 @@ describe("F · Gesprächsfaden: Recherche im Haus, was fehlt, Entwurf auf Zuruf"
       "Der KI-Weg ist in diesem Fenster nicht verfügbar – nichts gesendet.",
     );
     expect(eingefuegt()).toEqual([]);
+  });
+});
+
+// ================================================================================================
+// H — DER PRÄZISIERTE AUFTRAG AUS ALLEN GESPRÄCHSRUNDEN (Nacharbeit 7, Bens Befund 3)
+// ================================================================================================
+//
+// Übernommen aus der Regression HILFE-16073 (HILFE/16073cd3b7f803cd8686cac3/
+// gespraech-regression.fragment.ts), die zu Kandidat db89f438 rot war: beide Entwurfswege gaben
+// nur die erste Frage weiter, die „Nachtschicht" der zweiten Runde ging verloren.
+
+describe("H · Präzisierung gelangt in beide Entwurfswege", () => {
+  const zuerst = "Bitte eine Betriebsmitteilung zur Ventilwartung verfassen.";
+  const danach = "Praezisierung: Nur fuer die Nachtschicht; Filterpruefung ebenfalls aufnehmen.";
+
+  async function zweiRunden(): Promise<void> {
+    askAntwort = { answered: true, answer: null, sources: ["ko-ventil"] };
+    await vorhabenFragen(zuerst);
+    askAntwort = { answered: true, answer: null, sources: ["ko-wackelig"] };
+    await vorhabenFragen(danach);
+  }
+
+  it("H1: die Factory erhält den durch die zweite Runde präzisierten Auftrag", async () => {
+    panelStarten();
+    await zweiRunden();
+    el<HTMLSelectElement>("anleitung-art").value = "betriebsmitteilung";
+    await klick("anleitung-entwurf-btn");
+    const body = anfragen.find((a) => a.url === "/api/output/generate")?.body as {
+      anlass: string;
+      koIds: string[];
+    };
+    expect(anfragen.filter((a) => a.url === "/api/ask")).toHaveLength(2);
+    expect(body.koIds).toEqual(["ko-ventil", "ko-wackelig"]);
+    expect(body.anlass).toContain("Nachtschicht");
+    expect(body.anlass).toContain("Filterpruefung");
+    // Die erste Frage bleibt Teil des Auftrags — die zweite präzisiert sie, ersetzt sie nicht.
+    expect(body.anlass).toBe(`${zuerst} – ${danach}`);
+  });
+
+  it("H2: der KI-Weg erhält denselben Auftrag — mit dem Verlauf und den Quellen je Runde", async () => {
+    const zurufe: Record<string, unknown>[] = [];
+    panelStarten();
+    g.ka6Lage = () => ({ erlaubt: true, grundKey: null });
+    g.klaraS4SessionId = "synthetische-sitzung";
+    g.klaraS4AbrufDieserSitzung = (
+      _pfad: string,
+      _methode: string,
+      body: Record<string, unknown>,
+    ) => {
+      zurufe.push(body);
+      return Promise.resolve({
+        entwurf: "Synthetischer Entwurf.",
+        passagen: [{ text: "Synthetischer Entwurf.", marken: ["Q1", "Q2"] }],
+        herkunft: [
+          { koId: "ko-ventil", titel: "Ventil drucklos schalten", stufe: "validiert", version: 3 },
+          { koId: "ko-wackelig", titel: "Prüfintervall Filter", stufe: "validiert", version: 2 },
+        ],
+        anbieter: "Testattrappe",
+        modell: "kein-modellaufruf",
+      });
+    };
+    await zweiRunden();
+    await klick("anleitung-ki-btn");
+    expect(zurufe).toHaveLength(1);
+    expect(zurufe[0]?.koIds).toEqual(["ko-ventil", "ko-wackelig"]);
+    const auftrag = String(zurufe[0]?.text);
+    expect(auftrag).toContain("Nachtschicht");
+    expect(auftrag).toContain("Filterpruefung");
+    // Jede Quelle ist dem Gesprächsstand zugeordnet, in dem sie kam.
+    expect(auftrag).toContain(`1) „${zuerst}“ (Belege: Q1); 2) „${danach}“ (Belege: Q2)`);
+    // Eine ältere Antwort ohne die neuen Herkunftsfelder: Fehlendes steht ausdrücklich da.
+    expect(eingefuegt().map((a) => a.text)).toContain(
+      "Synthetischer Entwurf. [Q1: ko-ventil · v3] [Q2: ko-wackelig · v2]",
+    );
+    expect(texte().find((t) => t.startsWith("[Q2] Quelle:"))).toBe(
+      "[Q2] Quelle: „Prüfintervall Filter“ · Fassung 2 · Prüfstand validiert · Vertrauenswert nicht angegeben · Kennung ko-wackelig · Geltung: nicht angegeben · Verantwortliche Rolle: nicht benannt · Verantwortung: nicht benannt · Fassung vom nicht festgehalten · Letzte Prüfung: nicht belegt",
+    );
   });
 });
 
