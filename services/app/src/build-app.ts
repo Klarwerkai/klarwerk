@@ -2333,6 +2333,15 @@ export function herkunftAusStack(stack: unknown): string {
 const SENKE_MAX_TIEFE = 6;
 
 /**
+ * Was an der Tiefengrenze anstelle eines Objekts oder Arrays steht.
+ *
+ * R-0664 (Ben, Nacharbeit 3): Bis hierher gab die Senke den Teilbaum an der Grenze UNGEFILTERT
+ * zurück — ein `name` in sechster Verschachtelung kam unverändert ins Protokoll. Fail-closed: was
+ * nicht mehr geprüft wird, wird auch nicht geschrieben.
+ */
+export const SENKE_ZU_TIEF = "[unterdrueckt: zu tief verschachtelt]";
+
+/**
  * Domänen-Fehlercodes sind GROSSBUCHSTABEN_MIT_UNTERSTRICH — dieselbe Form, über die `http.ts:136`
  * sie als öffentliche Codes erkennt und an Clients sendet.
  *
@@ -2369,8 +2378,11 @@ export function senkeUeberWert(
   if (typeof wert === "string") {
     return DOMAENEN_CODE.test(wert) ? wert : sanitizeLogText(wert, env);
   }
-  if (wert === null || typeof wert !== "object" || tiefe >= SENKE_MAX_TIEFE) {
+  if (wert === null || typeof wert !== "object") {
     return wert;
+  }
+  if (tiefe >= SENKE_MAX_TIEFE) {
+    return SENKE_ZU_TIEF;
   }
   if (Array.isArray(wert)) {
     return wert.map((eintrag) => senkeUeberWert(eintrag, env, tiefe + 1));

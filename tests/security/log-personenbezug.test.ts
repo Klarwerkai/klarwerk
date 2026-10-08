@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
-import { LOG_LEVEL_ENV, buildApp, buildServices } from "../../services/app/src/build-app";
+import {
+  LOG_LEVEL_ENV,
+  SENKE_ZU_TIEF,
+  buildApp,
+  buildServices,
+  senkeUeberWert,
+} from "../../services/app/src/build-app";
 import { istPersonenFeld, sanitizeLogText } from "../../services/app/src/log-sanitize";
 
 // ================================================================================================
@@ -121,6 +127,64 @@ describe("R-0664 · Personenmuster in der Logsenke", () => {
     expect(Object.keys(zeile ?? {})).not.toContain("autor");
     expect(zeile?.nutzer).toEqual({ id: "u-4711" });
     expect(String(zeile?.msg)).toBe("Zustellung an [redacted] gescheitert — Name: [redacted]");
+    expect(puffer.roh()).not.toContain("Meier");
+    expect(puffer.roh()).not.toContain(ADRESSE);
+    await app.close();
+  });
+
+  // Ben, Nacharbeit 3: an der Tiefengrenze gab die Senke den Teilbaum ungefiltert zurück — ein
+  // `name` in sechster Verschachtelung stand unverändert im Protokoll.
+  function verschachtelt(tiefe: number, innen: Record<string, unknown>): Record<string, unknown> {
+    let wert: Record<string, unknown> = innen;
+    for (let i = 0; i < tiefe; i++) {
+      wert = { ebene: wert };
+    }
+    return wert;
+  }
+
+  it("Tiefengrenze: ein Personenfeld in jeder Tiefe erreicht das Protokoll nicht", () => {
+    for (let tiefe = 0; tiefe <= 10; tiefe++) {
+      const bereinigt = JSON.stringify(
+        senkeUeberWert(verschachtelt(tiefe, { name: "Anna Meier", email: ADRESSE }), {}),
+      );
+      expect(bereinigt, `Tiefe ${tiefe}`).not.toContain("Meier");
+      expect(bereinigt, `Tiefe ${tiefe}`).not.toContain(ADRESSE);
+    }
+    // Auch ein Array als Träger und ein Array AN der Grenze.
+    const imArray = senkeUeberWert(verschachtelt(5, { liste: [{ name: "Anna Meier" }] }), {});
+    expect(JSON.stringify(imArray)).not.toContain("Meier");
+  });
+
+  it("Tiefengrenze: unterhalb der Grenze bleibt alles lesbar, an ihr steht ein fester Wert", () => {
+    // Fünf Ebenen über dem Blatt: das innere Objekt liegt auf Tiefe 5 und wird noch geprüft.
+    const flach = senkeUeberWert(verschachtelt(5, { id: "u-4711", name: "Anna Meier" }), {});
+    expect(JSON.stringify(flach)).toContain("u-4711");
+    expect(JSON.stringify(flach)).not.toContain(SENKE_ZU_TIEF);
+    // Eine Ebene mehr: das Objekt auf Tiefe 6 wird nicht mehr durchsucht und deshalb ersetzt.
+    const tief = senkeUeberWert(verschachtelt(6, { id: "u-4711", name: "Anna Meier" }), {});
+    expect(JSON.stringify(tief)).toContain(SENKE_ZU_TIEF);
+    expect(JSON.stringify(tief)).not.toContain("u-4711");
+  });
+
+  it("Tiefengrenze: ein zyklisches Objekt hält den Logger nicht fest", () => {
+    const zyklisch: Record<string, unknown> = { id: "z-1", name: "Anna Meier" };
+    zyklisch.selbst = zyklisch;
+    const bereinigt = JSON.stringify(senkeUeberWert(zyklisch, {}));
+    expect(bereinigt).toContain(SENKE_ZU_TIEF);
+    expect(bereinigt).not.toContain("Meier");
+  });
+
+  it("am ECHTEN Logger: ein tief verschachteltes Personenfeld steht nicht in der Zeile", async () => {
+    const puffer = logPuffer();
+    const app = buildApp(buildServices(), { log: { senke: puffer.senke, stufe: "info" } });
+    app.log.warn(
+      { probe: "tief", nutzlast: verschachtelt(8, { name: "Anna Meier", email: ADRESSE }) },
+      "Probe tief",
+    );
+    expect(
+      puffer.zeilen().some((z) => z.probe === "tief"),
+      "die Logzeile fehlt",
+    ).toBe(true);
     expect(puffer.roh()).not.toContain("Meier");
     expect(puffer.roh()).not.toContain(ADRESSE);
     await app.close();
