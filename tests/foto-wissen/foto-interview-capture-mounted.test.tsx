@@ -26,6 +26,9 @@ const fix = vi.hoisted(() => ({
 const box = vi.hoisted(() => ({
   reset: (): void => {},
   created: [] as Record<string, unknown>[],
+  // Der GESPEICHERTE Stand im echten CaptureService (nach dessen Normalisierung) — nicht der
+  // Client-Payload. Daran misst D4, was ein Wiederöffnen tatsächlich vorfindet.
+  gespeichert: async (): Promise<Record<string, unknown>[]> => [],
 }));
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -59,6 +62,8 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
     svc = new CaptureService({ repo: new InMemoryDraftRepo() });
     box.created.length = 0;
   };
+  box.gespeichert = async () =>
+    (await svc.listDrafts()).map((d) => d.payload as unknown as Record<string, unknown>);
   const ok = <T,>(v: T) => vi.fn(async () => v);
   const leer = {
     title: "",
@@ -368,6 +373,66 @@ describe("R-1624 D2 · Fehler · Ursache · Lösung → Wissensseite unter dem A
     expect(body).toContain("<h3>Lösung</h3>");
     expect(body).toContain("Elektroden trocknen, Naht ausschleifen und neu schweißen.");
     // Das Bild steht genau EINMAL im Rumpf — die fertige Seite fügt keinen zweiten Anker ein.
+    expect(body.split(fix.PNG)).toHaveLength(2);
+  });
+});
+
+async function fortsetzen(): Promise<void> {
+  const aufklappen = [...container.querySelectorAll("button")].find((b) =>
+    (b.textContent ?? "").includes("Entwürfe anzeigen"),
+  );
+  if (aufklappen instanceof HTMLButtonElement) {
+    await click(aufklappen);
+  }
+  await click(buttonByText(i18n.t("capture.resume")));
+}
+
+describe("R-1624 D4 · ein gespeichertes Foto-Interview bleibt beim Wiederöffnen eines", () => {
+  it("Befund wird gesichert und wiederhergestellt; weitere Turns tragen ihn; Seite unter dem Anker", async () => {
+    await mount();
+    await zumInterview();
+    await fotoWaehlenUndAuswerten();
+    await click(buttonByText(i18n.t("fotowissen.starten")));
+    await change(antwortFeld(), "Riss am Nahtübergang der Kehlnaht.");
+    await click(buttonByText(i18n.t("capture.ivSend")));
+    expect(pageText()).toContain("Frage 2?");
+
+    // Mitten im Interview sichern: der GESPEICHERTE Fortschritt trägt den Befund.
+    await sichern();
+    const [stand] = await box.gespeichert();
+    const fortschritt = stand?.interview as Record<string, unknown> | undefined;
+    expect(fortschritt?.answers).toEqual(["Riss am Nahtübergang der Kehlnaht."]);
+    expect(fortschritt?.imageContext).toBe(fix.BEFUND);
+    expect(String(stand?.bodyHtml ?? "")).toContain(`src="${fix.PNG}"`);
+
+    // Wiederöffnen: weiterhin ein Foto-Interview — sichtbar und im nächsten Turn.
+    const vorher = interviewMock.mock.calls.length;
+    await fortsetzen();
+    expect(pageText()).toContain(i18n.t("fotowissen.laeuft"));
+    expect(pageText()).toContain(fix.BEFUND);
+    // Fortsetzen startet keinen Modelllauf von selbst (bestehender Vertrag, mega5 Block A).
+    expect(interviewMock.mock.calls.length).toBe(vorher);
+
+    await change(antwortFeld(), "Wasserstoffversprödung durch feuchte Elektroden.");
+    await click(buttonByText(i18n.t("capture.ivSend")));
+    await change(antwortFeld(), "Elektroden trocknen, Naht ausschleifen und neu schweißen.");
+    await click(buttonByText(i18n.t("capture.ivSend")));
+
+    const nachher = interviewMock.mock.calls.slice(vorher);
+    expect(nachher).toHaveLength(2);
+    for (const aufruf of nachher) {
+      expect(aufruf[3]).toBe(fix.BEFUND);
+    }
+
+    // Abschluss: die Foto-Wissensseite steht UNTER dem gesicherten Anker, das Bild genau einmal.
+    await sichern();
+    const [fertig] = await box.gespeichert();
+    const body = String(fertig?.bodyHtml ?? "");
+    const anker = body.indexOf("<figure");
+    const seite = body.indexOf("<h2>Fehlerbild</h2>");
+    expect(anker).toBeGreaterThanOrEqual(0);
+    expect(seite).toBeGreaterThan(anker);
+    expect(body).toContain("Elektroden trocknen, Naht ausschleifen und neu schweißen.");
     expect(body.split(fix.PNG)).toHaveLength(2);
   });
 });

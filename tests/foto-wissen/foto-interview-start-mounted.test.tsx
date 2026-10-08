@@ -8,7 +8,11 @@
 //   S2  „Foto-Interview starten" übergibt Foto und den KORRIGIERTEN Befund — nicht den Vorschlag.
 //   S3  Ohne Bildmodell (oder ohne Ergebnis) gibt es keinen erfundenen Befund: der Mensch schreibt
 //       ihn selbst, und ohne Befund startet nichts.
-// jsdom hat keine Canvas-Pipeline: das Verkleinern ist ersetzt und liefert ein festes 1×1-PNG.
+//   S4  Foto-Wechsel (Ben, Nacharbeit 2): während das neue Foto eingelesen wird, ist das alte weg
+//       und nicht auswertbar; ein überholtes Einlesen überschreibt die letzte Auswahl nicht, und
+//       eine späte Auswertung des alten Fotos erscheint nicht als Befund des neuen.
+// jsdom hat keine Canvas-Pipeline: das Verkleinern ist ersetzt und liefert ein festes 1×1-PNG
+// (in S4 gezielt verzögert, damit das Zeitfenster des Wechsels überhaupt existiert).
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { PNG } = vi.hoisted(() => ({
@@ -26,6 +30,7 @@ import { type Root, createRoot } from "../../apps/web/node_modules/react-dom/cli
 import type { DescribeImageResult } from "../../apps/web/src/api/types";
 import { FotoInterviewStart } from "../../apps/web/src/components/FotoInterviewStart";
 import i18n from "../../apps/web/src/i18n";
+import { fileToThumbDataUrl } from "../../apps/web/src/lib/files";
 import type { FotoAnker } from "../../apps/web/src/lib/fotoInterview";
 import { mitBildbeschreibung } from "../capture/bildbeschreibung-naht";
 
@@ -192,5 +197,122 @@ describe("R-1624 S3 · kein erfundener Befund", () => {
     await act(async () => knopf(el, "fotowissen.auswerten")?.click());
     expect(el.textContent).toContain(i18n.t("fotowissen.befundFehler"));
     expect(el.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe("");
+  });
+});
+
+// Zwei unterscheidbare, sichere Bildquellen für den Wechsel (nur das Präfix zählt für die Prüfung).
+// FOTO_ALT ist das, was das ersetzte Einlesen standardmäßig liefert.
+const FOTO_ALT = PNG;
+const FOTO_NEU =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEklEQVR42mNk+M9QzwAEjDAGACCDAf8j8Fk3AAAAAElFTkSuQmCC";
+
+interface Aufschub<T> {
+  promise: Promise<T>;
+  aufloesen: (wert: T) => void;
+  abweisen: (fehler: Error) => void;
+}
+
+function aufschub<T>(): Aufschub<T> {
+  let aufloesen: (wert: T) => void = () => {};
+  let abweisen: (fehler: Error) => void = () => {};
+  const promise = new Promise<T>((res, rej) => {
+    aufloesen = res;
+    abweisen = rej;
+  });
+  return { promise, aufloesen, abweisen };
+}
+
+const einlesen = vi.mocked(fileToThumbDataUrl);
+
+describe("R-1624 S4 · Foto-Wechsel während des Einlesens und Auswertens", () => {
+  it("das alte Foto ist während des Einlesens weg — keine Auswertung, kein Start", async () => {
+    const describeImage = vi.fn(
+      async (_dataUrl: string, _context?: string): Promise<DescribeImageResult> => ({
+        text: BEFUND,
+        demo: false,
+      }),
+    );
+    const el = await montiere(describeImage, true, vi.fn());
+    await waehleFoto(el);
+    expect(el.querySelector(`img[src="${FOTO_ALT}"]`)).not.toBeNull();
+    expect(knopf(el, "fotowissen.auswerten")).not.toBeNull();
+
+    const neu = aufschub<string>();
+    einlesen.mockImplementationOnce(() => neu.promise);
+    await waehleFoto(el);
+
+    expect(el.querySelector("img")).toBeNull();
+    expect(knopf(el, "fotowissen.auswerten")).toBeNull();
+    expect(knopf(el, "fotowissen.starten")).toBeNull();
+    expect(el.querySelector("[data-foto-interview]")?.getAttribute("aria-busy")).toBe("true");
+
+    await act(async () => neu.aufloesen(FOTO_NEU));
+    expect(el.querySelector(`img[src="${FOTO_NEU}"]`)).not.toBeNull();
+    await act(async () => knopf(el, "fotowissen.auswerten")?.click());
+    expect(describeImage.mock.calls.map((c) => c[0])).toEqual([FOTO_NEU]);
+  });
+
+  it("ein überholtes Einlesen überschreibt die zuletzt gewählte Auswahl nicht", async () => {
+    const describeImage = vi.fn(
+      async (_dataUrl: string, _context?: string): Promise<DescribeImageResult> => ({
+        text: BEFUND,
+        demo: false,
+      }),
+    );
+    const el = await montiere(describeImage, true, vi.fn());
+    const erstes = aufschub<string>();
+    const zweites = aufschub<string>();
+    einlesen.mockImplementationOnce(() => erstes.promise);
+    einlesen.mockImplementationOnce(() => zweites.promise);
+    await waehleFoto(el);
+    await waehleFoto(el);
+
+    // Das zuletzt gewählte Foto ist zuerst fertig …
+    await act(async () => zweites.aufloesen(FOTO_NEU));
+    expect(el.querySelector(`img[src="${FOTO_NEU}"]`)).not.toBeNull();
+    // … das überholte kommt danach und darf es NICHT ersetzen.
+    await act(async () => erstes.aufloesen(FOTO_ALT));
+    expect(el.querySelector(`img[src="${FOTO_ALT}"]`)).toBeNull();
+    expect(el.querySelector(`img[src="${FOTO_NEU}"]`)).not.toBeNull();
+
+    await act(async () => knopf(el, "fotowissen.auswerten")?.click());
+    expect(describeImage.mock.calls.map((c) => c[0])).toEqual([FOTO_NEU]);
+  });
+
+  it("ein überholtes Einlese-Fehlschlagen meldet keinen Fehler für die neue Auswahl", async () => {
+    const el = await montiere(undefined, true, vi.fn());
+    const erstes = aufschub<string>();
+    einlesen.mockImplementationOnce(() => erstes.promise);
+    await waehleFoto(el);
+    await waehleFoto(el); // Standard: sofort FOTO_ALT
+    await act(async () => erstes.abweisen(new Error("no-canvas")));
+    expect(el.textContent).not.toContain(i18n.t("fotowissen.bildFehler"));
+    expect(el.querySelector(`img[src="${FOTO_ALT}"]`)).not.toBeNull();
+  });
+
+  it("eine späte Auswertung des alten Fotos erscheint nicht als Befund des neuen", async () => {
+    const alteAuswertung = aufschub<DescribeImageResult>();
+    const describeImage = vi.fn(
+      (_dataUrl: string, _context?: string): Promise<DescribeImageResult> => alteAuswertung.promise,
+    );
+    const onStart = vi.fn();
+    const el = await montiere(describeImage, true, onStart);
+    await waehleFoto(el);
+    await act(async () => knopf(el, "fotowissen.auswerten")?.click());
+    expect(describeImage).toHaveBeenCalledTimes(1);
+
+    einlesen.mockImplementationOnce(async () => FOTO_NEU);
+    await waehleFoto(el);
+    await act(async () =>
+      alteAuswertung.aufloesen({ text: "Befund des alten Fotos", demo: false }),
+    );
+
+    expect(el.querySelector(`img[src="${FOTO_NEU}"]`)).not.toBeNull();
+    expect(el.textContent).not.toContain(i18n.t("fotowissen.befundKi"));
+    expect(el.querySelector("textarea")).toBeNull();
+    // Das neue Foto steht wieder am Anfang: erst auswerten, dann starten.
+    expect(knopf(el, "fotowissen.auswerten")).not.toBeNull();
+    expect(knopf(el, "fotowissen.starten")).toBeNull();
+    expect(onStart).not.toHaveBeenCalled();
   });
 });

@@ -41,8 +41,12 @@ export function FotoInterviewStart({
   const [befund, setBefund] = useState("");
   const [auswertung, setAuswertung] = useState<Auswertung>("offen");
   const [bildFehler, setBildFehler] = useState(false);
-  // Laufnummer wie beim Interview (mega6 Block C): eine späte Auswertung eines inzwischen
-  // ersetzten Fotos schreibt ihren Befund nicht über das neue Foto.
+  // true, solange das zuletzt gewählte Foto noch eingelesen wird.
+  const [liest, setLiest] = useState(false);
+  // Laufnummer wie beim Interview (mega6 Block C) — EINE Nummer für Einlesen UND Auswerten: jede
+  // neue Auswahl macht jeden vorher gestarteten Lauf ungültig. Weder ein überholtes Einlesen noch
+  // eine späte Auswertung eines ersetzten Fotos kann damit Bild oder Befund der aktuellen Auswahl
+  // überschreiben.
   const laufRef = useRef(0);
 
   const waehle = async (file: File | undefined): Promise<void> => {
@@ -50,19 +54,34 @@ export function FotoInterviewStart({
       return;
     }
     laufRef.current += 1;
+    const lauf = laufRef.current;
+    // Das alte Foto ist ab jetzt nicht mehr die Auswahl: weg damit, damit es während des Einlesens
+    // weder ausgewertet noch als Interview gestartet werden kann.
+    setDataUrl(null);
     setBildFehler(false);
     setBefund("");
     setAuswertung("offen");
+    setLiest(true);
     try {
-      setDataUrl(await fileToThumbDataUrl(file, FOTO_MAX_KANTE_PX, 0.75));
+      const gelesen = await fileToThumbDataUrl(file, FOTO_MAX_KANTE_PX, 0.75);
+      if (lauf !== laufRef.current) {
+        return; // überholt — eine neuere Auswahl gilt
+      }
+      setDataUrl(gelesen);
     } catch {
-      setDataUrl(null);
+      if (lauf !== laufRef.current) {
+        return;
+      }
       setBildFehler(true);
+    } finally {
+      if (lauf === laufRef.current) {
+        setLiest(false);
+      }
     }
   };
 
   const auswerten = async (): Promise<void> => {
-    if (!dataUrl) {
+    if (!dataUrl || liest) {
       return;
     }
     laufRef.current += 1;
@@ -89,12 +108,19 @@ export function FotoInterviewStart({
   };
 
   // Ohne nutzbares Bildmodell entfällt der Auswertungsschritt: der Befund wird direkt erfragt.
+  // Auswertung und Start gibt es erst, wenn das Einlesen der aktuellen Auswahl abgeschlossen ist.
   const befundSichtbar =
-    dataUrl !== null && (!available || (auswertung !== "offen" && auswertung !== "laeuft"));
-  const foto: FotoAnker | null = dataUrl ? { dataUrl, befund } : null;
+    !liest &&
+    dataUrl !== null &&
+    (!available || (auswertung !== "offen" && auswertung !== "laeuft"));
+  const foto: FotoAnker | null = dataUrl && !liest ? { dataUrl, befund } : null;
 
   return (
-    <div data-foto-interview="" className="space-y-3 border-t border-hairline pt-3">
+    <div
+      data-foto-interview=""
+      aria-busy={liest}
+      className="space-y-3 border-t border-hairline pt-3"
+    >
       <p className="text-[13px] font-medium text-text">{t("fotowissen.titel")}</p>
       <p className="text-[13px] text-muted">{t("fotowissen.lead")}</p>
       <label className="flex flex-wrap items-center gap-2 text-[13px] text-text">
@@ -123,7 +149,7 @@ export function FotoInterviewStart({
           className="max-h-48 rounded-card border border-hairline"
         />
       ) : null}
-      {dataUrl && available && (auswertung === "offen" || auswertung === "laeuft") ? (
+      {dataUrl && !liest && available && (auswertung === "offen" || auswertung === "laeuft") ? (
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="primary"

@@ -1077,10 +1077,11 @@ export function CaptureArbeitsraum({
   // die aktuelle ist — eine SPÄTE Antwort eines vor dem Speichern gestarteten Requests kann den
   // danach geltenden Zustand damit nicht wieder einschreiben.
   const ivRunRef = useRef(0);
-  // R-1624: das Foto des laufenden Foto-Interviews samt bestätigtem Befund. null = normales
-  // Interview. Der Befund reist mit jedem Turn als Klartext mit; das Foto selbst steht als
-  // Bild-Anker im Rumpf (beim Start eingefügt) und wird nicht erneut gesendet.
-  const [ivFoto, setIvFoto] = useState<FotoAnker | null>(null);
+  // R-1624: der bestätigte Bildbefund des laufenden Foto-Interviews. null = normales Interview.
+  // Der Befund reist mit jedem Turn als Klartext mit und wird mit dem Interviewfortschritt
+  // gesichert und wiederhergestellt; das Foto selbst steht als Bild-Anker im Rumpf (beim Start
+  // eingefügt, mit dem Entwurf gesichert) und wird nicht erneut gesendet.
+  const [ivBefund, setIvBefund] = useState<string | null>(null);
 
   // PMO-FEA-0006: „Aus Datei" — Dokumenttext, optionaler Suchauftrag, KI-Punkteliste,
   // sichtbare Entwurfs-Warteschlange. Nichts wird automatisch gespeichert.
@@ -1386,14 +1387,14 @@ export function CaptureArbeitsraum({
   // AUFTRAG-mega6 Block C: EINZIGER Einstieg in einen Interview-Turn. Vergibt die neue Laufnummer
   // und macht damit jeden vorher gestarteten Turn ungültig — es gibt keinen zweiten Weg, der die
   // Mutation ohne gültige Nummer auslösen könnte.
-  // R-1624: `foto` ist das Foto des laufenden Foto-Interviews; der Start reicht es ausdrücklich
-  // herein, weil der eben gesetzte Zustand in diesem Render noch nicht gilt.
-  const runInterview = (answers: string[], foto: FotoAnker | null = ivFoto): void => {
+  // R-1624: `befund` ist der Bildbefund des laufenden Foto-Interviews; der Start reicht ihn
+  // ausdrücklich herein, weil der eben gesetzte Zustand in diesem Render noch nicht gilt.
+  const runInterview = (answers: string[], befund: string | null = ivBefund): void => {
     ivRunRef.current += 1;
     interview.mutate({
       answers,
       run: ivRunRef.current,
-      ...(foto ? { imageContext: foto.befund } : {}),
+      ...(befund ? { imageContext: befund } : {}),
     });
   };
 
@@ -2453,6 +2454,9 @@ export function CaptureArbeitsraum({
         answers: ivAnswers,
         answer: ivAnswer,
         result: ivResult,
+        // R-1624: der Foto-Kontext gehört zum Fortschritt — sonst liefe das Interview nach dem
+        // Wiederöffnen als normales weiter.
+        imageContext: ivBefund,
       });
       // AUFTRAG-mega6 Block B: „wird aktualisiert" entscheidet, ob Leerwerte als Löschmarker mitgehen.
       const isDraftUpdate = Boolean(draftId);
@@ -2760,6 +2764,9 @@ export function CaptureArbeitsraum({
       setIvAnswer(iv.answer);
       setIvResult(iv.result);
       setIvStarted(iv.started);
+      // R-1624: Foto-Interview bleibt Foto-Interview — weitere Turns tragen den Befund, und die
+      // Wissensseite wird beim Abschluss unter dem gesicherten Bild-Anker ergänzt.
+      setIvBefund(iv.imageContext);
       // JOB 3414: der Fortschritt kommt IMMER zurück (nichts geht verloren) — die ANSICHT wechselt
       // nur dann von selbst ins Interview, wenn der Mensch keine ausdrücklich gewählt hat. Sonst
       // stünde er nach „Formular (Experten)" im Interview, und der Modus-Abgleich weiter unten
@@ -2867,7 +2874,7 @@ export function CaptureArbeitsraum({
     setIvAnswer("");
     setIvResult(null);
     setIvStarted(false);
-    setIvFoto(null);
+    setIvBefund(null);
   };
 
   // E2E-003: „Verwerfen" muss das GESAMTE Erfassungsmodell auf Leerzustand bringen — nicht nur die
@@ -4791,11 +4798,11 @@ export function CaptureArbeitsraum({
     setIvAnswer("");
     setIvResult(null);
     setIvStarted(true);
-    setIvFoto(foto);
+    setIvBefund(foto ? foto.befund : null);
     if (foto) {
       setBodyHtml((prev) => applyFotoAnker(prev, foto));
     }
-    runInterview([], foto);
+    runInterview([], foto ? foto.befund : null);
   };
 
   // SCRUM-132: Antwort senden → nächster reasoner-getriebener Turn.
@@ -5934,7 +5941,7 @@ export function CaptureArbeitsraum({
                           {t(interviewSourceKey(ivResult))}
                         </span>
                       ) : null}
-                      {ivFoto ? (
+                      {ivBefund ? (
                         <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
                           {t("fotowissen.laeuft")}
                         </span>
@@ -5942,7 +5949,7 @@ export function CaptureArbeitsraum({
                     </div>
                     {/* R-1624: der Kontext, auf den sich die Rückfragen beziehen — sichtbar, nicht
                       nur im Prompt. */}
-                    {ivFoto ? <p className="text-[12px] text-muted">{ivFoto.befund}</p> : null}
+                    {ivBefund ? <p className="text-[12px] text-muted">{ivBefund}</p> : null}
                     {/* SCRUM-403 (Pedi 03.07.): Frage vorlesen + Antwort diktieren — Sprache in
                       beide Richtungen; Knöpfe nur, wenn der Browser es ehrlich kann. */}
                     {/* AUFTRAG-mega5 Block A: liegt (nach Fortsetzen eines Entwurfs ohne gesicherte
