@@ -1592,6 +1592,53 @@ export function BibliothekFlaeche({
     aktiveFilterZahl > 0 ||
     scope !== DEFAULT_LIBRARY_SCOPE ||
     verworfeneEingrenzung.length > 0;
+  // ================================================================================================
+  // SPEICHERN-ERHOLUNG (Ausbauliste Punkt 6) — DER NULLTREFFER NENNT SEINE FILTER UND LÖST SIE.
+  // ================================================================================================
+  //
+  // Bis hierher stand unter „Nichts gefunden." nur der Suchraum; WELCHE Filter die Treffer
+  // wegnahmen, stand ausschliesslich in den Menüs, und „Alle zurücksetzen" lag im Filtermenü
+  // (`bib-filter-reset`). Wer nichts fand, musste also erst wissen, dass er suchen muss.
+  //
+  // Die Angaben lesen GENAU die Zustände, die `onResetFilters` zurücksetzt — Facetten (samt Bereich
+  // und einer strukturell leeren Dimension), Zeitraum, Zustands-Umschalter —, damit der Knopf
+  // daneben nichts verspricht, was er nicht tut, und nichts tut, was nicht dasteht. Suchtext und
+  // Geltungsbereich gehören NICHT dazu: der Suchtext bleibt im Feld (das sagt der Knopf), der
+  // Bereich hat seinen eigenen Weg (`bib-leer-anderer-raum`). Die Gruppierung filtert nichts.
+  const aktiveFilterAngaben: { schluessel: string; text: string }[] = [
+    ...LIBRARY_FILTER_CONFIGS.flatMap((c) => {
+      const werte = facetSelectedValues(wirksameAuswahl[c.key]);
+      if (werte.length > 0) {
+        return [
+          {
+            schluessel: c.key,
+            text: `${t(c.labelKey)}: ${werte.map((w) => facetValueLabel(c.key, w)).join(", ")}`,
+          },
+        ];
+      }
+      return isFacetNoMatch(wirksameAuswahl[c.key])
+        ? [{ schluessel: c.key, text: t(c.labelKey) }]
+        : [];
+    }),
+    ...(isFacetRangeActive(range)
+      ? [
+          {
+            schluessel: "zeitraum",
+            text: `${t("lib.facet.rangeLabel")}: ${range.from || "…"} – ${range.to || "…"}`,
+          },
+        ]
+      : []),
+    ...(segment === BIB_SEGMENT_STANDARD
+      ? []
+      : [
+          {
+            schluessel: "zustand",
+            text: `${t("lib.segment.label")}: ${t(`status.${segment}`)}`,
+          },
+        ]),
+  ];
+  const nulltrefferFilterLoesbar =
+    aktiveFilterAngaben.length > 0 || verworfeneEingrenzung.length > 0;
   const bereichGruppe = groups.find((g) => g.key === BEREICH_KEY);
   const bereichGewaehlt = facetSelectedValues(wirksameAuswahl[BEREICH_KEY]);
 
@@ -1886,6 +1933,31 @@ export function BibliothekFlaeche({
                 </button>
               ) : null}
             </>
+          }
+          leerFilter={
+            nulltrefferFilterLoesbar ? (
+              <>
+                {aktiveFilterAngaben.length > 0 ? <span>{t("erholung.filter.aktiv")}</span> : null}
+                {aktiveFilterAngaben.map((angabe) => (
+                  <span
+                    key={angabe.schluessel}
+                    data-testid="bib-leer-filter-angabe"
+                    data-filter={angabe.schluessel}
+                    className="rounded-btn border border-hairline px-2 py-0.5 text-text"
+                  >
+                    {angabe.text}
+                  </span>
+                ))}
+                <button
+                  type="button"
+                  data-testid="bib-leer-filter-reset"
+                  onClick={onResetFilters}
+                  className="rounded-btn border border-hairline px-2.5 py-1 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
+                >
+                  {t("erholung.filter.zuruecksetzen")}
+                </button>
+              </>
+            ) : null
           }
           leerAktion={
             <RoleLink

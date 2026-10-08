@@ -1,0 +1,99 @@
+{
+  "anforderung": "R-0586 (W2): Es soll festgelegt und geprueft sein, welche Domaenen ueberhaupt zugelassen sind.",
+  "beschreibung": "Jede Stelle des Servers (services/**), die selbst eine Verbindung nach aussen aufbaut, mit ihren im Code fest vorgegebenen Zielhosts und den Umgebungsvariablen, ueber die der Betreiber ein Ziel setzt; dazu das Word-Aufgabenfenster, das ein fremdes Skript laedt. Die Datenbank (DATABASE_URL) ist Betriebsinfrastruktur und keine Verbindung nach aussen. Diese Liste ist keine Freigabe: ob eine eingetragene Verbindung im Moment aufgebaut werden darf, entscheidet die unter 'freigabe' genannte Regel. Ein Ziel, das hier fehlt, gibt es nicht.",
+  "hostregel": "Ein Host mit '*.' steht fuer genau eine Sprachkennung aus zwei bis drei Kleinbuchstaben (normalizeWikipediaLang) und fuer nichts sonst.",
+  "geprueft_in": "tests/ki-freigaberegeln/ausgehende-ziele.test.ts",
+  "ziele": [
+    {
+      "kennung": "ki-anthropic",
+      "zweck": "Oeffentliche KI: Claude (Erfassen, Bearbeiten, Antworten, Pruefen, Bilder)",
+      "dateien": ["services/reasoner/src/model-client.ts"],
+      "hosts": ["api.anthropic.com"],
+      "umgebung": [],
+      "freigabe": "Zentrale Adminfreigabe (Reasoner.oeffentlicheKiErlaubt); Vertrauliches zusaetzlich die zweite Freigabe, am Chokepoint cappedModelClient (rejectsConfidential: true) nur mit dem Merker des Laufs (ModellAufrufSpur.vertraulichFreigegeben); Klara-Bindung ohne Zustimmung sperrt immer"
+    },
+    {
+      "kennung": "ki-openai",
+      "zweck": "Oeffentliche KI: ChatGPT (dieselben Aufgaben wie ki-anthropic)",
+      "dateien": ["services/reasoner/src/model-client.ts"],
+      "hosts": ["api.openai.com"],
+      "umgebung": ["OPENAI_BASE_URL"],
+      "freigabe": "Wie ki-anthropic; ein ueber OPENAI_BASE_URL gesetztes Ziel ist ein Cloudziel mit denselben Sperren"
+    },
+    {
+      "kennung": "ki-lokal",
+      "zweck": "Lokales Modell des Betreibers (OpenAI-kompatibel)",
+      "dateien": ["services/reasoner/src/model-client.ts"],
+      "hosts": [],
+      "umgebung": ["KLARWERK_LOCAL_LLM_URL", "KLARWERK_LOCAL_LLM_ALLOWED_ORIGINS"],
+      "freigabe": "Nur Loopback oder ausdruecklich in KLARWERK_LOCAL_LLM_ALLOWED_ORIGINS genannte Origins gelten als lokal (isConfirmedLocalOrigin); jedes andere Ziel wird wie ein externes behandelt und weist Vertrauliches ab"
+    },
+    {
+      "kennung": "transkription-openai",
+      "zweck": "Oeffentliche KI: Sprache zu Text (Whisper) fuer Video- und Audio-Erfassung",
+      "dateien": ["services/media/src/transcriber.ts"],
+      "hosts": ["api.openai.com"],
+      "umgebung": [],
+      "freigabe": "Zentrale Adminfreigabe (MediaAnalysisDeps.zentralFreigegeben); vertrauliche Medien nur mit der zweiten Freigabe (MediaAnalysisDeps.vertraulichFreigegeben, Chokepoint cappedTranscriber fragt dieselbe Entscheidung)"
+    },
+    {
+      "kennung": "wissenssuche-wikipedia",
+      "zweck": "Externe Wissenssuche (Quellen suchen und anhaengen)",
+      "dateien": [
+        "services/external-search/src/wikipedia.ts",
+        "services/external-search/src/service.ts"
+      ],
+      "hosts": ["*.wikipedia.org"],
+      "umgebung": ["EXTERNAL_SEARCH", "EXTERNAL_SEARCH_LANG"],
+      "freigabe": "Admin-Regler der externen Wissensabfrage (ExternalKnowledgeStage, Vorgabe search_on_click, blocked sperrt serverseitig); EXTERNAL_SEARCH=off baut den Weg nicht"
+    },
+    {
+      "kennung": "import-confluence",
+      "zweck": "Import aus dem Confluence des Betreibers",
+      "dateien": ["services/confluence/src/rest-client.ts"],
+      "hosts": [],
+      "umgebung": ["KLARWERK_CONFLUENCE_BASE_URL"],
+      "freigabe": "Nur https; Origin gepinnt, keine Weiterleitung auf fremde Hosts"
+    },
+    {
+      "kennung": "import-jira",
+      "zweck": "Import aus dem Jira des Betreibers (REST-API v2)",
+      "dateien": ["services/jira/src/rest-client.ts"],
+      "hosts": [],
+      "umgebung": ["KLARWERK_JIRA_BASE_URL"],
+      "freigabe": "Nur bei vollstaendiger Konfiguration (jiraClientFromEnv: bekannter Anmeldeweg, KLARWERK_JIRA_TOKEN, bei Cloud zusaetzlich KLARWERK_JIRA_USER, Projektschluessel KLARWERK_JIRA_PROJECT); nur https; jede Ziel-URL auf die Origin der Basisadresse gepinnt (pruefeJiraUrl); redirect: error, keine Weiterleitung auf fremde Hosts"
+    },
+    {
+      "kennung": "import-sharepoint",
+      "zweck": "Import aus SharePoint und OneDrive ueber Microsoft Graph",
+      "dateien": ["services/sharepoint/src/graph-client.ts"],
+      "hosts": [],
+      "umgebung": ["KLARWERK_SHAREPOINT_BASE_URL"],
+      "freigabe": "Nur https; Origin gepinnt"
+    },
+    {
+      "kennung": "anmeldung-oidc",
+      "zweck": "Anmeldung ueber den Identitaetsanbieter des Betreibers",
+      "dateien": ["services/auth/src/oidc.ts"],
+      "hosts": [],
+      "umgebung": ["OIDC_ISSUER", "OIDC_JWKS_URI", "OIDC_AUTHORIZE_URL", "OIDC_TOKEN_URL"],
+      "freigabe": "Nur bei vollstaendiger OIDC-Konfiguration (createOidcProviderFromEnv)"
+    },
+    {
+      "kennung": "mail-smtp",
+      "zweck": "Benachrichtigungen per E-Mail",
+      "dateien": ["services/notifications/src/smtp.ts"],
+      "hosts": [],
+      "umgebung": ["SMTP_HOST"],
+      "freigabe": "Nur wenn SMTP_HOST gesetzt ist"
+    },
+    {
+      "kennung": "word-addin-officejs",
+      "zweck": "Browser: das Word-Aufgabenfenster laedt Office.js von Microsoft",
+      "dateien": ["services/app/addin-static/taskpane.html"],
+      "hosts": ["appsforoffice.microsoft.com"],
+      "umgebung": [],
+      "freigabe": "Laedt nur das Skript; die Anfragen des Fensters gehen an die dort eingetragene Klarwerk-Adresse des Betreibers"
+    }
+  ]
+}
