@@ -14,30 +14,43 @@
 //
 //   · `ausgeschlossen` — der Satzteil schließt die Bedingung aus: „nicht für X", „außer bei X",
 //                        „ohne X", „X ist ungeeignet", „X nicht verwenden", „für X nicht.";
-//   · `gilt`           — eine Bedingung des Objekts, oder ein Satzteil der Aussage ohne Verneinung,
-//                        Gegensatz, Einschränkung („nur", „statt", „anders") oder Unsicherheit;
-//   · `vorbehalt`      — genannt, aber nicht tragfähig: im Titel oder Schlagwort, oder im Satzteil
-//                        steht eines der eben genannten Wörter.
+//   · `gilt`           — NUR MIT POSITIVEM BELEG (Ben, Nacharbeit 2: das bloße Fehlen eines
+//                        bekannten Ausschlussworts genügt nicht). Ein positiver Beleg ist eins von:
+//                        (a) eine reine Bedingungsangabe („Werkstoff 5083-H111", „X oder Y");
+//                        (b) eine vollständig gedeutete Geltungsaussage — der ganze Satzteil ist
+//                            „gilt/geeignet/bewährt … für|bei X (und Y)" oder „X (und Y) ist/sind
+//                            geeignet/bewährt …", höchstens mit „ebenso/gleichermaßen/auch";
+//                        (c) eine Anweisung, die die Bedingung als Bedingung einleitet: „bei X …",
+//                            „für X …", „mit X …".
+//                        Und in keinem Fall ein Vorbehalt im Satzteil (unten);
+//   · `vorbehalt`      — genannt, aber nicht tragfähig: im Titel oder Schlagwort; ohne positiven
+//                        Beleg („X und Y sind untauglich", „X neigt zu Rissen"); oder mit
+//                        Gegensatz, Einschränkung („nur", „statt", „anders"), Unsicherheit
+//                        („vielleicht", „vermutlich"), Abwertung („untauglich", „ungünstig") oder
+//                        Verneinung. Eine Verneinung NACH einer eingeleiteten Bedingung („bei X
+//                        nicht überhitzen") verneint die Handlung, nicht die Geltung.
 //
 // Daraus die Lage je Objekt:
 //
-//   · `beide`              — ÜBERTRAGBAR BELEGT, nur wenn beide Bedingungen tragfähig GEMEINSAM
-//                            festgehalten sind: beide als Bedingung des Objekts, oder beide im
-//                            selben Satzteil ohne Vorbehalt („gilt für X und Y"). Getrennte Sätze
-//                            („Für X 80 Grad. Für Y 120 Grad.") belegen keine Übertragbarkeit;
+//   · `beide`              — ÜBERTRAGBAR BELEGT, nur mit (a) oder (b) für BEIDE, und zwar
+//                            gemeinsam: beide als Bedingung des Objekts, oder beide im selben
+//                            vollständig gedeuteten Satzteil. Eine Anweisung (c) genügt hier nicht
+//                            („Für X und Y wenig brauchbar" ist kein Übertragbarkeitsbeleg), und
+//                            getrennte Sätze („Für X 80 Grad. Für Y 120 Grad.") auch nicht;
 //   · `neu_ausgeschlossen` — das Objekt schließt die neue Bedingung ausdrücklich aus;
-//   · `nur_bisher`         — nennt nur die bisherige: an sie gebunden, für die neue NICHT belegt
-//                            (das „materialspezifisch" der Quelle);
-//   · `nur_neu`            — nennt die neue (die bisherige gar nicht oder ausgeschlossen);
-//   · `ungeklaert`         — nennt Bedingungen, hält ihre Geltung für den Wechsel aber nicht
-//                            eindeutig fest: beide genannt ohne gemeinsamen Beleg, oder nur die
-//                            bisherige und diese ausgeschlossen;
+//   · `nur_bisher`         — die bisherige GILT, die neue ist nicht genannt: an die bisherige
+//                            gebunden, für die neue NICHT belegt (das „materialspezifisch");
+//   · `nur_neu`            — die neue GILT, die bisherige ist nicht genannt oder ausgeschlossen;
+//   · `ungeklaert`         — alles Übrige mit Nennung: ein Vorbehalt auf einer Seite (auch bei nur
+//                            einer genannten Bedingung), beide genannt ohne gemeinsamen Beleg, nur
+//                            die bisherige und diese ausgeschlossen;
 //   · `keine`              — nennt keine von beiden. Ausdrücklich KEIN „übertragbar".
 //
 // Die Wortlisten sind Deutsch, Englisch und Niederländisch — die Sprachen der Oberfläche. Ein
-// bekanntes Vorbehaltswort hält jede Nennung aus `beide` heraus. Die Grenze: eine Ausschlussform,
-// die keine Liste kennt („untauglich für Y"), bleibt unerkannt — steht sie im selben Satzteil wie
-// die bisherige Bedingung, landet das Objekt in `beide`. Die Fundstelle steht deshalb immer dabei.
+// unbekanntes Wort kann eine Nennung nie zu `gilt` machen; `gilt` entsteht nur aus den positiven
+// Formen oben. Die verbleibende Grenze: eine Anweisung (c) mit einer Abwertung, die keine Liste
+// kennt („für X kaum brauchbar"), wird als an X gebunden (`nur_bisher`/`nur_neu`) gezeigt — nie
+// als `beide`. Die Fundstelle steht deshalb immer dabei.
 //
 // Diese Einordnung braucht keine KI. Das Durchspielen MIT der KI (Wortlaut: „Der Nutzer kann mit
 // der KI durchspielen") geht über den bestehenden, quellengebundenen Frageweg — siehe
@@ -138,9 +151,128 @@ const AUSSCHLUSS_VOR =
 const AUSSCHLUSS_NACH =
   /^\s*(?:(?:ist|sind|is|are|wird|werden|zijn)\s+)?(?:(?:ungeeignet|unzulässig|verboten|ausgeschlossen|untersagt|unsuitable|prohibited|excluded|forbidden|ongeschikt|verboden|uitgesloten)(?![\p{L}\p{N}])|(?:nicht|not|niet)(?:\s+(?:geeignet|zulässig|erlaubt|verwenden|einsetzen|benutzen|anwendbar|gültig|suitable|allowed|permitted|use|used|applicable|geschikt|toegestaan|gebruiken|toepasbaar)(?![\p{L}\p{N}])|\s*$))/u;
 
-// Ein Satzteil mit einem dieser Wörter trägt keine Geltungsaussage ohne Vorbehalt.
-const VORBEHALT =
-  /(?<![\p{L}\p{N}])(?:nicht|kein\p{L}*|nie|niemals|außer|ausser|ausgenommen|ohne|anders|abweichend\p{L}*|gegensatz|statt|anstelle|anstatt|nur|ausschließlich|ausschliesslich|vermutlich|eventuell|evtl|vielleicht|möglicherweise|ungeprüft|unklar|not|no|never|except|without|unlike|instead|only|maybe|possibly|unclear|niet|geen|nooit|behalve|zonder|alleen|uitsluitend|misschien|mogelijk|onduidelijk)(?![\p{L}\p{N}])/u;
+/** Ein Muster, das eines der Wörter als eigenes Wort findet. */
+function woerter(liste: readonly string[]): RegExp {
+  return new RegExp(`(?<![\\p{L}\\p{N}])(?:${liste.join("|")})(?![\\p{L}\\p{N}])`, "u");
+}
+
+// Vorbehalt überall im Satzteil: Gegensatz, Einschränkung, Unsicherheit, Abwertung.
+const EINSCHRAENKUNG = woerter([
+  "außer",
+  "ausser",
+  "ausgenommen",
+  "ohne",
+  "anders",
+  "abweichend\\p{L}*",
+  "gegensatz",
+  "statt",
+  "anstelle",
+  "anstatt",
+  "nur",
+  "ausschließlich",
+  "ausschliesslich",
+  "vermutlich",
+  "eventuell",
+  "evtl",
+  "vielleicht",
+  "möglicherweise",
+  "ungeprüft",
+  "unklar",
+  "untauglich",
+  "unbrauchbar",
+  "ungeeignet",
+  "ungünstig",
+  "problematisch",
+  "kritisch",
+  "riskant",
+  "schädlich",
+  "nachteilig",
+  "gefährlich",
+  "falsch",
+  "schlecht",
+  "mangelhaft",
+  "except",
+  "without",
+  "unlike",
+  "instead",
+  "only",
+  "maybe",
+  "possibly",
+  "probably",
+  "unclear",
+  "untested",
+  "unsuitable",
+  "unfit",
+  "poor",
+  "bad",
+  "risky",
+  "critical",
+  "problematic",
+  "harmful",
+  "behalve",
+  "zonder",
+  "alleen",
+  "uitsluitend",
+  "misschien",
+  "mogelijk",
+  "waarschijnlijk",
+  "onduidelijk",
+  "ongeschikt",
+  "slecht",
+  "kritiek",
+  "schadelijk",
+]);
+
+// Verneinung: VOR der Bedingung immer ein Vorbehalt; NACH einer eingeleiteten Bedingung (c)
+// verneint sie die Handlung („bei X nicht überhitzen"), nicht die Geltung.
+const VERNEINUNG = woerter([
+  "nicht",
+  "kein\\p{L}*",
+  "nie",
+  "niemals",
+  "not",
+  "no",
+  "never",
+  "niet",
+  "geen",
+  "nooit",
+]);
+
+// Platzhalter für die gesuchten Bedingungen in einem Satzteil (Unicode-Privatbereich).
+const P = "";
+const ELEMENT = `(?:${P}|[\\p{L}\\p{N}-]*\\p{N}[\\p{L}\\p{N}-]*)`;
+const VERBINDER = "(?:und|oder|sowie|and|or|en|of)";
+const KETTE = `${P}(?:\\s+${VERBINDER}\\s+${P})*`;
+const ARTIKEL = "(?:(?:den|die|das|dem|der|the|de|het)\\s+)?";
+const GATTUNG =
+  "(?:(?:werkstoff\\p{L}*|material\\p{L}*|legierung\\p{L}*|alloy\\p{L}*|materiaal|legering\\p{L}*)\\s+)?";
+const POSITIV =
+  "(?:geeignet|bewährt|erprobt|getestet|freigegeben|zugelassen|anwendbar|empfohlen|suitable|proven|tested|approved|recommended|geschikt|beproefd|getest|goedgekeurd|aanbevolen|toepasbaar)";
+const FUELLE =
+  "(?:\\s+(?:gleichermaßen|gleichermassen|ebenso|auch|beide|beiden|jeweils|both|equally|also|too|ook|evenzeer|allebei))*";
+const PRAEP = "(?:für|bei|mit|unter|for|with|to|at|voor|bij|met)";
+
+// (a) Eine reine Bedingungsangabe: Gattungswort, dann Bedingungen (oder andere Kennungen mit
+// Ziffer, „5754"), verbunden mit und/oder.
+const AUFZAEHLUNG = `${ELEMENT}(?:\\s+${VERBINDER}\\s+${ELEMENT})*`;
+const REINE_BEDINGUNG = new RegExp(`^${GATTUNG}${AUFZAEHLUNG}$`, "u");
+
+// (b) Vollständig gedeutete Geltungsaussage — der GANZE Satzteil:
+//     „gilt|geeignet|bewährt … für|bei X (und Y) (ebenso)" oder „X (und Y) ist|sind (gut) geeignet".
+const GELTUNG_VORN = new RegExp(
+  `^(?:(?:es|das|dies|this|it|dit|het)\\s+)?(?:gilt|gelten|applies|apply|geldt|gelden|${POSITIV})(?:\\s+(?:gleichermaßen|ebenso|auch|equally|also|ook))?\\s+${PRAEP}\\s+${ARTIKEL}${GATTUNG}${KETTE}${FUELLE}$`,
+  "u",
+);
+const GELTUNG_HINTEN = new RegExp(
+  `^${ARTIKEL}${GATTUNG}${KETTE}(?:\\s+(?:ist|sind|is|are|zijn|hat\\s+sich|haben\\s+sich|has\\s+been|have\\s+been|wird|werden))?(?:\\s+(?:gleichermaßen|ebenso|auch|gut|sehr|equally|also|well|ook|goed))?\\s+${POSITIV}${FUELLE}$`,
+  "u",
+);
+
+// (c) Die Bedingung ist als Bedingung eingeleitet: „bei X", „für den Werkstoff X", „mit X und Y".
+const EINGELEITET = new RegExp(
+  `(?<![\\p{L}\\p{N}])${PRAEP}\\s+${ARTIKEL}${GATTUNG}(?:[\\p{L}\\p{N}][\\p{L}\\p{N}-]*\\s+${VERBINDER}\\s+)*$`,
+  "u",
+);
 
 /** Eine Nennung des Begriffs — mit ihrem Satzteil, damit zwei Nennungen vergleichbar sind. */
 interface Nennung {
@@ -148,7 +280,20 @@ interface Nennung {
   satzteil: number;
   fundort: Fundort;
   bewertung: Bewertung;
+  /** Positiver Beleg der Form (a) oder (b) — nur diese tragen `beide`. */
+  vollGedeutet: boolean;
   text: string;
+}
+
+/** Ersetzt jede Nennung der Bedingungen im Satzteil durch den Platzhalter. */
+function mitPlatzhalter(satzteil: string, begriffe: readonly string[]): string {
+  let s = satzteil;
+  for (const b of begriffe) {
+    for (const i of positionen(s, b).reverse()) {
+      s = `${s.slice(0, i)}${P}${s.slice(i + b.length)}`;
+    }
+  }
+  return normal(s);
 }
 
 /** Alle Stellen, an denen `begriff` als eigenes Wort steht (davor/danach kein Wortzeichen). */
@@ -203,11 +348,21 @@ function felder(ko: KnowledgeObject): [Fundort, string][] {
   ];
 }
 
-function nennungen(ko: KnowledgeObject, begriff: string): Nennung[] {
+/**
+ * Alle Nennungen von `begriff` im Objekt, je mit Bewertung. `begriffe` sind ALLE gesuchten
+ * Bedingungen (bisherige und neue) — sie werden im Satzteil gemeinsam als Platzhalter gelesen, damit
+ * „gilt für X und Y" als eine Geltungsaussage für beide gedeutet wird.
+ */
+function nennungen(
+  ko: KnowledgeObject,
+  begriff: string,
+  begriffe: readonly string[] = [begriff],
+): Nennung[] {
   const b = klein(begriff);
   if (b.length === 0) {
     return [];
   }
+  const gesucht = begriffe.map(klein).filter((x) => x.length > 0);
   const alle: Nennung[] = [];
   const liste = felder(ko);
   for (let feld = 0; feld < liste.length; feld++) {
@@ -217,19 +372,35 @@ function nennungen(ko: KnowledgeObject, begriff: string): Nennung[] {
       const { von, bis } = satzteilUm(heu, i, b.length);
       const vor = heu.slice(von, i);
       const nach = heu.slice(i + b.length, bis);
+      const gelesen = mitPlatzhalter(heu.slice(von, bis), gesucht);
+      const eingeleitet = EINGELEITET.test(vor);
+      const vollGedeutet =
+        (fundort === "bedingung" && REINE_BEDINGUNG.test(gelesen)) ||
+        ((fundort === "bedingung" || fundort === "aussage") &&
+          (GELTUNG_VORN.test(gelesen) || GELTUNG_HINTEN.test(gelesen)));
+      const vorbehalt =
+        EINSCHRAENKUNG.test(`${vor} ${nach}`) ||
+        VERNEINUNG.test(vor) ||
+        (VERNEINUNG.test(nach) && !eingeleitet);
       let bewertung: Bewertung;
       if (AUSSCHLUSS_VOR.test(vor) || AUSSCHLUSS_NACH.test(nach)) {
         bewertung = "ausgeschlossen";
-      } else if (
-        fundort === "titel" ||
-        fundort === "schlagwort" ||
-        VORBEHALT.test(`${vor} ${nach}`)
-      ) {
+      } else if (fundort === "titel" || fundort === "schlagwort" || vorbehalt) {
         bewertung = "vorbehalt";
-      } else {
+      } else if (vollGedeutet || eingeleitet) {
         bewertung = "gilt";
+      } else {
+        // Kein positiver Beleg — das bloße Fehlen eines Ausschlussworts ist keine Geltung.
+        bewertung = "vorbehalt";
       }
-      alle.push({ feld, satzteil: von, fundort, bewertung, text: ausschnitt(roh, i, b.length) });
+      alle.push({
+        feld,
+        satzteil: von,
+        fundort,
+        bewertung,
+        vollGedeutet: bewertung === "gilt" && vollGedeutet,
+        text: ausschnitt(roh, i, b.length),
+      });
     }
   }
   return alle;
@@ -266,18 +437,18 @@ export function fundstelle(ko: KnowledgeObject, begriff: string): Fundstelle | n
 
 /**
  * Der gemeinsame Beleg für `beide`: beide als Bedingung des Objekts, oder beide im selben Satzteil
- * desselben Feldes — jeweils ohne Vorbehalt.
+ * desselben Feldes — jeweils mit positivem Beleg der Form (a) oder (b), nie nur (c).
  */
 function gemeinsamerBeleg(
   bisher: readonly Nennung[],
   neu: readonly Nennung[],
 ): [Nennung, Nennung] | null {
   for (const b of bisher) {
-    if (b.bewertung !== "gilt") {
+    if (!b.vollGedeutet) {
       continue;
     }
     for (const n of neu) {
-      if (n.bewertung !== "gilt") {
+      if (!n.vollGedeutet) {
         continue;
       }
       const beideBedingung = b.fundort === "bedingung" && n.fundort === "bedingung";
@@ -291,8 +462,8 @@ function gemeinsamerBeleg(
 }
 
 function einordnen(ko: KnowledgeObject, bisher: string, neu: string): BedingungsEinordnung {
-  const nb = nennungen(ko, bisher);
-  const nn = nennungen(ko, neu);
+  const nb = nennungen(ko, bisher, [bisher, neu]);
+  const nn = nennungen(ko, neu, [bisher, neu]);
   const gb = gesamt(nb);
   const gn = gesamt(nn);
   const basis = { id: ko.id, titel: ko.title };
@@ -305,15 +476,19 @@ function einordnen(ko: KnowledgeObject, bisher: string, neu: string): Bedingungs
       neu: alsFundstelle(gemeinsam[1]),
     };
   }
+  // Positive Gruppen (`nur_bisher`, `nur_neu`) nur bei belegter Geltung (`gilt`); jeder Vorbehalt —
+  // auch bei nur einer genannten Bedingung — ist `ungeklaert` (Ben, Nacharbeit 2).
   let lage: BedingungsLage;
   if (gn === "ausgeschlossen") {
     lage = "neu_ausgeschlossen";
-  } else if (gn !== null) {
-    lage = gb === null || gb === "ausgeschlossen" ? "nur_neu" : "ungeklaert";
-  } else if (gb !== null) {
-    lage = gb === "ausgeschlossen" ? "ungeklaert" : "nur_bisher";
-  } else {
+  } else if (gn === "gilt" && (gb === null || gb === "ausgeschlossen")) {
+    lage = "nur_neu";
+  } else if (gn === null && gb === "gilt") {
+    lage = "nur_bisher";
+  } else if (gn === null && gb === null) {
     lage = "keine";
+  } else {
+    lage = "ungeklaert";
   }
   return {
     ...basis,

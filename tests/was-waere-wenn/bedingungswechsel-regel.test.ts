@@ -20,6 +20,13 @@
 //       nur Titel/Schlagwort, Einschränkung „nur"; bisherige ausgeschlossen ohne neue.
 //   W10 `beide` nur mit gemeinsamem Beleg: beide als Bedingung oder im selben Satzteil ohne Vorbehalt.
 //   W11 Die Frage für das Durchspielen mit der KI trägt den Wechsel (und das Thema) wörtlich.
+//
+// Nacharbeit 2 (Ben: „5083-H111 und 6082-T6 sind untauglich" landete unter „übertragbar belegt";
+// „Vielleicht für 6082-T6 geeignet" unter „Schon für 6082-T6 festgehalten"):
+//   W12 Ohne positiven Beleg keine Geltung: Abwertung, unbekannte Wörter, bloße Anweisung für beide
+//       ergeben nie `beide`; positive Geltungsaussagen schon.
+//   W13 Vorbehalt bei nur einer genannten Bedingung → `ungeklaert`: Unsicherheit, nur Titel oder
+//       Schlagwort, kein positiver Beleg. Belegte einseitige Geltung bleibt gebunden.
 import { describe, expect, it } from "vitest";
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
 import {
@@ -226,10 +233,11 @@ describe("R-1628 · Nacharbeit 1 — Fund ist nicht Geltung", () => {
   it("W8 · eine verneinte Handlung schließt die Bedingung nicht aus", () => {
     expect(lage({ statement: "Bei 5083-H111 nicht überhitzen." })).toBe("nur_bisher");
     const handlung = ko({ statement: "Bei 5083-H111 nicht überhitzen." });
+    // „bei X" leitet die Bedingung ein (positiver Beleg c); „nicht" verneint die Handlung.
     expect(fundstelle(handlung, "5083-H111")).toEqual({
       fundort: "aussage",
       text: "Bei 5083-H111 nicht überhitzen.",
-      bewertung: "vorbehalt",
+      bewertung: "gilt",
     });
     expect(lage({ statement: "Bei 6082-T6 nicht überhitzen." })).toBe("nur_neu");
   });
@@ -263,6 +271,67 @@ describe("R-1628 · Nacharbeit 1 — Fund ist nicht Geltung", () => {
     // Eine Bedingung und ein getrennter Aussagesatz genügen nicht.
     const getrennt = { conditions: ["5083-H111"], statement: "Bei 6082-T6 ebenso." };
     expect(lage(getrennt)).toBe("ungeklaert");
+  });
+
+  it("W12 · ohne positiven Beleg keine Geltung und nie „übertragbar belegt“", () => {
+    // Bens Fall: Abwertung im selben Satzteil.
+    const ben = ko({ id: "ben2", statement: "5083-H111 und 6082-T6 sind untauglich." });
+    const r = vergleicheBedingungen([ben], WECHSEL);
+    expect(r.ok).toBe(true);
+    if (!r.ok) {
+      return;
+    }
+    expect(r.vergleich.gruppen.beide).toEqual([]);
+    expect(r.vergleich.gruppen.ungeklaert.map((e) => e.id)).toEqual(["ben2"]);
+    expect(r.vergleich.gruppen.ungeklaert[0]?.bisher?.bewertung).toBe("vorbehalt");
+    expect(r.vergleich.gruppen.ungeklaert[0]?.neu?.bewertung).toBe("vorbehalt");
+
+    for (const statement of [
+      // Ein Wort, das keine Liste kennt: ohne positiven Beleg trotzdem keine Geltung.
+      "5083-H111 und 6082-T6 taugen hierfür wenig.",
+      // Abwertung, die nach einem Geltungsverb steht.
+      "5083-H111 und 6082-T6 gelten als untauglich.",
+      // Eine bloße Anweisung für beide mit unbekannter Abwertung: an beide gebunden, aber kein
+      // Übertragbarkeitsbeleg.
+      "Für 5083-H111 und 6082-T6 kaum brauchbar.",
+      // Eine Anweisung für beide ist kein Übertragbarkeitsbeleg.
+      "Bei 5083-H111 und 6082-T6 die Kanten entgraten.",
+    ]) {
+      expect(lage({ statement }), statement).toBe("ungeklaert");
+    }
+    const abgewertet = ["5083-H111 untauglich", "6082-T6 untauglich"];
+    expect(lage({ conditions: abgewertet })).toBe("ungeklaert");
+
+    // Positive Geltungsaussagen tragen „beide“ weiterhin.
+    for (const statement of [
+      "5083-H111 und 6082-T6 sind gleichermaßen geeignet.",
+      "Bewährt bei 5083-H111 und 6082-T6.",
+      "Geeignet für den Werkstoff 5083-H111 oder 6082-T6.",
+    ]) {
+      expect(lage({ statement }), statement).toBe("beide");
+    }
+  });
+
+  it("W13 · Vorbehalt bei nur einer genannten Bedingung ist ungeklärt", () => {
+    for (const over of [
+      { statement: "Vielleicht für 6082-T6 geeignet." },
+      { statement: "Vermutlich bei 5083-H111 bewährt." },
+      { statement: "5083-H111 neigt zu Rissen." },
+      { statement: "Für 6082-T6 ungünstig." },
+      { title: "Erfahrungen mit 6082-T6" },
+      { tags: ["5083-H111"] },
+    ]) {
+      expect(lage(over), JSON.stringify(over)).toBe("ungeklaert");
+    }
+    expect(fundstelle(ko({ statement: "Vielleicht für 6082-T6 geeignet." }), "6082-T6")).toEqual({
+      fundort: "aussage",
+      text: "Vielleicht für 6082-T6 geeignet.",
+      bewertung: "vorbehalt",
+    });
+    // Belegte einseitige Geltung bleibt in den positiven Gruppen.
+    expect(lage({ conditions: ["6082-T6"] })).toBe("nur_neu");
+    expect(lage({ statement: "Für 6082-T6 geeignet." })).toBe("nur_neu");
+    expect(lage({ statement: "Für 5083-H111 auf 80 Grad vorwärmen." })).toBe("nur_bisher");
   });
 
   it("W11 · die Frage für die KI trägt den Wechsel wörtlich", () => {

@@ -16,6 +16,8 @@
 //       hinaus, steht im Fragefeld, und die Antwort erscheint mit ihrer Quelle.
 //   B5  KI gesperrt: der Knopf ist aus, die Fläche sagt warum, nichts geht hinaus — die Einordnung
 //       bleibt nutzbar.
+//   Nacharbeit 2: in B2 stehen „sind untauglich" und „Vielleicht für …" unter „nicht eindeutig",
+//   nicht unter „übertragbar belegt" bzw. „schon für 6082-T6 festgehalten".
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../apps/web/src/app/RoleContext", () => ({
@@ -55,6 +57,9 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
           ko("ko-ohne", "Schweißnaht reinigen", "Nach dem Schweißen die Naht bürsten.", []),
           // Bens Gegenfall (Nacharbeit 1): nennt beide — und schließt die neue aus.
           ko("ko-ausschluss", "Haltezeit", "Gilt für 5083-H111, nicht für 6082-T6.", []),
+          // Bens Gegenfälle (Nacharbeit 2): Abwertung ohne positiven Beleg; Unsicherheit einseitig.
+          ko("ko-untauglich", "Tauglichkeit", "5083-H111 und 6082-T6 sind untauglich.", []),
+          ko("ko-vielleicht", "Eignung unklar", "Vielleicht für 6082-T6 geeignet.", []),
         ]),
       },
       conflicts: { list: vi.fn(async () => []) },
@@ -172,6 +177,7 @@ async function klicke(c: HTMLElement, selektor: string): Promise<void> {
 }
 
 const EINTRAG = '[data-testid="bedingungswechsel-eintrag"]';
+const FUND_NEU = '[data-testid="bedingungswechsel-fund-neu"]';
 
 function gruppe(c: HTMLElement, lage: string): HTMLElement | null {
   return c.querySelector<HTMLElement>(
@@ -242,9 +248,17 @@ describe("R-1628 · Was wäre, wenn … auf der Fragen-Seite", () => {
     expect(ausschluss?.textContent).toContain(i18n.t("bedingungswechsel.bewertung.ausgeschlossen"));
     expect(ausschluss?.textContent).toContain("Gilt für 5083-H111, nicht für 6082-T6.");
 
+    // „Übertragbar belegt" und „Schon für 6082-T6 festgehalten" tragen nur belegte Geltung — Bens
+    // Gegenfälle (Abwertung, Unsicherheit) stehen unter „nicht eindeutig".
     expect(eintraege(c, "beide")).toEqual(["ko-beide"]);
     expect(eintraege(c, "nur_neu")).toEqual(["ko-neu"]);
-    expect(eintraege(c, "ungeklaert")).toEqual([]);
+    expect(eintraege(c, "ungeklaert")).toEqual(["ko-vielleicht", "ko-untauglich"]);
+    const funde = gruppe(c, "ungeklaert")?.querySelectorAll<HTMLElement>(FUND_NEU) ?? [];
+    const bewertungen = Array.from(funde, (f) => f.getAttribute("data-bewertung"));
+    expect(bewertungen).toEqual(["vorbehalt", "vorbehalt"]);
+    expect(gruppe(c, "ungeklaert")?.textContent).toContain(
+      i18n.t("bedingungswechsel.bewertung.vorbehalt"),
+    );
     // Ohne Thema: keine Liste „nennt keine", sondern die Zahl samt Satz.
     expect(gruppe(c, "keine")).toBeNull();
     expect(c.querySelector('[data-testid="bedingungswechsel-ohne-nennung"]')?.textContent).toBe(

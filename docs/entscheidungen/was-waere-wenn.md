@@ -1,7 +1,8 @@
 # Geltung vorhandenen Wissens bei geänderten Bedingungen — Bestand und Lieferung
 
 *Aufnahme 20260922 · `aufnahme:20260922:gesamt-was-waere-wenn` (Revision 1). Basisstand `fadddf37`
-(`1.0.0-beta.1.770`); erster Kandidat `16211282`, danach Nacharbeit 1 nach Bens Befunden. Das
+(`1.0.0-beta.1.770`); erster Kandidat `16211282`, danach Nacharbeit 1 (Kandidat `9682296a`) und
+Nacharbeit 2 nach Bens Befunden. Das
 Verhalten prüfen die Tests unter `tests/was-waere-wenn/`; dieses Dokument selbst liest kein Test.
 „Belegt durch“ nennt Verhaltenstests — ob sie auf diesem Stand grün sind, sagt erst ihr Lauf.*
 
@@ -35,7 +36,7 @@ Durchspielens mit der KI.
 | „Wenn ich statt 5083-H111 jetzt 6082-T6 verwende“ | Fragen-Seite, zugeklappt unter „Ich frage für“: **„Was wäre, wenn sich eine Bedingung ändert?“** mit „Statt (bisher)“, „jetzt (neu)“, optional „Nur zum Thema“; Vorschläge aus den Bedingungen des Bestands. | `bedingungswechsel-flaeche.test.tsx` (B1–B3), `bedingungswechsel-regel.test.ts` (W6) |
 | „mit der KI durchspielen“ | Knopf **„Mit Klara durchspielen“**: stellt die Frage der Quelle mit den eingegebenen Bedingungen (und dem Thema) über **denselben** Submit wie Fragefeld und Beispielchips (`askExample` → `submitAsk`). Es gelten Quellenpflicht, Lückenweg, Fragekontext, Gesprächsfaden und KI-Sperre wie bei jeder Frage; bei gesperrter KI ist der Knopf aus und nennt den Grund. Die Einordnung darüber bleibt stehen. | `bedingungswechsel-flaeche.test.tsx` (B4, B5), `bedingungswechsel-regel.test.ts` (W11) |
 | „welche bestehenden Erfahrungswerte gelten dann noch, welche nicht?“ | Je sichtbares Wissensobjekt eine Lage nach `apps/web/src/lib/bedingungswechsel.ts`: **an die bisherige gebunden**, **für die neue ausdrücklich ausgeschlossen**, **genannt, aber nicht eindeutig**, **für beide ausdrücklich festgehalten**, **schon für die neue festgehalten**, **nennt keine** (ohne Thema nur gezählt). Jeder Eintrag verweist auf das Objekt und zeigt die maßgebliche Fundstelle mit Bewertung („ausgeschlossen“, „nur erwähnt, nicht ausdrücklich“). | `bedingungswechsel-regel.test.ts` (W1–W5, W7–W10), `bedingungswechsel-flaeche.test.tsx` (B2–B3) |
-| „markiert, welche … materialspezifisch sind und welche übertragbar sind“ | „Materialspezifisch“ = nennt nur die bisherige. „Übertragbar belegt“ **nur** mit gemeinsamem Beleg ohne Vorbehalt: beide als Bedingung des Objekts oder beide im selben Satzteil („gilt für X und Y“). Ein Ausschluss („nicht für Y“, „außer bei Y“, „Y ist ungeeignet“, „für Y nicht“) führt zu „ausgeschlossen“; getrennte Sätze, Gegensatz („anders als“), Einschränkung („nur“), Ersetzung („statt“) oder bloße Titel-/Schlagwortnennung zu „nicht eindeutig“. | `bedingungswechsel-regel.test.ts` (W7–W10), `bedingungswechsel-flaeche.test.tsx` (B2) |
+| „markiert, welche … materialspezifisch sind und welche übertragbar sind“ | Geltung nur aus **positivem Beleg**: (a) reine Bedingungsangabe („Werkstoff 5083-H111“), (b) vollständig gedeutete Geltungsaussage („gilt/geeignet/bewährt für X und Y“, „X und Y sind geeignet“), (c) als Bedingung eingeleitete Anweisung („bei X …“). „Materialspezifisch“ = die bisherige gilt, die neue ist nicht genannt. „Übertragbar belegt“ **nur** mit (a) oder (b) für beide gemeinsam. Ein Ausschluss („nicht für Y“, „außer bei Y“, „Y ist ungeeignet“, „für Y nicht“) führt zu „ausgeschlossen“. Alles ohne positiven Beleg oder mit Vorbehalt — auch bei nur einer genannten Bedingung (Unsicherheit, Abwertung, Gegensatz, „nur“, „statt“, nur Titel/Schlagwort, unbekannte Formulierung) — zu „nicht eindeutig“. | `bedingungswechsel-regel.test.ts` (W7–W10, W12–W13), `bedingungswechsel-flaeche.test.tsx` (B2) |
 
 ## Nacharbeit 1 (Ben, Kandidat `16211282`)
 
@@ -48,6 +49,23 @@ Durchspielens mit der KI.
    über den bestehenden, quellengebundenen Frageweg. B4 belegt den Aufruf mit der Frage und die
    Antwortanzeige, B5 die Sperre. Die frühere Aussage, ein KI-Durchspielen sei „nicht geliefert“ und
    bleibe Pedis Entscheidung, ist damit überholt.
+
+## Nacharbeit 2 (Ben, Kandidat `9682296a`)
+
+1. *„Nicht erkannte Aussagen gelten standardmäßig als positiver Geltungsbeleg“* — „5083-H111 und
+   6082-T6 sind untauglich“ stand unter „übertragbar belegt“. Die Behauptung aus Nacharbeit 1, eine
+   unerkannte Formulierung falle „höchstens in eine vorsichtigere Lage“, war damit falsch. Behoben:
+   `gilt` entsteht nur noch aus den positiven Formen (a)–(c); ohne sie ist eine Nennung `vorbehalt`.
+   `beide` verlangt (a) oder (b) für beide gemeinsam — eine Anweisung (c) genügt nicht. Gegenfälle
+   W12, auf der Fläche B2.
+2. *„Die Einordnung ignoriert einen erkannten Vorbehalt, wenn nur eine Bedingung genannt ist“* —
+   „Vielleicht für 6082-T6 geeignet“ stand unter „Schon für 6082-T6 festgehalten“. Behoben: die
+   positiven Gruppen `nur_bisher`/`nur_neu` verlangen `gilt`; jeder Vorbehalt ist `ungeklaert`.
+   Gegenfälle W13 (Unsicherheit, Abwertung, nur Titel, nur Schlagwort, kein positiver Beleg), auf
+   der Fläche B2.
+
+W8 bewertet „Bei 5083-H111 nicht überhitzen“ jetzt mit `gilt` statt `vorbehalt`: die Bedingung
+ist eingeleitet (c), „nicht“ verneint die Handlung. Die Lage „an 5083-H111 gebunden“ bleibt.
 
 ## Empfehlungen (keine Entscheidungen)
 
@@ -72,10 +90,14 @@ Durchspielens mit der KI.
 
 ## Grenzen und fehlende Belege
 
-- Die Bewertung erkennt Ausschlüsse und Vorbehalte über Wortlisten in Deutsch, Englisch und
-  Niederländisch. Was die Liste nicht kennt, kann höchstens in eine vorsichtigere Lage fallen, nie
-  in „übertragbar belegt“ — mit einer Ausnahme: eine unbekannte Ausschlussform („untauglich für Y“)
-  im selben Satzteil wie die bisherige würde nicht erkannt. Die Fundstelle steht deshalb immer dabei.
+- Die Bewertung arbeitet mit Wortlisten und Satzformen in Deutsch, Englisch und Niederländisch.
+  Ein unbekanntes Wort macht eine Nennung nie zu „gilt“ und nie zu „übertragbar belegt“: beides
+  entsteht nur aus den positiven Formen (a)–(c). Verbleibende Grenze: eine als Bedingung
+  eingeleitete Anweisung (c) mit einer Abwertung, die keine Liste kennt („für X kaum brauchbar“),
+  erscheint als an X gebunden bzw. schon für X festgehalten. Die Fundstelle steht deshalb immer
+  dabei.
+- Die Satzformen sind bewusst eng: übertragbare Aussagen in anderer Formulierung („bei X und Y die
+  Kanten entgraten“) erscheinen als „nicht eindeutig“, nicht als „übertragbar belegt“.
 - Schreibweisen werden nicht gleichgesetzt („5083 H111“ ≠ „5083-H111“); Groß-/Kleinschreibung und
   Leerraum schon; ein Begriff muss als eigenes Wort stehen („5083“ trifft nicht „50830“).
 - Durchsucht werden Bedingungen, Titel, Aussage und Schlagwörter — nicht der formatierte Fließtext

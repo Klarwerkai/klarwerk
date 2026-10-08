@@ -47,7 +47,7 @@ export default {
     "bedingungswechsel.fundort.aussage": "Aussage",
     "bedingungswechsel.fundort.schlagwort": "Schlagwort",
     "bedingungswechsel.bewertung.ausgeschlossen": "ausgeschlossen",
-    "bedingungswechsel.bewertung.vorbehalt": "nur erwähnt, nicht ausdrücklich",
+    "bedingungswechsel.bewertung.vorbehalt": "genannt, Geltung nicht belegt",
     "bedingungswechsel.ki.knopf": "Mit Klara durchspielen",
     "bedingungswechsel.ki.hinweis":
       "Klara beantwortet den Wechsel als Frage — nur aus dem Bestand und mit Quellen. Ohne tragende Quelle gibt es keine Antwort, sondern eine Wissenslücke. Die Einordnung oben bleibt stehen.",
@@ -91,7 +91,7 @@ export default {
     "bedingungswechsel.fundort.aussage": "Statement",
     "bedingungswechsel.fundort.schlagwort": "Tag",
     "bedingungswechsel.bewertung.ausgeschlossen": "excluded",
-    "bedingungswechsel.bewertung.vorbehalt": "only mentioned, not explicit",
+    "bedingungswechsel.bewertung.vorbehalt": "mentioned, validity not documented",
     "bedingungswechsel.ki.knopf": "Work it through with Klara",
     "bedingungswechsel.ki.hinweis":
       "Klara answers the change as a question — only from the knowledge base and with sources. Without a supporting source there is no answer but a knowledge gap. The classification above stays in place.",
@@ -136,7 +136,7 @@ export default {
     "bedingungswechsel.fundort.aussage": "Bewering",
     "bedingungswechsel.fundort.schlagwort": "Trefwoord",
     "bedingungswechsel.bewertung.ausgeschlossen": "uitgesloten",
-    "bedingungswechsel.bewertung.vorbehalt": "alleen genoemd, niet uitdrukkelijk",
+    "bedingungswechsel.bewertung.vorbehalt": "genoemd, geldigheid niet vastgelegd",
     "bedingungswechsel.ki.knopf": "Met Klara doorspelen",
     "bedingungswechsel.ki.hinweis":
       "Klara beantwoordt de wissel als vraag — alleen uit de kennisbank en met bronnen. Zonder dragende bron komt er geen antwoord maar een kennislacune. De indeling hierboven blijft staan.",
