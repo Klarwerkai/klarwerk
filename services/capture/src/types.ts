@@ -98,6 +98,9 @@ export interface DraftPayload {
     question?: string;
     done?: boolean;
     demo?: boolean;
+    // R-1624: der bestätigte Bildbefund eines Foto-Interviews (Klartext, kein Bild — das Foto steht
+    // als Bild-Anker im Rumpf). Fehlt er, war es ein normales Interview.
+    imageContext?: string;
   };
   /**
    * BILDSCHIRMABLÄUFE — die übernommenen Schritte samt Herkunft (Begründung: `./ablauf.ts`).

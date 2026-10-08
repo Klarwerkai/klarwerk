@@ -318,6 +318,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.read",
     zeilenrecht: ["darfSehen"],
   },
+  // R-1644: die Wissensauskunft zum Zeitpunkt — Einsichtsstufe des Audit-Protokolls (`ko.validate`),
+  // der Eintrag wird vor der Antwort gegen `darfSehen` gehalten (sonst 404).
+  "GET /api/kos/:id/wissensauskunft": { protection: "ko.validate", zeilenrecht: ["darfSehen"] },
   "POST /api/kos": { protection: "ko.create" },
   // AUFTRAG-mega19 Block B: die Erstanlage AUS Dokumenten (Inhalt + Anker + Belegstellen in EINEM
   // Vorgang). Dasselbe Basisrecht wie das gewöhnliche Einreichen — die Route ist eine ENGERE Tür
@@ -439,6 +442,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // unterscheiden. Der Add-on-Zweig derselben Route fuehrt das Praedikat NICHT.
   "POST /api/ask": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   "POST /api/ask/helpful": { protection: "ko.read" },
+  // R-1649: ko.read; ein mitgeschickter Weg wird ein Entwurf und verlangt im Handler ko.create.
+  "POST /api/ask/not-helpful": { protection: "ko.read" },
   // SCRUM-527: Live-Check (Ähnlichkeit/Widerspruch eines Entwurfstextes gegen den Bestand).
   // produkt:20261007:spaces: ähnliche Artikel/Widersprüche nur aus dem für den Prüfenden Sichtbaren.
   "POST /api/knowledge/check": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },

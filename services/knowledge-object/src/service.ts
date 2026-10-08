@@ -809,7 +809,8 @@ export class KoService {
     this.onError =
       deps.onError ??
       ((context, error) => {
-        console.error(`[kos] ${context}:`, error);
+        // R-0623: nur die Fehlerklasse — Meldung und Stack können Inhalte tragen.
+        console.error(`[kos] ${context}: ${error instanceof Error ? error.name : "unknown"}`);
       });
     this.bildObjektDaten = deps.bildObjektDaten;
   }
