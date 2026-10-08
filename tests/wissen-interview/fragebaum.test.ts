@@ -272,17 +272,21 @@ const RECHERCHE = JSON.stringify({
 describe("R-0088: themenbezogene Fachrecherche mit Modell — für tiefere Rückfragen, nie als Wissen", () => {
   it("recherchiert zum Thema und hakt an der Frage gezielt am passenden Prüfpunkt nach", async () => {
     const { client, aufrufe } = recherchierenderClient(RECHERCHE);
+    // Voller Fragebaum (kein Lücken-Thema — das wäre der kurze Drei-Fragen-Baum ohne Schwellen-
+    // knoten, nach drei Antworten durch): Fachthema der Recherche ist dann die Kernaussage.
     const res = await new ModelProvider(client).interview(
-      ["Ventil X schließen", "bei Überdruck", "Handventil zu"],
+      ["Ventil X bei Überdruck schließen", "bei Überdruck", "Handventil zu"],
       "de",
       false,
       undefined,
-      { tree: true, topic: "Überdruck an Linie 4" },
+      BAUM,
     );
     // Erst die Recherche (zum Fachthema), dann die gezielte Frage.
     expect(aufrufe).toHaveLength(2);
     expect(aufrufe[0]?.system).toContain('"punkte"');
-    expect(aufrufe[0]?.user).toContain("Fachthema des Interviews: Überdruck an Linie 4");
+    expect(aufrufe[0]?.user).toContain(
+      "Fachthema des Interviews: Ventil X bei Überdruck schließen",
+    );
     // Die Frage zum Knoten „schwelle" bekommt GENAU den Schwellen-Prüfpunkt als Ziel …
     expect(res.node).toBe("schwelle");
     expect(aufrufe[1]?.user).toContain("Recherchehinweise (ungeprüft, keine Fakten):");
