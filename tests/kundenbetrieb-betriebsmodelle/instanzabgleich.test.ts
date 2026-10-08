@@ -6,7 +6,7 @@
 //   · `scripts/betrieb/instanzabgleich.mjs` als eigener Prozess gegen echte HTTP-Server: gleich,
 //     Versions- und Commitabweichung, fremde Identität, nicht erreichbar, auseinandergelaufener Kanal,
 //     ungültiges Inventar.
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -112,6 +112,12 @@ describe("R-0851 · /health meldet die Identität der Instanz", () => {
     expect(rumpf.status).toBe("ok");
     expect(rumpf.instanz).toBe("https://wissen.kunde-a.example");
     expect(typeof rumpf.version).toBe("string");
+  });
+
+  it("I3 · die HTTP-API-Referenz nennt das Feld in der /health-Zeile", () => {
+    const referenz = readFileSync(repoPfad("docs/architektur/http-api-referenz.md"), "utf8");
+    const zeile = referenz.split("\n").find((z) => z.startsWith("| `GET` | `/health` |"));
+    expect(zeile).toContain('200 `{ status: "ok", version, commit, instanz, ai, aiRuns }`');
   });
 });
 
