@@ -2763,7 +2763,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // der Umlaut-Wächter (mega69 C) erntet die einzeilige Schlüsselreihe als EINEN Text und traf die
     // Namen. Gleiche Zeilenzahl, kein Ausdruck sonst geändert. Rechenversuch erneut nicht zugelassen;
     // der Prüflauf meldet den Wert der endgültigen Fassung als „Received".
-    const PIN = "eefba3bdd389a30d41f4fbe37ad5bcdc336667559554212971ecbe7dff5f37d3";
+    // NACHARBEIT 5 (dieser Auftrag): PIN BEWUSST AKTUALISIERT (eefba3bd… -> 3a0471fa…). Im Prüflauf zu
+    // Kandidat 0bd4f3cb GEMESSEN („Received", HISTORIE/nacharbeit-5/PRUEFUNG/word-fenster-pins.log)
+    // und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt
+    // (`git diff 0bd4f3cb -- apps/web/public/word-addin/` leer).
+    const PIN = "3a0471fa76eb812c14d02ca0d157409923559cae9edc25ec7b173f4338cb93db";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,

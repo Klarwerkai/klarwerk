@@ -179,8 +179,11 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 4 (Antwort-Erklärung): gemessen zu Kandidat 64095a2e war `8f2a762d…189c20` — NICHT
  * übernommen, weil `taskpane.js` danach erneut geändert wurde (drei Lage-Schlüssel ohne
  * ASCII-Umschrift umbenannt, mega69 C). E2 meldet den Wert der endgültigen Fassung als „Received".
+ * NACHARBEIT 5 (Antwort-Erklärung): GEMESSEN im Prüflauf zu Kandidat 0bd4f3cb (`469de4a6…`,
+ * „Received" von E2, HISTORIE/nacharbeit-5/PRUEFUNG/word-fenster-pins.log) und unverändert
+ * übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "5d7ae0b8fccc34c05e5c070cea753189729ef841";
+export const PANEL_VOR_SCHNITT_BLOB = "469de4a65de681dbbad2e31b48bbb63ec07fa567";
 
 export interface PanelTeile {
   html: string;
