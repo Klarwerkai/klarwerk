@@ -1884,6 +1884,106 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
     return false;
   };
 
+  // Nacharbeit 18 (ben): trägt dieser Bezeichner eine lokale Bindung, deren Objekt — über
+  // Bindungsketten — in einen JSX-Spread oder an `createElement` fliesst?
+  // Je Deklaration einmal ermittelt: die Prüfung läuft für jedes Bezeichner-Argument jedes Aufrufs.
+  const propsFluss = new Map<ts.Node, boolean>();
+  const imPropsFluss = (id: ts.Identifier): boolean =>
+    sichtbareDeklarationen(deklarationen, id).some((d) => {
+      if (!ts.isVariableDeclaration(d) || !ts.isIdentifier(d.name)) {
+        return false;
+      }
+      let ergebnis = propsFluss.get(d);
+      if (ergebnis === undefined) {
+        ergebnis = verwendungen(d, d.name.text).some((v) => istPropsObjekt(v));
+        propsFluss.set(d, ergebnis);
+      }
+      return ergebnis;
+    });
+
+  // Ein Schreibzugriff `x.role = …`, `x[k] = …` (auch `+=`, `??=` …). An einem Objekt im
+  // Props-Fluss ist er ein Props-Eintrag: role wird ausgewertet (unbestimmt → rot), aria-modal
+  // und ariaModal werden Kandidaten, ein unbestimmter Schlüssel ist rot.
+  const pruefeSchreibzugriff = (
+    ziel: ts.PropertyAccessExpression | ts.ElementAccessExpression,
+    wert: ts.Expression,
+    operator: ts.SyntaxKind,
+  ): void => {
+    const props = ts.isIdentifier(ziel.expression) && imPropsFluss(ziel.expression);
+    const schluessel = ts.isPropertyAccessExpression(ziel) ? ziel.name : ziel.argumentExpression;
+    // Punktzugriff: der Name steht fest. Indexzugriff: der Schlüssel wird ausgewertet.
+    const punktName = ts.isPropertyAccessExpression(ziel) ? ziel.name.text : undefined;
+    const index = ts.isElementAccessExpression(ziel) ? ziel.argumentExpression : undefined;
+    const [rolle, ariaModal, reflexion] = SCHLUESSEL_MARKER.map((m): Schluesselurteil => {
+      if (index !== undefined) {
+        return schluesselUrteil(index, deklarationen, umfeld, m);
+      }
+      return punktName === m ? "trifft" : "trifft-nicht";
+    });
+    const stelle = `${quelle.datei}:${zeileVon(sf, ziel)} — Schreibzugriff „${ziel.getText(sf).slice(0, 60)}“ auf Props`;
+    if (rolle === "trifft" && operator === ts.SyntaxKind.EqualsToken) {
+      meldeRolle(wert, props);
+    } else if (rolle === "trifft" && props) {
+      // `p.role += …`, `p.role ??= …`: der Ergebniswert hängt vom alten ab — nicht bestimmbar.
+      unbekannteBauformen.push(`${stelle}: der Wert von role ist statisch nicht bestimmbar`);
+    }
+    // Punktzugriff `x.ariaModal` und reine Literale erfassen schon die Regeln weiter unten.
+    const schonErfasst = ts.isPropertyAccessExpression(ziel) || istZeichenkettenLiteral(schluessel);
+    if (ariaModal === "trifft" && !schonErfasst) {
+      melde(schluessel, "aria-modal-eigenschaft");
+    }
+    if (reflexion === "trifft" && !schonErfasst) {
+      melde(schluessel, "aria-modal-reflexion");
+    }
+    if ([rolle, ariaModal, reflexion].includes("unbestimmt") && props) {
+      unbekannteBauformen.push(
+        `${stelle}: der Schlüssel ist statisch nicht bestimmbar, ob er role oder aria-modal setzt, kann dieser Sammler nicht beurteilen`,
+      );
+    }
+  };
+
+  // `Object.assign(x, quelle…)` schreibt in `x`; jede andere Weitergabe von `x` an eine Funktion
+  // kann `x` verändern. Beides an einem Objekt im Props-Fluss: die Quellen werden wie Props
+  // ausgewertet, eine sonstige Weitergabe ist nicht auswertbar — rot.
+  const pruefeObjektweitergabe = (aufruf: ts.CallExpression): void => {
+    if (aufrufName(aufruf) === "createElement") {
+      return;
+    }
+    const zuweisung =
+      ts.isPropertyAccessExpression(aufruf.expression) &&
+      ts.isIdentifier(aufruf.expression.expression) &&
+      aufruf.expression.expression.text === "Object" &&
+      aufruf.expression.name.text === "assign";
+    aufruf.arguments.forEach((argument, index) => {
+      if (!ts.isIdentifier(argument) || !imPropsFluss(argument)) {
+        return;
+      }
+      const stelle = `${quelle.datei}:${zeileVon(sf, argument)} — Props-Objekt „${argument.text}“`;
+      if (zuweisung && index === 0) {
+        for (const q of aufruf.arguments.slice(1)) {
+          const r = propsRolle(q, deklarationen, umfeld, true);
+          for (const w of r.bild.werte) {
+            if (istDialogName(w.text)) {
+              melde(q, "role-dialog");
+              kandidatTokens.add(w.knoten);
+            }
+          }
+          if (r.bild.offen.length + r.abbrueche.length + r.vonAufrufern.length > 0) {
+            unbekannteBauformen.push(
+              `${stelle} wird über Object.assign beschrieben, die Rolle der Quelle „${q.getText(sf).slice(0, 60)}“ ist nicht bestimmbar`,
+            );
+          }
+        }
+        return;
+      }
+      if (!zuweisung) {
+        unbekannteBauformen.push(
+          `${stelle} wird an ${aufruf.expression.getText(sf).slice(0, 40)}(…) weitergegeben und kann dort verändert werden: seine Rolle kann dieser Sammler nicht beurteilen`,
+        );
+      }
+    });
+  };
+
   // AUFTRAG-mega76 BLOCK E — die Kette `<dialog ref={R}>` … `R.current.showModal()` nachziehen.
   // `aliasse` fängt die Zwischenvariable ab (`const d = dialogRef.current`), `showModalZiele` die
   // Bezeichner, auf denen der Aufruf wirklich steht. Erst beides zusammen belegt, dass GENAU
@@ -2105,15 +2205,22 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
         meldeRolle(wert, true);
       }
     }
-    // `x.role = …` meldet nur bestimmte Dialogwerte: in diesem Produkt ist `role` an Objekten
-    // meist die BENUTZERrolle — ein unbestimmter Wert dort ist kein Hinweis auf einen Dialog.
+    // `x.role = …` meldet an gewöhnlichen Objekten nur bestimmte Dialogwerte: in diesem Produkt ist
+    // `role` dort meist die BENUTZERrolle. Nacharbeit 18 (ben): fliesst `x` aber in einen
+    // JSX-Spread oder an `createElement`, ist jeder Schreibzugriff ein Teil der Props — eine
+    // `const`-Bindung macht ein Objekt nicht unveränderlich. Dann zählt er wie ein Props-Eintrag.
     if (
       ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-      ts.isPropertyAccessExpression(node.left) &&
-      node.left.name.text === "role"
+      node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
+      (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))
     ) {
-      meldeRolle(node.right, false);
+      pruefeSchreibzugriff(node.left, node.right, node.operatorToken.kind);
+    }
+    // Nacharbeit 18: `Object.assign(x, …)` schreibt in `x`; eine Weitergabe von `x` an eine
+    // andere Funktion kann `x` verändern — beides an einem Objekt im Props-Fluss.
+    if (ts.isCallExpression(node)) {
+      pruefeObjektweitergabe(node);
     }
     // `ariaModal` — die DOM-Reflexion von `aria-modal`, abweichend benannt (A17b). Punktzugriff,
     // Objekt-Eigenschaft (auch Kurzform), JSX-Attribut und Index-Zugriff `el["ariaModal"]`.

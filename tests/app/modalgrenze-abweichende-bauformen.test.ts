@@ -1278,6 +1278,43 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     expect(rot).toHaveLength(4);
   });
 
+  it("Nacharbeit 18: Schreibzugriffe auf Objekte im Props-Fluss werden ausgewertet", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Schreib.tsx": [
+          "export function F(): JSX.Element {",
+          "  const p: { role?: string } = {};",
+          "  p.role = holeRolle();",
+          "  const q: Record<string, string> = {};",
+          "  q['ro' + 'le'] = 'dia' + 'log';",
+          "  const r: Record<string, unknown> = {};",
+          "  Object.assign(r, { role: holeRolle() });",
+          "  const s = { id: 'x' };",
+          "  veraendere(s);",
+          "  const t: Record<string, string> = {};",
+          "  t[holeSchluessel()] = 'x';",
+          "  const u = { id: 'y' };",
+          "  u.id = 'z';",
+          "  const nutzer = { role: 'x' };",
+          "  nutzer.role = holeRolle();",
+          "  return <div {...p}><i {...q} /><b {...r} /><s {...s} /><em {...t} /><u {...u} /></div>;",
+          "}",
+        ],
+      }),
+    );
+    const an = (stelle: string): string[] => rot.filter((z) => z.includes(stelle));
+    // bens Fall wörtlich: die nachträglich gesetzte, unbestimmte Rolle an gespreizten Props.
+    expect(an("components/Schreib.tsx:3")[0]).toContain("statisch nicht bestimmbar");
+    expect(an("components/Schreib.tsx:5 — role-dialog")).toHaveLength(1);
+    expect(an("components/Schreib.tsx:7")[0]).toContain("Object.assign");
+    expect(an("components/Schreib.tsx:9")[0]).toContain("kann dort verändert werden");
+    expect(an("components/Schreib.tsx:11")[0]).toContain("Schlüssel ist statisch nicht bestimmbar");
+    expect(an("components/Schreib.tsx:13"), "u.id ist kein Modalmarker").toEqual([]);
+    expect(an("components/Schreib.tsx:15"), "nutzer fliesst in keinen Spread").toEqual([]);
+    expect(rot).toHaveLength(5);
+  });
+
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
     const { rot } = pruefeModalgrenze(
       legeBaum({
