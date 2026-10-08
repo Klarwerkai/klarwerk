@@ -57,8 +57,63 @@ function zeilenIds(page: Page) {
   return page.locator('[data-testid="bib-zeile"]');
 }
 
+// ================================================================================================
+// NACHARBEIT 12 · DER LADEWEG WIRD MITGESCHRIEBEN — EIN LADEFEHLER IST KEINE LEERE LISTE.
+// ================================================================================================
+//
+// Der rote Lauf von B2 (HISTORIE/nacharbeit-12) endete nicht an einer falschen Auswahl, sondern an
+// der Karte „Neue Version verfügbar" (`ladefehler-neue-version`): die Fehlergrenze der Seite hatte
+// einen gescheiterten Modulabruf gefangen (`isStaleChunkError`). Gezählt wurden danach 0 Zeilen —
+// gemessen war also der Ladeweg, nicht die Anlagenauswahl. Welche Datei scheiterte, stand weder im
+// Bericht noch im Fehlerkontext.
+//
+// Darum schreibt jeder Fall jetzt mit, was auf dem Weg scheitert: abgebrochene Abrufe, Antworten
+// ab 400 auf `/assets/` und Seitenfehler (nur Name, Meldung, Pfad — keine Inhalte, keine Abfragen).
+// `bibliothekSteht` wartet auf die Bibliotheksfläche ODER die Ladefehlerkarte und nennt im zweiten
+// Fall den Mitschnitt. Die Sollwerte danach bleiben unverändert; es gibt bewusst KEINEN stillen
+// zweiten Versuch — ein wiederkehrender Ladefehler auf Telefonbreite wäre ein Befund, kein Rauschen.
+function ladeprotokoll(page: Page): () => string {
+  const zeilen: string[] = [];
+  const pfad = (url: string): string => {
+    try {
+      return new URL(url).pathname;
+    } catch {
+      return "(unlesbar)";
+    }
+  };
+  page.on("requestfailed", (request) => {
+    zeilen.push(
+      `requestfailed ${request.resourceType()} ${pfad(request.url())} ${request.failure()?.errorText ?? ""}`,
+    );
+  });
+  page.on("response", (response) => {
+    if (response.status() >= 400 && pfad(response.url()).startsWith("/assets/")) {
+      zeilen.push(`response ${response.status()} ${pfad(response.url())}`);
+    }
+  });
+  page.on("pageerror", (error) => {
+    zeilen.push(`pageerror ${error.name}: ${error.message.replace(/\?[^\s]*/g, "")}`);
+  });
+  return () => (zeilen.length > 0 ? zeilen.join("\n") : "(keine Lade- oder Seitenfehler)");
+}
+
+async function bibliothekSteht(page: Page, protokoll: () => string): Promise<void> {
+  const flaeche = page.getByTestId("page-bibliothek");
+  const ladefehler = page.getByTestId("ladefehler-neue-version");
+  await expect(flaeche.or(ladefehler)).toBeVisible({ timeout: 15_000 });
+  const fehlerkarte = await ladefehler.count();
+  if (fehlerkarte > 0) {
+    await test.info().attach("ladeprotokoll.txt", { body: protokoll(), contentType: "text/plain" });
+  }
+  expect(
+    fehlerkarte,
+    `Die Bibliothek ist nicht geladen — die Seite zeigt den Ladefehler „Neue Version“ (${page.url()}).\n${protokoll()}`,
+  ).toBe(0);
+}
+
 test.describe("Anlagenzugang · QR-Code und Anlagenauswahl in der echten App", () => {
   test("B1: QR-Code am Wissen, der Weg daneben öffnet genau diese Anlage", async ({ page }) => {
+    const protokoll = ladeprotokoll(page);
     await ensureLoggedIn(page);
     const m = marke();
     const anlage = `Smoke Linie ${m} / DP-4`;
@@ -85,6 +140,7 @@ test.describe("Anlagenzugang · QR-Code und Anlagenauswahl in der echten App", (
 
     await page.getByTestId("anlagen-qr-oeffnen").click();
     await expect(page).toHaveURL(/\/bibliothek\?anlage=/);
+    await bibliothekSteht(page, protokoll);
     const zeilen = zeilenIds(page);
     await expect(zeilen).toHaveCount(2, { timeout: 15_000 });
     const ids = await zeilen.evaluateAll((els) => els.map((e) => e.getAttribute("data-bib-id")));
@@ -95,6 +151,7 @@ test.describe("Anlagenzugang · QR-Code und Anlagenauswahl in der echten App", (
   test("B2: die Adresse des Codes, direkt geöffnet auf Telefonbreite und neu geladen", async ({
     page,
   }) => {
+    const protokoll = ladeprotokoll(page);
     await ensureLoggedIn(page);
     const m = marke();
     const anlage = `Smoke Presse ${m}`;
@@ -105,11 +162,13 @@ test.describe("Anlagenzugang · QR-Code und Anlagenauswahl in der echten App", (
     const p = new URLSearchParams();
     p.set("anlage", anlage);
     await page.goto(`/bibliothek?${p.toString()}`);
+    await bibliothekSteht(page, protokoll);
     const zeilen = zeilenIds(page);
     await expect(zeilen).toHaveCount(1, { timeout: 15_000 });
     await expect(zeilen.first()).toHaveAttribute("data-bib-id", a.id);
 
     await page.reload();
+    await bibliothekSteht(page, protokoll);
     await expect(zeilen).toHaveCount(1, { timeout: 15_000 });
     await expect(zeilen.first()).toHaveAttribute("data-bib-id", a.id);
   });
@@ -117,6 +176,7 @@ test.describe("Anlagenzugang · QR-Code und Anlagenauswahl in der echten App", (
   test("B3: Bauteil-Code mit Standort, Schicht in der Kontextleiste, Neuladen behält sie", async ({
     page,
   }) => {
+    const protokoll = ladeprotokoll(page);
     await ensureLoggedIn(page);
     const m = marke();
     const anlage = `Smoke Linie ${m}`;
@@ -145,6 +205,7 @@ test.describe("Anlagenzugang · QR-Code und Anlagenauswahl in der echten App", (
     p.set("bauteil", bauteil);
     p.set("standort", "Werk Nord");
     await page.goto(`/bibliothek?${p.toString()}`);
+    await bibliothekSteht(page, protokoll);
     const zeilen = zeilenIds(page);
     const ids = async (): Promise<(string | null)[]> =>
       (await zeilen.evaluateAll((els) => els.map((e) => e.getAttribute("data-bib-id")))).sort();
@@ -158,6 +219,7 @@ test.describe("Anlagenzugang · QR-Code und Anlagenauswahl in der echten App", (
     expect(await ids()).toEqual([allgemein.id, nord.id, nacht.id].sort());
 
     await page.reload();
+    await bibliothekSteht(page, protokoll);
     await expect(zeilen).toHaveCount(3, { timeout: 15_000 });
     expect(await ids()).toEqual([allgemein.id, nord.id, nacht.id].sort());
     await expect(page.getByTestId("bib-kontext-standort")).toHaveValue("Werk Nord");
