@@ -32,15 +32,21 @@ async function anmelden(app: App, mail: string): Promise<{ kopf: Kopf; id: strin
   };
 }
 
-async function start(mail: string): Promise<{ app: App; admin: Kopf; adminId: string }> {
-  const app = buildApp(buildServices());
+async function start(mail: string): Promise<{
+  app: App;
+  services: ReturnType<typeof buildServices>;
+  admin: Kopf;
+  adminId: string;
+}> {
+  const services = buildServices();
+  const app = buildApp(services);
   await app.inject({
     method: "POST",
     url: "/api/auth/register",
     payload: { name: "Admin", email: mail, password: "geheim12345" },
   });
   const { kopf, id } = await anmelden(app, mail);
-  return { app, admin: kopf, adminId: id };
+  return { app, services, admin: kopf, adminId: id };
 }
 
 async function anlegen(app: App, kopf: Kopf, titel: string, aussage: string): Promise<string> {
@@ -217,7 +223,7 @@ describe("Antwort-Erklärung · Belastbarkeit an POST /api/ask", () => {
   });
 
   it("R-0322: Konto des Verantwortlichen gelöscht — die Antwort bleibt, die Lücke wird benannt", async () => {
-    const { app, admin } = await start("bel-c@antwort.test");
+    const { app, services, admin, adminId } = await start("bel-c@antwort.test");
     const anlage = await app.inject({
       method: "POST",
       url: "/api/users",
@@ -243,12 +249,23 @@ describe("Antwort-Erklärung · Belastbarkeit an POST /api/ask", () => {
     expect(vorher.lage).toBe("belegt");
     expect(vorher.quellen[0]?.verantwortung.erreichbar).toBe(true);
 
+    // main (Verantwortungsübergabe): über die Kontoverwaltung lässt sich ein Konto, das noch
+    // hauptverantwortlich ist, NICHT mehr löschen — die Sperre hält, es wurde nichts geändert.
     const loeschen = await app.inject({
       method: "DELETE",
       url: `/api/users/${expertin.id}`,
       headers: admin,
     });
-    expect(loeschen.statusCode, loeschen.body).toBe(204);
+    expect(loeschen.statusCode, loeschen.body).toBe(409);
+    expect(loeschen.json().error).toBe("BESTAND_OFFEN");
+    const weiter = belastbarkeit(await fragen(app, admin, `${SELTENES_WORT} Wartung entlasten`));
+    expect(weiter.quellen[0]?.verantwortung.erreichbar).toBe(true);
+
+    // R-0322 gilt trotzdem für den Bestand, den diese Sperre nicht erfasst: ein Konto, das ohne
+    // Übergabe aus dem Verzeichnis verschwunden ist (Altbestand vor der Sperre, Verzeichnisabgleich).
+    // Dieser Zustand wird hier unmittelbar am Kontodienst hergestellt — an der Route vorbei, weil
+    // die Route ihn heute zu Recht verhindert.
+    await services.auth.deleteUser(expertin.id, adminId);
 
     const nachher = await fragen(app, admin, `${SELTENES_WORT} Wartung entlasten`);
     // Das Wissen bleibt nutzbar …
