@@ -273,6 +273,10 @@ export interface ExtractResult {
   // aufgebraucht war. Bei mehreren Abschnitten steht der Befund des ZULETZT abgeschnittenen —
   // die Aussage „mindestens ein Abschnitt riss am Limit ab" ist damit vollständig gedeckt.
   abgeschnitten?: AbbruchBefund;
+  // R-0157/R-1070: gesetzt, wenn Teile des Dokuments nie ausgewertet wurden (Dokument- oder
+  // Punktedeckel). Derselbe Satz steht auch in `note`; das eigene Feld trägt ihn dorthin, wo die
+  // Fläche die abgeleitete `note` zugunsten von `abgeschnitten` ausblendet.
+  ungelesenerRest?: string;
 }
 
 export interface ReasonerStatus {

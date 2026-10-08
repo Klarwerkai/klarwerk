@@ -1823,38 +1823,126 @@ export function chunkForExtract(doc: string, size = EXTRACT_CHUNK_LENGTH): strin
   return chunks;
 }
 
-// Whitespace-normalisierter, case-insensitiver Substring-Check: die Belegstelle muss wirklich
-// im Dokument stehen. Das ist der harte G-2-Gate gegen erfundene/paraphrasierte „Zitate".
-function normalizeForMatch(text: string): string {
-  return text.replace(/\s+/g, " ").trim().toLowerCase();
+// G-2-Gate gegen erfundene/paraphrasierte „Zitate": die Belegstelle muss wirklich im Dokument
+// stehen. R-0157/R-1070 (Nacharbeit 1): der frühere Rückfall auf „nur Buchstaben/Ziffern" warf
+// Vorzeichen und Vergleichszeichen weg und nahm so „-20" für „+20" oder „<" für „<=". Toleriert
+// werden jetzt NUR begründete Textartefakte, die keine Bedeutung tragen:
+//  - Leerraum (Folgen, Umbrüche, geschützte Leerzeichen) gilt als ein Leerzeichen;
+//  - Groß-/Kleinschreibung;
+//  - Silbentrennung am Zeilenende (SCRUM-418, PDF): Buchstabe, Trennstrich, Leerraum MIT
+//    Zeilenumbruch, Kleinbuchstabe — „Dosier-\npumpe" ist „Dosierpumpe"; weiche Trennstriche;
+//  - typografische Ligaturen (ﬁ/ﬂ …) und Anführungszeichen-Varianten.
+// Jedes Zeichen der normalisierten Fassung merkt sich seine Position im Ausgangstext, damit die
+// gefundene Stelle im ORIGINALWORTLAUT zurückgegeben werden kann.
+interface MatchText {
+  text: string;
+  pos: number[]; // pos[i] = Index im Ausgangstext, aus dem text[i] stammt
 }
 
-// SCRUM-418: nur Buchstaben/Ziffern, kleingeschrieben. Fällt Silbentrennung (Dosier-\npumpe),
-// Zeilenumbrüche, Bindestriche und Sonderzeichen aus der PDF-Extraktion weg — genau die
-// Artefakte, an denen echte Zitate sonst am G-2-Gate scheiterten.
-function alnumOnly(text: string): string {
-  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+const WEICHER_TRENNSTRICH = 0xad;
+const TRENNSTRICH = 0x2010;
+const SILBENTRENNUNG = /^-[^\S\n\r]*[\n\r]\s*(?=\p{Ll})/u;
+const ANFUEHRUNG_DOPPELT = /[„“”«»]/u;
+const ANFUEHRUNG_EINFACH = /[‚‘’‹›]/u;
+
+function normalizeForMatch(source: string): MatchText {
+  let text = "";
+  const pos: number[] = [];
+  let i = 0;
+  while (i < source.length) {
+    const cp = source.codePointAt(i) ?? 0;
+    const ch = String.fromCodePoint(cp);
+    if (cp === WEICHER_TRENNSTRICH) {
+      i += ch.length;
+      continue;
+    }
+    if (/\s/u.test(ch)) {
+      let j = i;
+      while (j < source.length && /\s/u.test(source[j] ?? "")) {
+        j += 1;
+      }
+      if (text.length > 0 && j < source.length) {
+        text += " ";
+        pos.push(i);
+      }
+      i = j;
+      continue;
+    }
+    if ((ch === "-" || cp === TRENNSTRICH) && /\p{L}$/u.test(text)) {
+      const trennung = SILBENTRENNUNG.exec(`-${source.slice(i + ch.length)}`);
+      if (trennung) {
+        i += trennung[0].length;
+        continue;
+      }
+    }
+    let norm = ch;
+    if (ANFUEHRUNG_DOPPELT.test(ch)) {
+      norm = '"';
+    } else if (ANFUEHRUNG_EINFACH.test(ch)) {
+      norm = "'";
+    } else if (cp >= 0xfb00 && cp <= 0xfb06) {
+      norm = ch.normalize("NFKC");
+    }
+    norm = norm.toLowerCase();
+    text += norm;
+    for (let k = 0; k < norm.length; k += 1) {
+      pos.push(i);
+    }
+    i += ch.length;
+  }
+  return { text, pos };
+}
+
+// Die Fundstelle darf kein Wort, keine Zahl und kein Vorzeichen anschneiden: „20 Grad" ist kein
+// Beleg aus „-20 Grad", „5 bar" keiner aus „1,5 bar" oder „15 bar", „= 20" keiner aus „<= 20".
+const ZEICHENFOLGE = /[\p{L}\p{N}+\-−±<>=≤≥~≈%‰°]/u;
+const ZIFFER = /\p{N}/u;
+
+function schneidetAn(hay: string, needle: string, at: number): boolean {
+  const first = needle[0] ?? "";
+  const last = needle[needle.length - 1] ?? "";
+  const vor = hay[at - 1] ?? "";
+  const nach = hay[at + needle.length] ?? "";
+  if (ZEICHENFOLGE.test(vor) && ZEICHENFOLGE.test(first)) {
+    return true;
+  }
+  if (ZEICHENFOLGE.test(nach) && ZEICHENFOLGE.test(last)) {
+    return true;
+  }
+  // Dezimal-/Tausendertrenner: „5" aus „1,5" bzw. „1" aus „1,5".
+  if (ZIFFER.test(first) && /[.,]/.test(vor) && ZIFFER.test(hay[at - 2] ?? "")) {
+    return true;
+  }
+  return ZIFFER.test(last) && /[.,]/.test(nach) && ZIFFER.test(hay[at + needle.length + 1] ?? "");
+}
+
+// Liefert die Belegstelle im Originalwortlaut des Dokuments — oder null, wenn sie dort nicht steht.
+export function findExcerptInDocument(excerpt: string, documentText: string): string | null {
+  const needle = normalizeForMatch(excerpt).text;
+  if (needle.length === 0) {
+    return null;
+  }
+  const hay = normalizeForMatch(documentText);
+  let at = hay.text.indexOf(needle);
+  while (at >= 0 && schneidetAn(hay.text, needle, at)) {
+    at = hay.text.indexOf(needle, at + 1);
+  }
+  if (at < 0) {
+    return null;
+  }
+  const start = hay.pos[at] ?? 0;
+  const last = hay.pos[at + needle.length - 1] ?? start;
+  const lastCp = documentText.codePointAt(last) ?? 0;
+  return documentText.slice(start, last + String.fromCodePoint(lastCp).length);
 }
 
 export function excerptFoundInDocument(excerpt: string, documentText: string): boolean {
-  const needle = normalizeForMatch(excerpt);
-  if (needle.length === 0) {
-    return false;
-  }
-  if (normalizeForMatch(documentText).includes(needle)) {
-    return true;
-  }
-  // Toleranter Rückfall gegen PDF-Artefakte (Silbentrennung/Umbrüche/Sonderzeichen).
-  // Mindestlänge 12, damit der lockerere Vergleich keine Zufallstreffer erzeugt.
-  const alnumNeedle = alnumOnly(excerpt);
-  if (alnumNeedle.length < 12) {
-    return false;
-  }
-  return alnumOnly(documentText).includes(alnumNeedle);
+  return findExcerptInDocument(excerpt, documentText) !== null;
 }
 
 // Modell-Antwort → geprüfte Punkteliste. Ehrlichkeit vor Vollständigkeit:
 //  - Punkte ohne Titel ODER ohne im Dokument auffindbare Belegstelle werden VERWORFEN.
+//  - sourceExcerpt ist die GEFUNDENE Stelle im Originalwortlaut, nicht die Fassung des Modells.
 //  - Fehlende summary fällt auf den Titel zurück (keine Erfindung, nur Wiederholung).
 //  - Liste und Feldlängen sind gedeckelt (MAX_EXTRACT_POINTS / MAX_EXCERPT_LENGTH).
 // Wirft bei strukturell unbrauchbarer Antwort (kein JSON) — der Reasoner fällt dann auf den
@@ -1873,10 +1961,12 @@ export function parseExtractResponse(raw: string, documentText: string): Extract
     const rec = entry as Record<string, unknown>;
     const title = String(rec.title ?? "").trim();
     const summary = String(rec.summary ?? "").trim();
-    const sourceExcerpt = String(rec.sourceExcerpt ?? "")
+    const modelExcerpt = String(rec.sourceExcerpt ?? "")
       .trim()
       .slice(0, MAX_EXCERPT_LENGTH);
-    if (title.length === 0 || !excerptFoundInDocument(sourceExcerpt, documentText)) {
+    const sourceExcerpt =
+      title.length === 0 ? null : findExcerptInDocument(modelExcerpt, documentText);
+    if (sourceExcerpt === null) {
       continue; // G-2: kein Punkt ohne echte Belegstelle im Dokument
     }
     points.push({ title, summary: summary || title, sourceExcerpt });
@@ -2280,27 +2370,34 @@ export class ModelProvider implements ReasonerProvider {
       locale === "en"
         ? `Note: only the first ${readLength.toLocaleString("en")} of ${fullDoc.length.toLocaleString("en")} characters were analysed${pointCapReached ? ` (the list reached its limit of ${MAX_EXTRACT_POINTS} points)` : ""} — the rest of the document was not examined.`
         : `Hinweis: Ausgewertet wurden nur die ersten ${readLength.toLocaleString("de")} von ${fullDoc.length.toLocaleString("de")} Zeichen${pointCapReached ? ` (die Liste hat ihre Grenze von ${MAX_EXTRACT_POINTS} Punkten erreicht)` : ""} — der Rest des Dokuments wurde nicht geprüft.`;
+    // Nacharbeit 1: die Verarbeitungswarnung verdrängt den Resthinweis nicht mehr — es sind zwei
+    // verschiedene Tatsachen (Abschnitt nicht sauber verarbeitet / Abschnitt nie gelesen).
+    const processingNote = incomplete
+      ? locale === "en"
+        ? "Note: part of the document could not be fully processed — this list may be incomplete. Every shown point still carries a verified source excerpt."
+        : "Hinweis: Ein Teil des Dokuments konnte nicht vollständig verarbeitet werden — diese Liste ist möglicherweise unvollständig. Jeder angezeigte Punkt trägt weiterhin eine geprüfte Belegstelle."
+      : null;
+    const leadNote =
+      points.length > 0
+        ? processingNote
+        : unread
+          ? locale === "en"
+            ? "No knowledge points with a verifiable source excerpt were found in the analysed part."
+            : "Im ausgewerteten Teil wurden keine Wissenspunkte mit belegbarer Textstelle gefunden."
+          : locale === "en"
+            ? "No knowledge points with a verifiable source excerpt were found in this document."
+            : "In diesem Dokument wurden keine Wissenspunkte mit belegbarer Textstelle gefunden.";
+    const noteParts = [leadNote, unread ? unreadNote : null].filter(
+      (teil): teil is string => teil !== null,
+    );
     return {
       points,
-      note:
-        points.length > 0
-          ? incomplete
-            ? locale === "en"
-              ? "Note: part of the document could not be fully processed — this list may be incomplete. Every shown point still carries a verified source excerpt."
-              : "Hinweis: Ein Teil des Dokuments konnte nicht vollständig verarbeitet werden — diese Liste ist möglicherweise unvollständig. Jeder angezeigte Punkt trägt weiterhin eine geprüfte Belegstelle."
-            : unread
-              ? unreadNote
-              : null
-          : unread
-            ? `${
-                locale === "en"
-                  ? "No knowledge points with a verifiable source excerpt were found in the analysed part."
-                  : "Im ausgewerteten Teil wurden keine Wissenspunkte mit belegbarer Textstelle gefunden."
-              } ${unreadNote}`
-            : locale === "en"
-              ? "No knowledge points with a verifiable source excerpt were found in this document."
-              : "In diesem Dokument wurden keine Wissenspunkte mit belegbarer Textstelle gefunden.",
+      note: noteParts.length > 0 ? noteParts.join(" ") : null,
       demo: false,
+      // Der Resthinweis zusätzlich als eigenes Feld: die Fläche blendet bei belegtem Anbieter-
+      // Abbruch die ABGELEITETE Verarbeitungswarnung aus (JOB 3366), darf dabei aber nicht die
+      // davon unabhängige Tatsache verlieren, dass Teile des Dokuments nie geprüft wurden.
+      ...(unread ? { ungelesenerRest: unreadNote } : {}),
       // JOB 3366: die Meldung des ANBIETERS, getrennt von der abgeleiteten `note` darüber.
       ...abbruchFeld(abbruch),
     };

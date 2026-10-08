@@ -1257,6 +1257,8 @@ export function CaptureArbeitsraum({
   // Er kommt als Serverfeld (`ExtractResult.abgeschnitten`) und wird nie aus der Punkteliste oder
   // der `note` erraten. `null` heißt „nicht gemeldet", nicht „vollständig".
   const [fileAbgeschnitten, setFileAbgeschnitten] = useState<AbbruchBefund | null>(null);
+  // R-0157/R-1070: nie ausgewertete Dokumentteile dieses Laufs (`ExtractResult.ungelesenerRest`).
+  const [fileUngelesen, setFileUngelesen] = useState<string | null>(null);
   const [fileQueue, setFileQueue] = useState<FileDraftQueue | null>(null);
 
   // JOB 3572 Runde 2 (bens Korrekturpflicht 1): DIE EINE FORMEL für den Satz, den ein Fehler dem
@@ -1317,8 +1319,13 @@ export function CaptureArbeitsraum({
   // Die Entscheidung steht HIER und nicht in der Bedingung am Element: der Kasten unten ist Wort
   // für Wort derselbe wie in `BodyExtractPanel.tsx` (bewachte Fremddoppelung, JOB 2476 W1/F1) und
   // bleibt es.
+  // R-0157/R-1070 (Nacharbeit 1): ausgeblendet wird nur die ABGELEITETE Verarbeitungswarnung. Dass
+  // Teile des Dokuments nie gelesen wurden, ist eine eigene Tatsache, die der Anbieter-Hinweis
+  // nicht abdeckt — sie bleibt neben ihm stehen.
   const fileNoteSichtbar =
-    fragmentHinweisSichtbar && filePoints !== null && filePoints.length > 0 ? null : fileNote;
+    fragmentHinweisSichtbar && filePoints !== null && filePoints.length > 0
+      ? fileUngelesen
+      : fileNote;
 
   // FR-I18N-01: Reasoner-Aufrufe folgen der aktuellen UI-Sprache (Quelleninhalt bleibt original).
   const locale = toReasonerLocale(i18n.language);
@@ -1448,6 +1455,7 @@ export function CaptureArbeitsraum({
       // JOB 3366: der Befund gehört zu DIESEM Lauf. Ein Lauf ohne Meldung setzt ihn zurück — der
       // Hinweis eines früheren Laufs neben einer neuen Punkteliste wäre eine Falschaussage.
       setFileAbgeschnitten(r.abgeschnitten ?? null);
+      setFileUngelesen(r.ungelesenerRest ?? null);
     },
     onError: fail,
   });
@@ -1718,6 +1726,7 @@ export function CaptureArbeitsraum({
       setFilePoints(null);
       setFileNote(null);
       setFileAbgeschnitten(null);
+      setFileUngelesen(null);
       setFileQueue(null);
       setFileWholeDraftSaved({
         id: savedDraftId,
@@ -2852,6 +2861,7 @@ export function CaptureArbeitsraum({
     purgeUnselectedRef.current = false;
     setFileNote(null);
     setFileAbgeschnitten(null);
+    setFileUngelesen(null);
     setFileQueue(null);
     setFileWholeDraftSaved(null);
     // LAUF 6 RUNDE 2: ohne Datei gibt es keinen ausstehenden Datei-Anteil mehr.
@@ -4339,6 +4349,7 @@ export function CaptureArbeitsraum({
     setFilePoints(null);
     setFileNote(null);
     setFileAbgeschnitten(null);
+    setFileUngelesen(null);
     setFileQueue(null);
     setFileWholeDraftSaved(null);
     setFileImageUrl(null);

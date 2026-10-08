@@ -2858,6 +2858,9 @@ export interface ExtractResult {
   // Unvollständigkeit aus einem gescheiterten JSON-Parser ab, dieses Feld ist die Meldung des
   // Anbieters selbst. Ist es gesetzt, zeigt die Fläche den belegten Hinweis statt der Ableitung.
   abgeschnitten?: AbbruchBefund;
+  // R-0157/R-1070: nie ausgewertete Dokumentteile. Steht auch in `note`, bleibt aber sichtbar,
+  // wenn die Fläche die abgeleitete `note` wegen `abgeschnitten` ausblendet.
+  ungelesenerRest?: string;
 }
 
 // SCRUM-426: Public-KI-Anreicherung (Modellwissen) — extern/ungeprüft; leer + demo=true ohne Modell.
