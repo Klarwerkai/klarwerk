@@ -146,6 +146,24 @@ describe("R-0326/R-0329 · Belegstelle und Wissensnetz-Einstieg an der gebauten 
   it("K1 · Frage → Antwort → Klick auf den Quellenchip: die zitierte Passage ist im Quelldokument markiert und im Bild", async () => {
     expect(fehler).toBeNull();
     const s = stand as H4Stand;
+    // Dieselbe eine gesetzte Auskunft wie in `h5-funktionsinventar.test.ts` I7 und
+    // `zielbild-h5-fragen.test.ts`: ohne verdrahtetes Modell graut D-AISTATE den Sendeknopf hart aus
+    // (Prüflauf zu ff6019e3: „KI nicht verfügbar", Knopf `disabled`). Gesetzt wird NUR die
+    // VERFÜGBARKEIT; die Antwort, ihre Quellen und der Chip kommen unverändert von der echten App.
+    s.antworten.vorAuslieferung = async (url, body) => {
+      if (url.pathname !== "/api/reasoner/status") return body;
+      try {
+        const echt = JSON.parse(body) as { error?: unknown; tasks?: Record<string, boolean> };
+        if (echt.error !== undefined) return body;
+        return JSON.stringify({
+          ...echt,
+          active: true,
+          tasks: { ...(echt.tasks ?? {}), answer: true },
+        });
+      } catch {
+        return body;
+      }
+    };
     await s.seite.goto(`${ORIGIN}/fragen`, { waitUntil: "load" });
     await s.seite.waitForFunction(
       fn(`() => !!document.querySelector('[data-testid="page-fragen"] form input')`),
@@ -153,9 +171,10 @@ describe("R-0326/R-0329 · Belegstelle und Wissensnetz-Einstieg an der gebauten 
       { timeout: 30_000 },
     );
     // Nur Begriffe, die der Eintrag wirklich trägt (R-0473: alle Fragebegriffe müssen in der Quelle
-    // stehen — sonst wird die Frage vertragsgemäß eine Wissenslücke).
+    // stehen — sonst wird die Frage vertragsgemäß eine Wissenslücke). Dieselbe Bauform wie die
+    // Frage in `h5-funktionsinventar.test.ts` I7; „Profile" und „bevorzugen" stehen in ABSATZ_1.
     await s.seite.click('[data-testid="page-fragen"] form input');
-    await s.seite.keyboard.type("Wie sind Halterungen und Profile auszuführen?");
+    await s.seite.keyboard.type("Welche Profile sind zu bevorzugen?");
     await s.seite.click('[data-testid="page-fragen"] form button[type="submit"]');
     await s.seite.waitForFunction(
       fn(

@@ -2817,7 +2817,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // gleichherkünftige Links, keine CSP-, Rechte- oder Manifeständerung, kein neuer
     // Wörterbuchschlüssel, kein Sideload. Der Wert unten ist ein PLATZHALTER; der Prüflauf meldet
     // den Ist-Wert als „Received", er wird danach gemessen übernommen.
-    const PIN = "aefb62af8774839c5001c2d0a33d2b0aa10013544a3aeeaec647487277f30054";
+    // NACHARBEIT 12: PIN BEWUSST AKTUALISIERT (Platzhalter aefb62af… -> 7c842a83…). Im Prüflauf zu
+    // Kandidat ff6019e3 GEMESSEN („Received", HISTORIE/nacharbeit-12/PRUEFUNG/
+    // panel-waechter-und-pins.log) und unverändert übernommen; die Panel-Dateien sind seit dieser
+    // Messung unberührt.
+    const PIN = "7c842a839ffb4045620a4fffa665c9de168831725a4e30ed50d3bdaa8c34165d";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
