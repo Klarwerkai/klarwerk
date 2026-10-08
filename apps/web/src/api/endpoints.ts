@@ -50,6 +50,7 @@ import type {
   ExternalResult,
   ExtractResult,
   FeatureFlags,
+  Fragekontext,
   Gap,
   GapPriority,
   GapSummary,
@@ -73,6 +74,7 @@ import type {
   KnowledgeCheckResult,
   KnowledgeObject,
   KoComment,
+  KoGeltung,
   KoVersionSnapshot,
   KuratierteKanteAnsicht,
   KuratierteKanten,
@@ -354,6 +356,8 @@ export type KoAction =
   | { action: "tags"; tags: string[]; expectedMetadataRevision?: number }
   // R-0431 (K2): das Fachgebiet setzen/ändern; leer entfernt die Angabe (ko-routes.ts `domain`).
   | { action: "domain"; domain: string }
+  // R-1632 / R-1633: die Geltung setzen; `null` entfernt sie (ko-routes.ts `geltung`).
+  | { action: "geltung"; geltung: KoGeltung | null }
   // SCRUM-415: Vertraulichkeitsstufe setzen/ändern (mit Audit).
   | { action: "confidentiality"; level: Confidentiality }
   | {
@@ -884,11 +888,18 @@ export const endpoints = {
     // FR-I18N-01: aktuelle UI-Sprache mitsenden (Default serverseitig "de").
     // R-0348: `thread` = die vorangegangenen Fragen der Fragestrecke (lib/gespraechsfaden.ts).
     // Ohne Faden bleibt der Körper wie bisher.
-    ask: (question: string, locale?: ReasonerLocale, thread?: readonly string[]) =>
+    // R-1633: `fragekontext` = Werk/Schicht/Rolle des Fragenden; ohne Angabe bleibt der Körper.
+    ask: (
+      question: string,
+      locale?: ReasonerLocale,
+      thread?: readonly string[],
+      fragekontext?: Fragekontext,
+    ) =>
       api.post<AskResponse>("/ask", {
         question,
         ...(locale ? { locale } : {}),
         ...(thread && thread.length > 0 ? { thread } : {}),
+        ...(fragekontext ? { fragekontext } : {}),
       }),
     // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang
     // zurück — ohne gültigen, dieses KO belegenden Receipt antwortet der Server 403.
