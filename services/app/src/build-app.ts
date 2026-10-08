@@ -45,14 +45,17 @@ import {
   validateDraftPayloadShape,
 } from "../../capture";
 import {
+  type ConflictMemoryRepo,
   type ConflictRepo,
   ConflictService,
+  InMemoryConflictMemoryRepo,
   InMemoryConflictRepo,
   InMemoryOverlapRepo,
   InMemoryOverlapSettingsRepo,
   type OverlapRepo,
   OverlapService,
   type OverlapSettingsRepo,
+  PgConflictMemoryRepo,
   PgConflictRepo,
   PgOverlapRepo,
   PgOverlapSettingsRepo,
@@ -343,6 +346,7 @@ import { lifecycleRoutes } from "./routes/lifecycle-routes";
 import { livewallRoutes } from "./routes/livewall-routes";
 import { lmsExportRoutes } from "./routes/lms-export-routes";
 import { managementRoutes } from "./routes/management-routes";
+import { mcpRoutes } from "./routes/mcp-routes";
 import { mediaRoutes } from "./routes/media-routes";
 import { modelRunRoutes } from "./routes/model-runs-routes";
 import { notificationsRoutes } from "./routes/notifications-routes";
@@ -623,6 +627,8 @@ export interface AppRepos {
   ratings: RatingRepo;
   assignments: AssignmentRepo;
   conflictsRepo: ConflictRepo;
+  // Aufnahme 20260922 · Prüfung-Gedächtnis (R-1103/R-1105): gemerkte Textstände je Paar.
+  conflictMemory: ConflictMemoryRepo;
   // Berater-Konzept Duplikate 04.07. (Stufe D3b): Persistenz der Überschneidungs-Einträge.
   overlapRepo: OverlapRepo;
   // Pedi 04.07.: persistierte Anzeige-Schwelle der Duplikat-Erkennung (Admin-Einstellung).
@@ -1155,6 +1161,7 @@ export function assembleServices(
     repo: repos.conflictsRepo,
     audit,
     currentVersion: koVersion,
+    memory: repos.conflictMemory,
   });
   // JOB 3071: die papierkorbfähige Auskunft „hat der Autor seinen eigenen Beitrag zurückgezogen?".
   // Genau wie `koVersion` ein Funktions-Port und keine Modulkante: `services/conflicts` darf
@@ -1529,7 +1536,11 @@ export function assembleServices(
       // vertrauliche Medien per Konstruktion (rejectsConfidential), analog cappedCloud beim Reasoner.
       // SCRUM-502 R8: gecappter Cloud-Transkriber aus der Factory (Egress-Wächter zwingend; roher
       // Client + Credential modul-intern, hier nicht erreichbar). Ohne Schlüssel → undefined (inaktiv).
-      transcriber: createCappedTranscriberFromEnv(),
+      // gesamt-ki-freigaberegeln (Ben Nacharbeit 2): der Chokepoint fragt dieselbe zentrale Freigabe
+      // für Vertrauliches wie der Dienst — entschieden allein im Reasoner.
+      transcriber: createCappedTranscriberFromEnv(process.env, {
+        vertraulichFreigegeben: () => reasoner.vertraulicheAusleitungFreigegeben(),
+      }),
       // SCRUM-521 (WP2, nacht24): KO-Kontext für die Egress-Entscheidung — die Stufen ALLER KOs,
       // die das Objekt als Anhang tragen (restriktivste gewinnt im Service; ein „intern"
       // hochgeladenes Medium an einem vertraulichen KO bleibt vertraulich). Injizierte Auflösung,
@@ -1542,6 +1553,13 @@ export function assembleServices(
         (await ko.list({}))
           .filter((k) => (k.attachments ?? []).some((a) => a.objectId === objectId))
           .map((k) => k.confidentiality ?? "intern"),
+      // Auftrag gesamt-ki-freigaberegeln: die zentrale Adminfreigabe gilt auch für die
+      // Transkription. Durchgereicht wird die Lesart des Kerns, Zeichen für Zeichen wie für Klara
+      // (Policyquelle des `KlaraSessionService` unten) — frisch je Analyse, eine Rücknahme wirkt
+      // ohne Neustart. Entschieden wird weiter allein in `Reasoner.oeffentlicheKiErlaubt`.
+      zentralFreigegeben: () =>
+        reasoner.configStatus().taskConfig.kiFreigabe?.oeffentlicheKi === true,
+      vertraulichFreigegeben: () => reasoner.vertraulicheAusleitungFreigegeben(),
     }),
     // SCRUM-165: read-only ModelRun-Sicht über dasselbe Protokoll-Repo wie der Reasoner.
     modelRuns: new ModelRunService({
@@ -1584,6 +1602,7 @@ export function inMemoryRepos(): AppRepos {
     ratings: new InMemoryRatingRepo(),
     assignments: new InMemoryAssignmentRepo(),
     conflictsRepo: new InMemoryConflictRepo(),
+    conflictMemory: new InMemoryConflictMemoryRepo(),
     overlapRepo: new InMemoryOverlapRepo(),
     overlapSettings: new InMemoryOverlapSettingsRepo(),
     managementProfiles: new InMemoryManagementProfileRepo(),
@@ -1658,6 +1677,7 @@ export function buildPgServices(rohPool: Pool): AppServices {
       ratings: new PgRatingRepo(pool),
       assignments: new PgAssignmentRepo(pool),
       conflictsRepo: new PgConflictRepo(pool),
+      conflictMemory: new PgConflictMemoryRepo(pool),
       // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge persistent.
       overlapRepo: new PgOverlapRepo(pool),
       // Pedi 04.07.: Anzeige-Schwelle persistent.
@@ -2947,14 +2967,17 @@ export function buildApp(
         // „fehlt" sperren gleich (Pedi 10.09. 21:25: „Im Zweifel gilt: gesperrt"). Hier wird sie
         // nicht ENTSCHIEDEN, sondern DURCHGEREICHT — die Entscheidungsstelle bleibt im Kern, und
         // eine zweite Sperre gibt es auch nach diesem Auftrag nicht. Der zweite Schalter der
-        // Adminfreigabe (vertrauliche Inhalte) bleibt bewusst draussen: der Klara-Resolver erfährt
-        // die Einstufung eines Inhalts nirgends und könnte ihn nicht beantworten; die
-        // Vertraulichkeitsgrenze bleibt, wo sie heute gezogen wird.
+        // Adminfreigabe (vertrauliche Inhalte) geht NICHT an den Resolver — er erfährt die Einstufung
+        // eines Inhalts nirgends —, sondern als `vertraulichFreigegeben` an die Deckungsprüfung des
+        // markierten Dokumenttexts (gesamt-ki-freigaberegeln, Ben Nacharbeit 2).
         //
         // ES IST DIESELBE FRISCHE LESUNG wie alles andere hier oben (`configStatus()` je Zugriff):
         // eine Rücknahme der Freigabe wirkt ohne Neustart, und sie entwertet laufende Zustimmungen,
         // weil das Feld in `klaraPolicyVersion` eingeht.
         zentralFreigegeben: config.taskConfig.kiFreigabe?.oeffentlicheKi === true,
+        // gesamt-ki-freigaberegeln (Ben Nacharbeit 2): die zweite Adminfreigabe für den markierten
+        // Dokumenttext — die Entscheidung des Kerns, frisch je Zugriff, nicht nachgerechnet.
+        vertraulichFreigegeben: services.reasoner.vertraulicheAusleitungFreigegeben(),
         effectiveAnswerProvider: config.effectiveProvider.answer ?? "deterministic",
         cloudConfigured: gewaehlterAnbieter
           ? config.cloudProviders[gewaehlterAnbieter].configured
@@ -3483,6 +3506,9 @@ export function buildApp(
           new Set(
             (await services.spaces.aktuelle()).filter((s) => s.zugang === "alle").map((s) => s.id),
           ),
+        // R-1649: der abweichende Weg aus „nicht hilfreich" wird ein gewöhnlicher Entwurf —
+        // derselbe Anlageweg wie POST /api/drafts, kein zweiter.
+        alternativeAlsEntwurf: (entwurf, author) => services.capture.createDraft(entwurf, author),
       },
       guards,
     ),
@@ -3539,6 +3565,14 @@ export function buildApp(
         },
         guards,
       ),
+    );
+  }
+  // Aufnahme gesamt-mcp (R-0713): der MCP-Zugang für fremde KI-Programme — nur, wenn Dienst-
+  // Schlüssel konfiguriert sind, und nur für einen Schlüssel mit `mcp.werkzeug` (Anmeldehook oben).
+  // Werkzeugaufrufe gehen intern mit demselben Schlüssel an die bestehende Route ihres Rechts.
+  if (dienstLage.schluessel.length > 0) {
+    app.register(
+      mcpRoutes({ weiterleiten: (anfrage) => app.inject(anfrage), version: buildVersion() }),
     );
   }
   // SCRUM-470 (S6): Erkennung nach Import-Accept — dasselbe Deps-Bündel wie der Promote-Pfad.
