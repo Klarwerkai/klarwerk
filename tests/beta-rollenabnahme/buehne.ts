@@ -68,6 +68,8 @@ const SCHALTER: Record<string, string> = {
   // Zugangsdaten werden BEWUSST nicht gesetzt: die Abnahme misst das Rechtetor, nicht die Quelle,
   // und ohne Adapter antwortet die Route vor jedem Effekt.
   KLARWERK_SHAREPOINT_IMPORT: "1",
+  // R-0170: dasselbe für die drei Jira-Import-Routen — ohne Zugangsdaten, also 503 vor jedem Effekt.
+  KLARWERK_JIRA_IMPORT: "1",
   KLARWERK_PROVENANCE_ENABLED: "1",
   // Kein Schalter über einer GRUPPE, sondern über einer einzelnen Route — und gemessen an dieser
   // Bühne: `GET /api/analytics/expertise` prüft den Schalter VOR dem Rechtetor
