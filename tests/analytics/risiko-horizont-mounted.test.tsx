@@ -54,9 +54,11 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { endpoints } from "../../apps/web/src/api/endpoints";
+import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { BereichsprofilPflege } from "../../apps/web/src/components/BereichsprofilPflege";
 import { RisikoHorizont } from "../../apps/web/src/components/RisikoHorizont";
 import i18n from "../../apps/web/src/i18n";
+import { ToastViewport } from "../../apps/web/src/shell/ToastViewport";
 import type { KnowledgeObject } from "../../services/knowledge-object";
 import { riskHorizon } from "../../services/management/src/horizon";
 
@@ -76,12 +78,23 @@ async function mount(komponente: typeof RisikoHorizont): Promise<void> {
   document.body.appendChild(container);
   root = createRoot(container);
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // Die App-Shell trägt den Benachrichtigungs-Bus (`ToastProvider` + `ToastViewport`); die
+  // Ruhestandspflege meldet seit R-0953 Erfolg und Fehler darüber — die Vorrichtung trägt ihn mit.
   await act(async () => {
     root.render(
       createElement(
         QueryClientProvider,
         { client: qc },
-        createElement(MemoryRouter, null, createElement(komponente)),
+        createElement(
+          ToastProvider,
+          null,
+          createElement(
+            MemoryRouter,
+            null,
+            createElement(komponente),
+            createElement(ToastViewport),
+          ),
+        ),
       ),
     );
   });
@@ -300,5 +313,50 @@ describe("Pflege der Eingänge (Nacharbeit 3, nur Admin)", () => {
     // Gegenprobe: „kein Eintrag" geht als null hinaus, nicht als 0.
     await waehlen(rosa?.querySelector("select"), "");
     expect(d.setRetirement).toHaveBeenLastCalledWith("u-rosa", null);
+  });
+
+  // R-0953 / R-0956 (Ben, Nacharbeit 2): der Ruhestandshorizont meldet Erfolg und Fehler über den
+  // Benachrichtigungs-Bus; ein gescheitertes Speichern kostet die Auswahl nicht und lässt sich
+  // mit demselben Wert wiederholen.
+  const toastTexte = (): string[] =>
+    [...container.querySelectorAll("output")].map((o) => o.textContent ?? "");
+  const rosaZeile = (): Element | null =>
+    container.querySelector('[data-testid="pflege-ruhestand"][data-person="u-rosa"]');
+  const rosaAuswahl = (): HTMLSelectElement | null => rosaZeile()?.querySelector("select") ?? null;
+
+  it("P2 · Erfolg: kurze Erfolgsmeldung, kein Fehlerblock", async () => {
+    await mount(BereichsprofilPflege);
+    await waehlen(rosaAuswahl(), "24");
+    expect(d.setRetirement).toHaveBeenCalledWith("u-rosa", 24);
+    expect(toastTexte()).toContain(
+      i18n.t("risk.pflege.retirementSaved", { name: "Rosa Beispiel" }),
+    );
+    expect(rosaZeile()?.querySelector('[data-testid="pflege-ruhestand-fehler"]')).toBeNull();
+  });
+
+  it("P3 · Fehler: Meldung im Bus und an der Zeile, Auswahl bleibt, „Erneut versuchen“ speichert denselben Wert", async () => {
+    d.setRetirement.mockImplementationOnce(async () => {
+      throw new Error("Pruefstand: Speichern gestoert");
+    });
+    await mount(BereichsprofilPflege);
+    await waehlen(rosaAuswahl(), "36");
+
+    const fehlertext = i18n.t("risk.pflege.retirementError", { name: "Rosa Beispiel" });
+    expect(toastTexte(), "Fehler erscheint als Einblendung").toContain(fehlertext);
+    const fehler = rosaZeile()?.querySelector('[data-testid="pflege-ruhestand-fehler"]');
+    expect(fehler?.textContent).toContain(fehlertext);
+    // Die Eingabe ist nicht verloren: der Server kennt noch keinen Horizont, die Auswahl zeigt 36.
+    expect(rosaAuswahl()?.value).toBe("36");
+    expect(rosaAuswahl()?.disabled).toBe(false);
+
+    const erneut = rosaZeile()?.querySelector('[data-testid="pflege-ruhestand-erneut"]');
+    expect(erneut?.textContent).toBe(i18n.t("loadstate.error.retry"));
+    await klicken(erneut);
+    expect(d.setRetirement).toHaveBeenCalledTimes(2);
+    expect(d.setRetirement).toHaveBeenLastCalledWith("u-rosa", 36);
+    expect(rosaZeile()?.querySelector('[data-testid="pflege-ruhestand-fehler"]')).toBeNull();
+    expect(toastTexte()).toContain(
+      i18n.t("risk.pflege.retirementSaved", { name: "Rosa Beispiel" }),
+    );
   });
 });

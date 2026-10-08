@@ -4081,6 +4081,9 @@ const en: typeof de = {
   "risk.pflege.retirementTitle": "Retirement horizons",
   "risk.pflege.retirement": "Retirement horizon of {{name}}",
   "risk.pflege.noRetirement": "No retirement entered",
+  "risk.pflege.retirementSaved": "Retirement horizon of {{name}} saved.",
+  "risk.pflege.retirementError":
+    "Retirement horizon of {{name}} was not saved. Your selection stays — “Try again” saves it once more.",
   "risk.busLegendSingle": "red = single source (failure risk)",
   "risk.busLegendOk": "green = multiple sources",
   "risk.help.summary":
@@ -4289,6 +4292,8 @@ const en: typeof de = {
     "No knowledge to look up yet. Capture the first contribution — after review it becomes usable here, source-bound.",
   "story.surface.validation.lead":
     "Nothing to review. Captured knowledge appears here for team review before it counts as secured and can be used.",
+  "story.surface.risk.lead":
+    "No risk data yet — this needs captured knowledge per area. Capture or import experience knowledge; this list then shows where it depends on a single person.",
   "adm.auditTitle": "Recent user/auth activity (audit)",
   "adm.auditEmpty": "No user audit entries.",
   "prof.kicker": "Account",

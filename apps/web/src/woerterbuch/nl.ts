@@ -4070,6 +4070,9 @@ const nl: typeof de = {
   "risk.pflege.retirementTitle": "Pensioenhorizonten",
   "risk.pflege.retirement": "Pensioenhorizon van {{name}}",
   "risk.pflege.noRetirement": "Geen pensioen ingevoerd",
+  "risk.pflege.retirementSaved": "Pensioenhorizon van {{name}} opgeslagen.",
+  "risk.pflege.retirementError":
+    "Pensioenhorizon van {{name}} is niet opgeslagen. Je keuze blijft staan — „Opnieuw proberen” slaat die nog een keer op.",
   "risk.busLegendSingle": "rood = enkele bron (uitvalrisico)",
   "risk.busLegendOk": "groen = meerdere bronnen",
   "risk.help.summary":
@@ -4280,6 +4283,8 @@ const nl: typeof de = {
     "Nog geen kennis om op te zoeken. Leg de eerste bijdrage vast — na de controle is die hier met bronvermelding bruikbaar.",
   "story.surface.validation.lead":
     "Niets te controleren. Vastgelegde kennis verschijnt hier voor teamcontrole, voordat ze als geborgd geldt en gebruikt kan worden.",
+  "story.surface.risk.lead":
+    "Nog geen risicogegevens — daarvoor is vastgelegde kennis per gebied nodig. Leg ervaringskennis vast of importeer die; daarna toont deze lijst waar die van één persoon afhangt.",
   "adm.auditTitle": "Recente gebruikers-/auth-activiteiten (audit)",
   "adm.auditEmpty": "Geen gebruikers-auditvermeldingen.",
   "prof.kicker": "Account",

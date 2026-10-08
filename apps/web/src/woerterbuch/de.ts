@@ -5269,6 +5269,9 @@ const de = {
   "risk.pflege.retirementTitle": "Ruhestandshorizonte",
   "risk.pflege.retirement": "Ruhestandshorizont von {{name}}",
   "risk.pflege.noRetirement": "Kein Ruhestand eingetragen",
+  "risk.pflege.retirementSaved": "Ruhestandshorizont von {{name}} gespeichert.",
+  "risk.pflege.retirementError":
+    "Ruhestandshorizont von {{name}} wurde nicht gespeichert. Deine Auswahl bleibt stehen — „Erneut versuchen“ speichert sie noch einmal.",
   "risk.busLegendSingle": "rot = Einzelquelle (Ausfallrisiko)",
   "risk.busLegendOk": "grün = mehrere Quellen",
   "risk.help.summary":
@@ -5505,6 +5508,8 @@ const de = {
     "Noch kein Wissen zum Nachschlagen. Erfasse den ersten Beitrag — nach der Prüfung wird er hier quellengebunden nutzbar.",
   "story.surface.validation.lead":
     "Nichts zu prüfen. Erfasstes Wissen erscheint hier zur Team-Prüfung, bevor es als gesichert gilt und genutzt werden kann.",
+  "story.surface.risk.lead":
+    "Noch keine Risikodaten — dafür braucht es erfasstes Wissen je Bereich. Erfasse oder importiere Erfahrungswissen; danach zeigt diese Liste, wo es nur an einer Person hängt.",
   "adm.auditTitle": "Letzte Nutzer-/Auth-Aktivitäten (Audit)",
   "adm.auditEmpty": "Keine Nutzer-Audit-Einträge.",
   "prof.kicker": "Konto",

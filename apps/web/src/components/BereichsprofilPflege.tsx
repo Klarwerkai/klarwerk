@@ -21,6 +21,7 @@ import type {
   CategoryProfileInput,
   RetirementHorizon,
 } from "../api/types";
+import { useToast } from "../app/ToastContext";
 import { Button, Card, QueryState, SectionLabel } from "./ui";
 
 const STUFEN: readonly AssessmentLevel[] = ["niedrig", "mittel", "hoch"];
@@ -130,25 +131,59 @@ function RuhestandZeile({
 }): JSX.Element {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const { push } = useToast();
+  const name = person.name || person.id;
+  // R-0953 / R-0956: bis hierher hing die Auswahl allein am Serverwert, und ein gescheitertes
+  // Speichern blieb stumm — die Auswahl sprang kommentarlos auf den alten Wert zurück. Jetzt hält
+  // `gewaehlt` die Eingabe, bis der Server sie bestätigt hat (und die Abfrage den neuen Stand
+  // trägt); scheitert das Speichern, bleibt sie stehen und lässt sich mit demselben Wert wiederholen.
+  // Erfolg und Fehler melden sich zusätzlich über den Benachrichtigungs-Bus.
+  const [gewaehlt, setGewaehlt] = useState<string | null>(null);
   const setzen = useMutation({
     mutationFn: (h: RetirementHorizon | null) => endpoints.management.setRetirement(person.id, h),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["management"] }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["management"] });
+      setGewaehlt(null);
+      push("success", t("risk.pflege.retirementSaved", { name }));
+    },
+    onError: () => {
+      push("error", t("risk.pflege.retirementError", { name }));
+    },
   });
-  const name = person.name || person.id;
+  const wert = gewaehlt ?? (horizont === null ? "" : String(horizont));
   return (
-    <div data-testid="pflege-ruhestand" data-person={person.id} className="flex items-center gap-2">
-      <span className="min-w-0 flex-1 truncate text-[12.5px] text-text">{name}</span>
-      <select
-        aria-label={t("risk.pflege.retirement", { name })}
-        value={horizont === null ? "" : String(horizont)}
-        disabled={setzen.isPending}
-        onChange={(e) => setzen.mutate(horizontAus(e.target.value))}
-        className={SELECT}
-      >
-        <option value="">{t("risk.pflege.noRetirement")}</option>
-        <option value="24">{t("risk.horizon.filter", { months: 24 })}</option>
-        <option value="36">{t("risk.horizon.filter", { months: 36 })}</option>
-      </select>
+    <div data-testid="pflege-ruhestand" data-person={person.id} className="space-y-1">
+      <div className="flex items-center gap-2">
+        <span className="min-w-0 flex-1 truncate text-[12.5px] text-text">{name}</span>
+        <select
+          aria-label={t("risk.pflege.retirement", { name })}
+          value={wert}
+          disabled={setzen.isPending}
+          onChange={(e) => {
+            setGewaehlt(e.target.value);
+            setzen.mutate(horizontAus(e.target.value));
+          }}
+          className={SELECT}
+        >
+          <option value="">{t("risk.pflege.noRetirement")}</option>
+          <option value="24">{t("risk.horizon.filter", { months: 24 })}</option>
+          <option value="36">{t("risk.horizon.filter", { months: 36 })}</option>
+        </select>
+      </div>
+      {setzen.isError && gewaehlt !== null ? (
+        <div
+          data-testid="pflege-ruhestand-fehler"
+          className="flex flex-wrap items-center gap-2 text-[11.5px] text-trust-crit-text"
+        >
+          <span className="flex-1">{t("risk.pflege.retirementError", { name })}</span>
+          <Button
+            data-testid="pflege-ruhestand-erneut"
+            onClick={() => setzen.mutate(horizontAus(gewaehlt))}
+          >
+            {t("loadstate.error.retry")}
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

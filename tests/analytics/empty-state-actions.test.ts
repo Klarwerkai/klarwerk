@@ -26,6 +26,14 @@ describe("SCRUM-181: emptyStateActions", () => {
     expect(a).toEqual(["empty.cta.capture", "empty.cta.tasks"]);
   });
 
+  // R-0956: die leere Risikoliste nennt Erfassen (und mit Stufe 2 den Import) als nächsten Schritt.
+  it("risk (admin, stufe2) bietet Erfassen/Import; ohne Stufe 2 nur Erfassen", () => {
+    const withS2 = emptyStateActions("risk", "admin", true).map((x) => x.labelKey);
+    const noS2 = emptyStateActions("risk", "admin", false).map((x) => x.labelKey);
+    expect(withS2).toEqual(["empty.cta.capture", "empty.cta.import"]);
+    expect(noS2).toEqual(["empty.cta.capture"]);
+  });
+
   it("liefert echte Navigationspfade (kein Fremd-Link)", () => {
     for (const action of emptyStateActions("tasks", "admin", true)) {
       expect(action.to.startsWith("/")).toBe(true);

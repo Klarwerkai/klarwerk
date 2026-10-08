@@ -17,6 +17,7 @@ import type { GapPriority } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
 import { BereichsprofilPflege } from "../components/BereichsprofilPflege";
+import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { RisikoHorizont } from "../components/RisikoHorizont";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
@@ -338,7 +339,12 @@ export function Risk(): JSX.Element {
           <SectionLabel>{t("risk.busfactor")}</SectionLabel>
           <HelpTip title={t("risk.busfactor")} body={t("risk.help.busfactor")} />
         </div>
-        <QueryState query={bus} emptyText={t("risk.busEmpty")}>
+        {/* R-0956: die leere Liste ordnet in den Wissenskreis ein und nennt den nächsten Schritt. */}
+        <QueryState
+          query={bus}
+          emptyText={t("risk.busEmpty")}
+          emptyExtra={<EmptyStateCtas context="risk" />}
+        >
           {(items) => (
             <Card className="space-y-2.5">
               {/* Pedi 05.07.: Legende, damit die Balkenfarbe verständlich ist. */}

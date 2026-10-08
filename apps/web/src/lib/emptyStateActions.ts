@@ -3,7 +3,7 @@
 // Logik (ALL_ITEMS + canSee). So werden nie Aktionen angeboten, die die Rolle gar nicht sehen darf.
 import { ALL_ITEMS, type Role, canSee } from "../app/navigation";
 
-export type EmptyStateContext = "start" | "tasks" | "validation" | "library";
+export type EmptyStateContext = "start" | "tasks" | "validation" | "library" | "risk";
 
 export interface EmptyStateAction {
   to: string; // Navigationspfad aus der Nav-Quelle (kein Fremd-Link)
@@ -27,6 +27,12 @@ const CANDIDATES: Record<EmptyStateContext, { navId: string; labelKey: string }[
     { navId: "aufgaben", labelKey: "empty.cta.tasks" },
   ],
   library: [
+    { navId: "erfassen", labelKey: "empty.cta.capture" },
+    { navId: "import", labelKey: "empty.cta.import" },
+  ],
+  // R-0956: die leere Bus-Faktor-Liste der Risikoseite. Sie bleibt leer, solange kein Bereich
+  // erfasstes Wissen trägt — der nächste sinnvolle Schritt ist also Erfassen oder Import.
+  risk: [
     { navId: "erfassen", labelKey: "empty.cta.capture" },
     { navId: "import", labelKey: "empty.cta.import" },
   ],
