@@ -203,7 +203,10 @@ describe("Vorführweg · jeder Link öffnet die richtige Stelle", () => {
       for (const sprache of SPRACHEN) {
         const a = el.querySelector(`a.ansicht.${sprache}`);
         expect(a, `${kennung}: keine Bildschirmansicht (${sprache})`).not.toBeNull();
-        const bild = `/demonstration/vorfuehrweg-ansichten/${kennung}.png`;
+        // Deutsch `<station>.png`, Englisch `<station>-en.png` — derselbe Name, den
+        // `ansichten-chromium.test.ts` für die Aufnahme in dieser Sprache vergibt.
+        const endung = sprache === "de" ? ".png" : "-en.png";
+        const bild = `/demonstration/vorfuehrweg-ansichten/${kennung}${endung}`;
         expect(a?.getAttribute("href")).toBe(bild);
         expect(a?.getAttribute("target")).toBe(FENSTER);
       }

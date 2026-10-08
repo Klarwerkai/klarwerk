@@ -13,8 +13,8 @@
        ZWEITER BILDSCHIRM: jeder Stationslink zielt auf das benannte Fenster
        `klarwerk-vorfuehrung`. Der erste Klick öffnet es, jeder weitere lädt in DASSELBE Fenster —
        diese Seite bleibt stehen.
-       BILDSCHIRMANSICHTEN: je Station ein Link auf `vorfuehrweg-ansichten/<station>.png`, ebenfalls
-       im Vorführfenster. Die Bilder erzeugt tests/vorfuehrweg/ansichten-chromium.test.ts an der
+       BILDSCHIRMANSICHTEN: je Station ein Link auf `vorfuehrweg-ansichten/<station>.png` (Deutsch)
+       bzw. `<station>-en.png` (Englisch), ebenfalls im Vorführfenster. Die Bilder erzeugt tests/vorfuehrweg/ansichten-chromium.test.ts an der
        gebauten Fassung mit geladenen Demodaten.
        Gemessen in tests/vorfuehrweg/ und tests-smoke/vorfuehrweg-browser.spec.ts. -->
   <style>
@@ -179,7 +179,7 @@
 <a class="oeffnen de" lang="de" data-ziel="demodaten" href="/admin?bereich=vorfuehrdaten&amp;detail=demo" target="klarwerk-vorfuehrung">Station öffnen →</a>
 <a class="oeffnen en" lang="en" data-ziel="demodaten" href="/admin?bereich=vorfuehrdaten&amp;detail=demo" target="klarwerk-vorfuehrung">Open station →</a>
 <a class="ansicht de" lang="de" href="/demonstration/vorfuehrweg-ansichten/demodaten.png" target="klarwerk-vorfuehrung">Bildschirmansicht</a>
-<a class="ansicht en" lang="en" href="/demonstration/vorfuehrweg-ansichten/demodaten.png" target="klarwerk-vorfuehrung">Screen view</a>
+<a class="ansicht en" lang="en" href="/demonstration/vorfuehrweg-ansichten/demodaten-en.png" target="klarwerk-vorfuehrung">Screen view</a>
 <div class="blaettern">
 <a href="#uebersicht-titel"><span class="de" lang="de">↑ Stationen</span><span class="en" lang="en">↑ Stations</span></a>
 <a href="#station-1"><span class="de" lang="de">Station 1 →</span><span class="en" lang="en">Station 1 →</span></a>
@@ -221,7 +221,7 @@
 <a class="oeffnen de" lang="de" data-ziel="start" href="/start" target="klarwerk-vorfuehrung">Station öffnen →</a>
 <a class="oeffnen en" lang="en" data-ziel="start" href="/start" target="klarwerk-vorfuehrung">Open station →</a>
 <a class="ansicht de" lang="de" href="/demonstration/vorfuehrweg-ansichten/start.png" target="klarwerk-vorfuehrung">Bildschirmansicht</a>
-<a class="ansicht en" lang="en" href="/demonstration/vorfuehrweg-ansichten/start.png" target="klarwerk-vorfuehrung">Screen view</a>
+<a class="ansicht en" lang="en" href="/demonstration/vorfuehrweg-ansichten/start-en.png" target="klarwerk-vorfuehrung">Screen view</a>
 <div class="blaettern">
 <a href="#station-0"><span class="de" lang="de">← Vorbereitung</span><span class="en" lang="en">← Preparation</span></a>
 <a href="#station-2"><span class="de" lang="de">Station 2 →</span><span class="en" lang="en">Station 2 →</span></a>
@@ -263,7 +263,7 @@
 <a class="oeffnen de" lang="de" data-ziel="bibliothek" href="/bibliothek?q=Lieferanten" target="klarwerk-vorfuehrung">Station öffnen →</a>
 <a class="oeffnen en" lang="en" data-ziel="bibliothek" href="/bibliothek?q=Suppliers" target="klarwerk-vorfuehrung">Open station →</a>
 <a class="ansicht de" lang="de" href="/demonstration/vorfuehrweg-ansichten/bibliothek.png" target="klarwerk-vorfuehrung">Bildschirmansicht</a>
-<a class="ansicht en" lang="en" href="/demonstration/vorfuehrweg-ansichten/bibliothek.png" target="klarwerk-vorfuehrung">Screen view</a>
+<a class="ansicht en" lang="en" href="/demonstration/vorfuehrweg-ansichten/bibliothek-en.png" target="klarwerk-vorfuehrung">Screen view</a>
 <div class="blaettern">
 <a href="#station-1"><span class="de" lang="de">← Station 1</span><span class="en" lang="en">← Station 1</span></a>
 <a href="#station-3"><span class="de" lang="de">Station 3 →</span><span class="en" lang="en">Station 3 →</span></a>
@@ -305,7 +305,7 @@
 <a class="oeffnen de" lang="de" data-ziel="fragen" href="/fragen?q=Wie%20oft%20muss%20Filter%20F3%20gepr%C3%BCft%20werden%3F" target="klarwerk-vorfuehrung">Station öffnen →</a>
 <a class="oeffnen en" lang="en" data-ziel="fragen" href="/fragen?q=How%20often%20does%20filter%20F3%20have%20to%20be%20checked%3F" target="klarwerk-vorfuehrung">Open station →</a>
 <a class="ansicht de" lang="de" href="/demonstration/vorfuehrweg-ansichten/fragen.png" target="klarwerk-vorfuehrung">Bildschirmansicht</a>
-<a class="ansicht en" lang="en" href="/demonstration/vorfuehrweg-ansichten/fragen.png" target="klarwerk-vorfuehrung">Screen view</a>
+<a class="ansicht en" lang="en" href="/demonstration/vorfuehrweg-ansichten/fragen-en.png" target="klarwerk-vorfuehrung">Screen view</a>
 <div class="blaettern">
 <a href="#station-2"><span class="de" lang="de">← Station 2</span><span class="en" lang="en">← Station 2</span></a>
 <a href="#station-4"><span class="de" lang="de">Station 4 →</span><span class="en" lang="en">Station 4 →</span></a>
@@ -347,7 +347,7 @@
 <a class="oeffnen de" lang="de" data-ziel="lagerfall" href="/fragen?q=Woran%20erkenne%20ich%2C%20dass%20das%20Hauptlager%20der%20Presse%203%20getauscht%20werden%20muss%3F" target="klarwerk-vorfuehrung">Station öffnen →</a>
 <a class="oeffnen en" lang="en" data-ziel="lagerfall" href="/fragen?q=How%20can%20I%20tell%20that%20the%20main%20bearing%20of%20press%203%20must%20be%20replaced%3F" target="klarwerk-vorfuehrung">Open station →</a>
 <a class="ansicht de" lang="de" href="/demonstration/vorfuehrweg-ansichten/lagerfall.png" target="klarwerk-vorfuehrung">Bildschirmansicht</a>
-<a class="ansicht en" lang="en" href="/demonstration/vorfuehrweg-ansichten/lagerfall.png" target="klarwerk-vorfuehrung">Screen view</a>
+<a class="ansicht en" lang="en" href="/demonstration/vorfuehrweg-ansichten/lagerfall-en.png" target="klarwerk-vorfuehrung">Screen view</a>
 <div class="blaettern">
 <a href="#station-3"><span class="de" lang="de">← Station 3</span><span class="en" lang="en">← Station 3</span></a>
 <a href="#station-5"><span class="de" lang="de">Station 5 →</span><span class="en" lang="en">Station 5 →</span></a>
@@ -389,7 +389,7 @@
 <a class="oeffnen de" lang="de" data-ziel="schweissnaht" href="/bibliothek?q=Schwei%C3%9Fnaht" target="klarwerk-vorfuehrung">Station öffnen →</a>
 <a class="oeffnen en" lang="en" data-ziel="schweissnaht" href="/bibliothek?q=Weld%20seam" target="klarwerk-vorfuehrung">Open station →</a>
 <a class="ansicht de" lang="de" href="/demonstration/vorfuehrweg-ansichten/schweissnaht.png" target="klarwerk-vorfuehrung">Bildschirmansicht</a>
-<a class="ansicht en" lang="en" href="/demonstration/vorfuehrweg-ansichten/schweissnaht.png" target="klarwerk-vorfuehrung">Screen view</a>
+<a class="ansicht en" lang="en" href="/demonstration/vorfuehrweg-ansichten/schweissnaht-en.png" target="klarwerk-vorfuehrung">Screen view</a>
 <div class="blaettern">
 <a href="#station-4"><span class="de" lang="de">← Station 4</span><span class="en" lang="en">← Station 4</span></a>
 <a href="#station-6"><span class="de" lang="de">Station 6 →</span><span class="en" lang="en">Station 6 →</span></a>
@@ -431,7 +431,7 @@
 <a class="oeffnen de" lang="de" data-ziel="erfassen" href="/erfassen" target="klarwerk-vorfuehrung">Station öffnen →</a>
 <a class="oeffnen en" lang="en" data-ziel="erfassen" href="/erfassen" target="klarwerk-vorfuehrung">Open station →</a>
 <a class="ansicht de" lang="de" href="/demonstration/vorfuehrweg-ansichten/erfassen.png" target="klarwerk-vorfuehrung">Bildschirmansicht</a>
-<a class="ansicht en" lang="en" href="/demonstration/vorfuehrweg-ansichten/erfassen.png" target="klarwerk-vorfuehrung">Screen view</a>
+<a class="ansicht en" lang="en" href="/demonstration/vorfuehrweg-ansichten/erfassen-en.png" target="klarwerk-vorfuehrung">Screen view</a>
 <div class="blaettern">
 <a href="#station-5"><span class="de" lang="de">← Station 5</span><span class="en" lang="en">← Station 5</span></a>
 <a href="#station-7"><span class="de" lang="de">Station 7 →</span><span class="en" lang="en">Station 7 →</span></a>
@@ -473,7 +473,7 @@
 <a class="oeffnen de" lang="de" data-ziel="validierung" href="/validierung" target="klarwerk-vorfuehrung">Station öffnen →</a>
 <a class="oeffnen en" lang="en" data-ziel="validierung" href="/validierung" target="klarwerk-vorfuehrung">Open station →</a>
 <a class="ansicht de" lang="de" href="/demonstration/vorfuehrweg-ansichten/validierung.png" target="klarwerk-vorfuehrung">Bildschirmansicht</a>
-<a class="ansicht en" lang="en" href="/demonstration/vorfuehrweg-ansichten/validierung.png" target="klarwerk-vorfuehrung">Screen view</a>
+<a class="ansicht en" lang="en" href="/demonstration/vorfuehrweg-ansichten/validierung-en.png" target="klarwerk-vorfuehrung">Screen view</a>
 <div class="blaettern">
 <a href="#station-6"><span class="de" lang="de">← Station 6</span><span class="en" lang="en">← Station 6</span></a>
 <a href="#station-8"><span class="de" lang="de">Station 8 →</span><span class="en" lang="en">Station 8 →</span></a>
@@ -515,7 +515,7 @@
 <a class="oeffnen de" lang="de" data-ziel="konflikte" href="/konflikte" target="klarwerk-vorfuehrung">Station öffnen →</a>
 <a class="oeffnen en" lang="en" data-ziel="konflikte" href="/konflikte" target="klarwerk-vorfuehrung">Open station →</a>
 <a class="ansicht de" lang="de" href="/demonstration/vorfuehrweg-ansichten/konflikte.png" target="klarwerk-vorfuehrung">Bildschirmansicht</a>
-<a class="ansicht en" lang="en" href="/demonstration/vorfuehrweg-ansichten/konflikte.png" target="klarwerk-vorfuehrung">Screen view</a>
+<a class="ansicht en" lang="en" href="/demonstration/vorfuehrweg-ansichten/konflikte-en.png" target="klarwerk-vorfuehrung">Screen view</a>
 <div class="blaettern">
 <a href="#station-7"><span class="de" lang="de">← Station 7</span><span class="en" lang="en">← Station 7</span></a>
 <a href="#station-9"><span class="de" lang="de">Station 9 →</span><span class="en" lang="en">Station 9 →</span></a>
@@ -557,7 +557,7 @@
 <a class="oeffnen de" lang="de" data-ziel="importwege" href="/demonstration/importwege.html" target="klarwerk-vorfuehrung">Station öffnen →</a>
 <a class="oeffnen en" lang="en" data-ziel="importwege" href="/demonstration/importwege.html" target="klarwerk-vorfuehrung">Open station →</a>
 <a class="ansicht de" lang="de" href="/demonstration/vorfuehrweg-ansichten/importwege.png" target="klarwerk-vorfuehrung">Bildschirmansicht</a>
-<a class="ansicht en" lang="en" href="/demonstration/vorfuehrweg-ansichten/importwege.png" target="klarwerk-vorfuehrung">Screen view</a>
+<a class="ansicht en" lang="en" href="/demonstration/vorfuehrweg-ansichten/importwege-en.png" target="klarwerk-vorfuehrung">Screen view</a>
 <div class="blaettern">
 <a href="#station-8"><span class="de" lang="de">← Station 8</span><span class="en" lang="en">← Station 8</span></a>
 <a href="#uebersicht-titel"><span class="de" lang="de">↑ Stationen</span><span class="en" lang="en">↑ Stations</span></a>
