@@ -563,6 +563,9 @@ export interface KnowledgeObject {
   // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet, unabhängig von der Kategorie (Spiegel von
   // services/knowledge-object/src/types.ts). Fehlt = kein Fachgebiet angegeben, nichts abgeleitet.
   domain?: string;
+  // R-1632 / R-1633: wo dieser Punkt gilt (Spiegel von services/knowledge-object/src/geltung.ts).
+  // Fehlt = keine Geltung angegeben, nichts abgeleitet.
+  geltung?: KoGeltung;
   tags: string[];
   confidence: number;
   trust: number;
@@ -1916,6 +1919,35 @@ export interface AskResponse {
   // JOB 2626 D1: nur bei Nicht-Antwort UND nur auf Wegen mit Betrachterfilter vorhanden; ein
   // älterer Server sendet das Feld nicht — die Fläche fällt dann auf die generische Leermeldung.
   verschlossen?: VerschlossenHinweis[];
+  // R-1633: nur wenn ein Fragekontext mitgeschickt wurde — wofür gewichtet wurde und je Quelle
+  // ihre Geltung und Passung (Spiegel von `AskGeltungsauskunft`, services/ask/src/service.ts).
+  geltung?: AskGeltungsauskunft;
+}
+
+// ================================================================================================
+// R-1632 / R-1633 (gesamt-standortwissen) — Spiegel von services/knowledge-object/src/geltung.ts.
+// ================================================================================================
+export type GeltungsEbene = "konzern" | "werk" | "schicht";
+export interface KoGeltung {
+  ebene: GeltungsEbene;
+  werk?: string;
+  schicht?: string;
+  rolle?: string;
+}
+export interface Fragekontext {
+  werk?: string;
+  schicht?: string;
+  rolle?: string;
+}
+export type GeltungsPassung =
+  | "eigene_schicht"
+  | "eigenes_werk"
+  | "konzern"
+  | "unbestimmt"
+  | "andere";
+export interface AskGeltungsauskunft {
+  fragekontext: Fragekontext;
+  quellen: { id: string; passung: GeltungsPassung; geltung?: KoGeltung }[];
 }
 
 // FR-EXT-03 / FE-OUT: Output Factory (SCRUM-117/109).
