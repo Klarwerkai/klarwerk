@@ -26,6 +26,7 @@ interface Rumpf {
 
 const box = vi.hoisted(() => ({
   reset: (): void => {},
+  seed: async (_p: Record<string, unknown>): Promise<string> => "",
   zaehler: { create: 0 },
   liste: async (): Promise<{ id: string; payload: Record<string, unknown> }[]> => [],
   transcribe: [] as Rumpf[],
@@ -55,6 +56,7 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
     box.freigeben = null;
   };
   box.liste = async () => (await svc.listDrafts()) as unknown as { id: string; payload: P }[];
+  box.seed = async (p: P) => (await svc.createDraft(p, "u1")).id;
   const ok = <T,>(v: T) => vi.fn(async () => v);
   return {
     endpoints: {
@@ -342,5 +344,114 @@ describe("R-0104 · Wissen per Aufnahme ins Blatt", () => {
     expect(container.textContent ?? "").not.toContain("Pumpe P2 vor dem Anfahren entlueften.");
     // Und der Knopf ist wieder bereit — die Trennung hat auch den Wartezustand beendet.
     expect(knopf("blatt-werkzeug-aufnehmen").disabled).toBe(false);
+  });
+});
+
+// ================================================================================================
+// Nacharbeit 3 (Bens Befund zu `useSprachaufnahme.ts:126`) — DAS FENSTER VOR DEM VERSAND.
+// ================================================================================================
+// Zwischen dem Ende der Aufnahme und dem Versand liegt das asynchrone Einlesen der Audiodaten
+// (`FileReader`). E3 oben misst nur eine schon VERSANDTE Aufnahme. Hier hält ein Leser-Doppel das
+// Einlesen an, und der Test gibt es selbst frei — erst so steht das Fenster wirklich offen.
+//   E4 Verwerfen während des Einlesens: es geht NICHTS hinaus.
+//   E5 Einen anderen Entwurf (mit eigener Stufe „intern") öffnen während des Einlesens: es geht
+//      NICHTS hinaus — die alte Aufnahme bekommt weder die neue Stufe noch das neue Blatt.
+//   E6 Die Stufe ändert sich nach dem Ende der Aufnahme: gesendet wird die Stufe des VORGANGS.
+//   E7 Kalibrierung: ohne Eingriff geht nach der Freigabe des Lesers genau ein Aufruf hinaus.
+const leser = { offen: [] as Array<() => void> };
+const echterFileReader = globalThis.FileReader;
+
+class AngehaltenerLeser {
+  result: string | null = null;
+  error: Error | null = null;
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  readAsDataURL(_blob: Blob): void {
+    leser.offen.push(() => {
+      this.result = "data:audio/webm;base64,Z2VzcHJvY2hlbg==";
+      this.onload?.();
+    });
+  }
+}
+
+async function leserFreigeben(): Promise<void> {
+  await act(async () => {
+    for (const weiter of leser.offen.splice(0)) {
+      weiter();
+    }
+    await flush();
+  });
+}
+
+describe("R-0104 · Nacharbeit 3: getrennt während des Einlesens heisst nicht gesendet", () => {
+  beforeEach(() => {
+    leser.offen = [];
+    (globalThis as unknown as { FileReader: unknown }).FileReader = AngehaltenerLeser;
+  });
+  afterEach(() => {
+    (globalThis as unknown as { FileReader: unknown }).FileReader = echterFileReader;
+  });
+
+  it("E7 · Kalibrierung: der Leser hält wirklich an — erst seine Freigabe sendet, genau einmal", async () => {
+    await mount("/erfassen");
+    await sprichEin();
+    expect(leser.offen, "das Einlesen wurde nicht angehalten").toHaveLength(1);
+    expect(box.transcribe, "vor der Freigabe des Lesers ging schon etwas hinaus").toEqual([]);
+    await leserFreigeben();
+    expect(box.transcribe).toHaveLength(1);
+    expect(schreibfeld().textContent).toContain("Pumpe P2 vor dem Anfahren entlueften.");
+  });
+
+  it("E4 · „Eingabe verwerfen“ während des Einlesens: es geht nichts hinaus", async () => {
+    await mount("/erfassen");
+    await tippeRumpf("<p>Vorher getippt.</p>");
+    await sprichEin();
+    expect(leser.offen).toHaveLength(1);
+
+    await klick(knopf("blatt-werkzeug-mehr"));
+    await klick(menueEintrag(i18n.t("fd.discardInput")));
+    await leserFreigeben();
+
+    expect(box.transcribe, "die verworfene Aufnahme wurde trotzdem gesendet").toEqual([]);
+    expect(container.textContent ?? "").not.toContain("Pumpe P2 vor dem Anfahren entlueften.");
+    expect(knopf("blatt-werkzeug-aufnehmen").disabled).toBe(false);
+  });
+
+  it("E5 · anderer Entwurf mit eigener Stufe während des Einlesens: nichts geht hinaus", async () => {
+    await box.seed({
+      title: "Zweiter Entwurf",
+      statement: "Fremder Text.",
+      bodyHtml: "<p>Fremder Text.</p>",
+      origin: "frontdoor",
+      confidentiality: "intern",
+    });
+    await mount("/erfassen");
+    await sprichEin();
+    expect(leser.offen).toHaveLength(1);
+
+    await klick(knopf("blatt-werkzeug-mehr"));
+    await klick(menueEintrag(i18n.t("erfassen.mehr.entwuerfe")));
+    await klick(menueEintrag("Zweiter Entwurf"));
+    expect(schreibfeld().textContent, "der andere Entwurf wurde nicht geöffnet").toContain(
+      "Fremder Text.",
+    );
+
+    await leserFreigeben();
+    expect(box.transcribe, "alte Aufnahme ging beim neuen Entwurf hinaus").toEqual([]);
+    expect(schreibfeld().textContent ?? "").not.toContain("Pumpe P2");
+  });
+
+  it("E6 · die Stufe ändert sich nach dem Ende der Aufnahme: gesendet wird die des Vorgangs", async () => {
+    await mount("/erfassen");
+    await sprichEin();
+    expect(leser.offen).toHaveLength(1);
+    // Nach dem Ende der Aufnahme, noch im Einlesen: jetzt wird „intern“ gewählt.
+    await klick(knopf("blatt-werkzeug-vertraulichkeit"));
+    await klick(menueEintrag(i18n.t("conf.level.intern")));
+
+    await leserFreigeben();
+    expect(box.transcribe).toHaveLength(1);
+    // Beim Ende der Aufnahme war keine Stufe gewählt — also reist keine mit (Server: vertraulich).
+    expect(Object.hasOwn(box.transcribe[0] as object, "confidentiality")).toBe(false);
   });
 });

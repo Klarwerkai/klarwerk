@@ -54,6 +54,16 @@ export interface Sprachaufnahme {
   trennen: () => void;
 }
 
+/** Was zu GENAU EINER Aufnahme gehört — festgehalten an ihrem Ende, nie nachgelesen. */
+interface Vorgang {
+  generation: number;
+  vertraulichkeit: string | undefined;
+  sprache: string;
+}
+
+/** Eine getrennte Aufnahme wird nicht gesendet; dieser Abbruch ist kein Fehler für den Menschen. */
+class AufnahmeGetrennt extends Error {}
+
 function alsDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const leser = new FileReader();
@@ -119,19 +129,35 @@ export function useSprachaufnahme(optionen: {
   // Der Abbau der Fläche ist eine Trennung.
   useEffect(() => trennen, [trennen]);
 
-  const verschriftlichen = async (teile: Blob[], mime: string, meine: number): Promise<void> => {
+  // Nacharbeit 3 (Bens Befund zu Zeile 126): EIN VORGANG TRÄGT SEINE EIGENE STUFE. Generation,
+  // Stufe und Sprache werden beim Ende der Aufnahme festgehalten (`onstop`, synchron) und reisen
+  // mit — gelesen wird danach nichts mehr aus den AKTUELLEN Optionen. Wechselt das Blatt während
+  // des Einlesens den Entwurf, kann dessen Stufe die alte Aufnahme deshalb nicht mehr erreichen.
+  // Und die Generation wird VOR dem Versand geprüft, nicht erst danach: eine Aufnahme, die während
+  // des asynchronen FileReader-Laufs getrennt wurde, geht gar nicht erst hinaus.
+  const verschriftlichen = async (teile: Blob[], mime: string, vorgang: Vorgang): Promise<void> => {
+    const meine = vorgang.generation;
     setVerarbeitet(true);
     try {
       const blob = new Blob(teile, { type: basisMime(mime) });
       const base64 = base64AusDataUrl(await alsDataUrl(blob));
+      if (generation.current !== meine) {
+        return;
+      }
       const ergebnis = await verschrifteAufnahme(
         {
           mime,
           base64,
-          sprache: spracheRef.current,
-          vertraulichkeit: optionenRef.current.vertraulichkeit,
+          sprache: vorgang.sprache,
+          vertraulichkeit: vorgang.vertraulichkeit,
         },
-        (rumpf) => endpoints.media.transcribe(rumpf),
+        (rumpf) => {
+          // Letzte Grenze unmittelbar vor dem Netz: getrennt heisst nicht gesendet.
+          if (generation.current !== meine) {
+            return Promise.reject(new AufnahmeGetrennt());
+          }
+          return endpoints.media.transcribe(rumpf);
+        },
       );
       if (generation.current !== meine || ergebnis === null) {
         return;
@@ -229,7 +255,14 @@ export function useSprachaufnahme(optionen: {
       rekorderRef.current = null;
       mikrofonAus();
       setLaeuft(false);
-      void verschriftlichen(teile, rekorder.mimeType || format || "", generation.current);
+      // Hier, synchron im Ende DIESER Aufnahme, wird der Vorgang festgehalten. Eine Trennung vorher
+      // hätte `onstop` schon gelöst; also gehört die Stufe hier noch zu dem Blatt, das aufnahm.
+      const vorgang: Vorgang = {
+        generation: meine,
+        vertraulichkeit: optionenRef.current.vertraulichkeit,
+        sprache: spracheRef.current,
+      };
+      void verschriftlichen(teile, rekorder.mimeType || format || "", vorgang);
     };
     rekorder.start();
     setLaeuft(true);

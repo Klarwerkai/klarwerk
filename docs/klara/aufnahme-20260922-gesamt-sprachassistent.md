@@ -121,3 +121,12 @@ spaces, begriffe, ausgangspruefung, mcp, library-import, duplicates-merge und dr
 Weiterleitungsaufruf nennt. `POST /api/media/transcribe` stand in keiner dieser Fehlerlisten. Die
 Wächter bleiben unverändert. Die neue Tür prüft gezielt
 `tests/sprachweg/transcribe-in-den-registern.test.ts`.
+
+**Nacharbeit 3 (Bens Befund zu `useSprachaufnahme.ts:126`):** Zwischen dem Ende einer Aufnahme
+und ihrem Versand liegt das asynchrone Einlesen (`FileReader`). Bisher wurde die Generation erst
+nach dem Serveraufruf geprüft, und die Stufe wurde erst nach dem Einlesen aus den aktuellen
+Optionen gelesen. Jetzt hält `onstop` Generation, Stufe und Sprache synchron als „Vorgang“ fest.
+Nach dem Einlesen und unmittelbar vor dem Netz wird die Generation geprüft, eine getrennte
+Aufnahme wird verworfen. Gegenproben mit angehaltenem Leser: `aufnahme-im-blatt.test.tsx`, Fälle
+E4 bis E7 (verwerfen, anderer Entwurf mit eigener Stufe, Stufenwechsel nach dem Ende,
+Kalibrierung).
