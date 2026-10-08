@@ -862,6 +862,15 @@ function namensraumUnter(
     return "unlesbar";
   }
   for (const s of modul.quelle.ast.statements) {
+    // Nacharbeit 14: `export default M;` mit einem importierten Namensraum `M`.
+    if (
+      name === "default" &&
+      ts.isExportAssignment(s) &&
+      !s.isExportEquals &&
+      ts.isIdentifier(s.expression)
+    ) {
+      return importierterNamensraum(modul, s.expression.text, leser, tiefe + 1);
+    }
     if (!ts.isExportDeclaration(s)) {
       continue;
     }
@@ -910,6 +919,12 @@ function importierterNamensraum(
   for (const s of modul.quelle.ast.statements) {
     if (!ts.isImportDeclaration(s) || !ts.isStringLiteral(s.moduleSpecifier)) {
       continue;
+    }
+    // Nacharbeit 14 (ben): ein Standardimport (`import M from "./index"`) ist der Export
+    // `default` des Moduls — und der kann ein Namensraum sein (`export { M as default }`).
+    if (s.importClause?.name?.text === lokal) {
+      const ziel = leseModul(modul.datei, s.moduleSpecifier.text, leser);
+      return ziel ? namensraumUnter(ziel, "default", leser, tiefe + 1) : undefined;
     }
     const bindungen = s.importClause?.namedBindings;
     if (

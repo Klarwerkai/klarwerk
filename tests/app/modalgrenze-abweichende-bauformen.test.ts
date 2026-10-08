@@ -1147,6 +1147,40 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     expect(rot).toHaveLength(5);
   });
 
+  it("Nacharbeit 14: ein als Standardexport weitergegebener Namensraum wird aufgelöst", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Weiter.tsx": [
+          "export function Weiter(p: any): JSX.Element { return <div {...p} />; }",
+        ],
+        // bens Fall wörtlich: `export { M as default }` — und dasselbe als `export default N;`.
+        "apps/web/src/components/index.ts": [
+          'import * as M from "./Weiter";',
+          "export { M as default };",
+        ],
+        "apps/web/src/components/standard.ts": [
+          'import * as N from "./Weiter";',
+          "export default N;",
+        ],
+        "apps/web/src/components/Nutzer.tsx": [
+          'import M from "./index";',
+          'import N from "./standard";',
+          "export const a = M.Weiter(JSON.parse('{}'));",
+          "export const b = [N];",
+          "export const c = N.Weiter({ id: 'x' });",
+        ],
+      }),
+    );
+    const an = (stelle: string): string[] => rot.filter((z) => z.includes(stelle));
+    expect(an("components/Nutzer.tsx:3")[0]).toContain("in <Weiter>");
+    expect(an("components/Nutzer.tsx:4")[0]).toContain("der Namensraum N enthält");
+    expect(an("components/Nutzer.tsx:5"), "{ id } trägt nachweislich keine Rolle").toEqual([]);
+    expect(an("components/index.ts:"), "die Weitergabe selbst ist ein Export").toEqual([]);
+    expect(an("components/standard.ts:"), "export default N ist ein Export").toEqual([]);
+    expect(rot).toHaveLength(2);
+  });
+
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
     const { rot } = pruefeModalgrenze(
       legeBaum({
