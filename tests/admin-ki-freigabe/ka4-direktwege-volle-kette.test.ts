@@ -430,3 +430,51 @@ for (const stufe of ["grund", "beide"] as const) {
     });
   });
 }
+
+// ================================================================================================
+// Auftrag gesamt-ki-freigaberegeln · BEN NACHARBEIT 3 — DIE HERKUNFTSSPERRE GILT AUCH MIT BEIDEN
+// FREIGABEN.
+// ================================================================================================
+//
+// Die zweite Adminfreigabe hebt nur die KLASSENSPERRE auf. Ein Entwurfstext OHNE auflösbaren Anker
+// und ein frei gelieferter Text mit Herkunft „ko" bleiben draussen (`sperreAusleitung` in
+// `reasoner-routes.ts`). Ohne Klara-Bindung, damit allein die Herkunft entscheidet. Gegenprobe im
+// selben Aufbau: derselbe VERTRAULICHE Text mit aufgelöstem Anker geht hinaus.
+describe("Ben Nacharbeit 3 · Herkunftssperre mit beiden zentralen Freigaben", () => {
+  async function strukturieren(
+    a: Aufbau,
+    payload: Record<string, unknown>,
+  ): Promise<{ status: number; body: Record<string, unknown> }> {
+    const res = await a.app.inject({
+      method: "POST",
+      url: "/api/reasoner",
+      headers: { authorization: a.gebunden.authorization ?? "" },
+      payload: { task: "structure", text: STRUKTURTEXT, locale: "de", ...payload },
+    });
+    return { status: res.statusCode, body: res.json() as Record<string, unknown> };
+  }
+
+  it("ohne auflösbaren Anker oder mit Herkunft „ko“: null Abrufe — mit Anker geht derselbe vertrauliche Text hinaus", async () => {
+    const a = await aufbauen("beide");
+    for (const payload of [
+      { source: "draft", confidentiality: "vertraulich" },
+      { source: "draft", confidentiality: "vertraulich", draftId: "gibt-es-nicht" },
+      { source: "ko", confidentiality: "intern" },
+    ]) {
+      const s = await strukturieren(a, payload);
+      expect([payload, s.status]).toEqual([payload, 200]);
+      expect([payload, s.body.demo]).toEqual([payload, true]);
+      expect([payload, a.abrufe.length]).toEqual([payload, 0]);
+    }
+    // GEGENPROBE: aufgelöster Anker eines vertraulichen Entwurfs — die Klassensperre hebt die Freigabe.
+    const frei = await strukturieren(a, {
+      source: "draft",
+      confidentiality: "vertraulich",
+      draftId: a.vertraulich,
+    });
+    expect(frei.status).toBe(200);
+    expect(frei.body.title).toBe(STRUKTUR_TITEL);
+    expect(a.abrufe).toHaveLength(1);
+    await a.app.close();
+  });
+});

@@ -673,7 +673,12 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
         //     hebt die zweite zentrale Adminfreigabe auf (Pedi 10.09.: „ohne widersprüchliche
         //     Zusatzsperren"); entschieden im Reasoner, hier nur gefragt.
         // `confidential` bleibt die Vereinigung beider, wie bisher.
-        const ausleitungGesperrt = gebunden && !dokumentZustimmung;
+        // Ben Nacharbeit 3: auch die HERKUNFT sperrt unabhängig von jeder Freigabe — ein Text, der
+        // nicht über einen Client-Text-Weg kommt („draft"/„transient-document"), wird nie
+        // freigegeben (dieselbe Regel wie `classifyProvenanceConfidential` und `reasoner-routes.ts`).
+        const herkunftUnbelegt =
+          request.body.source !== "draft" && request.body.source !== "transient-document";
+        const ausleitungGesperrt = (gebunden && !dokumentZustimmung) || herkunftUnbelegt;
         const eingestuftVertraulich =
           !ausleitungGesperrt &&
           (await resolveCheckedTextConfidential(request.body, deps.ko, dokumentZustimmung));

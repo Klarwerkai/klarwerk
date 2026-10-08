@@ -27,6 +27,8 @@ import { bindeAnbieter, imBindungsrahmen } from "../../services/reasoner/src/anb
 import {
   ConfidentialEgressError,
   cappedModelClient,
+  resetModelSemaphoreForTests,
+  withModelSlot,
 } from "../../services/reasoner/src/model-concurrency";
 import type { ModelClient } from "../../services/reasoner/src/provider-model";
 import { ModelProvider } from "../../services/reasoner/src/provider-model";
@@ -141,6 +143,87 @@ describe("gesamt-ki-freigaberegeln · die zweite Freigabe bis zum Anbieter (geka
       gedeckt: false,
       grund: "kein_consent",
     });
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // V7 · Ben Nacharbeit 3: WIDERRUF WÄHREND DES WARTENS. Ein einziger Modellplatz, belegt; der Lauf
+  // steht also hinter dem Eintrittswächter in der Warteschlange. Dann nimmt der Administrator die
+  // Freigabe zurück, und erst danach wird der Platz frei. Unmittelbar vor der Übertragung wird die
+  // Freigabe FRISCH gefragt — es geht nichts hinaus. Gegenprobe ohne Widerruf: derselbe Ablauf
+  // überträgt.
+  // ----------------------------------------------------------------------------------------------
+  async function mitBelegtemPlatz(
+    zwischendurch: () => Promise<void>,
+    lauf: () => Promise<unknown>,
+  ): Promise<void> {
+    const vorher = process.env.KLARWERK_MODEL_MAX_INFLIGHT;
+    process.env.KLARWERK_MODEL_MAX_INFLIGHT = "1";
+    resetModelSemaphoreForTests();
+    try {
+      let freigeben: () => void = () => {};
+      const belegt = withModelSlot(
+        () =>
+          new Promise<void>((r) => {
+            freigeben = r;
+          }),
+      );
+      const wartend = lauf().catch(() => undefined);
+      // Der Lauf hat Kettenbau und Eintrittswächter hinter sich und wartet auf den Platz.
+      for (let i = 0; i < 5; i += 1) {
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      await zwischendurch();
+      freigeben();
+      await belegt;
+      await wartend;
+    } finally {
+      if (vorher === undefined) {
+        delete process.env.KLARWERK_MODEL_MAX_INFLIGHT;
+      } else {
+        process.env.KLARWERK_MODEL_MAX_INFLIGHT = vorher;
+      }
+      resetModelSemaphoreForTests();
+    }
+  }
+
+  it("V7 · vertraulich, Freigabe während des Wartens zurückgenommen: null Aufrufe", async () => {
+    const a = gekapselterAnbieter();
+    await setze(a.reasoner, BEIDE);
+    await mitBelegtemPlatz(
+      () => setze(a.reasoner, { oeffentlicheKi: true }),
+      () => a.reasoner.structure("Vertrauliche Rezeptur.", "de", VERTRAULICH),
+    );
+    expect(a.rufe()).toBe(0);
+  });
+
+  it("V7b · Gegenprobe: ohne Widerruf überträgt derselbe wartende Lauf", async () => {
+    const a = gekapselterAnbieter();
+    await setze(a.reasoner, BEIDE);
+    await mitBelegtemPlatz(
+      async () => {},
+      () => a.reasoner.structure("Vertrauliche Rezeptur.", "de", VERTRAULICH),
+    );
+    expect(a.rufe()).toBe(1);
+  });
+
+  it("V7c · Laufbuch-Weg (Urteil): Widerruf während des Wartens — null Aufrufe", async () => {
+    const a = gekapselterAnbieter();
+    await setze(a.reasoner, BEIDE);
+    await mitBelegtemPlatz(
+      () => setze(a.reasoner, { oeffentlicheKi: true }),
+      () => a.reasoner.judgeConflictOutcome("Rezeptur 3 %", "Rezeptur 4 %", "de", VERTRAULICH),
+    );
+    expect(a.rufe()).toBe(0);
+  });
+
+  it("V7d · nicht vertraulich: Grundfreigabe während des Wartens zurückgenommen — null Aufrufe", async () => {
+    const a = gekapselterAnbieter();
+    await setze(a.reasoner, { oeffentlicheKi: true });
+    await mitBelegtemPlatz(
+      () => setze(a.reasoner, {}),
+      () => a.reasoner.structure("Normaler Rohtext.", "de", false),
+    );
+    expect(a.rufe()).toBe(0);
   });
 
   it("V6 · die Kopfzeilenauskunft folgt derselben Entscheidung", async () => {

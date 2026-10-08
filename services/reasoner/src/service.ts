@@ -392,13 +392,11 @@ class Laufbuch {
   async versuch<T>(
     provider: ReasonerProvider,
     aufruf: () => Promise<T>,
-    // gesamt-ki-freigaberegeln: vom Reasoner je Versuch entschieden (`vertraulichFuerVersuch`).
-    vertraulichFreigegeben = false,
+    // gesamt-ki-freigaberegeln (Ben Nacharbeit 3): die Prüfungen des Reasoners für den Chokepoint —
+    // Vertraulichkeitsfreigabe und zentrale Freigabe, beide FRISCH unmittelbar vor der Übertragung.
+    pruefungen: Pick<ModellAufrufSpur, "vertraulichFreigegeben" | "vorUebertragung"> = {},
   ): Promise<T> {
-    const spur: ModellAufrufSpur = {
-      gerufen: false,
-      ...(vertraulichFreigegeben ? { vertraulichFreigegeben: true } : {}),
-    };
+    const spur: ModellAufrufSpur = { gerufen: false, ...pruefungen };
     const beginn = Date.now();
     this.versuche += 1;
     this.provider = provider.name;
@@ -900,6 +898,45 @@ export class Reasoner {
       anbieterZugelassen(extern) &&
       this.oeffentlicheKiErlaubt(true)
     );
+  }
+
+  /**
+   * Ben Nacharbeit 3: der Spur-Anteil für den Chokepoint — eine PRÜFUNG, die dort beim Eintritt und
+   * unmittelbar vor der Übertragung frisch läuft (`vertraulichFuerVersuch` mit dem dann gültigen
+   * Stand der Freigabe und der Anfragebindung). Nur für vertraulichen Text an einen externen Anbieter.
+   */
+  private vertraulichePruefungFuer(
+    provider: ReasonerProvider,
+    confidential: boolean,
+  ): Pick<ModellAufrufSpur, "vertraulichFreigegeben"> {
+    return confidential && this.anbieterVon(provider) !== undefined
+      ? { vertraulichFreigegeben: () => this.vertraulichFuerVersuch(provider, confidential) }
+      : {};
+  }
+
+  /**
+   * Ben Nacharbeit 3: unmittelbar vor der Übertragung an einen EXTERNEN Anbieter — gilt die zentrale
+   * Adminfreigabe noch (Grundfreigabe, bei vertraulichem Text zusätzlich die zweite)? Wurde sie
+   * während des Wartens zurückgenommen, wirft diese Prüfung, und nichts geht hinaus. Lokale und
+   * deterministische Glieder sind nicht betroffen.
+   */
+  /** Beide Prüfungen für einen Laufbuch-Versuch (Urteile, Anreicherung, Auswahl). */
+  private pruefungenFuer(
+    provider: ReasonerProvider,
+    confidential: boolean,
+  ): Pick<ModellAufrufSpur, "vertraulichFreigegeben" | "vorUebertragung"> {
+    return {
+      ...this.vertraulichePruefungFuer(provider, confidential),
+      vorUebertragung: () => this.pruefeFreigabeVorUebertragung(provider, confidential),
+    };
+  }
+
+  private pruefeFreigabeVorUebertragung(provider: ReasonerProvider, confidential: boolean): void {
+    if (this.anbieterVon(provider) !== undefined && !this.oeffentlicheKiErlaubt(confidential)) {
+      throw new Error(
+        "Die zentrale Freigabe für öffentliche KI gilt nicht mehr — es wird nichts übertragen.",
+      );
+    }
   }
 
   private chainForChoice(
@@ -1548,11 +1585,13 @@ export class Reasoner {
       // am Chokepoint — eine Zustimmung, die seit dem Kettenbau beendet wurde, lässt nichts hinaus.
       const extern = this.anbieterVon(provider);
       const kiSperre = task === "answer";
+      // gesamt-ki-freigaberegeln (Ben Nacharbeit 3): die zentrale Adminfreigabe wird für einen
+      // externen Anbieter NICHT nur beim Kettenbau, sondern unmittelbar vor der Übertragung FRISCH
+      // gefragt (`pruefeFreigabeVorUebertragung`), und die Vertraulichkeitsfreigabe reist als
+      // PRÜFUNG an den Chokepoint, nicht als gespeicherter Wert.
       const spur: ModellAufrufSpur = {
         gerufen: false,
-        ...(this.vertraulichFuerVersuch(provider, confidential)
-          ? { vertraulichFreigegeben: true }
-          : {}),
+        ...this.vertraulichePruefungFuer(provider, confidential),
         ...(kiSperre || extern !== undefined
           ? {
               vorUebertragung: () => {
@@ -1564,6 +1603,7 @@ export class Reasoner {
                     `Die Zustimmung für dieses Dokument trägt keine Übertragung an ${extern} mehr.`,
                   );
                 }
+                this.pruefeFreigabeVorUebertragung(provider, confidential);
               },
             }
           : {}),
@@ -2605,7 +2645,8 @@ export class Reasoner {
     }
     // JOB 3036 R2 / JOB 3074: die Spur GENAU DIESES Laufs. Sie entscheidet, ob `model` und
     // `verbrauch` in den Datensatz dürfen — nur ein wirklich erfolgter Aufruf trägt sie ein.
-    const spur: ModellAufrufSpur = { gerufen: false };
+    // Ben Nacharbeit 3: dieselben Prüfungen unmittelbar vor der Übertragung wie in `runTask`.
+    const spur: ModellAufrufSpur = { gerufen: false, ...this.pruefungenFuer(model, confidential) };
     const versuchBeginn = Date.now();
     let ergebnis: ImportCriteriaResult;
     try {
@@ -2685,7 +2726,12 @@ export class Reasoner {
       }
       const anreichern = provider.enrichPublic.bind(provider);
       try {
-        const result = await lb.versuch(provider, () => anreichern(query, locale));
+        // Ben Nacharbeit 3: auch hier die zentrale Freigabe unmittelbar vor der Übertragung.
+        const result = await lb.versuch(
+          provider,
+          () => anreichern(query, locale),
+          this.pruefungenFuer(provider, false),
+        );
         if (result.text.trim().length > 0) {
           await this.protokolliereLaufbuch("enrich", locale, startedAt, lb, {
             status: "success",
@@ -2796,7 +2842,7 @@ export class Reasoner {
         const result = await lb.versuch(
           provider,
           () => urteilen(coreA, coreB, locale, confidential),
-          this.vertraulichFuerVersuch(provider, confidential),
+          this.pruefungenFuer(provider, confidential),
         );
         if (result) {
           await this.protokolliereLaufbuch("conflict", locale, startedAt, lb, {
@@ -2883,7 +2929,7 @@ export class Reasoner {
         const result = await lb.versuch(
           provider,
           () => urteilen(coreA, coreB, locale, confidential),
-          this.vertraulichFuerVersuch(provider, confidential),
+          this.pruefungenFuer(provider, confidential),
         );
         if (result) {
           await this.protokolliereLaufbuch("duplicate", locale, startedAt, lb, {

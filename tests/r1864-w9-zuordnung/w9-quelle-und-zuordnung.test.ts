@@ -172,7 +172,10 @@ describe("R-1864 · E — Egress-Abgleich nach Konzept §7", () => {
     expect(route).toContain(
       "const deepAllowed = wantDeep && (!confidential || vertraulichFreigegeben);",
     );
-    expect(route).toContain("const ausleitungGesperrt = gebunden && !dokumentZustimmung;");
+    // Ben Nacharbeit 3: neben der fehlenden Einwilligung sperrt auch eine unbelegte Herkunft.
+    expect(route).toContain(
+      "const ausleitungGesperrt = (gebunden && !dokumentZustimmung) || herkunftUnbelegt;",
+    );
     expect(route).toContain("const confidential = ausleitungGesperrt || eingestuftVertraulich;");
     expect(route).toMatch(/const vertraulichFreigegeben =\s*eingestuftVertraulich &&/);
     expect(route).toContain("await ka4Freigabe(");
