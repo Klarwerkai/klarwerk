@@ -94,6 +94,7 @@ import {
   type HalbwertszeitVerlaufRepo,
   InMemoryDokumentaktenRepo,
   InMemoryEvidenceRepo,
+  InMemoryHalbwertszeitVerlauf,
   InMemoryKoRepo,
   InMemoryKoVersionRepo,
   InMemoryUploadLimitsRepo,
@@ -1605,6 +1606,8 @@ export function inMemoryRepos(): AppRepos {
     auditRepo: new InMemoryAuditRepo(),
     koRepo: new InMemoryKoRepo(schreibstand),
     koVersions: new InMemoryKoVersionRepo(schreibstand),
+    // R-1636/R-0248: der Lernverlauf im Speicherbetrieb — hier, damit die Dev-Persistenz ihn journaliert.
+    halbwertszeitVerlauf: new InMemoryHalbwertszeitVerlauf(),
     evidence: new InMemoryEvidenceRepo(schreibstand),
     users: new InMemoryUserRepo(),
     sessions: new InMemorySessionRepo(),
