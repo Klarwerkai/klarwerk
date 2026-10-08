@@ -1024,6 +1024,46 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     expect(rot).toHaveLength(4);
   });
 
+  it("Nacharbeit 11: Standard- und Namensraumimporte werden bis zum Weiterreicher aufgelöst", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Weiter.tsx": [
+          "export function Weiter(p: any): JSX.Element { return <div {...p} />; }",
+        ],
+        "apps/web/src/components/Standard.tsx": [
+          "export default function Standard(p: any): JSX.Element { return <div {...p} />; }",
+        ],
+        "apps/web/src/components/Zwei.tsx": [
+          "function Zwei(p: any): JSX.Element { return <div {...p} />; }",
+          "export default Zwei;",
+        ],
+        "apps/web/src/components/Nutzer.tsx": [
+          'import * as M from "./Weiter";',
+          'import S from "./Standard";',
+          'import Z from "./Zwei";',
+          "export const a = M.Weiter(JSON.parse('{}'));",
+          "export const b = S(JSON.parse('{}'));",
+          "export const c = Z(JSON.parse('{}'));",
+          'export const d = M["Weiter"]({ id: "x" });',
+          "export const e = [M];",
+          'export const f = <M.Weiter id="x" />;',
+        ],
+      }),
+    );
+    const an = (stelle: string): string[] => rot.filter((z) => z.includes(stelle));
+    // bens Fälle wörtlich: Namensraumzugriff und Standardimport einer benannten Default-Funktion.
+    expect(an("components/Nutzer.tsx:4")[0]).toContain("in <Weiter>");
+    expect(an("components/Nutzer.tsx:5")[0]).toContain("in <Standard>");
+    // `export default Zwei;` ist ein Export, der Standardimport `Z` trägt Zwei.
+    expect(an("components/Nutzer.tsx:6")[0]).toContain("in <Zwei>");
+    expect(an("components/Zwei.tsx:"), "export default ist keine Wertverwendung").toEqual([]);
+    expect(an("components/Nutzer.tsx:7"), "M['Weiter'] mit { id }: keine Rolle").toEqual([]);
+    expect(an("components/Nutzer.tsx:8")[0]).toContain("Namensraum M");
+    expect(an("components/Nutzer.tsx:9"), "JSX über den Namensraum ohne Spread").toEqual([]);
+    expect(rot).toHaveLength(4);
+  });
+
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
     const { rot } = pruefeModalgrenze(
       legeBaum({

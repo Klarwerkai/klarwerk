@@ -578,18 +578,22 @@ function importZiel(name: ts.Identifier, modul: Modulumfeld | undefined): Import
       continue;
     }
     const klausel = anweisung.importClause;
-    if (klausel?.name?.text === name.text) {
-      return { art: "paket" };
-    }
     const bindungen = klausel?.namedBindings;
-    if (bindungen === undefined || !ts.isNamedImports(bindungen)) {
+    const element =
+      bindungen !== undefined && ts.isNamedImports(bindungen)
+        ? bindungen.elements.find((e) => e.name.text === name.text)
+        : undefined;
+    // Nacharbeit 11 (ben): ein Standardimport ist kein Paket mehr, sondern der Export `default`
+    // des Moduls — `folgeReexport` löst ihn zur benannten Deklaration auf.
+    const exportName =
+      klausel?.name?.text === name.text
+        ? "default"
+        : element
+          ? (element.propertyName ?? element.name).text
+          : undefined;
+    if (exportName === undefined) {
       continue;
     }
-    const element = bindungen.elements.find((e) => e.name.text === name.text);
-    if (element === undefined) {
-      continue;
-    }
-    const exportName = (element.propertyName ?? element.name).text;
     for (const kandidat of modulKandidaten(modul?.datei ?? "", anweisung.moduleSpecifier.text)) {
       const quelle = modul?.leser(kandidat);
       if (quelle && modul) {
@@ -631,6 +635,34 @@ function deklariertSelbst(quelle: Quelle, name: string): boolean {
 }
 
 /**
+ * Nacharbeit 11: der Name hinter `export default` — `export default function Weiter`,
+ * `export default Weiter;` oder `export { Weiter as default }`. `undefined`: namenlos oder ein
+ * Ausdruck; ein solcher Export ist nicht zuordenbar.
+ */
+function standardExportName(quelle: Quelle): string | undefined {
+  for (const s of quelle.ast.statements) {
+    if (ts.isFunctionDeclaration(s) || ts.isClassDeclaration(s)) {
+      if ((ts.getCombinedModifierFlags(s) & ts.ModifierFlags.Default) !== 0) {
+        return s.name?.text;
+      }
+      continue;
+    }
+    if (ts.isExportAssignment(s) && !s.isExportEquals) {
+      return ts.isIdentifier(s.expression) ? s.expression.text : undefined;
+    }
+    if (ts.isExportDeclaration(s) && !s.moduleSpecifier && s.exportClause) {
+      if (ts.isNamedExports(s.exportClause)) {
+        const element = s.exportClause.elements.find((e) => e.name.text === "default");
+        if (element?.propertyName) {
+          return element.propertyName.text;
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
  * Nacharbeit 8: ein Export, der nur weitergereicht wird — `export { X } from "./X"`,
  * `export { X as Y } from "./X"`, `export * from "./X"` —, wird bis zur Deklaration verfolgt.
  * `undefined`: die Deklaration ist nicht zu finden (Paket, unbekanntes Modul) — nicht lesbar.
@@ -641,6 +673,12 @@ function folgeReexport(ort: Exportort, leser: Modulleser, tiefe: number): Export
   }
   if (deklariertSelbst(ort.quelle, ort.name)) {
     return ort;
+  }
+  if (ort.name === "default") {
+    const benannt = standardExportName(ort.quelle);
+    if (benannt !== undefined) {
+      return folgeReexport({ ...ort, name: benannt }, leser, tiefe + 1);
+    }
   }
   for (const s of ort.quelle.ast.statements) {
     if (
@@ -1871,6 +1909,8 @@ function istNurName(id: ts.Identifier): boolean {
     ts.isImportClause(p) ||
     ts.isExportSpecifier(p) ||
     ts.isNamespaceImport(p) ||
+    // `export default Weiter;` ist ein Export, kein Wert: Standardimporte werden aufgelöst.
+    ts.isExportAssignment(p) ||
     ts.isJsxAttribute(p) ||
     (ts.isQualifiedName(p) && p.right === id) ||
     (ts.isPropertyAccessExpression(p) && p.name === id) ||
@@ -1920,17 +1960,50 @@ function weiterreicherVerwendungen(
     // Nacharbeit 10 (ben): ein Import-Alias (`import { Weiter as W }`, auch über eine Sammeldatei)
     // trägt einen anderen Namen als die Deklaration. Gefiltert wird deshalb nach allen Namen, die
     // eine Bindung tragen KÖNNEN; ob sie den Weiterreicher trägt, entscheidet die Auflösung.
+    // Nacharbeit 11 (ben): auch Standardimporte (`import W from`) und Namensräume
+    // (`import * as M from` → `M.Weiter(…)`) tragen einen Weiterreicher.
     const lokaleNamen = new Set(namen);
+    const namensraeume = new Map<string, string>();
     for (const s of sf.statements) {
-      const bindungen = ts.isImportDeclaration(s) ? s.importClause?.namedBindings : undefined;
+      if (!ts.isImportDeclaration(s) || !ts.isStringLiteral(s.moduleSpecifier)) {
+        continue;
+      }
+      const klausel = s.importClause;
+      if (klausel?.name) {
+        lokaleNamen.add(klausel.name.text);
+      }
+      const bindungen = klausel?.namedBindings;
       if (bindungen !== undefined && ts.isNamedImports(bindungen)) {
         for (const element of bindungen.elements) {
           lokaleNamen.add(element.name.text);
         }
       }
+      if (bindungen !== undefined && ts.isNamespaceImport(bindungen)) {
+        namensraeume.set(bindungen.name.text, s.moduleSpecifier.text);
+      }
     }
     const deklarationen = sammleDeklarationen(sf);
     const umfeld: Modulumfeld = { datei: quelle.datei, leser };
+    // Das Modul hinter einem Namensraumimport — nur, wenn der Name hier nicht überdeckt ist.
+    const namensraumModul = (id: ts.Identifier): Exportort | undefined => {
+      const spezifizierer = namensraeume.get(id.text);
+      if (spezifizierer === undefined || sichtbareDeklarationen(deklarationen, id).length > 0) {
+        return undefined;
+      }
+      for (const kandidat of modulKandidaten(quelle.datei, spezifizierer)) {
+        const modul = leser(kandidat);
+        if (modul) {
+          return { quelle: modul, datei: kandidat, name: "" };
+        }
+      }
+      return undefined;
+    };
+    // Der Weiterreicher hinter `M.name` — über Re-Exporte bis zur Deklaration.
+    const ausNamensraum = (modul: Exportort, name: string): string | undefined => {
+      const ort = folgeReexport({ ...modul, name }, leser, 0);
+      const schluessel = ort ? `${ort.datei}#${ort.name}` : undefined;
+      return schluessel !== undefined && weiter.has(schluessel) ? schluessel : undefined;
+    };
     const zielVon = (id: ts.Identifier): string | undefined => {
       const lokal = sichtbareDeklarationen(deklarationen, id);
       if (lokal.length > 0) {
@@ -1939,10 +2012,11 @@ function weiterreicherVerwendungen(
       const ziel = importZiel(id, umfeld);
       return ziel?.art === "modul" ? `${ziel.datei}#${ziel.name}` : undefined;
     };
-    const pruefeVerwendung = (id: ts.Identifier, ziel: string): void => {
+    // `id` ist der genutzte Ausdruck: der Bezeichner `W` oder der Zugriff `M.Weiter`/`M["Weiter"]`.
+    const pruefeVerwendung = (id: ts.Expression, ziel: string): void => {
       const p = id.parent;
       const zeile = zeileVon(sf, id);
-      const name = id.text;
+      const name = id.getText(sf);
       const trenner = ziel.lastIndexOf("#");
       const istTag =
         (ts.isJsxOpeningElement(p) || ts.isJsxSelfClosingElement(p) || ts.isJsxClosingElement(p)) &&
@@ -1987,8 +2061,47 @@ function weiterreicherVerwendungen(
         `${quelle.datei}:${zeile} — ${name} reicht Props bis zu einem DOM-Element weiter, wird hier aber als Wert verwendet: seine Aufrufer und deren Rollen kann dieser Sammler nicht finden`,
       );
     };
+    // `M.Weiter` / `M["Weiter"]` wird wie ein Bezeichner geprüft. Der Namensraum selbst als Wert
+    // (`[M]`, `f(M)`, `M[k]`) gibt jeden enthaltenen Weiterreicher aus der Hand — nicht zuordenbar.
+    const pruefeNamensraum = (m: ts.Identifier, modul: Exportort): void => {
+      const p = m.parent;
+      if (ts.isPropertyAccessExpression(p) && p.expression === m) {
+        const ziel = ausNamensraum(modul, p.name.text);
+        if (ziel !== undefined) {
+          pruefeVerwendung(p, ziel);
+        }
+        return;
+      }
+      if (
+        ts.isElementAccessExpression(p) &&
+        p.expression === m &&
+        istZeichenkettenLiteral(p.argumentExpression)
+      ) {
+        const ziel = ausNamensraum(modul, p.argumentExpression.text);
+        if (ziel !== undefined) {
+          pruefeVerwendung(p, ziel);
+        }
+        return;
+      }
+      const exportNamen = modul.quelle.ast.statements.flatMap((s) =>
+        ts.isExportDeclaration(s) && s.exportClause && ts.isNamedExports(s.exportClause)
+          ? s.exportClause.elements.map((el) => el.name.text)
+          : [],
+      );
+      const enthalten = [...new Set([...namen, ...exportNamen])].filter(
+        (n) => ausNamensraum(modul, n) !== undefined,
+      );
+      if (enthalten.length > 0) {
+        ergebnis.befunde.push(
+          `${quelle.datei}:${zeileVon(sf, m)} — der Namensraum ${m.text} enthält den Weiterreicher ${enthalten.join(", ")} und wird hier als Wert verwendet: dessen Aufrufer und deren Rollen kann dieser Sammler nicht finden`,
+        );
+      }
+    };
     const gehe = (n: ts.Node): void => {
-      if (ts.isIdentifier(n) && lokaleNamen.has(n.text) && !istNurName(n)) {
+      const modul = ts.isIdentifier(n) ? namensraumModul(n) : undefined;
+      if (ts.isIdentifier(n) && modul !== undefined && !istNurName(n)) {
+        pruefeNamensraum(n, modul);
+      } else if (ts.isIdentifier(n) && lokaleNamen.has(n.text) && !istNurName(n)) {
         const ziel = zielVon(n);
         if (ziel !== undefined && weiter.has(ziel)) {
           pruefeVerwendung(n, ziel);
