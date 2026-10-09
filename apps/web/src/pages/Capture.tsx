@@ -6468,6 +6468,12 @@ export function CaptureArbeitsraum({
                         {t("interview.thema", { thema: interviewThema })}
                       </p>
                     ) : null}
+                    {/* R-0957 / R-1926: das Lehrlingsbild — an das gebunden, was der Weg wirklich
+                        tut (Rückfragen, Einreichen, Teamprüfung) und ausdrücklich OHNE Lernzusage
+                        (`texte/lehrling.ts`, bewacht von `tests/app/learning-claim-guard.test.ts`). */}
+                    <p className="text-[13px] text-muted" data-testid="interview-lehrling">
+                      {t("lehrling.interview.rahmen")}
+                    </p>
                     <p className="text-[13px] text-muted">{t("capture.ivStartLead")}</p>
                     <div className="flex flex-wrap items-center gap-2">
                       <Button variant="primary" onClick={() => startInterview()}>
