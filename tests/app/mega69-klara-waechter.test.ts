@@ -2915,10 +2915,12 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Antwort-Erklärung, Funktionsschalter). Die drei `sendTooLarge`-Zeilen stehen unverändert in der
     // zusammengeführten Datei (Wert-, nicht Zeilenänderung; B3 unberührt). Auslieferungsfolgen: die
     // aller beteiligten Aufträge — kein neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder
-    // Manifeständerung, kein Sideload. Keiner der beiden Werte beschreibt das zusammengeführte Fenster;
-    // der Wert unten (main) ist ein PLATZHALTER, der Prüflauf meldet den Ist-Wert als „Received", er
-    // wird danach gemessen übernommen.
-    const PIN = "9667e18b2978687c255ef32953ba9ce6e3d0d7a7583aeee60d1b7f7948204c28";
+    // Manifeständerung, kein Sideload. Keiner der beiden Werte beschreibt das zusammengeführte Fenster.
+    // NACHARBEIT 10 (gesamt-bildbudget): PIN BEWUSST AKTUALISIERT (Platzhalter 9667e18b… -> f55e6c65…).
+    // Im Prüflauf zu Kandidat f939185b am ZUSAMMENGEFÜHRTEN Fenster (main 5ed2ded3 + `sendTooLarge`)
+    // GEMESSEN („Received", HISTORIE/nacharbeit-10/PRUEFUNG/panel-inhalts-pin.log) und unverändert
+    // übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    const PIN = "f55e6c65b6209a73e622c07527f727f08d1f90ccc0791be5953f06fe1e5d66f8";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
