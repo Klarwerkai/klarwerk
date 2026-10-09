@@ -62,7 +62,9 @@ import {
   PANEL_CSS_VERWEIS,
   PANEL_JS_VERWEIS,
   PANEL_MARKE_VERWEIS,
+  PANEL_WV_VERWEIS,
   markeAbschnitt,
+  wortvergleichAbschnitt,
 } from "../support/panelquelle";
 import { repoPfad } from "../support/repoPfad";
 import {
@@ -79,6 +81,7 @@ import {
   MARKE_DATEI,
   type Probeschnitt,
   RUECKWEG_DATEI,
+  WV_DATEI,
   bloeckeVon,
   bytes,
   echterSchnitt,
@@ -87,6 +90,7 @@ import {
   rueckwegQuelle,
   schneideDrei,
   taskpaneQuelle,
+  wortvergleichQuelle,
   zeilen,
 } from "./zerlegung";
 
@@ -101,6 +105,11 @@ const RUECKWEG_PFAD = `/word-addin/${RUECKWEG_DATEI}`;
  * Inline-Skripts; NACHHER kommt er aus der eigenen Datei.
  */
 const MARKE_PFAD = `/word-addin/${MARKE_DATEI}`;
+/**
+ * R-0336/R-0708: nach derselben Regel der Block KW-WORDVERGLEICH (geladen unmittelbar nach
+ * `taskpane.js`, vor `marke.js`). VORHER steht sein Abschnitt inline, NACHHER kommt er aus der Datei.
+ */
+const WV_PFAD = `/word-addin/${WV_DATEI}`;
 /**
  * AUFTRAG firmenwoerterbuch: der Block KW-BEGRIFFE. Er ist KEIN Teil des Schnitts — beide Fassungen
  * verweisen auf ihn hinter `marke.js` und holen ihn gleich. Er liegt deshalb wie `rueckweg.js`
@@ -127,6 +136,7 @@ const ANLEITUNG_QUELLE = readFileSync(
 const QUELLE = taskpaneQuelle();
 const RUECKWEG_QUELLE = rueckwegQuelle();
 const MARKE_QUELLE = markeQuelle();
+const WV_QUELLE = wortvergleichQuelle();
 /** NACHHER: die drei Dateien, wie sie im Baum liegen. */
 const SCHNITT: Probeschnitt = echterSchnitt();
 
@@ -148,6 +158,7 @@ afterAll(() => {
  *
  * Zerlegungsauftrag Bestandsblick: aus demselben Grund liegt `marke.js` immer dabei. Das
  * VORHER-Dokument verweist nicht auf sie (der Abschnitt steht dort inline) und lädt sie nicht.
+ * R-0336/R-0708: ebenso `wortvergleich.js`.
  */
 function dist(dateien: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "kw-probeschnitt-"));
@@ -157,6 +168,7 @@ function dist(dateien: Record<string, string>): string {
   for (const [name, inhalt] of Object.entries({
     [RUECKWEG_DATEI]: RUECKWEG_QUELLE,
     [MARKE_DATEI]: MARKE_QUELLE,
+    [WV_DATEI]: WV_QUELLE,
     [BEGRIFFE_DATEI]: BEGRIFFE_QUELLE,
     [ANLEITUNG_DATEI]: ANLEITUNG_QUELLE,
     ...dateien,
@@ -186,6 +198,11 @@ async function auslieferung(distPfad: string): Promise<FastifyInstance> {
 /** Der Verweis, so wie ihn der mechanische Probeschnitt setzt — ohne Cachekennung. */
 const MECH_CSS_VERWEIS = `<link rel="stylesheet" href="${CSS_DATEI}" />`;
 const MECH_JS_VERWEIS = `<script src="${JS_DATEI}"></script>`;
+/**
+ * Was an der Stelle des mechanischen Skriptverweises in der echten Seite steht: `taskpane.js` und
+ * (R-0336/R-0708, dieselbe Zeile) `wortvergleich.js`, in der Zeile danach `marke.js`.
+ */
+const SKRIPT_VERWEISE = `${PANEL_JS_VERWEIS}${PANEL_WV_VERWEIS}\n  ${PANEL_MARKE_VERWEIS}`;
 
 // ================================================================================================
 // A — DER SCHNITT SELBST: mechanisch, verlustfrei, an derselben Stelle.
@@ -206,14 +223,18 @@ describe("R-1611 · A — der echte Schnitt ist die mechanische Textoperation", 
     expect(mechanisch.css).toBe(`\n${SCHNITT.css}  `);
     // Zerlegungsauftrag Bestandsblick: das Skript des Originals endet mit dem Abschnitt KW-MARKE,
     // der jetzt in `marke.js` liegt — zeichengleich, direkt hinter `taskpane.js`.
-    expect(mechanisch.js).toBe(`\n${SCHNITT.js}${markeAbschnitt(MARKE_QUELLE)}  `);
+    // R-0336/R-0708: davor der Abschnitt KW-WORDVERGLEICH aus `wortvergleich.js`, ebenso
+    // zeichengleich.
+    const abschnitte = `${wortvergleichAbschnitt(WV_QUELLE)}${markeAbschnitt(MARKE_QUELLE)}`;
+    expect(mechanisch.js).toBe(`\n${SCHNITT.js}${abschnitte}  `);
     // Die Rest-Seite unterscheidet sich vom mechanischen Schnitt GENAU in der Cachekennung an den
     // zwei Verweisen — und im Verweis auf `marke.js` in der Zeile danach. Ersatz über eine
     // Funktion, nicht über eine Zeichenkette: `String.replace` würde darin `$&` auswerten (die
-    // erste Fassung dieses Falls ist daran rot geworden).
+    // erste Fassung dieses Falls ist daran rot geworden). R-0336/R-0708: dazu der Verweis auf
+    // `wortvergleich.js`, in derselben Zeile hinter `taskpane.js`.
     const mitKennung = mechanisch.html
       .replace(MECH_CSS_VERWEIS, () => PANEL_CSS_VERWEIS)
-      .replace(MECH_JS_VERWEIS, () => `${PANEL_JS_VERWEIS}\n  ${PANEL_MARKE_VERWEIS}`);
+      .replace(MECH_JS_VERWEIS, () => SKRIPT_VERWEISE);
     expect(mitKennung).toBe(SCHNITT.html);
   });
 
@@ -227,7 +248,8 @@ describe("R-1611 · A — der echte Schnitt ist die mechanische Textoperation", 
     // die Zahl der Verweise nicht unbemerkt wächst: wer einen vierten anlegt, sieht diese Stelle.
     expect(SCHNITT.html).toContain(`<script src="${RUECKWEG_DATEI}?v=`);
     // Zerlegungsauftrag Bestandsblick: der vierte, unmittelbar hinter `taskpane.js`.
-    expect(SCHNITT.html).toContain(`${PANEL_JS_VERWEIS}\n  ${PANEL_MARKE_VERWEIS}`);
+    // R-0336/R-0708: dazwischen, in der Zeile von `taskpane.js`, der auf `wortvergleich.js`.
+    expect(SCHNITT.html).toContain(SKRIPT_VERWEISE);
     // Kein Inline-Code mehr in der Seite — und office.js steht unverändert davor.
     expect(SCHNITT.html).not.toContain("<style>");
     expect(SCHNITT.html).not.toContain("<script>");
@@ -246,7 +268,10 @@ describe("R-1611 · A — der echte Schnitt ist die mechanische Textoperation", 
     // Zerlegungsauftrag Bestandsblick: FÜNF Vorkommen — dazu die Kennung am Verweis auf `marke.js`.
     // AUFTRAG firmenwoerterbuch: SECHS — dazu die Kennung am Verweis auf `begriffe.js`.
     // AUFTRAG gesamt-dokumenterzeugung: SIEBEN — dazu die Kennung am Verweis auf `anleitung.js`.
-    expect(SCHNITT.html.split(KLARA_FASSUNG_PLATZHALTER)).toHaveLength(8);
+    // R-0336/R-0708: SIEBEN — dazu die Kennung am Verweis auf `wortvergleich.js`.
+    // INTEGRATION beider (Nacharbeit 70): ACHT — beide Verweise stehen im Fenster.
+    expect(SCHNITT.html.split(KLARA_FASSUNG_PLATZHALTER)).toHaveLength(9);
+    expect(SCHNITT.html).toContain(`${WV_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`);
     expect(SCHNITT.html).toContain(`${BEGRIFFE_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`);
     expect(SCHNITT.html).toContain(`${ANLEITUNG_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`);
     expect(ANLEITUNG_QUELLE).not.toContain(KLARA_FASSUNG_PLATZHALTER);
@@ -259,6 +284,7 @@ describe("R-1611 · A — der echte Schnitt ist die mechanische Textoperation", 
     expect(SCHNITT.css).not.toContain(KLARA_FASSUNG_PLATZHALTER);
     expect(RUECKWEG_QUELLE).not.toContain(KLARA_FASSUNG_PLATZHALTER);
     expect(MARKE_QUELLE).not.toContain(KLARA_FASSUNG_PLATZHALTER);
+    expect(WV_QUELLE).not.toContain(KLARA_FASSUNG_PLATZHALTER);
   });
 });
 
@@ -383,13 +409,15 @@ describe("R-1611 · C — was HTML, JS und CSS an Kopfzeilen tragen", () => {
       `${ANLEITUNG_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
       `${RUECKWEG_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
       `${JS_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
+      // R-0336/R-0708: der Block KW-WORDVERGLEICH, relativ und gleichherkünftig.
+      `${WV_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
       `${MARKE_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
     ]);
     const stilquellen = [
       ...SCHNITT.html.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)"/g),
     ].map((m) => m[1]);
     expect(stilquellen).toEqual([`${CSS_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`]);
-    for (const ref of [JS_DATEI, CSS_DATEI, RUECKWEG_DATEI, MARKE_DATEI, ANLEITUNG_DATEI]) {
+    for (const ref of [JS_DATEI, CSS_DATEI, RUECKWEG_DATEI, MARKE_DATEI, ANLEITUNG_DATEI, WV_DATEI]) {
       expect(ref, `${ref} ist nicht relativ`).not.toMatch(/^[a-z]+:|^\/\//);
     }
   });
@@ -509,12 +537,13 @@ describe("R-1611 · D — derselbe Startzustand, vor dem Schnitt wie nach dem Sc
       ].sort(),
     );
     // Zerlegungsauftrag Bestandsblick: nachher kommt `marke.js` dazu — vorher stand ihr Abschnitt
-    // inline, und genau dort holt das Original sie nicht.
+    // inline, und genau dort holt das Original sie nicht. R-0336/R-0708: ebenso `wortvergleich.js`.
     expect([...geschnitten.geholt].sort()).toEqual(
       [
         `http://localhost${CSS_PFAD}?v=${FASSUNG}`,
         `http://localhost${RUECKWEG_PFAD}?v=${FASSUNG}`,
         `http://localhost${JS_PFAD}?v=${FASSUNG}`,
+        `http://localhost${WV_PFAD}?v=${FASSUNG}`,
         `http://localhost${MARKE_PFAD}?v=${FASSUNG}`,
         `http://localhost${BEGRIFFE_PFAD}?v=${FASSUNG}`,
         `http://localhost${ANLEITUNG_PFAD}?v=${FASSUNG}`,

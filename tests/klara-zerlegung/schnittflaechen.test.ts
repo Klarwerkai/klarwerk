@@ -30,6 +30,7 @@ import {
   JS_DATEI,
   MARKE_DATEI,
   RUECKWEG_DATEI,
+  WV_DATEI,
   bloeckeVon,
   bytes,
   echterSchnitt,
@@ -155,12 +156,19 @@ describe("JOB 3014 · B — die Grobstruktur der ausgelieferten Seite", () => {
     // AUFTRAG gesamt-dokumenterzeugung (Pedi 28.09.): eine FÜNFTE eigene Quelle nach derselben
     // Regel — der Block KW-ANLEITUNG wohnt in `anleitung.js` (relativ, gleichherkünftig), im Kopf
     // direkt hinter `begriffe.js`. Grund ist wieder B3.
+    //
+    // AUFTRAG „Geschriebene Behauptungen gegen den Wissensbestand prüfen" (R-0336, R-0708): eine
+    // weitere nach der Regel von `marke.js` (in der Integration beider die SECHSTE) — der Block
+    // KW-WORDVERGLEICH, bis dahin das Ende von `taskpane.js`, wohnt in `wortvergleich.js`, geladen
+    // UNMITTELBAR NACH `taskpane.js` und vor `marke.js`. Grund ist wieder B3: der Auftrag baut an
+    // diesem Block weiter.
     expect(extern).toEqual([
       "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       `begriffe.js?v=${FASSUNG}`,
       `anleitung.js?v=${FASSUNG}`,
       `${RUECKWEG_DATEI}?v=${FASSUNG}`,
       `${JS_DATEI}?v=${FASSUNG}`,
+      `${WV_DATEI}?v=${FASSUNG}`,
       `${MARKE_DATEI}?v=${FASSUNG}`,
     ]);
     const stilblaetter = [

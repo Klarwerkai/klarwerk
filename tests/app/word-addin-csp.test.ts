@@ -234,6 +234,9 @@ describe("AUFTRAG-JOB507-D4: CSP und Panelverhalten sind konsistent", () => {
       "anleitung.js?v=__KW_FASSUNG__",
       "rueckweg.js?v=__KW_FASSUNG__",
       "taskpane.js?v=__KW_FASSUNG__",
+      // R-0336/R-0708: eine SECHSTE nach derselben Regel — `wortvergleich.js` (KW-WORDVERGLEICH),
+      // relativ und gleichherkünftig, unmittelbar nach `taskpane.js`.
+      "wortvergleich.js?v=__KW_FASSUNG__",
       "marke.js?v=__KW_FASSUNG__",
     ]);
     const stilblaetter = [...seite.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)"/g)].map(
