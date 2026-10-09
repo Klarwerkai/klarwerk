@@ -79,7 +79,9 @@ describe("ic7: Datenmodell Systeme + Dateien", () => {
     const fileStates = new Set(FILE_SOURCES.map((s) => s.state));
     expect(fileStates.has("active")).toBe(true);
     expect(fileStates.has("elsewhere")).toBe(true);
-    expect(fileStates.has("planned")).toBe(true);
+    // R-0179 (Nacharbeit 3): NACHGEFÜHRT. Excel war die letzte geplante Dateikachel auf `/import`;
+    // seit der Importkasten sie liest, ist dort keine Dateikachel mehr geplant.
+    expect(fileStates.has("planned"), "keine Dateikachel behauptet noch „geplant“").toBe(false);
     expect(fileStates.has("soon"), "keine Dateikachel behauptet noch „bald“").toBe(false);
   });
 
@@ -132,13 +134,14 @@ describe("ic7: Datenmodell Systeme + Dateien", () => {
   // `/import` heissen sie deshalb „anderswo verfügbar". Excel bleibt geplant — dort gibt es
   // wirklich keinen Extraktionsweg. Die Ableitung selbst misst
   // `tests/import-einstieg/zustand-aus-der-weiche.test.ts`.
-  it("Dateien: JSON aktiv; Word/PDF/PowerPoint/CSV/OCR anderswo verfuegbar; Excel geplant", () => {
+  // R-0179 (Nacharbeit 3): NACHGEFÜHRT — Excel liest der Importkasten jetzt selbst.
+  it("Dateien: JSON und Excel aktiv; Word/PDF/PowerPoint/CSV/OCR anderswo verfuegbar", () => {
     const byId = new Map(FILE_SOURCES.map((s) => [s.id, s.state]));
     expect(byId.get("json-file")).toBe("active");
     for (const id of ["docx", "pdf", "pptx", "csv", "ocr"]) {
       expect(byId.get(id), id).toBe("elsewhere");
     }
-    expect(byId.get("xlsx"), "xlsx").toBe("planned");
+    expect(byId.get("xlsx"), "xlsx").toBe("active");
   });
 
   // AUFTRAG-mega15 Block D (SCRUM-382): das Audio-/Video-Transkript ist NICHT geplant — es ist
