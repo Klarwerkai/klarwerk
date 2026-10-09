@@ -12,11 +12,22 @@ export interface DraftPayload {
   statement?: string;
   type?: KnowledgeType;
   category?: string;
+  // R-0034 / R-0056 / FR-CAP-08 (aufnahme:20260922:gesamt-wissen-metadaten): das Fachgebiet,
+  // erfasst neben der Kategorie. Es reist mit dem Entwurf bis ins KO (`toKoInput`); leer oder
+  // fehlend = kein Fachgebiet angegeben — es wird nichts abgeleitet (KnowledgeObject.domain).
+  domain?: string;
+  // R-0086: Tatsache oder Handlungsanweisung. Der Wert wird erst am Einreichen geprüft
+  // (`KoService.create`, INVALID); ein Leerwert heißt „nicht angegeben".
+  aussageart?: string;
   tags?: string[];
   conditions?: string[];
   measures?: string[];
   neededValidations?: number;
   asset?: string | null;
+  // R-0082: die Anlagenliste des Entwurfs; ist sie da, gilt sie beim Einreichen (s. CreateKoInput).
+  assets?: string[];
+  // R-1690: Re-Validierungstermin `JJJJ-MM-TT`; geprüft beim Einreichen (`KoService.create`).
+  revalidierungAm?: string;
   bodyHtml?: string | null; // KW-STR: WYSIWYG-Body übersteht Entwurf/Resume/Promote
   // SCRUM-509 R2: die im Erfassen gewählte Vertraulichkeit übersteht Entwurf/Resume/Promote —
   // sonst ginge die Stufe beim Promote verloren (fail-open). toKoInput reicht sie ans KO durch.

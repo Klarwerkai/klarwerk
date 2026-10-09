@@ -19,18 +19,20 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { type FollowUpsRecorded, endpoints } from "../api/endpoints";
 import { useDirectory, useDrafts, useGaps, useReasonerStatus } from "../api/hooks";
-import type {
-  AbbruchBefund,
-  Confidentiality,
-  Draft,
-  DraftPayload,
-  ExternalResult,
-  ExtractedPoint,
-  InterviewResearchPoint,
-  InterviewResult,
-  KnowledgeObject,
-  KnowledgeType,
-  StructureResult,
+import {
+  type AbbruchBefund,
+  type Confidentiality,
+  type Draft,
+  type DraftPayload,
+  type ExternalResult,
+  type ExtractedPoint,
+  type InterviewResearchPoint,
+  type InterviewResult,
+  KO_AUSSAGEARTEN,
+  type KnowledgeObject,
+  type KnowledgeType,
+  type KoAussageart,
+  type StructureResult,
 } from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { ImageDescribeProvider } from "../app/ImageDescribeContext";
@@ -95,6 +97,7 @@ import {
   aiCheckCoverageVars,
   aiCheckPollAgain,
 } from "../lib/aiCheckStatusCard";
+import { anlagenAlsEingabe, anlagenNutzlast, anlagenVon } from "../lib/anlagen";
 // AUFTRAG-mega19 Block B: `commitDocumentAppend`/`newAppendOperationId` sind hier nicht mehr nötig.
 // Das frische Erfassen reicht die Herkunft nicht mehr nach — Inhalt, Anker und Belegstellen
 // entstehen in EINEM serverseitigen Vorgang (endpoints.ko.createFromDocument). Die Verbund-Operation
@@ -769,6 +772,13 @@ export function CaptureArbeitsraum({
   // geladen)? Dann überschreibt kein KI-Vorschlag sie — auch nicht, wenn sie dem Standard gleicht.
   const typeEntschiedenRef = useRef(false);
   const [category, setCategory] = useState("");
+  // R-0034 / R-0056 / FR-CAP-08: das Fachgebiet als eigene Angabe neben der Kategorie. Leer = keins;
+  // es wird nichts aus der Kategorie abgeleitet (KnowledgeObject.domain).
+  const [domain, setDomain] = useState("");
+  // R-0086: Tatsache oder Handlungsanweisung; "" = nicht angegeben (kein Vorgabewert).
+  const [aussageart, setAussageart] = useState<KoAussageart | "">("");
+  // R-1690: Re-Validierungstermin (`JJJJ-MM-TT` aus dem Datumsfeld); "" = keiner.
+  const [revalidierungAm, setRevalidierungAm] = useState("");
   const [asset, setAsset] = useState("");
   // SCRUM-415: Vertraulichkeitsstufe ab Erfassen (Standard „intern"). Vertrauliche KOs gehen nie in
   // externe Kontexte (Output/Export).
@@ -2262,10 +2272,17 @@ export function CaptureArbeitsraum({
         statement: draft.statement,
         type,
         category: category.trim() || "Allgemein",
+        // Beim AKTUALISIEREN eines Entwurfs reist ein geleertes Fachgebiet als Leerwert mit — sonst
+        // holte der partielle Merge das alte zurück (dieselbe Regel wie beim Body darunter).
+        domain: domain.trim(),
+        aussageart,
         tags: tags.filter((x) => x.trim()),
         conditions: draft.conditions.filter((x) => x.trim()),
         measures: draft.measures.filter((x) => x.trim()),
-        asset: asset.trim() ? asset.trim() : null,
+        // R-0082: die Anlagenliste (kanonisch) und ihre erste Anlage als `asset`.
+        ...anlagenNutzlast(asset),
+        // R-1690: ein geleerter Termin reist als Leerwert mit (Aktualisieren, wie `domain`).
+        revalidierungAm,
         // AUFTRAG-mega7 Block A (bens Ship-Blocker): dieser PUT AKTUALISIERT einen bestehenden
         // Entwurf (draftId), also reist ein bewusst geleerter Body als ausdrücklicher Leerwert mit.
         // Ohne ihn holte der partielle Merge den alten Body zurück — und der Promote direkt danach
@@ -2300,7 +2317,10 @@ export function CaptureArbeitsraum({
         tags: tags.filter((x) => x.trim()),
         type,
         category: category.trim() || "Allgemein",
-        asset: asset.trim() ? asset.trim() : null,
+        ...(domain.trim() ? { domain: domain.trim() } : {}),
+        ...(aussageart ? { aussageart } : {}),
+        ...anlagenNutzlast(asset),
+        ...(revalidierungAm ? { revalidierungAm } : {}),
         ...(bodyHtml.trim() ? { bodyHtml } : {}),
         ...(n ? { neededValidations: n } : {}),
         // JOB 3082 (Q3 a): gewählt ⇒ mitschicken (auch „intern"), nicht gewählt ⇒ weglassen.
@@ -2564,6 +2584,9 @@ export function CaptureArbeitsraum({
       setImages([]);
       setDocs([]);
       setCategory("");
+      setDomain("");
+      setAussageart("");
+      setRevalidierungAm("");
       setAsset("");
       setNeededValidations("");
       // JOB 3082 (Q3 a): die gewählte Stufe gehörte zu DIESEM Wissensobjekt. Bliebe sie stehen,
@@ -2700,8 +2723,13 @@ export function CaptureArbeitsraum({
         tags: tags.filter((x) => x.trim()),
         conditions: draft?.conditions.filter((x) => x.trim()) ?? [],
         measures: draft?.measures.filter((x) => x.trim()) ?? [],
-        asset: asset.trim() ? asset.trim() : null,
+        ...anlagenNutzlast(asset),
         ...(category.trim() ? { category: category.trim() } : {}),
+        ...(revalidierungAm || isDraftUpdate ? { revalidierungAm } : {}),
+        // R-0034: beim Aktualisieren geht ein geleertes Fachgebiet als Leerwert mit, beim Anlegen
+        // bleibt das leere Feld weg (dieselbe Semantik wie `draftBodyPatch`).
+        ...(domain.trim() || isDraftUpdate ? { domain: domain.trim() } : {}),
+        ...(aussageart || isDraftUpdate ? { aussageart } : {}),
         // AUFTRAG-mega7 Block A: dieselbe Leerwert-Semantik wie unten für die fünf mega6-Felder —
         // beim AKTUALISIEREN geht ein bewusst geleerter Body als ausdrücklicher Leerwert mit,
         // beim ANLEGEN bleibt das Feld weg.
@@ -2811,6 +2839,9 @@ export function CaptureArbeitsraum({
       setImages([]);
       setDocs([]);
       setCategory("");
+      setDomain("");
+      setAussageart("");
+      setRevalidierungAm("");
       setAsset("");
       setNeededValidations("");
       setConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
@@ -2956,8 +2987,13 @@ export function CaptureArbeitsraum({
     // FR-STR-01: eine gespeicherte Wissensart ist entschieden; fehlt sie, darf die KI vorbelegen.
     typeEntschiedenRef.current = p.type !== undefined && p.type !== null;
     setCategory(p.category ?? "");
+    setDomain(p.domain ?? "");
+    // R-0086: nur eine bekannte Aussageart zählt als Angabe — alles andere ist „nicht angegeben".
+    setAussageart(KO_AUSSAGEARTEN.find((art) => art === p.aussageart) ?? "");
     setTags(p.tags ?? []);
-    setAsset(p.asset ?? "");
+    // R-0082: die Anlagenliste des Entwurfs; Altentwürfe tragen nur `asset`.
+    setAsset(anlagenAlsEingabe(anlagenVon(p)));
+    setRevalidierungAm(p.revalidierungAm ?? "");
     setNeededValidations(p.neededValidations ? String(p.neededValidations) : "");
     setBodyHtml(p.bodyHtml ?? "");
     // SCRUM-415: Vertraulichkeitsstufe aus dem Entwurf wiederherstellen.
@@ -3190,6 +3226,9 @@ export function CaptureArbeitsraum({
     setType(CAPTURE_FIELD_DEFAULTS.type);
     typeEntschiedenRef.current = false;
     setCategory("");
+    setDomain("");
+    setAussageart("");
+    setRevalidierungAm("");
     setAsset("");
     setConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
     // JOB 3082 (Q3 a): der Leerzustand hat KEINE gewählte Stufe — das ist der frische Ausgangswert
@@ -3364,6 +3403,7 @@ export function CaptureArbeitsraum({
     ivAnswers.some((a) => a.trim().length > 0) ||
     // Erweiterte Felder, Metadaten und Anhänge zählen ebenfalls als „etwas eingetragen".
     category.trim().length > 0 ||
+    domain.trim().length > 0 ||
     asset.trim().length > 0 ||
     tags.length > 0 ||
     images.length > 0 ||
@@ -3389,6 +3429,10 @@ export function CaptureArbeitsraum({
   // deaktiviert und der Wert lebte ins nächste Wissensobjekt fort (bens Reproduktion).
   const hasUnsavedMeta =
     type !== CAPTURE_FIELD_DEFAULTS.type ||
+    // R-0086: jede getroffene Aussageart weicht vom frischen Ausgangswert „nicht angegeben" ab.
+    aussageart !== "" ||
+    // R-1690: ein gesetzter Re-Validierungstermin ist eine Abweichung vom frischen Formular.
+    revalidierungAm !== "" ||
     // JOB 3082 (Q3 a): der frische Ausgangswert der Vertraulichkeit ist „nicht gewählt" — deshalb
     // ist JEDE getroffene Wahl eine Abweichung davon, auch die auf „intern". Vorher wurde gegen
     // den geglätteten Formularwert verglichen, und der stand von Anfang an auf „intern": wer
@@ -3446,6 +3490,9 @@ export function CaptureArbeitsraum({
         massnahmen: draft?.measures ?? null,
         type,
         category,
+        domain,
+        aussageart,
+        revalidierungAm,
         asset,
         tags,
         neededValidations,
@@ -3473,6 +3520,9 @@ export function CaptureArbeitsraum({
       draft,
       type,
       category,
+      domain,
+      aussageart,
+      revalidierungAm,
       asset,
       tags,
       neededValidations,
@@ -7151,6 +7201,36 @@ export function CaptureArbeitsraum({
                     >
                       <TextInput value={category} onChange={(e) => setCategory(e.target.value)} />
                     </Field>
+                    {/* R-0034 / R-0056 / FR-CAP-08: das Fachgebiet als eigene Angabe. Dieselbe
+                        Längengrenze wie die Aktion `domain` am Server (ko-routes.ts). */}
+                    <Field label={t("wissensmetadaten.fachgebiet.feld")}>
+                      <TextInput
+                        value={domain}
+                        maxLength={120}
+                        placeholder={t("wissensmetadaten.fachgebiet.platzhalter")}
+                        onChange={(e) => setDomain(e.target.value)}
+                        data-testid="capture-domain"
+                      />
+                    </Field>
+                    {/* R-0086: Tatsache oder Handlungsanweisung — ausdrücklich gewählt, kein
+                        Vorgabewert. */}
+                    <Field label={t("wissensmetadaten.aussageart.feld")}>
+                      <select
+                        value={aussageart}
+                        onChange={(e) =>
+                          setAussageart(KO_AUSSAGEARTEN.find((art) => art === e.target.value) ?? "")
+                        }
+                        data-testid="capture-aussageart"
+                        className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
+                      >
+                        <option value="">{t("wissensmetadaten.aussageart.ohne")}</option>
+                        {KO_AUSSAGEARTEN.map((art) => (
+                          <option key={art} value={art}>
+                            {t(`wissensmetadaten.aussageart.${art}`)}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
                     <Field
                       label={
                         <span className="inline-flex items-center gap-1">
@@ -7177,7 +7257,22 @@ export function CaptureArbeitsraum({
                         </span>
                       }
                     >
-                      <TextInput value={asset} onChange={(e) => setAsset(e.target.value)} />
+                      {/* R-0082: mehrere Anlagen in einem Feld, getrennt durch Semikolon. */}
+                      <TextInput
+                        value={asset}
+                        placeholder={t("wissensmetadaten.anlage.mehrere")}
+                        onChange={(e) => setAsset(e.target.value)}
+                        data-testid="capture-anlagen"
+                      />
+                    </Field>
+                    {/* R-1690: Re-Validierungstermin bei der Erstellung — leer = keiner. */}
+                    <Field label={t("wissensmetadaten.revalidierung.feld")}>
+                      <TextInput
+                        type="date"
+                        value={revalidierungAm}
+                        onChange={(e) => setRevalidierungAm(e.target.value)}
+                        data-testid="capture-revalidierung"
+                      />
                     </Field>
                     {vertraulichkeitsWahl()}
                     <div data-help="cap:tagsField">

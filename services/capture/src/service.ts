@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   type CreateKoInput,
   type DokumentHerkunft,
+  type KoAussageart,
   type KoSource,
   createOperationFingerprint,
   isConfidentialityDowngrade,
@@ -1559,6 +1560,12 @@ export class CaptureService {
       statement: p.statement,
       type: p.type,
       category: p.category,
+      // R-0034 / FR-CAP-08: das beim Erfassen gesetzte Fachgebiet reist ins KO. Fehlt es, bleibt
+      // das Feld weg — `KoService.create` normalisiert und leitet nichts ab.
+      ...(p.domain !== undefined ? { domain: p.domain } : {}),
+      // R-0086: die Aussageart reist mit; ein Leerwert ist keine Angabe. Geprüft wird in
+      // `KoService.create` — ein unbekannter Wert bricht dort ab, statt still zu verschwinden.
+      ...(p.aussageart ? { aussageart: p.aussageart as KoAussageart } : {}),
       author: draft.originalAuthor,
       // R-0554: ein übergebener Entwurf trägt seine ursprüngliche Urheberin mit (`Draft.urheber`).
       ...(draft.urheber ? { originalAuthor: draft.urheber } : {}),
@@ -1569,6 +1576,10 @@ export class CaptureService {
       // (Admin-Standard-Prüferanzahl, sonst Modul-Default). Explizite Werte bleiben.
       ...(p.neededValidations !== undefined ? { neededValidations: p.neededValidations } : {}),
       asset: p.asset ?? null,
+      // R-0082: die Anlagenliste des Entwurfs reist mit und hat Vorrang vor `asset`.
+      ...(p.assets !== undefined ? { assets: p.assets } : {}),
+      // R-1690: der Re-Validierungstermin reist mit; leer = keiner (geprüft in `KoService.create`).
+      ...(p.revalidierungAm ? { revalidierungAm: p.revalidierungAm } : {}),
       bodyHtml: p.bodyHtml ?? null, // KW-STR: Body in den KO übernehmen (wird dort sanitisiert)
       // SCRUM-509 R2: die Vertraulichkeitsstufe des Entwurfs ans KO durchreichen (kein Verlust beim
       // Promote). ko.create prüft/lehnt ungültige Werte ab — keine stille Intern-Normalisierung.
