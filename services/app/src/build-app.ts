@@ -144,11 +144,9 @@ import {
   type ImportRunRepo,
   InMemoryCandidateRepo,
   InMemoryExternalSourceRepo,
-  InMemoryImportRunRepo,
   LibraryService,
   PgCandidateRepo,
   PgExternalSourceRepo,
-  PgImportRunRepo,
 } from "../../library-analytics";
 import {
   InMemoryLifecycleRepo,
@@ -292,6 +290,8 @@ import {
   tokenFromRequest,
 } from "./http";
 import { impactReport } from "./impact";
+// ADMIN-02: die auflistbaren Laufablagen für die Importliste (neben dem eingefrorenen Vertrag).
+import { InMemoryAuflistbareImportRunRepo, PgAuflistbareImportRunRepo } from "./import-lauf-liste";
 // R-0466: das Interaktionsgedächtnis — haltbar im Postgres-Betrieb, im Speicher ohne Datenbank.
 import {
   GedaechtnisDienst,
@@ -371,7 +371,7 @@ import { helpRoutes } from "./routes/help-routes";
 import { i18nRoutes } from "./routes/i18n-routes";
 import { impactRoutes } from "./routes/impact-routes";
 import { importAccessRoutes } from "./routes/import-access-routes";
-import { importRunRoutes } from "./routes/import-run-routes";
+import { importLaufListeRoutes, importRunRoutes } from "./routes/import-run-routes";
 // R-0170: der Jira-Import — Vorgänge und Epics eines Projekts, Projektrollen als Leserechte.
 import { jiraImportRoutes } from "./routes/jira-import-routes";
 import { kantenRoutes } from "./routes/kanten-routes";
@@ -1783,7 +1783,8 @@ export function inMemoryRepos(): AppRepos {
     lifecycleRepo: new InMemoryLifecycleRepo(),
     objects: new InMemoryObjectRepo(),
     candidates: new InMemoryCandidateRepo(),
-    importRuns: new InMemoryImportRunRepo(),
+    // ADMIN-02: dieselbe Laufablage, zusätzlich auflistbar (Importliste, `import-lauf-liste.ts`).
+    importRuns: new InMemoryAuflistbareImportRunRepo(),
     externalSources: new InMemoryExternalSourceRepo(),
     quellabgleich: new InMemoryQuellabgleichRepo(),
     dokumente: new InMemoryDokumentaktenRepo(),
@@ -1869,7 +1870,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       candidates: new PgCandidateRepo(pool),
       // W2-A/148: Laufdomaene persistent — ein Lauf muss einen Neustart ueberleben, sonst waere
       // „haengend in QUEUED" nach jedem Neustart ununterscheidbar von „nie gestartet".
-      importRuns: new PgImportRunRepo(pool),
+      // ADMIN-02: dieselbe Tabelle, zusätzlich auflistbar (Importliste, `import-lauf-liste.ts`).
+      importRuns: new PgAuflistbareImportRunRepo(pool),
       externalSources: new PgExternalSourceRepo(pool),
       quellabgleich: new PgQuellabgleichRepo(pool),
       // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (DOKUMENTAKTE_SCHEMA).
@@ -4547,6 +4549,15 @@ export function buildApp(
   // Confluence-Schalter: eine Instanz nur mit SharePoint gab eine `importId` heraus, hinter der eine
   // 404 stand. Sind alle Importwege aus, gibt es keine Läufe und damit auch keinen Leseweg.
   // R-0170: der Jira-Import schreibt Läufe genauso und gehört deshalb in dieselbe Bedingung.
+  // ADMIN-02 (Nacharbeit 3): die Importliste steht UNBEDINGT da — auch wenn alle Importwege aus
+  // sind, ist „noch kein Lauf festgehalten" eine Auskunft und keine fehlende Route.
+  app.register(
+    importLaufListeRoutes({
+      importRuns: services.importRuns,
+      quellabgleich: services.quellabgleich,
+      guards,
+    }),
+  );
   const importLaeufeLesbar =
     schalterAn("confluenceImport") || schalterAn("sharepointImport") || schalterAn("jiraImport");
   if (importLaeufeLesbar) {
