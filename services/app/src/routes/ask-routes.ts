@@ -34,7 +34,7 @@ import { schalterAn } from "../feature-flags";
 import { type Guards, type SessionUser, sendError } from "../http";
 import type { KlaraAufgabe } from "../services/klara-session-service";
 // JOB 1591 D1 (W5): NUR gelesen — das bestehende Praedikat, kein zweites.
-import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
+import { schluesselBetrachter, sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
 // SCRUM-498 B1 (ben-Review): bewusste Eingabe-Härtung von POST /api/ask, definiert über die GÜLTIGE
 // HÜLLE eines Requests:
@@ -904,8 +904,10 @@ async function antwortLauf(
   if (betrachter) {
     grundlage = sichtbarkeitsfilterFuer(betrachter);
   } else {
+    // R-1175: auch ohne Sitzungsnutzer DIESELBE Entscheidung — `darfSehen` mit dem engsten
+    // Betrachter (keine Kennung, `viewer`, nur offene Spaces), statt einer eigenen Zeile.
     const offen = (await deps.offeneSpaces?.()) ?? new Set<string>();
-    grundlage = (ko) => typeof ko.spaceId !== "string" || offen.has(ko.spaceId);
+    grundlage = sichtbarkeitsfilterFuer(schluesselBetrachter(offen));
   }
   // D5: die Abschalt-Epoche beim EINGANG dieser Frage (onRequest). Jede Prüfung bis zur
   // Auslieferung vergleicht mit ihr — auch eine Aus-/Wiedereinschaltung dazwischen entwertet die
