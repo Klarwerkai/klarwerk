@@ -458,6 +458,69 @@ export interface ReasonerCloudAnbieterStatus {
   grund?: string;
 }
 
+// R-0702: die HERKUNFT eines KI-Zugangs kommt aus der zentralen Zugangsverwaltung dieses Servers
+// (`anbieter-herkunft.ts`), nicht aus einer Deutung der Modellkennung im Browser. `nachweis` sagt,
+// wie belastbar die Angabe ist: `behauptet` = Angabe des Anbieters zu seinem Sitz, von KLARWERK
+// nicht geprüft; `geprueft` = ein belegter Nachweis liegt vor (heute für keinen Zugang);
+// `unbekannt` = es gibt keine Angabe (dann ist auch `land` null).
+export type ReasonerHerkunftNachweis = "geprueft" | "behauptet" | "unbekannt";
+
+export interface ReasonerZugangHerkunft {
+  land: string | null; // ISO-3166-Alpha-2, klein geschrieben (z. B. "us"), oder null
+  nachweis: ReasonerHerkunftNachweis;
+}
+
+// R-0299: der Wissensstand eines Modells — der vom Hersteller VERÖFFENTLICHTE „knowledge cutoff",
+// NUR aus belegten Herstellerangaben (`anbieter-herkunft.ts`). Er ist nicht dasselbe wie das Ende der
+// Trainingsdaten (Anthropic nennt beides getrennt). Fehlt der Beleg, ist `stand` null, `nachweis`
+// „unbekannt", und `quellenbedarf` nennt die fehlende Quelle.
+export interface ReasonerModellWissensstand {
+  stand: string | null;
+  nachweis: "belegt" | "unbekannt";
+  quelle: string | null;
+  /** Wann die Herstellerquelle gelesen wurde (ISO-Datum); `null` ohne Beleg. */
+  abgerufen: string | null;
+  quellenbedarf: string | null;
+}
+
+// R-0299: die Karte „Betreiber und Wissensstand" — wer das gerade antwortende Modell betreibt,
+// woher er kommt und bis wann das Wissen des Modells reicht. Nur Metadaten, nie ein Schlüssel.
+export interface ReasonerBetreiberKarte {
+  /** Der Zugang, über den gerade geantwortet würde; `null`, wenn kein Modell arbeitet. */
+  zugang: ReasonerCloudAnbieter | "local" | null;
+  /** Lesbarer Betreibername (z. B. „ChatGPT (OpenAI)"); beim Server des Betreibers `null`. */
+  betreiber: string | null;
+  /** Die Modellkennung, wie der Client sie meldet; `null`, wenn keine bekannt ist. */
+  modell: string | null;
+  herkunft: ReasonerZugangHerkunft | null;
+  wissensstand: ReasonerModellWissensstand | null;
+  /** Wie es um die Erreichbarkeit des Zugangs steht — siehe `ReasonerKiVerfuegbarkeit`. */
+  verfuegbarkeit: ReasonerKiVerfuegbarkeit | null;
+}
+
+// Ben nacharbeit-7/-9 (R-0940/R-2142): was der Server über die Erreichbarkeit des Glieds WEISS, das
+// die Ausführung als ERSTES ruft — aus den vorhandenen Kantensignalen (`providerReachability`):
+//   · "erreichbar"   — es hat zuletzt (innerhalb der Frist) wirklich geantwortet;
+//   · "ungeprueft"   — eingerichtet und freigegeben, aber noch ohne frischen Befund;
+//   · "unerreichbar" — es ist zuletzt gescheitert. Der nächste Lauf versucht es TROTZDEM zuerst
+//                      (`runTask`); `modus` und `anbieter` nennen es deshalb weiter. Ein Ersatzweg
+//                      wird nicht behauptet — er steht erst fest, wenn dieser Versuch scheitert.
+// `null`: es ist gar kein Modell in der freigegebenen Kette (keins eingerichtet, keine Freigabe,
+// abgeschaltet) — dann gibt es auch nichts zu erreichen.
+export type ReasonerKiVerfuegbarkeit = "erreichbar" | "ungeprueft" | "unerreichbar";
+
+// R-0599: die KI-Lage für JEDEN angemeldeten Nutzer (GET /api/ki-lage, ko.read) — ob gerade eine
+// externe, eine hausinterne oder keine KI arbeitet, welcher Anbieter dahintersteht und woher er
+// kommt. BEWUSST OHNE Modellnamen und ohne Schlüssel: der Modellname bleibt Admin-Sicht
+// (WP-VIP2-GATE); der Anbieter ist für den Datenschutz die Auskunft, die der Mensch braucht.
+export interface ReasonerKiLage {
+  modus: "extern" | "intern" | "keine";
+  anbieter: ReasonerCloudAnbieter | "local" | null;
+  anbieterName: string | null;
+  herkunft: ReasonerZugangHerkunft | null;
+  verfuegbarkeit: ReasonerKiVerfuegbarkeit | null;
+}
+
 // SCRUM-525 P.5 (WP-C): Herkunft der AKTIVEN Policy — "env" (Deploy-ENV KLARWERK_REASONER_POLICY,
 // deklarativ pro Deploy, per Admin-Schreibpfad NICHT änderbar), "db" (persistierte Admin-Wahl) oder
 // "default" (nichts konfiguriert/geladen, inkl. eines fail-closed Ladefehlers — s. Reasoner.setTaskConfig).
@@ -566,6 +629,11 @@ export interface ReasonerConfigStatus {
   // JOB 3134: die beiden externen Anbieter EINZELN — eingerichtet oder nicht, und warum nicht.
   // `cloudConfigured` oben bleibt „irgendein externer Anbieter ist eingerichtet".
   cloudProviders: Record<ReasonerCloudAnbieter, ReasonerCloudAnbieterStatus>;
+  // R-0702: die Herkunft je Zugang aus der zentralen Zugangsverwaltung, mit Nachweisstufe.
+  // Optional, damit vorhandene Statusattrappen gültig bleiben; „fehlt" heißt „keine Angabe".
+  herkunft?: Record<ReasonerCloudAnbieter | "local", ReasonerZugangHerkunft>;
+  // R-0299: Betreiber und Wissensstand des gerade antwortenden Modells. Optional wie `herkunft`.
+  betreiber?: ReasonerBetreiberKarte;
   // JOB 3134: der Anbieter, auf den „auto" (und die abgelösten Werte) heute aufgelöst werden — der
   // erste eingerichtete in der Reihenfolge von REASONER_CLOUD_ANBIETER; null, wenn keiner
   // eingerichtet ist. Die Fläche zeigt ihn neben „Auto", statt ihn raten zu lassen.

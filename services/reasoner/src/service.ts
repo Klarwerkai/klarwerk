@@ -12,6 +12,8 @@ import {
   sanitizeModelRunContext,
   traceFuerLauf,
 } from "../../model-runs";
+// R-0702: die Herkunft je KI-Zugang aus der zentralen Zugangsverwaltung (statt im Browser geraten).
+import { modellWissensstand, zugangHerkunft } from "./anbieter-herkunft";
 import {
   KlaraAusweichwegGesperrtFehler,
   anbieterZugelassen,
@@ -75,11 +77,14 @@ import type {
   LueckenBereich,
   LueckenUrteilOutcome,
   ReasonerAktiveWahl,
+  ReasonerBetreiberKarte,
   ReasonerCloudAnbieter,
   ReasonerCloudAnbieterStatus,
   ReasonerConfigStatus,
   ReasonerKiAbschaltung,
   ReasonerKiFreigabe,
+  ReasonerKiLage,
+  ReasonerKiVerfuegbarkeit,
   ReasonerLegacyChoice,
   ReasonerLocale,
   ReasonerPolicyMigration,
@@ -2059,6 +2064,100 @@ export class Reasoner {
     };
   }
 
+  // ==============================================================================================
+  // R-0599 / R-0299 · WELCHE KI ARBEITET GERADE — UND WER BETREIBT SIE?
+  // ==============================================================================================
+  //
+  // Gemessen an der Aufgabe, um die es den Menschen geht: dem ANTWORTEN (`answer`).
+  //
+  // Ben nacharbeit-7: MODUS, ANBIETER UND MODELL KOMMEN AUS EINER QUELLE — der TATSÄCHLICH
+  // freigegebenen Ausführungskette (`providerChain`, gegated durch Adminfreigabe, Vertraulichkeit
+  // und Abschaltung), nicht aus der Anzeige der Wahl (`effectiveAnbieterFor`, JOB 3549, die die
+  // Freigabe absichtlich übergeht). Vorher fragte `effectiveFor` die echte Kette und
+  // `effectiveAnbieterFor` die Anzeige — bei „auto" mit Cloud UND lokalem Modell, aber ohne
+  // Cloud-Freigabe, begann die Ausführung lokal und die Kopfzeile behauptete „extern".
+  //
+  // UND MIT DEM ERREICHBARKEITSBEFUND, den der Server schon führt (`providerReachability`) — aber
+  // für DASSELBE Glied, das die Ausführung zuerst ruft. Ben nacharbeit-9: `runTask` versucht das erste
+  // Modellglied der Kette bei JEDEM Lauf erneut, auch nach einem negativen Befund; nur wenn es dann
+  // wieder scheitert, fällt der Lauf weiter. Die Anzeige darf deshalb keinen lokalen oder
+  // regelbasierten Weg als feststehend behaupten (das tat Nacharbeit 8, indem sie unerreichbare
+  // Glieder übersprang), sondern nennt das Glied, an das der nächste Lauf die Inhalte zuerst sendet,
+  // mit seinem letzten Befund — auch wenn der „zuletzt nicht erreichbar" lautet.
+  private antwortAufloesung(): {
+    zugang: ReasonerCloudAnbieter | "local" | null;
+    provider: ReasonerProvider | null;
+    verfuegbarkeit: ReasonerKiVerfuegbarkeit | null;
+  } {
+    if (this.kiAbschaltung().abgeschaltet) {
+      return { zugang: null, provider: null, verfuegbarkeit: null };
+    }
+    // Dieselbe Kette, dasselbe erste Modellglied wie `runTask` — ohne einen Filter, den die
+    // Ausführung nicht kennt.
+    const erstes = this.providerChain("answer").find((p) => p !== this.fallback);
+    if (!erstes) {
+      return { zugang: null, provider: null, verfuegbarkeit: null };
+    }
+    const kante = this.kanteVon(erstes);
+    const lage = this.providerReachability(kante);
+    return {
+      zugang: kante,
+      provider: erstes,
+      verfuegbarkeit:
+        lage === "active" ? "erreichbar" : lage === "unreachable" ? "unerreichbar" : "ungeprueft",
+    };
+  }
+
+  /** R-0599: die KI-Lage für jeden angemeldeten Nutzer — ohne Modellnamen, ohne Schlüssel. */
+  kiLage(): ReasonerKiLage {
+    const { zugang, verfuegbarkeit } = this.antwortAufloesung();
+    if (zugang === null) {
+      return {
+        modus: "keine",
+        anbieter: null,
+        anbieterName: null,
+        herkunft: null,
+        verfuegbarkeit,
+      };
+    }
+    const herkunft = zugangHerkunft()[zugang];
+    if (zugang === "local") {
+      return { modus: "intern", anbieter: "local", anbieterName: null, herkunft, verfuegbarkeit };
+    }
+    return {
+      modus: "extern",
+      anbieter: zugang,
+      anbieterName: REASONER_CLOUD_ANBIETER_NAME[zugang],
+      herkunft,
+      verfuegbarkeit,
+    };
+  }
+
+  /** R-0299: Betreiber, Modell, Herkunft und Wissensstand des gerade antwortenden Modells. */
+  private betreiberKarte(): ReasonerBetreiberKarte {
+    const { zugang, provider, verfuegbarkeit } = this.antwortAufloesung();
+    if (zugang === null || provider === null) {
+      return {
+        zugang: null,
+        betreiber: null,
+        modell: null,
+        herkunft: null,
+        wissensstand: null,
+        verfuegbarkeit,
+      };
+    }
+    // Das Modell DESSELBEN Glieds, das die Lage bestimmt — nicht das eines anderen Zugangs.
+    const modell = provider.modelName?.() ?? null;
+    return {
+      zugang,
+      betreiber: zugang === "local" ? null : REASONER_CLOUD_ANBIETER_NAME[zugang],
+      modell,
+      herkunft: zugangHerkunft()[zugang],
+      wissensstand: modellWissensstand(modell),
+      verfuegbarkeit,
+    };
+  }
+
   // SCRUM-166: read-only Provider-/Model-Konfiguration. Nur Metadaten — keine Secrets,
   // keine Prompt-/Antwortinhalte. Ohne konfiguriertes Modell ehrlich Demo-Modus.
   // JOB 3134: was die Fläche über EINEN externen Anbieter erfährt — eingerichtet (Clientname und
@@ -2118,6 +2217,10 @@ export class Reasoner {
         openai: this.cloudStatus("openai"),
         anthropic: this.cloudStatus("anthropic"),
       },
+      // R-0702: Herkunft je Zugang mit Nachweisstufe — nur Angaben, nie ein Schlüssel.
+      herkunft: zugangHerkunft(),
+      // R-0299: Betreiber und Wissensstand des gerade antwortenden Modells.
+      betreiber: this.betreiberKarte(),
       autoAnbieter: this.vorgabeAnbieter() ?? null,
       ...(this.migration ? { migration: this.migration } : {}),
       persisted: this.policySource === "db",
