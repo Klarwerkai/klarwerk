@@ -320,7 +320,7 @@ herabgestuft werden (409 `mutability`).
 | --- | --- | --- | --- | --- | --- |
 | `GET` | `/api/library/search` | `ko.read` | Abfrage `q?` und Filter wie `GET /api/kos` | 200 Treffer | 500 `INTERNAL`, solange die Suchprojektion nicht bereit ist |
 | `GET` | `/api/library/images` | `ko.read` | Abfrage `q?`, `limit?` | 200 Bildtreffer | 400 `BAD_REQUEST`; 503 `SEARCH_UNAVAILABLE` |
-| `GET` | `/api/library/export` | `ko.read` | Abfrage `format?` | 200 Export | — |
+| `GET` | `/api/library/export` | `ko.read` | Abfrage `format?`, `ids?` (kommagetrennt; grenzt nur ein — validiert/Vertraulichkeit gelten weiter; leer = leere Auswahl) | 200 Export | — |
 | `POST` | `/api/library/import` | `ko.create` | Rumpf `{ items }` | 200 Importbilanz | Dienstfehler |
 | `GET` | `/api/library/import/candidates` | `ko.read` | — | 200 Prüfwarteschlange | — |
 | `POST` | `/api/library/import/candidates` | `ko.create` | Rumpf `{ items }` | 201 Kandidaten | Dienstfehler |
