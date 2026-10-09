@@ -323,6 +323,7 @@ describe("auditEventDetail", () => {
       "auth.login",
       "auth.logout",
       "notice.acknowledged",
+      "user.account-corrected",
       "user.approve",
       "user.created",
       "user.delete",

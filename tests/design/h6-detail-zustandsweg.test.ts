@@ -1744,6 +1744,13 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
         behaelter: "detail-passwort",
         seitenPfad: "/profil",
       },
+      // R-0582: die Berichtigung der eigenen Kontodaten — eine Detailkarte ohne eigene Abfrage.
+      {
+        reiter: "",
+        zeile: '[data-testid="zeile-kontodaten"]',
+        behaelter: "detail-kontodaten",
+        seitenPfad: "/profil",
+      },
     ];
   }
 

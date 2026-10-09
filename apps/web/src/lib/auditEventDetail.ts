@@ -132,6 +132,8 @@ const KONTO_ZIEL_AKTIONEN: ReadonlySet<string> = new Set([
   "auth.login",
   "auth.logout",
   "notice.acknowledged",
+  // R-0582: Berichtigung von Name/E-Mail — `correctAccountData(userId, …)`.
+  "user.account-corrected",
   "user.approve",
   "user.created",
   "user.delete",
