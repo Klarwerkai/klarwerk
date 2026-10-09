@@ -88,6 +88,14 @@
       "freigabe": "Nur wenn SMTP_HOST gesetzt ist"
     },
     {
+      "kennung": "wissensereignisse-webhooks",
+      "zweck": "Meldungen an Fremdwerkzeuge: Wissensobjekt validiert, Revalidierung faellig, Widerspruch offen (R-0710)",
+      "dateien": ["services/app/src/wissensereignisse.ts"],
+      "hosts": [],
+      "umgebung": ["KLARWERK_WEBHOOKS"],
+      "freigabe": "Nur die in KLARWERK_WEBHOOKS eingetragenen Ziele (ladeWebhookZiele): nur https, http nur fuer die eigene Maschine, keine Zugangsdaten in der Adresse, redirect: manual, signiert; gemeldet werden nur Kennungen von Objekten, die auch der Dienst-Schluessel-Export zeigen darf"
+    },
+    {
       "kennung": "word-addin-officejs",
       "zweck": "Browser: das Word-Aufgabenfenster laedt Office.js von Microsoft",
       "dateien": ["services/app/addin-static/taskpane.html"],
