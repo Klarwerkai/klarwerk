@@ -3,7 +3,10 @@
 Auftrag `aufnahme:20260922:gesamt-erfassung-einstieg` (Aufgabenrevision 2, Lauf
 `lauf:b3:aufnahme:20260922:gesamt-erfassung-einstieg:1`, Runden 1 bis 3; Nacharbeit BEN-4 in Lauf
 `…:gesamt-erfassung-einstieg:3`, Runde 1, auf `be402742`). Basisstand `b836417d`
-(`1.0.0-beta.1.630`). Stand dieser Datei: 01.10.2026.
+(`1.0.0-beta.1.630`). Stand dieser Datei: 09.10.2026 — fortgeschrieben durch Teil (e)
+`aufnahme:20260922:gesamt-erfassung-einstieg:belegnachweis` (Revision 2) am Basisstand `13bf9f2b`
+(`1.0.0-beta.1.785`); Ergebnis je Punkt mit Fassung und Beleg im Abschnitt **Abschlussnachweis**
+am Ende, die Tabelle „Abgleich je Aufnahmepunkt" ist auf denselben Stand gebracht.
 Auftragsquelle: `klarwerk_steuerung/gespraech/auftragsaufnahme-01a0c779-20260922/gesamtbestand/auftragsquellen/erfassung-einstieg.json`
 (42 Aufnahmepunkte; Originalwortlaut in den dort genannten `quellenpakete/aufnahmepunkte-0NN.json`).
 
@@ -80,51 +83,55 @@ erneut (nach dem Sichern bedingungslos öffnen) → N8, N8b, N9, N9b, N9c rot.
 Legende: **erfüllt** = am Basisstand bzw. nach dieser Lieferung im Code und durch den genannten
 Test belegt · **teilweise** = Rest benannt · **offen** = nicht geliefert, Entscheidung benannt ·
 **überholt** = durch jüngere Entscheidung ersetzt · **Doppel** = gleicher Inhalt wie ein anderer Punkt.
+Seit Teil (e): **geliefert, Abnahme offen** = im Code und durch Test belegt, aber die Quelle
+verlangt ausdrücklich eine Gegenprüfung/Abnahme, die nicht vorliegt, oder ein Ben-Befund ist nicht
+durch ein späteres Ben-Urteil ausgeräumt — solche Zeilen heißen nicht „erfüllt".
+„Entschieden" nennt immer die Kennung der Entscheidung Pedis.
 
 | Punkt | Kurzinhalt (Quelle) | Ergebnis heute | Beleg / verbleibende Entscheidung |
 |---|---|---|---|
 | R-0003 | Dokument-Canvas als Standardweg; Formular, Diktat, Interview, Datei nachrangig | **erfüllt** (durch H3) | Blatt ist der einzige Einstieg; Diktat als Werkzeugknopf, Interview/Datei/Formular unter „Datei ▾" (`components/erfassen/wege.ts:19`, `Blatt.tsx` Datei-Menü). Tests: `tests/import-einstieg/weg-ins-erfassen.test.tsx`, `tests/erfassen-verwerfen-gesamtfehler/gesamtfehler-modusleiste-mounted.test.tsx`. Die in der Quelle genannten Nebenbefunde: **gelöschte Maßnahmen** — JOB 2695, das Blatt schickt beim Ändern nur seine eigenen Felder (`captureFrontDoor.ts` `nurEigene`), belegt von `tests/capture/job2695-vordertuer-loescht-nicht.test.tsx` F1–F5 (grün in Runde 2); **geleerter Fließtext** und **Fortsetzen** — gesonderter Auftrag `aufnahme:20260922:erfassen-verwerfen` (R-0075) bzw. `tests/entwurf-fortsetzen` (grün). |
-| R-0029 | Formular- und Datenwahrheit erheben | **erfüllt als Erhebung** (Runde 2) | Vollständige Matrix „sichtbar vs. gespeichert" für Blatt und Arbeitsraum im Abschnitt **R-0029 — Erhebung** unten, jede Zeile mit Fundstelle. Verbleibende Entscheidung daraus: ob die vom Blatt unsichtbar gesetzten Felder (`statement`, `type`, `category: "Allgemein"`) sichtbar werden sollen. |
+| R-0029 | Formular- und Datenwahrheit erheben | **erfüllt als Erhebung** (Runde 2); Folgeentscheidung **entschieden** | Vollständige Matrix „sichtbar vs. gespeichert" für Blatt und Arbeitsraum im Abschnitt **R-0029 — Erhebung** unten, jede Zeile mit Fundstelle. Die daraus offene Frage (sollen `statement`, `type`, `category: "Allgemein"` auf dem Blatt sichtbar werden?) hat Pedi am 01.10.2026 beantwortet: die unsichtbaren Felder bleiben im Arbeitsraum (`entscheidung:1ec691b0-f137-4332-9986-c905a612c5ff`). Kein Umbau. |
 | R-0030 | Erfassungsoptionen festlegen statt gewachsen | **erfüllt** (durch H3) | Festgelegt in `BLATT_WEGE` (`wege.ts`): Interview, Datei, Formular; Diktat als Werkzeug. Quelle nennt den Altjob selbst „VERWORFEN". |
-| R-0031 | Erste Karte „Neues Wissensobjekt erfassen", „Demnächst" ans Ende | **überholt** | Weder die Karte noch „Demnächst" steht auf der Erfassungsfläche (`klara.path.soon` nur in `KlaraPathTeaser` auf Start/Stufe 2). |
+| R-0031 | Erste Karte „Neues Wissensobjekt erfassen", „Demnächst" ans Ende | **überholt** (Abgleich, ohne eigene Kennung) | Weder die Karte noch „Demnächst" steht auf der Erfassungsfläche (`klara.path.soon` nur in `KlaraPathTeaser` auf Start/Stufe 2). **Verbleibende Entscheidung:** Pedis `entscheidung:8fb4a8cc-…` nennt R-0061, R-0112, R-0929, R-0930 — R-0031 nicht. Ob sie auch diesen Punkt umfasst, ist nicht ausgesprochen. |
 | R-0039 | Freitext-Erfassung | **erfüllt** | Blatt: `blatt-titel`, Schreibfläche `role="textbox"`. Tests: `tests/erfassung-einstieg/blatt-einstieg-mounted.test.tsx` E0, `tests/cap-p1-fruehe-eingabe/blatt-fruehe-eingabe.test.tsx`. |
-| R-0061 | „Noch offen: …" unter der Schrittleiste | **überholt / offen zur Entscheidung** | Schrittleiste entfernt (H3). Auf dem Blatt ist die einzige Pflicht vor dem Einreichen die Vertraulichkeit; ihr Fehlen wird als Satz erklärt (`conf.requiredHint`, `tests/vertraulichkeit-hinweis/einreichen-ohne-stufe-erklaert-sich.test.tsx`). Entscheidung Pedi: ob eine Fortschrittsanzeige auf das Blatt zurückkehren soll. |
-| R-0063 | Datei-Knopf + als Schaltfläche bedienbare Ablagefläche | **erfüllt** | `components/CaptureFileImport.tsx` `capture-file-pick`, `capture-dropzone` (beide `<button>`). Test: `tests/capture/mega34-dateiauswahl-knopf.test.tsx` (7/7 grün in diesem Lauf). Tastatur-Enter nicht eigens getestet (natives `<button>`). |
-| R-0064 | Speicher-Check vor dem Einreichen | **teilweise** | Arbeitsraum: Speicher-Check mit Pflicht/optional (`Capture.tsx` Speicher-Check, `lib/captureReadiness.ts`; `tests/capture/capture-readiness.test.ts` grün). Blatt: nur die Stufenpflicht als Satz (s. R-0061). |
-| R-0066 | Standardweg-Karte „Dokument-Editor öffnen" dreisprachig | **überholt** | Karte existiert nicht mehr (H3). Der Sprachanteil des Punkts ist für die heutige Fläche aufgenommen: deutscher Rest im Beispiel-Tor behoben (dieser Lauf). `capture.ocrRunning`/`capture.fAsset` seit `fehlerfaelle` in Anwendersprache (s. R-0101). |
+| R-0061 | „Noch offen: …" unter der Schrittleiste | **überholt — entschieden** | Schrittleiste entfernt (H3). Pedi, 01.10.2026: R-0061 ist überholt, H3 gilt (`entscheidung:8fb4a8cc-003b-4ff8-bbe3-1c43dd5dba18`). Keine Fortschrittsanzeige auf dem Blatt. Auf dem Blatt ist die einzige Pflicht vor dem Einreichen die Vertraulichkeit; ihr Fehlen wird als Satz erklärt (`conf.requiredHint`, `tests/vertraulichkeit-hinweis/einreichen-ohne-stufe-erklaert-sich.test.tsx`). |
+| R-0063 | Datei-Knopf + als Schaltfläche bedienbare Ablagefläche | **geliefert, Abnahme offen** | Im Code: `components/CaptureFileImport.tsx` `capture-file-pick`, `capture-dropzone` (beide `<button>`). Test: `tests/capture/mega34-dateiauswahl-knopf.test.tsx` (7/7 grün in Lauf 1). **Konkrete Einschränkung der Quelle (`abnahme_offen`), nicht erfüllt:** „Sichtbaren Dateidialog über Erfassen öffnen; Knopf und Ablagefläche per DE/EN-Tab/Enter/Space, Auswahl und Übergabe an Import am aktuellen Live-Stand belegen." Weder Tastaturbedienung (Tab/Enter/Space, DE/EN) noch Live-Stand ist belegt. |
+| R-0064 | Speicher-Check vor dem Einreichen | **teilweise** | Arbeitsraum: Speicher-Check mit Pflicht/optional (`Capture.tsx` Speicher-Check, `lib/captureReadiness.ts`; `tests/capture/capture-readiness.test.ts` grün in Lauf 1). Blatt: nur die Stufenpflicht als Satz (s. R-0061). **Verbleibende Entscheidung:** ob der Speicher-Check des Arbeitsraums für das Blatt genügt. `entscheidung:8fb4a8cc-…` (H3 gilt, keine Schrittleiste) spricht gegen eine Anzeige auf dem Blatt, nennt R-0064 aber nicht. |
+| R-0066 | Standardweg-Karte „Dokument-Editor öffnen" dreisprachig | **überholt** (Abgleich, ohne eigene Kennung) | Karte existiert nicht mehr (H3). Wie bei R-0031 nennt `entscheidung:8fb4a8cc-…` diesen Punkt nicht. Der Sprachanteil des Punkts ist für die heutige Fläche aufgenommen: deutscher Rest im Beispiel-Tor behoben (dieser Lauf). `capture.ocrRunning`/`capture.fAsset` seit `fehlerfaelle` in Anwendersprache (s. R-0101). |
 | R-0080 | Zahl statt Text → verständliche Abweisung, richtiger Satz im roten Kasten | **erfüllt** (dieser Lauf) | Server: `services/capture/src/draft-payload-schema.ts` → 400 (war schon da; `tests/capture/job2690-entwurf-gestaltpruefung.test.tsx`). Oberfläche: übersetzter Satz `einstieg.fehler.form`. Test: E1 (DE/EN/NL), F1. Rest: der Server liefert weiterhin einen deutschen Techniksatz mit Feldname (für andere Aufrufer, z. B. Klara-Tests pinnen ihn); `body: 42` wird nicht abgewiesen, weil es kein Feld `body` gibt. |
 | R-0084 | Entwurf/Einreichen unterscheidbar, Satz daneben, Blick springt auf Erfolg | **erfüllt** mit Abweichung | Form unterscheidet (umrandet/gefüllt, `Blatt.tsx` Knopfleiste). Folge je Knopf als Beschreibung + `title` (E3); Fokus auf Erfolgszeile (E4, seit `fehlerfaelle` DE/EN/NL). **Abweichung:** kein sichtbarer Absatz, weil Zielbild H3 Erklärtext verbietet. **Entschieden** von Pedi (`entscheidung:1214edcf-b80f-455d-9501-476cb014fc0b`, 01.10.2026): „Ja, die Beschreibung am Knopf reicht, H3 bleibt." Die Beschreibung am Knopf ist damit der Sollzustand. Der Arbeitsraum zeigt den sichtbaren Block weiterhin (`KnopfUnterschied`, `tests/erstnutzer-u1/knopf-unterschied.test.tsx` grün). |
-| R-0085 | Fronttür fertig bauen | **erfüllt** (durch H3) | `CaptureFrontDoor.tsx` rendert das Blatt; die Logik steht in `Blatt.tsx`. Eine fachliche Gesamtabnahme der Fronttür nennt die Quelle als nie erfolgt — das bleibt eine Aufgabe der Endabnahme, kein Codebefund. |
-| R-0093 | Quellen-Panel beim Erfassen | **teilweise** | Arbeitsraum → „Erweiterte Details" → „Externe Quellen" (`Capture.tsx` ~6344-6583). Auf dem Blatt selbst nicht; dort nur „Mehr" → Status → vermutete Quelle. Entscheidung Pedi: ob das Panel auf das Blatt gehört (Zielbild H3 zeigt es nicht). |
-| R-0094 | Strukturiertes Formular (Symptom, Kontext, Diagnose, Maßnahme, Risiko) | **teilweise** | Formular vorhanden (Kernaussage, Aussage, Inhalt, Bedingungen, Maßnahmen). Die fünf genannten Felder gibt es so nicht. Quelle selbst benennt Widerspruch (extract_04 „erledigt" vs. Checkliste leer). Entscheidung Pedi: gilt die Feldliste aus dem Juli-Konzept noch? |
+| R-0085 | Fronttür fertig bauen | **geliefert, Abnahme offen** (gebaut durch H3) | `CaptureFrontDoor.tsx` rendert das Blatt; die Logik steht in `Blatt.tsx`. Die Quelle hält fest: „Über die Arbeit an der Fronttür ist bis heute nie fachlich geurteilt worden" — diese fachliche Gesamtabnahme liegt weiterhin nicht vor (Aufgabe der Endabnahme, kein Codebefund). |
+| R-0093 | Quellen-Panel beim Erfassen | **erfüllt im Arbeitsraum — entschieden** | Arbeitsraum → „Erweiterte Details" → „Externe Quellen" (`Capture.tsx` ~6344-6583). Auf dem Blatt selbst nicht; dort nur „Mehr" → Status → vermutete Quelle. Pedi, 01.10.2026: das Quellen-Panel bleibt im Arbeitsraum (`entscheidung:1ec691b0-f137-4332-9986-c905a612c5ff`). Belege zum Panel s. R-0149. |
+| R-0094 | Strukturiertes Formular (Symptom, Kontext, Diagnose, Maßnahme, Risiko) | **überholt — entschieden** | Formular vorhanden (Kernaussage, Aussage, Inhalt, Bedingungen, Maßnahmen); die fünf Juli-Felder gibt es so nicht. Pedi, 01.10.2026: R-0094 ist überholt, das gebaute Formular gilt (`entscheidung:c68b7dda-02ec-46a1-81a6-32e5902ecf95`). Der Quellenwiderspruch (extract_04 „erledigt" vs. Checkliste leer) ist damit aufgelöst. |
 | R-0099 | Fläche gegen das Zielbild bauen, Wert für Wert | **erfüllt** (JOB 3062), hier nicht erneut gemessen | `tests/design/zielbild-h3-erfassen.test.ts` misst gegen `design/klarwerk/Erfassen.dc.html` in Chromium. In diesem Lauf nicht gefahren (Browserregel); läuft im Linux-Tor. |
 | R-0101 | Klare Worte, keine technischen Beschriftungen | **teilweise** | Behoben: Formfehler-, Größen- und Fristsätze (dieser Lauf); seit `fehlerfaelle` auch `capture.ocrRunning` („Text wird aus … gelesen … Beim ersten Mal dauert das etwas länger." statt „OCR läuft … (Worker/Sprachdaten …)") und `capture.fAsset` („Anlage / Gerät" statt „Anlage / Asset") in DE/EN/NL, Test `klare-worte-r0101.test.ts`. Weiter offen (nicht Teil von `fehlerfaelle`): „Vordertür-Entwurf geöffnet" (`fd.draftOpen`, wörtlich gepinnt in `tests/capture/f0040-fremder-entwurf-frontdoor.test.tsx:505,530`), die Knopfbeschriftung „OCR → Text" (`capture.ocr`, `capture.ocrRunningShort`), „Externe Quellen (Stufe 2)", „Live-Prüfung", das Werkzeug „?" ohne sprechenden Namen. |
-| R-0112 | „Weitere Wege" scrollt den Arbeitsraum ins Bild | **überholt** | Knopf entfernt (H3). Das Blatt scrollt nur bei `?weg=`-Einsprung; der Menüweg bewusst nicht (`tests/import-mausziel/dateiauswahl-im-bild-chromium.test.ts` N). |
-| R-0117 | = R-0063 (historisch erledigt) | **Doppel** | wie R-0063. |
-| R-0149 | Quellen-Panel mit serverseitiger Suche, nie automatisch angehängt | **teilweise** | Suche über `endpoints.external.search` (Server-Proxy), Anhängen nur per Klick. Tests: `tests/capture/capture-sources.test.ts`, `tests/capture/job2683-d2-suche-flaeche.test.tsx`. **Fehlender Beleg:** kein Test sagt ausdrücklich „Treffer werden nie automatisch angehängt". |
-| R-0915 | Eigener Kopfbereich für die zweite Erfassungsstufe | **Klärung** | `pages/Stufe2.tsx` ist keine Erfassungsstufe (Output, ImportReview, Capital, GraphView). Eine „zweite Erfassungsstufe" gibt es nach H3 nicht; der Arbeitsraum ersetzt das Blatt ohne eigenen Kopf. Entscheidung: was mit „zweite Stufe" gemeint war. |
-| R-0922 | Erweiterte Details zugeklappt, ehrlicher Zähler | **erfüllt** (Arbeitsraum) | `Capture.tsx` ~6081-6110, `lib/captureAdvancedFields.ts`; `tests/app/capture-advanced-fields.test.ts` grün. Rest: kein gemounteter Test des Zählers. |
-| R-0929 | Geführte Schritt-Rail im Studio, „Start hier" | **überholt** | Keine Schritt-Rail auf dem Blatt; „Start hier" nur in `KnowledgeInputStudio` (`studio.coach.firstRun`). |
-| R-0930 | Geführte Schrittleiste mit „Empfohlen" | **überholt / Widerspruch** | s. „Die tragende jüngere Entscheidung". |
+| R-0112 | „Weitere Wege" scrollt den Arbeitsraum ins Bild | **überholt — entschieden** | Knopf entfernt (H3); Pedi: überholt, H3 gilt (`entscheidung:8fb4a8cc-003b-4ff8-bbe3-1c43dd5dba18`). Das Blatt scrollt nur bei `?weg=`-Einsprung; der Menüweg bewusst nicht (`tests/import-mausziel/dateiauswahl-im-bild-chromium.test.ts` N). |
+| R-0117 | = R-0063 (historisch erledigt) | **Doppel** — geliefert, Abnahme offen | wie R-0063, samt derselben offenen Abnahme (`abnahme_offen` der Quelle wortgleich). Der Quellstand „historisch_erledigt_belegt" ist kein Beleg für den heutigen Live-Stand. |
+| R-0149 | Quellen-Panel mit serverseitiger Suche, nie automatisch angehängt | **erfüllt** (Arbeitsraum) | Suche über `endpoints.external.search` (Server-Proxy), Anhängen nur per Klick. Tests: `tests/capture/capture-sources.test.ts`, `tests/capture/job2683-d2-suche-flaeche.test.tsx`. Der früher fehlende Beleg liegt jetzt vor: `job2683-d2-suche-flaeche.test.tsx` Block „R-0149 · Suchtreffer im Quellen-Panel werden nie automatisch angehängt" (auf der Stufe `search_attach`: Warteliste bleibt nach Suche, Wartezeit und zweiter Suche leer; erst der Klick übernimmt genau einen Treffer). Ort laut `entscheidung:1ec691b0-…` der Arbeitsraum. |
+| R-0915 | Eigener Kopfbereich für die zweite Erfassungsstufe | **überholt — entschieden** | `pages/Stufe2.tsx` ist keine Erfassungsstufe (Output, ImportReview, Capital, GraphView); eine „zweite Erfassungsstufe" gibt es nach H3 nicht. Pedi, 01.10.2026: R-0915 ist überholt (`entscheidung:30ceaaee-3c10-4110-a32e-25043194235b`). |
+| R-0922 | Erweiterte Details zugeklappt, ehrlicher Zähler | **erfüllt** (Arbeitsraum) | `Capture.tsx` ~6081-6110, `lib/captureAdvancedFields.ts`; `tests/app/capture-advanced-fields.test.ts`. Der früher fehlende gemountete Test liegt jetzt vor: `tests/capture/job2683-d2-suche-flaeche.test.tsx` Block „R-0922 · Zähler der zugeklappten ‚Erweiterten Details', gemountet" (leer kein Zähler, teilweise genau 2, vollständig alle, geleert zählt zurück). |
+| R-0929 | Geführte Schritt-Rail im Studio, „Start hier" | **überholt — entschieden** | Keine Schritt-Rail auf dem Blatt; „Start hier" nur in `KnowledgeInputStudio` (`studio.coach.firstRun`). Pedi: überholt, H3 gilt (`entscheidung:8fb4a8cc-003b-4ff8-bbe3-1c43dd5dba18`). |
+| R-0930 | Geführte Schrittleiste mit „Empfohlen" | **überholt — entschieden** | s. „Die tragende jüngere Entscheidung"; Pedi: überholt, H3 gilt (`entscheidung:8fb4a8cc-003b-4ff8-bbe3-1c43dd5dba18`). |
 | R-0978 | Quittung nach Abschluss, ruhiger Arbeitsraum | **erfüllt** | `blatt-entwurf-gespeichert`, `blatt-lage` (Erfolg mit drei Wegen); jetzt zusätzlich fokussiert (E4). Schmalansicht: `tests-smoke/demo-ux-v1-capture-frontdoor.spec.ts` (Playwright, hier nicht gefahren). |
 | R-1000 | Wortlaut der Vordertür; Hilfe zitiert keine nicht vorhandenen Knöpfe | **erfüllt** (dieser Lauf) | Vier Hilfetexte berichtigt; H1/H2 in `fehlersatz-und-hilfe.test.ts`. |
 | R-1002 | Zu lang ist nicht kaputt | **erfüllt** (Runden 1 und 2) | Rumpf: 413 → `einstieg.fehler.zuLang` (E2 gegen echten Server, F2). Titel: die stille Kürzung auf 90 Zeichen ist entfernt (BEN-2, T1). Weder Titel noch Aussage werden serverseitig gekürzt (Berichtigung gegenüber Runde 1: `normalizeDraftPayload` kürzt nur Quellen, Prüfer und Interview; Arbeitsraum-Felder mit Grenze tragen `maxLength` samt sichtbarer Rückmeldung, `Capture.tsx` „mega6 Block D"). |
-| R-1560 | Blatt mit Werkzeugmenüs — Kriterien Q3(b), Q3c, CAP-P1, Q3(a) §9, R0633, /health | **erfüllt in den messbaren Teilen, nicht vollständig abgenommen** | **Q3(b)** Alias `/erfassen/vordertuer` → Blatt (`CaptureFrontDoor.tsx:19-34`). **Q3c** Stufenpflicht an `POST /api/kos` (`tests/q3c-stufenpflicht/*`, `tests/q3c-stufenpflicht-dokumentweg`, grün). **CAP-P1** frühe Eingaben: gemountet DE `tests/cap-p1-fruehe-eingabe` (F1–F7, N1–N8), EN jetzt `q3a-zustandsmatrix-mounted.test.tsx` Z1-en. **Q3(a) §9** Zustandsmatrix: s. Abschnitt unten (Z0–Z4; „Cache"-Zeilen nicht anwendbar, begründet). **R0633-Matrix** `stufenwerte-am-entwurf.test.ts` (11/11). **/health-Commit** öffentlich: nicht prüfbar ohne laufende Instanz — fehlender Beleg. „Breiter H3-Bild-/Word-/Provenienz-, Diktat-/Datei-/Interview-/KI-Gesamtweg bleibt separat" laut Quelle — nicht Teil dieser Lieferung; ebenso ausdrücklich: „nicht als vollständig abgenommen kennzeichnen". |
-| R-1578 | DESIGN Web-App Erfassen (eine Fläche …) | **erfüllt** (JOB 3062) | s. oben. Bereich-Zeile: Auswahl aus den am Client geladenen Kategorien (`Blatt.tsx` ~645-654); der Kategorien-Serverweg aus K2b gilt für Klara in Word. |
+| R-1560 | Blatt mit Werkzeugmenüs — Kriterien Q3(b), Q3c, CAP-P1, Q3(a) §9, R0633, /health | **erfüllt in den messbaren Teilen, nicht vollständig abgenommen** | **Q3(b)** Alias `/erfassen/vordertuer` → Blatt (`CaptureFrontDoor.tsx:19-34`). **Q3c** Stufenpflicht an `POST /api/kos` (`tests/q3c-stufenpflicht/*`, `tests/q3c-stufenpflicht-dokumentweg`, grün). **CAP-P1** frühe Eingaben: gemountet DE `tests/cap-p1-fruehe-eingabe` (F1–F7, N1–N8), EN jetzt `q3a-zustandsmatrix-mounted.test.tsx` Z1-en. **Q3(a) §9** Zustandsmatrix: s. Abschnitt unten (Z0–Z4; „Cache"-Zeilen nicht anwendbar, begründet). **R0633-Matrix** `stufenwerte-am-entwurf.test.ts` (11/11). **/health-Commit** öffentlich: nicht prüfbar ohne laufende Instanz — fehlender Beleg. „Breiter H3-Bild-/Word-/Provenienz-, Diktat-/Datei-/Interview-/KI-Gesamtweg bleibt separat" laut Quelle — nicht Teil dieser Lieferung; ebenso ausdrücklich: „nicht als vollständig abgenommen kennzeichnen". Die Quelle hält außerdem fest: „Echte UI-Nachprüfung fehlt" — auch sie liegt nicht vor. |
+| R-1578 | DESIGN Web-App Erfassen (eine Fläche …) | **teilweise — gelieferter Teilstand, Abnahme offen** (nicht „erfüllt") | Quelle: `state` „gelieferter_teilstand", `lieferstatus` „TEILWEISE", `zustand` „im_code_nicht_abgenommen". **Geliefert, mit Fassung:** JOB 3062 R9 veröffentlicht als `1.0.0-beta.1.89`; der R9-Nachzug ist BEN GRÜN für die Seitenhilfe über beide Zugänge und die bestehenden Speicher-/Einreichprüfungen — das Urteil begrenzt sich ausdrücklich auf den Nachzug. Integrierter Nachzug JOB 3082 R3 veröffentlicht als `1.106` (`d798cacbcccfd69d931930d99214c39bec54deca`); BEN bestätigt dort die gespeicherte Stufe „intern" (gemeinsames Ergebnis mit R-1560, s. dort). Am Basisstand `1.0.0-beta.1.785`: das Blatt (s. „Die tragende jüngere Entscheidung"); Bereich-Zeile aus den am Client geladenen Kategorien (`Blatt.tsx` ~645-654), der Kategorien-Serverweg aus K2b gilt für Klara in Word. **Offen laut Quelle, diesem Punkt zugeordnet:** „Echte UI-Nachprüfung fehlt, Q3(b)/Q3c und breiter Blatt-/Word-Umfang bleiben offen"; aus der R9-Rückgabe: „historischer Basisdiff nicht vollständig erneut geprüft … Volltext der Hilfen (Test nur erste 40 Zeichen), Sprachwechsel und Abmeldung nach Navigation bleiben offen". Q3(b)/Q3c sind in den messbaren Teilen unter R-1560 belegt; der breite Blatt-/Word-Umfang ist laut Quelle separat. |
 | R-1683 | Erfassungsmodus Freitext | **erfüllt** | wie R-0039. |
-| R-1684 | Erfassungsmodus Strukturiertes Formular | **erfüllt** / s. R-0094 | „Datei ▾" → „Formular (Experten)". |
-| R-1810 | „BEAUFTRAGT" (OFFEN.md U4, mega90) | **abgegrenzt** | Sammelzeile für den Bedienbarkeitsauftrag mega90. Der Erfassungsanteil (SCRUM-536/537 geleerter Fließtext) ist im gesonderten Auftrag `erfassen-verwerfen` geliefert (`tests/erfassen-verwerfen-gesamtfehler/README.md`). Übrige Blöcke (mobiles Menü, Bibliotheksfilter, Ladezeit) liegen außerhalb der Erfassungsfläche. |
-| R-1920 | = R-0063 | **Doppel** | wie R-0063. |
+| R-1684 | Erfassungsmodus Strukturiertes Formular | **erfüllt** | „Datei ▾" → „Formular (Experten)". Maßgeblich ist das gebaute Formular (`entscheidung:c68b7dda-…`, s. R-0094). |
+| R-1810 | „BEAUFTRAGT" (OFFEN.md U4, mega90) | **abgegrenzt** | Sammelzeile für den Bedienbarkeitsauftrag mega90; die Quelle ordnet sie zugleich `gesamt-erstnutzerfuehrung`, `grossbestand-nutzerabnahme` und `gesamt-suchindex-aktualitaet` zu. Der Erfassungsanteil (SCRUM-536/537 geleerter Fließtext) ist im gesonderten Auftrag `erfassen-verwerfen` geliefert (`tests/erfassen-verwerfen-gesamtfehler/README.md`). Übrige Blöcke (mobiles Menü, Bibliotheksfilter, Ladezeit, erster Blick, Hilfe am Ort) liegen außerhalb der Erfassungsfläche und bei diesen Aufträgen. |
+| R-1920 | = R-0063 | **Doppel** — geliefert, Abnahme offen | wie R-0063, samt derselben offenen Abnahme. |
 | R-2094 | Vier Erfassungsmodi (MUSS) | **erfüllt** mit Rest | Freitext, Formular, Diktat, Interview (+ Datei) erreichbar. Rest s. SOLL:FR-CAP-01. |
-| N-0004 | Entwurfsmenü ohne zugänglichen Namen | **erfüllt** (JOB 3266 D1) | `Blatt.tsx` Menü „mehr": `beschriftung={t("erfassen.werkzeug.mehr")}` (DE „Mehr", EN „More", NL „Meer"); „Entwürfe" erster Eintrag. Test: `tests/d1-meine-entwuerfe/blatt-zugang-und-liste.test.tsx` B1 (grün). Live-Gegenprüfung nach dem Fix fehlt. |
-| N-0014 | = N-0004 (Folgebeobachtung 1.107) | **Doppel** | wie N-0004. |
-| N-0068 | Expertenformular / „Anhänge verwalten" verlieren den Bearbeitungskontext | **erfüllt** (Runden 2 und 3, BEN-1) | `Blatt.tsx` `formularOeffnen` + Effekt `formularNachSichern`: bei abweichendem Blatt Rückfrage; auf Ja erst sichern, dann — nach dem Ende der Speicherung und nur, wenn seither nichts nachgetragen wurde — Formular mit genau diesem Stand; ein Nachtrag während des Sicherns löst eine zweite, erklärende Rückfrage aus; auf Nein bleibt alles auf dem Blatt; nicht sicherbar → Rückfrage nennt den Wechsel. Beide Wege (Datei-Menü, „Anhänge verwalten"). Ein offener KI-Vorschlag (BEN-4) wird nicht als Nachtrag behandelt: genau eine Meldung „erst übernehmen oder verwerfen", keine Speicherung. Tests `formular-und-titel-mounted.test.tsx` N1–N9c, B4–B4d. Nicht umgesetzt: eine Übergabe **ohne** Sichern (das Formular liest den Entwurf beim Server) — die Rückfragen machen jeden Wechsel stattdessen ausdrücklich. |
+| N-0004 | Entwurfsmenü ohne zugänglichen Namen | **geliefert, Abnahme offen** (JOB 3266 D1) | `Blatt.tsx` Menü „mehr": `beschriftung={t("erfassen.werkzeug.mehr")}` (DE „Mehr", EN „More", NL „Meer"); „Entwürfe" erster Eintrag. Test: `tests/d1-meine-entwuerfe/blatt-zugang-und-liste.test.tsx` B1 (grün in Lauf 1). Die Quelle verlangt ausdrücklich: „Aktuelle Gegenprüfung offen … keine bestätigte Behebung dieses Einzelbefunds" — eine Live-Gegenprüfung nach dem Fix fehlt. |
+| N-0014 | = N-0004 (Folgebeobachtung 1.107) | **Doppel** — geliefert, Abnahme offen | wie N-0004. |
+| N-0068 | Expertenformular / „Anhänge verwalten" verlieren den Bearbeitungskontext | **geliefert, Abnahme offen** (Runden 2 und 3, BEN-1; Lauf 3, BEN-4). Nicht „erfüllt": Bens Urteil Lauf 1 Runde 3 hat die frühere Erfüllt-Zeile durch B4 widerlegt; ein Ben-Urteil, das den Nachstand aus Lauf 3 bestätigt, liegt den Unterlagen dieses Auftrags nicht vor. Die Quelle nennt zudem „Aktuelle Gegenprüfung offen". | `Blatt.tsx` `formularOeffnen` + Effekt `formularNachSichern`: bei abweichendem Blatt Rückfrage; auf Ja erst sichern, dann — nach dem Ende der Speicherung und nur, wenn seither nichts nachgetragen wurde — Formular mit genau diesem Stand; ein Nachtrag während des Sicherns löst eine zweite, erklärende Rückfrage aus; auf Nein bleibt alles auf dem Blatt; nicht sicherbar → Rückfrage nennt den Wechsel. Beide Wege (Datei-Menü, „Anhänge verwalten"). Ein offener KI-Vorschlag (BEN-4) wird nicht als Nachtrag behandelt: genau eine Meldung „erst übernehmen oder verwerfen", keine Speicherung. Tests `formular-und-titel-mounted.test.tsx` N1–N9c, B4–B4d. Nicht umgesetzt: eine Übergabe **ohne** Sichern (das Formular liest den Entwurf beim Server) — die Rückfragen machen jeden Wechsel stattdessen ausdrücklich. |
 | P-UX-22 | Quellenformular: eigene Belegstelle zuordenbar | **erfüllt** (JOB 3133, LIVE 1.155) | `tests/quellen-anker-im-formular/formular-haengt-belegstelle-an.test.tsx` a–e (grün). |
 | P-UX-22b | I2 prüft Anfrage + 403, I3 zählt Anfragen | **erfüllt** (JOB 3178) | `tests/quellen-anker-im-formular/interne-adresse-durch-das-formular.test.tsx` I2 (`rufe.length === 1`, Status 403), I3 (`nachher.length - vorher === 0`) — grün in diesem Lauf. |
 | priority:K2b | Klara Erfassen nach Mockup: Bereich-Zeile, „?"-Menü, Dokumentlink, Leertextfarbe `#9AA2B1` | **Teile 1–3 erfüllt, Teil 4 offen mit Sperre** | Teile 1–3 laut Quelle geliefert (`tests/k2b-bereich-zeile`, `tests/k2b-erfassen-reste/k2b-menue-und-link.test.ts`). Teil 4: `#9AA2B1` steht in `apps/web/public/word-addin/taskpane.html:48` als Mockup-Wert `--hint`, der Erfassungssatz `#capture-leer` nutzt bewusst `--muted`. Die Quelle nennt ausdrücklich: Gestaltung, „nicht vor der Vorführung" (Pedi) — **nicht in diesem Lauf entschieden**. Hinweis zur Entscheidung: `#9AA2B1` auf Weiß erreicht rechnerisch nur etwa 2,6 : 1 Kontrast (unter WCAG 4,5 : 1 für Text). **Nachtrag `k2b-konkreter-rest`:** `--hint` liegt heute in `taskpane.css:25` (nicht mehr `taskpane.html:48`); `#capture-leer` in `taskpane.css:403`. Die Bedingung von Entscheidung 2 (DEMO-ERSTER-NUTZERWEG LIVE) ist durch JOB 3801/4337 erfüllt — Teil 4 ist nicht mehr durch sie gesperrt, aber nicht umgesetzt. Rest R1–R5 und offene Kontrastentscheidung E1: `docs/entscheidungen/k2b-erfassen-leertextfarbe.md`; Abgleich `tests/k2b-restabgleich/leertextfarbe-abgleich.test.ts`. |
 | priority:UX-22 | = P-UX-22 | **Doppel** | Quelle: `doppelte_quellenfassung`. |
 | priority:UX-22b | = P-UX-22b | **Doppel** | Quelle: `doppelte_quellenfassung`. |
-| SOLL:FR-CAP-01 | Freitext, Formular, Diktat, KI-Interview → strukturierbarer Input | **teilweise** | Alle vier erreichbar. Sie führen **nicht** zu demselben Datenstand: das Blatt speichert Rumpf-HTML, der Arbeitsraum Formularfelder (R-0029). Der Gesamtweg Diktat/Datei/Interview/KI ist in der Quelle (R-1560) ausdrücklich separat. |
+| SOLL:FR-CAP-01 | Freitext, Formular, Diktat, KI-Interview → strukturierbarer Input | **teilweise** | Alle vier erreichbar (R-1683, R-1684, R-2094). Sie führen **nicht** zu demselben Datenstand: das Blatt speichert Rumpf-HTML, der Arbeitsraum Formularfelder (R-0029). Mit `entscheidung:c68b7dda-…` (gebautes Formular gilt) und `entscheidung:1ec691b0-…` (unsichtbare Felder bleiben im Arbeitsraum) ist das der entschiedene Sollzustand für Formular und Blatt. **Rest, nicht in diesem Umfang:** das historische Abnahmekriterium „Alle vier Modi führen zu strukturierbarem Input" ist für Diktat und Interview nicht als Gesamtweg gemessen; die Quelle (R-1560) führt den Gesamtweg Diktat/Datei/Interview/KI ausdrücklich separat. Die Quelle selbst stuft den Punkt als „Historisches Soll; jüngere explizite Entscheidungen … gehen vor" ein. |
 
 ## R-0029 — Erhebung „sichtbar vs. gespeichert"
 
@@ -168,14 +175,22 @@ Soll: `klarwerk_steuerung/archiv/3082/AUFTRAG.md:221-234`. Ist: `q3a-zustandsmat
 ## Quellenwidersprüche
 
 1. **Schrittleiste / „Empfohlen" / „Weitere Wege" (R-0061, R-0112, R-0929, R-0930) gegen Zielbild
-   H3 (R-1578, jünger, von Pedi):** H3 hat die Elemente entfernt. Nicht zurückgebaut; Entscheidung
-   Pedi, ob eine Orientierungshilfe auf dem Blatt zurückkehren soll.
+   H3 (R-1578, jünger, von Pedi):** H3 hat die Elemente entfernt. Nicht zurückgebaut. **Entschieden**
+   (Pedi, 01.10.2026, `entscheidung:8fb4a8cc-003b-4ff8-bbe3-1c43dd5dba18`): die vier Punkte sind
+   überholt, H3 gilt. R-0031 und R-0066 (gleiche Lage) nennt die Entscheidung nicht.
 2. **„Ein Satz daneben" (R-0084) gegen „kein Erklärtext auf der Fläche" (H3):** gelöst als
    Beschreibung am Knopf (Screenreader + `title`), nicht als sichtbarer Absatz. **Entschieden**
    (Pedi, `entscheidung:1214edcf-…`, 01.10.2026): „Ja, die Beschreibung am Knopf reicht, H3 bleibt."
    Kein sichtbarer Satz; E3 belegt den Sollzustand in DE/EN/NL.
 3. **R-0094:** Feldliste Symptom/Kontext/Diagnose/Maßnahme/Risiko gegen das gebaute Formular.
-4. **R-0915:** „zweite Erfassungsstufe" hat heute keinen Gegenstand.
+   **Entschieden** (`entscheidung:c68b7dda-02ec-46a1-81a6-32e5902ecf95`): das gebaute Formular gilt.
+4. **R-0915:** „zweite Erfassungsstufe" hat heute keinen Gegenstand. **Entschieden**
+   (`entscheidung:30ceaaee-3c10-4110-a32e-25043194235b`): überholt.
+5. **R-0093 / R-0029 gegen H3 (eine Fläche):** Quellen-Panel und unsichtbar gesetzte Felder auf dem
+   Blatt? **Entschieden** (`entscheidung:1ec691b0-f137-4332-9986-c905a612c5ff`): sie bleiben im
+   Arbeitsraum.
+6. **R-0117 „historisch_erledigt_belegt" gegen `abnahme_offen` derselben Quelle** (R-0063/R-0117/
+   R-1920: Tastatur- und Live-Beleg fehlen). Gewertet nach der konkreten Einschränkung: Abnahme offen.
 
 ## Fehlende Belege / nicht gefahrene Prüfungen
 
@@ -185,8 +200,12 @@ Soll: `klarwerk_steuerung/archiv/3082/AUFTRAG.md:221-234`. Ist: `q3a-zustandsmat
   `tests-smoke/demo-ux-v1-capture-frontdoor.spec.ts`. Die sichtbaren Änderungen dieses Laufs sind
   dort unkritisch (die beiden Beschreibungssätze sind `hidden` und zählen im Prosamesser nicht), das
   ist aber eine Überlegung, keine Messung.
-* R-0149: kein ausdrücklicher Test „nie automatisch anhängen".
-* R-0922: kein gemounteter Test des Zählers.
+* ~~R-0149: kein ausdrücklicher Test „nie automatisch anhängen".~~ Überholt (Teil e): belegt in
+  `tests/capture/job2683-d2-suche-flaeche.test.tsx`, Block R-0149.
+* ~~R-0922: kein gemounteter Test des Zählers.~~ Überholt (Teil e): belegt in
+  `tests/capture/job2683-d2-suche-flaeche.test.tsx`, Block R-0922.
+* R-0063/R-0117/R-1920: Tastaturbedienung (Tab/Enter/Space, DE/EN) und Übergabe an den Import am
+  Live-Stand, wie die Quelle sie verlangt.
 * R-1560: der öffentliche `/health`-Commit ist ohne laufende Instanz nicht feststellbar.
 * N-0068: Nachträge während des Sicherns sind seit Lauf 3 für Titel (N8/N8b), Text (N9), Stufe (N9b)
   und Bereich (N9c) einzeln gemessen. Die Ablehnung der zweiten Rückfrage ist nur für den Titel (N8b)
@@ -243,3 +262,75 @@ Linux-Prüflauf am Kandidaten `b74a7744` für K1.0 gemessen hat (Diff-Zeilen „
 Lauf bereits grün; `werte-vorher.json` ist nicht erneut angefasst. Außerhalb
 der Erfassungsfläche bleibt „Asset" unverändert stehen, z. B. `ko.couple.placeholder` (EN „Asset
 reference, …", Anlagenkopplung im Wissensobjekt). Das gehört nicht zu diesem Auftrag.
+
+## Abschlussnachweis — Teil (e) `gesamt-erfassung-einstieg:belegnachweis` (09.10.2026)
+
+Grundlage: die 42 Aufnahmepunkte der Auftragsquelle (`auftraege-002.json` `$[18].task`, alle
+`points[]`, Originalwortlaut in `quellenpakete/aufnahmepunkte-0NN.json`), die Tabelle oben, die
+Ergebnisse von Lauf 1–3 des Elternauftrags und der Teilaufträge `fehlerfaelle` und `layout` sowie
+Pedis Antworten vom 01.10.2026. Neu gebaut wurde in Teil (e) nichts; geändert ist nur diese Datei.
+
+### Fassung
+
+* **Gemessener Stand:** Basis dieses Auftrags `13bf9f2b` = `1.0.0-beta.1.785` (`package.json`,
+  `apps/web/src/version.ts`). Alle Code- und Testverweise der Tabelle sind an diesem Stand durch
+  **Quelleninspektion** nachgesehen. „grün in Lauf 1/Runde 2" heißt: Prüflauf jenes Laufs, nicht
+  dieses Auftrags.
+* **Ältere Lieferfassungen laut Quelle:** H3 (R-1578, R-0003, R-0030, R-0085, R-0099) JOB 3062 R9
+  veröffentlicht als `1.0.0-beta.1.89` (Nachzug BEN GRÜN, auf den Nachzug begrenzt); integrierter
+  Nachzug für R-1578 und R-1560 JOB 3082 R3 veröffentlicht als `1.106` (`d798cacb`); P-UX-22/22b
+  JOB 3133 LIVE `1.0.0-beta.1.155` (`3d30f9ea`); K2b Teile 1–3 aus JOB 3057 LIVE `1.98` und den in
+  der K2b-Zeile genannten Folgejobs.
+* **Fehlender Beleg (Fassung):** Mit welcher Ship-Fassung Lauf 1–3 des Elternauftrags und die
+  Teilaufträge `fehlerfaelle` und `layout` ausgeliefert wurden, steht in keiner Datei des
+  Produktbaums. Sie sind am Basisstand `1.0.0-beta.1.785` enthalten (Quelleninspektion). Die Fassung
+  dieser Lieferung selbst entsteht erst bei der Veröffentlichung.
+* **Teilauftrag `metadaten`:** Im Produktbaum ist keine Datei mit diesem Auftragsnamen oder Ergebnis
+  zu finden. Sein Ergebnis ist hier **nicht belegt**. Die früher offenen Belege zu R-0149 und R-0922
+  liegen inzwischen vor (s. Tabelle); welcher Auftrag sie geliefert hat, ist im Baum nicht vermerkt.
+
+### Ergebnis je Punkt, gruppiert (Einzelheiten in der Tabelle oben)
+
+| Ergebnis | Punkte |
+|---|---|
+| **erfüllt** (Code und Test am Basisstand; kein offener Ben-Befund und keine offene Abnahmeforderung der Quelle bekannt) | R-0003, R-0029 (als Erhebung), R-0030, R-0039, R-0080, R-0084, R-0093 (im Arbeitsraum), R-0099, R-0149, R-0922, R-0978, R-1000, R-1002, R-1683, R-1684, P-UX-22, P-UX-22b |
+| **erfüllt mit benanntem Rest** | R-2094 (Rest = SOLL:FR-CAP-01) |
+| **geliefert, Abnahme offen** (nicht „erfüllt") | R-0063, R-0117, R-1920 (Tastatur/Live-Stand), R-0085 (fachliche Gesamtabnahme), N-0004, N-0014 (Gegenprüfung), N-0068 (kein Ben-Urteil zum Nachstand nach B4) |
+| **teilweise** | R-0064, R-0101, R-1560, R-1578 (gelieferter Teilstand `1.0.0-beta.1.89` / `1.106`; echte UI-Nachprüfung, Q3(b)/Q3c-Rest, breiter Blatt-/Word-Umfang, Hilfen-Volltext, Sprachwechsel, Abmeldung nach Navigation offen), SOLL:FR-CAP-01, priority:K2b (Teil 4) |
+| **überholt — entschieden** (Kennung) | R-0061, R-0112, R-0929, R-0930 (`8fb4a8cc-…`); R-0094 (`c68b7dda-…`); R-0915 (`30ceaaee-…`) |
+| **überholt ohne eigene Kennung** | R-0031, R-0066 |
+| **Doppel** | R-0117, R-1920 (= R-0063), N-0014 (= N-0004), priority:UX-22 (= P-UX-22), priority:UX-22b (= P-UX-22b) |
+| **abgegrenzt** | R-1810 |
+
+### Pedis Antworten vom 01.10.2026 als Ergebnis
+
+| Kennung | Antwort | Punkte | Wirkung |
+|---|---|---|---|
+| `entscheidung:8fb4a8cc-003b-4ff8-bbe3-1c43dd5dba18` | überholt, H3 gilt | R-0061, R-0112, R-0929, R-0930 | nicht zurückgebaut; keine Schrittleiste, kein „Weitere Wege" |
+| `entscheidung:1214edcf-b80f-455d-9501-476cb014fc0b` | Beschreibung am Knopf reicht, H3 bleibt | R-0084 | Sollzustand; E3 belegt ihn |
+| `entscheidung:c68b7dda-02ec-46a1-81a6-32e5902ecf95` | überholt, das gebaute Formular gilt | R-0094 (wirkt auf R-1684, SOLL:FR-CAP-01) | keine Felder Symptom/Kontext/Diagnose/Risiko |
+| `entscheidung:1ec691b0-f137-4332-9986-c905a612c5ff` | Quellen-Panel und unsichtbare Felder bleiben im Arbeitsraum | R-0093, R-0029 | kein Panel, keine sichtbaren `statement`/`type`/`category` auf dem Blatt |
+| `entscheidung:30ceaaee-3c10-4110-a32e-25043194235b` | überholt | R-0915 | kein eigener Kopf einer „zweiten Erfassungsstufe" |
+
+### Konkret verbleibende Entscheidungen
+
+1. R-0031, R-0066: gilt `entscheidung:8fb4a8cc-…` auch für sie?
+2. R-0064: Reicht der Speicher-Check des Arbeitsraums, oder braucht das Blatt mehr als den Satz zur
+   Stufenpflicht?
+3. R-0101: Wortlaut von `fd.draftOpen` („Vordertür-Entwurf geöffnet"), „OCR → Text"/„OCR …",
+   „Externe Quellen (Stufe 2)", „Live-Prüfung", Werkzeug „?" — am Basisstand unverändert.
+4. priority:K2b Teil 4: Leertextfarbe `#9AA2B1` (Kontrastfrage, `docs/entscheidungen/k2b-erfassen-leertextfarbe.md`).
+
+### Abgrenzung
+
+* **Abgeschlossene Teilumfänge:** `fehlerfaelle` (Teil c: R-0101-Rest `capture.ocrRunning`/
+  `capture.fAsset`, E2/E4/E5 dreisprachig) und `layout` (H3-Messungen ohne Mockup auf dem Linux-Weg,
+  Wechsel-Rückfragen in Chromium) — Nachträge oben. Ihre Prüfungen werden hier nicht wiederholt.
+* **Gesonderte Aufträge:** `aufnahme:20260922:erfassen-verwerfen` (geleerter Fließtext, R-0075;
+  SCRUM-536/537 aus R-1810); `tests/entwurf-fortsetzen` (Fortsetzen); `k2b-konkreter-rest`
+  (K2b Teil 4); mega90-Blöcke außerhalb der Erfassung (R-1810: `gesamt-erstnutzerfuehrung`,
+  `grossbestand-nutzerabnahme`, `gesamt-suchindex-aktualitaet`); R-1560 „breiter H3-Bild-/Word-/
+  Provenienz-, Diktat-/Datei-/Interview-/KI-Gesamtweg" (laut Quelle separat).
+* **Nicht ersetzbar durch diesen Auftrag:** Live-Sichtung an einer laufenden Instanz (R-0063-Gruppe,
+  N-0004/N-0014, N-0068, R-0085, R-1560 und R-1578 „echte UI-Nachprüfung", `/health`-Commit) und ein
+  Ben-Urteil zum N-0068-Nachstand.
