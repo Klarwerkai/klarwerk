@@ -225,7 +225,7 @@ herabgestuft werden (409 `mutability`).
 | --- | --- | --- | --- | --- | --- |
 | `GET` | `/api/drafts` | `ko.create` | — | 200 eigene/sichtbare Entwürfe | — |
 | `POST` | `/api/drafts` | `ko.create` | Rumpf `DraftPayload` (`title?`, `statement?`, `type?`, `category?`, `tags?`, `bodyHtml?`, `confidentiality?`, …), `operationId?`, `expectedOwner?`, `fortschreiben?` (mit `operationId`: geänderter Inhalt schreibt den Entwurf desselben Vorgangs fort, solange er unverändert ist) | 201 Entwurf; 200 bei Wiederholung derselben `operationId`, dann mit `anlage: "bestehend" \| "fortgeschrieben"` | 400 `BAD_REQUEST`; 409 `DRAFT_OWNER_MISMATCH`, `IDEMPOTENCY_PAYLOAD_MISMATCH`; 413 `PAYLOAD_TOO_LARGE` |
-| `POST` | `/api/drafts/from-docx` | `ko.create` | Rumpf `{ data (Base64 .docx), name?, title? }` | 201 Entwurf aus dem Dokument | 400 `BAD_REQUEST`; 415 `UNSUPPORTED_MEDIA_TYPE`; 503 `BUSY` (mit `retry-after`); 408 `CLIENT_ABORTED` |
+| `POST` | `/api/drafts/from-docx` | `ko.create` | Rumpf `{ data (Base64 .docx), name?, title? }` | 201 Entwurf aus dem Dokument | 400 `BAD_REQUEST`; 413 `DOCX_DRAFT_TOO_LARGE`, `PAYLOAD_TOO_LARGE`, `DOCX_BILDGRENZE` (höchstens 60 Bilder je Dokument, 3,5 MB `bodyHtml` nach der Bildverkleinerung und ein serialisierter Einreich-Rumpf `{ draftPayload }` von höchstens 5 MiB − 256 KiB; kein Entwurf, kein Bild weggelassen); 415 `UNSUPPORTED_MEDIA_TYPE`; 503 `BUSY` (mit `retry-after`); 408 `CLIENT_ABORTED` |
 | `GET` | `/api/drafts/trash` | `ko.create` | — | 200 gelöschte, sichtbare Entwürfe | — |
 | `DELETE` | `/api/drafts/trash/:id` | `ko.create` | — | 204 | 404 `NOT_FOUND` |
 | `GET` | `/api/drafts/:id` | `ko.create` | — | 200 Entwurf | 404 `NOT_FOUND`; 403 `FORBIDDEN` (nicht sichtbar) |
@@ -373,7 +373,7 @@ herabgestuft werden (409 `mutability`).
 | `POST` | `/api/gesamtanweisungen/:id/vorlegen` | `ko.create` | Rumpf `{ version }` | 200 Anweisung | 400 `VALIDATION`; 409 `CONFLICT` |
 | `POST` | `/api/gesamtanweisungen/:id/entscheiden` | `ko.validate` | Rumpf `{ version, entscheidung: angenommen \| abgelehnt }` | 200 Anweisung | 400 `VALIDATION`; 409 `CONFLICT` |
 
-### 3.8 Verwaltung und Quellenimport (`adminRoutes`, `importAccessRoutes`, `confluenceImportRoutes`, `importRunRoutes`, `sharepointImportRoutes`, `jiraImportRoutes`)
+### 3.8 Verwaltung und Quellenimport (`adminRoutes`, `importAccessRoutes`, `confluenceImportRoutes`, `importRunRoutes`, `importLaufListeRoutes`, `sharepointImportRoutes`, `jiraImportRoutes`)
 
 | Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
 | --- | --- | --- | --- | --- | --- |
@@ -394,6 +394,9 @@ herabgestuft werden (409 `mutability`).
 | `PUT` | `/api/import/confluence/schalter` | `users.manage` | Rumpf `{ an: true \| false }` | 200 neuer Schalterstand | 400 `BAD_REQUEST`; 409 `IMPORT_NOT_RELEASED`; 503 `SWITCH_UNAVAILABLE` |
 | `GET` | `/api/import/sharepoint/zugang` | `users.manage` | — | 200 Zugangszustand | — |
 | `GET` | `/api/import/jira/zugang` | `users.manage` | — | 200 Zugangszustand | — |
+| `POST` | `/api/import/confluence/verbindungstest` | `users.manage` | — | 200 `{ geprueftAm, umfang, ergebnis, dauerMs }` (auch bei negativem Ergebnis; liest eine Seite des Space ohne Inhalt, schreibt nur das Prüfprotokoll) | — |
+| `GET` | `/api/admin/import/runs` | `users.manage` | Abfrage `limit` (1–200, Vorgabe 50) | 200 `{ verfuegbar, limit, ausloeserFestgehalten, runs[] }` (jüngste Läufe zuerst) | — |
+| `POST` | `/api/import/sharepoint/verbindungstest` | `users.manage` | — | 200 `{ geprueftAm, umfang, ergebnis, dauerMs }` (auch bei negativem Ergebnis; liest eine Listenseite, schreibt nur das Prüfprotokoll) | — |
 | `POST` | `/api/admin/import/confluence` | `users.manage` (Schalter `KLARWERK_CONFLUENCE_IMPORT`) | Rumpf `{ dryRun? }` | 200 Zusammenfassung bzw. 202 `{ importId, status: "QUEUED" }` | 503 `IMPORT_UNAVAILABLE`; 409 `IMPORT_ALREADY_RUNNING`; `IMPORT_FAILED` |
 | `POST` | `/api/admin/import/confluence/explore` | `users.manage` (Schalter wie oben) | — | 200 Erkundung | 503 `IMPORT_UNAVAILABLE`; `EXPLORE_FAILED` |
 | `POST` | `/api/admin/import/confluence/select` | `users.manage` (Schalter wie oben) | Rumpf `{ prompt?, criteria?, locale?, promptConfidential? }` | 200 Auswahlvorschau | 400 `BAD_REQUEST`; 503 `IMPORT_UNAVAILABLE`; `SELECT_FAILED` |
