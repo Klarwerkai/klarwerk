@@ -316,16 +316,22 @@ describe("JOB 550 · Teil B — die acht IST-Stufen laufen heute", () => {
     expect(board.statusCode).toBe(200);
     expect((board.json() as KnowledgeObject[]).some((k) => k.id === ko.id)).toBe(true);
 
-    // S6 — Nutzung VOR der Validierung. R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der
-    // normale Frageweg antwortet nur aus geprüftem Wissen — das offene KO trägt keine Antwort, es
-    // wird dem berechtigten Fragenden als ungeprüfter Treffer gemeldet (Gegenprobe: die Frage trifft).
+    // S6 — Nutzung VOR der Validierung. R-0278 (Nacharbeit 3) und R-0584 (Auftrag
+    // gesamt-datenschutz-voreinstellung): der normale Frageweg antwortet nur aus geprüftem Wissen —
+    // das offene KO trägt keine Antwort; es entsteht eine Wissenslücke, der Treffer wird dem
+    // berechtigten Fragenden als ungeprüft gemeldet, die Torlage nennt die fehlende Freigabe.
     const vorherKoerper = (await ask(app, admin, FRAGE)).json() as {
       result: AnswerResult;
+      gap: unknown;
       ungeprueft?: Array<{ id: string }>;
+      verschlossen?: Array<{ id: string; freigabeFehlt: boolean }>;
     };
     expect(vorherKoerper.result.answered).toBe(false);
     expect(vorherKoerper.result.sources).not.toContain(ko.id);
+    expect(vorherKoerper.result.knowledgeClass).not.toBe("gesichert");
+    expect(vorherKoerper.gap).not.toBeNull();
     expect(vorherKoerper.ungeprueft?.map((h) => h.id)).toContain(ko.id);
+    expect(vorherKoerper.verschlossen?.find((h) => h.id === ko.id)?.freigabeFehlt).toBe(true);
 
     // S7 — Validierung über die echte Bewertung.
     const rate = await app.inject({
@@ -377,8 +383,9 @@ describe("JOB 550 · Teil C — alle sechs Negativkanten laufen", () => {
   it("N1 · zweiter Lauf: zwei Werke teilen keinen Bestand", async () => {
     const erstes = await frischesWerk();
     const erfasst = (await erfasse(erstes.app, erstes.admin)).created.json() as KnowledgeObject;
-    // R-0584: das erste Werk antwortet erst aus validiertem Wissen — validiert wird über die echte
-    // Bewertung, damit „das erste Werk kennt das KO" weiter an einer ANTWORT gemessen wird.
+    // R-0278 (Nacharbeit 3) / R-0584: das erste Werk antwortet erst aus validiertem Wissen —
+    // validiert wird über die echte Bewertung, damit „das erste Werk kennt das KO" weiter an einer
+    // ANTWORT gemessen wird.
     await erstes.app.inject({
       method: "PUT",
       url: `/api/kos/${erfasst.id}`,

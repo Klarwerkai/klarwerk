@@ -883,7 +883,8 @@ const ALTBESTAND: readonly string[] = [
   "services/app/src/migrationsbeleg.ts::istStrukturstufe",
   "services/app/src/object-references.ts::isObjectReferenced",
   "services/app/src/reindex-queue.ts::REINDEX_CONCURRENCY",
-  "services/app/src/reindex-queue.ts::createReindexQueue",
+  // `createReindexQueue` gestrichen: seit Aufnahme gesamt-suchindex-aktualitaet (R-0470) in
+  // build-app.ts verdrahtet.
   "services/app/src/routes/ko-routes.ts::KO_AKTIONEN_MIT_TORURTEIL",
   "services/app/src/routes/naechster-schritt-entwurf.ts::naechsterSchrittEntwurfRoutes",
   "services/app/src/seed-demo.ts::DEMO_GAP_QUESTION",

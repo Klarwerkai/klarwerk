@@ -791,6 +791,8 @@ export class KoService {
   // SCRUM-523 P.3 (WP2): Purge-Aufräum-Hook. Spät bindbar (setPurgeCleanup), da die Composition-Root
   // conflicts/overlaps/Embedding-Cleanup erst NACH dem KoService erstellt (Reihenfolge in assembleServices).
   private onPurge: ((koId: string, actor: string) => Promise<void>) | undefined;
+  // R-0195 / R-0470: s. `setAenderungsNachlauf`.
+  private nachAenderung: ((koId: string, stand?: KnowledgeObject) => void) | undefined;
   // JOB 1104 (S0-TX): der transaktionsgebundene Haken. Ebenfalls spät bindbar, aus demselben Grund.
   private onPurgeTx: PurgeTxCleanup | undefined;
   // SCRUM-523 P.3 (WP-A2): s. Typ-Kommentar an WithTx oben.
@@ -854,6 +856,29 @@ export class KoService {
     this.onPurge = hook;
   }
 
+  // R-0195 / R-0470 (Aufnahme gesamt-suchindex-aktualitaet): der Nachlauf JEDER gespeicherten
+  // Objektänderung — Überarbeitung, Stufenwechsel, Zusammenführen, Papierkorb und Wiederherstellen.
+  // Er läuft NACH dem Schreiben, ist synchron und darf nur einreihen (die Kompositionswurzel reicht
+  // die Reindex-Warteschlange herein); das Neuindizieren selbst geschieht nicht im Aufruf. Die
+  // Suchprojektion braucht ihn nicht — sie entsteht im selben Schreibvorgang wie die neue Fassung.
+  // Nur EIN Haken, aus demselben Grund wie bei `setPurgeCleanup`.
+  //
+  // `stand` (Ben, Nacharbeit 3) ist das soeben GESPEICHERTE Objekt, wo der Schreibweg es kennt. Mit
+  // ihm entscheidet die Kompositionswurzel SOFORT, ob ein Vektor nicht mehr stehen darf
+  // (Heraufstufung, Papierkorb, Zusammenführen) — unabhängig vom Rückstau der Warteschlange.
+  setAenderungsNachlauf(hook: (koId: string, stand?: KnowledgeObject) => void): void {
+    this.nachAenderung = hook;
+  }
+
+  // Ein Nachlauf, der wirft, darf die bereits gespeicherte Änderung nicht nachträglich kippen.
+  private meldeAenderung(id: string, stand?: KnowledgeObject): void {
+    try {
+      this.nachAenderung?.(id, stand);
+    } catch (err) {
+      this.onError("Änderungsnachlauf", err);
+    }
+  }
+
   // JOB 1104 (S0-TX): den transaktionsgebundenen Haken spät verdrahten — exakt analog zu
   // `setPurgeCleanup`, und mit derselben Einschränkung: NUR EIN Hook. Wer etwas hinzufügt, tut es
   // in der Kompositionswurzel sichtbar; es gibt bewusst keinen Registrierungsmechanismus, der
@@ -897,6 +922,7 @@ export class KoService {
       audit?: (tx?: TxContext) => Promise<void>;
     },
   ): Promise<T> {
+    let gespeichert: KnowledgeObject | undefined;
     const value = await this.withKoLock(id, async () => {
       const ko = await this.require(id);
       const { updated, value, audit } = apply(ko);
@@ -908,8 +934,10 @@ export class KoService {
         () => this.rollbackKo(ko),
         id,
       );
+      gespeichert = updated;
       return value;
     });
+    this.meldeAenderung(id, gespeichert);
     return this.lesefassungWert(value);
   }
 
@@ -1001,7 +1029,15 @@ export class KoService {
     },
   ): Promise<T> {
     // AUFNAHME 20260922: das zurückgegebene Objekt trägt die Lesefassung des Prüfnachweises.
-    return this.lesefassungWert(await this.mutateKoTxRoh(id, build));
+    let gespeichert: KnowledgeObject | undefined;
+    const value = await this.mutateKoTxRoh(id, (ko) => {
+      const gebaut = build(ko);
+      gespeichert = gebaut.updated;
+      return gebaut;
+    });
+    // R-0195 / R-0470: erst NACH dem Speichern — ein Wurf endet vorher, dann reiht nichts ein.
+    this.meldeAenderung(id, gespeichert);
+    return this.lesefassungWert(value);
   }
 
   private async mutateKoTxRoh<T>(
@@ -3399,6 +3435,52 @@ export class KoService {
                 validators: next.validators,
                 previousOwner: previous?.owner ?? null,
               },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
+  // ==============================================================================================
+  // R-0507 — DER EIGENTÜMER GIBT SEINE VERANTWORTUNG ZURÜCK.
+  // ==============================================================================================
+  //
+  // Die offene Frage aus `setOwnership` („wem darf man die Verantwortung wieder wegnehmen?") ist
+  // hier enger beantwortet: NIEMANDEM wird sie weggenommen — der benannte Eigentümer gibt sie
+  // SELBST ab. Deshalb prüft der Dienst `actor === owner` und kein Rollenrecht: das ist keine
+  // Rechtevergabe aus `owner` (ownership.ts), sondern das Zurückgeben der eigenen Zusage.
+  //
+  // WAS BLEIBT: die Spur `reviewers`/`validators` — wer geprüft und freigegeben hat, ist eine
+  // Tatsache, die das Zurückgeben nicht ungeschehen macht. Nur `owner` entfällt; danach gilt
+  // wieder der benannte Rückfall auf den Autor (`responsibleOf`). Bleibt gar nichts übrig, steht
+  // kein Aggregat mehr am Objekt — „keine Angabe" statt eines leeren Aggregats (normalizeOwnership).
+  async releaseOwnership(id: string, actor: string): Promise<KnowledgeObject> {
+    return this.mutateKo(id, (ko) => {
+      const previous = ownershipOf(ko);
+      if (previous?.owner === undefined || previous.owner !== actor) {
+        throw new KoError(
+          "NOT_OWNER",
+          "Nur der benannte Eigentümer kann die Verantwortung für dieses Wissensobjekt zurückgeben.",
+        );
+      }
+      const next = normalizeOwnership({
+        reviewers: previous.reviewers,
+        validators: previous.validators,
+      });
+      const { ownership: _bisher, ...ohne } = ko;
+      const updated: KnowledgeObject = next === null ? ohne : { ...ohne, ownership: next };
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.ownership-released",
+              target: id,
+              payload: { previousOwner: previous.owner ?? null },
             },
             tx,
           );
@@ -5968,6 +6050,9 @@ export class KoService {
         throw err;
       }
     });
+    // R-0195 / R-0470: die Dokumentübernahme ist eine Überarbeitung am eigenen Schreibweg. Eine
+    // Wiederholung ohne Änderung reiht auch ein — der Eintrag erkennt den unveränderten Kerntext.
+    this.meldeAenderung(id);
     return this.lesefassungWert(commit);
   }
 
@@ -6874,6 +6959,8 @@ export class KoService {
         await this.repo.update(neu, tx);
         await audit.record(beleg(zusatz), tx);
       });
+      // R-0483: Papierkorb und Wiederherstellen ändern, ob das Objekt im Index stehen darf.
+      this.meldeAenderung(neu.id, neu);
       return;
     }
     // Nur ein KoService, den jemand OHNE Kompositionswurzel und ohne Klammer baut (Einzeltests
@@ -6889,6 +6976,7 @@ export class KoService {
       },
       () => this.rollbackKo(vorher),
     );
+    this.meldeAenderung(neu.id, neu);
   }
 
   // ==============================================================================================

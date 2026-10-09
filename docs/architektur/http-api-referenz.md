@@ -109,7 +109,11 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 | `POST` | `/api/auth/reset` | keines | Rumpf `{ token, newPassword }` | 204 | 429 `RATE_LIMITED`; Dienstfehler |
 | `GET` | `/api/auth/oidc/start` | keines | — | Weiterleitung zum Anbieter, setzt die Ablauf-Cookies (state, nonce, PKCE) | 501 `OIDC_DISABLED` |
 | `POST` | `/api/auth/oidc` | keines | Rumpf `{ code, state }` | 200 `{ user, token }`, setzt `kw_session` | 501 `OIDC_DISABLED`; 400 `OIDC_INVALID` (state passt nicht); 401 `OIDC_INVALID` (Anmeldung gescheitert) |
-| `GET` | `/api/auth/status` | keines | — | 200 `{ needsSetup, oidcEnabled, selfRegistrationEnabled }` | — |
+| `GET` | `/api/auth/saml/start` | keines | — | Weiterleitung zum Anbieter mit AuthnRequest (Anfragekennung 10 min, einmalig), setzt den Browsernachweis `kw_saml_bindung` (HttpOnly, Pfad `/api/auth/saml`) | 501 `SAML_DISABLED` |
+| `GET` | `/api/auth/saml/metadata` | keines | — | 200 SP-Metadaten (`application/samlmetadata+xml`) | 501 `SAML_DISABLED` |
+| `POST` | `/api/auth/saml/acs` | keines (signierte SAML-Antwort ist der Nachweis) | Formularfeld `SAMLResponse` | 303 nach `/api/auth/saml/abschluss?code=…` (Abschlusscode 2 min, einmalig) — noch keine Sitzung | 501 `SAML_DISABLED`; 401 HTML-Seite mit `SAML_LOGIN_FAILED` |
+| `GET` | `/api/auth/saml/abschluss` | keines (Abschlusscode und Browsernachweis des startenden Browsers) | Abfrage `code`, Cookie `kw_saml_bindung` | 303 nach `/` bzw. ins Word-Anmeldefenster, setzt `kw_session` | 501 `SAML_DISABLED`; 401 HTML-Seite mit `SAML_LOGIN_FAILED` (Nachweis fehlt/passt nicht, Code unbekannt/verbraucht) bzw. dem Kontogrund |
+| `GET` | `/api/auth/status` | keines | — | 200 `{ needsSetup, oidcEnabled, samlEnabled, selfRegistrationEnabled, passwordLoginEnabled }` | — |
 | `POST` | `/api/auth/setup` | keines (nur auf leerer Instanz) | Rumpf `{ name, email, password }` | 201 `{ user, token }`, setzt `kw_session` — erstes Konto, Admin | 409 `ALREADY_SETUP`; Dienstfehler |
 | `POST` | `/api/auth/users/:id/approve` | `requireAdmin` | — | 200 freigegebenes Konto | 401; 403 `FORBIDDEN`; Dienstfehler |
 | `POST` | `/api/auth/users/:id/reset` | `requireAdmin` | Rumpf `{ password }` | 204 | 401; 403; Dienstfehler |
@@ -122,6 +126,28 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 
 Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anmeldung mit
 `401 INVALID_CREDENTIALS`, nicht `UNAUTHENTICATED`.
+
+Bei `KLARWERK_SSO_ONLY=1` antworten `register`, `login`, `forgot` und `reset` mit
+403 `PASSWORD_LOGIN_DISABLED` (Satz `PASSWORD_LOGIN_DISABLED`, ohne eingerichteten Firmen-Login
+`SSO_ONLY_NOT_CONFIGURED`).
+
+#### 3.2a Verzeichnispflege (SCIM 2.0, `verzeichnisRoutes`, nur mit `KLARWERK_SCIM_TOKEN`)
+
+Diese Routen registriert `buildApp` nur, wenn ein Verzeichnisschlüssel (mindestens 32 Zeichen)
+gesetzt ist. Recht: Bearer mit dem Verzeichnisschlüssel (`requireVerzeichnisSchluessel`), keine
+Sitzungsrolle öffnet sie. Antworten als `application/scim+json`; Fehler im SCIM-Format mit
+zusätzlichem Feld `error`. Der letzte Administrator kann über diesen Weg nicht gesperrt oder
+herabgestuft werden (409 `mutability`).
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/scim/v2/ServiceProviderConfig` | Verzeichnisschlüssel | — | 200 Fähigkeiten (PATCH ja, Filter `userName eq`, kein Bulk) | 401 `SCIM_UNAUTHORIZED` |
+| `GET` | `/scim/v2/Users` | Verzeichnisschlüssel | Query `filter` (`userName eq "…"`), `startIndex`, `count` | 200 `ListResponse` | 401 `SCIM_UNAUTHORIZED`; 400 `invalidFilter` |
+| `GET` | `/scim/v2/Users/:id` | Verzeichnisschlüssel | — | 200 SCIM-User | 401 `SCIM_UNAUTHORIZED`; 404 |
+| `POST` | `/scim/v2/Users` | Verzeichnisschlüssel | SCIM-User (`userName`, `displayName`, `active`, `roles`) | 201 angelegtes Konto (Rolle aus `roles`) | 401 `SCIM_UNAUTHORIZED`; 400; 409 `uniqueness` |
+| `PUT` | `/scim/v2/Users/:id` | Verzeichnisschlüssel | SCIM-User (ersetzt Name, Adresse, `active`, `roles`) | 200 Konto | 401 `SCIM_UNAUTHORIZED`; 404; 409 |
+| `PATCH` | `/scim/v2/Users/:id` | Verzeichnisschlüssel | PatchOp für `active`, `userName`, `displayName`, `roles` und den gefilterten Pfad `roles[value eq "…"]` (`remove`/`replace` nur dieses Eintrags) | 200 Konto; gleicht danach die Prüfzuweisungen bestehender Objekte ab | 401 `SCIM_UNAUTHORIZED`; 400 (`invalidPath` für jeden anderen Rollenpfad); 404; 409 |
+| `DELETE` | `/scim/v2/Users/:id` | Verzeichnisschlüssel | — | 204 — Austritt: Konto GESPERRT (nicht gelöscht), Sitzungen enden | 401 `SCIM_UNAUTHORIZED`; 404; 409 `mutability` |
 
 ### 3.3 Wissensobjekte (`koRoutes`, `lesevarianten`, `kanten`, `bearbeitung`, `provenance`)
 
@@ -175,6 +201,8 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `category`, `tags` | `ko.create` | `category` bzw. `tags`, `expectedMetadataRevision?` |
 | `confidentiality` | `ko.create` | Stufe |
 | `ownership` | `ko.validate` | `ownership` |
+| `owner-validate` | `ko.validate`; nur der benannte Eigentümer (sonst 403 `NOT_OWNER`); Dublettentor wie `rate` | `duplicateAcknowledged?` (Status „validiert“, Vertrauen unverändert; Audit `ko.owner-validated`; Eigentümer in `ownership.validators`) |
+| `ownership-release` | `ko.read`; nur der benannte Eigentümer selbst (sonst 403 `NOT_OWNER`) | — (Spur `reviewers`/`validators` bleibt; Audit `ko.ownership-released`) |
 | `conflict` | `ko.validate` | `conflict` (antwortet 201) |
 | `resolve-conflict` | `conflict.resolve` | `conflictId`, `decision` |
 | `transfer-author` | `users.manage` | `newAuthor` |
@@ -309,6 +337,8 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `POST` | `/api/lifecycle/couple` | `ko.create` | Rumpf `{ assetRef, koId }` | 204 | Dienstfehler |
 | `GET` | `/api/lifecycle/couplings/:koId` | `ko.read`, sichtbar | — | 200 Kopplungen | 404 |
 | `POST` | `/api/lifecycle/asset-changed` | `ko.validate` | Rumpf `{ assetRef }` | 200 betroffene Objekte | Dienstfehler |
+| `POST` | `/api/lifecycle/handover/preview` | `users.manage` | Rumpf `{ from, to }` | 200 Vorschau der Wissensübergabe (Wissensobjekte mit Titel, Eigentum, Hauptverantwortung im Papierkorb mit Titel, Entwürfe/Lücken/Prüfaufgaben als Kennung — derselbe Umfang wie die Ausführung); schreibt nichts | 400 `INVALID` (leer/gleiche Person); 404 `NOT_FOUND` (Nachfolger kein freigeschaltetes Konto) |
+| `POST` | `/api/lifecycle/handover` | `users.manage` | Rumpf `{ from, to }` | 200 `{ uebergeben, fehlgeschlagen }`; Protokoll `lifecycle.handover`, je Objekt `ko.author-transferred`/`ko.ownership` | wie Vorschau |
 | `GET` | `/api/lifecycle/pending` | `ko.read` | — | 200 Kennungen sichtbarer offener Objekte | — |
 | `POST` | `/api/learning-paths` | `ko.create` | Rumpf `{ role, steps: [{ title }] }` | 201 Lernpfad | Dienstfehler |
 | `GET` | `/api/learning-paths/:role` | `ko.read` | — | 200 Lernpfad | 404 `NOT_FOUND` |
