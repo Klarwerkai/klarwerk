@@ -19,6 +19,15 @@
 
 ## 1. VVT-Check (Verzeichnis von Verarbeitungstätigkeiten)
 
+> **Seit Auftrag „Betroffenenrechte" (R-0667) entsteht das Verzeichnis aus dem System selbst:**
+> *Verwaltung → Sicherheit und Nachweise → Datenschutz → Verarbeitungsverzeichnis* (JSON oder
+> Markdown; `GET /api/datenschutz/verarbeitungsverzeichnis`). Es wird aus dem Dateninventar
+> (`services/app/src/dateninventar.ts`) und der Betriebslage zum Erzeugungszeitpunkt gebaut
+> (effektiv zugeordnete externe Modellanbieter, externe Recherche, Mailversand). Rechtsgrundlage,
+> Verantwortlicher/DSB und die im Code nicht festgelegten Fristen stehen darin ausdrücklich als
+> „vom Betreiber einzutragen". Die Tabelle unten bleibt als Kurzüberblick; bei Abweichung gilt das
+> erzeugte Verzeichnis.
+
 Mindest-Verarbeitungen und Datenkategorien im aktuellen Stand (Betreiber ergänzt Rechtsgrundlage, Zwecke, Empfänger, Löschfristen):
 
 | Verarbeitung | Datenkategorien (personenbezogen?) | Speicherort | Hinweis |
@@ -53,14 +62,14 @@ Eine **DSFA ist zu prüfen**, wenn eine oder mehrere Fragen mit „ja" beantwort
 
 | Recht | Produkt-Unterstützung heute | Organisatorisch/Betreiber |
 | --- | --- | --- |
-| **Auskunft** (Art. 15) | Admin sieht Nutzer (`/admin`); KOs/Kommentare/Audit über UI/`GET /api/audit` (RBAC-geschützt) einsehbar | **kein Self-Service-Auskunftsexport** → manuelle Zusammenstellung durch Admin/DSB |
+| **Auskunft** (Art. 15) | **Profil → „Meine Daten"**: Konto, eigene Objekte, Bearbeitungen, Kommentare, Entwürfe, Fragen, Antwortbelege, Bewertungen, Zuweisungen, Kenntnisnahmen, Uploads (Metadaten), Lernpfade, Bereichsverantwortung/Ruhestandshorizont, Löschanträge, Nachfolge bei Befristung (als befristetes Konto, Nachfolge oder setzende Person), Protokollzeilen — mit Übergabe-Stand und der Liste dessen, was nicht enthalten ist (mit Grund). Für Konten ohne Anmeldung: Auskunft durch die Verwaltung (Datenschutzkarte). Jede erteilte Auskunft steht im Prüfprotokoll (`datenschutz.auskunft`). | Fristen und Identitätsprüfung bei Anfragen ausserhalb des Systems festlegen |
 | **Berichtigung** (Art. 16) | Profil-Selbstbedienung (Name/Passwort); Admin-Korrektur; KO-Inline-Bearbeitung (neue Version, Historie) | Prozess für Korrekturanträge festlegen |
-| **Löschung** (Art. 17) | Admin kann **Nutzer löschen** (`user.delete`) und **KOs löschen** (`ko.deleted`); Passwort-Reset | **Audit-Einträge werden nicht gelöscht** (append-only, hash-verkettet) → Löschung im Audit nicht vorgesehen; Abwägung Recht auf Löschung ↔ Nachweispflicht dokumentieren |
+| **Löschung** (Art. 17) | **Profil → „Konto löschen lassen"**: Antrag mit Frist (ein Monat, Art. 12 Abs. 3), als Aufgabe in Glocke und Datenschutzkarte der Verwaltung; Erledigen löscht über `user.delete` (Konto + Sitzungen), Ablehnen nur mit Grund. Admin kann weiterhin **KOs löschen** (`ko.deleted`). | **Verweise bleiben stehen** (Umschreiben auf „ehemalige Person" ist offen, R-0642); **Audit-Einträge werden nicht gelöscht** (append-only, hash-verkettet) → Abwägung Recht auf Löschung ↔ Nachweispflicht dokumentieren |
 | **Einschränkung** (Art. 18) | über Rollen/Rechte (Zugriff einschränken) | manueller Prozess |
-| **Datenübertragbarkeit/Export** (Art. 20) | KO-/Bibliotheks-**Export** (JSON/Markdown/MediaWiki/HTML) vorhanden — fachbezogen, **nicht** als personenbezogener Komplettexport | personenbezogener Export = manuell |
+| **Datenübertragbarkeit/Export** (Art. 20) | „Meine Daten" als **JSON-Datei**; dazu der fachliche KO-/Bibliotheks-Export (JSON/Markdown/MediaWiki/HTML) | Datei-Bytes eigener Uploads sind am Objekt abrufbar, nicht in der JSON-Datei |
 | **Widerspruch** (Art. 21) | — | organisatorischer Prozess |
 
-**Ehrlicher Hinweis:** Selbstbedienungs-Workflows für *Auskunft/Export personenbezogener Komplettdaten* und *Löschung im Audit* sind **nicht** als Produktfeature umgesetzt (siehe NFR-PRV-04 / SCRUM-214). Bis dahin erfüllt der **Admin/DSB** diese Rechte manuell.
+**Ehrlicher Hinweis:** Auskunft/Datenmitnahme und Löschantrag sind seit Auftrag „Betroffenenrechte" Produktfunktion (NFR-PRV-04). **Nicht** umgesetzt sind *Löschung im Audit* (bewusst), das *Umschreiben der Verweise* bei Kontolöschung (R-0642) und *Löschfristen je Datenart* (Betreiberentscheidung, `docs/entscheidungen/loeschung-aufbewahrung.md`). Lieferstand und Grenzen: `docs/entscheidungen/betroffenenrechte.md`.
 
 ---
 
@@ -107,7 +116,7 @@ Kurz-Richtlinie für Endnutzer (in Betriebsvereinbarung/AUP übernehmen):
 ## 7. Offene Betreiberpflichten / Restlücken (ehrlich)
 
 - **Rechtliche Bewertung** (Rechtsgrundlagen, AVV/Subprozessoren, DSFA-Pflicht, Aufbewahrungs-/Löschfristen) — durch DSB/Anwalt, **nicht** durch dieses Dokument.
-- **Self-Service DSGVO-Workflows** (personenbezogener Auskunfts-/Komplettexport, Löschung im append-only Audit) — **nicht** als Produktfeature umgesetzt (NFR-PRV-04); bis dahin manuell durch Admin/DSB. Mögliches künftiges Produkt-Item, **kein** Teil dieses Runbooks.
+- **Self-Service DSGVO-Workflows** — Auskunft/Datenmitnahme und Löschantrag sind Produktfunktion (s. §3). Offen bleiben Löschung im append-only Audit (bewusst nicht), Verweisumschreibung bei Kontolöschung (R-0642) und Fristen je Datenart.
 - **Server-/Proxy-Logs & IP-Adressen** außerhalb des App-Audits — Betreiber-Logging-Policy.
 - **Betriebsvereinbarung** zur Audit-Zweckbindung (Nachvollziehbarkeit/Integritätsprüfung, nicht Leistungskontrolle) — organisatorisch.
 

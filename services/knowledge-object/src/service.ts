@@ -64,6 +64,13 @@ import {
   metadataTextsOf,
 } from "./metadata-projection";
 import type { KoMetadataProjectionResult } from "./metadata-projection-repo";
+// R-1664/R-2179/R-2180: die geführten Negativwissen-Angaben und ihre Mindeststufe (Regel dort).
+import {
+  negativwissenGrenzfehler,
+  normalizeNegativwissen,
+  stufeFuerNegativwissen,
+  unterschreitetNegativwissenStufe,
+} from "./negativwissen";
 // JOB 557: das kanonische Eigentümer-Aggregat. Regeln, Rückfallentscheidung und Grenzen stehen in
 // ownership.ts — hier wird nur angewendet, nichts nachgebaut.
 import {
@@ -470,6 +477,9 @@ export interface CreateKoInput {
   demoSeed?: boolean; // Demodaten-Merker (nur der Seed setzt das; nie über die öffentliche Route)
   // SCRUM-415: optionale Vertraulichkeitsstufe ab Erfassen (Standard „intern").
   confidentiality?: Confidentiality;
+  // R-1664/R-2179/R-2180: die geführten Angaben eines Negativwissen-Falls. `unknown`, weil die
+  // Form allein `normalizeNegativwissen` entscheidet; bei jeder anderen Wissensart verworfen.
+  negativwissen?: unknown;
   // JOB 679 / D2 (K1.2, Weg A): der Erfassungsweg des Entwurfs, aus dem dieses KO entsteht.
   // Bewusst ein VERWEIS auf die Wertmenge am Modell statt einer zweiten Aufzaehlung — so koennen
   // Eingabe und Objekt nicht auseinanderlaufen. Die Pruefung ist bereits am Entwurf gefallen
@@ -2364,6 +2374,24 @@ export class KoService {
       input.statement.trim() || (bodyHtml ? htmlToPlainText(bodyHtml) : input.statement);
     // R-0431 (K2): das Fachgebiet in Normalform — oder gar keins.
     const domain = normalizeDomain(input.domain);
+    // R-1664/R-2179: die geführten Angaben gehören allein zur Wissensart `negativwissen`.
+    // R-2180: ein Fall mit Personen-, Kunden-, Produktions- oder Qualitätsbezug liegt nie unter
+    // „vertraulich" — die Stufe wird angehoben, nie gesenkt (Regel in negativwissen.ts).
+    // BEN, Nacharbeit 2: eine Überschreitung wird abgewiesen (400 mit Grund), nie still gekürzt.
+    // Der allgemeine Eingabecode `INVALID` — dieselbe Wahl und Begründung wie bei JOB 4213 (types.ts).
+    const grenzfehler =
+      input.type === "negativwissen" ? negativwissenGrenzfehler(input.negativwissen) : undefined;
+    if (grenzfehler !== undefined) {
+      throw new KoError("INVALID", grenzfehler);
+    }
+    const negativwissen =
+      input.type === "negativwissen" ? normalizeNegativwissen(input.negativwissen) : undefined;
+    const stufe = stufeFuerNegativwissen(
+      input.confidentiality !== undefined
+        ? normalizeConfidentiality(input.confidentiality)
+        : undefined,
+      negativwissen,
+    );
     const ko: KnowledgeObject = {
       id: this.genId(),
       title: input.title,
@@ -2428,9 +2456,8 @@ export class KoService {
       // zu benutzen. Wer das zurückdreht, macht V1 in
       // tests/vertraulichkeit-intern/explizit-intern-ueberlebt.test.ts rot; wer stattdessen einen
       // Default einführt, V2.
-      ...(input.confidentiality !== undefined
-        ? { confidentiality: normalizeConfidentiality(input.confidentiality) }
-        : {}),
+      ...(stufe !== undefined ? { confidentiality: stufe } : {}),
+      ...(negativwissen ? { negativwissen } : {}),
       ...(input.demoSeed ? { demoSeed: true } : {}),
       // JOB 679 / D2 (K1.2, Weg A): die Herkunft nur setzen, wenn der Entwurf eine MITBRINGT —
       // dieselbe Bauform wie `confidentiality` und `importCandidateId` daneben. Kein stiller
@@ -3414,6 +3441,14 @@ export class KoService {
         throw new KoError(
           "DOWNGRADE_FORBIDDEN",
           "Die Vertraulichkeit dieses aus Word übernommenen Eintrags kann nur angehoben werden.",
+        );
+      }
+      // R-2180: ein Negativwissen-Fall mit Bezug bleibt mindestens „vertraulich" — auch für Prüfer
+      // und Administratoren. Wer ihn öffnen will, muss den Bezug am Fall selbst ändern.
+      if (unterschreitetNegativwissenStufe(ko.negativwissen, level)) {
+        throw new KoError(
+          "DOWNGRADE_FORBIDDEN",
+          "Ein Lerneffekt mit Personen-, Kunden-, Produktions- oder Qualitätsbezug bleibt mindestens vertraulich.",
         );
       }
       // SCRUM-509 R2/R3: Downgrade-Autorisierung gegen die GERADE gelesene Stufe (atomar). R3 FAIL-SAFE:
