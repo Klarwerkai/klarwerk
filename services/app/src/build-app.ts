@@ -320,6 +320,13 @@ import {
   type LiveWallFotoRepo,
   PgLiveWallFotoRepo,
 } from "./livewall-fotos";
+// Betroffenenrechte (R-0661): die Löschanträge — Postgres im Datenbankbetrieb, sonst im Speicher.
+import {
+  InMemoryLoeschantragRepo,
+  type LoeschantragRepo,
+  PgLoeschantragRepo,
+  offeneLoeschantragMeldungen,
+} from "./loeschantraege";
 import { gelisteteMeldung, nurGelisteteLogfelder } from "./log-positivliste";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
@@ -348,6 +355,7 @@ import { categoryRoutes } from "./routes/category-routes";
 import { checkTextRoutes } from "./routes/check-text-routes";
 import { conflictRoutes } from "./routes/conflicts-routes";
 import { confluenceImportRoutes } from "./routes/confluence-import-routes";
+import { datenschutzRoutes } from "./routes/datenschutz-routes";
 import { externalRoutes } from "./routes/external-routes";
 import { featuresRoutes } from "./routes/features-routes";
 import { gedaechtnisRoutes } from "./routes/gedaechtnis-routes";
@@ -577,6 +585,14 @@ export interface AppServices {
   kenntnisnahmen: KenntnisnahmeRepo;
   /** Die Uhr des Kenntnisnahmedienstes (Millisekunden) — in Tests stellbar für Frist und Erinnerung. */
   kenntnisnahmeUhr: () => number;
+  /**
+   * Betroffenenrechte (R-0661): die Löschanträge der Mitarbeiter. Aus demselben Grund wie
+   * `kenntnisnahmen` NICHT in `AppRepos`. Im Postgres-Betrieb `PgLoeschantragRepo`; ohne Datenbank
+   * die Speicherfassung, die im Desktop-Journal-Betrieb Schreibvorgänge ablehnt.
+   */
+  loeschantraege: LoeschantragRepo;
+  /** Die Uhr der Betroffenenrechte (Millisekunden) — in Tests stellbar für Frist und Überfälligkeit. */
+  datenschutzUhr: () => number;
   /**
    * JOB 3363: die Ablage der Import-Kandidaten — DIESELBE Instanz, die `LibraryService` bekommt.
    * Sie steht hier, weil die Lesevarianten-Routen einen einzelnen Kandidaten nachschlagen müssen
@@ -1077,6 +1093,10 @@ export function assembleServices(
     kenntnisnahmen?: KenntnisnahmeRepo;
     // Kenntnisnahme: die Uhr für Frist, Überfälligkeit und Erinnerung — ohne Injektion `Date.now`.
     kenntnisnahmeUhr?: () => number;
+    // Betroffenenrechte: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    loeschantraege?: LoeschantragRepo;
+    // Betroffenenrechte: die Uhr für Antragsfrist und Überfälligkeit — ohne Injektion `Date.now`.
+    datenschutzUhr?: () => number;
     // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
     // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
     // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
@@ -1454,6 +1474,12 @@ export function assembleServices(
       opts.kenntnisnahmen ??
       new InMemoryKenntnisnahmeRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
     kenntnisnahmeUhr: opts.kenntnisnahmeUhr ?? Date.now,
+    // Betroffenenrechte: Postgres, wenn injiziert, sonst im Speicher. Sagt der Betrieb Haltbarkeit
+    // zu (Desktop-Journal), lehnt die Speicherfassung Anträge ab — ein angenommener und beim
+    // Neustart verlorener Löschantrag wäre schlimmer als ein abgelehnter.
+    loeschantraege:
+      opts.loeschantraege ?? new InMemoryLoeschantragRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
+    datenschutzUhr: opts.datenschutzUhr ?? Date.now,
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
     // der Fabrik. JOB 3134: hinter der Hülle (oben), die je Aufruf den GEWÄHLTEN Anbieter nimmt.
     zurufModell,
@@ -1930,6 +1956,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       bearbeitungen: new PgBearbeitungsRepo(pool),
       // Kenntnisnahme: Anforderungen und Bestätigungen überleben Neuladen, Neuanmeldung und Neustart.
       kenntnisnahmen: new PgKenntnisnahmeRepo(pool),
+      // Betroffenenrechte: Löschanträge überleben Neuladen, Neustart und die Löschung des Kontos,
+      // das sie betreffen — sie sind der Nachweis über die Bearbeitung.
+      loeschantraege: new PgLoeschantragRepo(pool),
     },
   );
 }
@@ -4203,6 +4232,15 @@ export function buildApp(
         kos: koSichtbarkeit,
         // Kenntnisnahme: offene Anforderungen und Erinnerungen des Betrachters.
         kenntnisnahmen: kenntnisnahmeDienst,
+        // Betroffenenrechte (R-0661): offene Löschanträge als Verwalteraufgabe mit Frist.
+        loeschantraege: {
+          offene: () =>
+            offeneLoeschantragMeldungen(
+              services.loeschantraege,
+              () => services.auth.listUsers(),
+              services.datenschutzUhr(),
+            ),
+        },
         // aufnahme:20260922:gesamt-wissen-frische: Fristerinnerung, Wochenvorlage und
         // Prüfanforderung an Autor bzw. Nachfolger (R-0248 / R-0266 / R-1635).
         frische: frischeMeldungen({
@@ -4328,6 +4366,55 @@ export function buildApp(
   // Firmenwörterbuch: Pflege (`ko.validate`), Nachschlagen und der deterministische Abgleich
   // (`ko.read`). Nicht geschaltet: ohne Einträge liefert der Abgleich schlicht keine Hinweise.
   app.register(begriffeRoutes({ begriffe: services.begriffe, audit: services.audit }, guards));
+  // Betroffenenrechte (R-0583, R-0661, R-0663, R-0667, R-1645): Selbstauskunft und Datenmitnahme,
+  // Löschantrag mit Frist, Auskunft durch die Verwaltung und das Verarbeitungsverzeichnis aus dem
+  // Dateninventar. Nicht geschaltet: ein Betroffenenrecht darf kein abschaltbares Modul sein.
+  app.register(
+    datenschutzRoutes(
+      {
+        quellen: {
+          auth: services.auth,
+          ko: services.ko,
+          capture: services.capture,
+          ask: services.ask,
+          answerSnapshots: services.answerSnapshots,
+          validation: services.validation,
+          audit: services.audit,
+          objects: services.objects,
+          kenntnisnahmen: services.kenntnisnahmen,
+          lifecycle: services.lifecycle,
+          management: services.management,
+          loeschantraege: services.loeschantraege,
+          modelRuns: services.modelRuns,
+          klara: services.klaraSessions,
+          // R-0663/R-1645: die Nachfolge bei Befristung, in der die Person vorkommt.
+          nachfolge: services.verantwortungNachfolge,
+        },
+        loeschantraege: services.loeschantraege,
+        auth: services.auth,
+        audit: services.audit,
+        // Die Empfängerangaben des Verzeichnisses kommen aus dem, was JETZT wirklich verdrahtet und
+        // zugeordnet ist — nicht aus einer Konfigurationsbehauptung.
+        betriebslage: () => {
+          const ki = services.reasoner.configStatus();
+          const zuordnung = [
+            ...Object.values(ki.effectiveAnbieter),
+            ...(ki.effectiveAnbieterGlobal ? [ki.effectiveAnbieterGlobal] : []),
+          ];
+          return {
+            modellAnbieter: [
+              ...new Set(zuordnung.filter((a) => a !== "local" && a !== "deterministic")),
+            ].sort(),
+            lokalesModell: zuordnung.includes("local"),
+            externeSuche: services.externalSearch !== undefined,
+            mailVersand: !(services.mailer instanceof ConsoleMailer),
+          };
+        },
+        jetzt: services.datenschutzUhr,
+      },
+      guards,
+    ),
+  );
   // R-1646 · Ausgangsprüfung: nur mit `KLARWERK_AUSGANGSPRUEFUNG=an`. Dann hält der Chokepoint
   // jeden Aufruf, der das Haus verlassen kann, bis ein Controller den anonymisierten Text freigibt.
   // Als Person ersetzt werden die Namen der Konten dieser Installation — bei jedem Aufruf frisch
