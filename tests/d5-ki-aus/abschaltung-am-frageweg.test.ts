@@ -336,12 +336,13 @@ describe("D5 · KI aus — K2 · frische, vorbereitete und wiederholte Frage", (
       "x-klara-instance": "d5-kiaus-instanz",
       "x-klara-document": sitzung.documentContextId,
     };
+    // R-0700: die Klara-Frage geht über Klaras eigenen, sitzungsgebundenen Zugang.
     const klaraFrage = () =>
       l.aufbau.app.inject({
         method: "POST",
-        url: "/api/ask",
+        url: `/api/klara/sessions/${sitzung.sessionId}/execute`,
         headers: bindung,
-        payload: { question: FRAGE, locale: "de", mode: "retrieval-only" },
+        payload: { question: FRAGE, locale: "de" },
       });
     const vorbereitet = await klaraFrage();
     expect(vorbereitet.statusCode, `die vorbereitete Sitzung trug nicht: ${vorbereitet.body}`).toBe(
