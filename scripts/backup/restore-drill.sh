@@ -448,6 +448,7 @@ PFLICHTTABELLEN=(
   users
   sessions
   password_resets
+  user_second_factors
   kos
   ko_schreibstand
   ko_versions

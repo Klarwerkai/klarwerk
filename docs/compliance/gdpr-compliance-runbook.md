@@ -34,6 +34,7 @@ Mindest-Verarbeitungen und Datenkategorien im aktuellen Stand (Betreiber ergänz
 | --- | --- | --- | --- |
 | **Benutzerkonten** | Name, **E-Mail**, Passwort-**Hash+Salt** (kein Klartext), Rolle, Freigabe-Status, Erstellzeit | `users`-Tabelle (Postgres) bzw. In-Memory | direkt personenbezogen |
 | **Passwort-Reset** | Reset-Token + Bezug zum Konto, Ablauf | `password_resets` | personenbezogen, kurzlebig |
+| **Zwei-Faktor-Anmeldung (eigene, TOTP)** | TOTP-Geheimnis + Bezug zum Konto, Einrichtungszeit, zuletzt verbrauchter Zeitschritt | `user_second_factors` | personenbezogen; das Geheimnis liegt (wie bei TOTP nötig) lesbar in der Datenbank und ist wie ein Zugangsgeheimnis zu schützen; wird beim Löschen des Kontos entfernt |
 | **Wissensobjekte (KO)** | Titel, Aussage, Inhalt, Tags, **Autor/Original-Autor (User-ID)**, Quellen, Anhänge, Historie | KO-Store | i. d. R. Fachwissen; **Autorenbezug** = personenbezogen; Freitext kann unbeabsichtigt PII enthalten |
 | **Kommentare/Validierungsfeedback** | Freitext + Autorbezug | am KO | personenbezogen (Autor), Freitext-PII möglich |
 | **Fragen/Wissenslücken** | Fragetext + Steller, Priorität/Zuweisung | Ask/Gap-Store | personenbezogen (Steller), Freitext-PII möglich |

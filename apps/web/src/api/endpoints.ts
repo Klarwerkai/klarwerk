@@ -1437,6 +1437,8 @@ export const endpoints = {
     // SCRUM-148: Admin-Passwort-Reset (eigener Pfad; invalidiert Sitzungen serverseitig).
     resetPassword: (id: string, password: string) =>
       api.post<void>(`/auth/users/${id}/reset`, { password }),
+    // R-0562: eigenen zweiten Faktor des Kontos entfernen (verlorenes zweites Gerät).
+    resetSecondFactor: (id: string) => api.del<void>(`/users/${id}/second-factor`),
     // JOB 4021 (ERSTEINRICHTUNG-GAST T2): DER EINE WEG, EINE BEFRISTUNG ZU SETZEN UND ZU NEHMEN.
     //
     // Derselbe Endpunkt wie `setRole` — der Server führt Rolle, Freigabe, Passwort und Befristung

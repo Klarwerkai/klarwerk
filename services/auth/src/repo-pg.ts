@@ -1,6 +1,13 @@
 import type { Pool } from "pg";
 import { type TxContext, pgQueryable, poolQueryable, withPgTx } from "../../db-tx";
-import type { PasswordResetRepo, ResetToken, SessionRepo, UserRepo } from "./repo";
+import type {
+  PasswordResetRepo,
+  ResetToken,
+  SecondFactor,
+  SecondFactorRepo,
+  SessionRepo,
+  UserRepo,
+} from "./repo";
 import { TOKEN_HASH_PREFIX, hashTokenAtRest } from "./service";
 import type { Role, Session, User } from "./types";
 
@@ -63,6 +70,15 @@ CREATE TABLE IF NOT EXISTS password_resets (
   token text PRIMARY KEY,
   user_id text NOT NULL,
   expires_at bigint NOT NULL
+);
+-- R-0562: der eigene zweite Faktor (TOTP) je Konto. Eigene Tabelle statt Spalten an users, damit
+-- kein Schreibweg, der das ganze Konto aus einem älteren Stand schreibt, ihn still entfernen kann.
+-- last_step: der zuletzt verbrauchte Zeitschritt — Schutz gegen das Wiederverwenden eines Codes.
+CREATE TABLE IF NOT EXISTS user_second_factors (
+  user_id text PRIMARY KEY,
+  secret text NOT NULL,
+  created_at text NOT NULL,
+  last_step bigint
 );
 `;
 
@@ -448,5 +464,55 @@ export class PgPasswordResetRepo implements PasswordResetRepo {
 
   async delete(token: string): Promise<void> {
     await this.pool.query("DELETE FROM password_resets WHERE token=$1", [token]);
+  }
+}
+
+interface SecondFactorRow {
+  user_id: string;
+  secret: string;
+  created_at: string;
+  last_step: string | null;
+}
+
+// R-0562: der eigene zweite Faktor. `claimStep` ist EINE bedingte Anweisung — zwei gleichzeitige
+// Anmeldungen mit demselben Code können nicht beide gewinnen.
+export class PgSecondFactorRepo implements SecondFactorRepo {
+  constructor(private readonly pool: Pool) {}
+
+  async find(userId: string): Promise<SecondFactor | undefined> {
+    const res = await this.pool.query<SecondFactorRow>(
+      "SELECT * FROM user_second_factors WHERE user_id=$1",
+      [userId],
+    );
+    const row = res.rows[0];
+    if (!row) {
+      return undefined;
+    }
+    return {
+      userId: row.user_id,
+      secret: row.secret,
+      createdAt: row.created_at,
+      ...(row.last_step === null ? {} : { lastStep: Number(row.last_step) }),
+    };
+  }
+
+  async set(entry: SecondFactor): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO user_second_factors(user_id,secret,created_at,last_step) VALUES($1,$2,$3,$4)
+       ON CONFLICT (user_id) DO UPDATE SET secret=$2, created_at=$3, last_step=$4`,
+      [entry.userId, entry.secret, entry.createdAt, entry.lastStep ?? null],
+    );
+  }
+
+  async delete(userId: string): Promise<void> {
+    await this.pool.query("DELETE FROM user_second_factors WHERE user_id=$1", [userId]);
+  }
+
+  async claimStep(userId: string, step: number): Promise<boolean> {
+    const res = await this.pool.query(
+      "UPDATE user_second_factors SET last_step=$2 WHERE user_id=$1 AND (last_step IS NULL OR last_step < $2)",
+      [userId, step],
+    );
+    return (res.rowCount ?? 0) > 0;
   }
 }
