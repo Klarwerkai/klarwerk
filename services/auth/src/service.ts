@@ -860,6 +860,13 @@ export class AuthService {
     return verifyPassword(password, user.passwordSalt, user.passwordHash);
   }
 
+  // R-0582: Hat das Konto überhaupt ein lokales Passwort? Reine SSO-Konten nicht (`loginWithOidc`
+  // legt sie mit leerem Hash an) — für sie ist die Identitätsbestätigung die erneute SSO-Anmeldung.
+  async hatLokalesPasswort(userId: string): Promise<boolean> {
+    const user = await this.users.findById(userId);
+    return Boolean(user?.passwordHash);
+  }
+
   /**
    * FR-AUTH-02 / FR-RBAC-02: Admin gibt Konto frei.
    *

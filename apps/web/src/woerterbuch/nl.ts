@@ -4307,6 +4307,8 @@ const nl: typeof de = {
   "prof.correctSubmit": "Accountgegevens opslaan",
   "prof.correctSaved": "Accountgegevens opgeslagen.",
   "prof.correctUnchanged": "Niets gewijzigd.",
+  "prof.correctSso": "In plaats daarvan bevestigen met SSO",
+  "prof.correctSsoConfirmed": "Identiteit bevestigd via SSO — sla nu je accountgegevens op.",
   "help.kicker": "Help",
   "help.open": "Help openen",
   "help.openCenter": "In het Help-Center openen",

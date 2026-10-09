@@ -5539,6 +5539,8 @@ const de = {
   "prof.correctSubmit": "Kontodaten speichern",
   "prof.correctSaved": "Kontodaten gespeichert.",
   "prof.correctUnchanged": "Nichts geändert.",
+  "prof.correctSso": "Stattdessen mit SSO bestätigen",
+  "prof.correctSsoConfirmed": "Identität per SSO bestätigt — jetzt die Kontodaten speichern.",
   "help.kicker": "Hilfe",
   "help.open": "Hilfe öffnen",
   "help.openCenter": "Im Hilfe-Center öffnen",

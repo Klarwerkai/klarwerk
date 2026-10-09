@@ -152,6 +152,12 @@ const OIDC_FLOW_MAX_AGE = 600; // 10 Minuten
 const OIDC_ZIEL_COOKIE = "kw_oidc_ziel";
 const OIDC_ZIEL_WORD_ADDIN = "word-addin";
 const OIDC_WEITER_WORD_ADDIN = "/word-addin/anmeldung.html";
+// R-0582: die zweite feste Kennung — die erneute SSO-Anmeldung als Identitätsbestätigung für eine
+// neue E-Mail aus dem Profil. Der Rückruf nennt genau EINE feste Adresse zurück ins Profil, und die
+// Bestätigung gilt kurz, einmal und nur für die Sitzung, die dieser Rückruf ausgibt.
+const OIDC_ZIEL_PROFIL = "profil";
+const OIDC_WEITER_PROFIL = "/profil?kontodaten=sso";
+const SSO_BESTAETIGUNG_MS = 5 * 60 * 1000;
 
 function flowCookie(name: string, value: string): string {
   const base = `${name}=${value}; HttpOnly; Path=/; Max-Age=${OIDC_FLOW_MAX_AGE}; SameSite=Lax`;
@@ -351,6 +357,13 @@ export function authRoutes(
       return user;
     };
 
+    // R-0582: die SSO-Identitätsbestätigungen für eine neue E-Mail, je App-Instanz im
+    // Arbeitsspeicher wie `officeHandover` (ein Neustart verwirft sie — dann meldet man sich eben
+    // noch einmal an). Schlüssel ist der Hash des Sitzungsmerkmals, nie das Merkmal selbst.
+    const ssoBestaetigung = new Map<string, { userId: string; bis: number }>();
+    const sitzungsSchluessel = (token: string): string =>
+      createHash("sha256").update(token).digest("hex");
+
     // R-0582: die Formwache der Kontodaten-Berichtigung (selbst und durch den Admin). Byte-gleich
     // zu den Antworten beim Anlegen — fehlende Felder sind „unverändert", ein vorhandenes Feld muss
     // eine nicht leere Zeichenkette bzw. eine Adresse sein. `null` heisst: die 400 ist gesendet.
@@ -501,9 +514,14 @@ export function authRoutes(
     // R-0582 (DS13): DAS EIGENE KONTO BERICHTIGEN — Name und E-Mail, ohne Antrag.
     //
     // Fehlende Felder bleiben unverändert. Die Formwache ist dieselbe wie beim Anlegen
-    // (`kontodatenForm`). Wer die ADRESSE ändert, bestätigt mit dem aktuellen Passwort: an ihr hängt
-    // die Anmeldung und der Weg „Passwort vergessen" — eine offen stehende Sitzung allein soll das
-    // Konto nicht auf ein fremdes Postfach umlenken können. Der Name braucht das nicht.
+    // (`kontodatenForm`). Wer die ADRESSE ändert, bestätigt seine Identität: an ihr hängt die
+    // Anmeldung und der Weg „Passwort vergessen" — eine offen stehende Sitzung allein soll das Konto
+    // nicht auf ein fremdes Postfach umlenken können. Der Name braucht das nicht.
+    //
+    // ZWEI NACHWEISE, JEDER FÜR SICH GENÜGT: das aktuelle Passwort — oder eine frische erneute
+    // SSO-Anmeldung aus dem Profil (`/api/auth/oidc/start?ziel=profil`), gebunden an DIESE Sitzung,
+    // höchstens `SSO_BESTAETIGUNG_MS` alt und nach einer gelungenen Änderung verbraucht. Ein reines
+    // SSO-Konto hat kein Passwort; ihm bliebe ohne den zweiten Weg nur der Admin.
     app.put<{ Body: { name?: unknown; email?: unknown; currentPassword?: unknown } }>(
       "/api/auth/me",
       async (request, reply) => {
@@ -517,7 +535,18 @@ export function authRoutes(
           return;
         }
         try {
-          if (eingabe.email !== undefined && eingabe.email !== user.email) {
+          const token = tokenFromRequest(request);
+          const schluessel = token ? sitzungsSchluessel(token) : "";
+          const sso = ssoBestaetigung.get(schluessel);
+          const ssoBestaetigt = sso !== undefined && sso.userId === user.id && sso.bis > Date.now();
+          const neueEmail = eingabe.email !== undefined && eingabe.email !== user.email;
+          if (neueEmail && !ssoBestaetigt) {
+            if (!(await service.hatLokalesPasswort(user.id))) {
+              throw new AuthError(
+                "FORBIDDEN",
+                "SSO_CONFIRMATION_REQUIRED" satisfies Meldungsschluessel,
+              );
+            }
             const passwort = typeof body.currentPassword === "string" ? body.currentPassword : "";
             if (!(await service.verifyUserPassword(user.id, passwort))) {
               throw new AuthError(
@@ -526,7 +555,12 @@ export function authRoutes(
               );
             }
           }
-          reply.code(200).send(await service.correctAccountData(user.id, eingabe, user.id));
+          const stand = await service.correctAccountData(user.id, eingabe, user.id);
+          if (neueEmail && ssoBestaetigt) {
+            // Einmalig: die Bestätigung trägt genau EINE Adressänderung.
+            ssoBestaetigung.delete(schluessel);
+          }
+          reply.code(200).send(stand);
         } catch (error) {
           sendError(reply, error, sprache(request));
         }
@@ -762,14 +796,14 @@ export function authRoutes(
       const { verifier, challenge } = createPkcePair();
       // Das Ziel wird bei JEDEM Start neu gesetzt oder gelöscht — ein alter Dialog-Start darf einen
       // späteren Start aus der Anwendung nicht in die Dialogseite lenken.
-      const ausDemDialog = request.query?.ziel === OIDC_ZIEL_WORD_ADDIN;
+      const zielWert = request.query?.ziel;
+      const ziel =
+        zielWert === OIDC_ZIEL_WORD_ADDIN || zielWert === OIDC_ZIEL_PROFIL ? zielWert : null;
       reply.header("set-cookie", [
         flowCookie(OIDC_STATE_COOKIE, state),
         flowCookie(OIDC_NONCE_COOKIE, nonce),
         flowCookie(OIDC_VERIFIER_COOKIE, verifier),
-        ausDemDialog
-          ? flowCookie(OIDC_ZIEL_COOKIE, OIDC_ZIEL_WORD_ADDIN)
-          : clearFlowCookie(OIDC_ZIEL_COOKIE),
+        ziel !== null ? flowCookie(OIDC_ZIEL_COOKIE, ziel) : clearFlowCookie(OIDC_ZIEL_COOKIE),
       ]);
       reply.redirect(options.oidc.authorizeUrl({ state, nonce, codeChallenge: challenge }));
     });
@@ -790,6 +824,7 @@ export function authRoutes(
         const nonceCookie = readCookie(request, OIDC_NONCE_COOKIE);
         const verifierCookie = readCookie(request, OIDC_VERIFIER_COOKIE);
         const ausDemDialog = readCookie(request, OIDC_ZIEL_COOKIE) === OIDC_ZIEL_WORD_ADDIN;
+        const ausDemProfil = readCookie(request, OIDC_ZIEL_COOKIE) === OIDC_ZIEL_PROFIL;
         const clearFlow = [
           clearFlowCookie(OIDC_STATE_COOKIE),
           clearFlowCookie(OIDC_NONCE_COOKIE),
@@ -820,9 +855,30 @@ export function authRoutes(
             mappedRole,
           );
           reply.header("set-cookie", [...clearFlow, sessionCookie(token)]);
+          if (ausDemProfil) {
+            // R-0582: der Anbieter hat DIESES Konto soeben erneut angemeldet. Das ist die
+            // Identitätsbestätigung für eine neue E-Mail — gebunden an genau die Sitzung, die hier
+            // entsteht, und nur für kurze Zeit. Abgelaufene Einträge fallen beim Setzen.
+            const jetzt = Date.now();
+            for (const [schluessel, eintrag] of ssoBestaetigung) {
+              if (eintrag.bis <= jetzt) {
+                ssoBestaetigung.delete(schluessel);
+              }
+            }
+            ssoBestaetigung.set(sitzungsSchluessel(token), {
+              userId: user.id,
+              bis: jetzt + SSO_BESTAETIGUNG_MS,
+            });
+          }
           reply
             .code(200)
-            .send(ausDemDialog ? { user, token, weiter: OIDC_WEITER_WORD_ADDIN } : { user, token });
+            .send(
+              ausDemDialog
+                ? { user, token, weiter: OIDC_WEITER_WORD_ADDIN }
+                : ausDemProfil
+                  ? { user, token, weiter: OIDC_WEITER_PROFIL }
+                  : { user, token },
+            );
         } catch (error) {
           reply.header("set-cookie", clearFlow);
           if (error instanceof AuthError) {

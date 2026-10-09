@@ -3,8 +3,9 @@
 // Kein Kicker, keine Einleitung: Name (Wert = Rolle), E-Mail, Kontodaten berichtigen, Sprache,
 // Passwort ändern, die eigene Wirkung und das Abmelden — jede Zeile mit ihrem Wert.
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router-dom";
 import { authApi } from "../api/auth";
 import { ApiError } from "../api/client";
 import { useMyImpact } from "../api/hooks";
@@ -150,31 +151,91 @@ function PasswortDetail({
 // aus der ANTWORT und ersetzt den Sitzungsnutzer sofort (Name in Profil und Kopfzeile). Das
 // Passwortfeld erscheint erst, wenn die E-Mail wirklich anders lautet — der Server verlangt es nur
 // dann. Die Meldung eines Fehlers ist der Satz des Servers (Adresse vergeben, Passwort falsch).
-function KontodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
+//
+// REINE SSO-KONTEN haben kein Passwort. Für sie (und für jedes verknüpfte Konto) steht daneben
+// „Mit SSO bestätigen": der Entwurf wird im Tab (`sessionStorage`) gemerkt, die erneute Anmeldung
+// beim eigenen Anbieter läuft über `ziel=profil`, und der Rückruf führt nach
+// `/profil?kontodaten=sso` zurück — die Karte öffnet sich mit dem Entwurf, der Server nimmt die
+// neue Adresse dann ohne Passwort an (einmal, kurz, nur für diese Sitzung).
+export const KONTODATEN_ENTWURF = "kw_kontodaten_entwurf";
+
+function entwurfLesen(): { name: string; email: string } | null {
+  try {
+    const roh = window.sessionStorage.getItem(KONTODATEN_ENTWURF);
+    const wert = roh ? (JSON.parse(roh) as { name?: unknown; email?: unknown }) : null;
+    return wert && typeof wert.name === "string" && typeof wert.email === "string"
+      ? { name: wert.name, email: wert.email }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function KontodatenDetail({
+  onZurueck,
+  ausSso,
+}: {
+  onZurueck: () => void;
+  ausSso: boolean;
+}): JSX.Element {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const { user } = useSession();
-  const [name, setName] = useState(user?.name ?? "");
-  const [email, setEmail] = useState(user?.email ?? "");
+  const { user, oidcEnabled } = useSession();
+  const [entwurf] = useState(() => (ausSso ? entwurfLesen() : null));
+  // Der Entwurf ist gelesen — er verlässt den Tab-Speicher erst NACH dem Aufbau (StrictMode ruft
+  // den Initialisierer doppelt; dort entfernt, fände der zweite Aufruf nichts mehr).
+  useEffect(() => {
+    if (ausSso) {
+      try {
+        window.sessionStorage.removeItem(KONTODATEN_ENTWURF);
+      } catch {
+        // Ohne Tab-Speicher gibt es nichts zu entfernen.
+      }
+    }
+  }, [ausSso]);
+  const [name, setName] = useState(entwurf?.name ?? user?.name ?? "");
+  const [email, setEmail] = useState(entwurf?.email ?? user?.email ?? "");
   const [passwort, setPasswort] = useState("");
   const [err, setErr] = useState<string | null>(null);
-  const [hinweis, setHinweis] = useState<string | null>(null);
+  const [hinweis, setHinweis] = useState<string | null>(
+    entwurf ? t("prof.correctSsoConfirmed") : null,
+  );
+  // Die Bestätigung gilt für genau EINE gelungene Adressänderung (Server verbraucht sie).
+  const [ssoBestaetigt, setSsoBestaetigt] = useState(entwurf !== null);
   const neueEmail = email.trim() !== (user?.email ?? "");
+  const ssoMoeglich = oidcEnabled && Boolean(user?.oidcSubject);
 
   const speichern = useMutation({
     mutationFn: () =>
       authApi.correctAccount({
         ...(name.trim() !== (user?.name ?? "") ? { name: name.trim() } : {}),
-        ...(neueEmail ? { email: email.trim(), currentPassword: passwort } : {}),
+        ...(neueEmail
+          ? { email: email.trim(), ...(ssoBestaetigt ? {} : { currentPassword: passwort }) }
+          : {}),
       }),
     onSuccess: (stand) => {
       qc.setQueryData(["auth", "me"], stand);
       void qc.invalidateQueries({ queryKey: ["auth", "me"] });
       setPasswort("");
+      if (neueEmail) {
+        setSsoBestaetigt(false);
+      }
       setHinweis(t("prof.correctSaved"));
     },
     onError: (e: unknown) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
+
+  const mitSsoBestaetigen = (): void => {
+    try {
+      window.sessionStorage.setItem(
+        KONTODATEN_ENTWURF,
+        JSON.stringify({ name: name.trim(), email: email.trim() }),
+      );
+    } catch {
+      // Ohne Tab-Speicher geht der Entwurf verloren; die Bestätigung selbst gilt trotzdem.
+    }
+    window.location.assign(authApi.ssoProfilBestaetigungUrl);
+  };
 
   return (
     <Detailkarte titel={t("prof.correctTitle")} onZurueck={onZurueck} testId="detail-kontodaten">
@@ -202,15 +263,21 @@ function KontodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element
             required
           />
         </Field>
-        {neueEmail ? (
+        {neueEmail && !ssoBestaetigt ? (
           <Field label={t("prof.correctPassword")}>
             <TextInput
               type="password"
               value={passwort}
               onChange={(e) => setPasswort(e.target.value)}
-              required
             />
           </Field>
+        ) : null}
+        {neueEmail && !ssoBestaetigt && ssoMoeglich ? (
+          <div>
+            <Button type="button" variant="ghost" onClick={mitSsoBestaetigen}>
+              {t("prof.correctSso")}
+            </Button>
+          </div>
         ) : null}
         {err ? (
           <div
@@ -237,7 +304,11 @@ export function Profile(): JSX.Element {
   const { t } = useTranslation();
   const { user, signOut } = useSession();
   const [busy, setBusy] = useState(false);
-  const [detail, setDetail] = useState<null | "passwort" | "wirkung" | "kontodaten">(null);
+  // R-0582: Rücksprung aus der SSO-Bestätigung (`/profil?kontodaten=sso`) öffnet die Karte wieder.
+  const ausSso = new URLSearchParams(useLocation().search).get("kontodaten") === "sso";
+  const [detail, setDetail] = useState<null | "passwort" | "wirkung" | "kontodaten">(
+    ausSso ? "kontodaten" : null,
+  );
   const zurueck = (): void => setDetail(null);
   // JOB 3742 · DIE SEITENHILFE DIESER FLÄCHE — und warum hier der HAKEN steht und nicht der
   // Baustein, den die anderen fünf Seiten dieses Auftrags nehmen.
@@ -257,7 +328,7 @@ export function Profile(): JSX.Element {
         <PasswortDetail onZurueck={zurueck} onChanged={() => void signOut()} />
       ) : null}
       {detail === "wirkung" ? <WirkungDetail onZurueck={zurueck} /> : null}
-      {detail === "kontodaten" ? <KontodatenDetail onZurueck={zurueck} /> : null}
+      {detail === "kontodaten" ? <KontodatenDetail onZurueck={zurueck} ausSso={ausSso} /> : null}
       {detail === null ? (
         <Zeilenkarte>
           <Zeile

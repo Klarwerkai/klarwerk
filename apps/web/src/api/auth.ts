@@ -7,6 +7,8 @@ export interface SessionUser {
   name?: string;
   email?: string;
   role: Role;
+  // R-0582: verknüpfte SSO-Identität — dann bietet die Kontodatenkarte die SSO-Bestätigung an.
+  oidcSubject?: string;
 }
 
 export interface AuthStatus {
@@ -40,6 +42,8 @@ export const authApi = {
   logout: (): Promise<void> => api.post<void>("/auth/logout"),
   // FR-AUTH-07: SSO-Start liegt als GET-Redirect auf dem Server (Full-Page-Navigation).
   ssoStartUrl: "/api/auth/oidc/start",
+  // R-0582: dieselbe SSO-Anmeldung als Identitätsbestätigung für eine neue E-Mail aus dem Profil.
+  ssoProfilBestaetigungUrl: "/api/auth/oidc/start?ziel=profil",
   // FR-AUTH-07: Callback — Code+State gegen Session tauschen (PKCE serverseitig).
   // Aufnahme m365-anmeldung: `weiter` nennt der Server nur, wenn der Anmeldedialog des Word-Add-ins
   // das SSO gestartet hat — dann geht es zurück auf die Dialogseite (s. `ssoWeiterziel`).

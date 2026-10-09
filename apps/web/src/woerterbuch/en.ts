@@ -4316,6 +4316,8 @@ const en: typeof de = {
   "prof.correctSubmit": "Save account details",
   "prof.correctSaved": "Account details saved.",
   "prof.correctUnchanged": "Nothing changed.",
+  "prof.correctSso": "Confirm with SSO instead",
+  "prof.correctSsoConfirmed": "Identity confirmed via SSO — now save your account details.",
   "help.kicker": "Help",
   "help.open": "Open help",
   "help.openCenter": "Open in help center",
