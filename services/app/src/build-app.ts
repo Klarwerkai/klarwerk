@@ -4041,9 +4041,7 @@ export function buildApp(
   // R-0700 (KW-S4-24): Klaras eigener, sitzungsgebundener Ausführungszugang
   // `POST /api/klara/sessions/{sessionId}/execute`. KW-KA4: `klaraSessions` ist das bestehende
   // Ausführungstor von oben — DIESELBE Instanz wie am Status-, Zuruf- und Reasoner-Weg.
-  app.register(
-    klaraAusfuehrungRoutes({ ...antwortDeps, klaraSessions }, guards),
-  );
+  app.register(klaraAusfuehrungRoutes({ ...antwortDeps, klaraSessions }, guards));
   // W3-C (KW-W3-18, JOB 541 D3): die EINE Erklaerroute. Sie bekommt denselben Belegspeicher wie
   // der Schreibweg und denselben Wissensbestand wie der Antwortweg — kein eigener Zugang, keine
   // zweite Aufloesung.

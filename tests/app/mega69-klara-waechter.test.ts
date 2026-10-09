@@ -2934,7 +2934,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // danach gemessen übernommen. Auslieferungsfolgen: die beider Aufträge zusammen — Klaras Zugang
     // liefert `belastbarkeit` wie der allgemeine Weg; kein neues Abrufziel, keine CSP-, Rechte- oder
     // Manifeständerung, kein Sideload.
-    const PIN = "9667e18b2978687c255ef32953ba9ce6e3d0d7a7583aeee60d1b7f7948204c28";
+    // NACHARBEIT 27 (ki-modus-wahrheit): PIN BEWUSST AKTUALISIERT (Platzhalter 9667e18b… ->
+    // 154b4705…). Im Prüflauf zu Kandidat 7e0024f6 am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
+    // HISTORIE/nacharbeit-27/PRUEFUNG/integration-panel-auslieferung-pins-und-schranken.log) und
+    // unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    const PIN = "154b4705f0f1eea6b996aae9bf31decc7335666313eb27c0a585a8e85a683c42";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
