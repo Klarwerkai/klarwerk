@@ -2312,8 +2312,17 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // eine Quelldatei (`texte/zweifaktor.ts`, 689 → 690), entfernt keine. 539 + 1 = 540 deckt sich
     // mit der Messung. Dieser Auftrag hat dabei kein Bauteil hinzugefügt. `anbieter` 1 und
     // `traeger` 2 sind unverändert.
+    //
+    // gesamt-navigation Nacharbeit 17: GEMESSEN 541. Am Kandidaten ffe93dd8 meldete der Sammler
+    // wörtlich „gemessen: 541 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 692 Quelldateien …
+    // expected { komponenten: 541, … } to deeply equal { komponenten: 540, … }". Erneut kam ein
+    // Hauptstand dazu (8d4814670); laut Diff 15ec8596..ffe93dd8 bringt er genau EINE Komponente mit
+    // — `AntwortMelden` — und zwei Quelldateien (`components/fragen/AntwortMelden.tsx`,
+    // `texte/antwortmeldung.ts`; 690 → 692), entfernt keine. 540 + 1 = 541 deckt sich mit der
+    // Messung. Dieser Auftrag hat dabei kein Bauteil hinzugefügt. `anbieter` 1 und `traeger` 2
+    // sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 540,
+      komponenten: 541,
       anbieter: 1,
       traeger: 2,
     });
