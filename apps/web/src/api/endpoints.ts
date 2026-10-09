@@ -2,6 +2,7 @@ import type { Verbindungsnachweis } from "../lib/integrationStatus";
 import type { ReasonerLocale } from "../lib/reasonerLocale";
 // WP-RETEST7 R8: Timeout-Konstante der Folien-Konvertierung (eine Quelle, lib/slideImages).
 import { SLIDES_CONVERT_TIMEOUT_MS } from "../lib/slideImages";
+import type { AufnahmeRumpf, SprachTranskriptAntwort } from "../lib/sprachaufnahme";
 import { ApiError, api } from "./client";
 import type {
   AiCheckCoverageSummary,
@@ -1147,6 +1148,10 @@ export const endpoints = {
         locale,
         ...(confidentiality ? { confidentiality } : {}),
       }),
+    // Aufnahme gesamt-sprachassistent (R-0104): eine Sprachaufnahme verschriftlichen, ohne sie zu
+    // speichern — derselbe Transkriptionsdienst wie `analyze` (`lib/sprachaufnahme.ts`).
+    transcribe: (rumpf: AufnahmeRumpf) =>
+      api.post<SprachTranskriptAntwort>("/media/transcribe", rumpf),
   },
   lifecycle: {
     pending: () => api.get<string[]>("/lifecycle/pending"),

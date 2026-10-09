@@ -224,4 +224,99 @@ export class MediaAnalysisService {
       );
     }
   }
+
+  // ==============================================================================================
+  // AUFNAHME gesamt-sprachassistent · R-0104 — GESPROCHENES ÜBER DAS BROWSER-DIKTAT HINAUS.
+  // ==============================================================================================
+  //
+  // Eine Sprachaufnahme aus Erfassen oder Fragen wird mit DEMSELBEN Transkriber und denselben drei
+  // Sperren wie `analyze()` verschriftlicht — in derselben Reihenfolge: Vertraulichkeit, kein Dienst,
+  // keine zentrale Freigabe. Der Unterschied ist allein die Herkunft der Bytes: sie kommen aus dem
+  // Rumpf und werden NICHT im Objektspeicher abgelegt. Eine gesprochene Frage ist kein Anhang; sie
+  // dort zu speichern, hiesse eine Aufnahme aufzubewahren, die niemand aufbewahren wollte.
+  //
+  // DIE STUFE: Es gibt kein gespeichertes Objekt, also gilt die beim Einsenden genannte Stufe — wie
+  // beim Upload (`POST /api/objects` persistiert die Stufe des Clients). Fehlt sie oder ist sie
+  // unbekannt, gilt fail-safe vertraulich (`mediaIsConfidential`), nie „intern".
+  async transcribeRecording(
+    dataUrl: string,
+    locale: "de" | "en",
+    confidentiality?: string,
+  ): Promise<SprachTranskript> {
+    const decoded = decodeDataUrl(dataUrl);
+    if (!decoded) {
+      throw new MediaAnalysisError("UNSUPPORTED_KIND", "Die Aufnahme ist nicht lesbar.");
+    }
+    if (!/^(audio|video)\//.test(decoded.mime)) {
+      throw new MediaAnalysisError(
+        "UNSUPPORTED_KIND",
+        "Nur Audio- oder Videoaufnahmen können verschriftlicht werden.",
+      );
+    }
+    if (decoded.bytes.length === 0) {
+      throw new MediaAnalysisError("UNSUPPORTED_KIND", "Die Aufnahme ist leer.");
+    }
+    if (decoded.bytes.length > SPRACHAUFNAHME_MAX_BYTES) {
+      throw new MediaAnalysisError("UNSUPPORTED_KIND", "Die Aufnahme ist zu lang.");
+    }
+    const confidential = mediaIsConfidential(confidentiality);
+    if (confidential && !nurWahr(this.vertraulichFreigegeben)) {
+      return {
+        transcript: null,
+        engineActive: false,
+        engine: null,
+        note:
+          "Vertrauliche Inhalte werden nicht an eine externe Transkriptions-KI gesendet. " +
+          "Bitte den Text eintippen oder die Vertraulichkeit anpassen.",
+      };
+    }
+    if (!this.transcriber) {
+      return {
+        transcript: null,
+        engineActive: false,
+        engine: null,
+        note:
+          "Transkription nicht aktiv — es ist kein Dienst-Schlüssel hinterlegt. " +
+          "Bitte den Text eintippen oder das Browser-Diktat nutzen.",
+      };
+    }
+    if (!this.oeffentlicheKiFreigegeben()) {
+      return {
+        transcript: null,
+        engineActive: false,
+        engine: this.transcriber.name,
+        note:
+          "Die öffentliche KI ist vom Administrator nicht freigegeben — es wird nichts an den " +
+          "Transkriptionsdienst gesendet. Bitte den Text eintippen.",
+      };
+    }
+    try {
+      const transcript = await this.transcriber.transcribe(
+        decoded.bytes,
+        decoded.mime,
+        locale,
+        confidential,
+      );
+      return {
+        transcript,
+        engineActive: true,
+        engine: this.transcriber.name,
+        note: "Automatisches Transkript — bitte prüfen; es ist ein Entwurf, keine Wahrheit.",
+      };
+    } catch (err) {
+      throw new MediaAnalysisError(
+        "ENGINE_FAILED",
+        `Transkription fehlgeschlagen: ${err instanceof Error ? err.message : "unbekannt"}`,
+      );
+    }
+  }
 }
+
+/**
+ * Obergrenze einer Sprachaufnahme (dekodiert). Sie liegt unter der Dateigrenze des
+ * Transkriptionsdienstes (25 MB bei Whisper) und reicht für mehrere Minuten komprimierter Sprache.
+ */
+export const SPRACHAUFNAHME_MAX_BYTES = 20 * 1024 * 1024;
+
+/** Ergebnis einer Sprachaufnahme — `MediaAnalysis` ohne Objektkennung, weil nichts gespeichert wird. */
+export type SprachTranskript = Omit<MediaAnalysis, "objectId">;
