@@ -14,6 +14,7 @@ import {
   ImportAccessService,
   type Verbindungsnachweis,
 } from "../../services/app/src/services/import-access-service";
+import type { AuditService } from "../../services/audit";
 import type { ImportRunRepo } from "../../services/library-analytics";
 import { SharePointSourceAdapter } from "../../services/sharepoint";
 import { SharePointGraphClient } from "../../services/sharepoint/src/graph-client";
@@ -136,7 +137,7 @@ describe("ADMIN-02 · Verbindungstest am Dienst", () => {
       list: async () => eintraege,
     };
     const d = dienst(antwortet(401), {
-      audit: audit as unknown as ConstructorParameters<typeof ImportAccessService>[0]["audit"],
+      audit: audit as unknown as AuditService,
     });
     const nachweis = await d.sharepointVerbindungstest("admin-fiktiv");
     expect(eintraege).toHaveLength(1);
@@ -163,7 +164,7 @@ describe("ADMIN-02 · Verbindungstest am Dienst", () => {
       ],
     };
     const d = dienst(antwortet(200), {
-      audit: audit as unknown as ConstructorParameters<typeof ImportAccessService>[0]["audit"],
+      audit: audit as unknown as AuditService,
     });
     expect((await d.sharepointZugangsstatus()).letzterVerbindungstest).toBeNull();
   });
