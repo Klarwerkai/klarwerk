@@ -159,6 +159,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     reason: "Beendet die Sitzung; löscht nur das Cookie.",
   },
   "GET /api/auth/me": { protection: "auth" },
+  // R-0582: das EIGENE Konto berichtigen (Name/E-Mail). Die Kennung kommt aus der Sitzung, nicht
+  // aus dem Pfad — fremde Konten berichtigt nur der Admin über `PUT /api/users/:id`.
+  "PUT /api/auth/me": { protection: "auth" },
   // R-0562: der zweite Anmeldeschritt ist BEWUSST öffentlich — es gibt noch keine Sitzung, der
   // Nachweis sind Anmeldeanfrage (nur nach richtigem Passwort, 5 min, einmalig, höchstens fünf
   // Versuche) UND Code vom zweiten Gerät. Einrichten/Abschalten nur für das EIGENE Konto.
