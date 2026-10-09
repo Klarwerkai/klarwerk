@@ -690,10 +690,28 @@ function Ausscheiden({
             {t("uebergabeablauf.bilanzVorher", { name })}{" "}
             <BilanzZeile bilanz={er.vorher} testId="ablauf-ergebnis-vorher" />
           </div>
-          <div className="text-text">
-            {t("uebergabeablauf.bilanzNachher", { name })}{" "}
-            <BilanzZeile bilanz={er.nachher} testId="ablauf-ergebnis-nachher" />
-          </div>
+          {er.nachher ? (
+            <div className="text-text">
+              {t("uebergabeablauf.bilanzNachher", { name })}{" "}
+              <BilanzZeile bilanz={er.nachher} testId="ablauf-ergebnis-nachher" />
+            </div>
+          ) : null}
+          {er.abschlussOffen.length > 0 ? (
+            // Nacharbeit 1 (Ben K4/K6): geschrieben ist, was oben steht — offen ist ein
+            // Abschlussschritt. „Offene erneut übertragen" holt ihn nach, ohne doppelt zu schreiben.
+            <ul data-testid="ablauf-abschluss-offen" className="text-trust-crit-text">
+              {er.abschlussOffen.map((schritt) => (
+                <li key={schritt} data-schritt={schritt}>
+                  {t(`uebergabeablauf.abschlussOffen.${schritt}`)}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {er.nachgeholt ? (
+            <div className="text-muted-2" data-testid="ablauf-nachgeholt">
+              {t("uebergabeablauf.nachgeholt")}
+            </div>
+          ) : null}
           <div
             className="text-text"
             data-testid="ablauf-ergebnis-zugang"
@@ -745,9 +763,23 @@ function LetzteBilanz({
     queryFn: () => verantwortungApi.ablaeufe(personId),
   });
   const letzte = ablaeufe.data?.ablaeufe[0];
+  const ausstehend = ablaeufe.data?.ausstehend;
   return (
     <div data-testid="ablauf-letzte-bilanz" className="space-y-0.5 text-[12px]">
       <div className="font-medium text-muted">{t("uebergabeablauf.letzte.titel")}</div>
+      {ausstehend ? (
+        // Nacharbeit 1 (Ben K6): begonnen, aber ohne Abschlussbilanz — auch nach Reload sichtbar.
+        <div
+          data-testid="ablauf-ausstehend"
+          data-seq={ausstehend.seq}
+          className="text-trust-crit-text"
+        >
+          {t("uebergabeablauf.letzte.ausstehend", {
+            datum: new Date(ausstehend.at).toLocaleString(i18n.language),
+          })}{" "}
+          <BilanzZeile bilanz={ausstehend.vorher} testId="ablauf-ausstehend-vorher" />
+        </div>
+      ) : null}
       {ablaeufe.data === undefined ? (
         <p className="text-muted-2">
           {ablaeufe.isError ? t("uebergabeablauf.letzte.nichtAbrufbar") : t("state.loading")}

@@ -106,6 +106,16 @@ export default {
     "uebergabeablauf.letzte.keine": "Noch keine Übergabe über diesen Einstieg protokolliert.",
     "uebergabeablauf.letzte.nichtAbrufbar": "Die Abschlussbilanz ist gerade nicht abrufbar.",
     "uebergabeablauf.unbekannt": "unbekannt",
+    "uebergabeablauf.abschlussOffen.ZUGANG":
+      "Offen: das Zugangsende ist nicht gespeichert. Erneut übertragen beendet den Zugang.",
+    "uebergabeablauf.abschlussOffen.BILANZ_NACHHER":
+      "Offen: der Bestand danach war nicht lesbar. Erneut übertragen misst ihn und schliesst ab.",
+    "uebergabeablauf.abschlussOffen.BILANZVERMERK":
+      "Offen: die Abschlussbilanz steht noch nicht im Prüfprotokoll. Erneut übertragen holt sie mit der ursprünglichen Vorher-Bilanz nach.",
+    "uebergabeablauf.nachgeholt":
+      "Abschluss eines früher begonnenen Ablaufs nachgeholt — mit dessen Vorher-Bilanz.",
+    "uebergabeablauf.letzte.ausstehend":
+      "Begonnen am {{datum}}, Abschlussbilanz ausstehend. „Ausscheiden vollständig übergeben“ → Vorschau → Bestätigen holt sie nach. Vorher:",
   },
   en: {
     "audit.action.verantwortung_ablauf": "Hand-over completed (balance)",
@@ -204,6 +214,16 @@ export default {
     "uebergabeablauf.letzte.keine": "No hand-over recorded through this entry point yet.",
     "uebergabeablauf.letzte.nichtAbrufbar": "The final balance cannot be retrieved right now.",
     "uebergabeablauf.unbekannt": "unknown",
+    "uebergabeablauf.abschlussOffen.ZUGANG":
+      "Open: the end of access is not stored. Transferring again ends the access.",
+    "uebergabeablauf.abschlussOffen.BILANZ_NACHHER":
+      "Open: the holdings afterwards could not be read. Transferring again measures them and completes.",
+    "uebergabeablauf.abschlussOffen.BILANZVERMERK":
+      "Open: the final balance is not yet in the audit log. Transferring again records it with the original before-balance.",
+    "uebergabeablauf.nachgeholt":
+      "Completion of an earlier started hand-over recorded — with its before-balance.",
+    "uebergabeablauf.letzte.ausstehend":
+      "Started on {{datum}}, final balance pending. “Complete hand-over on leaving” → Preview → Confirm records it. Before:",
   },
   nl: {
     "audit.action.verantwortung_ablauf": "Overdracht afgerond (balans)",
@@ -302,5 +322,15 @@ export default {
     "uebergabeablauf.letzte.keine": "Nog geen overdracht via deze ingang vastgelegd.",
     "uebergabeablauf.letzte.nichtAbrufbar": "De eindbalans is momenteel niet op te halen.",
     "uebergabeablauf.unbekannt": "onbekend",
+    "uebergabeablauf.abschlussOffen.ZUGANG":
+      "Open: het einde van de toegang is niet opgeslagen. Opnieuw overdragen beëindigt de toegang.",
+    "uebergabeablauf.abschlussOffen.BILANZ_NACHHER":
+      "Open: het bestand daarna kon niet worden gelezen. Opnieuw overdragen meet het en rondt af.",
+    "uebergabeablauf.abschlussOffen.BILANZVERMERK":
+      "Open: de eindbalans staat nog niet in het auditlogboek. Opnieuw overdragen legt hem vast met de oorspronkelijke balans vooraf.",
+    "uebergabeablauf.nachgeholt":
+      "Afronding van een eerder gestarte overdracht vastgelegd — met de balans vooraf daarvan.",
+    "uebergabeablauf.letzte.ausstehend":
+      "Gestart op {{datum}}, eindbalans openstaand. „Volledige overdracht bij vertrek” → Voorbeeld → Bevestigen legt hem vast. Vooraf:",
   },
 } satisfies Textmodul;

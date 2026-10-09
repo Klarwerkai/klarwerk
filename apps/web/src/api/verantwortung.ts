@@ -197,7 +197,17 @@ export interface AblaufZugang {
   nachher: Zugangsstand;
   entscheidung: Zugangsentscheidung;
   beendet: boolean;
+  /** Das Zugangsende ist gespeichert und erreicht — unabhängig von einer (vorübergehenden) Sperre. */
+  endeGespeichert?: boolean;
   grund: string | null;
+}
+
+/** Ein begonnener Ablauf ohne Abschlussbilanz — seine Vorher-Bilanz gilt beim Nachholen. */
+export interface AblaufAusstehend {
+  seq: number;
+  at: string;
+  umfang: Umfang;
+  vorher: Bilanz;
 }
 
 export interface AblaufNachfolge {
@@ -210,12 +220,17 @@ export interface AblaufErgebnis {
   person: VerantwortungPerson;
   umfang: Umfang;
   vorher: Bilanz;
-  nachher: Bilanz;
+  /** `null`, wenn der Bestand nach dem Schreiben nicht lesbar war (offener Abschlussschritt). */
+  nachher: Bilanz | null;
   nachfolger: AblaufNachfolge[];
   uebertragen: AblaufEintrag[];
   bereitsErledigt: AblaufEintrag[];
   offen: AblaufOffen[];
   zugang: AblaufZugang;
+  /** Offene Abschlussschritte: `ZUGANG`, `BILANZ_NACHHER`, `BILANZVERMERK`. */
+  abschlussOffen: string[];
+  /** Dieser Lauf hat den Abschluss eines früher begonnenen Ablaufs nachgeholt. */
+  nachgeholt: boolean;
   vollstaendig: boolean;
   protokolliert: boolean;
 }
@@ -257,7 +272,7 @@ export const verantwortungApi = {
   /** 200 = vollständig, 207 = mit offenen Zeilen; 409 = nicht bestätigbar, nichts geschrieben. */
   ablauf: (eingabe: AblaufEingabe) => api.post<AblaufErgebnis>("/verantwortung/ablauf", eingabe),
   ablaeufe: (personId: string) =>
-    api.get<{ ablaeufe: AblaufVermerk[] }>(
+    api.get<{ ausstehend: AblaufAusstehend | null; ablaeufe: AblaufVermerk[] }>(
       `/verantwortung/person/${encodeURIComponent(personId)}/ablaeufe`,
     ),
 };

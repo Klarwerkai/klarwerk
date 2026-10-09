@@ -80,7 +80,7 @@ vi.mock("../../apps/web/src/api/verantwortung", async (importOriginal) => {
         luecken: [{ id: "g-offen" }],
         pruefaufgaben: [{ koId: "p1", titel: "Prüfplan Halle 3" }],
       }),
-      ablaeufe: async () => ({ ablaeufe: [...netz.ablaeufe] }),
+      ablaeufe: async () => ({ ausstehend: null, ablaeufe: [...netz.ablaeufe] }),
       ablaufVorschau: async (e: Eingabe) => {
         netz.aufrufe.push({ weg: "vorschau", eingabe: e });
         const alle = eintraege(e);
@@ -144,6 +144,8 @@ vi.mock("../../apps/web/src/api/verantwortung", async (importOriginal) => {
             beendet: !erster,
             grund: erster ? "Bei der Person liegt noch 1 Beitrag." : null,
           },
+          abschlussOffen: [],
+          nachgeholt: false,
           vollstaendig: !erster,
           protokolliert: true,
         };

@@ -149,6 +149,8 @@ export interface VorgaengeErgebnis {
   abgelehnt: (VorgangZuteilung & { grund: string })[];
   /** Beim Schreiben gescheitert; der Vorgang ist unverändert und kann erneut übertragen werden. */
   fehlgeschlagen: (VorgangZuteilung & { grund: string })[];
+  /** `false`, wenn die Übertragungen geschrieben sind, ihr Vermerk `lifecycle.handover` aber nicht. */
+  protokolliert: boolean;
 }
 
 /**
@@ -421,6 +423,7 @@ export class Wissensuebergabe {
       bereitsErledigt: [],
       abgelehnt: [],
       fehlgeschlagen: [],
+      protokolliert: true,
     };
     if (zuteilung.length === 0) {
       return ergebnis;
@@ -499,21 +502,28 @@ export class Wissensuebergabe {
     if (schreiben && (ergebnis.uebertragen.length > 0 || ergebnis.fehlgeschlagen.length > 0)) {
       // Derselbe Protokollvorgang wie die Übergabe an einen Nachfolger — Kennungen, keine Inhalte.
       const menge = (art: VorgangArt) => ergebnis.uebertragen.filter((z) => z.art === art).length;
-      await this.q.audit.record({
-        actor,
-        action: "lifecycle.handover",
-        target: von,
-        payload: {
-          from: von,
-          to: [...new Set(ergebnis.uebertragen.map((z) => z.an))],
-          transferred: {
-            entwurf: menge("entwurf"),
-            luecke: menge("luecke"),
-            pruefaufgabe: menge("pruefaufgabe"),
+      // Nacharbeit 1 (Ben K4): die Schritte oben sind GESCHRIEBEN. Scheitert danach nur dieser
+      // Vermerk, darf das Teilergebnis nicht verloren gehen — es kommt mit `protokolliert: false`
+      // zurück, und der Aufrufer hält die übertragenen Kennungen im eigenen Bilanzvermerk fest.
+      try {
+        await this.q.audit.record({
+          actor,
+          action: "lifecycle.handover",
+          target: von,
+          payload: {
+            from: von,
+            to: [...new Set(ergebnis.uebertragen.map((z) => z.an))],
+            transferred: {
+              entwurf: menge("entwurf"),
+              luecke: menge("luecke"),
+              pruefaufgabe: menge("pruefaufgabe"),
+            },
+            failed: ergebnis.fehlgeschlagen.map((f) => ({ art: f.art, id: f.id })),
           },
-          failed: ergebnis.fehlgeschlagen.map((f) => ({ art: f.art, id: f.id })),
-        },
-      });
+        });
+      } catch {
+        ergebnis.protokolliert = false;
+      }
     }
     return ergebnis;
   }

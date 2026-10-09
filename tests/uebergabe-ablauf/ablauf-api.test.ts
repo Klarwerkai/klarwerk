@@ -513,7 +513,7 @@ describe("K3/K5/K6 · Ausführung, Erhalt von Autorschaft und Freigabe, Bilanz n
       url: `/api/verantwortung/person/${b.ids.paula}/ablaeufe`,
       headers: b.k.admin,
     });
-    expect(bilanzen.json()).toEqual({ ablaeufe: [] });
+    expect(bilanzen.json()).toEqual({ ausstehend: null, ablaeufe: [] });
   });
 
   it("das eigene Konto lässt sich hier nicht beenden", async () => {
@@ -632,5 +632,249 @@ describe("K4/K5 · Teilfehler, Wiederaufnahme, keine Doppelzuordnung", () => {
     expect(bilanzen.ablaeufe[2]?.offen.map((x) => x.id).sort()).toEqual(
       [b.ko.a2, "d-offen"].sort(),
     );
+  });
+});
+
+// ================================================================================================
+// NACHARBEIT 1 (Ben, Kandidat 0eb423b) — die drei belegten Lücken als Gegenproben.
+// ================================================================================================
+//   N1 · K5: ein vorübergehend gesperrtes Konto bekommt beim Beenden das gespeicherte Zugangsende;
+//        eine spätere Freigabe öffnet es NICHT wieder.
+//   N2 · K4: scheitern nach den Übertragungen der Vorgangsvermerk oder das Zugangsende, kommt das
+//        Teilergebnis strukturiert zurück; dieselbe Eingabe holt den offenen Schritt nach.
+//   N3 · K6: scheitert der Abschlussvermerk, ist er ein offener Schritt (207); nach Reload steht
+//        der begonnene Ablauf als ausstehend da, und das Nachholen behält die Vorher-Bilanz.
+// Die Störungen sind SIMULIERT (vi.spyOn an den echten Diensten der App), wie oben.
+
+type Protokollschreiber = (input: { action: string }, ...rest: unknown[]) => Promise<unknown>;
+
+/** Lässt `audit.record` für die genannte Aktion so oft scheitern, wie `mal` sagt. */
+function protokollStoeren(b: Buehne, aktion: string, mal = 1): void {
+  const audit = b.services.audit as unknown as { record: Protokollschreiber };
+  const echt = audit.record.bind(audit);
+  let rest = mal;
+  vi.spyOn(audit, "record").mockImplementation(async (input, ...weitere) => {
+    if (input.action === aktion && rest > 0) {
+      rest -= 1;
+      throw new Error(`Prüfprotokoll vorübergehend nicht erreichbar (simuliert: ${aktion})`);
+    }
+    return echt(input, ...weitere);
+  });
+}
+
+async function ablaeufe(b: Buehne) {
+  const res = await b.app.inject({
+    method: "GET",
+    url: `/api/verantwortung/person/${b.ids.paula}/ablaeufe`,
+    headers: b.k.admin,
+  });
+  expect(res.statusCode, res.body).toBe(200);
+  return res.json() as {
+    ausstehend: { seq: number; vorher: Bilanz } | null;
+    ablaeufe: {
+      vorher: Bilanz;
+      nachher: Bilanz;
+      vollstaendig: boolean;
+      nachgeholt?: boolean;
+      nachfolger: { an: string; beitraege: number; vorgaenge: number }[];
+      vorgaengeUebertragen?: { art: string; id: string; an: string }[];
+    }[];
+  };
+}
+
+async function paulaMeldetSichAn(b: Buehne): Promise<number> {
+  const res = await b.app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: { email: "paula@ablauf.test", password: KENNWORT },
+  });
+  return res.statusCode;
+}
+
+interface ErgebnisN1 extends Ergebnis {
+  abschlussOffen: string[];
+  nachgeholt: boolean;
+  zugang: Ergebnis["zugang"] & { endeGespeichert: boolean };
+}
+
+describe("Nacharbeit 1 · N1 (K5): Beenden ist bei einem gesperrten Konto keine Sperre", () => {
+  it("das Zugangsende wird gespeichert — eine spätere Freigabe öffnet den Zugang nicht wieder", async () => {
+    const b = await buehne();
+    // Paula ist vorübergehend gesperrt (nicht freigegeben) — direkt in der Ablage gesetzt, weil
+    // die Verwaltung dafür keinen eigenen Weg hat.
+    const konto = await b.repos.users.findById(b.ids.paula);
+    expect(konto).toBeDefined();
+    await b.repos.users.update({ ...(konto as NonNullable<typeof konto>), approved: false });
+
+    const vorschau = await post(b, "/api/verantwortung/ablauf/vorschau", vollePlanung(b));
+    expect((vorschau.json() as Vorschau).zugang).toEqual({
+      jetzt: "gesperrt",
+      entscheidung: "beenden",
+      danach: "abgelaufen",
+    });
+
+    const res = await post(b, "/api/verantwortung/ablauf", vollePlanung(b));
+    expect(res.statusCode, res.body).toBe(200);
+    const e = res.json() as ErgebnisN1;
+    expect(e.zugang).toMatchObject({
+      vorher: "gesperrt",
+      nachher: "abgelaufen",
+      beendet: true,
+      endeGespeichert: true,
+    });
+    const gespeichert = (await b.services.auth.listUsers()).find((k) => k.id === b.ids.paula);
+    expect(gespeichert?.accessExpiresAt, "kein gespeichertes Zugangsende").toBeDefined();
+    expect(Date.parse(gespeichert?.accessExpiresAt ?? "")).toBeLessThanOrEqual(Date.now());
+
+    // Die Freigabe hebt nur die Sperre auf — das Zugangsende bleibt.
+    const freigabe = await b.app.inject({
+      method: "POST",
+      url: `/api/auth/users/${b.ids.paula}/approve`,
+      headers: b.k.admin,
+    });
+    expect(freigabe.statusCode, freigabe.body).toBe(200);
+    expect(await paulaMeldetSichAn(b)).toBe(403);
+  });
+});
+
+describe("Nacharbeit 1 · N2 (K4): Fehler NACH den Übertragungen verschlucken kein Teilergebnis", () => {
+  it("der Vorgangsvermerk scheitert: Ergebnis vollständig da, Kennungen stehen im Bilanzvermerk", async () => {
+    const b = await buehne();
+    protokollStoeren(b, "lifecycle.handover");
+    const res = await post(b, "/api/verantwortung/ablauf", vollePlanung(b, "behalten"));
+    expect(res.statusCode, res.body).toBe(200);
+    const e = res.json() as ErgebnisN1;
+    expect(e.uebertragen).toHaveLength(6);
+    expect(e.offen).toEqual([]);
+    expect((await b.repos.drafts.findById("d-offen"))?.originalAuthor).toBe(b.ids.nora);
+    const [letzte] = (await ablaeufe(b)).ablaeufe;
+    expect(letzte?.vorgaengeUebertragen?.map((z) => `${z.art}:${z.id}:${z.an}`).sort()).toEqual(
+      [
+        `entwurf:d-offen:${b.ids.nora}`,
+        `luecke:g-offen:${b.ids.otto}`,
+        `pruefaufgabe:${b.ko.p1}:${b.ids.otto}`,
+      ].sort(),
+    );
+  });
+
+  it("das Zugangsende scheitert: 207 mit allen Übertragungen und offenem Schritt — Wiederaufnahme beendet den Zugang", async () => {
+    const b = await buehne();
+    const echt = b.services.auth.setAccessExpiry.bind(b.services.auth);
+    let gestoert = false;
+    vi.spyOn(b.services.auth, "setAccessExpiry").mockImplementation(async (...args) => {
+      if (!gestoert) {
+        gestoert = true;
+        throw new Error("Kontoablage vorübergehend nicht erreichbar (simuliert)");
+      }
+      return echt(...args);
+    });
+
+    const erster = await post(b, "/api/verantwortung/ablauf", vollePlanung(b, "beenden"));
+    expect(erster.statusCode, erster.body).toBe(207);
+    const e1 = erster.json() as ErgebnisN1;
+    expect(e1.vollstaendig).toBe(false);
+    expect(e1.uebertragen).toHaveLength(6);
+    expect(e1.offen).toEqual([]);
+    expect(e1.abschlussOffen).toEqual(["ZUGANG"]);
+    expect(e1.nachher).toEqual(NULL);
+    expect(e1.zugang).toMatchObject({ nachher: "aktiv", beendet: false, endeGespeichert: false });
+    expect(await verantwortlich(b, b.ko.a1)).toBe(b.ids.nora);
+    expect(await paulaMeldetSichAn(b)).toBe(200);
+
+    const zweiter = await post(b, "/api/verantwortung/ablauf", vollePlanung(b, "beenden"));
+    expect(zweiter.statusCode, zweiter.body).toBe(200);
+    const e2 = zweiter.json() as ErgebnisN1;
+    expect(e2.uebertragen).toEqual([]);
+    expect(e2.bereitsErledigt).toHaveLength(6);
+    expect(e2.abschlussOffen).toEqual([]);
+    expect(e2.zugang).toMatchObject({
+      nachher: "abgelaufen",
+      beendet: true,
+      endeGespeichert: true,
+    });
+    expect(await paulaMeldetSichAn(b)).toBe(403);
+    // Keine Doppelzuordnung durch die Wiederholung.
+    for (const koId of [b.ko.a1, b.ko.a2, b.ko.v1]) {
+      expect(await b.services.audit.list({ action: "ko.ownership", target: koId })).toHaveLength(1);
+    }
+  });
+
+  it("lässt sich der Beginn nicht festhalten, wird nichts übertragen (503)", async () => {
+    const b = await buehne();
+    const vorher = await lage(b);
+    protokollStoeren(b, "verantwortung.ablauf-begonnen");
+    const res = await post(b, "/api/verantwortung/ablauf", vollePlanung(b));
+    expect(res.statusCode, res.body).toBe(503);
+    expect(await lage(b)).toEqual(vorher);
+  });
+});
+
+describe("Nacharbeit 1 · N3 (K6): ein fehlender Abschlussvermerk ist ein offener Schritt", () => {
+  it("207, nach Reload ausstehend; die Wiederaufnahme holt ihn mit der ursprünglichen Vorher-Bilanz nach", async () => {
+    const b = await buehne();
+    protokollStoeren(b, "verantwortung.ablauf");
+    const erster = await post(b, "/api/verantwortung/ablauf", vollePlanung(b));
+    expect(erster.statusCode, erster.body).toBe(207);
+    const e1 = erster.json() as ErgebnisN1;
+    expect(e1.vollstaendig).toBe(false);
+    expect(e1.protokolliert).toBe(false);
+    expect(e1.abschlussOffen).toEqual(["BILANZVERMERK"]);
+    expect(e1.uebertragen).toHaveLength(6);
+
+    // Reload: keine Bilanz, aber der begonnene Ablauf mit seiner Vorher-Bilanz.
+    const nachReload = await ablaeufe(b);
+    expect(nachReload.ablaeufe).toEqual([]);
+    expect(nachReload.ausstehend?.vorher).toEqual({
+      beitraege: 3,
+      entwuerfe: 1,
+      luecken: 1,
+      pruefaufgaben: 1,
+    });
+
+    // Wiederaufnahme mit derselben Eingabe.
+    const zweiter = await post(b, "/api/verantwortung/ablauf", vollePlanung(b));
+    expect(zweiter.statusCode, zweiter.body).toBe(200);
+    const e2 = zweiter.json() as ErgebnisN1;
+    expect(e2.nachgeholt).toBe(true);
+    expect(e2.vorher).toEqual({ beitraege: 3, entwuerfe: 1, luecken: 1, pruefaufgaben: 1 });
+    expect(e2.nachher).toEqual(NULL);
+
+    const danach = await ablaeufe(b);
+    expect(danach.ausstehend).toBeNull();
+    expect(danach.ablaeufe).toHaveLength(1);
+    expect(danach.ablaeufe[0]).toMatchObject({
+      vorher: { beitraege: 3, entwuerfe: 1, luecken: 1, pruefaufgaben: 1 },
+      nachher: NULL,
+      vollstaendig: true,
+      nachgeholt: true,
+    });
+    expect(danach.ablaeufe[0]?.nachfolger).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ an: b.ids.nora, beitraege: 2, vorgaenge: 1 }),
+        expect.objectContaining({ an: b.ids.otto, beitraege: 1, vorgaenge: 2 }),
+      ]),
+    );
+  });
+
+  it("nach Reload mit leerem Plan (die Fläche kennt ihn nicht mehr) — der Plan des Beginns zählt", async () => {
+    const b = await buehne();
+    protokollStoeren(b, "verantwortung.ablauf");
+    expect((await post(b, "/api/verantwortung/ablauf", vollePlanung(b))).statusCode).toBe(207);
+
+    const leer = { ...vollePlanung(b), beitraege: [], vorgaenge: [] };
+    const res = await post(b, "/api/verantwortung/ablauf", leer);
+    expect(res.statusCode, res.body).toBe(200);
+    const [bilanz] = (await ablaeufe(b)).ablaeufe;
+    expect(bilanz).toMatchObject({
+      vorher: { beitraege: 3, entwuerfe: 1, luecken: 1, pruefaufgaben: 1 },
+      nachgeholt: true,
+    });
+    expect(bilanz?.nachfolger).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ an: b.ids.nora, beitraege: 2, vorgaenge: 1 }),
+        expect.objectContaining({ an: b.ids.otto, beitraege: 1, vorgaenge: 2 }),
+      ]),
+    );
+    expect(await paulaMeldetSichAn(b)).toBe(403);
   });
 });

@@ -77,6 +77,16 @@ export function zugangsstand(konto: PublicUser | undefined, jetzt: number): Zuga
   return ende <= jetzt ? "abgelaufen" : "befristet";
 }
 
+/**
+ * ADMIN-05 · IST DAS ZUGANGSENDE GESPEICHERT? Unabhängig von der Freigabe: ein gesperrtes Konto
+ * (`approved = false`) ist nur VORÜBERGEHEND zu — eine spätere Freigabe öffnet es wieder. Beendet
+ * ist ein Zugang erst, wenn sein Ablaufzeitpunkt gespeichert und erreicht ist (`<=` wie der Dienst).
+ */
+export function zugangsendeGespeichert(konto: PublicUser | undefined, jetzt: number): boolean {
+  const ende = ablauf(konto?.accessExpiresAt);
+  return ende !== undefined && ende <= jetzt;
+}
+
 /** Die Sicht eines beliebigen Kontos — so, wie `makeGuards` sie für dessen Anfrage bilden würde. */
 export function sitzungVon(konto: PublicUser, spaces: readonly SpaceFassung[]): SessionUser {
   return { id: konto.id, role: konto.role, spaceLesbar: lesbareSpaces(spaces, konto.id) };

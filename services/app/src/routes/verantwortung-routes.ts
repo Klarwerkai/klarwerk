@@ -68,6 +68,7 @@ import {
   pruefePerson,
   pruefeZuteilungen,
   vorgangZielGrund,
+  zugangsendeGespeichert,
   zugangsstand,
   zulaessigeZiele,
 } from "../verantwortung";
@@ -200,6 +201,20 @@ interface Paket {
   bereitsErledigt: number;
   /** Je Art die Anzahl — daraus nennt die Oberfläche die Rechtewirkung. */
   wirkung: Record<EintragArt, number>;
+}
+
+/**
+ * Nacharbeit 1 (Ben K6): der Beginn eines Ablaufs, wie er VOR dem ersten Schreiben im Protokoll
+ * steht (`verantwortung.ablauf-begonnen`). Offen ist er, solange kein Abschlussvermerk
+ * `verantwortung.ablauf` ihn über `beginn` schliesst.
+ */
+interface Ablaufbeginn {
+  seq: number;
+  at: string;
+  umfang: Umfang;
+  vorher: Bilanz;
+  beitraege: Zuteilung[];
+  vorgaenge: VorgangZuteilung[];
 }
 
 const VORGANGARTEN: readonly VorgangArt[] = ["entwurf", "luecke", "pruefaufgabe"];
@@ -479,6 +494,58 @@ export function verantwortungRoutes(
     };
   }
 
+  /** Nacharbeit 1 (Ben K6): der jüngste Beginn dieser Person ohne Abschlussvermerk — oder `null`. */
+  async function offenerAblaufbeginn(von: string): Promise<Ablaufbeginn | null> {
+    const audit = dienste.audit as AuditService;
+    const [begonnen, abschluesse] = await Promise.all([
+      audit.list({ action: "verantwortung.ablauf-begonnen", target: von }),
+      audit.list({ action: "verantwortung.ablauf", target: von }),
+    ]);
+    const geschlossen = new Set(abschluesse.map((x) => x.payload.beginn));
+    const offen = [...begonnen].reverse().find((x) => !geschlossen.has(x.seq));
+    if (!offen) {
+      return null;
+    }
+    const p = offen.payload;
+    return {
+      seq: offen.seq,
+      at: offen.at,
+      umfang: p.umfang === "gezielt" ? "gezielt" : "ausscheiden",
+      vorher: p.vorher as Bilanz,
+      beitraege: Array.isArray(p.beitraege) ? (p.beitraege as Zuteilung[]) : [],
+      vorgaenge: Array.isArray(p.vorgaenge) ? (p.vorgaenge as VorgangZuteilung[]) : [],
+    };
+  }
+
+  /**
+   * Was aus dem Plan eines Beginns JETZT beim jeweiligen Nachfolger liegt — gelesen über dieselben
+   * Urteilswege wie die Vorschau (`erledigt`), also ohne zu schreiben.
+   */
+  async function planStand(
+    user: SessionUser,
+    von: string,
+    beginn: Ablaufbeginn,
+    log: FastifyRequest["log"],
+  ): Promise<{ an: string; beitraege: number; vorgaenge: number }[]> {
+    const weg = dienste.vorgaengeWeg as NonNullable<VerantwortungDienste["vorgaengeWeg"]>;
+    const b =
+      beginn.beitraege.length > 0 ? await fuehreAus(user, von, beginn.beitraege, false, log) : null;
+    const v = await weg.vorgaengeUebergeben(von, beginn.vorgaenge, user.id, false);
+    const je = new Map<string, { an: string; beitraege: number; vorgaenge: number }>();
+    const zaehle = (an: string, art: "beitraege" | "vorgaenge"): void => {
+      const eintrag = je.get(an) ?? { an, beitraege: 0, vorgaenge: 0 };
+      eintrag[art] += 1;
+      je.set(an, eintrag);
+    };
+    for (const z of b?.bereitsErledigt ?? []) {
+      zaehle(z.an, "beitraege");
+    }
+    for (const z of v.bereitsErledigt) {
+      zaehle(z.an, "vorgaenge");
+    }
+    return [...je.values()];
+  }
+
   /**
    * ADMIN-05 · DIE VORSCHAU DES GEMEINSAMEN ABLAUFS — schreibt nichts. Dieselbe Funktion urteilt vor
    * der Ausführung erneut; ist sie dann nicht bestätigbar, wird nichts geschrieben.
@@ -616,9 +683,10 @@ export function verantwortungRoutes(
       zugang: {
         jetzt: zugangJetzt,
         entscheidung: e.zugang,
-        // Beendet wird nur ohne Restbestand; die Vorschau sagt, was nach Plan gelten würde.
+        // Beendet wird nur ohne Restbestand; die Vorschau sagt, was nach Plan gelten würde. Auch
+        // ein gesperrtes Konto bekommt das gespeicherte Zugangsende (Nacharbeit 1, Ben K5).
         danach:
-          e.zugang === "beenden" && summe(prognose) === 0 && zugangJetzt !== "gesperrt"
+          e.zugang === "beenden" && summe(prognose) === 0 && konto
             ? ("abgelaufen" as const)
             : zugangJetzt,
       },
@@ -892,7 +960,8 @@ export function verantwortungRoutes(
 
     // ADMIN-05 · ohne beide Erhebungen gibt es keinen gemeinsamen Ablauf — gesagt, nicht verschwiegen.
     const ablaufBereit = (reply: FastifyReply): boolean => {
-      if (dienste.offeneVorgaenge && dienste.vorgaengeWeg) {
+      // Nacharbeit 1: ohne Prüfprotokoll gibt es keinen nachholbaren Abschluss — also keinen Ablauf.
+      if (dienste.offeneVorgaenge && dienste.vorgaengeWeg && dienste.audit) {
         return true;
       }
       reply.code(503).send({
@@ -939,11 +1008,72 @@ export function verantwortungRoutes(
           return;
         }
         const weg = dienste.vorgaengeWeg as NonNullable<VerantwortungDienste["vorgaengeWeg"]>;
+        const audit = dienste.audit as AuditService;
+
+        // Nacharbeit 1 (Ben K6): DER BEGINN STEHT IM PROTOKOLL, BEVOR ETWAS GESCHRIEBEN WIRD — mit
+        // der Vorher-Bilanz und dem Plan. Scheitert später der Abschlussvermerk, bleibt dieser
+        // Beginn offen, und der nächste bestätigte Ablauf derselben Person holt den Abschluss mit
+        // GENAU dieser Vorher-Bilanz nach. Lässt sich der Beginn nicht festhalten, wird nichts
+        // übertragen.
+        let beginn = await offenerAblaufbeginn(e.von);
+        const nachgeholt = beginn !== null;
+        if (!beginn) {
+          try {
+            const eintrag = await audit.record({
+              actor: user.id,
+              action: "verantwortung.ablauf-begonnen",
+              target: e.von,
+              payload: {
+                umfang: e.umfang,
+                vorher: vorschau.vorher,
+                beitraege: e.beitraege,
+                vorgaenge: e.vorgaenge,
+                zugang: e.zugang,
+              },
+            });
+            beginn = {
+              seq: eintrag.seq,
+              at: eintrag.at,
+              umfang: e.umfang,
+              vorher: vorschau.vorher,
+              beitraege: e.beitraege,
+              vorgaenge: e.vorgaenge,
+            };
+          } catch (err) {
+            request.log.error({ err }, "Übergabeablauf: Beginn nicht protokolliert");
+            reply.code(503).send({
+              error: "PROTOKOLL_NICHT_VERFUEGBAR",
+              message:
+                "Das Prüfprotokoll nimmt gerade nichts an. Es wurde nichts übertragen und der Zugang nicht verändert.",
+            });
+            return;
+          }
+        }
+
+        // AB HIER IST GESCHRIEBEN WORDEN (oder kann es sein). Kein Fehler darf das Teilergebnis
+        // mehr verschlucken (Ben K4): jeder nachgelagerte Schritt fängt seinen Fehler und meldet
+        // ihn als offenen Schritt; dieselbe Eingabe noch einmal holt ihn nach.
+        const abschlussOffen: string[] = [];
         const beitraege =
           e.beitraege.length > 0
             ? await fuehreAus(user, e.von, e.beitraege, true, request.log)
             : null;
-        const vorgaenge = await weg.vorgaengeUebergeben(e.von, zulaessig, user.id, true);
+        let vorgaenge: Awaited<ReturnType<typeof weg.vorgaengeUebergeben>>;
+        let vorgaengeUnklar: VorgangZuteilung[] = [];
+        try {
+          vorgaenge = await weg.vorgaengeUebergeben(e.von, zulaessig, user.id, true);
+        } catch (err) {
+          request.log.error({ err }, "Übergabeablauf: Vorgänge nicht vollständig übertragen");
+          vorgaengeUnklar = zulaessig;
+          vorgaenge = {
+            bereit: [],
+            uebertragen: [],
+            bereitsErledigt: [],
+            abgelehnt: [],
+            fehlgeschlagen: [],
+            protokolliert: true,
+          };
+        }
 
         const konten = await dienste.auth.listUsers();
         const zeile = (art: EintragArt, id: string, titel: string | null, an: string): Eintrag => ({
@@ -982,79 +1112,134 @@ export function verantwortungRoutes(
             grund: "SCHREIBFEHLER",
             text: `Der Vorgang ist unverändert und kann erneut übertragen werden. (${z.grund})`,
           })),
+          ...vorgaengeUnklar.map((z) => ({
+            ...zeile(z.art, z.id, titelVorgang(z.art, z.id), z.an),
+            grund: "STAND_UNGEKLAERT",
+            text: "Der Stand dieses Vorgangs ist ungeklärt. Erneut übertragen klärt ihn — bereits Übertragenes wird nicht doppelt geschrieben.",
+          })),
         ];
+        if (!vorgaenge.protokolliert) {
+          // Die übertragenen Kennungen stehen dann im Bilanzvermerk unten — kein offener Schritt.
+          request.log.error("Übergabeablauf: Vorgangsvermerk lifecycle.handover fehlt");
+        }
 
-        // Die Bilanz NACH dem Schreiben — frisch gelesen, nicht aus dem Plan gerechnet.
-        const nachher = (await bilanzVon(e.von)).bilanz;
-        const konto = konten.find((k) => k.id === e.von);
+        // Die Bilanz NACH dem Schreiben — frisch gelesen, nicht aus dem Plan gerechnet. Ohne sie
+        // lässt sich weder das Zugangsende verantworten noch die Bilanz abschliessen.
+        let nachher: Bilanz | null = null;
+        try {
+          nachher = (await bilanzVon(e.von)).bilanz;
+        } catch (err) {
+          request.log.error({ err }, "Übergabeablauf: Bilanz danach nicht lesbar");
+          abschlussOffen.push("BILANZ_NACHHER");
+        }
+
+        // Nacharbeit 1 (Ben K5): BEENDEN HEISST DAS ZUGANGSENDE SPEICHERN — auch bei einem gerade
+        // gesperrten Konto. Eine Sperre ist vorübergehend (eine Freigabe öffnet sie wieder), das
+        // Zugangsende nicht. Erfüllt ist die Entscheidung erst, wenn die gespeicherte Befristung
+        // erreicht ist (`zugangsendeGespeichert`), nicht schon, weil das Konto gerade zu ist.
+        let konto = konten.find((k) => k.id === e.von);
         const zugangVorher = zugangsstand(konto, jetzt());
-        let zugangNachher = zugangVorher;
+        let endeGespeichert = zugangsendeGespeichert(konto, jetzt());
+        let geschrieben = false;
         let zugangGrund: string | null = null;
         if (e.zugang === "beenden") {
-          if (summe(nachher) > 0) {
+          if (nachher === null) {
+            zugangGrund =
+              "Der Bestand danach ist nicht lesbar — der Zugang bleibt, bis die Übergabe erneut bestätigt ist.";
+          } else if (summe(nachher) > 0) {
             zugangGrund = `Bei der Person liegen noch ${summe(nachher)} Beiträge oder Vorgänge — der Zugang bleibt, bis alles übergeben ist.`;
-          } else if (zugangVorher === "aktiv" || zugangVorher === "befristet") {
-            const danach = await dienste.auth.setAccessExpiry(
-              e.von,
-              new Date(jetzt()).toISOString(),
-              user.id,
-            );
-            zugangNachher = zugangsstand(danach, jetzt());
+          } else if (!endeGespeichert && konto) {
+            try {
+              konto = await dienste.auth.setAccessExpiry(
+                e.von,
+                new Date(jetzt()).toISOString(),
+                user.id,
+              );
+              geschrieben = true;
+              endeGespeichert = zugangsendeGespeichert(konto, jetzt());
+            } catch (err) {
+              request.log.error({ err }, "Übergabeablauf: Zugangsende nicht gespeichert");
+              abschlussOffen.push("ZUGANG");
+              zugangGrund =
+                "Das Zugangsende konnte nicht gespeichert werden. Die Übertragungen gelten; erneut bestätigen beendet den Zugang.";
+            }
           }
         }
-        const zugangErfuellt =
-          e.zugang === "behalten" || zugangNachher === "abgelaufen" || zugangNachher === "gesperrt";
-        const vollstaendig = offen.length === 0 && zugangErfuellt;
-        const nachfolger = vorschau.pakete.map((p) => ({
-          an: p.an.id,
-          beitraege: uebertragen.filter((z) => z.an === p.an.id && z.art === "beitrag").length,
-          vorgaenge: uebertragen.filter((z) => z.an === p.an.id && z.art !== "beitrag").length,
-        }));
+        const zugangErfuellt = e.zugang === "behalten" || endeGespeichert;
         const zugang = {
           vorher: zugangVorher,
-          nachher: zugangNachher,
+          // Mit gespeichertem Zugangsende heisst der Stand „beendet" — auch wenn das Konto daneben
+          // gesperrt ist; die Sperre allein wäre vorübergehend.
+          nachher:
+            e.zugang === "beenden" && endeGespeichert ? "abgelaufen" : zugangsstand(konto, jetzt()),
           entscheidung: e.zugang,
-          beendet: zugangVorher !== zugangNachher,
+          beendet: geschrieben,
+          endeGespeichert,
           grund: zugangGrund,
         };
-        // DER BILANZVERMERK: vorher/nachher, je Nachfolger, offene Zeilen und Zugang — Kennungen und
-        // Anzahlen, keine Inhalte. Je Beitrag steht daneben der bindende Beleg `ko.ownership`, je
-        // Vorgangsart `lifecycle.handover`. Scheitert nur dieser Vermerk, gilt die Übergabe; die
-        // Antwort sagt dann `protokolliert: false`, damit niemand eine Bilanz nach Reload erwartet.
-        let protokolliert = false;
+
+        // Je Nachfolger, was aus dem Plan DES BEGINNS jetzt bei ihm liegt — beim Nachholen also
+        // auch, was ein früherer Lauf übertragen hat.
+        let nachfolger: { an: string; beitraege: number; vorgaenge: number }[];
         try {
-          if (dienste.audit) {
-            await dienste.audit.record({
+          nachfolger = await planStand(user, e.von, beginn, request.log);
+        } catch (err) {
+          request.log.error({ err }, "Übergabeablauf: Stand je Nachfolger nicht lesbar");
+          nachfolger = [...new Set(uebertragen.map((z) => z.an))].map((an) => ({
+            an,
+            beitraege: uebertragen.filter((z) => z.an === an && z.art === "beitrag").length,
+            vorgaenge: uebertragen.filter((z) => z.an === an && z.art !== "beitrag").length,
+          }));
+        }
+
+        // DER BILANZVERMERK: Vorher-Bilanz aus dem Beginn, nachher, je Nachfolger, offene Zeilen
+        // und Zugang — Kennungen und Anzahlen, keine Inhalte. Er schliesst den Beginn (`beginn`).
+        // Scheitert er (Ben K6), bleibt der Beginn offen und der Abschluss ist ein OFFENER SCHRITT:
+        // nicht vollständig, 207, und der nächste bestätigte Ablauf holt ihn mit derselben
+        // Vorher-Bilanz nach.
+        let protokolliert = false;
+        if (nachher !== null) {
+          try {
+            await audit.record({
               actor: user.id,
               action: "verantwortung.ablauf",
               target: e.von,
               payload: {
-                umfang: e.umfang,
-                vorher: vorschau.vorher,
+                umfang: beginn.umfang,
+                vorher: beginn.vorher,
                 nachher,
                 nachfolger,
                 uebertragen: uebertragen.length,
                 bereitsErledigt: bereitsErledigt.length,
                 offen: offen.map((z) => ({ art: z.art, id: z.id, an: z.an, grund: z.grund })),
+                vorgaengeUebertragen: vorgaenge.uebertragen,
                 zugang,
-                vollstaendig,
+                vollstaendig: offen.length === 0 && zugangErfuellt && abschlussOffen.length === 0,
+                beginn: beginn.seq,
+                nachgeholt,
               },
             });
             protokolliert = true;
+          } catch (err) {
+            request.log.error({ err }, "Übergabeablauf: Bilanz nicht protokolliert");
           }
-        } catch (err) {
-          request.log.error({ err }, "Übergabeablauf: Bilanz nicht protokolliert");
         }
+        if (!protokolliert) {
+          abschlussOffen.push("BILANZVERMERK");
+        }
+        const vollstaendig = offen.length === 0 && zugangErfuellt && abschlussOffen.length === 0;
         reply.code(vollstaendig ? 200 : 207).send({
           person: person(e.von, konten, jetzt()),
-          umfang: e.umfang,
-          vorher: vorschau.vorher,
+          umfang: beginn.umfang,
+          vorher: beginn.vorher,
           nachher,
           nachfolger,
           uebertragen,
           bereitsErledigt,
           offen,
           zugang,
+          abschlussOffen,
+          nachgeholt,
           vollstaendig,
           protokolliert,
         });
@@ -1085,7 +1270,13 @@ export function verantwortungRoutes(
           dienste.auth.listUsers(),
         ]);
         type Nachfolge = { an: string; beitraege: number; vorgaenge: number };
+        // Nacharbeit 1 (Ben K6): ein begonnener Ablauf ohne Abschlussbilanz ist auch nach Reload
+        // sichtbar — mit seiner Vorher-Bilanz, die beim Nachholen gilt.
+        const offen = await offenerAblaufbeginn(request.params.id);
         reply.code(200).send({
+          ausstehend: offen
+            ? { seq: offen.seq, at: offen.at, umfang: offen.umfang, vorher: offen.vorher }
+            : null,
           ablaeufe: eintraege
             .slice(-5)
             .reverse()
