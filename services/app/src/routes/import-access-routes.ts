@@ -142,5 +142,16 @@ export function importAccessRoutes(
       }
       reply.code(200).send(await zugang.sharepointZugangsstatus());
     });
+
+    // R-0170 — DIESELBE AUSKUNFT FÜR JIRA, aus demselben Grund VOR dem Schalter
+    // `KLARWERK_JIRA_IMPORT`: nur so kann sie „in dieser Installation nicht eingeschaltet" melden.
+    // Dieselbe Rechtebindung, derselbe Vertrag: kein Wert, keine Maske, kein Aufruf an Jira.
+    app.get("/api/import/jira/zugang", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send(await zugang.jiraZugangsstatus());
+    });
   };
 }

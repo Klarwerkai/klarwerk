@@ -6,13 +6,47 @@ import type { AssignmentNotice } from "../../validation";
 // nur E-Mail; die Glocke/Popover-Quelle wird hier aus vorhandenen Signalen mit
 // Zeitstempel aggregiert: offene Konflikte, offene Wissenslücken und — SCRUM-363 —
 // die persönlichen offenen Review-Zuweisungen der aktuellen Person.
+// R-0894: `escalation` (eskalierter Wahrheitskonflikt) und `return` (Rückgabe zur Nacharbeit an die
+// verantwortliche Person) sind eigene Arten — vorher liefen sie als gewöhnlicher Konflikt bzw. als
+// „Review für dich" mit dem Sprungziel der Prüfliste.
 export type NotificationKind =
   | "conflict"
+  | "escalation"
   | "duplicate"
   | "gap"
   | "assignment"
+  | "return"
   | "impact"
-  | "kenntnisnahme";
+  | "kenntnisnahme"
+  // aufnahme:20260922:gesamt-wissen-frische: persönliche Zustellung an die verantwortliche Person —
+  // Fristerinnerung (R-0248), wöchentliche Vorlage (R-0266), Prüfanforderung nach Anlagenänderung
+  // an Autor bzw. Nachfolger (R-1635). Die Unterart steht in `frischeArt`.
+  | "frische"
+  | "reklamation";
+
+// R-1089: eine Meldung „Antwort falsch / Quelle passt nicht" an die verantwortliche Person des
+// zitierten Wissensobjekts. Quelle: Audit-Einträge `answer.reported`, deren `responsible` der
+// Betrachter ist. Wer gemeldet hat, steht NICHT darin — die Meldung ist ein Hinweis an das Objekt,
+// keine Anzeige gegen eine Person; der Fragetext reist ebenfalls nicht mit.
+export interface ReklamationNotice {
+  meldungId: string;
+  koId: string;
+  title: string;
+  grund: "antwort-falsch" | "quelle-passt-nicht";
+  at: string;
+}
+
+/** aufnahme:20260922:gesamt-wissen-frische — eine persönliche Frische-Meldung (s. frische-meldungen.ts). */
+export interface FrischeNotice {
+  art: "frist" | "vorlage" | "anlage";
+  /** Eindeutig je Anlass — ein neuer Anlass (neue Frist, neue Woche, neue Markierung) ist ungelesen. */
+  schluessel: string;
+  koId: string;
+  title: string;
+  at: string;
+  /** Nur bei `frist`: die Haltbarkeit ist bereits abgelaufen. */
+  ueberfaellig?: boolean;
+}
 
 // Kenntnisnahme: eine offene Anforderung an die aktuelle Person. Bereits auf den Betrachter UND
 // über die Sichtbarkeit gefiltert (Route) — hier wird nichts nachgeprüft und nichts erfunden.
@@ -51,6 +85,12 @@ export interface Notification {
   fassung?: number;
   erinnerung?: boolean;
   ueberfaellig?: boolean;
+  // R-1089: Meldegrund und Meldungsnummer (dieselbe, die der Meldende quittiert bekam). Nur bei
+  // `kind: "reklamation"` gesetzt.
+  grund?: ReklamationNotice["grund"];
+  meldungId?: string;
+  // aufnahme:20260922:gesamt-wissen-frische: die Unterart einer `frische`-Meldung.
+  frischeArt?: FrischeNotice["art"];
 }
 
 // SCRUM-363 / AG-15: persönliche offene Review-Zuweisungen kommen als eigene Kategorie in den Feed.
@@ -75,8 +115,34 @@ export function buildNotifications(input: {
   // ein neuer Fund auch ohne Besuch der Duplikate-Seite auffällt.
   overlaps?: (OverlapEntry & { redacted?: boolean })[];
   kenntnisnahmen?: KenntnisnahmeNotice[];
+  reklamationen?: ReklamationNotice[];
+  // aufnahme:20260922:gesamt-wissen-frische: bereits auf den Betrachter UND die Sichtbarkeit
+  // beschränkt (Route) — hier wird nichts nachgeprüft und nichts erfunden.
+  frische?: FrischeNotice[];
 }): Notification[] {
   const items: Notification[] = [];
+  for (const r of input.reklamationen ?? []) {
+    items.push({
+      id: `rek-${r.meldungId}`,
+      kind: "reklamation",
+      title: r.title,
+      at: r.at,
+      koId: r.koId,
+      grund: r.grund,
+      meldungId: r.meldungId,
+    });
+  }
+  for (const f of input.frische ?? []) {
+    items.push({
+      id: `frische-${f.schluessel}`,
+      kind: "frische",
+      title: f.title,
+      at: f.at,
+      koId: f.koId,
+      frischeArt: f.art,
+      ...(f.ueberfaellig ? { ueberfaellig: true } : {}),
+    });
+  }
   // Je Anforderung EIN Eintrag. Eine Erinnerung bekommt eine neue Kennung (mit ihrem Zeitpunkt),
   // damit sie wieder als ungelesen erscheint — sie ersetzt den Eintrag, statt einen zweiten
   // daneben zu stellen.
@@ -104,9 +170,12 @@ export function buildNotifications(input: {
   for (const c of input.conflicts) {
     // JOB 1125: `description` beschreibt den Widerspruch zwischen beiden Aussagen — bei redigiertem
     // Konflikt bleibt der Titel leer und der Marker trägt die Aussage.
+    // R-0894: ein eskalierter Konflikt bekommt eine eigene Kennung — die Eskalation ist neu, auch
+    // wenn der Konflikt vorher schon gesehen war, und erscheint deshalb wieder als ungelesen.
+    const eskaliert = c.status === "eskaliert";
     items.push({
-      id: `con-${c.id}`,
-      kind: "conflict",
+      id: eskaliert ? `esc-${c.id}` : `con-${c.id}`,
+      kind: eskaliert ? "escalation" : "conflict",
       title: c.redacted ? "" : c.description,
       at: c.createdAt,
       ...(c.redacted ? { redacted: true } : {}),
@@ -145,9 +214,11 @@ export function buildNotifications(input: {
     }
   }
   for (const a of input.assignments ?? []) {
+    // R-0894: eine Rückgabe trägt ihren Zeitpunkt in der Kennung — eine zweite Rückgabe desselben
+    // Objekts ist ein neuer, ungelesener Hinweis.
     items.push({
-      id: `assign-${a.koId}`,
-      kind: "assignment",
+      id: a.rueckgabe ? `ret-${a.koId}-${a.at}` : `assign-${a.koId}`,
+      kind: a.rueckgabe ? "return" : "assignment",
       title: a.title,
       at: a.at,
       koId: a.koId,

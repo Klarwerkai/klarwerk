@@ -67,6 +67,9 @@ import { EditorGuidance } from "../components/EditorGuidance";
 import { ExternalUrlText } from "../components/ExternalUrlText";
 // WP-D10c: zugeklappt startender Dateiformate-Infokasten (button + aria-expanded).
 import { FileFormatInfo } from "../components/FileFormatInfo";
+// R-1624: Foto-zu-Wissen — Einstieg ins geführte Interview über ein Foto.
+import { FotoInterviewStart } from "../components/FotoInterviewStart";
+import { HelpTip } from "../components/HelpTip";
 import { KnopfUnterschied } from "../components/KnopfUnterschied";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { Modal } from "../components/Modal";
@@ -96,7 +99,12 @@ import {
 // (und mit ihr der dreiwertige Ausgang) bleibt der Weg für ein BESTEHENDES Wissensobjekt: KO-Detail
 // und „An Artikel anfügen" — s. lib/appendToArticle.ts.
 import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
-import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
+import {
+  applyBodyAssist,
+  applyBodyAssistBlock,
+  bodyTextForAssist,
+  spellingAssistHtmlOrNull,
+} from "../lib/bodyAiAssist";
 import { appendExtractSections, normalizeExtractLocale } from "../lib/bodyExtract";
 import { fileLinkHtml } from "../lib/bodyFileLink";
 import { ADVANCED_FIELDS_KEYS, advancedFieldsSummary } from "../lib/captureAdvancedFields";
@@ -197,7 +205,7 @@ import {
 } from "../lib/docx";
 // AUFTRAG-mega7 Block A: eindeutige Leerwert-Semantik für den Body (Löschmarker beim Aktualisieren).
 import { draftBodyPatch } from "../lib/draftBody";
-import { draftTitle } from "../lib/draftForm";
+import { adoptProposedKnowledgeType, draftTitle } from "../lib/draftForm";
 // AUFTRAG-mega6 Block D: sichtbare Eingabegrenzen aus DERSELBEN Quelle wie die Servernormalisierung.
 import { DRAFT_LIMITS } from "../lib/draftLimits";
 import { studioSaveConfidence } from "../lib/editorApplySafety";
@@ -233,6 +241,7 @@ import {
   readTextFile,
   runImageOcr,
 } from "../lib/files";
+import { type FotoAnker, applyFotoAnker, applyFotoArtikel } from "../lib/fotoInterview";
 import {
   CLEARED_DRAFT_INTERVIEW,
   appendAnswer,
@@ -241,6 +250,7 @@ import {
   interviewSourceKey,
   isInterviewDone,
 } from "../lib/interviewFlow";
+import { ERGEBNIS_STUFE_TEXT } from "../lib/kiHerkunft";
 import {
   EMPTY_SOURCE_FORM,
   type SourceFormInput,
@@ -724,6 +734,9 @@ export function CaptureArbeitsraum({
 
   // Metadaten (vorab erfassbar, FR-CAP-08)
   const [type, setType] = useState<KnowledgeType>(CAPTURE_FIELD_DEFAULTS.type);
+  // FR-STR-01: ist die Wissensart ENTSCHIEDEN (vom Menschen gewählt oder aus einem Entwurf
+  // geladen)? Dann überschreibt kein KI-Vorschlag sie — auch nicht, wenn sie dem Standard gleicht.
+  const typeEntschiedenRef = useRef(false);
   const [category, setCategory] = useState("");
   const [asset, setAsset] = useState("");
   // SCRUM-415: Vertraulichkeitsstufe ab Erfassen (Standard „intern"). Vertrauliche KOs gehen nie in
@@ -1069,6 +1082,11 @@ export function CaptureArbeitsraum({
   // die aktuelle ist — eine SPÄTE Antwort eines vor dem Speichern gestarteten Requests kann den
   // danach geltenden Zustand damit nicht wieder einschreiben.
   const ivRunRef = useRef(0);
+  // R-1624: der bestätigte Bildbefund des laufenden Foto-Interviews. null = normales Interview.
+  // Der Befund reist mit jedem Turn als Klartext mit und wird mit dem Interviewfortschritt
+  // gesichert und wiederhergestellt; das Foto selbst steht als Bild-Anker im Rumpf (beim Start
+  // eingefügt, mit dem Entwurf gesichert) und wird nicht erneut gesendet.
+  const [ivBefund, setIvBefund] = useState<string | null>(null);
 
   // PMO-FEA-0006: „Aus Datei" — Dokumenttext, optionaler Suchauftrag, KI-Punkteliste,
   // sichtbare Entwurfs-Warteschlange. Nichts wird automatisch gespeichert.
@@ -1317,6 +1335,9 @@ export function CaptureArbeitsraum({
     onSuccess: (r) => {
       setDraft(r);
       setTags((prev) => (prev.length > 0 ? prev : r.tags));
+      // FR-STR-01: vorgeschlagene Wissensart nur in eine noch nicht entschiedene Auswahl.
+      const typeEntschieden = typeEntschiedenRef.current;
+      setType((prev) => adoptProposedKnowledgeType(prev, typeEntschieden, r.knowledgeType));
       setErr(null);
       // SCRUM-384: direkt zur Wissensseite — Artikel-Vorschlag einmalig erzeugen
       // (leerer Body ⇒ setzen; vorhandener Inhalt wird NIE still überschrieben).
@@ -1332,11 +1353,12 @@ export function CaptureArbeitsraum({
   // AUFTRAG-mega6 Block C: der Turn reist mit seiner Laufnummer (`run`); veraltete Läufe werden im
   // Erfolgs- UND im Fehlerpfad verworfen, statt den inzwischen gültigen Zustand zu überschreiben.
   const interview = useMutation({
-    mutationFn: (v: { answers: string[]; run: number }) =>
+    mutationFn: (v: { answers: string[]; run: number; imageContext?: string }) =>
       endpoints.reasoner.interview(
         v.answers,
         locale,
         draftProvenance(confidentiality, undefined, draftId ?? undefined),
+        v.imageContext,
       ),
     onSuccess: (res, v) => {
       if (v.run !== ivRunRef.current) {
@@ -1347,11 +1369,17 @@ export function CaptureArbeitsraum({
       if (isInterviewDone(res)) {
         setDraft(res.draft);
         setTags((prev) => (prev.length > 0 ? prev : res.draft.tags));
-        // SCRUM-384: Interview fertig → gleiche Wissensseiten-Führung wie beim Freitext.
+        const articleLocale = normalizeDraftArticleLocale(i18n.language);
+        // R-1624: beim Foto-Interview steht der Bild-Anker schon im Rumpf — die Seite (Fehlerbild,
+        // Ursache, Lösung) wird darunter ANGEHÄNGT, nie überschrieben.
+        // SCRUM-384: sonst wie bisher — Interview fertig → gleiche Wissensseiten-Führung wie beim
+        // Freitext, nur in einen leeren Rumpf.
         setBodyHtml((prev) =>
-          prev.trim()
-            ? prev
-            : applyDraftArticle(prev, res.draft, normalizeDraftArticleLocale(i18n.language)),
+          v.imageContext
+            ? applyFotoArtikel(prev, res.draft, articleLocale)
+            : prev.trim()
+              ? prev
+              : applyDraftArticle(prev, res.draft, articleLocale),
         );
         setWizStep("refine");
       }
@@ -1367,9 +1395,15 @@ export function CaptureArbeitsraum({
   // AUFTRAG-mega6 Block C: EINZIGER Einstieg in einen Interview-Turn. Vergibt die neue Laufnummer
   // und macht damit jeden vorher gestarteten Turn ungültig — es gibt keinen zweiten Weg, der die
   // Mutation ohne gültige Nummer auslösen könnte.
-  const runInterview = (answers: string[]): void => {
+  // R-1624: `befund` ist der Bildbefund des laufenden Foto-Interviews; der Start reicht ihn
+  // ausdrücklich herein, weil der eben gesetzte Zustand in diesem Render noch nicht gilt.
+  const runInterview = (answers: string[], befund: string | null = ivBefund): void => {
     ivRunRef.current += 1;
-    interview.mutate({ answers, run: ivRunRef.current });
+    interview.mutate({
+      answers,
+      run: ivRunRef.current,
+      ...(befund ? { imageContext: befund } : {}),
+    });
   };
 
   // SCRUM-312: KI-Nachbearbeitung über die sichtbare AiAssistBox (Vorschau + bewusste Übernahme);
@@ -2428,6 +2462,9 @@ export function CaptureArbeitsraum({
         answers: ivAnswers,
         answer: ivAnswer,
         result: ivResult,
+        // R-1624: der Foto-Kontext gehört zum Fortschritt — sonst liefe das Interview nach dem
+        // Wiederöffnen als normales weiter.
+        imageContext: ivBefund,
       });
       // AUFTRAG-mega6 Block B: „wird aktualisiert" entscheidet, ob Leerwerte als Löschmarker mitgehen.
       const isDraftUpdate = Boolean(draftId);
@@ -2637,6 +2674,8 @@ export function CaptureArbeitsraum({
     }
     // gemeinsame Metadaten (erweiterte Felder)
     setType(p.type ?? "best_practice");
+    // FR-STR-01: eine gespeicherte Wissensart ist entschieden; fehlt sie, darf die KI vorbelegen.
+    typeEntschiedenRef.current = p.type !== undefined && p.type !== null;
     setCategory(p.category ?? "");
     setTags(p.tags ?? []);
     setAsset(p.asset ?? "");
@@ -2735,6 +2774,9 @@ export function CaptureArbeitsraum({
       setIvAnswer(iv.answer);
       setIvResult(iv.result);
       setIvStarted(iv.started);
+      // R-1624: Foto-Interview bleibt Foto-Interview — weitere Turns tragen den Befund, und die
+      // Wissensseite wird beim Abschluss unter dem gesicherten Bild-Anker ergänzt.
+      setIvBefund(iv.imageContext);
       // JOB 3414: der Fortschritt kommt IMMER zurück (nichts geht verloren) — die ANSICHT wechselt
       // nur dann von selbst ins Interview, wenn der Mensch keine ausdrücklich gewählt hat. Sonst
       // stünde er nach „Formular (Experten)" im Interview, und der Modus-Abgleich weiter unten
@@ -2842,6 +2884,7 @@ export function CaptureArbeitsraum({
     setIvAnswer("");
     setIvResult(null);
     setIvStarted(false);
+    setIvBefund(null);
   };
 
   // E2E-003: „Verwerfen" muss das GESAMTE Erfassungsmodell auf Leerzustand bringen — nicht nur die
@@ -2856,6 +2899,7 @@ export function CaptureArbeitsraum({
     setBodyHtml("");
     setStudioApplied(false);
     setType(CAPTURE_FIELD_DEFAULTS.type);
+    typeEntschiedenRef.current = false;
     setCategory("");
     setAsset("");
     setConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
@@ -4758,12 +4802,18 @@ export function CaptureArbeitsraum({
 
   // E2E-008: bewusster Start des geführten Interviews — erst hier (nicht beim Tabwechsel) geht der
   // erste Turn an das Modell. Vorher wurde nichts gesendet und kein ModelRun ausgelöst.
-  const startInterview = (): void => {
+  // R-1624: mit Foto setzt der Start zuerst den Bild-Anker in den Rumpf (sichtbar im Blatt und mit
+  // dem Entwurf gesichert) und fragt danach mit der Foto-Fragenfolge.
+  const startInterview = (foto: FotoAnker | null = null): void => {
     setIvAnswers([]);
     setIvAnswer("");
     setIvResult(null);
     setIvStarted(true);
-    runInterview([]);
+    setIvBefund(foto ? foto.befund : null);
+    if (foto) {
+      setBodyHtml((prev) => applyFotoAnker(prev, foto));
+    }
+    runInterview([], foto ? foto.befund : null);
   };
 
   // SCRUM-132: Antwort senden → nächster reasoner-getriebener Turn.
@@ -5878,11 +5928,14 @@ export function CaptureArbeitsraum({
                   <div data-help="cap:interview" className="space-y-3">
                     <p className="text-[13px] text-muted">{t("capture.ivStartLead")}</p>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Button variant="primary" onClick={startInterview}>
+                      <Button variant="primary" onClick={() => startInterview()}>
                         {t("capture.ivStart")}
                       </Button>
                       <AiModelInfo task="interview" />
                     </div>
+                    {/* R-1624: derselbe bewusste Start, aber über ein Foto — erst „Bild
+                      auswerten" sendet das Bild, erst „Foto-Interview starten" die erste Frage. */}
+                    <FotoInterviewStart onStart={(foto) => startInterview(foto)} />
                   </div>
                 ) : ivResult && isInterviewDone(ivResult) ? (
                   <p className="rounded-card border border-dashed border-hairline p-3 text-[13px] text-trust-pos-text">
@@ -5899,7 +5952,15 @@ export function CaptureArbeitsraum({
                           {t(interviewSourceKey(ivResult))}
                         </span>
                       ) : null}
+                      {ivBefund ? (
+                        <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
+                          {t("fotowissen.laeuft")}
+                        </span>
+                      ) : null}
                     </div>
+                    {/* R-1624: der Kontext, auf den sich die Rückfragen beziehen — sichtbar, nicht
+                      nur im Prompt. */}
+                    {ivBefund ? <p className="text-[12px] text-muted">{ivBefund}</p> : null}
                     {/* SCRUM-403 (Pedi 03.07.): Frage vorlesen + Antwort diktieren — Sprache in
                       beide Richtungen; Knöpfe nur, wenn der Browser es ehrlich kann. */}
                     {/* AUFTRAG-mega5 Block A: liegt (nach Fortsetzen eines Entwurfs ohne gesicherte
@@ -6485,7 +6546,10 @@ export function CaptureArbeitsraum({
                     >
                       <select
                         value={type}
-                        onChange={(e) => setType(e.target.value as KnowledgeType)}
+                        onChange={(e) => {
+                          typeEntschiedenRef.current = true;
+                          setType(e.target.value as KnowledgeType);
+                        }}
                         className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
                       >
                         {KNOWLEDGE_TYPES.map((k) => (
@@ -6832,6 +6896,9 @@ export function CaptureArbeitsraum({
                       {canSearchExternal(extPolicyStage) ? (
                         <div className="mt-3 space-y-2 border-t border-hairline pt-3">
                           <SectionLabel>{t("ext.title")}</SectionLabel>
+                          {/* R-0888 (gesamt-hilfen, Nacharbeit 13): Abschnittserklärung in der
+                              Seitenhilfe, solange die Suche freigegeben ist. */}
+                          <HelpTip title={t("ext.title")} body={t("shelp.ext.title")} />
                           <p className="text-[11.5px] text-muted-2">{t("ext.hint")}</p>
                           {/* AUFTRAG-mega14 Block D (SCRUM-414): bis mega14 erschien der Anhängen-Knopf
                             auf JEDER Stufe außer „blocked" — auch auf „suchen, aber nicht anhängen",
@@ -7205,6 +7272,9 @@ export function CaptureArbeitsraum({
                         applyFn={(mode, _original, suggestion) =>
                           applyBodyAssist(mode, bodyHtml, suggestion)
                         }
+                        applySpelling={(suggestion) =>
+                          spellingAssistHtmlOrNull(bodyHtml, suggestion)
+                        }
                         onApply={setBodyHtml}
                         hintKey="capture.ai.bodyHint"
                         extraApplyActions={EDITOR_BLOCKS.map((block) => ({
@@ -7375,7 +7445,8 @@ export function CaptureArbeitsraum({
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center gap-1 rounded-pill border border-dashed border-ai-dashed bg-ai-surface-2 px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
                     <span aria-hidden>✦</span>
-                    {t("reasoner.draftLabel")}
+                    {/* R-1020: Wortlaut der Quelle, aus derselben Stufentabelle wie überall. */}
+                    {t(ERGEBNIS_STUFE_TEXT.entwurf)}
                   </span>
                   <button
                     type="button"
@@ -7430,6 +7501,9 @@ export function CaptureArbeitsraum({
                         runAssist={runAssist}
                         applyFn={(mode, _original, suggestion) =>
                           applyBodyAssist(mode, bodyHtml, suggestion)
+                        }
+                        applySpelling={(suggestion) =>
+                          spellingAssistHtmlOrNull(bodyHtml, suggestion)
                         }
                         onApply={setBodyHtml}
                         hintKey="capture.ai.bodyHint"

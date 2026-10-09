@@ -32,7 +32,10 @@ describe("Block D4 (Client): Reviewer-Minimum 1", () => {
     const src = web("pages/AdminKiDetails.tsx");
     expect(src).toContain("aria-invalid={!neededValid}");
     expect(src).toContain("|| !neededValid");
-    expect(src).toContain("neededParsed >= 1 && neededParsed <= 5");
+    // R-1349 (Aufnahme gesamt-aufruferwaechter): hier stand der Pin auf der ausgeschriebenen Bedingung
+    // `neededParsed >= 1 && neededParsed <= 5`. Die Seite liest sie jetzt aus der EINEN Quelle — das
+    // Band 1–5 selbst misst `tests/app/reviewer-minimum-parse.test.ts` an `isNeededValidationsValid`.
+    expect(src).toContain("const neededValid = isNeededValidationsValid(neededEffective)");
   });
   it("deutsche Fehlermeldung existiert in allen Sprachen", () => {
     inAllLangs("adm.val.invalid");

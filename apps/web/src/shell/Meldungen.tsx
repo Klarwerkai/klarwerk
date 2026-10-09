@@ -299,11 +299,14 @@ export function MeldungenListe({
                   className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${
                     read
                       ? "bg-hairline"
-                      : n.kind === "conflict"
+                      : n.kind === "conflict" || n.kind === "escalation" || n.kind === "reklamation"
                         ? "bg-trust-crit-fill"
                         : n.kind === "duplicate"
                           ? "bg-ai"
-                          : n.kind === "assignment" || n.kind === "kenntnisnahme"
+                          : n.kind === "assignment" ||
+                              n.kind === "kenntnisnahme" ||
+                              n.kind === "frische" ||
+                              n.kind === "return"
                             ? "bg-ai"
                             : n.kind === "impact"
                               ? "bg-trust-pos-fill"
@@ -324,6 +327,17 @@ export function MeldungenListe({
                   {n.kind === "assignment" ? (
                     <span className="font-semibold text-ai">{t("topbar.notifAssignment")}: </span>
                   ) : null}
+                  {/* R-0894: Rückgabe zur Nacharbeit und Eskalation als eigene Art erkennbar. */}
+                  {n.kind === "return" ? (
+                    <span className="font-semibold text-ai">
+                      {t("meldungsart.rueckgabe.zeile")}:{" "}
+                    </span>
+                  ) : null}
+                  {n.kind === "escalation" ? (
+                    <span className="font-semibold text-trust-crit-text">
+                      {t("meldungsart.eskalation.zeile")}:{" "}
+                    </span>
+                  ) : null}
                   {/* PMO-FEA-0002: wertschätzende, unaufdringliche Wirkungs-Rückmeldung. */}
                   {n.kind === "impact" ? (
                     <span className="font-semibold text-trust-pos-text">
@@ -342,6 +356,33 @@ export function MeldungenListe({
                             : "kenntnisnahme.meldung",
                       )}
                       {n.fassung ? ` (V${n.fassung})` : ""}:{" "}
+                    </span>
+                  ) : null}
+                  {/* R-1089: gemeldete Antwort zum eigenen Wissen — Grund vorn, Titel dahinter. */}
+                  {n.kind === "reklamation" ? (
+                    <span className="font-semibold text-trust-crit-text">
+                      {t(
+                        n.grund === "quelle-passt-nicht"
+                          ? "antwortmeldung.meldung.quelle-passt-nicht"
+                          : "antwortmeldung.meldung.antwort-falsch",
+                      )}
+                      :{" "}
+                    </span>
+                  ) : null}
+                  {/* aufnahme:20260922:gesamt-wissen-frische: Frist, Wochenvorlage oder
+                      Prüfanforderung — der Titel ist das eigene Wissensobjekt. */}
+                  {n.kind === "frische" ? (
+                    <span className="font-semibold text-ai">
+                      {t(
+                        n.frischeArt === "vorlage"
+                          ? "frische.meldungVorlage"
+                          : n.frischeArt === "anlage"
+                            ? "frische.meldungAnlage"
+                            : n.ueberfaellig
+                              ? "frische.meldungFristAbgelaufen"
+                              : "frische.meldungFrist",
+                      )}
+                      :{" "}
                     </span>
                   ) : null}
                   {/* Pedi 04.07.: Duplikat-Fund klar als solcher gekennzeichnet. */}

@@ -89,6 +89,9 @@ export interface DraftPayload {
     question?: string;
     done?: boolean;
     demo?: boolean;
+    // R-1624: der bestätigte Bildbefund eines Foto-Interviews (Klartext, kein Bild — das Foto steht
+    // als Bild-Anker im Rumpf). Fehlt er, war es ein normales Interview.
+    imageContext?: string;
   };
   /**
    * BILDSCHIRMABLÄUFE — die übernommenen Schritte samt Herkunft (Begründung: `./ablauf.ts`).
@@ -124,6 +127,17 @@ export interface Draft {
   lastEditor: string;
   createdAt: string;
   updatedAt: string;
+  /**
+   * R-0554 — DIE URSPRÜNGLICHE URHEBERIN EINES ÜBERGEBENEN ENTWURFS.
+   *
+   * Bei der Wissensübergabe (`services/app/src/wissensuebergabe.ts`) wandert `originalAuthor` an
+   * die Nachfolgerin — an diesem Feld hängen Sichtbarkeit und „meine Entwürfe", und die gehören
+   * jetzt ihr. Wer den Entwurf ursprünglich verfasst hat, bleibt HIER stehen und reist beim
+   * Einreichen als `originalAuthor` ans Wissensobjekt (`toKoInput`) — dieselbe Trennung wie
+   * `author`/`originalAuthor` dort. Gesetzt nur bei der ersten Übergabe; fehlt das Feld, ist
+   * `originalAuthor` die Urheberin. Additiv im JSONB, keine Migration.
+   */
+  urheber?: string;
   /**
    * JOB 2697 — OPTIONAL UND AM `Draft`, NICHT IM `DraftPayload`.
    *

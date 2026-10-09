@@ -92,6 +92,8 @@ import {
   imageWidthPercent,
   normalizeImageWidth,
 } from "../lib/imageResize";
+import { kiBremsSatz } from "../lib/kiBremse";
+import { REASONER_ENTWURF_FLAECHE } from "../lib/kiHerkunft";
 // JOB 3095: die eine Quelle des Onlinezustands (JOB 3084) für den ehrlichen Offline-Satz der Bildsuche.
 import { useNetzOnline } from "../lib/netzzustand";
 import {
@@ -109,7 +111,7 @@ import {
 // weil nur diese Flaeche BEIDE Quellen kennt — den Rumpf im Editor und die Antwort vom Dienst.
 import { objekttextAusRumpf, titelNachRangfolge } from "../lib/titelRangfolge";
 import { AiCostHint } from "./AiCostHint";
-import { AiGeneratedNotice } from "./AiGeneratedNotice";
+import { AiGeneratedNotice, AiSurfaceNotice } from "./AiGeneratedNotice";
 import { AiUnavailableHint } from "./AiUnavailableHint";
 // D44 Teil 2, Weg (a): nur der Ereignisname und seine Nutzlast — keine Komponente, kein Zyklus
 // (`BodyImageGallery` importiert nichts aus dieser Datei, gemessen).
@@ -119,6 +121,7 @@ import { type D44BildEreignis, D44_BILD_EREIGNIS } from "./BodyImageGallery";
 import { Modal } from "./Modal";
 import { SanitizedHtml } from "./SanitizedHtml";
 import { UploadLimitsHint } from "./UploadLimitsHint";
+import { ErgebnisStufeMarke } from "./trust/ErgebnisStufeMarke";
 import { Button } from "./ui";
 
 export interface EditorImage {
@@ -142,7 +145,9 @@ const BLOCK_BTN_CLASS: Record<EditorBlock, string> = {
 type CaptionAiState =
   | null
   | { status: "loading" }
-  | { status: "fallback"; messageKey: string }
+  // R-0842: `satz` = der Wartesatz des Servers, wenn die KI-Bremse abgewiesen hat. Er steht dann
+  // statt des übersetzten `messageKey`, weil nur er die Wartezeit kennt.
+  | { status: "fallback"; messageKey: string; satz?: string }
   // WP-BILD-1f: withContext = der Vorschlag wurde mit umgebendem Dokument-Kontext erzeugt.
   // JOB 2402 D1 (TV1 Scheibe b): `titelVorschlag` reist im SELBEN Zustand mit — er stammt aus
   // demselben describe-Lauf. `null` heisst „nicht ableitbar" und wird als solches ANGEZEIGT; es
@@ -1281,10 +1286,16 @@ export function RichTextEditor({
             }
           : { status: "fallback", messageKey: outcome.messageKey },
       );
-    } catch {
+    } catch (fehler) {
       // Netz-/Serverfehler (inkl. 413-Größendeckel) → ehrliche Fehlermeldung, kein Pseudo-Text.
+      // R-0842: hat die KI-Bremse abgewiesen, reist ihr Satz mit Wartezeit bis ins Formular.
       if (stillCurrent()) {
-        report({ status: "fallback", messageKey: CAPTION_AI_TEXT.fallbackError });
+        const satz = kiBremsSatz(fehler);
+        report({
+          status: "fallback",
+          messageKey: CAPTION_AI_TEXT.fallbackError,
+          ...(satz ? { satz } : {}),
+        });
       }
     }
   };
@@ -3192,9 +3203,11 @@ export function RichTextEditor({
               {!imageDescribe.available ? <AiUnavailableHint show={true} /> : null}
               {/* AUFTRAG-mega61 Block E: die Bildbeschreibung erzeugt Text, den es vorher nicht
                   gab — sie trägt den Hinweis dauerhaft, nicht erst am Ergebnis.
-                  AUFTRAG-mega62 Block F: der Kostenhinweis daneben, aus demselben Grund. */}
+                  AUFTRAG-mega62 Block F: der Kostenhinweis daneben, aus demselben Grund.
+                  R-0603/R-0604: am Auslöser der Flächensatz; „von KI erzeugt" steht am Vorschlag
+                  darunter — den gibt es nur aus einem Modelltext (`captionSuggestOutcome`). */}
               <p className="mt-1">
-                <AiGeneratedNotice /> <AiCostHint billable={imageDescribe.billable} />
+                <AiSurfaceNotice /> <AiCostHint billable={imageDescribe.billable} />
               </p>
 
               {/* 4. Der Vorschlag als EIGENER, sichtbar abgesetzter Block — als KI-Vorschlag
@@ -3202,11 +3215,13 @@ export function RichTextEditor({
               {captionFormAi?.status === "suggestion" ? (
                 <div
                   data-testid="caption-form-suggestion"
-                  className="mt-2 rounded-card border border-ai/30 bg-surface p-2"
+                  // R-1020: ein Vorschlag entsteht nur aus einem Modelltext — also Entwurfsfläche.
+                  className={`mt-2 rounded-card p-2 ${REASONER_ENTWURF_FLAECHE}`}
                 >
                   <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
                     {t(CAPTION_AI_TEXT.panelTitle)} · {t(CAPTION_AI_TEXT.aiBadge)}
                   </p>
+                  <ErgebnisStufeMarke stufe="entwurf" className="mt-1" />
                   {captionFormAi.withContext ? (
                     <p className="mt-0.5 text-[10.5px] leading-snug text-muted">
                       {t(CAPTION_AI_TEXT.withContext)}
@@ -3215,6 +3230,7 @@ export function RichTextEditor({
                   <p className="mt-1 text-[12.5px] leading-relaxed text-text">
                     {captionFormAi.text}
                   </p>
+                  <AiGeneratedNotice className="mt-1 block" />
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -3261,7 +3277,7 @@ export function RichTextEditor({
                   data-testid="caption-form-fallback"
                   className="mt-2 rounded-btn bg-trust-warn-bg px-2 py-1.5 text-[11.5px] leading-relaxed text-trust-warn-text"
                 >
-                  {t(captionFormAi.messageKey)}
+                  {captionFormAi.satz ?? t(captionFormAi.messageKey)}
                 </p>
               ) : null}
               {captionFormAi === null ? (

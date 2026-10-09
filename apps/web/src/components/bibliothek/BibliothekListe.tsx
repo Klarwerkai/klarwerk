@@ -203,6 +203,7 @@ export function BibliothekListe({
   onNachladen,
   leerAktion,
   leerRaum,
+  leerFilter = null,
   lage,
   ansicht = "liste",
   markierung = null,
@@ -251,6 +252,10 @@ export function BibliothekListe({
   // R-0446: WORIN nichts gefunden wurde (und ggf. der Weg in den anderen Bestand). Steht nur unter
   // „Nichts gefunden." — der Bestandssatz „Noch keine Einträge." braucht keinen Suchraum.
   leerRaum: ReactNode;
+  // SPEICHERN-ERHOLUNG (Ausbauliste Punkt 6): WELCHE Filter den Nulltreffer verursachen und der
+  // direkte Weg, sie zurückzusetzen. Der Aufrufer kennt die Filter (s. `menues`); die Liste gibt
+  // ihnen nur den Ort unter „Nichts gefunden.". `null` = kein aktiver Filter, dann steht nichts da.
+  leerFilter?: ReactNode;
   // JOB 3335: die Lage auf der Fläche — s. `LAGE_KLASSE` oben. Der Aufrufer weiss, welches Band
   // gilt; diese Datei weiss, wie breit sie darin ist.
   lage: BibListenLage;
@@ -316,7 +321,7 @@ export function BibliothekListe({
         </div>
         <div className="flex items-center justify-between gap-2">
           {/* Ein echtes `fieldset` statt `role="group"` — die im Haus getroffene Entscheidung
-              (`LibraryScopeBar.tsx:159`, `RichTextEditor.tsx:1826`): die Gruppe bekommt ihren
+              (`RichTextEditor.tsx:1826`): die Gruppe bekommt ihren
               Namen aus dem Element plus `aria-label`, nicht aus einem ARIA-Nachbau. */}
           <fieldset
             data-testid="bib-segment"
@@ -491,6 +496,14 @@ export function BibliothekListe({
                 className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] leading-relaxed text-muted"
               >
                 {leerRaum}
+              </div>
+            ) : null}
+            {eingegrenzt && leerFilter ? (
+              <div
+                data-testid="bib-leer-filter"
+                className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] leading-relaxed text-muted"
+              >
+                {leerFilter}
               </div>
             ) : null}
             <div className="mt-2">{leerAktion}</div>

@@ -166,6 +166,17 @@ export interface KoAttachment {
 // „offen" noch „keine Kategorie vorhanden"; kein Platzhalter, kein Standardwert.
 export interface KnowledgeCheckResult {
   status: "done" | "pending" | "failed";
+  // AUFNAHME 20260922 · NEGATIVWISSEN-HINWEIS (R-1629): ähnliche Einträge der Wissensart
+  // „negativwissen" (Vertrag bei `negativwissenAuskunft` in services/app/src/knowledge-check.ts).
+  // Der Server lässt das Feld ohne Treffer weg — fehlt es, gibt es nichts anzuzeigen.
+  negativwissen?: {
+    id: string;
+    title: string;
+    statement: string;
+    score: number;
+    koStatus: KoStatus | null;
+    koCategory: string | null;
+  }[];
   similar: {
     id: string;
     title: string;
@@ -513,8 +524,77 @@ export interface AnzeigestatusHerkunft extends Record<AnzeigestatusEingang, Eing
   ungeprueft: Partial<Record<AnzeigestatusEingang, string>>;
 }
 
+/** aufnahme:20260922:gesamt-wissen-frische — Spiegel von `FrischeAuskunft` (frische.ts). */
+export type FrischeStufe = "frisch" | "altert" | "faellig" | "veraltet";
+export type Betriebsmodell = "oeffentliche_ki" | "freigegebene_ki" | "lokales_modell" | "ohne_ki";
+/** R-0652: Schutzbedarf — „oeffentlich" verfeinert „intern" (Spiegel von `Schutzstufe`). */
+export type Schutzstufe = "oeffentlich" | Confidentiality;
+export type FrischeSchritt =
+  | "konflikt_klaeren"
+  | "validierung_abschliessen"
+  | "erneut_bestaetigen"
+  | "bald_bestaetigen"
+  | "keiner";
+
+export interface KoFrische {
+  stufe: FrischeStufe;
+  halbwertszeitTage: number;
+  halbwertszeitHerkunft: "gelernt" | "vorgabe";
+  halbwertszeitBeobachtungen: number;
+  bezugAm: string | null;
+  letztesSignal: { at: string; by: string } | null;
+  haltbarBis: string | null;
+  erinnerungAb: string | null;
+  erinnern: boolean;
+  verantwortlich: string;
+  verantwortlichArt: "owner" | "author-fallback";
+  gesichert: boolean;
+  aktuellerStand: boolean;
+  schutz: Schutzstufe | null;
+  betriebsmodell: Betriebsmodell;
+  inDokumente: boolean;
+  naechsterSchritt: FrischeSchritt;
+  ungeprueft: { revalidierung?: string; konflikt?: string };
+}
+
 /** R-0658: welche Art Schutzdaten der Server erkannt hat — Spiegel von `SchutzdatenArt`. */
 export type SchutzdatenArt = "personalnummer" | "kontodaten";
+
+/** R-0507 / JOB 557: Spiegel von `KnowledgeOwnership` (services/knowledge-object/src/types.ts). */
+export interface KnowledgeOwnership {
+  owner?: string;
+  reviewers: string[];
+  validators: string[];
+}
+
+/** R-0554: die Vorschau der Wissensübergabe (`services/app/src/wissensuebergabe.ts`). */
+export interface UebergabeVorschau {
+  von: string;
+  an: string;
+  wissensobjekte: { id: string; title: string }[];
+  eigentum: { id: string; title: string }[];
+  /** Beiträge im Papierkorb, für die die Person hauptverantwortlich ist. */
+  papierkorb: { id: string; title: string }[];
+  entwuerfe: { id: string }[];
+  luecken: { id: string }[];
+  pruefaufgaben: { koId: string }[];
+}
+
+export type UebergabeArt =
+  | "wissensobjekt"
+  | "eigentum"
+  | "papierkorb"
+  | "entwurf"
+  | "luecke"
+  | "pruefaufgabe";
+
+/** R-0554: das Ergebnis der ausgeführten Wissensübergabe. */
+export interface UebergabeErgebnis {
+  von: string;
+  an: string;
+  uebergeben: Record<UebergabeArt, number>;
+  fehlgeschlagen: { art: UebergabeArt; id: string; grund: string }[];
+}
 
 export interface KnowledgeObject {
   id: string;
@@ -534,6 +614,9 @@ export interface KnowledgeObject {
   // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet, unabhängig von der Kategorie (Spiegel von
   // services/knowledge-object/src/types.ts). Fehlt = kein Fachgebiet angegeben, nichts abgeleitet.
   domain?: string;
+  // R-1632 / R-1633: wo dieser Punkt gilt (Spiegel von services/knowledge-object/src/geltung.ts).
+  // Fehlt = keine Geltung angegeben, nichts abgeleitet.
+  geltung?: KoGeltung;
   tags: string[];
   confidence: number;
   trust: number;
@@ -550,6 +633,12 @@ export interface KnowledgeObject {
   // Ableitung in `lib/displayStatus.ts` (`anzeigestatusAus`).
   anzeigestatus?: DisplayStatus;
   anzeigestatusHerkunft?: AnzeigestatusHerkunft;
+  // aufnahme:20260922:gesamt-wissen-frische: Frische, Haltbarkeit, Schutz und nächster Schritt —
+  // vom Server abgeleitet (Spiegel von services/knowledge-object/src/frische.ts). Dieselben zwei
+  // Lesewege wie `anzeigestatus`; fehlt das Feld, hat der Lesepfad es nicht geliefert.
+  frische?: KoFrische;
+  // R-0652: Schutzbedarf „öffentlich" (Verfeinerung von „intern"; Spiegel des Serverfelds).
+  oeffentlich?: true;
   // ================================================================================================
   // JOB 4251 (WIKI-ZUSAMMENARBEIT) — DER STEMPEL DER EINORDNUNG.
   // ================================================================================================
@@ -567,6 +656,11 @@ export interface KnowledgeObject {
   version: number;
   originalAuthor: string;
   author: string;
+  // R-0507 / JOB 557: wem das Objekt gehört, wer es geprüft und wer es freigegeben hat
+  // (`services/knowledge-object/src/ownership.ts`). Fehlt das Feld, ist nichts benannt — dann gilt
+  // der Autor als verantwortlich, und die Oberfläche sagt das ausdrücklich, statt einen Eigentümer
+  // zu behaupten.
+  ownership?: KnowledgeOwnership;
   neededValidations: number;
   assignments: string[];
   // SCRUM-415: Vertraulichkeitsstufe. Für den ZUGRIFF gilt „fehlt = intern" (sichtbarkeit.ts:39-43);
@@ -647,6 +741,10 @@ export interface KnowledgeObject {
     laeuft?: boolean;
     konfliktGefunden?: boolean;
   };
+  // R-1107 (Aufnahme gesamt-dublettenvergleich): Spiegel von `services/knowledge-object/src/
+  // types.ts` — gesetzt, wenn dieser Artikel über den Zusammenführen-Assistenten in einem
+  // Führungsartikel aufgegangen ist. Er bleibt lesbar; das Feld nennt den verbleibenden Artikel.
+  mergedInto?: { koId: string; version: number; overlapId: string; at: string; by: string };
 }
 
 // ================================================================================================
@@ -777,6 +875,29 @@ export interface TrashedKo {
 
 export type ConflictType = "truth" | "experience" | "context" | "temporal" | "role";
 export type ConflictStatus = "offen" | "eskaliert" | "zweitmeinung" | "geloest";
+// R-0252: die Art der nötigen Arbeit (Regel/Sache/Version) — Spiegel von services/conflicts/src/types.ts.
+export type ConflictWorkKind = "regel" | "sache" | "version";
+// R-0263: Vorrang zwischen den zwei Punkten einer Entscheidung — Spiegel von services/conflicts.
+export type VorrangArt = "ueberstimmt" | "schraenkt_ein";
+export interface VorrangWahl {
+  art: VorrangArt;
+  /** Kennung der Seite, die gilt (bei `schraenkt_ein`: die speziellere). */
+  gilt: string;
+  geltungsbereich?: string;
+}
+export interface KonfliktVorrang {
+  art: VorrangArt;
+  vorrangKo: string;
+  nachrangKo: string;
+  geltungsbereich: string | null;
+}
+/** Eine Zeile von `GET /api/conflicts/vorrang/:id` — der Vorrang am einzelnen Punkt. */
+export interface VorrangAmPunkt extends KonfliktVorrang {
+  konfliktId: string;
+  entschiedenVon: string | null;
+  /** Gesetzt, wenn der Geltungsbereich für diesen Betrachter zurückgehalten ist. */
+  redacted?: boolean;
+}
 
 // Berater-Konzept 04.07. (Stufe 4): Herkunft + Erkennungs-Metadaten eines automatisch erkannten
 // Konflikts — macht den Fund am Board erklärbar (Sicherheit, Begründung, wörtliche Zitate).
@@ -804,6 +925,13 @@ export interface ConflictDetector {
   quotes?: { a: string; b: string };
   // SCRUM-492: optionale strukturierte Gegenüberstellung für die Kollisions-Kacheln.
   kollision?: Kollision;
+  // R-0263: Klaras Vorschlag Widerspruch/Präzisierung — Spiegel von services/conflicts (`spezieller`
+  // ist die Kennung des engeren Punkts). Ein Vorschlag, keine Entscheidung.
+  vorschlag?: {
+    art: "widerspruch" | "praezisierung";
+    spezieller?: string;
+    geltungsbereich?: string;
+  };
 }
 
 export interface Conflict {
@@ -811,6 +939,10 @@ export interface Conflict {
   koA: string;
   koB: string;
   type: ConflictType;
+  // R-0252: gewählt (manuell) oder von der Prüfung eingeordnet (auto). Fehlt = nicht bestimmt.
+  arbeitsart?: ConflictWorkKind;
+  // R-0263: an entschiedenen Konflikten der festgelegte Vorrang.
+  vorrang?: KonfliktVorrang;
   description: string;
   status: ConflictStatus;
   secondOpinion: string | null;
@@ -876,6 +1008,31 @@ export interface OverlapResolution {
   by: string | null;
   note: string | null;
   at: string;
+  // R-1107: nur bei `merged` — der verbleibende Führungsartikel und seine neue Fassung.
+  mergedIntoKoId?: string;
+  mergedVersion?: number;
+}
+
+// R-1107 / R-0201 (Aufnahme gesamt-dublettenvergleich): der Drahtvertrag von
+// `POST /api/duplicates/:id/merge` — Spiegel von `services/app/src/dubletten-zusammenfuehrung.ts`.
+export type ZusammenfuehrungsSeite = "fuehrend" | "aufgehend";
+
+export interface ZusammenfuehrungsAuftrag {
+  fuehrend: { id: string; version: number };
+  aufgehend: { id: string; version: number };
+  titel: ZusammenfuehrungsSeite;
+  kernaussage: ZusammenfuehrungsSeite;
+  bedingungen: string[];
+  massnahmen: string[];
+  quellen: string[];
+  bestaetigt: true;
+  vermerk?: string;
+}
+
+export interface ZusammenfuehrungsErgebnis {
+  befund: OverlapEntry;
+  fuehrend: { id: string; version: number; status: KoStatus };
+  aufgehend: { id: string; mergedInto?: KnowledgeObject["mergedInto"] };
 }
 
 export interface OverlapEntry {
@@ -1041,6 +1198,8 @@ export interface DraftPayload {
     question?: string;
     done?: boolean;
     demo?: boolean;
+    // R-1624: bestätigter Bildbefund eines Foto-Interviews (Klartext); fehlt = normales Interview.
+    imageContext?: string;
   };
 }
 
@@ -1078,6 +1237,27 @@ export interface ExpertiseContributor {
 export interface ExpertiseEntry {
   category: string;
   contributors: ExpertiseContributor[];
+}
+
+// R-1663 / R-2178: passende Ansprechpartner zu einer Wissenslücke, begründet aus Wissensspuren
+// (`GET /api/gaps/:id/ansprechpartner`; Server: services/ask/src/ansprechpartner.ts). Jede Zahl ist
+// eine gespeicherte Tatsache am Objekt oder an der Lücke — kein Punktwert, keine Rangfolge.
+export interface AnsprechpartnerSpuren {
+  originalautor: number;
+  erfasst: number;
+  validiert: number;
+  pruefung: number;
+  verantwortlich: number;
+  aehnlicheLuecken: number;
+}
+export interface AnsprechpartnerVorschlag {
+  personId: string;
+  spuren: AnsprechpartnerSpuren;
+  objekte: { id: string; title: string }[];
+}
+export interface AnsprechpartnerAuskunft {
+  vorschlaege: AnsprechpartnerVorschlag[];
+  grundlage: { objekte: number; aehnlicheLuecken: number };
 }
 
 export interface GraphNode {
@@ -1797,6 +1977,170 @@ export interface AnswerResult {
   citedSources?: string[];
   // JOB 3366: gesetzt, wenn der ausgelieferte Antworttext am Token-Limit abgeschnitten wurde.
   abgeschnitten?: AbbruchBefund;
+  // AUFNAHME 20260922 · Antwort-Erklärung: die Belastbarkeit VOM SERVER (Spiegel von
+  // `services/ask/src/answer-belastbarkeit.ts`, wo Vertrag und Grenzen stehen). Optional — ein
+  // älterer Server sendet sie nicht, dann zeigt die Fläche keine Belastbarkeitszeile und erfindet
+  // keine.
+  belastbarkeit?: AntwortBelastbarkeit;
+  // R-0604 / R-0625: die serverseitige KI-Kennzeichnung (`AiGeneratedMark`, nur gesetzt, wenn ein
+  // Modell geantwortet hat). Bewusst `unknown`: die Fläche castet sie nicht, sondern prüft sie mit
+  // derselben Laufzeitprüfung wie das Word-Panel (`istKiKennzeichnung`, lib/wordAddin.ts).
+  aiGenerated?: unknown;
+  // R-0310/R-0325 (nur Fläche, gesetzt in `lib/askResponse.ts`): die Antwort wurde zurückgehalten,
+  // weil kein Absatz belegt ist UND keine tragende Quelle feststeht — die Lücke nennt das.
+  zuordnungUnbekannt?: true;
+}
+
+// Spiegel von `services/ask/src/answer-belastbarkeit.ts` — die Oberfläche LIEST, sie leitet nichts ab.
+export type AntwortLage =
+  | "belegt"
+  | "belegt_zustaendig_fehlt"
+  | "belegt_mit_konflikt"
+  | "wissensluecke"
+  | "technischer_fehler"
+  | "geschwaerzt";
+
+export type BelastbarkeitsGrund =
+  | "keine_tragfaehige_quelle"
+  | "zuordnung_unbekannt"
+  | "alle_tragenden_quellen_validiert"
+  | "tragende_quelle_nicht_validiert"
+  | "pruefnachweis_unvollstaendig"
+  | "offener_konflikt"
+  | "konfliktlage_unbekannt"
+  | "zustaendig_nicht_erreichbar"
+  | "erreichbarkeit_unbekannt"
+  | "verantwortung_nur_autor";
+
+export interface QuellenBelastbarkeit {
+  koId: string;
+  titel: string;
+  version: number;
+  vertrauenswert: number;
+  stand: string;
+  validiert: boolean;
+  pruefstand: "unknown" | "unchecked" | "noCoverage" | "incomplete" | "proven";
+  entscheidungFestgehalten: boolean;
+  verantwortung: {
+    art: "owner" | "author-fallback";
+    person: { id: string; name: string | null } | null;
+    erreichbar: boolean | null;
+  };
+}
+
+export type KonfliktSeite =
+  | {
+      einsehbar: true;
+      koId: string;
+      titel: string;
+      aussage: string;
+      version: number;
+      vertrauenswert: number;
+      validiert: boolean;
+      traegtAntwort: boolean;
+    }
+  | { einsehbar: false; traegtAntwort: boolean };
+
+export interface AntwortKonflikt {
+  konfliktId: string;
+  beschreibung: string | null;
+  seiten: [KonfliktSeite, KonfliktSeite];
+}
+
+export interface AntwortBelastbarkeit {
+  lage: AntwortLage;
+  gruende: BelastbarkeitsGrund[];
+  vertrauenswert: {
+    wert: number | null;
+    herleitung: "minimum_tragender_quellen" | "keine_tragende_quelle";
+    schwaechsteQuelle: string | null;
+  };
+  quellenAnzahl: { herangezogen: number; tragend: number };
+  quellen: QuellenBelastbarkeit[];
+  konflikte: AntwortKonflikt[];
+  // R-1627: die quellengebundene Argumentationskette; optional — ein älterer Server sendet sie nicht.
+  argumentation?: ArgumentStufe[];
+  // R-0346: Rolle und Anlass, auf die die Erklärung zugeschnitten ist.
+  zuschnitt?: AntwortZuschnitt;
+  // Ben nacharbeit-11: Wörterbucherklärungen AUSSERHALB der Quellenbilanz — ohne Vertrauenswert,
+  // ausdrücklich nicht bewertet. Fehlt das Feld, wurde nichts aus dem Wörterbuch ergänzt.
+  woerterbuch?: {
+    benennung: string;
+    // Die Erklärung steht hier: der Absatz „Begriffe“ hat keine Wissensquelle und wird nach R-0310
+    // nicht im Antworttext ausgegeben.
+    definition: string;
+    herkunft: BegriffHerkunft;
+    vertrauenswert: null;
+    belastbarkeit: "nicht_bewertet";
+  }[];
+  hinweis: "vertrauen_ist_kein_wahrheitsversprechen";
+}
+
+export type Wissensart =
+  | "bauchgefuehl"
+  | "best_practice"
+  | "lernkurve"
+  | "technik"
+  | "negativwissen";
+
+// R-1627 (Ben nacharbeit-9): Spiegel von `ArgumentStufe` (services/ask/src/answer-belastbarkeit.ts).
+// Jede tragende Quelle ist eine eigene Aussage; eine Beziehung steht nur da, wo ein Mensch sie als
+// kuratierte Kante gesetzt hat; der Schluss trägt die gegebene Antwortaussage.
+export type BelegteBeziehungsArt =
+  | "gehoert_zu"
+  | "ergaenzt"
+  | "ersetzt"
+  | "widerspricht"
+  | "beispiel_fuer";
+
+export type ArgumentStufe =
+  | {
+      art: "aussage";
+      koId: string;
+      titel: string;
+      aussage: string;
+      wissensart: Wissensart;
+      belegstelle: string | null;
+      vertrauenswert: number;
+      validiert: boolean;
+      stand: string;
+    }
+  | {
+      art: "beziehung";
+      kanteId: string;
+      beziehung: BelegteBeziehungsArt;
+      gerichtet: boolean;
+      vonKoId: string;
+      vonTitel: string;
+      zuKoId: string;
+      zuTitel: string;
+      gesetztVon: string | null;
+    }
+  | { art: "einwand"; konfliktId: string; seite: KonfliktSeite }
+  | { art: "vorbehalt"; grund: BelastbarkeitsGrund }
+  | {
+      art: "schluss";
+      lage: AntwortLage;
+      einstufung: "verified" | "unverified" | "gap";
+      aussage: string | null;
+      gestuetztAuf: string[];
+      unabhaengig: boolean;
+    };
+
+export interface AntwortZuschnitt {
+  rolle: "viewer" | "experte" | "controller" | "admin" | "unbekannt";
+  anlass: "dokument" | "frage";
+  tiefe: "kurz" | "ausfuehrlich";
+  fachsprache: "allgemein" | "fach";
+  reihenfolge: Wissensart[];
+}
+
+// R-0284: wogegen geprüft wurde (Spiegel von `AskPruefrahmen`, services/ask/src/service.ts).
+export interface AskPruefrahmen {
+  umfang: "validiert" | "nicht_vertraulich";
+  verglichen: number;
+  hoechstens: number;
+  nurWoertlich: boolean;
 }
 
 // JOB 2626 D1: ein Dokument, das die Frage traf, aber nicht antworten konnte — mit den Toren,
@@ -1818,9 +2162,85 @@ export interface AskResponse {
   // FUNKE-FIX P0 (bens ROT-1): opaker Beleg über die ausgelieferten Quell-KOs. Beim „Danke"
   // (/api/ask/helpful) zurückgereicht — der Server verifiziert die Quellen-Bindung serverseitig.
   receipt: string;
+  // R-0338: die Fassung jeder herangezogenen Quelle, wie DIESE Antwort sie gelesen hat (Spiegel von
+  // `AskResult.quellenStand`). Ein älterer Server sendet das Feld nicht — die Antwort hat dann
+  // keinen belastbaren Quellenstand (Regeln an `antwortFrische`, lib/fragenArbeitsstand.ts).
+  quellenStand?: Record<string, number>;
   // JOB 2626 D1: nur bei Nicht-Antwort UND nur auf Wegen mit Betrachterfilter vorhanden; ein
   // älterer Server sendet das Feld nicht — die Fläche fällt dann auf die generische Leermeldung.
   verschlossen?: VerschlossenHinweis[];
+  // R-0284: der Rahmen der Suche; ein älterer Server sendet ihn nicht — dann steht kein Satz.
+  pruefrahmen?: AskPruefrahmen;
+  // R-1633: nur wenn ein Fragekontext mitgeschickt wurde — wofür gewichtet wurde und je Quelle
+  // ihre Geltung und Passung (Spiegel von `AskGeltungsauskunft`, services/ask/src/service.ts).
+  geltung?: AskGeltungsauskunft;
+  // R-0346 (Ben nacharbeit-9): wie die Antwort selbst zugeschnitten wurde und was angehängt ist
+  // (Spiegel von `AskAntwortZuschnitt`); fehlt das Feld, ist die Antwort unverändert.
+  antwortZuschnitt?: AskAntwortZuschnitt;
+  // R-0310: je Absatz die tragenden Quellen, die ihn belegen (services/app/src/absatz-belege.ts);
+  // nur bei beantworteter Frage. Angewandt in `lib/askResponse.ts` (`selectAnswer`).
+  absaetze?: AbsatzBeleg[];
+}
+
+export interface AbsatzBeleg {
+  text: string;
+  quellen: string[];
+}
+
+export interface AskAntwortZuschnitt {
+  tiefe: "kurz" | "ausfuehrlich";
+  fachsprache: "allgemein" | "fach";
+  reihenfolge: Wissensart[];
+  ergaenzungen: (
+    | { art: "voraussetzungen" | "massnahmen"; quelleId: string; eintraege: string[] }
+    | {
+        art: "begriffe";
+        quelleId: null;
+        eintraege: string[];
+        benennungen: string[];
+        herkunft: BegriffHerkunft[];
+      }
+  )[];
+  // Ben nacharbeit-13: die Antwort ohne Wörterbucherklärungen — der Schluss der Kette.
+  quellengebundenerText: string;
+  // Ben nacharbeit-20: die angehängten Abschnitte am Ende der Antwort, je mit Text und Quelle.
+  abschnitte: { quelleId: string | null; text: string }[];
+}
+
+// Ben nacharbeit-11: Herkunft einer Begriffserklärung aus dem Firmenwörterbuch (Spiegel von
+// `BegriffHerkunft`, services/ask/src/antwort-zuschnitt.ts).
+export interface BegriffHerkunft {
+  eintragId: string;
+  fassung: number;
+  geltungsbereich: string | null;
+  verantwortlich: string | null;
+  geaendertAm: string | null;
+}
+
+// ================================================================================================
+// R-1632 / R-1633 (gesamt-standortwissen) — Spiegel von services/knowledge-object/src/geltung.ts.
+// ================================================================================================
+export type GeltungsEbene = "konzern" | "werk" | "schicht";
+export interface KoGeltung {
+  ebene: GeltungsEbene;
+  werk?: string;
+  schicht?: string;
+  rolle?: string;
+}
+export interface Fragekontext {
+  werk?: string;
+  schicht?: string;
+  rolle?: string;
+}
+export type GeltungsPassung =
+  | "eigene_schicht"
+  | "eigenes_werk"
+  | "konzern"
+  | "unbestimmt"
+  | "andere";
+export interface AskGeltungsauskunft {
+  fragekontext: Fragekontext;
+  quellen: { id: string; passung: GeltungsPassung; geltung?: KoGeltung }[];
 }
 
 // FR-EXT-03 / FE-OUT: Output Factory (SCRUM-117/109).
@@ -2026,6 +2446,8 @@ export interface StructureResult {
   measures: string[];
   tags: string[];
   confidence: number;
+  // FR-STR-01: vom Modell vorgeschlagene Wissensart; fehlt beim Fallback oder ungültigem Modellwert.
+  knowledgeType?: KnowledgeType;
   demo: boolean;
   // WP-D8: ehrliche Fallback-Ursache (nur bei demo:true) — "no-model" = kein Modell konfiguriert/aktiv,
   // "model-error" = Modell versucht, aber gescheitert (HTTP/Quota/Netz/Parse). WP-D10 (Fix 3):
@@ -2535,6 +2957,10 @@ export interface ReasonerStatus {
   // `tasks`/`reachable`, die auch bei einer Störung `false` werden — die Fläche sagt die beiden
   // Lagen verschieden. Fehlt es (alter Server), behauptet die Oberfläche keine Abschaltung.
   kiAbgeschaltet?: boolean;
+  // Auftrag gesamt-ki-freigaberegeln (R-0606): der wirksame Stand der zentralen Adminfreigabe für
+  // öffentliche KI — `blockiert` (Vorgabe), `frei` (Grundfreigabe) oder `frei_vertraulich` (beide
+  // Freigaben). Gelesen von der Kopfzeile. Fehlt es (alter Server), zeigt sie nichts an.
+  extern?: "blockiert" | "frei" | "frei_vertraulich";
 }
 
 // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten, keine Secrets).
@@ -2762,24 +3188,57 @@ export interface DemoSeedResult {
 
 // Audit-P4 (SCRUM-398): Live-Wall — „frisch gesichert / hat heute geholfen" (read-only).
 export interface LiveWall {
+  // PMO-FEA-0003: ohne Autorenkennung — eine Person nennt die Wand nur mit Zustimmung (`validated`).
   saved: Array<{
     koId: string;
     title: string;
-    author: string;
     at: string;
     status: "offen" | "validiert";
   }>;
   helped: Array<{ koId: string; title: string; at: string }>;
   helpedToday: number;
+  // PMO-FEA-0003: neues validiertes Wissen; `name` und `foto` (Daten-URL) nur bei wirksamer
+  // Zustimmung der Person. Optional, weil Bestandsserver das Feld nicht kennen.
+  validated?: Array<{ koId: string; title: string; at: string; name?: string; foto?: string }>;
 }
 
+export interface LiveWallConsent {
+  nameConsent: boolean;
+  // PMO-FEA-0003: hat dieses Konto ein Foto hinterlegt? `photo` nur zur eigenen Vorschau.
+  photoConsent?: boolean;
+  photo?: string;
+}
+
+// R-0894: `escalation` = eskalierter Wahrheitskonflikt, `return` = Rückgabe zur Nacharbeit an die
+// verantwortliche Person (Spiegel von services/app/src/notification-feed.ts).
 export type NotificationKind =
   | "conflict"
+  | "escalation"
   | "duplicate"
   | "gap"
   | "assignment"
+  | "return"
   | "impact"
-  | "kenntnisnahme";
+  | "kenntnisnahme"
+  // aufnahme:20260922:gesamt-wissen-frische: Fristerinnerung, Wochenvorlage, Prüfanforderung.
+  | "frische"
+  | "reklamation";
+
+// R-1089: der Meldeweg „Antwort falsch / Quelle passt nicht". Eigenständig getippt wie der Rest
+// dieser Datei — apps/web importiert nicht über die Modulgrenze nach services.
+export type AntwortMeldeGrund = "antwort-falsch" | "quelle-passt-nicht";
+
+export interface AntwortMeldungQuittung {
+  meldungId: string;
+  koId: string;
+  koTitle: string;
+  grund: AntwortMeldeGrund;
+  at: string;
+  // Wohin die Meldung ging — benannte verantwortliche Person oder ersatzweise der Autor. Wer das
+  // ist, sagt die Quittung bewusst nicht.
+  zugestelltAn: "owner" | "author-fallback";
+  bereitsGemeldet: boolean;
+}
 
 export interface Notification {
   id: string;
@@ -2797,6 +3256,11 @@ export interface Notification {
   fassung?: number;
   erinnerung?: boolean;
   ueberfaellig?: boolean;
+  // R-1089: Meldegrund und Meldungsnummer (nur bei `kind: "reklamation"`).
+  grund?: AntwortMeldeGrund;
+  meldungId?: string;
+  // aufnahme:20260922:gesamt-wissen-frische: Unterart einer `frische`-Meldung (R-0248/R-0266/R-1635).
+  frischeArt?: "frist" | "vorlage" | "anlage";
 }
 
 // AUFTRAG-mega46 Block F: die Betriebsschalter, die die Oberfläche erfahren darf — AUSSCHLIESSLICH
@@ -2811,9 +3275,13 @@ export interface Notification {
 // Schalter die notwendige Wahrheit (feature-flags.ts, Routen-Registrierung) und wird in
 // /api/features weiter gemeldet — ein zusätzlicher, hier untypisierter Payload-Schlüssel ist im
 // Partial-Vertrag zulässig und wird von niemandem gelesen.
+// R-1975 / R-0791 (I27): `herkunft` und `expertMatching` stehen aus demselben Grund NICHT mehr hier.
+// Beide waren typisiert, aber kein Frontend-Code las sie — dieselbe stille Zusage ohne Wirkung wie
+// `confluenceImport` vor mega69. Wo die Oberfläche ihre Wirkung tatsächlich erfährt (oder dass es
+// keine Fläche gibt), steht je Schalter im Leserregister
+// `tests/funktionsschalter/schalter-leser.test.ts`. Es wird rot, sobald hier ein Name ohne echten
+// Leser steht oder der Server einen Schalter meldet, den das Register nicht einordnet.
 export type FeatureName =
-  | "herkunft"
-  | "expertMatching"
   // AUFTRAG-mega61: die zwei Notausschalter. Ihre Vorgabe ist AN (Server: feature-flags.ts) — sie
   // sperren nichts, sie erlauben nur das Abschalten einer Pflichtfläche, wenn sie im Betrieb stört.
   // AUFTRAG-mega62 Block A: `hinweisbanner` deckt BEIDE Flächen des Hinweises — den Banner in der
@@ -2908,7 +3376,7 @@ export interface SicherungsEintrag {
   folgeNummer: number | null;
 }
 
-export type SicherungenAuskunft =
+export type SicherungenAuskunft = (
   | {
       zustand: "gelesen";
       verzeichnis: string;
@@ -2916,7 +3384,103 @@ export type SicherungenAuskunft =
       sicherungen: SicherungsEintrag[];
     }
   | { zustand: "kein_verzeichnis"; verzeichnis: string; gelesenUtc: string }
-  | { zustand: "unlesbar"; verzeichnis: string; gelesenUtc: string; grund: string };
+  | { zustand: "unlesbar"; verzeichnis: string; gelesenUtc: string; grund: string }
+) & {
+  /**
+   * ADMIN-13 — die vier Schutzwege derselben Lesung. Optional nur, damit ältere Prüfstände ohne das
+   * Feld weiter gelten; der Server sendet es in jedem der drei Zustände.
+   */
+  schutzwege?: Schutzwege;
+};
+
+// ================================================================================================
+// ADMIN-13 · DIE VIER SCHUTZWEGE — Spiegel von `services/app/src/routes/admin-routes.ts`.
+// ================================================================================================
+//
+// Exportdatei, Backup-Lauf, Papierkorb und Restore-Nachweis sind verschiedene Schutzwege mit
+// verschiedenen Belegen. Jeder hat hier seinen eigenen Befund; `unbekannt` trägt immer einen Grund.
+// Grün für einen Restore heißt `restore.zustand === "erfolg"` und entsteht am Server allein aus einem
+// vollständigen Drillprotokoll — nie aus einem Archiv oder einer Prüfsummendatei.
+export type SchutzwegUnbekanntGrund =
+  | "kein_verzeichnis"
+  | "unlesbar"
+  | "fehlt"
+  | "ungueltig"
+  | "kein_protokoll"
+  | "protokoll_unlesbar";
+export interface SchutzwegUnbekannt {
+  zustand: "unbekannt";
+  grund: SchutzwegUnbekanntGrund;
+}
+
+export interface SicherungsLaufBefund {
+  zustand: "erfolg" | "fehler";
+  zeitUtc: string | null;
+  exitcode: number | null;
+  /** Der Satz aus `letzter-lauf.json` (Skriptsprache Deutsch), am Server von Zugangsdaten befreit. */
+  grund: string;
+  datei: string | null;
+}
+
+export type VergleichZustand = "gleich" | "abweichend" | "nicht_gemessen";
+export interface VergleichKategorie {
+  zustand: VergleichZustand;
+  tabellen: { tabelle: string; dump: number | null; datenbank: number | null }[];
+}
+export type PruefsummenZustand = "passt" | "abweichend" | "fehlt" | "ungueltig" | "nicht_geprueft";
+
+export interface RestoreDrillBefund {
+  zustand: "erfolg" | "teilweise" | "fehler";
+  /** Fehlende Nachweise einer bestandenen Probe (Kennungen) — Grund für `teilweise`. */
+  luecken: string[];
+  /** Widersprüche im Protokoll (Kennungen) — Grund für `fehler` trotz behauptetem Erfolg. */
+  widersprueche: string[];
+  beginnUtc: string | null;
+  zeitUtc: string | null;
+  exitcode: number;
+  grund: string;
+  sicherung: string | null;
+  sicherungZeitpunktUtc: string | null;
+  pruefsumme: { zustand: PruefsummenZustand; sha256: string | null };
+  ziel: string | null;
+  vergleich: {
+    beitraege: VergleichKategorie;
+    anhaenge: VergleichKategorie & { belegeOhneAnhang: number | null };
+    beziehungen: VergleichKategorie;
+    rechte: VergleichKategorie & { rollenDump: string | null; rollenDatenbank: string | null };
+  };
+  wissensnachweis: string | null;
+}
+
+export interface ExportSpur {
+  zeitUtc: string;
+  format: string | null;
+  anzahl: number | null;
+  gesamt: number;
+}
+export interface ExportBefund {
+  zustand: "vorhanden" | "keiner";
+  bibliothek: ExportSpur | null;
+  auditkette: ExportSpur | null;
+}
+
+export interface PapierkorbBefund {
+  zustand: "gelesen";
+  anzahl: number;
+  aufbewahrungTage: number;
+  naechsteEndloeschungUtc: string | null;
+  ereignisseProtokolliert: boolean;
+  letzteWiederherstellungUtc: string | null;
+  letzteEndloeschungUtc: string | null;
+}
+
+export interface Schutzwege {
+  verzeichnisQuelle: "BACKUP_DIR" | "vorgabe";
+  letzterLauf: SicherungsLaufBefund | SchutzwegUnbekannt;
+  restore: RestoreDrillBefund | SchutzwegUnbekannt;
+  export: ExportBefund | SchutzwegUnbekannt;
+  papierkorb: PapierkorbBefund | SchutzwegUnbekannt;
+}
 
 // ==================================================================================================
 // JOB 4154 · WIKI-GESAMTANWEISUNG — DER DRAHTVERTRAG DER ANWEISUNG.
@@ -3035,6 +3599,14 @@ export interface UebernommeneAenderung {
   uebernommenAm: string;
 }
 
+/** Drahtform von `AnweisungEntscheidung` (`gesamtanweisung-types.ts`). `von` ist eine Kontokennung. */
+export interface AnweisungEntscheidung {
+  ergebnis: "angenommen" | "abgelehnt";
+  von: string;
+  am: string;
+  version: number;
+}
+
 export interface AnweisungLesestand {
   id: string;
   titel: string;
@@ -3046,6 +3618,11 @@ export interface AnweisungLesestand {
   urheber: string;
   erstelltAm: string;
   geaendertAm: string;
+  /**
+   * STATUS-FREIGABE · die festgehaltene letzte Entscheidung (wer, wann, welche Fassung). Fehlt sie,
+   * ist nichts festgehalten — die Fläche nennt dann keine Person und keine geratene.
+   */
+  entscheidung?: AnweisungEntscheidung;
   /** NUR die zugänglichen Bausteine. Ein verborgener steht hier gar nicht, auch nicht leer. */
   bausteine: BausteinLesestand[];
   unvollstaendig: boolean;
@@ -3101,6 +3678,7 @@ export interface Anweisung {
   urheber: string;
   erstelltAm: string;
   geaendertAm: string;
+  entscheidung?: AnweisungEntscheidung;
 }
 
 export interface AnweisungKopfEingabe {

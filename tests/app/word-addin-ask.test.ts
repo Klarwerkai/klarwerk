@@ -660,6 +660,49 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
     // Ask-Fluss: beide Fassungen liefern auf denselben Fake-fetch-Faellen dasselbe Ergebnis.
     const flows: [string, AskFetchFn][] = [
       ["answered", async () => fakeRes(200, ANSWERED_BODY)],
+      // R-0310: die Absatz-Beleg-Zuordnung — beide Fassungen geben NUR belegte Absätze aus und
+      // fallen ohne belegten Absatz in die Lücke.
+      [
+        "answered-absaetze",
+        async () =>
+          fakeRes(200, {
+            ...ANSWERED_BODY,
+            result: { ...ANSWERED_BODY.result, citedSources: ["ko-2"] },
+            absaetze: [
+              { text: "**Ventil** entlasten. [2]", quellen: ["ko-2"] },
+              { text: "Ohne Beleg.", quellen: [] },
+              { text: "Fremd.", quellen: ["ko-1"] },
+            ],
+          }),
+      ],
+      [
+        "answered-absaetze-unbelegt",
+        async () =>
+          fakeRes(200, {
+            ...ANSWERED_BODY,
+            result: { ...ANSWERED_BODY.result, citedSources: ["ko-2"] },
+            absaetze: [{ text: "Ohne Beleg.", quellen: [] }],
+          }),
+      ],
+      // R-0310/R-0325 (Ben zu 8e6c9d73): keine tragende Quelle — Lücke MIT `zuordnungUnbekannt`.
+      [
+        "gap-zuordnung-unbekannt",
+        async () =>
+          fakeRes(200, {
+            ...ANSWERED_BODY,
+            result: { ...ANSWERED_BODY.result, citedSources: [] },
+            absaetze: [{ text: "Ohne Beleg.", quellen: [] }],
+          }),
+      ],
+      [
+        "gap-zuordnung-fremd",
+        async () =>
+          fakeRes(200, {
+            ...ANSWERED_BODY,
+            result: { ...ANSWERED_BODY.result, citedSources: ["ko-gibt-es-nicht"] },
+            absaetze: [{ text: "Ohne Beleg.", quellen: [] }],
+          }),
+      ],
       ["gap", async () => fakeRes(200, GAP_BODY)],
       ["auth", async () => fakeRes(401, {})],
       // AUFTRAG-JOB507-D4: der neue 403- und der neue 429-Ausgang laufen durch DENSELBEN Vergleich.
@@ -697,6 +740,25 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
       const fromInline = await inline.performAsk("Frage", "de", fetchFn, timeout);
       const fromModule = await performAsk("Frage", "de", fetchFn, timeout);
       expect(fromInline, `flow:${label}`).toEqual(fromModule);
+    }
+    // R-0310/R-0325 (Ben zu 8e6c9d73): ohne tragende Quelle keine Ausgabe, aber die benannte
+    // unbekannte Zuordnung; mit tragender Quelle (ko-2) ohne belegten Absatz die schlichte Lücke.
+    const ablauf = (name: string) => flows.find(([l]) => l === name)?.[1];
+    for (const name of ["gap-zuordnung-unbekannt", "gap-zuordnung-fremd"]) {
+      const fetchFn = ablauf(name);
+      expect(fetchFn, name).toBeDefined();
+      if (fetchFn) {
+        expect(await inline.performAsk("Frage", "de", fetchFn, WORD_ADDIN_ASK_TIMEOUT_MS)).toEqual({
+          kind: "gap",
+          zuordnungUnbekannt: true,
+        });
+      }
+    }
+    const belegtNichts = ablauf("answered-absaetze-unbelegt");
+    if (belegtNichts) {
+      const r = await inline.performAsk("Frage", "de", belegtNichts, WORD_ADDIN_ASK_TIMEOUT_MS);
+      expect(r.kind).toBe("gap");
+      expect(r.zuordnungUnbekannt).toBeUndefined();
     }
     // Gating + Zeilenbau + Titel-Konvention verhaltensgleich.
     const outcomes: (AskOutcome | null)[] = [
@@ -1871,6 +1933,82 @@ describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () =>
       expect(ka6Schreibaufrufe(), "trotz Sperre wurde geschrieben").toBe(0);
     });
   }
+
+  // R-1040 (Auftrag gesamt-funktionsschalter, Ben nacharbeit-2): hat der Administrator die KI
+  // abgeschaltet, antwortet `/api/ask` mit 503 `KI_ABGESCHALTET` (ask-routes.ts,
+  // `kiAbgeschaltetSenden`). Bis hierher wurde daraus „Fragen fehlgeschlagen (HTTP 503)" — eine
+  // Störung statt einer Entscheidung. Gemessen am AUSGELIEFERTEN Fenster in DE/EN/NL; die
+  // Gegenprobe zeigt, dass ein ANDERER 503 weiterhin als Fehler mit Status erscheint.
+  const KI_AUS_SPRACHEN = [
+    ["de", 0],
+    ["en", 1],
+    ["nl", 2],
+  ] as const;
+  for (const [sprache, block] of KI_AUS_SPRACHEN) {
+    it(`R-1040: 503 KI_ABGESCHALTET (${sprache}) — #ask-status nennt die Abschaltung, kein „Erneut versuchen“`, async () => {
+      await ladeKa6Fenster(ka6Erlaubt());
+      // Nur `/api/ask` antwortet mit der Abschaltung; alles andere beantwortet DERSELBE Router wie
+      // beim Laden. Der Sprachwechsel ruft `checkSession()` (`/api/auth/me`) — ein leerer Körper
+      // dort hiesse „abgemeldet", und der Fall maesse die Anmeldung statt der Abschaltung.
+      const router = ka6Router(ka6Erlaubt());
+      vi.stubGlobal("fetch", (url: string, init?: { method?: string; body?: string }) =>
+        url === "/api/ask"
+          ? Promise.resolve(
+              ka6Antwort(
+                { error: "KI_ABGESCHALTET", message: "Der Administrator hat die KI abgeschaltet." },
+                false,
+                503,
+              ),
+            )
+          : router(url, init),
+      );
+      ka6El(`lang-${sprache}`).click();
+      await ka6Leerlauf(20);
+      // Kalibrierung: der Sprachwechsel hat die Anmeldung nicht verloren (sonst prüfte der Fall
+      // die Anmeldesperre, nicht die Abschaltung).
+      expect(ka6El("ask-btn").disabled, "nach dem Sprachwechsel ist Fragen gesperrt").toBe(false);
+      ka6El("ask-input").value = "Wie wird die Pumpe geschmiert?";
+      ka6El("ask-btn").click();
+      await ka6Leerlauf(20);
+
+      // Je Sprache steht der Schlüssel in genau einem Block, in der Reihenfolge de, en, nl.
+      const saetze = [...read(TASKPANE).matchAll(/\baskKiAbgeschaltet: "([^"]+)"/g)].map(
+        (m) => m[1],
+      );
+      expect(saetze, "askKiAbgeschaltet fehlt in mindestens einer Sprache").toHaveLength(3);
+      const status = ka6El("ask-status");
+      expect(status.className).toContain("warn");
+      expect(status.textContent).toBe(saetze[block]);
+      expect(status.textContent ?? "", "nur der nackte Statuscode").not.toContain("HTTP 503");
+      expect(ka6Sichtbar("ask-retry-btn"), "eine Abschaltung bietet „Erneut versuchen“ an").toBe(
+        false,
+      );
+      expect(ka6El("ask-answer-edit").value, "trotz Abschaltung steht eine Antwort im Feld").toBe(
+        "",
+      );
+      expect(ka6Schreibaufrufe(), "trotz Abschaltung wurde geschrieben").toBe(0);
+    });
+  }
+
+  it("R-1040 GEGENPROBE: ein anderer 503 bleibt ein Fehler mit Status — keine Abschaltung behauptet", async () => {
+    await ladeKa6Fenster(ka6Erlaubt());
+    vi.stubGlobal("fetch", (url: string) =>
+      url === "/api/ask"
+        ? Promise.resolve(ka6Antwort({ error: "REASONER_UNAVAILABLE" }, false, 503))
+        : Promise.resolve(ka6Antwort({})),
+    );
+    ka6El("ask-input").value = "Wie wird die Pumpe geschmiert?";
+    ka6El("ask-btn").click();
+    await ka6Leerlauf(20);
+
+    const text = ka6El("ask-status").textContent ?? "";
+    expect(text).toContain("HTTP 503");
+    // Kalibrierung des Falls oben: bei einer Störung erscheint „Erneut versuchen“ wirklich.
+    expect(ka6Sichtbar("ask-retry-btn"), "bei einer Störung fehlt „Erneut versuchen“").toBe(true);
+    const abgeschaltet = /\baskKiAbgeschaltet: "([^"]+)"/.exec(read(TASKPANE))?.[1] ?? "";
+    expect(abgeschaltet.length).toBeGreaterThan(0);
+    expect(text).not.toContain(abgeschaltet);
+  });
 
   it("BEWAHREN: die Ask-Flaeche und ihr Einfuegeknopf bleiben unveraendert erreichbar", async () => {
     await ladeKa6Fenster(ka6Erlaubt());

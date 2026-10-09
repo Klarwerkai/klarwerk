@@ -1,15 +1,21 @@
 import type { FastifyPluginAsync } from "fastify";
-import { type AskService, redactGapForViewer } from "../../../ask";
+import {
+  ANTWORT_MELDUNG_ACTION,
+  type AskService,
+  isAntwortMeldeGrund,
+  redactGapForViewer,
+} from "../../../ask";
 import type { AuditService } from "../../../audit";
 import type { ConflictService, OverlapService } from "../../../conflicts";
 import type { NotificationSeenRepo } from "../../../notifications";
-import { can } from "../../../rbac";
 import type { ValidationService } from "../../../validation";
 import type { Guards, SessionUser } from "../http";
 import {
+  type FrischeNotice,
   type ImpactNotice,
   type KenntnisnahmeNotice,
   type Notification,
+  type ReklamationNotice,
   buildNotifications,
 } from "../notification-feed";
 import { type KoSichtbarkeitsZugang, sichtbareEintraege, sichtbarePaare } from "../sichtbarkeit";
@@ -38,31 +44,72 @@ export interface NotificationRoutesDeps {
   // Optional, weil der Feed auch ohne diesen Dienst gebaut werden kann; die Sichtbarkeit läuft
   // unten in jedem Fall über dieselbe Prüfung wie bei den Zuweisungen.
   kenntnisnahmen?: { meldungenFuer(nutzerId: string): Promise<KenntnisnahmeNotice[]> };
+  // aufnahme:20260922:gesamt-wissen-frische: Fristerinnerung (R-0248), Wochenvorlage (R-0266) und
+  // Prüfanforderung an Autor bzw. Nachfolger (R-1635) — `frische-meldungen.ts`. Optional wie die
+  // Kenntnisnahme; die Sichtbarkeit läuft unten über dieselbe Prüfung.
+  frische?: { meldungenFuer(nutzerId: string): Promise<FrischeNotice[]> };
 }
 
 // PMO-FEA-0002: „Hat geholfen"-Ereignisse für den Originalautor. Bewusst ehrlich:
 // nur fremde Klicks (kein Selbst-Applaus), nur Einträge mit Autor/Titel-Payload,
 // begrenzt auf die letzten 12 — kein Zähler, keine Rangliste (EK-19-Richtung).
+//
+// RECHERCHE:pmo-fea-0002: „auch nach Übergabe der Verantwortung". Gemeldet wird dem Autor zum
+// Zeitpunkt des Danks (`koAuthor`) UND dem ursprünglichen Autor (`koOriginalAuthor`) — derselbe
+// Klick erzeugt für eine Person genau eine Meldung. Ein Eintrag, der NUR über den Urheber trifft,
+// trägt `nurUrheber`: dort greift die Autor-Ausnahme der Sichtbarkeit nicht mehr (s. loadFeed).
+// Alt-Einträge ohne `koOriginalAuthor` wirken wie bisher nur für `koAuthor`.
 export function deriveImpacts(
   entries: Array<{ actor: string; target: string; at: string; payload: Record<string, unknown> }>,
   userId: string,
-): ImpactNotice[] {
-  const out: ImpactNotice[] = [];
+): Array<ImpactNotice & { nurUrheber?: true }> {
+  const out: Array<ImpactNotice & { nurUrheber?: true }> = [];
   for (const e of entries) {
     const koAuthor = e.payload.koAuthor;
+    const koOriginalAuthor = e.payload.koOriginalAuthor;
     const koTitle = e.payload.koTitle;
-    if (e.actor === userId || koAuthor !== userId || typeof koTitle !== "string") {
+    if (e.actor === userId || typeof koTitle !== "string") {
       continue;
     }
-    out.push({ koId: e.target, title: koTitle, at: e.at });
+    if (koAuthor === userId) {
+      out.push({ koId: e.target, title: koTitle, at: e.at });
+    } else if (koOriginalAuthor === userId) {
+      out.push({ koId: e.target, title: koTitle, at: e.at, nurUrheber: true });
+    }
   }
   return out.slice(-12);
+}
+
+// R-1089: Meldungen „Antwort falsch / Quelle passt nicht" für die verantwortliche Person. Zugestellt
+// ist, was der Dienst beim Melden als `responsible` festgehalten hat — dieselbe Auskunft, die die
+// Quittung des Meldenden nennt; ein späterer Eigentümerwechsel verschiebt keine alte Meldung.
+// Nur Einträge mit vollständiger Payload — und ALLE davon. Ben (Nacharbeit 3): eine Kürzung auf die
+// letzten N machte eine quittierte Meldung unerreichbar, sobald vor dem nächsten Abruf mehr
+// eingingen; ein Weg zu älteren Meldungen existiert nicht. Was zugestellt ist, bleibt im Feed.
+export function deriveReklamationen(
+  entries: Array<{ target: string; at: string; payload: Record<string, unknown> }>,
+  userId: string,
+): ReklamationNotice[] {
+  const out: ReklamationNotice[] = [];
+  for (const e of entries) {
+    const { responsible, koTitle, meldungId, grund } = e.payload;
+    if (
+      responsible !== userId ||
+      typeof koTitle !== "string" ||
+      typeof meldungId !== "string" ||
+      !isAntwortMeldeGrund(grund)
+    ) {
+      continue;
+    }
+    out.push({ meldungId, koId: e.target, title: koTitle, grund, at: e.at });
+  }
+  return out;
 }
 
 // Audit-P3 (SCRUM-397): Feed einmal bauen, Gelesen-Status je Item ehrlich anreichern.
 // FUNKE-FIX3 P0 (bens Blocker B): der Feed wird PRO BETRACHTER gebaut — die Gap-Ableitung läuft
 // durch denselben zentralen Sichtbarkeitsvertrag wie /api/gaps (gap-visibility.redactGapForViewer):
-// Fragetext nur für Owner/Assignee/Detail-Rolle (ko.validate); alle anderen erhalten NUR einen
+// Fragetext nur für Owner/Assignee (R-0585: kein Rollenrecht mehr); alle anderen erhalten NUR einen
 // redigierten Eintrag (leerer Titel + redacted-Marker → neutrale Bezeichnung im Client). Der
 // Betrachter stammt IMMER aus der authentifizierten Session (Route), nie aus dem Body/Client.
 async function loadFeed(
@@ -71,17 +118,18 @@ async function loadFeed(
 ): Promise<Array<Notification & { seen: boolean }>> {
   // SCRUM-363: Zuweisungen werden PRO NUTZER geladen (user.id) — der Feed zeigt nur die
   // Review-Arbeit der angemeldeten Person, keine fremden Zuweisungen.
-  const [conflicts, overlaps, gaps, assignments, helpful, seenIds] = await Promise.all([
+  const [conflicts, overlaps, gaps, assignments, helpful, gemeldet, seenIds] = await Promise.all([
     deps.conflicts.unresolved(),
     deps.overlaps.unresolved(),
     deps.ask.listGaps(),
     deps.validation.openAssignmentsFor(user.id),
     deps.audit.list({ action: "answer.helpful" }),
+    deps.audit.list({ action: ANTWORT_MELDUNG_ACTION }),
     deps.seen.seenFor(user.id),
   ]);
-  const viewer = { viewerId: user.id, maySeeDetail: can(user.role, "ko.validate") };
+  const viewer = { viewerId: user.id };
   const gapViews = gaps.map((gap) => redactGapForViewer(gap, viewer));
-  const impacts = deriveImpacts(helpful, user.id);
+  const alleImpacts = deriveImpacts(helpful, user.id);
   const seen = new Set(seenIds);
   // ================================================================================================
   // AUFTRAG-mega74 BLOCK D (G5) — DIE SCHWÄCHSTE TÜR DES GANZEN SATZES.
@@ -92,9 +140,12 @@ async function loadFeed(
   // `title` in den Feed (notification-feed.ts:57-68 und :81-89). Nur der Gap-Zweig war redigiert.
   // Wer ein vertrauliches Objekt nicht öffnen durfte, bekam seinen Kern in der Glocke serviert.
   //
-  // Die Impacts brauchen KEIN Tor: `deriveImpacts` gibt ausschliesslich Titel von Objekten aus,
-  // deren AUTOR der Betrachter selbst ist (`koAuthor !== userId` → continue, :36) — die trägt die
-  // Autor-Ausnahme des Prädikats ohnehin.
+  // Die Impacts des AUTORS brauchen KEIN Tor: dort ist der Betrachter selbst `koAuthor` — die
+  // trägt die Autor-Ausnahme des Prädikats ohnehin.
+  //
+  // RECHERCHE:pmo-fea-0002: Meldungen, die NUR über den ursprünglichen Autor treffen (`nurUrheber`),
+  // laufen dagegen durch dasselbe Tor wie die Zuweisungen. Nach einer Übergabe ist der Urheber
+  // nicht mehr `author`; darf er das Objekt nicht mehr sehen, erscheint auch dessen Titel nicht.
   //
   // AUFTRAG-mega76 BLOCK A: die drei Aufrufe standen unter `deps.kos ? ... : <ungefiltert>`. Der
   // Zugang ist jetzt Pflicht, und die Filter laufen UNBEDINGT — es gibt keinen Zweig mehr, der das
@@ -109,6 +160,26 @@ async function loadFeed(
   // entzogen wurde, der sieht auch dessen Titel in der Glocke nicht mehr.
   const offeneKenntnisnahmen = (await deps.kenntnisnahmen?.meldungenFuer(user.id)) ?? [];
   const sichtbareKenntnisnahmen = await sichtbareEintraege(user, offeneKenntnisnahmen, deps.kos);
+  // R-1089: dieselbe Prüfung — wer das Objekt (inzwischen) nicht öffnen darf, sieht den Titel nicht.
+  const sichtbareReklamationen = await sichtbareEintraege(
+    user,
+    deriveReklamationen(gemeldet, user.id),
+    deps.kos,
+  );
+  // aufnahme:20260922:gesamt-wissen-frische: dieselbe Prüfung — ein Titel erscheint nur, wenn der
+  // Betrachter das Objekt sehen darf.
+  const frischeMeldungen = (await deps.frische?.meldungenFuer(user.id)) ?? [];
+  const sichtbareFrische = await sichtbareEintraege(user, frischeMeldungen, deps.kos);
+  const sichtbareUrheberImpacts = new Set(
+    await sichtbareEintraege(
+      user,
+      alleImpacts.filter((im) => im.nurUrheber),
+      deps.kos,
+    ),
+  );
+  const impacts: ImpactNotice[] = alleImpacts
+    .filter((im) => !im.nurUrheber || sichtbareUrheberImpacts.has(im))
+    .map(({ koId, title, at }) => ({ koId, title, at }));
   return buildNotifications({
     conflicts: sichtbareKonflikte,
     overlaps: sichtbareUeberschneidungen,
@@ -116,6 +187,8 @@ async function loadFeed(
     assignments: sichtbareZuweisungen,
     impacts,
     kenntnisnahmen: sichtbareKenntnisnahmen,
+    reklamationen: sichtbareReklamationen,
+    frische: sichtbareFrische,
   }).map((n) => ({
     ...n,
     seen: seen.has(n.id),

@@ -5,9 +5,13 @@ import { ApiError, api } from "./client";
 import type {
   AiCheckCoverageSummary,
   Analytics,
+  AnsprechpartnerAuskunft,
   AnswerResult,
+  AntwortMeldeGrund,
+  AntwortMeldungQuittung,
   // JOB 4154 (WIKI-GESAMTANWEISUNG): der Drahtvertrag der zusammengesetzten Anweisung.
   Anweisung,
+  AnweisungEntscheidung,
   AnweisungKopfEingabe,
   AnweisungLesestand,
   AnweisungStaende,
@@ -30,6 +34,7 @@ import type {
   Conflict,
   ConflictSelfTestResult,
   ConflictType,
+  ConflictWorkKind,
   DemoPackageListResponse,
   DemoPackagePreview,
   DemoPackageResult,
@@ -47,6 +52,7 @@ import type {
   ExternalResult,
   ExtractResult,
   FeatureFlags,
+  Fragekontext,
   Gap,
   GapPriority,
   GapSummary,
@@ -70,6 +76,7 @@ import type {
   KnowledgeCheckResult,
   KnowledgeObject,
   KoComment,
+  KoGeltung,
   KoVersionSnapshot,
   KuratierteKanteAnsicht,
   KuratierteKanten,
@@ -79,6 +86,7 @@ import type {
   LesevariantenUebersicht,
   LibraryImageSearchResponse,
   LiveWall,
+  LiveWallConsent,
   ManagementProfiles,
   ManagementSnapshot,
   MediaAnalysis,
@@ -110,10 +118,17 @@ import type {
   SlideConvertResponse,
   StructureResult,
   TrashedKo,
+  UebergabeErgebnis,
+  UebergabeVorschau,
   UploadLimits,
   ValidationBoardKo,
   ValidationSettings,
   Verdict,
+  VorrangAmPunkt,
+  VorrangWahl,
+  // R-1107: der Drahtvertrag des Zusammenführens.
+  ZusammenfuehrungsAuftrag,
+  ZusammenfuehrungsErgebnis,
 } from "./types";
 
 function qs(params?: Record<string, string | undefined>): string {
@@ -154,6 +169,8 @@ export interface AnweisungListeneintrag {
   urheber: string;
   erstelltAm: string;
   geaendertAm: string;
+  /** STATUS-FREIGABE · dieselbe festgehaltene Entscheidung wie am Einzelabruf; fehlt = nicht festgehalten. */
+  entscheidung?: AnweisungEntscheidung;
   sichtbareBausteine: number;
   verborgeneBausteine: number;
   unvollstaendig: boolean;
@@ -212,6 +229,25 @@ export interface KoDiskussionsbeitrag extends KoComment {
   replyTo?: string;
   koVersion?: number;
   resolution?: { state: "erledigt" | "offen"; by: string; at: string };
+  // P-WIKI-STELLENBEZUG: die Stelle im Text, an der die Rückfrage hängt. Fehlt sie, gilt der
+  // Beitrag dem ganzen Dokument.
+  stelle?: KoDiskussionsStelle;
+}
+
+/** P-WIKI-STELLENBEZUG — Spiegel von `KoCommentStelle` (`services/knowledge-object/src/types.ts`). */
+export interface KoDiskussionsStelle {
+  koVersion: number;
+  /** `anhang`: eine hochgeladene Zeichnung (PDF, CAD, Bild); `text` ist dann ihre `objectId`. */
+  art: "absatz" | "tabelle" | "bild" | "anhang";
+  abschnitt: string;
+  /** Gekürzt — nur Anzeige. Die Identität trägt `fingerabdruck`. */
+  text: string;
+  /** SHA-256 über Art, vollständigen Abschnitt und vollständigen Inhalt (`lib/stellenabdruck`). */
+  fingerabdruck: string;
+  /** PLAN-SPRACHANMERKUNG: Seite eines mehrseitigen Anhangs (PDF), ab 1. Nur bei `anhang`. */
+  seite?: number;
+  /** PLAN-SPRACHANMERKUNG: Position in einer Zeichnung (nur `bild`), relativ, je 0..1. */
+  punkt?: { x: number; y: number };
 }
 
 // PUT /api/kos/:id — ein Mutations-Endpunkt, per {action} verzweigt.
@@ -280,7 +316,15 @@ export type KoAction =
   //
   // BEIDE OPTIONAL, weil sie es am Server auch sind: ohne sie ist dies Zeichen für Zeichen der
   // bisherige Kommentarweg, den auch das Prüf-Feedback und die Quellenmeldung benutzen.
-  | { action: "comment"; text: string; replyTo?: string; clientKey?: string }
+  // P-WIKI-STELLENBEZUG: `stelle` nur am Anfang eines Fadens; der Server nimmt sie nur gegen die
+  // gerade gespeicherte Fassung an (sonst 409 `KO_STALE`).
+  | {
+      action: "comment";
+      text: string;
+      replyTo?: string;
+      clientKey?: string;
+      stelle?: KoDiskussionsStelle;
+    }
   // JOB 4146: den Faden als geklärt markieren und wieder öffnen. GEKLÄRT, NICHT FREIGEGEBEN — am
   // Freigabestand des Wissensobjekts ändern beide nichts, und sie verlangen kein neues Recht
   // (dasselbe `requireUser` wie `comment`).
@@ -316,14 +360,28 @@ export type KoAction =
   | { action: "tags"; tags: string[]; expectedMetadataRevision?: number }
   // R-0431 (K2): das Fachgebiet setzen/ändern; leer entfernt die Angabe (ko-routes.ts `domain`).
   | { action: "domain"; domain: string }
+  // R-1632 / R-1633: die Geltung setzen; `null` entfernt sie (ko-routes.ts `geltung`).
+  | { action: "geltung"; geltung: KoGeltung | null }
   // SCRUM-415: Vertraulichkeitsstufe setzen/ändern (mit Audit).
   | { action: "confidentiality"; level: Confidentiality }
   | {
       action: "conflict";
-      conflict: { koA: string; koB: string; type: ConflictType; description: string };
+      // R-0252: `arbeitsart` optional — fehlt sie, leitet die Konfliktseite sie aus `type` ab.
+      conflict: {
+        koA: string;
+        koB: string;
+        type: ConflictType;
+        arbeitsart?: ConflictWorkKind;
+        description: string;
+      };
     }
-  | { action: "resolve-conflict"; conflictId: string; decision: string }
+  // R-0263: `vorrang` optional — welcher der beiden Punkte gilt bzw. einschränkt.
+  | { action: "resolve-conflict"; conflictId: string; decision: string; vorrang?: VorrangWahl }
   | { action: "transfer-author"; newAuthor: string }
+  // R-0507: der benannte Eigentümer gibt seine Verantwortung zurück (sonst 403 `NOT_OWNER`).
+  | { action: "ownership-release" }
+  // R-0507: der benannte Eigentümer gibt inhaltlich frei (Recht `ko.validate`, sonst 403).
+  | { action: "owner-validate"; duplicateAcknowledged?: true }
   // AUFTRAG-mega15 Block B (bens SB-4): dieser Vertrag war schon richtig — falsch war der
   // Laufzeitpfad, der zusätzlich ein `provider` mitschickte, und der Server, der seine Stufen-
   // Sperre nach diesem Client-Feld ausrichtete. Beides ist jetzt aufgeräumt: die Herkunft leitet
@@ -397,7 +455,11 @@ export type KoAction =
       note?: string;
       expectedVersion?: number;
     }
-  | { action: "revalidate" };
+  | { action: "revalidate" }
+  // aufnahme:20260922:gesamt-wissen-frische (R-0206): „Stimmt weiterhin" — Frische-Signal, keine Prüfung.
+  | { action: "confirm-fresh" }
+  // R-0652 / FR-EXT-06: Schutzbedarf „öffentlich" setzen oder zurücknehmen (nur an internen Objekten).
+  | { action: "schutz-oeffentlich"; oeffentlich: boolean };
 
 /**
  * AUFTRAG-mega18 Block A-1 — Nutzlast der Verbund-Operation.
@@ -623,6 +685,16 @@ export const endpoints = {
     createFromDocument: (body: CreateFromDocumentRequest) =>
       api.post<CreateFromDocumentResponse>("/kos/from-document", body),
     act: (id: string, body: KoAction) => api.put<KnowledgeObject>(`/kos/${id}`, body),
+    // R-0235 / R-0749: „Hat geholfen" am angewendeten Objekt, ohne vorausgehende Antwort. Der
+    // Server antwortet mit 204 (kein Objekt) — deshalb ein eigener Aufruf neben `act`.
+    helpful: (id: string) => api.put<void>(`/kos/${id}`, { action: "helpful" }),
+    // aufnahme:20260922:gesamt-wissen-frische: erneute Prüfung aus der Bibliothek anstossen (R-1732,
+    // 204 ohne Objekt) und die Anlagenänderung über dieses Objekt an die Nachbarn melden (R-0203,
+    // Antwort nur mit der Zahl der markierten Objekte).
+    requestRevalidation: (id: string) =>
+      api.put<void>(`/kos/${id}`, { action: "request-revalidation" }),
+    neighborsChanged: (id: string) =>
+      api.put<{ markiert: number }>(`/kos/${id}`, { action: "neighbors-changed" }),
     // AUFTRAG-mega18 Block A-1: eigener Aufruf, weil die Antwort ein COMMIT-ERGEBNIS ist und kein
     // KnowledgeObject — der Aufrufer erfährt daraus ohne Rückfrage, was gilt.
     appendDocument: (id: string, appendDocument: DocumentAppendRequest) =>
@@ -678,6 +750,11 @@ export const endpoints = {
     // Berater-Konzept 04.07. (Stufe 4): „Fehlalarm — kein Widerspruch" schließt den Konflikt.
     dismiss: (id: string, note?: string) =>
       api.post<Conflict>(`/conflicts/${id}/dismiss`, note ? { note } : {}),
+    // R-0252: der Einordnungsweg — Arbeitsart eines noch nicht eingeordneten Konflikts festlegen.
+    einordnen: (id: string, arbeitsart: ConflictWorkKind) =>
+      api.post<Conflict>(`/conflicts/${id}/arbeitsart`, { arbeitsart }),
+    // R-0263: der festgelegte Vorrang am einzelnen Punkt (`koId` = Wissensobjekt).
+    vorrang: (koId: string) => api.get<VorrangAmPunkt[]>(`/conflicts/vorrang/${koId}`),
   },
   // Berater-Konzept Duplikate 04.07. (Stufe D4): Überschneidungs-/Duplikat-Board. Liste + Detail
   // lesen alle Leseberechtigten; die menschlichen Abschlüsse sind kuratorische Entscheidungen.
@@ -705,6 +782,11 @@ export const endpoints = {
             note?: string;
           },
     ) => api.post<OverlapEntry>(`/duplicates/${id}/status`, eingabe),
+    // R-1107 / R-0201 (Aufnahme gesamt-dublettenvergleich): der vierte Schritt des Assistenten —
+    // erst nach Vorschau und ausdrücklicher Freigabe (`bestaetigt: true`). Kuratorisch: der Server
+    // weist Autoren einer der beiden Seiten mit 403 ab (R-0565).
+    merge: (id: string, auftrag: ZusammenfuehrungsAuftrag) =>
+      api.post<ZusammenfuehrungsErgebnis>(`/duplicates/${id}/merge`, auftrag),
     // Pedi 04.07.: Anzeige-Schwelle (lesen: alle Leseberechtigten; setzen: Admin).
     settings: () => api.get<OverlapSettings>("/duplicates/settings"),
     saveSettings: (minConfidence: number) =>
@@ -716,11 +798,15 @@ export const endpoints = {
     summary: () => api.get<GapSummary>("/gaps/summary"),
     // Detail-Liste: der Server redigiert den Fragetext adressatengerecht (redacted-Marker).
     list: () => api.get<Gap[]>("/gaps"),
-    close: (id: string) => api.put<Gap>(`/gaps/${id}`, { close: true }),
+    // R-0846 / L6: geschlossen wird nur mit dem Wissensobjekt, das die Lücke beantwortet.
+    close: (id: string, koId: string) => api.put<Gap>(`/gaps/${id}`, { close: true, koId }),
     assign: (id: string, expertId: string) => api.put<Gap>(`/gaps/${id}`, { expertId }),
     // SCRUM-115 / FE-RISK-02: Priorität der Wissenslücke setzen.
     setPriority: (id: string, priority: GapPriority) => api.put<Gap>(`/gaps/${id}`, { priority }),
     remove: (id: string) => api.del<void>(`/gaps/${id}?confirm=true`),
+    // R-1663 / R-2178: begründete Ansprechpartner nach Wissensspuren (Schalter expertMatching).
+    ansprechpartner: (id: string) =>
+      api.get<AnsprechpartnerAuskunft>(`/gaps/${encodeURIComponent(id)}/ansprechpartner`),
   },
   // WP-D11: PPTX-Folien → PNG je Folie (Server-Konvertierung; base64 konsistent zum Objekt-Upload).
   slides: {
@@ -822,11 +908,35 @@ export const endpoints = {
   },
   ask: {
     // FR-I18N-01: aktuelle UI-Sprache mitsenden (Default serverseitig "de").
-    ask: (question: string, locale?: ReasonerLocale) =>
-      api.post<AskResponse>("/ask", { question, ...(locale ? { locale } : {}) }),
+    // R-0348: `thread` = die vorangegangenen Fragen der Fragestrecke (lib/gespraechsfaden.ts).
+    // Ohne Faden bleibt der Körper wie bisher.
+    // R-1633: `fragekontext` = Werk/Schicht/Rolle des Fragenden; ohne Angabe bleibt der Körper.
+    ask: (
+      question: string,
+      locale?: ReasonerLocale,
+      thread?: readonly string[],
+      fragekontext?: Fragekontext,
+    ) =>
+      api.post<AskResponse>("/ask", {
+        question,
+        ...(locale ? { locale } : {}),
+        ...(thread && thread.length > 0 ? { thread } : {}),
+        ...(fragekontext ? { fragekontext } : {}),
+      }),
     // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang
     // zurück — ohne gültigen, dieses KO belegenden Receipt antwortet der Server 403.
     helpful: (koId: string, receipt: string) => api.post<void>("/ask/helpful", { koId, receipt }),
+    // R-1089: „Antwort falsch / Quelle passt nicht" — derselbe Beleg; die Antwort ist die Quittung.
+    report: (koId: string, receipt: string, grund: AntwortMeldeGrund) =>
+      api.post<AntwortMeldungQuittung>("/ask/report", { koId, receipt, grund }),
+    // R-1649: „nicht hilfreich" an der tragenden Quelle — derselbe Receipt wie beim „Danke";
+    // ein mitgeschickter abweichender Weg wird serverseitig ein Entwurf (`entwurfId`).
+    notHelpful: (body: {
+      koId: string;
+      receipt: string;
+      alternative?: string;
+      entwurfTitel?: string;
+    }) => api.post<{ vermerkt: boolean; entwurfId: string | null }>("/ask/not-helpful", body),
   },
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler (nur eigene Beiträge, nur Zahlen).
   me: {
@@ -888,11 +998,14 @@ export const endpoints = {
       answers: string[],
       locale: ReasonerLocale | undefined,
       provenance: ReasonerProvenance,
+      // R-1624: bestätigter Bildbefund des Fotos (Klartext, kein Bild) → Foto-Fragenfolge.
+      imageContext?: string,
     ) =>
       api.post<InterviewResult>("/reasoner", {
         task: "interview",
         answers,
         ...(locale ? { locale } : {}),
+        ...(imageContext?.trim() ? { imageContext: imageContext.trim() } : {}),
         ...provenanceFields(provenance),
       }),
     // WP-BILD-1c/1f: KI-Bildbeschreibung als VORSCHLAG für die Bild-Fußnote (Vision). EIGENE
@@ -958,7 +1071,16 @@ export const endpoints = {
   },
   directory: { list: () => api.get<{ id: string; name: string }[]>("/directory") },
   // Audit-P4 (SCRUM-398): Live-Wall (read-only Aggregation).
-  livewall: { get: () => api.get<LiveWall>("/livewall") },
+  livewall: {
+    get: () => api.get<LiveWall>("/livewall"),
+    // PMO-FEA-0003: die eigene Zustimmung zur Namensnennung lesen, setzen oder widerrufen.
+    consent: () => api.get<LiveWallConsent>("/livewall/consent"),
+    setConsent: (nameConsent: boolean) =>
+      api.put<LiveWallConsent>("/livewall/consent", { nameConsent }),
+    // PMO-FEA-0003: das eigene Foto hinterlegen (= zustimmen) oder widerrufen (= löschen).
+    setPhoto: (photo: string) => api.put<{ photoConsent: boolean }>("/livewall/photo", { photo }),
+    deletePhoto: () => api.del<{ photoConsent: boolean }>("/livewall/photo"),
+  },
   analytics: {
     overview: () => api.get<Analytics>("/analytics"),
     busfactor: () => api.get<BusFactorEntry[]>("/analytics/busfactor"),
@@ -1020,6 +1142,11 @@ export const endpoints = {
     // SCRUM-146: vorhandener Asset-Change-Pfad → markiert gekoppelte KOs als „prüfen".
     assetChanged: (assetRef: string) =>
       api.post<string[]>("/lifecycle/asset-changed", { assetRef }),
+    // R-0554: Wissensübergabe beim Ausscheiden — erst Vorschau, dann Ausführung (Recht `users.manage`).
+    uebergabeVorschau: (von: string, an: string) =>
+      api.post<UebergabeVorschau>("/lifecycle/handover/preview", { from: von, to: an }),
+    uebergeben: (von: string, an: string) =>
+      api.post<UebergabeErgebnis>("/lifecycle/handover", { from: von, to: an }),
   },
   // SCRUM-145: vorhandene Learning-Path-API (rollenbasiert, Fortschritt serverseitig).
   learningPaths: {
@@ -1306,10 +1433,17 @@ export const endpoints = {
     ) => api.post<PublicUser>("/users", { name, email, password, role, accessExpiresAt }),
     approve: (id: string) => api.post<void>(`/auth/users/${id}/approve`),
     setRole: (id: string, role: Role) => api.put<void>(`/users/${id}`, { role }),
-    remove: (id: string) => api.del<void>(`/users/${id}`),
+    // R-0554: mit `nachfolger` läuft vor dem Entfernen die Wissensübergabe (Auslöser aus der
+    // Verzeichnispflege); bleibt etwas liegen, antwortet der Server 409 und entfernt nichts.
+    remove: (id: string, nachfolger?: string) =>
+      api.del<void>(
+        nachfolger ? `/users/${id}?nachfolger=${encodeURIComponent(nachfolger)}` : `/users/${id}`,
+      ),
     // SCRUM-148: Admin-Passwort-Reset (eigener Pfad; invalidiert Sitzungen serverseitig).
     resetPassword: (id: string, password: string) =>
       api.post<void>(`/auth/users/${id}/reset`, { password }),
+    // R-0562: eigenen zweiten Faktor des Kontos entfernen (verlorenes zweites Gerät).
+    resetSecondFactor: (id: string) => api.del<void>(`/users/${id}/second-factor`),
     // JOB 4021 (ERSTEINRICHTUNG-GAST T2): DER EINE WEG, EINE BEFRISTUNG ZU SETZEN UND ZU NEHMEN.
     //
     // Derselbe Endpunkt wie `setRole` — der Server führt Rolle, Freigabe, Passwort und Befristung

@@ -61,10 +61,13 @@ import {
   type ResolvedKlaraEntry,
   allFaqEntries,
   allKlaraEntries,
-  rankKlara,
   resolveKlaraEntries,
   searchKlara,
 } from "../../apps/web/src/lib/klaraRegistry";
+// R-1349 (Aufnahme gesamt-aufruferwaechter, Nacharbeit 7): `rankKlara` stand als Export in
+// `klaraRegistry.ts`, den das Produkt nicht mehr rief. Dieselbe Rangliste kommt jetzt über den
+// Produktweg `klaraGrundlage` (ohne Bibliotheksauszüge zeichengleich), Vorgabe weiterhin 6.
+import { rankKlara } from "../support/klara-rangfolge";
 
 // ------------------------------------------------------------------------------------------------
 // L1 · DIE SPRACHLISTE KOMMT AUS DEM PRODUKT.
@@ -205,16 +208,14 @@ const TRAGKRAFT: ReadonlyMap<string, Tragkraft> = new Map<string, Tragkraft>([
   [
     "de → papierkorb",
     {
-      zahl: 0,
+      zahl: 1,
       satz:
-        "TOT, und zwar als ECHTER FUND, nicht als Tippfehler: derselbe Befund steht seit JOB 3798 " +
-        "namentlich im DE-Ehrlichkeitswächter (`tests/help/klara-registry.test.ts:274-287`). " +
-        "Klaras einzige Löschhilfe (`vhelp.deleteKo.body`) sagt „endgültig“ und kennt den " +
-        "Papierkorb nicht, während die Löschabfrage der Fläche 28 Tage Wiederherstellung " +
-        "verspricht. Wer „löschen“ tippt, erfährt von Klara nichts von der Rückholbarkeit. Die " +
-        "Behebung bräuchte `i18n.ts` und ist hier nach §10 gesperrt — sie steht als REST in der " +
-        "Rückgabe. Der zweite Stamm desselben Schlüssels trägt (siehe „de → entfern“), das " +
-        "Synonym läuft also nicht ganz ins Leere.",
+        "BEHOBEN in Aufnahme gesamt-hilfen, Nacharbeit 13 (Ben): bis dahin TOT (0) — Klaras " +
+        "einzige Löschhilfe (`vhelp.deleteKo.body`) sagte „endgültig“ und kannte den Papierkorb " +
+        "nicht. Sie steht jetzt unter `loeschhilfe.deleteKo.body` (`texte/loeschhilfe.ts`, " +
+        "umgeleitet in `lib/reviewHelp.ts`) und nennt Papierkorb, 30 Tage und die " +
+        "Wiederherstellung durch den Admin. Wer „löschen“ tippt, findet damit genau diesen einen " +
+        "Eintrag über den ersten Stamm.",
     },
   ],
   [
@@ -495,16 +496,29 @@ type Panelbefund = {
 // GEMESSEN, NICHT GESETZT: Arbeitsprüfung 212444b5d55f43d6b89ec20ca48b5085, L3c-Protokoll
 // „de: Korpus 212 (davon 77 FAQ) → 12 von 196 punktenden Einträgen gehen an die KI, davon 3 aus
 // der FAQ", „en: … 12 von 42 … davon 0", „nl: … 12 von 40 … davon 0".
+//
+// NACHGEFÜHRT VON AUFNAHME gesamt-hilfen, Nacharbeit 16 — gemessen, nicht gesetzt, dieselbe Bauart
+// wie JOB 4071 darüber. Prüflauf am Kandidaten aaeaa0cf, L3c-Protokoll wörtlich: „de: Korpus 217
+// (davon 77 FAQ) → 12 von 199 punktenden Einträgen gehen an die KI, davon 2 aus der FAQ", „en: …
+// 12 von 42 … davon 0", „nl: … 12 von 41 … davon 0". `ausFaq` in DEUTSCH fällt von 3 auf 2. Die
+// FAQ ist unverändert (77). Verschoben hat sich die REIHENFOLGE, weil Nacharbeit 13/15 Registry-Texte
+// berichtigt hat, die Ben als falsch belegt hatte: die Löschhilfe (`loeschhilfe.deleteKo.body`), die
+// Entwurfs-Erklärung und die Erklärung zum Konfliktformular (`abschnittshilfe.*`). Die neue
+// Konflikthilfe trifft mit „zur“ („zur Meldung“) ein Wort mehr der Prüffrage. Welcher Eintrag genau
+// den FAQ-Eintrag verdrängt, nennt das Protokoll nicht namentlich. Die Antwortgrundlage bleibt bei
+// zwölf Einträgen; was schrumpft, ist wieder nur der ANTEIL, den nur Deutsch bekommt. Der Pin
+// steht auf dem gemessenen Wert, NICHT gelöscht: die FAQ-Lücke der anderen Sprachen (L5) besteht
+// unverändert fort.
 const PANEL: ReadonlyMap<string, Panelbefund> = new Map<string, Panelbefund>([
   [
     "de",
     {
       treffer: 12,
-      ungeschnitten: 196,
-      ausFaq: 3,
+      ungeschnitten: 199,
+      ausFaq: 2,
       satz:
-        "Aus 212 Einträgen (135 Registry + 77 FAQ) punkten 196; die besten 12 gehen an die KI, " +
-        "3 davon aus der FAQ.",
+        "Aus 217 Einträgen (140 Registry + 77 FAQ) punkten 199; die besten 12 gehen an die KI, " +
+        "2 davon aus der FAQ.",
     },
   ],
   [

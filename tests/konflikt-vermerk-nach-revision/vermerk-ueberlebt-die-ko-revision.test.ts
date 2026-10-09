@@ -106,6 +106,12 @@ type Vermerk = {
   decision: string | null;
   resolutionReason: "decided" | "dismissed";
   auditAktion: "conflict.resolved" | "conflict.dismissed";
+  /**
+   * R-0215 (Aufnahme gesamt-konfliktklassifikation): menschliche Schritte VOR der Entscheidung, die
+   * ebenfalls auf diese Kennung protokolliert werden — beim Wahrheitskonflikt die verbindliche
+   * Eskalation. Sie werden genau so erwartet, nicht übersprungen.
+   */
+  davor?: readonly "conflict.escalated"[];
 };
 
 // DIE EINE ASSERTIONSMATRIX für alle drei menschlichen Wege (Korrekturpflicht 1 des Prüfers an
@@ -149,7 +155,11 @@ async function matrixNachRevision(
   // 4. Protokoll gegen konkrete Aktionen, Zielkennung und Anzahl: genau EINE menschliche Zeile auf
   //    DIESE Kennung, KEIN `conflict.superseded` — weder auf diese Kennung noch im ganzen Ledger.
   const zeilen = await protokollFuer(audit, konfliktId);
-  expect(zeilen).toEqual(["conflict.auto-created", erwartet.auditAktion]);
+  expect(zeilen).toEqual([
+    "conflict.auto-created",
+    ...(erwartet.davor ?? []),
+    erwartet.auditAktion,
+  ]);
   expect(zeilen.filter((a) => a === erwartet.auditAktion)).toHaveLength(1);
   expect(zeilen.filter((a) => a === "conflict.superseded")).toHaveLength(0);
   expect((await audit.list()).filter((e) => e.action === "conflict.superseded")).toHaveLength(0);
@@ -188,6 +198,8 @@ describe("JOB 3915: der entschiedene Befund überlebt die Revision des beteiligt
     const welt = aufbau();
     const { konflikt, kontrolle } = await angelegt(welt, "Widerspruch zur Ventilfarbe");
 
+    // R-0215: der Wahrheitskonflikt wird verbindlich zuerst eskaliert.
+    await welt.svc.escalate(konflikt.id, "controller-1");
     await welt.svc.resolve(konflikt.id, "controller-1", "Quelle B gilt.");
     welt.store.versions.set("b", 2); // die ganz normale Überarbeitung NACH der Entscheidung
 
@@ -196,6 +208,7 @@ describe("JOB 3915: der entschiedene Befund überlebt die Revision des beteiligt
       decision: "Quelle B gilt.",
       resolutionReason: "decided",
       auditAktion: "conflict.resolved",
+      davor: ["conflict.escalated"],
     });
   });
 
@@ -312,6 +325,14 @@ describe("JOB 3915: derselbe Nachweis an der echten HTTP-Grenze", () => {
     );
     // Vor der Entscheidung steht er auf der Fläche — sonst belegte die Prüfung unten nichts.
     expect((await liste(app, headers)).map((c) => c.id)).toContain(konflikt.id);
+
+    // R-0215: verbindliche Eskalation des Wahrheitskonflikts vor der Entscheidung.
+    const eskaliert = await app.inject({
+      method: "POST",
+      url: `/api/conflicts/${konflikt.id}/escalate`,
+      headers,
+    });
+    expect(eskaliert.statusCode).toBe(200);
 
     const entschieden = await app.inject({
       method: "PUT",
