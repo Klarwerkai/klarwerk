@@ -198,6 +198,13 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
     // soll dieser Wächter nicht vorwegnehmen.
     case "ownership":
       return { action, ownership: { owner: "eva-eigentuemerin" } };
+    // R-0507: der Eigentümer gibt zurück — trägt nichts ausser der Aktion. Ob der Anfragende der
+    // Eigentümer IST, entscheidet der Dienst (`NOT_OWNER`); das Tor davor muss vorher greifen.
+    case "ownership-release":
+      return { action };
+    // R-0507: die Eigentümerfreigabe — ob der Anfragende Eigentümer ist, entscheidet der Dienst.
+    case "owner-validate":
+      return { action };
     case "conflict":
       return {
         action,
@@ -226,6 +233,15 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
       return { action, commentId: "beitrag-mega80" };
     case "revalidate":
       return { action };
+    // aufnahme:20260922:gesamt-wissen-frische: erneute Prüfung anstossen, Nachbarn markieren,
+    // „Stimmt weiterhin" — alle drei tragen nichts ausser der Aktion.
+    case "request-revalidation":
+    case "neighbors-changed":
+    case "confirm-fresh":
+      return { action };
+    // R-0652: Schutzbedarf „öffentlich" — die Mindestnutzlast ist der Wahrheitswert.
+    case "schutz-oeffentlich":
+      return { action, oeffentlich: true };
     // R-0235 / R-0749: „Hat geholfen" am Objekt — trägt nichts ausser der Aktion.
     case "helpful":
       return { action };

@@ -858,6 +858,12 @@ const REGISTER: Record<string, Eintrag> = {
     "PUT /api/external/policy": "users.manage.",
     "POST /api/lifecycle/couple": "ko.create; Antwort ohne KO-Inhalt.",
     "POST /api/lifecycle/asset-changed": "ko.validate; Antwort ohne KO-Inhalt.",
+    // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden. Die Vorschau nennt Kennung und Titel
+    // der Wissensobjekte einer Person — an `users.manage`, also an eine Rolle, für die `darfSehen`
+    // ohnehin jedes Objekt freigibt. Entwürfe und Lücken nur als Kennung; die Ausführung antwortet
+    // mit Zählern und Kennungen.
+    "POST /api/lifecycle/handover/preview": "users.manage; Titel nur an die Verwaltung.",
+    "POST /api/lifecycle/handover": "users.manage; Antwort mit Zählern und Kennungen.",
     "POST /api/learning-paths": "Lernpfad, kein KO.",
     "POST /api/learning-paths/:pathId/complete": "eigener Fortschritt.",
     "POST /api/admin/demo-seed": "users.manage.",

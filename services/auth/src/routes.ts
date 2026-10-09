@@ -298,6 +298,20 @@ export function authRoutes(
     recoveryRateLimiter?: LoginRateLimiter | undefined;
     // WP-VIP2-GATE: injizierbarer Registrierungs-Limiter (Tests mit eigener Uhr/Schwelle).
     registerRateLimiter?: LoginRateLimiter | undefined;
+    /**
+     * R-0554 — DER AUSLÖSER AUS DER VERZEICHNISPFLEGE. Entfernt die Verwaltung ein Konto und nennt
+     * dabei einen Nachfolger (`DELETE /api/users/:id?nachfolger=…`), läuft VOR dem Entfernen die
+     * Wissensübergabe. Die Kompositionswurzel reicht sie herein — `auth` kennt die anderen Module
+     * nicht (dieselbe Einbahnrichtung wie überall: app → auth). Fehlt die Verdrahtung, wird ein
+     * Aufruf mit Nachfolger abgelehnt statt still ohne Übergabe zu löschen.
+     */
+    vorDemEntfernen?:
+      | ((
+          von: string,
+          nachfolger: string,
+          adminId: string,
+        ) => Promise<{ readonly fehlgeschlagen: readonly unknown[] }>)
+      | undefined;
   } = {},
 ): FastifyPluginAsync {
   // WP-VIP2-GATE (bens P1, Cookie-Härtung): fail-closed VOR der Routen-Registrierung — ein
@@ -1249,12 +1263,55 @@ export function authRoutes(
       }
     });
 
-    app.delete<{ Params: { id: string } }>("/api/users/:id", async (request, reply) => {
+    app.delete<{
+      Params: { id: string };
+      Querystring: { nachfolger?: unknown };
+    }>("/api/users/:id", async (request, reply) => {
       const admin = await requireAdmin(request, reply);
       if (!admin) {
         return;
       }
+      // R-0554: ohne `nachfolger` bleibt alles wie bisher (204). Mit Nachfolger wandert das Wissen
+      // ZUERST; bleibt dabei etwas liegen, wird das Konto NICHT entfernt (409 mit dem Ergebnis) —
+      // ein Konto zu löschen, dessen offene Arbeit noch an ihm hängt, wäre genau der Verlust, den
+      // die Übergabe verhindern soll. Ein zweiter Aufruf übernimmt nur, was noch fehlt.
+      const roh = request.query?.nachfolger;
+      const nachfolger = typeof roh === "string" && roh.trim().length > 0 ? roh.trim() : undefined;
       try {
+        if (nachfolger !== undefined) {
+          if (!options.vorDemEntfernen) {
+            reply.code(400).send({
+              error: "HANDOVER_UNAVAILABLE",
+              message:
+                "Die Wissensübergabe ist in diesem Aufbau nicht verfügbar. Es wurde nichts entfernt.",
+            });
+            return;
+          }
+          let ergebnis: { readonly fehlgeschlagen: readonly unknown[] };
+          try {
+            ergebnis = await options.vorDemEntfernen(request.params.id, nachfolger, admin.id);
+          } catch (fehler) {
+            const code = (fehler as { code?: unknown }).code;
+            const grund = fehler instanceof Error ? fehler.message : "";
+            reply.code(code === "NOT_FOUND" ? 404 : 400).send({
+              error: typeof code === "string" ? code : "HANDOVER_FAILED",
+              message: `${grund} Es wurde nichts entfernt.`.trim(),
+            });
+            return;
+          }
+          if (ergebnis.fehlgeschlagen.length > 0) {
+            reply.code(409).send({
+              error: "HANDOVER_INCOMPLETE",
+              message:
+                "Nicht alles konnte übergeben werden. Das Konto wurde nicht entfernt; ein erneuter Versuch übernimmt nur, was noch fehlt.",
+              uebergabe: ergebnis,
+            });
+            return;
+          }
+          await service.deleteUser(request.params.id, admin.id);
+          reply.code(200).send({ uebergabe: ergebnis });
+          return;
+        }
         await service.deleteUser(request.params.id, admin.id);
         reply.code(204).send();
       } catch (error) {

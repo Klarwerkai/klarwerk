@@ -2229,8 +2229,15 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Hauptstand dazu (13bf9f2bd); laut Diff 15102c19d..13bf9f2bd bringt er genau ZWEI Komponenten
     // mit — `VerantwortungUebergabe`, `Arbeitsflaeche` — und entfernt keine. 522 + 2 = 524 deckt
     // sich mit der Messung. Dieser Auftrag hat seit Nacharbeit 2 kein Bauteil hinzugefügt.
+    //
+    // NACHARBEIT 13 (Integration Hauptstand 1322621a): laut Diff 13bf9f2bd..1322621a bringt der
+    // Hauptstand SIEBEN Komponentendeklarationen mit und entfernt keine — `GeteilterStandNachlader`,
+    // `FundZeile`, `Eintrag`, `Bedingungswechsel`, `UebergabeVorschauInhalt`, `Wissensuebergabe`,
+    // `Verantwortung`. 524 + 7 = 531. EHRLICH GESAGT: GERECHNET, nicht gemessen (dasselbe
+    // Diff-Muster lag in Nacharbeit 10 und 11 jeweils genau auf der Messung). Weicht der Prüflauf
+    // ab, nennt die Meldung die gemessene Zahl; die gehört dann hierher.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 524,
+      komponenten: 531,
       anbieter: 1,
       traeger: 2,
     });
