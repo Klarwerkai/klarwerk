@@ -2423,8 +2423,15 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `texte/bildergalerie.ts`) liegen nicht unter den 20 abgeräumten. Erwartet ist deshalb die
     // auf main gemessene 521. An DIESEM Kandidaten nicht gemessen; weicht der Prüflauf ab, gehört
     // die gemessene Zahl hierher. `anbieter` 1 und `traeger` 2 sind auf beiden Seiten gleich.
+    //
+    // Nacharbeit 22: GEMESSEN 524. Am Kandidaten ca3bb812 meldete der Sammler wörtlich „gemessen:
+    // 524 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 677 Quelldateien … expected
+    // { komponenten: 524, … } to deeply equal { komponenten: 521, … }"; die übrigen 43 Fälle grün.
+    // Seit der Zusammenführung änderte dieser Auftrag nur diesen Sollwert (keine Quelldatei der
+    // Grundmenge); die 3 Komponenten und 3 Quelldateien (674 → 677) kamen mit main, namentlich
+    // ohne Git-Verlauf nicht bestimmt. `anbieter` 1 und `traeger` 2 unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 521,
+      komponenten: 524,
       anbieter: 1,
       traeger: 2,
     });
