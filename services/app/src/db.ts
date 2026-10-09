@@ -80,6 +80,8 @@ import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
 import { SPACES_SCHEMA } from "./spaces";
 // R-1034 / FR-I18N-02: im Betrieb gepflegte Oberflächentexte und zusätzlich angelegte Sprachen.
 import { UEBERSETZUNGEN_SCHEMA } from "./uebersetzungen";
+// ADMIN-15: Fassungen des Unternehmensprofils und der internen Richtlinien samt Handlungsprotokoll.
+import { UNTERNEHMEN_SCHEMA } from "./unternehmensprofil";
 import { VERANTWORTUNG_NACHFOLGE_SCHEMA } from "./verantwortung-nachfolge";
 
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
@@ -299,6 +301,9 @@ export const schemas = [
   // R-1034 / FR-I18N-02: die Übersetzungspflege. Additiv und wiederholbar (zwei CREATE TABLE IF NOT
   // EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   UEBERSETZUNGEN_SCHEMA,
+  // ADMIN-15: Unternehmensprofil, interne Richtlinien und ihr Handlungsprotokoll. Additiv und
+  // wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  UNTERNEHMEN_SCHEMA,
   // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche. Additiv und wiederholbar (CREATE
   // TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die
   // lesbare Ordnung ist.

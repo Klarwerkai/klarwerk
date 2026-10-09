@@ -509,6 +509,9 @@ PFLICHTTABELLEN=(
   loeschantraege
   ui_uebersetzungen
   ui_sprachen
+  unternehmensprofil_fassungen
+  richtlinien_fassungen
+  richtlinien_handlungen
   klara_gespraeche
 )
 FEHLENDE_TABELLEN=()
