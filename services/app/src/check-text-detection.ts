@@ -269,6 +269,12 @@ export interface CheckTextDeps {
   // Konfliktpool bleiben unangetastet.
   quellenSichtbar?: (ko: KnowledgeObject) => boolean;
   quellenTrim?: KoSichtbarkeitstrim;
+  // R-1175 (aufnahme:20260922:gesamt-rechte-inventar): dieselbe EINE Sichtbarkeitsentscheidung
+  // auch für den Dubletten-/Konfliktpool. Bis hierher entschied dort allein die Vertraulichkeits-
+  // stufe — ein nicht vertraulicher Eintrag in einem fremden Space kam als „ähnlich" mit Titel
+  // zurück. Die Route reicht sie herein (`sichtbarkeitsfilterFuer`); die drei harten Ausschlüsse in
+  // `istPoolKandidat` bleiben daneben. Ohne Feld (Dienst-Tests) gilt nur die Stufenregel wie bisher.
+  poolSichtbar?: (ko: KnowledgeObject) => boolean;
 }
 
 // K0-2: Erkennungs-Gegenstand ist der Kerntext (title+statement+conditions+measures), nicht bodyHtml.
@@ -386,7 +392,8 @@ function istPoolKandidat(k: KnowledgeObject, subjectRefId: string, deps: CheckTe
     // zurück in den Pool — die Regel läuft auf dem LEBENDEN Objekt, nicht auf dem Vektor.
     !k.mergedInto &&
     k.id !== subjectRefId &&
-    !isConfidential(k.confidentiality)
+    !isConfidential(k.confidentiality) &&
+    (deps.poolSichtbar?.(k) ?? true)
   );
 }
 
