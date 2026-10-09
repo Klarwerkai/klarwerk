@@ -54,6 +54,7 @@ import {
   type ExportUmfangArt,
   darfVertraulichExportieren,
   exportFilename,
+  exportFormatMeta,
   exportMoeglich,
   exportUmfang,
   exportUrl,
@@ -2228,7 +2229,9 @@ export function BibliothekFlaeche({
                                 data-testid={`bib-export-${fmt}`}
                                 className="block w-full"
                               >
-                                {t(`lib.format.${fmt}`)}
+                                {/* main (Verwendungsprüfung): die Beschriftung kommt aus
+                                    `exportFormatMeta`, nicht aus einem zweiten Schlüsselbau. */}
+                                {t(exportFormatMeta(fmt).labelKey)}
                               </a>
                             </MenueZeile>
                           ))

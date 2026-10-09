@@ -21,6 +21,8 @@ const META: Record<ExportFormat, ExportMeta> = {
   html: { labelKey: "lib.format.html", ext: "html" },
 };
 
+// R-1349 (Aufnahme gesamt-aufruferwaechter): bis hierher ohne Produktleser — die Bibliothek setzte
+// den Schlüssel als `lib.format.${fmt}` daneben selbst zusammen. Sie liest ihn jetzt hier.
 export function exportFormatMeta(format: ExportFormat): ExportMeta {
   return META[format];
 }

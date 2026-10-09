@@ -122,7 +122,7 @@ describe("R-0216 · validiert + offener Widerspruch ist nicht mehr „nutzbar“
     const k = ko({ status: "offen", trust: 87, confidence: 87, anzeigestatus: "offen" });
     const impact = conflictImpact("k1", [OFFENER_KONFLIKT]);
     expect(impact.limited).toBe(true);
-    // Detail (MehrAbschnitte: conflictLimitedUsability über koOverview)
+    // Detail (MehrAbschnitte: seit R-1349 `effectiveUsability`, dieselbe Verkettung wie hier)
     expect(conflictLimitedUsability(koOverview(k).usability, impact)).toBe("in-review");
     expect(effectiveUsability(k, [OFFENER_KONFLIKT])).toBe("in-review");
     // Antwort (askView)

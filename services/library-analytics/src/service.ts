@@ -103,8 +103,8 @@ interface ExportQuelle {
   entfernt: boolean;
 }
 
-export const EXPORT_QUELLEN_UEBERSCHRIFT = "Quellen";
-export const EXPORT_QUELLE_ENTFERNT = "Quellseite gelöscht";
+const EXPORT_QUELLEN_UEBERSCHRIFT = "Quellen";
+const EXPORT_QUELLE_ENTFERNT = "Quellseite gelöscht";
 
 function exportQuellen(ko: KnowledgeObject): ExportQuelle[] {
   return (ko.sources ?? []).map((s) => ({
@@ -126,7 +126,8 @@ function quellenText(q: ExportQuelle): string {
   return teile.join(" — ");
 }
 
-export const SEARCH_BACKFILL_LIMIT_PER_QUERY = 20;
+// R-1349: `SEARCH_BACKFILL_LIMIT_PER_QUERY` (= 20) ist entfernt. Seit G27 R1 stößt kein Suchweg den
+// Nachzug mehr an (s. `search`), und die Wartungsläufe nehmen ihren eigenen Schwung.
 
 // AUFTRAG-mega68: Deckel der Nachbarschafts-Auskunft. 12 Nachbarn füllen die Detailseiten-Fläche,
 // ohne sie zu überladen (der Entwurf zeichnet ~10); alles darüber weist `truncated`/`total`
@@ -3647,8 +3648,8 @@ export class LibraryService {
   // §5 stellt das klar: der Backfill ist Optimierung, nicht Migration und nicht Readiness, und der
   // reguläre Suchpfad darf funktional nicht von ihm abhängen. Vollständigkeit verantwortet jetzt
   // das Readiness Gate der Suchprojektion; der Altbestand wird über den ausdrücklichen Reconcile-
-  // bzw. Rebuild-Weg fertig. Die Konstante SEARCH_BACKFILL_LIMIT_PER_QUERY bleibt die Schwunggröße
-  // dieser Wartungsläufe.
+  // bzw. Rebuild-Weg fertig. (R-1349: die frühere Konstante SEARCH_BACKFILL_LIMIT_PER_QUERY las kein
+  // Wartungslauf; sie ist entfernt.)
   // ================================================================================================
   // AUFTRAG-BASIC-380 — DER TRIM WIRD DURCHGEREICHT, NICHT AUSGELEGT.
   // ================================================================================================

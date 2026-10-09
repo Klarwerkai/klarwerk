@@ -370,16 +370,12 @@ function sendMissingConfidentiality(reply: FastifyReply): void {
 
 // R-0180/R-2108: die Herkunft `import` kennzeichnet ein Objekt, das ein Mensch aus der
 // Import-Prüfwarteschlange übernommen hat (`LibraryService.acceptToKo`). Auf den öffentlichen
-// Schreibwegen (`POST /api/kos`, frischer Zweig des Dokumentwegs) wird sie verworfen wie
-// `sources` und `importCandidateId` — sonst könnte jeder mit `ko.create` ein Objekt als importiert
-// ausgeben. Die übrigen Herkunftswerte bleiben unverändert erhalten.
-export function ohneImportHerkunft<T extends { origin?: unknown }>(rumpf: T): T {
-  if (rumpf.origin !== "import") {
-    return rumpf;
-  }
-  const { origin: _verworfen, ...ohne } = rumpf;
-  return ohne as unknown as T;
-}
+// Schreibwegen (`POST /api/kos`, frischer Zweig des Dokumentwegs) fällt sie mit `origin` weg — die
+// Destrukturierung dort verwirft JEDE Herkunft (R-0139), also auch `import`.
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand der Helfer `ohneImportHerkunft`, der nur
+// `import` verwarf. Keine Route rief ihn (auf einem Rumpf ohne `origin` wäre er wirkungslos); er ist
+// entfernt. Die Zusage misst `tests/import-kandidaten-echt/annahme-in-validierung.test.ts` (W6) jetzt
+// am echten `POST /api/kos`.
 
 interface KoQuery {
   type?: KnowledgeType;
@@ -442,6 +438,10 @@ type KoAktion =
   | "confidentiality"
   // JOB 557: die Verantwortung am Objekt benennen (Recht `ko.validate`, s. den Zweig unten).
   | "ownership"
+  // R-0507: der benannte Eigentümer gibt seine Verantwortung zurück (Prüfung im Dienst).
+  | "ownership-release"
+  // R-0507: der benannte Eigentümer gibt das Objekt inhaltlich frei (Recht `ko.validate`).
+  | "owner-validate"
   | "conflict"
   | "resolve-conflict"
   | "transfer-author"
@@ -515,6 +515,10 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   confidentiality: "tor",
   // JOB 557: die Aktion arbeitet AM Objekt unter `:id` — sie passiert das Sichtbarkeitstor.
   ownership: "tor",
+  // R-0507: arbeitet AM Objekt unter `:id` — wer es nicht sehen darf, gibt daran auch nichts zurück.
+  "ownership-release": "tor",
+  // R-0507: die Eigentümerfreigabe arbeitet AM Objekt unter `:id` — wie `admin-validate`.
+  "owner-validate": "tor",
   conflict: "kein-zielobjekt",
   "resolve-conflict": "kein-zielobjekt",
   "transfer-author": "tor",
@@ -1545,9 +1549,9 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // „aus Word" oder „importiert" ausgeben können. Kein Client dieser Route sendet sie
           // (Capture.tsx `createPayload`).
           // R-0180/R-2108: die Herkunft `import` ebenfalls verwerfen — sie gehört allein der
-          // menschlichen Annahme eines Importkandidaten (s. `ohneImportHerkunft`). Die Destrukturierung
-          // darunter verwirft `origin` VOLLSTÄNDIG — damit auch jedes `import`; `ohneImportHerkunft`
-          // auf einem Rumpf ohne `origin` wäre wirkungslos und steht deshalb hier nicht.
+          // menschlichen Annahme eines Importkandidaten. Die Destrukturierung darunter verwirft
+          // `origin` VOLLSTÄNDIG — damit auch jedes `import` (am Draht gemessen: W6 in
+          // `tests/import-kandidaten-echt/annahme-in-validierung.test.ts`).
           const {
             reviewerIds,
             sources: _ignoredSources,
@@ -1852,7 +1856,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // Anker kommen NIE vom Client. Was an Quellen entsteht, entsteht unten aus den geprüften
           // Dokumenten — nicht aus diesem Feld.
           // R-0139 / FR-EXT-02: `origin` und `importedVia` aus demselben Grund wie an POST /api/kos.
-          // R-0180/R-2108: mit `origin` fällt hier auch jedes `import` (vgl. `ohneImportHerkunft`).
+          // R-0180/R-2108: mit `origin` fällt hier auch jedes `import`.
           const {
             sources: _ignoredSources,
             importCandidateId: _ignoredAnchor,
@@ -2631,7 +2635,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         // Eine unbekannte Aktion wird hier abgewiesen, bevor das Tor greift: sie fasst kein Objekt
         // an und verrät deshalb auch keine Existenz — ein 400 ist die ehrlichere Antwort als ein
         // 404, das ein „gibt es nicht" über ein Objekt behauptet, nach dem gar nicht gefragt wurde.
-        const torurteil = ZIELOBJEKT_TOR[body.action as KoAktion] as Torurteil | undefined;
+        // R-1349: gelesen wird die benannte Grundmenge, die auch die Sicherheitswächter lesen —
+        // vorher las die Route die Tabelle unter einem zweiten Namen, und der Export hatte keinen
+        // Produktleser.
+        const torurteil = KO_AKTIONEN_MIT_TORURTEIL[body.action as KoAktion] as
+          | Torurteil
+          | undefined;
         if (!torurteil) {
           return badRequest(`Unbekannte Aktion: ${body.action}`);
         }
@@ -3657,6 +3666,41 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return;
             }
             reply.code(200).send(await ko.setOwnership(id, body.ownership, user.id));
+            return;
+          }
+          // R-0507: „Der Eigentümer kann es zurückgeben." Das Recht ist hier nur `ko.read` — die
+          // tragende Prüfung („bist du der benannte Eigentümer?") steht im Dienst und wirft sonst
+          // `NOT_OWNER` (403). Wer Verantwortung trägt, muss sie abgeben können, ohne Prüferrolle.
+          case "ownership-release": {
+            const user = await guards.requirePermission("ko.read", request, reply);
+            if (!user) {
+              return;
+            }
+            reply.code(200).send(await ko.releaseOwnership(id, user.id));
+            return;
+          }
+          // R-0507: „… oder freigeben." Der BESTEHENDE Freigabeweg: das Freigaberecht `ko.validate`
+          // (wie `rate`), dasselbe Dublettentor wie `rate`/`admin-validate`, dann prüft der Dienst,
+          // ob der Anfragende der benannte Eigentümer ist (sonst 403 `NOT_OWNER`). Eigentum allein
+          // verleiht keine Freigabebefugnis.
+          case "owner-validate": {
+            const user = await guards.requirePermission("ko.validate", request, reply);
+            if (!user) {
+              return;
+            }
+            if (
+              !(await dublettenTor(
+                dublettenTorDeps,
+                user,
+                id,
+                body.duplicateAcknowledged,
+                "owner-validate",
+                reply,
+              ))
+            ) {
+              return;
+            }
+            reply.code(200).send(await validation.ownerValidate(id, user.id));
             return;
           }
           case "conflict": {
