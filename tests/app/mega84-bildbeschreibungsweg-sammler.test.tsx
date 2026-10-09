@@ -2124,8 +2124,17 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Knopf; `anbieter` 1 und `traeger` 2 bleiben. EHRLICH GESAGT: die 452 ist GERECHNET (451 + 1),
     // nicht gemessen — dieser Arbeitsbaum durfte keine Tests ausführen. Weicht der Prüflauf ab,
     // nennt die Meldung oben die gemessene Zahl, und DIE gehört hier hin.
+    //
+    // Nacharbeit 3 (veroeffentlichungsoptionen): GEMESSEN 488. Am Kandidaten 6e70163d (nach dem
+    // Einmischen von main c62a9855) meldete der Sammler wörtlich „gemessen: 488 Komponenten ·
+    // 1 Anbieter · 2 Traeger · Grundmenge 610 Quelldateien … expected { komponenten: 488, … } to
+    // deeply equal { komponenten: 452, … }". Dieser Auftrag trägt genau EIN Bauteil bei
+    // (`VeroeffentlichungBereich`, schon in der 452); die 36 darüber kamen mit dem eingemischten
+    // Hauptstand. Welche es
+    // sind, ist ohne Git-Verlauf an diesem Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und
+    // `traeger` 2 sind in derselben Meldung unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 452,
+      komponenten: 488,
       anbieter: 1,
       traeger: 2,
     });

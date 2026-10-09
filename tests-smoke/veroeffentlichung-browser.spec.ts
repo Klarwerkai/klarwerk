@@ -110,7 +110,12 @@ test("K1/K3/K4: die Wahl erklärt ihre Wirkung, „hervorgehoben“ erreicht die
   await bild(page, "3-veroeffentlicht");
 
   // ---- Die Leserin: Glocke und Lesefläche ------------------------------------------------------
-  const leserinKontext = await browser.newContext({ baseURL: test.info().project.use.baseURL });
+  // Der eigene Kontext erbt die Projektadresse nicht von selbst; ohne gesetzte Adresse bleibt sie weg
+  // (exactOptionalPropertyTypes: `undefined` ist kein zulässiger Wert).
+  const projektAdresse = test.info().project.use.baseURL;
+  const leserinKontext = await browser.newContext(
+    projektAdresse === undefined ? {} : { baseURL: projektAdresse },
+  );
   try {
     const leserin = await leserinKontext.newPage();
     await leserin.goto("/");
