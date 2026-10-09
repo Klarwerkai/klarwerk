@@ -495,6 +495,16 @@ const GRUNDWERTE: readonly Startwert[] = [
     wofuer: "Abstand der periodischen Papierkorb-Endlöschung.",
     ohneIhn: "Es gilt der Abstand von sechs Stunden.",
   },
+  // R-1657: der Takt der regelmäßigen Lückenerkennung über den Reasoner (Wissens-Sprints).
+  {
+    name: "KLARWERK_WISSENSSPRINT_INTERVAL_MS",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "15 Minuten",
+    wofuer: "Abstand der regelmäßigen Lückenerkennung über den Reasoner (Wissens-Sprints).",
+    ohneIhn: "Es gilt der Abstand von 15 Minuten (mindestens 1 Minute).",
+  },
   // R-0710: Wissensereignisse an Fremdwerkzeuge (`wissensereignisse.ts`). Die Liste trägt je Ziel
   // das Signiergeheimnis — deshalb als Ganzes geheim.
   {
