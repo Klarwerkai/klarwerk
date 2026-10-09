@@ -2458,8 +2458,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Die ADMIN-02-Messung 526 (Grundmenge 680) enthielt diese zwei und ebenfalls den Hauptstand
     // über 521. 524 + 2 = 526. EHRLICH GESAGT: GERECHNET, nicht gemessen; weicht der Prüflauf ab,
     // gehört die gemessene Zahl hierher. `anbieter` 1 und `traeger` 2 bleiben.
+    //
+    // ADMIN-02 Nacharbeit 11 · GEMESSEN 528. Am Kandidaten 9c2ee6b8 meldete der Sammler wörtlich
+    // „gemessen: 528 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 683 Quelldateien …
+    // expected { komponenten: 528, … } to deeply equal { komponenten: 526, … }". Dieser Auftrag
+    // trägt unverändert genau ZWEI Bauteile bei (`ImportLaufListe`, `LaufZeile`) und vier
+    // Quelldateien; die Rechnung 524 + 2 war zu niedrig, die übrigen 2 Komponenten (Grundmenge
+    // 677 + 4 = 681 → 683) kamen mit main und sind ohne Git-Verlauf hier nicht namentlich
+    // bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 526,
+      komponenten: 528,
       anbieter: 1,
       traeger: 2,
     });
