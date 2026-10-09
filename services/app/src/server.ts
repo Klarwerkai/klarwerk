@@ -21,6 +21,7 @@ import { assertPersistentStore, normalizeEnv } from "./storage-guard";
 import { resolveTrashSweepIntervalMs, startTrashSweepScheduler } from "./trash-sweep-scheduler";
 import { registerWebStatic } from "./web-static";
 import {
+  WEBHOOKS_TAKT_ENV,
   WissensereignisMelder,
   ladeWebhookZiele,
   resolveWebhookTaktMs,
@@ -291,7 +292,8 @@ async function start(): Promise<void> {
     app.log.warn(`Webhook-Ziel verworfen: ${fehler}`);
   }
   if (webhooks.ziele.length > 0) {
-    const melderTakt = resolveWebhookTaktMs(process.env.KLARWERK_WEBHOOKS_TAKT_SEK);
+    // R-1349: derselbe Name wie im Modul (`WEBHOOKS_TAKT_ENV`), nicht eine zweite Schreibweise.
+    const melderTakt = resolveWebhookTaktMs(process.env[WEBHOOKS_TAKT_ENV]);
     const melder = new WissensereignisMelder({
       quellen: {
         wissensobjekte: () => services.ko.list({}),

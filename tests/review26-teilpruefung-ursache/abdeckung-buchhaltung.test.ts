@@ -1,11 +1,7 @@
 // Mutation: eine Klasse beim Merge fallen lassen oder Gründe als sechste Vollständigkeitsbedingung verlangen.
 import { expect, it } from "vitest";
-import {
-  emptyCoverage,
-  isCompleteRun,
-  mergeCoverage,
-  singleRunBalances,
-} from "../../services/conflicts";
+import { emptyCoverage, isCompleteRun, mergeCoverage } from "../../services/conflicts";
+import { singleRunBalances } from "../support/abdeckung-buchhaltung";
 import { fixture } from "./fixture";
 
 // Mutation: Klassen beim Merge überschreiben statt addieren → auth-Zähler rot.

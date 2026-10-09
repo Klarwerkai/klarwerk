@@ -507,10 +507,19 @@ function alsFundstelle(n: Nennung | null): Fundstelle | null {
 
 /**
  * Die maßgebliche Fundstelle eines Begriffs im Objekt (Bedingungen zuerst, dann Titel, Aussage,
- * Schlagwort) samt Bewertung — `null`, wenn das Objekt ihn nicht nennt.
+ * Schlagwort) samt Bewertung — `null`, wenn das Objekt ihn nicht nennt. `begriffe` sind die
+ * Begriffe, die beim Deuten eines Satzteils zugleich im Blick sind (Vorgabe: nur dieser eine).
+ *
+ * R-1349 (Aufnahme gesamt-aufruferwaechter): `einordnen` rechnete genau diesen Körper bis hierher
+ * ein zweites Mal inline (mit beiden Bedingungen als Begriffsliste); die Funktion las nur der
+ * Prüfstand. Jetzt ruft `einordnen` sie — dasselbe Ergebnis, eine Stelle.
  */
-export function fundstelle(ko: KnowledgeObject, begriff: string): Fundstelle | null {
-  return alsFundstelle(massgeblich(nennungen(ko, begriff)));
+export function fundstelle(
+  ko: KnowledgeObject,
+  begriff: string,
+  begriffe: readonly string[] = [begriff],
+): Fundstelle | null {
+  return alsFundstelle(massgeblich(nennungen(ko, begriff, begriffe)));
 }
 
 /**
@@ -571,8 +580,8 @@ function einordnen(ko: KnowledgeObject, bisher: string, neu: string): Bedingungs
   return {
     ...basis,
     lage,
-    bisher: alsFundstelle(massgeblich(nb)),
-    neu: alsFundstelle(massgeblich(nn)),
+    bisher: fundstelle(ko, bisher, [bisher, neu]),
+    neu: fundstelle(ko, neu, [bisher, neu]),
   };
 }
 

@@ -18,7 +18,6 @@ import {
   type PptxUnzip,
   budgetedPptxUnzip,
   extractPptxRich,
-  isPptxDocumentLike,
 } from "./pptx";
 
 // FR-CAP-05: Bild auf ein kleines Thumbnail (JPEG) verkleinern → Daten-URL.
@@ -180,10 +179,9 @@ export async function readDocxRich(
   });
 }
 
-// WP-D5: .pptx-Erkennung als dünner Browser-Wrapper um die DOM-freie Logik.
-export function isPptxDocument(file: File): boolean {
-  return isPptxDocumentLike({ name: file.name, type: file.type });
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `isPptxDocument`, ein Browser-Wrapper um
+// `pptx.ts::isPptxDocumentLike`. Kein Produktweg rief ihn — der Arbeitsraum erkennt die Art über
+// `detectFileKind` (`lib/extract.ts`). Wrapper und Kern sind entfernt.
 
 let pptxUnzipPromise: Promise<PptxUnzip> | null = null;
 
@@ -345,10 +343,10 @@ export async function readPdfFileWithOriginal(
   return { pdf, original: dataUrlFromBuffer(buffer, file.type || "application/octet-stream") };
 }
 
-// SCRUM-123: OCR-Kandidat = Bild. OCR wird NIE automatisch beim Upload gestartet.
-export function isOcrCandidate(file: File): boolean {
-  return file.type.startsWith("image/");
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `isOcrCandidate` („OCR-Kandidat = Bild").
+// Kein Produktweg rief ihn — der Arbeitsraum bietet OCR an, wenn `detectFileKind` die Art `"image"`
+// liefert, und `isImage` oben trägt dieselbe Regel. Er ist entfernt; OCR startet weiterhin NIE
+// automatisch (`runImageOcr` nur auf ausdrückliche Nutzeraktion).
 
 // SCRUM-123: optionale Bild-OCR (lazy tesseract.js@5, Worker/WASM). Engine nicht ladbar
 // → ehrlich „unavailable", kein Vortäuschen. Nur auf explizite Nutzeraktion aufrufen.

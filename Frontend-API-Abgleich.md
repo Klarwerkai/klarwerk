@@ -10,7 +10,7 @@
 
 ## Vorhandene Endpunkte (geprüft)
 
-- **Auth/Onboarding (vollständig):** `POST /api/auth/register|login|logout|forgot|reset|oidc|setup`, `GET /api/auth/status|me`, `POST /api/auth/password`. → Login/Registrieren/Wartet-auf-Freigabe/Ersteinrichtung sind gedeckt.
+- **Auth/Onboarding (vollständig):** `POST /api/auth/register|login|logout|forgot|reset|oidc|setup`, `GET /api/auth/status|me`, `POST /api/auth/password`. → Login/Registrieren/Wartet-auf-Freigabe/Ersteinrichtung sind gedeckt. Seit Ship 8 (23.07.2026) gilt „Registrierung nur per Einladung": `register` antwortet im Auslieferungszustand 403 `REGISTRATION_DISABLED`, `GET /api/auth/status` meldet `selfRegistrationEnabled: false`; neue Konten entstehen über `POST /api/users` (Admin).
 - **Nutzer/Admin:** `GET /api/users`, `POST /api/users`, `PUT /api/users/:id` (Rolle/Passwort), `DELETE /api/users/:id`, `POST /api/auth/users/:id/approve`. → Admin-Screen gedeckt (inkl. Selbstschutz serverseitig).
 - **Wissensobjekt:** `GET /api/kos`, `GET /api/kos/:id`, `POST /api/kos`, `DELETE /api/kos/:id`, **`PUT /api/kos/:id`** mit Aktion `rate|assign|revise|category|tags|conflict|resolve-conflict|transfer-author|revalidate`. → Detail/Wiki, Bearbeiten, Validieren, Konflikt melden/lösen, Übergabe, Re-Validierung gedeckt. KO trägt `confidence`, `trust`, `version`, `history`, `originalAuthor`, `author`, `neededValidations`, `assignments`, `asset`, `type`, `tags` (alles, was die Vertrauens-/Herkunftszeile braucht).
 - **Erfassen/Entwürfe:** `GET/POST /api/drafts`, `GET /api/drafts/:id`, `DELETE /api/drafts/:id`, `POST /api/drafts/:id/promote` + Reasoner-Route. → Capture-Flow inkl. geräteübergreifendem Entwurf gedeckt.

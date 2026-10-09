@@ -23,7 +23,7 @@ describe("SCRUM-181: emptyStateActions", () => {
 
   it("validation: Experte bekommt Erfassen + Aufgaben", () => {
     const a = emptyStateActions("validation", "experte", false).map((x) => x.labelKey);
-    expect(a).toEqual(["empty.cta.capture", "empty.cta.tasks"]);
+    expect(a).toEqual(["empty.cta.capture", "aufgaben.zumBereich"]);
   });
 
   it("liefert echte Navigationspfade (kein Fremd-Link)", () => {
