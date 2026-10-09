@@ -1,10 +1,10 @@
 {
-  "version": 18,
+  "version": 19,
   "erhoben_am": "2026-10-09",
-  "nachgefuehrt_von": "produkt:20261007:arbeitswege-objekt (Integration mit main 9ed398d7, Version 18): beide Zweige hatten Version 17 eingetragen und sind hier zusammengefuehrt — die vier eigenen Faelle im Projekt chromium-zustand, alle in arbeitswege-objekt-browser.spec.ts (legt Bestand an, deshalb ZUSTAND_SPEC und nicht chromium, firefox, webkit) UND mains Version 17 (admin-demo-diagnose, unten). NICHT gemessen, aus den Testtiteln nachgetragen; main 249 + 4 = 253. Version 17 davor (main): produkt:20261009:admin-demo-diagnose, Nacharbeit 2 (Integration mit main 985cb62c, Version 17): beide Zweige hatten Version 16 eingetragen und sind hier zusammengefuehrt — die vier admin-demo-diagnose-Faelle je Projekt chromium, firefox und webkit UND der Umzug von U3 aus gesamt-navigation (Version 16 von main, unten; Mengen dadurch unveraendert). NICHT gemessen, aus den Testtiteln nachgetragen. Eigene Version 16 davor (produkt:20261009:admin-demo-diagnose): vier Faelle mehr je Projekt chromium, firefox und webkit, alle in admin-demo-diagnose.spec.ts — Startseite mit Vorfuehrwegen nur unter Betrieb, /import ohne Vorfuehrkaesten samt Weiterleitung des alten Ankers, Tastatur und Fokus bei 390 × 844 und 1280 × 800. NICHT gemessen, aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt); vorgefundene fremde Drift unveraendert gelassen. Version 16 davor (main): aufnahme:20260922:gesamt-navigation, Nacharbeit 13 (Integration mit main 956a896c, Version 16): beide Zweige hatten Version 15 eingetragen und sind hier zusammengefuehrt — U3 je Projekt chromium, firefox und webkit von erstnutzer-u2-u3-browser.spec.ts nach gesamt-navigation-u3-browser.spec.ts umgezogen und auf den heutigen Titel umbenannt (Weg Arbeitsbereiche → Offene Aufgaben; Mengen dadurch unveraendert, aus gesamt-navigation Nacharbeit 2) UND die fuenf admin-uebersicht-Faelle je Projekt aus main (Version 15 von main, unten). NICHT gemessen, aus den Testtiteln nachgetragen. Version 15 davor (main): produkt:20261009:admin-verwaltung-uebersicht (Version 15): fuenf Faelle mehr je Projekt chromium, firefox und webkit, alle in admin-uebersicht.spec.ts — Lieferbeleg Verwaltung → offene Pruefung → zurueck → Nutzeruebergabe → Vorschau, gefilterte Listen hinter den Zaehlern, Ladefehler/ausstehende Antwort, Tastatur und Fokus bei 390 × 844 und 1280 × 800. NICHT gemessen, aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt); vorgefundene fremde Drift unveraendert gelassen. Version 14 davor: produkt:20261007:klara-vorschau (Integration mit main, Version 13): drei Faelle mehr je Projekt chromium, firefox und webkit, alle in klara-vorschau-browser.spec.ts — Avatar aus dem Bau, Bedienbeleg der beweglichen Klara (Desktop) und schmal mit reduzierter Bewegung, Touch-Zeiger und Bildschirmtastatur. NICHT gemessen, aus den Testtiteln nachgetragen. Version 13 davor: produkt:20261007:speichern-erholung, Nacharbeit 1: ein weiterer Fall je Projekt chromium, firefox und webkit (K2/K3 Nacharbeit: Weiterschreiben waehrend des Wartens). Version 12 davor: drei Faelle mehr je Projekt chromium, firefox und webkit, alle in speichern-erholung-browser.spec.ts — Speicherzustand ohne Netz, Seitenwechsel ohne Netz, Nulltreffer mit Filterruecksetzen. NICHT gemessen, sondern aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt). Vorgefundene, fremde Drift unveraendert gelassen: firmenwoerterbuch-browser.spec.ts und bildschirmablauf-browser.spec.ts stehen nicht im Manifest. Vorher: gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3), drei Faelle in erstnutzer-u2-u3-browser.spec.ts.",
+  "nachgefuehrt_von": "produkt:20261007:arbeitswege-objekt (Integration mit main 4333e511, Version 19): beide Zweige hatten Version 18 eingetragen und sind hier zusammengefuehrt — die vier eigenen Faelle im Projekt chromium-zustand, alle in arbeitswege-objekt-browser.spec.ts (legt Bestand an, deshalb ZUSTAND_SPEC und nicht chromium, firefox, webkit; chromium-zustand damit 20) UND mains Version 18 (lesen-inhalt-zuerst, unten). NICHT gemessen, aus den Testtiteln nachgetragen; main 258 + 4 = 262. Version 18 davor (main): produkt:20261007:lesen-inhalt-zuerst, Nacharbeit 5 (Integration mit main 1e6e8392, Version 18): beide Zweige hatten Version 17 eingetragen und sind hier zusammengefuehrt — die drei lesen-inhalt-zuerst-Faelle je Projekt chromium, firefox und webkit (Lesereihenfolge Artikel Desktop und 390 x 844, freigegebene Arbeitsanleitung) UND die vier admin-demo-diagnose-Faelle aus main (Version 17 von main, unten); je Projekt 80, gesamt 258. NICHT gemessen, aus den Testtiteln nachgetragen. Version 17 davor (main): produkt:20261009:admin-demo-diagnose, Nacharbeit 2 (Integration mit main 985cb62c, Version 17): beide Zweige hatten Version 16 eingetragen und sind hier zusammengefuehrt — die vier admin-demo-diagnose-Faelle je Projekt chromium, firefox und webkit UND der Umzug von U3 aus gesamt-navigation (Version 16 von main, unten; Mengen dadurch unveraendert). NICHT gemessen, aus den Testtiteln nachgetragen. Eigene Version 16 davor (produkt:20261009:admin-demo-diagnose): vier Faelle mehr je Projekt chromium, firefox und webkit, alle in admin-demo-diagnose.spec.ts — Startseite mit Vorfuehrwegen nur unter Betrieb, /import ohne Vorfuehrkaesten samt Weiterleitung des alten Ankers, Tastatur und Fokus bei 390 × 844 und 1280 × 800. NICHT gemessen, aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt); vorgefundene fremde Drift unveraendert gelassen. Version 16 davor (main): aufnahme:20260922:gesamt-navigation, Nacharbeit 13 (Integration mit main 956a896c, Version 16): beide Zweige hatten Version 15 eingetragen und sind hier zusammengefuehrt — U3 je Projekt chromium, firefox und webkit von erstnutzer-u2-u3-browser.spec.ts nach gesamt-navigation-u3-browser.spec.ts umgezogen und auf den heutigen Titel umbenannt (Weg Arbeitsbereiche → Offene Aufgaben; Mengen dadurch unveraendert, aus gesamt-navigation Nacharbeit 2) UND die fuenf admin-uebersicht-Faelle je Projekt aus main (Version 15 von main, unten). NICHT gemessen, aus den Testtiteln nachgetragen. Version 15 davor (main): produkt:20261009:admin-verwaltung-uebersicht (Version 15): fuenf Faelle mehr je Projekt chromium, firefox und webkit, alle in admin-uebersicht.spec.ts — Lieferbeleg Verwaltung → offene Pruefung → zurueck → Nutzeruebergabe → Vorschau, gefilterte Listen hinter den Zaehlern, Ladefehler/ausstehende Antwort, Tastatur und Fokus bei 390 × 844 und 1280 × 800. NICHT gemessen, aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt); vorgefundene fremde Drift unveraendert gelassen. Version 14 davor: produkt:20261007:klara-vorschau (Integration mit main, Version 13): drei Faelle mehr je Projekt chromium, firefox und webkit, alle in klara-vorschau-browser.spec.ts — Avatar aus dem Bau, Bedienbeleg der beweglichen Klara (Desktop) und schmal mit reduzierter Bewegung, Touch-Zeiger und Bildschirmtastatur. NICHT gemessen, aus den Testtiteln nachgetragen. Version 13 davor: produkt:20261007:speichern-erholung, Nacharbeit 1: ein weiterer Fall je Projekt chromium, firefox und webkit (K2/K3 Nacharbeit: Weiterschreiben waehrend des Wartens). Version 12 davor: drei Faelle mehr je Projekt chromium, firefox und webkit, alle in speichern-erholung-browser.spec.ts — Speicherzustand ohne Netz, Seitenwechsel ohne Netz, Nulltreffer mit Filterruecksetzen. NICHT gemessen, sondern aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt). Vorgefundene, fremde Drift unveraendert gelassen: firmenwoerterbuch-browser.spec.ts und bildschirmablauf-browser.spec.ts stehen nicht im Manifest. Vorher: gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3), drei Faelle in erstnutzer-u2-u3-browser.spec.ts.",
   "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
   "zweck": "Sollmanifest der Smoke-Mengen je Projekt. Drift (Hinzufuegen, Entfernen, Umbenennen) macht die Mengenpruefung rot.",
-  "gesamt_fallinstanzen": 253,
+  "gesamt_fallinstanzen": 262,
   "projekte": {
     "setup-zustand": {
       "soll": 1,
@@ -19,7 +19,7 @@
       ]
     },
     "chromium": {
-      "soll": 77,
+      "soll": 80,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -51,6 +51,9 @@
         "klara-vorschau-browser.spec.ts › Klara-Vorschau · Avatar lädt aus dem Bau über eine relative Adresse",
         "klara-vorschau-browser.spec.ts › Klara-Vorschau · Bedienbeleg Desktop: verschieben → Artikel → Markierung → Fragen → Tutorial → Notiz → verkleinern",
         "klara-vorschau-browser.spec.ts › Klara-Vorschau · schmal 390 px mit reduzierter Bewegung und Touch-Zeiger",
+        "lesen-inhalt-zuerst-browser.spec.ts › K1/K2/K5 · Desktop: Inhalt vor der Kenntnisnahme, die Fläche ist eine Zeile",
+        "lesen-inhalt-zuerst-browser.spec.ts › K3 · 390 × 844: Titel und erste Regel im ersten Bild, umbrochen und unverdeckt",
+        "lesen-inhalt-zuerst-browser.spec.ts › K4 · freigegebene Anleitung: Lesefassung zuerst, Bearbeitung und Historie da",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser überlebt die MAUS-Auswahl den Klick auf Fett",
         "mega87-caption-formatierung-browser.spec.ts › mega87: ohne Markierung sagt der echte Browser den Grund, statt stumm zu bleiben",
@@ -101,7 +104,7 @@
       ]
     },
     "firefox": {
-      "soll": 77,
+      "soll": 80,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -133,6 +136,9 @@
         "klara-vorschau-browser.spec.ts › Klara-Vorschau · Avatar lädt aus dem Bau über eine relative Adresse",
         "klara-vorschau-browser.spec.ts › Klara-Vorschau · Bedienbeleg Desktop: verschieben → Artikel → Markierung → Fragen → Tutorial → Notiz → verkleinern",
         "klara-vorschau-browser.spec.ts › Klara-Vorschau · schmal 390 px mit reduzierter Bewegung und Touch-Zeiger",
+        "lesen-inhalt-zuerst-browser.spec.ts › K1/K2/K5 · Desktop: Inhalt vor der Kenntnisnahme, die Fläche ist eine Zeile",
+        "lesen-inhalt-zuerst-browser.spec.ts › K3 · 390 × 844: Titel und erste Regel im ersten Bild, umbrochen und unverdeckt",
+        "lesen-inhalt-zuerst-browser.spec.ts › K4 · freigegebene Anleitung: Lesefassung zuerst, Bearbeitung und Historie da",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser überlebt die MAUS-Auswahl den Klick auf Fett",
         "mega87-caption-formatierung-browser.spec.ts › mega87: ohne Markierung sagt der echte Browser den Grund, statt stumm zu bleiben",
@@ -183,7 +189,7 @@
       ]
     },
     "webkit": {
-      "soll": 77,
+      "soll": 80,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -215,6 +221,9 @@
         "klara-vorschau-browser.spec.ts › Klara-Vorschau · Avatar lädt aus dem Bau über eine relative Adresse",
         "klara-vorschau-browser.spec.ts › Klara-Vorschau · Bedienbeleg Desktop: verschieben → Artikel → Markierung → Fragen → Tutorial → Notiz → verkleinern",
         "klara-vorschau-browser.spec.ts › Klara-Vorschau · schmal 390 px mit reduzierter Bewegung und Touch-Zeiger",
+        "lesen-inhalt-zuerst-browser.spec.ts › K1/K2/K5 · Desktop: Inhalt vor der Kenntnisnahme, die Fläche ist eine Zeile",
+        "lesen-inhalt-zuerst-browser.spec.ts › K3 · 390 × 844: Titel und erste Regel im ersten Bild, umbrochen und unverdeckt",
+        "lesen-inhalt-zuerst-browser.spec.ts › K4 · freigegebene Anleitung: Lesefassung zuerst, Bearbeitung und Historie da",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser überlebt die MAUS-Auswahl den Klick auf Fett",
         "mega87-caption-formatierung-browser.spec.ts › mega87: ohne Markierung sagt der echte Browser den Grund, statt stumm zu bleiben",

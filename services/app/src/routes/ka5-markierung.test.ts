@@ -39,7 +39,7 @@
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../build-app";
-import { askRoutes } from "./ask-routes";
+import { askRoutes, klaraAusfuehrungRoutes } from "./ask-routes";
 
 const FRAGE = "Wie ist die Montage der Bremsleitung beim Kaltstart?";
 /** Die markierte Passage. „Ölwannenschraube" führt zu B, „Nachtfalter" steht NUR hier. */
@@ -54,6 +54,9 @@ interface Aufbau {
   kopf: Record<string, string>;
   fueller: string[];
   b: string;
+  /** R-0700: die echte Klara-Sitzung — die Markierung reist nur über Klaras eigenen Zugang. */
+  sitzung: string;
+  bindung: Record<string, string>;
 }
 
 async function aufbauen(): Promise<Aufbau> {
@@ -119,15 +122,33 @@ async function aufbauen(): Promise<Aufbau> {
   // Der ECHTE Schreibweg der Bewertungslage (`KoService.setValidationState`) — kein Repo-Zugriff an
   // der Fachschicht vorbei. B bleibt validiert und sinkt nur im Trust unter die Füller.
   await services.ko.setValidationState(b, { trust: 40, status: "validiert" });
-  return { app, kopf, fueller, b };
+  // R-0700: die markierte Passage ist ein Klara-Feld und reist über Klaras eigenen Zugang. Die
+  // Sitzung entsteht über die ECHTE Route; der Server vergibt Sitzungs- und Dokumentkennung.
+  const sitzungsAntwort = await app.inject({
+    method: "POST",
+    url: "/api/klara/sessions",
+    headers: { ...kopf, "x-klara-instance": "ka5-instanz" },
+    payload: {
+      addinInstanceId: "ka5-instanz",
+      documentDescriptor: { kind: "saved", hostDocumentId: "ka5-dokument" },
+    },
+  });
+  expect(sitzungsAntwort.statusCode, sitzungsAntwort.body).toBe(201);
+  const sitzung = sitzungsAntwort.json().sessionId as string;
+  const bindung = {
+    "x-klara-session": sitzung,
+    "x-klara-instance": "ka5-instanz",
+    "x-klara-document": sitzungsAntwort.json().documentContextId as string,
+  };
+  return { app, kopf, fueller, b, sitzung, bindung };
 }
 
 const fragen = (a: Aufbau, extra: Record<string, unknown> = {}) =>
   a.app.inject({
     method: "POST",
-    url: "/api/ask",
-    headers: { ...a.kopf, "content-type": "application/json" },
-    payload: { question: FRAGE, locale: "de", mode: "retrieval-only", ...extra },
+    url: `/api/klara/sessions/${a.sitzung}/execute`,
+    headers: { ...a.kopf, ...a.bindung, "content-type": "application/json" },
+    payload: { question: FRAGE, locale: "de", questionSource: "manual", ...extra },
   });
 
 /**
@@ -203,7 +224,10 @@ describe("KA5 · die Markierung schärft die Suche", () => {
 interface Messplatz {
   app: ReturnType<typeof Fastify>;
   gesehen: (Record<string, unknown> | null)[];
+  /** Der ALLGEMEINE Frageweg `POST /api/ask` — er kennt die Markierung seit R-0700 nicht mehr. */
   fragen: (payload: Record<string, unknown>, addon?: boolean) => Promise<{ statusCode: number }>;
+  /** R-0700: Klaras EIGENER Zugang, mit vollständiger Bindung (`KLARA_BINDUNG`). */
+  klara: (payload: Record<string, unknown>, addon?: boolean) => Promise<{ statusCode: number }>;
   protokoll: string[];
 }
 
@@ -257,60 +281,71 @@ async function messplatz(freigebend = false): Promise<Messplatz> {
       return echt(obj as never, msg as never);
     }) as typeof request.log.info;
   });
+  const guards = {
+    requireUser: async () => ({ id: "nutzer-1", role: "admin" }),
+    requirePermission: async () => ({ id: "nutzer-1", role: "admin" }),
+  } as never;
+  const basis = {
+    ask: ask as never,
+    ko: { get: async () => undefined } as never,
+    conflicts: { unresolved: async () => [] } as never,
+  };
+  app.register(askRoutes(basis, guards));
   app.register(
-    askRoutes(
+    klaraAusfuehrungRoutes(
       {
-        ask: ask as never,
-        ko: { get: async () => undefined } as never,
-        conflicts: { unresolved: async () => [] } as never,
+        ...basis,
+        // Die Bindungsprüfung gelingt hier immer — sie ist Gegenstand von `ask-routes.test.ts`.
         // NUR für KA5-R6f: ein Prüfer, der freigibt. Ob eine Einwilligung WIRKLICH trägt, ist
         // Gegenstand von `ka4-endzustand.test.ts` und wird hier ausdrücklich nicht nachgespielt —
         // gemessen wird allein, ob die Route auch auf dem freigegebenen Weg die Markierung
-        // weiterreicht. Ohne `freigebend` fehlt der Prüfer ganz, und die Route ist fail-closed.
-        ...(freigebend
-          ? { klaraSessions: { pruefeExterneAusfuehrung: async () => ({ erlaubt: true }) } }
-          : {}),
+        // weiterreicht. Ohne `freigebend` fehlt die Freigabeprüfung, und die Route ist fail-closed.
+        klaraSessions: {
+          pruefeBindung: async () => undefined,
+          ...(freigebend ? { pruefeExterneAusfuehrung: async () => ({ erlaubt: true }) } : {}),
+        } as never,
       },
-      {
-        requireUser: async () => ({ id: "nutzer-1", role: "admin" }),
-        requirePermission: async () => ({ id: "nutzer-1", role: "admin" }),
-      } as never,
+      guards,
     ),
   );
   await app.ready();
+  function anfrage(url: string, extraKopf: Record<string, string>) {
+    return (payload: Record<string, unknown>, addon = false) =>
+      app.inject({
+        method: "POST",
+        url,
+        headers: {
+          "content-type": "application/json",
+          ...extraKopf,
+          ...(addon ? { "x-als-addon": "ja" } : {}),
+        },
+        payload: { question: FRAGE, locale: "de", ...payload },
+      });
+  }
+  const klaraZiel = `/api/klara/sessions/${KLARA_BINDUNG["x-klara-session"]}/execute`;
   return {
     app,
     gesehen,
     protokoll,
-    fragen: (payload, addon = false) =>
-      app.inject({
-        method: "POST",
-        url: "/api/ask",
-        headers: {
-          "content-type": "application/json",
-          ...(addon ? { "x-als-addon": "ja" } : {}),
-        },
-        payload: { question: FRAGE, locale: "de", ...payload },
-      }),
+    fragen: anfrage("/api/ask", {}),
+    klara: anfrage(klaraZiel, KLARA_BINDUNG),
   };
 }
 
 describe("KA5 · der Serververtrag der Markierung", () => {
-  it("KA5-R6a · Session ohne mode: die Markierung erreicht den Dienst als eigene Option", async () => {
+  // R-0700: die Markierung ist ein KLARA-Feld. Sie reist über Klaras eigenen Zugang; der
+  // allgemeine Frageweg nimmt sie nicht mehr an (KA5-R6a, unten).
+  it("KA5-R6a · der allgemeine Frageweg weist die Markierung ab — der Dienst sieht sie nie", async () => {
     const m = await messplatz();
-    await m.fragen({ selection: PASSAGE });
-    expect(m.gesehen[0]?.selection).toBe(PASSAGE);
-    // Und sie wird NICHT in die Frage gemischt — dafür steht die Frage selbst gerade.
-    expect(m.gesehen[0]).toMatchObject({
-      validatedOnly: true,
-      verschlossenSichtbarFuer: expect.any(Function),
-    });
+    const res = await m.fragen({ selection: PASSAGE });
+    expect(res.statusCode).toBe(400);
+    expect(m.gesehen).toEqual([]);
     await m.app.close();
   });
 
-  it("KA5-R6b · retrieval-only (der Weg des Panels): die Enge bleibt, die Markierung kommt dazu", async () => {
+  it("KA5-R6b · Klaras Zugang ohne Freigabe: die Enge bleibt, die Markierung kommt dazu", async () => {
     const m = await messplatz();
-    await m.fragen({ mode: "retrieval-only", selection: PASSAGE });
+    await m.klara({ selection: PASSAGE, questionSource: "manual" });
     expect(m.gesehen[0]).toEqual({
       validatedOnly: true,
       retrievalOnly: true,
@@ -321,15 +356,11 @@ describe("KA5 · der Serververtrag der Markierung", () => {
     await m.app.close();
   });
 
-  it("KA5-R6c · Add-on-Zweig: dieselbe Weitergabe, dieselbe unveränderte Enge", async () => {
+  it("KA5-R6c · ein Add-on-Schlüssel erreicht Klaras Zugang nicht (403) — keine Weitergabe", async () => {
     const m = await messplatz();
-    await m.fragen({ selection: PASSAGE }, true);
-    expect(m.gesehen[0]).toEqual({
-      validatedOnly: true,
-      gapPolicy: "count_only",
-      retrievalOnly: true,
-      selection: PASSAGE,
-    });
+    const res = await m.klara({ selection: PASSAGE }, true);
+    expect(res.statusCode).toBe(403);
+    expect(m.gesehen).toEqual([]);
     await m.app.close();
   });
 
@@ -338,8 +369,9 @@ describe("KA5 · der Serververtrag der Markierung", () => {
     await m.fragen({});
     await m.fragen({ mode: "retrieval-only" });
     await m.fragen({}, true);
-    // Eine leere/rein weiße Markierung ist keine Markierung (§5.6) — vierter Fall, gleiche Erwartung.
-    await m.fragen({ mode: "retrieval-only", selection: "   \n\t  " });
+    // Eine leere/rein weiße Markierung ist keine Markierung (§5.6) — vierter Fall, gleiche Erwartung,
+    // jetzt an Klaras Zugang (R-0700), wo die Markierung allein noch reisen darf.
+    await m.klara({ selection: "   \n\t  " });
     // R-0278 (Nacharbeit 3, ben) und R-0584 (Auftrag gesamt-datenschutz-voreinstellung): auch die
     // Konsole antwortet nur aus geprüftem Wissen und meldet, was die Enge verschluckt.
     expect(m.gesehen[0]).toEqual({
@@ -381,61 +413,35 @@ describe("KA5 · der Serververtrag der Markierung", () => {
   // ist dort nicht zu sehen. Genau deshalb wird sie hier gemessen: ein Zweig, dessen Weitergabe man
   // nicht lesen kann, muss man prüfen können. Ohne diesen Fall wäre der freigegebene Weg der
   // einzige, für den nur ein Kommentar spräche.
-  it("KA5-R6f · auch die KA4-freigegebenen Zweige reichen die Markierung weiter", async () => {
+  it("KA5-R6f · auch der KA4-freigegebene Zweig reicht die Markierung weiter", async () => {
     const session = await messplatz(true);
-    await session.app.inject({
-      method: "POST",
-      url: "/api/ask",
-      headers: { "content-type": "application/json", ...KLARA_BINDUNG },
-      // R-0639 Runde 3 (Bens Befund B1): mit Klara-Bindung ist nur ausdrücklich `manual` getippt.
-      payload: {
-        question: FRAGE,
-        mode: "retrieval-only",
-        selection: PASSAGE,
-        questionSource: "manual",
-      },
-    });
+    // R-0639 Runde 3 (Bens Befund B1): mit Klara-Bindung ist nur ausdrücklich `manual` getippt.
+    await session.klara({ selection: PASSAGE, questionSource: "manual" });
     // Die Freigabe hebt `retrievalOnly` auf (KA4-Vertrag), `validatedOnly` bleibt (R-0278,
     // Nacharbeit 3) — und die Markierung bleibt trotzdem dabei.
     expect(session.gesehen[0]).toEqual({ validatedOnly: true, selection: PASSAGE });
     await session.app.close();
 
+    // R-0700: der frühere Add-on-Zweig mit KA4-Freigabe ist fort — ein Add-on-Schlüssel ist kein
+    // Sitzungsnutzer und erreicht Klaras Zugang nicht, auch nicht mit freigebendem Tor.
     const addon = await messplatz(true);
-    await addon.app.inject({
-      method: "POST",
-      url: "/api/ask",
-      headers: { "content-type": "application/json", "x-als-addon": "ja", ...KLARA_BINDUNG },
-      payload: { question: FRAGE, selection: PASSAGE, questionSource: "manual" },
-    });
-    expect(addon.gesehen[0]).toEqual({
-      validatedOnly: true,
-      gapPolicy: "count_only",
-      selection: PASSAGE,
-    });
+    const abgewiesen = await addon.klara({ selection: PASSAGE, questionSource: "manual" }, true);
+    expect(abgewiesen.statusCode).toBe(403);
+    expect(addon.gesehen).toEqual([]);
     await addon.app.close();
 
-    // GEGENPROBE: ohne Markierung übergibt der freigegebene Session-Zweig genau `validatedOnly` —
-    // keine Markierung, keine weiteren Felder. Daran hängt `KA4-E1` (R-0278, Nacharbeit 3).
+    // GEGENPROBE: ohne Markierung übergibt der freigegebene Zweig genau `validatedOnly` — keine
+    // Markierung, keine weiteren Felder. Daran hängt `KA4-E1` (R-0278, Nacharbeit 3).
     const ohne = await messplatz(true);
-    await ohne.app.inject({
-      method: "POST",
-      url: "/api/ask",
-      headers: { "content-type": "application/json", ...KLARA_BINDUNG },
-      payload: { question: FRAGE, mode: "retrieval-only", questionSource: "manual" },
-    });
+    await ohne.klara({ questionSource: "manual" });
     expect(ohne.gesehen[0]).toEqual({ validatedOnly: true });
     await ohne.app.close();
   });
 
   it("KA5-R6e · DER PROTOKOLLRIEGEL: kein Protokolleintrag trägt die Passage", async () => {
     const m = await messplatz();
-    // Mit Klara-Bindung, damit der KA4-Zweig wirklich protokolliert (`ask.ka4.dokument-consent`).
-    await m.app.inject({
-      method: "POST",
-      url: "/api/ask",
-      headers: { "content-type": "application/json", ...KLARA_BINDUNG },
-      payload: { question: FRAGE, mode: "retrieval-only", selection: PASSAGE },
-    });
+    // Klaras Zugang protokolliert die KA4-Entscheidung (`ask.ka4.dokument-consent`).
+    await m.klara({ selection: PASSAGE });
     expect(m.protokoll.join(" | ").toLowerCase()).not.toContain("nachtfalter");
     expect(m.protokoll.join(" | ")).not.toContain(PASSAGE);
     await m.app.close();
