@@ -2346,8 +2346,18 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `LaufZeile` gibt es dort nicht, und der Aufräumschritt hat keine Datei dieses Auftrags
     // berührt. 521 + 2 = 523. EHRLICH GESAGT: GERECHNET, nicht gemessen; weicht der Prüflauf ab,
     // gehört die gemessene Zahl hierher. `anbieter` 1 und `traeger` 2 bleiben.
+    //
+    // ADMIN-02 Nacharbeit 8 · GEMESSEN 526. Am Kandidaten 4d4b9c19 meldete der Sammler wörtlich
+    // „gemessen: 526 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 680 Quelldateien …
+    // expected { komponenten: 526, … } to deeply equal { komponenten: 523, … }". Die Rechnung 523
+    // war zu niedrig: dieser Auftrag trägt weiterhin genau ZWEI Bauteile bei (`ImportLaufListe`,
+    // `LaufZeile`; neue Quelldateien `components/ImportLaufListe.tsx`, `lib/importLaufHilfe.ts`,
+    // `lib/integrationStatus.ts`, `texte/integrationen.ts`). Die übrigen 3 Komponenten (und 2
+    // Quelldateien, 674 + 4 = 678 → 680) kommen aus dem eingemischten Hauptstand und sind ohne
+    // Git-Verlauf an diesem Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2
+    // sind unverändert — beide Seiten der Meldung nennen 1 und 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 523,
+      komponenten: 526,
       anbieter: 1,
       traeger: 2,
     });
