@@ -124,6 +124,9 @@ export const ADMIN_DETAILS: readonly AdminDetailZiel[] = [
   // des ZIELS ist „Sicherung", nicht „Sicherung anlegen": eine Navigation sichert nichts, und
   // diese Karte tut es auch nicht (Auslösen ist ausdrücklich ein eigenes Paket, Auftrag §10).
   { id: "sicherung", section: "system", labelKey: "adm.backup.title" },
+  // R-1034 / FR-I18N-02: Oberflächentexte im laufenden Betrieb anpassen und übersetzen. Unter
+  // „System", weil die Texte die ganze Instanz betreffen und keinem Fachbereich gehören.
+  { id: "uebersetzungen", section: "system", labelKey: "uebersetzungen.titel" },
 ];
 
 /** Das Thema, unter dem diese Detailkarte wohnt — oder `null` für eine unbekannte Kennung. */
