@@ -16,6 +16,7 @@ import {
   OutputError,
   type OutputSource,
 } from "./types";
+import { type Wochenupdate, WochenupdateService } from "./wochenupdate";
 
 // R-1175 (aufnahme:20260922:gesamt-rechte-inventar): die EINE Sichtbarkeitsentscheidung des
 // Betrachters (`sichtbarkeitsfilterFuer`, services/app/src/sichtbarkeit.ts) reist von der Route
@@ -109,5 +110,18 @@ export class OutputService {
     ].join("\n");
 
     return { kind: input.kind, title, audienceRole, generatedAt, markdown, provenance };
+  }
+
+  // RECHERCHE:pmo-fea-0004: das Wissensupdate fürs Teamgespräch — dieselbe Quelle, dieselbe Uhr.
+  // Auswahl und Format stehen in `wochenupdate.ts`; hier wird nur verdrahtet.
+  // R-1175: wie `listEligible` reist die Sichtbarkeitsentscheidung des Betrachters mit.
+  async wochenupdate(
+    input: { bis?: unknown } = {},
+    sichtbar: Sichtbarkeitsentscheidung = OHNE_BETRACHTER,
+  ): Promise<Wochenupdate> {
+    return new WochenupdateService({ koService: this.koService, now: this.now }).erzeuge(
+      input,
+      sichtbar,
+    );
   }
 }

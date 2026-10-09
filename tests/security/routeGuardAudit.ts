@@ -803,6 +803,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // R-1175 (Nacharbeit 3): Quellen und Erzeugung fahren die EINE Sichtbarkeitsentscheidung.
   "GET /api/output/sources": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   "POST /api/output/generate": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
+  // RECHERCHE:pmo-fea-0004: Wissensupdate fürs Teamgespräch (read-only, kein Versand). R-1175
+  // (Nacharbeit 18): Grundmenge über dieselbe Sichtbarkeitsentscheidung wie die Quellenliste.
+  "GET /api/output/wochenupdate": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
 
   // --- Lernplattform-Übergabe (lms-export-routes.ts) ---
   "POST /api/output/scorm/pruefen": {

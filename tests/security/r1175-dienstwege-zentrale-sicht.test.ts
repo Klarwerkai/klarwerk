@@ -76,6 +76,20 @@ describe("R-1175 · Output-Weg fährt die zentrale Sichtbarkeitsentscheidung", (
       output.generate({ kind: "instruction", koIds: ["OFFEN"] }, sicht),
     ).resolves.toMatchObject({ kind: "instruction" });
   });
+
+  // Nacharbeit 18 (Integration main): das Wissensupdate (RECHERCHE:pmo-fea-0004) kam mit main und
+  // filterte nur nach Status und Vertraulichkeit — der Titel aus dem fremden Space stand im Update.
+  it("das Wissensupdate nennt den Eintrag aus dem fremden Space nicht — ohne Betrachter bleibt er", async () => {
+    const output = await aufbau();
+    const zeitraum = { bis: "2026-01-03" };
+    const mitSicht = await output.wochenupdate(zeitraum, sichtbarkeitsfilterFuer(LESER));
+    expect(mitSicht.eintraege.map((e) => e.koId)).toEqual(["OFFEN"]);
+    expect(mitSicht.markdown).not.toContain("GESCHLOSSEN");
+    expect(mitSicht.provenance.map((p) => p.koId)).toEqual(["OFFEN"]);
+    // GEGENPROBE: ohne die Entscheidung (Systemaufruf) wäre er da — die Wirkung kommt von ihr.
+    const ohneSicht = await output.wochenupdate(zeitraum);
+    expect(ohneSicht.eintraege.map((e) => e.koId).sort()).toEqual(["GESCHLOSSEN", "OFFEN"]);
+  });
 });
 
 describe("R-1175 · der Schlüssel-Betrachter von /api/ask", () => {

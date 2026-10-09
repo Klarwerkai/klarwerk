@@ -457,6 +457,21 @@ const REGISTER: Record<string, Eintrag> = {
     anwendung: "sichtbar",
     grund: "Unsichtbares KO antwortet wie unbekanntes (UNKNOWN_KO); vertrauliches wirft weiterhin.",
   },
+  // RECHERCHE:pmo-fea-0004: das Wissensupdate nimmt nur validierte, nicht vertrauliche Objekte.
+  // Nacharbeit 18 (Integration main): bis hierher nur Prosa und nur Status/Vertraulichkeit — ohne
+  // die EINE Entscheidung kam ein Titel aus einem fremden Space ins Update. Jetzt nachgeprüfter Weg.
+  "GET /api/output/wochenupdate": {
+    urteil: "DIENST_FILTERT",
+    entscheidung: "sichtbarkeitsfilterFuer",
+    kette: [
+      { datei: "services/output/src/service.ts", funktion: "wochenupdate", filter: { index: 1 } },
+      { datei: "services/output/src/wochenupdate.ts", funktion: "erzeuge", filter: { index: 1 } },
+    ],
+    anwendung: "sichtbar",
+    grund:
+      "erzeuge begrenzt die Grundmenge mit sichtbar(ko); danach validiert UND !isConfidential " +
+      "(wochenupdate.ts, waehleWochenupdate).",
+  },
   "POST /api/output/scorm/pruefen": {
     urteil: "DIENST_FILTERT",
     entscheidung: "sichtbarkeitsfilterFuer",
