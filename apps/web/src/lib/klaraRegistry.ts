@@ -326,22 +326,18 @@ export function searchKlara(
 // Freigaben?") enthalten Füllwörter, die die strikte Jedes-Wort-Suche leer laufen lassen.
 // Hier zählt stattdessen, WIE VIELE Suchwörter (oder Synonym-Stämme) ein Eintrag trifft —
 // die besten k Einträge werden der KI als einzige Antwort-Grundlage mitgegeben.
-export function rankKlara(
-  entries: readonly ResolvedKlaraEntry[],
-  query: string,
-  limit = 6,
-): ResolvedKlaraEntry[] {
-  return bewerteKlara(entries, query)
-    .slice(0, limit)
-    .map((s) => s.entry);
-}
+//
+// R-1349 (Aufnahme gesamt-aufruferwaechter, Nacharbeit 7): hier stand `rankKlara(entries, query,
+// limit)`, die reine Registry-Rangliste. Das Produkt ruft sie nicht mehr; `askAi` nimmt
+// `klaraGrundlage` (unten), und die ist ohne Bibliotheksauszüge zeichengleich mit ihr. Die
+// Prüfstände messen dieselbe Rangliste deshalb am Produktweg (`tests/support/klara-rangfolge.ts`).
 
 interface BewerteterEintrag {
   entry: ResolvedKlaraEntry;
   score: number;
 }
 
-// Die Wortdeckung hinter `rankKlara`, mit Punktzahl — `klaraGrundlage` braucht sie zum Abwägen.
+// Die Wortdeckung hinter der Rangliste, mit Punktzahl — `klaraGrundlage` braucht sie zum Abwägen.
 function bewerteKlara(
   entries: readonly ResolvedKlaraEntry[],
   query: string,
@@ -375,7 +371,8 @@ export const BIBLIOTHEK_PLAETZE = 3;
 //   · ist kein Platz, verdrängt ein Auszug nur einen Eintrag, der WENIGER Suchwörter trifft als er,
 //     und dann den schwächsten — NIE eine FAQ-Antwort. So bleibt jede FAQ-Antwort, die heute in den
 //     zwölf Schnipseln steht, auch drin (`tests/app/f0304-klara-assistenzflaeche.test.tsx`).
-// Ohne passenden Auszug ist das Ergebnis zeichengleich mit `rankKlara(bestand, query, limit)`.
+// Ohne passenden Auszug ist das Ergebnis zeichengleich mit der reinen Registry-Rangliste
+// (`bewerteKlara(bestand, query)`, die besten `limit`).
 export function klaraGrundlage(
   bestand: readonly ResolvedKlaraEntry[],
   auszuege: readonly ResolvedKlaraEntry[],

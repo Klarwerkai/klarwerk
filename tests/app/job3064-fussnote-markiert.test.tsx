@@ -30,7 +30,8 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { AnswerMarkdown } from "../../apps/web/src/components/AnswerMarkdown";
 import { AntwortText } from "../../apps/web/src/components/start/AntwortText";
-import { stripAnswerMarkdown } from "../../apps/web/src/lib/answerMarkdown";
+// R-1349: der Klartext-Maßstab steht seit dem Aufruferwächter bei den Tests (kein Produktleser).
+import { stripAnswerMarkdown } from "../support/antwort-klartext";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

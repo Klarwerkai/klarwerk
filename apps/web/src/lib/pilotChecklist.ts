@@ -56,9 +56,9 @@ export const PILOT_CHECKLIST: readonly PilotCheckItem[] = [
   { id: "maintain", n: 7, labelKey: "knopfzitat.pilot.pflegen", to: "/lebenszyklus" },
 ];
 
-export function pilotChecklist(): readonly PilotCheckItem[] {
-  return PILOT_CHECKLIST;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `pilotChecklist()`, das die Tabelle oben
+// zurückgab. Die Hilfe liest `pilotSchritte` bzw. `PILOT_CHECKLIST` unmittelbar; der Zugriff rief
+// niemand und ist entfernt.
 
 /**
  * Ein Schritt samt der Auskunft, ob die lesende Rolle ihn gehen darf.
