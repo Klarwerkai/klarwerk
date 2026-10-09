@@ -18,9 +18,8 @@ import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { EinstellungenSeite } from "../components/einstellungen/Seite";
 import { Zeile, Zeilenkarte } from "../components/einstellungen/Zeilenkarte";
 import { Avatar, Button, Field, TextInput } from "../components/ui";
+import { OBERFLAECHEN_SPRACHEN as SPRACHEN } from "../lib/sprachregister";
 import { useSeitenhilfeAnmeldung } from "../shell/SeitenhilfeContext";
-
-const SPRACHEN = ["de", "en", "nl"] as const;
 
 function WirkungDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
   const { t } = useTranslation();
