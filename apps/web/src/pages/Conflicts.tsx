@@ -85,6 +85,7 @@ import {
 import { markiereTeile } from "../components/pruefen/markierung";
 import { abhaengigeQuelle, flaechenZustand } from "../components/pruefen/zaehler";
 import { Button, cx } from "../components/ui";
+import { adminHref } from "../lib/adminSections";
 import { CONFLICT_BOARD_TEXT, canDismiss, conflictOriginInfo } from "../lib/conflictBoard";
 import {
   CONFLICT_COLLISION_TEXT,
@@ -332,8 +333,13 @@ export function Conflicts(): JSX.Element {
         <AiCheckBoardCaveat className="text-[12px] leading-relaxed text-trust-warn-text" />
         {role === "admin" ? (
           <p>
-            {t("con.emptyExamplesHint")}{" "}
-            <Link to="/import#beispielpakete" className="font-semibold text-brand-text underline">
+            {/* ADMIN-16: die Beispielpakete wohnen nicht mehr auf der Importseite, sondern in der
+                Verwaltung unter Vorführdaten — der Hinweis nennt deshalb den neuen Ort. */}
+            {t("betriebdemo.konfliktHinweis")}{" "}
+            <Link
+              to={adminHref("vorfuehrdaten", "pakete")}
+              className="font-semibold text-brand-text underline"
+            >
               {t("con.emptyExamplesCta")}
             </Link>
           </p>
