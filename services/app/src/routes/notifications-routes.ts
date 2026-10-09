@@ -6,6 +6,7 @@ import type { NotificationSeenRepo } from "../../../notifications";
 import type { ValidationService } from "../../../validation";
 import type { Guards, SessionUser } from "../http";
 import {
+  type FrischeNotice,
   type ImpactNotice,
   type KenntnisnahmeNotice,
   type Notification,
@@ -37,6 +38,10 @@ export interface NotificationRoutesDeps {
   // Optional, weil der Feed auch ohne diesen Dienst gebaut werden kann; die Sichtbarkeit läuft
   // unten in jedem Fall über dieselbe Prüfung wie bei den Zuweisungen.
   kenntnisnahmen?: { meldungenFuer(nutzerId: string): Promise<KenntnisnahmeNotice[]> };
+  // aufnahme:20260922:gesamt-wissen-frische: Fristerinnerung (R-0248), Wochenvorlage (R-0266) und
+  // Prüfanforderung an Autor bzw. Nachfolger (R-1635) — `frische-meldungen.ts`. Optional wie die
+  // Kenntnisnahme; die Sichtbarkeit läuft unten über dieselbe Prüfung.
+  frische?: { meldungenFuer(nutzerId: string): Promise<FrischeNotice[]> };
 }
 
 // PMO-FEA-0002: „Hat geholfen"-Ereignisse für den Originalautor. Bewusst ehrlich:
@@ -122,6 +127,10 @@ async function loadFeed(
   // entzogen wurde, der sieht auch dessen Titel in der Glocke nicht mehr.
   const offeneKenntnisnahmen = (await deps.kenntnisnahmen?.meldungenFuer(user.id)) ?? [];
   const sichtbareKenntnisnahmen = await sichtbareEintraege(user, offeneKenntnisnahmen, deps.kos);
+  // aufnahme:20260922:gesamt-wissen-frische: dieselbe Prüfung — ein Titel erscheint nur, wenn der
+  // Betrachter das Objekt sehen darf.
+  const frischeMeldungen = (await deps.frische?.meldungenFuer(user.id)) ?? [];
+  const sichtbareFrische = await sichtbareEintraege(user, frischeMeldungen, deps.kos);
   const sichtbareUrheberImpacts = new Set(
     await sichtbareEintraege(
       user,
@@ -139,6 +148,7 @@ async function loadFeed(
     assignments: sichtbareZuweisungen,
     impacts,
     kenntnisnahmen: sichtbareKenntnisnahmen,
+    frische: sichtbareFrische,
   }).map((n) => ({
     ...n,
     seen: seen.has(n.id),

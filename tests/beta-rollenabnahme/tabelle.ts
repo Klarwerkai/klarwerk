@@ -1335,9 +1335,31 @@ export const TABELLE: Zeile[] = [
     gruppe: "lifecycleRoutes",
     methode: "GET",
     pfad: "/api/lifecycle/pending",
-    belegstelle: "services/app/src/routes/lifecycle-routes.ts:98",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:100",
     tor: "ko.read",
     erwartet: NUR_LESEN,
+  },
+  // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden. Gemessen wird das Rechtetor mit einem
+  // LEEREN Rumpf: der Admin kommt durch und bekommt 400 (`INVALID`, kein Paar) — vor jedem Lesen
+  // und Schreiben, also ohne Wirkung auf die Bühne. Vorschau und Zug mit echten Konten misst
+  // `tests/wissen-verantwortung/routen.test.ts`.
+  {
+    gruppe: "lifecycleRoutes",
+    methode: "POST",
+    pfad: "/api/lifecycle/handover/preview",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:178",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "lifecycleRoutes",
+    methode: "POST",
+    pfad: "/api/lifecycle/handover",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:193",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
   },
   {
     gruppe: "livewallRoutes",
@@ -1974,7 +1996,7 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/lifecycle/couplings/gibt-es-nicht",
     route: "/api/lifecycle/couplings/:koId",
-    belegstelle: "services/app/src/routes/lifecycle-routes.ts:47",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:49",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },

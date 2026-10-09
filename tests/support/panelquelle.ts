@@ -189,8 +189,62 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 8 (Antwort-Erklärung): GEMESSEN im Prüflauf zu Kandidat 7e98d5c4 (`8ad37a9c…`, „Received"
  * von E2, HISTORIE/nacharbeit-8/PRUEFUNG/integration-word-fenster.log) und unverändert übernommen;
  * die vier Panel-Dateien sind seit dieser Messung unberührt.
+ *
+ * Aufnahme 20260922 · antwort-quellenanzeige (R-0309/R-0325): `taskpane.js` ändert sich (Stand-Datum
+ * an der Herkunftszeile, tragende Quellen samt Prüfstand/Version in der Dokument-Quellenzeile, ein
+ * verdichteter Kommentarkopf; 12494 Zeilen). Der Wert unten ist damit ein PLATZHALTER bis zur
+ * Messung — ohne zugelassenes Hash-Werkzeug hier nicht berechenbar; E2 meldet den neuen Blob im
+ * Prüflauf als „Received", er wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 1 (antwort-quellenanzeige): GEMESSEN im Prüflauf zu Kandidat 95df9979 (`c8b2ec45…`,
+ * „Received" von E2, HISTORIE/nacharbeit-1/PRUEFUNG/panel-ausgabe-und-waechter.log) und unverändert
+ * übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 3 (antwort-quellenanzeige): `taskpane.js` (tragende Quellen, Stand je Quelle,
+ * Einschub, verdichtete Kommentare; 12495 Zeilen) und `taskpane.css` ändern sich erneut. Der Wert
+ * unten ist damit wieder ein PLATZHALTER bis zur Messung; E2 meldet den neuen Blob als „Received".
+ * NACHARBEIT 4: GEMESSEN im Prüflauf zu Kandidat ca6061e4 (`ebe3b2c0…`, „Received" von E2,
+ * HISTORIE/nacharbeit-3/PRUEFUNG/panel-waechter-und-pins.log) und unverändert übernommen; die vier
+ * Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 5: `taskpane.js` ändert sich erneut (Belegstelle am Quellenlink, Wissensnetz-Sprung,
+ * 12497 Zeilen). Der Wert unten ist wieder ein PLATZHALTER bis zur Messung („Received" von E2).
+ * NACHARBEIT 6: GEMESSEN im Prüflauf zu Kandidat 300b9834 (`baadfb41…`, „Received" von E2,
+ * HISTORIE/nacharbeit-5/PRUEFUNG/panel-belegstelle-und-wissensnetz.log) und unverändert
+ * übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ * INTEGRATION mit main (Kandidat d9fe11c3, Nacharbeit 8): `taskpane.js` trägt zusätzlich die
+ * Auswertung von `KI_ABGESCHALTET` (gesamt-funktionsschalter, R-1040; 12498 Zeilen). Der Wert unten
+ * beschreibt das zusammengeführte Dokument nicht mehr und ist ein PLATZHALTER bis zur Messung
+ * („Received" von E2).
+ * NACHARBEIT 10: GEMESSEN im Prüflauf zu Kandidat a54d2eff am zusammengeführten Panel (`96fc81a8…`,
+ * „Received" von E2, HISTORIE/nacharbeit-10/PRUEFUNG/panel-pins-nach-integration.log) und
+ * unverändert übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 11 (Ben zu c022ce07, R-0310/R-0326): `taskpane.js` und `taskpane.css` geändert
+ * (Absatz-Belege, Fußnoten je Absatz, Passage als Belegstellen-Link). Der Wert unten ist wieder ein
+ * PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet den Ist-Wert als „Received", er wird danach
+ * gemessen übernommen.
+ * NACHARBEIT 12: GEMESSEN im Prüflauf zu Kandidat ff6019e3 (`9bee4487…`, „Received" von E2,
+ * HISTORIE/nacharbeit-12/PRUEFUNG/panel-waechter-und-pins.log) und unverändert übernommen; die
+ * vier Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 13 (Ben zu 6cc581b4): `taskpane.js`/`taskpane.css` geändert (Sichtbarkeit je
+ * Absatzmarke). Der Wert unten ist wieder ein PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet den
+ * Ist-Wert als „Received", er wird danach gemessen übernommen.
+ * NACHARBEIT 14: GEMESSEN im Prüflauf zu Kandidat 966d179e (`3cd14422…`, „Received" von E2,
+ * HISTORIE/nacharbeit-14/PRUEFUNG/r0310-panel-absatzmarken.log) und unverändert übernommen; die
+ * vier Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 15 (Ben zu 8e6c9d73): `taskpane.js`, `taskpane.html` und `taskpane.css` geändert
+ * (Lücke nennt die unbekannte Zuordnung, `#ask-gap-zuordnung`). Der Wert unten ist wieder ein
+ * PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet den Ist-Wert als „Received", er wird danach
+ * gemessen übernommen.
+ * NACHARBEIT 17: GEMESSEN im Prüflauf zu Kandidat 2c099872 (`cb99796c…`, „Received" von E2,
+ * HISTORIE/nacharbeit-17/PRUEFUNG/r0310-panel-und-pins.log) und unverändert übernommen; die vier
+ * Panel-Dateien sind seit dieser Messung unberührt.
+ *
+ * INTEGRATION Antwort-Erklärung (`8ad37a9c…`) × antwort-quellenanzeige (main `cb99796c…`),
+ * Nacharbeit 17 der Antwort-Erklärung: `taskpane.js` trägt Lage/Konfliktseiten (R-0321/R-0335) UND
+ * die Absatz-Beleg-Zuordnung (R-0310); drei Kommentarköpfe ohne Wortverlust verdichtet (12490
+ * Zeilen, B3). Keiner der beiden Werte beschreibt das zusammengeführte Dokument; der Wert unten
+ * (main) ist ein PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet den Ist-Wert als „Received", er
+ * wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "8ad37a9c5c6d29e8cc28730ce28052012afdce34";
+export const PANEL_VOR_SCHNITT_BLOB = "cb99796c9a3134f0ffd02a97c3c1eb270055e4b8";
 
 export interface PanelTeile {
   html: string;

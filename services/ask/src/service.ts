@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import {
   type Fragekontext,
+  type GelernteHalbwertszeiten,
   type GeltungsPassung,
   type KnowledgeObject,
   type KnowledgeType,
@@ -13,6 +14,7 @@ import {
   dropConfidential,
   expandSearchTerms,
   geltungFuerFrage,
+  haltbarkeitAbgelaufen,
   isConfidential,
   normalizeSearchTerms,
 } from "../../knowledge-object";
@@ -176,9 +178,11 @@ function erweiterteSuchterme(frageterme: readonly string[], selection?: string):
 //
 // WAS AUSDRÜCKLICH BLEIBT (R-0345, kein offener Chatbot):
 //   · Die Antwort bleibt quellengebunden; der Faden schafft keine Grundlage, er findet sie nur.
-//   · GEBUNDEN wird weiter NUR die getippte Frage (`decktAlleFragebegriffe(question, …)`): jede
-//     Quelle muss alle Begriffe der Nachfrage tragen. Ein früheres Thema kann deshalb keine Quelle
-//     zur Antwort machen, die zur neuen Frage nichts sagt.
+//   · GEBUNDEN werden die getippte Frage UND der Themenanker (`decktAlleFragebegriffe` für beide):
+//     jede Quelle muss alle Begriffe der Nachfrage tragen — ein früheres Thema kann keine Quelle
+//     zur Antwort machen, die zur neuen Frage nichts sagt — und die sachlichen Einschränkungen des
+//     Ankers gelten weiter (R-0278, Nacharbeit 12: eine Quelle zu Ventil F4 trägt keine Nachfrage
+//     zu Ventil F3).
 //   · `frageterme` bleibt das Getippte — jede Aussage ÜBER die Antwort (Fundstelle, Etikett)
 //     rechnet weiter darauf (s. die Trennung an `erweiterteSuchterme`).
 //   · Die Fadenterme hängen in der Vorauswahl HINTER den Termen der Frage, der Markierung und
@@ -263,7 +267,7 @@ function fadenfragen(faden?: readonly string[]): string[] {
 // `citedSources` und das Prüfprotokoll rechnen unverändert auf dem, wonach wirklich gesucht wurde.
 // R-0348 ist die eine benannte Ausnahme, und sie ist keine Ableitung: eine Nachfrage reist mit den
 // vorher GETIPPTEN Fragen ihrer Fragestrecke als Frage im Zusammenhang (`fadenfragen`). Gebunden
-// bleibt dabei allein die neue Frage; ohne Faden gilt der Satz oben wörtlich.
+// bleiben dabei die neue Frage und der Themenanker; ohne Faden gilt der Satz oben wörtlich.
 //
 // WARUM PAARE UND NICHT DIE GEWEITETE FRAGE — das ist der ganze Unterschied zu der Bauform, die
 // JOB 3039 gemessen und zurückgebaut hat (Zahlen in `tests/suche-zuordnung/…`):
@@ -382,6 +386,10 @@ export interface AskServiceDeps {
   audit?: AuditService;
   now?: () => number;
   genId?: () => string;
+  // aufnahme:20260922:gesamt-wissen-frische (R-1636): die aus der Bewährungs-Historie gelernten
+  // Halbwertszeiten je Kategorie (`KoService.gelernteHalbwertszeiten`). Fehlt der Zugang, gilt für
+  // die Haltbarkeit (R-0248) die Vorgabe je Wissensart — dieselbe Regel, nur ohne Lernstand.
+  halbwertszeiten?: () => Promise<GelernteHalbwertszeiten>;
   // FUNKE-FIX P0 (bens ROT-1): HMAC-Secret für den opaken Answer-Receipt. Fehlt es, wird ein
   // prozess-lokales Zufalls-Secret erzeugt (single-process Monolith; Belege sind kurzlebig). Für
   // Mehr-Instanz-/deterministische Testläufe kann es injiziert werden (build-app: optional aus ENV).
@@ -456,6 +464,14 @@ export interface AskResult {
   // FUNKE-FIX P0 (bens ROT-1): opaker Beleg über (Nutzer + ausgelieferte Quell-KOs). Der Client
   // reicht ihn beim „Danke" (/api/ask/helpful) zurück; der Server verifiziert die Quellen-Bindung.
   receipt: string;
+  /**
+   * R-0338 (Aufnahme gesamt-suchindex-aktualitaet, Ben Nacharbeit 3): die Fassung JEDER
+   * herangezogenen Quelle (`result.sources`), so wie DIESE Antwort sie gelesen hat — aus denselben
+   * Objekten, die an den Antwortweg gingen, nicht aus einem Bestand des Browsers. Grundlage des
+   * Auffrischen-Vertrags der Fragenseite (`apps/web/src/lib/fragenArbeitsstand.ts`). Optional,
+   * damit ältere Aufrufer und Doubles gültig bleiben; dieser Dienst setzt es immer.
+   */
+  quellenStand?: Record<string, number>;
   // ==============================================================================================
   // AUFTRAG-mega77 BLOCK A — HIER STAND `ungeprueftUnterdrueckt`, UND ER IST ENTFERNT.
   // ==============================================================================================
@@ -691,6 +707,7 @@ export class AskService {
   private readonly audit: AuditService | undefined;
   private readonly now: () => number;
   private readonly genId: () => string;
+  private readonly halbwertszeiten: (() => Promise<GelernteHalbwertszeiten>) | undefined;
   private readonly receiptSecret: Buffer;
   private readonly withTx: WithTx | undefined;
   /** W3-C1: der Beleg-Schreibweg. `undefined` heisst: dieser Aufbau schreibt keine Snapshots. */
@@ -712,6 +729,7 @@ export class AskService {
     this.audit = deps.audit;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
+    this.halbwertszeiten = deps.halbwertszeiten;
     // FUNKE-FIX P0: ohne injiziertes Secret ein prozess-lokales Zufalls-Secret — Belege sind
     // kurzlebig, das Secret verlässt den Server nie.
     this.receiptSecret = deps.receiptSecret ?? randomBytes(32);
@@ -1053,6 +1071,10 @@ export class AskService {
       : {};
     // R-1633: der Fragekontext (Werk/Schicht/Rolle) — ohne ihn ist der Ablauf der bisherige.
     const fragekontext = opts?.fragekontext;
+    // aufnahme:20260922:gesamt-wissen-frische (R-0248): EIN Zeitpunkt für alle Quellen dieser Frage.
+    const jetzt = this.now();
+    // R-1636: die gelernte Halbwertszeit der Kategorie bestimmt die Frist mit.
+    const gelernt = await this.halbwertszeiten?.();
     // D5: die Suchprojektion trägt den Dokumenttext — ein weiterer inhaltlesender Schritt.
     this.pruefeKiSperre("suchprojektion", kiBeginn);
     const refs: KnowledgeRef[] = await Promise.all(
@@ -1081,6 +1103,11 @@ export class AskService {
           ...(fragekontext
             ? { geltungsrang: geltungFuerFrage(ko.geltung, fragekontext).rang }
             : {}),
+          // R-0248: nach Fristende nicht mehr „gesichert" (answerStanding), bis der Verantwortliche
+          // bestätigt. Nur an validierten Quellen gesetzt — ungeprüfte sind ohnehin nicht gesichert.
+          ...(ko.status === "validiert" && haltbarkeitAbgelaufen(ko, jetzt, gelernt)
+            ? { haltbarkeitAbgelaufen: true as const }
+            : {}),
         };
       }),
     );
@@ -1108,20 +1135,27 @@ export class AskService {
     const ordnung = new Map<string, string[]>(
       prefiltered.map((ko): [string, string[]] => [ko.id, [ko.category, ...(ko.tags ?? [])]]),
     );
-    const vollstaendig = refs.filter((ref) =>
-      decktAlleFragebegriffe(
-        question,
-        [
-          ref.title,
-          ref.statement,
-          ...(ref.captionTexts ?? []),
-          ref.bodyText ?? "",
-          ...(ordnung.get(ref.id) ?? []),
-        ].join(" "),
-        relevanz,
-      ),
-    );
-    // R-0348: gebunden hat oben die getippte Frage; gewählt und beantwortet wird im Zusammenhang.
+    // R-0278 (Nacharbeit 12, ben): bei einer anknüpfenden Nachfrage gelten die sachlichen
+    // Einschränkungen des THEMENANKERS (erste Fadenfrage, s. `fadenfragen`) weiter. Gebunden wird
+    // deshalb die Nachfrage UND der Anker: nach „Welche maximale Temperatur gilt am Ventil F3?" darf
+    // „Und bei Dauerbetrieb?" keine Quelle zu Ventil F4 tragen. Zwischenfragen binden nicht — sie
+    // sind die Nachfragen, die der Anker einrahmt. Ohne Faden ist der Ablauf der bisherige.
+    const anker = faden[0];
+    const vollstaendig = refs.filter((ref) => {
+      const durchsuchbar = [
+        ref.title,
+        ref.statement,
+        ...(ref.captionTexts ?? []),
+        ref.bodyText ?? "",
+        ...(ordnung.get(ref.id) ?? []),
+      ].join(" ");
+      return (
+        decktAlleFragebegriffe(question, durchsuchbar, relevanz) &&
+        (anker === undefined || decktAlleFragebegriffe(anker, durchsuchbar, relevanz))
+      );
+    });
+    // R-0348: gebunden haben oben die getippte Frage und ihr Anker; gewählt und beantwortet wird im
+    // Zusammenhang.
     const candidates = waehleKandidaten(frageImZusammenhang, vollstaendig, DEFAULT_TOP_K, relevanz);
     // R-0284: der Rahmen dieser Suche, aus genau den Werten, die den Weg bestimmt haben.
     const pruefrahmen: AskPruefrahmen = {
@@ -1250,6 +1284,16 @@ export class AskService {
     const zuschnittFeld: { antwortZuschnitt?: AskAntwortZuschnitt } = antwortZuschnitt
       ? { antwortZuschnitt }
       : {};
+    // R-0338: die gelesene Fassung jeder herangezogenen Quelle — aus `prefiltered`, den Objekten,
+    // aus denen die Antwort entstand. Eine Quelle ohne Objekt dort (nicht erwartbar) fehlt im Stand;
+    // die Fläche behandelt eine Antwort mit unvollständigem Stand dann wie eine ohne Stand.
+    const quellenStand: Record<string, number> = {};
+    for (const id of result.sources) {
+      const fassung = prefiltered.find((ko) => ko.id === id)?.version;
+      if (fassung !== undefined) {
+        quellenStand[id] = fassung;
+      }
+    }
     // R-1633 — „Sichtbar im UI": je herangezogener Quelle Geltung und Passung, aus denselben
     // Objekten (`prefiltered`) und derselben Regel, die den Rang gesetzt hat. Ohne Kontext fehlt
     // das Feld; eine Quelle ohne Objekt in `prefiltered` gilt als ohne Geltungsangabe.
@@ -1358,6 +1402,7 @@ export class AskService {
           answerId,
           gap: null,
           receipt,
+          quellenStand,
           ...ungeprueftFeld,
           ...verschlossenFeld,
           ...geltungFeld,
@@ -1380,6 +1425,7 @@ export class AskService {
         answerId,
         gap,
         receipt,
+        quellenStand,
         ...ungeprueftFeld,
         ...verschlossenFeld,
         ...geltungFeld,
@@ -1392,6 +1438,7 @@ export class AskService {
       answerId,
       gap: null,
       receipt,
+      quellenStand,
       ...ungeprueftFeld,
       ...verschlossenFeld,
       ...geltungFeld,

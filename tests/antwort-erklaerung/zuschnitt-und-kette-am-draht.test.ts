@@ -48,6 +48,7 @@ interface Antwort {
       vertrauenswert: { wert: number | null; schwaechsteQuelle: string | null };
       woerterbuch?: {
         benennung: string;
+        definition: string;
         herkunft: Record<string, unknown>;
         vertrauenswert: null;
         belastbarkeit: string;
@@ -61,6 +62,7 @@ interface Antwort {
     ergaenzungen: { art: string; quelleId: string | null; eintraege: string[] }[];
     quellengebundenerText: string;
   };
+  absaetze?: { text: string; quellen: string[] }[];
 }
 
 async function anmelden(app: App, mail: string): Promise<{ kopf: Kopf; id: string }> {
@@ -177,6 +179,11 @@ describe("R-0346 · Rolle und Anlass wirken auf die Antwort selbst", () => {
       // Ohne Wörterbuchergänzung ist der quellengebundene Teil die ganze Antwort.
       quellengebundenerText: a.result.answer,
     });
+    // Integration mit R-0310 (main): die angehängten Abschnitte tragen ihre tragende Quelle
+    // ausdrücklich — sonst hielten die Flächen sie als „unbelegt“ zurück.
+    const absatz = (anfang: string) => a.absaetze?.find((x) => x.text.startsWith(anfang));
+    expect(absatz(`Voraussetzungen (Wartung ${SELTENES_WORT}):`)?.quellen).toEqual([ko]);
+    expect(absatz(`Maßnahmen (Wartung ${SELTENES_WORT}):`)?.quellen).toEqual([ko]);
     // Der Schluss der Kette trägt genau die ausgelieferte Antwort.
     expect(a.result.belastbarkeit.argumentation.at(-1)).toMatchObject({
       art: "schluss",
@@ -257,8 +264,18 @@ describe("R-0346 · Rolle und Anlass wirken auf die Antwort selbst", () => {
     expect(b.quellen.map((q) => q.koId)).toEqual(a.result.citedSources);
     expect(b.vertrauenswert.schwaechsteQuelle).toBe(a.result.citedSources[0]);
     expect(b.woerterbuch).toEqual([
-      { benennung: SELTENES_WORT, herkunft, vertrauenswert: null, belastbarkeit: "nicht_bewertet" },
+      {
+        benennung: SELTENES_WORT,
+        definition: "Abdeckung über dem Querstromventil.",
+        herkunft,
+        vertrauenswert: null,
+        belastbarkeit: "nicht_bewertet",
+      },
     ]);
+    // Integration mit R-0310 (main): der Absatz „Begriffe“ bekommt KEINE Wissensquelle — er wird
+    // deshalb von den Flächen nicht im Antworttext ausgegeben; die Erklärung steht samt Herkunft
+    // im abgegrenzten Abschnitt `woerterbuch` (oben).
+    expect(a.absaetze?.find((x) => x.text.startsWith("Begriffe ("))?.quellen).toEqual([]);
     // Ben nacharbeit-13: der Schluss trägt nur, was die Quellen belegen — die Wörterbucherklärung
     // wird den Wissensquellen nicht zugeschrieben („gestützt auf“), weder als Stufe noch im Text.
     expect(JSON.stringify(b.argumentation)).not.toContain("begriff-haube");

@@ -344,6 +344,7 @@ describe("Antwort-Erklärung · Belastbarkeit in der Konsole", () => {
       woerterbuch: [
         {
           benennung: "Druckbehälter",
+          definition: "Geschlossener Behälter unter Überdruck.",
           herkunft: {
             eintragId: "begriff-db",
             fassung: 2,
@@ -363,6 +364,10 @@ describe("Antwort-Erklärung · Belastbarkeit in der Konsole", () => {
     expect(eintraege).toHaveLength(1);
     const eintrag = eintraege[0]?.textContent ?? "";
     expect(eintrag).toContain("Druckbehälter");
+    // Die Erklärung selbst steht hier — im Antworttext hält R-0310 den quellenlosen Absatz zurück.
+    expect(marke("ask-belastbarkeit-woerterbuch-definition")?.textContent).toBe(
+      "Geschlossener Behälter unter Überdruck.",
+    );
     expect(eintrag).toContain("Wörterbucheintrag begriff-db, Fassung 2");
     expect(eintrag).toContain("Werk Nord");
     expect(eintrag).toContain("Verantwortlich: Instandhaltung");

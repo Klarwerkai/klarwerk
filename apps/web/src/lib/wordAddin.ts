@@ -513,6 +513,8 @@ export interface AskEvidence {
 
 export interface AskOutcome {
   kind: AskOutcomeKind;
+  // R-0310/R-0325: an der Lücke — kein Absatz belegt UND keine tragende Quelle (Zuordnung unbekannt).
+  zuordnungUnbekannt?: true;
   answer?: string;
   sources?: string[]; // KO-Ids aus AnswerResult.sources — Titel/Trust laedt das Panel je KO nach
   trust?: number;
@@ -547,6 +549,8 @@ export interface AskOutcome {
   // Widersprüche — gelesen, nie hergeleitet. Ein älterer Server sendet sie nicht (`undefined`).
   lage?: string | undefined;
   konflikte?: AskKonflikt[] | undefined;
+  // R-0310: die belegten Absätze samt ihren Quellen (askAbsaetzeLesen) — `undefined` ohne Feld.
+  absaetze?: AbsatzBeleg[] | undefined;
   // AUFTRAG-mega77 BLOCK A: hier stand `ungeprueft` — die Zahl der unterdrueckten ungeprueften
   // Treffer aus mega74 Teil 2b, samt der Zusage „0 heisst es gab wirklich nichts". Feld, Zusage und
   // serverseitige Berechnung sind entfernt (services/ask/src/service.ts): die Zahl entstand ohne
@@ -819,6 +823,48 @@ function konfliktSeiteAus(roh: unknown): AskKonfliktSeite {
   return { einsehbar: false, traegtAntwort: !!s && s.traegtAntwort === true };
 }
 
+// ================================================================================================
+// Aufnahme 20260922 · antwort-quellenanzeige (R-0310) — DIE ABSATZ-BELEG-ZUORDNUNG IM PANEL.
+// ================================================================================================
+// Der Server liefert neben `result` das ausdrückliche Feld `absaetze` (services/app/src/
+// absatz-belege.ts): je Absatz Text und die Quellen, die ihn belegen. Gelesen wird es hier, nicht
+// hergeleitet. Fehlt es (älterer Server), ist das Ergebnis `undefined` und nichts wird behauptet.
+// Sonst bleiben NUR Absätze mit mindestens einer TRAGENDEN Quelle (`citedSources`); Fußnotenmarken
+// `[n]` und Markdown werden entfernt — die Marke zeigt das Panel als Ziffer am Absatzende. Ein
+// Absatz ohne Beleg wird nicht ausgegeben; bleibt keiner, ist es eine Wissenslücke.
+export interface AbsatzBeleg {
+  text: string;
+  quellen: string[];
+}
+
+function askAbsaetzeLesen(
+  body: unknown,
+  cited: readonly string[] | undefined,
+): AbsatzBeleg[] | undefined {
+  const roh = (body as { absaetze?: unknown } | null)?.absaetze;
+  if (!Array.isArray(roh)) {
+    return undefined;
+  }
+  const tragend = cited ?? [];
+  const out: AbsatzBeleg[] = [];
+  for (const eintrag of roh as unknown[]) {
+    const a = (eintrag ?? {}) as { text?: unknown; quellen?: unknown };
+    const quellen = Array.isArray(a.quellen)
+      ? (a.quellen as unknown[]).filter(
+          (id): id is string => typeof id === "string" && tragend.includes(id),
+        )
+      : [];
+    const text =
+      typeof a.text === "string"
+        ? stripAskAnswerMarkdown(a.text.replace(/\s*\[[0-9\s,]+\]/g, ""))
+        : "";
+    if (quellen.length > 0 && text.length > 0) {
+      out.push({ text, quellen });
+    }
+  }
+  return out;
+}
+
 export function performAsk(
   question: string,
   locale: "de" | "en" | "nl",
@@ -908,6 +954,8 @@ export function performAsk(
           typeof firstStep?.snippet === "string" && firstStep.snippet.trim().length > 0
             ? firstStep.snippet.trim()
             : undefined;
+        // R-0310: die ausdrückliche Absatz-Beleg-Zuordnung — nur belegte Absätze (askAbsaetzeLesen).
+        const absaetze = askAbsaetzeLesen(body, cited);
         // AUFNAHME 20260922 · R-0335/R-0321 — LAGE UND KONFLIKTSEITEN DES SERVERS, GELESEN.
         // Nur eine BELEGTE Wissenslücke ist eine. Ein Körper ohne Ergebnis, eine unbekannte oder
         // gestörte Lage und eine Lage, die der Antwortform widerspricht, sind ein technischer Fehler
@@ -946,11 +994,17 @@ export function performAsk(
           });
         }
         // `typeof answer` steht hier ein zweites Mal nur für die Typprüfung — `belegt` enthält sie.
-        if (result && belegt && typeof answer === "string") {
+        // R-0310: mit Absatzzuordnung wird nur ausgegeben, wenn mindestens ein Absatz belegt ist —
+        // sonst ist es eine Wissenslücke (unten). Die Lage oben bleibt am Antwortkörper geprüft.
+        if (result && belegt && typeof answer === "string" && (!absaetze || absaetze.length > 0)) {
           return {
             kind: "answered",
             // WP-UX-WOW-1 U1: Klartext im Panel UND im eingefuegten Text — Markdown-Zeichen raus.
-            answer: stripAskAnswerMarkdown(answer),
+            // R-0310: mit Absatzzuordnung NUR die belegten Absätze.
+            answer: absaetze
+              ? absaetze.map((a) => a.text).join("\n\n")
+              : stripAskAnswerMarkdown(answer),
+            absaetze,
             sources,
             trust: typeof result.trust === "number" ? result.trust : 0,
             // AUFTRAG-mega34 B: die serverseitige Einstufung reist mit. Fehlt sie, ist der Grad
@@ -969,7 +1023,13 @@ export function performAsk(
         }
         // AUFTRAG-mega77 BLOCK A: die Wissensluecke ist wieder eine reine Wissensluecke. Der
         // Antwortkoerper wird an dieser Stelle NICHT mehr nach einer Bestandszahl durchsucht.
-        return { kind: "gap" };
+        // R-0310/R-0325: nichts belegt UND keine tragende Quelle → die Lücke nennt die unbekannte
+        // Zuordnung, statt den unbelegten Text doch auszugeben.
+        const unbekannt =
+          absaetze !== undefined &&
+          absaetze.length === 0 &&
+          !(cited ?? []).some((id) => sources.includes(id));
+        return unbekannt ? { kind: "gap", zuordnungUnbekannt: true } : { kind: "gap" };
       });
     })
     .catch((err): AskOutcome => {

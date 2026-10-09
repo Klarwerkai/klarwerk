@@ -335,6 +335,9 @@ export function Belastbarkeit({ b }: { b: AntwortBelastbarkeit }): JSX.Element {
                 className="flex flex-wrap gap-x-2 text-[11.5px] text-muted"
               >
                 <span className="font-semibold text-text">{w.benennung}</span>
+                <span data-testid="ask-belastbarkeit-woerterbuch-definition" className="text-text">
+                  {w.definition}
+                </span>
                 <span>
                   {t("ask.belastbarkeit.woerterbuch.eintrag", {
                     id: w.herkunft.eintragId,

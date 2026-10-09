@@ -27,6 +27,7 @@ import {
 } from "../../../knowledge-object";
 import { can } from "../../../rbac";
 import { bindeAnbieter, bindeZustimmung, imBindungsrahmen } from "../../../reasoner";
+import { type AbsatzBeleg, absatzBelege } from "../absatz-belege";
 import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
 import { schalterAn } from "../feature-flags";
@@ -229,14 +230,59 @@ function zuschnittBegriffe(
 
 // Ben nacharbeit-11: die tatsächlich angehängten Begriffserklärungen samt Herkunft — für den
 // abgegrenzten Abschnitt der Belastbarkeit.
-function angehaengteBegriffe(
-  zuschnitt: AskAntwortZuschnitt | undefined,
-): { benennung: string; herkunft: BegriffHerkunft }[] {
+interface AngehaengterBegriff {
+  benennung: string;
+  definition: string;
+  herkunft: BegriffHerkunft;
+}
+
+function angehaengteBegriffe(zuschnitt: AskAntwortZuschnitt | undefined): AngehaengterBegriff[] {
   return (zuschnitt?.ergaenzungen ?? []).flatMap((e) =>
     e.art === "begriffe"
-      ? e.herkunft.map((herkunft, i) => ({ benennung: e.benennungen[i] ?? "", herkunft }))
+      ? e.herkunft.map((herkunft, i) => {
+          const benennung = e.benennungen[i] ?? "";
+          // Der Eintrag lautet „Benennung: Definition“ (antwort-zuschnitt.ts).
+          const eintrag = e.eintraege[i] ?? "";
+          const definition = eintrag.startsWith(`${benennung}: `)
+            ? eintrag.slice(benennung.length + 2)
+            : eintrag;
+          return { benennung, definition, herkunft };
+        })
       : [],
   );
+}
+
+// R-0310 × R-0346 (Integration mit main): `absatzBelege` kennt zwei ausdrückliche Gründe — Marke
+// und Wortlaut der Aussage. Die Abschnitte, die der Zuschnitt angehängt hat, stammen wörtlich aus
+// `conditions`/`measures` EINER tragenden Quelle; das ist ebenso ausdrücklich (`quelleId` am
+// Zuschnitt), nicht aus Lage oder Nachbarschaft. Zugeordnet wird nur ein bisher unbelegter Absatz,
+// dessen Zeilen nach der Kopfzeile GENAU die Einträge dieses Abschnitts sind. Der Wörterbuchabschnitt
+// bekommt KEINE Wissensquelle (Ben nacharbeit-11) und bleibt nach R-0310 unbelegt.
+function zuschnittBelege(
+  absaetze: AbsatzBeleg[] | undefined,
+  zuschnitt: AskAntwortZuschnitt | undefined,
+  result: { sources: readonly string[]; citedSources: readonly string[] },
+): AbsatzBeleg[] | undefined {
+  if (!absaetze || !zuschnitt) {
+    return absaetze;
+  }
+  const quellenAbschnitte = zuschnitt.ergaenzungen.flatMap((e) =>
+    e.art !== "begriffe" &&
+    result.citedSources.includes(e.quelleId) &&
+    result.sources.includes(e.quelleId)
+      ? [{ quelleId: e.quelleId, zeilen: e.eintraege.map((x) => `- ${x}`) }]
+      : [],
+  );
+  return absaetze.map((a) => {
+    if (a.quellen.length > 0) {
+      return a;
+    }
+    const zeilen = a.text.split("\n").slice(1);
+    const gleich = (soll: readonly string[]): boolean =>
+      soll.length === zeilen.length && soll.every((z, i) => z === zeilen[i]?.trim());
+    const treffer = quellenAbschnitte.find((q) => gleich(q.zeilen));
+    return treffer ? { text: a.text, quellen: [treffer.quelleId] } : a;
+  });
 }
 
 /**
@@ -685,7 +731,7 @@ async function evidenceFor(
   pruefen: () => void,
   sicht: BelastbarkeitsSicht,
   // Ben nacharbeit-11: die angehängten Wörterbucherklärungen — getrennt von der Quellenbilanz.
-  woerterbuch: readonly { benennung: string; herkunft: BegriffHerkunft }[] = [],
+  woerterbuch: readonly AngehaengterBegriff[] = [],
 ): Promise<{
   evidence: ReturnType<typeof answerEvidence>;
   belastbarkeit: AntwortBelastbarkeit;
@@ -884,11 +930,11 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // die Weitergabe eine Eigenschaft der Route, keine Wiederholung.
         //
         // DIE ZWEIGE BLEIBEN DADURCH WÖRTLICH, WAS SIE WAREN. Das ist kein Nebeneffekt, sondern
-        // Absicht: `tests/app/mega52-validiert-zusicherung-sammler.test.ts` liest den Session-
-        // Abschluss `answer(user.id)` AUS DIESEM QUELLTEXT, um zu entscheiden, ob die Anzeigetexte
-        // „Antworten kommen ausschließlich aus validiertem Wissen" versprechen dürfen. Ein zweites
-        // Argument dort hätte den Wächter nicht nur rot gemacht — hätte man ihn „beruhigt", hätte
-        // er ab da geschwiegen und der Text hätte mehr versprechen dürfen als der Weg hält.
+        // Absicht: `tests/app/mega52-validiert-zusicherung-sammler.test.ts` liest die Session-
+        // Abschlüsse `answer(user.id, …)` AUS DIESEM QUELLTEXT, um zu entscheiden, ob die
+        // Anzeigetexte „Antworten kommen ausschließlich aus validiertem Wissen" versprechen dürfen.
+        // Seit R-0278 (Nacharbeit 3) tragen ALLE drei `validatedOnly: true` — der Wächter urteilt
+        // „filtert" und bleibt scharf: ein Abschluss ohne den Filter macht ihn wieder streng.
         //
         // OHNE MARKIERUNG BLEIBT `opts` UNANGETASTET, auch als `undefined`. Ein Zweig, der heute
         // gar keine Optionen übergibt, übergibt weiterhin gar keine (kein leeres Objekt) — daran
@@ -1040,9 +1086,21 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             }
             throw fehler;
           }
+          // R-0310: die ausdrückliche Absatz-Beleg-Zuordnung reist NEBEN `result` (absatz-belege.ts);
+          // ohne beantwortete Frage fehlt sie. R-0346: die Abschnitte, die der Zuschnitt wörtlich
+          // aus einer tragenden Quelle angehängt hat, tragen diese Quelle ausdrücklich.
+          const absaetze = zuschnittBelege(
+            absatzBelege(out.result),
+            out.antwortZuschnitt,
+            out.result,
+          );
           // AUFNAHME 20260922: `belastbarkeit` steht NEBEN `evidence`, nicht darin — die Einstufung
           // bleibt der unveränderte Vertrag, den Word und die Paritätstafel lesen.
-          reply.code(200).send({ ...out, result: { ...out.result, evidence, belastbarkeit } });
+          reply.code(200).send({
+            ...out,
+            result: { ...out.result, evidence, belastbarkeit },
+            ...(absaetze ? { absaetze } : {}),
+          });
         };
         const auth = request.authContext;
         if (auth?.authKind === "addon") {
@@ -1065,7 +1123,9 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             ka4Bestaetigt = true;
             // `gapPolicy` bleibt: die Wissenslücken-Nebenwirkung ist keine Egressfrage und war nie
             // Gegenstand der Einwilligung.
-            await answer(auth.principal.id, { gapPolicy: "count_only" });
+            // R-0278 (Nacharbeit 3, ben): die Einwilligung öffnet das MODELL, nicht den Prüfstand.
+            // `validatedOnly` bleibt — Ungeprüftes wird auf keinem Weg Antwortgrundlage.
+            await answer(auth.principal.id, { validatedOnly: true, gapPolicy: "count_only" });
             return;
           }
           // SCRUM-490 D1/D2: validated-only + count_only für den Nur-Lese-Add-on-Key. R2 (B1):
@@ -1111,9 +1171,11 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             (await frageDarfHinaus(user.id))
           ) {
             ka4Bestaetigt = true;
-            // Der normale Answerweg — dieselbe Form wie der Konsolen-Ask darunter, keine
-            // Sonderbehandlung: `validatedOnly`/`retrievalOnly` entfallen, alles andere bleibt.
-            await answer(user.id);
+            // Der Modellweg: `retrievalOnly` entfällt — dafür ist die Einwilligung da.
+            // R-0278 (Nacharbeit 3, ben; Originalquelle: „greift die Einwilligung im Word-Weg, läuft
+            // die Antwort OHNE validatedOnly … das hat niemand beschlossen", Fix-Skizze
+            // `answer(user.id, { validatedOnly: true })`): der Prüfstand bleibt die Grenze.
+            await answer(user.id, { validatedOnly: true });
             return;
           }
           // JOB 1591 D1 (W5) — Pedis Befund um 21:28, und der Weg, auf dem er entstanden ist.
@@ -1151,14 +1213,15 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // hier gibt es einen SessionUser und damit den Sichtbarkeitsvertrag, den mega77 fuer jede
         // Meldung verlangt. Der Add-on-Zweig oben bekommt den Filter weiterhin NICHT (kein
         // SessionUser, kein Vertrag — dort bleibt alles, wie mega77 es hinterlassen hat).
+        // R-0278 (Nacharbeit 3, ben): auch die Web-Ansicht zieht ausschließlich geprüftes Wissen
+        // heran — „für alle Wege gleich". Ohne geprüfte Grundlage antwortet Klara nicht und legt die
+        // Wissenslücke an; die Torlage (`verschlossen`, „Freigabe fehlt") sagt dazu, dass es
+        // ungeprüfte Inhalte gibt. Damit endet die Entscheidung mega52 C für diesen Weg.
         //
-        // R-0584 (DS10, Auftrag gesamt-datenschutz-voreinstellung): auch die Konsole antwortet
-        // standardmäßig NUR aus geprüftem Wissen. Bis hierher lief dieser Zweig ohne
-        // `validatedOnly` — der einzige Frageweg, auf dem Ungeprüftes Grundlage einer Antwort werden
-        // konnte. Das ersetzt die Abwägung aus mega52 C (Juli: „Text auf die Wahrheit ziehen statt
-        // Filter") durch den jüngeren Auftrag. Was die Enge verschluckt, wird wie im Panel-Weg
+        // R-0584 (DS10, Auftrag gesamt-datenschutz-voreinstellung) kommt unabhängig zum selben
+        // Ergebnis und ergänzt die Meldung: was die Enge verschluckt, wird wie im Panel-Weg
         // (JOB 1591 W5) GEMELDET, nicht verwendet — gefiltert durch die Sichtbarkeit DIESES Nutzers.
-        // Der ausdrücklich freigegebene Sonderweg (KA4-Einwilligung, oben) bleibt unverändert.
+        // Den KA4-Einwilligungszweig oben hält R-0278 ebenfalls in der Enge (`validatedOnly`).
         // R-0348: nur hier — getippte Fragen eines Sitzungsnutzers ohne Dokumentbezug — reist der
         // Gesprächsfaden mit (Wirkung und Grenzen an `fadenfragen` im Fragedienst).
         fadenErlaubt = true;

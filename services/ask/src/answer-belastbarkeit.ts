@@ -340,6 +340,11 @@ export interface AntwortBelastbarkeit {
 
 export interface WoerterbuchErgaenzung {
   benennung: string;
+  /**
+   * Die Erklärung selbst. Sie steht HIER, im abgegrenzten Abschnitt: der Absatz „Begriffe“ der
+   * Antwort hat keine Wissensquelle und wird nach R-0310 von den Flächen nicht ausgegeben.
+   */
+  definition: string;
   herkunft: BegriffHerkunft;
   /** Immer `null`: kein Wert wird behauptet, auch nicht der der Wissensquellen. */
   vertrauenswert: null;
@@ -373,7 +378,7 @@ export interface AntwortBelastbarkeitInput {
   /** R-0346: Rolle und Anlass. Fehlt er, gilt die enge Vorgabe (`unbekannt`, `frage`). */
   zuschnitt?: AntwortZuschnitt;
   /** Ben nacharbeit-11: die tatsächlich angehängten Wörterbucheinträge (aus `antwortZuschnitt`). */
-  woerterbuch?: readonly { benennung: string; herkunft: BegriffHerkunft }[];
+  woerterbuch?: readonly { benennung: string; definition: string; herkunft: BegriffHerkunft }[];
 }
 
 function argumentation(
@@ -641,6 +646,7 @@ export function antwortBelastbarkeit(input: AntwortBelastbarkeitInput): AntwortB
           woerterbuch: input.woerterbuch.map(
             (w): WoerterbuchErgaenzung => ({
               benennung: w.benennung,
+              definition: w.definition,
               herkunft: { ...w.herkunft },
               vertrauenswert: null,
               belastbarkeit: "nicht_bewertet",
