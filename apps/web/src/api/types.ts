@@ -560,6 +560,42 @@ export interface KoFrische {
 /** R-0658: welche Art Schutzdaten der Server erkannt hat — Spiegel von `SchutzdatenArt`. */
 export type SchutzdatenArt = "personalnummer" | "kontodaten";
 
+/** R-0507 / JOB 557: Spiegel von `KnowledgeOwnership` (services/knowledge-object/src/types.ts). */
+export interface KnowledgeOwnership {
+  owner?: string;
+  reviewers: string[];
+  validators: string[];
+}
+
+/** R-0554: die Vorschau der Wissensübergabe (`services/app/src/wissensuebergabe.ts`). */
+export interface UebergabeVorschau {
+  von: string;
+  an: string;
+  wissensobjekte: { id: string; title: string }[];
+  eigentum: { id: string; title: string }[];
+  /** Beiträge im Papierkorb, für die die Person hauptverantwortlich ist. */
+  papierkorb: { id: string; title: string }[];
+  entwuerfe: { id: string }[];
+  luecken: { id: string }[];
+  pruefaufgaben: { koId: string }[];
+}
+
+export type UebergabeArt =
+  | "wissensobjekt"
+  | "eigentum"
+  | "papierkorb"
+  | "entwurf"
+  | "luecke"
+  | "pruefaufgabe";
+
+/** R-0554: das Ergebnis der ausgeführten Wissensübergabe. */
+export interface UebergabeErgebnis {
+  von: string;
+  an: string;
+  uebergeben: Record<UebergabeArt, number>;
+  fehlgeschlagen: { art: UebergabeArt; id: string; grund: string }[];
+}
+
 export interface KnowledgeObject {
   id: string;
   title: string;
@@ -620,6 +656,11 @@ export interface KnowledgeObject {
   version: number;
   originalAuthor: string;
   author: string;
+  // R-0507 / JOB 557: wem das Objekt gehört, wer es geprüft und wer es freigegeben hat
+  // (`services/knowledge-object/src/ownership.ts`). Fehlt das Feld, ist nichts benannt — dann gilt
+  // der Autor als verantwortlich, und die Oberfläche sagt das ausdrücklich, statt einen Eigentümer
+  // zu behaupten.
+  ownership?: KnowledgeOwnership;
   neededValidations: number;
   assignments: string[];
   // SCRUM-415: Vertraulichkeitsstufe. Für den ZUGRIFF gilt „fehlt = intern" (sichtbarkeit.ts:39-43);
