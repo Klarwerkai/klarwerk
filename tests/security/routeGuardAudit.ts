@@ -410,6 +410,23 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
 
+  // --- Paarpflichten (paarpflichten-routes.ts) ---
+  // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): ausdrücklich gewählte Prüfläufe über alle
+  // Aussagepaare. Routenrecht wie die gewählte Vollprüfung eines Objekts (`ko.validate`), dazu je
+  // Aussage `darfSehen` — eine nicht sichtbare Aussage antwortet wie eine fehlende.
+  "POST /api/paarpflichten/laeufe": {
+    protection: "ko.validate",
+    zeilenrecht: ["darfSehen"],
+  },
+  "GET /api/paarpflichten/laeufe/:laufId": {
+    protection: "ko.validate",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/paarpflichten/laeufe/:laufId/fortsetzen": {
+    protection: "ko.validate",
+    zeilenrecht: ["darfSehen"],
+  },
+
   // --- Conflicts (conflicts-routes.ts) ---
   // JOB 1546 D2 (A28, OFFEN.md:165): das dauerhafte Signal am EIGENEN Objekt. Routenrecht ist
   // `ko.read` wie bei den beiden Boards; das Zeilenrecht ist `sichtbareFuer` und danach die
@@ -464,6 +481,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // JOB 1171 D1: die ableitende Auskunft. Dasselbe Recht und derselbe Torwaechter wie die
   // uebrigen Entwurfsrouten (`requireVisibleDraft`) — sie liest denselben Entwurf.
   "GET /api/drafts/:id/naechster-schritt": { protection: "ko.create" },
+  // R-1133: die Duplikatsfrage über den Entwurfsindex. Dasselbe Recht und derselbe Torwächter
+  // (`requireVisibleDraft`), jeder Treffer zusätzlich über `canSeeDraft`.
+  "GET /api/drafts/:id/gleicher-inhalt": { protection: "ko.create" },
   "PUT /api/drafts/:id": { protection: "ko.create" },
   "DELETE /api/drafts/:id": { protection: "ko.create" },
   "POST /api/drafts/:id/promote": { protection: "ko.create" },
