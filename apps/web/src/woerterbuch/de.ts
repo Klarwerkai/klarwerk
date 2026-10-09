@@ -581,6 +581,7 @@ const de = {
   // neutrale Humanisierung aus `lib/auditAction.ts` zuständig.
   "audit.action.user_role_change": "Rolle geändert",
   "audit.action.user_approve": "Konto freigegeben",
+  "audit.action.user_account_corrected": "Kontodaten berichtigt",
   "audit.action.auth_login": "Angemeldet",
   "audit.action.auth_logout": "Abgemeldet",
   "audit.action.notice_acknowledged": "Hinweis zur Kenntnis genommen",
@@ -5582,6 +5583,10 @@ const de = {
   "adm.resetConfirm": "Zurücksetzen",
   "adm.resetCancel": "Abbrechen",
   "adm.resetDone": "Passwort zurückgesetzt; alle Sitzungen beendet.",
+  // R-0582 (DS13): der Admin berichtigt Name und E-Mail eines Kontos.
+  "adm.correct": "Kontodaten berichtigen",
+  "adm.correctSave": "Kontodaten speichern",
+  "adm.correctDone": "Kontodaten berichtigt.",
   // JOB 4021 (ERSTEINRICHTUNG-GAST T2): die Befristung eines Zugangs — sehen, setzen, verlängern,
   // beenden. Eigenes Präfix, eigene Schlüssel; kein bestehender Satz wird umgewidmet.
   "adm.gastfrist.titel": "Zugang gültig bis",
@@ -5660,6 +5665,17 @@ const de = {
   "prof.passwordSubmit": "Passwort ändern",
   "prof.passwordChanged":
     "Passwort geändert. Aus Sicherheitsgründen wurdest du überall abgemeldet — bitte neu anmelden.",
+  // R-0582 (DS13): Kontodaten selbst berichtigen.
+  "prof.correctTitle": "Kontodaten berichtigen",
+  "prof.correctPassword": "Aktuelles Passwort (nur bei neuer E-Mail)",
+  "prof.correctSubmit": "Kontodaten speichern",
+  "prof.correctSaved": "Kontodaten gespeichert.",
+  "prof.correctUnchanged": "Nichts geändert.",
+  "prof.correctSso": "Stattdessen mit SSO bestätigen",
+  "prof.correctSaml": "Stattdessen mit SAML-Firmen-Login bestätigen",
+  "prof.correctSsoConfirmed": "Identität per SSO bestätigt — jetzt die Kontodaten speichern.",
+  "prof.correctSsoKontoGewechselt":
+    "Bei der SSO-Bestätigung wurde ein anderes Konto angemeldet. Der Entwurf des vorherigen Kontos wurde verworfen; hier stehen die Daten des jetzt angemeldeten Kontos.",
   "help.kicker": "Hilfe",
   "help.open": "Hilfe öffnen",
   "help.openCenter": "Im Hilfe-Center öffnen",
