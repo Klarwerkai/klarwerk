@@ -1007,6 +1007,21 @@ const REGISTER: Record<string, Eintrag> = {
   },
   "GET /api/i18n/locales": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
   "GET /api/i18n/:locale/:key": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
+  // R-1034 / FR-I18N-02: gepflegte Oberflächentexte und Sprachen (i18n-routes.ts, uebersetzungen.ts).
+  // Kein Feld stammt aus einem Wissensobjekt; die Ablage kennt den Bestand nicht.
+  "GET /api/i18n/:locale": { urteil: "KEIN_KO_INHALT", grund: "Gepflegte Oberflächentexte." },
+  "PUT /api/admin/i18n/:locale/:key": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "R-1034 — Antwort ist der gesetzte Oberflächentext; users.manage im Rumpf.",
+  },
+  "DELETE /api/admin/i18n/:locale/:key": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "R-1034 — Antwort ist Sprache, Schlüssel und ob entfernt wurde; users.manage im Rumpf.",
+  },
+  "PUT /api/admin/i18n-sprachen/:locale": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "FR-I18N-02 — Antwort ist Sprachkennung und Name; users.manage im Rumpf.",
+  },
   "GET /addin": { urteil: "KEIN_KO_INHALT", grund: "statisches Add-in-Bundle." },
   "GET /addin/*": { urteil: "KEIN_KO_INHALT", grund: "statisches Add-in-Bundle." },
   // R-0713 (mcp-routes.ts), beurteilt mit R-1175 Nacharbeit 1: der MCP-Zugang. `GET` antwortet

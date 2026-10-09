@@ -507,6 +507,8 @@ PFLICHTTABELLEN=(
   interaktions_gedaechtnis
   ko_embeddings
   loeschantraege
+  ui_uebersetzungen
+  ui_sprachen
   unternehmensprofil_fassungen
   richtlinien_fassungen
   richtlinien_handlungen
