@@ -298,10 +298,30 @@ describe("Antwort-Erklärung · Belastbarkeit an POST /api/ask", () => {
     expect(frei.argumentation.at(-1)).toMatchObject({ art: "schluss", lage: frei.lage });
 
     // Dieselbe Frage aus dem Dokument (Word-Markierung): Anlass `dokument`, der Text reist nicht mit.
+    // R-0700 (Integration mit Auftrag ki-modus-wahrheit): die Dokumentfrage geht über Klaras EIGENEN,
+    // sitzungsgebundenen Zugang; der allgemeine Frageweg weist Klara-Felder wie `questionSource` ab
+    // (400 `KLARA_EIGENER_WEG`). Dafür eine echte Word-Sitzung; Erwartungen unverändert.
+    const instanz = "bel-e-instanz";
+    const sitzung = await app.inject({
+      method: "POST",
+      url: "/api/klara/sessions",
+      headers: { ...admin, "x-klara-instance": instanz },
+      payload: {
+        addinInstanceId: instanz,
+        documentDescriptor: { kind: "saved", hostDocumentId: "bel-e-doc" },
+      },
+    });
+    expect(sitzung.statusCode, sitzung.body).toBe(201);
+    const sessionId = String(sitzung.json().sessionId);
     const res = await app.inject({
       method: "POST",
-      url: "/api/ask",
-      headers: admin,
+      url: `/api/klara/sessions/${sessionId}/execute`,
+      headers: {
+        ...admin,
+        "x-klara-instance": instanz,
+        "x-klara-session": sessionId,
+        "x-klara-document": String(sitzung.json().documentContextId),
+      },
       payload: {
         question: `${SELTENES_WORT} Wartung entlasten`,
         mode: "retrieval-only",
