@@ -957,6 +957,9 @@ export type KoErrorCode =
   // ein Löschen darf nicht die Nebenwirkung eines Tippfehlers sein (fail-closed, wie
   // INVALID_CONFIDENTIALITY daneben).
   | "INVALID_OWNERSHIP"
+  // R-0507: nur der benannte Eigentümer selbst kann seine Verantwortung zurückgeben. Wer nicht
+  // Eigentümer ist (oder wo keiner benannt ist), bekommt diesen Code — an der Route ein 403.
+  | "NOT_OWNER"
   // SCRUM-509 R2: Herabstufung ohne Prüfer-/Admin-Rolle (atomar an der Datenschicht geprüft).
   | "DOWNGRADE_FORBIDDEN"
   // SCRUM-509 R3: optimistische Concurrency — der Voll-Objekt-Write war veraltet (rowVersion-Konflikt).
