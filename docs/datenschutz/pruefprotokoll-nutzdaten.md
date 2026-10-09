@@ -50,6 +50,9 @@ wiederholt.
 | `ko.confidentiality` | `level`, `previous`, `downgrade` | Z |
 | `ko.ownership` | `owner`, `reviewers`, `validators`, `previousOwner`; bei Übergabe im Papierkorb zusätzlich `imPapierkorb` | K (Nutzer-Ids), Z |
 | `ko.ownership-role` | `role`, `added` | K |
+| `ko.ownership-released` | `previousOwner` | K |
+| `ko.owner-validated` | `koVersion` | Z |
+| `lifecycle.handover` (Ziel: Kennung der ausscheidenden Person) | `from`, `to`, `transferred` (Anzahl je Art), `failed` (Art und Kennung, kein Inhalt) | K, Z |
 | `ko.purged` | `reason` (geschlossene Menge) + Zusatz des Aufrufers | Z |
 | `ko.restored`, `ko.deleted` | `trash` / leer + Beitrag | Z |
 | `ko.revised` | `version`, ggf. `proposalId` | Z, K |
