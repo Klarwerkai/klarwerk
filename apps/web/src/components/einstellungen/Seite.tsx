@@ -47,7 +47,9 @@ export function Reiterspalte({
   reiter: readonly Reiter[];
   aktiv: string;
   onWechsel: (id: string) => void;
-  start?: Starteintrag;
+  // `| undefined`: `EinstellungenSeite` reicht ihren optionalen Wert unverändert durch
+  // (`exactOptionalPropertyTypes`).
+  start?: Starteintrag | undefined;
 }): JSX.Element {
   return (
     // Schmal: eine umbrechende Leiste über die volle Breite — jeder Reiter bleibt ganz sichtbar und

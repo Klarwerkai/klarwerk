@@ -79,7 +79,8 @@ import {
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const t = (key: string, opts?: Record<string, unknown>): string => i18n.t(key, opts);
+const t = (key: string, opts?: Record<string, unknown>): string =>
+  opts === undefined ? i18n.t(key) : i18n.t(key, opts);
 
 // ---- Fiktive Bestände (keine echten Personen, keine echten Inhalte) ------------------------------
 const BOARD = [
@@ -130,12 +131,22 @@ const KONTEN = [
     approved: true,
   },
 ];
+// Nacharbeit 1: vollständig nach `ReasonerConfigStatus` (api/types.ts) — die erste Fassung ließ
+// `taskConfig` weg, und die KI-Karte (K1.3 öffnet sie) brach an `taskConfig.global` ab. Der Server
+// sendet diese Felder immer; ein Prüfstand mit halber Antwort misst die Attrappe, nicht das Produkt.
 const KI = {
-  configured: false,
-  cloudConfigured: false,
   provider: "none",
+  configured: false,
   mode: "demo",
+  fallbackAvailable: true,
+  supportsLocales: ["de", "en", "nl"],
+  tasks: [],
+  taskConfig: { global: "auto", perTask: {} },
+  effective: {},
+  cloudConfigured: false,
   localConfigured: false,
+  effectiveProvider: {},
+  persisted: false,
 };
 
 const ALLE: Record<string, unknown> = {

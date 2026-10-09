@@ -606,13 +606,16 @@ export function Admin(): JSX.Element {
                 <Zeilenkarte testId="filter-konten">
                   <Zeile
                     label={t("verwaltung.filter.wartet")}
-                    wert={
-                      users.data === undefined
-                        ? undefined
-                        : wartendeKonten(users.data).length === 0
-                          ? t("verwaltung.filter.keineWartenden")
-                          : String(wartendeKonten(users.data).length)
-                    }
+                    // Derselbe Wertvertrag wie jede Zeile: ohne Antwort „–"/„nicht abrufbar", nie
+                    // eine Zahl ohne Daten (`zeilenWert.ts`).
+                    wert={wertText(
+                      wertBefund(
+                        abfragelage(users, online),
+                        users.data ? String(wartendeKonten(users.data).length) : null,
+                        users.data !== undefined && wartendeKonten(users.data).length === 0,
+                      ),
+                      t("verwaltung.filter.keineWartenden"),
+                    )}
                     testId="zeile-filter-wartet"
                     steuerung={
                       <button
