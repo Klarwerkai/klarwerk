@@ -96,8 +96,11 @@ function defaultIconFor(source: GallerySource): ReactNode {
 // noch Schritte kostet — der sichtbaren Wegzeile. Die Reihe traegt `w-full`, ist also ab `sm`
 // geometrisch dieselbe Reihe wie zuvor (gemessen in `kachel-schmal-chromium.test.ts`, Fall D1:
 // Badge steht weiterhin rechts vom Namen in derselben Zeile).
+// WCAG 1.4.11 (Audit nacharbeit-38): der Fokusring war `ring-brand/40` — Marke zu 40 % maß im
+// modernen Thema auf Weiß 1,62:1. Jetzt das deckende Marken-TEXT-Token wie die globale Fokusregel
+// (index.css), ≥ 5:1 auf hellen Flächen.
 const TILE_LAYOUT =
-  "flex flex-col items-start gap-1 rounded-card border px-3 py-2.5 text-left text-[13px] font-semibold transition-colors focus:outline-none focus-visible:border-ink/50 focus-visible:ring-2 focus-visible:ring-brand/40";
+  "flex flex-col items-start gap-1 rounded-card border px-3 py-2.5 text-left text-[13px] font-semibold transition-colors focus:outline-none focus-visible:border-ink/50 focus-visible:ring-2 focus-visible:ring-brand-text";
 
 function TileInhalt({ source, icon }: { source: GallerySource; icon: ReactNode }): JSX.Element {
   const { t } = useTranslation();
