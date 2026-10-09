@@ -604,9 +604,19 @@ describe("E6 · K5 — Vertraulichkeit und Freigabe wirken in Klara", () => {
     await einwilligen();
     await fragen("Wie hoch ist der Prüfdruck QZ9?");
     await bisAntwort();
-    expect(q(document, "klara-gespraech")?.textContent).not.toContain("777");
-    expect(draht.lage.vorlagen.join("\n")).not.toContain("777");
-    expect(JSON.stringify(await serverGespraech(a, leser))).not.toContain("777");
+    // Gesucht wird der WERT samt Einheit bzw. Satzteil, nicht die blosse Ziffernfolge: zufällige
+    // Kennungen (UUID, z. B. `c6c77799-…`) und Zeitstempel enthalten „777“ ohne jedes Leck
+    // (nacharbeit-26). Die Frage selbst enthält keinen der beiden Teile.
+    const verraet = (text: string | null | undefined): boolean =>
+      /777\s*bar|beträgt\s*777/.test(text ?? "");
+    expect(verraet(q(document, "klara-gespraech")?.textContent)).toBe(false);
+    expect(verraet(draht.lage.vorlagen.join("\n"))).toBe(false);
+    expect(verraet(JSON.stringify(await serverGespraech(a, leser)))).toBe(false);
+    // Kalibrierung: dieselbe Prüfung erkennt den Wortlaut, wo er stünde, und schweigt bei Kennungen.
+    expect(verraet(GEHEIM)).toBe(true);
+    const kennungen =
+      '{"id":"c6c77799-c50a-458b-af54-da98fd000777","am":"2026-10-09T12:00:00.777Z"}';
+    expect(verraet(kennungen)).toBe(false);
   });
 });
 
