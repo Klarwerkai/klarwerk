@@ -126,6 +126,7 @@ import {
   PapierkorbDetail,
   WerkseinstellungenDetail,
 } from "./AdminDatenDetails";
+import { DemopaketeDetail, TestimporteDetail } from "./AdminDemoDetails";
 import {
   KiDetail,
   KiDupDetail,
@@ -286,35 +287,21 @@ function Kurzlink({
  *                               wird NICHTS still aktiviert.
  *   Beides an           → Kurzlink auf den bisherigen Bedienort.
  *
- * `anker` und `label` gibt es für den EINEN Fall, den Codex in Runde 2 gefunden hat: die
- * Beispiel-/Demopakete wohnen als Kasten AUF `/import` (`components/ExamplePackages.tsx`, Anker
- * `#demopakete`). Sie standen bis dahin als unbedingt aktiver Kurzlink im Thema „Vorführdaten" —
- * also wurde bei ausgeschalteter Stufe 2 ein gesperrtes Ziel angeboten, während dieselbe Datei
- * einen Zeilenabstand weiter oben denselben Bereich korrekt als „Modul aus" erklärte. Jetzt gehen
- * beide durch DIESE eine Regel; der Anker hängt nur hinten an derselben Route.
+ * ADMIN-16: der frühere Sonderfall mit Anker (die Demopakete als Kasten auf `/import#demopakete`)
+ * ist weg — die Pakete haben jetzt eine eigene Karte unter „Vorführdaten".
  */
-function BereichsZeile({
-  id,
-  testId,
-  anker,
-  label,
-}: {
-  id: string;
-  testId: string;
-  anker?: string;
-  label?: string;
-}): JSX.Element | null {
+function BereichsZeile({ id, testId }: { id: string; testId: string }): JSX.Element | null {
   const { t } = useTranslation();
   const { role, stufe2 } = useRole();
   const item = ALL_ITEMS.find((i) => i.id === id);
   if (!item || !roleAllows(item, role)) {
     return null;
   }
-  const name = label ?? t(anzeigeNameKey(item));
+  const name = t(anzeigeNameKey(item));
   if (!canSee(item, role, stufe2)) {
     return <Zeile label={name} wert={t("einst.modul.aus")} testId={testId} />;
   }
-  return <Kurzlink label={name} to={`${item.path}${anker ?? ""}`} testId={testId} />;
+  return <Kurzlink label={name} to={item.path} testId={testId} />;
 }
 
 /** Sieht diese Rolle den Bereich, hat er aber Stufe 2 aus? Dann gehört der Aktivierungsweg darunter. */
@@ -652,6 +639,11 @@ export function Admin(): JSX.Element {
         return <KiDupDetail onZurueck={zurueck} />;
       case "demo":
         return <DemodatenDetail onZurueck={zurueck} />;
+      // ADMIN-16: bis hierher Kästen auf der Importseite — jetzt eigene Karten unter Vorführdaten.
+      case "pakete":
+        return <DemopaketeDetail onZurueck={zurueck} />;
+      case "testimporte":
+        return <TestimporteDetail onZurueck={zurueck} />;
       case "werk":
         return <WerkseinstellungenDetail onZurueck={zurueck} />;
       case "papierkorb":
@@ -1083,34 +1075,39 @@ export function Admin(): JSX.Element {
             </>
           ) : null}
 
-          {/* Vorführdaten: EIN Auffindeort für die allgemeinen Demodaten und die Pakete aus
-              JOB 3277/3326. Die Pakete werden hier NICHT zweitgebaut — ihr maßgeblicher Bedienort
-              bleibt der Kasten auf /import (`#demopakete`), und der Verweis dorthin geht durch
-              dieselbe Modulregel wie jeder andere Bereichsverweis (Codex, Runde 2, Befund 7). */}
+          {/* Vorführdaten: EIN Auffindeort für die allgemeinen Demodaten, die Pakete aus
+              JOB 3277/3326 und das Aufräumen von Testimporten. ADMIN-16: Pakete und Aufräumen
+              standen bis hierher als Kästen auf /import und wurden von hier nur VERWIESEN; jetzt
+              ist dies ihr einziger Bedienort. Sie hängen damit auch nicht mehr am Schalter
+              „Erweiterte Module" — das Recht prüft weiterhin der Server (`users.manage`). Der Wert
+              rechts sagt vor dem Öffnen, worum es geht: erfundene Daten bzw. ALLE Importe. */}
           {section === "vorfuehrdaten" ? (
-            <>
-              <Zeilenkarte>
-                <Zeile
-                  label={t("adm.ziel.demo")}
-                  wert={wert(
-                    demoStatus,
-                    demoStatus.data?.present
-                      ? t("einst.daten.demoDa", { count: demoStatus.data.count })
-                      : null,
-                    demoStatus.data !== undefined && !demoStatus.data.present,
-                  )}
-                  onOeffnen={() => geheZu("vorfuehrdaten", "demo")}
-                  testId="zeile-demodaten"
-                />
-                <BereichsZeile
-                  id="import"
-                  anker="#demopakete"
-                  label={t("dpk.title")}
-                  testId="zeile-demopakete"
-                />
-              </Zeilenkarte>
-              {quellenAus ? <Kicker>{t("einst.modul.weg")}</Kicker> : null}
-            </>
+            <Zeilenkarte>
+              <Zeile
+                label={t("adm.ziel.demo")}
+                wert={wert(
+                  demoStatus,
+                  demoStatus.data?.present
+                    ? t("einst.daten.demoDa", { count: demoStatus.data.count })
+                    : null,
+                  demoStatus.data !== undefined && !demoStatus.data.present,
+                )}
+                onOeffnen={() => geheZu("vorfuehrdaten", "demo")}
+                testId="zeile-demodaten"
+              />
+              <Zeile
+                label={t("betriebdemo.ziel.pakete")}
+                wert={t("betriebdemo.wert.fiktiv")}
+                onOeffnen={() => geheZu("vorfuehrdaten", "pakete")}
+                testId="zeile-demopakete"
+              />
+              <Zeile
+                label={t("betriebdemo.ziel.testimporte")}
+                wert={t("betriebdemo.wert.alleImporte")}
+                onOeffnen={() => geheZu("vorfuehrdaten", "testimporte")}
+                testId="zeile-testimporte"
+              />
+            </Zeilenkarte>
           ) : null}
 
           {section === "sicherheit" ? (
