@@ -5,6 +5,7 @@ import { useGuardedNavigate } from "../app/NavGuardContext";
 import { DemoKennzeichen } from "../auth/BrandPanel";
 import { ArbeitsbereicheMenue } from "./ArbeitsbereicheMenue";
 import { ExternStatus } from "./ExternStatus";
+import { KiLageZeile } from "./KiLageZeile";
 import { KopfbandPunkte } from "./KopfbandPunkte";
 import { Logo } from "./Logo";
 import { MeldungenUndKonto } from "./MeldungenMenue";
@@ -290,7 +291,7 @@ export function Kopfband({
       <header
         ref={bandRef}
         data-testid="kopfband"
-        className="kw-kopfband flex h-[56px] shrink-0 items-center gap-9 bg-ink px-8 text-white"
+        className="kw-kopfband relative flex h-[56px] shrink-0 items-center gap-9 bg-ink px-8 text-white"
         style={schmalerAbstand}
       >
         {/* ==========================================================================================
@@ -431,6 +432,10 @@ export function Kopfband({
           <ZahnradMenue />
           <MeldungenUndKonto />
         </div>
+        {/* R-0599: die KI-Lage, dauerhaft und für jede Rolle — ausserhalb des Flusses der Zeile
+            (`relative` am Band oben), damit sie keine gemessene Breite kostet. Begründung in
+            `KiLageZeile.tsx`. */}
+        <KiLageZeile />
       </header>
     </>
   );
