@@ -146,8 +146,10 @@ export async function starteBuehne(konto: Konto, breite: number, hoehe: number):
     buehne.seite = seite;
     seite.on("pageerror", (e) => buehne.seitenfehler.push(String(e).slice(0, 200)));
     // Dasselbe Thema wie in den H6-Messungen — die Gegenprüfung N-0030 lief auf „Modern".
+    // R-0582 (Restfall „Klassisch"): nur als VORGABE. Eine gesetzte Wahl (`setzeTheme`) bleibt über
+    // das Neuladen stehen — sonst überschriebe dieses Skript jede Klassisch-Messung wieder.
     await seite.addInitScript(
-      `try { localStorage.setItem("kw.designTheme", "modern"); } catch (e) {}`,
+      `try { if (localStorage.getItem("kw.designTheme") === null) localStorage.setItem("kw.designTheme", "modern"); } catch (e) {}`,
     );
     await seite.route(`${ORIGIN}/**`, async (route) => {
       const req = route.request();
@@ -239,6 +241,33 @@ export async function setzeSprache(buehne: Buehne, sprache: string): Promise<voi
     await oeffneProfil(buehne);
   } catch (e) {
     buehne.fehler = String(e).split("\n").slice(0, 3).join(" | ");
+  }
+}
+
+/**
+ * R-0582 (Restfall „Klassisch"): die Darstellung des Produkts wählen — über denselben Speicherwert,
+ * den das Konto-Menü „Darstellung" schreibt (`apps/web/src/lib/designTheme.ts`) — und neu laden.
+ * Gibt das Wurzel-Attribut nach dem Laden zurück (Klassisch = kein Attribut).
+ */
+export async function setzeTheme(buehne: Buehne, theme: "classic" | "modern"): Promise<string> {
+  const seite = buehne.seite;
+  if (seite === null || buehne.fehler !== null) {
+    return "";
+  }
+  try {
+    await seite.evaluate<null>(
+      fn(
+        "(wert) => { try { localStorage.setItem('kw.designTheme', wert); } catch (e) {} return null; }",
+      ),
+      theme,
+    );
+    await oeffneProfil(buehne);
+    return await seite.evaluate<string>(
+      fn(`() => document.documentElement.getAttribute('data-theme') || 'classic (kein Attribut)'`),
+    );
+  } catch (e) {
+    buehne.fehler = String(e).split("\n").slice(0, 3).join(" | ");
+    return "";
   }
 }
 

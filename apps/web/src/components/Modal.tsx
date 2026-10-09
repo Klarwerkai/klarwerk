@@ -1,8 +1,11 @@
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { type ModalSurface, useModalBoundaryOptional } from "../app/ModalBoundaryContext";
-import { focusFirstIn } from "../lib/focusables";
+import {
+  GrenzDialog,
+  type ModalSurface,
+  useModalBoundaryOptional,
+} from "../app/ModalBoundaryContext";
 
 // Bug (Pedi 04.07.): "dritte Ebene" — eine wiederverwendbare Pop-up-Ebene. Sie legt sich über die
 // aktuelle Seite (Board, Detail), ohne sie zu verlassen. So kann man z. B. zwei Objekte
@@ -19,6 +22,13 @@ import { focusFirstIn } from "../lib/focusables";
 // entfernt hätte. Deshalb steht hier keine eigene Fokuslogik, sondern der Anschluss an die eine
 // Grenze: `enter()` sperrt den Hintergrund und gibt beim Abmelden den Fokus auf den Auslöser
 // zurück (`ModalBoundaryContext.tsx:163`).
+//
+// R-0909 (Aufnahme `gesamt-dialog-bedienung`): DAS PANEL IST JETZT EIN BENANNTER DIALOG. Bis hierher
+// war es ein `<div>` ohne Rolle — „Zugänglichkeit trägt der sichtbare Titel" stimmte nicht: eine
+// Überschrift benennt keinen Container. Das Panel ist nun der gemeinsame `GrenzDialog` aus dem
+// Grenzmodul; er trägt die Rolle, den Namen (die Überschrift, über `aria-labelledby`) und genau
+// dann `aria-modal`, wenn er sich an der Grenze angemeldet hat. Die Anmeldung, der Anfangsfokus und
+// die Fokusrückgabe, die hier standen, macht er — dieselbe eine Mechanik, eine Ebene tiefer.
 
 interface ModalProps {
   open: boolean;
@@ -64,14 +74,8 @@ export function Modal({
   // Die gereichte Grenze hat Vorrang: wer sie ausdrücklich bekommt, hängt außerhalb des Kontexts.
   const ausKontext = useModalBoundaryOptional();
   const grenze = gereichteGrenze ?? ausKontext;
-  // NUR `enter` als Abhängigkeit, nicht das Kontext-OBJEKT (Bauform `Seitenblatt.tsx`): das Objekt
-  // wechselt mit `locked`, und das setzt gerade unser eigenes `enter()`. Hinge der Effekt am Objekt,
-  // liefe er je Öffnung zweimal — im nachgereichten Rendern Fokus zurück auf den Auslöser und
-  // wieder auf den ersten Knopf, und ein inzwischen ins Feld gesetzter Fokus war weg (mega87,
-  // Tastaturweg; `tests/mega87-tastaturweg/modal-meldet-sich-einmal-an-mounted.test.tsx`).
-  const anmelden = grenze?.enter;
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  const ausloeserRef = useRef<HTMLElement | null>(null);
+  // R-0909: die Überschrift ist der Name des Dialogs.
+  const titelId = useId();
 
   useEffect(() => {
     if (!open) {
@@ -86,26 +90,11 @@ export function Modal({
     // Hintergrund-Scroll sperren, solange das Pop-up offen ist.
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    // Der Auslöser ist das, was beim Öffnen den Fokus trug. `body` ist keiner: ein programmatisch
-    // geöffnetes Pop-up hat kein Bedienelement hinter sich, und ein Rückgabeziel `body` wäre eine
-    // Fokusbewegung, die niemand ausgelöst hat.
-    const aktiv = document.activeElement;
-    ausloeserRef.current = aktiv instanceof HTMLElement && aktiv !== document.body ? aktiv : null;
-    const abmelden = anmelden?.({
-      panel: () => panelRef.current,
-      trigger: () => ausloeserRef.current,
-    });
-    // GM-1b greift GENAU HIER an: das ist der Anfangsfokus aller sieben Flächen. Nimmt man diese
-    // Zeile heraus, muss jede der sieben rot fallen — bleibt eine grün, hängt sie an etwas anderem.
-    focusFirstIn(panelRef.current);
     return () => {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prevOverflow;
-      // Erst abmelden — die Grenze liest `trigger()` beim Abmelden und gibt den Fokus zurück.
-      abmelden?.();
-      ausloeserRef.current = null;
     };
-  }, [open, anmelden]);
+  }, [open]);
 
   if (!open) {
     return null;
@@ -118,26 +107,33 @@ export function Modal({
 
   const flaeche = (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:pt-[8vh]">
+      {/* R-0909 (Ben, Nacharbeit 4): der Klickfänger bleibt der Maus-Ausgang, steht aber NICHT in
+          der Tab-Reihenfolge — er liegt neben dem Dialog, und „Fokus bleibt drin". Die Tastatur
+          schließt über Escape und den beschrifteten Knopf im Panel. */}
       <button
         type="button"
+        tabIndex={-1}
         aria-label={t("modal.close")}
         onClick={onClose}
         className="absolute inset-0 bg-ink/40"
       />
-      {/* Schlichtes Panel wie die Command-Palette (kein role="dialog" → useSemanticElements bleibt grün).
-          Zugänglichkeit trägt der sichtbare Titel (h2) + der beschriftete Schließen-Knopf. */}
-      <div
-        ref={panelRef}
-        tabIndex={-1}
-        {...(panelMarker ? { [panelMarker]: "" } : {})}
+      {/* R-0909: das Panel ist der benannte Dialog. `GrenzDialog` meldet sich an der Grenze an
+          (Hintergrundsperre, Anfangsfokus, Fokusrückgabe) und trägt `aria-modal` nur dann.
+          `m-0 p-0 text-text` nehmen dem nativen Element seine Vorgaben (Rand, Innenabstand, Farbe). */}
+      <GrenzDialog
+        grenze={grenze}
+        benanntDurch={titelId}
+        marke={panelMarker}
         className={
           wide
-            ? "relative w-full max-w-4xl overflow-hidden rounded-card border border-hairline bg-surface shadow-popover"
-            : "relative w-full max-w-xl overflow-hidden rounded-card border border-hairline bg-surface shadow-popover"
+            ? "relative m-0 w-full max-w-4xl overflow-hidden rounded-card border border-hairline bg-surface p-0 text-text shadow-popover"
+            : "relative m-0 w-full max-w-xl overflow-hidden rounded-card border border-hairline bg-surface p-0 text-text shadow-popover"
         }
       >
         <div className="flex items-center justify-between gap-3 border-b border-hairline px-4 py-3">
-          <h2 className="text-[14px] font-semibold text-text">{title}</h2>
+          <h2 id={titelId} className="text-[14px] font-semibold text-text">
+            {title}
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -147,7 +143,7 @@ export function Modal({
           </button>
         </div>
         <div className="max-h-[72vh] overflow-y-auto p-4">{children}</div>
-      </div>
+      </GrenzDialog>
     </div>
   );
 

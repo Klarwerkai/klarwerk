@@ -217,6 +217,9 @@ Soll: `klarwerk_steuerung/archiv/3082/AUFTRAG.md:221-234`. Ist: `q3a-zustandsmat
   sofort (der Vorschlag trifft dann auf dem verdeckten Blatt ein) — nicht Teil von B4, nicht geändert.
 * Die Rückfragen in N-0068 nutzen `window.confirm` wie die übrigen Rückfragen des Blatts
   (`fd.confirmDiscard`, `fd.confirmOpenDraft`); ihre Darstellung im echten Browser ist nicht gesichtet.
+  **Nachtrag `gesamt-dialog-bedienung` (FR-MOB-03):** `fd.confirmDiscard` und `fd.confirmOpenDraft`
+  sind keine `window.confirm` mehr, sondern die Rückfragezeile des Blattes (`blatt-rueckfrage`). Die
+  Formularwechsel-Rückfragen dieses Abschnitts bleiben native `confirm`.
   **Nachtrag `gesamt-erfassung-einstieg:layout`:** `tests/design/h3-wechsel-rueckfragen.test.ts`
   misst `sichernFrage` und `ohneSichernFrage` jetzt an der gebauten Seite in Chromium (Art `confirm`,
   vollständiger deutscher Text, Wirkung von OK/Abbrechen am Server). Das Pixelbild des nativen
