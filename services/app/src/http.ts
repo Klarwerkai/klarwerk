@@ -60,6 +60,8 @@ const STATUS_BY_CODE: Record<string, number> = {
   NOT_APPROVED: 403,
   // SCRUM-509 R2: Herabstufung der Vertraulichkeit ohne Prüfer-/Admin-Rolle → 403.
   DOWNGRADE_FORBIDDEN: 403,
+  // R-0507: Verantwortung zurückgeben kann nur der benannte Eigentümer selbst.
+  NOT_OWNER: 403,
   INVALID_CREDENTIALS: 401,
   EMAIL_TAKEN: 409,
   // WP-SHIP8-FIX (bens F2): Aufräum-Bestätigung passt nicht mehr zur Vorschau-Zielmenge → Konflikt.
