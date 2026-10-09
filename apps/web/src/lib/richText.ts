@@ -41,6 +41,9 @@ const VOID_TAGS = new Set(["br", "img"]);
 // Entscheidungen (z. B. shouldPreserveRichBody) NICHT eine zweite, driftanfällige Liste führen. Kommt ein
 // neues erlaubtes Struktur-/Formatier-Tag dazu, schützt der Vorschlags-Guard es automatisch mit.
 export const RICH_TEXT_ALLOWED_TAGS: ReadonlySet<string> = ALLOWED_TAGS;
+// R-1160: die Lesehülle (SanitizedHtml) zerlegt die AUSGABE dieses Sanitizers nach Tiefe und muss
+// wissen, welche Tags kein Schließ-Tag bekommen — aus derselben Liste, nicht aus einer Abschrift.
+export const RICH_TEXT_VOID_TAGS: ReadonlySet<string> = VOID_TAGS;
 // Wirklich FLACHE Body-Tags: nur Absatz und Zeilenumbruch tragen keine erhaltenswerte Struktur/
 // Formatierung. ALLES andere aus RICH_TEXT_ALLOWED_TAGS (und jedes unbekannte Tag) gilt als reich —
 // bewusst konservativ (lieber erhalten als zerstören).
