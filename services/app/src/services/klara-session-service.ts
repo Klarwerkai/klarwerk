@@ -1231,6 +1231,20 @@ export class KlaraSessionService {
   }
 
   /** Die Auflösung zu einer registrierten Sitzung — der einzige Statusweg (S4-20 §6). */
+  /**
+   * R-0700 · DIE BINDUNGSPRÜFUNG DES EIGENEN KLARA-AUSFÜHRUNGSZUGANGS
+   * (`POST /api/klara/sessions/{sessionId}/execute`, `klaraAusfuehrungRoutes`).
+   *
+   * Dieselbe Prüfung, die jeder Sitzungsweg durchläuft (`laden`): fremde Sitzung oder fremde
+   * Bindung ⇒ `NOT_FOUND`, geschlossene oder abgelaufene Sitzung ⇒ `CONFLICT`; eine abgelaufene
+   * Zustimmung wird dabei entwertet. BEWUSST OHNE TOUCH: eine Frage verlängert die Sitzung nicht —
+   * das tun Status- und Sitzungswege (`getSession`). So bleibt die gleitende Frist, was sie war,
+   * und der Zugang beantwortet ausschliesslich gültig gebundene Fragen.
+   */
+  async pruefeBindung(sessionId: string, bindung: KlaraBindung): Promise<void> {
+    await this.laden(sessionId, bindung);
+  }
+
   async statusFor(sessionId: string, bindung: KlaraBindung): Promise<KlaraResolution> {
     return (await this.getSession(sessionId, bindung)).resolution;
   }
