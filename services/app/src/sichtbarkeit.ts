@@ -135,6 +135,20 @@ export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter 
   return (ko) => darfSehen(user, ko);
 }
 
+/**
+ * R-1175 (aufnahme:20260922:gesamt-rechte-inventar) — DER BETRACHTER EINES SCHLÜSSELS.
+ *
+ * Ein Add-in- oder Dienst-Schlüssel ist kein Konto. Bis hierher entschied `/api/ask` für ihn mit
+ * einer eigenen Zeile („ohne Space oder offener Space"), also NICHT mit der einen Entscheidung.
+ * Jetzt fragt auch dieser Weg `darfSehen` — mit einem Betrachter, der so wenig darf wie möglich:
+ * Rolle `viewer` (kein `ko.validate`, also nichts Vertrauliches), KEINE Kennung (leer ist nach
+ * `darfSehen` nie Autorschaft) und als lesbare Spaces genau die offenen. Das Ergebnis ist dieselbe
+ * Menge wie die alte Zeile, enger nur um Vertrauliches, das der Zweig ohnehin verwirft.
+ */
+export function schluesselBetrachter(offeneSpaces: ReadonlySet<string>): SessionUser {
+  return { id: "", role: "viewer", spaceLesbar: offeneSpaces };
+}
+
 // ================================================================================================
 // AUFTRAG-BASIC-380 — DIESELBE ENTSCHEIDUNG, EINE EBENE TIEFER: ALS SQL, VOR DEM `LIMIT`.
 // ================================================================================================

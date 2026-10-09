@@ -14,6 +14,7 @@ import {
 import { bindeAnbieter, bindeZustimmung, imBindungsrahmen } from "../../../reasoner";
 import type { Guards } from "../http";
 import { sendError } from "../http";
+import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
 // ================================================================================================
 // JOB 3091 · M2 — DER ZURUF AUS DEM WORD-PANEL: `POST /api/klara/sessions/{sessionId}/zuruf`
@@ -261,18 +262,23 @@ export function klaraZurufRoutes(deps: KlaraZurufRouteDeps, guards: Guards): Fas
             `koIds: mindestens eine und höchstens ${ZURUF_MAX_QUELLEN} Quellenkennungen sind erforderlich.`,
           );
         }
-        const vorschlag = await zuruf.schlageVor({
-          art,
-          text,
-          koIds,
-          bindung: {
-            // Die Sitzung aus dem Pfad; der Header derselben Kennung ist Korrelation, nicht Quelle.
-            sessionId: request.params.sessionId,
-            actorId: user.id,
-            addinInstanceId: kopf(request, INSTANCE_HEADER),
-            documentContextId: kopf(request, DOCUMENT_HEADER),
+        // R-1175: die EINE Sichtbarkeitsentscheidung des Fragenden — eine Quelle, die er nicht sehen
+        // darf, geht nicht als Beleg zum Modell und nicht als Herkunft zurück.
+        const vorschlag = await zuruf.schlageVor(
+          {
+            art,
+            text,
+            koIds,
+            bindung: {
+              // Die Sitzung aus dem Pfad; der Header derselben Kennung ist Korrelation, nicht Quelle.
+              sessionId: request.params.sessionId,
+              actorId: user.id,
+              addinInstanceId: kopf(request, INSTANCE_HEADER),
+              documentContextId: kopf(request, DOCUMENT_HEADER),
+            },
           },
-        });
+          sichtbarkeitsfilterFuer(user),
+        );
         const antwort: ZurufAntwort = {
           art: vorschlag.art,
           entwurf: vorschlag.vorschlag,
