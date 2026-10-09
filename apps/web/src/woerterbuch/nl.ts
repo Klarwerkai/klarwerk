@@ -481,6 +481,14 @@ const nl: typeof de = {
   "auth.toSignIn": "Naar aanmelden",
   "auth.or": "of",
   "auth.ssoButton": "Aanmelden met SSO",
+  // R-0541: de aanmeldpagina wanneer alleen de bedrijfslogin geldt (KLARWERK_SSO_ONLY).
+  "auth.ssoOnlyNote":
+    "Op deze installatie meld je je aan met je bedrijfsaccount. Een apart wachtwoord voor Klara is hier niet nodig.",
+  // R-0541 (herwerking 2): aanmelden met wachtwoord is uit, maar de bedrijfslogin ontbreekt nog.
+  "auth.ssoOnlyMissing":
+    "Aanmelden met een wachtwoord is uitgeschakeld, maar de bedrijfslogin is nog niet ingericht. Neem contact op met je IT-afdeling.",
+  // R-0560: de bedrijfslogin via SAML.
+  "auth.samlButton": "Aanmelden met bedrijfsaccount (SAML)",
   "auth.ssoUnavailable": "SSO is niet geconfigureerd voor deze instantie.",
   "auth.ssoTitle": "SSO-aanmelding",
   "auth.ssoBusy": "Aanmelding wordt afgerond …",
@@ -2196,6 +2204,11 @@ const nl: typeof de = {
   "ask.export.copy": "Kopiëren",
   "ask.export.download": "Als Markdown",
   "ask.export.print": "Afdrukken / PDF",
+  "ask.export.docx": "Als Word (.docx)",
+  "ask.export.pptx": "Als PowerPoint (.pptx)",
+  "ask.export.pdfDatei": "Als PDF-bestand",
+  "ask.export.pdfZeichen":
+    "Het PDF-bestand kan deze tekens niet ongewijzigd weergeven: {{zeichen}}. Er is niets gedownload — Word of Markdown geven de tekst zonder verlies door.",
   "ask.export.copied": "Antwoord incl. bronnen gekopieerd.",
   "ask.export.answer": "Antwoord",
   "ask.export.footer":
@@ -2320,6 +2333,101 @@ const nl: typeof de = {
     "Geen enkele bron past nauw genoeg bij deze vraag om een antwoord te dragen. Dat betekent niet per se dat de kennis ontbreekt — misschien staat ze alleen onder andere woorden in de basis. Hoe dan ook is het een hiaat dat jullie kunnen dichten, geen fout.",
   "ask.contract.trustNote":
     "Vertrouwen en bruikbaarheid tonen hoe betrouwbaar een bron is — geen belofte van waarheid.",
+  // AUFNAHME 20260922 · Antwort-Erklärung (Begründung im deutschen Block).
+  "ask.belastbarkeit.titel": "Hoe betrouwbaar is dit?",
+  "ask.belastbarkeit.lage.belegt": "Onderbouwd",
+  "ask.belastbarkeit.lage.belegt_zustaendig_fehlt":
+    "Onderbouwd — verantwoordelijke niet bereikbaar",
+  "ask.belastbarkeit.lage.belegt_mit_konflikt": "Onderbouwd — met tegenstrijdigheid",
+  "ask.belastbarkeit.lage.wissensluecke": "Kennishiaat",
+  "ask.belastbarkeit.lage.technischer_fehler": "Technische fout",
+  "ask.belastbarkeit.lage.geschwaerzt": "Afgeschermd",
+  "ask.belastbarkeit.anzahl":
+    "{{tragend}} van {{herangezogen}} geraadpleegde bronnen dragen het antwoord",
+  "ask.belastbarkeit.vertrauenswert":
+    "Vertrouwenswaarde {{wert}} — zo betrouwbaar als de zwakste dragende bron („{{quelle}}”). De bibliotheek toont hetzelfde getal bij die vermelding.",
+  "ask.belastbarkeit.vertrauenswertKeiner":
+    "Geen vertrouwenswaarde: er is geen dragende bron bekend.",
+  "ask.belastbarkeit.vertrauenswertKurz": "Vertrouwenswaarde {{wert}}",
+  "ask.belastbarkeit.stand": "Stand {{datum}}",
+  "ask.belastbarkeit.quelle.validiert": "gevalideerd",
+  "ask.belastbarkeit.quelle.nichtValidiert": "niet gevalideerd",
+  "ask.belastbarkeit.verantwortung.eigentuemer": "Verantwoordelijk",
+  "ask.belastbarkeit.verantwortung.autor": "Geen verantwoordelijke genoemd, de auteur geldt",
+  "ask.belastbarkeit.erreichbar.ja": "bereikbaar",
+  "ask.belastbarkeit.erreichbar.nein": "niet bereikbaar",
+  "ask.belastbarkeit.erreichbar.unbekannt": "bereikbaarheid onbekend",
+  "ask.belastbarkeit.grund.keine_tragfaehige_quelle":
+    "Geen enkele bron draagt een antwoord op deze vraag.",
+  "ask.belastbarkeit.grund.zuordnung_unbekannt": "Welke bron het antwoord draagt, is niet bekend.",
+  "ask.belastbarkeit.grund.alle_tragenden_quellen_validiert":
+    "Alle dragende bronnen zijn gevalideerd.",
+  "ask.belastbarkeit.grund.tragende_quelle_nicht_validiert":
+    "Minstens één dragende bron is niet gevalideerd.",
+  "ask.belastbarkeit.grund.pruefnachweis_unvollstaendig":
+    "Voor minstens één dragende bron is de conflictcontrole niet volledig aangetoond.",
+  "ask.belastbarkeit.grund.offener_konflikt":
+    "Een dragende bron staat in een open tegenstrijdigheid.",
+  "ask.belastbarkeit.grund.konfliktlage_unbekannt":
+    "De conflictstatus kon niet worden opgevraagd — dat betekent niet dat er geen is.",
+  "ask.belastbarkeit.grund.zustaendig_nicht_erreichbar":
+    "De verantwoordelijke is niet bereikbaar (geen goedgekeurd account). De kennis blijft bruikbaar; vervolgvragen hebben een nieuwe verantwoordelijke nodig.",
+  "ask.belastbarkeit.grund.erreichbarkeit_unbekannt":
+    "Of de verantwoordelijke bereikbaar is, kon niet worden vastgesteld.",
+  "ask.belastbarkeit.grund.verantwortung_nur_autor":
+    "Voor minstens één bron is geen verantwoordelijke genoemd; de auteur geldt.",
+  "ask.belastbarkeit.konflikt.titel": "Tegenstrijdigheid — beide kanten",
+  "ask.belastbarkeit.konflikt.seite": "Kant {{nummer}}",
+  "ask.belastbarkeit.konflikt.traegt": "draagt dit antwoord",
+  "ask.belastbarkeit.konflikt.nichtEinsehbar": "Deze kant kun je niet inzien.",
+  "ask.belastbarkeit.konflikt.keinGewinner":
+    "Er wordt geen kant gekozen. Mensen beslissen over de tegenstrijdigheid onder „Conflicten”.",
+  "ask.belastbarkeit.hinweis":
+    "De vertrouwenswaarde zegt hoe betrouwbaar de bronnen zijn. Ze zegt niets over of iets waar is.",
+  "ask.belastbarkeit.argumentation.titel": "Zo komt het antwoord tot stand",
+  "ask.belastbarkeit.argumentation.belegstelle": "Bewijsplaats: „{{stelle}}”",
+  "ask.belastbarkeit.argumentation.art.aussage": "Bewering",
+  "ask.belastbarkeit.woerterbuch.titel":
+    "Begrippen aangevuld uit het bedrijfswoordenboek — geen deel van de bronnentelling en zonder vertrouwenswaarde:",
+  "ask.belastbarkeit.woerterbuch.eintrag": "Woordenboekitem {{id}}, versie {{fassung}}",
+  "ask.belastbarkeit.woerterbuch.verantwortlich": "Verantwoordelijk: {{wer}}",
+  "ask.belastbarkeit.woerterbuch.ohneVerantwortung": "Geen verantwoordelijke opgegeven",
+  "ask.belastbarkeit.woerterbuch.nichtBewertet": "Betrouwbaarheid niet beoordeeld",
+  "ask.belastbarkeit.argumentation.art.beziehung": "Vastgelegde relatie",
+  "ask.belastbarkeit.argumentation.beziehung.gehoert_zu": "hoort bij",
+  "ask.belastbarkeit.argumentation.beziehung.ergaenzt": "vult aan",
+  "ask.belastbarkeit.argumentation.beziehung.ersetzt": "vervangt",
+  "ask.belastbarkeit.argumentation.beziehung.widerspricht": "spreekt tegen",
+  "ask.belastbarkeit.argumentation.beziehung.beispiel_fuer": "is een voorbeeld van",
+  "ask.belastbarkeit.argumentation.gesetztVon": "Relatie vastgelegd door {{wer}}",
+  "ask.belastbarkeit.argumentation.gestuetztAuf": "Gebaseerd op: {{quellen}}",
+  "ask.belastbarkeit.argumentation.unabhaengig":
+    "Tussen deze bronnen is geen relatie vastgelegd — ze staan onafhankelijk naast elkaar.",
+  "ask.belastbarkeit.argumentation.art.einwand": "Bezwaar uit een open tegenstrijdigheid",
+  "ask.belastbarkeit.argumentation.art.vorbehalt": "Voorbehoud",
+  "ask.belastbarkeit.argumentation.art.schluss": "Conclusie",
+  "ask.belastbarkeit.argumentation.einstufung.verified": "Inschaling: onderbouwd",
+  "ask.belastbarkeit.argumentation.einstufung.unverified": "Inschaling: niet volledig onderbouwd",
+  "ask.belastbarkeit.argumentation.einstufung.gap": "Inschaling: kennishiaat",
+  "ask.belastbarkeit.wissensart.bauchgefuehl": "Onderbuikgevoel",
+  "ask.belastbarkeit.wissensart.best_practice": "Beproefde werkwijze",
+  "ask.belastbarkeit.wissensart.lernkurve": "Leercurve",
+  "ask.belastbarkeit.wissensart.technik": "Techniek",
+  "ask.belastbarkeit.wissensart.negativwissen": "Negatieve kennis",
+  "ask.belastbarkeit.zuschnitt":
+    "Antwoord en uitleg afgestemd op: {{rolle}}, aanleiding {{anlass}}.",
+  "ask.belastbarkeit.rolle.viewer": "lezer",
+  "ask.belastbarkeit.rolle.experte": "expert",
+  "ask.belastbarkeit.rolle.controller": "beoordelaar",
+  "ask.belastbarkeit.rolle.admin": "beheer",
+  "ask.belastbarkeit.rolle.unbekannt": "onbekende rol",
+  "ask.belastbarkeit.anlass.dokument": "werken aan een document",
+  "ask.belastbarkeit.anlass.frage": "vrije vraag",
+  "ask.pruefrahmen.satz":
+    "Gecontroleerd tegen {{umfang}}: {{verglichen}} passende vermeldingen zijn vergeleken (hoogstens {{hoechstens}} per vraag), geen enkele draagt een antwoord.",
+  "ask.pruefrahmen.umfang.validiert": "alleen gevalideerde, niet-vertrouwelijke kennis",
+  "ask.pruefrahmen.umfang.nicht_vertraulich": "alle niet-vertrouwelijke kennis",
+  "ask.pruefrahmen.woertlich": "Er is letterlijk gezocht, zonder AI-samenvatting.",
   // JOB 3366: der Satz an einer abgeschnittenen KI-Antwort (Begründung im deutschen Block).
   "ai.truncated.hint": "Dit antwoord is bij de lengtelimiet afgebroken en kan onvolledig zijn.",
   "ask.contract.sumTotal_one": "{{count}} bron geraadpleegd",
@@ -4340,6 +4448,8 @@ const nl: typeof de = {
   "klara.aiBusy": "De AI leest de passende help-vermeldingen …",
   "klara.aiAnswerTitle": "AI-antwoord uit de help",
   "klara.aiDisclaimer": "AI-gegenereerd — niet voor 100 % gecontroleerd",
+  "klara.helpAnswerTitle": "Antwoord uit de help",
+  "klara.ohneModell": "Regelgebaseerd, zonder AI-model",
   "klara.aiGoto": "Naar onderdeel: {{target}}",
   "klara.aiSources": "Grondslag",
   "klara.aiEmpty":
@@ -5634,6 +5744,10 @@ const nl: typeof de = {
 
   "ai.generatedNotice":
     "Door kunstmatige intelligentie gegenereerd — controleer dit vakinhoudelijk.",
+  "ai.surfaceNotice": "Hier kan een AI meewerken — door haar gegenereerde inhoud wordt gemarkeerd.",
+  "ergebnisStufe.entwurf": "Reasoner-concept, niet gevalideerd",
+  "ergebnisStufe.empfehlung": "Aanbeveling, ongetoetst",
+  "ergebnisStufe.validiert": "Gevalideerd",
   "ai.costHint": "Eén klik kan een echte, betaalde cloud-AI-aanvraag veroorzaken.",
   "ai.exportNotice":
     "Door kunstmatige intelligentie gegenereerd (KLARWERK, {{task}}, {{date}}). Inhoudelijk te controleren.",

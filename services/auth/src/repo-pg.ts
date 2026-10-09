@@ -1,6 +1,13 @@
 import type { Pool } from "pg";
 import { type TxContext, pgQueryable, poolQueryable, withPgTx } from "../../db-tx";
-import type { PasswordResetRepo, ResetToken, SessionRepo, UserRepo } from "./repo";
+import type {
+  PasswordResetRepo,
+  ResetToken,
+  SecondFactor,
+  SecondFactorRepo,
+  SessionRepo,
+  UserRepo,
+} from "./repo";
 import { TOKEN_HASH_PREFIX, hashTokenAtRest } from "./service";
 import type { Role, Session, User } from "./types";
 
@@ -42,6 +49,9 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS oidc_subject text;
 -- Bestandskonto eine Befristung andichten — und da die Spalte den Zugang SPERRT, waere das keine
 -- kosmetische Unsauberkeit, sondern ein Aussperren der ganzen Instanz bei der naechsten Migration.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS access_expires_at text;
+-- R-0556 / R-0571: die vom Unternehmensverzeichnis gemeldeten Gruppen (JSON-Liste). NULL-bar und
+-- ohne Vorgabe: ein Konto, das das Verzeichnis nie gesehen hat, trägt keine.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS verzeichnis_gruppen text;
 -- Ein Subjekt gehoert zu genau EINEM Konto. Ohne diese Zusage koennte ein zweites Konto dieselbe
 -- Identitaet tragen, und welches der beiden die Anmeldung bekommt, entschiede die Zeilenreihenfolge.
 -- PARTIELL, weil unverknuepfte Bestandskonten (beide Spalten NULL) sich nicht gegenseitig
@@ -60,6 +70,15 @@ CREATE TABLE IF NOT EXISTS password_resets (
   token text PRIMARY KEY,
   user_id text NOT NULL,
   expires_at bigint NOT NULL
+);
+-- R-0562: der eigene zweite Faktor (TOTP) je Konto. Eigene Tabelle statt Spalten an users, damit
+-- kein Schreibweg, der das ganze Konto aus einem älteren Stand schreibt, ihn still entfernen kann.
+-- last_step: der zuletzt verbrauchte Zeitschritt — Schutz gegen das Wiederverwenden eines Codes.
+CREATE TABLE IF NOT EXISTS user_second_factors (
+  user_id text PRIMARY KEY,
+  secret text NOT NULL,
+  created_at text NOT NULL,
+  last_step bigint
 );
 `;
 
@@ -151,9 +170,24 @@ interface UserRow {
   // nicht, und `toUser` faellt dann auf „nicht befristet" zurueck. Das ist fuer sie richtig: eine
   // fehlende Spalte darf keinen Zugang sperren.
   access_expires_at?: string | null;
+  verzeichnis_gruppen?: string | null;
+}
+
+/** R-0556: eine unlesbare Spalte ist „keine Gruppen" — sie darf niemandem Zuständigkeit geben. */
+function gruppenAus(roh: string | null | undefined): string[] | undefined {
+  if (!roh) {
+    return undefined;
+  }
+  try {
+    const wert: unknown = JSON.parse(roh);
+    return Array.isArray(wert) ? wert.filter((g): g is string => typeof g === "string") : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function toUser(row: UserRow): User {
+  const verzeichnisGruppen = gruppenAus(row.verzeichnis_gruppen);
   return {
     id: row.id,
     name: row.name,
@@ -185,6 +219,7 @@ function toUser(row: UserRow): User {
     ...(row.access_expires_at === null || row.access_expires_at === undefined
       ? {}
       : { accessExpiresAt: row.access_expires_at }),
+    ...(verzeichnisGruppen ? { verzeichnisGruppen } : {}),
   };
 }
 
@@ -258,6 +293,18 @@ export class PgUserRepo implements UserRepo {
   // er per ON CONFLICT DO NOTHING und bekommt keine Zeile (rowCount 0) → der Service legt ein normales
   // Konto an. Die Konflikt-Zielangabe nennt Spalte + Index-Prädikat, damit NUR der Bootstrap-Index
   // (nicht etwa die E-Mail-Unique) den DO-NOTHING-Pfad auslöst.
+  async setzeVerzeichnisGruppen(
+    id: string,
+    gruppen: readonly string[],
+    tx?: TxContext,
+  ): Promise<void> {
+    const ziel = tx ? pgQueryable(tx) : poolQueryable(this.pool);
+    await ziel.query("UPDATE users SET verzeichnis_gruppen=$2 WHERE id=$1", [
+      id,
+      JSON.stringify(gruppen),
+    ]);
+  }
+
   async tryClaimBootstrapAdmin(user: User): Promise<boolean> {
     const res = await this.pool.query(
       `INSERT INTO users(id,name,email,password_salt,password_hash,role,approved,created_at,bootstrap_admin,oidc_issuer,oidc_subject,access_expires_at)
@@ -417,5 +464,55 @@ export class PgPasswordResetRepo implements PasswordResetRepo {
 
   async delete(token: string): Promise<void> {
     await this.pool.query("DELETE FROM password_resets WHERE token=$1", [token]);
+  }
+}
+
+interface SecondFactorRow {
+  user_id: string;
+  secret: string;
+  created_at: string;
+  last_step: string | null;
+}
+
+// R-0562: der eigene zweite Faktor. `claimStep` ist EINE bedingte Anweisung — zwei gleichzeitige
+// Anmeldungen mit demselben Code können nicht beide gewinnen.
+export class PgSecondFactorRepo implements SecondFactorRepo {
+  constructor(private readonly pool: Pool) {}
+
+  async find(userId: string): Promise<SecondFactor | undefined> {
+    const res = await this.pool.query<SecondFactorRow>(
+      "SELECT * FROM user_second_factors WHERE user_id=$1",
+      [userId],
+    );
+    const row = res.rows[0];
+    if (!row) {
+      return undefined;
+    }
+    return {
+      userId: row.user_id,
+      secret: row.secret,
+      createdAt: row.created_at,
+      ...(row.last_step === null ? {} : { lastStep: Number(row.last_step) }),
+    };
+  }
+
+  async set(entry: SecondFactor): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO user_second_factors(user_id,secret,created_at,last_step) VALUES($1,$2,$3,$4)
+       ON CONFLICT (user_id) DO UPDATE SET secret=$2, created_at=$3, last_step=$4`,
+      [entry.userId, entry.secret, entry.createdAt, entry.lastStep ?? null],
+    );
+  }
+
+  async delete(userId: string): Promise<void> {
+    await this.pool.query("DELETE FROM user_second_factors WHERE user_id=$1", [userId]);
+  }
+
+  async claimStep(userId: string, step: number): Promise<boolean> {
+    const res = await this.pool.query(
+      "UPDATE user_second_factors SET last_step=$2 WHERE user_id=$1 AND (last_step IS NULL OR last_step < $2)",
+      [userId, step],
+    );
+    return (res.rowCount ?? 0) > 0;
   }
 }
