@@ -254,6 +254,16 @@ CREATE TABLE IF NOT EXISTS ko_versions (
   PRIMARY KEY (ko_id, version)
 );
 CREATE INDEX IF NOT EXISTS idx_ko_versions_anhang_traeger ON ko_versions USING gin ((snapshot->'attachments') jsonb_path_ops);
+-- aufnahme:20260922:gesamt-wissen-frische (R-1636/R-0248): der festgehaltene Lernverlauf der
+-- Halbwertszeiten, gelernt aus der Fassungsfolge. Nur ergänzend (halbwertszeit-verlauf.ts).
+CREATE TABLE IF NOT EXISTS ko_halbwertszeit_beobachtungen (
+  ko_id text NOT NULL,
+  ende text NOT NULL,
+  kategorie text NOT NULL,
+  tage double precision NOT NULL,
+  erfasst text NOT NULL,
+  PRIMARY KEY (ko_id, ende)
+);
 `;
 
 // SCRUM-160: Evidence-Records für Quellen/Anhänge, separat vom KO-JSON.
