@@ -34,6 +34,10 @@ import {
   type KnowledgeRef,
   type Kollision,
   type KollisionSeite,
+  LUECKEN_GRUENDE,
+  type LueckenBereich,
+  type LueckenBereichsUrteil,
+  type LueckenGrund,
   type ReasonerLocale,
   type Relevanztext,
   // FR-STR-01: die gültigen Wissensarten für Vertrag (Prompt) und Rücklesen (Parser) — EINE Liste.
@@ -1425,6 +1429,99 @@ export function parseConflictResponse(raw: string): ConflictJudgeResult | null {
   };
 }
 
+// ================================================================================================
+// R-1657 (ROADMAP 9.3) — LÜCKENERKENNUNG: DAS URTEIL ÜBER DIE KENNZAHLEN JE BEREICH.
+// ================================================================================================
+//
+// Ins Modell gehen NUR Bereichsname und Zähler (keine Titel, keine Aussagen, keine Personen). Das
+// Modell entscheidet je Bereich, ob ein Wissens-Sprint angezeigt ist, wie lang (1–5 Tage) und welche
+// der vier benannten Gründe ihn tragen. Freitext wird nicht verlangt und nicht übernommen.
+export const LUECKEN_MAX_TAGE = 5;
+
+function lueckenSystem(locale: ReasonerLocale): string {
+  const contract =
+    '{"bereiche":[{"bereich":"...","sprint":true,"tage":1-5,"schwerpunkte":["conflicts","revalidation","lowTrust","thinKnowledge"]}]}';
+  return taskInstruction(
+    locale,
+    `Du bewertest Wissensbereiche einer Organisation anhand von Kennzahlen und schlägst Wissens-Sprints vor. Je Bereich bekommst du: objekte (Zahl der Wissensobjekte), validiert, mittleresVertrauen (0–100), imKonflikt (Objekte in offenen Konflikten; null = unbekannt), revalidierung (Objekte zur Re-Validierung), geringesVertrauen (Objekte mit Vertrauen unter 50). Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Nenne JEDEN Bereich genau einmal mit seinem Namen wie geliefert. "sprint" ist true, wenn sich in diesem Bereich ein gebündelter Arbeitseinsatz lohnt (wenig Wissen, geringes Vertrauen oder hohe Konfliktdichte), sonst false. "tage" ist die Sprintlänge von 1 bis 5 nach dem Arbeitsumfang. "schwerpunkte" nennt nur Gründe, die die Kennzahlen tragen: "conflicts" nur bei imKonflikt > 0, "revalidation" nur bei revalidierung > 0, "lowTrust" nur bei geringesVertrauen > 0, "thinKnowledge" bei wenig validiertem Wissen. Erfinde keine Bereiche und keine Zahlen.`,
+    `You assess an organisation's knowledge areas from key figures and suggest knowledge sprints. Per area you get: objekte (number of knowledge objects), validiert, mittleresVertrauen (0–100), imKonflikt (objects in open conflicts; null = unknown), revalidierung (objects due for re-validation), geringesVertrauen (objects with trust below 50). Respond ONLY with JSON: ${contract}. Name EVERY area exactly once, with its name as given. "sprint" is true if a focused effort is worthwhile in this area (little knowledge, low trust or high conflict density), otherwise false. "tage" is the sprint length from 1 to 5 by workload. "schwerpunkte" lists only reasons the figures support: "conflicts" only if imKonflikt > 0, "revalidation" only if revalidierung > 0, "lowTrust" only if geringesVertrauen > 0, "thinKnowledge" for little validated knowledge. Invent no areas and no figures.`,
+  );
+}
+
+/** Die Nutzlast des Urteils: nur Namen und Zähler, als JSON. */
+export function lueckenNutzlast(bereiche: readonly LueckenBereich[]): string {
+  return JSON.stringify({ bereiche });
+}
+
+/** Ist ein genannter Grund durch die Kennzahlen gedeckt? Das Modell darf keinen erfinden. */
+function grundGedeckt(grund: LueckenGrund, b: LueckenBereich): boolean {
+  switch (grund) {
+    case "conflicts":
+      return (b.imKonflikt ?? 0) > 0;
+    case "revalidation":
+      return b.revalidierung > 0;
+    case "lowTrust":
+      return b.geringesVertrauen > 0;
+    case "thinKnowledge":
+      return true;
+  }
+}
+
+// Striktes, defensives Lesen: kein JSON, kein Feld `bereiche` → null (kein Urteil aus kaputten
+// Antworten). Je Eintrag gilt nur, was sich an die gelieferten Kennzahlen binden lässt: ein
+// unbekannter Bereich, ein zweiter Eintrag desselben Bereichs oder ein Sprint ohne gedeckten Grund
+// wird verworfen; die Tage werden auf 1–5 geklemmt.
+export function parseLueckenResponse(
+  raw: string,
+  bereiche: readonly LueckenBereich[],
+): LueckenBereichsUrteil[] | null {
+  const start = raw.indexOf("{");
+  const ende = raw.lastIndexOf("}");
+  if (start < 0 || ende <= start) {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw.slice(start, ende + 1));
+  } catch {
+    return null;
+  }
+  const liste = (parsed as { bereiche?: unknown } | null)?.bereiche;
+  if (!Array.isArray(liste)) {
+    return null;
+  }
+  const nachName = new Map(bereiche.map((b) => [b.bereich, b]));
+  const gesehen = new Set<string>();
+  const urteile: LueckenBereichsUrteil[] = [];
+  for (const eintrag of liste) {
+    if (typeof eintrag !== "object" || eintrag === null) {
+      continue;
+    }
+    const e = eintrag as Record<string, unknown>;
+    const bereich = typeof e.bereich === "string" ? nachName.get(e.bereich) : undefined;
+    if (!bereich || gesehen.has(bereich.bereich) || typeof e.sprint !== "boolean") {
+      continue;
+    }
+    const schwerpunkte = Array.isArray(e.schwerpunkte)
+      ? LUECKEN_GRUENDE.filter(
+          (g) => (e.schwerpunkte as unknown[]).includes(g) && grundGedeckt(g, bereich),
+        )
+      : [];
+    if (e.sprint && schwerpunkte.length === 0) {
+      continue;
+    }
+    const tage = typeof e.tage === "number" && Number.isFinite(e.tage) ? Math.round(e.tage) : 1;
+    gesehen.add(bereich.bereich);
+    urteile.push({
+      bereich: bereich.bereich,
+      sprint: e.sprint,
+      tage: Math.min(LUECKEN_MAX_TAGE, Math.max(1, tage)),
+      schwerpunkte,
+    });
+  }
+  return urteile;
+}
+
 // Berater-Konzept Duplikate 04.07. (Stufe D2, dup-v1): System-Prompt der „Duplikatprüfung".
 // Beschreibt die Überschneidung als Profil (Beziehung/Grad/gemeinsame Aussagen/Empfehlung); nur was
 // im Text steht; abweichender Geltungsbereich → getrennt lassen; Sprachpaar → nicht zusammenführen.
@@ -2540,6 +2637,23 @@ export class ModelProvider implements ReasonerProvider {
     const user = `A:\n${coreA}\n\nB:\n${coreB}`;
     const raw = await client.complete(duplicateSystem(locale), user, confidential, 768);
     return parseDuplicateResponse(raw);
+  }
+
+  // R-1657 (ROADMAP 9.3): Lückenerkennung über das echte Modell — nur Kennzahlen je Bereich gehen
+  // hinaus; `confidential` reist wie beim Konflikturteil bis zum Egress-Wächter.
+  async judgeKnowledgeGaps(
+    bereiche: readonly LueckenBereich[],
+    locale: ReasonerLocale,
+    confidential: boolean,
+  ): Promise<LueckenBereichsUrteil[] | null> {
+    const client = this.requireClient();
+    const raw = await client.complete(
+      lueckenSystem(locale),
+      lueckenNutzlast(bereiche),
+      confidential,
+      Math.min(4096, 256 + bereiche.length * 64),
+    );
+    return parseLueckenResponse(raw, bereiche);
   }
 
   private requireClient(): ModelClient {
