@@ -107,4 +107,19 @@ export class ProtokollModelRunRepo implements ModelRunRepo {
       .recent(limit)
       .then((alle) => alle.filter((r) => r.startedAt >= von && r.startedAt < bis));
   }
+
+  // Betroffenenrechte (R-0663): reicht den Leseweg je Person durch. Kennt die innere Ablage ihn
+  // nicht, wird der ganze Bestand gelesen und gefiltert — vollständig statt gekappt.
+  vonAkteur(actor: string): Promise<ModelRunRecord[]> {
+    if (this.inner.vonAkteur) {
+      return this.inner.vonAkteur(actor);
+    }
+    return this.inner
+      .recent(Number.MAX_SAFE_INTEGER)
+      .then((alle) =>
+        alle
+          .filter((r) => actor.length > 0 && r.actor === actor)
+          .sort((a, b) => a.startedAt.localeCompare(b.startedAt)),
+      );
+  }
 }

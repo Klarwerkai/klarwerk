@@ -68,6 +68,7 @@ import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 import { SanitizedHtml } from "../components/SanitizedHtml";
 import { ScormUebergabe } from "../components/ScormUebergabe";
 import { WissensPriorisierung } from "../components/WissensPriorisierung";
+import { WissensSprints } from "../components/WissensSprints";
 // JOB 4153: Art und Richtung in Klartext kommen von DER Stelle, an der die Textdarstellung sie
 // auch nimmt — Bild und Liste dürfen dieselbe Kante nicht verschieden benennen.
 import { beziehungsartText, beziehungsrichtungKurz } from "../components/WissensbeziehungenBereich";
@@ -1669,6 +1670,10 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
             ))}
           </ul>
         )}
+        {/* R-1657 (ROADMAP 9.3): Wissens-Sprints je Bereich (components/WissensSprints). */}
+        {snap.sprints ? (
+          <WissensSprints sprints={snap.sprints} analyse={snap.sprintAnalysis} />
+        ) : null}
       </Card>
 
       {/* FE-MGMT-09 / FR-EXT-04: Wissens-Priorisierung — die neun Faktoren der Quelle, gerankt,
