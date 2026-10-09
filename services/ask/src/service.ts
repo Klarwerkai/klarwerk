@@ -5,6 +5,7 @@ import {
   type GelernteHalbwertszeiten,
   type GeltungsPassung,
   type KnowledgeObject,
+  type KnowledgeType,
   type KoGeltung,
   type KoService,
   SUCH_ZUORDNUNGEN,
@@ -16,6 +17,8 @@ import {
   haltbarkeitAbgelaufen,
   isConfidential,
   normalizeSearchTerms,
+  responsibleKindOf,
+  responsibleOf,
 } from "../../knowledge-object";
 import {
   type AnswerResult,
@@ -32,6 +35,20 @@ import {
 } from "../../reasoner";
 import { TRUST_MAX } from "../../validation";
 import { type AnsprechpartnerAuskunft, leiteAnsprechpartnerAb } from "./ansprechpartner";
+import {
+  ANTWORT_MELDUNG_ACTION,
+  type AntwortMeldungQuittung,
+  antwortMeldungEventId,
+  antwortMeldungId,
+  isAntwortMeldeGrund,
+} from "./antwort-meldung";
+import {
+  type ZuschnittAbschnitt,
+  type ZuschnittBegriff,
+  type ZuschnittDerAntwort,
+  type ZuschnittErgaenzung,
+  schneideAntwortZu,
+} from "./antwort-zuschnitt";
 import { gapCompareKey, normalizeGapQuestion } from "./gap-text";
 import { type GapSummary, summarizeGaps } from "./gap-visibility";
 import { signAnswerReceipt, verifyAnswerReceipt } from "./receipt";
@@ -563,6 +580,54 @@ export interface AskResult {
   // (`result.sources`, also nach Sichtbarkeits-, Vertraulichkeits- und Freigabefilter) ihre Geltung
   // und wie sie zum Kontext passt — dieselbe Rechnung, die die Rangfolge bestimmt hat.
   geltung?: AskGeltungsauskunft;
+  // AUFNAHME 20260922 · R-0284 — WOGEGEN GEPRÜFT WURDE. Eine Wissenslücke ohne ihren Rahmen ist
+  // eine nackte Null: niemand weiss, ob sie etwas bedeutet. Der Dienst setzt das Feld auf JEDEM
+  // Rückgabeweg; optional nur, damit Aufrufer mit eigenen Ergebnisattrappen unberührt bleiben.
+  pruefrahmen?: AskPruefrahmen;
+  // AUFNAHME 20260922 · R-0346 (Ben nacharbeit-9): WIE die Antwort zugeschnitten wurde — Tiefe,
+  // Fachsprache, Reihenfolge und GENAU die angehängten Ergänzungen samt ihrer Quelle. Fehlt das
+  // Feld, ist die Antwort unverändert (wörtlicher Weg, kein Zuschnitt übergeben, keine Antwort).
+  antwortZuschnitt?: AskAntwortZuschnitt;
+}
+
+/** R-0346: der angewandte Zuschnitt der Antwort (Regel und Grenzen: `antwort-zuschnitt.ts`). */
+export interface AskAntwortZuschnitt {
+  tiefe: ZuschnittDerAntwort["tiefe"];
+  fachsprache: ZuschnittDerAntwort["fachsprache"];
+  reihenfolge: KnowledgeType[];
+  ergaenzungen: ZuschnittErgaenzung[];
+  /**
+   * Ben nacharbeit-13: die Antwort OHNE Wörterbucherklärungen — der Teil, den die tragenden Quellen
+   * belegen. Die Argumentationskette führt GENAU diesen Text als Schluss; Wörterbuchdefinitionen
+   * werden so nie den Wissensquellen zugeschrieben.
+   */
+  quellengebundenerText: string;
+  /**
+   * Ben nacharbeit-20: die angehängten Abschnitte samt der Quelle, für die jeder erzeugt wurde, in
+   * der Reihenfolge am Ende der Antwort (`antwort-zuschnitt.ts`). Grundlage der Absatzzuordnung.
+   */
+  abschnitte: ZuschnittAbschnitt[];
+}
+
+/**
+ * Der Rahmen einer Suche — eine Aussage über den WEG, nie über den Bestand.
+ *
+ * WARUM DAS KEIN ZWEITES `ungeprueftUnterdrueckt` IST (mega77): gezählt wird nicht die gedeckelte
+ * Vorauswahl und nichts Ungeprüftes neben der Enge, sondern genau die Kandidaten, die dem
+ * Antwortweg vorgelegt wurden — hinter `dropConfidential` und, wo verlangt, hinter `validatedOnly`.
+ * Das ist dieselbe Menge, aus der dieser Aufrufer ohnehin Quellen bekommen hätte; die Zahl verrät
+ * nichts, was er nicht sehen darf. Und sie behauptet nichts über den Bestand: „0 verglichen" heisst
+ * „keine Quelle deckte alle Fragebegriffe", nicht „es gibt nichts".
+ */
+export interface AskPruefrahmen {
+  /** Wogegen gesucht wurde: nur validiertes Wissen, oder jedes nicht vertrauliche. */
+  umfang: "validiert" | "nicht_vertraulich";
+  /** Wie viele passende Einträge (alle Fragebegriffe gedeckt) dem Antwortweg vorlagen. */
+  verglichen: number;
+  /** Höchstzahl je Frage (Top-K). */
+  hoechstens: number;
+  /** `true`: nur wörtliche Übernahme validierter Aussagen, keine Synthese durch ein Modell. */
+  nurWoertlich: boolean;
 }
 
 /** R-1633: der Fragekontext und je Quelle ihre Geltung und Passung (Regel: `geltungFuerFrage`). */
@@ -917,6 +982,14 @@ export class AskService {
     // Er wirkt auf die Vorauswahl, VOR `dropConfidential` und `validatedOnly`, und kann damit nur
     // verengen. Ungesetzt (Systemaufrufe, bestehende Aufrufer) bleibt der Ablauf der bisherige.
     grundlageSichtbarFuer?: (ko: KnowledgeObject) => boolean,
+    // AUFNAHME 20260922 · R-0346 (Ben nacharbeit-9): Rolle und Dokumentanlass für die ANTWORT selbst —
+    // Tiefe (wörtliche Voraussetzungen/Maßnahmen der tragenden Quellen), Fachsprache (Erklärungen
+    // aus dem Firmenwörterbuch) und Reihenfolge der Wissensarten (`antwort-zuschnitt.ts`). Wie
+    // `grundlageSichtbarFuer` ein EIGENER Parameter und nicht Teil von `opts` (KA4-E1, mega52).
+    // Ungesetzt, und auf dem wörtlichen Weg (`retrievalOnly`), bleibt die Antwort unverändert.
+    zuschnitt?: ZuschnittDerAntwort & {
+      begriffe?: (locale: ReasonerLocale) => Promise<readonly ZuschnittBegriff[]>;
+    },
   ): Promise<AskResult> {
     // D5: die Abschalt-Epoche beim Beginn DIESER Frage — jede Prüfung unten vergleicht mit ihr.
     const kiBeginn = this.kiSperre?.stand();
@@ -1099,6 +1172,13 @@ export class AskService {
     // R-0348: gebunden haben oben die getippte Frage und ihr Anker; gewählt und beantwortet wird im
     // Zusammenhang.
     const candidates = waehleKandidaten(frageImZusammenhang, vollstaendig, DEFAULT_TOP_K, relevanz);
+    // R-0284: der Rahmen dieser Suche, aus genau den Werten, die den Weg bestimmt haben.
+    const pruefrahmen: AskPruefrahmen = {
+      umfang: opts?.validatedOnly ? "validiert" : "nicht_vertraulich",
+      verglichen: candidates.length,
+      hoechstens: DEFAULT_TOP_K,
+      nurWoertlich: opts?.retrievalOnly === true,
+    };
     // SCRUM-490 R2 (B1): Add-on-Pfad → RETRIEVAL-ONLY (kein Modell-/Embedder-Egress des Dokumenttexts).
     // Sonst der übliche Reasoner-Weg (Session-Pfad unverändert).
     // AUFTRAG-mega61 BLOCK G — DAS ZWEITE NETZ, AUS DEM KONTEXT ABGELEITET.
@@ -1188,7 +1268,38 @@ export class AskService {
         !frageterme.some((t) => core.includes(t))
       );
     });
-    const result = { ...resultCore, captionSources };
+    // AUFNAHME 20260922 · R-0346 (Ben nacharbeit-9): der Zuschnitt verändert die Antwort SELBST —
+    // nur auf dem Antwortweg mit Synthese bzw. Rückfall, NIE auf dem wörtlichen (`retrievalOnly`).
+    // Ergänzt wird ausschließlich Wörtliches aus den TRAGENDEN Quellen und Definitionen aus dem
+    // Firmenwörterbuch; Quellen, Zuordnung und Belegstellen bleiben unberührt.
+    let antwortZuschnitt: AskAntwortZuschnitt | undefined;
+    const basisText = resultCore.answer;
+    let zugeschnittenerText = basisText;
+    if (zuschnitt && opts?.retrievalOnly !== true && resultCore.answered && basisText) {
+      const getragen: readonly string[] = resultCore.citedSources;
+      const tragende = getragen.flatMap((id) => {
+        const ko = prefiltered.find((k) => k.id === id);
+        return ko ? [ko] : [];
+      });
+      const begriffe =
+        zuschnitt.fachsprache === "allgemein" && zuschnitt.begriffe
+          ? await zuschnitt.begriffe(locale).catch(() => [])
+          : [];
+      const zugeschnitten = schneideAntwortZu(basisText, tragende, zuschnitt, begriffe, locale);
+      zugeschnittenerText = zugeschnitten.text;
+      antwortZuschnitt = {
+        tiefe: zuschnitt.tiefe,
+        fachsprache: zuschnitt.fachsprache,
+        reihenfolge: [...zuschnitt.reihenfolge],
+        ergaenzungen: zugeschnitten.ergaenzungen,
+        quellengebundenerText: zugeschnitten.quellengebunden,
+        abschnitte: zugeschnitten.abschnitte,
+      };
+    }
+    const result = { ...resultCore, answer: zugeschnittenerText, captionSources };
+    const zuschnittFeld: { antwortZuschnitt?: AskAntwortZuschnitt } = antwortZuschnitt
+      ? { antwortZuschnitt }
+      : {};
     // R-0338: die gelesene Fassung jeder herangezogenen Quelle — aus `prefiltered`, den Objekten,
     // aus denen die Antwort entstand. Eine Quelle ohne Objekt dort (nicht erwartbar) fehlt im Stand;
     // die Fläche behandelt eine Antwort mit unvollständigem Stand dann wie eine ohne Stand.
@@ -1311,6 +1422,8 @@ export class AskService {
           ...ungeprueftFeld,
           ...verschlossenFeld,
           ...geltungFeld,
+          ...zuschnittFeld,
+          pruefrahmen,
         };
       }
       // GAP-SPRACHHERKUNFT: `locale` steuert schon die Antwortsprache des Reasoners und liegt hier
@@ -1332,6 +1445,8 @@ export class AskService {
         ...ungeprueftFeld,
         ...verschlossenFeld,
         ...geltungFeld,
+        ...zuschnittFeld,
+        pruefrahmen,
       };
     }
     return {
@@ -1343,6 +1458,8 @@ export class AskService {
       ...ungeprueftFeld,
       ...verschlossenFeld,
       ...geltungFeld,
+      ...zuschnittFeld,
+      pruefrahmen,
     };
   }
 
@@ -1674,6 +1791,68 @@ export class AskService {
       return;
     }
     await this.koService.bumpTrust(koId, HELPFUL_TRUST_STEP, TRUST_MAX);
+  }
+
+  // R-1089 / R-1721: „Antwort falsch" bzw. „Quelle passt nicht" melden. Dieselbe Beleg-Bindung wie
+  // `markHelpful` — nur eine in DIESEM Antwortvorgang ausgelieferte Quelle ist meldbar. Zugestellt
+  // wird an `responsibleOf(ko)`; die Glocke dieser Person liest den Eintrag (notifications-routes).
+  // Kein Trust-Abzug: eine Meldung ist ein Hinweis an einen Menschen, kein Urteil über das Objekt.
+  async reportAnswer(
+    receipt: string,
+    koId: string,
+    grund: unknown,
+    actor: string,
+  ): Promise<AntwortMeldungQuittung> {
+    if (!isAntwortMeldeGrund(grund)) {
+      throw new AskError("BAD_REQUEST", "Unbekannter Meldegrund.");
+    }
+    const bound = verifyAnswerReceipt(this.receiptSecret, receipt, this.now());
+    if (!bound || bound.userId !== actor || !bound.sources.includes(koId)) {
+      throw new AskError("FORBIDDEN", "Kein gültiger Antwort-Beleg für dieses Wissensobjekt.");
+    }
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      throw new AskError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    // Ohne Protokoll gibt es keinen Weg zum Verantwortlichen — dann wird nichts quittiert, was
+    // niemand je sehen würde. In Produktion ist das Protokoll immer verdrahtet.
+    const audit = this.audit;
+    if (!audit) {
+      throw new AskError("NOT_FOUND", "Meldeweg nicht verfügbar.");
+    }
+    const eventId = antwortMeldungEventId(actor, koId, grund, receipt);
+    const meldungId = antwortMeldungId(eventId);
+    const won = await audit.recordOnce(eventId, {
+      actor,
+      action: ANTWORT_MELDUNG_ACTION,
+      target: koId,
+      payload: {
+        meldungId,
+        grund,
+        koTitle: ko.title,
+        responsible: responsibleOf(ko),
+        responsibleKind: responsibleKindOf(ko),
+      },
+    });
+    // Ben (Nacharbeit 3): die Quittung beschreibt die Zustellung, die TATSÄCHLICH gilt — und das
+    // ist die gespeicherte. Bei einer Wiederholung hat `recordOnce` das erste Ereignis behalten;
+    // wurde inzwischen ein Eigentümer benannt oder der Titel geändert, liegt die Meldung trotzdem
+    // beim damaligen Empfänger (die Glocke liest `responsible` aus genau diesem Ereignis). Zustellart
+    // und Titel kommen deshalb aus dem Ereignis, nicht aus dem heutigen Objekt.
+    const eintrag = (await audit.list({ action: ANTWORT_MELDUNG_ACTION, target: koId })).find(
+      (e) => e.eventId === eventId,
+    );
+    const gespeichert = eintrag?.payload ?? {};
+    const kind = gespeichert.responsibleKind;
+    return {
+      meldungId,
+      koId,
+      koTitle: typeof gespeichert.koTitle === "string" ? gespeichert.koTitle : ko.title,
+      grund,
+      at: eintrag?.at ?? new Date(this.now()).toISOString(),
+      zugestelltAn: kind === "owner" || kind === "author-fallback" ? kind : responsibleKindOf(ko),
+      bereitsGemeldet: !won,
+    };
   }
 
   // FR-ASK-05: Wissenslücken verwalten.

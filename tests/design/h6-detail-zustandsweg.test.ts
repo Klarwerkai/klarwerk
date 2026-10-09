@@ -384,6 +384,15 @@ function matrixProfil(): Quelle[] {
       behaelter: "detail-wirkung",
       inhalt: t("funke.impact.contributions"),
     },
+    {
+      // R-0562: ohne eingerichteten zweiten Faktor steht nach der Erholung der Einrichtungsknopf.
+      id: "Profil · Zwei-Faktor-Anmeldung · /api/auth/second-factor",
+      pfad: "/api/auth/second-factor",
+      reiter: "",
+      zeile: '[data-testid="zeile-zweifaktor"]',
+      behaelter: "detail-zweifaktor",
+      inhalt: t("zweifaktor.profil.starten"),
+    },
   ];
 }
 
@@ -1899,6 +1908,9 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     useAnalytics: "/api/analytics",
     useValidationBoard: "/api/validation/board",
     useMyImpact: "/api/me/impact",
+    // R-0562: der Stand der eigenen Zwei-Faktor-Anmeldung — Zeile und Karte auf `/profil` teilen
+    // denselben Abfrageschlüssel, gestört wird also genau ein Pfad.
+    "authApi.secondFactorStatus": "/api/auth/second-factor",
     // R-0913: die Betriebsschalter der Demodatenkarte — Fall `SCH · Demodaten · /api/features`.
     useFeatures: "/api/features",
   };
