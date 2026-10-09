@@ -2,14 +2,16 @@
 //
 // Ein Nutzer (Freigeben · Rolle · Passwort zurücksetzen · Löschen), das Anlegen, die Rollen-Vorschau
 // („Ansicht als Rolle", vorher in der Seitenleiste) und je Rolle die Karte ihrer Freiheiten.
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, UserPlus } from "lucide-react";
 import { useEffect, useReducer, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useUsers } from "../api/hooks";
-import type { PublicUser, UebergabeVorschau } from "../api/types";
+import { useAudit, useUsers } from "../api/hooks";
+import type { AuditEntry, PublicUser, UebergabeVorschau } from "../api/types";
+import { verantwortungApi } from "../api/verantwortung";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { NAV_GROUPS, ROLES, type Role, roleAllows } from "../app/navigation";
@@ -25,6 +27,8 @@ import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { freiheitenSchluessel, kiWahlFrei } from "../components/einstellungen/rollenFreiheiten";
 import { Button, Field, TextInput } from "../components/ui";
 import { isPasswordResetValid, newUserIssues, passwordRepeatMismatch } from "../lib/adminForms";
+import { auditActionLabel } from "../lib/auditAction";
+import { kontoZugang, rollenwirkung } from "../lib/nutzerliste";
 
 const EMPTY_NEW_USER = { name: "", email: "", password: "", role: "experte" as Role };
 
@@ -66,8 +70,11 @@ function tagDesZeitpunkts(wert: string | undefined): string {
  * nicht erst als anderer Tag" — das hier ist also ein WÄCHTER und keine Bedienstufe: der Rückweg
  * ist derselbe wie beim leeren Feld, und es entsteht keine eigene Meldung für einen Zustand, den
  * der Admin nicht herstellen kann.
+ *
+ * ADMIN-04: exportiert für die Sammelbefristung (`components/Sammelbearbeitung.tsx`) — derselbe Tag,
+ * dieselbe Umrechnung, kein zweiter Helfer.
  */
-function endeDesTages(tag: string): string | null {
+export function endeDesTages(tag: string): string | null {
   const form = /^(\d{4})-(\d{2})-(\d{2})$/.exec(tag);
   if (form === null) {
     return null;
@@ -156,7 +163,7 @@ export function lesbarerAblauf(wert: string | undefined): number | undefined {
  * ein abgebrochener Abruf, ein 5xx aus dem Innern — sagt über den Ausgang NICHTS. Dann steht der
  * offene Ausgang da, und der Stand kommt neu vom Server statt aus einer Behauptung.
  */
-function serverHatAbgewiesen(e: unknown): boolean {
+export function serverHatAbgewiesen(e: unknown): boolean {
   return e instanceof ApiError && e.status >= 400 && e.status < 500;
 }
 
@@ -186,16 +193,75 @@ export function NutzerDetail({
   const fail = (e: unknown): void =>
     push("error", e instanceof ApiError ? e.message : t("state.error"));
 
+  // ADMIN-04: nach jeder Kontoänderung kommen auch Protokoll und Zugangsstand neu vom Server.
+  const invalidateBelege = (): void => {
+    void qc.invalidateQueries({ queryKey: ["audit"] });
+    void qc.invalidateQueries({ queryKey: ["verantwortung"] });
+  };
   const approve = useMutation({
     mutationFn: (id: string) => endpoints.users.approve(id),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      invalidateBelege();
+    },
     onError: fail,
   });
+  // ================================================================================================
+  // ADMIN-04 · DIE ROLLE WIRD ERST NACH SICHTBARER WIRKUNG GEÄNDERT — und bestätigt vom Server.
+  // ================================================================================================
+  // Bis hierher schrieb schon das Wählen im Auswahlfeld (`onChange` → PUT). Jetzt wählt das Feld
+  // nur VOR; darunter steht, welche Fähigkeiten hinzukommen und wegfallen (`rollenwirkung`, aus
+  // dem bestehenden Rollenmodell). Erst „Rolle übernehmen" sendet. Die Bestätigung nennt die Rolle
+  // aus der ANTWORT des Servers; der Bestand wird damit überschrieben und danach neu geholt —
+  // nach einem Neuladen steht dieselbe Rolle da, und das Prüfprotokoll unten trägt den Vermerk.
+  const [rolleWahl, setRolleWahl] = useState<Role | null>(null);
+  const [rolleStand, setRolleStand] = useState<
+    | { art: "ok"; rolle: Role | null }
+    | { art: "fehler"; meldung: string; abgewiesen: boolean }
+    | null
+  >(null);
   const setRole = useMutation({
     mutationFn: (v: { id: string; role: Role }) => endpoints.users.setRole(v.id, v.role),
-    onSuccess: invalidate,
-    onError: fail,
+    onSuccess: (stand) => {
+      if (stand?.id) {
+        qc.setQueryData<PublicUser[]>(["users"], (alt) =>
+          alt?.map((u) => (u.id === stand.id ? stand : u)),
+        );
+      }
+      invalidate();
+      invalidateBelege();
+      setRolleWahl(null);
+      setRolleStand({ art: "ok", rolle: stand?.role ?? null });
+    },
+    onError: (e) => {
+      const abgewiesen = serverHatAbgewiesen(e);
+      setRolleStand({
+        art: "fehler",
+        meldung: e instanceof ApiError ? e.message : t("state.error"),
+        abgewiesen,
+      });
+      if (!abgewiesen) {
+        invalidate();
+      }
+      fail(e);
+    },
   });
+  // ADMIN-04: die Verantwortung dieses Kontos — dieselbe Abfrage wie an der Listenzeile.
+  const verantwortung = useQuery({
+    queryKey: ["verantwortung", "uebersicht"],
+    queryFn: verantwortungApi.uebersicht,
+  });
+  const meineVerantwortung = verantwortung.data?.personen?.find((p) => p.id === nutzerId);
+  const [beitraegeOffen, setBeitraegeOffen] = useState(false);
+  const [vorgaengeOffen, setVorgaengeOffen] = useState(false);
+  const vorgaenge = useQuery({
+    queryKey: ["verantwortung", "vorgaenge", nutzerId],
+    queryFn: () => verantwortungApi.vorgaenge(nutzerId),
+    enabled: vorgaengeOffen,
+  });
+  // ADMIN-04: die Vermerke DIESES Kontos aus dem Prüfprotokoll — der Beleg, dass eine Änderung so
+  // gespeichert wurde, wie die Karte sie bestätigt.
+  const audit = useAudit();
   // R-0554: entfernt mit Nachfolger, läuft vorher serverseitig die Wissensübergabe.
   const remove = useMutation({
     mutationFn: (v: { id: string; nachfolger: string }) =>
@@ -239,6 +305,7 @@ export function NutzerDetail({
         alt?.map((u) => (u.id === stand.id ? stand : u)),
       );
       invalidate();
+      invalidateBelege();
       setFristOffen(false);
       setFristHilfe(null);
       push("success", v.bis === null ? t("adm.gastfrist.beendet") : t("adm.gastfrist.gespeichert"));
@@ -260,6 +327,30 @@ export function NutzerDetail({
       }
       fail(e);
     },
+  });
+
+  /**
+   * R-0582 (DS13): der Admin berichtigt Name und E-Mail. Wie bei der Befristung kommt der neue
+   * Stand aus der ANTWORT in den Bestand, bevor die Auffrischung läuft; die Eingaben bleiben bei
+   * einer Ablehnung stehen (Satz des Servers als Meldung, z. B. „E-Mail ist bereits vergeben.").
+   */
+  const [korrekturOffen, setKorrekturOffen] = useState(false);
+  const [korrekturName, setKorrekturName] = useState("");
+  const [korrekturEmail, setKorrekturEmail] = useState("");
+  const berichtigen = useMutation({
+    mutationFn: (v: { id: string; name: string; email: string }) =>
+      endpoints.users.correct(v.id, v.name, v.email),
+    onSuccess: (stand) => {
+      qc.setQueryData<PublicUser[]>(["users"], (alt) =>
+        alt?.map((u) => (u.id === stand.id ? stand : u)),
+      );
+      invalidate();
+      // ADMIN-04: die Berichtigung steht als `user.account-corrected` im Protokoll.
+      invalidateBelege();
+      setKorrekturOffen(false);
+      push("success", t("adm.correctDone"));
+    },
+    onError: fail,
   });
 
   const [resetOffen, setResetOffen] = useState(false);
@@ -422,6 +513,28 @@ export function NutzerDetail({
       ? t("adm.gastfrist.abgelaufen", { datum })
       : t("adm.gastfrist.gueltigBis", { datum });
   };
+  // ADMIN-04: derselbe Zugangsstand wie an der Listenzeile und im Dienst — mit derselben Uhr wie
+  // `abgelaufen` (der Wecker oben zeichnet beim Ablauf neu).
+  const zugang = kontoZugang(nutzer.approved, fristZeitpunkt, Date.now());
+  // Entwürfe + Lücken + Prüfaufgaben — `null`, solange der Server sie nicht erhoben hat.
+  const vorgaengeZahlen = meineVerantwortung?.vorgaenge ?? null;
+  const vorgaengeSumme =
+    vorgaengeZahlen === null
+      ? null
+      : vorgaengeZahlen.entwuerfe + vorgaengeZahlen.luecken + vorgaengeZahlen.pruefaufgaben;
+  // Die Wirkung einer gewählten, noch nicht gespeicherten Befristung.
+  const fristVorschau = fristOffen ? endeDesTages(fristTag) : null;
+  // Die Vermerke dieses Kontos, jüngste zuerst (Benutzer-, Übergabe- und Verantwortungsvorgänge).
+  const kontoVermerke: AuditEntry[] = (Array.isArray(audit.data) ? audit.data : [])
+    .filter(
+      (e) =>
+        e.target === nutzer.id &&
+        (e.action.startsWith("user.") ||
+          e.action === "verantwortung.uebergabe" ||
+          e.action === "lifecycle.handover"),
+    )
+    .slice(-5)
+    .reverse();
 
   // JOB 3135 H6-D1 R1: HIER STAND DER EINZIGE ABFRAGEGESTÜTZTE ZWEIG DIESER DATEI OHNE HÜLLE.
   //
@@ -443,14 +556,166 @@ export function NutzerDetail({
           <>
             <div className="font-mono text-[12px] text-muted-2">{nutzer.email}</div>
 
+            {korrekturOffen ? (
+              <div className="space-y-2 rounded-input bg-page p-2" data-testid="nutzer-korrektur">
+                <Field label={t("adm.name")}>
+                  <TextInput
+                    value={korrekturName}
+                    onChange={(e) => setKorrekturName(e.target.value)}
+                    className="h-9"
+                  />
+                </Field>
+                <Field label={t("adm.email")}>
+                  <TextInput
+                    type="email"
+                    value={korrekturEmail}
+                    onChange={(e) => setKorrekturEmail(e.target.value)}
+                    className="h-9"
+                  />
+                </Field>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="primary"
+                    disabled={berichtigen.isPending}
+                    onClick={() =>
+                      berichtigen.mutate({
+                        id: nutzer.id,
+                        name: korrekturName.trim(),
+                        email: korrekturEmail.trim(),
+                      })
+                    }
+                  >
+                    {t("adm.correctSave")}
+                  </Button>
+                  <Button variant="ghost" onClick={() => setKorrekturOffen(false)}>
+                    {t("adm.gastfrist.abbrechen")}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    // Vorbelegt mit dem GELTENDEN Stand — berichtigt wird, nicht neu erfasst.
+                    setKorrekturName(nutzer.name);
+                    setKorrekturEmail(nutzer.email);
+                    setKorrekturOffen(true);
+                  }}
+                >
+                  {t("adm.correct")}
+                </Button>
+              </div>
+            )}
+
+            {/* ADMIN-04 · DER ZUGANG IN EINEM SATZ — nur aus belegten Feldern. Anlage: `createdAt`.
+                Letzte Anmeldung und Einladungen führt das Konto nicht; das wird gesagt, statt einen
+                Wert zu schätzen. */}
+            <div data-testid="konto-zugang" className="space-y-0.5 text-[12.5px]">
+              <div data-zugang={zugang} className="font-medium text-text">
+                {t(`nutzerliste.konto.zustand.${zugang}`)}
+              </div>
+              <div className="text-muted-2">
+                {Number.isNaN(Date.parse(nutzer.createdAt))
+                  ? t("nutzerliste.konto.angelegtUnbekannt")
+                  : t("nutzerliste.konto.angelegt", {
+                      datum: new Date(nutzer.createdAt).toLocaleDateString(i18n.language),
+                    })}
+              </div>
+              <div className="text-muted-2">{t("nutzerliste.konto.nichtErfasst")}</div>
+            </div>
+
+            {/* ADMIN-04 · VERANTWORTUNG — Beiträge und andere offene Vorgänge getrennt gezählt, und
+                jede Zahl öffnet ihren Bestand: die Beiträge in der Übergabefläche, die Vorgänge als
+                Liste darunter. */}
+            <div data-testid="konto-verantwortung" className="space-y-1.5 text-[12.5px]">
+              {meineVerantwortung === undefined ? (
+                <div className="text-muted-2">
+                  {t("nutzerliste.verantwortung")}:{" "}
+                  {verantwortung.isError
+                    ? t("einst.wert.nichtAbrufbar")
+                    : t("einst.wert.unbekannt")}
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span data-testid="konto-beitraege" data-anzahl={meineVerantwortung.beitraege}>
+                      {t("nutzerliste.konto.beitraege", { anzahl: meineVerantwortung.beitraege })}
+                    </span>
+                    {meineVerantwortung.beitraege > 0 ? (
+                      <Button
+                        variant="ghost"
+                        data-testid="konto-beitraege-oeffnen"
+                        onClick={() => setBeitraegeOffen(true)}
+                      >
+                        {t("nutzerliste.konto.beitraegeOeffnen")}
+                      </Button>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span data-testid="konto-vorgaenge" data-anzahl={vorgaengeSumme ?? ""}>
+                      {meineVerantwortung.vorgaenge === null
+                        ? `${t("nutzerliste.konto.vorgaengeTitel")}: ${t("einst.wert.nichtAbrufbar")}`
+                        : t("nutzerliste.konto.vorgaenge", meineVerantwortung.vorgaenge)}
+                    </span>
+                    {vorgaengeSumme !== null && vorgaengeSumme > 0 ? (
+                      <Button
+                        variant="ghost"
+                        data-testid="konto-vorgaenge-oeffnen"
+                        aria-expanded={vorgaengeOffen}
+                        onClick={() => setVorgaengeOffen((v) => !v)}
+                      >
+                        {t("nutzerliste.konto.vorgaengeOeffnen")}
+                      </Button>
+                    ) : null}
+                  </div>
+                </>
+              )}
+              {vorgaengeOffen ? (
+                <div data-testid="konto-vorgaenge-liste" className="rounded-input bg-page p-2">
+                  {vorgaenge.data === undefined ? (
+                    <span className="text-muted-2">
+                      {vorgaenge.isError ? t("einst.wert.nichtAbrufbar") : t("state.loading")}
+                    </span>
+                  ) : (
+                    <ul className="space-y-0.5">
+                      {vorgaenge.data.pruefaufgaben.map((p) => (
+                        <li key={`p-${p.koId}`} data-art="pruefaufgabe">
+                          {t("nutzerliste.konto.pruefaufgabe")}{" "}
+                          <Link to={`/wissen/${encodeURIComponent(p.koId)}`} className="underline">
+                            {p.titel ?? t("nutzerliste.konto.nichtEinsehbar")}
+                          </Link>
+                        </li>
+                      ))}
+                      {vorgaenge.data.luecken.map((l) => (
+                        <li key={`l-${l.id}`} data-art="luecke">
+                          {t("nutzerliste.konto.luecke")}{" "}
+                          <span className="font-mono text-[11px]">{l.id}</span>
+                        </li>
+                      ))}
+                      {vorgaenge.data.entwuerfe.map((d) => (
+                        <li key={`d-${d.id}`} data-art="entwurf">
+                          {t("nutzerliste.konto.entwurf")}{" "}
+                          <span className="font-mono text-[11px]">{d.id}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
+            </div>
+
             {nutzer.approved ? (
               <>
                 <Field label={t("adm.role")}>
                   <select
-                    value={nutzer.role}
-                    onChange={(e) =>
-                      setRole.mutate({ id: nutzer.id, role: e.target.value as Role })
-                    }
+                    data-testid="konto-rolle"
+                    value={rolleWahl ?? nutzer.role}
+                    onChange={(e) => {
+                      const r = e.target.value as Role;
+                      setRolleWahl(r === nutzer.role ? null : r);
+                      setRolleStand(null);
+                    }}
                     className="h-9 rounded-input border border-hairline bg-surface px-2 text-[13px]"
                   >
                     {ROLES.map((r) => (
@@ -460,6 +725,38 @@ export function NutzerDetail({
                     ))}
                   </select>
                 </Field>
+                {rolleWahl === null ? null : (
+                  <RollenWirkung
+                    von={nutzer.role}
+                    nach={rolleWahl}
+                    sendet={setRole.isPending}
+                    onUebernehmen={() => setRole.mutate({ id: nutzer.id, role: rolleWahl })}
+                    onAbbrechen={() => setRolleWahl(null)}
+                  />
+                )}
+                {rolleStand === null ? null : rolleStand.art === "ok" ? (
+                  <output
+                    data-testid="rolle-bestaetigt"
+                    className="block text-[12px] text-trust-pos-text"
+                  >
+                    {rolleStand.rolle === null
+                      ? t("nutzerliste.rolle.gespeichertOhneStand")
+                      : t("nutzerliste.rolle.bestaetigt", {
+                          rolle: t(`role.name.${rolleStand.rolle}`),
+                        })}
+                  </output>
+                ) : (
+                  <p
+                    role="alert"
+                    data-testid="rolle-fehler"
+                    className="text-[12px] text-trust-crit-text"
+                  >
+                    {rolleStand.meldung}{" "}
+                    {rolleStand.abgewiesen
+                      ? t("nutzerliste.rolle.unveraendert")
+                      : t("nutzerliste.rolle.ausgangOffen")}
+                  </p>
+                )}
 
                 {/* ==================================================================================
                     JOB 4021 · BIS WANN GILT DIESER ZUGANG — UND DIE DREI HANDGRIFFE DARAN.
@@ -514,6 +811,16 @@ export function NutzerDetail({
                           className="h-9"
                         />
                       </Field>
+                      {/* ADMIN-04: die Wirkung, BEVOR gespeichert wird — ab wann die Anmeldung
+                          endet und welche Bedingung der Server stellt. */}
+                      {fristVorschau === null ? null : (
+                        <p data-testid="frist-wirkung" className="text-[12px] text-text">
+                          {t("nutzerliste.frist.wirkung", {
+                            name: nutzer.name,
+                            datum: new Date(fristVorschau).toLocaleDateString(i18n.language),
+                          })}
+                        </p>
+                      )}
                       <div className="flex flex-wrap items-center gap-2">
                         <Button
                           variant="primary"
@@ -568,7 +875,12 @@ export function NutzerDetail({
             {/* produkt:20261007:ownership-uebergabe — Hauptverantwortung einzeln oder gesammelt an
                 Nachfolger übergeben, mit Vorschau; Zugang erst ohne Restbestand beenden. Für jedes
                 Konto, auch ein gesperrtes: gerade dort liegt Bestand, der eine Vertretung braucht. */}
-            <VerantwortungUebergabe personId={nutzer.id} personName={nutzer.name} />
+            <VerantwortungUebergabe
+              personId={nutzer.id}
+              personName={nutzer.name}
+              offen={beitraegeOffen}
+              onOffen={setBeitraegeOffen}
+            />
 
             {/* R-0554 / R-2128: bevor ein Konto geht, wandert sein Wissen — Autorschaft, Entwürfe,
                 offene Lücken und Prüfaufgaben, nicht nur die Hauptverantwortung. Nachfolger kann nur
@@ -720,10 +1032,121 @@ export function NutzerDetail({
                 ) : null}
               </div>
             ) : null}
+
+            {/* ADMIN-04 · WAS DAS PRÜFPROTOKOLL ZU DIESEM KONTO FESTHÄLT — die letzten fünf
+                Vermerke, mit dem Wert, den der Server geschrieben hat (Rolle vorher → nachher,
+                Ablauf). Ohne Antwort steht „nicht abrufbar", nie eine leere Liste. */}
+            <div data-testid="konto-protokoll" className="space-y-1 border-t border-hairline pt-4">
+              <div className="text-[12.5px] font-medium text-muted">
+                {t("nutzerliste.konto.protokoll")}
+              </div>
+              {audit.data === undefined ? (
+                <p className="text-[12px] text-muted-2">
+                  {audit.isError ? t("einst.wert.nichtAbrufbar") : t("state.loading")}
+                </p>
+              ) : kontoVermerke.length === 0 ? (
+                <p className="text-[12px] text-muted-2">{t("nutzerliste.konto.protokollLeer")}</p>
+              ) : (
+                <ul className="space-y-0.5 text-[12px]">
+                  {kontoVermerke.map((e) => (
+                    <li key={e.seq} data-testid="konto-vermerk" data-action={e.action}>
+                      <span className="font-mono text-[11px] text-muted-2">
+                        {new Date(e.at).toLocaleString(i18n.language)}
+                      </span>{" "}
+                      <span className="text-text">{auditActionLabel(e.action, t)}</span>
+                      {vermerkDetail(e, t, i18n.language)}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </>
         )}
       </Abfragehuelle>
     </Detailkarte>
+  );
+}
+
+/** Der geschriebene Wert eines Vermerks, soweit er für die Verwaltung lesbar ist. */
+function vermerkDetail(
+  e: AuditEntry,
+  t: Parameters<typeof auditActionLabel>[1],
+  sprache: string,
+): string {
+  const p = e.payload ?? {};
+  if (e.action === "user.role-change" && typeof p.role === "string") {
+    const vorher = typeof p.previousRole === "string" ? t(`role.name.${p.previousRole}`) : "?";
+    return ` · ${vorher} → ${t(`role.name.${p.role}`)}`;
+  }
+  // `services/auth/src/service.ts`, `setAccessExpiry`: `{ expiresAt }` oder `{ entfernt: true }`.
+  if (e.action === "user.access-expiry-set") {
+    if (p.entfernt === true) {
+      return ` · ${t("nutzerliste.konto.vermerkUnbefristet")}`;
+    }
+    const bis = typeof p.expiresAt === "string" ? Date.parse(p.expiresAt) : Number.NaN;
+    return Number.isNaN(bis)
+      ? ""
+      : ` · ${t("nutzerliste.konto.vermerkBis", { datum: new Date(bis).toLocaleDateString(sprache) })}`;
+  }
+  return "";
+}
+
+/**
+ * ADMIN-04 · Die Wirkung eines gewählten Rollenwechsels — vor dem Senden.
+ *
+ * Die Fähigkeiten stammen aus `rollenFreiheiten.ts` (dieselbe Quelle wie die Rollenkarte); was die
+ * Rolle tatsächlich darf, entscheidet weiter der Server. Der Wechsel selbst ist umkehrbar, deshalb
+ * reicht hier eine Bestätigung ohne zweite Rückfrage.
+ */
+function RollenWirkung({
+  von,
+  nach,
+  sendet,
+  onUebernehmen,
+  onAbbrechen,
+}: {
+  von: Role;
+  nach: Role;
+  sendet: boolean;
+  onUebernehmen: () => void;
+  onAbbrechen: () => void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const w = rollenwirkung(von, nach);
+  const liste = (keys: string[]): string =>
+    keys.length === 0 ? t("einst.wert.keine") : keys.map((k) => t(k)).join(", ");
+  return (
+    <div
+      data-testid="rolle-wirkung"
+      className="space-y-1.5 rounded-input bg-page p-2 text-[12.5px]"
+    >
+      <div className="font-medium text-text">
+        {t("nutzerliste.rolle.wirkungKopf", {
+          von: t(`role.name.${von}`),
+          nach: t(`role.name.${nach}`),
+        })}
+      </div>
+      <div data-testid="rolle-wirkung-dazu">
+        {t("nutzerliste.rolle.dazu")}: {liste(w.dazu)}
+      </div>
+      <div data-testid="rolle-wirkung-weg">
+        {t("nutzerliste.rolle.weg")}: {liste(w.weg)}
+      </div>
+      <p className="text-[12px] text-muted-2">{t("nutzerliste.rolle.hinweis")}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="primary"
+          data-testid="rolle-uebernehmen"
+          disabled={sendet}
+          onClick={onUebernehmen}
+        >
+          {t("nutzerliste.rolle.uebernehmen", { rolle: t(`role.name.${nach}`) })}
+        </Button>
+        <Button variant="ghost" data-testid="rolle-abbrechen" onClick={onAbbrechen}>
+          {t("adm.gastfrist.abbrechen")}
+        </Button>
+      </div>
+    </div>
   );
 }
 

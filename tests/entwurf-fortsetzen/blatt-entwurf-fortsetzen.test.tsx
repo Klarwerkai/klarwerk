@@ -492,14 +492,10 @@ describe("JOB 3106 (UX-01): der gesicherte Entwurf bleibt erreichbar", () => {
     box.zaehler.update = 0;
 
     // --- „Eingabe verwerfen" im „…"-Menü, mit der echten Rückfrage ------------------------------
-    const vorherigesConfirm = window.confirm;
-    window.confirm = () => true;
-    try {
-      await click(pruefknopf("blatt-werkzeug-mehr"));
-      await click(buttonByText(i18n.t("fd.discardInput")));
-    } finally {
-      window.confirm = vorherigesConfirm;
-    }
+    // FR-MOB-03: die Rückfrage stellt das Blatt selbst (Rückfragezeile), nicht `window.confirm`.
+    await click(pruefknopf("blatt-werkzeug-mehr"));
+    await click(buttonByText(i18n.t("fd.discardInput")));
+    await click(pruefknopf("blatt-rueckfrage-ja"));
     // Das Blatt ist leer, und die Adresse trägt keinen Entwurf mehr. „Kein Entwurf mehr" ist hier
     // die eigentliche Zusage — sie steht deshalb als eigene Zeile da, nicht im Pfadvergleich versteckt.
     expect(routenPfad()).toBe("/erfassen");
