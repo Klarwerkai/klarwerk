@@ -459,8 +459,30 @@ export type AskOutcomeKind =
   // R-0590 · Ben nacharbeit-3: die Klara-Antwort unter Zustimmung wurde NICHT ersatzweise anders
   // beantwortet (409 `KLARA_AUSWEICHWEG_GESPERRT`); der Grund reist in `reason`.
   | "fallback-blocked"
+  // AUFNAHME 20260922 · R-0335: die Lage `geschwaerzt` des Servers — die Belege sind für diesen
+  // Leser gesperrt. Sie ist weder Antwort noch Wissenslücke.
+  | "redacted"
   | "error"
   | "timeout";
+
+/** R-0335: die Lagen, die ein 200er-Körper tragen darf (services/ask/src/answer-belastbarkeit.ts). */
+export const ASK_LAGEN_IM_KOERPER = [
+  "belegt",
+  "belegt_zustaendig_fehlt",
+  "belegt_mit_konflikt",
+  "wissensluecke",
+  "geschwaerzt",
+] as const;
+
+/** R-0321: eine Seite eines offenen Widerspruchs, so wie das Fenster sie zeigt. */
+export type AskKonfliktSeite =
+  | { einsehbar: true; titel: string; aussage: string; traegtAntwort: boolean }
+  | { einsehbar: false; traegtAntwort: boolean };
+
+export interface AskKonflikt {
+  beschreibung: string | null;
+  seiten: AskKonfliktSeite[];
+}
 
 // ================================================================================================
 // AUFTRAG-mega34 BLOCK B (bens zweiter ROT-Befund) — WORD BEKOMMT DIE EINSTUFUNG.
@@ -523,6 +545,10 @@ export interface AskOutcome {
   // R-0590 · Ben nacharbeit-3: bei `fallback-blocked` der benannte Grund des Servers
   // (`fallback_not_equivalent` | `consent_ended`) — gelesen, nie hergeleitet; fehlt er, fehlt das Feld.
   reason?: string;
+  // AUFNAHME 20260922 · R-0335/R-0321: bei `answered` die Lage des Servers und die Seiten offener
+  // Widersprüche — gelesen, nie hergeleitet. Ein älterer Server sendet sie nicht (`undefined`).
+  lage?: string | undefined;
+  konflikte?: AskKonflikt[] | undefined;
   // R-0310: die belegten Absätze samt ihren Quellen (askAbsaetzeLesen) — `undefined` ohne Feld.
   absaetze?: AbsatzBeleg[] | undefined;
   // AUFTRAG-mega77 BLOCK A: hier stand `ungeprueft` — die Zahl der unterdrueckten ungeprueften
@@ -782,6 +808,21 @@ export function stripAskAnswerMarkdown(answer: string): string {
     .trim();
 }
 
+// R-0321: eine Konfliktseite aus dem Serverkörper — nur eine ausdrücklich einsehbare Seite trägt
+// Titel und Aussage; alles andere ist „nicht einsehbar" (Spiegel des Fensters, gleiche Regel).
+function konfliktSeiteAus(roh: unknown): AskKonfliktSeite {
+  const s = roh as Record<string, unknown> | null;
+  if (s && s.einsehbar === true) {
+    return {
+      einsehbar: true,
+      titel: String(s.titel || ""),
+      aussage: String(s.aussage || ""),
+      traegtAntwort: s.traegtAntwort === true,
+    };
+  }
+  return { einsehbar: false, traegtAntwort: !!s && s.traegtAntwort === true };
+}
+
 // ================================================================================================
 // Aufnahme 20260922 · antwort-quellenanzeige (R-0310) — DIE ABSATZ-BELEG-ZUORDNUNG IM PANEL.
 // ================================================================================================
@@ -915,14 +956,47 @@ export function performAsk(
             : undefined;
         // R-0310: die ausdrückliche Absatz-Beleg-Zuordnung — nur belegte Absätze (askAbsaetzeLesen).
         const absaetze = askAbsaetzeLesen(body, cited);
-        if (
-          result &&
-          result.answered === true &&
+        // AUFNAHME 20260922 · R-0335/R-0321 — LAGE UND KONFLIKTSEITEN DES SERVERS, GELESEN.
+        // Nur eine BELEGTE Wissenslücke ist eine. Ein Körper ohne Ergebnis, eine unbekannte oder
+        // gestörte Lage und eine Lage, die der Antwortform widerspricht, sind ein technischer Fehler
+        // (`detail: "lage"`) — bis hierher fiel all das stumm in den Auffangzweig „Wissenslücke".
+        const bel =
+          result && typeof result.belastbarkeit === "object" && result.belastbarkeit !== null
+            ? (result.belastbarkeit as { lage?: unknown; konflikte?: unknown })
+            : null;
+        const belegt =
+          result?.answered === true &&
           typeof answer === "string" &&
           answer.trim().length > 0 &&
-          sources.length > 0 &&
-          (!absaetze || absaetze.length > 0)
+          sources.length > 0;
+        if (
+          !result ||
+          typeof result.answered !== "boolean" ||
+          (bel &&
+            (!(ASK_LAGEN_IM_KOERPER as readonly unknown[]).includes(bel.lage) ||
+              (bel.lage !== "geschwaerzt" && (bel.lage === "wissensluecke") === belegt)))
         ) {
+          return { kind: "error", detail: "lage" };
+        }
+        if (bel?.lage === "geschwaerzt") {
+          return { kind: "redacted" };
+        }
+        const konflikte: AskKonflikt[] = [];
+        const roheKonflikte: unknown[] = bel && Array.isArray(bel.konflikte) ? bel.konflikte : [];
+        for (const roh of roheKonflikte) {
+          const rk = roh as { beschreibung?: unknown; seiten?: unknown } | null;
+          if (!rk || !Array.isArray(rk.seiten) || rk.seiten.length !== 2) {
+            continue;
+          }
+          konflikte.push({
+            beschreibung: typeof rk.beschreibung === "string" ? rk.beschreibung : null,
+            seiten: (rk.seiten as unknown[]).map(konfliktSeiteAus),
+          });
+        }
+        // `typeof answer` steht hier ein zweites Mal nur für die Typprüfung — `belegt` enthält sie.
+        // R-0310: mit Absatzzuordnung wird nur ausgegeben, wenn mindestens ein Absatz belegt ist —
+        // sonst ist es eine Wissenslücke (unten). Die Lage oben bleibt am Antwortkörper geprüft.
+        if (result && belegt && typeof answer === "string" && (!absaetze || absaetze.length > 0)) {
           return {
             kind: "answered",
             // WP-UX-WOW-1 U1: Klartext im Panel UND im eingefuegten Text — Markdown-Zeichen raus.
@@ -943,6 +1017,8 @@ export function performAsk(
             // G24: und es wird GEPRUEFT statt nur auf Wahrheit gecastet — `Boolean(...)` schaltete
             // die Behauptung auch bei einem beliebigen Objekt oder einem wahren Skalar ein.
             aiGenerated: istKiKennzeichnung(result.aiGenerated),
+            lage: bel ? (bel.lage as string) : undefined,
+            konflikte: bel ? konflikte : undefined,
           };
         }
         // AUFTRAG-mega77 BLOCK A: die Wissensluecke ist wieder eine reine Wissensluecke. Der

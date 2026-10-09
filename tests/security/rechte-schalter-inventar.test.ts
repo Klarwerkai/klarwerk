@@ -162,6 +162,15 @@ const SCHALTER: Record<
   },
   EXTERNAL_SEARCH: { quellen: ["direkt"], wofuer: "„off“ schaltet die externe Suche ab (501)." },
   OIDC_AUTOPROVISION: { quellen: ["direkt"], wofuer: "SSO legt unbekannte Konten selbst an." },
+  // Nacharbeit 12 (Integration Hauptstand): R-0560 SAML und R-0541 Firmenanmeldung aus main.
+  SAML_AUTOPROVISION: {
+    quellen: ["direkt"],
+    wofuer: "SAML-Anmeldung legt unbekannte Konten selbst an (saml.ts).",
+  },
+  KLARWERK_SSO_ONLY: {
+    quellen: ["direkt"],
+    wofuer: "Sperrt die Passwortanmeldung; nur der Firmen-Login gilt (auth/routes.ts).",
+  },
   OIDC_REQUIRE_EMAIL_VERIFIED: {
     quellen: ["direkt"],
     wofuer: "SSO verlangt eine bestätigte E-Mail (nur „false“ schaltet ab).",
