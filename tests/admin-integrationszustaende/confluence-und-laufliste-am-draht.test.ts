@@ -230,8 +230,25 @@ describe("ADMIN-02 N2 · Confluence-Verbindungstest am Draht", () => {
 });
 
 describe("ADMIN-02 N2 · Importliste am Draht", () => {
-  it("L1 · jüngster Lauf zuerst, Zonenversatz richtig geordnet, Felder des Einzelwegs; Neustart behält die Liste", async () => {
+  // Nacharbeit 4: Die Liste ist unbedingt registriert, der Einzelweg aber nur bei eingeschaltetem
+  // Importweg (build-app.ts, `importLaeufeLesbar`). Für den Formvergleich mit dem Einzelweg schaltet
+  // L1 deshalb Confluence ein — ohne Token, es geht also kein Abruf hinaus. Den Fall „alle Wege aus"
+  // misst L0 getrennt.
+  it("L0 · alle Importwege aus: die Liste antwortet trotzdem (200, verfügbar, leer)", async () => {
     umgebung({ schalter: false, token: false });
+    const a = await appAus(neuesJournal());
+    const res = await a.app.inject({
+      method: "GET",
+      url: "/api/admin/import/runs",
+      headers: a.headers,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toMatchObject({ verfuegbar: true, ausloeserFestgehalten: false, runs: [] });
+    await a.app.close();
+  });
+
+  it("L1 · jüngster Lauf zuerst, Zonenversatz richtig geordnet, Felder des Einzelwegs; Neustart behält die Liste", async () => {
+    umgebung({ schalter: true, token: false });
     const journal = neuesJournal();
     const a = await appAus(journal);
     await a.services.importRuns.insertIfAbsent(
@@ -283,6 +300,7 @@ describe("ADMIN-02 N2 · Importliste am Draht", () => {
       url: "/api/admin/import/runs/lauf-zone",
       headers: a.headers,
     });
+    expect(einzeln.statusCode, einzeln.body).toBe(200);
     expect(liste.runs[1], "dieselbe Laufform wie der Einzelweg").toEqual(einzeln.json());
     expect((await lies(a, "?limit=1")).runs.map((r) => r.importId)).toEqual(["lauf-neu"]);
     await a.app.close();
