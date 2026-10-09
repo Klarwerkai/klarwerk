@@ -23,6 +23,7 @@ import { Bedingungswechsel } from "../components/Bedingungswechsel";
 import { DemoBanner } from "../components/DemoBanner";
 import { FragekontextWahl, GeltungsAuskunft, fragekontextZumSenden } from "../components/Geltung";
 import { HelpTip } from "../components/HelpTip";
+import { ObjektbezugZeile } from "../components/ObjektbezugZeile";
 // AUFTRAG-mega71 BLOCK E (Befund aus mega70 Block E, jetzt frei): diese Fläche trug dieselbe
 // Sackgassen-Fehlerklasse FÜNFFACH — zweimal /validierung (Führungskarte + Prüfvorbehalt-CTA),
 // dazu /konflikte, /risiko und /erfassen?gap=… — und kannte keine einzige Rollenabfrage.
@@ -125,6 +126,7 @@ import { ergebnisStufeFuerAntwort, kiHerkunftAus } from "../lib/kiHerkunft";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { formatKoTimestamp } from "../lib/koDates";
 import { erkenneNichtHilfreich } from "../lib/nichtHilfreich";
+import { leseObjektbezug, quellenRueckwegHref } from "../lib/objektbezug";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { istIosGeraet } from "../lib/speechSupport";
@@ -555,6 +557,9 @@ export function Ask(): JSX.Element {
   const { t, i18n } = useTranslation();
   // SCRUM-272: optionale Startfrage aus der URL (/fragen?q=…) — nur vorbefüllen, kein Auto-Ask.
   const [params] = useSearchParams();
+  // Arbeitswege am selben Artikel: der Beitrag, aus dem gefragt wird (`ko`/`fassung`), gelesen aus
+  // der Adresse bei JEDEM Zeichnen — kein Anfangswert, der nach einem Wechsel stehen bliebe.
+  const objektbezug = leseObjektbezug(params);
   // ==============================================================================================
   // PEDI 28.09.2026 · ERGÄNZUNG 1 — WEITERARBEITEN, WO MAN AUFGEHÖRT HAT.
   // ==============================================================================================
@@ -767,6 +772,11 @@ export function Ask(): JSX.Element {
 
   // SCRUM-250: KO-Bestand für lesbare Quellen-Titel (kein neuer Endpoint).
   const kos = useKos();
+  // Arbeitswege am selben Artikel: der Titel des Beitrags, aus dem gefragt wird — aus DEMSELBEN
+  // Bestand wie die Quellentitel, kein eigener Abruf. Fehlt er, nennt die Zeile die Kennung.
+  const objektTitel = objektbezug
+    ? ((kos.data ?? []).find((k) => k.id === objektbezug.koId)?.title ?? null)
+    : null;
   // FUNKE F1 (nacht24): Wissensträger-Namen für die Quellen-Würdigung (Directory EINMAL je Seite;
   // Fallback bleibt ehrlich die Autor-Id).
   // AUFTRAG-mega62 Block H: die Auflösung kommt aus dem EINEN Haken (lib/useAuthorName.ts). Die
@@ -1503,7 +1513,11 @@ export function Ask(): JSX.Element {
       quelle?.carrying && zitiert.trim() !== ""
         ? { passage: zitiert, fassung: ko?.version ?? null }
         : null;
-    return demoHref(belegstelleHref(id, stelle), params);
+    // Arbeitswege am selben Artikel (Quellrückweg, Nacharbeit 8): bleibt von der Belegstelle KEIN
+    // Anker übrig — keine tragende Passage ODER eine zu lange, die `belegstelleHref` samt Fassung
+    // verwirft —, führt die Quelle, die zugleich der gefragte Beitrag ist, mit DERSELBEN Kennung und
+    // Fassung zurück (`quellenRueckwegHref`). Mit Anker gilt die genauere Belegstelle.
+    return demoHref(quellenRueckwegHref(id, belegstelleHref(id, stelle), objektbezug), params);
   };
   // R-0703 / R-0625 (Ben Nacharbeit 2): EINE Exporteingabe für Markdown, Word, PowerPoint und PDF —
   // mit der DREIWERTIGEN Herkunft. Bis hierher machte die Fragenseite aus „unbekannt" ein `false`.
@@ -1681,6 +1695,10 @@ export function Ask(): JSX.Element {
           />
         )}
       </div>
+      {/* Arbeitswege am selben Artikel: kam die Frage aus einem Beitrag, steht er hier — mit
+          Fassung und dem Rückweg dorthin, beides aus der Adresse und damit auch nach Neuladen und
+          Zurücknavigation derselbe. Die Anfrage selbst bleibt unverändert (`fragen.ts`). */}
+      {objektbezug ? <ObjektbezugZeile bezug={objektbezug} titel={objektTitel} /> : null}
       {/* Ergänzung 1 (Pedi 28.09.2026): beim Wiederkommen steht OBEN, was aufgenommen wurde und wo
           es weitergeht — ein Satz, keine Karte, damit das Fragefeld ohne Bildlauf sichtbar bleibt.
           Die Antwort wird ausdrücklich als NICHT neu erzeugt benannt, mit ihrem Zeitpunkt. */}
@@ -2349,6 +2367,7 @@ export function Ask(): JSX.Element {
                         return (
                           <Link
                             key={s.id}
+                            // Quellrückweg samt Belegstelle: `quellenHref` (dort begründet).
                             to={quellenHref(s.id)}
                             data-testid="ask-quellen-chip"
                             data-tutorial-ziel={FRAGEN_ZIEL.quellenchip}
