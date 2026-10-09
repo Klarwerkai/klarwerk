@@ -257,8 +257,12 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * `cb99796c…` auf main) beschreibt dieses Dokument. Der Wert unten ist der von main und damit ein
  * PLATZHALTER — DER BLOB MUSS WANDERN; ohne zugelassenes Hash-Werkzeug hier nicht berechenbar. E2
  * meldet den Ist-Wert als „Received", er wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 4 (dieser Auftrag): GEMESSEN im Prüflauf zu Kandidat 3b7914f4 am zusammengeführten
+ * Panel (`a72dfdf0…`, „Received" von E2, HISTORIE/nacharbeit-4/PRUEFUNG/
+ * panel-nach-integration-pins-und-schnitt.log) und unverändert übernommen; die fünf Panel-Dateien
+ * sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "cb99796c9a3134f0ffd02a97c3c1eb270055e4b8";
+export const PANEL_VOR_SCHNITT_BLOB = "a72dfdf0907c30378b15cfb606835b528d26107d";
 
 export interface PanelTeile {
   html: string;
