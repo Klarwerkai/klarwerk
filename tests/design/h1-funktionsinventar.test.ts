@@ -272,7 +272,9 @@ const INVENTAR: Zeile[] = [
     kennung: "Z-rollenvorschau",
     heute: "RoleSwitcher „Ansicht als Rolle“ (Sidebar.tsx:253-319) → Zahnrad (JOB 3060)",
     ort: "/admin Konten → Zeile „Ansicht als Rolle“ → Detailkarte mit den vier Rollen (JOB 3065)",
-    route: "/admin",
+    // ADMIN-01 (produkt:20261009): `/admin` ist die Startseite der Verwaltung; „Benutzer und
+    // Rollen" — der Ort dieser Zeile — hat seine eigene Adresse.
+    route: "/admin?bereich=konten",
     pruefen: async () => {
       await warteBis(
         seite(),
@@ -311,7 +313,8 @@ const INVENTAR: Zeile[] = [
     heute: "„Zurück zu Admin“ in der Rollen-Vorschau (Sidebar.tsx:271-283)",
     ort: "Zahnrad-Menü „Zur Admin-Ansicht“ — und das Kopfband bleibt in JEDER Vorschaurolle bei seinem Inventar",
     // Gewählt wird jetzt in den Einstellungen (JOB 3065), zurück geht es weiter über das Zahnrad.
-    route: "/admin",
+    // ADMIN-01: gewählt wird unter „Benutzer und Rollen", das eine eigene Adresse hat.
+    route: "/admin?bereich=konten",
     pruefen: async () => {
       // Gelesen wird `innerText.split(/\s+/)` — ein Name aus zwei Wörtern („Meine Entwürfe",
       // JOB 3503) steht darin als ZWEI Einträge. Das Inventar wird deshalb aus den Namen

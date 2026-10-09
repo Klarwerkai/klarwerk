@@ -1,10 +1,11 @@
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { Mailer } from "../../notifications";
 import { type Meldungsschluessel, type Sprache, meldung } from "./meldungen";
 import { HINWEIS_TEXT_VERSION, hinweisFaellig } from "./notice";
 import { type OidcProvider, OidcUnreachableError, createPkcePair, randomToken } from "./oidc";
 import { LoginRateLimiter } from "./rate-limit";
+import { type SamlErgebnis, SamlFehler, type SamlProvider } from "./saml";
 import { type AuthService, istLesbaresAblaufdatum } from "./service";
 import { AuthError, type AuthErrorCode, type PublicUser, type Role } from "./types";
 
@@ -163,6 +164,36 @@ function clearFlowCookie(name: string): string {
   return cookieSecure() ? `${base}; Secure` : base;
 }
 
+// R-0560 · BROWSERBINDUNG DES SAML-WEGS. Eine gültig signierte Antwort beweist, WER sich beim
+// Anbieter angemeldet hat — nicht, in WELCHEM Browser. Ohne Bindung könnte jemand seine eigene
+// frische Antwort per selbst abschickendem Formular in einen fremden Browser posten und ihn so
+// unter seinem Konto anmelden (Login-CSRF), oder eine abgegriffene Antwort in seinem eigenen Browser
+// einlösen. Deshalb legt der Start einen einmaligen Nachweis in GENAU den startenden Browser
+// (`HttpOnly`, nur unter `/api/auth/saml`), der Anbieter merkt sich dessen Prüfsumme zur Anfrage.
+// Der Rücksprung kommt als Formular-POST von der Seite des Anbieters — dorthin reist ein
+// `SameSite=Lax`-Cookie nicht mit, und `SameSite=None` bleibt ausgeschlossen (s. unten). Der ACS
+// prüft deshalb die Antwort, merkt sich das Ergebnis unter einem einmaligen Abschlusscode und leitet
+// per 303 auf `GET /api/auth/saml/abschluss` — eine Seitennavigation, zu der das Cookie mitreist.
+// ERST dort, nach dem Vergleich in konstanter Zeit, entsteht die Sitzung.
+const SAML_BINDUNG_COOKIE = "kw_saml_bindung";
+const SAML_COOKIE_PFAD = "/api/auth/saml";
+const SAML_ABSCHLUSS_FRIST_MS = 2 * 60 * 1000;
+const SAML_ABSCHLUESSE_MAX = 10_000;
+
+function samlBindungCookie(wert: string): string {
+  const base = `${SAML_BINDUNG_COOKIE}=${wert}; HttpOnly; Path=${SAML_COOKIE_PFAD}; Max-Age=${OIDC_FLOW_MAX_AGE}; SameSite=Lax`;
+  return cookieSecure() ? `${base}; Secure` : base;
+}
+
+function samlBindungLoeschen(): string {
+  const base = `${SAML_BINDUNG_COOKIE}=; HttpOnly; Path=${SAML_COOKIE_PFAD}; Max-Age=0; SameSite=Lax`;
+  return cookieSecure() ? `${base}; Secure` : base;
+}
+
+function pruefsummeHex(wert: string): string {
+  return createHash("sha256").update(wert).digest("hex");
+}
+
 function readCookie(request: FastifyRequest, wanted: string): string | undefined {
   const cookie = request.headers.cookie;
   if (!cookie) {
@@ -219,6 +250,25 @@ function sendError(reply: FastifyReply, error: unknown, sprache: Sprache): void 
   reply.code(500).send({ error: "INTERNAL", message: meldung("INTERNAL", sprache) });
 }
 
+/**
+ * R-0560: der SAML-Rücksprung ist eine Seitennavigation des Browsers, kein Abruf der Anwendung —
+ * eine JSON-Antwort stünde als Rohtext im Fenster. Gescheitert, liest der Mensch deshalb eine
+ * kleine Seite mit dem Katalogsatz in seiner Sprache und dem Weg zurück.
+ */
+function samlFehlerseite(reply: FastifyReply, satz: string, sprache: Sprache): void {
+  const sicher = satz.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  reply
+    .code(401)
+    .header("content-type", "text/html; charset=utf-8")
+    .header("cache-control", "no-store")
+    .send(
+      [
+        `<!doctype html><html lang="${sprache}"><head><meta charset="utf-8"><title>Klarwerk</title></head>`,
+        `<body><p data-testid="saml-fehler">${sicher}</p><p><a href="/">Klarwerk</a></p></body></html>`,
+      ].join(""),
+    );
+}
+
 // WP-VIP2-GATE (bens P1): Selbstregistrierung ist ein öffentlicher Schreibpfad und deshalb
 // FAIL-CLOSED hinter einem Schalter — Default AUS; nur ein explizites =1/true schaltet frei
 // (Dev-/Test-Setups setzen es bewusst, z. B. tests/setup-env.ts). Erst-Einrichtung läuft
@@ -228,6 +278,28 @@ export function selfRegistrationEnabled(
 ): boolean {
   const flag = env.KLARWERK_SELF_REGISTRATION;
   return flag === "1" || flag === "true";
+}
+
+// R-0541 (FIRMENANMELDUNG): DIE ANMELDUNG MIT PASSWORT IST ABSCHALTBAR — dann gilt nur der
+// Firmen-Login und damit dessen Zwei-Faktor-Schutz. Dieselbe Schalterform wie
+// `selfRegistrationEnabled` (nur ein ausdrückliches =1/true schaltet), zur LAUFZEIT je Anfrage
+// gelesen.
+//
+// BEN-BEFUND NACHARBEIT 2: DER SCHALTER SPERRT IMMER. Bis hierher öffnete eine unvollständige
+// OIDC-Konfiguration das Passwort wieder — ein gesetzter Schalter galt dann still nicht. Jetzt gilt
+// er unabhängig davon, ob ein Firmen-Login (OIDC oder SAML) eingerichtet ist. Fehlt der, sagen es
+// drei Stellen verständlich: die 403 der Passwortwege (`SSO_ONLY_NOT_CONFIGURED`), die
+// Anmeldeseite und der Startbericht (`services/app/src/start-vertrag.ts`). Die Ersteinrichtung einer
+// Instanz OHNE jedes Konto bleibt der einzige Weg ohne Firmen-Login (s. `passwortwegZu`).
+export function ssoOnlyRequested(env: Record<string, string | undefined> = process.env): boolean {
+  const flag = env.KLARWERK_SSO_ONLY;
+  return flag === "1" || flag === "true";
+}
+
+export function passwordLoginEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return !ssoOnlyRequested(env);
 }
 
 // WP-VIP2-GATE (bens P1): Registrierungs-Rate-Limit (Konstante) — 5 Versuche je Minute je IP;
@@ -291,6 +363,8 @@ export function authRoutes(
     mailer?: Mailer | undefined;
     resetBaseUrl?: string | undefined;
     oidc?: OidcProvider | undefined;
+    // R-0560: der SAML-Weg (services/auth/src/saml.ts) — ohne vollständige Konfiguration nicht gesetzt.
+    saml?: SamlProvider | undefined;
     // SCRUM-356 / AG-06: injizierbarer Login-Brute-Force-Limiter (Default: kleiner In-Memory-Limiter).
     loginRateLimiter?: LoginRateLimiter | undefined;
     // SCRUM-367 / AG-06-RESET: injizierbarer Recovery-Limiter (forgot/reset). Default: eigener
@@ -298,6 +372,20 @@ export function authRoutes(
     recoveryRateLimiter?: LoginRateLimiter | undefined;
     // WP-VIP2-GATE: injizierbarer Registrierungs-Limiter (Tests mit eigener Uhr/Schwelle).
     registerRateLimiter?: LoginRateLimiter | undefined;
+    /**
+     * R-0554 — DER AUSLÖSER AUS DER VERZEICHNISPFLEGE. Entfernt die Verwaltung ein Konto und nennt
+     * dabei einen Nachfolger (`DELETE /api/users/:id?nachfolger=…`), läuft VOR dem Entfernen die
+     * Wissensübergabe. Die Kompositionswurzel reicht sie herein — `auth` kennt die anderen Module
+     * nicht (dieselbe Einbahnrichtung wie überall: app → auth). Fehlt die Verdrahtung, wird ein
+     * Aufruf mit Nachfolger abgelehnt statt still ohne Übergabe zu löschen.
+     */
+    vorDemEntfernen?:
+      | ((
+          von: string,
+          nachfolger: string,
+          adminId: string,
+        ) => Promise<{ readonly fehlgeschlagen: readonly unknown[] }>)
+      | undefined;
   } = {},
 ): FastifyPluginAsync {
   // WP-VIP2-GATE (bens P1, Cookie-Härtung): fail-closed VOR der Routen-Registrierung — ein
@@ -351,9 +439,38 @@ export function authRoutes(
       return user;
     };
 
+    // R-0541: Ist die Anmeldung mit Passwort abgeschaltet, antwortet JEDER Weg, der ein Passwort
+    // annimmt oder neu ausstellt (Anmelden, Registrieren, Vergessen, Zurücksetzen), mit 403 — VOR
+    // jedem Zähler und jeder Kontoabfrage. Ein „Passwort vergessen", das weiter Mails verschickt,
+    // stellte Passwörter für einen Weg aus, den es nicht mehr gibt. Die Ersteinrichtung bleibt
+    // offen: sie greift nur auf einer Instanz ohne ein einziges Konto, dort ist nichts zu schützen.
+    const passwortwegZu = (request: FastifyRequest, reply: FastifyReply): boolean => {
+      if (passwordLoginEnabled()) {
+        return false;
+      }
+      // Derselbe Fehlercode in beiden Fällen; der SATZ sagt, ob der Firmen-Login bereitsteht oder
+      // noch eingerichtet werden muss — sonst schickte die Meldung Menschen auf einen Weg, den es
+      // nicht gibt.
+      if (options.oidc || options.saml) {
+        reply.code(403).send({
+          error: "PASSWORD_LOGIN_DISABLED",
+          message: meldung("PASSWORD_LOGIN_DISABLED", sprache(request)),
+        });
+      } else {
+        reply.code(403).send({
+          error: "PASSWORD_LOGIN_DISABLED",
+          message: meldung("SSO_ONLY_NOT_CONFIGURED", sprache(request)),
+        });
+      }
+      return true;
+    };
+
     app.post<{ Body: { name?: unknown; email?: unknown; password?: unknown } }>(
       "/api/auth/register",
       async (request, reply) => {
+        if (passwortwegZu(request, reply)) {
+          return;
+        }
         // WP-VIP2-GATE (bens P1): Schalter ZUERST — bei AUS entsteht weder Konto noch Zählung,
         // und die Antwort ist eine ehrliche, generische 403 (kein Hinweis auf Kontenbestand).
         if (!selfRegistrationEnabled()) {
@@ -416,6 +533,9 @@ export function authRoutes(
     app.post<{ Body: { email: string; password: string } }>(
       "/api/auth/login",
       async (request, reply) => {
+        if (passwortwegZu(request, reply)) {
+          return;
+        }
         // SCRUM-356 / AG-06 / NFR-SEC-04: Brute-Force-Schutz. Schlüssel = IP + normalisierte E-Mail.
         // Bewusst NUR um den Login herum, identisch für bekannte/unbekannte Konten (keine Enumeration).
         const limiterKey = loginLimiter.keyFor(request.ip, request.body?.email);
@@ -624,6 +744,11 @@ export function authRoutes(
 
     // FR-AUTH-08: Reset anfordern. Antwort immer 204 — die Existenz der E-Mail wird nicht verraten.
     app.post<{ Body: { email: string } }>("/api/auth/forgot", async (request, reply) => {
+      // R-0541: der Schalter ist über `GET /api/auth/status` ohnehin öffentlich lesbar; die 403
+      // verrät deshalb nichts über Konten.
+      if (passwortwegZu(request, reply)) {
+        return;
+      }
       // SCRUM-367 / AG-06-RESET: Anti-Mail-Spam. Schlüssel = IP (NICHT die E-Mail → keine Enumeration,
       // identisch für bekannt/unbekannt). Bei Überschreitung: trotzdem 204, aber KEINE Mail versenden —
       // die 204-immer-Semantik bleibt unverändert (kein Leak von Kontoexistenz oder Limit-Zustand).
@@ -657,6 +782,9 @@ export function authRoutes(
     app.post<{ Body: { token: string; newPassword: string } }>(
       "/api/auth/reset",
       async (request, reply) => {
+        if (passwortwegZu(request, reply)) {
+          return;
+        }
         // SCRUM-367 / AG-06-RESET: Token-Bruteforce drosseln. Schlüssel = IP (kein Token im Schlüssel →
         // kein Leak, ob ein Token existiert). NUR fehlgeschlagene Einlösungen zählen (wie beim Login);
         // ein legitimer Single-Reset wird nie blockiert. Bei Sperre: 429 + Retry-After, vor der
@@ -772,6 +900,183 @@ export function authRoutes(
       },
     );
 
+    // R-0560: SAML-Start — AuthnRequest per Redirect-Bindung zum Anbieter. `?ziel=word-addin`
+    // schickt den Rücksprung zurück ins Anmeldefenster des Word-Add-ins (dieselbe EINE feste Kennung
+    // wie beim OIDC-Weg; jeder andere Wert endet in der Anwendung).
+    app.get<{ Querystring: { ziel?: unknown } }>("/api/auth/saml/start", async (request, reply) => {
+      if (!options.saml) {
+        reply
+          .code(501)
+          .send({ error: "SAML_DISABLED", message: meldung("SAML_DISABLED", sprache(request)) });
+        return;
+      }
+      const ausDemDialog = request.query?.ziel === OIDC_ZIEL_WORD_ADDIN;
+      // Der einmalige Browsernachweis (s. `SAML_BINDUNG_COOKIE`): der Browser bekommt den Wert,
+      // der Anbieter merkt sich nur seine Prüfsumme.
+      const nachweis = randomToken();
+      reply.header("cache-control", "no-store");
+      reply.header("set-cookie", samlBindungCookie(nachweis));
+      reply.redirect(
+        options.saml.anmeldeUrl(
+          ausDemDialog ? OIDC_ZIEL_WORD_ADDIN : undefined,
+          pruefsummeHex(nachweis),
+        ),
+      );
+    });
+
+    // R-0560: die Dienstanbieter-Metadaten — das, was die IT beim Anbieter einträgt.
+    app.get("/api/auth/saml/metadata", async (request, reply) => {
+      if (!options.saml) {
+        reply
+          .code(501)
+          .send({ error: "SAML_DISABLED", message: meldung("SAML_DISABLED", sprache(request)) });
+        return;
+      }
+      reply
+        .header("content-type", "application/samlmetadata+xml; charset=utf-8")
+        .send(options.saml.metadaten());
+    });
+
+    // R-0560: geprüfte, aber noch nicht an den Browser gebundene Anmeldungen — je einmaliger
+    // Abschlusscode, zwei Minuten lang, genau einmal einlösbar. Nur in diesem Prozess.
+    const samlAbschluesse = new Map<
+      string,
+      { ergebnis: SamlErgebnis; insDialog: boolean; bis: number }
+    >();
+    const samlAbschlussMerken = (ergebnis: SamlErgebnis, insDialog: boolean): string => {
+      const nun = Date.now();
+      for (const [code, eintrag] of samlAbschluesse) {
+        if (eintrag.bis <= nun) {
+          samlAbschluesse.delete(code);
+        }
+      }
+      if (samlAbschluesse.size >= SAML_ABSCHLUESSE_MAX) {
+        const aeltester = samlAbschluesse.keys().next().value;
+        if (aeltester !== undefined) {
+          samlAbschluesse.delete(aeltester);
+        }
+      }
+      const code = randomToken();
+      samlAbschluesse.set(code, { ergebnis, insDialog, bis: nun + SAML_ABSCHLUSS_FRIST_MS });
+      return code;
+    };
+
+    // R-0560: der Rücksprung des Anbieters (HTTP-POST-Bindung, Formularkodierung). Der
+    // Formularparser gilt NUR in diesem eingekapselten Bereich: die übrigen Auth-Routen nehmen
+    // weiter ausschliesslich JSON an — ein Formular einer fremden Seite erreicht dort nichts.
+    // Ein Sitzungscookie reist bei diesem fremd ausgelösten POST nicht mit (`SameSite=Lax`); die
+    // Herkunftsprüfung der App lässt ihn deshalb durch, und es gibt keine Sitzung, in deren Namen
+    // geschrieben würde. Hier entsteht auch KEINE Sitzung: die geprüfte Antwort wartet unter einem
+    // Abschlusscode auf den Browser, der die Anfrage gestellt hat (`/api/auth/saml/abschluss`).
+    app.register(async (app) => {
+      if (!app.hasContentTypeParser("application/x-www-form-urlencoded")) {
+        app.addContentTypeParser(
+          "application/x-www-form-urlencoded",
+          { parseAs: "string", bodyLimit: 1024 * 1024 },
+          (_request, rumpf, fertig) => {
+            fertig(null, Object.fromEntries(new URLSearchParams(String(rumpf))));
+          },
+        );
+      }
+      app.post<{ Body: { SAMLResponse?: unknown; RelayState?: unknown } | null }>(
+        "/api/auth/saml/acs",
+        async (request, reply) => {
+          const saml = options.saml;
+          if (!saml) {
+            reply.code(501).send({
+              error: "SAML_DISABLED",
+              message: meldung("SAML_DISABLED", sprache(request)),
+            });
+            return;
+          }
+          const antwort = request.body?.SAMLResponse;
+          try {
+            if (typeof antwort !== "string" || antwort === "") {
+              throw new SamlFehler("SAMLResponse fehlt");
+            }
+            const ergebnis = saml.pruefeAntwort(antwort);
+            if (ergebnis.bindung === undefined) {
+              throw new SamlFehler("Anfrage ohne Browserbindung");
+            }
+            // Nur die EINE feste Kennung führt ins Dialogfenster — keine offene Weiterleitung.
+            const insDialog = request.body?.RelayState === OIDC_ZIEL_WORD_ADDIN;
+            const code = samlAbschlussMerken(ergebnis, insDialog);
+            reply.header("cache-control", "no-store");
+            reply.redirect(`${SAML_COOKIE_PFAD}/abschluss?code=${encodeURIComponent(code)}`, 303);
+          } catch (error) {
+            request.log.warn(
+              {
+                event: "saml-anmeldung-abgelehnt",
+                grund: error instanceof SamlFehler ? error.grund : (error as Error)?.name,
+              },
+              "SAML-Anmeldung abgelehnt",
+            );
+            // Ein AuthError trägt einen Katalogschlüssel (Konto fehlt, nicht freigegeben,
+            // abgelaufen) — der Mensch soll genau diesen Grund lesen. Alles andere bleibt
+            // unspezifisch: keine Prüfdetails nach aussen.
+            const satz =
+              error instanceof AuthError
+                ? meldung(error.message, sprache(request))
+                : meldung("SAML_LOGIN_FAILED", sprache(request));
+            samlFehlerseite(reply, satz, sprache(request));
+          }
+        },
+      );
+    });
+
+    // R-0560: der Abschluss — die Sitzung entsteht NUR in dem Browser, der die Anfrage gestellt hat.
+    // Ohne passenden Nachweis (anderer Browser, Cookie fehlt, Code unbekannt, abgelaufen oder schon
+    // eingelöst) endet es auf der Fehlerseite, ohne Sitzung. Der Code verfällt beim ersten Versuch.
+    app.get<{ Querystring: { code?: unknown } }>(
+      "/api/auth/saml/abschluss",
+      async (request, reply) => {
+        const saml = options.saml;
+        if (!saml) {
+          reply
+            .code(501)
+            .send({ error: "SAML_DISABLED", message: meldung("SAML_DISABLED", sprache(request)) });
+          return;
+        }
+        const code = request.query?.code;
+        const eintrag = typeof code === "string" ? samlAbschluesse.get(code) : undefined;
+        if (typeof code === "string") {
+          samlAbschluesse.delete(code);
+        }
+        const nachweis = readCookie(request, SAML_BINDUNG_COOKIE);
+        try {
+          if (!eintrag || eintrag.bis <= Date.now()) {
+            throw new SamlFehler("Abschlusscode unbekannt, abgelaufen oder verbraucht");
+          }
+          const soll = Buffer.from(eintrag.ergebnis.bindung ?? "", "utf8");
+          const ist = Buffer.from(nachweis ? pruefsummeHex(nachweis) : "", "utf8");
+          if (soll.length === 0 || ist.length !== soll.length || !timingSafeEqual(ist, soll)) {
+            throw new SamlFehler("Browsernachweis fehlt oder passt nicht");
+          }
+          const { claims, rolle } = eintrag.ergebnis;
+          const { token } = await service.loginWithOidc(claims, saml.autoProvision, rolle);
+          reply.header("set-cookie", [samlBindungLoeschen(), sessionCookie(token)]);
+          reply.header("cache-control", "no-store");
+          reply.redirect(eintrag.insDialog ? OIDC_WEITER_WORD_ADDIN : "/", 303);
+        } catch (error) {
+          request.log.warn(
+            {
+              event: "saml-anmeldung-abgelehnt",
+              grund: error instanceof SamlFehler ? error.grund : (error as Error)?.name,
+            },
+            "SAML-Anmeldung abgelehnt",
+          );
+          // Wie am ACS: ein AuthError nennt den Grund aus dem Katalog, alles andere bleibt allgemein.
+          // Der Nachweis ist in jedem Fall verbraucht.
+          const satz =
+            error instanceof AuthError
+              ? meldung(error.message, sprache(request))
+              : meldung("SAML_LOGIN_FAILED", sprache(request));
+          reply.header("set-cookie", samlBindungLoeschen());
+          samlFehlerseite(reply, satz, sprache(request));
+        }
+      },
+    );
+
     app.post<{ Params: { id: string } }>("/api/auth/users/:id/approve", async (request, reply) => {
       const admin = await requireAdmin(request, reply);
       if (!admin) {
@@ -831,6 +1136,10 @@ export function authRoutes(
         needsSetup: await service.needsSetup(),
         oidcEnabled: Boolean(options.oidc),
         selfRegistrationEnabled: selfRegistrationEnabled(),
+        // R-0560: SAML als zweiter Firmen-Login.
+        samlEnabled: Boolean(options.saml),
+        // R-0541: derselbe Aufruf, der oben die Passwortwege schliesst — keine zweite Auslegung.
+        passwordLoginEnabled: passwordLoginEnabled(),
       });
     });
 
@@ -1249,12 +1558,55 @@ export function authRoutes(
       }
     });
 
-    app.delete<{ Params: { id: string } }>("/api/users/:id", async (request, reply) => {
+    app.delete<{
+      Params: { id: string };
+      Querystring: { nachfolger?: unknown };
+    }>("/api/users/:id", async (request, reply) => {
       const admin = await requireAdmin(request, reply);
       if (!admin) {
         return;
       }
+      // R-0554: ohne `nachfolger` bleibt alles wie bisher (204). Mit Nachfolger wandert das Wissen
+      // ZUERST; bleibt dabei etwas liegen, wird das Konto NICHT entfernt (409 mit dem Ergebnis) —
+      // ein Konto zu löschen, dessen offene Arbeit noch an ihm hängt, wäre genau der Verlust, den
+      // die Übergabe verhindern soll. Ein zweiter Aufruf übernimmt nur, was noch fehlt.
+      const roh = request.query?.nachfolger;
+      const nachfolger = typeof roh === "string" && roh.trim().length > 0 ? roh.trim() : undefined;
       try {
+        if (nachfolger !== undefined) {
+          if (!options.vorDemEntfernen) {
+            reply.code(400).send({
+              error: "HANDOVER_UNAVAILABLE",
+              message:
+                "Die Wissensübergabe ist in diesem Aufbau nicht verfügbar. Es wurde nichts entfernt.",
+            });
+            return;
+          }
+          let ergebnis: { readonly fehlgeschlagen: readonly unknown[] };
+          try {
+            ergebnis = await options.vorDemEntfernen(request.params.id, nachfolger, admin.id);
+          } catch (fehler) {
+            const code = (fehler as { code?: unknown }).code;
+            const grund = fehler instanceof Error ? fehler.message : "";
+            reply.code(code === "NOT_FOUND" ? 404 : 400).send({
+              error: typeof code === "string" ? code : "HANDOVER_FAILED",
+              message: `${grund} Es wurde nichts entfernt.`.trim(),
+            });
+            return;
+          }
+          if (ergebnis.fehlgeschlagen.length > 0) {
+            reply.code(409).send({
+              error: "HANDOVER_INCOMPLETE",
+              message:
+                "Nicht alles konnte übergeben werden. Das Konto wurde nicht entfernt; ein erneuter Versuch übernimmt nur, was noch fehlt.",
+              uebergabe: ergebnis,
+            });
+            return;
+          }
+          await service.deleteUser(request.params.id, admin.id);
+          reply.code(200).send({ uebergabe: ergebnis });
+          return;
+        }
         await service.deleteUser(request.params.id, admin.id);
         reply.code(204).send();
       } catch (error) {
