@@ -73,6 +73,7 @@ import {
 import { selectAnswer } from "../lib/askResponse";
 import { stepsBeyondSources, stepsWorthShowing } from "../lib/askSteps";
 import { answerReviewGuard, evidenzWiederholtStatus } from "../lib/askView";
+import { belegstelleHref } from "../lib/belegstelle";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 // JOB 3267 Q1: der Prüfstand einer Quelle kommt aus der EINEN Ableitung, die auch Bibliothek und
@@ -82,10 +83,14 @@ import { anzeigestatusAus } from "../lib/displayStatus";
 import { conflictKnowledge, effectiveAnswer } from "../lib/effectiveAnswer";
 // Pedi 28.09.2026 · Ergänzung 1: Entwurf und zuletzt angezeigte Antwort bleiben dem Konto erhalten.
 import {
+  type QuellenStand,
+  antwortFrische,
   arbeitsstandLesen,
   arbeitsstandSchreiben,
   belegNochGueltig,
+  beobachtungAus,
   fragenSpeicher,
+  quellenStandAus,
   startadresseMarke,
   startadresseMerken,
   wiederaufnahmeAus,
@@ -254,6 +259,9 @@ const GUIDE_TONE: Record<KnowledgeGuidanceTone, string> = {
 // Parser).
 // `knowledgeClass` wird mit auf „unbekannt" gesetzt, damit kein späterer Leser dieses Zustands
 // eine Klasse für eine Antwort findet, die es nicht gibt.
+// R-0310: „Unter der Antwort … höchstens drei Quellen, weitere als Chip '+N'."
+const QUELLEN_CHIPS_SICHTBAR = 3;
+
 function leereAntwortAlsLuecke(result: AnswerResult): AnswerResult {
   if (!result.answered) {
     return result;
@@ -567,6 +575,15 @@ export function Ask(): JSX.Element {
   );
   // Der Zeitpunkt der stehenden Antwort — gespeichert mit ihr, genannt im Hinweis.
   const [antwortAm, setAntwortAm] = useState<string | null>(anfang?.antwort?.angezeigtAm ?? null);
+  // R-0338: der Quellenstand der stehenden Antwort, wie der SERVER ihn meldete, und die Fassungen,
+  // die diese Fläche beim Eintreffen kannte — s. den Auffrischen-Vertrag in
+  // `lib/fragenArbeitsstand.ts` (Regeln 3 und 4).
+  const [quellenStand, setQuellenStand] = useState<QuellenStand | undefined>(
+    anfang?.antwort?.serverQuellenStand,
+  );
+  const [beobachtet, setBeobachtet] = useState<QuellenStand | undefined>(
+    anfang?.antwort?.beobachtet,
+  );
   // R-0474 (Ben, Runde 1, B1): der Router montiert `/fragen` bei einem Wechsel NUR der Adresszeile
   // nicht neu — der Anfangswert oben sah eine zweite Übergabe (`/fragen?q=Alt` → Palette/Hilfe →
   // `/fragen?q=Neu`) also nie, im Feld blieb die alte Frage stehen. Jede NAVIGATION mit `?q=`
@@ -883,7 +900,15 @@ export function Ask(): JSX.Element {
       }
       setAntwortAm(new Date().toISOString());
       // JOB 2694 D1: eine Antwort ohne Text kommt hier als Lücke an — Begründung am Helfer oben.
-      setResult(leereAntwortAlsLuecke(selectAnswer(r)));
+      // R-0310: `selectAnswer` lässt nur die belegten Absätze stehen (Marke je Absatz; ohne belegten
+      // Absatz die Lücke). Anzeige, Export, Kopieren, Druck und Vorlesen lesen alle diesen Stand.
+      const angekommen = leereAntwortAlsLuecke(selectAnswer(r));
+      setResult(angekommen);
+      // R-0338 (Ben, Nacharbeit 3): die Fassung ihrer Quellen, wie der SERVER sie zu dieser Antwort
+      // gelesen hat — und daneben, getrennt, was diese Fläche gerade von ihnen kennt (nur Untergrenze
+      // für spätere Änderungen, Regel 4 an `antwortFrische`).
+      setQuellenStand(quellenStandAus(angekommen.sources, r.quellenStand));
+      setBeobachtet(beobachtungAus(angekommen.sources, kos.data));
       setReceipt(r.receipt);
       // JOB 2626 D1: abwesend heißt „nicht gefragt oder nichts zu melden" — beides fällt ehrlich
       // auf die leere Liste und damit auf die generische Leermeldung zurück.
@@ -970,11 +995,25 @@ export function Ask(): JSX.Element {
               verschlossen,
               gapId,
               angezeigtAm: antwortAm ?? new Date().toISOString(),
+              ...(quellenStand ? { serverQuellenStand: quellenStand } : {}),
+              ...(beobachtet ? { beobachtet } : {}),
             }
           : null,
       startadressen: gemerkteStartadressen,
     });
-  }, [konto, standFuer, q, result, receipt, verschlossen, gapId, antwortAm, gemerkteStartadressen]);
+  }, [
+    konto,
+    standFuer,
+    q,
+    result,
+    receipt,
+    verschlossen,
+    gapId,
+    antwortAm,
+    quellenStand,
+    beobachtet,
+    gemerkteStartadressen,
+  ]);
 
   // Ergänzung 1 · DIE KENNUNG KOMMT ODER WECHSELT bei stehender Fläche.
   //   · WECHSEL (vorher ein anderes Konto): der Stand des neuen Kontos ersetzt den alten
@@ -1026,6 +1065,8 @@ export function Ask(): JSX.Element {
       // R-0348: der Faden gehört zum Konto — er beginnt bei der übernommenen Antwort neu.
       setFaden(antwort?.frage ? [antwort.frage] : []);
       setAntwortAm(antwort?.angezeigtAm ?? null);
+      setQuellenStand(antwort?.serverQuellenStand);
+      setBeobachtet(antwort?.beobachtet);
       setThankedSources(new Set());
     }
     setStartfrageGilt(startfrageBleibt);
@@ -1097,7 +1138,20 @@ export function Ask(): JSX.Element {
   const pruefungGestoert =
     Boolean(result) &&
     (conflictKnown.state === "failed" || kos.isError || (pruefungWiederholt && !pruefungBelegt));
-  const karteSichtbar = Boolean(result) && Boolean(contract) && !pruefungGestoert;
+  // R-0338 — DER AUFFRISCHEN-VERTRAG (Regeln an `antwortFrische`, lib/fragenArbeitsstand.ts): hat
+  // sich eine Quelle der stehenden Antwort seither geändert, steht sie nicht mehr da. Geprüft wird
+  // gegen denselben Bestand, aus dem die Quellenzeilen ihre Titel lesen; er lädt beim Öffnen und
+  // bei Fensterfokus neu. Neu erzeugt wird nichts von selbst — „Neu fragen" stellt die Frage.
+  const antwortUeberholt =
+    result !== null &&
+    antwortFrische(
+      { quellen: result.sources, stand: quellenStand, beobachtet, am: antwortAm },
+      kos.data,
+      // Ben, Nacharbeit 5: wann der Bestand zuletzt erfolgreich geladen wurde (0 = noch nie).
+      kos.dataUpdatedAt,
+    ) === "ueberholt";
+  const karteSichtbar =
+    Boolean(result) && Boolean(contract) && !pruefungGestoert && !antwortUeberholt;
   // Ben R2, F10: welche Sperrgründe liegen in der Torlage WIRKLICH vor — in fester Reihenfolge —,
   // und welcher Prüfweg passt dazu (nur Freigabe und Stufe entstehen in der Prüfung).
   const verschlossenGruende = (["freigabe", "stufe", "volltext"] as const).filter((grund) =>
@@ -1356,6 +1410,38 @@ export function Ask(): JSX.Element {
       pruefstandHinweis: t("ask.pruefstand.hint", { stand: standWort }),
     };
   });
+  // Aufnahme 20260922 · R-0310/R-0325 (Ben zu 8e6c9d73) — DIE QUELLENREIHE UNTER DER ANTWORT.
+  // Sie nennt nur, worauf die Antwort steht: bei tragfähiger Zuordnung die tragenden Quellen (und
+  // jede, deren Marke sichtbar im Text steht — Marke und Chip fallen nie auseinander, JOB 3267 Q7).
+  // Ist die Zuordnung unbekannt, gibt es keine solche Teilmenge; dann bleiben alle mit dem
+  // Kennzeichen „unbekannt" stehen (R-0325: ehrlich benennen). Höchstens drei unmittelbar, weitere
+  // über „+N" (dieselbe Bauform wie das Word-Panel). Die ausführliche Auskunft über ALLE
+  // herangezogenen Quellen bleibt getrennt in der Quellenliste unter „Mehr" (`QuellenListe`).
+  const chipQuellen = zuordnungTragfaehig
+    ? quellenAuskunft.filter((s) => s.carrying || gerenderteMarken.has(s.nummer))
+    : quellenAuskunft;
+  const [alleChips, setAlleChips] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Absichts-Abhängigkeit — je Antwort wieder kurz.
+  useEffect(() => {
+    setAlleChips(false);
+  }, [result]);
+  const sichtbareChips = alleChips ? chipQuellen : chipQuellen.slice(0, QUELLEN_CHIPS_SICHTBAR);
+  const weitereChips = chipQuellen.length - sichtbareChips.length;
+  // Aufnahme 20260922 · antwort-quellenanzeige (R-0326): der Weg aus der Antwort an die Belegstelle.
+  // Eine TRAGENDE Quelle führt auf `/wissen/:id?stelle=…&fassung=…` (lib/belegstelle.ts) — Passage
+  // ist, was der Server als Beleg dieser Quelle zitiert (`steps[].snippet`, sonst ihre Aussage),
+  // Fassung ihre Inhaltsversion; die Lesefläche sucht, markiert und springt dorthin. Eine nur
+  // herangezogene Quelle hat keine tragende Passage und führt auf die blosse Objektadresse.
+  const quellenHref = (id: string): string => {
+    const quelle = quellenAuskunft.find((q) => q.id === id);
+    const ko = kosById.get(id);
+    const zitiert = result?.steps.find((st) => st.sourceId === id)?.snippet ?? ko?.statement ?? "";
+    const stelle =
+      quelle?.carrying && zitiert.trim() !== ""
+        ? { passage: zitiert, fassung: ko?.version ?? null }
+        : null;
+    return demoHref(belegstelleHref(id, stelle), params);
+  };
   const buildExport = (): { markdown: string; filename: string } | null => {
     if (!result?.answered || !effective) {
       return null;
@@ -1497,13 +1583,15 @@ export function Ask(): JSX.Element {
       {/* Ergänzung 1 (Pedi 28.09.2026): beim Wiederkommen steht OBEN, was aufgenommen wurde und wo
           es weitergeht — ein Satz, keine Karte, damit das Fragefeld ohne Bildlauf sichtbar bleibt.
           Die Antwort wird ausdrücklich als NICHT neu erzeugt benannt, mit ihrem Zeitpunkt. */}
-      {wiederaufnahme ? (
+      {/* R-0338: ist die aufgenommene Antwort überholt, steht sie nicht „darunter" — der Satz nennt
+          dann nur den Entwurf, und ohne Entwurf entfällt er (der Überholt-Hinweis sagt den Rest). */}
+      {wiederaufnahme && (wiederaufnahme.entwurf || !antwortUeberholt) ? (
         <div
           data-testid="ask-wiederaufnahme"
           className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-btn bg-page px-3 py-2 text-[12.5px] text-muted"
         >
           <p className="min-w-0 flex-1">
-            {wiederaufnahme.entwurf && wiederaufnahme.antwortAm
+            {wiederaufnahme.entwurf && wiederaufnahme.antwortAm && !antwortUeberholt
               ? // R-0286: die Antwort steht jetzt UNTER dem Feld — der alte Satz sagte „darüber".
                 t("fragenseite.wiederaufnahmeBeides", {
                   zeit: formatKoTimestamp(wiederaufnahme.antwortAm, i18n.language),
@@ -1905,6 +1993,31 @@ export function Ask(): JSX.Element {
             </Button>
           </div>
         ) : null}
+        {/* R-0338: eine überholte Antwort wird nicht gezeigt — ein Satz und genau eine Aktion. */}
+        {antwortUeberholt && !pruefungGestoert ? (
+          // `<output>` statt `role="status"` (a11y/useSemanticElements) — wie die übrigen Live-Sätze
+          // dieser Seite; Inhalt deshalb als Fließinhalt (`span` statt `p`).
+          <output
+            data-testid="ask-antwort-ueberholt"
+            className="mt-5 block rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-5"
+          >
+            <span className="block text-[13px] text-trust-warn-text">
+              {t("fragenseite.antwortUeberholt", {
+                zeit: antwortAm ? formatKoTimestamp(antwortAm, i18n.language) : "",
+              })}
+            </span>
+            <Button
+              className="mt-3"
+              variant="ghost"
+              data-testid="ask-neu-fragen"
+              disabled={!answerAi.available || ask.isPending}
+              onClick={() => submitAsk(asked)}
+            >
+              {t("fragenseite.neuFragen")}
+              <ArrowRight size={14} />
+            </Button>
+          </output>
+        ) : null}
         {/* Eine ANDERE Frage räumt die alte Antwort ab (`onMutate`) — sie gehört zu einer anderen
             Frage, und stehenzubleiben hieße, sie als Antwort auf die neue auszugeben. DIESELBE
             Frage frischt nur auf: dann bleibt die Antwort stehen (Korrekturpflicht 2). */}
@@ -2089,17 +2202,17 @@ export function Ask(): JSX.Element {
                     Quelle UNBEKANNT (das Wissensobjekt liegt der Fläche nicht vor), steht KEIN
                     Punkt — „unbekannt" ist etwas anderes als „in Ordnung", und die volle Auskunft
                     dazu steht im Info-Blatt unter „Mehr". */}
-                  {quellenAuskunft.length > 0 ? (
+                  {chipQuellen.length > 0 ? (
                     <div
                       data-testid="ask-quellen-chips"
                       className="flex flex-wrap gap-2 border-t border-hairline pt-3.5"
                     >
-                      {quellenAuskunft.map((s) => {
+                      {sichtbareChips.map((s) => {
                         const punkt = chipPunkt(s);
                         return (
                           <Link
                             key={s.id}
-                            to={demoHref(`/wissen/${s.id}`, params)}
+                            to={quellenHref(s.id)}
                             data-testid="ask-quellen-chip"
                             data-tutorial-ziel={FRAGEN_ZIEL.quellenchip}
                             className={QUELLEN_CHIP_KLASSE}
@@ -2121,6 +2234,17 @@ export function Ask(): JSX.Element {
                           </Link>
                         );
                       })}
+                      {weitereChips > 0 ? (
+                        <button
+                          type="button"
+                          data-testid="ask-quellen-chip-mehr"
+                          aria-label={t("ask.quellen.weitere", { count: weitereChips })}
+                          onClick={() => setAlleChips(true)}
+                          className={QUELLEN_CHIP_KLASSE}
+                        >
+                          +{weitereChips}
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                   {/* R-1633 — „Sichtbar im UI": wofür gewichtet wurde und wie jede herangezogene
@@ -2364,7 +2488,7 @@ export function Ask(): JSX.Element {
                             der Bibliothek — so kommt man aus der Antwort schnell zum Artikel. */}
                                   {s.sourceId ? (
                                     <Link
-                                      to={demoHref(`/wissen/${s.sourceId}`, params)}
+                                      to={quellenHref(s.sourceId)}
                                       className="inline-flex items-center gap-1 font-medium text-brand-text hover:underline"
                                     >
                                       <span className="text-text">{s.description}</span>
@@ -2392,7 +2516,7 @@ export function Ask(): JSX.Element {
                           <QuellenListe
                             quellen={quellenAuskunft}
                             zuordnungTragfaehig={zuordnungTragfaehig}
-                            wissenHref={(id) => demoHref(`/wissen/${id}`, params)}
+                            wissenHref={quellenHref}
                             bildfundstelle={(id) => result.captionSources?.includes(id) ?? false}
                             koVon={(id) => (kos.data ?? []).find((k) => k.id === id)}
                             autorVon={authorNameOf}
@@ -2484,6 +2608,13 @@ export function Ask(): JSX.Element {
               </div>
             ) : (
               <Card className="mt-3 border-dashed" data-testid="ask-gap">
+                {/* R-0310/R-0325 (Ben zu 8e6c9d73): die Antwort ist zurückgehalten, weil sich keine
+                  tragende Quelle zuordnen ließ — das wird gesagt, der unbelegte Text nicht gezeigt. */}
+                {result.zuordnungUnbekannt ? (
+                  <p data-testid="ask-zuordnung-unbekannt" className="mb-3 text-sm text-muted">
+                    {t("ask.zuordnungUnbekannt")}
+                  </p>
+                ) : null}
                 {verschlossen.length > 0 ? (
                   <>
                     <div className="mb-3" data-testid="ask-verschlossen">
