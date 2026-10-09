@@ -70,6 +70,7 @@ import {
   zulaessigeZiele,
 } from "../verantwortung";
 import type { NachfolgeEintrag, NachfolgeRepo } from "../verantwortung-nachfolge";
+import type { OffeneVorgaenge } from "../wissensuebergabe";
 
 export interface VerantwortungDienste {
   ko: KoService;
@@ -78,6 +79,12 @@ export interface VerantwortungDienste {
   /** Nacharbeit 4: die Nachfolge für neue Beiträge eines befristeten Kontos. */
   nachfolge: NachfolgeRepo;
   audit?: AuditService;
+  /**
+   * ADMIN-04: Entwürfe, offene Lücken und offene Prüfaufgaben je Person — dieselbe Erhebung wie
+   * die Wissensübergabe (`Wissensuebergabe.offeneVorgaenge`). Fehlt sie, heisst die Antwort
+   * „nicht erhoben" (`null`), nie „keine".
+   */
+  offeneVorgaenge?: (personen: readonly string[]) => Promise<Map<string, OffeneVorgaenge>>;
   /** Uhr für Zugangsstand und Deaktivierung — in Tests stellbar. */
   jetzt?: () => number;
 }
@@ -348,6 +355,85 @@ export function verantwortungRoutes(
         vertretung: vertretung(konten, von, zeit),
       });
     });
+
+    // ADMIN-04 · DIE ZAHLEN DER KONTENLISTE — je Konto Zugangsstand, Beiträge und andere offene
+    // Vorgänge, nur Anzahlen. `beitraege` ist dieselbe Menge wie `anzahl` im Bestand der Person
+    // (Hauptverantwortung, Papierkorb eingeschlossen); Entwürfe, Lücken und Prüfaufgaben sind
+    // andere Ablagen und stehen getrennt daneben — nichts davon ist in `beitraege` enthalten.
+    app.get("/api/verantwortung/uebersicht", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      const { konten, bestand, zeit } = await lage();
+      const beitraege = new Map<string, number>();
+      for (const ko of bestand) {
+        const wer = responsibleOf(ko);
+        beitraege.set(wer, (beitraege.get(wer) ?? 0) + 1);
+      }
+      let vorgaenge: Map<string, OffeneVorgaenge> | null = null;
+      if (dienste.offeneVorgaenge) {
+        try {
+          vorgaenge = await dienste.offeneVorgaenge(konten.map((k) => k.id));
+        } catch (e) {
+          // Die Beiträge bleiben belegt; die Vorgänge heissen dann „nicht erhoben", nicht „0".
+          request.log.error({ err: e }, "Kontenübersicht: offene Vorgänge nicht erhoben");
+        }
+      }
+      reply.code(200).send({
+        erhobenAm: new Date(zeit).toISOString(),
+        personen: konten.map((k) => {
+          const v = vorgaenge?.get(k.id);
+          return {
+            id: k.id,
+            zugang: zugangsstand(k, zeit),
+            beitraege: beitraege.get(k.id) ?? 0,
+            vorgaenge: v
+              ? {
+                  entwuerfe: v.entwuerfe.length,
+                  luecken: v.luecken.length,
+                  pruefaufgaben: v.pruefaufgaben.length,
+                }
+              : null,
+          };
+        }),
+      });
+    });
+
+    // ADMIN-04 · die offenen Vorgänge EINER Person — das Ziel des Zählers in der Kontokarte.
+    // Entwürfe und Lücken nur als Kennung (privat bzw. vertraulich), Prüfaufgaben mit Titel nur,
+    // wenn der Handelnde den Beitrag lesen darf.
+    app.get<{ Params: { id: string } }>(
+      "/api/verantwortung/person/:id/vorgaenge",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        if (!dienste.offeneVorgaenge) {
+          reply.code(503).send({
+            error: "NICHT_VERFUEGBAR",
+            message: "Die offenen Vorgänge können hier nicht erhoben werden.",
+          });
+          return;
+        }
+        const von = request.params.id;
+        const [v, bestand] = await Promise.all([
+          dienste.offeneVorgaenge([von]),
+          dienste.ko.listEinschliesslichPapierkorb(),
+        ]);
+        const nachKennung = new Map(bestand.map((ko) => [ko.id, ko]));
+        const eintrag = v.get(von) ?? { entwuerfe: [], luecken: [], pruefaufgaben: [] };
+        reply.code(200).send({
+          entwuerfe: eintrag.entwuerfe,
+          luecken: eintrag.luecken,
+          pruefaufgaben: eintrag.pruefaufgaben.map((z) => ({
+            koId: z.koId,
+            titel: titelFuer(user, nachKennung.get(z.koId)),
+          })),
+        });
+      },
+    );
 
     // Bestand ohne aktive Hauptverantwortung — je Person nur die Anzahl, kein Inhalt. Das ist die
     // Liste, die nach einem Personalwechsel leer sein soll.
