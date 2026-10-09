@@ -939,6 +939,23 @@ export const endpoints = {
         ...(thread && thread.length > 0 ? { thread } : {}),
         ...(fragekontext ? { fragekontext } : {}),
       }),
+    // R-0305/R-1099: dieselbe Frage samt Faden, zusätzlich vom Zweitmodell beantwortet. Derselbe
+    // Endpunkt — Auth, Schema, Filter und Egress-Regeln bleiben die der Frage.
+    // Ben (Nacharbeit 9): auch derselbe Fragekontext (R-1633) wie bei der stehenden Antwort — sonst
+    // gewichtet die Gegenüberstellung andere Quellen als die Antwort, auf die sie sich bezieht.
+    zweitmeinung: (
+      question: string,
+      locale?: ReasonerLocale,
+      thread?: readonly string[],
+      fragekontext?: Fragekontext,
+    ) =>
+      api.post<AskResponse>("/ask", {
+        question,
+        ...(locale ? { locale } : {}),
+        ...(thread && thread.length > 0 ? { thread } : {}),
+        ...(fragekontext ? { fragekontext } : {}),
+        zweitmeinung: true,
+      }),
     // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang
     // zurück — ohne gültigen, dieses KO belegenden Receipt antwortet der Server 403.
     helpful: (koId: string, receipt: string) => api.post<void>("/ask/helpful", { koId, receipt }),
