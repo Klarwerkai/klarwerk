@@ -223,6 +223,9 @@ async function klick(el: Element | null | undefined, was: string): Promise<void>
     el.click();
     await flush();
   });
+  // Eine Navigation (Filter, Seite, Rücklink, Zurück) wird erst am Ende von `act` gezeichnet; der
+  // Abruf zur neuen Adresse startet danach und braucht eine zweite Runde — wie beim Einhängen.
+  await act(flush);
 }
 
 function knopf(beschriftung: string): HTMLButtonElement | undefined {

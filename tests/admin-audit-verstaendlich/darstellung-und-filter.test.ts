@@ -48,8 +48,11 @@ const ereignis = (teil: Partial<AuditEreignis>): AuditEreignis => ({
   ...teil,
 });
 
-const akteur = (e: AuditEreignis, lage = VERZEICHNIS, protokoll = new Map<string, string>()) =>
-  auditEventDetail(e, lage, protokoll)[0];
+const akteur = (
+  e: AuditEreignis,
+  lage: VerzeichnisLage = VERZEICHNIS,
+  protokoll: ReadonlyMap<string, string> = new Map(),
+) => auditEventDetail(e, lage, protokoll)[0];
 
 describe("K1/K3 · wer gehandelt hat — und woher der Name stammt", () => {
   it("bekannter Akteur ohne gespeicherten Namen: Name aus dem Verzeichnis, als HEUTIGER gekennzeichnet", () => {

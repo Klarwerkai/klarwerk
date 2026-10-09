@@ -572,9 +572,13 @@ describe("Verwalteransicht · Spalten, Detailansicht, gelöschte Konten, Gesamtz
     expect(text(zeile(20, "audit.detail.event"))).toBe("Für Lernplattform exportiert (SCORM)");
     // produkt:20261009:admin-audit-verstaendlich (K3): der Eintrag hat keinen Namen gespeichert —
     // „Lea Lebt“ ist der HEUTIGE Name aus dem Verzeichnis und steht ausdrücklich so da.
-    expect(text(zeile(20, "audit.detail.actor"))).toBe(
-      `Lea Lebt ${i18n.t("auditprotokoll.name.heute")}`,
+    // Name und Kennzeichen sind eigene Elemente (Abstand über das Layout, nicht über Leerzeichen).
+    const akteur = zeile(20, "audit.detail.actor");
+    expect(text(akteur.firstElementChild?.firstElementChild ?? null)).toBe("Lea Lebt");
+    expect(text(akteur.querySelector('[data-audit-herkunft="verzeichnis"]'))).toBe(
+      i18n.t("auditprotokoll.name.heute"),
     );
+    expect(text(akteur)).toBe(`Lea Lebt${i18n.t("auditprotokoll.name.heute")}`);
     // Das Paket ist kein Konto — Objektzeile, keine Löschaussage.
     expect(text(zeile(20, "audit.detail.targetObject"))).toContain("lms-export:EXP-1");
     expect(container.textContent).not.toContain("output lms export");
@@ -628,6 +632,9 @@ describe("Verwalteransicht · Spalten, Detailansicht, gelöschte Konten, Gesamtz
       aelter?.click();
       await flush();
     });
+    // Die Navigation wird erst am Ende von `act` gezeichnet; erst danach startet der Abruf der
+    // älteren Seite, und seine Antwort braucht eine zweite Runde — wie beim Einhängen.
+    await act(flush);
     expect(seite.mock.calls.at(-1)?.[0]).toEqual({ before: 3 });
     expect(
       [...container.querySelectorAll("[data-audit-eintrag]")].map((e) =>
