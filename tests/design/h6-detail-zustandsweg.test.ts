@@ -1691,6 +1691,19 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
    */
   function zusatzOrte(): InhaltsOrt[] {
     return [
+      // ADMIN-16: die beiden früheren Kästen der Importseite, jetzt Karten unter „Vorführdaten".
+      {
+        reiter: t("adm.sec.vorfuehrdaten"),
+        zeile: '[data-testid="zeile-demopakete"]',
+        behaelter: "detail-pakete",
+        seitenPfad: "/admin",
+      },
+      {
+        reiter: t("adm.sec.vorfuehrdaten"),
+        zeile: '[data-testid="zeile-testimporte"]',
+        behaelter: "detail-testimporte",
+        seitenPfad: "/admin",
+      },
       {
         reiter: t("adm.sec.konten"),
         zeile: '[data-testid="flaeche-nutzer"] button[data-einst="zeile"]',
@@ -1726,6 +1739,13 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
         reiter: "",
         zeile: '[data-testid="zeile-passwort"]',
         behaelter: "detail-passwort",
+        seitenPfad: "/profil",
+      },
+      // R-0582: die Berichtigung der eigenen Kontodaten — eine Detailkarte ohne eigene Abfrage.
+      {
+        reiter: "",
+        zeile: '[data-testid="zeile-kontodaten"]',
+        behaelter: "detail-kontodaten",
         seitenPfad: "/profil",
       },
     ];

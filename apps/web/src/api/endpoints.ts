@@ -1450,7 +1450,9 @@ export const endpoints = {
       accessExpiresAt?: string,
     ) => api.post<PublicUser>("/users", { name, email, password, role, accessExpiresAt }),
     approve: (id: string) => api.post<void>(`/auth/users/${id}/approve`),
-    setRole: (id: string, role: Role) => api.put<void>(`/users/${id}`, { role }),
+    // ADMIN-04: der Server antwortet mit dem gespeicherten Konto (`routes.ts`, PUT /api/users/:id) —
+    // die Bestätigung in der Kontokarte nennt die Rolle aus dieser Antwort, nicht die gewählte.
+    setRole: (id: string, role: Role) => api.put<PublicUser>(`/users/${id}`, { role }),
     // R-0554: mit `nachfolger` läuft vor dem Entfernen die Wissensübergabe (Auslöser aus der
     // Verzeichnispflege); bleibt etwas liegen, antwortet der Server 409 und entfernt nichts.
     remove: (id: string, nachfolger?: string) =>
@@ -1479,6 +1481,9 @@ export const endpoints = {
     //     zeigt nach dem Speichern den Stand von davor.
     setAccessExpiry: (id: string, accessExpiresAt: string | null) =>
       api.put<PublicUser>(`/users/${id}`, { accessExpiresAt }),
+    // R-0582: der Admin berichtigt Name und E-Mail — dieselbe Route, die Antwort ist der neue Stand.
+    correct: (id: string, name: string, email: string) =>
+      api.put<PublicUser>(`/users/${id}`, { name, email }),
   },
   // ==============================================================================================
   // JOB 4154 · WIKI-GESAMTANWEISUNG — NEUN ADRESSEN, UND JEDE SCHREIBENDE TRÄGT DEN GELESENEN STAND.

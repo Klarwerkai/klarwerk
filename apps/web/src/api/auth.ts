@@ -7,6 +7,8 @@ export interface SessionUser {
   name?: string;
   email?: string;
   role: Role;
+  // R-0582: verknüpfte SSO-Identität — dann bietet die Kontodatenkarte die SSO-Bestätigung an.
+  oidcSubject?: string;
 }
 
 export interface AuthStatus {
@@ -62,8 +64,12 @@ export const authApi = {
   logout: (): Promise<void> => api.post<void>("/auth/logout"),
   // FR-AUTH-07: SSO-Start liegt als GET-Redirect auf dem Server (Full-Page-Navigation).
   ssoStartUrl: "/api/auth/oidc/start",
+  // R-0582: dieselbe SSO-Anmeldung als Identitätsbestätigung für eine neue E-Mail aus dem Profil.
+  ssoProfilBestaetigungUrl: "/api/auth/oidc/start?ziel=profil",
   // R-0560: der Einstieg in die SAML-Anmeldung (Weiterleitung zum Anbieter).
   samlStartUrl: "/api/auth/saml/start",
+  // R-0582: dieselbe Bestätigung über den SAML-Firmen-Login (Rücksprung ebenfalls ins Profil).
+  samlProfilBestaetigungUrl: "/api/auth/saml/start?ziel=profil",
   // FR-AUTH-07: Callback — Code+State gegen Session tauschen (PKCE serverseitig).
   // Aufnahme m365-anmeldung: `weiter` nennt der Server nur, wenn der Anmeldedialog des Word-Add-ins
   // das SSO gestartet hat — dann geht es zurück auf die Dialogseite (s. `ssoWeiterziel`).
@@ -72,6 +78,12 @@ export const authApi = {
   // Self-Service: angemeldeter Nutzer ändert sein eigenes Passwort (altes Passwort nötig).
   changePassword: (oldPassword: string, newPassword: string): Promise<void> =>
     api.post<void>("/auth/password", { oldPassword, newPassword }),
+  // R-0582: eigene Kontodaten berichtigen. Eine neue E-Mail verlangt das aktuelle Passwort.
+  correctAccount: (eingabe: {
+    name?: string;
+    email?: string;
+    currentPassword?: string;
+  }): Promise<SessionUser> => api.put<SessionUser>("/auth/me", eingabe),
   // FR-AUTH-08: Reset anfordern (Antwort immer 204) und einlösen (Token + neues Passwort).
   forgot: (email: string): Promise<void> => api.post<void>("/auth/forgot", { email }),
   reset: (token: string, newPassword: string): Promise<void> =>

@@ -470,16 +470,35 @@ async function entwurfsListeOeffnen(): Promise<void> {
   await click(menueEintrag(i18n.t("erfassen.mehr.entwuerfe")));
 }
 
+/**
+ * FR-MOB-03 (Aufnahme `gesamt-dialog-bedienung`): Öffnen und Verwerfen fragen nicht mehr über
+ * `window.confirm`, sondern IN DER ANWENDUNG — in der Rückfragezeile des Blattes. Steht eine, wird
+ * ihr Wortlaut in `rueckfragen` gesammelt und sie nach `rueckfrageAntwort` beantwortet: genau die
+ * Rolle, die vorher die `confirm`-Attrappe spielte. Die Attrappe bleibt montiert — ruft das Blatt
+ * doch einen Systemdialog, steht sein Satz ZUSÄTZLICH in `rueckfragen`, und die genauen
+ * Listenvergleiche unten werden rot.
+ */
+async function rueckfrageDesBlattesBeantworten(): Promise<void> {
+  const zeile = container.querySelector('[data-testid="blatt-rueckfrage"]');
+  if (!zeile) {
+    return;
+  }
+  rueckfragen.push(zeile.querySelector("#blatt-rueckfrage-text")?.textContent ?? "");
+  await click(pruefknopf(rueckfrageAntwort ? "blatt-rueckfrage-ja" : "blatt-rueckfrage-nein"));
+}
+
 /** Denselben Weg gehen, den ein Mensch geht: „…" → „Entwürfe" → den Entwurf anklicken. */
 async function entwurfAusListeKlicken(titel: string = TITEL): Promise<void> {
   await entwurfsListeOeffnen();
   await click(menueEintrag(titel));
+  await rueckfrageDesBlattesBeantworten();
 }
 
 /** „…" → „Eingabe verwerfen". */
 async function eingabeVerwerfen(): Promise<void> {
   await click(pruefknopf("blatt-werkzeug-mehr"));
   await click(menueEintrag(i18n.t("fd.discardInput")));
+  await rueckfrageDesBlattesBeantworten();
 }
 
 describe("JOB 3141 (CAP-P1): das Ladefenster nimmt nichts an, statt es wegzuwerfen", () => {
