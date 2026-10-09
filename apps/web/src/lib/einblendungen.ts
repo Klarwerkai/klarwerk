@@ -35,11 +35,9 @@ import { einblenden, hatGemeldet, inAktion } from "../app/ToastContext";
 /** Ein Rückruf, dessen Einblendungen für `aktion` zählen. */
 function zugeordnet<A extends unknown[], R>(
   aktion: object,
-  rueckruf: ((...args: A) => R) | undefined,
-): ((...args: A) => R) | undefined {
-  return rueckruf === undefined
-    ? undefined
-    : (...args: A): R => inAktion(aktion, () => rueckruf(...args));
+  rueckruf: (...args: A) => R,
+): (...args: A) => R {
+  return (...args: A): R => inAktion(aktion, () => rueckruf(...args));
 }
 
 function fehlersatz(fehler: unknown): string {
@@ -58,13 +56,17 @@ export function einblendungsMutationCache(): MutationCache {
       const aktion = {};
       aktionVon.set(mutation, aktion);
       const setzen = mutation.setOptions.bind(mutation);
-      mutation.setOptions = (optionen) =>
+      // Nur vorhandene Rückrufe werden ersetzt: mit `exactOptionalPropertyTypes` darf ein fehlender
+      // Rückruf nicht als ausdrückliches `undefined` gesetzt werden.
+      mutation.setOptions = (optionen) => {
+        const { onSuccess, onError, onSettled } = optionen;
         setzen({
           ...optionen,
-          onSuccess: zugeordnet(aktion, optionen.onSuccess),
-          onError: zugeordnet(aktion, optionen.onError),
-          onSettled: zugeordnet(aktion, optionen.onSettled),
+          ...(onSuccess ? { onSuccess: zugeordnet(aktion, onSuccess) } : {}),
+          ...(onError ? { onError: zugeordnet(aktion, onError) } : {}),
+          ...(onSettled ? { onSettled: zugeordnet(aktion, onSettled) } : {}),
         });
+      };
       mutation.setOptions(mutation.options);
       return;
     }
