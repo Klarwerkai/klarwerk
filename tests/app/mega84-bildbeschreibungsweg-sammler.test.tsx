@@ -2372,8 +2372,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // eingebunden. 521 + 1 = 522; meine gerechnete 532 aus Nacharbeit 5 ist damit überholt.
     // EHRLICH GESAGT: GERECHNET, nicht gemessen. Weicht der Prüflauf ab, gehört die gemessene
     // Zahl hierher. `anbieter` 1 und `traeger` 2 bleiben.
+    //
+    // gesamt-wissensvermaechtnis Nacharbeit 8: GEMESSEN 525. Am Kandidaten 877938fb meldete der
+    // Sammler wörtlich „gemessen: 525 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 678
+    // Quelldateien … expected { komponenten: 525, … } to deeply equal { komponenten: 522, … }"
+    // (HISTORIE/nacharbeit-8/PRUEFUNG/vermaechtnis-integration.log). Dieser Auftrag trägt weiterhin
+    // genau EIN Bauteil bei (`VermaechtnisBuch`); die übrigen 3 über 522 kamen mit dem seit der
+    // Messung 521 eingemischten Hauptstand (Grundmenge 674 → 678) und sind ohne Git-Verlauf hier
+    // nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 522,
+      komponenten: 525,
       anbieter: 1,
       traeger: 2,
     });
