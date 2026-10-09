@@ -3,7 +3,7 @@ import type { TxContext } from "../../db-tx";
 import type { KnowledgeObject, KoFilter, KoService } from "../../knowledge-object";
 // JOB 557 (Pedi 13.08.2026): „der Erzeuger ist nicht der Verantwortliche." Beide Helfer kommen über
 // die MODULFASSADE — keine Kante in die Innereien von knowledge-object.
-import { responsibleKindOf, responsibleOf } from "../../knowledge-object";
+import { ownershipOf, responsibleKindOf, responsibleOf } from "../../knowledge-object";
 import type { AssignmentRepo, RatingRepo } from "./repo";
 import {
   FALLBACK_NEEDED_VALIDATIONS,
@@ -459,6 +459,87 @@ export class ValidationService {
     };
   }
 
+  // ==============================================================================================
+  // R-0507 — „DER EIGENTÜMER KANN ES FREIGEBEN."
+  // ==============================================================================================
+  //
+  // Die Freigabe durch den benannten Eigentümer ist eine abgeschlossene Validierung mit genau EINER
+  // tragenden Identität — derselbe Weg wie `adminValidate` (Compare-and-Set gegen die gelesene
+  // Fassung, Zustand und Beleg in einer Klammer, Fortschreibung von `validators`). Zwei
+  // Unterschiede, beide gewollt:
+  //   · WER: nur der benannte Eigentümer (`ownership.owner`), geprüft HIER gegen den gelesenen
+  //     Stand. Das Freigaberecht selbst (`ko.validate`) prüft die Route — der Eigentum allein
+  //     verleiht keine Freigabebefugnis (ownership.ts: „keine Rechtevergabe"), es BENENNT nur,
+  //     wer unter den Freigabeberechtigten das letzte Wort am eigenen Objekt hat.
+  //   · WIE VIEL: das Vertrauen bleibt, wie es die Stimmen ergeben. Die Eigentümerfreigabe ist eine
+  //     Entscheidung, keine zusätzliche Evidenz — anders als der Admin-Deckel (TRUST_MAX).
+  // Der Beleg heisst `ko.owner-validated`; die Rückgabe der Verantwortung
+  // (`KoService.releaseOwnership`) bleibt ein eigener, davon getrennter Weg.
+  //
+  // BEN (Nacharbeit 3): Eigentum und Vertrauen werden NICHT aus dem Vorab-Lesen übernommen. Eine
+  // Eigentumsänderung (`setOwnership`, `releaseOwnership`, Wissensübergabe) erhöht die Inhaltsfassung
+  // nicht — der Compare-and-Set auf `version` sähe sie nicht. Deshalb prüft der `zustand`-Rückruf,
+  // der unter dem KO-Lock den FRISCH gelesenen Stand bekommt, den Eigentümer erneut und übernimmt
+  // dessen aktuelles Vertrauen. Die frühe Prüfung bleibt als schnelle Abweisung ohne Schreibversuch.
+  async ownerValidate(koId: string, actorId: string): Promise<ValidationDecision> {
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    const nichtEigentuemer = (): ValidationError =>
+      new ValidationError(
+        "NOT_OWNER",
+        "Nur der benannte Eigentümer kann dieses Wissensobjekt als Eigentümer freigeben.",
+      );
+    if (ownershipOf(ko)?.owner !== actorId) {
+      throw nichtEigentuemer();
+    }
+    const geleseneFassung = ko.version;
+    const {
+      ko: gespeichert,
+      geschrieben,
+      ref,
+    } = await this.koService.setValidationStateMitBeleg(
+      koId,
+      async (frisch) => {
+        if (ownershipOf(frisch)?.owner !== actorId) {
+          throw nichtEigentuemer();
+        }
+        return { trust: frisch.trust, status: "validiert" };
+      },
+      { expectedVersion: geleseneFassung, beiVersionswechsel: "nichts" },
+      async (tx) =>
+        refAus(
+          await this.audit?.record(
+            {
+              actor: actorId,
+              action: "ko.owner-validated",
+              target: koId,
+              payload: { koVersion: geleseneFassung },
+            },
+            tx,
+          ),
+        ),
+    );
+    const { votes } = stimmenAus(await this.ratings.listByKo(koId), gespeichert.version);
+    if (!geschrieben) {
+      return {
+        ...votes,
+        trust: gespeichert.trust,
+        status: gespeichert.status,
+        validationDecisionRef: null,
+      };
+    }
+    await this.koService.recordOwnershipRole(koId, "validators", [actorId], actorId);
+    // Die Antwort aus dem TATSÄCHLICH gespeicherten Stand — nicht aus dem Vorab-Lesen.
+    return {
+      ...votes,
+      trust: gespeichert.trust,
+      status: gespeichert.status,
+      validationDecisionRef: ref,
+    };
+  }
+
   // SCRUM-124: dedupliziert eine offene Zuweisung an den VERANTWORTLICHEN + Audit-Event.
   //
   // ==============================================================================================
@@ -723,6 +804,82 @@ export class ValidationService {
       });
     }
     await this.koService.recordOwnershipRole(koId, "reviewers", [...userIds], actor);
+  }
+
+  // ==============================================================================================
+  // R-0571 — ZUSTÄNDIGKEIT AUS DEM VERZEICHNIS, ABGEGLICHEN STATT NUR ERGÄNZT.
+  // ==============================================================================================
+  //
+  // `soll` sind die Personen, die laut aktuellem Gruppenstand für dieses Objekt zuständig sind.
+  //   · Fehlt einer davon eine Zuweisung, entsteht sie — markiert als `quelle: "verzeichnis"`,
+  //     Benachrichtigung „ausstehend" (der Aufrufer verschickt sie, s. `nochZuBenachrichtigen`).
+  //   · Eine OFFENE Verzeichnis-Zuweisung an jemanden, der nicht mehr zuständig ist (Gruppe
+  //     verlassen, Austritt, Objekt in einen anderen Space gewechselt), wird zurückgezogen.
+  //   · Unberührt bleiben: jede Zuweisung ohne diese Herkunft (von Hand, beim Einreichen) und jede
+  //     erledigte — eine abgeschlossene Prüfspur verschwindet nicht, weil sich eine Gruppe ändert.
+  //     Ebenso bleibt `reviewers` im Aggregat stehen: es ist die Spur, wer je zugewiesen war.
+  // Idempotent: ein zweiter Lauf mit demselben Stand ändert nichts.
+  async verzeichnisAbgleichen(
+    koId: string,
+    soll: readonly string[],
+    actor = "system",
+  ): Promise<{ neu: string[]; entzogen: string[] }> {
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      return { neu: [], entzogen: [] };
+    }
+    const vorhanden = await this.assignments.listByKos([koId]);
+    const entzogen: string[] = [];
+    for (const a of vorhanden) {
+      if (a.quelle === "verzeichnis" && a.status === "open" && !soll.includes(a.userId)) {
+        if (!this.assignments.remove) {
+          // Beide Ablagen (Speicher, PostgreSQL) können es; eine ohne darf nicht still nur ergänzen.
+          throw new Error("AssignmentRepo.remove fehlt — Verzeichnisabgleich nicht möglich.");
+        }
+        await this.assignments.remove(koId, a.userId);
+        entzogen.push(a.userId);
+      }
+    }
+    const neu: string[] = [];
+    for (const userId of soll) {
+      if (!vorhanden.some((a) => a.userId === userId)) {
+        await this.assignments.create({
+          koId,
+          userId,
+          status: "open",
+          benachrichtigung: "ausstehend",
+          quelle: "verzeichnis",
+        });
+        neu.push(userId);
+      }
+    }
+    if (neu.length > 0) {
+      await this.audit?.record({
+        actor,
+        action: "ko.assigned",
+        target: koId,
+        payload: { userIds: neu, quelle: "verzeichnis" },
+      });
+      await this.koService.recordOwnershipRole(koId, "reviewers", neu, actor);
+    }
+    if (entzogen.length > 0) {
+      await this.audit?.record({
+        actor,
+        action: "ko.assignment-withdrawn",
+        target: koId,
+        payload: { userIds: entzogen, quelle: "verzeichnis" },
+      });
+    }
+    return { neu, entzogen };
+  }
+
+  // R-0571: die Objekte, an denen noch eine OFFENE Verzeichnis-Zuweisung hängt — auch solche, deren
+  // Space inzwischen keiner Gruppe mehr zugeordnet ist. Nur für den Gesamtabgleich nach einer
+  // Verzeichnisänderung.
+  async koMitVerzeichnisZuweisung(): Promise<string[]> {
+    const alle = await this.assignments.all();
+    const offen = alle.filter((a) => a.quelle === "verzeichnis" && a.status === "open");
+    return [...new Set(offen.map((a) => a.koId))];
   }
 
   // Wer von diesen Personen hat für das KO eine Zuweisung, deren Benachrichtigung noch AUSSTEHT?
