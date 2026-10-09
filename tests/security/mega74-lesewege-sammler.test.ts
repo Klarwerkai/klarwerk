@@ -858,6 +858,49 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "KEIN_KO_INHALT",
     grund: "JOB 3510 — Antwort ist derselbe Stand wie der Leseweg; users.manage im Rumpf.",
   },
+  // ADMIN-15 · Unternehmensprofil und interne Richtlinien (unternehmen-routes.ts). Profil- und
+  // Richtlinienfassungen sowie das Handlungsprotokoll liegen in einer eigenen Ablage
+  // (`unternehmensprofil.ts`); kein Feld dieser Antworten stammt aus einem Wissensobjekt.
+  "GET /api/unternehmensprofil": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "ADMIN-15 — Name, Logo und Akzent des Unternehmens, kein Bestand.",
+  },
+  "GET /api/admin/unternehmensprofil": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "ADMIN-15 — Profilfassungen und feste Gestaltungsoptionen; users.manage im Rumpf.",
+  },
+  "PUT /api/admin/unternehmensprofil": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "ADMIN-15 — Antwort ist die neue Profilfassung.",
+  },
+  "GET /api/richtlinien": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "ADMIN-15 — geltende Richtlinienfassungen und die eigene Handlung, kein Bestand.",
+  },
+  "POST /api/richtlinien/:id/handlungen": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "ADMIN-15 — Antwort ist der eigene Protokolleintrag (Fassung, Handlung, Zeitpunkt).",
+  },
+  "GET /api/admin/richtlinien": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "ADMIN-15 — Richtlinienfassungen und Zähler zur aktuellen Fassung.",
+  },
+  "GET /api/admin/richtlinien/:id/protokoll": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "ADMIN-15 — Handlungsprotokoll einer Richtlinie; users.manage im Rumpf.",
+  },
+  "POST /api/admin/richtlinien/wirkung": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "ADMIN-15 — Zähler der Wirkung einer geplanten Fassung; schreibt nichts.",
+  },
+  "POST /api/admin/richtlinien": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "ADMIN-15 — Antwort ist die neue Richtlinienfassung samt Wirkung.",
+  },
+  "POST /api/admin/richtlinien/:id/fassungen": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "ADMIN-15 — Antwort ist die neue Richtlinienfassung samt Wirkung.",
+  },
   // Firmenwörterbuch (begriffe-routes.ts): Katalogeinträge und Hinweise. Kein Feld stammt aus
   // einem Wissensobjekt — der Abgleich liest nur den Katalog und den mitgesendeten Text.
   "GET /api/begriffe": { urteil: "KEIN_KO_INHALT", grund: "Begriffskatalog, kein Bestand." },
