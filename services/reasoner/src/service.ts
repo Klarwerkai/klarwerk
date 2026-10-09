@@ -2316,13 +2316,12 @@ export class Reasoner {
       },
       confidential,
     );
-    // AUFTRAG-mega61 Block F: die Kennzeichnung an BEIDEN Rückgabewegen dieser Methode — der
-    // frühen (Modell hat geantwortet) und der späten (deterministischer Rückfall mit Ursache).
-    // Genau solche zwei Ausgänge sind der Grund, warum die Kennzeichnung zentral gesetzt wird und
-    // nicht in den Providern.
-    const kennzeichnung = aiGeneratedMark("describe", result.demo);
+    // AUFTRAG-mega61 Block F: die Kennzeichnung wird HIER gesetzt und nicht in den Providern.
+    // R-0604 (G22, mega83 A): NUR auf dem frühen Rückgabeweg — dort hat ein Modell geantwortet.
+    // Der späte Weg (deterministischer Rückfall mit Ursache) liefert ohnehin keinen Text; bis hierher
+    // trug er trotzdem „von KI erzeugt". Im Zweifel wird die Kennzeichnung aus-, nicht eingeschaltet.
     if (!result.demo) {
-      return mitTitelVorschlag({ ...result, aiGenerated: kennzeichnung });
+      return mitTitelVorschlag({ ...result, aiGenerated: aiGeneratedMark("describe", false) });
     }
     const modelFailure = failureBox.current;
     const failure = modelFailure === null ? null : classifyModelFailure(modelFailure.err);
@@ -2340,7 +2339,7 @@ export class Reasoner {
     // JOB 1164 D1: der Vorschlag entsteht aus dem VOLLSTÄNDIGEN Ergebnis — `fallbackReason` gehört
     // dazu und wird erst hier gesetzt. Würde er vorher abgeleitet, sähe die Ableitung kein
     // `confidential` und der Egress-Ausschluss käme als „demo" heraus. Die Reihenfolge ist Absicht.
-    return mitTitelVorschlag({ ...result, fallbackReason, aiGenerated: kennzeichnung });
+    return mitTitelVorschlag({ ...result, fallbackReason });
   }
 
   // FR-RSN-04/FR-I18N-01: Modellfehler dürfen den Betrieb nicht stoppen → deterministischer
@@ -2479,7 +2478,10 @@ export class Reasoner {
     // AUFTRAG-mega61 Block F: die Kennzeichnung wird HIER gesetzt und nicht in den Providern —
     // es gibt drei Provider-Wege zu einer Antwort (Cloud, lokal, deterministisch), und drei
     // Stellen wären drei Gelegenheiten, sie zu vergessen.
-    return { ...result, aiGenerated: aiGeneratedMark("answer", result.demo) };
+    // R-0604 (G22, mega83 A): gesetzt wird sie aber nur, wenn wirklich ein Modell geantwortet hat.
+    // Der deterministische Rückfall stellt Sätze aus geprüftem Wissen regelbasiert zusammen — ihn
+    // „von KI erzeugt" zu nennen, war genau die Falschaussage aus G22.
+    return result.demo ? result : { ...result, aiGenerated: aiGeneratedMark("answer", false) };
   }
 
   // SCRUM-490 R2 (B1): RETRIEVAL-ONLY-Antwort für den Add-on-Pfad (Klara). Der Eingabetext ist der
@@ -2624,8 +2626,9 @@ export class Reasoner {
       (p) => p.interview(answers, locale, confidential, imageContext),
       confidential,
     );
-    // mega61 Block F: Interviewfragen sind erzeugter Text — gekennzeichnet.
-    return { ...result, aiGenerated: aiGeneratedMark("interview", result.demo) };
+    // mega61 Block F: Interviewfragen sind erzeugter Text — gekennzeichnet. R-0604: nur, wenn ein
+    // Modell sie erzeugt hat; die festen Fragen des deterministischen Rückfalls sind keine KI.
+    return result.demo ? result : { ...result, aiGenerated: aiGeneratedMark("interview", false) };
   }
 
   // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag).

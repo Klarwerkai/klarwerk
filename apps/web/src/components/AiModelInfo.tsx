@@ -24,7 +24,9 @@ import {
 import { AiCostHint } from "./AiCostHint";
 // AUFTRAG-mega61 Block E: der dauerhaft sichtbare Satz. Er steht hier, damit JEDE Fläche, die
 // heute schon die Modellangabe trägt, ihn ohne weiteres Zutun mitbekommt.
-import { AiGeneratedNotice } from "./AiGeneratedNotice";
+// R-0603/R-0604: diese Fläche sitzt am AUSLÖSER, nie am Ergebnis — deshalb der Flächensatz und
+// nicht „von KI erzeugt": vor dem Klick ist nichts erzeugt.
+import { AiSurfaceNotice } from "./AiGeneratedNotice";
 
 // R-0600: der Datenfluss-Hinweis je Stufe — Kurzsatz und Erläuterung. „unknown" hat keinen:
 // ohne geladene Zuordnung gibt es keine Aussage (kein Fake-Grün, kein Fake-Rot).
@@ -64,7 +66,7 @@ export function AiModelInfo({ task }: { task: ReasonerTask }): JSX.Element {
     // keine Interaktion, sie schon. Beides bleibt beieinander: was arbeitet (aufklappbar) und dass
     // etwas arbeitet (immer da). Die Modellangabe selbst ist unverändert.
     <span className="inline-flex flex-wrap items-center gap-1.5">
-      <AiGeneratedNotice />
+      <AiSurfaceNotice />
       {/* AUFTRAG-mega67 Block G: diese Fläche KENNT ihre Aufgabe bereits (sie nennt sie ja) und
           hält den öffentlichen Status ohnehin schon — sie leitet den Kostenhinweis daraus ab und
           schweigt, wenn dieser Klick nichts kostet. */}

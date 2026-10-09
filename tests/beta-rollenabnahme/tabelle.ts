@@ -77,7 +77,8 @@ export interface Zeile {
    * vier Routen, die `buildApp` selbst anlegt, steht hier `DIREKT`.
    */
   gruppe: string;
-  methode: "GET" | "POST" | "PUT" | "DELETE";
+  // R-0556: PATCH für die Verzeichnispflege (SCIM ändert Konten per PatchOp).
+  methode: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   /** Die URL, die `app.inject` wirklich fährt — mit eingesetzter Kennung, wo die Route eine fordert. */
   pfad: string;
   /**
@@ -1755,6 +1756,86 @@ export const TABELLE: Zeile[] = [
     tor: "keines — der Einstieg in den SSO-Ablauf",
     erwartet: OEFFENTLICH(
       "Der Authorization-Code-Ablauf beginnt notwendig unangemeldet. Ohne konfiguriertes OIDC antwortet die Route allen fünf Akteuren gleich mit 501 `OIDC_DISABLED` (`routes.ts:681-686`) — gemessen ist damit, dass an dieser Tür weder 401 noch 403 steht.",
+    ),
+  },
+  // R-0556 / R-0571: die Verzeichnispflege (SCIM). Ihr Tor ist der Verzeichnisschlüssel, KEIN
+  // Rollenrecht — keine der fünf Sitzungen, auch nicht die des Admins, öffnet sie. Gemessen an
+  // ALLEN sieben Türen, lesend wie schreibend: die Schlüsselprüfung steht vor jedem Lesen und
+  // Schreiben (`requireVerzeichnisSchluessel`), eine abgewiesene Messung ändert also nichts. Das
+  // Anlegen, Ändern und Sperren MIT Schlüssel fährt `tests/firmenanmeldung/verzeichnis-pflege.test.ts`.
+  ...(
+    [
+      ["GET", "/scim/v2/ServiceProviderConfig", undefined, 357],
+      ["GET", "/scim/v2/Users", undefined, 375],
+      ["GET", "/scim/v2/Users/gibt-es-nicht", "/scim/v2/Users/:id", 407],
+      ["POST", "/scim/v2/Users", undefined, 417],
+      ["PUT", "/scim/v2/Users/gibt-es-nicht", "/scim/v2/Users/:id", 437],
+      ["PATCH", "/scim/v2/Users/gibt-es-nicht", "/scim/v2/Users/:id", 457],
+      ["DELETE", "/scim/v2/Users/gibt-es-nicht", "/scim/v2/Users/:id", 478],
+    ] as const
+  ).map(
+    ([methode, pfad, route, zeile]): Zeile => ({
+      gruppe: "verzeichnisRoutes",
+      methode,
+      pfad,
+      ...(route ? { route } : {}),
+      belegstelle: `services/app/src/routes/verzeichnis-routes.ts:${zeile}`,
+      tor: "Verzeichnisschlüssel (KLARWERK_SCIM_TOKEN) — kein Rollenrecht",
+      codes: { "401": "SCIM_UNAUTHORIZED" },
+      erwartet: {
+        anonym: "401",
+        viewer: "401",
+        experte: "401",
+        controller: "401",
+        admin: "401",
+      },
+    }),
+  ),
+  // R-0560: die zwei lesenden SAML-Türen — dieselbe Lage wie der OIDC-Einstieg darüber.
+  {
+    gruppe: "authRoutes",
+    methode: "GET",
+    pfad: "/api/auth/saml/start",
+    belegstelle: "services/auth/src/routes.ts:906",
+    tor: "keines — der Einstieg in den SAML-Ablauf",
+    erwartet: OEFFENTLICH(
+      "Die SAML-Anmeldung beginnt notwendig unangemeldet. Ohne SAML-Konfiguration antwortet die Route allen fünf Akteuren gleich mit 501 `SAML_DISABLED` — gemessen ist damit, dass an dieser Tür weder 401 noch 403 steht.",
+    ),
+  },
+  {
+    gruppe: "authRoutes",
+    methode: "GET",
+    pfad: "/api/auth/saml/metadata",
+    belegstelle: "services/auth/src/routes.ts:928",
+    tor: "keines — die Metadaten für die Einrichtung beim Anbieter",
+    erwartet: OEFFENTLICH(
+      "Die Dienstanbieter-Metadaten trägt die IT beim Anbieter ein, bevor es irgendeine Anmeldung gibt. Sie nennen nur Kennung und Rücksprungadresse dieser Instanz; ohne SAML-Konfiguration antwortet die Route allen gleich mit 501 `SAML_DISABLED`.",
+    ),
+  },
+  // Der SAML-Rücksprung: der Anbieter schickt ihn als Seitennavigation, notwendig ohne Sitzung.
+  // Gemessen ist hier, dass keine Rolle ihn öffnet oder sperrt — ohne Konfiguration antwortet er
+  // allen fünf gleich 501 `SAML_DISABLED`. Die Signaturprüfung misst `saml-anmeldung.test.ts`.
+  {
+    gruppe: "authRoutes",
+    methode: "POST",
+    pfad: "/api/auth/saml/acs",
+    belegstelle: "services/auth/src/routes.ts:982",
+    tor: "keines — der Nachweis ist die signierte Antwort des Anbieters",
+    payload: { SAMLResponse: "keine-echte-saml-antwort" },
+    erwartet: OEFFENTLICH(
+      "Der Rücksprung des SAML-Anbieters kommt notwendig ohne Klarwerk-Sitzung (fremd ausgelöster Formular-POST). Ohne SAML-Konfiguration antwortet er allen fünf Akteuren gleich mit 501 `SAML_DISABLED`; die Prüfung der signierten Antwort selbst steht in `tests/firmenanmeldung/saml-anmeldung.test.ts`.",
+    ),
+  },
+  // Der SAML-Abschluss: erst hier entsteht die Sitzung, und nur mit dem Nachweis des startenden
+  // Browsers (S10/S13 in `saml-anmeldung.test.ts`). Ohne Konfiguration allen fünf gleich 501.
+  {
+    gruppe: "authRoutes",
+    methode: "GET",
+    pfad: "/api/auth/saml/abschluss",
+    belegstelle: "services/auth/src/routes.ts:1031",
+    tor: "keines — der Nachweis sind Abschlusscode und Browsernachweis des startenden Browsers",
+    erwartet: OEFFENTLICH(
+      "Der Abschluss folgt unmittelbar auf den Rücksprung des Anbieters, also notwendig vor jeder Klarwerk-Sitzung. Ohne SAML-Konfiguration antwortet er allen fünf Akteuren gleich mit 501 `SAML_DISABLED`; die Bindung an den startenden Browser steht in `tests/firmenanmeldung/saml-anmeldung.test.ts` (S10, S13).",
     ),
   },
   // ----------------------------------------------------------------------------------------------

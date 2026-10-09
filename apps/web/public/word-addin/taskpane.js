@@ -530,31 +530,11 @@
     // Aufgabenfenster ist buildlos, also ist ein Schnitt die einzige Moeglichkeit, das WIRKLICH
     // ausgelieferte `performAsk` (nicht seinen TypeScript-Zwilling) laufen zu lassen.
     // KW-KA4-DOKUMENT-CONSENT-START
-    //
-    // ============================================================================================
-    // KA4 — DIE EINWILLIGUNG GILT JE DOKUMENT, UND SIE WIRD NIE HIER ENTSCHIEDEN.
-    // ============================================================================================
-    //
-    // Pedis Weiche (Werkstattbeschluss 18.08.2026): „Externe KI mit Dokumenttext: JA, aber nie
-    // still. Je Dokument eine ausdrueckliche Einwilligung; Klara darf auch AKTIV fragen …
-    // Vertraulich Markiertes bleibt IMMER draussen."
-    //
-    // WAS DIESER BLOCK TUT — und was ausdruecklich NICHT:
-    //   · Er FUEHRT den Ablehnungsvermerk je Dokument, damit Klara nicht zweimal dasselbe fragt.
-    //     Nur im Arbeitsspeicher dieser Panelinstanz: kein localStorage, kein sessionStorage. Ein
-    //     Nein, das ein Neuladen ueberlebt, waere eine dauerhafte Entscheidung — und eine
-    //     dauerhafte ZUSTIMMUNG waere noch schlimmer. Beide gehoeren dem Server.
-    //   · Er ENTSCHEIDET NICHTS. Ob externe KI laeuft, sagt allein die serverseitige Aufloesung
-    //     (`klaraS4Anzeige`), und ob sie ausgefuehrt werden darf, allein
-    //     `KlaraSessionService.pruefeExterneAusfuehrung` am Ask-Weg. Ein lokales Ja autorisiert
-    //     nichts — der Server prueft neun Bindungen, nicht ein Bool aus dem Panel.
-    //   · Er MERKT SICH KEIN JA. Eine erteilte Zustimmung steht im Serverzustand
-    //     (`consentState`), nicht hier; sie hier zu spiegeln hiesse, sie ueberleben zu lassen,
-    //     wenn der Server sie laengst entwertet hat (Rebind, Widerruf, Ablauf, Policywechsel).
-    //
-    // DER DOKUMENTWECHSEL entwertet den Vermerk von selbst: der Schluessel IST die vom Server
-    // vergebene `documentContextId`, und ein Rebind liefert eine neue. Nichts muss aufgeraeumt
-    // werden, und nichts kann versehentlich stehenbleiben.
+    // KA4 — DIE EINWILLIGUNG GILT JE DOKUMENT, UND SIE WIRD NIE HIER ENTSCHIEDEN. Pedis Weiche (Werkstattbeschluss 18.08.2026): „Externe KI mit Dokumenttext: JA, aber nie still. Je Dokument eine ausdrueckliche Einwilligung; Klara darf auch AKTIV fragen … Vertraulich Markiertes bleibt IMMER draussen."
+    // WAS DIESER BLOCK TUT — und was ausdruecklich NICHT: · Er FUEHRT den Ablehnungsvermerk je Dokument, damit Klara nicht zweimal dasselbe fragt. Nur im Arbeitsspeicher dieser Panelinstanz: kein localStorage, kein sessionStorage. Ein Nein, das ein Neuladen ueberlebt, waere eine dauerhafte Entscheidung — und eine dauerhafte ZUSTIMMUNG waere noch schlimmer. Beide gehoeren dem Server.
+    // · Er ENTSCHEIDET NICHTS. Ob externe KI laeuft, sagt allein die serverseitige Aufloesung (`klaraS4Anzeige`), und ob sie ausgefuehrt werden darf, allein `KlaraSessionService.pruefeExterneAusfuehrung` am Ask-Weg. Ein lokales Ja autorisiert nichts — der Server prueft neun Bindungen, nicht ein Bool aus dem Panel.
+    // · Er MERKT SICH KEIN JA. Eine erteilte Zustimmung steht im Serverzustand (`consentState`), nicht hier; sie hier zu spiegeln hiesse, sie ueberleben zu lassen, wenn der Server sie laengst entwertet hat (Rebind, Widerruf, Ablauf, Policywechsel).
+    // DER DOKUMENTWECHSEL entwertet den Vermerk von selbst: der Schluessel IST die vom Server vergebene `documentContextId`, und ein Rebind liefert eine neue. Nichts muss aufgeraeumt werden, und nichts kann versehentlich stehenbleiben.
     var ka4Abgelehnt = Object.create(null);
 
     /** Der Schluessel ist die SERVERSEITIGE Dokumentkennung — nie eine selbst gebildete. */
@@ -573,14 +553,8 @@
       if (schluessel.length > 0) { ka4Abgelehnt[schluessel] = true; }
     }
 
-    /**
-     * Darf Klara fuer dieses Dokument AKTIV fragen?
-     *
-     * Drei Bedingungen, alle noetig: der Server verlangt die Zustimmung ueberhaupt, sie ist noch
-     * nicht erteilt, und der Anwender hat fuer dieses Dokument noch nicht Nein gesagt. Fehlt die
-     * Anzeige (Ladephase, Abruf gescheitert), wird NICHT gefragt — eine Frage auf unbekanntem
-     * Stand waere geraten.
-     */
+    // Darf Klara fuer dieses Dokument AKTIV fragen? Drei Bedingungen, alle noetig: der Server verlangt die Zustimmung ueberhaupt, sie ist noch nicht erteilt,
+    // und der Anwender hat fuer dieses Dokument noch nicht Nein gesagt. Fehlt die Anzeige (Ladephase, Abruf gescheitert), wird NICHT gefragt — eine Frage auf unbekanntem Stand waere geraten.
     function ka4DarfAktivFragen(anzeige) {
       if (!anzeige || anzeige.consentVisible !== true) { return false; }
       if (anzeige.consentPossible !== true) { return false; }
@@ -605,23 +579,13 @@
         timedOut = true;
         try { controller.abort(); } catch (err) { /* bereits beendet — egal */ }
       }, timeoutMs);
-      // WP-KLARA-ASK-FIX (bens Fix 1): IMMER der server-garantierte retrieval-only-Modus —
-      // markierter Dokumenttext darf NIE zur Cloud; clientseitig gibt es keine andere Wahl.
-      //
-      // KW-KA4: `mode` bleibt UNVERAENDERT gesetzt. Er ist die Bitte um die Enge, nicht ihre
-      // Aufhebung — der Server entscheidet ueber die Einwilligung und ignoriert jeden Wunsch des
-      // Clients. Neu sind allein die drei BINDUNGS-Kopfzeilen: dieselben, die der Sitzungsweg
-      // schon fuehrt (`klaraS4Header`), damit der Server das vorhandene Ausfuehrungstor auf
-      // exakt diese Sitzung UND dieses Dokument anwenden kann. Sie sind opak und autorisieren
-      // fuer sich genommen nichts; ohne registrierte Sitzung sind sie leer und der Server
-      // behandelt die Anfrage wie bisher.
-      //
-      // JOB 3019 (KA5): die markierte Passage reist als EIGENES Feld `selection` — und nur, wenn es
-      // sie gibt. `undefined` faellt bei `JSON.stringify` heraus; ohne Markierung ist der Koerper
-      // deshalb Zeichen fuer Zeichen der bisherige (in tests/klara-panel/ka5-markierung-reist-mit
-      // Faelle C/D durch Ausfuehrung erhoben). Der Modus bleibt unangetastet: die Markierung geht
-      // an DIESELBE Route und in DENSELBEN retrieval-only-Weg, der serverseitig kein Modell
-      // erreicht — sie ergaenzt dort ausschliesslich die Suchterme der Vorauswahl.
+      // WP-KLARA-ASK-FIX (bens Fix 1): IMMER der server-garantierte retrieval-only-Modus — markierter Dokumenttext darf NIE zur Cloud; clientseitig gibt es keine andere Wahl.
+      // KW-KA4: `mode` bleibt UNVERAENDERT gesetzt. Er ist die Bitte um die Enge, nicht ihre Aufhebung — der Server entscheidet ueber die Einwilligung und ignoriert jeden Wunsch des Clients.
+      // Neu sind allein die drei BINDUNGS-Kopfzeilen: dieselben, die der Sitzungsweg schon fuehrt (`klaraS4Header`), damit der Server das vorhandene Ausfuehrungstor auf exakt diese Sitzung
+      // UND dieses Dokument anwenden kann. Sie sind opak und autorisieren fuer sich genommen nichts; ohne registrierte Sitzung sind sie leer und der Server behandelt die Anfrage wie bisher.
+      // JOB 3019 (KA5): die markierte Passage reist als EIGENES Feld `selection` — und nur, wenn es sie gibt. `undefined` faellt bei `JSON.stringify` heraus; ohne Markierung ist der Koerper
+      // deshalb Zeichen fuer Zeichen der bisherige (in tests/klara-panel/ka5-markierung-reist-mit Faelle C/D durch Ausfuehrung erhoben). Der Modus bleibt unangetastet: die Markierung geht
+      // an DIESELBE Route und in DENSELBEN retrieval-only-Weg, der serverseitig kein Modell erreicht — sie ergaenzt dort ausschliesslich die Suchterme der Vorauswahl.
       var markierung = typeof selection === "string" ? selection.trim() : "";
       var askKopf = { "content-type": "application/json" };
       var bindung = bindungsKopf || {};
@@ -707,15 +671,21 @@
                 }
               }
             }
-            if (
-              result &&
-              result.answered === true &&
-              typeof answer === "string" &&
-              answer.trim().length > 0 &&
-              sources.length > 0 &&
-              (!absaetze || absaetze.length > 0) // R-0310: ohne belegten Absatz wird nichts ausgegeben
-            ) {
-              // JOB 3366: `abgeschnitten` reist NUR MIT, WENN es gemeldet ist (kein „vollstaendig").
+            // AUFNAHME 20260922 · R-0335/R-0321 (Spiegel wordAddin.ts): Lage und Konfliktseiten des Servers (answer-belastbarkeit.ts) werden GELESEN. Nur eine belegte
+            // Wissensluecke ist eine: ein Koerper ohne Ergebnis, eine unbekannte, gestoerte oder zur Antwortform widerspruechliche Lage ist ein technischer Fehler.
+            var bel = result && result.belastbarkeit && typeof result.belastbarkeit === "object" ? result.belastbarkeit : null;
+            var belegt = !!(result && result.answered === true && typeof answer === "string" && answer.trim().length > 0 && sources.length > 0);
+            if (!result || typeof result.answered !== "boolean" || (bel && (["belegt", "belegt_zustaendig_fehlt", "belegt_mit_konflikt", "wissensluecke", "geschwaerzt"].indexOf(bel.lage) === -1 || (bel.lage !== "geschwaerzt" && (bel.lage === "wissensluecke") === belegt)))) { return { kind: "error", detail: "lage" }; }
+            if (bel && bel.lage === "geschwaerzt") { return { kind: "redacted" }; }
+            var konflikte = [];
+            var roheKonflikte = bel && Array.isArray(bel.konflikte) ? bel.konflikte : [];
+            for (var ki = 0; ki < roheKonflikte.length; ki += 1) {
+              var rk = roheKonflikte[ki];
+              if (!rk || !Array.isArray(rk.seiten) || rk.seiten.length !== 2) { continue; }
+              konflikte.push({ beschreibung: typeof rk.beschreibung === "string" ? rk.beschreibung : null, seiten: rk.seiten.map(function (s) { return s && s.einsehbar === true ? { einsehbar: true, titel: String(s.titel || ""), aussage: String(s.aussage || ""), traegtAntwort: s.traegtAntwort === true } : { einsehbar: false, traegtAntwort: !!(s && s.traegtAntwort === true) }; }) });
+            }
+            if (belegt && (!absaetze || absaetze.length > 0)) { // R-0310: ohne belegten Absatz wird nichts ausgegeben; die Lage oben bleibt am Koerper geprueft
+              // JOB 3366: `abgeschnitten` reist NUR MIT, wenn es eine Tatsache ist — nie als Gegenaussage „vollstaendig" (§9; Spiegelvertrag word-addin-ask Teil 3).
               var fragmentFeld = abgeschnitten ? { abgeschnitten: true } : {};
               return Object.assign(fragmentFeld, {
                 kind: "answered",
@@ -724,18 +694,18 @@
                 absaetze: absaetze,
                 sources: sources,
                 trust: typeof result.trust === "number" ? result.trust : 0,
-                // AUFTRAG-mega34 B: die serverseitige Einstufung reist mit. Fehlt sie, ist der
-                // Grad fail-safe "unverified" — Word behauptet nie Sicherheit ohne Beleg.
-                grade: askGradeOf(result.evidence),
+                grade: askGradeOf(result.evidence), // mega34 B: Einstufung vom Server; fehlt sie, fail-safe "unverified".
                 evidence: result.evidence || undefined,
                 citedSources: cited,
                 snippet: snippet,
-                // AUFTRAG-mega81 A / G24: das Kennzeichnungssignal wird GELESEN und geprueft.
+                // mega81 A / G24: das Kennzeichnungssignal wird GELESEN und geprueft (KW-KLARA-AI-MARK-*), nie angenommen.
                 aiGenerated: istKiKennzeichnung(result.aiGenerated),
                 ungeprueft: ungeprueft,
+                lage: bel ? bel.lage : undefined,
+                konflikte: bel ? konflikte : undefined,
               });
             }
-            // AUFTRAG-mega77 A: eine reine Wissensluecke; JOB 3092 S6: mit der gemeldeten Liste.
+            // mega77 A: die Wissensluecke durchsucht den Koerper NICHT nach einer Bestandszahl; sie traegt nur die betrachtergefilterte Liste (JOB 3092 S6 / JOB 1591).
             // R-0310/R-0325: nichts belegt UND keine tragende Quelle → die Luecke nennt die unbekannte Zuordnung.
             var unbekannt = !!absaetze && absaetze.length === 0 && !(cited || []).some(function (x) { return sources.indexOf(x) !== -1; });
             return unbekannt ? { kind: "gap", ungeprueft: ungeprueft, zuordnungUnbekannt: true } : { kind: "gap", ungeprueft: ungeprueft };
@@ -1697,6 +1667,7 @@
         askConflictConflicted: "Achtung: Eine tragende Quelle steht in einem offenen Konflikt.",
         askConflictUnproven: "Die Konfliktlage ist unbekannt — das heißt nicht, dass keine besteht.",
         askConflictClear: "Keine offenen Konflikte auf den tragenden Quellen.",
+        askLageBelegt: "Lage: belegt.", askLageVerantwortungFehlt: "Lage: belegt — die verantwortliche Person ist nicht erreichbar. Das Wissen bleibt nutzbar; Rückfragen brauchen eine neue Zuständigkeit.", askLageKonflikt: "Lage: belegt, aber mit offenem Widerspruch. Beide Seiten:", askKonfliktSeite: "Seite {n}", askKonfliktTragend: "trägt diese Antwort", askKonfliktNichtEinsehbar: "für dich nicht einsehbar", askKonfliktKeinGewinner: "Klara wählt keine Seite. Den Widerspruch entscheiden Menschen.", askLageGesperrt: "Die Belege dieser Antwort sind für dich gesperrt (geschwärzt).", askLageUnbekannt: "Technischer Fehler: Die Antwort kam in unbekannter Form an. Das ist keine Wissenslücke.",
         // ---- AUFTRAG-W1-KLARA-KOPF-CONSENT-06: der sitzungsbezogene Stand ---------------------
         // Eigenes Etikett, eigene Wörter. Diese Texte sprechen über DIESE Sitzung, nicht über den
         // Hausstand — und ausdrücklich nicht über Klaras Antwortweg, der unverändert zitiert.
@@ -2104,6 +2075,7 @@
         askConflictConflicted: "Caution: a carrying source is in an open conflict.",
         askConflictUnproven: "The conflict situation is unknown — that does not mean there is none.",
         askConflictClear: "No open conflicts on the carrying sources.",
+        askLageBelegt: "Status: backed by sources.", askLageVerantwortungFehlt: "Status: backed — the responsible person is not reachable. The knowledge stays usable; follow-up questions need a new owner.", askLageKonflikt: "Status: backed, but with an open contradiction. Both sides:", askKonfliktSeite: "Side {n}", askKonfliktTragend: "carries this answer", askKonfliktNichtEinsehbar: "not visible to you", askKonfliktKeinGewinner: "Klara does not pick a side. People decide the contradiction.", askLageGesperrt: "The evidence for this answer is blocked for you (redacted).", askLageUnbekannt: "Technical error: the answer arrived in an unknown form. This is not a knowledge gap.",
         s4Label: "In this session",
         s4ModeDeterministic: "Without a model",
         s4ModeInternal: "On-Premise Enterprise AI",
@@ -2449,6 +2421,7 @@
         askConflictConflicted: "Let op: een dragende bron staat in een open conflict.",
         askConflictUnproven: "De conflictsituatie is onbekend — dat betekent niet dat er geen is.",
         askConflictClear: "Geen open conflicten op de dragende bronnen.",
+        askLageBelegt: "Status: onderbouwd.", askLageVerantwortungFehlt: "Status: onderbouwd — de verantwoordelijke is niet bereikbaar. De kennis blijft bruikbaar; vervolgvragen hebben een nieuwe verantwoordelijke nodig.", askLageKonflikt: "Status: onderbouwd, maar met een open tegenstrijdigheid. Beide kanten:", askKonfliktSeite: "Kant {n}", askKonfliktTragend: "draagt dit antwoord", askKonfliktNichtEinsehbar: "voor jou niet in te zien", askKonfliktKeinGewinner: "Klara kiest geen kant. Mensen beslissen over de tegenstrijdigheid.", askLageGesperrt: "De onderbouwing van dit antwoord is voor jou afgeschermd.", askLageUnbekannt: "Technische fout: het antwoord kwam in een onbekende vorm aan. Dit is geen kennishiaat.",
         s4Label: "In deze sessie",
         s4ModeDeterministic: "Zonder model",
         s4ModeInternal: "On-Premise Enterprise AI",
@@ -6141,10 +6114,28 @@
       }
     }
 
-    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — EINE STELLE FUER DIE GANZE EVIDENZ, aus
-    // `currentAskOutcome` (auch nach Sprachwechsel aufrufbar). Drei Aussagen, sichtbar GETRENNT:
-    // Einstufung (mega34), benannter Pruefvorbehalt samt Zaehlung, Konfliktlage; dazu der gelieferte
-    // Ausschnitt, sofern er nicht die Antwort ist. Nichts wird berechnet (askEvidenceDetail, KW-W1-13).
+    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — EINE STELLE FUER DIE GANZE EVIDENZ: liest `currentAskOutcome` (auch nach Sprachwechsel), zeigt
+    // GETRENNT Einstufung (mega34), Pruefvorbehalt samt Zaehlung, Konfliktlage und Ausschnitt. Nichts wird berechnet (KW-W1-13).
+    // AUFNAHME 20260922 · R-0335/R-0321: dazu die Lage des Servers und BEIDE Seiten offener Widersprueche (renderAskLage) — gelesen, keine Seite gewaehlt.
+    var ASK_LAGE_TEXT_KEYS = { belegt: "askLageBelegt", belegt_zustaendig_fehlt: "askLageVerantwortungFehlt", belegt_mit_konflikt: "askLageKonflikt" };
+    function renderAskLage() {
+      var liste = document.getElementById("ask-konflikt-seiten");
+      if (!liste) { return; }
+      var o = currentAskOutcome && currentAskOutcome.kind === "answered" ? currentAskOutcome : null;
+      evidenceLine("ask-lage-line", o && ASK_LAGE_TEXT_KEYS[o.lage] ? t(ASK_LAGE_TEXT_KEYS[o.lage]) : "", o && o.lage === "belegt" ? "ok" : "warn");
+      liste.textContent = "";
+      var ks = o && Array.isArray(o.konflikte) ? o.konflikte : [];
+      for (var i = 0; i < ks.length; i += 1) {
+        for (var j = 0; j < ks[i].seiten.length; j += 1) {
+          var s = ks[i].seiten[j];
+          var li = document.createElement("li");
+          li.textContent = t("askKonfliktSeite", { n: String(j + 1) }) + (s.traegtAntwort ? " · " + t("askKonfliktTragend") : "") + ": " + (s.einsehbar ? s.titel + " — " + s.aussage : t("askKonfliktNichtEinsehbar"));
+          liste.appendChild(li);
+        }
+      }
+      if (ks.length > 0) { var hinweis = document.createElement("li"); hinweis.textContent = t("askKonfliktKeinGewinner"); liste.appendChild(hinweis); }
+      liste.className = ks.length > 0 ? "" : "hidden";
+    }
     var ASK_CAVEAT_TEXT_KEYS = {
       unknown: "askCaveatUnknown",
       unchecked: "askCaveatUnchecked",
@@ -6176,6 +6167,7 @@
       var noteEl = document.getElementById("ask-evidence-note");
       var snippetBlock = document.getElementById("ask-snippet-block");
       if (!noteEl || !snippetBlock) { return; }
+      renderAskLage();
       var outcome = currentAskOutcome;
       var vorbehaltEl = document.getElementById("ask-vorbehalt");
       if (!outcome || outcome.kind !== "answered") {
@@ -6259,15 +6251,15 @@
         document.getElementById("ask-input").value = "";
         kwFlaecheZeichnen();
         updateAskState();
-        // AUFTRAG-mega34 B2 / W1-VERTRAUENSKOPF-08 B: Einstufung, Vorbehalt, Konfliktlage und
-        // Ausschnitt an EINER Stelle (renderAskEvidence, auch vom Sprachwechsel gerufen); JOB 3092 S6:
-        // ebenso Herkunft (zunaechst „Quellen werden geladen …") und Ungeprueft-Satz.
+        // mega34 B2 / W1-VERTRAUENSKOPF-08 B: Einstufung (derselbe Text wie im eingefuegten Absatz), Vorbehalt, Konfliktlage,
+        // Ausschnitt und (R-0335/R-0321) Lage samt Konfliktseiten entstehen an EINER Stelle, die auch der Sprachwechsel ruft.
         renderAskEvidence();
+        // JOB 3092 S6 (W5): Herkunft und Ungeprueft-Satz an derselben Stelle, damit der Sprachwechsel sie mitnimmt.
         renderAskHerkunft();
         renderAskUngeprueft();
         renderAskFragment(); // JOB 3366: der Satz an einer abgeschnittenen Antwort
-        // AUFTRAG-mega35 A1: das Feld traegt NUR den Antwortkoerper; Einstufung und Quellen-Zeile
-        // entstehen erst beim Kopieren/Einfuegen (composeOutputText) und koennen nicht verloren gehen.
+        // mega35 A1: das Feld traegt NUR den Antwortkoerper; Einstufung und Quellen-Zeile entstehen erst beim
+        // Kopieren/Einfuegen (composeOutputText) — kein Zustand, in dem der Feldinhalt die Einstufung verloren hat.
         document.getElementById("ask-answer-edit").value = outcome.answer;
         applyAnswerCompaction(outcome.answer);
         if (truncated) { showAskStatus("warn", truncatedNote.replace(/^\s+/, "")); } else { hideAskStatus(); }
@@ -6333,8 +6325,9 @@
       }
       // JOB 3056 K1 (§9): ohne Verbindung EIN Satz „Keine Verbindung." und „Erneut versuchen";
       // ein benannter Serverfehler nennt weiter sein Detail. R-0590: der gesperrte Ausweichweg nennt seinen Grund (bei beendeter Zustimmung ohne „Erneut versuchen").
-      showAskStatus("warn", outcome.kind === "ki-abgeschaltet" ? t("askKiAbgeschaltet") : outcome.kind === "fallback-blocked" ? t(outcome.reason === "consent_ended" ? "askFallbackConsentEnded" : "askFallbackBlocked") : outcome.detail ? t("askError", { detail: outcome.detail }) : t("askOffline"));
-      if (outcome.reason !== "consent_ended" && outcome.kind !== "ki-abgeschaltet") { askRetryZeigen(); } // R-1040: eine Abschaltung ist eine Entscheidung — kein „Erneut versuchen"
+      // R-0335: geschwaerzt und unbekannte Antwortlage (technischer Fehler) haben je einen eigenen Satz — nie die Wissensluecke.
+      showAskStatus("warn", outcome.kind === "ki-abgeschaltet" ? t("askKiAbgeschaltet") : outcome.kind === "redacted" ? t("askLageGesperrt") : outcome.kind === "fallback-blocked" ? t(outcome.reason === "consent_ended" ? "askFallbackConsentEnded" : "askFallbackBlocked") : outcome.detail === "lage" ? t("askLageUnbekannt") : outcome.detail ? t("askError", { detail: outcome.detail }) : t("askOffline"));
+      if (outcome.reason !== "consent_ended" && outcome.kind !== "ki-abgeschaltet" && outcome.kind !== "redacted") { askRetryZeigen(); } // R-1040: eine Abschaltung ist eine Entscheidung — kein „Erneut versuchen"
     }
 
     // Auswahl lesen (nur Text — die Frage ist Klartext); ohne Office ehrlich leer → Eingabefeld.

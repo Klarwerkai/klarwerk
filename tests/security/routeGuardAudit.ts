@@ -16,10 +16,14 @@ import { readdirSync } from "node:fs";
 //  - <Permission>         : serverseitige Rechteprüfung (requirePermission).
 //  - "action-dispatched"  : ein Endpunkt mit mehreren Aktionen, jede mit eigener Rechteprüfung
 //                           (z. B. PUT /api/kos/:id) — nie öffentlich.
+//  - "verzeichnis"        : R-0556 — nur mit dem Verzeichnisschlüssel des Unternehmensverzeichnisses
+//                           (requireVerzeichnisSchluessel, SCIM). Kein Nutzerkonto, aber auch nie
+//                           öffentlich: ohne Schlüssel 401, ohne konfigurierten Schlüssel gar keine Route.
 export type Protection =
   | "public"
   | "auth"
   | "admin"
+  | "verzeichnis"
   | "ko.read"
   | "ko.create"
   | "ko.validate"
@@ -85,6 +89,8 @@ export function scanRouteFile(text: string, file: string): ScannedRoute[] {
       protection = "admin";
     } else if (/requireUser\(/.test(block)) {
       protection = "auth";
+    } else if (/requireVerzeichnisSchluessel\(/.test(block)) {
+      protection = "verzeichnis";
     } else if (/resolveAskUser\(/.test(block)) {
       // Add-on-API (KLARWERK_ADDON_API): resolveAskUser erzwingt in BEIDEN Zweigen ko.read — Flag AN +
       // gültiger Add-in-Key liefert einen synthetischen viewer (RBAC viewer = EXAKT ko.read), sonst
@@ -153,6 +159,18 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     reason: "Beendet die Sitzung; löscht nur das Cookie.",
   },
   "GET /api/auth/me": { protection: "auth" },
+  // R-0562: der zweite Anmeldeschritt ist BEWUSST öffentlich — es gibt noch keine Sitzung, der
+  // Nachweis sind Anmeldeanfrage (nur nach richtigem Passwort, 5 min, einmalig, höchstens fünf
+  // Versuche) UND Code vom zweiten Gerät. Einrichten/Abschalten nur für das EIGENE Konto.
+  "POST /api/auth/login/second-factor": {
+    protection: "public",
+    reason:
+      "Zweiter Anmeldeschritt: Anmeldeanfrage aus dem Passwortschritt + TOTP-Code; je IP gedrosselt.",
+  },
+  "GET /api/auth/second-factor": { protection: "auth" },
+  "POST /api/auth/second-factor/setup": { protection: "auth" },
+  "POST /api/auth/second-factor/confirm": { protection: "auth" },
+  "POST /api/auth/second-factor/disable": { protection: "auth" },
   // AUFTRAG-mega61 Block C: die Kenntnisnahme des Hinweises. Beide auf das EIGENE Konto und nur
   // darauf — der Nutzer kommt aus der Sitzung, nicht aus dem Pfad; es gibt keinen Weg, eine fremde
   // Quittung zu lesen oder zu setzen. Kein zusätzliches Recht nötig: Auch eine Betrachterin muss
@@ -191,6 +209,35 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     reason: "SSO-Start (Authorization-Code-Flow).",
   },
   "POST /api/auth/oidc": { protection: "public", reason: "SSO-Callback; prüft state/nonce/PKCE." },
+  // R-0560: der SAML-Weg — dieselbe Rolle wie die beiden OIDC-Türen darüber.
+  "GET /api/auth/saml/start": {
+    protection: "public",
+    reason: "SAML-Start (AuthnRequest per Redirect); merkt sich nur die Anfragekennung.",
+  },
+  "GET /api/auth/saml/metadata": {
+    protection: "public",
+    reason: "Dienstanbieter-Metadaten für die Einrichtung beim Anbieter; keine Nutzerdaten.",
+  },
+  "POST /api/auth/saml/acs": {
+    protection: "public",
+    reason:
+      "SAML-Rücksprung des Anbieters; prüft Signatur gegen das konfigurierte Zertifikat, " +
+      "InResponseTo (einmalig), Audience, Recipient und Zeitfenster. Vergibt KEINE Sitzung.",
+  },
+  "GET /api/auth/saml/abschluss": {
+    protection: "public",
+    reason:
+      "SAML-Abschluss; Sitzung nur mit einmaligem Abschlusscode UND dem Browsernachweis, " +
+      "den der Start in den startenden Browser gelegt hat.",
+  },
+  // R-0556 / R-0571: die Pflege aus dem Unternehmensverzeichnis (SCIM 2.0) — Verzeichnisschlüssel.
+  "GET /scim/v2/ServiceProviderConfig": { protection: "verzeichnis" },
+  "GET /scim/v2/Users": { protection: "verzeichnis" },
+  "GET /scim/v2/Users/:id": { protection: "verzeichnis" },
+  "POST /scim/v2/Users": { protection: "verzeichnis" },
+  "PUT /scim/v2/Users/:id": { protection: "verzeichnis" },
+  "PATCH /scim/v2/Users/:id": { protection: "verzeichnis" },
+  "DELETE /scim/v2/Users/:id": { protection: "verzeichnis" },
   "POST /api/auth/users/:id/approve": { protection: "admin" },
   "POST /api/auth/users/:id/reset": { protection: "admin" },
   "DELETE /api/auth/users/:id": { protection: "admin" },
@@ -207,6 +254,7 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/users": { protection: "admin" },
   "PUT /api/users/:id": { protection: "admin" },
   "DELETE /api/users/:id": { protection: "admin" },
+  "DELETE /api/users/:id/second-factor": { protection: "admin" },
 
   // --- Composition-Root inline (services/app/src/build-app.ts) ---
   "GET /health": { protection: "public", reason: "Health-Probe; liefert nur { status: ok }." },
@@ -446,6 +494,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // unterscheiden. Der Add-on-Zweig derselben Route fuehrt das Praedikat NICHT.
   "POST /api/ask": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   "POST /api/ask/helpful": { protection: "ko.read" },
+  // R-1089: Meldung „Antwort falsch / Quelle passt nicht" — dasselbe Tor und derselbe Beleg.
+  "POST /api/ask/report": { protection: "ko.read" },
   // R-1649: ko.read; ein mitgeschickter Weg wird ein Entwurf und verlangt im Handler ko.create.
   "POST /api/ask/not-helpful": { protection: "ko.read" },
   // SCRUM-527: Live-Check (Ähnlichkeit/Widerspruch eines Entwurfstextes gegen den Bestand).

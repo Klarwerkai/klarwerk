@@ -33,13 +33,19 @@ import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { endpoints } from "../../apps/web/src/api/endpoints";
 import { KlaraAssistant } from "../../apps/web/src/components/KlaraAssistant";
 import i18n from "../../apps/web/src/i18n";
-import {
-  BEISPIEL_PFLICHT,
-  KLARA_BEISPIELE,
-  klaraBeispiel,
-} from "../../apps/web/src/lib/klaraBeispiele";
+import { CAPTURE_HELP_IDS } from "../../apps/web/src/lib/captureHelp";
+import { KLARA_BEISPIELE, klaraBeispiel } from "../../apps/web/src/lib/klaraBeispiele";
 import { klaraEntryById } from "../../apps/web/src/lib/klaraRegistry";
+import { REVIEW_HELP_IDS } from "../../apps/web/src/lib/reviewHelp";
 import { cleanForSpeech } from "../../apps/web/src/lib/vorlesen";
+
+// R-1349 (Aufnahme gesamt-aufruferwaechter, Nacharbeit 7): die Pflichtliste stand bis hierher als
+// Export in `lib/klaraBeispiele.ts`, gelesen nur von diesem Prüfstand. Sie ist die Erwartung DIESES
+// Tests und steht deshalb hier — abgeleitet wie zuvor aus den Registern, nicht von Hand.
+const BEISPIEL_PFLICHT: readonly string[] = [
+  ...CAPTURE_HELP_IDS.map((id) => `cap:${id}`),
+  ...REVIEW_HELP_IDS.map((id) => `rev:${id}`),
+];
 
 // E6 schaltet die Modellverfügbarkeit ein, alle anderen Fälle laufen ohne Modell.
 const ki = vi.hoisted(() => ({ verfuegbar: false }));
