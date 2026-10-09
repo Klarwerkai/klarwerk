@@ -101,6 +101,7 @@ import { LiveReactionZone } from "../capture/intake/LiveReactionZone";
 import { ErgebnisStufeMarke } from "../trust/ErgebnisStufeMarke";
 import { StatusPill } from "../trust/StatusPill";
 import type { DisplayStatus } from "../trust/types";
+import { Button } from "../ui";
 import { Menue, MenueEintrag, MenueFlaeche, MenueTrenner } from "./Menue";
 import { NegativwissenHinweis } from "./NegativwissenHinweis";
 import {
@@ -141,6 +142,16 @@ import { BLATT_WEGE, BLATT_WEG_PARAMETER, blattWegAusAdresse, blattWegLabelKey }
 // würde einen Ring bauen (Capture → Blatt → Capture). Die drei Seiten reichen das Bauteil herein.
 
 export type ArbeitsraumModus = "interview" | "datei" | "formular";
+
+// FR-MOB-03 / R-1018 (Aufnahme `gesamt-dialog-bedienung`) — die zwei Verlust-Rückfragen des
+// Blattes. Sie standen als `window.confirm` da, also als Systemdialog des Betriebssystems; auf dem
+// Telefon ist das ein fremdes Fenster ausserhalb der Anwendung. Jetzt fragt das Blatt SELBST, in
+// einer Zeile unter der Werkzeugzeile (`rueckfrageZeile`). `null` heisst „keine Frage offen".
+type BlattRueckfrage = { art: "verwerfen" } | { art: "oeffnen"; entwurfId: string };
+
+// Die Frage benennt die Zeile für Hilfsmittel (`aria-labelledby`) — wer auf „Weiter bearbeiten"
+// landet, hört zuerst, worum es geht.
+const BLATT_RUECKFRAGE_ID = "blatt-rueckfrage-text";
 
 /**
  * JOB 3378 (UX-18-M1): Womit ein Arbeitsraum SEIN Wegziel auszeichnet — den Bedienknopf, den ein
@@ -469,6 +480,10 @@ export function Blatt({
   // derselbe Bestätigungsweg, den `CaptureDraftList` schon für den Arbeitsraum führt (Bugfix Pedi
   // 04.07.: kein stiller Verlust), nicht ein zweiter daneben.
   const [loeschFrageId, setLoeschFrageId] = useState<string | null>(null);
+  // FR-MOB-03: die offene Verlust-Rückfrage des Blattes (Verwerfen, anderen Entwurf öffnen).
+  const [rueckfrage, setRueckfrage] = useState<BlattRueckfrage | null>(null);
+  const rueckfrageRef = useRef<HTMLFieldSetElement | null>(null);
+  const werkzeugzeileRef = useRef<HTMLDivElement | null>(null);
   // ==============================================================================================
   // JOB 3106 (UX-01) — DER ENTWURF, DEN DER SERVER GERADE QUITTIERT HAT.
   // ==============================================================================================
@@ -2128,11 +2143,12 @@ export function Blatt({
   // danach nichts mehr da ist,
   // ist die bestätigte Folge seiner Zusage und kein stiller Verlust. Zusammengeführt wird nichts:
   // die Begründung dafür steht bei `blattNimmtAn` und gilt hier gleichlautend.
-  const entwurfOeffnen = (entwurfId: string): void => {
+  //
+  // FR-MOB-03: GEFRAGT WIRD IN DER ANWENDUNG, nicht mehr über `window.confirm`. Die Frage steht in
+  // der Rückfragezeile unter der Werkzeugzeile; erst ihr „Verwerfen" ruft `entwurfOeffnenOhneFrage`.
+  const entwurfOeffnenOhneFrage = (entwurfId: string): void => {
+    setRueckfrage(null);
     setOffenesMenue(null);
-    if (istSchmutzig && !window.confirm(t("fd.confirmOpenDraft"))) {
-      return;
-    }
     // Lieferung 4: auch dieser Weg nimmt dem Blatt den Rumpf — also gilt für eine laufende
     // Diktatsitzung dieselbe Trennung wie im Ladeeffekt, und zwar VOR dem Adresswechsel.
     diktatVomBlattTrennen();
@@ -2147,6 +2163,47 @@ export function Blatt({
       return;
     }
     setSearchParams({ draft: entwurfId }, { replace: true });
+  };
+  const entwurfOeffnen = (entwurfId: string): void => {
+    setOffenesMenue(null);
+    if (istSchmutzig) {
+      setRueckfrage({ art: "oeffnen", entwurfId });
+      return;
+    }
+    entwurfOeffnenOhneFrage(entwurfId);
+  };
+
+  // FR-MOB-03: „Eingabe verwerfen" nach der Zustimmung in der Rückfragezeile. JOB 3256 (CAP-P1-R,
+  // Lieferung 5): ERST TRENNEN, DANN LEEREN. `resetForNewEntry` räumt den Rumpf; eine laufende
+  // Diktatsitzung schrieb bis dahin gleich wieder hinein — auf einem Blatt OHNE `?draft` läuft der
+  // Ladeeffekt nicht, es gab hier also gar keine Trennung. Dieselbe eine Funktion wie dort.
+  const eingabeVerwerfenOhneFrage = (): void => {
+    setRueckfrage(null);
+    diktatVomBlattTrennen();
+    resetForNewEntry();
+  };
+
+  // Die Rückfrage holt den Fokus auf den SICHEREN Knopf („Weiter bearbeiten"): der Menüeintrag, der
+  // sie ausgelöst hat, ist mit dem Menü verschwunden, und ohne diesen Schritt stünde der Fokus auf
+  // `body`. Ein versehentliches Enter verliert so nichts.
+  useEffect(() => {
+    if (rueckfrage === null) {
+      return;
+    }
+    const sicher = rueckfrageRef.current?.querySelector<HTMLButtonElement>(
+      '[data-testid="blatt-rueckfrage-nein"]',
+    );
+    sicher?.focus();
+  }, [rueckfrage]);
+
+  // „Weiter bearbeiten": nichts geht verloren, der Fokus kehrt an das „…"-Werkzeug zurück, von dem
+  // beide Wege ausgehen.
+  const rueckfrageZuruecknehmen = (): void => {
+    setRueckfrage(null);
+    const werkzeug = werkzeugzeileRef.current?.querySelector<HTMLButtonElement>(
+      '[data-testid="blatt-werkzeug-mehr"]',
+    );
+    werkzeug?.focus();
   };
 
   // ==============================================================================================
@@ -2588,6 +2645,7 @@ export function Blatt({
 
   const werkzeugzeile = (
     <div
+      ref={werkzeugzeileRef}
       data-testid="blatt-werkzeugzeile"
       // `flex-wrap`, KEIN zweiter Abstand: Die Zeile trägt bei 1280 px alle Werkzeuge nebeneinander
       // (so misst sie `tests/design/zielbild-h3-erfassen.test.ts` V17 gegen das Mockup, gap 22 px in
@@ -2915,19 +2973,13 @@ export function Blatt({
               </MenueEintrag>
               {/* Der Knopf „Eingabe verwerfen" der Vordertür. Er bleibt ein BEWUSSTER Schritt mit
                   Rückfrage — nur seine Prominenz auf der Fläche ist weg (Auftrag §5a: „Zurück"
-                  wandert ins Menü). */}
+                  wandert ins Menü). FR-MOB-03: die Rückfrage stellt das Blatt selbst
+                  (`rueckfrageZeile`), nicht mehr das Betriebssystem. */}
               <MenueEintrag
                 gesperrt={!istSchmutzig && !hasSavableContent}
                 onClick={() => {
                   setOffenesMenue(null);
-                  if (window.confirm(t("fd.confirmDiscard"))) {
-                    // JOB 3256 (CAP-P1-R, Lieferung 5): ERST TRENNEN, DANN LEEREN. `resetForNewEntry`
-                    // räumt den Rumpf; eine laufende Diktatsitzung schrieb bis dahin gleich wieder
-                    // hinein — auf einem Blatt OHNE `?draft` läuft der Ladeeffekt nicht, es gab hier
-                    // also gar keine Trennung. Dieselbe eine Funktion wie dort.
-                    diktatVomBlattTrennen();
-                    resetForNewEntry();
-                  }
+                  setRueckfrage({ art: "verwerfen" });
                 }}
               >
                 {t("fd.discardInput")}
@@ -3164,11 +3216,58 @@ export function Blatt({
     </div>
   );
 
+  // ---- Die Rückfragezeile (FR-MOB-03) ----------------------------------------------------------
+  // Steht nur, solange eine Frage offen ist — das ruhende Blatt bleibt zeichengleich. Sie liegt in
+  // BEIDEN Ansichten direkt unter der Werkzeugzeile: „anderen Entwurf öffnen" kann auch aus dem
+  // Arbeitsraum kommen (`onEntwurfInsBlatt`). Die Frage selbst auf neutraler Fläche, die Warnfarbe
+  // nur am verlierenden Knopf (dieselbe Regel wie `destructive-button-colour.test.ts`).
+  // `<fieldset>` trägt die Gruppenrolle nativ; ihr Name ist die Frage (`aria-labelledby`).
+  let rueckfrageZeile: JSX.Element | null = null;
+  if (rueckfrage !== null) {
+    const frage = rueckfrage;
+    rueckfrageZeile = (
+      <fieldset
+        ref={rueckfrageRef}
+        aria-labelledby={BLATT_RUECKFRAGE_ID}
+        data-testid="blatt-rueckfrage"
+        data-rueckfrage={frage.art}
+        className="flex flex-wrap items-center gap-2 rounded-[10px] border border-hairline bg-surface px-3 py-2"
+      >
+        <span id={BLATT_RUECKFRAGE_ID} className="text-[13px] text-text">
+          {t(frage.art === "verwerfen" ? "fd.confirmDiscard" : "fd.confirmOpenDraft")}
+        </span>
+        <span className="ml-auto flex flex-wrap gap-1.5">
+          <Button
+            variant="ghost"
+            data-testid="blatt-rueckfrage-nein"
+            onClick={rueckfrageZuruecknehmen}
+          >
+            {t("studio.confirmDiscard.keep")}
+          </Button>
+          <Button
+            variant="danger"
+            data-testid="blatt-rueckfrage-ja"
+            onClick={() => {
+              if (frage.art === "verwerfen") {
+                eingabeVerwerfenOhneFrage();
+                return;
+              }
+              entwurfOeffnenOhneFrage(frage.entwurfId);
+            }}
+          >
+            {t("studio.confirmDiscard.discard")}
+          </Button>
+        </span>
+      </fieldset>
+    );
+  }
+
   // ---- Der Arbeitsraum als Blatt-Ansicht -------------------------------------------------------
   if (ansicht !== "blatt") {
     return (
       <div className="mx-auto flex w-[820px] max-w-full flex-col gap-3.5 pt-6">
         {werkzeugzeile}
+        {rueckfrageZeile}
         <div
           data-testid="blatt-arbeitsraum"
           ref={arbeitsraumRef}
@@ -3252,6 +3351,7 @@ export function Blatt({
             der Textmesser misst weiterhin das ruhende Blatt. */}
         {isDemoContext(searchParams) ? <DemoBanner surface="capture" /> : null}
         {werkzeugzeile}
+        {rueckfrageZeile}
 
         <div
           data-testid="blatt"
