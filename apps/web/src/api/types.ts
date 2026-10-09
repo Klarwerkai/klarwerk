@@ -524,6 +524,39 @@ export interface AnzeigestatusHerkunft extends Record<AnzeigestatusEingang, Eing
   ungeprueft: Partial<Record<AnzeigestatusEingang, string>>;
 }
 
+/** aufnahme:20260922:gesamt-wissen-frische — Spiegel von `FrischeAuskunft` (frische.ts). */
+export type FrischeStufe = "frisch" | "altert" | "faellig" | "veraltet";
+export type Betriebsmodell = "oeffentliche_ki" | "freigegebene_ki" | "lokales_modell" | "ohne_ki";
+/** R-0652: Schutzbedarf — „oeffentlich" verfeinert „intern" (Spiegel von `Schutzstufe`). */
+export type Schutzstufe = "oeffentlich" | Confidentiality;
+export type FrischeSchritt =
+  | "konflikt_klaeren"
+  | "validierung_abschliessen"
+  | "erneut_bestaetigen"
+  | "bald_bestaetigen"
+  | "keiner";
+
+export interface KoFrische {
+  stufe: FrischeStufe;
+  halbwertszeitTage: number;
+  halbwertszeitHerkunft: "gelernt" | "vorgabe";
+  halbwertszeitBeobachtungen: number;
+  bezugAm: string | null;
+  letztesSignal: { at: string; by: string } | null;
+  haltbarBis: string | null;
+  erinnerungAb: string | null;
+  erinnern: boolean;
+  verantwortlich: string;
+  verantwortlichArt: "owner" | "author-fallback";
+  gesichert: boolean;
+  aktuellerStand: boolean;
+  schutz: Schutzstufe | null;
+  betriebsmodell: Betriebsmodell;
+  inDokumente: boolean;
+  naechsterSchritt: FrischeSchritt;
+  ungeprueft: { revalidierung?: string; konflikt?: string };
+}
+
 /** R-0658: welche Art Schutzdaten der Server erkannt hat — Spiegel von `SchutzdatenArt`. */
 export type SchutzdatenArt = "personalnummer" | "kontodaten";
 
@@ -564,6 +597,12 @@ export interface KnowledgeObject {
   // Ableitung in `lib/displayStatus.ts` (`anzeigestatusAus`).
   anzeigestatus?: DisplayStatus;
   anzeigestatusHerkunft?: AnzeigestatusHerkunft;
+  // aufnahme:20260922:gesamt-wissen-frische: Frische, Haltbarkeit, Schutz und nächster Schritt —
+  // vom Server abgeleitet (Spiegel von services/knowledge-object/src/frische.ts). Dieselben zwei
+  // Lesewege wie `anzeigestatus`; fehlt das Feld, hat der Lesepfad es nicht geliefert.
+  frische?: KoFrische;
+  // R-0652: Schutzbedarf „öffentlich" (Verfeinerung von „intern"; Spiegel des Serverfelds).
+  oeffentlich?: true;
   // ================================================================================================
   // JOB 4251 (WIKI-ZUSAMMENARBEIT) — DER STEMPEL DER EINORDNUNG.
   // ================================================================================================
@@ -2939,7 +2978,9 @@ export type NotificationKind =
   | "assignment"
   | "return"
   | "impact"
-  | "kenntnisnahme";
+  | "kenntnisnahme"
+  // aufnahme:20260922:gesamt-wissen-frische: Fristerinnerung, Wochenvorlage, Prüfanforderung.
+  | "frische";
 
 export interface Notification {
   id: string;
@@ -2957,6 +2998,8 @@ export interface Notification {
   fassung?: number;
   erinnerung?: boolean;
   ueberfaellig?: boolean;
+  // aufnahme:20260922:gesamt-wissen-frische: Unterart einer `frische`-Meldung (R-0248/R-0266/R-1635).
+  frischeArt?: "frist" | "vorlage" | "anlage";
 }
 
 // AUFTRAG-mega46 Block F: die Betriebsschalter, die die Oberfläche erfahren darf — AUSSCHLIESSLICH

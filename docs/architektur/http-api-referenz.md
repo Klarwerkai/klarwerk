@@ -179,6 +179,10 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `resolve-conflict` | `conflict.resolve` | `conflictId`, `decision` |
 | `transfer-author` | `users.manage` | `newAuthor` |
 | `revalidate` | `ko.create` | — |
+| `request-revalidation` | `ko.create` | — (antwortet 204; setzt den Merker „Stimmt das noch?" für dieses Objekt — erneute Prüfung aus der Bibliothek, R-1732) |
+| `neighbors-changed` | `ko.validate` | — (antwortet 200 `{ markiert }`; meldet die Änderung aller an dieses Objekt gekoppelten Anlagen und markiert alle Objekte daran, R-0203; nur die Zahl, keine Kennungen) |
+| `confirm-fresh` | `ko.read` | — (antwortet 200 Objekt; „Stimmt weiterhin" — Frische-Signal ohne neue Fassung und ohne Statuswechsel, nur an validierten Objekten, sonst 400 `INVALID`; vom Verantwortlichen verlängert es die Haltbarkeit; Audit `ko.freshness-confirmed`, R-0206/R-0248) |
+| `schutz-oeffentlich` | `ko.validate` | `oeffentlich` (boolean; Schutzbedarf „öffentlich", nur an internen Objekten, sonst 400 `INVALID`; Audit `ko.oeffentlich-changed`, R-0652) |
 | `helpful` | `ko.read` | — (antwortet 204; „Hat geholfen" am Objekt, Trust-Schritt + Audit `answer.helpful`, genau einmal je Person und Objekt, keine Prüfstimme) |
 
 ### 3.4 Entwürfe und Erfassung (`captureRoutes`, `slidesRoutes`, `objectRoutes`, `mediaRoutes`)
