@@ -52,6 +52,7 @@ import { Zweitmeinung } from "../components/fragen/Zweitmeinung";
 import { ANTWORT_MENUEPUNKTE } from "../components/fragen/antwortMenue";
 import { useVorlesen } from "../components/fragen/useVorlesen";
 import { FRAGEN_ZIEL } from "../components/fragen/ziele";
+import { useSprachaufnahme } from "../components/sprache/useSprachaufnahme";
 // WP-UX-WOW-1 U1 / JOB 3064 §5: sichere Markdown-Darstellung der Antwort (React-Elemente, kein
 // HTML-Sink) — mit den Fussnotenmarken des H5-Zielbilds. Derselbe Parser wie `AnswerMarkdown`.
 import { AntwortText } from "../components/start/AntwortText";
@@ -661,6 +662,15 @@ export function Ask(): JSX.Element {
   // ANGEHÄNGT, und das Stoppen löst KEINE Modellanfrage aus.
   const diktat = useDiktat((text: string) => setQ((prev) => (prev ? `${prev} ${text}` : text)));
   const speechSupported = diktat.moeglich;
+  // R-0104 (Aufnahme gesamt-sprachassistent): Sprechen über das Browser-Diktat hinaus — die Aufnahme
+  // verschriftlicht die vorhandene Server-Transkription, das Ergebnis wird ANGEHÄNGT wie beim Diktat.
+  // Die Stufe ist „intern“: die getippte Frage dieser Fläche geht ebenfalls ohne Vertraulichkeits-
+  // markierung an den Reasoner (markiert wird nur der Dokumenttext des Word-Panels,
+  // `services/ask/src/service.ts` `dokumenttextVertraulich`). Gesendet wird erst auf Klick.
+  const sprachaufnahme = useSprachaufnahme({
+    anhaengen: (text: string) => setQ((prev) => (prev ? `${prev} ${text}` : text)),
+    vertraulichkeit: "intern",
+  });
   // R-1053: die Antwort auf Klick vorlesen — Browser-Sprachausgabe, kein Auto-Play.
   const vorlesen = useVorlesen();
   // JOB 3064 §5: zwei Schalter der Fläche — das Info-Blatt („…" → „Mehr") und die Beispielliste
@@ -1830,6 +1840,7 @@ export function Ask(): JSX.Element {
           beispieleOffen={beispiele}
           onBeispiele={() => setBeispiele((v) => !v)}
           diktat={speechSupported ? diktat : null}
+          aufnahme={sprachaufnahme.moeglich ? sprachaufnahme : null}
           wartet={ask.isPending}
           gesperrt={!answerAi.available}
           sperrHinweis={!answerAi.available ? t(aiHintKey) : undefined}
@@ -1847,6 +1858,14 @@ export function Ask(): JSX.Element {
         >
           {answerAi.available && emptyAttempted && q.trim().length === 0 ? t("ask.emptyHint") : ""}
         </output>
+        {sprachaufnahme.meldung ? (
+          <output
+            data-testid="ask-sprachaufnahme-meldung"
+            className="mt-3 block text-[12px] text-muted"
+          >
+            {sprachaufnahme.meldung}
+          </output>
+        ) : null}
         {nichtHilfreich ? (
           <NichtHilfreichKarte
             key={`${nichtHilfreich.koId}:${nichtHilfreich.alternative}`}
