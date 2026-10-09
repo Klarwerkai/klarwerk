@@ -3011,7 +3011,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // den Ist-Wert als „Received", er wird danach gemessen übernommen. Auslieferungsfolgen der Zeile:
     // nur ein zugänglicher Name; kein Abrufziel, keine Nutzlast-, CSP-, Rechte- oder
     // Manifeständerung, kein Sideload.
-    const PIN = "f72ab829639f2341b04eef4281ec735a1bcbaf0c2116438515e4e0d102a59165";
+    // NACHARBEIT 37 (ki-modus-wahrheit): PIN BEWUSST AKTUALISIERT (Platzhalter f72ab829… ->
+    // c7a4b5ec…). Im Prüflauf zu Kandidat d3a9f1e2 am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
+    // HISTORIE/nacharbeit-37/PRUEFUNG/integration-sprachwahl-panel-pins-und-schranken.log) und
+    // unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    const PIN = "c7a4b5ecd213b4d11e1b7906bdcb188535ac6a110bac00a5a4a033f155900fb8";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
