@@ -18,6 +18,13 @@ export const KNOWLEDGE_TYPES: readonly KnowledgeType[] = [
   "negativwissen",
 ];
 
+// R-0086 (aufnahme:20260922:gesamt-wissen-metadaten): ob die Aussage eine TATSACHE festhält oder eine
+// HANDLUNGSANWEISUNG gibt. Eine eigene Angabe neben der Wissensart — sie sagt nicht, woher das Wissen
+// kommt (Bauchgefühl … Negativwissen), sondern was der Leser damit tun soll.
+export type KoAussageart = "tatsache" | "handlungsanweisung";
+
+export const KO_AUSSAGEARTEN: readonly KoAussageart[] = ["tatsache", "handlungsanweisung"];
+
 export type KoStatus = "offen" | "validiert";
 
 // SCRUM-415: Vertraulichkeitsstufe je Wissensobjekt. „intern" = Öffentlich-intern (Standard, keine
@@ -601,6 +608,10 @@ export interface KnowledgeObject {
   // abgeleitet oder nachgetragen; der Altbestand erscheint in der Facette als „ohne Wert".
   // Gesetzt wird es beim Anlegen (`CreateKoInput.domain`) oder nachträglich über `setDomain`.
   domain?: string;
+  // R-0086: Tatsache oder Handlungsanweisung, gesetzt beim Erfassen (`CreateKoInput.aussageart`).
+  // Optional und ohne Migration (Voll-JSONB); FEHLT das Feld, ist es nicht angegeben — es wird
+  // weder aus Maßnahmen noch aus dem Text abgeleitet.
+  aussageart?: KoAussageart;
   // ============================================================================================
   // R-1632 / R-1633 (aufnahme:20260922:gesamt-standortwissen) — WO DIESER PUNKT GILT.
   // ============================================================================================
@@ -734,7 +745,24 @@ export interface KnowledgeObject {
   // Umkategorisieren eine abgelaufene Frist nicht verlängert. Gesetzt nur von
   // `KoService.updateCategory`; Regel in `frische.ts` (`fristKategorie`). Optional, keine Migration.
   fristGrundlage?: { kategorie: string; ab: string };
+  // ============================================================================================
+  // R-0082 / R-0477 (aufnahme:20260922:gesamt-wissen-metadaten) — MEHRERE ANLAGEN, EINE QUELLE.
+  // ============================================================================================
+  //
+  // Die Anlagen dieses Objekts stehen allein HIER am Objekt, nicht in den Lebenszyklus-Kopplungen;
+  // eine Kennung kann an mehreren Objekten hängen und ein Objekt an mehreren Kennungen. Gelesen
+  // wird ausschliesslich über `anlagenVon` (asset.ts), geschrieben über `anlagenFelder`:
+  //   · keine oder EINE Anlage → nur `asset`, genau wie vor dieser Regel (Altbestand unverändert);
+  //   · ZWEI und mehr → `assets` trägt die Liste (Normalform, ohne Doppelte, Erfassungsreihenfolge)
+  //     und `asset` spiegelt deren erste für die Leser, die eine einzelne Anlage erwarten
+  //     (Konflikterkennung `sameAsset`, Word-Add-in, Export). Der Spiegel ist keine zweite Quelle:
+  //     er entsteht nur zusammen mit der Liste.
   asset: string | null;
+  assets?: string[];
+  // R-1690 / FE-CAP-08: der beim Erfassen gesetzte Re-Validierungstermin (Kalendertag
+  // `JJJJ-MM-TT`) — bis wann der Inhalt erneut geprüft werden soll. Optional, keine Migration;
+  // fehlt er, ist kein Termin angegeben und es wird keiner abgeleitet.
+  revalidierungAm?: string;
   createdAt: string;
   history: HistoryEntry[];
   comments: KoComment[];
