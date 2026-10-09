@@ -31,13 +31,20 @@ const WURZEL = join(__dirname, "..", "..");
 const I18N = join(WURZEL, "apps/web/src/i18n.ts");
 const VIEWLOGIK = join(WURZEL, "apps/web/src/lib/importResultView.ts");
 const KOMPONENTEN = join(WURZEL, "apps/web/src/components/confluence-import");
+// R-1349 (Aufnahme gesamt-aufruferwaechter, Nacharbeit 10): die alte Resultatfläche in
+// `components/confluence-import` (ImportResultView, SourceRecordCard, KnowledgeItemList) wurde nie
+// montiert und ist entfernt; dort bleibt der Laufbanner. Die W2-Fläche, die das Produkt zeigt, ist
+// der gelieferte Weg R-0142 — sie wird deshalb hier mitgelesen, statt dass die Erhebung schrumpft.
+const GELIEFERTE_FLAECHE = join(WURZEL, "apps/web/src/components/bibliothek/ImportErgebnis.tsx");
 
 const i18nQuelle = woerterbuchQuelleAus(I18N);
 const viewQuelle = readFileSync(VIEWLOGIK, "utf8");
-const komponentenQuelle = readdirSync(KOMPONENTEN)
-  .filter((d) => d.endsWith(".tsx"))
-  .map((d) => readFileSync(join(KOMPONENTEN, d), "utf8"))
-  .join("\n");
+const komponentenQuelle = [
+  ...readdirSync(KOMPONENTEN)
+    .filter((d) => d.endsWith(".tsx"))
+    .map((d) => readFileSync(join(KOMPONENTEN, d), "utf8")),
+  readFileSync(GELIEFERTE_FLAECHE, "utf8"),
+].join("\n");
 
 const w2Quelltext = `${viewQuelle}\n${komponentenQuelle}`;
 
@@ -274,12 +281,14 @@ describe("AUFTRAG-81: jeder von der W2-Flaeche verwendete i18n-Schluessel loest 
   }
 
   it("die zwei Schluessel aus Preflight 78 sind namentlich abgedeckt", () => {
-    // Namentlich, weil genau sie der Anlass dieses Auftrags sind: verschwaende der Erhebungspfad
-    // sie kuenftig, faellt es hier auf und nicht erst in der Oberflaeche.
+    // Namentlich, weil genau sie der Anlass dieses Auftrags sind.
+    //
+    // R-1349 (Nacharbeit 10): erzeugt hat sie allein `sourceBlockView` der alten, nie montierten
+    // Resultatfläche. Mit ihr ist die Verwendung entfallen — der Fall verlangt sie deshalb nicht mehr
+    // in `VERWENDET`. Die Zusage, um die es ging (die Werte lösen in allen drei Sprachen auf, statt
+    // den rohen Schlüssel zu zeigen), bleibt unverändert geprüft; die Einträge stehen weiter im
+    // Wörterbuch (der Textbestand ist Wert für Wert festgeschrieben).
     for (const schluessel of ["w2.value.missing", "w2.value.none"]) {
-      expect(VERWENDET, `${schluessel} wird nicht mehr als verwendet erkannt`).toContain(
-        schluessel,
-      );
       for (const sprache of SPRACHEN) {
         const wert = (WOERTERBUECHER.get(sprache) as Map<string, string>).get(schluessel);
         expect(wert, `${schluessel} fehlt in ${sprache}`).toBeDefined();

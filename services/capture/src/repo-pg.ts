@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { ENTWURFS_INDEX_FASSUNG, type EntwurfsIndex } from "./entwurfs-index";
 import type { DraftAnlageErgebnis, DraftRepo } from "./repo";
 import type { Draft } from "./types";
 
@@ -59,6 +60,46 @@ CREATE UNIQUE INDEX IF NOT EXISTS drafts_create_operation_owner_uq
   ON drafts (create_operation_id, COALESCE(create_operation_actor, ''))
   WHERE create_operation_id IS NOT NULL;
 `;
+
+// ================================================================================================
+// R-1133 — DER TECHNISCHE INDEX DES ENTWURFS, ALS SPALTEN DERSELBEN ZEILE.
+// ================================================================================================
+//
+// WARUM SPALTEN UND KEINE EIGENE TABELLE. Der Index gehört zu genau einer Zeile und lebt genau so
+// lange wie sie: `purge` (endgültig löschen, verbrauchen) nimmt ihn mit, ohne dass ein zweiter
+// Löschweg ihn vergessen könnte, und der Papierkorb blendet ihn über dieselbe Bedingung aus wie den
+// Entwurf. Gelesen wird der Entwurf weiter ausschliesslich aus `data` — kein Antwortfeld ändert sich.
+//
+// WARUM `index_stand`. Die Spalte trägt das `updatedAt` des indizierten Stands. Geschrieben wird nur,
+// wenn `data->>'updatedAt'` ihm in DERSELBEN Anweisung gleicht; gültig ist ein Index nur, solange das
+// so bleibt. Jedes Speichern macht den alten Index damit sofort ungültig, und eine verspätete
+// Ableitung eines älteren Stands kann einen neueren nie überschreiben.
+//
+// DIE INDIZES: der Inhaltshash (partiell — Zeilen ohne Index tragen nichts bei) für die
+// Duplikatsfrage, der Trigramm-Index für die Textsuche. `pg_trgm` legt `KO_SCHEMA` vorher an.
+//
+// EIGENE STUFE, REIN ADDITIV: nur `ADD COLUMN IF NOT EXISTS` und `CREATE INDEX IF NOT EXISTS`. Die
+// Datenmigration ist leer — der Altbestand trägt keinen Index und wird vom Abgleich nachgezogen
+// (`CaptureService.gleicheEntwurfsIndexAb`), nicht von der Migration.
+export const CAPTURE_INDEX_SCHEMA = `
+ALTER TABLE drafts ADD COLUMN IF NOT EXISTS index_fassung int;
+ALTER TABLE drafts ADD COLUMN IF NOT EXISTS index_stand text;
+ALTER TABLE drafts ADD COLUMN IF NOT EXISTS index_hash text;
+ALTER TABLE drafts ADD COLUMN IF NOT EXISTS index_text text;
+ALTER TABLE drafts ADD COLUMN IF NOT EXISTS index_status text;
+CREATE INDEX IF NOT EXISTS drafts_index_hash_idx
+  ON drafts (index_hash) WHERE index_hash IS NOT NULL;
+CREATE INDEX IF NOT EXISTS drafts_index_text_trgm
+  ON drafts USING gin (index_text gin_trgm_ops);
+`;
+
+interface IndexRow {
+  index_fassung: number;
+  index_stand: string;
+  index_hash: string;
+  index_text: string;
+  index_status: EntwurfsIndex["status"];
+}
 
 // KEINE eigene Konstante für den Constraint-Namen, anders als beim Wissensobjekt
 // (`KO_CREATE_OPERATION_CONSTRAINT`, `knowledge-object/src/repo-pg.ts:130`): Dort wird sie
@@ -319,5 +360,63 @@ export class PgDraftRepo implements DraftRepo {
       "SELECT data FROM drafts WHERE data->'imPool' = 'true'::jsonb ORDER BY data->>'createdAt'",
     );
     return res.rows.map((row) => row.data);
+  }
+
+  // R-1133: Bedingung und Schreiben in EINER Anweisung — lebend UND noch genau dieser Stand.
+  async setzeEntwurfsIndex(id: string, index: EntwurfsIndex): Promise<boolean> {
+    const res = await this.pool.query(
+      `UPDATE drafts
+          SET index_fassung=$2, index_stand=$3, index_hash=$4, index_text=$5, index_status=$6
+        WHERE id=$1 AND ${AKTIV} AND data->>'updatedAt' = $3`,
+      [id, index.fassung, index.stand, index.inhaltsHash, index.text, index.status],
+    );
+    return res.rowCount === 1;
+  }
+
+  async entwurfsIndexVon(id: string): Promise<EntwurfsIndex | undefined> {
+    const res = await this.pool.query<IndexRow>(
+      `SELECT index_fassung, index_stand, index_hash, index_text, index_status FROM drafts
+        WHERE id=$1 AND ${AKTIV} AND index_stand IS NOT NULL`,
+      [id],
+    );
+    const row = res.rows[0];
+    return row
+      ? {
+          fassung: row.index_fassung,
+          stand: row.index_stand,
+          inhaltsHash: row.index_hash,
+          text: row.index_text,
+          status: row.index_status,
+        }
+      : undefined;
+  }
+
+  // Die Arbeitsliste des Abgleichs: fehlend, veralteter Stand oder alte Fassung — nur Kennungen,
+  // kein Rumpf verlässt die Datenbank.
+  async offeneEntwurfsIndizes(limit: number): Promise<string[]> {
+    const deckel = Math.max(0, Math.floor(limit));
+    if (deckel === 0) {
+      return [];
+    }
+    const res = await this.pool.query<{ id: string }>(
+      `SELECT id FROM drafts
+        WHERE ${AKTIV}
+          AND (index_stand IS DISTINCT FROM data->>'updatedAt' OR index_fassung IS DISTINCT FROM $2)
+        ORDER BY id LIMIT $1`,
+      [deckel, ENTWURFS_INDEX_FASSUNG],
+    );
+    return res.rows.map((row) => row.id);
+  }
+
+  // Die Duplikatsfrage über `drafts_index_hash_idx` — nur GÜLTIGE Indizes lebender Entwürfe.
+  async entwuerfeMitInhalt(inhaltsHash: string, ausser: string): Promise<string[]> {
+    const res = await this.pool.query<{ id: string }>(
+      `SELECT id FROM drafts
+        WHERE index_hash = $1 AND id <> $2 AND ${AKTIV}
+          AND index_stand = data->>'updatedAt' AND index_fassung = $3
+        ORDER BY id`,
+      [inhaltsHash, ausser, ENTWURFS_INDEX_FASSUNG],
+    );
+    return res.rows.map((row) => row.id);
   }
 }

@@ -91,6 +91,60 @@ export interface PasswordResetRepo {
   delete(token: string): Promise<void>;
 }
 
+// R-0562: der eingerichtete zweite Faktor eines Kontos (TOTP-Geheimnis der Authenticator-App).
+//
+// EIGENE ABLAGE NEBEN `users`, nicht als Spalte daran: `UserRepo.update` schreibt das ganze Konto
+// aus einem vorher gelesenen Stand. Stünde das Geheimnis dort, könnte jeder andere Schreibweg mit
+// einem älteren Stand (Hinweis quittieren, Rolle ändern) einen eben eingerichteten zweiten Faktor
+// still wieder entfernen. Hier schreibt nur, wer den zweiten Faktor meint.
+export interface SecondFactor {
+  userId: string;
+  secret: string;
+  createdAt: string;
+  // Der zuletzt verbrauchte TOTP-Zeitschritt — ein Code trägt höchstens EINE Anmeldung.
+  lastStep?: number;
+}
+
+export interface SecondFactorRepo {
+  find(userId: string): Promise<SecondFactor | undefined>;
+  set(entry: SecondFactor): Promise<void>;
+  delete(userId: string): Promise<void>;
+  /**
+   * Verbraucht einen Zeitschritt — atomar „nur wenn größer als der zuletzt verbrauchte".
+   * `false` heisst: dieser Code (oder ein späterer) hat schon eine Anmeldung getragen.
+   */
+  claimStep(userId: string, step: number): Promise<boolean>;
+}
+
+export class InMemorySecondFactorRepo implements SecondFactorRepo {
+  private readonly eintraege = new Map<string, SecondFactor>();
+
+  find(userId: string): Promise<SecondFactor | undefined> {
+    const eintrag = this.eintraege.get(userId);
+    return Promise.resolve(eintrag ? { ...eintrag } : undefined);
+  }
+
+  set(entry: SecondFactor): Promise<void> {
+    this.eintraege.set(entry.userId, { ...entry });
+    return Promise.resolve();
+  }
+
+  delete(userId: string): Promise<void> {
+    this.eintraege.delete(userId);
+    return Promise.resolve();
+  }
+
+  // Ohne `await` zwischen Prüfen und Setzen — im Einzelfaden von JS damit atomar.
+  claimStep(userId: string, step: number): Promise<boolean> {
+    const eintrag = this.eintraege.get(userId);
+    if (!eintrag || (eintrag.lastStep !== undefined && eintrag.lastStep >= step)) {
+      return Promise.resolve(false);
+    }
+    this.eintraege.set(userId, { ...eintrag, lastStep: step });
+    return Promise.resolve(true);
+  }
+}
+
 export class InMemoryUserRepo implements UserRepo {
   private readonly users = new Map<string, User>();
   // SCRUM-504: Spiegel des partiellen Unique-Index — die ids der aktuell als Bootstrap-Admin markierten

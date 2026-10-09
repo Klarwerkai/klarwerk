@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { adapterFromConfig } from "../../services/confluence/src/adapter";
 import { ConfluenceRestClient } from "../../services/confluence/src/rest-client";
+import { adapterFromConfig } from "../support/confluence-adapter";
 
 // ================================================================================================
 // JOB 2691 D1 — DAS NACHLADEN JE ID GEHT DENSELBEN NETZWEG WIE DAS SPACE-LISTING
