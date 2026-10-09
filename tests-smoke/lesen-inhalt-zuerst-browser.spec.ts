@@ -180,7 +180,7 @@ test.describe("Lesen: Inhalt zuerst", () => {
     await expect(page.getByTestId("kenntnisnahme-bestaetigen")).toHaveCount(0);
     await expect(page.getByTestId("kenntnisnahme-verweis")).toHaveCount(0);
     const verwalten = page.getByTestId("kenntnisnahme-verwalten");
-    await verwalten.locator("summary").click();
+    await verwalten.locator(":scope > summary").click();
     await expect(verwalten).toHaveAttribute("open", "");
     await expect(flaeche).toContainText("keine elektronische Signatur");
     await belegBild(page, "desktop-kenntnisnahme-aufgeklappt");
@@ -302,7 +302,9 @@ test.describe("Lesen: Inhalt zuerst", () => {
 
     // Historie offen, Bearbeitung einen Klick entfernt.
     await expect(page.getByTestId("ga-vergleich")).toBeVisible();
-    await bearbeiten.locator("summary").click();
+    // Nacharbeit 3: NUR die eigene Zusammenfassung der Zeile — darin liegt ein weiteres <details>
+    // („Für Fachleute: Inhaltsnachweis …“ im Aufnehmen-Formular) mit eigener Zusammenfassung.
+    await bearbeiten.locator(":scope > summary").click();
     await expect(page.getByTestId("ga-kopf")).toBeVisible();
     await expect(page.getByTestId("ga-entscheidung")).toBeVisible();
     await belegBild(page, "anleitung-bearbeiten-aufgeklappt");
