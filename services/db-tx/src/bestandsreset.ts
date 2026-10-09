@@ -99,6 +99,9 @@ export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
   "conflicts",
   // Prüfung-Gedächtnis (R-1103/R-1105): aus dem Wissen abgeleitet, fällt mit ihm.
   "conflict_pair_memory",
+  // Paarpflichten (G2): an Aussagen und ihre Stände gebunden, fallen mit dem Wissen.
+  "conflict_pair_obligations",
+  "conflict_pair_obligation_runs",
   "answer_snapshots",
   "answer_records",
   "gaps",
