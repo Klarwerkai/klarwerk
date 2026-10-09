@@ -1501,6 +1501,34 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       },
     );
 
+    // ============================================================================================
+    // R-1133 — DIE DUPLIKATSFRAGE ÜBER DEN TECHNISCHEN ENTWURFSINDEX.
+    // ============================================================================================
+    //
+    // Welche anderen Entwürfe tragen genau denselben Inhalt? Beantwortet über den Inhaltshash des
+    // Index (`CaptureService.entwuerfeMitGleichemInhalt`), nicht über einen Rumpfvergleich.
+    //
+    // DIESELBE BERECHTIGUNG UND DIESELBE SICHTBARKEIT wie die übrigen Entwurfsrouten: erst
+    // `requireVisibleDraft` für den gefragten Entwurf, dann `canSeeDraft` für JEDEN Treffer — ein
+    // fremder privater Entwurf erscheint nicht, auch nicht als Zahl. Reine Lesung: die Antwort
+    // führt Kennung und Titel und entscheidet nichts.
+    app.get<{ Params: { id: string } }>(
+      "/api/drafts/:id/gleicher-inhalt",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.create", request, reply);
+        if (!user) {
+          return;
+        }
+        if (!(await requireVisibleDraft(capture, request.params.id, user, reply, request))) {
+          return;
+        }
+        const antwort = await capture.entwuerfeMitGleichemInhalt(request.params.id, (draft) =>
+          canSeeDraft(user, draft),
+        );
+        reply.code(200).send(antwort);
+      },
+    );
+
     app.put<{ Params: { id: string }; Body: DraftPayload & { expectedUpdatedAt?: unknown } }>(
       "/api/drafts/:id",
       // WP-D1c/WP-D1d: derselbe dokument-taugliche Cap + Auth-vor-Parsing wie POST — ein bildreicher
