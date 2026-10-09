@@ -1237,7 +1237,11 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
   it("K2 · KALIBRIERUNG: auch die Kontenfläche selbst trägt ohne Störung keinen Fehlerzustand", async () => {
     const s = stand as Stand;
     s.stoerung = null;
-    await neuLaden("/admin", '[data-testid="flaeche-nutzer"] button[data-einst="zeile"]');
+    // ADMIN-01: die Kontenfläche hat ihre eigene Adresse; `/admin` ist die Startseite.
+    await neuLaden(
+      "/admin?bereich=konten",
+      '[data-testid="flaeche-nutzer"] button[data-einst="zeile"]',
+    );
     const lage = await (s.seite as NonNullable<Stand["seite"]>).evaluate<{
       boxen: number;
       nutzer: number;

@@ -2162,8 +2162,18 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // über 495 kommen also aus dem eingemischten Hauptstand (Grundmenge 621 → 657), darunter laut
     // Kommentar oben `Zeichnung` und `AnhangZeichnung`. Die übrigen 18 sind ohne Git-Verlauf an
     // diesem Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // ADMIN-01 (produkt:20261009:admin-verwaltung-uebersicht): 515 → 516. GENAU EIN Bauteil kommt
+    // dazu:
+    //     + `AdminUebersicht` (`pages/AdminUebersicht.tsx`) — die Startseite der Verwaltung mit
+    //       Aufgabenzählern und den sieben fachlichen Gruppen.
+    // Ihre Zeilenhelfer (`verweis`, `zielZeile`) sind kleingeschrieben und keine Bauteile. Sie
+    // zeigt kein Bild, bietet keine Bildbeschreibung an (kein `CAPTION_AI_TEXT`) und trägt keinen
+    // eigenen Titel (kein `documentTitle`-Prop): `anbieter` 1 und `traeger` 2 bleiben. EHRLICH
+    // GESAGT: GERECHNET (515 + 1) — dieser Auftrag durfte keinen Testlauf selbst starten; weicht der
+    // Prüflauf ab, gehört die gemessene Zahl hierher.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 515,
+      komponenten: 516,
       anbieter: 1,
       traeger: 2,
     });
