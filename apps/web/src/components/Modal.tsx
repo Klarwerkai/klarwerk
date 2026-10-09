@@ -107,8 +107,12 @@ export function Modal({
 
   const flaeche = (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:pt-[8vh]">
+      {/* R-0909 (Ben, Nacharbeit 4): der Klickfänger bleibt der Maus-Ausgang, steht aber NICHT in
+          der Tab-Reihenfolge — er liegt neben dem Dialog, und „Fokus bleibt drin". Die Tastatur
+          schließt über Escape und den beschrifteten Knopf im Panel. */}
       <button
         type="button"
+        tabIndex={-1}
         aria-label={t("modal.close")}
         onClick={onClose}
         className="absolute inset-0 bg-ink/40"

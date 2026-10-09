@@ -1099,7 +1099,7 @@ describe("JOB 3607 · (a) der Kandidatenweg der Adapter hat im Produkt keinen Au
     expect(jsxGestalten(umgebung, GRENZE_MODUL)).toEqual([
       "ModalBoundaryCtx.Provider:188 → Element",
       "div:216 → Element",
-      "dialog:304 → Element",
+      "dialog:319 → Element",
     ]);
   });
 

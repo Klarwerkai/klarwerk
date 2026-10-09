@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { focusFirstIn } from "../lib/focusables";
+import { FOCUSABLE_SELECTOR, focusFirstIn } from "../lib/focusables";
 
 // AUFTRAG-mega48 Block A — EINE MODALGRENZE FÜR DIE GANZE APP.
 //
@@ -300,6 +300,21 @@ export function GrenzDialog({
     };
   }, [anmelden, anfangsfokus]);
 
+  // R-0909 (Ben, Nacharbeit 4) — „FOKUS BLEIBT DRIN". Ohne `showModal()` begrenzt der Browser die
+  // Tabulatortaste nicht; der Hintergrund ist zwar inert, aber am Rand des Panels lief der Fokus
+  // ins Leere oder auf den Klickfänger daneben. Der Dialog führt Tab und Umschalt+Tab deshalb
+  // SELBST, ringsum innerhalb seines Panels (Bauform `MobileNavDrawer`, dort in WebKit gemessen).
+  // Ein Bauteil im Panel, das die Taste schon selbst beansprucht hat (`preventDefault`), behält sie.
+  const beiTaste: NonNullable<JSX.IntrinsicElements["dialog"]["onKeyDown"]> = (ereignis) => {
+    onKeyDown?.(ereignis);
+    const panel = flaeche.current;
+    if (ereignis.defaultPrevented || ereignis.key !== "Tab" || !panel) {
+      return;
+    }
+    ereignis.preventDefault();
+    tabImPanel(panel, ereignis.shiftKey);
+  };
+
   return (
     <dialog
       ref={flaeche}
@@ -308,11 +323,44 @@ export function GrenzDialog({
       aria-labelledby={benanntDurch}
       aria-label={name}
       tabIndex={-1}
-      onKeyDown={onKeyDown}
+      onKeyDown={beiTaste}
       className={className}
       {...(marke ? { [marke]: "" } : {})}
     >
       {children}
     </dialog>
   );
+}
+
+// Die Tab-Stationen eines Panels in Dokumentreihenfolge: was der Browser per Tab erreichen würde —
+// die gemeinsamen Bedienelemente (`FOCUSABLE_SELECTOR`) und Schreibflächen (`contenteditable`, das
+// Studio und das Fußnotenformular führen eine). Was ausdrücklich `tabindex="-1"` trägt, ist nur
+// programmatisch fokussierbar und gehört nicht in die Reihe; Verborgenes ebenso nicht.
+const TAB_STATIONEN = `${FOCUSABLE_SELECTOR}, [contenteditable]:not([contenteditable="false"])`;
+
+function tabImPanel(panel: HTMLElement, rueckwaerts: boolean): void {
+  const reihe = [...panel.querySelectorAll<HTMLElement>(TAB_STATIONEN)].filter(
+    (el) =>
+      el.getAttribute("tabindex") !== "-1" && el.closest("[hidden],[aria-hidden='true']") === null,
+  );
+  if (reihe.length === 0) {
+    panel.focus();
+    return;
+  }
+  const aktiv = document.activeElement;
+  const stelle = aktiv instanceof HTMLElement ? reihe.indexOf(aktiv) : -1;
+  const schritt = rueckwaerts ? -1 : 1;
+  // Noch nicht auf einer Station (etwa auf dem Panel selbst): vorwärts an den Anfang, rückwärts ans
+  // Ende. Sonst die Nachbarstation, und am Rand ringsum.
+  let i = stelle === -1 ? (rueckwaerts ? reihe.length - 1 : 0) : stelle + schritt;
+  // Eine Station, die den Fokus nicht annimmt (im echten Browser z. B. ein per CSS ausgeblendetes
+  // Dateifeld), wird übersprungen — statt dass die Taste dort stehen bleibt.
+  for (let versuch = 0; versuch < reihe.length; versuch += 1) {
+    const ziel = reihe[((i % reihe.length) + reihe.length) % reihe.length];
+    ziel?.focus();
+    if (ziel !== undefined && document.activeElement === ziel) {
+      return;
+    }
+    i += schritt;
+  }
 }

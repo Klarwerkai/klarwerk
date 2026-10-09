@@ -407,8 +407,11 @@ export function CommandPalette(): JSX.Element | null {
     // Fenster: auf einem gewöhnlichen Bildschirm sieht die Liste aus wie bisher, auf einem flachen
     // wird sie kürzer und scrollt — statt aus dem Bild zu laufen.
     <div className="fixed inset-0 z-50 flex items-start justify-center px-4 pb-[6vh] pt-[12vh]">
+      {/* R-0909 (Ben, Nacharbeit 4): Klickfänger nur für die Maus, nicht in der Tab-Reihenfolge —
+          die Tastatur schließt mit Escape (oder ⌘K). */}
       <button
         type="button"
+        tabIndex={-1}
         aria-label={t("cmd.close")}
         onClick={() => setOpen(false)}
         className="absolute inset-0 bg-ink/30"
