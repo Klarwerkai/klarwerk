@@ -733,6 +733,11 @@ export interface PptxUnzipBudgetLimits {
   maxSlideEntries?: number;
   maxTotalDecompressedBytes?: number;
   maxEntryExpansionRatio?: number;
+  // R-0179 (Excel-Import): dasselbe Budget für ein anderes OOXML-Archiv. `neededEntry` ersetzt die
+  // PPTX-Namensliste, `countedEntry` die Folien-Untermenge unter `maxSlideEntries`. Ohne Angabe gilt
+  // unverändert der PPTX-Vertrag.
+  neededEntry?: RegExp;
+  countedEntry?: RegExp;
 }
 
 // undefined = unbekannt (Streaming, keine Metadaten) → NICHT fail-closed; bad = vorhanden aber korrupt
@@ -770,6 +775,8 @@ export function createPptxUnzipBudget(limits: PptxUnzipBudgetLimits = {}): {
   const maxSlideEntries = limits.maxSlideEntries ?? PPTX_MAX_SLIDE_ENTRIES;
   const maxTotalBytes = limits.maxTotalDecompressedBytes ?? PPTX_MAX_TOTAL_DECOMPRESSED_BYTES;
   const maxRatio = limits.maxEntryExpansionRatio ?? PPTX_MAX_ENTRY_EXPANSION_RATIO;
+  const neededEntry = limits.neededEntry ?? PPTX_NEEDED_ENTRY_RE;
+  const countedEntry = limits.countedEntry ?? PPTX_SLIDE_ENTRY_RE;
   let seen = 0;
   let acceptedSlides = 0;
   let totalOriginal = 0;
@@ -781,7 +788,7 @@ export function createPptxUnzipBudget(limits: PptxUnzipBudgetLimits = {}): {
       if (seen > maxArchiveEntries) {
         throw new PptxTooLargeError("too-many-entries");
       }
-      if (!PPTX_NEEDED_ENTRY_RE.test(entry.name)) {
+      if (!neededEntry.test(entry.name)) {
         return false;
       }
       const cs = sizeState(entry.compressedSize);
@@ -804,7 +811,7 @@ export function createPptxUnzipBudget(limits: PptxUnzipBudgetLimits = {}): {
           throw new PptxTooLargeError("archive-too-large");
         }
       }
-      if (PPTX_SLIDE_ENTRY_RE.test(entry.name)) {
+      if (countedEntry.test(entry.name)) {
         acceptedSlides += 1;
         if (acceptedSlides > maxSlideEntries) {
           throw new PptxTooLargeError("too-many-entries");
