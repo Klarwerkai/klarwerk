@@ -91,8 +91,10 @@ import {
   // dieser fehlende Modulexport war der Grund, warum das seit JOB 4154 fertige Routen-Plugin an
   // keiner App angemeldet werden konnte (`routes/gesamtanweisung-routes.ts`, Kopf).
   GesamtanweisungDienst,
+  type HalbwertszeitVerlaufRepo,
   InMemoryDokumentaktenRepo,
   InMemoryEvidenceRepo,
+  InMemoryHalbwertszeitVerlauf,
   InMemoryKoRepo,
   InMemoryKoVersionRepo,
   InMemoryUploadLimitsRepo,
@@ -111,6 +113,7 @@ import {
   PgAnweisungRepo,
   PgDokumentaktenRepo,
   PgEvidenceRepo,
+  PgHalbwertszeitVerlauf,
   PgKantenRepo,
   PgKoRepo,
   PgKoSearchProjectionRepo,
@@ -257,6 +260,7 @@ import { schalterAn } from "./feature-flags";
 // Firmenwörterbuch: der versionierte Begriffskatalog der Instanz — im Postgres-Betrieb haltbar
 // (`PgBegriffeRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
 import { type BegriffeRepo, InMemoryBegriffeRepo, PgBegriffeRepo } from "./firmenwoerterbuch";
+import { frischeMeldungen } from "./frische-meldungen";
 import { kiLaeufeAuskunft } from "./health-ki-laeufe";
 import {
   type SessionUser,
@@ -294,6 +298,7 @@ import {
   type LiveWallFotoRepo,
   PgLiveWallFotoRepo,
 } from "./livewall-fotos";
+import { gelisteteMeldung, nurGelisteteLogfelder } from "./log-positivliste";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
@@ -361,6 +366,8 @@ import { slidesRoutes } from "./routes/slides-routes";
 import { spacesRoutes } from "./routes/spaces-routes";
 import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
 import { validationRoutes } from "./routes/validation-routes";
+import { kontoendeSperre, verantwortungRoutes } from "./routes/verantwortung-routes";
+import { wissensauskunftRoutes } from "./routes/wissensauskunft-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
 import { stelleSuchprojektionBereit } from "./search-projection-startup";
@@ -378,6 +385,12 @@ import { speicherVorgang } from "./speicher-vorgang";
 // Start bei fehlenden Pflichtwerten verweigert und beim Hochfahren ohne Geheimniswerte berichtet,
 // was diese Instanz hat und was ihr fehlt.
 import { ermittleBestand, pruefeStartvertrag, startbericht } from "./start-vertrag";
+import { verantwortungBeiAnlage } from "./verantwortung";
+import {
+  InMemoryNachfolgeRepo,
+  type NachfolgeRepo,
+  PgNachfolgeRepo,
+} from "./verantwortung-nachfolge";
 
 // ================================================================================================
 // JOB 3776 — WO DER STARTVERTRAG GERUFEN WIRD: AM EINSTIEGSPUNKT. HIER NICHT MEHR.
@@ -481,6 +494,11 @@ export interface AppServices {
    * `AppRepos`; im Postgres-Betrieb haltbar (`PgSpacesRepo`), sonst die In-Memory-Ablage.
    */
   spaces: SpacesRepo;
+  /**
+   * produkt:20261007:ownership-uebergabe (Nacharbeit 4) — die Nachfolge für neue Beiträge eines
+   * befristeten Kontos (`verantwortung-nachfolge.ts`). Im Postgres-Betrieb haltbar.
+   */
+  verantwortungNachfolge: NachfolgeRepo;
   /**
    * PMO-FEA-0003: die freiwilligen Fotos der Live-Wand (`livewall-fotos.ts`). Aus demselben Grund
    * wie `brandingSettings` NICHT in `AppRepos`; im Postgres-Betrieb haltbar (`PgLiveWallFotoRepo`,
@@ -618,6 +636,9 @@ export interface AppRepos {
   auditRepo: AuditRepo;
   koRepo: KoRepo;
   koVersions: KoVersionRepo;
+  // aufnahme:20260922:gesamt-wissen-frische (R-1636/R-0248): der festgehaltene Lernverlauf der
+  // Halbwertszeiten. Optional: fehlt er, hält der KoService ihn im Speicher.
+  halbwertszeitVerlauf?: HalbwertszeitVerlaufRepo;
   evidence: EvidenceRepo;
   users: UserRepo;
   sessions: SessionRepo;
@@ -985,6 +1006,8 @@ export function assembleServices(
     begriffe?: BegriffeRepo;
     // produkt:20261007:spaces: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     spaces?: SpacesRepo;
+    // produkt:20261007:ownership-uebergabe: gesetzt von `buildPgServices`; sonst im Speicher.
+    verantwortungNachfolge?: NachfolgeRepo;
     // PMO-FEA-0003: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     livewallFotos?: LiveWallFotoRepo;
     // R-0466: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
@@ -1015,10 +1038,24 @@ export function assembleServices(
     // unter derselben Sperre wie der Vorgang selbst (speicher-vorgang.ts).
     ...(speicher ? { kettenSperre: speicher.kettenSperre } : {}),
   });
+  const verantwortungNachfolge = opts.verantwortungNachfolge ?? new InMemoryNachfolgeRepo();
+  // produkt:20261007:spaces — hier schon gebaut, weil die Nachfolge bei Anlage (Nacharbeit 6) das
+  // Leserecht der Nachfolge am führenden Space des neuen Beitrags prüft. Dieselbe Instanz geht
+  // unten in die Dienste.
+  const spaces = opts.spaces ?? new InMemorySpacesRepo();
   const ko = new KoService({
     repo: repos.koRepo,
     audit,
+    // produkt:20261007:ownership-uebergabe (Nacharbeit 4): neue Beiträge eines befristeten Kontos
+    // verantwortet ab der Anlage dessen Nachfolge — über das Kontoende hinaus.
+    verantwortungBeiAnlage: verantwortungBeiAnlage(
+      (id) => repos.users.findById(id),
+      verantwortungNachfolge,
+      () => spaces.aktuelle(),
+      () => Date.now(),
+    ),
     versions: repos.koVersions,
+    ...(repos.halbwertszeitVerlauf ? { halbwertszeitVerlauf: repos.halbwertszeitVerlauf } : {}),
     evidence: repos.evidence,
     // SCRUM-395: Standard-Prüferanzahl aus der Admin-Einstellung — als injizierte
     // Funktion (keine Modulgrenzen-Verletzung); null → Modul-Default 3.
@@ -1129,6 +1166,9 @@ export function assembleServices(
     reasoner,
     koService: ko,
     gaps: repos.gaps,
+    // aufnahme:20260922:gesamt-wissen-frische (R-1636): die gelernte Halbwertszeit je Kategorie
+    // bestimmt die Haltbarkeit auch im Fragepfad — dieselbe Tabelle wie an den Leserouten.
+    halbwertszeiten: () => ko.gelernteHalbwertszeiten(),
     // W3-C1 (Auftrag 76): ab hier schreibt der Antwortweg wirklich einen Beleg.
     // W1 Weg A (Auftrag 143): das Repo kommt aus `repos.` — derselbe Satz, den die Dev-Persistenz
     // journaliert. Kein bedingter Key mehr: es ist immer da, und damit läuft der Beleg in JEDER
@@ -1247,7 +1287,9 @@ export function assembleServices(
         }
       : {}),
   });
-  const lifecycle = new LifecycleService({ koService: ko, repo: repos.lifecycleRepo });
+  // aufnahme:20260922:gesamt-wissen-frische (R-1635): jede Markierung hinterlässt einen Beleg im
+  // Prüfprotokoll — die Grundlage der Benachrichtigung an Autor bzw. Nachfolger in der Glocke.
+  const lifecycle = new LifecycleService({ koService: ko, repo: repos.lifecycleRepo, audit });
 
   // ==============================================================================================
   // JOB 2009 · D2 — HIER WIRD DIE SICHTBARKEITSNAHT DES WISSENSNETZES GESCHLOSSEN (H3, Weg D).
@@ -1299,7 +1341,8 @@ export function assembleServices(
     // Firmenwörterbuch — Postgres, wenn injiziert, sonst im Speicher.
     begriffe: opts.begriffe ?? new InMemoryBegriffeRepo(),
     // produkt:20261007:spaces — Postgres, wenn injiziert, sonst im Speicher.
-    spaces: opts.spaces ?? new InMemorySpacesRepo(),
+    spaces,
+    verantwortungNachfolge,
     // PMO-FEA-0003: die Fotos der Live-Wand — Postgres, wenn injiziert, sonst im Speicher.
     livewallFotos: opts.livewallFotos ?? new InMemoryLiveWallFotoRepo(),
     // R-0466: das Interaktionsgedächtnis — Postgres, wenn injiziert, sonst im Speicher.
@@ -1593,6 +1636,8 @@ export function inMemoryRepos(): AppRepos {
     auditRepo: new InMemoryAuditRepo(),
     koRepo: new InMemoryKoRepo(schreibstand),
     koVersions: new InMemoryKoVersionRepo(schreibstand),
+    // R-1636/R-0248: der Lernverlauf im Speicherbetrieb — hier, damit die Dev-Persistenz ihn journaliert.
+    halbwertszeitVerlauf: new InMemoryHalbwertszeitVerlauf(),
     evidence: new InMemoryEvidenceRepo(schreibstand),
     users: new InMemoryUserRepo(),
     sessions: new InMemorySessionRepo(),
@@ -1668,6 +1713,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       auditRepo: new PgAuditRepo(pool),
       koRepo: new PgKoRepo(pool),
       koVersions: new PgKoVersionRepo(pool),
+      // R-1636/R-0248: der Lernverlauf überlebt Neustarts — sonst begänne er nach jedem Start neu.
+      halbwertszeitVerlauf: new PgHalbwertszeitVerlauf(pool),
       evidence: new PgEvidenceRepo(pool),
       users: new PgUserRepo(pool),
       sessions: new PgSessionRepo(pool),
@@ -1754,6 +1801,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261007:spaces: Spaces und ihre Fassungen liegen in derselben Datenbank wie der
       // Bestand und überleben Neuladen, Neustart und Deploy.
       spaces: new PgSpacesRepo(pool),
+      // produkt:20261007:ownership-uebergabe: die Nachfolge bei Befristung überlebt Neustart und
+      // Deploy (`VERANTWORTUNG_NACHFOLGE_SCHEMA`, angelegt von `migrate()`).
+      verantwortungNachfolge: new PgNachfolgeRepo(pool),
       // PMO-FEA-0003: ein hinterlegtes Foto überlebt Neustart und Deploy; der Widerruf löscht die
       // Zeile in derselben Datenbank (`LIVEWALL_FOTO_SCHEMA`, angelegt von `migrate()`).
       livewallFotos: new PgLiveWallFotoRepo(pool),
@@ -2433,6 +2483,44 @@ function istTraceKennung(schluessel: string, inhalt: unknown): inhalt is string 
 }
 
 /**
+ * R-0623 — DIE ARGUMENTE EINES LOGAUFRUFS NACH DER POSITIVLISTE.
+ *
+ * Das erste Argument ist bei pino das Feldobjekt: es wird auf die gelisteten Felder reduziert
+ * (`nurGelisteteLogfelder`); ein nackter Fehler wird zu `{ err }`, damit er nur über den
+ * Erlaubnislisten-Serializer erscheint. Wiederholt der Meldungstext den Text des mitgegebenen
+ * Fehlers — oder fehlt er, sodass pino ihn aus dem Fehler nähme —, steht dort die Konstante
+ * `ERR_TEXT_UNTERDRUECKT`. Jeder andere Meldungstext steht nur, wenn er einer Vorlage der
+ * Meldungsliste entspricht (`gelisteteMeldung`), sonst `MELDUNG_NICHT_GELISTET`.
+ */
+export function ohneFreienFehlertext(argumente: readonly unknown[]): unknown[] {
+  const [erstes, meldung] = argumente;
+  // R-0623 (Ben, Nacharbeit 3/4): auch ein reiner Textaufruf läuft nicht unverändert durch.
+  // Weitere Argumente (Formatwerte für `%s` — im Bestand ungenutzt) fallen weg; ein Meldungstext
+  // steht nur nach der Positivliste der Meldungen (`log-positivliste.ts`, `MELDUNGEN`).
+  if (typeof erstes === "string") {
+    return [gelisteteMeldung(erstes)];
+  }
+  if (erstes === null || typeof erstes !== "object") {
+    return [];
+  }
+  const felder: Record<string, unknown> =
+    erstes instanceof Error ? { err: erstes } : nurGelisteteLogfelder(erstes, erlaubterTyp);
+  const fehler = felder.err;
+  const text = fehler instanceof Error ? fehler.message : "";
+  // Ein sehr kurzer Fehlertext zählt nur als wiederholt, wenn die Meldung GENAU er ist — sonst
+  // träfe ein Allerweltswort jede Meldung, die es zufällig enthält.
+  const wiederholt =
+    text !== "" &&
+    (meldung === undefined ||
+      meldung === text ||
+      (typeof meldung === "string" && text.length >= 8 && meldung.includes(text)));
+  if (wiederholt) {
+    return [felder, ERR_TEXT_UNTERDRUECKT];
+  }
+  return typeof meldung === "string" ? [felder, gelisteteMeldung(meldung)] : [felder];
+}
+
+/**
  * Die Logkonfiguration — eine geschlossene Erlaubnisliste in drei Serializern.
  *
  * ERLAUBNISLISTE, KEINE SPERRLISTE: Eine Sperrliste müsste bei jeder neuen Route neu bewiesen
@@ -2500,11 +2588,16 @@ export function baueLoggerOptionen(vorgabe?: {
     // ÜBERNOMMEN AUS EXTS PARALLELBAU (`app-logger.ts:184-192`): jeder Logaufruf läuft hier durch,
     // Meldungstext und Feldobjekt gleichermassen. Die einzige Stelle, an der ein selbstgebauter
     // Freitext noch abgefangen werden kann — die Serializer sehen ihn nie.
+    //
+    // R-0623 (Ben, Nacharbeit 1): das Feldobjekt läuft ZUERST durch die Positivliste
+    // (`log-positivliste.ts`) — nur gelistete Felder mit passendem Wert erreichen die Zeile; danach
+    // die Geheimnissenke wie bisher. Ein Meldungstext, der den Text des mitgegebenen Fehlers
+    // wiederholt (Fastifys Fehlerweg übergibt `error.message`), wird durch die Konstante ersetzt.
     hooks: {
       logMethod(this: unknown, argumente: unknown[], methode: (...a: unknown[]) => void): void {
         methode.apply(
           this,
-          argumente.map((argument) => senkeUeberWert(argument)),
+          ohneFreienFehlertext(argumente).map((argument) => senkeUeberWert(argument)),
         );
       },
     },
@@ -3036,6 +3129,13 @@ export function buildApp(
   // HTTP-Oberfläche der Module. Auth bringt seine eigenen Routen mit; die übrigen
   // Module werden über App-Routen verdrahtet, die den gemeinsamen Guard nutzen.
   const resetBaseUrl = process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/reset` : undefined;
+  // produkt:20261007:ownership-uebergabe: kein Konto wird gelöscht, das noch Hauptverantwortung
+  // trägt (beide Löschwege der Auth-Routen) — sonst blieben Beiträge ohne Verantwortung zurück.
+  kontoendeSperre(app, {
+    ko: services.ko,
+    auth: services.auth,
+    nachfolge: services.verantwortungNachfolge,
+  });
   app.register(
     authRoutes(services.auth, {
       mailer: services.mailer,
@@ -3435,6 +3535,22 @@ export function buildApp(
     kennung: () => randomUUID(),
   });
   app.register(kenntnisnahmeRoutes({ dienst: kenntnisnahmeDienst, kos: services.ko }, guards));
+  // R-1644: die Wissensauskunft zum Zeitpunkt — liest Fassungen, Audit-Protokoll und Kenntnisnahmen,
+  // schreibt nichts. Dieselbe Uhr wie die Kenntnisnahme, damit „nicht in der Zukunft" zu deren
+  // Zeitpunkten passt.
+  app.register(
+    wissensauskunftRoutes(
+      {
+        kos: services.ko,
+        ko: services.ko,
+        audit: services.audit,
+        kenntnisnahmen: services.kenntnisnahmen,
+        konten: () => services.auth.listUsers(),
+        jetzt: services.kenntnisnahmeUhr,
+      },
+      guards,
+    ),
+  );
   // ==============================================================================================
   // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS) — HIER BEKOMMT DIE GESAMTANWEISUNG IHRE TÜR.
   // ==============================================================================================
@@ -3506,6 +3622,9 @@ export function buildApp(
           new Set(
             (await services.spaces.aktuelle()).filter((s) => s.zugang === "alle").map((s) => s.id),
           ),
+        // R-1649: der abweichende Weg aus „nicht hilfreich" wird ein gewöhnlicher Entwurf —
+        // derselbe Anlageweg wie POST /api/drafts, kein zweiter.
+        alternativeAlsEntwurf: (entwurf, author) => services.capture.createDraft(entwurf, author),
       },
       guards,
     ),
@@ -3620,6 +3739,13 @@ export function buildApp(
         kos: koSichtbarkeit,
         // Kenntnisnahme: offene Anforderungen und Erinnerungen des Betrachters.
         kenntnisnahmen: kenntnisnahmeDienst,
+        // aufnahme:20260922:gesamt-wissen-frische: Fristerinnerung, Wochenvorlage und
+        // Prüfanforderung an Autor bzw. Nachfolger (R-0248 / R-0266 / R-1635).
+        frische: frischeMeldungen({
+          ko: services.ko,
+          lifecycle: services.lifecycle,
+          audit: services.audit,
+        }),
       },
       guards,
     ),
@@ -3760,6 +3886,20 @@ export function buildApp(
   app.register(
     spacesRoutes(
       { spaces: services.spaces, ko: services.ko, auth: services.auth, audit: services.audit },
+      guards,
+    ),
+  );
+  // produkt:20261007:ownership-uebergabe: Hauptverantwortung einzeln und gesammelt übergeben,
+  // Vorschau, Teilfehler mit Wiederaufnahme, Deaktivierung ohne Restbestand.
+  app.register(
+    verantwortungRoutes(
+      {
+        ko: services.ko,
+        auth: services.auth,
+        spaces: services.spaces,
+        nachfolge: services.verantwortungNachfolge,
+        audit: services.audit,
+      },
       guards,
     ),
   );
