@@ -2681,8 +2681,17 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // zusammengeführt; die SIEBEN Komponenten und sieben Quelldateien (727 → 734) kamen mit dem
     // Basisstand und sind ohne Git-Verlauf an diesem Arbeitsbaum nicht namentlich bestimmt.
     // `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // veroeffentlichungsoptionen Nacharbeit 38: GEMESSEN 573. Am Kandidaten 54c98803 (nach der
+    // Integration mit main 842818b1, ADMIN-15 Unternehmensprofil) meldete der Sammler wörtlich
+    // „gemessen: 573 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 743 Quelldateien … expected
+    // { komponenten: 573, … } to deeply equal { komponenten: 563, … }". Dieser Auftrag hat in
+    // Nacharbeit 37 nur `db.ts`, `migrationsbeleg.ts` (Serverseite, nicht in der Grundmenge) und das
+    // Smoke-Mengenmanifest zusammengeführt; die ZEHN Komponenten und neun Quelldateien (734 → 743)
+    // kamen mit dem Basisstand und sind ohne Git-Verlauf an diesem Arbeitsbaum nicht namentlich
+    // bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 563,
+      komponenten: 573,
       anbieter: 1,
       traeger: 2,
     });
