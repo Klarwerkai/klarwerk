@@ -54,6 +54,7 @@ import {
 // G24 (JOB 1610): die Fixture baut den Serververtrag nicht mehr NACH, sie BENUTZT ihn. Siehe
 // `ka6AskKoerper` — der Grund steht dort.
 import { aiGeneratedMark } from "../../services/model-runs";
+import { istFrageAufruf } from "../support/frageweg";
 import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
@@ -1398,7 +1399,8 @@ function ka6Antwort(koerper: unknown, ok = true, status = 200): unknown {
 function ka6Router(lage: Ka6Lage) {
   return (url: string, init?: { method?: string; body?: string }) => {
     const methode = (init?.method ?? "GET").toUpperCase();
-    if (url === "/api/ask" && methode === "POST" && typeof init?.body === "string") {
+    // R-0700: mit Sitzung fragt das Panel über Klaras eigenen Zugang — derselbe Körper.
+    if (istFrageAufruf(url) && methode === "POST" && typeof init?.body === "string") {
       ka6AskAbgesetzt.push(JSON.parse(init.body) as Record<string, unknown>);
     }
     if (url === "/api/auth/me") {
@@ -1413,7 +1415,7 @@ function ka6Router(lage: Ka6Lage) {
     if (url === "/api/klara/ai-status") {
       return Promise.resolve(ka6Antwort(ka6Aufloesung(lage)));
     }
-    if (url === "/api/ask" && methode === "POST") {
+    if (istFrageAufruf(url) && methode === "POST") {
       return Promise.resolve(ka6Antwort(ka6AskKoerper(lage)));
     }
     if (url.startsWith("/api/kos/")) {
@@ -1876,7 +1878,7 @@ describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () =>
     await ladeKa6Fenster(ka6Erlaubt());
     // Der Zuruf laeuft in einen 500er. `performAsk` liefert dafuer `kind: "error"`.
     vi.stubGlobal("fetch", (url: string) =>
-      url === "/api/ask"
+      istFrageAufruf(url)
         ? Promise.resolve(ka6Antwort({}, false, 500))
         : Promise.resolve(ka6Antwort({})),
     );
@@ -1903,7 +1905,7 @@ describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () =>
     it(`R-0590: 409 KLARA_AUSWEICHWEG_GESPERRT (${grund}) — #ask-status nennt den Grund, nichts wird eingefuegt`, async () => {
       await ladeKa6Fenster(ka6Erlaubt());
       vi.stubGlobal("fetch", (url: string) =>
-        url === "/api/ask"
+        istFrageAufruf(url)
           ? Promise.resolve(
               ka6Antwort(
                 {
@@ -1952,7 +1954,7 @@ describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () =>
       // dort hiesse „abgemeldet", und der Fall maesse die Anmeldung statt der Abschaltung.
       const router = ka6Router(ka6Erlaubt());
       vi.stubGlobal("fetch", (url: string, init?: { method?: string; body?: string }) =>
-        url === "/api/ask"
+        istFrageAufruf(url)
           ? Promise.resolve(
               ka6Antwort(
                 { error: "KI_ABGESCHALTET", message: "Der Administrator hat die KI abgeschaltet." },
@@ -1993,7 +1995,7 @@ describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () =>
   it("R-1040 GEGENPROBE: ein anderer 503 bleibt ein Fehler mit Status — keine Abschaltung behauptet", async () => {
     await ladeKa6Fenster(ka6Erlaubt());
     vi.stubGlobal("fetch", (url: string) =>
-      url === "/api/ask"
+      istFrageAufruf(url)
         ? Promise.resolve(ka6Antwort({ error: "REASONER_UNAVAILABLE" }, false, 503))
         : Promise.resolve(ka6Antwort({})),
     );
