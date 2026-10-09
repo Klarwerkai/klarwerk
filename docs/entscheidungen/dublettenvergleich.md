@@ -73,6 +73,10 @@ bis dahin ist sie hier ausdrücklich offen und wird nicht behauptet.*
    R-1107 verlangt das nicht; gebaut ist nur der Ausschluss aus der Dublettenerkennung. Der
    aufgegangene Artikel erscheint deshalb weiter in Bibliothek und Fragen — mit Hinweis auf seiner
    Lesefläche. Offen, nicht stillschweigend erledigt.
+   **Nachtrag (Auftrag gesamt-suchindex-aktualitaet, R-0483):** Suchtreffer der Bibliothek,
+   Klara-Kandidaten und der Vektorvorfilter der Textprüfung schliessen aufgegangene Artikel jetzt
+   aus (s. `docs/entscheidungen/suchindex-aktualitaet.md`). Weiter offen bleiben die
+   Bibliothek-Bestandsliste ohne Suchbegriff, Prüfbrett und Kennzahlen.
 
 ## Grenzen und fehlende Belege
 

@@ -5,6 +5,7 @@ import { AUTH_SCHEMA } from "../../auth";
 import { CAPTURE_CREATE_OPERATION_SCHEMA, CAPTURE_SCHEMA } from "../../capture";
 import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
 import { vorratsKonfiguration } from "../../db-tx";
+import { EMBEDDING_SCHEMA } from "../../embedding";
 import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
 import {
   DOKUMENTAKTE_SCHEMA,
@@ -68,6 +69,7 @@ import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
 // produkt:20261007:spaces: die Fassungen der Arbeitsräume. Im App-Wurzelverzeichnis wie das
 // Firmenwörterbuch: die Sichtbarkeitsregel (`sichtbarkeit.ts`) liest sie, kein Fachmodul besitzt sie.
 import { SPACES_SCHEMA } from "./spaces";
+import { VERANTWORTUNG_NACHFOLGE_SCHEMA } from "./verantwortung-nachfolge";
 
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
 // R-0798: mit Zeitgrenzen — begrenztes Warten auf eine freie Verbindung (Notbremse für den Vorrat)
@@ -269,6 +271,12 @@ export const schemas = [
   // EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare
   // Ordnung ist.
   GEDAECHTNIS_SCHEMA,
+  // produkt:20261007:ownership-uebergabe: die Nachfolge bei Befristung je Konto. Additiv und
+  // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  VERANTWORTUNG_NACHFOLGE_SCHEMA,
+  // R-0470: der dauerhafte Vektorspeicher des Textprüfungs-Vorfilters. Additiv und wiederholbar
+  // (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension (kein pgvector), ohne Seed.
+  EMBEDDING_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).

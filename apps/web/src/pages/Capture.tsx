@@ -71,6 +71,7 @@ import { ExternalUrlText } from "../components/ExternalUrlText";
 import { FileFormatInfo } from "../components/FileFormatInfo";
 // R-1624: Foto-zu-Wissen — Einstieg ins geführte Interview über ein Foto.
 import { FotoInterviewStart } from "../components/FotoInterviewStart";
+import { HelpTip } from "../components/HelpTip";
 import { KnopfUnterschied } from "../components/KnopfUnterschied";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { Modal } from "../components/Modal";
@@ -6989,6 +6990,9 @@ export function CaptureArbeitsraum({
                       {canSearchExternal(extPolicyStage) ? (
                         <div className="mt-3 space-y-2 border-t border-hairline pt-3">
                           <SectionLabel>{t("ext.title")}</SectionLabel>
+                          {/* R-0888 (gesamt-hilfen, Nacharbeit 13): Abschnittserklärung in der
+                              Seitenhilfe, solange die Suche freigegeben ist. */}
+                          <HelpTip title={t("ext.title")} body={t("shelp.ext.title")} />
                           <p className="text-[11.5px] text-muted-2">{t("ext.hint")}</p>
                           {/* AUFTRAG-mega14 Block D (SCRUM-414): bis mega14 erschien der Anhängen-Knopf
                             auf JEDER Stufe außer „blocked" — auch auf „suchen, aber nicht anhängen",
