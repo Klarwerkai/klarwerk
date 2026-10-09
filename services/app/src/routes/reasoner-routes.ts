@@ -34,6 +34,7 @@ import {
   KLARA_AUFGABE_ANDERER_ANBIETER,
   type KlaraAufgabe,
 } from "../services/klara-session-service";
+import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 import {
   type Ka4Freigabepruefer,
   ka4Entscheidung,
@@ -648,14 +649,20 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         const kiBeginn = kiEingang;
         try {
           ask.kiSperreVorFrage(kiBeginn);
+          // R-1175: dieselbe Grundlage wie `/api/ask` — nur, was DIESER Fragende sehen darf. Bis
+          // hierher lief dieser Weg ohne sie und sah damit fremde Spaces, die `/api/ask` verbirgt.
           // R-0278 (Nacharbeit 3, ben): derselbe Prüfstand wie `/api/ask` — Ungeprüftes wird auch
           // über diesen Task nie Antwortgrundlage („für alle Wege gleich").
+          const grundlage = sichtbarkeitsfilterFuer(user);
           const antwort = gebundenOhneFreigabe
-            ? await ask.ask(text ?? "", user.id, locale, {
-                validatedOnly: true,
-                retrievalOnly: true,
-              })
-            : await ask.ask(text ?? "", user.id, locale, { validatedOnly: true });
+            ? await ask.ask(
+                text ?? "",
+                user.id,
+                locale,
+                { validatedOnly: true, retrievalOnly: true },
+                grundlage,
+              )
+            : await ask.ask(text ?? "", user.id, locale, { validatedOnly: true }, grundlage);
           ask.kiSperreVorAuslieferung(kiBeginn);
           reply.code(200).send(antwort);
         } catch (fehler) {
