@@ -136,7 +136,8 @@ afterEach(() => {
 
 describe("Anlagenzugang · die QR-Adresse öffnet das Wissen der Anlage", () => {
   it("A1 · der Pfad des QR-Codes zeigt genau das Wissen dieser Anlage", () => {
-    expect(anlagenPfad(DP4)).toMatch(/^\/bibliothek\?anlage=/);
+    // Integration nacharbeit-26: EINE Anlagenachse mit mains Schlüssel `asset` (R-0477/R-0082).
+    expect(anlagenPfad(DP4)).toMatch(/^\/bibliothek\?asset=/);
     mount(anlagenPfad(DP4));
     expect(sortiert()).toEqual(["k1", "k2"]);
 
@@ -154,7 +155,7 @@ describe("Anlagenzugang · die QR-Adresse öffnet das Wissen der Anlage", () => 
     mount();
     expect(sortiert()).toEqual(["k1", "k2", "k3", "k4"]);
     const filter = menueOeffnen(container, "bib-menue-filter");
-    expect(filter.textContent).toContain(String(i18n.t("anlagenzugang.facette")));
+    expect(filter.textContent).toContain(String(i18n.t("wissensmetadaten.anlage.facette")));
 
     waehleImMenue(container, "bib-menue-filter", "Fräse 7 · ");
     expect(sortiert()).toEqual(["k3"]);

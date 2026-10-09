@@ -36,7 +36,7 @@ import { Button } from "../ui";
 export function AnlagenQrCode({
   ko,
 }: {
-  ko: Pick<KnowledgeObject, "asset" | "anlagenkontext">;
+  ko: Pick<KnowledgeObject, "asset" | "assets" | "anlagenkontext">;
 }): JSX.Element | null {
   const { t } = useTranslation();
   const bezuege = useMemo(() => {

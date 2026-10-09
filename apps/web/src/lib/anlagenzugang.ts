@@ -6,11 +6,15 @@
 // werden. Ein Techniker scannt den QR-Code an der Maschine — KLARWERK öffnet automatisch das für
 // DIESE Maschine relevante Wissen, gefiltert auf Version, Standort, Schicht-Kontext."
 //
-// DIE BEZÜGE: die Anlage ist seit JOB 593 `KnowledgeObject.asset` (kanonisch, normalisiert in
-// `services/knowledge-object/src/asset.ts`); Bauteil-Nummern und Material-Codes stehen in
+// DIE BEZÜGE: die Anlagen eines Objekts liest allein `anlagenVon` (`lib/anlagen.ts`, R-0082: die
+// Liste `assets`, sonst die Einzelangabe `asset`); Bauteil-Nummern und Material-Codes stehen in
 // `KnowledgeObject.anlagenkontext` (`services/knowledge-object/src/anlagenkontext.ts`). Alle drei
-// sind Facetten der Bibliothek (`?anlage=`, `?bauteil=`, `?material=`): ein Objekt passt, wenn es
+// sind Facetten der Bibliothek (`?asset=`, `?bauteil=`, `?material=`): ein Objekt passt, wenn es
 // die Kennung trägt.
+//
+// EINE ANLAGENACHSE, NICHT ZWEI (Integration nacharbeit-26): main hat mit R-0477/R-0082 dieselbe
+// Achse unter dem Schlüssel `asset` eingeführt. Zwei Achsen „Anlage" nebeneinander wären ein Fehler;
+// dieser Anlagenzugang verwendet deshalb GENAU diese Achse — ihr Schlüssel ist `ANLAGE_FACETTE`.
 //
 // DER GELTUNGSKONTEXT (`?anlagenversion=`, `?standort=`, `?schicht=`) ist ANDERS gebaut, und das ist
 // die tragende Regel: Wissen OHNE Angabe gilt unabhängig davon. Ein Objekt passt zum Standort
@@ -24,8 +28,9 @@
 // dieselben übrigen Filter. Eine Anmeldung zwischen Scan und Ansicht verliert die Adresse nicht:
 // das Anmeldetor zeigt seine Maske AN der aufgerufenen Adresse (`App.tsx`, `Gate`).
 import type { KnowledgeObject } from "../api/types";
+import { anlagenVon } from "./anlagen";
 
-export const ANLAGE_FACETTE = "anlage";
+export const ANLAGE_FACETTE = "asset";
 export const BAUTEIL_FACETTE = "bauteil";
 export const MATERIAL_FACETTE = "material";
 
@@ -62,18 +67,13 @@ function kennungen(werte: readonly string[] | undefined): string[] {
   return ergebnis;
 }
 
-/** Die Facettenwerte der Achse „Anlage": genau die eine Kennung oder keine. */
-export function anlagenWerte(wert: string | null | undefined): string[] {
-  const kennung = anlagenKennung(wert);
-  return kennung ? [kennung] : [];
-}
-
-/** Die Kennungen eines Objekts je Bezugsart (Anlage, Bauteile, Materialien). */
+/** Die Kennungen eines Objekts je Bezugsart (Anlagen, Bauteile, Materialien). */
 export function bezuegeVon(
-  ko: Pick<KnowledgeObject, "asset" | "anlagenkontext">,
+  ko: Pick<KnowledgeObject, "asset" | "assets" | "anlagenkontext">,
 ): Record<BezugArt, string[]> {
   return {
-    [ANLAGE_FACETTE]: anlagenWerte(ko.asset),
+    // R-0082: ein Objekt mit mehreren Anlagen steht unter JEDER davon.
+    [ANLAGE_FACETTE]: anlagenVon(ko),
     [BAUTEIL_FACETTE]: kennungen(ko.anlagenkontext?.bauteile),
     [MATERIAL_FACETTE]: kennungen(ko.anlagenkontext?.materialien),
   };

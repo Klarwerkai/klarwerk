@@ -2,9 +2,10 @@
 // Aufnahme `gesamt-anlagenzugang` · DIE TEXTE DES ANLAGENZUGANGS (R-1631, R-1647, R-2174).
 // ================================================================================================
 //
-// · `anlagenzugang.facette`, `.bauteil`, `.material` — die Achsen „Anlage", „Bauteil" und
-//   „Material" im Menü „Filter" der Bibliothek (`components/bibliothek/BibliothekFlaeche.tsx`).
-//   „Anlage" ist dasselbe Wort wie das Erfassungsfeld „Anlage / Gerät" (`capture.fAsset`).
+// · `anlagenzugang.bauteil`, `.material` — die Achsen „Bauteil" und „Material" im Menü „Filter"
+//   der Bibliothek (`components/bibliothek/BibliothekFlaeche.tsx`). Die Achse „Anlage" beschriftet
+//   seit der Integration nacharbeit-26 mains `wissensmetadaten.anlage.facette` — es gibt EINE
+//   Anlagenachse, nicht zwei.
 // · `anlagenzugang.kontext.*` — die Kontextleiste der Bibliothek (Version, Standort, Schicht) und
 //   dieselben Wahlfelder am QR-Code.
 // · `anlagenzugang.qr.*`, `.art.*` — der QR-Code einer Anlage, eines Bauteils oder Materials im
@@ -19,10 +20,9 @@ export default {
   praefix: "anlagenzugang.",
   legacySchluessel: ["audit.action.ko_anlagenkontext_changed"],
   de: {
-    "anlagenzugang.facette": "Anlage",
     "anlagenzugang.bauteil": "Bauteil",
     "anlagenzugang.material": "Material",
-    "anlagenzugang.art.anlage": "Anlage",
+    "anlagenzugang.art.asset": "Anlage",
     "anlagenzugang.art.bauteil": "Bauteil",
     "anlagenzugang.art.material": "Material",
     "anlagenzugang.kontext.label": "Geltungskontext",
@@ -55,10 +55,9 @@ export default {
     "audit.action.ko_anlagenkontext_changed": "Bauteile, Material oder Geltung geändert",
   },
   en: {
-    "anlagenzugang.facette": "Equipment",
     "anlagenzugang.bauteil": "Part",
     "anlagenzugang.material": "Material",
-    "anlagenzugang.art.anlage": "Equipment",
+    "anlagenzugang.art.asset": "Equipment",
     "anlagenzugang.art.bauteil": "Part",
     "anlagenzugang.art.material": "Material",
     "anlagenzugang.kontext.label": "Context of validity",
@@ -90,10 +89,9 @@ export default {
     "audit.action.ko_anlagenkontext_changed": "Parts, material or validity changed",
   },
   nl: {
-    "anlagenzugang.facette": "Installatie",
     "anlagenzugang.bauteil": "Onderdeel",
     "anlagenzugang.material": "Materiaal",
-    "anlagenzugang.art.anlage": "Installatie",
+    "anlagenzugang.art.asset": "Installatie",
     "anlagenzugang.art.bauteil": "Onderdeel",
     "anlagenzugang.art.material": "Materiaal",
     "anlagenzugang.kontext.label": "Geldigheidscontext",

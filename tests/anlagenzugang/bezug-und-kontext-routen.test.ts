@@ -11,7 +11,12 @@
 // den die Bibliotheksfläche nach einem QR-Scan anwendet.
 import { describe, expect, it } from "vitest";
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
-import { kontextAusParams, passtZumKontext } from "../../apps/web/src/lib/anlagenzugang";
+import {
+  BEZUG_ARTEN,
+  anlagenPfad,
+  kontextAusParams,
+  passtZumKontext,
+} from "../../apps/web/src/lib/anlagenzugang";
 import { applyFacetSelection } from "../../apps/web/src/lib/facets";
 import { libraryFilterValues } from "../../apps/web/src/lib/libraryFacets";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
@@ -153,7 +158,7 @@ async function suche(app: App, auth: Auth): Promise<KnowledgeObject[]> {
 function qrTreffer(liste: readonly KnowledgeObject[], adresse: string): string[] {
   const params = new URL(adresse, "https://klarwerk.example").searchParams;
   const auswahl: Record<string, string[]> = {};
-  for (const art of ["anlage", "bauteil", "material"]) {
+  for (const art of BEZUG_ARTEN) {
     const wert = params.get(art);
     if (wert) {
       auswahl[art] = [wert];
@@ -179,7 +184,7 @@ describe("R-1631 · über die öffentlichen Routen bis in die Bibliothekssuche",
       const liste = await suche(app, auth);
       expect(qrTreffer(liste, "/bibliothek?bauteil=BT-4711")).toEqual([a.id]);
       expect(qrTreffer(liste, "/bibliothek?material=1.4301")).toEqual([b.id]);
-      expect(qrTreffer(liste, "/bibliothek?anlage=DP-5").sort()).toEqual([b.id, c.id].sort());
+      expect(qrTreffer(liste, "/bibliothek?asset=DP-5").sort()).toEqual([b.id, c.id].sort());
 
       // Nachträglich koppeln: dasselbe Wissen ist danach auch über das Material erreichbar.
       const gesetzt = await app.inject({
@@ -211,20 +216,56 @@ describe("R-1631 · über die öffentlichen Routen bis in die Bibliothekssuche",
       }
       const liste = await suche(app, auth);
       const alle = [allgemein, nord, sued, nacht, revB, revA].map((x) => x.id).sort();
-      expect(qrTreffer(liste, "/bibliothek?anlage=PR-9"), "ohne Kontext: alles zur Anlage").toEqual(
+      expect(qrTreffer(liste, "/bibliothek?asset=PR-9"), "ohne Kontext: alles zur Anlage").toEqual(
         alle,
       );
       expect(
         qrTreffer(
           liste,
-          "/bibliothek?anlage=PR-9&standort=Werk+Nord&schicht=Fr%C3%BCh&anlagenversion=Rev+B",
+          "/bibliothek?asset=PR-9&standort=Werk+Nord&schicht=Fr%C3%BCh&anlagenversion=Rev+B",
         ),
         "Werk Nord, Frühschicht, Rev B: allgemeines und dafür geltendes Wissen",
       ).toEqual([allgemein.id, nord.id, revB.id].sort());
       expect(
-        qrTreffer(liste, "/bibliothek?anlage=PR-9&standort=Werk+S%C3%BCd&schicht=Nacht"),
+        qrTreffer(liste, "/bibliothek?asset=PR-9&standort=Werk+S%C3%BCd&schicht=Nacht"),
         "Werk Süd, Nachtschicht",
       ).toEqual([allgemein.id, sued.id, nacht.id, revB.id, revA.id].sort());
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("R4 · mehrere Anlagen (R-0082): der QR-Code JEDER Anlage öffnet das Objekt", async () => {
+    // Integration nacharbeit-26: main führt `assets` (Liste) ein, `asset` spiegelt die erste. Der
+    // Anlagenzugang liest über `anlagenVon` — ein Objekt an zwei Anlagen ist über beide erreichbar,
+    // und der Geltungskontext wirkt dabei unverändert.
+    const { app, auth } = await setup();
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/kos",
+        headers: auth,
+        payload: {
+          confidentiality: "intern",
+          title: "Kupplung prüfen",
+          type: "best_practice",
+          category: "Anlagenzugang",
+          statement: "Kupplung prüfen — Aussage.",
+          assets: ["MA-1", "MA-2"],
+          anlagenkontext: { standorte: ["Werk Nord"] },
+        },
+      });
+      expect(res.statusCode, res.body).toBe(201);
+      const id = res.json().id as string;
+      const andere = await anlegen(app, auth, "Riemen spannen", "MA-2");
+      expect(andere.statusCode, andere.body).toBe(201);
+      const liste = await suche(app, auth);
+      expect(qrTreffer(liste, anlagenPfad("MA-1"))).toEqual([id]);
+      expect(qrTreffer(liste, anlagenPfad("MA-2"))).toEqual([id, andere.id].sort());
+      expect(
+        qrTreffer(liste, anlagenPfad("MA-2", "asset", { standort: "Werk Süd" })),
+        "Werk Süd: das nur in Werk Nord geltende Objekt fällt heraus",
+      ).toEqual([andere.id]);
     } finally {
       await app.close();
     }

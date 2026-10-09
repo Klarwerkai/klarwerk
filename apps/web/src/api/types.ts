@@ -15,6 +15,11 @@ export type KnowledgeType =
   | "technik"
   | "negativwissen";
 
+// R-0086: Tatsache oder Handlungsanweisung (Spiegel von services/knowledge-object/src/types.ts).
+export type KoAussageart = "tatsache" | "handlungsanweisung";
+
+export const KO_AUSSAGEARTEN: readonly KoAussageart[] = ["tatsache", "handlungsanweisung"];
+
 export type KoStatus = "offen" | "validiert";
 
 // SCRUM-415: Vertraulichkeitsstufe je Wissensobjekt. „intern" = Standard (keine Einschränkung);
@@ -641,6 +646,9 @@ export interface KnowledgeObject {
   // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet, unabhängig von der Kategorie (Spiegel von
   // services/knowledge-object/src/types.ts). Fehlt = kein Fachgebiet angegeben, nichts abgeleitet.
   domain?: string;
+  // R-0086: Tatsache oder Handlungsanweisung (Spiegel von services/knowledge-object/src/types.ts).
+  // Fehlt = nicht angegeben, nichts abgeleitet.
+  aussageart?: KoAussageart;
   // R-1632 / R-1633: wo dieser Punkt gilt (Spiegel von services/knowledge-object/src/geltung.ts).
   // Fehlt = keine Geltung angegeben, nichts abgeleitet.
   geltung?: KoGeltung;
@@ -729,7 +737,12 @@ export interface KnowledgeObject {
   // PRÜFSTATUS-ANZEIGE (N-0054): Spiegel von `services/knowledge-object/src/types.ts` — der Verweis
   // auf die Validierungsentscheidung. Steht er da, hat ein Mensch fachlich entschieden.
   validationDecisionRef?: { auditSeq: number; auditHash: string };
+  // R-0082: ab zwei Anlagen trägt `assets` die Liste und `asset` spiegelt die erste; eine einzelne
+  // Anlage (und Altbestand) steht nur in `asset`. Gelesen wird beides über `anlagenVon`.
   asset: string | null;
+  assets?: string[];
+  // R-1690: Re-Validierungstermin `JJJJ-MM-TT`, beim Erfassen gesetzt; fehlt = keiner.
+  revalidierungAm?: string;
   // R-1631 (gesamt-anlagenzugang): Spiegel von `services/knowledge-object/src/types.ts` —
   // Bauteile, Materialien und Geltungskontext (Version, Standort, Schicht). Fehlt = nichts angegeben.
   anlagenkontext?: AnlagenKontext;
@@ -1152,6 +1165,16 @@ export interface DraftPayload {
   statement?: string;
   type?: KnowledgeType;
   category?: string;
+  // R-0034 / FR-CAP-08: das Fachgebiet beim Erfassen (Spiegel von services/capture/src/types.ts).
+  domain?: string;
+  // R-0086: Tatsache oder Handlungsanweisung beim Erfassen; leer = nicht angegeben. Am Entwurf
+  // bewusst `string` wie im Server-Vertrag (services/capture/src/types.ts): geprüft wird erst beim
+  // Einreichen (`KoService.create`); `Capture.tsx` übernimmt beim Laden nur eine bekannte Art.
+  aussageart?: string;
+  // R-0082: Anlagenliste des Entwurfs (Spiegel von services/capture/src/types.ts).
+  assets?: string[];
+  // R-1690: Re-Validierungstermin `JJJJ-MM-TT`; leer = keiner.
+  revalidierungAm?: string;
   tags?: string[];
   conditions?: string[];
   measures?: string[];

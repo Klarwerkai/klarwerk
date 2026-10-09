@@ -102,8 +102,10 @@ import {
 } from "../../lib/zeichnungsanhang";
 import { type Zeichnungspunkt, bildQuelle, punktProzent } from "../../lib/zeichnungspunkt";
 import { AiCheckCoverageNotes } from "../AiCheckCoverageHint";
+import { AnlagenFeld } from "../Anlagen";
 import { ConflictTargetPicker } from "../ConflictTargetPicker";
 import { ExternalUrlText } from "../ExternalUrlText";
+import { FachgebietFeld } from "../Fachgebiet";
 import { GeltungFeld } from "../Geltung";
 import { HelpTip } from "../HelpTip";
 import { KnowledgeNeighborhood } from "../KnowledgeNeighborhood";
@@ -2026,12 +2028,27 @@ export function MehrAbschnitte({
             </span>
           ) : null}
         </div>
+        {/* R-0034: die Herkunftszeile nennt das gespeicherte Fachgebiet — nicht die Kategorie
+            unter fremdem Namen. Fehlt es, steht hier keins. */}
         <ProvenanceLine
           author={nameOf(ko.author)}
           originalAuthor={nameOf(ko.originalAuthor)}
-          domain={ko.category}
+          {...(ko.domain ? { domain: ko.domain } : {})}
           version={ko.version}
         />
+        {/* R-0086: Tatsache oder Handlungsanweisung — nur, wenn beim Erfassen angegeben. */}
+        {ko.aussageart ? (
+          <p data-testid="ko-aussageart" className="mt-1 text-[12px] text-muted">
+            {t("wissensmetadaten.aussageart.feld")}:{" "}
+            {t(`wissensmetadaten.aussageart.${ko.aussageart}`)}
+          </p>
+        ) : null}
+        {/* R-1690: der beim Erfassen gesetzte Re-Validierungstermin. */}
+        <p data-testid="ko-revalidierung" className="mt-1 text-[12px] text-muted">
+          {ko.revalidierungAm
+            ? `${t("wissensmetadaten.revalidierung.feld")}: ${ko.revalidierungAm}`
+            : t("wissensmetadaten.revalidierung.keine")}
+        </p>
         {/* R-0507 / R-0546: wem das Objekt gehört, wer es geprüft und freigegeben hat — und dass
             Bearbeiternamen keine Verantwortung aussagen. */}
         <Verantwortung
@@ -2106,6 +2123,15 @@ export function MehrAbschnitte({
         {/* R-1632 / R-1633: wo dieser Punkt gilt — Konzern-Standard, Werks-Praxis oder
             Schicht-spezifisch. Am Ende des Abschnitts, damit Vertraulichkeit und Übergabe ihren
             Platz behalten. Der Schlüssel setzt das Formular nach dem Speichern auf den Serverstand. */}
+        {/* R-0034 / R-0465: das Fachgebiet nachträglich setzen oder ändern; leer entfernt es. Der
+            Schlüssel setzt das Feld nach dem Speichern auf den Serverstand. */}
+        <FachgebietFeld
+          key={ko.domain ?? ""}
+          domain={ko.domain}
+          darfAendern={canEdit}
+          wartet={act.isPending}
+          onSpeichern={(domain) => act.mutate({ action: "domain", domain })}
+        />
         <GeltungFeld
           key={JSON.stringify(ko.geltung ?? null)}
           geltung={ko.geltung}
@@ -2122,6 +2148,21 @@ export function MehrAbschnitte({
         offen={offene.has("kopplung")}
         aufWechsel={(o) => abschnittUmschalten("kopplung", o)}
       >
+        {/* R-0082 (JOB 593, Option A): WELCHE Anlagen zu diesem Wissensobjekt gehören, sagt allein
+            die Liste am Objekt (`assets`, Altbestand `asset`). Sie steht deshalb zuerst und ist
+            hier änderbar (Korrekturweg `revise`); die Lebenszyklus-Kopplungen darunter sind nur
+            die Liste für Änderungsmeldungen („Stimmt das noch?") und keine zweite Quelle. Der
+            Schlüssel setzt das Feld nach dem Speichern auf den Serverstand. */}
+        <AnlagenFeld
+          key={JSON.stringify(ko.assets ?? ko.asset ?? null)}
+          ko={ko}
+          darfAendern={canEdit}
+          wartet={act.isPending}
+          onSpeichern={(assets) =>
+            act.mutate({ action: "revise", changes: { assets }, expectedVersion: ko.version })
+          }
+        />
+        <p className="mb-1 text-[11.5px] text-muted-2">{t("wissensmetadaten.anlage.kopplungen")}</p>
         {couplings.data && couplings.data.length > 0 ? (
           <div className="flex flex-wrap gap-1.5">
             {couplings.data.map((a) => (

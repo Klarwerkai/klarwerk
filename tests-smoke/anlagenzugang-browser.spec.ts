@@ -139,7 +139,8 @@ test.describe("Anlagenzugang · QR-Code und Anlagenauswahl in der echten App", (
     );
 
     await page.getByTestId("anlagen-qr-oeffnen").click();
-    await expect(page).toHaveURL(/\/bibliothek\?anlage=/);
+    // Integration nacharbeit-26: EINE Anlagenachse mit mains Schlüssel `asset` (R-0477/R-0082).
+    await expect(page).toHaveURL(/\/bibliothek\?asset=/);
     await bibliothekSteht(page, protokoll);
     const zeilen = zeilenIds(page);
     await expect(zeilen).toHaveCount(2, { timeout: 15_000 });
@@ -160,7 +161,7 @@ test.describe("Anlagenzugang · QR-Code und Anlagenauswahl in der echten App", (
 
     await page.setViewportSize({ width: 390, height: 844 });
     const p = new URLSearchParams();
-    p.set("anlage", anlage);
+    p.set("asset", anlage);
     await page.goto(`/bibliothek?${p.toString()}`);
     await bibliothekSteht(page, protokoll);
     const zeilen = zeilenIds(page);
