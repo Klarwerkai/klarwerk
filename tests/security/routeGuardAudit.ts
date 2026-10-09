@@ -932,6 +932,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // (media/src/service.ts:92). Sie trägt deshalb dasselbe Zeilenrecht — ohne es war sie ein
   // Existenzorakel: 404/400/200 unterschieden für einen Unbefugten, ob ein Anhang existiert.
   "POST /api/media/analyze": { protection: "ko.read", zeilenrecht: ["beurteileAnhang"] },
+  // Aufnahme gesamt-sprachassistent (R-0104): Sprachaufnahme aus dem Rumpf, kein Objektbezug —
+  // deshalb kein Zeilenrecht; die Aufnahme wird nicht gespeichert.
+  "POST /api/media/transcribe": { protection: "ko.read" },
 
   // --- i18n (i18n-routes.ts) ---
   "GET /api/i18n/locales": {
