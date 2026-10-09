@@ -1276,6 +1276,49 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     },
   },
   {
+    // R-1089: „Antwort falsch / Quelle passt nicht" — dasselbe Tor und derselbe Beleg wie „Hat
+    // geholfen"; Erfolg ist hier 200, weil die Antwort die Quittung trägt.
+    gruppe: "askRoutes",
+    methode: "POST",
+    route: "/api/ask/report",
+    belegstelle: "services/app/src/routes/ask-routes.ts:959",
+    erfolg: [200],
+    tor: "ko.read (danach prüft der Dienst den Beleg aus dem echten Antwortvorgang)",
+    erwartet: NUR_LESEN,
+    ruesten: async (buehne, akteur) => {
+      // Geantwortet wird nur aus geprüftem Wissen (R-0584) — dieselbe Vorbereitung wie die
+      // Nachbarzeilen „Hat geholfen" und „nicht hilfreich": Experte legt an, Admin gibt frei.
+      const ko = await legeKoAn(buehne, "experte");
+      await musterhaft(buehne.app, kopf(buehne, "admin"), "PUT", `/api/kos/${ko.id}`, {
+        action: "admin-validate",
+      });
+      if (akteur === "anonym") {
+        return {
+          pfad: "/api/ask/report",
+          payload: {
+            koId: "ohne-sitzung-gibt-es-keinen-beleg",
+            receipt: "",
+            grund: "antwort-falsch",
+          },
+        };
+      }
+      const gefragt = await musterhaft(buehne.app, kopf(buehne, akteur), "POST", "/api/ask", {
+        question: PASSENDE_FRAGE,
+      });
+      const antwort = gefragt.json() as { receipt?: string; result?: { sources?: string[] } };
+      const quelle = antwort.result?.sources?.[0];
+      if (typeof antwort.receipt !== "string" || typeof quelle !== "string") {
+        throw new Error(
+          `Vorbereitung fehlgeschlagen: POST /api/ask lieferte keinen Beleg mit Quelle — ${gefragt.body.slice(0, 300)}`,
+        );
+      }
+      return {
+        pfad: "/api/ask/report",
+        payload: { koId: quelle, receipt: antwort.receipt, grund: "antwort-falsch" },
+      };
+    },
+  },
+  {
     gruppe: "askRoutes",
     methode: "PUT",
     route: "/api/gaps/:id",
