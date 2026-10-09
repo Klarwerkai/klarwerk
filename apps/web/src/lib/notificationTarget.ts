@@ -39,6 +39,10 @@ export function notificationTarget(n: Pick<Notification, "kind" | "koId">): stri
   if (n.kind === "loeschantrag") {
     return adminHref("sicherheit", "datenschutz");
   }
+  // R-1089: gemeldete Antwort → das zitierte Wissensobjekt, dort wird korrigiert.
+  if (n.kind === "reklamation") {
+    return n.koId ? `/wissen/${n.koId}` : null;
+  }
   // aufnahme:20260922:gesamt-wissen-frische: das eigene Wissensobjekt — dort stehen „Stimmt
   // weiterhin" und die Frist.
   if (n.kind === "frische") {

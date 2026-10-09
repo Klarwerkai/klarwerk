@@ -23,7 +23,20 @@ export type NotificationKind =
   // aufnahme:20260922:gesamt-wissen-frische: persönliche Zustellung an die verantwortliche Person —
   // Fristerinnerung (R-0248), wöchentliche Vorlage (R-0266), Prüfanforderung nach Anlagenänderung
   // an Autor bzw. Nachfolger (R-1635). Die Unterart steht in `frischeArt`.
-  | "frische";
+  | "frische"
+  | "reklamation";
+
+// R-1089: eine Meldung „Antwort falsch / Quelle passt nicht" an die verantwortliche Person des
+// zitierten Wissensobjekts. Quelle: Audit-Einträge `answer.reported`, deren `responsible` der
+// Betrachter ist. Wer gemeldet hat, steht NICHT darin — die Meldung ist ein Hinweis an das Objekt,
+// keine Anzeige gegen eine Person; der Fragetext reist ebenfalls nicht mit.
+export interface ReklamationNotice {
+  meldungId: string;
+  koId: string;
+  title: string;
+  grund: "antwort-falsch" | "quelle-passt-nicht";
+  at: string;
+}
 
 /** aufnahme:20260922:gesamt-wissen-frische — eine persönliche Frische-Meldung (s. frische-meldungen.ts). */
 export interface FrischeNotice {
@@ -77,6 +90,10 @@ export interface Notification {
   // Löschantrag (R-0661): die Frist der Verwalteraufgabe. Nur bei `kind: "loeschantrag"` gesetzt;
   // `ueberfaellig` gilt dort ebenso.
   fristBis?: string;
+  // R-1089: Meldegrund und Meldungsnummer (dieselbe, die der Meldende quittiert bekam). Nur bei
+  // `kind: "reklamation"` gesetzt.
+  grund?: ReklamationNotice["grund"];
+  meldungId?: string;
   // aufnahme:20260922:gesamt-wissen-frische: die Unterart einer `frische`-Meldung.
   frischeArt?: FrischeNotice["art"];
 }
@@ -106,6 +123,7 @@ export function buildNotifications(input: {
   // Löschanträge (R-0661): die offenen Anträge als Aufgabe der Verwaltung. Die Route reicht sie NUR
   // für Betrachter mit `users.manage` herein — hier wird keine Berechtigung nachgeprüft.
   loeschantraege?: LoeschantragMeldung[];
+  reklamationen?: ReklamationNotice[];
   // aufnahme:20260922:gesamt-wissen-frische: bereits auf den Betrachter UND die Sichtbarkeit
   // beschränkt (Route) — hier wird nichts nachgeprüft und nichts erfunden.
   frische?: FrischeNotice[];
@@ -121,6 +139,17 @@ export function buildNotifications(input: {
       at: l.at,
       fristBis: l.fristBis,
       ueberfaellig: l.ueberfaellig,
+    });
+  }
+  for (const r of input.reklamationen ?? []) {
+    items.push({
+      id: `rek-${r.meldungId}`,
+      kind: "reklamation",
+      title: r.title,
+      at: r.at,
+      koId: r.koId,
+      grund: r.grund,
+      meldungId: r.meldungId,
     });
   }
   for (const f of input.frische ?? []) {

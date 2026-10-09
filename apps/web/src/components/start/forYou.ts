@@ -283,7 +283,8 @@ export interface MeldungZeile {
     | "impact"
     | "kenntnisnahme"
     | "loeschantrag"
-    | "frische";
+    | "frische"
+    | "reklamation";
   title: string;
   seen?: boolean;
   redacted?: boolean;
@@ -315,6 +316,8 @@ const MELDUNG_SEVERITY: Record<MeldungZeile["kind"], ForYouSeverity> = {
   kenntnisnahme: "today",
   // Ein Löschantrag ist Verwalterarbeit mit gesetzlicher Frist — Arbeit von heute.
   loeschantrag: "today",
+  // R-1089: eine gemeldete falsche Antwort zum eigenen Wissen ist Arbeit von heute.
+  reklamation: "today",
   // aufnahme:20260922:gesamt-wissen-frische: bestätigen, ob eigenes Wissen noch stimmt — heute.
   frische: "today",
   gap: "later",
@@ -341,6 +344,10 @@ export function meldungMetaKey(kind: MeldungZeile["kind"]): string {
   }
   if (kind === "return") {
     return "meldungsart.rueckgabe.art";
+  }
+  // R-1089: die Antwortmeldung bringt ihren Namen im Textmodul `texte/antwortmeldung.ts` mit.
+  if (kind === "reklamation") {
+    return "antwortmeldung.meldungArt";
   }
   return `start.fuerdich.art.${kind}`;
 }
