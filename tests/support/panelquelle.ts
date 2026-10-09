@@ -349,8 +349,12 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * Keine der beiden Messungen (`fd013c5d…` hier, `2d544023…` auf main) beschreibt das zusammengefügte
  * Dokument. Der Wert unten ist der von `main` und damit ein PLATZHALTER — DER BLOB MUSS WANDERN; E2
  * meldet ihn im Prüflauf als „Received", er wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 34 (ki-modus-wahrheit): GEMESSEN im Prüflauf zu Kandidat bc98b221 am
+ * zusammengeführten Panel (`4ed6f553…`, „Received" von E2, HISTORIE/nacharbeit-34/PRUEFUNG/
+ * integration-wortvergleich-panel-pins-und-schranken.log) und unverändert übernommen; die
+ * Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "2d544023972d9f9be4e644b2ace90e52c233bdb2";
+export const PANEL_VOR_SCHNITT_BLOB = "4ed6f5533eeb0af5b554d89018ba9e3b2f911d86";
 
 export interface PanelTeile {
   html: string;
