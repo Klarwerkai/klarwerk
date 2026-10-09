@@ -3300,6 +3300,7 @@ export type NotificationKind =
   | "return"
   | "impact"
   | "kenntnisnahme"
+  | "loeschantrag"
   // aufnahme:20260922:gesamt-wissen-frische: Fristerinnerung, Wochenvorlage, Prüfanforderung.
   | "frische"
   | "reklamation";
@@ -3336,6 +3337,8 @@ export interface Notification {
   fassung?: number;
   erinnerung?: boolean;
   ueberfaellig?: boolean;
+  // Löschantrag (R-0661): die Frist der Verwalteraufgabe; `ueberfaellig` gilt dort ebenso.
+  fristBis?: string;
   // R-1089: Meldegrund und Meldungsnummer (nur bei `kind: "reklamation"`).
   grund?: AntwortMeldeGrund;
   meldungId?: string;
