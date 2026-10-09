@@ -374,7 +374,7 @@ herabgestuft werden (409 `mutability`).
 | `POST` | `/api/gesamtanweisungen/:id/vorlegen` | `ko.create` | Rumpf `{ version }` | 200 Anweisung | 400 `VALIDATION`; 409 `CONFLICT` |
 | `POST` | `/api/gesamtanweisungen/:id/entscheiden` | `ko.validate` | Rumpf `{ version, entscheidung: angenommen \| abgelehnt }` | 200 Anweisung | 400 `VALIDATION`; 409 `CONFLICT` |
 
-### 3.8 Verwaltung und Quellenimport (`adminRoutes`, `importAccessRoutes`, `confluenceImportRoutes`, `importRunRoutes`, `sharepointImportRoutes`, `jiraImportRoutes`)
+### 3.8 Verwaltung und Quellenimport (`adminRoutes`, `importAccessRoutes`, `confluenceImportRoutes`, `importRunRoutes`, `importLaufListeRoutes`, `sharepointImportRoutes`, `jiraImportRoutes`)
 
 | Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
 | --- | --- | --- | --- | --- | --- |
@@ -395,6 +395,9 @@ herabgestuft werden (409 `mutability`).
 | `PUT` | `/api/import/confluence/schalter` | `users.manage` | Rumpf `{ an: true \| false }` | 200 neuer Schalterstand | 400 `BAD_REQUEST`; 409 `IMPORT_NOT_RELEASED`; 503 `SWITCH_UNAVAILABLE` |
 | `GET` | `/api/import/sharepoint/zugang` | `users.manage` | — | 200 Zugangszustand | — |
 | `GET` | `/api/import/jira/zugang` | `users.manage` | — | 200 Zugangszustand | — |
+| `POST` | `/api/import/confluence/verbindungstest` | `users.manage` | — | 200 `{ geprueftAm, umfang, ergebnis, dauerMs }` (auch bei negativem Ergebnis; liest eine Seite des Space ohne Inhalt, schreibt nur das Prüfprotokoll) | — |
+| `GET` | `/api/admin/import/runs` | `users.manage` | Abfrage `limit` (1–200, Vorgabe 50) | 200 `{ verfuegbar, limit, ausloeserFestgehalten, runs[] }` (jüngste Läufe zuerst) | — |
+| `POST` | `/api/import/sharepoint/verbindungstest` | `users.manage` | — | 200 `{ geprueftAm, umfang, ergebnis, dauerMs }` (auch bei negativem Ergebnis; liest eine Listenseite, schreibt nur das Prüfprotokoll) | — |
 | `POST` | `/api/admin/import/confluence` | `users.manage` (Schalter `KLARWERK_CONFLUENCE_IMPORT`) | Rumpf `{ dryRun? }` | 200 Zusammenfassung bzw. 202 `{ importId, status: "QUEUED" }` | 503 `IMPORT_UNAVAILABLE`; 409 `IMPORT_ALREADY_RUNNING`; `IMPORT_FAILED` |
 | `POST` | `/api/admin/import/confluence/explore` | `users.manage` (Schalter wie oben) | — | 200 Erkundung | 503 `IMPORT_UNAVAILABLE`; `EXPLORE_FAILED` |
 | `POST` | `/api/admin/import/confluence/select` | `users.manage` (Schalter wie oben) | Rumpf `{ prompt?, criteria?, locale?, promptConfidential? }` | 200 Auswahlvorschau | 400 `BAD_REQUEST`; 503 `IMPORT_UNAVAILABLE`; `SELECT_FAILED` |
