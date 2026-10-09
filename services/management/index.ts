@@ -47,6 +47,7 @@ export type {
   GapJudge,
   GapJudgeOutcome,
   HouseFloor,
+  HouseFlow,
   PilotWindow,
   MetricsInput,
   BusFactorLike,
