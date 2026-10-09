@@ -112,8 +112,21 @@ describe("JOB 3337 · A · der Bestand ist vollständig und adressierbar", () =>
     // Auskunft über das Sicherungsverzeichnis unter „System" (`lib/adminSections.ts`,
     // `pages/AdminBetriebDetails.tsx`). Sie ist damit auch im Direktzugang und über die Adresse
     // erreichbar; A1/A3 messen das gleich mit.
-    expect(kennungen, `gefunden: ${kennungen.join(" · ")}`).toHaveLength(18);
-    for (const pflicht of ["nutzer:", "rolle:", "ki", "demo", "werk", "papierkorb", "audit"]) {
+    //
+    // ADMIN-16 (produkt:20261009:admin-demo-diagnose): 18 → 20. Neu sind `pakete` und `testimporte`
+    // — die bisherigen Kästen der Importseite, jetzt als Karten unter „Vorführdaten".
+    expect(kennungen, `gefunden: ${kennungen.join(" · ")}`).toHaveLength(20);
+    for (const pflicht of [
+      "nutzer:",
+      "rolle:",
+      "ki",
+      "demo",
+      "pakete",
+      "testimporte",
+      "werk",
+      "papierkorb",
+      "audit",
+    ]) {
       expect(kennungen).toContain(pflicht);
     }
   });
@@ -147,8 +160,8 @@ describe("JOB 3337 · A · der Bestand ist vollständig und adressierbar", () =>
     const ziele = alleZiele();
     const statisch = kennungenAusQuelltext().filter((k) => !k.endsWith(":"));
     const fehlend = statisch.filter((k) => !ziele.some((z) => z.path === adminHref(sekt(k), k)));
-    // JOB 4025: 15 → 16 (die neue Kennung `sicherung`, siehe A0).
-    expect(statisch, "der Griff fand keine statische Kennung").toHaveLength(16);
+    // JOB 4025: 15 → 16 (die neue Kennung `sicherung`, siehe A0). ADMIN-16: 16 → 18.
+    expect(statisch, "der Griff fand keine statische Kennung").toHaveLength(18);
     expect(fehlend, `kein direktes Ziel: ${fehlend.join(" · ")}`).toEqual([]);
   });
 
