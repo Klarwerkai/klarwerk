@@ -337,7 +337,10 @@ export function pruefeObjektbezug(roh: unknown): KlaraObjektbezug {
   }
   const o = roh as Record<string, unknown>;
   const pfad = kurzerText(o.pfad, 300, "objektbezug.pfad");
-  if (!pfad.startsWith("/")) {
+  // R-1398: dieselbe Regel wie `internerPfad` in der Oberfläche — `//` oder `/\` am Anfang, ein
+  // Backslash oder ein Steuerzeichen machen aus dem Pfad eine fremde Adresse.
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: genau diese Zeichen werden abgewiesen.
+  if (!pfad.startsWith("/") || pfad.startsWith("//") || /[\\\u0000-\u001f\u007f]/.test(pfad)) {
     throw eingabeFehler("objektbezug.pfad muss eine Adresse dieser Anwendung sein.");
   }
   const bezug: {

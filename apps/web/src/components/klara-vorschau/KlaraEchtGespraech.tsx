@@ -15,6 +15,8 @@ import { Link } from "react-router-dom";
 import { useReasonerStatus } from "../../api/hooks";
 import type { KlaraObjektbezug } from "../../api/klaraGespraech";
 import type { KnowledgeClass } from "../../api/types";
+import { HOME_ROUTE } from "../../app/navigation";
+import { internerPfad } from "../../lib/internerPfad";
 import { KNOWLEDGE_CLASS_META } from "../../lib/knowledgeClass";
 import { useAiAvailable } from "../../lib/useAiAvailable";
 import { type ExternStand, externStand } from "../../shell/ExternStatus";
@@ -276,7 +278,8 @@ export function KlaraEchtGespraech({
             {t("klaragespraech.beginn", bezugZeile(g.objektbezug))}{" "}
             {g.objektbezug.pfad !== pfad ? (
               <Link
-                to={g.objektbezug.pfad}
+                // R-1398: der Pfad kommt vom Server zurück — nur ein interner Pfad wird Ziel.
+                to={internerPfad(g.objektbezug.pfad, HOME_ROUTE)}
                 data-testid="klara-gespraech-beginn-link"
                 className="font-semibold text-brand-text hover:underline"
               >
@@ -304,7 +307,7 @@ export function KlaraEchtGespraech({
                 {t("klaragespraech.schritt.ort", bezugZeile(schritt.objektbezug))}{" "}
                 {schritt.objektbezug.pfad !== pfad ? (
                   <Link
-                    to={schritt.objektbezug.pfad}
+                    to={internerPfad(schritt.objektbezug.pfad, HOME_ROUTE)}
                     className="font-semibold text-brand-text hover:underline"
                   >
                     {t("klaragespraech.zurueck")}

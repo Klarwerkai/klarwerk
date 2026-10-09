@@ -217,6 +217,13 @@ describe("S1 · ein Gespräch unter der eigenen Person — mit Verlauf und Objek
       objektbezug: { ...BEZUG, pfad: "https://anderswo.test/" },
     });
     expect([ohneBezug.statusCode, fremderPfad.statusCode]).toEqual([400, 400]);
+    // R-1398: was für den Browser eine fremde Adresse ist, obwohl es mit `/` beginnt.
+    for (const pfad of ["//anderswo.test/", "/\\anderswo.test/", "/\t/anderswo.test/"]) {
+      const r = await auf(erik.token, "POST", `${BASIS}/gespraeche`, {
+        objektbezug: { ...BEZUG, pfad },
+      });
+      expect(r.statusCode, JSON.stringify(pfad)).toBe(400);
+    }
     expect((await auf(erik.token, "GET", `${BASIS}/gespraech`)).json()).toEqual({
       gespraech: null,
     });
