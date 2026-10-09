@@ -24,6 +24,7 @@ import { Bedingungswechsel } from "../components/Bedingungswechsel";
 import { DemoBanner } from "../components/DemoBanner";
 import { FragekontextWahl, GeltungsAuskunft, fragekontextZumSenden } from "../components/Geltung";
 import { HelpTip } from "../components/HelpTip";
+import { ObjektbezugZeile } from "../components/ObjektbezugZeile";
 // AUFTRAG-mega71 BLOCK E (Befund aus mega70 Block E, jetzt frei): diese Fläche trug dieselbe
 // Sackgassen-Fehlerklasse FÜNFFACH — zweimal /validierung (Führungskarte + Prüfvorbehalt-CTA),
 // dazu /konflikte, /risiko und /erfassen?gap=… — und kannte keine einzige Rollenabfrage.
@@ -49,6 +50,8 @@ import {
   type Verwendung,
   chipPunkt,
 } from "../components/fragen/Quellenplaketten";
+// R-0305/R-1099: die Zweitmeinung zur stehenden Antwort.
+import { Zweitmeinung } from "../components/fragen/Zweitmeinung";
 import { ANTWORT_MENUEPUNKTE } from "../components/fragen/antwortMenue";
 import { useVorlesen } from "../components/fragen/useVorlesen";
 import { FRAGEN_ZIEL } from "../components/fragen/ziele";
@@ -61,6 +64,8 @@ import { Seitenblatt } from "../components/start/Seitenblatt";
 import { useDiktat } from "../components/start/useDiktat";
 import { ConfidenceBar, ErgebnisStufeMarke } from "../components/trust";
 import { Button, Card, SectionLabel } from "../components/ui";
+// R-0305/R-1099: der Kostenhinweis der Zweitmeinung kennt beide Modellwege.
+import { deriveZweitmeinungBillable } from "../lib/aiAvailability";
 import {
   type AnswerExportInput,
   answerExportFilename,
@@ -123,6 +128,7 @@ import { ergebnisStufeFuerAntwort, kiHerkunftAus } from "../lib/kiHerkunft";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { formatKoTimestamp } from "../lib/koDates";
 import { erkenneNichtHilfreich } from "../lib/nichtHilfreich";
+import { leseObjektbezug, quellenRueckwegHref } from "../lib/objektbezug";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { istIosGeraet } from "../lib/speechSupport";
@@ -553,6 +559,9 @@ export function Ask(): JSX.Element {
   const { t, i18n } = useTranslation();
   // SCRUM-272: optionale Startfrage aus der URL (/fragen?q=…) — nur vorbefüllen, kein Auto-Ask.
   const [params] = useSearchParams();
+  // Arbeitswege am selben Artikel: der Beitrag, aus dem gefragt wird (`ko`/`fassung`), gelesen aus
+  // der Adresse bei JEDEM Zeichnen — kein Anfangswert, der nach einem Wechsel stehen bliebe.
+  const objektbezug = leseObjektbezug(params);
   // ==============================================================================================
   // PEDI 28.09.2026 · ERGÄNZUNG 1 — WEITERARBEITEN, WO MAN AUFGEHÖRT HAT.
   // ==============================================================================================
@@ -719,6 +728,16 @@ export function Ask(): JSX.Element {
   // gespeichert.
   const [fragekontext, setFragekontext] = useState<Fragekontext>({});
   const [geltungsAuskunft, setGeltungsAuskunft] = useState<AskGeltungsauskunft | null>(null);
+  // R-0305/R-1099 (Ben, Nacharbeit 9): der Fragekontext, mit dem die STEHENDE Antwort gestellt
+  // wurde — gesetzt beim Eintreffen der Antwort, nicht aus der aktuellen Auswahl gelesen. Die
+  // Zweitmeinung stellt dieselbe Frage mit genau diesem Kontext, auch wenn die Auswahl inzwischen
+  // geändert wurde; sonst bezöge sie sich auf eine anders gewichtete Frage.
+  // Ben (Nacharbeit 10): der Kontext reist mit der Antwort durch den Arbeitsstand. Drei Lesarten —
+  // ein Objekt (mit Kontext gefragt), `null` (ohne Kontext gefragt), `undefined` (UNBEKANNT: ein
+  // Altstand von vor dieser Ablage). Unbekannt behauptet keine kontextgleiche Zweitmeinung.
+  const [antwortKontext, setAntwortKontext] = useState<Fragekontext | null | undefined>(() =>
+    anfang?.antwort ? anfang.antwort.fragekontext : null,
+  );
   // Ben, Nacharbeit 2: „Neues Thema" während einer laufenden Nachfrage. Die später eintreffende
   // Antwort darf ihre Frage nicht wieder in den geleerten Faden tragen — sie gehört zum alten
   // Thema. Jede Anfrage trägt die Generation, unter der sie startete (wie `kontoGeneration`).
@@ -755,6 +774,11 @@ export function Ask(): JSX.Element {
 
   // SCRUM-250: KO-Bestand für lesbare Quellen-Titel (kein neuer Endpoint).
   const kos = useKos();
+  // Arbeitswege am selben Artikel: der Titel des Beitrags, aus dem gefragt wird — aus DEMSELBEN
+  // Bestand wie die Quellentitel, kein eigener Abruf. Fehlt er, nennt die Zeile die Kennung.
+  const objektTitel = objektbezug
+    ? ((kos.data ?? []).find((k) => k.id === objektbezug.koId)?.title ?? null)
+    : null;
   // FUNKE F1 (nacht24): Wissensträger-Namen für die Quellen-Würdigung (Directory EINMAL je Seite;
   // Fallback bleibt ehrlich die Autor-Id).
   // AUFTRAG-mega62 Block H: die Auflösung kommt aus dem EINEN Haken (lib/useAuthorName.ts). Die
@@ -922,9 +946,11 @@ export function Ask(): JSX.Element {
       setPruefrahmen(null);
       // R-1633: dieselbe Bindung — die Gewichtungsauskunft gehört zu genau einer Antwort.
       setGeltungsAuskunft(null);
+      // R-0305/R-1099: ebenso der Kontext, an den die Zweitmeinung gebunden ist.
+      setAntwortKontext(null);
     },
     // SCRUM-138: Backend liefert { result, gap, receipt } — Antwort + Answer-Receipt entpacken.
-    onSuccess: (r, { frage: question, generation, fadenGeneration: fadenStand }) => {
+    onSuccess: (r, { frage: question, generation, fadenGeneration: fadenStand, kontext }) => {
       // Ben R1, F1: die Antwort eines anderen (früheren) Kontos berührt nichts.
       if (generation !== kontoGeneration.current) {
         return;
@@ -954,6 +980,8 @@ export function Ask(): JSX.Element {
       setPruefrahmen(r.pruefrahmen ?? null);
       // R-1633: abwesend heißt „ohne Fragekontext gefragt" — dann steht keine Auskunft da.
       setGeltungsAuskunft(r.geltung ?? null);
+      // R-0305/R-1099 (Ben, Nacharbeit 9): der Kontext DIESER Anfrage, nicht der aktuellen Auswahl.
+      setAntwortKontext(kontext ?? null);
       // FUNKE-FIX2 P0: die neue Lücke merken (ID für den Capture-Einstieg) und die Gap-Liste
       // invalidieren, damit Capture die frisch erzeugte Lücke über ihre ID auflösen kann (der Ersteller
       // ist berechtigt → Volltext). Kein Fragetext in der URL.
@@ -1036,6 +1064,9 @@ export function Ask(): JSX.Element {
               angezeigtAm: antwortAm ?? new Date().toISOString(),
               ...(quellenStand ? { serverQuellenStand: quellenStand } : {}),
               ...(beobachtet ? { beobachtet } : {}),
+              // R-0305/R-1099 (Ben, Nacharbeit 10): der Kontext der Antwort reist mit; ein
+              // unbekannter (Altstand) bleibt unbekannt und wird nicht zu „ohne Kontext".
+              ...(antwortKontext === undefined ? {} : { fragekontext: antwortKontext }),
             }
           : null,
       startadressen: gemerkteStartadressen,
@@ -1051,6 +1082,7 @@ export function Ask(): JSX.Element {
     antwortAm,
     quellenStand,
     beobachtet,
+    antwortKontext,
     gemerkteStartadressen,
   ]);
 
@@ -1102,6 +1134,9 @@ export function Ask(): JSX.Element {
       setPruefrahmen(null);
       setGapId(antwort?.gapId ?? null);
       setAsked(antwort?.frage ?? "");
+      // R-0305/R-1099 (Ben, Nacharbeit 10): der gespeicherte Kontext DIESER Antwort — fehlt er
+      // (Altstand), ist er unbekannt (`undefined`), nicht „ohne Kontext".
+      setAntwortKontext(antwort ? antwort.fragekontext : null);
       // R-0348: der Faden gehört zum Konto — er beginnt bei der übernommenen Antwort neu.
       setFaden(antwort?.frage ? [antwort.frage] : []);
       setAntwortAm(antwort?.angezeigtAm ?? null);
@@ -1483,7 +1518,11 @@ export function Ask(): JSX.Element {
       quelle?.carrying && zitiert.trim() !== ""
         ? { passage: zitiert, fassung: ko?.version ?? null }
         : null;
-    return demoHref(belegstelleHref(id, stelle), params);
+    // Arbeitswege am selben Artikel (Quellrückweg, Nacharbeit 8): bleibt von der Belegstelle KEIN
+    // Anker übrig — keine tragende Passage ODER eine zu lange, die `belegstelleHref` samt Fassung
+    // verwirft —, führt die Quelle, die zugleich der gefragte Beitrag ist, mit DERSELBEN Kennung und
+    // Fassung zurück (`quellenRueckwegHref`). Mit Anker gilt die genauere Belegstelle.
+    return demoHref(quellenRueckwegHref(id, belegstelleHref(id, stelle), objektbezug), params);
   };
   // R-0703 / R-0625 (Ben Nacharbeit 2): EINE Exporteingabe für Markdown, Word, PowerPoint und PDF —
   // mit der DREIWERTIGEN Herkunft. Bis hierher machte die Fragenseite aus „unbekannt" ein `false`.
@@ -1690,6 +1729,10 @@ export function Ask(): JSX.Element {
           />
         )}
       </div>
+      {/* Arbeitswege am selben Artikel: kam die Frage aus einem Beitrag, steht er hier — mit
+          Fassung und dem Rückweg dorthin, beides aus der Adresse und damit auch nach Neuladen und
+          Zurücknavigation derselbe. Die Anfrage selbst bleibt unverändert (`fragen.ts`). */}
+      {objektbezug ? <ObjektbezugZeile bezug={objektbezug} titel={objektTitel} /> : null}
       {/* Ergänzung 1 (Pedi 28.09.2026): beim Wiederkommen steht OBEN, was aufgenommen wurde und wo
           es weitergeht — ein Satz, keine Karte, damit das Fragefeld ohne Bildlauf sichtbar bleibt.
           Die Antwort wird ausdrücklich als NICHT neu erzeugt benannt, mit ihrem Zeitpunkt. */}
@@ -2358,6 +2401,7 @@ export function Ask(): JSX.Element {
                         return (
                           <Link
                             key={s.id}
+                            // Quellrückweg samt Belegstelle: `quellenHref` (dort begründet).
                             to={quellenHref(s.id)}
                             data-testid="ask-quellen-chip"
                             data-tutorial-ziel={FRAGEN_ZIEL.quellenchip}
@@ -2766,6 +2810,19 @@ export function Ask(): JSX.Element {
                     </p>
                   )}
                 </div>
+                {/* R-0305/R-1099: die Zweitmeinung — eigene Anfrage, eigener Zustand (Begründung im
+                  Baustein). `key` bindet sie an genau diese Frage und ihren Kontext: eine neue
+                  Frage oder eine im anderen Kontext neu gestellte Antwort beginnt leer. */}
+                <Zweitmeinung
+                  key={`${asked}\u0000${JSON.stringify(antwortKontext ?? String(antwortKontext))}`}
+                  frage={asked}
+                  faden={fadenFuerAnfrage(faden, asked)}
+                  kontext={antwortKontext ?? undefined}
+                  kontextUnbekannt={antwortKontext === undefined}
+                  onNeuFragen={() => submitAsk(asked)}
+                  billable={deriveZweitmeinungBillable(reasonerStatus.data)}
+                  titelVon={(id) => (kos.data ?? []).find((k) => k.id === id)?.title}
+                />
               </div>
             ) : (
               <Card className="mt-3 border-dashed" data-testid="ask-gap">

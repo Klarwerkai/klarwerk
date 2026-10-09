@@ -84,8 +84,12 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 | `GET` | `/api/reasoner/status` | keines | — | 200 abstrakter KI-Status (`reasoner.publicStatus()`), ohne Anbieter- oder Modellnamen | — |
 | `GET` | `/api/ai-status` | keines | — | 200 `{ ai: publicStatus() }` | — |
 | `GET` | `/api/analytics/impact` | `ko.read` | — | 200 Wirkungsbericht (`impactReport`), sichtbarkeitsgefiltert | — |
-| `GET` | `/api/i18n/locales` | keines | — | 200 `{ locales }` | — |
-| `GET` | `/api/i18n/:locale/:key` | keines | — | 200 `{ value }` | — |
+| `GET` | `/api/i18n/locales` | keines | — | 200 `{ locales, sprachen: [{ kennung, name, grundsprache }] }` (mitgelieferte und angelegte Sprachen) | — |
+| `GET` | `/api/i18n/:locale` | keines | — | 200 `{ sprache, texte }` — die im Betrieb gepflegten Texte dieser Sprache | 400 `INVALID_LOCALE` |
+| `GET` | `/api/i18n/:locale/:key` | keines | — | 200 `{ value }` (gepflegter Text vor dem Serverkatalog) | — |
+| `PUT` | `/api/admin/i18n/:locale/:key` | `users.manage` | Rumpf `{ text }` (≤ 4000 Zeichen) | 200 `{ sprache, schluessel, text }`; Prüfprotokoll `i18n.text-set` | 400 `UNKNOWN_LOCALE`, `INVALID_KEY`, `INVALID_TEXT` |
+| `DELETE` | `/api/admin/i18n/:locale/:key` | `users.manage` | — | 200 `{ sprache, schluessel, entfernt }` — der mitgelieferte Text gilt wieder; Prüfprotokoll `i18n.text-reset` | 400 `INVALID_KEY` |
+| `PUT` | `/api/admin/i18n-sprachen/:locale` | `users.manage` | Rumpf `{ name }` | 200 `{ kennung, name }`; Prüfprotokoll `i18n.language-set` | 400 `INVALID_LOCALE` (auch für de/en/nl), `INVALID_NAME` |
 | `GET` | `/api/branding` | keines | — | 200 die Markenwahl der Instanz | — |
 | `PUT` | `/api/admin/branding` | `users.manage` | Rumpf `{ profil?, aktiv? }` | 200 neue Markenwahl | 400 `UNKNOWN_PROFILE` |
 | `GET` | `/api/features` | ohne Token keines, mit Token `requireUser` | — | 200 `{ features }` (vor der Anmeldung die verkürzte Fassung) | 401 bei ungültigem Token |
@@ -278,7 +282,7 @@ herabgestuft werden (409 `mutability`).
 
 | Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
 | --- | --- | --- | --- | --- | --- |
-| `POST` | `/api/ask` | `ko.read` oder Add-in-Fähigkeit | Rumpf `{ question, locale?, mode?, selection?, selectionConfidentiality?, questionSource? }` | 200 Antwort mit Belegen | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN`; 503 `KI_ABGESCHALTET` |
+| `POST` | `/api/ask` | `ko.read` oder Add-in-Fähigkeit | Rumpf `{ question, locale?, mode?, selection?, selectionConfidentiality?, questionSource?, thread?, zweitmeinung? }` — `zweitmeinung: true` wirkt nur im Konsolenzweig (R-0305/R-1099) | 200 Antwort mit Belegen; mit `zweitmeinung` zusätzlich das Feld `zweitmeinung` (Gegenüberstellung oder Grund) | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN`; 503 `KI_ABGESCHALTET` |
 | `POST` | `/api/ask/helpful` | `ko.read` | Rumpf `{ koId, receipt? }` | 204 | Dienstfehler |
 | `POST` | `/api/ask/report` | `ko.read` | Rumpf `{ koId, receipt, grund: "antwort-falsch" \| "quelle-passt-nicht" }` | 200 Quittung `{ meldungId, koId, koTitle, grund, at, zugestelltAn, bereitsGemeldet }` | 400 `BAD_REQUEST`; 403 `FORBIDDEN`; 404 `NOT_FOUND` |
 | `POST` | `/api/ask/not-helpful` | `ko.read`; mit `alternative` zusätzlich `ko.create` | Rumpf `{ koId, receipt?, alternative?, entwurfTitel? }` | 200 `{ vermerkt, entwurfId }` (Audit `answer.not_helpful`, genau einmal je Person und Objekt; `alternative` wird ein Entwurf) | 403 `FORBIDDEN`; 404 `NOT_FOUND`; 400 Schema |
@@ -302,7 +306,7 @@ herabgestuft werden (409 `mutability`).
 | `POST` | `/api/reasoner/describe` | `ko.read` (vor dem Einlesen) | Rumpf `{ dataUrl, locale?, source?, koId?, confidentiality?, nichtEingestuft?, draftId?, context? }` | 200 Bildbeschreibung | 400 `BAD_REQUEST`; 413 `PAYLOAD_TOO_LARGE` |
 | `POST` | `/api/reasoner/enrich` | `ko.create` | Rumpf `{ query, locale? }` | 200 Anreicherung | 400 `BAD_REQUEST`; 403 `PUBLIC_AI_ENRICHMENT_BLOCKED` |
 | `GET` | `/api/reasoner/config` | `users.manage` | — | 200 Konfiguration samt Anbietern (`configStatus()`) | — |
-| `PUT` | `/api/reasoner/config` | `users.manage` | Rumpf `{ global?, perTask?, kiFreigabe? { oeffentlicheKi?, vertraulicheInhalte? } }` | 200 neuer Status | 400 `BAD_REQUEST`; 409 `REASONER_POLICY_ENV_LOCKED`; 503 `REASONER_FREIGABE_NICHT_PROTOKOLLIERBAR` |
+| `PUT` | `/api/reasoner/config` | `users.manage` | Rumpf `{ global?, perTask?, kiFreigabe? { oeffentlicheKi?, vertraulicheInhalte? }, zweitmeinung? }` — `zweitmeinung`: `openai`/`anthropic`/`local`, `null` = aus, weglassen = unverändert | 200 neuer Status | 400 `BAD_REQUEST`; 409 `REASONER_POLICY_ENV_LOCKED`; 503 `REASONER_FREIGABE_NICHT_PROTOKOLLIERBAR`; 503 `REASONER_ZWEITMEINUNG_NICHT_PROTOKOLLIERBAR` |
 | `GET` | `/api/reasoner/assist-presets` | `ko.read` | — | 200 Vorlagen | — |
 | `PUT` | `/api/reasoner/assist-presets` | `users.manage` | Rumpf `{ presets: [{ id?, name?, instruction? }] }` | 200 Vorlagen | 400 `BAD_REQUEST` |
 | `POST` | `/api/reasoner/test` | `users.manage` | — | 200 Probe des Cloud-Wegs | — |
