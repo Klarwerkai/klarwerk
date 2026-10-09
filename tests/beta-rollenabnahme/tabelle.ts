@@ -1000,10 +1000,11 @@ export const TABELLE: Zeile[] = [
   },
   // ADMIN-02: die Importliste — die jüngsten Läufe, nur für Verwaltende.
   {
-    gruppe: "importRunRoutes",
+    // Nacharbeit 3: eigene, unbedingt registrierte Gruppe (die übrigen Laufwege hängen am Schalter).
+    gruppe: "importLaufListeRoutes",
     methode: "GET",
     pfad: "/api/admin/import/runs",
-    belegstelle: "services/app/src/routes/import-run-routes.ts:274",
+    belegstelle: "services/app/src/routes/import-run-routes.ts:204",
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },

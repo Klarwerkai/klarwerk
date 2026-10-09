@@ -2163,14 +2163,19 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Kommentar oben `Zeichnung` und `AnhangZeichnung`. Die übrigen 18 sind ohne Git-Verlauf an
     // diesem Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
     //
-    // ADMIN-02 Nacharbeit 2 — NACHGEFÜHRT von 515 auf 517: ZWEI neue Bauteile in
-    // `components/ImportLaufListe.tsx` (`ImportLaufListe`, die Importliste, und die dateilokale
-    // `LaufZeile`). Keines zeigt ein Bild, bietet eine Bildbeschreibung an oder trägt einen eigenen
-    // Titel — sie erscheinen nur in der Grundmenge. EHRLICH GESAGT: GERECHNET, nicht gemessen (in
-    // dieser Sitzung wurde kein Test ausgeführt). Meldet der Prüflauf eine andere Zahl, gehört die
-    // gemessene hierher. `anbieter` 1 und `traeger` 2 bleiben.
+    // ADMIN-02 Nacharbeit 2 — ZWEI neue Bauteile in `components/ImportLaufListe.tsx`
+    // (`ImportLaufListe`, die Importliste, und die dateilokale `LaufZeile`). Keines zeigt ein Bild,
+    // bietet eine Bildbeschreibung an oder trägt einen eigenen Titel — sie erscheinen nur in der
+    // Grundmenge. Gerechnet stand hier 517 (515 + 2).
+    //
+    // ADMIN-02 Nacharbeit 3 — GEMESSEN 531. Am Kandidaten 7b7cb869 meldete der Sammler wörtlich
+    // „gemessen: 531 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 682 Quelldateien". Die 515
+    // waren an einem anderen Stand (01c730f4, Grundmenge 657) gemessen; die übrigen +12 kommen aus
+    // dem Hauptstand dieses Arbeitsbaums (Grundmenge 657 → 682) und sind ohne Git-Verlauf hier nicht
+    // namentlich bestimmt — dieser Auftrag hat nur die zwei oben genannten beigetragen. `anbieter` 1
+    // und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 517,
+      komponenten: 531,
       anbieter: 1,
       traeger: 2,
     });
