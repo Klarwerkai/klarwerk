@@ -2548,8 +2548,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // kamen also in bereits gezählten Quelldateien mit dem Basisstand hinzu. Dieser Auftrag hat seit
     // Nacharbeit 17 keine Quelldatei der Grundmenge geändert; namentlich sind die zwei ohne
     // Git-Verlauf an diesem Arbeitsbaum nicht bestimmt. `anbieter` 1 und `traeger` 2 unverändert.
+    //
+    // veroeffentlichungsoptionen Nacharbeit 29: GEMESSEN 553. Am Kandidaten 8858c1e7 (nach der
+    // Integration mit main 4333e511, lesen-inhalt-zuerst) meldete der Sammler wörtlich „gemessen:
+    // 553 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 717 Quelldateien … expected
+    // { komponenten: 553, … } to deeply equal { komponenten: 548, … }". Die FÜNF Komponenten und
+    // fünf Quelldateien (712 → 717) kamen mit dem Basisstand. Dieser Auftrag hat in Nacharbeit 28
+    // nur die Lage der vorhandenen `VeroeffentlichungBereich` in `BibliothekLesen.tsx` verschoben —
+    // keine Komponente und keine Quelldatei hinzugefügt. `anbieter` 1 und `traeger` 2 unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 548,
+      komponenten: 553,
       anbieter: 1,
       traeger: 2,
     });
