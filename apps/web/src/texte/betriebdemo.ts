@@ -30,7 +30,7 @@ export default {
     "betriebdemo.hilfe.testimporte.text":
       "Das Aufräumen betrifft den gesamten Importbestand: jeden Eintrag der Import-Warteschlange und jeden aus Confluence oder Jira übernommenen Beitrag — nicht nur Testdaten. Die Vorschau nennt vorher die Zahlen und verändert nichts. Erst die Bestätigung leert die Warteschlange endgültig und legt die Beiträge in den Papierkorb, aus dem sie wiederherstellbar sind. Demodaten, Demopakete und selbst erstellte Beiträge bleiben unberührt. „Zurück“ führt nach Vorführdaten.",
     "betriebdemo.pakete.nichtAbrufbar":
-      "Demopakete gerade nicht abrufbar — solange der Bestand unbekannt ist, wird kein Paket angeboten.",
+      "Demopakete gerade nicht abrufbar — solange der Bestand unbekannt ist, wird kein Paket angeboten. Bleibt der Abruf gestört, ist der Serverbetrieb dieser Installation zuständig.",
     "betriebdemo.pakete.erneut": "Erneut versuchen",
     "betriebdemo.pakete.keine":
       "In dieser Installation ist kein Demopaket hinterlegt. Zuständig ist der Produktbetrieb, der die Demopakete ausliefert.",
@@ -55,7 +55,7 @@ export default {
     "betriebdemo.hilfe.testimporte.text":
       "The clean-up affects the entire import stock: every entry in the import queue and every contribution taken over from Confluence or Jira — not only test data. The preview states the figures first and changes nothing. Only the confirmation empties the queue for good and moves the contributions to the trash, from where they can be restored. Demo data, demo packages and contributions created by hand stay untouched. “Back” returns to Demo and sample data.",
     "betriebdemo.pakete.nichtAbrufbar":
-      "Demo packages cannot be retrieved right now — while the stock is unknown, no package is offered.",
+      "Demo packages cannot be retrieved right now — while the stock is unknown, no package is offered. If retrieval keeps failing, the server operator of this installation is responsible.",
     "betriebdemo.pakete.erneut": "Try again",
     "betriebdemo.pakete.keine":
       "No demo package is installed here. The product operator who ships the demo packages is responsible.",
@@ -80,7 +80,7 @@ export default {
     "betriebdemo.hilfe.testimporte.text":
       "Het opruimen betreft de volledige importvoorraad: elke regel in de importwachtrij en elke uit Confluence of Jira overgenomen bijdrage — niet alleen testgegevens. Het voorbeeld noemt eerst de aantallen en verandert niets. Pas de bevestiging leegt de wachtrij definitief en verplaatst de bijdragen naar de prullenbak, waaruit ze herstelbaar zijn. Demogegevens, demopakketten en zelf gemaakte bijdragen blijven onaangeroerd. „Terug” leidt naar Demo- en voorbeeldgegevens.",
     "betriebdemo.pakete.nichtAbrufbar":
-      "Demopakketten zijn nu niet op te halen — zolang de voorraad onbekend is, wordt geen pakket aangeboden.",
+      "Demopakketten zijn nu niet op te halen — zolang de voorraad onbekend is, wordt geen pakket aangeboden. Blijft het ophalen mislukken, dan is de serverbeheerder van deze installatie verantwoordelijk.",
     "betriebdemo.pakete.erneut": "Opnieuw proberen",
     "betriebdemo.pakete.keine":
       "In deze installatie is geen demopakket aanwezig. Verantwoordelijk is het productbeheer dat de demopakketten levert.",

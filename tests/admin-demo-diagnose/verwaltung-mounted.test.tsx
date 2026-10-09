@@ -167,12 +167,15 @@ describe("ADMIN-16 · K3/K5 · Karten öffnen ohne Wirkung, mit Pfad, Rückweg u
 });
 
 describe("ADMIN-16 · K6 · nicht verfügbare Pakete sagen Grund und Zuständigkeit", () => {
-  it("Paketliste nicht abrufbar: Grund und „Erneut versuchen“, aber kein Paket-Ladeknopf", async () => {
+  it("Paketliste nicht abrufbar: Grund, Zuständigkeit und „Erneut versuchen“, aber kein Paket-Ladeknopf", async () => {
     const s = await admin(adminHref("vorfuehrdaten", "pakete"));
     const karte = zeile(s, "detail-pakete");
-    expect(karte?.querySelector('[data-testid="demopakete-nicht-abrufbar"]')?.textContent).toBe(
-      t("betriebdemo.pakete.nichtAbrufbar"),
-    );
+    const meldung = karte?.querySelector('[data-testid="demopakete-nicht-abrufbar"]')?.textContent;
+    expect(meldung).toBe(t("betriebdemo.pakete.nichtAbrufbar"));
+    // Ben, Nacharbeit 1: die Meldung nennt auch, WER zuständig ist — in allen drei Sprachen.
+    expect(meldung).toContain("Serverbetrieb");
+    expect(i18n.getFixedT("en")("betriebdemo.pakete.nichtAbrufbar")).toContain("server operator");
+    expect(i18n.getFixedT("nl")("betriebdemo.pakete.nichtAbrufbar")).toContain("serverbeheerder");
     expect(karte?.querySelector("[data-demopaket]")).toBeNull();
     const knoepfe = [...(karte?.querySelectorAll("button") ?? [])].map((b) =>
       (b.textContent ?? "").trim(),
