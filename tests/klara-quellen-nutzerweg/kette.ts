@@ -382,7 +382,14 @@ export async function eintragMitOriginal(
 // Begriffe der gemessenen Form (zylinderkopfdichtung, xq42, wechsel), alle in `BELEGSTELLE`;
 // „gilt" ist Fragegerüst (`FRAGEGERUEST`, provider.ts) und wird nicht gebunden, „was"/„für"/„vor"/
 // „dem"/„die" sind Stoppwörter. Damit trägt die Frage UND die Zählung bleibt die gemessene.
-export const FRAGE = "Was gilt für die Zylinderkopfdichtung XQ42 vor dem Wechsel?";
+// Nacharbeit 19 (Prüflauf zu c504f873) — WARUM NICHT „Was gilt für …?": „gilt" wird zwar nicht
+// GEBUNDEN, aber als Suchbegriff ABGEFRAGT — als ERSTER Begriff der Frage. Seine Abfrage trifft
+// nichts, also folgt ihr kein `ko.listByIds`, und die Halte „suchprojektion.findActive" (erstes
+// Auftreten, Gegenprobe G und Z) lagen auf ihr. Die Frage enthält jetzt AUSSER den drei getroffenen
+// Begriffen — in der Reihenfolge der ursprünglich gemessenen Frage — nur Stoppwörter
+// („was", „ist", „mit", „der", „vor", „dem"; STOPWORDS, provider.ts): erste Abfrage =
+// Zylinderkopfdichtung (mit Treffer), drei getroffene Abfragen, alle Begriffe in `BELEGSTELLE`.
+export const FRAGE = "Was ist mit der Zylinderkopfdichtung XQ42 vor dem Wechsel?";
 
 export interface Antwortlage {
   status: number;
