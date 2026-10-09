@@ -65,6 +65,9 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     // R-1639 / R-2183 (Nacharbeit 3): Risk.tsx zieht den Bereichsblick und (nur Admin) die Pflege.
     useRiskHorizon: () => ok({ generatedAt: "", seesAll: false, areas: [] }),
     useManagementProfiles: () => ok({ categories: [], retirement: [] }),
+    // R-1663 / R-2178: Risk.tsx liest den Schalter `expertMatching`; ohne Auskunft bleibt er aus.
+    useFeatures: () => ok(null),
+    useGapAnsprechpartner: () => ok(null),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
