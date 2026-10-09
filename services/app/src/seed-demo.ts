@@ -55,8 +55,8 @@ function isDemoEmail(email: string): boolean {
 }
 
 // Die vom Seed erzeugte Demo-Wissenslücke wird beim Purge über das stabile Herkunfts-Flag
-// (Gap.demoSeed) mitentfernt — siehe purgeDemoSeed. DEMO_GAP_QUESTION (DE) bleibt als Referenz.
-export const DEMO_GAP_QUESTION = demoTexts("de").gapQuestion;
+// (Gap.demoSeed) mitentfernt — siehe purgeDemoSeed. R-1349: die Text-Referenz `DEMO_GAP_QUESTION`
+// las niemand mehr, seit der Purge über das Flag geht; sie ist entfernt.
 
 const TINY_PNG =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";

@@ -58,7 +58,12 @@ import {
   toggleFacetValue,
 } from "../../lib/facets";
 import { LIBRARY_RESULT_LIMIT, windowList } from "../../lib/libraryDisplay";
-import { EXPORT_FORMATS, exportFilename, exportUrl } from "../../lib/libraryExport";
+import {
+  EXPORT_FORMATS,
+  exportFilename,
+  exportFormatMeta,
+  exportUrl,
+} from "../../lib/libraryExport";
 import {
   LIBRARY_FACET_LABEL_KEYS,
   LIBRARY_GROUP_KEYS,
@@ -2244,7 +2249,7 @@ export function BibliothekFlaeche({
                             data-testid={`bib-export-${fmt}`}
                             className="block w-full"
                           >
-                            {t(`lib.format.${fmt}`)}
+                            {t(exportFormatMeta(fmt).labelKey)}
                           </a>
                         </MenueZeile>
                       ))}

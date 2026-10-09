@@ -201,6 +201,13 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
     // soll dieser Wächter nicht vorwegnehmen.
     case "ownership":
       return { action, ownership: { owner: "eva-eigentuemerin" } };
+    // R-0507: der Eigentümer gibt zurück — trägt nichts ausser der Aktion. Ob der Anfragende der
+    // Eigentümer IST, entscheidet der Dienst (`NOT_OWNER`); das Tor davor muss vorher greifen.
+    case "ownership-release":
+      return { action };
+    // R-0507: die Eigentümerfreigabe — ob der Anfragende Eigentümer ist, entscheidet der Dienst.
+    case "owner-validate":
+      return { action };
     case "conflict":
       return {
         action,

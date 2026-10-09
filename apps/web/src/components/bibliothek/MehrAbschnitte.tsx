@@ -34,13 +34,14 @@ import type {
   ExternalResult,
   KnowledgeObject,
 } from "../../api/types";
+import { useSession } from "../../app/AuthContext";
 import { useRole } from "../../app/RoleContext";
 import { useToast } from "../../app/ToastContext";
 import { abfrageMitBestand } from "../../lib/abfrageBestand";
 import { auditActionLabel } from "../../lib/auditAction";
 import { objectRawHref } from "../../lib/bodyFileLink";
 import { CONFIDENTIALITY_LEVELS, confidentialityOf } from "../../lib/confidentiality";
-import { conflictImpact, conflictLimitedUsability } from "../../lib/conflictImpact";
+import { effectiveUsability } from "../../lib/conflictImpact";
 import { vorrangAmPunkt } from "../../lib/conflictView";
 import { isDemoKnowledge } from "../../lib/demoKnowledge";
 import { deriveStatus } from "../../lib/displayStatus";
@@ -118,6 +119,7 @@ import { AnlagenBezugPflege } from "./AnlagenBezugPflege";
 import { AnlagenQrCode } from "./AnlagenQrCode";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { ImportErgebnis } from "./ImportErgebnis";
+import { Verantwortung } from "./Verantwortung";
 import { Zeichnung } from "./Zeichnung";
 
 // ==================================================================================================
@@ -414,6 +416,7 @@ export function MehrAbschnitte({
   const { t, i18n } = useTranslation();
   const id = ko.id;
   const { role } = useRole();
+  const session = useSession();
   const { push } = useToast();
   const qc = useQueryClient();
   const nameOf = useAuthorName();
@@ -1211,10 +1214,10 @@ export function MehrAbschnitte({
   // genau die Drift, gegen die `lib/eigeneKollision.ts:15-17` gebaut ist.
 
   // SCRUM-357 / AG-14: ein offener Konflikt begrenzt die Nutzbarkeit ehrlich (ready → in Prüfung).
-  const usability = conflictLimitedUsability(
-    koOverview(ko).usability,
-    conflictImpact(ko.id, conflicts.data ?? []),
-  );
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): über `effectiveUsability`, die EINE Quelle für
+  // „Basis aus `koOverview`, begrenzt durch den Konflikt" — bis hierher stand dieselbe Verkettung
+  // hier ausgeschrieben, und der Baustein dafür lag ohne Aufrufer daneben.
+  const usability = effectiveUsability(ko, conflicts.data ?? []);
   const lineage = lineageSummary(ko, neighborhood.data?.total ?? 0);
   // R-0766: die Kette am Objekt schließt Konflikte und Überschneidungen ein, an denen es beteiligt
   // ist — die offenen aus `useConflicts`, dazu alle (auch abgeschlossene) vom Server.
@@ -2007,6 +2010,14 @@ export function MehrAbschnitte({
           domain={ko.category}
           version={ko.version}
         />
+        {/* R-0507 / R-0546: wem das Objekt gehört, wer es geprüft und freigegeben hat — und dass
+            Bearbeiternamen keine Verantwortung aussagen. */}
+        <Verantwortung
+          ko={ko}
+          nameOf={nameOf}
+          angemeldet={session.user?.id}
+          darfFreigeben={canReview}
+        />
         {canEdit ? (
           <label className="mt-3 flex items-center gap-2 text-[12px] text-muted">
             <span>{t("conf.field")}</span>
@@ -2266,8 +2277,15 @@ export function MehrAbschnitte({
                   Zahl kommt über den EINEN Draht-Leser (`uebernahmeHerkunft`), denselben, den die
                   Fassungskarte unten benutzt. Der Rückfall auf den Autornamen bleibt Zeichen für
                   Zeichen: er gilt dem leeren Vermerk. */}
+              {/* R-0546: der Name an einer Fassung heisst „hat bearbeitet" — nie „verantwortlich".
+                  Er steht deshalb als „bearbeitet von …" da; ohne Autor steht nichts. */}
               <div data-bib-historie-vermerk={h.version} className="text-[12.5px] text-text">
-                {koHistoryNote(h.note, t) || nameOf(h.author)}
+                {koHistoryNote(h.note, t)}
+                {h.author ? (
+                  <span data-bib-historie-bearbeiter className="ml-1.5 text-muted">
+                    {t("verantwortung.bearbeitetVon", { name: nameOf(h.author) })}
+                  </span>
+                ) : null}
                 {((): JSX.Element | null => {
                   const herkunft = uebernahmeHerkunft(h);
                   return herkunft === null ? null : (
