@@ -207,6 +207,31 @@ export function offeneLuecken<T extends { status: string }>(gaps: readonly T[]):
   return gaps.filter((g) => g.status === "offen");
 }
 
+/**
+ * ADMIN-01 Nacharbeit 3 (Bens Befund): der Zähler „KI-Zugänge aktiv" zählte den deterministischen
+ * Ersatzmodus mit — `aiAccessRows` führt ihn als `active`, sobald KEIN Modell antwortet. Ohne
+ * eingerichtetes Modell stand deshalb „1 von 4", obwohl keine KI angebunden ist.
+ *
+ * Jetzt zwei getrennte Aussagen aus DENSELBEN Zeilen, die die Karte „KI-Zugänge" zeigt:
+ *   · echte Zugänge = alle Zeilen außer dem Ersatzmodus (ChatGPT, Claude, lokaler Server) —
+ *     `aktiv` zählt davon die, die gerade antworten, `gesamt` alle;
+ *   · `ersatzAktiv` = der Ersatzmodus antwortet (kein Modell) — eigens benannt, nie mitgezählt.
+ */
+export interface KiZugangsLage {
+  aktiv: number;
+  gesamt: number;
+  ersatzAktiv: boolean;
+}
+
+export function kiZugangsLage(zeilen: readonly { id: string; state: string }[]): KiZugangsLage {
+  const echte = zeilen.filter((z) => z.id !== "fallback");
+  return {
+    aktiv: echte.filter((z) => z.state === "active").length,
+    gesamt: echte.length,
+    ersatzAktiv: zeilen.some((z) => z.id === "fallback" && z.state === "active"),
+  };
+}
+
 /** Dieselbe Auswahl für Zähler und Kontenliste. */
 export function wartendeKonten<T extends { approved: boolean }>(users: readonly T[]): T[] {
   return users.filter((u) => !u.approved);

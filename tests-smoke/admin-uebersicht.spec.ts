@@ -131,6 +131,14 @@ test.describe("ADMIN-01 · Verwaltung mit Aufgabenübersicht", () => {
       await expect(gruppe.locator('[data-einst="zweck"]')).not.toBeEmpty();
     }
     const offen = await zaehler(page, "pruefungen");
+    // Nacharbeit 3 (Bens Befund): das Tor läuft hermetisch OHNE Modell (`smoke-umgebung.spec.ts`).
+    // Der Ersatzmodus ist kein KI-Zugang: „0 von 3", und er steht getrennt benannt daneben.
+    const ki = page.getByTestId("aufgabe-kiZugaenge");
+    await expect(ki).toHaveAttribute("data-art", "wert", { timeout: 15_000 });
+    await expect(ki.locator('[data-einst="wert"]')).toContainText("0 von 3");
+    await expect(ki.locator('[data-einst="wert"]')).toContainText(
+      "kein KI-Modell – Ersatzmodus antwortet",
+    );
     await bild(page, "1-verwaltung-uebersicht");
 
     // K2 · Zähler → Prüf-Board: dieselbe Zahl.

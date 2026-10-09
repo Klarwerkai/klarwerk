@@ -48,6 +48,7 @@ import {
   type UebersichtZiel,
   VERWALTUNG_GRUPPEN,
   aufgabeHref,
+  kiZugangsLage,
   offeneLuecken,
   verwaltungsZielHref,
   verwaltungsZielLabelKey,
@@ -112,11 +113,16 @@ export function AdminUebersicht(): JSX.Element {
       q: aiConfig,
       befund: wertBefund(
         abfragelage(aiConfig, online),
+        // Nacharbeit 3: nur echte Zugänge zählen; der Ersatzmodus steht getrennt daneben
+        // (`kiZugangsLage`), statt als „aktiver Zugang" mitzulaufen.
         zugaenge
-          ? t("verwaltung.aufgabe.kiZugaengeWert", {
-              aktiv: zugaenge.filter((z) => z.state === "active").length,
-              gesamt: zugaenge.length,
-            })
+          ? [
+              t("verwaltung.aufgabe.kiZugaengeWert", {
+                aktiv: kiZugangsLage(zugaenge).aktiv,
+                gesamt: kiZugangsLage(zugaenge).gesamt,
+              }),
+              ...(kiZugangsLage(zugaenge).ersatzAktiv ? [t("verwaltung.aufgabe.kiErsatz")] : []),
+            ].join(" · ")
           : null,
       ),
     },

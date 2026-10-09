@@ -404,6 +404,11 @@ describe("ADMIN-01 · K2 · Zähler und gefilterte Liste stimmen überein", () =
     const ki = zaehler(s, "kiZugaenge");
     expect(ki.art).toBe("wert");
     expect(ki.href).toBe(aufgabeHref("kiZugaenge"));
+    // Nacharbeit 3 (Bens Befund): der Bestand hier hat KEIN Modell (`mode: "demo"`). Der Zähler
+    // darf den Ersatzmodus nicht als aktiven KI-Zugang zählen — vorher stand „1 von 4".
+    expect(zahl(ki.text), `KI-Zähler: ${ki.text}`).toBe(0);
+    expect(ki.text).toContain(t("verwaltung.aufgabe.kiZugaengeWert", { aktiv: 0, gesamt: 3 }));
+    expect(ki.text).toContain(t("verwaltung.aufgabe.kiErsatz"));
   });
 
   it("K2.2 · „Konten warten auf Freigabe“ → genau diese Konten, gefiltert und benannt", async () => {

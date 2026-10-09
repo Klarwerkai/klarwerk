@@ -18,6 +18,7 @@ import {
   AUFGABEN,
   VERWALTUNG_GRUPPEN,
   aufgabeHref,
+  kiZugangsLage,
   nurOffeneLuecken,
   nurWartendeKonten,
   offeneLuecken,
@@ -26,6 +27,7 @@ import {
   wartendeKonten,
   zielKennung,
 } from "../../apps/web/src/lib/adminUebersicht";
+import { aiAccessRows } from "../../apps/web/src/lib/aiOverview";
 
 const verwaltungsziele = VERWALTUNG_GRUPPEN.flatMap((g) =>
   g.ziele.flatMap((z) => (z.art === "verwaltung" ? [z] : [])),
@@ -135,6 +137,30 @@ describe("ADMIN-01 · K2 · jeder Zähler hat seine gefilterte Liste — mit der
     expect(nurOffeneLuecken(new URLSearchParams("luecken=alle"))).toBe(false);
     expect(nurWartendeKonten(new URLSearchParams("filter=irgendwas"))).toBe(false);
     expect(nurWartendeKonten(new URLSearchParams(""))).toBe(false);
+  });
+
+  // Nacharbeit 3 (Bens Befund): ohne eingerichtetes Modell stand „1 von 4" — der Ersatzmodus
+  // wurde als KI-Zugang gezählt. Gemessen an DEN Zeilen, die auch die Karte „KI-Zugänge" zeigt.
+  it("KI-Zugänge: ohne Modell kein aktiver Zugang — der Ersatzmodus steht getrennt", () => {
+    const ohneModell = aiAccessRows({
+      configured: false,
+      cloudConfigured: false,
+      provider: "deterministic",
+      mode: "fallback",
+      localConfigured: false,
+    });
+    expect(ohneModell.find((z) => z.id === "fallback")?.state).toBe("active");
+    expect(kiZugangsLage(ohneModell)).toEqual({ aktiv: 0, gesamt: 3, ersatzAktiv: true });
+
+    const mitModell = aiAccessRows({
+      configured: true,
+      cloudConfigured: true,
+      provider: "anthropic:claude-test",
+      model: "anthropic:claude-test",
+      mode: "model",
+      localConfigured: false,
+    });
+    expect(kiZugangsLage(mitModell)).toEqual({ aktiv: 1, gesamt: 3, ersatzAktiv: false });
   });
 
   it("offene Lücken und wartende Konten: dieselbe Menge für Zähler und Liste", () => {
