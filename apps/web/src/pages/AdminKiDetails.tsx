@@ -35,7 +35,7 @@ import {
 // AUFTRAG kimodus-live: Topbar-/Status-Queries nach dem Übernehmen live invalidieren.
 import { invalidateAiState } from "../lib/aiStateInvalidate";
 import { type KiTestArt, type KiTestBefund, kiTestBefund } from "../lib/kiTestBefund";
-import { parseNeededValidations } from "../lib/reviewerMinimum";
+import { isNeededValidationsValid, parseNeededValidations } from "../lib/reviewerMinimum";
 import { maxRawAttachmentMb } from "../lib/uploadLimits";
 
 // KI-Verwaltung v1 (Pedi 02.07.): Zuordnung global + je Aufgabe.
@@ -1497,10 +1497,12 @@ export function KiGrenzenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
   });
   // E2E-005 / bens Auflage D4: EXAKT derselbe Vertrag wie der Server — eine ECHTE ganze Zahl 1–5.
   // (`Number.parseInt` nahm „1.5"/„1x" fälschlich als 1 an; eine Quelle: parseNeededValidations.)
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): die Gültigkeit kommt aus `isNeededValidationsValid`,
+  // der EINEN Bedingung neben dem Parser (Band `MIN_/MAX_NEEDED_VALIDATIONS`). Bis hierher stand sie
+  // hier mit den Literalen 1 und 5 ein zweites Mal, und die Funktion lag ohne Aufrufer daneben.
   const neededEffective =
     defaultNeededDraft ?? String(valSettings.data?.defaultNeededValidations ?? "");
-  const neededParsed = parseNeededValidations(neededEffective);
-  const neededValid = Number.isInteger(neededParsed) && neededParsed >= 1 && neededParsed <= 5;
+  const neededValid = isNeededValidationsValid(neededEffective);
 
   const uploadLimitsQ = useQuery({
     queryKey: ["upload-limits"],
