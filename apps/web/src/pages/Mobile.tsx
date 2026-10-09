@@ -70,6 +70,7 @@ import {
 } from "../lib/draftForm";
 import { conflictKnowledge } from "../lib/effectiveAnswer";
 import { fileToThumbDataUrl } from "../lib/files";
+import { internerPfad } from "../lib/internerPfad";
 import {
   REASONER_ENTWURF_FLAECHE,
   ergebnisStufeFuerAntwort,
@@ -193,7 +194,10 @@ export function Mobile(): JSX.Element {
   // WP-SAMMEL20-FIX (bens Fix 4, B1b): der Rückweg führt zur VORHERIGEN Route zurück (die der
   // Topbar-Hinweg als state.from mitgibt) — nur bei Direkteinstieg (Deep-Link/Reload ohne State)
   // fällt er auf die Startseite zurück.
-  const backTo = (location.state as { from?: string } | null)?.from ?? HOME_ROUTE;
+  const vorherigeRoute = (location.state as { from?: string } | null)?.from ?? HOME_ROUTE;
+  // R-1398: der Wert stammt aus `location.pathname` (History-State) — nur ein interner Pfad wird
+  // Navigationsziel (lib/internerPfad.ts, GHSA-wrjc/GHSA-jjmj).
+  const backTo = internerPfad(vorherigeRoute, HOME_ROUTE);
   const { setGuard, guard } = useNavGuard();
   const [tab, setTab] = useState<MobileTab>("capture");
 
