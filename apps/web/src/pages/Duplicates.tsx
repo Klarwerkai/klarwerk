@@ -29,6 +29,7 @@ import { endpoints } from "../api/endpoints";
 import { useDuplicates, useKos } from "../api/hooks";
 import type { KnowledgeObject, OverlapEntry } from "../api/types";
 import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
+import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { SourceEvidence } from "../components/ko/SourceEvidence";
 import { PruefenKopf } from "../components/pruefen/PruefenKopf";
@@ -268,6 +269,9 @@ export function Duplicates(): JSX.Element {
         {lage.lage === "leer" ? <PruefenSatz kennung="leer">{t("dup.empty")}</PruefenSatz> : null}
         {aktiv ? duplikatFlaeche(aktiv) : null}
       </div>
+      {/* R-0956 (Bestandsabgleich, Nacharbeit 4): die Einordnung steht UNTER der Brettfläche — die
+          Fläche selbst trägt im Leerfall weiter genau ihren Satz (dup.empty). */}
+      {lage.lage === "leer" ? <EmptyStateCtas context="duplicates" /> : null}
     </div>
   );
 

@@ -85,6 +85,7 @@ import { useTranslation } from "react-i18next";
 import { ApiError } from "../../api/client";
 import { useRole } from "../../app/RoleContext";
 import { formatKoTimestamp } from "../../lib/koDates";
+import { leerzustandsZeile } from "../EmptyStateCtas";
 import { IMPORT_LAUFLISTE_KEY } from "../ImportLaufListe";
 import { Button, Card, SectionLabel } from "../ui";
 import { SharePointZugangKarte } from "./SharePointZugangKarte";
@@ -462,9 +463,13 @@ export function SharePointImportBereich(): JSX.Element | null {
                 </p>
               ) : null}
               {liste.data.dateien.length === 0 ? (
-                <p data-testid="sharepoint-leer" className="mt-2 text-[12.5px] text-muted">
-                  {t("imp.sharepoint.leer")}
-                </p>
+                <>
+                  <p data-testid="sharepoint-leer" className="mt-2 text-[12.5px] text-muted">
+                    {t("imp.sharepoint.leer")}
+                  </p>
+                  {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+                  {leerzustandsZeile(t, "import")}
+                </>
               ) : (
                 <ul className="mt-2 space-y-1.5">
                   {liste.data.dateien.map((datei) => {
