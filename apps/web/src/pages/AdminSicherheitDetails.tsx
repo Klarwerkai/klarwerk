@@ -578,7 +578,7 @@ export function BereitschaftDetail({
             hinge die Hilfe im Erfolgszweig, wäre sie genau dann weg. */}
         <HelpTip
           title={t("seitenhilfe.admin.bereitschaft.titel")}
-          body={t("seitenhilfe.admin.bereitschaft.text")}
+          body={t("knopfzitat.admin.bereitschaft")}
         />
         {/* AUFTRAG-mega3 Block B (bens D9): dauerhaft gescheiterte tragende Quelle ⇒ ehrlicher
             Fehlerzustand mit Wiederholen; Stale-Daten bleiben sichtbar, aber markiert. */}

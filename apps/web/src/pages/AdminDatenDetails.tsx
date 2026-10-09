@@ -506,7 +506,9 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
       titel={t("adm.seedTitle")}
       onZurueck={onZurueck}
       testId="detail-demodaten"
-      hilfe={demoLadenAn ? [{ titel: t("adm.seedTitle"), text: t("adm.seedHint") }] : []}
+      hilfe={
+        demoLadenAn ? [{ titel: t("adm.seedTitle"), text: t("fachwort.demodaten.hinweis") }] : []
+      }
     >
       {/* JOB 3670: die Seitenhilfe dieses Bildschirms. Sie sagt, was das „?"-Menü der Karte nicht
           sagt: dass hier ZWEI verschiedene Bestände wohnen (Kommentar unten, Z. 252-253), dass die
@@ -521,6 +523,10 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
           Schlüssel, damit die Karte später „Allgemeine Demodaten" heissen kann, ohne dass sich die
           Beschriftung des Knopfes mit ändert (s. RUECKGABE, ABWEICHUNGEN: die Textlieferung gehört
           nach `i18n.ts` und damit in einen eigenen Auftrag).
+
+          R-0908: der Hilfekörper kommt seit der Aufnahme gesamt-sprache-begriffe aus
+          `fachwort.demodaten.hinweis` (`texte/fachwort.ts`) — `adm.seedHint` sagte „KOs" und
+          „KI-Reasoner". Die Begründung unten gilt für ihn unverändert.
 
           WARUM HIER KEIN ERKLÄRSATZ STEHT, obwohl der Auftrag einen verlangt: `adm.seedHint` ist
           der Hilfekörper DIESER Karte (`hilfe` oben, verlangt von
@@ -1076,8 +1082,10 @@ export function AuditDetail({ onZurueck }: { onZurueck: () => void }): JSX.Eleme
 
           produkt:20261009:admin-audit-verstaendlich: der Text beschreibt jetzt die gemeinsame
           Darstellung mit Filtern und Seiten (`auditprotokoll.hilfe.konten`). Der alte Wortlaut
-          („ohne Bedienelemente … die Kennung des Ausführenden") stimmte nicht mehr; er bleibt als
-          Bestandstext stehen, wird hier aber nicht mehr gezeigt. */}
+          („ohne Bedienelemente … die Kennung des Ausführenden") stimmte nicht mehr — auch nicht in
+          seiner zeichengleich zitierenden Fassung `knopfzitat.admin.audit` (R-1176). Der neue Text
+          zitiert den Reiter „Sicherheit und Nachweise“ ebenso zeichengleich in DE, EN und NL
+          (`tests/sprache-begriffe/zitierte-beschriftungen.test.ts`, Z-3). */}
       <HelpTip title={t("seitenhilfe.admin.audit.titel")} body={t("auditprotokoll.hilfe.konten")} />
       <AuditFilterLeiste
         filter={filter}

@@ -166,7 +166,7 @@ export default {
     "auditprotokoll.filter.anwenden": "Filter anwenden",
     "auditprotokoll.filter.zuruecksetzen": "Filter zurücksetzen",
     "auditprotokoll.filter.zeitraumFalsch":
-      "Der Zeitraum endet vor seinem Beginn. Bitte „Bis“ auf denselben oder einen späteren Tag setzen.",
+      "Der Zeitraum endet vor seinem Beginn. Bitte „Bis einschließlich“ auf denselben oder einen späteren Tag setzen.",
     "auditprotokoll.zeitzone": "Tage und Zeiten in der Zeitzone {{zone}}",
     "auditprotokoll.leer.gefiltert": "Für diese Filter gibt es keine Einträge.",
     "auditprotokoll.seite.navigation": "Seiten des Protokolls",
@@ -263,7 +263,7 @@ export default {
     "auditprotokoll.filter.anwenden": "Apply filters",
     "auditprotokoll.filter.zuruecksetzen": "Reset filters",
     "auditprotokoll.filter.zeitraumFalsch":
-      "The period ends before it begins. Please set “Up to” to the same or a later day.",
+      "The period ends before it begins. Please set “Up to and including” to the same or a later day.",
     "auditprotokoll.zeitzone": "Days and times in the time zone {{zone}}",
     "auditprotokoll.leer.gefiltert": "There are no entries for these filters.",
     "auditprotokoll.seite.navigation": "Pages of the log",
@@ -346,7 +346,7 @@ export default {
     "auditprotokoll.pruefung.ohneZeitpunkt":
       "Controleresultaat zonder controletijdstip – dit is geen bewijs. Controleer de integriteit opnieuw.",
     "auditprotokoll.hilfe.konten":
-      "Een zuivere inlichting: de regels over accounts en aanmelding, nieuwste eerst en per pagina, in dezelfde weergave als het controleprotocol — tijdstip met tijdzone, gebeurtenis, uitvoerende en betrokken persoon. Kenmerken en de ruwe actie staan onder „ID's tonen“. U kunt afbakenen op persoon, gebeurtenis, betrokkene en periode; de filters staan in het adres en blijven bij teruggaan behouden. Hier valt niets te wijzigen en niets te verwijderen — de lijst is het resultaat van wat elders is gedaan. De volledige, hash-geketende keten met haar controleknop staat onder „Veiligheid en bewijs“ in het controleprotocol.",
+      "Een zuivere inlichting: de regels over accounts en aanmelding, nieuwste eerst en per pagina, in dezelfde weergave als het controleprotocol — tijdstip met tijdzone, gebeurtenis, uitvoerende en betrokken persoon. Kenmerken en de ruwe actie staan onder „ID's tonen“. U kunt afbakenen op persoon, gebeurtenis, betrokkene en periode; de filters staan in het adres en blijven bij teruggaan behouden. Hier valt niets te wijzigen en niets te verwijderen — de lijst is het resultaat van wat elders is gedaan. De volledige, hash-geketende keten met haar controleknop staat onder „Beveiliging en bewijs“ in het controleprotocol.",
     "auditprotokoll.export.geschwaerzt":
       "{{count}} vermeldingen betreffen bijdragen die u niet mag openen; hun titels en inhoud zijn in het bestand verborgen.",
     "auditprotokoll.filter.titel": "Vermeldingen afbakenen",

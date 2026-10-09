@@ -185,6 +185,7 @@ const BILDSCHIRME: readonly Bildschirm[] = [
     titelKey: "seitenhilfe.admin.audit.titel",
     // produkt:20261009:admin-audit-verstaendlich: die Auth-Ansicht teilt jetzt die Darstellung des
     // Prüfprotokolls (Filter, Seiten, Namen); ihr Hilfetext beschreibt das unter eigenem Schlüssel.
+    // R-1176 (gesamt-sprache-begriffe): auch dieser Text zitiert den Reiter zeichengleich, auch NL.
     textKey: "auditprotokoll.hilfe.konten",
   },
   // ---- AdminSicherheitDetails.tsx --------------------------------------------------------------
@@ -207,7 +208,8 @@ const BILDSCHIRME: readonly Bildschirm[] = [
     query: "?bereich=system&detail=bereitschaft",
     datei: "apps/web/src/pages/AdminSicherheitDetails.tsx",
     titelKey: "seitenhilfe.admin.bereitschaft.titel",
-    textKey: "seitenhilfe.admin.bereitschaft.text",
+    // R-1176: „nicht abrufbar“ heißt im Text so, wie es auf der Karte steht — auch EN und NL.
+    textKey: "knopfzitat.admin.bereitschaft",
   },
 ];
 

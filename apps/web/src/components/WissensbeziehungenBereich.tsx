@@ -779,12 +779,12 @@ export function WissensbeziehungenBereich({ koId }: { koId: string }): JSX.Eleme
                   </p>
                   {kante.art === "widerspricht" ? (
                     <p className="mt-1 text-[11.5px] text-muted" data-testid="wb-grenze">
-                      {t("wb.grenze.widerspricht")}
+                      {t("knopfzitat.wb.widerspricht")}
                     </p>
                   ) : null}
                   {kante.art === "ersetzt" ? (
                     <p className="mt-1 text-[11.5px] text-muted" data-testid="wb-grenze">
-                      {t("wb.grenze.ersetzt")}
+                      {t("knopfzitat.wb.ersetzt")}
                     </p>
                   ) : null}
                   {widerrufFrage === kante.id ? (
