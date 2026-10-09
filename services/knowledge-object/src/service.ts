@@ -47,7 +47,17 @@ import {
   composeEffectiveSearchDocument,
 } from "./effective-search-document";
 // R-1632 / R-1633: die Geltungsregel (Konzern/Werk/Schicht) — eine Fassung, Begründung dort.
+import {
+  type GelernteHalbwertszeiten,
+  beobachtungenAus,
+  fristGrundlageBeiKategoriewechsel,
+  halbwertszeitenAusVerlauf,
+} from "./frische";
 import { normalizeGeltung } from "./geltung";
+import {
+  type HalbwertszeitVerlaufRepo,
+  InMemoryHalbwertszeitVerlauf,
+} from "./halbwertszeit-verlauf";
 import {
   type KoMetadataProjection,
   metadataTextsEqual,
@@ -320,6 +330,9 @@ interface ErstanlageMeldung {
 export interface KoServiceDeps {
   repo: KoRepo;
   audit?: AuditService;
+  // aufnahme:20260922:gesamt-wissen-frische (R-1636/R-0248): der festgehaltene Lernverlauf der
+  // Halbwertszeiten. Fehlt er, hält der Dienst ihn im Speicher (Tests, Aufbau ohne Datenbank).
+  halbwertszeitVerlauf?: HalbwertszeitVerlaufRepo;
   // SCRUM-159: optionales Versions-Repo. Ist es gesetzt, werden bei create/revise
   // vollständige, unveränderliche Snapshots geschrieben (Knowledge-OS-Foundation).
   versions?: KoVersionRepo;
@@ -758,7 +771,14 @@ function belegSchluessel(record: Omit<EvidenceRecord, "id">): string {
  */
 const HASH_PRUEFBLOCK = 100;
 
+/** R-1636: so lange gilt eine gelernte Halbwertszeitentabelle, bevor sie neu gerechnet wird. */
+const HALBWERTSZEIT_LERNEN_TTL_MS = 10 * 60 * 1000;
+
 export class KoService {
+  // R-1636: zuletzt gelernte Halbwertszeiten samt Ablauf (s. `gelernteHalbwertszeiten`).
+  private halbwertszeitSpeicher: { bis: number; tabelle: GelernteHalbwertszeiten } | undefined;
+  // R-1636 / R-0248 (Nacharbeit 5): der festgehaltene Lernverlauf (s. `gelernteHalbwertszeiten`).
+  private readonly halbwertszeitVerlauf: HalbwertszeitVerlaufRepo;
   private readonly repo: KoRepo;
   private readonly audit: AuditService | undefined;
   private readonly versions: KoVersionRepo | undefined;
@@ -791,6 +811,7 @@ export class KoService {
   private readonly koWriteLocks = new Map<string, Promise<unknown>>();
 
   constructor(deps: KoServiceDeps) {
+    this.halbwertszeitVerlauf = deps.halbwertszeitVerlauf ?? new InMemoryHalbwertszeitVerlauf();
     this.repo = deps.repo;
     this.audit = deps.audit;
     this.versions = deps.versions;
@@ -3306,7 +3327,14 @@ export class KoService {
           "Das Herabstufen der Vertraulichkeit erfordert eine Prüfer-/Admin-Rolle.",
         );
       }
-      const updated: KnowledgeObject = { ...ko, confidentiality: level };
+      // aufnahme:20260922:gesamt-wissen-frische (R-0652): „öffentlich" verfeinert nur „intern" —
+      // eine Höherstufung nimmt die Marke mit weg, damit sie bei einer späteren Rückstufung nicht
+      // ungeprüft wiederauflebt.
+      const { oeffentlich: _marke, ...ohneMarke } = ko;
+      const updated: KnowledgeObject =
+        level === "intern"
+          ? { ...ko, confidentiality: level }
+          : { ...ohneMarke, confidentiality: level };
       return {
         updated,
         value: updated,
@@ -6158,7 +6186,12 @@ export class KoService {
       id,
       actor,
       { action: "ko.category-changed", grund: "ko.updateCategory" },
-      (ko) => ({ ...ko, category }),
+      // R-0248 (Nacharbeit 7): die Kategorie des laufenden Stands bleibt Grundlage seiner Frist.
+      (ko) => {
+        const grundlage =
+          ko.category === category ? ko.fristGrundlage : fristGrundlageBeiKategoriewechsel(ko);
+        return { ...ko, category, ...(grundlage ? { fristGrundlage: grundlage } : {}) };
+      },
       opts,
     );
   }
@@ -6207,6 +6240,115 @@ export class KoService {
         },
       };
     });
+  }
+
+  // aufnahme:20260922:gesamt-wissen-frische (R-0206 / R-1746): „Stimmt weiterhin" nach dem Anwenden —
+  // ein Frische-Signal, KEINE neue Prüfung. Bauform wie `setDomain`: per KO serialisiert, Beleg im
+  // Audit, keine neue Inhaltsversion, kein Statuswechsel. Nur geprüftes Wissen kann so bestätigt
+  // werden. Bestätigt der Verantwortliche (`responsibleOf`), verlängert das zugleich die Haltbarkeit
+  // (`fristBestaetigung`, R-0248); jede andere Person frischt nur das Signal auf.
+  async bestaetigeFrische(id: string, actor: string): Promise<KnowledgeObject> {
+    return this.mutateKo(id, (ko) => {
+      if (ko.status !== "validiert") {
+        throw new KoError(
+          "INVALID",
+          "Nur geprüftes Wissen kann als weiterhin gültig bestätigt werden.",
+        );
+      }
+      const signal = { at: new Date(this.now()).toISOString(), by: actor };
+      const verantwortlich = responsibleOf(ko) === actor;
+      const updated: KnowledgeObject = {
+        ...ko,
+        frischeSignal: signal,
+        ...(verantwortlich ? { fristBestaetigung: signal } : {}),
+      };
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.freshness-confirmed",
+              target: id,
+              payload: { version: ko.version, verantwortlich },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
+  // aufnahme:20260922:gesamt-wissen-frische (R-0652 / FR-EXT-06): den Schutzbedarf „öffentlich"
+  // setzen oder zurücknehmen. Nur an internen Objekten — an einem vertraulichen wäre die Marke ein
+  // Widerspruch (400 `INVALID`). Keine neue Fassung, kein Statuswechsel; das Recht prüft die Route
+  // (`ko.validate`, dieselbe Schwelle wie eine Herabstufung der Vertraulichkeit).
+  async setOeffentlich(id: string, oeffentlich: boolean, actor: string): Promise<KnowledgeObject> {
+    return this.mutateKo(id, (ko) => {
+      if (oeffentlich && normalizeConfidentiality(ko.confidentiality) !== "intern") {
+        throw new KoError(
+          "INVALID",
+          "Nur ein internes Wissensobjekt kann als öffentlich eingestuft werden.",
+        );
+      }
+      const vorher = ko.oeffentlich === true;
+      if (vorher === oeffentlich) {
+        return { updated: ko, value: ko };
+      }
+      const { oeffentlich: _alt, ...ohne } = ko;
+      const updated: KnowledgeObject = oeffentlich ? { ...ohne, oeffentlich: true } : ohne;
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.oeffentlich-changed",
+              target: id,
+              payload: { vorher, nachher: oeffentlich },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
+  // R-1636: die aus der Bewährungs-Historie gelernten Halbwertszeiten je Kategorie. Über den GANZEN
+  // Bestand gerechnet (nicht über die Sicht eines Lesers — sonst hinge die Frist eines Objekts an
+  // der Rolle des Betrachters) und für `HALBWERTSZEIT_LERNEN_TTL_MS` zwischengespeichert: der
+  // Bestand ändert seine Fassungsfolge nicht im Sekundentakt, und die Leserouten fragen oft.
+  //
+  // Nacharbeit 5 (R-0248, Bens Befund): der Lernstand kommt aus dem FESTGEHALTENEN Verlauf. Neue
+  // Beobachtungen des heutigen Bestands werden zuerst dauerhaft ergänzt (mit Kategorie und
+  // Erfassungszeitpunkt), und erst danach zählen sie. Eine Beobachtung, die nicht festgehalten
+  // werden konnte, zählt nicht — sonst hinge eine Frist an einem Stand, der nach dem nächsten
+  // Löschen eines anderen Objekts nicht mehr rekonstruierbar wäre.
+  async gelernteHalbwertszeiten(): Promise<GelernteHalbwertszeiten> {
+    const jetzt = this.now();
+    if (this.halbwertszeitSpeicher && this.halbwertszeitSpeicher.bis > jetzt) {
+      return this.halbwertszeitSpeicher.tabelle;
+    }
+    const bekannt = await this.halbwertszeitVerlauf.alle();
+    const vorhanden = new Set(bekannt.map((e) => `${e.koId}\u0000${e.ende}`));
+    const erfasst = new Date(jetzt).toISOString();
+    const neu = beobachtungenAus(await this.repo.list({}))
+      .filter((b) => !vorhanden.has(`${b.koId}\u0000${b.ende}`))
+      .map((b) => ({ ...b, erfasst }));
+    let verlauf = bekannt;
+    if (neu.length > 0) {
+      try {
+        await this.halbwertszeitVerlauf.ergaenze(neu);
+        verlauf = [...bekannt, ...neu];
+      } catch {
+        // Nicht festgehalten → nicht verwendet; beim nächsten Lernen wird es erneut versucht.
+      }
+    }
+    const tabelle = halbwertszeitenAusVerlauf(verlauf);
+    this.halbwertszeitSpeicher = { bis: jetzt + HALBWERTSZEIT_LERNEN_TTL_MS, tabelle };
+    return tabelle;
   }
 
   // R-1632 / R-1633: die Geltung (Konzern/Werk/Schicht, optional Rolle) setzen, ändern oder mit
