@@ -2281,8 +2281,17 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Bauteil bei; die 8 darüber kamen mit dem eingemischten Hauptstand. Welche es sind, ist ohne
     // Git-Verlauf an diesem Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2
     // sind in derselben Meldung unverändert.
+    //
+    // veroeffentlichungsoptionen Nacharbeit 7: GEMESSEN 521. Am Kandidaten c48626a7 meldete der
+    // Sammler wörtlich „gemessen: 521 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 675
+    // Quelldateien … expected { komponenten: 521, … } to deeply equal { komponenten: 541, … }".
+    // Die Grundmenge ist gegenüber der Messung 541 (693 Quelldateien) um 18 Dateien KLEINER: dieser
+    // Kandidat steht auf einer anderen Basis des Hauptstands. Dieser Auftrag hat nichts entfernt —
+    // `VeroeffentlichungBereich` steht unverändert in `components/veroeffentlichung/` und wird von
+    // `BibliothekLesen` eingebunden. Welche 20 Komponenten am Basisstand fehlen, ist ohne Git-Verlauf
+    // an diesem Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 541,
+      komponenten: 521,
       anbieter: 1,
       traeger: 2,
     });
