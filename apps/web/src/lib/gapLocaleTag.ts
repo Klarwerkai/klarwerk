@@ -38,7 +38,7 @@ export function gapLocaleTag(
 }
 
 /** Der i18n-Schlüssel des neutralen Etiketts für Lücken ohne Sprachangabe (R-0307 / R-1061). */
-const GAP_ORIGINALFRAGE_KEY ="gap.originalfrage";
+const GAP_ORIGINALFRAGE_KEY = "gap.originalfrage";
 
 /**
  * R-0307 / R-1061 — DAS ETIKETT AM LÜCKENTITEL, AUCH FÜR DEN ALTBESTAND.

@@ -55,7 +55,7 @@ export interface NulltrefferSuche {
 const BEGRENZUNG = NULLTREFFER_BEGRIFF_MAX;
 
 /** Die Filterfelder der Bibliothekssuche (`KoFilter`), in fester Reihenfolge. */
-const NULLTREFFER_FILTERFELDER =["type", "status", "category", "tag"] as const;
+const NULLTREFFER_FILTERFELDER = ["type", "status", "category", "tag"] as const;
 
 /**
  * Die Eingrenzung einer Suche in kanonischer Form: nur bekannte Filterfelder mit nicht-leerem
