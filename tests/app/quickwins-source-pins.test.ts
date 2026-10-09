@@ -78,9 +78,11 @@ describe("Block D10: Import-Grund erklären (nur JSON)", () => {
   // AUFTRAG-mega32 H2: der JSON-Kasten ist aus pages/Stufe2.tsx in ein eigenes Bauteil im Cockpit
   // gezogen (er stand vorher AUSSERHALB des Providers und wurde deshalb immer gerendert). Der Satz
   // ist unverändert — nur seine Datei ist es nicht.
+  // R-0179 (Nacharbeit 3): NACHGEFÜHRT. Seit der Kasten auch Excel liest, wäre „nur JSON" falsch;
+  // der ehrliche Grund-Hinweis steht jetzt im Textmodul `texte/importtabelle.ts`.
   it("der JSON-Kasten rendert den ehrlichen Import-Grund-Hinweis", () => {
     const src = web("components/ImportJsonUpload.tsx");
-    expect(src).toContain('t("imp.jsonOnlyReason")');
-    inAllLangs("imp.jsonOnlyReason");
+    expect(src).toContain('t("importtabelle.grund")');
+    expect(src).not.toContain('t("imp.jsonOnlyReason")');
   });
 });
