@@ -103,7 +103,8 @@ export function studioContribution(q: ContentQuality): StudioContribution {
   return {
     level,
     levelLabelKey: `studio.contrib.level.${level}.label`,
-    levelHintKey: `studio.contrib.level.${level}.hint`,
+    // R-0936: der Stand beschreibt den TEXT, nicht die Person (Textmodul `texte/tragfaehigkeit.ts`).
+    levelHintKey: `tragfaehigkeit.stand.${level}`,
     tone,
     strengths,
     suggestions,
