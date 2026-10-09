@@ -2466,8 +2466,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Quelldateien; die Rechnung 524 + 2 war zu niedrig, die übrigen 2 Komponenten (Grundmenge
     // 677 + 4 = 681 → 683) kamen mit main und sind ohne Git-Verlauf hier nicht namentlich
     // bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // ADMIN-02 Nacharbeit 12 · GEMESSEN 536. Am Kandidaten cbe6db0f meldete der Sammler wörtlich
+    // „gemessen: 536 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 690 Quelldateien …
+    // expected { komponenten: 536, … } to deeply equal { komponenten: 528, … }". Seit der Messung
+    // 528 hat dieser Auftrag keine Quelldatei der Grundmenge geändert oder angelegt; die 8
+    // Komponenten und 7 Quelldateien (683 → 690) kamen mit dem eingemischten Hauptstand und sind
+    // ohne Git-Verlauf hier nicht namentlich bestimmt. Beitrag dieses Auftrags unverändert ZWEI
+    // (`ImportLaufListe`, `LaufZeile`). `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 528,
+      komponenten: 536,
       anbieter: 1,
       traeger: 2,
     });
