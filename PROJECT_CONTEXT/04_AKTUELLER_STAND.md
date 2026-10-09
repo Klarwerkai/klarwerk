@@ -300,6 +300,11 @@ R-0020 gilt unverändert für **Speichern UND Einreichen**, auch bei verlorener 
   Nachtrag `k2b-konkreter-rest`: Sperrbedingung durch LIVE 3801/4337 erfüllt; `--hint` existiert,
   `#capture-leer` nutzt `--muted`. Rest und Kontrastentscheidung:
   `docs/entscheidungen/k2b-erfassen-leertextfarbe.md`.
+- Nachtrag 09.10.2026, Teil (e) `belegnachweis`: Pedis Antworten vom 01.10. sind je Punkt mit
+  Kennung eingetragen. Unsichtbare Felder und Quellen-Panel bleiben im Arbeitsraum
+  (`entscheidung:1ec691b0-…`); damit ist die Entscheidung zu `statement`/`type`/`category` gefallen.
+  Ergebnis, Fassung und Beleg je Punkt stehen im Abschnitt „Abschlussnachweis“ der README. N-0068
+  steht dort als „geliefert, Abnahme offen“, nicht als erfüllt.
 
 ## 30.09.2026 — Fragen: Arbeit fortsetzen (Pedi 28.09.2026, Ergänzung 1, Prio 3)
 
