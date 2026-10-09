@@ -306,7 +306,7 @@ describe("JOB 3044 · der Zustandsweg der Karte", () => {
     stelleFetch(() => ({ laeufe: [] }));
     const { container, qc } = await mounten();
     const karte = () => container.querySelector<HTMLElement>('[data-testid="mrun-card"]');
-    expect(karte()?.textContent).toContain(i18n.t("mrun.empty"));
+    expect(karte()?.textContent).toContain(i18n.t("fachwort.kiLaeufe.leer"));
     expect(karte()?.querySelector('[data-testid="mrun-offline"]')).toBeNull();
 
     onlineManager.setOnline(false);
@@ -317,7 +317,7 @@ describe("JOB 3044 · der Zustandsweg der Karte", () => {
 
     // Der Leertext bleibt — er ist eine erfolgreich geladene Auskunft. Aber er darf offline nicht
     // ALLEIN dastehen: sonst behauptet er einen aktuellen Bestand, der gerade nicht abfragbar ist.
-    expect(karte()?.textContent).toContain(i18n.t("mrun.empty"));
+    expect(karte()?.textContent).toContain(i18n.t("fachwort.kiLaeufe.leer"));
     expect(karte()?.querySelector('[data-testid="mrun-offline"]')?.textContent).toBe(
       i18n.t("mrun.offline"),
     );
