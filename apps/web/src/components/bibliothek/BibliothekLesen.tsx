@@ -1,6 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileText, Image as ImageIcon, Paperclip, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
@@ -85,7 +93,6 @@ import {
   latestValidationFeedback,
 } from "../../lib/validationFeedback";
 import { isReturnedForRework } from "../../lib/validationStatus";
-import { TELEFON_LESE_QUERY, useMediaQuery } from "../../shell/useMediaQuery";
 import { AiAssistBox } from "../AiAssistBox";
 import { BodyExtractPanel } from "../BodyExtractPanel";
 import { BodyImageGallery } from "../BodyImageGallery";
@@ -109,7 +116,7 @@ import { WissensbeziehungenBereich } from "../WissensbeziehungenBereich";
 // Sprungziel ist die Elementreferenz selbst. `tests/wiki-orientierung/…` (O9) hält beides fest.
 import { type D44Eintrag, d44LeisteZeigen, d44SichtbareEintraege } from "../d44Struktur";
 import { ListEditor, TagEditor } from "../editors";
-import { KenntnisnahmeBereich } from "../kenntnisnahme/KenntnisnahmeBereich";
+import { KenntnisnahmeBereich, KenntnisnahmeVerweis } from "../kenntnisnahme/KenntnisnahmeBereich";
 import { NegativwissenAnzeige } from "../ko/NegativwissenAnzeige";
 import { KNOWLEDGE_TYPES } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
@@ -947,6 +954,7 @@ export function BibliothekLesen({
   hinweisSchonGesagt,
   lesevarianteSchonGesagt,
   onBearbeiten,
+  nachDemInhalt,
 }: {
   koId: string;
   // Der Text aus dem Suchfeld — er belegt die Frage auf der Fragen-Seite vor (5a: die frühere Karte
@@ -977,6 +985,13 @@ export function BibliothekLesen({
   // AUFNAHME 20260922 · GESAMT-NAVIGATION (R-1023 b): sagt der Fläche, ob gerade bearbeitet wird —
   // sie klappt dann die Trefferliste daneben ein (`BibliothekFlaeche.tsx`, „Entlastung").
   onBearbeiten?: ((aktiv: boolean) => void) | undefined;
+  /**
+   * LESEN-INHALT-ZUERST (Ben, nacharbeit-6): Metadaten der Seite, die NACH dem fachlichen Inhalt
+   * stehen — auf `/wissen/:id` die Fläche „Space und Verantwortung" (`SpaceZeile`). Sie stand vor
+   * der ganzen Fläche und schob Titel und erste Regel mobil um etwa 260 px nach unten. Gezeigt wird
+   * sie unverändert (Funktionen und Rechte gehören ihr), nur an anderer Stelle.
+   */
+  nachDemInhalt?: ReactNode | undefined;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const [params] = useSearchParams();
@@ -994,8 +1009,6 @@ export function BibliothekLesen({
   // Aus der EINEN Quelle (`lib/netzzustand.ts`, `onlineManager`), nicht aus `navigator.onLine`.
   const netzOnline = useNetzOnline();
   const { role } = useRole();
-  // N-0037: auf dem Telefon steht der Kenntnisnahme-Bereich NACH dem Bericht (s. dort).
-  const telefon = useMediaQuery(TELEFON_LESE_QUERY);
   const { user } = useSession();
   const { push } = useToast();
   const qc = useQueryClient();
@@ -2553,9 +2566,20 @@ export function BibliothekLesen({
   const rueckzugMoeglich =
     eigenesObjekt && darfLoeschen && (kollision.art === "dublette" || kollision.art === "beides");
   const fb = latestValidationFeedback(ko.comments);
-  // Kenntnisnahme einer gültigen Fassung — EIN Element, je nach Breite an einer von zwei Stellen.
-  const kenntnisnahme = (
-    <KenntnisnahmeBereich koId={koId} darfAnfordern={role === "controller" || role === "admin"} />
+  // Kenntnisnahme einer gültigen Fassung: die eigene Anforderung (Bestätigen nur per Klick) und —
+  // mit Zuweisungsrecht — Anfordern und Übersicht. Ohne beides erscheint nichts. `darfAnfordern`
+  // spiegelt `ko.assign` (Controller/Admin) nur für die Anzeige; entschieden wird am Server.
+  // LESEN-INHALT-ZUERST: EIN Element, gezeigt NACH dem Inhalt — im Lesen wie im Bearbeiten und auf
+  // JEDER Breite. Damit ist auch die Telefonregel aus N-0037 (Aufnahme 20260922: auf < 760 px nicht
+  // vor dem Titel, `tests/bibliothek-schmal/telefon-chromium.test.ts` C7) erfüllt, ohne eine zweite,
+  // breitenabhängige Stelle.
+  const kenntnisnahmeZiel = `kenntnisnahme-${koId}`;
+  const kenntnisnahmeFlaeche = (
+    <KenntnisnahmeBereich
+      koId={koId}
+      darfAnfordern={role === "controller" || role === "admin"}
+      zielId={kenntnisnahmeZiel}
+    />
   );
 
   return (
@@ -2571,8 +2595,9 @@ export function BibliothekLesen({
           derselben Quelle — seit JOB 3063 R6 auch in DERSELBEN Bauform (`AuffrischungHinweis`),
           nicht mehr als abgeschriebener Zwilling. Er schweigt, wenn die Liste es schon sagt. */}
         {hinweisSchonGesagt ? null : <AuffrischungHinweis query={query} />}
-        {/* Kopfzeile: Pille · Meta · Fragen · „…" */}
-        <div className="flex items-center gap-2">
+        {/* Kopfzeile: Pille · Meta · Fragen · „…". LESEN-INHALT-ZUERST: bei 390 px Breite bricht
+            die Zeile um, statt die Meta-Zeile zusammenzudrücken. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
           <span
             data-testid="bib-pille"
             data-bib-text="pille"
@@ -2911,16 +2936,13 @@ export function BibliothekLesen({
           ablaufSekunden={eigeneBearbeitung.ablaufSekunden}
           onFremdesEnde={nachlesen}
         />
-        {/* Kenntnisnahme einer gültigen Fassung: die eigene Anforderung (Bestätigen nur per Klick)
-            und — mit Zuweisungsrecht — Anfordern und Übersicht. Ohne beides erscheint nichts.
-            `darfAnfordern` spiegelt `ko.assign` (Controller/Admin) nur für die Anzeige; entschieden
-            wird am Server.
-            Aufnahme 20260922 · antwort-quellenanzeige (N-0037): auf dem Telefon (< 760 px) steht
-            der Bereich NACH dem Bericht. Mit Zuweisungsrecht ist er ein ganzes Formular (Empfänger,
-            Frist, Übersicht) und schob Titel und die Sprünge zu Quellen und Anhängen unter das
-            erste Bild (390 px, nach Neuladen: Titel bei 995–1058 px, Bildhöhe 844 —
-            tests/bibliothek-schmal/telefon-chromium.test.ts C7). Breit bleibt er hier. */}
-        {telefon ? null : kenntnisnahme}
+        {/* LESEN-INHALT-ZUERST (07.10.2026): die Kenntnisnahme-Fläche stand hier, VOR dem Titel —
+            bei Controller/Admin eine etwa 280 px hohe Karte an jedem gültigen Eintrag, auch wenn
+            nichts verlangt war (auf dem Telefon hatte N-0037 sie schon hinter den Bericht gelegt).
+            Sie steht jetzt auf jeder Breite nach dem Inhalt (`kenntnisnahmeFlaeche`); hier bleibt
+            nur der EINE Satz, solange die EIGENE Kenntnisnahme aussteht, mit Sprung zum
+            Bestätigen-Knopf. Die Pflicht bleibt damit oben sichtbar und unten wirksam. */}
+        <KenntnisnahmeVerweis koId={koId} zielId={kenntnisnahmeZiel} />
         {edit ? (
           // ---- Bearbeiten: dasselbe Formular wie bisher, an derselben Stelle -------------------
           <div className="space-y-3">
@@ -3513,6 +3535,11 @@ export function BibliothekLesen({
                 ) : null}
               </div>
             ) : null}
+            {/* LESEN-INHALT-ZUERST: die Kenntnisnahme steht auch beim Bearbeiten NACH dem Inhalt.
+                EDITOR-EINHEITLICH (K4): die Aktionsleiste steht weiter oben VOR den Meldungen; diese
+                Flächen folgen ihr und den Meldungen und verschieben sie damit nicht. */}
+            {kenntnisnahmeFlaeche}
+            {nachDemInhalt}
           </div>
         ) : (
           <>
@@ -3782,7 +3809,9 @@ export function BibliothekLesen({
             <h1
               data-testid="bib-titel"
               data-bib-text="titel"
-              className="text-[24px] font-[650] leading-[1.3] tracking-[-0.3px] text-text"
+              // LESEN-INHALT-ZUERST: lange zusammengesetzte Wörter trennen statt über den Rand zu
+              // laufen (Mobil, 390 px).
+              className="hyphens-auto break-words text-[24px] font-[650] leading-[1.3] tracking-[-0.3px] text-text"
             >
               {gelesen ? gelesen.title : ko.title}
             </h1>
@@ -3829,7 +3858,7 @@ export function BibliothekLesen({
               ref={textKnotenSetzen}
               data-testid="bib-text"
               data-bib-text="text"
-              className="text-[15.5px] leading-[1.7] text-text"
+              className="hyphens-auto break-words text-[15.5px] leading-[1.7] text-text"
             >
               {/* JOB 3362: die übersetzte Lesart des FLIESSTEXTS. Die Bildergalerie darunter bleibt
                   dem Original vorbehalten: sie ist der Weg zum Bearbeiten der Bildunterschriften,
@@ -3918,6 +3947,14 @@ export function BibliothekLesen({
                 Zustandsmodell steht an `Beziehungsbereich` oben. */}
             <Beziehungsbereich key={ko.id} koId={ko.id} />
 
+            {/* LESEN-INHALT-ZUERST: die Kenntnisnahme nachgeordnet — nach Inhalt, Quellen und
+                Beziehungen, vor „Mehr". Ohne eigene Anforderung nur eine zugeklappte Zeile. */}
+            {kenntnisnahmeFlaeche}
+
+            {/* LESEN-INHALT-ZUERST (Ben, nacharbeit-6): Seitenmetadaten wie „Space und
+                Verantwortung" — nach dem Inhalt, vor „Mehr". */}
+            {nachDemInhalt}
+
             {/* Die EINE Zeile „Mehr" — dahinter die dreizehn Abschnitte, zugeklappt als Vorgabe. */}
             <div
               id={mehrId}
@@ -3994,8 +4031,6 @@ export function BibliothekLesen({
             ) : null}
           </>
         )}
-        {/* N-0037: auf dem Telefon die Kenntnisnahme NACH dem Bericht (Begründung oben). */}
-        {telefon ? kenntnisnahme : null}
         {/* ============================================================================================
             JOB 3637 · DIE RÜCKFRAGE ZUM LÖSCHEN STEHT DA, WO GEKLICKT WURDE.
             ============================================================================================
