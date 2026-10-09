@@ -26,7 +26,7 @@ Die Demo zeigt genau diesen Kreis an realen, industrienahen Daten: **Capture →
   - **Erik Experte** — `erik@demo.klarwerk` / `demo-pass-erik` (Experte; erfasst Wissen).
   - Empfehlung für die Demo: als **Admin** anmelden (sieht alle Boards inkl. Validierung & Lifecycle).
 - **Reasoner-Modus (ehrlich anzeigen):** ohne `ANTHROPIC_API_KEY` läuft der **deterministische Fallback** (Antworten sind belegte KO-Aussagen, klar als Modus markiert); mit `ANTHROPIC_API_KEY` der **Modellmodus**. Das Modus-Badge auf der Ask-Seite zeigt dies transparent.
-- **Demo-Sprache:** Der Seed ist **deutsch**. Beispielfragen bleiben auch im EN-UI seed-sicher (technische Begriffe wie *Ventil X / Überdruck* bleiben erhalten), die KO-Inhalte selbst sind aber deutsch → Demo bevorzugt auf Deutsch zeigen.
+- **Demo-Sprache:** Über die Admin-Oberfläche geladen, entsteht der Seed in der Oberflächensprache des ladenden Admins (Deutsch, Englisch oder Niederländisch; `demoTexts(locale)` in `seed-demo.ts`). Kategorien und Schlagwörter bleiben deutsch; ohne Sprachangabe (Vorgabe `de`) ist er deutsch. Die Zitate unten nennen die deutsche Fassung.
 
 ---
 
@@ -42,7 +42,7 @@ Jeder Schritt: **Screen/Route · Aktion · sichtbarer Beleg · Sprecherhinweis.*
 
 ### Schritt 1 — Start: Knowledge-OS-Kreis & bester nächster Einstieg
 - **Route:** `/start`
-- **Aktion:** Auf die Sektion „Der Klarwerk-Wissenskreis" zeigen; danach auf „Bester nächster Einstieg".
+- **Aktion:** Auf die Sektion „Der Klarwerk-Wissenskreis" zeigen; danach auf den empfohlenen nächsten Einstieg.
 - **Beleg:** Vier Schritt-Karten **Erfassen → Validieren → Nutzen → Aktuell halten** (jeder Schritt verlinkt eine echte Route, „Nutzen" führt mit vorbefüllter Frage nach Ask). Darunter die priorisierte Arbeitsübersicht + KPIs (Gesamt/Offen/Validiert/Lücken).
 - **Sprecher:** „Der gesamte Lebenszyklus von Wissen — sichtbar als Arbeitsführung, nicht als Blackbox."
 
@@ -60,7 +60,7 @@ Jeder Schritt: **Screen/Route · Aktion · sichtbarer Beleg · Sprecherhinweis.*
 
 ### Schritt 4 — Use: Fragen mit Quellenbindung
 - **Route:** `/fragen`
-- **Aktion:** Beispielchip mit Erwartung **„findet validiertes Wissen"** klicken (seed-sicher: *Ventil X / Überdruck*) → „Fragen".
+- **Aktion:** Beispielchip mit Erwartung **„findet passendes Wissen"** klicken (seed-sicher: *Ventil X / Überdruck*) → „Fragen".
 - **Beleg:** Antwort mit **Status (gesichert vs. ungeprüft)**, **Vertrauen**, **Belegschritten** und **Quellen als Links** (KO-Titel statt roher ID) — fokussiert auf das tatsächlich genutzte KO. Modus-Badge zeigt den Reasoner-Modus.
 - **Sprecher:** „Die Antwort ist quellengebunden und nachvollziehbar — kein generativer Bluff."
 
@@ -79,7 +79,7 @@ Jeder Schritt: **Screen/Route · Aktion · sichtbarer Beleg · Sprecherhinweis.*
 ### Schritt 7 — Maintain: Revalidierung
 - **Route:** `/lebenszyklus`
 - **Aktion:** Im Bereich „Zur Re-Validierung" das fällige Objekt zeigen (gekoppelt an Anlage **ANL-01**, durch Anlagenänderung markiert). „Noch gültig → neue Version" bestätigen.
-- **Beleg:** Pending-Karte mit Titel/Anlagenbezug/nächstem Schritt + CTA in die Validierung; nach der Bestätigung eine **Success-Card** „Revalidierung erfasst" mit **Objekt ansehen** und (falls auflösbar) **Wissen nutzen**.
+- **Beleg:** Pending-Karte mit Titel/Anlagenbezug/nächstem Schritt + CTA in die Validierung; nach der Bestätigung eine **Success-Card** „Revalidierung erfasst" mit **Objekt ansehen** und (falls auflösbar) **Wissen nutzen (fragen)**.
 - **Sprecher:** „Wenn sich die Anlage ändert, fordert Klarwerk aktiv die Prüfung an — Wissen bleibt aktuell, statt stillschweigend zu veralten."
 
 **Schluss-Satz:** „Capture → Validate → Use → Maintain — ein geschlossener Kreis. Das Modell darf sich ändern; das geprüfte Wissen bleibt."
@@ -104,7 +104,7 @@ Seed-Mindestsignale (durch `seed.test.ts` abgesichert): ≥3 User, ≥5 KOs, ≥
 
 ## 5. P2-Hinweise (transparent, in dieser Demo nicht lösen)
 
-- **EN/DE-Seed-Mix:** Im englischen UI bleiben Beispielfragen treffsicher (technische Seed-Begriffe erhalten), die KO-Inhalte sind aber deutsch → Demo bevorzugt auf Deutsch zeigen oder Sprachhinweis geben.
+- **Seed-Sprache:** Titel und Aussagen folgen der Sprache des ladenden Admins; Kategorien und Schlagwörter bleiben deutsch → im englischen oder niederländischen UI einen Sprachhinweis geben.
 - **Deterministischer Reasoner wirkt „dünner":** Ohne API-Key sind Antworten belegte KO-Aussagen (ehrlich, aber nicht generativ-flüssig). Für eine „KI-stärkere" Demo optional Modellmodus mit API-Key.
 - **Informationsdichte:** `/risiko` (Cockpit + Busfaktor + Domänenrisiko + Lücken) und `/lebenszyklus` (Anlagenänderung + Pending + Lernpfad) sind inhaltsreich — für den Investorenblick ggf. nur die relevante Sektion zeigen.
 
