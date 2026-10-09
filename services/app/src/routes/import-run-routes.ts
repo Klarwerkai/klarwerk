@@ -54,6 +54,7 @@ import {
   pruefeInhaltsreferenzBindung,
 } from "../../../library-analytics";
 import type { Guards } from "../http";
+import { istLaufListe } from "../import-lauf-liste";
 import {
   type ImportRunSourceSync,
   InMemoryQuellabgleichRepo,
@@ -180,6 +181,60 @@ function elementNachAussen(ref: ImportRunItemRef, luecken: LueckenPaar = KEIN_LU
     itemOutcome: ref.itemOutcome,
     itemFailureCode: ref.itemFailureCode,
     ...luecken,
+  };
+}
+
+/** ADMIN-02: höchstens so viele Läufe je Abruf der Importliste. */
+const MAX_LAUFLISTE = 200;
+
+export interface ImportLaufListeRoutesDeps {
+  readonly importRuns: ImportRunRepo;
+  readonly quellabgleich?: QuellabgleichRepo;
+  readonly guards: Guards;
+}
+
+// ================================================================================================
+// ADMIN-02 — DIE IMPORTLISTE: die jüngsten Läufe, jeder in derselben Form wie der Einzelweg.
+// ================================================================================================
+//
+// EIN EIGENES PLUGIN, UNBEDINGT REGISTRIERT (Nacharbeit 3): Die übrigen Laufwege hängen in
+// `build-app.ts` an „irgendein Importweg ist eingeschaltet". Die Liste darf das nicht: Sind alle
+// Wege aus, ist „es gibt keine Läufe" genau die Auskunft, die eine Verwaltende braucht — eine 404
+// hiesse dagegen „diese Liste gibt es nicht" (gemessen im Smoke und am Draht, Nacharbeit 3).
+//
+// Dasselbe Recht wie jeder Lauflesweg (`users.manage`), VOR jedem Zugriff. Die Form je Lauf ist
+// `laufNachAussen` — keine zweite Leitungsform. Die Zuständigkeit (wer einen Lauf ausgelöst hat)
+// hält der Lauf NICHT fest; das sagt die Antwort ausdrücklich (`ausloeserFestgehalten`), statt
+// eine Person zu erfinden. Kann die Ablage nicht auflisten, sagt die Antwort auch das
+// (`verfuegbar: false`) — eine leere Liste hiesse sonst „es gab keine Läufe".
+export function importLaufListeRoutes(deps: ImportLaufListeRoutesDeps): FastifyPluginAsync {
+  const { importRuns, guards } = deps;
+  const quellabgleich = deps.quellabgleich ?? new InMemoryQuellabgleichRepo();
+  return async (app) => {
+    app.get<{ Querystring: { limit?: string } }>(
+      "/api/admin/import/runs",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return reply;
+        }
+        const roh = Number.parseInt(request.query?.limit ?? "", 10);
+        const limit = Number.isInteger(roh) && roh > 0 ? Math.min(roh, MAX_LAUFLISTE) : 50;
+        if (!istLaufListe(importRuns)) {
+          reply
+            .code(200)
+            .send({ verfuegbar: false, limit, ausloeserFestgehalten: false, runs: [] });
+          return reply;
+        }
+        const laeufe = await importRuns.juengsteLaeufe(limit);
+        const runs: ReturnType<typeof laufNachAussen>[] = [];
+        for (const lauf of laeufe) {
+          runs.push(laufNachAussen(lauf, await quellabgleich.lies(lauf.importId)));
+        }
+        reply.code(200).send({ verfuegbar: true, limit, ausloeserFestgehalten: false, runs });
+        return reply;
+      },
+    );
   };
 }
 

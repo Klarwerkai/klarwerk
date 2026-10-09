@@ -1,6 +1,6 @@
 import { type UseQueryResult, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { koQueryKey, useConflicts, useKos, useLibrarySearch } from "../../api/hooks";
@@ -421,6 +421,7 @@ export function BibliothekFlaeche({
   vorgewaehlt,
   beiWahl,
   beiLoeschung,
+  nachDemInhalt,
 }: {
   /** Kennung aus `/wissen/:id` — die Fläche startet mit diesem Eintrag rechts. */
   vorgewaehlt?: string | undefined;
@@ -428,6 +429,12 @@ export function BibliothekFlaeche({
   beiWahl?: ((id: string) => void) | undefined;
   /** Nur die Detailroute muss die Adresse verlassen, wenn ihr Eintrag gelöscht wurde. */
   beiLoeschung?: (() => void) | undefined;
+  /**
+   * LESEN-INHALT-ZUERST: Seitenmetadaten, die die Lesefläche NACH dem Inhalt zeigt (auf
+   * `/wissen/:id` „Space und Verantwortung"). Nur am vorgewählten Eintrag — die Angaben gehören zur
+   * Adresse, nicht zu einem Eintrag, der danach in der Liste gewählt wird.
+   */
+  nachDemInhalt?: ReactNode | undefined;
 }): JSX.Element {
   const { t } = useTranslation();
   const [params, setParams] = useSearchParams();
@@ -2625,6 +2632,7 @@ export function BibliothekFlaeche({
                 // Lesefläche dazu und fragt sie auch nicht ein zweites Mal ab. Auf `/bibliothek`
                 // gibt es diese Karte nicht, und die Lesefläche trägt die Übersetzung selbst.
                 lesevarianteSchonGesagt={vorgewaehlt !== undefined}
+                nachDemInhalt={gewaehltEffektiv === vorgewaehlt ? nachDemInhalt : undefined}
                 onBearbeiten={setLeseBearbeitet}
                 // JOB 3104 · UX-02: die gelöschte Wahl verlässt die ADRESSE — sonst zeigte sie nach
                 // dem Löschen auf eine tote Kennung, und die Fläche sagte ihrem eigenen Nutzer „Der
