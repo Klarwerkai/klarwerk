@@ -358,6 +358,69 @@ describe("K3 · normal und hervorgehoben wirken wie erklärt; Hervorheben erweit
   });
 });
 
+// Ben, Nacharbeit 8 — zwei Gegenproben zur erklärten Wirkung.
+//   GEGENPROBEN (benannt, nicht gefahren):
+//   · `meldungenFuer` wieder aus allen Belegen statt aus den Zustellungen des Kontos lesen → der
+//     Fall „spätere Rechteerteilung" wird rot (Erik bekommt die alte Meldung).
+//   · Ein globales Fenster vor dem Ausschluss stiller/fremder Veröffentlichungen → der Fall
+//     „über 100 weitere Veröffentlichungen" wird rot (die hervorgehobene Meldung fehlt).
+describe("K1/K3 · der tatsächliche Kreis ist der angekündigte — und nichts verdrängt „hervorgehoben“", () => {
+  it("spätere Rechteerteilung an ein Bestandskonto öffnet keine alte Veröffentlichungsmeldung", async () => {
+    const id = await gueltigerEintrag("Vertrauliche Abschaltfolge");
+    await services.ko.setConfidentiality(id, "vertraulich", ada.id);
+    const angekuendigt = (await stand(clara.token, id)).empfaenger?.map((k) => k.id) ?? [];
+    expect(angekuendigt).toEqual([ada.id]);
+    const antwort = await veroeffentlichen(clara.token, id, 1, "hervorgehoben");
+    expect(antwort.json()).toMatchObject({ vermerk: { empfaenger: 1 } });
+
+    // Erik bekommt NACH der Veröffentlichung Leserechte (Rolle mit Freigaberecht).
+    const hoch = await app.inject({
+      method: "PUT",
+      url: `/api/users/${erik.id}`,
+      headers: { authorization: `Bearer ${ada.token}` },
+      payload: { role: "controller" },
+    });
+    expect(hoch.statusCode).toBeLessThan(300);
+    expect((await auf(erik.token, "GET", `/api/kos/${id}`)).statusCode).toBe(200);
+
+    // Er war nicht im angekündigten Kreis — die alte Meldung erreicht ihn nicht.
+    expect(await veroeffentlichungsMeldungen(erik.token)).toEqual([]);
+    expect(await veroeffentlichungsMeldungen(ada.token)).toHaveLength(1);
+    // Am lesbaren Objekt steht nur die Anzahl des Kreises, keine Kennungen.
+    const gelesen = (await auf(erik.token, "GET", `/api/kos/${id}`)).json() as {
+      veroeffentlichungen?: Array<{ empfaenger: unknown }>;
+    };
+    expect(gelesen.veroeffentlichungen?.map((v) => v.empfaenger)).toEqual([1]);
+  });
+
+  it("über 100 weitere stille und gewöhnliche Veröffentlichungen verdrängen „hervorgehoben“ nicht", async () => {
+    const wichtig = await gueltigerEintrag("Wichtige Sperrfassung");
+    expect((await veroeffentlichen(clara.token, wichtig, 1, "hervorgehoben")).statusCode).toBe(201);
+    for (let i = 0; i < 101; i += 1) {
+      versatz += 1_000;
+      const still = await gueltigerEintrag(`Stille Fassung ${i}`);
+      expect((await veroeffentlichen(clara.token, still, 1, "still")).statusCode).toBe(201);
+    }
+    for (let i = 0; i < 101; i += 1) {
+      versatz += 1_000;
+      const normal = await gueltigerEintrag(`Gewöhnliche Fassung ${i}`);
+      expect((await veroeffentlichen(clara.token, normal, 1, "normal")).statusCode).toBe(201);
+    }
+    const feed = await glocke(erik.token);
+    // Ungelesen und hervorgehoben: steht oben — trotz 202 jüngerer Veröffentlichungen.
+    expect(feed[0]).toMatchObject({
+      kind: "veroeffentlichung",
+      koId: wichtig,
+      hervorgehoben: true,
+      seen: false,
+    });
+    const pub = feed.filter((m) => m.kind === "veroeffentlichung");
+    // Die hervorgehobene plus die jüngsten 100 gewöhnlichen; stille erzeugen nichts.
+    expect(pub).toHaveLength(101);
+    expect(pub.filter((m) => m.hervorgehoben)).toHaveLength(1);
+  });
+});
+
 describe("K4 · Entwurf und veröffentlichte Fassung eindeutig; Rechte und Prüfregeln wirken", () => {
   it("nur mit Freigaberecht: Experte und Leser dürfen nicht veröffentlichen", async () => {
     const id = await gueltigerEintrag();

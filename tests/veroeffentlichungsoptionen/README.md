@@ -64,6 +64,9 @@ diesen einen Fall nachgeführt (Version 14).
   vorhandenen Prüfprotokoll; beide Ablagen sind unverändert.
 * Keine E-Mail bei Veröffentlichung — der Auftrag nennt den vorhandenen Meldungsweg; das ist die
   Glocke. Die Prüfer-Mail beim Einreichen ist unverändert.
-* Die Glocke sieht die jüngsten 100 Veröffentlichungsbelege durch
-  (`VEROEFFENTLICHUNG_MELDUNGEN_FENSTER`).
+* Nacharbeit 8 (Ben): Der angekündigte Empfängerkreis steht je Empfänger in der eigenen Tabelle
+  `veroeffentlichung_zustellungen` (nicht am lesbaren Objekt). Die Glocke liefert nur dorthin
+  zugestellte Meldungen, solange der Eintrag sichtbar ist; spätere Rechteerteilung öffnet keine alte
+  Meldung. Hervorgehobene Zustellungen werden immer geliefert, gewöhnliche die jüngsten 100 je Konto
+  (`VEROEFFENTLICHUNG_MELDUNGEN_FENSTER`); stille erzeugen keine Zustellung.
 * Keine echte Nutzerbeobachtung, ob die Erklärung verstanden wird.

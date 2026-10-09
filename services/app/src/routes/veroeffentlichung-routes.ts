@@ -31,6 +31,7 @@ const FEHLERCODE: Record<VeroeffentlichungFehler["status"], string> = {
   400: "VALIDATION",
   404: "NOT_FOUND",
   409: "CONFLICT",
+  503: "NICHT_HALTBAR",
 };
 
 function antworteMitFehler(reply: FastifyReply, fehler: unknown): void {

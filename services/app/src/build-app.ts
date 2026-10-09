@@ -415,7 +415,12 @@ import {
   PgNachfolgeRepo,
 } from "./verantwortung-nachfolge";
 // produkt:20261007:veroeffentlichungsoptionen — Veröffentlichung mit Meldungswahl still/normal/hervorgehoben.
-import { VeroeffentlichungDienst } from "./veroeffentlichung";
+import {
+  InMemoryVeroeffentlichungsZustellungRepo,
+  PgVeroeffentlichungsZustellungRepo,
+  VeroeffentlichungDienst,
+  type VeroeffentlichungsZustellungRepo,
+} from "./veroeffentlichung";
 // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden (Kompositionswurzel, vier Module).
 import { Wissensuebergabe } from "./wissensuebergabe";
 
@@ -570,6 +575,12 @@ export interface AppServices {
   kenntnisnahmen: KenntnisnahmeRepo;
   /** Die Uhr des Kenntnisnahmedienstes (Millisekunden) — in Tests stellbar für Frist und Erinnerung. */
   kenntnisnahmeUhr: () => number;
+  /**
+   * produkt:20261007:veroeffentlichungsoptionen — die Zustellungen je Empfänger (der angekündigte
+   * Kreis einer Veröffentlichung). Bauform wie `kenntnisnahmen`: Postgres im Betrieb, sonst die
+   * Speicherfassung, die im Desktop-Journal-Betrieb das Anlegen ablehnt.
+   */
+  veroeffentlichungsZustellungen: VeroeffentlichungsZustellungRepo;
   /**
    * JOB 3363: die Ablage der Import-Kandidaten — DIESELBE Instanz, die `LibraryService` bekommt.
    * Sie steht hier, weil die Lesevarianten-Routen einen einzelnen Kandidaten nachschlagen müssen
@@ -1059,6 +1070,8 @@ export function assembleServices(
     kenntnisnahmen?: KenntnisnahmeRepo;
     // Kenntnisnahme: die Uhr für Frist, Überfälligkeit und Erinnerung — ohne Injektion `Date.now`.
     kenntnisnahmeUhr?: () => number;
+    // Veröffentlichung: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
+    veroeffentlichungsZustellungen?: VeroeffentlichungsZustellungRepo;
     // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
     // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
     // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
@@ -1431,6 +1444,10 @@ export function assembleServices(
       opts.kenntnisnahmen ??
       new InMemoryKenntnisnahmeRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
     kenntnisnahmeUhr: opts.kenntnisnahmeUhr ?? Date.now,
+    // Veröffentlichung: dieselbe Haltbarkeitsregel wie die Kenntnisnahme.
+    veroeffentlichungsZustellungen:
+      opts.veroeffentlichungsZustellungen ??
+      new InMemoryVeroeffentlichungsZustellungRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
     // der Fabrik. JOB 3134: hinter der Hülle (oben), die je Aufruf den GEWÄHLTEN Anbieter nimmt.
     zurufModell,
@@ -1886,6 +1903,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       bearbeitungen: new PgBearbeitungsRepo(pool),
       // Kenntnisnahme: Anforderungen und Bestätigungen überleben Neuladen, Neuanmeldung und Neustart.
       kenntnisnahmen: new PgKenntnisnahmeRepo(pool),
+      // Veröffentlichung: die Zustellungen überleben Neuladen, Neuanmeldung und Neustart.
+      veroeffentlichungsZustellungen: new PgVeroeffentlichungsZustellungRepo(pool),
     },
   );
 }
@@ -3894,10 +3913,8 @@ export function buildApp(
     ko: services.ko,
     leser: (ko) => kenntnisnahmeDienst.moeglicheEmpfaenger(ko),
     kontoNamen: () => kenntnisnahmeDienst.kontoNamen(),
-    kontoSeit: async (nutzerId) =>
-      (await services.auth.listUsers()).find((u) => u.id === nutzerId)?.createdAt,
     kenntnisnahmen: (ko) => kenntnisnahmeDienst.uebersicht(ko),
-    belege: () => services.audit.list({ action: "ko.veroeffentlicht" }),
+    zustellungen: services.veroeffentlichungsZustellungen,
     jetzt: services.kenntnisnahmeUhr,
     kennung: () => randomUUID(),
   });

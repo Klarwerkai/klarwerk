@@ -512,9 +512,11 @@ export interface KoFrischeSignal {
 // `empfaenger` ist die ANZAHL der beim Veröffentlichen benachrichtigten Konten (alle, die den
 // Eintrag in diesem Augenblick lesen durften, ohne die veröffentlichende Person); bei `still` 0.
 // Bewusst keine Kennungen: das Objekt geht an jeden Leser, und eine Liste der Kollegen gehört
-// nicht hinein. Wer die Meldung sieht, entscheidet die Glocke beim Lesen über dieselbe
-// Sichtbarkeitsregel (ein späterer Entzug wirkt sofort) — begrenzt auf Konten, die zum
-// Veröffentlichungszeitpunkt schon bestanden.
+// nicht hinein. Den angekündigten Kreis selbst hält die App in einer eigenen, nicht über das
+// Objekt lesbaren Ablage fest (`services/app/src/veroeffentlichung.ts`, Zustellungen je
+// Empfänger); die Glocke liefert nur dorthin zugestellte Meldungen und prüft zusätzlich die
+// aktuelle Sichtbarkeit (ein späterer Entzug wirkt sofort, eine spätere Rechteerteilung öffnet
+// keine alte Meldung).
 //
 // OPTIONAL UND OHNE MIGRATION, dieselbe Bauform wie `proposals`: das KO liegt als Voll-JSONB
 // (`kos.data`). Nur `KoService.vermerkeVeroeffentlichung` schreibt das Feld; die öffentlichen

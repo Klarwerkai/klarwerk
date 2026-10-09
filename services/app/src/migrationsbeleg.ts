@@ -175,6 +175,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf
   // ist folgenlos.
   { stufe: "EMBEDDING_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261007:veroeffentlichungsoptionen: die Zustellungen je Empfänger. ADDITIV,
+  // nachgezählt: ein `CREATE TABLE IF NOT EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein
+  // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "VEROEFFENTLICHUNG_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

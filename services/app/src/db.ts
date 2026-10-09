@@ -70,6 +70,8 @@ import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
 // Firmenwörterbuch: die Sichtbarkeitsregel (`sichtbarkeit.ts`) liest sie, kein Fachmodul besitzt sie.
 import { SPACES_SCHEMA } from "./spaces";
 import { VERANTWORTUNG_NACHFOLGE_SCHEMA } from "./verantwortung-nachfolge";
+// produkt:20261007:veroeffentlichungsoptionen: die Zustellungen je Empfänger einer Veröffentlichung.
+import { VEROEFFENTLICHUNG_SCHEMA } from "./veroeffentlichung";
 
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
 // R-0798: mit Zeitgrenzen — begrenztes Warten auf eine freie Verbindung (Notbremse für den Vorrat)
@@ -277,6 +279,10 @@ export const schemas = [
   // R-0470: der dauerhafte Vektorspeicher des Textprüfungs-Vorfilters. Additiv und wiederholbar
   // (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension (kein pgvector), ohne Seed.
   EMBEDDING_SCHEMA,
+  // produkt:20261007:veroeffentlichungsoptionen: die Zustellungen je Empfänger einer
+  // Veröffentlichung. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne
+  // Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  VEROEFFENTLICHUNG_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).
