@@ -7003,6 +7003,15 @@ const de = {
   // Erklärsatz — nur die Wörter, die auf der Fläche stehen. Die Erklärungen leben unverändert in
   // `chelp.*` und erscheinen im „?"-Menü.
   "erfassen.werkzeug.diktieren": "Diktieren",
+  // Aufnahme gesamt-sprachassistent (R-0104): Sprechen über das Browser-Diktat hinaus — die
+  // Aufnahme wird vom Server verschriftlicht (`lib/sprachaufnahme.ts`).
+  "sprachaufnahme.start": "Aufnehmen",
+  "sprachaufnahme.stop": "Aufnahme beenden",
+  "sprachaufnahme.frage": "Frage aufnehmen und verschriftlichen",
+  "sprachaufnahme.verarbeitet": "Wird verschriftlicht …",
+  "sprachaufnahme.keinMikrofon":
+    "Kein Zugriff auf das Mikrofon. Bitte im Browser erlauben oder den Text eintippen.",
+  "sprachaufnahme.fehler": "Die Aufnahme konnte nicht verschriftlicht werden.",
   "erfassen.werkzeug.bild": "Bild",
   "erfassen.werkzeug.datei": "Datei",
   "erfassen.werkzeug.ki": "KI",
