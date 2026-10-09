@@ -468,6 +468,8 @@ PFLICHTTABELLEN=(
   assignments
   conflicts
   conflict_pair_memory
+  conflict_pair_obligation_runs
+  conflict_pair_obligations
   ko_overlaps
   overlap_settings
   lifecycle_couplings
