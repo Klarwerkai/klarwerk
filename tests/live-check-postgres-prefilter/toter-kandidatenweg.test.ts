@@ -1093,9 +1093,13 @@ describe("JOB 3607 · (a) der Kandidatenweg der Adapter hat im Produkt keinen Au
   // wird. Genau das ist die Bauform, gegen die diese Datei überhaupt steht.
   it("JOB 3895 · Gegenbeleg auf der ECHTEN `.tsx`-Fläche: der Prüfer nennt Element, nicht any", () => {
     const umgebung = produktprogramm(produktdateien());
+    // R-0909 (Aufnahme `gesamt-dialog-bedienung`): die Datei wurde umgebaut, und genau deshalb ist
+    // dieser Fall hier nachgeführt statt still geworden — der gemeinsame `GrenzDialog` trägt eine
+    // dritte JSX-Stelle, ein weiteres eingebautes DOM-Element. Die beiden alten stehen unverändert.
     expect(jsxGestalten(umgebung, GRENZE_MODUL)).toEqual([
       "ModalBoundaryCtx.Provider:188 → Element",
       "div:216 → Element",
+      "dialog:304 → Element",
     ]);
   });
 

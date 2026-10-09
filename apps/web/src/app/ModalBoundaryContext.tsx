@@ -218,3 +218,101 @@ export function ModalRegion({
     </div>
   );
 }
+
+// ================================================================================================
+// R-0909 (Aufnahme `gesamt-dialog-bedienung`) — DIE FLÄCHE SAGT, DASS SIE EIN DIALOG IST.
+// ================================================================================================
+//
+// DER BEFUND (Ben, Nacharbeit 2): `Modal.tsx` (darunter der Hinweis auf ungespeicherte Änderungen),
+// die Befehlspalette und das Studio sperrten zwar den Hintergrund oder sahen wie ein Fenster aus —
+// für ein Vorleseprogramm waren sie aber ein namenloser Kasten: keine Dialogrolle, kein Name.
+//
+// WARUM DIE SEMANTIK HIER STEHT UND NICHT IN DEN DREI DATEIEN: `aria-modal` darf nur tragen, wer
+// wirklich an der Grenze hängt (mega48, fail-closed). Alle drei Flächen werden aber auch OHNE
+// Grenze gerendert — der Navigationswächter im Absturzfall (er hängt oberhalb der Shell), die
+// Palette und das Studio in gemounteten Proben ohne Shell. Ein `useModalBoundary()` in ihnen würde
+// dort werfen. Dieser Baustein löst das an der EINEN Stelle, an der die Wahrheit liegt:
+//
+//   · Er meldet sich SELBST an der Grenze an (`enter`) und gibt beim Schließen den Fokus zurück —
+//     dieselbe Mechanik, die bis hierher in `Modal.tsx` stand, nur einmal für alle.
+//   · `aria-modal="true"` steht GENAU DANN, wenn er sich angemeldet hat. Ohne Grenze bleibt er ein
+//     benannter Dialog ohne Modalitätsbehauptung — wahr in beiden Lagen, nie nur behauptet.
+//   · Rolle (natives `<dialog>`, ohne `showModal()`: Sperre und Fokus führt die Grenze, nicht der
+//     Browser) und Name (`aria-labelledby` auf die sichtbare Überschrift oder `aria-label`) trägt er
+//     IMMER.
+//
+// Die Portalfrage bleibt beim Aufrufer: `Modal` portiert seine ganze Ebene samt Klickfänger, die
+// Palette und das Studio ebenso — wohin, sagt `host()` derselben Grenze.
+export function GrenzDialog({
+  grenze,
+  benanntDurch,
+  name,
+  ausloeser,
+  anfangsfokus = true,
+  marke,
+  className,
+  onKeyDown,
+  children,
+}: {
+  /** Ausdrücklich gereichte Grenze (Navigationswächter) oder `null` für „keine"; sonst der Kontext. */
+  grenze?: Pick<ModalBoundaryValue, "enter"> | null | undefined;
+  /** `id` der sichtbaren Überschrift — sie ist der Name des Dialogs. */
+  benanntDurch?: string | undefined;
+  /** Name, wenn es keine sichtbare Überschrift gibt. */
+  name?: string | undefined;
+  /** Rückgabeziel beim Schließen; ohne Angabe das beim Öffnen fokussierte Element. */
+  ausloeser?: (() => HTMLElement | null) | undefined;
+  /** Den Fokus beim Öffnen ins erste Bedienelement setzen (Vorgabe) — oder es der Fläche lassen. */
+  anfangsfokus?: boolean;
+  /** Ein Datenattribut auf dem Dialog selbst (z. B. `data-navguard-dialog`). */
+  marke?: string | undefined;
+  className?: string | undefined;
+  onKeyDown?: JSX.IntrinsicElements["dialog"]["onKeyDown"];
+  children: ReactNode;
+}): JSX.Element {
+  const ausKontext = useContext(ModalBoundaryCtx);
+  const wirksam = grenze === undefined ? ausKontext : grenze;
+  // NUR `enter` als Abhängigkeit (Bauform `Modal.tsx`, mega87): das Kontextobjekt wechselt mit
+  // `locked`, und das setzt gerade unsere eigene Anmeldung.
+  const anmelden = wirksam?.enter;
+  const flaeche = useRef<HTMLDialogElement | null>(null);
+  const ausloeserRef = useRef(ausloeser);
+  ausloeserRef.current = ausloeser;
+
+  useEffect(() => {
+    // Der Auslöser ist das, was beim Öffnen den Fokus trug — gelesen, BEVOR der Fokus wandert.
+    // `body` ist keiner: ein programmatisch geöffneter Dialog hat kein Bedienelement hinter sich.
+    const aktiv = document.activeElement;
+    const gemerkt = aktiv instanceof HTMLElement && aktiv !== document.body ? aktiv : null;
+    const abmelden = anmelden?.({
+      panel: () => flaeche.current,
+      trigger: () => {
+        const eigenes = ausloeserRef.current;
+        return eigenes ? eigenes() : gemerkt;
+      },
+    });
+    if (anfangsfokus) {
+      focusFirstIn(flaeche.current);
+    }
+    return () => {
+      // Die Grenze gibt beim Abmelden den Fokus zurück — erst den Hintergrund frei, dann fokussieren.
+      abmelden?.();
+    };
+  }, [anmelden, anfangsfokus]);
+
+  return (
+    <dialog
+      ref={flaeche}
+      open
+      aria-modal={anmelden ? "true" : undefined}
+      aria-labelledby={benanntDurch}
+      aria-label={name}
+      tabIndex={-1}
+      onKeyDown={onKeyDown}
+      className={className}
+      {...(marke ? { [marke]: "" } : {})}
+    >
+      {children}
+    </dialog>
+  );
+}
