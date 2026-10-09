@@ -1604,6 +1604,19 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             sendMissingConfidentiality(reply);
             return;
           }
+          // R-0034 / FR-CAP-08: das Fachgebiet beim Anlegen trägt dieselbe Grenze wie die Aktion
+          // `domain` — ein Nicht-Text oder ein überlanger Wert ist ein 400, nichts wird gekürzt.
+          if (
+            input.domain !== undefined &&
+            input.domain !== null &&
+            (typeof input.domain !== "string" || input.domain.trim().length > DOMAIN_MAX_LENGTH)
+          ) {
+            reply.code(400).send({
+              error: "INVALID",
+              message: `domain muss Text mit höchstens ${DOMAIN_MAX_LENGTH} Zeichen sein.`,
+            });
+            return;
+          }
           const created = await ko.create({ ...input, author: user.id });
           // SCRUM-395: Prüfer-Vorschlag beim Einreichen — der Autor darf für sein EIGENES,
           // frisch eingereichtes KO Prüfer benennen (dedupliziert, ohne sich selbst).
