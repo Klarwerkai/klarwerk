@@ -23,7 +23,15 @@
 // Dafür braucht es nur `git apply` (arbeitet ohne Repository) und denselben Vitest wie im Tor.
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, readFileSync, readdirSync, realpathSync, symlinkSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  symlinkSync,
+} from "node:fs";
 import { basename, join, relative, sep } from "node:path";
 
 export const WURZEL = join(__dirname, "..", "..");
@@ -56,7 +64,14 @@ const NICHT_KOPIEREN = new Set(["node_modules", ".git", ".local", "coverage", "t
 
 function mitnehmen(quelle: string): boolean {
   const name = basename(quelle);
-  return !NICHT_KOPIEREN.has(name) && name !== "dist" && !name.startsWith("dist-");
+  if (NICHT_KOPIEREN.has(name) || name === "dist" || name.startsWith("dist-")) {
+    return false;
+  }
+  // Nur Ordner, Dateien und Symlinks. Ein Socket oder eine Pipe im Baum (laufende Dienste im
+  // Prüfbaum) lässt `cpSync` mit „Unreachable code" in `getStats` abbrechen (Prüflauf
+  // nacharbeit-4) — beides ist kein Quelltext und gehört nicht in die Kopie.
+  const art = lstatSync(quelle);
+  return art.isDirectory() || art.isFile() || art.isSymbolicLink();
 }
 
 /** Alle `node_modules` des Arbeitsbaums bis Tiefe 3 — sie werden in der Kopie verlinkt. */
