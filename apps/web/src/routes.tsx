@@ -159,6 +159,11 @@ const PlaceholderPage = lazy(() =>
   import("./pages/PlaceholderPage").then((m) => ({ default: m.PlaceholderPage })),
 );
 const Profile = lazy(() => import("./pages/Profile").then((m) => ({ default: m.Profile })));
+// ADMIN-15: interne Richtlinien (alle Konten) und ihre Verwaltung samt Unternehmensprofil —
+// nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
+const Richtlinien = lazy(() =>
+  import("./pages/Richtlinien").then((m) => ({ default: m.Richtlinien })),
+);
 const Risk = lazy(() => import("./pages/Risk").then((m) => ({ default: m.Risk })));
 // produkt:20261007:spaces: nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
 const Spaces = lazy(() => import("./pages/Spaces").then((m) => ({ default: m.Spaces })));
@@ -170,6 +175,9 @@ const ImportReview = lazy(() =>
 );
 const Output = lazy(() => import("./pages/Stufe2").then((m) => ({ default: m.Output })));
 const UiKit = lazy(() => import("./pages/UiKit").then((m) => ({ default: m.UiKit })));
+const Unternehmen = lazy(() =>
+  import("./pages/Unternehmen").then((m) => ({ default: m.Unternehmen })),
+);
 const Validation = lazy(() =>
   import("./pages/Validation").then((m) => ({ default: m.Validation })),
 );
@@ -369,6 +377,13 @@ export function AppRoutes(): JSX.Element {
             spaces-routes.ts`). Erreichbar über die Spacezeile jedes Artikels und über Klara. */}
         <Route path="/spaces" element={<Spaces />} />
         <Route path="/spaces/:id" element={<Spaces />} />
+        {/* ADMIN-15: Unternehmensprofil und interne Richtlinien. Ohne `Guarded`, wie `/begriffe`:
+            die Türen dahinter fordern ihr Recht am Server (`requireUser` zum Lesen und für die
+            eigene Kenntnisnahme/Zustimmung, `users.manage` für die Verwaltung,
+            `services/app/src/routes/unternehmen-routes.ts`). Erreichbar über das Konto-Menü
+            (`/richtlinien`) und die Verwaltung unter „System" (`/unternehmen`). */}
+        <Route path="/richtlinien" element={<Richtlinien />} />
+        <Route path="/unternehmen" element={<Unternehmen />} />
         <Route path="/mobile" element={<Mobile />} />
         <Route path="/ui-kit" element={<UiKit />} />
         <Route path="*" element={<Navigate to={HOME_ROUTE} replace />} />
