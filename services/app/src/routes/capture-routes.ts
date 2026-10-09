@@ -880,6 +880,8 @@ export type DraftCreateRequest = DraftPayload & {
   operationId?: string;
   expectedOwner?: string;
   dokumentId?: string;
+  /** entscheidung:14ce8681: einen unklar gebliebenen Vorgang mit geändertem Inhalt fortschreiben. */
+  fortschreiben?: boolean;
 };
 
 /**
@@ -1208,6 +1210,8 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           expectedOwner: rohEigentuemer,
           // R-0169 (Nacharbeit 5): Transport wie `operationId`, nie Payload.
           dokumentId: rohDokumentId,
+          // entscheidung:14ce8681: Transport wie `operationId`, nie Payload.
+          fortschreiben: rohFortschreiben,
           ...nutzlast
         } = request.body ?? {};
         const gestalt = validateDraftPayloadShape(nutzlast);
@@ -1276,11 +1280,15 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // `IDEMPOTENCY_PAYLOAD_MISMATCH` aus dem Dienst und wird von `sendError` auf 409
           // abgebildet (`http.ts:65`). Ohne Kennung ist `angelegt` immer `true` — der
           // Bestandspfad antwortet unverändert mit 201.
-          const { draft, angelegt } = await capture.createDraftVorgang(
+          // entscheidung:14ce8681 (Option A): `fortschreiben` erlaubt dem Dienst, einen unklar
+          // gebliebenen ersten Vorgang mit dem geänderten Inhalt fortzuschreiben, statt mit 409 zu
+          // antworten. Nur ein ausdrückliches `true` zählt; alles andere ist der Bestandsweg.
+          const { draft, angelegt, fortgeschrieben } = await capture.createDraftVorgang(
             // JOB 2703 D2: die Aussage geht kanonisch gekuerzt in die Ablage — eine Regel, ein Ort.
             mitKanonischerAussage(neuerEntwurf),
             user.id,
             vorgangsId,
+            { fortschreiben: rohFortschreiben === true },
           );
           // R-0169 (Nacharbeit 5): ein Word-Entwurf wird an eine Fassung gebunden.
           // NACHARBEIT 8 (bens F2): nicht mehr nur beim NEU angelegten Entwurf. Scheiterte das
@@ -1294,7 +1302,17 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             ausWord && !draft.dokumentHerkunft
               ? await anWordDokumentBinden({ capture, dokumente }, draft, dokumentId, user.id)
               : draft;
-          reply.code(angelegt ? 201 : 200).send(antwort);
+          // entscheidung:8b909a1e (Option A): die Oberfläche soll sagen können „war bereits
+          // gespeichert, kein zweiter Eintrag". Der Statuscode allein erreicht sie nicht (der Client
+          // liefert nur den Rumpf aus), deshalb steht die Auskunft als TRANSPORTFELD neben dem
+          // Entwurf — nur bei einer Wiederholung, nie im gespeicherten Dokument.
+          reply
+            .code(angelegt ? 201 : 200)
+            .send(
+              angelegt
+                ? antwort
+                : { ...antwort, anlage: fortgeschrieben ? "fortgeschrieben" : "bestehend" },
+            );
         } catch (error) {
           sendError(reply, error);
         }
