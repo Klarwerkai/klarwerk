@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 import { migrateAuthTokensAtRest } from "../../auth";
+import { WISSENSSPRINT_TAKT_MS } from "../../management";
 import { buildApp, buildPgServices, buildServices } from "./build-app";
 import { createPool, migrate } from "./db";
 import { buildDevPersistServices } from "./dev-persist";
@@ -267,6 +268,23 @@ async function start(): Promise<void> {
     onSwept: gedaechtnisGeloescht("periodisch"),
     onError: (error) => app.log.warn({ err: error }, "Gedächtnis-Aufräumlauf übersprungen"),
   });
+  // R-1657 (Nacharbeit 2): „KLARWERK analysiert regelmäßig …" — die Lückenerkennung über den
+  // Reasoner läuft im eigenen Takt über die vorgemerkten Betrachtersichten (services/management,
+  // `wissenssprintLauf`). Intervall aus KLARWERK_WISSENSSPRINT_INTERVAL_MS, Vorgabe 15 min,
+  // Untergrenze 1 min (dieselbe Auslegung wie beim Papierkorb-Takt).
+  const sprintTakt = resolveTrashSweepIntervalMs(
+    process.env.KLARWERK_WISSENSSPRINT_INTERVAL_MS,
+    WISSENSSPRINT_TAKT_MS,
+  );
+  services.management.regelmaessigeAnalyseAktiv(sprintTakt);
+  startTrashSweepScheduler({
+    intervalMs: sprintTakt,
+    runSweep: () => services.management.wissenssprintLauf(),
+    onError: (error) => app.log.warn({ err: error }, "Lückenerkennung übersprungen"),
+  });
+  app.log.info(
+    `Lückenerkennung über den Reasoner aktiv — Takt ${Math.round(sprintTakt / 60000)} min.`,
+  );
   // R-0710: Wissensereignisse an Fremdwerkzeuge (`wissensereignisse.ts`). Ohne gültiges Ziel in
   // KLARWERK_WEBHOOKS läuft nichts — kein Takt, kein Protokolleintrag.
   const webhooks = ladeWebhookZiele(process.env);

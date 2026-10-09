@@ -977,6 +977,89 @@ export const TABELLE: Zeile[] = [
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
+  // Betroffenenrechte (R-0661, R-0663): die EIGENEN Daten und der EIGENE Löschantrag — jede
+  // angemeldete Rolle, auch der Gast. Die Nutzlasten sind so gewählt, dass nichts angelegt wird: eine
+  // Begründung, die kein Text ist, endet nach dem Tor mit 400; eine erfundene Antragskennung mit 404.
+  {
+    gruppe: "datenschutzRoutes",
+    methode: "GET",
+    pfad: "/api/me/daten",
+    belegstelle: "services/app/src/routes/datenschutz-routes.ts:114",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "datenschutzRoutes",
+    methode: "GET",
+    pfad: "/api/me/loeschantrag",
+    belegstelle: "services/app/src/routes/datenschutz-routes.ts:135",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "datenschutzRoutes",
+    methode: "POST",
+    pfad: "/api/me/loeschantrag",
+    belegstelle: "services/app/src/routes/datenschutz-routes.ts:148",
+    tor: "requireUser",
+    payload: { begruendung: 7 },
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "datenschutzRoutes",
+    methode: "POST",
+    pfad: "/api/me/loeschantrag/gibt-es-nicht/zurueckziehen",
+    route: "/api/me/loeschantrag/:id/zurueckziehen",
+    belegstelle: "services/app/src/routes/datenschutz-routes.ts:182",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  // Fremde Konten, Entscheidungen und das Verzeichnis: dieselbe Schranke wie das Löschen eines
+  // Kontos (`users.manage`). Ablehnen ohne Grund endet nach dem Tor mit 400, eine erfundene Kennung
+  // mit 404 — es wird nichts entschieden.
+  {
+    gruppe: "datenschutzRoutes",
+    methode: "GET",
+    pfad: "/api/datenschutz/loeschantraege",
+    belegstelle: "services/app/src/routes/datenschutz-routes.ts:220",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "datenschutzRoutes",
+    methode: "POST",
+    pfad: "/api/datenschutz/loeschantraege/gibt-es-nicht/erledigen",
+    route: "/api/datenschutz/loeschantraege/:id/erledigen",
+    belegstelle: "services/app/src/routes/datenschutz-routes.ts:239",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "datenschutzRoutes",
+    methode: "POST",
+    pfad: "/api/datenschutz/loeschantraege/gibt-es-nicht/ablehnen",
+    route: "/api/datenschutz/loeschantraege/:id/ablehnen",
+    belegstelle: "services/app/src/routes/datenschutz-routes.ts:319",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "datenschutzRoutes",
+    methode: "GET",
+    pfad: "/api/datenschutz/auskunft/gibt-es-nicht",
+    route: "/api/datenschutz/auskunft/:nutzerId",
+    belegstelle: "services/app/src/routes/datenschutz-routes.ts:366",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "datenschutzRoutes",
+    methode: "GET",
+    pfad: "/api/datenschutz/verarbeitungsverzeichnis",
+    belegstelle: "services/app/src/routes/datenschutz-routes.ts:390",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
   // R-0466: das eigene Interaktionsgedächtnis. Jede angemeldete Rolle führt ihr eigenes; die
   // schreibenden Türen stehen in `schreibende-tueren.ts`.
   {

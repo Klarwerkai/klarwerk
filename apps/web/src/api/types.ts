@@ -1237,6 +1237,11 @@ export interface Draft {
   // Aufnahme entwurf-in-gemeinsamen-pool-geben (R-2099): der Autor hat diesen Entwurf bewusst in den
   // gemeinsamen Pool gegeben. Fehlt das Feld, ist der Entwurf privat (der Standardfall).
   imPool?: true;
+  // entscheidung:8b909a1e: NUR in der Antwort auf `POST /api/drafts` mit Vorgangsschlüssel, und nur
+  // wenn der Server dabei NICHTS neu angelegt hat — „bestehend" (derselbe Inhalt war schon da) oder
+  // „fortgeschrieben" (derselbe Entwurf trägt jetzt den geänderten Inhalt, entscheidung:14ce8681).
+  // Fehlt das Feld, war es eine echte Erstspeicherung.
+  anlage?: "bestehend" | "fortgeschrieben";
 }
 
 export interface BusFactorEntry {
@@ -2375,6 +2380,26 @@ export interface MgmtPriority {
   flags: MgmtPriorityFlag[];
 }
 
+// R-1657 (ROADMAP 9.3): Wissens-Sprint-Vorschläge je Bereich, wie der Server sie liefert
+// (services/management/src/metrics.ts → sprints).
+export type MgmtSprintReasonKey = "conflicts" | "revalidation" | "lowTrust" | "thinKnowledge";
+export interface MgmtSprint {
+  category: string;
+  reasons: { key: MgmtSprintReasonKey; count: number }[];
+  workItems: number;
+  days: number;
+  // Nacharbeit 2: Reasoner-Urteil über genau diese Kennzahlen oder die benannte Regel.
+  source?: "reasoner" | "rule";
+}
+// Nacharbeit 2: Stand der regelmäßigen Reasoner-Analyse für die eigene Sicht.
+export interface MgmtSprintAnalysis {
+  regular: boolean;
+  intervalMs: number | null;
+  analyzedAt: string | null;
+  provider: string | null;
+  failure: string | null;
+}
+
 // R-0751 / R-1639 / R-2183 (Nacharbeit 3): gepflegte Bereichsprofile und Ruhestandshorizonte
 // (services/management/src/profiles.ts) und der daraus abgeleitete Bereichsblick (horizon.ts).
 export type AssessmentLevel = "niedrig" | "mittel" | "hoch";
@@ -2454,6 +2479,9 @@ export interface ManagementSnapshot {
   maturity: { stage: number; stageKey: string; progressPct: number };
   priorities: MgmtPriority[];
   recommendations: { key: string; severity: "hoch" | "mittel"; count: number }[];
+  // Optional: ein Server ohne R-1657 liefert das Feld nicht; die Fläche zeigt dann keine Sprints.
+  sprints?: MgmtSprint[];
+  sprintAnalysis?: MgmtSprintAnalysis;
   house: { category: string; koCount: number; validatedRatio: number; fragile: boolean }[];
   pilot: { days: number; created: number; validated: number }[];
 }
@@ -3015,13 +3043,14 @@ export type ReasonerTask = (typeof REASONER_TASKS)[number];
 // Aufnahme gesamt-ki-laufprotokoll (Ben R1 B2): die Laufarten des Protokolls — die acht Aufgaben der
 // KI-Zuordnung plus die vier Modellwege, die über die globale Wahl laufen. Spiegel der Union
 // `ModelRunTask` in `services/model-runs/src/types.ts`; gebunden durch
-// `tests/ki-aufgabenarten/aufgabenarten-eine-wahrheit.test.ts`.
+// `tests/ki-aufgabenarten/aufgabenarten-eine-wahrheit.test.ts`. R-1657: `gaps` (Lückenerkennung).
 export const MODEL_RUN_TASKS = [
   ...REASONER_TASKS,
   "enrich",
   "conflict",
   "duplicate",
   "probe",
+  "gaps",
 ] as const;
 
 // JOB 3134 (KI-WAHL): die beiden externen Anbieter sind eigene Auswahlwerte. Dieselbe Liste wie
@@ -3239,6 +3268,7 @@ export type NotificationKind =
   | "return"
   | "impact"
   | "kenntnisnahme"
+  | "loeschantrag"
   // aufnahme:20260922:gesamt-wissen-frische: Fristerinnerung, Wochenvorlage, Prüfanforderung.
   | "frische"
   | "reklamation";
@@ -3275,6 +3305,8 @@ export interface Notification {
   fassung?: number;
   erinnerung?: boolean;
   ueberfaellig?: boolean;
+  // Löschantrag (R-0661): die Frist der Verwalteraufgabe; `ueberfaellig` gilt dort ebenso.
+  fristBis?: string;
   // R-1089: Meldegrund und Meldungsnummer (nur bei `kind: "reklamation"`).
   grund?: AntwortMeldeGrund;
   meldungId?: string;

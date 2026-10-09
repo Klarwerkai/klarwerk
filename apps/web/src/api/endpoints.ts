@@ -844,11 +844,20 @@ export const endpoints = {
     // Zusammenstellen und Absenden), legt der Server NICHTS an und antwortet 409
     // `DRAFT_OWNER_MISMATCH`. Ohne den Wert bleibt alles wie bisher — die anderen Aufrufer
     // (`pages/Capture.tsx`, das Panel, der Word-Weg) hängen daran.
-    create: (payload: DraftPayload, operationId?: string, expectedOwner?: string) =>
+    // entscheidung:14ce8681: `fortschreiben` sagt dem Server, dass dieser Aufruf einen unklar
+    // gebliebenen Vorgang WIEDERHOLT und ein geänderter Inhalt denselben Entwurf fortschreiben soll.
+    // Transport wie `operationId`; ohne den Wert bleibt alles wie bisher.
+    create: (
+      payload: DraftPayload,
+      operationId?: string,
+      expectedOwner?: string,
+      opts?: { fortschreiben?: boolean },
+    ) =>
       api.post<Draft>("/drafts", {
         ...payload,
         ...(operationId ? { operationId } : {}),
         ...(expectedOwner ? { expectedOwner } : {}),
+        ...(operationId && opts?.fortschreiben ? { fortschreiben: true } : {}),
       }),
     // SCRUM-113 / FE-CAP-07: Entwurf fortsetzen (continueDraft, Originalautor bleibt).
     // JOB 2684 D1: `expectedUpdatedAt` = der beim Laden gesehene Stand; der Server antwortet 409
