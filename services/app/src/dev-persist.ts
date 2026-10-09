@@ -62,6 +62,9 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   users: ["insert", "update", "delete", "tryClaimBootstrapAdmin"],
   sessions: ["create", "delete", "deleteByUser"],
   resetTokens: ["create", "delete"],
+  // R-0562: der zweite Faktor überlebt den Dev-Neustart — sonst wäre er nach jedem Start still weg.
+  // `claimStep` trägt den Schritt in den Argumenten; das Replay ist damit deterministisch.
+  secondFactors: ["set", "delete", "claimStep"],
   // R-0169 (Nacharbeit 8, bens Befund zum Neustartrundlauf): `insertIfOperationAbsent` (Anlage mit
   // Vorgangskennung, der Word-Weg) und `updateWennStand` (Fortsetzen und das Binden der
   // Dokumentfassung, `CaptureService.dokumentHerkunftBinden`) sind Mutationen. Ohne sie verlor ein
@@ -291,10 +294,8 @@ export function readJournalLines(file: string): JournalLine[] {
   return lines;
 }
 
-/** Dieselbe Lesung ohne die Herkunftsangabe — der unveränderte Bestandsvertrag. */
-export function readJournal(file: string): JournalEntry[] {
-  return readJournalLines(file).map((l) => l.entry);
-}
+// R-1349: Die Projektion `readJournal` (ohne Zeilennummer) hatte keinen Produktaufrufer und ist
+// entfernt. Start und Bestätigung lesen über `readJournalLines`; die Tests bilden die Projektion lokal.
 
 // Journal in frische Repos zurückspielen — ausschließlich über die öffentlichen Interfaces.
 // Unbekannte Repo-/Methodennamen werden bewusst übersprungen (versionstolerant statt Crash).

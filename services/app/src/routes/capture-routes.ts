@@ -11,8 +11,8 @@ import JSZip from "jszip";
 // Extraktionsweg und damit genau der Ablösefall, den Weg B vermeidet.
 import { extractDocxRich, isDocxDocumentLike } from "../../../../apps/web/src/lib/docx";
 // JOB 3956 (Q9): der Meldungskatalog und die EINE Lesestelle des Sprachkopfes — derselbe Zugang,
-// den `services/app/src/http.ts:2` und `services/rbac/src/guard.ts:2` schon nehmen. Kein zweiter
-// Katalog und keine eigene Sprachermittlung in diesem Modul.
+// den `services/app/src/http.ts:2` schon nimmt (der RBAC-Wächter ist seit R-1349 entfernt).
+// Kein zweiter Katalog und keine eigene Sprachermittlung in diesem Modul.
 import { meldung, sprache } from "../../../auth";
 import {
   type CaptureService,

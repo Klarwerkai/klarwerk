@@ -7,7 +7,8 @@ export { InMemoryDraftRepo, type DraftRepo } from "./src/repo";
 // wäre die Stufe gebaut und würde nie laufen — der Index entstünde nie, und die ganze Zusage hinge
 // an einer DDL, die niemand absetzt. Genau davor warnt `tests/capture/aufrufer-waechter.test.ts`.
 export { PgDraftRepo, CAPTURE_SCHEMA, CAPTURE_CREATE_OPERATION_SCHEMA } from "./src/repo-pg";
-export { InterviewSession } from "./src/interview";
+// R-1349: `InterviewSession` (deterministisches Interview, FR-CAP-02) ist entfernt — das Interview
+// läuft über den Reasoner (`reasoner-routes.ts`, Aufgabe `interview`); die Klasse rief niemand.
 export { CaptureError } from "./src/types";
 // AUFTRAG-mega22 Block D: die Gestaltprüfung der Entwurfsladung gehört zum öffentlichen
 // Modulvertrag — sie ist der RAND, an dem Formfehler abgewiesen werden, statt in der Tiefe zu

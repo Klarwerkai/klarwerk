@@ -137,12 +137,11 @@ export {
 // standen zur Wahl, wie viele wurden geprüft, wurde gedeckelt/übersprungen/abgebrochen. Der App-Root
 // stellt das Protokoll, die Läufe schreiben es fort, die Oberfläche liest es.
 // AUFTRAG-mega32 A1/B: `isCompleteRun` ist die KANONISCHE positive Vollständigkeits-Invariante (die
-// beiden Spiegel diesseits der Modulgrenzen leiten nichts eigenständig ab); `singleRunBalances`
-// prüft die Buchhaltungs-Gleichung eines EINZELLAUFS, die bis mega31 nur ein Kommentar behauptete.
+// beiden Spiegel diesseits der Modulgrenzen leiten nichts eigenständig ab). R-1349: das Prüforakel
+// `singleRunBalances` liegt bei den Tests (`tests/support/abdeckung-buchhaltung.ts`).
 export {
   type DetectionCoverage,
   emptyCoverage,
   mergeCoverage,
   isCompleteRun,
-  singleRunBalances,
 } from "./src/coverage";

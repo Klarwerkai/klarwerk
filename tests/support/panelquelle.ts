@@ -171,6 +171,24 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 8 (firmenwoerterbuch): GEMESSEN im Prüflauf zu Kandidat a8ec940f (`5d7ae0b8…`,
  * „Received" von E2, HISTORIE/nacharbeit-8/PRUEFUNG/panel-integration-pins.log) und unverändert
  * übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ * AUFNAHME 20260922 · ANTWORT-ERKLÄRUNG (Ben nacharbeit-2, R-0321/R-0335): `taskpane.js` liest Lage und
+ * Konfliktseiten (`performAsk`, `renderAskLage`, neun Wörterbuchschlüssel je Sprache), `taskpane.html`
+ * trägt `#ask-lage-line`/`#ask-konflikt-seiten`. Der Bezugspunkt MUSS wandern; ohne zugelassenes
+ * Hash-Werkzeug ist er hier nicht berechenbar. E2 meldet ihn im Prüflauf als „Received"; er wird danach
+ * gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 4 (Antwort-Erklärung): gemessen zu Kandidat 64095a2e war `8f2a762d…189c20` — NICHT
+ * übernommen, weil `taskpane.js` danach erneut geändert wurde (drei Lage-Schlüssel ohne
+ * ASCII-Umschrift umbenannt, mega69 C). E2 meldet den Wert der endgültigen Fassung als „Received".
+ * NACHARBEIT 5 (Antwort-Erklärung): GEMESSEN im Prüflauf zu Kandidat 0bd4f3cb (`469de4a6…`,
+ * „Received" von E2, HISTORIE/nacharbeit-5/PRUEFUNG/word-fenster-pins.log) und unverändert
+ * übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ * INTEGRATION mit main d8717621 (nacharbeit-6): `taskpane.js` trägt zusätzlich `ki-abgeschaltet`
+ * (R-1040, gesamt-funktionsschalter). Der Bezugspunkt MUSS wandern; der Wert unten beschreibt nur den
+ * Stand vor der Integration. Ohne zugelassenes Hash-Werkzeug nicht berechenbar — E2 meldet ihn im
+ * Prüflauf als „Received"; er wird danach gemessen übernommen.
+ * NACHARBEIT 8 (Antwort-Erklärung): GEMESSEN im Prüflauf zu Kandidat 7e98d5c4 (`8ad37a9c…`, „Received"
+ * von E2, HISTORIE/nacharbeit-8/PRUEFUNG/integration-word-fenster.log) und unverändert übernommen;
+ * die vier Panel-Dateien sind seit dieser Messung unberührt.
  *
  * Aufnahme 20260922 · antwort-quellenanzeige (R-0309/R-0325): `taskpane.js` ändert sich (Stand-Datum
  * an der Herkunftszeile, tragende Quellen samt Prüfstand/Version in der Dokument-Quellenzeile, ein
@@ -218,8 +236,18 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 17: GEMESSEN im Prüflauf zu Kandidat 2c099872 (`cb99796c…`, „Received" von E2,
  * HISTORIE/nacharbeit-17/PRUEFUNG/r0310-panel-und-pins.log) und unverändert übernommen; die vier
  * Panel-Dateien sind seit dieser Messung unberührt.
+ *
+ * INTEGRATION Antwort-Erklärung (`8ad37a9c…`) × antwort-quellenanzeige (main `cb99796c…`),
+ * Nacharbeit 17 der Antwort-Erklärung: `taskpane.js` trägt Lage/Konfliktseiten (R-0321/R-0335) UND
+ * die Absatz-Beleg-Zuordnung (R-0310); drei Kommentarköpfe ohne Wortverlust verdichtet (12490
+ * Zeilen, B3). Keiner der beiden Werte beschreibt das zusammengeführte Dokument; der Wert unten
+ * (main) ist ein PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet den Ist-Wert als „Received", er
+ * wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 19 (Antwort-Erklärung): GEMESSEN im Prüflauf zu Kandidat d96bc621 am zusammengeführten
+ * Panel (`c2a57caf…`, „Received" von E2, HISTORIE/nacharbeit-19/PRUEFUNG/integration-word-fenster.log)
+ * und unverändert übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "cb99796c9a3134f0ffd02a97c3c1eb270055e4b8";
+export const PANEL_VOR_SCHNITT_BLOB = "c2a57caf99bfc2cb4ca8248c6b583e3fe9a409cf";
 
 export interface PanelTeile {
   html: string;
