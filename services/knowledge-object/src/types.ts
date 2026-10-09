@@ -1,5 +1,6 @@
 import type { DokumentHerkunft } from "./dokumentakte";
 import type { KoGeltung } from "./geltung";
+import type { NegativwissenAngaben } from "./negativwissen";
 
 // FR-KO-02: fünf Wissensarten (Pflichtenheft §3.5).
 export type KnowledgeType =
@@ -600,6 +601,11 @@ export interface KnowledgeObject {
   assignments: string[];
   // SCRUM-415: Vertraulichkeitsstufe (fehlt = „intern"). Vertrauliche KOs gehen nie in externe Kontexte.
   confidentiality?: Confidentiality;
+  // R-1664 / R-2179 / R-2180: die geführt erfassten Angaben eines Negativwissen-Falls (Auslöser,
+  // falsche Annahme, Warnsignale, Vermeidungsregel …) und die Art seines Bezugs. Nur bei der
+  // Wissensart `negativwissen`; Begründung und Stufenregel in `negativwissen.ts`. Optional, keine
+  // Migration — fehlt das Feld, wurde der Fall nicht geführt erfasst.
+  negativwissen?: NegativwissenAngaben;
   // aufnahme:20260922:gesamt-wissen-frische (R-0652 / FR-EXT-06): Schutzbedarf „öffentlich" — eine
   // VERFEINERUNG von „intern", keine vierte Zugriffsstufe: Sichtbarkeit und Egress richten sich
   // weiter allein nach `confidentiality`. Wirksam nur, solange das Objekt intern ist; eine
