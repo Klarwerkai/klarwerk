@@ -97,7 +97,12 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 | Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
 | --- | --- | --- | --- | --- | --- |
 | `POST` | `/api/auth/register` | keines (Schalter Selbstregistrierung) | Rumpf `{ name, email, password }` | 201 Konto | 403 `REGISTRATION_DISABLED`; 429 `RATE_LIMITED`; 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 409 `EMAIL_TAKEN` |
-| `POST` | `/api/auth/login` | keines | Rumpf `{ email, password }` | 200 `{ user, token }`, setzt `kw_session` | 401 `INVALID_CREDENTIALS`; 403 `NOT_APPROVED`; 429 `RATE_LIMITED` |
+| `POST` | `/api/auth/login` | keines | Rumpf `{ email, password }` | 200 `{ user, token }`, setzt `kw_session`; bei eigenem zweiten Faktor stattdessen 200 `{ secondFactorRequired: true, challenge, expiresInMs }` ohne Cookie | 401 `INVALID_CREDENTIALS`; 403 `NOT_APPROVED`; 429 `RATE_LIMITED` |
+| `POST` | `/api/auth/login/second-factor` | keines (Anmeldeanfrage + Code sind der Nachweis) | Rumpf `{ challenge, code }` | 200 `{ user, token }`, setzt `kw_session` | 401 `INVALID_CREDENTIALS`; 403 `NOT_APPROVED`; 429 `RATE_LIMITED` |
+| `GET` | `/api/auth/second-factor` | `requireUser` (Modul) | — | 200 `{ active }` | 401 |
+| `POST` | `/api/auth/second-factor/setup` | `requireUser` (Modul) | Rumpf `{ password }` | 200 `{ secret, otpauthUri }` (einmalig) | 401; 403 `FORBIDDEN` (schon eingerichtet / SSO-Konto) |
+| `POST` | `/api/auth/second-factor/confirm` | `requireUser` (Modul) | Rumpf `{ code }` | 200 `{ active: true }` | 401; 403 `FORBIDDEN` (keine offene Einrichtung) |
+| `POST` | `/api/auth/second-factor/disable` | `requireUser` (Modul) | Rumpf `{ password, code }` | 200 `{ active: false }` | 401; 403 `FORBIDDEN` (nicht eingerichtet) |
 | `POST` | `/api/auth/logout` | keines (Token, falls vorhanden) | — | 204, löscht `kw_session` | — |
 | `GET` | `/api/auth/me` | `requireUser` (Modul) | — | 200 eigenes Konto | 401 `INVALID_CREDENTIALS` |
 | `POST` | `/api/auth/office-handover` | `requireUser` (Modul) | — | 201 `{ code, expiresInMs }` (Einmalcode für das Word-Add-in) | 401 `INVALID_CREDENTIALS` |
@@ -122,6 +127,7 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 | `POST` | `/api/users` | `requireAdmin` | Rumpf `{ name, email, password, role?, accessExpiresAt? }` | 201 Konto | 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 403 `FORBIDDEN` (Befristung unlesbar oder Rollenwechsel unzulässig); 409 `EMAIL_TAKEN` |
 | `PUT` | `/api/users/:id` | `requireAdmin` | Rumpf `{ role?, approve?, password?, accessExpiresAt? }` | 200 Konto bzw. 204 | 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 403 `FORBIDDEN` |
 | `DELETE` | `/api/users/:id` | `requireAdmin` | — | 204 | 401; 403; Dienstfehler |
+| `DELETE` | `/api/users/:id/second-factor` | `requireAdmin` | — | 204 (zweiter Faktor entfernt, z. B. bei verlorenem Gerät) | 401; 403 `FORBIDDEN` (nicht eingerichtet); 404 |
 | `GET` | `/api/directory` | `requireUser` (Modul) | — | 200 `[{ id, name }]` — ohne E-Mail | 401 |
 
 Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anmeldung mit
