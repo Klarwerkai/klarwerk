@@ -1936,6 +1936,9 @@ export interface AnswerResult {
   citedSources?: string[];
   // JOB 3366: gesetzt, wenn der ausgelieferte Antworttext am Token-Limit abgeschnitten wurde.
   abgeschnitten?: AbbruchBefund;
+  // R-0310/R-0325 (nur Fläche, gesetzt in `lib/askResponse.ts`): die Antwort wurde zurückgehalten,
+  // weil kein Absatz belegt ist UND keine tragende Quelle feststeht — die Lücke nennt das.
+  zuordnungUnbekannt?: true;
 }
 
 // JOB 2626 D1: ein Dokument, das die Frage traf, aber nicht antworten konnte — mit den Toren,
@@ -1963,6 +1966,14 @@ export interface AskResponse {
   // R-1633: nur wenn ein Fragekontext mitgeschickt wurde — wofür gewichtet wurde und je Quelle
   // ihre Geltung und Passung (Spiegel von `AskGeltungsauskunft`, services/ask/src/service.ts).
   geltung?: AskGeltungsauskunft;
+  // R-0310: je Absatz die tragenden Quellen, die ihn belegen (services/app/src/absatz-belege.ts);
+  // nur bei beantworteter Frage. Angewandt in `lib/askResponse.ts` (`selectAnswer`).
+  absaetze?: AbsatzBeleg[];
+}
+
+export interface AbsatzBeleg {
+  text: string;
+  quellen: string[];
 }
 
 // ================================================================================================
