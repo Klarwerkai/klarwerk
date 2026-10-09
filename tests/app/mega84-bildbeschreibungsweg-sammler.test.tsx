@@ -2343,8 +2343,17 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Kein Bild, kein `CAPTION_AI_TEXT`, kein `documentTitle`: `anbieter` 1 und `traeger` 2 bleiben.
     // EHRLICH GESAGT: GERECHNET (die gemessene 521 des Hauptstands + 1) — dieser Auftrag durfte
     // keinen Testlauf selbst starten; weicht der Prüflauf ab, gehört die gemessene Zahl hierher.
+    //
+    // R-1656 Nacharbeit 14: GEMESSEN 525. Am Kandidaten 3564eabb meldete der Sammler wörtlich
+    // „gemessen: 525 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 679 Quelldateien …
+    // expected { komponenten: 525, … } to deeply equal { komponenten: 522, … }"
+    // (HISTORIE/nacharbeit-14/PRUEFUNG/komponentenzaehler-konfliktstelle.log). Dieser Auftrag hat seit
+    // der Rechnung 522 kein Bauteil hinzugefügt; die drei darüber kamen mit dem seither eingemischten
+    // Hauptstand. Namentlich sind sie hier NICHT bestimmt: der Diff gegen 985cb62c war in dieser
+    // Nacharbeit nicht ausführbar. `anbieter` 1 und `traeger` 2 sind unverändert — beide Seiten der
+    // Meldung nennen 1 und 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 522,
+      komponenten: 525,
       anbieter: 1,
       traeger: 2,
     });
