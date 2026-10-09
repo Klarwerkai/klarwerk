@@ -3,6 +3,8 @@ import type { ReasonerLocale } from "../lib/reasonerLocale";
 // WP-RETEST7 R8: Timeout-Konstante der Folien-Konvertierung (eine Quelle, lib/slideImages).
 import { SLIDES_CONVERT_TIMEOUT_MS } from "../lib/slideImages";
 import type { AufnahmeRumpf, SprachTranskriptAntwort } from "../lib/sprachaufnahme";
+// R-1034 / FR-I18N-02: der Drahtvertrag der Übersetzungspflege.
+import type { GepflegteTexte, InstanzSprache, InstanzSprachen } from "../lib/textpflege";
 import { ApiError, api } from "./client";
 import type {
   AiCheckCoverageSummary,
@@ -943,6 +945,23 @@ export const endpoints = {
         ...(thread && thread.length > 0 ? { thread } : {}),
         ...(fragekontext ? { fragekontext } : {}),
       }),
+    // R-0305/R-1099: dieselbe Frage samt Faden, zusätzlich vom Zweitmodell beantwortet. Derselbe
+    // Endpunkt — Auth, Schema, Filter und Egress-Regeln bleiben die der Frage.
+    // Ben (Nacharbeit 9): auch derselbe Fragekontext (R-1633) wie bei der stehenden Antwort — sonst
+    // gewichtet die Gegenüberstellung andere Quellen als die Antwort, auf die sie sich bezieht.
+    zweitmeinung: (
+      question: string,
+      locale?: ReasonerLocale,
+      thread?: readonly string[],
+      fragekontext?: Fragekontext,
+    ) =>
+      api.post<AskResponse>("/ask", {
+        question,
+        ...(locale ? { locale } : {}),
+        ...(thread && thread.length > 0 ? { thread } : {}),
+        ...(fragekontext ? { fragekontext } : {}),
+        zweitmeinung: true,
+      }),
     // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang
     // zurück — ohne gültigen, dieses KO belegenden Receipt antwortet der Server 403.
     helpful: (koId: string, receipt: string) => api.post<void>("/ask/helpful", { koId, receipt }),
@@ -1566,5 +1585,24 @@ export const endpoints = {
         version,
         aufVersion,
       }),
+  },
+  // R-1034 / FR-I18N-02: Oberflächentexte im laufenden Betrieb pflegen (i18n-routes.ts).
+  i18n: {
+    sprachen: () => api.get<InstanzSprachen>("/i18n/locales"),
+    texte: (sprache: string) => api.get<GepflegteTexte>(`/i18n/${encodeURIComponent(sprache)}`),
+    setzeText: (sprache: string, schluessel: string, text: string) =>
+      api.put<{ sprache: string; schluessel: string; text: string }>(
+        `/admin/i18n/${encodeURIComponent(sprache)}/${encodeURIComponent(schluessel)}`,
+        { text },
+      ),
+    entferneText: (sprache: string, schluessel: string) =>
+      api.del<{ sprache: string; schluessel: string; entfernt: boolean }>(
+        `/admin/i18n/${encodeURIComponent(sprache)}/${encodeURIComponent(schluessel)}`,
+      ),
+    setzeSprache: (kennung: string, name: string) =>
+      api.put<Pick<InstanzSprache, "kennung"> & { name: string }>(
+        `/admin/i18n-sprachen/${encodeURIComponent(kennung)}`,
+        { name },
+      ),
   },
 };
