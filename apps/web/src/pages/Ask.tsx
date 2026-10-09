@@ -18,7 +18,7 @@ import { useToast } from "../app/ToastContext";
 // DASSELBE zentrale Bauteil und DIESELBE Ableitung wie alle anderen Auslösestellen — bedingt an
 // `billable` der Aufgabe „answer", nicht mehr als unbedingter eigener Wortlaut.
 import { AiCostHint } from "../components/AiCostHint";
-import { AiGeneratedNotice } from "../components/AiGeneratedNotice";
+import { AiGeneratedNotice, AiSurfaceNotice } from "../components/AiGeneratedNotice";
 import { Bedingungswechsel } from "../components/Bedingungswechsel";
 import { DemoBanner } from "../components/DemoBanner";
 import { FragekontextWahl, GeltungsAuskunft, fragekontextZumSenden } from "../components/Geltung";
@@ -45,6 +45,7 @@ import {
   type Verwendung,
   chipPunkt,
 } from "../components/fragen/Quellenplaketten";
+import { ANTWORT_MENUEPUNKTE } from "../components/fragen/antwortMenue";
 import { useVorlesen } from "../components/fragen/useVorlesen";
 import { FRAGEN_ZIEL } from "../components/fragen/ziele";
 // WP-UX-WOW-1 U1 / JOB 3064 §5: sichere Markdown-Darstellung der Antwort (React-Elemente, kein
@@ -53,9 +54,20 @@ import { AntwortText } from "../components/start/AntwortText";
 import { OverflowMenu } from "../components/start/OverflowMenu";
 import { Seitenblatt } from "../components/start/Seitenblatt";
 import { useDiktat } from "../components/start/useDiktat";
-import { ConfidenceBar } from "../components/trust";
+import { ConfidenceBar, ErgebnisStufeMarke } from "../components/trust";
 import { Button, Card, SectionLabel } from "../components/ui";
-import { answerExportFilename, buildAnswerMarkdown } from "../lib/answerExport";
+import {
+  type AnswerExportInput,
+  answerExportFilename,
+  buildAnswerMarkdown,
+} from "../lib/answerExport";
+import {
+  ANTWORT_DATEI_TYP,
+  type AntwortDateiformat,
+  PdfZeichenNichtDarstellbar,
+  antwortDateiname,
+  buildAnswerDatei,
+} from "../lib/antwortDateien";
 import {
   ANSWER_CONTRACT_TRUST_NOTE_KEY,
   answerContract,
@@ -101,6 +113,8 @@ import {
 // R-0348: Nachfragen im Gesprächsfaden statt Einzelschüssen.
 import { fadenFuerAnfrage, fadenNachAntwort } from "../lib/gespraechsfaden";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
+// R-0625 / R-1020 / R-1695: Herkunft und Stufe der Antwort aus EINER Ableitung.
+import { ergebnisStufeFuerAntwort, kiHerkunftAus } from "../lib/kiHerkunft";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { formatKoTimestamp } from "../lib/koDates";
 import { erkenneNichtHilfreich } from "../lib/nichtHilfreich";
@@ -329,11 +343,9 @@ function MehrFlaechenInfo({
           </span>
         </span>
       </div>
-      {/* AUFTRAG-mega61 Block E: der KI-Kennzeichnungssatz VOR der ersten Frage. Der Satz an der
-          erzeugten Ausgabe selbst (Artikel 50) steht unverändert in der Antwortkarte. */}
-      <p className="mb-3">
-        <AiGeneratedNotice />
-      </p>
+      {/* AUFTRAG-mega61 Block E: hier stand der KI-Hinweis VOR der ersten Frage. Seit JOB 3064 (H5)
+          lag er damit hinter „…" → „Mehr" — genau hinter dem Aufklapp-Knopf, den R-0603
+          ausschliesst. Er steht jetzt dauerhaft über dem Fragefeld (`ask-ki-flaechensatz`). */}
       {/* JOB 3038 · „Ehrlichkeit vor Optik": statt eines toten Mikrofonknopfes der Satz, der den
           Zustand nennt. §6 des Auftrags nimmt ihn aus dem Sichtfeld — ohne Spracherkennung fehlt
           das Mikrofon einfach; WARUM es fehlt, steht hier. */}
@@ -751,6 +763,10 @@ export function Ask(): JSX.Element {
   // seiner Herkunft; unbelegt ⇒ nie „verified", dafür ein benannter Hinweis.
   const conflictKnown = conflictKnowledge(conflicts);
   const effective = result ? effectiveAnswer(result, kos.data ?? [], conflictKnown) : null;
+  // R-0625 / R-1020 / R-1695: belegte Herkunft und daraus die Stufe dieser Antwort. „Validiert"
+  // nur bei belegt modellfreier Herkunft UND belegter Einstufung — nie für einen Modelltext.
+  const antwortHerkunft = result ? kiHerkunftAus(result) : "unbekannt";
+  const antwortStufe = ergebnisStufeFuerAntwort(antwortHerkunft, effective?.grade === "verified");
   // AUFTRAG-mega52 A3: die Quellenliste bekommt eine Ordnung und ein Kennzeichen — tragende zuerst,
   // die übrigen als das, was sie sind. Ist die Zuordnung unbekannt (A5), bleibt alles in Ranking-
   // Reihenfolge und ohne Kennzeichen; der Hinweis darüber sagt dann warum. Eine Quelle, eine Regel
@@ -1452,7 +1468,9 @@ export function Ask(): JSX.Element {
         : null;
     return demoHref(belegstelleHref(id, stelle), params);
   };
-  const buildExport = (): { markdown: string; filename: string } | null => {
+  // R-0703 / R-0625 (Ben Nacharbeit 2): EINE Exporteingabe für Markdown, Word, PowerPoint und PDF —
+  // mit der DREIWERTIGEN Herkunft. Bis hierher machte die Fragenseite aus „unbekannt" ein `false`.
+  const exportEingabe = (): AnswerExportInput | null => {
     if (!result?.answered || !effective) {
       return null;
     }
@@ -1486,7 +1504,7 @@ export function Ask(): JSX.Element {
         ...(zuordnungTragfaehig ? { attributionLabel: t(VERWENDUNG_BADGE[s.verwendung]) } : {}),
       };
     });
-    const markdown = buildAnswerMarkdown({
+    return {
       question: asked || q,
       answer: result.answer ?? "",
       // AUFTRAG-mega33 A2: Kopieren und Markdown-Download exportieren die EFFEKTIVE Einstufung.
@@ -1498,6 +1516,9 @@ export function Ask(): JSX.Element {
       steps: result.steps.map((s) => ({ description: s.description, snippet: s.snippet })),
       sources,
       generatedAt,
+      // R-0625: belegt KI / belegt modellfrei / unbekannt — nur „ohne-ki" schaltet die Kennzeichnung
+      // in der Datei aus (`exportKennzeichnen`).
+      kiHerkunft: kiHerkunftAus(result),
       labels: {
         answer: t("ask.export.answer"),
         evidence: t("ask.evidence"),
@@ -1514,8 +1535,47 @@ export function Ask(): JSX.Element {
         }),
         ...(zuordnungTragfaehig ? {} : { attributionUnknown: t("ask.attribution.unknown") }),
       },
-    });
-    return { markdown, filename: answerExportFilename(generatedAt) };
+    };
+  };
+  const buildExport = (): { markdown: string; filename: string } | null => {
+    const eingabe = exportEingabe();
+    if (!eingabe) {
+      return null;
+    }
+    return {
+      markdown: buildAnswerMarkdown(eingabe),
+      filename: answerExportFilename(eingabe.generatedAt),
+    };
+  };
+  const herunterladen = (inhalt: Blob, dateiname: string): void => {
+    const url = URL.createObjectURL(inhalt);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = dateiname;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  // R-0703: Word, PowerPoint und PDF als echte Dateien — mit der Kennzeichnung in ihren
+  // Eigenschaften (lib/antwortDateien.ts). Der Druckweg bleibt unverändert daneben.
+  const dateiHerunterladen = (format: AntwortDateiformat): void => {
+    const eingabe = exportEingabe();
+    if (!eingabe) {
+      return;
+    }
+    let bytes: Uint8Array;
+    try {
+      bytes = buildAnswerDatei(eingabe, format);
+    } catch (fehler) {
+      // Ben Nacharbeit 4: lieber KEINE PDF-Datei als eine mit verändertem Inhalt. Die Meldung
+      // nennt die Zeichen und den verlustfreien Weg (Word, Markdown).
+      if (fehler instanceof PdfZeichenNichtDarstellbar) {
+        push("error", t("ask.export.pdfZeichen", { zeichen: fehler.zeichen.join(" ") }));
+        return;
+      }
+      throw fehler;
+    }
+    const inhalt = new Blob([bytes.buffer as ArrayBuffer], { type: ANTWORT_DATEI_TYP[format] });
+    herunterladen(inhalt, antwortDateiname(eingabe.generatedAt, format));
   };
   const copyAnswer = (): void => {
     const ex = buildExport();
@@ -1532,13 +1592,7 @@ export function Ask(): JSX.Element {
     if (!ex) {
       return;
     }
-    const blob = new Blob([ex.markdown], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = ex.filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    herunterladen(new Blob([ex.markdown], { type: "text/markdown;charset=utf-8" }), ex.filename);
   };
   // SCRUM-440-Muster: nur den markierten Auszug (.print-area) drucken; Klasse nach dem Druck entfernen.
   const printAnswer = (): void => {
@@ -1692,6 +1746,12 @@ export function Ask(): JSX.Element {
             </button>
           </div>
         ) : null}
+        {/* R-0603: der KI-Hinweis DIESER Fläche — dauerhaft, ohne Griff, vor der ersten Frage.
+            Er behauptet keine Erzeugung (R-0604); die steht an der Antwort, gebunden an die
+            Servermarke. ÜBER dem Feld, weil zwischen Feld und Antwort nichts stehen darf (R-0286). */}
+        <p data-testid="ask-ki-flaechensatz" className="m-0 mb-2">
+          <AiSurfaceNotice />
+        </p>
         {/* R-1633: „Ich frage für" Werk/Schicht/Rolle — gleich passende Quellen dieses Orts
             stehen vorn; nichts wird ausgeblendet. Zugeklappt, solange niemand es braucht. */}
         <FragekontextWahl wert={fragekontext} onWert={setFragekontext} kos={kos.data ?? []} />
@@ -2092,6 +2152,7 @@ export function Ask(): JSX.Element {
                   // ausdrücklich gesetzt.
                   className="print-area relative mt-0 flex flex-col gap-4 !rounded-[14px] border-hairline px-7 py-6 shadow-tile"
                   data-testid="ask-answer"
+                  {...(antwortStufe === "entwurf" ? { "data-reasoner-entwurf": "" } : {})}
                 >
                   {/* D-047: die Antwort zuerst — Begründung unmittelbar über dieser Karte. */}
                   <AntwortText
@@ -2110,12 +2171,11 @@ export function Ask(): JSX.Element {
                       {t("ai.truncated.hint")}
                     </p>
                   ) : null}
-                  {/* mega62 Block E: der KI-Satz gehört IN die Druckfläche (sonst fehlt er im PDF).
-                    D-047: er folgt UNMITTELBAR auf die Antwort statt ihr voranzugehen — Artikel 50
-                    verlangt die Kennzeichnung an der erzeugten Ausgabe, nicht vor ihr. Wortlaut,
-                    Bauteil und Druckfläche unverändert. */}
-                  <p className="m-0">
-                    <AiGeneratedNotice />
+                  {/* mega62 E / D-047: Stufe (R-1695) und KI-Satz direkt nach der Antwort, in der
+                    Druckfläche. Der Satz nur mit gültiger Servermarke (R-0604). */}
+                  <p className="m-0 flex flex-wrap items-center gap-1.5">
+                    <ErgebnisStufeMarke stufe={antwortStufe} />
+                    {antwortHerkunft === "ki" ? <AiGeneratedNotice /> : null}
                   </p>
                   {/* ==========================================================================
                     R-0287 / R-0286 — DIE WARNUNG STEHT VOLLSTÄNDIG DIREKT HINTER DER ANTWORT.
@@ -2297,11 +2357,7 @@ export function Ask(): JSX.Element {
                       label={t("ask.menu.label")}
                       testId="ask-menu"
                       griffRef={menuGriffRef}
-                      punkte={[
-                        { id: "print", label: t("ask.export.print") },
-                        { id: "download", label: t("ask.export.download") },
-                        { id: "mehr", label: t("ask.menu.mehr") },
-                      ]}
+                      punkte={ANTWORT_MENUEPUNKTE.map((p) => ({ id: p.id, label: t(p.labelKey) }))}
                       onWahl={(id) => {
                         if (id === "print") {
                           printAnswer();
@@ -2309,6 +2365,10 @@ export function Ask(): JSX.Element {
                         }
                         if (id === "download") {
                           downloadAnswer();
+                          return;
+                        }
+                        if (id === "docx" || id === "pptx" || id === "pdf") {
+                          dateiHerunterladen(id);
                           return;
                         }
                         setMehr(true);

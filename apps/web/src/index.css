@@ -312,6 +312,12 @@
 .prose-kw .panel-external {
   @apply border-l-4 border-l-ai bg-ai-surface-1;
 }
+/* R-1020: die KI-erzeugte Antwortkarte sieht anders aus als validiertes Wissen — violetter
+   gestrichelter Rahmen, violette Fläche (dieselben Token wie ReasonerDraft). Über ein Attribut,
+   weil die Karte ihre Rahmen-/Grundklassen aus `Card` mitbringt; Attribut + Klasse schlägt sie. */
+.print-area[data-reasoner-entwurf] {
+  @apply border-dashed border-ai-dashed bg-ai-surface-2;
+}
 /* SCRUM-355: sichere Body-Datei-Referenz (Link auf Object-Store-Raw-Pfad) als ruhige Anhang-Zeile. */
 .prose-kw .attachment {
   @apply my-2 inline-flex items-center gap-1.5 rounded-card border border-hairline bg-page px-2.5 py-1.5;
