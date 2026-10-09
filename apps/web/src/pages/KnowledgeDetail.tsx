@@ -8,6 +8,7 @@ import { SanitizedHtml } from "../components/SanitizedHtml";
 import { SpaceZeile } from "../components/SpaceZeile";
 import { BibliothekFlaeche } from "../components/bibliothek/BibliothekFlaeche";
 import { Card, SectionLabel } from "../components/ui";
+import { STELLE_PARAM } from "../lib/belegstelle";
 import { sprachcode, useFrischeLesevariante } from "../lib/lesevariante";
 import { FASSUNG_PARAM, fassungsLage, leseFassung } from "../lib/objektbezug";
 import { useGelesenerStand } from "../lib/useGelesenerStand";
@@ -57,8 +58,12 @@ export function KnowledgeDetail(): JSX.Element {
   const naechsteSuche = (() => {
     const p = new URLSearchParams(params);
     p.delete("edit");
-    // Dasselbe gilt für die Fassung des Rückwegs: sie gehört zu GENAU diesem Beitrag.
+    // R-0326/R-0329: Belegstelle und Abschnittssprung gehören ebenso nur zu DIESEM Eintrag — und
+    // die Fassung des Rückwegs (Arbeitswege am selben Artikel) ebenso. `fassung` ist EIN Parameter
+    // für beide Wege (`lib/belegstelle.ts` und `lib/objektbezug.ts` nennen denselben Namen).
+    p.delete(STELLE_PARAM);
     p.delete(FASSUNG_PARAM);
+    p.delete("abschnitt");
     return p.toString();
   })();
 
@@ -143,8 +148,11 @@ export function KnowledgeDetail(): JSX.Element {
       ) : null}
       {/* Arbeitswege am selben Artikel: der Rückweg (aus Fragen oder Klara) nennt die Fassung, aus
           der er kam. Hat sich der Beitrag seitdem geändert, steht das hier — ausserhalb der Fläche,
-          die keinen Erklärtext trägt, und nur dann; bei gleicher Fassung bleibt die Seite still. */}
-      {fassungsLage(genannteFassung, aktuelleFassung) === "abweichend" ? (
+          die keinen Erklärtext trägt, und nur dann; bei gleicher Fassung bleibt die Seite still.
+          Trägt die Adresse eine Belegstelle (`stelle`, R-0326), meldet die Lesefläche die andere
+          Fassung schon selbst (`belegLage` „andereFassung“) — dann steht hier nichts doppelt. */}
+      {!params.has(STELLE_PARAM) &&
+      fassungsLage(genannteFassung, aktuelleFassung) === "abweichend" ? (
         <p
           data-testid="objektbezug-fassung-abweichend"
           data-fassung={genannteFassung ?? undefined}
