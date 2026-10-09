@@ -49,7 +49,11 @@ import type {
 //    sondern weil kein quellenbezogener Wert zu rechtfertigen ist. Die Evidenzregel
 //    (services/ask/src/answer-evidence.ts) trägt denselben Fall als benannten Vorbehalt, und die
 //    Oberfläche zeigt neben „Zuordnung unbekannt" gar keine Zahl mehr.
-export function answerStanding(carrying: readonly Pick<KnowledgeRef, "status" | "trust">[]): {
+//  4 aufnahme:20260922:gesamt-wissen-frische (R-0248): eine tragende Quelle mit abgelaufener
+//    Haltbarkeit ist nicht mehr gesichert — validiert allein reicht dann nicht.
+export function answerStanding(
+  carrying: readonly Pick<KnowledgeRef, "status" | "trust" | "haltbarkeitAbgelaufen">[],
+): {
   knowledgeClass: KnowledgeClass;
   trust: number;
 } {
@@ -57,7 +61,9 @@ export function answerStanding(carrying: readonly Pick<KnowledgeRef, "status" | 
     return { knowledgeClass: "ungeprueft", trust: 0 };
   }
   return {
-    knowledgeClass: carrying.every((r) => r.status === "validiert") ? "gesichert" : "ungeprueft",
+    knowledgeClass: carrying.every((r) => r.status === "validiert" && !r.haltbarkeitAbgelaufen)
+      ? "gesichert"
+      : "ungeprueft",
     trust: Math.min(...carrying.map((r) => r.trust)),
   };
 }
@@ -1535,8 +1541,8 @@ export function queryTokens(text: string): string[] {
 //   · Stoppwörter und Kurzwörter — die Zerlegung entfernt sie ohnehin;
 //   · die mehrdeutigen Funktionsformen aus mega57 („würd", „woll" …), solange sie nicht als
 //     Nominalisierung im Satz stehen — dieselbe Regel wie für die Substanz;
-//   · das FRAGEGERÜST (`FRAGEGERUEST` unten): Verben, mit denen man nach einer Sache FRAGT, ohne sie
-//     zu benennen („Wo FINDE ich …", „Was GILT für …", „Wo STEHT …"). Ohne diese Ausnahme wäre
+//   · das FRAGEGERÜST (`FRAGEGERUEST` unten): Verben und Frageergänzungen, mit denen man nach einer
+//     Sache FRAGT, ohne sie zu benennen („Wo FINDE ich …", „Was GILT für …", „Wie HOCH ist …"). Ohne diese Ausnahme wäre
 //     „Wo finde ich die Urlaubsregelungen im Handbuch?" gegen „Die Urlaubszeiten stehen im Handbuch."
 //     eine Wissenslücke (N2 Z1) — die Quelle sagt nicht „finden".
 //
@@ -1576,6 +1582,23 @@ const FRAGEGERUEST: readonly string[] = [
   // „Was sagt der Betrieb zum Ventil?" (mega59-komposita)
   "sagt",
   "sagen",
+  // „Wozu dient der Schnellstartknopf NOTSTART-4?" — die Quelle sagt, WIE er angefahren wird, nicht
+  // „dient" (F-0688 M3b, R-0278 W0; seit R-0473 Wissenslücke trotz passender Quelle).
+  "dient",
+  "dienen",
+  // „Wie hoch ist das Nachspannmoment an der Presse?" — die Quelle nennt den Wert (G27).
+  "hoch",
+  // „How many days does the customer have to report a defect?" — die Quelle nennt die Zahl
+  // (JOB 3298 V1/R1–R3).
+  "many",
+  // „Es geht um Ventil F3. Welche maximale Temperatur gilt?" (ben, Nacharbeit 5) — der Satz führt
+  // die Sache ein, „geht" benennt sie nicht; „Ventil F3" bleibt gebunden.
+  "geht",
+  "gehen",
+  // „Nenne nur Werte für Ventil F3. Welche maximale Temperatur gilt?" (ben, Nacharbeit 7) — „Werte"
+  // fragt nach dem Zahlenwert wie „hoch"/„many"; die Quelle nennt ihn, ohne „Wert" zu sagen.
+  "wert",
+  "werte",
 ];
 
 let fragegeruestCache: ReadonlySet<string> | undefined;
@@ -1584,9 +1607,181 @@ function fragegeruest(): ReadonlySet<string> {
   return fragegeruestCache;
 }
 
+// ------------------------------------------------------------------------------------------------
+// R-0278-Nacharbeit 3 (ben, P-ASK-C02): DIE SACHFRAGE, NICHT DIE ANWEISUNG.
+// ------------------------------------------------------------------------------------------------
+//
+// Pedis Freitagsfrage, wörtlich: „In the fictional Advisor ICT demo data, what is the standard
+// invoice payment period? Answer in English and cite the stored source. If the sources disagree,
+// say so rather than choosing silently." Gebunden wurde bis hierher JEDES Inhaltstoken — auch
+// „english", „cite", „disagree" aus den beiden Anweisungssätzen und „fictional", „advisor", „demo"
+// aus dem Fundortrahmen. Keine Quelle führt diese Wörter; die vorhandenen Fristen fielen heraus,
+// und mit ihnen die Konfliktdarstellung (ASK-C02-KONFLIKT).
+//
+// AUF WORTEBENE, NICHT AUF SATZEBENE — Nacharbeit 7 (ben). Nacharbeit 3 verwarf ganze Sätze und
+// Rahmen, Nacharbeit 5 noch ganze Anweisungssätze und jeden Rahmen, der auf ein Bestandswort endet.
+// Beides warf Sachen mit weg: „Nenne nur Werte für Ventil F3. Welche …?" verlor F3, „In den Kessel K7
+// Daten, welche …?" verlor K7 — eine Quelle zu F4 bzw. K8 hätte die Frage getragen. Jetzt wird
+// KEIN Satz und KEIN Rahmen mehr als Ganzes verworfen. Entfernt wird nur, was eindeutig formal ist:
+//   1. IN EINEM ANWEISUNGSSATZ (Satz ohne „?", der als Anweisung an die Antwort beginnt — Antwortverb
+//      oder Bedingungssatz über die Quellen) entfallen NUR die deklarierten Anweisungswörter
+//      (`ANWEISUNGSWOERTER`: „answer", „english", „cite", „source" …). Jedes andere Wort des Satzes —
+//      „Ventil", „F3" — bleibt gebunden.
+//   2. IN EINEM RAHMEN vor dem Fragewort („In the … data, what …", „In den Kessel K7 Daten, …")
+//      entfallen NUR die Wörter, die den Bestand bezeichnen (`BESTANDSWOERTER`). Jedes Sachwort im
+//      Rahmen („Kessel", „K7", „Handbuch") bleibt gebunden.
+// Beide Listen sind deklariert und je Eintrag an einem gemessenen Fall belegt, wie das Fragegerüst.
+// Ohne Fragesatz bleibt die ganze Eingabe gebunden — „Ventil F3 Temperatur" (R-0473) unverändert.
+const FRAGESATZ_ENDE = /\?\s*$/;
+// Antwortverben, EN/DE/NL — die Verben, mit denen man die Antwort formt, nicht die Sache.
+const ANTWORTVERBEN = [
+  "answer",
+  "respond",
+  "reply",
+  "cite",
+  "quote",
+  "name",
+  "list",
+  "give",
+  "use",
+  "write",
+  "keep",
+  "include",
+  "antworte\\w*",
+  "beantworte\\w*",
+  "zitiere\\w*",
+  "nenne\\w*",
+  "gib",
+  "schreibe?",
+  "fasse",
+  "antwoord",
+  "noem",
+  "geef",
+  "citeer",
+];
+// Satzanfang mit Antwortverb — oder ein Bedingungssatz über die QUELLEN („If the sources …").
+const ANTWORTANWEISUNG = new RegExp(
+  `^\\s*(?:(?:bitte|please)\\s+)?(?:${ANTWORTVERBEN.join("|")})\\b|^\\s*(?:if|wenn|falls|als)\\b[^.!?]*\\b(?:sources?|quellen?|bronn?en)\\b`,
+  "i",
+);
+// Die formalen Wörter einer Antwortanweisung — sie sagen, WIE geantwortet wird, nicht WORÜBER.
+const ANWEISUNGSWOERTER = [
+  // Pedis Freitagsfrage (P-ASK-C02): „Answer in English and cite the stored source. If the
+  // sources disagree, say so rather than choosing silently."
+  "answer",
+  "english",
+  "cite",
+  "stored",
+  "source",
+  "sources",
+  "disagree",
+  "say",
+  "rather",
+  "than",
+  "choosing",
+  "silently",
+  // „Antworte kurz und nenne die Quelle." (Nacharbeit 3), „Nenne nur Werte für …" (Nacharbeit 7)
+  "antworte",
+  "kurz",
+  "nenne",
+  "quelle",
+];
+let anweisungswoerterCache: ReadonlySet<string> | undefined;
+function anweisungswoerter(): ReadonlySet<string> {
+  anweisungswoerterCache ??= new Set(ANWEISUNGSWOERTER.flatMap((w) => tokenize(w)));
+  return anweisungswoerterCache;
+}
+// Die Wörter, die den DATENBESTAND bezeichnen, nicht eine Sache darin.
+const BESTANDSWOERTER = [
+  // „In the fictional Advisor ICT demo data, what …" (P-ASK-C02; „Advisor ICT" ist der Name des
+  // geladenen Beispielbestands, PRIORITAETEN.md ASK-C02)
+  "fictional",
+  "advisor",
+  "ict",
+  "demo",
+  "data",
+  // „Im Wissensbestand, wo …" (Nacharbeit 5)
+  "wissensbestand",
+  "daten",
+  "bestand",
+];
+let bestandswoerterCache: ReadonlySet<string> | undefined;
+function bestandswoerter(): ReadonlySet<string> {
+  bestandswoerterCache ??= new Set(BESTANDSWOERTER.flatMap((w) => tokenize(w)));
+  return bestandswoerterCache;
+}
+const RAHMEN_PRAEPOSITIONEN = [
+  "in",
+  "im",
+  "innerhalb",
+  "laut",
+  "gemäß",
+  "gemaess",
+  "within",
+  "according to",
+  "inside",
+  "volgens",
+  "binnen",
+];
+const FRAGEWOERTER = [
+  "what",
+  "which",
+  "how",
+  "when",
+  "where",
+  "who",
+  "why",
+  "was",
+  "welche[nmrs]?",
+  "wie",
+  "wann",
+  "wo",
+  "wer",
+  "warum",
+  "wozu",
+  "wat",
+  "welke?",
+  "hoe",
+  "wanneer",
+  "waar",
+  "waarom",
+];
+// Ein vorangestellter Rahmen vor dem Fragewort; ob er entfällt, entscheiden seine WÖRTER (unten).
+const RAHMEN = new RegExp(
+  `^\\s*(?:${RAHMEN_PRAEPOSITIONEN.join("|")})(?=\\s)([^,?]*),\\s*(?=(?:${FRAGEWOERTER.join("|")})\\b)`,
+  "i",
+);
+
+/** Die Inhaltstoken der Eingabe, aus denen die gebundenen Begriffe gewählt werden. */
+function sachtoken(question: string, nominal: Set<string>): string[] {
+  const saetze = question.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0);
+  if (!saetze.some((s) => FRAGESATZ_ENDE.test(s))) {
+    return tokenize(question, nominal);
+  }
+  const token: string[] = [];
+  for (const satz of saetze) {
+    if (FRAGESATZ_ENDE.test(satz)) {
+      const rahmen = RAHMEN.exec(satz);
+      if (rahmen) {
+        // Im Rahmen entfallen NUR die Bestandswörter; jedes Sachwort („Kessel", „K7") bleibt.
+        const imRahmen = tokenize(rahmen[1] ?? "", nominal);
+        token.push(...imRahmen.filter((t) => !bestandswoerter().has(t)));
+        token.push(...tokenize(satz.slice(rahmen[0].length), nominal));
+      } else {
+        token.push(...tokenize(satz, nominal));
+      }
+    } else if (ANTWORTANWEISUNG.test(satz)) {
+      token.push(...tokenize(satz, nominal).filter((t) => !anweisungswoerter().has(t)));
+    } else {
+      token.push(...tokenize(satz, nominal));
+    }
+  }
+  return token;
+}
+
 export function undVerknuepfteFragebegriffe(question: string): string[] {
   const nominal = new Set<string>();
-  const gebunden = tokenize(question, nominal).filter(
+  const gebunden = sachtoken(question, nominal).filter(
     (token) => !fragegeruest().has(token) && (istSubstanztragend(token) || nominal.has(token)),
   );
   return [...new Set(gebunden)];

@@ -1339,6 +1339,8 @@ export class CaptureService {
       type: p.type,
       category: p.category,
       author: draft.originalAuthor,
+      // R-0554: ein übergebener Entwurf trägt seine ursprüngliche Urheberin mit (`Draft.urheber`).
+      ...(draft.urheber ? { originalAuthor: draft.urheber } : {}),
       conditions: p.conditions ?? [],
       measures: p.measures ?? [],
       tags: p.tags ?? [],

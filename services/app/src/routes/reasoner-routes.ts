@@ -648,12 +648,14 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         const kiBeginn = kiEingang;
         try {
           ask.kiSperreVorFrage(kiBeginn);
+          // R-0278 (Nacharbeit 3, ben): derselbe Prüfstand wie `/api/ask` — Ungeprüftes wird auch
+          // über diesen Task nie Antwortgrundlage („für alle Wege gleich").
           const antwort = gebundenOhneFreigabe
             ? await ask.ask(text ?? "", user.id, locale, {
                 validatedOnly: true,
                 retrievalOnly: true,
               })
-            : await ask.ask(text ?? "", user.id, locale);
+            : await ask.ask(text ?? "", user.id, locale, { validatedOnly: true });
           ask.kiSperreVorAuslieferung(kiBeginn);
           reply.code(200).send(antwort);
         } catch (fehler) {

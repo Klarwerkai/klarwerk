@@ -1088,6 +1088,30 @@ function describeImageSystem(locale: ReasonerLocale): string {
 // überziehen — gekappt wird deterministisch, nicht verhandelt).
 export const MAX_IMAGE_DESCRIPTION_LENGTH = 300;
 
+// R-0046 — EIN GEDECKELTER VORSCHLAG IST KEIN ABGERISSENER. Bis hierher schnitt der Deckel mit
+// `slice(0, 300)` blind, also mitten im Wort oder Satz — ein Fragment, das als fertige Fußnote
+// dastand. Jetzt, in dieser Reihenfolge:
+//   1. passt der Text, bleibt er unverändert;
+//   2. sonst endet er am letzten VOLLSTÄNDIGEN Satz innerhalb der Grenze (ein Satzende ist ein
+//      Satzzeichen, dem Leerraum folgt — „P-12.5 mm" bleibt ein Wort);
+//   3. gibt es keinen, endet er an der letzten Wortgrenze, und die Kürzung ist SICHTBAR („…") —
+//      niemand soll ein gekürztes Stück für das Ganze halten (dasselbe Muster wie service.ts).
+// Er fügt nie Inhalt hinzu und überschreitet die Grenze nie, das Auslassungszeichen eingerechnet.
+export function beschreibungDeckeln(text: string): string {
+  if (text.length <= MAX_IMAGE_DESCRIPTION_LENGTH) {
+    return text;
+  }
+  for (let i = MAX_IMAGE_DESCRIPTION_LENGTH - 1; i > 0; i -= 1) {
+    if (/[.!?]/u.test(text.charAt(i)) && /\s/u.test(text.charAt(i + 1))) {
+      return text.slice(0, i + 1);
+    }
+  }
+  const raum = text.slice(0, MAX_IMAGE_DESCRIPTION_LENGTH - 1);
+  const luecke = raum.lastIndexOf(" ");
+  const stueck = (luecke > 0 ? raum.slice(0, luecke) : raum).replace(/[\s,;:–-]+$/u, "");
+  return `${stueck}…`;
+}
+
 // WP-BILD-1f (Pedi 22.07.): HARTES Größenbudget für den mitgereichten Dokument-Kontext. Der Client
 // kürzt schon bei der Extraktion (MAX_IMAGE_CONTEXT_CHARS, apps/web/src/lib/captionContext.ts) — der
 // Server kappt hier AUTORITATIV und deterministisch nach, egal woher der Kontext stammt. Überschuss
@@ -2118,14 +2142,26 @@ export class ModelProvider implements ReasonerProvider {
     // Vision-USER-Prompts mit — also durch DENSELBEN Egress-Wächter wie das Bild. Bei vertraulichem
     // Bild wirft cappedModelClient BEVOR dieser Aufruf läuft; Kontext geht dann NIE an die Cloud.
     const trimmedContext = (context ?? "").trim().slice(0, MAX_IMAGE_CONTEXT_LENGTH).trim();
-    const raw = await client.completeVision(
-      describeImageSystem(locale),
-      dataUrl,
-      describeImageUserPrompt(locale, trimmedContext),
-      confidential,
-      256,
+    // R-0046: der Aufruf läuft in der Abbruch-Spur (JOB 3276 R3, wie assist). Eine am Token-Limit
+    // abgerissene Beschreibung ist eine halbe Aussage über das Bild — sie wird nicht Vorschlag,
+    // sondern Fehler; die Kette entscheidet weiter (anderes Modell oder ehrlicher Rückfall).
+    const completeVision = client.completeVision.bind(client);
+    const { wert: raw, abbruch } = await mitAbbruchBefund(() =>
+      completeVision(
+        describeImageSystem(locale),
+        dataUrl,
+        describeImageUserPrompt(locale, trimmedContext),
+        confidential,
+        256,
+      ),
     );
-    const text = raw.trim().slice(0, MAX_IMAGE_DESCRIPTION_LENGTH).trim();
+    if (abbruch !== null) {
+      throw new ModelEmptyResponseError(
+        `${client.model ?? client.name}: Antwort wurde am Token-Limit abgeschnitten (describe, ${abbruch.budgetFeld}=${abbruch.budget}, finish_reason=${abbruch.finishReason}).`,
+        { reason: "truncated", finishReason: abbruch.finishReason, maxTokens: abbruch.budget },
+      );
+    }
+    const text = beschreibungDeckeln(raw.trim()).trim();
     return {
       text: text.length > 0 ? text : null,
       demo: false,
