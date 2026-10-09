@@ -31,12 +31,15 @@ function zustaende(surface: "capture" | "import"): Map<string, SourceState> {
 }
 
 /** Die Rangordnung, in der die Galerie sortiert — aktiv zuerst, geplant zuletzt. */
+// ADMIN-02: „available" (gebaut, Stand der Installation unbekannt/ungeprüft) steht zwischen
+// „elsewhere" und „unconfigured" — dieselbe Ordnung wie `STATE_RANK` in importSourceGallery.ts.
 const RANG: Record<SourceState, number> = {
   active: 0,
   elsewhere: 1,
-  unconfigured: 2,
-  soon: 3,
-  planned: 4,
+  available: 2,
+  unconfigured: 3,
+  soon: 4,
+  planned: 5,
 };
 
 function istGeordnet(quellen: readonly GallerySource[]): boolean {
