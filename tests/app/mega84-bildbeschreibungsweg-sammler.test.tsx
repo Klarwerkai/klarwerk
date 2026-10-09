@@ -2273,8 +2273,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // ZUSAMMENFÜHRUNG veroeffentlichungsoptionen × Hauptstand fb1b3cae (Nacharbeit 4): der
     // Hauptstand führt 532 ohne `VeroeffentlichungBereich`; mit ihm 532 + 1 = 533. EHRLICH GESAGT:
     // GERECHNET, nicht gemessen — weicht der Prüflauf ab, gehört die gemessene Zahl hierher.
+    //
+    // veroeffentlichungsoptionen Nacharbeit 6: GEMESSEN 541. Am Kandidaten 17e4dc5c (nach dem
+    // Einmischen von main 5ed2ded3) meldete der Sammler wörtlich „gemessen: 541 Komponenten ·
+    // 1 Anbieter · 2 Traeger · Grundmenge 693 Quelldateien … expected { komponenten: 541, … } to
+    // deeply equal { komponenten: 533, … }". Dieser Auftrag trägt seit der 533 kein weiteres
+    // Bauteil bei; die 8 darüber kamen mit dem eingemischten Hauptstand. Welche es sind, ist ohne
+    // Git-Verlauf an diesem Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2
+    // sind in derselben Meldung unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 533,
+      komponenten: 541,
       anbieter: 1,
       traeger: 2,
     });
