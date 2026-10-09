@@ -906,6 +906,16 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "KEIN_KO_INHALT",
     grund: "Anzahl je Person ohne aktive Verantwortung; keine Titel, keine Kennungen.",
   },
+  // ADMIN-04 (aus main, Nacharbeit 23 nachgetragen).
+  "GET /api/verantwortung/uebersicht": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Je Konto Zugangsstand und Anzahlen (Beiträge, Entwürfe, Lücken, Prüfaufgaben).",
+  },
+  "GET /api/verantwortung/person/:id/vorgaenge": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "Entwürfe/Lücken nur als Kennung; Prüfaufgaben mit Titel nur über titelFuer → darfSehen.",
+  },
   "POST /api/verantwortung/vorschau": {
     urteil: "PRAEDIKAT",
     grund: "Vorschau je Nachfolger — Titel nur für einsehbare Beiträge.",

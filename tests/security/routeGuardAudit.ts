@@ -1007,6 +1007,13 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Liste ohne aktive Verantwortung nennt je Person nur eine Anzahl.
   "GET /api/verantwortung/person/:id": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
   "GET /api/verantwortung/ungeklaert": { protection: "users.manage" },
+  // ADMIN-04 (aus main): Kontenübersicht nur mit Anzahlen; die Vorgänge einer Person mit Titeln
+  // von Prüfaufgaben nur über `titelFuer` → `darfSehen` (verantwortung-routes.ts).
+  "GET /api/verantwortung/uebersicht": { protection: "users.manage" },
+  "GET /api/verantwortung/person/:id/vorgaenge": {
+    protection: "users.manage",
+    zeilenrecht: ["darfSehen"],
+  },
   "POST /api/verantwortung/vorschau": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
   "POST /api/verantwortung/uebergabe": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
   "POST /api/verantwortung/deaktivierung": {
