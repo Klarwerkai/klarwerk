@@ -66,11 +66,14 @@
 //   · Markup in Zeichenketten (`innerHTML`, Template-Strings) gilt als Prosa — ein `<dialog>`, das
 //     erst zur Laufzeit aus einer Zeichenkette entsteht, ist kein Kandidat.
 //   · `role={variable}` bzw. eine `role` ohne wörtliches "dialog"/"alertdialog" fällt durch.
-//   · Modalität GANZ OHNE Marker bleibt unsichtbar: `apps/web/src/components/Modal.tsx` und die
-//     Command-Palette sind fixe Overlays ohne `<dialog>`, ohne `role`, ohne `aria-modal` — für
-//     JEDE statische Erhebung unsichtbar und weiterhin NICHT gegen die Shell abgegrenzt. Sie sind
-//     eine eigene Scheibe und hier ausdrücklich benannt, damit niemand die grüne Farbe dieser
-//     Datei für „alle Dialoge sind abgegrenzt“ hält.
+//   · Modalität GANZ OHNE Marker IN DER EIGENEN DATEI bleibt für die Kandidatenerhebung unsichtbar:
+//     `apps/web/src/components/Modal.tsx`, die Command-Palette und das Studio tragen selbst kein
+//     `<dialog>`, keine `role`, kein `aria-modal`. Seit R-0909 (Aufnahme `gesamt-dialog-bedienung`)
+//     rendern sie aber den gemeinsamen `GrenzDialog` aus dem Grenzmodul: Rolle und Name stehen
+//     dort, `aria-modal` genau dann, wenn er sich an der Grenze angemeldet hat. Dass das an den
+//     echten Flächen stimmt, belegen nicht diese Erhebung, sondern die gemounteten Fälle in
+//     `tests/app/job1900-modalgrenze-alle-sieben-mounted.test.tsx` und
+//     `tests/dialog-bedienung/palette-und-studio-dialog-mounted.test.tsx`.
 //   · Der Wortzähler läuft über kommentarbereinigten Text; eine Zeichenkette, die selbst `//`
 //     enthält, unterdrückt Treffer derselben Zeile (er zählt dann zu WENIG — der Syntaxbaum-Anker
 //     bleibt davon unberührt, nur das Sicherheitsnetz wird an dieser Stelle dünner).
@@ -647,10 +650,12 @@ function spanntVollflaecheAuf(quelltext: string): boolean {
  * Markerlose Modalträger: Vollbild, verdeckend, über `open` gesteuert — ohne `aria-modal`, ohne
  * `showModal`, ohne `<dialog>`. Schlüssel ist Modulpfad PLUS Exportname, nicht der Namenstext.
  *
- * KEINE dieser drei Flächen trägt heute die Modalgrenze der Shell (gemessen: `Modal.tsx` und
- * `KnowledgeInputStudio.tsx` kennen `ModalBoundaryContext` gar nicht, `CommandPalette.tsx` liest
- * ihn nur über `useModalLocked`). Das ist der Befund, nicht sein Fehlen — und er wird hier
- * festgehalten, nicht repariert: Dialogsemantik ist ausdrücklich nicht Gegenstand dieses Baus.
+ * „Markerlos" heisst hier: IN DER EIGENEN DATEI. Bis R-0909 hiess es auch: ohne Grenze und ohne
+ * Dialogsemantik. Seit der Aufnahme `gesamt-dialog-bedienung` rendern alle drei den gemeinsamen
+ * `GrenzDialog` aus dem Grenzmodul — Rolle, Name, Anmeldung an der Grenze und `aria-modal` stehen
+ * dort, nicht in diesen Dateien. Sie bleiben deshalb in diesem Register (die Ableitung
+ * `istMarkerloserTraegerAmBestand` misst die eigene Datei), und `GRENZE_IST` unten führt sie als
+ * „haelt". Die Wirkung an der echten Fläche belegen die gemounteten Fälle (Kopf dieser Datei).
  */
 const MARKERLOSE_TRAEGER: Bauteil[] = [
   { datei: "apps/web/src/components/Modal.tsx", komponente: "Modal" },
@@ -826,7 +831,9 @@ const WIRKUNGSSIGNALE: ReadonlyArray<readonly [string, RegExp, boolean]> = [
   ["B4 nativer Dialog", /\bshowModal\b|<dialog\b/, true],
   ["B5 aria-Modalitaet", /aria-modal|role\s*=\s*["'](?:alert)?dialog["']/, true],
   ["B6 Vollbildform", B6_VOLLBILDFORM, false],
-  ["B7 Shell-Grenze", /\buseModalBoundary\b|\buseModalLocked\b/, true],
+  // R-0909: `GrenzDialog` ist die Anmeldung an der Grenze in Bauteilform — wer ihn rendert, sperrt
+  // den Hintergrund. Das Signal wird damit SCHÄRFER (es findet mehr), nicht weicher.
+  ["B7 Shell-Grenze", /\buseModalBoundary\b|\buseModalLocked\b|\bGrenzDialog\b/, true],
 ];
 
 /** Die Namen der Signale, die dieser Quelltext zeigt — für die Meldung, nicht nur für das Urteil. */
@@ -1647,13 +1654,21 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
   // GEMESSENEN Zustand fest, in BEIDE Richtungen. Baut jemand die Grenze ein, ohne das Register zu
   // pflegen, wird es rot — und die Behauptung „markerlos, aber abgegrenzt“ kann nicht still
   // entstehen.
+  //
+  // R-0909 (Aufnahme `gesamt-dialog-bedienung`) — GENAU DIESER FALL IST EINGETRETEN, UND DAS
+  // REGISTER IST MITGEPFLEGT: `Modal.tsx`, `KnowledgeInputStudio.tsx` und `CommandPalette.tsx`
+  // rendern jetzt `GrenzDialog`, der sich an der Grenze anmeldet (Hintergrundsperre, Fokus) und
+  // erst dann `aria-modal` setzt. Gemessen wird deshalb auch dieser Weg; alle drei stehen auf
+  // „haelt". Die gemounteten Fälle mit nachgewiesener Grenze, Rolle und Namen stehen in
+  // `tests/app/job1900-modalgrenze-alle-sieben-mounted.test.tsx` (Modal) und
+  // `tests/dialog-bedienung/palette-und-studio-dialog-mounted.test.tsx` (Palette, Studio).
   // ==============================================================================================
   const GRENZE_IST: { datei: string; stand: "keine" | "liest" | "haelt" }[] = [
-    { datei: "apps/web/src/components/Modal.tsx", stand: "keine" },
-    { datei: "apps/web/src/components/KnowledgeInputStudio.tsx", stand: "keine" },
+    { datei: "apps/web/src/components/Modal.tsx", stand: "haelt" },
+    { datei: "apps/web/src/components/KnowledgeInputStudio.tsx", stand: "haelt" },
     // JOB 3060 · H1: HelpTip.tsx rendert keine Fläche mehr und steht deshalb nicht mehr hier.
     { datei: "apps/web/src/components/AiModelInfo.tsx", stand: "keine" },
-    { datei: "apps/web/src/shell/CommandPalette.tsx", stand: "liest" },
+    { datei: "apps/web/src/shell/CommandPalette.tsx", stand: "haelt" },
     { datei: "apps/web/src/components/FacetFilter.tsx", stand: "haelt" },
   ];
 
@@ -1663,7 +1678,7 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
       const e = ALLE_ERHEBUNGEN.find((x) => x.quelle.datei === datei);
       expect(e, `Registereintrag ohne Datei: ${datei}`).toBeDefined();
       const quelle = e?.quelle.gestrippt ?? "";
-      const haelt = /\buseModalBoundary\b/.test(quelle);
+      const haelt = /\buseModalBoundary\b|\bGrenzDialog\b/.test(quelle);
       const liest = /\buseModalLocked\b/.test(quelle);
       const gemessen = haelt ? "haelt" : liest ? "liest" : "keine";
       expect(
@@ -1819,10 +1834,11 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
    * wird, sobald sie nicht mehr stimmt — und nicht eine Liste, die Restfälle wegdefiniert.
    */
   const NUR_A_BEGRUENDET = new Map<string, string>([
-    [
-      "apps/web/src/components/KnowledgeInputStudio.tsx",
-      "Vollbild und verdeckend, aber OHNE modale Wirkung: keine Fokusfalle, keine Scrollsperre, kein inert, kein Marker. Ein Produktbefund, kein Erhebungsfehler.",
-    ],
+    // R-0909 (Aufnahme `gesamt-dialog-bedienung`): `KnowledgeInputStudio.tsx` stand hier als
+    // „Vollbild und verdeckend, aber OHNE modale Wirkung … ein Produktbefund". Der Befund ist
+    // behoben: das Studio rendert `GrenzDialog` (Signal B7) und steht damit in BEIDEN Richtungen.
+    // Der Eintrag ist GESTRICHEN, nicht umformuliert — die Gegenprobe unten („Begründung ohne
+    // Restfall") würde auf einen bleibenden Eintrag rot.
     // JOB 3060 · H1: HelpTip.tsx stand hier als Popover mit farblosem Klickfänger; seit H1 rendert
     // er keine Fläche mehr und taucht in keiner der beiden Richtungen auf.
     [
@@ -4021,6 +4037,18 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // Inhalt zu führen (Treffer-Knopf samt `data-ko`, Kopfangabe samt `dd`); die Zustände teilen
     // sich den Knoten, weil sie dieselbe Aussage in zwei Tönen sind. Keine bestehende Bindung fällt
     // weg oder ist verschoben.
+    // R-0909 (Aufnahme `gesamt-dialog-bedienung`): GENAU EINE Bindung kommt dazu, gerechnet aus
+    // dem Diff und NICHT gemessen —
+    //
+    //     + app/ModalBoundaryContext.tsx — `className={className}` am gemeinsamen `GrenzDialog`
+    //       (er reicht die Klassen seiner drei Aufrufer durch; dieselbe Bauform wie `ModalRegion`)
+    //
+    // Alle übrigen Klassen dieses Auftrags sind feste Zeichenketten (`Modal.tsx` behält seine eine
+    // Bedingung `wide ? … : …` unverändert, nur am neuen Element). Der Sollwert unten bleibt
+    // UNVERÄNDERT: dieser Fall meldete schon vor dem Auftrag 233 statt 226 (Prüfung zu Kandidat
+    // 3a9213818, gesonderter Basisbefund ohne gemessenen Basislauf). Ihn jetzt auf eine gerechnete
+    // Zahl zu setzen, hiesse die fremde Abweichung mitzuverbuchen — nachgeführt wird er mit dem
+    // Basisabgleich, dann mit dieser einen Zeile mehr.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
       226,
     );
