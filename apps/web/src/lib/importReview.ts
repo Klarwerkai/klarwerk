@@ -84,16 +84,19 @@ export function istQuellStand(value: unknown): value is string {
 // kam ohne Einstufung beim Server an — und die Befundübersicht nannte sie „bewertet, ohne
 // Schutzbefund". Jetzt gilt derselbe Vertrag wie an der Ingest-Grenze des Servers
 // (`sanitizeImportConfidentiality`, services/library-analytics/src/service.ts):
-//   · fehlt die Angabe oder ist sie leer → sie fehlt (beim Anlegen gilt „intern", N11);
+//   · fehlt die Angabe (`undefined`/`null`) → sie fehlt (beim Anlegen gilt „intern", N11);
 //   · ein gültiger Wert bleibt; Gross-/Kleinschreibung und „streng vertraulich" mit Leer- oder
 //     Bindestrich werden auf den Schlüssel gebracht (Tabellen schreiben ihn selten wörtlich);
-//   · jeder andere gesetzte Wert wird RESTRIKTIV „vertraulich" — nie still verworfen und nie
+//   · jeder andere gesetzte Wert, auch eine leere Zeichenkette, wird RESTRIKTIV „vertraulich" —
+//     nie still verworfen und nie
 //     herabgestuft. Kein Ablehnungsgrund: eine unklare Einstufung ist ein Schutzsignal, kein
 //     Formfehler.
 const EINSTUFUNGEN: readonly Confidentiality[] = ["intern", "vertraulich", "streng_vertraulich"];
 
 export function einstufungAusDatei(value: unknown): Confidentiality | undefined {
-  if (fehltOderLeer(value)) {
+  // Nacharbeit 5 (Bens Befund): wie `sanitizeImportConfidentiality` fehlt die Angabe NUR bei
+  // `undefined`/`null`. Ein gesetzter Leerwert ist eine unklare Angabe und wird restriktiv.
+  if (value === undefined || value === null) {
     return undefined;
   }
   const schluessel =

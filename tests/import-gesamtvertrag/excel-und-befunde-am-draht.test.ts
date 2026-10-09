@@ -351,7 +351,11 @@ describe("D — durch den Draht: Excel → Prüfliste → Befunde je Kandidat", 
 
   it("D5 · die Einstufungsregel des Parsers entspricht der Ingest-Grenze des Servers", () => {
     expect(einstufungAusDatei(undefined)).toBeUndefined();
-    expect(einstufungAusDatei("  ")).toBeUndefined();
+    expect(einstufungAusDatei(null)).toBeUndefined();
+    // Nacharbeit 5 (Bens Befund): ein GESETZTER Leerwert ist wie an der Server-Ingest-Grenze
+    // (`sanitizeImportConfidentiality`) unklar und damit restriktiv — er fällt nicht auf „intern".
+    expect(einstufungAusDatei("")).toBe("vertraulich");
+    expect(einstufungAusDatei("  ")).toBe("vertraulich");
     expect(einstufungAusDatei("intern")).toBe("intern");
     expect(einstufungAusDatei("Streng vertraulich")).toBe("streng_vertraulich");
     expect(einstufungAusDatei("streng-vertraulich")).toBe("streng_vertraulich");
