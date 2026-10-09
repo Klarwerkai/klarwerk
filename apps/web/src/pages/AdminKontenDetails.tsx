@@ -329,6 +329,30 @@ export function NutzerDetail({
     },
   });
 
+  /**
+   * R-0582 (DS13): der Admin berichtigt Name und E-Mail. Wie bei der Befristung kommt der neue
+   * Stand aus der ANTWORT in den Bestand, bevor die Auffrischung läuft; die Eingaben bleiben bei
+   * einer Ablehnung stehen (Satz des Servers als Meldung, z. B. „E-Mail ist bereits vergeben.").
+   */
+  const [korrekturOffen, setKorrekturOffen] = useState(false);
+  const [korrekturName, setKorrekturName] = useState("");
+  const [korrekturEmail, setKorrekturEmail] = useState("");
+  const berichtigen = useMutation({
+    mutationFn: (v: { id: string; name: string; email: string }) =>
+      endpoints.users.correct(v.id, v.name, v.email),
+    onSuccess: (stand) => {
+      qc.setQueryData<PublicUser[]>(["users"], (alt) =>
+        alt?.map((u) => (u.id === stand.id ? stand : u)),
+      );
+      invalidate();
+      // ADMIN-04: die Berichtigung steht als `user.account-corrected` im Protokoll.
+      invalidateBelege();
+      setKorrekturOffen(false);
+      push("success", t("adm.correctDone"));
+    },
+    onError: fail,
+  });
+
   const [resetOffen, setResetOffen] = useState(false);
   const [resetPw, setResetPw] = useState("");
   // SCRUM-455: Wiederholung des neuen Passworts (Vertipper-Schutz).
@@ -532,6 +556,58 @@ export function NutzerDetail({
         {() => (
           <>
             <div className="font-mono text-[12px] text-muted-2">{nutzer.email}</div>
+
+            {korrekturOffen ? (
+              <div className="space-y-2 rounded-input bg-page p-2" data-testid="nutzer-korrektur">
+                <Field label={t("adm.name")}>
+                  <TextInput
+                    value={korrekturName}
+                    onChange={(e) => setKorrekturName(e.target.value)}
+                    className="h-9"
+                  />
+                </Field>
+                <Field label={t("adm.email")}>
+                  <TextInput
+                    type="email"
+                    value={korrekturEmail}
+                    onChange={(e) => setKorrekturEmail(e.target.value)}
+                    className="h-9"
+                  />
+                </Field>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="primary"
+                    disabled={berichtigen.isPending}
+                    onClick={() =>
+                      berichtigen.mutate({
+                        id: nutzer.id,
+                        name: korrekturName.trim(),
+                        email: korrekturEmail.trim(),
+                      })
+                    }
+                  >
+                    {t("adm.correctSave")}
+                  </Button>
+                  <Button variant="ghost" onClick={() => setKorrekturOffen(false)}>
+                    {t("adm.gastfrist.abbrechen")}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    // Vorbelegt mit dem GELTENDEN Stand — berichtigt wird, nicht neu erfasst.
+                    setKorrekturName(nutzer.name);
+                    setKorrekturEmail(nutzer.email);
+                    setKorrekturOffen(true);
+                  }}
+                >
+                  {t("adm.correct")}
+                </Button>
+              </div>
+            )}
 
             {/* ADMIN-04 · DER ZUGANG IN EINEM SATZ — nur aus belegten Feldern. Anlage: `createdAt`.
                 Letzte Anmeldung und Einladungen führt das Konto nicht; das wird gesagt, statt einen
