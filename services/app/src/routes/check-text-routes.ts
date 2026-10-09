@@ -33,7 +33,9 @@ import { classifyProvenanceConfidential } from "./reasoner-routes";
 
 // SCRUM-491 Slice 5/6: POST /api/check-text, KEINE Persistenz (kein KO/Gap/Board/Inhalts-Audit —
 // Dry-Run-Kern-Garantie). Reichweite seit JOB 3020 je Weg: der Add-in-Pfad prüft nur gegen den
-// VALIDIERTEN Bestand, der Session-Pfad auch gegen Ungeprüftes (siehe Handler, `includeUnvalidated`).
+// VALIDIERTEN Bestand, der Session-Pfad auch gegen Ungeprüftes (siehe Handler, `includeUnvalidated`)
+// — außer der Prüfweg des Word-Fensters schickt ohne Zustimmung `ungeprueftEinbeziehen: false`
+// (R-0708).
 // Nur registriert bei Flag AN (build-app.ts)
 // → Flag AUS = Endpunkt existiert nicht = bit-identisch.
 //   Stufe 1 (want fehlend / != "deep"): rein deterministisch — KEIN Modell, KEIN embed, kein
@@ -71,6 +73,9 @@ const bodySchema = {
     koId: { type: "string" },
     confidentiality: { type: "string" },
     nichtEingestuft: { type: "boolean" },
+    // R-0708 (E31): die ausdrückliche Zustimmung des Word-Prüfwegs, auch noch nicht validierten
+    // Bestand einzubeziehen. Optional — fehlt sie, gilt die Reichweite des Wegs (siehe Handler).
+    ungeprueftEinbeziehen: { type: "boolean" },
   },
 } as const;
 
@@ -560,6 +565,7 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
         koId?: string;
         confidentiality?: string;
         nichtEingestuft?: unknown;
+        ungeprueftEinbeziehen?: boolean;
       };
     }>(
       "/api/check-text",
@@ -616,11 +622,20 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
         // `checktext.validated` (addon-principal.ts) und dieselbe Linie zieht der Fragepfad
         // (ask/src/service.ts): ein Add-on-Principal darf nie aus unvalidierten Inhalten antworten.
         //
-        // ES GIBT BEWUSST KEIN RUMPF-FELD DAFÜR: käme die Reichweite aus dem Body, könnte sich der
+        // KEIN RUMPF-FELD ERWEITERT DIE REICHWEITE: käme sie aus dem Body, könnte sich der
         // Add-in-Client sie selbst geben — der Riegel wäre eine Bitte. Sie hängt deshalb am
         // authentifizierten Weg, den der Client nicht wählen kann.
+        //
+        // R-0708 (E31, Pedi 13.08.: „Opt-in auf /api/check-text"): der Prüfweg des Word-Fensters
+        // („Dokument prüfen" / „Markierung prüfen") fragt „ist das durch das Haus gedeckt?" und
+        // schickt dafür seine AUSDRÜCKLICHE Zustimmung mit: `ungeprueftEinbeziehen: false` heißt
+        // „nur Validiertes", `true` „auch noch nicht Validiertes". Das Feld kann am Sitzungsweg
+        // die Reichweite nur VERENGEN oder bestätigen, nie über die des Wegs hinaus öffnen: am
+        // Add-in-Schlüssel bleibt es wirkungslos. Fehlt es, gilt wie bisher die Reichweite des
+        // Wegs — so behält der Weg der Erfassung („gibt es das schon, auch ungeprüft?", JOB 3020)
+        // seine eigene Frage, getrennt vom Prüfweg.
         const istAddon = request.authContext?.authKind === "addon";
-        const includeUnvalidated = !istAddon;
+        const includeUnvalidated = !istAddon && request.body.ungeprueftEinbeziehen !== false;
         // ==========================================================================================
         // JOB 3216 — DIE QUELLENFUNDE ERBEN DIE SICHTBARKEITSREGEL DER BIBLIOTHEK, WÖRTLICH.
         // ==========================================================================================
