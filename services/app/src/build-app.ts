@@ -56,13 +56,17 @@ import {
   InMemoryConflictRepo,
   InMemoryOverlapRepo,
   InMemoryOverlapSettingsRepo,
+  InMemoryPaarpflichtRepo,
   type OverlapRepo,
   OverlapService,
   type OverlapSettingsRepo,
+  type PaarpflichtRepo,
+  PaarpflichtService,
   PgConflictMemoryRepo,
   PgConflictRepo,
   PgOverlapRepo,
   PgOverlapSettingsRepo,
+  PgPaarpflichtRepo,
 } from "../../conflicts";
 import { createConfluenceAdapterFromEnv } from "../../confluence";
 // SCRUM-523 P.3 (WP-A2): gemeinsamer Transaktions-Kernel — nur die Kompositionswurzel bindet withPgTx
@@ -320,6 +324,11 @@ import { gelisteteMeldung, nurGelisteteLogfelder } from "./log-positivliste";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 import {
+  type PaarpflichtAusfuehrung,
+  createPaarpflichtAusfuehrung,
+  paarpflichtPrueferFuer,
+} from "./paarpflicht-ausfuehrung";
+import {
   InMemoryQuellabgleichRepo,
   PgQuellabgleichRepo,
   type QuellabgleichRepo,
@@ -375,6 +384,7 @@ import { notificationsRoutes } from "./routes/notifications-routes";
 import { objectRoutes } from "./routes/object-routes";
 import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
+import { paarpflichtenRoutes } from "./routes/paarpflichten-routes";
 import { provenanceEnabled, provenanceRoutes } from "./routes/provenance-routes";
 import { reasonerRoutes } from "./routes/reasoner-routes";
 // JOB 4086: Adapter #2 des quellneutralen Import-Vertrags — SharePoint/OneDrive.
@@ -595,6 +605,11 @@ export interface AppServices {
   answerSnapshots: AnswerSnapshotRepo;
   validation: ValidationService;
   conflicts: ConflictService;
+  // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): der Pflichtendienst und seine
+  // Hintergrundausführung (fassungsgebundener Prüfer über den Reasoner). Die Ausführung erstellt
+  // buildApp — wie `aiCheckWorker`; ein vorab gesetzter Wert hat Vorrang.
+  paarpflichten: PaarpflichtService;
+  paarpflichtAusfuehrung?: PaarpflichtAusfuehrung;
   // Berater-Konzept Duplikate 04.07. (Stufe D3): Überschneidungs-/Duplikat-Erkennung (eigene Entität).
   overlaps: OverlapService;
   // Pedi 04.07.: einstellbare Anzeige-Schwelle der Duplikat-Erkennung (Admin) — schmale Repo-Schnittstelle.
@@ -682,6 +697,8 @@ export interface AppRepos {
   conflictsRepo: ConflictRepo;
   // Aufnahme 20260922 · Prüfung-Gedächtnis (R-1103/R-1105): gemerkte Textstände je Paar.
   conflictMemory: ConflictMemoryRepo;
+  // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): Laufköpfe und Aussage-Paarpflichten.
+  paarpflichten: PaarpflichtRepo;
   // Berater-Konzept Duplikate 04.07. (Stufe D3b): Persistenz der Überschneidungs-Einträge.
   overlapRepo: OverlapRepo;
   // Pedi 04.07.: persistierte Anzeige-Schwelle der Duplikat-Erkennung (Admin-Einstellung).
@@ -1238,6 +1255,10 @@ export function assembleServices(
     currentVersion: koVersion,
     memory: repos.conflictMemory,
   });
+  // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): der Pflichtendienst über der Ablage. Seine
+  // Hintergrundausführung entsteht in `buildApp` (wie der KI-Prüf-Worker), damit sie den dort
+  // gültigen Reasoner benutzt.
+  const paarpflichten = new PaarpflichtService({ repo: repos.paarpflichten });
   // JOB 3071: die papierkorbfähige Auskunft „hat der Autor seinen eigenen Beitrag zurückgezogen?".
   // Genau wie `koVersion` ein Funktions-Port und keine Modulkante: `services/conflicts` darf
   // `services/knowledge-object` nicht kennen (dependency-cruiser). Die Regel selbst wohnt im
@@ -1380,6 +1401,7 @@ export function assembleServices(
     audit,
     wissensuebergabe,
     reasoner,
+    paarpflichten,
     klaraSessions: opts.klaraSessions ?? new InMemoryKlaraSessionRepo(),
     // JOB 3326: die Lesevarianten-Ablage — Postgres, wenn injiziert, sonst im Speicher.
     lesevarianten: opts.lesevarianten ?? new InMemoryLesevariantenRepo(),
@@ -1613,6 +1635,21 @@ export function assembleServices(
       busFactor: (opts) => library.busFactor(opts),
       // R-0751 / R-1639 / R-2183 (Nacharbeit 3): gepflegte Bereichsprofile und Ruhestandshorizonte.
       profiles: repos.managementProfiles,
+      // R-1657 (Nacharbeit 2): „Lückenerkennung über Reasoner" — das Urteil über die Kennzahlen je
+      // Bereich. Die Vertraulichkeit reist als Egress-Bit mit (vertraulich ⇒ keine Cloud). Ein
+      // Fehler des Urteilswegs (auch Überlast) wird zur benannten Ursache, nie zum Absturz des Laufs.
+      judgeGaps: async (bereiche, confidential) => {
+        try {
+          const ausgang = await reasoner.judgeKnowledgeGapsOutcome(bereiche, "de", confidential);
+          return {
+            urteile: ausgang.urteile,
+            failure: ausgang.failure ?? null,
+            provider: ausgang.provider ?? null,
+          };
+        } catch {
+          return { urteile: null, failure: "model-error", provider: null };
+        }
+      },
     }),
     // SCRUM-118: externer Such-Proxy (Wikipedia) — optional via Env abschaltbar.
     externalSearch: createExternalSearchFromEnv(),
@@ -1708,6 +1745,7 @@ export function inMemoryRepos(): AppRepos {
     assignments: new InMemoryAssignmentRepo(),
     conflictsRepo: new InMemoryConflictRepo(),
     conflictMemory: new InMemoryConflictMemoryRepo(),
+    paarpflichten: new InMemoryPaarpflichtRepo(),
     overlapRepo: new InMemoryOverlapRepo(),
     overlapSettings: new InMemoryOverlapSettingsRepo(),
     managementProfiles: new InMemoryManagementProfileRepo(),
@@ -1786,6 +1824,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       assignments: new PgAssignmentRepo(pool),
       conflictsRepo: new PgConflictRepo(pool),
       conflictMemory: new PgConflictMemoryRepo(pool),
+      // G2: Paarpflichten überleben den Neustart und werden danach wiederaufgenommen.
+      paarpflichten: new PgPaarpflichtRepo(pool),
       // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge persistent.
       overlapRepo: new PgOverlapRepo(pool),
       // Pedi 04.07.: Anzeige-Schwelle persistent.
@@ -3871,6 +3911,28 @@ export function buildApp(
   // AUFTRAG-mega29 C2: die schmale Abdeckungs-Zusammenfassung, die die LEEREN Konflikt-/Duplikat-
   // Boards brauchen, um nicht als „geprüft und frei" gelesen zu werden.
   app.register(aiCheckCoverageRoutes(services.ko, guards));
+  // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): ausdrücklich gewählte Läufe anlegen, lesen und
+  // fortsetzen. Die Ausführung prüft fassungsgebunden über DENSELBEN Reasoner und DENSELBEN
+  // KO-Dienst wie die Konflikterkennung. Gespeicherte Läufe mit offener Arbeit (z. B. nach einem
+  // Neustart) werden beim Bau der App wieder eingereiht — die Ausführung meldet ihre Fehler selbst.
+  const paarpflichtAusfuehrung =
+    services.paarpflichtAusfuehrung ??
+    createPaarpflichtAusfuehrung({
+      service: services.paarpflichten,
+      pruefer: paarpflichtPrueferFuer({ ko: services.ko, reasoner: services.reasoner }),
+    });
+  services.paarpflichtAusfuehrung = paarpflichtAusfuehrung;
+  app.register(
+    paarpflichtenRoutes(
+      {
+        ko: services.ko,
+        paarpflichten: services.paarpflichten,
+        ausfuehrung: paarpflichtAusfuehrung,
+      },
+      guards,
+    ),
+  );
+  void paarpflichtAusfuehrung.wiederaufnehmen();
   // JOB 4151 (WG-PERSISTENZ): die kuratierten Beziehungen. Der Bestand kommt aus `services`
   // (Postgres oder Speicher, s. dort); `services.ko` erfüllt den SCHMALEN Port `KantenKoLeser`
   // (`kanten-service.ts:178-180`) — die Route kennt den KO-Dienst deshalb nicht als Ganzes. Die
