@@ -33,6 +33,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { HOME_ROUTE } from "../../app/navigation";
+import { internerPfad } from "../../lib/internerPfad";
 import { useTutorialFuerKlara } from "../../tutorial/TutorialRahmen";
 import type { TutorialFernLage } from "../../tutorial/fernsteuerung";
 import { KlaraTutorialKarte, KlaraZeiger, type ZielTreffer, findeZiel } from "./KlaraTutorial";
@@ -166,8 +167,12 @@ function herkunftZeile(h: Herkunft, t: Uebersetzer): string {
   return h.absatz ? `${basis} · ${t("klaravorschau.auswahl.absatz", { nr: h.absatz })}` : basis;
 }
 
+// R-1398: `h.pfad` ist ein früher gelesener `location.pathname` — nur ein interner Pfad wird
+// Navigationsziel (lib/internerPfad.ts, GHSA-wrjc/GHSA-jjmj).
 function herkunftZiel(h: Herkunft): string {
-  return h.artikelId && h.absatz ? `${artikelPfad(h.artikelId)}#absatz-${h.absatz}` : h.pfad;
+  return h.artikelId && h.absatz
+    ? `${artikelPfad(h.artikelId)}#absatz-${h.absatz}`
+    : internerPfad(h.pfad, HOME_ROUTE);
 }
 
 interface AuswahlKnopf {
