@@ -58,12 +58,19 @@ describe("SCRUM-367: RBAC route guard audit", () => {
       "POST /api/auth/forgot",
       "POST /api/auth/reset",
       "POST /api/auth/oidc",
+      // R-0560: der SAML-Rücksprung ist derselbe Auth-Einstieg wie der OIDC-Callback darüber; sein
+      // Nachweis ist die signierte Antwort des Anbieters.
+      "POST /api/auth/saml/acs",
       "POST /api/auth/setup",
       // JOB 4076 (OFFICE-WEB-ANMELDUNG): das Einlösen des Übergabecodes IST ein Auth-Einstieg —
       // derselbe Grund, aus dem `POST /api/auth/reset` hier steht: der Aufruf bringt seinen
       // Nachweis mit (einmaliger, 120-s-Code aus einer angemeldeten Sitzung) und kann keinen
       // Sitzungsnachweis mitbringen, weil er aus einem Rahmen fremder Herkunft kommt.
       "POST /api/auth/office-handover/redeem",
+      // R-0562: der zweite Anmeldeschritt IST ein Auth-Einstieg — es gibt noch keine Sitzung; der
+      // Nachweis sind die Anmeldeanfrage aus dem Passwortschritt (5 min, einmalig, höchstens fünf
+      // Versuche) und der Code vom zweiten Gerät. Je IP gedrosselt.
+      "POST /api/auth/login/second-factor",
     ]);
     const unexpected = publicMutating.filter((k) => !allowed.has(k));
     expect(unexpected).toEqual([]);

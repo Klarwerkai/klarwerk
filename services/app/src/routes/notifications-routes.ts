@@ -1,5 +1,10 @@
 import type { FastifyPluginAsync } from "fastify";
-import { type AskService, redactGapForViewer } from "../../../ask";
+import {
+  ANTWORT_MELDUNG_ACTION,
+  type AskService,
+  isAntwortMeldeGrund,
+  redactGapForViewer,
+} from "../../../ask";
 import type { AuditService } from "../../../audit";
 import type { ConflictService, OverlapService } from "../../../conflicts";
 import type { NotificationSeenRepo } from "../../../notifications";
@@ -10,6 +15,7 @@ import {
   type ImpactNotice,
   type KenntnisnahmeNotice,
   type Notification,
+  type ReklamationNotice,
   buildNotifications,
 } from "../notification-feed";
 import { type KoSichtbarkeitsZugang, sichtbareEintraege, sichtbarePaare } from "../sichtbarkeit";
@@ -74,6 +80,32 @@ export function deriveImpacts(
   return out.slice(-12);
 }
 
+// R-1089: Meldungen „Antwort falsch / Quelle passt nicht" für die verantwortliche Person. Zugestellt
+// ist, was der Dienst beim Melden als `responsible` festgehalten hat — dieselbe Auskunft, die die
+// Quittung des Meldenden nennt; ein späterer Eigentümerwechsel verschiebt keine alte Meldung.
+// Nur Einträge mit vollständiger Payload — und ALLE davon. Ben (Nacharbeit 3): eine Kürzung auf die
+// letzten N machte eine quittierte Meldung unerreichbar, sobald vor dem nächsten Abruf mehr
+// eingingen; ein Weg zu älteren Meldungen existiert nicht. Was zugestellt ist, bleibt im Feed.
+export function deriveReklamationen(
+  entries: Array<{ target: string; at: string; payload: Record<string, unknown> }>,
+  userId: string,
+): ReklamationNotice[] {
+  const out: ReklamationNotice[] = [];
+  for (const e of entries) {
+    const { responsible, koTitle, meldungId, grund } = e.payload;
+    if (
+      responsible !== userId ||
+      typeof koTitle !== "string" ||
+      typeof meldungId !== "string" ||
+      !isAntwortMeldeGrund(grund)
+    ) {
+      continue;
+    }
+    out.push({ meldungId, koId: e.target, title: koTitle, grund, at: e.at });
+  }
+  return out;
+}
+
 // Audit-P3 (SCRUM-397): Feed einmal bauen, Gelesen-Status je Item ehrlich anreichern.
 // FUNKE-FIX3 P0 (bens Blocker B): der Feed wird PRO BETRACHTER gebaut — die Gap-Ableitung läuft
 // durch denselben zentralen Sichtbarkeitsvertrag wie /api/gaps (gap-visibility.redactGapForViewer):
@@ -86,12 +118,13 @@ async function loadFeed(
 ): Promise<Array<Notification & { seen: boolean }>> {
   // SCRUM-363: Zuweisungen werden PRO NUTZER geladen (user.id) — der Feed zeigt nur die
   // Review-Arbeit der angemeldeten Person, keine fremden Zuweisungen.
-  const [conflicts, overlaps, gaps, assignments, helpful, seenIds] = await Promise.all([
+  const [conflicts, overlaps, gaps, assignments, helpful, gemeldet, seenIds] = await Promise.all([
     deps.conflicts.unresolved(),
     deps.overlaps.unresolved(),
     deps.ask.listGaps(),
     deps.validation.openAssignmentsFor(user.id),
     deps.audit.list({ action: "answer.helpful" }),
+    deps.audit.list({ action: ANTWORT_MELDUNG_ACTION }),
     deps.seen.seenFor(user.id),
   ]);
   const viewer = { viewerId: user.id };
@@ -127,6 +160,12 @@ async function loadFeed(
   // entzogen wurde, der sieht auch dessen Titel in der Glocke nicht mehr.
   const offeneKenntnisnahmen = (await deps.kenntnisnahmen?.meldungenFuer(user.id)) ?? [];
   const sichtbareKenntnisnahmen = await sichtbareEintraege(user, offeneKenntnisnahmen, deps.kos);
+  // R-1089: dieselbe Prüfung — wer das Objekt (inzwischen) nicht öffnen darf, sieht den Titel nicht.
+  const sichtbareReklamationen = await sichtbareEintraege(
+    user,
+    deriveReklamationen(gemeldet, user.id),
+    deps.kos,
+  );
   // aufnahme:20260922:gesamt-wissen-frische: dieselbe Prüfung — ein Titel erscheint nur, wenn der
   // Betrachter das Objekt sehen darf.
   const frischeMeldungen = (await deps.frische?.meldungenFuer(user.id)) ?? [];
@@ -148,6 +187,7 @@ async function loadFeed(
     assignments: sichtbareZuweisungen,
     impacts,
     kenntnisnahmen: sichtbareKenntnisnahmen,
+    reklamationen: sichtbareReklamationen,
     frische: sichtbareFrische,
   }).map((n) => ({
     ...n,
