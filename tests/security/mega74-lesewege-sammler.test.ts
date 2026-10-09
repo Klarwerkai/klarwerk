@@ -451,10 +451,14 @@ const REGISTER: Record<string, Eintrag> = {
   // Route fordert `users.manage`, und der Sammler misst das nach, statt es mir zu glauben. Was sie
   // herausgibt, ist Wissen über die Betriebsumgebung (absoluter Pfad, Sicherungsstand), und das
   // gehört ohnehin nur in Admin-Hände.
+  // ADMIN-13: dazu die vier Schutzwege — letzter Backup-Lauf und letzte Restore-Probe (Zahlen,
+  // Zeitpunkte, Kennungen aus den Skriptspuren), Export- und Papierkorbstand (Zähler und Zeitpunkte
+  // aus Audit und `trashed()`). Weiterhin kein Titel und kein Text eines Wissensobjekts.
   "GET /api/admin/sicherungen": {
     urteil: "KURATORENTOR",
     recht: "users.manage",
-    grund: "Admin; Dateinamen und Prüfsummen des Sicherungsverzeichnisses, kein KO-Inhalt.",
+    grund:
+      "Admin; Dateinamen, Prüfsummen, Lauf-/Drillprotokoll, Export- und Papierkorbzähler — kein KO-Inhalt.",
   },
   "GET /api/import/confluence/zugang": {
     urteil: "KURATORENTOR",
@@ -852,12 +856,21 @@ const REGISTER: Record<string, Eintrag> = {
     "PUT /api/gaps/:id": "ko.assign.",
     "DELETE /api/gaps/:id": "ko.validate.",
     "POST /api/ask/helpful": "Rückmeldung des Aufrufers.",
+    // R-1089: die Quittung nennt nur den Titel einer Quelle, die DIESEM Aufrufer im eigenen
+    // Antwortvorgang ausgeliefert wurde (Beleg-Bindung), nie die verantwortliche Person.
+    "POST /api/ask/report": "Rückmeldung des Aufrufers — Quittung zur eigenen Quelle.",
     // R-1649: Antwort nur `{ vermerkt, entwurfId }` — der eigene Vermerk und der eigene Entwurf.
     "POST /api/ask/not-helpful": "Rückmeldung des Aufrufers; optional eigener Entwurf.",
     "PUT /api/validation/settings": "users.manage.",
     "PUT /api/external/policy": "users.manage.",
     "POST /api/lifecycle/couple": "ko.create; Antwort ohne KO-Inhalt.",
     "POST /api/lifecycle/asset-changed": "ko.validate; Antwort ohne KO-Inhalt.",
+    // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden. Die Vorschau nennt Kennung und Titel
+    // der Wissensobjekte einer Person — an `users.manage`, also an eine Rolle, für die `darfSehen`
+    // ohnehin jedes Objekt freigibt. Entwürfe und Lücken nur als Kennung; die Ausführung antwortet
+    // mit Zählern und Kennungen.
+    "POST /api/lifecycle/handover/preview": "users.manage; Titel nur an die Verwaltung.",
+    "POST /api/lifecycle/handover": "users.manage; Antwort mit Zählern und Kennungen.",
     "POST /api/learning-paths": "Lernpfad, kein KO.",
     "POST /api/learning-paths/:pathId/complete": "eigener Fortschritt.",
     "POST /api/admin/demo-seed": "users.manage.",

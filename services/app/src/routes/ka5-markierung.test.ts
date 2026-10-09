@@ -340,8 +340,8 @@ describe("KA5 · der Serververtrag der Markierung", () => {
     await m.fragen({}, true);
     // Eine leere/rein weiße Markierung ist keine Markierung (§5.6) — vierter Fall, gleiche Erwartung.
     await m.fragen({ mode: "retrieval-only", selection: "   \n\t  " });
-    // R-0584 (Auftrag gesamt-datenschutz-voreinstellung): auch die Konsole antwortet standardmäßig
-    // nur aus geprüftem Wissen und meldet, was die Enge verschluckt (ask-routes.ts, Konsolenzweig).
+    // R-0278 (Nacharbeit 3, ben) und R-0584 (Auftrag gesamt-datenschutz-voreinstellung): auch die
+    // Konsole antwortet nur aus geprüftem Wissen und meldet, was die Enge verschluckt.
     expect(m.gesehen[0]).toEqual({
       validatedOnly: true,
       ungeprueftSichtbarFuer: expect.any(Function),
@@ -395,8 +395,9 @@ describe("KA5 · der Serververtrag der Markierung", () => {
         questionSource: "manual",
       },
     });
-    // Die Freigabe hebt die Enge auf (KA4-Vertrag) — und die Markierung bleibt trotzdem dabei.
-    expect(session.gesehen[0]).toEqual({ selection: PASSAGE });
+    // Die Freigabe hebt `retrievalOnly` auf (KA4-Vertrag), `validatedOnly` bleibt (R-0278,
+    // Nacharbeit 3) — und die Markierung bleibt trotzdem dabei.
+    expect(session.gesehen[0]).toEqual({ validatedOnly: true, selection: PASSAGE });
     await session.app.close();
 
     const addon = await messplatz(true);
@@ -406,11 +407,15 @@ describe("KA5 · der Serververtrag der Markierung", () => {
       headers: { "content-type": "application/json", "x-als-addon": "ja", ...KLARA_BINDUNG },
       payload: { question: FRAGE, selection: PASSAGE, questionSource: "manual" },
     });
-    expect(addon.gesehen[0]).toEqual({ gapPolicy: "count_only", selection: PASSAGE });
+    expect(addon.gesehen[0]).toEqual({
+      validatedOnly: true,
+      gapPolicy: "count_only",
+      selection: PASSAGE,
+    });
     await addon.app.close();
 
-    // GEGENPROBE: ohne Markierung übergibt der freigegebene Session-Zweig weiterhin GAR KEINE
-    // Optionen — nicht ein leeres Objekt. Daran hängt `KA4-E1` (`expect(gesehen[0]).toBe(null)`).
+    // GEGENPROBE: ohne Markierung übergibt der freigegebene Session-Zweig genau `validatedOnly` —
+    // keine Markierung, keine weiteren Felder. Daran hängt `KA4-E1` (R-0278, Nacharbeit 3).
     const ohne = await messplatz(true);
     await ohne.app.inject({
       method: "POST",
@@ -418,7 +423,7 @@ describe("KA5 · der Serververtrag der Markierung", () => {
       headers: { "content-type": "application/json", ...KLARA_BINDUNG },
       payload: { question: FRAGE, mode: "retrieval-only", questionSource: "manual" },
     });
-    expect(ohne.gesehen[0]).toBe(null);
+    expect(ohne.gesehen[0]).toEqual({ validatedOnly: true });
     await ohne.app.close();
   });
 
