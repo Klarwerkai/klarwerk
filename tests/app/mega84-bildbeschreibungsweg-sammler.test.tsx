@@ -2330,8 +2330,17 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Datenmodul `texte/bildergalerie.ts`), also bleibt es bei der Zahl von main: 532. EHRLICH
     // GESAGT: weder hier noch auf main gemessen; weicht der Prüflauf ab, nennt die Meldung die
     // gemessene Zahl, und DIE gehört hierher. `anbieter` 1 und `traeger` 2 auf beiden Seiten gleich.
+    //
+    // Nacharbeit 18: GEMESSEN 520. Am Kandidaten 82ac7de2 (nach Einmischen von main 7f13932f)
+    // meldete der Sammler wörtlich „gemessen: 520 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge
+    // 673 Quelldateien … expected { komponenten: 520, … } to deeply equal { komponenten: 532, … }";
+    // die übrigen Fälle der Datei und `tests/legal/mega61-rechtsseiten.test.tsx` waren grün. Die
+    // Zahl liegt UNTER der gerechneten 532: main hat mit R-1349 u. a. die Wissensraum-Bausteine
+    // entfernt (Kommentar in mega61); welche Komponenten genau wegfielen oder dazukamen, ist ohne
+    // Git-Verlauf nicht namentlich bestimmt. Dieser Auftrag hat seitdem nur Testdateien geändert und
+    // trägt weiterhin kein Bauteil bei. `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 532,
+      komponenten: 520,
       anbieter: 1,
       traeger: 2,
     });
