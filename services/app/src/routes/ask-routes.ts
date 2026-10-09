@@ -78,6 +78,12 @@ const askBodySchema = {
       },
       additionalProperties: false,
     },
+    // AUFNAHME 20260922 (R-0305, R-1099) — DIE ZWEITMEINUNG: dieselbe Frage zusätzlich vom Modell
+    // beantworten lassen, das der Administrator dafür gewählt hat, und beide gegenüberstellen.
+    // Wirksam NUR im Konsolenzweig (wie `thread`); Add-on- und `retrieval-only`-Wege lassen es
+    // liegen, und Klaras eigener Zugang (R-0700) kennt das Feld gar nicht — ihre Egress-Verträge
+    // kennen keinen zweiten Empfänger und bekommen keinen.
+    zweitmeinung: { type: "boolean" },
   },
 } as const;
 
@@ -1023,6 +1029,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         locale?: string;
         mode?: string;
         thread?: string[];
+        zweitmeinung?: boolean;
         fragekontext?: unknown;
       } & Record<string, unknown>;
     }>(
@@ -1195,9 +1202,11 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // R-0348: nur hier — getippte Fragen eines Sitzungsnutzers ohne Dokumentbezug — reist der
         // Gesprächsfaden mit (Wirkung und Grenzen an `fadenfragen` im Fragedienst).
         // R-1633: dieselbe Grenze für den Fragekontext — nur hier, sonst unangetastet.
+        // R-0305/R-1099: ebenso die Zweitmeinung — nur hier und nur auf ausdrückliche Anforderung.
         const konsolenZusatz = {
           ...(faden.length > 0 ? { gespraechsfaden: faden } : {}),
           ...(fragekontext ? { fragekontext } : {}),
+          ...(request.body.zweitmeinung === true ? { zweitmeinung: true } : {}),
         };
         await answer(
           user.id,
