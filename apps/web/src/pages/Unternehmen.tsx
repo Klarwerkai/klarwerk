@@ -278,7 +278,7 @@ function ProfilBereich({ verwaltung }: { verwaltung: ProfilVerwaltung }): JSX.El
                   className="grid h-6 w-10 shrink-0 place-items-center rounded-[4px] border border-hairline text-[11px] font-semibold"
                   style={{ backgroundColor: a.flaeche, color: a.schrift }}
                 >
-                  Aa
+                  {t("unternehmen.profil.akzentMuster")}
                 </span>
                 <span className="min-w-0">
                   {t(`unternehmen.akzent.${a.id}`)}
