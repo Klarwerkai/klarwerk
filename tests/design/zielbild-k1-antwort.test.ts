@@ -569,14 +569,18 @@ describe("JOB 3056 · K1 · Antwort — zwei tragende Quellen, eine herangezogen
       { q: a, t: `1 · ${TITEL}` },
       { q: b, t: `2 · ${ZWEITER_TITEL}` },
     ]);
-    // „+1" holt die dritte Quelle ins Bild — sie bleibt ohne Ziffer, und unter „Mehr" steht ihre
-    // Rolle: herangezogen, nicht tragend.
-    expect(await l2.text("#ask-quellen-mehr-btn")).toBe("+1");
-    await l2.seite().click("#ask-quellen-mehr-btn");
-    const alle = await l2.eval<Array<string | null>>(
-      "() => [...document.querySelectorAll('#ask-sources li.quelle-chip')].map((c) => c.getAttribute('data-quelle'))",
-    );
-    expect(alle).toEqual([a, b, c]);
+    // Aufnahme 20260922 · antwort-quellenanzeige (R-0325): unter der Antwort stehen NUR die
+    // tragenden Quellen — die dritte, nur herangezogene bekommt weder Chip noch „+1" noch Ziffer;
+    // unter „Mehr" steht sie mit ihrer Rolle: herangezogen, nicht tragend.
+    expect(
+      await l2.eval<number>("() => document.querySelectorAll('#ask-quellen-mehr-btn').length"),
+    ).toBe(0);
+    expect(
+      await l2.eval<number>(
+        `(c) => document.querySelectorAll('#ask-sources li.quelle-chip[data-quelle="' + c + '"]').length`,
+        c,
+      ),
+    ).toBe(0);
     expect(await l2.eval<string[]>(FUSSNOTEN_QUELLEN)).toEqual([a, b]);
     await l2.seite().click("#ask-mehr-btn");
     const dritte = await l2.text("#ask-quellen-detail li:nth-child(3)");
