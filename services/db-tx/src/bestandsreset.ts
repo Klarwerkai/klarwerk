@@ -92,6 +92,9 @@ export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
   "ko_projection_control",
   "ko_overlaps",
   "ko_evidence",
+  // aufnahme:20260922:gesamt-wissen-frische: der aus den Fassungen gelernte Halbwertszeit-Verlauf —
+  // abgeleitet aus dem Wissen, fällt mit ihm (dieselbe Begründung wie `conflict_pair_memory`).
+  "ko_halbwertszeit_beobachtungen",
   "ko_versions",
   "conflicts",
   // Prüfung-Gedächtnis (R-1103/R-1105): aus dem Wissen abgeleitet, fällt mit ihm.

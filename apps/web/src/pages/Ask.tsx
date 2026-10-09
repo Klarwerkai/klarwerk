@@ -33,6 +33,7 @@ import { RoleLink } from "../components/RoleLink";
 // und Plaketten, Warte- und KI-aus-Zustand. Sie standen bis dahin inline hier.
 import { AntwortPlatzhalter, KiNichtVerfuegbar } from "../components/fragen/Antwortbausteine";
 import { FrageFeld } from "../components/fragen/FrageFeld";
+import { NichtHilfreichKarte } from "../components/fragen/NichtHilfreichKarte";
 import { EVIDENCE_TONE, QuellenListe } from "../components/fragen/QuellenListe";
 import {
   QUELLEN_CHIP_KLASSE,
@@ -72,6 +73,7 @@ import {
 import { selectAnswer } from "../lib/askResponse";
 import { stepsBeyondSources, stepsWorthShowing } from "../lib/askSteps";
 import { answerReviewGuard, evidenzWiederholtStatus } from "../lib/askView";
+import { belegstelleHref } from "../lib/belegstelle";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 // JOB 3267 Q1: der Prüfstand einer Quelle kommt aus der EINEN Ableitung, die auch Bibliothek und
@@ -94,6 +96,7 @@ import { fadenFuerAnfrage, fadenNachAntwort } from "../lib/gespraechsfaden";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { formatKoTimestamp } from "../lib/koDates";
+import { erkenneNichtHilfreich } from "../lib/nichtHilfreich";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { istIosGeraet } from "../lib/speechSupport";
@@ -252,6 +255,9 @@ const GUIDE_TONE: Record<KnowledgeGuidanceTone, string> = {
 // Parser).
 // `knowledgeClass` wird mit auf „unbekannt" gesetzt, damit kein späterer Leser dieses Zustands
 // eine Klasse für eine Antwort findet, die es nicht gibt.
+// R-0310: „Unter der Antwort … höchstens drei Quellen, weitere als Chip '+N'."
+const QUELLEN_CHIPS_SICHTBAR = 3;
+
 function leereAntwortAlsLuecke(result: AnswerResult): AnswerResult {
   if (!result.answered) {
     return result;
@@ -508,6 +514,15 @@ interface AskAnfrage {
   fadenGeneration: number;
   // R-1633: der Fragekontext beim Absenden; fehlt er, ist der Aufruf der bisherige.
   kontext?: Fragekontext;
+}
+
+// R-1649: die erkannte, noch nicht bestätigte Rückmeldung und ihr Ergebnis (s. `Ask`).
+interface NichtHilfreichOffen {
+  koId: string;
+  alternative: string;
+}
+interface NichtHilfreichErledigt {
+  entwurfId: string | null;
 }
 
 export function Ask(): JSX.Element {
@@ -872,6 +887,8 @@ export function Ask(): JSX.Element {
       }
       setAntwortAm(new Date().toISOString());
       // JOB 2694 D1: eine Antwort ohne Text kommt hier als Lücke an — Begründung am Helfer oben.
+      // R-0310: `selectAnswer` lässt nur die belegten Absätze stehen (Marke je Absatz; ohne belegten
+      // Absatz die Lücke). Anzeige, Export, Kopieren, Druck und Vorlesen lesen alle diesen Stand.
       setResult(leereAntwortAlsLuecke(selectAnswer(r)));
       setReceipt(r.receipt);
       // JOB 2626 D1: abwesend heißt „nicht gefragt oder nichts zu melden" — beides fällt ehrlich
@@ -908,6 +925,35 @@ export function Ask(): JSX.Element {
   // Ben R1, F8: eine WIEDERAUFGENOMMENE Antwort trägt ihren alten Beleg. Ist er abgelaufen, bietet
   // die Fläche die Rückmeldung nicht mehr an, sondern sagt, warum — und wie es wieder geht.
   const belegGueltig = belegNochGueltig(receipt, antwortAm, Date.now());
+  // R-1649: „Das war nicht hilfreich, ich habe es so gemacht …" ins Fragefeld gesprochen — erkannt
+  // beim Absenden (`lib/nichtHilfreich.ts`), gespeichert erst nach der Bestätigung in der Karte.
+  // Ziel ist dieselbe tragende Quelle wie beim „Hat geholfen", mit demselben Beleg.
+  const [nichtHilfreich, setNichtHilfreich] = useState<NichtHilfreichOffen | null>(null);
+  const [nichtHilfreichErledigt, setNichtHilfreichErledigt] =
+    useState<NichtHilfreichErledigt | null>(null);
+  const quelleTitel = (koId: string): string =>
+    (kos.data ?? []).find((ko) => ko.id === koId)?.title ?? koId;
+  const nichtHilfreichMelden = useMutation({
+    mutationFn: ({ koId, alternative }: { koId: string; alternative: string | null }) =>
+      endpoints.ask.notHelpful({
+        koId,
+        receipt,
+        ...(alternative
+          ? {
+              alternative,
+              entwurfTitel: t("sprachfeedback.entwurfTitel", {
+                titel: quelleTitel(koId),
+              }),
+            }
+          : {}),
+      }),
+    onSuccess: (r) => {
+      setNichtHilfreich(null);
+      setNichtHilfreichErledigt({ entwurfId: r.entwurfId });
+      setQ("");
+    },
+    onError: rueckmeldungAbgelehnt,
+  });
 
   // Ergänzung 1 · SCHREIBEN: jede Änderung an Entwurf oder stehender Antwort geht in den Stand
   // DIESES Kontos. Eine neue Frage räumt die alte Antwort in `onMutate` ab — damit ist auch der
@@ -1173,6 +1219,9 @@ export function Ask(): JSX.Element {
       // nach dem Absenden offen, stünden Beispieltexte und Hinweise zwischen Feld und Antwort. Sie
       // schliesst deshalb hier — nur bei einem ANGENOMMENEN Absenden, für Feld, Chip und Auto-Ask.
       setBeispiele(false);
+      // R-1649: eine neue Frage beendet eine offene oder erledigte „nicht hilfreich"-Rückmeldung.
+      setNichtHilfreich(null);
+      setNichtHilfreichErledigt(null);
       const kontext = fragekontextZumSenden(fragekontext);
       ask.mutate({
         frage: trimmed,
@@ -1313,6 +1362,38 @@ export function Ask(): JSX.Element {
       pruefstandHinweis: t("ask.pruefstand.hint", { stand: standWort }),
     };
   });
+  // Aufnahme 20260922 · R-0310/R-0325 (Ben zu 8e6c9d73) — DIE QUELLENREIHE UNTER DER ANTWORT.
+  // Sie nennt nur, worauf die Antwort steht: bei tragfähiger Zuordnung die tragenden Quellen (und
+  // jede, deren Marke sichtbar im Text steht — Marke und Chip fallen nie auseinander, JOB 3267 Q7).
+  // Ist die Zuordnung unbekannt, gibt es keine solche Teilmenge; dann bleiben alle mit dem
+  // Kennzeichen „unbekannt" stehen (R-0325: ehrlich benennen). Höchstens drei unmittelbar, weitere
+  // über „+N" (dieselbe Bauform wie das Word-Panel). Die ausführliche Auskunft über ALLE
+  // herangezogenen Quellen bleibt getrennt in der Quellenliste unter „Mehr" (`QuellenListe`).
+  const chipQuellen = zuordnungTragfaehig
+    ? quellenAuskunft.filter((s) => s.carrying || gerenderteMarken.has(s.nummer))
+    : quellenAuskunft;
+  const [alleChips, setAlleChips] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Absichts-Abhängigkeit — je Antwort wieder kurz.
+  useEffect(() => {
+    setAlleChips(false);
+  }, [result]);
+  const sichtbareChips = alleChips ? chipQuellen : chipQuellen.slice(0, QUELLEN_CHIPS_SICHTBAR);
+  const weitereChips = chipQuellen.length - sichtbareChips.length;
+  // Aufnahme 20260922 · antwort-quellenanzeige (R-0326): der Weg aus der Antwort an die Belegstelle.
+  // Eine TRAGENDE Quelle führt auf `/wissen/:id?stelle=…&fassung=…` (lib/belegstelle.ts) — Passage
+  // ist, was der Server als Beleg dieser Quelle zitiert (`steps[].snippet`, sonst ihre Aussage),
+  // Fassung ihre Inhaltsversion; die Lesefläche sucht, markiert und springt dorthin. Eine nur
+  // herangezogene Quelle hat keine tragende Passage und führt auf die blosse Objektadresse.
+  const quellenHref = (id: string): string => {
+    const quelle = quellenAuskunft.find((q) => q.id === id);
+    const ko = kosById.get(id);
+    const zitiert = result?.steps.find((st) => st.sourceId === id)?.snippet ?? ko?.statement ?? "";
+    const stelle =
+      quelle?.carrying && zitiert.trim() !== ""
+        ? { passage: zitiert, fassung: ko?.version ?? null }
+        : null;
+    return demoHref(belegstelleHref(id, stelle), params);
+  };
   const buildExport = (): { markdown: string; filename: string } | null => {
     if (!result?.answered || !effective) {
       return null;
@@ -1564,6 +1645,23 @@ export function Ask(): JSX.Element {
             // AUFTRAG-mega38 BLOCK J2: der Fehlversuch wird HIER vermerkt — der Knopf ist bei leerer
             // Frage gesperrt, per Eingabetaste kommt man aber sehr wohl bis hierher.
             setEmptyAttempted(q.trim().length === 0);
+            // R-1649: steht eine belegte Antwort mit tragender Quelle da und sagt der Text „nicht
+            // hilfreich", wird nicht gefragt, sondern die Bestätigung gezeigt. Ohne gültigen Beleg
+            // bleibt es eine gewöhnliche Frage — eine Rückmeldung ginge dann ohnehin ins 403.
+            // Das Diktat HÄNGT AN: nach einer Antwort steht deren Frage noch im Feld, und der
+            // gesprochene Satz folgt dahinter. Gelesen wird deshalb nur, was neu dazukam.
+            const tragend = result?.answered ? (result.citedSources ?? [])[0] : undefined;
+            const frageVorher = antwortFrage.current;
+            const gesagt =
+              frageVorher && q.trimStart().startsWith(frageVorher)
+                ? q.trimStart().slice(frageVorher.length)
+                : q;
+            const erkannt = tragend && belegGueltig ? erkenneNichtHilfreich(gesagt) : null;
+            if (tragend && erkannt) {
+              setNichtHilfreichErledigt(null);
+              setNichtHilfreich({ koId: tragend, alternative: erkannt.alternative });
+              return;
+            }
             submitAsk(q);
           }}
           // E2E-018 / AUFTRAG-mega39 BLOCK G: „ungültig" erst NACH dem Fehlversuch — im Takt mit der
@@ -1590,6 +1688,42 @@ export function Ask(): JSX.Element {
         >
           {answerAi.available && emptyAttempted && q.trim().length === 0 ? t("ask.emptyHint") : ""}
         </output>
+        {nichtHilfreich ? (
+          <NichtHilfreichKarte
+            key={`${nichtHilfreich.koId}:${nichtHilfreich.alternative}`}
+            quelleTitel={quelleTitel(nichtHilfreich.koId)}
+            alternative={nichtHilfreich.alternative}
+            laeuft={nichtHilfreichMelden.isPending}
+            onBestaetigen={(alternative) =>
+              nichtHilfreichMelden.mutate({ koId: nichtHilfreich.koId, alternative })
+            }
+            onAlsFrage={() => {
+              setNichtHilfreich(null);
+              submitAsk(q);
+            }}
+            onVerwerfen={() => setNichtHilfreich(null)}
+          />
+        ) : null}
+        {nichtHilfreichErledigt ? (
+          <output
+            data-testid="ask-nicht-hilfreich-erledigt"
+            className="mt-3 block text-[13px] text-muted"
+          >
+            {nichtHilfreichErledigt.entwurfId
+              ? t("sprachfeedback.erledigtMitEntwurf")
+              : t("sprachfeedback.erledigt")}{" "}
+            {nichtHilfreichErledigt.entwurfId ? (
+              <RoleLink
+                to={`/erfassen?draft=${encodeURIComponent(nichtHilfreichErledigt.entwurfId)}`}
+                testId="ask-nicht-hilfreich-entwurf"
+                className="inline-flex items-center gap-1 font-semibold text-brand-text"
+                hoverClassName="hover:underline"
+              >
+                {() => t("sprachfeedback.entwurfOeffnen")}
+              </RoleLink>
+            ) : null}
+          </output>
+        ) : null}
         <span className="block [&:not(:empty)]:mt-3">
           {/* ====================================================================================
             JOB 4224 · D5, LIEFERUNG 5 — DIE LAGE ZU NENNEN IST NICHT DASSELBE WIE EINEN WEG ZU
@@ -1993,17 +2127,17 @@ export function Ask(): JSX.Element {
                     Quelle UNBEKANNT (das Wissensobjekt liegt der Fläche nicht vor), steht KEIN
                     Punkt — „unbekannt" ist etwas anderes als „in Ordnung", und die volle Auskunft
                     dazu steht im Info-Blatt unter „Mehr". */}
-                  {quellenAuskunft.length > 0 ? (
+                  {chipQuellen.length > 0 ? (
                     <div
                       data-testid="ask-quellen-chips"
                       className="flex flex-wrap gap-2 border-t border-hairline pt-3.5"
                     >
-                      {quellenAuskunft.map((s) => {
+                      {sichtbareChips.map((s) => {
                         const punkt = chipPunkt(s);
                         return (
                           <Link
                             key={s.id}
-                            to={demoHref(`/wissen/${s.id}`, params)}
+                            to={quellenHref(s.id)}
                             data-testid="ask-quellen-chip"
                             data-tutorial-ziel={FRAGEN_ZIEL.quellenchip}
                             className={QUELLEN_CHIP_KLASSE}
@@ -2025,6 +2159,17 @@ export function Ask(): JSX.Element {
                           </Link>
                         );
                       })}
+                      {weitereChips > 0 ? (
+                        <button
+                          type="button"
+                          data-testid="ask-quellen-chip-mehr"
+                          aria-label={t("ask.quellen.weitere", { count: weitereChips })}
+                          onClick={() => setAlleChips(true)}
+                          className={QUELLEN_CHIP_KLASSE}
+                        >
+                          +{weitereChips}
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                   {/* R-1633 — „Sichtbar im UI": wofür gewichtet wurde und wie jede herangezogene
@@ -2255,6 +2400,9 @@ export function Ask(): JSX.Element {
                         {stepsWorthShowing(result.steps, answerSources) ? (
                           <div className="mt-4">
                             <SectionLabel>{t("ask.steps")}</SectionLabel>
+                            {/* R-0888 (gesamt-hilfen, Nacharbeit 13): Abschnittserklärung in der
+                                Seitenhilfe, solange der Abschnitt steht. */}
+                            <HelpTip title={t("ask.steps")} body={t("shelp.ask.steps")} />
                             <ul className="space-y-2">
                               {stepsBeyondSources(result.steps, answerSources).map((s) => (
                                 <li
@@ -2265,7 +2413,7 @@ export function Ask(): JSX.Element {
                             der Bibliothek — so kommt man aus der Antwort schnell zum Artikel. */}
                                   {s.sourceId ? (
                                     <Link
-                                      to={demoHref(`/wissen/${s.sourceId}`, params)}
+                                      to={quellenHref(s.sourceId)}
                                       className="inline-flex items-center gap-1 font-medium text-brand-text hover:underline"
                                     >
                                       <span className="text-text">{s.description}</span>
@@ -2293,7 +2441,7 @@ export function Ask(): JSX.Element {
                           <QuellenListe
                             quellen={quellenAuskunft}
                             zuordnungTragfaehig={zuordnungTragfaehig}
-                            wissenHref={(id) => demoHref(`/wissen/${id}`, params)}
+                            wissenHref={quellenHref}
                             bildfundstelle={(id) => result.captionSources?.includes(id) ?? false}
                             koVon={(id) => (kos.data ?? []).find((k) => k.id === id)}
                             autorVon={authorNameOf}
@@ -2385,6 +2533,13 @@ export function Ask(): JSX.Element {
               </div>
             ) : (
               <Card className="mt-3 border-dashed" data-testid="ask-gap">
+                {/* R-0310/R-0325 (Ben zu 8e6c9d73): die Antwort ist zurückgehalten, weil sich keine
+                  tragende Quelle zuordnen ließ — das wird gesagt, der unbelegte Text nicht gezeigt. */}
+                {result.zuordnungUnbekannt ? (
+                  <p data-testid="ask-zuordnung-unbekannt" className="mb-3 text-sm text-muted">
+                    {t("ask.zuordnungUnbekannt")}
+                  </p>
+                ) : null}
                 {verschlossen.length > 0 ? (
                   <>
                     <div className="mb-3" data-testid="ask-verschlossen">
