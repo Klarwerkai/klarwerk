@@ -2672,8 +2672,17 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `BibliothekLesen.tsx`) keine Quelldatei der Grundmenge geändert; die EINE Komponente kam mit
     // dem Basisstand und ist ohne Git-Verlauf an diesem Arbeitsbaum nicht namentlich bestimmt.
     // `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // veroeffentlichungsoptionen Nacharbeit 36: GEMESSEN 563. Am Kandidaten 270712da (nach der
+    // Integration mit main 4072f832, Übersetzungspflege R-1034) meldete der Sammler wörtlich
+    // „gemessen: 563 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 734 Quelldateien … expected
+    // { komponenten: 563, … } to deeply equal { komponenten: 556, … }". Dieser Auftrag hat in
+    // Nacharbeit 35 nur `db.ts` und `migrationsbeleg.ts` (Serverseite, nicht in der Grundmenge)
+    // zusammengeführt; die SIEBEN Komponenten und sieben Quelldateien (727 → 734) kamen mit dem
+    // Basisstand und sind ohne Git-Verlauf an diesem Arbeitsbaum nicht namentlich bestimmt.
+    // `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 556,
+      komponenten: 563,
       anbieter: 1,
       traeger: 2,
     });
