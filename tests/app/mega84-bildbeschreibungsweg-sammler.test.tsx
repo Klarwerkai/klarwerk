@@ -2515,8 +2515,17 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // (u. a. ModalBoundaryContext, erfassen/Blatt, erfassen/Menue, texte/tragfaehigkeit); keine
     // Quelldatei dieses Auftrags. Beitrag dieses Auftrags unverändert ZWEI. `anbieter` 1 und
     // `traeger` 2 sind unverändert.
+    //
+    // ADMIN-02 Nacharbeit 22 · GEMESSEN 549. Am Kandidaten 936e46fa meldete der Sammler wörtlich
+    // „gemessen: 549 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 713 Quelldateien …
+    // expected { komponenten: 549, … } to deeply equal { komponenten: 548, … }". `git diff --stat
+    // 6f1865396 936e46fa -- apps/web/src` nennt ausschließlich Dateien des eingemischten Auftrags
+    // „Eigene Kontodaten mit erhaltenem Änderungsverlauf berichtigen" (u. a. Profile,
+    // AdminKontenDetails, api/auth, Wörterbücher); keine Quelldatei dieses Auftrags. Die Grundmenge
+    // bleibt 713, die neue Komponente liegt also in einer bestehenden Datei. Beitrag dieses Auftrags
+    // unverändert ZWEI. `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 548,
+      komponenten: 549,
       anbieter: 1,
       traeger: 2,
     });
