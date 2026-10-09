@@ -82,6 +82,14 @@ const ACCESS_STATE_TONE: Record<AiAccessState, string> = {
 /** Die Auswahlwerte in Anzeige-Reihenfolge — die beiden Anbieter zwischen Auto und Intern. */
 const ANBIETER_WAHL: readonly ReasonerCloudAnbieter[] = ["openai", "anthropic"];
 
+/**
+ * R-1169: das Ergebnis der beiden Selbsttests stand als „OK"/„FAIL" hart im Code und blieb in jeder
+ * Sprache englisch. Der Wortlaut kommt jetzt aus `texte/beschriftung.ts`.
+ */
+function okKey(ok: boolean): string {
+  return ok ? "beschriftung.selbsttest.ok" : "beschriftung.selbsttest.fehler";
+}
+
 /** Ein Zuordnungs-Entwurf gleicht dem gesendeten, wenn er dieselben Einträge trägt. */
 function gleichePerTask(a: Record<string, string>, b: Record<string, string>): boolean {
   const ka = Object.keys(a).sort();
@@ -846,7 +854,7 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                 }`}
               >
                 <p className="font-semibold">
-                  {conflictSelfTest.data.ok ? "OK" : "FAIL"} · {t("adm.conflictSelfTest.label")}:{" "}
+                  {t(okKey(conflictSelfTest.data.ok))} · {t("adm.conflictSelfTest.label")}:{" "}
                   {t(conflictSelfTest.data.messageKey)}
                 </p>
                 <p className="mt-0.5 text-[11px] opacity-90">
@@ -879,7 +887,7 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                 }`}
               >
                 <p className="font-semibold">
-                  {dupSelfTest.data.ok ? "OK" : "FAIL"} · {t("adm.dupSelfTest.label")}:{" "}
+                  {t(okKey(dupSelfTest.data.ok))} · {t("adm.dupSelfTest.label")}:{" "}
                   {t(dupSelfTest.data.messageKey)}
                 </p>
                 <p className="mt-0.5 text-[11px] opacity-90">

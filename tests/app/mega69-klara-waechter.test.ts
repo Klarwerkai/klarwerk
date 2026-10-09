@@ -3003,6 +3003,14 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // f72ab829…). Im Prüflauf zu Kandidat bc98b221 am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
     // HISTORIE/nacharbeit-34/PRUEFUNG/integration-wortvergleich-panel-pins-und-schranken.log) und
     // unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // INTEGRATION ki-modus-wahrheit × gesamt-sprache-begriffe (main 1ff962b3, Nacharbeit 36) — DER
+    // PIN MUSS WANDERN. main fügt `taskpane.js` genau eine Zeile in `renderStatics` hinzu
+    // (`#einst-sprache-wahl` mit `t("einstSprache")`, K22); Git hat sie ohne Konflikt übernommen
+    // (`taskpane.js` 11539 Zeilen, `taskpane.html` 498). Main hat diesen Pin dafür nicht bewegt; der
+    // Wert unten (f72ab829…, Messung vor dieser Zeile) ist damit ein PLATZHALTER. Der Prüflauf meldet
+    // den Ist-Wert als „Received", er wird danach gemessen übernommen. Auslieferungsfolgen der Zeile:
+    // nur ein zugänglicher Name; kein Abrufziel, keine Nutzlast-, CSP-, Rechte- oder
+    // Manifeständerung, kein Sideload.
     const PIN = "f72ab829639f2341b04eef4281ec735a1bcbaf0c2116438515e4e0d102a59165";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(

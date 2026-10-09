@@ -353,8 +353,30 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * zusammengeführten Panel (`4ed6f553…`, „Received" von E2, HISTORIE/nacharbeit-34/PRUEFUNG/
  * integration-wortvergleich-panel-pins-und-schranken.log) und unverändert übernommen; die
  * Panel-Dateien sind seit dieser Messung unberührt.
+ *
+ * Auf `main` lief parallel (die Zeilen unten stammen von dort):
+ * INTEGRATION gesamt-sprache-begriffe × main 13984aac (K22): Auf den Stand von `main` kommt GENAU
+ * eine Zeile in `renderStatics` (`taskpane.js`) — der Gruppenname der Sprachwahl
+ * `#einst-sprache-wahl` über `t("einstSprache")` (gesamt-sprache-begriffe Nacharbeit 9; frühere
+ * Messungen dieses Zweigs `44414ac3…`, `876b3150…`, `36967412…`). `taskpane.html`, `taskpane.css`,
+ * `wortvergleich.js` und `marke.js` sind byte-gleich mit `main`; `taskpane.js` hat 11538 Zeilen
+ * (B3). GEMESSEN am zusammengeführten Inhalt: die fünf Dateien genau nach `fuegePanelZusammen`
+ * zusammengesetzt (Teile per `sed`/`cat`, Abschnitte von `wortvergleich.js` und `marke.js` jeweils
+ * nach ihrem Kopfende), Kennung über `git diff --no-index --full-index`. Kalibrierung: dasselbe
+ * Verfahren mit `taskpane.js` aus `main` 13984aac ergibt wörtlich
+ * `2d544023972d9f9be4e644b2ace90e52c233bdb2` (der Wert von `main` oben); mit der Zeile
+ * `dc94b941…` (Beleg CLAUDE/BLOB-MESSUNG-NACHARBEIT-27.json im Auftragsordner).
+ *
+ * INTEGRATION ki-modus-wahrheit × gesamt-sprache-begriffe (main 1ff962b3, Nacharbeit 36): BEIDE
+ * Änderungen stehen jetzt in den Panel-Dateien — `performAsk` über Klaras eigenen Zugang,
+ * `#kw-kopf-ki`/`s4KopfKi` (dieser Auftrag) UND die Zeile `#einst-sprache-wahl` in `renderStatics`
+ * (main, K22). Die Panel-Dateien führten sich ohne Konflikt zusammen (`taskpane.js` 11539 Zeilen,
+ * `taskpane.html` 498). Keine der beiden Messungen (`4ed6f553…` hier, `dc94b941…` auf main)
+ * beschreibt das zusammengefügte Dokument. Der Wert unten ist der von `main` und damit ein
+ * PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet ihn im Prüflauf als „Received", er wird danach
+ * gemessen übernommen. E3 bleibt die Gegenprobe.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "4ed6f5533eeb0af5b554d89018ba9e3b2f911d86";
+export const PANEL_VOR_SCHNITT_BLOB = "dc94b94136c782cfb6c00438317e12821dd3a3bf";
 
 export interface PanelTeile {
   html: string;
