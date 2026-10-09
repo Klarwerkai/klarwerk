@@ -7875,6 +7875,25 @@ const de = {
   // DIE ZAHL GEHÖRT IN DEN SATZ: „unvollständig" allein lässt offen, ob ein Satz oder ein halbes
   // Dokument fehlt. Titel und Kennung des geschützten Eintrags stehen ausdrücklich nicht dabei.
   "ga.liste.unvollstaendig": "Unvollständig für dich – nicht zugängliche Abschnitte: {{anzahl}}",
+  // ARBEITSWEGE AM SELBEN ARTIKEL (produkt:20261007:arbeitswege-objekt): der Objektbezug aus der
+  // Adresse (`lib/objektbezug.ts`) — in Prüfen, Fragen, Lesen und bei Klara mit denselben Worten.
+  "arbeitsweg.pruefen.sucht": "Der aufgerufene Beitrag wird in der Prüfliste gesucht …",
+  "arbeitsweg.pruefen.fehlt":
+    "Der aufgerufene Beitrag steht in dieser Ansicht nicht zur Prüfung (schon entschieden oder weggefiltert). Angezeigt wird der nächste offene Beitrag.",
+  "arbeitsweg.pruefen.lesen": "Aufgerufenen Beitrag öffnen",
+  "arbeitsweg.pruefen.entschieden": "Entschieden: „{{titel}}“ –",
+  "arbeitsweg.pruefen.oeffnen": "Beitrag mit aktuellem Stand öffnen",
+  "arbeitsweg.pruefen.standOffen":
+    "Stand laut Server: weiter in Prüfung, {{gruen}} von {{noetig}} Freigaben.",
+  "arbeitsweg.pruefen.standRaus": "Stand laut Server: nicht mehr in der Prüfliste.",
+  "arbeitsweg.pruefen.weiter": "jetzt in Prüfung: „{{titel}}“",
+  "arbeitsweg.fassung": "Fassung {{fassung}}",
+  "arbeitsweg.fragen.bezug": "Frage zum Beitrag „{{titel}}“",
+  "arbeitsweg.fragen.zurueck": "Zurück zum Beitrag",
+  "arbeitsweg.lesen.fassungAbweichend":
+    "Du kommst aus Fassung {{genannt}}; dieser Beitrag steht inzwischen in Fassung {{aktuell}}.",
+  "arbeitsweg.klara.label": "Beitrag",
+  "arbeitsweg.klara.chat": "In „Fragen“ zu diesem Beitrag weiterfragen",
 };
 
 export { de };
