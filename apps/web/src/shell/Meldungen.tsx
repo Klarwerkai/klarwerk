@@ -301,6 +301,7 @@ export function MeldungenListe({
                       ? "bg-hairline"
                       : n.kind === "conflict" ||
                           n.kind === "escalation" ||
+                          n.kind === "reklamation" ||
                           (n.kind === "veroeffentlichung" && n.hervorgehoben)
                         ? "bg-trust-crit-fill"
                         : n.kind === "duplicate"
@@ -358,6 +359,17 @@ export function MeldungenListe({
                             : "kenntnisnahme.meldung",
                       )}
                       {n.fassung ? ` (V${n.fassung})` : ""}:{" "}
+                    </span>
+                  ) : null}
+                  {/* R-1089: gemeldete Antwort zum eigenen Wissen — Grund vorn, Titel dahinter. */}
+                  {n.kind === "reklamation" ? (
+                    <span className="font-semibold text-trust-crit-text">
+                      {t(
+                        n.grund === "quelle-passt-nicht"
+                          ? "antwortmeldung.meldung.quelle-passt-nicht"
+                          : "antwortmeldung.meldung.antwort-falsch",
+                      )}
+                      :{" "}
                     </span>
                   ) : null}
                   {/* aufnahme:20260922:gesamt-wissen-frische: Frist, Wochenvorlage oder

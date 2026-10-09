@@ -1267,6 +1267,26 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
       },
     );
 
+    // R-1089 / R-1721: „Antwort falsch" / „Quelle passt nicht" — an den Verantwortlichen des
+    // zitierten Wissensobjekts, mit Quittung. Dieselbe Beleg-Bindung wie „Hat geholfen".
+    app.post<{ Body: { koId?: string; receipt?: string; grund?: string } }>(
+      "/api/ask/report",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          const body = request.body ?? {};
+          reply
+            .code(200)
+            .send(await ask.reportAnswer(body.receipt ?? "", body.koId ?? "", body.grund, user.id));
+        } catch (error) {
+          sendError(reply, error);
+        }
+      },
+    );
+
     // R-1649 (ROADMAP 7.3): „Das war nicht hilfreich, ich habe es so gemacht …" — die Negativ-
     // Bewährung an der tragenden Quelle, optional verbunden mit dem abweichenden Weg als Entwurf.
     // Erkannt wird der Satz in der Fläche (Diktat ins Fragefeld, `apps/web/src/lib/nichtHilfreich.ts`);

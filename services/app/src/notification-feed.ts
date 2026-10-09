@@ -22,7 +22,20 @@ export type NotificationKind =
   // Fristerinnerung (R-0248), wöchentliche Vorlage (R-0266), Prüfanforderung nach Anlagenänderung
   // an Autor bzw. Nachfolger (R-1635). Die Unterart steht in `frischeArt`.
   | "frische"
+  | "reklamation"
   | "veroeffentlichung";
+
+// R-1089: eine Meldung „Antwort falsch / Quelle passt nicht" an die verantwortliche Person des
+// zitierten Wissensobjekts. Quelle: Audit-Einträge `answer.reported`, deren `responsible` der
+// Betrachter ist. Wer gemeldet hat, steht NICHT darin — die Meldung ist ein Hinweis an das Objekt,
+// keine Anzeige gegen eine Person; der Fragetext reist ebenfalls nicht mit.
+export interface ReklamationNotice {
+  meldungId: string;
+  koId: string;
+  title: string;
+  grund: "antwort-falsch" | "quelle-passt-nicht";
+  at: string;
+}
 
 /** aufnahme:20260922:gesamt-wissen-frische — eine persönliche Frische-Meldung (s. frische-meldungen.ts). */
 export interface FrischeNotice {
@@ -86,6 +99,10 @@ export interface Notification {
   fassung?: number;
   erinnerung?: boolean;
   ueberfaellig?: boolean;
+  // R-1089: Meldegrund und Meldungsnummer (dieselbe, die der Meldende quittiert bekam). Nur bei
+  // `kind: "reklamation"` gesetzt.
+  grund?: ReklamationNotice["grund"];
+  meldungId?: string;
   // aufnahme:20260922:gesamt-wissen-frische: die Unterart einer `frische`-Meldung.
   frischeArt?: FrischeNotice["art"];
   // Veröffentlichung: neu oder Aktualisierung, und ob sie hervorgehoben gemeldet wurde. Nur bei
@@ -116,12 +133,24 @@ export function buildNotifications(input: {
   // ein neuer Fund auch ohne Besuch der Duplikate-Seite auffällt.
   overlaps?: (OverlapEntry & { redacted?: boolean })[];
   kenntnisnahmen?: KenntnisnahmeNotice[];
+  reklamationen?: ReklamationNotice[];
   // aufnahme:20260922:gesamt-wissen-frische: bereits auf den Betrachter UND die Sichtbarkeit
   // beschränkt (Route) — hier wird nichts nachgeprüft und nichts erfunden.
   frische?: FrischeNotice[];
   veroeffentlichungen?: VeroeffentlichungNotice[];
 }): Notification[] {
   const items: Notification[] = [];
+  for (const r of input.reklamationen ?? []) {
+    items.push({
+      id: `rek-${r.meldungId}`,
+      kind: "reklamation",
+      title: r.title,
+      at: r.at,
+      koId: r.koId,
+      grund: r.grund,
+      meldungId: r.meldungId,
+    });
+  }
   for (const f of input.frische ?? []) {
     items.push({
       id: `frische-${f.schluessel}`,

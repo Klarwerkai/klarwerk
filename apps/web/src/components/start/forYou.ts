@@ -283,6 +283,7 @@ export interface MeldungZeile {
     | "impact"
     | "kenntnisnahme"
     | "frische"
+    | "reklamation"
     | "veroeffentlichung";
   title: string;
   seen?: boolean;
@@ -313,6 +314,8 @@ const MELDUNG_SEVERITY: Record<MeldungZeile["kind"], ForYouSeverity> = {
   return: "today",
   // Eine angeforderte Kenntnisnahme ist Arbeit von heute — wie eine Zuweisung.
   kenntnisnahme: "today",
+  // R-1089: eine gemeldete falsche Antwort zum eigenen Wissen ist Arbeit von heute.
+  reklamation: "today",
   // aufnahme:20260922:gesamt-wissen-frische: bestätigen, ob eigenes Wissen noch stimmt — heute.
   frische: "today",
   gap: "later",
@@ -341,6 +344,10 @@ export function meldungMetaKey(kind: MeldungZeile["kind"]): string {
   }
   if (kind === "return") {
     return "meldungsart.rueckgabe.art";
+  }
+  // R-1089: die Antwortmeldung bringt ihren Namen im Textmodul `texte/antwortmeldung.ts` mit.
+  if (kind === "reklamation") {
+    return "antwortmeldung.meldungArt";
   }
   return `start.fuerdich.art.${kind}`;
 }
