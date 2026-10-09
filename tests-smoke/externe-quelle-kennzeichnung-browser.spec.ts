@@ -16,13 +16,32 @@
 //   B4  auf ENGLISCH stehen die englischen Fassungen;
 //   B5  der Quellenanhang hat Status und Vertrauen nicht erhöht (zurückgelesen vom Server).
 //
+// NACHARBEIT 6 (Bens Befund): DIE ÜBRIGEN AUFRUFER UND DER BESTAND — je DE/EN, Tastatur, Reload
+// (gemeinsamer Ablauf: `support/externe-quellen-browserhilfe.ts`), jeder über seinen ECHTEN
+// Speicherweg angelegt und vom Server wieder gelesen:
+//   A1  BESTANDSQUELLE in der Bibliothek — eingespielt über den JSON-Import (`POST
+//       /api/library/import`) und angenommen (`PUT /api/library/import/candidates/:id`), also der
+//       Weg, auf dem Altbestand ins System kommt; nicht über `add-source`.
+//   A2  PRÜFKARTE (`/validierung`) — dieselbe Bestandsquelle am Nachweis der Karte.
+//   A3  KONFLIKTANSICHT (`/konflikte?fall=…`) — Konflikt über `action: "conflict"`; beide Seiten:
+//       Bestandsquelle links, `add-source`-Quelle rechts.
+//   A4  ERFASSUNGS-WARTELISTE — Entwurf mit `pendingSources` über `POST /api/drafts`, geöffnet
+//       über `?draft=…&weg=formular`; nach Reload DERSELBE gespeicherte Entwurf.
+//
 // WAS SIE AUSDRÜCKLICH NICHT IST: die Abnahme auf dem BEZEICHNETEN LIVE-STAND. Der Smoke-Server
 // läuft lokal mit In-Memory-Bestand; der Live-Nachweis gehört in den Veröffentlichungsablauf und
-// wird dort mit Fassung dokumentiert. Prüfkarte, Konfliktansicht und Erfassungs-Warteliste sind in
-// jsdom gegen dieselbe Komponente belegt (`tests/externe-quellen-kennzeichnung/…`), hier nicht.
+// wird dort mit Fassung dokumentiert. Ebenfalls NICHT hier: eine Altquelle OHNE `peerValidated`-
+// Feld. Keine Schreibroute des Produkts erzeugt sie (`POST /api/kos` verwirft Client-`sources`,
+// jeder Import- und Anhängeweg schreibt `false`); ihr fail-closed-Verhalten ist an der echten
+// Clientkette belegt (`tests/app/f0205-extern-ungeprueft-chip.test.tsx` K3/K4).
 import { type APIRequestContext, type Page, expect, test } from "@playwright/test";
 
 import { ensureLoggedIn } from "./support/auth";
+import {
+  pruefeDeEnTastaturReload,
+  tabBisIn,
+  tabUndEnter,
+} from "./support/externe-quellen-browserhilfe";
 import { stelleSpracheEin, tabBis } from "./support/import-json-kasten";
 
 interface Quelle {
@@ -163,6 +182,243 @@ test.describe("R-0177/R-0205 · externe Quelle im echten Browser gekennzeichnet"
     } finally {
       await stelleSpracheEin(page, "de");
       await page.request.put("/api/external/policy", { data: { stage: alteStufe } });
+    }
+  });
+});
+
+// ================================================================================================
+// NACHARBEIT 6 — BESTAND UND DIE ÜBRIGEN AUFRUFER
+// ================================================================================================
+
+interface Angelegt {
+  id: string;
+  titel: string;
+  /** Die Bezeichnung der externen Quelle, an der die Kennzeichnung gelesen wird. */
+  label: string;
+}
+
+/** Setzt die Stufe der externen Wissensabfrage und gibt den vorgefundenen Wert zurück. */
+async function setzeStufe(request: APIRequestContext, stufe: string): Promise<string> {
+  const vorher = await request.get("/api/external/policy");
+  expect(vorher.ok(), `Stufe nicht lesbar: ${vorher.status()}`).toBe(true);
+  const alt = ((await vorher.json()) as { stage: string }).stage;
+  const setzen = await request.put("/api/external/policy", { data: { stage: stufe } });
+  expect(setzen.ok(), `Stufe nicht setzbar: ${setzen.status()}`).toBe(true);
+  return alt;
+}
+
+/** Liest das Objekt vom Server und belegt: die Quelle ist extern und nicht peer-validiert. */
+async function quelleIstUngeprueft(
+  request: APIRequestContext,
+  id: string,
+  label: string,
+): Promise<void> {
+  const gelesen = await request.get(`/api/kos/${id}`);
+  expect(gelesen.ok(), `Objekt ${id} nicht lesbar: ${gelesen.status()}`).toBe(true);
+  const wissen = (await gelesen.json()) as Wissen;
+  const quelle = wissen.sources.find((s) => s.label === label);
+  expect(quelle, `die Quelle „${label}" fehlt am gespeicherten Objekt`).toBeDefined();
+  expect(quelle?.kind).toBe("external");
+  expect(quelle?.peerValidated).toBe(false);
+}
+
+/**
+ * BESTAND: ein Eintrag mit Herkunft (externe Kennung, Fassung, Adresse, Anbieter) über den
+ * JSON-Import eingereicht und angenommen — der Weg, auf dem Altbestand ins System kommt. Die
+ * Quelle trägt dabei den Titel des Eintrags als Bezeichnung (`buildSource`).
+ */
+async function legeBestandAn(request: APIRequestContext, marke: string): Promise<Angelegt> {
+  const titel = `Bestand Ventil A ${marke}`;
+  const eingang = await request.post("/api/library/import", {
+    data: {
+      items: [
+        {
+          title: titel,
+          statement: `Künstlicher Altbestand ${marke}: Ventil A wird vor dem Öffnen entlastet.`,
+          type: "best_practice",
+          category: "Betrieb",
+          externalId: `ALT-${marke}`,
+          sourceVersion: 3,
+          url: `https://example.invalid/altbestand/ventil-a-${marke}`,
+          provider: "Synthetischer Bestand",
+          confidentiality: "intern",
+        },
+      ],
+    },
+  });
+  const eingangText = await eingang.text();
+  expect(eingang.ok(), `Import scheiterte: ${eingang.status()} ${eingangText}`).toBe(true);
+  const kandidat = (JSON.parse(eingangText) as { kandidaten: { id: string }[] }).kandidaten[0];
+  expect(kandidat, `kein Kandidat eingereiht: ${eingangText}`).toBeDefined();
+
+  const annahme = await request.put(`/api/library/import/candidates/${kandidat?.id}`, {
+    data: { action: "accept" },
+  });
+  const annahmeText = await annahme.text();
+  expect(annahme.ok(), `Annahme scheiterte: ${annahme.status()} ${annahmeText}`).toBe(true);
+  const koId = (JSON.parse(annahmeText) as { koId?: string }).koId;
+  expect(koId, `die Annahme legte kein Objekt an: ${annahmeText}`).toBeTruthy();
+
+  await quelleIstUngeprueft(request, koId ?? "", titel);
+  return { id: koId ?? "", titel, label: titel };
+}
+
+/** Ein Objekt mit einer über `add-source` angehängten öffentlichen Quelle (Stufe ≥ search_attach). */
+async function legeMitQuelleAn(request: APIRequestContext, marke: string): Promise<Angelegt> {
+  const titel = `Gegenseite Ventil B ${marke}`;
+  const label = `Lexikonartikel Ventil B ${marke}`;
+  const wissen = await legeWissenAn(request, titel);
+  const angehaengt = await request.put(`/api/kos/${wissen.id}`, {
+    data: {
+      action: "add-source",
+      source: { label, url: "https://de.wikipedia.org/wiki/Ventil" },
+    },
+  });
+  const text = await angehaengt.text();
+  expect(angehaengt.ok(), `add-source scheiterte: ${angehaengt.status()} ${text}`).toBe(true);
+  await quelleIstUngeprueft(request, wissen.id, label);
+  return { id: wissen.id, titel, label };
+}
+
+test.describe("Nacharbeit 6 · Bestand und übrige Aufrufer im echten Browser", () => {
+  test("A1 · Bestandsquelle in der Bibliothek: DE/EN, Tastatur, Reload", async ({ page }) => {
+    await ensureLoggedIn(page);
+    const bestand = await legeBestandAn(page.request, frischeMarke());
+
+    await pruefeDeEnTastaturReload(
+      page,
+      `/wissen/${bestand.id}`,
+      async (p) => {
+        await expect(p.getByTestId("bib-lesen")).toBeVisible({ timeout: 15_000 });
+        await tabUndEnter(p, p.getByTestId("bib-sprung-quellen"), "Sprung „Quellen“");
+      },
+      (p) => [p.locator('[data-bib-abschnitt="quellen"] li').filter({ hasText: bestand.label })],
+    );
+  });
+
+  test("A2 · Prüfkarte: Bestandsquelle — DE/EN, Tastatur, Reload", async ({ page }) => {
+    await ensureLoggedIn(page);
+    const bestand = await legeBestandAn(page.request, frischeMarke());
+
+    await pruefeDeEnTastaturReload(
+      page,
+      "/validierung",
+      async (p) => {
+        const liste = p.getByTestId("pruefen-warteschlange-eintrag");
+        const eintrag = liste.filter({ hasText: bestand.titel });
+        await tabUndEnter(p, eintrag, "Prüfobjekt in der Warteschlange");
+        const karte = p.getByTestId("pruefen-karte");
+        await expect(karte).toContainText(bestand.titel, { timeout: 15_000 });
+        const mehr = karte.getByTestId("pruefen-mehr-karte").locator("summary");
+        await tabUndEnter(p, mehr, "„Mehr“ der Prüfkarte");
+      },
+      (p) => [p.getByTestId("pruefen-quellennachweis").filter({ hasText: bestand.label })],
+    );
+  });
+
+  test("A3 · Konfliktansicht: beide Seiten — DE/EN, Tastatur, Reload", async ({ page }) => {
+    await ensureLoggedIn(page);
+    const marke = frischeMarke();
+    const alteStufe = await setzeStufe(page.request, "search_attach");
+    let konfliktId = "";
+    try {
+      const bestand = await legeBestandAn(page.request, marke);
+      const gegenseite = await legeMitQuelleAn(page.request, marke);
+      const anlage = await page.request.put(`/api/kos/${bestand.id}`, {
+        data: {
+          action: "conflict",
+          conflict: {
+            koA: bestand.id,
+            koB: gegenseite.id,
+            type: "context",
+            description: `Künstlicher Kontextkonflikt ${marke}`,
+          },
+        },
+      });
+      const anlageText = await anlage.text();
+      expect(anlage.ok(), `Konflikt nicht angelegt: ${anlage.status()} ${anlageText}`).toBe(true);
+      konfliktId = (JSON.parse(anlageText) as { id: string }).id;
+      expect(konfliktId).toBeTruthy();
+
+      await pruefeDeEnTastaturReload(
+        page,
+        `/konflikte?fall=${encodeURIComponent(konfliktId)}`,
+        async (p) => {
+          await expect(p.getByTestId("pruefen-flaeche")).toContainText(bestand.titel, {
+            timeout: 15_000,
+          });
+          const mehrA = p.getByTestId("pruefen-mehr-konflikt-a").locator("summary");
+          await tabUndEnter(p, mehrA, "„Mehr“ der linken Seite");
+          const mehrB = p.getByTestId("pruefen-mehr-konflikt-b").locator("summary");
+          await tabUndEnter(p, mehrB, "„Mehr“ der rechten Seite");
+        },
+        (p) => {
+          const links = p.getByTestId("pruefen-mehr-konflikt-a").getByTestId("quelle-beleg");
+          const rechts = p.getByTestId("pruefen-mehr-konflikt-b").getByTestId("quelle-beleg");
+          const quelleLinks = links.filter({ hasText: bestand.label });
+          const quelleRechts = rechts.filter({ hasText: gegenseite.label });
+          return [quelleLinks, quelleRechts];
+        },
+      );
+    } finally {
+      if (konfliktId) {
+        await page.request.post(`/api/conflicts/${encodeURIComponent(konfliktId)}/dismiss`, {
+          data: {},
+        });
+      }
+      await page.request.put("/api/external/policy", { data: { stage: alteStufe } });
+    }
+  });
+
+  test("A4 · Erfassungs-Warteliste: gespeicherter Entwurf — DE/EN, Tastatur, Reload", async ({
+    page,
+  }) => {
+    await ensureLoggedIn(page);
+    const marke = frischeMarke();
+    const label = `Entwurfsquelle Altbestand ${marke}`;
+    // Ein frisch geladener Entwurf ist nicht verändert; sollte eine Verlassen-Wache dennoch fragen,
+    // wird sie bestätigt — der Fall misst die Kennzeichnung, nicht die Wache.
+    page.on("dialog", (dialog) => dialog.accept());
+
+    const anlage = await page.request.post("/api/drafts", {
+      data: {
+        title: `Entwurf mit Quelle ${marke}`,
+        statement: `Künstlicher Entwurf ${marke} für Speichern, Wiederöffnen und Reload.`,
+        type: "best_practice",
+        category: "Betrieb",
+        pendingSources: [
+          {
+            label,
+            url: `https://example.invalid/altbestand/entwurf-${marke}`,
+            excerpt: "Künstlicher Entwurf für Speichern, Wiederöffnen und Reload.",
+            sourceProvider: "Synthetischer Bestand",
+          },
+        ],
+      },
+    });
+    const anlageText = await anlage.text();
+    expect(anlage.status(), `Entwurf nicht angelegt: ${anlageText}`).toBe(201);
+    const entwurfId = (JSON.parse(anlageText) as { id: string }).id;
+    try {
+      // Gespeichert ist, was der Server zurückgibt — nicht, was gesendet wurde.
+      const gelesen = await page.request.get(`/api/drafts/${encodeURIComponent(entwurfId)}`);
+      expect(gelesen.ok()).toBe(true);
+      expect(await gelesen.text()).toContain(label);
+
+      await pruefeDeEnTastaturReload(
+        page,
+        `/capture/frontdoor?draft=${encodeURIComponent(entwurfId)}&weg=formular`,
+        async (p) => {
+          const eintrag = p.locator("li").filter({ hasText: label });
+          await expect(eintrag, "der gespeicherte Entwurf zeigt seine Quelle nicht").toBeVisible({
+            timeout: 20_000,
+          });
+          await tabBisIn(p, eintrag, "Quelleneintrag der Warteliste");
+        },
+        (p) => [p.locator("li").filter({ hasText: label })],
+      );
+    } finally {
+      await page.request.delete(`/api/drafts/${encodeURIComponent(entwurfId)}`);
     }
   });
 });

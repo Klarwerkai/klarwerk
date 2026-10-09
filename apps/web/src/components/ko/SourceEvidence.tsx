@@ -34,7 +34,9 @@ export function SourceLink({
   // aktiven Link, sondern fällt auf die „interne Quelle"-Textdarstellung zurück.
   const href = safeHttpUrl(source.url);
   return (
-    <span className="inline-flex flex-col gap-0.5">
+    // R-0205: die Kennung macht EINE Quelle adressierbar — die Konfliktansicht zeigt sie kompakt
+    // ohne Listeneintrag (`tests-smoke/externe-quelle-kennzeichnung-browser.spec.ts`).
+    <span data-testid="quelle-beleg" className="inline-flex flex-col gap-0.5">
       <span className="flex flex-wrap items-center gap-1.5">
         {href ? (
           <a
