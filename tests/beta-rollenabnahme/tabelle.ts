@@ -1671,6 +1671,15 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // RECHERCHE:pmo-fea-0004 — das Wissensupdate fürs Teamgespräch: lesen, auf Abruf, kein Versand.
+  {
+    gruppe: "outputRoutes",
+    methode: "GET",
+    pfad: "/api/output/wochenupdate",
+    belegstelle: "services/app/src/routes/output-routes.ts:32",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
   // produkt:wettbewerb:20261003:lernplattform — die leere Nutzlast endet für jede Rolle in der
   // Rumpfprüfung (400 BAD_REQUEST), also HINTER dem Rechtetor; anonym bleibt 401.
   {

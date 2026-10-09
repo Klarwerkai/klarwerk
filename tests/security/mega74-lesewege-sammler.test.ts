@@ -351,6 +351,11 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "DIENST_FILTERT",
     grund: "output/src/service.ts:62 — wirft bei vertraulichem KO.",
   },
+  // RECHERCHE:pmo-fea-0004: das Wissensupdate nimmt nur validierte, nicht vertrauliche Objekte.
+  "GET /api/output/wochenupdate": {
+    urteil: "DIENST_FILTERT",
+    grund: "output/src/wochenupdate.ts:103 — status validiert UND !isConfidential je Objekt.",
+  },
   "POST /api/output/scorm/pruefen": {
     urteil: "DIENST_FILTERT",
     grund: "output/src/scorm.ts LmsExportService.lade — vertrauliches KO wird Befund CONFIDENTIAL.",
