@@ -1218,6 +1218,11 @@ export interface Draft {
   // Aufnahme entwurf-in-gemeinsamen-pool-geben (R-2099): der Autor hat diesen Entwurf bewusst in den
   // gemeinsamen Pool gegeben. Fehlt das Feld, ist der Entwurf privat (der Standardfall).
   imPool?: true;
+  // entscheidung:8b909a1e: NUR in der Antwort auf `POST /api/drafts` mit Vorgangsschlüssel, und nur
+  // wenn der Server dabei NICHTS neu angelegt hat — „bestehend" (derselbe Inhalt war schon da) oder
+  // „fortgeschrieben" (derselbe Entwurf trägt jetzt den geänderten Inhalt, entscheidung:14ce8681).
+  // Fehlt das Feld, war es eine echte Erstspeicherung.
+  anlage?: "bestehend" | "fortgeschrieben";
 }
 
 export interface BusFactorEntry {
@@ -3244,6 +3249,7 @@ export type NotificationKind =
   | "return"
   | "impact"
   | "kenntnisnahme"
+  | "loeschantrag"
   // aufnahme:20260922:gesamt-wissen-frische: Fristerinnerung, Wochenvorlage, Prüfanforderung.
   | "frische"
   | "reklamation";
@@ -3280,6 +3286,8 @@ export interface Notification {
   fassung?: number;
   erinnerung?: boolean;
   ueberfaellig?: boolean;
+  // Löschantrag (R-0661): die Frist der Verwalteraufgabe; `ueberfaellig` gilt dort ebenso.
+  fristBis?: string;
   // R-1089: Meldegrund und Meldungsnummer (nur bei `kind: "reklamation"`).
   grund?: AntwortMeldeGrund;
   meldungId?: string;
