@@ -9,6 +9,8 @@
 // `duplicate` (Konflikt- und Dublettenurteil) und `probe` (Anbieterprobe der KI-Verwaltung). Sie
 // sind keine Aufgaben der KI-Zuordnung (`REASONER_TASKS`), sondern laufen über die globale Wahl —
 // deshalb stehen sie nur hier, nicht in der Zuordnungsliste.
+// R-1657 (aufnahme:20260922:gesamt-wissenssprints): `gaps` — die Lückenerkennung je Bereich; wie
+// `conflict` ein Urteil über die globale Wahl, das keinen gelesenen Text erzeugt (keine Kennzeichnung).
 export type ModelRunTask =
   | "structure"
   | "assist"
@@ -21,7 +23,8 @@ export type ModelRunTask =
   | "enrich"
   | "conflict"
   | "duplicate"
-  | "probe";
+  | "probe"
+  | "gaps";
 export type ModelRunStatus = "success" | "error";
 
 // ================================================================================================
