@@ -173,6 +173,12 @@ describe("JOB 3762 · L3 · die leere Bibliothek", () => {
     // Der erste Schritt ist ein Weg, kein Satz daneben (`BibliothekFlaeche.tsx:1463`).
     const knopf = container.querySelector<HTMLAnchorElement>('[data-testid="bib-leer-erfassen"]');
     expect(knopf?.getAttribute("href")).toBe("/erfassen");
+    // R-0956 (Ben, Nacharbeit 7): der leere Bestand ordnet in den Wissenskreis ein — Story, Phase
+    // „Nutzen“, Einordnung —, und der nächste Schritt bleibt der EINE Knopf darüber.
+    expect(leertext()).toContain(i18n.t("story.rescue.title"));
+    expect(leertext()).toContain(i18n.t("cycle.use.label"));
+    expect(leertext()).toContain(i18n.t("story.surface.library.lead"));
+    expect(container.querySelectorAll('[data-testid="bib-leer"] a')).toHaveLength(1);
   });
 
   it("L3-EN/NL · derselbe Satz in allen drei Sprachen", async () => {
@@ -197,6 +203,8 @@ describe("JOB 3762 · L3 · die leere Bibliothek", () => {
       leertext(),
       "„Noch keine Einträge.“ behauptete hier etwas über den Bestand, der nicht leer ist",
     ).not.toContain(i18n.t("lib.liste.leer"));
+    // Der eingegrenzte Bestand bekommt KEINE Leer-Einordnung (R-0963: getrennter Zustand).
+    expect(leertext()).not.toContain(i18n.t("story.surface.library.lead"));
   });
 
   it("L3c · EINGELÖST (JOB 3788): ein Filter ohne Treffer sagt etwas über die AUSWAHL, nicht über den BESTAND", () => {
