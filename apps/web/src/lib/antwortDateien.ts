@@ -133,7 +133,9 @@ export function antwortAbsaetze(input: AnswerExportInput): AntwortAbsatz[] {
     const kette = decisionArguments(input, input.protocol);
     if (kette) {
       for (const [i, glied] of kette.entries()) {
-        const quelle = glied.quelleTitel ? `${glied.quelleTitel} (${glied.quelleId})` : glied.quelleId;
+        const quelle = glied.quelleTitel
+          ? `${glied.quelleTitel} (${glied.quelleId})`
+          : glied.quelleId;
         out.push({
           art: "text",
           text: `${i + 1}. „${glied.aussage}“ — ${PL.supportedBy}: ${quelle}`,
