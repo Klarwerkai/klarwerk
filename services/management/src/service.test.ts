@@ -56,7 +56,9 @@ describe("ManagementService (SCRUM-120)", () => {
     expect(snap.statement.riskBreakdown.singleSourceCategories).toBe(1);
     expect(snap.statement.riskBreakdown.stale).toBe(1);
     expect(snap.recommendations.some((r) => r.key === "secureSingleSource")).toBe(true);
-    expect(snap.house[0]?.category).toBe("Anlage 1");
+    // R-0768: Stockwerke je Fachgebiet; ohne angegebenes Fachgebiet ein Stockwerk `domain: null`.
+    expect(snap.house[0]).toMatchObject({ domain: null, koCount: 2, validated: 1 });
+    expect(snap.houseFlow).toMatchObject({ inHouse: 2, secured: 1, outputReady: 1 });
   });
 
   it("leerer Bestand → sicherer Snapshot (kein NaN, Score 0)", async () => {
