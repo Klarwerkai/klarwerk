@@ -10,6 +10,7 @@ import type {
   GapSignal,
   GapVerdict,
   HouseFloor,
+  HouseFlow,
   KnowledgeSprint,
   KnowledgeStatement,
   ManagementSnapshot,
@@ -449,24 +450,64 @@ export function sprints(input: MetricsInput): KnowledgeSprint[] {
   return out;
 }
 
-// FE-MGMT-08: Knowledge House — Domänen als Stockwerke (gesichert vs. fragil).
+// R-0139: importiert ist, was einer der Importwege als solches markiert hat. Altbestand ohne Marke
+// zählt nicht als importiert — nichts wird nachträglich geraten.
+function isImported(ko: KnowledgeObject): boolean {
+  return ko.importedVia !== undefined || ko.origin === "import";
+}
+
+// FE-MGMT-08 / R-0768 / FR-EXT-05: Knowledge House — je FACHGEBIET ein Stockwerk, gesichert vs.
+// fragil. Der Bus-Faktor wird je Stockwerk aus denselben (sichtbaren) Objekten gerechnet, nach der
+// Regel aus library-analytics (Einzelquelle = höchstens ein Urheber); die Kategoriezeilen aus
+// `input.busFactor` passen nicht auf Fachgebiete.
 export function house(input: MetricsInput): HouseFloor[] {
-  const cats = categories(input.kos);
-  const busByCat = new Map(input.busFactor.map((b) => [b.category, b]));
+  const floors = new Map<string | null, KnowledgeObject[]>();
+  for (const ko of input.kos) {
+    const domain = ko.domain?.trim() || null;
+    const list = floors.get(domain) ?? [];
+    list.push(ko);
+    floors.set(domain, list);
+  }
   const rows: HouseFloor[] = [];
-  for (const [category, list] of cats) {
+  for (const [domain, list] of floors) {
     const validated = list.filter((k) => k.status === "validiert").length;
     const validatedRatio = pct(validated, list.length);
-    const singleSource = busByCat.get(category)?.singleSource ?? false;
+    const authorCount = new Set(list.map((k) => k.originalAuthor)).size;
+    const singleSource = authorCount <= 1;
     rows.push({
-      category,
+      domain,
       koCount: list.length,
+      validated,
       validatedRatio,
+      authorCount,
+      singleSource,
       fragile: validatedRatio < 50 || singleSource,
+      imported: list.filter(isImported).length,
     });
   }
-  rows.sort((a, b) => b.koCount - a.koCount || a.category.localeCompare(b.category));
+  // Das Stockwerk ohne Fachgebiet steht immer zuletzt; sonst die vollsten zuerst.
+  rows.sort(
+    (a, b) =>
+      Number(a.domain === null) - Number(b.domain === null) ||
+      b.koCount - a.koCount ||
+      (a.domain ?? "").localeCompare(b.domain ?? ""),
+  );
   return rows;
+}
+
+// R-0768 / FR-EXT-05: Import → Haus → Ausgabe als Zähler über demselben Bestand wie die Stockwerke.
+export function houseFlow(input: MetricsInput, floors: readonly HouseFloor[]): HouseFlow {
+  const imported = input.kos.filter(isImported);
+  const secured = input.kos.filter((k) => k.status === "validiert").length;
+  return {
+    imported: imported.length,
+    importedValidated: imported.filter((k) => k.status === "validiert").length,
+    inHouse: input.kos.length,
+    secured,
+    floors: floors.length,
+    fragileFloors: floors.filter((f) => f.fragile).length,
+    outputReady: secured,
+  };
 }
 
 // FE-MGMT-02: Pilot 30/60/90 — echte Zähler je Fenster aus createdAt.
@@ -486,6 +527,7 @@ export function computeSnapshot(
   input: MetricsInput,
 ): Omit<ManagementSnapshot, "generatedAt" | "sprintAnalysis"> {
   const capital = capitalScore(input);
+  const floors = house(input);
   return {
     overview: overview(input, capital.score),
     capital,
@@ -495,7 +537,8 @@ export function computeSnapshot(
     priorities: priorities(input),
     recommendations: recommendations(input),
     sprints: sprints(input),
-    house: house(input),
+    house: floors,
+    houseFlow: houseFlow(input, floors),
     pilot: pilot(input),
   };
 }
