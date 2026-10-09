@@ -197,11 +197,12 @@ describe("JOB 2964 · F-0688 · die Schluessel-API liefert nur validiertes Wisse
     // Der Beleg, dass FRAGE_NUR_UNGEPRUEFT das Objekt ueberhaupt findet. Waere sie eine Frage, die
     // im Retrieval danebengreift, waeren M1/M2 Scheinbelege — gruen, weil nichts gesucht wird.
     //
-    // R-0584 (Auftrag gesamt-datenschutz-voreinstellung): bis hierher diente der Sitzungsweg als
-    // Referenz, weil er OHNE Validiert-Enge antwortete. Seit dem Auftrag antwortet auch er nur aus
-    // geprueftem Wissen. Der Trefferbeleg kommt deshalb aus der betrachtergefilterten Meldung
-    // `ungeprueft` (JOB 1591 W5) — sie entsteht aus DERSELBEN Vorauswahl wie die Antwort. Dazu die
-    // neue Zusage: das unvalidierte Objekt traegt auch hier keine Antwort.
+    // R-0278 (Nacharbeit 3) und R-0584 (Auftrag gesamt-datenschutz-voreinstellung): bis hierher
+    // diente der Sitzungsweg als Referenz, weil er OHNE Validiert-Enge antwortete. Seitdem antwortet
+    // auch er nur aus geprueftem Wissen. Der Trefferbeleg kommt deshalb aus den beiden
+    // betrachtergefilterten Meldungen derselben Vorauswahl: `ungeprueft` (JOB 1591 W5) und der
+    // Torlage `verschlossen` („Freigabe fehlt"). Dazu die Zusage: das unvalidierte Objekt traegt
+    // auch hier keine Antwort.
     const { app, headers, ungeprueftId } = await appMitBeidenSorten();
     const res = await app.inject({
       method: "POST",
@@ -213,7 +214,12 @@ describe("JOB 2964 · F-0688 · die Schluessel-API liefert nur validiertes Wisse
     const koerper = res.json() as {
       result?: { sources?: string[] };
       ungeprueft?: Array<{ id: string }>;
+      verschlossen?: Array<{ id: string; freigabeFehlt: boolean }>;
     };
+    expect(
+      (koerper.verschlossen ?? []).find((h) => h.id === ungeprueftId)?.freigabeFehlt,
+      "die Torlage meldet die fehlende Freigabe nicht",
+    ).toBe(true);
     expect(
       (koerper.ungeprueft ?? []).map((h) => h.id),
       "die Frage findet das unvalidierte Objekt gar nicht — dann pruefen M1/M2 nichts",
