@@ -964,6 +964,8 @@ const REGISTER: Record<string, Eintrag> = {
     "POST /api/auth/login": "Anmeldung; Antwort ist Sitzung und Konto.",
     "POST /api/auth/logout": "beendet die Sitzung.",
     "GET /api/auth/me": "das eigene Konto.",
+    // R-0582 (aus main, Nacharbeit 27 nachgetragen): Name/E-Mail des eigenen Kontos berichtigen.
+    "PUT /api/auth/me": "berichtigt Name/E-Mail des eigenen Kontos; Antwort ist das Konto.",
     "GET /api/auth/notice": "eigene Kenntnisnahme des Pflichthinweises.",
     "POST /api/auth/notice": "setzt die eigene Kenntnisnahme.",
     "POST /api/auth/password": "ändert das eigene Kennwort.",
