@@ -5474,6 +5474,13 @@ const en: typeof de = {
 
   // JOB 3062 · H3 — the sheet (Pages).
   "erfassen.werkzeug.diktieren": "Dictate",
+  "sprachaufnahme.start": "Record",
+  "sprachaufnahme.stop": "Stop recording",
+  "sprachaufnahme.frage": "Record and transcribe question",
+  "sprachaufnahme.verarbeitet": "Transcribing …",
+  "sprachaufnahme.keinMikrofon":
+    "No access to the microphone. Please allow it in the browser or type the text.",
+  "sprachaufnahme.fehler": "The recording could not be transcribed.",
   "erfassen.werkzeug.bild": "Image",
   "erfassen.werkzeug.datei": "File",
   "erfassen.werkzeug.ki": "AI",
