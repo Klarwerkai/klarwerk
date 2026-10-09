@@ -84,9 +84,9 @@ export const DEMO_PILOT_PATH: readonly DemoPilotStep[] = [
   },
 ];
 
-export function demoPilotPath(): readonly DemoPilotStep[] {
-  return DEMO_PILOT_PATH;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `demoPilotPath()`, das die Tabelle oben
+// zurückgab. Start und Pilot-Schritte lesen `DEMO_PILOT_PATH` unmittelbar; der Zugriff rief niemand
+// und ist entfernt.
 
 // SCRUM-291/294: kompakte, wiedererkennbare Hinweisbox je Zielseite. Reine i18n-Schlüssel +
 // optionaler nächster Schritt auf eine VORHANDENE Route (mit weitergetragenem Demo-Kontext).
