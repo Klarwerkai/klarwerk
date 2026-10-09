@@ -240,8 +240,12 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * zusammengefügte Dokument. Der Wert unten ist der von `main` und damit ein PLATZHALTER — DER BLOB
  * MUSS WANDERN; E2 meldet ihn im Prüflauf als „Received", er wird danach gemessen übernommen. E3
  * bleibt die Gegenprobe.
+ * NACHARBEIT 22 (ki-modus-wahrheit): GEMESSEN im Prüflauf zu Kandidat 423e9199 am
+ * zusammengeführten Panel (`eadf9dc0…`, „Received" von E2, HISTORIE/nacharbeit-22/PRUEFUNG/
+ * integration-panel-auslieferung-pins-und-schranken.log) und unverändert übernommen; die vier
+ * Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "cb99796c9a3134f0ffd02a97c3c1eb270055e4b8";
+export const PANEL_VOR_SCHNITT_BLOB = "eadf9dc0c96acc661b6cfa6a5bd6b618a7857bf6";
 
 export interface PanelTeile {
   html: string;
