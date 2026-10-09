@@ -2292,8 +2292,19 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Komponentendeklaration: `WeiterUntenHinweis` (`shell/WeiterUnten.tsx`), im Hauptstand nicht
     // vorhanden. 532 + 1 = 533. EHRLICH GESAGT: GERECHNET, nicht gemessen. Weicht der Prüflauf ab,
     // gehört die gemessene Zahl hierher. `anbieter` 1 und `traeger` 2 bleiben.
+    //
+    // gesamt-navigation Nacharbeit 14: GEMESSEN 539. Am Kandidaten 0532195b meldete der Sammler
+    // wörtlich „gemessen: 539 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 689 Quelldateien …
+    // expected { komponenten: 539, … } to deeply equal { komponenten: 533, … }". Nach der
+    // Zusammenführung oben wurde ein neuerer Hauptstand eingemischt (3938f1989); laut Diff
+    // 956a896c..Kandidat bringt er SECHS Komponentendeklarationen mit und entfernt keine —
+    // `Verantwortung`, `Seite`, `StufenInhalt`, `Argumentation`, `Belastbarkeit`,
+    // `PruefrahmenSatz` (u. a. das neue `components/fragen/Belastbarkeit.tsx`). Dazu
+    // `WeiterUntenHinweis` dieses Auftrags: 532 + 6 + 1 = 539 deckt sich mit der Messung. Kein
+    // Bauteil bietet eine Bildbeschreibung an oder trägt `documentTitle`: `anbieter` 1 und
+    // `traeger` 2 sind unverändert (beide Seiten der Meldung nennen 1 und 2).
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 533,
+      komponenten: 539,
       anbieter: 1,
       traeger: 2,
     });
