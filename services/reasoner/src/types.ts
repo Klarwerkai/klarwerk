@@ -658,6 +658,45 @@ export interface DuplicateJudgeOutcome {
   providerFailure?: ModelFailureInfo;
 }
 
+// ================================================================================================
+// R-1657 (ROADMAP 9.3) — LÜCKENERKENNUNG ÜBER DEN REASONER.
+// ================================================================================================
+//
+// „KLARWERK analysiert regelmäßig, in welchen Themenbereichen wenig Wissen, geringer Trust oder hohe
+// Konflikt-Dichte herrscht — und schlägt der Organisation Wissens-Sprints vor." Der Reasoner urteilt
+// über KENNZAHLEN je Bereich (Name und Zähler), nie über Inhalte von Wissensobjekten. Ein Urteil wie
+// beim Konflikt- und Dublettenurteil: nur ein Modell urteilt; ohne Modell bleibt es beim Ausgang
+// `failure`, und der Aufrufer zeigt seine benannte Regel.
+export const LUECKEN_GRUENDE = ["conflicts", "revalidation", "lowTrust", "thinKnowledge"] as const;
+export type LueckenGrund = (typeof LUECKEN_GRUENDE)[number];
+
+/** Die Kennzahlen EINES Bereichs, so wie der Betrachter ihn sieht. */
+export interface LueckenBereich {
+  bereich: string;
+  objekte: number;
+  validiert: number;
+  mittleresVertrauen: number; // 0–100
+  imKonflikt: number | null; // null = kein Konflikt-Eingang
+  revalidierung: number;
+  geringesVertrauen: number;
+}
+
+/** Das Urteil des Modells zu EINEM Bereich — nur Gründe, die die Kennzahlen tragen. */
+export interface LueckenBereichsUrteil {
+  bereich: string;
+  sprint: boolean;
+  tage: number; // 1–5; bei sprint=false bedeutungslos
+  schwerpunkte: LueckenGrund[];
+}
+
+export interface LueckenUrteilOutcome {
+  urteile: LueckenBereichsUrteil[] | null;
+  failure?: JudgeFailure;
+  providerFailure?: ModelFailureInfo;
+  /** Der Anbieter, der geurteilt hat (nur bei `urteile`). */
+  provider?: string;
+}
+
 // Berater-Konzept Duplikate 04.07. (Stufe D2, dup-v1): Überschneidungs-Profil zweier Kerntexte A/B.
 // Struktur passt (namensgleich) zum OverlapVerdict der Duplikat-Kernlogik — der App-Root reicht das
 // Modellurteil direkt an die (modul-reine) Erkennung weiter, ohne Umbau. Zitate werden nachgelagert

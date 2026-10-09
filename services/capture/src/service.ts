@@ -810,7 +810,8 @@ export class CaptureService {
     rawPayload: DraftPayload,
     author: string,
     vorgangsId?: string,
-  ): Promise<{ draft: Draft; angelegt: boolean }> {
+    optionen: { fortschreiben?: boolean } = {},
+  ): Promise<{ draft: Draft; angelegt: boolean; fortgeschrieben?: boolean }> {
     validateMetadata(rawPayload);
     // E2E-004: leere/Whitespace-only Entwürfe ablehnen — ein Entwurf braucht mindestens Titel ODER
     // Aussage. Client sperrt den Knopf zusätzlich; das hier ist die harte Serverkante (auch für API).
@@ -877,12 +878,87 @@ export class CaptureService {
     // für eine Frage. Und er läuft NUR auf dem gefundenen EIGENEN Datensatz: ein fremder wird nie
     // geladen (der Schlüssel ist eigentümergebunden), also auch nie verglichen.
     if (ergebnis.bestehend.createOperation?.fingerprint !== fingerprint) {
+      if (optionen.fortschreiben) {
+        const fortgeschrieben = await this.anlageFortschreiben(
+          ergebnis.bestehend.id,
+          payload,
+          author,
+          vorgangsId,
+          fingerprint,
+        );
+        return { draft: fortgeschrieben, angelegt: false, fortgeschrieben: true };
+      }
       throw new CaptureError(
         "IDEMPOTENCY_PAYLOAD_MISMATCH",
         "Unter diesem Vorgang wurde bereits ein anderer Entwurf gespeichert.",
       );
     }
     return { draft: ergebnis.bestehend, angelegt: false };
+  }
+
+  // ==============================================================================================
+  // entscheidung:14ce8681 (Option A) — DER UNKLARE ERSTE VORGANG WIRD FORTGESCHRIEBEN.
+  // ==============================================================================================
+  //
+  // Ging die Antwort auf eine Anlage verloren und hat der Mensch DANACH den Inhalt geändert, kommt
+  // derselbe Vorgangsschlüssel mit einer anderen Nutzlast an. Bis hierher war das ein Abdruck-
+  // konflikt (409), und die Oberfläche begann daraufhin einen neuen Vorgang — zweiter Entwurf.
+  // Pedis Entscheidung: es gibt immer nur EINEN Eintrag, und er trägt den neuen Inhalt.
+  //
+  // NUR AUF AUSDRÜCKLICHEN WUNSCH (`fortschreiben`). Ohne ihn bleibt der Konflikt, wie er war: die
+  // Offline-Warteschlange und die übrigen Aufrufer schicken unter einem Schlüssel nie einen anderen
+  // Inhalt, und für sie ist der 409 weiterhin die ehrliche Antwort.
+  //
+  // NUR, SOLANGE DER ENTWURF NOCH DER STAND DIESES VORGANGS IST. Trägt er nicht mehr den Inhalt, den
+  // der Vorgang geschrieben hat (Abdruck der gespeicherten Nutzlast ≠ Abdruck des Vorgangs), hat ihn
+  // inzwischen jemand bearbeitet — zweiter Tab, Studio. Den überschreibt dieser Weg NICHT; es bleibt
+  // beim Abdruckkonflikt. Dasselbe gilt für einen Entwurf, der nicht mehr da ist (Papierkorb,
+  // eingereicht). Geschrieben wird über denselben Vergleich-und-Tausch wie beim Fortsetzen.
+  private async anlageFortschreiben(
+    id: string,
+    payload: DraftPayload,
+    author: string,
+    vorgangsId: string,
+    fingerprint: string,
+  ): Promise<Draft> {
+    const konflikt = (): CaptureError =>
+      new CaptureError(
+        "IDEMPOTENCY_PAYLOAD_MISMATCH",
+        "Unter diesem Vorgang wurde bereits ein anderer Entwurf gespeichert.",
+      );
+    return this.withDraftLock(id, async () => {
+      const aktuell = await this.repo.findById(id);
+      if (
+        !aktuell ||
+        aktuell.createOperation?.id !== vorgangsId ||
+        aktuell.createOperation.actor !== author ||
+        createOperationFingerprint({ weg: "draft-create", inhalt: aktuell.payload }) !==
+          aktuell.createOperation.fingerprint
+      ) {
+        throw konflikt();
+      }
+      const bisher = Date.parse(aktuell.updatedAt);
+      const jetzt = this.now();
+      const fortgeschrieben: Draft = {
+        ...aktuell,
+        payload,
+        lastEditor: author,
+        createOperation: { id: vorgangsId, actor: author, fingerprint },
+        updatedAt: new Date(
+          Number.isFinite(bisher) ? Math.max(jetzt, bisher + 1) : jetzt,
+        ).toISOString(),
+      };
+      if (!(await this.repo.updateWennStand(fortgeschrieben, aktuell.updatedAt))) {
+        throw new CaptureError(
+          "DRAFT_WRITE_CONTENDED",
+          "Der Entwurf wird gerade an anderer Stelle geschrieben — bitte noch einmal versuchen.",
+        );
+      }
+      // R-1133: neuer Inhalt, neuer Stand — der Index folgt dem GESCHRIEBENEN Stand, wie bei der
+      // Erstanlage und beim Fortsetzen (erst nach gewonnenem Compare-and-Swap, nur eingeplant).
+      this.indexiere(fortgeschrieben);
+      return fortgeschrieben;
+    });
   }
 
   /**
