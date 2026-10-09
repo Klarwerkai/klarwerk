@@ -363,6 +363,7 @@ const en: typeof de = {
   // JOB 3140 (UX-11) — see the German block for the reasoning.
   "audit.action.user_role_change": "Role changed",
   "audit.action.user_approve": "Account approved",
+  "audit.action.user_account_corrected": "Account details corrected",
   "audit.action.auth_login": "Signed in",
   "audit.action.auth_logout": "Signed out",
   "audit.action.notice_acknowledged": "Notice acknowledged",
@@ -484,6 +485,14 @@ const en: typeof de = {
   "auth.toSignIn": "Go to sign in",
   "auth.or": "or",
   "auth.ssoButton": "Sign in with SSO",
+  // R-0541: the sign-in page when only the company login applies (KLARWERK_SSO_ONLY).
+  "auth.ssoOnlyNote":
+    "On this installation you sign in with your company account. There is no separate Klara password here.",
+  // R-0541 (rework 2): password sign-in is off, but the company login is not set up yet.
+  "auth.ssoOnlyMissing":
+    "Password sign-in is switched off, but the company login has not been set up yet. Please contact your IT team.",
+  // R-0560: the company login via SAML.
+  "auth.samlButton": "Sign in with company account (SAML)",
   "auth.ssoUnavailable": "SSO is not configured for this instance.",
   "auth.ssoTitle": "SSO sign-in",
   "auth.ssoBusy": "Completing sign-in …",
@@ -1726,6 +1735,10 @@ const en: typeof de = {
   "capture.saveDraft": "Save as draft",
   "capture.draftSaved": "Draft saved.",
   "capture.draftUpdated": "Draft updated.",
+  "capture.bereitsGespeichert": "This document was already saved; no second entry was created.",
+  "capture.bereitsGespeichertFortgeschrieben":
+    "This document was already saved; no second entry was created. The existing entry now holds your changed version.",
+  "capture.bereitsGespeichertOeffnen": "Open the existing entry: “{{title}}”",
   "capture.teilerfolg.dateiAusstehend":
     "Not everything is saved yet: the draft is saved, the file “{{name}}” is still being saved.",
   "capture.teilerfolg.dateiGescheitert":
@@ -2204,6 +2217,11 @@ const en: typeof de = {
   "ask.export.copy": "Copy",
   "ask.export.download": "As Markdown",
   "ask.export.print": "Print / PDF",
+  "ask.export.docx": "As Word (.docx)",
+  "ask.export.pptx": "As PowerPoint (.pptx)",
+  "ask.export.pdfDatei": "As PDF file",
+  "ask.export.pdfZeichen":
+    "The PDF file cannot show these characters unchanged: {{zeichen}}. Nothing was downloaded — Word or Markdown pass the text on without loss.",
   "ask.export.copied": "Answer incl. sources copied.",
   "ask.export.answer": "Answer",
   "ask.export.footer":
@@ -2215,6 +2233,10 @@ const en: typeof de = {
     "The sources listed first carried the answer; the rest were consulted but not used.",
   "ask.attribution.unknown":
     "Which of these sources carried the answer could not be determined — the AI returned no usable source references. The list therefore shows all consulted sources without a marker, and “This helped” is not available here.",
+  // R-0310/R-0325: the answer is withheld because no paragraph could be attributed to a source.
+  "ask.quellen.weitere": "Show {{count}} more sources",
+  "ask.zuordnungUnbekannt":
+    "No answer is shown: it could not be attributed to any source. A paragraph without a source is not output.",
   // JOB 3267 Q1 — three states, three words, plus a fourth for the review status (see the German
   // entry for the finding this fixes).
   "ask.attribution.carrying.badge": "used",
@@ -2326,6 +2348,96 @@ const en: typeof de = {
     "No source matches this question closely enough to carry an answer. That does not necessarily mean the knowledge is missing — it may simply be recorded under different words. Either way it's a gap you can close, not an error.",
   "ask.contract.trustNote":
     "Trust and usability show how reliable a source is — not a guarantee of truth.",
+  // AUFNAHME 20260922 · Antwort-Erklärung (Begründung im deutschen Block).
+  "ask.belastbarkeit.titel": "How reliable is this?",
+  "ask.belastbarkeit.lage.belegt": "Backed by sources",
+  "ask.belastbarkeit.lage.belegt_zustaendig_fehlt": "Backed — responsible person not reachable",
+  "ask.belastbarkeit.lage.belegt_mit_konflikt": "Backed — with a contradiction",
+  "ask.belastbarkeit.lage.wissensluecke": "Knowledge gap",
+  "ask.belastbarkeit.lage.technischer_fehler": "Technical error",
+  "ask.belastbarkeit.lage.geschwaerzt": "Redacted",
+  "ask.belastbarkeit.anzahl": "{{tragend}} of {{herangezogen}} consulted sources carry the answer",
+  "ask.belastbarkeit.vertrauenswert":
+    "Trust value {{wert}} — as reliable as the weakest carrying source (“{{quelle}}”). The library shows the same number on that entry.",
+  "ask.belastbarkeit.vertrauenswertKeiner": "No trust value: no carrying source is known.",
+  "ask.belastbarkeit.vertrauenswertKurz": "Trust value {{wert}}",
+  "ask.belastbarkeit.stand": "As of {{datum}}",
+  "ask.belastbarkeit.quelle.validiert": "validated",
+  "ask.belastbarkeit.quelle.nichtValidiert": "not validated",
+  "ask.belastbarkeit.verantwortung.eigentuemer": "Responsible",
+  "ask.belastbarkeit.verantwortung.autor": "No responsible person named, the author applies",
+  "ask.belastbarkeit.erreichbar.ja": "reachable",
+  "ask.belastbarkeit.erreichbar.nein": "not reachable",
+  "ask.belastbarkeit.erreichbar.unbekannt": "reachability unknown",
+  "ask.belastbarkeit.grund.keine_tragfaehige_quelle":
+    "No source carries an answer to this question.",
+  "ask.belastbarkeit.grund.zuordnung_unbekannt": "It is not known which source carries the answer.",
+  "ask.belastbarkeit.grund.alle_tragenden_quellen_validiert": "All carrying sources are validated.",
+  "ask.belastbarkeit.grund.tragende_quelle_nicht_validiert":
+    "At least one carrying source is not validated.",
+  "ask.belastbarkeit.grund.pruefnachweis_unvollstaendig":
+    "For at least one carrying source, the conflict check is not fully documented.",
+  "ask.belastbarkeit.grund.offener_konflikt": "A carrying source is part of an open contradiction.",
+  "ask.belastbarkeit.grund.konfliktlage_unbekannt":
+    "The conflict status could not be retrieved — that does not mean there is none.",
+  "ask.belastbarkeit.grund.zustaendig_nicht_erreichbar":
+    "The responsible person is not reachable (no approved account). The knowledge remains usable; follow-up questions need a new owner.",
+  "ask.belastbarkeit.grund.erreichbarkeit_unbekannt":
+    "Whether the responsible person is reachable could not be determined.",
+  "ask.belastbarkeit.grund.verantwortung_nur_autor":
+    "For at least one source no responsible person is named; the author applies.",
+  "ask.belastbarkeit.konflikt.titel": "Contradiction — both sides",
+  "ask.belastbarkeit.konflikt.seite": "Side {{nummer}}",
+  "ask.belastbarkeit.konflikt.traegt": "carries this answer",
+  "ask.belastbarkeit.konflikt.nichtEinsehbar": "You cannot view this side.",
+  "ask.belastbarkeit.konflikt.keinGewinner":
+    "No side is chosen. People decide the contradiction under “Conflicts”.",
+  "ask.belastbarkeit.hinweis":
+    "The trust value says how reliable the sources are. It says nothing about whether something is true.",
+  "ask.belastbarkeit.argumentation.titel": "How the answer comes about",
+  "ask.belastbarkeit.argumentation.belegstelle": "Evidence passage: “{{stelle}}”",
+  "ask.belastbarkeit.argumentation.art.aussage": "Statement",
+  "ask.belastbarkeit.woerterbuch.titel":
+    "Terms added from the company glossary — not part of the source count and without a trust value:",
+  "ask.belastbarkeit.woerterbuch.eintrag": "Glossary entry {{id}}, version {{fassung}}",
+  "ask.belastbarkeit.woerterbuch.verantwortlich": "Responsible: {{wer}}",
+  "ask.belastbarkeit.woerterbuch.ohneVerantwortung": "No responsible party given",
+  "ask.belastbarkeit.woerterbuch.nichtBewertet": "Reliability not assessed",
+  "ask.belastbarkeit.argumentation.art.beziehung": "Documented relation",
+  "ask.belastbarkeit.argumentation.beziehung.gehoert_zu": "belongs to",
+  "ask.belastbarkeit.argumentation.beziehung.ergaenzt": "complements",
+  "ask.belastbarkeit.argumentation.beziehung.ersetzt": "replaces",
+  "ask.belastbarkeit.argumentation.beziehung.widerspricht": "contradicts",
+  "ask.belastbarkeit.argumentation.beziehung.beispiel_fuer": "is an example of",
+  "ask.belastbarkeit.argumentation.gesetztVon": "Relation set by {{wer}}",
+  "ask.belastbarkeit.argumentation.gestuetztAuf": "Based on: {{quellen}}",
+  "ask.belastbarkeit.argumentation.unabhaengig":
+    "No relation between these sources is documented — they stand independently side by side.",
+  "ask.belastbarkeit.argumentation.art.einwand": "Objection from an open contradiction",
+  "ask.belastbarkeit.argumentation.art.vorbehalt": "Caveat",
+  "ask.belastbarkeit.argumentation.art.schluss": "Conclusion",
+  "ask.belastbarkeit.argumentation.einstufung.verified": "Rating: backed",
+  "ask.belastbarkeit.argumentation.einstufung.unverified": "Rating: not fully backed",
+  "ask.belastbarkeit.argumentation.einstufung.gap": "Rating: knowledge gap",
+  "ask.belastbarkeit.wissensart.bauchgefuehl": "Gut feeling",
+  "ask.belastbarkeit.wissensart.best_practice": "Proven practice",
+  "ask.belastbarkeit.wissensart.lernkurve": "Learning curve",
+  "ask.belastbarkeit.wissensart.technik": "Technical",
+  "ask.belastbarkeit.wissensart.negativwissen": "Negative knowledge",
+  "ask.belastbarkeit.zuschnitt":
+    "Answer and explanation tailored to: {{rolle}}, occasion {{anlass}}.",
+  "ask.belastbarkeit.rolle.viewer": "reader",
+  "ask.belastbarkeit.rolle.experte": "expert",
+  "ask.belastbarkeit.rolle.controller": "reviewer",
+  "ask.belastbarkeit.rolle.admin": "administration",
+  "ask.belastbarkeit.rolle.unbekannt": "unknown role",
+  "ask.belastbarkeit.anlass.dokument": "working on a document",
+  "ask.belastbarkeit.anlass.frage": "free question",
+  "ask.pruefrahmen.satz":
+    "Checked against {{umfang}}: {{verglichen}} matching entries were compared (at most {{hoechstens}} per question), none carries an answer.",
+  "ask.pruefrahmen.umfang.validiert": "validated, non-confidential knowledge only",
+  "ask.pruefrahmen.umfang.nicht_vertraulich": "all non-confidential knowledge",
+  "ask.pruefrahmen.woertlich": "The search was literal, without an AI summary.",
   // JOB 3366: der Satz an einer abgeschnittenen KI-Antwort (Begründung im deutschen Block).
   "ai.truncated.hint": "This answer was cut off at the length limit and may be incomplete.",
   "ask.contract.sumTotal_one": "{{count}} source consulted",
@@ -3184,6 +3296,7 @@ const en: typeof de = {
   "con.openKo": "Open object",
   "con.compareOpen": "Compare both",
   "con.readonlyCompare": "Read-only comparison",
+  "con.caseList": "All open conflicts ({{count}})",
   "con.detectedOn": "Detected on {{date}}",
   "con.evidenceSideLabel": "Evidence for this side",
   "con.evidenceBalance.neither":
@@ -3432,6 +3545,11 @@ const en: typeof de = {
   "lib.lesemodus.listeEinblenden": "Show result list",
   "lib.lesemodus.listeAusblenden": "Hide result list",
   "lib.lesen.mehr": "More",
+  "lib.lesen.belegstelle.markiert": "Supporting passage highlighted.",
+  "lib.lesen.belegstelle.nichtGefunden":
+    "The cited passage does not appear verbatim in this version of the text.",
+  "lib.lesen.belegstelle.andereFassung":
+    "The passage belongs to version {{fassung}}; this is version {{aktuell}}. Nothing is highlighted.",
   "lib.lesen.bilder_one": "{{count}} image",
   "lib.lesen.bilder_other": "{{count}} images",
   "lib.lesen.fehler": "The entry could not be loaded.",
@@ -4248,6 +4366,9 @@ const en: typeof de = {
   "adm.resetConfirm": "Reset",
   "adm.resetCancel": "Cancel",
   "adm.resetDone": "Password reset; all sessions ended.",
+  "adm.correct": "Correct account details",
+  "adm.correctSave": "Save account details",
+  "adm.correctDone": "Account details corrected.",
   "adm.gastfrist.titel": "Access valid until",
   "adm.gastfrist.unbefristet": "No end date — this access does not expire on its own.",
   "adm.gastfrist.gueltigBis": "Valid until {{datum}}.",
@@ -4306,6 +4427,16 @@ const en: typeof de = {
   "prof.passwordSubmit": "Change password",
   "prof.passwordChanged":
     "Password changed. For security you've been signed out everywhere — please sign in again.",
+  "prof.correctTitle": "Correct account details",
+  "prof.correctPassword": "Current password (only for a new email)",
+  "prof.correctSubmit": "Save account details",
+  "prof.correctSaved": "Account details saved.",
+  "prof.correctUnchanged": "Nothing changed.",
+  "prof.correctSso": "Confirm with SSO instead",
+  "prof.correctSaml": "Confirm with SAML company sign-in instead",
+  "prof.correctSsoConfirmed": "Identity confirmed via SSO — now save your account details.",
+  "prof.correctSsoKontoGewechselt":
+    "A different account signed in during the SSO confirmation. The previous account's draft was discarded; the details shown belong to the account that is now signed in.",
   "help.kicker": "Help",
   "help.open": "Open help",
   "help.openCenter": "Open in help center",
@@ -4340,6 +4471,8 @@ const en: typeof de = {
   "klara.aiBusy": "The AI is reading the matching help entries …",
   "klara.aiAnswerTitle": "AI answer from the help",
   "klara.aiDisclaimer": "AI-generated — not fully verified",
+  "klara.helpAnswerTitle": "Answer from the help",
+  "klara.ohneModell": "Rule-based, no AI model",
   "klara.aiGoto": "Open area: {{target}}",
   "klara.aiSources": "Based on",
   "klara.aiEmpty":
@@ -4670,6 +4803,22 @@ const en: typeof de = {
   "mob.photo": "Photo",
   "mob.interview": "Interview",
   "mob.lookup": "Look up",
+  "mob.modusGruppe": "Capture type",
+  "mob.modusGesperrt": "Save or clear first, then switch the capture type.",
+  "mob.iv.frage1": "What is this about? State the core message in one sentence.",
+  "mob.iv.frage2": "Under what conditions or from when does this apply?",
+  "mob.iv.frage3": "What action or consequence follows from it?",
+  "mob.iv.frage4": "Which keywords/tags help to find it again? (comma-separated)",
+  "mob.iv.fortschritt": "Question {{nummer}} of {{gesamt}}",
+  "mob.iv.weiter": "Next question",
+  "mob.iv.zurueck": "Previous question",
+  "mob.iv.hinweis": "Every answer is in the draft right away — you can save after any question.",
+  "mob.foto.kamera": "Camera",
+  "mob.foto.mediathek": "Photo library",
+  "mob.foto.entfernen": "Remove photo",
+  "mob.foto.fehler": "The photo could not be read.",
+  "mob.foto.max": "At most {{max}} photos per draft.",
+  "mob.foto.inArbeit": "Preparing photo … you can save in a moment.",
   "mob.editing": "Resuming a draft.",
   "mob.formTitle": "Core statement",
   "mob.formStatement": "What happened / what applies?",
@@ -5604,6 +5753,10 @@ const en: typeof de = {
     "This attempt did not get through either. Please check your network connection.",
 
   "ai.generatedNotice": "Generated by artificial intelligence — please review professionally.",
+  "ai.surfaceNotice": "An AI may assist here — content it generates is labelled.",
+  "ergebnisStufe.entwurf": "Reasoner draft, not validated",
+  "ergebnisStufe.empfehlung": "Recommendation, unchecked",
+  "ergebnisStufe.validiert": "Validated",
   "ai.costHint": "One click may trigger a real, chargeable cloud AI request.",
   "ai.exportNotice":
     "Generated by artificial intelligence (KLARWERK, {{task}}, {{date}}). To be reviewed for content.",

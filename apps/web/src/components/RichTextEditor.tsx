@@ -93,6 +93,7 @@ import {
   normalizeImageWidth,
 } from "../lib/imageResize";
 import { kiBremsSatz } from "../lib/kiBremse";
+import { REASONER_ENTWURF_FLAECHE } from "../lib/kiHerkunft";
 // JOB 3095: die eine Quelle des Onlinezustands (JOB 3084) für den ehrlichen Offline-Satz der Bildsuche.
 import { useNetzOnline } from "../lib/netzzustand";
 import {
@@ -110,7 +111,7 @@ import {
 // weil nur diese Flaeche BEIDE Quellen kennt — den Rumpf im Editor und die Antwort vom Dienst.
 import { objekttextAusRumpf, titelNachRangfolge } from "../lib/titelRangfolge";
 import { AiCostHint } from "./AiCostHint";
-import { AiGeneratedNotice } from "./AiGeneratedNotice";
+import { AiGeneratedNotice, AiSurfaceNotice } from "./AiGeneratedNotice";
 import { AiUnavailableHint } from "./AiUnavailableHint";
 // D44 Teil 2, Weg (a): nur der Ereignisname und seine Nutzlast — keine Komponente, kein Zyklus
 // (`BodyImageGallery` importiert nichts aus dieser Datei, gemessen).
@@ -120,6 +121,7 @@ import { type D44BildEreignis, D44_BILD_EREIGNIS } from "./BodyImageGallery";
 import { Modal } from "./Modal";
 import { SanitizedHtml } from "./SanitizedHtml";
 import { UploadLimitsHint } from "./UploadLimitsHint";
+import { ErgebnisStufeMarke } from "./trust/ErgebnisStufeMarke";
 import { Button } from "./ui";
 
 export interface EditorImage {
@@ -182,11 +184,13 @@ interface Zuordnungslage {
   unklareBilder: number;
 }
 
-const IMAGE_SCALE_OPTIONS: Array<{ value: ImageScaleValue; label: string }> = [
-  { value: "25", label: "Klein" },
-  { value: "50", label: "Mittel" },
-  { value: "75", label: "Groß" },
-  { value: "100", label: "Volle Breite" },
+// R-1169: die Stufen standen als deutsche Wörter im Code („Klein" … „Volle Breite") und blieben in
+// EN/NL deutsch. Der deutsche Wortlaut in `texte/beschriftung.ts` ist zeichengleich geblieben.
+const IMAGE_SCALE_OPTIONS: Array<{ value: ImageScaleValue; labelKey: string }> = [
+  { value: "25", labelKey: "beschriftung.editor.stufe.klein" },
+  { value: "50", labelKey: "beschriftung.editor.stufe.mittel" },
+  { value: "75", labelKey: "beschriftung.editor.stufe.gross" },
+  { value: "100", labelKey: "beschriftung.editor.stufe.voll" },
 ];
 
 // R-0014: die vier Griffe an den Ecken des ausgewählten Bildes. Rechte Griffe ziehen die rechte
@@ -2729,7 +2733,9 @@ export function RichTextEditor({
 
       {mode === "edit" && selectedImage ? (
         <div className="flex flex-wrap items-center gap-1 border-b border-hairline bg-ai-surface-1 px-2 py-1.5">
-          <span className="mr-1 text-[11.5px] font-semibold text-muted">Bildgröße</span>
+          <span className="mr-1 text-[11.5px] font-semibold text-muted">
+            {t("beschriftung.editor.bildgroesse")}
+          </span>
           {IMAGE_SCALE_OPTIONS.map((opt) => (
             <button
               key={opt.value}
@@ -2742,7 +2748,7 @@ export function RichTextEditor({
                   : "border-hairline bg-surface text-text hover:bg-hairline-soft"
               }`}
             >
-              {opt.label}
+              {t(opt.labelKey)}
             </button>
           ))}
           {/* R-0014: die frei gezogene Breite als neutrale Größenangabe — keine Stufe ist dann
@@ -3201,9 +3207,11 @@ export function RichTextEditor({
               {!imageDescribe.available ? <AiUnavailableHint show={true} /> : null}
               {/* AUFTRAG-mega61 Block E: die Bildbeschreibung erzeugt Text, den es vorher nicht
                   gab — sie trägt den Hinweis dauerhaft, nicht erst am Ergebnis.
-                  AUFTRAG-mega62 Block F: der Kostenhinweis daneben, aus demselben Grund. */}
+                  AUFTRAG-mega62 Block F: der Kostenhinweis daneben, aus demselben Grund.
+                  R-0603/R-0604: am Auslöser der Flächensatz; „von KI erzeugt" steht am Vorschlag
+                  darunter — den gibt es nur aus einem Modelltext (`captionSuggestOutcome`). */}
               <p className="mt-1">
-                <AiGeneratedNotice /> <AiCostHint billable={imageDescribe.billable} />
+                <AiSurfaceNotice /> <AiCostHint billable={imageDescribe.billable} />
               </p>
 
               {/* 4. Der Vorschlag als EIGENER, sichtbar abgesetzter Block — als KI-Vorschlag
@@ -3211,11 +3219,13 @@ export function RichTextEditor({
               {captionFormAi?.status === "suggestion" ? (
                 <div
                   data-testid="caption-form-suggestion"
-                  className="mt-2 rounded-card border border-ai/30 bg-surface p-2"
+                  // R-1020: ein Vorschlag entsteht nur aus einem Modelltext — also Entwurfsfläche.
+                  className={`mt-2 rounded-card p-2 ${REASONER_ENTWURF_FLAECHE}`}
                 >
                   <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
                     {t(CAPTION_AI_TEXT.panelTitle)} · {t(CAPTION_AI_TEXT.aiBadge)}
                   </p>
+                  <ErgebnisStufeMarke stufe="entwurf" className="mt-1" />
                   {captionFormAi.withContext ? (
                     <p className="mt-0.5 text-[10.5px] leading-snug text-muted">
                       {t(CAPTION_AI_TEXT.withContext)}
@@ -3224,6 +3234,7 @@ export function RichTextEditor({
                   <p className="mt-1 text-[12.5px] leading-relaxed text-text">
                     {captionFormAi.text}
                   </p>
+                  <AiGeneratedNotice className="mt-1 block" />
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button
                       type="button"

@@ -120,9 +120,13 @@ const KONTO_ZIEL_AKTIONEN: ReadonlySet<string> = new Set([
   "auth.login",
   "auth.logout",
   "notice.acknowledged",
+  // R-0582: Berichtigung von Name/E-Mail — `correctAccountData(userId, …)`.
+  "user.account-corrected",
   "user.approve",
   "user.created",
   "user.delete",
+  // R-0556: Anlage, Sperre und Rollenwechsel aus dem Unternehmensverzeichnis (Ziel: das Konto).
+  "user.directory-sync",
   "user.oidc-linked",
   "user.oidc-linked-unverified",
   "user.oidc-provisioned",

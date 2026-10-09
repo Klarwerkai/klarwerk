@@ -52,6 +52,11 @@ export interface KnowledgeRef {
   // Feld überall, rechnet `rankCandidates` Zeichen für Zeichen wie bisher. Der Reasoner kennt die
   // Geltung selbst nicht — er bekommt nur diese Zahl (Regel: knowledge-object `geltungFuerFrage`).
   geltungsrang?: number;
+  // aufnahme:20260922:gesamt-wissen-frische (R-0248): die Haltbarkeit dieser Quelle ist abgelaufen —
+  // sie gilt in Antworten nicht mehr als gesichert, bis der Verantwortliche sie bestätigt. Gesetzt
+  // NUR vom Fragedienst (Regel: knowledge-object `haltbarkeitAbgelaufen`); fehlt das Feld, gilt
+  // allein der Status wie bisher.
+  haltbarkeitAbgelaufen?: true;
 }
 
 // ================================================================================================
@@ -180,6 +185,24 @@ export interface AnswerResult {
   abgeschnitten?: AbbruchBefund;
 }
 
+// FR-STR-01 (R-0315): die Wissensart des Strukturierungsvorschlags. Dieselben fünf Werte wie
+// `KnowledgeType` im Modul knowledge-object — hier gespiegelt, weil der Reasoner knowledge-object
+// nicht direkt kennt (siehe KnowledgeRef). Gleichlauf ist in provider-model.test.ts gepinnt.
+export type StructureKnowledgeType =
+  | "bauchgefuehl"
+  | "best_practice"
+  | "lernkurve"
+  | "technik"
+  | "negativwissen";
+
+export const STRUCTURE_KNOWLEDGE_TYPES: readonly StructureKnowledgeType[] = [
+  "bauchgefuehl",
+  "best_practice",
+  "lernkurve",
+  "technik",
+  "negativwissen",
+];
+
 export interface StructureResult {
   title: string;
   statement: string;
@@ -187,6 +210,9 @@ export interface StructureResult {
   measures: string[];
   tags: string[];
   confidence: number;
+  // FR-STR-01: die vom Modell vorgeschlagene Wissensart. Fehlt, wenn das Modell keinen der fünf
+  // gültigen Werte liefert oder der deterministische Fallback lief — dort wird nie geraten (G-2).
+  knowledgeType?: StructureKnowledgeType;
   demo: boolean;
   // WP-D8 (Pedis Live-ROT B): WARUM lief der deterministische Fallback? demo:true allein verschluckte
   // drei verschiedene Ursachen — die UI konnte nur ein erklärungsloses FALLBACK-Badge zeigen.
@@ -558,6 +584,45 @@ export interface DuplicateJudgeOutcome {
   verdict: DuplicateJudgeResult | null;
   failure?: JudgeFailure;
   providerFailure?: ModelFailureInfo;
+}
+
+// ================================================================================================
+// R-1657 (ROADMAP 9.3) — LÜCKENERKENNUNG ÜBER DEN REASONER.
+// ================================================================================================
+//
+// „KLARWERK analysiert regelmäßig, in welchen Themenbereichen wenig Wissen, geringer Trust oder hohe
+// Konflikt-Dichte herrscht — und schlägt der Organisation Wissens-Sprints vor." Der Reasoner urteilt
+// über KENNZAHLEN je Bereich (Name und Zähler), nie über Inhalte von Wissensobjekten. Ein Urteil wie
+// beim Konflikt- und Dublettenurteil: nur ein Modell urteilt; ohne Modell bleibt es beim Ausgang
+// `failure`, und der Aufrufer zeigt seine benannte Regel.
+export const LUECKEN_GRUENDE = ["conflicts", "revalidation", "lowTrust", "thinKnowledge"] as const;
+export type LueckenGrund = (typeof LUECKEN_GRUENDE)[number];
+
+/** Die Kennzahlen EINES Bereichs, so wie der Betrachter ihn sieht. */
+export interface LueckenBereich {
+  bereich: string;
+  objekte: number;
+  validiert: number;
+  mittleresVertrauen: number; // 0–100
+  imKonflikt: number | null; // null = kein Konflikt-Eingang
+  revalidierung: number;
+  geringesVertrauen: number;
+}
+
+/** Das Urteil des Modells zu EINEM Bereich — nur Gründe, die die Kennzahlen tragen. */
+export interface LueckenBereichsUrteil {
+  bereich: string;
+  sprint: boolean;
+  tage: number; // 1–5; bei sprint=false bedeutungslos
+  schwerpunkte: LueckenGrund[];
+}
+
+export interface LueckenUrteilOutcome {
+  urteile: LueckenBereichsUrteil[] | null;
+  failure?: JudgeFailure;
+  providerFailure?: ModelFailureInfo;
+  /** Der Anbieter, der geurteilt hat (nur bei `urteile`). */
+  provider?: string;
 }
 
 // Berater-Konzept Duplikate 04.07. (Stufe D2, dup-v1): Überschneidungs-Profil zweier Kerntexte A/B.

@@ -71,6 +71,8 @@ import type {
   InterviewResult,
   JudgeFailure,
   KnowledgeRef,
+  LueckenBereich,
+  LueckenUrteilOutcome,
   ReasonerAktiveWahl,
   ReasonerCloudAnbieter,
   ReasonerCloudAnbieterStatus,
@@ -336,6 +338,10 @@ function erzeugnisAus(task: ModelRunTask, ergebnis: unknown): ModelRunErzeugnis 
     case "conflict":
     case "duplicate":
       [art, anzahl] = ["urteil", 1];
+      break;
+    // R-1657: ein Urteil je beurteiltem Bereich.
+    case "gaps":
+      [art, anzahl] = ["urteil", anzahlListe(ergebnis)];
       break;
     case "probe":
       return undefined;
@@ -2213,13 +2219,12 @@ export class Reasoner {
       },
       confidential,
     );
-    // AUFTRAG-mega61 Block F: die Kennzeichnung an BEIDEN Rückgabewegen dieser Methode — der
-    // frühen (Modell hat geantwortet) und der späten (deterministischer Rückfall mit Ursache).
-    // Genau solche zwei Ausgänge sind der Grund, warum die Kennzeichnung zentral gesetzt wird und
-    // nicht in den Providern.
-    const kennzeichnung = aiGeneratedMark("describe", result.demo);
+    // AUFTRAG-mega61 Block F: die Kennzeichnung wird HIER gesetzt und nicht in den Providern.
+    // R-0604 (G22, mega83 A): NUR auf dem frühen Rückgabeweg — dort hat ein Modell geantwortet.
+    // Der späte Weg (deterministischer Rückfall mit Ursache) liefert ohnehin keinen Text; bis hierher
+    // trug er trotzdem „von KI erzeugt". Im Zweifel wird die Kennzeichnung aus-, nicht eingeschaltet.
     if (!result.demo) {
-      return mitTitelVorschlag({ ...result, aiGenerated: kennzeichnung });
+      return mitTitelVorschlag({ ...result, aiGenerated: aiGeneratedMark("describe", false) });
     }
     const modelFailure = failureBox.current;
     const failure = modelFailure === null ? null : classifyModelFailure(modelFailure.err);
@@ -2237,7 +2242,7 @@ export class Reasoner {
     // JOB 1164 D1: der Vorschlag entsteht aus dem VOLLSTÄNDIGEN Ergebnis — `fallbackReason` gehört
     // dazu und wird erst hier gesetzt. Würde er vorher abgeleitet, sähe die Ableitung kein
     // `confidential` und der Egress-Ausschluss käme als „demo" heraus. Die Reihenfolge ist Absicht.
-    return mitTitelVorschlag({ ...result, fallbackReason, aiGenerated: kennzeichnung });
+    return mitTitelVorschlag({ ...result, fallbackReason });
   }
 
   // FR-RSN-04/FR-I18N-01: Modellfehler dürfen den Betrieb nicht stoppen → deterministischer
@@ -2376,7 +2381,10 @@ export class Reasoner {
     // AUFTRAG-mega61 Block F: die Kennzeichnung wird HIER gesetzt und nicht in den Providern —
     // es gibt drei Provider-Wege zu einer Antwort (Cloud, lokal, deterministisch), und drei
     // Stellen wären drei Gelegenheiten, sie zu vergessen.
-    return { ...result, aiGenerated: aiGeneratedMark("answer", result.demo) };
+    // R-0604 (G22, mega83 A): gesetzt wird sie aber nur, wenn wirklich ein Modell geantwortet hat.
+    // Der deterministische Rückfall stellt Sätze aus geprüftem Wissen regelbasiert zusammen — ihn
+    // „von KI erzeugt" zu nennen, war genau die Falschaussage aus G22.
+    return result.demo ? result : { ...result, aiGenerated: aiGeneratedMark("answer", false) };
   }
 
   // SCRUM-490 R2 (B1): RETRIEVAL-ONLY-Antwort für den Add-on-Pfad (Klara). Der Eingabetext ist der
@@ -2512,15 +2520,18 @@ export class Reasoner {
     locale: ReasonerLocale = "de",
     // SCRUM-502 Schicht 2: vertraulicher Draft → Cloud aus der Kette.
     confidential = false,
+    // R-1624: optionaler, vom Menschen bestätigter Bildbefund → Foto-Fragenfolge.
+    imageContext?: string,
   ): Promise<InterviewResult> {
     const result = await this.runTask(
       "interview",
       locale,
-      (p) => p.interview(answers, locale, confidential),
+      (p) => p.interview(answers, locale, confidential, imageContext),
       confidential,
     );
-    // mega61 Block F: Interviewfragen sind erzeugter Text — gekennzeichnet.
-    return { ...result, aiGenerated: aiGeneratedMark("interview", result.demo) };
+    // mega61 Block F: Interviewfragen sind erzeugter Text — gekennzeichnet. R-0604: nur, wenn ein
+    // Modell sie erzeugt hat; die festen Fragen des deterministischen Rückfalls sind keine KI.
+    return result.demo ? result : { ...result, aiGenerated: aiGeneratedMark("interview", false) };
   }
 
   // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag).
@@ -2980,6 +2991,76 @@ export class Reasoner {
     confidential = false,
   ): Promise<DuplicateJudgeResult | null> {
     return (await this.judgeDuplicateOutcome(coreA, coreB, locale, confidential)).verdict;
+  }
+
+  // R-1657 (ROADMAP 9.3): „Lückenerkennung über Reasoner". Dieselbe Bauform wie
+  // judgeConflictOutcome: die Kette der globalen Wahl (judgeProviders), vertraulich ⇒ die Cloud fällt
+  // vor jedem Aufruf heraus, genau ein Lauf `gaps` im Protokoll je Urteil mit Modellversuch, und ein
+  // unterscheidbarer Ausgang (Urteil ODER Ursache). Ohne Modell urteilt hier NIEMAND — der Aufrufer
+  // zeigt dann seine benannte Regel und sagt, dass sie gilt.
+  async judgeKnowledgeGapsOutcome(
+    bereiche: readonly LueckenBereich[],
+    locale: ReasonerLocale = "de",
+    confidential = false,
+  ): Promise<LueckenUrteilOutcome> {
+    if (bereiche.length === 0) {
+      return { urteile: [] };
+    }
+    let failure: JudgeFailure | undefined;
+    let providerFailure: ModelFailureInfo | undefined;
+    let attempted = false;
+    const { providers, confidentialExcluded } = this.judgeProviders(confidential);
+    const startedAt = new Date().toISOString();
+    const lb = new Laufbuch();
+    for (const provider of providers) {
+      if (!provider.judgeKnowledgeGaps) {
+        continue;
+      }
+      attempted = true;
+      const urteilen = provider.judgeKnowledgeGaps.bind(provider);
+      try {
+        const result = await lb.versuch(
+          provider,
+          () => urteilen(bereiche, locale, confidential),
+          this.pruefungenFuer(provider, confidential),
+        );
+        if (result) {
+          await this.protokolliereLaufbuch("gaps", locale, startedAt, lb, {
+            status: "success",
+            erzeugt: erzeugnisAus("gaps", result),
+          });
+          return { urteile: result, provider: provider.name };
+        }
+        lb.vermerke(provider, "Antwort unverwertbar");
+        failure = failure ?? "model-error";
+      } catch (err) {
+        if (err instanceof ModelCapacityError) {
+          await this.protokolliereLaufbuch("gaps", locale, startedAt, lb, { status: "error" });
+          throw err;
+        }
+        if (err instanceof Error && err.name === "ConfidentialEgressError") {
+          failure = failure ?? "confidential";
+          continue;
+        }
+        failure = failure ?? Reasoner.judgeFailureOf(err);
+        providerFailure = providerFailure ?? classifyModelFailure(err);
+      }
+    }
+    if (!attempted) {
+      return {
+        urteile: null,
+        failure: Reasoner.noJudgeFailure(confidential, confidentialExcluded),
+      };
+    }
+    await this.protokolliereLaufbuch("gaps", locale, startedAt, lb, {
+      status: "error",
+      ursache: failure ?? "model-error",
+    });
+    return {
+      urteile: null,
+      failure: failure ?? "model-error",
+      ...(providerFailure ? { providerFailure } : {}),
+    };
   }
 
   // SCRUM-167: select bleibt synchron (reines Keyword-Ranking, kein Modell-/Netzaufruf).
