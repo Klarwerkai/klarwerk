@@ -69,6 +69,9 @@ import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
 import { LESEVARIANTEN_SCHEMA } from "./lesevarianten";
 // PMO-FEA-0003: die freiwilligen Fotos der Live-Wand (eine Zeile je zustimmendem Konto).
 import { LIVEWALL_FOTO_SCHEMA } from "./livewall-fotos";
+// Betroffenenrechte (R-0661): die Löschanträge. Im App-Wurzelverzeichnis wie die Kenntnisnahme —
+// sie verbinden Konto (auth) und Verwalteraufgabe, kein Fachmodul besitzt sie.
+import { LOESCHANTRAG_SCHEMA } from "./loeschantraege";
 import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
 // produkt:20261007:spaces: die Fassungen der Arbeitsräume. Im App-Wurzelverzeichnis wie das
 // Firmenwörterbuch: die Sichtbarkeitsregel (`sichtbarkeit.ts`) liest sie, kein Fachmodul besitzt sie.
@@ -287,6 +290,10 @@ export const schemas = [
   // R-0470: der dauerhafte Vektorspeicher des Textprüfungs-Vorfilters. Additiv und wiederholbar
   // (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension (kein pgvector), ohne Seed.
   EMBEDDING_SCHEMA,
+  // Betroffenenrechte (R-0661): die Löschanträge der Mitarbeiter. Additiv und wiederholbar (CREATE
+  // TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das
+  // die lesbare Ordnung ist.
+  LOESCHANTRAG_SCHEMA,
   // ADMIN-15: Unternehmensprofil, interne Richtlinien und ihr Handlungsprotokoll. Additiv und
   // wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
   UNTERNEHMEN_SCHEMA,

@@ -848,6 +848,23 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/begriffe": { protection: "ko.validate" },
   "PUT /api/begriffe/:id": { protection: "ko.validate" },
 
+  // --- Betroffenenrechte (datenschutz-routes.ts) ---
+  // Die EIGENEN Daten und der EIGENE Löschantrag: jede angemeldete Person. Welche Objekttitel in
+  // der Auskunft erscheinen, entscheidet der Sichtbarkeitsfilter des Betrachters.
+  "GET /api/me/daten": { protection: "auth", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
+  "GET /api/me/loeschantrag": { protection: "auth" },
+  "POST /api/me/loeschantrag": { protection: "auth" },
+  "POST /api/me/loeschantrag/:id/zurueckziehen": { protection: "auth" },
+  // Fremde Konten und das Verzeichnis: dieselbe Schranke wie das Löschen eines Kontos.
+  "GET /api/datenschutz/loeschantraege": { protection: "users.manage" },
+  "POST /api/datenschutz/loeschantraege/:id/erledigen": { protection: "users.manage" },
+  "POST /api/datenschutz/loeschantraege/:id/ablehnen": { protection: "users.manage" },
+  "GET /api/datenschutz/auskunft/:nutzerId": {
+    protection: "users.manage",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "GET /api/datenschutz/verarbeitungsverzeichnis": { protection: "users.manage" },
+
   // --- Ausgangsprüfung (ausgangspruefung-routes.ts, R-1646) ---
   // Der ausgehende Text vor der Freigabe und die Entscheidung darüber: wer über fremde Beiträge urteilt.
   "GET /api/ausgangspruefung": { protection: "ko.validate" },
