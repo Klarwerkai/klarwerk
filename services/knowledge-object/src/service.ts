@@ -46,6 +46,8 @@ import {
   type EffectiveSearchDocument,
   composeEffectiveSearchDocument,
 } from "./effective-search-document";
+// R-1632 / R-1633: die Geltungsregel (Konzern/Werk/Schicht) — eine Fassung, Begründung dort.
+import { normalizeGeltung } from "./geltung";
 import {
   type KoMetadataProjection,
   metadataTextsEqual,
@@ -54,7 +56,13 @@ import {
 import type { KoMetadataProjectionResult } from "./metadata-projection-repo";
 // JOB 557: das kanonische Eigentümer-Aggregat. Regeln, Rückfallentscheidung und Grenzen stehen in
 // ownership.ts — hier wird nur angewendet, nichts nachgebaut.
-import { normalizeOwnership, ownershipOf, sameOwnership, withRole } from "./ownership";
+import {
+  normalizeOwnership,
+  ownershipOf,
+  responsibleOf,
+  sameOwnership,
+  withRole,
+} from "./ownership";
 // AUFNAHME 20260922: die Basisbindung des Prüfnachweises (Regel und Begründung dort).
 import {
   bestandsStempelVon,
@@ -102,7 +110,7 @@ import { confirmedSourceAnchor } from "./source-anchor";
 // SCRUM-527 (WP2): Quell-URL-Allowlist an der Persistenzgrenze (nur absolute http/https).
 import { safeSourceUrl, sanitizeSources } from "./source-url";
 // P-WIKI-STELLENBEZUG: der Anker einer Rückfrage im Text — Prüfung und Vergleich.
-import { gleicheStelle, stelleImInhalt } from "./stellen-anker";
+import { gleicheStelle, stelleAmAnhang, stelleImInhalt } from "./stellen-anker";
 import {
   type AiCheckBasis,
   type AiCheckCoverage,
@@ -334,6 +342,12 @@ export interface KoServiceDeps {
   // Überschneidungen, Embedding-Vektor) nicht verwaisen. Als injizierte Funktion — KEIN Import über die
   // Modulgrenze; die App (Composition-Root) verdrahtet conflicts/overlaps/Embedding-Cleanup dahinter.
   onPurge?: (koId: string, actor: string) => Promise<void>;
+  // produkt:20261007:ownership-uebergabe (Nacharbeit 4): wer die Hauptverantwortung für ein NEUES
+  // Objekt dieses Autors trägt, wenn es nicht der Autor selbst sein kann (befristeter Zugang).
+  // `undefined` = kein Eingriff (Rückfall auf den Autor wie bisher). Wirft der Lieferant, entsteht
+  // kein Objekt. Als injizierte Funktion — KEIN Import über die Modulgrenze.
+  // Nacharbeit 6: gefragt wird mit dem fertig aufgebauten Objekt (Autor, Stufe, Space).
+  verantwortungBeiAnlage?: (ko: KnowledgeObject) => Promise<string | undefined>;
   // SCRUM-523 P.3 (WP-A2): optionale echte DB-Transaktion für purgeKo (repo.delete + audit.record).
   withTx?: WithTx;
   // Auftrag gesamt-dubletten-rueckzug (Runde 2, Bens BEN-R3-1): die Klammer des Rücknahme-Wegs
@@ -767,6 +781,9 @@ export class KoService {
   private readonly onError: (context: string, error: unknown) => void;
   // R-0098: s. KoServiceDeps.bildObjektDaten.
   private readonly bildObjektDaten: BildObjektDaten | undefined;
+  private readonly verantwortungBeiAnlage:
+    | ((ko: KnowledgeObject) => Promise<string | undefined>)
+    | undefined;
   // SCRUM-509 R2 / 507 R2: EIN per-KO Schreib-Lock serialisiert die zueinander wettlaufenden KO-
   // Mutationen (Vertraulichkeit setzen, Validierungsstatus setzen, Revision). So gibt es kein Inter-
   // leave zwischen Lesen und Schreiben (kein TOCTOU, kein Lost-Update, keine fälschlich gültige
@@ -797,9 +814,11 @@ export class KoService {
     this.onError =
       deps.onError ??
       ((context, error) => {
-        console.error(`[kos] ${context}:`, error);
+        // R-0623: nur die Fehlerklasse — Meldung und Stack können Inhalte tragen.
+        console.error(`[kos] ${context}: ${error instanceof Error ? error.name : "unknown"}`);
       });
     this.bildObjektDaten = deps.bildObjektDaten;
+    this.verantwortungBeiAnlage = deps.verantwortungBeiAnlage;
   }
 
   // R-0098 (inhaltskennung-zweitbegriff): die Inhaltskennungen der Bilder eines Rumpfes — das
@@ -2221,6 +2240,7 @@ export class KoService {
     if (needed < 1 || needed > 5) {
       throw new KoError("INVALID_NEEDED", "Nötige Validierungen müssen zwischen 1 und 5 liegen.");
     }
+    const ownership = normalizeOwnership(input.ownership);
     const at = new Date(this.now()).toISOString();
     const bodyHtml = cleanBody(input.bodyHtml);
     // statement bleibt führend; falls leer, aus dem HTML-Body ableiten.
@@ -2311,9 +2331,7 @@ export class KoService {
       // Bauform wie `confidentiality` und `origin` daneben. KEIN stiller Default auf den Autor: ein
       // Objekt ohne benannte Verantwortung bleibt ein Objekt ohne benannte Verantwortung, und genau
       // das liest `responsibleOf` als Rückfall statt als Eigentum.
-      ...(normalizeOwnership(input.ownership)
-        ? { ownership: normalizeOwnership(input.ownership) as KnowledgeOwnership }
-        : {}),
+      ...(ownership ? { ownership } : {}),
       // AUFTRAG-mega20 Block A: DB-unique erzwungen (kos_create_operation_uq) — der Insert eines
       // zweiten KO desselben Erzeugungs-Vorgangs scheitert am Index/Guard und wird adoptiert.
       ...(extras?.createOperationId ? { createOperationId: extras.createOperationId } : {}),
@@ -2329,9 +2347,29 @@ export class KoService {
       // SCRUM-527 (WP2): jede übernommene Quell-URL durch die Allowlist (nur absolute http/https).
       sources: sanitizeSources([...(input.sources ?? []), ...(extras?.sources ?? [])]),
     };
+    // produkt:20261007:ownership-uebergabe (Nacharbeit 4/6): nennt der Aufrufer keinen Eigentümer
+    // und kann der Autor selbst die Verantwortung nicht über sein Kontoende hinaus tragen
+    // (befristeter Zugang), trägt sie ab der Anlage die benannte Nachfolge. Gefragt wird mit dem
+    // FERTIGEN Objekt — die Zulässigkeit hängt an Vertraulichkeit und Space genau dieses Beitrags
+    // (Nacharbeit 6). Prüfende/Validierende einer mitgebrachten Angabe bleiben; die Autorschaft
+    // bleibt beim Autor.
+    const nachfolge =
+      !ownership?.owner && this.verantwortungBeiAnlage
+        ? await this.verantwortungBeiAnlage(ko)
+        : undefined;
+    const mitNachfolge: KnowledgeObject = nachfolge
+      ? {
+          ...ko,
+          ownership: {
+            owner: nachfolge,
+            reviewers: ownership?.reviewers ?? [],
+            validators: ownership?.validators ?? [],
+          },
+        }
+      : ko;
     // R-0658: VOR der ersten Suchprojektion (finishCreated) — trägt der Inhalt Schutzdaten, liegt
     // das Objekt ab seiner Entstehung in Quarantäne und wird nie mit diesem Text durchsuchbar.
-    return mitSchutzdatenBefund(ko, at);
+    return mitSchutzdatenBefund(mitNachfolge, at);
   }
 
   // ============================================================================================
@@ -3342,6 +3380,81 @@ export class KoService {
   }
 
   // ==============================================================================================
+  // produkt:20261007:ownership-uebergabe — DIE ÜBERGABE EINES BEITRAGS, VERGLEICHEND UND GESPERRT.
+  // ==============================================================================================
+  //
+  // Nacharbeit 4 (Ben): die Übergabe urteilt über einen vorab geladenen Bestand, geschrieben wird
+  // aber erst später. Dieser Weg entscheidet deshalb UNTER der Objektsperre am AKTUELLEN Stand:
+  //   · liegt die Verantwortung schon beim Nachfolger → `erledigt` (nichts geschrieben),
+  //   · liegt sie nicht mehr bei der erwarteten Person → `konflikt` (nichts geschrieben) — zwei
+  //     überlappende Übergaben desselben Beitrags können so nicht beide Erfolg melden,
+  //   · sonst wird AUSSCHLIESSLICH `owner` des aktuellen Aggregats ersetzt; Prüfende und
+  //     Validierende kommen aus DIESEM Stand, zwischenzeitlich ergänzte bleiben also erhalten.
+  // Der Schreibvorgang selbst vergleicht zusätzlich die `rowVersion` (Ablage, Compare-and-Set).
+  //
+  // Der Weg erreicht auch Beiträge im Papierkorb: `restore` übernimmt die Verantwortung unverändert,
+  // also muss auch wiederherstellbarer Bestand übergeben werden. Papierkorbvermerk, Fassung und
+  // Historie bleiben, wie sie sind. Derselbe Beleg `ko.ownership` wie `setOwnership`.
+  async uebertrageVerantwortung(
+    id: string,
+    erwartet: string,
+    nachfolger: string,
+    actor: string,
+  ): Promise<"uebertragen" | "erledigt" | "konflikt"> {
+    return this.withKoLock(id, async () => {
+      const ko = await this.repo.findById(id);
+      if (!ko) {
+        throw new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+      }
+      const jetzt = responsibleOf(ko);
+      if (jetzt === nachfolger) {
+        return "erledigt";
+      }
+      if (jetzt !== erwartet) {
+        return "konflikt";
+      }
+      const previous = ownershipOf(ko);
+      const next: KnowledgeOwnership = {
+        owner: nachfolger,
+        reviewers: previous?.reviewers ?? [],
+        validators: previous?.validators ?? [],
+      };
+      const updated: KnowledgeObject = { ...ko, ownership: next };
+      await this.schreibeMitBeleg(
+        (tx) => this.repo.update(updated, tx),
+        async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.ownership",
+              target: id,
+              payload: {
+                owner: nachfolger,
+                reviewers: next.reviewers,
+                validators: next.validators,
+                previousOwner: previous?.owner ?? null,
+                ...(ko.deletedAt ? { imPapierkorb: true } : {}),
+              },
+            },
+            tx,
+          );
+        },
+        () => this.rollbackKo(ko),
+      );
+      return "uebertragen";
+    });
+  }
+
+  /**
+   * produkt:20261007:ownership-uebergabe — der GANZE Bestand einschliesslich wiederherstellbarer
+   * Objekte im Papierkorb. Nur für die Frage „wer trägt die Verantwortung für was" — ein
+   * Leseweg für Inhalte ist das nicht (dort gilt weiterhin `list`/`get`).
+   */
+  async listEinschliesslichPapierkorb(): Promise<KnowledgeObject[]> {
+    return this.lesefassungen(await this.repo.list({}));
+  }
+
+  // ==============================================================================================
   // JOB 557 — DIE FORTSCHREIBUNG AUS TATSÄCHLICHEN EREIGNISSEN.
   // ==============================================================================================
   //
@@ -3481,7 +3594,16 @@ export class KoService {
             `Die Stelle wurde in Fassung v${stelle.koVersion} gewählt; der Eintrag steht inzwischen auf v${ko.version}. Der Beitrag wurde nicht angefügt — bitte die Stelle in der aktuellen Fassung neu wählen.`,
           );
         }
-        if (!stelleImInhalt(ko.bodyHtml, stelle)) {
+        // PLAN-SPRACHANMERKUNG: eine Stelle an einer hochgeladenen Zeichnung (PDF, CAD, Bild) hängt
+        // an der Anhangsliste dieser Fassung, nicht am Text.
+        if (stelle.art === "anhang") {
+          if (!stelleAmAnhang(ko.attachments, stelle)) {
+            throw new KoError(
+              "INVALID",
+              "Die gewählte Zeichnung ist in dieser Fassung kein eindeutiger Anhang des Eintrags.",
+            );
+          }
+        } else if (!stelleImInhalt(ko.bodyHtml, stelle)) {
           throw new KoError(
             "INVALID",
             "Die gewählte Stelle bestimmt in dieser Fassung keinen eindeutigen Block (Art, Abschnitt und Inhalt müssen zusammen passen).",
@@ -6074,6 +6196,37 @@ export class KoService {
             action: "ko.domain-changed",
             target: id,
             payload: { vorher, nachher },
+          });
+        },
+      };
+    });
+  }
+
+  // R-1632 / R-1633: die Geltung (Konzern/Werk/Schicht, optional Rolle) setzen, ändern oder mit
+  // `null` entfernen. Bauform wie `setDomain`: per KO serialisiert, Beleg im Audit, keine neue
+  // Inhaltsversion. Die Prüfung steht in `normalizeGeltung`; ein ungültiger Wert ist `INVALID` (400).
+  async setGeltung(id: string, roh: unknown, actor: string): Promise<KnowledgeObject> {
+    const eingang = normalizeGeltung(roh);
+    if (!eingang.ok) {
+      throw new KoError("INVALID", eingang.grund);
+    }
+    const nachher = eingang.geltung;
+    return this.mutateKo(id, (ko) => {
+      const vorher = ko.geltung;
+      if (JSON.stringify(vorher ?? null) === JSON.stringify(nachher ?? null)) {
+        return { updated: ko, value: ko };
+      }
+      const { geltung: _alt, ...ohne } = ko;
+      const updated: KnowledgeObject = nachher ? { ...ohne, geltung: nachher } : ohne;
+      return {
+        updated,
+        value: updated,
+        audit: async () => {
+          await this.audit?.record({
+            actor,
+            action: "ko.geltung-changed",
+            target: id,
+            payload: { vorher: vorher ?? null, nachher: nachher ?? null },
           });
         },
       };

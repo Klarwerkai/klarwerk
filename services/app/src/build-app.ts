@@ -45,14 +45,17 @@ import {
   validateDraftPayloadShape,
 } from "../../capture";
 import {
+  type ConflictMemoryRepo,
   type ConflictRepo,
   ConflictService,
+  InMemoryConflictMemoryRepo,
   InMemoryConflictRepo,
   InMemoryOverlapRepo,
   InMemoryOverlapSettingsRepo,
   type OverlapRepo,
   OverlapService,
   type OverlapSettingsRepo,
+  PgConflictMemoryRepo,
   PgConflictRepo,
   PgOverlapRepo,
   PgOverlapSettingsRepo,
@@ -291,6 +294,7 @@ import {
   type LiveWallFotoRepo,
   PgLiveWallFotoRepo,
 } from "./livewall-fotos";
+import { gelisteteMeldung, nurGelisteteLogfelder } from "./log-positivliste";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
@@ -343,6 +347,7 @@ import { lifecycleRoutes } from "./routes/lifecycle-routes";
 import { livewallRoutes } from "./routes/livewall-routes";
 import { lmsExportRoutes } from "./routes/lms-export-routes";
 import { managementRoutes } from "./routes/management-routes";
+import { mcpRoutes } from "./routes/mcp-routes";
 import { mediaRoutes } from "./routes/media-routes";
 import { modelRunRoutes } from "./routes/model-runs-routes";
 import { notificationsRoutes } from "./routes/notifications-routes";
@@ -357,6 +362,8 @@ import { slidesRoutes } from "./routes/slides-routes";
 import { spacesRoutes } from "./routes/spaces-routes";
 import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
 import { validationRoutes } from "./routes/validation-routes";
+import { kontoendeSperre, verantwortungRoutes } from "./routes/verantwortung-routes";
+import { wissensauskunftRoutes } from "./routes/wissensauskunft-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
 import { stelleSuchprojektionBereit } from "./search-projection-startup";
@@ -374,6 +381,12 @@ import { speicherVorgang } from "./speicher-vorgang";
 // Start bei fehlenden Pflichtwerten verweigert und beim Hochfahren ohne Geheimniswerte berichtet,
 // was diese Instanz hat und was ihr fehlt.
 import { ermittleBestand, pruefeStartvertrag, startbericht } from "./start-vertrag";
+import { verantwortungBeiAnlage } from "./verantwortung";
+import {
+  InMemoryNachfolgeRepo,
+  type NachfolgeRepo,
+  PgNachfolgeRepo,
+} from "./verantwortung-nachfolge";
 
 // ================================================================================================
 // JOB 3776 — WO DER STARTVERTRAG GERUFEN WIRD: AM EINSTIEGSPUNKT. HIER NICHT MEHR.
@@ -477,6 +490,11 @@ export interface AppServices {
    * `AppRepos`; im Postgres-Betrieb haltbar (`PgSpacesRepo`), sonst die In-Memory-Ablage.
    */
   spaces: SpacesRepo;
+  /**
+   * produkt:20261007:ownership-uebergabe (Nacharbeit 4) — die Nachfolge für neue Beiträge eines
+   * befristeten Kontos (`verantwortung-nachfolge.ts`). Im Postgres-Betrieb haltbar.
+   */
+  verantwortungNachfolge: NachfolgeRepo;
   /**
    * PMO-FEA-0003: die freiwilligen Fotos der Live-Wand (`livewall-fotos.ts`). Aus demselben Grund
    * wie `brandingSettings` NICHT in `AppRepos`; im Postgres-Betrieb haltbar (`PgLiveWallFotoRepo`,
@@ -623,6 +641,8 @@ export interface AppRepos {
   ratings: RatingRepo;
   assignments: AssignmentRepo;
   conflictsRepo: ConflictRepo;
+  // Aufnahme 20260922 · Prüfung-Gedächtnis (R-1103/R-1105): gemerkte Textstände je Paar.
+  conflictMemory: ConflictMemoryRepo;
   // Berater-Konzept Duplikate 04.07. (Stufe D3b): Persistenz der Überschneidungs-Einträge.
   overlapRepo: OverlapRepo;
   // Pedi 04.07.: persistierte Anzeige-Schwelle der Duplikat-Erkennung (Admin-Einstellung).
@@ -979,6 +999,8 @@ export function assembleServices(
     begriffe?: BegriffeRepo;
     // produkt:20261007:spaces: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     spaces?: SpacesRepo;
+    // produkt:20261007:ownership-uebergabe: gesetzt von `buildPgServices`; sonst im Speicher.
+    verantwortungNachfolge?: NachfolgeRepo;
     // PMO-FEA-0003: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     livewallFotos?: LiveWallFotoRepo;
     // R-0466: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
@@ -1009,9 +1031,22 @@ export function assembleServices(
     // unter derselben Sperre wie der Vorgang selbst (speicher-vorgang.ts).
     ...(speicher ? { kettenSperre: speicher.kettenSperre } : {}),
   });
+  const verantwortungNachfolge = opts.verantwortungNachfolge ?? new InMemoryNachfolgeRepo();
+  // produkt:20261007:spaces — hier schon gebaut, weil die Nachfolge bei Anlage (Nacharbeit 6) das
+  // Leserecht der Nachfolge am führenden Space des neuen Beitrags prüft. Dieselbe Instanz geht
+  // unten in die Dienste.
+  const spaces = opts.spaces ?? new InMemorySpacesRepo();
   const ko = new KoService({
     repo: repos.koRepo,
     audit,
+    // produkt:20261007:ownership-uebergabe (Nacharbeit 4): neue Beiträge eines befristeten Kontos
+    // verantwortet ab der Anlage dessen Nachfolge — über das Kontoende hinaus.
+    verantwortungBeiAnlage: verantwortungBeiAnlage(
+      (id) => repos.users.findById(id),
+      verantwortungNachfolge,
+      () => spaces.aktuelle(),
+      () => Date.now(),
+    ),
     versions: repos.koVersions,
     evidence: repos.evidence,
     // SCRUM-395: Standard-Prüferanzahl aus der Admin-Einstellung — als injizierte
@@ -1155,6 +1190,7 @@ export function assembleServices(
     repo: repos.conflictsRepo,
     audit,
     currentVersion: koVersion,
+    memory: repos.conflictMemory,
   });
   // JOB 3071: die papierkorbfähige Auskunft „hat der Autor seinen eigenen Beitrag zurückgezogen?".
   // Genau wie `koVersion` ein Funktions-Port und keine Modulkante: `services/conflicts` darf
@@ -1292,7 +1328,8 @@ export function assembleServices(
     // Firmenwörterbuch — Postgres, wenn injiziert, sonst im Speicher.
     begriffe: opts.begriffe ?? new InMemoryBegriffeRepo(),
     // produkt:20261007:spaces — Postgres, wenn injiziert, sonst im Speicher.
-    spaces: opts.spaces ?? new InMemorySpacesRepo(),
+    spaces,
+    verantwortungNachfolge,
     // PMO-FEA-0003: die Fotos der Live-Wand — Postgres, wenn injiziert, sonst im Speicher.
     livewallFotos: opts.livewallFotos ?? new InMemoryLiveWallFotoRepo(),
     // R-0466: das Interaktionsgedächtnis — Postgres, wenn injiziert, sonst im Speicher.
@@ -1529,7 +1566,11 @@ export function assembleServices(
       // vertrauliche Medien per Konstruktion (rejectsConfidential), analog cappedCloud beim Reasoner.
       // SCRUM-502 R8: gecappter Cloud-Transkriber aus der Factory (Egress-Wächter zwingend; roher
       // Client + Credential modul-intern, hier nicht erreichbar). Ohne Schlüssel → undefined (inaktiv).
-      transcriber: createCappedTranscriberFromEnv(),
+      // gesamt-ki-freigaberegeln (Ben Nacharbeit 2): der Chokepoint fragt dieselbe zentrale Freigabe
+      // für Vertrauliches wie der Dienst — entschieden allein im Reasoner.
+      transcriber: createCappedTranscriberFromEnv(process.env, {
+        vertraulichFreigegeben: () => reasoner.vertraulicheAusleitungFreigegeben(),
+      }),
       // SCRUM-521 (WP2, nacht24): KO-Kontext für die Egress-Entscheidung — die Stufen ALLER KOs,
       // die das Objekt als Anhang tragen (restriktivste gewinnt im Service; ein „intern"
       // hochgeladenes Medium an einem vertraulichen KO bleibt vertraulich). Injizierte Auflösung,
@@ -1542,6 +1583,13 @@ export function assembleServices(
         (await ko.list({}))
           .filter((k) => (k.attachments ?? []).some((a) => a.objectId === objectId))
           .map((k) => k.confidentiality ?? "intern"),
+      // Auftrag gesamt-ki-freigaberegeln: die zentrale Adminfreigabe gilt auch für die
+      // Transkription. Durchgereicht wird die Lesart des Kerns, Zeichen für Zeichen wie für Klara
+      // (Policyquelle des `KlaraSessionService` unten) — frisch je Analyse, eine Rücknahme wirkt
+      // ohne Neustart. Entschieden wird weiter allein in `Reasoner.oeffentlicheKiErlaubt`.
+      zentralFreigegeben: () =>
+        reasoner.configStatus().taskConfig.kiFreigabe?.oeffentlicheKi === true,
+      vertraulichFreigegeben: () => reasoner.vertraulicheAusleitungFreigegeben(),
     }),
     // SCRUM-165: read-only ModelRun-Sicht über dasselbe Protokoll-Repo wie der Reasoner.
     modelRuns: new ModelRunService({
@@ -1584,6 +1632,7 @@ export function inMemoryRepos(): AppRepos {
     ratings: new InMemoryRatingRepo(),
     assignments: new InMemoryAssignmentRepo(),
     conflictsRepo: new InMemoryConflictRepo(),
+    conflictMemory: new InMemoryConflictMemoryRepo(),
     overlapRepo: new InMemoryOverlapRepo(),
     overlapSettings: new InMemoryOverlapSettingsRepo(),
     managementProfiles: new InMemoryManagementProfileRepo(),
@@ -1658,6 +1707,7 @@ export function buildPgServices(rohPool: Pool): AppServices {
       ratings: new PgRatingRepo(pool),
       assignments: new PgAssignmentRepo(pool),
       conflictsRepo: new PgConflictRepo(pool),
+      conflictMemory: new PgConflictMemoryRepo(pool),
       // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge persistent.
       overlapRepo: new PgOverlapRepo(pool),
       // Pedi 04.07.: Anzeige-Schwelle persistent.
@@ -1734,6 +1784,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261007:spaces: Spaces und ihre Fassungen liegen in derselben Datenbank wie der
       // Bestand und überleben Neuladen, Neustart und Deploy.
       spaces: new PgSpacesRepo(pool),
+      // produkt:20261007:ownership-uebergabe: die Nachfolge bei Befristung überlebt Neustart und
+      // Deploy (`VERANTWORTUNG_NACHFOLGE_SCHEMA`, angelegt von `migrate()`).
+      verantwortungNachfolge: new PgNachfolgeRepo(pool),
       // PMO-FEA-0003: ein hinterlegtes Foto überlebt Neustart und Deploy; der Widerruf löscht die
       // Zeile in derselben Datenbank (`LIVEWALL_FOTO_SCHEMA`, angelegt von `migrate()`).
       livewallFotos: new PgLiveWallFotoRepo(pool),
@@ -2413,6 +2466,44 @@ function istTraceKennung(schluessel: string, inhalt: unknown): inhalt is string 
 }
 
 /**
+ * R-0623 — DIE ARGUMENTE EINES LOGAUFRUFS NACH DER POSITIVLISTE.
+ *
+ * Das erste Argument ist bei pino das Feldobjekt: es wird auf die gelisteten Felder reduziert
+ * (`nurGelisteteLogfelder`); ein nackter Fehler wird zu `{ err }`, damit er nur über den
+ * Erlaubnislisten-Serializer erscheint. Wiederholt der Meldungstext den Text des mitgegebenen
+ * Fehlers — oder fehlt er, sodass pino ihn aus dem Fehler nähme —, steht dort die Konstante
+ * `ERR_TEXT_UNTERDRUECKT`. Jeder andere Meldungstext steht nur, wenn er einer Vorlage der
+ * Meldungsliste entspricht (`gelisteteMeldung`), sonst `MELDUNG_NICHT_GELISTET`.
+ */
+export function ohneFreienFehlertext(argumente: readonly unknown[]): unknown[] {
+  const [erstes, meldung] = argumente;
+  // R-0623 (Ben, Nacharbeit 3/4): auch ein reiner Textaufruf läuft nicht unverändert durch.
+  // Weitere Argumente (Formatwerte für `%s` — im Bestand ungenutzt) fallen weg; ein Meldungstext
+  // steht nur nach der Positivliste der Meldungen (`log-positivliste.ts`, `MELDUNGEN`).
+  if (typeof erstes === "string") {
+    return [gelisteteMeldung(erstes)];
+  }
+  if (erstes === null || typeof erstes !== "object") {
+    return [];
+  }
+  const felder: Record<string, unknown> =
+    erstes instanceof Error ? { err: erstes } : nurGelisteteLogfelder(erstes, erlaubterTyp);
+  const fehler = felder.err;
+  const text = fehler instanceof Error ? fehler.message : "";
+  // Ein sehr kurzer Fehlertext zählt nur als wiederholt, wenn die Meldung GENAU er ist — sonst
+  // träfe ein Allerweltswort jede Meldung, die es zufällig enthält.
+  const wiederholt =
+    text !== "" &&
+    (meldung === undefined ||
+      meldung === text ||
+      (typeof meldung === "string" && text.length >= 8 && meldung.includes(text)));
+  if (wiederholt) {
+    return [felder, ERR_TEXT_UNTERDRUECKT];
+  }
+  return typeof meldung === "string" ? [felder, gelisteteMeldung(meldung)] : [felder];
+}
+
+/**
  * Die Logkonfiguration — eine geschlossene Erlaubnisliste in drei Serializern.
  *
  * ERLAUBNISLISTE, KEINE SPERRLISTE: Eine Sperrliste müsste bei jeder neuen Route neu bewiesen
@@ -2480,11 +2571,16 @@ export function baueLoggerOptionen(vorgabe?: {
     // ÜBERNOMMEN AUS EXTS PARALLELBAU (`app-logger.ts:184-192`): jeder Logaufruf läuft hier durch,
     // Meldungstext und Feldobjekt gleichermassen. Die einzige Stelle, an der ein selbstgebauter
     // Freitext noch abgefangen werden kann — die Serializer sehen ihn nie.
+    //
+    // R-0623 (Ben, Nacharbeit 1): das Feldobjekt läuft ZUERST durch die Positivliste
+    // (`log-positivliste.ts`) — nur gelistete Felder mit passendem Wert erreichen die Zeile; danach
+    // die Geheimnissenke wie bisher. Ein Meldungstext, der den Text des mitgegebenen Fehlers
+    // wiederholt (Fastifys Fehlerweg übergibt `error.message`), wird durch die Konstante ersetzt.
     hooks: {
       logMethod(this: unknown, argumente: unknown[], methode: (...a: unknown[]) => void): void {
         methode.apply(
           this,
-          argumente.map((argument) => senkeUeberWert(argument)),
+          ohneFreienFehlertext(argumente).map((argument) => senkeUeberWert(argument)),
         );
       },
     },
@@ -2947,14 +3043,17 @@ export function buildApp(
         // „fehlt" sperren gleich (Pedi 10.09. 21:25: „Im Zweifel gilt: gesperrt"). Hier wird sie
         // nicht ENTSCHIEDEN, sondern DURCHGEREICHT — die Entscheidungsstelle bleibt im Kern, und
         // eine zweite Sperre gibt es auch nach diesem Auftrag nicht. Der zweite Schalter der
-        // Adminfreigabe (vertrauliche Inhalte) bleibt bewusst draussen: der Klara-Resolver erfährt
-        // die Einstufung eines Inhalts nirgends und könnte ihn nicht beantworten; die
-        // Vertraulichkeitsgrenze bleibt, wo sie heute gezogen wird.
+        // Adminfreigabe (vertrauliche Inhalte) geht NICHT an den Resolver — er erfährt die Einstufung
+        // eines Inhalts nirgends —, sondern als `vertraulichFreigegeben` an die Deckungsprüfung des
+        // markierten Dokumenttexts (gesamt-ki-freigaberegeln, Ben Nacharbeit 2).
         //
         // ES IST DIESELBE FRISCHE LESUNG wie alles andere hier oben (`configStatus()` je Zugriff):
         // eine Rücknahme der Freigabe wirkt ohne Neustart, und sie entwertet laufende Zustimmungen,
         // weil das Feld in `klaraPolicyVersion` eingeht.
         zentralFreigegeben: config.taskConfig.kiFreigabe?.oeffentlicheKi === true,
+        // gesamt-ki-freigaberegeln (Ben Nacharbeit 2): die zweite Adminfreigabe für den markierten
+        // Dokumenttext — die Entscheidung des Kerns, frisch je Zugriff, nicht nachgerechnet.
+        vertraulichFreigegeben: services.reasoner.vertraulicheAusleitungFreigegeben(),
         effectiveAnswerProvider: config.effectiveProvider.answer ?? "deterministic",
         cloudConfigured: gewaehlterAnbieter
           ? config.cloudProviders[gewaehlterAnbieter].configured
@@ -3013,6 +3112,13 @@ export function buildApp(
   // HTTP-Oberfläche der Module. Auth bringt seine eigenen Routen mit; die übrigen
   // Module werden über App-Routen verdrahtet, die den gemeinsamen Guard nutzen.
   const resetBaseUrl = process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/reset` : undefined;
+  // produkt:20261007:ownership-uebergabe: kein Konto wird gelöscht, das noch Hauptverantwortung
+  // trägt (beide Löschwege der Auth-Routen) — sonst blieben Beiträge ohne Verantwortung zurück.
+  kontoendeSperre(app, {
+    ko: services.ko,
+    auth: services.auth,
+    nachfolge: services.verantwortungNachfolge,
+  });
   app.register(
     authRoutes(services.auth, {
       mailer: services.mailer,
@@ -3412,6 +3518,22 @@ export function buildApp(
     kennung: () => randomUUID(),
   });
   app.register(kenntnisnahmeRoutes({ dienst: kenntnisnahmeDienst, kos: services.ko }, guards));
+  // R-1644: die Wissensauskunft zum Zeitpunkt — liest Fassungen, Audit-Protokoll und Kenntnisnahmen,
+  // schreibt nichts. Dieselbe Uhr wie die Kenntnisnahme, damit „nicht in der Zukunft" zu deren
+  // Zeitpunkten passt.
+  app.register(
+    wissensauskunftRoutes(
+      {
+        kos: services.ko,
+        ko: services.ko,
+        audit: services.audit,
+        kenntnisnahmen: services.kenntnisnahmen,
+        konten: () => services.auth.listUsers(),
+        jetzt: services.kenntnisnahmeUhr,
+      },
+      guards,
+    ),
+  );
   // ==============================================================================================
   // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS) — HIER BEKOMMT DIE GESAMTANWEISUNG IHRE TÜR.
   // ==============================================================================================
@@ -3483,6 +3605,9 @@ export function buildApp(
           new Set(
             (await services.spaces.aktuelle()).filter((s) => s.zugang === "alle").map((s) => s.id),
           ),
+        // R-1649: der abweichende Weg aus „nicht hilfreich" wird ein gewöhnlicher Entwurf —
+        // derselbe Anlageweg wie POST /api/drafts, kein zweiter.
+        alternativeAlsEntwurf: (entwurf, author) => services.capture.createDraft(entwurf, author),
       },
       guards,
     ),
@@ -3539,6 +3664,14 @@ export function buildApp(
         },
         guards,
       ),
+    );
+  }
+  // Aufnahme gesamt-mcp (R-0713): der MCP-Zugang für fremde KI-Programme — nur, wenn Dienst-
+  // Schlüssel konfiguriert sind, und nur für einen Schlüssel mit `mcp.werkzeug` (Anmeldehook oben).
+  // Werkzeugaufrufe gehen intern mit demselben Schlüssel an die bestehende Route ihres Rechts.
+  if (dienstLage.schluessel.length > 0) {
+    app.register(
+      mcpRoutes({ weiterleiten: (anfrage) => app.inject(anfrage), version: buildVersion() }),
     );
   }
   // SCRUM-470 (S6): Erkennung nach Import-Accept — dasselbe Deps-Bündel wie der Promote-Pfad.
@@ -3729,6 +3862,20 @@ export function buildApp(
   app.register(
     spacesRoutes(
       { spaces: services.spaces, ko: services.ko, auth: services.auth, audit: services.audit },
+      guards,
+    ),
+  );
+  // produkt:20261007:ownership-uebergabe: Hauptverantwortung einzeln und gesammelt übergeben,
+  // Vorschau, Teilfehler mit Wiederaufnahme, Deaktivierung ohne Restbestand.
+  app.register(
+    verantwortungRoutes(
+      {
+        ko: services.ko,
+        auth: services.auth,
+        spaces: services.spaces,
+        nachfolge: services.verantwortungNachfolge,
+        audit: services.audit,
+      },
       guards,
     ),
   );

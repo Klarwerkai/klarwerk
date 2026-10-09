@@ -7,6 +7,7 @@ import {
   type ReasonerProvider,
   answerStanding,
   deterministicInterview,
+  normalizeInterviewImageContext,
   // JOB 3298: DIESELBE Zerlegung, die das Relevanzmaß benutzt — der Auszug wird nach der GLEICHEN
   // Wortauffassung gewählt, nach der die Quelle überhaupt Kandidat wurde. Eine zweite Tokenisierung
   // wäre eine zweite Wahrheit darüber, was ein Wort der Frage ist.
@@ -14,27 +15,31 @@ import {
   selectCandidates,
   sourceLabel,
 } from "./provider";
-import type {
-  AbbruchBefund,
-  AnswerResult,
-  AssistResult,
-  CandidateGroup,
-  ConflictJudgeResult,
-  DescribeImageResult,
-  DuplicateAspect,
-  DuplicateJudgeResult,
-  EnrichResult,
-  ExtractResult,
-  ExtractedPoint,
-  GroupCandidateInput,
-  GroupCandidatesResult,
-  InterviewResult,
-  KnowledgeRef,
-  Kollision,
-  KollisionSeite,
-  ReasonerLocale,
-  Relevanztext,
-  StructureResult,
+import {
+  type AbbruchBefund,
+  type AnswerResult,
+  type AssistResult,
+  type CandidateGroup,
+  type ConflictJudgeResult,
+  type DescribeImageResult,
+  type DuplicateAspect,
+  type DuplicateJudgeResult,
+  type EnrichResult,
+  type ExtractResult,
+  type ExtractedPoint,
+  type GroupCandidateInput,
+  type GroupCandidatesResult,
+  type InterviewResult,
+  type KlaraVorschlagUrteil,
+  type KnowledgeRef,
+  type Kollision,
+  type KollisionSeite,
+  type ReasonerLocale,
+  type Relevanztext,
+  // FR-STR-01: die gültigen Wissensarten für Vertrag (Prompt) und Rücklesen (Parser) — EINE Liste.
+  STRUCTURE_KNOWLEDGE_TYPES,
+  type StructureKnowledgeType,
+  type StructureResult,
 } from "./types";
 
 // Abstrakter Modell-Client: kapselt den eigentlichen (anbieterspezifischen) Aufruf.
@@ -141,9 +146,8 @@ function taskInstruction(locale: ReasonerLocale, de: string, en: string): string
 // FR-I18N-01: Systemprompts sprachbewusst. JSON-Contract der structure-Aufgabe bleibt
 // in beiden Sprachen identisch — nur die Anweisung ist lokalisiert.
 function structureSystem(locale: ReasonerLocale): string {
-  const contract =
-    '{"title": string, "statement": string, "conditions": string[], "measures": string[], ' +
-    '"tags": string[], "confidence": number (0..1)}';
+  const knowledgeTypes = STRUCTURE_KNOWLEDGE_TYPES.map((k) => `"${k}"`).join(" | ");
+  const contract = `{"title": string, "statement": string, "conditions": string[], "measures": string[], "tags": string[], "confidence": number (0..1), "knowledgeType": ${knowledgeTypes}}`;
   const base = taskInstruction(
     locale,
     `Du strukturierst industrielles Erfahrungswissen. Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Erfinde nichts dazu.`,
@@ -1241,8 +1245,16 @@ function conflictSystem(locale: ReasonerLocale): string {
   // SCRUM-492: optionaler "kollision"-Block bei echten Widersprüchen (widerspruch/ueberholt) — je
   // Seite eine knappe Kernaussage + der konkret kollidierende "streitwert". Der Streitwert SOLL
   // wörtlich aus dem jeweiligen Zitat stammen, wo möglich (belegter Fall).
+  // R-0252 (Aufnahme gesamt-konfliktklassifikation): "arbeit" ordnet einen Widerspruch nach der
+  // nötigen Arbeit ein — unabhängig von der Konfliktart. Additiv; eine Antwort ohne das Feld
+  // parst wie bisher (dann bleibt die Arbeitsart offen).
   const contract =
-    '{"relation":"widerspruch|doppelung|ueberholt|kein_konflikt|unsicher","older":"a|b|null","confidence":0.0-1.0,"begruendung":"...","zitat_a":"...","zitat_b":"...","kollision":{"streitpunkt":"...","seite_a":{"kernaussage":"...","streitwert":"..."},"seite_b":{"kernaussage":"...","streitwert":"..."}}}';
+    '{"relation":"widerspruch|doppelung|ueberholt|kein_konflikt|unsicher","older":"a|b|null","confidence":0.0-1.0,"begruendung":"...","zitat_a":"...","zitat_b":"...","arbeit":"regel|sache|null","vorschlag":{"art":"widerspruch|praezisierung","spezieller":"a|b|null","geltungsbereich":"..."},"kollision":{"streitpunkt":"...","seite_a":{"kernaussage":"...","streitwert":"..."},"seite_b":{"kernaussage":"...","streitwert":"..."}}}';
+  const arbeitRule = taskInstruction(
+    locale,
+    '"arbeit" nur bei "widerspruch", sonst null: "regel", wenn A und B interne Festlegungen sind (Vorgaben, Regeln, Anweisungen des Hauses, die keine äußere Quelle entscheiden kann — nur eine befugte Person); "sache", wenn es um Tatsachen geht, die sich durch Belege entscheiden lassen.',
+    '"arbeit" only for "widerspruch", otherwise null: "regel" if A and B are internal determinations (in-house requirements, rules, instructions that no external source can decide — only an authorised person); "sache" if they concern facts that evidence can settle.',
+  );
   // Die WÖRTLICHEN Zitate (zitat_a/zitat_b/streitwert) sind Kopien aus den Quelltexten und bleiben
   // in deren Sprache — sie werden nachgelagert wörtlich geprüft (G-2). Die Ausgaberegel gilt der
   // `begruendung` und den Kernaussagen, die der Nutzer im Konfliktboard liest.
@@ -1256,7 +1268,14 @@ function conflictSystem(locale: ReasonerLocale): string {
     "Die wörtlichen Zitate bleiben unverändert in ihrer Originalsprache.",
     "The verbatim quotes stay unchanged in their original language.",
   );
-  return `${base} ${quoteRule} ${outputLanguageRule(locale)}`;
+  // R-0263 (Aufnahme gesamt-konfliktklassifikation): Klara SCHLÄGT den Unterschied Widerspruch /
+  // Präzisierung vor — entschieden wird auf der Konfliktseite von einer befugten Person.
+  const vorschlagRule = taskInstruction(
+    locale,
+    '"vorschlag" nur bei "widerspruch", sonst weglassen: "art":"praezisierung", wenn eine Aussage die andere nur für einen engeren Geltungsbereich genauer festlegt (z. B. "10 Nm für Bolzen X" gegenüber "alle Bolzen handfest"), dann "spezieller" = die engere Seite ("a" oder "b") und "geltungsbereich" = dieser engere Bereich in wenigen Worten; sonst "art":"widerspruch" mit "spezieller":null. Das ist ein Vorschlag, keine Entscheidung.',
+    '"vorschlag" only for "widerspruch", otherwise omit: "art":"praezisierung" if one statement only specifies the other more precisely for a narrower scope (e.g. "10 Nm for bolt X" versus "all bolts hand-tight"), then "spezieller" = the narrower side ("a" or "b") and "geltungsbereich" = that narrower scope in a few words; otherwise "art":"widerspruch" with "spezieller":null. This is a suggestion, not a decision.',
+  );
+  return `${base} ${arbeitRule} ${vorschlagRule} ${quoteRule} ${outputLanguageRule(locale)}`;
 }
 
 const CONFLICT_RELATIONS: readonly string[] = [
@@ -1313,6 +1332,27 @@ export function parseKollision(
   return { streitpunkt: k.streitpunkt, seiteA, seiteB };
 }
 
+// R-0263: Klaras Vorschlag defensiv lesen. Unbekannte Art → kein Vorschlag. Eine Präzisierung
+// braucht die speziellere Seite UND einen Geltungsbereich, sonst ist sie keine — dann bleibt
+// nichts übrig (nie ein halber Vorschlag, der wie ein vollständiger aussieht).
+function parseKlaraVorschlag(raw: unknown): KlaraVorschlagUrteil | undefined {
+  if (typeof raw !== "object" || raw === null) {
+    return undefined;
+  }
+  const v = raw as Record<string, unknown>;
+  if (v.art === "widerspruch") {
+    return { art: "widerspruch" };
+  }
+  if (v.art !== "praezisierung") {
+    return undefined;
+  }
+  const bereich = typeof v.geltungsbereich === "string" ? v.geltungsbereich.trim() : "";
+  if ((v.spezieller !== "a" && v.spezieller !== "b") || bereich.length === 0) {
+    return undefined;
+  }
+  return { art: "praezisierung", spezieller: v.spezieller, geltungsbereich: bereich };
+}
+
 // kon-v1: striktes, defensives Parsen des Modellurteils. Ungültiges JSON, unbekannte Relation,
 // fehlende/nicht-numerische confidence oder Nicht-String-Zitate → null (kein Konflikt aus kaputten
 // Antworten). confidence wird auf 0..1 geklemmt; older nur "a"/"b", sonst null.
@@ -1341,6 +1381,13 @@ export function parseConflictResponse(raw: string): ConflictJudgeResult | null {
   const older = o.older === "a" || o.older === "b" ? o.older : null;
   const begruendung = typeof o.begruendung === "string" ? o.begruendung : "";
   const kollision = parseKollision(o.kollision, o.zitat_a, o.zitat_b);
+  // R-0252: nur ein Widerspruch trägt eine Arbeitsart; ein unbekannter Wert wird verworfen, nicht
+  // umgedeutet — die Arbeitsart bleibt dann offen.
+  const arbeit =
+    relation === "widerspruch" && (o.arbeit === "regel" || o.arbeit === "sache")
+      ? o.arbeit
+      : undefined;
+  const vorschlag = relation === "widerspruch" ? parseKlaraVorschlag(o.vorschlag) : undefined;
   return {
     relation: relation as ConflictJudgeResult["relation"],
     older,
@@ -1349,6 +1396,8 @@ export function parseConflictResponse(raw: string): ConflictJudgeResult | null {
     zitat_a: o.zitat_a,
     zitat_b: o.zitat_b,
     ...(kollision ? { kollision } : {}),
+    ...(arbeit ? { arbeit } : {}),
+    ...(vorschlag ? { vorschlag } : {}),
   };
 }
 
@@ -1607,6 +1656,18 @@ function interviewSystem(locale: ReasonerLocale): string {
   return `${base} ${outputLanguageRule(locale)}`;
 }
 
+// R-1624 (Foto-zu-Wissen): Zusatz zum Interview-Prompt, wenn ein Bildbefund vorliegt. Der Befund
+// dient NUR dazu, Maschine/Bauteil aus dem Bild in der Frage beim Namen zu nennen — er ist keine
+// Antwort des Experten, und das Modell darf daraus keinen Fehler, keine Ursache und keine Lösung
+// vorwegnehmen. Die Leitfrage (Fehler · Ursache · Lösung) bleibt deterministisch.
+function interviewPhotoGuidance(locale: ReasonerLocale): string {
+  return taskInstruction(
+    locale,
+    "Das Interview geht um ein Foto des Experten. Nenne das im Bildbefund erkennbare Objekt (Maschine, Bauteil, Stelle) in der Frage konkret beim Namen. Nimm KEINEN Fehler, KEINE Ursache und KEINE Lösung vorweg — das beantwortet allein der Experte.",
+    "The interview is about a photo taken by the expert. Name the object recognisable in the image finding (machine, component, spot) concretely in the question. Do NOT anticipate any fault, cause or solution — only the expert answers that.",
+  );
+}
+
 // Sprachbewusste User-Prompt-Labels (kein Quelleninhalt wird übersetzt).
 const LABELS: Record<ReasonerLocale, Record<string, string>> = {
   de: {
@@ -1622,6 +1683,8 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     // F-0295 / R-0639: die markierte Passage aus dem Word-Dokument. Sie steht VOR den Quellen und
     // ohne Nummer: sie ist Kontext der Frage und keine Quelle, die das Modell zitieren dürfte.
     selection: "Markierte Passage im Dokument (Kontext der Frage, keine Quelle)",
+    // R-1624: der vom Menschen bestätigte Bildbefund des Fotos, um das das Interview geht.
+    imageFinding: "Bildbefund (Foto, vom Experten bestätigt)",
   },
   en: {
     question: "Question",
@@ -1631,6 +1694,7 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     none: "(none yet)",
     excerpt: "Document text (excerpt)",
     selection: "Selected passage in the document (context of the question, not a source)",
+    imageFinding: "Image finding (photo, confirmed by the expert)",
   },
   // mega52 D1: Niederländisch ist eine eigene Reasoner-Sprache — der Compiler verlangt diesen
   // Zweig jetzt, statt ihn stillschweigend auf Deutsch fallen zu lassen.
@@ -1642,6 +1706,7 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     none: "(nog geen)",
     excerpt: "Documenttekst (fragment)",
     selection: "Gemarkeerde passage in het document (context van de vraag, geen bron)",
+    imageFinding: "Beeldbevinding (foto, door de expert bevestigd)",
   },
 };
 
@@ -1823,6 +1888,13 @@ function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.map((v) => String(v)) : [];
 }
 
+// FR-STR-01: nur einer der fünf gültigen Werte wird übernommen; alles andere (fehlend, frei
+// erfunden, falsch geschrieben) ergibt KEINE Wissensart — nie geraten, nie auf einen Standard gebogen.
+function asStructureKnowledgeType(value: unknown): StructureKnowledgeType | undefined {
+  const candidate = typeof value === "string" ? value.trim() : "";
+  return STRUCTURE_KNOWLEDGE_TYPES.find((k) => k === candidate);
+}
+
 function clamp01(value: number): number {
   if (Number.isNaN(value)) {
     return 0;
@@ -1899,6 +1971,7 @@ export class ModelProvider implements ReasonerProvider {
     const raw = await client.complete(structureSystem(locale), rawText, confidential);
     const parsed = JSON.parse(extractJson(raw)) as Record<string, unknown>;
     const firstSentence = rawText.split(/[.!?]/)[0]?.trim() ?? rawText.trim();
+    const knowledgeType = asStructureKnowledgeType(parsed.knowledgeType);
     return {
       title: String(parsed.title ?? firstSentence).trim(),
       statement: String(parsed.statement ?? rawText).trim(),
@@ -1906,6 +1979,7 @@ export class ModelProvider implements ReasonerProvider {
       measures: asStringArray(parsed.measures),
       tags: asStringArray(parsed.tags),
       confidence: clamp01(Number(parsed.confidence ?? 0)),
+      ...(knowledgeType ? { knowledgeType } : {}),
       demo: false,
     };
   }
@@ -2079,18 +2153,27 @@ export class ModelProvider implements ReasonerProvider {
     locale: ReasonerLocale = "de",
     // SCRUM-502 Schicht 2: an den Chokepoint durchgereicht.
     confidential = false,
+    // R-1624: bestätigter Bildbefund (Klartext). Reist im selben complete()-Aufruf und damit durch
+    // denselben Vertraulichkeits-Wächter wie die Antworten — kein neuer Egress-Pfad.
+    imageContext?: string,
   ): Promise<InterviewResult> {
-    const base = deterministicInterview(answers, false, locale);
+    const finding = normalizeInterviewImageContext(imageContext);
+    const photo = finding.length > 0;
+    const base = deterministicInterview(answers, false, locale, photo);
     if (base.done || base.question === null) {
       return base;
     }
     const client = this.requireClient();
     const labels = LABELS[locale];
     const prior = answers.map((a, i) => `A${i + 1}: ${a}`).join("\n");
+    const system = photo
+      ? `${interviewSystem(locale)}\n${interviewPhotoGuidance(locale)}`
+      : interviewSystem(locale);
+    const findingBlock = photo ? `${labels.imageFinding}:\n${finding}\n\n` : "";
     const phrased = (
       await client.complete(
-        interviewSystem(locale),
-        `${labels.priorAnswers}:\n${prior || labels.none}\n\n${labels.guiding}: ${base.question}`,
+        system,
+        `${findingBlock}${labels.priorAnswers}:\n${prior || labels.none}\n\n${labels.guiding}: ${base.question}`,
         confidential,
       )
     ).trim();

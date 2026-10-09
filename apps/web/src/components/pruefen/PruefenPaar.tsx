@@ -205,16 +205,24 @@ export function PruefenAktionsband({ children }: { children: ReactNode }): JSX.E
 /** Der Textlink am rechten Rand des Bandes („Zweitmeinung anfragen", Konflikte.dc.html:59). */
 export function PruefenBandLink({
   kennung,
+  disabled,
   onClick,
   children,
-}: { kennung: string; onClick: () => void; children: ReactNode }): JSX.Element {
+}: {
+  kennung: string;
+  /** Aufnahme gesamt-konfliktklassifikation (R-0215): sichtbar, aber gesperrt — wie `PruefenKnopf`. */
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}): JSX.Element {
   return (
     <button
       type="button"
       data-text="knopf"
       data-testid={`pruefen-knopf-${kennung}`}
+      disabled={disabled}
       onClick={onClick}
-      className="ml-auto text-[13px] text-muted underline-offset-4 hover:text-text hover:underline"
+      className="ml-auto text-[13px] text-muted underline-offset-4 hover:text-text hover:underline disabled:cursor-not-allowed disabled:opacity-50"
     >
       {children}
     </button>

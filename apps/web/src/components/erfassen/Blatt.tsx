@@ -10,6 +10,7 @@ import type {
   AssistResult,
   Confidentiality,
   DraftPayload,
+  KnowledgeType,
   SchutzdatenArt,
   StructureResult,
 } from "../../api/types";
@@ -35,7 +36,9 @@ import {
   applySpellingAssistPreservingHtml,
   applyStructureProposal,
   bodyTextForAssist,
+  structureCardKnowledgeType,
   structureProposalTitleOnly,
+  withDecidedKnowledgeType,
 } from "../../lib/bodyAiAssist";
 import {
   ASSIST_ACTIONS,
@@ -62,6 +65,7 @@ import {
 import { isDemoContext } from "../../lib/demoPilotPath";
 import { deriveStatus } from "../../lib/displayStatus";
 import { CLEARED_DRAFT_BODY_HTML } from "../../lib/draftBody";
+import { KNOWLEDGE_TYPES_DRAFT } from "../../lib/draftForm";
 import { erfassenFehlersatz } from "../../lib/erfassenFehlersatz";
 import { dominantCategory, pickExampleKo } from "../../lib/intakeExample";
 import { INTAKE_STARTERS, type IntakeStarter } from "../../lib/intakeStarters";
@@ -95,6 +99,7 @@ import { LiveReactionZone } from "../capture/intake/LiveReactionZone";
 import { StatusPill } from "../trust/StatusPill";
 import type { DisplayStatus } from "../trust/types";
 import { Menue, MenueEintrag, MenueFlaeche, MenueTrenner } from "./Menue";
+import { NegativwissenHinweis } from "./NegativwissenHinweis";
 import {
   SymbolBild,
   SymbolDatei,
@@ -171,6 +176,8 @@ interface Speicherauftrag {
   readonly confidentiality: Confidentiality;
   readonly gewaehlteVertraulichkeit: Confidentiality | undefined;
   readonly kategorie: string;
+  // FR-STR-01: die entschiedene Wissensart (aus dem Ordnen-Vorschlag übernommen oder geladen).
+  readonly wissensart: KnowledgeType | undefined;
   readonly activeDraftId: string | null;
   readonly bodyNieGeliefert: boolean;
   readonly fallbackTitle: string;
@@ -182,12 +189,14 @@ function abgesendetAus(auftrag: Speicherauftrag): {
   bodyHtml: string;
   confidentiality: Confidentiality;
   kategorie: string;
+  wissensart: KnowledgeType | undefined;
 } {
   return {
     title: auftrag.title,
     bodyHtml: auftrag.bodyHtml,
     confidentiality: auftrag.confidentiality,
     kategorie: auftrag.kategorie,
+    wissensart: auftrag.wissensart,
   };
 }
 
@@ -387,6 +396,11 @@ export function Blatt({
     return () => beobachter.disconnect();
   }, [title]);
   const [kategorie, setKategorie] = useState("");
+  // FR-STR-01 (R-0315): die ENTSCHIEDENE Wissensart dieses Blatts. `undefined` = noch keine
+  // Entscheidung — dann reist sie nicht mit, und ein KI-Vorschlag darf sie in der Karte vorbelegen.
+  // Gesetzt wird sie nur durch bewusste Übernahme eines Ordnen-Vorschlags oder durch Laden eines
+  // Entwurfs, der eine Wissensart trägt.
+  const [wissensart, setWissensart] = useState<KnowledgeType | undefined>(undefined);
   const [confidentiality, setConfidentiality] = useState<Confidentiality>("intern");
   // JOB 504 D2 (übernommen): der ROHE Herkunftswert — `undefined` heisst „der fortgesetzte Entwurf
   // trug KEINE Stufe". Er steuert die Modell-Provenienz und wird bewusst NICHT geglättet.
@@ -561,7 +575,15 @@ export function Blatt({
     // geänderte Bereichswahl nicht als ungespeicherte Änderung — der Navigationswächter liess den
     // Menschen ziehen, und die Wahl war weg.
     kategorie: string;
-  }>({ title: "", bodyHtml: "", confidentiality: "intern", kategorie: "" });
+    // FR-STR-01: eine übernommene, noch nicht gesicherte Wissensart ist eine ungespeicherte Änderung.
+    wissensart: KnowledgeType | undefined;
+  }>({
+    title: "",
+    bodyHtml: "",
+    confidentiality: "intern",
+    kategorie: "",
+    wissensart: undefined,
+  });
 
   // ---- KI --------------------------------------------------------------------------------------
   const [structureProposal, setStructureProposal] = useState<StructureResult | null>(null);
@@ -569,6 +591,9 @@ export function Blatt({
   const [structureAccepted, setStructureAccepted] = useState(false);
   const [structureKeptRichBody, setStructureKeptRichBody] = useState(false);
   const [structureTitleAdopted, setStructureTitleAdopted] = useState(false);
+  // FR-STR-01: die Wissensart-Auswahl IN der Vorschlagskarte — vorbelegt nach
+  // `structureCardKnowledgeType`, vom Menschen korrigierbar, übernommen erst mit „Übernehmen".
+  const [structureCardType, setStructureCardType] = useState<KnowledgeType | undefined>(undefined);
   // R-0300: `auswahl` ist die Markierung, auf die sich der Vorschlag bezieht — `null` heisst
   // „ganzer Text" (der bisherige Weg, unverändert).
   const [assistProposal, setAssistProposal] = useState<
@@ -802,7 +827,7 @@ export function Blatt({
         : draftProvenance(declaredConfidentiality, undefined, activeDraftId ?? undefined),
     [declaredConfidentiality, activeDraftId],
   );
-  const { verdict, checkStatus, pruefumfang } = useLiveKnowledgeCheck(
+  const { verdict, checkStatus, pruefumfang, negativwissen } = useLiveKnowledgeCheck(
     liveText,
     livePruefHerkunft,
     gespeicherterStand,
@@ -860,6 +885,7 @@ export function Blatt({
     setStructureAccepted(false);
     setStructureKeptRichBody(false);
     setStructureTitleAdopted(false);
+    setStructureCardType(undefined);
   }, []);
 
   const clearAssistState = useCallback((): void => {
@@ -888,10 +914,14 @@ export function Blatt({
   // liest der Merge einen mitgeschickten Leerwert als LÖSCHUNG (`services/capture/src/service.ts`,
   // zitiert in `captureFrontDoor.ts`) — ein Blatt ohne Bereichswahl würde sonst die Kategorie eines
   // fremden Entwurfs beim ersten Speichern austragen.
+  // FR-STR-01: die entschiedene Wissensart reist an DERSELBEN Stelle mit (Regel am Helfer).
   const mitBereich = useCallback(
     (rumpf: DraftPayload): DraftPayload =>
-      kategorie.trim() ? { ...rumpf, category: kategorie.trim() } : rumpf,
-    [kategorie],
+      withDecidedKnowledgeType(
+        kategorie.trim() ? { ...rumpf, category: kategorie.trim() } : rumpf,
+        wissensart,
+      ),
+    [kategorie, wissensart],
   );
 
   const changeKategorie = (next: string): void => {
@@ -953,7 +983,14 @@ export function Blatt({
     setDeclaredConfidentiality(undefined);
     setVertraulichkeitMarkiert(false);
     setKategorie("");
-    savedStateRef.current = { title: "", bodyHtml: "", confidentiality: "intern", kategorie: "" };
+    setWissensart(undefined);
+    savedStateRef.current = {
+      title: "",
+      bodyHtml: "",
+      confidentiality: "intern",
+      kategorie: "",
+      wissensart: undefined,
+    };
     bodyNieGeliefertRef.current = false;
     // JOB 3633: Ein neues Blatt trägt keinen Befund über den Entwurf, den es gerade verlassen hat —
     // derselbe Grund wie beim Merker eine Zeile darüber.
@@ -1121,11 +1158,17 @@ export function Blatt({
           ? (draft.payload.confidentiality as Confidentiality)
           : undefined;
         const loadedConfidentiality = confidentialityOf(declared);
+        // FR-STR-01: eine gespeicherte, gültige Wissensart ist eine bestehende Entscheidung — sie
+        // wird geschützt (kein KI-Vorschlag ersetzt sie ungefragt). Fehlt sie, bleibt sie offen.
+        const loadedWissensart = KNOWLEDGE_TYPES_DRAFT.includes(draft.payload.type as KnowledgeType)
+          ? (draft.payload.type as KnowledgeType)
+          : undefined;
         setActiveDraftId(draft.id);
         setGeladenVon({ id: draft.id, autor: draft.originalAuthor, imPool: draft.imPool === true });
         setTitle(loadedTitle);
         setBodyHtml(loadedBody);
         setKategorie(draft.payload.category ?? "");
+        setWissensart(loadedWissensart);
         loadedUpdatedAtRef.current = draft.updatedAt ?? null;
         // JOB 3556 R3: ab hier steht ein anderer gespeicherter Stand hinter diesem Blatt.
         setGespeicherterStand((n) => n + 1);
@@ -1144,6 +1187,7 @@ export function Blatt({
           bodyHtml: loadedBody,
           confidentiality: loadedConfidentiality,
           kategorie: draft.payload.category ?? "",
+          wissensart: loadedWissensart,
         };
         setSubmitValidation(false);
         setSubmittedKo(null);
@@ -1229,6 +1273,8 @@ export function Blatt({
     },
     onSuccess: (proposal) => {
       setStructureProposal(proposal);
+      // FR-STR-01: eine entschiedene Wissensart geht vor; sonst steht der KI-Vorschlag vorbelegt.
+      setStructureCardType(structureCardKnowledgeType(wissensart, proposal));
       setStructureErr(null);
     },
     onError: (e: unknown) => {
@@ -1312,8 +1358,12 @@ export function Blatt({
         wartendVerworfenRef.current = false;
         return Promise.reject(new WartendesSpeichernVerworfen());
       }
+      // FR-STR-01: die eingefrorene Wissensart reist an derselben Stelle wie der Bereich.
       const mitAuftragsBereich = (rumpf: DraftPayload): DraftPayload =>
-        auftrag.kategorie.trim() ? { ...rumpf, category: auftrag.kategorie.trim() } : rumpf;
+        withDecidedKnowledgeType(
+          auftrag.kategorie.trim() ? { ...rumpf, category: auftrag.kategorie.trim() } : rumpf,
+          auftrag.wissensart,
+        );
       if (auftrag.activeDraftId) {
         // AUFTRAG-mega7 Block A: Speichern auf einen BESTEHENDEN Entwurf ist ein PUT über den
         // Bestand — die Entwurfs-Id mitgeben, damit ein bewusst geleerter Rumpf als Löschmarker
@@ -1531,7 +1581,14 @@ export function Blatt({
       loadedUpdatedAtRef.current = null;
       setStaleConflict(false);
       setKategorie("");
-      savedStateRef.current = { title: "", bodyHtml: "", confidentiality, kategorie: "" };
+      setWissensart(undefined);
+      savedStateRef.current = {
+        title: "",
+        bodyHtml: "",
+        confidentiality,
+        kategorie: "",
+        wissensart: undefined,
+      };
       setSubmitValidation(false);
       setSearchParams({}, { replace: true });
       clearStructureState();
@@ -1643,6 +1700,7 @@ export function Blatt({
     setStructureProposal(null);
     setStructureErr(null);
     setStructureAccepted(false);
+    setStructureCardType(undefined);
   };
 
   const discardAssistProposal = (): void => {
@@ -1666,6 +1724,12 @@ export function Blatt({
     setBodyHtml(result.bodyHtml);
     setStructureKeptRichBody(result.preserved);
     setStructureTitleAdopted(result.titleAdopted);
+    // FR-STR-01: übernommen wird genau die Wissensart, die beim Klick in der Kartenauswahl steht —
+    // vorbelegt, aber vom Menschen bestätigt oder korrigiert. Keine Auswahl ⇒ nichts ändert sich.
+    if (structureCardType !== undefined) {
+      setWissensart(structureCardType);
+    }
+    setStructureCardType(undefined);
     setStructureProposal(null);
     setStructureErr(null);
     setStructureAccepted(true);
@@ -1724,7 +1788,9 @@ export function Blatt({
     bodyHtml !== savedStateRef.current.bodyHtml ||
     confidentiality !== savedStateRef.current.confidentiality ||
     // JOB 3062 R6 (bens Befund 1): eine geänderte Bereichswahl IST eine ungespeicherte Änderung.
-    kategorie !== savedStateRef.current.kategorie;
+    kategorie !== savedStateRef.current.kategorie ||
+    // FR-STR-01: ebenso eine übernommene, noch nicht gesicherte Wissensart.
+    wissensart !== savedStateRef.current.wissensart;
   const istSchmutzig = inhaltWeichtAb || hasPendingProposal;
 
   // JOB 3106 (UX-01): die Bestätigungszeile steht, SOLANGE das Blatt dem gesicherten Stand
@@ -1753,6 +1819,7 @@ export function Blatt({
       confidentiality,
       gewaehlteVertraulichkeit: declaredConfidentiality,
       kategorie,
+      wissensart,
       activeDraftId,
       bodyNieGeliefert: bodyNieGeliefertRef.current,
       fallbackTitle,
@@ -2134,7 +2201,13 @@ export function Blatt({
       setGesicherterEntwurf(null);
       loadedUpdatedAtRef.current = null;
       setStaleConflict(false);
-      savedStateRef.current = { title: "", bodyHtml: "", confidentiality: "intern", kategorie: "" };
+      savedStateRef.current = {
+        title: "",
+        bodyHtml: "",
+        confidentiality: "intern",
+        kategorie: "",
+        wissensart: undefined,
+      };
       if (resumeDraftId === id) {
         setSearchParams({}, { replace: true });
       }
@@ -2834,7 +2907,8 @@ export function Blatt({
               </MenueEintrag>
               <MenueTrenner />
               <MenueEintrag onClick={() => setMehrFlaeche("klara")}>
-                {t("erfassen.mehr.klara")}
+                {/* N-0042: dieselbe Vorschau wie auf Start, derselbe Name (`texte/wordvorschau.ts`). */}
+                {t("wordvorschau.menu")}
               </MenueEintrag>
               {/* Der Knopf „Eingabe verwerfen" der Vordertür. Er bleibt ein BEWUSSTER Schritt mit
                   Rückfrage — nur seine Prominenz auf der Fläche ist weg (Auftrag §5a: „Zurück"
@@ -3413,6 +3487,11 @@ export function Blatt({
             />
           ) : null}
 
+          {/* AUFNAHME 20260922 · NEGATIVWISSEN-HINWEIS (R-1629): ähnelt der Text einem dokumentierten
+              Fehlschlag, steht das OFFEN da — nicht im zugeklappten Chip darunter. Ohne Treffer
+              rendert nichts. */}
+          <NegativwissenHinweis treffer={negativwissen} />
+
           {/* ==========================================================================================
               §5 — EIN STILLER CHIP UNTER DEM BLATT, NUR IM FALL, AUFKLAPPBAR.
               ==========================================================================================
@@ -3541,6 +3620,34 @@ export function Blatt({
               <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
                 {proposalTitleOnly ? t("fd.structureRichTitleOnly") : structureProposal.statement}
               </p>
+              {/* FR-STR-01 (R-0315): die Wissensart des Vorschlags — vorbelegt, korrigierbar,
+                  übernommen erst mit „Übernehmen". Eine bereits entschiedene Wissensart steht
+                  vorne; der abweichende KI-Vorschlag wird daneben genannt, nicht eingesetzt. */}
+              {structureCardType !== undefined ? (
+                <div data-testid="blatt-ki-vorschlag-wissensart" className="mt-2">
+                  <label className="flex items-center gap-2 text-[12.5px] text-muted">
+                    {t("capture.fType")}
+                    <select
+                      value={structureCardType}
+                      onChange={(e) => setStructureCardType(e.target.value as KnowledgeType)}
+                      className="rounded-[8px] border border-hairline bg-page px-2 py-1 text-[13px] text-text"
+                    >
+                      {KNOWLEDGE_TYPES_DRAFT.map((art) => (
+                        <option key={art} value={art} label={t(`ktype.${art}`)} />
+                      ))}
+                    </select>
+                  </label>
+                  {structureProposal.knowledgeType &&
+                  structureProposal.knowledgeType !== structureCardType ? (
+                    <p
+                      data-testid="blatt-ki-vorschlag-wissensart-ki"
+                      className="mt-1 text-[12px] text-muted"
+                    >
+                      {t("fd.aiProposal")}: {t(`ktype.${structureProposal.knowledgeType}`)}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               {/* mega61 Block E: der dauerhaft sichtbare KI-Satz (Art. 50 Abs. 1 und 5 KI-VO). Er
                   stand an der Vordertür und gehört an JEDE Modellfläche — diese Karte IST die
                   Modellfläche des Blattes. Er steht IN der Karte, nicht auf dem ruhenden Blatt:
