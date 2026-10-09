@@ -56,6 +56,10 @@ async function legeEintragAn(request: APIRequestContext, m: string): Promise<Ein
     data: {
       title: titel,
       statement: regel,
+      // Nacharbeit 2 (Prüflauf K4): ohne Fließtext trägt die gebundene Fassung keinen Rumpf, und die
+      // Lesefassung der Anleitung zeigt nur Titel und Fassung des Abschnitts. Die Regel steht deshalb
+      // auch als Fließtext da — wie bei einem gewöhnlich erfassten Artikel.
+      bodyHtml: `<p>${regel}</p>`,
       type: "best_practice",
       category: "Instandhaltung",
       confidentiality: "intern",
@@ -98,6 +102,39 @@ async function mitteFrei(page: Page, testId: string, ersterAbsatz = false): Prom
   );
 }
 
+/**
+ * Nacharbeit 2 (Prüflauf, Bilder der Fehlerartefakte): über Titel und erster Regel lag der
+ * rechtliche Nutzungshinweis „Kurz zur Kenntnis“ des Produkts. Er ist eine ECHTE, einmalige
+ * Pflichtbestätigung (eigener Knopf „Verstanden — weiter“, serverseitig vermerkt) und nicht die
+ * Kenntnisnahme-Fläche dieses Auftrags. Er bleibt unangetastet und wird hier so bestätigt, wie es
+ * ein Mensch beim ersten Öffnen tut — dieselbe Bauform wie `bildschirmablauf-browser.spec.ts`.
+ * Steht er da, wird VORHER belegt, dass er wirklich eine Bestätigung verlangt (Bild + beide Knöpfe).
+ * Steht keiner da, hat derselbe geteilte Smoke-Account ihn schon quittiert.
+ */
+async function nutzungshinweisQuittieren(page: Page, name: string): Promise<void> {
+  const weiter = page.getByTestId("notice-ack");
+  if (!(await weiter.isVisible())) {
+    return;
+  }
+  await expect(page.getByTestId("notice-decline-open")).toBeVisible();
+  await belegBild(page, `${name}-nutzungshinweis-pflicht`);
+  await weiter.click();
+  await expect(page.getByTestId("notice-banner")).toHaveCount(0, { timeout: 15_000 });
+}
+
+/** Alle sichtbaren Klara-Flächen: der Hilfeknopf und die bewegliche Figur. */
+async function klaraFlaechen(page: Page): Promise<Rechteck[]> {
+  const orte = page.locator('button[data-klara="1"], [data-testid="klara-figur"]');
+  const raus: Rechteck[] = [];
+  for (let i = 0; i < (await orte.count()); i += 1) {
+    const ort = orte.nth(i);
+    if (await ort.isVisible()) {
+      raus.push(await box(ort));
+    }
+  }
+  return raus;
+}
+
 async function belegBild(page: Page, name: string): Promise<void> {
   const body = await page.screenshot();
   await test.info().attach(name, { body, contentType: "image/png" });
@@ -118,6 +155,7 @@ test.describe("Lesen: Inhalt zuerst", () => {
     await expect(titel).toHaveText(eintrag.titel, { timeout: 15_000 });
     const text = page.getByTestId("bib-text");
     await expect(text).toContainText(eintrag.regel);
+    await nutzungshinweisQuittieren(page, "desktop");
     const flaeche = page.getByTestId("kenntnisnahme-bereich");
     await expect(flaeche, "Admin ohne Anforderung: die Zeile fehlt").toBeVisible({
       timeout: 15_000,
@@ -174,6 +212,7 @@ test.describe("Lesen: Inhalt zuerst", () => {
     await expect(titel).toHaveText(eintrag.titel, { timeout: 15_000 });
     const text = page.getByTestId("bib-text");
     await expect(text).toContainText(eintrag.regel);
+    await nutzungshinweisQuittieren(page, "schmal");
     await belegBild(page, "schmal-390x844");
 
     const t = await box(titel);
@@ -191,12 +230,22 @@ test.describe("Lesen: Inhalt zuerst", () => {
     // Weder Klara noch eine Aktion liegt auf Titel oder erster Regel.
     expect(await mitteFrei(page, "bib-titel"), "der Titel ist verdeckt").toBe(true);
     expect(await mitteFrei(page, "bib-text", true), "die erste Regel ist verdeckt").toBe(true);
-    const klara = page.locator('button[data-klara="1"]').first();
-    if (await klara.isVisible()) {
-      const k = await box(klara);
-      expect(schneiden(k, t), "Klara liegt auf dem Titel").toBe(false);
-      expect(schneiden(k, regel), "Klara liegt auf der ersten Regel").toBe(false);
+    // Klara (Hilfeknopf und bewegliche Figur) in LESEPOSITION: der feste Knopf unten rechts liegt
+    // zwangsläufig über jeder Zeile, die gerade am unteren Bildrand steht. Gemessen wird deshalb,
+    // wenn Titel bzw. erste Regel zum Lesen in der Bildmitte stehen — dort darf nichts darauf liegen.
+    for (const [id, absatz, name] of [
+      ["bib-titel", false, "den Titel"],
+      ["bib-text", true, "die erste Regel"],
+    ] as const) {
+      const ort = absatz ? text.locator(":scope > *").first() : page.getByTestId(id);
+      await ort.evaluate((el) => el.scrollIntoView({ block: "center" }));
+      const lage = await box(ort);
+      for (const k of await klaraFlaechen(page)) {
+        expect(schneiden(k, lage), `Klara liegt auf ${name}`).toBe(false);
+      }
+      expect(await mitteFrei(page, id, absatz), `${name} ist in Leseposition verdeckt`).toBe(true);
     }
+    await belegBild(page, "schmal-390x844-leseposition");
   });
 
   test("K4 · freigegebene Anleitung: Lesefassung zuerst, Bearbeitung und Historie da", async ({
@@ -235,6 +284,7 @@ test.describe("Lesen: Inhalt zuerst", () => {
     await page.goto(`/gesamtanweisungen/${id}`);
     const lesefassung = page.getByTestId("ga-lesestand");
     await expect(lesefassung).toBeVisible({ timeout: 15_000 });
+    await nutzungshinweisQuittieren(page, "anleitung");
     await expect(lesefassung).toContainText(eintrag.regel);
     await expect(page.getByTestId("ga-seite-stand")).toContainText("Freigegeben");
     const bearbeiten = page.getByTestId("ga-seite-bearbeiten");
