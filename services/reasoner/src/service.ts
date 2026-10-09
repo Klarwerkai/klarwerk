@@ -71,6 +71,8 @@ import type {
   InterviewResult,
   JudgeFailure,
   KnowledgeRef,
+  LueckenBereich,
+  LueckenUrteilOutcome,
   ReasonerAktiveWahl,
   ReasonerCloudAnbieter,
   ReasonerCloudAnbieterStatus,
@@ -347,6 +349,10 @@ function erzeugnisAus(task: ModelRunTask, ergebnis: unknown): ModelRunErzeugnis 
     case "conflict":
     case "duplicate":
       [art, anzahl] = ["urteil", 1];
+      break;
+    // R-1657: ein Urteil je beurteiltem Bereich.
+    case "gaps":
+      [art, anzahl] = ["urteil", anzahlListe(ergebnis)];
       break;
     case "probe":
       return undefined;
@@ -3214,6 +3220,76 @@ export class Reasoner {
     confidential = false,
   ): Promise<DuplicateJudgeResult | null> {
     return (await this.judgeDuplicateOutcome(coreA, coreB, locale, confidential)).verdict;
+  }
+
+  // R-1657 (ROADMAP 9.3): „Lückenerkennung über Reasoner". Dieselbe Bauform wie
+  // judgeConflictOutcome: die Kette der globalen Wahl (judgeProviders), vertraulich ⇒ die Cloud fällt
+  // vor jedem Aufruf heraus, genau ein Lauf `gaps` im Protokoll je Urteil mit Modellversuch, und ein
+  // unterscheidbarer Ausgang (Urteil ODER Ursache). Ohne Modell urteilt hier NIEMAND — der Aufrufer
+  // zeigt dann seine benannte Regel und sagt, dass sie gilt.
+  async judgeKnowledgeGapsOutcome(
+    bereiche: readonly LueckenBereich[],
+    locale: ReasonerLocale = "de",
+    confidential = false,
+  ): Promise<LueckenUrteilOutcome> {
+    if (bereiche.length === 0) {
+      return { urteile: [] };
+    }
+    let failure: JudgeFailure | undefined;
+    let providerFailure: ModelFailureInfo | undefined;
+    let attempted = false;
+    const { providers, confidentialExcluded } = this.judgeProviders(confidential);
+    const startedAt = new Date().toISOString();
+    const lb = new Laufbuch();
+    for (const provider of providers) {
+      if (!provider.judgeKnowledgeGaps) {
+        continue;
+      }
+      attempted = true;
+      const urteilen = provider.judgeKnowledgeGaps.bind(provider);
+      try {
+        const result = await lb.versuch(
+          provider,
+          () => urteilen(bereiche, locale, confidential),
+          this.pruefungenFuer(provider, confidential),
+        );
+        if (result) {
+          await this.protokolliereLaufbuch("gaps", locale, startedAt, lb, {
+            status: "success",
+            erzeugt: erzeugnisAus("gaps", result),
+          });
+          return { urteile: result, provider: provider.name };
+        }
+        lb.vermerke(provider, "Antwort unverwertbar");
+        failure = failure ?? "model-error";
+      } catch (err) {
+        if (err instanceof ModelCapacityError) {
+          await this.protokolliereLaufbuch("gaps", locale, startedAt, lb, { status: "error" });
+          throw err;
+        }
+        if (err instanceof Error && err.name === "ConfidentialEgressError") {
+          failure = failure ?? "confidential";
+          continue;
+        }
+        failure = failure ?? Reasoner.judgeFailureOf(err);
+        providerFailure = providerFailure ?? classifyModelFailure(err);
+      }
+    }
+    if (!attempted) {
+      return {
+        urteile: null,
+        failure: Reasoner.noJudgeFailure(confidential, confidentialExcluded),
+      };
+    }
+    await this.protokolliereLaufbuch("gaps", locale, startedAt, lb, {
+      status: "error",
+      ursache: failure ?? "model-error",
+    });
+    return {
+      urteile: null,
+      failure: failure ?? "model-error",
+      ...(providerFailure ? { providerFailure } : {}),
+    };
   }
 
   // SCRUM-167: select bleibt synchron (reines Keyword-Ranking, kein Modell-/Netzaufruf).
