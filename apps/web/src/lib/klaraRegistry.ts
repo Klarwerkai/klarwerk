@@ -105,7 +105,12 @@ export const KLARA_PAGES: readonly KlaraPage[] = [
 // sind zugleich Teil der KI-Wissensdatenbank (Klara Stufe 2) und Ziel der data-help-Anker.
 // `bodyKey` nur, wo der Text vom Schema `shelp.<key>` abweicht (eingefrorener Altwert, berichtigte
 // Fassung in einem Textmodul) — dann sagen Seitenhilfe und Klara dasselbe.
-const KLARA_SECTIONS: readonly { key: string; route: string; bodyKey?: string }[] = [
+//
+// R-0908: `titel` nur dort, wo die Fläche ihre Überschrift inzwischen aus `texte/fachwort.ts`
+// liest. Kennung (`sec:<key>`) und Erklärtext (`shelp.<key>`) bleiben am alten Schlüssel; Klara
+// zeigt dieselbe Überschrift wie die Fläche, statt „Reasoner-Läufe" oder „Evidence-Index".
+type KlaraSektion = { key: string; route: string; bodyKey?: string; titel?: string };
+const KLARA_SECTIONS: readonly KlaraSektion[] = [
   { key: "adm.seedTitle", route: "/admin" },
   { key: "adm.createTitle", route: "/admin" },
   { key: "adm.auditTitle", route: "/admin" },
@@ -156,13 +161,13 @@ const KLARA_SECTIONS: readonly { key: string; route: string; bodyKey?: string }[
   { key: "mgmt.recommendations", route: "/kapital" },
   { key: "mgmt.priorities", route: "/kapital" },
   { key: "mgmt.pilot", route: "/kapital" },
-  { key: "mrun.title", route: "/kapital" },
-  { key: "rcfg.title", route: "/kapital" },
-  { key: "evx.title", route: "/kapital" },
-  { key: "prov.title", route: "/kapital" },
-  { key: "readiness.title", route: "/kapital" },
-  { key: "kos.hintsTitle", route: "/kapital" },
-  { key: "evFresh.title", route: "/kapital" },
+  { key: "mrun.title", route: "/kapital", titel: "fachwort.kiLaeufe.titel" },
+  { key: "rcfg.title", route: "/kapital", titel: "fachwort.kiEinstellung.titel" },
+  { key: "evx.title", route: "/kapital", titel: "fachwort.belegIndex.titel" },
+  { key: "prov.title", route: "/kapital", titel: "fachwort.herkunft.titel" },
+  { key: "readiness.title", route: "/kapital", titel: "fachwort.bereitschaft.titel" },
+  { key: "kos.hintsTitle", route: "/kapital", titel: "fachwort.qm.titel" },
+  { key: "evFresh.title", route: "/kapital", titel: "fachwort.belegFrische.titel" },
 ] as const;
 
 // Alle Klara-Einträge — Seiten zuerst, dann Feld-Hilfen, dann Sektions-Erklärungen, dann Kapitel.
@@ -192,7 +197,7 @@ export function allKlaraEntries(): readonly KlaraEntry[] {
   const sections: KlaraEntry[] = KLARA_SECTIONS.map((s) => ({
     id: `sec:${s.key}`,
     kind: "field",
-    titleKey: s.key,
+    titleKey: s.titel ?? s.key,
     bodyKey: s.bodyKey ?? `shelp.${s.key}`,
     route: s.route,
   }));
