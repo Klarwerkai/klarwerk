@@ -1,6 +1,7 @@
 import { Menu, Search } from "lucide-react";
-import { type FormEvent, type Ref, useRef, useState } from "react";
+import { type FormEvent, type Ref, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router-dom";
 import { useGuardedNavigate } from "../app/NavGuardContext";
 import { DemoKennzeichen } from "../auth/BrandPanel";
 import { useKuerzel } from "../lib/tastenkuerzel";
@@ -191,6 +192,21 @@ export function Kopfband({
   const kuerzel = useKuerzel("K");
   const navigate = useGuardedNavigate();
   const [q, setQ] = useState("");
+  // ARBEITSWEGE AM SELBEN ARTIKEL — DAS FELD ZEIGT DIE GELTENDE SUCHE, NICHT EINE ALTE EINGABE.
+  // Bis hierher behielt das Feld, was einmal getippt wurde: wer danach in der Bibliothek weiter-
+  // suchte oder die Suche dort leerte, sah oben noch das alte Wort — zwei Suchtexte, von denen nur
+  // einer galt. Jetzt: auf `/bibliothek` steht hier ihr `q` aus der Adresse (dieselbe Quelle, die
+  // `BibliothekFlaeche.tsx` liest), auf jeder anderen Seite nichts. Getippt wird weiter frei; nur
+  // wenn sich die GELTENDE Suche ändert, folgt das Feld ihr — eine noch nicht abgeschickte Eingabe
+  // geht bei einem Seitenwechsel ohne Suche nicht verloren.
+  const location = useLocation();
+  const geltendeSuche =
+    location.pathname === "/bibliothek"
+      ? (new URLSearchParams(location.search).get("q") ?? "")
+      : "";
+  useEffect(() => {
+    setQ(geltendeSuche);
+  }, [geltendeSuche]);
   // JOB 3525: das obere der beiden schmalen Bänder (760–899 px). Der Wert wird IMMER gelesen, auch
   // breit — `narrow` entscheidet danach, ob er überhaupt etwas bedeutet. Ein Haken darf nicht
   // hinter einer Bedingung stehen.

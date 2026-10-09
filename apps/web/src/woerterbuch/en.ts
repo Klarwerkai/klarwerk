@@ -6027,6 +6027,24 @@ const en: typeof de = {
   "ga.liste.geaendert": "Last changed",
   "ga.liste.bausteine": "Sections: {{anzahl}}",
   "ga.liste.unvollstaendig": "Incomplete for you – sections you cannot access: {{anzahl}}",
+  // Work paths on the same article (produkt:20261007:arbeitswege-objekt) — see de.ts.
+  "arbeitsweg.pruefen.sucht": "Looking for the requested entry in the review list …",
+  "arbeitsweg.pruefen.fehlt":
+    "The requested entry is not up for review in this view (already decided or filtered out). Showing the next open entry.",
+  "arbeitsweg.pruefen.lesen": "Open requested entry",
+  "arbeitsweg.pruefen.entschieden": "Decided: “{{titel}}” –",
+  "arbeitsweg.pruefen.oeffnen": "Open entry with current status",
+  "arbeitsweg.pruefen.standOffen":
+    "Status from the server: still in review, {{gruen}} of {{noetig}} approvals.",
+  "arbeitsweg.pruefen.standRaus": "Status from the server: no longer in the review list.",
+  "arbeitsweg.pruefen.weiter": "now in review: “{{titel}}”",
+  "arbeitsweg.fassung": "Version {{fassung}}",
+  "arbeitsweg.fragen.bezug": "Question about the entry “{{titel}}”",
+  "arbeitsweg.fragen.zurueck": "Back to the entry",
+  "arbeitsweg.lesen.fassungAbweichend":
+    "You came from version {{genannt}}; this entry is now at version {{aktuell}}.",
+  "arbeitsweg.klara.label": "Entry",
+  "arbeitsweg.klara.chat": "Continue in “Ask” about this entry",
 };
 
 export { en };
