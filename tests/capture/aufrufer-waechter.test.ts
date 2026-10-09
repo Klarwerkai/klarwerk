@@ -883,7 +883,8 @@ const ALTBESTAND: readonly string[] = [
   "services/app/src/migrationsbeleg.ts::istStrukturstufe",
   "services/app/src/object-references.ts::isObjectReferenced",
   "services/app/src/reindex-queue.ts::REINDEX_CONCURRENCY",
-  "services/app/src/reindex-queue.ts::createReindexQueue",
+  // `createReindexQueue` gestrichen: seit Aufnahme gesamt-suchindex-aktualitaet (R-0470) in
+  // build-app.ts verdrahtet.
   "services/app/src/routes/ko-routes.ts::KO_AKTIONEN_MIT_TORURTEIL",
   "services/app/src/routes/naechster-schritt-entwurf.ts::naechsterSchrittEntwurfRoutes",
   "services/app/src/seed-demo.ts::DEMO_GAP_QUESTION",
@@ -933,8 +934,9 @@ const ALTBESTAND: readonly string[] = [
   "services/library-analytics/src/types.ts::pruefeInhaltsreferenzBindung",
   "services/lifecycle/src/types.ts::LifecycleError",
   "services/model-runs/src/types.ts::KI_ERZEUGENDE_AUFGABEN",
-  "services/object-store/src/service.ts::isTransientMedia",
-  "services/object-store/src/service.ts::isWithinRetention",
+  // R-0846 / L6 · GESTRICHEN, WEIL BEHOBEN: `isTransientMedia` und `isWithinRetention` standen hier
+  // seit mega20 — der Lebenszyklus-Vertrag war gebaut, der Waisen-Sweep ausdrücklich nicht. Seit
+  // R-0846 ruft `services/app/src/datenintegritaet.ts` (`ermittleWaisen`) beide.
   // ERLEDIGT, JOB 3091 (06.09.2026): `services/output/src/zuruf.ts::ZurufService` stand hier seit
   // JOB 2605 — der Erzeuger des KA6-Zurufs hatte keinen Aufrufer ausserhalb der Tests. Seit der
   // Route `POST /api/klara/sessions/{id}/zuruf` (`klara-session-routes.ts`) baut ihn eine
@@ -990,21 +992,12 @@ const DURCH_VERSCHAERFUNG_SICHTBAR: readonly Ausnahme[] = [
 //
 // Sie stehen hier und nicht im `ALTBESTAND`, damit sichtbar bleibt, dass sie NEU sind: Der
 // Altbestand ist eingefroren und soll schrumpfen; ein Neuzugang gehoert gemeldet, nicht abgelegt.
-const NEUZUGANG_GEMELDET: readonly Ausnahme[] = [
-  {
-    schluessel: "services/db-tx/src/idle-in-transaction.ts::pruefbefehl",
-    grund:
-      "Neu mit JOB 2604 D1 (Basisstand c850f67a). Nur Definition, Barrel-Re-Export " +
-      "(`services/db-tx/index.ts:40`) und eine Kommentarerwaehnung — kein Aufrufer. Gemeldet am " +
-      "27.08.2026 in der Rueckgabe zu JOB 2605 D2; NICHT behoben, das ist Sache des Einbauenden.",
-  },
-  {
-    schluessel: "services/db-tx/src/idle-in-transaction.ts::bewerte",
-    grund:
-      "Neu mit JOB 2604 D1, gleiche Lage wie `pruefbefehl` (`services/db-tx/index.ts:39`). " +
-      "Gemeldet, NICHT behoben.",
-  },
-];
+//
+// R-1437 / I10 · ERLEDIGT: `pruefbefehl` und `bewerte` (idle-in-transaction.ts) standen hier seit
+// JOB 2605 D2. Seit R-1437 urteilt `bewerte` vor jeder begrenzten Prüfung
+// (`services/db-tx/src/begrenzte-pruefung.ts`), und `pruefbefehl` nennt der Betreiberweg
+// (`tools/datenintegritaet.ts`), wenn eine Sitzung offen hängt. Die Liste ist leer geworden.
+const NEUZUGANG_GEMELDET: readonly Ausnahme[] = [];
 
 // ------------------------------------------------------------------------------------------------
 // REGISTER 4b · ERSETZT, ABBAU LIEGT AUSSERHALB DER ZIELPFADE (JOB 3015 D5)

@@ -669,6 +669,17 @@ const GEWORFEN = [
   "NOT_APPROVED",
   "OIDC_ACCOUNT_MISSING",
   "RESET_TOKEN_INVALID",
+  // R-0562 (eigene Zwei-Faktor-Anmeldung): sieben neue Katalogschlüssel, geworfen in `service.ts`.
+  // Sechs davon bringen ihren Routenfall in EN/NL mit (`GEMESSEN_VON`, tests/zweifaktor/
+  // zweifaktor-sprachfaelle.test.ts); `SECOND_FACTOR_REQUIRED` wirft nur der alte Dienstweg
+  // `login`, den keine Route für Konten mit zweitem Faktor nimmt — er steht in `OHNE_ROUTENFALL`.
+  "SECOND_FACTOR_ALREADY_ACTIVE",
+  "SECOND_FACTOR_CHALLENGE_INVALID",
+  "SECOND_FACTOR_INVALID",
+  "SECOND_FACTOR_NOT_ACTIVE",
+  "SECOND_FACTOR_PASSWORD_ACCOUNT_ONLY",
+  "SECOND_FACTOR_REQUIRED",
+  "SECOND_FACTOR_SETUP_MISSING",
   "SELF_DEMOTION_FORBIDDEN",
   "USER_NOT_FOUND",
   "WEAK_PASSWORD",
@@ -687,9 +698,18 @@ const AUS_DER_ROUTE = [
   "OIDC_DISABLED",
   "OIDC_LOGIN_FAILED",
   "OIDC_STATE_INVALID",
+  // R-0541 (Firmenanmeldung): der abgeschaltete Passwortweg, gesendet von `passwortwegZu`.
+  "PASSWORD_LOGIN_DISABLED",
   "REGISTRATION_DISABLED",
   "REGISTRATION_RATE_LIMITED",
   "RESET_RATE_LIMITED",
+  // R-0560: die drei SAML-Türen (ohne Konfiguration) und der gescheiterte SAML-Rücksprung.
+  "SAML_DISABLED",
+  "SAML_LOGIN_FAILED",
+  // R-0562: die Drossel des zweiten Anmeldeschritts (`POST /api/auth/login/second-factor`).
+  "SECOND_FACTOR_RATE_LIMITED",
+  // R-0541 (Nacharbeit 2): Passwort aus, Firmen-Login noch nicht eingerichtet.
+  "SSO_ONLY_NOT_CONFIGURED",
   "UNKNOWN_ROLE",
   "WEAK_PASSWORD",
 ];
@@ -722,7 +742,8 @@ const AUS_DEM_RECHTETOR = ["PERMISSION_MISSING"];
  * JOB 3956 · Die drei Schlüssel, die WEDER aus `services/auth/src` NOCH aus dem Rechtetor kommen:
  *
  *   `DRAFT_NOT_FOUND` / `DRAFT_NOT_VISIBLE`  `services/app/src/routes/capture-routes.ts`
- *                                            (`requireVisibleDraft` und der Fortsetzen-Zweig)
+ *                                            (`requireVisibleDraft` und der Fortsetzen-Zweig),
+ *                                            dazu der Dokumentweg in `ko-routes.ts` (P-Q9)
  *   `PERMISSION_DENIED`                      `services/rbac/src/guard.ts`
  *
  * Dieselbe Lage und dieselbe benannte Prüflücke wie bei `AUS_DEM_RECHTETOR`: H2 und H3 tasten
@@ -1461,6 +1482,9 @@ const OHNE_ROUTENFALL = [
   "LAST_ADMIN_DELETION",
   "LAST_ADMIN_DEMOTION",
   "OIDC_ACCOUNT_MISSING",
+  // R-0562: nur der alte Dienstweg `AuthService.login` wirft ihn; keine Route erreicht ihn für ein
+  // Konto mit zweitem Faktor (die Ersteinrichtung legt ein frisches Konto ohne an).
+  "SECOND_FACTOR_REQUIRED",
   "SELF_DEMOTION_FORBIDDEN",
   "USER_NOT_FOUND",
   // Eingangsprüfungen, Rechte und Schalter der Routen. Gesendet in `routes.ts`, aber kein Fall
@@ -1496,13 +1520,19 @@ const GEMESSEN_VON = {
   // beide Fälle halten den Satz doppelt: wörtlich (ein schiefes Katalogfeld fällt auf) UND gegen
   // `MELDUNGEN.<SCHLUESSEL>.<sprache>` (ein zweites Literal im Code oder ein verstellter Schlüssel
   // fällt auf). Der deutsche Fall (E3/F3) zählt hier nicht mit — H4 fragt nach EN und NL.
+  // Aufnahme gesamt-fehlermeldungen (P-Q9): I1–I4 halten dieselben zwei Sätze am Dokumentweg
+  // (`POST /api/kos/from-document` mit `draftId`, `ko-routes.ts`), der sie bis dahin als Literal sandte.
   DRAFT_NOT_FOUND: [
     "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · E1 EN · unbekannte Entwurfskennung: 404 NOT_FOUND mit englischem Satz",
     "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · E2 NL · unbekannte Entwurfskennung: 404 NOT_FOUND mit niederländischem Satz",
+    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · I1 EN · Dokumentweg mit unbekanntem Entwurf: 404 NOT_FOUND mit englischem Satz",
+    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · I2 NL · Dokumentweg mit unbekanntem Entwurf: 404 NOT_FOUND mit niederländischem Satz",
   ],
   DRAFT_NOT_VISIBLE: [
     "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · F1 EN · fremder Entwurf: 403 FORBIDDEN mit englischem Satz",
     "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · F2 NL · fremder Entwurf: 403 FORBIDDEN mit niederländischem Satz",
+    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · I3 EN · Dokumentweg mit fremdem Entwurf: 403 FORBIDDEN mit englischem Satz",
+    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · I4 NL · Dokumentweg mit fremdem Entwurf: 403 FORBIDDEN mit niederländischem Satz",
   ],
   // JOB 4249 · der Satz des ANLEGEWEGS. Er entsteht, wenn das Konto zwischen dem Zusammenstellen
   // der Nutzlast und dem Absenden gewechselt hat (`expectedOwner`, die Voraussetzung des Aufrufs).
@@ -1561,6 +1591,45 @@ const GEMESSEN_VON = {
   // deshalb sah der Wächter es bis K5 nicht.
   OIDC_UNREACHABLE: [
     "tests/q9-oidc-literalquelle/jeder-fehler-traegt-einen-katalogschluessel.test.ts · E.1 der echte Callback liefert in %s den OIDC_UNREACHABLE-Satz, nicht INTERNAL",
+  ],
+  // R-0541 (Firmenanmeldung) · der Satz des abgeschalteten Passwortwegs, gemessen am Tag seiner
+  // Einführung: ein Fall, dessen `each`-Tabelle EN und NL wörtlich trägt.
+  PASSWORD_LOGIN_DISABLED: [
+    "tests/firmenanmeldung/passwort-abschaltbar.test.ts · P2 PASSWORD_LOGIN_DISABLED · alle vier Passwortwege antworten 403 auf %s",
+  ],
+  // R-0560 · die SAML-Sätze, gemessen am Tag ihrer Einführung: je ein Fall mit EN/NL-Tabelle.
+  SAML_DISABLED: [
+    "tests/firmenanmeldung/saml-anmeldung.test.ts · S1 SAML_DISABLED · die vier SAML-Türen antworten ohne Konfiguration 501 auf %s",
+  ],
+  SAML_LOGIN_FAILED: [
+    "tests/firmenanmeldung/saml-anmeldung.test.ts · S9 SAML_LOGIN_FAILED · eine verfälschte Antwort endet auf der Fehlerseite auf %s",
+  ],
+  // R-0562 · die Zwei-Faktor-Sätze, gemessen am Tag ihrer Einführung: je Schlüssel ein Fall mit
+  // EN/NL-Tabelle, der Satz über `MELDUNGEN.<SCHLUESSEL>[sprache]` (K5.2).
+  SECOND_FACTOR_ALREADY_ACTIVE: [
+    "tests/zweifaktor/zweifaktor-sprachfaelle.test.ts · Z4 SECOND_FACTOR_ALREADY_ACTIVE · ein zweites Einrichten antwortet 403 auf %s",
+  ],
+  SECOND_FACTOR_CHALLENGE_INVALID: [
+    "tests/zweifaktor/zweifaktor-sprachfaelle.test.ts · Z2 SECOND_FACTOR_CHALLENGE_INVALID · eine unbekannte Anmeldeanfrage antwortet 401 auf %s",
+  ],
+  SECOND_FACTOR_INVALID: [
+    "tests/zweifaktor/zweifaktor-sprachfaelle.test.ts · Z1 SECOND_FACTOR_INVALID · ein falscher Code antwortet 401 auf %s",
+  ],
+  SECOND_FACTOR_NOT_ACTIVE: [
+    "tests/zweifaktor/zweifaktor-sprachfaelle.test.ts · Z5 SECOND_FACTOR_NOT_ACTIVE · Ausschalten ohne Einrichtung antwortet 403 auf %s",
+  ],
+  SECOND_FACTOR_PASSWORD_ACCOUNT_ONLY: [
+    "tests/zweifaktor/zweifaktor-sprachfaelle.test.ts · Z7 SECOND_FACTOR_PASSWORD_ACCOUNT_ONLY · ein SSO-Konto richtet nichts ein, 403 auf %s",
+  ],
+  SECOND_FACTOR_RATE_LIMITED: [
+    "tests/zweifaktor/zweifaktor-sprachfaelle.test.ts · Z3 SECOND_FACTOR_RATE_LIMITED · nach dem Limit antwortet der Codeschritt 429 auf %s",
+  ],
+  SECOND_FACTOR_SETUP_MISSING: [
+    "tests/zweifaktor/zweifaktor-sprachfaelle.test.ts · Z6 SECOND_FACTOR_SETUP_MISSING · Bestätigen ohne begonnene Einrichtung antwortet 403 auf %s",
+  ],
+  // R-0541 (Nacharbeit 2) · Passwort aus, Firmen-Login fehlt.
+  SSO_ONLY_NOT_CONFIGURED: [
+    "tests/firmenanmeldung/passwort-abschaltbar.test.ts · P7 SSO_ONLY_NOT_CONFIGURED · ohne Firmen-Login bleiben alle vier Passwortwege gesperrt auf %s",
   ],
   // JOB 3956 · der Satz des RBAC-Wächters. DREI Fälle und nicht zwei: G4 fährt den
   // zusammengesetzten Sprachkopf („en-GB,en;q=0.9" und zwei weitere) und holt seine Erwartung über

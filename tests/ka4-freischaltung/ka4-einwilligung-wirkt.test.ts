@@ -239,9 +239,10 @@ const fragen = (app: FastifyInstance, kopf: Record<string, string>, mode = "retr
  * Der Optionssatz, den der Session-Weg MIT deckender Einwilligung übergeben muss.
  *
  * Bei gesperrtem Schalter ist das die unveränderte Enge (die Einwilligung kann nicht tragen), bei
- * freigeschaltetem Schalter GAR KEINE Optionen — kein leeres Objekt (`ask-routes.ts:405`).
+ * freigeschaltetem Schalter genau `validatedOnly`: die Einwilligung öffnet das Modell
+ * (`retrievalOnly` fällt), nicht den Prüfstand (R-0278, Nacharbeit 3).
  */
-const MIT_EINWILLIGUNG = KLARA_EXTERNAL_EXECUTION_MIGRATED ? null : ENGE;
+const MIT_EINWILLIGUNG = KLARA_EXTERNAL_EXECUTION_MIGRATED ? { validatedOnly: true } : ENGE;
 
 describe("JOB 3033 · KA4 · die Einwilligung hebt die Enge — und nur sie", () => {
   it("KA4-F0 · DIE VORBEDINGUNG, protokolliert: welchen Zustand diese Datei misst", async () => {
@@ -275,16 +276,16 @@ describe("JOB 3033 · KA4 · die Einwilligung hebt die Enge — und nur sie", ()
     await a.app.close();
   });
 
-  it("KA4-F2 · MIT Einwilligung: freigeschaltet fallen BEIDE Schlüssel, gesperrt bleibt die Enge", async () => {
+  it("KA4-F2 · MIT Einwilligung: freigeschaltet fällt `retrievalOnly`, `validatedOnly` bleibt", async () => {
     const a = await aufbauen();
     expect(await einwilligen(a)).toBe("granted");
     const res = await fragen(a.app, a.bindung);
     expect(res.statusCode).toBe(200);
     expect(a.gesehen[0]).toEqual(MIT_EINWILLIGUNG);
-    // Und ausdrücklich benannt, damit die Aussage auch dann trägt, wenn der Freigabezweig eines
-    // Tages andere, unschädliche Optionen mitgäbe: DIESE beiden Schlüssel sind dann weg.
+    // Und ausdrücklich benannt: die Einwilligung hebt die Modellsperre auf, nie den Prüfstand
+    // (R-0278, Nacharbeit 3) — `validatedOnly` steht in BEIDEN Zuständen des Schalters.
     const opts = (a.gesehen[0] ?? {}) as Record<string, unknown>;
-    expect(Object.hasOwn(opts, "validatedOnly")).toBe(!KLARA_EXTERNAL_EXECUTION_MIGRATED);
+    expect(opts.validatedOnly).toBe(true);
     expect(Object.hasOwn(opts, "retrievalOnly")).toBe(!KLARA_EXTERNAL_EXECUTION_MIGRATED);
     await a.app.close();
   });
@@ -324,15 +325,18 @@ describe("JOB 3033 · KA4 · die Einwilligung hebt die Enge — und nur sie", ()
     expect(await einwilligen(mit, ADDON_ACTOR_ID)).toBe("granted");
     await fragen(mit.app, mit.bindung);
     expect(mit.gesehen[0]).toEqual(
-      KLARA_EXTERNAL_EXECUTION_MIGRATED ? { gapPolicy: "count_only" } : ENGE_ADDON,
+      KLARA_EXTERNAL_EXECUTION_MIGRATED
+        ? { validatedOnly: true, gapPolicy: "count_only" }
+        : ENGE_ADDON,
     );
     await mit.app.close();
   });
 
   it("KA4-F7 · DER KONSOLEN-ASK ohne `mode` und OHNE Bindung ist von KA4 gar nicht berührt", async () => {
     // Er kennt die Weiche nicht und darf sich durch eine Einwilligung nicht verändern.
-    // R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der Konsolenweg antwortet standardmäßig
-    // nur aus geprüftem Wissen — und bleibt von der Einwilligung unberührt (beide Male derselbe Satz).
+    // R-0278 (Nacharbeit 3) und R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der Konsolenweg
+    // antwortet nur aus geprüftem Wissen — und bleibt von der Einwilligung unberührt (beide Male
+    // derselbe Satz).
     const KONSOLE = {
       validatedOnly: true,
       ungeprueftSichtbarFuer: expect.any(Function),
@@ -593,6 +597,11 @@ describe("JOB 3033 · KA4 · Umfang und Vertraulichkeit des Egress", () => {
       category: "Betrieb",
       author: "anna",
     });
+    // R-0278 (Nacharbeit 3/4): auch mit Einwilligung reist nur Freigegebenes in den Modellkontext.
+    // BEIDE Objekte sind deshalb freigegeben — so beweist F8b weiterhin, dass die VERTRAULICHKEIT
+    // das geheime Objekt ausschließt, nicht bloß sein Prüfstand.
+    await koService.setValidationState(offen.id, { trust: 90, status: "validiert" });
+    await koService.setValidationState(geheim.id, { trust: 90, status: "validiert" });
 
     const reasoner = new Reasoner(provider);
     // JOB 3588: NUR die GRUNDFREIGABE. KA4-S3 und KA4-F8a messen, dass der Anbieter über diesen Weg

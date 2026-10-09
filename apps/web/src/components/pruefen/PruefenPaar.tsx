@@ -79,6 +79,7 @@ export function PruefenPaarKarte({
   ton,
   markeTitel,
   aktionen,
+  beleg,
   mehr,
 }: {
   /** „a" oder „b" — der Anker, an dem die Messung links von rechts unterscheidet. */
@@ -91,6 +92,11 @@ export function PruefenPaarKarte({
   markeTitel?: string | undefined;
   /** Das „···"-Menü dieser Karte. */
   aktionen?: ReactNode;
+  /**
+   * R-0261 (Aufnahme gesamt-dublettenvergleich): der Beleg dieser Seite OHNE Aufklappen — Quelle,
+   * Quelldatum, Konfidenz. Steht zwischen Text und „Mehr"; fehlt er, ändert sich an der Karte nichts.
+   */
+  beleg?: ReactNode;
   /** Das „Mehr" dieser Karte (Herkunft, Sicherheit, Zitate, Status …). */
   mehr?: ReactNode;
 }): JSX.Element {
@@ -127,6 +133,11 @@ export function PruefenPaarKarte({
           </span>
         ))}
       </p>
+      {beleg ? (
+        <div data-testid={`pruefen-paar-beleg-${seite}`} className="px-[22px] pb-[14px]">
+          {beleg}
+        </div>
+      ) : null}
       {mehr ? <div className="px-[22px] pb-[18px]">{mehr}</div> : null}
     </div>
   );
@@ -194,16 +205,24 @@ export function PruefenAktionsband({ children }: { children: ReactNode }): JSX.E
 /** Der Textlink am rechten Rand des Bandes („Zweitmeinung anfragen", Konflikte.dc.html:59). */
 export function PruefenBandLink({
   kennung,
+  disabled,
   onClick,
   children,
-}: { kennung: string; onClick: () => void; children: ReactNode }): JSX.Element {
+}: {
+  kennung: string;
+  /** Aufnahme gesamt-konfliktklassifikation (R-0215): sichtbar, aber gesperrt — wie `PruefenKnopf`. */
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}): JSX.Element {
   return (
     <button
       type="button"
       data-text="knopf"
       data-testid={`pruefen-knopf-${kennung}`}
+      disabled={disabled}
       onClick={onClick}
-      className="ml-auto text-[13px] text-muted underline-offset-4 hover:text-text hover:underline"
+      className="ml-auto text-[13px] text-muted underline-offset-4 hover:text-text hover:underline disabled:cursor-not-allowed disabled:opacity-50"
     >
       {children}
     </button>

@@ -6,6 +6,15 @@ import {
   ADDON_KEY_HEADER,
   addonApiEnabled,
 } from "./addon-api";
+import type { BremsGrenze } from "./anfragebremse";
+import {
+  DIENST_SCHLUESSEL_HEADER,
+  type DienstSchluessel,
+  type DienstSchluesselLage,
+  KEINE_DIENST_SCHLUESSEL,
+  dienstPrincipal,
+  pruefsummeVon,
+} from "./dienst-schluessel";
 
 // SCRUM-490 D2 / SCRUM-491 Slice 5: dedizierter Add-on-Principal. KEIN User, KEIN Viewer, KEIN
 // generisches ko.read — nur schmale, GETRENNTE Capabilities (ask.validated, checktext.validated).
@@ -27,7 +36,17 @@ export const ADDON_ACTOR_ID = "addon:klara";
 // KEINE breite Sammel-Capability. SCRUM-491 Slice 5 ergänzt checktext.validated neben ask.validated.
 export const ASK_CAPABILITY = "ask.validated" as const;
 export const CHECKTEXT_CAPABILITY = "checktext.validated" as const;
-export type AddonCapability = typeof ASK_CAPABILITY | typeof CHECKTEXT_CAPABILITY;
+// Aufnahme gesamt-integrations-api: die drei weiteren Rechte trägt nur ein Dienst-Schlüssel
+// (`dienst-schluessel.ts`) — der Klara-Schlüssel bleibt bei den beiden obigen.
+// Aufnahme gesamt-mcp (R-0713): `mcp.werkzeug` öffnet den MCP-Zugang (`routes/mcp-routes.ts`),
+// ebenfalls nur für einen Dienst-Schlüssel.
+export type AddonCapability =
+  | typeof ASK_CAPABILITY
+  | typeof CHECKTEXT_CAPABILITY
+  | "export.validated"
+  | "import.kandidaten"
+  | "status.read"
+  | "mcp.werkzeug";
 
 // Rückwärtskompatibler Alias (SCRUM-490): früher trug der Principal genau diese eine Capability.
 export const ADDON_CAPABILITY = ASK_CAPABILITY;
@@ -45,6 +64,8 @@ export interface AddonPrincipal {
   readonly kind: "addon";
   readonly id: string; // ADDON_ACTOR_ID — stabile Bucket-/Audit-ID
   readonly capabilities: readonly AddonCapability[];
+  // Nur bei einem Dienst-Schlüssel: seine Kennung und seine eigene Grenze. Fehlt beim Klara-Schlüssel.
+  readonly dienst?: { readonly schluessel: string; readonly grenze: BremsGrenze };
 }
 
 // Trägt der Principal genau dieses schmale Recht? Fail-closed gegen unbekannte/fehlende Capabilities.
@@ -118,7 +139,8 @@ export type AuthContext =
 // Ergebnis der EINEN Key-Auflösung pro Request.
 export type AddonAuthResolution =
   | { readonly kind: "valid"; readonly principal: AddonPrincipal }
-  | { readonly kind: "invalid" } // Key vorhanden, aber falsch → 401 (kein Session-Fallback)
+  // Key vorhanden, aber falsch → 401 (kein Session-Fallback). `dienst` nur beim Dienst-Schlüssel-Kopf.
+  | { readonly kind: "invalid"; readonly dienst?: true }
   | { readonly kind: "none" }; // kein Add-on-Versuch → Session-Pfad
 
 // request.authContext am Fastify-Request tragen (Typaugmentation).
@@ -144,10 +166,42 @@ function validAddonKey(provided: string): boolean {
   return timingSafeEqual(a, b);
 }
 
+// Aufnahme gesamt-integrations-api: Vergleich eines Dienst-Schlüssels gegen ALLE konfigurierten
+// Prüfsummen in Konstantzeit je Prüfsumme — die Schleife bricht beim Treffer nicht ab, damit die
+// Laufzeit nicht verrät, an welcher Stelle der Liste ein Schlüssel steht.
+function findeDienstSchluessel(
+  lage: DienstSchluesselLage,
+  angegeben: string,
+): DienstSchluessel | undefined {
+  const summe = pruefsummeVon(angegeben);
+  let treffer: DienstSchluessel | undefined;
+  for (const s of lage.schluessel) {
+    for (const erwartet of s.pruefsummen) {
+      if (timingSafeEqual(summe, erwartet) && treffer === undefined) {
+        treffer = s;
+      }
+    }
+  }
+  return treffer;
+}
+
 // Die EINE Key-Auflösung pro Request (aufgerufen genau einmal im onRequest-Hook). Flag AUS oder kein
 // Header → "none" (Session-Pfad). Header vorhanden + gültig → "valid" + Principal. Header vorhanden,
 // aber ungültig → "invalid" (→ 401, kein Fallback auf Session mit falschem Key).
-export function resolveAddonAuth(request: FastifyRequest): AddonAuthResolution {
+// Aufnahme gesamt-integrations-api: ZUERST der Dienst-Schlüssel-Kopf (unabhängig vom Klara-Flag),
+// danach unverändert der Klara-Schlüssel. Nacharbeit 2 (Bens Befund): der Kopf wird auch dann
+// ausgewertet, wenn KEIN Dienst-Schlüssel (mehr) konfiguriert ist — ein gesperrter oder entfernter
+// Schlüssel ist ein ungültiger Anmeldeversuch (401) und fällt nie auf eine mitgesendete Sitzung
+// zurück.
+export function resolveAddonAuth(
+  request: FastifyRequest,
+  dienst: DienstSchluesselLage = KEINE_DIENST_SCHLUESSEL,
+): AddonAuthResolution {
+  const dienstAngabe = request.headers[DIENST_SCHLUESSEL_HEADER];
+  if (typeof dienstAngabe === "string" && dienstAngabe.length > 0) {
+    const s = findeDienstSchluessel(dienst, dienstAngabe);
+    return s ? { kind: "valid", principal: dienstPrincipal(s) } : { kind: "invalid", dienst: true };
+  }
   if (!addonApiEnabled()) {
     return { kind: "none" };
   }

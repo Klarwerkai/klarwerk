@@ -181,6 +181,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   { stufe: "KO_METADATA_PROJECTION_SCHEMA", risiko: "ADDITIV" },
   { stufe: "KO_PROJECTION_CONTROL_SCHEMA", risiko: "ADDITIV" },
   { stufe: "KO_EVIDENCE_SCHEMA", risiko: "ADDITIV" },
+  // R-0846 / L6: zwei Fremdschlüssel (`NOT VALID`, hinter Existenzprüfung, `duplicate_object`
+  // abgefangen). ADDITIV, nachgezählt: kein RISIKOMARKER — `ON DELETE CASCADE` ist eine Regel für
+  // künftige Löschungen, kein `DELETE FROM`; der Altbestand wird weder geprüft noch geändert.
+  { stufe: "KO_FREMDSCHLUESSEL_SCHEMA", risiko: "ADDITIV" },
   // JOB 4151: die kuratierten Beziehungen (`ko_kanten`) und die Bindung ihrer Wiederholschlüssel
   // (`ko_kanten_beitrag`, BEN R3). ADDITIV, und zwar nachgezählt statt behauptet: von den sechs
   // RISIKOMARKERN oben trifft KEINER — die Stufe besteht aus ZWEI `CREATE TABLE IF NOT EXISTS`,
@@ -271,6 +275,18 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "LIVEWALL_FOTO_SCHEMA", risiko: "ADDITIV" },
+  // R-0466: das Interaktionsgedächtnis. ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT EXISTS` und
+  // zwei `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "GEDAECHTNIS_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261007:ownership-uebergabe: die Nachfolge bei Befristung. ADDITIV, nachgezählt: ein
+  // einziges `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "VERANTWORTUNG_NACHFOLGE_SCHEMA", risiko: "ADDITIV" },
+  // R-0470: der dauerhafte Vektorspeicher. ADDITIV, nachgezählt: ein einziges `CREATE TABLE IF NOT
+  // EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf
+  // ist folgenlos.
+  { stufe: "EMBEDDING_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

@@ -18,7 +18,23 @@ export type NotificationKind =
   | "return"
   | "impact"
   | "kenntnisnahme"
+  // aufnahme:20260922:gesamt-wissen-frische: persönliche Zustellung an die verantwortliche Person —
+  // Fristerinnerung (R-0248), wöchentliche Vorlage (R-0266), Prüfanforderung nach Anlagenänderung
+  // an Autor bzw. Nachfolger (R-1635). Die Unterart steht in `frischeArt`.
+  | "frische"
   | "veroeffentlichung";
+
+/** aufnahme:20260922:gesamt-wissen-frische — eine persönliche Frische-Meldung (s. frische-meldungen.ts). */
+export interface FrischeNotice {
+  art: "frist" | "vorlage" | "anlage";
+  /** Eindeutig je Anlass — ein neuer Anlass (neue Frist, neue Woche, neue Markierung) ist ungelesen. */
+  schluessel: string;
+  koId: string;
+  title: string;
+  at: string;
+  /** Nur bei `frist`: die Haltbarkeit ist bereits abgelaufen. */
+  ueberfaellig?: boolean;
+}
 
 // Veröffentlichung (produkt:20261007:veroeffentlichungsoptionen): eine bei „normal" oder
 // „hervorgehoben" veröffentlichte Fassung, deren Empfängerkreis die aktuelle Person enthält. Bereits
@@ -70,6 +86,8 @@ export interface Notification {
   fassung?: number;
   erinnerung?: boolean;
   ueberfaellig?: boolean;
+  // aufnahme:20260922:gesamt-wissen-frische: die Unterart einer `frische`-Meldung.
+  frischeArt?: FrischeNotice["art"];
   // Veröffentlichung: neu oder Aktualisierung, und ob sie hervorgehoben gemeldet wurde. Nur bei
   // `kind: "veroeffentlichung"` gesetzt (`fassung` trägt dort die veröffentlichte Fassung).
   art?: "neu" | "aktualisierung";
@@ -98,9 +116,23 @@ export function buildNotifications(input: {
   // ein neuer Fund auch ohne Besuch der Duplikate-Seite auffällt.
   overlaps?: (OverlapEntry & { redacted?: boolean })[];
   kenntnisnahmen?: KenntnisnahmeNotice[];
+  // aufnahme:20260922:gesamt-wissen-frische: bereits auf den Betrachter UND die Sichtbarkeit
+  // beschränkt (Route) — hier wird nichts nachgeprüft und nichts erfunden.
+  frische?: FrischeNotice[];
   veroeffentlichungen?: VeroeffentlichungNotice[];
 }): Notification[] {
   const items: Notification[] = [];
+  for (const f of input.frische ?? []) {
+    items.push({
+      id: `frische-${f.schluessel}`,
+      kind: "frische",
+      title: f.title,
+      at: f.at,
+      koId: f.koId,
+      frischeArt: f.art,
+      ...(f.ueberfaellig ? { ueberfaellig: true } : {}),
+    });
+  }
   for (const v of input.veroeffentlichungen ?? []) {
     items.push({
       id: `pub-${v.vermerkId}`,

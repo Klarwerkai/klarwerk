@@ -262,6 +262,12 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Veröffentlichung — darfSehen vor dem Veröffentlichen, sonst 404.",
   },
+  // --- R-1644: Wissensauskunft zum Zeitpunkt -------------------------------------------------------
+  // Trägt Titel und Kernaussage der damals geltenden Fassung; darfSehen vor jeder Antwort.
+  "GET /api/kos/:id/wissensauskunft": {
+    urteil: "PRAEDIKAT",
+    grund: "Wissensauskunft — darfSehen am Eintrag vor der Ausgabe, sonst 404.",
+  },
   // --- W2-A/148: die Laufdomäne des Imports -------------------------------------------------
   // Der Lauf selbst trägt AUSSCHLIESSLICH Kennungen, Status, Zeitstempel und Zähler — keine Zeile
   // Fachinhalt. `knowledgeObjectId` ist eine Id, kein Inhalt (import-run-routes.ts:88-99).
@@ -307,6 +313,19 @@ const REGISTER: Record<string, Eintrag> = {
   },
   "GET /api/conflicts": { urteil: "PRAEDIKAT", grund: "Block D — Paar-Tor, wörtliche Zitate." },
   "GET /api/conflicts/:id": { urteil: "PRAEDIKAT", grund: "Block D — Paar-Tor." },
+  // R-0263 (Aufnahme gesamt-konfliktklassifikation): Vorrang am Punkt — Paar-Tor je Eintrag,
+  // der Geltungsbereich (Menschentext) zusätzlich hinter `feldFreigabe`.
+  "GET /api/conflicts/vorrang/:id": {
+    urteil: "PRAEDIKAT",
+    grund: "R-0263 — Paar-Tor je Eintrag, Geltungsbereich hinter feldFreigabe.",
+  },
+  // R-0252 (Nacharbeit 6): der Einordnungsweg ändert UND antwortet mit dem Konflikt — deshalb das
+  // Paar-Tor vor der Änderung (unsichtbar ⇒ 404, nichts geändert) und die Antwort durch
+  // feldFreigabe/redigiereKonflikt wie der Detailweg.
+  "POST /api/conflicts/:id/arbeitsart": {
+    urteil: "PRAEDIKAT",
+    grund: "R-0252 — Paar-Tor vor der Einordnung, Antwort redigiert wie GET /api/conflicts/:id.",
+  },
   "GET /api/duplicates": { urteil: "PRAEDIKAT", grund: "Block D — Eigenanteile/Aspekte." },
   "GET /api/duplicates/:id": { urteil: "PRAEDIKAT", grund: "Block D — Paar-Tor." },
   // AUFTRAG-mega76 BLOCK C: war `PRAEDIKAT_IM_MODUL` — das schwächere Urteil „irgendwo in
@@ -440,10 +459,14 @@ const REGISTER: Record<string, Eintrag> = {
   // Route fordert `users.manage`, und der Sammler misst das nach, statt es mir zu glauben. Was sie
   // herausgibt, ist Wissen über die Betriebsumgebung (absoluter Pfad, Sicherungsstand), und das
   // gehört ohnehin nur in Admin-Hände.
+  // ADMIN-13: dazu die vier Schutzwege — letzter Backup-Lauf und letzte Restore-Probe (Zahlen,
+  // Zeitpunkte, Kennungen aus den Skriptspuren), Export- und Papierkorbstand (Zähler und Zeitpunkte
+  // aus Audit und `trashed()`). Weiterhin kein Titel und kein Text eines Wissensobjekts.
   "GET /api/admin/sicherungen": {
     urteil: "KURATORENTOR",
     recht: "users.manage",
-    grund: "Admin; Dateinamen und Prüfsummen des Sicherungsverzeichnisses, kein KO-Inhalt.",
+    grund:
+      "Admin; Dateinamen, Prüfsummen, Lauf-/Drillprotokoll, Export- und Papierkorbzähler — kein KO-Inhalt.",
   },
   "GET /api/import/confluence/zugang": {
     urteil: "KURATORENTOR",
@@ -461,6 +484,13 @@ const REGISTER: Record<string, Eintrag> = {
   // Umgebungsvariablen und ja/nein je Variable aus — nie einen Wert, nie eine Maske mit Länge und
   // keinen Inhalt eines Wissensobjekts (`services/sharepoint/src/credential-state.ts`).
   "GET /api/import/sharepoint/zugang": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Zugangszustand, Admin.",
+  },
+  // R-0170: dieselbe Auskunft für Jira (`services/jira/src/credential-state.ts`) — Namen und
+  // ja/nein je Variable, nie ein Wert, kein Inhalt eines Wissensobjekts.
+  "GET /api/import/jira/zugang": {
     urteil: "KURATORENTOR",
     recht: "users.manage",
     grund: "Zugangszustand, Admin.",
@@ -488,6 +518,14 @@ const REGISTER: Record<string, Eintrag> = {
     grund: "ask/gap-visibility redactGapForViewer (ask-routes.ts:258).",
   },
   "GET /api/gaps/summary": { urteil: "KEIN_KO_INHALT", grund: "Zähler, keine Fragetexte." },
+  // R-1663 / R-2178: gibt Titel der Objekte aus, auf denen die Spuren einer Person liegen — also
+  // KO-Inhalt. Die Grundmenge läuft durch `sichtbarkeitsfilterFuer` (und `dropConfidential`) im
+  // AskService, bevor gezählt wird; dazu Schalter `expertMatching` und `ko.assign`.
+  "GET /api/gaps/:id/ansprechpartner": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "R-2178 — sichtbarkeitsfilterFuer über der Objektgrundlage, Titel nur sichtbarer Objekte.",
+  },
   // --- Entwürfe: eigener Bestand, nach Eigentümer begrenzt -----------------------------------
   // Pool-Auftrag (R-2099): dazu kommen Entwürfe, die ihr Autor BEWUSST in den gemeinsamen Pool
   // gegeben hat — Entwürfe, keine Wissensobjekte; entschieden von derselben einen Regel
@@ -529,6 +567,22 @@ const REGISTER: Record<string, Eintrag> = {
   "DELETE /api/livewall/photo": {
     urteil: "EIGENER_BESTAND",
     grund: "löscht nur das eigene Foto (user.id), Antwort nur der Wahrheitswert.",
+  },
+  "GET /api/me/gedaechtnis": {
+    urteil: "EIGENER_BESTAND",
+    grund: "nur die eigenen Gedächtniseinträge (gedaechtnis-routes.ts, user.id); kein KO-Inhalt.",
+  },
+  "POST /api/me/gedaechtnis": {
+    urteil: "EIGENER_BESTAND",
+    grund: "legt nur einen eigenen Eintrag an; die Antwortkennung muss eine eigene sein.",
+  },
+  "DELETE /api/me/gedaechtnis/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund: "löscht nur einen eigenen Eintrag (user.id), fremd und unbekannt antworten 404.",
+  },
+  "DELETE /api/me/gedaechtnis": {
+    urteil: "EIGENER_BESTAND",
+    grund: "löscht nur das eigene Gedächtnis (user.id), Antwort nur die Zahl.",
   },
   // --- Kein Inhalt eines Wissensobjekts ------------------------------------------------------
   "GET /health": { urteil: "KEIN_KO_INHALT", grund: "Betriebszustand." },
@@ -606,6 +660,28 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/spaces/verschiebung": {
     urteil: "PRAEDIKAT",
     grund: "Spacewechsel nur an einem sichtbaren Artikel.",
+  },
+  // Hauptverantwortung übergeben (verantwortung-routes.ts): Titel nur über `darfSehen`; für nicht
+  // einsehbare Beiträge Kennung, Status und Space, aber kein Inhalt.
+  "GET /api/verantwortung/person/:id": {
+    urteil: "PRAEDIKAT",
+    grund: "Bestand einer Person — Titel nur für einsehbare Beiträge.",
+  },
+  "GET /api/verantwortung/ungeklaert": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Anzahl je Person ohne aktive Verantwortung; keine Titel, keine Kennungen.",
+  },
+  "POST /api/verantwortung/vorschau": {
+    urteil: "PRAEDIKAT",
+    grund: "Vorschau je Nachfolger — Titel nur für einsehbare Beiträge.",
+  },
+  "POST /api/verantwortung/uebergabe": {
+    urteil: "PRAEDIKAT",
+    grund: "Ergebnis je Beitrag — Titel nur für einsehbare Beiträge.",
+  },
+  "POST /api/verantwortung/deaktivierung": {
+    urteil: "PRAEDIKAT",
+    grund: "Übergabeergebnis vor der Deaktivierung — Titel nur für einsehbare Beiträge.",
   },
   "GET /api/i18n/locales": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
   "GET /api/i18n/:locale/:key": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
@@ -788,10 +864,18 @@ const REGISTER: Record<string, Eintrag> = {
     "PUT /api/gaps/:id": "ko.assign.",
     "DELETE /api/gaps/:id": "ko.validate.",
     "POST /api/ask/helpful": "Rückmeldung des Aufrufers.",
+    // R-1649: Antwort nur `{ vermerkt, entwurfId }` — der eigene Vermerk und der eigene Entwurf.
+    "POST /api/ask/not-helpful": "Rückmeldung des Aufrufers; optional eigener Entwurf.",
     "PUT /api/validation/settings": "users.manage.",
     "PUT /api/external/policy": "users.manage.",
     "POST /api/lifecycle/couple": "ko.create; Antwort ohne KO-Inhalt.",
     "POST /api/lifecycle/asset-changed": "ko.validate; Antwort ohne KO-Inhalt.",
+    // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden. Die Vorschau nennt Kennung und Titel
+    // der Wissensobjekte einer Person — an `users.manage`, also an eine Rolle, für die `darfSehen`
+    // ohnehin jedes Objekt freigibt. Entwürfe und Lücken nur als Kennung; die Ausführung antwortet
+    // mit Zählern und Kennungen.
+    "POST /api/lifecycle/handover/preview": "users.manage; Titel nur an die Verwaltung.",
+    "POST /api/lifecycle/handover": "users.manage; Antwort mit Zählern und Kennungen.",
     "POST /api/learning-paths": "Lernpfad, kein KO.",
     "POST /api/learning-paths/:pathId/complete": "eigener Fortschritt.",
     "POST /api/admin/demo-seed": "users.manage.",
@@ -819,6 +903,13 @@ const REGISTER: Record<string, Eintrag> = {
     // R-0145/R-0190: `folder-apply` ist derselbe Übernahmeweg für ein Los eines Ordners — er gibt
     // dieselben Quelldatei-Angaben aus wie `apply`, dazu die Kennungen des Loses.
     "POST /api/admin/import/sharepoint/folder-apply": "users.manage.",
+    // R-0170: die drei Türen des Jira-Imports, dieselbe Bauform wie SharePoint. `issues` liest nur
+    // (Vorgangsliste des Projekts); `apply` und `project-apply` stellen Kandidaten in die
+    // Prüf-Warteschlange. Keine gibt den Inhalt eines Wissensobjekts aus — sie geben Schlüssel,
+    // Titel, Adressen und Stände von QUELLVORGÄNGEN aus, dazu die Zahl der Leserechte.
+    "POST /api/admin/import/jira/issues": "users.manage.",
+    "POST /api/admin/import/jira/apply": "users.manage.",
+    "POST /api/admin/import/jira/project-apply": "users.manage.",
     "PUT /api/reasoner/config": "users.manage.",
     "PUT /api/reasoner/assist-presets": "users.manage.",
     "POST /api/reasoner/test": "users.manage.",

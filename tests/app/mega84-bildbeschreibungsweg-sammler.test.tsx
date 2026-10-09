@@ -2116,25 +2116,165 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // 549 → 559, davon 2 aus diesem Auftrag). Welche es sind, ist ohne Git-Verlauf an diesem
     // Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
     //
-    // produkt:20261007:veroeffentlichungsoptionen: 451 → 452. GENAU EIN Bauteil kommt dazu:
+    // Aufnahme gesamt-ki-kennzeichnung (R-0603/R-0604): 451 → 452. GENAU EIN Bauteil kommt dazu:
+    //     + `AiSurfaceNotice` (`components/AiGeneratedNotice.tsx`) — der dauerhafte Flächensatz
+    //       „hier kann eine KI mitarbeiten" an Auslösern und auf der Fragenseite.
+    // Es rendert ein einziges `<span>` mit einem Katalogsatz, zeigt KEIN Bild, bietet KEINE
+    // Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt kein `documentTitle`-Prop — nur
+    // Grundmenge. In `RichTextEditor.tsx` (schon Träger) wird lediglich ein vorhandenes Bauteil
+    // zusätzlich eingesetzt.
+    //
+    // NACHARBEIT 1 · GEMESSEN 488. Die oben gerechnete 452 war falsch, weil sie den erneut
+    // eingemischten Hauptstand nicht kannte. Am Kandidaten 7b7d9a0e meldete der Sammler wörtlich
+    // „gemessen: 488 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 608 Quelldateien …
+    // expected { komponenten: 488, … } to deeply equal { komponenten: 452, … }"
+    // (HISTORIE/nacharbeit-1/PRUEFUNG/betroffene-bestandswaechter.log). Davon ist GENAU EIN Bauteil
+    // aus diesem Auftrag (`AiSurfaceNotice`); die 36 über 452 kamen mit dem Hauptstand (Grundmenge
+    // 559 → 608, keine Quelldatei aus diesem Auftrag — der Hauptstand selbst führt hier noch 451).
+    // Welche es sind, ist ohne Lauf am Hauptstand nicht namentlich bestimmt. `anbieter` 1 und
+    // `traeger` 2 sind unverändert — beide Seiten der Meldung nennen 1 und 2.
+    //
+    // NACHARBEIT 2 (Ben: R-1020 / R-1695): 488 → 489, GERECHNET, nicht gemessen — die Hand startet
+    // keine Tests. GENAU EIN Bauteil kommt dazu: `ErgebnisStufeMarke`
+    // (`components/trust/ErgebnisStufeMarke.tsx`), die Marke Entwurf/Empfehlung/validiert. Sie
+    // rendert ein `<span>` mit Katalogtext, zeigt KEIN Bild, bietet KEINE Bildbeschreibung an (kein
+    // `ANGEBOT_MUSTER`) und trägt kein `documentTitle`-Prop — nur Grundmenge. Die übrigen neuen
+    // Dateien (`lib/kiHerkunft.ts`, `lib/antwortDateien.ts`, `components/fragen/antwortMenue.ts`)
+    // bringen keine Komponente mit. Weicht die Messung ab, gilt der gemessene Wert samt Herkunft.
+    // (489 ist am Kandidaten 2215c220 GEMESSEN bestätigt — nacharbeit-2-sammler-und-texte grün.)
+    //
+    //
+    // Aus dem Hauptstand (Auftrag gesamt-hilfen), dort gegen 451 gerechnet:
+    // Aufnahme gesamt-hilfen, Nacharbeit 5 (R-0443): 451 → 452. GENAU EIN Bauteil kommt dazu:
+    //     + `Arbeitsweise` (`pages/Arbeitsweise.tsx`) — die eigene Seite „So arbeitet Klarwerk“
+    // Kein Bild, kein `documentTitle`, kein `CAPTION_AI_TEXT`; sie verwendet die vorhandene Sicht
+    // `SoArbeitetKlarwerk` wieder (dort nur ein optionaler Schalter, kein neues Bauteil).
+    // `anbieter` 1 und `traeger` 2 bleiben. EHRLICH GESAGT: die 452 ist GERECHNET (451 + 1), nicht
+    // gemessen; weicht der Prüflauf ab, nennt die Meldung oben die gemessene Zahl.
+    //
+    // Nacharbeit 6: GEMESSEN 495. Am Kandidaten 33aad029 meldete der Sammler wörtlich „gemessen:
+    // 495 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 621 Quelldateien … expected
+    // { komponenten: 495, … } to deeply equal { komponenten: 452, … }". Dieser Auftrag trägt genau
+    // EIN Bauteil (`Arbeitsweise`) bei; die 43 Komponenten über 452 kamen mit dem eingemischten
+    // Hauptstand (Grundmenge 559 → 621; aus diesem Auftrag `pages/Arbeitsweise.tsx`,
+    // `texte/arbeitsweise.ts`). Welche es sind, ist ohne Git-Verlauf an diesem Arbeitsbaum nicht
+    // namentlich bestimmt. Die danach ergänzte `lib/klaraBibliothek.ts` enthält kein Bauteil (nur
+    // die Funktion `allBibliothekEntries`). `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // Aus dem Hauptstand (Auftrag PLAN-SPRACHANMERKUNG), dort gegen 451 gerechnet:
+    // PLAN-SPRACHANMERKUNG (R-1625, R-2177): 451 → 452. GENAU EIN Bauteil kommt dazu:
+    //     + `Zeichnung` (`components/bibliothek/Zeichnung.tsx`) — die Zeichnung einer Rückfrage
+    //       mit ihrer Marke; antippbar beim Schreiben, nur lesend am gespeicherten Beitrag.
+    // Sie zeigt ein Bild aus dem Inhalt, bietet aber keine Bildbeschreibung an (kein
+    // `CAPTION_AI_TEXT`) und trägt keinen eigenen Titel (kein `documentTitle`-Prop): `anbieter` 1
+    // und `traeger` 2 bleiben. EHRLICH GESAGT: die 452 ist GERECHNET (451 + 1) — dieser Auftrag
+    // durfte keinen Testlauf selbst starten; weicht der Prüflauf ab, gehört die gemessene Zahl hin.
+    // NACHARBEIT 2 (BEN: CAD-/PDF-Arbeitsweg): 452 → 453, GENAU EIN Bauteil mehr:
+    //     + `AnhangZeichnung` (`components/bibliothek/AnhangZeichnung.tsx`) — die hochgeladene
+    //       Zeichnung (PDF-Seite, DXF, Bild) mit Seitenwahl, gereicht an `Zeichnung`.
+    // Kein `CAPTION_AI_TEXT`, kein `documentTitle`. Ebenfalls GERECHNET (452 + 1). Hinweis: der
+    // Prüflauf von nacharbeit-1 mass 494 am integrierten Stand — die Abweichung über diese eine
+    // Komponente hinaus stammt aus fremden Lieferungen und ist hier nicht nachgezogen.
+    //
+    // INTEGRATION (Aufnahme gesamt-ki-kennzeichnung, Nacharbeit 8): beide Zählreihen treffen sich.
+    // Ausgangspunkt ist die GEMESSENE 489 (Kandidat 2215c220, Hauptstand dc8fadeda). Seither bringt
+    // der Hauptstand bis 4878a322 laut Diff 26 Komponentendeklarationen in `.tsx` mit und entfernt
+    // keine — darunter `Zeichnung` und `AnhangZeichnung` aus dem Absatz darüber, dazu u. a.
+    // `FragekontextWahl`, `KlaraVorschau`, `NichtHilfreichKarte`, `GeltungFeld`, `ExternStatus`.
+    // 489 + 26 = 515. EHRLICH GESAGT: GERECHNET über ein Diff-Muster, nicht gemessen — die Hand
+    // startet keine Tests. Weicht der Prüflauf ab, nennt die Meldung die gemessene Zahl; die gehört
+    // dann hierher. `anbieter` 1 und `traeger` 2 bleiben in beiden Reihen unverändert.
+    //
+    // Aus dem Hauptstand (gesamt-hilfen), gemessen ohne die Bauteile dieses Auftrags:
+    // ZUSAMMENFÜHRUNG beider Stände (gesamt-hilfen Nacharbeit 11, Kandidat 96b9e3a0): 497.
+    // Grundlage ist die GEMESSENE 495 von gesamt-hilfen (Kandidat 33aad029; sie enthält
+    // `Arbeitsweise` und den Hauptstand von damals, der hier noch 451 trug — `Zeichnung` und
+    // `AnhangZeichnung` waren darin also noch nicht enthalten). Dazu die zwei Bauteile der
+    // Plan-Sprachanmerkung: 495 + 2 = 497. EHRLICH GESAGT: GERECHNET, nicht gemessen; was der
+    // Hauptstand seit 33aad029 sonst an Bauteilen gebracht hat, ist darin nicht enthalten. Weicht
+    // der Prüflauf ab, gehört die gemessene Zahl hierher. `anbieter` 1 und `traeger` 2 bleiben.
+    //
+    // gesamt-hilfen Nacharbeit 12: GEMESSEN 515. Am Kandidaten 01c730f4 meldete der Sammler
+    // wörtlich „gemessen: 515 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 657 Quelldateien …
+    // expected { komponenten: 515, … } to deeply equal { komponenten: 497, … }". Seit der Messung 495
+    // (33aad029, Grundmenge 621) hat gesamt-hilfen KEIN Bauteil hinzugefügt: dazugekommen sind
+    // nur `lib/klaraBibliothek.ts` (Funktionen, kein Bauteil) und ein Testfall. Die 20 Komponenten
+    // über 495 kommen also aus dem eingemischten Hauptstand (Grundmenge 621 → 657), darunter laut
+    // Kommentar oben `Zeichnung` und `AnhangZeichnung`. Die übrigen 18 sind ohne Git-Verlauf an
+    // diesem Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // ADMIN-01 (produkt:20261009:admin-verwaltung-uebersicht): 515 → 516. GENAU EIN Bauteil kommt
+    // dazu:
+    //     + `AdminUebersicht` (`pages/AdminUebersicht.tsx`) — die Startseite der Verwaltung mit
+    //       Aufgabenzählern und den sieben fachlichen Gruppen.
+    // Ihre Zeilenhelfer (`verweis`, `zielZeile`) sind kleingeschrieben und keine Bauteile. Sie
+    // zeigt kein Bild, bietet keine Bildbeschreibung an (kein `CAPTION_AI_TEXT`) und trägt keinen
+    // eigenen Titel (kein `documentTitle`-Prop): `anbieter` 1 und `traeger` 2 bleiben. EHRLICH
+    // GESAGT: GERECHNET (515 + 1) — dieser Auftrag durfte keinen Testlauf selbst starten; weicht der
+    // Prüflauf ab, gehört die gemessene Zahl hierher.
+    //
+    // ADMIN-01 Nacharbeit 1: GEMESSEN 530. Der Prüflauf am Kandidaten a9b11511 meldete wörtlich
+    // „gemessen: 530 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 681 Quelldateien". Die
+    // Grundmenge wuchs gegenüber der Messung 515 (657 Dateien) um 24 Quelldateien aus dem
+    // eingemischten Hauptstand; ADMIN-01 trägt davon genau EIN Bauteil (`AdminUebersicht`). Die
+    // übrigen 14 sind ohne Git-Verlauf an diesem Arbeitsbaum nicht namentlich bestimmt.
+    // `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // INTEGRATION (Aufnahme gesamt-ki-kennzeichnung, Nacharbeit 9): Die 515 von gesamt-hilfen ist
+    // GEMESSEN (Kandidat 01c730f4) — ohne die Bauteile dieses Auftrags; meine gerechnete 515 aus
+    // Nacharbeit 8 kam auf dieselbe Zahl, aber über einen anderen Stand. Der Zusammenschluss:
+    //     515  gemessen am Hauptstand-Stand 01c730f4
+    //   +   2  seither im Hauptstand bis 1139536b: `Antwort`, `WissensauskunftBereich`
+    //          (Diff 01c730f4..1139536b, keine entfernte Komponentendeklaration)
+    //   +   2  dieser Auftrag, im Hauptstand nicht enthalten: `AiSurfaceNotice`, `ErgebnisStufeMarke`
+    //   = 519. EHRLICH GESAGT: GERECHNET, nicht gemessen — die Hand startet keine Tests. Weicht der
+    // Prüflauf ab, nennt die Meldung die gemessene Zahl; die gehört dann hierher.
+    //
+    // NACHARBEIT 10 · GEMESSEN 522. Am Kandidaten 46e7f627 meldete der Sammler wörtlich „gemessen:
+    // 522 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 669 Quelldateien … expected
+    // { komponenten: 522, … } to deeply equal { komponenten: 519, … }"
+    // (HISTORIE/nacharbeit-10/PRUEFUNG/nacharbeit-9-komponentensammler.log). Die Rechnung 519 war
+    // für ihren Stand richtig; danach wurde der Hauptstand 15102c19d eingemischt, und der bringt
+    // laut Diff 1139536b..15102c19d genau DREI Komponenten mit: `LueckenAnsprechpartner`,
+    // `Vorschlagsliste`, `Vorschlag` — keine entfernt. 519 + 3 = 522 deckt sich mit der Messung.
+    // `anbieter` 1 und `traeger` 2 sind unverändert — beide Seiten der Meldung nennen 1 und 2.
+    //
+    // NACHARBEIT 11 · GEMESSEN 524. Am Kandidaten 54b5f032 meldete der Sammler wörtlich „gemessen:
+    // 524 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 672 Quelldateien … expected
+    // { komponenten: 524, … } to deeply equal { komponenten: 522, … }"
+    // (HISTORIE/nacharbeit-11/PRUEFUNG/nacharbeit-10-komponentensammler.log). Erneut kam ein
+    // Hauptstand dazu (13bf9f2bd); laut Diff 15102c19d..13bf9f2bd bringt er genau ZWEI Komponenten
+    // mit — `VerantwortungUebergabe`, `Arbeitsflaeche` — und entfernt keine. 522 + 2 = 524 deckt
+    // sich mit der Messung. Dieser Auftrag hat seit Nacharbeit 2 kein Bauteil hinzugefügt.
+    //
+    // NACHARBEIT 13 (Integration Hauptstand 1322621a): laut Diff 13bf9f2bd..1322621a bringt der
+    // Hauptstand SIEBEN Komponentendeklarationen mit und entfernt keine — `GeteilterStandNachlader`,
+    // `FundZeile`, `Eintrag`, `Bedingungswechsel`, `UebergabeVorschauInhalt`, `Wissensuebergabe`,
+    // `Verantwortung`. 524 + 7 = 531. EHRLICH GESAGT: GERECHNET, nicht gemessen (dasselbe
+    // Diff-Muster lag in Nacharbeit 10 und 11 jeweils genau auf der Messung). Weicht der Prüflauf
+    // ab, nennt die Meldung die gemessene Zahl; die gehört dann hierher.
+    //
+    // ZUSAMMENFÜHRUNG ADMIN-01 × Hauptstand 8f83f8ad (ADMIN-01 Nacharbeit 5): beide Reihen zählen
+    // auf DIESELBE Basis 529 (Hauptstand 1322621a). ADMIN-01 hat dort GEMESSEN 530 = 529 + 1
+    // (`AdminUebersicht`); der Hauptstand rechnet 531 = 529 + 2 (`AiSurfaceNotice`,
+    // `ErgebnisStufeMarke`). Zusammen: 529 + 1 + 2 = 532. EHRLICH GESAGT: GERECHNET, nicht
+    // gemessen; weicht der Prüflauf ab, gehört die gemessene Zahl hierher.
+    //
+    // Aus dem Auftragszweig produkt:20261007:veroeffentlichungsoptionen, dort gegen 451 gerechnet:
+    // GENAU EIN Bauteil kommt dazu:
     //     + `VeroeffentlichungBereich` (`components/veroeffentlichung/VeroeffentlichungBereich.tsx`)
     //       — Stand, Meldungswahl und Wirkung der Veröffentlichung, exportiert, genau ein Aufrufer:
     //       `BibliothekLesen`.
     // Kein Bild, kein `documentTitle`, kein `CAPTION_AI_TEXT` — nur Text, Auswahlfelder und ein
-    // Knopf; `anbieter` 1 und `traeger` 2 bleiben. EHRLICH GESAGT: die 452 ist GERECHNET (451 + 1),
-    // nicht gemessen — dieser Arbeitsbaum durfte keine Tests ausführen. Weicht der Prüflauf ab,
-    // nennt die Meldung oben die gemessene Zahl, und DIE gehört hier hin.
+    // Knopf; `anbieter` 1 und `traeger` 2 bleiben. Auf dem eigenen Stand GEMESSEN 488 (Kandidat
+    // 6e70163d, Hauptstand c62a9855: „gemessen: 488 Komponenten · 1 Anbieter · 2 Traeger ·
+    // Grundmenge 610 Quelldateien"); davon EIN Bauteil aus diesem Auftrag.
     //
-    // Nacharbeit 3 (veroeffentlichungsoptionen): GEMESSEN 488. Am Kandidaten 6e70163d (nach dem
-    // Einmischen von main c62a9855) meldete der Sammler wörtlich „gemessen: 488 Komponenten ·
-    // 1 Anbieter · 2 Traeger · Grundmenge 610 Quelldateien … expected { komponenten: 488, … } to
-    // deeply equal { komponenten: 452, … }". Dieser Auftrag trägt genau EIN Bauteil bei
-    // (`VeroeffentlichungBereich`, schon in der 452); die 36 darüber kamen mit dem eingemischten
-    // Hauptstand. Welche es
-    // sind, ist ohne Git-Verlauf an diesem Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und
-    // `traeger` 2 sind in derselben Meldung unverändert.
+    // ZUSAMMENFÜHRUNG veroeffentlichungsoptionen × Hauptstand fb1b3cae (Nacharbeit 4): der
+    // Hauptstand führt 532 ohne `VeroeffentlichungBereich`; mit ihm 532 + 1 = 533. EHRLICH GESAGT:
+    // GERECHNET, nicht gemessen — weicht der Prüflauf ab, gehört die gemessene Zahl hierher.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 488,
+      komponenten: 533,
       anbieter: 1,
       traeger: 2,
     });

@@ -34,6 +34,11 @@ export function notificationTarget(n: Pick<Notification, "kind" | "koId">): stri
   if (n.kind === "kenntnisnahme") {
     return n.koId ? `/wissen/${n.koId}` : null;
   }
+  // aufnahme:20260922:gesamt-wissen-frische: das eigene Wissensobjekt — dort stehen „Stimmt
+  // weiterhin" und die Frist.
+  if (n.kind === "frische") {
+    return n.koId ? `/wissen/${n.koId}` : null;
+  }
   // Veröffentlichung: der Eintrag selbst — dort steht, welche Fassung veröffentlicht ist.
   if (n.kind === "veroeffentlichung") {
     return n.koId ? `/wissen/${n.koId}` : null;
