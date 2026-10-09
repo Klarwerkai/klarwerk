@@ -1446,7 +1446,9 @@ export const endpoints = {
       accessExpiresAt?: string,
     ) => api.post<PublicUser>("/users", { name, email, password, role, accessExpiresAt }),
     approve: (id: string) => api.post<void>(`/auth/users/${id}/approve`),
-    setRole: (id: string, role: Role) => api.put<void>(`/users/${id}`, { role }),
+    // ADMIN-04: der Server antwortet mit dem gespeicherten Konto (`routes.ts`, PUT /api/users/:id) —
+    // die Bestätigung in der Kontokarte nennt die Rolle aus dieser Antwort, nicht die gewählte.
+    setRole: (id: string, role: Role) => api.put<PublicUser>(`/users/${id}`, { role }),
     // R-0554: mit `nachfolger` läuft vor dem Entfernen die Wissensübergabe (Auslöser aus der
     // Verzeichnispflege); bleibt etwas liegen, antwortet der Server 409 und entfernt nichts.
     remove: (id: string, nachfolger?: string) =>
