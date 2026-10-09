@@ -150,6 +150,15 @@ export const useGaps = () => useQuery({ queryKey: ["gaps"], queryFn: endpoints.g
 // FUNKE-FIX2 P0 (bens Erforderlich 1): nur aggregierte Zähler für die Startseite (kein Volltext-Fetch).
 export const useGapsSummary = () =>
   useQuery({ queryKey: ["gaps", "summary"], queryFn: endpoints.gaps.summary });
+// R-1663 / R-2178: Ansprechpartner zu EINER Lücke — erst auf ausdrückliches Aufklappen angefragt
+// (`enabled`), nie für die ganze Liste beim Laden der Seite. Kein Retry, wie bei useExpertise.
+export const useGapAnsprechpartner = (id: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ["gaps", id, "ansprechpartner"],
+    queryFn: () => endpoints.gaps.ansprechpartner(id),
+    enabled,
+    retry: false,
+  });
 export const useDrafts = () => useQuery({ queryKey: ["drafts"], queryFn: endpoints.drafts.list });
 export const useAnalytics = () =>
   useQuery({ queryKey: ["analytics"], queryFn: endpoints.analytics.overview });
@@ -190,10 +199,13 @@ export const useExpertise = (enabled: boolean) =>
 // ein 404 jetzt `data === null`, und die optionale Verkettung dort greift aus einem DATENzustand
 // statt aus einem übergangenen Fehler. Dass die Fläche dabei unsichtbar bleibt, ist ab jetzt
 // gemessen (tests/app/577-abwesenheit-verbraucher-mounted.test.tsx).
+// R-1663 / R-2178: der Abruf ist LAZY wie bei `useConflicts` — ein teilweise gesetztes
+// `endpoints`-Objekt darf eine Fläche nicht schon beim Rendern abreissen (fail-closed bleibt:
+// Fehler = aus).
 export const useFeatures = () =>
   useQuery({
     queryKey: ["features"],
-    queryFn: alsAbwesenheit(endpoints.features.get),
+    queryFn: alsAbwesenheit(() => endpoints.features.get()),
     staleTime: Number.POSITIVE_INFINITY,
     retry: false,
   });
@@ -391,5 +403,8 @@ export const useExternalPolicy = () =>
 
 // AUFTRAG-mega14 Block E (SCRUM-421): EINE Quelle für die geltenden Upload-Grenzen — dieselbe, die
 // der Server erzwingt. Jede Auswahlstelle liest hierüber; React Query bündelt die Abfrage.
+// Der Endpunkt wird erst IN der Abfrage gelesen: der Hinweis ist eine Nebenauskunft und darf seine
+// Fläche nie abstürzen lassen (`UploadLimitsHint.tsx`) — ein Fehler landet als Abfragefehler, und
+// der Hinweis zeigt dann nichts.
 export const useUploadLimits = () =>
-  useQuery({ queryKey: ["upload-limits"], queryFn: endpoints.uploadLimits.get });
+  useQuery({ queryKey: ["upload-limits"], queryFn: () => endpoints.uploadLimits.get() });

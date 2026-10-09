@@ -2207,6 +2207,10 @@ const nl: typeof de = {
     "De eerstgenoemde bronnen hebben het antwoord gedragen; de overige zijn geraadpleegd maar niet gebruikt.",
   "ask.attribution.unknown":
     "Welke van deze bronnen het antwoord gedragen heeft, was niet toe te wijzen — de AI leverde geen bruikbare bronverwijzingen. De lijst toont daarom alle geraadpleegde bronnen zonder markering, en „Heeft geholpen” is hier niet mogelijk.",
+  // R-0310/R-0325: het antwoord wordt achtergehouden omdat geen alinea aan een bron toe te wijzen was.
+  "ask.quellen.weitere": "Nog {{count}} bronnen tonen",
+  "ask.zuordnungUnbekannt":
+    "Er wordt geen antwoord getoond: het kon aan geen enkele bron worden toegewezen. Een alinea zonder bron wordt niet uitgegeven.",
   // JOB 3267 Q1 — drie toestanden, drie woorden, plus een vierde voor de toetsingsstand
   // (zie de Duitse ingang voor de bevinding die hiermee is verholpen).
   "ask.attribution.carrying.badge": "gebruikt",
@@ -3174,6 +3178,7 @@ const nl: typeof de = {
   "con.openKo": "Object openen",
   "con.compareOpen": "Beide naast elkaar zetten",
   "con.readonlyCompare": "Alleen-lezen vergelijking",
+  "con.caseList": "Alle openstaande conflicten ({{count}})",
   "con.detectedOn": "Herkend op {{date}}",
   "con.evidenceSideLabel": "Bewijs van deze kant",
   "con.evidenceBalance.neither":
@@ -3416,6 +3421,11 @@ const nl: typeof de = {
   "lib.lesemodus.listeEinblenden": "Resultatenlijst tonen",
   "lib.lesemodus.listeAusblenden": "Resultatenlijst verbergen",
   "lib.lesen.mehr": "Meer",
+  "lib.lesen.belegstelle.markiert": "Bewijspassage gemarkeerd.",
+  "lib.lesen.belegstelle.nichtGefunden":
+    "De geciteerde passage staat in deze versie niet letterlijk in de tekst.",
+  "lib.lesen.belegstelle.andereFassung":
+    "De passage hoort bij versie {{fassung}}; dit is versie {{aktuell}}. Er is niets gemarkeerd.",
   "lib.lesen.bilder_one": "{{count}} afbeelding",
   "lib.lesen.bilder_other": "{{count}} afbeeldingen",
   "lib.lesen.fehler": "Het item kon niet worden geladen.",
@@ -4660,6 +4670,22 @@ const nl: typeof de = {
   "mob.photo": "Foto",
   "mob.interview": "Interview",
   "mob.lookup": "Opzoeken",
+  "mob.modusGruppe": "Vastlegwijze",
+  "mob.modusGesperrt": "Eerst opslaan of leegmaken, dan de vastlegwijze wisselen.",
+  "mob.iv.frage1": "Waar gaat het over? Formuleer de kernboodschap in één zin.",
+  "mob.iv.frage2": "Onder welke voorwaarden of vanaf wanneer geldt dat?",
+  "mob.iv.frage3": "Welke maatregel of consequentie volgt daaruit?",
+  "mob.iv.frage4": "Welke trefwoorden/tags helpen bij het terugvinden? (komma-gescheiden)",
+  "mob.iv.fortschritt": "Vraag {{nummer}} van {{gesamt}}",
+  "mob.iv.weiter": "Volgende vraag",
+  "mob.iv.zurueck": "Vorige vraag",
+  "mob.iv.hinweis": "Elk antwoord staat meteen in het concept — opslaan kan na elke vraag.",
+  "mob.foto.kamera": "Camera",
+  "mob.foto.mediathek": "Fotobibliotheek",
+  "mob.foto.entfernen": "Foto verwijderen",
+  "mob.foto.fehler": "De foto kon niet worden gelezen.",
+  "mob.foto.max": "Maximaal {{max}} foto's per concept.",
+  "mob.foto.inArbeit": "Foto wordt voorbereid … opslaan kan zo meteen.",
   "mob.editing": "Concept wordt voortgezet.",
   "mob.formTitle": "Kernuitspraak",
   "mob.formStatement": "Wat is er gebeurd / wat geldt?",
