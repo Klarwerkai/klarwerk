@@ -1,7 +1,30 @@
 // Öffentliche API des Moduls ask.
 export { AskService, GESPRAECHSFADEN_MAX_FRAGEN } from "./src/service";
-export type { AskServiceDeps, AskResult, UngeprueftHinweis } from "./src/service";
+export type {
+  AskAntwortZuschnitt,
+  AskServiceDeps,
+  AskPruefrahmen,
+  AskResult,
+  UngeprueftHinweis,
+} from "./src/service";
+// AUFNAHME 20260922 · R-0346 (Ben nacharbeit-9): der Zuschnitt der Antwort selbst.
+export { schneideAntwortZu } from "./src/antwort-zuschnitt";
+export type {
+  BegriffHerkunft,
+  ZuschnittAbschnitt,
+  ZuschnittBegriff,
+  ZuschnittDerAntwort,
+  ZuschnittErgaenzung,
+} from "./src/antwort-zuschnitt";
 export { InMemoryGapRepo, type GapRepo } from "./src/repo";
+// R-1089: der Meldeweg „Antwort falsch / Quelle passt nicht" — die Glocke liest dieselbe Aktion.
+export {
+  ANTWORT_MELDE_GRUENDE,
+  ANTWORT_MELDUNG_ACTION,
+  isAntwortMeldeGrund,
+  type AntwortMeldeGrund,
+  type AntwortMeldungQuittung,
+} from "./src/antwort-meldung";
 export { PgGapRepo, ASK_SCHEMA } from "./src/repo-pg";
 // W3-A (KW-W3-18): der Repo-Kern der Antwortbelege. Die Fassade wird MITGESCHRIEBEN und nicht
 // nachgereicht — die W2-A-Lehre (Preflight 39 F1): eine exportierte Konstante, die die
@@ -68,6 +91,30 @@ export type {
   AnswerEvidenceInput,
   AnswerGrade,
 } from "./src/answer-evidence";
+// AUFNAHME 20260922 · Antwort-Erklärung: Belastbarkeit, Zustandsfamilie und Konfliktseiten an der
+// Antwort — gelesen aus der fertigen Einstufung, nicht neu eingestuft.
+export {
+  ANTWORT_LAGEN,
+  antwortBelastbarkeit,
+  antwortZuschnitt,
+  konfliktGegenseiten,
+} from "./src/answer-belastbarkeit";
+export type {
+  AntwortBelastbarkeit,
+  AntwortBelastbarkeitInput,
+  AntwortKonflikt,
+  AntwortLage,
+  AntwortZuschnitt,
+  ArgumentStufe,
+  BelegteBeziehung,
+  BelegteBeziehungsArt,
+  FrageAnlass,
+  FragendenRolle,
+  BelastbarkeitsGrund,
+  KonfliktSeite,
+  QuellenBelastbarkeit,
+  WoerterbuchErgaenzung,
+} from "./src/answer-belastbarkeit";
 export { redactGapForViewer, summarizeGaps } from "./src/gap-visibility";
 // R-1663 / R-2178: begründete Ansprechpartner-Vorschläge zu einer Wissenslücke.
 export type {

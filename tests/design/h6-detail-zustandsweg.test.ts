@@ -384,6 +384,15 @@ function matrixProfil(): Quelle[] {
       behaelter: "detail-wirkung",
       inhalt: t("funke.impact.contributions"),
     },
+    {
+      // R-0562: ohne eingerichteten zweiten Faktor steht nach der Erholung der Einrichtungsknopf.
+      id: "Profil · Zwei-Faktor-Anmeldung · /api/auth/second-factor",
+      pfad: "/api/auth/second-factor",
+      reiter: "",
+      zeile: '[data-testid="zeile-zweifaktor"]',
+      behaelter: "detail-zweifaktor",
+      inhalt: t("zweifaktor.profil.starten"),
+    },
   ];
 }
 
@@ -1237,7 +1246,11 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
   it("K2 · KALIBRIERUNG: auch die Kontenfläche selbst trägt ohne Störung keinen Fehlerzustand", async () => {
     const s = stand as Stand;
     s.stoerung = null;
-    await neuLaden("/admin", '[data-testid="flaeche-nutzer"] button[data-einst="zeile"]');
+    // ADMIN-01: die Kontenfläche hat ihre eigene Adresse; `/admin` ist die Startseite.
+    await neuLaden(
+      "/admin?bereich=konten",
+      '[data-testid="flaeche-nutzer"] button[data-einst="zeile"]',
+    );
     const lage = await (s.seite as NonNullable<Stand["seite"]>).evaluate<{
       boxen: number;
       nutzer: number;
@@ -1595,8 +1608,17 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
       );
 
       // 5 — Frist erneut, Störung, Browserfokus: Fehler mit erhaltenem Cache.
-      await seite.waitForTimeout(ZAEHLER_FRISCHE_MS + 2_000);
+      //
+      // ADMIN-01 Nacharbeit 2: Die Störung steht AB JETZT, nicht erst nach der Frist. Grund ist der
+      // `GeteilterStandNachlader` (`app/GeteilterStandNachlader.tsx`, Basisstand 1322621a): er lädt
+      // aktive `["kos"]`- und `["audit"]`-Abfragen im Takt `GETEILTE_LISTEN_TAKT_MS` (60 s) nach.
+      // Fiel ein Takt in die Wartezeit, war der Stand beim Fokus wieder frisch — der Fokus rief
+      // nichts ab, und die erst danach gesetzte Störung traf keinen Abruf mehr (rot nur für Papierkorb
+      // und beide /api/audit-Karten, genau die Quellen dieser Präfixe). Mit früher Störung scheitert
+      // jeder Abruf dieses Pfades — der des Takts wie der des Fokus —, der letzte Erfolg bleibt der aus
+      // Schritt 4, und nach der Frist ist er sicher abgelaufen. Erwartet wird unverändert dasselbe.
       s.stoerung = q.pfad;
+      await seite.waitForTimeout(ZAEHLER_FRISCHE_MS + 2_000);
       const vorFehler = s.abrufe.get(q.pfad) ?? 0;
       await seite.evaluate(fn(FOKUS));
       const gescheitert = await warteAufLage(
@@ -1873,6 +1895,9 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     useAnalytics: "/api/analytics",
     useValidationBoard: "/api/validation/board",
     useMyImpact: "/api/me/impact",
+    // R-0562: der Stand der eigenen Zwei-Faktor-Anmeldung — Zeile und Karte auf `/profil` teilen
+    // denselben Abfrageschlüssel, gestört wird also genau ein Pfad.
+    "authApi.secondFactorStatus": "/api/auth/second-factor",
     // R-0913: die Betriebsschalter der Demodatenkarte — Fall `SCH · Demodaten · /api/features`.
     useFeatures: "/api/features",
   };
