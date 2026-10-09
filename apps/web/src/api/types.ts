@@ -2262,12 +2262,16 @@ export interface ZweitmeinungAntwort {
   sources: string[];
   citedSources: string[];
   demo: boolean;
+  // Ben (Nacharbeit 17): die Herkunftsmarke, nur bei Modellherkunft (Regel `kiHerkunftAus`).
+  aiGenerated?: unknown;
 }
 export type ZweitmeinungErgebnis =
   | {
       status: "verglichen";
       ersteStufe: ZweitmeinungStufe;
       zweiteStufe: ZweitmeinungStufe;
+      // Ben (Nacharbeit 17): Antwort A, wie sie verglichen wurde (vor jedem Zuschnitt).
+      erste: ZweitmeinungAntwort;
       zweite: ZweitmeinungAntwort;
       abweichend: boolean;
       abweichungen: ZweitmeinungAbweichung[];

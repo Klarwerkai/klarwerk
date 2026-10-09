@@ -29,6 +29,7 @@ import type {
   ZweitmeinungErgebnis,
   ZweitmeinungStufe,
 } from "../../api/types";
+import { kiHerkunftAus } from "../../lib/kiHerkunft";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { AiCostHint } from "../AiCostHint";
 import { AiGeneratedNotice } from "../AiGeneratedNotice";
@@ -81,7 +82,9 @@ function Spalte({
           ))}
         </ul>
       ) : null}
-      <AiGeneratedNotice className="mt-2 block" />
+      {/* Ben (Nacharbeit 17): dieselbe Regel wie die Antwortkarte (`kiHerkunftAus`, R-0604) —
+        die Kennzeichnung nur bei belegter Modellherkunft, nie für den deterministischen Rückfall. */}
+      {kiHerkunftAus(antwort) === "ki" ? <AiGeneratedNotice className="mt-2 block" /> : null}
     </div>
   );
 }
@@ -180,13 +183,9 @@ export function Zweitmeinung({
       {antwort && ergebnis?.status === "verglichen" ? (
         <Gegenueberstellen
           ergebnis={ergebnis}
-          erste={{
-            answered: antwort.result.answered,
-            answer: antwort.result.answer,
-            sources: antwort.result.sources,
-            citedSources: antwort.result.citedSources ?? [],
-            demo: antwort.result.demo,
-          }}
+          // Ben (Nacharbeit 17): ein Zuschnitt (R-0346) hat die ausgelieferte Antwort nach dem
+          // Vergleich ergänzt — das steht außerhalb der Gegenüberstellung, nicht in Spalte A.
+          ergaenzt={antwort.result.answer !== ergebnis.erste.answer}
           stufe={stufe}
           titelVon={titelVon}
         />
@@ -197,12 +196,12 @@ export function Zweitmeinung({
 
 function Gegenueberstellen({
   ergebnis,
-  erste,
+  ergaenzt,
   stufe,
   titelVon,
 }: {
   ergebnis: Gegenueberstellung;
-  erste: ZweitmeinungAntwort;
+  ergaenzt: boolean;
   stufe: (wert: ZweitmeinungStufe) => string;
   titelVon: (id: string) => string | undefined;
 }): JSX.Element {
@@ -235,7 +234,7 @@ function Gegenueberstellen({
         <Spalte
           testId="ask-zweitmeinung-a"
           kopf={t("zweitmeinung.ersteAntwort", { stufe: stufe(ergebnis.ersteStufe) })}
-          antwort={erste}
+          antwort={ergebnis.erste}
           titelVon={titelVon}
         />
         <Spalte
@@ -245,6 +244,11 @@ function Gegenueberstellen({
           titelVon={titelVon}
         />
       </div>
+      {ergaenzt ? (
+        <p data-testid="ask-zweitmeinung-ergaenzt" className="text-[12px] text-muted-2">
+          {t("zweitmeinung.ergaenztAusserhalb")}
+        </p>
+      ) : null}
       <p className="text-[12px] text-muted-2">
         {t("zweitmeinung.erklaerung")} {t("zweitmeinung.neuGestellt")}
       </p>

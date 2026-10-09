@@ -17,7 +17,11 @@ export interface Attrappe {
   kandidaten: () => string[][];
 }
 
-export function attrappe(name: string, text: string | Error): Attrappe {
+/**
+ * `demo: true` (Ben, Nacharbeit 17): das Glied meldet sich wie der deterministische Rückfall —
+ * dann darf an seiner Antwort keine KI-Marke stehen (R-0604).
+ */
+export function attrappe(name: string, text: string | Error, demo = false): Attrappe {
   const gesehen: string[][] = [];
   const basis = new DeterministicProvider();
   const provider = Object.assign(Object.create(basis) as ReasonerProvider, {
@@ -36,7 +40,7 @@ export function attrappe(name: string, text: string | Error): Attrappe {
         answer: text,
         sources: ids,
         citedSources: ids.slice(0, 1),
-        demo: false,
+        demo,
       };
     },
   });

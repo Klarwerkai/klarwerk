@@ -517,6 +517,10 @@ export type ZweitmeinungErgebnis =
       status: "verglichen";
       ersteStufe: ZweitmeinungStufe;
       zweiteStufe: ZweitmeinungStufe;
+      // Ben (Nacharbeit 17): die ERSTE Modellantwort, genau so, wie sie verglichen wurde — vor
+      // jedem späteren Zuschnitt durch den Fragedienst (R-0346). Spalte A zeigt diesen Text, damit
+      // Gegenüberstellung und Abgleich sich auf dasselbe Paar beziehen.
+      erste: ZweitmeinungAntwort;
       zweite: ZweitmeinungAntwort;
       // `true` genau dann, wenn `abweichungen` nicht leer ist — ein Warnzeichen, dem jemand
       // nachgehen muss. `false` heißt NICHT „beide stimmen inhaltlich überein", sondern „der Abgleich

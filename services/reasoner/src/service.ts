@@ -93,6 +93,7 @@ import type {
   ReasonerZweitmeinungWahl,
   Relevanztext,
   StructureResult,
+  ZweitmeinungAntwort,
   ZweitmeinungErgebnis,
   ZweitmeinungGrund,
   ZweitmeinungStufe,
@@ -493,6 +494,30 @@ export const MAX_GROUP_CANDIDATES = 200;
 // `fallbackReason === "confidential"` ZUERST (titel-vorschlag.ts:139) — ein vertrauliches Bild darf
 // über den Umweg eines Titels keine Aussage erzeugen. Wer diese Funktion vor dem Setzen von
 // `fallbackReason` aufruft, hebelt genau diese Prüfung aus.
+// R-0604 (G22, mega83 A) — DIE EINE REGEL DER HERKUNFTSMARKE EINER ANTWORT: gesetzt nur, wenn
+// wirklich ein Modell geantwortet hat. Der deterministische Rückfall stellt Sätze aus geprüftem
+// Wissen regelbasiert zusammen; ihn „von KI erzeugt" zu nennen, war die Falschaussage aus G22.
+// Ben (Nacharbeit 17): `answer` und beide Antworten der Zweitmeinung gehen durch genau diese
+// Funktion — kein Weg setzt die Marke an ihr vorbei.
+function mitHerkunftsmarke(ergebnis: AnswerResult): AnswerResult {
+  return ergebnis.demo ? ergebnis : { ...ergebnis, aiGenerated: aiGeneratedMark("answer", false) };
+}
+
+// R-0305/R-1099: eine Modellantwort, wie sie gegenübergestellt UND verglichen wird. Dieselbe
+// Quellenpflicht wie im Fragedienst (SCRUM-490 R2 A2): „beantwortet" ohne Quelle ist keine belegte
+// Antwort und steht als ehrliche Leer-Antwort da. Die Herkunftsmarke reist nur mit, wenn sie da ist.
+function gegenueberstellbar(ergebnis: AnswerResult): ZweitmeinungAntwort {
+  const belegt = ergebnis.answered && ergebnis.sources.length > 0;
+  return {
+    answered: belegt,
+    answer: belegt ? ergebnis.answer : null,
+    sources: ergebnis.sources,
+    citedSources: belegt ? ergebnis.citedSources : [],
+    demo: ergebnis.demo,
+    ...(ergebnis.aiGenerated ? { aiGenerated: ergebnis.aiGenerated } : {}),
+  };
+}
+
 function mitTitelVorschlag(ergebnis: DescribeImageResult): DescribeImageResult {
   const vorschlag = titelVorschlag(ergebnis);
   return vorschlag.grund === "abgeleitet" ? { ...ergebnis, titelVorschlag: vorschlag } : ergebnis;
@@ -2453,7 +2478,7 @@ export class Reasoner {
     // R-0604 (G22, mega83 A): gesetzt wird sie aber nur, wenn wirklich ein Modell geantwortet hat.
     // Der deterministische Rückfall stellt Sätze aus geprüftem Wissen regelbasiert zusammen — ihn
     // „von KI erzeugt" zu nennen, war genau die Falschaussage aus G22.
-    return result.demo ? result : { ...result, aiGenerated: aiGeneratedMark("answer", false) };
+    return mitHerkunftsmarke(result);
   }
 
   // ==============================================================================================
@@ -2495,7 +2520,9 @@ export class Reasoner {
       },
     });
     const ersterProvider = ersterLauf.provider;
-    const erste = { ...ersteRoh, aiGenerated: aiGeneratedMark("answer", ersteRoh.demo) };
+    // Ben (Nacharbeit 17): dieselbe Regel wie `answer` (R-0604) — die KI-Marke NUR, wenn wirklich
+    // ein Modell geantwortet hat; der deterministische Rückfall wird nicht „von KI erzeugt" genannt.
+    const erste = mitHerkunftsmarke(ersteRoh);
     const nicht = (grund: ZweitmeinungGrund) => ({
       erste,
       zweitmeinung: { status: "nicht_moeglich" as const, grund },
@@ -2518,32 +2545,21 @@ export class Reasoner {
       }
       return nicht("fehlgeschlagen");
     }
-    // Dieselbe Quellenpflicht wie im Fragedienst (SCRUM-490 R2 A2): „beantwortet" ohne Quelle ist
-    // keine belegte Antwort und wird als ehrliche Leer-Antwort gegenübergestellt.
-    const belegt = zweiteRoh.answered && zweiteRoh.sources.length > 0;
-    const zweite = {
-      answered: belegt,
-      answer: belegt ? zweiteRoh.answer : null,
-      sources: zweiteRoh.sources,
-      citedSources: belegt ? zweiteRoh.citedSources : [],
-      demo: zweiteRoh.demo,
-      aiGenerated: aiGeneratedMark("answer", zweiteRoh.demo),
-    };
-    const ersteBelegt = erste.answered && erste.sources.length > 0;
-    const abweichungen = vergleicheAntworten(
-      {
-        answered: ersteBelegt,
-        answer: ersteBelegt ? erste.answer : null,
-        citedSources: ersteBelegt ? erste.citedSources : [],
-      },
-      zweite,
-    );
+    // Ben (Nacharbeit 17): Vergleich und Gegenüberstellung beziehen sich auf DASSELBE Paar — die
+    // beiden Modellantworten, wie sie verglichen wurden. Die erste wird deshalb HIER festgehalten
+    // und mitgeliefert (`zweitmeinung.erste`): der Fragedienst kann die Antwort danach noch
+    // zuschneiden (R-0346, Ergänzungen aus Voraussetzungen), und diese Ergänzung darf weder in den
+    // Abgleich noch in Spalte A geraten. Sie steht außerhalb des Vergleichs an der Antwort selbst.
+    const ersteVerglichen = gegenueberstellbar(erste);
+    const zweite = gegenueberstellbar(mitHerkunftsmarke(zweiteRoh));
+    const abweichungen = vergleicheAntworten(ersteVerglichen, zweite);
     return {
       erste,
       zweitmeinung: {
         status: "verglichen",
         ersteStufe: this.stufeVon(ersterProvider),
         zweiteStufe: this.stufeVon(wahl.provider),
+        erste: ersteVerglichen,
         zweite,
         abweichend: abweichungen.length > 0,
         abweichungen,

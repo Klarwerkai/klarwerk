@@ -9,6 +9,9 @@
 //        und im Prüfprotokoll (ohne Frage- und Antworttext, ohne Anbieter- oder Modellnamen)
 //   F2 · der Weg des Add-ins (`retrievalOnly`) bleibt unberührt — kein Modell, kein Feld
 //   F3 · ohne Anforderung fragt der Dienst nur das eine Modell und trägt kein Feld
+//   F4 · Ben (Nacharbeit 17): mit aktivem Antwortzuschnitt (R-0346) — die ausgelieferte Antwort
+//        ist ergänzt, die Gegenüberstellung trägt aber die verglichene Modellantwort A; die
+//        Ergänzung (eine Zahl aus einer Voraussetzung) erzeugt KEINE Abweichung
 import { describe, expect, it } from "vitest";
 import { InMemoryGapRepo } from "../../services/ask/src/repo";
 import { AskService } from "../../services/ask/src/service";
@@ -20,20 +23,22 @@ import { attrappe } from "./attrappe";
 
 const FRAGE = "Bei welchem Druck wird das Ventil Kranichsee geschlossen?";
 
-async function aufbau() {
+async function aufbau(textA = "Ab 5 bar schließen [1].", textB = "Ab 7 bar schließen [1].") {
   const koService = new KoService({ repo: new InMemoryKoRepo() });
   await koService.activateSearchProjectionV2();
   // R-0473: jeder Fragebegriff muss in der Quelle stehen — sonst wird sie gar nicht Kandidat.
+  // Die Voraussetzung trägt eine Zahl: ein Zuschnitt (R-0346) hängt sie an die Antwort an (F4).
   const ventil = await koService.create({
     title: "Ventil Kranichsee: Druck beim Schließen",
     statement: "Das Ventil Kranichsee wird bei hohem Druck geschlossen.",
     type: "best_practice",
     category: "Anlage 1",
     author: "anna",
+    conditions: ["Anlage unter 40 Grad"],
   });
   await koService.setValidationState(ventil.id, { trust: 90, status: "validiert" });
-  const openai = attrappe("cloud:openai:attrappe", "Ab 5 bar schließen [1].");
-  const lokal = attrappe("local:attrappe", "Ab 7 bar schließen [1].");
+  const openai = attrappe("cloud:openai:attrappe", textA);
+  const lokal = attrappe("local:attrappe", textB);
   const reasoner = new Reasoner(
     undefined,
     undefined,
@@ -104,5 +109,28 @@ describe("R-0305/R-1099 · AskService mit Zweitmeinung", () => {
     expect(openai.rufe()).toBe(1);
     expect(lokal.rufe()).toBe(0);
     expect(await audit.list({ action: "ask.zweitmeinung" })).toEqual([]);
+  });
+
+  it("F4 · Zweitmeinung mit aktivem Antwortzuschnitt: verglichen wird das Modellpaar", async () => {
+    // Beide Modelle sagen dasselbe (5 bar) — der Abgleich darf keine Abweichung finden.
+    const { ask } = await aufbau("Ab 5 bar schließen [1].", "Bei 5 bar schließen [1].");
+    const aus = await ask.ask(FRAGE, "pedi", "de", { zweitmeinung: true }, undefined, {
+      tiefe: "ausfuehrlich",
+      fachsprache: "fach",
+      reihenfolge: [],
+    });
+    // Die AUSGELIEFERTE Antwort ist zugeschnitten: die Voraussetzung samt Zahl ist angehängt.
+    expect(aus.antwortZuschnitt).toBeDefined();
+    expect(aus.result.answer).toContain("Anlage unter 40 Grad");
+    expect(aus.zweitmeinung?.status).toBe("verglichen");
+    if (aus.zweitmeinung?.status !== "verglichen") {
+      return;
+    }
+    // Spalte A und Abgleich beziehen sich auf die Modellantwort selbst, nicht auf den Zuschnitt.
+    expect(aus.zweitmeinung.erste.answer).toBe("Ab 5 bar schließen [1].");
+    expect(aus.zweitmeinung.erste.answer).not.toContain("40 Grad");
+    expect(aus.zweitmeinung.zweite.answer).toBe("Bei 5 bar schließen [1].");
+    expect(aus.zweitmeinung.abweichend).toBe(false);
+    expect(aus.zweitmeinung.abweichungen).toEqual([]);
   });
 });

@@ -169,6 +169,40 @@ describe("R-0305/R-1099 · Reasoner.answerMitZweitmeinung", () => {
     expect(reasoner.publicStatus().zweitmeinungBillable).toBe(false);
   });
 
+  it("Z11 · Ben (Nacharbeit 17): die KI-Marke nur bei Modellherkunft — für beide Seiten", async () => {
+    // A meldet sich wie der deterministische Rückfall (`demo: true`), B ist ein Modell.
+    const openai = attrappe("cloud:openai:attrappe", "Ab 5 bar schließen [1].", true);
+    const lokal = attrappe("local:attrappe", "Bei 5 bar schließen [1].");
+    const reasoner = new Reasoner(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lokal.provider,
+      undefined,
+      { anbieter: { openai: openai.provider } },
+    );
+    await reasoner.setTaskConfig(
+      mitKiFreigabe({ global: "openai", perTask: {}, zweitmeinung: "local" }),
+    );
+    const { erste, zweitmeinung } = await reasoner.answerMitZweitmeinung(FRAGE, KONTEXT, "de");
+    // Dieselbe Regel wie `answer` (R-0604): keine Marke am deterministischen Ergebnis.
+    expect(erste.aiGenerated).toBeUndefined();
+    expect(zweitmeinung.status).toBe("verglichen");
+    if (zweitmeinung.status !== "verglichen") {
+      return;
+    }
+    // Die verglichene Antwort A wird mitgeliefert — mit derselben Herkunft wie die Antwort selbst.
+    expect(zweitmeinung.erste.answer).toBe(erste.answer);
+    expect(zweitmeinung.erste.demo).toBe(true);
+    expect(zweitmeinung.erste.aiGenerated).toBeUndefined();
+    expect(zweitmeinung.zweite.aiGenerated).toMatchObject({
+      aiGenerated: true,
+      task: "answer",
+      mode: "model",
+    });
+  });
+
   it("Z8 · die Wahl: weglassen = unverändert, null = aus, Unbekanntes = Fehler, Neustart überlebt", async () => {
     const { reasoner, policy } = aufbau("A [1].", "B [1].");
     await reasoner.setTaskConfig({ global: "auto", perTask: {}, zweitmeinung: "local" });

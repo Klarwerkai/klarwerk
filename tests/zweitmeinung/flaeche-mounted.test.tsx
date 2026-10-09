@@ -12,6 +12,10 @@
 //   M2 · keine Abweichung: der ehrliche Satz statt einer Warnung, die Grenze bleibt sichtbar
 //   M3 · kein Zweitmodell gewählt: der Grund steht da, keine Gegenüberstellung
 //   M4 · der Kostenhinweis folgt `billable`
+//   M5 · Ben (Nacharbeit 17): KI-Kennzeichnung je Spalte nur bei Modellherkunft (`kiHerkunftAus`)
+//   M6 · Ben (Nacharbeit 17): Spalte A ist die verglichene Antwort; ein späterer Zuschnitt (R-0346)
+//        steht als eigener Hinweis außerhalb des Vergleichs
+//   M7 · ohne Zuschnitt kein solcher Hinweis
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const draht = vi.hoisted(() => ({
@@ -61,12 +65,31 @@ function ergebnis(zweitmeinung: unknown) {
   };
 }
 
+// Die Servermarke einer Modellantwort (`aiGeneratedMark("answer", false)`) — nur sie gilt als KI.
+const MODELLMARKE = {
+  aiGenerated: true,
+  task: "answer",
+  mode: "model",
+  at: "2026-10-09T08:00:00.000Z",
+};
+
+// Antwort A, wie sie verglichen wurde — vor jedem Zuschnitt (Ben, Nacharbeit 17).
+const ERSTE = {
+  answered: true,
+  answer: "Ab 5 bar schließen [1].",
+  sources: ["k1"],
+  citedSources: ["k1"],
+  demo: false,
+  aiGenerated: MODELLMARKE,
+};
+
 const ZWEITE = {
   answered: true,
   answer: "Ab 7 bar schließen [1].",
   sources: ["k1"],
   citedSources: ["k1"],
   demo: false,
+  aiGenerated: MODELLMARKE,
 };
 
 const flush = async (): Promise<void> => {
@@ -125,6 +148,7 @@ describe("R-0305/R-1099 · die Zweitmeinung auf der Fragenseite", () => {
       status: "verglichen",
       ersteStufe: "cloud",
       zweiteStufe: "local",
+      erste: ERSTE,
       zweite: ZWEITE,
       abweichend: true,
       abweichungen: ["zahlen"],
@@ -158,6 +182,7 @@ describe("R-0305/R-1099 · die Zweitmeinung auf der Fragenseite", () => {
       status: "verglichen",
       ersteStufe: "cloud",
       zweiteStufe: "cloud",
+      erste: ERSTE,
       zweite: { ...ZWEITE, answer: "Bei 5 bar schließen [1]." },
       abweichend: false,
       abweichungen: [],
@@ -185,5 +210,66 @@ describe("R-0305/R-1099 · die Zweitmeinung auf der Fragenseite", () => {
     aufraeumen?.();
     const ohne = await montieren(false);
     expect(ohne.querySelector('[data-testid="ai-cost-hint"]')).toBeNull();
+  });
+
+  it("M5 · Ben (Nacharbeit 17): eine deterministische Antwort A trägt KEINE KI-Kennzeichnung", async () => {
+    // Der deterministische Rückfall: `demo: true` und GAR KEINE Marke (R-0604).
+    const { aiGenerated: _keineMarke, ...ohneMarke } = ERSTE;
+    const ohneModell = { ...ohneMarke, demo: true };
+    draht.antwort = ergebnis({
+      status: "verglichen",
+      ersteStufe: "deterministic",
+      zweiteStufe: "local",
+      erste: ohneModell,
+      zweite: ZWEITE,
+      abweichend: true,
+      abweichungen: ["zahlen"],
+    });
+    const c = await montieren();
+    await einholen(c);
+    const spalteA = c.querySelector('[data-testid="ask-zweitmeinung-a"]');
+    const spalteB = c.querySelector('[data-testid="ask-zweitmeinung-b"]');
+    expect(spalteA?.querySelector('[data-testid="ai-generated-notice"]')).toBeNull();
+    expect(spalteB?.querySelector('[data-testid="ai-generated-notice"]')).not.toBeNull();
+    expect(text(c, "ask-zweitmeinung-a")).toContain("Antwort A · Ersatzmodus ohne Modell");
+  });
+
+  it("M6 · Ben (Nacharbeit 17): Spalte A zeigt die verglichene Antwort, ein Zuschnitt steht außerhalb", async () => {
+    // Der Fragedienst hat die ausgelieferte Antwort NACH dem Vergleich ergänzt (R-0346) — mit
+    // einer Zahl aus einer Voraussetzung. Sie darf weder in Spalte A noch in den Abgleich geraten.
+    const antwort = ergebnis({
+      status: "verglichen",
+      ersteStufe: "cloud",
+      zweiteStufe: "local",
+      erste: ERSTE,
+      zweite: { ...ZWEITE, answer: "Bei 5 bar schließen [1]." },
+      abweichend: false,
+      abweichungen: [],
+    });
+    antwort.result.answer = "Ab 5 bar schließen [1]. Voraussetzung: Anlage unter 40 Grad.";
+    draht.antwort = antwort;
+    const c = await montieren();
+    await einholen(c);
+    expect(text(c, "ask-zweitmeinung-a")).toContain("5 bar");
+    expect(text(c, "ask-zweitmeinung-a")).not.toContain("40 Grad");
+    expect(text(c, "ask-zweitmeinung-gleich")).toBe(
+      "Der automatische Abgleich hat keine Abweichung gefunden.",
+    );
+    expect(text(c, "ask-zweitmeinung-ergaenzt")).toBe(i18n.t("zweitmeinung.ergaenztAusserhalb"));
+  });
+
+  it("M7 · ohne Zuschnitt kein Ergänzungshinweis", async () => {
+    draht.antwort = ergebnis({
+      status: "verglichen",
+      ersteStufe: "cloud",
+      zweiteStufe: "local",
+      erste: ERSTE,
+      zweite: ZWEITE,
+      abweichend: true,
+      abweichungen: ["zahlen"],
+    });
+    const c = await montieren();
+    await einholen(c);
+    expect(c.querySelector('[data-testid="ask-zweitmeinung-ergaenzt"]')).toBeNull();
   });
 });
