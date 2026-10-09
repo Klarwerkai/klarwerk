@@ -69,7 +69,8 @@ const BEWEIS: Record<StartPanelId, string> = {
   kapital: t("funke.capital.title"),
   kollision: t("kollision.start.title"),
   stufe2: t("start.stufe2.title"),
-  hilfe: t("shelp.cycle.title"),
+  // R-0908: „Der Wissenskreis" statt „Der Knowledge-OS-Kreis" (`texte/fachwort.ts`).
+  hilfe: t("fachwort.kreis.titel"),
 };
 
 type BrowserFn = (arg: unknown) => unknown;
