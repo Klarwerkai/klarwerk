@@ -358,6 +358,8 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `PUT` | `/api/import/confluence/schalter` | `users.manage` | Rumpf `{ an: true \| false }` | 200 neuer Schalterstand | 400 `BAD_REQUEST`; 409 `IMPORT_NOT_RELEASED`; 503 `SWITCH_UNAVAILABLE` |
 | `GET` | `/api/import/sharepoint/zugang` | `users.manage` | — | 200 Zugangszustand | — |
 | `GET` | `/api/import/jira/zugang` | `users.manage` | — | 200 Zugangszustand | — |
+| `POST` | `/api/import/confluence/verbindungstest` | `users.manage` | — | 200 `{ geprueftAm, umfang, ergebnis, dauerMs }` (auch bei negativem Ergebnis; liest eine Seite des Space ohne Inhalt, schreibt nur das Prüfprotokoll) | — |
+| `GET` | `/api/admin/import/runs` | `users.manage` | Abfrage `limit` (1–200, Vorgabe 50) | 200 `{ verfuegbar, limit, ausloeserFestgehalten, runs[] }` (jüngste Läufe zuerst) | — |
 | `POST` | `/api/import/sharepoint/verbindungstest` | `users.manage` | — | 200 `{ geprueftAm, umfang, ergebnis, dauerMs }` (auch bei negativem Ergebnis; liest eine Listenseite, schreibt nur das Prüfprotokoll) | — |
 | `POST` | `/api/admin/import/confluence` | `users.manage` (Schalter `KLARWERK_CONFLUENCE_IMPORT`) | Rumpf `{ dryRun? }` | 200 Zusammenfassung bzw. 202 `{ importId, status: "QUEUED" }` | 503 `IMPORT_UNAVAILABLE`; 409 `IMPORT_ALREADY_RUNNING`; `IMPORT_FAILED` |
 | `POST` | `/api/admin/import/confluence/explore` | `users.manage` (Schalter wie oben) | — | 200 Erkundung | 503 `IMPORT_UNAVAILABLE`; `EXPLORE_FAILED` |

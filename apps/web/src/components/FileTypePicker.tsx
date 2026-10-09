@@ -282,7 +282,11 @@ export function FileTypePicker({
     if (hrefFor(source) !== null) {
       return;
     }
-    if (source.state === "active") {
+    // ADMIN-02 (Nacharbeit 2): „verfügbar" (gebaut, eingerichtet oder noch ungeprüft) löst den
+    // vorhandenen Fluss ebenso aus wie „aktiv" — die Kachel behauptet damit nur keine geprüfte
+    // Einsatzbereitschaft mehr. Ausgeschaltete und uneingerichtete Anbindungen tragen
+    // „unconfigured" und zeigen weiterhin nur den Hinweis.
+    if (source.state === "active" || source.state === "available") {
       setHint(null);
       onHintChange?.(null);
       onActivate(source.id);

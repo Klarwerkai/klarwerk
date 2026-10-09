@@ -57,12 +57,12 @@ import {
   importAccessState,
 } from "../../lib/importAccessState";
 import {
-  INTEGRATION_SCHRITT_OHNE_TEST,
   INTEGRATION_STATUS_TEXT,
   VERBINDUNGSTEST_TEXT,
   VERBINDUNGSTEST_UMFANG_TEXT,
   integrationStatus,
   juengererNachweis,
+  naechsterSchrittKey,
 } from "../../lib/integrationStatus";
 import { formatKoTimestamp } from "../../lib/koDates";
 import { Button, Card } from "../ui";
@@ -126,12 +126,7 @@ export function SharePointZugangKarte({ zugang }: { zugang: SharePointZugang }):
   const testZeit = test ? formatKoTimestamp(test.geprueftAm, i18n.language) : null;
   // Der nächste Schritt folgt dem ZUSTAND: ausgeschaltet/ohne Angaben/ungeprüft haben ihren Satz,
   // ein geprüfter oder gescheiterter Stand den Satz seines Testergebnisses.
-  const schrittKey =
-    (status === "geprueft" || status === "fehlgeschlagen") && test
-      ? VERBINDUNGSTEST_TEXT[test.ergebnis].schrittKey
-      : INTEGRATION_SCHRITT_OHNE_TEST[
-          status as Exclude<typeof status, "geprueft" | "fehlgeschlagen">
-        ];
+  const schrittKey = naechsterSchrittKey("sharepoint", status, test);
   return (
     <Card className="mb-4">
       <div className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">

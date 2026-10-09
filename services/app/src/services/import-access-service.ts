@@ -77,7 +77,12 @@
 // überlebt Neuladen und Neustart, ohne eine neue Ablage einzuführen. Die Nutzlast trägt nur feste
 // Wörter und eine Dauer: keinen Wert, keine Adresse, keinen Dateinamen.
 import type { AuditService } from "../../../audit";
-import { confluenceCredentialState } from "../../../confluence";
+import {
+  type ConfluenceSourceAdapter,
+  confluenceCredentialState,
+  confluenceVerbindungsfehler,
+  createConfluenceAdapterFromEnv,
+} from "../../../confluence";
 import { jiraCredentialState } from "../../../jira";
 import type { ImportRunRepo } from "../../../library-analytics";
 import {
@@ -108,12 +113,16 @@ export interface ImportAccessDeps {
   readonly audit?: AuditService;
   /** ADMIN-02: der Adapter des Verbindungstests. Injizierbar für Tests; Standard = Umgebung. */
   readonly sharepointAdapter?: () => SharePointSourceAdapter | undefined;
+  /** ADMIN-02: dasselbe für Confluence. Standard = die gecappte Fabrik aus der Umgebung. */
+  readonly confluenceAdapter?: () => ConfluenceSourceAdapter | undefined;
   /** ADMIN-02: die Frist des Verbindungstests in Millisekunden (Standard 10 s). */
   readonly verbindungstestFristMs?: number;
 }
 
 /** Die Handlung im Prüfprotokoll, unter der ein Verbindungstest festgehalten wird. */
 export const SHAREPOINT_VERBINDUNGSTEST_AKTION = "sharepoint-import.verbindungstest";
+/** ADMIN-02: dasselbe für Confluence — eigene Handlung, damit sich die Nachweise nicht mischen. */
+export const CONFLUENCE_VERBINDUNGSTEST_AKTION = "confluence-import.verbindungstest";
 
 /**
  * Die Frist des Verbindungstests. Bewusst KÜRZER als die Frist des Graph-Clients (15 s): nur so ist
@@ -137,9 +146,16 @@ export type VerbindungstestErgebnis =
 
 /**
  * Was geprüft wurde. `konfiguration`: nur lokal (Schalter/Angaben) — ohne Abruf, weil schon das den
- * Test beendet. `bibliothek-lesen`: eine Listenseite des Wurzelordners, nur Merkmale.
+ * Test beendet. `bibliothek-lesen`: eine Listenseite des SharePoint-Wurzelordners, nur Merkmale.
+ * `space-lesen` (Confluence): eine Seite des konfigurierten Space, nur Kennungen, ohne Inhalt.
  */
-export type VerbindungstestUmfang = "konfiguration" | "bibliothek-lesen";
+export type VerbindungstestUmfang = "konfiguration" | "bibliothek-lesen" | "space-lesen";
+
+const VERBINDUNGSTEST_UMFAENGE: readonly VerbindungstestUmfang[] = [
+  "konfiguration",
+  "bibliothek-lesen",
+  "space-lesen",
+];
 
 export interface Verbindungsnachweis {
   readonly geprueftAm: string;
@@ -169,14 +185,15 @@ function nachweisAus(at: string, payload: Record<string, unknown>): Verbindungsn
   if (
     typeof ergebnis !== "string" ||
     !(VERBINDUNGSTEST_ERGEBNISSE as readonly string[]).includes(ergebnis) ||
-    (umfang !== "konfiguration" && umfang !== "bibliothek-lesen")
+    typeof umfang !== "string" ||
+    !(VERBINDUNGSTEST_UMFAENGE as readonly string[]).includes(umfang)
   ) {
     return null;
   }
   return {
     geprueftAm:
       typeof geprueftAm === "string" && !Number.isNaN(Date.parse(geprueftAm)) ? geprueftAm : at,
-    umfang,
+    umfang: umfang as VerbindungstestUmfang,
     ergebnis: ergebnis as VerbindungstestErgebnis,
     dauerMs: typeof dauer === "number" && Number.isFinite(dauer) ? dauer : null,
   };
@@ -233,16 +250,29 @@ export interface ImportAccessStatus {
    */
   readonly lastConnectedAt: string | null;
   /**
-   * ADMIN-02, nur SharePoint: der zuletzt festgehaltene Verbindungstest — oder `null`, wenn keiner
+   * ADMIN-02, SharePoint und (Nacharbeit 2) Confluence: der zuletzt festgehaltene Verbindungstest — oder `null`, wenn keiner
    * belegt ist. Getrennt von `lastConnectedAt`: der eine sagt „die Gegenstelle hat geantwortet",
    * der andere „ein Import ist erfolgreich abgeschlossen worden".
    */
   readonly letzterVerbindungstest?: Verbindungsnachweis | null;
 }
 
+/** ADMIN-02: die zwei Systeme mit Verbindungstest. */
+type TestSystem = typeof SYSTEM | typeof SYSTEM_SHAREPOINT;
+
+const TEST_AKTION: Record<TestSystem, string> = {
+  confluence: CONFLUENCE_VERBINDUNGSTEST_AKTION,
+  sharepoint: SHAREPOINT_VERBINDUNGSTEST_AKTION,
+};
+
+/** Was ein lokal beendeter Test sagt — ohne Abruf, Umfang „konfiguration". */
+function lokalerNachweis(ergebnis: "ausgeschaltet" | "nicht-eingerichtet"): Verbindungsnachweis {
+  return { geprueftAm: new Date().toISOString(), umfang: "konfiguration", ergebnis, dauerMs: null };
+}
+
 export class ImportAccessService {
-  /** ADMIN-02: der jüngste Verbindungstest dieses Prozesses — Rückfall, wenn kein Protokoll trägt. */
-  private letzterTestImProzess: Verbindungsnachweis | null = null;
+  /** ADMIN-02: der jüngste Verbindungstest dieses Prozesses je System — Rückfall ohne Protokoll. */
+  private readonly letzterTestImProzess = new Map<TestSystem, Verbindungsnachweis>();
 
   constructor(private readonly deps: ImportAccessDeps) {}
 
@@ -261,7 +291,37 @@ export class ImportAccessService {
       credentialsUsable: credentials.usable,
       blocker: credentials.blocker,
       lastConnectedAt: await this.letzteVerbindung(SYSTEM),
+      // ADMIN-02: der zuletzt festgehaltene Verbindungstest — getrennt vom letzten Importerfolg.
+      letzterVerbindungstest: await this.letzterTest(SYSTEM),
     };
+  }
+
+  /**
+   * ADMIN-02 — DER BEWUSST GESTARTETE VERBINDUNGSTEST FÜR CONFLUENCE.
+   *
+   * Dieselbe Reihenfolge wie bei SharePoint: nicht freigegeben bzw. vom Betreiber ausgeschaltet
+   * („ausgeschaltet") und ohne brauchbare Angaben („nicht-eingerichtet") enden LOKAL. Erst dann
+   * geht EIN lesender Abruf hinaus — eine Seite des konfigurierten Space, `limit=1`, ohne Inhalt.
+   * Kein Lauf, kein Kandidat, keine Erkundung; festgehalten wird nur das Ergebnis.
+   */
+  async confluenceVerbindungstest(actor: string): Promise<Verbindungsnachweis> {
+    const zugang = await this.zugangsstatus();
+    let nachweis: Verbindungsnachweis;
+    if (!zugang.enabled) {
+      nachweis = lokalerNachweis("ausgeschaltet");
+    } else {
+      const adapter = zugang.credentialsUsable
+        ? (this.deps.confluenceAdapter ?? (() => createConfluenceAdapterFromEnv()))()
+        : undefined;
+      nachweis = adapter
+        ? await this.mitFrist(
+            () => adapter.pruefeVerbindung(),
+            "space-lesen",
+            confluenceVerbindungsfehler,
+          )
+        : lokalerNachweis("nicht-eingerichtet");
+    }
+    return this.halteFest(SYSTEM, nachweis, actor);
   }
 
   /**
@@ -311,7 +371,7 @@ export class ImportAccessService {
       credentialsUsable: credentials.usable,
       blocker: credentials.blocker,
       lastConnectedAt: await this.letzteVerbindung(SYSTEM_SHAREPOINT),
-      letzterVerbindungstest: await this.letzterSharepointTest(),
+      letzterVerbindungstest: await this.letzterTest(SYSTEM_SHAREPOINT),
     };
   }
 
@@ -324,12 +384,67 @@ export class ImportAccessService {
    * wird nur das Ergebnis im Prüfprotokoll.
    */
   async sharepointVerbindungstest(actor: string): Promise<Verbindungsnachweis> {
-    const nachweis = await this.fuehreSharepointTestAus();
+    let nachweis: Verbindungsnachweis;
+    if (!schalterAn("sharepointImport")) {
+      nachweis = lokalerNachweis("ausgeschaltet");
+    } else {
+      const adapter = sharepointCredentialState().usable
+        ? (this.deps.sharepointAdapter ?? (() => createSharePointAdapterFromEnv()))()
+        : undefined;
+      nachweis = adapter
+        ? await this.mitFrist(() => adapter.pruefeVerbindung(), "bibliothek-lesen", testErgebnisAus)
+        : lokalerNachweis("nicht-eingerichtet");
+    }
+    return this.halteFest(SYSTEM_SHAREPOINT, nachweis, actor);
+  }
+
+  /**
+   * Der EINE Abruf eines Verbindungstests, gegen die eigene Frist gerannt. Die Frist ist kürzer als
+   * die der Clients — nur so ist die Zeitüberschreitung ein eigenes Ergebnis.
+   */
+  private async mitFrist(
+    abrufen: () => Promise<unknown>,
+    umfang: Exclude<VerbindungstestUmfang, "konfiguration">,
+    deute: (err: unknown) => VerbindungstestErgebnis,
+  ): Promise<Verbindungsnachweis> {
+    const frist = this.deps.verbindungstestFristMs ?? SHAREPOINT_VERBINDUNGSTEST_FRIST_MS;
+    const start = Date.now();
+    let wecker: ReturnType<typeof setTimeout> | undefined;
+    const abgelaufen = new Promise<never>((_, ablehnen) => {
+      wecker = setTimeout(() => ablehnen(FRIST_ABGELAUFEN), frist);
+    });
+    const abruf = abrufen();
+    // Läuft die Frist zuerst ab, endet der Abruf später unbeachtet — seine Ablehnung darf dann
+    // nicht als unbehandelter Fehler den Prozess stören.
+    void abruf.catch(() => undefined);
+    let ergebnis: VerbindungstestErgebnis;
+    try {
+      await Promise.race([abruf, abgelaufen]);
+      ergebnis = "erreichbar";
+    } catch (err) {
+      ergebnis = err === FRIST_ABGELAUFEN ? "zeitueberschreitung" : deute(err);
+    } finally {
+      clearTimeout(wecker);
+    }
+    return {
+      geprueftAm: new Date(start).toISOString(),
+      umfang,
+      ergebnis,
+      dauerMs: Date.now() - start,
+    };
+  }
+
+  /** Hält einen Nachweis im Prüfprotokoll und im Prozess fest — nur Wörter, Zeitpunkt, Dauer. */
+  private async halteFest(
+    system: TestSystem,
+    nachweis: Verbindungsnachweis,
+    actor: string,
+  ): Promise<Verbindungsnachweis> {
     try {
       await this.deps.audit?.record({
         actor,
-        action: SHAREPOINT_VERBINDUNGSTEST_AKTION,
-        target: `import:${SYSTEM_SHAREPOINT}`,
+        action: TEST_AKTION[system],
+        target: `import:${system}`,
         payload: {
           geprueftAm: nachweis.geprueftAm,
           ergebnis: nachweis.ergebnis,
@@ -341,68 +456,19 @@ export class ImportAccessService {
       // Ein Protokollfehler nimmt dem Administrator nicht das Ergebnis, das gerade gemessen wurde.
       // Der Speicher in diesem Prozess hält es dann wenigstens bis zum Neustart.
     }
-    this.letzterTestImProzess = nachweis;
+    this.letzterTestImProzess.set(system, nachweis);
     return nachweis;
-  }
-
-  private async fuehreSharepointTestAus(): Promise<Verbindungsnachweis> {
-    const jetzt = (): string => new Date().toISOString();
-    if (!schalterAn("sharepointImport")) {
-      return {
-        geprueftAm: jetzt(),
-        umfang: "konfiguration",
-        ergebnis: "ausgeschaltet",
-        dauerMs: null,
-      };
-    }
-    const credentials = sharepointCredentialState();
-    const adapter = credentials.usable
-      ? (this.deps.sharepointAdapter ?? (() => createSharePointAdapterFromEnv()))()
-      : undefined;
-    if (!adapter) {
-      return {
-        geprueftAm: jetzt(),
-        umfang: "konfiguration",
-        ergebnis: "nicht-eingerichtet",
-        dauerMs: null,
-      };
-    }
-    const frist = this.deps.verbindungstestFristMs ?? SHAREPOINT_VERBINDUNGSTEST_FRIST_MS;
-    const start = Date.now();
-    let wecker: ReturnType<typeof setTimeout> | undefined;
-    const abgelaufen = new Promise<never>((_, ablehnen) => {
-      wecker = setTimeout(() => ablehnen(FRIST_ABGELAUFEN), frist);
-    });
-    const abruf = adapter.pruefeVerbindung();
-    // Läuft die Frist zuerst ab, endet der Abruf später unbeachtet — seine Ablehnung darf dann
-    // nicht als unbehandelter Fehler den Prozess stören.
-    void abruf.catch(() => undefined);
-    let ergebnis: VerbindungstestErgebnis;
-    try {
-      await Promise.race([abruf, abgelaufen]);
-      ergebnis = "erreichbar";
-    } catch (err) {
-      ergebnis = err === FRIST_ABGELAUFEN ? "zeitueberschreitung" : testErgebnisAus(err);
-    } finally {
-      clearTimeout(wecker);
-    }
-    return {
-      geprueftAm: new Date(start).toISOString(),
-      umfang: "bibliothek-lesen",
-      ergebnis,
-      dauerMs: Date.now() - start,
-    };
   }
 
   /**
    * Der zuletzt festgehaltene Test — aus dem Prüfprotokoll (überlebt Neuladen und Neustart) oder
    * aus diesem Prozess, je nachdem, welcher jünger ist.
    */
-  private async letzterSharepointTest(): Promise<Verbindungsnachweis | null> {
+  private async letzterTest(system: TestSystem): Promise<Verbindungsnachweis | null> {
     let ausProtokoll: Verbindungsnachweis | null = null;
     if (this.deps.audit) {
       try {
-        const eintraege = await this.deps.audit.list({ action: SHAREPOINT_VERBINDUNGSTEST_AKTION });
+        const eintraege = await this.deps.audit.list({ action: TEST_AKTION[system] });
         let letzter: { seq: number; at: string; payload: Record<string, unknown> } | null = null;
         for (const e of eintraege) {
           if (letzter === null || e.seq > letzter.seq) {
@@ -414,7 +480,7 @@ export class ImportAccessService {
         // Dieselbe Regel wie bei `letzteVerbindung`: die Auskunft antwortet trotzdem.
       }
     }
-    const imProzess = this.letzterTestImProzess;
+    const imProzess = this.letzterTestImProzess.get(system) ?? null;
     if (ausProtokoll === null || imProzess === null) {
       return ausProtokoll ?? imProzess;
     }

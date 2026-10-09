@@ -85,6 +85,7 @@ import { useTranslation } from "react-i18next";
 import { ApiError } from "../../api/client";
 import { useRole } from "../../app/RoleContext";
 import { formatKoTimestamp } from "../../lib/koDates";
+import { IMPORT_LAUFLISTE_KEY } from "../ImportLaufListe";
 import { Button, Card, SectionLabel } from "../ui";
 import { SharePointZugangKarte } from "./SharePointZugangKarte";
 import { SHAREPOINT_BEREICH_ANKER } from "./anker";
@@ -253,6 +254,8 @@ export function SharePointImportBereich(): JSX.Element | null {
       // Seite ohne Neuladen stimmt.
       void qc.invalidateQueries({ queryKey: ["import-candidates"] });
       void qc.invalidateQueries({ queryKey: ["sharepoint-zugang"] });
+      // ADMIN-02 (Nacharbeit 2): der neue Lauf steht sofort in der Importliste.
+      void qc.invalidateQueries({ queryKey: IMPORT_LAUFLISTE_KEY });
       void liste.refetch();
     },
   });

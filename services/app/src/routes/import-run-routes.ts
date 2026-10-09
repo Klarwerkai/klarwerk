@@ -52,6 +52,7 @@ import {
   importProviderKey,
 } from "../../../library-analytics";
 import type { Guards } from "../http";
+import { istLaufListe } from "../import-lauf-liste";
 import {
   type ImportRunSourceSync,
   InMemoryQuellabgleichRepo,
@@ -173,6 +174,9 @@ function elementNachAussen(ref: ImportRunItemRef, luecken: LueckenPaar = KEIN_LU
   };
 }
 
+/** ADMIN-02: höchstens so viele Läufe je Abruf der Importliste. */
+const MAX_LAUFLISTE = 200;
+
 export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
   const { importRuns, externalSources, guards } = deps;
   const quellabgleich = deps.quellabgleich ?? new InMemoryQuellabgleichRepo();
@@ -258,6 +262,40 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
   const nichtGefunden = { error: "NOT_FOUND", message: "Nicht gefunden." };
 
   return async (app) => {
+    // ==========================================================================================
+    // ADMIN-02 — DIE IMPORTLISTE: die jüngsten Läufe, jeder in derselben Form wie der Einzelweg.
+    // ==========================================================================================
+    //
+    // Dasselbe Recht wie jeder Lauflesweg (`users.manage`), VOR jedem Zugriff. Die Form je Lauf ist
+    // `laufNachAussen` — keine zweite Leitungsform. Die Zuständigkeit (wer einen Lauf ausgelöst
+    // hat) hält der Lauf NICHT fest; das sagt die Antwort ausdrücklich (`ausloeserFestgehalten`),
+    // statt eine Person zu erfinden. Kann die Ablage nicht auflisten, sagt die Antwort auch das
+    // (`verfuegbar: false`) — eine leere Liste hiesse sonst „es gab keine Läufe".
+    app.get<{ Querystring: { limit?: string } }>(
+      "/api/admin/import/runs",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return reply;
+        }
+        const roh = Number.parseInt(request.query?.limit ?? "", 10);
+        const limit = Number.isInteger(roh) && roh > 0 ? Math.min(roh, MAX_LAUFLISTE) : 50;
+        if (!istLaufListe(importRuns)) {
+          reply
+            .code(200)
+            .send({ verfuegbar: false, limit, ausloeserFestgehalten: false, runs: [] });
+          return reply;
+        }
+        const laeufe = await importRuns.juengsteLaeufe(limit);
+        const runs: ReturnType<typeof laufNachAussen>[] = [];
+        for (const lauf of laeufe) {
+          runs.push(laufNachAussen(lauf, await quellabgleich.lies(lauf.importId)));
+        }
+        reply.code(200).send({ verfuegbar: true, limit, ausloeserFestgehalten: false, runs });
+        return reply;
+      },
+    );
+
     app.get<{ Params: { importId: string } }>(
       "/api/admin/import/runs/:importId",
       async (request, reply) => {

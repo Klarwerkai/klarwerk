@@ -293,11 +293,13 @@ export const JSON_SOURCE_IDS = ["json", "json-file"] as const;
 // auf „available" (gebaut; Stand dieser Installation siehe Zugangsbereich). Den Stand DIESER
 // Installation setzt die Galerie aus der Zugangsauskunft (`systemKachelMitStatus`).
 //
-// PAKET 1 — Systeme. aktiv: Confluence · JSON-Import. verfügbar: SharePoint (Stand dieser
+// PAKET 1 — Systeme. aktiv: JSON-Import. verfügbar: Confluence · SharePoint (Stand dieser
 // Installation aus der Auskunft). bald: Jira. geplant: Word- und PDF-Dokumentquelle · MS Teams ·
 // Google Drive · DMS · PLM · ServiceNow · SAP · Notion · Slack · E-Mail.
 export const SYSTEM_SOURCES: readonly GallerySource[] = orderByState([
-  { id: "confluence", labelKey: "imp.gallery.src.confluence", state: "active" },
+  // ADMIN-02 (Nacharbeit 2): Confluence aus demselben Grund wie SharePoint nicht mehr fest „active"
+  // — ob die Anbindung hier eingeschaltet, eingerichtet und geprüft ist, sagt nur die Auskunft.
+  { id: "confluence", labelKey: "imp.gallery.src.confluence", state: "available" },
   { id: "json", labelKey: "imp.gallery.src.jsonImport", state: "active" },
   { id: "sharepoint", labelKey: "imp.gallery.src.sharepoint", state: "available" },
   { id: "jira", labelKey: "imp.gallery.src.jira", state: "soon" },

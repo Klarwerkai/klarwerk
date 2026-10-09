@@ -987,6 +987,26 @@ export const TABELLE: Zeile[] = [
     payload: {},
     erwartet: NUR_ADMIN,
   },
+  // ADMIN-02: derselbe Verbindungstest für Confluence. Ohne hinterlegte Confluence-Angaben endet er
+  // lokal, ohne Abruf — gemessen wird das Rechtetor.
+  {
+    gruppe: "importAccessRoutes",
+    methode: "POST",
+    pfad: "/api/import/confluence/verbindungstest",
+    belegstelle: "services/app/src/routes/import-access-routes.ts:181",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  // ADMIN-02: die Importliste — die jüngsten Läufe, nur für Verwaltende.
+  {
+    gruppe: "importRunRoutes",
+    methode: "GET",
+    pfad: "/api/admin/import/runs",
+    belegstelle: "services/app/src/routes/import-run-routes.ts:274",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
   // JOB 4086 · die zwei Türen des SharePoint-Imports. Sie stehen hier VOLLSTÄNDIG in der Abnahme
   // und nicht in der Restliste, und das geht, weil beide OHNE hinterlegte Zugangsdaten gar nichts
   // anrichten: der Adapter kommt nicht zustande, die Antwort ist ein 503 vor jedem Effekt. Die

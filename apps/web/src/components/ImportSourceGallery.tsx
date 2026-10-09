@@ -132,16 +132,23 @@ const NICHT_VERFUEGBAR: readonly string[] = ["soon", "planned"];
 export function ImportSourceGallery({
   onActivate,
   sharepointStatus = null,
+  confluenceStatus = null,
 }: {
   // Wird AUSSCHLIESSLICH für aktive Kacheln aufgerufen (echter, bestehender Fluss). Für bald/geplant
   // bleibt dieser Callback bewusst unberührt — kein Import, kein Konnektor-Call (das steuert der Picker).
   onActivate: (id: string) => void;
   /** ADMIN-02: der Zustand der SharePoint-Anbindung in dieser Installation, sofern bekannt. */
   sharepointStatus?: IntegrationStatus | null;
+  /** ADMIN-02 (Nacharbeit 2): derselbe Zustand für Confluence, aus der Confluence-Auskunft. */
+  confluenceStatus?: IntegrationStatus | null;
 }): JSX.Element {
   const { t } = useTranslation();
   const systeme = SYSTEM_SOURCES.map((s) =>
-    s.id === "sharepoint" ? systemKachelMitStatus(s, sharepointStatus) : s,
+    s.id === "sharepoint"
+      ? systemKachelMitStatus(s, sharepointStatus)
+      : s.id === "confluence"
+        ? systemKachelMitStatus(s, confluenceStatus)
+        : s,
   );
   const verfuegbar = systeme.filter((s) => !NICHT_VERFUEGBAR.includes(s.state));
   const inPlanung = systeme.length - verfuegbar.length;

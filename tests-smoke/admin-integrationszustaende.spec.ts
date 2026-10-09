@@ -129,4 +129,70 @@ for (const groesse of GROESSEN) {
       contentType: "image/png",
     });
   });
+
+  // ADMIN-02 Nacharbeit 2: Confluence am selben Modell und die Importliste. Der Smoke-Server gibt
+  // den Confluence-Import nicht frei — Karte und Kachel müssen deshalb beide „ausgeschaltet" sagen,
+  // und der Test endet lokal, ohne Abruf.
+  test(`ADMIN-02 N2 · Confluence-Kachel und -Karte, Importliste (${groesse.name})`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width: groesse.width, height: groesse.height });
+    await ensureLoggedIn(page);
+    await schalteStufe2Ein(page);
+
+    const status = page.getByTestId("import-access-status");
+    const kachel = page.locator('#import-source-gallery [data-id="confluence"]');
+    await expect(status).toBeVisible({ timeout: 15_000 });
+    const auskunft = await page.request.get("/api/import/confluence/zugang");
+    expect(auskunft.status()).toBe(200);
+    expect(((await auskunft.json()) as { enabled: boolean }).enabled).toBe(false);
+    await expect(status).toHaveAttribute("data-status", "ausgeschaltet");
+    await expect(kachel).toHaveAttribute("data-status", "ausgeschaltet");
+    await expect(kachel).not.toContainText("aktiv");
+
+    // Verbindungstest per Tastatur, Ergebnis lokal, nach dem Neuladen noch da.
+    const knopf = page.getByTestId("import-access-verbindungstest-starten");
+    await knopf.scrollIntoViewIfNeeded();
+    await knopf.focus();
+    await expect(knopf).toBeFocused();
+    const antwort = page.waitForResponse(
+      (r) =>
+        r.url().endsWith("/api/import/confluence/verbindungstest") &&
+        r.request().method() === "POST",
+    );
+    await page.keyboard.press("Enter");
+    expect(((await (await antwort).json()) as { ergebnis: string }).ergebnis).toBe("ausgeschaltet");
+    await expect(page.getByTestId("import-access-verbindungstest-zeile")).toHaveAttribute(
+      "data-umfang",
+      "konfiguration",
+    );
+    await page.reload();
+    await expect(page.getByTestId("import-access-verbindungstest-zeile")).toHaveAttribute(
+      "data-ergebnis",
+      "ausgeschaltet",
+      { timeout: 15_000 },
+    );
+
+    // Importliste: Serverantwort und Fläche, ohne waagerechten Überlauf.
+    const liste = await page.request.get("/api/admin/import/runs");
+    expect(liste.status()).toBe(200);
+    const daten = (await liste.json()) as { verfuegbar: boolean; runs: unknown[] };
+    expect(daten.verfuegbar).toBe(true);
+    const karte = page.getByTestId("import-laufliste-karte");
+    await karte.scrollIntoViewIfNeeded();
+    await expect(karte).toBeVisible();
+    await expect(
+      daten.runs.length === 0
+        ? page.getByTestId("import-laufliste-leer")
+        : page.getByTestId("import-laufliste"),
+    ).toBeVisible();
+    const ueberlauf = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(ueberlauf, "waagerechter Überlauf in Pixeln").toBeLessThanOrEqual(1);
+    await testInfo.attach(`admin02-n2-${groesse.width}x${groesse.height}-liste.png`, {
+      body: await karte.screenshot(),
+      contentType: "image/png",
+    });
+  });
 }

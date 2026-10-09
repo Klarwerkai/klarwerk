@@ -235,6 +235,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/admin/import/confluence/explore": { protection: "users.manage" },
   // W2-A/148: der Leseweg der Laufdomaene. Dasselbe Recht wie der Start — waere er weicher,
   // koennte jemand ohne users.manage die Ergebnisse eines Imports lesen, den er nicht ausloesen darf.
+  // ADMIN-02: die Importliste — die jüngsten Läufe in derselben Form wie der Einzelweg.
+  "GET /api/admin/import/runs": { protection: "users.manage" },
   "GET /api/admin/import/runs/:importId": { protection: "users.manage" },
   // R-0142 (Lauf 5 R3): der Lückenbezug je Element wird nur für sichtbare Objekte erhoben.
   "GET /api/admin/import/runs/:importId/result": {
@@ -814,6 +816,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // hält das Ergebnis im Prüfprotokoll fest. Dieselbe Tür wie die Auskunft, ebenfalls VOR dem
   // Schalter, damit „ausgeschaltet"/„nicht eingerichtet" ohne Abruf als Ergebnis kommen.
   "POST /api/import/sharepoint/verbindungstest": { protection: "users.manage" },
+  // ADMIN-02: derselbe Verbindungstest für Confluence — eine Seite des Space, ohne Inhalt.
+  "POST /api/import/confluence/verbindungstest": { protection: "users.manage" },
   // JOB 4086: die zwei Türen des SharePoint-Imports (Adapter #2 des quellneutralen
   // Import-Vertrags). `users.manage` wie JEDE Import-Route; nur bei aktivem
   // `KLARWERK_SHAREPOINT_IMPORT` registriert. `files` ist READ-ONLY (Dateiliste der Bibliothek),

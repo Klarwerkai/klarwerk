@@ -2162,8 +2162,15 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // über 495 kommen also aus dem eingemischten Hauptstand (Grundmenge 621 → 657), darunter laut
     // Kommentar oben `Zeichnung` und `AnhangZeichnung`. Die übrigen 18 sind ohne Git-Verlauf an
     // diesem Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // ADMIN-02 Nacharbeit 2 — NACHGEFÜHRT von 515 auf 517: ZWEI neue Bauteile in
+    // `components/ImportLaufListe.tsx` (`ImportLaufListe`, die Importliste, und die dateilokale
+    // `LaufZeile`). Keines zeigt ein Bild, bietet eine Bildbeschreibung an oder trägt einen eigenen
+    // Titel — sie erscheinen nur in der Grundmenge. EHRLICH GESAGT: GERECHNET, nicht gemessen (in
+    // dieser Sitzung wurde kein Test ausgeführt). Meldet der Prüflauf eine andere Zahl, gehört die
+    // gemessene hierher. `anbieter` 1 und `traeger` 2 bleiben.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 515,
+      komponenten: 517,
       anbieter: 1,
       traeger: 2,
     });

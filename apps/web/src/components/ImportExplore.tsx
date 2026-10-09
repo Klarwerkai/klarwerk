@@ -19,7 +19,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import type { ImportExploreResponse } from "../api/types";
+import type { ImportAccessStatus, ImportExploreResponse } from "../api/types";
 import { displayImportText } from "../lib/htmlEntities";
 import {
   type ExploreView,
@@ -627,6 +627,17 @@ export function ImportExplore(): JSX.Element {
     sharepointZugang.data && !sharepointZugang.isError
       ? integrationStatus(sharepointZugang.data)
       : null;
+  // ADMIN-02 (Nacharbeit 2): dasselbe für Confluence — gelesen aus dem Abfragespeicher, den der
+  // Zugangskasten derselben Seite füllt (`ImportAccessPanel`, `useImportAccessConfluence`).
+  const confluenceZugang = useQuery<ImportAccessStatus | null>({
+    queryKey: ["import-access", "confluence"],
+    queryFn: () => endpoints.importAccess.confluence(),
+    enabled: false,
+  });
+  const confluenceStatus =
+    confluenceZugang.data && !confluenceZugang.isError
+      ? integrationStatus(confluenceZugang.data)
+      : null;
 
   const view = explore.data ? toExploreView(explore.data.summary) : null;
   const errorMessage = explore.error instanceof ApiError ? explore.error.message : t("state.error");
@@ -772,7 +783,11 @@ export function ImportExplore(): JSX.Element {
           Erkundung, JSON oeffnet den bestehenden Datei-Dialog. „bald"/„geplant" zeigen nur einen
           ehrlichen Hinweis — kein Import, kein Formular, kein Fortschritt. */}
       <div className="mt-2 pl-8" ref={galerieRef} onClickCapture={merkeRueckkehrpunkt}>
-        <ImportSourceGallery onActivate={handleActivate} sharepointStatus={sharepointStatus} />
+        <ImportSourceGallery
+          onActivate={handleActivate}
+          sharepointStatus={sharepointStatus}
+          confluenceStatus={confluenceStatus}
+        />
       </div>
 
       {/* AUFTRAG-mega32 H2: Was nicht zur gewählten Quelle gehört, verschwindet. Bei JSON tun die

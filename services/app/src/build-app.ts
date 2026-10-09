@@ -136,11 +136,9 @@ import {
   type ImportRunRepo,
   InMemoryCandidateRepo,
   InMemoryExternalSourceRepo,
-  InMemoryImportRunRepo,
   LibraryService,
   PgCandidateRepo,
   PgExternalSourceRepo,
-  PgImportRunRepo,
 } from "../../library-analytics";
 import {
   InMemoryLifecycleRepo,
@@ -284,6 +282,8 @@ import {
   tokenFromRequest,
 } from "./http";
 import { impactReport } from "./impact";
+// ADMIN-02: die auflistbaren Laufablagen für die Importliste (neben dem eingefrorenen Vertrag).
+import { InMemoryAuflistbareImportRunRepo, PgAuflistbareImportRunRepo } from "./import-lauf-liste";
 // R-0466: das Interaktionsgedächtnis — haltbar im Postgres-Betrieb, im Speicher ohne Datenbank.
 import {
   GedaechtnisDienst,
@@ -1715,7 +1715,8 @@ export function inMemoryRepos(): AppRepos {
     lifecycleRepo: new InMemoryLifecycleRepo(),
     objects: new InMemoryObjectRepo(),
     candidates: new InMemoryCandidateRepo(),
-    importRuns: new InMemoryImportRunRepo(),
+    // ADMIN-02: dieselbe Laufablage, zusätzlich auflistbar (Importliste, `import-lauf-liste.ts`).
+    importRuns: new InMemoryAuflistbareImportRunRepo(),
     externalSources: new InMemoryExternalSourceRepo(),
     quellabgleich: new InMemoryQuellabgleichRepo(),
     dokumente: new InMemoryDokumentaktenRepo(),
@@ -1798,7 +1799,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       candidates: new PgCandidateRepo(pool),
       // W2-A/148: Laufdomaene persistent — ein Lauf muss einen Neustart ueberleben, sonst waere
       // „haengend in QUEUED" nach jedem Neustart ununterscheidbar von „nie gestartet".
-      importRuns: new PgImportRunRepo(pool),
+      // ADMIN-02: dieselbe Tabelle, zusätzlich auflistbar (Importliste, `import-lauf-liste.ts`).
+      importRuns: new PgAuflistbareImportRunRepo(pool),
       externalSources: new PgExternalSourceRepo(pool),
       quellabgleich: new PgQuellabgleichRepo(pool),
       // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (DOKUMENTAKTE_SCHEMA).

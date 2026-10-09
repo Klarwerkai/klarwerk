@@ -61,6 +61,8 @@ import { ImportExplore } from "../components/ImportExplore";
 import { ImportHistorySection } from "../components/ImportHistory";
 // AUFTRAG-mega32 H2: der JSON-Kasten lebt jetzt im Cockpit, nicht mehr daneben.
 import { ImportJsonUpload } from "../components/ImportJsonUpload";
+// ADMIN-02 (Nacharbeit 2): die Importliste über den bestehenden Laufbestand.
+import { ImportLaufListe } from "../components/ImportLaufListe";
 import { ImportCockpitProvider, ImportStepperBar } from "../components/ImportStepper";
 import { KlaraPathTeaser } from "../components/KlaraPathTeaser";
 import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
@@ -1322,6 +1324,11 @@ export function ImportReview(): JSX.Element {
           darueber. Die SharePoint-Kachel der Quellen-Galerie im Cockpit zeigt als echter Link auf
           seine Kennung. */}
       <SharePointImportBereich />
+
+      {/* ADMIN-02 (Nacharbeit 2): die Importliste — die jüngsten Läufe ALLER Quellen mit Status,
+          Zeitraum, Zuständigkeit und Fehlerhilfe. Derselbe Rechteweg wie der Zugangskasten; wer
+          ihn nicht trägt, sieht nichts. */}
+      <ImportLaufListe />
 
       <ImportCockpitProvider>
         <ImportStepperBar />

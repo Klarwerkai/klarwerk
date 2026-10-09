@@ -102,9 +102,11 @@ describe("ic7: Datenmodell Systeme + Dateien", () => {
   // Statisch steht SharePoint deshalb auf „available"; den Stand der Installation setzt die Galerie
   // aus der Zugangsauskunft (`systemKachelMitStatus`, gemessen in
   // `tests/admin-integrationszustaende/`).
-  it("Systeme: Confluence und JSON-Import aktiv; SharePoint verfuegbar; Jira bald; Word-/PDF-Quelle und die uebrigen geplant", () => {
+  // ADMIN-02 Nacharbeit 2 — NACHGEFÜHRT: auch Confluence steht statisch nicht mehr auf „active";
+  // den Stand der Installation setzt die Galerie aus der Confluence-Auskunft (Bens Befund).
+  it("Systeme: JSON-Import aktiv; Confluence und SharePoint verfuegbar; Jira bald; Word-/PDF-Quelle und die uebrigen geplant", () => {
     const byId = new Map(SYSTEM_SOURCES.map((s) => [s.id, s.state]));
-    expect(byId.get("confluence")).toBe("active");
+    expect(byId.get("confluence")).toBe("available");
     expect(byId.get("json")).toBe("active");
     expect(byId.get("sharepoint"), "sharepoint").toBe("available");
     expect(byId.get("jira"), "jira").toBe("soon");

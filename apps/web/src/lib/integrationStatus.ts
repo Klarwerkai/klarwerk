@@ -45,7 +45,8 @@ export type VerbindungstestErgebnis =
 
 export interface Verbindungsnachweis {
   geprueftAm: string;
-  umfang: "konfiguration" | "bibliothek-lesen";
+  /** `bibliothek-lesen` = SharePoint, `space-lesen` = Confluence; `konfiguration` = ohne Abruf. */
+  umfang: "konfiguration" | "bibliothek-lesen" | "space-lesen";
   ergebnis: VerbindungstestErgebnis;
   dauerMs: number | null;
 }
@@ -71,7 +72,7 @@ export function integrationStatus(facts: IntegrationFacts): IntegrationStatus {
   const test = facts.letzterVerbindungstest;
   // Ein Test, der nur die Konfiguration sah (damals aus/ohne Angaben), sagt über den heutigen,
   // eingerichteten Stand nichts — er zählt wie „noch nicht geprüft".
-  if (!test || test.umfang !== "bibliothek-lesen") {
+  if (!test || test.umfang === "konfiguration") {
     return "konfiguriert";
   }
   return test.ergebnis === "erreichbar" ? "geprueft" : "fehlgeschlagen";
@@ -132,7 +133,66 @@ export const VERBINDUNGSTEST_TEXT: Record<
 export const VERBINDUNGSTEST_UMFANG_TEXT: Record<Verbindungsnachweis["umfang"], string> = {
   konfiguration: "integrationen.test.umfang.konfiguration",
   "bibliothek-lesen": "integrationen.test.umfang.bibliothekLesen",
+  "space-lesen": "integrationen.test.umfang.spaceLesen",
 };
+
+// ================================================================================================
+// ADMIN-02 (Nacharbeit 2) — CONFLUENCE AM SELBEN MODELL. EIGENE SCHRITTE, DIESELBE ABLEITUNG.
+// ================================================================================================
+//
+// Ergebniswörter und Zustände sind quellneutral und werden geteilt. Die NÄCHSTEN SCHRITTE sind es
+// nicht: sie nennen die Umgebungsvariablen und Begriffe des jeweiligen Systems (Bibliothek gegen
+// Space, Token gegen Benutzer+Token). Ein SharePoint-Satz unter Confluence schickte den Menschen
+// an die falsche Stellschraube.
+type ConfluenceSchrittFall = VerbindungstestErgebnis | "konfiguriert" | "betreiberAus";
+
+const CONFLUENCE_SCHRITT: Record<ConfluenceSchrittFall, string> = {
+  erreichbar: "integrationen.confluence.schritt.erreichbar",
+  ausgeschaltet: "integrationen.confluence.schritt.ausgeschaltet",
+  "nicht-eingerichtet": "integrationen.confluence.schritt.nichtEingerichtet",
+  "anmeldung-abgewiesen": "integrationen.confluence.schritt.anmeldungAbgewiesen",
+  "keine-berechtigung": "integrationen.confluence.schritt.keineBerechtigung",
+  "nicht-gefunden": "integrationen.confluence.schritt.nichtGefunden",
+  zeitueberschreitung: "integrationen.confluence.schritt.zeitueberschreitung",
+  "nicht-erreichbar": "integrationen.confluence.schritt.nichtErreichbar",
+  konfiguriert: "integrationen.confluence.schritt.konfiguriert",
+  betreiberAus: "integrationen.confluence.schritt.betreiberAus",
+};
+
+export type IntegrationSystem = "sharepoint" | "confluence";
+
+/**
+ * Der konkrete nächste Schritt — zu JEDEM Zustand einer. Geprüfte und gescheiterte Stände folgen
+ * ihrem Testergebnis, alle anderen ihrem Zustand. `betreiberAus` (nur Confluence): freigegeben, aber
+ * vom Betreiber ausgeschaltet — dann führt der Schritt zum Knopf, nicht zum Server.
+ */
+export function naechsterSchrittKey(
+  system: IntegrationSystem,
+  status: IntegrationStatus,
+  test: Verbindungsnachweis | null,
+  betreiberAus = false,
+): string {
+  const mitTest = (status === "geprueft" || status === "fehlgeschlagen") && test !== null;
+  if (system === "confluence") {
+    if (betreiberAus) {
+      return CONFLUENCE_SCHRITT.betreiberAus;
+    }
+    if (mitTest) {
+      return CONFLUENCE_SCHRITT[test.ergebnis];
+    }
+    return status === "ausgeschaltet"
+      ? CONFLUENCE_SCHRITT.ausgeschaltet
+      : status === "nicht-eingerichtet"
+        ? CONFLUENCE_SCHRITT["nicht-eingerichtet"]
+        : CONFLUENCE_SCHRITT.konfiguriert;
+  }
+  if (mitTest) {
+    return VERBINDUNGSTEST_TEXT[test.ergebnis].schrittKey;
+  }
+  return INTEGRATION_SCHRITT_OHNE_TEST[
+    status as Exclude<IntegrationStatus, "geprueft" | "fehlgeschlagen">
+  ];
+}
 
 /** Der nächste Schritt für einen Zustand OHNE Testergebnis (ausgeschaltet, ohne Angaben, ungeprüft). */
 export const INTEGRATION_SCHRITT_OHNE_TEST: Record<

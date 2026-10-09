@@ -174,5 +174,16 @@ export function importAccessRoutes(
       }
       reply.code(200).send(await zugang.sharepointVerbindungstest(user.id));
     });
+
+    // ADMIN-02 — DERSELBE VERBINDUNGSTEST FÜR CONFLUENCE. Dieselbe Tür, dieselbe Antwortform; der
+    // Abruf liest eine Seite des konfigurierten Space (`limit=1`, ohne Inhalt). Er steht wie die
+    // Auskunft VOR dem Schalter, damit „ausgeschaltet" ohne Abruf als Ergebnis kommt.
+    app.post("/api/import/confluence/verbindungstest", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send(await zugang.confluenceVerbindungstest(user.id));
+    });
   };
 }
