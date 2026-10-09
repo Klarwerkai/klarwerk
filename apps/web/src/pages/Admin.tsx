@@ -41,6 +41,21 @@
 //      sind die Weiche; was nicht durchkommt, führt auf die Übersicht des Themas und ruft keine
 //      Komponente auf. `/admin` ohne Query bleibt wortgleich gültig — alle alten Links, Hilfe-
 //      kapitel und FAQ-Einträge zeigen weiterhin dorthin.
+//
+// ==================================================================================================
+// ADMIN-01 · `/admin` OHNE THEMA IST DIE STARTSEITE DER VERWALTUNG (produkt:20261009).
+// ==================================================================================================
+//
+// Beobachtet am 09.10.2026: „Der Adminbereich beginnt in der Nutzerliste." Ohne gültigen Bereich und
+// ohne gültiges Detail steht jetzt `AdminUebersicht` — Aufgaben mit Zählern und die sieben
+// fachlichen Gruppen mit ihrem Zweck. Die Nutzerliste hat ihre eigene Adresse
+// (`/admin?bereich=konten`); jede Themen- und Detailadresse gilt unverändert, und `/admin` selbst
+// bleibt der Einstieg, auf den alte Links, Hilfe und Zahnrad zeigen. Ein unerlaubter Bereichswert
+// fällt deshalb auf die Übersicht statt auf „Benutzer und Rollen".
+//
+// Der Filter der Kontenliste („wartet auf Freigabe", Ziel des gleichnamigen Zählers) steht in der
+// Adresse (`&filter=wartet`) und reist beim Öffnen und Schliessen einer Kontokarte mit — Zurück,
+// Vorwärts und Neuladen landen wieder in der gefilterten Liste.
 import { useQuery } from "@tanstack/react-query";
 import { ArrowUpRight } from "lucide-react";
 import type { ReactNode } from "react";
@@ -81,6 +96,12 @@ import {
   adminSectionFuerDetail,
   isAdminSectionId,
 } from "../lib/adminSections";
+import {
+  KONTEN_FILTER_PARAM,
+  KONTEN_FILTER_WARTET,
+  nurWartendeKonten,
+  wartendeKonten,
+} from "../lib/adminUebersicht";
 import { aiAccessRows, anbieterUndModell } from "../lib/aiOverview";
 import { ANALYTICS_AUDIT_PATH } from "../lib/analyticsSections";
 import { SECURITY_POINTS } from "../lib/securityStatements";
@@ -115,6 +136,7 @@ import {
   DatenschutzDetail,
   PruefprotokollDetail,
 } from "./AdminSicherheitDetails";
+import { AdminUebersicht } from "./AdminUebersicht";
 
 /**
  * Eine Zeile, die AUS der Verwaltung hinausführt (Kurzlink).
@@ -240,12 +262,25 @@ export function Admin(): JSX.Element {
   const bereichRoh = params.get("bereich") ?? "";
   // Das Thema folgt dem Detail: ein Link auf `?detail=papierkorb` landet auch ohne `bereich` unter
   // „Quellen und Daten" und nicht in einer Übersicht, in der die Karte gar nicht wohnt.
-  const section: AdminSectionId =
+  // ADMIN-01: ohne gültiges Thema `null` — dann steht die Startseite der Verwaltung.
+  const section: AdminSectionId | null =
     (detail === null ? null : adminSectionFuerDetail(detail)) ??
-    (isAdminSectionId(bereichRoh) ? bereichRoh : DEFAULT_ADMIN_SECTION);
+    (isAdminSectionId(bereichRoh) ? bereichRoh : null);
 
-  const geheZu = (ziel: AdminSectionId, karte?: string): void => navigate(adminHref(ziel, karte));
-  const zurueck = (): void => geheZu(section);
+  // ADMIN-01: der Filter „wartet auf Freigabe" gilt nur in „Benutzer und Rollen" und bleibt beim
+  // Öffnen und Schliessen einer Karte dieses Themas in der Adresse.
+  const nurWartende = section === "konten" && nurWartendeKonten(params);
+  const geheZu = (ziel: AdminSectionId, karte?: string): void => {
+    const href = adminHref(ziel, karte);
+    navigate(
+      ziel === "konten" && nurWartende
+        ? `${href}&${KONTEN_FILTER_PARAM}=${KONTEN_FILTER_WARTET}`
+        : href,
+    );
+  };
+  // Ein offenes Detail hat immer ein Thema (`adminSectionFuerDetail`); der Rückfall ist nur für
+  // den Typ da.
+  const zurueck = (): void => geheZu(section ?? DEFAULT_ADMIN_SECTION);
 
   // Die Quellen der Zeilenwerte. Es sind dieselben Queries (dieselben Schlüssel), die die
   // Detailkarten verwenden — ein Zwischenspeicher, ein Abruf.
@@ -521,7 +556,7 @@ export function Admin(): JSX.Element {
         aria-label={t("einst.pfad")}
         className="-mb-2 text-[12px] text-muted-2"
       >
-        {verwaltungsPfadTeile(t, section, detail).join(" › ")}
+        {verwaltungsPfadTeile(t, section ?? DEFAULT_ADMIN_SECTION, detail).join(" › ")}
       </nav>
     );
   }
@@ -531,11 +566,17 @@ export function Admin(): JSX.Element {
       titel={t("einst.titel")}
       seitenSchluessel="admin"
       reiter={ADMIN_SECTIONS.map((s) => ({ id: s.id, label: t(s.labelKey) }))}
-      aktiv={section}
+      aktiv={section ?? ""}
       onWechsel={(id) => {
+        // Ein Themenwechsel beginnt ohne Filter — der Filter gehört zu der Liste, aus der er kam.
         if (isAdminSectionId(id)) {
-          geheZu(id);
+          navigate(adminHref(id));
         }
+      }}
+      start={{
+        label: t("verwaltung.uebersicht"),
+        aktiv: section === null && detail === null,
+        onOeffnen: () => navigate("/admin"),
       }}
     >
       {detail !== null ? (
@@ -562,8 +603,37 @@ export function Admin(): JSX.Element {
             title={t("seitenhilfe.admin.uebersicht.titel")}
             body={t("seitenhilfe.admin.uebersicht.text")}
           />
+          {section === null ? <AdminUebersicht /> : null}
           {section === "konten" ? (
             <>
+              {nurWartende ? (
+                <Zeilenkarte testId="filter-konten">
+                  <Zeile
+                    label={t("verwaltung.filter.wartet")}
+                    // Derselbe Wertvertrag wie jede Zeile: ohne Antwort „–"/„nicht abrufbar", nie
+                    // eine Zahl ohne Daten (`zeilenWert.ts`).
+                    wert={wertText(
+                      wertBefund(
+                        abfragelage(users, online),
+                        users.data ? String(wartendeKonten(users.data).length) : null,
+                        users.data !== undefined && wartendeKonten(users.data).length === 0,
+                      ),
+                      t("verwaltung.filter.keineWartenden"),
+                    )}
+                    testId="zeile-filter-wartet"
+                    steuerung={
+                      <button
+                        type="button"
+                        data-testid="knopf-filter-aufheben"
+                        onClick={() => navigate(adminHref("konten"))}
+                        className="rounded-[8px] border border-hairline px-2.5 py-1 text-[13px] text-text hover:bg-hairline-soft"
+                      >
+                        {t("verwaltung.filter.aufheben")}
+                      </button>
+                    }
+                  />
+                </Zeilenkarte>
+              ) : null}
               <Zeilenkarte testId="flaeche-nutzer">
                 {nutzerOhneAusweg ? (
                   <div className="px-4 py-[13px]">
@@ -580,7 +650,7 @@ export function Admin(): JSX.Element {
                     testId="zeile-nutzer-stand"
                   />
                 ) : null}
-                {(users.data ?? []).map((u) => (
+                {(nurWartende ? wartendeKonten(users.data ?? []) : (users.data ?? [])).map((u) => (
                   <Zeile
                     key={u.id}
                     label={u.name}

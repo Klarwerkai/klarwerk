@@ -98,6 +98,7 @@ genau diesen Satz (`MUTATING_METHODS` in `dev-persist.ts` ist ein vollständiger
 | `users` | `InMemoryUserRepo` | `PgUserRepo` |
 | `sessions` | `InMemorySessionRepo` | `PgSessionRepo` |
 | `resetTokens` | `InMemoryPasswordResetRepo` | `PgPasswordResetRepo` |
+| `secondFactors` | `InMemorySecondFactorRepo` | `PgSecondFactorRepo` |
 | `drafts` | `InMemoryDraftRepo` | `PgDraftRepo` |
 | `gaps` | `InMemoryGapRepo` | `PgGapRepo` |
 | `ratings` | `InMemoryRatingRepo` | `PgRatingRepo` |

@@ -5,6 +5,7 @@ import { AUTH_SCHEMA } from "../../auth";
 import { CAPTURE_CREATE_OPERATION_SCHEMA, CAPTURE_SCHEMA } from "../../capture";
 import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
 import { vorratsKonfiguration } from "../../db-tx";
+import { EMBEDDING_SCHEMA } from "../../embedding";
 import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
 import {
   DOKUMENTAKTE_SCHEMA,
@@ -275,6 +276,9 @@ export const schemas = [
   // produkt:20261007:ownership-uebergabe: die Nachfolge bei Befristung je Konto. Additiv und
   // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
   VERANTWORTUNG_NACHFOLGE_SCHEMA,
+  // R-0470: der dauerhafte Vektorspeicher des Textprüfungs-Vorfilters. Additiv und wiederholbar
+  // (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension (kein pgvector), ohne Seed.
+  EMBEDDING_SCHEMA,
   // R-1034 / FR-I18N-02: die Übersetzungspflege. Additiv und wiederholbar (zwei CREATE TABLE IF NOT
   // EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   UEBERSETZUNGEN_SCHEMA,

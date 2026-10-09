@@ -164,18 +164,23 @@ describe("SCRUM-350: Evidence & Attachments → Review → Use E2E (HTTP + Objec
     const ctx = attachmentContext(withEvidence.attachments ?? []);
     expect(ctx).toMatchObject({ imageCount: 1, fileCount: 1, total: 2, hasAny: true });
 
-    // 9) USE VOR Validierung — R-0584 (Auftrag gesamt-datenschutz-voreinstellung): Evidence ist
-    //    keine Validierung, und der normale Frageweg antwortet nur aus geprüftem Wissen. Das offene
-    //    KO trägt KEINE Antwort mehr, sondern wird dem berechtigten Fragenden als ungeprüfter Treffer
-    //    gemeldet (JOB 1591 W5) — die Gegenprobe, dass die Frage es wirklich trifft.
+    // 9) USE VOR Validierung — R-0278 (Nacharbeit 3) und R-0584 (Auftrag
+    //    gesamt-datenschutz-voreinstellung): Evidence ist keine Validierung, und der normale Frageweg
+    //    antwortet nur aus geprüftem Wissen. Das offene KO trägt KEINE Antwort; Klara legt die Lücke
+    //    an, meldet den ungeprüften Treffer (JOB 1591 W5) und die fehlende Freigabe (Torlage).
     const askBefore = await ask(app, admin, "Wie wird der Riemen am Förderband FB12 gespannt?");
     const beforeBody = askBefore.json() as {
       result: AnswerResult;
+      gap: unknown;
       ungeprueft?: Array<{ id: string; status: string }>;
+      verschlossen?: Array<{ id: string; freigabeFehlt: boolean }>;
     };
     expect(beforeBody.result.answered).toBe(false);
     expect(beforeBody.result.sources).not.toContain(id);
+    expect(beforeBody.result.knowledgeClass).not.toBe("gesichert");
+    expect(beforeBody.gap).not.toBeNull();
     expect(beforeBody.ungeprueft?.map((h) => h.id)).toContain(id);
+    expect(beforeBody.verschlossen?.find((h) => h.id === id)?.freigabeFehlt).toBe(true);
 
     // 10) Echte Validierung (needed=1 → ein Up) → validiert/Trust 100. Evidence bleibt erhalten.
     await app.inject({

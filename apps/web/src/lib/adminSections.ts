@@ -47,6 +47,9 @@ export const ADMIN_SECTIONS = [
 
 export type AdminSectionId = (typeof ADMIN_SECTIONS)[number]["id"];
 
+// ADMIN-01 (produkt:20261009:admin-verwaltung-uebersicht): `/admin` ohne Thema öffnet nicht mehr
+// dieses Thema, sondern die Startseite der Verwaltung (`pages/AdminUebersicht.tsx`). Das erste
+// Thema bleibt der Rückfall für Wege, die ein Thema brauchen (Pfadzeile, Rückweg einer Karte).
 export const DEFAULT_ADMIN_SECTION: AdminSectionId = "konten";
 
 export function isAdminSectionId(value: string): value is AdminSectionId {
@@ -119,8 +122,9 @@ export function adminSectionFuerDetail(detail: string): AdminSectionId | null {
  * Die Adresse eines Verwaltungsziels.
  *
  * Vorlage, Punkt 4: „Reiter/Detailzustand muss über einen geprüften, erlaubten Navigationswert
- * adressierbar sein, etwa Queryparameter." `/admin` ohne Query bleibt gültig und führt auf das
- * erste Thema — alte Links, Hilfekapitel und der FAQ-Bestand zeigen weiterhin dorthin.
+ * adressierbar sein, etwa Queryparameter." `/admin` ohne Query bleibt gültig — seit ADMIN-01 als
+ * Startseite der Verwaltung, von der jedes Thema einen Klick entfernt ist; alte Links,
+ * Hilfekapitel und der FAQ-Bestand zeigen weiterhin dorthin.
  */
 export function adminHref(section: AdminSectionId, detail?: string): string {
   const query = `bereich=${encodeURIComponent(section)}`;

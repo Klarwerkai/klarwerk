@@ -283,6 +283,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // einziges `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "VERANTWORTUNG_NACHFOLGE_SCHEMA", risiko: "ADDITIV" },
+  // R-0470: der dauerhafte Vektorspeicher. ADDITIV, nachgezählt: ein einziges `CREATE TABLE IF NOT
+  // EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf
+  // ist folgenlos.
+  { stufe: "EMBEDDING_SCHEMA", risiko: "ADDITIV" },
   // R-1034 / FR-I18N-02: die Übersetzungspflege. ADDITIV, nachgezählt: zwei `CREATE TABLE IF NOT
   // EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist
   // folgenlos.
