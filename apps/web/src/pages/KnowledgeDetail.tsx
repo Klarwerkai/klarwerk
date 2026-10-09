@@ -137,13 +137,20 @@ export function KnowledgeDetail(): JSX.Element {
           {t("lesevariante.abrufFehler")}
         </p>
       ) : null}
-      {/* produkt:20261007:spaces: führender Space, Spacezuständigkeit und Artikelverantwortung
-          getrennt, dazu der Spacewechsel mit Rechtevorschau. Unsichtbar → der Server sagt 404,
-          die Zeile zeichnet dann nichts. */}
-      <SpaceZeile koId={id} />
       {/* R-1107: ist dieser Eintrag in einem Führungsartikel aufgegangen, sagt die Zeile worin. */}
       <AufgegangenHinweis koId={id} />
-      <BibliothekFlaeche vorgewaehlt={id} beiWahl={beiWahl} beiLoeschung={beiLoeschung} />
+      <BibliothekFlaeche
+        vorgewaehlt={id}
+        beiWahl={beiWahl}
+        beiLoeschung={beiLoeschung}
+        // produkt:20261007:spaces: führender Space, Spacezuständigkeit und Artikelverantwortung
+        // getrennt, dazu der Spacewechsel mit Rechtevorschau. Unsichtbar → der Server sagt 404,
+        // die Zeile zeichnet dann nichts.
+        // LESEN-INHALT-ZUERST (Ben, nacharbeit-6): die Zeile stand VOR der ganzen Fläche und schob
+        // Titel, Status und erste Regel mobil um etwa 260 px nach unten. Sie steht jetzt in der
+        // Lesespalte NACH dem fachlichen Inhalt — dieselbe Komponente, dieselben Rechte.
+        nachDemInhalt={<SpaceZeile koId={id} />}
+      />
     </div>
   );
 }
