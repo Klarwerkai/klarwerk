@@ -243,8 +243,11 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * Zeilen, B3). Keiner der beiden Werte beschreibt das zusammengeführte Dokument; der Wert unten
  * (main) ist ein PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet den Ist-Wert als „Received", er
  * wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 19 (Antwort-Erklärung): GEMESSEN im Prüflauf zu Kandidat d96bc621 am zusammengeführten
+ * Panel (`c2a57caf…`, „Received" von E2, HISTORIE/nacharbeit-19/PRUEFUNG/integration-word-fenster.log)
+ * und unverändert übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "cb99796c9a3134f0ffd02a97c3c1eb270055e4b8";
+export const PANEL_VOR_SCHNITT_BLOB = "c2a57caf99bfc2cb4ca8248c6b583e3fe9a409cf";
 
 export interface PanelTeile {
   html: string;

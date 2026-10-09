@@ -2884,7 +2884,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // oder Manifeständerung, kein Sideload. Keiner der beiden Werte beschreibt das zusammengeführte
     // Fenster; der Wert unten (main) ist ein PLATZHALTER, der Prüflauf meldet den Ist-Wert als
     // „Received", er wird danach gemessen übernommen.
-    const PIN = "3d9cdf45b445b817428cc9d52b706f40906e5cff0acb394350742ef30ed33035";
+    // NACHARBEIT 19 (Antwort-Erklärung): PIN BEWUSST AKTUALISIERT (Platzhalter 3d9cdf45… ->
+    // 9667e18b…). Im Prüflauf zu Kandidat d96bc621 am ZUSAMMENGEFÜHRTEN Fenster GEMESSEN
+    // („Received", HISTORIE/nacharbeit-19/PRUEFUNG/integration-word-fenster.log) und unverändert
+    // übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    const PIN = "9667e18b2978687c255ef32953ba9ce6e3d0d7a7583aeee60d1b7f7948204c28";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
