@@ -326,6 +326,7 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/api/library/export` | `ko.read` | Abfrage `format?`, `ids?` (kommagetrennt; grenzt nur ein — validiert/Vertraulichkeit gelten weiter; leer = leere Auswahl) | 200 Export | — |
 | `POST` | `/api/library/import` | `ko.create` | Rumpf `{ items }` | 200 Importbilanz | Dienstfehler |
 | `GET` | `/api/library/import/candidates` | `ko.read` | — | 200 Prüfwarteschlange | — |
+| `GET` | `/api/library/import/candidates/befunde` | `ko.read` | — | 200 je Kandidat `{ id, schutz, veraltet }` — schützenswert (Gründe ohne Werte) und veraltet (Stand der Quelle), jeweils mit `bewertet: false`, wo nichts zu bewerten war | — |
 | `POST` | `/api/library/import/candidates` | `ko.create` | Rumpf `{ items }` | 201 Kandidaten | Dienstfehler |
 | `PUT` | `/api/library/import/candidates/:id` | `ko.validate` | Rumpf `{ action: accept \| reject \| info, note? }` | 200 Kandidat | 400 `BAD_REQUEST` |
 | `POST` | `/api/admin/import/cleanup` | `users.manage` | Rumpf `{ confirm?, digest? }` | 200 `{ preview: true, … }` bzw. `{ preview: false, … }` | 409 `CLEANUP_DRIFT` |
