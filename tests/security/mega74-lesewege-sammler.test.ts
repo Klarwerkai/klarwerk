@@ -711,14 +711,35 @@ const REGISTER: Record<string, Eintrag> = {
   // Betroffenenrechte (datenschutz-routes.ts). Die Auskunft gibt die EIGENEN Beiträge immer aus
   // (Kommentartext, Fragetext, Entwurf) — den TITEL eines Objekts nur, wenn der Betrachter es heute
   // sehen darf: `sichtbarkeitsfilterFuer` des Betrachters geht unbedingt in die Zusammenstellung.
+  // Nacharbeit 16 (Befund ben): die Route BILDET den Filter nur; ANGEWENDET wird er im Dienst
+  // (`erstelleSelbstauskunft`, Bildung von `titelVon`). Deshalb DIENST_FILTERT mit Kette und
+  // Filterstelle — nachgeprüft werden Übergabe, Unversehrtheit und Aufruf im Dienst, nicht nur der
+  // Fabrikaufruf in der Route.
   "GET /api/me/daten": {
-    urteil: "PRAEDIKAT",
-    grund: "Selbstauskunft — Objekttitel über sichtbarkeitsfilterFuer des Betrachters.",
+    urteil: "DIENST_FILTERT",
+    entscheidung: "sichtbarkeitsfilterFuer",
+    kette: [
+      {
+        datei: "services/app/src/selbstauskunft.ts",
+        funktion: "erstelleSelbstauskunft",
+        filter: { index: 2 },
+      },
+    ],
+    anwendung: "sichtbar",
+    grund: "Selbstauskunft — Objekttitel nur, wo sichtbar(k) des Betrachters (selbstauskunft.ts).",
   },
   "GET /api/datenschutz/auskunft/:nutzerId": {
-    urteil: "PRAEDIKAT",
-    grund:
-      "Auskunft durch die Verwaltung — Objekttitel über sichtbarkeitsfilterFuer der Verwaltung.",
+    urteil: "DIENST_FILTERT",
+    entscheidung: "sichtbarkeitsfilterFuer",
+    kette: [
+      {
+        datei: "services/app/src/selbstauskunft.ts",
+        funktion: "erstelleSelbstauskunft",
+        filter: { index: 2 },
+      },
+    ],
+    anwendung: "sichtbar",
+    grund: "Auskunft durch die Verwaltung — Objekttitel nur, wo sichtbar(k) der Verwaltung.",
   },
   "GET /api/me/loeschantrag": {
     urteil: "EIGENER_BESTAND",
@@ -3090,6 +3111,56 @@ describe("mega74 E · der Sammler über alle Lesewege", () => {
     // Und ein Eintrag nur mit Prosa ist rot.
     const nurProsa: Eintrag = { urteil: "DIENST_FILTERT", grund: "service.ts:1 — filtert." };
     expect(pruefeDienstweg("GET /probe", nurProsa, fund, () => mitFilter)).not.toEqual([]);
+  });
+
+  // NACHARBEIT 16 (Befund ben, R-1175): die Auskunftswege am ECHTEN Bestand. Die Route bildet den
+  // Filter, `erstelleSelbstauskunft` wendet ihn bei `titelVon` an. Wird die Anwendung entfernt oder
+  // ersetzt oder der Parameter überschrieben, ist das rot mit Datei und Zeile.
+  it("GEGENPROBE (Nacharbeit 16) — Auskunftswege: ohne Filteranwendung im Dienst rot", () => {
+    const DIENST = "services/app/src/selbstauskunft.ts";
+    const echt = LIES_AUS_DEM_BAUM(DIENST);
+    const ANWENDUNG = "sichtbar(k) ? k.title : null";
+    expect(echt, "die Filteranwendung steht nicht mehr in der erwarteten Form").toContain(
+      ANWENDUNG,
+    );
+    const KOPF = "export async function erstelleSelbstauskunft";
+    const zeilen = echt.split("\n");
+    const zeileDienst = zeilen.findIndex((z) => z.includes(KOPF)) + 1;
+    const zeileAnwendung = zeilen.findIndex((z) => z.includes(ANWENDUNG)) + 1;
+    expect(zeileDienst).toBeGreaterThan(0);
+    function lies(dienstText: string): (datei: string) => string {
+      return (datei) => (datei === DIENST ? dienstText : LIES_AUS_DEM_BAUM(datei));
+    }
+
+    for (const schluessel of ["GET /api/me/daten", "GET /api/datenschutz/auskunft/:nutzerId"]) {
+      const fund = ERHEBUNG.funde.find((f) => f.schluessel === schluessel);
+      const eintrag = REGISTER[schluessel];
+      expect(fund, `${schluessel} nicht erhoben`).toBeDefined();
+      expect(eintrag?.urteil).toBe("DIENST_FILTERT");
+      if (!fund || !eintrag) {
+        continue;
+      }
+      // Der Bestand: grün.
+      expect(pruefeDienstweg(schluessel, eintrag, fund, lies(echt))).toEqual([]);
+      // Bens Fall: `sichtbar(k)` entfernt, jeder Titel geht hinaus — rot mit Datei und Zeile.
+      const entfernt = echt.replace(ANWENDUNG, "k.title");
+      expect(pruefeDienstweg(schluessel, eintrag, fund, lies(entfernt))).toEqual([
+        `${DIENST}:${zeileDienst} — ${schluessel}: erstelleSelbstauskunft ruft den übergebenen Filter sichtbar nicht auf.`,
+      ]);
+      // Ersetzt durch eine andere Regel: rot.
+      const ersetzt = echt.replace(ANWENDUNG, "!k.deletedAt ? k.title : null");
+      expect(pruefeDienstweg(schluessel, eintrag, fund, lies(ersetzt))).toEqual([
+        `${DIENST}:${zeileDienst} — ${schluessel}: erstelleSelbstauskunft ruft den übergebenen Filter sichtbar nicht auf.`,
+      ]);
+      // Der übergebene Filter wird vor der Anwendung überschrieben: rot an der Zeile des Schreibens.
+      const ueberschrieben = echt.replace(
+        "  const titelVon = new Map",
+        "  sichtbar = () => true;\n  const titelVon = new Map",
+      );
+      expect(pruefeDienstweg(schluessel, eintrag, fund, lies(ueberschrieben))).toEqual([
+        `${DIENST}:${zeileAnwendung} — ${schluessel}: erstelleSelbstauskunft schreibt auf den übergebenen Filter sichtbar — die zentrale Entscheidung wäre ersetzbar.`,
+      ]);
+    }
   });
 
   // NACHARBEIT 5 (Befund ben, R-1175): die Entscheidung muss ÜBERGEBEN werden, nicht bloss irgendwo
