@@ -744,7 +744,9 @@ const AUS_DEM_RECHTETOR = ["PERMISSION_MISSING"];
  *   `DRAFT_NOT_FOUND` / `DRAFT_NOT_VISIBLE`  `services/app/src/routes/capture-routes.ts`
  *                                            (`requireVisibleDraft` und der Fortsetzen-Zweig),
  *                                            dazu der Dokumentweg in `ko-routes.ts` (P-Q9)
- *   `PERMISSION_DENIED`                      `services/rbac/src/guard.ts`
+ *   `PERMISSION_DENIED`                      `services/app/src/routes/capture-routes.ts`
+ *                                            (`requireVisibleDraft` mit `nurAutor`; bis R-1349
+ *                                            zusätzlich der entfernte `services/rbac/src/guard.ts`)
  *
  * Dieselbe Lage und dieselbe benannte Prüflücke wie bei `AUS_DEM_RECHTETOR`: H2 und H3 tasten
  * ausschliesslich `services/auth/src` ab, sehen diese Sendestellen also nicht, und H5 kann für sie
@@ -1635,10 +1637,12 @@ const GEMESSEN_VON = {
   // zusammengesetzten Sprachkopf („en-GB,en;q=0.9" und zwei weitere) und holt seine Erwartung über
   // `MELDUNGEN.PERMISSION_DENIED.en` aus dem Katalog — der Katalogzugang aus K5, deshalb sieht der
   // Wächter ihn. Fiele G1 weg, bliebe die EN-Deckung an G4 hängen; das steht hier, damit niemand
-  // die drei Zeilen für eine Dopplung hält.
+  // die drei Zeilen für eine Dopplung hält. R-1349 (Aufnahme gesamt-aufruferwaechter): der
+  // RBAC-Wächter ist entfernt; G misst denselben Satz jetzt an seiner Produktstelle, dem
+  // Verfügen über einen fremden Pool-Entwurf (`PUT /api/drafts/:id/pool`, `nurAutor`).
   PERMISSION_DENIED: [
-    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · G1 EN · der RBAC-Wächter: 403 FORBIDDEN mit englischem Satz",
-    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · G2 NL · der RBAC-Wächter: 403 FORBIDDEN mit niederländischem Satz",
+    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · G1 EN · fremder Pool-Entwurf, Verfügen: 403 FORBIDDEN mit englischem Satz",
+    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · G2 NL · fremder Pool-Entwurf, Verfügen: 403 FORBIDDEN mit niederländischem Satz",
     "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · G4 · der zusammengesetzte Sprachkopf wird beachtet",
   ],
   // JOB 3792 · der 29. Schlüssel, gemessen am Tag seiner Einführung. Vier Fälle, weil zwei

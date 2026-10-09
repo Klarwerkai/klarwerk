@@ -16,8 +16,10 @@ import { demoTexts } from "../../services/app/src/demo-content";
 import { koCandidateScore } from "../../services/knowledge-object";
 import type { KnowledgeObject } from "../../services/knowledge-object";
 import type { KnowledgeRef } from "../../services/reasoner";
-import { keywordSelect, queryTokens, rankCandidates } from "../../services/reasoner";
+import { queryTokens, rankCandidates } from "../../services/reasoner";
 import { refMatchText } from "../../services/reasoner/src/provider";
+// R-1349: der zweite Auswahlweg ist entfernt; `keywordSelect` misst die Menge am Produktweg.
+import { keywordSelect } from "../support/auswahlweg";
 
 // AUFTRAG-mega54 B3: die gesetzte Untergrenze. Steht hier, damit der Test rot wird, wenn jemand sie
 // still absenkt — eine Grundform von drei Zeichen zieht fremde Wörter zusammen.
