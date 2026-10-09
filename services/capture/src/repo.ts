@@ -164,8 +164,9 @@ export interface DraftRepo {
    *
    * JOB 3668 — UND DAS HEISST JETZT WÖRTLICH ALLE, EINSCHLIESSLICH PAPIERKORB. Das ist die eine
    * bewusste Abweichung vom Wissensobjekt in diesem Auftrag, und sie ist notwendig, nicht bequem:
-   * `objectReferences.drafts` (`services/app/src/build-app.ts:756`) und die Anhangquellen (`:2339`)
-   * beantworten über diese Liste die Frage „wird dieses gesicherte Original noch gebraucht?".
+   * die Anhangquellen in `services/app/src/build-app.ts` beantworten über diese Liste die Frage
+   * „wird dieses gesicherte Original noch gebraucht?" (R-1349: die frühere zweite Quelle
+   * `objectReferences.drafts` ist mit der ungerufenen Referenzprüfung entfernt).
    * Verschwände ein getrashter Entwurf daraus, dürfte sein Original entfernt werden — und die
    * Wiederherstellung lieferte einen Entwurf mit fehlendem Anker, dessen Rumpf `withAnchorCheck`
    * ausdünnt. Das wäre genau die Hülle, die dieser Auftrag in §4.3 verbietet. Das Wissensobjekt

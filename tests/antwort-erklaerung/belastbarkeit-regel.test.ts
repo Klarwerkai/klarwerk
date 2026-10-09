@@ -16,12 +16,26 @@
 //   R-0260         keine Prozentangabe, kein Wahrheitsgrad
 import { describe, expect, it } from "vitest";
 import {
-  ANTWORT_LAGEN,
+  type AntwortLage,
   answerEvidence,
   antwortBelastbarkeit,
   konfliktGegenseiten,
 } from "../../services/ask";
 import type { Conflict } from "../../services/conflicts";
+
+// R-1349 (Aufnahme gesamt-aufruferwaechter): die Liste stand bis hierher als Produktexport
+// `ANTWORT_LAGEN`, den kein Produktweg las. Hier steht sie gegen den Produkttyp gebunden: ein
+// `Record<AntwortLage, true>` übersetzt nur, wenn JEDE Lage des Typs genau einmal vorkommt und
+// keine fremde dabei ist — eine fehlende oder erfundene Lage bricht schon die Typprüfung.
+const LAGE_VOLLSTAENDIG: Record<AntwortLage, true> = {
+  belegt: true,
+  belegt_zustaendig_fehlt: true,
+  belegt_mit_konflikt: true,
+  wissensluecke: true,
+  technischer_fehler: true,
+  geschwaerzt: true,
+};
+const ANTWORT_LAGEN = Object.keys(LAGE_VOLLSTAENDIG) as AntwortLage[];
 import type { KnowledgeObject } from "../../services/knowledge-object";
 
 const BELEGT = {

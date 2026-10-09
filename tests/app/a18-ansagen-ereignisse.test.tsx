@@ -206,20 +206,24 @@ const REGISTER: readonly Ereignis[] = [
     baumzustand: "OFFEN — weder Announcer noch document.title-Pflege gemessen",
     quellen: ["(keine Fundstelle — Nullbefund)"],
   },
+  // R-1349 (Aufnahme gesamt-aufruferwaechter, Nacharbeit 10): N2 beschrieb bis hierher die alte,
+  // nie montierte Resultatfläche (`components/confluence-import/ImportResultView.tsx`, sr-only-h1).
+  // Sie ist entfernt. Das Importergebnis, das das Produkt zeigt, ist der gelieferte Weg R-0142 im
+  // Bibliotheksabschnitt „Mehr“; gemessen an seiner Quelle (`ImportErgebnis.tsx:55-73`).
   {
     id: "N2",
     oberflaeche: "Importergebnis",
-    ausgangszustand: "Ergebnisansicht nicht gerendert",
-    aktion: "Import abgeschlossen",
-    ergebniszustand: "Ueberschrift der Ergebnisansicht steht als h1 im Baum",
-    kanal: '<h1 class="sr-only">',
+    ausgangszustand: "Ergebnisabschnitt nicht gerendert",
+    aktion: "Wissensobjekt aus einem Import im Abschnitt „Mehr“ geöffnet",
+    ergebniszustand: "Ueberschrift des Importergebnisses steht als h4 im Ergebnisabschnitt",
+    kanal: "<h4>",
     kanalart: "nicht-live",
     hoeflichkeit: null,
     textschluessel: "w2.result.heading",
-    wiederholung: "erneuter Import ersetzt die Ueberschrift",
-    negativfall: "kein Ergebnis → keine h1",
-    baumzustand: "Ueberschrift Ebene 1 mit dem Ergebnisnamen",
-    quellen: ["components/confluence-import/ImportResultView.tsx:32"],
+    wiederholung: "ein anderes Objekt ersetzt den Abschnitt samt Ueberschrift",
+    negativfall: "kein Importergebnis → kein Abschnitt, keine Ueberschrift",
+    baumzustand: "Ueberschrift Ebene 4 mit dem Ergebnisnamen",
+    quellen: ["components/bibliothek/ImportErgebnis.tsx:73"],
   },
   {
     id: "D1",

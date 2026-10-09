@@ -276,7 +276,7 @@
      hält `w-full` wieder, und die Tabelle bleibt in der Spalte.
      KEIN `display: block; overflow-x: auto` an der Tabelle: das zerstörte das Tabellenlayout, und
      die Scheibe verwirft diesen Behelf ausdrücklich. Die echte Scroll-Hülle steht seit R-1160 im
-     Renderpfad: `SanitizedHtml` mit `lesehuellen` (KoRead, Bibliothek-Lesefläche) setzt jede
+     Renderpfad: `SanitizedHtml` mit `lesehuellen` (Bibliothek-Lesefläche) setzt jede
      Tabelle der obersten Ebene in ein React-Element mit `overflow-x-auto`. Bewusst KEINE eigene
      Regel für die Hülle in diesem Block — sie ist Oberfläche, kein sanitisierter Inhalt, und eine
      Klasse hier müsste die Allowlist passieren (tests/web/d037-*). */
