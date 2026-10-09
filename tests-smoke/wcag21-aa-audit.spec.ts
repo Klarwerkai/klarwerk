@@ -788,6 +788,14 @@ interface Fokusschritt {
   id: string;
   wer: string;
   tooltips: number;
+  /**
+   * Der Fokus hat das Dokument verlassen (Tab nach dem letzten Element, nacharbeit-27, /output).
+   * `document.activeElement` bleibt dann auf dem letzten Element stehen, obwohl es keinen Fokus
+   * mehr hat — gemessen würde ein unfokussiertes Element, und jedes weitere Tab sähe „dasselbe".
+   * Das ist das Ende der Tab-Reihenfolge, keine Falle und kein Fokusbefund. Eine ECHTE Falle hält
+   * den Fokus im Dokument und wird weiterhin erkannt.
+   */
+  ausserhalb?: boolean;
 }
 
 async function fokusSchritt(page: Page): Promise<Fokusschritt | null> {
@@ -796,6 +804,11 @@ async function fokusSchritt(page: Page): Promise<Fokusschritt | null> {
     const el = document.activeElement;
     if (!el || el === document.body || el === document.documentElement) {
       return null;
+    }
+    // Ein wirklich fokussiertes Element trägt `:focus` — bleibt `activeElement` nur stehen, weil
+    // das Dokument den Fokus abgegeben hat, trägt es ihn nicht.
+    if (!document.hasFocus() || !el.matches(":focus")) {
+      return { id: "", wer: "", tooltips: 0, ausserhalb: true };
     }
     const ablage = window as unknown as {
       __kwAuditNr?: number;
@@ -813,9 +826,17 @@ async function fokusSchritt(page: Page): Promise<Fokusschritt | null> {
     for (let i = 0; v && i < 3; i++, v = v.parentElement) {
       huellen.push(h.fokusBild(v));
     }
-    const name =
-      el.getAttribute("aria-label") ?? el.getAttribute("data-testid") ?? el.textContent ?? "";
-    const wer = `${el.tagName.toLowerCase()} „${name.trim().slice(0, 40)}“`;
+    const name = (
+      el.getAttribute("aria-label") ??
+      el.getAttribute("data-testid") ??
+      el.textContent ??
+      ""
+    ).trim();
+    // Ohne Namen (z. B. eine Checkbox in einer Liste) wäre „input „““ nicht auffindbar — dann mit
+    // Anker und Markup (nacharbeit-27).
+    const wer = name
+      ? `${el.tagName.toLowerCase()} „${name.slice(0, 40)}“`
+      : `${el.tagName.toLowerCase()} „“ ${h.beschreibe(el)} · ${el.outerHTML.replace(/\s+/g, " ").slice(0, 100)}`;
     ablage.__kwFokus ??= new Map();
     ablage.__kwFokus.set(id, { el, wer, f: h.fokusBild(el), huellen });
     return { id, wer, tooltips: h.tooltips().length };
@@ -913,6 +934,10 @@ async function tastaturweg(page: Page): Promise<{ befunde: string[]; fokus: Foku
     if (!schritt) {
       continue;
     }
+    if (schritt.ausserhalb) {
+      // Die Tab-Reihenfolge ist durchlaufen: der Fokus ist aus dem Dokument hinausgegangen.
+      break;
+    }
     erreicht.add(schritt.id);
     // 1.4.13: ein beim Fokussieren erschienener Hinweis muss sich mit Escape schließen lassen.
     if (schritt.tooltips > 0) {
@@ -931,6 +956,9 @@ async function tastaturweg(page: Page): Promise<{ befunde: string[]; fokus: Foku
       await page.keyboard.press("Escape");
       await page.keyboard.press("Tab");
       const danach = await fokusSchritt(page);
+      if (danach?.ausserhalb) {
+        break;
+      }
       if (danach?.id === vorher) {
         befunde.push(`2.1.2: Tastaturfalle an ${schritt.wer}`);
         break;
