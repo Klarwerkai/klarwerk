@@ -1,7 +1,6 @@
 // Öffentliche API des Moduls library-analytics.
 export {
   LibraryService,
-  SEARCH_BACKFILL_LIMIT_PER_QUERY,
   IMPORT_CLEANUP_PROVIDERS,
   // WP-SHIP8-FIX (bens F2): stateless Digest der bestätigten Aufräum-Zielmenge.
   cleanupDigest,
@@ -126,11 +125,7 @@ export {
   type GroupingCandidate,
 } from "./src/grouping";
 // WP-BILD-1e: Bild-Fußnoten (figcaption) in der Bibliotheks-Suche — pure Extraktion + Match.
-export {
-  imageCaptionTexts,
-  captionsMatchQuery,
-  LEGACY_IMAGE_CAPTION_PLACEHOLDERS,
-} from "./src/search-captions";
+export { imageCaptionTexts, LEGACY_IMAGE_CAPTION_PLACEHOLDERS } from "./src/search-captions";
 // ================================================================================================
 // AUFTRAG-144 (KW-S4-28 F1) — DIE W2-A-LAUFDOMAENE AN DER MODULGRENZE
 // ================================================================================================

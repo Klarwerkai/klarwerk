@@ -5,15 +5,14 @@ import {
   STUDIO_GUIDE_STEPS,
   type StudioGuideStepId,
   studioContribution,
-  studioGuideActiveStep,
   studioGuideStepLabelKey,
-  studioGuideSteps,
 } from "../../apps/web/src/lib/knowledgeStudioGuide";
 
 // SCRUM-353: geführter Studio-Arbeitsraum + leichtgewichtiger Beitragswert/Qualität (DOM-frei).
+// R-1349: `studioGuideSteps()` und `studioGuideActiveStep` sind entfernt (kein Produktleser); das
+// Studio liest `STUDIO_GUIDE_STEPS` und markiert den Schritt über `studioNextStep`.
 describe("SCRUM-353: knowledgeStudioGuide — geführte Schritte", () => {
   it("liefert die Schrittfolge in fester Reihenfolge (strukturieren → KI → vorschau → übernehmen)", () => {
-    expect(studioGuideSteps()).toBe(STUDIO_GUIDE_STEPS);
     expect(STUDIO_GUIDE_STEPS.map((s) => s.id)).toEqual<StudioGuideStepId[]>([
       "structure",
       "assist",
@@ -28,11 +27,6 @@ describe("SCRUM-353: knowledgeStudioGuide — geführte Schritte", () => {
       expect(step.hintKey).toBe(`studio.guide.${step.id}.hint`);
       expect(studioGuideStepLabelKey(step.id)).toBe(step.labelKey);
     }
-  });
-
-  it("markiert genau einen aktiven Orientierungsschritt je Studio-Ansicht", () => {
-    expect(studioGuideActiveStep("edit")).toBe("structure");
-    expect(studioGuideActiveStep("preview")).toBe("preview");
   });
 
   it("i18n: Schritt-Labels/Hints + thenSave sind DE und EN vorhanden", () => {
