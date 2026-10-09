@@ -1636,6 +1636,21 @@ export function assembleServices(
       busFactor: (opts) => library.busFactor(opts),
       // R-0751 / R-1639 / R-2183 (Nacharbeit 3): gepflegte Bereichsprofile und Ruhestandshorizonte.
       profiles: repos.managementProfiles,
+      // R-1657 (Nacharbeit 2): „Lückenerkennung über Reasoner" — das Urteil über die Kennzahlen je
+      // Bereich. Die Vertraulichkeit reist als Egress-Bit mit (vertraulich ⇒ keine Cloud). Ein
+      // Fehler des Urteilswegs (auch Überlast) wird zur benannten Ursache, nie zum Absturz des Laufs.
+      judgeGaps: async (bereiche, confidential) => {
+        try {
+          const ausgang = await reasoner.judgeKnowledgeGapsOutcome(bereiche, "de", confidential);
+          return {
+            urteile: ausgang.urteile,
+            failure: ausgang.failure ?? null,
+            provider: ausgang.provider ?? null,
+          };
+        } catch {
+          return { urteile: null, failure: "model-error", provider: null };
+        }
+      },
     }),
     // SCRUM-118: externer Such-Proxy (Wikipedia) — optional via Env abschaltbar.
     externalSearch: createExternalSearchFromEnv(),
