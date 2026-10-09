@@ -417,7 +417,14 @@ describe("R-1611 · C — was HTML, JS und CSS an Kopfzeilen tragen", () => {
       ...SCHNITT.html.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)"/g),
     ].map((m) => m[1]);
     expect(stilquellen).toEqual([`${CSS_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`]);
-    for (const ref of [JS_DATEI, CSS_DATEI, RUECKWEG_DATEI, MARKE_DATEI, ANLEITUNG_DATEI, WV_DATEI]) {
+    for (const ref of [
+      JS_DATEI,
+      CSS_DATEI,
+      RUECKWEG_DATEI,
+      MARKE_DATEI,
+      ANLEITUNG_DATEI,
+      WV_DATEI,
+    ]) {
       expect(ref, `${ref} ist nicht relativ`).not.toMatch(/^[a-z]+:|^\/\//);
     }
   });
