@@ -98,6 +98,13 @@ export const MELDUNGEN = {
     en: "Your current password is incorrect.",
     nl: "Je huidige wachtwoord is onjuist.",
   },
+  // R-0582: ein Konto ohne lokales Passwort (reines SSO) bestätigt eine neue E-Mail über eine
+  // erneute Anmeldung beim eigenen Anbieter — der Satz nennt genau diesen Weg.
+  SSO_CONFIRMATION_REQUIRED: {
+    de: "Bitte bestätige die neue E-Mail zuerst mit einer erneuten SSO-Anmeldung.",
+    en: "Please confirm the new email address by signing in with SSO again first.",
+    nl: "Bevestig het nieuwe e-mailadres eerst door opnieuw via SSO aan te melden.",
+  },
   RESET_TOKEN_INVALID: {
     de: "Reset-Token ungültig oder abgelaufen.",
     en: "The password reset link is invalid or has expired.",
