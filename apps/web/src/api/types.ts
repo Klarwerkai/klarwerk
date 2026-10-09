@@ -1977,6 +1977,11 @@ export interface AnswerResult {
   citedSources?: string[];
   // JOB 3366: gesetzt, wenn der ausgelieferte Antworttext am Token-Limit abgeschnitten wurde.
   abgeschnitten?: AbbruchBefund;
+  // AUFNAHME 20260922 · Antwort-Erklärung: die Belastbarkeit VOM SERVER (Spiegel von
+  // `services/ask/src/answer-belastbarkeit.ts`, wo Vertrag und Grenzen stehen). Optional — ein
+  // älterer Server sendet sie nicht, dann zeigt die Fläche keine Belastbarkeitszeile und erfindet
+  // keine.
+  belastbarkeit?: AntwortBelastbarkeit;
   // R-0604 / R-0625: die serverseitige KI-Kennzeichnung (`AiGeneratedMark`, nur gesetzt, wenn ein
   // Modell geantwortet hat). Bewusst `unknown`: die Fläche castet sie nicht, sondern prüft sie mit
   // derselben Laufzeitprüfung wie das Word-Panel (`istKiKennzeichnung`, lib/wordAddin.ts).
@@ -1984,6 +1989,158 @@ export interface AnswerResult {
   // R-0310/R-0325 (nur Fläche, gesetzt in `lib/askResponse.ts`): die Antwort wurde zurückgehalten,
   // weil kein Absatz belegt ist UND keine tragende Quelle feststeht — die Lücke nennt das.
   zuordnungUnbekannt?: true;
+}
+
+// Spiegel von `services/ask/src/answer-belastbarkeit.ts` — die Oberfläche LIEST, sie leitet nichts ab.
+export type AntwortLage =
+  | "belegt"
+  | "belegt_zustaendig_fehlt"
+  | "belegt_mit_konflikt"
+  | "wissensluecke"
+  | "technischer_fehler"
+  | "geschwaerzt";
+
+export type BelastbarkeitsGrund =
+  | "keine_tragfaehige_quelle"
+  | "zuordnung_unbekannt"
+  | "alle_tragenden_quellen_validiert"
+  | "tragende_quelle_nicht_validiert"
+  | "pruefnachweis_unvollstaendig"
+  | "offener_konflikt"
+  | "konfliktlage_unbekannt"
+  | "zustaendig_nicht_erreichbar"
+  | "erreichbarkeit_unbekannt"
+  | "verantwortung_nur_autor";
+
+export interface QuellenBelastbarkeit {
+  koId: string;
+  titel: string;
+  version: number;
+  vertrauenswert: number;
+  stand: string;
+  validiert: boolean;
+  pruefstand: "unknown" | "unchecked" | "noCoverage" | "incomplete" | "proven";
+  entscheidungFestgehalten: boolean;
+  verantwortung: {
+    art: "owner" | "author-fallback";
+    person: { id: string; name: string | null } | null;
+    erreichbar: boolean | null;
+  };
+}
+
+export type KonfliktSeite =
+  | {
+      einsehbar: true;
+      koId: string;
+      titel: string;
+      aussage: string;
+      version: number;
+      vertrauenswert: number;
+      validiert: boolean;
+      traegtAntwort: boolean;
+    }
+  | { einsehbar: false; traegtAntwort: boolean };
+
+export interface AntwortKonflikt {
+  konfliktId: string;
+  beschreibung: string | null;
+  seiten: [KonfliktSeite, KonfliktSeite];
+}
+
+export interface AntwortBelastbarkeit {
+  lage: AntwortLage;
+  gruende: BelastbarkeitsGrund[];
+  vertrauenswert: {
+    wert: number | null;
+    herleitung: "minimum_tragender_quellen" | "keine_tragende_quelle";
+    schwaechsteQuelle: string | null;
+  };
+  quellenAnzahl: { herangezogen: number; tragend: number };
+  quellen: QuellenBelastbarkeit[];
+  konflikte: AntwortKonflikt[];
+  // R-1627: die quellengebundene Argumentationskette; optional — ein älterer Server sendet sie nicht.
+  argumentation?: ArgumentStufe[];
+  // R-0346: Rolle und Anlass, auf die die Erklärung zugeschnitten ist.
+  zuschnitt?: AntwortZuschnitt;
+  // Ben nacharbeit-11: Wörterbucherklärungen AUSSERHALB der Quellenbilanz — ohne Vertrauenswert,
+  // ausdrücklich nicht bewertet. Fehlt das Feld, wurde nichts aus dem Wörterbuch ergänzt.
+  woerterbuch?: {
+    benennung: string;
+    // Die Erklärung steht hier: der Absatz „Begriffe“ hat keine Wissensquelle und wird nach R-0310
+    // nicht im Antworttext ausgegeben.
+    definition: string;
+    herkunft: BegriffHerkunft;
+    vertrauenswert: null;
+    belastbarkeit: "nicht_bewertet";
+  }[];
+  hinweis: "vertrauen_ist_kein_wahrheitsversprechen";
+}
+
+export type Wissensart =
+  | "bauchgefuehl"
+  | "best_practice"
+  | "lernkurve"
+  | "technik"
+  | "negativwissen";
+
+// R-1627 (Ben nacharbeit-9): Spiegel von `ArgumentStufe` (services/ask/src/answer-belastbarkeit.ts).
+// Jede tragende Quelle ist eine eigene Aussage; eine Beziehung steht nur da, wo ein Mensch sie als
+// kuratierte Kante gesetzt hat; der Schluss trägt die gegebene Antwortaussage.
+export type BelegteBeziehungsArt =
+  | "gehoert_zu"
+  | "ergaenzt"
+  | "ersetzt"
+  | "widerspricht"
+  | "beispiel_fuer";
+
+export type ArgumentStufe =
+  | {
+      art: "aussage";
+      koId: string;
+      titel: string;
+      aussage: string;
+      wissensart: Wissensart;
+      belegstelle: string | null;
+      vertrauenswert: number;
+      validiert: boolean;
+      stand: string;
+    }
+  | {
+      art: "beziehung";
+      kanteId: string;
+      beziehung: BelegteBeziehungsArt;
+      gerichtet: boolean;
+      vonKoId: string;
+      vonTitel: string;
+      zuKoId: string;
+      zuTitel: string;
+      gesetztVon: string | null;
+    }
+  | { art: "einwand"; konfliktId: string; seite: KonfliktSeite }
+  | { art: "vorbehalt"; grund: BelastbarkeitsGrund }
+  | {
+      art: "schluss";
+      lage: AntwortLage;
+      einstufung: "verified" | "unverified" | "gap";
+      aussage: string | null;
+      gestuetztAuf: string[];
+      unabhaengig: boolean;
+    };
+
+export interface AntwortZuschnitt {
+  rolle: "viewer" | "experte" | "controller" | "admin" | "unbekannt";
+  anlass: "dokument" | "frage";
+  tiefe: "kurz" | "ausfuehrlich";
+  fachsprache: "allgemein" | "fach";
+  reihenfolge: Wissensart[];
+}
+
+// R-0284: wogegen geprüft wurde (Spiegel von `AskPruefrahmen`, services/ask/src/service.ts).
+export interface AskPruefrahmen {
+  umfang: "validiert" | "nicht_vertraulich";
+  verglichen: number;
+  hoechstens: number;
+  nurWoertlich: boolean;
 }
 
 // JOB 2626 D1: ein Dokument, das die Frage traf, aber nicht antworten konnte — mit den Toren,
@@ -2012,9 +2169,14 @@ export interface AskResponse {
   // JOB 2626 D1: nur bei Nicht-Antwort UND nur auf Wegen mit Betrachterfilter vorhanden; ein
   // älterer Server sendet das Feld nicht — die Fläche fällt dann auf die generische Leermeldung.
   verschlossen?: VerschlossenHinweis[];
+  // R-0284: der Rahmen der Suche; ein älterer Server sendet ihn nicht — dann steht kein Satz.
+  pruefrahmen?: AskPruefrahmen;
   // R-1633: nur wenn ein Fragekontext mitgeschickt wurde — wofür gewichtet wurde und je Quelle
   // ihre Geltung und Passung (Spiegel von `AskGeltungsauskunft`, services/ask/src/service.ts).
   geltung?: AskGeltungsauskunft;
+  // R-0346 (Ben nacharbeit-9): wie die Antwort selbst zugeschnitten wurde und was angehängt ist
+  // (Spiegel von `AskAntwortZuschnitt`); fehlt das Feld, ist die Antwort unverändert.
+  antwortZuschnitt?: AskAntwortZuschnitt;
   // R-0310: je Absatz die tragenden Quellen, die ihn belegen (services/app/src/absatz-belege.ts);
   // nur bei beantworteter Frage. Angewandt in `lib/askResponse.ts` (`selectAnswer`).
   absaetze?: AbsatzBeleg[];
@@ -2023,6 +2185,36 @@ export interface AskResponse {
 export interface AbsatzBeleg {
   text: string;
   quellen: string[];
+}
+
+export interface AskAntwortZuschnitt {
+  tiefe: "kurz" | "ausfuehrlich";
+  fachsprache: "allgemein" | "fach";
+  reihenfolge: Wissensart[];
+  ergaenzungen: (
+    | { art: "voraussetzungen" | "massnahmen"; quelleId: string; eintraege: string[] }
+    | {
+        art: "begriffe";
+        quelleId: null;
+        eintraege: string[];
+        benennungen: string[];
+        herkunft: BegriffHerkunft[];
+      }
+  )[];
+  // Ben nacharbeit-13: die Antwort ohne Wörterbucherklärungen — der Schluss der Kette.
+  quellengebundenerText: string;
+  // Ben nacharbeit-20: die angehängten Abschnitte am Ende der Antwort, je mit Text und Quelle.
+  abschnitte: { quelleId: string | null; text: string }[];
+}
+
+// Ben nacharbeit-11: Herkunft einer Begriffserklärung aus dem Firmenwörterbuch (Spiegel von
+// `BegriffHerkunft`, services/ask/src/antwort-zuschnitt.ts).
+export interface BegriffHerkunft {
+  eintragId: string;
+  fassung: number;
+  geltungsbereich: string | null;
+  verantwortlich: string | null;
+  geaendertAm: string | null;
 }
 
 // ================================================================================================

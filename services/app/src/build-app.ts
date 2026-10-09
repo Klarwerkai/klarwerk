@@ -3973,6 +3973,8 @@ export function buildApp(
   // impactRoutes darunter.
   // KW-KA4: `klaraSessions` ist das bestehende Ausführungstor von oben — dieselbe Instanz, kein
   // zweiter Dienst. Ohne es verhielte sich die Ask-Route byteweise wie vor KA4 (fail-closed).
+  // AUFNAHME 20260922 · R-0322: die Erreichbarkeit der Verantwortlichen aus dem bestehenden
+  // Nutzerverzeichnis — erreichbar heisst „freigegebenes Konto vorhanden", nichts darüber hinaus.
   app.register(
     askRoutes(
       {
@@ -3988,6 +3990,25 @@ export function buildApp(
         // R-1649: der abweichende Weg aus „nicht hilfreich" wird ein gewöhnlicher Entwurf —
         // derselbe Anlageweg wie POST /api/drafts, kein zweiter.
         alternativeAlsEntwurf: (entwurf, author) => services.capture.createDraft(entwurf, author),
+        // AUFNAHME 20260922 · R-1627: die kuratierten Kanten für die belegten Beziehungen der Kette.
+        kanten: services.kanten,
+        // R-0346: das Firmenwörterbuch für die Begriffserklärungen einer allgemeinsprachlichen Antwort.
+        begriffe: async () => services.begriffe.aktuelle(),
+        personen: {
+          erreichbarkeit: async (ids) => {
+            const konten = await services.auth.listUsers();
+            const erreichbar = new Map<string, boolean>();
+            const namen = new Map<string, string>();
+            for (const id of ids) {
+              const konto = konten.find((u) => u.id === id);
+              erreichbar.set(id, konto?.approved === true);
+              if (konto) {
+                namen.set(id, konto.name);
+              }
+            }
+            return { erreichbar, namen };
+          },
+        },
       },
       guards,
     ),
