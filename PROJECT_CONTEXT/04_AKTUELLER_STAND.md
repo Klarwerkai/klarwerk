@@ -7,6 +7,36 @@
 > `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md` (Rohstand: `docs/boss-assistant/`).
 > Live-Version dort bestätigt: **v1.0.0-beta.1.4**.
 
+## 09.10.2026 — Erfassen: unklaren Speichervorgang fortschreiben, Wiederholung sichtbar erklären
+
+Auftrag `arbeit:erfassen-doppelklick-entscheidungen-20261001` (Pedis Entscheidungen vom 30.09.,
+jeweils Option A). **Stand: Code und Tests geschrieben, nicht ausgeführt; reale Chromium-/
+PostgreSQL-Messung und Gegenprobe gegen `bf9fcf1c` stehen aus.**
+
+- **entscheidung:14ce8681:** Die „Verbleibende Grenze“ aus dem Abschnitt vom 29.09. (geänderter
+  Inhalt nach verlorener Antwort ⇒ zweiter Entwurf) entfällt. Ein unklar gebliebener Anlagevorgang
+  (Formular `eintragVorgangRef`, Datei `ganzdokumentOffenRef`) behält seinen Schlüssel auch bei
+  geändertem Inhalt (`anlageVorgangWiederholen`, `lib/createOperation.ts`) und schickt
+  `fortschreiben: true`. `CaptureService.createDraftVorgang` schreibt dann denselben Entwurf fort
+  (`anlageFortschreiben`, Vergleich-und-Tausch) — nur, solange er noch den Stand dieses Vorgangs
+  trägt; anderswo bearbeitet oder nicht mehr vorhanden ⇒ weiterhin 409
+  `IDEMPOTENCY_PAYLOAD_MISMATCH`, der Client lässt den Schlüssel dann fallen. Ohne `fortschreiben`
+  (Offline-Warteschlange, Mobil, Word) unverändert. Eine neu eingelesene Datei beendet den offenen
+  Vorgang nicht mehr; Verwerfen und Öffnen eines anderen Entwurfs schon.
+- **entscheidung:8b909a1e:** `POST /api/drafts` trägt bei 200 das Transportfeld `anlage`
+  („bestehend“/„fortgeschrieben“). Das Erfassen-Formular zeigt dann statt der Erfolgsmeldung den
+  Hinweis `capture.bereitsGespeichert*` (de/en/nl) mit Verweis auf den Eintrag
+  (`data-testid="capture-bereits-gespeichert"`) und wechselt nicht ins Blatt.
+- **Abgleich Einreichen (`submitOperationRef`, mega20–22):** dort entsteht bei geändertem Inhalt
+  kein stiller zweiter Eintrag (409 mit sichtbarem Neustart-Angebot) — nicht verändert. Auch der
+  eigene Speicherweg des Blattes (`Blatt.tsx`, `saveOperationRef`) ist nicht Teil dieses Auftrags
+  und unverändert.
+- **Tests:** `tests/entwurf-verlassen/anlage-fortschreiben-route.test.ts` (S1–S5),
+  `erfassen-doppelklick-echte-api-mounted.test.tsx` (E1–E7, A2/A3/A6 angepasst),
+  `erfassen-doppelklick-mounted.test.tsx` (V5/V6, V1–V4 angepasst), `anlage-vorgang.test.ts`;
+  Chromium + PostgreSQL: `speicherknopf-ganzdokument-pg-im-browser.integration.test.ts` Q7–Q9
+  (Q3/Q5 um den Hinweis ergänzt).
+
 ## 08.10.2026 — Aufnahme „Negativwissen-Hinweis“ (R-1629, Roadmap 2.3)
 
 - `POST /api/knowledge/check` weist ähnliche Einträge der Wissensart `negativwissen` gesondert aus
