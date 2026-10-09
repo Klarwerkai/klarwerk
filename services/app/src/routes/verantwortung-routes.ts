@@ -627,6 +627,38 @@ export function kontoendeSperre(
     if (typeof id !== "string" || (!loeschen && !befristen)) {
       return;
     }
+    // R-0554 (aufnahme gesamt-wissen-verantwortung) — KONTO ENTFERNEN MIT NACHFOLGER.
+    // `DELETE /api/users/:id?nachfolger=…` übergibt den Bestand ZUERST (Auslöser aus der
+    // Verzeichnispflege, `auth/src/routes.ts` → `vorDemEntfernen` in der Wurzel) und entfernt nur,
+    // wenn danach keine Hauptverantwortung mehr am Konto hängt — einschliesslich Papierkorb
+    // (`build-app.ts`). Hier vorab abgewiesen, liefe die Übergabe nie. Dieselbe Sperre bleibt also
+    // wirksam, nur NACH der Übergabe. Der Nachfolger muss dafür nach DERSELBEN Regel zulässig sein
+    // wie jede Nachfolge hier (`kannVerantworten`); sonst wird nichts geändert.
+    const nachfolgerRoh = (request.query as { nachfolger?: unknown } | undefined)?.nachfolger;
+    if (
+      loeschen &&
+      pfad === "/api/users/:id" &&
+      typeof nachfolgerRoh === "string" &&
+      nachfolgerRoh.trim().length > 0
+    ) {
+      const nachfolger = nachfolgerRoh.trim();
+      const konten = await dienste.auth.listUsers();
+      if (
+        nachfolger === id ||
+        !kannVerantworten(
+          konten.find((k) => k.id === nachfolger),
+          jetzt(),
+        )
+      ) {
+        reply.code(400).send({
+          error: "NACHFOLGE_UNZULAESSIG",
+          message:
+            "Der Nachfolger muss ein aktives, unbefristetes Konto mit Bearbeitungsrecht sein. Es wurde nichts übergeben und nichts entfernt.",
+        });
+        return reply;
+      }
+      return;
+    }
     const bestand = await dienste.ko.listEinschliesslichPapierkorb();
     const verbleibt = bestand.filter((ko) => responsibleOf(ko) === id).length;
     if (verbleibt > 0) {

@@ -194,7 +194,9 @@ export function QuellenChipInhalt({
           className="shrink-0 text-muted-2"
         />
       )}
-      <span className="text-[12px] font-semibold text-text">
+      {/* R-1026 (Aufnahme 20260922 · antwort-quellenanzeige): auch auf dem Telefon bleibt der Titel
+          lesbar — ein langer Titel ohne Umbruchstelle bricht um, statt über den Rand zu laufen. */}
+      <span className="min-w-0 text-[12px] font-semibold text-text [overflow-wrap:anywhere]">
         {nummer > 0 ? `${nummer} · ${label}` : label}
       </span>
       {/* Die Verwendungsauskunft AM CHIP, NACH dem Titel: die Chipform „n · Titel“ ist gepinnt

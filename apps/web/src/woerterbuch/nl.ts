@@ -2196,6 +2196,11 @@ const nl: typeof de = {
   "ask.export.copy": "Kopiëren",
   "ask.export.download": "Als Markdown",
   "ask.export.print": "Afdrukken / PDF",
+  "ask.export.docx": "Als Word (.docx)",
+  "ask.export.pptx": "Als PowerPoint (.pptx)",
+  "ask.export.pdfDatei": "Als PDF-bestand",
+  "ask.export.pdfZeichen":
+    "Het PDF-bestand kan deze tekens niet ongewijzigd weergeven: {{zeichen}}. Er is niets gedownload — Word of Markdown geven de tekst zonder verlies door.",
   "ask.export.copied": "Antwoord incl. bronnen gekopieerd.",
   "ask.export.answer": "Antwoord",
   "ask.export.footer":
@@ -2207,6 +2212,10 @@ const nl: typeof de = {
     "De eerstgenoemde bronnen hebben het antwoord gedragen; de overige zijn geraadpleegd maar niet gebruikt.",
   "ask.attribution.unknown":
     "Welke van deze bronnen het antwoord gedragen heeft, was niet toe te wijzen — de AI leverde geen bruikbare bronverwijzingen. De lijst toont daarom alle geraadpleegde bronnen zonder markering, en „Heeft geholpen” is hier niet mogelijk.",
+  // R-0310/R-0325: het antwoord wordt achtergehouden omdat geen alinea aan een bron toe te wijzen was.
+  "ask.quellen.weitere": "Nog {{count}} bronnen tonen",
+  "ask.zuordnungUnbekannt":
+    "Er wordt geen antwoord getoond: het kon aan geen enkele bron worden toegewezen. Een alinea zonder bron wordt niet uitgegeven.",
   // JOB 3267 Q1 — drie toestanden, drie woorden, plus een vierde voor de toetsingsstand
   // (zie de Duitse ingang voor de bevinding die hiermee is verholpen).
   "ask.attribution.carrying.badge": "gebruikt",
@@ -3417,6 +3426,11 @@ const nl: typeof de = {
   "lib.lesemodus.listeEinblenden": "Resultatenlijst tonen",
   "lib.lesemodus.listeAusblenden": "Resultatenlijst verbergen",
   "lib.lesen.mehr": "Meer",
+  "lib.lesen.belegstelle.markiert": "Bewijspassage gemarkeerd.",
+  "lib.lesen.belegstelle.nichtGefunden":
+    "De geciteerde passage staat in deze versie niet letterlijk in de tekst.",
+  "lib.lesen.belegstelle.andereFassung":
+    "De passage hoort bij versie {{fassung}}; dit is versie {{aktuell}}. Er is niets gemarkeerd.",
   "lib.lesen.bilder_one": "{{count}} afbeelding",
   "lib.lesen.bilder_other": "{{count}} afbeeldingen",
   "lib.lesen.fehler": "Het item kon niet worden geladen.",
@@ -4331,6 +4345,8 @@ const nl: typeof de = {
   "klara.aiBusy": "De AI leest de passende help-vermeldingen …",
   "klara.aiAnswerTitle": "AI-antwoord uit de help",
   "klara.aiDisclaimer": "AI-gegenereerd — niet voor 100 % gecontroleerd",
+  "klara.helpAnswerTitle": "Antwoord uit de help",
+  "klara.ohneModell": "Regelgebaseerd, zonder AI-model",
   "klara.aiGoto": "Naar onderdeel: {{target}}",
   "klara.aiSources": "Grondslag",
   "klara.aiEmpty":
@@ -5618,6 +5634,10 @@ const nl: typeof de = {
 
   "ai.generatedNotice":
     "Door kunstmatige intelligentie gegenereerd — controleer dit vakinhoudelijk.",
+  "ai.surfaceNotice": "Hier kan een AI meewerken — door haar gegenereerde inhoud wordt gemarkeerd.",
+  "ergebnisStufe.entwurf": "Reasoner-concept, niet gevalideerd",
+  "ergebnisStufe.empfehlung": "Aanbeveling, ongetoetst",
+  "ergebnisStufe.validiert": "Gevalideerd",
   "ai.costHint": "Eén klik kan een echte, betaalde cloud-AI-aanvraag veroorzaken.",
   "ai.exportNotice":
     "Door kunstmatige intelligentie gegenereerd (KLARWERK, {{task}}, {{date}}). Inhoudelijk te controleren.",
