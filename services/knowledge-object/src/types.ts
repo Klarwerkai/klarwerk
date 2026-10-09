@@ -493,6 +493,12 @@ export interface KoAppendOp {
   sourceIds: string[];
 }
 
+/** R-0206 / R-0248: wer wann bestätigt hat, dass das Wissen weiterhin stimmt (s. `frische.ts`). */
+export interface KoFrischeSignal {
+  at: string;
+  by: string;
+}
+
 /** R-0658: welche Art Schutzdaten erkannt wurde — nie der Wert selbst. */
 export type SchutzdatenArt = "personalnummer" | "kontodaten";
 
@@ -600,6 +606,12 @@ export interface KnowledgeObject {
   // Wissensart `negativwissen`; Begründung und Stufenregel in `negativwissen.ts`. Optional, keine
   // Migration — fehlt das Feld, wurde der Fall nicht geführt erfasst.
   negativwissen?: NegativwissenAngaben;
+  // aufnahme:20260922:gesamt-wissen-frische (R-0652 / FR-EXT-06): Schutzbedarf „öffentlich" — eine
+  // VERFEINERUNG von „intern", keine vierte Zugriffsstufe: Sichtbarkeit und Egress richten sich
+  // weiter allein nach `confidentiality`. Wirksam nur, solange das Objekt intern ist; eine
+  // Höherstufung entfernt die Marke (`KoService.setConfidentiality`). Gesetzt nur über
+  // `KoService.setOeffentlich`. Optional, keine Migration; fehlt es, ist das Objekt nicht öffentlich.
+  oeffentlich?: true;
   // ============================================================================================
   // JOB 679 / D2 (K1.2, Weg A) — WO DAS WISSEN HERKOMMT, UND WARUM ES HIER STEHT.
   // ============================================================================================
@@ -668,6 +680,22 @@ export interface KnowledgeObject {
   // Ein stiller `owner = author`-Default beim Anlegen ist ausdrücklich verworfen: er wäre genau die
   // Gleichsetzung von Erzeuger und Verantwortlichem, die Pedis Entscheidung zurückgewiesen hat.
   ownership?: KnowledgeOwnership;
+  // ============================================================================================
+  // aufnahme:20260922:gesamt-wissen-frische (R-0206 / R-0248) — „STIMMT WEITERHIN", OHNE NEUE PRÜFUNG.
+  // ============================================================================================
+  //
+  // `frischeSignal`: wer das Wissen zuletzt angewendet und bestätigt hat, dass es weiterhin stimmt.
+  // `fristBestaetigung`: dasselbe, wenn es der Verantwortliche (`responsibleOf`) war — nur das
+  // verlängert die Haltbarkeit. Gesetzt ausschliesslich über `KoService.bestaetigeFrische`; keine
+  // neue Fassung, kein Statuswechsel. Optional, keine Migration; fehlt es, gab es kein Signal.
+  // Regel und Ableitung in `frische.ts`.
+  frischeSignal?: KoFrischeSignal;
+  fristBestaetigung?: KoFrischeSignal;
+  // R-0248 (Nacharbeit 7): die Kategorie, mit der der laufende Stand begann (`ab` = Beginn des
+  // Stands), festgehalten beim ersten Kategoriewechsel innerhalb dieses Stands — damit ein reines
+  // Umkategorisieren eine abgelaufene Frist nicht verlängert. Gesetzt nur von
+  // `KoService.updateCategory`; Regel in `frische.ts` (`fristKategorie`). Optional, keine Migration.
+  fristGrundlage?: { kategorie: string; ab: string };
   asset: string | null;
   createdAt: string;
   history: HistoryEntry[];
@@ -928,6 +956,9 @@ export type KoErrorCode =
   // ein Löschen darf nicht die Nebenwirkung eines Tippfehlers sein (fail-closed, wie
   // INVALID_CONFIDENTIALITY daneben).
   | "INVALID_OWNERSHIP"
+  // R-0507: nur der benannte Eigentümer selbst kann seine Verantwortung zurückgeben. Wer nicht
+  // Eigentümer ist (oder wo keiner benannt ist), bekommt diesen Code — an der Route ein 403.
+  | "NOT_OWNER"
   // SCRUM-509 R2: Herabstufung ohne Prüfer-/Admin-Rolle (atomar an der Datenschicht geprüft).
   | "DOWNGRADE_FORBIDDEN"
   // SCRUM-509 R3: optimistische Concurrency — der Voll-Objekt-Write war veraltet (rowVersion-Konflikt).

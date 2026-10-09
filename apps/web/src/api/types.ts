@@ -524,6 +524,39 @@ export interface AnzeigestatusHerkunft extends Record<AnzeigestatusEingang, Eing
   ungeprueft: Partial<Record<AnzeigestatusEingang, string>>;
 }
 
+/** aufnahme:20260922:gesamt-wissen-frische — Spiegel von `FrischeAuskunft` (frische.ts). */
+export type FrischeStufe = "frisch" | "altert" | "faellig" | "veraltet";
+export type Betriebsmodell = "oeffentliche_ki" | "freigegebene_ki" | "lokales_modell" | "ohne_ki";
+/** R-0652: Schutzbedarf — „oeffentlich" verfeinert „intern" (Spiegel von `Schutzstufe`). */
+export type Schutzstufe = "oeffentlich" | Confidentiality;
+export type FrischeSchritt =
+  | "konflikt_klaeren"
+  | "validierung_abschliessen"
+  | "erneut_bestaetigen"
+  | "bald_bestaetigen"
+  | "keiner";
+
+export interface KoFrische {
+  stufe: FrischeStufe;
+  halbwertszeitTage: number;
+  halbwertszeitHerkunft: "gelernt" | "vorgabe";
+  halbwertszeitBeobachtungen: number;
+  bezugAm: string | null;
+  letztesSignal: { at: string; by: string } | null;
+  haltbarBis: string | null;
+  erinnerungAb: string | null;
+  erinnern: boolean;
+  verantwortlich: string;
+  verantwortlichArt: "owner" | "author-fallback";
+  gesichert: boolean;
+  aktuellerStand: boolean;
+  schutz: Schutzstufe | null;
+  betriebsmodell: Betriebsmodell;
+  inDokumente: boolean;
+  naechsterSchritt: FrischeSchritt;
+  ungeprueft: { revalidierung?: string; konflikt?: string };
+}
+
 /** R-0658: welche Art Schutzdaten der Server erkannt hat — Spiegel von `SchutzdatenArt`. */
 export type SchutzdatenArt = "personalnummer" | "kontodaten";
 
@@ -541,6 +574,42 @@ export interface NegativwissenAngaben {
   avoidanceRule?: string;
   earlyWarningSigns: string[];
   bezug: NegativwissenBezug[];
+}
+
+/** R-0507 / JOB 557: Spiegel von `KnowledgeOwnership` (services/knowledge-object/src/types.ts). */
+export interface KnowledgeOwnership {
+  owner?: string;
+  reviewers: string[];
+  validators: string[];
+}
+
+/** R-0554: die Vorschau der Wissensübergabe (`services/app/src/wissensuebergabe.ts`). */
+export interface UebergabeVorschau {
+  von: string;
+  an: string;
+  wissensobjekte: { id: string; title: string }[];
+  eigentum: { id: string; title: string }[];
+  /** Beiträge im Papierkorb, für die die Person hauptverantwortlich ist. */
+  papierkorb: { id: string; title: string }[];
+  entwuerfe: { id: string }[];
+  luecken: { id: string }[];
+  pruefaufgaben: { koId: string }[];
+}
+
+export type UebergabeArt =
+  | "wissensobjekt"
+  | "eigentum"
+  | "papierkorb"
+  | "entwurf"
+  | "luecke"
+  | "pruefaufgabe";
+
+/** R-0554: das Ergebnis der ausgeführten Wissensübergabe. */
+export interface UebergabeErgebnis {
+  von: string;
+  an: string;
+  uebergeben: Record<UebergabeArt, number>;
+  fehlgeschlagen: { art: UebergabeArt; id: string; grund: string }[];
 }
 
 export interface KnowledgeObject {
@@ -582,6 +651,12 @@ export interface KnowledgeObject {
   // Ableitung in `lib/displayStatus.ts` (`anzeigestatusAus`).
   anzeigestatus?: DisplayStatus;
   anzeigestatusHerkunft?: AnzeigestatusHerkunft;
+  // aufnahme:20260922:gesamt-wissen-frische: Frische, Haltbarkeit, Schutz und nächster Schritt —
+  // vom Server abgeleitet (Spiegel von services/knowledge-object/src/frische.ts). Dieselben zwei
+  // Lesewege wie `anzeigestatus`; fehlt das Feld, hat der Lesepfad es nicht geliefert.
+  frische?: KoFrische;
+  // R-0652: Schutzbedarf „öffentlich" (Verfeinerung von „intern"; Spiegel des Serverfelds).
+  oeffentlich?: true;
   // ================================================================================================
   // JOB 4251 (WIKI-ZUSAMMENARBEIT) — DER STEMPEL DER EINORDNUNG.
   // ================================================================================================
@@ -599,6 +674,11 @@ export interface KnowledgeObject {
   version: number;
   originalAuthor: string;
   author: string;
+  // R-0507 / JOB 557: wem das Objekt gehört, wer es geprüft und wer es freigegeben hat
+  // (`services/knowledge-object/src/ownership.ts`). Fehlt das Feld, ist nichts benannt — dann gilt
+  // der Autor als verantwortlich, und die Oberfläche sagt das ausdrücklich, statt einen Eigentümer
+  // zu behaupten.
+  ownership?: KnowledgeOwnership;
   neededValidations: number;
   assignments: string[];
   // SCRUM-415: Vertraulichkeitsstufe. Für den ZUGRIFF gilt „fehlt = intern" (sichtbarkeit.ts:39-43);
@@ -1918,6 +1998,9 @@ export interface AnswerResult {
   citedSources?: string[];
   // JOB 3366: gesetzt, wenn der ausgelieferte Antworttext am Token-Limit abgeschnitten wurde.
   abgeschnitten?: AbbruchBefund;
+  // R-0310/R-0325 (nur Fläche, gesetzt in `lib/askResponse.ts`): die Antwort wurde zurückgehalten,
+  // weil kein Absatz belegt ist UND keine tragende Quelle feststeht — die Lücke nennt das.
+  zuordnungUnbekannt?: true;
 }
 
 // JOB 2626 D1: ein Dokument, das die Frage traf, aber nicht antworten konnte — mit den Toren,
@@ -1939,12 +2022,24 @@ export interface AskResponse {
   // FUNKE-FIX P0 (bens ROT-1): opaker Beleg über die ausgelieferten Quell-KOs. Beim „Danke"
   // (/api/ask/helpful) zurückgereicht — der Server verifiziert die Quellen-Bindung serverseitig.
   receipt: string;
+  // R-0338: die Fassung jeder herangezogenen Quelle, wie DIESE Antwort sie gelesen hat (Spiegel von
+  // `AskResult.quellenStand`). Ein älterer Server sendet das Feld nicht — die Antwort hat dann
+  // keinen belastbaren Quellenstand (Regeln an `antwortFrische`, lib/fragenArbeitsstand.ts).
+  quellenStand?: Record<string, number>;
   // JOB 2626 D1: nur bei Nicht-Antwort UND nur auf Wegen mit Betrachterfilter vorhanden; ein
   // älterer Server sendet das Feld nicht — die Fläche fällt dann auf die generische Leermeldung.
   verschlossen?: VerschlossenHinweis[];
   // R-1633: nur wenn ein Fragekontext mitgeschickt wurde — wofür gewichtet wurde und je Quelle
   // ihre Geltung und Passung (Spiegel von `AskGeltungsauskunft`, services/ask/src/service.ts).
   geltung?: AskGeltungsauskunft;
+  // R-0310: je Absatz die tragenden Quellen, die ihn belegen (services/app/src/absatz-belege.ts);
+  // nur bei beantworteter Frage. Angewandt in `lib/askResponse.ts` (`selectAnswer`).
+  absaetze?: AbsatzBeleg[];
+}
+
+export interface AbsatzBeleg {
+  text: string;
+  quellen: string[];
 }
 
 // ================================================================================================
@@ -2949,7 +3044,9 @@ export type NotificationKind =
   | "assignment"
   | "return"
   | "impact"
-  | "kenntnisnahme";
+  | "kenntnisnahme"
+  // aufnahme:20260922:gesamt-wissen-frische: Fristerinnerung, Wochenvorlage, Prüfanforderung.
+  | "frische";
 
 export interface Notification {
   id: string;
@@ -2967,6 +3064,8 @@ export interface Notification {
   fassung?: number;
   erinnerung?: boolean;
   ueberfaellig?: boolean;
+  // aufnahme:20260922:gesamt-wissen-frische: Unterart einer `frische`-Meldung (R-0248/R-0266/R-1635).
+  frischeArt?: "frist" | "vorlage" | "anlage";
 }
 
 // AUFTRAG-mega46 Block F: die Betriebsschalter, die die Oberfläche erfahren darf — AUSSCHLIESSLICH
