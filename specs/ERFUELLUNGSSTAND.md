@@ -5,6 +5,9 @@
 > zählt nicht anteilig. Die Zahl gilt für einen festen Stand und altert mit jedem Einbau.
 
 - **Gemessener Stand:** Basis `6ebcf0be` (1.0.0-beta.1.759), Abgleich durch Quelleninspektion am 08.10.2026.
+  Am 09.10.2026 auf den Stand nach R-1349 nachgezogen (Kandidat `3fb14443`): Die dort entfernten, ungenutzten
+  Stellen `services/rbac/src/guard.ts` und `InterviewSession` sind durch die tatsächlichen Produktwege ersetzt;
+  alle übrigen Pfade und Testtitel sind gegen diesen Stand erneut abgeglichen.
 - **Quelle der Anforderungen:** `specs/reference/Pflichtenheft.md` v1.0 (78 FR + 27 NFR = 105).
 - **Was die Tabelle belegt:** dass der genannte Code und der genannte Testfall (Datei + wörtlicher
   Testtitel) im Bestand stehen. Ob diese Tests grün sind, belegt der Testlauf, nicht diese Tabelle.
@@ -46,9 +49,9 @@ für den oben genannten Stand.
 | FR-RBAC-01 | MUSS | nachgewiesen | `services/rbac/src/policy.ts` | `services/rbac/src/policy.test.ts` › „FR-RBAC-01: Rechtematrix wirkt je Rolle“ | — |
 | FR-RBAC-02 | MUSS | nachgewiesen | `services/auth/src/service.ts` | `services/auth/src/service.test.ts` › „FR-RBAC-02: Admin-Aktionen mit Audit“ | — |
 | FR-RBAC-03 | MUSS | nachgewiesen | `services/rbac/src/policy.ts`<br>`services/auth/src/service.ts` | `services/rbac/src/policy.test.ts` › „FR-RBAC-03: Admin kann sich nicht selbst die Admin-Rolle entziehen“<br>`services/auth/src/service.test.ts` › „der letzte aktive Admin kann sich nicht selbst herabstufen“ | — |
-| FR-RBAC-04 | MUSS | nachgewiesen | `services/rbac/src/guard.ts` | `services/auth/src/service.test.ts` › „FR-RBAC-04: Approve-Route ohne Adminrecht“ | Ergänzend: `tests/security/route-guard-audit.test.ts`. |
+| FR-RBAC-04 | MUSS | nachgewiesen | `services/app/src/http.ts` | `services/auth/src/service.test.ts` › „FR-RBAC-04: Approve-Route ohne Adminrecht“ | Der Rechteweg ist `makeGuards().requirePermission` in `services/app/src/http.ts`; der frühere, ungenutzte Wächter `services/rbac/src/guard.ts` ist mit R-1349 entfernt. Ergänzend: `tests/security/route-guard-audit.test.ts`, `tests/q9-rechtefehler/rechtetor-sprachfaelle.test.ts`. |
 | FR-CAP-01 | MUSS | teilweise | `apps/web/src/pages/Capture.tsx` | — | Laut `tests/erfassung-einstieg/README.md` sind alle vier Modi erreichbar, führen aber nicht zu demselben Datenstand (Blatt speichert Rumpf-HTML, Arbeitsraum Formularfelder). |
-| FR-CAP-02 | MUSS | nachgewiesen | `services/capture/src/interview.ts` | `services/capture/src/service.test.ts` › „stellt eine Frage pro Schritt und schließt nach genügend Antworten ab“ | — |
+| FR-CAP-02 | MUSS | nachgewiesen | `services/reasoner/src/service.ts`<br>`services/reasoner/src/provider.ts`<br>`services/app/src/routes/reasoner-routes.ts` | `services/reasoner/src/service.test.ts` › „eine Frage pro Turn entlang der Fragenfolge“<br>`services/reasoner/src/service.test.ts` › „Abschluss bei ausreichendem Inhalt (Kernaussage + Bedingung + Maßnahme)“<br>`services/reasoner/src/service.test.ts` › „verdichtet die Antworten nachvollziehbar zum Entwurf“ | Das Interview läuft über den Reasoner (Aufgabe `interview`); die frühere, ungenutzte `InterviewSession` in `services/capture` ist mit R-1349 entfernt. Belegt ist der modellfreie Weg; wann ein Modell abschließt, hängt vom Modell ab. |
 | FR-CAP-03 | MUSS | teilweise | `apps/web/src/lib/speechDictation.ts` | — | Diktat-Tests in `tests/diktat-fragefeld/sprechen-und-vorlesen.test.tsx`; „iOS friert nicht ein“ verlangt Bedienung auf einem echten iOS-Gerät, die kein Test ersetzt. |
 | FR-CAP-04 | MUSS | Code fehlt | `apps/web/src/lib/files.ts` | `tests/app/upload-limits-visible.test.ts` › „MOBIL hat gar keine Dateiauswahl“ | Bilder lassen sich am Desktop aus Dateien wählen; eine Kamera-Aufnahme gibt es nicht, und der genannte Test hält fest, dass `/mobile` weder Dateifeld noch Kamera hat. |
 | FR-CAP-05 | SOLL | teilweise | `apps/web/src/lib/ocr.ts` | `tests/capture/ocr-extract.test.ts` › „success: liefert getrimmten Text“ | Der OCR-Adapter ist getestet; dass OCR-Text in Strukturierung/Interview einfließt, ist keinem Testfall zugeordnet. |
@@ -120,7 +123,7 @@ für den oben genannten Stand.
 |---|---|---|---|---|---|
 | NFR-SEC-01 | MUSS | nachgewiesen | `services/auth/src/password.ts` | `tests/auth-speicherung/kennwort-nur-salz-und-hash.test.ts` › „alle vier Kennwortwege: PBKDF2-SHA256“<br>`tests/auth-speicherung/kennwort-nur-salz-und-hash.test.ts` › „alle Kennwortwege samt Fehlversuch: kein Passwort im Log“ | — |
 | NFR-SEC-02 | MUSS | Abnahme außerhalb Tests | `services/app/src/csrf.ts`<br>`services/app/src/security-headers.ts` | — | TLS ist Sache des Betriebs; Abnahme am ausgelieferten Deployment. Cookie-/CSRF-Strategie ist in `services/app/src/csrf.test.ts` getestet. |
-| NFR-SEC-03 | MUSS | Abnahme außerhalb Tests | `services/rbac/src/guard.ts` | — | Abnahmekriterium ist ein Pen-Test; unterstützend `tests/security/route-guard-audit.test.ts`. |
+| NFR-SEC-03 | MUSS | Abnahme außerhalb Tests | `services/app/src/http.ts` | — | Abnahmekriterium ist ein Pen-Test; unterstützend `tests/security/route-guard-audit.test.ts`. |
 | NFR-SEC-04 | MUSS | Abnahme außerhalb Tests | `services/structure/src/sanitize.ts`<br>`services/app/src/csrf.ts` | `services/structure/src/sanitize.test.ts` › „NFR-SEC-04: data:image/svg+xml wird abgelehnt“ | Abnahmekriterium ist ein bestandenes Security-Review; die Tests stützen es, ersetzen es nicht. |
 | NFR-SEC-05 | SOLL | Abnahme außerhalb Tests | — | — | Secrets-Management und Schlüsselrotation sind Betriebsnachweise. |
 | NFR-PRV-01 | MUSS | Abnahme außerhalb Tests | — | — | Abnahme über Dokumentation und Verhalten je Deployment-Modell. |
