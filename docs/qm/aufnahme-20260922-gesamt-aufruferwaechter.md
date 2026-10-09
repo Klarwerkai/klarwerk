@@ -378,6 +378,21 @@ Genau dafür ist der Wächter da. Jeder Fall ist einzeln abgeschlossen:
 | `wissensereignisse.ts::WEBHOOKS_TAKT_ENV` | **angeschlossen** | `server.ts` las den Namen als zweite Schreibweise `process.env.KLARWERK_WEBHOOKS_TAKT_SEK`; jetzt `process.env[WEBHOOKS_TAKT_ENV]` |
 | `wissensereignisse.ts::erhebeBefunde` | **entfernt** | Hülle um `befundeAus(await ladeStand(…))`, die weder der Melder noch ein Test rief |
 
+## Neuzugänge aus dem Hauptstand (Nacharbeit 13)
+
+Am Kandidaten `6843d1bc` meldete A1 zwei neue Exporte ohne Produktaufrufer aus dem integrierten
+Hauptstand (R-1160 Lesehülle, Was-wäre-wenn/Bedingungswechsel). Beide hatten im eigenen Modul eine
+Abschrift neben dem Export; beide sind **angeschlossen**, nicht geduldet:
+
+| Export | Ausgang | Grund |
+|---|---|---|
+| `components/SanitizedHtml.tsx::LESEHUELLE_ATTR` | angeschlossen | Die Hülle schrieb den Namen ein zweites Mal als Literal (`data-kw-lesehuelle="tabelle"`). Jetzt setzt das Element genau die Konstante; das Markup bleibt zeichengleich. |
+| `lib/bedingungswechsel.ts::fundstelle` | angeschlossen | `einordnen` rechnete ihren Körper inline (`alsFundstelle(massgeblich(nennungen(…)))`). Die Funktion hat dafür einen optionalen dritten Parameter mit dem bisherigen Vorgabewert bekommen, und `einordnen` ruft sie. Ergebnis und Testaufrufe sind unverändert. |
+
+Prüfbeleg vor dieser Änderung (Archiv `HISTORIE/nacharbeit-13/PRUEFUNG`): Wächter 16 von 17 grün, rot
+allein A1 mit diesen zwei Funden. Die Integrationsstellen sind 64 von 64 grün, die Folgen von
+Nacharbeit 10 90 von 90, Build und Format grün.
+
 ## Mitgeführte Prüfstände anderer Aufträge
 
 Diese Prüfstände maßen an Bausteinen ohne Produktaufrufer. Sie messen ihre **unveränderte Zusage**
