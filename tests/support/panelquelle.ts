@@ -299,8 +299,12 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * 498. Keine der Messungen (`a72dfdf0…` hier, `c2a57caf…` auf main) beschreibt dieses Dokument. Der
  * Wert unten ist der von main und damit ein PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet den
  * Ist-Wert als „Received", er wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 9 (dieser Auftrag): GEMESSEN im Prüflauf zu Kandidat 42f34c5e am zusammengeführten
+ * Panel (`2d544023…`, „Received" von E2, HISTORIE/nacharbeit-9/PRUEFUNG/
+ * panel-nach-integration-ab5f3c95-pins-und-schnitt.log) und unverändert übernommen; die fünf
+ * Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "c2a57caf99bfc2cb4ca8248c6b583e3fe9a409cf";
+export const PANEL_VOR_SCHNITT_BLOB = "2d544023972d9f9be4e644b2ace90e52c233bdb2";
 
 export interface PanelTeile {
   html: string;
