@@ -1,6 +1,6 @@
 // Öffentliche API des Moduls auth. Andere Module/der Composition-Root importieren NUR von hier.
 export { AuthService } from "./src/service";
-export type { AuthServiceDeps, RegisterInput, LoginInput } from "./src/service";
+export type { AuthServiceDeps, RegisterInput, LoginInput, LoginResult } from "./src/service";
 // WP-VIP2-GATE (bens P1, Token-at-Rest): Hash-Format + Einmal-Migration des Klartext-Bestands.
 export { TOKEN_HASH_PREFIX, hashTokenAtRest } from "./src/service";
 // JOB 2686 (R2-8): die Sitzungsdauer für SSO-Anmeldungen als eigener, prüfbarer Schalter.
@@ -30,11 +30,22 @@ export {
   InMemoryUserRepo,
   InMemorySessionRepo,
   InMemoryPasswordResetRepo,
+  InMemorySecondFactorRepo,
   type UserRepo,
   type SessionRepo,
   type PasswordResetRepo,
+  type SecondFactor,
+  type SecondFactorRepo,
 } from "./src/repo";
-export { PgUserRepo, PgSessionRepo, PgPasswordResetRepo, AUTH_SCHEMA } from "./src/repo-pg";
+export {
+  PgUserRepo,
+  PgSessionRepo,
+  PgPasswordResetRepo,
+  PgSecondFactorRepo,
+  AUTH_SCHEMA,
+} from "./src/repo-pg";
+// R-0562: das TOTP-Verfahren — exportiert, damit Prüfungen einen echten Code erzeugen können.
+export { totpCode, totpSchritt } from "./src/totp";
 export {
   createOidcVerifier,
   createOidcProvider,

@@ -262,6 +262,47 @@ export const MELDUNGEN = {
     en: "The sign-in service is not responding.",
     nl: "De aanmelddienst reageert niet.",
   },
+  // R-0562: die eigene Zwei-Faktor-Anmeldung (Bestätigungscode vom zweiten Gerät).
+  SECOND_FACTOR_REQUIRED: {
+    de: "Bitte den Bestätigungscode aus der Authenticator-App eingeben.",
+    en: "Please enter the confirmation code from your authenticator app.",
+    nl: "Voer de bevestigingscode uit je authenticator-app in.",
+  },
+  SECOND_FACTOR_INVALID: {
+    de: "Bestätigungscode falsch oder abgelaufen.",
+    en: "The confirmation code is incorrect or has expired.",
+    nl: "De bevestigingscode is onjuist of verlopen.",
+  },
+  SECOND_FACTOR_CHALLENGE_INVALID: {
+    de: "Die Anmeldung ist abgelaufen. Bitte erneut mit E-Mail und Passwort anmelden.",
+    en: "The sign-in has expired. Please sign in again with email and password.",
+    nl: "De aanmelding is verlopen. Meld je opnieuw aan met e-mailadres en wachtwoord.",
+  },
+  SECOND_FACTOR_RATE_LIMITED: {
+    de: "Zu viele falsche Bestätigungscodes. Bitte später erneut versuchen.",
+    en: "Too many incorrect confirmation codes. Please try again later.",
+    nl: "Te veel onjuiste bevestigingscodes. Probeer het later opnieuw.",
+  },
+  SECOND_FACTOR_ALREADY_ACTIVE: {
+    de: "Die Zwei-Faktor-Anmeldung ist bereits eingerichtet.",
+    en: "Two-factor sign-in is already set up.",
+    nl: "Aanmelden in twee stappen is al ingesteld.",
+  },
+  SECOND_FACTOR_NOT_ACTIVE: {
+    de: "Die Zwei-Faktor-Anmeldung ist nicht eingerichtet.",
+    en: "Two-factor sign-in is not set up.",
+    nl: "Aanmelden in twee stappen is niet ingesteld.",
+  },
+  SECOND_FACTOR_SETUP_MISSING: {
+    de: "Die Einrichtung ist abgelaufen. Bitte neu beginnen.",
+    en: "The setup has expired. Please start again.",
+    nl: "De instelling is verlopen. Begin opnieuw.",
+  },
+  SECOND_FACTOR_PASSWORD_ACCOUNT_ONLY: {
+    de: "Die eigene Zwei-Faktor-Anmeldung gibt es nur für Konten mit Passwort.",
+    en: "Two-factor sign-in is only available for accounts with a password.",
+    nl: "Aanmelden in twee stappen is alleen beschikbaar voor accounts met een wachtwoord.",
+  },
   // R-0541: die Anmeldung mit Passwort ist abgeschaltet, es gilt nur der Firmen-Login.
   PASSWORD_LOGIN_DISABLED: {
     de: "Die Anmeldung mit Passwort ist auf dieser Instanz abgeschaltet. Bitte über den Firmen-Login (SSO) anmelden.",
