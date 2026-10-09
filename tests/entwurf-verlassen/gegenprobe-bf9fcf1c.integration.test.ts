@@ -4,8 +4,9 @@
 //
 // Kriterium 5 (wörtlich): „Gegenprobe: Die neuen Tests für die Kriterien 1 und 3 sind gegen
 // bf9fcf1c rot und auf der neuen Fassung grün." Die grüne Hälfte belegen die regulären Läufe auf dem
-// Kandidaten. HIER steht die rote: dieselben Testdateien, in einem Unterlauf gegen den alten Stand
-// (Herstellung und Commitbindung: `gegenprobe-bf9fcf1c.ts`).
+// Kandidaten. HIER steht die rote: dieselben Testdateien, in einem Unterlauf gegen den TATSÄCHLICHEN
+// Produktstand bf9fcf1c (`apps/web` und `services` aus einem commitgebundenen Quellarchiv, per
+// Git-Baum-Hash gegen bf9fcf1c geprüft; Herstellung und Testumgebung: `gegenprobe-bf9fcf1c.ts`).
 //
 // ROT HEISST FACHLICH ROT. Ein Fall, der nur scheitert, weil ein Modul fehlt oder die Datei nicht
 // lädt, zählt nicht — er beweise nichts über das Verhalten. Deshalb:
@@ -84,13 +85,30 @@ describe("K5 · Gegenprobe gegen bf9fcf1c (Umkehrung dieser Änderung, Commitbin
   afterAll(() => rmSync(ziel, { recursive: true, force: true }));
 
   it("die neuen Tests zu K1 und K3 sind im alten Stand fachlich rot, die unberührten grün", () => {
-    bereiteAltenStand(ziel);
+    const stand = bereiteAltenStand(ziel);
     const faelle = fahreAlteTests(ziel, [ECHTE_API, ATTRAPPEN, ROUTE]);
 
-    const zeilen: string[] = [];
+    // Der Beleg steht VOR den Zusicherungen — auch ein roter Ausgang nennt jeden Fall.
+    const bezug = (d: string, k: string): Fall | undefined =>
+      faelle.find((f) => f.datei === d && f.titel.startsWith(`${k} `));
+    const beleg: string[] = [
+      `[KLARWERK] K5 BELEG · Produktstand = ${stand.commit} (apps/web, services aus dem Archiv)`,
+      `  verlinkte Abhängigkeiten vom Kandidaten: ${stand.verlinkt.join(", ") || "keine"}`,
+    ];
+    for (const [ordner, kennung] of Object.entries(stand.baeume)) {
+      beleg.push(`  Baum ${ordner} = ${kennung} (gerechnet, = bf9fcf1c)`);
+    }
+    for (const e of ROT) {
+      const f = bezug(e.datei, e.kennung);
+      beleg.push(`  ${e.kriterium} ${e.kennung} ${f?.status ?? "fehlt"} · ${f?.meldung ?? ""}`);
+    }
+    for (const g of GRUEN) {
+      beleg.push(`  Kalibrierung ${g.kennung} ${bezug(g.datei, g.kennung)?.status ?? "fehlt"}`);
+    }
+    process.stderr.write(`${beleg.join("\n")}\n`);
+
     for (const e of ROT) {
       const f = finde(faelle, e.datei, e.kennung);
-      zeilen.push(`${e.kriterium} ${e.kennung} ${f.status} · ${f.meldung}`);
       const wer = `${e.kennung} (${e.kriterium})`;
       expect(f.status, `${wer} ist gegen bf9fcf1c nicht rot`).toBe("failed");
       expect(f.meldung, `${wer}: rot nur wegen eines Ladefehlers`).not.toMatch(LADEFEHLER);
@@ -100,11 +118,7 @@ describe("K5 · Gegenprobe gegen bf9fcf1c (Umkehrung dieser Änderung, Commitbin
     }
     for (const g of GRUEN) {
       const f = finde(faelle, g.datei, g.kennung);
-      zeilen.push(`Kalibrierung ${g.kennung} ${f.status}`);
-      expect(f.status, `Kalibrierung ${g.kennung}: die alte Kopie ist kaputt`).toBe("passed");
+      expect(f.status, `Kalibrierung ${g.kennung}: der Prüfbaum ist kaputt`).toBe("passed");
     }
-    process.stderr.write(
-      `[KLARWERK] K5 BELEG · alter Stand = Kandidat mit zurückgenommener Änderung; createOperation.ts byte-gleich bf9fcf1c (Blob 177430c6)\n  ${zeilen.join("\n  ")}\n`,
-    );
   }, 1_200_000);
 });

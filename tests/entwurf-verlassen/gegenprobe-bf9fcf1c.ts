@@ -1,26 +1,36 @@
 // ================================================================================================
-// K5 · DIE GEGENPROBE GEGEN bf9fcf1c — DER ALTE STAND, OHNE GIT-VORGESCHICHTE HERGESTELLT.
+// K5 · DIE GEGENPROBE GEGEN bf9fcf1c — DER TATSÄCHLICHE PRODUKTSTAND, COMMITGEBUNDEN.
 // ================================================================================================
 //
 // Auftrag arbeit:erfassen-doppelklick-entscheidungen-20261001, Kriterium 5: „Die neuen Tests für die
 // Kriterien 1 und 3 sind gegen bf9fcf1c rot und auf der neuen Fassung grün."
 //
-// WARUM KEIN `git checkout bf9fcf1c`: Der Prüfbaum auf dem Server ist ein flacher Checkout ohne
-// Vorgeschichte (dieselbe Lage wie bei der Vorschau-Reichweite, Ben-Befund P1, s.
-// `tests/vorschau-reichweite/alte-flaeche.ts`). Und ein voller Stand von bf9fcf1c passte nicht zu
-// den heutigen Tests und Hilfen (Wörterbücher, Hülle, Attrappen sind seither gewachsen).
+// BEN, nacharbeit-5: Eine Rücknahme dieser Änderung auf dem heutigen Kandidaten ist NICHT bf9fcf1c —
+// dort stehen spätere Änderungen anderer Aufträge in Capture.tsx, service.ts und capture-routes.ts.
+// Verlangt ist der tatsächliche Produktstand. Deshalb jetzt:
 //
-// WAS STATTDESSEN GESCHIEHT: `gegenprobe-bf9fcf1c.patch` ist die Umkehrung GENAU DIESER Änderung
-// an den neun Produktdateien (erzeugt mit `git diff aec4f50e0 13bf9f2bd -- <Dateien>`). Sie wird auf
-// eine Kopie des aktuellen Baums angewandt; die TESTS bleiben die neuen. Das ergibt das Verhalten
-// von bf9fcf1c auf den betroffenen Wegen, und zwar belegbar:
-//   · `apps/web/src/lib/createOperation.ts` (Schlüsselvergabe `anlageVorgangFuer`) ist danach
-//     BYTEGLEICH mit bf9fcf1c — geprüft über die Git-Blob-Kennung (`BF9FCF1C_CREATE_OPERATION`).
-//   · In Capture.tsx, service.ts und capture-routes.ts hat zwischen bf9fcf1c und der Basis
-//     13bf9f2bd niemand die Anlage-/Wiederholwege berührt (Abgleich `git diff bf9fcf1c 13bf9f2bd`:
-//     dort kam nur der Word-Transport `dokumentId` dazu). Die Wächter unten sichern, dass die
-//     Kopie die alten Wege trägt und keine Spur der neuen.
-// Dafür braucht es nur `git apply` (arbeitet ohne Repository) und denselben Vitest wie im Tor.
+// DAS QUELLARCHIV. `gegenprobe-bf9fcf1c-quellen.patch` enthält den VOLLSTÄNDIGEN Inhalt von
+// `apps/web` und `services` aus bf9fcf1c, erzeugt aus dem leeren Baum:
+//     git diff --binary --full-index 4b825dc642cb6eb9a060e54bf8d69288fbee4904 bf9fcf1c \
+//       -- apps/web services
+// Der Prüfbaum auf dem Server hat keine Vorgeschichte (Ben-Befund P1 der Vorschau-Reichweite), ein
+// `git checkout bf9fcf1c` geht dort nicht — dieses Archiv braucht nur `git apply` (ohne Repository).
+//
+// DIE COMMITBINDUNG IST GERECHNET, NICHT BEHAUPTET. Nach dem Auspacken wird über `apps/web` und
+// `services` der Git-Baum-Hash gebildet (dieselbe Rechnung wie Git: Blobs, Modi, Sortierung) und
+// mit den Bäumen von bf9fcf1c verglichen (`git rev-parse bf9fcf1c:apps/web` / `:services`). Stimmt
+// auch nur ein Byte, ein Modus oder eine Datei zu viel nicht, bricht die Gegenprobe ab. Der alte
+// Produktcode wird dabei nicht angefasst.
+//
+// DIE TESTUMGEBUNG — DIE EINZIGEN ANPASSUNGEN, GETRENNT BENANNT:
+//   1. `tests/` und die Wurzeldateien (vitest.config.ts, tests/setup-env.ts …) kommen vom
+//      KANDIDATEN: sonst gäbe es die neuen Tests nicht. Seit bf9fcf1c unverändert sind dort
+//      vitest.config.ts, tests/setup-env.ts und die Hülle `huelle.tsx`; geändert ist nur
+//      `attrappen.ts` (durch diesen Auftrag: `anlage` in der Antwort, `fortschreiben`).
+//   2. Die installierten Abhängigkeiten (`node_modules`) sind die des Kandidaten, verlinkt. Zwischen
+//      bf9fcf1c und dem Kandidaten unterscheiden sich package.json (4 Zeilen) und package-lock.json
+//      (58 Zeilen); apps/web/package.json ist gleich — und liegt ohnehin bf9fcf1c-gleich im Archiv.
+// Alles andere — der gesamte Produktcode von Oberfläche und Diensten — ist bf9fcf1c.
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -29,28 +39,78 @@ import {
   lstatSync,
   readFileSync,
   readdirSync,
+  readlinkSync,
   realpathSync,
   symlinkSync,
 } from "node:fs";
-import { basename, join, relative, sep } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 
 export const WURZEL = join(__dirname, "..", "..");
-const PATCH = join(__dirname, "gegenprobe-bf9fcf1c.patch");
+const QUELLEN = join(__dirname, "gegenprobe-bf9fcf1c-quellen.patch");
 
-/** Git-Blob-Kennung von `apps/web/src/lib/createOperation.ts` in bf9fcf1c (= in 13bf9f2bd). */
-export const BF9FCF1C_CREATE_OPERATION = "177430c63ae229022544dcea66a09dd2323f46fa";
+/** Der Vergleichscommit, voll ausgeschrieben. */
+export const VERGLEICHSCOMMIT = "bf9fcf1c9556b583efe6c606da822c1e94117b25";
 
-const CREATE_OPERATION = "apps/web/src/lib/createOperation.ts";
-const CAPTURE = "apps/web/src/pages/Capture.tsx";
-const DIENST = "services/capture/src/service.ts";
-const ROUTE = "services/app/src/routes/capture-routes.ts";
-const DE = "apps/web/src/woerterbuch/de.ts";
+/** Die Git-Bäume von bf9fcf1c für die beiden Produktordner (`git rev-parse bf9fcf1c:<ordner>`). */
+export const BF9FCF1C_BAEUME: Readonly<Record<string, string>> = {
+  "apps/web": "c43f603f85c4ae12ad131621763c1a1e499603e7",
+  services: "e7e2ce80d6a400bf9550e0211747e9c68450724f",
+};
 
 /** Dieselbe Rechnung wie `git hash-object`. */
 export function blobKennung(inhalt: Buffer): string {
+  return gitObjekt("blob", inhalt).toString("hex");
+}
+
+function gitObjekt(art: "blob" | "tree", inhalt: Buffer): Buffer {
   return createHash("sha1")
-    .update(Buffer.concat([Buffer.from(`blob ${inhalt.length}\0`), inhalt]))
-    .digest("hex");
+    .update(Buffer.concat([Buffer.from(`${art} ${inhalt.length}\0`), inhalt]))
+    .digest();
+}
+
+/**
+ * Der Git-Baum-Hash eines Ordners — Git-Regeln: Dateien 100644/100755, Symlinks 120000 (Inhalt =
+ * Ziel), Ordner 40000, leere Ordner fehlen, Sortierung bytegenau mit „/" hinter Ordnernamen.
+ * `node_modules` gehört nie zu einem Commit und wird übergangen (dort hängen die Verlinkungen).
+ */
+export function baumKennung(ordner: string): string {
+  const kennung = baum(ordner);
+  return kennung === null ? "" : kennung.toString("hex");
+}
+
+function baum(ordner: string): Buffer | null {
+  const eintraege: { schluessel: string; zeile: Buffer }[] = [];
+  for (const name of readdirSync(ordner)) {
+    if (name === "node_modules") {
+      continue;
+    }
+    const pfad = join(ordner, name);
+    const art = lstatSync(pfad);
+    let modus: string;
+    let kennung: Buffer | null;
+    if (art.isSymbolicLink()) {
+      modus = "120000";
+      kennung = gitObjekt("blob", Buffer.from(readlinkSync(pfad)));
+    } else if (art.isDirectory()) {
+      modus = "40000";
+      kennung = baum(pfad);
+    } else {
+      modus = (art.mode & 0o111) !== 0 ? "100755" : "100644";
+      kennung = gitObjekt("blob", readFileSync(pfad));
+    }
+    if (kennung === null) {
+      continue;
+    }
+    eintraege.push({
+      schluessel: art.isDirectory() ? `${name}/` : name,
+      zeile: Buffer.concat([Buffer.from(`${modus} ${name}\0`), kennung]),
+    });
+  }
+  if (eintraege.length === 0) {
+    return null;
+  }
+  eintraege.sort((a, b) => Buffer.compare(Buffer.from(a.schluessel), Buffer.from(b.schluessel)));
+  return gitObjekt("tree", Buffer.concat(eintraege.map((e) => e.zeile)));
 }
 
 function wache(bedingung: boolean, meldung: string): void {
@@ -62,7 +122,7 @@ function wache(bedingung: boolean, meldung: string): void {
 /** Abhängigkeiten werden verlinkt, gebaute Stände und Caches nicht mitgenommen. */
 const NICHT_KOPIEREN = new Set(["node_modules", ".git", ".local", "coverage", "test-results"]);
 
-function mitnehmen(quelle: string): boolean {
+function kopierbar(quelle: string): boolean {
   const name = basename(quelle);
   if (NICHT_KOPIEREN.has(name) || name === "dist" || name.startsWith("dist-")) {
     return false;
@@ -72,6 +132,15 @@ function mitnehmen(quelle: string): boolean {
   // nacharbeit-4) — beides ist kein Quelltext und gehört nicht in die Kopie.
   const art = lstatSync(quelle);
   return art.isDirectory() || art.isFile() || art.isSymbolicLink();
+}
+
+/** Die Produktordner kommen NICHT vom Kandidaten, sondern aus dem Quellarchiv. */
+function mitnehmen(quelle: string): boolean {
+  const rel = relative(WURZEL, quelle).split(sep).join("/");
+  if (Object.keys(BF9FCF1C_BAEUME).some((o) => rel === o || rel.startsWith(`${o}/`))) {
+    return false;
+  }
+  return kopierbar(quelle);
 }
 
 /** Alle `node_modules` des Arbeitsbaums bis Tiefe 3 — sie werden in der Kopie verlinkt. */
@@ -86,7 +155,7 @@ function abhaengigkeitsOrte(): string[] {
         orte.push(relative(WURZEL, pfad));
         continue;
       }
-      if (eintrag.isDirectory() && tiefe < 3 && mitnehmen(pfad)) {
+      if (eintrag.isDirectory() && tiefe < 3 && kopierbar(pfad)) {
         gehe(pfad, tiefe + 1);
       }
     }
@@ -95,47 +164,46 @@ function abhaengigkeitsOrte(): string[] {
   return orte;
 }
 
+/** Was die Herstellung über den alten Stand festgestellt hat — für den Beleg. */
+export interface AlterStand {
+  readonly commit: string;
+  readonly baeume: Readonly<Record<string, string>>;
+  readonly verlinkt: readonly string[];
+}
+
 /**
- * Legt in `ziel` eine Kopie des Arbeitsbaums an und nimmt darin diese Änderung zurück. Wirft, wenn
- * der Arbeitsbaum die Änderung nicht trägt, die Umkehrung nicht passt oder das Ergebnis nicht der
- * Stand von bf9fcf1c auf den betroffenen Wegen ist.
+ * Legt in `ziel` den Prüfbaum an: Tests und Wurzeldateien vom Kandidaten, `apps/web` und `services`
+ * aus dem Quellarchiv von bf9fcf1c. Wirft, wenn das Archiv nicht passt oder die Produktordner nicht
+ * baumgleich mit bf9fcf1c sind.
  */
-export function bereiteAltenStand(ziel: string): void {
-  const jetzt = (pfad: string): string => readFileSync(join(WURZEL, pfad), "utf8");
-  wache(
-    jetzt(CREATE_OPERATION).includes("anlageVorgangWiederholen") &&
-      jetzt(CAPTURE).includes("capture-bereits-gespeichert") &&
-      jetzt(DIENST).includes("anlageFortschreiben"),
-    "der Arbeitsbaum trägt die Änderung nicht — es gäbe nichts zurückzunehmen.",
-  );
+export function bereiteAltenStand(ziel: string): AlterStand {
+  wache(existsSync(QUELLEN), `das Quellarchiv fehlt: ${QUELLEN}`);
   cpSync(WURZEL, ziel, { recursive: true, filter: mitnehmen });
-  for (const ort of abhaengigkeitsOrte()) {
-    if (!existsSync(join(ziel, ort))) {
-      symlinkSync(join(WURZEL, ort), join(ziel, ort), "dir");
-    }
+  for (const ordner of Object.keys(BF9FCF1C_BAEUME)) {
+    wache(!existsSync(join(ziel, ordner)), `${ordner} kam vom Kandidaten in den Prüfbaum.`);
   }
-  execFileSync("git", ["apply", "--whitespace=nowarn", PATCH], {
+  execFileSync("git", ["apply", "--whitespace=nowarn", QUELLEN], {
     cwd: ziel,
     stdio: ["ignore", "pipe", "pipe"],
   });
-  const alt = (pfad: string): string => readFileSync(join(ziel, pfad), "utf8");
-  wache(
-    blobKennung(readFileSync(join(ziel, CREATE_OPERATION))) === BF9FCF1C_CREATE_OPERATION,
-    `${CREATE_OPERATION} ist nach der Umkehrung nicht byte-gleich mit bf9fcf1c.`,
-  );
-  const capture = alt(CAPTURE);
-  wache(
-    capture.includes("anlageVorgangFuer(eintragVorgangRef.current, JSON.stringify(payload))") &&
-      capture.includes("anlageVorgangFuer(null, JSON.stringify(payload))") &&
-      !capture.includes("capture-bereits-gespeichert") &&
-      !capture.includes("anlageVorgangWiederholen"),
-    `${CAPTURE} ist nicht der alte Stand.`,
-  );
-  wache(
-    !alt(DIENST).includes("anlageFortschreiben") && !alt(ROUTE).includes("rohFortschreiben"),
-    "Dienst oder Route tragen noch das Fortschreiben.",
-  );
-  wache(!alt(DE).includes("capture.bereitsGespeichert"), "der Hinweistext steht noch da.");
+  // ERST prüfen, DANN verlinken: so kann keine Verlinkung den Baumvergleich berühren.
+  const baeume: Record<string, string> = {};
+  for (const [ordner, erwartet] of Object.entries(BF9FCF1C_BAEUME)) {
+    baeume[ordner] = baumKennung(join(ziel, ordner));
+    wache(
+      baeume[ordner] === erwartet,
+      `${ordner} ist nicht baumgleich mit ${VERGLEICHSCOMMIT}: ${baeume[ordner]} statt ${erwartet}.`,
+    );
+  }
+  const verlinkt: string[] = [];
+  for (const ort of abhaengigkeitsOrte()) {
+    // Ein Abhängigkeitsort eines Pakets, das es in bf9fcf1c noch nicht gab, entfällt.
+    if (!existsSync(join(ziel, ort)) && existsSync(join(ziel, dirname(ort)))) {
+      symlinkSync(join(WURZEL, ort), join(ziel, ort), "dir");
+      verlinkt.push(ort);
+    }
+  }
+  return { commit: VERGLEICHSCOMMIT, baeume, verlinkt };
 }
 
 /** Ein Fall des Unterlaufs, wie der JSON-Bericht von Vitest ihn nennt. */
@@ -146,7 +214,7 @@ export interface Fall {
   readonly meldung: string;
 }
 
-/** Fährt die genannten Testdateien mit demselben Vitest in der Kopie; liefert jeden Fall. */
+/** Fährt die genannten Testdateien mit demselben Vitest im Prüfbaum; liefert jeden Fall. */
 export function fahreAlteTests(ziel: string, dateien: readonly string[]): Fall[] {
   const bericht = join(ziel, "gegenprobe-bericht.json");
   // Ohne `KLARWERK_TESTGRUPPE`: der Unterlauf sieht den ganzen Bestand (s. vitest.config.ts).
