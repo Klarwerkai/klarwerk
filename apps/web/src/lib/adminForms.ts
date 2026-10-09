@@ -75,4 +75,6 @@ export const KONTO_AUDIT_AKTIONEN: readonly string[] = [
   "user.second-factor-enabled",
   "user.second-factor-disabled",
   "user.directory-sync",
+  // Mit dem Basisstand hinzugekommen (R-0582): Berichtigung von Name/E-Mail.
+  "user.account-corrected",
 ];
