@@ -275,9 +275,11 @@
      Umbruchregel an `td`/`th` oben — sinken die Spalten auf eine umbrechbare min-content-Breite,
      hält `w-full` wieder, und die Tabelle bleibt in der Spalte.
      KEIN `display: block; overflow-x: auto` an der Tabelle: das zerstörte das Tabellenlayout, und
-     die Scheibe verwirft diesen Behelf ausdrücklich. Die echte Scroll-Hülle gehört in den
-     Renderpfad (`components/ko/KoRead.tsx`) und liegt außerhalb der Zielpfade dieses Auftrags —
-     s. Rückgabe, Abschnitt „Was nicht gebaut ist". */
+     die Scheibe verwirft diesen Behelf ausdrücklich. Die echte Scroll-Hülle steht seit R-1160 im
+     Renderpfad: `SanitizedHtml` mit `lesehuellen` (Bibliothek-Lesefläche) setzt jede
+     Tabelle der obersten Ebene in ein React-Element mit `overflow-x-auto`. Bewusst KEINE eigene
+     Regel für die Hülle in diesem Block — sie ist Oberfläche, kein sanitisierter Inhalt, und eine
+     Klasse hier müsste die Allowlist passieren (tests/web/d037-*). */
   max-width: 100%;
 }
 .prose-kw th,
@@ -309,6 +311,12 @@
 /* SCRUM-438: übernommenes externes, ungeprüftes Wissen — dezenter KI-Akzent (wie „extern · ungeprüft"). */
 .prose-kw .panel-external {
   @apply border-l-4 border-l-ai bg-ai-surface-1;
+}
+/* R-1020: die KI-erzeugte Antwortkarte sieht anders aus als validiertes Wissen — violetter
+   gestrichelter Rahmen, violette Fläche (dieselben Token wie ReasonerDraft). Über ein Attribut,
+   weil die Karte ihre Rahmen-/Grundklassen aus `Card` mitbringt; Attribut + Klasse schlägt sie. */
+.print-area[data-reasoner-entwurf] {
+  @apply border-dashed border-ai-dashed bg-ai-surface-2;
 }
 /* SCRUM-355: sichere Body-Datei-Referenz (Link auf Object-Store-Raw-Pfad) als ruhige Anhang-Zeile. */
 .prose-kw .attachment {
@@ -443,4 +451,61 @@ body.klara-inspect * {
 .kw-menue.kw-menue-links {
   left: 0;
   right: auto;
+}
+
+/* KLARA-VORSCHAU (components/klara-vorschau/): die bewegliche Figur und ihr Gespräch.
+   Zustand steht IMMER zusätzlich als Text da („Anfrage läuft …“, „Antwort bereit“,
+   „Entscheidung nötig“) — die Bewegung ist sparsam und entfällt bei reduzierter Bewegung ganz. */
+.klara-figur {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.klara-figur[data-status="entscheidung"] {
+  outline: 3px solid rgb(var(--kw-brand));
+  outline-offset: 3px;
+}
+.klara-figur[data-ablage="true"] {
+  outline: 3px dashed rgb(var(--kw-ai));
+  outline-offset: 4px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .klara-figur {
+    transition: width 0.15s ease, height 0.15s ease;
+  }
+  .klara-figur[data-status="laeuft"] img {
+    animation: kw-klara-denkt 1.4s ease-in-out infinite;
+  }
+  .klara-figur[data-status="antwort"] {
+    animation: kw-klara-bereit 1.2s ease-out 2;
+  }
+}
+@keyframes kw-klara-denkt {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+@keyframes kw-klara-bereit {
+  from {
+    box-shadow: 0 0 0 0 rgb(var(--kw-brand) / 0.55);
+  }
+  to {
+    box-shadow: 0 0 0 12px rgb(var(--kw-brand) / 0);
+  }
+}
+/* Seitliche Ansicht auf breiten Bildschirmen: die App rückt zur Seite, statt verdeckt zu werden —
+   wichtige Seitenaktionen bleiben erreichbar. */
+@media (min-width: 900px) {
+  body.klara-seitlich #root {
+    padding-right: 380px;
+  }
+}
+.klara-zeiger {
+  outline: 3px solid rgb(var(--kw-brand));
+  outline-offset: 4px;
+  border-radius: 8px;
 }

@@ -9,7 +9,7 @@
 // 6.1) war so nicht zu bekommen.
 //
 // Dieser Block steht nur im Druck (`print-only`) und liest DIESELBE Eingabe wie der Markdown-Export
-// (`buildExportInput` in `pages/Ask.tsx`) über dieselben Hilfen (`decisionProtocolRows`,
+// (`exportEingabe` in `pages/Ask.tsx`) über dieselben Hilfen (`decisionProtocolRows`,
 // `sourceFacts`) — Datei und Blatt können damit nichts Verschiedenes über eine Quelle sagen.
 import { Fragment } from "react";
 import {

@@ -22,6 +22,7 @@ import {
   decisionProtocolRows,
   sourceFacts,
 } from "../../apps/web/src/lib/answerExport";
+import { antwortAbsaetze, buildAnswerDatei } from "../../apps/web/src/lib/antwortDateien";
 
 const WURZEL = join(__dirname, "..", "..");
 
@@ -225,6 +226,63 @@ describe("R-1643 · Argumentationskette im exportierten Dokument", () => {
     const ask = readFileSync(join(WURZEL, "apps/web/src/pages/Ask.tsx"), "utf8");
     expect(ask).toContain("argumentation: result.argumentation ?? null,");
     expect(ask).not.toMatch(/argumentation: result\.steps/);
+  });
+});
+
+// ================================================================================================
+// R-1643 · ZUSAMMENFÜHRUNG MIT main (R-0703 / R-0604 / R-0625).
+// ================================================================================================
+// main hat echte Word-, PowerPoint- und PDF-Dateien (`antwortDateien.ts`) und die dreiwertige
+// KI-Herkunft (`kiHerkunft`) gebracht. Beide Zusagen bleiben: die Dateien tragen das Protokoll, und
+// der belegte modellfreie Rückfall nimmt nur die KI-Zeilen heraus — nicht Zeitpunkt und Nutzer-ID.
+describe("R-1643 · Protokoll in Word, PowerPoint und PDF; Kopfblock bei „ohne-ki“", () => {
+  it("antwortAbsaetze (gemeinsamer Inhalt aller drei Dateiformate) trägt Zeitpunkt, Nutzer-ID und Kette", () => {
+    const texte = antwortAbsaetze(eingabe()).map((a) => a.text);
+    expect(texte).toContain("Entscheidungs-Protokoll");
+    expect(texte).toContain("Zeitpunkt (UTC): 2026-10-08T09:15:02.123Z");
+    expect(texte).toContain("Nutzer-ID: u-7");
+    expect(texte).toContain("Argumentationskette");
+    expect(texte).toContain(
+      "1. „Alle Firmenwagen werden in Blau bestellt.“ — belegt durch: Farbregelung Firmenwagen (ko-487)",
+    );
+    // Wie im Markdown: nach den Quellen, vor der Fußnote.
+    const kopf = texte.indexOf("Entscheidungs-Protokoll");
+    expect(kopf).toBeGreaterThan(texte.indexOf("Quellen"));
+    expect(kopf).toBeLessThan(texte.findIndex((t) => t.startsWith("erstellt am")));
+  });
+
+  it("ohne Kette sagen auch die Dateien es — keine Schritte als Ersatz", () => {
+    const texte = antwortAbsaetze(
+      eingabe({ protocol: { userId: null, argumentation: null, labels: PROTOKOLL_LABELS } }),
+    ).map((a) => a.text);
+    expect(texte).toContain(PROTOKOLL_LABELS.argumentationMissing);
+    expect(texte).toContain(`Nutzer-ID: ${PROTOKOLL_LABELS.userUnknown}`);
+    expect(texte.some((t) => t.startsWith("1. "))).toBe(false);
+  });
+
+  it("die PDF-Datei entsteht mit Protokoll — alle Protokollzeichen sind darstellbar", () => {
+    for (const format of ["pdf", "docx", "pptx"] as const) {
+      const bytes = buildAnswerDatei(eingabe(), format);
+      expect(bytes.length, `${format}: leere Datei`).toBeGreaterThan(0);
+    }
+  });
+
+  it("„ohne-ki“ mit Protokoll: Kopfblock nur mit Zeitpunkt und Nutzer-ID, ohne KI-Zeilen", () => {
+    const md = buildAnswerMarkdown(eingabe({ kiHerkunft: "ohne-ki" }));
+    expect(md.split("\n").slice(0, 4)).toEqual([
+      "---",
+      "exported-at: 2026-10-08T09:15:02.123Z",
+      'user-id: "u-7"',
+      "---",
+    ]);
+    expect(md).not.toContain("ai-generated");
+    expect(md).toContain("## Entscheidungs-Protokoll");
+  });
+
+  it("GEGENPROBE: „ohne-ki“ ohne Protokoll bleibt wie in main — gar kein Kopfblock", () => {
+    const ohneProtokoll = eingabe({ kiHerkunft: "ohne-ki" });
+    delete ohneProtokoll.protocol;
+    expect(buildAnswerMarkdown(ohneProtokoll).startsWith("# ")).toBe(true);
   });
 });
 

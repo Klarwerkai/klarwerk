@@ -46,6 +46,17 @@ export interface KnowledgeRef {
   // Fehler wie die 500 aus `wordAddin.ts:925`, nur mit einer größeren Ziffer. Die Menge gehört zum
   // Aufrufer, wo sie messbar ist; fehlt das Feld, matcht der Altbestand wie bisher.
   bodyText?: string;
+  // R-1633 (Schicht- und Rollen-Filter beim Fragen): wie gut die Geltung dieser Quelle zum
+  // Fragekontext passt (3 eigene Schicht · 2 eigenes Werk · 1 Konzern/unbestimmt · 0 anderswo).
+  // Gesetzt NUR vom Fragedienst, und nur wenn der Fragende einen Kontext angegeben hat; fehlt das
+  // Feld überall, rechnet `rankCandidates` Zeichen für Zeichen wie bisher. Der Reasoner kennt die
+  // Geltung selbst nicht — er bekommt nur diese Zahl (Regel: knowledge-object `geltungFuerFrage`).
+  geltungsrang?: number;
+  // aufnahme:20260922:gesamt-wissen-frische (R-0248): die Haltbarkeit dieser Quelle ist abgelaufen —
+  // sie gilt in Antworten nicht mehr als gesichert, bis der Verantwortliche sie bestätigt. Gesetzt
+  // NUR vom Fragedienst (Regel: knowledge-object `haltbarkeitAbgelaufen`); fehlt das Feld, gilt
+  // allein der Status wie bisher.
+  haltbarkeitAbgelaufen?: true;
 }
 
 // ================================================================================================
@@ -191,6 +202,24 @@ export interface ArgumentationsGlied {
   belegtDurch: string;
 }
 
+// FR-STR-01 (R-0315): die Wissensart des Strukturierungsvorschlags. Dieselben fünf Werte wie
+// `KnowledgeType` im Modul knowledge-object — hier gespiegelt, weil der Reasoner knowledge-object
+// nicht direkt kennt (siehe KnowledgeRef). Gleichlauf ist in provider-model.test.ts gepinnt.
+export type StructureKnowledgeType =
+  | "bauchgefuehl"
+  | "best_practice"
+  | "lernkurve"
+  | "technik"
+  | "negativwissen";
+
+export const STRUCTURE_KNOWLEDGE_TYPES: readonly StructureKnowledgeType[] = [
+  "bauchgefuehl",
+  "best_practice",
+  "lernkurve",
+  "technik",
+  "negativwissen",
+];
+
 export interface StructureResult {
   title: string;
   statement: string;
@@ -198,6 +227,9 @@ export interface StructureResult {
   measures: string[];
   tags: string[];
   confidence: number;
+  // FR-STR-01: die vom Modell vorgeschlagene Wissensart. Fehlt, wenn das Modell keinen der fünf
+  // gültigen Werte liefert oder der deterministische Fallback lief — dort wird nie geraten (G-2).
+  knowledgeType?: StructureKnowledgeType;
   demo: boolean;
   // WP-D8 (Pedis Live-ROT B): WARUM lief der deterministische Fallback? demo:true allein verschluckte
   // drei verschiedene Ursachen — die UI konnte nur ein erklärungsloses FALLBACK-Badge zeigen.
@@ -371,6 +403,69 @@ export interface ReasonerCloudAnbieterStatus {
   grund?: string;
 }
 
+// R-0702: die HERKUNFT eines KI-Zugangs kommt aus der zentralen Zugangsverwaltung dieses Servers
+// (`anbieter-herkunft.ts`), nicht aus einer Deutung der Modellkennung im Browser. `nachweis` sagt,
+// wie belastbar die Angabe ist: `behauptet` = Angabe des Anbieters zu seinem Sitz, von KLARWERK
+// nicht geprüft; `geprueft` = ein belegter Nachweis liegt vor (heute für keinen Zugang);
+// `unbekannt` = es gibt keine Angabe (dann ist auch `land` null).
+export type ReasonerHerkunftNachweis = "geprueft" | "behauptet" | "unbekannt";
+
+export interface ReasonerZugangHerkunft {
+  land: string | null; // ISO-3166-Alpha-2, klein geschrieben (z. B. "us"), oder null
+  nachweis: ReasonerHerkunftNachweis;
+}
+
+// R-0299: der Wissensstand eines Modells — der vom Hersteller VERÖFFENTLICHTE „knowledge cutoff",
+// NUR aus belegten Herstellerangaben (`anbieter-herkunft.ts`). Er ist nicht dasselbe wie das Ende der
+// Trainingsdaten (Anthropic nennt beides getrennt). Fehlt der Beleg, ist `stand` null, `nachweis`
+// „unbekannt", und `quellenbedarf` nennt die fehlende Quelle.
+export interface ReasonerModellWissensstand {
+  stand: string | null;
+  nachweis: "belegt" | "unbekannt";
+  quelle: string | null;
+  /** Wann die Herstellerquelle gelesen wurde (ISO-Datum); `null` ohne Beleg. */
+  abgerufen: string | null;
+  quellenbedarf: string | null;
+}
+
+// R-0299: die Karte „Betreiber und Wissensstand" — wer das gerade antwortende Modell betreibt,
+// woher er kommt und bis wann das Wissen des Modells reicht. Nur Metadaten, nie ein Schlüssel.
+export interface ReasonerBetreiberKarte {
+  /** Der Zugang, über den gerade geantwortet würde; `null`, wenn kein Modell arbeitet. */
+  zugang: ReasonerCloudAnbieter | "local" | null;
+  /** Lesbarer Betreibername (z. B. „ChatGPT (OpenAI)"); beim Server des Betreibers `null`. */
+  betreiber: string | null;
+  /** Die Modellkennung, wie der Client sie meldet; `null`, wenn keine bekannt ist. */
+  modell: string | null;
+  herkunft: ReasonerZugangHerkunft | null;
+  wissensstand: ReasonerModellWissensstand | null;
+  /** Wie es um die Erreichbarkeit des Zugangs steht — siehe `ReasonerKiVerfuegbarkeit`. */
+  verfuegbarkeit: ReasonerKiVerfuegbarkeit | null;
+}
+
+// Ben nacharbeit-7/-9 (R-0940/R-2142): was der Server über die Erreichbarkeit des Glieds WEISS, das
+// die Ausführung als ERSTES ruft — aus den vorhandenen Kantensignalen (`providerReachability`):
+//   · "erreichbar"   — es hat zuletzt (innerhalb der Frist) wirklich geantwortet;
+//   · "ungeprueft"   — eingerichtet und freigegeben, aber noch ohne frischen Befund;
+//   · "unerreichbar" — es ist zuletzt gescheitert. Der nächste Lauf versucht es TROTZDEM zuerst
+//                      (`runTask`); `modus` und `anbieter` nennen es deshalb weiter. Ein Ersatzweg
+//                      wird nicht behauptet — er steht erst fest, wenn dieser Versuch scheitert.
+// `null`: es ist gar kein Modell in der freigegebenen Kette (keins eingerichtet, keine Freigabe,
+// abgeschaltet) — dann gibt es auch nichts zu erreichen.
+export type ReasonerKiVerfuegbarkeit = "erreichbar" | "ungeprueft" | "unerreichbar";
+
+// R-0599: die KI-Lage für JEDEN angemeldeten Nutzer (GET /api/ki-lage, ko.read) — ob gerade eine
+// externe, eine hausinterne oder keine KI arbeitet, welcher Anbieter dahintersteht und woher er
+// kommt. BEWUSST OHNE Modellnamen und ohne Schlüssel: der Modellname bleibt Admin-Sicht
+// (WP-VIP2-GATE); der Anbieter ist für den Datenschutz die Auskunft, die der Mensch braucht.
+export interface ReasonerKiLage {
+  modus: "extern" | "intern" | "keine";
+  anbieter: ReasonerCloudAnbieter | "local" | null;
+  anbieterName: string | null;
+  herkunft: ReasonerZugangHerkunft | null;
+  verfuegbarkeit: ReasonerKiVerfuegbarkeit | null;
+}
+
 // SCRUM-525 P.5 (WP-C): Herkunft der AKTIVEN Policy — "env" (Deploy-ENV KLARWERK_REASONER_POLICY,
 // deklarativ pro Deploy, per Admin-Schreibpfad NICHT änderbar), "db" (persistierte Admin-Wahl) oder
 // "default" (nichts konfiguriert/geladen, inkl. eines fail-closed Ladefehlers — s. Reasoner.setTaskConfig).
@@ -479,6 +574,11 @@ export interface ReasonerConfigStatus {
   // JOB 3134: die beiden externen Anbieter EINZELN — eingerichtet oder nicht, und warum nicht.
   // `cloudConfigured` oben bleibt „irgendein externer Anbieter ist eingerichtet".
   cloudProviders: Record<ReasonerCloudAnbieter, ReasonerCloudAnbieterStatus>;
+  // R-0702: die Herkunft je Zugang aus der zentralen Zugangsverwaltung, mit Nachweisstufe.
+  // Optional, damit vorhandene Statusattrappen gültig bleiben; „fehlt" heißt „keine Angabe".
+  herkunft?: Record<ReasonerCloudAnbieter | "local", ReasonerZugangHerkunft>;
+  // R-0299: Betreiber und Wissensstand des gerade antwortenden Modells. Optional wie `herkunft`.
+  betreiber?: ReasonerBetreiberKarte;
   // JOB 3134: der Anbieter, auf den „auto" (und die abgelösten Werte) heute aufgelöst werden — der
   // erste eingerichtete in der Reihenfolge von REASONER_CLOUD_ANBIETER; null, wenn keiner
   // eingerichtet ist. Die Fläche zeigt ihn neben „Auto", statt ihn raten zu lassen.
@@ -525,6 +625,21 @@ export interface ConflictJudgeResult {
   zitat_b: string;
   // SCRUM-492: optionale Kollisions-Anreicherung (Kacheln im Board). Fehlt sie, bleibt alles wie bisher.
   kollision?: Kollision;
+  // R-0252 (Aufnahme gesamt-konfliktklassifikation): nur bei „widerspruch" — welche Arbeit vorliegt:
+  // „regel" (zwei interne Festlegungen) oder „sache" (durch Belege entscheidbar). Fehlt = offen.
+  arbeit?: "regel" | "sache";
+  // R-0263: nur bei „widerspruch" — Klaras VORSCHLAG, ob B die Aussage A wirklich bestreitet
+  // („widerspruch") oder sie nur für einen engeren Geltungsbereich genauer festlegt
+  // („praezisierung", dann mit der spezielleren Seite und dem Geltungsbereich). Ein Vorschlag, keine
+  // Entscheidung: entschieden wird auf der Konfliktseite von einer befugten Person.
+  vorschlag?: KlaraVorschlagUrteil;
+}
+
+/** R-0263: Klaras Vorschlag im Urteil — Seiten als „a"/„b" (der Erkennungskern bildet sie auf Kennungen ab). */
+export interface KlaraVorschlagUrteil {
+  art: "widerspruch" | "praezisierung";
+  spezieller?: "a" | "b";
+  geltungsbereich?: string;
 }
 
 // WP-SHIP8-CLOSE (bens F1): schmaler Ergebnis-Vertrag der Judge-Flächen — der AUSGANG wird
@@ -554,6 +669,45 @@ export interface DuplicateJudgeOutcome {
   verdict: DuplicateJudgeResult | null;
   failure?: JudgeFailure;
   providerFailure?: ModelFailureInfo;
+}
+
+// ================================================================================================
+// R-1657 (ROADMAP 9.3) — LÜCKENERKENNUNG ÜBER DEN REASONER.
+// ================================================================================================
+//
+// „KLARWERK analysiert regelmäßig, in welchen Themenbereichen wenig Wissen, geringer Trust oder hohe
+// Konflikt-Dichte herrscht — und schlägt der Organisation Wissens-Sprints vor." Der Reasoner urteilt
+// über KENNZAHLEN je Bereich (Name und Zähler), nie über Inhalte von Wissensobjekten. Ein Urteil wie
+// beim Konflikt- und Dublettenurteil: nur ein Modell urteilt; ohne Modell bleibt es beim Ausgang
+// `failure`, und der Aufrufer zeigt seine benannte Regel.
+export const LUECKEN_GRUENDE = ["conflicts", "revalidation", "lowTrust", "thinKnowledge"] as const;
+export type LueckenGrund = (typeof LUECKEN_GRUENDE)[number];
+
+/** Die Kennzahlen EINES Bereichs, so wie der Betrachter ihn sieht. */
+export interface LueckenBereich {
+  bereich: string;
+  objekte: number;
+  validiert: number;
+  mittleresVertrauen: number; // 0–100
+  imKonflikt: number | null; // null = kein Konflikt-Eingang
+  revalidierung: number;
+  geringesVertrauen: number;
+}
+
+/** Das Urteil des Modells zu EINEM Bereich — nur Gründe, die die Kennzahlen tragen. */
+export interface LueckenBereichsUrteil {
+  bereich: string;
+  sprint: boolean;
+  tage: number; // 1–5; bei sprint=false bedeutungslos
+  schwerpunkte: LueckenGrund[];
+}
+
+export interface LueckenUrteilOutcome {
+  urteile: LueckenBereichsUrteil[] | null;
+  failure?: JudgeFailure;
+  providerFailure?: ModelFailureInfo;
+  /** Der Anbieter, der geurteilt hat (nur bei `urteile`). */
+  provider?: string;
 }
 
 // Berater-Konzept Duplikate 04.07. (Stufe D2, dup-v1): Überschneidungs-Profil zweier Kerntexte A/B.

@@ -5,11 +5,20 @@ import { type ComparisonJudgement, type DetectionCoverage, comparisonOutcome } f
 import {
   type ConflictVerdict,
   type DetectSubject,
+  type GeltungsKollisionsRegel,
   autoDescription,
   coreText,
   decideFromVerdict,
   selectCandidates,
+  vorschlagAusUrteil,
 } from "./detect";
+import {
+  type ConflictMemoryRepo,
+  type PairMemoryEntry,
+  type PairMemoryOutcome,
+  memoryKey,
+  pruefstand,
+} from "./pair-memory";
 import type { ConflictRepo } from "./repo";
 import {
   type Conflict,
@@ -18,6 +27,10 @@ import {
   type ConflictInput,
   type ConflictResolutionReason,
   type ConflictType,
+  type ConflictWorkKind,
+  type KonfliktVorrang,
+  type VorrangWahl,
+  isConflictWorkKind,
 } from "./types";
 import {
   type CurrentVersionLookup,
@@ -52,7 +65,18 @@ export interface ConflictServiceDeps {
   // SICHTBAR gemeldet (nie kommentarlos verschluckt — sonst bliebe der Datensatz geschlossen ohne
   // Audit still). Default: console.error. Der Read bleibt entkoppelt (fire-and-forget/Makrotask).
   onError?: (context: string, error: unknown) => void;
+  // Aufnahme 20260922 · Prüfung-Gedächtnis (R-1103/R-1105): je Paar der zuletzt beurteilte
+  // Textstand (pair-memory.ts). Ohne Verdrahtung bleibt nur die Versions-Rückfallregel für
+  // menschlich geschlossene Befunde (menschlichAbgeschlossen).
+  memory?: ConflictMemoryRepo;
 }
+
+// Prompt-Fassung der Konfliktprüfung — Teil des gemerkten Stands: ein Prompt-Bump prüft neu.
+const PROMPT_VERSION = "kon-v1";
+
+// Menschliche Abschlüsse, die für den damaligen Inhaltsstand gelten (R-1105). Systemische Enden
+// (superseded, participant_deleted) unterdrücken nichts.
+const MENSCHLICHE_ABSCHLUESSE = new Set<ConflictResolutionReason>(["dismissed", "decided"]);
 
 // Aufnahme gesamt-auditprotokoll:aktionsabdeckung · R-0733: eine menschliche Entscheidung über
 // einen Konflikt steht mit ihrem AUSGANG im Protokoll (entschieden / Fehlalarm) und mit den beiden
@@ -65,6 +89,34 @@ function entscheidungsBeleg(
   return { koIds: [conflict.koA, conflict.koB], resolutionReason };
 }
 
+/**
+ * R-0263: die Wahl des Menschen gegen GENAU diesen Konflikt prüfen und als Beziehung ablegen.
+ * `gilt` muss eine der beiden Seiten sein — ein Vorrang über einen dritten Punkt oder ein ganzes
+ * Dokument ist nicht ausdrückbar. Eine Präzisierung ohne Geltungsbereich wäre ein Überstimmen unter
+ * falschem Namen und wird abgewiesen.
+ */
+function vorrangAus(conflict: Conflict, wahl: VorrangWahl): KonfliktVorrang {
+  if (wahl.gilt !== conflict.koA && wahl.gilt !== conflict.koB) {
+    throw new ConflictError(
+      "VALIDATION",
+      "Vorrang kann nur einer der beiden beteiligten Aussagen gegeben werden.",
+    );
+  }
+  const geltungsbereich = (wahl.geltungsbereich ?? "").trim();
+  if (wahl.art === "schraenkt_ein" && geltungsbereich.length === 0) {
+    throw new ConflictError(
+      "VALIDATION",
+      "Eine Präzisierung braucht den Geltungsbereich, in dem die speziellere Aussage gilt.",
+    );
+  }
+  return {
+    art: wahl.art,
+    vorrangKo: wahl.gilt,
+    nachrangKo: wahl.gilt === conflict.koA ? conflict.koB : conflict.koA,
+    geltungsbereich: wahl.art === "schraenkt_ein" ? geltungsbereich : null,
+  };
+}
+
 export class ConflictService {
   private readonly repo: ConflictRepo;
   private readonly audit: AuditService | undefined;
@@ -72,9 +124,11 @@ export class ConflictService {
   private readonly genId: () => string;
   private readonly currentVersion: CurrentVersionLookup | undefined;
   private readonly onError: (context: string, error: unknown) => void;
+  private readonly memory: ConflictMemoryRepo | undefined;
 
   constructor(deps: ConflictServiceDeps) {
     this.repo = deps.repo;
+    this.memory = deps.memory;
     this.audit = deps.audit;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
@@ -82,7 +136,8 @@ export class ConflictService {
     this.onError =
       deps.onError ??
       ((context, error) => {
-        console.error(`[conflicts] Lese-GC ${context}:`, error);
+        // R-0623: nur die Fehlerklasse — Meldung und Stack können Inhalte tragen.
+        console.error(`[conflicts] ${context}: ${error instanceof Error ? error.name : "unknown"}`);
       });
   }
 
@@ -94,6 +149,8 @@ export class ConflictService {
       koA: input.koA,
       koB: input.koB,
       type: input.type,
+      // R-0252: die ausdrücklich gewählte Arbeitsart — nur wenn ein Mensch sie gewählt hat.
+      ...(input.arbeitsart !== undefined ? { arbeitsart: input.arbeitsart } : {}),
       description: input.description,
       status: "offen",
       secondOpinion: null,
@@ -146,6 +203,8 @@ export class ConflictService {
       decidedBy: null,
       decision: null,
       origin: "auto",
+      // R-0252: die Einordnung der Erkennung (version bei „ueberholt", sonst das Modellurteil).
+      ...(input.arbeitsart !== undefined ? { arbeitsart: input.arbeitsart } : {}),
       detector,
       // D-AISTATE PAKET 4 (bens V5): geprüfte Versionen additiv mitschreiben (nur wenn vorhanden).
       ...(input.koAVersion !== undefined ? { koAVersion: input.koAVersion } : {}),
@@ -189,6 +248,8 @@ export class ConflictService {
       target: id,
       payload: entscheidungsBeleg(conflict, "dismissed"),
     });
+    // R-1105: derselbe Vorschlag kommt nicht wieder, solange sich die Inhalte nicht ändern.
+    await this.merkeAbschluss(conflict, "dismissed");
     return saved;
   }
 
@@ -211,23 +272,64 @@ export class ConflictService {
     return saved;
   }
 
-  // FR-CON-03: Zweitmeinung als Zwischenschritt.
+  // R-0252 (Nacharbeit 5, Ben): der EINORDNUNGSWEG. Ein Konflikt ohne Arbeitsart (Altbestand, die
+  // widersprechende Ablehnung R-0238, oder ein Befund, den die Prüfung nicht eingeordnet hat) wird
+  // von einer befugten Person als Regel-, Sach- oder Versionskonflikt eingeordnet. Die Einordnung
+  // wird gespeichert und protokolliert; danach bietet die Konfliktseite die passenden Aktionen an.
+  // Nur an nicht gelösten Konflikten; eine vorhandene Einordnung darf korrigiert werden — die
+  // Prüfung kann sich irren, die Person ordnet ein.
+  async einordnen(id: string, arbeitsart: ConflictWorkKind, actor = "system"): Promise<Conflict> {
+    const conflict = await this.requireOpen(id);
+    if (!isConflictWorkKind(arbeitsart)) {
+      throw new ConflictError("VALIDATION", "Arbeitsart muss regel, sache oder version sein.");
+    }
+    const saved = await this.save({ ...conflict, arbeitsart });
+    await this.audit?.record({
+      actor,
+      action: "conflict.classified",
+      target: id,
+      payload: { koIds: [conflict.koA, conflict.koB], arbeitsart },
+    });
+    return saved;
+  }
+
+  // FR-CON-03: Zweitmeinung als Zwischenschritt — beim Wahrheitskonflikt erst NACH der Eskalation.
   async secondOpinion(id: string, opinion: string, actor = "system"): Promise<Conflict> {
     const conflict = await this.requireOpen(id);
+    this.requireEscalatedIfTruth(conflict);
     const saved = await this.save({ ...conflict, status: "zweitmeinung", secondOpinion: opinion });
     await this.audit?.record({ actor, action: "conflict.second-opinion", target: id });
     return saved;
   }
 
-  // FR-CON-03: Controller-Entscheidung schließt den Wahrheitskonflikt ab.
-  async resolve(id: string, decidedBy: string, decision: string): Promise<Conflict> {
+  // FR-CON-03: Controller-Entscheidung schließt den Konflikt ab.
+  //
+  // R-0215 / R-1714 (Nacharbeit 2, Ben): der Eskalationspfad des Wahrheitskonflikts ist VERBINDLICH.
+  // Ein offener Wahrheitskonflikt wird nicht entschieden, bevor er an einen Menschen eskaliert ist
+  // (Eskalation → ggf. Zweitmeinung → Entscheidung). Die übrigen vier Arten lösen keine Eskalation
+  // aus und werden unverändert direkt entschieden.
+  //
+  // R-0263: `vorrang` legt fest, welcher der ZWEI beteiligten Punkte gilt bzw. einschränkt. Er wirkt
+  // nur zwischen diesen beiden — kein Objekt, kein Dokument, keine Quelle wird verändert.
+  async resolve(
+    id: string,
+    decidedBy: string,
+    decision: string,
+    vorrang?: VorrangWahl,
+  ): Promise<Conflict> {
     const conflict = await this.requireOpen(id);
+    this.requireEscalatedIfTruth(conflict);
+    const abgelegt = vorrang ? vorrangAus(conflict, vorrang) : undefined;
+    // Ein früherer Vorrang (erneut eskalierter Befund) gilt nicht weiter, wenn die neue Entscheidung
+    // keinen festlegt — „Beide gelten" heisst: kein Vorrang.
+    const { vorrang: _frueher, ...ohneVorrang } = conflict;
     const saved = await this.save({
-      ...conflict,
+      ...ohneVorrang,
       status: "geloest",
       decidedBy,
       decision,
       resolutionReason: "decided",
+      ...(abgelegt ? { vorrang: abgelegt } : {}),
     });
     await this.audit?.record({
       actor: decidedBy,
@@ -235,7 +337,30 @@ export class ConflictService {
       target: id,
       payload: entscheidungsBeleg(conflict, "decided"),
     });
+    await this.merkeAbschluss(conflict, "decided");
     return saved;
+  }
+
+  // R-1103/R-1105: der menschliche Abschluss gilt für den Stand, unter dem der Befund erkannt wurde —
+  // nur wenn das Gedächtnis genau diesen Befund führt (manuelle Konflikte haben keinen Stand).
+  // Best-effort: die Entscheidung ist gespeichert und protokolliert; ein Gedächtnisfehler wird
+  // sichtbar gemeldet, kippt sie aber nicht.
+  private async merkeAbschluss(
+    conflict: Conflict,
+    outcome: Extract<PairMemoryOutcome, "dismissed" | "decided">,
+  ): Promise<void> {
+    if (!this.memory) {
+      return;
+    }
+    try {
+      const [entry] = await this.memory.find([memoryKey(conflict.koA, conflict.koB)]);
+      if (!entry || entry.conflictId !== conflict.id) {
+        return;
+      }
+      await this.memory.put({ ...entry, outcome, at: new Date(this.now()).toISOString() });
+    } catch (error) {
+      this.onError(`Prüfgedächtnis ${outcome} (${conflict.id})`, error);
+    }
   }
 
   // Konzept 04.07. (Stufe 1) — Geister-Bug: Wird ein beteiligtes Wissensobjekt gelöscht, darf sein
@@ -318,6 +443,13 @@ export class ConflictService {
       modelLabel?: string;
       isCurrent?: (koId: string, version: number) => boolean | Promise<boolean>;
       coverage?: DetectionCoverage;
+      // AUFNAHME 20260922 · R-1124: true = ohne fachlichen Vorfilter (jedes Bestandsobjekt ist
+      // Kandidat). Zusammen mit `cap = ∞` der gewählte Vollabgleich; ohne Angabe wie bisher.
+      vollabgleich?: boolean;
+      // R-1632 / R-1633: geben BEIDE Seiten eine Geltung an und liegt sie verschieden, ist ein
+      // erkannter Widerspruch ein Kontext- bzw. Rollenkonflikt statt eines Wahrheitskonflikts
+      // (Regel in knowledge-object `geltungsKollision`). Ohne Regel: Bestandsverhalten.
+      geltungsKollision?: GeltungsKollisionsRegel;
     } = {},
   ): Promise<Conflict[]> {
     // AUFTRAG-mega29 B2 (bens M28-2): der Deckel begrenzt, was GEPRÜFT wird — nicht, was
@@ -325,7 +457,12 @@ export class ConflictService {
     // sortierte) Liste geholt und der Deckel erst in der Schleife über die tatsächlichen Vergleiche
     // gezogen. Ein Paar mit bereits offenem Befund kostet damit nur seinen Rang, keinen Prüfplatz.
     const cap = options.cap ?? 8;
-    const ranked = selectCandidates(subject, pool, Number.POSITIVE_INFINITY);
+    const ranked = selectCandidates(
+      subject,
+      pool,
+      Number.POSITIVE_INFINITY,
+      options.vollabgleich !== true,
+    );
     const coverage = options.coverage;
     if (coverage) {
       coverage.available = pool.filter((c) => c.refId !== subject.refId).length;
@@ -333,7 +470,8 @@ export class ConflictService {
     if (ranked.length === 0) {
       return [];
     }
-    const open = (await this.repo.all()).filter((c) => c.status !== "geloest");
+    const alle = await this.repo.all();
+    const open = alle.filter((c) => c.status !== "geloest");
     // D-AISTATE PAKET 4 (bens V5): Paar-Dedupe nur für die AKTUELLE Versionskombination. Ein Befund zu
     // einer inzwischen revidierten Fassung (stale) blockt den neuen Lauf NICHT. Altbestand ohne
     // Versionsfelder (oder ein versionsloser Lauf) blockt konservativ wie bisher.
@@ -353,7 +491,34 @@ export class ConflictService {
           c.koA === koId ? c.koAVersion : c.koBVersion;
         return verFor(aId) === aVer && verFor(bId) === bVer;
       });
+    // R-1105, Rückfall ohne gemerkten Stand (Befunde von vor dem Gedächtnis): ein MENSCHLICH
+    // geschlossener Befund zu GENAU den aktuellen Versionen beider Seiten gilt weiter — die Fassung
+    // ändert sich mit jedem Inhalt. Ohne Versionsbindung greift die Regel nicht (kein Stand belegt).
+    const menschlichAbgeschlossen = (
+      aId: string,
+      bId: string,
+      aVer?: number,
+      bVer?: number,
+    ): boolean =>
+      aVer !== undefined &&
+      bVer !== undefined &&
+      alle.some((c) => {
+        if (
+          c.status !== "geloest" ||
+          c.resolutionReason === undefined ||
+          !MENSCHLICHE_ABSCHLUESSE.has(c.resolutionReason)
+        ) {
+          return false;
+        }
+        const verFor = (koId: string): number | undefined =>
+          c.koA === koId ? c.koAVersion : c.koB === koId ? c.koBVersion : undefined;
+        return verFor(aId) === aVer && verFor(bId) === bVer;
+      });
     const subjectCore = coreText(subject);
+    // R-1103: das Gedächtnis aller Paare dieses Laufs in EINEM Abruf.
+    const gemerkt = await this.gemerkteStaende(
+      ranked.map((c) => memoryKey(subject.refId, c.refId)),
+    );
     const created: Conflict[] = [];
     // AUFTRAG-mega29 B1: getrennte Begriffe (s. coverage.ts). `attempted` ist die einzige Zahl, die
     // der Deckel trifft; `selected` sagt, wie viele Ränge der Lauf überhaupt angesehen hat.
@@ -382,7 +547,24 @@ export class ConflictService {
         break; // Deckel erreicht — alles ab hier blieb ungeprüft und wird auch nicht behauptet.
       }
       selected += 1;
-      if (hasOpenPair(subject.refId, cand.refId, subject.version, cand.version)) {
+      const candCore = coreText(cand);
+      const confidential = Boolean(subject.confidential) || Boolean(cand.confidential);
+      const key = memoryKey(subject.refId, cand.refId);
+      const stand = pruefstand(
+        { refId: subject.refId, core: subjectCore },
+        { refId: cand.refId, core: candCore },
+        PROMPT_VERSION,
+        confidential,
+      );
+      const eintrag = gemerkt.get(key);
+      // R-1103/R-1105: offener Befund, gleicher bereits beurteilter Textstand oder menschlich
+      // geschlossener Befund zur selben Fassung — kein neuer Fall, kein erneuter KI-Aufruf. Gezählt
+      // wie ein offener Befund: angesehen (selected), nicht vorgelegt (attempted), kein Deckelplatz.
+      if (
+        hasOpenPair(subject.refId, cand.refId, subject.version, cand.version) ||
+        (eintrag !== undefined && eintrag.stand === stand && eintrag.outcome !== "created") ||
+        menschlichAbgeschlossen(subject.refId, cand.refId, subject.version, cand.version)
+      ) {
         alreadyOpen += 1;
         writeCoverage();
         continue;
@@ -391,11 +573,7 @@ export class ConflictService {
       writeCoverage();
       let result: ConflictVerdict | null | ComparisonJudgement<ConflictVerdict>;
       try {
-        result = await judge(
-          subjectCore,
-          coreText(cand),
-          Boolean(subject.confidential) || Boolean(cand.confidential),
-        );
+        result = await judge(subjectCore, candCore, confidential);
       } catch {
         // Ein Modellfehler darf die Erkennung (und das Einreichen) nie kippen — aber er darf seit
         // AUFTRAG-mega28 A3 auch nicht mehr unsichtbar bleiben: bens JR-2 fand genau hier den
@@ -420,36 +598,51 @@ export class ConflictService {
       const verdict = outcome.verdict;
       completed += 1;
       writeCoverage();
-      const decision = decideFromVerdict(
-        verdict,
-        subjectCore,
-        coreText(cand),
-        options.minConfidence,
-      );
+      const decision = decideFromVerdict(verdict, subjectCore, candCore, options.minConfidence);
       if (!decision.create || decision.type === null) {
+        // Ein gültiges Urteil ohne Befund wird gemerkt. Eine verworfene Modellantwort (Zitat nicht
+        // wörtlich) ist kein Urteil über den Stand — das Paar bleibt prüfbar.
+        if (decision.reason !== "hallucination") {
+          await this.merkeStand(key, stand, "none");
+        }
         continue;
       }
       // Stufe 4: Herkunfts-/Erkennungs-Metadaten mitschreiben (Board zeigt „Automatisch erkannt ·
       // Sicherheit % · Begründung + Zitate"). modelLabel optional (vom Aufrufer, sonst weglassen).
+      const vorschlag = vorschlagAusUrteil(verdict, subject.refId, cand.refId);
       const detector: ConflictDetector = {
         trigger: "validation",
         method: "model",
-        promptVersion: "kon-v1",
+        promptVersion: PROMPT_VERSION,
         confidence: verdict.confidence,
         rationale: verdict.begruendung,
         quotes: { a: verdict.zitat_a, b: verdict.zitat_b },
         ...(options.modelLabel ? { modelLabel: options.modelLabel } : {}),
         // SCRUM-492: strukturierte Kollisionsfelder mitschreiben (Board-Kacheln), wenn vorhanden.
         ...(verdict.kollision ? { kollision: verdict.kollision } : {}),
+        // R-0263: Klaras Vorschlag Widerspruch/Präzisierung, auf die zwei Punkte abgebildet.
+        ...(vorschlag ? { vorschlag } : {}),
       };
+      // R-1632 / R-1633: ein Widerspruch zweier Punkte mit VERSCHIEDENER Geltung ist ein
+      // Kontext- (anderer Ort) bzw. Rollenkonflikt (gleicher Ort, andere Rolle) — beide Aussagen
+      // können in ihrem Bereich gelten. Die Beschreibung nennt beide Geltungen. Nur „truth" wird
+      // umgeordnet; ein Versionskonflikt („ueberholt") bleibt, was er ist.
+      const kollision =
+        decision.type === "truth"
+          ? (options.geltungsKollision?.(subject.geltung, cand.geltung) ?? null)
+          : null;
       // D-AISTATE PAKET 4 (bens V5, aistate-fix5): versions-konditionale Aktivierung — Umfang und
       // ehrliche Grenze der Absicherung s. createAutoVersionBound.
       const conflict = await this.createAutoVersionBound(
         {
           koA: subject.refId,
           koB: cand.refId,
-          type: decision.type,
-          description: autoDescription(verdict),
+          type: kollision ? kollision.art : decision.type,
+          // R-0252: unabhängig von `type` eingeordnet (detect.ts `arbeitsartAusUrteil`).
+          ...(decision.arbeitsart ? { arbeitsart: decision.arbeitsart } : {}),
+          description: kollision
+            ? `${autoDescription(verdict)} ${kollision.vermerk}`
+            : autoDescription(verdict),
           ...(subject.version !== undefined ? { koAVersion: subject.version } : {}),
           ...(cand.version !== undefined ? { koBVersion: cand.version } : {}),
         },
@@ -462,8 +655,48 @@ export class ConflictService {
       }
       created.push(conflict);
       open.push(conflict); // im selben Lauf kein zweiter Konflikt für dasselbe Paar
+      await this.merkeStand(key, stand, "created", conflict.id);
     }
     return created;
+  }
+
+  // Gedächtnisfehler kippen die Erkennung nie: ohne Gedächtnis wird geprüft wie bisher (sichtbar
+  // gemeldet), ein fehlgeschlagenes Merken kostet höchstens einen späteren erneuten KI-Aufruf.
+  private async gemerkteStaende(keys: string[]): Promise<Map<string, PairMemoryEntry>> {
+    const map = new Map<string, PairMemoryEntry>();
+    if (!this.memory) {
+      return map;
+    }
+    try {
+      for (const entry of await this.memory.find(keys)) {
+        map.set(entry.pairKey, entry);
+      }
+    } catch (error) {
+      this.onError("Prüfgedächtnis lesen", error);
+    }
+    return map;
+  }
+
+  private async merkeStand(
+    pairKey: string,
+    stand: string,
+    outcome: PairMemoryOutcome,
+    conflictId?: string,
+  ): Promise<void> {
+    if (!this.memory) {
+      return;
+    }
+    try {
+      await this.memory.put({
+        pairKey,
+        stand,
+        outcome,
+        ...(conflictId !== undefined ? { conflictId } : {}),
+        at: new Date(this.now()).toISOString(),
+      });
+    } catch (error) {
+      this.onError(`Prüfgedächtnis merken (${pairKey})`, error);
+    }
   }
 
   // D-AISTATE PAKET 4 (bens V5, aistate-fix5): VERSIONS-KONDITIONALE Aktivierung eines
@@ -635,6 +868,16 @@ export class ConflictService {
     return (await this.repo.all()).filter((c) => c.koA === koId || c.koB === koId).map((c) => c.id);
   }
 
+  // R-0263: die festgelegten Vorrang-Beziehungen, an denen dieser Punkt beteiligt ist — aus den
+  // ENTSCHIEDENEN Konflikten, ohne Versionsfilter (eine Entscheidung bleibt Teil der Geschichte).
+  // Die Sichtbarkeit beider Seiten prüft die Route (`GET /api/conflicts/vorrang/:koId`).
+  async vorrangFuerKo(koId: string): Promise<Conflict[]> {
+    return (await this.repo.all()).filter(
+      (c) =>
+        c.status === "geloest" && c.vorrang !== undefined && (c.koA === koId || c.koB === koId),
+    );
+  }
+
   // FR-CON-04: Zähler für das Sidebar-Badge.
   async badgeCount(): Promise<number> {
     return (await this.unresolved()).length;
@@ -697,7 +940,7 @@ export class ConflictService {
       })().catch((error) => {
         // best-effort: den Lesepfad nie blockieren, aber den Fehler NICHT still schlucken (ein
         // fehlender Audit nach gewinnendem CAS bliebe sonst dauerhaft unsichtbar).
-        this.onError(`superseded audit (${id})`, error);
+        this.onError(`Lese-GC superseded audit (${id})`, error);
       });
     }, 0);
   }
@@ -724,5 +967,16 @@ export class ConflictService {
       throw new ConflictError("ALREADY_RESOLVED", "Konflikt ist bereits gelöst.");
     }
     return conflict;
+  }
+
+  // R-0215 / R-1714: der eine Riegel des verbindlichen Eskalationspfads. Nur „truth" ist betroffen;
+  // „offen" heisst beim Wahrheitskonflikt: noch nicht an einen Menschen eskaliert.
+  private requireEscalatedIfTruth(conflict: Conflict): void {
+    if (conflict.type === "truth" && conflict.status === "offen") {
+      throw new ConflictError(
+        "CONFLICT",
+        "Ein Wahrheitskonflikt wird zuerst an einen Menschen eskaliert; erst danach wird entschieden.",
+      );
+    }
   }
 }

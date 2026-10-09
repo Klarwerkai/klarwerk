@@ -26,7 +26,6 @@ export {
 } from "./src/image-validation";
 export {
   DeterministicProvider,
-  keywordSelect,
   type ReasonerProvider,
   // SCRUM-360 / AG-03: begrenzte, status-/trust-bewusste Top-K-Kandidatenauswahl.
   DEFAULT_TOP_K,
@@ -220,7 +219,6 @@ export {
   resolveKlaraPolicy,
   klaraPolicyVersion,
   klaraConfigurationVersion,
-  KLARA_MODES,
   KLARA_RESOLUTION_TTL_MS,
   KLARA_EXTERNAL_EXECUTION_MIGRATED,
   // R-0639: der Dokumenttext als eigene Klasse mit eigenem Riegel — gelesen im App-Layer
@@ -253,6 +251,8 @@ export {
   bindeAnbieter,
   bindeZustimmung,
   anbieterZugelassen,
+  // gesamt-ki-freigaberegeln (Ben Nacharbeit 3): die Herkunftssperre einer Anfrage.
+  sperreAusleitung,
   // R-0590 · Ben nacharbeit-1: der gesperrte Ausweichweg — die App bildet ihn auf 409 mit Grund ab.
   KlaraAusweichwegGesperrtFehler,
   type KlaraAusweichwegGrund,

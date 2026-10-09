@@ -61,7 +61,8 @@ describe("PMO-FEA-0002: Wirkungs-Rückmeldung an den Autor", () => {
     return res.json().receipt as string;
   }
 
-  // R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der Frageweg antwortet nur aus geprüftem
+  // R-0278 (Nacharbeit 3) / R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der Frageweg
+  // antwortet nur aus geprüftem
   // Wissen — ohne Validierung gäbe es keine Antwort mit diesem KO und damit keinen Receipt. Das KO
   // trägt `neededValidations: 1`, ein Admin-Up über die echte Bewertung genügt.
   async function validieren(app: App, headers: Record<string, string>, koId: string) {

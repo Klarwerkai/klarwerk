@@ -16,6 +16,15 @@ import {
   OutputError,
   type OutputSource,
 } from "./types";
+import { type Wochenupdate, WochenupdateService } from "./wochenupdate";
+
+// R-1175 (aufnahme:20260922:gesamt-rechte-inventar): die EINE Sichtbarkeitsentscheidung des
+// Betrachters (`sichtbarkeitsfilterFuer`, services/app/src/sichtbarkeit.ts) reist von der Route
+// herein — dieses Modul darf `services/app` nicht importieren und legt die Regel deshalb nicht
+// selbst aus. Sie tritt NEBEN die Vertraulichkeitssperre (SCRUM-415), nie an ihre Stelle.
+// Ohne Betrachter (Systemaufrufe, Dienst-Tests) gilt nur die Sperre wie bisher.
+export type Sichtbarkeitsentscheidung = (ko: KnowledgeObject) => boolean;
+export const OHNE_BETRACHTER: Sichtbarkeitsentscheidung = () => true;
 
 export interface OutputServiceDeps {
   koService: KoService;
@@ -34,12 +43,17 @@ export class OutputService {
   // Nur validierte KOs sind als Output-Quelle zulässig (Anti-Fake-Guard).
   // SCRUM-415: vertrauliche KOs erscheinen NICHT als Output-Quelle — ein Output ist teilbar (externer
   // Kontext), vertrauliche Objekte bleiben davon ausgeschlossen.
-  async listEligible(): Promise<OutputSource[]> {
+  async listEligible(
+    sichtbar: Sichtbarkeitsentscheidung = OHNE_BETRACHTER,
+  ): Promise<OutputSource[]> {
     const kos = await this.koService.list({ status: "validiert" });
-    return kos.filter((ko) => !isConfidential(ko.confidentiality)).map(toSource);
+    return kos.filter((ko) => !isConfidential(ko.confidentiality) && sichtbar(ko)).map(toSource);
   }
 
-  async generate(input: GenerateOutputInput): Promise<OutputDocument> {
+  async generate(
+    input: GenerateOutputInput,
+    sichtbar: Sichtbarkeitsentscheidung = OHNE_BETRACHTER,
+  ): Promise<OutputDocument> {
     if (!OUTPUT_KINDS.includes(input.kind)) {
       throw new OutputError("UNKNOWN_KIND", `Unbekannter Output-Typ: ${input.kind}.`);
     }
@@ -49,7 +63,9 @@ export class OutputService {
     const selected: KnowledgeObject[] = [];
     for (const id of input.koIds) {
       const ko = await this.koService.get(id);
-      if (!ko) {
+      // R-1175: ein Objekt, das dieser Betrachter nicht sehen darf, antwortet wie ein unbekanntes —
+      // ein eigener Fehler wäre selbst die Existenzauskunft.
+      if (!ko || !sichtbar(ko)) {
         throw new OutputError("UNKNOWN_KO", `Wissensobjekt nicht gefunden: ${id}.`);
       }
       if (ko.status !== "validiert") {
@@ -94,5 +110,18 @@ export class OutputService {
     ].join("\n");
 
     return { kind: input.kind, title, audienceRole, generatedAt, markdown, provenance };
+  }
+
+  // RECHERCHE:pmo-fea-0004: das Wissensupdate fürs Teamgespräch — dieselbe Quelle, dieselbe Uhr.
+  // Auswahl und Format stehen in `wochenupdate.ts`; hier wird nur verdrahtet.
+  // R-1175: wie `listEligible` reist die Sichtbarkeitsentscheidung des Betrachters mit.
+  async wochenupdate(
+    input: { bis?: unknown } = {},
+    sichtbar: Sichtbarkeitsentscheidung = OHNE_BETRACHTER,
+  ): Promise<Wochenupdate> {
+    return new WochenupdateService({ koService: this.koService, now: this.now }).erzeuge(
+      input,
+      sichtbar,
+    );
   }
 }

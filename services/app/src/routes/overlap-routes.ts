@@ -8,6 +8,11 @@ import {
   isHumanOverlapCloseReason,
   normalizeOverlapSettings,
 } from "../../../conflicts";
+import {
+  type ZusammenfuehrungsDeps,
+  fuehreZusammen,
+  leseZusammenfuehrungsAuftrag,
+} from "../dubletten-zusammenfuehrung";
 import { type Guards, sendError } from "../http";
 import {
   type KoSichtbarkeitsZugang,
@@ -40,10 +45,15 @@ export interface OverlapRoutesDeps {
   // Seiten sehen durfte. Optional und fail-closed: fehlt er, bleibt der Nachweis bei dem, der
   // selbst abgeschlossen hat (Q7/JOB 3450) — enger, nie weiter.
   papierkorb?: KoSichtbarkeitsZugang;
+  // R-1107 (Aufnahme gesamt-dublettenvergleich): was das Zusammenführen ausser Befund und
+  // Sichtbarkeit braucht — den Wissensobjekt-Dienst und den Nachlauf einer neuen Fassung. Die
+  // Kompositionswurzel verdrahtet ihn immer; Einzelaufbauten ohne ihn bekommen die Tür gar nicht
+  // (keine Tür, die halb verdrahtet antwortet).
+  zusammenfuehrung?: Omit<ZusammenfuehrungsDeps, "overlaps" | "kos">;
 }
 
 export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyPluginAsync {
-  const { overlaps, settings, audit, kos, papierkorb } = deps;
+  const { overlaps, settings, audit, kos, papierkorb, zusammenfuehrung } = deps;
   return async (app) => {
     app.get("/api/duplicates", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
@@ -266,6 +276,42 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
         sendError(reply, error);
       }
     });
+
+    // ==========================================================================================
+    // R-1107 / R-0201 / R-0565 (Aufnahme gesamt-dublettenvergleich) — ZUSAMMENFÜHREN.
+    // ==========================================================================================
+    //
+    // Der vierte Schritt des Assistenten: der Mensch hat Führungsartikel, Felder und Quellen
+    // gewählt, die Vorschau gesehen und gibt frei. Das Tor ist dasselbe kuratorische Recht wie an
+    // den drei Abschlüssen darüber (`ko.validate`); was darüber hinaus gilt — kein Autor einer der
+    // beiden Seiten, Einsicht in beide Inhalte, derselbe Space, unveränderte Fassungen —, prüft
+    // `fuehreZusammen` vor jedem Schreibschritt (`dubletten-zusammenfuehrung.ts`).
+    if (zusammenfuehrung) {
+      app.post<{ Params: { id: string }; Body: unknown }>(
+        "/api/duplicates/:id/merge",
+        async (request, reply) => {
+          const user = await guards.requirePermission("ko.validate", request, reply);
+          if (!user) {
+            return;
+          }
+          try {
+            const auftrag = leseZusammenfuehrungsAuftrag(request.body);
+            reply
+              .code(200)
+              .send(
+                await fuehreZusammen(
+                  { ...zusammenfuehrung, overlaps, kos },
+                  user,
+                  request.params.id,
+                  auftrag,
+                ),
+              );
+          } catch (error) {
+            sendError(reply, error);
+          }
+        },
+      );
+    }
 
     // „Als verwandt verlinken" — kein Duplikat, aber sachlich verbunden.
     app.post<{ Params: { id: string }; Body: { note?: string } | null }>(

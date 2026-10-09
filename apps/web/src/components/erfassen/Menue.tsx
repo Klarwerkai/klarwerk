@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 
 // ================================================================================================
@@ -72,6 +72,15 @@ export interface MenueProps {
   children: ReactNode;
   /** Testanker. */
   pruefname?: string;
+}
+
+// Die bedienbaren Einträge einer offenen Fläche, in Dokumentreihenfolge. Gesperrte Einträge sind
+// `disabled` und nehmen den Fokus nicht an — sie werden übersprungen, nicht angesteuert.
+function bedienbareEintraege(flaeche: HTMLElement | null): HTMLElement[] {
+  if (!flaeche) {
+    return [];
+  }
+  return [...flaeche.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)')];
 }
 
 const CHEVRON = (
@@ -348,6 +357,88 @@ export function Menue({
     };
   }, [istOffen, setOffen]);
 
+  // ==============================================================================================
+  // N-0071 (Aufnahme `gesamt-dialog-bedienung`) — DER WEG HINEIN IST SO VORHERSEHBAR WIE DER HINAUS.
+  // ==============================================================================================
+  //
+  // DER BEFUND (review26-ki-editor, 08.09., 390 px): „Enter öffnet das KI-Menü. Pfeil ab bleibt auf
+  // KI, Tab erreicht den ersten Eintrag." Der Rückweg (Escape → Werkzeug) steht seit JOB 3282 oben;
+  // hier steht der Hinweg nach dem Muster eines Menüknopfs: Enter, Leertaste und Pfeil ab öffnen
+  // und setzen den Fokus auf den ERSTEN bedienbaren Eintrag, Pfeil auf auf den LETZTEN. In der
+  // offenen Liste wandern Pfeil ab/auf ringsum, Pos1/Ende springen an die Enden.
+  //
+  // NUR DER TASTATURWEG ZIEHT DEN FOKUS: Wer mit der Maus öffnet, behält ihn am Werkzeug, wie
+  // bisher. Programmatisch geöffnete Flächen (`?entwuerfe=1`, die Bestätigungszeile) ziehen ihn
+  // ebenfalls nicht — sie haben keinen Tastendruck hinter sich, und ein Fokussprung beim Laden der
+  // Seite wäre eine Bewegung, die niemand ausgelöst hat.
+  //
+  // DIE PFEILE GELTEN NUR AUF EINTRÄGEN: Die KI-Fläche trägt ein freies Eingabefeld
+  // (`AiAssistInstructions`); dort gehören die Pfeiltasten dem Feld.
+  const fokusBeimOeffnen = useRef<"erster" | "letzter" | null>(null);
+  useEffect(() => {
+    if (!istOffen) {
+      fokusBeimOeffnen.current = null;
+      return;
+    }
+    const ziel = fokusBeimOeffnen.current;
+    fokusBeimOeffnen.current = null;
+    if (ziel === null) {
+      return;
+    }
+    const eintraege = bedienbareEintraege(flaeche.current);
+    (ziel === "erster" ? eintraege[0] : eintraege[eintraege.length - 1])?.focus();
+  }, [istOffen]);
+
+  const beiWerkzeugTaste = (ereignis: ReactKeyboardEvent<HTMLButtonElement>): void => {
+    const taste = ereignis.key;
+    if (taste === "ArrowDown" || taste === "ArrowUp") {
+      ereignis.preventDefault();
+      const ziel = taste === "ArrowDown" ? "erster" : "letzter";
+      if (istOffen) {
+        const eintraege = bedienbareEintraege(flaeche.current);
+        (ziel === "erster" ? eintraege[0] : eintraege[eintraege.length - 1])?.focus();
+        return;
+      }
+      fokusBeimOeffnen.current = ziel;
+      setOffen(name);
+      return;
+    }
+    // Enter und Leertaste lösen am `<button>` selbst den Klick aus — der öffnet wie bisher. Hier
+    // wird nur vermerkt, dass dieser Klick von der Tastatur kam.
+    if ((taste === "Enter" || taste === " ") && !istOffen) {
+      fokusBeimOeffnen.current = "erster";
+    }
+  };
+
+  const beiFlaechenTaste = (ereignis: ReactKeyboardEvent<HTMLDivElement>): void => {
+    const taste = ereignis.key;
+    if (taste !== "ArrowDown" && taste !== "ArrowUp" && taste !== "Home" && taste !== "End") {
+      return;
+    }
+    const aktiv = document.activeElement;
+    if (!(aktiv instanceof HTMLElement) || aktiv.getAttribute("role") !== "menuitem") {
+      return;
+    }
+    const eintraege = bedienbareEintraege(flaeche.current);
+    if (eintraege.length === 0) {
+      return;
+    }
+    ereignis.preventDefault();
+    const stelle = eintraege.indexOf(aktiv);
+    const letzte = eintraege.length - 1;
+    let naechste: number;
+    if (taste === "Home") {
+      naechste = 0;
+    } else if (taste === "End") {
+      naechste = letzte;
+    } else if (taste === "ArrowDown") {
+      naechste = stelle >= letzte ? 0 : stelle + 1;
+    } else {
+      naechste = stelle <= 0 ? letzte : stelle - 1;
+    }
+    eintraege[naechste]?.focus();
+  };
+
   const werkzeugKlasse = gerahmt
     ? `inline-flex items-center gap-1.5 rounded-[8px] border bg-surface px-3 py-1.5 text-[13px] ${
         markiert ? "border-trust-crit-fill" : "border-hairline"
@@ -374,6 +465,7 @@ export function Menue({
         title={titel ?? undefined}
         data-testid={pruefname ?? `blatt-werkzeug-${name}`}
         onClick={() => setOffen(istOffen ? null : name)}
+        onKeyDown={beiWerkzeugTaste}
         className={werkzeugKlasse}
       >
         {symbol}
@@ -386,6 +478,7 @@ export function Menue({
           ref={flaeche}
           role="menu"
           data-testid={`blatt-menue-${name}`}
+          onKeyDown={beiFlaechenTaste}
           // `max-w-[calc(100vw-1rem)]`: die Fläche kann nie breiter sein als das Fenster. Ohne
           // diesen Deckel liefe die 320-px-Liste bei 320 px Fensterbreite an BEIDEN Rändern über,
           // und keine Verschiebung der Welt brächte sie hinein.

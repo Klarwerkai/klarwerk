@@ -12,6 +12,8 @@ import {
   sanitizeModelRunContext,
   traceFuerLauf,
 } from "../../model-runs";
+// R-0702: die Herkunft je KI-Zugang aus der zentralen Zugangsverwaltung (statt im Browser geraten).
+import { modellWissensstand, zugangHerkunft } from "./anbieter-herkunft";
 import {
   KlaraAusweichwegGesperrtFehler,
   anbieterZugelassen,
@@ -71,12 +73,17 @@ import type {
   InterviewResult,
   JudgeFailure,
   KnowledgeRef,
+  LueckenBereich,
+  LueckenUrteilOutcome,
   ReasonerAktiveWahl,
+  ReasonerBetreiberKarte,
   ReasonerCloudAnbieter,
   ReasonerCloudAnbieterStatus,
   ReasonerConfigStatus,
   ReasonerKiAbschaltung,
   ReasonerKiFreigabe,
+  ReasonerKiLage,
+  ReasonerKiVerfuegbarkeit,
   ReasonerLegacyChoice,
   ReasonerLocale,
   ReasonerPolicyMigration,
@@ -337,6 +344,10 @@ function erzeugnisAus(task: ModelRunTask, ergebnis: unknown): ModelRunErzeugnis 
     case "duplicate":
       [art, anzahl] = ["urteil", 1];
       break;
+    // R-1657: ein Urteil je beurteiltem Bereich.
+    case "gaps":
+      [art, anzahl] = ["urteil", anzahlListe(ergebnis)];
+      break;
     case "probe":
       return undefined;
   }
@@ -389,8 +400,14 @@ class Laufbuch {
   // Ben R2 B3/B5: jeder Versuch mit eigenem Modell, Verbrauch und Span.
   readonly versuchsliste: ModelRunVersuch[] = [];
 
-  async versuch<T>(provider: ReasonerProvider, aufruf: () => Promise<T>): Promise<T> {
-    const spur: ModellAufrufSpur = { gerufen: false };
+  async versuch<T>(
+    provider: ReasonerProvider,
+    aufruf: () => Promise<T>,
+    // gesamt-ki-freigaberegeln (Ben Nacharbeit 3): die Prüfungen des Reasoners für den Chokepoint —
+    // Vertraulichkeitsfreigabe und zentrale Freigabe, beide FRISCH unmittelbar vor der Übertragung.
+    pruefungen: Pick<ModellAufrufSpur, "vertraulichFreigegeben" | "vorUebertragung"> = {},
+  ): Promise<T> {
+    const spur: ModellAufrufSpur = { gerufen: false, ...pruefungen };
     const beginn = Date.now();
     this.versuche += 1;
     this.provider = provider.name;
@@ -867,6 +884,70 @@ export class Reasoner {
       return false;
     }
     return !confidential || freigabe.vertraulicheInhalte === true;
+  }
+
+  /**
+   * Auftrag gesamt-ki-freigaberegeln (Ben Nacharbeit 2): DIESELBE Entscheidung für die Wege ausserhalb
+   * des Reasoners — Word-Dokumenttext, Wissenscheck, Transkription. Sie fragen hier und legen die Regel
+   * nicht ein zweites Mal aus. `true` heisst: beide zentralen Adminfreigaben stehen. Zustimmung je
+   * Dokument und Anbieterbindung prüfen die Wege weiterhin selbst; diese Auskunft ersetzt sie nicht.
+   */
+  vertraulicheAusleitungFreigegeben(): boolean {
+    return this.oeffentlicheKiErlaubt(true);
+  }
+
+  /**
+   * Der Merker für den Chokepoint (`ModellAufrufSpur.vertraulichFreigegeben`): nur für einen externen
+   * Anbieter, nur bei vertraulichem Text, nur mit beiden Freigaben und nur, wenn die Anfrage diesen
+   * Anbieter überhaupt zulässt (Klara-Bindung).
+   */
+  private vertraulichFuerVersuch(provider: ReasonerProvider, confidential: boolean): boolean {
+    const extern = this.anbieterVon(provider);
+    return (
+      confidential &&
+      extern !== undefined &&
+      anbieterZugelassen(extern) &&
+      this.oeffentlicheKiErlaubt(true)
+    );
+  }
+
+  /**
+   * Ben Nacharbeit 3: der Spur-Anteil für den Chokepoint — eine PRÜFUNG, die dort beim Eintritt und
+   * unmittelbar vor der Übertragung frisch läuft (`vertraulichFuerVersuch` mit dem dann gültigen
+   * Stand der Freigabe und der Anfragebindung). Nur für vertraulichen Text an einen externen Anbieter.
+   */
+  private vertraulichePruefungFuer(
+    provider: ReasonerProvider,
+    confidential: boolean,
+  ): Pick<ModellAufrufSpur, "vertraulichFreigegeben"> {
+    return confidential && this.anbieterVon(provider) !== undefined
+      ? { vertraulichFreigegeben: () => this.vertraulichFuerVersuch(provider, confidential) }
+      : {};
+  }
+
+  /**
+   * Ben Nacharbeit 3: unmittelbar vor der Übertragung an einen EXTERNEN Anbieter — gilt die zentrale
+   * Adminfreigabe noch (Grundfreigabe, bei vertraulichem Text zusätzlich die zweite)? Wurde sie
+   * während des Wartens zurückgenommen, wirft diese Prüfung, und nichts geht hinaus. Lokale und
+   * deterministische Glieder sind nicht betroffen.
+   */
+  /** Beide Prüfungen für einen Laufbuch-Versuch (Urteile, Anreicherung, Auswahl). */
+  private pruefungenFuer(
+    provider: ReasonerProvider,
+    confidential: boolean,
+  ): Pick<ModellAufrufSpur, "vertraulichFreigegeben" | "vorUebertragung"> {
+    return {
+      ...this.vertraulichePruefungFuer(provider, confidential),
+      vorUebertragung: () => this.pruefeFreigabeVorUebertragung(provider, confidential),
+    };
+  }
+
+  private pruefeFreigabeVorUebertragung(provider: ReasonerProvider, confidential: boolean): void {
+    if (this.anbieterVon(provider) !== undefined && !this.oeffentlicheKiErlaubt(confidential)) {
+      throw new Error(
+        "Die zentrale Freigabe für öffentliche KI gilt nicht mehr — es wird nichts übertragen.",
+      );
+    }
   }
 
   private chainForChoice(
@@ -1515,8 +1596,13 @@ export class Reasoner {
       // am Chokepoint — eine Zustimmung, die seit dem Kettenbau beendet wurde, lässt nichts hinaus.
       const extern = this.anbieterVon(provider);
       const kiSperre = task === "answer";
+      // gesamt-ki-freigaberegeln (Ben Nacharbeit 3): die zentrale Adminfreigabe wird für einen
+      // externen Anbieter NICHT nur beim Kettenbau, sondern unmittelbar vor der Übertragung FRISCH
+      // gefragt (`pruefeFreigabeVorUebertragung`), und die Vertraulichkeitsfreigabe reist als
+      // PRÜFUNG an den Chokepoint, nicht als gespeicherter Wert.
       const spur: ModellAufrufSpur = {
         gerufen: false,
+        ...this.vertraulichePruefungFuer(provider, confidential),
         ...(kiSperre || extern !== undefined
           ? {
               vorUebertragung: () => {
@@ -1528,6 +1614,7 @@ export class Reasoner {
                     `Die Zustimmung für dieses Dokument trägt keine Übertragung an ${extern} mehr.`,
                   );
                 }
+                this.pruefeFreigabeVorUebertragung(provider, confidential);
               },
             }
           : {}),
@@ -1952,6 +2039,7 @@ export class Reasoner {
     tasks: ReasonerTaskMap;
     billable: ReasonerTaskMap;
     kiAbgeschaltet: boolean;
+    extern: "blockiert" | "frei" | "frei_vertraulich";
   } {
     const active = this.usingAnyModel();
     return {
@@ -1964,6 +2052,108 @@ export class Reasoner {
       // D5: nur ein Boolean — die Fragefläche unterscheidet damit „vom Administrator abgeschaltet"
       // von „kein Modell nutzbar" (Störung), ohne einen Anbieter- oder Modellnamen zu erfahren.
       kiAbgeschaltet: this.kiAbschaltung().abgeschaltet,
+      // Auftrag gesamt-ki-freigaberegeln (R-0606, Ben Nacharbeit 2): der WIRKSAME Stand der zentralen
+      // Adminfreigabe für die Kopfzeile („Extern: Blockiert"). Aus derselben Entscheidungsstelle wie
+      // jeder Lauf (`oeffentlicheKiErlaubt`) — keine zweite Auslegung, kein Anbietername.
+      extern: this.oeffentlicheKiErlaubt(true)
+        ? "frei_vertraulich"
+        : this.oeffentlicheKiErlaubt(false)
+          ? "frei"
+          : "blockiert",
+    };
+  }
+
+  // ==============================================================================================
+  // R-0599 / R-0299 · WELCHE KI ARBEITET GERADE — UND WER BETREIBT SIE?
+  // ==============================================================================================
+  //
+  // Gemessen an der Aufgabe, um die es den Menschen geht: dem ANTWORTEN (`answer`).
+  //
+  // Ben nacharbeit-7: MODUS, ANBIETER UND MODELL KOMMEN AUS EINER QUELLE — der TATSÄCHLICH
+  // freigegebenen Ausführungskette (`providerChain`, gegated durch Adminfreigabe, Vertraulichkeit
+  // und Abschaltung), nicht aus der Anzeige der Wahl (`effectiveAnbieterFor`, JOB 3549, die die
+  // Freigabe absichtlich übergeht). Vorher fragte `effectiveFor` die echte Kette und
+  // `effectiveAnbieterFor` die Anzeige — bei „auto" mit Cloud UND lokalem Modell, aber ohne
+  // Cloud-Freigabe, begann die Ausführung lokal und die Kopfzeile behauptete „extern".
+  //
+  // UND MIT DEM ERREICHBARKEITSBEFUND, den der Server schon führt (`providerReachability`) — aber
+  // für DASSELBE Glied, das die Ausführung zuerst ruft. Ben nacharbeit-9: `runTask` versucht das erste
+  // Modellglied der Kette bei JEDEM Lauf erneut, auch nach einem negativen Befund; nur wenn es dann
+  // wieder scheitert, fällt der Lauf weiter. Die Anzeige darf deshalb keinen lokalen oder
+  // regelbasierten Weg als feststehend behaupten (das tat Nacharbeit 8, indem sie unerreichbare
+  // Glieder übersprang), sondern nennt das Glied, an das der nächste Lauf die Inhalte zuerst sendet,
+  // mit seinem letzten Befund — auch wenn der „zuletzt nicht erreichbar" lautet.
+  private antwortAufloesung(): {
+    zugang: ReasonerCloudAnbieter | "local" | null;
+    provider: ReasonerProvider | null;
+    verfuegbarkeit: ReasonerKiVerfuegbarkeit | null;
+  } {
+    if (this.kiAbschaltung().abgeschaltet) {
+      return { zugang: null, provider: null, verfuegbarkeit: null };
+    }
+    // Dieselbe Kette, dasselbe erste Modellglied wie `runTask` — ohne einen Filter, den die
+    // Ausführung nicht kennt.
+    const erstes = this.providerChain("answer").find((p) => p !== this.fallback);
+    if (!erstes) {
+      return { zugang: null, provider: null, verfuegbarkeit: null };
+    }
+    const kante = this.kanteVon(erstes);
+    const lage = this.providerReachability(kante);
+    return {
+      zugang: kante,
+      provider: erstes,
+      verfuegbarkeit:
+        lage === "active" ? "erreichbar" : lage === "unreachable" ? "unerreichbar" : "ungeprueft",
+    };
+  }
+
+  /** R-0599: die KI-Lage für jeden angemeldeten Nutzer — ohne Modellnamen, ohne Schlüssel. */
+  kiLage(): ReasonerKiLage {
+    const { zugang, verfuegbarkeit } = this.antwortAufloesung();
+    if (zugang === null) {
+      return {
+        modus: "keine",
+        anbieter: null,
+        anbieterName: null,
+        herkunft: null,
+        verfuegbarkeit,
+      };
+    }
+    const herkunft = zugangHerkunft()[zugang];
+    if (zugang === "local") {
+      return { modus: "intern", anbieter: "local", anbieterName: null, herkunft, verfuegbarkeit };
+    }
+    return {
+      modus: "extern",
+      anbieter: zugang,
+      anbieterName: REASONER_CLOUD_ANBIETER_NAME[zugang],
+      herkunft,
+      verfuegbarkeit,
+    };
+  }
+
+  /** R-0299: Betreiber, Modell, Herkunft und Wissensstand des gerade antwortenden Modells. */
+  private betreiberKarte(): ReasonerBetreiberKarte {
+    const { zugang, provider, verfuegbarkeit } = this.antwortAufloesung();
+    if (zugang === null || provider === null) {
+      return {
+        zugang: null,
+        betreiber: null,
+        modell: null,
+        herkunft: null,
+        wissensstand: null,
+        verfuegbarkeit,
+      };
+    }
+    // Das Modell DESSELBEN Glieds, das die Lage bestimmt — nicht das eines anderen Zugangs.
+    const modell = provider.modelName?.() ?? null;
+    return {
+      zugang,
+      betreiber: zugang === "local" ? null : REASONER_CLOUD_ANBIETER_NAME[zugang],
+      modell,
+      herkunft: zugangHerkunft()[zugang],
+      wissensstand: modellWissensstand(modell),
+      verfuegbarkeit,
     };
   }
 
@@ -2026,6 +2216,10 @@ export class Reasoner {
         openai: this.cloudStatus("openai"),
         anthropic: this.cloudStatus("anthropic"),
       },
+      // R-0702: Herkunft je Zugang mit Nachweisstufe — nur Angaben, nie ein Schlüssel.
+      herkunft: zugangHerkunft(),
+      // R-0299: Betreiber und Wissensstand des gerade antwortenden Modells.
+      betreiber: this.betreiberKarte(),
       autoAnbieter: this.vorgabeAnbieter() ?? null,
       ...(this.migration ? { migration: this.migration } : {}),
       persisted: this.policySource === "db",
@@ -2128,13 +2322,12 @@ export class Reasoner {
       },
       confidential,
     );
-    // AUFTRAG-mega61 Block F: die Kennzeichnung an BEIDEN Rückgabewegen dieser Methode — der
-    // frühen (Modell hat geantwortet) und der späten (deterministischer Rückfall mit Ursache).
-    // Genau solche zwei Ausgänge sind der Grund, warum die Kennzeichnung zentral gesetzt wird und
-    // nicht in den Providern.
-    const kennzeichnung = aiGeneratedMark("describe", result.demo);
+    // AUFTRAG-mega61 Block F: die Kennzeichnung wird HIER gesetzt und nicht in den Providern.
+    // R-0604 (G22, mega83 A): NUR auf dem frühen Rückgabeweg — dort hat ein Modell geantwortet.
+    // Der späte Weg (deterministischer Rückfall mit Ursache) liefert ohnehin keinen Text; bis hierher
+    // trug er trotzdem „von KI erzeugt". Im Zweifel wird die Kennzeichnung aus-, nicht eingeschaltet.
     if (!result.demo) {
-      return mitTitelVorschlag({ ...result, aiGenerated: kennzeichnung });
+      return mitTitelVorschlag({ ...result, aiGenerated: aiGeneratedMark("describe", false) });
     }
     const modelFailure = failureBox.current;
     const failure = modelFailure === null ? null : classifyModelFailure(modelFailure.err);
@@ -2152,7 +2345,7 @@ export class Reasoner {
     // JOB 1164 D1: der Vorschlag entsteht aus dem VOLLSTÄNDIGEN Ergebnis — `fallbackReason` gehört
     // dazu und wird erst hier gesetzt. Würde er vorher abgeleitet, sähe die Ableitung kein
     // `confidential` und der Egress-Ausschluss käme als „demo" heraus. Die Reihenfolge ist Absicht.
-    return mitTitelVorschlag({ ...result, fallbackReason, aiGenerated: kennzeichnung });
+    return mitTitelVorschlag({ ...result, fallbackReason });
   }
 
   // FR-RSN-04/FR-I18N-01: Modellfehler dürfen den Betrieb nicht stoppen → deterministischer
@@ -2291,7 +2484,10 @@ export class Reasoner {
     // AUFTRAG-mega61 Block F: die Kennzeichnung wird HIER gesetzt und nicht in den Providern —
     // es gibt drei Provider-Wege zu einer Antwort (Cloud, lokal, deterministisch), und drei
     // Stellen wären drei Gelegenheiten, sie zu vergessen.
-    return { ...result, aiGenerated: aiGeneratedMark("answer", result.demo) };
+    // R-0604 (G22, mega83 A): gesetzt wird sie aber nur, wenn wirklich ein Modell geantwortet hat.
+    // Der deterministische Rückfall stellt Sätze aus geprüftem Wissen regelbasiert zusammen — ihn
+    // „von KI erzeugt" zu nennen, war genau die Falschaussage aus G22.
+    return result.demo ? result : { ...result, aiGenerated: aiGeneratedMark("answer", false) };
   }
 
   // SCRUM-490 R2 (B1): RETRIEVAL-ONLY-Antwort für den Add-on-Pfad (Klara). Der Eingabetext ist der
@@ -2427,15 +2623,18 @@ export class Reasoner {
     locale: ReasonerLocale = "de",
     // SCRUM-502 Schicht 2: vertraulicher Draft → Cloud aus der Kette.
     confidential = false,
+    // R-1624: optionaler, vom Menschen bestätigter Bildbefund → Foto-Fragenfolge.
+    imageContext?: string,
   ): Promise<InterviewResult> {
     const result = await this.runTask(
       "interview",
       locale,
-      (p) => p.interview(answers, locale, confidential),
+      (p) => p.interview(answers, locale, confidential, imageContext),
       confidential,
     );
-    // mega61 Block F: Interviewfragen sind erzeugter Text — gekennzeichnet.
-    return { ...result, aiGenerated: aiGeneratedMark("interview", result.demo) };
+    // mega61 Block F: Interviewfragen sind erzeugter Text — gekennzeichnet. R-0604: nur, wenn ein
+    // Modell sie erzeugt hat; die festen Fragen des deterministischen Rückfalls sind keine KI.
+    return result.demo ? result : { ...result, aiGenerated: aiGeneratedMark("interview", false) };
   }
 
   // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag).
@@ -2560,7 +2759,8 @@ export class Reasoner {
     }
     // JOB 3036 R2 / JOB 3074: die Spur GENAU DIESES Laufs. Sie entscheidet, ob `model` und
     // `verbrauch` in den Datensatz dürfen — nur ein wirklich erfolgter Aufruf trägt sie ein.
-    const spur: ModellAufrufSpur = { gerufen: false };
+    // Ben Nacharbeit 3: dieselben Prüfungen unmittelbar vor der Übertragung wie in `runTask`.
+    const spur: ModellAufrufSpur = { gerufen: false, ...this.pruefungenFuer(model, confidential) };
     const versuchBeginn = Date.now();
     let ergebnis: ImportCriteriaResult;
     try {
@@ -2640,7 +2840,12 @@ export class Reasoner {
       }
       const anreichern = provider.enrichPublic.bind(provider);
       try {
-        const result = await lb.versuch(provider, () => anreichern(query, locale));
+        // Ben Nacharbeit 3: auch hier die zentrale Freigabe unmittelbar vor der Übertragung.
+        const result = await lb.versuch(
+          provider,
+          () => anreichern(query, locale),
+          this.pruefungenFuer(provider, false),
+        );
         if (result.text.trim().length > 0) {
           await this.protokolliereLaufbuch("enrich", locale, startedAt, lb, {
             status: "success",
@@ -2748,8 +2953,10 @@ export class Reasoner {
       const urteilen = provider.judgeConflict.bind(provider);
       try {
         // aistate-fix3 (bens V1): das ECHTE Paar-Bit reist bis zum ModelClient.complete-Wächter.
-        const result = await lb.versuch(provider, () =>
-          urteilen(coreA, coreB, locale, confidential),
+        const result = await lb.versuch(
+          provider,
+          () => urteilen(coreA, coreB, locale, confidential),
+          this.pruefungenFuer(provider, confidential),
         );
         if (result) {
           await this.protokolliereLaufbuch("conflict", locale, startedAt, lb, {
@@ -2833,8 +3040,10 @@ export class Reasoner {
       const urteilen = provider.judgeDuplicate.bind(provider);
       try {
         // aistate-fix3 (bens V1): das ECHTE Paar-Bit reist bis zum ModelClient.complete-Wächter.
-        const result = await lb.versuch(provider, () =>
-          urteilen(coreA, coreB, locale, confidential),
+        const result = await lb.versuch(
+          provider,
+          () => urteilen(coreA, coreB, locale, confidential),
+          this.pruefungenFuer(provider, confidential),
         );
         if (result) {
           await this.protokolliereLaufbuch("duplicate", locale, startedAt, lb, {
@@ -2885,6 +3094,76 @@ export class Reasoner {
     confidential = false,
   ): Promise<DuplicateJudgeResult | null> {
     return (await this.judgeDuplicateOutcome(coreA, coreB, locale, confidential)).verdict;
+  }
+
+  // R-1657 (ROADMAP 9.3): „Lückenerkennung über Reasoner". Dieselbe Bauform wie
+  // judgeConflictOutcome: die Kette der globalen Wahl (judgeProviders), vertraulich ⇒ die Cloud fällt
+  // vor jedem Aufruf heraus, genau ein Lauf `gaps` im Protokoll je Urteil mit Modellversuch, und ein
+  // unterscheidbarer Ausgang (Urteil ODER Ursache). Ohne Modell urteilt hier NIEMAND — der Aufrufer
+  // zeigt dann seine benannte Regel und sagt, dass sie gilt.
+  async judgeKnowledgeGapsOutcome(
+    bereiche: readonly LueckenBereich[],
+    locale: ReasonerLocale = "de",
+    confidential = false,
+  ): Promise<LueckenUrteilOutcome> {
+    if (bereiche.length === 0) {
+      return { urteile: [] };
+    }
+    let failure: JudgeFailure | undefined;
+    let providerFailure: ModelFailureInfo | undefined;
+    let attempted = false;
+    const { providers, confidentialExcluded } = this.judgeProviders(confidential);
+    const startedAt = new Date().toISOString();
+    const lb = new Laufbuch();
+    for (const provider of providers) {
+      if (!provider.judgeKnowledgeGaps) {
+        continue;
+      }
+      attempted = true;
+      const urteilen = provider.judgeKnowledgeGaps.bind(provider);
+      try {
+        const result = await lb.versuch(
+          provider,
+          () => urteilen(bereiche, locale, confidential),
+          this.pruefungenFuer(provider, confidential),
+        );
+        if (result) {
+          await this.protokolliereLaufbuch("gaps", locale, startedAt, lb, {
+            status: "success",
+            erzeugt: erzeugnisAus("gaps", result),
+          });
+          return { urteile: result, provider: provider.name };
+        }
+        lb.vermerke(provider, "Antwort unverwertbar");
+        failure = failure ?? "model-error";
+      } catch (err) {
+        if (err instanceof ModelCapacityError) {
+          await this.protokolliereLaufbuch("gaps", locale, startedAt, lb, { status: "error" });
+          throw err;
+        }
+        if (err instanceof Error && err.name === "ConfidentialEgressError") {
+          failure = failure ?? "confidential";
+          continue;
+        }
+        failure = failure ?? Reasoner.judgeFailureOf(err);
+        providerFailure = providerFailure ?? classifyModelFailure(err);
+      }
+    }
+    if (!attempted) {
+      return {
+        urteile: null,
+        failure: Reasoner.noJudgeFailure(confidential, confidentialExcluded),
+      };
+    }
+    await this.protokolliereLaufbuch("gaps", locale, startedAt, lb, {
+      status: "error",
+      ursache: failure ?? "model-error",
+    });
+    return {
+      urteile: null,
+      failure: failure ?? "model-error",
+      ...(providerFailure ? { providerFailure } : {}),
+    };
   }
 
   // SCRUM-167: select bleibt synchron (reines Keyword-Ranking, kein Modell-/Netzaufruf).

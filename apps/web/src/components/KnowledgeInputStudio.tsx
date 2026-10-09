@@ -4,14 +4,17 @@
 // deutlich mehr Arbeitsfläche. Arbeitet auf einem internen Entwurf des vorhandenen `bodyHtml`-State
 // und schreibt NUR bei bewusster Übernahme zurück. KEIN Auto-Save, KEINE Auto-Validierung, kein
 // Backend, keine neue Editor-Library — reine Wiederverwendung bestehender Komponenten/Helfer.
-import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import type { ExternalKnowledgeStage } from "../api/types";
+import { GrenzDialog, useModalBoundaryOptional } from "../app/ModalBoundaryContext";
 import {
   type BodyAssistBlockAction,
   applyBodyAssist,
   bodyAssistStructuredActions,
   bodyTextForAssist,
+  spellingAssistHtmlOrNull,
 } from "../lib/bodyAiAssist";
 import type { EditorFile } from "../lib/bodyFileLink";
 import { BODY_READ_BLOCKS_KEY, BODY_READ_TITLE_KEY } from "../lib/bodyReadMode";
@@ -86,6 +89,13 @@ export function KnowledgeInputStudio({
   documentTitle: string;
 }): JSX.Element | null {
   const { t } = useTranslation();
+  // R-0909 (Aufnahme `gesamt-dialog-bedienung`): das Studio ist eine modale Fläche — ein benannter
+  // Dialog (Name = die Überschrift „Knowledge Studio"), an der einen Grenze angemeldet
+  // (`GrenzDialog`: Hintergrundsperre, Anfangsfokus, Fokusrückgabe) und in deren Portal-Anker
+  // gehoben, weil es im gesperrten Seiteninhalt steht. Ohne Grenze (gemountete Proben ohne Shell)
+  // bleibt es an seinem Platz und trägt Rolle und Namen, aber keine Modalitätsbehauptung.
+  const grenze = useModalBoundaryOptional();
+  const titelId = useId();
   // Interner Entwurf: beim Öffnen aus dem aktuellen Body initialisiert; Änderungen bleiben lokal,
   // bis der Nutzer bewusst übernimmt. So bleibt der bestehende Save/Revise-Flow unberührt.
   const [draft, setDraft] = useState(bodyHtml);
@@ -288,12 +298,20 @@ export function KnowledgeInputStudio({
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-page/95 backdrop-blur-sm">
+  // R-0909: die überdeckende Ebene IST der Dialog. `m-0 h-full w-full max-h-none max-w-none
+  // border-0 p-0 text-text` nehmen dem nativen Element seine Vorgaben (Rand, Innenabstand, Farbe,
+  // Breite nach Inhalt); `fixed inset-0` und die Tönung sind unverändert die von vorher.
+  const ebene = (
+    <GrenzDialog
+      benanntDurch={titelId}
+      className="fixed inset-0 z-50 m-0 flex h-full max-h-none w-full max-w-none flex-col border-0 bg-page/95 p-0 text-text backdrop-blur-sm"
+    >
       {/* Kopfzeile: Titel + ehrlicher Hinweis (kein Auto-Save) + Schließen. */}
       <div className="flex items-center justify-between gap-3 border-b border-hairline bg-surface px-4 py-3 sm:px-6">
         <div className="min-w-0">
-          <h2 className="text-[15px] font-semibold text-text">{t("studio.title")}</h2>
+          <h2 id={titelId} className="text-[15px] font-semibold text-text">
+            {t("studio.title")}
+          </h2>
           <p className="truncate text-[11.5px] text-muted">{t("studio.subtitle")}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -504,6 +522,7 @@ export function KnowledgeInputStudio({
                       applyFn={(mode, _original, suggestion) =>
                         applyBodyAssist(mode, draft, suggestion)
                       }
+                      applySpelling={(suggestion) => spellingAssistHtmlOrNull(draft, suggestion)}
                       onApply={setDraft}
                       hintKey="capture.ai.bodyHint"
                       extraApplyActions={blockActions}
@@ -598,6 +617,10 @@ export function KnowledgeInputStudio({
           </div>
         )}
       </div>
-    </div>
+    </GrenzDialog>
   );
+
+  // Der Anker wird beim Öffnen gelesen (Bauform `Modal.tsx`).
+  const anker = grenze?.host() ?? null;
+  return anker ? createPortal(ebene, anker) : ebene;
 }

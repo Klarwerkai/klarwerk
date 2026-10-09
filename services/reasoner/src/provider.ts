@@ -13,6 +13,8 @@ import type {
   InterviewResult,
   KnowledgeClass,
   KnowledgeRef,
+  LueckenBereich,
+  LueckenBereichsUrteil,
   ReasonerLocale,
   Relevanztext,
   StructureResult,
@@ -47,7 +49,11 @@ import type {
 //    sondern weil kein quellenbezogener Wert zu rechtfertigen ist. Die Evidenzregel
 //    (services/ask/src/answer-evidence.ts) trägt denselben Fall als benannten Vorbehalt, und die
 //    Oberfläche zeigt neben „Zuordnung unbekannt" gar keine Zahl mehr.
-export function answerStanding(carrying: readonly Pick<KnowledgeRef, "status" | "trust">[]): {
+//  4 aufnahme:20260922:gesamt-wissen-frische (R-0248): eine tragende Quelle mit abgelaufener
+//    Haltbarkeit ist nicht mehr gesichert — validiert allein reicht dann nicht.
+export function answerStanding(
+  carrying: readonly Pick<KnowledgeRef, "status" | "trust" | "haltbarkeitAbgelaufen">[],
+): {
   knowledgeClass: KnowledgeClass;
   trust: number;
 } {
@@ -55,7 +61,9 @@ export function answerStanding(carrying: readonly Pick<KnowledgeRef, "status" | 
     return { knowledgeClass: "ungeprueft", trust: 0 };
   }
   return {
-    knowledgeClass: carrying.every((r) => r.status === "validiert") ? "gesichert" : "ungeprueft",
+    knowledgeClass: carrying.every((r) => r.status === "validiert" && !r.haltbarkeitAbgelaufen)
+      ? "gesichert"
+      : "ungeprueft",
     trust: Math.min(...carrying.map((r) => r.trust)),
   };
 }
@@ -141,10 +149,14 @@ export interface ReasonerProvider {
     confidential?: boolean,
   ): Promise<AssistResult>;
   // SCRUM-132: nächste Interview-Frage + aus den Antworten verdichteter Entwurf.
+  // R-1624 (Foto-zu-Wissen): optionaler Bildbefund — der vom Menschen bestätigte Text der
+  // vorhandenen Bildbeschreibung. Liegt er vor, gilt die Foto-Fragenfolge (Fehler · Ursache ·
+  // Lösung); das Bild selbst reist hier NICHT mit, nur dieser Klartext.
   interview(
     answers: readonly string[],
     locale?: ReasonerLocale,
     confidential?: boolean,
+    imageContext?: string,
   ): Promise<InterviewResult>;
   // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag des
   // Experten). G-2: NUR was im Text steht — der deterministische Fallback liefert ehrlich
@@ -202,6 +214,14 @@ export interface ReasonerProvider {
     locale: ReasonerLocale,
     confidential: boolean,
   ): Promise<DuplicateJudgeResult | null>;
+  // R-1657 (ROADMAP 9.3): Lückenerkennung — urteilt über die Kennzahlen je Bereich, ob ein
+  // Wissens-Sprint angezeigt ist. NUR das echte Modell; der deterministische Fallback bewusst NICHT
+  // (die benannte Regel steht beim Aufrufer). Ungültige Antworten → null.
+  judgeKnowledgeGaps?(
+    bereiche: readonly LueckenBereich[],
+    locale: ReasonerLocale,
+    confidential: boolean,
+  ): Promise<LueckenBereichsUrteil[] | null>;
   // D-AISTATE PAKET 1 (bens V1, aistate-fix3): Egress-Politik des dahinterliegenden Clients —
   // `true` = dieser Provider darf vertrauliche Inhalte NICHT sehen (Cloud bzw. ein „lokal"
   // verdrahteter Endpunkt ohne bestätigte On-Prem-Origin). Der Reasoner nimmt ihn dann bei
@@ -295,6 +315,45 @@ export const INTERVIEW_QUESTIONS: Record<ReasonerLocale, readonly string[]> = {
   ],
 };
 
+// R-1624 (Foto-zu-Wissen mit Bildverstehen, Roadmap 1.2): die Foto-Fragenfolge. Wortlaut der
+// Quelle: „Welcher Fehler ist hier zu sehen? Welche Ursache vermutest du? Was wäre die Lösung?"
+// Dieselbe Position wie oben, damit `condenseInterview` unverändert abbildet: Fehler → Aussage,
+// Ursache → Bedingung, Lösung → Maßnahme, Stichworte → Tags.
+export const INTERVIEW_PHOTO_QUESTIONS: Record<ReasonerLocale, readonly string[]> = {
+  de: [
+    "Welcher Fehler ist hier zu sehen?",
+    "Welche Ursache vermutest du?",
+    "Was wäre die Lösung?",
+    "Welche Stichworte/Tags helfen beim Wiederfinden? (kommagetrennt)",
+  ],
+  en: [
+    "Which fault can be seen here?",
+    "What cause do you suspect?",
+    "What would be the solution?",
+    "Which keywords/tags help to find it again? (comma-separated)",
+  ],
+  nl: [
+    "Welke fout is hier te zien?",
+    "Welke oorzaak vermoed je?",
+    "Wat zou de oplossing zijn?",
+    "Welke trefwoorden/tags helpen bij het terugvinden? (komma-gescheiden)",
+  ],
+};
+
+// R-1624: harte Obergrenze des Bildbefunds im Interview. Derselbe Wert wie die Obergrenze der
+// Bildbeschreibung (`MAX_IMAGE_DESCRIPTION_LENGTH` in provider-model.ts) — der Befund IST diese
+// Beschreibung, ggf. vom Menschen korrigiert. Hier eigenständig, weil provider-model.ts von dieser
+// Datei importiert (umgekehrt wäre es ein Ring).
+export const MAX_INTERVIEW_IMAGE_CONTEXT_LENGTH = 300;
+
+/** Bildbefund deterministisch säubern und kappen; leer heißt: kein Foto-Interview. */
+export function normalizeInterviewImageContext(value: unknown): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim().slice(0, MAX_INTERVIEW_IMAGE_CONTEXT_LENGTH).trim();
+}
+
 // FR-I18N-01: sprachbewusstes Label für eine Beleg-/Quellenangabe (kein Quelleninhalt).
 export function sourceLabel(title: string, locale: ReasonerLocale = "de"): string {
   // mega52 D1: dreisprachig — das Quellen-Label erscheint in den Argumentationsschritten.
@@ -327,12 +386,14 @@ export function condenseInterview(answers: readonly string[], demo: boolean): St
 
 // SCRUM-132 / FR-I18N-01: deterministischer Interview-Turn — nächste Standardfrage (in der
 // gewählten Sprache) + Abschluss bei ausreichendem Inhalt (Kernaussage + Bedingung + Maßnahme).
+// R-1624: `photo` wählt die Foto-Fragenfolge; Abschlussregel und Verdichtung bleiben dieselben.
 export function deterministicInterview(
   answers: readonly string[],
   demo: boolean,
   locale: ReasonerLocale = "de",
+  photo = false,
 ): InterviewResult {
-  const questions = INTERVIEW_QUESTIONS[locale];
+  const questions = (photo ? INTERVIEW_PHOTO_QUESTIONS : INTERVIEW_QUESTIONS)[locale];
   const core = (answers[0]?.trim().length ?? 0) > 0;
   const hasCond = (answers[1]?.trim().length ?? 0) > 0;
   const hasMeas = (answers[2]?.trim().length ?? 0) > 0;
@@ -1465,8 +1526,8 @@ export function queryTokens(text: string): string[] {
 //   · Stoppwörter und Kurzwörter — die Zerlegung entfernt sie ohnehin;
 //   · die mehrdeutigen Funktionsformen aus mega57 („würd", „woll" …), solange sie nicht als
 //     Nominalisierung im Satz stehen — dieselbe Regel wie für die Substanz;
-//   · das FRAGEGERÜST (`FRAGEGERUEST` unten): Verben, mit denen man nach einer Sache FRAGT, ohne sie
-//     zu benennen („Wo FINDE ich …", „Was GILT für …", „Wo STEHT …"). Ohne diese Ausnahme wäre
+//   · das FRAGEGERÜST (`FRAGEGERUEST` unten): Verben und Frageergänzungen, mit denen man nach einer
+//     Sache FRAGT, ohne sie zu benennen („Wo FINDE ich …", „Was GILT für …", „Wie HOCH ist …"). Ohne diese Ausnahme wäre
 //     „Wo finde ich die Urlaubsregelungen im Handbuch?" gegen „Die Urlaubszeiten stehen im Handbuch."
 //     eine Wissenslücke (N2 Z1) — die Quelle sagt nicht „finden".
 //
@@ -1506,6 +1567,23 @@ const FRAGEGERUEST: readonly string[] = [
   // „Was sagt der Betrieb zum Ventil?" (mega59-komposita)
   "sagt",
   "sagen",
+  // „Wozu dient der Schnellstartknopf NOTSTART-4?" — die Quelle sagt, WIE er angefahren wird, nicht
+  // „dient" (F-0688 M3b, R-0278 W0; seit R-0473 Wissenslücke trotz passender Quelle).
+  "dient",
+  "dienen",
+  // „Wie hoch ist das Nachspannmoment an der Presse?" — die Quelle nennt den Wert (G27).
+  "hoch",
+  // „How many days does the customer have to report a defect?" — die Quelle nennt die Zahl
+  // (JOB 3298 V1/R1–R3).
+  "many",
+  // „Es geht um Ventil F3. Welche maximale Temperatur gilt?" (ben, Nacharbeit 5) — der Satz führt
+  // die Sache ein, „geht" benennt sie nicht; „Ventil F3" bleibt gebunden.
+  "geht",
+  "gehen",
+  // „Nenne nur Werte für Ventil F3. Welche maximale Temperatur gilt?" (ben, Nacharbeit 7) — „Werte"
+  // fragt nach dem Zahlenwert wie „hoch"/„many"; die Quelle nennt ihn, ohne „Wert" zu sagen.
+  "wert",
+  "werte",
 ];
 
 let fragegeruestCache: ReadonlySet<string> | undefined;
@@ -1514,9 +1592,181 @@ function fragegeruest(): ReadonlySet<string> {
   return fragegeruestCache;
 }
 
+// ------------------------------------------------------------------------------------------------
+// R-0278-Nacharbeit 3 (ben, P-ASK-C02): DIE SACHFRAGE, NICHT DIE ANWEISUNG.
+// ------------------------------------------------------------------------------------------------
+//
+// Pedis Freitagsfrage, wörtlich: „In the fictional Advisor ICT demo data, what is the standard
+// invoice payment period? Answer in English and cite the stored source. If the sources disagree,
+// say so rather than choosing silently." Gebunden wurde bis hierher JEDES Inhaltstoken — auch
+// „english", „cite", „disagree" aus den beiden Anweisungssätzen und „fictional", „advisor", „demo"
+// aus dem Fundortrahmen. Keine Quelle führt diese Wörter; die vorhandenen Fristen fielen heraus,
+// und mit ihnen die Konfliktdarstellung (ASK-C02-KONFLIKT).
+//
+// AUF WORTEBENE, NICHT AUF SATZEBENE — Nacharbeit 7 (ben). Nacharbeit 3 verwarf ganze Sätze und
+// Rahmen, Nacharbeit 5 noch ganze Anweisungssätze und jeden Rahmen, der auf ein Bestandswort endet.
+// Beides warf Sachen mit weg: „Nenne nur Werte für Ventil F3. Welche …?" verlor F3, „In den Kessel K7
+// Daten, welche …?" verlor K7 — eine Quelle zu F4 bzw. K8 hätte die Frage getragen. Jetzt wird
+// KEIN Satz und KEIN Rahmen mehr als Ganzes verworfen. Entfernt wird nur, was eindeutig formal ist:
+//   1. IN EINEM ANWEISUNGSSATZ (Satz ohne „?", der als Anweisung an die Antwort beginnt — Antwortverb
+//      oder Bedingungssatz über die Quellen) entfallen NUR die deklarierten Anweisungswörter
+//      (`ANWEISUNGSWOERTER`: „answer", „english", „cite", „source" …). Jedes andere Wort des Satzes —
+//      „Ventil", „F3" — bleibt gebunden.
+//   2. IN EINEM RAHMEN vor dem Fragewort („In the … data, what …", „In den Kessel K7 Daten, …")
+//      entfallen NUR die Wörter, die den Bestand bezeichnen (`BESTANDSWOERTER`). Jedes Sachwort im
+//      Rahmen („Kessel", „K7", „Handbuch") bleibt gebunden.
+// Beide Listen sind deklariert und je Eintrag an einem gemessenen Fall belegt, wie das Fragegerüst.
+// Ohne Fragesatz bleibt die ganze Eingabe gebunden — „Ventil F3 Temperatur" (R-0473) unverändert.
+const FRAGESATZ_ENDE = /\?\s*$/;
+// Antwortverben, EN/DE/NL — die Verben, mit denen man die Antwort formt, nicht die Sache.
+const ANTWORTVERBEN = [
+  "answer",
+  "respond",
+  "reply",
+  "cite",
+  "quote",
+  "name",
+  "list",
+  "give",
+  "use",
+  "write",
+  "keep",
+  "include",
+  "antworte\\w*",
+  "beantworte\\w*",
+  "zitiere\\w*",
+  "nenne\\w*",
+  "gib",
+  "schreibe?",
+  "fasse",
+  "antwoord",
+  "noem",
+  "geef",
+  "citeer",
+];
+// Satzanfang mit Antwortverb — oder ein Bedingungssatz über die QUELLEN („If the sources …").
+const ANTWORTANWEISUNG = new RegExp(
+  `^\\s*(?:(?:bitte|please)\\s+)?(?:${ANTWORTVERBEN.join("|")})\\b|^\\s*(?:if|wenn|falls|als)\\b[^.!?]*\\b(?:sources?|quellen?|bronn?en)\\b`,
+  "i",
+);
+// Die formalen Wörter einer Antwortanweisung — sie sagen, WIE geantwortet wird, nicht WORÜBER.
+const ANWEISUNGSWOERTER = [
+  // Pedis Freitagsfrage (P-ASK-C02): „Answer in English and cite the stored source. If the
+  // sources disagree, say so rather than choosing silently."
+  "answer",
+  "english",
+  "cite",
+  "stored",
+  "source",
+  "sources",
+  "disagree",
+  "say",
+  "rather",
+  "than",
+  "choosing",
+  "silently",
+  // „Antworte kurz und nenne die Quelle." (Nacharbeit 3), „Nenne nur Werte für …" (Nacharbeit 7)
+  "antworte",
+  "kurz",
+  "nenne",
+  "quelle",
+];
+let anweisungswoerterCache: ReadonlySet<string> | undefined;
+function anweisungswoerter(): ReadonlySet<string> {
+  anweisungswoerterCache ??= new Set(ANWEISUNGSWOERTER.flatMap((w) => tokenize(w)));
+  return anweisungswoerterCache;
+}
+// Die Wörter, die den DATENBESTAND bezeichnen, nicht eine Sache darin.
+const BESTANDSWOERTER = [
+  // „In the fictional Advisor ICT demo data, what …" (P-ASK-C02; „Advisor ICT" ist der Name des
+  // geladenen Beispielbestands, PRIORITAETEN.md ASK-C02)
+  "fictional",
+  "advisor",
+  "ict",
+  "demo",
+  "data",
+  // „Im Wissensbestand, wo …" (Nacharbeit 5)
+  "wissensbestand",
+  "daten",
+  "bestand",
+];
+let bestandswoerterCache: ReadonlySet<string> | undefined;
+function bestandswoerter(): ReadonlySet<string> {
+  bestandswoerterCache ??= new Set(BESTANDSWOERTER.flatMap((w) => tokenize(w)));
+  return bestandswoerterCache;
+}
+const RAHMEN_PRAEPOSITIONEN = [
+  "in",
+  "im",
+  "innerhalb",
+  "laut",
+  "gemäß",
+  "gemaess",
+  "within",
+  "according to",
+  "inside",
+  "volgens",
+  "binnen",
+];
+const FRAGEWOERTER = [
+  "what",
+  "which",
+  "how",
+  "when",
+  "where",
+  "who",
+  "why",
+  "was",
+  "welche[nmrs]?",
+  "wie",
+  "wann",
+  "wo",
+  "wer",
+  "warum",
+  "wozu",
+  "wat",
+  "welke?",
+  "hoe",
+  "wanneer",
+  "waar",
+  "waarom",
+];
+// Ein vorangestellter Rahmen vor dem Fragewort; ob er entfällt, entscheiden seine WÖRTER (unten).
+const RAHMEN = new RegExp(
+  `^\\s*(?:${RAHMEN_PRAEPOSITIONEN.join("|")})(?=\\s)([^,?]*),\\s*(?=(?:${FRAGEWOERTER.join("|")})\\b)`,
+  "i",
+);
+
+/** Die Inhaltstoken der Eingabe, aus denen die gebundenen Begriffe gewählt werden. */
+function sachtoken(question: string, nominal: Set<string>): string[] {
+  const saetze = question.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0);
+  if (!saetze.some((s) => FRAGESATZ_ENDE.test(s))) {
+    return tokenize(question, nominal);
+  }
+  const token: string[] = [];
+  for (const satz of saetze) {
+    if (FRAGESATZ_ENDE.test(satz)) {
+      const rahmen = RAHMEN.exec(satz);
+      if (rahmen) {
+        // Im Rahmen entfallen NUR die Bestandswörter; jedes Sachwort („Kessel", „K7") bleibt.
+        const imRahmen = tokenize(rahmen[1] ?? "", nominal);
+        token.push(...imRahmen.filter((t) => !bestandswoerter().has(t)));
+        token.push(...tokenize(satz.slice(rahmen[0].length), nominal));
+      } else {
+        token.push(...tokenize(satz, nominal));
+      }
+    } else if (ANTWORTANWEISUNG.test(satz)) {
+      token.push(...tokenize(satz, nominal).filter((t) => !anweisungswoerter().has(t)));
+    } else {
+      token.push(...tokenize(satz, nominal));
+    }
+  }
+  return token;
+}
+
 export function undVerknuepfteFragebegriffe(question: string): string[] {
   const nominal = new Set<string>();
-  const gebunden = tokenize(question, nominal).filter(
+  const gebunden = sachtoken(question, nominal).filter(
     (token) => !fragegeruest().has(token) && (istSubstanztragend(token) || nominal.has(token)),
   );
   return [...new Set(gebunden)];
@@ -1545,7 +1795,8 @@ export function decktAlleFragebegriffe(
 }
 
 // WP-RETEST7 R5: der durchsuchbare Text eines Refs — Titel + Aussage + (falls vorhanden) die
-// persistierten Bild-Fußnoten. EINE Quelle für keywordSelect UND rankCandidates, damit ein KO,
+// persistierten Bild-Fußnoten. EINE Quelle für die Auswahl (`rankCandidates`; bis R-1349 auch
+// für den entfernten `keywordSelect`), damit ein KO,
 // dessen Wissen nur in der Fußnote steht, das Relevanz-Gate passieren kann.
 // G27 (JOB 1565 D1): der Dokumentkörper zählt ab hier mit — ADDITIV und ohne neue Grenze. Bis heute
 // endete der durchsuchbare Ausschnitt faktisch an der Aussage; ein Wort, das nur im Fließtext steht,
@@ -1706,46 +1957,14 @@ export function meetsAnswerSubstance(substanz: number): boolean {
   return substanz >= MIN_ANSWER_SUBSTANCE;
 }
 
-// Semantische Vorauswahl über Keyword-Überschneidung — synchron, modellunabhängig.
-// Von beiden Providern genutzt, damit Antworten immer in echten KOs verankert bleiben.
-// mega52 B1: EINE Schwelle für beide Auswahlwege — `keywordSelect` misst wie `rankCandidates`.
-export function keywordSelect(
-  question: string,
-  candidates: readonly KnowledgeRef[],
-  // JOB 3049: derselbe Relevanztext wie in `rankCandidates` — die Symmetriezusage von mega52 B1
-  // und mega59 B gilt für ihn genauso wie für die Zerlegung.
-  relevanz: Relevanztext = [],
-): KnowledgeRef[] {
-  // mega59 B: dieselbe Zerlegung, zusätzlich mit dem Herkunfts-Merkmal — die Frage EINMAL, jede
-  // Quelle einmal. Beide Seiten laufen durch dieselbe Funktion (Symmetriezusage).
-  const nominalFrage = new Set<string>();
-  const words = tokenize(question, nominalFrage);
-  // mega57 A2: das absolute Tor auf dem Substanzwert, die relative Regel auf dem Überschneidungswert.
-  // mega58 A: und das Tor JE KANDIDAT, vor der relativen Regel — sonst kommt eine substanzlose
-  // Quelle über ihren hohen Überschneidungswert mit und verdrängt den tragenden Treffer.
-  const scored = candidates
-    .map((c) => {
-      const nominalQuelle = new Set<string>();
-      const zieltoken = tokenize(refMatchText(c), nominalQuelle);
-      const { wert, entsprechung, substanz } = ueberschneidung(
-        words,
-        zieltoken,
-        nominalFrage,
-        nominalQuelle,
-        relevanz,
-      );
-      // JOB 3049: `reichweite` ist die Zahl, auf der das Tor und die relative Regel rechnen —
-      // Überschneidung PLUS Entsprechung. Ohne Relevanztext ist sie `wert`.
-      return { c, wert, reichweite: wert + entsprechung, substanz };
-    })
-    .filter((x) => x.reichweite > 0 && meetsAnswerSubstance(x.substanz))
-    .sort((a, b) => b.wert - a.wert);
-  // JOB 3049: Der Bezugspunkt bleibt die DIREKTE Überschneidung des besten Treffers. Ein Kandidat,
-  // der nur über die Entsprechung trifft, kann die Latte damit nicht anheben und keinen tragenden
-  // Treffer aus der Liste drängen — das ist dieselbe Zusage wie in `rankCandidates`.
-  const best = scored.reduce((max, x) => Math.max(max, x.wert), 0);
-  return scored.filter((x) => meetsRelevanceThreshold(x.reichweite, best)).map((x) => x.c);
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `keywordSelect`, ein zweiter Auswahlweg
+// („von beiden Providern genutzt" — gemessen: von keinem). Beide Provider wählen über
+// `rankCandidates` (bzw. `selectCandidates`). `keywordSelect` rechnete dasselbe Tor, dieselbe
+// Substanzschwelle und dieselbe relative Regel auf derselben Zerlegung, nur ohne Deckel und ohne
+// die Gleichstandsordnung — die Menge war per Bauart dieselbe (mega52 B1, mega59 B). Ein zweiter
+// Weg, den niemand ruft, ist genau der halbe Einbau, gegen den R-1349 steht; er ist entfernt. Die
+// Prüfstände, die die Auswahl über ihn maßen, messen sie jetzt am Produktweg
+// (`tests/support/auswahlweg.ts`).
 
 // SCRUM-360 / AG-03 / FR-ASK-02 / NFR-PERF-03: begrenzte, status-/trust-bewusste Top-K-Kandidaten-
 // auswahl. Ziel ist sichtbarer Beta-Fortschritt OHNE RAG/Embeddings/Suchmaschine/DB-Umbau: Ask reicht
@@ -1905,10 +2124,19 @@ export function rankCandidates(
       //    `keywordScore` und gewinnt schon an Zeile eins (Gegenprobe im genannten Test).
       //  · Kein Gate, kein Deckel, keine Schwelle und keine Sichtbarkeitsregel ändert sich. Die
       //    Menge, die hier ankommt, ist dieselbe wie vorher; nur ihre Reihenfolge ist begründet.
+      //
+      // R-1633 (Schicht- und Rollen-Filter beim Fragen) — „gewichtet höher … FALLS RELEVANT".
+      // Der Geltungsrang (eigene Schicht vor eigenem Werk vor Konzern/unbestimmt vor anderswo) steht
+      // HINTER den beiden Relevanzschlüsseln und VOR dem Status-/Trust-Bonus: eine Quelle der
+      // eigenen Schicht überholt nie eine, die die Frage besser trifft — unter gleich relevanten
+      // aber steht sie vorn und behält beim Deckel `topK` ihren Platz. Nichts wird entfernt; eine
+      // Quelle aus der Nachtschicht bleibt Kandidat. Ohne Fragekontext fehlt das Feld überall, die
+      // Zeile ist dann 0 und die Ordnung die bisherige.
       .sort(
         (a, b) =>
           b.keywordScore - a.keywordScore ||
           b.kerntreffer - a.kerntreffer ||
+          (b.ref.geltungsrang ?? 0) - (a.ref.geltungsrang ?? 0) ||
           b.rankScore - a.rankScore,
       )
       .slice(0, limit)
@@ -2040,8 +2268,12 @@ export class DeterministicProvider implements ReasonerProvider {
   async interview(
     answers: readonly string[],
     locale: ReasonerLocale = "de",
+    _confidential = false,
+    imageContext?: string,
   ): Promise<InterviewResult> {
-    return deterministicInterview(answers, true, locale);
+    // R-1624: ohne Modell die feste Foto-Fragenfolge — ehrlich als Fallback markiert.
+    const photo = normalizeInterviewImageContext(imageContext).length > 0;
+    return deterministicInterview(answers, true, locale, photo);
   }
 
   // PMO-FEA-0006: ohne Modell KEINE Extraktion — ehrliche Meldung statt Fake-Punkte (G-2).

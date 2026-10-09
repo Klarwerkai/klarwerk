@@ -183,7 +183,8 @@ const BILDSCHIRME: readonly Bildschirm[] = [
     query: "?bereich=sicherheit&detail=audit",
     datei: "apps/web/src/pages/AdminDatenDetails.tsx",
     titelKey: "seitenhilfe.admin.audit.titel",
-    textKey: "seitenhilfe.admin.audit.text",
+    // R-1176 (gesamt-sprache-begriffe): der Text zitiert den Reiter jetzt zeichengleich, auch NL.
+    textKey: "knopfzitat.admin.audit",
   },
   // ---- AdminSicherheitDetails.tsx --------------------------------------------------------------
   {
@@ -205,7 +206,8 @@ const BILDSCHIRME: readonly Bildschirm[] = [
     query: "?bereich=system&detail=bereitschaft",
     datei: "apps/web/src/pages/AdminSicherheitDetails.tsx",
     titelKey: "seitenhilfe.admin.bereitschaft.titel",
-    textKey: "seitenhilfe.admin.bereitschaft.text",
+    // R-1176: „nicht abrufbar“ heißt im Text so, wie es auf der Karte steht — auch EN und NL.
+    textKey: "knopfzitat.admin.bereitschaft",
   },
 ];
 

@@ -49,6 +49,23 @@ Am Basisstand per Quelleninspektion festgestellt:
   ohne Sitzung, Kopieren), `tests/reasoner/r1643-argumentationskette.test.ts` (Kette aus der
   Deckung, drei Antwortwege).
 
+## Zusammenführung mit main (Kandidat 13cf27a8)
+
+Konflikte in `api/types.ts`, `lib/answerExport.ts`, `pages/Ask.tsx` und `reasoner/src/provider-model.ts`.
+Beide Seiten bleiben erhalten:
+
+- `AnswerResult` (Web): main's `belastbarkeit`, `aiGenerated` und `zuordnungUnbekannt` stehen neben
+  R-1643 `argumentation`. main's eigene Kette R-1627 (`belastbarkeit.argumentation`: Stufen je
+  tragender Quelle, kuratierte Beziehungen, Einwände, Schluss) ist ein **anderes** Feld und bleibt
+  unverändert. Ob das Protokoll sie zusätzlich exportieren soll, ist eine offene Produktentscheidung.
+- Kopfblock: Die KI-Zeilen folgen main's dreiwertiger Herkunft (bei „ohne-ki“ entfallen sie). Die
+  Protokollzeilen `exported-at`/`user-id` sind keine KI-Aussage und bleiben. Ohne Protokoll gilt
+  main's Verhalten zeichengleich: bei „ohne-ki“ kein Kopfblock.
+- Fragenseite: main's `exportEingabe` (Markdown, Word, PowerPoint, PDF) trägt das R-1643-Protokoll; der
+  Druck liest dieselbe Eingabe. main's Quellenreihe, Belegstellen-Links und Datei-Downloads bleiben
+  unverändert.
+- Reasoner-Importe: main's Liste plus `ArgumentationsGlied`.
+
 ## Abgrenzung
 
 - **Auditkette (R-2206, `gesamt-auditprotokoll`)**: die serverseitige, unveränderliche Kette über
@@ -74,9 +91,13 @@ Am Basisstand per Quelleninspektion festgestellt:
 
 ## Quellenwidersprüche und offene Grenzen
 
-1. **PDF**: Das Produkt hat keinen PDF-Erzeuger (s. `mega62-export-kennzeichnung.test.ts`). Das PDF
-   entsteht über den Browserdruck („Als PDF sichern"). Ob das gedruckte Blatt in jedem Browser
-   vollständig aussieht, ist nur per Quelle und jsdom geprüft, nicht an einem echten Druckdialog.
+1. **PDF**: Zum Basisstand `ceb29795` hatte das Produkt keinen PDF-Erzeuger; das PDF entstand nur über
+   den Browserdruck. Seit der Zusammenführung mit main (Kandidat `13cf27a8`) erzeugt
+   `lib/antwortDateien.ts` (R-0703) echte Word-, PowerPoint- und PDF-Dateien. Ihr gemeinsamer Inhalt
+   (`antwortAbsaetze`) trägt jetzt auch das Entscheidungs-Protokoll mit Zeitpunkt, Nutzer-ID und
+   Argumentationskette, über dieselben Hilfen wie Markdown und Druck. Der Druckweg bleibt daneben.
+   Ein in einem PDF-Betrachter geöffnetes Ergebnis ist nicht belegt; geprüft sind der Inhalt
+   (`antwortAbsaetze`) und dass die Datei ohne Abbruch entsteht.
 2. **Argumentationskette**: Geliefert ist die belegte Kette „Aussage → Quelle, deren Wortlaut sie
    enthält". Eine Begründung in Form freier Schlussfolgerungen zwischen den Aussagen erzeugt das
    Produkt bewusst nicht (Zitatdeckung, JOB 2659: der Modelltext darf auswählen, nicht

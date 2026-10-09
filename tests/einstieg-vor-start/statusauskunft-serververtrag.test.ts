@@ -99,9 +99,14 @@ describe("JOB 4105 · V7 · GET /api/auth/status meldet die Selbstregistrierung 
       const app = buildApp(buildServices());
       const status = await app.inject({ method: "GET", url: "/api/auth/status" });
       expect(status.statusCode).toBe(200);
+      // R-0541 (Firmenanmeldung): `passwordLoginEnabled` ist ein Instanzschalter wie die
+      // Selbstregistrierung — er sagt, welcher Anmeldeweg gilt, nichts über Konten.
       expect(Object.keys(status.json() as Record<string, unknown>).sort()).toEqual([
         "needsSetup",
         "oidcEnabled",
+        "passwordLoginEnabled",
+        // R-0560: ob SAML als Firmen-Login eingerichtet ist — ebenfalls ein Instanzschalter.
+        "samlEnabled",
         "selfRegistrationEnabled",
       ]);
     });

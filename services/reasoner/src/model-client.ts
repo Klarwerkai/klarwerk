@@ -99,7 +99,14 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
   const timeoutMs = config.timeoutMs ?? DEFAULT_MODEL_TIMEOUT_MS;
   // Gemeinsamer Request-Kern für Text- und Vision-Aufrufe: gleicher Timeout, gleiche
   // Fehlerklassen (ModelHttpError/ModelTimeoutError), gleicher Antwort-Vertrag.
-  const postMessages = async (body: Record<string, unknown>): Promise<string> => {
+  // R-0046 (Bildbeschreibung gegen abgeschnittene Ergebnisse): `abbruchVermerken` meldet einen
+  // belegten Abbruch (`stop_reason: "max_tokens"` MIT Text) in die Abbruch-Spur — dieselbe Tatsache,
+  // die `requireChatContent` auf der OpenAI-Kante vermerkt. Nur der Vision-Weg setzt ihn; der
+  // Textweg bleibt byteweise wie bisher. Ohne laufende Spur ist der Vermerk ein No-op.
+  const postMessages = async (
+    body: Record<string, unknown>,
+    abbruchVermerken = false,
+  ): Promise<string> => {
     const controller = new AbortController();
     let timedOut = false;
     const timer = setTimeout(() => {
@@ -137,6 +144,7 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
         // Bewusst `unknown` je Wert: was hier ankommt, ist eine fremde Antwort, kein Vertrag —
         // geprüft wird sie an der einen Stelle, die das darf (`meldeModellVerbrauch`).
         usage?: { input_tokens?: unknown; output_tokens?: unknown } | null;
+        stop_reason?: unknown;
       };
       // JOB 3074: VERBRAUCHT IST VERBRAUCHT. Der Verbrauch wird gemeldet, BEVOR die Textauswertung
       // darunter entscheidet, ob etwas Brauchbares herauskam — eine Antwort ohne verwertbaren
@@ -150,6 +158,19 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
         blocks.find((block) => block?.type === "text") ??
         blocks.find((block) => typeof block?.text === "string")
       )?.text;
+      if (
+        abbruchVermerken &&
+        data.stop_reason === "max_tokens" &&
+        typeof text === "string" &&
+        text.trim().length > 0
+      ) {
+        vermerkeAbbruch({
+          budgetFeld: "max_tokens",
+          budget: typeof body.max_tokens === "number" ? body.max_tokens : 0,
+          finishReason: "max_tokens",
+          zeichen: text.length,
+        });
+      }
       return text ?? "";
     } catch (err) {
       if (timedOut) {
@@ -199,23 +220,26 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
       if (!image) {
         throw new Error(BILD_FORMAT_FEHLER);
       }
-      return postMessages({
-        model: config.model,
-        max_tokens: maxTokens,
-        system,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image",
-                source: { type: "base64", media_type: image.mediaType, data: image.base64 },
-              },
-              { type: "text", text: user },
-            ],
-          },
-        ],
-      });
+      return postMessages(
+        {
+          model: config.model,
+          max_tokens: maxTokens,
+          system,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "image",
+                  source: { type: "base64", media_type: image.mediaType, data: image.base64 },
+                },
+                { type: "text", text: user },
+              ],
+            },
+          ],
+        },
+        true,
+      );
     },
   };
 }
