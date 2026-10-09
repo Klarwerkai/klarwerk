@@ -21,10 +21,40 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { leerzustandsZeile } from "../../apps/web/src/components/EmptyStateCtas";
 import i18n from "../../apps/web/src/i18n";
-import { KNOWLEDGE_STORY_SURFACES, knowledgeStory } from "../../apps/web/src/lib/knowledgeStory";
+import { type StorySurface, knowledgeStory } from "../../apps/web/src/lib/knowledgeStory";
 import { repoPfad } from "../support/repoPfad";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+// R-1349: das Produkt führt keine Flächenliste mehr. Der Record erzwingt, dass hier jede Fläche
+// des Typs steht — eine neue Fläche ohne Eintrag ist ein Typfehler, keine stille Lücke.
+const FLAECHEN = Object.keys({
+  start: true,
+  tasks: true,
+  library: true,
+  validation: true,
+  risk: true,
+  neighborhood: true,
+  audit: true,
+  gaps: true,
+  lifecycle: true,
+  duplicates: true,
+  objekt: true,
+  entwuerfe: true,
+  verwaltung: true,
+  auswertung: true,
+  import: true,
+  anleitung: true,
+  spaces: true,
+  ausgang: true,
+  wissensnetz: true,
+  meldungen: true,
+  horizont: true,
+  lernpfad: true,
+  hilfe: true,
+  conflicts: true,
+  gliederung: true,
+} satisfies Record<StorySurface, true>) as StorySurface[];
 
 /** Datei · Leersatz — die Listen aus dem Bestandsabgleich (Abschnitt 2). */
 const LISTEN: readonly (readonly [string, string])[] = [
@@ -75,12 +105,13 @@ const LISTEN: readonly (readonly [string, string])[] = [
   ["apps/web/src/pages/Stufe2.tsx", "imp.queueEmpty"],
   ["apps/web/src/pages/Stufe2.tsx", "mgmt.empty"],
   ["apps/web/src/pages/Stufe2.tsx", "mgmt.noRecs"],
-  ["apps/web/src/pages/Stufe2.tsx", "mrun.empty"],
+  // Hauptstand (Nacharbeit 9): die drei QM-Leersätze heißen jetzt `fachwort.*` (texte/fachwort.ts).
+  ["apps/web/src/pages/Stufe2.tsx", "fachwort.kiLaeufe.leer"],
   ["apps/web/src/pages/Stufe2.tsx", "mrun.report.empty"],
-  ["apps/web/src/pages/Stufe2.tsx", "evx.empty"],
+  ["apps/web/src/pages/Stufe2.tsx", "fachwort.belegIndex.leer"],
   ["apps/web/src/pages/Stufe2.tsx", "prov.empty"],
   ["apps/web/src/pages/Stufe2.tsx", "kos.hints.none"],
-  ["apps/web/src/pages/Stufe2.tsx", "evFresh.empty"],
+  ["apps/web/src/pages/Stufe2.tsx", "fachwort.belegFrische.leer"],
   ["apps/web/src/pages/Stufe2.tsx", "wissensgraph.sicht.leer"],
   ["apps/web/src/pages/Stufe2.tsx", "s2.graphEmpty"],
   ["apps/web/src/components/ImportExplore.tsx", "imp.explore.empty"],
@@ -120,7 +151,7 @@ describe("R-0956 · S2 — die Einordnung trägt alle drei Zusagen, in DE, EN un
   for (const sprache of ["de", "en", "nl"] as const) {
     it(`${sprache}: Titel, Phase und flächeneigener Satz je Fläche`, async () => {
       await i18n.changeLanguage(sprache);
-      for (const flaeche of KNOWLEDGE_STORY_SURFACES) {
+      for (const flaeche of FLAECHEN) {
         const story = knowledgeStory(flaeche);
         const container = document.createElement("div");
         const root = createRoot(container);

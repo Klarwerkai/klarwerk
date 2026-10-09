@@ -47,7 +47,12 @@ import {
   toggleFacetValue,
 } from "../../lib/facets";
 import { LIBRARY_RESULT_LIMIT, windowList } from "../../lib/libraryDisplay";
-import { EXPORT_FORMATS, exportFilename, exportUrl } from "../../lib/libraryExport";
+import {
+  EXPORT_FORMATS,
+  exportFilename,
+  exportFormatMeta,
+  exportUrl,
+} from "../../lib/libraryExport";
 import {
   LIBRARY_FACET_LABEL_KEYS,
   LIBRARY_GROUP_KEYS,
@@ -97,7 +102,9 @@ import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../../lib/useDebo
 import { usePersistentEnum } from "../../lib/usePersistentValue";
 import { useReadiness } from "../../lib/useReadiness";
 import { TABLET_LESE_QUERY, useMediaQuery } from "../../shell/useMediaQuery";
+import { AnlagenMatrix } from "../Anlagen";
 import { DemoBanner } from "../DemoBanner";
+import { Modal } from "../Modal";
 import { RoleLink } from "../RoleLink";
 import { cx } from "../ui";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
@@ -248,6 +255,9 @@ const LIBRARY_FILTER_CONFIGS: readonly FacetGroupConfig[] = [
   // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet als eigene Achse. Über diese Liste reist es
   // auch in die Adresse (`LIBRARY_FACET_PARAM_KEYS`) und in gemerkte Sichten (`facetSel`).
   { key: "domain", labelKey: "lib.facet.domain" },
+  // R-0477 / R-0082: vom Gerät zum Wissen — die Anlage als Achse, gelesen allein aus dem
+  // kanonischen Feld am Objekt (`asset`), nicht aus den Lebenszyklus-Kopplungen.
+  { key: "asset", labelKey: "wissensmetadaten.anlage.facette" },
   { key: "tag", labelKey: "lib.facet.tag" },
   { key: "confidentiality", labelKey: "lib.facet.confidentiality" },
   { key: "author", labelKey: LIBRARY_FACET_LABEL_KEYS.author },
@@ -434,6 +444,8 @@ export function BibliothekFlaeche({
   const [ansicht, setAnsicht] = usePersistentEnum(BIB_ANSICHT_STORAGE_KEY, BIB_ANSICHTEN, "liste");
   // R-1006: Mehrfachauswahl von Zeilen — ein eigener Modus neben der EINEN geöffneten Zeile.
   const [auswahlModus, setAuswahlModus] = useState(false);
+  // R-0477: die Anlagen×Wissensobjekt-Matrix über den aktuellen (sichtbaren, gefilterten) Treffern.
+  const [matrixOffen, setMatrixOffen] = useState(false);
   const [markiert, setMarkiert] = useState<ReadonlySet<string>>(() => new Set());
   const { user } = useSession();
   const nameOf = useAuthorName();
@@ -1245,15 +1257,24 @@ export function BibliothekFlaeche({
   // Bericht die Fläche und die Liste ist (in der Vorgabe) eingeklappt. Eine Vorwahl stellte den
   // Erstbesuch in einen Bericht, den niemand gewählt hat, mit weggeklappter Liste davor. Ohne Wahl
   // trägt deshalb die Liste die Fläche allein — wie auf dem Telefon.
+  //
+  // UX-02 · LESEWAHL BEI VERZÖGERTEM BESTAND (`docs/entscheidungen/ux02-lesewahl.md`) — DIE VORWAHL
+  // FOLGT DER LISTE, NICHT DER UNGEPRÜFTEN MENGE DAHINTER. Schweigt die Liste (`listeSchweigt`:
+  // Adresskeim wartet auf den bestätigten Bestand, oder dessen Erstabruf ist gescheitert), steht
+  // links KEINE Zeile — `win.visible` ist dann aber schon die ungeprüft gefilterte Menge. Ihr erster
+  // Eintrag rechts wäre ein Bericht, den weder der Mensch gewählt noch die Liste als Treffer
+  // genannt hat: genau der stille Ersatz aus N-0006, nur zeitlich verschoben. Die AUSDRÜCKLICHE
+  // Wahl (`gewaehlt`, Pfad oder `EINTRAG_PARAM`) hängt nicht an der Liste und bleibt stehen; die
+  // Lesefläche selbst wird nicht ausgeblendet, sie bleibt bis zur Antwort nur ohne Bericht.
   const einspaltig = schmal || tablet;
-  const vorwahl = einspaltig ? null : (sichtbareIds[0] ?? null);
+  const vorwahl = einspaltig || listeSchweigt ? null : (sichtbareIds[0] ?? null);
   const gewaehltEffektiv = gewaehlt ?? vorwahl;
   // N-0074 (K27): die AUSDRÜCKLICHE Wahl bleibt stehen (N-0006, oben) — aber die Lesefläche sagt
   // jetzt, wenn Suche, Facetten, Zeitraum, Umschalter oder Bereich sie aus der Treffermenge
   // ausschliessen. Geprüft wird gegen die VOLLE gefilterte Menge (`sorted`), nicht gegen das
   // sichtbare Fenster: ein Eintrag hinter „Mehr laden" ist ein Treffer. Nur bei frischem Abruf
   // und geprüfter Auswahl — sonst wäre „nicht dabei" eine Aussage ohne Grundlage. Die Vorwahl
-  // (`vorwahl`) ist per Bau immer ein Treffer und braucht die Prüfung nicht.
+  // (`vorwahl`) ist per Bau immer ein Treffer einer zeichnenden Liste und braucht die Prüfung nicht.
   const auswahlAusserhalbTreffer =
     gewaehlt !== null &&
     frisch &&
@@ -1274,7 +1295,28 @@ export function BibliothekFlaeche({
   // für sein `aria-expanded` und sagt damit nur, was wirklich im Baum steht. Was er wegklappt,
   // wird — wie schmal — nicht gebaut, nicht bloss versteckt.
   const listeGewuenscht = tablet && tabletListe === "offen";
-  const zeigeListe = gewaehltEffektiv === null || !einspaltig || listeGewuenscht;
+  // ================================================================================================
+  // AUFNAHME 20260922 · GESAMT-NAVIGATION · R-1023 (b) — ENTLASTUNG BEIM BEARBEITEN.
+  // ================================================================================================
+  // Gemessen (`tests/gesamt-navigation/flaechenlast-chromium.test.ts`, Lauf nacharbeit-6, 1280 × 800,
+  // Demobestand): „Wissensobjekt bearbeiten" war mit 129 gleichzeitig sichtbaren Bedienelementen
+  // und Zustandsangaben die zweitschwerste Fläche — rund 60 davon gehörten zur Trefferliste
+  // daneben (Zeilen mit Kurzvorschau, Suche, Filter), die beim Bearbeiten niemand braucht.
+  // Breit klappt die Liste deshalb ein, solange bearbeitet wird; der Schalter
+  // `bib-liste-beim-bearbeiten` holt sie zurück (nichts wird gelöscht). Endet das Bearbeiten, steht
+  // die Liste wieder wie vorher. Telefon und Tablet sind schon einspaltig und bleiben unberührt.
+  const [leseBearbeitet, setLeseBearbeitet] = useState(false);
+  const [listeBeimBearbeiten, setListeBeimBearbeiten] = useState(false);
+  useEffect(() => {
+    if (!leseBearbeitet) {
+      setListeBeimBearbeiten(false);
+    }
+  }, [leseBearbeitet]);
+  const listeEntlastet =
+    !einspaltig && leseBearbeitet && gewaehltEffektiv !== null && !listeBeimBearbeiten;
+  const zeigeListe =
+    (gewaehltEffektiv === null || !einspaltig || listeGewuenscht) && !listeEntlastet;
+  const entlastungsSchalter = !einspaltig && leseBearbeitet && gewaehltEffektiv !== null;
   const zeigeBericht = gewaehltEffektiv !== null || !einspaltig;
   // WIE die Liste steht, sagt ihr die Fläche, WIE BREIT sie dann ist, weiss `BibliothekListe.tsx`
   // selbst (JOB 3335: der Nachfahren-Selektor dieser Datei auf die Listenbreite ist dort
@@ -1728,6 +1770,24 @@ export function BibliothekFlaeche({
           />
         ))}
       </div>
+      {/* R-0477 / R-0082: die Anlagen×Wissensobjekt-Matrix. Gespeist aus `sorted` — genau den
+          Treffern, die der Server diesem Menschen herausgegeben hat, nach Suche, Facetten und
+          Bereich; die Matrix fragt nichts nach und zeigt deshalb nichts, was die Liste nicht
+          zeigt. Ein Klick auf ein Objekt öffnet es wie eine Zeile der Liste. */}
+      <Modal
+        open={matrixOffen}
+        onClose={() => setMatrixOffen(false)}
+        title={t("wissensmetadaten.matrix.titel")}
+        wide
+      >
+        <AnlagenMatrix
+          kos={sorted.map((i) => i.ko)}
+          onOeffnen={(id) => {
+            setMatrixOffen(false);
+            waehle(id);
+          }}
+        />
+      </Modal>
       {zeigeListe ? (
         <BibliothekListe
           lage={listenLage}
@@ -2128,6 +2188,16 @@ export function BibliothekFlaeche({
                     >
                       {t("lib.auswahl.modus")}
                     </MenuePunkt>
+                    {/* R-0477: vom Gerät zum Wissen — die Zuordnung als Matrix. */}
+                    <MenuePunkt
+                      testId="bib-anlagen-matrix"
+                      onClick={() => {
+                        setMatrixOffen(true);
+                        schliessen();
+                      }}
+                    >
+                      {t("wissensmetadaten.matrix.oeffnen")}
+                    </MenuePunkt>
                     <MenueTrenner />
                     <MenueUntermenue beschriftung={t("lib.export")}>
                       {EXPORT_FORMATS.map((fmt) => (
@@ -2138,7 +2208,7 @@ export function BibliothekFlaeche({
                             data-testid={`bib-export-${fmt}`}
                             className="block w-full"
                           >
-                            {t(`lib.format.${fmt}`)}
+                            {t(exportFormatMeta(fmt).labelKey)}
                           </a>
                         </MenueZeile>
                       ))}
@@ -2420,6 +2490,30 @@ export function BibliothekFlaeche({
                 ) : null}
               </div>
             ) : null}
+            {/* Gesamt-Navigation (R-1023 b): breit, beim Bearbeiten — die eingeklappte Trefferliste
+                zurückholen oder wieder einklappen. Dieselben Wörter wie der Tablet-Schalter. */}
+            {entlastungsSchalter ? (
+              <div className="flex px-4 pt-3">
+                <button
+                  type="button"
+                  data-testid="bib-liste-beim-bearbeiten"
+                  data-entlastung-schalter=""
+                  aria-expanded={zeigeListe}
+                  aria-controls={zeigeListe ? "bib-liste" : undefined}
+                  onClick={() => setListeBeimBearbeiten((offen) => !offen)}
+                  className="inline-flex items-center gap-1.5 rounded-btn border border-hairline bg-surface px-2.5 py-1 text-[12.5px] font-semibold text-text hover:bg-hairline-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                >
+                  {zeigeListe ? (
+                    <PanelLeftClose size={15} aria-hidden className="shrink-0" />
+                  ) : (
+                    <PanelLeftOpen size={15} aria-hidden className="shrink-0" />
+                  )}
+                  {t(
+                    zeigeListe ? "lib.lesemodus.listeAusblenden" : "lib.lesemodus.listeEinblenden",
+                  )}
+                </button>
+              </div>
+            ) : null}
             {/* Der Auffrischungssatz gehört auf die Fläche, die gerade da ist — s. `hinweisKnoten`. */}
             {zeigeListe ? null : hinweisKnoten}
             {/* SCRUM-291: Demo-/Pilotpfad bleibt auf der Zielseite wiedererkennbar (nur ?demo=stage1). */}
@@ -2451,6 +2545,7 @@ export function BibliothekFlaeche({
                 // Lesefläche dazu und fragt sie auch nicht ein zweites Mal ab. Auf `/bibliothek`
                 // gibt es diese Karte nicht, und die Lesefläche trägt die Übersetzung selbst.
                 lesevarianteSchonGesagt={vorgewaehlt !== undefined}
+                onBearbeiten={setLeseBearbeitet}
                 // JOB 3104 · UX-02: die gelöschte Wahl verlässt die ADRESSE — sonst zeigte sie nach
                 // dem Löschen auf eine tote Kennung, und die Fläche sagte ihrem eigenen Nutzer „Der
                 // Eintrag ließ sich nicht laden.". Wer selbst gelöscht hat, weiß, was er getan hat;

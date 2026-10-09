@@ -155,7 +155,10 @@ export function ZahnradEintraege(): JSX.Element {
       <MenueTrenner />
       <MenueKopf>
         <span className="flex items-center gap-2">
-          <span className="font-mono normal-case tracking-normal" title="App-Version (Beta-Phase)">
+          <span
+            className="font-mono normal-case tracking-normal"
+            title={t("beschriftung.zahnrad.version")}
+          >
             v{APP_VERSION}
           </span>
           {islandMarker ? (

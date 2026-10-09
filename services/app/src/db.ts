@@ -2,9 +2,14 @@ import { Pool } from "pg";
 import { ANSWER_SNAPSHOT_SCHEMA, ASK_SCHEMA } from "../../ask";
 import { AUDIT_EVENT_ID_SCHEMA, AUDIT_HASH_VERSION_SCHEMA, AUDIT_SCHEMA } from "../../audit";
 import { AUTH_SCHEMA } from "../../auth";
-import { CAPTURE_CREATE_OPERATION_SCHEMA, CAPTURE_SCHEMA } from "../../capture";
+import {
+  CAPTURE_CREATE_OPERATION_SCHEMA,
+  CAPTURE_INDEX_SCHEMA,
+  CAPTURE_SCHEMA,
+} from "../../capture";
 import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
 import { vorratsKonfiguration } from "../../db-tx";
+import { EMBEDDING_SCHEMA } from "../../embedding";
 import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
 import {
   DOKUMENTAKTE_SCHEMA,
@@ -64,10 +69,14 @@ import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
 import { LESEVARIANTEN_SCHEMA } from "./lesevarianten";
 // PMO-FEA-0003: die freiwilligen Fotos der Live-Wand (eine Zeile je zustimmendem Konto).
 import { LIVEWALL_FOTO_SCHEMA } from "./livewall-fotos";
+// Betroffenenrechte (R-0661): die Löschanträge. Im App-Wurzelverzeichnis wie die Kenntnisnahme —
+// sie verbinden Konto (auth) und Verwalteraufgabe, kein Fachmodul besitzt sie.
+import { LOESCHANTRAG_SCHEMA } from "./loeschantraege";
 import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
 // produkt:20261007:spaces: die Fassungen der Arbeitsräume. Im App-Wurzelverzeichnis wie das
 // Firmenwörterbuch: die Sichtbarkeitsregel (`sichtbarkeit.ts`) liest sie, kein Fachmodul besitzt sie.
 import { SPACES_SCHEMA } from "./spaces";
+import { VERANTWORTUNG_NACHFOLGE_SCHEMA } from "./verantwortung-nachfolge";
 
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
 // R-0798: mit Zeitgrenzen — begrenztes Warten auf eine freie Verbindung (Notbremse für den Vorrat)
@@ -178,6 +187,10 @@ export const schemas = [
   // `CREATE UNIQUE INDEX IF NOT EXISTS`), und die Datenmigration ist leer: kein Bestandsentwurf
   // trägt `createOperation`, jede vorhandene Zeile fällt durch das partielle `WHERE`.
   CAPTURE_CREATE_OPERATION_SCHEMA,
+  // R-1133: der technische Index der Entwürfe als Spalten an `drafts` — ZWANG zur Stellung nach
+  // `CAPTURE_SCHEMA` (ALTERt `drafts`) und nach `KO_SCHEMA` (pg_trgm für den Trigramm-Index).
+  // Additiv und wiederholbar; die Datenmigration ist leer, der Altbestand wird nachgezogen.
+  CAPTURE_INDEX_SCHEMA,
   ASK_SCHEMA,
   // W3-A (KW-W3-18): Antwortidentitaet und unveraenderliche Belegrevisionen. Sie stehen DIREKT
   // nach ASK_SCHEMA, weil sie demselben Modul gehoeren; auch hier gibt es keinen technischen
@@ -269,6 +282,16 @@ export const schemas = [
   // EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare
   // Ordnung ist.
   GEDAECHTNIS_SCHEMA,
+  // produkt:20261007:ownership-uebergabe: die Nachfolge bei Befristung je Konto. Additiv und
+  // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  VERANTWORTUNG_NACHFOLGE_SCHEMA,
+  // R-0470: der dauerhafte Vektorspeicher des Textprüfungs-Vorfilters. Additiv und wiederholbar
+  // (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension (kein pgvector), ohne Seed.
+  EMBEDDING_SCHEMA,
+  // Betroffenenrechte (R-0661): die Löschanträge der Mitarbeiter. Additiv und wiederholbar (CREATE
+  // TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das
+  // die lesbare Ordnung ist.
+  LOESCHANTRAG_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).

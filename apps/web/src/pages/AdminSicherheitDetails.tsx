@@ -12,11 +12,13 @@ import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useAnalytics, useAudit, useDirectory, useValidationBoard } from "../api/hooks";
 import type { AuditEntry } from "../api/types";
+import { useSession } from "../app/AuthContext";
 import { useToast } from "../app/ToastContext";
 // JOB 3670: die Seitenhilfe dieser drei Karten — je Karte ein eigener Text, weil es drei
 // Bildschirme sind. `HelpTip` rendert nichts; er meldet beim Sammler an, das Zahnrad listet.
 import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
+import { BetroffenenrechteVerwaltung } from "../components/datenschutz/Verwaltung";
 import { Abfragehuelle, Fehlerbox } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { Bereitschaftstandhinweis } from "../components/einstellungen/bereitschaftstandhinweis";
@@ -446,6 +448,7 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
 /** SCRUM-432/444: Datenschutz & Sicherheit — nur echte Systemeigenschaften, keine Versprechen. */
 export function DatenschutzDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
   const { t } = useTranslation();
+  const { user } = useSession();
   return (
     <div className="print-area">
       <Detailkarte
@@ -456,8 +459,9 @@ export function DatenschutzDetail({ onZurueck }: { onZurueck: () => void }): JSX
         hilfe={[{ titel: t("adm.sich.dataTitle"), text: t("adm.sich.dataHelp") }]}
       >
         {/* JOB 3670: „einstellen lässt sich hier nichts" ist der ehrliche Kern dieser Karte — sie
-            rendert eine feste Liste (`lib/securityStatements.ts`) und den Abgrenzungskasten,
-            kein einziges Bedienelement ausser dem Drucken. */}
+            rendert eine feste Liste (`lib/securityStatements.ts`) und den Abgrenzungskasten.
+            Betroffenenrechte: darunter stehen für Verwalter die Löschanträge, die Auskunft und das
+            Verarbeitungsverzeichnis — Handlungen und Downloads, weiterhin keine Einstellung. */}
         <HelpTip
           title={t("seitenhilfe.admin.datenschutz.titel")}
           body={t("seitenhilfe.admin.datenschutz.text")}
@@ -480,6 +484,10 @@ export function DatenschutzDetail({ onZurueck }: { onZurueck: () => void }): JSX
         <p className="rounded-card border border-hairline bg-page px-3 py-2 text-[11px] leading-relaxed text-muted-2">
           {t("adm.sich.evidenceNote")}
         </p>
+        {/* Betroffenenrechte (R-0583, R-0661, R-0667, R-1645): Löschanträge mit Frist, Auskunft je
+            Konto, Verarbeitungsverzeichnis und Dateninventar. Nur für Konten, die Konten löschen
+            dürfen — dieselbe Schranke wie die Routen (`users.manage`). */}
+        {user?.role === "admin" ? <BetroffenenrechteVerwaltung /> : null}
       </Detailkarte>
     </div>
   );
@@ -715,7 +723,7 @@ export function BereitschaftDetail({
             hinge die Hilfe im Erfolgszweig, wäre sie genau dann weg. */}
         <HelpTip
           title={t("seitenhilfe.admin.bereitschaft.titel")}
-          body={t("seitenhilfe.admin.bereitschaft.text")}
+          body={t("knopfzitat.admin.bereitschaft")}
         />
         {/* AUFTRAG-mega3 Block B (bens D9): dauerhaft gescheiterte tragende Quelle ⇒ ehrlicher
             Fehlerzustand mit Wiederholen; Stale-Daten bleiben sichtbar, aber markiert. */}

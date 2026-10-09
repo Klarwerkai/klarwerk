@@ -73,7 +73,7 @@ und der flächeneigene Satz, der den nächsten Schritt nennt.
 | Editor · Bilder / Dateien / Anhänge im Text | `editor.noImages` · `editor.noFiles` · `erfassen.anhaenge.keine` | entwuerfe |
 | Editor · Gliederung | `studio.d44.keineUeberschriften` | gliederung |
 | Verwaltung | `adm.trash.empty` · `adm.auditEmpty` (2×) · `adm.presets.empty` · `adm.backup.none` · `capture.reviewers.none` | verwaltung |
-| Auswertungen (Stufe 2) | `out.noValidated` · `mgmt.empty` (2×) · `mgmt.noRecs` · `mrun.empty` · `mrun.report.empty` · `evx.empty` · `prov.empty` · `kos.hints.none` · `evFresh.empty` | auswertung |
+| Auswertungen (Stufe 2) | `out.noValidated` · `mgmt.empty` (2×) · `mgmt.noRecs` · `fachwort.kiLaeufe.leer` · `mrun.report.empty` · `fachwort.belegIndex.leer` · `prov.empty` · `kos.hints.none` · `fachwort.belegFrische.leer` | auswertung |
 | Import | `imp.queueEmpty` · `imp.explore.empty` · `imp.sharepoint.leer` | import |
 | Wissensnetz / Graph | `wissensnetz.leer` · `wissensnetz.leiste.leer` · `wissensgraph.sicht.leer` · `s2.graphEmpty` | wissensnetz |
 | Arbeitsanleitungen | `ga.liste.leer` · `ga.leer` (3×) | anleitung |

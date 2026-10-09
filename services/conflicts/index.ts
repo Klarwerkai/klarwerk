@@ -5,10 +5,54 @@ export type { ConflictServiceDeps, DryRunConflict } from "./src/service";
 // versions-konditionalen Inserts (insertIfVersionsCurrent) — der App-Root bindet sie an den KO-Store.
 export { InMemoryConflictRepo, type ConflictRepo, type IsKoVersionCurrent } from "./src/repo";
 export { PgConflictRepo, CONFLICTS_SCHEMA } from "./src/repo-pg";
+// Aufnahme 20260922 · Prüfung-Gedächtnis (R-1103/R-1105): je Paar der zuletzt beurteilte Textstand.
+export {
+  type ConflictMemoryRepo,
+  type PairMemoryEntry,
+  type PairMemoryOutcome,
+  InMemoryConflictMemoryRepo,
+  PgConflictMemoryRepo,
+} from "./src/pair-memory";
+// Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): jede ungeordnete Aussage-Paarprüfung als
+// gespeicherte, wiederaufnehmbare Pflicht (Vertrag: docs/entscheidungen/paarpflichten-dauerhaft.md).
+export {
+  type Paarpflicht,
+  type PaarpflichtAussage,
+  type PaarpflichtBilanz,
+  type PaarpflichtErgebnis,
+  type PaarpflichtKontext,
+  type PaarpflichtLauf,
+  type PaarpflichtPlanung,
+  type PaarpflichtPruefer,
+  type PaarpflichtRepo,
+  type PaarpflichtSchritt,
+  type PaarpflichtZustand,
+  InMemoryPaarpflichtRepo,
+  PAARPFLICHT_FRIST_MS,
+  PAARPFLICHT_MAX_FEHLVERSUCHE,
+  PaarpflichtFehler,
+  PaarpflichtService,
+  PgPaarpflichtRepo,
+  ergebnisAusKonfliktUrteil,
+  gleicheLaufbindung,
+  paarpflichtBilanz,
+  paarpflichtLaufkopf,
+  paarpflichtenPlanen,
+} from "./src/paarpflichten";
 export { ConflictError } from "./src/types";
+// R-0252: die Arbeitsart (Regel/Sache/Version) — das Prädikat prüft den Drahtwert der Anlage-Route.
+export { isConflictWorkKind } from "./src/types";
+// R-0263: Vorrang/Geltungsbereich zwischen den zwei Punkten einer Entscheidung — das Prädikat prüft
+// die Form der Wahl im Rumpf von `resolve-conflict`, bevor sie den Dienst erreicht.
+export { isVorrangWahl } from "./src/types";
 export type {
   Conflict,
   ConflictType,
+  ConflictWorkKind,
+  KlaraVorschlag,
+  KonfliktVorrang,
+  VorrangArt,
+  VorrangWahl,
   ConflictStatus,
   ConflictInput,
   ConflictErrorCode,
@@ -19,6 +63,9 @@ export type {
 // Berater-Konzept 04.07. (Stufe 2/3): Kerntext-Subjekt der automatischen Erkennung (der App-Root
 // bildet Wissensobjekte auf diese modul-reine Form ab; conflicts kennt knowledge-object nicht).
 export type { DetectSubject, ConflictVerdict } from "./src/detect";
+// R-1632 / R-1633: die Geltungsform und der Rückruf, über den die App-Wurzel die Geltungsregel aus
+// knowledge-object hereinreicht (conflicts legt Geltung selbst nicht aus).
+export type { DetectGeltung, GeltungsKollisionsRegel } from "./src/detect";
 // Weg 3 (Prefilter): Kerntext eines Subjekts (K0-2) — derselbe String, den der Duplikat-Judge
 // vergleicht. Wird für die semantische Vorfilterung eingebettet, damit Prefilter und Urteil denselben
 // Gegenstand sehen.
@@ -90,12 +137,11 @@ export {
 // standen zur Wahl, wie viele wurden geprüft, wurde gedeckelt/übersprungen/abgebrochen. Der App-Root
 // stellt das Protokoll, die Läufe schreiben es fort, die Oberfläche liest es.
 // AUFTRAG-mega32 A1/B: `isCompleteRun` ist die KANONISCHE positive Vollständigkeits-Invariante (die
-// beiden Spiegel diesseits der Modulgrenzen leiten nichts eigenständig ab); `singleRunBalances`
-// prüft die Buchhaltungs-Gleichung eines EINZELLAUFS, die bis mega31 nur ein Kommentar behauptete.
+// beiden Spiegel diesseits der Modulgrenzen leiten nichts eigenständig ab). R-1349: das Prüforakel
+// `singleRunBalances` liegt bei den Tests (`tests/support/abdeckung-buchhaltung.ts`).
 export {
   type DetectionCoverage,
   emptyCoverage,
   mergeCoverage,
   isCompleteRun,
-  singleRunBalances,
 } from "./src/coverage";

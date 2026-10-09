@@ -1489,7 +1489,7 @@ function Umschalter({
     );
   };
   return (
-    // Ein echtes <fieldset> statt `role="group"` (wie `LibraryScopeBar.tsx:159`): die Gruppe
+    // Ein echtes <fieldset> statt `role="group"` (wie `BibliothekListe.tsx`): die Gruppe
     // bekommt ihren Namen aus dem Element plus `aria-label`, nicht aus einem ARIA-Nachbau — der
     // Linter erzwingt das ueber `a11y/useSemanticElements`.
     <fieldset

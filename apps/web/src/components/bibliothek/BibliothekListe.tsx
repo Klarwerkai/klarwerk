@@ -322,7 +322,7 @@ export function BibliothekListe({
         </div>
         <div className="flex items-center justify-between gap-2">
           {/* Ein echtes `fieldset` statt `role="group"` — die im Haus getroffene Entscheidung
-              (`LibraryScopeBar.tsx:159`, `RichTextEditor.tsx:1826`): die Gruppe bekommt ihren
+              (`RichTextEditor.tsx:1826`): die Gruppe bekommt ihren
               Namen aus dem Element plus `aria-label`, nicht aus einem ARIA-Nachbau. */}
           <fieldset
             data-testid="bib-segment"

@@ -34,7 +34,8 @@ const CANDIDATES: Record<EmptyStateContext, { navId: string; labelKey: string }[
   ],
   validation: [
     { navId: "erfassen", labelKey: "empty.cta.capture" },
-    { navId: "aufgaben", labelKey: "empty.cta.tasks" },
+    // Gesamt-Navigation (R-1023): derselbe Name wie der Menüpunkt „Offene Aufgaben", ohne „meine".
+    { navId: "aufgaben", labelKey: "aufgaben.zumBereich" },
   ],
   library: [
     { navId: "erfassen", labelKey: "empty.cta.capture" },

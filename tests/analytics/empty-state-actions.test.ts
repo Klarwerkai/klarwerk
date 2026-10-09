@@ -23,7 +23,7 @@ describe("SCRUM-181: emptyStateActions", () => {
 
   it("validation: Experte bekommt Erfassen + Aufgaben", () => {
     const a = emptyStateActions("validation", "experte", false).map((x) => x.labelKey);
-    expect(a).toEqual(["empty.cta.capture", "empty.cta.tasks"]);
+    expect(a).toEqual(["empty.cta.capture", "aufgaben.zumBereich"]);
   });
 
   // R-0956: die leere Risikoliste nennt Erfassen (und mit Stufe 2 den Import) als nächsten Schritt.

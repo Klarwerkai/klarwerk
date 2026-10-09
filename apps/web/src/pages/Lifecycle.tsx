@@ -42,6 +42,7 @@ import {
 import { abhaengigeQuelle, flaechenZustand } from "../components/pruefen/zaehler";
 import { Button, cx } from "../components/ui";
 import { leseFall } from "../lib/fallAbsprung";
+import { aeltesteVorlage, faelligeKennungen } from "../lib/frische";
 import { completedCount, isStepDone, progressPercent } from "../lib/learningPath";
 import {
   revalidationCta,
@@ -119,11 +120,22 @@ export function Lifecycle(): JSX.Element {
     onError: () => push("error", t("lcy.toast.stepFailed")),
   });
 
-  const ids = query.data ?? [];
+  // aufnahme:20260922:gesamt-wissen-frische (R-0206): neben den Merkern steht hier auch geprüftes
+  // Wissen, das nach der serverseitigen Frische fällig oder veraltet ist (`lib/frische.ts`).
+  const faellig =
+    query.data === undefined ? undefined : faelligeKennungen(query.data, kos.data ?? []);
+  const ids = faellig ?? [];
+  // R-0266: die ältesten geprüften Beiträge in der Verantwortung der angemeldeten Person. Dieselbe
+  // Auswahlregel stellt der Server jede Woche als persönliche Vorlage in die Glocke
+  // (`aeltesteVorlageFuer`, services/app/src/frische-meldungen.ts) — hier steht sie zum Abarbeiten.
+  const vorlage = user ? aeltesteVorlage(kos.data ?? [], user.id) : [];
   // bens Korrekturpflicht 2 (Runde 4): Die Fälligkeitsliste liefert nur IDs — Titel, Anlage und
   // Status stehen im Objektabruf (`revalidationView`). Ohne dessen Antwort stand hier die rohe UUID
   // mit dem Vermerk „Objekt nicht auffindbar", obwohl das Objekt nur noch nicht geladen war.
-  const lage = flaechenZustand(query, abhaengigeQuelle(kos));
+  const lage = flaechenZustand(
+    { data: faellig, isLoading: query.isLoading, isError: query.isError },
+    abhaengigeQuelle(kos),
+  );
   const bestand = lage.lage === "bestand";
   const aktivIdEffektiv = bestand ? (ids.find((id) => id === aktivId) ?? ids[0] ?? null) : null;
 
@@ -137,6 +149,13 @@ export function Lifecycle(): JSX.Element {
     >
       <PruefenHilfeBlock titel={t("lcy.pendingTitle")}>
         <p>{t("lcy.banner")}</p>
+      </PruefenHilfeBlock>
+      <PruefenMenueTrenner />
+      {/* R-0888 (gesamt-hilfen, Nacharbeit 13): die vorhandene Erklärung des grünen Knopfs „Noch
+          gültig" unten im Fussband (`lib/reviewHelp.ts`, `vhelp.stillValid`) — bis hierher nur über
+          Klaras Suche erreichbar, jetzt im „?"-Menü des Reiters, in dem der Knopf steht. */}
+      <PruefenHilfeBlock titel={t("vhelp.stillValid.title")}>
+        <p>{t("vhelp.stillValid.body")}</p>
       </PruefenHilfeBlock>
       <PruefenMenueTrenner />
       <PruefenHilfeBlock titel={t("lcy.pathTitle", { role: t(`role.name.${role}`) })}>
@@ -275,6 +294,38 @@ export function Lifecycle(): JSX.Element {
               ) : null}
             </div>
           </details>
+          {/* R-0266: die ältesten geprüften Beiträge der angemeldeten Person zur Bestätigung. */}
+          <details data-testid="pruefen-vorlage" className="mt-3">
+            <summary className="cursor-pointer list-none text-[12.5px] font-semibold text-muted hover:text-text">
+              {t("frische.vorlageTitel")} ({vorlage.length})
+            </summary>
+            <div className="mt-2 space-y-1.5 text-[12.5px]">
+              {vorlage.length === 0 ? (
+                <p className="text-muted-2">{t("frische.vorlageLeer")}</p>
+              ) : (
+                <>
+                  <p className="text-muted">{t("frische.vorlageHinweis")}</p>
+                  <ul className="flex flex-col gap-1">
+                    {vorlage.map((eintrag) => (
+                      <li key={eintrag.id} data-testid="pruefen-vorlage-eintrag">
+                        <Link
+                          to={`/wissen/${eintrag.id}`}
+                          className="text-text underline-offset-4 hover:underline"
+                        >
+                          {eintrag.title}
+                        </Link>
+                        {eintrag.frische ? (
+                          <span className="ml-1.5 text-muted-2">
+                            · {t(`frische.stufe.${eintrag.frische.stufe}`)}
+                          </span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          </details>
         </div>
 
         {/* ---- Die Karte des gewählten Objekts ----------------------------------------------- */}
@@ -287,6 +338,7 @@ export function Lifecycle(): JSX.Element {
   function karte(id: string): JSX.Element {
     const view = revalidationView(id, kos.data ?? []);
     const cta = revalidationCta(view);
+    const frische = kos.data?.find((k) => k.id === id)?.frische;
     return (
       <div
         data-testid="pruefen-karte"
@@ -330,6 +382,20 @@ export function Lifecycle(): JSX.Element {
             </PruefenMehrZeile>
             {view.asset ? (
               <PruefenMehrZeile beschriftung={t("lcy.revalAsset")}>{view.asset}</PruefenMehrZeile>
+            ) : null}
+            {/* aufnahme:20260922:gesamt-wissen-frische: wie frisch und bis wann gesichert. Wer
+                verantwortlich ist, steht am Objekt (Bibliothek „Mehr" → Belege). */}
+            {frische ? (
+              <>
+                <PruefenMehrZeile beschriftung={t("frische.stufeLabel")}>
+                  {t(`frische.stufe.${frische.stufe}`)}
+                </PruefenMehrZeile>
+                <PruefenMehrZeile beschriftung={t("frische.haltbarBis")}>
+                  {frische.haltbarBis
+                    ? new Date(frische.haltbarBis).toLocaleDateString()
+                    : t("frische.haltbarUnbekannt")}
+                </PruefenMehrZeile>
+              </>
             ) : null}
             {!view.found ? (
               <PruefenMehrBlock beschriftung={t("pruefen.mehr.zustand")}>

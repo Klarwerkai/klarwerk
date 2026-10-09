@@ -36,7 +36,7 @@ import {
 // AUFTRAG kimodus-live: Topbar-/Status-Queries nach dem Übernehmen live invalidieren.
 import { invalidateAiState } from "../lib/aiStateInvalidate";
 import { type KiTestArt, type KiTestBefund, kiTestBefund } from "../lib/kiTestBefund";
-import { parseNeededValidations } from "../lib/reviewerMinimum";
+import { isNeededValidationsValid, parseNeededValidations } from "../lib/reviewerMinimum";
 import { maxRawAttachmentMb } from "../lib/uploadLimits";
 
 // KI-Verwaltung v1 (Pedi 02.07.): Zuordnung global + je Aufgabe.
@@ -81,6 +81,14 @@ const ACCESS_STATE_TONE: Record<AiAccessState, string> = {
 
 /** Die Auswahlwerte in Anzeige-Reihenfolge — die beiden Anbieter zwischen Auto und Intern. */
 const ANBIETER_WAHL: readonly ReasonerCloudAnbieter[] = ["openai", "anthropic"];
+
+/**
+ * R-1169: das Ergebnis der beiden Selbsttests stand als „OK"/„FAIL" hart im Code und blieb in jeder
+ * Sprache englisch. Der Wortlaut kommt jetzt aus `texte/beschriftung.ts`.
+ */
+function okKey(ok: boolean): string {
+  return ok ? "beschriftung.selbsttest.ok" : "beschriftung.selbsttest.fehler";
+}
 
 /** Ein Zuordnungs-Entwurf gleicht dem gesendeten, wenn er dieselben Einträge trägt. */
 function gleichePerTask(a: Record<string, string>, b: Record<string, string>): boolean {
@@ -846,7 +854,7 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                 }`}
               >
                 <p className="font-semibold">
-                  {conflictSelfTest.data.ok ? "OK" : "FAIL"} · {t("adm.conflictSelfTest.label")}:{" "}
+                  {t(okKey(conflictSelfTest.data.ok))} · {t("adm.conflictSelfTest.label")}:{" "}
                   {t(conflictSelfTest.data.messageKey)}
                 </p>
                 <p className="mt-0.5 text-[11px] opacity-90">
@@ -879,7 +887,7 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                 }`}
               >
                 <p className="font-semibold">
-                  {dupSelfTest.data.ok ? "OK" : "FAIL"} · {t("adm.dupSelfTest.label")}:{" "}
+                  {t(okKey(dupSelfTest.data.ok))} · {t("adm.dupSelfTest.label")}:{" "}
                   {t(dupSelfTest.data.messageKey)}
                 </p>
                 <p className="mt-0.5 text-[11px] opacity-90">
@@ -1385,10 +1393,12 @@ export function KiGrenzenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
   });
   // E2E-005 / bens Auflage D4: EXAKT derselbe Vertrag wie der Server — eine ECHTE ganze Zahl 1–5.
   // (`Number.parseInt` nahm „1.5"/„1x" fälschlich als 1 an; eine Quelle: parseNeededValidations.)
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): die Gültigkeit kommt aus `isNeededValidationsValid`,
+  // der EINEN Bedingung neben dem Parser (Band `MIN_/MAX_NEEDED_VALIDATIONS`). Bis hierher stand sie
+  // hier mit den Literalen 1 und 5 ein zweites Mal, und die Funktion lag ohne Aufrufer daneben.
   const neededEffective =
     defaultNeededDraft ?? String(valSettings.data?.defaultNeededValidations ?? "");
-  const neededParsed = parseNeededValidations(neededEffective);
-  const neededValid = Number.isInteger(neededParsed) && neededParsed >= 1 && neededParsed <= 5;
+  const neededValid = isNeededValidationsValid(neededEffective);
 
   const uploadLimitsQ = useQuery({
     queryKey: ["upload-limits"],
