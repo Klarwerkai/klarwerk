@@ -370,6 +370,19 @@ function installiereHelfer(): void {
     tooltips,
   };
   (window as unknown as { __kwA11y: Helfer }).__kwA11y = helfer;
+
+  // Hat das DOKUMENT den Fokus abgegeben (Tab nach dem letzten Element)? Belegt wird das allein
+  // durch das `blur`-Ereignis des Fensters — nicht durch `document.hasFocus()` oder `:focus` am
+  // aktiven Element (nacharbeit-29: ein Datumsfeld trägt den Fokus in seinen inneren Teilfeldern,
+  // das galt fälschlich als „Dokument verlassen").
+  const fenster = window as unknown as { __kwFensterVerlassen?: boolean };
+  fenster.__kwFensterVerlassen = false;
+  window.addEventListener("blur", () => {
+    fenster.__kwFensterVerlassen = true;
+  });
+  window.addEventListener("focus", () => {
+    fenster.__kwFensterVerlassen = false;
+  });
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -805,10 +818,14 @@ async function fokusSchritt(page: Page): Promise<Fokusschritt | null> {
     if (!el || el === document.body || el === document.documentElement) {
       return null;
     }
-    // Ein wirklich fokussiertes Element trägt `:focus` — bleibt `activeElement` nur stehen, weil
-    // das Dokument den Fokus abgegeben hat, trägt es ihn nicht.
-    if (!document.hasFocus() || !el.matches(":focus")) {
+    // Das Fenster hat den Fokus abgegeben: der Tab-Weg ist aus dem Dokument hinausgegangen.
+    if ((window as unknown as { __kwFensterVerlassen?: boolean }).__kwFensterVerlassen) {
       return { id: "", wer: "", tooltips: 0, ausserhalb: true };
+    }
+    // Ein `activeElement` ohne Fokus in sich (weder selbst noch in inneren Teilfeldern, wie beim
+    // Datumsfeld) ist keine Station — gemessen würde ein unfokussiertes Element.
+    if (!el.matches(":focus-within")) {
+      return null;
     }
     const ablage = window as unknown as {
       __kwAuditNr?: number;
@@ -838,7 +855,11 @@ async function fokusSchritt(page: Page): Promise<Fokusschritt | null> {
       ? `${el.tagName.toLowerCase()} „${name.slice(0, 40)}“`
       : `${el.tagName.toLowerCase()} „“ ${h.beschreibe(el)} · ${el.outerHTML.replace(/\s+/g, " ").slice(0, 100)}`;
     ablage.__kwFokus ??= new Map();
-    ablage.__kwFokus.set(id, { el, wer, f: h.fokusBild(el), huellen });
+    // Der Fokuszustand wird beim ERSTEN Erreichen erfasst. Weitere Tabs innerhalb desselben
+    // Elements (Teilfelder eines Datumsfelds) überschreiben ihn nicht.
+    if (!ablage.__kwFokus.has(id)) {
+      ablage.__kwFokus.set(id, { el, wer, f: h.fokusBild(el), huellen });
+    }
     return { id, wer, tooltips: h.tooltips().length };
   });
 }
@@ -945,6 +966,7 @@ async function setzeTabAnfang(page: Page): Promise<void> {
     anker.tabIndex = -1;
     document.body.prepend(anker);
     anker.focus({ preventScroll: true });
+    (window as unknown as { __kwFensterVerlassen?: boolean }).__kwFensterVerlassen = false;
   });
 }
 
@@ -1034,18 +1056,35 @@ async function tastaturweg(
     gleich = schritt.id === vorher ? gleich + 1 : 0;
     vorher = schritt.id;
     if (gleich >= 2) {
-      // Ein Dialog mit nur einem Element darf den Fokus halten, solange Escape hinausführt.
+      // Bleibt der Fokus drei Tabs lang im selben Element, wird geprüft, ob er HINAUSKOMMT: Escape,
+      // dann bis zu fünf weitere Tabs. Ein Dialog mit nur einem Element darf den Fokus halten,
+      // solange Escape hinausführt; ein Datumsfeld führt den Fokus durch seine Teilfelder (Tag,
+      // Monat, Jahr) und gibt ihn danach weiter (nacharbeit-29, /output). Eine FALLE ist es nur,
+      // wenn das `activeElement` über alle diese Tabs dasselbe bleibt.
       await page.keyboard.press("Escape");
-      await page.keyboard.press("Tab");
+      let hinaus = false;
+      for (let j = 0; j < 5 && !hinaus; j++) {
+        await page.keyboard.press("Tab");
+        const aktiv = await page.evaluate(
+          () => document.activeElement?.getAttribute("data-kw-audit-nr") ?? "",
+        );
+        hinaus = aktiv !== vorher;
+      }
+      if (!hinaus) {
+        befunde.push(`2.1.2: Tastaturfalle an ${schritt.wer}`);
+        lauf.ende = "falle";
+        break;
+      }
+      // Der Fokus steht jetzt auf dem nächsten Element — als Station erfassen, nicht überspringen.
       const danach = await fokusSchritt(page);
       if (danach?.ausserhalb) {
         await ausgetreten();
         break;
       }
-      if (danach?.id === vorher) {
-        befunde.push(`2.1.2: Tastaturfalle an ${schritt.wer}`);
-        lauf.ende = "falle";
-        break;
+      if (danach) {
+        erreicht.add(danach.id);
+        vorher = danach.id;
+        vorherWer = danach.wer;
       }
       gleich = 0;
     }
@@ -1421,10 +1460,11 @@ test("KALIBRIERUNG · Tab-Weg: vollständiges Ende, vorzeitiger Fokusverlust und
   expect(["ende", "umlauf", "schrittgrenze"]).toContain(a.ende);
   expect(a.befunde.filter((b) => b.startsWith("2.1"))).toEqual([]);
 
-  // B · vorzeitiger Fokusverlust: beim Fokussieren von „Zwei" meldet das Dokument, es habe den
-  // Fokus verloren — „Drei" steht danach noch tabbar da. Das ist eine UNVOLLSTÄNDIGE Messung.
+  // B · vorzeitiger Fokusverlust: beim Fokussieren von „Zwei" gibt das Fenster den Fokus ab
+  // (dasselbe `blur`-Ereignis, an dem die Messung den Austritt erkennt) — „Drei" steht danach
+  // noch tabbar da. Das ist eine UNVOLLSTÄNDIGE Messung.
   const b = await lauf(
-    '<button>Eins</button><button onfocus="document.hasFocus = () => false">Zwei</button><button>Drei</button>',
+    "<button>Eins</button><button onfocus=\"window.dispatchEvent(new Event('blur'))\">Zwei</button><button>Drei</button>",
   );
   expect(b.ende).toBe("vorzeitig");
   expect(b.befunde.join("\n")).toMatch(/2\.1\.1: Messweg unvollständig .*nach 1 Stationen/);
@@ -1435,6 +1475,15 @@ test("KALIBRIERUNG · Tab-Weg: vollständiges Ende, vorzeitiger Fokusverlust und
   );
   expect(c.ende).toBe("falle");
   expect(c.befunde.join("\n")).toMatch(/2\.1\.2: Tastaturfalle an input „Falle“/);
+
+  // D · Datumsfeld (nacharbeit-29, /output): Tab führt durch Tag, Monat, Jahr — dann weiter.
+  // Keine Falle, kein vorzeitiges Ende, und der Knopf danach wird erreicht.
+  const d = await lauf(
+    '<button>Eins</button><input type="date" aria-label="Datum"><button>Danach</button>',
+  );
+  expect(d.befunde.filter((b) => b.startsWith("2.1"))).toEqual([]);
+  expect(["ende", "umlauf", "schrittgrenze"]).toContain(d.ende);
+  expect(d.stationen, `D: ${d.ende}`).toBe(3);
 });
 
 // ================================================================================================
