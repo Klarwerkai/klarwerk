@@ -90,6 +90,7 @@ describe("SCRUM-377: knowledgeStory — Flächen → Kreis-Phase", () => {
       "start",
       "tasks",
       "validation",
+      "verwaltung",
       "wissensnetz",
     ]);
   });

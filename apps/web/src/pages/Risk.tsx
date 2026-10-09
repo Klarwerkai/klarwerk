@@ -13,7 +13,7 @@ import {
   useKos,
   useLifecyclePending,
 } from "../api/hooks";
-import type { GapPriority } from "../api/types";
+import type { Gap, GapPriority } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
@@ -116,7 +116,7 @@ export function Risk(): JSX.Element {
     const lueckeVon = new Map(liste.map((g) => [g.id, g]));
     const offenBis = <W,>(
       alt: Record<string, W>,
-      bestaetigt: (g: (typeof liste)[number], wert: W) => boolean,
+      bestaetigt: (g: Gap, wert: W) => boolean,
     ): Record<string, W> => {
       const neu = Object.fromEntries(
         Object.entries(alt).filter(([id, wert]) => {
