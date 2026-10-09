@@ -28,6 +28,9 @@ import { TutorialEinstieg, TutorialFlaeche, TutorialProvider } from "../tutorial
 import { CommandPalette } from "./CommandPalette";
 import { Kopfband } from "./Kopfband";
 import { MobileNavDrawer } from "./MobileNavDrawer";
+// N-0028: der Vorschauhinweis samt Rückweg steht während einer Rollenvorschau oben im Inhalt —
+// nicht nur im Zahnrad-Menü. Auf gesperrten Seiten bleibt er leer, dort spricht die Sperrkarte.
+import { VorschauHinweis } from "./RollenVorschau";
 import { SeitenhilfeProvider } from "./SeitenhilfeContext";
 import { ToastViewport } from "./ToastViewport";
 import { NARROW_QUERY, useMediaQuery } from "./useMediaQuery";
@@ -136,6 +139,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
                 <main ref={mainRef} className="flex-1 overflow-y-auto px-4 py-5">
                   <ModalRegion>
                     <TutorialFlaeche />
+                    <VorschauHinweis flaeche="seite" />
                     {children}
                   </ModalRegion>
                 </main>
@@ -182,6 +186,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
               <main ref={mainRef} className="flex-1 overflow-y-auto px-9 py-7">
                 <ModalRegion>
                   <TutorialFlaeche />
+                  <VorschauHinweis flaeche="seite" />
                   <div className="kw-inhalt h-full w-full">{children}</div>
                 </ModalRegion>
               </main>
