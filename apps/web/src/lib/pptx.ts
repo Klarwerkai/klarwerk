@@ -28,8 +28,6 @@ import {
   newImageRunToken,
 } from "./docx";
 
-const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-
 // Bekannte OOXML-Namespace-URIs. Elemente/Attribute werden über diese URIs (→ aktuelles Präfix)
 // erkannt, NICHT über hartkodierte Präfix-Strings.
 const NS_DRAWINGML = "http://schemas.openxmlformats.org/drawingml/2006/main";
@@ -39,10 +37,11 @@ const NS_OFFICE_RELS = "http://schemas.openxmlformats.org/officeDocument/2006/re
 // dieselbe zentrale Namespace-Auflösung geführt (statt eines eigenen ASCII-Musters).
 const NS_PACKAGE_RELS = "http://schemas.openxmlformats.org/package/2006/relationships";
 
-// DOM-freie Erkennung über Dateiname/MIME (ohne File-Objekt), Muster isDocxDocumentLike.
-export function isPptxDocumentLike(input: { name: string; type?: string }): boolean {
-  return input.type === PPTX_MIME || input.name.toLowerCase().endsWith(".pptx");
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `isPptxDocumentLike` (Erkennung über
+// Dateiname/MIME) samt eigener MIME-Konstante. Ihr einziger Leser war der Browser-Wrapper
+// `files.ts::isPptxDocument`, den kein Produktweg rief; beide sind entfernt. Die Erkennung, die der
+// Arbeitsraum wirklich fährt, ist `detectFileKind` (`lib/extract.ts`, Art `"pptx"`) — mit derselben
+// Regel (MIME oder Endung `.pptx`).
 
 // Injizierter Entpack-Vertrag (Muster DocxEngine/PdfEngine): der Test nutzt einen Fake, der
 // Browser-Wrapper lädt fflate selektiv + budgetiert lazy. Rückgabe: Pfad → Rohbytes.

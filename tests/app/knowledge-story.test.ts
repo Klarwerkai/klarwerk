@@ -1,15 +1,21 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
-import {
-  KNOWLEDGE_STORY_SURFACES,
-  type StorySurface,
-  knowledgeStory,
-} from "../../apps/web/src/lib/knowledgeStory";
+import { type StorySurface, knowledgeStory } from "../../apps/web/src/lib/knowledgeStory";
 import type { KnowledgeOsPhase } from "../../apps/web/src/lib/taskAction";
 
 // SCRUM-377 / AG-12 / AG-13 / KG-UX: app-weite Knowledge-Rescue-Story für leere/erste Zustände.
 // DOM-frei: ordnet jede Kernfläche in den Knowledge-OS-Kreis ein und liefert nur i18n-Keys.
 // Kein Score, keine Validierung, keine Mutation.
+//
+// R-1349 (Aufnahme gesamt-aufruferwaechter): die Flächenliste stand bis hierher als Export
+// `KNOWLEDGE_STORY_SURFACES` im Produkt, ohne Produktleser. Sie ist Prüfzeug und steht deshalb hier;
+// `Record<StorySurface, …>` unten erzwingt, dass sie und der Typ dieselbe Menge tragen.
+const KNOWLEDGE_STORY_SURFACES: readonly StorySurface[] = [
+  "start",
+  "tasks",
+  "library",
+  "validation",
+];
 
 describe("SCRUM-377: knowledgeStory — Flächen → Kreis-Phase", () => {
   it("bildet jede Fläche auf die richtige Phase im Capture→Review→Use-Kreis ab", () => {

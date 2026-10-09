@@ -58,7 +58,7 @@ export interface DetectionCoverage {
   // Die ZAHLEN waren immer richtig; der Kommentar behauptete eine Rechnung, die sie nicht erfüllen.
   //
   // Die Gleichung gilt deshalb ab jetzt nur noch in der eingeschränkten Fassung — und sie wird
-  // nicht mehr nur behauptet, sondern von singleRunBalances() geprüft und von einem Test gepinnt:
+  // nicht mehr nur behauptet, sondern von `singleRunBalances()` (tests/support) geprüft und gepinnt:
   //
   //   !aborted  ⇒  attempted === completed + skipped
   //    aborted  ⇒  attempted === completed + skipped + 1   (der EINE terminal abgebrochene Versuch)
@@ -251,17 +251,6 @@ export function isCompleteRun(coverage: DetectionCoverage): boolean {
   );
 }
 
-// AUFTRAG-mega32 BLOCK B — DIE BUCHHALTUNG EINES EINZELLAUFS, GEPRÜFT STATT BEHAUPTET.
-//
-// Die Gleichung aus dem `completed`-Kommentar, als ausführbare Aussage. Sie gilt AUSSCHLIESSLICH je
-// EINZELLAUF; nach mergeCoverage ist sie bedeutungslos (dort mischen sich Minima und Summen aus zwei
-// Läufen), und deshalb steht sie bewusst NICHT in isCompleteRun.
-//
-// Beim Kapazitätsabbruch zählt der abbrechende Kandidat als `attempted` — er wurde vorgelegt —, aber
-// weder als `completed` (er hat nicht geurteilt) noch als `skipped` (der Lauf lief nicht weiter, um
-// ihn auszulassen). Er ist ein terminaler Einzelfall, und genau als solcher steht er hier: als die
-// EINE Fehlstelle, die ein abgebrochener Lauf haben darf. Zwei wären ein Zählfehler.
-export function singleRunBalances(coverage: DetectionCoverage): boolean {
-  const accountedFor = coverage.completed + coverage.skipped + (coverage.aborted ? 1 : 0);
-  return coverage.attempted === accountedFor;
-}
+// AUFTRAG-mega32 BLOCK B — die Buchhaltungsgleichung eines EINZELLAUFS (s. `completed` oben) steht
+// bewusst NICHT in isCompleteRun. R-1349: ihre ausführbare Fassung `singleRunBalances` rief kein
+// Produktweg; sie ist das Prüforakel der Tests und liegt in `tests/support/abdeckung-buchhaltung.ts`.
