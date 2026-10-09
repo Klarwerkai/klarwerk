@@ -2461,6 +2461,28 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Messung 521 eingemischten Hauptstand (Grundmenge 674 → 678) und sind ohne Git-Verlauf hier
     // nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
     //
+    // ADMIN-02 (produkt:20261009:admin-integrationszustaende) Nacharbeit 2 — ZWEI neue Bauteile in
+    // `components/ImportLaufListe.tsx` (`ImportLaufListe`, die Importliste, und die dateilokale
+    // `LaufZeile`). Keines zeigt ein Bild, bietet eine Bildbeschreibung an oder trägt einen eigenen
+    // Titel — sie erscheinen nur in der Grundmenge. Auf dem damaligen Stand GEMESSEN 531
+    // (Kandidat 7b7cb869, Grundmenge 682), darin diese zwei.
+    //
+    // ZUSAMMENFÜHRUNG ADMIN-02 × Hauptstand a57e1e8f (ADMIN-02 Nacharbeit 7): der Hauptstand hat
+    // nach seinem Aufräumschritt GEMESSEN 521 (s. direkt darüber); `ImportLaufListe` und
+    // `LaufZeile` gibt es dort nicht, und der Aufräumschritt hat keine Datei dieses Auftrags
+    // berührt. 521 + 2 = 523. EHRLICH GESAGT: GERECHNET, nicht gemessen; weicht der Prüflauf ab,
+    // gehört die gemessene Zahl hierher. `anbieter` 1 und `traeger` 2 bleiben.
+    //
+    // ADMIN-02 Nacharbeit 8 · GEMESSEN 526. Am Kandidaten 4d4b9c19 meldete der Sammler wörtlich
+    // „gemessen: 526 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 680 Quelldateien …
+    // expected { komponenten: 526, … } to deeply equal { komponenten: 523, … }". Die Rechnung 523
+    // war zu niedrig: dieser Auftrag trägt weiterhin genau ZWEI Bauteile bei (`ImportLaufListe`,
+    // `LaufZeile`; neue Quelldateien `components/ImportLaufListe.tsx`, `lib/importLaufHilfe.ts`,
+    // `lib/integrationStatus.ts`, `texte/integrationen.ts`). Die übrigen 3 Komponenten (und 2
+    // Quelldateien, 674 + 4 = 678 → 680) kommen aus dem eingemischten Hauptstand und sind ohne
+    // Git-Verlauf an diesem Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2
+    // sind unverändert — beide Seiten der Meldung nennen 1 und 2.
+    //
     // ZUSAMMENFÜHRUNG (gesamt-bildbeschreibung-bedienung Nacharbeit 19, Kandidat 10bf555a mit main
     // 8e3b1366): hier GEMESSEN 520 (82ac7de2, Grundmenge 673), auf main GEMESSEN 521 (26242335,
     // Grundmenge 674). Der Unterschied ist genau `WeiterUntenHinweis` (`shell/WeiterUnten.tsx`) der
@@ -2515,8 +2537,95 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Dieser Auftrag hat kein Bauteil hinzugefügt (weiter genau `VermaechtnisBuch`); das 1 über 535
     // kam mit dem eingemischten Hauptstand (Grundmenge 688 → 690), namentlich ohne Git-Verlauf
     // nicht bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // ZUSAMMENFÜHRUNG ADMIN-02 × main dd82d5df (ADMIN-02 Nacharbeit 10): main hat GEMESSEN 524
+    // (Grundmenge 677); `ImportLaufListe` und `LaufZeile` dieses Auftrags gibt es dort nicht.
+    // Die ADMIN-02-Messung 526 (Grundmenge 680) enthielt diese zwei und ebenfalls den Hauptstand
+    // über 521. 524 + 2 = 526. EHRLICH GESAGT: GERECHNET, nicht gemessen; weicht der Prüflauf ab,
+    // gehört die gemessene Zahl hierher. `anbieter` 1 und `traeger` 2 bleiben.
+    //
+    // ADMIN-02 Nacharbeit 11 · GEMESSEN 528. Am Kandidaten 9c2ee6b8 meldete der Sammler wörtlich
+    // „gemessen: 528 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 683 Quelldateien …
+    // expected { komponenten: 528, … } to deeply equal { komponenten: 526, … }". Dieser Auftrag
+    // trägt unverändert genau ZWEI Bauteile bei (`ImportLaufListe`, `LaufZeile`) und vier
+    // Quelldateien; die Rechnung 524 + 2 war zu niedrig, die übrigen 2 Komponenten (Grundmenge
+    // 677 + 4 = 681 → 683) kamen mit main und sind ohne Git-Verlauf hier nicht namentlich
+    // bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // ADMIN-02 Nacharbeit 12 · GEMESSEN 536. Am Kandidaten cbe6db0f meldete der Sammler wörtlich
+    // „gemessen: 536 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 690 Quelldateien …
+    // expected { komponenten: 536, … } to deeply equal { komponenten: 528, … }". Seit der Messung
+    // 528 hat dieser Auftrag keine Quelldatei der Grundmenge geändert oder angelegt; die 8
+    // Komponenten und 7 Quelldateien (683 → 690) kamen mit dem eingemischten Hauptstand und sind
+    // ohne Git-Verlauf hier nicht namentlich bestimmt. Beitrag dieses Auftrags unverändert ZWEI
+    // (`ImportLaufListe`, `LaufZeile`). `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // ADMIN-02 Nacharbeit 13 · GEMESSEN 537. Am Kandidaten d03f45b6 meldete der Sammler wörtlich
+    // „gemessen: 537 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 692 Quelldateien …
+    // expected { komponenten: 537, … } to deeply equal { komponenten: 536, … }". Dieser Auftrag hat
+    // seit der Messung 536 keine Quelldatei der Grundmenge geändert; die eine Komponente und zwei
+    // Quelldateien (690 → 692) kamen mit dem eingemischten Hauptstand und sind ohne Git-Verlauf hier
+    // nicht namentlich bestimmt. Beitrag dieses Auftrags unverändert ZWEI. `anbieter` 1 und
+    // `traeger` 2 sind unverändert.
+    //
+    // ADMIN-02 Nacharbeit 17 · GEMESSEN 540. Am Kandidaten 6d939fc5 meldete der Sammler wörtlich
+    // „gemessen: 540 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 703 Quelldateien …
+    // expected { komponenten: 540, … } to deeply equal { komponenten: 537, … }". Dieser Auftrag hat
+    // seit der Messung 537 keine Quelldatei der Grundmenge geändert; die drei Komponenten und elf
+    // Quelldateien (692 → 703) kamen mit dem eingemischten Hauptstand und sind ohne Git-Verlauf hier
+    // nicht namentlich bestimmt. Beitrag dieses Auftrags unverändert ZWEI. `anbieter` 1 und
+    // `traeger` 2 sind unverändert.
+    //
+    // ADMIN-02 Nacharbeit 18 · GEMESSEN 543. Am Kandidaten 8a397134 meldete der Sammler wörtlich
+    // „gemessen: 543 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 707 Quelldateien …
+    // expected { komponenten: 543, … } to deeply equal { komponenten: 540, … }". Dieser Auftrag hat
+    // seit der Messung 540 keine Quelldatei der Grundmenge geändert; die drei Komponenten und vier
+    // Quelldateien (703 → 707) kamen mit dem eingemischten Hauptstand und sind ohne Git-Verlauf hier
+    // nicht namentlich bestimmt. Beitrag dieses Auftrags unverändert ZWEI. `anbieter` 1 und
+    // `traeger` 2 sind unverändert.
+    //
+    // ADMIN-02 Nacharbeit 19 · GEMESSEN 547. Am Kandidaten 22afabdb meldete der Sammler wörtlich
+    // „gemessen: 547 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 712 Quelldateien …
+    // expected { komponenten: 547, … } to deeply equal { komponenten: 543, … }". Dieser Auftrag hat
+    // seit der Messung 543 keine Quelldatei der Grundmenge geändert; die vier Komponenten und fünf
+    // Quelldateien (707 → 712) kamen mit dem eingemischten Hauptstand und sind ohne Git-Verlauf hier
+    // nicht namentlich bestimmt. Beitrag dieses Auftrags unverändert ZWEI. `anbieter` 1 und
+    // `traeger` 2 sind unverändert.
+    //
+    // ADMIN-02 Nacharbeit 21 · GEMESSEN 548. Am Kandidaten 6f186539 meldete der Sammler wörtlich
+    // „gemessen: 548 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 713 Quelldateien …
+    // expected { komponenten: 548, … } to deeply equal { komponenten: 547, … }". `git diff --stat
+    // 22afabdb 6f1865396 -- apps/web/src` nennt ausschließlich Dateien der eingemischten Aufträge
+    // „Dialoggrenzen, Tastaturfokus und Vorleseansagen" und „Inhaltsqualität ohne Personenwertung"
+    // (u. a. ModalBoundaryContext, erfassen/Blatt, erfassen/Menue, texte/tragfaehigkeit); keine
+    // Quelldatei dieses Auftrags. Beitrag dieses Auftrags unverändert ZWEI. `anbieter` 1 und
+    // `traeger` 2 sind unverändert.
+    //
+    // ADMIN-02 Nacharbeit 22 · GEMESSEN 549. Am Kandidaten 936e46fa meldete der Sammler wörtlich
+    // „gemessen: 549 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 713 Quelldateien …
+    // expected { komponenten: 549, … } to deeply equal { komponenten: 548, … }". `git diff --stat
+    // 6f1865396 936e46fa -- apps/web/src` nennt ausschließlich Dateien des eingemischten Auftrags
+    // „Eigene Kontodaten mit erhaltenem Änderungsverlauf berichtigen" (u. a. Profile,
+    // AdminKontenDetails, api/auth, Wörterbücher); keine Quelldatei dieses Auftrags. Die Grundmenge
+    // bleibt 713, die neue Komponente liegt also in einer bestehenden Datei. Beitrag dieses Auftrags
+    // unverändert ZWEI. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // ADMIN-02 Nacharbeit 23 · GEMESSEN 554. Am Kandidaten 1e02cb5e meldete der Sammler wörtlich
+    // „gemessen: 554 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 718 Quelldateien …
+    // expected { komponenten: 554, … } to deeply equal { komponenten: 549, … }". `git diff --stat
+    // 936e46fa 1e02cb5e -- apps/web/src` nennt ausschließlich Dateien der eingemischten Aufträge
+    // „KI-Beteiligung und Ersatzbetrieb ehrlich kennzeichnen" (u. a. BetreiberKarte, KiLageZeile,
+    // lib/betreiberKarte, lib/kiLageAnzeige, texte/kilage) und „Artikel und Anleitungen mit Inhalt
+    // zuerst lesen" (u. a. bibliothek/*, texte/lesereihenfolge); keine Quelldatei dieses Auftrags.
+    // Beitrag dieses Auftrags unverändert ZWEI. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // Technische Zusammenführung gesamt-wissensvermaechtnis × main 6b704ec4:
+    // Die dort belegten 554 Komponenten (1e02cb5e; seitdem nur Versionsänderung)
+    // bleiben vollständig erhalten. Dieser Auftrag ergänzt allein `VermaechtnisBuch`;
+    // ADMIN-02 mit `ImportLaufListe` und `LaufZeile` ist in main bereits enthalten.
+    // Gemeinsamer Sollwert: 554 + 1 = 555; Anbieter 1 und Träger 2 bleiben unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 536,
+      komponenten: 555,
       anbieter: 1,
       traeger: 2,
     });
