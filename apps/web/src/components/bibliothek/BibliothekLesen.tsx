@@ -3659,13 +3659,14 @@ export function BibliothekLesen({
                   dieselbe Reihenfolge wie beim Original. */}
               {gelesen ? (
                 gelesen.bodyHtml ? (
-                  <SanitizedHtml html={gelesen.bodyHtml} className="prose-kw" />
+                  <SanitizedHtml html={gelesen.bodyHtml} className="prose-kw" lesehuellen />
                 ) : (
                   <p>{gelesen.statement}</p>
                 )
               ) : ko.bodyHtml ? (
                 <>
-                  <SanitizedHtml html={ko.bodyHtml} className="prose-kw" />
+                  {/* R-1160 / D-037: Scroll-Hülle breiter Tabellen als Element (SanitizedHtml). */}
+                  <SanitizedHtml html={ko.bodyHtml} className="prose-kw" lesehuellen />
                   <BodyImageGallery
                     bodyHtml={ko.bodyHtml}
                     onEditCaption={
