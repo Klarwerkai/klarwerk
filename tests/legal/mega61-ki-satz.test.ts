@@ -31,7 +31,11 @@ const ADDIN = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html
 const SCHLUESSEL = "ai.generatedNotice";
 
 // Wer den Satz trägt: entweder direkt, oder über die Modellangabe (die ihn seit mega61 enthält).
-const TRAEGER = ["AiGeneratedNotice", "AiModelInfo"];
+// R-0603/R-0604: „den Satz" gibt es seither in zwei Formen — den dauerhaften Flächensatz am
+// Auslöser (`AiSurfaceNotice`) und die Erzeugungsbehauptung am Ergebnis (`AiGeneratedNotice`, nur
+// mit Signal). Jede Modellfläche trägt mindestens einen der beiden; behauptet wird nur am Ergebnis.
+const TRAEGER = ["AiGeneratedNotice", "AiSurfaceNotice", "AiModelInfo"];
+const FLAECHEN_SCHLUESSEL = "ai.surfaceNotice";
 
 const AUSNAHMEN: Record<string, string> = {
   [join(WEB, "app", "ImageDescribeContext.tsx")]:
@@ -88,6 +92,9 @@ describe("mega61 E · der dauerhaft sichtbare Satz an jeder Modellfläche", () =
     const i18n = woerterbuchQuelleAus(join(WURZEL, WEB, "i18n.ts"));
     const treffer = i18n.split("\n").filter((z) => z.includes(`"${SCHLUESSEL}"`));
     expect(treffer.length, "der Satz fehlt in einer der drei Sprachen").toBe(3);
+    // R-0603: der Flächensatz ebenso — ein Schlüssel, drei Sprachen.
+    const flaeche = i18n.split("\n").filter((z) => z.includes(`"${FLAECHEN_SCHLUESSEL}"`));
+    expect(flaeche.length, "der Flächensatz fehlt in einer der drei Sprachen").toBe(3);
   });
 
   it("JEDE berechnete Modellfläche trägt den Satz — direkt oder über die Modellangabe", () => {
@@ -106,10 +113,16 @@ describe("mega61 E · der dauerhaft sichtbare Satz an jeder Modellfläche", () =
 
   it("die Modellangabe trägt den Satz WIRKLICH — sonst wäre die Regel oben hohl", () => {
     // Ohne diesen Fall wäre jede Fläche mit `<AiModelInfo` grün, auch wenn dort gar nichts steht.
+    // R-0604: die Modellangabe sitzt am Auslöser — sie trägt den Flächensatz, nicht die
+    // Erzeugungsbehauptung (vor dem Klick ist nichts erzeugt).
     const info = readFileSync(join(WURZEL, WEB, "components", "AiModelInfo.tsx"), "utf8");
-    expect(info).toContain("<AiGeneratedNotice");
+    expect(info).toContain("<AiSurfaceNotice");
+    expect(info, "die Modellangabe behauptet am Auslöser eine Erzeugung").not.toContain(
+      "<AiGeneratedNotice",
+    );
     const satz = readFileSync(join(WURZEL, WEB, "components", "AiGeneratedNotice.tsx"), "utf8");
     expect(satz).toContain(SCHLUESSEL);
+    expect(satz).toContain(FLAECHEN_SCHLUESSEL);
   });
 
   it("jede benannte Ausnahme ist begründet — und wird noch gebraucht", () => {
@@ -133,9 +146,14 @@ describe("mega61 E · der dauerhaft sichtbare Satz an jeder Modellfläche", () =
       join(WEB, "components", "ImportGroups.tsx"),
       join(WEB, "components", "RichTextEditor.tsx"),
     ];
+    // R-0603/R-0604: „selbst tragen" heißt seither den Flächensatz am Auslöser ODER die gebundene
+    // Erzeugungsbehauptung am Ergebnis — ImportGroups zeigt am Knopf nur noch den Flächensatz.
     for (const datei of nachgeruestet) {
       const inhalt = readFileSync(join(WURZEL, datei), "utf8");
-      expect(inhalt, `${datei} trägt den Satz nicht selbst`).toContain("<AiGeneratedNotice");
+      expect(
+        inhalt.includes("<AiGeneratedNotice") || inhalt.includes("<AiSurfaceNotice"),
+        `${datei} trägt den Satz nicht selbst`,
+      ).toBe(true);
     }
   });
 

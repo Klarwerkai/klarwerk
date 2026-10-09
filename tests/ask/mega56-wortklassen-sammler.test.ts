@@ -29,7 +29,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { KnowledgeRef } from "../../services/reasoner";
-import { keywordSelect, queryTokens, rankCandidates } from "../../services/reasoner";
+import { queryTokens, rankCandidates } from "../../services/reasoner";
+// R-1349: der zweite Auswahlweg ist entfernt; `keywordSelect` misst die Menge am Produktweg.
+import { keywordSelect } from "../support/auswahlweg";
 
 const PROVIDER = readFileSync(
   fileURLToPath(new URL("../../services/reasoner/src/provider.ts", import.meta.url)),

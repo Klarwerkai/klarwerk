@@ -1,14 +1,14 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { KO_SEARCH_PROJECTION_SCHEMA, KO_SICHTBARKEIT_SCHEMA } from "../../knowledge-object";
+// R-1349: das Prüfmodell liegt bei den Tests; im Produkt stehen nur noch die beiden Listen.
 import {
-  IRREVERSIBLE_DATENMIGRATIONEN,
-  MIGRATIONS_SOLLLISTE,
   erzeugeStrukturbeleg,
   istStrukturstufe,
   klassifiziereStufe,
-} from "./migrationsbeleg";
+} from "../../../tests/support/migrationsmodell";
+import { KO_SEARCH_PROJECTION_SCHEMA, KO_SICHTBARKEIT_SCHEMA } from "../../knowledge-object";
+import { IRREVERSIBLE_DATENMIGRATIONEN, MIGRATIONS_SOLLLISTE } from "./migrationsbeleg";
 
 // SCRUM-496 (die Lehre): Auf Postgres brach /duplikate ab, weil OVERLAP_SCHEMA + OVERLAP_SETTINGS_SCHEMA
 // zwar existierten, aber NIE in migrate() aufgenommen wurden → die Tabellen fehlten (nur PG; In-Memory

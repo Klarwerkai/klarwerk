@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { DRAFTS_BODY_LIMIT, buildApp, buildServices } from "../../app";
-import { InterviewSession } from "./interview";
 import { type DraftRepo, InMemoryDraftRepo } from "./repo";
 import { PgDraftRepo } from "./repo-pg";
 import { CaptureService } from "./service";
@@ -275,23 +274,8 @@ describe("AUFTRAG-JOB507-D4: POST /api/drafts — 413 legt NICHTS an, 201 legt g
   });
 });
 
-describe("InterviewSession (FR-CAP-02)", () => {
-  it("stellt eine Frage pro Schritt und schließt nach genügend Antworten ab", () => {
-    const session = new InterviewSession();
-    let steps = 0;
-    while (!session.isComplete()) {
-      const q = session.currentQuestion();
-      expect(q).toBeTruthy();
-      session.answer(`Antwort ${steps}`);
-      steps += 1;
-    }
-    expect(steps).toBeGreaterThanOrEqual(4);
-    expect(session.currentQuestion()).toBeUndefined();
-    const result = session.result();
-    expect(result.title).toBe("Antwort 0");
-    expect(result.conditions).toEqual(["Antwort 1"]);
-  });
-});
+// R-1349: Der Fall „InterviewSession (FR-CAP-02)" prüfte das deterministische Interview, das kein
+// Produktweg rief. Klasse und Fall sind entfernt; das Interview trägt der Reasoner-Weg.
 
 // ================================================================================================
 // JOB 510 / R10 — DIE WORD-HERKUNFT UEBERLEBT SPEICHERN UND LADEN.
