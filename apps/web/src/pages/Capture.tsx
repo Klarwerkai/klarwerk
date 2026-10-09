@@ -7133,7 +7133,11 @@ export function CaptureArbeitsraum({
               {draft ? (
                 <ReasonerDraft>
                   <div className="space-y-3">
-                    <Field label={t("capture.fTitle")}>
+                    {/* EDITOR-EINHEITLICH (K1): derselbe Begriff wie im Bearbeiten
+                      (`BibliothekLesen.tsx`), im Blatt (`fd.fieldTitle`) und im geführten Weg —
+                      „Titel". Der Altschlüssel `capture.fTitle` („Kernaussage") benannte hier
+                      das Titelfeld mit einem Wort, das beim Erstellen sonst die Aussage meint. */}
+                    <Field label={t("capture.wizard.titleLabel")}>
                       <TextInput
                         value={draft.title}
                         onChange={(e) => setDraft({ ...draft, title: e.target.value })}
@@ -7245,7 +7249,7 @@ export function CaptureArbeitsraum({
                         captionFormRequest={captionRequest ?? undefined}
                         /* JOB 2419 D1 (TV1, letzte Luecke): der Titelvorschlag aus der
                            Bildbeschreibung geht in DASSELBE Feld, das der Nutzer daneben tippt
-                           (`capture.fTitle`, oben in diesem Block). Bewusst wortgleich mit dessen
+                           (`capture.wizard.titleLabel`, oben in diesem Block). Bewusst wortgleich mit dessen
                            `onChange` — eine Uebernahme muss sich verhalten wie eine Eingabe, sonst
                            entstuende ein zweiter, stillerer Weg zum selben Feld. */
                         onTitelVorschlag={(titel) => setDraft({ ...draft, title: titel })}

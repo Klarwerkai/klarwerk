@@ -74,6 +74,35 @@ async function oben(page: Page, testId: string): Promise<number> {
   );
 }
 
+/** Dasselbe für die linke Kante — „Abbrechen" darf auch nicht seitlich wandern (Nacharbeit 6). */
+async function links(page: Page, testId: string): Promise<number> {
+  await expect(page.getByTestId(testId), `${testId} fehlt`).toHaveCount(1);
+  return page.evaluate(
+    ([ziel, bezug]) => {
+      const rand = (id: string): number => {
+        const knoten = document.querySelector(`[data-testid="${id}"]`);
+        return knoten ? knoten.getBoundingClientRect().left : Number.NaN;
+      };
+      return rand(ziel) - rand(bezug);
+    },
+    [testId, BEZUG] as const,
+  );
+}
+
+/** Anmeldung eines weiteren Kontos über das Anmeldeformular (Bauform `support/auth.ts`). */
+async function anmeldenAls(page: Page, mail: string, passwort: string): Promise<void> {
+  await page.goto("/");
+  const pw = page.locator('input[type="password"]');
+  await expect(pw.first()).toBeVisible({ timeout: 15_000 });
+  await page.locator('input[type="email"]').fill(mail);
+  const anzahl = await pw.count();
+  for (let i = 0; i < anzahl; i++) {
+    await pw.nth(i).fill(passwort);
+  }
+  await page.locator('button[type="submit"]').click();
+  await expect(page.getByTestId("kopfband")).toBeVisible({ timeout: 15_000 });
+}
+
 async function formularOeffnen(page: Page, id: string): Promise<void> {
   await page.goto(`/wissen/${id}?edit=1`);
   const aussage = page.getByTestId("bib-aussage");
@@ -188,5 +217,85 @@ test.describe("EDITOR-EINHEITLICH · Bearbeiten wie Erstellen", () => {
     await page.getByTestId("bib-titel").fill(`Pumpe ${m} — neu`);
     await expect(hinweis).toHaveCount(0);
     await expect(page.getByTestId("bib-speichern")).toBeEnabled();
+  });
+
+  // BEN-BEFUND (Nacharbeit 6): der 403 `PROPOSAL_REQUIRED` — der Eintrag wird freigegeben, WÄHREND
+  // eine Expertin bearbeitet. Das Smoke-Konto ist Admin und bekäme nie einen 403; deshalb legt der
+  // Fall ein eigenes Expertenkonto an und bedient die Fläche in einem ZWEITEN Browserkontext, der
+  // Admin gibt im ersten frei.
+  test("K4: 403 nach zwischenzeitlicher Freigabe — Einreichen und Abbrechen bleiben an ihrer Stelle", async ({
+    page,
+    browser,
+  }) => {
+    await ensureLoggedIn(page);
+    const m = marke();
+    const mail = `experte-${m}@klarwerk.test`;
+    const passwort = "experte-Passwort-1";
+    const konto = await page.request.post("/api/users", {
+      data: { name: `Expertin ${m}`, email: mail, password: passwort, role: "experte" },
+    });
+    expect(konto.ok(), `Konto scheiterte: ${konto.status()} ${await konto.text()}`).toBe(true);
+    const text = `Kessel ${m} vor dem Öffnen abkühlen lassen.`;
+    const ko = await legeAn(page.request, `Kessel ${m}`, text);
+
+    const kontext = await browser.newContext({
+      baseURL: new URL(page.url()).origin,
+      serviceWorkers: "block",
+    });
+    try {
+      const seite = await kontext.newPage();
+      await anmeldenAls(seite, mail, passwort);
+      // Der KI-Hinweis eines frisch angemeldeten Kontos liegt unten über der Fläche — erst
+      // bestätigen, damit er die Knöpfe nicht verdeckt. Fehlt er, ist nichts zu tun.
+      const verstanden = seite.getByRole("button", { name: "Verstanden — weiter" });
+      await verstanden
+        .waitFor({ state: "visible", timeout: 5_000 })
+        .then(() => verstanden.click())
+        .catch(() => undefined);
+      await formularOeffnen(seite, ko.id);
+      const eigen = `Kessel ${m} erst unter 40 °C öffnen.`;
+      await seite.getByTestId("bib-aussage").fill(eigen);
+      await expect(seite.getByTestId("bib-speichern")).toBeVisible();
+      await bild(seite, "6-expertin-vor-der-sperre");
+
+      const knopfOben = await oben(seite, "bib-speichern");
+      const abbrechenOben = await oben(seite, "bib-bearbeiten-abbrechen");
+      const abbrechenLinks = await links(seite, "bib-bearbeiten-abbrechen");
+
+      // Der Admin gibt frei, WÄHREND die Expertin bearbeitet.
+      const frei = await page.request.put(`/api/kos/${ko.id}`, {
+        data: { action: "admin-validate" },
+      });
+      expect(frei.ok(), `Freigabe scheiterte: ${frei.status()}`).toBe(true);
+
+      await seite.getByTestId("bib-speichern").click();
+      const pflicht = seite.getByTestId("bib-einreichen-pflicht");
+      await expect(pflicht, "keine Sperrmeldung").toBeVisible({ timeout: 15_000 });
+      await expect(seite.getByTestId("bib-einreichen")).toBeVisible();
+
+      const versatzKnopf = Math.abs((await oben(seite, "bib-einreichen")) - knopfOben);
+      const versatzAbbrechen = Math.abs(
+        (await oben(seite, "bib-bearbeiten-abbrechen")) - abbrechenOben,
+      );
+      const seitlichAbbrechen = Math.abs(
+        (await links(seite, "bib-bearbeiten-abbrechen")) - abbrechenLinks,
+      );
+      expect(versatzKnopf, "„Einreichen“ steht nicht, wo „Speichern“ stand").toBeLessThanOrEqual(1);
+      expect(versatzAbbrechen, "„Abbrechen“ ist gesprungen").toBeLessThanOrEqual(1);
+      expect(seitlichAbbrechen, "„Abbrechen“ ist seitlich gewandert").toBeLessThanOrEqual(1);
+      expect(await oben(seite, "bib-einreichen-pflicht")).toBeGreaterThan(knopfOben);
+      // Felder bleiben an ihrer Stelle, gesperrt; die Eingabe steht.
+      await expect(seite.getByTestId("bib-titel")).toBeDisabled();
+      await expect(seite.getByTestId("bib-aussage")).toHaveValue(eigen);
+      await bild(seite, "7-expertin-nach-der-sperre-knoepfe-an-ihrer-stelle");
+
+      // Die Rechteprüfung gilt: nichts geschrieben, der freigegebene Stand steht.
+      const gelesen = await page.request.get(`/api/kos/${ko.id}`);
+      const stand = (await gelesen.json()) as { statement: string; status: string };
+      expect(stand.statement).toBe(text);
+      expect(stand.status).toBe("validiert");
+    } finally {
+      await kontext.close();
+    }
   });
 });

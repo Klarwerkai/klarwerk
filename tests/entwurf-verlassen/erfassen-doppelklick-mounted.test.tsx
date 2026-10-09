@@ -108,7 +108,7 @@ const NEUER_TITEL = "Zahlungsziel neu";
  */
 async function formularUndDatei(): Promise<void> {
   await mount(`/erfassen?draft=${ENTWURF_ID}`, "formular");
-  await tippe(feld(String(i18n.t("capture.fTitle"))), NEUER_TITEL);
+  await tippe(feld(String(i18n.t("capture.wizard.titleLabel"))), NEUER_TITEL);
   await ansichtWechseln("datei");
   await dateiAblegen(datei());
 }
@@ -362,7 +362,7 @@ describe("R-0017/R-0020/R-0156 · Formular und Datei gemeinsam, zweiter Klick be
 
   it("V2 · Formular ohne geöffneten Entwurf: Antwort verloren, zweiter Druck — ein Entwurf", async () => {
     await mount("/erfassen", "formular");
-    await tippe(feld(String(i18n.t("capture.fTitle"))), NEUER_TITEL);
+    await tippe(feld(String(i18n.t("capture.wizard.titleLabel"))), NEUER_TITEL);
     await tippe(feld(String(i18n.t("capture.fStatement"))), ENTWURF_AUSSAGE);
 
     lasseNaechsteAnlageAntwortVerlorenGehen();

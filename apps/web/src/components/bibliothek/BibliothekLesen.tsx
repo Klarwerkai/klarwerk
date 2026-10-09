@@ -2336,6 +2336,24 @@ export function BibliothekLesen({
   // ist die Liste leer und die Fläche sagt NICHTS über Vorschläge, statt „keine" zu behaupten.
   const einreichPflicht = ko.status === "validiert" && !darfFreigeben;
   const pruefwegAktiv = einreichPflicht || sperreGemeldet || (darfFreigeben && pruefwegHaken);
+  // ================================================================================================
+  // EDITOR-EINHEITLICH (K4, Nacharbeit 6) · DIE SPERRE NACH DEM KLICK VERSCHIEBT NICHTS.
+  // ================================================================================================
+  //
+  // `sperreNachFehler` ist der EINE Fall, in dem der Prüfweg als ANTWORT auf einen Klick kommt
+  // (403 `PROPOSAL_REQUIRED`). Bis hierher verschwanden dann Titel, Listen und Einordnung, und zwei
+  // Sätze erschienen ÜBER den Knöpfen — „Einreichen" und „Abbrechen" standen danach woanders als
+  // der Knopf, der gerade gedrückt worden war. Jetzt bleiben die Felder an ihrer Stelle, sind aber
+  // GESPERRT (sie reisen auf diesem Weg nicht mit — die Regel aus JOB 3667 R4 bleibt), und beide
+  // Sätze stehen unter der Leiste bei den übrigen Meldungen. Fall 2 (von Anfang an Prüfweg) und
+  // Fall 3 (bewusster Haken) bleiben, wie sie sind: dort ist der Wechsel keine Fehlerfolge.
+  //
+  // BEWUSST OHNE `!einreichPflicht`: die Sperre entsteht gerade WEIL der Eintrag inzwischen
+  // freigegeben ist. Liest die Fläche ihn später nach (Fokus, Bearbeitungshinweis), wird
+  // `einreichPflicht` wahr — die Lage darf dann nicht noch einmal umspringen. Fall 2 von Anfang an
+  // bietet kein Speichern an; dort kann `sperreGemeldet` gar nicht entstehen.
+  const sperreNachFehler = sperreGemeldet && !(darfFreigeben && pruefwegHaken);
+  const felderAusgeblendet = pruefwegAktiv && !sperreNachFehler;
   const offeneVorschlaege = (ko.proposals ?? []).filter((p) => p.status === "offen");
   // JOB 3667 R4 · BEFUND 2 — DER FALL, IN DEM DAS VERSTECKEN ALLEIN NICHT REICHT.
   //
@@ -2352,6 +2370,24 @@ export function BibliothekLesen({
   const fehlendePflicht = edit ? fehlendePflichtangaben(edit, pruefwegAktiv) : [];
   const titelFehlt = fehlendePflicht.includes("titel");
   const aussageFehlt = fehlendePflicht.includes("aussage") || fehlendePflicht.includes("inhalt");
+  // JOB 3667 R4 · der Satz, was der Prüfweg trägt — EIN Wortlaut, je nach Lage über dem Formular
+  // (Fall 2/3) oder unter der Aktionsleiste (`sperreNachFehler`, s. oben).
+  const pruefwegFelderSatz = (
+    <div
+      data-testid="bib-pruefweg-felder"
+      className="rounded-btn bg-hairline-soft px-3 py-2 text-[12.5px] leading-relaxed text-muted"
+    >
+      {/* EDITOR-EINHEITLICH: derselbe Satz, mit dem Wort des Formulars — „Titel". */}
+      {t("editoreinheitlich.nurFelder")}
+      {nichtEingereichteAenderungen.length > 0 ? (
+        <span data-testid="bib-pruefweg-felder-verworfen" className="mt-1 block text-text">
+          {t("ko.propose.droppedFields", {
+            felder: nichtEingereichteAenderungen.map((i) => t(i.labelKey)).join(", "),
+          })}
+        </span>
+      ) : null}
+    </div>
+  );
 
   const impact =
     conflicts.data === undefined
@@ -2899,25 +2935,8 @@ export function BibliothekLesen({
                 DER ZWEITE SATZ nennt die Änderungen, die beim Umschalten schon im Zustand standen
                 (s. `nichtEingereichteAenderungen`) — sonst verschwänden sie wortlos mit ihren
                 Feldern. */}
-            {pruefwegAktiv ? (
-              <div
-                data-testid="bib-pruefweg-felder"
-                className="rounded-btn bg-hairline-soft px-3 py-2 text-[12.5px] leading-relaxed text-muted"
-              >
-                {/* EDITOR-EINHEITLICH: derselbe Satz, mit dem Wort des Formulars — „Titel". */}
-                {t("editoreinheitlich.nurFelder")}
-                {nichtEingereichteAenderungen.length > 0 ? (
-                  <span
-                    data-testid="bib-pruefweg-felder-verworfen"
-                    className="mt-1 block text-text"
-                  >
-                    {t("ko.propose.droppedFields", {
-                      felder: nichtEingereichteAenderungen.map((i) => t(i.labelKey)).join(", "),
-                    })}
-                  </span>
-                ) : null}
-              </div>
-            ) : null}
+            {/* EDITOR-EINHEITLICH (K4): nach einer Sperre steht derselbe Satz unter der Leiste. */}
+            {pruefwegAktiv && !sperreNachFehler ? pruefwegFelderSatz : null}
             {/* R-1055: zwei gespeicherte Fassungen nebeneinander, direkt im Editor — derselbe
                 Vergleich wie unter Mehr → Schnappschüsse (`Fassungsvergleich.tsx`). */}
             <FassungsvergleichImEditor koId={koId} />
@@ -2934,8 +2953,10 @@ export function BibliothekLesen({
                 ? t("editoreinheitlich.pflichtPruefweg")
                 : t("editoreinheitlich.pflichtDirekt")}
             </p>
-            {pruefwegAktiv ? null : (
-              <>
+            {felderAusgeblendet ? null : (
+              // EDITOR-EINHEITLICH (K4): nach einer Sperre gesperrt statt entfernt — die Stelle
+              // bleibt, der Wert reist auf dem Prüfweg nicht mit (s. `sperreNachFehler`).
+              <fieldset disabled={sperreNachFehler} className="m-0 min-w-0 space-y-3 border-0 p-0">
                 {/* EDITOR-EINHEITLICH: das Feld heisst wie beim Erstellen „Titel" — nicht
                     „Kernaussage", ein Wort, das beim Erstellen für etwas anderes steht. */}
                 <Field label={t("capture.wizard.titleLabel")}>
@@ -2956,7 +2977,7 @@ export function BibliothekLesen({
                     {t("editoreinheitlich.fehltTitel")}
                   </p>
                 ) : null}
-              </>
+              </fieldset>
             )}
             <Field label={t("capture.fStatement")}>
               <textarea
@@ -3069,8 +3090,9 @@ export function BibliothekLesen({
             </Field>
             {/* Bedingungen, Maßnahmen, Schlagworte, Art und Kategorie: derselbe Grund wie beim
                 Titel — der Einreich-Aufruf trägt sie nicht, die Übernahme schreibt sie nicht. */}
-            {pruefwegAktiv ? null : (
-              <>
+            {felderAusgeblendet ? null : (
+              // EDITOR-EINHEITLICH (K4): wie beim Titel — nach einer Sperre gesperrt statt entfernt.
+              <fieldset disabled={sperreNachFehler} className="m-0 min-w-0 space-y-3 border-0 p-0">
                 <ListEditor
                   label={t("capture.fConditions")}
                   items={edit.conditions}
@@ -3103,7 +3125,7 @@ export function BibliothekLesen({
                     />
                   </Field>
                 </div>
-              </>
+              </fieldset>
             )}
             <KoRevisionSummary original={ko} edit={edit} />
             {/* SCRUM-344: nach einer Übernahme aus dem Studio ehrlich klarmachen, dass der Inhalt
@@ -3136,8 +3158,12 @@ export function BibliothekLesen({
                 nach fremder Freigabe. KEIN HAKEN daneben: hier ist die Prüfung Pflicht, und ein
                 abwählbarer Haken wäre die Unwahrheit.
 
-                FALL 3 (`darfFreigeben`): der Haken. NUR hier ist etwas freiwillig. */}
-            {einreichPflicht || sperreGemeldet ? (
+                FALL 3 (`darfFreigeben`): der Haken. NUR hier ist etwas freiwillig.
+
+                EDITOR-EINHEITLICH (K4): die NACHTRÄGLICH gemeldete Sperre (`sperreNachFehler`)
+                sagt denselben Satz UNTER der Aktionsleiste — hier oben schöbe er die Knöpfe weg,
+                die gerade gedrückt wurden. */}
+            {(einreichPflicht || sperreGemeldet) && !sperreNachFehler ? (
               <p
                 data-testid="bib-einreichen-pflicht"
                 className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] leading-relaxed text-trust-warn-text"
@@ -3162,24 +3188,6 @@ export function BibliothekLesen({
               </label>
             ) : null}
             {/* ==========================================================================
-                EDITOR-EINHEITLICH · WAS DER KNOPF BEWIRKT, STEHT VOR DEM KNOPF.
-                ==========================================================================
-
-                Speichern legt eine neue Version an (`revise`: Version + 1, Status offen, Eintrag
-                im Verlauf, Vorfassung unter `/api/kos/:id/versions`); Einreichen legt einen
-                Vorschlag an und ändert den geltenden Eintrag noch nicht. Beides war bisher erst
-                NACH dem Klick zu erfahren. */}
-            <p data-testid="bib-wirkung" className="text-[12px] leading-relaxed text-muted">
-              {pruefwegAktiv
-                ? t("editoreinheitlich.wirkungEinreichen")
-                : edit.version === null
-                  ? t("editoreinheitlich.wirkungSpeichernOhneZahl")
-                  : t("editoreinheitlich.wirkungSpeichern", {
-                      neu: String(edit.version + 1),
-                      alt: String(edit.version),
-                    })}
-            </p>
-            {/* ==========================================================================
                 EDITOR-EINHEITLICH · DIE AKTIONSLEISTE STEHT VOR DEN MELDUNGEN.
                 ==========================================================================
 
@@ -3199,6 +3207,9 @@ export function BibliothekLesen({
                 <Button
                   variant="primary"
                   data-testid="bib-einreichen"
+                  // EDITOR-EINHEITLICH (K4): beide Griffe gleich breit — der Wechsel „Speichern" →
+                  // „Änderung einreichen" nach einer Sperre schiebt „Abbrechen" nicht seitlich weg.
+                  className="min-w-[12rem]"
                   disabled={
                     einreichen.isPending ||
                     appendDocument.isPending ||
@@ -3220,6 +3231,7 @@ export function BibliothekLesen({
                 <Button
                   variant="primary"
                   data-testid="bib-speichern"
+                  className="min-w-[12rem]"
                   disabled={
                     save.isPending ||
                     appendDocument.isPending ||
@@ -3244,6 +3256,38 @@ export function BibliothekLesen({
                 {t("ko.cancelEdit")}
               </Button>
             </div>
+            {/* ==========================================================================
+                EDITOR-EINHEITLICH · WAS DER KNOPF BEWIRKT, STEHT DIREKT AM KNOPF.
+                ==========================================================================
+
+                Speichern legt eine neue Version an (`revise`: Version + 1, Status offen, Eintrag
+                im Verlauf, Vorfassung unter `/api/kos/:id/versions`); Einreichen legt einen
+                Vorschlag an und ändert den geltenden Eintrag noch nicht. Der Satz steht UNTER der
+                Leiste (Nacharbeit 6): er wechselt nach einer Sperre den Wortlaut und damit die
+                Höhe — über den Knöpfen hätte er sie verschoben. */}
+            <p data-testid="bib-wirkung" className="text-[12px] leading-relaxed text-muted">
+              {pruefwegAktiv
+                ? t("editoreinheitlich.wirkungEinreichen")
+                : edit.version === null
+                  ? t("editoreinheitlich.wirkungSpeichernOhneZahl")
+                  : t("editoreinheitlich.wirkungSpeichern", {
+                      neu: String(edit.version + 1),
+                      alt: String(edit.version),
+                    })}
+            </p>
+            {/* EDITOR-EINHEITLICH (K4): die nachträglich gemeldete Sperre — beide Sätze hier,
+                unter den Knöpfen, die an ihrer Stelle bleiben. Derselbe Wortlaut wie oben. */}
+            {sperreNachFehler ? (
+              <>
+                <p
+                  data-testid="bib-einreichen-pflicht"
+                  className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] leading-relaxed text-trust-warn-text"
+                >
+                  {t("ko.propose.mustReview")}
+                </p>
+                {pruefwegFelderSatz}
+              </>
+            ) : null}
             {appendUnclear ? (
               <div className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
                 {t("xtr.append.unclear")}

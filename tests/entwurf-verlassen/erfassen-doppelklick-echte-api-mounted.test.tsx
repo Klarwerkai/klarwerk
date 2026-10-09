@@ -212,7 +212,7 @@ const gesichertSatz = (): string => String(i18n.t(CAPTURE_FILE_TEXT.wholeSaved, 
 
 async function formularUndDatei(id: string, wechselweg = false): Promise<void> {
   await mount(`/erfassen?draft=${id}`, "formular", wechselweg);
-  await tippe(feld(String(i18n.t("capture.fTitle"))), NEUER_TITEL);
+  await tippe(feld(String(i18n.t("capture.wizard.titleLabel"))), NEUER_TITEL);
   await ansichtWechseln("datei");
   await dateiAblegen(datei());
 }
@@ -267,7 +267,7 @@ describe("R-0017/R-0020/R-0156 · gegen die echte Anwendung (fetch → app.injec
     expect(feld(String(i18n.t("capture.fStatement"))).value).toContain(ABSATZ_2);
     abbauen();
     await mount(`/erfassen?draft=${id}`, "formular");
-    expect(feld(String(i18n.t("capture.fTitle"))).value).toBe(NEUER_TITEL);
+    expect(feld(String(i18n.t("capture.wizard.titleLabel"))).value).toBe(NEUER_TITEL);
     expect(feld(String(i18n.t("capture.fStatement"))).value).toBe(ALT_AUSSAGE);
   });
 
@@ -295,7 +295,7 @@ describe("R-0017/R-0020/R-0156 · gegen die echte Anwendung (fetch → app.injec
 
   it("A3 · Formular ohne geöffneten Entwurf: Antwort verloren, zweiter Druck — ein Entwurf beim Server", async () => {
     await mount("/erfassen", "formular");
-    await tippe(feld(String(i18n.t("capture.fTitle"))), NEUER_TITEL);
+    await tippe(feld(String(i18n.t("capture.wizard.titleLabel"))), NEUER_TITEL);
     await tippe(feld(String(i18n.t("capture.fStatement"))), ALT_AUSSAGE);
 
     bruecke.anlageAntwortVerlieren = true;

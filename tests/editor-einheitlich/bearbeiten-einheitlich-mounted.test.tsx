@@ -46,6 +46,8 @@ type App = ReturnType<typeof buildApp>;
 
 let app: App;
 let adminToken = "";
+/** Das Konto, in dessen Namen die OBERFLÄCHE spricht (Vorgabe: Admin; der 403-Fall: Experte). */
+let flaechenToken = "";
 
 /** Der Transport, und NUR er, ist ersetzt. */
 function transportEinhaengen(): void {
@@ -58,7 +60,7 @@ function transportEinhaengen(): void {
         kopf[name] = wert;
       });
     }
-    kopf.authorization = `Bearer ${adminToken}`;
+    kopf.authorization = `Bearer ${flaechenToken || adminToken}`;
     const antwort = await app.inject({
       method: methode as "GET",
       url,
@@ -269,6 +271,7 @@ beforeEach(async () => {
   });
   expect(login.statusCode).toBe(200);
   adminToken = (login.json() as { token: string }).token;
+  flaechenToken = "";
   await i18n.changeLanguage("de");
   qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
@@ -448,5 +451,87 @@ describe("EDITOR-EINHEITLICH · K4 — der Fehlschlag schiebt die Knöpfe nicht"
     // Nichts von der Arbeit ist weg.
     expect(aussagefeld().value).toBe(NEUER_INHALT);
     expect((await stand(id)).statement).toBe("Fremder Text.");
+  });
+
+  // BEN-BEFUND (Nacharbeit 6): die 403-Sperre (`PROPOSAL_REQUIRED`) liess Felder verschwinden und
+  // Sätze ÜBER den Knöpfen erscheinen. Gemessen wird hier, dass VOR der Leiste nichts kommt oder
+  // geht — dieselben Beschriftungen und Marken in derselben Reihenfolge, das Titelfeld dieselbe
+  // Instanz, nur gesperrt. Die Geometrie misst der Smoke.
+  it("F2 · 403 nach zwischenzeitlicher Freigabe: vor der Leiste ändert sich nichts, Felder gesperrt, Eingabe bleibt", async () => {
+    const id = await objektAnlegen(ERSTELLT, `<p>${ERSTELLT}</p>`);
+    const angelegt = await app.inject({
+      method: "POST",
+      url: "/api/users",
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: {
+        name: "Konto experte",
+        email: "experte@klarwerk.test",
+        password: "secret123",
+        role: "experte",
+      },
+    });
+    expect(angelegt.statusCode).toBe(201);
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "experte@klarwerk.test", password: "secret123" },
+    });
+    expect(login.statusCode).toBe(200);
+    flaechenToken = (login.json() as { token: string }).token;
+    await mount(id);
+
+    /** Was im Formular VOR „Abbrechen" steht: Marken und Feldnamen, in Dokumentreihenfolge. */
+    const vorDerLeiste = (): string[] => {
+      const grenze = el("bib-bearbeiten-abbrechen");
+      return [...document.body.querySelectorAll("[data-testid], label > span, fieldset > legend")]
+        .filter((k) => k.compareDocumentPosition(grenze) & Node.DOCUMENT_POSITION_FOLLOWING)
+        .map((k) => k.getAttribute("data-testid") ?? `label:${(k.textContent ?? "").trim()}`)
+        .filter((m) => m !== "bib-speichern" && m !== "bib-einreichen");
+    };
+    // Erst tippen (das entkoppelt die Aussage und wechselt deren Hinweis), DANN vermessen.
+    await tippen(aussagefeld(), EIGENE_AUSSAGE);
+    const titel = titelfeld();
+    const vorher = vorDerLeiste();
+    expect(vorher).toContain(`label:${i18n.t("capture.fConditions")}`);
+
+    // Das Objekt wird freigegeben, WÄHREND der Experte tippt (dieselbe Lage wie direktweg D6).
+    const frei = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${id}`,
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { action: "admin-validate" },
+    });
+    expect(frei.statusCode).toBe(200);
+    await klick(el("bib-speichern"));
+
+    // Der Einreichweg steht da — an der Stelle des Speicherknopfs.
+    const einreichen = el("bib-einreichen");
+    const pflicht = el("bib-einreichen-pflicht");
+    expect(pflicht.textContent).toBe(i18n.t("ko.propose.mustReview"));
+    // VOR der Leiste: dieselben Marken und Feldnamen wie vor dem Klick.
+    expect(vorDerLeiste()).toEqual(vorher);
+    // Beide Sätze der Sperre stehen UNTER der Leiste.
+    for (const satz of [pflicht, el("bib-pruefweg-felder")]) {
+      expect(
+        einreichen.compareDocumentPosition(satz) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        el("bib-bearbeiten-abbrechen").compareDocumentPosition(satz) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+    // Das Titelfeld ist dieselbe Instanz, nur gesperrt; die Eingabe steht.
+    expect(titelfeld()).toBe(titel);
+    // Gesperrt über die Hülle (`fieldset disabled` sperrt jedes Steuerelement darin).
+    expect(titel.closest("fieldset")?.disabled).toBe(true);
+    const bedingungen = [...document.body.querySelectorAll("label > span")].find(
+      (s) => (s.textContent ?? "").trim() === i18n.t("capture.fConditions"),
+    );
+    expect(bedingungen?.closest("fieldset")?.disabled).toBe(true);
+    expect(aussagefeld().value).toBe(EIGENE_AUSSAGE);
+    // Die Rechteprüfung gilt: nichts geschrieben, nichts von selbst eingereicht.
+    const jetzt = await stand(id);
+    expect(jetzt.statement).toBe(ERSTELLT);
+    expect((jetzt as { proposals?: unknown[] }).proposals ?? []).toHaveLength(0);
   });
 });
