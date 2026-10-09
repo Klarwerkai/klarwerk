@@ -24,12 +24,15 @@ import { type AuditRepo, AuditService, InMemoryAuditRepo, PgAuditRepo } from "..
 import {
   AuthService,
   InMemoryPasswordResetRepo,
+  InMemorySecondFactorRepo,
   InMemorySessionRepo,
   InMemoryUserRepo,
   type PasswordResetRepo,
   PgPasswordResetRepo,
+  PgSecondFactorRepo,
   PgSessionRepo,
   PgUserRepo,
+  type SecondFactorRepo,
   type SessionRepo,
   type UserRepo,
   authRoutes,
@@ -316,8 +319,6 @@ import {
 import { gelisteteMeldung, nurGelisteteLogfelder } from "./log-positivliste";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
-// AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
-import type { ObjectReferenceSources } from "./object-references";
 import {
   InMemoryQuellabgleichRepo,
   PgQuellabgleichRepo,
@@ -610,12 +611,10 @@ export interface AppServices {
   wissensuebergabe: Wissensuebergabe;
   i18n: I18nService;
   objects: ObjectStore;
-  // AUFTRAG-mega20 Block C: die MODULÜBERGREIFENDE Referenzprüfung — verdrahtet mit den echten
-  // Beständen (Wissensobjekte inkl. Papierkorb, Versions-Snapshots, Belegkette, Entwürfe). Sie
-  // gehört in die Composition-Root, weil nur sie alle Module kennen darf; die ausgeschriebene
-  // Begründung und die fünf Fundorte stehen in object-references.ts. Sie ENTSCHEIDET nichts und
-  // löscht nichts — der Waisen-Sweep ist ausdrücklich nicht Teil dieses Blocks.
-  objectReferences: ObjectReferenceSources;
+  // R-1349: Hier stand `objectReferences`, die Quellen der Referenzprüfung aus mega20 Block C. Kein
+  // Produktweg fragte sie ab; den Waisenlauf trägt `datenintegritaet.ts::ermittleWaisen` (Betreiber-
+  // werkzeug `tools/datenintegritaet.ts`) als Obermenge derselben Fundorte. Feld und Verdrahtung
+  // sind entfernt.
   media: MediaAnalysisService;
   // SCRUM-165: read-only Einsicht in das ModelRun-Protokoll.
   modelRuns: ModelRunService;
@@ -674,6 +673,8 @@ export interface AppRepos {
   users: UserRepo;
   sessions: SessionRepo;
   resetTokens: PasswordResetRepo;
+  // R-0562: der eigene zweite Faktor (TOTP) je Konto.
+  secondFactors: SecondFactorRepo;
   drafts: DraftRepo;
   gaps: GapRepo;
   ratings: RatingRepo;
@@ -1440,6 +1441,7 @@ export function assembleServices(
       users: repos.users,
       sessions: repos.sessions,
       resetTokens: repos.resetTokens,
+      secondFactors: repos.secondFactors,
       audit,
       // SCRUM-443: FR-RBAC-03 serverseitig durchsetzen (kein Selbst-Entzug der Admin-Rolle).
       canChangeRole,
@@ -1618,16 +1620,6 @@ export function assembleServices(
     i18n: new I18nService(),
     // SCRUM-121: interner Objekt-/Attachment-Speicher (In-Memory; Pg/Disk = Folge-Ticket).
     objects,
-    // AUFTRAG-mega20 Block C: die Quellen der Referenzprüfung, direkt an den REPOS — nicht an den
-    // Diensten. Der Unterschied ist tragend: `ko.list()` blendet getrashte Wissensobjekte aus
-    // (SCRUM-422), und ein Aufräumlauf, der den Papierkorb übersieht, macht aus „gelöscht"
-    // ein „unwiederbringlich". Hier wird deshalb bewusst der ROHE Bestand befragt.
-    objectReferences: {
-      kos: () => repos.koRepo.list({}),
-      drafts: () => repos.drafts.list(),
-      versions: (koId) => repos.koVersions.listByKo(koId),
-      evidence: (koId) => repos.evidence.listByKo(koId),
-    },
     // JOB 2706 D1 (R2-30): nur, wenn das Repo die Traegersuche an der Datenquelle kann. Die
     // Methoden sind am `KoRepo` optional (Begruendung dort); hier werden sie durchgereicht, nicht
     // geraten. Ebenso der Schreibstand aus der Ablage.
@@ -1709,6 +1701,7 @@ export function inMemoryRepos(): AppRepos {
     users: new InMemoryUserRepo(),
     sessions: new InMemorySessionRepo(),
     resetTokens: new InMemoryPasswordResetRepo(),
+    secondFactors: new InMemorySecondFactorRepo(),
     drafts: new InMemoryDraftRepo(),
     gaps: new InMemoryGapRepo(),
     ratings: new InMemoryRatingRepo(),
@@ -1786,6 +1779,7 @@ export function buildPgServices(rohPool: Pool): AppServices {
       users: new PgUserRepo(pool),
       sessions: new PgSessionRepo(pool),
       resetTokens: new PgPasswordResetRepo(pool),
+      secondFactors: new PgSecondFactorRepo(pool),
       drafts: new PgDraftRepo(pool),
       gaps: new PgGapRepo(pool),
       ratings: new PgRatingRepo(pool),
@@ -2183,7 +2177,7 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "KantenError",
   "KoError",
   "LibraryError",
-  "LifecycleError",
+  // R-1349: `LifecycleError` ist gestrichen — die Klasse warf niemand und ist entfernt.
   // R-0163 / K3 (Ben, Nacharbeit 15): der Fehler eines ungültigen Management-Profils
   // (`services/management/src/profiles.ts`). ENTSCHEIDUNG: der Name darf ins Protokoll — nur der
   // Klassenname, keine Profilwerte.
@@ -3965,6 +3959,8 @@ export function buildApp(
   // impactRoutes darunter.
   // KW-KA4: `klaraSessions` ist das bestehende Ausführungstor von oben — dieselbe Instanz, kein
   // zweiter Dienst. Ohne es verhielte sich die Ask-Route byteweise wie vor KA4 (fail-closed).
+  // AUFNAHME 20260922 · R-0322: die Erreichbarkeit der Verantwortlichen aus dem bestehenden
+  // Nutzerverzeichnis — erreichbar heisst „freigegebenes Konto vorhanden", nichts darüber hinaus.
   app.register(
     askRoutes(
       {
@@ -3980,6 +3976,25 @@ export function buildApp(
         // R-1649: der abweichende Weg aus „nicht hilfreich" wird ein gewöhnlicher Entwurf —
         // derselbe Anlageweg wie POST /api/drafts, kein zweiter.
         alternativeAlsEntwurf: (entwurf, author) => services.capture.createDraft(entwurf, author),
+        // AUFNAHME 20260922 · R-1627: die kuratierten Kanten für die belegten Beziehungen der Kette.
+        kanten: services.kanten,
+        // R-0346: das Firmenwörterbuch für die Begriffserklärungen einer allgemeinsprachlichen Antwort.
+        begriffe: async () => services.begriffe.aktuelle(),
+        personen: {
+          erreichbarkeit: async (ids) => {
+            const konten = await services.auth.listUsers();
+            const erreichbar = new Map<string, boolean>();
+            const namen = new Map<string, string>();
+            for (const id of ids) {
+              const konto = konten.find((u) => u.id === id);
+              erreichbar.set(id, konto?.approved === true);
+              if (konto) {
+                namen.set(id, konto.name);
+              }
+            }
+            return { erreichbar, namen };
+          },
+        },
       },
       guards,
     ),
@@ -4149,11 +4164,11 @@ export function buildApp(
   app.register(supportRoutes({ kontakt: supportKontaktAusUmgebung(process.env) }, guards));
   // AUFTRAG-mega74 BLOCK C (G2): der Anhang-Lesepfad erfährt hier — und nur hier —, welche
   // Wissensobjekte einen Anhang tragen. `services/object-store` darf das nicht selbst wissen
-  // (dieselbe Modulgrenze wie object-references.ts); die Kompositionswurzel reicht den Zugang.
+  // (Modulgrenze des Objektspeichers); die Kompositionswurzel reicht den Zugang.
   //
   // AUFTRAG-mega76 BLOCK B: dazu kommen die drei Herkünfte, die bis mega76 durchfielen —
-  // Versions-Schnappschüsse, Belegketten und Entwürfe. Dieselbe Aufzählung wie in
-  // object-references.ts, dort gegen Datenverlust, hier gegen Auskunft.
+  // Versions-Schnappschüsse, Belegketten und Entwürfe. Dieselbe Aufzählung wie im Waisenlauf
+  // (`datenintegritaet.ts`), dort gegen Datenverlust, hier gegen Auskunft.
   //
   // JOB 2021 (G8): EINE Aufzählung für BEIDE Wege in den Objektspeicher. `POST /api/media/analyze`
   // liest über media/src/service.ts:92 denselben Bestand wie `GET /api/objects/:id` — es bekommt
