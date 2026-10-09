@@ -5,12 +5,20 @@ import { type ComparisonJudgement, type DetectionCoverage, comparisonOutcome } f
 import {
   type ConflictVerdict,
   type DetectSubject,
+  type GeltungsKollisionsRegel,
   autoDescription,
   coreText,
   decideFromVerdict,
   selectCandidates,
   vorschlagAusUrteil,
 } from "./detect";
+import {
+  type ConflictMemoryRepo,
+  type PairMemoryEntry,
+  type PairMemoryOutcome,
+  memoryKey,
+  pruefstand,
+} from "./pair-memory";
 import type { ConflictRepo } from "./repo";
 import {
   type Conflict,
@@ -57,7 +65,18 @@ export interface ConflictServiceDeps {
   // SICHTBAR gemeldet (nie kommentarlos verschluckt — sonst bliebe der Datensatz geschlossen ohne
   // Audit still). Default: console.error. Der Read bleibt entkoppelt (fire-and-forget/Makrotask).
   onError?: (context: string, error: unknown) => void;
+  // Aufnahme 20260922 · Prüfung-Gedächtnis (R-1103/R-1105): je Paar der zuletzt beurteilte
+  // Textstand (pair-memory.ts). Ohne Verdrahtung bleibt nur die Versions-Rückfallregel für
+  // menschlich geschlossene Befunde (menschlichAbgeschlossen).
+  memory?: ConflictMemoryRepo;
 }
+
+// Prompt-Fassung der Konfliktprüfung — Teil des gemerkten Stands: ein Prompt-Bump prüft neu.
+const PROMPT_VERSION = "kon-v1";
+
+// Menschliche Abschlüsse, die für den damaligen Inhaltsstand gelten (R-1105). Systemische Enden
+// (superseded, participant_deleted) unterdrücken nichts.
+const MENSCHLICHE_ABSCHLUESSE = new Set<ConflictResolutionReason>(["dismissed", "decided"]);
 
 // Aufnahme gesamt-auditprotokoll:aktionsabdeckung · R-0733: eine menschliche Entscheidung über
 // einen Konflikt steht mit ihrem AUSGANG im Protokoll (entschieden / Fehlalarm) und mit den beiden
@@ -105,9 +124,11 @@ export class ConflictService {
   private readonly genId: () => string;
   private readonly currentVersion: CurrentVersionLookup | undefined;
   private readonly onError: (context: string, error: unknown) => void;
+  private readonly memory: ConflictMemoryRepo | undefined;
 
   constructor(deps: ConflictServiceDeps) {
     this.repo = deps.repo;
+    this.memory = deps.memory;
     this.audit = deps.audit;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
@@ -115,7 +136,8 @@ export class ConflictService {
     this.onError =
       deps.onError ??
       ((context, error) => {
-        console.error(`[conflicts] Lese-GC ${context}:`, error);
+        // R-0623: nur die Fehlerklasse — Meldung und Stack können Inhalte tragen.
+        console.error(`[conflicts] ${context}: ${error instanceof Error ? error.name : "unknown"}`);
       });
   }
 
@@ -226,6 +248,8 @@ export class ConflictService {
       target: id,
       payload: entscheidungsBeleg(conflict, "dismissed"),
     });
+    // R-1105: derselbe Vorschlag kommt nicht wieder, solange sich die Inhalte nicht ändern.
+    await this.merkeAbschluss(conflict, "dismissed");
     return saved;
   }
 
@@ -313,7 +337,30 @@ export class ConflictService {
       target: id,
       payload: entscheidungsBeleg(conflict, "decided"),
     });
+    await this.merkeAbschluss(conflict, "decided");
     return saved;
+  }
+
+  // R-1103/R-1105: der menschliche Abschluss gilt für den Stand, unter dem der Befund erkannt wurde —
+  // nur wenn das Gedächtnis genau diesen Befund führt (manuelle Konflikte haben keinen Stand).
+  // Best-effort: die Entscheidung ist gespeichert und protokolliert; ein Gedächtnisfehler wird
+  // sichtbar gemeldet, kippt sie aber nicht.
+  private async merkeAbschluss(
+    conflict: Conflict,
+    outcome: Extract<PairMemoryOutcome, "dismissed" | "decided">,
+  ): Promise<void> {
+    if (!this.memory) {
+      return;
+    }
+    try {
+      const [entry] = await this.memory.find([memoryKey(conflict.koA, conflict.koB)]);
+      if (!entry || entry.conflictId !== conflict.id) {
+        return;
+      }
+      await this.memory.put({ ...entry, outcome, at: new Date(this.now()).toISOString() });
+    } catch (error) {
+      this.onError(`Prüfgedächtnis ${outcome} (${conflict.id})`, error);
+    }
   }
 
   // Konzept 04.07. (Stufe 1) — Geister-Bug: Wird ein beteiligtes Wissensobjekt gelöscht, darf sein
@@ -396,6 +443,13 @@ export class ConflictService {
       modelLabel?: string;
       isCurrent?: (koId: string, version: number) => boolean | Promise<boolean>;
       coverage?: DetectionCoverage;
+      // AUFNAHME 20260922 · R-1124: true = ohne fachlichen Vorfilter (jedes Bestandsobjekt ist
+      // Kandidat). Zusammen mit `cap = ∞` der gewählte Vollabgleich; ohne Angabe wie bisher.
+      vollabgleich?: boolean;
+      // R-1632 / R-1633: geben BEIDE Seiten eine Geltung an und liegt sie verschieden, ist ein
+      // erkannter Widerspruch ein Kontext- bzw. Rollenkonflikt statt eines Wahrheitskonflikts
+      // (Regel in knowledge-object `geltungsKollision`). Ohne Regel: Bestandsverhalten.
+      geltungsKollision?: GeltungsKollisionsRegel;
     } = {},
   ): Promise<Conflict[]> {
     // AUFTRAG-mega29 B2 (bens M28-2): der Deckel begrenzt, was GEPRÜFT wird — nicht, was
@@ -403,7 +457,12 @@ export class ConflictService {
     // sortierte) Liste geholt und der Deckel erst in der Schleife über die tatsächlichen Vergleiche
     // gezogen. Ein Paar mit bereits offenem Befund kostet damit nur seinen Rang, keinen Prüfplatz.
     const cap = options.cap ?? 8;
-    const ranked = selectCandidates(subject, pool, Number.POSITIVE_INFINITY);
+    const ranked = selectCandidates(
+      subject,
+      pool,
+      Number.POSITIVE_INFINITY,
+      options.vollabgleich !== true,
+    );
     const coverage = options.coverage;
     if (coverage) {
       coverage.available = pool.filter((c) => c.refId !== subject.refId).length;
@@ -411,13 +470,11 @@ export class ConflictService {
     if (ranked.length === 0) {
       return [];
     }
-    // AUFNAHME 20260922 · Hintergrundabgleich (R-1111): ein GELÖSTER Konflikt (entschieden oder als
-    // Fehlalarm verworfen) blockt das Paar ebenfalls — aber NUR für genau die Fassungen, die er
-    // trägt. Ein Wiederholungslauf über unveränderte Inhalte legt ihn damit nicht erneut an.
-    // Gelöste Einträge ohne Fassungspaar (Altbestand) blocken nicht.
-    const open = (await this.repo.all()).filter(
-      (c) => c.status !== "geloest" || (c.koAVersion !== undefined && c.koBVersion !== undefined),
-    );
+    // AUFNAHME 20260922 · Hintergrundabgleich (R-1111): dass ein menschlich geschlossenes Paar bei
+    // unveränderten Fassungen nicht neu angelegt wird, leistet `menschlichAbgeschlossen` (R-1105)
+    // unten — hier bleibt `open` die Menge der ungelösten Konflikte.
+    const alle = await this.repo.all();
+    const open = alle.filter((c) => c.status !== "geloest");
     // D-AISTATE PAKET 4 (bens V5): Paar-Dedupe nur für die AKTUELLE Versionskombination. Ein Befund zu
     // einer inzwischen revidierten Fassung (stale) blockt den neuen Lauf NICHT. Altbestand ohne
     // Versionsfelder (oder ein versionsloser Lauf) blockt konservativ wie bisher.
@@ -431,13 +488,40 @@ export class ConflictService {
           return true; // Altbestand-Eintrag → wie bisher blocken
         }
         if (aVer === undefined || bVer === undefined) {
-          return c.status !== "geloest"; // versionsloser Lauf → konservativ blocken (nur offen)
+          return true; // versionsloser Lauf → konservativ blocken
         }
         const verFor = (koId: string): number | undefined =>
           c.koA === koId ? c.koAVersion : c.koBVersion;
         return verFor(aId) === aVer && verFor(bId) === bVer;
       });
+    // R-1105, Rückfall ohne gemerkten Stand (Befunde von vor dem Gedächtnis): ein MENSCHLICH
+    // geschlossener Befund zu GENAU den aktuellen Versionen beider Seiten gilt weiter — die Fassung
+    // ändert sich mit jedem Inhalt. Ohne Versionsbindung greift die Regel nicht (kein Stand belegt).
+    const menschlichAbgeschlossen = (
+      aId: string,
+      bId: string,
+      aVer?: number,
+      bVer?: number,
+    ): boolean =>
+      aVer !== undefined &&
+      bVer !== undefined &&
+      alle.some((c) => {
+        if (
+          c.status !== "geloest" ||
+          c.resolutionReason === undefined ||
+          !MENSCHLICHE_ABSCHLUESSE.has(c.resolutionReason)
+        ) {
+          return false;
+        }
+        const verFor = (koId: string): number | undefined =>
+          c.koA === koId ? c.koAVersion : c.koB === koId ? c.koBVersion : undefined;
+        return verFor(aId) === aVer && verFor(bId) === bVer;
+      });
     const subjectCore = coreText(subject);
+    // R-1103: das Gedächtnis aller Paare dieses Laufs in EINEM Abruf.
+    const gemerkt = await this.gemerkteStaende(
+      ranked.map((c) => memoryKey(subject.refId, c.refId)),
+    );
     const created: Conflict[] = [];
     // AUFTRAG-mega29 B1: getrennte Begriffe (s. coverage.ts). `attempted` ist die einzige Zahl, die
     // der Deckel trifft; `selected` sagt, wie viele Ränge der Lauf überhaupt angesehen hat.
@@ -466,7 +550,24 @@ export class ConflictService {
         break; // Deckel erreicht — alles ab hier blieb ungeprüft und wird auch nicht behauptet.
       }
       selected += 1;
-      if (hasOpenPair(subject.refId, cand.refId, subject.version, cand.version)) {
+      const candCore = coreText(cand);
+      const confidential = Boolean(subject.confidential) || Boolean(cand.confidential);
+      const key = memoryKey(subject.refId, cand.refId);
+      const stand = pruefstand(
+        { refId: subject.refId, core: subjectCore },
+        { refId: cand.refId, core: candCore },
+        PROMPT_VERSION,
+        confidential,
+      );
+      const eintrag = gemerkt.get(key);
+      // R-1103/R-1105: offener Befund, gleicher bereits beurteilter Textstand oder menschlich
+      // geschlossener Befund zur selben Fassung — kein neuer Fall, kein erneuter KI-Aufruf. Gezählt
+      // wie ein offener Befund: angesehen (selected), nicht vorgelegt (attempted), kein Deckelplatz.
+      if (
+        hasOpenPair(subject.refId, cand.refId, subject.version, cand.version) ||
+        (eintrag !== undefined && eintrag.stand === stand && eintrag.outcome !== "created") ||
+        menschlichAbgeschlossen(subject.refId, cand.refId, subject.version, cand.version)
+      ) {
         alreadyOpen += 1;
         writeCoverage();
         continue;
@@ -475,11 +576,7 @@ export class ConflictService {
       writeCoverage();
       let result: ConflictVerdict | null | ComparisonJudgement<ConflictVerdict>;
       try {
-        result = await judge(
-          subjectCore,
-          coreText(cand),
-          Boolean(subject.confidential) || Boolean(cand.confidential),
-        );
+        result = await judge(subjectCore, candCore, confidential);
       } catch {
         // Ein Modellfehler darf die Erkennung (und das Einreichen) nie kippen — aber er darf seit
         // AUFTRAG-mega28 A3 auch nicht mehr unsichtbar bleiben: bens JR-2 fand genau hier den
@@ -504,13 +601,13 @@ export class ConflictService {
       const verdict = outcome.verdict;
       completed += 1;
       writeCoverage();
-      const decision = decideFromVerdict(
-        verdict,
-        subjectCore,
-        coreText(cand),
-        options.minConfidence,
-      );
+      const decision = decideFromVerdict(verdict, subjectCore, candCore, options.minConfidence);
       if (!decision.create || decision.type === null) {
+        // Ein gültiges Urteil ohne Befund wird gemerkt. Eine verworfene Modellantwort (Zitat nicht
+        // wörtlich) ist kein Urteil über den Stand — das Paar bleibt prüfbar.
+        if (decision.reason !== "hallucination") {
+          await this.merkeStand(key, stand, "none");
+        }
         continue;
       }
       // Stufe 4: Herkunfts-/Erkennungs-Metadaten mitschreiben (Board zeigt „Automatisch erkannt ·
@@ -519,7 +616,7 @@ export class ConflictService {
       const detector: ConflictDetector = {
         trigger: "validation",
         method: "model",
-        promptVersion: "kon-v1",
+        promptVersion: PROMPT_VERSION,
         confidence: verdict.confidence,
         rationale: verdict.begruendung,
         quotes: { a: verdict.zitat_a, b: verdict.zitat_b },
@@ -529,16 +626,26 @@ export class ConflictService {
         // R-0263: Klaras Vorschlag Widerspruch/Präzisierung, auf die zwei Punkte abgebildet.
         ...(vorschlag ? { vorschlag } : {}),
       };
+      // R-1632 / R-1633: ein Widerspruch zweier Punkte mit VERSCHIEDENER Geltung ist ein
+      // Kontext- (anderer Ort) bzw. Rollenkonflikt (gleicher Ort, andere Rolle) — beide Aussagen
+      // können in ihrem Bereich gelten. Die Beschreibung nennt beide Geltungen. Nur „truth" wird
+      // umgeordnet; ein Versionskonflikt („ueberholt") bleibt, was er ist.
+      const kollision =
+        decision.type === "truth"
+          ? (options.geltungsKollision?.(subject.geltung, cand.geltung) ?? null)
+          : null;
       // D-AISTATE PAKET 4 (bens V5, aistate-fix5): versions-konditionale Aktivierung — Umfang und
       // ehrliche Grenze der Absicherung s. createAutoVersionBound.
       const conflict = await this.createAutoVersionBound(
         {
           koA: subject.refId,
           koB: cand.refId,
-          type: decision.type,
+          type: kollision ? kollision.art : decision.type,
           // R-0252: unabhängig von `type` eingeordnet (detect.ts `arbeitsartAusUrteil`).
           ...(decision.arbeitsart ? { arbeitsart: decision.arbeitsart } : {}),
-          description: autoDescription(verdict),
+          description: kollision
+            ? `${autoDescription(verdict)} ${kollision.vermerk}`
+            : autoDescription(verdict),
           ...(subject.version !== undefined ? { koAVersion: subject.version } : {}),
           ...(cand.version !== undefined ? { koBVersion: cand.version } : {}),
         },
@@ -551,8 +658,48 @@ export class ConflictService {
       }
       created.push(conflict);
       open.push(conflict); // im selben Lauf kein zweiter Konflikt für dasselbe Paar
+      await this.merkeStand(key, stand, "created", conflict.id);
     }
     return created;
+  }
+
+  // Gedächtnisfehler kippen die Erkennung nie: ohne Gedächtnis wird geprüft wie bisher (sichtbar
+  // gemeldet), ein fehlgeschlagenes Merken kostet höchstens einen späteren erneuten KI-Aufruf.
+  private async gemerkteStaende(keys: string[]): Promise<Map<string, PairMemoryEntry>> {
+    const map = new Map<string, PairMemoryEntry>();
+    if (!this.memory) {
+      return map;
+    }
+    try {
+      for (const entry of await this.memory.find(keys)) {
+        map.set(entry.pairKey, entry);
+      }
+    } catch (error) {
+      this.onError("Prüfgedächtnis lesen", error);
+    }
+    return map;
+  }
+
+  private async merkeStand(
+    pairKey: string,
+    stand: string,
+    outcome: PairMemoryOutcome,
+    conflictId?: string,
+  ): Promise<void> {
+    if (!this.memory) {
+      return;
+    }
+    try {
+      await this.memory.put({
+        pairKey,
+        stand,
+        outcome,
+        ...(conflictId !== undefined ? { conflictId } : {}),
+        at: new Date(this.now()).toISOString(),
+      });
+    } catch (error) {
+      this.onError(`Prüfgedächtnis merken (${pairKey})`, error);
+    }
   }
 
   // D-AISTATE PAKET 4 (bens V5, aistate-fix5): VERSIONS-KONDITIONALE Aktivierung eines
@@ -796,7 +943,7 @@ export class ConflictService {
       })().catch((error) => {
         // best-effort: den Lesepfad nie blockieren, aber den Fehler NICHT still schlucken (ein
         // fehlender Audit nach gewinnendem CAS bliebe sonst dauerhaft unsichtbar).
-        this.onError(`superseded audit (${id})`, error);
+        this.onError(`Lese-GC superseded audit (${id})`, error);
       });
     }, 0);
   }

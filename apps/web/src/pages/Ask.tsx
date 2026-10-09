@@ -6,7 +6,12 @@ import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos, useReasonerStatus } from "../api/hooks";
-import type { AnswerResult, VerschlossenHinweis } from "../api/types";
+import type {
+  AnswerResult,
+  AskGeltungsauskunft,
+  Fragekontext,
+  VerschlossenHinweis,
+} from "../api/types";
 import { useToast } from "../app/ToastContext";
 // AUFTRAG-mega69 B1 (bens sammel65-Auflage 1): der Kostenhinweis der Beispiel-Chips läuft über
 // DASSELBE zentrale Bauteil und DIESELBE Ableitung wie alle anderen Auslösestellen — bedingt an
@@ -14,6 +19,7 @@ import { useToast } from "../app/ToastContext";
 import { AiCostHint } from "../components/AiCostHint";
 import { AiGeneratedNotice } from "../components/AiGeneratedNotice";
 import { DemoBanner } from "../components/DemoBanner";
+import { FragekontextWahl, GeltungsAuskunft, fragekontextZumSenden } from "../components/Geltung";
 import { HelpTip } from "../components/HelpTip";
 // AUFTRAG-mega71 BLOCK E (Befund aus mega70 Block E, jetzt frei): diese Fläche trug dieselbe
 // Sackgassen-Fehlerklasse FÜNFFACH — zweimal /validierung (Führungskarte + Prüfvorbehalt-CTA),
@@ -27,6 +33,7 @@ import { RoleLink } from "../components/RoleLink";
 // und Plaketten, Warte- und KI-aus-Zustand. Sie standen bis dahin inline hier.
 import { AntwortPlatzhalter, KiNichtVerfuegbar } from "../components/fragen/Antwortbausteine";
 import { FrageFeld } from "../components/fragen/FrageFeld";
+import { NichtHilfreichKarte } from "../components/fragen/NichtHilfreichKarte";
 import { EVIDENCE_TONE, QuellenListe } from "../components/fragen/QuellenListe";
 import {
   QUELLEN_CHIP_KLASSE,
@@ -66,6 +73,7 @@ import {
 import { selectAnswer } from "../lib/askResponse";
 import { stepsBeyondSources, stepsWorthShowing } from "../lib/askSteps";
 import { answerReviewGuard, evidenzWiederholtStatus } from "../lib/askView";
+import { belegstelleHref } from "../lib/belegstelle";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 // JOB 3267 Q1: der Prüfstand einer Quelle kommt aus der EINEN Ableitung, die auch Bibliothek und
@@ -75,10 +83,14 @@ import { anzeigestatusAus } from "../lib/displayStatus";
 import { conflictKnowledge, effectiveAnswer } from "../lib/effectiveAnswer";
 // Pedi 28.09.2026 · Ergänzung 1: Entwurf und zuletzt angezeigte Antwort bleiben dem Konto erhalten.
 import {
+  type QuellenStand,
+  antwortFrische,
   arbeitsstandLesen,
   arbeitsstandSchreiben,
   belegNochGueltig,
+  beobachtungAus,
   fragenSpeicher,
+  quellenStandAus,
   startadresseMarke,
   startadresseMerken,
   wiederaufnahmeAus,
@@ -88,6 +100,7 @@ import { fadenFuerAnfrage, fadenNachAntwort } from "../lib/gespraechsfaden";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { formatKoTimestamp } from "../lib/koDates";
+import { erkenneNichtHilfreich } from "../lib/nichtHilfreich";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { istIosGeraet } from "../lib/speechSupport";
@@ -246,6 +259,9 @@ const GUIDE_TONE: Record<KnowledgeGuidanceTone, string> = {
 // Parser).
 // `knowledgeClass` wird mit auf „unbekannt" gesetzt, damit kein späterer Leser dieses Zustands
 // eine Klasse für eine Antwort findet, die es nicht gibt.
+// R-0310: „Unter der Antwort … höchstens drei Quellen, weitere als Chip '+N'."
+const QUELLEN_CHIPS_SICHTBAR = 3;
+
 function leereAntwortAlsLuecke(result: AnswerResult): AnswerResult {
   if (!result.answered) {
     return result;
@@ -500,6 +516,17 @@ interface AskAnfrage {
   faden: string[];
   // Ben, Nacharbeit 2: die Fadengeneration beim Absenden — „Neues Thema" zählt sie hoch.
   fadenGeneration: number;
+  // R-1633: der Fragekontext beim Absenden; fehlt er, ist der Aufruf der bisherige.
+  kontext?: Fragekontext;
+}
+
+// R-1649: die erkannte, noch nicht bestätigte Rückmeldung und ihr Ergebnis (s. `Ask`).
+interface NichtHilfreichOffen {
+  koId: string;
+  alternative: string;
+}
+interface NichtHilfreichErledigt {
+  entwurfId: string | null;
 }
 
 export function Ask(): JSX.Element {
@@ -548,6 +575,15 @@ export function Ask(): JSX.Element {
   );
   // Der Zeitpunkt der stehenden Antwort — gespeichert mit ihr, genannt im Hinweis.
   const [antwortAm, setAntwortAm] = useState<string | null>(anfang?.antwort?.angezeigtAm ?? null);
+  // R-0338: der Quellenstand der stehenden Antwort, wie der SERVER ihn meldete, und die Fassungen,
+  // die diese Fläche beim Eintreffen kannte — s. den Auffrischen-Vertrag in
+  // `lib/fragenArbeitsstand.ts` (Regeln 3 und 4).
+  const [quellenStand, setQuellenStand] = useState<QuellenStand | undefined>(
+    anfang?.antwort?.serverQuellenStand,
+  );
+  const [beobachtet, setBeobachtet] = useState<QuellenStand | undefined>(
+    anfang?.antwort?.beobachtet,
+  );
   // R-0474 (Ben, Runde 1, B1): der Router montiert `/fragen` bei einem Wechsel NUR der Adresszeile
   // nicht neu — der Anfangswert oben sah eine zweite Übergabe (`/fragen?q=Alt` → Palette/Hilfe →
   // `/fragen?q=Neu`) also nie, im Feld blieb die alte Frage stehen. Jede NAVIGATION mit `?q=`
@@ -645,6 +681,11 @@ export function Ask(): JSX.Element {
   );
   // Die zuletzt gestellte Frage steht schon in der Fragezeile; aufgezählt werden die früheren.
   const fadenFrueher = faden.filter((frage) => frage !== asked);
+  // R-1633: wofür gefragt wird (Werk/Schicht/Rolle) und die Auskunft des Servers, wofür die
+  // stehende Antwort gewichtet wurde. Die Angabe gilt für diese Sitzung der Seite; sie wird nicht
+  // gespeichert.
+  const [fragekontext, setFragekontext] = useState<Fragekontext>({});
+  const [geltungsAuskunft, setGeltungsAuskunft] = useState<AskGeltungsauskunft | null>(null);
   // Ben, Nacharbeit 2: „Neues Thema" während einer laufenden Nachfrage. Die später eintreffende
   // Antwort darf ihre Frage nicht wieder in den geleerten Faden tragen — sie gehört zum alten
   // Thema. Jede Anfrage trägt die Generation, unter der sie startete (wie `kontoGeneration`).
@@ -785,10 +826,18 @@ export function Ask(): JSX.Element {
   const kontoGeneration = useRef(0);
   const ask = useMutation({
     mutationFn: (anfrage: AskAnfrage) =>
-      // R-0348: ohne Faden genau der bisherige Aufruf.
-      anfrage.faden.length > 0
-        ? endpoints.ask.ask(anfrage.frage, toReasonerLocale(i18n.language), anfrage.faden)
-        : endpoints.ask.ask(anfrage.frage, toReasonerLocale(i18n.language)),
+      // R-1633: mit Fragekontext reist er mit; ohne bleibt es bei den bisherigen Aufrufen.
+      anfrage.kontext
+        ? endpoints.ask.ask(
+            anfrage.frage,
+            toReasonerLocale(i18n.language),
+            anfrage.faden,
+            anfrage.kontext,
+          )
+        : // R-0348: ohne Faden genau der bisherige Aufruf.
+          anfrage.faden.length > 0
+          ? endpoints.ask.ask(anfrage.frage, toReasonerLocale(i18n.language), anfrage.faden)
+          : endpoints.ask.ask(anfrage.frage, toReasonerLocale(i18n.language)),
     // D5: eine schon offene Fläche kennt die Abschaltung noch nicht — der Server hat sie eben
     // gemeldet. Der Status wird neu gelesen, damit der Absendeknopf danach gesperrt ist und der
     // Hinweis dasteht, statt dass der Mensch dieselbe Absage ein zweites Mal abholt.
@@ -833,6 +882,8 @@ export function Ask(): JSX.Element {
       // JOB 2626 D1: dieselbe Bindung wie für Antwort/Receipt/Lücke — die Torlage gehört zu genau
       // einer Frage und darf nie neben dem Ergebnis einer anderen stehen.
       setVerschlossen([]);
+      // R-1633: dieselbe Bindung — die Gewichtungsauskunft gehört zu genau einer Antwort.
+      setGeltungsAuskunft(null);
     },
     // SCRUM-138: Backend liefert { result, gap, receipt } — Antwort + Answer-Receipt entpacken.
     onSuccess: (r, { frage: question, generation, fadenGeneration: fadenStand }) => {
@@ -849,11 +900,21 @@ export function Ask(): JSX.Element {
       }
       setAntwortAm(new Date().toISOString());
       // JOB 2694 D1: eine Antwort ohne Text kommt hier als Lücke an — Begründung am Helfer oben.
-      setResult(leereAntwortAlsLuecke(selectAnswer(r)));
+      // R-0310: `selectAnswer` lässt nur die belegten Absätze stehen (Marke je Absatz; ohne belegten
+      // Absatz die Lücke). Anzeige, Export, Kopieren, Druck und Vorlesen lesen alle diesen Stand.
+      const angekommen = leereAntwortAlsLuecke(selectAnswer(r));
+      setResult(angekommen);
+      // R-0338 (Ben, Nacharbeit 3): die Fassung ihrer Quellen, wie der SERVER sie zu dieser Antwort
+      // gelesen hat — und daneben, getrennt, was diese Fläche gerade von ihnen kennt (nur Untergrenze
+      // für spätere Änderungen, Regel 4 an `antwortFrische`).
+      setQuellenStand(quellenStandAus(angekommen.sources, r.quellenStand));
+      setBeobachtet(beobachtungAus(angekommen.sources, kos.data));
       setReceipt(r.receipt);
       // JOB 2626 D1: abwesend heißt „nicht gefragt oder nichts zu melden" — beides fällt ehrlich
       // auf die leere Liste und damit auf die generische Leermeldung zurück.
       setVerschlossen(r.verschlossen ?? []);
+      // R-1633: abwesend heißt „ohne Fragekontext gefragt" — dann steht keine Auskunft da.
+      setGeltungsAuskunft(r.geltung ?? null);
       // FUNKE-FIX2 P0: die neue Lücke merken (ID für den Capture-Einstieg) und die Gap-Liste
       // invalidieren, damit Capture die frisch erzeugte Lücke über ihre ID auflösen kann (der Ersteller
       // ist berechtigt → Volltext). Kein Fragetext in der URL.
@@ -883,6 +944,35 @@ export function Ask(): JSX.Element {
   // Ben R1, F8: eine WIEDERAUFGENOMMENE Antwort trägt ihren alten Beleg. Ist er abgelaufen, bietet
   // die Fläche die Rückmeldung nicht mehr an, sondern sagt, warum — und wie es wieder geht.
   const belegGueltig = belegNochGueltig(receipt, antwortAm, Date.now());
+  // R-1649: „Das war nicht hilfreich, ich habe es so gemacht …" ins Fragefeld gesprochen — erkannt
+  // beim Absenden (`lib/nichtHilfreich.ts`), gespeichert erst nach der Bestätigung in der Karte.
+  // Ziel ist dieselbe tragende Quelle wie beim „Hat geholfen", mit demselben Beleg.
+  const [nichtHilfreich, setNichtHilfreich] = useState<NichtHilfreichOffen | null>(null);
+  const [nichtHilfreichErledigt, setNichtHilfreichErledigt] =
+    useState<NichtHilfreichErledigt | null>(null);
+  const quelleTitel = (koId: string): string =>
+    (kos.data ?? []).find((ko) => ko.id === koId)?.title ?? koId;
+  const nichtHilfreichMelden = useMutation({
+    mutationFn: ({ koId, alternative }: { koId: string; alternative: string | null }) =>
+      endpoints.ask.notHelpful({
+        koId,
+        receipt,
+        ...(alternative
+          ? {
+              alternative,
+              entwurfTitel: t("sprachfeedback.entwurfTitel", {
+                titel: quelleTitel(koId),
+              }),
+            }
+          : {}),
+      }),
+    onSuccess: (r) => {
+      setNichtHilfreich(null);
+      setNichtHilfreichErledigt({ entwurfId: r.entwurfId });
+      setQ("");
+    },
+    onError: rueckmeldungAbgelehnt,
+  });
 
   // Ergänzung 1 · SCHREIBEN: jede Änderung an Entwurf oder stehender Antwort geht in den Stand
   // DIESES Kontos. Eine neue Frage räumt die alte Antwort in `onMutate` ab — damit ist auch der
@@ -905,11 +995,25 @@ export function Ask(): JSX.Element {
               verschlossen,
               gapId,
               angezeigtAm: antwortAm ?? new Date().toISOString(),
+              ...(quellenStand ? { serverQuellenStand: quellenStand } : {}),
+              ...(beobachtet ? { beobachtet } : {}),
             }
           : null,
       startadressen: gemerkteStartadressen,
     });
-  }, [konto, standFuer, q, result, receipt, verschlossen, gapId, antwortAm, gemerkteStartadressen]);
+  }, [
+    konto,
+    standFuer,
+    q,
+    result,
+    receipt,
+    verschlossen,
+    gapId,
+    antwortAm,
+    quellenStand,
+    beobachtet,
+    gemerkteStartadressen,
+  ]);
 
   // Ergänzung 1 · DIE KENNUNG KOMMT ODER WECHSELT bei stehender Fläche.
   //   · WECHSEL (vorher ein anderes Konto): der Stand des neuen Kontos ersetzt den alten
@@ -961,6 +1065,8 @@ export function Ask(): JSX.Element {
       // R-0348: der Faden gehört zum Konto — er beginnt bei der übernommenen Antwort neu.
       setFaden(antwort?.frage ? [antwort.frage] : []);
       setAntwortAm(antwort?.angezeigtAm ?? null);
+      setQuellenStand(antwort?.serverQuellenStand);
+      setBeobachtet(antwort?.beobachtet);
       setThankedSources(new Set());
     }
     setStartfrageGilt(startfrageBleibt);
@@ -1032,7 +1138,20 @@ export function Ask(): JSX.Element {
   const pruefungGestoert =
     Boolean(result) &&
     (conflictKnown.state === "failed" || kos.isError || (pruefungWiederholt && !pruefungBelegt));
-  const karteSichtbar = Boolean(result) && Boolean(contract) && !pruefungGestoert;
+  // R-0338 — DER AUFFRISCHEN-VERTRAG (Regeln an `antwortFrische`, lib/fragenArbeitsstand.ts): hat
+  // sich eine Quelle der stehenden Antwort seither geändert, steht sie nicht mehr da. Geprüft wird
+  // gegen denselben Bestand, aus dem die Quellenzeilen ihre Titel lesen; er lädt beim Öffnen und
+  // bei Fensterfokus neu. Neu erzeugt wird nichts von selbst — „Neu fragen" stellt die Frage.
+  const antwortUeberholt =
+    result !== null &&
+    antwortFrische(
+      { quellen: result.sources, stand: quellenStand, beobachtet, am: antwortAm },
+      kos.data,
+      // Ben, Nacharbeit 5: wann der Bestand zuletzt erfolgreich geladen wurde (0 = noch nie).
+      kos.dataUpdatedAt,
+    ) === "ueberholt";
+  const karteSichtbar =
+    Boolean(result) && Boolean(contract) && !pruefungGestoert && !antwortUeberholt;
   // Ben R2, F10: welche Sperrgründe liegen in der Torlage WIRKLICH vor — in fester Reihenfolge —,
   // und welcher Prüfweg passt dazu (nur Freigabe und Stufe entstehen in der Prüfung).
   const verschlossenGruende = (["freigabe", "stufe", "volltext"] as const).filter((grund) =>
@@ -1148,14 +1267,19 @@ export function Ask(): JSX.Element {
       // nach dem Absenden offen, stünden Beispieltexte und Hinweise zwischen Feld und Antwort. Sie
       // schliesst deshalb hier — nur bei einem ANGENOMMENEN Absenden, für Feld, Chip und Auto-Ask.
       setBeispiele(false);
+      // R-1649: eine neue Frage beendet eine offene oder erledigte „nicht hilfreich"-Rückmeldung.
+      setNichtHilfreich(null);
+      setNichtHilfreichErledigt(null);
+      const kontext = fragekontextZumSenden(fragekontext);
       ask.mutate({
         frage: trimmed,
         generation: kontoGeneration.current,
         faden: fadenFuerAnfrage(faden, trimmed),
         fadenGeneration: fadenGeneration.current,
+        ...(kontext ? { kontext } : {}),
       });
     },
-    [answerAi.available, ask.isPending, ask.mutate, faden],
+    [answerAi.available, ask.isPending, ask.mutate, faden, fragekontext],
   );
 
   // WP-UX-WOW-1 U2/U3: Beispiel-Chip → Frage setzen UND direkt senden (ein Klick → Antwort).
@@ -1286,6 +1410,38 @@ export function Ask(): JSX.Element {
       pruefstandHinweis: t("ask.pruefstand.hint", { stand: standWort }),
     };
   });
+  // Aufnahme 20260922 · R-0310/R-0325 (Ben zu 8e6c9d73) — DIE QUELLENREIHE UNTER DER ANTWORT.
+  // Sie nennt nur, worauf die Antwort steht: bei tragfähiger Zuordnung die tragenden Quellen (und
+  // jede, deren Marke sichtbar im Text steht — Marke und Chip fallen nie auseinander, JOB 3267 Q7).
+  // Ist die Zuordnung unbekannt, gibt es keine solche Teilmenge; dann bleiben alle mit dem
+  // Kennzeichen „unbekannt" stehen (R-0325: ehrlich benennen). Höchstens drei unmittelbar, weitere
+  // über „+N" (dieselbe Bauform wie das Word-Panel). Die ausführliche Auskunft über ALLE
+  // herangezogenen Quellen bleibt getrennt in der Quellenliste unter „Mehr" (`QuellenListe`).
+  const chipQuellen = zuordnungTragfaehig
+    ? quellenAuskunft.filter((s) => s.carrying || gerenderteMarken.has(s.nummer))
+    : quellenAuskunft;
+  const [alleChips, setAlleChips] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Absichts-Abhängigkeit — je Antwort wieder kurz.
+  useEffect(() => {
+    setAlleChips(false);
+  }, [result]);
+  const sichtbareChips = alleChips ? chipQuellen : chipQuellen.slice(0, QUELLEN_CHIPS_SICHTBAR);
+  const weitereChips = chipQuellen.length - sichtbareChips.length;
+  // Aufnahme 20260922 · antwort-quellenanzeige (R-0326): der Weg aus der Antwort an die Belegstelle.
+  // Eine TRAGENDE Quelle führt auf `/wissen/:id?stelle=…&fassung=…` (lib/belegstelle.ts) — Passage
+  // ist, was der Server als Beleg dieser Quelle zitiert (`steps[].snippet`, sonst ihre Aussage),
+  // Fassung ihre Inhaltsversion; die Lesefläche sucht, markiert und springt dorthin. Eine nur
+  // herangezogene Quelle hat keine tragende Passage und führt auf die blosse Objektadresse.
+  const quellenHref = (id: string): string => {
+    const quelle = quellenAuskunft.find((q) => q.id === id);
+    const ko = kosById.get(id);
+    const zitiert = result?.steps.find((st) => st.sourceId === id)?.snippet ?? ko?.statement ?? "";
+    const stelle =
+      quelle?.carrying && zitiert.trim() !== ""
+        ? { passage: zitiert, fassung: ko?.version ?? null }
+        : null;
+    return demoHref(belegstelleHref(id, stelle), params);
+  };
   const buildExport = (): { markdown: string; filename: string } | null => {
     if (!result?.answered || !effective) {
       return null;
@@ -1427,13 +1583,15 @@ export function Ask(): JSX.Element {
       {/* Ergänzung 1 (Pedi 28.09.2026): beim Wiederkommen steht OBEN, was aufgenommen wurde und wo
           es weitergeht — ein Satz, keine Karte, damit das Fragefeld ohne Bildlauf sichtbar bleibt.
           Die Antwort wird ausdrücklich als NICHT neu erzeugt benannt, mit ihrem Zeitpunkt. */}
-      {wiederaufnahme ? (
+      {/* R-0338: ist die aufgenommene Antwort überholt, steht sie nicht „darunter" — der Satz nennt
+          dann nur den Entwurf, und ohne Entwurf entfällt er (der Überholt-Hinweis sagt den Rest). */}
+      {wiederaufnahme && (wiederaufnahme.entwurf || !antwortUeberholt) ? (
         <div
           data-testid="ask-wiederaufnahme"
           className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-btn bg-page px-3 py-2 text-[12.5px] text-muted"
         >
           <p className="min-w-0 flex-1">
-            {wiederaufnahme.entwurf && wiederaufnahme.antwortAm
+            {wiederaufnahme.entwurf && wiederaufnahme.antwortAm && !antwortUeberholt
               ? // R-0286: die Antwort steht jetzt UNTER dem Feld — der alte Satz sagte „darüber".
                 t("fragenseite.wiederaufnahmeBeides", {
                   zeit: formatKoTimestamp(wiederaufnahme.antwortAm, i18n.language),
@@ -1524,6 +1682,9 @@ export function Ask(): JSX.Element {
             </button>
           </div>
         ) : null}
+        {/* R-1633: „Ich frage für" Werk/Schicht/Rolle — gleich passende Quellen dieses Orts
+            stehen vorn; nichts wird ausgeblendet. Zugeklappt, solange niemand es braucht. */}
+        <FragekontextWahl wert={fragekontext} onWert={setFragekontext} kos={kos.data ?? []} />
         <FrageFeld
           wert={q}
           onWert={setQ}
@@ -1534,6 +1695,23 @@ export function Ask(): JSX.Element {
             // AUFTRAG-mega38 BLOCK J2: der Fehlversuch wird HIER vermerkt — der Knopf ist bei leerer
             // Frage gesperrt, per Eingabetaste kommt man aber sehr wohl bis hierher.
             setEmptyAttempted(q.trim().length === 0);
+            // R-1649: steht eine belegte Antwort mit tragender Quelle da und sagt der Text „nicht
+            // hilfreich", wird nicht gefragt, sondern die Bestätigung gezeigt. Ohne gültigen Beleg
+            // bleibt es eine gewöhnliche Frage — eine Rückmeldung ginge dann ohnehin ins 403.
+            // Das Diktat HÄNGT AN: nach einer Antwort steht deren Frage noch im Feld, und der
+            // gesprochene Satz folgt dahinter. Gelesen wird deshalb nur, was neu dazukam.
+            const tragend = result?.answered ? (result.citedSources ?? [])[0] : undefined;
+            const frageVorher = antwortFrage.current;
+            const gesagt =
+              frageVorher && q.trimStart().startsWith(frageVorher)
+                ? q.trimStart().slice(frageVorher.length)
+                : q;
+            const erkannt = tragend && belegGueltig ? erkenneNichtHilfreich(gesagt) : null;
+            if (tragend && erkannt) {
+              setNichtHilfreichErledigt(null);
+              setNichtHilfreich({ koId: tragend, alternative: erkannt.alternative });
+              return;
+            }
             submitAsk(q);
           }}
           // E2E-018 / AUFTRAG-mega39 BLOCK G: „ungültig" erst NACH dem Fehlversuch — im Takt mit der
@@ -1560,6 +1738,42 @@ export function Ask(): JSX.Element {
         >
           {answerAi.available && emptyAttempted && q.trim().length === 0 ? t("ask.emptyHint") : ""}
         </output>
+        {nichtHilfreich ? (
+          <NichtHilfreichKarte
+            key={`${nichtHilfreich.koId}:${nichtHilfreich.alternative}`}
+            quelleTitel={quelleTitel(nichtHilfreich.koId)}
+            alternative={nichtHilfreich.alternative}
+            laeuft={nichtHilfreichMelden.isPending}
+            onBestaetigen={(alternative) =>
+              nichtHilfreichMelden.mutate({ koId: nichtHilfreich.koId, alternative })
+            }
+            onAlsFrage={() => {
+              setNichtHilfreich(null);
+              submitAsk(q);
+            }}
+            onVerwerfen={() => setNichtHilfreich(null)}
+          />
+        ) : null}
+        {nichtHilfreichErledigt ? (
+          <output
+            data-testid="ask-nicht-hilfreich-erledigt"
+            className="mt-3 block text-[13px] text-muted"
+          >
+            {nichtHilfreichErledigt.entwurfId
+              ? t("sprachfeedback.erledigtMitEntwurf")
+              : t("sprachfeedback.erledigt")}{" "}
+            {nichtHilfreichErledigt.entwurfId ? (
+              <RoleLink
+                to={`/erfassen?draft=${encodeURIComponent(nichtHilfreichErledigt.entwurfId)}`}
+                testId="ask-nicht-hilfreich-entwurf"
+                className="inline-flex items-center gap-1 font-semibold text-brand-text"
+                hoverClassName="hover:underline"
+              >
+                {() => t("sprachfeedback.entwurfOeffnen")}
+              </RoleLink>
+            ) : null}
+          </output>
+        ) : null}
         <span className="block [&:not(:empty)]:mt-3">
           {/* ====================================================================================
             JOB 4224 · D5, LIEFERUNG 5 — DIE LAGE ZU NENNEN IST NICHT DASSELBE WIE EINEN WEG ZU
@@ -1779,6 +1993,31 @@ export function Ask(): JSX.Element {
             </Button>
           </div>
         ) : null}
+        {/* R-0338: eine überholte Antwort wird nicht gezeigt — ein Satz und genau eine Aktion. */}
+        {antwortUeberholt && !pruefungGestoert ? (
+          // `<output>` statt `role="status"` (a11y/useSemanticElements) — wie die übrigen Live-Sätze
+          // dieser Seite; Inhalt deshalb als Fließinhalt (`span` statt `p`).
+          <output
+            data-testid="ask-antwort-ueberholt"
+            className="mt-5 block rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-5"
+          >
+            <span className="block text-[13px] text-trust-warn-text">
+              {t("fragenseite.antwortUeberholt", {
+                zeit: antwortAm ? formatKoTimestamp(antwortAm, i18n.language) : "",
+              })}
+            </span>
+            <Button
+              className="mt-3"
+              variant="ghost"
+              data-testid="ask-neu-fragen"
+              disabled={!answerAi.available || ask.isPending}
+              onClick={() => submitAsk(asked)}
+            >
+              {t("fragenseite.neuFragen")}
+              <ArrowRight size={14} />
+            </Button>
+          </output>
+        ) : null}
         {/* Eine ANDERE Frage räumt die alte Antwort ab (`onMutate`) — sie gehört zu einer anderen
             Frage, und stehenzubleiben hieße, sie als Antwort auf die neue auszugeben. DIESELBE
             Frage frischt nur auf: dann bleibt die Antwort stehen (Korrekturpflicht 2). */}
@@ -1963,17 +2202,17 @@ export function Ask(): JSX.Element {
                     Quelle UNBEKANNT (das Wissensobjekt liegt der Fläche nicht vor), steht KEIN
                     Punkt — „unbekannt" ist etwas anderes als „in Ordnung", und die volle Auskunft
                     dazu steht im Info-Blatt unter „Mehr". */}
-                  {quellenAuskunft.length > 0 ? (
+                  {chipQuellen.length > 0 ? (
                     <div
                       data-testid="ask-quellen-chips"
                       className="flex flex-wrap gap-2 border-t border-hairline pt-3.5"
                     >
-                      {quellenAuskunft.map((s) => {
+                      {sichtbareChips.map((s) => {
                         const punkt = chipPunkt(s);
                         return (
                           <Link
                             key={s.id}
-                            to={demoHref(`/wissen/${s.id}`, params)}
+                            to={quellenHref(s.id)}
                             data-testid="ask-quellen-chip"
                             data-tutorial-ziel={FRAGEN_ZIEL.quellenchip}
                             className={QUELLEN_CHIP_KLASSE}
@@ -1995,7 +2234,27 @@ export function Ask(): JSX.Element {
                           </Link>
                         );
                       })}
+                      {weitereChips > 0 ? (
+                        <button
+                          type="button"
+                          data-testid="ask-quellen-chip-mehr"
+                          aria-label={t("ask.quellen.weitere", { count: weitereChips })}
+                          onClick={() => setAlleChips(true)}
+                          className={QUELLEN_CHIP_KLASSE}
+                        >
+                          +{weitereChips}
+                        </button>
+                      ) : null}
                     </div>
+                  ) : null}
+                  {/* R-1633 — „Sichtbar im UI": wofür gewichtet wurde und wie jede herangezogene
+                    Quelle dazu passt. Nur wenn mit Fragekontext gefragt wurde; die Passung sagt
+                    der Server (dieselbe Rechnung, die die Reihenfolge bestimmt hat). */}
+                  {geltungsAuskunft ? (
+                    <GeltungsAuskunft
+                      auskunft={geltungsAuskunft}
+                      titelVon={(id) => quellenAuskunft.find((s) => s.id === id)?.label ?? id}
+                    />
                   ) : null}
                   {/* §5: das „…" rechts oben IN der Antwortkarte. Absolut gesetzt, damit es die
                     Reihenfolge der Inhaltselemente nicht verschiebt (D-047). */}
@@ -2216,6 +2475,9 @@ export function Ask(): JSX.Element {
                         {stepsWorthShowing(result.steps, answerSources) ? (
                           <div className="mt-4">
                             <SectionLabel>{t("ask.steps")}</SectionLabel>
+                            {/* R-0888 (gesamt-hilfen, Nacharbeit 13): Abschnittserklärung in der
+                                Seitenhilfe, solange der Abschnitt steht. */}
+                            <HelpTip title={t("ask.steps")} body={t("shelp.ask.steps")} />
                             <ul className="space-y-2">
                               {stepsBeyondSources(result.steps, answerSources).map((s) => (
                                 <li
@@ -2226,7 +2488,7 @@ export function Ask(): JSX.Element {
                             der Bibliothek — so kommt man aus der Antwort schnell zum Artikel. */}
                                   {s.sourceId ? (
                                     <Link
-                                      to={demoHref(`/wissen/${s.sourceId}`, params)}
+                                      to={quellenHref(s.sourceId)}
                                       className="inline-flex items-center gap-1 font-medium text-brand-text hover:underline"
                                     >
                                       <span className="text-text">{s.description}</span>
@@ -2254,7 +2516,7 @@ export function Ask(): JSX.Element {
                           <QuellenListe
                             quellen={quellenAuskunft}
                             zuordnungTragfaehig={zuordnungTragfaehig}
-                            wissenHref={(id) => demoHref(`/wissen/${id}`, params)}
+                            wissenHref={quellenHref}
                             bildfundstelle={(id) => result.captionSources?.includes(id) ?? false}
                             koVon={(id) => (kos.data ?? []).find((k) => k.id === id)}
                             autorVon={authorNameOf}
@@ -2346,6 +2608,13 @@ export function Ask(): JSX.Element {
               </div>
             ) : (
               <Card className="mt-3 border-dashed" data-testid="ask-gap">
+                {/* R-0310/R-0325 (Ben zu 8e6c9d73): die Antwort ist zurückgehalten, weil sich keine
+                  tragende Quelle zuordnen ließ — das wird gesagt, der unbelegte Text nicht gezeigt. */}
+                {result.zuordnungUnbekannt ? (
+                  <p data-testid="ask-zuordnung-unbekannt" className="mb-3 text-sm text-muted">
+                    {t("ask.zuordnungUnbekannt")}
+                  </p>
+                ) : null}
                 {verschlossen.length > 0 ? (
                   <>
                     <div className="mb-3" data-testid="ask-verschlossen">

@@ -31,6 +31,7 @@ import {
   useLifecyclePending,
   useValidationBoard,
 } from "../../api/hooks";
+import { useSession } from "../../app/AuthContext";
 import { cx } from "../ui";
 import { type ReiterZaehler, reiterZaehler, zaehlerQuelle } from "./zaehler";
 
@@ -77,6 +78,12 @@ export function PruefenKopf({
   const { t } = useTranslation();
   const zaehler = useReiterZaehler();
   const anker = REITER.find((r) => r.id === aktiv);
+  // R-0563 / R-0551: in welcher Rolle hier geprüft wird — die ECHTE Rolle der laufenden Sitzung,
+  // nicht die Ansicht einer Rollenvorschau. Nur sie entscheidet am Server, wer urteilt. Ohne
+  // bestätigte Sitzung (`/auth/me` lädt oder scheitert) steht hier nichts: aus einem unbekannten
+  // Zustand entsteht keine Aussage über Verantwortung.
+  const { user } = useSession();
+  const sitzungsRolle = user?.role ?? null;
   return (
     <div
       data-testid={anker ? `page-${anker.pageKey}` : undefined}
@@ -87,6 +94,11 @@ export function PruefenKopf({
           {t("pruefen.title")}
         </h1>
         {hilfe}
+        {sitzungsRolle ? (
+          <span data-testid="pruefen-handelt-als" className="ml-2 text-[12.5px] text-muted">
+            {t("pruefen.handeltAls", { role: t(`role.name.${sitzungsRolle}`) })}
+          </span>
+        ) : null}
       </div>
       <div className="flex items-center gap-2">
         <nav

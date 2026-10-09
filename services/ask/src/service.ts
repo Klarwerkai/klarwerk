@@ -1,13 +1,19 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import {
+  type Fragekontext,
+  type GelernteHalbwertszeiten,
+  type GeltungsPassung,
   type KnowledgeObject,
+  type KoGeltung,
   type KoService,
   SUCH_ZUORDNUNGEN,
   type SuchZuordnung,
   type WithTx,
   dropConfidential,
   expandSearchTerms,
+  geltungFuerFrage,
+  haltbarkeitAbgelaufen,
   isConfidential,
   normalizeSearchTerms,
 } from "../../knowledge-object";
@@ -25,6 +31,7 @@ import {
   waehleKandidaten,
 } from "../../reasoner";
 import { TRUST_MAX } from "../../validation";
+import { type AnsprechpartnerAuskunft, leiteAnsprechpartnerAb } from "./ansprechpartner";
 import { gapCompareKey, normalizeGapQuestion } from "./gap-text";
 import { type GapSummary, summarizeGaps } from "./gap-visibility";
 import { signAnswerReceipt, verifyAnswerReceipt } from "./receipt";
@@ -370,6 +377,10 @@ export interface AskServiceDeps {
   audit?: AuditService;
   now?: () => number;
   genId?: () => string;
+  // aufnahme:20260922:gesamt-wissen-frische (R-1636): die aus der Bewährungs-Historie gelernten
+  // Halbwertszeiten je Kategorie (`KoService.gelernteHalbwertszeiten`). Fehlt der Zugang, gilt für
+  // die Haltbarkeit (R-0248) die Vorgabe je Wissensart — dieselbe Regel, nur ohne Lernstand.
+  halbwertszeiten?: () => Promise<GelernteHalbwertszeiten>;
   // FUNKE-FIX P0 (bens ROT-1): HMAC-Secret für den opaken Answer-Receipt. Fehlt es, wird ein
   // prozess-lokales Zufalls-Secret erzeugt (single-process Monolith; Belege sind kurzlebig). Für
   // Mehr-Instanz-/deterministische Testläufe kann es injiziert werden (build-app: optional aus ENV).
@@ -444,6 +455,14 @@ export interface AskResult {
   // FUNKE-FIX P0 (bens ROT-1): opaker Beleg über (Nutzer + ausgelieferte Quell-KOs). Der Client
   // reicht ihn beim „Danke" (/api/ask/helpful) zurück; der Server verifiziert die Quellen-Bindung.
   receipt: string;
+  /**
+   * R-0338 (Aufnahme gesamt-suchindex-aktualitaet, Ben Nacharbeit 3): die Fassung JEDER
+   * herangezogenen Quelle (`result.sources`), so wie DIESE Antwort sie gelesen hat — aus denselben
+   * Objekten, die an den Antwortweg gingen, nicht aus einem Bestand des Browsers. Grundlage des
+   * Auffrischen-Vertrags der Fragenseite (`apps/web/src/lib/fragenArbeitsstand.ts`). Optional,
+   * damit ältere Aufrufer und Doubles gültig bleiben; dieser Dienst setzt es immer.
+   */
+  quellenStand?: Record<string, number>;
   // ==============================================================================================
   // AUFTRAG-mega77 BLOCK A — HIER STAND `ungeprueftUnterdrueckt`, UND ER IST ENTFERNT.
   // ==============================================================================================
@@ -537,6 +556,17 @@ export interface AskResult {
   // bleibt fuer ihn die ehrliche Auskunft. Die Sperrlogik selbst ist unberuehrt
   // (E-VERTRAULICHKEIT-OHNE-STUFE-20260828: erklaeren ja, sperren oder entsperren nein).
   verschlossen?: VerschlossenHinweis[];
+  // R-1633 — WOFÜR GEWICHTET WURDE, SICHTBAR. Nur wenn der Fragende einen Fragekontext angegeben
+  // hat (Werk/Schicht/Rolle); sonst fehlt das Feld vollständig. Je herangezogener Quelle
+  // (`result.sources`, also nach Sichtbarkeits-, Vertraulichkeits- und Freigabefilter) ihre Geltung
+  // und wie sie zum Kontext passt — dieselbe Rechnung, die die Rangfolge bestimmt hat.
+  geltung?: AskGeltungsauskunft;
+}
+
+/** R-1633: der Fragekontext und je Quelle ihre Geltung und Passung (Regel: `geltungFuerFrage`). */
+export interface AskGeltungsauskunft {
+  fragekontext: Fragekontext;
+  quellen: { id: string; passung: GeltungsPassung; geltung?: KoGeltung }[];
 }
 
 /**
@@ -625,6 +655,7 @@ export class AskService {
   private readonly audit: AuditService | undefined;
   private readonly now: () => number;
   private readonly genId: () => string;
+  private readonly halbwertszeiten: (() => Promise<GelernteHalbwertszeiten>) | undefined;
   private readonly receiptSecret: Buffer;
   private readonly withTx: WithTx | undefined;
   /** W3-C1: der Beleg-Schreibweg. `undefined` heisst: dieser Aufbau schreibt keine Snapshots. */
@@ -646,6 +677,7 @@ export class AskService {
     this.audit = deps.audit;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
+    this.halbwertszeiten = deps.halbwertszeiten;
     // FUNKE-FIX P0: ohne injiziertes Secret ein prozess-lokales Zufalls-Secret — Belege sind
     // kurzlebig, das Secret verlässt den Server nie.
     this.receiptSecret = deps.receiptSecret ?? randomBytes(32);
@@ -869,6 +901,13 @@ export class AskService {
        * von der Route, und nur im Konsolenzweig.
        */
       gespraechsfaden?: readonly string[];
+      /**
+       * R-1633: wofür gefragt wird (Werk/Schicht/Rolle), bereits geprüft (`normalizeFragekontext`).
+       * Wirkung: je Kandidat ein `geltungsrang`, der unter GLEICH relevanten Quellen ordnet
+       * (Regel an `rankCandidates`), und die Auskunft `geltung` an der Antwort. Gesetzt nur von
+       * der Route, und nur im Konsolenzweig — wie der Gesprächsfaden.
+       */
+      fragekontext?: Fragekontext;
     },
     // produkt:20261007:spaces — WAS DER FRAGENDE ÜBERHAUPT SEHEN DARF, als fertige Entscheidung der
     // Route (`sichtbarkeitsfilterFuer`, samt führendem Space). Bewusst ein EIGENER Parameter und
@@ -970,6 +1009,12 @@ export class AskService {
             .map((ko) => ({ id: ko.id, title: ko.title, status: ko.status })),
         }
       : {};
+    // R-1633: der Fragekontext (Werk/Schicht/Rolle) — ohne ihn ist der Ablauf der bisherige.
+    const fragekontext = opts?.fragekontext;
+    // aufnahme:20260922:gesamt-wissen-frische (R-0248): EIN Zeitpunkt für alle Quellen dieser Frage.
+    const jetzt = this.now();
+    // R-1636: die gelernte Halbwertszeit der Kategorie bestimmt die Frist mit.
+    const gelernt = await this.halbwertszeiten?.();
     // D5: die Suchprojektion trägt den Dokumenttext — ein weiterer inhaltlesender Schritt.
     this.pruefeKiSperre("suchprojektion", kiBeginn);
     const refs: KnowledgeRef[] = await Promise.all(
@@ -994,6 +1039,15 @@ export class AskService {
           // Kontextpfad mit (captionTexts-Suchfeld — kein bodyHtml-Vollload, kein neuer Scanner).
           ...(ko.captionTexts?.length ? { captionTexts: ko.captionTexts } : {}),
           ...(projektion?.bodyText.trim() ? { bodyText: projektion.bodyText } : {}),
+          // R-1633: nur mit Fragekontext — dann ordnet der Rang an BEIDEN Toren (dieselben Refs).
+          ...(fragekontext
+            ? { geltungsrang: geltungFuerFrage(ko.geltung, fragekontext).rang }
+            : {}),
+          // R-0248: nach Fristende nicht mehr „gesichert" (answerStanding), bis der Verantwortliche
+          // bestätigt. Nur an validierten Quellen gesetzt — ungeprüfte sind ohnehin nicht gesichert.
+          ...(ko.status === "validiert" && haltbarkeitAbgelaufen(ko, jetzt, gelernt)
+            ? { haltbarkeitAbgelaufen: true as const }
+            : {}),
         };
       }),
     );
@@ -1126,6 +1180,34 @@ export class AskService {
       );
     });
     const result = { ...resultCore, captionSources };
+    // R-0338: die gelesene Fassung jeder herangezogenen Quelle — aus `prefiltered`, den Objekten,
+    // aus denen die Antwort entstand. Eine Quelle ohne Objekt dort (nicht erwartbar) fehlt im Stand;
+    // die Fläche behandelt eine Antwort mit unvollständigem Stand dann wie eine ohne Stand.
+    const quellenStand: Record<string, number> = {};
+    for (const id of result.sources) {
+      const fassung = prefiltered.find((ko) => ko.id === id)?.version;
+      if (fassung !== undefined) {
+        quellenStand[id] = fassung;
+      }
+    }
+    // R-1633 — „Sichtbar im UI": je herangezogener Quelle Geltung und Passung, aus denselben
+    // Objekten (`prefiltered`) und derselben Regel, die den Rang gesetzt hat. Ohne Kontext fehlt
+    // das Feld; eine Quelle ohne Objekt in `prefiltered` gilt als ohne Geltungsangabe.
+    const geltungFeld: { geltung?: AskGeltungsauskunft } = fragekontext
+      ? {
+          geltung: {
+            fragekontext,
+            quellen: result.sources.map((id) => {
+              const g = prefiltered.find((ko) => ko.id === id)?.geltung;
+              return {
+                id,
+                passung: geltungFuerFrage(g, fragekontext).passung,
+                ...(g ? { geltung: g } : {}),
+              };
+            }),
+          },
+        }
+      : {};
     // JOB 2626 D1 — DIE TORLAGE, wenn es keine Antwort gab (Vertrag und Grenzen am Feld
     // `AskResult.verschlossen`). Gerechnet wird auf `dropConfidential(prefilteredRaw)` — derselbe
     // Schnitt wie bei `ungeprueft` eine Seite weiter oben: NIE ueber Vertrauliches, NUR was der
@@ -1211,7 +1293,16 @@ export class AskService {
       // liefert das oben emittierte metadata-only ask.query-Audit (trägt Actor + answered=false, keinen
       // Text). Ohne die Option bleibt der Pfad byte-identisch: Gap anlegen.
       if (opts?.gapPolicy === "count_only") {
-        return { result, answerId, gap: null, receipt, ...ungeprueftFeld, ...verschlossenFeld };
+        return {
+          result,
+          answerId,
+          gap: null,
+          receipt,
+          quellenStand,
+          ...ungeprueftFeld,
+          ...verschlossenFeld,
+          ...geltungFeld,
+        };
       }
       // GAP-SPRACHHERKUNFT: `locale` steuert schon die Antwortsprache des Reasoners und liegt hier
       // ohnehin vor — es ging bisher nur verloren. Mitgegeben, damit die Oberfläche einen
@@ -1223,9 +1314,27 @@ export class AskService {
       const gap = await this.createGap(frageImZusammenhang, actorId, opts?.demoSeed, locale, () =>
         this.pruefeKiSperre("ergebnis", kiBeginn),
       );
-      return { result, answerId, gap, receipt, ...ungeprueftFeld, ...verschlossenFeld };
+      return {
+        result,
+        answerId,
+        gap,
+        receipt,
+        quellenStand,
+        ...ungeprueftFeld,
+        ...verschlossenFeld,
+        ...geltungFeld,
+      };
     }
-    return { result, answerId, gap: null, receipt, ...ungeprueftFeld, ...verschlossenFeld };
+    return {
+      result,
+      answerId,
+      gap: null,
+      receipt,
+      quellenStand,
+      ...ungeprueftFeld,
+      ...verschlossenFeld,
+      ...geltungFeld,
+    };
   }
 
   /**
@@ -1461,6 +1570,53 @@ export class AskService {
     );
   }
 
+  // R-1649 (ROADMAP 7.3): „Das war nicht hilfreich, ich habe es so gemacht …" — die NEGATIV-
+  // BEWÄHRUNG zu genau der tragenden Quelle einer Antwort, an die sich ein abweichender Weg als
+  // Wissensentwurf anschliessen kann. Dieselbe Bindung wie `markHelpful`: ohne gültigen Answer-Receipt,
+  // der GENAU dieses KO diesem Nutzer als Quelle belegt, wird nichts geschrieben (403) — auch kein
+  // Entwurf. Erst danach läuft `entwurf` (vom Aufrufer, die Route kennt den Erfassungsdienst), und
+  // seine Kennung reist in den Audit-Beleg: so ist der neue Entwurf mit dem misslungenen Vorschlag
+  // verbunden.
+  // Bewusst KEIN Trust-Abzug und keine Prüfstimme: die Rückmeldung wird registriert, nicht als Urteil
+  // über die Gültigkeit vollzogen. Genau ein Beleg je Person und Objekt (recordOnce); eine spätere
+  // zweite Meldung derselben Person legt ihren Entwurf trotzdem an — neues Wissen geht nicht verloren
+  // —, schreibt aber keinen zweiten Beleg (`vermerkt: false`).
+  async markNotHelpful(
+    receipt: string,
+    koId: string,
+    actor: string,
+    entwurf?: () => Promise<string>,
+  ): Promise<{ vermerkt: boolean; entwurfId: string | null }> {
+    const bound = verifyAnswerReceipt(this.receiptSecret, receipt, this.now());
+    if (!bound || bound.userId !== actor || !bound.sources.includes(koId)) {
+      throw new AskError("FORBIDDEN", "Kein gültiger Antwort-Beleg für dieses Wissensobjekt.");
+    }
+    const ko = await this.koService.get(koId);
+    if (!ko || ko.deletedAt) {
+      throw new AskError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    const entwurfId = entwurf ? await entwurf() : null;
+    const audit = this.audit;
+    if (!audit) {
+      // Degenerationsfall ohne Audit (Dev/Tests): es gibt keinen Ort, an dem der Vermerk stünde.
+      return { vermerkt: false, entwurfId };
+    }
+    const vermerkt = await this.serializeHelpful(() =>
+      audit.recordOnce(`answer.not_helpful:${actor}:${koId}`, {
+        actor,
+        action: "answer.not_helpful",
+        target: koId,
+        payload: {
+          koTitle: ko.title,
+          koAuthor: ko.author,
+          koOriginalAuthor: ko.originalAuthor || ko.author,
+          ...(entwurfId ? { entwurfId } : {}),
+        },
+      }),
+    );
+    return { vermerkt, entwurfId };
+  }
+
   // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): der gekoppelte Kern des „Danke". recordOnce (Event-CAS) und
   // der atomare Trust-Inkrement liegen in DERSELBEN Persistenz-Transaktion (gemeinsamer TxContext), so
   // dass entweder BEIDE oder KEINE wirksam werden. Fail-forward: schlägt der Trust-Schritt fehl, rollt
@@ -1615,6 +1771,35 @@ export class AskService {
       }
     }
     return { bezug, geprueft: geprueft.length, offen: offene.length };
+  }
+
+  /**
+   * R-1663 / R-2178 — passende Ansprechpartner zu EINER Lücke, begründet aus Wissensspuren
+   * (Regeln in `ansprechpartner.ts`).
+   *
+   * Die Objektgrundlage ist dieselbe Rechnung wie bei `offeneLueckenZu`: die deterministische
+   * Vorauswahl über die Inhaltstoken der Frage — KEIN KI-Aufruf, KEIN Schreiben, keine neue
+   * Zuordnungsregel. Davon zählen nur die `DEFAULT_TOP_K` relevantesten Objekte, die der Betrachter
+   * sehen darf (`sichtbar`, die fertige Entscheidung der Route) und die NICHT vertraulich sind: eine
+   * Person darf nicht deshalb vorgeschlagen werden, weil sie an vertraulichem Wissen beteiligt ist —
+   * schon der Vorschlag verriete dessen Existenz.
+   *
+   * Der Fragetext verlässt diese Methode nicht; die Antwort trägt nur Kennungen, Zahlen und die
+   * Titel sichtbarer Objekte.
+   */
+  async ansprechpartnerZuLuecke(
+    id: string,
+    opts: { readonly sichtbar: (ko: KnowledgeObject) => boolean },
+  ): Promise<AnsprechpartnerAuskunft> {
+    const gap = await this.require(id);
+    const frageterme = queryTokens(gap.question);
+    const objekte = dropConfidential(await this.prefilterCandidates(frageterme, undefined))
+      .filter((ko) => opts.sichtbar(ko))
+      .slice(0, DEFAULT_TOP_K);
+    const geschlosseneLuecken = (await this.listGaps())
+      .filter((g) => g.id !== gap.id && g.status === "geschlossen" && g.assignee)
+      .map((g) => ({ assignee: g.assignee as string, terme: queryTokens(g.question) }));
+    return leiteAnsprechpartnerAb({ frageterme, objekte, geschlosseneLuecken });
   }
 
   // SCRUM-115 / FE-RISK: aggregierte Zähler der offenen Lücken — NUR Zahlen, KEIN Fragetext. Die

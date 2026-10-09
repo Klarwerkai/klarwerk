@@ -43,8 +43,10 @@ export { confirmedSourceAnchor } from "./src/source-anchor";
 export type { AnchorCandidateAttachment } from "./src/source-anchor";
 // P-WIKI-STELLENBEZUG: die Form einer Stelle im Text (Route) und ihre Prüfung (Dienst).
 export {
+  STELLE_SEITE_MAX,
   STELLE_TEXT_MAX,
   leseStelle,
+  stelleAmAnhang,
   stelleImInhalt,
   stellenbloeckeAusHtml,
 } from "./src/stellen-anker";
@@ -359,6 +361,20 @@ export type {
 } from "./src/dokumentakte";
 // AUFNAHME 20260922 · Prüfbasis-Aktualität: die EINE Regel, wann ein Prüfnachweis überholt ist.
 export { gleichePruefbasis, pruefbasisVon } from "./src/pruefbasis";
+// R-1632 / R-1633 (gesamt-standortwissen): die EINE Geltungsregel für Speichern, Fragen und Erkennung.
+export {
+  GELTUNG_TEXT_MAX,
+  GELTUNGS_EBENEN,
+  geltungFuerFrage,
+  geltungsKollision,
+  geltungsText,
+  normalizeFragekontext,
+  normalizeGeltung,
+  type Fragekontext,
+  type GeltungsEbene,
+  type GeltungsPassung,
+  type KoGeltung,
+} from "./src/geltung";
 // SCRUM-421: einstellbare Upload-Grenzen (persistiert).
 export {
   type UploadLimits,
@@ -384,6 +400,24 @@ export {
   type Eingangsbefund,
   type Erhoben,
 } from "./src/display-status";
+// aufnahme:20260922:gesamt-wissen-frische: die EINE Frische-/Schutzableitung. `discloseFrische` liest
+// die Kompositionswurzel an beiden Lesewegen, `haltbarkeitAbgelaufen` der Fragepfad (R-0248).
+// `fristHinweiseFuer` und `aeltesteVorlageFuer` liest die persönliche Zustellung in der Glocke
+// (R-0248 / R-0266, services/app/src/frische-meldungen.ts).
+// Nacharbeit 5 (R-1636/R-0248): die Postgres-Ablage des festgehaltenen Lernverlaufs — die
+// Kompositionswurzel reicht sie dem KoService herein (Tabelle in `KO_VERSIONS_SCHEMA`).
+export {
+  InMemoryHalbwertszeitVerlauf,
+  PgHalbwertszeitVerlauf,
+  type HalbwertszeitVerlaufRepo,
+} from "./src/halbwertszeit-verlauf";
+export {
+  aeltesteVorlageFuer,
+  discloseFrische,
+  fristHinweiseFuer,
+  haltbarkeitAbgelaufen,
+  type GelernteHalbwertszeiten,
+} from "./src/frische";
 // JOB 557 (Pedi 13.08.2026): das kanonische Eigentümer-Aggregat. OHNE diesen Export bliebe es
 // unerreichbar — und damit genau die unverdrahtete Empfangsstelle, die D5 gerügt hat. Der
 // Validierungsdienst liest `responsibleOf`/`responsibleKindOf` über DIESE Fassade; eine Kante in
@@ -434,6 +468,8 @@ export type {
   KoComment,
   // P-WIKI-STELLENBEZUG: der Anker einer Rückfrage im Text.
   KoCommentStelle,
+  // PLAN-SPRACHANMERKUNG: die Position einer Notiz in einer Zeichnung.
+  KoStellenPunkt,
   KoAttachment,
   // R-0163: die Quellidentität eines übernommenen Anhangs.
   KoAnhangsquelle,

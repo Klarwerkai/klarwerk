@@ -2215,6 +2215,10 @@ const en: typeof de = {
     "The sources listed first carried the answer; the rest were consulted but not used.",
   "ask.attribution.unknown":
     "Which of these sources carried the answer could not be determined — the AI returned no usable source references. The list therefore shows all consulted sources without a marker, and “This helped” is not available here.",
+  // R-0310/R-0325: the answer is withheld because no paragraph could be attributed to a source.
+  "ask.quellen.weitere": "Show {{count}} more sources",
+  "ask.zuordnungUnbekannt":
+    "No answer is shown: it could not be attributed to any source. A paragraph without a source is not output.",
   // JOB 3267 Q1 — three states, three words, plus a fourth for the review status (see the German
   // entry for the finding this fixes).
   "ask.attribution.carrying.badge": "used",
@@ -2858,6 +2862,7 @@ const en: typeof de = {
   "ko.attachmentPreviewUnavailable": "No preview available",
   "ko.attachmentOriginalUnavailable": "Original unavailable",
   "pruefen.title": "Review",
+  "pruefen.handeltAls": "You are reviewing as {{role}}",
   "pruefen.tab.offen": "Open",
   "pruefen.tab.konflikte": "Conflicts",
   "pruefen.tab.duplikate": "Duplicates",
@@ -3183,6 +3188,7 @@ const en: typeof de = {
   "con.openKo": "Open object",
   "con.compareOpen": "Compare both",
   "con.readonlyCompare": "Read-only comparison",
+  "con.caseList": "All open conflicts ({{count}})",
   "con.detectedOn": "Detected on {{date}}",
   "con.evidenceSideLabel": "Evidence for this side",
   "con.evidenceBalance.neither":
@@ -3431,6 +3437,11 @@ const en: typeof de = {
   "lib.lesemodus.listeEinblenden": "Show result list",
   "lib.lesemodus.listeAusblenden": "Hide result list",
   "lib.lesen.mehr": "More",
+  "lib.lesen.belegstelle.markiert": "Supporting passage highlighted.",
+  "lib.lesen.belegstelle.nichtGefunden":
+    "The cited passage does not appear verbatim in this version of the text.",
+  "lib.lesen.belegstelle.andereFassung":
+    "The passage belongs to version {{fassung}}; this is version {{aktuell}}. Nothing is highlighted.",
   "lib.lesen.bilder_one": "{{count}} image",
   "lib.lesen.bilder_other": "{{count}} images",
   "lib.lesen.fehler": "The entry could not be loaded.",
@@ -4669,6 +4680,22 @@ const en: typeof de = {
   "mob.photo": "Photo",
   "mob.interview": "Interview",
   "mob.lookup": "Look up",
+  "mob.modusGruppe": "Capture type",
+  "mob.modusGesperrt": "Save or clear first, then switch the capture type.",
+  "mob.iv.frage1": "What is this about? State the core message in one sentence.",
+  "mob.iv.frage2": "Under what conditions or from when does this apply?",
+  "mob.iv.frage3": "What action or consequence follows from it?",
+  "mob.iv.frage4": "Which keywords/tags help to find it again? (comma-separated)",
+  "mob.iv.fortschritt": "Question {{nummer}} of {{gesamt}}",
+  "mob.iv.weiter": "Next question",
+  "mob.iv.zurueck": "Previous question",
+  "mob.iv.hinweis": "Every answer is in the draft right away — you can save after any question.",
+  "mob.foto.kamera": "Camera",
+  "mob.foto.mediathek": "Photo library",
+  "mob.foto.entfernen": "Remove photo",
+  "mob.foto.fehler": "The photo could not be read.",
+  "mob.foto.max": "At most {{max}} photos per draft.",
+  "mob.foto.inArbeit": "Preparing photo … you can save in a moment.",
   "mob.editing": "Resuming a draft.",
   "mob.formTitle": "Core statement",
   "mob.formStatement": "What happened / what applies?",

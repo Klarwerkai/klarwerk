@@ -1,5 +1,5 @@
 import { type UseQueryResult, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link2, Paperclip, X } from "lucide-react";
+import { Link2, Mic, Paperclip, X } from "lucide-react";
 import {
   type ChangeEvent,
   type ReactNode,
@@ -75,6 +75,7 @@ import {
 } from "../../lib/koSource";
 import { diffForVersion, paarDiff } from "../../lib/koVersionDiff";
 import { koVersionRows, uebernahmeHerkunft } from "../../lib/koVersionSnapshots";
+import { lesekontextMerken } from "../../lib/lesekontext";
 import { useNetzOnline } from "../../lib/netzzustand";
 import { nochNichtFachlichGeprueft } from "../../lib/pruefeinordnung";
 import {
@@ -82,6 +83,7 @@ import {
   formatSourceComment,
   isSourceContributionValid,
 } from "../../lib/sourceContribution";
+import { istIosGeraet } from "../../lib/speechSupport";
 import {
   type Stellenblock,
   stelleAus,
@@ -91,17 +93,30 @@ import {
 import { trustExplainer } from "../../lib/trustExplainer";
 import { useAuthorName } from "../../lib/useAuthorName";
 import { useReadiness } from "../../lib/useReadiness";
+import {
+  ZEICHNUNG_ACCEPT,
+  anhangStelle,
+  zeichnungsArt,
+  zeichnungsMime,
+} from "../../lib/zeichnungsanhang";
+import { type Zeichnungspunkt, bildQuelle, punktProzent } from "../../lib/zeichnungspunkt";
 import { AiCheckCoverageNotes } from "../AiCheckCoverageHint";
 import { ConflictTargetPicker } from "../ConflictTargetPicker";
 import { ExternalUrlText } from "../ExternalUrlText";
+import { GeltungFeld } from "../Geltung";
+import { HelpTip } from "../HelpTip";
 import { KnowledgeNeighborhood } from "../KnowledgeNeighborhood";
 import { RoleLink } from "../RoleLink";
 import { SanitizedHtml } from "../SanitizedHtml";
 import { UploadLimitsHint } from "../UploadLimitsHint";
+import { useDiktat } from "../start/useDiktat";
 import { ConfidenceBar, KnowledgeTypeTag, ProvenanceLine } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
+import { WissensauskunftBereich } from "../wissensauskunft/WissensauskunftBereich";
+import { AnhangZeichnung } from "./AnhangZeichnung";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { ImportErgebnis } from "./ImportErgebnis";
+import { Zeichnung } from "./Zeichnung";
 
 // ==================================================================================================
 // JOB 3063 · H4 — „MEHR": DIE DREIZEHN ABSCHNITTE, ZUGEKLAPPT ALS VORGABE.
@@ -318,7 +333,14 @@ const STELLEN_ART_SCHLUESSEL: Record<KoDiskussionsStelle["art"], string> = {
   absatz: "stellenbezug.art.absatz",
   tabelle: "stellenbezug.art.tabelle",
   bild: "stellenbezug.art.bild",
+  anhang: "stellenbezug.art.anhang",
 };
+
+/** Die Wahl einer Stelle: ein Block im Text (Index) oder eine hochgeladene Zeichnung (Anhang). */
+type StellenWahl = { version: number; index: number } | { version: number; anhang: string };
+
+/** Präfix der Auswahlwerte, die einen Anhang meinen — Blockwerte sind reine Zahlen. */
+const ANHANG_WAHL = "anhang:";
 
 /** Wie viele Zeichen einer Stelle die Auswahl zeigt — die gespeicherte Stelle ist länger. */
 const STELLEN_AUSWAHL_ZEICHEN = 70;
@@ -380,7 +402,13 @@ function diskussionsfaeden(beitraege: readonly KoDiskussionsbeitrag[]): Diskussi
 export function MehrAbschnitte({
   ko,
   sprungZiel,
-}: { ko: KnowledgeObject; sprungZiel?: Sprungziel | undefined }): JSX.Element {
+  anfangsOffen,
+}: {
+  ko: KnowledgeObject;
+  sprungZiel?: Sprungziel | undefined;
+  /** N-0020: die beim Verlassen offenen Abschnitte (`lib/lesekontext.ts`), sonst alle zu. */
+  anfangsOffen?: readonly string[] | undefined;
+}): JSX.Element {
   const { t, i18n } = useTranslation();
   const id = ko.id;
   const { role } = useRole();
@@ -538,6 +566,37 @@ export function MehrAbschnitte({
     onError: fehlerToast,
   });
 
+  // ---- aufnahme:20260922:gesamt-wissen-frische -------------------------------------------------
+  // R-0203: Anlagenänderung über DIESES Objekt an alle Nachbarn an denselben Anlagen melden.
+  const nachbarn = useMutation({
+    mutationFn: () => endpoints.ko.neighborsChanged(id),
+    onSuccess: (antwort) => {
+      invalidate();
+      void qc.invalidateQueries({ queryKey: ["lifecycle"] });
+      push("success", t("frische.nachbarnGemeldet", { count: antwort.markiert }));
+    },
+    onError: fehlerToast,
+  });
+  // R-1732 / R-0206: erneute Prüfung aus der Bibliothek anstossen.
+  const erneutPruefen = useMutation({
+    mutationFn: () => endpoints.ko.requestRevalidation(id),
+    onSuccess: () => {
+      invalidate();
+      void qc.invalidateQueries({ queryKey: ["lifecycle"] });
+      push("success", t("frische.erneutPruefenGespeichert"));
+    },
+    onError: fehlerToast,
+  });
+  // R-0206 / R-1746: „Stimmt weiterhin" nach dem Anwenden — ein Frische-Signal, keine Prüfung.
+  const stimmtWeiterhin = useMutation({
+    mutationFn: () => endpoints.ko.act(id, { action: "confirm-fresh" }),
+    onSuccess: () => {
+      invalidate();
+      push("success", t("frische.stimmtWeiterhinGespeichert"));
+    },
+    onError: fehlerToast,
+  });
+
   // ================================================================================================
   // JOB 4146 · DIE DISKUSSION — FRAGE, ANTWORT, KLÄRUNGSSTAND.
   // ================================================================================================
@@ -609,11 +668,92 @@ export function MehrAbschnitte({
       .map((block, index) => ({ block, index }))
       .filter(({ block }) => anzahl.get(schluessel(block)) === 1);
   }, [stellen]);
-  const [stellenWahl, setStellenWahl] = useState<{ version: number; index: number } | null>(null);
+  // PLAN-SPRACHANMERKUNG · NACHARBEIT 2: gewählt werden kann auch eine HOCHGELADENE Zeichnung
+  // (PDF, CAD, Bild) — dann trägt die Wahl die `objectId` des Anhangs statt eines Blockindex.
+  const [stellenWahl, setStellenWahl] = useState<StellenWahl | null>(null);
   const gewaehlterBlock =
-    stellenWahl && stellenWahl.version === ko.version ? stellen[stellenWahl.index] : undefined;
-  const gewaehlteStelle = gewaehlterBlock ? stelleAus(gewaehlterBlock, ko.version) : undefined;
+    stellenWahl && stellenWahl.version === ko.version && "index" in stellenWahl
+      ? stellen[stellenWahl.index]
+      : undefined;
+  // Angeboten wird nur ein Anhang mit Objektkennung, der eine Zeichnung ist, und nur, wenn seine
+  // Kennung am Eintrag genau einmal vorkommt — dieselbe Frage, die der Dienst stellt.
+  const zeichnungsAnhaenge = useMemo(() => {
+    const anhaenge = ko.attachments ?? [];
+    return anhaenge.flatMap((a) => {
+      const objectId = (a.objectId ?? "").trim();
+      const eindeutig = anhaenge.filter((b) => b.objectId === objectId).length === 1;
+      return objectId.length > 0 && eindeutig && zeichnungsArt(a)
+        ? [{ objectId, name: a.name, mime: a.mime }]
+        : [];
+    });
+  }, [ko.attachments]);
+  const gewaehlterAnhang =
+    stellenWahl && stellenWahl.version === ko.version && "anhang" in stellenWahl
+      ? zeichnungsAnhaenge.find((a) => a.objectId === stellenWahl.anhang)
+      : undefined;
+  // PLAN-SPRACHANMERKUNG (R-1625, R-2177): ist die gewählte Stelle eine Zeichnung, lässt sich
+  // die Notiz an einen Punkt darin hängen. Die Position gehört zur Wahl: ein Wechsel der Stelle
+  // hebt sie auf (`stelleWaehlen`), und verfällt die Wahl, verfällt sie mit. Bei einem Anhang
+  // gehört auch die Seite dazu; ein Seitenwechsel hebt den Punkt auf (er lag auf der alten Seite).
+  const [zeichnungsPunkt, setZeichnungsPunkt] = useState<Zeichnungspunkt | null>(null);
+  const [anhangSeite, setAnhangSeite] = useState(1);
+  const gewaehlteZeichnung =
+    gewaehlterBlock?.art === "bild" ? bildQuelle(ko.bodyHtml, gewaehlterBlock.text) : undefined;
+  const gewaehlteStelle = gewaehlterBlock
+    ? {
+        ...stelleAus(gewaehlterBlock, ko.version),
+        ...(gewaehlteZeichnung && zeichnungsPunkt ? { punkt: zeichnungsPunkt } : {}),
+      }
+    : gewaehlterAnhang
+      ? anhangStelle(
+          gewaehlterAnhang.objectId,
+          ko.version,
+          zeichnungsArt(gewaehlterAnhang) === "pdf" ? anhangSeite : undefined,
+          zeichnungsPunkt ?? undefined,
+        )
+      : undefined;
   const stelleVerfallen = stellenWahl !== null && gewaehlteStelle === undefined;
+  const stelleWaehlen = (wahl: StellenWahl | null): void => {
+    setStellenWahl(wahl);
+    setZeichnungsPunkt(null);
+    setAnhangSeite(1);
+  };
+  const seiteWaehlen = (n: number): void => {
+    setAnhangSeite(n);
+    setZeichnungsPunkt(null);
+  };
+  /** Der Wert der Auswahlliste zur heutigen Wahl — und umgekehrt die Wahl zu einem Wert. */
+  const stellenWahlWert = stelleVerfallen
+    ? "verfallen"
+    : gewaehlterBlock && stellenWahl && "index" in stellenWahl
+      ? String(stellenWahl.index)
+      : gewaehlterAnhang
+        ? `${ANHANG_WAHL}${gewaehlterAnhang.objectId}`
+        : "";
+  /** Der gesetzte Punkt als Satz und der Weg, ihn zu entfernen — für Bild und Anhang gleich. */
+  const punktZeile = zeichnungsPunkt ? (
+    <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted">
+      <output aria-live="polite" data-bib-diskussion-punkt="">
+        {t("stellenbezug.punkt.lage", punktProzent(zeichnungsPunkt))}
+      </output>
+      <button
+        type="button"
+        data-bib-diskussion-punkt-entfernen=""
+        onClick={() => setZeichnungsPunkt(null)}
+        className={diskussionsKnopfCls}
+      >
+        {t("stellenbezug.punkt.entfernen")}
+      </button>
+    </div>
+  ) : null;
+  const stellenWahlAus = (wert: string): StellenWahl | null => {
+    if (wert === "" || wert === "verfallen") {
+      return null;
+    }
+    return wert.startsWith(ANHANG_WAHL)
+      ? { version: ko.version, anhang: wert.slice(ANHANG_WAHL.length) }
+      : { version: ko.version, index: Number(wert) };
+  };
 
   const antwortEntwurf = (bezug: string): string => antwortEntwuerfe[bezug] ?? "";
 
@@ -621,6 +761,16 @@ export function MehrAbschnitte({
     commentTextSpiegel.current = wert;
     setCommentText(wert);
   };
+
+  // PLAN-SPRACHANMERKUNG: die Notiz sprechen statt tippen — derselbe Diktathaken wie im Fragefeld
+  // (`start/useDiktat`). Das Erkannte wird angehängt, nie ersetzt; die Erkennung bleibt im Browser.
+  const notizDiktat = useDiktat((erkannt) => {
+    const bisher = commentTextSpiegel.current;
+    const teil = erkannt.trim();
+    if (teil.length > 0) {
+      beitragSetzen(bisher.trim().length > 0 ? `${bisher.trimEnd()} ${teil}` : teil);
+    }
+  });
 
   const antwortSetzen = (bezug: string, wert: string): void => {
     antwortEntwuerfeSpiegel.current = { ...antwortEntwuerfeSpiegel.current, [bezug]: wert };
@@ -691,7 +841,7 @@ export function MehrAbschnitte({
         return;
       }
       beitragSetzen("");
-      setStellenWahl(null);
+      stelleWaehlen(null);
       setCommentKey(crypto.randomUUID());
     },
     onError: (e) => {
@@ -808,36 +958,92 @@ export function MehrAbschnitte({
     if (!stelle) {
       return null;
     }
+    // PLAN-SPRACHANMERKUNG · NACHARBEIT 2: eine Notiz an einer HOCHGELADENEN Zeichnung wird über
+    // die Anhangsliste wiedergefunden (Kennung genau einmal am Eintrag), nicht über den Text.
+    const anhang =
+      stelle.art === "anhang"
+        ? zeichnungsAnhaenge.find((a) => a.objectId === stelle.text)
+        : undefined;
     const zuordnung = stelleZuordnen(stelle, stellen, ko.version);
-    const zitat =
-      stelle.art === "bild"
-        ? zuordnung.lage === "unklar"
-          ? stelle.text
-          : zuordnung.block.anzeige
-        : stelle.text;
-    const fruehereFassung = stelle.koVersion < ko.version;
-    return (
-      <div data-bib-diskussion-stelle={b.id} className="mt-0.5 text-[11px] text-muted-2">
-        <div>
-          {t("stellenbezug.stelle", {
-            art: t(STELLEN_ART_SCHLUESSEL[stelle.art]),
+    const anhangLage = stelle.koVersion === ko.version ? "dieseFassung" : "eindeutig";
+    const lage =
+      stelle.art !== "anhang" ? zuordnung.lage : anhang ? anhangLage : ("unklar" as const);
+    const art = t(STELLEN_ART_SCHLUESSEL[stelle.art]);
+    const kopf =
+      stelle.art !== "anhang"
+        ? t("stellenbezug.stelle", {
+            art,
             abschnitt: stelle.abschnitt || t("stellenbezug.anfang"),
             version: stelle.koVersion,
-          })}
-        </div>
+          })
+        : stelle.seite !== undefined
+          ? t("stellenbezug.anhang.stelleSeite", {
+              art,
+              seite: stelle.seite,
+              version: stelle.koVersion,
+            })
+          : t("stellenbezug.anhang.stelle", { art, version: stelle.koVersion });
+    const anhangName = anhang?.name ?? stelle.text;
+    const zitat =
+      stelle.art === "anhang"
+        ? anhangName
+        : stelle.art === "bild"
+          ? zuordnung.lage === "unklar"
+            ? stelle.text
+            : zuordnung.block.anzeige
+          : stelle.text;
+    const fruehereFassung = stelle.koVersion < ko.version;
+    // PLAN-SPRACHANMERKUNG: die Marke steht nur auf einer Zeichnung, die in der angezeigten
+    // Fassung eindeutig wiedergefunden ist. Sonst bleibt die gespeicherte Position als Satz
+    // lesbar — sie auf ein anderes Bild zu setzen, hiesse einen Ort zu behaupten, den niemand
+    // gewählt hat.
+    const punkt = stelle.art === "bild" || stelle.art === "anhang" ? stelle.punkt : undefined;
+    const zeichnung =
+      punkt && stelle.art === "bild" && lage !== "unklar"
+        ? bildQuelle(ko.bodyHtml, stelle.text)
+        : undefined;
+    return (
+      <div data-bib-diskussion-stelle={b.id} className="mt-0.5 text-[11px] text-muted-2">
+        <div>{kopf}</div>
         <blockquote
           data-bib-diskussion-stelle-zitat={b.id}
           className="my-0.5 border-l-2 border-hairline pl-2 text-[12px] text-muted"
         >
           {zitat}
         </blockquote>
+        {punkt ? (
+          <div data-bib-diskussion-stelle-punkt={b.id}>
+            <div>{t("stellenbezug.punkt.lage", punktProzent(punkt))}</div>
+            {zeichnung ? (
+              <Zeichnung
+                src={zeichnung}
+                punkt={punkt}
+                beschriftung={t("stellenbezug.punkt.markiert", {
+                  bild: zitat,
+                  ...punktProzent(punkt),
+                })}
+              />
+            ) : null}
+            {anhang && lage !== "unklar" ? (
+              <AnhangZeichnung
+                anhang={anhang}
+                seite={stelle.seite ?? 1}
+                punkt={punkt}
+                beschriftung={t("stellenbezug.punkt.markiert", {
+                  bild: zitat,
+                  ...punktProzent(punkt),
+                })}
+              />
+            ) : null}
+          </div>
+        ) : null}
         <div
-          data-bib-diskussion-stelle-lage={zuordnung.lage}
-          className={cx(zuordnung.lage === "unklar" && "font-semibold text-trust-crit-text")}
+          data-bib-diskussion-stelle-lage={lage}
+          className={cx(lage === "unklar" && "font-semibold text-trust-crit-text")}
         >
-          {zuordnung.lage === "dieseFassung"
+          {lage === "dieseFassung"
             ? t("stellenbezug.hier")
-            : zuordnung.lage === "eindeutig"
+            : lage === "eindeutig"
               ? t("stellenbezug.eindeutig", { aktuell: ko.version })
               : t("stellenbezug.unklar")}
         </div>
@@ -874,17 +1080,20 @@ export function MehrAbschnitte({
 
   // ---- Anhänge ---------------------------------------------------------------------------------
   const attach = useMutation({
+    // PLAN-SPRACHANMERKUNG · NACHARBEIT 2: derselbe Weg nimmt auch eine Zeichnungsdatei (PDF, CAD)
+    // — als Dokument und OHNE Vorschaubild, denn eine Vorschau entsteht nur aus einem Bild.
     mutationFn: async (input: {
       name: string;
       mime: string;
-      thumbnail: string;
+      thumbnail?: string;
       original: string;
+      kind?: "image" | "document";
     }) => {
       const ref = await endpoints.objects.upload({
         name: input.name,
         mime: input.mime,
         data: input.original,
-        kind: "image",
+        kind: input.kind ?? "image",
         purpose: "attachment",
       });
       return endpoints.ko.act(id, {
@@ -893,7 +1102,7 @@ export function MehrAbschnitte({
           name: input.name,
           mime: input.mime,
           objectId: ref.id,
-          thumbnail: input.thumbnail,
+          ...(input.thumbnail ? { thumbnail: input.thumbnail } : {}),
           size: ref.size,
         },
       });
@@ -918,6 +1127,22 @@ export function MehrAbschnitte({
         readFileAsDataUrl(file),
       ]);
       attach.mutate({ name: file.name, mime: file.type || "image/jpeg", thumbnail, original });
+    } catch {
+      push("error", t("state.error"));
+    }
+  };
+  // PLAN-SPRACHANMERKUNG · NACHARBEIT 2: eine Zeichnungsdatei (PDF, DXF, DWG) anhängen. Ein EIGENES
+  // Feld neben dem Fotofeld — dessen Auswahl (`image/*`) bleibt, wie JOB 3126 sie festhält.
+  const zeichnungsFeld = useRef<HTMLInputElement | null>(null);
+  const onPickZeichnung = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) {
+      return;
+    }
+    try {
+      const original = await readFileAsDataUrl(file);
+      attach.mutate({ name: file.name, mime: zeichnungsMime(file), original, kind: "document" });
     } catch {
       push("error", t("state.error"));
     }
@@ -1001,7 +1226,9 @@ export function MehrAbschnitte({
   const gueltigkeit = validityProtectionView(ko, pending.data ?? [], conflicts.data ?? []);
 
   // ---- JOB 3108 · UX-03: die EINE Menge der offenen Abschnitte, und der Sprung hinein -----------
-  const [offene, setOffene] = useState<ReadonlySet<string>>(() => new Set<string>());
+  const [offene, setOffene] = useState<ReadonlySet<string>>(
+    () => new Set<string>(anfangsOffen ?? []),
+  );
   const wurzel = useRef<HTMLDivElement | null>(null);
   /**
    * Der Sprung läuft in ZWEI Zügen: erst öffnen, dann hinführen. In EINEM Zug ginge es nicht — im
@@ -1278,6 +1505,18 @@ export function MehrAbschnitte({
         ) : null}
         {canReview ? (
           <div className="mt-2 space-y-2">
+            {/* R-0888 / R-1017 (gesamt-hilfen, Nacharbeit 13): die vorhandenen Erklärungen dieser
+                Handlung (`lib/reviewHelp.ts`) stehen in der Seitenhilfe, solange die Handlung
+                da ist — der beschlossene Weg (`HelpTip`, Pedi 04.09.), kein „?" im Sichtfeld. */}
+            <HelpTip
+              title={t("vhelp.reportConflict.title")}
+              body={t("vhelp.reportConflict.body")}
+            />
+            {/* Nacharbeit 15: die berichtigte Fassung nennt auch die Pflichtwahl „Art der Arbeit“. */}
+            <HelpTip
+              title={t("vhelp.conflictForm.title")}
+              body={t("abschnittshilfe.conflictForm.body")}
+            />
             <div className="space-y-1.5">
               <span className="block text-[12.5px] font-medium text-muted">
                 {t("ko.conflictTarget")}
@@ -1363,6 +1602,7 @@ export function MehrAbschnitte({
         offen={offene.has("quellen")}
         aufWechsel={(o) => abschnittUmschalten("quellen", o)}
       >
+        <HelpTip title={t("vhelp.sourcesLevel2.title")} body={t("vhelp.sourcesLevel2.body")} />
         {(ko.sources ?? []).length === 0 ? (
           <p className="text-[12.5px] text-muted">{t("ko.sourcesEmpty")}</p>
         ) : (
@@ -1520,6 +1760,8 @@ export function MehrAbschnitte({
         <ImportErgebnis ko={ko} />
         {canEdit ? (
           <div className="mt-3 space-y-2 border-t border-hairline pt-3">
+            <HelpTip title={t("vhelp.sourceFields.title")} body={t("vhelp.sourceFields.body")} />
+            <HelpTip title={t("vhelp.sourceAdd.title")} body={t("vhelp.sourceAdd.body")} />
             <TextInput
               value={sourceForm.label}
               onChange={(e) => setSourceForm((s) => ({ ...s, label: e.target.value }))}
@@ -1618,6 +1860,7 @@ export function MehrAbschnitte({
       >
         {canEdit && canSearchExternal(extStage) ? (
           <div className="space-y-2">
+            <HelpTip title={t("vhelp.sourceSearch.title")} body={t("vhelp.sourceSearch.body")} />
             {extAttachAllowed ? null : (
               <p
                 data-testid="ext-attach-blocked"
@@ -1695,6 +1938,7 @@ export function MehrAbschnitte({
         aufWechsel={(o) => abschnittUmschalten("beitrag", o)}
       >
         <div className="space-y-2">
+          <HelpTip title={t("vhelp.contribution.title")} body={t("vhelp.contribution.body")} />
           <textarea
             value={source.contribution}
             onChange={(e) => setSource((s) => ({ ...s, contribution: e.target.value }))}
@@ -1781,8 +2025,25 @@ export function MehrAbschnitte({
             </select>
           </label>
         ) : null}
+        {/* R-0652 / FR-EXT-06: Schutzbedarf „öffentlich" — nur an internen Objekten und nur für
+            Prüfer/Admin (dieselbe Schwelle wie eine Herabstufung, Server: `ko.validate`). */}
+        {canReview && confidentialityOf(ko.confidentiality) === "intern" ? (
+          <label className="mt-2 flex items-center gap-2 text-[12px] text-muted">
+            <input
+              type="checkbox"
+              data-testid="frische-oeffentlich"
+              checked={ko.oeffentlich === true}
+              disabled={act.isPending}
+              onChange={(e) =>
+                act.mutate({ action: "schutz-oeffentlich", oeffentlich: e.target.checked })
+              }
+            />
+            <span>{t("frische.oeffentlichFeld")}</span>
+          </label>
+        ) : null}
         {canTransfer ? (
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hairline pt-3">
+            <HelpTip title={t("vhelp.transfer.title")} body={t("vhelp.transfer.body")} />
             <select
               aria-label={t("ko.transferTitle")}
               value={newAuthor}
@@ -1807,6 +2068,16 @@ export function MehrAbschnitte({
             </Button>
           </div>
         ) : null}
+        {/* R-1632 / R-1633: wo dieser Punkt gilt — Konzern-Standard, Werks-Praxis oder
+            Schicht-spezifisch. Am Ende des Abschnitts, damit Vertraulichkeit und Übergabe ihren
+            Platz behalten. Der Schlüssel setzt das Formular nach dem Speichern auf den Serverstand. */}
+        <GeltungFeld
+          key={JSON.stringify(ko.geltung ?? null)}
+          geltung={ko.geltung}
+          darfAendern={canEdit}
+          wartet={act.isPending}
+          onSpeichern={(geltung) => act.mutate({ action: "geltung", geltung })}
+        />
       </Abschnitt>
 
       {/* 6 — Kopplung und Anlagen */}
@@ -1847,6 +2118,21 @@ export function MehrAbschnitte({
               <Link2 size={14} />
               {t("ko.couple.cta")}
             </Button>
+          </div>
+        ) : null}
+        {/* R-0203: der Auslöser über benachbarte Wissensobjekte — dasselbe Recht wie die
+            Anlagenänderung im Reiter „Erneut" (`ko.validate`: Controller und Admin). */}
+        {canReview && couplings.data && couplings.data.length > 0 ? (
+          <div className="mt-2.5 border-t border-hairline pt-2.5">
+            <Button
+              variant="ghost"
+              data-testid="frische-nachbarn"
+              disabled={nachbarn.isPending}
+              onClick={() => nachbarn.mutate()}
+            >
+              {t("frische.nachbarnMelden")}
+            </Button>
+            <p className="mt-1 text-[11.5px] text-muted-2">{t("frische.nachbarnMeldenHinweis")}</p>
           </div>
         ) : null}
       </Abschnitt>
@@ -1930,9 +2216,13 @@ export function MehrAbschnitte({
             </ul>
           );
         })()}
-        {/* mega70 B3: `/graph` verlangt `admin` — die gesperrte Fassung verliert Link und Pfeil. */}
+        {/* mega70 B3: `/graph` verlangt `admin` — die gesperrte Fassung verliert Link und Pfeil.
+            N-0020: vor dem Wechsel merkt sich die Lesefläche, WO gelesen wurde (Rollstand und
+            offene Abschnitte); Browser-Zurück stellt es wieder her (`lib/lesekontext.ts`). */}
         <RoleLink
           to="/graph"
+          testId="bib-herkunft-graph"
+          onClick={() => lesekontextMerken(ko.id, wurzel.current, offene)}
           className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold text-ai"
           hoverClassName="hover:underline"
         >
@@ -1985,6 +2275,20 @@ export function MehrAbschnitte({
         </ol>
       </Abschnitt>
 
+      {/* R-1644 — Wer wusste was wann: die Auskunft zu einem Zeitpunkt. Nur mit Prüferecht
+          (`ko.validate`, dieselbe Einsichtsstufe wie das Audit-Protokoll); die Rolle steuert nur
+          die Anzeige, entschieden wird am Server. Abgefragt wird erst auf den Klick. */}
+      {canReview ? (
+        <Abschnitt
+          schluessel="wissensauskunft"
+          titel={t("wissensauskunft.titel")}
+          offen={offene.has("wissensauskunft")}
+          aufWechsel={(o) => abschnittUmschalten("wissensauskunft", o)}
+        >
+          <WissensauskunftBereich koId={ko.id} />
+        </Abschnitt>
+      ) : null}
+
       {/* 9 — Belege (samt Vertrauen, Konsistenz, Frische, Gültigkeit) */}
       <Abschnitt
         schluessel="belege"
@@ -2033,6 +2337,7 @@ export function MehrAbschnitte({
             </>
           );
         })()}
+        <HelpTip title={t("vhelp.validity.title")} body={t("vhelp.validity.body")} />
         <dl className="mb-3 space-y-1.5 text-[12.5px]">
           <div className="flex items-center justify-between gap-2">
             <dt className="text-muted">{t("ko.ovTrust")}</dt>
@@ -2042,28 +2347,149 @@ export function MehrAbschnitte({
             <dt className="text-muted">{t("lib.facet.maturity")}</dt>
             <dd className="font-mono text-text">{t(useReadiness(usability).labelKey)}</dd>
           </div>
-          <div className="flex items-center justify-between gap-2">
-            <dt className="text-muted">{t("ext.validity.freshness")}</dt>
-            <dd className="font-mono text-text">
-              {t(`ext.freshness.${gueltigkeit.freshnessStatus}`)}
-            </dd>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <dt className="text-muted">{t("ext.validity.outputEligible")}</dt>
-            <dd
-              className={cx(
-                "font-mono",
-                gueltigkeit.outputEligible ? "text-trust-pos-text" : "text-muted-2",
-              )}
-            >
-              {t(gueltigkeit.outputEligible ? "ext.outputEligible.yes" : "ext.outputEligible.no")}
-            </dd>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <dt className="text-muted">{t("ext.protection.ip")}</dt>
-            <dd className="font-mono text-muted-2">{t("ext.protection.notRated")}</dd>
-          </div>
+          {/* aufnahme:20260922:gesamt-wissen-frische (R-0207 / R-0652 / FR-EXT-06): zwei Sichten
+              je Objekt — Aktualität und Schutzbedarf — mit Empfehlung, vom Server abgeleitet.
+              Liefert der Lesepfad `frische` nicht, bleibt die bisherige Ableitung stehen. */}
+          {ko.frische ? (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.stufeLabel")}</dt>
+                <dd data-testid="frische-stufe" className="font-mono text-text">
+                  {t(`frische.stufe.${ko.frische.stufe}`)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.halbwertszeitLabel")}</dt>
+                <dd data-testid="frische-halbwertszeit" className="text-right font-mono text-text">
+                  {t(
+                    ko.frische.halbwertszeitHerkunft === "gelernt"
+                      ? "frische.halbwertszeitGelernt"
+                      : "frische.halbwertszeitVorgabe",
+                    {
+                      tage: ko.frische.halbwertszeitTage,
+                      anzahl: ko.frische.halbwertszeitBeobachtungen,
+                    },
+                  )}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.haltbarBis")}</dt>
+                <dd className="font-mono text-text">
+                  {ko.frische.haltbarBis
+                    ? new Date(ko.frische.haltbarBis).toLocaleDateString()
+                    : t("frische.haltbarUnbekannt")}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.verantwortlich")}</dt>
+                <dd className="text-right text-text">
+                  {nameOf(ko.frische.verantwortlich)}
+                  {ko.frische.verantwortlichArt === "author-fallback" ? (
+                    <span className="block text-[11px] text-muted-2">
+                      {t("frische.verantwortlichErsatz")}
+                    </span>
+                  ) : null}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.inDokumente")}</dt>
+                <dd
+                  className={cx(
+                    "font-mono",
+                    ko.frische.inDokumente ? "text-trust-pos-text" : "text-muted-2",
+                  )}
+                >
+                  {t(ko.frische.inDokumente ? "frische.ja" : "frische.nein")}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.schutzLabel")}</dt>
+                <dd className="font-mono text-text">
+                  {t(`frische.schutz.${ko.frische.schutz ?? "unbekannt"}`)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.betriebsmodellLabel")}</dt>
+                <dd className="font-mono text-text">
+                  {t(`frische.betriebsmodell.${ko.frische.betriebsmodell}`)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.naechsterLabel")}</dt>
+                <dd data-testid="frische-naechster" className="text-right text-text">
+                  {t(`frische.naechster.${ko.frische.naechsterSchritt}`)}
+                </dd>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("ext.validity.freshness")}</dt>
+                <dd className="font-mono text-text">
+                  {t(`ext.freshness.${gueltigkeit.freshnessStatus}`)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("ext.validity.outputEligible")}</dt>
+                <dd
+                  className={cx(
+                    "font-mono",
+                    gueltigkeit.outputEligible ? "text-trust-pos-text" : "text-muted-2",
+                  )}
+                >
+                  {t(
+                    gueltigkeit.outputEligible ? "ext.outputEligible.yes" : "ext.outputEligible.no",
+                  )}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("ext.protection.ip")}</dt>
+                <dd className="font-mono text-muted-2">{t("ext.protection.notRated")}</dd>
+              </div>
+            </>
+          )}
         </dl>
+        {ko.frische && ko.status === "validiert" && !ko.frische.gesichert ? (
+          <p
+            data-testid="frische-nicht-gesichert"
+            className="mb-2 text-[12px] leading-relaxed text-trust-warn-text"
+          >
+            {t("frische.nichtGesichert")}
+          </p>
+        ) : null}
+        {ko.frische?.letztesSignal ? (
+          <p className="mb-2 text-[11.5px] text-muted-2">
+            {t("frische.letztesSignal", {
+              name: nameOf(ko.frische.letztesSignal.by),
+              datum: new Date(ko.frische.letztesSignal.at).toLocaleDateString(),
+            })}
+          </p>
+        ) : null}
+        {/* R-0206 / R-1746: „Stimmt weiterhin" für jeden Leser geprüften Wissens; R-1732: die
+            erneute Prüfung aus der Bibliothek für alle, die erfassen dürfen (`ko.create`). */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {ko.status === "validiert" ? (
+            <Button
+              variant="ghost"
+              data-testid="frische-stimmt-weiterhin"
+              title={t("frische.stimmtWeiterhinHinweis")}
+              disabled={stimmtWeiterhin.isPending}
+              onClick={() => stimmtWeiterhin.mutate()}
+            >
+              {t("frische.stimmtWeiterhin")}
+            </Button>
+          ) : null}
+          {canEdit ? (
+            <Button
+              variant="ghost"
+              data-testid="frische-erneut-pruefen"
+              disabled={erneutPruefen.isPending}
+              onClick={() => erneutPruefen.mutate()}
+            >
+              {t("frische.erneutPruefen")}
+            </Button>
+          ) : null}
+        </div>
         {/* SCRUM-168/175/170: Konsistenz, Frische und Gruppierung nach Fassung — nur bei
             erfolgreich geladenem Bestand, auch bei gescheiterter Auffrischung.
             Ein offline pausierter Erstabruf ist noch kein Bestand. */}
@@ -2841,27 +3267,15 @@ export function MehrAbschnitte({
         <div className="mt-3 space-y-2 border-t border-hairline pt-3">
           {/* P-WIKI-STELLENBEZUG: die Stelle im Text, an die die neue Rückfrage gehört. Ohne Wahl
               gilt der Beitrag dem ganzen Dokument — wie jeder Beitrag vor dieser Regel. */}
-          {waehlbareStellen.length > 0 || stelleVerfallen ? (
+          {waehlbareStellen.length > 0 || zeichnungsAnhaenge.length > 0 || stelleVerfallen ? (
             <label className="block text-[12px] text-muted">
               {t("stellenbezug.waehlen")}
               <select
                 data-bib-diskussion-stellenwahl=""
                 // Eine verfallene Wahl steht als eigener Wert da: so löst auch die Wahl „Ganzes
                 // Dokument" eine Änderung aus und hebt die Sperre ausdrücklich auf.
-                value={
-                  stelleVerfallen
-                    ? "verfallen"
-                    : gewaehlterBlock && stellenWahl
-                      ? String(stellenWahl.index)
-                      : ""
-                }
-                onChange={(e) =>
-                  setStellenWahl(
-                    e.target.value === "" || e.target.value === "verfallen"
-                      ? null
-                      : { version: ko.version, index: Number(e.target.value) },
-                  )
-                }
+                value={stellenWahlWert}
+                onChange={(e) => stelleWaehlen(stellenWahlAus(e.target.value))}
                 className="mt-1 h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[12.5px] text-text"
               >
                 {stelleVerfallen ? (
@@ -2881,6 +3295,13 @@ export function MehrAbschnitte({
                     }`}
                   </option>
                 ))}
+                {/* PLAN-SPRACHANMERKUNG · NACHARBEIT 2: die hochgeladenen Zeichnungen (PDF, CAD,
+                    Bild) des Eintrags — dieselbe Wahl, eine andere Art Stelle. */}
+                {zeichnungsAnhaenge.map((a) => (
+                  <option key={a.objectId} value={`${ANHANG_WAHL}${a.objectId}`}>
+                    {`${t("stellenbezug.art.anhang")} — ${a.name}`}
+                  </option>
+                ))}
               </select>
             </label>
           ) : null}
@@ -2893,6 +3314,38 @@ export function MehrAbschnitte({
               {t("stellenbezug.neuWaehlen")}
             </output>
           ) : null}
+          {/* PLAN-SPRACHANMERKUNG (R-1625, R-2177): ist die gewählte Stelle eine Zeichnung, steht
+              sie hier — ein Tipp hängt die Notiz an genau diesen Punkt. Ohne Tipp gilt sie dem
+              ganzen Bild, wie jede Bildrückfrage vorher. */}
+          {gewaehlterBlock && gewaehlteZeichnung ? (
+            <div data-bib-diskussion-zeichnung="" className="space-y-1">
+              <p className="text-[12px] text-muted">{t("stellenbezug.punkt.hinweis")}</p>
+              <Zeichnung
+                src={gewaehlteZeichnung}
+                punkt={zeichnungsPunkt ?? undefined}
+                onPunkt={setZeichnungsPunkt}
+                beschriftung={t("stellenbezug.punkt.waehlen", { bild: gewaehlterBlock.anzeige })}
+              />
+              {punktZeile}
+            </div>
+          ) : null}
+          {/* PLAN-SPRACHANMERKUNG · NACHARBEIT 2 (R-1625: „CAD-Zeichnungen oder PDFs hochladen, eine
+              Stelle antippen und sprechen"): die gewählte hochgeladene Zeichnung, bei PDFs mit
+              Seitenwahl. Ein Seitenwechsel hebt einen gesetzten Punkt auf. */}
+          {gewaehlterAnhang ? (
+            <div data-bib-diskussion-zeichnung="" className="space-y-1">
+              <p className="text-[12px] text-muted">{t("stellenbezug.punkt.hinweis")}</p>
+              <AnhangZeichnung
+                anhang={gewaehlterAnhang}
+                seite={anhangSeite}
+                onSeite={seiteWaehlen}
+                punkt={zeichnungsPunkt ?? undefined}
+                onPunkt={setZeichnungsPunkt}
+                beschriftung={t("stellenbezug.punkt.waehlen", { bild: gewaehlterAnhang.name })}
+              />
+              {punktZeile}
+            </div>
+          ) : null}
           <textarea
             value={commentText}
             onChange={(e) => beitragSetzen(e.target.value)}
@@ -2900,14 +3353,42 @@ export function MehrAbschnitte({
             placeholder={t("ko.commentPlaceholder")}
             className={textareaCls}
           />
-          <Button
-            variant="primary"
-            data-bib-diskussion-senden=""
-            disabled={comment.isPending || commentText.trim().length === 0 || stelleVerfallen}
-            onClick={() => comment.mutate(commentText.trim())}
-          >
-            {t("ko.commentAdd")}
-          </Button>
+          {/* FR-CAP-03: was gerade gesprochen wird, steht sichtbar daneben — ins Feld kommt nur das
+              endgültig Erkannte. Ohne Spracherkennung steht kein Mikrofon da (JOB 3038). */}
+          {notizDiktat.laeuft && notizDiktat.zwischen ? (
+            <p aria-live="polite" className="text-[12.5px] italic text-muted-2">
+              {notizDiktat.zwischen}
+            </p>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="primary"
+              data-bib-diskussion-senden=""
+              disabled={comment.isPending || commentText.trim().length === 0 || stelleVerfallen}
+              onClick={() => comment.mutate(commentText.trim())}
+            >
+              {t("ko.commentAdd")}
+            </Button>
+            {notizDiktat.moeglich ? (
+              <button
+                type="button"
+                data-bib-diskussion-sprechen=""
+                aria-pressed={notizDiktat.laeuft}
+                onClick={notizDiktat.umschalten}
+                className={diskussionsKnopfCls}
+              >
+                <Mic size={14} strokeWidth={1.8} aria-hidden="true" />
+                {notizDiktat.laeuft
+                  ? t("stellenbezug.sprechen.stop")
+                  : t("stellenbezug.sprechen.start")}
+              </button>
+            ) : istIosGeraet(window) ? (
+              // FR-CAP-03: auf iPhone/iPad kein Browser-Diktat — der ehrliche Ausweg steht da.
+              <span data-bib-diskussion-sprechen-ios="" className="text-[12px] text-muted">
+                {t("diktat.iosTastatur")}
+              </span>
+            ) : null}
+          </div>
         </div>
         {/* Der Satz steht am ENDE des Abschnitts und bleibt stehen, bis der nächste Versuch
             gelingt — anders als ein Toast, der verschwindet, während der Text noch im Feld wartet.
@@ -3022,6 +3503,34 @@ export function MehrAbschnitte({
               aria-hidden="true"
               disabled={attach.isPending}
               onChange={(e) => void onPickFile(e)}
+            />
+            {/* PLAN-SPRACHANMERKUNG · NACHARBEIT 2: Pläne und CAD-Zeichnungen (PDF, DXF, DWG) — in
+                derselben Bauform wie der Fotoknopf, mit eigenem, ebenso stummem Dateifeld. */}
+            <button
+              type="button"
+              data-bib-zeichnung-anhaengen=""
+              aria-disabled={attach.isPending}
+              onClick={() => {
+                if (attach.isPending) {
+                  return;
+                }
+                zeichnungsFeld.current?.click();
+              }}
+              className="ml-2 mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text"
+            >
+              <Paperclip size={14} aria-hidden />
+              {t("stellenbezug.anhang.hochladen")}
+            </button>
+            <input
+              ref={zeichnungsFeld}
+              type="file"
+              accept={ZEICHNUNG_ACCEPT}
+              data-bib-zeichnung-datei=""
+              className="hidden"
+              tabIndex={-1}
+              aria-hidden="true"
+              disabled={attach.isPending}
+              onChange={(e) => void onPickZeichnung(e)}
             />
             {/* AUFTRAG-mega14 Block E (SCRUM-421): die geltenden Grenzen stehen AN der
                 Auswahlstelle, und sie kommen vom Server. */}

@@ -5,6 +5,14 @@ export type { ConflictServiceDeps, DryRunConflict } from "./src/service";
 // versions-konditionalen Inserts (insertIfVersionsCurrent) — der App-Root bindet sie an den KO-Store.
 export { InMemoryConflictRepo, type ConflictRepo, type IsKoVersionCurrent } from "./src/repo";
 export { PgConflictRepo, CONFLICTS_SCHEMA } from "./src/repo-pg";
+// Aufnahme 20260922 · Prüfung-Gedächtnis (R-1103/R-1105): je Paar der zuletzt beurteilte Textstand.
+export {
+  type ConflictMemoryRepo,
+  type PairMemoryEntry,
+  type PairMemoryOutcome,
+  InMemoryConflictMemoryRepo,
+  PgConflictMemoryRepo,
+} from "./src/pair-memory";
 export { ConflictError } from "./src/types";
 // R-0252: die Arbeitsart (Regel/Sache/Version) — das Prädikat prüft den Drahtwert der Anlage-Route.
 export { isConflictWorkKind } from "./src/types";
@@ -29,6 +37,9 @@ export type {
 // Berater-Konzept 04.07. (Stufe 2/3): Kerntext-Subjekt der automatischen Erkennung (der App-Root
 // bildet Wissensobjekte auf diese modul-reine Form ab; conflicts kennt knowledge-object nicht).
 export type { DetectSubject, ConflictVerdict } from "./src/detect";
+// R-1632 / R-1633: die Geltungsform und der Rückruf, über den die App-Wurzel die Geltungsregel aus
+// knowledge-object hereinreicht (conflicts legt Geltung selbst nicht aus).
+export type { DetectGeltung, GeltungsKollisionsRegel } from "./src/detect";
 // Weg 3 (Prefilter): Kerntext eines Subjekts (K0-2) — derselbe String, den der Duplikat-Judge
 // vergleicht. Wird für die semantische Vorfilterung eingebettet, damit Prefilter und Urteil denselben
 // Gegenstand sehen.

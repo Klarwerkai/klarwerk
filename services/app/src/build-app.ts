@@ -45,14 +45,17 @@ import {
   validateDraftPayloadShape,
 } from "../../capture";
 import {
+  type ConflictMemoryRepo,
   type ConflictRepo,
   ConflictService,
+  InMemoryConflictMemoryRepo,
   InMemoryConflictRepo,
   InMemoryOverlapRepo,
   InMemoryOverlapSettingsRepo,
   type OverlapRepo,
   OverlapService,
   type OverlapSettingsRepo,
+  PgConflictMemoryRepo,
   PgConflictRepo,
   PgOverlapRepo,
   PgOverlapSettingsRepo,
@@ -61,7 +64,12 @@ import { createConfluenceAdapterFromEnv } from "../../confluence";
 // SCRUM-523 P.3 (WP-A2): gemeinsamer Transaktions-Kernel — nur die Kompositionswurzel bindet withPgTx
 // an den echten, mit PgKoRepo/PgAuditRepo geteilten Pool (s. buildPgServices unten).
 import { gatedPool, withPgTx } from "../../db-tx";
-import { InMemoryEmbeddingStore, createEmbeddingProviderFromEnv } from "../../embedding";
+import {
+  type EmbeddingStore,
+  InMemoryEmbeddingStore,
+  PgEmbeddingStore,
+  createEmbeddingProviderFromEnv,
+} from "../../embedding";
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE_STAGE,
   type ExternalKnowledgePolicyRepo,
@@ -88,8 +96,10 @@ import {
   // dieser fehlende Modulexport war der Grund, warum das seit JOB 4154 fertige Routen-Plugin an
   // keiner App angemeldet werden konnte (`routes/gesamtanweisung-routes.ts`, Kopf).
   GesamtanweisungDienst,
+  type HalbwertszeitVerlaufRepo,
   InMemoryDokumentaktenRepo,
   InMemoryEvidenceRepo,
+  InMemoryHalbwertszeitVerlauf,
   InMemoryKoRepo,
   InMemoryKoVersionRepo,
   InMemoryUploadLimitsRepo,
@@ -108,6 +118,7 @@ import {
   PgAnweisungRepo,
   PgDokumentaktenRepo,
   PgEvidenceRepo,
+  PgHalbwertszeitVerlauf,
   PgKantenRepo,
   PgKoRepo,
   PgKoSearchProjectionRepo,
@@ -247,13 +258,22 @@ import {
 } from "./confluence-import-schalter";
 import { registerHerkunftspruefung } from "./csrf";
 import { ladeDienstSchluessel, matchDienstRoute } from "./dienst-schluessel";
-import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplicate-detection";
+import {
+  type SemanticPrefilter,
+  entzugNachStart,
+  gesicherterVektorspeicher,
+  nachfuehrungNachStart,
+  reindexKoForDuplicatePrefilter,
+  removeKoFromDuplicatePrefilter,
+  vektorBleibtFuer,
+} from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
 import { schalterAn } from "./feature-flags";
 // Firmenwörterbuch: der versionierte Begriffskatalog der Instanz — im Postgres-Betrieb haltbar
 // (`PgBegriffeRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
 import { type BegriffeRepo, InMemoryBegriffeRepo, PgBegriffeRepo } from "./firmenwoerterbuch";
+import { frischeMeldungen } from "./frische-meldungen";
 import { kiLaeufeAuskunft } from "./health-ki-laeufe";
 import { type HintergrundlaufBericht, createHintergrundpruefung } from "./hintergrundpruefung";
 import {
@@ -292,6 +312,7 @@ import {
   type LiveWallFotoRepo,
   PgLiveWallFotoRepo,
 } from "./livewall-fotos";
+import { gelisteteMeldung, nurGelisteteLogfelder } from "./log-positivliste";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
@@ -301,6 +322,7 @@ import {
   PgQuellabgleichRepo,
   type QuellabgleichRepo,
 } from "./quellabgleich-ablage";
+import { createReindexQueue } from "./reindex-queue";
 import { addinStaticRoutes } from "./routes/addin-static-routes";
 import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
@@ -359,6 +381,8 @@ import { slidesRoutes } from "./routes/slides-routes";
 import { spacesRoutes } from "./routes/spaces-routes";
 import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
 import { validationRoutes } from "./routes/validation-routes";
+import { kontoendeSperre, verantwortungRoutes } from "./routes/verantwortung-routes";
+import { wissensauskunftRoutes } from "./routes/wissensauskunft-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
 import { stelleSuchprojektionBereit } from "./search-projection-startup";
@@ -376,6 +400,12 @@ import { speicherVorgang } from "./speicher-vorgang";
 // Start bei fehlenden Pflichtwerten verweigert und beim Hochfahren ohne Geheimniswerte berichtet,
 // was diese Instanz hat und was ihr fehlt.
 import { ermittleBestand, pruefeStartvertrag, startbericht } from "./start-vertrag";
+import { verantwortungBeiAnlage } from "./verantwortung";
+import {
+  InMemoryNachfolgeRepo,
+  type NachfolgeRepo,
+  PgNachfolgeRepo,
+} from "./verantwortung-nachfolge";
 
 // ================================================================================================
 // JOB 3776 — WO DER STARTVERTRAG GERUFEN WIRD: AM EINSTIEGSPUNKT. HIER NICHT MEHR.
@@ -480,6 +510,11 @@ export interface AppServices {
    */
   spaces: SpacesRepo;
   /**
+   * produkt:20261007:ownership-uebergabe (Nacharbeit 4) — die Nachfolge für neue Beiträge eines
+   * befristeten Kontos (`verantwortung-nachfolge.ts`). Im Postgres-Betrieb haltbar.
+   */
+  verantwortungNachfolge: NachfolgeRepo;
+  /**
    * PMO-FEA-0003: die freiwilligen Fotos der Live-Wand (`livewall-fotos.ts`). Aus demselben Grund
    * wie `brandingSettings` NICHT in `AppRepos`; im Postgres-Betrieb haltbar (`PgLiveWallFotoRepo`,
    * eingehängt in `buildPgServices`), sonst die In-Memory-Ablage. Geht sie beim Neustart des
@@ -493,6 +528,12 @@ export interface AppServices {
    * Neustart des Dev-Betriebs verloren, ist das die Richtung des Löschens, nicht des Offenlegens.
    */
   gedaechtnis: GedaechtnisRepo;
+  /**
+   * R-0470: der dauerhafte Vektorspeicher des Textprüfungs-Vorfilters (`PgEmbeddingStore`), gesetzt
+   * von `buildPgServices`. Fehlt er (Speicherbetrieb), legt `buildApp` den In-Memory-Speicher an —
+   * dann ohne Neustartzusage, und genau so benannt.
+   */
+  vektorSpeicher?: EmbeddingStore;
   /**
    * R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — über die Oberfläche umlegbar,
    * von jeder Confluence-Importroute je Anfrage durchgesetzt. Aus demselben Grund wie
@@ -616,6 +657,9 @@ export interface AppRepos {
   auditRepo: AuditRepo;
   koRepo: KoRepo;
   koVersions: KoVersionRepo;
+  // aufnahme:20260922:gesamt-wissen-frische (R-1636/R-0248): der festgehaltene Lernverlauf der
+  // Halbwertszeiten. Optional: fehlt er, hält der KoService ihn im Speicher.
+  halbwertszeitVerlauf?: HalbwertszeitVerlaufRepo;
   evidence: EvidenceRepo;
   users: UserRepo;
   sessions: SessionRepo;
@@ -625,6 +669,8 @@ export interface AppRepos {
   ratings: RatingRepo;
   assignments: AssignmentRepo;
   conflictsRepo: ConflictRepo;
+  // Aufnahme 20260922 · Prüfung-Gedächtnis (R-1103/R-1105): gemerkte Textstände je Paar.
+  conflictMemory: ConflictMemoryRepo;
   // Berater-Konzept Duplikate 04.07. (Stufe D3b): Persistenz der Überschneidungs-Einträge.
   overlapRepo: OverlapRepo;
   // Pedi 04.07.: persistierte Anzeige-Schwelle der Duplikat-Erkennung (Admin-Einstellung).
@@ -981,10 +1027,15 @@ export function assembleServices(
     begriffe?: BegriffeRepo;
     // produkt:20261007:spaces: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     spaces?: SpacesRepo;
+    // produkt:20261007:ownership-uebergabe: gesetzt von `buildPgServices`; sonst im Speicher.
+    verantwortungNachfolge?: NachfolgeRepo;
     // PMO-FEA-0003: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     livewallFotos?: LiveWallFotoRepo;
     // R-0466: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     gedaechtnis?: GedaechtnisRepo;
+    // R-0470: gesetzt von `buildPgServices` (echter Pool); ohne Injektion legt `buildApp` den
+    // In-Memory-Speicher an.
+    vektorSpeicher?: EmbeddingStore;
     // R-0134 / R-1005: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     confluenceImportSchalter?: ConfluenceImportSchalterRepo;
     // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
@@ -1011,10 +1062,24 @@ export function assembleServices(
     // unter derselben Sperre wie der Vorgang selbst (speicher-vorgang.ts).
     ...(speicher ? { kettenSperre: speicher.kettenSperre } : {}),
   });
+  const verantwortungNachfolge = opts.verantwortungNachfolge ?? new InMemoryNachfolgeRepo();
+  // produkt:20261007:spaces — hier schon gebaut, weil die Nachfolge bei Anlage (Nacharbeit 6) das
+  // Leserecht der Nachfolge am führenden Space des neuen Beitrags prüft. Dieselbe Instanz geht
+  // unten in die Dienste.
+  const spaces = opts.spaces ?? new InMemorySpacesRepo();
   const ko = new KoService({
     repo: repos.koRepo,
     audit,
+    // produkt:20261007:ownership-uebergabe (Nacharbeit 4): neue Beiträge eines befristeten Kontos
+    // verantwortet ab der Anlage dessen Nachfolge — über das Kontoende hinaus.
+    verantwortungBeiAnlage: verantwortungBeiAnlage(
+      (id) => repos.users.findById(id),
+      verantwortungNachfolge,
+      () => spaces.aktuelle(),
+      () => Date.now(),
+    ),
     versions: repos.koVersions,
+    ...(repos.halbwertszeitVerlauf ? { halbwertszeitVerlauf: repos.halbwertszeitVerlauf } : {}),
     evidence: repos.evidence,
     // SCRUM-395: Standard-Prüferanzahl aus der Admin-Einstellung — als injizierte
     // Funktion (keine Modulgrenzen-Verletzung); null → Modul-Default 3.
@@ -1125,6 +1190,9 @@ export function assembleServices(
     reasoner,
     koService: ko,
     gaps: repos.gaps,
+    // aufnahme:20260922:gesamt-wissen-frische (R-1636): die gelernte Halbwertszeit je Kategorie
+    // bestimmt die Haltbarkeit auch im Fragepfad — dieselbe Tabelle wie an den Leserouten.
+    halbwertszeiten: () => ko.gelernteHalbwertszeiten(),
     // W3-C1 (Auftrag 76): ab hier schreibt der Antwortweg wirklich einen Beleg.
     // W1 Weg A (Auftrag 143): das Repo kommt aus `repos.` — derselbe Satz, den die Dev-Persistenz
     // journaliert. Kein bedingter Key mehr: es ist immer da, und damit läuft der Beleg in JEDER
@@ -1157,6 +1225,7 @@ export function assembleServices(
     repo: repos.conflictsRepo,
     audit,
     currentVersion: koVersion,
+    memory: repos.conflictMemory,
   });
   // JOB 3071: die papierkorbfähige Auskunft „hat der Autor seinen eigenen Beitrag zurückgezogen?".
   // Genau wie `koVersion` ein Funktions-Port und keine Modulkante: `services/conflicts` darf
@@ -1242,7 +1311,9 @@ export function assembleServices(
         }
       : {}),
   });
-  const lifecycle = new LifecycleService({ koService: ko, repo: repos.lifecycleRepo });
+  // aufnahme:20260922:gesamt-wissen-frische (R-1635): jede Markierung hinterlässt einen Beleg im
+  // Prüfprotokoll — die Grundlage der Benachrichtigung an Autor bzw. Nachfolger in der Glocke.
+  const lifecycle = new LifecycleService({ koService: ko, repo: repos.lifecycleRepo, audit });
 
   // ==============================================================================================
   // JOB 2009 · D2 — HIER WIRD DIE SICHTBARKEITSNAHT DES WISSENSNETZES GESCHLOSSEN (H3, Weg D).
@@ -1294,11 +1365,14 @@ export function assembleServices(
     // Firmenwörterbuch — Postgres, wenn injiziert, sonst im Speicher.
     begriffe: opts.begriffe ?? new InMemoryBegriffeRepo(),
     // produkt:20261007:spaces — Postgres, wenn injiziert, sonst im Speicher.
-    spaces: opts.spaces ?? new InMemorySpacesRepo(),
+    spaces,
+    verantwortungNachfolge,
     // PMO-FEA-0003: die Fotos der Live-Wand — Postgres, wenn injiziert, sonst im Speicher.
     livewallFotos: opts.livewallFotos ?? new InMemoryLiveWallFotoRepo(),
     // R-0466: das Interaktionsgedächtnis — Postgres, wenn injiziert, sonst im Speicher.
     gedaechtnis: opts.gedaechtnis ?? new InMemoryGedaechtnisRepo(),
+    // R-0470: der Vektorspeicher — nur, wenn injiziert (Postgres); sonst entscheidet `buildApp`.
+    ...(opts.vektorSpeicher ? { vektorSpeicher: opts.vektorSpeicher } : {}),
     // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
     confluenceImportSchalter:
       opts.confluenceImportSchalter ?? new InMemoryConfluenceImportSchalterRepo(),
@@ -1588,6 +1662,8 @@ export function inMemoryRepos(): AppRepos {
     auditRepo: new InMemoryAuditRepo(),
     koRepo: new InMemoryKoRepo(schreibstand),
     koVersions: new InMemoryKoVersionRepo(schreibstand),
+    // R-1636/R-0248: der Lernverlauf im Speicherbetrieb — hier, damit die Dev-Persistenz ihn journaliert.
+    halbwertszeitVerlauf: new InMemoryHalbwertszeitVerlauf(),
     evidence: new InMemoryEvidenceRepo(schreibstand),
     users: new InMemoryUserRepo(),
     sessions: new InMemorySessionRepo(),
@@ -1597,6 +1673,7 @@ export function inMemoryRepos(): AppRepos {
     ratings: new InMemoryRatingRepo(),
     assignments: new InMemoryAssignmentRepo(),
     conflictsRepo: new InMemoryConflictRepo(),
+    conflictMemory: new InMemoryConflictMemoryRepo(),
     overlapRepo: new InMemoryOverlapRepo(),
     overlapSettings: new InMemoryOverlapSettingsRepo(),
     managementProfiles: new InMemoryManagementProfileRepo(),
@@ -1662,6 +1739,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       auditRepo: new PgAuditRepo(pool),
       koRepo: new PgKoRepo(pool),
       koVersions: new PgKoVersionRepo(pool),
+      // R-1636/R-0248: der Lernverlauf überlebt Neustarts — sonst begänne er nach jedem Start neu.
+      halbwertszeitVerlauf: new PgHalbwertszeitVerlauf(pool),
       evidence: new PgEvidenceRepo(pool),
       users: new PgUserRepo(pool),
       sessions: new PgSessionRepo(pool),
@@ -1671,6 +1750,7 @@ export function buildPgServices(rohPool: Pool): AppServices {
       ratings: new PgRatingRepo(pool),
       assignments: new PgAssignmentRepo(pool),
       conflictsRepo: new PgConflictRepo(pool),
+      conflictMemory: new PgConflictMemoryRepo(pool),
       // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge persistent.
       overlapRepo: new PgOverlapRepo(pool),
       // Pedi 04.07.: Anzeige-Schwelle persistent.
@@ -1747,12 +1827,18 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261007:spaces: Spaces und ihre Fassungen liegen in derselben Datenbank wie der
       // Bestand und überleben Neuladen, Neustart und Deploy.
       spaces: new PgSpacesRepo(pool),
+      // produkt:20261007:ownership-uebergabe: die Nachfolge bei Befristung überlebt Neustart und
+      // Deploy (`VERANTWORTUNG_NACHFOLGE_SCHEMA`, angelegt von `migrate()`).
+      verantwortungNachfolge: new PgNachfolgeRepo(pool),
       // PMO-FEA-0003: ein hinterlegtes Foto überlebt Neustart und Deploy; der Widerruf löscht die
       // Zeile in derselben Datenbank (`LIVEWALL_FOTO_SCHEMA`, angelegt von `migrate()`).
       livewallFotos: new PgLiveWallFotoRepo(pool),
       // R-0466: Gedächtniseinträge überleben Neustart und Deploy bis zu ihrer Frist; Löschen und
       // Fristablauf entfernen die Zeile in derselben Datenbank (`GEDAECHTNIS_SCHEMA`).
       gedaechtnis: new PgGedaechtnisRepo(pool),
+      // R-0470: die Vektoren des Textprüfungs-Vorfilters überleben Neustart und Deploy
+      // (`EMBEDDING_SCHEMA`, angelegt von `migrate()`); die Endlöschung entfernt die Zeile.
+      vektorSpeicher: new PgEmbeddingStore(pool),
       // R-0134 / R-1005: der Betreiberschalter überlebt Neustart und Deploy — sonst stünde ein
       // ausgeschalteter Import nach dem nächsten Neustart still wieder auf „an".
       confluenceImportSchalter: new PgConfluenceImportSchalterRepo(pool),
@@ -1769,10 +1855,18 @@ export function buildPgServices(rohPool: Pool): AppServices {
 // Weg 3: baut den semantischen Vorfilter NUR, wenn KLARWERK_DUP_PREFILTER=1|true gesetzt ist —
 // Standard AUS (heutiges „jeder gegen jeden" bleibt Default). Ohne einsatzbereiten Provider (z. B.
 // Modus cloud/local noch nicht verdrahtet) → ehrlich undefined statt Fake. topK aus
-// KLARWERK_DUP_PREFILTER_TOPK (Default 25). Der In-Memory-Store ist in dieser Ausbaustufe noch nicht
-// befüllt (Befüllung im Einreiche-Pfad ist ein separater Folgeschritt) → der Prefilter fällt bis dahin
-// über den leeren Store auf den Voll-Pool zurück.
-function createSemanticPrefilterFromEnv(): SemanticPrefilter | undefined {
+// KLARWERK_DUP_PREFILTER_TOPK (Default 25).
+//
+// R-0470: der Speicher kommt herein — im Postgres-Betrieb der dauerhafte (`PgEmbeddingStore`),
+// sonst der In-Memory-Speicher. Er wird in `gesicherterVektorspeicher` gehüllt: jede Ablage, auch
+// die des Einreichewegs, prüft danach das lebende Objekt und entfernt einen Vektor, den es nicht
+// mehr tragen darf.
+function createSemanticPrefilterFromEnv(
+  speicher: EmbeddingStore,
+  ko: Pick<KoService, "get">,
+  // Ben, Nacharbeit 5: reiht ein Objekt ein, dessen eben abgelegter Text schon überholt ist.
+  nachfuehren: (koId: string) => void,
+): SemanticPrefilter | undefined {
   const flag = process.env.KLARWERK_DUP_PREFILTER;
   if (flag !== "1" && flag !== "true") {
     return undefined;
@@ -1785,7 +1879,11 @@ function createSemanticPrefilterFromEnv(): SemanticPrefilter | undefined {
   const topK = Number.isInteger(rawTopK) && rawTopK > 0 ? rawTopK : 25;
   // SCRUM-498 B2 (Fix): embed() durch den prozess-globalen Embed-Cap führen, damit der Prefilter den
   // Cap nicht umgeht. Bei Normallast (und mit dem Stub) ein No-Op → Prefilter-Verhalten bit-gleich.
-  return { embedder: cappedEmbeddingProvider(embedder), store: new InMemoryEmbeddingStore(), topK };
+  return {
+    embedder: cappedEmbeddingProvider(embedder),
+    store: gesicherterVektorspeicher(speicher, ko, nachfuehren),
+    topK,
+  };
 }
 
 // SCRUM-498 B2: einheitliche Backpressure-Antwort. Ein Modell-/Embed-Cap-Überlauf (ModelCapacityError)
@@ -2426,6 +2524,44 @@ function istTraceKennung(schluessel: string, inhalt: unknown): inhalt is string 
 }
 
 /**
+ * R-0623 — DIE ARGUMENTE EINES LOGAUFRUFS NACH DER POSITIVLISTE.
+ *
+ * Das erste Argument ist bei pino das Feldobjekt: es wird auf die gelisteten Felder reduziert
+ * (`nurGelisteteLogfelder`); ein nackter Fehler wird zu `{ err }`, damit er nur über den
+ * Erlaubnislisten-Serializer erscheint. Wiederholt der Meldungstext den Text des mitgegebenen
+ * Fehlers — oder fehlt er, sodass pino ihn aus dem Fehler nähme —, steht dort die Konstante
+ * `ERR_TEXT_UNTERDRUECKT`. Jeder andere Meldungstext steht nur, wenn er einer Vorlage der
+ * Meldungsliste entspricht (`gelisteteMeldung`), sonst `MELDUNG_NICHT_GELISTET`.
+ */
+export function ohneFreienFehlertext(argumente: readonly unknown[]): unknown[] {
+  const [erstes, meldung] = argumente;
+  // R-0623 (Ben, Nacharbeit 3/4): auch ein reiner Textaufruf läuft nicht unverändert durch.
+  // Weitere Argumente (Formatwerte für `%s` — im Bestand ungenutzt) fallen weg; ein Meldungstext
+  // steht nur nach der Positivliste der Meldungen (`log-positivliste.ts`, `MELDUNGEN`).
+  if (typeof erstes === "string") {
+    return [gelisteteMeldung(erstes)];
+  }
+  if (erstes === null || typeof erstes !== "object") {
+    return [];
+  }
+  const felder: Record<string, unknown> =
+    erstes instanceof Error ? { err: erstes } : nurGelisteteLogfelder(erstes, erlaubterTyp);
+  const fehler = felder.err;
+  const text = fehler instanceof Error ? fehler.message : "";
+  // Ein sehr kurzer Fehlertext zählt nur als wiederholt, wenn die Meldung GENAU er ist — sonst
+  // träfe ein Allerweltswort jede Meldung, die es zufällig enthält.
+  const wiederholt =
+    text !== "" &&
+    (meldung === undefined ||
+      meldung === text ||
+      (typeof meldung === "string" && text.length >= 8 && meldung.includes(text)));
+  if (wiederholt) {
+    return [felder, ERR_TEXT_UNTERDRUECKT];
+  }
+  return typeof meldung === "string" ? [felder, gelisteteMeldung(meldung)] : [felder];
+}
+
+/**
  * Die Logkonfiguration — eine geschlossene Erlaubnisliste in drei Serializern.
  *
  * ERLAUBNISLISTE, KEINE SPERRLISTE: Eine Sperrliste müsste bei jeder neuen Route neu bewiesen
@@ -2493,11 +2629,16 @@ export function baueLoggerOptionen(vorgabe?: {
     // ÜBERNOMMEN AUS EXTS PARALLELBAU (`app-logger.ts:184-192`): jeder Logaufruf läuft hier durch,
     // Meldungstext und Feldobjekt gleichermassen. Die einzige Stelle, an der ein selbstgebauter
     // Freitext noch abgefangen werden kann — die Serializer sehen ihn nie.
+    //
+    // R-0623 (Ben, Nacharbeit 1): das Feldobjekt läuft ZUERST durch die Positivliste
+    // (`log-positivliste.ts`) — nur gelistete Felder mit passendem Wert erreichen die Zeile; danach
+    // die Geheimnissenke wie bisher. Ein Meldungstext, der den Text des mitgegebenen Fehlers
+    // wiederholt (Fastifys Fehlerweg übergibt `error.message`), wird durch die Konstante ersetzt.
     hooks: {
       logMethod(this: unknown, argumente: unknown[], methode: (...a: unknown[]) => void): void {
         methode.apply(
           this,
-          argumente.map((argument) => senkeUeberWert(argument)),
+          ohneFreienFehlertext(argumente).map((argument) => senkeUeberWert(argument)),
         );
       },
     },
@@ -3032,6 +3173,13 @@ export function buildApp(
   // HTTP-Oberfläche der Module. Auth bringt seine eigenen Routen mit; die übrigen
   // Module werden über App-Routen verdrahtet, die den gemeinsamen Guard nutzen.
   const resetBaseUrl = process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/reset` : undefined;
+  // produkt:20261007:ownership-uebergabe: kein Konto wird gelöscht, das noch Hauptverantwortung
+  // trägt (beide Löschwege der Auth-Routen) — sonst blieben Beiträge ohne Verantwortung zurück.
+  kontoendeSperre(app, {
+    ko: services.ko,
+    auth: services.auth,
+    nachfolge: services.verantwortungNachfolge,
+  });
   app.register(
     authRoutes(services.auth, {
       mailer: services.mailer,
@@ -3043,7 +3191,14 @@ export function buildApp(
   const notifyAssignment = makeAssignmentNotifier(services.auth, services.mailer);
   // Weg 3: semantischer Vorfilter der Duplikat-Erkennung. Standard AUS → beide Routen bekommen
   // undefined → heutiges „jeder gegen jeden". Erst KLARWERK_DUP_PREFILTER=1 schaltet ihn scharf.
-  const semanticPrefilter = createSemanticPrefilterFromEnv();
+  // R-0470: im Postgres-Betrieb der dauerhafte Vektorspeicher, sonst der In-Memory-Speicher.
+  const vektorSpeicher = services.vektorSpeicher ?? new InMemoryEmbeddingStore();
+  // Ben, Nacharbeit 5: die Schlange entsteht erst weiter unten; der Speicher reiht über diese späte
+  // Bindung ein, sobald sie steht (vorher ist sie ein No-op — dann gibt es auch keine Schlange).
+  let vektorNachfuehren: (koId: string) => void = () => undefined;
+  const semanticPrefilter = createSemanticPrefilterFromEnv(vektorSpeicher, services.ko, (koId) =>
+    vektorNachfuehren(koId),
+  );
   // ==============================================================================================
   // JOB 3066 — DAS AUFRÄUMEN DER BEFUNDE FÄHRT IN DER LÖSCHTRANSAKTION MIT.
   // ==============================================================================================
@@ -3144,7 +3299,82 @@ export function buildApp(
   // (duplicate-detection.ts:182-183). Was hier steht, ist idempotent und selbstheilend.
   services.ko.setPurgeCleanup(async (koId) => {
     await removeKoFromDuplicatePrefilter(koId, semanticPrefilter);
+    // R-0470: der dauerhafte Speicher kann Vektoren aus einer Zeit tragen, in der der Schalter an
+    // war. Die Endlöschung räumt ihn deshalb auch bei abgeschaltetem Vorfilter (idempotent).
+    if (!semanticPrefilter && services.vektorSpeicher) {
+      await services.vektorSpeicher.delete(koId).catch((err: unknown) => {
+        console.warn(
+          `[dup-prefilter] Embedding-Kaskadenlöschung für KO ${koId} fehlgeschlagen`,
+          err instanceof Error ? err.name : typeof err,
+        );
+      });
+    }
   });
+  // ==============================================================================================
+  // R-0195 / R-0470 / R-0483 (Aufnahme gesamt-suchindex-aktualitaet) — DIE REINDEX-WARTESCHLANGE.
+  // ==============================================================================================
+  //
+  // Jede gespeicherte Objektänderung reiht EINEN Eintrag ein (`setAenderungsNachlauf`); die
+  // serielle Schlange aus JOB 1163 arbeitet ihn ausserhalb des Aufrufs ab — die Antwortzeit leidet
+  // nicht. Der Eintrag liest das Objekt frisch und bettet neu ein oder entfernt den Vektor
+  // (heraufgestuft, Papierkorb, aufgegangen). Ohne Vorfilter (Flag aus) wird nichts eingebettet
+  // und damit auch nichts nachgeführt: dann wird die Schlange nicht verdrahtet.
+  //
+  // BEN, NACHARBEIT 3 — ENTFERNEN, SOBALD DIE STUFE STEIGT, NICHT ERST WENN DIE SCHLANGE DRAN IST.
+  // Darf das gespeicherte Objekt keinen Vektor mehr tragen, löscht der Nachlauf ihn SOFORT, vorbei
+  // an jedem Rückstau; der Eintrag in der Schlange folgt trotzdem (er prüft und räumt nach). Eine
+  // laufende Einbettung schreibt danach keinen alten Stand mehr — das sichert
+  // `reindexKoForDuplicatePrefilter` mit seinen Prüfungen vor und nach dem Schreiben.
+  //
+  // R-0470 — NACH EINEM NEUSTART: `nachfuehrungNachStart` hält beim Start den Bestand gegen den
+  // dauerhaften Speicher und reiht alles ein, was vor dem Neustart nicht mehr nachgeführt wurde.
+  // Das läuft im Hintergrund und hält den Start nicht auf.
+  //
+  // Die Suchprojektion von Bibliothek und Klara steht NICHT in dieser Schlange: sie entsteht im
+  // selben Schreibvorgang wie die neue Fassung und ist damit sofort auffindbar.
+  //
+  // BEN, NACHARBEIT 5 — DER ENTZUG HÄNGT NICHT AM SCHALTER. Ist der Vorfilter aus, trägt der
+  // dauerhafte Speicher womöglich noch Vektoren aus einer Zeit, in der er an war. Für sie gilt das
+  // Entfernen weiter: derselbe sofortige Entzug am Nachlauf und ein Abgleich beim Start, der NUR
+  // entfernt (`entzugNachStart`). Eingebettet wird dabei nichts, kein Modell wird gerufen.
+  // Nur die Fehlerklasse, nie der Fehlertext — er könnte Inhalt tragen (wie reindex-queue.ts).
+  const meldeVektorFehler = (was: string, koId: string, fehler: unknown): void => {
+    const klasse = fehler instanceof Error ? fehler.name : typeof fehler;
+    console.warn(`[dup-prefilter] ${was} für KO ${koId} fehlgeschlagen (${klasse})`);
+  };
+  const entziehe = (speicher: EmbeddingStore, koId: string, stand?: KnowledgeObject): void => {
+    if (stand && !vektorBleibtFuer(stand)) {
+      const entzug = speicher.delete(koId);
+      void entzug.catch((e: unknown) => meldeVektorFehler("Sofortiger Entzug", koId, e));
+    }
+  };
+  if (semanticPrefilter) {
+    const reindexQueue = createReindexQueue({
+      reindex: (koId) =>
+        reindexKoForDuplicatePrefilter(koId, { ko: services.ko, semanticPrefilter }),
+      onError: (koId, fehler) => meldeVektorFehler("Neuindizierung", koId, fehler),
+    });
+    vektorNachfuehren = (koId) => reindexQueue.enqueue(koId);
+    services.ko.setAenderungsNachlauf((koId, stand) => {
+      entziehe(semanticPrefilter.store, koId, stand);
+      reindexQueue.enqueue(koId);
+    });
+    app.addHook("onReady", async () => {
+      const abgleich = nachfuehrungNachStart({
+        ko: services.ko,
+        store: semanticPrefilter.store,
+        enqueue: (koId) => reindexQueue.enqueue(koId),
+      });
+      void abgleich.catch((fehler: unknown) => meldeVektorFehler("Nachführung", "-", fehler));
+    });
+  } else if (services.vektorSpeicher) {
+    const speicher = services.vektorSpeicher;
+    services.ko.setAenderungsNachlauf((koId, stand) => entziehe(speicher, koId, stand));
+    app.addHook("onReady", async () => {
+      const abgleich = entzugNachStart({ ko: services.ko, store: speicher });
+      void abgleich.catch((fehler: unknown) => meldeVektorFehler("Entzug", "-", fehler));
+    });
+  }
   // WP-SUBMIT-ASYNC (Pedis R3): der Prüf-Worker kapselt die früher synchron im Submit-Pfad
   // laufende Erkennung (detectConflicts/detectDuplicates) — Concurrency 1, In-Process, PII-freies
   // Log. Ein von Tests vorab gesetzter services.aiCheckWorker (Spy) hat Vorrang.
@@ -3454,6 +3684,22 @@ export function buildApp(
     kennung: () => randomUUID(),
   });
   app.register(kenntnisnahmeRoutes({ dienst: kenntnisnahmeDienst, kos: services.ko }, guards));
+  // R-1644: die Wissensauskunft zum Zeitpunkt — liest Fassungen, Audit-Protokoll und Kenntnisnahmen,
+  // schreibt nichts. Dieselbe Uhr wie die Kenntnisnahme, damit „nicht in der Zukunft" zu deren
+  // Zeitpunkten passt.
+  app.register(
+    wissensauskunftRoutes(
+      {
+        kos: services.ko,
+        ko: services.ko,
+        audit: services.audit,
+        kenntnisnahmen: services.kenntnisnahmen,
+        konten: () => services.auth.listUsers(),
+        jetzt: services.kenntnisnahmeUhr,
+      },
+      guards,
+    ),
+  );
   // ==============================================================================================
   // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS) — HIER BEKOMMT DIE GESAMTANWEISUNG IHRE TÜR.
   // ==============================================================================================
@@ -3525,6 +3771,9 @@ export function buildApp(
           new Set(
             (await services.spaces.aktuelle()).filter((s) => s.zugang === "alle").map((s) => s.id),
           ),
+        // R-1649: der abweichende Weg aus „nicht hilfreich" wird ein gewöhnlicher Entwurf —
+        // derselbe Anlageweg wie POST /api/drafts, kein zweiter.
+        alternativeAlsEntwurf: (entwurf, author) => services.capture.createDraft(entwurf, author),
       },
       guards,
     ),
@@ -3639,6 +3888,13 @@ export function buildApp(
         kos: koSichtbarkeit,
         // Kenntnisnahme: offene Anforderungen und Erinnerungen des Betrachters.
         kenntnisnahmen: kenntnisnahmeDienst,
+        // aufnahme:20260922:gesamt-wissen-frische: Fristerinnerung, Wochenvorlage und
+        // Prüfanforderung an Autor bzw. Nachfolger (R-0248 / R-0266 / R-1635).
+        frische: frischeMeldungen({
+          ko: services.ko,
+          lifecycle: services.lifecycle,
+          audit: services.audit,
+        }),
       },
       guards,
     ),
@@ -3779,6 +4035,20 @@ export function buildApp(
   app.register(
     spacesRoutes(
       { spaces: services.spaces, ko: services.ko, auth: services.auth, audit: services.audit },
+      guards,
+    ),
+  );
+  // produkt:20261007:ownership-uebergabe: Hauptverantwortung einzeln und gesammelt übergeben,
+  // Vorschau, Teilfehler mit Wiederaufnahme, Deaktivierung ohne Restbestand.
+  app.register(
+    verantwortungRoutes(
+      {
+        ko: services.ko,
+        auth: services.auth,
+        spaces: services.spaces,
+        nachfolge: services.verantwortungNachfolge,
+        audit: services.audit,
+      },
       guards,
     ),
   );
