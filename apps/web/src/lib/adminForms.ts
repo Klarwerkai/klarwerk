@@ -70,4 +70,9 @@ export const KONTO_AUDIT_AKTIONEN: readonly string[] = [
   "user.oidc-linked-unverified",
   "user.role-claim-missing",
   "user.role-synced",
+  // Nachgezogen mit dem Basisstand (zweiter Faktor, Verzeichnisabgleich) — derselbe Kontodienst.
+  "auth.second-factor-failed",
+  "user.second-factor-enabled",
+  "user.second-factor-disabled",
+  "user.directory-sync",
 ];

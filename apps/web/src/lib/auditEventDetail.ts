@@ -146,6 +146,12 @@ const KONTO_ZIEL_AKTIONEN: ReadonlySet<string> = new Set([
   "user.role-change",
   "user.role-claim-missing",
   "user.role-synced",
+  // produkt:20261009:admin-audit-verstaendlich: mit dem Basisstand hinzugekommen — jeder dieser
+  // Aufrufe in `services/auth/src/service.ts` schreibt die Kontokennung als Ziel.
+  "auth.second-factor-failed",
+  "user.second-factor-enabled",
+  "user.second-factor-disabled",
+  "user.directory-sync",
 ]);
 
 /**
