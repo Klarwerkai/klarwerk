@@ -202,6 +202,18 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * von E2, HISTORIE/nacharbeit-8/PRUEFUNG/integration-word-fenster.log) und unverändert übernommen;
  * die vier Panel-Dateien sind seit dieser Messung unberührt.
  *
+ * AUFTRAG ki-modus-wahrheit (R-0700, Ben nacharbeit-2): `taskpane.js` ändert sich allein in
+ * `performAsk` (Klaras eigener Zugang `/api/klara/sessions/{sessionId}/execute` mit Sitzung; ohne
+ * Sitzung `/api/ask` ohne Bindungskopfzeilen und Klara-Felder). DAZU R-0378: `#kw-kopf-ki` in der
+ * Schlusszeile des `<header>` (`taskpane.html`, 498 Zeilen), seine Regel in `taskpane.css`, die
+ * Befüllung in `renderKlaraS4` und `s4KopfKi` je Sprache (`taskpane.js`); `marke.js` bleibt
+ * unberührt. Der Bezugspunkt MUSS deshalb wandern; ohne zugelassenes
+ * Hash-Werkzeug ist er hier nicht berechenbar. E2 meldet ihn im Prüflauf als „Received"; er wird
+ * danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 4 (ki-modus-wahrheit): GEMESSEN im Prüflauf zu Kandidat fdd18078 (`782fe303…`,
+ * „Received" von E2, HISTORIE/nacharbeit-4/PRUEFUNG/panel-auslieferung-pins-und-schranken.log) und
+ * unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+ *
  * AUFTRAG „Geschriebene Behauptungen gegen den Wissensbestand prüfen" (R-0336, R-0708): ZWEI
  * Änderungen, und nur EINE bewegt diesen Wert.
  *   (1) Der Abschnitt KW-WORDVERGLEICH wandert Zeile für Zeile von `taskpane.js` nach
@@ -266,6 +278,20 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * HISTORIE/nacharbeit-17/PRUEFUNG/r0310-panel-und-pins.log) und unverändert übernommen; die vier
  * Panel-Dateien sind seit dieser Messung unberührt.
  *
+ * INTEGRATION ki-modus-wahrheit × antwort-quellenanzeige (Kandidat de703240, Nacharbeit 21): BEIDE
+ * Änderungen stehen jetzt in den Panel-Dateien — `performAsk` über Klaras eigenen Zugang,
+ * `#kw-kopf-ki`/`s4KopfKi` (dieser Auftrag) UND Absatz-Belege, Fußnoten, `#ask-gap-zuordnung` (main).
+ * Für B3 sind ein fremder Kommentar (JOB 2621 §1) wortgleich verdichtet und der eigene
+ * R-0700-Kommentar an seine Codezeile gezogen (`taskpane.js` 12498 Zeilen, `taskpane.html` 498).
+ * Keine der beiden Messungen (`782fe303…` hier, `cb99796c…` auf main) beschreibt das
+ * zusammengefügte Dokument. Der Wert unten ist der von `main` und damit ein PLATZHALTER — DER BLOB
+ * MUSS WANDERN; E2 meldet ihn im Prüflauf als „Received", er wird danach gemessen übernommen. E3
+ * bleibt die Gegenprobe.
+ * NACHARBEIT 22 (ki-modus-wahrheit): GEMESSEN im Prüflauf zu Kandidat 423e9199 am
+ * zusammengeführten Panel (`eadf9dc0…`, „Received" von E2, HISTORIE/nacharbeit-22/PRUEFUNG/
+ * integration-panel-auslieferung-pins-und-schranken.log) und unverändert übernommen; die vier
+ * Panel-Dateien sind seit dieser Messung unberührt.
+ *
  * INTEGRATION „Geschriebene Behauptungen …" × main 70216f9f (Nacharbeit 3 dieses Auftrags): BEIDE
  * Änderungen stehen im zusammengefügten Dokument — die Quellenanzeige von main (R-0309/R-0310/
  * R-0325/R-0326, `#ask-gap-zuordnung`) in `taskpane.js`/`.html`/`.css` UND der Wortvergleich dieses
@@ -291,6 +317,18 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * Panel (`c2a57caf…`, „Received" von E2, HISTORIE/nacharbeit-19/PRUEFUNG/integration-word-fenster.log)
  * und unverändert übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
  *
+ * INTEGRATION ki-modus-wahrheit × Antwort-Erklärung (main ab5f3c95, Nacharbeit 26): BEIDE
+ * Änderungen stehen jetzt in den Panel-Dateien — `performAsk` über Klaras eigenen Zugang,
+ * `#kw-kopf-ki`/`s4KopfKi` (dieser Auftrag) UND Lage/Konfliktseiten (main). Ohne Konflikt in den
+ * Panel-Dateien zusammengeführt (`taskpane.js` 12491 Zeilen, `taskpane.html` 498). Keine der beiden
+ * Messungen (`eadf9dc0…` hier, `c2a57caf…` auf main) beschreibt das zusammengefügte Dokument. Der
+ * Wert unten ist der von `main` und damit ein PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet ihn im
+ * Prüflauf als „Received", er wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 27 (ki-modus-wahrheit): GEMESSEN im Prüflauf zu Kandidat 7e0024f6 am
+ * zusammengeführten Panel (`fd013c5d…`, „Received" von E2, HISTORIE/nacharbeit-27/PRUEFUNG/
+ * integration-panel-auslieferung-pins-und-schranken.log) und unverändert übernommen; die vier
+ * Panel-Dateien sind seit dieser Messung unberührt.
+ *
  * INTEGRATION „Geschriebene Behauptungen …" × main ab5f3c95 (Nacharbeit 8 dieses Auftrags): BEIDE
  * Änderungen stehen im zusammengefügten Dokument — Lage/Konfliktseiten und Absatz-Beleg-Zuordnung
  * von main (R-0321/R-0335/R-0310) in `taskpane.js`/`.html` UND der Wortvergleich dieses Auftrags
@@ -304,6 +342,19 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * panel-nach-integration-ab5f3c95-pins-und-schnitt.log) und unverändert übernommen; die fünf
  * Panel-Dateien sind seit dieser Messung unberührt.
  *
+ * INTEGRATION ki-modus-wahrheit × „Geschriebene Behauptungen …" (main 325ff8cb, Nacharbeit 33):
+ * BEIDE Änderungen stehen jetzt in den Panel-Dateien — `performAsk` über Klaras eigenen Zugang,
+ * `#kw-kopf-ki`/`s4KopfKi` (dieser Auftrag) UND der Wortvergleich (main, `wortvergleich.js`). Ohne
+ * Konflikt in den Panel-Dateien zusammengeführt (`taskpane.js` 11538 Zeilen, `taskpane.html` 498).
+ * Keine der beiden Messungen (`fd013c5d…` hier, `2d544023…` auf main) beschreibt das zusammengefügte
+ * Dokument. Der Wert unten ist der von `main` und damit ein PLATZHALTER — DER BLOB MUSS WANDERN; E2
+ * meldet ihn im Prüflauf als „Received", er wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 34 (ki-modus-wahrheit): GEMESSEN im Prüflauf zu Kandidat bc98b221 am
+ * zusammengeführten Panel (`4ed6f553…`, „Received" von E2, HISTORIE/nacharbeit-34/PRUEFUNG/
+ * integration-wortvergleich-panel-pins-und-schranken.log) und unverändert übernommen; die
+ * Panel-Dateien sind seit dieser Messung unberührt.
+ *
+ * Auf `main` lief parallel (die Zeilen unten stammen von dort):
  * INTEGRATION gesamt-sprache-begriffe × main 13984aac (K22): Auf den Stand von `main` kommt GENAU
  * eine Zeile in `renderStatics` (`taskpane.js`) — der Gruppenname der Sprachwahl
  * `#einst-sprache-wahl` über `t("einstSprache")` (gesamt-sprache-begriffe Nacharbeit 9; frühere
@@ -315,8 +366,21 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * Verfahren mit `taskpane.js` aus `main` 13984aac ergibt wörtlich
  * `2d544023972d9f9be4e644b2ace90e52c233bdb2` (der Wert von `main` oben); mit der Zeile
  * `dc94b941…` (Beleg CLAUDE/BLOB-MESSUNG-NACHARBEIT-27.json im Auftragsordner).
+ *
+ * INTEGRATION ki-modus-wahrheit × gesamt-sprache-begriffe (main 1ff962b3, Nacharbeit 36): BEIDE
+ * Änderungen stehen jetzt in den Panel-Dateien — `performAsk` über Klaras eigenen Zugang,
+ * `#kw-kopf-ki`/`s4KopfKi` (dieser Auftrag) UND die Zeile `#einst-sprache-wahl` in `renderStatics`
+ * (main, K22). Die Panel-Dateien führten sich ohne Konflikt zusammen (`taskpane.js` 11539 Zeilen,
+ * `taskpane.html` 498). Keine der beiden Messungen (`4ed6f553…` hier, `dc94b941…` auf main)
+ * beschreibt das zusammengefügte Dokument. Der Wert unten ist der von `main` und damit ein
+ * PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet ihn im Prüflauf als „Received", er wird danach
+ * gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 37 (ki-modus-wahrheit): GEMESSEN im Prüflauf zu Kandidat d3a9f1e2 am
+ * zusammengeführten Panel (`3af6ddc1…`, „Received" von E2, HISTORIE/nacharbeit-37/PRUEFUNG/
+ * integration-sprachwahl-panel-pins-und-schranken.log) und unverändert übernommen; die
+ * Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "dc94b94136c782cfb6c00438317e12821dd3a3bf";
+export const PANEL_VOR_SCHNITT_BLOB = "3af6ddc1bc25834b6010a5c09bf6db61f04b42aa";
 
 export interface PanelTeile {
   html: string;

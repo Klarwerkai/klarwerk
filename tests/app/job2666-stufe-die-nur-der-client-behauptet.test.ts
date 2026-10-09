@@ -621,10 +621,14 @@ describe("JOB 2666 D2 · P — Pins an der Quelle: eine Komposition, eine KA4-H�
   const wurzel = new URL("../../", import.meta.url).pathname;
   const lesen = (p: string): string => readFileSync(`${wurzel}${p}`, "utf8");
 
-  it("P1 · build-app.ts reicht DASSELBE `klaraSessions` an askRoutes und reasonerRoutes — keine zweite Instanz", () => {
+  // NACHGEFÜHRT DURCH R-0700 (Auftrag ki-modus-wahrheit): Klaras Frage läuft über ihren EIGENEN
+  // Zugang `klaraAusfuehrungRoutes`; dorthin geht jetzt dasselbe `klaraSessions`. Der allgemeine
+  // Frageweg `askRoutes` bekommt das Sitzungstor nicht mehr — beides ist hier gepinnt.
+  it("P1 · build-app.ts reicht DASSELBE `klaraSessions` an Klaras Zugang und reasonerRoutes — keine zweite Instanz", () => {
     const quelle = lesen("services/app/src/build-app.ts");
     expect(quelle).toMatch(/reasonerRoutes\(\{\s*\.\.\.services,\s*ka4:\s*klaraSessions\s*\}/);
-    expect(quelle).toMatch(/askRoutes\(\s*\{[^}]*klaraSessions[^}]*\}/);
+    expect(quelle).toMatch(/klaraAusfuehrungRoutes\(\s*\{[^}]*klaraSessions[^}]*\}/);
+    expect(quelle).not.toMatch(/askRoutes\(\s*\{[^}]*klaraSessions[^}]*\}/);
     expect(quelle.match(/new KlaraSessionService\(/g)).toHaveLength(1);
   });
 
