@@ -42,6 +42,9 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // sonst wäre er nach einem Dev-Neustart weg (pending-Erkennung/Badges würden lügen).
   koRepo: ["insert", "update", "delete", "setAiCheck", "resolveAiCheck"],
   koVersions: ["append"],
+  // aufnahme:20260922:gesamt-wissen-frische (R-1636/R-0248): der festgehaltene Lernverlauf der
+  // Halbwertszeiten überlebt den Dev-Neustart. `ergaenze` legt nur neue Schlüssel an → Replay exakt.
+  halbwertszeitVerlauf: ["ergaenze"],
   evidence: ["append"],
   // W2-A/148: die Laufdomaene. `insertIfAbsent` und `appendItemRefs` sind idempotent, `advance`
   // schreibt einen Zustand fort — alle drei muessen einen Dev-Neustart ueberleben, sonst waere ein
@@ -59,6 +62,9 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   users: ["insert", "update", "delete", "tryClaimBootstrapAdmin"],
   sessions: ["create", "delete", "deleteByUser"],
   resetTokens: ["create", "delete"],
+  // R-0562: der zweite Faktor überlebt den Dev-Neustart — sonst wäre er nach jedem Start still weg.
+  // `claimStep` trägt den Schritt in den Argumenten; das Replay ist damit deterministisch.
+  secondFactors: ["set", "delete", "claimStep"],
   // R-0169 (Nacharbeit 8, bens Befund zum Neustartrundlauf): `insertIfOperationAbsent` (Anlage mit
   // Vorgangskennung, der Word-Weg) und `updateWennStand` (Fortsetzen und das Binden der
   // Dokumentfassung, `CaptureService.dokumentHerkunftBinden`) sind Mutationen. Ohne sie verlor ein

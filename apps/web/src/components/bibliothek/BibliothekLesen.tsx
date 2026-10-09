@@ -24,6 +24,7 @@ import {
   commitDocumentAppend,
   newAppendOperationId,
 } from "../../lib/appendToArticle";
+import { belegstelleAusAdresse, findePassage, markiereFundstelle } from "../../lib/belegstelle";
 import {
   applyBodyAssist,
   applyBodyAssistBlock,
@@ -46,12 +47,18 @@ import { EDITOR_BLOCKS } from "../../lib/editorBlocks";
 import { eigeneKollisionDetail } from "../../lib/eigeneKollision";
 import { formatKoTimestamp } from "../../lib/koDates";
 import { type KoRevisionItemId, koRevisionSummary } from "../../lib/koRevisionSummary";
+import {
+  lesekontextLesen,
+  lesekontextVergessen,
+  lesespalteRollbereich,
+} from "../../lib/lesekontext";
 import { sprachcode, useFrischeLesevariante } from "../../lib/lesevariante";
 import type { MatchField } from "../../lib/librarySearch";
 import { useNetzOnline } from "../../lib/netzzustand";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { draftProvenance } from "../../lib/reasonerProvenance";
 import { canRevalidate } from "../../lib/revalidation";
+import { reviewHelp } from "../../lib/reviewHelp";
 import {
   isReviewReworkContext,
   reworkNextSteps,
@@ -73,12 +80,14 @@ import {
   latestValidationFeedback,
 } from "../../lib/validationFeedback";
 import { isReturnedForRework } from "../../lib/validationStatus";
+import { TELEFON_LESE_QUERY, useMediaQuery } from "../../shell/useMediaQuery";
 import { AiAssistBox } from "../AiAssistBox";
 import { BodyExtractPanel } from "../BodyExtractPanel";
 import { BodyImageGallery } from "../BodyImageGallery";
 import { BodyTemplateChooser } from "../BodyTemplateChooser";
 import { EditorAttachmentContext } from "../EditorAttachmentContext";
 import { EditorContentQuality } from "../EditorContentQuality";
+import { HelpTip } from "../HelpTip";
 import { KnowledgeInputStudio } from "../KnowledgeInputStudio";
 import { KoRevisionSummary } from "../KoRevisionSummary";
 import { LesevarianteHinweis } from "../LesevarianteHinweis";
@@ -971,6 +980,8 @@ export function BibliothekLesen({
   // Aus der EINEN Quelle (`lib/netzzustand.ts`, `onlineManager`), nicht aus `navigator.onLine`.
   const netzOnline = useNetzOnline();
   const { role } = useRole();
+  // N-0037: auf dem Telefon steht der Kenntnisnahme-Bereich NACH dem Bericht (s. dort).
+  const telefon = useMediaQuery(TELEFON_LESE_QUERY);
   const { user } = useSession();
   const { push } = useToast();
   const qc = useQueryClient();
@@ -985,7 +996,11 @@ export function BibliothekLesen({
   const [studioOpen, setStudioOpen] = useState(false);
   const [studioApplied, setStudioApplied] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [mehrOffen, setMehrOffen] = useState(false);
+  // N-0020: kehrt der Mensch per Browser-Zurück aus dem Herkunftsgraphen zurück, steht hier, wo er
+  // gelesen hat (`lib/lesekontext.ts`). Gelesen EINMAL beim Aufbau — die Adresse kann danach ersetzt
+  // werden, der Kontext gehört zu diesem Öffnen. Ohne Merker bleibt alles wie bisher: „Mehr" zu.
+  const [gemerkt] = useState(() => lesekontextLesen(koId));
+  const [mehrOffen, setMehrOffen] = useState(gemerkt !== null);
   // JOB 3108 · UX-03: wohin die Sprungzeile am Kopf führt. `nonce`, damit derselbe Abschnitt
   // zweimal hintereinander anspringbar bleibt (zwischendurch von Hand zugeklappt).
   const [sprungZiel, setSprungZiel] = useState<Sprungziel | null>(null);
@@ -1029,6 +1044,18 @@ export function BibliothekLesen({
     textRef.current = knoten;
     setTextKnoten(knoten);
   }, []);
+  // Aufnahme 20260922 · antwort-quellenanzeige (R-0326): die Belegstelle aus der Adresse
+  // (`?stelle=…&fassung=…`, lib/belegstelle.ts). Ihre Lage nach dem Auflösen — „markiert" heißt:
+  // wörtlich gefunden, hervorgehoben und angesprungen; die beiden anderen sagen, warum nicht.
+  const belegstelle = belegstelleAusAdresse(params);
+  const belegPassage = belegstelle?.passage ?? "";
+  const belegFassung = belegstelle?.fassung ?? null;
+  const [belegLage, setBelegLage] = useState<
+    "keine" | "markiert" | "nichtGefunden" | "andereFassung"
+  >("keine");
+  const belegErledigt = useRef<string | null>(null);
+  // R-0329: `?abschnitt=nachbarschaft` öffnet die Nachbarschaft (das Wissensnetz des Eintrags).
+  const abschnittErledigt = useRef(false);
   const [loeschenOffen, setLoeschenOffen] = useState(false);
   // Auftrag gesamt-dubletten-rueckzug (R-1615): dieselbe Rückfrage, geöffnet über den Knopf am
   // eigenen Dublettenhinweis — dann spricht sie vom Rückzug der eigenen Seite (Texte: texte/rueckzug.ts).
@@ -2134,6 +2161,111 @@ export function BibliothekLesen({
     }
   }, [query.data, params, canEdit]);
 
+  // R-0329: der Einstieg „Im Wissensnetz anzeigen" (Word-Panel) landet in der GEÖFFNETEN
+  // Nachbarschaft dieses Eintrags — derselbe Sprungweg wie die Kopfsprünge (`springeZu`), einmal.
+  // INTEGRATION mit N-0020: kehrt jemand per Browser-Zurück in diesen Verlaufseintrag zurück
+  // (`gemerkt`), gilt SEINE Leseposition — dann springt dieser Einstieg nicht noch einmal.
+  useEffect(() => {
+    if (
+      gemerkt === null &&
+      !abschnittErledigt.current &&
+      params.get("abschnitt") === "nachbarschaft" &&
+      query.data
+    ) {
+      abschnittErledigt.current = true;
+      setMehrOffen(true);
+      setSprungZiel((vorher) => ({
+        schluessel: "nachbarschaft",
+        nonce: (vorher?.nonce ?? 0) + 1,
+      }));
+    }
+  }, [query.data, params, gemerkt]);
+
+  // R-0326: die Belegstelle wird im gezeichneten Text DIESER Fassung wörtlich gesucht, hervorgehoben
+  // und angesprungen — einmal je Eintrag und Passage. Andere Fassung oder kein wörtlicher Fund:
+  // nichts wird markiert, die Lage sagt es (Anzeige über dem Text). INTEGRATION mit N-0020: bei
+  // Browser-Zurück (`gemerkt`) bleibt die Stelle markiert, Rollstand und Fokus gehören aber der
+  // zurückgeholten Leseposition.
+  useEffect(() => {
+    if (!textKnoten || !query.data || belegPassage.length === 0) {
+      return;
+    }
+    const schluessel = `${query.data.id}|${belegPassage}`;
+    if (belegErledigt.current === schluessel) {
+      return;
+    }
+    belegErledigt.current = schluessel;
+    if (belegFassung !== null && query.data.version !== belegFassung) {
+      setBelegLage("andereFassung");
+      return;
+    }
+    const fund = findePassage(textKnoten, belegPassage);
+    if (!fund) {
+      setBelegLage("nichtGefunden");
+      return;
+    }
+    const erste = markiereFundstelle(textKnoten, fund)[0];
+    if (erste) {
+      erste.tabIndex = -1;
+      if (gemerkt === null) {
+        erste.scrollIntoView?.({ block: "center" });
+        erste.focus({ preventScroll: true });
+      }
+    }
+    setBelegLage("markiert");
+  }, [textKnoten, query.data, belegPassage, belegFassung, gemerkt]);
+
+  // ================================================================================================
+  // N-0020 · DIE LESEPOSITION KOMMT ZURÜCK, SOBALD DER BERICHT DA IST.
+  // ================================================================================================
+  // „Mehr" und die gemerkten Abschnitte stehen schon beim Aufbau offen (oben, `gemerkt`); hier
+  // folgt der Rollstand. Der Bericht wächst nach dem ersten Zeichnen weiter (Abschnitte laden ihre
+  // eigenen Daten nach) — ein zu früh gesetzter Rollstand würde an der noch kurzen Spalte gekappt.
+  // Deshalb wird nachgesetzt, solange die Spalte wächst, höchstens fünf Sekunden lang, und nie
+  // gegen den Menschen: rollt, wischt oder tippt er selbst, endet das Nachsetzen sofort.
+  const leseWurzel = useRef<HTMLDivElement | null>(null);
+  const berichtDa = query.data !== undefined;
+  useEffect(() => {
+    if (gemerkt === null || !berichtDa) {
+      return;
+    }
+    lesekontextVergessen();
+    const roll = lesespalteRollbereich(leseWurzel.current);
+    const inhalt = leseWurzel.current;
+    if (roll === null || inhalt === null) {
+      return;
+    }
+    const ziel = gemerkt.rollTop;
+    const setzen = (): boolean => {
+      roll.scrollTop = ziel;
+      return Math.abs(roll.scrollTop - ziel) <= 1;
+    };
+    if (setzen() || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const beobachter = new ResizeObserver(() => {
+      if (setzen()) {
+        aufhoeren();
+      }
+    });
+    const frist = window.setTimeout(() => aufhoeren(), 5_000);
+    const eingriffe = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
+    // Eine Pfeilfunktion, keine `function`-Deklaration: nur sie behält die Null-Prüfung von `roll`
+    // oben (eine gehobene Deklaration gilt TypeScript als vor der Prüfung entstanden).
+    const aufhoeren = (): void => {
+      beobachter.disconnect();
+      window.clearTimeout(frist);
+      for (const e of eingriffe) {
+        roll.removeEventListener(e, aufhoeren);
+      }
+    };
+    for (const e of eingriffe) {
+      roll.addEventListener(e, aufhoeren, { passive: true });
+    }
+    beobachter.observe(inhalt);
+    return aufhoeren;
+  }, [gemerkt, berichtDa]);
+
   // JOB 3034 R2 · KONFLIKTRUNDE 2 (nachgezogen): scheitert die Auffrischung eines schon geholten
   // Eintrags, bleiben Eintrag und Stufenkennzeichen stehen — der Fehler wird als Hinweis über der
   // Fläche gesagt, nicht als Verlust des Bestands (`lib/abfrageBestand.ts`, `abfrageMitBestand`).
@@ -2347,10 +2479,15 @@ export function BibliothekLesen({
   const rueckzugMoeglich =
     eigenesObjekt && darfLoeschen && (kollision.art === "dublette" || kollision.art === "beides");
   const fb = latestValidationFeedback(ko.comments);
+  // Kenntnisnahme einer gültigen Fassung — EIN Element, je nach Breite an einer von zwei Stellen.
+  const kenntnisnahme = (
+    <KenntnisnahmeBereich koId={koId} darfAnfordern={role === "controller" || role === "admin"} />
+  );
 
   return (
     <ImageDescribeProvider provenance={draftProvenance(ko.confidentiality, koId)}>
       <div
+        ref={leseWurzel}
         data-testid="bib-lesen"
         // STATUS-FREIGABE: die Objektgrenze für Klaras Zeige-Modus; der Status ist die Pille unten.
         data-objekt="wissen"
@@ -2400,6 +2537,17 @@ export function BibliothekLesen({
             >
               {() => t("lib.ask")}
             </RoleLink>
+            {/* R-0888 / R-1017 (gesamt-hilfen, Nacharbeit 13): die Erklärungen der Menüpunkte
+                „Hat geholfen" und „Löschen" stehen in der Seitenhilfe, solange die Handlung da ist
+                — angemeldet HIER, weil das Menü erst beim Öffnen gezeichnet wird. Die Löschhilfe
+                kommt über `reviewHelp`, also mit dem berichtigten Text (Papierkorb, 30 Tage). */}
+            <HelpTip title={t("vhelp.helpful.title")} body={t("vhelp.helpful.body")} />
+            {darfLoeschen ? (
+              <HelpTip
+                title={t(reviewHelp("deleteKo").titleKey)}
+                body={t(reviewHelp("deleteKo").bodyKey)}
+              />
+            ) : null}
             <Menue
               beschriftung="…"
               ariaLabel={t("lib.menue.weitere")}
@@ -2684,11 +2832,13 @@ export function BibliothekLesen({
         {/* Kenntnisnahme einer gültigen Fassung: die eigene Anforderung (Bestätigen nur per Klick)
             und — mit Zuweisungsrecht — Anfordern und Übersicht. Ohne beides erscheint nichts.
             `darfAnfordern` spiegelt `ko.assign` (Controller/Admin) nur für die Anzeige; entschieden
-            wird am Server. */}
-        <KenntnisnahmeBereich
-          koId={koId}
-          darfAnfordern={role === "controller" || role === "admin"}
-        />
+            wird am Server.
+            Aufnahme 20260922 · antwort-quellenanzeige (N-0037): auf dem Telefon (< 760 px) steht
+            der Bereich NACH dem Bericht. Mit Zuweisungsrecht ist er ein ganzes Formular (Empfänger,
+            Frist, Übersicht) und schob Titel und die Sprünge zu Quellen und Anhängen unter das
+            erste Bild (390 px, nach Neuladen: Titel bei 995–1058 px, Bildhöhe 844 —
+            tests/bibliothek-schmal/telefon-chromium.test.ts C7). Breit bleibt er hier. */}
+        {telefon ? null : kenntnisnahme}
         {edit ? (
           // ---- Bearbeiten: dasselbe Formular wie bisher, an derselben Stelle -------------------
           <div className="space-y-3">
@@ -3456,6 +3606,27 @@ export function BibliothekLesen({
             >
               {gelesen ? gelesen.title : ko.title}
             </h1>
+            {/* R-0326: die Lage der Belegstelle aus der Adresse. „markiert" wird nur angesagt (die
+                Hervorhebung im Text IST die Auskunft); fehlt der wörtliche Fund oder ist es eine
+                andere Fassung, steht es sichtbar da — markiert wird dann nichts. */}
+            {belegLage === "markiert" ? (
+              <output data-testid="bib-belegstelle-lage" data-lage="markiert" className="sr-only">
+                {t("lib.lesen.belegstelle.markiert")}
+              </output>
+            ) : belegLage === "nichtGefunden" || belegLage === "andereFassung" ? (
+              <output
+                data-testid="bib-belegstelle-lage"
+                data-lage={belegLage}
+                className="block text-[12.5px] text-trust-warn-text"
+              >
+                {belegLage === "nichtGefunden"
+                  ? t("lib.lesen.belegstelle.nichtGefunden")
+                  : t("lib.lesen.belegstelle.andereFassung", {
+                      fassung: belegFassung,
+                      aktuell: ko.version,
+                    })}
+              </output>
+            ) : null}
             {/* JOB 4145 · WIKI-ORIENTIERUNG — DIE GLIEDERUNG STEHT VOR DEM TEXT, DEN SIE ERSCHLIESST.
 
                 SIE STEHT IM DOM VOR `bib-text`, damit sie in der Tabulatorreihenfolge VOR dem
@@ -3487,13 +3658,14 @@ export function BibliothekLesen({
                   dieselbe Reihenfolge wie beim Original. */}
               {gelesen ? (
                 gelesen.bodyHtml ? (
-                  <SanitizedHtml html={gelesen.bodyHtml} className="prose-kw" />
+                  <SanitizedHtml html={gelesen.bodyHtml} className="prose-kw" lesehuellen />
                 ) : (
                   <p>{gelesen.statement}</p>
                 )
               ) : ko.bodyHtml ? (
                 <>
-                  <SanitizedHtml html={ko.bodyHtml} className="prose-kw" />
+                  {/* R-1160 / D-037: Scroll-Hülle breiter Tabellen als Element (SanitizedHtml). */}
+                  <SanitizedHtml html={ko.bodyHtml} className="prose-kw" lesehuellen />
                   <BodyImageGallery
                     bodyHtml={ko.bodyHtml}
                     onEditCaption={
@@ -3581,7 +3753,11 @@ export function BibliothekLesen({
               </button>
               {mehrOffen ? (
                 <div className="border-t border-hairline-soft">
-                  <MehrAbschnitte ko={ko} sprungZiel={sprungZiel ?? undefined} />
+                  <MehrAbschnitte
+                    ko={ko}
+                    sprungZiel={sprungZiel ?? undefined}
+                    anfangsOffen={gemerkt?.abschnitte}
+                  />
                 </div>
               ) : null}
             </div>
@@ -3634,6 +3810,8 @@ export function BibliothekLesen({
             ) : null}
           </>
         )}
+        {/* N-0037: auf dem Telefon die Kenntnisnahme NACH dem Bericht (Begründung oben). */}
+        {telefon ? kenntnisnahme : null}
         {/* ============================================================================================
             JOB 3637 · DIE RÜCKFRAGE ZUM LÖSCHEN STEHT DA, WO GEKLICKT WURDE.
             ============================================================================================

@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useUsers } from "../api/hooks";
-import type { PublicUser } from "../api/types";
+import type { PublicUser, UebergabeVorschau } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { NAV_GROUPS, ROLES, type Role, roleAllows } from "../app/navigation";
@@ -18,6 +18,8 @@ import { NAV_GROUPS, ROLES, type Role, roleAllows } from "../app/navigation";
 // JE KARTE EIN EIGENER TEXT: die vier Karten sind vier Bildschirme, und ein gemeinsamer Satz an der
 // Dateiwurzel stünde auf allen vieren gleich und erklärte keine.
 import { HelpTip } from "../components/HelpTip";
+import { VerantwortungUebergabe } from "../components/VerantwortungUebergabe";
+import { UebergabeVorschauInhalt, Wissensuebergabe } from "../components/Wissensuebergabe";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { freiheitenSchluessel, kiWahlFrei } from "../components/einstellungen/rollenFreiheiten";
@@ -194,8 +196,10 @@ export function NutzerDetail({
     onSuccess: invalidate,
     onError: fail,
   });
+  // R-0554: entfernt mit Nachfolger, läuft vorher serverseitig die Wissensübergabe.
   const remove = useMutation({
-    mutationFn: (id: string) => endpoints.users.remove(id),
+    mutationFn: (v: { id: string; nachfolger: string }) =>
+      endpoints.users.remove(v.id, v.nachfolger || undefined),
     onSuccess: () => {
       invalidate();
       onZurueck();
@@ -211,6 +215,11 @@ export function NutzerDetail({
       setResetPw2("");
       push("success", t("adm.resetDone"));
     },
+    onError: fail,
+  });
+  const zweiFaktorEntfernen = useMutation({
+    mutationFn: (id: string) => endpoints.users.resetSecondFactor(id),
+    onSuccess: () => push("success", t("zweifaktor.admin.entfernt")),
     onError: fail,
   });
   /**
@@ -260,6 +269,23 @@ export function NutzerDetail({
   // JOB 3065: Löschen bekommt die Rückfrage, die es auf der alten Kartenwand nie hatte (mega45:
   // genau EIN Knopf trägt die Warnfarbe, keiner die neutrale Vorgabe).
   const [confirmRemove, setConfirmRemove] = useState(false);
+  // R-0554: wer das Wissen beim Entfernen übernimmt — leer heisst „ohne Übergabe" (wie bisher).
+  const [nachfolgerBeimEntfernen, setNachfolgerBeimEntfernen] = useState("");
+  // R-0554 · BEN (Nacharbeit 3): die Vorschau GENAU dieses Paars (Konto → Nachfolger). Sie gilt nur,
+  // solange derselbe Nachfolger gewählt ist; ein Wechsel verwirft sie (onChange der Auswahl).
+  const [entfernenVorschau, setEntfernenVorschau] = useState<UebergabeVorschau | null>(null);
+  const entfernenVorschauHolen = useMutation({
+    mutationFn: (an: string) => endpoints.lifecycle.uebergabeVorschau(nutzerId, an),
+    onSuccess: (v) => setEntfernenVorschau(v),
+    onError: fail,
+  });
+  const vorschauPasst =
+    entfernenVorschau !== null &&
+    nachfolgerBeimEntfernen !== "" &&
+    entfernenVorschau.von === nutzerId &&
+    entfernenVorschau.an === nachfolgerBeimEntfernen;
+  // Mit Nachfolger, aber ohne passende Vorschau: „Ja, entfernen" bleibt gesperrt.
+  const vorschauFehlt = nachfolgerBeimEntfernen !== "" && !vorschauPasst;
   // JOB 4021: die Datumseingabe der Befristung. Sie steht ZU, bis der Admin sie öffnet — ein leeres
   // Feld ist keine Aussage über den Zugang (Auftrag §9), und eine Vorgabedauer („+30 Tage") gibt es
   // ausdrücklich nicht: „kein Ablauf" ist der gültige Normalzustand.
@@ -539,6 +565,19 @@ export function NutzerDetail({
               </button>
             )}
 
+            {/* produkt:20261007:ownership-uebergabe — Hauptverantwortung einzeln oder gesammelt an
+                Nachfolger übergeben, mit Vorschau; Zugang erst ohne Restbestand beenden. Für jedes
+                Konto, auch ein gesperrtes: gerade dort liegt Bestand, der eine Vertretung braucht. */}
+            <VerantwortungUebergabe personId={nutzer.id} personName={nutzer.name} />
+
+            {/* R-0554 / R-2128: bevor ein Konto geht, wandert sein Wissen — Autorschaft, Entwürfe,
+                offene Lücken und Prüfaufgaben, nicht nur die Hauptverantwortung. Nachfolger kann nur
+                ein freigeschaltetes Konto sein. */}
+            <Wissensuebergabe
+              von={nutzer.id}
+              kandidaten={(users.data ?? []).filter((u) => u.approved && u.id !== nutzer.id)}
+            />
+
             <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-4">
               <Button
                 variant="ghost"
@@ -551,19 +590,78 @@ export function NutzerDetail({
                 <KeyRound size={15} />
                 {t("adm.reset")}
               </Button>
+              {/* R-0562: der Weg zurück bei verlorenem zweiten Gerät. Der Server antwortet mit
+                  „nicht eingerichtet", wenn es nichts zu entfernen gibt — die Meldung zeigt `fail`. */}
+              <Button
+                variant="ghost"
+                data-testid="admin-zweifaktor-entfernen"
+                disabled={zweiFaktorEntfernen.isPending}
+                onClick={() => zweiFaktorEntfernen.mutate(nutzer.id)}
+              >
+                {t("zweifaktor.admin.entfernen")}
+              </Button>
               {confirmRemove ? (
                 <span className="inline-flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-page px-2.5 py-1.5">
                   <span className="text-[12px] font-semibold text-text">{t("adm.removeQ")}</span>
-                  <Button variant="ghost" onClick={() => setConfirmRemove(false)}>
+                  <select
+                    data-entfernen-nachfolger
+                    aria-label={t("verantwortung.entfernenNachfolger")}
+                    value={nachfolgerBeimEntfernen}
+                    onChange={(e) => {
+                      // Ein anderer Nachfolger ist eine andere Übergabe: die Vorschau verfällt.
+                      setNachfolgerBeimEntfernen(e.target.value);
+                      setEntfernenVorschau(null);
+                    }}
+                    className="h-8 rounded-input border border-hairline bg-surface px-2 text-[12px]"
+                  >
+                    <option value="">{t("verantwortung.entfernenOhneUebergabe")}</option>
+                    {(users.data ?? [])
+                      .filter((u) => u.approved && u.id !== nutzer.id)
+                      .map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {t("verantwortung.entfernenAn", { name: u.name })}
+                        </option>
+                      ))}
+                  </select>
+                  {/* R-0554 · BEN (Nacharbeit 3): mit Nachfolger erst die Vorschau desselben
+                      Personenpaars — „Ja, entfernen" wird erst danach möglich. */}
+                  {nachfolgerBeimEntfernen && !vorschauPasst ? (
+                    <Button
+                      data-entfernen-vorschau-holen
+                      variant="ghost"
+                      disabled={entfernenVorschauHolen.isPending}
+                      onClick={() => entfernenVorschauHolen.mutate(nachfolgerBeimEntfernen)}
+                    >
+                      {t("verantwortung.uebergabe.vorschau")}
+                    </Button>
+                  ) : null}
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setConfirmRemove(false);
+                      setNachfolgerBeimEntfernen("");
+                      setEntfernenVorschau(null);
+                    }}
+                  >
                     {t("adm.removeKeep")}
                   </Button>
                   <Button
                     variant="danger"
-                    disabled={remove.isPending}
-                    onClick={() => remove.mutate(nutzer.id)}
+                    disabled={remove.isPending || vorschauFehlt}
+                    onClick={() =>
+                      remove.mutate({ id: nutzer.id, nachfolger: nachfolgerBeimEntfernen })
+                    }
                   >
                     {t("adm.removeYes")}
                   </Button>
+                  {vorschauPasst && entfernenVorschau ? (
+                    <span
+                      data-entfernen-vorschau
+                      className="block w-full space-y-2 rounded-input bg-surface p-2"
+                    >
+                      <UebergabeVorschauInhalt vorschau={entfernenVorschau} />
+                    </span>
+                  ) : null}
                 </span>
               ) : (
                 <button
