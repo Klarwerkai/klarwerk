@@ -46,7 +46,12 @@ import { AnswerMarkdown } from "../components/AnswerMarkdown";
 // „Seitenhilfe". Pedi (04.09.): „Erklärung gehört hinter Zahnrad/Profil, nicht ins Sichtfeld."
 import { HelpTip } from "../components/HelpTip";
 import { UploadLimitsHint } from "../components/UploadLimitsHint";
-import { ConfidenceBar, KnowledgeTypeTag, StatusPill } from "../components/trust";
+import {
+  ConfidenceBar,
+  ErgebnisStufeMarke,
+  KnowledgeTypeTag,
+  StatusPill,
+} from "../components/trust";
 import { selectAnswer } from "../lib/askResponse";
 import { conflictImpact } from "../lib/conflictImpact";
 import { anzeigestatusAnker, anzeigestatusAus } from "../lib/displayStatus";
@@ -65,6 +70,11 @@ import {
 } from "../lib/draftForm";
 import { conflictKnowledge } from "../lib/effectiveAnswer";
 import { fileToThumbDataUrl } from "../lib/files";
+import {
+  REASONER_ENTWURF_FLAECHE,
+  ergebnisStufeFuerAntwort,
+  kiHerkunftAus,
+} from "../lib/kiHerkunft";
 import type { EvidenceTone } from "../lib/knowledgeClass";
 // D-036 (JOB 1118): derselbe Dreiphasenvertrag, den Start und Analytics schon fahren —
 // `loading | loaded | error`. Er ist der Grund, warum unten keine Leerbehauptung mehr aus
@@ -1834,8 +1844,18 @@ export function Mobile(): JSX.Element {
                         kos.data ?? [],
                         conflictKnowledge(conflicts),
                       );
+                      // R-1020 / R-1695: dieselbe Stufe wie auf dem Desktop — aus belegter Herkunft
+                      // und belegter Einstufung. Ein Modelltext steht als Reasoner-Entwurf da.
+                      const stufe = ergebnisStufeFuerAntwort(
+                        kiHerkunftAus(answer),
+                        s.grade === "verified",
+                      );
                       return s.answered ? (
-                        <div className="mt-3 rounded-card border border-hairline p-3">
+                        <div
+                          data-testid="mob-antwort"
+                          className={`mt-3 rounded-card p-3 ${stufe === "entwurf" ? REASONER_ENTWURF_FLAECHE : "border border-hairline"}`}
+                        >
+                          <ErgebnisStufeMarke stufe={stufe} className="mb-2" />
                           <div className="mb-2 flex items-center justify-between gap-2">
                             {/* AUFTRAG-mega33 A2: die EFFEKTIVE Evidenz — dieselbe Einstufung wie
                                 auf dem Desktop, nicht mehr die rohe Klasse. */}
