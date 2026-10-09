@@ -24,6 +24,7 @@ import {
   commitDocumentAppend,
   newAppendOperationId,
 } from "../../lib/appendToArticle";
+import { belegstelleAusAdresse, findePassage, markiereFundstelle } from "../../lib/belegstelle";
 import {
   applyBodyAssist,
   applyBodyAssistBlock,
@@ -79,6 +80,7 @@ import {
   latestValidationFeedback,
 } from "../../lib/validationFeedback";
 import { isReturnedForRework } from "../../lib/validationStatus";
+import { TELEFON_LESE_QUERY, useMediaQuery } from "../../shell/useMediaQuery";
 import { AiAssistBox } from "../AiAssistBox";
 import { BodyExtractPanel } from "../BodyExtractPanel";
 import { BodyImageGallery } from "../BodyImageGallery";
@@ -978,6 +980,8 @@ export function BibliothekLesen({
   // Aus der EINEN Quelle (`lib/netzzustand.ts`, `onlineManager`), nicht aus `navigator.onLine`.
   const netzOnline = useNetzOnline();
   const { role } = useRole();
+  // N-0037: auf dem Telefon steht der Kenntnisnahme-Bereich NACH dem Bericht (s. dort).
+  const telefon = useMediaQuery(TELEFON_LESE_QUERY);
   const { user } = useSession();
   const { push } = useToast();
   const qc = useQueryClient();
@@ -1040,6 +1044,18 @@ export function BibliothekLesen({
     textRef.current = knoten;
     setTextKnoten(knoten);
   }, []);
+  // Aufnahme 20260922 · antwort-quellenanzeige (R-0326): die Belegstelle aus der Adresse
+  // (`?stelle=…&fassung=…`, lib/belegstelle.ts). Ihre Lage nach dem Auflösen — „markiert" heißt:
+  // wörtlich gefunden, hervorgehoben und angesprungen; die beiden anderen sagen, warum nicht.
+  const belegstelle = belegstelleAusAdresse(params);
+  const belegPassage = belegstelle?.passage ?? "";
+  const belegFassung = belegstelle?.fassung ?? null;
+  const [belegLage, setBelegLage] = useState<
+    "keine" | "markiert" | "nichtGefunden" | "andereFassung"
+  >("keine");
+  const belegErledigt = useRef<string | null>(null);
+  // R-0329: `?abschnitt=nachbarschaft` öffnet die Nachbarschaft (das Wissensnetz des Eintrags).
+  const abschnittErledigt = useRef(false);
   const [loeschenOffen, setLoeschenOffen] = useState(false);
   // Auftrag gesamt-dubletten-rueckzug (R-1615): dieselbe Rückfrage, geöffnet über den Knopf am
   // eigenen Dublettenhinweis — dann spricht sie vom Rückzug der eigenen Seite (Texte: texte/rueckzug.ts).
@@ -2145,6 +2161,60 @@ export function BibliothekLesen({
     }
   }, [query.data, params, canEdit]);
 
+  // R-0329: der Einstieg „Im Wissensnetz anzeigen" (Word-Panel) landet in der GEÖFFNETEN
+  // Nachbarschaft dieses Eintrags — derselbe Sprungweg wie die Kopfsprünge (`springeZu`), einmal.
+  // INTEGRATION mit N-0020: kehrt jemand per Browser-Zurück in diesen Verlaufseintrag zurück
+  // (`gemerkt`), gilt SEINE Leseposition — dann springt dieser Einstieg nicht noch einmal.
+  useEffect(() => {
+    if (
+      gemerkt === null &&
+      !abschnittErledigt.current &&
+      params.get("abschnitt") === "nachbarschaft" &&
+      query.data
+    ) {
+      abschnittErledigt.current = true;
+      setMehrOffen(true);
+      setSprungZiel((vorher) => ({
+        schluessel: "nachbarschaft",
+        nonce: (vorher?.nonce ?? 0) + 1,
+      }));
+    }
+  }, [query.data, params, gemerkt]);
+
+  // R-0326: die Belegstelle wird im gezeichneten Text DIESER Fassung wörtlich gesucht, hervorgehoben
+  // und angesprungen — einmal je Eintrag und Passage. Andere Fassung oder kein wörtlicher Fund:
+  // nichts wird markiert, die Lage sagt es (Anzeige über dem Text). INTEGRATION mit N-0020: bei
+  // Browser-Zurück (`gemerkt`) bleibt die Stelle markiert, Rollstand und Fokus gehören aber der
+  // zurückgeholten Leseposition.
+  useEffect(() => {
+    if (!textKnoten || !query.data || belegPassage.length === 0) {
+      return;
+    }
+    const schluessel = `${query.data.id}|${belegPassage}`;
+    if (belegErledigt.current === schluessel) {
+      return;
+    }
+    belegErledigt.current = schluessel;
+    if (belegFassung !== null && query.data.version !== belegFassung) {
+      setBelegLage("andereFassung");
+      return;
+    }
+    const fund = findePassage(textKnoten, belegPassage);
+    if (!fund) {
+      setBelegLage("nichtGefunden");
+      return;
+    }
+    const erste = markiereFundstelle(textKnoten, fund)[0];
+    if (erste) {
+      erste.tabIndex = -1;
+      if (gemerkt === null) {
+        erste.scrollIntoView?.({ block: "center" });
+        erste.focus({ preventScroll: true });
+      }
+    }
+    setBelegLage("markiert");
+  }, [textKnoten, query.data, belegPassage, belegFassung, gemerkt]);
+
   // ================================================================================================
   // N-0020 · DIE LESEPOSITION KOMMT ZURÜCK, SOBALD DER BERICHT DA IST.
   // ================================================================================================
@@ -2409,6 +2479,10 @@ export function BibliothekLesen({
   const rueckzugMoeglich =
     eigenesObjekt && darfLoeschen && (kollision.art === "dublette" || kollision.art === "beides");
   const fb = latestValidationFeedback(ko.comments);
+  // Kenntnisnahme einer gültigen Fassung — EIN Element, je nach Breite an einer von zwei Stellen.
+  const kenntnisnahme = (
+    <KenntnisnahmeBereich koId={koId} darfAnfordern={role === "controller" || role === "admin"} />
+  );
 
   return (
     <ImageDescribeProvider provenance={draftProvenance(ko.confidentiality, koId)}>
@@ -2758,11 +2832,13 @@ export function BibliothekLesen({
         {/* Kenntnisnahme einer gültigen Fassung: die eigene Anforderung (Bestätigen nur per Klick)
             und — mit Zuweisungsrecht — Anfordern und Übersicht. Ohne beides erscheint nichts.
             `darfAnfordern` spiegelt `ko.assign` (Controller/Admin) nur für die Anzeige; entschieden
-            wird am Server. */}
-        <KenntnisnahmeBereich
-          koId={koId}
-          darfAnfordern={role === "controller" || role === "admin"}
-        />
+            wird am Server.
+            Aufnahme 20260922 · antwort-quellenanzeige (N-0037): auf dem Telefon (< 760 px) steht
+            der Bereich NACH dem Bericht. Mit Zuweisungsrecht ist er ein ganzes Formular (Empfänger,
+            Frist, Übersicht) und schob Titel und die Sprünge zu Quellen und Anhängen unter das
+            erste Bild (390 px, nach Neuladen: Titel bei 995–1058 px, Bildhöhe 844 —
+            tests/bibliothek-schmal/telefon-chromium.test.ts C7). Breit bleibt er hier. */}
+        {telefon ? null : kenntnisnahme}
         {edit ? (
           // ---- Bearbeiten: dasselbe Formular wie bisher, an derselben Stelle -------------------
           <div className="space-y-3">
@@ -3530,6 +3606,27 @@ export function BibliothekLesen({
             >
               {gelesen ? gelesen.title : ko.title}
             </h1>
+            {/* R-0326: die Lage der Belegstelle aus der Adresse. „markiert" wird nur angesagt (die
+                Hervorhebung im Text IST die Auskunft); fehlt der wörtliche Fund oder ist es eine
+                andere Fassung, steht es sichtbar da — markiert wird dann nichts. */}
+            {belegLage === "markiert" ? (
+              <output data-testid="bib-belegstelle-lage" data-lage="markiert" className="sr-only">
+                {t("lib.lesen.belegstelle.markiert")}
+              </output>
+            ) : belegLage === "nichtGefunden" || belegLage === "andereFassung" ? (
+              <output
+                data-testid="bib-belegstelle-lage"
+                data-lage={belegLage}
+                className="block text-[12.5px] text-trust-warn-text"
+              >
+                {belegLage === "nichtGefunden"
+                  ? t("lib.lesen.belegstelle.nichtGefunden")
+                  : t("lib.lesen.belegstelle.andereFassung", {
+                      fassung: belegFassung,
+                      aktuell: ko.version,
+                    })}
+              </output>
+            ) : null}
             {/* JOB 4145 · WIKI-ORIENTIERUNG — DIE GLIEDERUNG STEHT VOR DEM TEXT, DEN SIE ERSCHLIESST.
 
                 SIE STEHT IM DOM VOR `bib-text`, damit sie in der Tabulatorreihenfolge VOR dem
@@ -3561,13 +3658,14 @@ export function BibliothekLesen({
                   dieselbe Reihenfolge wie beim Original. */}
               {gelesen ? (
                 gelesen.bodyHtml ? (
-                  <SanitizedHtml html={gelesen.bodyHtml} className="prose-kw" />
+                  <SanitizedHtml html={gelesen.bodyHtml} className="prose-kw" lesehuellen />
                 ) : (
                   <p>{gelesen.statement}</p>
                 )
               ) : ko.bodyHtml ? (
                 <>
-                  <SanitizedHtml html={ko.bodyHtml} className="prose-kw" />
+                  {/* R-1160 / D-037: Scroll-Hülle breiter Tabellen als Element (SanitizedHtml). */}
+                  <SanitizedHtml html={ko.bodyHtml} className="prose-kw" lesehuellen />
                   <BodyImageGallery
                     bodyHtml={ko.bodyHtml}
                     onEditCaption={
@@ -3712,6 +3810,8 @@ export function BibliothekLesen({
             ) : null}
           </>
         )}
+        {/* N-0037: auf dem Telefon die Kenntnisnahme NACH dem Bericht (Begründung oben). */}
+        {telefon ? kenntnisnahme : null}
         {/* ============================================================================================
             JOB 3637 · DIE RÜCKFRAGE ZUM LÖSCHEN STEHT DA, WO GEKLICKT WURDE.
             ============================================================================================

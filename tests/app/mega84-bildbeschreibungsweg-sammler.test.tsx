@@ -2176,8 +2176,14 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // EIN Bauteil (`VermaechtnisBuch`) bei; die übrigen 7 über 516 stammen aus dem Hauptstand seit
     // der letzten Messung (darunter `VerantwortungUebergabe`/`Arbeitsflaeche` der Ownership-
     // Übergabe) und sind ohne Git-Verlauf hier nicht vollständig namentlich bestimmt.
+    // Nacharbeit 4 (Integration mit main, Kandidat 78be699e): 523 → 525. Der eingemischte Hauptstand
+    // bringt `components/Wissensuebergabe.tsx` (R-0554 / R-2128) mit genau zwei Bauteilen —
+    // `UebergabeVorschauInhalt` und `Wissensuebergabe` —, ohne diese Zahl nachzuziehen. EHRLICH
+    // GESAGT: GERECHNET (523 + 2), nicht gemessen; was der Hauptstand sonst an Bauteilen gebracht
+    // hat, ist ohne Git-Verlauf hier nicht bestimmt. Weicht der Prüflauf ab, gehört die gemessene
+    // Zahl hierher.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 523,
+      komponenten: 525,
       anbieter: 1,
       traeger: 2,
     });

@@ -1204,12 +1204,14 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     tor: "ko.read (danach prüft der Dienst den Beleg aus dem echten Antwortvorgang)",
     erwartet: NUR_LESEN,
     ruesten: async (buehne, akteur) => {
-      // Geantwortet wird nur aus geprüftem Wissen (R-0584); ohne Modell bleibt ein bloß angelegtes
-      // Objekt ungeprüft (KI-Prüfung `no-model`), und die Frage endete in einer Wissenslücke —
-      // gemessen im Prüflauf zu R-1649, Nacharbeit 3. Deshalb: Experte legt an, Admin gibt frei.
+      // Geantwortet wird nur aus geprüftem Wissen (R-0278, Nacharbeit 3; R-0584); ohne Modell bleibt
+      // ein bloß angelegtes Objekt ungeprüft (KI-Prüfung `no-model`), und die Frage endete in einer
+      // Wissenslücke — gemessen im Prüflauf zu R-1649, Nacharbeit 3. Deshalb: Experte legt an, Admin
+      // gibt frei. Eine gemeldete Dublette ist für diesen Belegfall unerheblich und wird bestätigt.
       const ko = await legeKoAn(buehne, "experte");
       await musterhaft(buehne.app, kopf(buehne, "admin"), "PUT", `/api/kos/${ko.id}`, {
         action: "admin-validate",
+        duplicateAcknowledged: true,
       });
       if (akteur === "anonym") {
         // Ohne Sitzung gibt es keinen Beleg — und es braucht auch keinen: `requirePermission`
