@@ -7,6 +7,8 @@ export { InMemoryDraftRepo, type DraftRepo } from "./src/repo";
 // wäre die Stufe gebaut und würde nie laufen — der Index entstünde nie, und die ganze Zusage hinge
 // an einer DDL, die niemand absetzt. Genau davor warnt `tests/capture/aufrufer-waechter.test.ts`.
 export { PgDraftRepo, CAPTURE_SCHEMA, CAPTURE_CREATE_OPERATION_SCHEMA } from "./src/repo-pg";
+// R-1133: die Indexspalten der Entwürfe — aus demselben Grund öffentlich wie die Stufe darüber.
+export { CAPTURE_INDEX_SCHEMA } from "./src/repo-pg";
 // R-1349: `InterviewSession` (deterministisches Interview, FR-CAP-02) ist entfernt — das Interview
 // läuft über den Reasoner (`reasoner-routes.ts`, Aufgabe `interview`); die Klasse rief niemand.
 export { CaptureError } from "./src/types";
