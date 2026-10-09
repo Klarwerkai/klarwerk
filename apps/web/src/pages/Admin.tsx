@@ -78,6 +78,7 @@ import { HelpTip } from "../components/HelpTip";
 import { Fehlerbox } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { EinstellungenSeite } from "../components/einstellungen/Seite";
+import { UebersetzungenDetail } from "../components/einstellungen/UebersetzungsPflege";
 import {
   Flaechenknopf,
   Kicker,
@@ -591,6 +592,9 @@ export function Admin(): JSX.Element {
       // sie nichts (Auftrag §10), deshalb braucht sie hier keinen Rückruf außer dem Weg zurück.
       case "sicherung":
         return <SicherungDetail onZurueck={zurueck} />;
+      // R-1034 / FR-I18N-02: Oberflächentexte pflegen und weitere Sprachen vorbereiten.
+      case "uebersetzungen":
+        return <UebersetzungenDetail onZurueck={zurueck} />;
       case "bereitschaft":
         return (
           <BereitschaftDetail
@@ -1116,6 +1120,14 @@ export function Admin(): JSX.Element {
                   wert={sicherungWert}
                   onOeffnen={() => geheZu("system", "sicherung")}
                   testId="zeile-sicherung"
+                />
+                {/* R-1034 / FR-I18N-02: der Bedienort der Übersetzungspflege. Der Wert ist eine
+                    feste Beschreibung, keine Zahl — die Karte lädt ihren Bestand erst beim Öffnen. */}
+                <Zeile
+                  label={t("uebersetzungen.titel")}
+                  wert={t("uebersetzungen.zeileWert")}
+                  onOeffnen={() => geheZu("system", "uebersetzungen")}
+                  testId="zeile-uebersetzungen"
                 />
                 {/* Bis JOB 3060 saß das Stufe-2-Häkchen in der Seitenleiste, bis JOB 3337 unter
                     „Konten". Hier ist sein Ort: die Vorlage führt „Erweiterte Module" unter System,
