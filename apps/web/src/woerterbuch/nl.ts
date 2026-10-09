@@ -5474,6 +5474,13 @@ const nl: typeof de = {
 
   // JOB 3062 · H3 — het blad (Pages).
   "erfassen.werkzeug.diktieren": "Dicteren",
+  "sprachaufnahme.start": "Opnemen",
+  "sprachaufnahme.stop": "Opname stoppen",
+  "sprachaufnahme.frage": "Vraag opnemen en uitschrijven",
+  "sprachaufnahme.verarbeitet": "Wordt uitgeschreven …",
+  "sprachaufnahme.keinMikrofon":
+    "Geen toegang tot de microfoon. Sta het toe in de browser of typ de tekst.",
+  "sprachaufnahme.fehler": "De opname kon niet worden uitgeschreven.",
   "erfassen.werkzeug.bild": "Beeld",
   "erfassen.werkzeug.datei": "Bestand",
   "erfassen.werkzeug.ki": "AI",
