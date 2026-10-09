@@ -7,6 +7,8 @@ import type {
   Analytics,
   AnsprechpartnerAuskunft,
   AnswerResult,
+  AntwortMeldeGrund,
+  AntwortMeldungQuittung,
   // JOB 4154 (WIKI-GESAMTANWEISUNG): der Drahtvertrag der zusammengesetzten Anweisung.
   Anweisung,
   AnweisungEntscheidung,
@@ -116,6 +118,8 @@ import type {
   SlideConvertResponse,
   StructureResult,
   TrashedKo,
+  UebergabeErgebnis,
+  UebergabeVorschau,
   UploadLimits,
   ValidationBoardKo,
   ValidationSettings,
@@ -374,6 +378,10 @@ export type KoAction =
   // R-0263: `vorrang` optional — welcher der beiden Punkte gilt bzw. einschränkt.
   | { action: "resolve-conflict"; conflictId: string; decision: string; vorrang?: VorrangWahl }
   | { action: "transfer-author"; newAuthor: string }
+  // R-0507: der benannte Eigentümer gibt seine Verantwortung zurück (sonst 403 `NOT_OWNER`).
+  | { action: "ownership-release" }
+  // R-0507: der benannte Eigentümer gibt inhaltlich frei (Recht `ko.validate`, sonst 403).
+  | { action: "owner-validate"; duplicateAcknowledged?: true }
   // AUFTRAG-mega15 Block B (bens SB-4): dieser Vertrag war schon richtig — falsch war der
   // Laufzeitpfad, der zusätzlich ein `provider` mitschickte, und der Server, der seine Stufen-
   // Sperre nach diesem Client-Feld ausrichtete. Beides ist jetzt aufgeräumt: die Herkunft leitet
@@ -918,6 +926,9 @@ export const endpoints = {
     // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang
     // zurück — ohne gültigen, dieses KO belegenden Receipt antwortet der Server 403.
     helpful: (koId: string, receipt: string) => api.post<void>("/ask/helpful", { koId, receipt }),
+    // R-1089: „Antwort falsch / Quelle passt nicht" — derselbe Beleg; die Antwort ist die Quittung.
+    report: (koId: string, receipt: string, grund: AntwortMeldeGrund) =>
+      api.post<AntwortMeldungQuittung>("/ask/report", { koId, receipt, grund }),
     // R-1649: „nicht hilfreich" an der tragenden Quelle — derselbe Receipt wie beim „Danke";
     // ein mitgeschickter abweichender Weg wird serverseitig ein Entwurf (`entwurfId`).
     notHelpful: (body: {
@@ -1131,6 +1142,11 @@ export const endpoints = {
     // SCRUM-146: vorhandener Asset-Change-Pfad → markiert gekoppelte KOs als „prüfen".
     assetChanged: (assetRef: string) =>
       api.post<string[]>("/lifecycle/asset-changed", { assetRef }),
+    // R-0554: Wissensübergabe beim Ausscheiden — erst Vorschau, dann Ausführung (Recht `users.manage`).
+    uebergabeVorschau: (von: string, an: string) =>
+      api.post<UebergabeVorschau>("/lifecycle/handover/preview", { from: von, to: an }),
+    uebergeben: (von: string, an: string) =>
+      api.post<UebergabeErgebnis>("/lifecycle/handover", { from: von, to: an }),
   },
   // SCRUM-145: vorhandene Learning-Path-API (rollenbasiert, Fortschritt serverseitig).
   learningPaths: {
@@ -1417,10 +1433,17 @@ export const endpoints = {
     ) => api.post<PublicUser>("/users", { name, email, password, role, accessExpiresAt }),
     approve: (id: string) => api.post<void>(`/auth/users/${id}/approve`),
     setRole: (id: string, role: Role) => api.put<void>(`/users/${id}`, { role }),
-    remove: (id: string) => api.del<void>(`/users/${id}`),
+    // R-0554: mit `nachfolger` läuft vor dem Entfernen die Wissensübergabe (Auslöser aus der
+    // Verzeichnispflege); bleibt etwas liegen, antwortet der Server 409 und entfernt nichts.
+    remove: (id: string, nachfolger?: string) =>
+      api.del<void>(
+        nachfolger ? `/users/${id}?nachfolger=${encodeURIComponent(nachfolger)}` : `/users/${id}`,
+      ),
     // SCRUM-148: Admin-Passwort-Reset (eigener Pfad; invalidiert Sitzungen serverseitig).
     resetPassword: (id: string, password: string) =>
       api.post<void>(`/auth/users/${id}/reset`, { password }),
+    // R-0562: eigenen zweiten Faktor des Kontos entfernen (verlorenes zweites Gerät).
+    resetSecondFactor: (id: string) => api.del<void>(`/users/${id}/second-factor`),
     // JOB 4021 (ERSTEINRICHTUNG-GAST T2): DER EINE WEG, EINE BEFRISTUNG ZU SETZEN UND ZU NEHMEN.
     //
     // Derselbe Endpunkt wie `setRole` — der Server führt Rolle, Freigabe, Passwort und Befristung
