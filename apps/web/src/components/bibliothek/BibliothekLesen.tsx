@@ -114,6 +114,7 @@ import { KNOWLEDGE_TYPES } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { Bearbeitungshinweis, useEigeneBearbeitung } from "./Bearbeitungshinweis";
+import { FassungsvergleichImEditor } from "./Fassungsvergleich";
 import { MehrAbschnitte, type Sprungziel } from "./MehrAbschnitte";
 import { Menue, MenuePunkt, MenueTrenner } from "./Menue";
 import { fragenHref } from "./fragen";
@@ -2397,6 +2398,17 @@ export function BibliothekLesen({
   // anderen Fläche, damit hier keine zweite Auslegung derselben Aussage entsteht.
   const auskunft = vertraulichkeitsAuskunft(ko);
   const meta = [ko.category, nameOf(ko.author), erstellt].filter(Boolean).join(" · ");
+  // package:versionen („Aktuelle Version eindeutig", „Änderungszeit sichtbar"): die Fassung, die
+  // gerade gelesen wird, und — ab v2 — wann sie entstand. Die Zeit kommt aus dem letzten
+  // Historieneintrag des Dienstes (`naechsteFassung` schreibt ihn mit jeder Revision). Bei v1 ist
+  // sie die Erstellzeit, die `meta` schon nennt; dieselbe Zeit zweimal stünde hier nur doppelt.
+  // `bib-meta` bleibt unverändert (gemessen in `Library.timestamp.test.tsx`).
+  const fassungsNummer = typeof ko.version === "number" ? ko.version : null;
+  const verlauf = ko.history ?? [];
+  const geaendertAm =
+    fassungsNummer !== null && fassungsNummer > 1
+      ? formatKoTimestamp(verlauf[verlauf.length - 1]?.at, i18n.language)
+      : null;
   // Auftrag §5.3/§5a: EINE verbindliche Aktion, für jeden gewählten Eintrag dieselbe — „Fragen",
   // mit der Herkunft dieses Eintrags (`ko=<id>`, ein Marker — kein Filter, s. `fragen.ts`),
   // vorbelegt mit dem aktuellen Suchtext. Der frühere
@@ -2553,6 +2565,14 @@ export function BibliothekLesen({
           <span data-testid="bib-meta" data-bib-text="meta" className="text-[12.5px] text-muted">
             {meta}
           </span>
+          {fassungsNummer === null ? null : (
+            <span data-testid="bib-fassungsstand" className="text-[12.5px] text-muted">
+              {t("fassungsangabe.kopfFassung", { version: fassungsNummer })}
+              {geaendertAm
+                ? ` · ${t("fassungsangabe.kopfGeaendert", { zeit: geaendertAm })}`
+                : null}
+            </span>
+          )}
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <RoleLink
               to={fragen}
@@ -2898,6 +2918,9 @@ export function BibliothekLesen({
                 ) : null}
               </div>
             ) : null}
+            {/* R-1055: zwei gespeicherte Fassungen nebeneinander, direkt im Editor — derselbe
+                Vergleich wie unter Mehr → Schnappschüsse (`Fassungsvergleich.tsx`). */}
+            <FassungsvergleichImEditor koId={koId} />
             {/* ==========================================================================
                 EDITOR-EINHEITLICH · PFLICHT VOR DEM KNOPF, NICHT ERST DANACH.
                 ==========================================================================
