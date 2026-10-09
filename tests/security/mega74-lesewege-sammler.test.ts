@@ -1200,6 +1200,10 @@ const REGISTER: Record<string, Eintrag> = {
   // keinen Betrachter entgegen (service.ts:87). Die Route liest denselben Bestand wie
   // `GET /api/objects/:id` und steht seit G8 unter demselben Prädikat, also unter Messung.
   "POST /api/media/analyze": { urteil: "PRAEDIKAT", grund: "Block C — G8, 404 statt Auskunft." },
+  "POST /api/media/transcribe": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "transcribeRecording — Transkript der eingesandten Aufnahme, kein Bestand.",
+  },
   "POST /api/notifications/seen": { urteil: "KEIN_KO_INHALT", grund: "eigener Gelesen-Stand." },
   "POST /api/capture/slides": { urteil: "KEIN_KO_INHALT", grund: "PNGs aus eingesandtem PPTX." },
   // --- Schreibwege: die Antwort trägt, was der Aufrufer selbst eingereicht/bewirkt hat -------
