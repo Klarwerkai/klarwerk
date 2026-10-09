@@ -5,6 +5,8 @@ import type { Role } from "../app/navigation";
 // (Codex an JOB 3069 R3). Der Import ist ein reiner TYP-Import: `trust/types.ts` ist DOM-frei,
 // und zur Laufzeit bleibt von dieser Zeile nichts übrig.
 import type { DisplayStatus } from "../components/trust/types";
+// ADMIN-02: die Form eines Verbindungsnachweises steht EINMAL im gemeinsamen Statusmodell.
+import type { Verbindungsnachweis } from "../lib/integrationStatus";
 
 export type { Role };
 
@@ -3541,6 +3543,21 @@ export interface ImportAccessStatus {
   // R-0166: `invalid-auth-mode` = KLARWERK_CONFLUENCE_AUTH trägt einen unbekannten Anmeldeweg.
   blocker: "missing" | "insecure-base-url" | "invalid-auth-mode" | null;
   lastConnectedAt: string | null;
+  /**
+   * ADMIN-02: der zuletzt festgehaltene Verbindungstest — getrennt vom letzten Importerfolg.
+   * Fehlt er (ältere Server), gilt dasselbe wie `null`: keiner belegt.
+   */
+  letzterVerbindungstest?: Verbindungsnachweis | null;
+}
+
+/** ADMIN-02: die Importliste (`GET /api/admin/import/runs`). */
+export interface ImportRunListe {
+  /** `false`: diese Ablage kann nicht auflisten — eine leere Liste hiesse dann nichts. */
+  verfuegbar: boolean;
+  limit: number;
+  /** Hält der Lauf fest, wer ihn ausgelöst hat? Heute nein — die Fläche sagt das ausdrücklich. */
+  ausloeserFestgehalten: boolean;
+  runs: ImportRunRecord[];
 }
 
 // ================================================================================================
