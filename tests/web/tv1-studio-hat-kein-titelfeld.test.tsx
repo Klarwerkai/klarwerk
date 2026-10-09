@@ -177,7 +177,9 @@ describe("JOB 2469 · TV1 — die drei Tatsachen, auf denen die Studio-Ausnahme 
 
     // Der Grund, warum ein Uebernehmen-Knopf hier eine Scheinwahl waere: der Nutzer saehe die
     // Wirkung im Moment des Klicks nicht.
-    const ueberdeckend = Array.from(container.querySelectorAll("div")).filter((d) => {
+    // R-0909: die überdeckende Ebene ist seit `gesamt-dialog-bedienung` selbst der benannte Dialog
+    // (`<dialog>` statt `<div>`) — dieselbe Fläche, dieselben Klassen; gesucht wird in beiden.
+    const ueberdeckend = Array.from(container.querySelectorAll("div, dialog")).filter((d) => {
       const k = d.className;
       return typeof k === "string" && k.includes("fixed") && k.includes("inset-0");
     });

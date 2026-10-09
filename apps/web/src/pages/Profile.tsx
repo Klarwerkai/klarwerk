@@ -1,10 +1,11 @@
 // JOB 3065 H6 — DAS PROFIL IN DERSELBEN ZEILENKARTE WIE DIE EINSTELLUNGEN.
 //
-// Kein Kicker, keine Einleitung: Name (Wert = Rolle), E-Mail, Sprache, Passwort ändern, die eigene
-// Wirkung und das Abmelden — jede Zeile mit ihrem Wert, die Karten dahinter unverändert.
+// Kein Kicker, keine Einleitung: Name (Wert = Rolle), E-Mail, Kontodaten berichtigen, Sprache,
+// Passwort ändern, die eigene Wirkung und das Abmelden — jede Zeile mit ihrem Wert.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router-dom";
 import { authApi } from "../api/auth";
 import { ApiError } from "../api/client";
 import { useMyImpact } from "../api/hooks";
@@ -141,6 +142,225 @@ function PasswortDetail({
           </Button>
         </form>
       )}
+    </Detailkarte>
+  );
+}
+
+// R-0582 (DS13): DIE EIGENEN KONTODATEN BERICHTIGEN — ohne Antrag, ohne Admin.
+//
+// Vorbelegt mit dem Stand der Sitzung. Gesendet werden nur geänderte Felder; der neue Stand kommt
+// aus der ANTWORT und ersetzt den Sitzungsnutzer sofort (Name in Profil und Kopfzeile). Das
+// Passwortfeld erscheint erst, wenn die E-Mail wirklich anders lautet — der Server verlangt es nur
+// dann. Die Meldung eines Fehlers ist der Satz des Servers (Adresse vergeben, Passwort falsch).
+//
+// REINE SSO-KONTEN haben kein Passwort. Für sie (und für jedes verknüpfte Konto) steht daneben
+// „Mit SSO bestätigen": der Entwurf wird im Tab (`sessionStorage`) gemerkt, die erneute Anmeldung
+// beim eigenen Anbieter läuft über `ziel=profil`, und der Rückruf führt nach
+// `/profil?kontodaten=sso` zurück — die Karte öffnet sich mit dem Entwurf, der Server nimmt die
+// neue Adresse dann ohne Passwort an (einmal, kurz, nur für diese Sitzung).
+//
+// BEN, NACHARBEIT 4 — ZWEI REGELN DES RÜCKWEGS:
+//   · DER ENTWURF GEHÖRT DEM KONTO, DAS IHN BEGONNEN HAT (`kontoId`). Meldet der Anbieter beim
+//     Rückruf ein ANDERES Konto an, wird er verworfen, die Karte zeigt die Daten des jetzt
+//     angemeldeten Kontos und sagt, warum. Der Server bestätigt in diesem Fall ohnehin nichts.
+//   · EINE ABGELEHNTE BESTÄTIGUNG (abgelaufen, verbraucht, fehlt — Antwort 401/403) setzt den
+//     Bestätigungszustand zurück: Passwortfeld und „Mit SSO bestätigen" sind sofort wieder da, die
+//     Eingaben bleiben stehen.
+export const KONTODATEN_ENTWURF = "kw_kontodaten_entwurf";
+
+interface Entwurf {
+  kontoId: string;
+  name: string;
+  email: string;
+}
+
+function entwurfLesen(): Entwurf | null {
+  try {
+    const roh = window.sessionStorage.getItem(KONTODATEN_ENTWURF);
+    const wert = roh
+      ? (JSON.parse(roh) as { kontoId?: unknown; name?: unknown; email?: unknown })
+      : null;
+    return wert &&
+      typeof wert.kontoId === "string" &&
+      typeof wert.name === "string" &&
+      typeof wert.email === "string"
+      ? { kontoId: wert.kontoId, name: wert.name, email: wert.email }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function KontodatenDetail({
+  onZurueck,
+  ausSso,
+}: {
+  onZurueck: () => void;
+  ausSso: boolean;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const { user, oidcEnabled, samlEnabled } = useSession();
+  const [entwurf] = useState(() => (ausSso ? entwurfLesen() : null));
+  // Der Entwurf ist gelesen — er verlässt den Tab-Speicher erst NACH dem Aufbau (StrictMode ruft
+  // den Initialisierer doppelt; dort entfernt, fände der zweite Aufruf nichts mehr).
+  useEffect(() => {
+    if (ausSso) {
+      try {
+        window.sessionStorage.removeItem(KONTODATEN_ENTWURF);
+      } catch {
+        // Ohne Tab-Speicher gibt es nichts zu entfernen.
+      }
+    }
+  }, [ausSso]);
+  const [name, setName] = useState(entwurf ? "" : (user?.name ?? ""));
+  const [email, setEmail] = useState(entwurf ? "" : (user?.email ?? ""));
+  const [passwort, setPasswort] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [hinweis, setHinweis] = useState<string | null>(null);
+  // Die Bestätigung gilt für genau EINE gelungene Adressänderung (Server verbraucht sie).
+  const [ssoBestaetigt, setSsoBestaetigt] = useState(false);
+  // Erst wenn das angemeldete Konto bekannt ist, wird entschieden, wem die Felder gehören.
+  const [vorbelegt, setVorbelegt] = useState(false);
+  useEffect(() => {
+    if (vorbelegt || !user) {
+      return;
+    }
+    setVorbelegt(true);
+    if (entwurf && entwurf.kontoId === user.id) {
+      setName(entwurf.name);
+      setEmail(entwurf.email);
+      setSsoBestaetigt(true);
+      setHinweis(t("prof.correctSsoConfirmed"));
+      return;
+    }
+    setName(user.name ?? "");
+    setEmail(user.email ?? "");
+    if (entwurf) {
+      setErr(t("prof.correctSsoKontoGewechselt"));
+    }
+  }, [vorbelegt, user, entwurf, t]);
+  const neueEmail = email.trim() !== (user?.email ?? "");
+  // Verknüpfte Firmen-Identität (OIDC oder SAML — beide legen sie über `loginWithOidc` an) und je
+  // eingerichtetem Firmen-Login ein Bestätigungsweg. Welcher Anbieter das Konto kennt, entscheidet
+  // der Server beim Rücksprung: bestätigt wird nur, wenn er DASSELBE Konto wieder anmeldet.
+  const verknuepft = Boolean(user?.oidcSubject);
+  const oidcBestaetigung = oidcEnabled && verknuepft;
+  const samlBestaetigung = samlEnabled && verknuepft;
+
+  const speichern = useMutation({
+    mutationFn: () =>
+      authApi.correctAccount({
+        ...(name.trim() !== (user?.name ?? "") ? { name: name.trim() } : {}),
+        ...(neueEmail
+          ? { email: email.trim(), ...(ssoBestaetigt ? {} : { currentPassword: passwort }) }
+          : {}),
+      }),
+    onSuccess: (stand) => {
+      qc.setQueryData(["auth", "me"], stand);
+      void qc.invalidateQueries({ queryKey: ["auth", "me"] });
+      setPasswort("");
+      if (neueEmail) {
+        setSsoBestaetigt(false);
+      }
+      setHinweis(t("prof.correctSaved"));
+    },
+    onError: (e: unknown) => {
+      // Abgelehnte Bestätigung: zurück auf „unbestätigt", damit der Weg erneut bedienbar ist.
+      if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+        setSsoBestaetigt(false);
+      }
+      setErr(e instanceof ApiError ? e.message : t("state.error"));
+    },
+  });
+
+  const mitSsoBestaetigen = (startUrl: string): void => {
+    if (!user) {
+      return;
+    }
+    try {
+      const neu: Entwurf = { kontoId: user.id, name: name.trim(), email: email.trim() };
+      window.sessionStorage.setItem(KONTODATEN_ENTWURF, JSON.stringify(neu));
+    } catch {
+      // Ohne Tab-Speicher geht der Entwurf verloren; die Bestätigung selbst gilt trotzdem.
+    }
+    window.location.assign(startUrl);
+  };
+
+  return (
+    <Detailkarte titel={t("prof.correctTitle")} onZurueck={onZurueck} testId="detail-kontodaten">
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setErr(null);
+          setHinweis(null);
+          if (name.trim() === (user?.name ?? "") && !neueEmail) {
+            setHinweis(t("prof.correctUnchanged"));
+            return;
+          }
+          speichern.mutate();
+        }}
+      >
+        <Field label={t("adm.name")}>
+          <TextInput value={name} onChange={(e) => setName(e.target.value)} required />
+        </Field>
+        <Field label={t("adm.email")}>
+          <TextInput
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </Field>
+        {neueEmail && !ssoBestaetigt ? (
+          <Field label={t("prof.correctPassword")}>
+            <TextInput
+              type="password"
+              value={passwort}
+              onChange={(e) => setPasswort(e.target.value)}
+            />
+          </Field>
+        ) : null}
+        {neueEmail && !ssoBestaetigt && (oidcBestaetigung || samlBestaetigung) ? (
+          <div className="flex flex-wrap gap-2">
+            {oidcBestaetigung ? (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => mitSsoBestaetigen(authApi.ssoProfilBestaetigungUrl)}
+              >
+                {t("prof.correctSso")}
+              </Button>
+            ) : null}
+            {samlBestaetigung ? (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => mitSsoBestaetigen(authApi.samlProfilBestaetigungUrl)}
+              >
+                {t("prof.correctSaml")}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+        {err ? (
+          <div
+            role="alert"
+            className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+          >
+            {err}
+          </div>
+        ) : null}
+        {hinweis ? (
+          <div className="rounded-card border border-trust-pos-fill/30 bg-trust-pos-bg p-3 text-[13px] text-trust-pos-text">
+            {hinweis}
+          </div>
+        ) : null}
+        <Button type="submit" variant="primary" disabled={speichern.isPending}>
+          {t("prof.correctSubmit")}
+        </Button>
+      </form>
     </Detailkarte>
   );
 }
@@ -302,9 +522,11 @@ export function Profile(): JSX.Element {
   const { t } = useTranslation();
   const { user, signOut } = useSession();
   const [busy, setBusy] = useState(false);
+  // R-0582: Rücksprung aus der SSO-Bestätigung (`/profil?kontodaten=sso`) öffnet die Karte wieder.
+  const ausSso = new URLSearchParams(useLocation().search).get("kontodaten") === "sso";
   const [detail, setDetail] = useState<
-    null | "passwort" | "wirkung" | "zweifaktor" | "meineDaten" | "loeschantrag"
-  >(null);
+    null | "passwort" | "wirkung" | "kontodaten" | "zweifaktor" | "meineDaten" | "loeschantrag"
+  >(ausSso ? "kontodaten" : null);
   const zweiFaktor = useQuery({ queryKey: ZWEI_FAKTOR_KEY, queryFn: authApi.secondFactorStatus });
   const zurueck = (): void => setDetail(null);
   // JOB 3742 · DIE SEITENHILFE DIESER FLÄCHE — und warum hier der HAKEN steht und nicht der
@@ -325,6 +547,7 @@ export function Profile(): JSX.Element {
         <PasswortDetail onZurueck={zurueck} onChanged={() => void signOut()} />
       ) : null}
       {detail === "wirkung" ? <WirkungDetail onZurueck={zurueck} /> : null}
+      {detail === "kontodaten" ? <KontodatenDetail onZurueck={zurueck} ausSso={ausSso} /> : null}
       {detail === "zweifaktor" ? <ZweiFaktorDetail onZurueck={zurueck} /> : null}
       {detail === "meineDaten" ? <MeineDatenDetail onZurueck={zurueck} /> : null}
       {detail === "loeschantrag" ? <LoeschantragDetail onZurueck={zurueck} /> : null}
@@ -338,6 +561,11 @@ export function Profile(): JSX.Element {
             testId="zeile-name"
           />
           <Zeile label={t("adm.email")} wert={user?.email ?? "—"} testId="zeile-email" />
+          <Zeile
+            label={t("prof.correctTitle")}
+            onOeffnen={() => setDetail("kontodaten")}
+            testId="zeile-kontodaten"
+          />
           <Zeile label={t("prof.language")} steuerung={<SprachWahl />} testId="zeile-sprache" />
           <Zeile
             label={t("prof.passwordTitle")}
