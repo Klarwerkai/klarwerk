@@ -1218,6 +1218,11 @@ export interface Draft {
   // Aufnahme entwurf-in-gemeinsamen-pool-geben (R-2099): der Autor hat diesen Entwurf bewusst in den
   // gemeinsamen Pool gegeben. Fehlt das Feld, ist der Entwurf privat (der Standardfall).
   imPool?: true;
+  // entscheidung:8b909a1e: NUR in der Antwort auf `POST /api/drafts` mit Vorgangsschlüssel, und nur
+  // wenn der Server dabei NICHTS neu angelegt hat — „bestehend" (derselbe Inhalt war schon da) oder
+  // „fortgeschrieben" (derselbe Entwurf trägt jetzt den geänderten Inhalt, entscheidung:14ce8681).
+  // Fehlt das Feld, war es eine echte Erstspeicherung.
+  anlage?: "bestehend" | "fortgeschrieben";
 }
 
 export interface BusFactorEntry {
@@ -1977,6 +1982,11 @@ export interface AnswerResult {
   citedSources?: string[];
   // JOB 3366: gesetzt, wenn der ausgelieferte Antworttext am Token-Limit abgeschnitten wurde.
   abgeschnitten?: AbbruchBefund;
+  // AUFNAHME 20260922 · Antwort-Erklärung: die Belastbarkeit VOM SERVER (Spiegel von
+  // `services/ask/src/answer-belastbarkeit.ts`, wo Vertrag und Grenzen stehen). Optional — ein
+  // älterer Server sendet sie nicht, dann zeigt die Fläche keine Belastbarkeitszeile und erfindet
+  // keine.
+  belastbarkeit?: AntwortBelastbarkeit;
   // R-0604 / R-0625: die serverseitige KI-Kennzeichnung (`AiGeneratedMark`, nur gesetzt, wenn ein
   // Modell geantwortet hat). Bewusst `unknown`: die Fläche castet sie nicht, sondern prüft sie mit
   // derselben Laufzeitprüfung wie das Word-Panel (`istKiKennzeichnung`, lib/wordAddin.ts).
@@ -1984,6 +1994,158 @@ export interface AnswerResult {
   // R-0310/R-0325 (nur Fläche, gesetzt in `lib/askResponse.ts`): die Antwort wurde zurückgehalten,
   // weil kein Absatz belegt ist UND keine tragende Quelle feststeht — die Lücke nennt das.
   zuordnungUnbekannt?: true;
+}
+
+// Spiegel von `services/ask/src/answer-belastbarkeit.ts` — die Oberfläche LIEST, sie leitet nichts ab.
+export type AntwortLage =
+  | "belegt"
+  | "belegt_zustaendig_fehlt"
+  | "belegt_mit_konflikt"
+  | "wissensluecke"
+  | "technischer_fehler"
+  | "geschwaerzt";
+
+export type BelastbarkeitsGrund =
+  | "keine_tragfaehige_quelle"
+  | "zuordnung_unbekannt"
+  | "alle_tragenden_quellen_validiert"
+  | "tragende_quelle_nicht_validiert"
+  | "pruefnachweis_unvollstaendig"
+  | "offener_konflikt"
+  | "konfliktlage_unbekannt"
+  | "zustaendig_nicht_erreichbar"
+  | "erreichbarkeit_unbekannt"
+  | "verantwortung_nur_autor";
+
+export interface QuellenBelastbarkeit {
+  koId: string;
+  titel: string;
+  version: number;
+  vertrauenswert: number;
+  stand: string;
+  validiert: boolean;
+  pruefstand: "unknown" | "unchecked" | "noCoverage" | "incomplete" | "proven";
+  entscheidungFestgehalten: boolean;
+  verantwortung: {
+    art: "owner" | "author-fallback";
+    person: { id: string; name: string | null } | null;
+    erreichbar: boolean | null;
+  };
+}
+
+export type KonfliktSeite =
+  | {
+      einsehbar: true;
+      koId: string;
+      titel: string;
+      aussage: string;
+      version: number;
+      vertrauenswert: number;
+      validiert: boolean;
+      traegtAntwort: boolean;
+    }
+  | { einsehbar: false; traegtAntwort: boolean };
+
+export interface AntwortKonflikt {
+  konfliktId: string;
+  beschreibung: string | null;
+  seiten: [KonfliktSeite, KonfliktSeite];
+}
+
+export interface AntwortBelastbarkeit {
+  lage: AntwortLage;
+  gruende: BelastbarkeitsGrund[];
+  vertrauenswert: {
+    wert: number | null;
+    herleitung: "minimum_tragender_quellen" | "keine_tragende_quelle";
+    schwaechsteQuelle: string | null;
+  };
+  quellenAnzahl: { herangezogen: number; tragend: number };
+  quellen: QuellenBelastbarkeit[];
+  konflikte: AntwortKonflikt[];
+  // R-1627: die quellengebundene Argumentationskette; optional — ein älterer Server sendet sie nicht.
+  argumentation?: ArgumentStufe[];
+  // R-0346: Rolle und Anlass, auf die die Erklärung zugeschnitten ist.
+  zuschnitt?: AntwortZuschnitt;
+  // Ben nacharbeit-11: Wörterbucherklärungen AUSSERHALB der Quellenbilanz — ohne Vertrauenswert,
+  // ausdrücklich nicht bewertet. Fehlt das Feld, wurde nichts aus dem Wörterbuch ergänzt.
+  woerterbuch?: {
+    benennung: string;
+    // Die Erklärung steht hier: der Absatz „Begriffe“ hat keine Wissensquelle und wird nach R-0310
+    // nicht im Antworttext ausgegeben.
+    definition: string;
+    herkunft: BegriffHerkunft;
+    vertrauenswert: null;
+    belastbarkeit: "nicht_bewertet";
+  }[];
+  hinweis: "vertrauen_ist_kein_wahrheitsversprechen";
+}
+
+export type Wissensart =
+  | "bauchgefuehl"
+  | "best_practice"
+  | "lernkurve"
+  | "technik"
+  | "negativwissen";
+
+// R-1627 (Ben nacharbeit-9): Spiegel von `ArgumentStufe` (services/ask/src/answer-belastbarkeit.ts).
+// Jede tragende Quelle ist eine eigene Aussage; eine Beziehung steht nur da, wo ein Mensch sie als
+// kuratierte Kante gesetzt hat; der Schluss trägt die gegebene Antwortaussage.
+export type BelegteBeziehungsArt =
+  | "gehoert_zu"
+  | "ergaenzt"
+  | "ersetzt"
+  | "widerspricht"
+  | "beispiel_fuer";
+
+export type ArgumentStufe =
+  | {
+      art: "aussage";
+      koId: string;
+      titel: string;
+      aussage: string;
+      wissensart: Wissensart;
+      belegstelle: string | null;
+      vertrauenswert: number;
+      validiert: boolean;
+      stand: string;
+    }
+  | {
+      art: "beziehung";
+      kanteId: string;
+      beziehung: BelegteBeziehungsArt;
+      gerichtet: boolean;
+      vonKoId: string;
+      vonTitel: string;
+      zuKoId: string;
+      zuTitel: string;
+      gesetztVon: string | null;
+    }
+  | { art: "einwand"; konfliktId: string; seite: KonfliktSeite }
+  | { art: "vorbehalt"; grund: BelastbarkeitsGrund }
+  | {
+      art: "schluss";
+      lage: AntwortLage;
+      einstufung: "verified" | "unverified" | "gap";
+      aussage: string | null;
+      gestuetztAuf: string[];
+      unabhaengig: boolean;
+    };
+
+export interface AntwortZuschnitt {
+  rolle: "viewer" | "experte" | "controller" | "admin" | "unbekannt";
+  anlass: "dokument" | "frage";
+  tiefe: "kurz" | "ausfuehrlich";
+  fachsprache: "allgemein" | "fach";
+  reihenfolge: Wissensart[];
+}
+
+// R-0284: wogegen geprüft wurde (Spiegel von `AskPruefrahmen`, services/ask/src/service.ts).
+export interface AskPruefrahmen {
+  umfang: "validiert" | "nicht_vertraulich";
+  verglichen: number;
+  hoechstens: number;
+  nurWoertlich: boolean;
 }
 
 // JOB 2626 D1: ein Dokument, das die Frage traf, aber nicht antworten konnte — mit den Toren,
@@ -2012,9 +2174,14 @@ export interface AskResponse {
   // JOB 2626 D1: nur bei Nicht-Antwort UND nur auf Wegen mit Betrachterfilter vorhanden; ein
   // älterer Server sendet das Feld nicht — die Fläche fällt dann auf die generische Leermeldung.
   verschlossen?: VerschlossenHinweis[];
+  // R-0284: der Rahmen der Suche; ein älterer Server sendet ihn nicht — dann steht kein Satz.
+  pruefrahmen?: AskPruefrahmen;
   // R-1633: nur wenn ein Fragekontext mitgeschickt wurde — wofür gewichtet wurde und je Quelle
   // ihre Geltung und Passung (Spiegel von `AskGeltungsauskunft`, services/ask/src/service.ts).
   geltung?: AskGeltungsauskunft;
+  // R-0346 (Ben nacharbeit-9): wie die Antwort selbst zugeschnitten wurde und was angehängt ist
+  // (Spiegel von `AskAntwortZuschnitt`); fehlt das Feld, ist die Antwort unverändert.
+  antwortZuschnitt?: AskAntwortZuschnitt;
   // R-0310: je Absatz die tragenden Quellen, die ihn belegen (services/app/src/absatz-belege.ts);
   // nur bei beantworteter Frage. Angewandt in `lib/askResponse.ts` (`selectAnswer`).
   absaetze?: AbsatzBeleg[];
@@ -2023,6 +2190,36 @@ export interface AskResponse {
 export interface AbsatzBeleg {
   text: string;
   quellen: string[];
+}
+
+export interface AskAntwortZuschnitt {
+  tiefe: "kurz" | "ausfuehrlich";
+  fachsprache: "allgemein" | "fach";
+  reihenfolge: Wissensart[];
+  ergaenzungen: (
+    | { art: "voraussetzungen" | "massnahmen"; quelleId: string; eintraege: string[] }
+    | {
+        art: "begriffe";
+        quelleId: null;
+        eintraege: string[];
+        benennungen: string[];
+        herkunft: BegriffHerkunft[];
+      }
+  )[];
+  // Ben nacharbeit-13: die Antwort ohne Wörterbucherklärungen — der Schluss der Kette.
+  quellengebundenerText: string;
+  // Ben nacharbeit-20: die angehängten Abschnitte am Ende der Antwort, je mit Text und Quelle.
+  abschnitte: { quelleId: string | null; text: string }[];
+}
+
+// Ben nacharbeit-11: Herkunft einer Begriffserklärung aus dem Firmenwörterbuch (Spiegel von
+// `BegriffHerkunft`, services/ask/src/antwort-zuschnitt.ts).
+export interface BegriffHerkunft {
+  eintragId: string;
+  fassung: number;
+  geltungsbereich: string | null;
+  verantwortlich: string | null;
+  geaendertAm: string | null;
 }
 
 // ================================================================================================
@@ -2164,6 +2361,26 @@ export interface MgmtPriority {
   flags: MgmtPriorityFlag[];
 }
 
+// R-1657 (ROADMAP 9.3): Wissens-Sprint-Vorschläge je Bereich, wie der Server sie liefert
+// (services/management/src/metrics.ts → sprints).
+export type MgmtSprintReasonKey = "conflicts" | "revalidation" | "lowTrust" | "thinKnowledge";
+export interface MgmtSprint {
+  category: string;
+  reasons: { key: MgmtSprintReasonKey; count: number }[];
+  workItems: number;
+  days: number;
+  // Nacharbeit 2: Reasoner-Urteil über genau diese Kennzahlen oder die benannte Regel.
+  source?: "reasoner" | "rule";
+}
+// Nacharbeit 2: Stand der regelmäßigen Reasoner-Analyse für die eigene Sicht.
+export interface MgmtSprintAnalysis {
+  regular: boolean;
+  intervalMs: number | null;
+  analyzedAt: string | null;
+  provider: string | null;
+  failure: string | null;
+}
+
 // R-0751 / R-1639 / R-2183 (Nacharbeit 3): gepflegte Bereichsprofile und Ruhestandshorizonte
 // (services/management/src/profiles.ts) und der daraus abgeleitete Bereichsblick (horizon.ts).
 export type AssessmentLevel = "niedrig" | "mittel" | "hoch";
@@ -2243,6 +2460,9 @@ export interface ManagementSnapshot {
   maturity: { stage: number; stageKey: string; progressPct: number };
   priorities: MgmtPriority[];
   recommendations: { key: string; severity: "hoch" | "mittel"; count: number }[];
+  // Optional: ein Server ohne R-1657 liefert das Feld nicht; die Fläche zeigt dann keine Sprints.
+  sprints?: MgmtSprint[];
+  sprintAnalysis?: MgmtSprintAnalysis;
   house: { category: string; koCount: number; validatedRatio: number; fragile: boolean }[];
   pilot: { days: number; created: number; validated: number }[];
 }
@@ -2804,13 +3024,14 @@ export type ReasonerTask = (typeof REASONER_TASKS)[number];
 // Aufnahme gesamt-ki-laufprotokoll (Ben R1 B2): die Laufarten des Protokolls — die acht Aufgaben der
 // KI-Zuordnung plus die vier Modellwege, die über die globale Wahl laufen. Spiegel der Union
 // `ModelRunTask` in `services/model-runs/src/types.ts`; gebunden durch
-// `tests/ki-aufgabenarten/aufgabenarten-eine-wahrheit.test.ts`.
+// `tests/ki-aufgabenarten/aufgabenarten-eine-wahrheit.test.ts`. R-1657: `gaps` (Lückenerkennung).
 export const MODEL_RUN_TASKS = [
   ...REASONER_TASKS,
   "enrich",
   "conflict",
   "duplicate",
   "probe",
+  "gaps",
 ] as const;
 
 // JOB 3134 (KI-WAHL): die beiden externen Anbieter sind eigene Auswahlwerte. Dieselbe Liste wie
@@ -3029,7 +3250,24 @@ export type NotificationKind =
   | "impact"
   | "kenntnisnahme"
   // aufnahme:20260922:gesamt-wissen-frische: Fristerinnerung, Wochenvorlage, Prüfanforderung.
-  | "frische";
+  | "frische"
+  | "reklamation";
+
+// R-1089: der Meldeweg „Antwort falsch / Quelle passt nicht". Eigenständig getippt wie der Rest
+// dieser Datei — apps/web importiert nicht über die Modulgrenze nach services.
+export type AntwortMeldeGrund = "antwort-falsch" | "quelle-passt-nicht";
+
+export interface AntwortMeldungQuittung {
+  meldungId: string;
+  koId: string;
+  koTitle: string;
+  grund: AntwortMeldeGrund;
+  at: string;
+  // Wohin die Meldung ging — benannte verantwortliche Person oder ersatzweise der Autor. Wer das
+  // ist, sagt die Quittung bewusst nicht.
+  zugestelltAn: "owner" | "author-fallback";
+  bereitsGemeldet: boolean;
+}
 
 export interface Notification {
   id: string;
@@ -3047,6 +3285,9 @@ export interface Notification {
   fassung?: number;
   erinnerung?: boolean;
   ueberfaellig?: boolean;
+  // R-1089: Meldegrund und Meldungsnummer (nur bei `kind: "reklamation"`).
+  grund?: AntwortMeldeGrund;
+  meldungId?: string;
   // aufnahme:20260922:gesamt-wissen-frische: Unterart einer `frische`-Meldung (R-0248/R-0266/R-1635).
   frischeArt?: "frist" | "vorlage" | "anlage";
 }

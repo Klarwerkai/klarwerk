@@ -21,7 +21,7 @@
 //      Aussage über die Bindung und nicht über zwei zufällig gleiche Dinge (`G-1`).
 //
 // BEWUSST OHNE `new URL(relativ, import.meta.url)` — gemessen, nicht vermutet, und im Bestand unter
-// `tests/library/support/wissensraum-ort-vertrag.ts:35-44` dokumentiert: In der jsdom-Umgebung ist
+// `tests/library/support/wissensraum-ort-vertrag.ts:22-31` dokumentiert: In der jsdom-Umgebung ist
 // `URL` global die jsdom-Fassung und löst eine relative Basis gegen den DOKUMENT-Ursprung auf statt
 // gegen die `file:`-URL. `fileURLToPath` geht durch Nodes eigenen Parser, `resolve` kennt keine
 // URL-Semantik — beide rechnen in jeder Umgebung gleich.
