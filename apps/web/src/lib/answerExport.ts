@@ -1,6 +1,7 @@
 // SCRUM-430 (Pedi 03.07., VIP): eine beantwortete Frage inkl. Quellen als Markdown exportieren/
 // teilen (Kopieren / Download / Druck-PDF). Reine, DOM-freie Formatierung — testbar ohne Browser.
 // Die Quellen bleiben klar ausgewiesen (Status/Trust/Nutzbarkeit); nichts wird beschönigt.
+import type { KiHerkunft } from "./kiHerkunft";
 
 export interface AnswerExportStep {
   description: string;
@@ -79,6 +80,18 @@ export interface AnswerExportInput {
   sources: readonly AnswerExportSource[];
   generatedAt: string; // ISO-Zeitstempel
   labels: AnswerExportLabels;
+  /**
+   * R-0604 / R-0625 (Ben Nacharbeit 2): die DREIWERTIGE Herkunft (`kiHerkunftAus`). Nur der belegte
+   * modellfreie Rückfall (`"ohne-ki"`) nimmt Kopfblock und Satz heraus. `"ki"`, `"unbekannt"` und
+   * eine fehlende Angabe behalten die Kennzeichnung — Unbekannt wird nicht still zu „keine KI".
+   * Bis Nacharbeit 2 stand hier ein Boolean, und die Fragenseite machte aus „unbekannt" ein `false`.
+   */
+  kiHerkunft?: KiHerkunft;
+}
+
+/** Trägt die Datei die KI-Kennzeichnung? Für ALLE Ausgabeformate dieselbe Entscheidung. */
+export function exportKennzeichnen(input: Pick<AnswerExportInput, "kiHerkunft">): boolean {
+  return input.kiHerkunft !== "ohne-ki";
 }
 
 function sourceLine(source: AnswerExportSource, trustLabel: string): string {
@@ -117,6 +130,9 @@ function sourceLine(source: AnswerExportSource, trustLabel: string): string {
 const FRONTMATTER_TRENNER = "---";
 
 function frontmatter(input: AnswerExportInput): string[] {
+  if (!exportKennzeichnen(input)) {
+    return [];
+  }
   return [
     FRONTMATTER_TRENNER,
     "ai-generated: true",
@@ -133,8 +149,10 @@ export function buildAnswerMarkdown(input: AnswerExportInput): string {
   const lines: string[] = [...frontmatter(input)];
   lines.push(`# ${input.question.trim() || "—"}`);
   lines.push("");
-  lines.push(`_${L.aiNotice.trim()}_`);
-  lines.push("");
+  if (exportKennzeichnen(input)) {
+    lines.push(`_${L.aiNotice.trim()}_`);
+    lines.push("");
+  }
   const meta = [
     input.statusLabel,
     `${L.evidence}: ${input.evidenceLabel}`,

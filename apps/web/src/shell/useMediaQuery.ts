@@ -45,3 +45,8 @@ export const NARROW_QUERY = "(max-width: 899px)";
 //     enden. Desktop 1280 fällt NICHT hinein; ab 900 gilt die Zweispaltigkeit von heute.
 // Gelesen wird auch diese Abfrage NUR über `useMediaQuery` — kein zweiter `matchMedia`-Griff.
 export const TABLET_LESE_QUERY = "(min-width: 760px) and (max-width: 899px)";
+
+// Aufnahme 20260922 · antwort-quellenanzeige (N-0037): das Telefonband der Bibliothek als Abfrage —
+// dieselbe Schwelle wie `SCHMAL_ABFRAGE` in `BibliothekFlaeche.tsx` (< 760 px, lückenlos unter
+// `TABLET_LESE_QUERY`). Die Lesefläche liest damit, ob ihr Kopf im ersten Bild stehen muss.
+export const TELEFON_LESE_QUERY = "(max-width: 759px)";
