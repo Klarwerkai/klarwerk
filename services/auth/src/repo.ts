@@ -63,6 +63,12 @@ export interface UserRepo {
   // eingefügt und false geliefert (der Aufrufer legt dann ein normales Konto an). Schließt die
   // COUNT+INSERT-Race: egal wie viele parallele Ersteinrichtungen laufen, genau einer bekommt true.
   tryClaimBootstrapAdmin(user: User): Promise<boolean>;
+  /**
+   * R-0556 / R-0571: die Verzeichnisgruppen eines Kontos festschreiben. OPTIONAL: eine Ablage, die
+   * das ganze Konto mit `insert`/`update` speichert (Speicher), braucht sie nicht; die Datenbank
+   * schreibt die eigene Spalte hier — getrennt von `update`, dessen Spaltenliste unverändert bleibt.
+   */
+  setzeVerzeichnisGruppen?(id: string, gruppen: readonly string[], tx?: TxContext): Promise<void>;
 }
 
 export interface SessionRepo {

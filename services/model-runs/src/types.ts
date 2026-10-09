@@ -102,6 +102,11 @@ export interface AiGeneratedMark {
 /**
  * Die Kennzeichnung bauen. `demo` ist der bereits vorhandene Marker „aus dem deterministischen
  * Rückfall" — daraus folgt der Betriebsmodus, ohne dass ein zweiter Zustand entsteht.
+ *
+ * R-0604 (G22, mega83 A): der Reasoner hängt die Marke seither NUR an Ausgaben, die ein Modell
+ * geschrieben hat (`demo === false`). Der deterministische Rückfall ist keine KI-Erzeugung und
+ * bekommt keine Marke — `mode: "deterministic"` bleibt als Vertragswert gültig, wird von den
+ * Reasoner-Wegen aber nicht mehr erzeugt.
  */
 export function aiGeneratedMark(
   task: ModelRunTask,
