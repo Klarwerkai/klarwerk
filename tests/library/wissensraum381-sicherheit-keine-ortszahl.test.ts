@@ -13,14 +13,15 @@
 // ZWEI ARTEN VON ZUSICHERUNG, und die Trennung ist Absicht:
 //   · Die BEWAHRUNGSANKER (a) und (b) sind HEUTE messbar und HEUTE grün. Sie sind das Gegenstück zu
 //     „additiv“: sie werden rot, sobald jemand den Ort doch in die Facettenmechanik zieht.
-//   · Die Zusicherungen (c) und (d) sind ROT, weil `lib/librarySpace.ts` noch nicht existiert.
-//     PLAN 378 §8.3 hält ausdrücklich fest, dass `R-12` erst mit dem Serververtrag (BASIC 379) ganz
-//     grün werden kann. Das ist kein Mangel, sondern die Reihenfolge: Sicherheit vor Sichtbarkeit.
+//   · Die Zusicherungen (c) und (d) maßen `lib/librarySpace.ts` (`spaceResultCount` und seine
+//     Importe). R-1349 (Aufnahme gesamt-aufruferwaechter, Nacharbeit 10): das Modul ist samt
+//     `LibraryScopeBar` und `KoHomeLine` entfernt — die Umsetzungswelle mit `home`-Kette kam nicht,
+//     geliefert ist das flache Space-Modell (produkt:20261007:spaces), das keine Ortszahl zeigt.
+//     Die Bewahrungsanker (a) und (b) gelten unverändert: der Ort wird keine elfte Facette.
 import { describe, expect, it } from "vitest";
 
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
 import { libraryFilterValues } from "../../apps/web/src/lib/libraryFacets";
-import { ladeOrtArtefakt, leseOrtArtefakt, ortFunktion } from "./support/wissensraum-ort-vertrag";
 
 /**
  * Die ZEHN Achsen der Filterschiene, wörtlich aus `pages/Library.tsx` `LIBRARY_FILTER_CONFIGS`
@@ -108,40 +109,5 @@ describe("PRO 381 · R-12 — keine clientseitig gerechnete Ortszahl", () => {
     for (const achse of ZEHN_ACHSEN) {
       expect(Object.keys(werte), `Achse „${achse}“ fehlt in der Werteableitung`).toContain(achse);
     }
-  });
-
-  it("R-12 (c): eine Zahl entsteht NUR aus einer Serverzahl — nie aus einer Trefferliste", async () => {
-    const modul = await ladeOrtArtefakt("librarySpace");
-    const zahl = ortFunktion(modul, "spaceResultCount", "librarySpace");
-
-    // Ohne Serverzahl gibt es GAR KEINE Zahl (PLAN 378 §4.3 Satz 4, `P-3`). Nicht 0 — `0` wäre
-    // eine Auskunft („hier ist nichts“), und genau die darf bei getrimmten Beständen nicht fallen.
-    expect(zahl(undefined)).toBeNull();
-    expect(zahl(null)).toBeNull();
-
-    // Und eine Trefferliste ist keine Zahl. Wer hier `3` zurückbekäme, hätte den ungetrimmten
-    // Count aus `T-3` gebaut — der Client kennt nur die GELADENE Menge, nie die wahre.
-    expect(zahl([koMitHeimat(), koMitHeimat(), koMitHeimat()])).toBeNull();
-    expect(zahl({ length: 3 })).toBeNull();
-    expect(zahl("3")).toBeNull();
-
-    // Eine echte Serverzahl kommt unverändert durch — sonst wäre der Umschalter nie entscheidbar.
-    expect(zahl(42)).toBe(42);
-    expect(zahl(0)).toBe(0);
-  });
-
-  it("R-12 (d): `librarySpace.ts` kennt die zählenden Module gar nicht erst", () => {
-    // Strukturell statt punktuell: (c) belegt das Ergebnis für die geprüften Eingaben, (d) belegt,
-    // dass der AUFRUFWEG nicht existiert. Diese drei Module sind die einzigen, in denen im Web-
-    // Bestand über eine Treffermenge gezählt wird.
-    const quelltext = leseOrtArtefakt("librarySpace");
-    for (const zaehlmodul of ["libraryFacets", "facetRail", "libraryDisplay", "facetFilter"]) {
-      expect(quelltext, `librarySpace.ts importiert „${zaehlmodul}“`).not.toContain(zaehlmodul);
-    }
-    // Und es zieht sich die Wahrheit auch nicht über den API-Client selbst heran: der Ort erreicht
-    // die Oberfläche ausschliesslich über `home` am KO und die Raumliste — es gibt keinen dritten
-    // Weg (PLAN 378 §4.3 Satz 1). Ein reines Modul holt nichts.
-    expect(quelltext).not.toContain("api/client");
-    expect(quelltext).not.toContain("api/endpoints");
   });
 });

@@ -98,6 +98,10 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // Aufnahme 20260922 · Prüfung-Gedächtnis: `put` ersetzt je Paar (letzter Stand gewinnt) — das
   // Replay ist deterministisch. Ohne den Eintrag ginge nach einem Neustart erneut alles an die KI.
   conflictMemory: ["put"],
+  // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): Planung, Beanspruchung und Abschluss tragen
+  // ihre Bedingungen und Zeitstempel in den Argumenten (Laufkopf, Token, Frist) — das Replay trifft
+  // in derselben Reihenfolge denselben Stand. Ohne den Eintrag verlöre ein Dev-Neustart die Läufe.
+  paarpflichten: ["planen", "beanspruchen", "abschliessen"],
   // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge überleben den Neustart.
   overlapRepo: ["insert", "update", "closeOpenForKo"],
   // Pedi 04.07.: eingestellte Anzeige-Schwelle überlebt den Neustart (letzter Set gewinnt).
@@ -290,10 +294,8 @@ export function readJournalLines(file: string): JournalLine[] {
   return lines;
 }
 
-/** Dieselbe Lesung ohne die Herkunftsangabe — der unveränderte Bestandsvertrag. */
-export function readJournal(file: string): JournalEntry[] {
-  return readJournalLines(file).map((l) => l.entry);
-}
+// R-1349: Die Projektion `readJournal` (ohne Zeilennummer) hatte keinen Produktaufrufer und ist
+// entfernt. Start und Bestätigung lesen über `readJournalLines`; die Tests bilden die Projektion lokal.
 
 // Journal in frische Repos zurückspielen — ausschließlich über die öffentlichen Interfaces.
 // Unbekannte Repo-/Methodennamen werden bewusst übersprungen (versionstolerant statt Crash).
