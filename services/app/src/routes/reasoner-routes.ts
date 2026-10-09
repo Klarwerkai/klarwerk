@@ -510,6 +510,8 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         instruction?: string;
         // PMO-FEA-0006: optionaler Suchauftrag des Experten für 'extract' (wonach suchen?).
         query?: string;
+        // R-1624: optionaler, vom Menschen bestätigter Bildbefund für 'interview' (Foto-Fragen).
+        imageContext?: unknown;
         // SCRUM-451: Ergebnis-Sprache für 'extract' — "system" (Default, UI-Sprache) oder
         // "source" (Sprache des Dokuments, nichts übersetzen).
         outputLanguage?: "system" | "source";
@@ -591,12 +593,14 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         const kiBeginn = kiEingang;
         try {
           ask.kiSperreVorFrage(kiBeginn);
+          // R-0278 (Nacharbeit 3, ben): derselbe Prüfstand wie `/api/ask` — Ungeprüftes wird auch
+          // über diesen Task nie Antwortgrundlage („für alle Wege gleich").
           const antwort = gebundenOhneFreigabe
             ? await ask.ask(text ?? "", user.id, locale, {
                 validatedOnly: true,
                 retrievalOnly: true,
               })
-            : await ask.ask(text ?? "", user.id, locale);
+            : await ask.ask(text ?? "", user.id, locale, { validatedOnly: true });
           ask.kiSperreVorAuslieferung(kiBeginn);
           reply.code(200).send(antwort);
         } catch (fehler) {
@@ -651,9 +655,20 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             log: request.log,
           },
         );
+        // R-1624: nur ein String wird als Bildbefund weitergereicht; Fremdtypen ergeben „kein
+        // Foto-Interview" statt eines Fehlers. Gesäubert und gekappt wird autoritativ im Provider
+        // (`normalizeInterviewImageContext`), egal, was der Client schickt.
+        const imageContext = request.body.imageContext;
         reply
           .code(200)
-          .send(await reasoner.interview(request.body.answers ?? [], locale, confidential));
+          .send(
+            await reasoner.interview(
+              request.body.answers ?? [],
+              locale,
+              confidential,
+              typeof imageContext === "string" ? imageContext : undefined,
+            ),
+          );
         return;
       }
       if (task === "extract") {
