@@ -2792,8 +2792,26 @@ export function buildApp(
   // zweiter Weg, keine zweite Zustandsmaschine: `stelleSuchprojektionBereit` ist der EINE Einstieg
   // für App-Ready und `runSeed()`. Er wirft, wenn die Instanz nicht `V2_ACTIVE` erreicht — die App
   // wird dann nie ready und die Suche bleibt fail-closed.
+  // R-1133: eingeplante Indexschreibvorgänge der Entwürfe laufen ausserhalb des Speicherwegs
+  // (`CaptureService.indexiere`). Beim Schliessen werden sie abgewartet, damit der Aufrufer den Pool
+  // nicht mitten in einem Schreibvorgang beendet. Optional gerufen: Prüfattrappen ersetzen
+  // `capture` teils durch Doppel ohne diese Methode.
+  app.addHook("onClose", async () => {
+    await services.capture.indexArbeitAbgeschlossen?.();
+  });
   app.addHook("onReady", async () => {
     await stelleSuchprojektionBereit(services.ko);
+    // R-1133 — DER ABGLEICH DES ENTWURFSINDEX, BEWUSST NICHT ABGEWARTET. Anders als die
+    // Suchprojektion oben ist dieser Index kein Bereitschaftsmerkmal: er ist ausdrücklich nicht die
+    // Wahrheit und darf den Eingabefluss nicht blockieren (R-1133). Ein Altbestand ohne Index macht
+    // die App also nicht unbereit; der Lauf zieht ihn im Hintergrund nach, jedes Speichern
+    // indiziert ohnehin selbst. Ein Fehler geht über den `err`-Serializer ins Protokoll — auch der
+    // einer Prüfattrappe ohne diese Methode: der Aufruf steht deshalb IN der Zusage, nicht davor.
+    void Promise.resolve()
+      .then(() => services.capture.gleicheEntwurfsIndexAb())
+      .catch((fehler: unknown) => {
+        app.log.warn({ err: fehler, event: "entwurfsindex_abgleich" }, "Entwurfsindex-Abgleich");
+      });
     // JOB 3655 — DER STARTBERICHT. Er ist BEWUSST erst hier angesiedelt und BEWUSST nicht
     // start-entscheidend: ein Bericht ist kein Betriebsmittel. Scheitert der Bestandsbefund, sagt
     // er „unbekannt" (nie „leer") und der Start geht weiter. Die start-entscheidende Prüfung ist

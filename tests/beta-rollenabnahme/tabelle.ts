@@ -1948,6 +1948,16 @@ export const TABELLE: Zeile[] = [
     tor: "ko.create",
     erwartet: AB_EXPERTE,
   },
+  // R-1133: die Duplikatsfrage über den Entwurfsindex — dasselbe Tor wie die Nachbarzeile.
+  {
+    gruppe: "captureRoutes",
+    methode: "GET",
+    pfad: "/api/drafts/gibt-es-nicht/gleicher-inhalt",
+    route: "/api/drafts/:id/gleicher-inhalt",
+    belegstelle: "services/app/src/routes/capture-routes.ts:1515",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
   {
     gruppe: "captureRoutes",
     methode: "GET",

@@ -2,7 +2,11 @@ import { Pool } from "pg";
 import { ANSWER_SNAPSHOT_SCHEMA, ASK_SCHEMA } from "../../ask";
 import { AUDIT_EVENT_ID_SCHEMA, AUDIT_HASH_VERSION_SCHEMA, AUDIT_SCHEMA } from "../../audit";
 import { AUTH_SCHEMA } from "../../auth";
-import { CAPTURE_CREATE_OPERATION_SCHEMA, CAPTURE_SCHEMA } from "../../capture";
+import {
+  CAPTURE_CREATE_OPERATION_SCHEMA,
+  CAPTURE_INDEX_SCHEMA,
+  CAPTURE_SCHEMA,
+} from "../../capture";
 import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
 import { vorratsKonfiguration } from "../../db-tx";
 import { EMBEDDING_SCHEMA } from "../../embedding";
@@ -182,6 +186,10 @@ export const schemas = [
   // `CREATE UNIQUE INDEX IF NOT EXISTS`), und die Datenmigration ist leer: kein Bestandsentwurf
   // trägt `createOperation`, jede vorhandene Zeile fällt durch das partielle `WHERE`.
   CAPTURE_CREATE_OPERATION_SCHEMA,
+  // R-1133: der technische Index der Entwürfe als Spalten an `drafts` — ZWANG zur Stellung nach
+  // `CAPTURE_SCHEMA` (ALTERt `drafts`) und nach `KO_SCHEMA` (pg_trgm für den Trigramm-Index).
+  // Additiv und wiederholbar; die Datenmigration ist leer, der Altbestand wird nachgezogen.
+  CAPTURE_INDEX_SCHEMA,
   ASK_SCHEMA,
   // W3-A (KW-W3-18): Antwortidentitaet und unveraenderliche Belegrevisionen. Sie stehen DIREKT
   // nach ASK_SCHEMA, weil sie demselben Modul gehoeren; auch hier gibt es keinen technischen
