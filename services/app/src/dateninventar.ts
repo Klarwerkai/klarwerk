@@ -99,6 +99,26 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    id: "zweifaktor",
+    name: "Zwei-Faktor-Anmeldung (TOTP)",
+    inhalt:
+      "Je Konto das TOTP-Geheimnis, der Einrichtungszeitpunkt und der zuletzt verbrauchte Zeitschritt.",
+    personenbezug: "ja",
+    personenbezugGrund: "Einem Konto zugeordnet.",
+    ablage: { ort: DATENBANK, tabellen: ["user_second_factors"] },
+    taetigkeit: "konten",
+    loeschung:
+      "Abschalten durch das Konto selbst, Zurücksetzen durch die Verwaltung; mit der Kontolöschung entfernt.",
+    frist: "Bis zum Abschalten oder zur Löschung des Kontos.",
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Zugangsgeheimnis — eine Ausgabe würde den zweiten Faktor aufheben; ob er eingerichtet ist, zeigt das Profil.",
+    },
+    befund:
+      "Das Geheimnis liegt (wie bei TOTP nötig) lesbar in der Datenbank und ist wie ein Zugangsgeheimnis zu schützen.",
+  },
+  {
     id: "wissensobjekte",
     name: "Wissensobjekte mit Fassungen, Verlauf und Kommentaren",
     inhalt:
@@ -534,6 +554,19 @@ export const DATENINVENTAR: readonly Datenart[] = [
       grund:
         "Verwaltungsangabe zur Befristung; die Verantwortung neuer Beiträge steht an den eigenen Objekten der Auskunft.",
     },
+  },
+  {
+    id: "halbwertszeiten",
+    name: "Gelernte Halbwertszeiten",
+    inhalt:
+      "Je Wissensobjekt und Fassungsende die beobachtete Haltbarkeit in Tagen mit Kategorie und Erfassungszeitpunkt.",
+    personenbezug: "nein",
+    personenbezugGrund: "Nur Objektkennung, Kategorie und Dauer — keine Kennung einer Person.",
+    ablage: { ort: DATENBANK, tabellen: ["ko_halbwertszeit_beobachtungen"] },
+    taetigkeit: "wissen",
+    loeschung: "Kein eigener Löschweg; nur mit dem Bestandsreset.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: { enthalten: false, grund: "Ohne Personenbezug." },
   },
   {
     id: "embeddings",

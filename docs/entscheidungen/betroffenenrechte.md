@@ -92,8 +92,11 @@ mit der Veröffentlichung; bis dahin gilt hier: **gebaut und im Prüflauf, nicht
 
 - `tests/backup-drill/tabellensatz.test.ts` verlangt jede migrierte Tabelle in `PFLICHTTABELLEN`
   (`scripts/backup/restore-drill.sh`). `management_category_profiles` und
-  `management_retirement_horizons` (R-0751/R-1639/R-2183) werden migriert, stehen dort aber nicht.
-  Das liegt ausserhalb dieses Auftrags und ist hier nur benannt.
+  `management_retirement_horizons` (R-0751/R-1639/R-2183) werden migriert, stehen dort aber nicht;
+  seit der Integration mit main ebenso `verantwortung_nachfolge` (produkt:20261007:ownership-uebergabe,
+  main brachte die Stufe ohne Drill-Eintrag). Rot belegt in Nacharbeit 11 (Kandidat `cc653af7`).
+  Das liegt ausserhalb dieses Auftrags und ist hier nur benannt; die Löschanträge selbst stehen im
+  Drill (`dateninventar.test.ts`, Löschantrags-Stufe).
 - Prüflauf Nacharbeit 1 (Kandidat `e70c4636`), rot nur an fremden Routen — `datenschutzRoutes`
   selbst ist in allen drei Wächtern abgenommen (`rollen-am-draht.test.ts` 144/144 grün):
   - `tests/beta-rollenabnahme/jede-gruppe-steht-in-der-tabelle.test.ts` W2/W8: `begriffeRoutes`
