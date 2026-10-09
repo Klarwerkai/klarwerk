@@ -24,6 +24,11 @@ import {
   commitDocumentAppend,
   newAppendOperationId,
 } from "../../lib/appendToArticle";
+import {
+  aussageFolgtInhalt,
+  fehlendePflichtangaben,
+  mitNeuemInhalt,
+} from "../../lib/aussageAusInhalt";
 import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../../lib/bodyAiAssist";
 import { appendExtractSections, normalizeExtractLocale } from "../../lib/bodyExtract";
 import {
@@ -317,6 +322,9 @@ interface EditState {
   title: string;
   statement: string;
   bodyHtml: string;
+  // EDITOR-EINHEITLICH: die Aussage wurde beim Erstellen aus dem Inhalt gebildet und folgt ihm
+  // deshalb auch hier (`lib/aussageAusInhalt.ts`). Wer selbst in „Aussage" schreibt, hebt das auf.
+  aussageFolgtInhalt: boolean;
   type: KnowledgeType;
   category: string;
   conditions: string[];
@@ -2034,6 +2042,7 @@ export function BibliothekLesen({
       title: ko.title,
       statement: ko.statement,
       bodyHtml: ko.bodyHtml ?? "",
+      aussageFolgtInhalt: aussageFolgtInhalt(ko.statement, ko.bodyHtml),
       type: ko.type,
       category: ko.category,
       conditions: [...ko.conditions],
@@ -2142,6 +2151,11 @@ export function BibliothekLesen({
   const nichtEingereichteAenderungen = koRevisionSummary(ko, edit).items.filter(
     (i) => !EINGEREICHTE_FELDER.includes(i.id),
   );
+  // EDITOR-EINHEITLICH: welche Pflichtangabe JETZT fehlt — gerechnet, bevor ein Knopf gedrückt
+  // wird, und an genau dem Feld gesagt, das sie betrifft. Dieselbe Regel sperrt den Knopf.
+  const fehlendePflicht = edit ? fehlendePflichtangaben(edit, pruefwegAktiv) : [];
+  const titelFehlt = fehlendePflicht.includes("titel");
+  const aussageFehlt = fehlendePflicht.includes("aussage") || fehlendePflicht.includes("inhalt");
 
   const impact =
     conflicts.data === undefined
@@ -2641,7 +2655,8 @@ export function BibliothekLesen({
                 data-testid="bib-pruefweg-felder"
                 className="rounded-btn bg-hairline-soft px-3 py-2 text-[12.5px] leading-relaxed text-muted"
               >
-                {t("ko.propose.onlyFields")}
+                {/* EDITOR-EINHEITLICH: derselbe Satz, mit dem Wort des Formulars — „Titel". */}
+                {t("editoreinheitlich.nurFelder")}
                 {nichtEingereichteAenderungen.length > 0 ? (
                   <span
                     data-testid="bib-pruefweg-felder-verworfen"
@@ -2654,27 +2669,82 @@ export function BibliothekLesen({
                 ) : null}
               </div>
             ) : null}
+            {/* ==========================================================================
+                EDITOR-EINHEITLICH · PFLICHT VOR DEM KNOPF, NICHT ERST DANACH.
+                ==========================================================================
+
+                Der Knopf war schon gesperrt, solange eine Pflichtangabe fehlte — nur sagte niemand,
+                WELCHE. Jetzt steht oben, was Pflicht ist (dieselbe Regel wie der Speicher-Check
+                beim Erstellen), und am Feld selbst, was fehlt. Die Eingaben bleiben dabei stehen:
+                diese Sätze lesen den Zustand, sie leeren nichts. */}
+            <p data-testid="bib-pflicht-ueberblick" className="text-[12px] text-muted">
+              {pruefwegAktiv
+                ? t("editoreinheitlich.pflichtPruefweg")
+                : t("editoreinheitlich.pflichtDirekt")}
+            </p>
             {pruefwegAktiv ? null : (
-              <Field label={t("capture.fTitle")}>
-                <TextInput
-                  value={edit.title}
-                  onChange={(e) => setEdit({ ...edit, title: e.target.value })}
-                />
-              </Field>
+              <>
+                {/* EDITOR-EINHEITLICH: das Feld heisst wie beim Erstellen „Titel" — nicht
+                    „Kernaussage", ein Wort, das beim Erstellen für etwas anderes steht. */}
+                <Field label={t("capture.wizard.titleLabel")}>
+                  <TextInput
+                    data-testid="bib-titel"
+                    value={edit.title}
+                    aria-invalid={titelFehlt ? true : undefined}
+                    aria-describedby={titelFehlt ? "bib-pflicht-titel" : undefined}
+                    onChange={(e) => setEdit({ ...edit, title: e.target.value })}
+                  />
+                </Field>
+                {titelFehlt ? (
+                  <p
+                    id="bib-pflicht-titel"
+                    data-testid="bib-pflicht-titel"
+                    className="-mt-2 text-[12px] text-trust-warn-text"
+                  >
+                    {t("editoreinheitlich.fehltTitel")}
+                  </p>
+                ) : null}
+              </>
             )}
             <Field label={t("capture.fStatement")}>
               <textarea
+                data-testid="bib-aussage"
                 value={edit.statement}
-                onChange={(e) => setEdit({ ...edit, statement: e.target.value })}
+                aria-invalid={aussageFehlt ? true : undefined}
+                aria-describedby={aussageFehlt ? "bib-pflicht-aussage" : undefined}
+                // EDITOR-EINHEITLICH: wer hier selbst schreibt, legt eine EIGENE Aussage fest — sie
+                // folgt dem Inhalt ab jetzt nicht mehr (`lib/aussageAusInhalt.ts`).
+                onChange={(e) =>
+                  setEdit({ ...edit, statement: e.target.value, aussageFolgtInhalt: false })
+                }
                 rows={3}
                 className={textareaCls}
               />
               <AiAssistBox
                 text={edit.statement}
                 runAssist={runAssist}
-                onApply={(next) => setEdit({ ...edit, statement: next })}
+                onApply={(next) => setEdit({ ...edit, statement: next, aussageFolgtInhalt: false })}
               />
             </Field>
+            {aussageFehlt ? (
+              <p
+                id="bib-pflicht-aussage"
+                data-testid="bib-pflicht-aussage"
+                className="-mt-2 text-[12px] text-trust-warn-text"
+              >
+                {fehlendePflicht.includes("aussage")
+                  ? t("editoreinheitlich.fehltAussage")
+                  : t("editoreinheitlich.fehltInhalt")}
+              </p>
+            ) : edit.aussageFolgtInhalt ? (
+              <p data-testid="bib-aussage-folgt-inhalt" className="-mt-2 text-[12px] text-muted">
+                {t("editoreinheitlich.aussageFolgt")}
+              </p>
+            ) : edit.bodyHtml.trim().length > 0 ? (
+              <p data-testid="bib-aussage-eigen" className="-mt-2 text-[12px] text-muted">
+                {t("editoreinheitlich.aussageEigen")}
+              </p>
+            ) : null}
             <Field label={t("capture.fBody")}>
               <button
                 type="button"
@@ -2692,7 +2762,7 @@ export function BibliothekLesen({
                 bodyHtml={edit.bodyHtml}
                 documentTitle={edit.title}
                 onApply={(bodyHtml) => {
-                  setEdit({ ...edit, bodyHtml });
+                  setEdit(mitNeuemInhalt(edit, bodyHtml));
                   setStudioApplied(true);
                 }}
                 runAssist={runAssist}
@@ -2711,11 +2781,11 @@ export function BibliothekLesen({
               <EditorContentQuality bodyHtml={edit.bodyHtml} attachments={ko.attachments ?? []} />
               <BodyTemplateChooser
                 bodyHtml={edit.bodyHtml}
-                onApply={(bodyHtml) => setEdit({ ...edit, bodyHtml })}
+                onApply={(bodyHtml) => setEdit(mitNeuemInhalt(edit, bodyHtml))}
               />
               <RichTextEditor
                 value={edit.bodyHtml}
-                onChange={(bodyHtml) => setEdit({ ...edit, bodyHtml })}
+                onChange={(bodyHtml) => setEdit(mitNeuemInhalt(edit, bodyHtml))}
                 images={(ko.attachments ?? [])
                   .filter((a) => a.objectId && a.mime.startsWith("image/"))
                   .map((a) => ({ objectId: a.objectId as string, name: a.name }))}
@@ -2730,7 +2800,7 @@ export function BibliothekLesen({
                 applyFn={(mode, _original, suggestion) =>
                   applyBodyAssist(mode, edit.bodyHtml, suggestion)
                 }
-                onApply={(bodyHtml) => setEdit({ ...edit, bodyHtml })}
+                onApply={(bodyHtml) => setEdit(mitNeuemInhalt(edit, bodyHtml))}
                 hintKey="capture.ai.bodyHint"
                 extraApplyActions={EDITOR_BLOCKS.map((block) => ({
                   labelKey: `capture.ai.applyAs.${block}`,
@@ -2800,23 +2870,6 @@ export function BibliothekLesen({
                   );
                 })()
               : null}
-            {appendUnclear ? (
-              <div className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
-                {t("xtr.append.unclear")}
-              </div>
-            ) : null}
-            {/* JOB 4163: der SAMMELZWEIG des Speicherwegs, jetzt benennbar. Er bleibt für alles
-                Übrige unverändert (Netzabbruch vor dem ersten Aufruf, 500 am `revise` selbst) —
-                die Marke steht hier, damit ein Prüfstand belegen kann, dass Teilabbruch und
-                entzogenes Recht ihn NICHT mehr benutzen. */}
-            {err ? (
-              <div
-                data-testid="bib-speichern-fehler"
-                className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
-              >
-                {err}
-              </div>
-            ) : null}
             {/* ==========================================================================
                 JOB 3667 R3 · DIE ACCOUNTREGEL AM BEDIENORT — DREI FÄLLE, DREI BILDER.
                 ==========================================================================
@@ -2852,6 +2905,106 @@ export function BibliothekLesen({
               </label>
             ) : null}
             {/* ==========================================================================
+                EDITOR-EINHEITLICH · WAS DER KNOPF BEWIRKT, STEHT VOR DEM KNOPF.
+                ==========================================================================
+
+                Speichern legt eine neue Version an (`revise`: Version + 1, Status offen, Eintrag
+                im Verlauf, Vorfassung unter `/api/kos/:id/versions`); Einreichen legt einen
+                Vorschlag an und ändert den geltenden Eintrag noch nicht. Beides war bisher erst
+                NACH dem Klick zu erfahren. */}
+            <p data-testid="bib-wirkung" className="text-[12px] leading-relaxed text-muted">
+              {pruefwegAktiv
+                ? t("editoreinheitlich.wirkungEinreichen")
+                : edit.version === null
+                  ? t("editoreinheitlich.wirkungSpeichernOhneZahl")
+                  : t("editoreinheitlich.wirkungSpeichern", {
+                      neu: String(edit.version + 1),
+                      alt: String(edit.version),
+                    })}
+            </p>
+            {/* ==========================================================================
+                EDITOR-EINHEITLICH · DIE AKTIONSLEISTE STEHT VOR DEN MELDUNGEN.
+                ==========================================================================
+
+                Bis hierher standen Fehler-, Konflikt- und Einreichsätze ÜBER den Knöpfen. Jede
+                Meldung, die nach einem Klick erschien, schob „Speichern" und „Abbrechen" nach
+                unten — der zweite Griff ging ins Leere (U21). Jetzt stehen die Knöpfe an einer
+                festen Stelle und die Meldungen darunter: dieselbe Ordnung wie im Blatt beim
+                Erstellen (`BlattLage` unter der Knopfleiste). */}
+            <div className="flex gap-2">
+              {/* DER GRIFF WECHSELT MIT DEM WEG, UND ES GIBT IMMER GENAU EINEN.
+
+                  Wo der Einreichweg gilt, wird „Speichern" NICHT angeboten: der Server würde ihn
+                  abweisen (403 `PROPOSAL_REQUIRED`), und ein Knopf, der nur zu einer Absage führen
+                  kann, ist eine Scheinfunktion. Umgekehrt steht „Einreichen" nicht daneben, wo direkt
+                  gespeichert werden darf — sonst wäre die Pflicht aus Fall 2 eine Auswahl. */}
+              {pruefwegAktiv ? (
+                <Button
+                  variant="primary"
+                  data-testid="bib-einreichen"
+                  disabled={
+                    einreichen.isPending ||
+                    appendDocument.isPending ||
+                    appendUnclear ||
+                    fehlendePflicht.length > 0
+                  }
+                  onClick={() =>
+                    einreichen.mutate({
+                      baseVersion: ko.version,
+                      statement: edit.statement,
+                      bodyHtml: edit.bodyHtml,
+                      bestehenderRumpf: ko.bodyHtml ?? null,
+                    })
+                  }
+                >
+                  {t("ko.propose.submit")}
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  data-testid="bib-speichern"
+                  disabled={
+                    save.isPending ||
+                    appendDocument.isPending ||
+                    appendUnclear ||
+                    fehlendePflicht.length > 0
+                  }
+                  // JOB 4075: die Fassung, die beim Öffnen des Formulars dastand — nicht die, die
+                  // inzwischen geladen wurde. Genau daran erkennt der Dienst, ob jemand
+                  // dazwischengekommen ist.
+                  onClick={() =>
+                    save.mutate({ expectedVersion: edit.version, einordnung: edit.einordnung })
+                  }
+                >
+                  {t("ko.saveEdit")}
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                data-testid="bib-bearbeiten-abbrechen"
+                onClick={bearbeitenBeenden}
+              >
+                {t("ko.cancelEdit")}
+              </Button>
+            </div>
+            {appendUnclear ? (
+              <div className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
+                {t("xtr.append.unclear")}
+              </div>
+            ) : null}
+            {/* JOB 4163: der SAMMELZWEIG des Speicherwegs, jetzt benennbar. Er bleibt für alles
+                Übrige unverändert (Netzabbruch vor dem ersten Aufruf, 500 am `revise` selbst) —
+                die Marke steht hier, damit ein Prüfstand belegen kann, dass Teilabbruch und
+                entzogenes Recht ihn NICHT mehr benutzen. */}
+            {err ? (
+              <div
+                data-testid="bib-speichern-fehler"
+                className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+              >
+                {err}
+              </div>
+            ) : null}
+            {/* ==========================================================================
                 JOB 4075 · DER KONFLIKT DES DIREKTEN SPEICHERWEGS — EIN SATZ, ZWEI WEGE.
                 ==========================================================================
 
@@ -2875,7 +3028,7 @@ export function BibliothekLesen({
                 an einer Stelle beantworten.
 
                 KEINE KNÖPFE BEIM TEILABBRUCH. Der Griff, der nachholt, ist der Speicherknopf
-                darunter — er steht schon da und trägt bereits die richtige Beschriftung. Ein
+                darüber (EDITOR-EINHEITLICH: die Leiste steht vor den Meldungen) — er steht schon da und trägt bereits die richtige Beschriftung. Ein
                 zweiter Knopf mit derselben Wirkung wäre die zweite Aussage über dieselbe
                 Tatsache. Beim entzogenen Recht steht gar kein Griff: es gibt keinen Weg, und
                 einen anzubieten wäre die Scheinfunktion. */}
@@ -3058,62 +3211,6 @@ export function BibliothekLesen({
                 ) : null}
               </div>
             ) : null}
-            <div className="flex gap-2">
-              {/* DER GRIFF WECHSELT MIT DEM WEG, UND ES GIBT IMMER GENAU EINEN.
-
-                  Wo der Einreichweg gilt, wird „Speichern" NICHT angeboten: der Server würde ihn
-                  abweisen (403 `PROPOSAL_REQUIRED`), und ein Knopf, der nur zu einer Absage führen
-                  kann, ist eine Scheinfunktion. Umgekehrt steht „Einreichen" nicht daneben, wo direkt
-                  gespeichert werden darf — sonst wäre die Pflicht aus Fall 2 eine Auswahl. */}
-              {pruefwegAktiv ? (
-                <Button
-                  variant="primary"
-                  data-testid="bib-einreichen"
-                  disabled={
-                    einreichen.isPending ||
-                    appendDocument.isPending ||
-                    appendUnclear ||
-                    edit.statement.trim().length === 0
-                  }
-                  onClick={() =>
-                    einreichen.mutate({
-                      baseVersion: ko.version,
-                      statement: edit.statement,
-                      bodyHtml: edit.bodyHtml,
-                      bestehenderRumpf: ko.bodyHtml ?? null,
-                    })
-                  }
-                >
-                  {t("ko.propose.submit")}
-                </Button>
-              ) : (
-                <Button
-                  variant="primary"
-                  data-testid="bib-speichern"
-                  disabled={
-                    save.isPending ||
-                    appendDocument.isPending ||
-                    appendUnclear ||
-                    edit.title.trim().length === 0
-                  }
-                  // JOB 4075: die Fassung, die beim Öffnen des Formulars dastand — nicht die, die
-                  // inzwischen geladen wurde. Genau daran erkennt der Dienst, ob jemand
-                  // dazwischengekommen ist.
-                  onClick={() =>
-                    save.mutate({ expectedVersion: edit.version, einordnung: edit.einordnung })
-                  }
-                >
-                  {t("ko.saveEdit")}
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                data-testid="bib-bearbeiten-abbrechen"
-                onClick={bearbeitenBeenden}
-              >
-                {t("ko.cancelEdit")}
-              </Button>
-            </div>
           </div>
         ) : (
           <>

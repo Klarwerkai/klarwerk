@@ -1,10 +1,10 @@
 {
-  "version": 11,
+  "version": 12,
   "erhoben_am": "2026-10-01",
-  "nachgefuehrt_von": "gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3): drei Faelle mehr je Projekt chromium, firefox und webkit, alle in erstnutzer-u2-u3-browser.spec.ts — Erstnutzer-Huerden U2 (Bibliothek, Meine Entwuerfe) und U3 (Meine Aufgaben, Seitenhilfe) am gebauten Bildschirm. Sonst nichts geaendert.",
+  "nachgefuehrt_von": "produkt:20261007:editor-einheitlich: zwei Faelle mehr je Projekt chromium, firefox und webkit, beide in editor-einheitlich-browser.spec.ts — Bearbeiten wie Erstellen (Aussage folgt dem Inhalt, Knoepfe springen bei Konflikt nicht, Pflichtangabe am Feld, Fassungen bleiben). Sonst nichts geaendert. Vorher: gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3): drei Faelle mehr je Projekt chromium, firefox und webkit, alle in erstnutzer-u2-u3-browser.spec.ts — Erstnutzer-Huerden U2 (Bibliothek, Meine Entwuerfe) und U3 (Meine Aufgaben, Seitenhilfe) am gebauten Bildschirm.",
   "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
   "zweck": "Sollmanifest der Smoke-Mengen je Projekt. Drift (Hinzufuegen, Entfernen, Umbenennen) macht die Mengenpruefung rot.",
-  "gesamt_fallinstanzen": 201,
+  "gesamt_fallinstanzen": 207,
   "projekte": {
     "setup-zustand": {
       "soll": 1,
@@ -19,7 +19,7 @@
       ]
     },
     "chromium": {
-      "soll": 61,
+      "soll": 63,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -27,6 +27,8 @@
         "a18-live-region-browser.spec.ts › P1 · <output> ohne ARIA-Attribute ist eine Statusflaeche mit live=polite, atomic und relevant",
         "a18-live-region-browser.spec.ts › PRODUKT · der ausgeloeste Toast wird vom Browser als Statusflaeche mit live=polite gefuehrt",
         "a18-live-region-browser.spec.ts › R1 · <p> ist KEINE Statusflaeche: der Browser fuehrt paragraph und keine Live-Eigenschaft",
+        "editor-einheitlich-browser.spec.ts › K1/K2/K4/K5: einmal im Inhalt ändern, Aussage folgt; Konflikt verschiebt keine Knöpfe; Fassungen bleiben",
+        "editor-einheitlich-browser.spec.ts › K3: Pflichtangabe fehlt — das Titelfeld sagt es, der Knopf sperrt, die Eingaben bleiben",
         "erstnutzer-u2-u3-browser.spec.ts › U2 · Bibliothek: das Suchfeld nennt seinen Suchraum, der Nulltreffer führt zum Erfassen",
         "erstnutzer-u2-u3-browser.spec.ts › U2 · Meine Entwürfe: der Suchraum der Entwürfe ist benannt und führt in die Bibliothek",
         "erstnutzer-u2-u3-browser.spec.ts › U3 · „Meine Aufgaben“ ist über das Zahnrad erreichbar, und die Seitenhilfe sagt, was gemeint ist",
@@ -85,7 +87,7 @@
       ]
     },
     "firefox": {
-      "soll": 61,
+      "soll": 63,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -93,6 +95,8 @@
         "a18-live-region-browser.spec.ts › P1 · <output> ohne ARIA-Attribute ist eine Statusflaeche mit live=polite, atomic und relevant",
         "a18-live-region-browser.spec.ts › PRODUKT · der ausgeloeste Toast wird vom Browser als Statusflaeche mit live=polite gefuehrt",
         "a18-live-region-browser.spec.ts › R1 · <p> ist KEINE Statusflaeche: der Browser fuehrt paragraph und keine Live-Eigenschaft",
+        "editor-einheitlich-browser.spec.ts › K1/K2/K4/K5: einmal im Inhalt ändern, Aussage folgt; Konflikt verschiebt keine Knöpfe; Fassungen bleiben",
+        "editor-einheitlich-browser.spec.ts › K3: Pflichtangabe fehlt — das Titelfeld sagt es, der Knopf sperrt, die Eingaben bleiben",
         "erstnutzer-u2-u3-browser.spec.ts › U2 · Bibliothek: das Suchfeld nennt seinen Suchraum, der Nulltreffer führt zum Erfassen",
         "erstnutzer-u2-u3-browser.spec.ts › U2 · Meine Entwürfe: der Suchraum der Entwürfe ist benannt und führt in die Bibliothek",
         "erstnutzer-u2-u3-browser.spec.ts › U3 · „Meine Aufgaben“ ist über das Zahnrad erreichbar, und die Seitenhilfe sagt, was gemeint ist",
@@ -151,7 +155,7 @@
       ]
     },
     "webkit": {
-      "soll": 61,
+      "soll": 63,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -159,6 +163,8 @@
         "a18-live-region-browser.spec.ts › P1 · <output> ohne ARIA-Attribute ist eine Statusflaeche mit live=polite, atomic und relevant",
         "a18-live-region-browser.spec.ts › PRODUKT · der ausgeloeste Toast wird vom Browser als Statusflaeche mit live=polite gefuehrt",
         "a18-live-region-browser.spec.ts › R1 · <p> ist KEINE Statusflaeche: der Browser fuehrt paragraph und keine Live-Eigenschaft",
+        "editor-einheitlich-browser.spec.ts › K1/K2/K4/K5: einmal im Inhalt ändern, Aussage folgt; Konflikt verschiebt keine Knöpfe; Fassungen bleiben",
+        "editor-einheitlich-browser.spec.ts › K3: Pflichtangabe fehlt — das Titelfeld sagt es, der Knopf sperrt, die Eingaben bleiben",
         "erstnutzer-u2-u3-browser.spec.ts › U2 · Bibliothek: das Suchfeld nennt seinen Suchraum, der Nulltreffer führt zum Erfassen",
         "erstnutzer-u2-u3-browser.spec.ts › U2 · Meine Entwürfe: der Suchraum der Entwürfe ist benannt und führt in die Bibliothek",
         "erstnutzer-u2-u3-browser.spec.ts › U3 · „Meine Aufgaben“ ist über das Zahnrad erreichbar, und die Seitenhilfe sagt, was gemeint ist",

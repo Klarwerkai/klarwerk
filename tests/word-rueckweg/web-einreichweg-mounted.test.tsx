@@ -799,8 +799,10 @@ describe("JOB 3667 R4 · der Prüfweg bietet nur an, was er trägt", () => {
     // Was eingereicht wird, steht da …
     expect(namen).toContain(i18n.t("capture.fStatement"));
     expect(namen).toContain(i18n.t("capture.fBody"));
-    // … und was nicht mitreist, steht nicht da.
+    // … und was nicht mitreist, steht nicht da. EDITOR-EINHEITLICH: das Titelfeld heisst wie beim
+    // Erstellen (`capture.wizard.titleLabel`); der Altname `capture.fTitle` darf ebenso wenig stehen.
     for (const key of [
+      "capture.wizard.titleLabel",
       "capture.fTitle",
       "capture.fType",
       "capture.fCategory",
@@ -813,7 +815,10 @@ describe("JOB 3667 R4 · der Prüfweg bietet nur an, was er trägt", () => {
       ).not.toContain(i18n.t(key));
     }
     // Und die Fläche SAGT es, statt die Felder wortlos verschwinden zu lassen.
-    expect(muss("bib-pruefweg-felder").textContent).toContain(i18n.t("ko.propose.onlyFields"));
+    // EDITOR-EINHEITLICH: derselbe Satz mit dem Wort des Formulars („Titel" statt „Kernaussage").
+    expect(muss("bib-pruefweg-felder").textContent).toContain(
+      i18n.t("editoreinheitlich.nurFelder"),
+    );
   });
 
   it("E23 · Gegenprobe: im direkten Weg stehen dieselben Felder weiterhin da", async () => {
@@ -823,7 +828,7 @@ describe("JOB 3667 R4 · der Prüfweg bietet nur an, was er trägt", () => {
     await bearbeiten();
 
     const namen = feldNamen();
-    expect(namen).toContain(i18n.t("capture.fTitle"));
+    expect(namen).toContain(i18n.t("capture.wizard.titleLabel"));
     expect(namen).toContain(i18n.t("capture.fCategory"));
     expect(da("bib-pruefweg-felder")).toBeNull();
   });
