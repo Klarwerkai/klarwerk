@@ -32,12 +32,30 @@
 // Lauf findet nur noch, was beim ersten liegen geblieben ist.
 import type { AuditInput } from "../../audit";
 import type { Draft, DraftRepo } from "../../capture";
-import type { KnowledgeObject, KnowledgeOwnership } from "../../knowledge-object";
+import {
+  type KnowledgeObject,
+  type KnowledgeOwnership,
+  responsibleOf,
+} from "../../knowledge-object";
 import type { Assignment } from "../../validation";
 
 export interface WissensuebergabeQuellen {
   /** Der lebende Bestand (ohne Papierkorb), wie `KoService.list()` ihn liefert. */
   kos: () => Promise<KnowledgeObject[]>;
+  /**
+   * BEN (Nacharbeit 7) — DER PAPIERKORB GEHÖRT ZUM UMFANG. Wiederherstellen übernimmt die
+   * Verantwortung unverändert (produkt:20261007:ownership-uebergabe); also wandert sie auch für
+   * gelöschte Beiträge. Gelesen wird der GANZE Bestand (`KoService.listEinschliesslichPapierkorb`),
+   * übertragen über denselben vergleichenden Weg wie die Verantwortungsübergabe
+   * (`KoService.uebertrageVerantwortung`). Vorschau und Ausführung lesen beides in `erhebe`.
+   */
+  kosEinschliesslichPapierkorb: () => Promise<KnowledgeObject[]>;
+  uebertrageVerantwortung: (
+    koId: string,
+    erwartet: string,
+    nachfolger: string,
+    actor: string,
+  ) => Promise<"uebertragen" | "erledigt" | "konflikt">;
   /** FR-LIF-02: die vorhandene Einzelübergabe — `originalAuthor` bleibt. */
   setAuthor: (koId: string, to: string, actor: string) => Promise<unknown>;
   /** JOB 557: der autorisierte Eigentumsgeber. */
@@ -72,12 +90,20 @@ export interface UebergabeVorschau {
   wissensobjekte: { id: string; title: string }[];
   /** Wissensobjekte, deren benannte Eigentümerin die Person ist. */
   eigentum: { id: string; title: string }[];
+  /** Beiträge im Papierkorb, für die die Person hauptverantwortlich ist (`responsibleOf`). */
+  papierkorb: { id: string; title: string }[];
   entwuerfe: { id: string }[];
   luecken: { id: string }[];
   pruefaufgaben: { koId: string }[];
 }
 
-export type UebergabeArt = "wissensobjekt" | "eigentum" | "entwurf" | "luecke" | "pruefaufgabe";
+export type UebergabeArt =
+  | "wissensobjekt"
+  | "eigentum"
+  | "papierkorb"
+  | "entwurf"
+  | "luecke"
+  | "pruefaufgabe";
 
 export interface UebergabeErgebnis {
   von: string;
@@ -134,8 +160,9 @@ export class Wissensuebergabe {
     if (!(await this.q.nachfolgerBekannt(an))) {
       throw new UebergabeFehler("NOT_FOUND", "Der Nachfolger ist kein freigeschaltetes Konto.");
     }
-    const [kos, drafts, gaps, assignments] = await Promise.all([
+    const [kos, ganzerBestand, drafts, gaps, assignments] = await Promise.all([
       this.q.kos(),
+      this.q.kosEinschliesslichPapierkorb(),
       this.q.drafts.listByAuthor(von),
       this.q.gaps(),
       this.q.assignments.all(),
@@ -143,6 +170,8 @@ export class Wissensuebergabe {
     return {
       autorschaft: kos.filter((k) => k.author === von),
       eigentum: kos.filter((k) => k.ownership?.owner === von),
+      // BEN (Nacharbeit 7): die Hauptverantwortung für gelöschte, wiederherstellbare Beiträge.
+      papierkorb: ganzerBestand.filter((k) => Boolean(k.deletedAt) && responsibleOf(k) === von),
       // Der Papierkorb bleibt, wo er ist: ein gelöschter Entwurf ist keine laufende Arbeit.
       entwuerfe: drafts.filter((d) => !("deletedAt" in d)),
       luecken: gaps.filter((g) => g.status === "offen" && g.assignee === von),
@@ -158,6 +187,7 @@ export class Wissensuebergabe {
       an,
       wissensobjekte: m.autorschaft.map((k) => ({ id: k.id, title: k.title })),
       eigentum: m.eigentum.map((k) => ({ id: k.id, title: k.title })),
+      papierkorb: m.papierkorb.map((k) => ({ id: k.id, title: k.title })),
       entwuerfe: m.entwuerfe.map((d) => ({ id: d.id })),
       luecken: m.luecken.map((g) => ({ id: g.id })),
       pruefaufgaben: m.pruefaufgaben.map((z) => ({ koId: z.koId })),
@@ -170,7 +200,14 @@ export class Wissensuebergabe {
     const ergebnis: UebergabeErgebnis = {
       von,
       an,
-      uebergeben: { wissensobjekt: 0, eigentum: 0, entwurf: 0, luecke: 0, pruefaufgabe: 0 },
+      uebergeben: {
+        wissensobjekt: 0,
+        eigentum: 0,
+        papierkorb: 0,
+        entwurf: 0,
+        luecke: 0,
+        pruefaufgabe: 0,
+      },
       fehlgeschlagen: [],
     };
     const schritt = async (art: UebergabeArt, id: string, tun: () => Promise<unknown>) => {
@@ -194,6 +231,16 @@ export class Wissensuebergabe {
       await schritt("eigentum", ko.id, () =>
         this.q.setOwnership(ko.id, { ...bisher, owner: an }, actor),
       );
+    }
+    for (const ko of m.papierkorb) {
+      await schritt("papierkorb", ko.id, async () => {
+        // Vergleichend unter der Objektsperre: liegt die Verantwortung inzwischen weder bei der
+        // Person noch beim Nachfolger, wird nichts überschrieben und der Schritt ist gescheitert.
+        const stand = await this.q.uebertrageVerantwortung(ko.id, von, an, actor);
+        if (stand === "konflikt") {
+          throw new Error("Die Verantwortung liegt inzwischen bei einer anderen Person.");
+        }
+      });
     }
     const jetzt = this.now().toISOString();
     for (const draft of m.entwuerfe) {

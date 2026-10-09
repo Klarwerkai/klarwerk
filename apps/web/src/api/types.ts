@@ -573,12 +573,20 @@ export interface UebergabeVorschau {
   an: string;
   wissensobjekte: { id: string; title: string }[];
   eigentum: { id: string; title: string }[];
+  /** Beiträge im Papierkorb, für die die Person hauptverantwortlich ist. */
+  papierkorb: { id: string; title: string }[];
   entwuerfe: { id: string }[];
   luecken: { id: string }[];
   pruefaufgaben: { koId: string }[];
 }
 
-export type UebergabeArt = "wissensobjekt" | "eigentum" | "entwurf" | "luecke" | "pruefaufgabe";
+export type UebergabeArt =
+  | "wissensobjekt"
+  | "eigentum"
+  | "papierkorb"
+  | "entwurf"
+  | "luecke"
+  | "pruefaufgabe";
 
 /** R-0554: das Ergebnis der ausgeführten Wissensübergabe. */
 export interface UebergabeErgebnis {

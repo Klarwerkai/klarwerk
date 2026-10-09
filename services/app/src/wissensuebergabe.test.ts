@@ -80,6 +80,9 @@ async function aufbau() {
 
   const quellen: WissensuebergabeQuellen = {
     kos: () => ko.list(),
+    kosEinschliesslichPapierkorb: () => ko.listEinschliesslichPapierkorb(),
+    uebertrageVerantwortung: (koId, erwartet, nachfolger, actor) =>
+      ko.uebertrageVerantwortung(koId, erwartet, nachfolger, actor),
     setAuthor: (koId, to, actor) => lifecycle.transferAuthor(koId, to, actor),
     setOwnership: (koId, value, actor) => ko.setOwnership(koId, value, actor),
     drafts,
@@ -145,6 +148,7 @@ describe("R-0554 · Wissensübergabe beim Ausscheiden", () => {
     expect(e.uebergeben).toEqual({
       wissensobjekt: 1,
       eigentum: 1,
+      papierkorb: 0,
       entwurf: 1,
       luecke: 1,
       pruefaufgabe: 2,
@@ -290,6 +294,33 @@ describe("R-0554 · Wissensübergabe beim Ausscheiden", () => {
     expect(vorgang?.payload).toMatchObject({
       failed: [{ art: "pruefaufgabe", id: w.ids.vonClara }],
     });
+  });
+
+  it("U9 · BEN (Nacharbeit 7): der Papierkorb steht in der Vorschau UND wird übergeben", async () => {
+    // Ein von Anna verfasster Beitrag liegt im Papierkorb — sie ist dort hauptverantwortlich.
+    const geloescht = await w.ko.create({
+      title: "Alte Schmieranweisung",
+      statement: "Veraltet.",
+      type: "best_practice",
+      category: "Anlage 1",
+      author: ANNA,
+    });
+    await w.ko.delete(geloescht.id, ADMIN);
+    expect((await w.ko.list()).some((k) => k.id === geloescht.id)).toBe(false);
+
+    const v = await w.uebergabe.vorschau(ANNA, BERT);
+    expect(v.papierkorb).toEqual([{ id: geloescht.id, title: "Alte Schmieranweisung" }]);
+    // Lebende Mengen unberührt — der Papierkorb ist eine eigene Art, kein Autorwechsel.
+    expect(v.wissensobjekte.map((k) => k.id)).toEqual([w.ids.vonAnna]);
+
+    const e = await w.uebergabe.uebergeben(ANNA, BERT, ADMIN);
+    expect(e.fehlgeschlagen).toEqual([]);
+    // Vorschau und Ausführung decken sich: genau so viele wie angekündigt.
+    expect(e.uebergeben.papierkorb).toBe(v.papierkorb.length);
+    const nachher = (await w.ko.listEinschliesslichPapierkorb()).find((k) => k.id === geloescht.id);
+    expect(nachher?.ownership?.owner).toBe(BERT);
+    expect(nachher?.deletedAt).toBeTruthy();
+    expect((await w.uebergabe.vorschau(ANNA, BERT)).papierkorb).toEqual([]);
   });
 
   it("U6 · ungültige Eingaben werden abgelehnt, bevor etwas gelesen wird", async () => {

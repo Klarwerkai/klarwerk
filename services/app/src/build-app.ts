@@ -1344,6 +1344,11 @@ export function assembleServices(
   // Entwurfs-, Lücken- und Zuweisungsablagen — und keinen eigenen Bestand.
   const wissensuebergabe = new Wissensuebergabe({
     kos: () => ko.list(),
+    // BEN (Nacharbeit 7): Papierkorb in Vorschau UND Ausführung — derselbe Weg wie
+    // produkt:20261007:ownership-uebergabe.
+    kosEinschliesslichPapierkorb: () => ko.listEinschliesslichPapierkorb(),
+    uebertrageVerantwortung: (koId, erwartet, nachfolger, actor) =>
+      ko.uebertrageVerantwortung(koId, erwartet, nachfolger, actor),
     setAuthor: (koId, to, actor) => lifecycle.transferAuthor(koId, to, actor),
     setOwnership: (koId, value, actor) => ko.setOwnership(koId, value, actor),
     drafts: repos.drafts,
@@ -3216,41 +3221,30 @@ export function buildApp(
       // zuerst die Wissensübergabe (dieselbe Instanz wie `/api/lifecycle/handover`).
       //
       // Integration mit produkt:20261007:ownership-uebergabe (`kontoendeSperre`): kein Konto wird
-      // entfernt, das noch Hauptverantwortung trägt — einschliesslich des wiederherstellbaren
-      // Papierkorbs, den die Wissensübergabe (lebender Bestand) nicht erreicht. Was danach noch
-      // `responsibleOf === von` ist, wandert über DENSELBEN Weg wie die Verantwortungsübergabe
-      // (`uebertrageVerantwortung`, vergleichend unter der Objektsperre). Bleibt dann etwas übrig,
-      // meldet der Rückruf es als fehlgeschlagen — die Auth-Route entfernt dann nichts (409).
+      // entfernt, das noch Hauptverantwortung trägt — einschliesslich des Papierkorbs.
+      // BEN (Nacharbeit 7): den Papierkorb überträgt jetzt die Wissensübergabe SELBST (Art
+      // `papierkorb`), damit die Vorschau denselben Umfang zeigt wie die Ausführung. Hier bleibt
+      // nur die PRÜFUNG danach, ohne eigenen Schreibweg: hängt am Konto noch Verantwortung (etwa
+      // durch einen gleichzeitig angelegten Beitrag), wird das als fehlgeschlagen gemeldet und die
+      // Auth-Route entfernt nichts (409). Ein zweiter Lauf mit Vorschau zeigt und übernimmt den Rest.
       vorDemEntfernen: async (von, nachfolger, adminId) => {
         const ergebnis = await services.wissensuebergabe.uebergeben(von, nachfolger, adminId);
-        const fehlgeschlagen: { art: string; id: string; grund: string }[] = [
-          ...ergebnis.fehlgeschlagen,
-        ];
-        let nachgezogen = 0;
-        for (const ko of await services.ko.listEinschliesslichPapierkorb()) {
-          if (responsibleOf(ko) !== von) {
-            continue;
-          }
-          const stand = await services.ko
-            .uebertrageVerantwortung(ko.id, von, nachfolger, adminId)
-            .catch(() => "konflikt" as const);
-          if (stand === "uebertragen") {
-            nachgezogen += 1;
-          } else if (stand === "konflikt") {
-            fehlgeschlagen.push({
-              art: "eigentum",
-              id: ko.id,
-              grund: "Die Hauptverantwortung liess sich nicht übergeben.",
-            });
-          }
-        }
+        const rest = (await services.ko.listEinschliesslichPapierkorb()).filter(
+          (ko) => responsibleOf(ko) === von,
+        );
+        const bekannt = new Set(ergebnis.fehlgeschlagen.map((f) => f.id));
         return {
           ...ergebnis,
-          uebergeben: {
-            ...ergebnis.uebergeben,
-            eigentum: ergebnis.uebergeben.eigentum + nachgezogen,
-          },
-          fehlgeschlagen,
+          fehlgeschlagen: [
+            ...ergebnis.fehlgeschlagen,
+            ...rest
+              .filter((ko) => !bekannt.has(ko.id))
+              .map((ko) => ({
+                art: "eigentum" as const,
+                id: ko.id,
+                grund: "Nach der Übergabe noch hauptverantwortlich (nicht in der Vorschau).",
+              })),
+          ],
         };
       },
     }),

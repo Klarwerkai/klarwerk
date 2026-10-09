@@ -20,6 +20,7 @@ import { Button, Field } from "./ui";
 const ARTEN: readonly UebergabeArt[] = [
   "wissensobjekt",
   "eigentum",
+  "papierkorb",
   "entwurf",
   "luecke",
   "pruefaufgabe",
@@ -29,6 +30,7 @@ function mengeJeArt(v: UebergabeVorschau): Record<UebergabeArt, number> {
   return {
     wissensobjekt: v.wissensobjekte.length,
     eigentum: v.eigentum.length,
+    papierkorb: v.papierkorb.length,
     entwurf: v.entwuerfe.length,
     luecke: v.luecken.length,
     pruefaufgabe: v.pruefaufgaben.length,
@@ -52,6 +54,8 @@ export function UebergabeVorschauInhalt({
 }): JSX.Element {
   const { t } = useTranslation();
   const menge = mengeJeArt(vorschau);
+  // Alle Beiträge mit Titel — lebend und (BEN, Nacharbeit 7) im Papierkorb.
+  const titel = [...vorschau.wissensobjekte, ...vorschau.eigentum, ...vorschau.papierkorb];
   if (vorschauLeer(vorschau)) {
     return <p className="text-[12.5px] text-muted">{t("verantwortung.uebergabe.leer")}</p>;
   }
@@ -64,9 +68,9 @@ export function UebergabeVorschauInhalt({
           </li>
         ))}
       </ul>
-      {vorschau.wissensobjekte.length + vorschau.eigentum.length > 0 ? (
+      {titel.length > 0 ? (
         <ul className="max-h-40 list-disc overflow-auto pl-5 text-[12px] text-muted">
-          {[...vorschau.wissensobjekte, ...vorschau.eigentum]
+          {titel
             .filter((k, i, alle) => alle.findIndex((x) => x.id === k.id) === i)
             .map((k) => (
               <li key={k.id}>{k.title}</li>

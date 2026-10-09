@@ -24,6 +24,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
           an,
           wissensobjekte: [{ id: "ko-1", title: "Kühlwasserfilter spülen" }],
           eigentum: [{ id: "ko-2", title: "Druckluft entlüften" }],
+          papierkorb: [],
           entwuerfe: [{ id: "d-1" }],
           luecken: [],
           pruefaufgaben: [{ koId: "ko-3" }, { koId: "ko-4" }],
@@ -34,7 +35,14 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
         return {
           von,
           an,
-          uebergeben: { wissensobjekt: 1, eigentum: 1, entwurf: 1, luecke: 0, pruefaufgabe: 2 },
+          uebergeben: {
+            wissensobjekt: 1,
+            eigentum: 1,
+            papierkorb: 0,
+            entwurf: 1,
+            luecke: 0,
+            pruefaufgabe: 2,
+          },
           fehlgeschlagen: netz.fehlgeschlagen,
         };
       },

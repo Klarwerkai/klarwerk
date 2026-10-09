@@ -66,6 +66,8 @@ async function serverFetch(eingabe: unknown, init?: RequestInit): Promise<unknow
       an: rumpf?.to,
       wissensobjekte: [{ id: "ko-1", title: "Kettenspanner monatlich nachstellen" }],
       eigentum: [],
+      // BEN (Nacharbeit 7): die Verantwortung im Papierkorb steht in derselben Vorschau.
+      papierkorb: [{ id: "ko-9", title: "Alte Schmieranweisung Linie 2" }],
       entwuerfe: [{ id: "d-1" }],
       luecken: [],
       pruefaufgaben: [],
@@ -173,6 +175,8 @@ describe("R-0554 · Konto entfernen mit Nachfolger braucht die Vorschau", () => 
     const vorschau = text(container.querySelector("[data-entfernen-vorschau]"));
     expect(vorschau).toContain("Kettenspanner monatlich nachstellen");
     expect(vorschau).toContain(`${t("verantwortung.uebergabe.art.entwurf")}: 1`);
+    expect(vorschau).toContain(`${t("verantwortung.uebergabe.art.papierkorb")}: 1`);
+    expect(vorschau).toContain("Alte Schmieranweisung Linie 2");
     expect(deletes()).toEqual([]);
 
     expect(knopf(t("adm.removeYes"))?.disabled).toBe(false);

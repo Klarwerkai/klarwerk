@@ -284,6 +284,20 @@ describe("R-0554 / R-2128 · Wissensübergabe am Draht", () => {
     });
     expect(geloescht.statusCode, geloescht.body).toBeLessThan(300);
 
+    // BEN (Nacharbeit 7): die Vorschau zeigt denselben Umfang wie die Ausführung — auch den
+    // Papierkorb-Beitrag, dessen Verantwortung beim Entfernen wandert.
+    const vorschau = await app.inject({
+      method: "POST",
+      url: "/api/lifecycle/handover/preview",
+      headers: admin.headers,
+      payload: { from: gerd.id, to: carla.id },
+    });
+    expect(vorschau.statusCode, vorschau.body).toBe(200);
+    expect(vorschau.json().papierkorb).toEqual([
+      { id: imPapierkorb, title: "Alte Schmieranweisung Linie 2" },
+    ]);
+    expect(vorschau.json().wissensobjekte.map((k: { id: string }) => k.id)).toEqual([koId]);
+
     const entfernt = await app.inject({
       method: "DELETE",
       url: `/api/users/${gerd.id}?nachfolger=${carla.id}`,
@@ -292,6 +306,8 @@ describe("R-0554 / R-2128 · Wissensübergabe am Draht", () => {
     expect(entfernt.statusCode, entfernt.body).toBe(200);
     expect(entfernt.json().uebergabe.fehlgeschlagen).toEqual([]);
     expect(entfernt.json().uebergabe.uebergeben.wissensobjekt).toBe(1);
+    const angekuendigt = vorschau.json().papierkorb.length;
+    expect(entfernt.json().uebergabe.uebergeben.papierkorb).toBe(angekuendigt);
     expect(await konten()).not.toContain(gerd.id);
     const ko = (await lesen(app, admin.headers, koId)).json();
     expect(ko.author).toBe(carla.id);
