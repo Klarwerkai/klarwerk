@@ -7,7 +7,7 @@ import {
   inspectChain,
   verifyChain,
 } from "./chain";
-import { type AuditRepo, auditFilterTrifft, auditSeiteTrifft } from "./repo";
+import { type AuditRepo, auditFilterTrifft, auditSeiteTrifft, namensbelegeAus } from "./repo";
 import type {
   AuditEntry,
   AuditFilter,
@@ -185,10 +185,10 @@ export class AuditService {
     return { entries, nextBefore: weitere ? (entries.at(-1)?.seq ?? null) : null, limit };
   }
 
-  // produkt:20261009:admin-audit-verstaendlich: die Einträge, in denen die Kette selbst einen Namen
-  // zu einer dieser Kennungen gespeichert hat (`actorName`/`targetName`). Unverändert ausgeliefert —
-  // die Zuordnung „welcher Name gehört zu welcher Kennung" trifft weiter `protokollNamen` an der
-  // Oberfläche, nach derselben Regel wie bisher über die ganze Kette.
+  // produkt:20261009:admin-audit-verstaendlich: die Namens- und Kontobelege zu diesen Kennungen —
+  // je Kennung höchstens drei, jeweils der jüngste (`namensbelegeAus`, Bens Befund Nacharbeit 3).
+  // Die Zuordnung „welcher Name gehört zu welcher Kennung" trifft weiter `protokollNamen` an der
+  // Oberfläche; ob eine Kennung ein Konto war, `kontoBelege`.
   async namensbelege(ids: readonly string[]): Promise<AuditEntry[]> {
     const gesucht = [...new Set(ids.filter((id) => id !== ""))];
     if (gesucht.length === 0) {
@@ -197,12 +197,7 @@ export class AuditService {
     if (this.repo.findNamensbelege) {
       return this.repo.findNamensbelege(gesucht);
     }
-    const menge = new Set(gesucht);
-    return (await this.repo.all()).filter(
-      (e) =>
-        (menge.has(e.actor) && e.payload.actorName !== undefined) ||
-        (menge.has(e.target) && e.payload.targetName !== undefined),
-    );
+    return namensbelegeAus(await this.repo.all(), gesucht);
   }
 
   // JOB 2698 D1: „gibt es mindestens einen Eintrag?" — für Aufrufer, die nur das wissen wollen

@@ -296,7 +296,13 @@ describe("JOB 3140 · das Prüfprotokoll sagt, wer wem welche Rolle gegeben hat"
   it("3 DE · der Alteintrag sagt „nicht gespeichert“ und klebt keinen fremden Namen an", async () => {
     await mount([ALT, FRISCH]);
     expect(text(zeile(1, "audit.detail.roleBefore"))).toBe(i18n.t("audit.detail.notStored"));
-    expect(text(zeile(1, "audit.detail.actor"))).toContain(i18n.t("audit.detail.accountGone"));
+    // produkt:20261009:admin-audit-verstaendlich (Bens Befund Nacharbeit 3): der Akteur kommt in
+    // der Kette nur als Handelnder vor — kein Kontobeleg, also „unbekannte Kennung“ statt einer
+    // Löschaussage. Das Ziel des Rollenwechsels IST als Konto belegt.
+    expect(text(zeile(1, "audit.detail.actor"))).toContain(
+      i18n.t("auditprotokoll.detail.unbekannt"),
+    );
+    expect(text(zeile(1, "audit.detail.actor"))).not.toContain(i18n.t("audit.detail.accountGone"));
     expect(text(kennung(1, "audit.detail.actor"))).toBe("geloescht-admin");
     expect(text(zeile(1, "audit.detail.target"))).toContain(i18n.t("audit.detail.accountGone"));
     // Der einzige Name im Verzeichnis darf beim Alteintrag NIRGENDS auftauchen.
@@ -312,7 +318,10 @@ describe("JOB 3140 · das Prüfprotokoll sagt, wer wem welche Rolle gegeben hat"
     expect(text(zeile(2, "audit.detail.actor"))).toContain("Ada Admin");
     expect(text(zeile(2, "audit.detail.roleBefore"))).toContain(i18n.t("role.name.experte"));
     expect(text(zeile(1, "audit.detail.roleBefore"))).toBe(i18n.t("audit.detail.notStored"));
-    expect(text(zeile(1, "audit.detail.actor"))).toContain(i18n.t("audit.detail.accountGone"));
+    expect(text(zeile(1, "audit.detail.actor"))).toContain(
+      i18n.t("auditprotokoll.detail.unbekannt"),
+    );
+    expect(text(zeile(1, "audit.detail.target"))).toContain(i18n.t("audit.detail.accountGone"));
     // Kein deutscher Rest in der englischen Fassung.
     expect(text(eintrag(1))).not.toContain("nicht gespeichert");
     expect(text(eintrag(1))).not.toContain("Konto nicht mehr vorhanden");

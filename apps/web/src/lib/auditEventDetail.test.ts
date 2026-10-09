@@ -4,6 +4,7 @@ import {
   type VerzeichnisLage,
   type VerzeichnisStand,
   auditEventDetail,
+  kontoBelege,
   protokollNamen,
   verzeichnisNamen,
 } from "./auditEventDetail";
@@ -78,7 +79,10 @@ describe("auditEventDetail", () => {
     expect(zeile(zeilen, "audit.detail.target")).toMatchObject({ kind: "text", value: "Tom Test" });
   });
 
-  it("b unbekannte Kennung → Kennung + „nicht mehr vorhanden“, NIE ein fremder Name", () => {
+  // produkt:20261009:admin-audit-verstaendlich (Bens Befund Nacharbeit 3): „nicht mehr vorhanden“
+  // nur mit Kontobeleg. Das Ziel eines Kontovorgangs IST belegt; ein bloßer Akteur ohne Namen oder
+  // Kontovorgang ist eine unbekannte Kennung — bis ein Beleg aus der Kette dazukommt.
+  it("b fehlende Kennung → mit Kontobeleg „nicht mehr vorhanden“, ohne „unbekannt“; NIE ein fremder Name", () => {
     const alt: AuditEreignis = {
       action: "user.role-change",
       actor: "geloescht-1",
@@ -87,16 +91,37 @@ describe("auditEventDetail", () => {
     };
     // Das Verzeichnis ist erfolgreich geladen und kennt GENAU EINE, andere Person.
     const zeilen = auditEventDetail(alt, GELADEN({ "lebt-1": "Lea Lebt" }));
+    expect(zeile(zeilen, "audit.detail.target")).toMatchObject({
+      kind: "id",
+      id: "geloescht-2",
+      hinweisKey: "audit.detail.accountGone",
+    });
+    expect(zeile(zeilen, "audit.detail.actor")).toMatchObject({
+      kind: "id",
+      id: "geloescht-1",
+      hinweisKey: "auditprotokoll.detail.unbekannt",
+    });
     for (const key of ["audit.detail.actor", "audit.detail.target"]) {
-      const z = zeile(zeilen, key);
-      expect(z.kind).toBe("id");
-      expect(z).toMatchObject({ hinweisKey: "audit.detail.accountGone" });
-      expect(z.value).toBeUndefined();
+      expect(zeile(zeilen, key).value).toBeUndefined();
     }
-    expect(zeile(zeilen, "audit.detail.actor").id).toBe("geloescht-1");
-    expect(zeile(zeilen, "audit.detail.target").id).toBe("geloescht-2");
     // Der harte Teil: der eine vorhandene Name darf NIRGENDS auftauchen.
     expect(JSON.stringify(zeilen)).not.toContain("Lea Lebt");
+    // Belegt die Kette den Akteur als Konto (etwa seine frühere Anmeldung), gilt die Löschaussage.
+    const anmeldung: AuditEreignis = {
+      action: "auth.login",
+      actor: "geloescht-1",
+      target: "geloescht-1",
+      payload: {},
+    };
+    const mitBeleg = auditEventDetail(
+      alt,
+      GELADEN({ "lebt-1": "Lea Lebt" }),
+      new Map(),
+      kontoBelege([anmeldung]),
+    );
+    expect(zeile(mitBeleg, "audit.detail.actor")).toMatchObject({
+      hinweisKey: "audit.detail.accountGone",
+    });
   });
 
   it("b2 „nicht mehr vorhanden“ setzt eine erfolgreiche Verzeichnisantwort voraus (§9)", () => {

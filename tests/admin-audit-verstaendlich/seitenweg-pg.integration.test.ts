@@ -186,16 +186,36 @@ describe("ADMIN-03 · Seitenweg und Namensbelege: PostgreSQL ≡ Speicherablage"
     expect((await pg.page({ target: "ko-1" })).entries.map((e) => e.seq)).toEqual([8, 3]);
     expect((await pg.page({ limit: 100000 })).limit).toBe(100);
 
-    // Namensbelege: dieselben Einträge, nur die mit gespeicherten Namen zu diesen Kennungen.
+    // Namensbelege (Bens Befund Nacharbeit 3): je Kennung nur die JÜNGSTE Zuordnung — u-gerd: die
+    // Löschung (7) als Zielname und Kontovorgang; u-anna: ihre Anmeldung (2) als Kontovorgang.
     const belegePg = (await pg.namensbelege(["u-gerd", "u-anna"])).map((e) => e.seq);
     const belegeSpeicher = (await speicher.namensbelege(["u-gerd", "u-anna"])).map((e) => e.seq);
     expect(belegePg).toEqual(belegeSpeicher);
-    expect(belegePg).toEqual([4, 7]);
+    expect(belegePg).toEqual([2, 7]);
     expect(await pg.namensbelege([])).toEqual([]);
+
+    // Die Begrenzung sitzt in der Abfrage: 200 weitere Rollenwechsel ändern nichts an der Anzahl.
+    for (let i = 0; i < 200; i += 1) {
+      uhr += 1000;
+      const wechsel: AuditInput = {
+        actor: "u-admin",
+        action: "user.role-change",
+        target: "u-gerd",
+        payload: { role: "experte", actorName: `Ada ${i}`, targetName: `Gerd ${i}` },
+      };
+      await pg.record(wechsel);
+      await speicher.record(wechsel);
+    }
+    const vielePg = await pg.namensbelege(["u-gerd", "u-admin"]);
+    expect(vielePg.map((e) => e.seq)).toEqual(
+      (await speicher.namensbelege(["u-gerd", "u-admin"])).map((e) => e.seq),
+    );
+    expect(vielePg.length).toBeLessThanOrEqual(6);
+    expect(vielePg.find((e) => e.target === "u-gerd")?.payload.targetName).toBe("Gerd 199");
 
     // Die Lesewege ändern nichts: die Kette bleibt vollständig und prüfbar.
     const bericht = await pg.verifyReport();
     expect(bericht.ok).toBe(true);
-    expect(bericht.count).toBe(KETTE.length);
+    expect(bericht.count).toBe(KETTE.length + 200);
   });
 });

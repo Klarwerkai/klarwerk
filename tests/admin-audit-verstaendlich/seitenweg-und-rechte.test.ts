@@ -345,8 +345,11 @@ describe("K1/K3 · Namen aus der Kette — als Belege, nicht als Umschreibung", 
     const b = await buehne();
     const s = await seite(b, "?actor=u-gerd");
     expect(seqs(s)).toEqual([6]);
+    // Begrenzt (Bens Befund Nacharbeit 3): je Kennung nur die JÜNGSTE Namens- bzw. Kontozuordnung.
+    // Die Löschung (7) ist jüngster Zielname UND jüngster Kontovorgang; der ältere Rollenwechsel (4)
+    // trägt nichts mehr bei und kommt nicht mit.
     const belege = s.namensbelege.map((n) => n.seq).sort((x, y) => x - y);
-    expect(belege).toEqual([4, 7]);
+    expect(belege).toEqual([7]);
     for (const n of s.namensbelege) {
       // Nur Namen — keine Rolle, kein sonstiger Inhalt des fremden Eintrags.
       expect(Object.keys(n.payload).every((k) => k === "actorName" || k === "targetName")).toBe(
@@ -356,6 +359,34 @@ describe("K1/K3 · Namen aus der Kette — als Belege, nicht als Umschreibung", 
     expect(s.namensbelege.find((n) => n.seq === 7)?.payload.targetName).toBe(
       "Gerd Gelöscht (fiktiv)",
     );
+  });
+
+  it("K4 · die Namensbelege einer Seite wachsen NICHT mit der Historie eines Akteurs", async () => {
+    const b = await buehne();
+    // 300 weitere Rollenwechsel desselben fiktiven Kontos, jeder mit gespeicherten Namen.
+    for (let i = 0; i < 300; i += 1) {
+      await b.audit.record({
+        actor: "u-admin",
+        action: "user.role-change",
+        target: "u-anna",
+        payload: { role: "experte", actorName: `Ada ${i}`, targetName: `Anna ${i}` },
+      });
+    }
+    const s = await seite(b, "?limit=25");
+    expect(s.entries).toHaveLength(25);
+    const kennungen = new Set(s.entries.flatMap((e) => [e.actor, e.target]));
+    // Höchstens drei Belege je Kennung (Akteursname, Zielname, Kontovorgang) — nicht 300.
+    expect(s.namensbelege.length).toBeLessThanOrEqual(3 * kennungen.size);
+    expect(s.namensbelege.length).toBeLessThanOrEqual(6);
+    // Und es sind die JÜNGSTEN: der zuletzt gespeicherte Name gilt.
+    const zielnamen = s.namensbelege
+      .filter((n) => n.target === "u-anna" && n.payload.targetName !== undefined)
+      .map((n) => n.payload.targetName);
+    expect(zielnamen).toEqual(["Anna 299"]);
+    const akteursnamen = s.namensbelege
+      .filter((n) => n.actor === "u-admin" && n.payload.actorName !== undefined)
+      .map((n) => n.payload.actorName);
+    expect(akteursnamen).toEqual(["Ada 299"]);
   });
 
   it("nach Seiten, Liste, Export und Prüfung sind die gespeicherten Ereignisse bitgleich", async () => {

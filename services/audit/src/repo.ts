@@ -16,6 +16,46 @@ export function auditSeiteTrifft(entry: AuditEntry, filter: AuditSeitenFilter): 
   );
 }
 
+/** Ein Vorgang des Kontodienstes — sein Ziel ist eine Kontokennung (Kontobeleg). */
+export function istKontoAktion(action: string): boolean {
+  return (
+    action.startsWith("user.") || action.startsWith("auth.") || action === "notice.acknowledged"
+  );
+}
+
+/**
+ * produkt:20261009:admin-audit-verstaendlich (Bens Befund Nacharbeit 3) — DIE BEGRENZTEN BELEGE.
+ *
+ * Je Kennung höchstens drei Einträge, jeweils der JÜNGSTE: gespeicherter Akteursname,
+ * gespeicherter Zielname und Kontovorgang mit dieser Kennung als Ziel. Ergebnis aufsteigend nach
+ * `seq`, ohne Doppelungen. Dieselbe Menge wie `AUDIT_NAMENSBELEGE_SQL` (repo-pg.ts).
+ */
+export function namensbelegeAus(
+  eintraege: readonly AuditEntry[],
+  ids: readonly string[],
+): AuditEntry[] {
+  const gesucht = new Set(ids);
+  const akteurname = new Map<string, AuditEntry>();
+  const zielname = new Map<string, AuditEntry>();
+  const konto = new Map<string, AuditEntry>();
+  for (const e of eintraege) {
+    if (gesucht.has(e.actor) && e.payload.actorName !== undefined) {
+      akteurname.set(e.actor, e);
+    }
+    if (gesucht.has(e.target) && e.payload.targetName !== undefined) {
+      zielname.set(e.target, e);
+    }
+    if (gesucht.has(e.target) && istKontoAktion(e.action)) {
+      konto.set(e.target, e);
+    }
+  }
+  const nachSeq = new Map<number, AuditEntry>();
+  for (const e of [...akteurname.values(), ...zielname.values(), ...konto.values()]) {
+    nachSeq.set(e.seq, e);
+  }
+  return [...nachSeq.values()].sort((a, b) => a.seq - b.seq);
+}
+
 // JOB 2698 D1 (Review-Befund R2-32): DIE EINE FILTERREGEL des Protokolls — leer/fehlend heißt „kein
 // Filter", gesetzt heißt exakte Gleichheit (Groß-/Kleinschreibung zählt). Sie stand bis 2698 nur in
 // `AuditService.list` (nach dem Vollscan, in Node). Jetzt steht sie HIER, damit die Speicherablage,
@@ -393,14 +433,7 @@ export class InMemoryAuditRepo implements AuditRepo {
   }
 
   findNamensbelege(ids: readonly string[]): Promise<AuditEntry[]> {
-    const gesucht = new Set(ids);
-    return Promise.resolve(
-      this.entries.filter(
-        (e) =>
-          (gesucht.has(e.actor) && e.payload.actorName !== undefined) ||
-          (gesucht.has(e.target) && e.payload.targetName !== undefined),
-      ),
-    );
+    return Promise.resolve(namensbelegeAus(this.entries, ids));
   }
 
   last(_tx?: TxContext): Promise<AuditEntry | undefined> {

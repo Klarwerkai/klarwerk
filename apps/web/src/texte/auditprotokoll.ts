@@ -123,7 +123,7 @@ export default {
     "auditprotokoll.technik.objekt": "Kennung betroffenes Objekt",
     "auditprotokoll.technik.hash": "Prüfwert (Hash)",
     "auditprotokoll.technik.hilfe":
-      "Die Spalten nennen Zeitpunkt mit Zeitzone, Ereignis, ausführende und betroffene Person oder den betroffenen Beitrag und beim Rollenwechsel die Rolle vorher und nachher. Die technischen Angaben jedes Eintrags (Eintragsnummer, gespeicherter Zeitpunkt in UTC, Rohaktion, Kennungen der Konten oder des Objekts, Prüfwert) stehen ergänzend unter „Kennungen anzeigen“. Ein gelöschtes Konto bleibt mit dem Namen benannt, den das Protokoll beim Löschen oder bei einem früheren Rollenwechsel gespeichert hat. Ein Name, den der Eintrag selbst nicht gespeichert hat, trägt den Zusatz „heutiger Name“ oder „Name aus anderem Protokolleintrag“.",
+      "Die Spalten nennen Zeitpunkt mit Zeitzone, Ereignis, ausführende und betroffene Person oder den betroffenen Beitrag und beim Rollenwechsel die Rolle vorher und nachher. Die technischen Angaben jedes Eintrags (Eintragsnummer, gespeicherter Zeitpunkt in UTC, Rohaktion, Kennungen der Konten oder des Objekts, Prüfwert) stehen ergänzend unter „Kennungen anzeigen“. Ein gelöschtes Konto bleibt mit dem Namen benannt, den das Protokoll beim Löschen oder bei einem früheren Rollenwechsel gespeichert hat. Ein Name, den der Eintrag selbst nicht gespeichert hat, trägt den Zusatz „heutiger Name“ oder „Name aus anderem Protokolleintrag“. „Konto nicht mehr vorhanden“ steht nur, wenn die Kette ein Konto mit dieser Kennung belegt; sonst heißt sie „Unbekannte Kennung“.",
     // produkt:20261009:admin-audit-verstaendlich (ADMIN-03): Seiten, Filter, Herkunft der Namen,
     // Rücklinks, Prüfzeitpunkt.
     "auditprotokoll.tabelle.seite": "{{shown}} Einträge, neueste zuerst",
@@ -131,6 +131,9 @@ export default {
     "auditprotokoll.technik.aktion": "Rohaktion",
     "auditprotokoll.technik.geschwaerzt": "Ohne Leserecht ausgeblendet",
     "auditprotokoll.akteur.dienst": "Dienstzugang",
+    "auditprotokoll.detail.unbekannt": "Unbekannte Kennung – kein Konto belegt",
+    "auditprotokoll.filter.personHinweis":
+      "Name wählen oder eine Kennung eingeben – auch entfernte oder unbekannte Akteure",
     "auditprotokoll.name.heute": "heutiger Name, im Eintrag nicht gespeichert",
     "auditprotokoll.name.ausProtokoll": "Name aus anderem Protokolleintrag",
     "auditprotokoll.kurzkennung": "Kennung {{kurz}}…",
@@ -215,12 +218,15 @@ export default {
     "auditprotokoll.technik.objekt": "ID of affected object",
     "auditprotokoll.technik.hash": "Check value (hash)",
     "auditprotokoll.technik.hilfe":
-      "The columns name the time with time zone, the event, the performing and the affected person or the affected article and, for a role change, the role before and after. The technical details of every entry (entry number, stored time in UTC, raw action, identifiers of the accounts or the object, check value) are available in addition under “Show IDs”. A deleted account stays named with the name the trail stored when it was deleted or at an earlier role change. A name that the entry itself did not store carries the note “current name” or “name from another log entry”.",
+      "The columns name the time with time zone, the event, the performing and the affected person or the affected article and, for a role change, the role before and after. The technical details of every entry (entry number, stored time in UTC, raw action, identifiers of the accounts or the object, check value) are available in addition under “Show IDs”. A deleted account stays named with the name the trail stored when it was deleted or at an earlier role change. A name that the entry itself did not store carries the note “current name” or “name from another log entry”. “Account no longer exists” is shown only if the trail records an account with this ID; otherwise it reads “Unknown ID”.",
     "auditprotokoll.tabelle.seite": "{{shown}} entries, newest first",
     "auditprotokoll.technik.zeitpunkt": "Stored time (UTC)",
     "auditprotokoll.technik.aktion": "Raw action",
     "auditprotokoll.technik.geschwaerzt": "Hidden without read permission",
     "auditprotokoll.akteur.dienst": "Service access",
+    "auditprotokoll.detail.unbekannt": "Unknown ID – no account on record",
+    "auditprotokoll.filter.personHinweis":
+      "Pick a name or enter an ID – including removed or unknown actors",
     "auditprotokoll.name.heute": "current name, not stored in the entry",
     "auditprotokoll.name.ausProtokoll": "name from another log entry",
     "auditprotokoll.kurzkennung": "ID {{kurz}}…",
@@ -306,12 +312,15 @@ export default {
     "auditprotokoll.technik.objekt": "ID betrokken object",
     "auditprotokoll.technik.hash": "Controlewaarde (hash)",
     "auditprotokoll.technik.hilfe":
-      "De kolommen noemen het tijdstip met tijdzone, de gebeurtenis, de uitvoerende en de betrokken persoon of de betrokken bijdrage en bij een rolwijziging de rol daarvoor en daarna. De technische gegevens van elke vermelding (vermeldingsnummer, opgeslagen tijdstip in UTC, ruwe actie, kenmerken van de accounts of het object, controlewaarde) staan aanvullend onder „ID's tonen“. Een verwijderd account blijft benoemd met de naam die het protocol bij het verwijderen of bij een eerdere rolwijziging heeft opgeslagen. Een naam die de vermelding zelf niet heeft opgeslagen, krijgt de toevoeging „huidige naam” of „naam uit andere logvermelding”.",
+      "De kolommen noemen het tijdstip met tijdzone, de gebeurtenis, de uitvoerende en de betrokken persoon of de betrokken bijdrage en bij een rolwijziging de rol daarvoor en daarna. De technische gegevens van elke vermelding (vermeldingsnummer, opgeslagen tijdstip in UTC, ruwe actie, kenmerken van de accounts of het object, controlewaarde) staan aanvullend onder „ID's tonen“. Een verwijderd account blijft benoemd met de naam die het protocol bij het verwijderen of bij een eerdere rolwijziging heeft opgeslagen. Een naam die de vermelding zelf niet heeft opgeslagen, krijgt de toevoeging „huidige naam” of „naam uit andere logvermelding”. „Account bestaat niet meer” staat er alleen als het logboek een account met deze ID vastlegt; anders heet ze „Onbekende ID”.",
     "auditprotokoll.tabelle.seite": "{{shown}} vermeldingen, nieuwste eerst",
     "auditprotokoll.technik.zeitpunkt": "Opgeslagen tijdstip (UTC)",
     "auditprotokoll.technik.aktion": "Ruwe actie",
     "auditprotokoll.technik.geschwaerzt": "Verborgen zonder leesrecht",
     "auditprotokoll.akteur.dienst": "Diensttoegang",
+    "auditprotokoll.detail.unbekannt": "Onbekende ID – geen account vastgelegd",
+    "auditprotokoll.filter.personHinweis":
+      "Kies een naam of voer een ID in – ook verwijderde of onbekende actoren",
     "auditprotokoll.name.heute": "huidige naam, niet in de vermelding opgeslagen",
     "auditprotokoll.name.ausProtokoll": "naam uit andere logvermelding",
     "auditprotokoll.kurzkennung": "ID {{kurz}}…",

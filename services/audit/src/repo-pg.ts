@@ -58,11 +58,31 @@ export const AUDIT_FIND_PAGE_SQL = `SELECT * FROM audit
   ORDER BY seq DESC
   LIMIT $8`;
 
-// produkt:20261009:admin-audit-verstaendlich: die gespeicherten Namen zu den Kennungen einer Seite.
-export const AUDIT_NAMENSBELEGE_SQL = `SELECT * FROM audit
-  WHERE (actor = ANY($1::text[]) AND payload ? 'actorName')
-     OR (target = ANY($1::text[]) AND payload ? 'targetName')
-  ORDER BY seq`;
+// produkt:20261009:admin-audit-verstaendlich: die Namens- und Kontobelege zu den Kennungen einer
+// Seite — BEGRENZT, und zwar schon in der Datenbank (Bens Befund Nacharbeit 3). Je Kennung höchstens
+// drei Zeilen, jeweils die JÜNGSTE: der gespeicherte Name als Akteur, der gespeicherte Name als
+// Kontoziel und der jüngste Kontovorgang mit dieser Kennung als Ziel (`istKontoAktion` in repo.ts).
+// Eine Seite mit 25 Ereignissen bekommt damit höchstens 3 × 50 Belege, gleich wie lang die Historie
+// eines Akteurs ist. Dieselbe Regel in Node: `namensbelegeAus` (repo.ts).
+export const AUDIT_NAMENSBELEGE_SQL = `SELECT * FROM (
+  SELECT DISTINCT ON (actor) * FROM audit
+    WHERE actor = ANY($1::text[]) AND payload ? 'actorName'
+    ORDER BY actor, seq DESC
+) AS akteurname
+UNION
+SELECT * FROM (
+  SELECT DISTINCT ON (target) * FROM audit
+    WHERE target = ANY($1::text[]) AND payload ? 'targetName'
+    ORDER BY target, seq DESC
+) AS zielname
+UNION
+SELECT * FROM (
+  SELECT DISTINCT ON (target) * FROM audit
+    WHERE target = ANY($1::text[])
+      AND (action LIKE 'user.%' OR action LIKE 'auth.%' OR action = 'notice.acknowledged')
+    ORDER BY target, seq DESC
+) AS kontobeleg
+ORDER BY seq`;
 
 /** `""`/undefined → NULL (kein Filter); sonst der Wert — die Übersetzung von `!filter.x` nach SQL. */
 export function auditFilterParams(

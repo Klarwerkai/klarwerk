@@ -30,6 +30,7 @@ import {
   type DetailZeile,
   type VerzeichnisLage,
   auditEventDetail,
+  kontoBelege,
   mehrdeutigeNamen,
   protokollNamen,
   verzeichnisNamen,
@@ -358,6 +359,12 @@ export function AuditTabelle({
     () => protokollNamen([...seite.namensbelege, ...seite.entries]),
     [seite.namensbelege, seite.entries],
   );
+  // K1 (Bens Befund Nacharbeit 3): welche Kennungen nachweislich Konten waren — nur sie können
+  // „nicht mehr vorhanden" sein; jede andere fehlende Kennung heißt „unbekannte Kennung".
+  const belege = useMemo(
+    () => kontoBelege([...seite.namensbelege, ...seite.entries]),
+    [seite.namensbelege, seite.entries],
+  );
   const mehrdeutig = useMemo(
     () =>
       mehrdeutigeNamen(verzeichnis.art === "geladen" ? verzeichnis.namen : new Map(), protokoll),
@@ -385,7 +392,7 @@ export function AuditTabelle({
         </thead>
         <tbody className="divide-y divide-hairline">
           {seite.entries.map((e) => {
-            const zeilen = auditEventDetail(e, verzeichnis, protokoll);
+            const zeilen = auditEventDetail(e, verzeichnis, protokoll, belege);
             const zielZeile = zeilen[1];
             return (
               <tr key={e.seq} data-audit-eintrag={e.seq} className="align-top">
@@ -541,10 +548,11 @@ export function AuditFilterLeiste({
     setFehler(false);
   }
   const personen = verzeichnisListe(verzeichnis);
-  const personBekannt =
-    entwurf.person === "" ||
-    entwurf.person === "system" ||
-    personen.some(([id]) => id === entwurf.person);
+  // Der Name zur eingegebenen Kennung, wenn das Verzeichnis sie kennt — sonst der Bedienhinweis.
+  const personName =
+    entwurf.person === "system"
+      ? t("audit.detail.systemActor")
+      : personen.find(([id]) => id === entwurf.person.trim())?.[1];
   const aktionBekannt = entwurf.aktion === "" || aktionen.includes(entwurf.aktion);
   const mehrdeutig = mehrdeutigeNamen(
     verzeichnis.art === "geladen" ? verzeichnis.namen : new Map(),
@@ -573,20 +581,39 @@ export function AuditFilterLeiste({
       aria-label={t("auditprotokoll.filter.titel")}
       className="print-hide grid grid-cols-1 gap-2 rounded-card border border-hairline bg-page p-3 sm:grid-cols-2 lg:grid-cols-5"
     >
+      {/* Bens Befund Nacharbeit 3: eine geschlossene Auswahl ließ nur heutige Konten zu. Das Feld
+          nimmt jetzt jede Kennung an (entfernte, unbekannte, Dienstzugänge — die Kennung steht
+          unter „Kennungen anzeigen“) und schlägt Namen aus dem Verzeichnis vor. Gefiltert wird
+          weiter über die Kennung. */}
       <label className="flex min-w-0 flex-col gap-1 text-[11.5px] font-semibold text-muted-2">
         {t("auditprotokoll.filter.person")}
-        <select {...feld("person")} className={FELD}>
-          <option value="">{t("auditprotokoll.filter.personAlle")}</option>
-          <option value="system">{t("audit.detail.systemActor")}</option>
+        <input
+          {...feld("person")}
+          type="text"
+          list={`${idPraefix}-personen`}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={t("auditprotokoll.filter.personAlle")}
+          aria-describedby={`${idPraefix}-person-hinweis`}
+          className={`${FELD} font-mono`}
+        />
+        <span id={`${idPraefix}-person-hinweis`} className="font-normal text-muted-2">
+          {personName ?? t("auditprotokoll.filter.personHinweis")}
+        </span>
+        <datalist id={`${idPraefix}-personen`}>
+          <option value="system" label={t("audit.detail.systemActor")} />
           {personen.map(([id, name]) => (
-            <option key={id} value={id}>
-              {mehrdeutig.has(name.trim())
-                ? `${name} (${t("auditprotokoll.kurzkennung", { kurz: id.slice(0, 8) })})`
-                : name}
-            </option>
+            <option
+              key={id}
+              value={id}
+              label={
+                mehrdeutig.has(name.trim())
+                  ? `${name} (${t("auditprotokoll.kurzkennung", { kurz: id.slice(0, 8) })})`
+                  : name
+              }
+            />
           ))}
-          {personBekannt ? null : <option value={entwurf.person}>{entwurf.person}</option>}
-        </select>
+        </datalist>
       </label>
       <label className="flex min-w-0 flex-col gap-1 text-[11.5px] font-semibold text-muted-2">
         {t("auditprotokoll.filter.aktion")}

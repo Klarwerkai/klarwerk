@@ -195,6 +195,34 @@ export function protokollNamen(
 }
 
 /**
+ * produkt:20261009:admin-audit-verstaendlich (K1, Bens Befund Nacharbeit 3) — WELCHE KENNUNGEN
+ * NACHWEISLICH KONTEN WAREN.
+ *
+ * Das Fehlen im heutigen Verzeichnis allein belegt keine frühere Kontoexistenz. Ein Kontobeleg ist
+ * ein Eintrag des Kontodienstes mit dieser Kennung als ZIEL (`KONTO_ZIEL_AKTIONEN`: Anlage,
+ * Anmeldung, Rollenwechsel, Löschung …) oder ein Name, den die Kette zu ihr als Konto gespeichert
+ * hat. Nur mit einem solchen Beleg sagt die Fläche „Konto nicht mehr vorhanden"; ohne ihn heißt die
+ * Kennung „unbekannte Kennung" (`auditprotokoll.detail.unbekannt`). Bloßes Auftreten als Akteur
+ * zählt NICHT — daraus folgt nicht, welche Art Identität dahinterstand.
+ */
+export function kontoBelege(eintraege: readonly AuditEreignis[] | undefined): ReadonlySet<string> {
+  const belegt = new Set<string>();
+  for (const e of eintraege ?? []) {
+    if (e.target !== "" && KONTO_ZIEL_AKTIONEN.has(e.action)) {
+      belegt.add(e.target);
+    }
+    if (
+      e.actor !== "" &&
+      e.actor !== SYSTEM_AKTEUR &&
+      textfeld(e.payload ?? {}, "actorName") !== undefined
+    ) {
+      belegt.add(e.actor);
+    }
+  }
+  return belegt;
+}
+
+/**
  * produkt:20261009:admin-audit-verstaendlich (K1): Namen, die zu MEHR ALS EINER Kennung gehören —
  * aus dem Verzeichnis und aus den von der Kette gespeicherten Namen zusammen. Steht ein solcher Name
  * in einer Spalte, zeigt die Fläche eine Kurzkennung daneben, damit zwei „Anna Meier“ unterscheidbar
@@ -231,6 +259,7 @@ function kontoZeile(
   gespeicherterName: string | undefined,
   verzeichnis: VerzeichnisLage,
   protokoll: ReadonlyMap<string, string>,
+  istKonto: boolean,
 ): DetailZeile {
   if (gespeicherterName !== undefined) {
     // Der Stand von DAMALS schlägt jedes heutige Verzeichnis — und kennt keinen Ladezustand.
@@ -281,7 +310,11 @@ function kontoZeile(
     // Bestand da, aber nicht aktuell: der Name ist unbekannt, das Konto deshalb nicht abwesend.
     return { labelKey, kind: "id", id, hinweisKey: "audit.detail.nameUnavailable" };
   }
-  // Erst HIER ist die negative Aussage belegt: erfolgreich UND abgeschlossen geladen, Kennung fehlt.
+  // Erfolgreich UND abgeschlossen geladen, Kennung fehlt. „Konto nicht mehr vorhanden" nur mit
+  // Kontobeleg (Bens Befund Nacharbeit 3) — sonst ist die Identität schlicht unbekannt.
+  if (!istKonto) {
+    return { labelKey, kind: "id", id, hinweisKey: "auditprotokoll.detail.unbekannt" };
+  }
   return { labelKey, kind: "id", id, hinweisKey: "audit.detail.accountGone" };
 }
 
@@ -320,8 +353,14 @@ export function auditEventDetail(
   eintrag: AuditEreignis,
   verzeichnis: VerzeichnisLage,
   protokoll: ReadonlyMap<string, string> = new Map(),
+  belege: ReadonlySet<string> = new Set(),
 ): DetailZeile[] {
   const payload = eintrag.payload ?? {};
+  // Kontobelege: aus der Kette (`kontoBelege` über Seite und Namensbelege), aus gespeicherten
+  // Namen — und aus diesem Eintrag selbst (ein Kontovorgang belegt sein Ziel als Konto).
+  const ausEintrag = kontoBelege([eintrag]);
+  const istKonto = (id: string): boolean =>
+    belege.has(id) || protokoll.has(id) || ausEintrag.has(id);
   const akteur: DetailZeile =
     eintrag.actor === SYSTEM_AKTEUR
       ? {
@@ -342,6 +381,7 @@ export function auditEventDetail(
             textfeld(payload, "actorName"),
             verzeichnis,
             protokoll,
+            istKonto(eintrag.actor),
           );
   const ziel = KONTO_ZIEL_AKTIONEN.has(eintrag.action)
     ? kontoZeile(
@@ -350,6 +390,7 @@ export function auditEventDetail(
         textfeld(payload, "targetName"),
         verzeichnis,
         protokoll,
+        istKonto(eintrag.target),
       )
     : objektZeile(eintrag.target);
   const zeilen: DetailZeile[] = [akteur, ziel];

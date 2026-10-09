@@ -19,6 +19,7 @@ import {
   type AuditEreignis,
   type VerzeichnisLage,
   auditEventDetail,
+  kontoBelege,
   mehrdeutigeNamen,
   protokollNamen,
 } from "../../apps/web/src/lib/auditEventDetail";
@@ -104,13 +105,40 @@ describe("K1/K3 · wer gehandelt hat — und woher der Name stammt", () => {
     });
   });
 
-  it("unbekannter Akteur ohne jeden Namen: Kennung mit Grund — nie ein fremder heutiger Name", () => {
-    const frisch = akteur(ereignis({ actor: "u-unbekannt", target: "u-unbekannt" }));
-    expect(frisch).toMatchObject({ kind: "id", id: "u-unbekannt" });
+  // Bens Befund Nacharbeit 3: das Fehlen im heutigen Verzeichnis belegt keine frühere Kontoexistenz.
+  it("unbekannter Akteur ohne Namens- und Kontobeleg: „unbekannte Kennung“, nie „nicht mehr vorhanden“", () => {
+    const bearbeitung = ereignis({ actor: "u-unbekannt", action: "ko.revised", target: "ko-1" });
+    const frisch = akteur(bearbeitung);
+    expect(frisch).toMatchObject({
+      kind: "id",
+      id: "u-unbekannt",
+      hinweisKey: "auditprotokoll.detail.unbekannt",
+    });
     expect(frisch?.value).toBeUndefined();
+    for (const sprache of ["de", "en", "nl"] as const) {
+      expect(
+        i18n.getResource(sprache, "translation", "auditprotokoll.detail.unbekannt"),
+      ).toBeTruthy();
+    }
     // Ohne belastbares Verzeichnis: nur die schwache Aussage über den Abruf.
-    const ohne = akteur(ereignis({ actor: "u-unbekannt" }), { art: "nichtAbrufbar" });
+    const ohne = akteur(bearbeitung, { art: "nichtAbrufbar" });
     expect(ohne).toMatchObject({ kind: "id", hinweisKey: "audit.detail.nameUnavailable" });
+  });
+
+  it("entferntes Konto OHNE gespeicherten Namen: nur mit Kontobeleg „nicht mehr vorhanden“", () => {
+    const bearbeitung = ereignis({ actor: "u-weg", action: "ko.revised", target: "ko-1" });
+    // Die Kette kennt eine frühere Anmeldung dieses Kontos — das belegt die Kontoexistenz.
+    const anmeldung = ereignis({ actor: "u-weg", action: "auth.login", target: "u-weg" });
+    const belege = kontoBelege([anmeldung, bearbeitung]);
+    expect([...belege]).toEqual(["u-weg"]);
+    const zeile = auditEventDetail(bearbeitung, VERZEICHNIS, new Map(), belege)[0];
+    expect(zeile).toMatchObject({
+      kind: "id",
+      id: "u-weg",
+      hinweisKey: "audit.detail.accountGone",
+    });
+    // Ein Ereignis an einem Objekt belegt für sein Ziel kein Konto, ein bloßer Akteur auch nicht.
+    expect(kontoBelege([bearbeitung]).size).toBe(0);
   });
 
   it("mehrdeutige Namen werden erkannt — über Verzeichnis und Kette hinweg, nur über die Kennung", () => {

@@ -334,7 +334,7 @@ describe("K4 · Filter kombinieren, Rückweg aus dem Beitrag, lesbare Leere, ver
     // … und zurück: dieselbe Adresse, dieselben Feldwerte, dieselbe Anfrage.
     await klick(container.querySelector('[data-testid="beitrag-zurueck"]'), "Zurück");
     expect(new URLSearchParams(ort().split("?")[1] ?? "").get("a_person")).toBe("u-anna-1");
-    const person = container.querySelector("#pruefprotokoll-filter-person") as HTMLSelectElement;
+    const person = container.querySelector("#pruefprotokoll-filter-person") as HTMLInputElement;
     expect(person.value).toBe("u-anna-1");
     const bis = container.querySelector("#pruefprotokoll-filter-bis") as HTMLInputElement;
     expect(bis.value).toBe("2026-10-08");
@@ -378,8 +378,43 @@ describe("K4 · Filter kombinieren, Rückweg aus dem Beitrag, lesbare Leere, ver
       expect(el?.getAttribute("tabindex"), feld).toBeNull();
     }
     // Die Vorschläge nennen Personen und Vorgänge — keine Objekttitel.
-    const vorschlaege = [...container.querySelectorAll("[data-audit-filter] option")].map(text);
+    const optionen = [
+      ...container.querySelectorAll<HTMLOptionElement>("[data-audit-filter] option"),
+    ];
+    const vorschlaege = optionen.map((o) => `${o.label} ${o.value} ${text(o)}`);
     expect(vorschlaege.join(" ")).not.toContain(TITEL);
+    // Die Personenvorschläge nennen die heutigen Namen — mit Kurzkennung bei gleichen Namen.
+    const personen = [
+      ...container.querySelectorAll<HTMLOptionElement>("#pruefprotokoll-filter-personen option"),
+    ].map((o) => o.label);
+    expect(personen).toContain("Ben Beispiel");
+    expect(personen.filter((l) => l.startsWith("Anna Meier"))).toHaveLength(2);
+  });
+
+  // Bens Befund Nacharbeit 3: entfernte, unbekannte und Dienstakteure stehen in keinem Verzeichnis.
+  // Das Personenfeld nimmt deshalb jede Kennung an und filtert danach — kombiniert mit den übrigen.
+  it("eine Kennung außerhalb des Verzeichnisses lässt sich eingeben und kombiniert filtern", async () => {
+    await mount(PROTOKOLL_URL);
+    const person = container.querySelector("#pruefprotokoll-filter-person");
+    expect(person?.tagName).toBe("INPUT");
+    expect(person?.getAttribute("list")).toBe("pruefprotokoll-filter-personen");
+    await setze("pruefprotokoll-filter-person", "dienst:wiki-sync");
+    // Kein Verzeichnisname zu dieser Kennung: der Hinweis sagt, was das Feld annimmt.
+    expect(text(container.querySelector("#pruefprotokoll-filter-person-hinweis"))).toBe(
+      i18n.t("auditprotokoll.filter.personHinweis"),
+    );
+    await setze("pruefprotokoll-filter-aktion", "ko.revised");
+    await klick(knopf(i18n.t("auditprotokoll.filter.anwenden")), "Filter anwenden");
+    expect(seiteMock.mock.calls.at(-1)?.[0]).toEqual({
+      actor: "dienst:wiki-sync",
+      action: "ko.revised",
+    });
+    expect(new URLSearchParams(ort().split("?")[1] ?? "").get("a_person")).toBe("dienst:wiki-sync");
+    // Eine Kennung aus dem Verzeichnis nennt ihren Namen neben dem Feld.
+    await setze("pruefprotokoll-filter-person", "u-ben");
+    expect(text(container.querySelector("#pruefprotokoll-filter-person-hinweis"))).toBe(
+      "Ben Beispiel",
+    );
   });
 });
 
