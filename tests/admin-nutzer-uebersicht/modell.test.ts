@@ -24,6 +24,7 @@ import {
   kontenFilterQuery,
   kontoZugang,
   rollenwirkung,
+  sammelSignatur,
   sammelbilanz,
   sammelvorschau,
   sucheTrifft,
@@ -215,6 +216,20 @@ describe("ADMIN-04 · K5 Sammelaktionen: Vorschau je Konto, Bilanz ohne Pauschal
     expect(v.find((z) => z.id === "u1")).toMatchObject({ art: "entfaellt", grund: "selbst" });
     expect(v.find((z) => z.id === "u4")).toMatchObject({ art: "entfaellt", grund: "gesperrt" });
     expect(v.filter((z) => z.art === "wirkt").map((z) => z.id)).toEqual(["u2", "u3", "u5"]);
+  });
+
+  it("die Vorschau-Signatur ändert sich mit Auswahl, Kontozustand, Aktion und Tag", () => {
+    const ab = [KONTEN[1], KONTEN[2]] as Konto[];
+    const basis = sammelSignatur("befristen", MORGEN, ab, "u1");
+    expect(sammelSignatur("befristen", MORGEN, [...ab], "u1")).toBe(basis);
+    // Filter blendet B aus / leere Auswahl.
+    expect(sammelSignatur("befristen", MORGEN, [KONTEN[1] as Konto], "u1")).not.toBe(basis);
+    expect(sammelSignatur("befristen", MORGEN, [], "u1")).not.toBe(basis);
+    // Der Server meldet einen anderen Freigabestand.
+    const umgestellt = ab.map((k, i) => (i === 0 ? { ...k, approved: false } : k));
+    expect(sammelSignatur("befristen", MORGEN, umgestellt, "u1")).not.toBe(basis);
+    expect(sammelSignatur("freigeben", null, ab, "u1")).not.toBe(basis);
+    expect(sammelSignatur("befristen", GESTERN, ab, "u1")).not.toBe(basis);
   });
 
   it("eine gescheiterte Zeile macht die Bilanz unvollständig und wird mitgezählt", () => {

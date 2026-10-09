@@ -26,10 +26,17 @@ import {
   type Sammelaktion,
   type Sammelergebnis,
   type Vorschauzeile,
+  sammelSignatur,
   sammelbilanz,
   sammelvorschau,
 } from "../lib/nutzerliste";
 import { endeDesTages, serverHatAbgewiesen } from "./AdminKontenDetails";
+
+/** Eine geprüfte Vorschau und die Auswahl, für die sie gilt. */
+interface Vorschaustand {
+  zeilen: Vorschauzeile[];
+  signatur: string;
+}
 
 export function Sammelbearbeitung({ konten }: { konten: readonly PublicUser[] }): JSX.Element {
   const { t, i18n } = useTranslation();
@@ -38,7 +45,8 @@ export function Sammelbearbeitung({ konten }: { konten: readonly PublicUser[] })
   const [auswahl, setAuswahl] = useState<ReadonlySet<string>>(new Set());
   const [aktion, setAktion] = useState<Sammelaktion | "">("");
   const [tag, setTag] = useState("");
-  const [vorschau, setVorschau] = useState<Vorschauzeile[] | null>(null);
+  // Die Vorschau trägt mit, für WELCHE Auswahl sie gilt (`sammelSignatur`).
+  const [vorschauStand, setVorschau] = useState<Vorschaustand | null>(null);
   const [hinweis, setHinweis] = useState<string | null>(null);
   const [laeuft, setLaeuft] = useState(false);
   const [ergebnisse, setErgebnisse] = useState<Sammelergebnis[] | null>(null);
@@ -64,6 +72,13 @@ export function Sammelbearbeitung({ konten }: { konten: readonly PublicUser[] })
   const gewaehlt = konten.filter((k) => auswahl.has(k.id));
   const bis = aktion === "befristen" ? endeDesTages(tag) : null;
   const datum = bis === null ? "" : new Date(bis).toLocaleDateString(i18n.language);
+  // BEN (Nacharbeit 3, K5): Suche und Filter verändern `konten` von aussen. Eine Vorschau gilt nur,
+  // solange sie zur JETZIGEN effektiven Auswahl und deren Kontozuständen passt; sonst wird sie
+  // weder gezeigt noch ausgeführt, und es braucht eine neue.
+  const signatur = sammelSignatur(aktion, bis, gewaehlt, selbstId);
+  const vorschau =
+    vorschauStand !== null && vorschauStand.signatur === signatur ? vorschauStand.zeilen : null;
+  const vorschauVeraltet = vorschauStand !== null && vorschau === null;
   const wirkt = vorschau?.filter((z) => z.art === "wirkt") ?? [];
 
   const vorschauHolen = (): void => {
@@ -81,10 +96,11 @@ export function Sammelbearbeitung({ konten }: { konten: readonly PublicUser[] })
       return;
     }
     setHinweis(null);
-    setVorschau(sammelvorschau(aktion, gewaehlt, selbstId));
+    setVorschau({ zeilen: sammelvorschau(aktion, gewaehlt, selbstId), signatur });
   };
 
   const ausfuehren = async (): Promise<void> => {
+    // `vorschau` ist hier schon gegen die aktuelle Signatur geprüft — eine veraltete ist `null`.
     if (vorschau === null || aktion === "") {
       return;
     }
@@ -233,6 +249,15 @@ export function Sammelbearbeitung({ konten }: { konten: readonly PublicUser[] })
           {hinweis}
         </p>
       )}
+      {vorschauVeraltet ? (
+        <p
+          role="alert"
+          data-testid="sammel-vorschau-veraltet"
+          className="text-[12px] text-trust-crit-text"
+        >
+          {t("nutzerliste.sammel.vorschauVeraltet")}
+        </p>
+      ) : null}
 
       {vorschau === null ? null : (
         <div data-testid="sammel-vorschau" className="space-y-1 rounded-input bg-page p-2">

@@ -191,6 +191,21 @@ export function sammelvorschau(
   });
 }
 
+/**
+ * Wofür eine Vorschau gilt: Aktion, Tag und die EFFEKTIVE Auswahl samt den Kontozuständen, aus
+ * denen `sammelvorschau` urteilt. Ändert sich davon irgendetwas — auch nur, weil ein Filter
+ * ausgewählte Konten ausblendet oder der Server einen neuen Freigabestand meldet —, ist die alte
+ * Vorschau keine Aussage über das, was ausgeführt würde (Ben, Nacharbeit 3, K5).
+ */
+export function sammelSignatur(
+  aktion: Sammelaktion | "",
+  bis: string | null,
+  auswahl: readonly { id: string; approved: boolean }[],
+  selbstId: string | null,
+): string {
+  return JSON.stringify([aktion, bis, selbstId, auswahl.map((k) => [k.id, k.approved])]);
+}
+
 export type Sammelergebnis =
   | { id: string; name: string; ok: true }
   | { id: string; name: string; ok: false; meldung: string; abgewiesen: boolean };

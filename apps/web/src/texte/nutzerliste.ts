@@ -104,6 +104,8 @@ export default {
     "nutzerliste.sammel.unveraendert": "Dieses Konto ist unverändert.",
     "nutzerliste.sammel.ausgangOffen":
       "Ob die Änderung gespeichert wurde, ist offen; die Liste wird neu geladen.",
+    "nutzerliste.sammel.vorschauVeraltet":
+      "Auswahl, Filter oder Kontostand haben sich seit der Prüfung geändert. Bitte die Auswirkungen erneut prüfen.",
   },
   en: {
     "audit.action.user_access_expiry_set": "Time limit changed",
@@ -190,6 +192,8 @@ export default {
     "nutzerliste.sammel.unveraendert": "This account is unchanged.",
     "nutzerliste.sammel.ausgangOffen":
       "Whether the change was saved is unknown; the list is being reloaded.",
+    "nutzerliste.sammel.vorschauVeraltet":
+      "The selection, filters or account state have changed since the check. Please check the effects again.",
   },
   nl: {
     "audit.action.user_access_expiry_set": "Beperking gewijzigd",
@@ -281,5 +285,7 @@ export default {
     "nutzerliste.sammel.unveraendert": "Dit account is ongewijzigd.",
     "nutzerliste.sammel.ausgangOffen":
       "Of de wijziging is opgeslagen, is onbekend; de lijst wordt opnieuw geladen.",
+    "nutzerliste.sammel.vorschauVeraltet":
+      "Selectie, filters of accountstatus zijn sinds de controle gewijzigd. Controleer de gevolgen opnieuw.",
   },
 } satisfies Textmodul;

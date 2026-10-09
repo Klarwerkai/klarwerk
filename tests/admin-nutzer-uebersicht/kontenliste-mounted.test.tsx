@@ -572,6 +572,57 @@ describe("ADMIN-04 · K5 Mehrere Konten: prüfbare Auswahl, Teilfehler sichtbar"
     expect(server.konten.find((k) => k.id === "u-erik")?.accessExpiresAt).toBeDefined();
   });
 
+  // BEN, Nacharbeit 3: eine Filteränderung NACH der Vorschau darf nicht die alte Vorschau ausführen.
+  it("Filter nach der Vorschau: die alte Vorschau verfällt, ausgeführt wird nur die neu geprüfte Auswahl", async () => {
+    stand = montiere("/admin?bereich=konten&suche=extern");
+    await beruhige(20);
+    expect(zeilen(stand).map((z) => z.name)).toEqual(["Gina Gast", "Alt Ablauf"]);
+    await klicke(q(stand, "sammel-schalter"));
+    await klicke(q(stand, "sammel-alle"));
+    await waehle(q(stand, "sammel-aktion"), "befristen");
+    await tippe(q(stand, "sammel-tag"), "2099-10-31");
+    await klicke(q(stand, "sammel-vorschau-holen"));
+    const vorschauIds = () =>
+      [...stand.container.querySelectorAll('[data-testid="sammel-vorschau-zeile"]')].map((z) =>
+        z.getAttribute("data-id"),
+      );
+    expect(vorschauIds()).toEqual(["u-gina", "u-alt"]);
+    const ausfuehren = () => q(stand, "sammel-ausfuehren") as HTMLButtonElement;
+    expect(ausfuehren().disabled).toBe(false);
+
+    // Suche auf A (Gina) einschränken: Vorschau für A und B gilt nicht mehr.
+    await tippe(q(stand, "nutzer-suche"), "gina");
+    expect(zeilen(stand).map((z) => z.name)).toEqual(["Gina Gast"]);
+    expect(q(stand, "sammel-vorschau"), "die alte Vorschau steht noch da").toBeNull();
+    expect(q(stand, "sammel-vorschau-veraltet")?.textContent).toBe(
+      t("nutzerliste.sammel.vorschauVeraltet"),
+    );
+    expect(ausfuehren().disabled, "die alte Vorschau ist noch ausführbar").toBe(true);
+    await klicke(ausfuehren());
+    expect(server.schreibend).toEqual([]);
+
+    // Leere Liste: null sichtbare ausgewählte Konten — ebenfalls nichts ausführbar.
+    await tippe(q(stand, "nutzer-suche"), "niemand");
+    expect(zeilen(stand)).toHaveLength(0);
+    expect(q(stand, "sammel-vorschau")).toBeNull();
+    expect(ausfuehren().disabled).toBe(true);
+    await klicke(ausfuehren());
+    expect(server.schreibend).toEqual([]);
+
+    // Zurück auf A: erst eine NEUE Prüfung macht ausführbar — und zwar nur für A.
+    await tippe(q(stand, "nutzer-suche"), "gina");
+    expect(ausfuehren().disabled).toBe(true);
+    await klicke(q(stand, "sammel-vorschau-holen"));
+    expect(vorschauIds()).toEqual(["u-gina"]);
+    expect(q(stand, "sammel-vorschau-veraltet")).toBeNull();
+    await klicke(ausfuehren());
+    await beruhige(20);
+    expect(server.schreibend.map((r) => `${r.methode} ${r.pfad}`)).toEqual([
+      "PUT /api/users/u-gina",
+    ]);
+    expect(server.konten.find((k) => k.id === "u-alt")?.accessExpiresAt).toBe(VERGANGEN);
+  });
+
   it("Freigeben wirkt nur bei wartenden Konten und meldet den vollständigen Erfolg", async () => {
     stand = montiere("/admin?bereich=konten&filter=wartet");
     await beruhige(20);
