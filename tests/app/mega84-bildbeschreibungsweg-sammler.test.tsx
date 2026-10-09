@@ -2664,8 +2664,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Im Quellbaum kommen gegenüber den 553 dieses Zweigs genau `ImportLaufListe` und
     // `LaufZeile` hinzu; gegenüber den 554 auf main genau `VeroeffentlichungBereich`.
     // Der gemeinsame Sollwert ist daher 555. Sammlerlogik, Anbieter 1 und Träger 2 bleiben gleich.
+    //
+    // veroeffentlichungsoptionen Nacharbeit 34: GEMESSEN 556. Am Kandidaten 44adee92 meldete der
+    // Sammler wörtlich „gemessen: 556 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 727
+    // Quelldateien … expected { komponenten: 556, … } to deeply equal { komponenten: 555, … }".
+    // Dieser Auftrag hat seit Nacharbeit 28 (nur Lage von `VeroeffentlichungBereich` in
+    // `BibliothekLesen.tsx`) keine Quelldatei der Grundmenge geändert; die EINE Komponente kam mit
+    // dem Basisstand und ist ohne Git-Verlauf an diesem Arbeitsbaum nicht namentlich bestimmt.
+    // `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 555,
+      komponenten: 556,
       anbieter: 1,
       traeger: 2,
     });
