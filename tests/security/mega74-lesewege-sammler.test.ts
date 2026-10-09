@@ -548,6 +548,12 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "EIGENER_BESTAND",
     grund: "requireVisibleDraft (capture-routes.ts) — und die Antwort führt nur Feldnamen.",
   },
+  // R-1133: Entwürfe, keine Wissensobjekte. Der gefragte über requireVisibleDraft, jeder Treffer
+  // über canSeeDraft — die Antwort trägt Kennung und Titel nur sichtbarer Entwürfe.
+  "GET /api/drafts/:id/gleicher-inhalt": {
+    urteil: "EIGENER_BESTAND",
+    grund: "requireVisibleDraft + canSeeDraft je Treffer (capture-routes.ts).",
+  },
   "GET /api/me/impact": { urteil: "EIGENER_BESTAND", grund: "vier eigene Zähler (impact.ts:88)." },
   "GET /api/livewall/consent": {
     urteil: "EIGENER_BESTAND",
