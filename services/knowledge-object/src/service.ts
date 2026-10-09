@@ -247,12 +247,11 @@ export const TRUTH_CONFLICT_TRUST_PENALTY = 12;
 // Muster und dieselbe Größenordnung wie der Fußnoten-Backfill der Bibliothek
 // (SEARCH_BACKFILL_LIMIT_PER_QUERY = 20): die Suche darf nie zum Bestands-Durchlauf werden, und
 // der Rest wird von der nächsten Anfrage bzw. vom ausdrücklichen Lauf abgearbeitet (konvergiert).
-// G27 R1 (Entscheidung 04 §5): DER DECKEL BLEIBT, SEIN AUFRUFORT NICHT. Der gedeckelte Nachzug ist
-// weiterhin Hintergrundhilfe und Optimierung — aber KEIN Suchweg stößt ihn mehr an. „Der reguläre
+// G27 R1 (Entscheidung 04 §5): KEIN Suchweg stößt den gedeckelten Nachzug mehr an. „Der reguläre
 // Suchpfad darf funktional nicht von ihm abhängen"; er aktiviert nichts, gibt keine Readiness frei
-// und bestätigt keine Konsistenz. Der Wert bleibt die Schwunggröße für ausdrückliche
-// Wartungsläufe und ist Teil der öffentlichen Modulfläche.
-export const SEARCH_PROJECTION_BACKFILL_PER_QUERY = 20;
+// und bestätigt keine Konsistenz. R-1349: Damit las auch niemand mehr den Deckel je Anfrage
+// `SEARCH_PROJECTION_BACKFILL_PER_QUERY` (= 20); er ist entfernt. Ausdrückliche Läufe nehmen ihren
+// eigenen Schwung (`backfillSearchProjections`, Vorgabe 500; der Abgleich `RECONCILE_SCHWUNG`).
 
 // Der Schwung des UNGEDECKELTEN Abgleichs. Groß genug, dass der Bestand in wenigen Runden
 // abgearbeitet ist; endlich, damit eine einzelne Abfrage nicht unbegrenzt Zeilen zieht.

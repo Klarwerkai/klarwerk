@@ -83,8 +83,11 @@ async function mount(task: ReasonerTask): Promise<{ container: HTMLElement; unmo
 
 const kostenhinweis = (c: HTMLElement): boolean =>
   c.querySelector("[data-testid=ai-cost-hint]") !== null;
+// R-0603/R-0604: die Modellangabe sitzt am AUSLÖSER — ihr dauerhafter KI-Satz ist seither der
+// Flächensatz (`ai-surface-notice`), nicht „von KI erzeugt". Die Abgrenzung dieses Tests bleibt
+// dieselbe: der KI-Hinweis hängt nicht am Preis und steht in jedem Fall.
 const kiSatz = (c: HTMLElement): boolean =>
-  c.querySelector("[data-testid=ai-generated-notice]") !== null;
+  c.querySelector("[data-testid=ai-surface-notice]") !== null;
 
 afterEach(() => {
   vi.clearAllMocks();

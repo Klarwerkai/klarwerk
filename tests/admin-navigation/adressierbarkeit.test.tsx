@@ -116,16 +116,29 @@ describe("JOB 3337 · D · der Reiter- und Detailzustand ist adressierbar", () =
     }
   });
 
-  it("D4 · ein unerlaubter Bereichswert fällt auf das erste Thema zurück", async () => {
+  // ADMIN-01 (produkt:20261009:admin-verwaltung-uebersicht, K1): „Der Einstieg Verwaltung öffnet
+  // die Übersicht." Bis hierher fiel `/admin` ohne gültiges Thema auf „Benutzer und Rollen"; jetzt
+  // steht dort die Startseite — kein Thema ist ausgezeichnet, der Einstieg „Übersicht" schon. Die
+  // Kontenliste hat ihre eigene Adresse und ist von der Übersicht aus einen Klick entfernt.
+  it("D4 · ein unerlaubter Bereichswert fällt auf die Übersicht der Verwaltung zurück", async () => {
     const s = await admin("/admin?bereich=geheim");
-    expect(aktivesThema(s)).toBe(t("adm.sec.konten"));
+    expect(aktivesThema(s), "ein unerlaubter Wert hat ein Thema ausgezeichnet").toBe("");
+    expect(s.container.querySelector('[data-testid="verwaltung-uebersicht"]')).not.toBeNull();
     expect(detailOffen(s)).toBe(false);
   });
 
-  it("D5 · der alte Weg `/admin` ohne Query bleibt wortgleich gültig", async () => {
+  it("D5 · der alte Weg `/admin` ohne Query bleibt gültig und öffnet die Übersicht", async () => {
     const s = await admin("/admin");
-    expect(aktivesThema(s)).toBe(t("adm.sec.konten"));
     expect(s.container.querySelector('[data-testid="page-admin"]')).not.toBeNull();
+    expect(s.container.querySelector('[data-testid="verwaltung-uebersicht"]')).not.toBeNull();
+    expect(
+      s.container.querySelector('[data-testid="reiter-uebersicht"]')?.getAttribute("aria-pressed"),
+    ).toBe("true");
+    // Die Nutzerliste steht NICHT mehr als Einstieg da — sie ist ein Thema unter mehreren.
+    expect(s.container.querySelector('[data-testid="flaeche-nutzer"]')).toBeNull();
+    await klicke(s.container.querySelector('[data-testid="ziel-konten"]'));
+    expect(ort(s)).toBe(adminHref("konten"));
+    expect(aktivesThema(s)).toBe(t("adm.sec.konten"));
   });
 
   it("D6 · Browser-Zurück und -Vorwärts bleiben am richtigen Ort (Abnahmeliste der Vorlage)", async () => {

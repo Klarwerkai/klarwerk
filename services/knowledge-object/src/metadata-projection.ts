@@ -37,17 +37,9 @@ export interface KoMetadataProjection {
   updatedAt: string;
 }
 
-// Der Feldvertrag als Datum — damit ein Test ihn prüfen kann, statt ihn abzuschreiben.
-export const METADATA_PROJECTION_FIELDS = [
-  "koId",
-  "categoryText",
-  "tagText",
-  "metadataRevision",
-  "updatedAt",
-] as const;
-
-/** Die Felder, aus denen ein Treffer dieser Projektion entstehen kann. */
-export const METADATA_PROJECTION_MATCH_FIELDS = ["categoryText", "tagText"] as const;
+// R-1349: Feldliste (`METADATA_PROJECTION_FIELDS`) und Trefferfelder (`…_MATCH_FIELDS`: categoryText,
+// tagText) las kein Produktweg; den Vertrag trägt der Typ oben. Die Feldliste liegt in
+// `tests/support/projektion-feldvertrag.ts`, die Trefferliste ist entfernt.
 
 /** Die Revision einer Zeile, die es noch nicht gibt. Nie ein gültiger Stand — nur „noch nichts". */
 export const METADATA_REVISION_NONE = 0;
