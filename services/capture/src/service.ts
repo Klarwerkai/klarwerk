@@ -1341,6 +1341,8 @@ export class CaptureService {
       // `KoService.create` — ein unbekannter Wert bricht dort ab, statt still zu verschwinden.
       ...(p.aussageart ? { aussageart: p.aussageart as KoAussageart } : {}),
       author: draft.originalAuthor,
+      // R-0554: ein übergebener Entwurf trägt seine ursprüngliche Urheberin mit (`Draft.urheber`).
+      ...(draft.urheber ? { originalAuthor: draft.urheber } : {}),
       conditions: p.conditions ?? [],
       measures: p.measures ?? [],
       tags: p.tags ?? [],

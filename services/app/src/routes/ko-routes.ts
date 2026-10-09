@@ -442,6 +442,10 @@ type KoAktion =
   | "confidentiality"
   // JOB 557: die Verantwortung am Objekt benennen (Recht `ko.validate`, s. den Zweig unten).
   | "ownership"
+  // R-0507: der benannte Eigentümer gibt seine Verantwortung zurück (Prüfung im Dienst).
+  | "ownership-release"
+  // R-0507: der benannte Eigentümer gibt das Objekt inhaltlich frei (Recht `ko.validate`).
+  | "owner-validate"
   | "conflict"
   | "resolve-conflict"
   | "transfer-author"
@@ -515,6 +519,10 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   confidentiality: "tor",
   // JOB 557: die Aktion arbeitet AM Objekt unter `:id` — sie passiert das Sichtbarkeitstor.
   ownership: "tor",
+  // R-0507: arbeitet AM Objekt unter `:id` — wer es nicht sehen darf, gibt daran auch nichts zurück.
+  "ownership-release": "tor",
+  // R-0507: die Eigentümerfreigabe arbeitet AM Objekt unter `:id` — wie `admin-validate`.
+  "owner-validate": "tor",
   conflict: "kein-zielobjekt",
   "resolve-conflict": "kein-zielobjekt",
   "transfer-author": "tor",
@@ -3670,6 +3678,41 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return;
             }
             reply.code(200).send(await ko.setOwnership(id, body.ownership, user.id));
+            return;
+          }
+          // R-0507: „Der Eigentümer kann es zurückgeben." Das Recht ist hier nur `ko.read` — die
+          // tragende Prüfung („bist du der benannte Eigentümer?") steht im Dienst und wirft sonst
+          // `NOT_OWNER` (403). Wer Verantwortung trägt, muss sie abgeben können, ohne Prüferrolle.
+          case "ownership-release": {
+            const user = await guards.requirePermission("ko.read", request, reply);
+            if (!user) {
+              return;
+            }
+            reply.code(200).send(await ko.releaseOwnership(id, user.id));
+            return;
+          }
+          // R-0507: „… oder freigeben." Der BESTEHENDE Freigabeweg: das Freigaberecht `ko.validate`
+          // (wie `rate`), dasselbe Dublettentor wie `rate`/`admin-validate`, dann prüft der Dienst,
+          // ob der Anfragende der benannte Eigentümer ist (sonst 403 `NOT_OWNER`). Eigentum allein
+          // verleiht keine Freigabebefugnis.
+          case "owner-validate": {
+            const user = await guards.requirePermission("ko.validate", request, reply);
+            if (!user) {
+              return;
+            }
+            if (
+              !(await dublettenTor(
+                dublettenTorDeps,
+                user,
+                id,
+                body.duplicateAcknowledged,
+                "owner-validate",
+                reply,
+              ))
+            ) {
+              return;
+            }
+            reply.code(200).send(await validation.ownerValidate(id, user.id));
             return;
           }
           case "conflict": {

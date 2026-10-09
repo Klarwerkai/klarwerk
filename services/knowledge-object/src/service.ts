@@ -3507,6 +3507,52 @@ export class KoService {
   }
 
   // ==============================================================================================
+  // R-0507 — DER EIGENTÜMER GIBT SEINE VERANTWORTUNG ZURÜCK.
+  // ==============================================================================================
+  //
+  // Die offene Frage aus `setOwnership` („wem darf man die Verantwortung wieder wegnehmen?") ist
+  // hier enger beantwortet: NIEMANDEM wird sie weggenommen — der benannte Eigentümer gibt sie
+  // SELBST ab. Deshalb prüft der Dienst `actor === owner` und kein Rollenrecht: das ist keine
+  // Rechtevergabe aus `owner` (ownership.ts), sondern das Zurückgeben der eigenen Zusage.
+  //
+  // WAS BLEIBT: die Spur `reviewers`/`validators` — wer geprüft und freigegeben hat, ist eine
+  // Tatsache, die das Zurückgeben nicht ungeschehen macht. Nur `owner` entfällt; danach gilt
+  // wieder der benannte Rückfall auf den Autor (`responsibleOf`). Bleibt gar nichts übrig, steht
+  // kein Aggregat mehr am Objekt — „keine Angabe" statt eines leeren Aggregats (normalizeOwnership).
+  async releaseOwnership(id: string, actor: string): Promise<KnowledgeObject> {
+    return this.mutateKo(id, (ko) => {
+      const previous = ownershipOf(ko);
+      if (previous?.owner === undefined || previous.owner !== actor) {
+        throw new KoError(
+          "NOT_OWNER",
+          "Nur der benannte Eigentümer kann die Verantwortung für dieses Wissensobjekt zurückgeben.",
+        );
+      }
+      const next = normalizeOwnership({
+        reviewers: previous.reviewers,
+        validators: previous.validators,
+      });
+      const { ownership: _bisher, ...ohne } = ko;
+      const updated: KnowledgeObject = next === null ? ohne : { ...ohne, ownership: next };
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.ownership-released",
+              target: id,
+              payload: { previousOwner: previous.owner ?? null },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
+  // ==============================================================================================
   // produkt:20261007:ownership-uebergabe — DIE ÜBERGABE EINES BEITRAGS, VERGLEICHEND UND GESPERRT.
   // ==============================================================================================
   //

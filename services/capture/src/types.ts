@@ -139,6 +139,17 @@ export interface Draft {
   createdAt: string;
   updatedAt: string;
   /**
+   * R-0554 — DIE URSPRÜNGLICHE URHEBERIN EINES ÜBERGEBENEN ENTWURFS.
+   *
+   * Bei der Wissensübergabe (`services/app/src/wissensuebergabe.ts`) wandert `originalAuthor` an
+   * die Nachfolgerin — an diesem Feld hängen Sichtbarkeit und „meine Entwürfe", und die gehören
+   * jetzt ihr. Wer den Entwurf ursprünglich verfasst hat, bleibt HIER stehen und reist beim
+   * Einreichen als `originalAuthor` ans Wissensobjekt (`toKoInput`) — dieselbe Trennung wie
+   * `author`/`originalAuthor` dort. Gesetzt nur bei der ersten Übergabe; fehlt das Feld, ist
+   * `originalAuthor` die Urheberin. Additiv im JSONB, keine Migration.
+   */
+  urheber?: string;
+  /**
    * JOB 2697 — OPTIONAL UND AM `Draft`, NICHT IM `DraftPayload`.
    *
    * Der Unterschied ist der, an dem D1 gescheitert ist: `capture.toKoInput` liest den PAYLOAD und

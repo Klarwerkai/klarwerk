@@ -34,6 +34,7 @@ import type {
   ExternalResult,
   KnowledgeObject,
 } from "../../api/types";
+import { useSession } from "../../app/AuthContext";
 import { useRole } from "../../app/RoleContext";
 import { useToast } from "../../app/ToastContext";
 import { abfrageMitBestand } from "../../lib/abfrageBestand";
@@ -118,6 +119,7 @@ import { WissensauskunftBereich } from "../wissensauskunft/WissensauskunftBereic
 import { AnhangZeichnung } from "./AnhangZeichnung";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { ImportErgebnis } from "./ImportErgebnis";
+import { Verantwortung } from "./Verantwortung";
 import { Zeichnung } from "./Zeichnung";
 
 // ==================================================================================================
@@ -414,6 +416,7 @@ export function MehrAbschnitte({
   const { t, i18n } = useTranslation();
   const id = ko.id;
   const { role } = useRole();
+  const session = useSession();
   const { push } = useToast();
   const qc = useQueryClient();
   const nameOf = useAuthorName();
@@ -2022,6 +2025,14 @@ export function MehrAbschnitte({
             ? `${t("wissensmetadaten.revalidierung.feld")}: ${ko.revalidierungAm}`
             : t("wissensmetadaten.revalidierung.keine")}
         </p>
+        {/* R-0507 / R-0546: wem das Objekt gehört, wer es geprüft und freigegeben hat — und dass
+            Bearbeiternamen keine Verantwortung aussagen. */}
+        <Verantwortung
+          ko={ko}
+          nameOf={nameOf}
+          angemeldet={session.user?.id}
+          darfFreigeben={canReview}
+        />
         {canEdit ? (
           <label className="mt-3 flex items-center gap-2 text-[12px] text-muted">
             <span>{t("conf.field")}</span>
@@ -2300,8 +2311,15 @@ export function MehrAbschnitte({
                   Zahl kommt über den EINEN Draht-Leser (`uebernahmeHerkunft`), denselben, den die
                   Fassungskarte unten benutzt. Der Rückfall auf den Autornamen bleibt Zeichen für
                   Zeichen: er gilt dem leeren Vermerk. */}
+              {/* R-0546: der Name an einer Fassung heisst „hat bearbeitet" — nie „verantwortlich".
+                  Er steht deshalb als „bearbeitet von …" da; ohne Autor steht nichts. */}
               <div data-bib-historie-vermerk={h.version} className="text-[12.5px] text-text">
-                {koHistoryNote(h.note, t) || nameOf(h.author)}
+                {koHistoryNote(h.note, t)}
+                {h.author ? (
+                  <span data-bib-historie-bearbeiter className="ml-1.5 text-muted">
+                    {t("verantwortung.bearbeitetVon", { name: nameOf(h.author) })}
+                  </span>
+                ) : null}
                 {((): JSX.Element | null => {
                   const herkunft = uebernahmeHerkunft(h);
                   return herkunft === null ? null : (

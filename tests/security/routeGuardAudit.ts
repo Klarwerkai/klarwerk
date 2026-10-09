@@ -592,6 +592,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // 404 wie am Leseweg darunter. Davor koppelte der Weg an jede, auch erfundene Kennung.
   "POST /api/lifecycle/couple": { protection: "ko.create", zeilenrecht: ["sichtbareEintraege"] },
   "POST /api/lifecycle/asset-changed": { protection: "ko.validate" },
+  // R-0554 / R-2128: Wissensübergabe beim Ausscheiden — Vorschau und Ausführung, nur Verwaltung.
+  "POST /api/lifecycle/handover/preview": { protection: "users.manage" },
+  "POST /api/lifecycle/handover": { protection: "users.manage" },
   // AUFTRAG-JOB2020 (G7b): die Liste faellliger Kennungen faehrt seit heute ein Zeilenrecht —
   // `sichtbareEintraege` ueber die Kennungen aus `pendingRevalidation()` (`lifecycle-routes.ts:98`).
   // Davor gingen die Kennungen vertraulicher Objekte an jeden `ko.read`-Inhaber, obwohl
